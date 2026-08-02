@@ -114,6 +114,26 @@ if (args.Length >= 2 && args[0] == "mover")
     return 0;
 }
 
+if (args.Length >= 2 && args[0] == "binario")
+{
+    // binario <pastaMaps> [caminho do Godot] : .tscn (texto) -> .scn (binario)
+    //
+    // O proprio editor pede isso: cada andar tem 250 mil celulas escritas como texto decimal,
+    // ~3 MB por planeta. O .scn guarda os mesmos bytes como bytes.
+    SceneBinary.Converter(Path.GetFullPath(args[1]), args.Length > 2 ? args[2] : null);
+    return 0;
+}
+
+if (args.Length >= 2 && args[0] == "colisao")
+{
+    // colisao <pastaMaps> : regera os .col A PARTIR DAS CENAS
+    //
+    // Rode depois de editar um mapa no Godot. Sem isto, o que voce apagar no editor continua
+    // sendo parede pro servidor -- o jogador ve chao e leva correcao de movimento.
+    SceneCollision.Regerar(Path.GetFullPath(args[1]));
+    return 0;
+}
+
 if (args.Length >= 1 && args[0] == "luta")
 {
     // luta [races.json] : banco de prova do combate (cadencia, gap, duelos, corpo)

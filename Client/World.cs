@@ -18,6 +18,9 @@ public partial class World : Node2D
 	/// <summary>O mundo vivo. O menu de pause precisa dele pra mexer no zoom.</summary>
 	public static World? Instancia { get; private set; }
 
+	/// <summary>A hora do dia (0 = meia-noite, 1 = meia-noite de novo). O HUD mostra.</summary>
+	public double? Hora => _luzDoMundo?.Fase;
+
 	private Camera2D? _camera;
 
 	private const string Manifesto = "res://Assets/Maps/manifest.json";
@@ -28,11 +31,12 @@ public partial class World : Node2D
 	private LocalPlayer? _local;
 	private readonly Dictionary<int, RemotePlayer> _remotos = [];
 	private readonly Dictionary<int, ulong> _ultimoPacoteMs = [];
-	private CanvasModulate _ambiente = null!;
+	private Iluminacao _luzDoMundo = null!;
 	private ZoneCatalog? _catalogo;
 	private ZoneCollision? _colisao;
 	private Node2D? _zonaAtual;
 	private Node2D _atores = null!;
+	private Visao _veu = null!;
 
 	public override void _Ready()
 	{
@@ -42,10 +46,19 @@ public partial class World : Node2D
 			_visual = Jandirus.Core.Appearance.VisualCatalog.Parse(Godot.FileAccess.GetFileAsString(dados));
 		else GD.PushWarning("[world] sem visual.json -- rode o AssetPipeline (comando 'visual')");
 
+		// ORDENAR POR Y, do mundo inteiro. E o que poe o personagem ATRAS da arvore quando ele
+		// esta acima dela e NA FRENTE quando esta abaixo. O Godot so funde a ordenacao quando
+		// ela e CONTINUA de pai pra filho: se `Atores` ou a cena do planeta nao ordenassem, cada
+		// um viraria um bloco fechado e os dois nunca se intercalariam.
+		YSortEnabled = true;
+
 		MontarCenario();
 
-		_atores = new Node2D { Name = "Atores" };
+		_atores = new Node2D { Name = "Atores", YSortEnabled = true };
 		AddChild(_atores);
+
+		_veu = new Visao { Name = "Visao" };
+		AddChild(_veu);
 
 		if (GameClient.Instance is { } cli)
 		{
@@ -96,26 +109,11 @@ public partial class World : Node2D
 		};
 		AddChild(chao);
 
-		// AMBIENTE: quanto mais escuro, mais a luz aparece. Branco puro = dia sem sombra.
-		_ambiente = new CanvasModulate { Color = new Color("39406b") }; // crepusculo
-		AddChild(_ambiente);
-	}
-
-	/// <summary>Textura de luz radial gerada em codigo: nao depende de arte importada.</summary>
-	private static GradientTexture2D LuzRadial(int raio, Color cor)
-	{
-		var g = new Gradient();
-		g.SetColor(0, cor);
-		g.SetColor(1, new Color(cor.R, cor.G, cor.B, 0));
-		return new GradientTexture2D
-		{
-			Gradient = g,
-			Width = raio * 2,
-			Height = raio * 2,
-			Fill = GradientTexture2D.FillEnum.Radial,
-			FillFrom = new Vector2(0.5f, 0.5f),
-			FillTo = new Vector2(1.0f, 0.5f),
-		};
+		// A LUZ DO MUNDO mora numa classe propria: ciclo do dia, fontes de cenario e a visao
+		// do personagem. Ver Iluminacao.cs -- inclusive pra entender por que o dia nao e
+		// branco puro (sem margem entre luz e sombra, parede nao esconde nada).
+		_luzDoMundo = new Iluminacao { Name = "Iluminacao" };
+		AddChild(_luzDoMundo);
 	}
 
 	// ---------------------------------------------------------------------
@@ -145,9 +143,11 @@ public partial class World : Node2D
 
 		var cena = ResourceLoader.Load<PackedScene>(e.Cena);
 		_zonaAtual = cena.Instantiate<Node2D>();
-		_zonaAtual.ZIndex = -50;
+		// SEM z_index PROPRIO. Um z fixo separaria a cena dos atores em duas camadas estanques
+		// e a arvore voltaria a ficar sempre na frente (ou sempre atras) do personagem. Quem
+		// decide e o Y, e pra isso os dois precisam viver no MESMO z.
 		AddChild(_zonaAtual);
-		MoveChild(_zonaAtual, 0); // atras dos atores
+		MoveChild(_zonaAtual, 0);
 
 		// A MESMA colisao que o servidor usa. Sem ela o cliente atravessa parede, o servidor
 		// recusa e devolve correcao -- e e ESSA briga que faz o personagem tremer no muro.
@@ -157,12 +157,22 @@ public partial class World : Node2D
 		if (_colisao == null) GD.PushWarning($"[world] zona '{zona}' sem colisao: da pra atravessar parede");
 		if (_local != null) _local.Mapa = _colisao;
 
+		// O QUE CEGA e outro mapa: parede e porta cegam, arvore e cerca nao (ver MapConverter).
+		_veu.Mapa = Godot.FileAccess.FileExists(e.Visao)
+			? ZoneCollision.Load(Godot.FileAccess.GetFileAsBytes(e.Visao))
+			: null;
+		if (_veu.Mapa == null) GD.PushWarning($"[world] zona '{zona}' sem mapa de visao: parede nao esconde nada");
+
 		GD.Print($"[world] zona carregada: {e.Zona} (z{e.Z}, {e.W}x{e.H})"
 				 + (_colisao != null ? " com colisao" : " SEM colisao"));
+		Chat.Sistema($"voce esta em {e.Zona}.");
 
 		// o som do LUGAR: vento, mar, cidade. Troca junto com o planeta.
 		AudioDirector.Instance?.Ambiente(Trilha.AmbienteDe(e.Zona));
 		AudioDirector.Instance?.Musica(Trilha.MusicaDe(e.Zona), AudioDirector.Camada.Lugar);
+
+		// fogueiras, tochas e lava do planeta novo (as do anterior somem junto com ele)
+		_luzDoMundo.CarregarLuzes(e.Luzes);
 	}
 
 	/// <summary>Zoom novo vindo do menu de pause, sem recarregar nada.</summary>
@@ -178,16 +188,10 @@ public partial class World : Node2D
 
 		var corpo = new LocalPlayer { Name = "LocalPlayer", Position = new Vector2(spawn.X, spawn.Y), Mapa = _colisao };
 		corpo.AddChild(NovoVisual());
-
-		// a luz que o personagem carrega
-		corpo.AddChild(new PointLight2D
-		{
-			Name = "Luz",
-			Texture = LuzRadial(160, Colors.White),
-			Energy = 1.1f,
-			ShadowEnabled = true,
-			Color = new Color("ffe9c4"),
-		});
+		corpo.AddChild(new Aura { Name = "Aura" });
+		// SO O SEU personagem tem campo de visao -- e o que VOCE enxerga, nao algo que os outros
+		// veem. Por isso o veu mora no mundo e apenas SEGUE o corpo.
+		_veu.Alvo = corpo;
 
 		// ZOOM INTEIRO e SEM suavizacao. Em arte de pixel um zoom quebrado (2,5x) mapeia
 		// texel em pixel de tela de forma irregular e a imagem CINTILA andando; e a suavizacao
@@ -203,6 +207,7 @@ public partial class World : Node2D
 		_local = corpo;
 		VestirSePuder(id, corpo);
 		GD.Print($"[world] {nome} pronto em {zona}");
+		Chat.Sistema($"bem-vindo, {nome}.");
 	}
 
 	private void AoReceberSnapshot(List<EntityState> estados)
@@ -216,6 +221,7 @@ public partial class World : Node2D
 			{
 				r = new RemotePlayer { Name = $"Remoto{e.Id}", Position = new Vector2(e.Pos.X, e.Pos.Y) };
 				r.AddChild(NovoVisual());
+				r.AddChild(new Aura { Name = "Aura" });
 				r.AddChild(new HealthBar { Name = "Vida" });
 				_atores.AddChild(r);
 				_remotos[e.Id] = r;
@@ -225,7 +231,7 @@ public partial class World : Node2D
 
 			double desde = _ultimoPacoteMs.TryGetValue(e.Id, out ulong antes) ? (agora - antes) / 1000.0 : Protocol.TickSeconds;
 			_ultimoPacoteMs[e.Id] = agora;
-			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Pose, desde);
+			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Pose, desde, e.Rabo);
 			if (r.GetNodeOrNull<HealthBar>("Vida") is { } barra) barra.Vida = e.Vida / 100f;
 		}
 	}
@@ -260,44 +266,82 @@ public partial class World : Node2D
 		bool souEu = GameClient.Instance is { } c && (h.Atacante == c.LocalId || h.Alvo == c.LocalId);
 
 		var desfecho = (Jandirus.Core.Combat.Desfecho)h.Desfecho;
+		Vector2 meio = quemBate != null && quemLeva != null
+			? (quemBate.Position + quemLeva.Position) * 0.5f
+			: (quemLeva ?? quemBate)?.Position ?? Vector2.Zero;
+		Vector2 rumo = quemBate != null && quemLeva != null
+			? (quemLeva.Position - quemBate.Position).Normalized()
+			: Vector2.Zero;
+
 		switch (desfecho)
 		{
 			case Jandirus.Core.Combat.Desfecho.Acertou:
 			case Jandirus.Core.Combat.Desfecho.Critico:
-				Piscar(quemLeva, desfecho == Jandirus.Core.Combat.Desfecho.Critico
-					? new Color(1.6f, 0.5f, 0.5f) : new Color(1.4f, 0.6f, 0.6f));
+			{
+				bool crit = desfecho == Jandirus.Core.Combat.Desfecho.Critico;
+				float forca = h.Nivel switch { >= 3 => 1.35f, 2 => 1.0f, _ => 0.8f };
+				if (crit) forca = 1.6f;
+
+				Piscar(quemLeva, Quente, crit ? Dourado : Laranja, rumo, crit ? 0.22 : 0.15);
+				CombatFx.Impacto(_atores, meio, forca, crit ? Dourado : Colors.White);
+				if (crit) CombatFx.Onda(_atores, meio, 96, Dourado);
+				Tremer(souEu, crit ? 8f : h.Nivel switch { >= 3 => 5f, 2 => 3f, _ => 1.5f });
 				// DOIS sons por golpe, como no original: o assobio sai de quem BATE e o baque
 				// de quem APANHA. Separar os dois e o que da direcao ao impacto -- um som so,
 				// no meio, soa como se ninguem tivesse acertado ninguem.
 				Som(quemBate, Trilha.Assobio, 0.6f);
 				Som(quemLeva ?? quemBate, Trilha.Acerto(h.Nivel));
 				break;
+			}
 
 			case Jandirus.Core.Combat.Desfecho.Aparou:
-				Piscar(quemLeva, new Color(0.7f, 0.85f, 1.5f));
+				Piscar(quemLeva, Gelo, Gelo, rumo, 0.12);
+				CombatFx.Impacto(_atores, meio, 0.6f, Gelo);
+				// O bloqueio NAO e mudo no original: ele passa pelo mesmo `Damage()` e toca o
+				// baque de impacto. Aqui sai abafado, com o "tin" da aparada por cima -- o
+				// golpe chegou, so nao chegou inteiro, e o som precisa dizer as duas coisas.
+				Som(quemLeva ?? quemBate, Trilha.Acerto(h.Nivel), 0.55f);
 				Som(quemLeva ?? quemBate, Trilha.Aparou);
 				break;
 
 			case Jandirus.Core.Combat.Desfecho.Contra:
 				// quem apanha e quem BATEU: o contra-ataque devolve o golpe
-				Piscar(quemBate, new Color(0.7f, 0.85f, 1.5f));
+				Piscar(quemBate, Quente, Gelo, -rumo, 0.2);
+				CombatFx.Impacto(_atores, meio, 1.1f, Gelo);
+				Tremer(souEu, 6f);
+				// os DOIS sons juntos, como no original -- o "tin" da aparada e o brilho do
+				// acerto perfeito sao um som so na cabeca de quem jogou
 				Som(quemLeva, Trilha.ContraAtaque);
+				Som(quemLeva, Trilha.ContraAtaqueParry, 0.8f);
 				Som(quemBate, Trilha.Acerto(2));
 				break;
 
 			case Jandirus.Core.Combat.Desfecho.Esquivou:
+				// o unico desfecho que era MUDO na tela: agora deixa o borrao do Zanzoken
+				if (quemLeva != null) CombatFx.Esquiva(_atores, quemLeva.Position, -rumo);
+				Som(quemBate, Trilha.SocoNoAr(), 0.7f);
+				break;
+
 			case Jandirus.Core.Combat.Desfecho.Errou:
 				Som(quemBate, Trilha.SocoNoAr(), 0.7f);   // o corte do soco passando em falso
 				break;
 		}
 
 		if (h.Decepou || h.Rabo) Som(quemLeva, Trilha.Decepou);
-		if (h.Morreu || h.Nocauteou) Som(quemLeva, Trilha.Queda);
-		if (h.Morreu || h.Nocauteou || h.Decepou) Piscar(quemLeva, new Color(1.8f, 0.35f, 0.35f), 0.4);
+		if (h.Morreu || h.Nocauteou)
+		{
+			Som(quemLeva, Trilha.Queda);
+			CombatFx.Onda(_atores, meio, 224, Sangue, 0.35);
+			Tremer(souEu, 14f);
+		}
+		if (h.Morreu || h.Nocauteou || h.Decepou) Piscar(quemLeva, Sangue, Sangue, rumo, 0.4);
 
 		// MUSICA DE LUTA: entra no primeiro golpe que me envolve e sai sozinha depois de um
 		// tempo sem troca. A camada Combate cede pra transformacao e volta quando ela acaba.
-		if (!souEu) return;
+		//
+		// SOCO NO AR NAO E LUTA. Sem esta guarda, treinar sozinho num canto do mapa poria a
+		// trilha de batalha no ar -- e o jogador ficaria ouvindo tema de briga socando o vento.
+		if (!souEu || h.Alvo == 0) return;
 		// uma faixa DIFERENTE a cada briga -- sao 39 na pasta `battle ost`
 		if (_lutaAte <= 0) AudioDirector.Instance?.Musica(Trilha.Combate(), AudioDirector.Camada.Combate);
 		_lutaAte = SegundosDeLuta;
@@ -308,6 +352,14 @@ public partial class World : Node2D
 
 	public override void _Process(double delta)
 	{
+		if (_tremor > 0 && _camera != null)
+		{
+			_tremor = Mathf.MoveToward(_tremor, 0, (float)delta * 40f);
+			_camera.Offset = _tremor <= 0
+				? Vector2.Zero
+				: new Vector2(Sorte.Randf() * 2 - 1, Sorte.Randf() * 2 - 1) * _tremor;
+		}
+
 		if (_lutaAte <= 0) return;
 		_lutaAte -= delta;
 		if (_lutaAte <= 0) AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Combate);
@@ -320,8 +372,31 @@ public partial class World : Node2D
 		return _remotos.TryGetValue(id, out RemotePlayer? r) ? r : null;
 	}
 
-	private static void Piscar(Node2D? quem, Color cor, double segundos = 0.15)
-		=> quem?.GetNodeOrNull<CharacterVisual>("Visual")?.Impacto(cor, segundos);
+	// A PALETA DO IMPACTO, num lugar so. Sao as cores que o jogador aprende a ler sem pensar:
+	// quente = acertou, dourado = critico, gelo = defendeu, sangue = alguem caiu.
+	private static readonly Color Quente = new(1.0f, 0.95f, 0.90f);
+	private static readonly Color Dourado = new(1.0f, 0.85f, 0.35f);
+	private static readonly Color Laranja = new(1.0f, 0.70f, 0.30f);
+	private static readonly Color Gelo = new(0.55f, 0.80f, 1.00f);
+	private static readonly Color Sangue = new(1.0f, 0.35f, 0.30f);
+
+	private static void Piscar(Node2D? quem, Color cor, Color contorno, Vector2 rumo, double segundos = 0.15)
+		=> quem?.GetNodeOrNull<CharacterVisual>("Visual")?.Impacto(cor, contorno, rumo, segundos);
+
+	/// <summary>
+	/// O SOLAVANCO DA CAMERA. So pra quem esta NA briga -- tremer a tela de quem so passava
+	/// por perto e o caminho mais rapido pra enjoar o jogador.
+	///
+	/// Mexe no `Offset`, nao na `Position`: a camera e FILHA do personagem, e escrever na
+	/// posicao brigaria com o movimento a cada quadro.
+	/// </summary>
+	private void Tremer(bool souEu, float forca)
+	{
+		if (souEu && forca > _tremor) _tremor = forca;
+	}
+
+	private float _tremor;
+	private static readonly RandomNumberGenerator Sorte = new();
 
 	private static void Som(Node2D? onde, string caminho, float volume = 1f)
 	{

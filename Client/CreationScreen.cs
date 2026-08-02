@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Appearance;
 using Jandirus.Core.Races;
 
@@ -66,7 +66,7 @@ public partial class CreationScreen : CanvasLayer
 	// =====================================================================
 	private void Montar()
 	{
-		var fundo = new ColorRect { Color = new Color("11131c"), AnchorRight = 1, AnchorBottom = 1 };
+		var fundo = new ColorRect { Color = Tema.Fundo, AnchorRight = 1, AnchorBottom = 1 };
 		AddChild(fundo);
 
 		var centro = new CenterContainer
@@ -76,6 +76,8 @@ public partial class CreationScreen : CanvasLayer
 			GrowVertical = Control.GrowDirection.Both,
 		};
 		AddChild(centro);
+
+		Tema.Aplicar(centro);
 
 		var colunas = new HBoxContainer();
 		colunas.AddThemeConstantOverride("separation", 24);
@@ -91,6 +93,8 @@ public partial class CreationScreen : CanvasLayer
 		var caixa = new VBoxContainer { CustomMinimumSize = new Vector2(230, 0) };
 
 		var moldura = new PanelContainer { CustomMinimumSize = new Vector2(230, 260) };
+		// a previa fica num painel de borda VIVA: e o assunto da tela, nao um acessorio
+		moldura.AddThemeStyleboxOverride("panel", Tema.Caixa(Tema.PainelClaro, Tema.BordaViva, 10));
 		caixa.AddChild(moldura);
 
 		// RECORTA: o boneco e um Node2D e ignora o layout do container -- sem isto ele escorre
@@ -132,12 +136,13 @@ public partial class CreationScreen : CanvasLayer
 
 	private Control MontarFormulario()
 	{
-		var painel = new PanelContainer();
+		PanelContainer painel = Tema.Painel1(18);
 		var caixa = new VBoxContainer { CustomMinimumSize = new Vector2(460, 0) };
+		caixa.AddThemeConstantOverride("separation", 7);
 		painel.AddChild(caixa);
 
 		var titulo = new Label { Text = "NOVO GUERREIRO", HorizontalAlignment = HorizontalAlignment.Center };
-		titulo.AddThemeFontSizeOverride("font_size", 22);
+		titulo.AddThemeFontSizeOverride("font_size", 24);
 		caixa.AddChild(titulo);
 		caixa.AddChild(new HSeparator());
 
@@ -184,7 +189,7 @@ public partial class CreationScreen : CanvasLayer
 		// CABELO: grade de icones. Ver o penteado antes de escolher e o ponto todo -- um
 		// dropdown com 59 nomes ("Kylin 2"?) nao diz nada.
 		_blocoCabelo = new VBoxContainer();
-		_blocoCabelo.AddChild(new Label { Text = "Cabelo" });
+		_blocoCabelo.AddChild(Tema.Rotulo("Cabelo"));
 		_gradeCabelo = new GridContainer { Columns = 8 };
 		_blocoCabelo.AddChild(Rolagem(_gradeCabelo, 150));
 		caixa.AddChild(_blocoCabelo);
@@ -197,7 +202,7 @@ public partial class CreationScreen : CanvasLayer
 			() => { _visual.CorOlho = _tingirOlho.ButtonPressed ? DeCor(_corOlho.Color) : null; Repintar(); });
 		caixa.AddChild(linhaOlho);
 
-		caixa.AddChild(new Label { Text = $"Roupa (ate {Appearance.MaxRoupa} pecas -- clique pra vestir e tirar)" });
+		caixa.AddChild(Tema.Rotulo($"Roupa -- ate {Appearance.MaxRoupa} pecas"));
 		_gradeRoupa = new GridContainer { Columns = 8 };
 		caixa.AddChild(Rolagem(_gradeRoupa, 150));
 		_listaRoupa = new VBoxContainer();
@@ -206,16 +211,17 @@ public partial class CreationScreen : CanvasLayer
 		MontarGrades();
 
 		_descricao = new Label { AutowrapMode = TextServer.AutowrapMode.Word, CustomMinimumSize = new Vector2(0, 48) };
-		_descricao.AddThemeColorOverride("font_color", new Color("9fb4d8"));
+		_descricao.AddThemeColorOverride("font_color", Tema.TextoFraco);
+		_descricao.AddThemeFontSizeOverride("font_size", 13);
 		caixa.AddChild(_descricao);
 
 		_erro = new Label { HorizontalAlignment = HorizontalAlignment.Center };
-		_erro.AddThemeColorOverride("font_color", new Color("d88a8a"));
+		_erro.AddThemeColorOverride("font_color", Tema.Perigo);
 		caixa.AddChild(_erro);
 
 		var botoes = new HBoxContainer();
 		var voltar = new Button { Text = "Voltar", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-		voltar.Pressed += () => { Cancelado?.Invoke(); QueueFree(); };
+		voltar.Pressed += () => { Visible = false; Cancelado?.Invoke(); };
 		botoes.AddChild(voltar);
 
 		var criar = new Button { Text = "Entrar no mundo", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -369,7 +375,10 @@ public partial class CreationScreen : CanvasLayer
 	private static HBoxContainer Linha(string rotulo, Control campo)
 	{
 		var h = new HBoxContainer();
-		h.AddChild(new Label { Text = rotulo, CustomMinimumSize = new Vector2(130, 0) });
+		Label r = Tema.Rotulo(rotulo);
+		r.CustomMinimumSize = new Vector2(130, 0);
+		r.VerticalAlignment = VerticalAlignment.Center;
+		h.AddChild(r);
 		campo.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		h.AddChild(campo);
 		return h;
@@ -504,7 +513,23 @@ public partial class CreationScreen : CanvasLayer
 		// jogador ver o ajuste aqui do que descobrir depois que a roupa nao veio
 		_cat?.Sanear(_visual, _ficha.Race, _ficha.Gender);
 
+		Visible = false;
 		Pronto?.Invoke(_ficha, _visual);
-		QueueFree();
+	}
+
+	/// <summary>
+	/// Volta a aparecer. A TELA NAO E DESTRUIDA ao sair -- e o que tira a travadinha de abrir.
+	///
+	/// Montar esta tela custa alguns milissegundos: dois catalogos em JSON, uns quarenta
+	/// Controls e o boneco da previa, que puxa os SpriteFrames de corpo, cabelo e roupa do
+	/// disco. Feito no clique, isso e um engasgo bem no quadro em que o jogador esta olhando.
+	/// A tela e montada ANTES, escondida, enquanto ele le a lista de slots -- e abrir vira
+	/// trocar um booleano.
+	/// </summary>
+	public void Reabrir()
+	{
+		_erro.Text = "";
+		Visible = true;
+		_nome.GrabFocus();
 	}
 }

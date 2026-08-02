@@ -42,8 +42,27 @@ public sealed class ServerPlayer
 	/// <summary>Quando o corpo volta a se mexer depois de morrer (relogio real, ms).</summary>
 	public long RenasceEm;
 
+	/// <summary>Esta correndo AGORA (concedido pelo servidor, nao afirmado pelo cliente).</summary>
+	public bool Correndo;
+
+	/// <summary>Quando o proximo dash de aproximacao libera (relogio real, ms).</summary>
+	public long DashLivreEm;
+
+	/// <summary>
+	/// Ate quando uma correcao de movimento e ESPERADA (acabei de dar dash neste jogador).
+	///
+	/// O dash reposiciona o personagem no servidor, mas o cliente ja tinha pacotes em voo
+	/// com a posicao antiga -- eles chegam e sao corrigidos, o que e certo. O que NAO pode e
+	/// isso poluir o contador de correcoes: ele existe pra denunciar cheat e lag cronico, e
+	/// um sinal que dispara sozinho toda vez que o jogo funciona nao denuncia nada.
+	/// </summary>
+	public long CorrecaoEsperadaAte;
+
 	/// <summary>Quem me derrubou por ultimo -- e de quem o Zenkai cobra a conta.</summary>
 	public int UltimoAgressor;
+
+	/// <summary>Assinatura do ultimo corpo enviado -- so remanda quando algum membro muda.</summary>
+	public string CorpoEnviado = "";
 
 	/// <summary>Aparencia: so o servidor guarda a versao saneada.</summary>
 	public Jandirus.Core.Appearance.Appearance Visual = new();
@@ -71,6 +90,9 @@ public sealed class ServerPlayer
 		return Protocol.Pose.Normal;
 	}
 
+	/// <summary>O rabo ainda esta no corpo? Falso pra quem nunca teve.</summary>
+	public bool TemRaboAgora() => Combate?.Corpo.Achar("Rabo") is { Decepado: false };
+
 	public SheetState Sheet() => new()
 	{
 		Class = Class,
@@ -85,7 +107,8 @@ public sealed class ServerPlayer
 		SocoMs = (int)Math.Round(CombatMath.Cadencia(Ficha) * 1000),
 		MembrosRuins = (byte)Math.Min(255, Combate?.Corpo.Partes.Count(p => p.Decepado || p.Quebrado) ?? 0),
 		Estado = (byte)((Ficha.KO ? 1 : 0) | (Ficha.dead ? 2 : 0)
-						| (Combate?.Bloqueando == true ? 4 : 0) | (Combate?.Letal == true ? 8 : 0)),
+						| (Combate?.Bloqueando == true ? 4 : 0) | (Combate?.Letal == true ? 8 : 0)
+						| (TemRaboAgora() ? 16 : 0)),
 	};
 }
 
@@ -345,6 +368,14 @@ public partial class GameServer : Node
 				GD.Print($"[server] {a.Name}: golpe {(a.Combate.Letal ? "LETAL" : "nao-letal")}");
 				break;
 			}
+			case Protocol.C2S.Chat:
+			{
+				var canal = (Protocol.Fala)reader.GetByte();
+				string texto = reader.GetString(Protocol.MaxFala);
+				if (!_byPeer.TryGetValue(peer, out ServerPlayer? a)) break;
+				Falar(a, canal, texto);
+				break;
+			}
 			case Protocol.C2S.Ping:
 			{
 				var w = Protocol.Begin(Protocol.S2C.Pong);
@@ -593,7 +624,8 @@ public partial class GameServer : Node
 		Vec2 claimed = reader.GetVec();
 		byte flags = reader.GetByte();
 		var facing = (Facing)(flags & 0x03);
-		bool moving = (flags & 0x80) != 0;
+		bool moving = (flags & Protocol.InputAndando) != 0;
+		bool querCorrer = (flags & Protocol.InputCorrendo) != 0;
 
 		// QUEM ESTA NO CHAO NAO ANDA. A checagem tem que vir antes da validacao de passo:
 		// senao o corpo caido "anda" livremente enquanto a pose diz que ele esta desmaiado.
@@ -613,19 +645,27 @@ public partial class GameServer : Node
 		float dt = MathF.Max(0f, (now - pl.LastInputMs) / 1000f);
 		pl.LastInputMs = now;
 
+		// CORRER E CONCEDIDO, NAO DECLARADO. O cliente PEDE; quem decide e este metodo, e ele
+		// COBRA por segundo de corrida. Sem isto, o bit de "correndo" seria 60% de velocidade
+		// gratuita pra qualquer cliente modificado -- e o tipo de coisa que nao da pra
+		// detectar depois, porque o movimento fica dentro do que a validacao aceita.
+		bool correndo = querCorrer && moving && PodeCorrer(pl, dt);
+
 		ZoneCollision? mapa = _catalogo?.Get(pl.Zone)?.Mapa;
-		if (MoveRules.ValidateStep(pl.Pos, claimed, dt, pl.SpeedStat, mapa, out Vec2 ok))
+		if (MoveRules.ValidateStep(pl.Pos, claimed, dt, pl.SpeedStat, mapa, out Vec2 ok, correndo))
 		{
 			pl.Pos = ok;
 		}
 		else
 		{
 			pl.Pos = ok;
-			pl.Corrections++;
+			bool esperada = now < pl.CorrecaoEsperadaAte;
+			if (!esperada) pl.Corrections++;
 			// Correcao em jogo HONESTO nao deveria existir: as duas pontas rodam a MESMA regra
 			// de colisao e de velocidade. Se este aviso aparecer, o cliente esta sendo puxado de
 			// volta -- e e exatamente isso que o jogador sente como o personagem tremendo.
-			if (pl.Corrections % 30 == 1)
+			// (A do dash e a excecao: o servidor moveu o personagem de proposito.)
+			if (!esperada && pl.Corrections % 30 == 1)
 				GD.PushWarning($"[server] {pl.Name}: {pl.Corrections} correcoes de movimento (dt={dt:0.000}s)");
 
 			var w = Protocol.Begin(Protocol.S2C.Correction);
@@ -635,7 +675,27 @@ public partial class GameServer : Node
 
 		pl.Facing = facing;
 		pl.Moving = moving;
+		pl.Correndo = correndo;
+		pl.Ficha.dashing = correndo;   // entra na conta de dano: +2 pra quem bate, x1.25 pra quem apanha
 	}
+
+	/// <summary>
+	/// Correr custa Ki por segundo. Sem energia, o corpo simplesmente nao corre -- e o mesmo
+	/// desenho do original, onde cada arranque de dash descontava Ki.
+	/// </summary>
+	private static bool PodeCorrer(ServerPlayer pl, float dt)
+	{
+		if (pl.Ficha.dead || pl.Ficha.KO) return false;
+
+		double custo = pl.Ficha.MaxKi * CustoCorridaPorSegundo * Math.Min(dt, 0.25f);
+		if (pl.Ficha.Ki < custo) return false;
+
+		pl.Ficha.Ki -= custo;
+		return true;
+	}
+
+	/// <summary>Fracao do Ki maximo gasta por segundo de corrida.</summary>
+	private const double CustoCorridaPorSegundo = 0.02;
 
 	private void Drop(NetPeer peer)
 	{
@@ -685,6 +745,7 @@ public partial class GameServer : Node
 					Id = pl.Id, Pos = pl.Pos, Facing = (byte)pl.Facing,
 					Moving = pl.Moving, Pose = pl.Pose(agora),
 					Vida = (byte)Math.Clamp(Math.Round(pl.Ficha.HP), 0, 100),
+					Rabo = pl.TemRaboAgora(),
 				}.Write(w);
 
 			// mesmo buffer pra todos daquela zona: quem esta noutro planeta nao recebe nada

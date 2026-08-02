@@ -41,13 +41,36 @@ public static class Protocol
         Guard = 8,         // guarda erguida / baixada
         Aim = 9,           // zona do corpo que estou mirando
         Lethal = 10,       // o `murderToggle`: lutar pra valer ou nao
+        Chat = 11,         // falar: canal + texto. Quem decide quem ouve e o servidor
+    }
+
+    /// <summary>
+    /// OS CANAIS DE FALA, com os MESMOS NUMEROS do `sayType()` do BYOND.
+    ///
+    /// Nao e capricho: o original tem seis modos e cada um com um alcance proprio, e manter a
+    /// numeracao deixa a comparacao com `Talking.dm` direta -- quem for conferir se o alcance
+    /// do sussurro esta certo abre o `if(2)` de la e o `Sussurro` daqui.
+    ///
+    /// <see cref="Sistema"/> nao existe no original e NAO TRAFEGA: e o canal em que o proprio
+    /// cliente escreve o que so interessa a quem esta jogando ("zona carregada", "sem Ki pro
+    /// dash"). Fica fora da faixa 1-6 de proposito.
+    /// </summary>
+    public enum Fala : byte
+    {
+        Ooc = 1,        // global, fora do personagem
+        Sussurro = 2,   // 2 tiles ouvem o que foi dito; o resto so ve que alguem sussurrou
+        Diz = 3,        // a fala normal. Com "!" vira grito e o alcance cresce
+        Pensa = 4,      // "Fulano pensa consigo mesmo, '...'"
+        Emote = 5,      // *Fulano faz alguma coisa*
+        Looc = 6,       // fora do personagem, mas so pra quem esta perto
+        Sistema = 200,  // so o cliente escreve; nunca sai na rede
     }
 
     /// <summary>
     /// As zonas do corpo que da pra mirar. A zona nao GARANTE o membro -- so pesa o sorteio a
     /// favor dele (ver <see cref="Jandirus.Core.Combat.Body.Sortear"/>).
     /// </summary>
-    public static readonly string[] Zonas = ["", "cabeca", "torso", "bracos", "pernas"];
+    public static readonly string[] Zonas = ["", "cabeca", "torso", "abdomen", "bracos", "pernas"];
 
     public static string ZonaDe(byte i) => i < Zonas.Length ? Zonas[i] : "";
 
@@ -66,6 +89,14 @@ public static class Protocol
     /// e a animacao tem que acompanhar. 240 ms e a cadencia de um soco leve com stat inicial.
     /// </summary>
     public const int AttackPoseMs = 240;
+
+    /// <summary>
+    /// Bits do byte de input. Direcao ocupa 0-1; 0x40 e "estou correndo" e 0x80 e "estou
+    /// andando". Correr e um PEDIDO: o servidor so concede enquanto houver Ki (ver
+    /// `GameServer.Input`), entao afirmar aqui nao da velocidade de graca.
+    /// </summary>
+    public const byte InputCorrendo = 0x40;
+    public const byte InputAndando = 0x80;
 
     /// <summary>Os golpes de melee. O `tipo` da conta de dano/cadencia sai daqui.</summary>
     public enum Golpe : byte { Leve = 0, Pesado = 1 }
@@ -93,6 +124,56 @@ public static class Protocol
         Stats = 8,         // a ficha viva: BP, BP expresso, Ki, vida, velocidade
         PeerLook = 9,      // a APARENCIA de alguem da zona -- mandada UMA vez, nao por tick
         Hit = 11,          // um golpe foi resolvido: quem, em quem, e no que deu
+        Corpo = 12,        // o estado de CADA membro do meu personagem (so quando muda)
+        Chat = 13,         // alguem falou e eu estou no alcance: canal + quem + o que
+    }
+
+    /// <summary>Quantos caracteres uma fala pode ter. O BYOND cortava em 1000; aqui tambem.</summary>
+    public const int MaxFala = 1000;
+
+    /// <summary>Um membro, do jeito que o boneco de dano precisa ver.</summary>
+    public struct ParteState
+    {
+        public string Nome;
+        public byte Vida;       // 0-100
+        public bool Decepado;
+    }
+
+    /// <summary>
+    /// O CORPO EM PARTES, do dono pro dono. Nao vai no snapshot e nao vai pra mais ninguem:
+    /// saber que o inimigo esta com o braco direito a 12% e informacao de ficha.
+    ///
+    /// So sai quando algo MUDA -- o servidor compara uma assinatura, exatamente como o
+    /// original fazia (`last_sig` do LimbHPIndicator), porque redesenhar 15 overlays tres
+    /// vezes por segundo sem nada ter mudado e trabalho jogado fora nas duas pontas.
+    ///
+    /// Manda o NOME de cada parte em vez de confiar na ordem: um Saiyajin tem 15 partes e um
+    /// humano 14, e um dia alguma raca tera outra coisa. Indice posicional aqui seria um bug
+    /// esperando o primeiro membro novo.
+    /// </summary>
+    public static void PutCorpo(this NetDataWriter w, IReadOnlyList<ParteState> partes)
+    {
+        w.Put((byte)Math.Min(partes.Count, 255));
+        for (int i = 0; i < partes.Count && i < 255; i++)
+        {
+            w.Put(partes[i].Nome);
+            w.Put((byte)(partes[i].Decepado ? 255 : partes[i].Vida));
+        }
+    }
+
+    public static List<ParteState> GetCorpo(this NetDataReader r)
+    {
+        int n = r.GetByte();
+        var l = new List<ParteState>(n);
+        for (int i = 0; i < n; i++)
+        {
+            string nome = r.GetString(32);
+            byte v = r.GetByte();
+            // 255 e a marca de DECEPADO, nao "vida 255": um membro que nao existe mais nao
+            // tem vida, e o boneco pinta ele de roxo em vez de verde
+            l.Add(new ParteState { Nome = nome, Vida = v == 255 ? (byte)0 : v, Decepado = v == 255 });
+        }
+        return l;
     }
 
     /// <summary>
@@ -269,6 +350,9 @@ public struct SheetState
     public bool Guarda => (Estado & 4) != 0;
     public bool Letal => (Estado & 8) != 0;
 
+    /// <summary>Tenho rabo. O snapshot nao me inclui (eu me desenho sozinho), entao vem aqui.</summary>
+    public bool Rabo => (Estado & 16) != 0;
+
     /// <summary>Nem anda nem golpeia: caido ou morto.</summary>
     public bool Imobilizado => KO || Morto;
 
@@ -336,12 +420,21 @@ public struct EntityState
     /// </summary>
     public byte Vida;
 
+    /// <summary>
+    /// Este personagem tem RABO agora. Vai num bit que ja estava sobrando no byte de
+    /// direcao/pose (o 0x20) -- entao ver o rabo de todo mundo custa ZERO byte a mais.
+    /// Precisa vir por tick e nao no pacote de aparencia porque o rabo E ARRANCAVEL: quem
+    /// esta olhando tem que ver ele sumir na hora.
+    /// </summary>
+    public bool Rabo;
+
     public void Write(NetDataWriter w)
     {
         w.Put(Id);
         w.PutVec(Pos);
         // direcao (2 bits) + pose (3 bits) + "andando" (1 bit) no MESMO byte
-        w.Put((byte)((Facing & 0x03) | ((byte)Pose & 0x07) << 2 | (Moving ? 0x80 : 0x00)));
+        w.Put((byte)((Facing & 0x03) | ((byte)Pose & 0x07) << 2
+                   | (Rabo ? 0x20 : 0x00) | (Moving ? 0x80 : 0x00)));
         w.Put(Vida);
     }
 
@@ -351,6 +444,7 @@ public struct EntityState
         byte flags = r.GetByte();
         e.Facing = (byte)(flags & 0x03);
         e.Pose = (Protocol.Pose)((flags >> 2) & 0x07);
+        e.Rabo = (flags & 0x20) != 0;
         e.Moving = (flags & 0x80) != 0;
         e.Vida = r.GetByte();
         return e;

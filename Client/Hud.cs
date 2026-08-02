@@ -1,54 +1,52 @@
-﻿using Godot;
+using Godot;
 using Jandirus.Net;
 
 namespace Jandirus.Client;
 
 /// <summary>
-/// O painel de status. Substitui o statpanel nativo do BYOND (que morreu no meio do caminho
-/// e virou aba HTML la) por nodes do Godot.
+/// O PAINEL DE STATUS. Substitui o statpanel do BYOND (que morreu no meio do caminho e virou
+/// aba HTML la) por nodes do Godot.
 ///
-/// O BP proprio aparece como "???" ate o personagem ter meio de medir poder -- essa e a
-/// regra do jogo, nao um detalhe de interface. O que ele SEMPRE ve e o BP real (o que treinou),
-/// porque esse ele sente; o expresso e o que um scouter leria.
+/// TRES CANTOS, e a divisao nao e estetica:
+///
+///   ESQUERDA  -- quem eu sou e como estou: nome, classe, poder, vida, Ki. E o que se olha
+///                entre uma luta e outra.
+///   DIREITA   -- o corpo em partes e onde estou mirando. E o que se olha DURANTE a luta, e
+///                fica do lado oposto pra os dois nao disputarem o mesmo canto de olho.
+///   BAIXO     -- o relato do ultimo golpe, que aparece e some.
+///
+/// A AJUDA DE TECLAS ficava aberta ocupando quatro linhas. Virou um lembrete de uma linha, e
+/// o painel inteiro abre no TAB. Interface de jogo nao e manual: quem ja sabe as teclas nao
+/// deveria continuar lendo elas a partida toda.
+///
+/// O BP proprio aparece como o jogador o SENTE (o real, que ele treinou); o expresso e o que
+/// um scouter leria, e um dia vai depender de ter scouter.
 /// </summary>
 public partial class Hud : CanvasLayer
 {
 	/// <summary>O painel vivo. O mundo chama pra narrar golpe sem precisar procurar o node.</summary>
 	public static Hud? Instancia { get; private set; }
 
-	private Label _linha = null!, _atividade = null!, _combate = null!, _relato = null!;
-	private ProgressBar _hp = null!, _ki = null!;
+	private Label _nome = null!, _classe = null!, _bp = null!, _atividade = null!, _relato = null!;
+	private Label _mira = null!, _letal = null!, _hora = null!;
+	private Barra _hp = null!, _ki = null!;
+	private PanelContainer _ajuda = null!;
 	private double _relatoAte;
 
 	public override void _Ready()
 	{
 		Instancia = this;
-		var caixa = new VBoxContainer
+		var raiz = new Control
 		{
-			AnchorRight = 0, AnchorBottom = 0,
-			OffsetLeft = 12, OffsetTop = 12,
-			CustomMinimumSize = new Vector2(240, 0),
+			AnchorRight = 1, AnchorBottom = 1,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};
-		AddChild(caixa);
+		Tema.Aplicar(raiz);
+		AddChild(raiz);
 
-		_linha = new Label { Text = "..." };
-		_linha.AddThemeColorOverride("font_color", new Color("e8e8f0"));
-		_linha.AddThemeColorOverride("font_outline_color", new Color("000000"));
-		_linha.AddThemeConstantOverride("outline_size", 4);
-		caixa.AddChild(_linha);
-
-		_hp = Barra(caixa, new Color("c04a4a"));
-		_ki = Barra(caixa, new Color("4a8ac0"));
-
-		_atividade = new Label { Text = "T treinar   M meditar" };
-		_atividade.AddThemeColorOverride("font_color", new Color("9fb4d8"));
-		_atividade.AddThemeColorOverride("font_outline_color", new Color("000000"));
-		_atividade.AddThemeConstantOverride("outline_size", 4);
-		caixa.AddChild(_atividade);
-
-		_combate = Texto(caixa, new Color("c8b48a"));
-		_relato = Texto(caixa, new Color("ffd7a0"));
-		MostrarCombate();
+		MontarEsquerda(raiz);
+		MontarDireita(raiz);
+		MontarRodape(raiz);
 
 		if (GameClient.Instance is { } cli)
 		{
@@ -58,6 +56,7 @@ public partial class Hud : CanvasLayer
 			cli.LetalidadeMudou += _ => MostrarCombate();
 			Mostrar(cli.Sheet);
 		}
+		MostrarCombate();
 	}
 
 	public override void _ExitTree()
@@ -68,39 +67,194 @@ public partial class Hud : CanvasLayer
 		cli.ActivityChanged -= MostrarAtividade;
 	}
 
-	private void MostrarAtividade(Protocol.Activity a) => _atividade.Text = a switch
+	// =====================================================================
+	// CANTO ESQUERDO: identidade e condicao
+	// =====================================================================
+	private void MontarEsquerda(Control raiz)
 	{
-		Protocol.Activity.Treinando => "TREINANDO   (T para parar)",
-		Protocol.Activity.Meditando => "MEDITANDO   (M para parar)",
-		_ => "T treinar   M meditar",
-	};
+		PanelContainer painel = Tema.Painel1();
+		painel.OffsetLeft = 14; painel.OffsetTop = 14;
+		painel.CustomMinimumSize = new Vector2(268, 0);
+		painel.MouseFilter = Control.MouseFilterEnum.Ignore;
+		raiz.AddChild(painel);
 
-	/// <summary>Rotulo com contorno preto -- sem ele o texto some sobre o cenario claro.</summary>
-	private static Label Texto(Control pai, Color cor)
-	{
-		var l = new Label();
-		l.AddThemeColorOverride("font_color", cor);
-		l.AddThemeColorOverride("font_outline_color", new Color("000000"));
-		l.AddThemeConstantOverride("outline_size", 4);
-		pai.AddChild(l);
-		return l;
+		var v = new VBoxContainer();
+		v.AddThemeConstantOverride("separation", 6);
+		painel.AddChild(v);
+
+		_nome = new Label { Text = "..." };
+		_nome.AddThemeFontSizeOverride("font_size", 18);
+		v.AddChild(_nome);
+
+		_classe = new Label { Text = "" };
+		_classe.AddThemeFontSizeOverride("font_size", 12);
+		_classe.AddThemeColorOverride("font_color", Tema.Destaque);
+		v.AddChild(_classe);
+
+		v.AddChild(new HSeparator());
+
+		_hp = new Barra("VIDA", Tema.Vida);
+		v.AddChild(_hp);
+		_ki = new Barra("KI", Tema.Ki);
+		v.AddChild(_ki);
+
+		_bp = new Label { Text = "" };
+		_bp.AddThemeFontSizeOverride("font_size", 13);
+		v.AddChild(_bp);
+
+		var linha = new HBoxContainer();
+		linha.AddThemeConstantOverride("separation", 10);
+		v.AddChild(linha);
+
+		_atividade = new Label { Text = "" };
+		_atividade.AddThemeFontSizeOverride("font_size", 12);
+		_atividade.AddThemeColorOverride("font_color", Tema.TextoFraco);
+		linha.AddChild(_atividade);
+
+		_hora = new Label { Text = "", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+							HorizontalAlignment = HorizontalAlignment.Right };
+		_hora.AddThemeFontSizeOverride("font_size", 12);
+		_hora.AddThemeColorOverride("font_color", Tema.TextoFraco);
+		linha.AddChild(_hora);
 	}
 
 	// =====================================================================
-	// COMBATE
+	// CANTO DIREITO: o corpo e a mira
 	// =====================================================================
-	/// <summary>
-	/// O estado de luta em uma linha: onde estou mirando, se a guarda esta erguida e se o
-	/// golpe e letal. E aqui que a guarda aparece -- os .dmi nao tem pose de bloqueio, entao
-	/// sem esta linha o jogador nao teria como saber que ALT esta fazendo alguma coisa.
-	/// </summary>
+	private void MontarDireita(Control raiz)
+	{
+		PanelContainer painel = Tema.Painel1(8);
+		painel.AnchorLeft = 1; painel.AnchorRight = 1;
+		painel.OffsetLeft = -(96 + 32 * ZonePicker.Escala + 46);
+		painel.OffsetRight = -14;
+		painel.OffsetTop = 14;
+		painel.MouseFilter = Control.MouseFilterEnum.Pass;   // o seletor precisa do clique
+		raiz.AddChild(painel);
+
+		var v = new VBoxContainer();
+		v.AddThemeConstantOverride("separation", 4);
+		painel.AddChild(v);
+
+		var linha = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+		linha.AddThemeConstantOverride("separation", 8);
+		v.AddChild(linha);
+		linha.AddChild(new ZonePicker { Name = "Mira" });
+		linha.AddChild(new BodyDoll { Name = "Corpo" });
+
+		_mira = new Label { Text = "", HorizontalAlignment = HorizontalAlignment.Center };
+		_mira.AddThemeFontSizeOverride("font_size", 12);
+		v.AddChild(_mira);
+
+		_letal = new Label { Text = "", HorizontalAlignment = HorizontalAlignment.Center };
+		_letal.AddThemeFontSizeOverride("font_size", 12);
+		v.AddChild(_letal);
+	}
+
+	// =====================================================================
+	// RODAPE: relato do golpe e a ajuda
+	// =====================================================================
+	private void MontarRodape(Control raiz)
+	{
+		_relato = Tema.Legenda("", Tema.Destaque, 16);
+		_relato.AnchorLeft = 0; _relato.AnchorRight = 1;
+		_relato.AnchorTop = 1; _relato.AnchorBottom = 1;
+		_relato.OffsetTop = -108; _relato.OffsetBottom = -80;
+		_relato.HorizontalAlignment = HorizontalAlignment.Center;
+		_relato.MouseFilter = Control.MouseFilterEnum.Ignore;
+		raiz.AddChild(_relato);
+
+		// O PAINEL DE TECLAS, fechado. Abre no TAB.
+		_ajuda = Tema.Painel1();
+		_ajuda.AnchorLeft = 0.5f; _ajuda.AnchorRight = 0.5f;
+		_ajuda.AnchorTop = 1; _ajuda.AnchorBottom = 1;
+		_ajuda.OffsetLeft = -230; _ajuda.OffsetRight = 230;
+		_ajuda.OffsetTop = -232; _ajuda.OffsetBottom = -56;
+		_ajuda.Visible = false;
+		_ajuda.MouseFilter = Control.MouseFilterEnum.Ignore;
+		raiz.AddChild(_ajuda);
+
+		var grade = new GridContainer { Columns = 2 };
+		grade.AddThemeConstantOverride("h_separation", 18);
+		grade.AddThemeConstantOverride("v_separation", 5);
+		_ajuda.AddChild(grade);
+
+		foreach ((string tecla, string oque) in new[]
+		{
+			("WASD", "andar"),
+			("SHIFT", "correr"),
+			("ESPACO", "socar"),
+			("SHIFT + ESPACO", "investida + golpe pesado"),
+			("ALT", "guarda (na hora certa = contra-ataque)"),
+			("0 - 5", "onde mirar (ou clique no boneco)"),
+			("K", "alternar golpe letal"),
+			("T / M", "treinar / meditar"),
+			("TAB", "esconder esta lista"),
+			("ESC", "menu"),
+		})
+		{
+			var k = new Label { Text = tecla };
+			k.AddThemeColorOverride("font_color", Tema.Destaque);
+			k.AddThemeFontSizeOverride("font_size", 12);
+			grade.AddChild(k);
+
+			var d = new Label { Text = oque };
+			d.AddThemeFontSizeOverride("font_size", 12);
+			grade.AddChild(d);
+		}
+
+		Label dica = Tema.Legenda("TAB  teclas", Tema.TextoFraco, 12);
+		dica.AnchorLeft = 0.5f; dica.AnchorRight = 0.5f;
+		dica.AnchorTop = 1; dica.AnchorBottom = 1;
+		dica.OffsetLeft = -60; dica.OffsetRight = 60;
+		dica.OffsetTop = -34; dica.OffsetBottom = -14;
+		dica.HorizontalAlignment = HorizontalAlignment.Center;
+		dica.MouseFilter = Control.MouseFilterEnum.Ignore;
+		raiz.AddChild(dica);
+	}
+
+	public override void _Input(InputEvent e)
+	{
+		if (Chat.Digitando) return;   // TAB no meio de uma frase e navegacao de campo, nao atalho
+		if (e is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Tab })
+		{
+			_ajuda.Visible = !_ajuda.Visible;
+			GetViewport().SetInputAsHandled();
+		}
+	}
+
+	// =====================================================================
+	// ATUALIZACAO
+	// =====================================================================
+	private void MostrarAtividade(Protocol.Activity a)
+	{
+		_atividade.Text = a switch
+		{
+			Protocol.Activity.Treinando => "TREINANDO",
+			Protocol.Activity.Meditando => "MEDITANDO",
+			_ => "",
+		};
+		_atividade.AddThemeColorOverride("font_color",
+			a == Protocol.Activity.Parado ? Tema.TextoFraco : Tema.Bom);
+	}
+
 	private void MostrarCombate()
 	{
 		if (GameClient.Instance is not { } cli) return;
 		string zona = cli.ZonaMirada == 0 ? "livre" : Protocol.ZonaDe(cli.ZonaMirada);
-		_combate.Text = "ESPACO socar   SHIFT+ESPACO pesado   ALT guarda\n"
-						+ $"mira: {zona} (0-4)   golpe: {(cli.Letal ? "LETAL" : "nao-letal")} (K)";
-		_combate.AddThemeColorOverride("font_color", cli.Letal ? new Color("e07070") : new Color("c8b48a"));
+		_mira.Text = $"mira: {zona}";
+		_mira.AddThemeColorOverride("font_color", cli.ZonaMirada == 0 ? Tema.TextoFraco : Tema.Texto);
+
+		_letal.Text = cli.Letal ? "GOLPE LETAL" : "nao-letal";
+		_letal.AddThemeColorOverride("font_color", cli.Letal ? Tema.Perigo : Tema.TextoFraco);
+	}
+
+	private void Mostrar(SheetState f)
+	{
+		_nome.Text = GameClient.Instance?.LocalName ?? "";
+		_classe.Text = f.Class;
+		_bp.Text = $"BP {Numero(f.BP)}      expresso {Numero(f.ExpressedBP)}";
+		_hp.Valor = f.HP / 100.0;
+		_ki.Valor = f.MaxKi > 0 ? f.Ki / f.MaxKi : 0;
 	}
 
 	/// <summary>
@@ -113,45 +267,43 @@ public partial class Hud : CanvasLayer
 		string quem = bati ? "acertou" : "levou";
 		string txt = (Jandirus.Core.Combat.Desfecho)h.Desfecho switch
 		{
-			Jandirus.Core.Combat.Desfecho.Critico => $"CRITICO! {quem} {h.Dano:0.#} em {h.Membro}",
-			Jandirus.Core.Combat.Desfecho.Aparou => $"aparado com {h.Membro} ({h.Dano:0.#})",
+			Jandirus.Core.Combat.Desfecho.Critico => $"CRITICO!  {quem} {h.Dano:0.#} em {h.Membro}",
+			Jandirus.Core.Combat.Desfecho.Aparou => $"aparado com {h.Membro}  ({h.Dano:0.#})",
 			Jandirus.Core.Combat.Desfecho.Contra => bati ? "CONTRA-ATAQUE recebido" : "CONTRA-ATAQUE!",
 			Jandirus.Core.Combat.Desfecho.Esquivou => bati ? "esquivou do seu golpe" : "voce esquivou",
-			Jandirus.Core.Combat.Desfecho.Errou => bati ? "errou" : "",
+			Jandirus.Core.Combat.Desfecho.Errou => bati ? "" : "",
 			_ => $"{quem} {h.Dano:0.#} em {h.Membro}",
 		};
-		if (h.Decepou) txt += "  -- MEMBRO ARRANCADO";
-		else if (h.Quebrou) txt += "  -- QUEBROU";
-		if (h.Morreu) txt += "  -- MORTE";
-		else if (h.Nocauteou) txt += "  -- NOCAUTE";
+		if (h.Rabo) txt += "   -- RABO ARRANCADO";
+		else if (h.Decepou) txt += "   -- MEMBRO ARRANCADO";
+		else if (h.Quebrou) txt += "   -- QUEBROU";
+		if (h.Morreu) txt += "   -- MORTE";
+		else if (h.Nocauteou) txt += "   -- NOCAUTE";
 
 		if (txt.Length == 0) return;
+
+		// O RELATO TAMBEM VAI PRO CHAT. O aviso do meio da tela some em tres segundos, e no
+		// meio de uma troca de golpes e facil perder o que acabou de acontecer -- ali fica o
+		// historico, e da pra rolar depois pra entender por que o braco parou de responder.
+		Chat.Sistema(txt);
+
 		_relato.Text = txt;
+		_relato.AddThemeColorOverride("font_color",
+			h.Morreu || h.Decepou || h.Rabo ? Tema.Perigo : Tema.Destaque);
 		_relatoAte = 3;
 	}
 
 	public override void _Process(double delta)
 	{
+		if (World.Instancia?.Hora is { } hora)
+			_hora.Text = Iluminacao.NomeDaFase(hora);
+
 		if (_relatoAte <= 0) return;
 		_relatoAte -= delta;
-		if (_relatoAte <= 0) _relato.Text = "";
-	}
-
-	private static ProgressBar Barra(Control pai, Color cor)
-	{
-		var b = new ProgressBar { CustomMinimumSize = new Vector2(220, 14), ShowPercentage = false, MaxValue = 1 };
-		var estilo = new StyleBoxFlat { BgColor = cor };
-		b.AddThemeStyleboxOverride("fill", estilo);
-		pai.AddChild(b);
-		return b;
-	}
-
-	private void Mostrar(SheetState f)
-	{
-		string nome = GameClient.Instance?.LocalName ?? "";
-		_linha.Text = $"{nome}  [{f.Class}]\nBP {Numero(f.BP)}   expresso {Numero(f.ExpressedBP)}";
-		_hp.Value = Mathf.Clamp(f.HP / 100.0, 0, 1);
-		_ki.Value = f.MaxKi > 0 ? Mathf.Clamp(f.Ki / f.MaxKi, 0, 1) : 0;
+		if (_relatoAte > 0.6) return;
+		// some por fade, nao por corte: um texto que pisca fora do nada distrai no meio da luta
+		_relato.Modulate = new Color(1, 1, 1, (float)Math.Max(_relatoAte / 0.6, 0));
+		if (_relatoAte <= 0) { _relato.Text = ""; _relato.Modulate = Colors.White; }
 	}
 
 	/// <summary>BP fica em bilhoes rapido: notacao curta em vez de 14 digitos na tela.</summary>
@@ -163,4 +315,64 @@ public partial class Hud : CanvasLayer
 		>= 1e3 => $"{v / 1e3:0.##} k",
 		_ => v.ToString("0.#"),
 	};
+}
+
+/// <summary>
+/// Uma barra de recurso com rotulo e numero.
+///
+/// A BARRA SOZINHA NAO BASTA: "quase cheia" e "cheia" sao o mesmo desenho a dois pixels de
+/// distancia, e a diferenca entre 100% e 91% de Ki decide se da pra correr. O numero por cima
+/// resolve, e o rotulo diz o que e sem precisar decorar a cor.
+/// </summary>
+public partial class Barra : VBoxContainer
+{
+	private readonly ProgressBar _b;
+	private readonly Label _txt;
+	private double _valor = 1;
+
+	public double Valor
+	{
+		get => _valor;
+		set
+		{
+			_valor = Mathf.Clamp(value, 0, 1);
+			_b.Value = _valor;
+			_txt.Text = $"{_valor * 100:0}%";
+			// abaixo de um quinto o numero fica VERMELHO: e o aviso que se ve pelo canto do olho
+			_txt.AddThemeColorOverride("font_color", _valor < 0.2 ? Tema.Perigo : Tema.Texto);
+		}
+	}
+
+	public Barra(string rotulo, Color cor)
+	{
+		AddThemeConstantOverride("separation", 1);
+		MouseFilter = MouseFilterEnum.Ignore;
+
+		var topo = new HBoxContainer();
+		AddChild(topo);
+
+		Label r = Tema.Rotulo(rotulo);
+		topo.AddChild(r);
+
+		_txt = new Label
+		{
+			Text = "100%",
+			SizeFlagsHorizontal = SizeFlags.ExpandFill,
+			HorizontalAlignment = HorizontalAlignment.Right,
+		};
+		_txt.AddThemeFontSizeOverride("font_size", 11);
+		topo.AddChild(_txt);
+
+		_b = new ProgressBar
+		{
+			CustomMinimumSize = new Vector2(0, 12),
+			ShowPercentage = false,
+			MaxValue = 1,
+			Value = 1,
+		};
+		var cheio = new StyleBoxFlat { BgColor = cor };
+		cheio.SetCornerRadiusAll(3);
+		_b.AddThemeStyleboxOverride("fill", cheio);
+		AddChild(_b);
+	}
 }

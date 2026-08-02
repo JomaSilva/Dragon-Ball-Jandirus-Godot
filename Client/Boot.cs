@@ -25,6 +25,7 @@ public partial class Boot : Node2D
 	private VBoxContainer _listaPerfis = null!;
 
 	private CharacterSelect? _selecao;
+	private CreationScreen? _criacao;
 	private int _slotAlvo = -1;
 
 	private bool _auto;
@@ -80,37 +81,57 @@ public partial class Boot : Node2D
 		var camada = new CanvasLayer { Name = "LoginUI" };
 		AddChild(camada);
 
+		// FUNDO: sem ele a tela de login e texto solto sobre o cinza do motor, que e a cara
+		// de projeto inacabado. Uma cor chapada da paleta ja muda tudo.
+		var fundo = new ColorRect
+		{
+			Color = Tema.Fundo,
+			AnchorRight = 1, AnchorBottom = 1,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+		};
+		camada.AddChild(fundo);
+
 		var centro = new CenterContainer
 		{
 			AnchorRight = 1, AnchorBottom = 1,
 			GrowHorizontal = Control.GrowDirection.Both,
 			GrowVertical = Control.GrowDirection.Both,
 		};
+		Tema.Aplicar(centro);
 		camada.AddChild(centro);
 		_painel = centro;
 
 		var colunas = new HBoxContainer();
-		colunas.AddThemeConstantOverride("separation", 24);
+		colunas.AddThemeConstantOverride("separation", 20);
 		centro.AddChild(colunas);
 
 		// --- formulario ---
+		PanelContainer moldura = Tema.Painel1(20);
+		colunas.AddChild(moldura);
 		var caixa = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
-		colunas.AddChild(caixa);
+		caixa.AddThemeConstantOverride("separation", 7);
+		moldura.AddChild(caixa);
 
-		var titulo = new Label { Text = "DRAGON BALL JANDIRUS", HorizontalAlignment = HorizontalAlignment.Center };
-		titulo.AddThemeFontSizeOverride("font_size", 24);
+		var titulo = new Label { Text = "DRAGON BALL", HorizontalAlignment = HorizontalAlignment.Center };
+		titulo.AddThemeFontSizeOverride("font_size", 30);
+		titulo.AddThemeColorOverride("font_color", Tema.Texto);
 		caixa.AddChild(titulo);
+
+		var sub = new Label { Text = "J A N D I R U S", HorizontalAlignment = HorizontalAlignment.Center };
+		sub.AddThemeFontSizeOverride("font_size", 17);
+		sub.AddThemeColorOverride("font_color", Tema.Destaque);
+		caixa.AddChild(sub);
 		caixa.AddChild(new HSeparator());
 
-		caixa.AddChild(new Label { Text = "Servidor" });
+		caixa.AddChild(Tema.Rotulo("Servidor"));
 		_host = new LineEdit { Text = "127.0.0.1" };
 		caixa.AddChild(_host);
 
-		caixa.AddChild(new Label { Text = "Conta" });
+		caixa.AddChild(Tema.Rotulo("Conta"));
 		_conta = new LineEdit { MaxLength = 24, PlaceholderText = "seu perfil neste servidor" };
 		caixa.AddChild(_conta);
 
-		caixa.AddChild(new Label { Text = "Senha" });
+		caixa.AddChild(Tema.Rotulo("Senha"));
 		_senha = new LineEdit { Secret = true, MaxLength = 64 };
 		caixa.AddChild(_senha);
 
@@ -133,9 +154,12 @@ public partial class Boot : Node2D
 		caixa.AddChild(_status);
 
 		// --- perfis salvos ---
+		PanelContainer molduraLado = Tema.Painel1(16);
+		colunas.AddChild(molduraLado);
 		var lado = new VBoxContainer { CustomMinimumSize = new Vector2(260, 0) };
-		colunas.AddChild(lado);
-		lado.AddChild(new Label { Text = "Servidores em que voce ja jogou" });
+		lado.AddThemeConstantOverride("separation", 6);
+		molduraLado.AddChild(lado);
+		lado.AddChild(Tema.Rotulo("Servidores em que voce ja jogou"));
 
 		_listaPerfis = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
 		var rolagem = new ScrollContainer
@@ -251,6 +275,8 @@ public partial class Boot : Node2D
 				GameClient.Instance?.Desconectar();
 				_selecao?.QueueFree();
 				_selecao = null;
+				_criacao?.QueueFree();
+				_criacao = null;
 				_painel.Visible = true;
 				_status.Text = "";
 			};
@@ -258,6 +284,24 @@ public partial class Boot : Node2D
 		}
 		_selecao.Mostrar(slots);
 		_selecao.Visible = true;
+
+		// MONTA A CRIACAO AGORA, escondida. O jogador esta lendo a lista de slots -- e o
+		// momento em que uns milissegundos nao custam nada. Ver CreationScreen.Reabrir().
+		if (_criacao == null) CallDeferred(nameof(PrepararCriacao));
+	}
+
+	/// <summary>Monta a tela de criacao fora do caminho do clique.</summary>
+	private void PrepararCriacao()
+	{
+		if (_criacao != null) return;
+		_criacao = new CreationScreen { Name = "Criacao", Visible = false };
+		_criacao.Pronto += (ficha, visual) =>
+		{
+			_status.Text = "criando personagem...";
+			GameClient.Instance?.CriarPersonagem(_slotAlvo, ficha, visual);
+		};
+		_criacao.Cancelado += () => { if (_selecao != null) _selecao.Visible = true; };
+		AddChild(_criacao);
 	}
 
 	/// <summary>Slot vazio: a criacao roda JA CONECTADO, e sabe em qual slot vai cair.</summary>
@@ -266,14 +310,9 @@ public partial class Boot : Node2D
 		_slotAlvo = slot;
 		if (_selecao != null) _selecao.Visible = false;
 
-		var tela = new CreationScreen();
-		tela.Pronto += (ficha, visual) =>
-		{
-			_status.Text = "criando personagem...";
-			GameClient.Instance?.CriarPersonagem(_slotAlvo, ficha, visual);
-		};
-		tela.Cancelado += () => { if (_selecao != null) _selecao.Visible = true; };
-		AddChild(tela);
+		// se o clique chegou antes do CallDeferred (conexao muito rapida), monta aqui mesmo
+		PrepararCriacao();
+		_criacao!.Reabrir();
 	}
 
 	// =====================================================================
@@ -283,8 +322,14 @@ public partial class Boot : Node2D
 	{
 		_selecao?.QueueFree();
 		_selecao = null;
+		_criacao?.QueueFree();
+		_criacao = null;
 		if (_painel.GetParent() is { } pai) pai.QueueFree();   // some com a tela de login
 
+		// O CHAT PRIMEIRO. As primeiras linhas de sistema saem durante o _Ready do World
+		// ("bem-vindo", "voce chegou em X") -- montado depois, ele perderia justamente as
+		// mensagens que explicam o que acabou de acontecer.
+		AddChild(new Chat { Name = "Chat" });
 		AddChild(new World { Name = "World" });
 		AddChild(new Hud { Name = "Hud" });
 
@@ -384,17 +429,23 @@ public partial class Boot : Node2D
 		Registrar("train", Key.T);
 		Registrar("meditate", Key.M);
 
-		// COMBATE. ESPACO soca, SHIFT soca pesado (mais dano, mais lento), ALT ergue a
-		// guarda -- as mesmas teclas do jogo original. As setas 1-4 escolhem onde mirar e
-		// o K liga o golpe letal (o `murderToggle`).
+		// COMBATE. ESPACO soca e ALT ergue a guarda -- as teclas do jogo original.
+		//
+		// SHIFT E CORRER, e correr E o golpe pesado: no original nao havia tecla de "soco
+		// forte", o ataque ficava pesado justamente quando saia em dash (`1 + dash_delay`).
+		// Manter uma tecla so pra isso seria inventar controle que o jogo nunca teve -- e
+		// justamente a tecla que o dono pediu pra correr.
 		Registrar("attack", Key.Space);
-		Registrar("attack_heavy", Key.Shift);
+		Registrar("run", Key.Shift);
 		Registrar("guard", Key.Alt);
+
+		// onde mirar: 0 solta a mira, 1-5 escolhem a regiao (o mesmo que clicar no boneco)
 		Registrar("aim_none", Key.Key0);
 		Registrar("aim_head", Key.Key1);
 		Registrar("aim_torso", Key.Key2);
-		Registrar("aim_arms", Key.Key3);
-		Registrar("aim_legs", Key.Key4);
+		Registrar("aim_abdomen", Key.Key3);
+		Registrar("aim_arms", Key.Key4);
+		Registrar("aim_legs", Key.Key5);
 		Registrar("lethal", Key.K);
 
 		static void Registrar(string acao, params Key[] teclas)

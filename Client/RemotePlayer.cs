@@ -28,8 +28,10 @@ public partial class RemotePlayer : Node2D
 		_from = _to = Position;
 	}
 
-	public void Receive(Vec2 pos, Facing facing, bool moving, Jandirus.Net.Protocol.Pose pose, double sinceLast)
+	public void Receive(Vec2 pos, Facing facing, bool moving, Jandirus.Net.Protocol.Pose pose,
+						double sinceLast, bool rabo = false)
 	{
+		_visual.MostrarRabo(rabo);
 		_from = Position;                 // parte de onde o boneco esta DESENHADO (nao de onde deveria)
 		_to = new Vector2(pos.X, pos.Y);
 		_interval = sinceLast > 0.001 ? sinceLast : Jandirus.Net.Protocol.TickSeconds;

@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace Jandirus.Tools;
 
@@ -17,6 +17,25 @@ public sealed class TurfDef
 	// batido: `/turf/Wall` declara density=1 e os 18 filhos so trocam o icon_state.
 	public bool DensitySet;
 	public bool OpacitySet;
+
+	/// <summary>
+	/// TURF HD: o desenho nao e UM tile, e um MOSAICO montado por coordenada.
+	///
+	/// O `autofill()` do original (`Turfs.dm:50-57`) escreve o icon_state em RUNTIME:
+	/// `"[x % (getWidth/32)],[y % (getHeight/32)]"`, ou `"[x&1],[y&1]"` quando nao ha tamanho.
+	/// Como isso mora num corpo de proc, o scanner nao ve -- e sem estes tres campos o tile
+	/// sai sempre o mesmo, o quadro 0, em 22% da Terra. E a grama toda igual e errada.
+	/// </summary>
+	public bool IsHD;
+	public int GetWidth, GetHeight;
+	public bool IsHDSet, TamanhoSet;
+
+	/// <summary>
+	/// Qual ARQUIVO de atlas este typepath acabou usando (`res://...`), depois de resolver
+	/// nomes repetidos. O `Icon` e so o nome que o DM escreveu -- e ha 79 nomes que apontam
+	/// pra mais de um arquivo.
+	/// </summary>
+	public string? Atlas;
 }
 
 /// <summary>
@@ -37,7 +56,13 @@ public sealed class TurfDef
 public static class DmTurfScanner
 {
 	private static readonly Regex RxProp = new(
-		@"^(icon|icon_state|density|opacity)\s*=\s*(.+?)\s*$", RegexOptions.Compiled);
+		@"^(icon|icon_state|density|opacity|isHD|getWidth|getHeight)\s*=\s*(.+?)\s*$",
+		RegexOptions.Compiled);
+
+	/// <summary>`Nome propriedade = valor` numa linha so -- forma que o DM aceita e o jogo usa.</summary>
+	private static readonly Regex RxUmaLinha = new(
+		@"^([A-Za-z_][A-Za-z0-9_/]*)\s+(icon|icon_state|density|opacity|isHD|getWidth|getHeight)\s*=\s*(.+?)\s*$",
+		RegexOptions.Compiled);
 
 	public static Dictionary<string, TurfDef> Scan(string codeRoot)
 	{
@@ -81,15 +106,35 @@ public static class DmTurfScanner
 			if (m.Success && !paiEmProc && Interessa(paiPath))
 			{
 				TurfDef d = Get(defs, paiPath);
-				string val = m.Groups[2].Value.Trim();
-				switch (m.Groups[1].Value)
-				{
-					case "icon": d.Icon = Unquote(val); break;
-					case "icon_state": d.IconState = Unquote(val); break;
-					case "density": d.Density = val.StartsWith('1'); d.DensitySet = true; break;
-					case "opacity": d.Opacity = val.StartsWith('1'); d.OpacitySet = true; break;
-				}
+				AplicarProp(d, m.Groups[1].Value, m.Groups[2].Value.Trim());
 				continue;
+			}
+
+			// NOME E PROPRIEDADE NA MESMA LINHA: `TileWhite icon='White.dmi'`.
+			//
+			// O DM aceita declarar o tipo e uma propriedade dele numa linha so, e o jogo usa
+			// isso bastante. Sem tratar, o typepath simplesmente NAO EXISTE pro conversor --
+			// foi por isso que a Sala do Tempo saiu VAZIA: o chao dela e
+			// `/turf/Tile/TileWhite`, declarado exatamente assim, e 248 mil celulas nao
+			// tinham tipo pra desenhar.
+			if (!paiEmProc && !conteudo.Contains('('))
+			{
+				Match uma = RxUmaLinha.Match(conteudo);
+				if (uma.Success)
+				{
+					string nome = uma.Groups[1].Value.TrimEnd('/');
+					string full1 = nome.StartsWith('/') ? nome
+						: (paiPath.Length > 0 ? paiPath + "/" + nome : "/" + nome);
+
+					if (Interessa(full1))
+					{
+						TurfDef d1 = Get(defs, full1);
+						AplicarProp(d1, uma.Groups[2].Value, uma.Groups[3].Value.Trim());
+					}
+					// entra na pilha: o tipo pode ter mais propriedades indentadas embaixo
+					pilha.Add((indent, full1, false));
+					continue;
+				}
 			}
 
 			// proc / verb / bloco de controle: empilha marcado como "dentro de proc"
@@ -110,6 +155,24 @@ public static class DmTurfScanner
 			pilha.Add((indent, full, false));
 
 			if (Interessa(full)) Get(defs, full);
+		}
+	}
+
+	private static void AplicarProp(TurfDef d, string prop, string val)
+	{
+		switch (prop)
+		{
+			case "icon": d.Icon = Unquote(val); break;
+			case "icon_state": d.IconState = Unquote(val); break;
+			case "density": d.Density = val.StartsWith('1'); d.DensitySet = true; break;
+			case "opacity": d.Opacity = val.StartsWith('1'); d.OpacitySet = true; break;
+			case "isHD": d.IsHD = val.StartsWith('1'); d.IsHDSet = true; break;
+			case "getWidth":
+				if (int.TryParse(val, out int gw)) { d.GetWidth = gw; d.TamanhoSet = true; }
+				break;
+			case "getHeight":
+				if (int.TryParse(val, out int gh)) { d.GetHeight = gh; d.TamanhoSet = true; }
+				break;
 		}
 	}
 
@@ -138,8 +201,16 @@ public static class DmTurfScanner
 				d.IconState ??= pai.IconState;
 				if (!d.DensitySet && pai.DensitySet) { d.Density = pai.Density; d.DensitySet = true; }
 				if (!d.OpacitySet && pai.OpacitySet) { d.Opacity = pai.Opacity; d.OpacitySet = true; }
+				// `isHD` mora no PAI (`/turf/HDTurfs`) e o tamanho em cada filho -- sem herdar
+				// os dois, nenhum turf HD e reconhecido como tal
+				if (!d.IsHDSet && pai.IsHDSet) { d.IsHD = pai.IsHD; d.IsHDSet = true; }
+				if (!d.TamanhoSet && pai.TamanhoSet)
+				{
+					d.GetWidth = pai.GetWidth; d.GetHeight = pai.GetHeight; d.TamanhoSet = true;
+				}
 				d.Parent ??= p;
-				if (d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet) break;
+				if (d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet
+					&& d.IsHDSet && d.TamanhoSet) break;
 			}
 		}
 	}

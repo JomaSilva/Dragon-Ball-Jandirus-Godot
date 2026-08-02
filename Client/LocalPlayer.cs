@@ -43,6 +43,13 @@ public partial class LocalPlayer : Node2D
 	private bool _guarda;
 
 	/// <summary>
+	/// SHIFT segurado. E um PEDIDO: o servidor concede enquanto houver Ki e cobra por segundo
+	/// (ver `GameServer.PodeCorrer`). Andar mais rapido do que ele concedeu so gera correcao,
+	/// entao quando o Ki acaba o cliente volta sozinho ao passo normal -- a ficha avisa.
+	/// </summary>
+	private bool _correndo;
+
+	/// <summary>
 	/// A CADENCIA DO SOCO, em segundos, dita pelo SERVIDOR (chega na ficha). Nao e uma
 	/// constante porque nao e fixa: ela sai do `Eactspeed`, que cai quando o personagem
 	/// carrega Ki -- carregar poder deixa a luta mais rapida, nao so mais forte. Usar o
@@ -78,10 +85,20 @@ public partial class LocalPlayer : Node2D
 		if (ficha.SpeedStat > 0) SpeedStat = ficha.SpeedStat;
 		if (ficha.SocoMs > 0) _cadencia = ficha.SocoMs / 1000.0;
 		_caido = ficha.Imobilizado;
+		_visual.MostrarRabo(ficha.Rabo);
+		// 3% de folga sobre o custo de um segundo de corrida: no fio do Ki, correr e desistir
+		// a cada quadro daria um solavanco a cada passo
+		_temKiPraCorrer = ficha.MaxKi <= 0 || ficha.Ki > ficha.MaxKi * 0.03;
 	}
 
 	/// <summary>Nocauteado ou morto: o servidor recusa qualquer passo, entao aqui nem se tenta.</summary>
 	private bool _caido;
+
+	/// <summary>Ainda ha Ki pro servidor conceder a corrida.</summary>
+	private bool _temKiPraCorrer = true;
+
+	/// <summary>SHIFT segurado AGORA -- o modificador do golpe, independente de estar andando.</summary>
+	private bool _shift;
 
 	/// <summary>
 	/// Anda no QUADRO DE RENDER, nao no passo de fisica.
@@ -93,7 +110,10 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	public override void _Process(double delta)
 	{
-		var input = _caido
+		// ESCREVENDO NO CHAT NAO SE JOGA. `Input.IsActionPressed` le a TECLA FISICA e nao sabe
+		// que ha um campo de texto com foco -- sem esta guarda, escrever "sai da frente" faz o
+		// personagem andar pra direita (D), treinar (T) e mirar na cabeca (1).
+		var input = _caido || Chat.Digitando
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			: new Vector2(
 				Godot.Input.GetActionStrength("move_right") - Godot.Input.GetActionStrength("move_left"),
@@ -102,8 +122,19 @@ public partial class LocalPlayer : Node2D
 		var dir = new Vec2(input.X, input.Y);
 		bool tentandoAndar = dir.LengthSquared > 1e-6f;
 
+		// SHIFT FAZ DUAS COISAS, e elas NAO sao a mesma:
+		//   * andando, ele CORRE (velocidade maior, cobrada em Ki pelo servidor);
+		//   * socando, ele e o modificador do golpe PESADO / investida longa.
+		// Se as duas dependessem de estar andando, segurar SHIFT parado e apertar espaco
+		// daria um soco leve -- e o dono pediu justamente SHIFT+ESPACO como o golpe forte.
+		_shift = !_caido && Godot.Input.IsActionPressed("run");
+
+		bool querCorrer = _shift && tentandoAndar && _temKiPraCorrer;
+		if (querCorrer && !_correndo) AudioDirector.EfeitoNoLugar(this, Trilha.Dash, 0.5f);
+		_correndo = querCorrer;
+
 		Vec2 antes = _pos;
-		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat, Mapa, out _);
+		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat, Mapa, out _, _correndo);
 		Desenhar();
 
 		// ANDANDO = saiu do lugar, nao = apertou a tecla. Empurrando a parede o personagem
@@ -119,7 +150,7 @@ public partial class LocalPlayer : Node2D
 		if (_sendAccumulator >= SendInterval)
 		{
 			_sendAccumulator -= SendInterval;
-			GameClient.Instance?.SendState(_pos, _facing, andando);   // o servidor recebe o EXATO
+			GameClient.Instance?.SendState(_pos, _facing, andando, _correndo);   // o servidor recebe o EXATO
 		}
 	}
 
@@ -145,23 +176,31 @@ public partial class LocalPlayer : Node2D
 
 		// GUARDA. Segurar ALT ergue o braco; erguer a guarda no instante do golpe vira
 		// contra-ataque, e por isso ela e um estado continuo e nao um toque.
-		bool guardaAgora = Godot.Input.IsActionPressed("guard") && !andando;
+		bool guardaAgora = Godot.Input.IsActionPressed("guard") && !andando && !Chat.Digitando;
 		if (guardaAgora != _guarda)
 		{
 			_guarda = guardaAgora;
 			GameClient.Instance?.SendGuard(_guarda);
 		}
 
-		LerMira();
+		if (!Chat.Digitando) LerMira();
 
 		// UM soco por vez. Sem esta trava, martelar o espaco re-armava o cronometro a cada
 		// tecla e o personagem ficava preso na pose de soco pra sempre -- e como todo estado
 		// do .dmi tem loop, o ciclo se repetia sem nunca voltar a ficar de pe.
-		if (Godot.Input.IsActionJustPressed("attack") && _ataqueAte <= 0)
+		if (!Chat.Digitando && Godot.Input.IsActionJustPressed("attack") && _ataqueAte <= 0)
 		{
-			bool pesado = Godot.Input.IsActionPressed("attack_heavy");
-			Protocol.Golpe golpe = pesado ? Protocol.Golpe.Pesado : Protocol.Golpe.Leve;
+			// SHIFT + ESPACO = GOLPE PESADO, e com ele a investida longa. So ESPACO = golpe
+			// leve, com um passo curto pra fechar o meio metro que falta. Nao ha tecla
+			// separada de "soco forte": no original o golpe so ficava pesado quando saia em
+			// dash (`1 + dash_delay` virava o `Type`), e SHIFT ja e essa escolha.
+			Protocol.Golpe golpe = _shift ? Protocol.Golpe.Pesado : Protocol.Golpe.Leve;
 			double dura = _cadencia * Protocol.PesoDoGolpe(golpe);
+
+			// o rasgo da investida sai NA HORA, sem esperar o servidor: e o feedback do
+			// controle. O que o servidor decide e se ela acerta, nao se ela aconteceu.
+			if (golpe == Protocol.Golpe.Pesado)
+				AudioDirector.EfeitoNoLugar(this, Trilha.Dash, 0.7f);
 
 			_ataqueAte = dura;
 			// a animacao e ESTICADA pra caber no golpe: com a cadencia nova (~0,33 s) o ciclo
@@ -171,7 +210,8 @@ public partial class LocalPlayer : Node2D
 		}
 
 		Protocol.Activity nova = _atividade;
-		if (Godot.Input.IsActionJustPressed("train"))
+		if (Chat.Digitando) { }   // "treinar" e "meditar" sao T e M: no meio de uma frase, nao
+		else if (Godot.Input.IsActionJustPressed("train"))
 			nova = _atividade == Protocol.Activity.Treinando ? Protocol.Activity.Parado : Protocol.Activity.Treinando;
 		else if (Godot.Input.IsActionJustPressed("meditate"))
 			nova = _atividade == Protocol.Activity.Meditando ? Protocol.Activity.Parado : Protocol.Activity.Meditando;
@@ -209,8 +249,9 @@ public partial class LocalPlayer : Node2D
 		if (Godot.Input.IsActionJustPressed("aim_none")) zona = 0;
 		else if (Godot.Input.IsActionJustPressed("aim_head")) zona = 1;
 		else if (Godot.Input.IsActionJustPressed("aim_torso")) zona = 2;
-		else if (Godot.Input.IsActionJustPressed("aim_arms")) zona = 3;
-		else if (Godot.Input.IsActionJustPressed("aim_legs")) zona = 4;
+		else if (Godot.Input.IsActionJustPressed("aim_abdomen")) zona = 3;
+		else if (Godot.Input.IsActionJustPressed("aim_arms")) zona = 4;
+		else if (Godot.Input.IsActionJustPressed("aim_legs")) zona = 5;
 		if (zona.HasValue) cli.SendAim(zona.Value);
 
 		if (Godot.Input.IsActionJustPressed("lethal")) cli.SendLethal(!cli.Letal);

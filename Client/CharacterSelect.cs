@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Appearance;
 using Jandirus.Net;
 
@@ -42,7 +42,7 @@ public partial class CharacterSelect : CanvasLayer
     {
         foreach (Node n in GetChildren()) n.QueueFree();
 
-        AddChild(new ColorRect { Color = new Color("11131c"), AnchorRight = 1, AnchorBottom = 1 });
+        AddChild(new ColorRect { Color = Tema.Fundo, AnchorRight = 1, AnchorBottom = 1 });
 
         var centro = new CenterContainer
         {
@@ -50,15 +50,25 @@ public partial class CharacterSelect : CanvasLayer
             GrowHorizontal = Control.GrowDirection.Both,
             GrowVertical = Control.GrowDirection.Both,
         };
+        Tema.Aplicar(centro);
         AddChild(centro);
 
         var col = new VBoxContainer();
+        col.AddThemeConstantOverride("separation", 16);
         centro.AddChild(col);
 
         var titulo = new Label { Text = "SEUS PERSONAGENS", HorizontalAlignment = HorizontalAlignment.Center };
-        titulo.AddThemeFontSizeOverride("font_size", 24);
+        titulo.AddThemeFontSizeOverride("font_size", 26);
         col.AddChild(titulo);
-        col.AddChild(new HSeparator());
+
+        var sub = new Label
+        {
+            Text = "tres vagas neste servidor",
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        sub.AddThemeFontSizeOverride("font_size", 12);
+        sub.AddThemeColorOverride("font_color", Tema.TextoFraco);
+        col.AddChild(sub);
 
         var fileira = new HBoxContainer();
         fileira.AddThemeConstantOverride("separation", 16);
@@ -66,15 +76,25 @@ public partial class CharacterSelect : CanvasLayer
 
         for (int i = 0; i < _slots.Count; i++) fileira.AddChild(MontarSlot(i, _slots[i]));
 
+        var rodape = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        col.AddChild(rodape);
         var voltar = new Button { Text = "Trocar de servidor" };
         voltar.Pressed += () => Sair?.Invoke();
-        col.AddChild(voltar);
+        rodape.AddChild(voltar);
     }
 
     private Control MontarSlot(int indice, SlotInfo s)
     {
-        var painel = new PanelContainer { CustomMinimumSize = new Vector2(210, 320) };
+        // SLOT VAZIO E SLOT CHEIO NAO SAO A MESMA COISA e nao devem parecer: o cheio tem
+        // borda viva e fundo mais claro (e um personagem seu), o vazio fica apagado e
+        // tracejado por dentro (e um convite, nao um card).
+        var painel = new PanelContainer { CustomMinimumSize = new Vector2(216, 344) };
+        painel.AddThemeStyleboxOverride("panel", s.Ocupado
+            ? Tema.Caixa(Tema.PainelClaro, Tema.BordaViva, 12)
+            : Tema.Caixa(new Color("161a24"), Tema.Borda, 12));
+
         var caixa = new VBoxContainer();
+        caixa.AddThemeConstantOverride("separation", 3);
         painel.AddChild(caixa);
 
         // O retrato e um Node2D dentro de um Control: ele NAO respeita o layout do container
@@ -105,24 +125,33 @@ public partial class CharacterSelect : CanvasLayer
         {
             var vazio = new Label
             {
-                Text = "vazio",
+                Text = "+",
                 AnchorRight = 1, AnchorBottom = 1,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            vazio.AddThemeColorOverride("font_color", new Color("55607a"));
+            vazio.AddThemeFontSizeOverride("font_size", 56);
+            vazio.AddThemeColorOverride("font_color", new Color("39405a"));
             moldura.AddChild(vazio);
         }
 
         if (s.Ocupado)
         {
             var nome = new Label { Text = s.Nome, HorizontalAlignment = HorizontalAlignment.Center };
-            nome.AddThemeFontSizeOverride("font_size", 18);
+            nome.AddThemeFontSizeOverride("font_size", 19);
             caixa.AddChild(nome);
 
-            caixa.AddChild(Info($"{s.Raca}"));
-            caixa.AddChild(Info(s.Classe.Length > 0 ? s.Classe : "-"));
-            caixa.AddChild(Info($"{s.Idade} anos"));
+            var linhagem = new Label
+            {
+                Text = s.Classe.Length > 0 ? s.Classe : "sem linhagem",
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            linhagem.AddThemeFontSizeOverride("font_size", 12);
+            linhagem.AddThemeColorOverride("font_color", Tema.Destaque);
+            caixa.AddChild(linhagem);
+
+            caixa.AddChild(new HSeparator());
+            caixa.AddChild(Info($"{s.Raca}  ·  {s.Idade} anos"));
             caixa.AddChild(Info($"BP {Numero(s.BP)}"));
 
             caixa.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
@@ -133,6 +162,10 @@ public partial class CharacterSelect : CanvasLayer
         }
         else
         {
+            var livre = new Label { Text = "vaga livre", HorizontalAlignment = HorizontalAlignment.Center };
+            livre.AddThemeColorOverride("font_color", Tema.TextoFraco);
+            caixa.AddChild(livre);
+
             caixa.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
             var criar = new Button { Text = "Criar personagem" };
             int alvo = indice;
@@ -146,7 +179,8 @@ public partial class CharacterSelect : CanvasLayer
     private static Label Info(string t)
     {
         var l = new Label { Text = t, HorizontalAlignment = HorizontalAlignment.Center };
-        l.AddThemeColorOverride("font_color", new Color("9fb4d8"));
+        l.AddThemeFontSizeOverride("font_size", 13);
+        l.AddThemeColorOverride("font_color", Tema.TextoFraco);
         return l;
     }
 

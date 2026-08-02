@@ -168,10 +168,15 @@ public static class MeleeResolver
     ///
     /// No original (`CombatMovement.dm:309-314`): o golpe precisa ter ENCOSTADO, o alvo tem
     /// que estar virado pro MESMO lado que o atacante (ou seja: pego de costas), o golpe tem
-    /// que ser letal, o alvo tem que estar abaixo de 60% de vida e o dano acima de 5. Nao ha
-    /// sorteio -- batendo nessas condicoes, o rabo VAI.
+    /// que ser letal, o alvo tem que estar abaixo de 60% de vida e o dano acima de 5.
     ///
-    /// Nao e detalhe cosmetico: sem rabo o Saiyajin perde o Oozaru.
+    /// ESSA REGRA NUNCA RODOU NO JOGO ORIGINAL. Ela testa `hpratio < 0.6`, e o `hpratio` e
+    /// definido como `max(HP/100, 0.6)` -- tem PISO em 0,6, entao a condicao e
+    /// matematicamente impossivel. Ninguem nunca teve o rabo arrancado a soco em dez anos de
+    /// jogo. Aqui a conta usa a vida REAL do corpo, entao a regra passa a existir de fato.
+    ///
+    /// Nao e detalhe cosmetico: sem rabo o Saiyajin perde o Oozaru e passa a treinar 2,5x
+    /// mais rapido (`tailgain`).
     /// </summary>
     private static void ArrancarRabo(CombatState a, CombatState d, double anguloGraus,
                                      double dano, ref GolpeResultado r)

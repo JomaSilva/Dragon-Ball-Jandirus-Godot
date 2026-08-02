@@ -1,4 +1,4 @@
-namespace Jandirus.Core.Combat;
+﻿namespace Jandirus.Core.Combat;
 
 /// <summary>Que papel o membro tem na sobrevivencia.</summary>
 public enum Vitalidade
@@ -90,9 +90,14 @@ public sealed class Body
         P("Cabeca", Vitalidade.Nucleo, "cabeca", 40);
         P("Cerebro", Vitalidade.Interno, "cabeca", 0, aninhado: true, dono: "Cabeca");
         P("Torso", Vitalidade.Nucleo, "torso", 100);
-        P("Abdomen", Vitalidade.Nucleo, "torso", 70);
+        // ABDOMEN e uma zona PROPRIA, nao parte do torso. E assim no original: a "virilha" e
+        // um alvo separado no seletor, e e por ela que se acerta o rabo e o reprodutor.
+        P("Abdomen", Vitalidade.Nucleo, "abdomen", 70);
         P("Orgaos", Vitalidade.Interno, "torso", 0, aninhado: true, dono: "Torso");
-        P("Reprodutor", Vitalidade.Membro, "torso", 10, aninhado: true, dono: "Abdomen");
+        // O reprodutor NAO e aninhado no original (`isnested = 0`, `targetchance = 55`): ele
+        // sai no sorteio como qualquer outro membro. Aninhado aqui o tornaria inalcancavel, e
+        // a celula de virilha do seletor de zona nao teria pra onde mandar o golpe.
+        P("Reprodutor", Vitalidade.Membro, "abdomen", 20, dono: "Abdomen");
 
         P("Braco esquerdo", Vitalidade.Membro, "bracos", 60);
         P("Mao esquerda", Vitalidade.Membro, "bracos", 0, aninhado: true, dono: "Braco esquerdo");
@@ -104,7 +109,7 @@ public sealed class Body
         P("Perna direita", Vitalidade.Membro, "pernas", 50);
         P("Pe direito", Vitalidade.Membro, "pernas", 0, aninhado: true, dono: "Perna direita");
 
-        if (comRabo) P("Rabo", Vitalidade.Membro, "torso", 15);
+        if (comRabo) P("Rabo", Vitalidade.Membro, "abdomen", 15);
 
         return b;
     }

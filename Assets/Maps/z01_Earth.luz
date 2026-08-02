@@ -1,0 +1,6 @@
+[
+  { "x": 124, "y": 55, "raio": 112, "cor": "ff9a3c", "forca": 1.25, "tremula": true },
+  { "x": 213, "y": 125, "raio": 112, "cor": "ff9a3c", "forca": 1.25, "tremula": true },
+  { "x": 124, "y": 345, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 130, "y": 345, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true }
+]

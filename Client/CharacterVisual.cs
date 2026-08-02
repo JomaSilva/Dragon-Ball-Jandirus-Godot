@@ -37,9 +37,47 @@ public partial class CharacterVisual : Node2D
 	/// </summary>
 	private const string CodigoTinta = """
 		shader_type canvas_item;
+
+		// --- o ICON_ADD do BYOND: a APARENCIA depende disto, nao mexer ---
 		uniform vec3 tinta = vec3(0.0);
+
+		// --- impacto ---
+		uniform float flash : hint_range(0.0, 1.0) = 0.0;
+		uniform vec4  flash_cor : source_color = vec4(1.0, 0.95, 0.9, 1.0);
+		uniform float contorno : hint_range(0.0, 1.0) = 0.0;
+		uniform vec4  contorno_cor : source_color = vec4(1.0, 0.85, 0.35, 1.0);
+
+		// --- o corpo CEDE na direcao do golpe ---
+		uniform vec2  empurrao = vec2(0.0);
+		uniform float achatar : hint_range(-0.5, 0.5) = 0.0;
+
+		void vertex() {
+			// Centered = true: o quad ja esta centrado em (0,0) em pixels locais
+			VERTEX.x *= (1.0 + achatar);
+			VERTEX.y *= (1.0 - achatar);
+			VERTEX   += empurrao;
+		}
+
 		void fragment() {
-			COLOR.rgb = clamp(COLOR.rgb + tinta, 0.0, 1.0);
+			vec4 c = texture(TEXTURE, UV);
+			c.rgb = clamp(c.rgb + tinta, 0.0, 1.0);
+
+			// CONTORNO: acende onde o pixel e opaco e um vizinho e transparente
+			if (contorno > 0.0) {
+				vec2 p = TEXTURE_PIXEL_SIZE;
+				float viz = texture(TEXTURE, UV + vec2( p.x, 0.0)).a
+						  * texture(TEXTURE, UV + vec2(-p.x, 0.0)).a
+						  * texture(TEXTURE, UV + vec2(0.0,  p.y)).a
+						  * texture(TEXTURE, UV + vec2(0.0, -p.y)).a;
+				c.rgb = mix(c.rgb, contorno_cor.rgb, c.a * (1.0 - viz) * contorno);
+			}
+
+			// FLASH por MISTURA, nao por multiplicacao: preserva a silhueta e o desenho.
+			// O `modulate` que fazia isto antes ESCURECIA o boneco -- levar um soco deixava
+			// o personagem mais apagado, que e o oposto do que um impacto deve parecer.
+			c.rgb = mix(c.rgb, flash_cor.rgb, flash * step(0.01, c.a));
+
+			COLOR = c;
 		}
 		""";
 
@@ -48,8 +86,17 @@ public partial class CharacterVisual : Node2D
 
 	private readonly List<AnimatedSprite2D> _camadas = [];
 	private AnimatedSprite2D? _corpo;
-	private AnimatedSprite2D? _cabelo, _olhos;
+	private AnimatedSprite2D? _cabelo, _olhos, _rabo;
 	private readonly List<AnimatedSprite2D> _roupa = [];
+
+	/// <summary>
+	/// O sprite do RABO. E uma folha completa (walk/train/flight/ko nas quatro direcoes),
+	/// entao ele anda travado no mesmo quadro do corpo como qualquer outra camada.
+	/// </summary>
+	public const string SpriteDoRabo = "res://Assets/Sprites/Clothes/Tail.tres";
+
+	/// <summary>Este personagem tem rabo AGORA (o servidor manda; arrancar tira na hora).</summary>
+	private bool _temRabo;
 
 	private Facing _facing = Facing.South;
 	private bool _moving;
@@ -121,7 +168,7 @@ public partial class CharacterVisual : Node2D
 		}
 		for (int i = 0; i < ap.Roupa.Count; i++)
 		{
-			if (i >= _roupa.Count) _roupa.Add(NovaCamada(1 + i));
+			if (i >= _roupa.Count) _roupa.Add(NovaCamada(2 + i));
 			Trocar(_roupa[i], ap.Roupa[i]);
 		}
 
@@ -150,7 +197,46 @@ public partial class CharacterVisual : Node2D
 			Tingir(_olhos, ap.CorOlho);
 		}
 
+		MontarRabo();
 		Aplicar(force: true);
+	}
+
+	/// <summary>
+	/// O RABO aparece e some em jogo -- nao e escolha de criacao, e estado de corpo. Quem
+	/// manda e o servidor (bit no snapshot), porque so ele sabe se o rabo ainda esta la.
+	///
+	/// Sem rabo o Saiyajin perde o Oozaru e treina 2,5x mais rapido (`tailgain`), entao isto
+	/// nao e enfeite: e a leitura visual de uma mudanca grande de ficha.
+	/// </summary>
+	public void MostrarRabo(bool tem)
+	{
+		if (_temRabo == tem) return;
+		_temRabo = tem;
+		MontarRabo();
+		if (_rabo != null) Aplicar(_rabo, _corpo?.Animation, force: true);
+	}
+
+	private void MontarRabo()
+	{
+		if (!_temRabo)
+		{
+			if (_rabo == null) return;
+			_camadas.Remove(_rabo);
+			_rabo.QueueFree();
+			_rabo = null;
+			return;
+		}
+
+		// ENTRE O CORPO E A ROUPA. No original o rabo herda de CABELO no typepath
+		// (`/obj/overlay/hairs/tails/saiyantail`) e engana quem le, mas o plano e o layer sao
+		// recravados pra BODY_LAYER: ele desenha ACIMA do corpo e ABAIXO de tudo o mais.
+		//
+		// O numero e explicito, nao empatado com o corpo: em ZIndex igual quem decide e a
+		// ordem na arvore, e as camadas de roupa nascem e morrem a cada troca de aparencia --
+		// confiar no empate seria deixar a ordem de desenho depender de quando o jogador
+		// trocou de camisa.
+		_rabo ??= NovaCamada(1);
+		Trocar(_rabo, SpriteDoRabo);
 	}
 
 	private static void Trocar(AnimatedSprite2D alvo, string caminho)
@@ -274,17 +360,45 @@ public partial class CharacterVisual : Node2D
 	// =====================================================================
 	// IMPACTO
 	// =====================================================================
-	// A piscada de dano vai no `Modulate` da RAIZ, nao no de cada camada: o tom de pele
-	// mora no `SelfModulate` do corpo e a cor de cabelo/roupa mora no shader de tinta.
-	// Mexer neles pra piscar apagaria a aparencia do personagem -- e ela nao volta sozinha.
-	private double _flash;
-	private Color _flashCor = Colors.White;
+	// O impacto e ANIMADO NO SHADER, em todas as camadas ao mesmo tempo -- corpo, roupa,
+	// cabelo e rabo lavam juntos, que e o unico jeito de o personagem parecer UM objeto
+	// levando um golpe em vez de uma pilha de sprites.
+	//
+	// A versao anterior usava o `Modulate` da raiz. Modulate MULTIPLICA: piscar de vermelho
+	// ESCURECIA o boneco, ou seja levar um soco deixava o personagem mais apagado. Agora o
+	// shader MISTURA em direcao a cor, o que clareia e preserva a silhueta.
+	private double _flash, _flashTotal;
+	private Vector2 _empurrao;
 
-	/// <summary>Pisca o boneco inteiro. Vermelho = levou dano, branco = aparou.</summary>
-	public void Impacto(Color cor, double segundos = 0.15)
+	/// <summary>
+	/// Marca o impacto: lava a cor, acende o contorno, achata o corpo e empurra na direcao do
+	/// golpe. <paramref name="direcao"/> vem normalizada (de quem bateu pra quem levou).
+	/// </summary>
+	public void Impacto(Color cor, Color contorno, Vector2 direcao, double segundos = 0.15)
 	{
-		_flashCor = cor;
-		_flash = segundos;
+		_flash = _flashTotal = segundos;
+		_empurrao = direcao * 3f;
+
+		foreach (AnimatedSprite2D s in _camadas)
+		{
+			if (s.Material is not ShaderMaterial m) continue;
+			m.SetShaderParameter("flash_cor", cor);
+			m.SetShaderParameter("contorno_cor", contorno);
+		}
+		AplicarImpacto(1);
+	}
+
+	/// <summary>Escreve o estado do impacto em TODAS as camadas. 0 = corpo em repouso.</summary>
+	private void AplicarImpacto(float f)
+	{
+		foreach (AnimatedSprite2D s in _camadas)
+		{
+			if (s.Material is not ShaderMaterial m) continue;
+			m.SetShaderParameter("flash", f * 0.85f);
+			m.SetShaderParameter("contorno", f);
+			m.SetShaderParameter("achatar", f * 0.18f);
+			m.SetShaderParameter("empurrao", _empurrao * f);
+		}
 	}
 
 	public override void _Process(double delta)
@@ -292,7 +406,7 @@ public partial class CharacterVisual : Node2D
 		if (_flash > 0)
 		{
 			_flash -= delta;
-			Modulate = _flash > 0 ? _flashCor : Colors.White;
+			AplicarImpacto(_flashTotal > 0 ? (float)Math.Max(_flash / _flashTotal, 0) : 0);
 		}
 
 		if (_corpo?.SpriteFrames == null) return;
@@ -351,6 +465,13 @@ public partial class CharacterVisual : Node2D
 		if (doCorpo != null && f.HasAnimation(doCorpo)) return doCorpo;
 		if (f.HasAnimation($"{fam}_{dir}")) return $"{fam}_{dir}";
 		if (f.HasAnimation(fam)) return fam;
+
+		// APELIDO `_mov`. Estado com `movement = 1` no .dmi virou `<nome>_mov` na conversao, e
+		// nem toda peca marcou o mesmo estado como de movimento -- o corpo tem
+		// `flight_mov_south` e o rabo tambem, mas quem escrever "flight" nao acha nenhum dos
+		// dois. Sem este apelido, voar deixaria o rabo em pose de caminhada.
+		if (f.HasAnimation($"{fam}_mov_{dir}")) return $"{fam}_mov_{dir}";
+		if (f.HasAnimation($"{fam}_mov")) return $"{fam}_mov";
 
 		// peca sem POSE PARADA propria usa o primeiro quadro da caminhada, e vice-versa --
 		// varias roupas so trazem uma das duas

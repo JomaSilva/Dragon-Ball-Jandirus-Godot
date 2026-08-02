@@ -42,6 +42,12 @@ public partial class GameClient : Node
 	public event Action<List<SlotInfo>>? SlotsRecebidos;
 	/// <summary>Um golpe foi resolvido pelo servidor. Vale pra som, piscada e musica de luta.</summary>
 	public event Action<Protocol.HitEvent>? Golpe;
+
+	/// <summary>O estado de cada membro do MEU corpo. So chega quando muda.</summary>
+	public event Action<List<Protocol.ParteState>>? CorpoAtualizado;
+
+	/// <summary>O ultimo corpo recebido -- pra quem nasce depois do pacote (o HUD).</summary>
+	public List<Protocol.ParteState> Corpo { get; private set; } = [];
 	/// <summary>A aparencia de alguem da zona: id, nome, raca, genero, ficha visual.</summary>
 	public event Action<int, string, string, string, Jandirus.Core.Appearance.Appearance>? PeerLooked;
 
@@ -131,12 +137,14 @@ public partial class GameClient : Node
 	}
 
 	/// <summary>Manda a posicao que EU calculei. O servidor confere e corrige se nao couber.</summary>
-	public void SendState(Vec2 pos, Facing facing, bool moving)
+	public void SendState(Vec2 pos, Facing facing, bool moving, bool correndo = false)
 	{
 		if (!Connected) return;
 		var w = Protocol.Begin(Protocol.C2S.InputState);
 		w.PutVec(pos);
-		w.Put((byte)(((byte)facing & 0x03) | (moving ? 0x80 : 0x00)));
+		w.Put((byte)(((byte)facing & 0x03)
+					 | (correndo ? Protocol.InputCorrendo : 0)
+					 | (moving ? Protocol.InputAndando : 0)));
 		_peer!.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
 	}
 
@@ -179,7 +187,7 @@ public partial class GameClient : Node
 	/// <summary>Zona do corpo que estou mirando (indice em <see cref="Protocol.Zonas"/>).</summary>
 	public void SendAim(byte zona)
 	{
-		if (!Connected) return;
+		if (!Connected || zona == ZonaMirada) return;   // clicar duas vezes na mesma regiao nao e evento
 		ZonaMirada = zona;
 		var w = Protocol.Begin(Protocol.C2S.Aim);
 		w.Put(zona);
@@ -197,6 +205,22 @@ public partial class GameClient : Node
 		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		LetalidadeMudou?.Invoke(letal);
 	}
+
+	/// <summary>
+	/// Falar. Quem ouve e decidido no SERVIDOR (ver GameServer.Chat.cs) -- daqui sai o canal e
+	/// o texto, e nada mais.
+	/// </summary>
+	public void SendChat(Protocol.Fala canal, string texto)
+	{
+		if (!Connected || texto.Length == 0) return;
+		var w = Protocol.Begin(Protocol.C2S.Chat);
+		w.Put((byte)canal);
+		w.Put(texto.Length > Protocol.MaxFala ? texto[..Protocol.MaxFala] : texto);
+		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>Alguem falou e eu estou no alcance: canal, quem falou, o que foi dito.</summary>
+	public event Action<Protocol.Fala, string, string>? Falou;
 
 	public byte ZonaMirada { get; private set; }
 	public bool Letal { get; private set; }
@@ -259,7 +283,10 @@ public partial class GameClient : Node
 				// so registra saltos de 10%: o pacote chega varias vezes por segundo e um log
 				// por pacote afogaria o console
 				if (antes > 0 && Sheet.BP >= antes * 1.1)
+				{
 					GD.Print($"[client] BP {antes:0} -> {Sheet.BP:0}");
+					Chat.Sistema($"seu poder de luta subiu: {antes:0} -> {Sheet.BP:0}");
+				}
 				SheetUpdated?.Invoke(Sheet);
 				break;
 			}
@@ -274,6 +301,19 @@ public partial class GameClient : Node
 			}
 			case Protocol.S2C.Hit:
 				Golpe?.Invoke(Protocol.HitEvent.Read(reader));
+				break;
+
+			case Protocol.S2C.Chat:
+			{
+				var canal = (Protocol.Fala)reader.GetByte();
+				string autor = reader.GetString(32);
+				Falou?.Invoke(canal, autor, reader.GetString(Protocol.MaxFala));
+				break;
+			}
+
+			case Protocol.S2C.Corpo:
+				Corpo = reader.GetCorpo();
+				CorpoAtualizado?.Invoke(Corpo);
 				break;
 
 			case Protocol.S2C.Correction:

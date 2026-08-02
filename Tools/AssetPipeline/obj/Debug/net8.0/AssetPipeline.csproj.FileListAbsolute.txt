@@ -16,3 +16,4 @@ E:\Users\Joao\Desktop\dragon-ball-jandirus\Tools\AssetPipeline\obj\Debug\net8.0\
 E:\Users\Joao\Desktop\dragon-ball-jandirus\Tools\AssetPipeline\bin\Debug\net8.0\Jandirus.Core.dll
 E:\Users\Joao\Desktop\dragon-ball-jandirus\Tools\AssetPipeline\bin\Debug\net8.0\Jandirus.Core.pdb
 E:\Users\Joao\Desktop\dragon-ball-jandirus\Tools\AssetPipeline\obj\Debug\net8.0\AssetPip.D57A022B.Up2Date
+E:\Users\Joao\Desktop\dragon-ball-jandirus\Tools\AssetPipeline\obj\Debug\net8.0\AssetPipeline.sourcelink.json

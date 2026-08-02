@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 
 namespace Jandirus.Client;
 
@@ -117,18 +117,26 @@ public static class Trilha
     /// <summary>O "sopro" do golpe saindo, que toca junto com o impacto no original.</summary>
     public const string Assobio = P + "meleeflash.ogg";
 
-    /// <summary>Guarda aparou.</summary>
+    /// <summary>
+    /// Guarda aparou. DESVIO CONSCIENTE: no original bloquear e MUDO -- o `BlockLimbs.dm`
+    /// nao toca nada, e o `parry.ogg` so sai no contra-ataque. Guarda silenciosa nao da
+    /// retorno nenhum ao jogador, e como nao ha pose de bloqueio nos .dmi, o som e a unica
+    /// coisa que confirma que o ALT funcionou.
+    /// </summary>
     public const string Aparou = P + "parry.ogg";
 
-    /// <summary>Bloqueio PERFEITO: o original toca os dois juntos.</summary>
+    /// <summary>Bloqueio PERFEITO. No original os dois tocam JUNTOS, e e o que se faz aqui.</summary>
     public const string ContraAtaque = P + "perfectsoundeffect.ogg";
+    public const string ContraAtaqueParry = P + "parry.ogg";
 
-    /// <summary>Corpo batendo no chao: nocaute e morte.</summary>
-    public const string Queda = P + "groundhit.ogg";
-    public const string QuedaPesada = P + "thud.wav";
+    /// <summary>
+    /// Corpo batendo no chao: nocaute e morte. E o `groundhit2`, NAO o `groundhit` -- o sem
+    /// numero e outro som (o baque do agarrao). Os dois existem, e trocar passa despercebido.
+    /// </summary>
+    public const string Queda = P + "groundhit2.ogg";
 
     /// <summary>Membro arrancado.</summary>
-    public const string Decepou = E + "swordkill.wav";
+    public const string Decepou = E + "swordkill.ogg";
 
     // =====================================================================
     // MOVIMENTO E ESTADO

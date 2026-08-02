@@ -1,0 +1,12 @@
+[
+  { "x": 6, "y": 14, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 9, "y": 14, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 33, "y": 14, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 36, "y": 14, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 61, "y": 14, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 64, "y": 14, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 91, "y": 14, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 94, "y": 14, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 131, "y": 14, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 134, "y": 14, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true }
+]
