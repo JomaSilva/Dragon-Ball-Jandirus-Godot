@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://x3tqgvadgj78"
+path="res://.godot/imported/groundhit2.ogg-637074da075492c12177a9f93dafaf0d.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/groundhit2.ogg"
+dest_files=["res://.godot/imported/groundhit2.ogg-637074da075492c12177a9f93dafaf0d.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

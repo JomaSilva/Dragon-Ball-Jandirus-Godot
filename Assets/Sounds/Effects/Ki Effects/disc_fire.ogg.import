@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://ysvppeymtjsk"
+path="res://.godot/imported/disc_fire.ogg-3ede4d9ca4849878e357924d2558edb0.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/disc_fire.ogg"
+dest_files=["res://.godot/imported/disc_fire.ogg-3ede4d9ca4849878e357924d2558edb0.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

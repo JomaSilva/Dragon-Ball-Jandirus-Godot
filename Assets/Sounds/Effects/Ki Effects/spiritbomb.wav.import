@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://dfpx3hhngwepw"
+path="res://.godot/imported/spiritbomb.wav-9a63af6e8cfae5ff6f2067afe8c35edf.sample"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/spiritbomb.wav"
+dest_files=["res://.godot/imported/spiritbomb.wav-9a63af6e8cfae5ff6f2067afe8c35edf.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

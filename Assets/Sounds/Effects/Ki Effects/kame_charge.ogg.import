@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://b8r2u56iy4e5l"
+path="res://.godot/imported/kame_charge.ogg-ccd71587bb349f0d5680ad7f5943e7b8.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/kame_charge.ogg"
+dest_files=["res://.godot/imported/kame_charge.ogg-ccd71587bb349f0d5680ad7f5943e7b8.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

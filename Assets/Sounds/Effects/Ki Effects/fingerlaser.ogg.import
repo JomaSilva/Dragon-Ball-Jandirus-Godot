@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cc1lr85vwulma"
+path="res://.godot/imported/fingerlaser.ogg-674528c735be1d7eec5071740272bf24.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/fingerlaser.ogg"
+dest_files=["res://.godot/imported/fingerlaser.ogg-674528c735be1d7eec5071740272bf24.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

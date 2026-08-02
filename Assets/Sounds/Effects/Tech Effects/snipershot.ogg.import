@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://tmldsby3tkwj"
+path="res://.godot/imported/snipershot.ogg-0e862352ffb3cb6c19e5cafc7ec182ec.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Tech Effects/snipershot.ogg"
+dest_files=["res://.godot/imported/snipershot.ogg-0e862352ffb3cb6c19e5cafc7ec182ec.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

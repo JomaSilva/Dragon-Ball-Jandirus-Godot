@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://cqojxnv0vrnjm"
+path="res://.godot/imported/BF - DragonBall Z Finale.mp3-b2551762b526263a24dc360c44693b7d.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/BF - DragonBall Z Finale.mp3"
+dest_files=["res://.godot/imported/BF - DragonBall Z Finale.mp3-b2551762b526263a24dc360c44693b7d.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

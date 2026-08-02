@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://wrrfctt78cca"
+path="res://.godot/imported/Sharingan.wav-3208831df6ce87951f24e9c37d351cd6.sample"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/Sharingan.wav"
+dest_files=["res://.godot/imported/Sharingan.wav-3208831df6ce87951f24e9c37d351cd6.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

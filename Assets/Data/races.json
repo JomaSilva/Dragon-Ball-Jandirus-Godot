@@ -1,0 +1,170 @@
+[
+  {
+    "nome": "Alien",
+    "stats": {"Physical Offense": 1, "Physical Defense": 1, "Ki Offense": 1, "Ki Defense": 1, "Ki Skill": 1, "Technique": 1, "Speed": 1, "Esoteric Skill": 1, "Skillpoint Mod": 1, "Ascension Mod": 7, "Energy Level": 1, "Battle Power": 1},
+    "misc": {"Lifespan": 1, "Potential": 1, "Regeneration": 1, "Breed Type": 1, "Zanzoken Mod": 1, "Gravity Mod": 1, "Med Mod": 1, "Spar Mod": 1, "Train Mod": 1, "Ki Regeneration": 1, "Anger": 1, "Space Breath": 1, "Starting BP": 25, "Tech Modifier": 1},
+    "classes": {},
+    "spread": []
+  },
+  {
+    "nome": "Android",
+    "stats": {"Physical Offense": 1.5, "Physical Defense": 2, "Ki Offense": 1, "Ki Defense": 1, "Ki Skill": 1.2, "Technique": 1.5, "Speed": 1.5, "Esoteric Skill": 0.1, "Skillpoint Mod": 1, "Ascension Mod": 8, "Energy Level": 1.5, "Battle Power": 2},
+    "misc": {"Lifespan": 32, "Potential": 0.5, "Regeneration": 1, "Breed Type": 3, "Zanzoken Mod": 1, "Gravity Mod": 1, "Med Mod": 4, "Spar Mod": 2, "Train Mod": 0.8, "Ki Regeneration": 1, "Anger": 1, "Space Breath": 1, "Starting BP": 25, "Tech Modifier": 4},
+    "classes": {},
+    "spread": []
+  },
+  {
+    "nome": "Arlian",
+    "stats": {"Physical Offense": 1.5, "Physical Defense": 0.9, "Ki Offense": 1.25, "Ki Defense": 0.9, "Ki Skill": 1, "Technique": 1.5, "Speed": 2.4, "Esoteric Skill": 0.6, "Skillpoint Mod": 1.7, "Ascension Mod": 7, "Energy Level": 1.3, "Battle Power": 1},
+    "misc": {"Lifespan": 1, "Potential": 4, "Regeneration": 5, "Breed Type": 0, "Zanzoken Mod": 20, "Gravity Mod": 5, "Med Mod": 3, "Spar Mod": 1, "Train Mod": 3, "Ki Regeneration": 1.2, "Anger": 1.1, "Space Breath": 1, "Starting BP": 5, "Tech Modifier": 5},
+    "classes": {},
+    "spread": []
+  },
+  {
+    "nome": "BioAndroid",
+    "stats": {"Physical Offense": 1.2, "Physical Defense": 0.8, "Ki Offense": 1.2, "Ki Defense": 0.7, "Ki Skill": 1.5, "Technique": 1, "Speed": 2, "Esoteric Skill": 0.5, "Skillpoint Mod": 1.2, "Ascension Mod": 3, "Energy Level": 1.5, "Battle Power": 1.8},
+    "misc": {"Lifespan": 20, "Potential": 1.5, "Regeneration": 30, "Breed Type": 1, "Zanzoken Mod": 5, "Gravity Mod": 3, "Med Mod": 1.5, "Spar Mod": 1.8, "Train Mod": 1.2, "Ki Regeneration": 1.5, "Anger": 1.25, "Space Breath": 1, "Starting BP": 75, "Tech Modifier": 5},
+    "classes": {"Majin-Type": {"Physical Offense": 0.8, "Physical Defense": 1.2, "Technique": 1.1, "Ki Offense": 1.3, "Ki Defense": 0.7, "Ki Skill": 1.1, "Speed": 2.1, "Esoteric Skill": 0.6, "Ascension Mod": 4.2, "Skillpoint Mod": 1.2, "Battle Power": 2.5, "Energy Level": 1.6, "Potential": 1.5, "Regeneration": 70, "Spar Mod": 1.5, "Med Mod": 1.6, "Ki Regeneration": 1.4}},
+    "spread": [["None", 80], ["Majin-Type", 20]]
+  },
+  {
+    "nome": "Demigod",
+    "stats": {"Physical Offense": 1.2, "Physical Defense": 1, "Ki Offense": 1.2, "Ki Defense": 1, "Ki Skill": 1.2, "Technique": 1.2, "Speed": 1.5, "Esoteric Skill": 1, "Skillpoint Mod": 1.2, "Ascension Mod": 5.1, "Energy Level": 1.4, "Battle Power": 3},
+    "misc": {"Lifespan": 30, "Potential": 1.5, "Regeneration": 1, "Breed Type": 1, "Zanzoken Mod": 5, "Gravity Mod": 1, "Med Mod": 2, "Spar Mod": 2, "Train Mod": 4, "Ki Regeneration": 1.2, "Anger": 1.4, "Space Breath": 0, "Starting BP": 50, "Tech Modifier": 1},
+    "classes": {"Ogre": {"Physical Offense": 1.5, "Physical Defense": 1.5, "Technique": 1, "Ki Offense": 1, "Ki Defense": 1.2, "Ki Skill": 0.8, "Speed": 1, "Esoteric Skill": 0.5, "Ascension Mod": 5.2, "Skillpoint Mod": 1, "Battle Power": 3.2, "Energy Level": 1.4, "Potential": 3, "Spar Mod": 3, "Train Mod": 3, "Anger": 1.6}, "Genie": {"Battle Power": 2.9, "Physical Offense": 0.5, "Physical Defense": 3, "Technique": 2, "Ki Offense": 0.5, "Ki Defense": 1, "Ki Skill": 1, "Speed": 1, "Energy Level": 2, "Ascension Mod": 4.9, "Esoteric Skill": 2, "Skillpoint Mod": 1.5, "Anger": 1.2, "Tech Modifier": 2, "Ki Regeneration": 2}},
+    "spread": [["Ogre", 33], ["Demigod", 33], ["Genie", 33]]
+  },
+  {
+    "nome": "Demon",
+    "stats": {"Physical Offense": 1.1, "Physical Defense": 1.1, "Ki Offense": 1.8, "Ki Defense": 1.8, "Ki Skill": 1.4, "Technique": 1, "Speed": 1.1, "Esoteric Skill": 0.5, "Skillpoint Mod": 1.3, "Ascension Mod": 6.25, "Energy Level": 1.1, "Battle Power": 1.7},
+    "misc": {"Lifespan": 21, "Potential": 1, "Regeneration": 1, "Breed Type": 1, "Zanzoken Mod": 3, "Gravity Mod": 10, "Med Mod": 2, "Spar Mod": 1.8, "Train Mod": 1.1, "Ki Regeneration": 0.8, "Anger": 1, "Space Breath": 1, "Starting BP": 125, "Tech Modifier": 1},
+    "classes": {},
+    "spread": []
+  },
+  {
+    "nome": "Dog",
+    "stats": {"Physical Offense": 1, "Physical Defense": 1, "Ki Offense": 1, "Ki Defense": 1, "Ki Skill": 1, "Technique": 1, "Speed": 1, "Esoteric Skill": 1, "Skillpoint Mod": 1, "Energy Level": 1, "Battle Power": 1},
+    "misc": {"Lifespan": 1, "Potential": 1, "Regeneration": 1, "Breed Type": 1, "Ki Regeneration": 1, "Anger": 1, "Zanzoken Mod": 1, "Gravity Mod": 1, "Med Mod": 1, "Spar Mod": 1, "Train Mod": 1, "Space Breath": 1, "Starting BP": 1, "Tech Modifier": 1},
+    "classes": {"Omega": {"Anger": 2}, "Weak": {"Physical Offense": 0.8, "Physical Defense": 0.8}},
+    "spread": [["None", 95], ["Omega", 10], ["Weak", 25]]
+  },
+  {
+    "nome": "Gray",
+    "stats": {"Physical Offense": 2, "Physical Defense": 2, "Ki Offense": 1.3, "Ki Defense": 1.3, "Ki Skill": 1.5, "Technique": 1.5, "Speed": 2, "Esoteric Skill": 0.3, "Skillpoint Mod": 0.5, "Ascension Mod": 1.5, "Energy Level": 1, "Battle Power": 1},
+    "misc": {"Lifespan": 1.5, "Potential": 2, "Regeneration": 8, "Breed Type": 1, "Zanzoken Mod": 3, "Gravity Mod": 1.5, "Med Mod": 3, "Spar Mod": 2, "Train Mod": 1.1, "Ki Regeneration": 1.8, "Anger": 1.2, "Space Breath": 0, "Starting BP": 25, "Tech Modifier": 1},
+    "classes": {"Hermano": {"Physical Offense": 1.7, "Physical Defense": 1.7, "Ki Offense": 1.7, "Ki Defense": 1.7, "Speed": 1.7, "Esoteric Skill": 0.9, "Energy Level": 1, "Battle Power": 1.2, "Lifespan": 2, "Space Breath": 0, "Starting BP": 25, "Tech Modifier": 1}},
+    "spread": [["Hermano", 5], ["Gray", 95]]
+  },
+  {
+    "nome": "Halfbreed",
+    "stats": {"Physical Offense": 1, "Physical Defense": 1, "Ki Offense": 1, "Ki Defense": 1, "Ki Skill": 1, "Technique": 1, "Speed": 1, "Esoteric Skill": 1, "Skillpoint Mod": 1.2, "Ascension Mod": 10, "Energy Level": 1, "Battle Power": 1.5},
+    "misc": {"Lifespan": 5, "Potential": 2, "Regeneration": 1, "Breed Type": 3, "Zanzoken Mod": 1, "Gravity Mod": 5, "Med Mod": 3, "Spar Mod": 3, "Train Mod": 3, "Ki Regeneration": 2, "Anger": 1.2, "Space Breath": 1, "Starting BP": 2, "Tech Modifier": 1},
+    "classes": {},
+    "spread": []
+  },
+  {
+    "nome": "Heran",
+    "stats": {"Physical Offense": 1.3, "Physical Defense": 1.2, "Ki Offense": 1.3, "Ki Defense": 1.4, "Ki Skill": 1.4, "Technique": 1, "Speed": 1.5, "Esoteric Skill": 0.5, "Skillpoint Mod": 1.3, "Ascension Mod": 3, "Energy Level": 1.3, "Battle Power": 2.5},
+    "misc": {"Lifespan": 2, "Potential": 2, "Regeneration": 1, "Breed Type": 1, "Zanzoken Mod": 4, "Gravity Mod": 6, "Med Mod": 1, "Spar Mod": 1.8, "Train Mod": 1.8, "Ki Regeneration": 0.7, "Anger": 1.3, "Space Breath": 0, "Starting BP": 150, "Tech Modifier": 2.5},
+    "classes": {"Low-Class": {"Physical Offense": 1.3, "Physical Defense": 1.4, "Technique": 1.3, "Ki Offense": 1.2, "Ki Defense": 1.4, "Speed": 1.2, "Skillpoint Mod": 1.4, "Ascension Mod": 2.5, "Battle Power": 2, "Energy Level": 1.3, "Zanzoken Mod": 1, "Gravity Mod": 3, "Ki Regeneration": 0.9, "Train Mod": 2, "Med Mod": 2, "Spar Mod": 3, "Starting BP": 60, "Tech Modifier": 3, "Potential": 3}, "Omega": {"Physical Offense": 1.3, "Physical Defense": 1.2, "Technique": 0.9, "Ki Offense": 1.2, "Ki Defense": 1.1, "Ki Skill": 1, "Speed": 1.3, "Skillpoint Mod": 1.2, "Battle Power": 2.75, "Energy Level": 1.5, "Ascension Mod": 2, "Ki Regeneration": 0.6, "Starting BP": 500, "Gravity Mod": 9, "Potential": 1, "Train Mod": 1, "Med Mod": 1, "Spar Mod": 2, "Zanzoken Mod": 6}},
+    "spread": [["Omega", 5], ["Epsilon", 47], ["Low-Class", 48]]
+  },
+  {
+    "nome": "Human",
+    "stats": {"Physical Offense": 1, "Physical Defense": 1, "Ki Offense": 1, "Ki Defense": 1, "Ki Skill": 1, "Technique": 1.2, "Speed": 1.1, "Esoteric Skill": 1, "Skillpoint Mod": 1.5, "Ascension Mod": 6, "Energy Level": 1.4, "Battle Power": 0.95},
+    "misc": {"Lifespan": 1, "Potential": 3, "Regeneration": 1, "Breed Type": 1, "Zanzoken Mod": 5, "Gravity Mod": 1, "Med Mod": 4, "Spar Mod": 1.65, "Train Mod": 1, "Ki Regeneration": 3, "Anger": 1.5, "Space Breath": 0, "Starting BP": 10, "Tech Modifier": 3},
+    "classes": {"Ancient Hermit": {"Physical Offense": 0.7, "Physical Defense": 0.7, "Ki Offense": 1.4, "Ki Defense": 1.4, "Ki Skill": 2.2, "Technique": 2, "Speed": 0.9, "Esoteric Skill": 2.2, "Skillpoint Mod": 1.8, "Energy Level": 1.6, "Med Mod": 6, "Ki Regeneration": 4, "Potential": 4, "Lifespan": 6, "Starting BP": 50}, "Peak Human": {"Physical Offense": 1.7, "Physical Defense": 1.6, "Ki Offense": 1, "Ki Defense": 1, "Ki Skill": 0.9, "Technique": 1.2, "Speed": 1.6, "Esoteric Skill": 0.9, "Skillpoint Mod": 1.3, "Battle Power": 1.2, "Spar Mod": 2.2, "Train Mod": 1.4, "Starting BP": 60}, "Triclops Descendant": {"Physical Offense": 1.3, "Physical Defense": 1.2, "Ki Offense": 1.2, "Ki Defense": 1.1, "Ki Skill": 1.7, "Technique": 2, "Speed": 1.5, "Esoteric Skill": 1.4, "Skillpoint Mod": 1.8, "Zanzoken Mod": 9, "Ki Regeneration": 3.5, "Starting BP": 55}},
+    "spread": [["Ancient Hermit", 5], ["Triclops Descendant", 10], ["Peak Human", 25], ["Normal", 60]]
+  },
+  {
+    "nome": "Icer",
+    "stats": {"Physical Offense": 1.5, "Physical Defense": 1.1, "Ki Offense": 2, "Ki Defense": 1.1, "Ki Skill": 1.5, "Technique": 1, "Speed": 1.3, "Esoteric Skill": 0.2, "Skillpoint Mod": 1.1, "Ascension Mod": 7, "Energy Level": 2, "Battle Power": 1.5},
+    "misc": {"Lifespan": 10, "Potential": 2, "Regeneration": 1, "Breed Type": 0, "Zanzoken Mod": 5, "Gravity Mod": 10, "Med Mod": 1.5, "Spar Mod": 1.5, "Train Mod": 1, "Ki Regeneration": 1, "Anger": 1.1, "Space Breath": 1, "Starting BP": 1000, "Tech Modifier": 3},
+    "classes": {"Frost Demon": {"Physical Offense": 1.4, "Physical Defense": 1.4, "Technique": 1.3, "Ki Offense": 1.5, "Ki Defense": 1.5, "Speed": 1.4, "Skillpoint Mod": 1.1, "Battle Power": 1.45, "Energy Level": 1.4, "Tech Modifier": 2, "Ki Regeneration": 1, "Starting BP": 110, "Potential": 2.2}, "Mutant Frost Demon": {"Physical Offense": 2.2, "Physical Defense": 1.8, "Technique": 1.4, "Ki Offense": 2.4, "Ki Defense": 1.8, "Ki Skill": 1.8, "Speed": 1.7, "Skillpoint Mod": 1.1, "Battle Power": 3, "Energy Level": 2, "Tech Modifier": 2, "Ki Regeneration": 1.2, "Starting BP": 1200, "Potential": 2.8, "Anger": 1.5}},
+    "spread": [["Mutant Frost Demon", 1], ["Frost Demon", 99]]
+  },
+  {
+    "nome": "Kai",
+    "stats": {"Physical Offense": 2, "Physical Defense": 2, "Ki Offense": 2, "Ki Defense": 2, "Ki Skill": 2, "Technique": 2, "Speed": 2, "Esoteric Skill": 1, "Skillpoint Mod": 0.8, "Ascension Mod": 6, "Energy Level": 2, "Battle Power": 2},
+    "misc": {"Lifespan": 25, "Potential": 1, "Regeneration": 10, "Breed Type": 1, "Zanzoken Mod": 10, "Gravity Mod": 1, "Med Mod": 3.3, "Spar Mod": 1.5, "Train Mod": 1.1, "Ki Regeneration": 4, "Anger": 1.2, "Space Breath": 1, "Starting BP": 900, "Tech Modifier": 1},
+    "classes": {"Golden Apple": {"Starting BP": 500000}},
+    "spread": [["Golden Apple", 5], ["Normal", 95]]
+  },
+  {
+    "nome": "Kanassa",
+    "stats": {"Physical Offense": 0.6, "Physical Defense": 0.6, "Ki Offense": 1.3, "Ki Defense": 1.3, "Ki Skill": 1.3, "Technique": 3, "Speed": 1.3, "Esoteric Skill": 1, "Skillpoint Mod": 1.3, "Ascension Mod": 6, "Energy Level": 1.3, "Battle Power": 1.3},
+    "misc": {"Lifespan": 1, "Potential": 3, "Regeneration": 1, "Breed Type": 0, "Zanzoken Mod": 5, "Gravity Mod": 1.5, "Med Mod": 4, "Spar Mod": 4, "Train Mod": 1, "Ki Regeneration": 2, "Anger": 1.7, "Space Breath": 0, "Starting BP": 50, "Tech Modifier": 2},
+    "classes": {},
+    "spread": [["None", 100]]
+  },
+  {
+    "nome": "Majin",
+    "stats": {"Physical Offense": 0.9, "Physical Defense": 1.2, "Ki Offense": 0.9, "Ki Defense": 0.5, "Ki Skill": 2.1, "Technique": 1, "Speed": 2, "Esoteric Skill": 1, "Skillpoint Mod": 1.2, "Ascension Mod": 5, "Energy Level": 1.1, "Battle Power": 2.3},
+    "misc": {"Lifespan": 30, "Potential": 1, "Regeneration": 100, "Breed Type": 2, "Zanzoken Mod": 1, "Gravity Mod": 10, "Med Mod": 1, "Spar Mod": 1.8, "Train Mod": 1.2, "Ki Regeneration": 4, "Anger": 1.3, "Space Breath": 1, "Starting BP": 900, "Tech Modifier": 1},
+    "classes": {"Corrupted Majin": {"Physical Offense": 1.5, "Physical Defense": 0.9, "Ki Offense": 1.6, "Ki Defense": 0.4, "Speed": 2.6, "Battle Power": 2.5, "Energy Level": 1.2, "Regeneration": 70, "Anger": 2.4, "Spar Mod": 2.2, "Starting BP": 500000}},
+    "spread": [["Corrupted Majin", 5], ["Majin", 95]]
+  },
+  {
+    "nome": "Makyo",
+    "stats": {"Physical Offense": 2, "Physical Defense": 1, "Ki Offense": 1, "Ki Defense": 1.5, "Ki Skill": 1, "Technique": 1, "Speed": 1.5, "Esoteric Skill": 1, "Skillpoint Mod": 1, "Ascension Mod": 6, "Energy Level": 0.8, "Battle Power": 1.4},
+    "misc": {"Lifespan": 1, "Potential": 2, "Regeneration": 1, "Breed Type": 2, "Zanzoken Mod": 1, "Gravity Mod": 5, "Med Mod": 1.2, "Spar Mod": 1.5, "Train Mod": 1.1, "Ki Regeneration": 1, "Anger": 1.5, "Space Breath": 1, "Starting BP": 50, "Tech Modifier": 1},
+    "classes": {},
+    "spread": [["None", 100]]
+  },
+  {
+    "nome": "Meta",
+    "stats": {"Physical Offense": 1, "Physical Defense": 2, "Ki Offense": 1, "Ki Defense": 2, "Ki Skill": 1, "Technique": 1, "Speed": 2.4, "Esoteric Skill": 0.1, "Skillpoint Mod": 1, "Ascension Mod": 6, "Energy Level": 0.8, "Battle Power": 1.5},
+    "misc": {"Lifespan": 32, "Potential": 0.5, "Regeneration": 10, "Breed Type": 0, "Zanzoken Mod": 10, "Gravity Mod": 5, "Med Mod": 1, "Spar Mod": 2, "Train Mod": 1.5, "Ki Regeneration": 2, "Anger": 1.2, "Space Breath": 1, "Starting BP": 25, "Tech Modifier": 3.5},
+    "classes": {},
+    "spread": []
+  },
+  {
+    "nome": "Namekian",
+    "stats": {"Physical Offense": 1, "Physical Defense": 1.8, "Ki Offense": 1, "Ki Defense": 2, "Ki Skill": 1, "Technique": 1, "Speed": 2, "Esoteric Skill": 1.3, "Skillpoint Mod": 1.4, "Ascension Mod": 5, "Energy Level": 1.5, "Battle Power": 1.4},
+    "misc": {"Lifespan": 7, "Potential": 3, "Regeneration": 10, "Breed Type": 0, "Zanzoken Mod": 5, "Gravity Mod": 1, "Med Mod": 5, "Spar Mod": 1.5, "Train Mod": 1, "Ki Regeneration": 1.8, "Anger": 1.2, "Space Breath": 0, "Starting BP": 30, "Tech Modifier": 2},
+    "classes": {"Warrior clan": {"Physical Offense": 1.8, "Physical Defense": 1.7, "Ki Offense": 1.7, "Ki Defense": 1.8, "Ki Skill": 1.2, "Technique": 1.2, "Speed": 2.4, "Esoteric Skill": 1, "Skillpoint Mod": 1.3, "Energy Level": 1.5, "Battle Power": 1.6, "Lifespan": 6, "Potential": 3, "Regeneration": 7, "Spar Mod": 2.5, "Train Mod": 1.3, "Gravity Mod": 1.5, "Anger": 1.3, "Starting BP": 50, "Tech Modifier": 2}, "Demon clan": {"Physical Offense": 1.3, "Physical Defense": 1.6, "Ki Offense": 2, "Ki Defense": 1.8, "Ki Skill": 1.6, "Technique": 1.8, "Speed": 2, "Esoteric Skill": 1.7, "Skillpoint Mod": 1.4, "Energy Level": 1.6, "Battle Power": 1.4, "Lifespan": 7, "Potential": 3.5, "Regeneration": 9, "Med Mod": 4, "Ki Regeneration": 2, "Anger": 2, "Starting BP": 35, "Tech Modifier": 3}, "Dragon clan": {"Physical Offense": 0.8, "Physical Defense": 1.8, "Ki Offense": 0.9, "Ki Defense": 2.2, "Ki Skill": 1.2, "Technique": 1.2, "Speed": 1.8, "Esoteric Skill": 2, "Skillpoint Mod": 1.6, "Energy Level": 1.5, "Battle Power": 1.2, "Lifespan": 9, "Potential": 4.5, "Regeneration": 18, "Med Mod": 6, "Ki Regeneration": 2.2, "Anger": 1, "Starting BP": 25, "Tech Modifier": 3}},
+    "spread": [["Warrior clan", 25], ["Demon clan", 25], ["Dragon clan", 50]]
+  },
+  {
+    "nome": "Saibaman",
+    "stats": {"Physical Offense": 1, "Physical Defense": 1.7, "Ki Offense": 2, "Ki Defense": 1.5, "Ki Skill": 0.9, "Technique": 0.8, "Speed": 2, "Esoteric Skill": 0.4, "Skillpoint Mod": 1.6, "Ascension Mod": 4, "Energy Level": 1, "Battle Power": 1},
+    "misc": {"Lifespan": 5, "Potential": 4, "Regeneration": 5, "Breed Type": 0, "Zanzoken Mod": 10, "Gravity Mod": 4, "Med Mod": 5, "Spar Mod": 1.25, "Train Mod": 1.1, "Ki Regeneration": 4, "Anger": 1.2, "Space Breath": 1, "Starting BP": 80, "Tech Modifier": 3},
+    "classes": {},
+    "spread": [["None", 100]]
+  },
+  {
+    "nome": "Saiyan",
+    "stats": {"Physical Offense": 1.4, "Physical Defense": 1, "Ki Offense": 2, "Ki Defense": 1.3, "Ki Skill": 1.8, "Technique": 1, "Speed": 1.9, "Esoteric Skill": 0.2, "Skillpoint Mod": 1.2, "Ascension Mod": 6, "Energy Level": 1.4, "Battle Power": 1.6},
+    "misc": {"Lifespan": 2, "Potential": 3, "Regeneration": 1, "Breed Type": 1, "Zanzoken Mod": 1, "Gravity Mod": 2, "Med Mod": 1, "Spar Mod": 3, "Train Mod": 1, "Ki Regeneration": 1, "Anger": 1.5, "Space Breath": 0, "Starting BP": 100, "Tech Modifier": 1},
+    "classes": {"Low-Class": {"Physical Offense": 1.2, "Physical Defense": 0.8, "Technique": 1.1, "Ki Offense": 2, "Ki Defense": 1.2, "Speed": 2, "Skillpoint Mod": 1.4, "Battle Power": 1.4, "Energy Level": 1.2, "Zanzoken Mod": 1.5, "Gravity Mod": 8, "Ki Regeneration": 1.5, "Train Mod": 1.5, "Starting BP": 10}, "Elite": {"Physical Offense": 1.3, "Physical Defense": 1, "Technique": 1.2, "Ki Offense": 2, "Ki Defense": 1.5, "Speed": 1.8, "Skillpoint Mod": 1.1, "Battle Power": 1.8, "Energy Level": 1.4, "Tech Modifier": 2, "Ki Regeneration": 1.1, "Starting BP": 1000, "Potential": 2.5}, "Kaio": {"Physical Offense": 1.3, "Physical Defense": 1, "Technique": 1.2, "Ki Offense": 2, "Ki Defense": 1.5, "Speed": 1.8, "Skillpoint Mod": 1.1, "Battle Power": 1.8, "Energy Level": 1.4, "Tech Modifier": 2, "Ki Regeneration": 1.1, "Starting BP": 1000, "Potential": 2.5}, "Legendary": {"Physical Offense": 1.5, "Physical Defense": 2.2, "Technique": 0.5, "Ki Offense": 1.5, "Ki Defense": 2.2, "Ki Skill": 0.5, "Speed": 1, "Skillpoint Mod": 1, "Battle Power": 3, "Energy Level": 1.2, "Tech Modifier": 1, "Ki Regeneration": 1, "Starting BP": 10000, "Potential": 2, "Spar Mod": 4, "Anger": 2}, "Normal Primal Saiyan": {"Physical Offense": 1.6, "Physical Defense": 1.2, "Speed": 1.7, "Battle Power": 1.7, "Starting BP": 150}, "Legendary Primal Saiyan": {"Physical Offense": 1.7, "Physical Defense": 2.4, "Technique": 0.5, "Ki Offense": 1.6, "Ki Defense": 2.4, "Ki Skill": 0.5, "Speed": 1.1, "Battle Power": 3.2, "Potential": 2, "Spar Mod": 4, "Anger": 2, "Starting BP": 12000}, "New Generation": {"Physical Offense": 1.4, "Physical Defense": 1.1, "Ki Offense": 1.7, "Ki Defense": 1.3, "Ki Skill": 1.6, "Technique": 1.1, "Speed": 1.7, "Skillpoint Mod": 1.3, "Battle Power": 1.5, "Energy Level": 1.3, "Potential": 3, "Starting BP": 80}, "Future Lineage": {"Physical Offense": 1.9, "Physical Defense": 1.5, "Ki Offense": 1.6, "Ki Defense": 1.4, "Ki Skill": 1.4, "Technique": 1.2, "Speed": 1.6, "Skillpoint Mod": 1.1, "Battle Power": 2, "Energy Level": 1.3, "Potential": 2.5, "Spar Mod": 4, "Train Mod": 1.4, "Anger": 1.7, "Starting BP": 120}, "Prodigial": {"Physical Offense": 1.2, "Physical Defense": 1, "Ki Offense": 1.6, "Ki Defense": 1.3, "Ki Skill": 1.9, "Technique": 1.4, "Speed": 1.5, "Esoteric Skill": 1.2, "Skillpoint Mod": 1.9, "Ascension Mod": 9, "Battle Power": 1.4, "Energy Level": 1.4, "Med Mod": 3, "Potential": 5, "Starting BP": 70}},
+    "spread": [["Legendary", 1], ["Elite", 4], ["Low-Class", 45], ["Normal", 50]]
+  },
+  {
+    "nome": "Shapeshifter",
+    "stats": {"Physical Offense": 1.3, "Physical Defense": 1.6, "Ki Offense": 1, "Ki Defense": 1.6, "Ki Skill": 1, "Technique": 1, "Speed": 2, "Esoteric Skill": 1, "Skillpoint Mod": 1, "Ascension Mod": 4, "Energy Level": 1.6, "Battle Power": 1},
+    "misc": {"Lifespan": 3, "Potential": 2, "Regeneration": 2, "Breed Type": 1, "Zanzoken Mod": 3, "Gravity Mod": 5, "Med Mod": 4, "Spar Mod": 1.5, "Train Mod": 1.2, "Ki Regeneration": 4, "Anger": 1.4, "Space Breath": 1, "Starting BP": 10, "Tech Modifier": 2},
+    "classes": {},
+    "spread": [["None", 100]]
+  },
+  {
+    "nome": "SpiritDoll",
+    "stats": {"Physical Offense": 0.8, "Physical Defense": 0.8, "Ki Offense": 1.6, "Ki Defense": 1, "Ki Skill": 1, "Technique": 0.8, "Speed": 2.5, "Esoteric Skill": 1, "Skillpoint Mod": 2, "Ascension Mod": 7, "Energy Level": 2, "Battle Power": 0.9},
+    "misc": {"Lifespan": 8, "Potential": 4, "Regeneration": 3, "Breed Type": 1, "Zanzoken Mod": 4, "Gravity Mod": 5, "Med Mod": 4, "Spar Mod": 1.65, "Train Mod": 1.1, "Ki Regeneration": 4, "Anger": 1.3, "Space Breath": 1, "Starting BP": 10, "Tech Modifier": 4},
+    "classes": {},
+    "spread": [["None", 100]]
+  },
+  {
+    "nome": "Tsujin",
+    "stats": {"Physical Offense": 0.8, "Physical Defense": 0.8, "Technique": 0.8, "Ki Offense": 0.8, "Ki Defense": 0.8, "Ki Skill": 0.8, "Speed": 1.5, "Esoteric Skill": 0.8, "Skillpoint Mod": 1.5, "Ascension Mod": 6, "Energy Level": 0.8, "Battle Power": 1},
+    "misc": {"Lifespan": 2, "Potential": 1, "Regeneration": 10, "Breed Type": 1, "Zanzoken Mod": 2, "Gravity Mod": 1, "Med Mod": 1.2, "Spar Mod": 1.65, "Train Mod": 1, "Ki Regeneration": 2, "Anger": 1.4, "Space Breath": 1, "Starting BP": 1, "Tech Modifier": 7},
+    "classes": {},
+    "spread": []
+  },
+  {
+    "nome": "Yardrat",
+    "stats": {"Physical Offense": 0.7, "Physical Defense": 0.6, "Technique": 1.1, "Ki Offense": 1.2, "Ki Defense": 0.6, "Ki Skill": 1, "Speed": 2.5, "Esoteric Skill": 0.5, "Skillpoint Mod": 1.2, "Ascension Mod": 8, "Energy Level": 1.5, "Battle Power": 1.2},
+    "misc": {"Lifespan": 2, "Potential": 1, "Regeneration": 10, "Breed Type": 0, "Zanzoken Mod": 5, "Gravity Mod": 0.9, "Med Mod": 4, "Spar Mod": 1.5, "Train Mod": 1, "Ki Regeneration": 2, "Anger": 1.05, "Space Breath": 1, "Starting BP": 20, "Tech Modifier": 0.5},
+    "classes": {},
+    "spread": []
+  }
+]

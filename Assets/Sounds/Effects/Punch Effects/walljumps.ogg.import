@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://deihyuq721113"
+path="res://.godot/imported/walljumps.ogg-d0a093723cca7752e80633a097187d54.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/walljumps.ogg"
+dest_files=["res://.godot/imported/walljumps.ogg-d0a093723cca7752e80633a097187d54.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

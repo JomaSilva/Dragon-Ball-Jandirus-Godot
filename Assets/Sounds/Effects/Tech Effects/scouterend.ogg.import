@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://bye6phww75y8d"
+path="res://.godot/imported/scouterend.ogg-f8f3c8c27f0154d196bba1e4d1bb69ad.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Tech Effects/scouterend.ogg"
+dest_files=["res://.godot/imported/scouterend.ogg-f8f3c8c27f0154d196bba1e4d1bb69ad.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

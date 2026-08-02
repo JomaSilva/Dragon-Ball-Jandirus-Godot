@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://d1tr0b085b73s"
+path="res://.godot/imported/mediumkick.ogg-3586e3695f6e681754b05e96defc75dd.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/mediumkick.ogg"
+dest_files=["res://.godot/imported/mediumkick.ogg-3586e3695f6e681754b05e96defc75dd.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

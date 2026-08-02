@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://8nuqw4rlicsj"
+path="res://.godot/imported/burning_fire.ogg-46110cad6138bedcb7c0080890041e05.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/burning_fire.ogg"
+dest_files=["res://.godot/imported/burning_fire.ogg-46110cad6138bedcb7c0080890041e05.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

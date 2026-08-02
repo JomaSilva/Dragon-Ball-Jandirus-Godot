@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dt1rqebskqib3"
+path="res://.godot/imported/scouterexplode.ogg-4884ba355e7c6a7d03234d04782d87f2.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Tech Effects/scouterexplode.ogg"
+dest_files=["res://.godot/imported/scouterexplode.ogg-4884ba355e7c6a7d03234d04782d87f2.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

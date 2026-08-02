@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dcspy7gsyns5d"
+path="res://.godot/imported/Electricity-sound.ogg-3f212486a1a9c2a7080603c1c5fb24b5.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Tech Effects/Electricity-sound.ogg"
+dest_files=["res://.godot/imported/Electricity-sound.ogg-3f212486a1a9c2a7080603c1c5fb24b5.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

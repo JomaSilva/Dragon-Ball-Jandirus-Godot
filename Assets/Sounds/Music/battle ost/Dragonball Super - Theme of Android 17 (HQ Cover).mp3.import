@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://hmewwmtiw2t5"
+path="res://.godot/imported/Dragonball Super - Theme of Android 17 (HQ Cover).mp3-e200f1bce121bf97ee0956ea0e92146c.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/Dragonball Super - Theme of Android 17 (HQ Cover).mp3"
+dest_files=["res://.godot/imported/Dragonball Super - Theme of Android 17 (HQ Cover).mp3-e200f1bce121bf97ee0956ea0e92146c.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

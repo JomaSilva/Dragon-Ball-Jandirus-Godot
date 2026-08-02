@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://dsr8qvk5t7wdx"
+path="res://.godot/imported/BF - Majin Buu's Theme.mp3-75a047a105cc26ed03132c8a25391bf1.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/BF - Majin Buu's Theme.mp3"
+dest_files=["res://.godot/imported/BF - Majin Buu's Theme.mp3-75a047a105cc26ed03132c8a25391bf1.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

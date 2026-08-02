@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://b8u6h7q4bqlo0"
+path="res://.godot/imported/Super Buu Theme (FULL).mp3-bab04a0962ab17cf3d4a4881ad7e774b.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Super Buu Theme (FULL).mp3"
+dest_files=["res://.godot/imported/Super Buu Theme (FULL).mp3-bab04a0962ab17cf3d4a4881ad7e774b.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://c1uvi632k43st"
+path="res://.godot/imported/shotgun.ogg-d57a4a467e518ca17d38f7f6450c067f.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Tech Effects/shotgun.ogg"
+dest_files=["res://.godot/imported/shotgun.ogg-d57a4a467e518ca17d38f7f6450c067f.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

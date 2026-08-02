@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://8rne4fc2re4p"
+path="res://.godot/imported/bigbang_fire.ogg-4a829d80603cb58c17c3f7224d1f7f05.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/bigbang_fire.ogg"
+dest_files=["res://.godot/imported/bigbang_fire.ogg-4a829d80603cb58c17c3f7224d1f7f05.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

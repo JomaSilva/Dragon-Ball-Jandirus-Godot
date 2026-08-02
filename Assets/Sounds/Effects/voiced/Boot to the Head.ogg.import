@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://gf38hqbxb56h"
+path="res://.godot/imported/Boot to the Head.ogg-2e359cd675256a1f73d16e46654cf1f6.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/voiced/Boot to the Head.ogg"
+dest_files=["res://.godot/imported/Boot to the Head.ogg-2e359cd675256a1f73d16e46654cf1f6.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

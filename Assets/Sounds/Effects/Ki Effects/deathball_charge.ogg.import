@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://bv36j03o8i8id"
+path="res://.godot/imported/deathball_charge.ogg-598d3294865f65fb668bc18631a7336c.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/deathball_charge.ogg"
+dest_files=["res://.godot/imported/deathball_charge.ogg-598d3294865f65fb668bc18631a7336c.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

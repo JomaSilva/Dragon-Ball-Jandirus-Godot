@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    FERRAMENTA DE BUILD, NAO ENTRA NO JOGO.
+    Le os .dmi do projeto BYOND e cospe atlas .png + SpriteFrames .tres pro Godot.
+    Roda com: dotnet run &#45;&#45;project Tools/AssetPipeline &#45;&#45; dmi &lt;origem&gt; &lt;destino&gt;
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Jandirus.Tools</RootNamespace>
+    <AssemblyName>AssetPipeline</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- o comando "chars" valida o motor de genetica de verdade, entao precisa do Core -->
+    <ProjectReference Include="..\..\Core\Jandirus.Core.csproj" />
+  </ItemGroup>
+
+</Project>

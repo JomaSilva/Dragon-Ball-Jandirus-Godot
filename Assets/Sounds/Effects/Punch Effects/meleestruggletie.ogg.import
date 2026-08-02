@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://ce4ajc1aa0ngy"
+path="res://.godot/imported/meleestruggletie.ogg-debe45af7ed776f407b13a2e6b738473.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/meleestruggletie.ogg"
+dest_files=["res://.godot/imported/meleestruggletie.ogg-debe45af7ed776f407b13a2e6b738473.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

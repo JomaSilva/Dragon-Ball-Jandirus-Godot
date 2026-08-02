@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://dxinnsd87q050"
+path="res://.godot/imported/The Power to Resist - Dragon Ball Super   Norihito Sumitomo.mp3-f490ef7ba865b34a1def5da3e33378bf.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/The Power to Resist - Dragon Ball Super   Norihito Sumitomo.mp3"
+dest_files=["res://.godot/imported/The Power to Resist - Dragon Ball Super   Norihito Sumitomo.mp3-f490ef7ba865b34a1def5da3e33378bf.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

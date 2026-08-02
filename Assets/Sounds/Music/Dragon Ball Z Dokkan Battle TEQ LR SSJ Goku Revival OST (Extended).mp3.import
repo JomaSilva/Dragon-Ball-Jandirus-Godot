@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://d37guvf6lpxol"
+path="res://.godot/imported/Dragon Ball Z Dokkan Battle TEQ LR SSJ Goku Revival OST (Extended).mp3-6d93dac1b1b3062f02888bf64b537367.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Dragon Ball Z Dokkan Battle TEQ LR SSJ Goku Revival OST (Extended).mp3"
+dest_files=["res://.godot/imported/Dragon Ball Z Dokkan Battle TEQ LR SSJ Goku Revival OST (Extended).mp3-6d93dac1b1b3062f02888bf64b537367.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

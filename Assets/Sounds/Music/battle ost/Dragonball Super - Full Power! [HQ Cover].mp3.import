@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://dp0ggfv106c1s"
+path="res://.godot/imported/Dragonball Super - Full Power! [HQ Cover].mp3-1a0930a3c8583601c45ac54215c57f3a.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/Dragonball Super - Full Power! [HQ Cover].mp3"
+dest_files=["res://.godot/imported/Dragonball Super - Full Power! [HQ Cover].mp3-1a0930a3c8583601c45ac54215c57f3a.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

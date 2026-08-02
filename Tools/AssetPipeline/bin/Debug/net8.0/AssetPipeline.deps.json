@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "AssetPipeline/1.0.0": {
+        "dependencies": {
+          "Jandirus.Core": "1.0.0"
+        },
+        "runtime": {
+          "AssetPipeline.dll": {}
+        }
+      },
+      "Jandirus.Core/1.0.0": {
+        "runtime": {
+          "Jandirus.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "AssetPipeline/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Jandirus.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

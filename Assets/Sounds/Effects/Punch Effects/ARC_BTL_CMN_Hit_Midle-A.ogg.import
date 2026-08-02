@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dgt32qdg3apjw"
+path="res://.godot/imported/ARC_BTL_CMN_Hit_Midle-A.ogg-345fa2c58d3ada39fb43a8eb2ac8c8df.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/ARC_BTL_CMN_Hit_Midle-A.ogg"
+dest_files=["res://.godot/imported/ARC_BTL_CMN_Hit_Midle-A.ogg-345fa2c58d3ada39fb43a8eb2ac8c8df.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

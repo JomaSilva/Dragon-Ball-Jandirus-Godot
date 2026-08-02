@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dg5go0ckdo3uy"
+path="res://.godot/imported/eyebeam_fire.ogg-d430967d68208545cee5c2dfc3a9fa99.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/eyebeam_fire.ogg"
+dest_files=["res://.godot/imported/eyebeam_fire.ogg-d430967d68208545cee5c2dfc3a9fa99.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

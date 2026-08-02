@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cd34wumylmkwe"
+path="res://.godot/imported/meleemiss3.ogg-551303ace34df5548eff213ac7d973b7.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/meleemiss3.ogg"
+dest_files=["res://.godot/imported/meleemiss3.ogg-551303ace34df5548eff213ac7d973b7.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

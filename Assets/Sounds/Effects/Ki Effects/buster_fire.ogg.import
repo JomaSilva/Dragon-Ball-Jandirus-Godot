@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cmlspi880c3hm"
+path="res://.godot/imported/buster_fire.ogg-05c0d7da5095d016dfc7374e391be571.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/buster_fire.ogg"
+dest_files=["res://.godot/imported/buster_fire.ogg-05c0d7da5095d016dfc7374e391be571.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

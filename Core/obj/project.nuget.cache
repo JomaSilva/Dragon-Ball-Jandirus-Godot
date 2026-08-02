@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "kXUypp8yDKQ=",
+  "success": true,
+  "projectFilePath": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Core\\Jandirus.Core.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Joao\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.27\\microsoft.netcore.app.ref.8.0.27.nupkg.sha512",
+    "C:\\Users\\Joao\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.27\\microsoft.windowsdesktop.app.ref.8.0.27.nupkg.sha512",
+    "C:\\Users\\Joao\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.27\\microsoft.aspnetcore.app.ref.8.0.27.nupkg.sha512"
+  ],
+  "logs": []
+}

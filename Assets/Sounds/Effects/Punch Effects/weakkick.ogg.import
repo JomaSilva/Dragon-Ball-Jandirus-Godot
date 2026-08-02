@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://d07uubdo4b1h0"
+path="res://.godot/imported/weakkick.ogg-d47e12fbacb6ce160e206cef1e5f1291.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/weakkick.ogg"
+dest_files=["res://.godot/imported/weakkick.ogg-d47e12fbacb6ce160e206cef1e5f1291.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

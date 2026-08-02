@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bpys8s81tebg3"
+path="res://.godot/imported/LoG2 - Confrontation.mp3-43dba59c4ccc76585202cd4f258e1838.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/LoG2 - Confrontation.mp3"
+dest_files=["res://.godot/imported/LoG2 - Confrontation.mp3-43dba59c4ccc76585202cd4f258e1838.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

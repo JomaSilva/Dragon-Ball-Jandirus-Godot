@@ -1,0 +1,39 @@
+[gd_resource type="SpriteFrames" load_steps=6 format=3]
+
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/blue portal.png" id="1_atlas"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_0"]
+atlas = ExtResource("1_atlas")
+region = Rect2(0, 0, 78, 78)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_1"]
+atlas = ExtResource("1_atlas")
+region = Rect2(78, 0, 78, 78)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_2"]
+atlas = ExtResource("1_atlas")
+region = Rect2(0, 78, 78, 78)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3"]
+atlas = ExtResource("1_atlas")
+region = Rect2(78, 78, 78, 78)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_3")
+}],
+"loop": true,
+"name": &"default",
+"speed": 10.0
+}]

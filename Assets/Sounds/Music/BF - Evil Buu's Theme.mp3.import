@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://ccjtikfsunvjj"
+path="res://.godot/imported/BF - Evil Buu's Theme.mp3-946207939327e50d632cf6c9a0ea02a9.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/BF - Evil Buu's Theme.mp3"
+dest_files=["res://.godot/imported/BF - Evil Buu's Theme.mp3-946207939327e50d632cf6c9a0ea02a9.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

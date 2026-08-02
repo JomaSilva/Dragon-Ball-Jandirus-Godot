@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bvybhnbcfhrvw"
+path="res://.godot/imported/22. Broly Evolves   DBS Broly Original Soundtrack.mp3-3da95c74807069afa5c799431920fe6c.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/22. Broly Evolves   DBS Broly Original Soundtrack.mp3"
+dest_files=["res://.godot/imported/22. Broly Evolves   DBS Broly Original Soundtrack.mp3-3da95c74807069afa5c799431920fe6c.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

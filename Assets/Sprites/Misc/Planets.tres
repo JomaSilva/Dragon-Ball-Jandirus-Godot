@@ -1,0 +1,207 @@
+[gd_resource type="SpriteFrames" load_steps=20 format=3]
+
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Planets.png" id="1_atlas"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_0"]
+atlas = ExtResource("1_atlas")
+region = Rect2(0, 0, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_1"]
+atlas = ExtResource("1_atlas")
+region = Rect2(128, 0, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_2"]
+atlas = ExtResource("1_atlas")
+region = Rect2(256, 0, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3"]
+atlas = ExtResource("1_atlas")
+region = Rect2(384, 0, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_4"]
+atlas = ExtResource("1_atlas")
+region = Rect2(512, 0, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_5"]
+atlas = ExtResource("1_atlas")
+region = Rect2(0, 128, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6"]
+atlas = ExtResource("1_atlas")
+region = Rect2(128, 128, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7"]
+atlas = ExtResource("1_atlas")
+region = Rect2(256, 128, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_8"]
+atlas = ExtResource("1_atlas")
+region = Rect2(384, 128, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_9"]
+atlas = ExtResource("1_atlas")
+region = Rect2(512, 128, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_10"]
+atlas = ExtResource("1_atlas")
+region = Rect2(0, 256, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_11"]
+atlas = ExtResource("1_atlas")
+region = Rect2(128, 256, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_12"]
+atlas = ExtResource("1_atlas")
+region = Rect2(256, 256, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_13"]
+atlas = ExtResource("1_atlas")
+region = Rect2(384, 256, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_14"]
+atlas = ExtResource("1_atlas")
+region = Rect2(512, 256, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_15"]
+atlas = ExtResource("1_atlas")
+region = Rect2(0, 384, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_16"]
+atlas = ExtResource("1_atlas")
+region = Rect2(128, 384, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_17"]
+atlas = ExtResource("1_atlas")
+region = Rect2(256, 384, 128, 128)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_0")
+}],
+"loop": true,
+"name": &"vegeta",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_1")
+}],
+"loop": true,
+"name": &"jungle",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_2")
+}],
+"loop": true,
+"name": &"icer_planet",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_3")
+}],
+"loop": true,
+"name": &"arconia",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_4")
+}],
+"loop": true,
+"name": &"earth",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_5")
+}],
+"loop": true,
+"name": &"namek",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6")
+}],
+"loop": true,
+"name": &"desert",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7")
+}],
+"loop": true,
+"name": &"large_space_station",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_8")
+}],
+"loop": true,
+"name": &"small_space_station",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_9")
+}],
+"loop": true,
+"name": &"arlia",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_10")
+}],
+"loop": true,
+"name": &"vampa",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 2.0,
+"texture": SubResource("AtlasTexture_11")
+}, {
+"duration": 2.0,
+"texture": SubResource("AtlasTexture_12")
+}, {
+"duration": 2.0,
+"texture": SubResource("AtlasTexture_13")
+}, {
+"duration": 2.0,
+"texture": SubResource("AtlasTexture_14")
+}],
+"loop": true,
+"name": &"interdimension",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_15")
+}],
+"loop": true,
+"name": &"big_gete_star",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_16")
+}],
+"loop": true,
+"name": &"heaven",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_17")
+}],
+"loop": true,
+"name": &"hell",
+"speed": 10.0
+}]

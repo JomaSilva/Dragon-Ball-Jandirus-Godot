@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://b324af2r53m2i"
+path="res://.godot/imported/strongkick.ogg-22af0b8cc7a95a75bd0f957ba1458859.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/strongkick.ogg"
+dest_files=["res://.godot/imported/strongkick.ogg-22af0b8cc7a95a75bd0f957ba1458859.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

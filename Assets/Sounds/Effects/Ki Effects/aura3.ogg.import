@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://db1vuhpbsr8q"
+path="res://.godot/imported/aura3.ogg-193a2b86fbada265196ed08d7ea1c9bb.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/aura3.ogg"
+dest_files=["res://.godot/imported/aura3.ogg-193a2b86fbada265196ed08d7ea1c9bb.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

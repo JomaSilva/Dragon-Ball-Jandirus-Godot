@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://drglq2pjspa4o"
+path="res://.godot/imported/ARC_BTL_CMN_Hit_Small-B.ogg-3afa5c6a93de419f9838c5cc7ee3daa6.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/ARC_BTL_CMN_Hit_Small-B.ogg"
+dest_files=["res://.godot/imported/ARC_BTL_CMN_Hit_Small-B.ogg-3afa5c6a93de419f9838c5cc7ee3daa6.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

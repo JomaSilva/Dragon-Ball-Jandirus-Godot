@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://hri4vfswnnp4"
+path="res://.godot/imported/perfectsoundeffect.ogg-6733ec348a96e918d79800aa770ddb32.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/perfectsoundeffect.ogg"
+dest_files=["res://.godot/imported/perfectsoundeffect.ogg-6733ec348a96e918d79800aa770ddb32.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

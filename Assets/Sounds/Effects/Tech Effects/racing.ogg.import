@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dktj8w8gtixtw"
+path="res://.godot/imported/racing.ogg-f4e7256b1187bf4ae7c8a769ee1075f2.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Tech Effects/racing.ogg"
+dest_files=["res://.godot/imported/racing.ogg-f4e7256b1187bf4ae7c8a769ee1075f2.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

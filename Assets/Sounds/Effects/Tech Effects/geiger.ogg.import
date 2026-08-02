@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://bbvvbv1kphbxe"
+path="res://.godot/imported/geiger.ogg-7026506f32989f69c817083ed32f20ac.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Tech Effects/geiger.ogg"
+dest_files=["res://.godot/imported/geiger.ogg-7026506f32989f69c817083ed32f20ac.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

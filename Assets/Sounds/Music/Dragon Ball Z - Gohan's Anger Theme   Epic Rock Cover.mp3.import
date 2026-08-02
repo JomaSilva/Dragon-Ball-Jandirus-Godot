@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bj8xedhkk5b4d"
+path="res://.godot/imported/Dragon Ball Z - Gohan's Anger Theme   Epic Rock Cover.mp3-853761398e4ba2a3dc3a0086ae501688.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Dragon Ball Z - Gohan's Anger Theme   Epic Rock Cover.mp3"
+dest_files=["res://.godot/imported/Dragon Ball Z - Gohan's Anger Theme   Epic Rock Cover.mp3-853761398e4ba2a3dc3a0086ae501688.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://de0rypc5ek26"
+path="res://.godot/imported/Dragon Ball XenoVerse ‒  Create a Character &  Character Select  [4K60].mp3-7b607764a21a17e413fe188ca60a68a6.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Menu ost/Dragon Ball XenoVerse ‒  Create a Character &  Character Select  [4K60].mp3"
+dest_files=["res://.godot/imported/Dragon Ball XenoVerse ‒  Create a Character &  Character Select  [4K60].mp3-7b607764a21a17e413fe188ca60a68a6.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

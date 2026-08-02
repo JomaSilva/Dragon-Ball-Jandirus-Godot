@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://c8qjndw2d5nur"
+path="res://.godot/imported/Dragon Ball Super Broly - Rage & Sorrow Movie Version.mp3-6c0798c11bb2b90be259d97fca861720.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Dragon Ball Super Broly - Rage & Sorrow Movie Version.mp3"
+dest_files=["res://.godot/imported/Dragon Ball Super Broly - Rage & Sorrow Movie Version.mp3-6c0798c11bb2b90be259d97fca861720.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

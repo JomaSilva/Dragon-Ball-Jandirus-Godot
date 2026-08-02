@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://3opmro1dyump"
+path="res://.godot/imported/Dragon Ball Z Dokkan Battle - PHY LR Super Janemba OST (Extended).mp3-2d0366a690ba82e6a11921e69b004918.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Dragon Ball Z Dokkan Battle - PHY LR Super Janemba OST (Extended).mp3"
+dest_files=["res://.godot/imported/Dragon Ball Z Dokkan Battle - PHY LR Super Janemba OST (Extended).mp3-2d0366a690ba82e6a11921e69b004918.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

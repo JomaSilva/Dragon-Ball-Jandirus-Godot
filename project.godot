@@ -1,0 +1,41 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Dragon ball Jandirus"
+run/main_scene="res://Main.tscn"
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+GameClient="*res://Client/GameClient.cs"
+GameServer="*res://Server/GameServer.cs"
+AudioDirector="*res://Client/AudioDirector.cs"
+
+[display]
+
+window/stretch/aspect="expand"
+
+[dotnet]
+
+project/assembly_name="Dragon ball Jandirus"
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=0
+rendering_device/driver.windows="d3d12"
+2d/snap/snap_2d_transforms_to_pixel=true
+2d/snap/snap_2d_vertices_to_pixel=true

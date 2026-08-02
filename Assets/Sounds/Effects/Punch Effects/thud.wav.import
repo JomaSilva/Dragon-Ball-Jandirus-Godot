@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://c6ehrl3x5klk5"
+path="res://.godot/imported/thud.wav-3e33cea2161484a7ffa5a4829e70ddf2.sample"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/thud.wav"
+dest_files=["res://.godot/imported/thud.wav-3e33cea2161484a7ffa5a4829e70ddf2.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

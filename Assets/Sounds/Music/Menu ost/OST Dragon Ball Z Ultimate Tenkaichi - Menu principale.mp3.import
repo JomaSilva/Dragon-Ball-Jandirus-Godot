@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://cyk0sk3f2yliu"
+path="res://.godot/imported/OST Dragon Ball Z Ultimate Tenkaichi - Menu principale.mp3-999dace57cf39219b708ed9f52a47642.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Menu ost/OST Dragon Ball Z Ultimate Tenkaichi - Menu principale.mp3"
+dest_files=["res://.godot/imported/OST Dragon Ball Z Ultimate Tenkaichi - Menu principale.mp3-999dace57cf39219b708ed9f52a47642.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

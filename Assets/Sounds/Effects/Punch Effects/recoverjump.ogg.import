@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cr6ew0o2mmj1b"
+path="res://.godot/imported/recoverjump.ogg-9e581fd433f51f96ce6301ef4b1396d9.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/recoverjump.ogg"
+dest_files=["res://.godot/imported/recoverjump.ogg-9e581fd433f51f96ce6301ef4b1396d9.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

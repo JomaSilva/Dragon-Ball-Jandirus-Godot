@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://c1xwo3gjxn160"
+path="res://.godot/imported/BF - Super Saiyan 3 Transformation.mp3-a9a7479ca58417906175569f69121038.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/BF - Super Saiyan 3 Transformation.mp3"
+dest_files=["res://.godot/imported/BF - Super Saiyan 3 Transformation.mp3-a9a7479ca58417906175569f69121038.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cegl2qxe001dn"
+path="res://.godot/imported/meleeflash.ogg-9019a030bd77a947e6477705db36c779.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Punch Effects/meleeflash.ogg"
+dest_files=["res://.godot/imported/meleeflash.ogg-9019a030bd77a947e6477705db36c779.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

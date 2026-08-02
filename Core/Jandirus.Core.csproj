@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NUCLEO DE REGRAS: C# PURO, SEM NENHUMA REFERENCIA AO GODOT.
+
+    Tudo que decide resultado de jogo mora aqui: stats, BP, formas, dano, racas,
+    genetica, skills. A razao e dupla:
+
+      1) O modelo escolhido e "cliente calcula, servidor valida". Como as DUAS pontas
+         referenciam ESTE assembly, validar e o servidor re-executar a MESMA funcao e
+         comparar o resultado: nao existe regra duplicada pra sair de sincronia.
+      2) Sem tipos do Godot, as regras rodam em teste unitario sem abrir o engine.
+
+    REGRA DE OURO: se um arquivo daqui precisar de "using Godot", ele esta no lugar errado.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Jandirus.Core</RootNamespace>
+    <AssemblyName>Jandirus.Core</AssemblyName>
+    <!-- determinismo: as duas pontas precisam chegar no MESMO numero -->
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+</Project>

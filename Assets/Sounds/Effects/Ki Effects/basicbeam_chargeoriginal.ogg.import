@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://c885xoho8oxgb"
+path="res://.godot/imported/basicbeam_chargeoriginal.ogg-bac64764b8e97dcd3e71358888f0ff1f.oggvorbisstr"
+
+[deps]
+
+source_file="res://Assets/Sounds/Effects/Ki Effects/basicbeam_chargeoriginal.ogg"
+dest_files=["res://.godot/imported/basicbeam_chargeoriginal.ogg-bac64764b8e97dcd3e71358888f0ff1f.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

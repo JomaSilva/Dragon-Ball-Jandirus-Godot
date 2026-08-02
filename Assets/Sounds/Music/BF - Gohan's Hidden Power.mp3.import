@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://dvg8r21d4peog"
+path="res://.godot/imported/BF - Gohan's Hidden Power.mp3-7d48d693e2f52a6a7f2f6cd93deab7ee.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/BF - Gohan's Hidden Power.mp3"
+dest_files=["res://.godot/imported/BF - Gohan's Hidden Power.mp3-7d48d693e2f52a6a7f2f6cd93deab7ee.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

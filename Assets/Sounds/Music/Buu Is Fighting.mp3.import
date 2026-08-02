@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://q5jlhlqpisqc"
+path="res://.godot/imported/Buu Is Fighting.mp3-65419df508b361192496691f8cfd3309.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Buu Is Fighting.mp3"
+dest_files=["res://.godot/imported/Buu Is Fighting.mp3-65419df508b361192496691f8cfd3309.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

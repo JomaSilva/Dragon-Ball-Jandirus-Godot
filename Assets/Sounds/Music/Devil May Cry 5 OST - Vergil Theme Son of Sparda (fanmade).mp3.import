@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://dthnrvrvxc7o8"
+path="res://.godot/imported/Devil May Cry 5 OST - Vergil Theme Son of Sparda (fanmade).mp3-3618a441c996f99d1edbfc2c66f879da.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Devil May Cry 5 OST - Vergil Theme Son of Sparda (fanmade).mp3"
+dest_files=["res://.godot/imported/Devil May Cry 5 OST - Vergil Theme Son of Sparda (fanmade).mp3-3618a441c996f99d1edbfc2c66f879da.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

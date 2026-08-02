@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://b2x2cg5xikexv"
+path="res://.godot/imported/Dragon Ball Super Granolah Arc   Ultra Ego, Unbound   By Gladius.mp3-2eb3fd8281f8129b821d77ae51999230.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/UE forms/Ultra ego/Dragon Ball Super Granolah Arc   Ultra Ego, Unbound   By Gladius.mp3"
+dest_files=["res://.godot/imported/Dragon Ball Super Granolah Arc   Ultra Ego, Unbound   By Gladius.mp3-2eb3fd8281f8129b821d77ae51999230.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

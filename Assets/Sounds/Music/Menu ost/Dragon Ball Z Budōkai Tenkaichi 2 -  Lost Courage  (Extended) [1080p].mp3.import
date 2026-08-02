@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://btt88iy6s51yh"
+path="res://.godot/imported/Dragon Ball Z Budōkai Tenkaichi 2 -  Lost Courage  (Extended) [1080p].mp3-3301ec2ea547777e3dc4b6cc1990e305.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Menu ost/Dragon Ball Z Budōkai Tenkaichi 2 -  Lost Courage  (Extended) [1080p].mp3"
+dest_files=["res://.godot/imported/Dragon Ball Z Budōkai Tenkaichi 2 -  Lost Courage  (Extended) [1080p].mp3-3301ec2ea547777e3dc4b6cc1990e305.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://chtf7mky6hguo"
+path="res://.godot/imported/DBZ- Battle Music 8.mp3-0297bef8ddc319fde3436811de5bd7c0.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/DBZ- Battle Music 8.mp3"
+dest_files=["res://.godot/imported/DBZ- Battle Music 8.mp3-0297bef8ddc319fde3436811de5bd7c0.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

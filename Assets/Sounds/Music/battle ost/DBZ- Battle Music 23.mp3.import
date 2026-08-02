@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://d1mdkuusw2ac1"
+path="res://.godot/imported/DBZ- Battle Music 23.mp3-4afd048057d4e59d40a8fff01afb6f41.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/DBZ- Battle Music 23.mp3"
+dest_files=["res://.godot/imported/DBZ- Battle Music 23.mp3-4afd048057d4e59d40a8fff01afb6f41.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bp4yh55x54s0h"
+path="res://.godot/imported/BF - Babidi's Theme.mp3-e5ca6836741d735508897d82e651d182.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/BF - Babidi's Theme.mp3"
+dest_files=["res://.godot/imported/BF - Babidi's Theme.mp3-e5ca6836741d735508897d82e651d182.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
