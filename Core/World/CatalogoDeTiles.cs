@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 
 namespace Jandirus.Core.World;
 
@@ -272,7 +272,19 @@ public sealed class CatalogoDeTiles
 		{
 			int a = s.IndexOf('{', i);
 			if (a < 0) yield break;
-			int b = s.IndexOf('}', a);
+			// O `}` TEM QUE ESTAR FORA DE ASPAS. A irma `Lista` ja anda caractere a caractere por
+			// isso, e a assimetria aqui era um bug esperando a vez: 1913 dos 4719 estados tem
+			// virgula no NOME (os mosaicos HD, chamados "0,0"). No dia em que um estado tiver `}`
+			// no nome, o bloco e cortado no meio e TODAS as entradas dali pra frente somem calado.
+			int b = -1;
+			bool emTexto = false;
+			for (int k = a + 1; k < s.Length; k++)
+			{
+				char c = s[k];
+				if (emTexto && c == '\\') { k++; continue; }
+				if (c == '"') { emTexto = !emTexto; continue; }
+				if (!emTexto && c == '}') { b = k; break; }
+			}
 			if (b < 0) yield break;
 			yield return s[(a + 1)..b];
 			i = b + 1;

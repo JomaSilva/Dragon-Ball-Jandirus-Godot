@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.World;
 using Jandirus.Net;
 using LiteNetLib;
@@ -78,15 +78,11 @@ public partial class GameServer
 
 		if (Espaco.PlanetaSob(SeedDoUniverso, pl.Pos) is not { } destino) return;
 
-		// PROCEDURAL AINDA NAO TEM CHAO. Descer nele so daria uma tela vazia -- melhor dizer o
-		// que ha do que entregar um planeta que nao existe.
-		if (!destino.Premade)
-		{
-			if (NowMs() < pl.AvisoDePousoAte) return;
-			pl.AvisoDePousoAte = NowMs() + 5000;
-			Avisar(pl, $"{destino.Nome} ainda nao tem superficie gerada -- por enquanto so da pra sobrevoar.");
-			return;
-		}
+		// PROCEDURAL AGORA TEM CHAO. O servidor gera a MESMA superficie que o cliente, a partir
+		// da mesma seed -- e o motivo de o gerador morar no Core: uma funcao, duas pontas, zero
+		// byte de mapa na rede. Aqui ele so precisa da colisao (pra saber onde e parede) e do
+		// ponto de chegada; quem desenha e a cena.
+		if (!destino.Premade) { PousarEmProcedural(pl, destino); return; }
 
 		MoveToZone(pl.Id, ZoneKey.Premade(destino.Nome), SpawnPos);
 		Avisar(pl, $"voce pousa em {destino.Nome}.");

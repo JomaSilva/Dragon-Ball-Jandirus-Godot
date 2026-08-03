@@ -172,6 +172,29 @@ public partial class World : Node2D
 		}
 		foreach (Node n in _orbes.GetChildren()) n.QueueFree();
 
+		// PLANETA GERADO: nao ha cena no catalogo, e nem deveria haver -- ele nasce da seed.
+		// Este ramo tem que vir ANTES da consulta ao catalogo, senao a zona cai no aviso de
+		// "sem cena" e o jogador pousa num chao provisorio em vez do planeta dele.
+		if (zona.Kind == Jandirus.Core.World.ZoneKey.KindProcedural)
+		{
+			var gerado = new PlanetaProcedural { Name = "Planeta" };
+			// MESMO LUGAR DA CENA PRE-FEITA (`_zonaAtual`): e o que garante que a proxima troca de
+			// zona derrube o planeta gerado junto, pelo caminho que ja existe. Pendurar num no
+			// paralelo deixaria o mundo antigo desenhado por baixo do novo.
+			_zonaAtual = gerado;
+			AddChild(gerado);
+			MoveChild(gerado, 0);   // atras dos atores, como a cena pre-feita
+			gerado.Entrar(zona.Seed);   // e a seed do SERVIDOR que decide o mundo
+
+			_colisao = gerado.Colisao;
+			_veu.Mapa = gerado.Sombra ?? gerado.Colisao;
+			if (_local != null) _local.Mapa = _colisao;
+			AudioDirector.Instance?.Ambiente("");
+			GD.Print($"[world] zona GERADA: {gerado.Ficha()}");
+			Chat.Sistema(gerado.Ficha());
+			return;
+		}
+
 		ZoneEntry? e = _catalogo?.Get(zona);
 		if (e == null || !ResourceLoader.Exists(e.Cena))
 		{

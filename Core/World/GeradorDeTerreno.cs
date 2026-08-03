@@ -91,15 +91,26 @@ public readonly record struct TileVisual(string Atlas, string Estado, string? Ti
 ///     equivalente -- o bioma Rochoso -- o numero e NOSSO e esta marcado como tal;
 ///   * <see cref="Aspereza"/> nao existe no DM. E invencao nossa (ver o campo).
 /// </summary>
+/// <summary>
+/// IMUTAVEL DEPOIS DE CONSTRUIDA, e isto e requisito de DETERMINISMO, nao gosto.
+///
+/// A tabela `Paletas` e `static readonly` -- readonly na REFERENCIA, nao no conteudo -- e
+/// `Paleta(b)` e publica e entregava a instancia VIVA. Qualquer codigo podia escrever
+/// `Paleta(Jardim).LimiarAgua = 0.9` e mudar o bioma pro processo inteiro: o cliente passaria a
+/// gerar um mundo e o servidor outro a partir da MESMA seed, e a falha seria invisivel -- ninguem
+/// descobre ate alguem cair num buraco que o outro nao ve.
+///
+/// `init`-only e o compilador garantindo o que um comentario so pediria.
+/// </summary>
 public sealed class PaletaDeBioma
 {
-	public BiomaDeTerreno Bioma;
+	public BiomaDeTerreno Bioma { get; init; }
 
 	// ---- relevo: a altitude (0..1) cai numa destas faixas ----
-	public double LimiarAgua;
-	public double LimiarPraia;
-	public double LimiarColina;
-	public double LimiarMontanha;
+	public double LimiarAgua { get; init; }
+	public double LimiarPraia { get; init; }
+	public double LimiarColina { get; init; }
+	public double LimiarMontanha { get; init; }
 
 	/// <summary>
 	/// INVENCAO NOSSA. Nao ha nada equivalente no DM, onde todo planeta usa a mesma mistura de
@@ -115,27 +126,27 @@ public sealed class PaletaDeBioma
 	/// limiar que corta em p% e sempre `clamp(0,5 + (quantil(p) - 0,5) * aspereza)`. Mudou a
 	/// aspereza, os quatro limiares do bioma tem de ser refeitos por essa formula.
 	/// </summary>
-	public double Aspereza = 1.0;
+	public double Aspereza { get; init; } = 1.0;
 
 	// ---- povoamento (chance em 100 por tile) ----
-	public int VegetacaoPct;
-	public int PlantaPct;
-	public int MinerioPct;
+	public int VegetacaoPct { get; init; }
+	public int PlantaPct { get; init; }
+	public int MinerioPct { get; init; }
 
 	/// <summary>O lago e LAVA. `ProceduralSpace.dm:1176` (`water_lava = 1` no Vulcanico).</summary>
-	public bool LiquidoEhLava;
+	public bool LiquidoEhLava { get; init; }
 
 	// ---- visual (ver a nota de conferencia em GeradorDeTerreno) ----
-	public TileVisual Agua;
-	public TileVisual Praia;
-	public TileVisual Planicie;
-	public TileVisual Colina;
-	public TileVisual Montanha;
-	public TileVisual Arvore;
-	public TileVisual ArvoreAcento;
-	public TileVisual Planta;
-	public TileVisual Minerio;
-	public TileVisual Gema;
+	public TileVisual Agua { get; init; }
+	public TileVisual Praia { get; init; }
+	public TileVisual Planicie { get; init; }
+	public TileVisual Colina { get; init; }
+	public TileVisual Montanha { get; init; }
+	public TileVisual Arvore { get; init; }
+	public TileVisual ArvoreAcento { get; init; }
+	public TileVisual Planta { get; init; }
+	public TileVisual Minerio { get; init; }
+	public TileVisual Gema { get; init; }
 }
 
 /// <summary>
@@ -328,10 +339,12 @@ public static class GeradorDeTerreno
 	private const double PesoGrande = 0.7;
 	private const double PesoPequena = 0.3;
 
-	// SAIS. Cada uso do hash precisa de um espaco proprio, senao a oitava fina copiaria a grossa
-	// e a flora nasceria exatamente nos picos. Nao pode ser 0x9E3779B9... (a proporcao aurea): o
-	// Misturar ja faz `seed ^ 0x9E37...` na primeira linha, e usar a mesma constante como sal
-	// desfaria o XOR e devolveria a seed crua.
+	// SAIS. Cada uso do hash precisa de um espaco proprio: os dois primeiros dao DUAS tabelas de
+	// permutacao diferentes ao Perlin (com o mesmo sal a oitava fina seria a grossa em outra
+	// escala, e o recorte cairia sempre nos mesmos lugares dos continentes), e o terceiro afasta a
+	// flora do relevo -- senao a arvore nasceria exatamente no pico. Nao pode ser 0x9E3779B9...
+	// (a proporcao aurea): o Misturar ja faz `seed ^ 0x9E37...` na primeira linha, e usar a mesma
+	// constante como sal desfaria o XOR e devolveria a seed crua.
 	private const ulong SalRelevoGrosso = 0xD1B54A32D192ED03UL;
 	private const ulong SalRelevoFino = 0xA24BAED4963EE407UL;
 	private const ulong SalCobertura = 0x7FEB352D9E374C4DUL;

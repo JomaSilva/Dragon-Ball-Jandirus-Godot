@@ -222,6 +222,7 @@ public partial class GameServer : Node
 	private double _techDeTeste, _zeniDeTeste;
 	private int _marcosDeTeste;
 	private List<string> _skillsDeTeste = [];
+	private bool _nascerEmGerado;
 
 	/// <summary>As fichas dos planetas (gravidade e tipo), lidas de `planetas.json`.</summary>
 	private CatalogoDePlanetas? _planetas;
@@ -407,6 +408,17 @@ public partial class GameServer : Node
 			_skillsDeTeste = [.. args[sIdx + 1].Split(',', StringSplitOptions.RemoveEmptyEntries
 													   | StringSplitOptions.TrimEntries)];
 			GD.Print($"[server] BANCADA: concedendo {_skillsDeTeste.Count} skills");
+		}
+
+		// `--geradoteste`: quem entrar nasce num planeta GERADO em vez da Terra.
+		//
+		// Existe porque o planeta procedural mais proximo fica a ~39 chunks da Terra -- viajar ate
+		// la leva horas in-game, e um caminho que so da pra testar depois de horas nao e testado.
+		// Isto pula a VIAGEM, nao a geracao: o pouso, a colisao e a pintura sao os mesmos.
+		if (Array.IndexOf(args, "--geradoteste") >= 0)
+		{
+			_nascerEmGerado = true;
+			GD.Print("[server] BANCADA: todo mundo nasce num planeta gerado");
 		}
 
 		if (Array.IndexOf(args, "--server") < 0) return;   // processo de cliente
@@ -825,6 +837,20 @@ public partial class GameServer : Node
 		if (_zeniDeTeste > 0) pl.Ficha.Zeni = Math.Max(pl.Ficha.Zeni, _zeniDeTeste);
 		if (_marcosDeTeste > 0 && pl.Livro.MarcosLivres < _marcosDeTeste) pl.Livro.Conceder(_marcosDeTeste);
 		foreach (string sk in _skillsDeTeste) pl.Livro.Dar(sk);
+
+		// BANCADA: nasce direto num mundo sorteado (ver `--geradoteste`).
+		if (_nascerEmGerado)
+		{
+			PlanetaNoEspaco? achado = null;
+			for (int i = 1; i <= 400 && achado == null; i++)
+				achado = Espaco.PlanetaDaChunk(SeedDoUniverso, new ChunkId(i, i));
+			if (achado is { } gerado)
+			{
+				pl.Zone = ZoneKey.Procedural(gerado.Nome, gerado.Seed);
+				GD.Print($"[server] BANCADA: {pl.Name} nasce em {gerado.Nome} (seed {gerado.Seed})");
+			}
+			else GD.PushWarning("[server] BANCADA: nao achei planeta gerado em 400 chunks");
+		}
 
 		// A FORMA NAO ATRAVESSA O LOGOUT: quem sai SSJ3 volta na base. O que persiste e a
 		// MAESTRIA (semanas de jogo) e quais formas ja despertaram (a cinematica so roda uma vez).

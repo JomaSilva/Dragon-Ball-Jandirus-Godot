@@ -308,8 +308,12 @@ public partial class RoboDeSoco : Node
                 Vector2? eu = World.Instancia?.PosicaoLocal;
                 if (eu != null && cli.Planetas.Count > 0)
                 {
+                    // PREFERE UM PLANETA GERADO quando ha algum por perto. O mais proximo e
+                    // quase sempre a Terra (o robo decola de la), e pousar de volta em casa nao
+                    // testa nada -- o caminho novo e o do planeta que nasce da seed.
                     GameClient.PlanetaInfo alvo = cli.Planetas
-                        .OrderBy(p => (p.Pos - eu.Value).Length()).First();
+                        .OrderBy(p => p.Premade ? 1 : 0)
+                        .ThenBy(p => (p.Pos - eu.Value).Length()).First();
                     World.Instancia?.Pilotar(alvo.Pos);
                     GD.Print($"[robo] rumo a {alvo.Nome} | {(alvo.Pos - eu.Value).Length():N0} px"
                              + $" | chunk {Jandirus.Core.World.ChunkId.De(new Jandirus.Core.World.Vec2(eu.Value.X, eu.Value.Y))}");

@@ -132,6 +132,21 @@ public static class MapConverter
 
 		EscreverTileSet(Path.Combine(outDir, "tileset.tres"), fontes);
 
+		// O INDICE DE TILES SAI JUNTO DO TILESET, e tem que ser aqui: os `source id` nascem de
+		// um contador por ordem de descoberta, entao um `tiles.json` velho ao lado de um
+		// `tileset.tres` novo nao da erro nenhum -- da o SPRITE ERRADO. Gerar os dois na mesma
+		// passada e o que impede os dois de envelhecerem em ritmos diferentes.
+		//
+		// Quem consome: o planeta PROCEDURAL. O gerador do Core devolve `TileVisual(atlas,
+		// estado)` -- nomes -- e sem esta tabela nada no jogo sabe transformar isso em celula.
+		TileIndex.Resultado idx = TileIndex.Escrever(
+			Path.Combine(raiz, "Assets", "Data", "tiles.json"),
+			fontes.Values.Select(f => new FonteDeAtlas(
+				f.Id, f.Chave, f.ResPath, f.IconW, f.IconH, f.Cols, f.StateIndex)));
+		Console.WriteLine($"indice de tiles  : {idx.Atlas} atlas, {idx.Estados} estados"
+						  + (idx.Colisoes.Count > 0 ? $" | {idx.Colisoes.Count} nome(s) em disputa" : ""));
+		foreach (string c in idx.Colisoes) Console.WriteLine("   " + c);
+
 		// ---- passada 2: uma cena por andar + o mapa de colisao que o SERVIDOR le ----
 		int cenas = 0, celulas = 0, bloqueadas = 0;
 		var manifesto = new List<string>();
