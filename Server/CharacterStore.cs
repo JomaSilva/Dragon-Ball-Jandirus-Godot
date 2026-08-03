@@ -65,6 +65,23 @@ public sealed class CharacterSave
 
     // onde estava quando saiu
     public string Zona = "Earth";
+
+    /// <summary>
+    /// O TIPO e a SEED da zona -- sem eles a `ZoneKey` nao se remonta.
+    ///
+    /// ============================ POR QUE O NOME NAO BASTA ============================
+    /// Uma `ZoneKey` tem tres partes (tipo, nome, seed) e o save guardava so o nome. Na volta o
+    /// servidor reconstruia com `ZoneKey.Premade(nome)`, o que quer dizer: quem deslogou num
+    /// planeta GERADO voltava numa zona pre-feita de mesmo nome -- que nao existe no catalogo --,
+    /// e quem deslogou no ESPACO voltava numa zona fantasma. Sem cena, sem colisao, sem chao.
+    ///
+    /// A seed importa tanto quanto o tipo: dois planetas gerados podem ter o mesmo nome e mundos
+    /// completamente diferentes. Voltar sem ela e voltar pra outro planeta.
+    /// =================================================================================
+    /// </summary>
+    public byte ZonaTipo;
+    public ulong ZonaSeed;
+
     public float X, Y;
 
     public long CriadoEm, VistoEm;
@@ -213,6 +230,8 @@ public sealed class AccountStore(string pasta)
         MarcosTotais = pl.Livro?.MarcosTotais ?? 0,
         MarcosLivres = pl.Livro?.MarcosLivres ?? 0,
         Zona = pl.Zone.Name,
+        ZonaTipo = pl.Zone.Kind,
+        ZonaSeed = pl.Zone.Seed,
         X = pl.Pos.X,
         Y = pl.Pos.Y,
         CriadoEm = pl.CriadoEm,

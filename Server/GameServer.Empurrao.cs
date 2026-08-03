@@ -59,6 +59,19 @@ public sealed partial class GameServer
 				d.RumoDoVoo = MeleeArea.Frente(a.Facing);
 				d.ForcaDoVoo = a.Ficha.expressedBP;
 				d.ProximoTiqueDeVoo = NowMs();
+
+				// A FICHA SAI AGORA, e nao no proximo tique de 5 Hz.
+				//
+				// O bit "estou voando" (e a direcao do corpo) so viaja no pacote de ficha, e ficha sai
+				// no `TickFichas`, que roda 1 vez a cada 6 tiques. O voo comeca no tique CHEIO e a
+				// primeira correcao sai ~33 ms depois -- ou seja, por ate 200 ms o cliente ainda nao
+				// sabia que estava voando: nao girava o corpo E teleportava 64 px por correcao em vez
+				// de deslizar. Como o voo mais curto tem 300 ms, ate dois tercos dele aconteciam em pe
+				// e aos saltos. Era esse o resto de "voa travado" e "rotacionado errado".
+				//
+				// O canal e ReliableOrdered, entao mandar aqui poe a ficha NA FRENTE da primeira
+				// correcao -- quando ela chega, o cliente ja esta no modo de voo.
+				MandarFicha(d);
 				break;
 
 			// CAMBALEIA E LENTO ainda nao tem efeito proprio no port (nao ha `slowed`/`stagger` na
@@ -99,23 +112,44 @@ public sealed partial class GameServer
 				break;
 			}
 
-			// PAREDE: se a forca vence a resistencia, ela CAI e o voo continua; senao o corpo se
-			// arrebenta nela e para. E a regra do `Ticked`, e e o que liga o knockback a destruicao.
-			if (!parou && mapa != null && MoveRules.Occupied(mapa, destino))
+			// ============================ TODA PAREDE DO CAMINHO, NAO SO A DO FIM ============================
+			// O tique anda DOIS TILES de uma vez, e a versao anterior so testava a celula de DESTINO.
+			// Resultado: a parede que ficava no meio do salto era simplesmente atravessada -- o dono
+			// viu exatamente isso, "algumas paredes q ele passa n quebram".
+			//
+			// Agora o passo e caminhado de MEIO TILE em meio tile. Cada parede encontrada e derrubada
+			// (se a forca vence) e o voo continua; a primeira que RESISTE para o corpo ali, no ultimo
+			// ponto livre -- que e a regra que o dono pediu e a mesma do `Ticked` do original.
+			// ================================================================================================
+			if (!parou && mapa != null)
 			{
-				if (pl.ForcaDoVoo >= Empurrao.ResistenciaPadrao && DerrubarCenario(pl.Zone, destino))
+				const float Amostra = ZoneCollision.TileSize / 2f;
+				int passos = Math.Max(1, (int)MathF.Ceiling(passo.Length / Amostra));
+				Vec2 andado = pl.Pos;
+
+				for (int i = 1; i <= passos && !parou; i++)
 				{
-					// caiu: o corpo passa
-				}
-				else
-				{
+					Vec2 p = pl.Pos + passo * (i / (float)passos);
+					if (!MoveRules.Occupied(mapa, p)) { andado = p; continue; }
+
+					if (pl.ForcaDoVoo >= Empurrao.ResistenciaPadrao && DerrubarCenario(pl.Zone, p))
+					{
+						andado = p;   // a parede caiu: o corpo passa por cima do escombro
+						continue;
+					}
+
+					// RESISTIU: o corpo se arrebenta nela e o voo acaba no ultimo ponto livre.
 					Espalhar(pl, pl.TiquesDeVoo);
 					parou = true;
 				}
+				destino = andado;
 			}
 
-			if (!parou) pl.Pos = destino;
+			pl.Pos = destino;
 
+			// A OUTRA BORDA: o pouso. Mesma razao da decolagem -- sem isto o corpo ficava ate 200 ms
+			// torto e sem aceitar comando DEPOIS de ja ter parado.
+			bool pousou = parou || pl.TiquesDeVoo - 1 <= 0;
 			pl.TiquesDeVoo = parou ? 0 : pl.TiquesDeVoo - 1;
 
 			// O CLIENTE PRECISA SABER ONDE ELE ESTA, e com a sequencia carimbada -- senao os pacotes
@@ -130,6 +164,7 @@ public sealed partial class GameServer
 			w.Put(pl.SeqInput);
 			w.PutVec(pl.Pos);
 			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			if (pousou) MandarFicha(pl);   // a posicao final vai ANTES do "acabou"
 		}
 	}
 

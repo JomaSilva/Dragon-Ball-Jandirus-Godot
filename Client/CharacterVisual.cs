@@ -390,7 +390,32 @@ public partial class CharacterVisual : Node2D
 	{
 		Facing.East => 0f,
 		Facing.West => 180f,
-		Facing.North => 90f,
+		Facing.South => 90f,
+		_ => -90f,
+	});
+
+	/// <summary>
+	/// DEITA O CORPO **ACORDADO** na direcao do voo -- e o arremesso.
+	///
+	/// ============================ POR QUE E OUTRA TABELA ============================
+	/// O <see cref="DeitarPor"/> serve ao sprite de NOCAUTE, que ja e um desenho DEITADO: a 0 grau
+	/// a cabeca dele ja aponta pro LESTE, entao girar dali e so escolher pra que lado.
+	///
+	/// O arremesso usa o sprite ACORDADO (pedido do dono -- quem voa ainda esta consciente), e esse
+	/// esta EM PE: a 0 grau a cabeca aponta pro NORTE. Aplicar a tabela do nocaute nele erra por 90
+	/// graus, e o caso mais visivel e justamente o mais comum -- voando pra LESTE o angulo dava 0 e
+	/// o corpo continuava DE PE. Foi o que o dono fotografou: "era pra girar o corpo e botar a
+	/// cabeca nesse caso no lado direito enquanto ele voa".
+	///
+	/// A conta: rotacao positiva gira no sentido horario (o Y cresce pra baixo), e a cabeca em pe e
+	/// o vetor (0,-1). Girar +90 leva (0,-1) pra (1,0) -- leste. Dai a tabela.
+	/// ================================================================================
+	/// </summary>
+	public void VoarPara(Facing rumo) => Girar(rumo switch
+	{
+		Facing.North => 0f,
+		Facing.East => 90f,
+		Facing.South => 180f,
 		_ => -90f,
 	});
 
@@ -407,7 +432,18 @@ public partial class CharacterVisual : Node2D
 	public void GirarPara(Vec2 rumo)
 	{
 		if (rumo.LengthSquared < 1e-6f) { Girar(0f); return; }
-		Girar(Mathf.RadToDeg(MathF.Atan2(rumo.Y, rumo.X)));
+
+		// QUATRO DIRECOES, NAO TRESENTAS E SESSENTA.
+		//
+		// A primeira versao usava o angulo cru do `atan2`, e o resultado foi o que o dono viu: "ao
+		// levar knock back o personagem ta girando". Cada correcao do servidor mexia o rumo alguns
+		// graus e o sprite acompanhava -- um corpo rodopiando no ar em vez de um corpo arremessado.
+		//
+		// O pedido e o mesmo do nocaute: "so virasse pro lado, dando uma rotacao no personagem
+		// virando a cabeca dele pra direcao q ele ta voando". Quantizar no eixo dominante entrega
+		// exatamente isso e ainda mata o tremor: um rumo que oscila 5 graus continua caindo na mesma
+		// direcao, e o sprite fica parado.
+		VoarPara(MoveRules.FacingFrom(rumo, Facing.East));
 	}
 
 	private void Girar(float graus)
@@ -478,7 +514,10 @@ public partial class CharacterVisual : Node2D
 	/// </summary>
 	public Node2D Fotografar()
 	{
-		var copia = new Node2D { Name = "Fantasma" };
+		// A FOTO HERDA A ROTACAO. Sem isto, o vulto de quem esta voando (ou caido) nascia EM PE --
+		// o `Girar` escreve no proprio `CharacterVisual`, que e o PAI das camadas, e a copia so
+		// levava as camadas. Uma miragem em pe ao lado de um corpo deitado entrega o truque.
+		var copia = new Node2D { Name = "Fantasma", Rotation = Rotation };
 		foreach (AnimatedSprite2D s in _camadas)
 		{
 			if (!s.Visible || s.SpriteFrames is not { } f || !f.HasAnimation(s.Animation)) continue;

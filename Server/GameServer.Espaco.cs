@@ -109,16 +109,8 @@ public partial class GameServer
 
 			var w = Protocol.Begin(Protocol.S2C.Snapshot);
 			w.Put((ushort)vizinhos.Count);
-			foreach (ServerPlayer pl in vizinhos)
-				new EntityState
-				{
-					Id = pl.Id, Pos = pl.Pos, Facing = (byte)pl.Facing,
-					Moving = pl.Moving, Pose = pl.Pose(agora),
-					Vida = (byte)Math.Clamp(Math.Round(pl.Ficha.HP), 0, 100),
-					Rabo = pl.TemRaboAgora(),
-					Carregando = pl.AuraDaCarga,   // o VISUAL, nao o estado -- ver GameServer.Carga.cs
-					Sobrecarregado = pl.AuraDeCarga,
-				}.Write(w);
+			// A MESMA FABRICA da zona normal. Esta copia tinha ficado pra tras -- ver `EstadoDe`.
+			foreach (ServerPlayer pl in vizinhos) EstadoDe(pl, agora).Write(w);
 
 			eu.Peer.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
 		}

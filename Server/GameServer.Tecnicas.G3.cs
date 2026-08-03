@@ -631,12 +631,19 @@ public partial class GameServer
 
 		if (destino is { } d)
 		{
+			Vec2 saiuDe = pl.Pos;   // pra miragem: e daqui que o vulto nasce
 			pl.Pos = d;
 			pl.Facing = MoveRules.FacingFrom(alvo.Pos - d, pl.Facing);
 			pl.LastInputMs = NowMs();
 			pl.CorrecaoEsperadaAte = NowMs() + 500;   // + a SEQUENCIA: input montado antes deste instante nao opina sobre onde o corpo esta
 			pl.SeqDoTeleporte = pl.SeqInput;   // os pacotes em voo do cliente sao da posicao velha
 			MandarCorrecaoG3(pl);
+
+			// A ZONA PRECISA VER. Este era o TERCEIRO caminho de deslocamento do servidor (com o dash
+			// e o Zanzoken) e o unico que so avisava o proprio jogador: pra quem estava olhando, o
+			// corpo simplesmente aparecia do outro lado do alvo, sem nada explicando. O `AnunciarZanzo`
+			// leva o ponto de PARTIDA e ja e o canal unico da piscada.
+			AnunciarZanzo(pl, saiuDe);
 		}
 
 		// quatro `doAttack(target,2,...)` em sequencia (yardrat.dm:241-244)

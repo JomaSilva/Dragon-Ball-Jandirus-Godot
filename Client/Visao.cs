@@ -107,7 +107,12 @@ public partial class Visao : Node2D
 	/// vertices vizinhos chegue perto de 180 graus, que e a condicao pro leque de triangulos
 	/// nao se dobrar sobre si mesmo. Custam nada e tiram uma classe inteira de caso-limite.
 	/// </summary>
-	private const int RaiosSoltos = 16;
+	private static int RaiosSoltos => Boot.Config.Grafico switch
+	{
+		Settings.GraficoBaixo => 8,
+		Settings.GraficoMedio => 16,
+		_ => 40,
+	};
 
 
 	/// <summary>Margem alem da tela, em pixels. Cobre a folga de um quadro de camera.</summary>
@@ -641,6 +646,22 @@ public partial class Visao : Node2D
 			longe = MathF.Max(longe, p.DistanceTo(c));
 		longe += 64f;
 
+		// ============================ POR QUE ESTA SOMBRA NAO TEM FILTRO ============================
+		// O dono pediu que a qualidade grafica mudasse o filtro dela ("no godot shadow tem como mudar
+		// o filter"). Ele esta certo sobre o Godot -- `Light2D` tem PCF5 e PCF13 --, mas o filtro e
+		// do SHADOW MAP de uma luz, e isto aqui nao e uma luz: e uma malha de triangulos que nos
+		// desenhamos (ver o cabecalho da classe). Nao ha filtro pra ligar.
+		//
+		// TENTEI SUAVIZAR NA MALHA e o resultado foi pior: um degrade de alfa a partir da borda da
+		// visao cai EM CIMA do muro (a borda da visao, junto de uma parede, e a face dela), e o que
+		// aparecia era um vao claro no fim do tile -- exatamente o que o dono fotografou. A rampa
+		// radial nao serve porque a suavizacao que o olho pede e LATERAL, na silhueta, e nesta
+		// topologia (quads radiais) a silhueta nao e uma aresta: e a descontinuidade entre dois
+		// raios vizinhos.
+		//
+		// Fica o corte seco, que e correto por construcao, e a qualidade grafica segue mexendo no
+		// que ela consegue mexer de verdade: os raios do leque e o PCF das luzes de fogueira.
+		// ===========================================================================================
 		if (_pontos.Length != n * 2)
 		{
 			_pontos = new Vector2[n * 2];

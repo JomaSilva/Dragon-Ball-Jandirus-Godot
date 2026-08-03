@@ -85,11 +85,21 @@ public partial class LocalPlayer : Node2D
 		if (ficha.SpeedStat > 0) SpeedStat = ficha.SpeedStat;
 		if (ficha.SocoMs > 0) _cadencia = ficha.SocoMs / 1000.0;
 		bool caiuAgora = ficha.Imobilizado && !_caido;
+		if (ficha.Empurrado && !_empurrado) _alvoDoVoo = _pos;   // comeca o voo de onde estou
 		_caido = ficha.Imobilizado;
 		// DEITA PRA ONDE ESTAVA OLHANDO. So no instante da queda: girar todo pacote de ficha
 		// deixaria o corpo caido acompanhando a direcao, que nao e o que um desmaio faz.
-		if (caiuAgora) _visual.DeitarPor(_facing);
-		else if (!ficha.Imobilizado && !ficha.Empurrado) _visual.GirarPara(default);
+		// O ANGULO DO CORPO DEITADO VEM DO SERVIDOR, e SO daqui -- 2 bits no Estado. Ter duas
+		// fontes (o `_facing` local e o do servidor) foi o defeito que o dono fotografou nas duas
+		// telas, e depois o corpo "girando bugado" no arremesso: um escrevia o angulo por quadro e o
+		// outro o desfazia.
+		// O NOCAUTE usa o sprite DEITADO; o arremesso usa o ACORDADO. Sao duas tabelas de rotacao
+		// diferentes -- ver `CharacterVisual.VoarPara`.
+		var dir = (Facing)((ficha.Estado >> 6) & 3);
+		_dirDoCorpo = dir;   // a folha do voo tambem sai daqui -- ver _Process
+		if (ficha.Imobilizado) _visual.DeitarPor(dir);
+		else if (ficha.Empurrado) _visual.VoarPara(dir);
+		else _visual.GirarPara(default);
 		_empurrado = ficha.Empurrado;   // o servidor esta dirigindo o corpo: ver _Process
 		_visual.MostrarRabo(ficha.Rabo);
 		// 3% de folga sobre o custo de um segundo de corrida: no fio do Ki, correr e desistir
@@ -109,6 +119,20 @@ public partial class LocalPlayer : Node2D
 
 	/// <summary>Estou sendo ARREMESSADO -- quem move o corpo agora e o servidor.</summary>
 	private bool _empurrado;
+
+	/// <summary>
+	/// A DIRECAO DO CORPO DEITADO/VOANDO, ditada pelo servidor.
+	///
+	/// Nao e o `_facing`. O `_facing` e pra onde eu OLHO, e durante o voo ele fica congelado na
+	/// ultima direcao antes do golpe -- o `_Process` volta antes das linhas que o atualizam. O
+	/// observador, esse, recebe a direcao do ARREMESSO e escolhe a folha por ela. Resultado: quem
+	/// era jogado pro leste olhando pro sul se via como `walk_south` girado e todo mundo o via como
+	/// `walk_east` girado. Mesmo angulo, desenhos diferentes.
+	///
+	/// E o mesmo argumento que ja vale pro angulo: UMA fonte. Ter duas foi o defeito que o dono
+	/// fotografou nas duas telas.
+	/// </summary>
+	private Facing _dirDoCorpo = Facing.South;
 
 	/// <summary>Ainda ha Ki pro servidor conceder a corrida.</summary>
 	private bool _temKiPraCorrer = true;
@@ -201,13 +225,21 @@ public partial class LocalPlayer : Node2D
 		// parou de ser o unico a mover o corpo.
 		if (_empurrado)
 		{
-			_pos += _rumoDoVoo * (float)(delta * VelocidadeDoVoo);
+			// PERSEGUE A POSICAO DO SERVIDOR em vez de simular por conta propria.
+			//
+			// A versao anterior integrava o rumo sozinha e a correcao de cada tique batia de frente
+			// com ela -- o corpo avancava, era puxado, avancava de novo. Na tela isso e o tranco que
+			// o dono viu, e a camera (que e filha do corpo) piscava junto.
+			//
+			// Aqui nao ha simulacao paralela: o cliente so DESLIZA ate o ultimo ponto que o servidor
+			// confirmou. Ele nunca passa dele, entao nao ha o que corrigir de volta.
+			Vec2 falta = _alvoDoVoo - _pos;
+			float passo = (float)(delta * VelocidadeDoVoo);
+			_pos = falta.LengthSquared <= passo * passo ? _alvoDoVoo : _pos + falta.Normalized() * passo;
 			Desenhar();
-			_visual.SetMotion(_facing, false);
-			_visual.GirarPara(_rumoDoVoo);   // o corpo voa DEITADO na direcao do arremesso
-			return;
+			_visual.SetMotion(_dirDoCorpo, false);   // a MESMA folha que os outros veem
+			return;   // QUEM GIRA E O `OnSheet`: o angulo vem do servidor, e so ele.
 		}
-		_visual.GirarPara(default);   // fora do voo, o sprite volta ao prumo
 
 		Vec2 antes = _pos;
 		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat, Mapa, out _, _correndo);
@@ -519,17 +551,15 @@ public partial class LocalPlayer : Node2D
 		// NO MEIO DO VOO a correcao tambem REVELA O RUMO: e a diferenca entre onde o servidor diz
 		// que estou e onde eu estava. Sem isso o cliente nao teria como deslizar sozinho -- o rumo
 		// do arremesso nunca viaja num campo proprio.
-		if (_empurrado)
-		{
-			Vec2 d = pos - _pos;
-			if (d.LengthSquared > 1f) _rumoDoVoo = d.Normalized();
-		}
+		// NO VOO a correcao vira ALVO, nao teleporte: o corpo desliza ate la (ver _Process). Fora
+		// dele continua valendo na hora -- correcao de passo tem que ser imediata.
+		if (_empurrado) { _alvoDoVoo = pos; return; }
 		_pos = pos;
 		Desenhar();
 	}
 
-	/// <summary>Pra onde o corpo esta sendo arremessado. Sai da correcao -- ver OnCorrected.</summary>
-	private Vec2 _rumoDoVoo;
+	/// <summary>Ate onde o servidor ja arremessou o corpo. O cliente desliza ate aqui.</summary>
+	private Vec2 _alvoDoVoo;
 
 	/// <summary>
 	/// Velocidade do voo em px/s. E a mesma do servidor -- dois tiles a cada 0,1 s = 640 px/s --,

@@ -258,6 +258,9 @@ public partial class World : Node2D
 	/// ALGUEM PISCOU. A miragem nasce em `de` -- a posicao de ONDE o corpo saiu, que veio no
 	/// pacote justamente porque quando ele chega o corpo ja esta no destino.
 	/// </summary>
+	/// <summary>O relato do golpe chegou com investida: o `AoPiscar` do mesmo gesto nao toca som.</summary>
+	private bool _investiuAgora;
+
 	private void AoPiscar(int quem, Vec2 de)
 	{
 		Node2D? corpo = Corpo(quem);
@@ -270,7 +273,12 @@ public partial class World : Node2D
 		if (GameClient.Instance?.LocalId == quem && _local != null) _local.DeixarVulto();
 		else Zanzoken.Deixar(_atores, corpo, new Vector2(de.X, de.Y));
 
-		AudioDirector.EfeitoNoLugar(corpo, Trilha.Teleporte, 0.7f);
+		// O SOM DE TELEPORTE SO NO TELEPORTE. Desde que o dash passou a anunciar pelo mesmo pacote,
+		// um shift+espaco de quem tem Afterimage tocava DOIS sons -- o rasgo da investida (por
+		// `h.Investiu`) e este. Sao gestos diferentes: investir e correr pra cima do outro, piscar e
+		// sumir de um lugar e aparecer noutro.
+		if (!_investiuAgora) AudioDirector.EfeitoNoLugar(corpo, Trilha.Teleporte, 0.7f);
+		_investiuAgora = false;
 	}
 
 	private bool _auraDaCarga, _sobrecarga;
@@ -335,6 +343,7 @@ public partial class World : Node2D
 			_veu.Colisao = null;
 			_veu.Camadas = [];
 			if (_local != null) _local.Mapa = null;
+			_zonaDoAtual = zona;   // ver o comentario no ramo pre-feito
 			DesenharPlanetas();
 			AudioDirector.Instance?.Ambiente("");
 			GD.Print("[world] zona: ESPACO (gerado por chunk)");
@@ -353,6 +362,7 @@ public partial class World : Node2D
 			// zona derrube o planeta gerado junto, pelo caminho que ja existe. Pendurar num no
 			// paralelo deixaria o mundo antigo desenhado por baixo do novo.
 			_zonaAtual = gerado;
+			_zonaDoAtual = zona;   // a chave do cache: ver o comentario no ramo pre-feito
 			AddChild(gerado);
 			MoveChild(gerado, 0);   // atras dos atores, como a cena pre-feita
 			gerado.Entrar(zona.Seed);   // e a seed do SERVIDOR que decide o mundo
@@ -363,6 +373,8 @@ public partial class World : Node2D
 			_veu.Camadas = CamadasDoCenario(gerado);
 			if (_local != null) _local.Mapa = _colisao;
 			DesenharObras();
+		ReaplicarEstrago();
+			ReaplicarEstrago();
 			AudioDirector.Instance?.Ambiente("");
 			GD.Print($"[world] zona GERADA: {gerado.Ficha()}");
 			Chat.Sistema(gerado.Ficha());
@@ -375,6 +387,7 @@ public partial class World : Node2D
 			GD.PushWarning($"[world] sem cena pra zona '{zona}' -- usando o chao provisorio");
 			_colisao = null;
 			if (_local != null) _local.Mapa = null;
+			_zonaDoAtual = zona;   // a quarta saida: ver o comentario no ramo pre-feito
 			return;
 		}
 
@@ -600,7 +613,29 @@ public partial class World : Node2D
 
 	private (int Fonte, Vector2I Coord)? _chaoDestruido;
 
-	private void AoCairCenario(int cx, int cy)
+	private void AoCairCenario(int cx, int cy) => AplicarEstrago(cx, cy, poeira: true);
+
+	/// <summary>
+	/// REPOE O ESTRAGO que ja estava feito quando esta zona carregou.
+	///
+	/// ============================ POR QUE UM METODO E NAO DUAS LINHAS ============================
+	/// A primeira versao disto era um `foreach` solto colado depois de `DesenharObras()` -- e caiu no
+	/// ramo ERRADO. `CarregarZona` tem tres saidas (espaco, planeta gerado, planeta pre-feito) e a
+	/// chamada foi parar na do gerado, que termina em `return` -- o planeta PRE-FEITO, que e onde o
+	/// dono estava jogando, nunca reaplicava nada. O desync de mapa que eu disse ter consertado
+	/// continuou inteiro.
+	///
+	/// Virando metodo, cada ramo chama uma linha e da pra ver de longe qual deles esqueceu.
+	/// ==============================================================================================
+	/// </summary>
+	private void ReaplicarEstrago()
+	{
+		if (GameClient.Instance is not { } cli) return;
+		foreach ((int cx, int cy) in cli.CenarioCaido) AplicarEstrago(cx, cy, poeira: false);
+	}
+
+	/// <param name="poeira">Falso ao REAPLICAR o que ja tinha caido: o estrago e velho, o efeito nao.</param>
+	private void AplicarEstrago(int cx, int cy, bool poeira)
 	{
 		_colisao?.Abrir(cx, cy);
 		_veu.Mapa?.Abrir(cx, cy);
@@ -622,8 +657,14 @@ public partial class World : Node2D
 		if (_veu.Camadas.Length > 0 && IsInstanceValid(_veu.Camadas[0]) && ChaoDestruido() is { } g)
 			_veu.Camadas[0].SetCell(celula, g.Fonte, g.Coord);
 
+		// POEIRA E CASCALHO. O `createDust` do original -- sem ele o tile simplesmente TROCA, e uma
+		// parede que some sem nada no lugar nao le como "caiu", le como falha de desenho.
 		const int t = ZoneCollision.TileSize;
-		CombatFx.Impacto(_atores, new Vector2(cx * t + t / 2f, cy * t + t / 2f), 1.2f, Colors.White);
+		var centro = new Vector2(cx * t + t / 2f, cy * t + t / 2f);
+		Vector2 rumo = PosicaoLocal is { } eu ? (centro - eu).Normalized() : Vector2.Zero;
+		if (!poeira) return;
+		PoeiraDeEstrago.Soltar(_atores, centro, rumo);
+		CombatFx.Impacto(_atores, centro, 1.2f, new Color(0.75f, 0.65f, 0.5f));
 	}
 
 	/// <summary>
@@ -714,7 +755,7 @@ public partial class World : Node2D
 
 			double desde = _ultimoPacoteMs.TryGetValue(e.Id, out ulong antes) ? (agora - antes) / 1000.0 : Protocol.TickSeconds;
 			_ultimoPacoteMs[e.Id] = agora;
-			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Pose, desde, e.Rabo);
+			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, desde, e.Rabo);
 			if (r.GetNodeOrNull<HealthBar>("Vida") is { } barra) barra.Vida = e.Vida / 100f;
 
 			// A AURA DE POWER-UP DO OUTRO. Vem no snapshot justamente pra isto (ver
@@ -806,13 +847,20 @@ public partial class World : Node2D
 		// alvo, o `Aproximar` desiste na primeira linha -- mas o cliente ja tinha tocado o som.
 		// Quem sabe se houve deslocamento e quem o executa.
 		if (h.Investiu && quemBate != null)
-			AudioDirector.EfeitoNoLugar(quemBate, Trilha.Dash, 0.7f);
-
-		if (h.Zanzo && quemBate != null)
 		{
-			if (GameClient.Instance?.LocalId == h.Atacante) _local?.DeixarVulto();
-			else Zanzoken.Deixar(_atores, quemBate);
+			AudioDirector.EfeitoNoLugar(quemBate, Trilha.Dash, 0.7f);
+			_investiuAgora = true;   // o `AoPiscar` deste mesmo gesto nao repete som
 		}
+
+		// A MIRAGEM DO DASH NAO NASCE MAIS AQUI.
+		//
+		// Ela nascia, e pro corpo REMOTO nascia no lugar errado: este relato nao carrega posicao, e
+		// a chamada caia em `corpo.GlobalPosition` -- o vulto aparecia onde o corpo JA tinha
+		// chegado, em vez de onde ele saiu. Agora o servidor anuncia a piscada pelo `S2C.Zanzo`,
+		// que leva o ponto de PARTIDA, e o `AoPiscar` desenha os dois casos pelo mesmo caminho.
+		//
+		// (O corpo LOCAL continua usando a posicao que ELE guardou no instante do gesto -- ver
+		// `LocalPlayer.DeixarVulto`. O `AoPiscar` ja trata isso.)
 
 		var desfecho = (Jandirus.Core.Combat.Desfecho)h.Desfecho;
 		Vector2 meio = quemBate != null && quemLeva != null
@@ -869,7 +917,7 @@ public partial class World : Node2D
 				// QUEM ESQUIVA COM AFTERIMAGE deixa o vulto SIMPLES no lugar de onde saiu. E o
 				// `deflection+=20` do buff Afterimage do original (`Buff Effects.dm:29-46`), que
 				// larga uma imagem no turf a cada tique enquanto dura -- aqui, no instante que
-				// importa. O servidor ja marca quem tem a skill no relato (`h.Zanzo`).
+				// importa. O servidor ja marca quem tem a skill no relato (`h.ZanzoEsquiva`).
 				if (h.ZanzoEsquiva && quemLeva != null)
 					Zanzoken.Deixar(_atores, quemLeva, null, EstiloDeVulto.Simples);
 				// o unico desfecho que era MUDO na tela: agora deixa o borrao do Zanzoken

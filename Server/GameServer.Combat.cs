@@ -185,6 +185,17 @@ public partial class GameServer
 		// acompanhar --, entao sem deslocamento nao ha nada que a vista tenha perdido.
 		bool zanzo = investiu && a.Livro?.Sabe(PathDoZanzoken) == true;
 
+		// A MIRAGEM VIAJA COM A ORIGEM, num pacote so pros dois casos.
+		//
+		// Antes o vulto do dash saia do bit `HitEvent.Zanzo`, que NAO carrega posicao -- e o cliente
+		// que assistia caia em `corpo.GlobalPosition`, ou seja, desenhava a miragem onde o corpo JA
+		// tinha chegado. Quem executava via no lugar certo (ele guarda `_deOndeSai`) e quem assistia
+		// via no lugar errado: era esse o "after image dessincronizado".
+		//
+		// O `S2C.Zanzo` do teleporte ja resolve isso -- ele leva o ponto de PARTIDA. Usar o mesmo
+		// canal aqui deixa UM caminho pra miragem em vez de dois que precisam concordar.
+		if (zanzo) AnunciarZanzo(a, a.SaiuDe);
+
 		double tipo = Protocol.PesoDoGolpe(golpe);
 		double espera = CombatMath.Cadencia(a.Ficha, tipo);
 		ca.Recarga = espera;
@@ -331,7 +342,34 @@ public partial class GameServer
 		// pros dois golpes -- o que muda entre leve e pesado e o ALCANCE (ate onde a investida busca
 		// alguem), nao o quao curta ela pode ser.
 		// =============================================================================================
-		if (dist - DistanciaDeParada < DeslocamentoMinimo) return false;
+		if (dist - DistanciaDeParada < DeslocamentoMinimo)
+		{
+			// PERTO DEMAIS PRO ARRANQUE, LONGE DEMAIS PRO SOCO -- o pior lugar do combate.
+			//
+			// O dono: "as vezes vc n da tp pq ta perto mas n o suficiente pra bater ai vc soca o nada
+			// e e anti climatico". Ele esta certo, e a culpa era do piso que eu mesmo pus: sem
+			// investida o corpo ficava parado a 40 px e o soco (que alcanca 40) passava raspando.
+			//
+			// Entao o corpo ANDA o resto. Nao e investida -- nao ha rasgo, som nem miragem, e a
+			// funcao devolve `false` --, e so o passo que faltava pra o punho chegar. A parede
+			// continua mandando: o mesmo teste de caminho de sempre.
+			if (dist > CombatKnobs.Alcance && mapaDoAtaque(a) is { } m
+				&& !MoveRules.PathOccupied(m, a.Pos, a.Pos + d.Normalized() * (dist - DistanciaDeParada)))
+			{
+				a.Pos += d.Normalized() * (dist - DistanciaDeParada);
+				a.Facing = MoveRules.FacingFrom(d, a.Facing);
+				a.LastInputMs = agora;
+				a.CorrecaoEsperadaAte = agora + 500;
+				a.SeqDoTeleporte = a.SeqInput;
+				a.OrcamentoPx = 0;
+
+				var passo = Protocol.Begin(Protocol.S2C.Correction);
+				passo.Put(a.SeqInput);
+				passo.PutVec(a.Pos);
+				a.Peer?.Send(passo, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			}
+			return false;
+		}
 
 		Vec2 destino = a.Pos + d.Normalized() * (dist - DistanciaDeParada);
 
@@ -341,6 +379,7 @@ public partial class GameServer
 		if (mapa != null && MoveRules.PathOccupied(mapa, a.Pos, destino)) return false;
 
 		a.Ficha.Ki -= custo;
+		a.SaiuDe = a.Pos;   // pra miragem: e daqui que o vulto nasce, e nao de onde ele chegou
 		a.Pos = destino;
 		a.Facing = MoveRules.FacingFrom(d, a.Facing);   // chega OLHANDO pro alvo
 		a.DashLivreEm = agora + RecargaDashMs;
@@ -366,6 +405,9 @@ public partial class GameServer
 	/// comprimento -- e por isso que o arranque pega quem esta "mais ou menos" na frente e
 	/// ignora quem esta ao lado.
 	/// </summary>
+	/// <summary>O mapa da zona de quem ataca. Atalho -- o `Aproximar` consulta duas vezes.</summary>
+	private ZoneCollision? mapaDoAtaque(ServerPlayer a) => _catalogo?.Get(a.Zone)?.Mapa;
+
 	private ServerPlayer? AlvoParaArranque(ServerPlayer a, float alcance)
 	{
 		// MARCADO PRIMEIRO. So precisa estar no ALCANCE -- o cone nao entra: quem marcou ja
@@ -459,7 +501,7 @@ public partial class GameServer
 		var e = new Protocol.HitEvent
 		{
 			Atacante = a.Id, Alvo = 0, Desfecho = (byte)Desfecho.Errou,
-			Nivel = 1, Membro = "", Zanzo = zanzo, Investiu = investiu,
+			Nivel = 1, Membro = "", Investiu = investiu,
 		};
 		var w = Protocol.Begin(Protocol.S2C.Hit);
 		e.Write(w);
@@ -486,7 +528,7 @@ public partial class GameServer
 			Nivel = (byte)Math.Clamp(nivel, 1, 3),
 			TemDano = true, Dano = (float)r.Dano, Membro = r.Membro,
 			Quebrou = r.Quebrou, Decepou = r.Decepou, Nocauteou = r.Nocauteou, Morreu = r.Morreu,
-			Rabo = r.RaboArrancado, Zanzo = zanzo, Investiu = investiu,
+			Rabo = r.RaboArrancado, Investiu = investiu,
 			// a esquiva e do OUTRO: quem se desviou e quem deixa o vulto
 			ZanzoEsquiva = r.Desfecho == Desfecho.Esquivou && d.Livro?.Sabe(PathDoZanzoken) == true,
 		};

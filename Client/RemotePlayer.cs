@@ -28,7 +28,7 @@ public partial class RemotePlayer : Node2D
 		_from = _to = Position;
 	}
 
-	public void Receive(Vec2 pos, Facing facing, bool moving, Jandirus.Net.Protocol.Pose pose,
+	public void Receive(Vec2 pos, Facing facing, bool moving, bool deitado, Jandirus.Net.Protocol.Pose pose,
 						double sinceLast, bool rabo = false)
 	{
 		_visual.MostrarRabo(rabo);
@@ -63,10 +63,18 @@ public partial class RemotePlayer : Node2D
 			_visual.RestartState("attack", Jandirus.Net.Protocol.AttackPoseMs / 1000.0);
 		else _visual.SetPose(pose);
 
-		// O CORPO CAI PRO LADO CERTO. O `.dmi` so tem UM desenho de nocaute (deitado pra direita),
-		// entao quem estava olhando pra outro lado caia errado -- e o dono viu. Girar resolve, e e
-		// o que o proprio BYOND fazia com `transform`.
-		if (pose == Jandirus.Net.Protocol.Pose.Nocauteado) _visual.DeitarPor(facing);
+		// O CORPO CAI (E VOA) PRO LADO CERTO, e AGORA os outros clientes tambem sabem disso.
+		//
+		// Antes o teste era `pose == Nocauteado`, e ele nao cobria o arremesso -- durante o voo a
+		// pose e a normal, entao o corpo aparecia DE PE pra quem estava assistindo. E o `facing` do
+		// pacote era a direcao do OLHAR, nao a da queda. Os dois furos viravam a mesma queixa.
+		if (deitado)
+		{
+			// A POSE separa os dois: nocauteado usa o desenho deitado, voando usa o acordado -- e
+			// cada um tem a sua tabela de rotacao (ver `CharacterVisual.VoarPara`).
+			if (pose == Jandirus.Net.Protocol.Pose.Nocauteado) _visual.DeitarPor(facing);
+			else _visual.VoarPara(facing);
+		}
 		else _visual.GirarPara(default);
 
 		_pose = pose;

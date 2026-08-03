@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.World;
 using Jandirus.Net;
 using LiteNetLib;
@@ -110,6 +110,16 @@ public sealed partial class GameServer
 	/// </summary>
 	private void AnunciarZanzo(ServerPlayer pl, Vec2 de)
 	{
+		// QUEM ESTA INVISIVEL NAO DEIXA VULTO.
+		//
+		// A miragem e uma FOTO do corpo, opaca, parada num ponto: um jogador escondido que piscasse
+		// (ou investisse) entregava a propria posicao com ela. O sigilo do corpo nao pode depender
+		// de o jogador lembrar de nao usar a tecnica.
+		//
+		// O corte e aqui e nao no cliente: mandar o pacote e depois pedir pra ele nao desenhar seria
+		// entregar a posicao pra qualquer cliente modificado, que e a mesma regra do BP escondido.
+		if (EstaOculto(pl.Id)) return;
+
 		var w = Protocol.Begin(Protocol.S2C.Zanzo);
 		w.Put(pl.Id);
 		w.PutVec(de);

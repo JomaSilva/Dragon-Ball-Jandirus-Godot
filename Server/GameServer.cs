@@ -110,6 +110,25 @@ public sealed class ServerPlayer
 	public bool Knockback = true;
 
 	/// <summary>O VOO em curso: quantos tiques faltam, pra onde, e com que forca. Ver GameServer.Empurrao.cs.</summary>
+	/// <summary>A direcao pra onde ele estava olhando quando caiu. Congelada -- ver Sheet().</summary>
+	public Facing FacingDaQueda;
+
+	/// <summary>
+	/// PRA ONDE O CORPO ESTA DEITADO -- e o unico angulo que o cliente desenha.
+	///
+	/// Voando, e a direcao do ARREMESSO; caido, e a direcao da QUEDA. Um campo so porque e uma
+	/// pergunta so ("a cabeca aponta pra onde?"), e porque ter duas fontes pro mesmo angulo foi
+	/// exatamente o defeito anterior: o corpo tremia entre o valor de um e o do outro.
+	/// </summary>
+	/// <summary>O corpo esta deitado? Caido ou voando -- e a mesma pergunta pro desenho.</summary>
+	public bool Deitado => Ficha.KO || Ficha.dead || TiquesDeVoo > 0;
+
+	public Facing DirecaoDeitado =>
+		TiquesDeVoo > 0 ? MoveRules.FacingFrom(RumoDoVoo, FacingDaQueda) : FacingDaQueda;
+
+	/// <summary>De onde o corpo SAIU na ultima investida. E onde a miragem nasce -- ver Aproximar.</summary>
+	public Vec2 SaiuDe;
+
 	public int TiquesDeVoo;
 	public Vec2 RumoDoVoo;
 	public double ForcaDoVoo;
@@ -266,7 +285,18 @@ public sealed class ServerPlayer
 		Estado = (byte)((Ficha.KO ? 1 : 0) | (Ficha.dead ? 2 : 0)
 						| (Combate?.Bloqueando == true ? 4 : 0) | (Combate?.Letal == true ? 8 : 0)
 						| (TemRaboAgora() ? 16 : 0)
-					| (TiquesDeVoo > 0 ? 32 : 0)),
+					| (TiquesDeVoo > 0 ? 32 : 0)
+					// A DIRECAO DA QUEDA, em 2 bits (os dois ultimos que sobravam no byte).
+					//
+					// Ela precisa vir do SERVIDOR ate pro proprio dono. O corpo caido e desenhado pelo
+					// cliente com a direcao que ELE tinha, e o servidor com a que CHEGOU pelo ultimo
+					// pacote -- e as duas divergem justamente no instante do nocaute, que e quando o
+					// angulo e escolhido. O dono fotografou as duas telas: o mesmo corpo caido pra
+					// lados diferentes.
+					//
+					// Com isto ha UMA fonte: o servidor congela a direcao quando o nocaute acontece e
+					// todo mundo (inclusive quem caiu) desenha por ela.
+					| ((byte)DirecaoDeitado << 6)),
 	};
 }
 
@@ -953,7 +983,18 @@ public partial class GameServer : Node
 		AccountStore.ParaJogador(c, pl);
 		pl.Conta = acc.Conta;
 		pl.Slot = slot;
-		pl.Zone = ZoneKey.Premade(c.Zona);
+		// A ZONA VOLTA INTEIRA: tipo + nome + seed. Ver `CharacterSave.ZonaTipo`.
+		//
+		// SAVE ANTIGO (sem tipo) cai no pre-feito, que era o comportamento de antes -- e o certo
+		// pra ele, porque quando o save foi escrito so existia esse caso no disco.
+		pl.Zone = c == null ? SpawnZone : new ZoneKey(c.ZonaTipo, c.Zona, c.ZonaSeed);
+
+		// ...MAS UMA ZONA QUE NAO EXISTE MAIS DEVOLVE PRO SPAWN. Um planeta gerado some quando o
+		// universo e regerado com outra seed, e uma zona pre-feita some se o mapa for reconvertido
+		// sem ela. Nascer num lugar que nao carrega e ficar presa no vazio.
+		if (pl.Zone.Kind == ZoneKey.KindPremade && _catalogo?.Get(pl.Zone) == null
+			&& !Espaco.EhEspaco(pl.Zone))
+			pl.Zone = SpawnZone;
 		if (pl.Pos.X == 0 && pl.Pos.Y == 0) pl.Pos = SpawnPos;
 
 		// QUEM HOSPEDA E ADMIN. Ver `GameServer.EhHost`: so vale quando o servidor subiu pelo botao
@@ -1180,6 +1221,11 @@ public partial class GameServer : Node
 		// `TickDoEmpurrao` e reenviada por correcao a cada tique -- o que se ignora e a OPINIAO do
 		// cliente sobre onde ele esta, que durante o arremesso nao vale nada mesmo.
 		// =================================================================================
+		// A DIRECAO DA QUEDA E A ULTIMA DE PE. So chega aqui quem esta em pe -- o guarda de
+		// nocaute la em cima ja devolveu quem caiu --, entao guardar a cada passo deixa
+		// congelado, no instante do nocaute, exatamente pra onde ele encarava.
+		pl.FacingDaQueda = facing;
+
 		if (pl.TiquesDeVoo > 0)
 		{
 			pl.Facing = facing;
@@ -1315,17 +1361,7 @@ public partial class GameServer : Node
 
 			var w = Protocol.Begin(Protocol.S2C.Snapshot);
 			w.Put((ushort)zona.Count);
-			foreach (ServerPlayer pl in zona)
-				new EntityState
-				{
-					Id = pl.Id, Pos = pl.Pos, Facing = (byte)pl.Facing,
-					Moving = pl.Moving, Pose = pl.Pose(agora),
-					Vida = (byte)Math.Clamp(Math.Round(pl.Ficha.HP), 0, 100),
-					Rabo = pl.TemRaboAgora(),
-					Oculto = EstaOculto(pl.Id),
-					Carregando = pl.AuraDaCarga,   // o VISUAL, nao o estado -- ver GameServer.Carga.cs
-					Sobrecarregado = pl.AuraDeCarga,
-				}.Write(w);
+			foreach (ServerPlayer pl in zona) EstadoDe(pl, agora).Write(w);
 
 			// mesmo buffer pra todos daquela zona: quem esta noutro planeta nao recebe nada
 			foreach (ServerPlayer pl in zona)
@@ -1362,17 +1398,35 @@ public partial class GameServer : Node
 				&& pl.EnvHp == pl.Ficha.HP && pl.EnvAct == pl.Ficha.Eactspeed
 				&& pl.EnvVigor == pl.Ficha.stamina && pl.EnvEstado == estado) continue;
 
-			pl.EnvBP = pl.Ficha.expressedBP;
-			pl.EnvKi = pl.Ficha.Ki;
-			pl.EnvHp = pl.Ficha.HP;
-			pl.EnvAct = pl.Ficha.Eactspeed;
-			pl.EnvVigor = pl.Ficha.stamina;
-			pl.EnvEstado = estado;
-
-			var w = Protocol.Begin(Protocol.S2C.Stats);
-			FichaVisivel(pl).Write(w);
-			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			MandarFicha(pl);
 		}
+	}
+
+	/// <summary>
+	/// MANDA A FICHA e sincroniza o cache anti-repeticao. Uma casa so.
+	///
+	/// O `TickFichas` roda a 5 Hz, e isso basta pra vida e Ki -- mas NAO pra estado que o cliente
+	/// usa pra decidir como se mover. O arremesso comeca e acaba no tique CHEIO (30 Hz), entao
+	/// esperar o proximo tique de ficha deixava o corpo ate 200 ms sem saber que estava voando: em
+	/// pe e teleportando. Quem precisa avisar na hora chama isto direto (ver GameServer.Empurrao).
+	///
+	/// O CACHE E ATUALIZADO AQUI, e nao no chamador: sem isso o `TickFichas` seguinte veria "mudou"
+	/// e reenviaria a mesma ficha de graca, no canal confiavel.
+	/// </summary>
+	private void MandarFicha(ServerPlayer pl)
+	{
+		if (pl.Peer is not { } peer) return;
+
+		pl.EnvBP = pl.Ficha.expressedBP;
+		pl.EnvKi = pl.Ficha.Ki;
+		pl.EnvHp = pl.Ficha.HP;
+		pl.EnvAct = pl.Ficha.Eactspeed;
+		pl.EnvVigor = pl.Ficha.stamina;
+		pl.EnvEstado = pl.Sheet().Estado;
+
+		var w = Protocol.Begin(Protocol.S2C.Stats);
+		FichaVisivel(pl).Write(w);
+		peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
 	/// <summary>
@@ -1421,6 +1475,33 @@ public partial class GameServer : Node
 		pl.Estudando = false;   // ninguem estuda de outro planeta
 		AplicarGravidade(pl);   // o chao mudou: o peso dele tambem
 	}
+
+	/// <summary>
+	/// O ESTADO DE UM CORPO NO FIO -- fonte UNICA.
+	///
+	/// Existia em DUAS copias (a zona normal e o espaco), e a do espaco ficou pra tras: nasceu sem
+	/// `Oculto` e depois sem `Deitado`/direcao do corpo. No espaco, entao, ninguem via o outro cair
+	/// pro lado certo nem via quem estava sendo arremessado deitar -- o mesmo "nao sincroniza", vivo
+	/// numa zona so.
+	///
+	/// Duplicar isto e uma armadilha armada: o proximo campo novo tambem so ia entrar num dos dois.
+	/// Com uma fabrica, campo novo entra AQUI e chega nas duas.
+	/// </summary>
+	private EntityState EstadoDe(ServerPlayer pl, long agora) => new()
+	{
+		Id = pl.Id,
+		Pos = pl.Pos,
+		// DE PE, e pra onde olha; DEITADO, e pra onde a cabeca aponta. Mesmo campo.
+		Facing = (byte)(pl.Deitado ? pl.DirecaoDeitado : pl.Facing),
+		Moving = pl.Moving,
+		Pose = pl.Pose(agora),
+		Vida = (byte)Math.Clamp(Math.Round(pl.Ficha.HP), 0, 100),
+		Rabo = pl.TemRaboAgora(),
+		Oculto = EstaOculto(pl.Id),
+		Deitado = pl.Deitado,
+		Carregando = pl.AuraDaCarga,   // o VISUAL, nao o estado -- ver GameServer.Carga.cs
+		Sobrecarregado = pl.AuraDeCarga,
+	};
 
 	private List<ServerPlayer> ZoneList(ulong hash)
 	{

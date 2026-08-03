@@ -346,17 +346,9 @@ public static class Protocol
         public string Membro;
         public bool Quebrou, Decepou, Nocauteou, Morreu, Rabo;
 
-        /// <summary>
-        /// O ATACANTE DEIXOU UMA IMAGEM REMANESCENTE ao investir (o Zanzoken).
-        ///
-        /// QUEM DECIDE E O SERVIDOR porque so ele sabe quais skills o OUTRO tem -- e o cliente nao
-        /// deve saber: a lista de skills alheia e ficha, do mesmo naipe que o BP. Aqui so trafega
-        /// o resultado ("houve vulto"), que e o que os olhos veriam de qualquer forma.
-        ///
-        /// CABE NUM BIT QUE JA SOBRAVA no byte de desfechos (o 32) -- ver o `Write` abaixo. Ainda
-        /// ficam dois livres.
-        /// </summary>
-        public bool Zanzo;
+        // O BIT 32 DESTE BYTE ESTA LIVRE. Ele carregava um `Zanzo` ("houve vulto"), e o vulto
+        // passou a viajar pelo `S2C.Zanzo`, que leva tambem a POSICAO de onde o corpo saiu --
+        // sem ela quem assistia desenhava a miragem no lugar errado.
 
     /// <summary>
     /// HOUVE INVESTIDA -- o corpo REALMENTE fechou a distancia.
@@ -387,7 +379,7 @@ public static class Protocol
             w.Put(TemDano);
             if (TemDano) { w.Put(Dano); w.Put(Membro ?? ""); }
             w.Put((byte)((Quebrou ? 1 : 0) | (Decepou ? 2 : 0) | (Nocauteou ? 4 : 0)
-                       | (Morreu ? 8 : 0) | (Rabo ? 16 : 0) | (Zanzo ? 32 : 0) | (Investiu ? 64 : 0) | (ZanzoEsquiva ? 128 : 0)));
+                       | (Morreu ? 8 : 0) | (Rabo ? 16 : 0) | (Investiu ? 64 : 0) | (ZanzoEsquiva ? 128 : 0)));
         }
 
         public static HitEvent Read(NetDataReader r)
@@ -401,7 +393,6 @@ public static class Protocol
             byte f = r.GetByte();
             h.Quebrou = (f & 1) != 0; h.Decepou = (f & 2) != 0;
             h.Nocauteou = (f & 4) != 0; h.Morreu = (f & 8) != 0; h.Rabo = (f & 16) != 0;
-            h.Zanzo = (f & 32) != 0;
             h.Investiu = (f & 64) != 0;
             h.ZanzoEsquiva = (f & 128) != 0;
             return h;
@@ -665,8 +656,25 @@ public struct EntityState
     /// <summary>Passou dos 100% de Ki: a aura FECHA, mais forte que a de simples carga.</summary>
     public bool Sobrecarregado;
 
+    /// <summary>Caido ou voando: o corpo desenha DEITADO, e o `Facing` vira a direcao da cabeca.</summary>
+    public bool Deitado;
+
     private const byte BitCarregando = 0x01;
     private const byte BitSobrecarregado = 0x02;
+
+    /// <summary>
+    /// ESTE CORPO ESTA DEITADO -- nocauteado ou sendo arremessado.
+    ///
+    /// PRECISOU VIAJAR NO SNAPSHOT porque o angulo do corpo caido so existia na FICHA, e ficha e
+    /// pessoal: quem via o outro cair nunca soube pra que lado ele tinha caido, e quem estava
+    /// voando aparecia DE PE pros outros. O dono pegou os dois -- "n ta sincronizando com os
+    /// outros clientes".
+    ///
+    /// A DIRECAO REUSA O CAMPO DE `Facing` que ja esta no pacote: deitado, ele deixa de significar
+    /// "pra onde olha" e passa a significar "pra onde a cabeca aponta". Com o corpo em pe as duas
+    /// perguntas tem a mesma resposta, entao nao ha byte novo -- so um bit dos seis que sobravam.
+    /// </summary>
+    private const byte BitDeitado = 0x04;
 
     public void Write(NetDataWriter w)
     {
@@ -676,7 +684,8 @@ public struct EntityState
         w.Put((byte)((Facing & 0x03) | ((byte)Pose & 0x07) << 2
                    | (Rabo ? 0x20 : 0x00) | (Oculto ? 0x40 : 0x00)
                    | (Moving ? 0x80 : 0x00)));
-        w.Put((byte)((Carregando ? BitCarregando : 0) | (Sobrecarregado ? BitSobrecarregado : 0)));
+        w.Put((byte)((Carregando ? BitCarregando : 0) | (Sobrecarregado ? BitSobrecarregado : 0)
+                   | (Deitado ? BitDeitado : 0)));
         w.Put(Vida);
     }
 
@@ -692,6 +701,7 @@ public struct EntityState
         byte flags2 = r.GetByte();
         e.Carregando = (flags2 & BitCarregando) != 0;
         e.Sobrecarregado = (flags2 & BitSobrecarregado) != 0;
+        e.Deitado = (flags2 & BitDeitado) != 0;
         e.Vida = r.GetByte();
         return e;
     }

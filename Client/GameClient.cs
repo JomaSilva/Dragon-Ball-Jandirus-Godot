@@ -306,6 +306,26 @@ public partial class GameClient : Node
 	/// <summary>Uma celula do cenario caiu (knockback contra parede): virou chao.</summary>
 	public event Action<int, int>? CenarioCaiu;
 
+	/// <summary>
+	/// TUDO QUE JA CAIU nesta zona, guardado.
+	///
+	/// ============================ POR QUE PRECISA SER GUARDADO ============================
+	/// O servidor manda a lista do estrago (`MandarCenario`) no MESMO instante em que aceita o
+	/// jogador -- e nessa hora o `World` ainda nao existe, entao ninguem esta ouvindo o evento. O
+	/// resultado e um mapa DIFERENTE em cada tela: quem estava presente viu a parede cair, quem
+	/// chegou depois continua vendo a parede de pe. E como a parede tambem e colisao, os dois
+	/// passam a discordar sobre onde da pra andar -- que e o desync de posicao que o dono
+	/// fotografou.
+	///
+	/// E EXATAMENTE O MESMO DEFEITO que as construcoes tinham (`DesenharObras` so rodava no
+	/// evento). A cura e a mesma: guardar aqui e reaplicar quando a zona carrega.
+	/// =====================================================================================
+	/// </summary>
+	public readonly List<(int X, int Y)> CenarioCaido = [];
+
+	/// <summary>Zera o estrago guardado. Devolve `true` pra caber no `when` do `switch`.</summary>
+	private bool LimparCenario() { CenarioCaido.Clear(); return true; }
+
 	/// <summary>O canal unico de tecnologia. Ver `GameServer.Tech.cs`.</summary>
 	/// <summary>
 	/// O CANAL DOS VERBS: comando + argumento. Mesmo formato do <see cref="SendTech"/>, e pelo
@@ -590,8 +610,12 @@ public partial class GameClient : Node
 			// precisa saber SE foi a lista completa (pra fechar tudo antes de aplicar).
 			// UMA CELULA DO CENARIO CAIU. O corpo arremessado derrubou a parede.
 			case Protocol.S2C.Cenario:
-				CenarioCaiu?.Invoke(reader.GetUShort(), reader.GetUShort());
+			{
+				int dcx = reader.GetUShort(), dcy = reader.GetUShort();
+				CenarioCaido.Add((dcx, dcy));
+				CenarioCaiu?.Invoke(dcx, dcy);
 				break;
+			}
 
 			case Protocol.S2C.Porta:
 			{
@@ -689,7 +713,9 @@ public partial class GameClient : Node
 				PeerLeft?.Invoke(reader.GetInt());
 				break;
 
-			case Protocol.S2C.ZoneChanged:
+			// TROCOU DE PLANETA: o estrago do anterior nao vale aqui. O servidor manda a lista da
+			// zona nova logo em seguida (`MandarCenario`).
+			case Protocol.S2C.ZoneChanged when LimparCenario():
 			{
 				Zone = reader.GetZone();
 				Vec2 spawn = reader.GetVec();
