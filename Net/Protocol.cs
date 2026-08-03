@@ -42,6 +42,13 @@ public static class Protocol
         Aim = 9,           // zona do corpo que estou mirando
         Lethal = 10,       // o `murderToggle`: lutar pra valer ou nao
         Chat = 11,         // falar: canal + texto. Quem decide quem ouve e o servidor
+        Alvo = 12,         // "e nele que eu estou mirando" (0 = solta o alvo)
+        Aprender = 13,     // "quero comprar esta skill" (typepath)
+        Transformar = 14,  // subir (1) ou descer (0) a escada de transformacao
+        Habilidade = 15,   // usar uma habilidade ativa, por id ("regenerar", ...)
+        Cargo = 16,        // "" = me manda a lista de cargos; senao = reivindico este
+        Tech = 17,         // tecnologia: comando + argumento ("construir", "Research_Station")
+        Estilo = 18,       // trocar de estilo de luta ("" ou "-" = soltar a postura)
     }
 
     /// <summary>
@@ -126,6 +133,95 @@ public static class Protocol
         Hit = 11,          // um golpe foi resolvido: quem, em quem, e no que deu
         Corpo = 12,        // o estado de CADA membro do meu personagem (so quando muda)
         Chat = 13,         // alguem falou e eu estou no alcance: canal + quem + o que
+        Atributos = 14,    // a ficha LENTA: os 8 atributos e o que o menu abre com P mostra
+        Skills = 15,       // o que eu aprendi e quantos marcos tenho
+        Forma = 16,        // fulano mudou de forma: de, pra, e se foi a PRIMEIRA vez
+        Cargos = 17,       // a lista de cargos: chave, quem ocupa, e o que falta PRA MIM
+        Vizinhanca = 18,   // os planetas por perto no espaco (so quando a CHUNK muda)
+        Efeito = 19,       // caiu um efeito em mim: id + por quantos ms (0 = passou)
+        Construcoes = 20,  // as construcoes de pe na minha zona
+        Tech = 21,         // meu nivel de tecnologia, meu zeni e o catalogo com o motivo de cada nao
+        Estilos = 22,      // meu estilo ativo, os que aprendi e a maestria de cada um
+    }
+
+    /// <summary>
+    /// O QUE O PERSONAGEM SABE FAZER, em bits. E o que decide quais ABAS existem no menu.
+    ///
+    /// No BYOND essa decisao era espalhada (`if(savant.gotsense) register_html_tab("Sense")`,
+    /// `if(hasnav) tabs += "Nav"`, `if(scouteron) Sense vira Scan`). Aqui e um campo so, que o
+    /// servidor preenche -- o cliente nunca decide sozinho que tem uma habilidade.
+    /// </summary>
+    [Flags]
+    public enum Poder : uint
+    {
+        Nenhum = 0,
+        Sense = 1 << 0,      // aprendeu a skill: a aba "Sense" passa a existir
+        Scouter = 1 << 1,    // scouter LIGADO: a aba "Sense" vira "Scan" (leitura exata de BP)
+        Nav = 1 << 2,        // nav system: a aba "Nav" e o minimapa do espaco
+        Admin = 1 << 3,
+    }
+
+    /// <summary>
+    /// A FICHA QUE QUASE NAO MUDA: os oito atributos e o resto do que o painel de status
+    /// mostrava. Vai num pacote separado do <see cref="SheetState"/> de proposito -- aquele sai
+    /// varias vezes por segundo porque carrega vida e Ki, e atributo so muda quando se treina.
+    ///
+    /// Sao os `R...` do original (`Rphysoff`, `Rphysdef`, ...): o valor DEPOIS dos modificadores
+    /// raciais e de classe, que e o que o `ui_tab_stats` lia.
+    /// </summary>
+    public struct AtributosState
+    {
+        public float PhysOff, PhysDef, KiOff, KiDef, Technique, KiSkill, Speed, Esoteric;
+        public float Willpower, Stamina;
+        public uint Poderes;
+        public int Idade;
+        public string Raca;
+
+        /// <summary>Em que forma estou (o id de <c>Core.Forms.Forma</c>). 0 = base.</summary>
+        public ushort FormaAtual;
+
+        /// <summary>
+        /// Quanto domino de CADA forma que ja toquei. Vai aqui, e nao num pacote proprio,
+        /// porque maestria muda devagar (100% leva ~3h dentro da forma) -- e exatamente o
+        /// perfil da ficha lenta.
+        /// </summary>
+        public (ushort Forma, float Pct)[] Maestrias;
+
+        public readonly bool Tem(Poder p) => (Poderes & (uint)p) != 0;
+
+        public readonly void Write(NetDataWriter w)
+        {
+            w.Put(PhysOff); w.Put(PhysDef); w.Put(KiOff); w.Put(KiDef);
+            w.Put(Technique); w.Put(KiSkill); w.Put(Speed); w.Put(Esoteric);
+            w.Put(Willpower); w.Put(Stamina);
+            w.Put(Poderes);
+            w.Put(Idade);
+            w.Put(Raca ?? "");
+            w.Put(FormaAtual);
+            (ushort, float)[] ms = Maestrias ?? [];
+            w.Put((byte)Math.Min(ms.Length, 255));
+            for (int i = 0; i < ms.Length && i < 255; i++) { w.Put(ms[i].Item1); w.Put(ms[i].Item2); }
+        }
+
+        public static AtributosState Read(NetDataReader r) => new()
+        {
+            PhysOff = r.GetFloat(), PhysDef = r.GetFloat(), KiOff = r.GetFloat(), KiDef = r.GetFloat(),
+            Technique = r.GetFloat(), KiSkill = r.GetFloat(), Speed = r.GetFloat(), Esoteric = r.GetFloat(),
+            Willpower = r.GetFloat(), Stamina = r.GetFloat(),
+            Poderes = r.GetUInt(),
+            Idade = r.GetInt(),
+            Raca = r.GetString(24),
+            FormaAtual = r.GetUShort(),
+            Maestrias = LerMaestrias(r),
+        };
+
+        private static (ushort, float)[] LerMaestrias(NetDataReader r)
+        {
+            int n = r.GetByte();
+            var v = new (ushort, float)[n];
+            for (int i = 0; i < n; i++) v[i] = (r.GetUShort(), r.GetFloat());
+            return v;
+        }
     }
 
     /// <summary>Quantos caracteres uma fala pode ter. O BYOND cortava em 1000; aqui tambem.</summary>
@@ -428,13 +524,26 @@ public struct EntityState
     /// </summary>
     public bool Rabo;
 
+    /// <summary>
+    /// Este corpo esta OCULTO (a Invisibility do original). Outro bit que sobrava no mesmo
+    /// byte (0x40).
+    ///
+    /// ESCONDER E DO CLIENTE, e o original faz igual -- o `invisibility` do BYOND e filtro de
+    /// desenho, o cliente sempre soube a posicao. Filtrar no servidor exigiria um buffer de
+    /// snapshot POR DESTINATARIO, e hoje uma zona inteira compartilha um so; pagar isso pra
+    /// uma tecnica de duas racas seria caro no lugar errado. Fica anotado como o que e: quem
+    /// mexer no cliente ve por baixo do invisivel.
+    /// </summary>
+    public bool Oculto;
+
     public void Write(NetDataWriter w)
     {
         w.Put(Id);
         w.PutVec(Pos);
         // direcao (2 bits) + pose (3 bits) + "andando" (1 bit) no MESMO byte
         w.Put((byte)((Facing & 0x03) | ((byte)Pose & 0x07) << 2
-                   | (Rabo ? 0x20 : 0x00) | (Moving ? 0x80 : 0x00)));
+                   | (Rabo ? 0x20 : 0x00) | (Oculto ? 0x40 : 0x00)
+                   | (Moving ? 0x80 : 0x00)));
         w.Put(Vida);
     }
 
@@ -445,6 +554,7 @@ public struct EntityState
         e.Facing = (byte)(flags & 0x03);
         e.Pose = (Protocol.Pose)((flags >> 2) & 0x07);
         e.Rabo = (flags & 0x20) != 0;
+        e.Oculto = (flags & 0x40) != 0;
         e.Moving = (flags & 0x80) != 0;
         e.Vida = r.GetByte();
         return e;

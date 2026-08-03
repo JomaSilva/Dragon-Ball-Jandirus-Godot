@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using LiteNetLib;
 using LiteNetLib.Utils;
 using Jandirus.Core.World;
@@ -97,7 +97,7 @@ public partial class GameServer
 		w.Put(texto);
 		// CONFIAVEL, sempre. Fala perdida e a unica perda que o jogador percebe como sumico:
 		// um golpe faltando vira lag, uma frase faltando vira "ele me ignorou".
-		para.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		para.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
 	/// <summary>Uma linha do servidor pra UM jogador so: aviso, recusa, resultado de comando.</summary>

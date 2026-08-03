@@ -1,0 +1,15 @@
+[
+  { "nome": "Space", "gravidade": 0, "tipo": "Rochoso" },
+  { "nome": "Afterlife", "gravidade": 1, "tipo": "Jardim" },
+  { "nome": "Earth", "gravidade": 1, "tipo": "Jardim" },
+  { "nome": "Heaven", "gravidade": 1, "tipo": "Jardim" },
+  { "nome": "Namek", "gravidade": 1, "tipo": "Jardim" },
+  { "nome": "Arlia", "gravidade": 2, "tipo": "Deserto" },
+  { "nome": "Hell", "gravidade": 10, "tipo": "Vulcanico" },
+  { "nome": "Hera", "gravidade": 10, "tipo": "Rochoso" },
+  { "nome": "Vegeta", "gravidade": 10, "tipo": "Rochoso" },
+  { "nome": "Icer Planet", "gravidade": 15, "tipo": "Gelado" },
+  { "nome": "Sealed", "gravidade": 17, "tipo": "Morto" },
+  { "nome": "Big Gete Star", "gravidade": 25, "tipo": "Morto" },
+  { "nome": "God Realm", "gravidade": 500, "tipo": "Jardim" }
+]

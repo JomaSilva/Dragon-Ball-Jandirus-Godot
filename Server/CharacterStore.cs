@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Jandirus.Core.Appearance;
@@ -35,6 +35,27 @@ public sealed class CharacterSave
     /// jogo. Vazio (save antigo, ou personagem novo) = corpo inteiro.
     /// </summary>
     public Dictionary<string, double[]> Membros = [];
+
+    /// <summary>
+    /// AS SKILLS APRENDIDAS, por typepath, e os marcos.
+    ///
+    /// Fora da ficha de proposito: skill nao e stat, e patrimonio de personagem -- e a lista
+    /// e o que o jogador construiu escolhendo. Perder isso e perder a sessao inteira dele.
+    /// </summary>
+    public List<string> Skills = [];
+
+    /// <summary>O NIVEL de cada skill (e o que os degraus ja somaram). Ver NiveisDeSkill.</summary>
+    public Jandirus.Core.Skills.NivelSave Niveis = new();
+    public int MarcosTotais, MarcosLivres;
+
+    /// <summary>
+    /// A FORMA e a MAESTRIA de cada uma (chave = o id numerico da forma).
+    ///
+    /// Maestria e a coisa mais cara do jogo: so se ganha DENTRO da forma, gastando Ki, ~3h
+    /// por forma. Perder isso num save e apagar semanas de alguem.
+    /// </summary>
+    public Dictionary<string, double> Maestrias = [];
+    public List<int> FormasDespertadas = [];
 
     // onde estava quando saiu
     public string Zona = "Earth";
@@ -179,6 +200,12 @@ public sealed class AccountStore(string pasta)
         Visual = pl.Visual,
         Ficha = pl.Ficha,
         Membros = pl.Combate != null ? GameServer.FotografarCorpo(pl.Combate) : [],
+        Skills = pl.Livro != null ? [.. pl.Livro.Aprendidas] : [],
+        Niveis = pl.Niveis?.ParaSave() ?? new(),
+        Maestrias = pl.Forma?.Maestria.ParaSave() ?? [],
+        FormasDespertadas = pl.Forma != null ? [.. pl.Forma.JaDespertou] : [],
+        MarcosTotais = pl.Livro?.MarcosTotais ?? 0,
+        MarcosLivres = pl.Livro?.MarcosLivres ?? 0,
         Zona = pl.Zone.Name,
         X = pl.Pos.X,
         Y = pl.Pos.Y,

@@ -120,18 +120,90 @@ public partial class CharacterVisual : Node2D
 	/// <summary>A camada do corpo tem que existir antes de qualquer coisa ser vestida.</summary>
 	private void Garantir() => _corpo ??= NovaCamada(0);
 
+	/// <summary>
+	/// Uma camada nova. <paramref name="ordem"/> e a posicao dela na PILHA do personagem
+	/// (corpo 0, rabo 1, roupa 2.., cabelo 10, olhos 11) -- e nao um z_index.
+	///
+	/// POR QUE NAO E MAIS z_index. O mundo passou a ordenar por Y, e no Godot o z_index vence
+	/// a ordenacao por Y sempre: quem esta em z 10 desenha depois de TUDO que esta em z 0,
+	/// esteja onde estiver. Com o cabelo em 10 e as arvores em 0, o corpo sumia atras da
+	/// arvore e o cabelo continuava aparecendo por cima dela -- o personagem virava um tufo de
+	/// cabelo flutuando na copa.
+	///
+	/// Agora todas as camadas ficam em z 0 e a pilha e a ORDEM NA ARVORE de nodes (ver
+	/// <see cref="Reordenar"/>). Assim o personagem inteiro ocupa um unico degrau de z e o Y
+	/// decide, que era a intencao desde o comeco.
+	/// </summary>
 	private AnimatedSprite2D NovaCamada(int ordem)
 	{
 		var s = new AnimatedSprite2D
 		{
 			Centered = true,
-			ZIndex = ordem,
 			Material = new ShaderMaterial { Shader = ShaderTinta },
 		};
+		s.SetMeta("ordem", ordem);
 		AddChild(s);
 		_camadas.Add(s);
 		return s;
 	}
+
+	/// <summary>
+	/// Poe as camadas na arvore na ordem da pilha.
+	///
+	/// Precisa ser CHAMADO, e chamado depois de toda mexida: a ordem de criacao nao e a ordem
+	/// de desenho. O rabo nasce por ULTIMO (MontarRabo roda no fim de Vestir) e precisa
+	/// desenhar em SEGUNDO; uma camisa vestida numa troca posterior entra no fim da arvore mas
+	/// pertence ao meio da pilha. Sem isto, a ordem de desenho passaria a depender de quando o
+	/// jogador trocou de roupa.
+	/// </summary>
+	private void Reordenar()
+	{
+		// a lista pode ter camada que ja saiu da arvore numa troca de aparencia
+		_camadas.RemoveAll(s => !IsInstanceValid(s));
+		_camadas.Sort((a, b) => a.GetMeta("ordem", 0).AsInt32() - b.GetMeta("ordem", 0).AsInt32());
+		for (int i = 0; i < _camadas.Count; i++) MoveChild(_camadas[i], i);
+	}
+
+	/// <summary>
+	/// Tira a camada de cena AGORA e so depois marca pra liberar.
+	///
+	/// `QueueFree` sozinho deixa o node na arvore ate o fim do quadro -- e o <see cref="Reordenar"/>
+	/// do mesmo quadro contaria com ele nos indices, embaralhando as camadas vivas.
+	/// </summary>
+	private void Descartar(AnimatedSprite2D s)
+	{
+		_camadas.Remove(s);
+		RemoveChild(s);
+		s.QueueFree();
+	}
+
+	/// <summary>
+	/// PINTA O CABELO POR CIMA da cor da ficha -- e a transformacao que chama.
+	///
+	/// Guarda a cor natural na primeira vez: passar `null` devolve o personagem ao que ele era,
+	/// e sem esse registro o Saiyajin voltaria da forma com o cabelo dourado pra sempre.
+	///
+	/// A tinta e SOMADA (o `ICON_ADD` do original), entao dourar um cabelo preto de verdade
+	/// clareia sem apagar o desenho dos fios -- que e o motivo de o shader existir.
+	/// </summary>
+	public void PintarCabelo(Color? cor)
+	{
+		if (_cabelo == null) return;
+		if (_cabelo.Material is not ShaderMaterial m) return;
+
+		if (!_corNaturalGuardada)
+		{
+			_corNaturalGuardada = true;
+			_corNatural = m.GetShaderParameter("tinta").AsVector3();
+		}
+
+		m.SetShaderParameter("tinta", cor is { } c
+			? new Vector3(c.R, c.G, c.B)
+			: _corNatural);
+	}
+
+	private bool _corNaturalGuardada;
+	private Vector3 _corNatural;
 
 	/// <summary>Cor SOMADA a esta camada. Nulo = a cor natural do sprite.</summary>
 	private static void Tingir(AnimatedSprite2D s, Rgb? cor)
@@ -163,8 +235,7 @@ public partial class CharacterVisual : Node2D
 		{
 			AnimatedSprite2D velha = _roupa[^1];
 			_roupa.RemoveAt(_roupa.Count - 1);
-			_camadas.Remove(velha);
-			velha.QueueFree();
+			Descartar(velha);
 		}
 		for (int i = 0; i < ap.Roupa.Count; i++)
 		{
@@ -176,7 +247,7 @@ public partial class CharacterVisual : Node2D
 		string? cabelo = VisualCatalog.TemCabelo(raca) ? cat.SpriteDoCabelo(ap.Cabelo) : null;
 		if (cabelo == null)
 		{
-			if (_cabelo != null) { _camadas.Remove(_cabelo); _cabelo.QueueFree(); _cabelo = null; }
+			if (_cabelo != null) { Descartar(_cabelo); _cabelo = null; }
 		}
 		else
 		{
@@ -188,7 +259,7 @@ public partial class CharacterVisual : Node2D
 		// --- olhos: um sprite so -- o jogo tem exatamente um arquivo ---
 		if (cat.Olhos == null)
 		{
-			if (_olhos != null) { _camadas.Remove(_olhos); _olhos.QueueFree(); _olhos = null; }
+			if (_olhos != null) { Descartar(_olhos); _olhos = null; }
 		}
 		else
 		{
@@ -198,6 +269,7 @@ public partial class CharacterVisual : Node2D
 		}
 
 		MontarRabo();
+		Reordenar();
 		Aplicar(force: true);
 	}
 
@@ -213,6 +285,7 @@ public partial class CharacterVisual : Node2D
 		if (_temRabo == tem) return;
 		_temRabo = tem;
 		MontarRabo();
+		Reordenar();
 		if (_rabo != null) Aplicar(_rabo, _corpo?.Animation, force: true);
 	}
 
@@ -221,9 +294,9 @@ public partial class CharacterVisual : Node2D
 		if (!_temRabo)
 		{
 			if (_rabo == null) return;
-			_camadas.Remove(_rabo);
-			_rabo.QueueFree();
+			Descartar(_rabo);
 			_rabo = null;
+			Reordenar();
 			return;
 		}
 
@@ -231,10 +304,8 @@ public partial class CharacterVisual : Node2D
 		// (`/obj/overlay/hairs/tails/saiyantail`) e engana quem le, mas o plano e o layer sao
 		// recravados pra BODY_LAYER: ele desenha ACIMA do corpo e ABAIXO de tudo o mais.
 		//
-		// O numero e explicito, nao empatado com o corpo: em ZIndex igual quem decide e a
-		// ordem na arvore, e as camadas de roupa nascem e morrem a cada troca de aparencia --
-		// confiar no empate seria deixar a ordem de desenho depender de quando o jogador
-		// trocou de camisa.
+		// O numero e a posicao na PILHA (ver NovaCamada): 1 e logo acima do corpo, abaixo de
+		// qualquer roupa. Quem materializa isso na arvore de nodes e Reordenar().
 		_rabo ??= NovaCamada(1);
 		Trocar(_rabo, SpriteDoRabo);
 	}
@@ -246,6 +317,39 @@ public partial class CharacterVisual : Node2D
 		if (f == null) { GD.PushWarning($"[visual] sprite ausente: {caminho}"); return; }
 		alvo.SpriteFrames = f;
 		alvo.SetMeta("src", caminho);
+		Ancorar(alvo, f);
+	}
+
+	/// <summary>O lado do tile. Toda folha de personagem normal e deste tamanho.</summary>
+	private const int Celula = 32;
+
+	/// <summary>
+	/// ANCORA A CAMADA PELOS PES, e nao pelo centro.
+	///
+	/// Quase toda folha de personagem e 32x32 e o `Centered = true` acerta sozinho. Mas nao
+	/// TODAS: o Big Broly e 32x64 e o Tyrone e 42x32. Centradas no mesmo ponto, uma folha de 64
+	/// de altura desce 16 px em relacao as outras -- o cabelo e a roupa (32) ficam na cintura do
+	/// corpo (64), e o personagem sai desmontado.
+	///
+	/// O BYOND ancora icone no canto INFERIOR ESQUERDO, e e por isso que la isso nunca
+	/// aconteceu: la as folhas ja se encostam pelo chao e pela esquerda. Aqui a mesma regra
+	/// precisa ser escrita -- o mesmo raciocinio do `texture_origin` do conversor de mapa, que
+	/// existe pelo mesmo motivo nos tiles grandes.
+	///
+	/// Folha 32x32 da deslocamento zero, entao o caso comum nao paga nada.
+	/// </summary>
+	private static void Ancorar(AnimatedSprite2D alvo, SpriteFrames f)
+	{
+		foreach (string anim in f.GetAnimationNames())
+		{
+			if (f.GetFrameCount(anim) == 0) continue;
+			if (f.GetFrameTexture(anim, 0) is not { } tex) continue;
+			Vector2 t = tex.GetSize();
+			if (t.X <= 0 || t.Y <= 0) return;
+			// esquerda encostada na esquerda, base encostada na base
+			alvo.Offset = new Vector2((Celula - t.X) * 0.5f, (Celula - t.Y) * 0.5f);
+			return;
+		}
 	}
 
 	// =====================================================================

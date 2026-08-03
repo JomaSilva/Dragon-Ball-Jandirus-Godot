@@ -103,13 +103,29 @@ public partial class CreationScreen : CanvasLayer
 		moldura.AddChild(palco);
 
 		// escala 5x: o sprite tem 32 px e a ideia e ver o penteado, nao adivinhar
-		_boneco = new CharacterVisual
-		{
-			Name = "Previa",
-			Position = new Vector2(115, 170),
-			Scale = new Vector2(5, 5),
-		};
+		_boneco = new CharacterVisual { Name = "Previa", Scale = new Vector2(5, 5) };
 		palco.AddChild(_boneco);
+
+		// A POSICAO SEGUE O PAINEL, e nao um par de numeros cravados.
+		//
+		// Estava `Position = (115, 170)` -- metade de 230 e um pouco abaixo de metade de 260, os
+		// valores do `CustomMinimumSize`. Mas `CustomMinimumSize` e um MINIMO: quem decide o
+		// tamanho real do painel e o layout, e ele cresce com a janela e com o conteudo ao lado.
+		// Assim que o painel deixa de ter exatamente 230x260, o boneco sai do centro -- desce,
+		// escorrega pro lado, e em painel mais baixo chega a ser cortado pelo `ClipContents`.
+		// Numero cravado contra caixa elastica so acerta na resolucao em que foi medido.
+		//
+		// Os pes ficam num terco a partir de baixo em vez do centro exato: o personagem tem
+		// cabelo pra cima e nada pra baixo, entao centrar o QUADRO deixa a figura visualmente
+		// baixa. Centrar onde o olho ve o corpo e o que parece centrado.
+		void Centralizar()
+		{
+			Vector2 tam = palco.Size;
+			if (tam.X <= 0 || tam.Y <= 0) return;
+			_boneco.Position = new Vector2(tam.X * 0.5f, tam.Y * 0.62f);
+		}
+		palco.Resized += Centralizar;
+		palco.Ready += Centralizar;
 
 		var giro = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
 		foreach ((string txt, Jandirus.Core.World.Facing dir) in new[]

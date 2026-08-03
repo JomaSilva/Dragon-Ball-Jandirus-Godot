@@ -13,7 +13,12 @@ namespace Jandirus.Server;
 public sealed class ServerPlayer
 {
 	public int Id;
-	public NetPeer Peer = null!;
+	/// <summary>
+	/// A CONEXAO. NULA quando este 'jogador' e um NPC -- o clone da meditacao, e mais tarde
+	/// os NPCs do mundo. Todo envio passa por `Peer?.Send`, entao um corpo sem dono existe no
+	/// mundo, aparece no snapshot dos outros e apanha normalmente, so nao recebe nada.
+	/// </summary>
+	public NetPeer? Peer;
 	public string Name = "";
 	public ZoneKey Zone;
 	public Vec2 Pos;
@@ -39,8 +44,63 @@ public sealed class ServerPlayer
 	/// </summary>
 	public CombatState Combate = null!;
 
+	/// <summary>Assinatura da ultima ficha lenta enviada -- ver MandarAtributos.</summary>
+	public string SigAtributos = "";
+
+	/// <summary>O que este personagem aprendeu, e quantos marcos tem pra gastar.</summary>
+	public Jandirus.Core.Skills.SkillBook Livro = null!;
+
+	/// <summary>O NIVEL de cada skill. Sobe sozinho enquanto a skill tem dono.</summary>
+	public Jandirus.Core.Skills.NiveisDeSkill Niveis = new();
+
+	/// <summary>
+	/// KARMA. Sobe protegendo, desce matando -- e a porta moral dos cargos (a escola do Grou
+	/// pede karma zero ou MENOS; o Senhor do Inferno, -50 ou pior).
+	/// </summary>
+	public int Karma;
+
+	/// <summary>
+	/// O CEREBRO. Nulo em jogador de verdade; preenchido no clone da meditacao (e depois nos
+	/// NPCs do mundo). Ter cerebro E o que define um corpo como NPC.
+	/// </summary>
+	public Jandirus.Core.Ai.Cerebro? Cerebro;
+
+	/// <summary>Em que chunk do espaco estou. Trocar de chunk dispara o pacote de vizinhanca.</summary>
+	public ChunkId ChunkAtual;
+
+	/// <summary>De onde decolei.</summary>
+	public string PlanetaDeOrigem = "";
+
+	/// <summary>Rate-limit do aviso de "planeta sem superficie".</summary>
+	public long AvisoDePousoAte;
+
+	/// <summary>De quem este clone e reflexo (0 = nao e clone).</summary>
+	public int DonoDoClone;
+
+	/// <summary>O clone que este jogador invocou (0 = nenhum), e de onde ele veio.</summary>
+	public int CloneId;
+	public ZoneKey ZonaDeOrigem;
+	public Vec2 PosDeOrigem;
+
+	/// <summary>Quando a regeneracao volta a ficar disponivel (relogio real, ms).</summary>
+	public long RegenLivreEm;
+
+	/// <summary>Em que forma esta e quanto domina de cada uma.</summary>
+	public Jandirus.Core.Forms.EstadoDeForma Forma = new();
+	public string SigSkills = "";
+
+	/// <summary>Bits de <see cref="Protocol.Poder"/> que as skills aprendidas acenderam.</summary>
+	public Protocol.Poder Poderes;
+
 	/// <summary>Quando o corpo volta a se mexer depois de morrer (relogio real, ms).</summary>
 	public long RenasceEm;
+
+	/// <summary>
+	/// DEBRUCADO NUMA RESEARCH STATION. Nao entra no <see cref="Protocol.Activity"/> junto de
+	/// treinar e meditar de proposito: aqueles dois sao POSES que os outros veem, e a pose vai no
+	/// snapshot pra todo mundo. Estudar so interessa a quem estuda.
+	/// </summary>
+	public bool Estudando;
 
 	/// <summary>Esta correndo AGORA (concedido pelo servidor, nao afirmado pelo cliente).</summary>
 	public bool Correndo;
@@ -57,6 +117,15 @@ public sealed class ServerPlayer
 	/// um sinal que dispara sozinho toda vez que o jogo funciona nao denuncia nada.
 	/// </summary>
 	public long CorrecaoEsperadaAte;
+
+	/// <summary>
+	/// EM QUEM EU ESTOU MIRANDO (0 = ninguem). Marcado com duplo clique pelo jogador.
+	///
+	/// Um alvo marcado passa NA FRENTE do cone: e ele que leva o soco e e nele que a investida
+	/// fecha, mesmo com outro mais perto e mesmo estando atras. Sem isso, brigar em grupo vira
+	/// loteria -- o golpe vai em quem por acaso encostou primeiro.
+	/// </summary>
+	public int AlvoId;
 
 	/// <summary>Quem me derrubou por ultimo -- e de quem o Zenkai cobra a conta.</summary>
 	public int UltimoAgressor;
@@ -148,12 +217,112 @@ public partial class GameServer : Node
 	private AccountStore? _store;
 	private readonly Random _rng = new();
 
+	/// <summary>BP forcado por `--bpteste`. 0 = desligado (o normal).</summary>
+	private double _bpDeTeste;
+	private double _techDeTeste, _zeniDeTeste;
+	private int _marcosDeTeste;
+	private List<string> _skillsDeTeste = [];
+
+	/// <summary>As fichas dos planetas (gravidade e tipo), lidas de `planetas.json`.</summary>
+	private CatalogoDePlanetas? _planetas;
+
+	/// <summary>
+	/// AS SKILLS SUBINDO SOZINHAS. E o `effector()` do original: enquanto a skill tem dono, ela
+	/// acumula exp, passa da barreira e sobe -- e cada degrau destrava alguma coisa.
+	///
+	/// A SUBIDA E ANUNCIADA COM O TEXTO DO DM quando ele existe. E o momento em que o jogo
+	/// ensina: ninguem descobre sozinho que a Kicker no nivel 2 da um chute novo.
+	/// </summary>
+	private void TickDosNiveis()
+	{
+		if (_skills == null) return;
+		foreach (ServerPlayer pl in _players.Values)
+		{
+			if (pl.Ficha.dead || pl.Livro == null) continue;
+
+			List<Jandirus.Core.Skills.NiveisDeSkill.Subida> subiu =
+				pl.Niveis.Efetor(_rng, _skills, pl.Livro);
+			if (subiu.Count == 0) continue;
+
+			pl.Niveis.Aplicar(pl.Ficha);
+			pl.Ficha.Statify();
+			pl.SigAtributos = "";
+
+			foreach (Jandirus.Core.Skills.NiveisDeSkill.Subida s in subiu)
+			{
+				GD.Print($"[server] {pl.Name}: {s.Nome} chegou ao nivel {s.Nivel}");
+				Avisar(pl, s.Degrau is { Aviso.Length: > 0 } d
+					? $"{s.Nome} — {d.Aviso}"
+					: $"{s.Nome} chega ao nível {s.Nivel}.");
+			}
+			HabilidadesMudaram(pl);
+		}
+	}
+
+	/// <summary>Um degrau pode ter concedido verb novo: o menu do cliente precisa saber.</summary>
+	private static void HabilidadesMudaram(ServerPlayer pl) => MandarSkills(pl, forcar: true);
+
+	private void CarregarNiveis()
+	{
+		const string cj = "res://Assets/Data/niveis.json";
+		if (!Godot.FileAccess.FileExists(cj))
+		{
+			GD.PushWarning("[server] sem niveis.json -- rode o AssetPipeline (comando 'effector')");
+			return;
+		}
+		int n = Jandirus.Core.Skills.RegrasDoDisco.Carregar(Godot.FileAccess.GetFileAsString(cj));
+		GD.Print($"[server] niveis de skill: {n} regras ({Jandirus.Core.Skills.RegrasDeNivel.Total} no total)");
+	}
+
+	private void CarregarPlanetas()
+	{
+		const string cj = "res://Assets/Data/planetas.json";
+		if (!Godot.FileAccess.FileExists(cj))
+		{
+			GD.PushWarning("[server] sem planetas.json -- rode o AssetPipeline (comando 'planetas')");
+			return;
+		}
+		_planetas = CatalogoDePlanetas.Parse(Godot.FileAccess.GetFileAsString(cj));
+		GD.Print($"[server] planetas: {_planetas.Total} com gravidade propria");
+	}
+
+	/// <summary>
+	/// POE O PESO DO CHAO na ficha. E o `Planetgrav` do original, e ele estava parado em 1 pra
+	/// todo mundo desde o comeco do port -- treinar em Vegeta (10x) rendia igual a treinar na
+	/// Terra, e nada na tela dizia isso. Um multiplicador que existe e nunca muda e pior que um
+	/// que nao existe: da a impressao de estar valendo.
+	///
+	/// NO ESPACO A GRAVIDADE E ZERO (o `if("Space") Planetgrav=0` do DM) -- e por isso que
+	/// ninguem treina viajando.
+	/// </summary>
+	private void AplicarGravidade(ServerPlayer pl)
+	{
+		if (_planetas == null) return;
+		FichaDePlaneta f = _planetas.De(pl.Zone.Name);
+		if (Math.Abs(pl.Ficha.Planetgrav - f.Gravidade) < 1e-9) return;
+
+		pl.Ficha.Planetgrav = f.Gravidade;
+		pl.Ficha.Statify();
+		pl.SigAtributos = "";
+		if (f.Gravidade > 1)
+			Avisar(pl, $"o chão de {f.Nome} puxa {f.Gravidade:0.##} vezes mais forte. Cada passo custa, "
+					   + "e cada treino rende.");
+	}
+
 	/// <summary>
 	/// De quantos em quantos ticks a ficha e recalculada. O BYOND rodava o statify/powerlevel
 	/// a cada ~0,3s; 6 ticks de 30 Hz da 5 Hz, mesma ordem de grandeza. Nao adianta rodar a
 	/// 30 Hz: nada que entra na conta muda mais rapido que isso.
 	/// </summary>
 	private const int TicksPorFicha = 6;
+
+	/// <summary>
+	/// UM SEGUNDO EXATO, e nao "o mesmo tick da ficha". O dreno das tecnicas sustentadas e
+	/// POR SEGUNDO no original (`sleep(10)` = 10 decimos); cobra-lo junto do tick de ficha, que
+	/// e 5 Hz, faria a invisibilidade custar cinco vezes o preco e cair sozinha em segundos.
+	/// Cadencia errada num dreno nao parece bug, parece balanceamento ruim.
+	/// </summary>
+	private const int TicksPorSegundo = 30;
 
 	// zona inicial de todo mundo enquanto nao existe criacao de personagem
 	private static readonly ZoneKey SpawnZone = ZoneKey.Premade("Earth");
@@ -181,6 +350,65 @@ public partial class GameServer : Node
 		SetProcess(false);   // dormente ate alguem mandar subir
 
 		string[] args = OS.GetCmdlineArgs();
+
+		// A BANCADA E LIDA ANTES DA GUARDA. O servidor tambem sobe DENTRO do cliente (o botao
+		// "Hospedar" e o `--host`), e nesse caminho este _Ready sai na linha seguinte -- ler a
+		// flag depois dela a deixava sem efeito justamente no modo em que se testa.
+		int bpIdx = Array.IndexOf(args, "--bpteste");
+		if (bpIdx >= 0 && bpIdx + 1 < args.Length && double.TryParse(args[bpIdx + 1],
+				System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double bpT))
+		{
+			_bpDeTeste = bpT;
+			GD.Print($"[server] BANCADA: todo personagem entra com BP {bpT:N0}");
+		}
+
+		// `--techteste`: entra com tecnologia e zeni. Existe pelo mesmo motivo do `--bpteste`: o
+		// laboratorio de DNA pede 70 de tecnologia, que sao horas de estudo -- sem atalho nao ha
+		// como um teste automatico chegar la, e o sistema inteiro ficaria sem prova.
+		int tIdx = Array.IndexOf(args, "--techteste");
+		if (tIdx >= 0)
+		{
+			_techDeTeste = 80;
+			_zeniDeTeste = 5_000_000;
+			if (tIdx + 1 < args.Length && double.TryParse(args[tIdx + 1],
+					System.Globalization.NumberStyles.Float,
+					System.Globalization.CultureInfo.InvariantCulture, out double tv)) _techDeTeste = tv;
+			GD.Print($"[server] BANCADA: tecnologia {_techDeTeste:0} e {_zeniDeTeste:N0} zeni pra todo mundo");
+		}
+
+		// `--gestacaoteste N`: encurta a gestacao do bio-androide pra N segundos. Sem isto o teste
+		// levaria DOZE HORAS -- e um sistema que so da pra testar em doze horas nao e testado.
+		int gIdx = Array.IndexOf(args, "--gestacaoteste");
+		if (gIdx >= 0 && gIdx + 1 < args.Length && double.TryParse(args[gIdx + 1],
+				System.Globalization.NumberStyles.Float,
+				System.Globalization.CultureInfo.InvariantCulture, out double gv))
+		{
+			_gestacaoDeTeste = gv;
+			GD.Print($"[server] BANCADA: gestacao de bio-androide em {gv:0}s");
+		}
+
+		// `--marcosteste N`: entra com N marcos. A progressao profunda (destravar arvore por
+		// `bodyskill`, chegar na Martial Arts, ganhar um estilo) custa uma dezena de compras --
+		// com os tres marcos iniciais nao ha como um teste automatico alcancar nada disso.
+		int mIdx = Array.IndexOf(args, "--marcosteste");
+		if (mIdx >= 0 && mIdx + 1 < args.Length && int.TryParse(args[mIdx + 1], out int mv))
+		{
+			_marcosDeTeste = mv;
+			GD.Print($"[server] BANCADA: {mv} marcos pra todo mundo");
+		}
+
+		// `--skillteste a,b,c`: concede as skills listadas (typepath) a quem entrar.
+		// A cadeia de pre-requisitos de uma tecnica tem meia duzia de degraus; um teste automatico
+		// que precise andar a cadeia inteira testa a PROGRESSAO, nao a tecnica. Isto separa as duas
+		// perguntas: a progressao ja tem teste proprio, e aqui eu quero ver a tecnica DISPARAR.
+		int sIdx = Array.IndexOf(args, "--skillteste");
+		if (sIdx >= 0 && sIdx + 1 < args.Length)
+		{
+			_skillsDeTeste = [.. args[sIdx + 1].Split(',', StringSplitOptions.RemoveEmptyEntries
+													   | StringSplitOptions.TrimEntries)];
+			GD.Print($"[server] BANCADA: concedendo {_skillsDeTeste.Count} skills");
+		}
+
 		if (Array.IndexOf(args, "--server") < 0) return;   // processo de cliente
 
 		int port = Protocol.DefaultPort;
@@ -285,6 +513,19 @@ public partial class GameServer : Node
 		// os saves ficam FORA do res:// (que e so leitura numa build exportada)
 		string pasta = ProjectSettings.GlobalizePath("user://saves");
 		_store = new AccountStore(pasta);
+		CarregarSkills();
+		CarregarTech();
+		CarregarEstilos();
+		CarregarPlanetas();
+		CarregarNiveis();
+
+		// OS QUATRO LOTES SE ANUNCIAM. Cada um vive no proprio arquivo e registra as tecnicas dele
+		// -- portar o proximo lote nao mexe nesta lista, so acrescenta uma linha.
+		RegistrarTecnicasG1();
+		RegistrarTecnicasG2();
+		RegistrarTecnicasG3();
+		RegistrarTecnicasG4();
+		CarregarCargos();
 		Directory.CreateDirectory(pasta);
 		GD.Print($"[server] contas: {_store.Quantas()} em {pasta}");
 	}
@@ -366,6 +607,58 @@ public partial class GameServer : Node
 				if (!_byPeer.TryGetValue(peer, out ServerPlayer? a)) break;
 				a.Combate.Letal = reader.GetBool();
 				GD.Print($"[server] {a.Name}: golpe {(a.Combate.Letal ? "LETAL" : "nao-letal")}");
+				break;
+			}
+			// TECNOLOGIA pelo mesmo padrao do cargo: comando + argumento num canal so. Ver
+			// `GameServer.Tech.cs` -- sao nove comandos e nenhum merece um id de protocolo.
+			case Protocol.C2S.Estilo:
+			{
+				string qual = reader.GetString(32);
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemLuta)) TrocarEstilo(quemLuta, qual);
+				break;
+			}
+
+			case Protocol.C2S.Tech:
+			{
+				string cmd = reader.GetString(24);
+				string arg = reader.GetString(48);
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemConstroi)) ComandoDeTech(quemConstroi, cmd, arg);
+				break;
+			}
+
+			case Protocol.C2S.Cargo:
+			{
+				string chave = reader.GetString(32);
+				if (!_byPeer.TryGetValue(peer, out ServerPlayer? quemQuer)) break;
+				if (chave.Length == 0) MandarCargos(quemQuer);
+				else { ReivindicarCargo(quemQuer, chave); MandarCargos(quemQuer); }
+				break;
+			}
+			case Protocol.C2S.Habilidade:
+			{
+				string hab = reader.GetString(48);
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemUsa)) UsarHabilidade(quemUsa, hab);
+				break;
+			}
+			case Protocol.C2S.Transformar:
+			{
+				bool subir = reader.GetBool();
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemTransforma)) Transformar(quemTransforma, subir);
+				break;
+			}
+			case Protocol.C2S.Aprender:
+			{
+				string path = reader.GetString(96);
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemAprende)) Aprender(quemAprende, path);
+				break;
+			}
+			case Protocol.C2S.Alvo:
+			{
+				int alvo = reader.GetInt();
+				if (!_byPeer.TryGetValue(peer, out ServerPlayer? quem)) break;
+				// so vale mirar em quem existe e esta na MESMA zona -- o resto e cliente inventando
+				quem.AlvoId = alvo != 0 && _players.TryGetValue(alvo, out ServerPlayer? o)
+							  && o != quem && o.Zone.Hash == quem.Zone.Hash ? alvo : 0;
 				break;
 			}
 			case Protocol.C2S.Chat:
@@ -517,10 +810,40 @@ public partial class GameServer : Node
 		pl.Facing = Facing.South;
 		pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed);
 		PrepararCombate(pl, c);
+		PrepararSkills(pl, c);
+		pl.Niveis = new Jandirus.Core.Skills.NiveisDeSkill();
+		pl.Niveis.DoSave(c?.Niveis);
+		pl.Niveis.Aplicar(pl.Ficha);   // o nivel veio do disco; o que ele soma, nao
+		AplicarPoderes(pl);
+		AplicarEfeitos(pl);
+
+		// BANCADA: `--bpteste N` da BP a quem entrar. Existe porque a escada de transformacao
+		// comeca em 1,5 MILHAO de BP base e um personagem novo nasce com 9 -- sem isto nao ha
+		// como exercitar transformacao num teste automatico. So vale em servidor de teste.
+		if (_bpDeTeste > 0) { pl.Ficha.BP = _bpDeTeste; pl.Ficha.Statify(); }
+		if (_techDeTeste > 0) pl.Ficha.techskill = Math.Max(pl.Ficha.techskill, _techDeTeste);
+		if (_zeniDeTeste > 0) pl.Ficha.Zeni = Math.Max(pl.Ficha.Zeni, _zeniDeTeste);
+		if (_marcosDeTeste > 0 && pl.Livro.MarcosLivres < _marcosDeTeste) pl.Livro.Conceder(_marcosDeTeste);
+		foreach (string sk in _skillsDeTeste) pl.Livro.Dar(sk);
+
+		// A FORMA NAO ATRAVESSA O LOGOUT: quem sai SSJ3 volta na base. O que persiste e a
+		// MAESTRIA (semanas de jogo) e quais formas ja despertaram (a cinematica so roda uma vez).
+		pl.Forma = new Jandirus.Core.Forms.EstadoDeForma();
+		pl.Forma.Maestria.DoSave(c?.Maestrias);
+		if (c?.FormasDespertadas is { Count: > 0 }) pl.Forma.JaDespertou = [.. c.FormasDespertadas];
+		AplicarForma(pl);
 
 		_logados.Remove(peer);
 		_contas[peer] = acc;
 		_players[pl.Id] = pl;
+
+		// SO AGORA da pra mandar as construcoes: `MandarObras` varre `_players` procurando quem
+		// esta na zona, e quem acabou de entrar so esta la depois desta linha.
+		MandarObras(pl.Zone);
+		MandarCatalogoDeObras(pl);
+		AplicarEstilo(pl);   // o estilo veio do save; os multiplicadores nao
+		MandarEstilos(pl);
+		AplicarGravidade(pl);
 		_byPeer[peer] = pl;
 		ZoneList(pl.Zone.Hash).Add(pl);
 		Persistir(pl);
@@ -580,9 +903,9 @@ public partial class GameServer : Node
 		NetDataWriter meu = Ficha(novo);
 		foreach (ServerPlayer outro in zona)
 		{
-			outro.Peer.Send(meu, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			outro.Peer?.Send(meu, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 			if (outro != novo)
-				novo.Peer.Send(Ficha(outro), Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+				novo.Peer?.Send(Ficha(outro), Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 	}
 
@@ -597,7 +920,7 @@ public partial class GameServer : Node
 	private void Persistir(ServerPlayer pl)
 	{
 		if (_store == null || pl.Slot < 0) return;
-		if (!_contas.TryGetValue(pl.Peer, out AccountSave? acc)) return;
+		if (pl.Peer == null || !_contas.TryGetValue(pl.Peer, out AccountSave? acc)) return;
 		pl.Ficha.Class = pl.Class;
 		acc.Slots[pl.Slot] = AccountStore.DeJogador(pl, NowMs());
 		acc.VistoEm = NowMs();
@@ -709,7 +1032,7 @@ public partial class GameServer : Node
 		var w = Protocol.Begin(Protocol.S2C.PeerLeft);
 		w.Put(pl.Id);
 		foreach (ServerPlayer other in ZoneList(pl.Zone.Hash))
-			other.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			other.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 
 		GD.Print($"[server] {pl.Name} saiu");
 	}
@@ -725,7 +1048,25 @@ public partial class GameServer : Node
 		// O combate anda no tick CHEIO (30 Hz): recarga de golpe e atordoamento sao contados
 		// em fracao de segundo, e a ficha so roda a 5 Hz.
 		TickCombate(Protocol.TickSeconds);
-		if (++_tickCount % TicksPorFicha == 0) TickFichas();
+
+		// A FORMA COBRA NO TICK CHEIO. O dreno de Ki e por segundo e derruba quem ficou sem
+		// folego -- cobrar so a 5 Hz deixaria a forma sobreviver por fracoes de segundo alem
+		// do Ki zerado, e e justamente nesse instante que a luta costuma virar.
+		foreach (ServerPlayer pl in _players.Values) TickDaForma(pl, Protocol.TickSeconds);
+
+		// os NPCs pensam e agem no tick cheio, pelas mesmas funcoes do jogador
+		TickDosClones(Protocol.TickSeconds);
+
+		// no espaco: troca de chunk e pouso por encostar
+		foreach (ServerPlayer pl in _players.Values.ToList()) TickDoEspaco(pl);
+
+		// O TIQUE DAS SKILLS anda junto do da ficha, e nao por acaso: `NiveisDeSkill` foi
+		// calibrado em 0,2 s por tique (5 Hz) e `TicksPorFicha` da exatamente isso a 30 Hz.
+		// Cadencia errada aqui nao quebra nada -- so faz a skill subir mais rapido ou mais
+		// devagar do que o original, calada.
+		if (++_tickCount % TicksPorFicha == 0) { TickFichas(); TickDosNiveis(); }
+		if (_tickCount % TicksPorSegundo == 0)
+			{ TickDasTecnicas(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); }
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
 		// Dois minutos e o maximo de treino que alguem pode perder.
@@ -737,6 +1078,11 @@ public partial class GameServer : Node
 		{
 			if (zona.Count == 0) continue;
 
+			// O ESPACO E UMA ZONA SO, e por isso o corte la nao pode ser a zona: todo mundo
+			// esta nela. Quem decide o trafego e a CHUNK -- e como o recorte muda de jogador
+			// pra jogador, o buffer nao da pra compartilhar e cada um recebe o seu.
+			if (Espaco.EhEspaco(zona[0].Zone)) { SnapshotDoEspaco(zona, agora); continue; }
+
 			var w = Protocol.Begin(Protocol.S2C.Snapshot);
 			w.Put((ushort)zona.Count);
 			foreach (ServerPlayer pl in zona)
@@ -746,11 +1092,12 @@ public partial class GameServer : Node
 					Moving = pl.Moving, Pose = pl.Pose(agora),
 					Vida = (byte)Math.Clamp(Math.Round(pl.Ficha.HP), 0, 100),
 					Rabo = pl.TemRaboAgora(),
+					Oculto = EstaOculto(pl.Id),
 				}.Write(w);
 
 			// mesmo buffer pra todos daquela zona: quem esta noutro planeta nao recebe nada
 			foreach (ServerPlayer pl in zona)
-				pl.Peer.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
+				pl.Peer?.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
 		}
 	}
 
@@ -777,7 +1124,7 @@ public partial class GameServer : Node
 
 			var w = Protocol.Begin(Protocol.S2C.Stats);
 			pl.Sheet().Write(w);
-			pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 	}
 
@@ -808,7 +1155,13 @@ public partial class GameServer : Node
 		var w = Protocol.Begin(Protocol.S2C.ZoneChanged);
 		w.PutZone(destino);
 		w.PutVec(spawn);
-		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+
+		// AS CONSTRUCOES SAO POR ZONA: sem reenviar, quem muda de planeta continua vendo as
+		// construcoes do planeta anterior desenhadas no chao do novo.
+		MandarObras(destino);
+		pl.Estudando = false;   // ninguem estuda de outro planeta
+		AplicarGravidade(pl);   // o chao mudou: o peso dele tambem
 	}
 
 	private List<ServerPlayer> ZoneList(ulong hash)

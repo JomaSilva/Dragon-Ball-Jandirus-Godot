@@ -417,6 +417,47 @@ public static class MapConverter
 		return ordem;
 	}
 
+	/// <summary>O que a raiz da cena precisa declarar sobre si.</summary>
+	private readonly record struct FichaDeCena(string Nome, double Gravidade, int Tipo);
+
+	/// <summary>
+	/// A ficha do planeta a partir do nome do ANDAR (`z03_Vegeta` -> `Vegeta`).
+	///
+	/// Os nomes de cena vem numerados por causa do `z` do BYOND; a tabela de gravidade e
+	/// indexada pelo nome limpo. Casar os dois aqui evita que a numeracao vaze pro resto do jogo.
+	/// </summary>
+	private static FichaDeCena FichaDaZona(string nomeDaCena)
+	{
+		string limpo = nomeDaCena;
+		int corte = limpo.IndexOf('_');
+		if (corte > 0 && limpo.StartsWith('z')) limpo = limpo[(corte + 1)..];
+		limpo = limpo.Replace('_', ' ');
+
+		Jandirus.Core.World.FichaDePlaneta f = Planetas.De(limpo);
+		return new FichaDeCena(limpo, f.Gravidade, IndiceDoTipo(f.Tipo));
+	}
+
+	/// <summary>
+	/// O `TipoDePlaneta` e um enum do CLIENTE e o .tscn guarda enum como INTEIRO. A ordem tem
+	/// que bater com a declaracao em `Client/Planeta.cs` -- se alguem reordenar la, Namek vira
+	/// deserto e nada acusa. Por isso a lista esta escrita aqui inteira, e nao derivada.
+	/// </summary>
+	private static int IndiceDoTipo(string tipo) => tipo switch
+	{
+		"Jardim" => 1,
+		"Deserto" => 2,
+		"Gelado" => 3,
+		"Vulcanico" => 4,
+		"Morto" => 5,
+		_ => 0,   // Rochoso
+	};
+
+	/// <summary>As fichas extraidas do DM. Quem preenche e o Program, antes de converter.</summary>
+	private static Jandirus.Core.World.CatalogoDePlanetas Planetas =
+		Jandirus.Core.World.CatalogoDePlanetas.Parse("[]");
+
+	public static void UsarPlanetas(Jandirus.Core.World.CatalogoDePlanetas c) => Planetas = c;
+
 	private static string NomeDoAndar(DmmMap.Result dados, DmmLevel nivel, int offset)
 	{
 		// a AREA dominante nomeia o andar: e o nome que o jogo ja usa pro lugar
@@ -517,10 +558,13 @@ public static class MapConverter
 		//
 		// O `opacity` do BYOND nao serve aqui: este jogo praticamente nao usa (93 ocorrencias no
 		// codigo inteiro, quase todas `mouse_opacity`), ou seja, no original dava pra ver o
-		// planeta todo atraves das casas. A regra que o dono pediu -- "nao ver atras de parede e
-		// porta fechada" -- vira: TURF DENSO CEGA, OBJ DENSO NAO. Casa, muro e porta sao turf;
-		// arvore, cerca e pedra sao obj. Sem essa separacao uma floresta viraria um labirinto de
-		// pontos cegos, e nao e disso que se trata.
+		// planeta todo atraves das casas. Quem define a regra e o dono: "sombra de tiles como
+		// paredes e arvores". Entao CEGA TUDO QUE E DENSO -- turf ou obj, casa, muro, porta,
+		// arvore, cerca, pedra.
+		//
+		// Continua sendo um mapa SEPARADO do `.col` porque os dois divergem nos dois sentidos: a
+		// porta cega e nao bloqueia (da pra atravessar), e a borda do mundo bloqueia sem cegar
+		// nada de interessante.
 		var vendados = new HashSet<(int, int)>();
 		// TileMapLayer.tile_map_data: [uint16 formato][por celula: 12 bytes]
 		//   int16 x | int16 y | uint16 fonte | uint16 atlasX | uint16 atlasY | uint16 alternativa
@@ -541,7 +585,10 @@ public static class MapConverter
 		var luzes = new List<LuzDeTile>();
 
 		// Poe UM typepath numa camada. Devolve se conseguiu desenhar.
-		bool Por(string? bp, List<byte> destino, int x, int y)
+		//
+		// `cega` diz se ESTA camada corta a linha de visao. Ver o comentario da chamada dos
+		// objetos: cenario solto (arvore, pedra, poste) PARA, mas nao ESCONDE.
+		bool Por(string? bp, List<byte> destino, int x, int y, bool cega = true)
 		{
 			if (bp == null) return false;
 			if (!turfs.TryGetValue(bp, out TurfDef? td)) return false;
@@ -553,7 +600,7 @@ public static class MapConverter
 			// arte que faltou.
 			if (td.Icon == null)
 			{
-				if (td.Density) { muros.Add((x, y)); vendados.Add((x, y)); }
+				if (td.Density) { muros.Add((x, y)); if (cega) vendados.Add((x, y)); }
 				return false;
 			}
 			if (td.Atlas == null || !fontes.TryGetValue(td.Atlas, out Fonte? f)) return false;
@@ -578,9 +625,8 @@ public static class MapConverter
 			// fica lacrada com um desenho de porta na frente.
 			if (td.Density && !EhPorta(bp)) muros.Add((x, y));
 
-			// ...e a porta CEGA mesmo sem bloquear: ela esta fechada no desenho. Ver o comentario
-			// de `vendados` la em cima pra saber por que so turf entra aqui.
-			if (td.Density && bp.StartsWith("/turf", StringComparison.Ordinal)) vendados.Add((x, y));
+			// ...e a porta CEGA mesmo sem bloquear: ela esta fechada no desenho.
+			if (td.Density && cega) vendados.Add((x, y));
 
 			// FONTE DE LUZ. Fogueira, tocha, lampada e lava acendem o cenario -- ver LightCatalog.
 			if (LightCatalog.Da(bp) is { } luz)
@@ -623,18 +669,47 @@ public static class MapConverter
 				Por(fundo, bytes, x, y);
 				if (empilhado) Por(topo, decoracao, x, y);
 
-				bool posObj = Por(objeto, objetos, x, y);
+				// A CAMADA DE OBJETOS NAO CEGA -- e o que tira a sombra das arvores.
+				//
+				// A sombra em si estava CERTA (geometria de bloco projetada a partir dos pes), mas
+				// ficava esquisita porque a premissa era errada: uma arvore nao e um muro. Ela tem
+				// copa, tronco e vaos, e a sombra dela num campo aberto virava um leque preto de
+				// borda reta saindo de cada tronco -- muitos leques, sem nada os unindo, num terreno
+				// que deveria ser aberto. Muro projeta sombra porque muro E um plano opaco;
+				// vegetacao nao e.
+				//
+				// A ARVORE CONTINUA PARANDO O CORPO: `muros` (fisica) segue recebendo a celula; so
+				// `vendados` (visao) deixa de receber. Bloquear passagem e bloquear visao viraram
+				// duas perguntas separadas, que e o que o DM fazia com `density` e `opacity`.
+				bool posObj = Por(objeto, objetos, x, y, cega: false);
 				if (posObj) comObj++;
 				if (tinhaObj && !posObj) objSemArte++;
 			}
 
 		var sb = new StringBuilder();
-		sb.Append("[gd_scene load_steps=2 format=3]\n\n");
-		sb.Append("[ext_resource type=\"TileSet\" path=\"res://Assets/Maps/tileset.tres\" id=\"1_ts\"]\n\n");
+		sb.Append("[gd_scene load_steps=3 format=3]\n\n");
+		sb.Append("[ext_resource type=\"TileSet\" path=\"res://Assets/Maps/tileset.tres\" id=\"1_ts\"]\n");
+		sb.Append("[ext_resource type=\"Script\" path=\"res://Client/PlanetaPreFeito.cs\" id=\"1_pl\"]\n\n");
+
 		// A RAIZ ORDENA: sem `y_sort_enabled` aqui as camadas nao se misturam com os
 		// personagens -- o Godot so funde a ordenacao quando ela e continua de pai pra filho.
+		//
+		// E A RAIZ SABE QUE PLANETA ELA E. O script vai colado nela com nome, gravidade e tipo
+		// ja preenchidos, entao quem abre `z03_Vegeta.tscn` no editor VE que ali a gravidade e
+		// 10. A alternativa -- uma tabela central com essas informacoes -- obriga quem edita o
+		// mapa a lembrar de um segundo arquivo, e o que ele esquecer nao falha em teste nenhum:
+		// falha no dia em que alguem treinar em Vegeta e ganhar o mesmo que na Terra.
+		//
+		// O SERVIDOR NAO LE ISTO (ele roda sem cena). Ele le o mesmo dado do `planetas.json`,
+		// que sai do MESMO extrator -- uma fonte, duas leituras, cada uma do lado que a usa.
+		FichaDeCena ficha = FichaDaZona(nome);
 		sb.Append($"[node name=\"{nome}\" type=\"Node2D\"]\n");
-		sb.Append("y_sort_enabled = true\n\n");
+		sb.Append("y_sort_enabled = true\n");
+		sb.Append("script = ExtResource(\"1_pl\")\n");
+		sb.Append($"NomeDoPlaneta = \"{ficha.Nome}\"\n");
+		sb.Append($"Gravidade = {ficha.Gravidade.ToString("0.##", CultureInfo.InvariantCulture)}\n");
+		sb.Append($"Tipo = {ficha.Tipo}\n");
+		sb.Append("Procedural = false\n\n");
 
 		// O CHAO NUNCA ORDENA e fica sempre embaixo: e chao. Ordenar 250 mil tiles de grama
 		// contra os personagens seria caro e nao mudaria nada -- ninguem passa atras da grama.
@@ -709,27 +784,42 @@ public static class MapConverter
 		var linhas = new List<(int X, int Y, string Texto)>();
 		int animados = 0;
 
-		// SPRITE MAIOR QUE O TILE: onde ele encosta o chao.
+		// SPRITE MAIOR QUE O TILE: BASE NO CHAO DA CELULA, CENTRADO NA HORIZONTAL.
 		//
-		// O Godot desenha a regiao do atlas CENTRADA na celula. O BYOND desenha a partir do
-		// canto INFERIOR ESQUERDO -- uma arvore de 96x96 cresce pra cima e pra direita, e a
-		// celula dela e o TRONCO. Centrada, a arvore fica meia altura abaixo do lugar certo:
-		// o desenho sai deslocado e a colisao parece estar "no meio da arvore".
+		// Nao e palpite -- e a regra que o proprio jogo escreve. O BYOND ancora o icone no
+		// canto INFERIOR ESQUERDO do tile (cresce pra cima e pra direita), e este jogo corrige
+		// isso na mao, em Code/Modules/Turfs/Plants.dm:31-35:
 		//
-		// `texture_origin` e SUBTRAIDO da posicao de desenho, entao positivo move pra CIMA e
-		// pra ESQUERDA. Levar a base ao pe da celula: y = +(altura-32)/2. Alinhar a esquerda
-		// como o BYOND: x = -(largura-32)/2.
+		//     var/icon/I = icon(icon,icon_state)
+		//     trees_pixelx_cache[ck] = 16 - I.Width()/2
+		//     pixel_x = trees_pixelx_cache[ck]
+		//
+		// `16 - largura/2` poe o CENTRO do icone no centro do tile, e `pixel_y` nunca e tocado
+		// -- ou seja: centro no meio, base no chao. A mesma formula reaparece em
+		// Reincarnation_Tree e Lumber_Tree. Eu tinha portado o padrao do engine (canto
+		// inferior ESQUERDO) e nao a correcao do jogo: a arvore saia 32 px a direita e a
+		// colisao ficava visivelmente fora dela.
+		//
+		// `texture_origin` e SUBTRAIDO da posicao de desenho: positivo move pra CIMA e pra
+		// ESQUERDA. O Godot ja desenha centrado na horizontal, entao x = 0; levar a base ao pe
+		// da celula pede y = +(altura-32)/2.
 		int desY = (f.IconH - Cell) / 2;
-		int desX = -(f.IconW - Cell) / 2;
 		bool grande = f.IconW != Cell || f.IconH != Cell;
 
 		void Ancora((int X, int Y) c, StringBuilder onde)
 		{
 			if (!grande) return;
-			onde.Append($"{c.X}:{c.Y}/0/texture_origin = Vector2i({desX}, {desY})\n");
-			// ORDENA PELA BASE, nao pelo centro: e o que faz o personagem passar ATRAS da copa
-			// e NA FRENTE do tronco. Meio tile abaixo do centro = o pe da celula.
-			onde.Append($"{c.X}:{c.Y}/0/y_sort_origin = {Cell / 2}\n");
+			onde.Append($"{c.X}:{c.Y}/0/texture_origin = Vector2i(0, {desY})\n");
+
+			// SEM `y_sort_origin`. Ele parece certo ("ordena pelo pe") e estava meio tile
+			// errado: o personagem ordena pelo Y do NO, que e o centro do sprite dele, e os
+			// tiles de 32x32 nao recebiam ajuste nenhum. Deslocar so os tiles grandes em +16
+			// criava tres referencias diferentes na mesma comparacao.
+			//
+			// Com todo mundo em 0 a conta fecha sozinha: a base do tile grande fica em
+			// centro+16 (por causa do desY acima) e os pes do personagem em centro+16 (sprite
+			// de 32 px centrado no no). Os dois +16 se cancelam e ordenar pelo centro passa a
+			// ser exatamente ordenar pela base.
 		}
 
 		// A CAIXA E DE UMA CELULA, nao do tamanho do desenho. No BYOND densidade e propriedade do

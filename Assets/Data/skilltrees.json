@@ -1,0 +1,29 @@
+{
+  "todos": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind", "/datum/skill/tree/Spirit"],
+  "raca": {
+    "Saiyan": ["/datum/skill/tree/saiyan/SaiyanRacial"],
+    "Meta": ["/datum/skill/tree/meta"],
+    "Human": ["/datum/skill/tree/human"],
+    "Android": ["/datum/skill/tree/android"],
+    "Alien": ["/datum/skill/tree/alien"],
+    "Gray": ["/datum/skill/tree/gray"],
+    "Bio-Android": ["/datum/skill/tree/bioandroid"],
+    "Demigod": ["/datum/skill/tree/demigod"],
+    "Demon": ["/datum/skill/tree/demon"],
+    "Frost Demon": ["/datum/skill/tree/frostdemon"],
+    "Kai": ["/datum/skill/tree/kai"],
+    "Heran": ["/datum/skill/tree/heran"],
+    "Majin": ["/datum/skill/tree/majin"],
+    "Makyo": ["/datum/skill/tree/makyo"],
+    "Namekian": ["/datum/skill/tree/namek"],
+    "Saibamen": ["/datum/skill/tree/saibaman"],
+    "Spirit Doll": ["/datum/skill/tree/spiritdoll"],
+    "Tsujin": ["/datum/skill/tree/tsujin"],
+    "Yardrat": ["/datum/skill/tree/yardrat"]
+  },
+  "classe": {
+    "Shapeshifter": ["/datum/skill/tree/shapeshifter"],
+    "Arlian": ["/datum/skill/tree/arlian"],
+    "Kanassa-Jin": ["/datum/skill/tree/kanassajin"]
+  }
+}

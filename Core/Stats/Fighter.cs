@@ -1,4 +1,4 @@
-using Jandirus.Core.Races;
+﻿using Jandirus.Core.Races;
 using Jandirus.Core.World;
 
 namespace Jandirus.Core.Stats;
@@ -87,6 +87,42 @@ public sealed partial class Fighter
 	public double kicirculationskill, kigatheringskill, kicontrolskill;
 	public double TwillpowerMod = 1, willpowerMod = 1;
 	public double staminagainMod = 1, satiationMod = 1;
+
+	/// <summary>
+	/// OS DOIS CONTADORES QUE ABREM ARVORE. Cada skill de base do corpo soma 1 em um deles, e e a
+	/// SOMA que destrava arvore nova (`Body.dm:24-32`): mais de 2 de `bodyreadiness` abre
+	/// Bodybuilding, mais de 2 de `bodyskill` abre Martial Skill (e Weapons Expert com arma), e 2
+	/// de cada abre Cultivation.
+	///
+	/// EU JA DEI ESTES DOIS COMO CODIGO MORTO -- e estava errado. A varredura que fiz filtrava as
+	/// linhas com `savant.` pra separar escrita de leitura, e com isso apagou justamente as
+	/// leituras (`if(savant.bodyskill>2)`). Sao o gate de QUATRO arvores: sem eles, metade da
+	/// progressao fisica do jogo fica inalcancavel e nada na tela diz por que.
+	/// </summary>
+	public double bodyskill, bodyreadiness;
+
+	/// <summary>O estilo de luta ATIVO, pelo id do catalogo. Vazio = nenhum.</summary>
+	public string EstiloAtual = "";
+
+	/// <summary>Maestria por estilo, e o teto pessoal de cada um. Persistem no save.</summary>
+	public Dictionary<string, double> MaestriaDeEstilo = new(StringComparer.Ordinal);
+	public Dictionary<string, double> TetoDeEstilo = new(StringComparer.Ordinal);
+
+	/// <summary>Sabe usar arma -- com `bodyskill` acima de 2, e o que abre a arvore de armas.</summary>
+	public double weaponeq;
+
+	/// <summary>
+	/// O QUE AS SKILLS APRENDIDAS ESTAO SOMANDO AGORA (campo -> quanto). Guardado pra que
+	/// reaplicar seja idempotente: <see cref="Skills.EfeitosDeSkill.Aplicar"/> desconta isto
+	/// antes de somar de novo, senao cada login empilharia os buffs mais uma vez.
+	/// </summary>
+	public Dictionary<string, double> BuffsDeSkill = new(StringComparer.Ordinal);
+
+	/// <summary>Os fatores MULTIPLICATIVOS aplicados agora. Desfeitos por divisao, nao subtracao.</summary>
+	public Dictionary<string, double> MultsDeSkill = new(StringComparer.Ordinal);
+
+	/// <summary>As flags/contadores ESCRITOS agora. Voltam a zero quando a skill sai.</summary>
+	public Dictionary<string, double> FlagsDeSkill = new(StringComparer.Ordinal);
 	public double concealeddeBuff = 1, concealedBuff = 1;
 	public double kiarmor, superkiarmor, superkiarmorMod = 1;
 	public double actspeed = 20, mana_cap_mod = 1;

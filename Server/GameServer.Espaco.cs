@@ -1,0 +1,158 @@
+using Godot;
+using Jandirus.Core.World;
+using Jandirus.Net;
+using LiteNetLib;
+using LiteNetLib.Utils;
+
+namespace Jandirus.Server;
+
+/// <summary>
+/// O ESPACO, LADO DO SERVIDOR.
+///
+/// O QUE O SERVIDOR GUARDA DO UNIVERSO: nada. Nem uma tabela de planetas, nem um mapa de
+/// estrelas. O que existe numa chunk e funcao pura de `seed + chunk` (ver <see cref="Espaco"/>),
+/// entao ele CALCULA quando precisa e o cliente calcula a mesma coisa sozinho. O unico dado que
+/// trafega e "estes planetas estao perto de voce" -- e mesmo esse e derivavel; vai pela rede so
+/// pra o cliente nao precisar varrer chunk atras de planeta pre-feito distante.
+///
+/// INTERESSE POR CHUNK, NAO POR ZONA. O espaco inteiro e UMA zona: fatia-lo em varias traria de
+/// volta o problema dos setores-por-z. Quem corta o trafego e a distancia em chunks, e o corte
+/// entra no snapshot (ver a chamada a <see cref="Espaco.PertoDeMim"/> no laco de envio).
+/// </summary>
+public partial class GameServer
+{
+	/// <summary>
+	/// A SEED DO UNIVERSO. Um numero, e dele sai todo o resto -- posicao de planeta, bioma,
+	/// tamanho. Fixo por enquanto; quando virar por servidor, e so ler do disco aqui.
+	/// </summary>
+	public const ulong SeedDoUniverso = 20260802;
+
+	public static ZoneKey ZonaDoEspaco => Espaco.Zona(SeedDoUniverso);
+
+	/// <summary>
+	/// DECOLAR. Sai da superficie do planeta em que se esta e aparece no espaco, logo acima
+	/// dele.
+	///
+	/// So funciona de um planeta que EXISTE no mapa do universo: nao da pra decolar do Outro
+	/// Mundo nem da dimensao mental, e isso e regra de mundo, nao limitacao.
+	/// </summary>
+	private void Decolar(ServerPlayer pl)
+	{
+		if (Espaco.EhEspaco(pl.Zone)) { Avisar(pl, "voce ja esta no espaco."); return; }
+		if (pl.CloneId != 0) { Avisar(pl, "primeiro saia da sua mente."); return; }
+
+		PlanetaNoEspaco? daqui = null;
+		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
+			if (string.Equals(p.Nome, pl.Zone.Name, StringComparison.OrdinalIgnoreCase)) { daqui = p; break; }
+
+		if (daqui == null)
+		{
+			Avisar(pl, $"nao da pra decolar de {pl.Zone.Name} -- este lugar nao fica no mapa do universo.");
+			return;
+		}
+
+		pl.PlanetaDeOrigem = daqui.Value.Nome;
+		MoveToZone(pl.Id, ZonaDoEspaco, Espaco.PontoDeDecolagem(daqui.Value));
+		MandarVizinhanca(pl, forcar: true);
+
+		Avisar(pl, $"voce deixa {daqui.Value.Nome} para tras. O silencio do espaco.");
+		GD.Print($"[server] {pl.Name} decolou de {daqui.Value.Nome} -> chunk {ChunkId.De(pl.Pos)}");
+	}
+
+	/// <summary>
+	/// POUSAR. Encostou num planeta, desce nele -- sem menu e sem porta, como o dono pediu.
+	///
+	/// Rodado no tick, e nao pedido pelo cliente: quem decide onde o corpo esta e o servidor, e
+	/// deixar o cliente dizer "pousei em Namek" seria um teleporte de graca.
+	/// </summary>
+	private void TickDoEspaco(ServerPlayer pl)
+	{
+		if (!Espaco.EhEspaco(pl.Zone)) return;
+
+		ChunkId agora = ChunkId.De(pl.Pos);
+		if (agora != pl.ChunkAtual)
+		{
+			pl.ChunkAtual = agora;
+			MandarVizinhanca(pl);
+		}
+
+		if (Espaco.PlanetaSob(SeedDoUniverso, pl.Pos) is not { } destino) return;
+
+		// PROCEDURAL AINDA NAO TEM CHAO. Descer nele so daria uma tela vazia -- melhor dizer o
+		// que ha do que entregar um planeta que nao existe.
+		if (!destino.Premade)
+		{
+			if (NowMs() < pl.AvisoDePousoAte) return;
+			pl.AvisoDePousoAte = NowMs() + 5000;
+			Avisar(pl, $"{destino.Nome} ainda nao tem superficie gerada -- por enquanto so da pra sobrevoar.");
+			return;
+		}
+
+		MoveToZone(pl.Id, ZoneKey.Premade(destino.Nome), SpawnPos);
+		Avisar(pl, $"voce pousa em {destino.Nome}.");
+		GD.Print($"[server] {pl.Name} pousou em {destino.Nome}");
+	}
+
+	/// <summary>
+	/// O SNAPSHOT DO ESPACO: um por jogador, recortado por CHUNK.
+	///
+	/// Nas zonas normais o mesmo buffer serve pra todo mundo, porque quem esta na zona ve todo
+	/// mundo da zona. Aqui nao: o universo e continuo e a zona inteira e uma so, entao o que
+	/// cada um enxerga depende de ONDE ele esta. Custa um buffer por jogador -- e o preco de o
+	/// espaco nao ter fim.
+	/// </summary>
+	private void SnapshotDoEspaco(List<ServerPlayer> zona, long agora)
+	{
+		foreach (ServerPlayer eu in zona)
+		{
+			if (eu.Peer == null) continue;
+
+			var vizinhos = new List<ServerPlayer>();
+			foreach (ServerPlayer o in zona)
+				if (Espaco.PertoDeMim(eu.Pos, o.Pos)) vizinhos.Add(o);
+
+			var w = Protocol.Begin(Protocol.S2C.Snapshot);
+			w.Put((ushort)vizinhos.Count);
+			foreach (ServerPlayer pl in vizinhos)
+				new EntityState
+				{
+					Id = pl.Id, Pos = pl.Pos, Facing = (byte)pl.Facing,
+					Moving = pl.Moving, Pose = pl.Pose(agora),
+					Vida = (byte)Math.Clamp(Math.Round(pl.Ficha.HP), 0, 100),
+					Rabo = pl.TemRaboAgora(),
+				}.Write(w);
+
+			eu.Peer.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
+		}
+	}
+
+	/// <summary>
+	/// Os planetas que o cliente precisa desenhar agora.
+	///
+	/// So sai quando a CHUNK muda -- e a mesma disciplina do corpo e dos atributos. Andar dentro
+	/// da mesma chunk nao muda o que se ve.
+	/// </summary>
+	private static void MandarVizinhanca(ServerPlayer pl, bool forcar = false)
+	{
+		if (pl.Peer == null) return;
+
+		ChunkId c = ChunkId.De(pl.Pos);
+		List<PlanetaNoEspaco> perto = Espaco.PorPerto(SeedDoUniverso, c);
+
+		var w = Protocol.Begin(Protocol.S2C.Vizinhanca);
+		w.Put(SeedDoUniverso);
+		w.Put(c.X);
+		w.Put(c.Y);
+		w.Put((byte)Math.Min(perto.Count, 255));
+		foreach (PlanetaNoEspaco p in perto.Take(255))
+		{
+			w.Put(p.Nome);
+			w.Put(p.Pos.X);
+			w.Put(p.Pos.Y);
+			w.Put(p.Raio);
+			w.Put(p.Seed);
+			w.Put(p.Premade);
+		}
+		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+}

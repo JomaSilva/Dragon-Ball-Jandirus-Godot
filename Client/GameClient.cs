@@ -48,6 +48,13 @@ public partial class GameClient : Node
 
 	/// <summary>O ultimo corpo recebido -- pra quem nasce depois do pacote (o HUD).</summary>
 	public List<Protocol.ParteState> Corpo { get; private set; } = [];
+
+	/// <summary>
+	/// A FICHA LENTA: atributos e o que o personagem sabe fazer. Chega quando muda, nao por
+	/// tick -- e o que decide quais abas o menu (tecla P) mostra.
+	/// </summary>
+	public Protocol.AtributosState Atributos { get; private set; }
+	public event Action<Protocol.AtributosState>? AtributosRecebidos;
 	/// <summary>A aparencia de alguem da zona: id, nome, raca, genero, ficha visual.</summary>
 	public event Action<int, string, string, string, Jandirus.Core.Appearance.Appearance>? PeerLooked;
 
@@ -222,6 +229,138 @@ public partial class GameClient : Node
 	/// <summary>Alguem falou e eu estou no alcance: canal, quem falou, o que foi dito.</summary>
 	public event Action<Protocol.Fala, string, string>? Falou;
 
+	/// <summary>
+	/// O QUE EU APRENDI e quantos marcos tenho. Chega quando muda, como o corpo e os atributos.
+	/// </summary>
+	public HashSet<string> SkillsAprendidas { get; } = new(StringComparer.OrdinalIgnoreCase);
+	public int MarcosTotais { get; private set; }
+	public int MarcosLivres { get; private set; }
+	public event Action? SkillsMudaram;
+
+	/// <summary>Os efeitos ligados em mim agora ("invisivel", "escudo"). So pra HUD.</summary>
+	public HashSet<string> EfeitosAtivos { get; } = new(StringComparer.Ordinal);
+
+	/// <summary>Caiu um efeito: id e por quantos ms (0 = saiu, negativo = enquanto durar).</summary>
+	public event Action<string, long>? EfeitoCaiu;
+
+	/// <summary>Uma construcao de pe na minha zona.</summary>
+	public readonly record struct ObraInfo(int Id, string Tipo, Vector2 Pos, bool Aparafusada, int Lab, string Dono);
+
+	/// <summary>Uma linha do catalogo de tecnologia, com o motivo do nao (0 = pode).</summary>
+	public readonly record struct OfertaDeObra(string Id, string Nome, double Custo, double Tech, int Recusa);
+
+	/// <summary>Um estilo de luta que eu sei, com a maestria e o teto dela.</summary>
+	public readonly record struct EstiloInfo(string Id, string Nome, double Maestria, double Teto);
+
+	public List<EstiloInfo> Estilos { get; private set; } = [];
+	public string EstiloAtual { get; private set; } = "";
+	public event Action? EstilosMudaram;
+
+	/// <summary>Assume (ou solta, com "-") uma postura de luta.</summary>
+	public void SendEstilo(string id)
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.Estilo);
+		w.Put(id);
+		_peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	public List<ObraInfo> Obras { get; private set; } = [];
+	public List<OfertaDeObra> Catalogo { get; private set; } = [];
+	public double TechNivel { get; private set; }
+	public double Zeni { get; private set; }
+	public double TechXp { get; private set; }
+	public double TechXpAlvo { get; private set; } = 100;
+	public event Action? ObrasMudaram;
+	public event Action? TechMudou;
+
+	/// <summary>O canal unico de tecnologia. Ver `GameServer.Tech.cs`.</summary>
+	public void SendTech(string cmd, string arg = "")
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.Tech);
+		w.Put(cmd);
+		w.Put(arg);
+		_peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>"Quero comprar esta skill." Quem valida e o servidor -- daqui so sai o pedido.</summary>
+	public void SendAprender(string path)
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.Aprender);
+		w.Put(path);
+		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// Usa uma habilidade ativa, por id. Um canal so pra todas (ver GameServer.Raciais.cs):
+	/// tecnica nova nao precisa de pacote novo.
+	/// </summary>
+	public void SendHabilidade(string id)
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.Habilidade);
+		w.Put(id);
+		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>Um planeta no mapa do universo, do jeito que o cliente precisa desenha-lo.</summary>
+	public readonly record struct PlanetaInfo(string Nome, Vector2 Pos, float Raio, ulong Seed, bool Premade);
+
+	/// <summary>Os planetas da minha vizinhanca no espaco. Chega quando a CHUNK muda.</summary>
+	public List<PlanetaInfo> Planetas { get; private set; } = [];
+	public ulong SeedDoUniverso { get; private set; }
+	public event Action? VizinhancaMudou;
+
+	/// <summary>Um cargo do mundo: chave, quem ocupa ("" = vago), e o que falta PRA MIM.</summary>
+	public readonly record struct CargoInfo(string Chave, string Dono, string Falta);
+
+	public List<CargoInfo> Cargos { get; private set; } = [];
+	public event Action? CargosMudaram;
+
+	/// <summary>Chave vazia = so me manda a lista; com chave = reivindico aquele cargo.</summary>
+	public void SendCargo(string chave = "")
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.Cargo);
+		w.Put(chave);
+		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>Alguem mudou de forma: quem, de que forma, pra qual, e se foi a PRIMEIRA vez.</summary>
+	public event Action<int, int, int, bool>? FormaMudou;
+
+	/// <summary>
+	/// Sobe (ou desce) a escada de transformacao. O cliente NAO escolhe a forma -- pede a
+	/// direcao e o servidor decide qual degrau cabe, como a tecla C do original.
+	/// </summary>
+	public void SendTransformar(bool subir)
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.Transformar);
+		w.Put(subir);
+		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>Em quem estou mirando (0 = ninguem). Marcado com duplo clique.</summary>
+	public int AlvoId { get; private set; }
+	public event Action<int>? AlvoMudou;
+
+	/// <summary>
+	/// Marca (ou solta, com 0) o alvo. O servidor confere se aquele id existe e esta na mesma
+	/// zona -- daqui so sai a intencao.
+	/// </summary>
+	public void SendAlvo(int id)
+	{
+		if (!Connected || id == AlvoId) return;
+		AlvoId = id;
+		var w = Protocol.Begin(Protocol.C2S.Alvo);
+		w.Put(id);
+		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		AlvoMudou?.Invoke(id);
+	}
+
 	public byte ZonaMirada { get; private set; }
 	public bool Letal { get; private set; }
 	public event Action<byte>? MiraMudou;
@@ -310,6 +449,114 @@ public partial class GameClient : Node
 				Falou?.Invoke(canal, autor, reader.GetString(Protocol.MaxFala));
 				break;
 			}
+
+			// UM EFEITO CAIU (ou saiu de cima) DE MIM. Um canal so pra todas as tecnicas: id do
+			// efeito + por quantos ms (0 = acabou, negativo = enquanto durar). Ver
+			// `GameServer.Tecnicas.cs`; a alternativa era um pacote por tecnica, e sao 47.
+			case Protocol.S2C.Efeito:
+			{
+				string efeito = reader.GetString(24);
+				long ms = reader.GetLong();
+				if (ms == 0) EfeitosAtivos.Remove(efeito); else EfeitosAtivos.Add(efeito);
+				EfeitoCaiu?.Invoke(efeito, ms);
+				break;
+			}
+
+			// AS CONSTRUCOES da minha zona. Chega no login, ao trocar de zona e quando alguem
+			// ergue ou derruba alguma -- nunca por tick: predio nao se move.
+			// OS ESTILOS: qual esta ativo, quais eu aprendi e a maestria de cada um. So quando muda.
+			case Protocol.S2C.Estilos:
+			{
+				EstiloAtual = reader.GetString(32);
+				int n = reader.GetByte();
+				var l = new List<EstiloInfo>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new EstiloInfo(reader.GetString(32), reader.GetString(32),
+						reader.GetDouble(), reader.GetDouble()));
+				Estilos = l;
+				EstilosMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Construcoes:
+			{
+				int n = reader.GetUShort();
+				var l = new List<ObraInfo>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new ObraInfo(reader.GetInt(), reader.GetString(48),
+						new Vector2(reader.GetFloat(), reader.GetFloat()),
+						reader.GetBool(), reader.GetByte(), reader.GetString(32)));
+				Obras = l;
+				ObrasMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Tech:
+			{
+				TechNivel = reader.GetDouble();
+				Zeni = reader.GetDouble();
+				TechXp = reader.GetDouble();
+				TechXpAlvo = reader.GetDouble();
+				int n = reader.GetUShort();
+				var l = new List<OfertaDeObra>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new OfertaDeObra(reader.GetString(48), reader.GetString(48),
+						reader.GetDouble(), reader.GetDouble(), reader.GetByte()));
+				Catalogo = l;
+				TechMudou?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Vizinhanca:
+			{
+				SeedDoUniverso = reader.GetULong();
+				reader.GetInt(); reader.GetInt();          // a chunk: o cliente deriva da posicao
+				int n = reader.GetByte();
+				var l = new List<PlanetaInfo>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new PlanetaInfo(reader.GetString(48),
+						new Vector2(reader.GetFloat(), reader.GetFloat()),
+						reader.GetFloat(), reader.GetULong(), reader.GetBool()));
+				Planetas = l;
+				VizinhancaMudou?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Cargos:
+			{
+				int n = reader.GetByte();
+				var lista = new List<CargoInfo>(n);
+				for (int i = 0; i < n; i++)
+					lista.Add(new CargoInfo(reader.GetString(32), reader.GetString(32), reader.GetString(160)));
+				Cargos = lista;
+				CargosMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Forma:
+			{
+				int quem = reader.GetInt();
+				int de = reader.GetUShort();
+				int para = reader.GetUShort();
+				FormaMudou?.Invoke(quem, de, para, reader.GetBool());
+				break;
+			}
+
+			case Protocol.S2C.Skills:
+			{
+				MarcosTotais = reader.GetInt();
+				MarcosLivres = reader.GetInt();
+				int quantas = reader.GetUShort();
+				SkillsAprendidas.Clear();
+				for (int i = 0; i < quantas; i++) SkillsAprendidas.Add(reader.GetString(96));
+				SkillsMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Atributos:
+				Atributos = Protocol.AtributosState.Read(reader);
+				AtributosRecebidos?.Invoke(Atributos);
+				break;
 
 			case Protocol.S2C.Corpo:
 				Corpo = reader.GetCorpo();

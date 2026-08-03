@@ -57,6 +57,13 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// diagnostico da SOMBRA: confere o leque contra o raycast, celula a celula
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvisao") >= 0)
+		{
+			AddChild(new VisaoDiag { Name = "DiagVisao" });
+			return;
+		}
+
 		MontarLogin();
 
 		// MUSICA DESDE A PRIMEIRA TELA: no BYOND a criacao de personagem tinha trilha, e e
@@ -332,6 +339,7 @@ public partial class Boot : Node2D
 		AddChild(new Chat { Name = "Chat" });
 		AddChild(new World { Name = "World" });
 		AddChild(new Hud { Name = "Hud" });
+		AddChild(new MenuJogo { Name = "Menu" });
 
 		_pause = new PauseMenu { Name = "Pause" };
 		_pause.Desconectar += VoltarAoLogin;
@@ -349,7 +357,28 @@ public partial class Boot : Node2D
 		// unico jeito de exercitar a CADEIA INTEIRA do combate sem janela: pacote de golpe ->
 		// escolha de alvo -> resolucao -> transmissao -> relato. Dois processos com esta flag
 		// no mesmo servidor brigam de verdade.
-		if (Array.IndexOf(OS.GetCmdlineArgs(), "--socar") >= 0) AddChild(new RoboDeSoco());
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--socar") >= 0)
+		{
+			var robo = new RoboDeSoco();
+			// `--mente N`: o robo medita e entra na propria mente depois de N segundos. E o unico
+			// jeito de exercitar a IA do clone sem uma segunda pessoa no servidor.
+			int im = Array.IndexOf(OS.GetCmdlineArgs(), "--mente");
+			if (im >= 0 && im + 1 < OS.GetCmdlineArgs().Length
+				&& double.TryParse(OS.GetCmdlineArgs()[im + 1], System.Globalization.NumberStyles.Float,
+								   System.Globalization.CultureInfo.InvariantCulture, out double seg))
+				robo.EntrarNaMenteEm = seg;
+			// `--tech`: o robo percorre a cadeia inteira de tecnologia (construir, aparafusar,
+			// estudar, instalar o laboratorio, virar androide). Vem junto do `--techteste` do
+			// servidor, que da o nivel e o dinheiro.
+			robo.TestarTech = Array.IndexOf(OS.GetCmdlineArgs(), "--tech") >= 0;
+			robo.Bio = Array.IndexOf(OS.GetCmdlineArgs(), "--bio") >= 0;
+			int ie = Array.IndexOf(OS.GetCmdlineArgs(), "--espaco");
+			if (ie >= 0 && ie + 1 < OS.GetCmdlineArgs().Length
+				&& double.TryParse(OS.GetCmdlineArgs()[ie + 1], System.Globalization.NumberStyles.Float,
+								   System.Globalization.CultureInfo.InvariantCulture, out double segE))
+				robo.DecolarEm = segE;
+			AddChild(robo);
+		}
 	}
 
 	/// <summary>Saiu do servidor: derruba o mundo e reconstroi a tela de login do zero.</summary>
@@ -447,6 +476,11 @@ public partial class Boot : Node2D
 		Registrar("aim_arms", Key.Key4);
 		Registrar("aim_legs", Key.Key5);
 		Registrar("lethal", Key.K);
+
+		// TRANSFORMAR. "C" e a tecla do original -- ela SOBE a escada sozinha, e quem decide
+		// qual degrau cabe e o servidor. "X" desce pra base de uma vez.
+		Registrar("transformar", Key.C);
+		Registrar("reverter", Key.X);
 
 		static void Registrar(string acao, params Key[] teclas)
 		{

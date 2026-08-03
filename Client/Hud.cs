@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Net;
 
 namespace Jandirus.Client;
@@ -214,7 +214,7 @@ public partial class Hud : CanvasLayer
 
 	public override void _Input(InputEvent e)
 	{
-		if (Chat.Digitando) return;   // TAB no meio de uma frase e navegacao de campo, nao atalho
+		if (Foco.Digitando) return;   // TAB no meio de uma frase e navegacao de campo, nao atalho
 		if (e is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Tab })
 		{
 			_ajuda.Visible = !_ajuda.Visible;

@@ -37,6 +37,10 @@ public partial class World : Node2D
 	private Node2D? _zonaAtual;
 	private Node2D _atores = null!;
 	private Visao _veu = null!;
+	private CeuDoEspaco _ceu = null!;
+	private Node2D _orbes = null!;
+	// quem e quem: o nome chega junto com a aparencia, UMA vez, e a aba People precisa dele
+	private readonly Dictionary<int, string> _nomes = [];
 
 	public override void _Ready()
 	{
@@ -60,6 +64,11 @@ public partial class World : Node2D
 		_veu = new Visao { Name = "Visao" };
 		AddChild(_veu);
 
+		_ceu = new CeuDoEspaco { Name = "Ceu", Visible = false };
+		AddChild(_ceu);
+		_orbes = new Node2D { Name = "Planetas" };
+		AddChild(_orbes);
+
 		if (GameClient.Instance is { } cli)
 		{
 			cli.Joined += AoEntrar;
@@ -67,6 +76,15 @@ public partial class World : Node2D
 			cli.PeerLeft += AoSair;
 			cli.PeerLooked += AoReceberAparencia;
 			cli.Golpe += AoGolpe;
+			cli.FormaMudou += AoMudarForma;
+			cli.VizinhancaMudou += DesenharPlanetas;
+			cli.ObrasMudaram += DesenharObras;
+			cli.EfeitoCaiu += (efeito, ms) =>
+			{
+				// A CEGUEIRA E O CAMPO DE VISAO INDO A ZERO -- ver Visao.CegoAte.
+				if (efeito == "cegueira")
+					_veu.CegoAte = ms <= 0 ? 0 : Time.GetTicksMsec() + (ulong)ms;
+			};
 			// O Boot instancia o World DENTRO do callback de Joined, ou seja, este _Ready
 			// roda DEPOIS do evento. Assinar nao basta: se ja entramos, aplica agora.
 			if (cli.LocalId != 0) AoEntrar(cli.LocalId, cli.Zone, cli.LocalSpawn, cli.LocalName);
@@ -74,7 +92,7 @@ public partial class World : Node2D
 			cli.ZoneChanged += (z, spawn) =>
 			{
 				CarregarZona(z);
-				if (_local != null) _local.Position = new Vector2(spawn.X, spawn.Y);
+				_local?.Teleportar(spawn);
 			};
 		}
 	}
@@ -89,6 +107,9 @@ public partial class World : Node2D
 			cli.PeerLeft -= AoSair;
 			cli.PeerLooked -= AoReceberAparencia;
 			cli.Golpe -= AoGolpe;
+			cli.FormaMudou -= AoMudarForma;
+			cli.VizinhancaMudou -= DesenharPlanetas;
+			cli.ObrasMudaram -= DesenharObras;
 		}
 	}
 
@@ -131,6 +152,25 @@ public partial class World : Node2D
 		_catalogo ??= Godot.FileAccess.FileExists(Manifesto)
 			? ZoneCatalog.Parse(Godot.FileAccess.GetFileAsString(Manifesto))
 			: null;
+
+		// O ESPACO NAO TEM CENA. Nao ha .dmm nem tileset: o que se ve e gerado por chunk (ver
+		// CeuDoEspaco) e os planetas chegam do servidor. Sem colisao e sem veu, tambem -- no
+		// vazio nao ha parede pra bater nem pra esconder nada.
+		bool espaco = Jandirus.Core.World.Espaco.EhEspaco(zona);
+		_ceu.Visible = espaco;
+		_ceu.Seed = GameClient.Instance?.SeedDoUniverso ?? 0;
+		if (espaco)
+		{
+			_colisao = null;
+			_veu.Mapa = null;
+			if (_local != null) _local.Mapa = null;
+			DesenharPlanetas();
+			AudioDirector.Instance?.Ambiente("");
+			GD.Print("[world] zona: ESPACO (gerado por chunk)");
+			Chat.Sistema("voce esta no espaco. Encoste num planeta pra pousar.");
+			return;
+		}
+		foreach (Node n in _orbes.GetChildren()) n.QueueFree();
 
 		ZoneEntry? e = _catalogo?.Get(zona);
 		if (e == null || !ResourceLoader.Exists(e.Cena))
@@ -233,6 +273,11 @@ public partial class World : Node2D
 			_ultimoPacoteMs[e.Id] = agora;
 			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Pose, desde, e.Rabo);
 			if (r.GetNodeOrNull<HealthBar>("Vida") is { } barra) barra.Vida = e.Vida / 100f;
+
+			// INVISIVEL: some, mas o no CONTINUA VIVO e recebendo posicao. Apagar o corpo faria
+			// ele reaparecer no lugar errado quando voltasse (o cliente teria perdido a
+			// interpolacao inteira) -- e reaparecer teleportando entrega quem estava escondido.
+			r.Visible = !e.Oculto;
 		}
 	}
 
@@ -240,6 +285,15 @@ public partial class World : Node2D
 	{
 		if (_remotos.Remove(id, out RemotePlayer? r)) r.QueueFree();
 		_looks.Remove(id);
+		_nomes.Remove(id);
+
+		// O ALVO SAIU DE CENA. A marca morre junto com o corpo dela (e filha), mas a referencia
+		// ficaria pendurada -- e o servidor tambem solta o alvo do lado dele (ver Marcado()).
+		if (GameClient.Instance is { } c && c.AlvoId == id)
+		{
+			_marca = null;
+			c.SendAlvo(0);
+		}
 		_ultimoPacoteMs.Remove(id);
 	}
 
@@ -395,6 +449,16 @@ public partial class World : Node2D
 		if (souEu && forca > _tremor) _tremor = forca;
 	}
 
+	/// <summary>
+	/// Sacode a camera de fora (a cinematica de transformacao usa). O tremor vale so pra
+	/// QUEM esta olhando -- e camera, nao mundo.
+	/// </summary>
+	public void Sacudir(float forca, float peso = 1f)
+	{
+		float f = forca * Mathf.Clamp(peso, 0f, 1f);
+		if (f > _tremor) _tremor = f;
+	}
+
 	private float _tremor;
 	private static readonly RandomNumberGenerator Sorte = new();
 
@@ -413,11 +477,200 @@ public partial class World : Node2D
 									Jandirus.Core.Appearance.Appearance ap)
 	{
 		_looks[id] = (raca, genero, ap);
+		_nomes[id] = nome;
 		if (_visual == null) return;
 		if (GameClient.Instance != null && id == GameClient.Instance.LocalId)
 			_local?.GetNode<CharacterVisual>("Visual").Vestir(_visual, ap, raca, genero);
 		else if (_remotos.TryGetValue(id, out RemotePlayer? r))
 			r.GetNode<CharacterVisual>("Visual").Vestir(_visual, ap, raca, genero);
+	}
+
+	// =====================================================================
+	// TRANSFORMACAO
+	// =====================================================================
+	/// <summary>
+	/// Alguem mudou de forma. Vale pra QUALQUER um da zona, nao so pra mim: ver o adversario
+	/// virar Super Saiyajin na sua frente e metade da graca.
+	/// </summary>
+	private void AoMudarForma(int id, int de, int para, bool primeira)
+	{
+		Node2D? corpo = Corpo(id);
+		if (corpo == null) return;
+
+		var forma = (Jandirus.Core.Forms.Forma)para;
+		Jandirus.Core.Forms.FormaDef? def = Jandirus.Core.Forms.EscadaSaiyajin.Def(forma);
+
+		// --- a aura: e o gancho que ficou esperando desde a Etapa 7b ---
+		if (corpo.GetNodeOrNull<Aura>("Aura") is { } aura)
+		{
+			if (def == null) aura.Apagar();
+			else aura.Acender(new Color(def.Aura), 0.8f + Degrau(forma) * 0.5f);
+		}
+
+		// --- o cabelo: o Saiyajin doura ---
+		if (corpo.GetNodeOrNull<CharacterVisual>("Visual") is { } vis)
+			vis.PintarCabelo(def == null ? null : new Color(def.Cabelo));
+
+		if (def == null)
+		{
+			if (id == GameClient.Instance?.LocalId) Chat.Sistema("voce volta ao normal.");
+			return;
+		}
+
+		// --- a cinematica: SO na primeira vez daquela forma ---
+		if (primeira) Transformacao.Rodar(_atores, corpo, new Color(def.Aura), Degrau(forma));
+		else
+		{
+			// nas seguintes, um tranco curto e o som -- o momento continua existindo, so nao
+			// para o jogo por tres segundos
+			Sacudir(3f + Degrau(forma));
+			AudioDirector.EfeitoNoLugar(corpo, Trilha.Dash, 0.9f);
+		}
+	}
+
+	/// <summary>Quao alto na escada esta a forma. Escala o exagero da cena.</summary>
+	private static int Degrau(Jandirus.Core.Forms.Forma f) => f switch
+	{
+		Jandirus.Core.Forms.Forma.Ssj1 => 1,
+		Jandirus.Core.Forms.Forma.Grade2 or Jandirus.Core.Forms.Forma.Grade3 => 2,
+		Jandirus.Core.Forms.Forma.Ssj2 => 2,
+		Jandirus.Core.Forms.Forma.Ssj3 => 3,
+		Jandirus.Core.Forms.Forma.Ssj4 => 4,
+		_ => 1,
+	};
+
+	// =====================================================================
+	// ALVO
+	// =====================================================================
+	/// <summary>
+	/// Poe na cena os planetas que o servidor mandou. Chamado quando a CHUNK muda -- andar
+	/// dentro da mesma chunk nao muda o que ha em volta.
+	/// </summary>
+	/// <summary>
+	/// PLANTA AS CONSTRUCOES da zona. Refaz a lista inteira em vez de casar id por id: sao
+	/// dezenas, nao milhares, e o pacote so chega quando algo muda -- nunca por tick.
+	///
+	/// VAO DENTRO DE `_atores`, junto dos corpos, e nao numa camada propria: se ficassem numa
+	/// camada separada, o Y-sort nao teria como intercalar personagem e bancada, e o jogador
+	/// passaria sempre na frente ou sempre atras.
+	/// </summary>
+	private void DesenharObras()
+	{
+		foreach (Node n in _atores.GetChildren())
+			if (n is ObraDesenhada) n.QueueFree();
+		if (GameClient.Instance is not { } cli) return;
+
+		foreach (GameClient.ObraInfo o in cli.Obras)
+			_atores.AddChild(new ObraDesenhada
+			{
+				Name = "Obra" + o.Id,
+				Position = o.Pos,
+				Tipo = o.Tipo,
+				Dono = o.Dono,
+				Aparafusada = o.Aparafusada,
+				Lab = o.Lab,
+			});
+	}
+
+	private void DesenharPlanetas()
+	{
+		foreach (Node n in _orbes.GetChildren()) n.QueueFree();
+		if (GameClient.Instance is not { } cli) return;
+		if (!Jandirus.Core.World.Espaco.EhEspaco(cli.Zone)) return;
+
+		_ceu.Seed = cli.SeedDoUniverso;
+		foreach (GameClient.PlanetaInfo p in cli.Planetas)
+			_orbes.AddChild(new PlanetaDesenhado
+			{
+				Name = "P_" + p.Nome,
+				Position = p.Pos,
+				Nome = p.Nome,
+				Raio = p.Raio,
+				Seed = p.Seed,
+				Premade = p.Premade,
+			});
+	}
+
+	/// <summary>Manda o piloto automatico levar o corpo ate um ponto (o nav system).</summary>
+	public void Pilotar(Vector2 destino)
+	{
+		if (_local == null) return;
+		_local.Destino = new Vec2(destino.X, destino.Y);
+	}
+
+	/// <summary>Onde EU estou, em coordenada de mundo. Nulo antes de entrar.</summary>
+	public Vector2? PosicaoLocal => _local != null && IsInstanceValid(_local) ? _local.GlobalPosition : null;
+
+	/// <summary>Quanto perto do clique um personagem precisa estar pra ser o escolhido.</summary>
+	private const float RaioDoClique = 22f;
+
+	private MarcaDeAlvo? _marca;
+
+	/// <summary>
+	/// DUPLO CLIQUE MARCA O ALVO; duplo clique no vazio solta.
+	///
+	/// Vale pra qualquer um na tela, mesmo longe: marcar e dizer "e com esse ai", nao e o
+	/// golpe. Quem decide se da pra alcancar e o servidor, na hora do soco.
+	/// </summary>
+	public override void _UnhandledInput(InputEvent e)
+	{
+		if (e is not InputEventMouseButton { DoubleClick: true, ButtonIndex: MouseButton.Left }) return;
+		if (Foco.Digitando || GameClient.Instance is not { } cli) return;
+
+		Vector2 alvo = GetGlobalMousePosition();
+		int escolhido = 0;
+		float melhor = RaioDoClique * RaioDoClique;
+
+		foreach ((int id, RemotePlayer r) in _remotos)
+		{
+			if (!IsInstanceValid(r)) continue;
+			// o clique acerta o CORPO, e o corpo esta acima do pe do sprite
+			float d = (r.GlobalPosition - alvo).LengthSquared();
+			if (d >= melhor) continue;
+			melhor = d;
+			escolhido = id;
+		}
+
+		cli.SendAlvo(escolhido);
+		MarcarNaCena(escolhido);
+		GetViewport().SetInputAsHandled();
+	}
+
+	/// <summary>Poe (ou tira) o anel de mira aos pes de quem foi escolhido.</summary>
+	private void MarcarNaCena(int id)
+	{
+		if (_marca != null) { _marca.QueueFree(); _marca = null; }
+
+		if (id == 0)
+		{
+			Chat.Sistema("alvo solto.");
+			return;
+		}
+		if (!_remotos.TryGetValue(id, out RemotePlayer? r) || !IsInstanceValid(r)) return;
+
+		_marca = new MarcaDeAlvo { Name = "Alvo", Position = new Vector2(0, 14) };
+		r.AddChild(_marca);
+		Chat.Sistema($"alvo: {(_nomes.TryGetValue(id, out string? n) && n.Length > 0 ? n : $"#{id}")}");
+	}
+
+	/// <summary>
+	/// Quem esta na tela AGORA, por nome. E a aba "People" do menu -- o "Known People" do
+	/// original.
+	///
+	/// So entra quem o veu deixa ver: estar na mesma zona nao basta, tem que estar do lado de
+	/// ca da parede. E a primeira coisa que <see cref="Visao.Ve"/> passou a servir alem de
+	/// desenhar.
+	/// </summary>
+	public List<string> NomesVisiveis()
+	{
+		var nomes = new List<string>();
+		foreach ((int id, RemotePlayer r) in _remotos)
+		{
+			if (!IsInstanceValid(r) || !_veu.Ve(r.GlobalPosition)) continue;
+			nomes.Add(_nomes.TryGetValue(id, out string? n) && n.Length > 0 ? n : $"desconhecido #{id}");
+		}
+		nomes.Sort(StringComparer.OrdinalIgnoreCase);
+		return nomes;
 	}
 
 	/// <summary>Veste um boneco recem-criado com a aparencia que ja tiver chegado.</summary>

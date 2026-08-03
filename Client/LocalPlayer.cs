@@ -97,6 +97,12 @@ public partial class LocalPlayer : Node2D
 	/// <summary>Ainda ha Ki pro servidor conceder a corrida.</summary>
 	private bool _temKiPraCorrer = true;
 
+	/// <summary>
+	/// PRA ONDE O PILOTO AUTOMATICO ESTA INDO (nulo = ninguem pilotando). E o nav system: o
+	/// jogador escolhe um planeta na aba Nav e o corpo vai sozinho, no passo normal.
+	/// </summary>
+	public Vec2? Destino;
+
 	/// <summary>SHIFT segurado AGORA -- o modificador do golpe, independente de estar andando.</summary>
 	private bool _shift;
 
@@ -113,7 +119,7 @@ public partial class LocalPlayer : Node2D
 		// ESCREVENDO NO CHAT NAO SE JOGA. `Input.IsActionPressed` le a TECLA FISICA e nao sabe
 		// que ha um campo de texto com foco -- sem esta guarda, escrever "sai da frente" faz o
 		// personagem andar pra direita (D), treinar (T) e mirar na cabeca (1).
-		var input = _caido || Chat.Digitando
+		var input = _caido || Foco.Digitando
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			: new Vector2(
 				Godot.Input.GetActionStrength("move_right") - Godot.Input.GetActionStrength("move_left"),
@@ -121,6 +127,23 @@ public partial class LocalPlayer : Node2D
 
 		var dir = new Vec2(input.X, input.Y);
 		bool tentandoAndar = dir.LengthSquared > 1e-6f;
+
+		// PILOTO AUTOMATICO (o nav system). NAO e teleporte nem velocidade extra: ele so
+		// preenche a direcao que o jogador preencheria com as teclas, e o passo continua
+		// passando pelo MoveRules e sendo conferido pelo servidor. Uma viagem de sete dias tem
+		// que custar sete dias.
+		if (!tentandoAndar && Destino is { } alvo)
+		{
+			Vec2 rumo = alvo - _pos;
+			if (rumo.LengthSquared < 64 * 64) { Destino = null; Chat.Sistema("voce chegou."); }
+			else { dir = rumo.Normalized(); tentandoAndar = true; }
+		}
+		else if (tentandoAndar && Destino != null)
+		{
+			// encostou numa tecla: assume o controle. Piloto que ignora o piloto e um sequestro.
+			Destino = null;
+			Chat.Sistema("piloto automatico desligado.");
+		}
 
 		// SHIFT FAZ DUAS COISAS, e elas NAO sao a mesma:
 		//   * andando, ele CORRE (velocidade maior, cobrada em Ki pelo servidor);
@@ -176,19 +199,25 @@ public partial class LocalPlayer : Node2D
 
 		// GUARDA. Segurar ALT ergue o braco; erguer a guarda no instante do golpe vira
 		// contra-ataque, e por isso ela e um estado continuo e nao um toque.
-		bool guardaAgora = Godot.Input.IsActionPressed("guard") && !andando && !Chat.Digitando;
+		bool guardaAgora = Godot.Input.IsActionPressed("guard") && !andando && !Foco.Digitando;
 		if (guardaAgora != _guarda)
 		{
 			_guarda = guardaAgora;
 			GameClient.Instance?.SendGuard(_guarda);
 		}
 
-		if (!Chat.Digitando) LerMira();
+		if (!Foco.Digitando) LerMira();
+
+		if (!Foco.Digitando)
+		{
+			if (Godot.Input.IsActionJustPressed("transformar")) GameClient.Instance?.SendTransformar(true);
+			else if (Godot.Input.IsActionJustPressed("reverter")) GameClient.Instance?.SendTransformar(false);
+		}
 
 		// UM soco por vez. Sem esta trava, martelar o espaco re-armava o cronometro a cada
 		// tecla e o personagem ficava preso na pose de soco pra sempre -- e como todo estado
 		// do .dmi tem loop, o ciclo se repetia sem nunca voltar a ficar de pe.
-		if (!Chat.Digitando && Godot.Input.IsActionJustPressed("attack") && _ataqueAte <= 0)
+		if (!Foco.Digitando && Godot.Input.IsActionJustPressed("attack") && _ataqueAte <= 0)
 		{
 			// SHIFT + ESPACO = GOLPE PESADO, e com ele a investida longa. So ESPACO = golpe
 			// leve, com um passo curto pra fechar o meio metro que falta. Nao ha tecla
@@ -210,7 +239,7 @@ public partial class LocalPlayer : Node2D
 		}
 
 		Protocol.Activity nova = _atividade;
-		if (Chat.Digitando) { }   // "treinar" e "meditar" sao T e M: no meio de uma frase, nao
+		if (Foco.Digitando) { }   // "treinar" e "meditar" sao T e M: no meio de uma frase, nao
 		else if (Godot.Input.IsActionJustPressed("train"))
 			nova = _atividade == Protocol.Activity.Treinando ? Protocol.Activity.Parado : Protocol.Activity.Treinando;
 		else if (Godot.Input.IsActionJustPressed("meditate"))
@@ -265,6 +294,22 @@ public partial class LocalPlayer : Node2D
 	private void OnCorrected(Vec2 pos)
 	{
 		_pos = pos;
+		Desenhar();
+	}
+
+	/// <summary>
+	/// PARA ONDE O SERVIDOR ME MANDOU. Troca de zona, decolagem, pouso, saida da mente.
+	///
+	/// Escreve na posicao EXATA (`_pos`) e nao so no no. Escrever so no no e um bug silencioso:
+	/// `_pos` e a verdade da simulacao -- e dela que sai o proximo passo e o que se manda pro
+	/// servidor -- entao o corpo continuaria andando a partir do lugar ANTIGO e o servidor
+	/// corrigiria pra sempre. Em terra isso passava batido (os spawns sao perto); no espaco a
+	/// distancia e de milhoes de pixels e o defeito virou visivel na hora.
+	/// </summary>
+	public void Teleportar(Vec2 pos)
+	{
+		_pos = pos;
+		Destino = null;   // chegou noutro lugar: o piloto anterior nao vale mais
 		Desenhar();
 	}
 }

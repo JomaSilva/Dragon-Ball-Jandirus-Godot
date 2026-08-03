@@ -142,6 +142,12 @@ public partial class GameServer
 		CombatState ca = a.Combate;
 		if (!ca.PodeAtacar()) return;   // morto, caido, atordoado ou ainda em recarga
 
+		// ALVO MARCADO MANDA VIRAR. E o que faz "seus ataques serem focados nele" valer mesmo
+		// com o alvo pelas costas: o personagem se volta pra ele ANTES de arrancar. Sem isso,
+		// marcar alguem atras de voce e apertar espaco daria um soco no ar na direcao errada.
+		if (Marcado(a) is { } mira)
+			a.Facing = MoveRules.FacingFrom(mira.Pos - a.Pos, a.Facing);
+
 		// APROXIMAR VEM ANTES DE SOCAR, e e assim no original: o `Attack()` fecha a distancia e
 		// SO ENTAO chama o `MeleeAttack`. E o que faz o combate parecer Dragon Ball em vez de
 		// dois bonecos se cutucando -- voce aponta pra alguem e o personagem VAI.
@@ -174,7 +180,9 @@ public partial class GameServer
 		// soa medio; o pesado soa grande. E o que faz a briga esquentar no ouvido.
 		int nivel = (int)Math.Min(3, tipo + Math.Min(1, ca.Combo));
 
-		GolpeResultado r = MeleeResolver.Resolver(ca, cd, angulo, _rng, tipo);
+		// O ESTILO ENTRA COMO DANO PLANO, nao como multiplicador -- e o `dmg += compareStyles(M)`
+		// do original. Teto de 10: estilo desempata luta parelha, nao vence luta perdida.
+		GolpeResultado r = MeleeResolver.Resolver(ca, cd, angulo, _rng, tipo, DanoDeEstilo(a, alvo));
 		alvo.UltimoAgressor = a.Id;
 
 		if (r.Encostou) ca.SomarCombo();
@@ -210,7 +218,14 @@ public partial class GameServer
 		}
 
 		if (r.Nocauteou)
+		{
 			GD.Print($"[server] {a.Name} NOCAUTEOU {d.Name} ({r.Membro})");
+			// DERROTADO E NOCAUTEADO **OU** MORTO. Sem esta linha o Zenkai nunca aconteceria em
+			// luta amistosa (golpe nao-letal e o padrao, e ali ninguem morre) -- justamente onde
+			// a mecanica mais faz sentido. A recarga de uma hora impede o dobro quando o nocaute
+			// vira morte na sequencia.
+			ZenkaiPorDerrota(d, a);
+		}
 
 		if (!r.Morreu) return;
 
@@ -218,14 +233,9 @@ public partial class GameServer
 		GD.Print($"[server] {a.Name} MATOU {d.Name} ({r.Membro})");
 
 		// ZENKAI: perder pra alguem mais forte arranca poder do corpo. E pago na hora, direto
-		// no BP base -- e recompensa, nao treino, entao nao passa pelo CapCheck.
-		Fighter.ZenkaiResult z = d.Ficha.GainZenkai(
-			Math.Max(a.Ficha.expressedBP, a.Ficha.BP), NowMs(),
-			d.Combate.Corpo.MuitoFerido());
-
-		if (z == Fighter.ZenkaiResult.Concedido)
-			GD.Print($"[server] Zenkai de {d.Name}: +{d.Ficha.UltimoZenkai:0} de BP" +
-					 (d.Ficha.UltimoZenkaiNoTeto ? " (no teto)" : ""));
+		// no BP base -- e recompensa, nao treino, entao nao passa pelo CapCheck. A concessao e
+		// a MESMA do nocaute (ver GameServer.Raciais.cs), inclusive a recarga.
+		ZenkaiPorDerrota(d, a);
 	}
 
 	// =====================================================================
@@ -285,7 +295,7 @@ public partial class GameServer
 		// lugar antigo e o servidor devolve correcao em cima de correcao
 		var w = Protocol.Begin(Protocol.S2C.Correction);
 		w.PutVec(a.Pos);
-		a.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		a.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
 	/// <summary>
@@ -295,6 +305,16 @@ public partial class GameServer
 	/// </summary>
 	private ServerPlayer? AlvoParaArranque(ServerPlayer a, float alcance)
 	{
+		// MARCADO PRIMEIRO. So precisa estar no ALCANCE -- o cone nao entra: quem marcou ja
+		// disse em quem quer bater, e obrigar a mirar de novo com o mouse seria pedir a mesma
+		// informacao duas vezes.
+		if (Marcado(a) is { } mira)
+		{
+			float d2 = (mira.Pos - a.Pos).LengthSquared;
+			if (d2 <= alcance * alcance && d2 > DistanciaDeParada * DistanciaDeParada) return mira;
+			return null;   // marcou alguem longe demais: nao arranca atras de outro sem querer
+		}
+
 		ServerPlayer? melhor = null;
 		float melhorDist = float.MaxValue;
 		Vec2 frente = MeleeArea.Frente(a.Facing);
@@ -323,6 +343,13 @@ public partial class GameServer
 	/// </summary>
 	private ServerPlayer? AlvoNaFrente(ServerPlayer a)
 	{
+		// MARCADO PRIMEIRO, e so a DISTANCIA conta. O `Atacar` ja virou o personagem pra ele,
+		// entao normalmente o cone tambem aprovaria -- mas com dois colados o cone aprova os
+		// dois, e e ai que marcar tem que decidir.
+		if (Marcado(a) is { } mira
+			&& (mira.Pos - a.Pos).LengthSquared <= CombatKnobs.Alcance * CombatKnobs.Alcance)
+			return mira;
+
 		ServerPlayer? melhor = null;
 		float melhorDist = float.MaxValue;
 
@@ -337,6 +364,23 @@ public partial class GameServer
 			melhor = o;
 		}
 		return melhor;
+	}
+
+	/// <summary>
+	/// O ALVO MARCADO, se ainda valer a pena. Devolve nulo quando ninguem foi marcado ou
+	/// quando o marcado saiu de cena (morreu, trocou de zona, virou intocavel) -- e ai o
+	/// combate volta a escolher pelo cone, sozinho.
+	/// </summary>
+	private ServerPlayer? Marcado(ServerPlayer a)
+	{
+		if (a.AlvoId == 0) return null;
+		if (!_players.TryGetValue(a.AlvoId, out ServerPlayer? o)
+			|| o == a || o.Ficha.dead || o.Combate.Intocavel || o.Zone.Hash != a.Zone.Hash)
+		{
+			a.AlvoId = 0;   // limpa sozinho: alvo morto nao fica preso na mira pra sempre
+			return null;
+		}
+		return o;
 	}
 
 	/// <summary>
@@ -358,7 +402,7 @@ public partial class GameServer
 		e.Write(w);
 
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
-			o.Peer.Send(w, Protocol.ChannelState, DeliveryMethod.Unreliable);
+			o.Peer?.Send(w, Protocol.ChannelState, DeliveryMethod.Unreliable);
 	}
 
 	/// <summary>
@@ -388,9 +432,9 @@ public partial class GameServer
 			// som, e reenviar isso pra uma zona cheia de gente e o tipo de trafego que derruba
 			// servidor.
 			if (o == a || o == d)
-				o.Peer.Send(wCheio, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+				o.Peer?.Send(wCheio, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 			else
-				o.Peer.Send(wMagro, Protocol.ChannelState, DeliveryMethod.Unreliable);
+				o.Peer?.Send(wMagro, Protocol.ChannelState, DeliveryMethod.Unreliable);
 		}
 	}
 
@@ -427,8 +471,55 @@ public partial class GameServer
 
 			if (pl.Ficha.dead && agora >= pl.RenasceEm) Renascer(pl);
 
-			MandarCorpo(pl);   // barato: sai sozinho quando nada mudou
+			MandarCorpo(pl);       // barato: sai sozinho quando nada mudou
+			MandarAtributos(pl);   // idem: atributo so muda quando se treina
+			MandarSkills(pl);
 		}
+	}
+
+	/// <summary>
+	/// A FICHA LENTA pro dono: os oito atributos e o que o menu (tecla P) mostra.
+	///
+	/// Mesma disciplina do corpo -- so sai quando MUDA. Atributo mexe quando se treina, e
+	/// treinar leva minutos: mandar isto junto com a vida, cinco vezes por segundo, seria
+	/// repetir o mesmo pacote milhares de vezes por sessao.
+	/// </summary>
+	private static void MandarAtributos(ServerPlayer pl)
+	{
+		Fighter f = pl.Ficha;
+		var a = new Protocol.AtributosState
+		{
+			PhysOff = (float)f.Rphysoff, PhysDef = (float)f.Rphysdef,
+			KiOff = (float)f.Rkioff, KiDef = (float)f.Rkidef,
+			Technique = (float)f.Rtechnique, KiSkill = (float)f.Rkiskill,
+			Speed = (float)f.Rspeed, Esoteric = (float)f.Rmagiskill,
+			Willpower = (float)f.Ewillpower, Stamina = (float)f.staminapercent,
+			Idade = pl.Idade,
+			Raca = pl.Race,
+
+			// AINDA ZERO, e de proposito: nenhuma destas habilidades existe no port. Quem
+			// acende cada bit e a etapa que trouxer o sistema -- a skill de Sense, o scouter,
+			// o nav system. Enquanto estiver zerado, as abas correspondentes NAO aparecem, que
+			// e exatamente a regra do original.
+			// O NAV so existe NO ESPACO. Em terra firme um mapa estelar nao serve pra nada, e a
+			// aba apareceria vazia -- e aba vazia ensina que o sistema nao funciona.
+			Poderes = (uint)(Espaco.EhEspaco(pl.Zone) ? pl.Poderes | Protocol.Poder.Nav : pl.Poderes),
+			FormaAtual = (ushort)pl.Forma.Atual,
+			Maestrias = [.. pl.Forma.Maestria.Todas.Select(t => ((ushort)t.F, (float)t.V))],
+		};
+
+		// assinatura grossa: 1% de resolucao por atributo. Sem isso o ruido de ponto flutuante
+		// remandaria o pacote a cada tick.
+		string sig = $"{a.PhysOff:0.##}|{a.PhysDef:0.##}|{a.KiOff:0.##}|{a.KiDef:0.##}|"
+				   + $"{a.Technique:0.##}|{a.KiSkill:0.##}|{a.Speed:0.##}|{a.Esoteric:0.##}|"
+				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.FormaAtual}|"
+				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"));
+		if (sig == pl.SigAtributos) return;
+		pl.SigAtributos = sig;
+
+		var w = Protocol.Begin(Protocol.S2C.Atributos);
+		a.Write(w);
+		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
 
@@ -465,7 +556,7 @@ public partial class GameServer
 
 		var w = Protocol.Begin(Protocol.S2C.Corpo);
 		w.PutCorpo(partes);
-		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
 	/// <summary>
@@ -497,7 +588,7 @@ public partial class GameServer
 			pl.Pos = SpawnPos;
 			var w = Protocol.Begin(Protocol.S2C.Correction);
 			w.PutVec(pl.Pos);
-			pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 
 		GD.Print($"[server] {pl.Name} renasceu ({SegundosDeCarencia:0}s de carencia)");
