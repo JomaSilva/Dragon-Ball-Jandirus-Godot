@@ -158,6 +158,7 @@ public partial class World : Node2D
 			cli.Piscou += AoPiscar;
 			cli.PortasMudaram += AoMudarPortas;
 			cli.CenarioCaiu += AoCairCenario;
+			cli.CenarioRefeito += AoRefazerCenario;
 			// O Boot instancia o World DENTRO do callback de Joined, ou seja, este _Ready
 			// roda DEPOIS do evento. Assinar nao basta: se ja entramos, aplica agora.
 			if (cli.LocalId != 0) AoEntrar(cli.LocalId, cli.Zone, cli.LocalSpawn, cli.LocalName);
@@ -198,6 +199,7 @@ public partial class World : Node2D
 			cli.Piscou -= AoPiscar;
 			cli.PortasMudaram -= AoMudarPortas;
 			cli.CenarioCaiu -= AoCairCenario;
+			cli.CenarioRefeito -= AoRefazerCenario;
 		}
 	}
 
@@ -373,7 +375,6 @@ public partial class World : Node2D
 			_veu.Camadas = CamadasDoCenario(gerado);
 			if (_local != null) _local.Mapa = _colisao;
 			DesenharObras();
-		ReaplicarEstrago();
 			ReaplicarEstrago();
 			AudioDirector.Instance?.Ambiente("");
 			GD.Print($"[world] zona GERADA: {gerado.Ficha()}");
@@ -448,6 +449,15 @@ public partial class World : Node2D
 		// outra. Passou despercebido enquanto elas eram so desenho; agora que elas viram parede,
 		// seria o cliente atravessando o que o servidor barra.
 		DesenharObras();
+
+		// E O ESTRAGO QUE JA ESTAVA FEITO. Este ramo -- o do planeta PRE-FEITO, que e onde se joga
+		// -- era o unico dos quatro que NAO reaplicava. O metodo existe justamente porque a versao
+		// anterior disto era um `foreach` solto que caiu no ramo errado; ele foi extraido, ganhou o
+		// comentario explicando o tombo... e continuou sendo chamado so no ramo do planeta gerado.
+		//
+		// O sintoma e o desync de mapa que o dono fotografou: o servidor tem buraco onde o cliente
+		// desenha parede, os dois discordam sobre onde da pra andar, e o corpo treme no muro.
+		ReaplicarEstrago();
 
 		GD.Print($"[world] zona carregada: {e.Zona} (z{e.Z}, {e.W}x{e.H})"
 				 + (_colisao != null ? " com colisao" : " SEM colisao"));
@@ -614,6 +624,66 @@ public partial class World : Node2D
 	private (int Fonte, Vector2I Coord)? _chaoDestruido;
 
 	private void AoCairCenario(int cx, int cy) => AplicarEstrago(cx, cy, poeira: true);
+
+	/// <summary>
+	/// UM ADMIN REFEZ O CENARIO DESTA ZONA.
+	///
+	/// ============================ POR QUE NAO DA PRA DESFAZER CELULA A CELULA ============================
+	/// <see cref="AplicarEstrago"/> APAGA as camadas do tilemap e escreve terra batida por cima. O
+	/// que estava ali antes -- qual tile, de qual atlas, em qual das cinco camadas -- nao fica
+	/// guardado em lugar nenhum: quem sabe disso e o arquivo da cena, no disco.
+	///
+	/// Entao restaurar e jogar a cena fora e instanciar de novo. E caro (~50 ms, ver o `[perf]` da
+	/// carga de zona) e e um verb de admin: acontece uma vez, quando alguem quis o cenario de volta.
+	///
+	/// A COLISAO E OUTRA HISTORIA e nao precisa de recarga: a queda nunca escreveu no dado do disco,
+	/// so pos a celula numa camada por cima (`ZoneCollision.Abrir`). Um `Fechar` por celula desfaz.
+	/// Precisa acontecer ANTES do `CenarioCaido.Clear()` do cliente -- por isso o evento sai com a
+	/// lista ainda cheia.
+	/// ====================================================================================================
+	/// </summary>
+	private void AoRefazerCenario(ulong zonaLimpa)
+	{
+		if (GameClient.Instance is not { } cli) return;
+
+		// NAO E A ZONA EM QUE ESTOU? Entao o unico problema e a cena SUJA guardada no cache: eu vi
+		// as paredes cairem ali, viajei, e a instancia foi pro `_zonasVivas` com os tiles apagados.
+		// Voltar pra la reusaria essa copia e o buraco reapareceria so pra mim. Jogar fora resolve
+		// -- a proxima entrada le do disco.
+		if (zonaLimpa != _zonaDoAtual.Hash)
+		{
+			ZoneKey alvo = _zonasVivas.Keys.FirstOrDefault(z => z.Hash == zonaLimpa);
+			if (alvo.Hash != 0 && _zonasVivas.Remove(alvo, out Node2D? velha))
+			{
+				if (GodotObject.IsInstanceValid(velha)) velha.Free();
+				_ordemDoCache.Remove(alvo);
+			}
+			return;
+		}
+
+		foreach ((int cx, int cy) in cli.CenarioCaido)
+		{
+			_colisao?.Fechar(cx, cy);
+			_veu.Mapa?.Fechar(cx, cy);
+		}
+
+		// A CENA CACHEADA TAMBEM ESTA SUJA. Ela e a MESMA instancia que vai voltar quando alguem
+		// reentrar na zona -- guardar sem limpar seria refazer o cenario pra quem esta aqui e
+		// devolver o buraco pra quem chegar depois.
+		ZoneKey zona = _zonaDoAtual;
+		if (_zonaAtual != null)
+		{
+			RemoveChild(_zonaAtual);
+			_zonaAtual.Free();
+			_zonaAtual = null;
+		}
+		if (_zonasVivas.Remove(zona, out Node2D? guardado) && GodotObject.IsInstanceValid(guardado)) guardado.Free();
+		_ordemDoCache.Remove(zona);
+
+		_zonaDoAtual = default;   // senao o `GuardarZonaAtual` de dentro do CarregarZona reempilha o nada
+		CarregarZona(zona);
+		Chat.Sistema("o cenario desta zona foi refeito.");
+	}
 
 	/// <summary>
 	/// REPOE O ESTRAGO que ja estava feito quando esta zona carregou.

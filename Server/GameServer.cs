@@ -170,6 +170,22 @@ public sealed class ServerPlayer
 	/// <summary>Bits de <see cref="Protocol.Poder"/> que as skills aprendidas acenderam.</summary>
 	public Protocol.Poder Poderes;
 
+	/// <summary>
+	/// OS BITS QUE NAO VEM DE SKILL -- hoje so o <see cref="Protocol.Poder.Admin"/>.
+	///
+	/// ============================ POR QUE ELE PRECISA EXISTIR ============================
+	/// `Poderes` e RECALCULADO do zero toda vez que a lista de skills muda (`AplicarPoderes` faz
+	/// `pl.Poderes = p`, varrendo as aprendidas). O login marcava o host com
+	/// `pl.Poderes |= Admin` e, doze linhas abaixo, chamava `AplicarPoderes(pl)` -- que apagava a
+	/// marca. O host entrava admin e deixava de ser admin no mesmo instante, e a aba nunca
+	/// aparecia. Aprender uma skill qualquer faria a mesma coisa com quem fosse promovido.
+	///
+	/// Separar em dois campos e o conserto de raiz: o que e DERIVADO de skill se recalcula a
+	/// vontade, e o que foi CONCEDIDO (pelo host, pela conta) sobrevive a qualquer recalculo.
+	/// =====================================================================================
+	/// </summary>
+	public Protocol.Poder PoderesConcedidos;
+
 	/// <summary>Quando o corpo volta a se mexer depois de morrer (relogio real, ms).</summary>
 	public long RenasceEm;
 
@@ -502,6 +518,28 @@ public partial class GameServer : Node
 		_portaDeTeste = Array.IndexOf(args, "--portateste") >= 0;
 		if (_portaDeTeste) GD.Print("[server] BANCADA: todo mundo nasce colado numa porta");
 
+		// `--sem-admin-local`: ninguem vira admin so por conectar da propria maquina.
+		// E o que quem hospeda ATRAS DE TUNEL (playit.gg, ngrok, Docker) precisa ligar: por la
+		// TODO jogador chega com endereco local, e sem isto o servidor inteiro entraria admin.
+		// Ver `AdminPorEndereco` -- ha tambem um desarme automatico quando a ambiguidade aparece.
+		if (Array.IndexOf(args, "--sem-admin-local") >= 0)
+		{
+			DesligarAdminPorEndereco();
+			GD.Print("[server] admin por endereco DESLIGADO (--sem-admin-local): so a marca na conta vale");
+		}
+
+		// `--quebrarteste N`: derruba N celulas de cenario em volta do ponto de nascimento assim
+		// que alguem entra. Existe pelo verb de admin que REFAZ o cenario: o estrago so acontece
+		// quando um corpo e arremessado contra parede por outro jogador -- ou seja, um teste
+		// automatico dele exigiria dois robos brigando de verdade, e mesmo assim so as vezes.
+		// Sem isto o "Restore Scenery" e um botao que ninguem nunca viu funcionar.
+		int qIdx = Array.IndexOf(args, "--quebrarteste");
+		if (qIdx >= 0 && qIdx + 1 < args.Length && int.TryParse(args[qIdx + 1], out int qv))
+		{
+			_quebrarDeTeste = Math.Clamp(qv, 0, 200);
+			GD.Print($"[server] BANCADA: {_quebrarDeTeste} celulas de cenario caem no nascimento");
+		}
+
 		// `--gestacaoteste N`: encurta a gestacao do bio-androide pra N segundos. Sem isto o teste
 		// levaria DOZE HORAS -- e um sistema que so da pra testar em doze horas nao e testado.
 		int gIdx = Array.IndexOf(args, "--gestacaoteste");
@@ -772,7 +810,15 @@ public partial class GameServer : Node
 			case Protocol.C2S.Verbo:
 			{
 				string cmd = reader.GetString(24);
-				string arg = reader.GetString(48);
+				// O ARGUMENTO PRECISA CABER UM AVISO INTEIRO, e nao um nome curto.
+				//
+				// Era 48, herdado do canal de tecnologia (onde o argumento e um typepath). Mas o
+				// painel de admin manda TEXTO por aqui -- o anuncio e a mensagem particular --, e
+				// `GetString(max)` do LiteNetLib nao TRUNCA: acima do limite ele devolve string
+				// VAZIA. O admin escrevia "o servidor vai reiniciar em dez minutos" (48+ letras), a
+				// caixa se limpava, e o servidor respondia "escreva o aviso antes". O texto sumia e
+				// a mensagem ainda acusava quem escreveu.
+				string arg = reader.GetString(Protocol.MaxArgDeVerbo);
 				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemManda)) Verbo(quemManda, cmd, arg);
 				break;
 			}
@@ -824,11 +870,19 @@ public partial class GameServer : Node
 							  && o != quem && o.Zone.Hash == quem.Zone.Hash ? alvo : 0;
 				break;
 			}
+			// FALAR. E AQUI que o mute e conferido, e nao dentro do `Falar`.
+			//
+			// `Falar` nao e so o canal do chat: e por ele que o MOTOR solta os gritos das tecnicas
+			// ("KAIOKEN TIMES 3!!", "Solar Flare!!") e os emotes de combate. A checagem morava la e
+			// calava as tecnicas junto -- o jogador apertava Kaioken, a tecnica funcionava, o grito
+			// nao saia (e ele era sinal de combate pros outros da zona) e no lugar dele vinha "voce
+			// esta calado" a cada uso. Aqui e o unico ponto por onde a fala DE UM JOGADOR entra.
 			case Protocol.C2S.Chat:
 			{
 				var canal = (Protocol.Fala)reader.GetByte();
 				string texto = reader.GetString(Protocol.MaxFala);
 				if (!_byPeer.TryGetValue(peer, out ServerPlayer? a)) break;
+				if (EstaCalado(a)) { Avisar(a, "voce esta calado."); break; }
 				Falar(a, canal, texto);
 				break;
 			}
@@ -856,6 +910,23 @@ public partial class GameServer : Node
 
 		conta = conta.Trim();
 		if (conta.Length < 2) { Recusar(peer, "escolha um nome de conta com pelo menos 2 letras"); return; }
+
+		// TETO NO NOME DA CONTA. Nao e capricho: o painel de admin manda a lista de contas pela rede
+		// e o leitor do outro lado usa `GetString(48)` -- que devolve VAZIO pra string maior que o
+		// limite. Sem este teto, uma conta de nome comprido apareceria como uma linha em branco no
+		// painel, sem botao e sem explicacao. O limite fica FOLGADO em relacao ao do pacote.
+		if (conta.Length > 32) { Recusar(peer, "nome de conta longo demais (maximo 32)"); return; }
+
+		// NOME RESERVADO. O arquivo de uma conta e `<nome saneado>.json` NA MESMA PASTA em que o
+		// `mundo.json` mora -- entao a conta chamada "mundo" aponta pro arquivo das construcoes. Sem
+		// esta recusa, qualquer um mandava um login com esse nome: o parser estourava lendo um array
+		// como conta, o `catch` devolvia null, o `Login` entendia "conta nova" e GRAVAVA a conta por
+		// cima do mundo. Todas as construcoes do servidor apagadas, por um cliente sem senha.
+		if (AccountStore.NomeReservado(conta))
+		{
+			Recusar(peer, "esse nome de conta e reservado pelo servidor");
+			return;
+		}
 		if (senha.Length < 3) { Recusar(peer, "escolha uma senha de pelo menos 3 caracteres"); return; }
 		if (_store == null) { Recusar(peer, "servidor sem armazenamento"); return; }
 
@@ -879,6 +950,15 @@ public partial class GameServer : Node
 		{
 			Recusar(peer, "senha incorreta");
 			GD.Print($"[server] senha errada na conta '{conta}' de {peer.Address}");
+			return;
+		}
+
+		// BANIMENTO E CONFERIDO DEPOIS DA SENHA, de proposito: dizer "banida" a quem nem sabe a
+		// senha entregaria que a conta existe. E o mesmo cuidado do "senha incorreta" generico.
+		if (acc.Banida)
+		{
+			Recusar(peer, "esta conta esta banida deste servidor");
+			GD.Print($"[server] conta banida '{conta}' tentou entrar de {peer.Address}");
 			return;
 		}
 
@@ -979,6 +1059,21 @@ public partial class GameServer : Node
 	// =====================================================================
 	private void Entrar(NetPeer peer, AccountSave acc, int slot, CharacterSave c)
 	{
+		// O BAN E CONFERIDO AQUI TAMBEM, e nao so no `Login`.
+		//
+		// Entre digitar a senha e escolher o personagem existe uma TELA -- e nela a conta vive em
+		// `_logados`, sem `ServerPlayer` nenhum. Banir alguem parado ali nao derrubava ninguem (o
+		// laco do ban varre `_players`) e, quando a pessoa clicava no slot, este metodo a deixava
+		// entrar. Pior: o `Persistir` seguinte regravava o arquivo a partir dessa copia velha e
+		// APAGAVA o banimento do disco. O portao que leva ao mundo tem que conferir tambem.
+		if (acc.Banida)
+		{
+			Recusar(peer, "esta conta esta banida deste servidor");
+			GD.Print($"[server] conta banida '{acc.Conta}' barrada na entrada do mundo");
+			peer.Disconnect();
+			return;
+		}
+
 		var pl = new ServerPlayer { Id = _nextId++, Peer = peer, LastInputMs = NowMs() };
 		AccountStore.ParaJogador(c, pl);
 		pl.Conta = acc.Conta;
@@ -997,13 +1092,11 @@ public partial class GameServer : Node
 			pl.Zone = SpawnZone;
 		if (pl.Pos.X == 0 && pl.Pos.Y == 0) pl.Pos = SpawnPos;
 
-		// QUEM HOSPEDA E ADMIN. Ver `GameServer.EhHost`: so vale quando o servidor subiu pelo botao
-		// "Hospedar" E a conexao vem da propria maquina. Num servidor dedicado ninguem ganha isso.
-		if (EhHost(peer))
-		{
-			pl.Poderes |= Protocol.Poder.Admin;
-			GD.Print($"[server] {pl.Name} e o HOST: entra como administrador");
-		}
+		// OS PODERES CONCEDIDOS (admin) SAO DECIDIDOS AQUI, e ANTES do `AplicarPoderes` la embaixo.
+		// Eles vao pra `PoderesConcedidos` e nao pra `Poderes` de proposito: `AplicarPoderes` refaz
+		// `Poderes` do zero a partir das skills, e escrever ali seria escrever pra ser apagado --
+		// que e exatamente o defeito que fazia o host nunca receber a aba. Ver `GameServer.Admin.cs`.
+		ConcederPoderes(pl, peer, acc);
 
 		if (_portaDeTeste) NascerNaPorta(pl);
 		pl.Facing = Facing.South;
@@ -1051,6 +1144,12 @@ public partial class GameServer : Node
 		_logados.Remove(peer);
 		_contas[peer] = acc;
 		_players[pl.Id] = pl;
+
+		// BANCADA: `--quebrarteste N` derruba cenario na zona de quem entrou. TEM que ser AQUI, e
+		// nao la em cima: o `--geradoteste` reescreve `pl.Zone` no meio do caminho, e a versao
+		// anterior quebrava a zona de spawn enquanto o jogador nascia noutro planeta -- o teste
+		// procurava o estrago onde ele nao estava e dizia "nao houve estrago" com a flag ligada.
+		if (_quebrarDeTeste > 0) QuebrarCenarioDeTeste(pl);
 
 		// SO AGORA da pra mandar as construcoes: `MandarObras` varre `_players` procurando quem
 		// esta na zona, e quem acabou de entrar so esta la depois desta linha.

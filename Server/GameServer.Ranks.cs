@@ -114,11 +114,58 @@ public partial class GameServer
 		GD.Print($"[server] {pl.Name} ({pl.Conta}) assumiu o cargo '{r.Nome}'"
 				 + (subindo ? $" (largou {atual})" : ""));
 
-		// O MUNDO INTEIRO FICA SABENDO. Cargo e posicao social: se ninguem soube, nao houve.
+		AnunciarCargo(r, pl, subindo ? atual : "");
+	}
+
+	/// <summary>
+	/// PoE ALGUEM NO TRONO IGNORANDO OS REQUISITOS. E o `Give (Rank)` do original, e a unica
+	/// porta de entrada que a reivindicacao nao cobre.
+	///
+	/// Existe porque cargo, hoje, so se consegue cumprindo requisito -- e isso deixa sem conserto
+	/// o caso em que ele TRAVOU: o dono abandonou o jogo, ou o requisito mudou depois de alguem ja
+	/// ter assumido. Sem admin, o trono fica preso pra sempre.
+	///
+	/// O QUE ELE NAO IGNORA: "uma alma, um trono" continua valendo dos dois lados -- quem recebe
+	/// larga o que tinha, e quem estava no trono sai dele.
+	/// </summary>
+	private void Outorgar(RankDef r, ServerPlayer pl)
+	{
+		string largou = CargoDe(pl.Conta);
+		if (largou.Length > 0) _tronos.Remove(largou);
+
+		if (_tronos.TryGetValue(r.Chave, out string? antigo) && antigo.Length > 0
+			&& !string.Equals(antigo, pl.Conta, StringComparison.OrdinalIgnoreCase))
+		{
+			foreach (ServerPlayer o in _players.Values)
+				if (string.Equals(o.Conta, antigo, StringComparison.OrdinalIgnoreCase))
+					Avisar(o, $"voce nao e mais {r.Nome}.");
+		}
+
+		_tronos[r.Chave] = pl.Conta;
+		SalvarCargos();
+		GD.Print($"[server] {pl.Name} ({pl.Conta}) recebeu o cargo '{r.Nome}' por outorga de admin");
+		AnunciarCargo(r, pl, largou);
+	}
+
+	/// <summary>
+	/// O MUNDO INTEIRO FICA SABENDO. Cargo e posicao social: se ninguem soube, nao houve.
+	/// Um lugar so porque a reivindicacao e a outorga precisam anunciar igual.
+	/// </summary>
+	private void AnunciarCargo(RankDef r, ServerPlayer pl, string largou)
+	{
 		foreach (ServerPlayer o in _players.Values)
+		{
 			Mandar(o, Protocol.Fala.Sistema, "",
 				o == pl ? $"VOCE E O NOVO {r.Nome.ToUpperInvariant()}."
 						: $"{pl.Name} assumiu o cargo de {r.Nome}.");
+
+			// E A LISTA VAI JUNTO. O cliente so pede a lista de cargos quando ela esta VAZIA -- ou
+			// seja, quem ja tinha aberto a aba continuaria lendo o dono antigo ate relogar. A
+			// reivindicacao escapava disso por acidente (o handler do pedido responde logo depois);
+			// a outorga de admin nao tinha ninguem pra responder por ela.
+			MandarCargos(o);
+		}
+		if (largou.Length > 0) Avisar(pl, $"voce largou {Cargos.Get(largou)?.Nome ?? largou}.");
 	}
 
 	/// <summary>A lista de cargos e quem os ocupa -- e o que a aba mostra.</summary>

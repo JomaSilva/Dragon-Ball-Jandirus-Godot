@@ -27,26 +27,6 @@ namespace Jandirus.Server;
 public sealed partial class GameServer
 {
 	/// <summary>
-	/// HOSPEDOU, E ADMIN.
-	///
-	/// O pedido do dono foi direto: "o host sempre e adm". Faz sentido e e o que o original ja
-	/// fazia por outro caminho (`AdminCheck` dava nivel 6 pra quem subia o mundo): quem esta com o
-	/// servidor rodando na propria maquina ja pode desligar tudo -- negar-lhe os verbs seria teatro.
-	///
-	/// QUEM E O HOST: a conexao que vem do LOOPBACK enquanto o servidor foi subido pelo botao
-	/// "Hospedar" (nao pelo `--server` dedicado). Num servidor dedicado ninguem ganha admin de
-	/// graca, que e o certo -- la o dono da maquina nao esta jogando.
-	/// </summary>
-	public bool SubidoPeloJogador;
-
-	private bool EhHost(NetPeer? peer) =>
-		SubidoPeloJogador && peer != null
-		&& (peer.Address.ToString().Contains("127.0.0.1", StringComparison.Ordinal)
-			|| peer.Address.ToString().Contains("::1", StringComparison.Ordinal));
-
-	private static bool EhAdmin(ServerPlayer pl) => (pl.Poderes & Protocol.Poder.Admin) != 0;
-
-	/// <summary>
 	/// SESSAO DE TREINO (`Modules/Stats/Training/Session.dm`). Guarda o BP de quando comecou e
 	/// diz quanto subiu.
 	///
@@ -74,11 +54,18 @@ public sealed partial class GameServer
 			Avisar(pl, "voce sente que evoluiu nesta sessao, mas nao tem como medir o quanto.");
 	}
 
-	/// <summary>Quem esta no mundo agora. E o `Who` do original.</summary>
+	/// <summary>
+	/// Quem esta no mundo agora. E o `Who` do original.
+	///
+	/// SO GENTE: `_players` guarda tambem os corpos sem dono (o clone da mente, os NPCs). Listar o
+	/// clone de alguem aqui nao seria so um numero errado -- seria contar a quem estiver lendo que
+	/// aquela pessoa esta dentro da propria mente agora.
+	/// </summary>
 	private void VerboQuem(ServerPlayer pl)
 	{
-		Avisar(pl, $"-- {_players.Count} no mundo --");
-		foreach (ServerPlayer o in _players.Values)
+		var gente = Gente.ToList();
+		Avisar(pl, $"-- {gente.Count} no mundo --");
+		foreach (ServerPlayer o in gente)
 			Avisar(pl, $"  {o.Name} ({o.Race}) em {o.Zone.Name}");
 	}
 
@@ -121,70 +108,15 @@ public sealed partial class GameServer
 				break;
 
 			// ---------------------------------------------------------- so admin
-			// A CONFERENCIA E AQUI. O cliente esconde a aba de quem nao e admin, mas esconder
-			// botao nao e permissao -- um cliente modificado manda o pacote do mesmo jeito.
-			case "admin_curar" when EhAdmin(pl): AdminCurar(pl, arg); break;
-			case "admin_ir" when EhAdmin(pl): AdminIr(pl, arg); break;
-			case "admin_trazer" when EhAdmin(pl): AdminTrazer(pl, arg); break;
-			case "admin_kb" when EhAdmin(pl): AdminNocautear(pl, arg); break;
-			case "admin_quem" when EhAdmin(pl): VerboQuem(pl); break;
-
+			// A CONFERENCIA E AQUI, e num lugar so. O cliente esconde a aba de quem nao e admin,
+			// mas esconder botao nao e permissao -- um cliente modificado manda o pacote do mesmo
+			// jeito. Os comandos moram em `GameServer.Admin.cs`; o que este arquivo garante e que
+			// NENHUM deles seja alcancado sem a conferencia acima.
 			default:
-				if (cmd.StartsWith("admin_", StringComparison.Ordinal))
-					Avisar(pl, "isso e coisa de administrador.");
+				if (!cmd.StartsWith("admin_", StringComparison.Ordinal)) break;
+				if (!EhAdmin(pl)) { Avisar(pl, "isso e coisa de administrador."); break; }
+				if (!VerboDeAdmin(pl, cmd, arg)) Avisar(pl, "esse comando de administrador nao existe.");
 				break;
 		}
-	}
-
-	/// <summary>
-	/// Acha alguem pelo ID que o cliente mandou -- e o ALVO MARCADO dele.
-	///
-	/// Id e nao nome: nome se repete e nome se digita errado, e o jogador ja marca gente com duplo
-	/// clique pra tudo o mais. Nulo/0 = "eu mesmo", que e o que os verbs que curam querem.
-	/// </summary>
-	private ServerPlayer? PorNome(string idTexto) =>
-		int.TryParse(idTexto, out int id) && id != 0 && _players.TryGetValue(id, out ServerPlayer? p) ? p : null;
-
-	private void AdminCurar(ServerPlayer adm, string alvo)
-	{
-		ServerPlayer? p = PorNome(alvo) ?? adm;   // sem alvo marcado, cura quem pediu
-
-		p.Ficha.HP = 100;
-		p.Ficha.Ki = p.Ficha.MaxKi;
-		p.Ficha.KO = false;
-		p.Ficha.dead = false;
-		foreach (Jandirus.Core.Combat.BodyPart parte in p.Combate.Corpo.Partes)
-		{
-			parte.Vida = 100;
-			parte.Decepado = false;
-		}
-		Avisar(adm, $"{p.Name} curado.");
-		if (p != adm) Avisar(p, "voce se sente inteiro de novo.");
-	}
-
-	private void AdminIr(ServerPlayer adm, string alvo)
-	{
-		ServerPlayer? p = PorNome(alvo);
-		if (p == null) { Avisar(adm, $"nao achei '{alvo}'."); return; }
-		MoveToZone(adm.Id, p.Zone, p.Pos);
-		Avisar(adm, $"voce vai ate {p.Name}.");
-	}
-
-	private void AdminTrazer(ServerPlayer adm, string alvo)
-	{
-		ServerPlayer? p = PorNome(alvo);
-		if (p == null) { Avisar(adm, $"nao achei '{alvo}'."); return; }
-		MoveToZone(p.Id, adm.Zone, adm.Pos);
-		Avisar(adm, $"voce traz {p.Name}.");
-		Avisar(p, "uma forca invisivel te puxa.");
-	}
-
-	private void AdminNocautear(ServerPlayer adm, string alvo)
-	{
-		ServerPlayer? p = PorNome(alvo);
-		if (p == null) { Avisar(adm, $"nao achei '{alvo}'."); return; }
-		p.Ficha.KO = true;
-		p.Ficha.HP = 1;
-		Avisar(adm, $"{p.Name} cai no chao.");
 	}
 }

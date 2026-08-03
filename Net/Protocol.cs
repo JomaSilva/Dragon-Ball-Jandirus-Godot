@@ -68,6 +68,19 @@ public static class Protocol
     }
 
     /// <summary>
+    /// QUANTO CABE NO ARGUMENTO DE UM VERB.
+    ///
+    /// Era 48, herdado do canal de tecnologia -- onde o argumento e um typepath curto. Mas o painel
+    /// de admin manda TEXTO por aqui (o aviso ao servidor, a mensagem particular), e
+    /// <c>NetDataReader.GetString(max)</c> NAO TRUNCA: acima do limite devolve string VAZIA.
+    ///
+    /// O efeito era pior do que um corte: o admin escrevia um aviso de sessenta letras, a caixa se
+    /// limpava, o servidor lia "" e respondia "escreva o aviso antes". O texto sumia e a mensagem
+    /// ainda dizia que ele nao tinha escrito nada.
+    /// </summary>
+    public const int MaxArgDeVerbo = 256;
+
+    /// <summary>
     /// OS CANAIS DE FALA, com os MESMOS NUMEROS do `sayType()` do BYOND.
     ///
     /// Nao e capricho: o original tem seis modos e cada um com um alcance proprio, e manter a
@@ -160,7 +173,26 @@ public static class Protocol
         Estilos = 22,      // meu estilo ativo, os que aprendi e a maestria de cada um
         Zanzo = 23,        // fulano piscou: id + DE ONDE ele saiu (a miragem nasce la)
         Porta = 24,        // porta abriu ou fechou (ou: a lista inteira, ao entrar na zona)
-        Cenario = 25,      // uma celula do cenario CAIU: virou chao (knockback contra parede)
+        /// <summary>
+        /// UMA CELULA DO CENARIO CAIU: virou chao (knockback contra parede, ou o chao rachando).
+        ///
+        /// Carrega um `bool limpar` NA FRENTE das coordenadas. Ligado, ele quer dizer o oposto:
+        /// "esqueca TODO o estrago desta zona" -- e o que o verb de admin que refaz o cenario
+        /// precisa, e o mesmo truque do <see cref="Porta"/> com `completo = 1`. Sem esse bit o
+        /// pacote so sabia dizer que algo caiu, e restaurar era impossivel de anunciar.
+        /// </summary>
+        Cenario = 25,
+
+        /// <summary>
+        /// AS CONTAS DO SERVIDOR, so pra quem e administrador.
+        ///
+        /// Existe porque promover alguem exige VER quem existe -- inclusive quem esta offline, que
+        /// e o caso normal (o dono promove o amigo que jogou ontem). O alvo marcado por duplo
+        /// clique, que serve pros outros verbs de admin, nao alcanca quem nao esta na tela.
+        ///
+        /// NAO CARREGA SENHA: nem o sal, nem o hash. So o que o painel desenha.
+        /// </summary>
+        Contas = 26,
     }
 
     /// <summary>

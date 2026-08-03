@@ -104,6 +104,42 @@ public sealed class AccountSave
 
     public long CriadaEm, VistoEm;
 
+    /// <summary>
+    /// ESTA CONTA E DE ADMINISTRADOR.
+    ///
+    /// ============================ POR QUE NA CONTA, E NAO NO PERSONAGEM ============================
+    /// O original amarra admin ao `ckey` -- a IDENTIDADE de quem joga -- e nao ao mob
+    /// (`Admin_Check.dm`: `Admin1s.Add(trueckey)`, `world.SetConfig("APP/admin", "[ckey]", ...)`).
+    /// Faz sentido: promover alguem e dizer "confio nesta PESSOA", e a pessoa tem tres personagens.
+    /// Amarrar ao slot obrigaria a promover tres vezes e deixaria um buraco na hora em que ela
+    /// criasse o quarto.
+    ///
+    /// Vai no arquivo da conta, ao lado do hash da senha, porque e a mesma coisa que ele guarda:
+    /// quem e voce neste servidor. Assim promover alguem OFFLINE e so carregar, marcar e gravar.
+    /// ==============================================================================================
+    ///
+    /// O HOST NAO PRECISA DISTO. Quem conecta da propria maquina do servidor ja entra admin por
+    /// endereco (ver `GameServer.EhHost`) -- este campo e pra dar admin a OUTRA pessoa.
+    /// </summary>
+    public bool Admin;
+
+    /// <summary>
+    /// BANIDA: nao entra mais. O `Ban()` do original (`Punishments.dm`) guardava numa lista de
+    /// ckeys em savefile; aqui mora na propria conta, que e onde a identidade ja esta.
+    /// </summary>
+    public bool Banida;
+    public string MotivoDoBanimento = "";
+
+    /// <summary>
+    /// CALADA: nao fala em canal nenhum. O `Mute` do original.
+    ///
+    /// Mora aqui, e nao num conjunto em memoria, pelo mesmo motivo do banimento: a punicao tem que
+    /// sobreviver ao reinicio do servidor. Com o mute so na RAM bastava o dono fechar o jogo (o que
+    /// derruba o servidor no fluxo "Hospedar") pra o spammer voltar a falar -- e nem log ficava.
+    /// Estando na conta, tambem da pra calar e descalar quem esta OFFLINE.
+    /// </summary>
+    public bool Calada;
+
     /// <summary>Os tres slots. Nulo = vazio.</summary>
     public CharacterSave?[] Slots = new CharacterSave?[AccountStore.Slots];
 }
@@ -181,7 +217,128 @@ public sealed class AccountStore(string pasta)
         File.Move(tmp, destino, overwrite: true);
     }
 
-    public int Quantas() => Directory.Exists(Pasta) ? Directory.GetFiles(Pasta, "*.json").Length : 0;
+    /// <summary>
+    /// OS .json DA PASTA QUE NAO SAO CONTA.
+    ///
+    /// ============================ POR QUE ISTO PRECISA EXISTIR ============================
+    /// A pasta de saves guarda mais do que contas: o `mundo.json` (as construcoes de pe) mora ali
+    /// tambem, e ele e um ARRAY -- ler como <see cref="AccountSave"/> estoura no parser.
+    ///
+    /// Isso ficou invisivel enquanto ninguem varria a pasta: `Carregar` sempre foi chamado com um
+    /// nome de conta conhecido. Assim que o painel de admin passou a LISTAR tudo, cada abertura
+    /// dele cuspia tres linhas de "conta ilegivel" no console -- e um erro que aparece toda hora
+    /// e um erro que ninguem le mais, inclusive os de verdade.
+    /// ======================================================================================
+    ///
+    /// Lista explicita e nao heuristica: "todo array nao e conta" seria verdade hoje e mentira no
+    /// dia em que o formato mudasse, e o silencio esconderia um save corrompido de verdade.
+    /// </summary>
+    private static readonly HashSet<string> NaoSaoContas =
+        new(StringComparer.OrdinalIgnoreCase) { "mundo.json" };
+
+    private static bool EhArquivoDeConta(string caminho) =>
+        !NaoSaoContas.Contains(Path.GetFileName(caminho));
+
+    /// <summary>
+    /// ESTE NOME DE CONTA COLIDE COM UM ARQUIVO DO SERVIDOR?
+    ///
+    /// O arquivo de uma conta e o nome dela saneado + ".json", na MESMA pasta em que o mundo mora.
+    /// Ou seja: a conta "mundo" (ou "Mundo", ou "mu ndo" -- o saneamento troca tudo por '_' e
+    /// junta) aponta pro `mundo.json`. Quem logasse com esse nome faria o servidor gravar uma
+    /// conta por cima das construcoes de todo mundo.
+    ///
+    /// Confere pela forma SANEADA, e nao pelo texto cru, porque e ela que vira caminho.
+    /// </summary>
+    public static bool NomeReservado(string conta) =>
+        NaoSaoContas.Contains(Arquivo(conta) + ".json");
+
+    private IEnumerable<string> ArquivosDeConta() =>
+        Directory.Exists(Pasta) ? Directory.GetFiles(Pasta, "*.json").Where(EhArquivoDeConta) : [];
+
+    public int Quantas() => ArquivosDeConta().Count();
+
+    /// <summary>
+    /// TODAS AS CONTAS DO SERVIDOR, lidas do disco.
+    ///
+    /// Existe pro painel de admin: promover alguem exige poder VER quem existe, inclusive quem
+    /// nao esta online agora -- que e o caso normal (o dono do servidor promove um amigo que
+    /// jogou ontem). Le a pasta inteira a cada chamada de proposito: sao dezenas de arquivos
+    /// pequenos, e um cache aqui seria uma copia pra manter em sincronia com sete pontos de
+    /// gravacao. So o painel chama, e so quando o admin abre a aba.
+    /// </summary>
+    public List<AccountSave> Todas()
+    {
+        var l = new List<AccountSave>();
+        foreach (string f in ArquivosDeConta())
+        {
+            try
+            {
+                AccountSave? a = JsonSerializer.Deserialize<AccountSave>(File.ReadAllText(f), Opcoes);
+                if (a == null || a.Conta.Length == 0) continue;
+                if (a.Slots.Length < Slots) Array.Resize(ref a.Slots, Slots);
+                l.Add(a);
+            }
+            catch (Exception e)
+            {
+                // uma conta ilegivel nao pode esconder as outras do painel
+                Console.Error.WriteLine($"[store] conta ilegivel '{f}': {e.Message}");
+            }
+        }
+        return [.. l.OrderBy(a => a.Conta, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    /// <summary>
+    /// Acha a conta por NOME DE CONTA ou por NOME DE PERSONAGEM.
+    ///
+    /// Os dois porque o admin conhece as duas coisas por caminhos diferentes: a conta ele ve no
+    /// painel, o personagem ele ve andando na tela. Obrigar a traduzir um no outro seria obrigar
+    /// a decorar. Personagem so casa com nome inteiro -- prefixo casaria "Go" com "Goku" e com
+    /// "Gohan", e o verb que promove nao pode acertar o alvo errado.
+    /// </summary>
+    public AccountSave? Achar(string quem) => Achar(quem, out _);
+
+    /// <summary>
+    /// Acha a conta por NOME DE CONTA ou por NOME DE PERSONAGEM, e AVISA quando ha empate.
+    ///
+    /// ============================ POR QUE O EMPATE IMPORTA ============================
+    /// Nome de personagem NAO e unico: a criacao so recusa nome repetido entre quem esta online
+    /// naquele instante. Duas contas podem ter um "Goku" cada uma.
+    ///
+    /// Numa busca isso seria chato; num verbo que muda PRIVILEGIO e um roubo. Bastava criar uma
+    /// conta qualquer com um personagem homonimo ao de alguem que o admin fosse promover: a
+    /// varredura devolve a PRIMEIRA em ordem alfabetica de conta, e a promocao (ou o banimento)
+    /// cai na pessoa errada -- em silencio, porque o painel confirma pelo nome da conta que o
+    /// admin nem olhou.
+    ///
+    /// Por isso: nome de CONTA sempre vence (e unico, e o arquivo), e nome de PERSONAGEM so
+    /// resolve quando ha um candidato so. Havendo mais, quem chamou recusa e pede pra desambiguar.
+    /// =================================================================================
+    /// </summary>
+    public AccountSave? Achar(string quem, out List<string> empate)
+    {
+        empate = [];
+        quem = quem.Trim();
+        if (quem.Length == 0) return null;
+
+        // pelo nome da CONTA primeiro: e unico, e nao ha o que desempatar
+        AccountSave? direta = Carregar(quem);
+        if (direta != null) return direta;
+
+        var candidatas = new List<AccountSave>();
+        foreach (AccountSave a in Todas())
+        {
+            if (string.Equals(a.Conta, quem, StringComparison.OrdinalIgnoreCase)) return a;
+            foreach (CharacterSave? s in a.Slots)
+                if (s != null && string.Equals(s.Nome, quem, StringComparison.OrdinalIgnoreCase))
+                {
+                    candidatas.Add(a);
+                    break;
+                }
+        }
+        if (candidatas.Count == 1) return candidatas[0];
+        empate = [.. candidatas.Select(a => a.Conta)];
+        return null;
+    }
 
     // =====================================================================
     // SENHA

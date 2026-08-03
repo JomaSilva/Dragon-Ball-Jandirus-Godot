@@ -143,6 +143,15 @@ public partial class GameServer
 	/// E o `register_html_tab("Sense")` do original virado do avesso: em vez de a skill mexer na
 	/// interface, ela mexe no ESTADO, e a interface le o estado. Assim o cliente nao precisa
 	/// conhecer skill nenhuma pra saber que a aba Sense existe agora.
+	///
+	/// ============================ O RECALCULO E DESTRUTIVO ============================
+	/// `pl.Poderes` e refeito do ZERO aqui -- e tem que ser, senao um bit de uma skill esquecida
+	/// ficaria aceso pra sempre. Por isso os bits CONCEDIDOS (admin) moram noutro campo e sao
+	/// somados de volta no fim: eles nao vem de skill nenhuma e nao podem ser varridos junto.
+	///
+	/// Sem esta soma o host entrava admin e perdia o admin no mesmo login, porque `Entrar` marcava
+	/// o bit ANTES de chamar este metodo. Ver `ServerPlayer.PoderesConcedidos`.
+	/// ==================================================================================
 	/// </summary>
 	private void AplicarPoderes(ServerPlayer pl)
 	{
@@ -154,7 +163,7 @@ public partial class GameServer
 			if (s.Nome.Contains("Sense", StringComparison.OrdinalIgnoreCase)
 				|| path.Contains("/sense", StringComparison.OrdinalIgnoreCase)) p |= Protocol.Poder.Sense;
 		}
-		pl.Poderes = p;
+		pl.Poderes = p | pl.PoderesConcedidos;
 		pl.SigAtributos = "";   // forca o proximo pacote de atributos a sair com o bit novo
 	}
 

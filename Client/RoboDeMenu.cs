@@ -35,7 +35,7 @@ public partial class RoboDeMenu : Node
 		if (_t < 0.25) return;   // um passo a cada quarto de segundo: da tempo de a ficha chegar
 		_t = 0;
 
-		string[] abas = MenuJogo.AbasDeTeste;
+		string[] abas = m.AbasDeTeste;
 
 		if (_passo == 0)
 		{

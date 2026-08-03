@@ -2,6 +2,7 @@
 using Jandirus.Core.World;
 using Jandirus.Net;
 using LiteNetLib;
+using LiteNetLib.Utils;
 
 namespace Jandirus.Server;
 
@@ -229,11 +230,7 @@ public sealed partial class GameServer
 		// bloquear e deixa de cegar -- ela virou chao.
 		mapa.Abrir(cx, cy);
 
-		var w = Protocol.Begin(Protocol.S2C.Cenario);
-		w.Put((ushort)cx);
-		w.Put((ushort)cy);
-		foreach (ServerPlayer o in ZoneList(zona.Hash))
-			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		MandarCelulaCaida(zona, cx, cy);
 		return true;
 	}
 
@@ -283,24 +280,96 @@ public sealed partial class GameServer
 				// PAREDE QUE RACHA TAMBEM DEIXA DE BLOQUEAR -- ela caiu. Chao livre so muda de cara.
 				if (mapa.BlockedCell(cx, cy)) mapa.Abrir(cx, cy);
 
-				var w = Protocol.Begin(Protocol.S2C.Cenario);
-				w.Put((ushort)cx);
-				w.Put((ushort)cy);
-				foreach (ServerPlayer o in ZoneList(zona.Hash))
-					o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+				MandarCelulaCaida(zona, cx, cy);
 			}
+	}
+
+	/// <summary>Quantas celulas o `--quebrarteste N` derruba no nascimento. 0 = desligado.</summary>
+	private int _quebrarDeTeste;
+
+	/// <summary>
+	/// BANCADA: derruba cenario em volta de quem nasceu, sem precisar de briga.
+	///
+	/// Usa o MESMO <see cref="RacharChao"/> do combate -- e nao um caminho proprio -- porque um
+	/// atalho de teste que nao passa pelo codigo de verdade testa o atalho. A forca vai alta de
+	/// proposito (a resistencia do cenario e 20) e o raio cresce ate juntar o tanto pedido.
+	/// </summary>
+	private void QuebrarCenarioDeTeste(ServerPlayer pl)
+	{
+		const int T = ZoneCollision.TileSize;
+		_cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? antes);
+		int alvo = (antes?.Count ?? 0) + _quebrarDeTeste;
+
+		for (int anel = 0; anel < 12; anel++)
+		{
+			for (int dy = -anel; dy <= anel; dy++)
+				for (int dx = -anel; dx <= anel; dx++)
+				{
+					if (Math.Abs(dx) != anel && Math.Abs(dy) != anel) continue;   // so a casca
+					RacharChao(pl.Zone, pl.Pos + new Vec2(dx * T, dy * T), 1_000_000);
+				}
+			if (_cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? agora)
+				&& agora.Count >= alvo) break;
+		}
+
+		int quantas = _cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? fim) ? fim.Count : 0;
+		Godot.GD.Print($"[server] BANCADA: {quantas} celula(s) de cenario quebradas em {pl.Zone.Name}");
 	}
 
 	/// <summary>Manda pra quem chega a lista do que ja caiu na zona.</summary>
 	private void MandarCenario(ServerPlayer pl)
 	{
 		if (!_cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? caidas)) return;
-		foreach ((int cx, int cy) in caidas)
-		{
-			var w = Protocol.Begin(Protocol.S2C.Cenario);
-			w.Put((ushort)cx);
-			w.Put((ushort)cy);
-			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
-		}
+		foreach ((int cx, int cy) in caidas) pl.Peer?.Send(PacoteDeCenario(false, cx, cy),
+			Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// O PACOTE DE CENARIO, num lugar so.
+	///
+	/// Ele tem tres escritores (a parede que cai, o chao que racha, e a lista que vai pra quem
+	/// chega) e ganhou um campo novo -- o `limpar`. Tres copias da mesma escrita sao tres chances
+	/// de uma delas ficar pra tras quando o formato muda, e foi por isso que virou funcao.
+	/// </summary>
+	private static NetDataWriter PacoteDeCenario(bool limpar, int cx, int cy, ulong zona = 0)
+	{
+		var w = Protocol.Begin(Protocol.S2C.Cenario);
+		w.Put(limpar);
+		w.Put((ushort)cx);
+		w.Put((ushort)cy);
+		// A ZONA SO VIAJA NA LIMPEZA. Uma celula que cai e sempre da zona em que quem recebe esta
+		// -- o pacote so sai pra `ZoneList` dela. A limpeza, nao: ela vai pra TODO MUNDO, porque
+		// quem esta noutro planeta guardou a cena suja no cache e precisa jogar fora aquela copia.
+		if (limpar) w.Put(zona);
+		return w;
+	}
+
+	private void MandarCelulaCaida(ZoneKey zona, int cx, int cy)
+	{
+		NetDataWriter w = PacoteDeCenario(false, cx, cy);
+		foreach (ServerPlayer o in ZoneList(zona.Hash))
+			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// "ESQUECA TODO O ESTRAGO DESTA ZONA" -- o verb de admin que refaz o cenario.
+	///
+	/// O cliente nao tem como DESFAZER celula por celula: ele apagou as camadas do tilemap e
+	/// escreveu terra batida por cima, e nao guardou o que havia antes. Por isso a ordem e
+	/// grossa: zera a lista, devolve a colisao ao que o arquivo diz, e recarrega a cena do disco.
+	/// </summary>
+	private void MandarLimpezaDeCenario(ZoneKey zona)
+	{
+		// TODO MUNDO, e nao so quem esta na zona.
+		//
+		// O cliente guarda ate duas cenas de zona vivas no cache (`_zonasVivas`). Quem viu paredes
+		// cairem na Terra e viajou pra Namek levou a cena da Terra SUJA junto -- com as celulas
+		// apagadas no tilemap. Se a limpeza so fosse pra quem esta na zona, essa pessoa voltaria
+		// pra Terra, o cache acertaria, e ela veria o buraco que ja nao existe mais pra ninguem.
+		//
+		// O pacote e minusculo e isto acontece uma vez, quando um admin manda refazer.
+		NetDataWriter w = PacoteDeCenario(true, 0, 0, zona.Hash);
+		foreach (ServerPlayer o in _players.Values)
+			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 }

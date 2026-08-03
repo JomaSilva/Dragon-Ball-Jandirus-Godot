@@ -307,6 +307,16 @@ public partial class GameClient : Node
 	public event Action<int, int>? CenarioCaiu;
 
 	/// <summary>
+	/// UM ADMIN REFEZ O CENARIO DESTA ZONA: esqueca todo o estrago.
+	///
+	/// Evento separado do <see cref="CenarioCaiu"/> porque a acao e de outra natureza. Uma celula
+	/// que cai e uma alteracao pontual, e o cliente sabe fazer (apaga as camadas, escreve terra
+	/// batida). Desfazer, nao: ele nao guardou o que havia ali antes. A unica volta possivel e
+	/// recarregar a zona do disco -- e e isso que o `World` faz ao ouvir isto.
+	/// </summary>
+	public event Action<ulong>? CenarioRefeito;
+
+	/// <summary>
 	/// TUDO QUE JA CAIU nesta zona, guardado.
 	///
 	/// ============================ POR QUE PRECISA SER GUARDADO ============================
@@ -393,6 +403,15 @@ public partial class GameClient : Node
 		w.Put(chave);
 		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
+
+	/// <summary>
+	/// Uma conta do servidor, como o painel de admin a desenha. Sem senha: o servidor nunca manda
+	/// sal nem hash (ver <see cref="Protocol.S2C.Contas"/>).
+	/// </summary>
+	public readonly record struct ContaInfo(string Conta, bool Admin, bool Banida, bool Online, string Personagens);
+
+	public List<ContaInfo> Contas { get; private set; } = [];
+	public event Action? ContasMudaram;
 
 	/// <summary>Alguem mudou de forma: quem, de que forma, pra qual, e se foi a PRIMEIRA vez.</summary>
 	public event Action<int, int, int, bool>? FormaMudou;
@@ -609,9 +628,22 @@ public partial class GameClient : Node
 			// Nao vai por evento agregado como as obras: o `World` e o unico interessado e ele
 			// precisa saber SE foi a lista completa (pra fechar tudo antes de aplicar).
 			// UMA CELULA DO CENARIO CAIU. O corpo arremessado derrubou a parede.
+			// Com `limpar`, e o contrario: um admin refez tudo (ver `MandarLimpezaDeCenario`).
 			case Protocol.S2C.Cenario:
 			{
+				bool limpar = reader.GetBool();
 				int dcx = reader.GetUShort(), dcy = reader.GetUShort();
+				if (limpar)
+				{
+					// O EVENTO SAI COM A LISTA AINDA CHEIA, de proposito: quem ouve precisa saber
+					// QUAIS celulas refechar na colisao antes de a lista sumir. E leva a ZONA, porque
+					// esta mensagem vai pra todo mundo -- inclusive pra quem esta noutro planeta com
+					// a cena suja guardada no cache.
+					ulong zonaLimpa = reader.GetULong();
+					CenarioRefeito?.Invoke(zonaLimpa);
+					if (zonaLimpa == Zone.Hash) CenarioCaido.Clear();
+					break;
+				}
 				CenarioCaido.Add((dcx, dcy));
 				CenarioCaiu?.Invoke(dcx, dcy);
 				break;
@@ -663,6 +695,18 @@ public partial class GameClient : Node
 					lista.Add(new CargoInfo(reader.GetString(32), reader.GetString(32), reader.GetString(160)));
 				Cargos = lista;
 				CargosMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Contas:
+			{
+				int n = reader.GetUShort();
+				var lista = new List<ContaInfo>(n);
+				for (int i = 0; i < n; i++)
+					lista.Add(new ContaInfo(reader.GetString(48), reader.GetBool(), reader.GetBool(),
+											reader.GetBool(), reader.GetString(160)));
+				Contas = lista;
+				ContasMudaram?.Invoke();
 				break;
 			}
 

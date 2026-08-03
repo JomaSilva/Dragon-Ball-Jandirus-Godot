@@ -94,6 +94,9 @@ public partial class MenuJogo : CanvasLayer
 			{
 				bool trocouRaca = _atributos.Raca != a.Raca;
 				_atributos = a;
+				// A BUSCA TAMBEM PRECISA SABER. Ela varre todas as categorias de proposito, entao
+				// esconder a aba nao bastava pra esconder os verbs de admin de quem nao e admin.
+				Verbos.DefinirAdmin(a.Tem(Protocol.Poder.Admin));
 				// a RACA so chega na ficha lenta, e e ela que diz quais habilidades existem
 				if (trocouRaca) Habilidades.Montar(a.Raca ?? "");
 				if (Visible) Redesenhar();
@@ -109,6 +112,7 @@ public partial class MenuJogo : CanvasLayer
 				if (Visible) Redesenhar();
 			};
 			cli.CargosMudaram += () => { if (Visible) Redesenhar(); };
+			cli.ContasMudaram += () => { if (Visible && _aba == Verbos.Admin) Redesenhar(); };
 			cli.TechMudou += () => { if (Visible) Redesenhar(); };
 			cli.EstilosMudaram += () =>
 			{
@@ -165,8 +169,15 @@ public partial class MenuJogo : CanvasLayer
 		if (Visible) Fechar(); else Abrir();
 	}
 
-	/// <summary>As abas que a bancada percorre (`--diagmenu`). As fixas bastam pra medir.</summary>
-	public static string[] AbasDeTeste => Fixas;
+	/// <summary>
+	/// As abas que a bancada percorre (`--diagmenu`).
+	///
+	/// AS VIVAS, e nao as fixas. Antes esta propriedade devolvia `Fixas`, e por isso a bancada
+	/// nunca abriu Sense, Nav nem Admin -- justo as tres que so existem em certas condicoes, que
+	/// sao as mais faceis de quebrar sem ninguem ver. A aba de admin, em particular, so aparece
+	/// pro host: sem isto, ela so seria exercitada por alguem jogando.
+	/// </summary>
+	public string[] AbasDeTeste => [.. Abas()];
 
 	/// <summary>Troca de aba pelo MESMO caminho que o botao usa. So pra bancada.</summary>
 	public void IrPara(string aba)
@@ -354,6 +365,12 @@ public partial class MenuJogo : CanvasLayer
 			"Forms" => $"{comum}|{_atributos.FormaAtual}|{string.Join(',', (_atributos.Maestrias ?? []).Select(m => $"{m.Forma}:{m.Pct:0.#}"))}",
 			"Tech" => $"{comum}|{c?.TechNivel:0.#}|{c?.Zeni:0}|{c?.TechXp:0}|{c?.Obras.Count}|{c?.Catalogo.Count}",
 			"Cargos" => $"{comum}|{string.Join(',', (c?.Cargos ?? []).Select(r => r.Chave + r.Dono + r.Falta))}",
+			// A ABA ADMIN TEM CAIXAS DE TEXTO, e uma remontagem as recria vazias. Por isso a
+			// assinatura dela e so o que o painel DESENHA (a lista de contas e as marcas de cada
+			// uma) -- nada que mude a cada tick. O que o admin digitou fica fora da pagina, em
+			// `_avisoDigitado`/`_contaDigitada`, e volta pra caixa na remontagem.
+			Verbos.Admin => $"{comum}|{c?.AlvoId}|"
+						  + string.Join(',', (c?.Contas ?? []).Select(a => $"{a.Conta}{a.Admin}{a.Banida}{a.Online}")),
 			"Ki" => $"{comum}|{f.Ki:0}|{f.MaxKi:0}|{c?.SkillsAprendidas.Count}",
 			// As abas fixas sem dado proprio (Items, Equip, Other) sao texto parado: uma assinatura
 			// so ja basta pra elas nunca mais serem remontadas.
@@ -479,8 +496,8 @@ public partial class MenuJogo : CanvasLayer
 			case "Cargos": AbaCargos(); break;
 			case "Nav": AbaNav(); break;
 			case "Skills": Sabidas(); break;
-			case Verbos.Outros:
-			case Verbos.Admin: ListaDeVerbos(_aba); break;
+			case Verbos.Outros: ListaDeVerbos(_aba); break;
+			case Verbos.Admin: AbaAdmin(); break;
 			default: AindaNao(_aba); break;
 		}
 	}
@@ -1313,6 +1330,213 @@ public partial class MenuJogo : CanvasLayer
 			return;
 		}
 		foreach (Verbo v in lista) Botao(v);
+	}
+
+	// =====================================================================
+	// ADMIN -- os verbs, mais o que eles nao dao conta de fazer
+	// =====================================================================
+	/// <summary>
+	/// O QUE O ADMIN DIGITOU, guardado FORA da pagina.
+	///
+	/// A pagina inteira e destruida e remontada quando a assinatura muda (ver
+	/// <see cref="Assinatura"/>), e uma <c>LineEdit</c> destruida leva o texto junto. Guardando
+	/// aqui, a remontagem devolve o que estava escrito -- que e o que qualquer um espera de um
+	/// campo de texto, e o que faz a diferenca entre "digitei e sumiu" e um painel usavel.
+	/// </summary>
+	private string _avisoDigitado = "", _contaDigitada = "", _textoDoAlvo = "";
+
+	/// <summary>Ja pedi a lista de contas nesta sessao? Ver o comentario em <see cref="AbaAdmin"/>.</summary>
+	private bool _pediContas;
+
+	/// <summary>
+	/// A ABA DE ADMIN.
+	///
+	/// ============================ POR QUE ELA NAO E SO A LISTA DE VERBS ============================
+	/// A maioria dos verbs de admin do original age sobre alguem que esta na tela, e pra esses o
+	/// alvo marcado por duplo clique resolve (e melhor que o `input()` bloqueante do BYOND: nome
+	/// se repete e nome se digita errado).
+	///
+	/// Dois nao cabem nesse molde:
+	///   * ANUNCIAR pede um TEXTO, que nenhum botao carrega.
+	///   * PROMOVER pede uma CONTA, e a conta que o dono quer promover costuma estar OFFLINE --
+	///     nao ha o que marcar com duplo clique. Foi exatamente o pedido: "permita o adm dar
+	///     administrador a um dos perfis criados no server".
+	///
+	/// Por isso o painel: um campo de aviso, a lista de contas do servidor com o que cada uma e, e
+	/// so entao os verbs.
+	/// ==============================================================================================
+	/// </summary>
+	private void AbaAdmin()
+	{
+		if (GameClient.Instance is not { } cli) { ListaDeVerbos(Verbos.Admin); return; }
+
+		// ------------------------------------------------- anunciar
+		Secao("Aviso ao servidor");
+		var aviso = new LineEdit
+		{
+			PlaceholderText = "escreva e aperte Enter (ou o botao)",
+			Text = _avisoDigitado,
+			// O TETO E O DO FIO, e nao um gosto de interface: o argumento de um verb cabe em
+			// `Protocol.MaxArgDeVerbo` bytes, e acima disso o leitor do servidor devolve string
+			// VAZIA em vez de truncar. Sem este limite, o aviso longo sumia e o servidor
+			// respondia "escreva o aviso antes" -- acusando quem tinha escrito.
+			MaxLength = Protocol.MaxArgDeVerbo,
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		aviso.TextChanged += t => _avisoDigitado = t;
+		void Anunciar()
+		{
+			if (_avisoDigitado.Trim().Length == 0) return;
+			cli.SendVerbo("admin_anunciar", _avisoDigitado.Trim());
+			_avisoDigitado = "";
+			aviso.Text = "";
+		}
+		aviso.TextSubmitted += _ => Anunciar();
+
+		var linhaAviso = new HBoxContainer();
+		linhaAviso.AddChild(aviso);
+		var bAviso = new Button { Text = "Anunciar", TooltipText = "o `Announce` do original: uma linha pra todo mundo" };
+		bAviso.Pressed += Anunciar;
+		linhaAviso.AddChild(bAviso);
+		_conteudo.AddChild(linhaAviso);
+
+		// ------------------------------------------------- contas
+		Secao("Contas deste servidor");
+		if (cli.Contas.Count == 0)
+		{
+			Aviso(_pediContas ? "sem contas pra mostrar." : "pedindo a lista ao servidor...");
+			// UMA VEZ SO, e nao a cada remontagem. Se o servidor devolvesse uma lista VAZIA (um
+			// servidor sem armazenamento em disco, por exemplo), pedir dentro do desenho viraria
+			// um pedido a cada pacote de ficha -- cinco varreduras da pasta de contas por segundo,
+			// pra sempre. O botao "atualizar lista" continua sendo a saida manual.
+			if (!_pediContas) { _pediContas = true; cli.SendVerbo("admin_contas"); }
+		}
+		else
+		{
+			foreach (GameClient.ContaInfo a in cli.Contas)
+			{
+				var h = new HBoxContainer();
+
+				var nome = new Label
+				{
+					Text = (a.Online ? "● " : "○ ") + a.Conta
+						 + (a.Admin ? "   [admin]" : "") + (a.Banida ? "   [banida]" : ""),
+					SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+					TooltipText = a.Personagens.Length > 0 ? a.Personagens : "sem personagens",
+				};
+				nome.AddThemeColorOverride("font_color",
+					a.Banida ? Tema.Perigo : a.Admin ? Tema.Destaque : Tema.Texto);
+				nome.AddThemeFontSizeOverride("font_size", 13);
+				h.AddChild(nome);
+
+				string conta = a.Conta;
+				bool eraAdmin = a.Admin, eraBanida = a.Banida;
+
+				var bAdm = new Button
+				{
+					Text = eraAdmin ? "rebaixar" : "promover",
+					TooltipText = eraAdmin
+						? "tira o admin desta conta (o `AdminDemote` do original)"
+						: "da admin a esta conta -- vale pros tres personagens dela",
+				};
+				bAdm.Pressed += () => cli.SendVerbo(eraAdmin ? "admin_rebaixar" : "admin_promover", conta);
+				h.AddChild(bAdm);
+
+				var bBan = new Button
+				{
+					Text = eraBanida ? "perdoar" : "banir",
+					Disabled = eraAdmin,   // rebaixe antes: o servidor recusaria de qualquer jeito
+					TooltipText = eraAdmin ? "rebaixe antes de banir um administrador" : "o `Ban` do original",
+				};
+				bBan.Pressed += () => cli.SendVerbo(eraBanida ? "admin_perdoar" : "admin_banir", conta);
+				h.AddChild(bBan);
+
+				_conteudo.AddChild(h);
+				if (a.Personagens.Length > 0) Aviso("      " + a.Personagens);
+			}
+		}
+
+		// PELO NOME, pra quem nao esta na lista (conta recem-criada, ou o nome de um PERSONAGEM,
+		// que e o que o admin ve andando na tela e nem sempre e igual ao da conta).
+		var porNome = new LineEdit
+		{
+			PlaceholderText = "conta ou nome de personagem",
+			Text = _contaDigitada,
+			MaxLength = 32,   // o mesmo teto que o `Login` do servidor aplica ao nome da conta
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		porNome.TextChanged += t => _contaDigitada = t;
+
+		var linhaNome = new HBoxContainer();
+		linhaNome.AddChild(porNome);
+		foreach ((string rotulo, string cmd) in new[]
+		{
+			("promover", "admin_promover"), ("rebaixar", "admin_rebaixar"),
+			("banir", "admin_banir"), ("perdoar", "admin_perdoar"),
+		})
+		{
+			var b = new Button { Text = rotulo };
+			string comando = cmd;
+			b.Pressed += () =>
+			{
+				if (_contaDigitada.Trim().Length == 0) { Chat.Sistema("escreva a conta ou o personagem."); return; }
+				cli.SendVerbo(comando, _contaDigitada.Trim());
+			};
+			linhaNome.AddChild(b);
+		}
+		_conteudo.AddChild(linhaNome);
+
+		var atualizar = new Button { Text = "atualizar lista", Alignment = HorizontalAlignment.Left };
+		atualizar.Pressed += () => cli.SendVerbo("admin_contas");
+		_conteudo.AddChild(atualizar);
+
+		// ------------------------------------------------- o que precisa de alvo E de texto
+		// Sao os quatro verbs do original que abriam um `input()` DEPOIS de escolher o mob:
+		// `Give (Skill)`, `Take_Skill`, `Give (Rank)` e `cmd_admin_pm`. O alvo vem do duplo clique;
+		// o texto, daqui.
+		Secao("Sobre o alvo marcado");
+		bool temAlvo = cli.AlvoId != 0;
+		Aviso(temAlvo
+			? "o alvo esta marcado. Escreva ao lado o nome da skill, a chave do cargo, ou a mensagem."
+			: "marque alguem com DUPLO CLIQUE pra usar os botoes abaixo.");
+
+		var noAlvo = new LineEdit
+		{
+			PlaceholderText = "nome da skill / chave do cargo / mensagem",
+			Text = _textoDoAlvo,
+			// menos o "<id>|" que vai na frente, com folga pra um id de cinco digitos
+			MaxLength = Protocol.MaxArgDeVerbo - 8,
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		noAlvo.TextChanged += t => _textoDoAlvo = t;
+
+		var linhaAlvo = new HBoxContainer();
+		linhaAlvo.AddChild(noAlvo);
+		foreach ((string rotulo, string cmd, string dica) in new[]
+		{
+			("dar skill", "admin_skill_dar", "o `Give (Skill)` do original: por nome ou typepath"),
+			("tirar skill", "admin_skill_tirar", "o `Take_Skill`: desfaz um presente errado"),
+			("dar cargo", "admin_cargo_dar", "o `Give (Rank)`: poe no trono ignorando os requisitos"),
+			("PM", "admin_pm", "mensagem particular. Os outros admins recebem copia"),
+		})
+		{
+			var b = new Button { Text = rotulo, Disabled = !temAlvo, TooltipText = dica };
+			string comando = cmd;
+			b.Pressed += () =>
+			{
+				if (_textoDoAlvo.Trim().Length == 0) { Chat.Sistema("escreva o texto antes."); return; }
+				// "alvoId|texto" -- o canal de verbs carrega UM argumento so, e este e o formato que
+				// o resto do painel ja usa (ver `admin_marco`).
+				cli.SendVerbo(comando, $"{cli.AlvoId}|{_textoDoAlvo.Trim()}");
+			};
+			linhaAlvo.AddChild(b);
+		}
+		_conteudo.AddChild(linhaAlvo);
+
+		// ------------------------------------------------- os verbs
+		ListaDeVerbos(Verbos.Admin);
+		Aviso("\nOs verbs marcados com \"Target\" agem sobre quem voce marcou com DUPLO CLIQUE. "
+			+ "A permissao e conferida de novo no servidor -- esconder botao nunca foi permissao.");
 	}
 
 	private void Achados(string termo)

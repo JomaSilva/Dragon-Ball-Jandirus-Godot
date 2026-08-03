@@ -233,11 +233,10 @@ public partial class Boot : Node2D
 			return;
 		}
 
-		// QUEM HOSPEDA E ADMIN. A marca vai no servidor ANTES de ele abrir a porta: e ela que faz
-		// a conexao vinda desta maquina entrar com `Poder.Admin` (ver `GameServer.EhHost`). Num
-		// servidor DEDICADO (`--server`) ela nunca e ligada -- la o dono da maquina nao esta jogando.
-		srv.SubidoPeloJogador = true;
-
+		// QUEM HOSPEDA E ADMIN, e o cliente nao precisa avisar nada disso: o servidor reconhece a
+		// conexao pelo ENDERECO (ver `GameServer.EhHost`). Antes havia uma marca aqui, e ela
+		// tornava o admin dependente de o jogo ter subido o servidor -- quem usava o `servidor.bat`
+		// e entrava pelo IP da propria rede nunca era reconhecido, sendo a mesma maquina.
 		if (!srv.Running && !srv.Start())
 		{
 			_status.Text = $"nao consegui abrir a porta {Jandirus.Net.Protocol.DefaultPort}";
@@ -367,6 +366,12 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmenu") >= 0)
 			AddChild(new RoboDeMenu { Name = "RoboDeMenu" });
 
+		// --diagadmin: bancada de ADMIN. Confere que o bit chegou ao cliente, que a aba existe, que
+		// os verbs respondem, que promover grava -- e, o principal, que APRENDER UMA SKILL nao apaga
+		// o admin (o defeito que fazia o host nunca ver a aba). Ver RoboDeAdmin.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagadmin") >= 0)
+			AddChild(new RoboDeAdmin { Name = "RoboDeAdmin" });
+
 		// --porta: bancada AO VIVO das portas. Anda contra a porta mais proxima e narra o que
 		// mede -- fechada bloqueia e cega, abriu ao encostar, atravessou, fechou sozinha. Sobe
 		// junto do `--portateste` no servidor, que faz nascer colado numa.
@@ -420,11 +425,9 @@ public partial class Boot : Node2D
 		string[] args = OS.GetCmdlineArgs();
 
 		bool hospedando = Array.IndexOf(args, "--host") >= 0;
-		if (hospedando && Jandirus.Server.GameServer.Instance is { } srvAuto)
-		{
-			srvAuto.SubidoPeloJogador = true;   // `--host` tambem e hospedar: o dono entra como admin
-			srvAuto.Start();
-		}
+		// `--host` sobe o servidor e conecta em 127.0.0.1 logo abaixo -- e o endereco que faz o
+		// servidor reconhecer o dono como admin, sem marca nenhuma daqui.
+		if (hospedando && Jandirus.Server.GameServer.Instance is { } srvAuto) srvAuto.Start();
 
 		int i = Array.IndexOf(args, "--connect");
 		string alvo = i >= 0 && i + 1 < args.Length ? args[i + 1] : (hospedando ? "127.0.0.1" : "");

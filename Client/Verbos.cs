@@ -81,6 +81,32 @@ public static class Verbos
 		_todos.Where(v => v.Categoria == categoria).OrderBy(v => v.Nome, StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
+	/// SOU ADMIN? Escrito de fora (pelo menu, quando a ficha lenta chega com o bit).
+	///
+	/// ============================ POR QUE A BUSCA PRECISA SABER ============================
+	/// Esconder a ABA tira o atalho, e nao o acesso: a barra de busca varre TODAS as categorias de
+	/// proposito ("ninguem lembra em que aba a tecnica mora"). Sem este filtro, qualquer jogador
+	/// digitava "target" e recebia "Kill Target [Admin]", "Boot Target [Admin]", "Assess Target
+	/// [Admin]" -- todos habilitados, porque `PodeAgora` so olha se ha alvo marcado.
+	///
+	/// O servidor recusa, claro. Mas o estrago ja esta feito antes do clique: a lista inteira dos
+	/// poderes de administracao vira leitura publica, e o botao promete uma coisa que responde
+	/// "isso e coisa de administrador" -- que e a definicao de botao que nao devia estar ali.
+	/// =======================================================================================
+	/// </summary>
+	public static bool SouAdmin { get; private set; }
+
+	public static void DefinirAdmin(bool sou)
+	{
+		if (SouAdmin == sou) return;
+		SouAdmin = sou;
+		Mudou?.Invoke();
+	}
+
+	/// <summary>Este verb pode sequer APARECER pra mim?</summary>
+	private static bool Visivel(Verbo v) => SouAdmin || v.Categoria != Admin;
+
+	/// <summary>
 	/// Busca em TODAS as categorias. E o que o dono pediu ("barra de pesquisa pra procurar os
 	/// verbs"): com o campo preenchido, a aba atual deixa de importar -- o que se procura e uma
 	/// tecnica, e ninguem lembra em que aba ela mora.
@@ -90,6 +116,7 @@ public static class Verbos
 		if (string.IsNullOrWhiteSpace(termo)) return [];
 		string t = termo.Trim();
 		return _todos
+			.Where(Visivel)
 			.Where(v => v.Nome.Contains(t, StringComparison.OrdinalIgnoreCase)
 					 || v.Descricao.Contains(t, StringComparison.OrdinalIgnoreCase))
 			.OrderBy(v => v.Nome.StartsWith(t, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
