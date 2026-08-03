@@ -233,6 +233,11 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// QUEM HOSPEDA E ADMIN. A marca vai no servidor ANTES de ele abrir a porta: e ela que faz
+		// a conexao vinda desta maquina entrar com `Poder.Admin` (ver `GameServer.EhHost`). Num
+		// servidor DEDICADO (`--server`) ela nunca e ligada -- la o dono da maquina nao esta jogando.
+		srv.SubidoPeloJogador = true;
+
 		if (!srv.Running && !srv.Start())
 		{
 			_status.Text = $"nao consegui abrir a porta {Jandirus.Net.Protocol.DefaultPort}";
@@ -357,6 +362,11 @@ public partial class Boot : Node2D
 		// unico jeito de exercitar a CADEIA INTEIRA do combate sem janela: pacote de golpe ->
 		// escolha de alvo -> resolucao -> transmissao -> relato. Dois processos com esta flag
 		// no mesmo servidor brigam de verdade.
+		// --diagmenu: bancada do menu -- abre, percorre as abas e mede quantas remontagens sobraram
+		// depois do cache de paginas. Ver RoboDeMenu.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmenu") >= 0)
+			AddChild(new RoboDeMenu { Name = "RoboDeMenu" });
+
 		// --porta: bancada AO VIVO das portas. Anda contra a porta mais proxima e narra o que
 		// mede -- fechada bloqueia e cega, abriu ao encostar, atravessou, fechou sozinha. Sobe
 		// junto do `--portateste` no servidor, que faz nascer colado numa.
@@ -410,7 +420,11 @@ public partial class Boot : Node2D
 		string[] args = OS.GetCmdlineArgs();
 
 		bool hospedando = Array.IndexOf(args, "--host") >= 0;
-		if (hospedando) Jandirus.Server.GameServer.Instance?.Start();
+		if (hospedando && Jandirus.Server.GameServer.Instance is { } srvAuto)
+		{
+			srvAuto.SubidoPeloJogador = true;   // `--host` tambem e hospedar: o dono entra como admin
+			srvAuto.Start();
+		}
 
 		int i = Array.IndexOf(args, "--connect");
 		string alvo = i >= 0 && i + 1 < args.Length ? args[i + 1] : (hospedando ? "127.0.0.1" : "");

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Godot;
 
 namespace Jandirus.Client;
@@ -24,6 +24,31 @@ public sealed class Settings
     /// texel em pixel de tela de forma irregular e a imagem cintila andando.
     /// </summary>
     public int Zoom = 3;
+
+    /// <summary>
+    /// QUALIDADE GRAFICA: 0 baixo, 1 medio, 2 alto. Hoje ela decide UMA coisa -- o filtro da
+    /// sombra das luzes --, e por isso o nome e generico de proposito: e o lugar onde o proximo
+    /// ajuste de custo visual entra sem virar mais uma opcao solta na tela.
+    ///
+    ///   baixo  sem filtro  -- a sombra sai com a borda dura, e e a mais barata
+    ///   medio  PCF5        -- cinco amostras: suaviza sem pesar
+    ///   alto   PCF13       -- treze amostras, a borda mais macia que o Godot 2D oferece
+    ///
+    /// PADRAO ALTO: o custo de PCF13 e por LUZ COM SOMBRA na tela, e o cenario tem poucas
+    /// (fogueira, tocha, lava). Quem precisar baixar tem a opcao; comecar no feio pra economizar
+    /// o que nao esta caro seria escolher pelo jogador.
+    /// </summary>
+    public int Grafico = 2;
+
+    public const int GraficoBaixo = 0, GraficoMedio = 1, GraficoAlto = 2;
+
+    /// <summary>O filtro que a qualidade atual pede. E o unico lugar que traduz o numero.</summary>
+    public Godot.Light2D.ShadowFilterEnum FiltroDeSombra => Grafico switch
+    {
+        GraficoBaixo => Godot.Light2D.ShadowFilterEnum.None,
+        GraficoMedio => Godot.Light2D.ShadowFilterEnum.Pcf5,
+        _ => Godot.Light2D.ShadowFilterEnum.Pcf13,
+    };
 
     /// <summary>
     /// Teto do zoom-out. Diminuir o zoom mostra MAIS mundo, e enxergar mais longe que os

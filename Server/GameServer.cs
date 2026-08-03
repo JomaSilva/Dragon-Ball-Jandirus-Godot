@@ -95,6 +95,26 @@ public sealed class ServerPlayer
 	/// </summary>
 	public bool Carregando;
 
+	/// <summary>
+	/// SESSAO DE TREINO (`Training_Session`): o BP de quando ela comecou. Nao persiste -- no
+	/// original tambem nao (`insession` e `startingbp` sao de runtime), e faz sentido: uma sessao
+	/// e "esta jogatina", nao um recorde.
+	/// </summary>
+	public double BpDaSessao;
+	public bool EmSessao;
+
+	/// <summary>
+	/// `knockbackon`: meus golpes arremessam? Ligado por padrao, como no original
+	/// (`attack_bck.dm:3`). Desligar existe pra treinar com alguem sem joga-lo pra longe.
+	/// </summary>
+	public bool Knockback = true;
+
+	/// <summary>O VOO em curso: quantos tiques faltam, pra onde, e com que forca. Ver GameServer.Empurrao.cs.</summary>
+	public int TiquesDeVoo;
+	public Vec2 RumoDoVoo;
+	public double ForcaDoVoo;
+	public long ProximoTiqueDeVoo;
+
 	/// <summary>A aura acesa por excesso de Ki. Guardada pra ter HISTERESE -- ver CargaDeKi.AuraAcesa.</summary>
 	public bool AuraDeCarga;
 
@@ -245,7 +265,8 @@ public sealed class ServerPlayer
 		MembrosRuins = (byte)Math.Min(255, Combate?.Corpo.Partes.Count(p => p.Decepado || p.Quebrado) ?? 0),
 		Estado = (byte)((Ficha.KO ? 1 : 0) | (Ficha.dead ? 2 : 0)
 						| (Combate?.Bloqueando == true ? 4 : 0) | (Combate?.Letal == true ? 8 : 0)
-						| (TemRaboAgora() ? 16 : 0)),
+						| (TemRaboAgora() ? 16 : 0)
+					| (TiquesDeVoo > 0 ? 32 : 0)),
 	};
 }
 
@@ -717,6 +738,15 @@ public partial class GameServer : Node
 				break;
 			}
 
+			// O CANAL DOS VERBS. Mesmo formato do Tech: comando + argumento. Ver GameServer.Verbos.cs.
+			case Protocol.C2S.Verbo:
+			{
+				string cmd = reader.GetString(24);
+				string arg = reader.GetString(48);
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemManda)) Verbo(quemManda, cmd, arg);
+				break;
+			}
+
 			case Protocol.C2S.Cargo:
 			{
 				string chave = reader.GetString(32);
@@ -925,6 +955,15 @@ public partial class GameServer : Node
 		pl.Slot = slot;
 		pl.Zone = ZoneKey.Premade(c.Zona);
 		if (pl.Pos.X == 0 && pl.Pos.Y == 0) pl.Pos = SpawnPos;
+
+		// QUEM HOSPEDA E ADMIN. Ver `GameServer.EhHost`: so vale quando o servidor subiu pelo botao
+		// "Hospedar" E a conexao vem da propria maquina. Num servidor dedicado ninguem ganha isso.
+		if (EhHost(peer))
+		{
+			pl.Poderes |= Protocol.Poder.Admin;
+			GD.Print($"[server] {pl.Name} e o HOST: entra como administrador");
+		}
+
 		if (_portaDeTeste) NascerNaPorta(pl);
 		pl.Facing = Facing.South;
 		pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed);
@@ -976,6 +1015,7 @@ public partial class GameServer : Node
 		// esta na zona, e quem acabou de entrar so esta la depois desta linha.
 		MandarObras(pl.Zone);
 		MandarPortas(pl);
+		MandarCenario(pl);
 		MandarCatalogoDeObras(pl);
 		AplicarEstilo(pl);   // o estilo veio do save; os multiplicadores nao
 		MandarEstilos(pl);
@@ -1128,6 +1168,26 @@ public partial class GameServer : Node
 		// detectar depois, porque o movimento fica dentro do que a validacao aceita.
 		bool correndo = querCorrer && moving && PodeCorrer(pl, dt);
 
+		// ============================ NO VOO, O SERVIDOR SOLTA ============================
+		// Enquanto o corpo esta sendo ARREMESSADO, quem o move e o servidor -- e o cliente esta
+		// deslizando na mesma direcao pra o voo nao ficar aos saltos (ver LocalPlayer). Passar esse
+		// deslize pela validacao de passo e garantir briga: ele anda a 640 px/s, muito acima do que
+		// o orcamento de caminhada permite, entao TODO pacote viraria correcao e o corpo voaria
+		// travando. Foi o que o dono viu: "o knock back n ta fluido, o personagem voa meio travado
+		// provavelmente por conta do server side verificando a posiçao do player".
+		//
+		// Nao ha buraco de trapaca aqui: a posicao do voo NAO vem do cliente. Ela e recalculada no
+		// `TickDoEmpurrao` e reenviada por correcao a cada tique -- o que se ignora e a OPINIAO do
+		// cliente sobre onde ele esta, que durante o arremesso nao vale nada mesmo.
+		// =================================================================================
+		if (pl.TiquesDeVoo > 0)
+		{
+			pl.Facing = facing;
+			pl.Moving = false;
+			pl.OrcamentoPx = 0;   // sai do voo sem credito acumulado
+			return;
+		}
+
 		ZoneCollision? mapa = _catalogo?.Get(pl.Zone)?.Mapa;
 		if (MoveRules.ValidateStep(pl.Pos, claimed, dt, pl.SpeedStat, mapa, ref pl.OrcamentoPx, out Vec2 ok, correndo))
 		{
@@ -1222,6 +1282,10 @@ public partial class GameServer : Node
 		// visivel e uma parede em que o jogador esbarra -- 5 Hz dariam ate 200 ms de porta fechada
 		// depois de encostar nela.
 		TickDasPortas();
+
+		// O ARREMESSO ANDA NO TICK CHEIO: o tique dele e 0,1 s e cada um vale dois tiles. A 5 Hz
+		// o corpo daria saltos de quatro tiles, e o que se veria seria teleporte, nao voo.
+		TickDoEmpurrao();
 
 		// no espaco: troca de chunk e pouso por encostar
 		foreach (ServerPlayer pl in _players.Values.ToList()) TickDoEspaco(pl);
@@ -1353,6 +1417,7 @@ public partial class GameServer : Node
 		// ...e as PORTAS pelo mesmo motivo: quem chega tem que ver as que estao abertas agora, e o
 		// `.col` do cliente tem que casar com o do servidor (ver MandarPortas).
 		MandarPortas(pl);
+		MandarCenario(pl);
 		pl.Estudando = false;   // ninguem estuda de outro planeta
 		AplicarGravidade(pl);   // o chao mudou: o peso dele tambem
 	}

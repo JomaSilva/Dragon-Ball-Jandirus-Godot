@@ -18,6 +18,21 @@ namespace Jandirus.Client;
 /// </summary>
 public partial class Iluminacao : Node2D
 {
+    /// <summary>
+    /// TROCA O FILTRO DE TODAS AS LUZES JA PLANTADAS.
+    ///
+    /// Sem isto, mudar a qualidade so valeria pras luzes do PROXIMO planeta -- o jogador mexeria
+    /// no controle e nao veria nada mudar, que e a pior resposta que um controle pode dar.
+    /// </summary>
+    public static void AplicarQualidade(Node raiz)
+    {
+        foreach (Node n in raiz.GetChildren())
+        {
+            if (n is PointLight2D l) l.ShadowFilter = Boot.Config.FiltroDeSombra;
+            AplicarQualidade(n);
+        }
+    }
+
     // =====================================================================
     // O CICLO DO DIA
     // =====================================================================
@@ -184,6 +199,7 @@ public partial class Fogo : Node2D
     public bool Tremula;
 
     private PointLight2D _luz = null!;
+
     private double _t;
 
     public override void _Ready()
@@ -199,7 +215,8 @@ public partial class Fogo : Node2D
             Energy = Forca,
             // sombra LIGADA: a fogueira dentro da casa nao pode vazar luz pela parede
             ShadowEnabled = true,
-            ShadowFilter = Light2D.ShadowFilterEnum.Pcf5,
+            // O FILTRO VEM DA CONFIGURACAO (baixo/medio/alto). Era fixo em PCF5.
+            ShadowFilter = Boot.Config.FiltroDeSombra,
             BlendMode = Light2D.BlendModeEnum.Add,
             ZIndex = -5,
         };

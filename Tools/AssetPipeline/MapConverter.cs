@@ -556,6 +556,38 @@ public static class MapConverter
 		return (idx % f.Cols, idx / f.Cols);
 	}
 
+	/// <summary>Quantos quadros o .dmi declara pra este estado. 0 = o estado nao existe na folha.</summary>
+	private static int Quadros(Fonte f, string estado)
+	{
+		foreach (DmiState st in f.States)
+			if (st.Name == estado) return Math.Max(1, st.Frames);
+		return 0;
+	}
+
+	/// <summary>
+	/// Os quadros deste estado cabem todos na MESMA LINHA do atlas?
+	///
+	/// E a condicao pra o `DeclararTiles` conseguir declarar o tile animado no atlas ORIGINAL --
+	/// com `animation_columns = 0` o Godot le os quadros correndo pra direita a partir da coordenada
+	/// base, e virar a linha nao existe. Mesma conta do <see cref="Reempacotar"/>, escrita uma vez.
+	/// </summary>
+	private static bool CabeNaLinha(Fonte f, string estado)
+	{
+		int idx = 0;
+		foreach (DmiState st in f.States)
+		{
+			int dirs = Math.Max(1, st.Dirs), quadros = Math.Max(1, st.Frames);
+			if (st.Name == estado)
+			{
+				(int X, int Y) b = Indice(f, idx);
+				return b.X + (quadros - 1) * dirs < f.Cols
+					   && idx + (quadros - 1) * dirs < f.TotalQuadros;
+			}
+			idx += dirs * quadros;
+		}
+		return true;   // estado que nao existe: o relatorio de "quadro 0" ja cobre esse caso
+	}
+
 	/// <summary>Le a ordem dos .dmm no .dme: e ela que define o z real de cada mapa.</summary>
 	private static List<string> OrdemDoDme(string dmmDir)
 	{
@@ -774,7 +806,17 @@ public static class MapConverter
 		var portas = new List<string>();
 
 		int usadas = 0, comObj = 0, objSemArte = 0;
+
+		// QUANTAS CELULAS APONTAM PRA UMA TIRA. Sem este numero, "178 estados reempacotados" parece
+		// prova de que a animacao chegou ao mapa -- e nao e: o reempacotamento escreve o atlas e
+		// declara o tile, mas quem faz a animacao APARECER e a celula apontar pra la. Foram duas
+		// coisas separadas quebrando em silencio (o PNG sem `.import` e o estado padrao com guarda
+		// de nulo), e nenhuma das duas aparecia em contador nenhum.
+		int repontadas = 0, repontadasPadrao = 0;
 		var semEstado = new Dictionary<string, int>(StringComparer.Ordinal);
+
+		/// <summary>Celulas cujo estado TEM mais de um quadro no .dmi mas foi pintado parado.</summary>
+		var semAnimacao = new Dictionary<string, int>(StringComparer.Ordinal);
 		var luzes = new List<LuzDeTile>();
 
 		// Poe UM typepath numa camada. Devolve se conseguiu desenhar.
@@ -798,15 +840,28 @@ public static class MapConverter
 			}
 			if (td.Atlas == null || !fontes.TryGetValue(td.Atlas, out Fonte? f)) return false;
 
-			string? estado = EstadoDaCelula(td, x, y, nivel.Height);
+			// ============================ NULO E O ESTADO PADRAO, NAO "SEM ESTADO" ============================
+			// O `IconState` chega NULO quando o DM nunca declarou `icon_state` -- e no BYOND isso quer
+			// dizer o estado de nome VAZIO da folha, que existe e tem nome `""`. Sao coisas diferentes
+			// no C# e a MESMA coisa no jogo.
+			//
+			// A confusao entre as duas custou TODA animacao cujo estado animado e o padrao. O
+			// repontamento pra tira reempacotada tinha uma guarda `estado != null`, entao a celula
+			// continuava apontando pro atlas ORIGINAL (quadro parado) enquanto a tira animada ficava no
+			// tileset sem ninguem usando. Foi o que o dono viu: "a research table ainda ta sem animaçao
+			// nenhuma e so alguns icones q estao" -- a ResearchBench tem 5 quadros no estado padrao.
+			//
+			// Normalizar aqui, uma vez, e o que faz o resto do metodo parar de ter que lembrar disso.
+			// ================================================================================================
+			string estado = EstadoDaCelula(td, x, y, nivel.Height) ?? "";
 
 			// A PORTA FECHADA E O ESTADO "Closed". O DM so o escreve dentro do `New()`, e o
 			// DmTurfScanner ignora corpo de proc de proposito -- entao `IconState` vinha nulo e o
 			// `Coord` caia no indice 0, que e o estado VAZIO da folha (um desenho diferente).
 			// Como o indice 0 e o fallback silencioso, nem o relatorio de "estado que faltou"
 			// pegava este caso.
-			if (EhPorta(bp) && (estado == null || estado.Length == 0)) estado = "Closed";
-			if (estado != null && !f.StateIndex.ContainsKey(estado))
+			if (EhPorta(bp) && estado.Length == 0) estado = "Closed";
+			if (!f.StateIndex.ContainsKey(estado))
 			{
 				string chave = $"{bp} -> {td.Icon} estado \"{estado}\"";
 				semEstado[chave] = semEstado.GetValueOrDefault(chave) + 1;
@@ -818,10 +873,30 @@ public static class MapConverter
 			// continua pintando o quadro parado do atlas original enquanto o tile animado que o
 			// tileset declarou fica sem ninguem usando.
 			Fonte fUsada = f;
-			if (estado != null && f.Companheira != null && f.Refeitos.TryGetValue(estado, out int linha))
+			bool naTira = f.Companheira != null && f.Refeitos.TryGetValue(estado, out int linha);
+			if (naTira)
 			{
-				fUsada = f.Companheira;
-				c = (0, linha);
+				fUsada = f.Companheira!;
+				c = (0, f.Refeitos[estado]);
+				repontadas++;
+				// as do estado PADRAO sao exatamente as que a guarda de nulo comia
+				if (estado.Length == 0) repontadasPadrao++;
+			}
+
+			// ============================ ANIMACAO PROMETIDA E NAO ENTREGUE ============================
+			// O .dmi diz quantos quadros o estado tem. Se ele tem mais de um e a celula NAO acabou numa
+			// tira, ela depende de o atlas original ter conseguido declarar o tile animado -- e isso so
+			// acontece quando os quadros cabem na MESMA LINHA (ver `Reempacotar`). Fora disso, a celula
+			// e pintada parada e ninguem avisa.
+			//
+			// Este relatorio existe porque "178 estados reempacotados" nao prova nada sobre o que aparece
+			// na tela: ja quebrou por PNG sem `.import` e por guarda de nulo no estado padrao, e nenhuma
+			// das duas aparecia em contador nenhum. Aqui a pergunta e a que importa -- ESTA CELULA ANIMA?
+			// =========================================================================================
+			if (!naTira && Quadros(f, estado) is > 1 and var nq && !CabeNaLinha(f, estado))
+			{
+				string k = $"{bp} -> {td.Icon} \"{estado}\" ({nq} quadros)";
+				semAnimacao[k] = semAnimacao.GetValueOrDefault(k) + 1;
 			}
 
 			// A PORTA NAO E PINTADA NO TILEMAP -- ela vira um NODE, e o node desenha os quatro
@@ -1017,6 +1092,9 @@ public static class MapConverter
 		if (comObj > 0 || objSemArte > 0)
 			Console.WriteLine($"  {nome}: {comObj} objetos desenhados"
 							  + (objSemArte > 0 ? $" | {objSemArte} celulas com objeto SEM arte" : ""));
+		if (repontadas > 0)
+			Console.WriteLine($"  {nome}: {repontadas} celulas apontam pra uma tira animada"
+							  + (repontadasPadrao > 0 ? $" ({repontadasPadrao} no estado PADRAO)" : ""));
 
 		// QUADRO 0 SILENCIOSO. Quando o `icon_state` do typepath nao existe no atlas, o Coord
 		// devolve o quadro 0 sem dizer nada -- e o quadro 0 de uma folha qualquer pode ser um
@@ -1028,6 +1106,14 @@ public static class MapConverter
 			Console.WriteLine($"     ATENCAO: {total} celulas cairam no quadro 0 " +
 							  $"({semEstado.Count} estados que o atlas nao tem)");
 			foreach ((string q, int n) in semEstado.OrderByDescending(kv => kv.Value).Take(6))
+				Console.WriteLine($"        {n,7}x  {q}");
+		}
+
+		if (semAnimacao.Count > 0)
+		{
+			Console.WriteLine($"     ANIMACAO PERDIDA: {semAnimacao.Values.Sum()} celulas em "
+							  + $"{semAnimacao.Count} estado(s) que TEM mais de um quadro e ficaram paradas");
+			foreach ((string q, int n) in semAnimacao.OrderByDescending(kv => kv.Value).Take(8))
 				Console.WriteLine($"        {n,7}x  {q}");
 		}
 		return usadas;

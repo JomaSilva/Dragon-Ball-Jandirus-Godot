@@ -84,7 +84,13 @@ public partial class LocalPlayer : Node2D
 	{
 		if (ficha.SpeedStat > 0) SpeedStat = ficha.SpeedStat;
 		if (ficha.SocoMs > 0) _cadencia = ficha.SocoMs / 1000.0;
+		bool caiuAgora = ficha.Imobilizado && !_caido;
 		_caido = ficha.Imobilizado;
+		// DEITA PRA ONDE ESTAVA OLHANDO. So no instante da queda: girar todo pacote de ficha
+		// deixaria o corpo caido acompanhando a direcao, que nao e o que um desmaio faz.
+		if (caiuAgora) _visual.DeitarPor(_facing);
+		else if (!ficha.Imobilizado && !ficha.Empurrado) _visual.GirarPara(default);
+		_empurrado = ficha.Empurrado;   // o servidor esta dirigindo o corpo: ver _Process
 		_visual.MostrarRabo(ficha.Rabo);
 		// 3% de folga sobre o custo de um segundo de corrida: no fio do Ki, correr e desistir
 		// a cada quadro daria um solavanco a cada passo
@@ -100,6 +106,9 @@ public partial class LocalPlayer : Node2D
 
 	/// <summary>Nocauteado ou morto: o servidor recusa qualquer passo, entao aqui nem se tenta.</summary>
 	private bool _caido;
+
+	/// <summary>Estou sendo ARREMESSADO -- quem move o corpo agora e o servidor.</summary>
+	private bool _empurrado;
 
 	/// <summary>Ainda ha Ki pro servidor conceder a corrida.</summary>
 	private bool _temKiPraCorrer = true;
@@ -176,6 +185,29 @@ public partial class LocalPlayer : Node2D
 		bool querCorrer = _shift && tentandoAndar && _temKiPraCorrer && !_carregando;
 		if (querCorrer && !_correndo) AudioDirector.EfeitoNoLugar(this, Trilha.Dash, 0.5f);
 		_correndo = querCorrer;
+
+		// ARREMESSADO NAO DIRIGE. Enquanto o servidor esta jogando o corpo, o cliente para de
+		// integrar o input e so segue as correcoes -- senao os dois empurram o mesmo corpo em
+		// direcoes diferentes, que e a briga que faz o personagem TREMER.
+		// ARREMESSADO: o corpo ANDA sozinho na direcao do voo, no cliente, em vez de esperar a
+		// correcao de cada tique.
+		//
+		// A primeira versao so travava o input e deixava o servidor teleportar o corpo a cada 0,1 s.
+		// Funcionava e ficava HORRIVEL -- dez saltos de dois tiles em vez de um voo. O dono: "o
+		// knock back n ta fluido, o personagem voa meio travado".
+		//
+		// Agora o cliente INTERPOLA: guarda o rumo que a ultima correcao revelou e desliza nele, e a
+		// correcao seguinte so ajusta o erro. O servidor continua sendo o dono da posicao -- ele so
+		// parou de ser o unico a mover o corpo.
+		if (_empurrado)
+		{
+			_pos += _rumoDoVoo * (float)(delta * VelocidadeDoVoo);
+			Desenhar();
+			_visual.SetMotion(_facing, false);
+			_visual.GirarPara(_rumoDoVoo);   // o corpo voa DEITADO na direcao do arremesso
+			return;
+		}
+		_visual.GirarPara(default);   // fora do voo, o sprite volta ao prumo
 
 		Vec2 antes = _pos;
 		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat, Mapa, out _, _correndo);
@@ -265,22 +297,43 @@ public partial class LocalPlayer : Node2D
 			// leve, com um passo curto pra fechar o meio metro que falta. Nao ha tecla
 			// separada de "soco forte": no original o golpe so ficava pesado quando saia em
 			// dash (`1 + dash_delay` virava o `Type`), e SHIFT ja e essa escolha.
+			// VIRA PRO ALVO MARCADO, na tela, ANTES de socar.
+			//
+			// O servidor ja girava o `Facing` pelo marcado (`GameServer.Atacar`) -- mas a direcao
+			// que ele calcula so viaja pros OUTROS, no snapshot. O meu proprio sprite e desenhado
+			// por mim, com a direcao que saiu do MEU movimento. Sem esta linha, marcar alguem que
+			// esta atras e apertar espaco desenhava o soco pro lado errado enquanto o golpe, no
+			// servidor, saia certo -- as duas pontas contando historias diferentes do mesmo golpe.
+			if (World.Instancia?.PosicaoDoAlvo is { } alvo)
+			{
+				var pAlvo = new Vec2(alvo.X - _pos.X, alvo.Y - _pos.Y);
+				_facing = MoveRules.FacingFrom(pAlvo, _facing);
+				_visual.SetMotion(_facing, false);
+			}
+
 			Protocol.Golpe golpe = _shift ? Protocol.Golpe.Pesado : Protocol.Golpe.Leve;
 			double dura = _cadencia * Protocol.PesoDoGolpe(golpe);
 
-			// o rasgo da investida sai NA HORA, sem esperar o servidor: e o feedback do
-			// controle. O que o servidor decide e se ela acerta, nao se ela aconteceu.
-			if (golpe == Protocol.Golpe.Pesado)
-			{
-				// DE ONDE EU SAIRIA, guardado pro caso de ter havido investida.
-				//
-				// O VULTO NAO NASCE MAIS AQUI. Nascia -- e o dono viu o defeito: apertar SHIFT+ESPACO
-				// sem ninguem por perto deixava miragem parado no lugar. O cliente nao tem como saber
-				// se a investida ACONTECEU: quem escolhe o alvo, cobra o Ki e testa a parede no
-				// caminho e o servidor. Ele agora responde isso no relato do golpe (`HitEvent.Zanzo`),
-				// e o vulto sai la -- neste ponto, que e onde o corpo estava.
-				_deOndeSai = new Vector2(_pos.X, _pos.Y);
-			}
+			// DE ONDE EU SAIRIA, guardado pro caso de ter havido investida.
+			//
+			// O VULTO NAO NASCE AQUI. Nascia -- e o dono viu o defeito: apertar SHIFT+ESPACO sem
+			// ninguem por perto deixava miragem parado no lugar. O cliente nao tem como saber se a
+			// investida ACONTECEU: quem escolhe o alvo, cobra o Ki e testa a parede no caminho e o
+			// servidor. Ele responde isso no relato do golpe (`HitEvent.Zanzo`), e o vulto sai la --
+			// neste ponto, que e onde o corpo estava quando a tecla foi apertada.
+			//
+			// ============================ VALE PROS DOIS GOLPES ============================
+			// Isto so rodava no golpe PESADO, e estava errado: o servidor chama `Aproximar` nos DOIS
+			// (`longo: golpe == Pesado` -- GameServer.Combat.cs), com 160px no pesado e 80px no leve.
+			// Ou seja, o soco LEVE tambem investe, tambem marca `Zanzo`, e tambem faz o cliente
+			// chamar `DeixarVulto()` -- so que com a posicao guardada no ULTIMO shift+espaco.
+			//
+			// O dono descreveu exatamente isso: "ao apertar espaco dentro do range do tp sem o shift,
+			// o efeito do zanzoken acontece no ultimo local q usei o shift+espaco, ele n ta
+			// atualizando com a posiçao atual do player". A miragem podia nascer do outro lado do
+			// mapa, no lugar onde ele tinha investido minutos antes.
+			// ==============================================================================
+			_deOndeSai = new Vector2(_pos.X, _pos.Y);
 
 			_ataqueAte = dura;
 			// a animacao e ESTICADA pra caber no golpe: com a cadencia nova (~0,33 s) o ciclo
@@ -400,7 +453,37 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	private Vector2 _deOndeSai;
 
-	/// <summary>O servidor confirmou a investida: e aqui que o vulto nasce.</summary>
+	/// <summary>
+	/// GRAVA DE ONDE EU SAIO, pra um gesto que ainda vai ser confirmado pelo servidor.
+	///
+	/// O soco ja fazia isso sozinho; a PISCADA por duplo clique precisava disto e nao tinha. Ver
+	/// o comentario do <see cref="DeixarVulto"/>.
+	/// </summary>
+	public void MarcarSaida() => _deOndeSai = new Vector2(_pos.X, _pos.Y);
+
+	/// <summary>
+	/// O servidor confirmou o deslocamento: e aqui que o vulto nasce, na posicao que o CLIENTE
+	/// guardou no instante do gesto.
+	///
+	/// ============================ POR QUE NAO USAR A POSICAO DO SERVIDOR ============================
+	/// O pacote da piscada (`S2C.Zanzo`) traz a posicao de onde o corpo saiu, e a piscada usava ELA.
+	/// Duas coisas dao errado nisso, e nenhuma acontece no caminho do soco:
+	///
+	///   1. E UMA POSICAO ATRASADA. `pl.Pos` no servidor e a ultima que CHEGOU por pacote de input.
+	///      Entre o cliente mandar o duplo clique e o servidor atender, o corpo ja andou -- entao a
+	///      miragem nasce alguns pixels atras de onde o jogador realmente estava.
+	///
+	///   2. OS DOIS PACOTES VEM POR CANAIS DIFERENTES. A `Correction` (que move o corpo) vai no canal
+	///      CONFIAVEL e o `Zanzo` (que cria a miragem) no NAO CONFIAVEL -- e o LiteNetLib nao garante
+	///      ordem ENTRE canais. Ou seja, a ordem em que o corpo salta e a miragem aparece muda de
+	///      pacote pra pacote, e as vezes a miragem nasce em cima do corpo que ainda nao saiu.
+	///
+	/// O caminho do soco nunca teve nenhum dos dois problemas porque ele NAO PERGUNTA a posicao ao
+	/// servidor: o cliente guarda onde estava no instante da tecla e desenha ali. O dono notou
+	/// exatamente essa assimetria -- "o tp via dash nao causa o bug visual" --, e a correcao e fazer
+	/// a piscada usar o mesmo caminho, nao inventar um terceiro.
+	/// ================================================================================================
+	/// </summary>
 	public void DeixarVulto()
 	{
 		if (GetParent() is { } palco) Zanzoken.Deixar(palco, this, _deOndeSai);
@@ -433,9 +516,27 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	private void OnCorrected(Vec2 pos)
 	{
+		// NO MEIO DO VOO a correcao tambem REVELA O RUMO: e a diferenca entre onde o servidor diz
+		// que estou e onde eu estava. Sem isso o cliente nao teria como deslizar sozinho -- o rumo
+		// do arremesso nunca viaja num campo proprio.
+		if (_empurrado)
+		{
+			Vec2 d = pos - _pos;
+			if (d.LengthSquared > 1f) _rumoDoVoo = d.Normalized();
+		}
 		_pos = pos;
 		Desenhar();
 	}
+
+	/// <summary>Pra onde o corpo esta sendo arremessado. Sai da correcao -- ver OnCorrected.</summary>
+	private Vec2 _rumoDoVoo;
+
+	/// <summary>
+	/// Velocidade do voo em px/s. E a mesma do servidor -- dois tiles a cada 0,1 s = 640 px/s --,
+	/// entao o cliente chega no mesmo lugar e a correcao seguinte quase nao tem o que corrigir.
+	/// </summary>
+	private const double VelocidadeDoVoo =
+		Jandirus.Core.Combat.Empurrao.TilesPorTique * ZoneCollision.TileSize / Jandirus.Core.Combat.Empurrao.SegundosPorTique;
 
 	/// <summary>
 	/// PARA ONDE O SERVIDOR ME MANDOU. Troca de zona, decolagem, pouso, saida da mente.

@@ -157,6 +157,7 @@ public partial class World : Node2D
 			cli.EfeitoCaiu += AoCairEfeito;
 			cli.Piscou += AoPiscar;
 			cli.PortasMudaram += AoMudarPortas;
+			cli.CenarioCaiu += AoCairCenario;
 			// O Boot instancia o World DENTRO do callback de Joined, ou seja, este _Ready
 			// roda DEPOIS do evento. Assinar nao basta: se ja entramos, aplica agora.
 			if (cli.LocalId != 0) AoEntrar(cli.LocalId, cli.Zone, cli.LocalSpawn, cli.LocalName);
@@ -196,6 +197,7 @@ public partial class World : Node2D
 			cli.EfeitoCaiu -= AoCairEfeito;
 			cli.Piscou -= AoPiscar;
 			cli.PortasMudaram -= AoMudarPortas;
+			cli.CenarioCaiu -= AoCairCenario;
 		}
 	}
 
@@ -260,7 +262,14 @@ public partial class World : Node2D
 	{
 		Node2D? corpo = Corpo(quem);
 		if (corpo == null) return;
-		Zanzoken.Deixar(_atores, corpo, new Vector2(de.X, de.Y));
+
+		// O MEU VULTO SAI PELO MESMO CAMINHO DO SOCO. Pro corpo LOCAL, quem sabe de onde ele saiu e
+		// o proprio cliente -- ele guardou a posicao no instante do duplo clique. A posicao que vem
+		// no pacote e do SERVIDOR: esta atrasada e chega por outro canal, sem ordem garantida com a
+		// correcao que move o corpo. Ver `LocalPlayer.DeixarVulto`.
+		if (GameClient.Instance?.LocalId == quem && _local != null) _local.DeixarVulto();
+		else Zanzoken.Deixar(_atores, corpo, new Vector2(de.X, de.Y));
+
 		AudioDirector.EfeitoNoLugar(corpo, Trilha.Teleporte, 0.7f);
 	}
 
@@ -555,6 +564,69 @@ public partial class World : Node2D
 	}
 
 	/// <summary>
+	/// UMA CELULA DO CENARIO CAIU -- o corpo arremessado derrubou a parede.
+	///
+	/// No original o turf destruido e SUBSTITUIDO por `/turf/Ground/Ground8` (chao liso): destruir
+	/// nao abre buraco, aplaina. Aqui e o mesmo: a celula some das camadas de DECOR e OBJETOS (que
+	/// e onde muro, arvore e cerca moram) e o chao que ja estava embaixo aparece.
+	///
+	/// A CENA E CACHEADA entre visitas, entao apagar celula nela sobrevive a saida do planeta -- e
+	/// aqui isso e o COMPORTAMENTO CERTO, nao um vazamento: o que caiu ficou caido. O servidor
+	/// guarda a mesma lista e a reenvia a quem chega (`MandarCenario`), entao quem entra depois ve
+	/// o mesmo estrago. O mapa so volta ao normal quando o servidor reinicia, como no BYOND.
+	/// </summary>
+	/// <summary>
+	/// O TILE QUE FICA NO LUGAR do que foi destruido: `/turf/Ground/Ground8`, o mesmo do DM.
+	///
+	/// Sai do `tiles.json` -- o indice que o conversor de mapa ja publica com a fonte e a
+	/// coordenada de cada estado. Procurar pelo NOME em vez de fixar numeros e o que faz isto
+	/// sobreviver a proxima reconversao: os ids de fonte sao atribuidos por ordem de descoberta e
+	/// mudam quando um mapa muda.
+	/// </summary>
+	private (int Fonte, Vector2I Coord)? ChaoDestruido()
+	{
+		if (_chaoDestruido.HasValue) return _chaoDestruido;
+
+		const string indice = "res://Assets/Data/tiles.json";
+		_indice ??= Jandirus.Core.World.CatalogoDeTiles.Parse(
+			Godot.FileAccess.FileExists(indice) ? Godot.FileAccess.GetFileAsString(indice) : "");
+
+		if (_indice.Achar("Ground", "Ground8") is not { } t) return null;
+		_chaoDestruido = (t.Fonte, new Vector2I(t.X, t.Y));
+		return _chaoDestruido;
+	}
+
+	private Jandirus.Core.World.CatalogoDeTiles? _indice;
+
+	private (int Fonte, Vector2I Coord)? _chaoDestruido;
+
+	private void AoCairCenario(int cx, int cy)
+	{
+		_colisao?.Abrir(cx, cy);
+		_veu.Mapa?.Abrir(cx, cy);
+
+		var celula = new Vector2I(cx, cy);
+		// TODAS AS CAMADAS SAEM, E O CHAO E REPOSTO.
+		//
+		// A primeira versao pulava a camada 0 ("e o chao, apagar abriria buraco") e isso estava
+		// errado: um muro que e o UNICO turf da celula mora justamente na camada 0 -- o conversor
+		// poe o primeiro turf em `Chao` e so o empilhado em `Decor`. Ou seja, exatamente as paredes
+		// que o dono tentou derrubar eram as que nao sumiam.
+		//
+		// O original nao "apaga" turf nenhum: ele SUBSTITUI por `/turf/Ground/Ground8`
+		// (`NewTurfs.dm`). Aqui e o mesmo -- apaga tudo e escreve o Ground8 no chao, entao a celula
+		// destruida fica com terra batida em vez de vazio.
+		for (int i = 0; i < _veu.Camadas.Length; i++)
+			if (IsInstanceValid(_veu.Camadas[i])) _veu.Camadas[i].EraseCell(celula);
+
+		if (_veu.Camadas.Length > 0 && IsInstanceValid(_veu.Camadas[0]) && ChaoDestruido() is { } g)
+			_veu.Camadas[0].SetCell(celula, g.Fonte, g.Coord);
+
+		const int t = ZoneCollision.TileSize;
+		CombatFx.Impacto(_atores, new Vector2(cx * t + t / 2f, cy * t + t / 2f), 1.2f, Colors.White);
+	}
+
+	/// <summary>
 	/// As TileMapLayer da cena da zona, na ORDEM em que sao desenhadas.
 	///
 	/// E o que o veu precisa pra repintar a parede por cima da sombra (ver `Visao.Camadas`).
@@ -610,6 +682,10 @@ public partial class World : Node2D
 		corpo.AddChild(new HealthBar { Name = "Vida" });
 		_atores.AddChild(corpo);
 		_local = corpo;
+
+		// OS VERBS FIXOS entram agora. As skills registram os DELAS quando sao aprendidas
+		// (`Habilidades`); estes existem pra todo personagem, entao nascem com o corpo.
+		VerbosDoJogo.Registrar();
 		VestirSePuder(id, corpo);
 		GD.Print($"[world] {nome} pronto em {zona}");
 		Chat.Sistema($"bem-vindo, {nome}.");
@@ -643,7 +719,19 @@ public partial class World : Node2D
 
 			// A AURA DE POWER-UP DO OUTRO. Vem no snapshot justamente pra isto (ver
 			// EntityState.Carregando): quem esta lutando precisa ver o adversario juntando poder.
-			if (r.GetNodeOrNull<CargaVisual>("Carga") is { } cg) cg.Definir(e.Carregando, e.Sobrecarregado);
+			if (r.GetNodeOrNull<CargaVisual>("Carga") is { } cg)
+			{
+				cg.Definir(e.Carregando, e.Sobrecarregado);
+				// ...E O SOM TAMBEM. Quem esta do lado ouve o zumbido de quem junta energia, como
+				// ouve o soco. Isto faltava: o `Som` so era chamado pro corpo LOCAL (pelo canal de
+				// `Efeito`, que e pessoal), entao carregar Ki era mudo pra todo mundo menos pra quem
+				// carregava -- e no BYOND o `emit_Sound` da carga sai no mundo como qualquer outro.
+				//
+				// O bit ja viajava: `EntityState.Carregando` esta no snapshot desde que a aura
+				// passou a ser visivel pros outros. Faltava CONSUMI-LO aqui. E o `EfeitoNoLugar` ja
+				// e posicional, entao o volume cai com a distancia sem mais nada.
+				cg.Som(e.Carregando);
+			}
 
 			// INVISIVEL: some, mas o no CONTINUA VIVO e recebendo posicao. Apagar o corpo faria
 			// ele reaparecer no lugar errado quando voltasse (o cliente teria perdido a
@@ -1046,6 +1134,25 @@ public partial class World : Node2D
 	public Vector2? PosicaoLocal => _local != null && IsInstanceValid(_local) ? _local.GlobalPosition : null;
 
 	/// <summary>
+	/// Onde esta quem eu MARQUEI. Nulo se nao ha alvo, ou se ele nao esta na minha zona.
+	///
+	/// Existe pro corpo local se VIRAR pro alvo ao socar. O servidor ja fazia isso (`Atacar` gira
+	/// `a.Facing` pelo marcado), mas o servidor so manda direcao pros OUTROS -- o proprio sprite e
+	/// desenhado pelo cliente, com a direcao que ELE calculou do movimento. Resultado: marcar
+	/// alguem nas costas e apertar espaco fazia o personagem socar de costas na tela do dono, mesmo
+	/// com o golpe saindo certo no servidor.
+	/// </summary>
+	public Vector2? PosicaoDoAlvo
+	{
+		get
+		{
+			int id = GameClient.Instance?.AlvoId ?? 0;
+			if (id == 0) return null;
+			return _remotos.TryGetValue(id, out RemotePlayer? r) && IsInstanceValid(r) ? r.GlobalPosition : null;
+		}
+	}
+
+	/// <summary>
 	/// As portas da zona atual, por celula. PUBLICO SO PRA BANCADA (`--porta`): e o unico jeito de
 	/// um teste sem janela conferir que a porta abriu de verdade -- que a animacao trocou, que o
 	/// mapa de colisao soltou a celula e que o de visao parou de cegar.
@@ -1101,6 +1208,10 @@ public partial class World : Node2D
 		// senao a tecnica roubaria um controle que ja existia.
 		if (escolhido == 0 && cli.SkillsAprendidas.Contains(PathDoZanzoken))
 		{
+			// DE ONDE EU SAIO, gravado AGORA -- no instante do gesto, como o soco ja fazia. Quando
+			// o servidor confirmar, a miragem nasce aqui e nao na posicao (atrasada) que ele mandar.
+			// Ver `LocalPlayer.DeixarVulto`.
+			_local?.MarcarSaida();
 			cli.SendZanzoken(new Vec2(alvo.X, alvo.Y));
 			GetViewport().SetInputAsHandled();
 			return;

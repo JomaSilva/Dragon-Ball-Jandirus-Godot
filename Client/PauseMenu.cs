@@ -113,6 +113,25 @@ public partial class PauseMenu : CanvasLayer
         linhaZoom.AddChild(zoomTxt);
         caixa.AddChild(linhaZoom);
 
+        // GRAFICO: hoje ele decide o filtro da sombra das luzes (nenhum / PCF5 / PCF13).
+        //
+        // O nome e "Grafico" e nao "Filtro de sombra" de proposito: e o balde onde o proximo
+        // ajuste de custo visual entra sem virar mais uma linha na tela. Tres niveis bastam --
+        // o jogador escolhe entre "roda" e "bonito", nao entre treze parametros.
+        var grafico = new OptionButton();
+        grafico.AddItem("baixo (sem filtro)", Settings.GraficoBaixo);
+        grafico.AddItem("medio (PCF5)", Settings.GraficoMedio);
+        grafico.AddItem("alto (PCF13)", Settings.GraficoAlto);
+        grafico.Selected = Math.Clamp(_cfg.Grafico, 0, 2);
+        grafico.ItemSelected += i =>
+        {
+            _cfg.Grafico = (int)i;
+            AplicarEGravar();
+            // VALE AGORA, nao no proximo planeta: as luzes ja plantadas trocam de filtro na hora.
+            if (World.Instancia is { } w) Iluminacao.AplicarQualidade(w);
+        };
+        caixa.AddChild(Linha("Grafico", grafico));
+
         // --- som ---
         caixa.AddChild(Secao("Som"));
         caixa.AddChild(Volume("Geral", () => _cfg.VolumeGeral, v => _cfg.VolumeGeral = v));

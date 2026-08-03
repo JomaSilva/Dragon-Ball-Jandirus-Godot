@@ -165,6 +165,18 @@ public partial class MenuJogo : CanvasLayer
 		if (Visible) Fechar(); else Abrir();
 	}
 
+	/// <summary>As abas que a bancada percorre (`--diagmenu`). As fixas bastam pra medir.</summary>
+	public static string[] AbasDeTeste => Fixas;
+
+	/// <summary>Troca de aba pelo MESMO caminho que o botao usa. So pra bancada.</summary>
+	public void IrPara(string aba)
+	{
+		if (aba == _aba) return;
+		FecharArvore();
+		_aba = aba;
+		Redesenhar();
+	}
+
 	public void Abrir()
 	{
 		Visible = true;
@@ -243,9 +255,13 @@ public partial class MenuJogo : CanvasLayer
 			HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
 		};
 		coluna.AddChild(rolagem);
-		_conteudo = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-		_conteudo.AddThemeConstantOverride("separation", 3);
-		rolagem.AddChild(_conteudo);
+
+		// A PILHA DE PAGINAS. Uma VBox por aba, todas vivas na arvore e so UMA visivel -- ver
+		// `PaginaDe`. O `_conteudo` aponta pra pagina da vez, entao os construtores de aba
+		// continuam escrevendo em `_conteudo` sem saber que existe pilha.
+		_pilha = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+		rolagem.AddChild(_pilha);
+		_conteudo = PaginaDe("Stats");
 
 		var rodape = Tema.Rotulo("P fecha  ·  ESC fecha  ·  a busca vale pra todas as abas");
 		rodape.HorizontalAlignment = HorizontalAlignment.Center;
@@ -277,6 +293,95 @@ public partial class MenuJogo : CanvasLayer
 	/// <summary>As abas que estao na tela agora, pra saber se a barra precisa ser refeita.</summary>
 	private string _abasNaTela = "";
 	private readonly Dictionary<string, Button> _botoes = [];
+
+	// =====================================================================
+	// A PILHA DE PAGINAS -- uma por aba, construida UMA vez
+	// =====================================================================
+	/// <summary>
+	/// ============================ POR QUE ISTO EXISTE ============================
+	/// O pedido do dono foi "deixar os menus ja instanciados so que invisiveis, e quando apertar a
+	/// tecla so deixar visivel -- e mais rapido pra engine". Os DOIS menus ja nasciam com o mundo e
+	/// so trocavam `Visible` (Boot.MontarMundo); o que custava era outra coisa, e era pior: o
+	/// CONTEUDO era destruido e reconstruido do zero a cada `Redesenhar()`.
+	///
+	/// E `Redesenhar()` nao roda so ao abrir -- roda a cada pacote de ficha, 5x por segundo com o
+	/// menu aberto, e uma vez inteira a cada abertura. A aba de skills sozinha monta centenas de
+	/// linhas. Era ai que estava o custo que o `Visible` nao ia resolver.
+	///
+	/// Agora cada aba tem a PROPRIA pagina, viva na arvore e escondida. Trocar de aba e trocar
+	/// `Visible`, e reconstruir so acontece quando o que a aba MOSTRA muda (ver `_assinaturas`) --
+	/// e a mesma regra que ja valia pra barra de abas desde o defeito do "botao piscando".
+	/// =============================================================================
+	/// </summary>
+	private VBoxContainer _pilha = null!;
+	private readonly Dictionary<string, VBoxContainer> _paginas = [];
+
+	/// <summary>O que cada pagina mostrava da ultima vez. Igual = nao ha o que refazer.</summary>
+	private readonly Dictionary<string, string> _assinaturas = [];
+
+	private VBoxContainer PaginaDe(string aba)
+	{
+		if (_paginas.TryGetValue(aba, out VBoxContainer? p) && IsInstanceValid(p)) return p;
+		p = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Visible = false };
+		p.AddThemeConstantOverride("separation", 3);
+		_pilha.AddChild(p);
+		_paginas[aba] = p;
+		return p;
+	}
+
+	/// <summary>
+	/// O QUE ESTA ABA MOSTRA, resumido numa string. Se ela nao mudou, a pagina que ja esta montada
+	/// continua correta e nao ha nada a refazer.
+	///
+	/// E DE PROPOSITO GROSSEIRA: numeros arredondados, contagens em vez de listas. Uma assinatura
+	/// exata custaria quase o mesmo que remontar; o objetivo e cortar as 5 remontagens por segundo
+	/// em que NADA visivel mudou, nao perseguir o ultimo quadro.
+	///
+	/// A BUSCA ENTRA NA ASSINATURA porque ela troca o conteudo inteiro da pagina (ver `Achados`).
+	/// </summary>
+	private string Assinatura(string aba, SheetState f)
+	{
+		GameClient? c = GameClient.Instance;
+		string comum = $"{_busca.Text.Trim()}|{_arvoreAberta}|{f.Estado}";
+		return aba switch
+		{
+			"Stats" => $"{comum}|{f.ExpressedBP:0}|{f.Ki:0}|{f.MaxKi:0}|{f.HP:0}|{f.Vigor:0}"
+					 + $"|{_atributos.PhysOff:0.##}|{_atributos.PhysDef:0.##}|{_atributos.KiOff:0.##}"
+					 + $"|{_atributos.Speed:0.##}|{_atributos.Idade}|{f.Class}",
+			"Body" => $"{comum}|{string.Join(',', (c?.Corpo ?? []).Select(p => p.Nome + p.Vida + (p.Decepado ? "x" : "")))}",
+			"Learning" => $"{comum}|{c?.SkillsAprendidas.Count}|{c?.MarcosTotais}|{c?.MarcosLivres}",
+			"Skills" => $"{comum}|{c?.SkillsAprendidas.Count}",
+			"Forms" => $"{comum}|{_atributos.FormaAtual}|{string.Join(',', (_atributos.Maestrias ?? []).Select(m => $"{m.Forma}:{m.Pct:0.#}"))}",
+			"Tech" => $"{comum}|{c?.TechNivel:0.#}|{c?.Zeni:0}|{c?.TechXp:0}|{c?.Obras.Count}|{c?.Catalogo.Count}",
+			"Cargos" => $"{comum}|{string.Join(',', (c?.Cargos ?? []).Select(r => r.Chave + r.Dono + r.Falta))}",
+			"Ki" => $"{comum}|{f.Ki:0}|{f.MaxKi:0}|{c?.SkillsAprendidas.Count}",
+			// As abas fixas sem dado proprio (Items, Equip, Other) sao texto parado: uma assinatura
+			// so ja basta pra elas nunca mais serem remontadas.
+			"Items" or "Equip" or Verbos.Outros => comum,
+			// AS QUE DEPENDEM DE QUEM ESTA NA TELA refazem sempre: People e World listam corpos que
+			// entram e saem a cada snapshot, e uma assinatura que os cobrisse custaria o mesmo que
+			// remontar. Devolver vazio e dizer "nao ha cache pra esta".
+			_ => "",
+		};
+	}
+
+	/// <summary>
+	/// `--diagmenu`: mede o menu em vez de afirmar que ele ficou rapido.
+	///
+	/// Sao dois numeros que importam e que nao dava pra ver antes: quantas vezes o conteudo foi
+	/// REMONTADO (contra quantas o pedido foi atendido pela pagina que ja estava pronta) e quanto
+	/// custa uma remontagem. O primeiro e o que diz se o cache funciona; o segundo e o que o dono
+	/// sente ao apertar P.
+	/// </summary>
+	private static readonly bool Diag = Array.IndexOf(OS.GetCmdlineArgs(), "--diagmenu") >= 0;
+	private int _remontagens, _reaproveitadas;
+	private double _msRemontando;
+
+	/// <summary>O relatorio do `--diagmenu`. Publico porque quem fecha o menu e quem o imprime.</summary>
+	public string Relatorio() =>
+		$"[menu] {_remontagens} remontagens ({_msRemontando:0.0} ms no total, "
+		+ $"{(_remontagens > 0 ? _msRemontando / _remontagens : 0):0.00} ms cada) | "
+		+ $"{_reaproveitadas} pedidos atendidos pela pagina ja montada";
 
 	private void Redesenhar()
 	{
@@ -326,11 +431,38 @@ public partial class MenuJogo : CanvasLayer
 		// qual esta marcada e propriedade, nao node novo: da pra atualizar sem recriar nada
 		foreach ((string nome, Button botao) in _botoes) botao.ButtonPressed = nome == _aba;
 
-		foreach (Node n in _conteudo.GetChildren()) n.QueueFree();
-
 		SheetState f = GameClient.Instance?.Sheet ?? default;
 		_titulo.Text = GameClient.Instance?.LocalName ?? "";
 
+		// SO A PAGINA DA VEZ APARECE. As outras continuam montadas, escondidas -- voltar pra elas
+		// e uma troca de `Visible`, e nao uma remontagem.
+		_conteudo = PaginaDe(_aba);
+		foreach ((string nome, VBoxContainer pg) in _paginas)
+			if (IsInstanceValid(pg)) pg.Visible = nome == _aba;
+
+		// NADA MUDOU? Entao a pagina que ja esta ai continua certa. E o que corta as cinco
+		// remontagens por segundo que o pacote de ficha provocava com o menu aberto.
+		string sig = Assinatura(_aba, f);
+		if (sig.Length > 0 && _assinaturas.TryGetValue(_aba, out string? antiga)
+			&& antiga == sig && _conteudo.GetChildCount() > 0)
+		{
+			_reaproveitadas++;
+			return;
+		}
+		_assinaturas[_aba] = sig;
+
+		ulong t0 = Time.GetTicksUsec();
+		_remontagens++;
+
+		foreach (Node n in _conteudo.GetChildren()) { _conteudo.RemoveChild(n); n.QueueFree(); }
+		Montar(f);
+		_msRemontando += (Time.GetTicksUsec() - t0) / 1000.0;
+	}
+
+	/// <summary>Enche a pagina da aba da vez. Separado do <see cref="Redesenhar"/> so pra o
+	/// cronometro ter onde fechar -- os `return` no meio de um metodo unico o perderiam.</summary>
+	private void Montar(SheetState f)
+	{
 		// BUSCA VENCE A ABA. Ver o comentario da classe.
 		string termo = _busca.Text.Trim();
 		if (termo.Length > 0) { Achados(termo); return; }

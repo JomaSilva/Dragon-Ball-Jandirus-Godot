@@ -303,7 +303,24 @@ public partial class GameClient : Node
 	/// </summary>
 	public event Action<bool, List<(int X, int Y, bool Aberta)>>? PortasMudaram;
 
+	/// <summary>Uma celula do cenario caiu (knockback contra parede): virou chao.</summary>
+	public event Action<int, int>? CenarioCaiu;
+
 	/// <summary>O canal unico de tecnologia. Ver `GameServer.Tech.cs`.</summary>
+	/// <summary>
+	/// O CANAL DOS VERBS: comando + argumento. Mesmo formato do <see cref="SendTech"/>, e pelo
+	/// mesmo motivo -- sao dezenas de acoes soltas, e um opcode por acao encheria o protocolo.
+	/// Quem autoriza (admin, por exemplo) e o SERVIDOR.
+	/// </summary>
+	public void SendVerbo(string cmd, string arg = "")
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.Verbo);
+		w.Put(cmd);
+		w.Put(arg);
+		_peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
 	public void SendTech(string cmd, string arg = "")
 	{
 		if (!Connected) return;
@@ -571,6 +588,11 @@ public partial class GameClient : Node
 			// AS PORTAS mudaram de estado -- ou, com `completo`, esta e a lista inteira da zona.
 			// Nao vai por evento agregado como as obras: o `World` e o unico interessado e ele
 			// precisa saber SE foi a lista completa (pra fechar tudo antes de aplicar).
+			// UMA CELULA DO CENARIO CAIU. O corpo arremessado derrubou a parede.
+			case Protocol.S2C.Cenario:
+				CenarioCaiu?.Invoke(reader.GetUShort(), reader.GetUShort());
+				break;
+
 			case Protocol.S2C.Porta:
 			{
 				(bool completo, List<(int X, int Y, bool Aberta)> portas) = reader.GetPortas();

@@ -24,6 +24,10 @@ public static class Habilidades
 	public static void Montar(string raca)
 	{
 		Verbos.Limpar();
+		// `Verbos.Limpar()` apaga TUDO, inclusive os verbs fixos de Other/Admin. Sem isto eles
+		// sumiriam na primeira troca de personagem e so voltariam no relog.
+		VerbosDoJogo.Limpar();
+		VerbosDoJogo.Registrar();
 
 		// A MENTE E DE TODO MUNDO: treinar contra si mesmo nao e dom de raca nenhuma.
 		Verbos.Registrar(new Verbo(

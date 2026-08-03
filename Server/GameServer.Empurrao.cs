@@ -1,0 +1,271 @@
+﻿using Jandirus.Core.Combat;
+using Jandirus.Core.World;
+using Jandirus.Net;
+using LiteNetLib;
+
+namespace Jandirus.Server;
+
+/// <summary>
+/// KNOCKBACK E DESTRUICAO DE CENARIO -- as duas coisas vivem juntas porque no original tambem
+/// vivem: e o corpo arremessado batendo na parede que derruba a parede.
+///
+/// ============================ DE ONDE VEM ============================
+/// `Impact.dm` decide, `/effect/knockback` (Movement Effects.dm) executa, `turf/proc/Destroy`
+/// (NewTurfs.dm) derruba. As formulas estao no <see cref="Empurrao"/>, no Core; aqui fica o
+/// encanamento: quem voa, por quanto tempo, o que ele encontra e quem fica sabendo.
+///
+/// O TIQUE DO ORIGINAL E 1 DECIMO e cada tique da DOIS passos de tile -- ou seja ~2 tiles a cada
+/// 0,1 s, ate 10 tiques. E rapido de proposito: o corpo tem que SUMIR de onde estava.
+/// =====================================================================
+///
+/// ============================ POR QUE O SERVIDOR MOVE, E NAO O CLIENTE ============================
+/// Todo o resto do movimento e do cliente ("cliente calcula, servidor valida"). O arremesso nao:
+/// o jogador nao esta dirigindo, esta sendo jogado. Quem calcula e quem sabe -- e por isso o
+/// `Estado` ganhou um bit dizendo "voce esta voando", pra o cliente parar de integrar input e so
+/// seguir as correcoes. Sem esse bit, o cliente empurraria de volta e os dois brigariam pelo corpo,
+/// que e exatamente a briga que fazia o personagem TREMER na parede.
+/// ==================================================================================================
+/// </summary>
+public sealed partial class GameServer
+{
+	/// <summary>
+	/// O GOLPE MEXEU COM O CORPO? Chamado depois de o dano ser resolvido, como no original
+	/// (`attack cmn.dm:110`, logo apos o `hitProc`).
+	/// </summary>
+	private void TentarEmpurrar(ServerPlayer a, ServerPlayer d, double dmg, Protocol.Golpe golpe)
+	{
+		if (!a.Knockback || d.TiquesDeVoo > 0 || d.Ficha.dead) return;
+
+		double check = Empurrao.Check(a.Ficha, d.Ficha);
+		double forca;
+		bool inevitavel = false;
+
+		if (golpe == Protocol.Golpe.Leve)
+		{
+			// o sorteio do soco leve: ou arremessa de verdade, ou da um empurraozinho garantido
+			if (Empurrao.SorteioDoSocoLeve(dmg, check, p => _rng.NextDouble() * 100 < p) is not { } s) return;
+			forca = s.Dmg;
+			inevitavel = s.Inevitavel;
+		}
+		else forca = Empurrao.ForcaDoPesado(dmg, a.Ficha, check);
+
+		double limiar = Empurrao.Limiar(d.Ficha, a.Ficha.expressedBP);
+		(EfeitoDeImpacto efeito, int tiques) = Empurrao.Avaliar(forca, limiar, inevitavel);
+
+		switch (efeito)
+		{
+			case EfeitoDeImpacto.Arremesso:
+				d.TiquesDeVoo = tiques;
+				d.RumoDoVoo = MeleeArea.Frente(a.Facing);
+				d.ForcaDoVoo = a.Ficha.expressedBP;
+				d.ProximoTiqueDeVoo = NowMs();
+				break;
+
+			// CAMBALEIA E LENTO ainda nao tem efeito proprio no port (nao ha `slowed`/`stagger` na
+			// ficha), entao viram atordoamento curto -- que e o que o CombatState ja sabe fazer e o
+			// que o jogador sente igual: perder o proximo golpe. Anotado como aproximacao.
+			case EfeitoDeImpacto.Cambaleia:
+				d.Combate.Stun = Math.Max(d.Combate.Stun, Empurrao.TiquesDeTropeco * Empurrao.SegundosPorTique);
+				break;
+		}
+	}
+
+	/// <summary>
+	/// O VOO, tique a tique. Roda no tick cheio e so mexe em quem esta no ar.
+	/// </summary>
+	private void TickDoEmpurrao()
+	{
+		long agora = NowMs();
+		foreach (ServerPlayer pl in _players.Values)
+		{
+			if (pl.TiquesDeVoo <= 0 || agora < pl.ProximoTiqueDeVoo) continue;
+			pl.ProximoTiqueDeVoo = agora + (long)(Empurrao.SegundosPorTique * 1000);
+
+			ZoneCollision? mapa = _catalogo?.Get(pl.Zone)?.Mapa;
+			Vec2 passo = pl.RumoDoVoo * (float)(Empurrao.TilesPorTique * ZoneCollision.TileSize);
+			Vec2 destino = pl.Pos + passo;
+
+			// ---- o que tem no caminho ----
+			bool parou = false;
+
+			// OUTRO CORPO: os dois se machucam e o voo acaba. `SpreadDamage(duration)` no original.
+			foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
+			{
+				if (o == pl || o.Ficha.dead) continue;
+				if ((o.Pos - destino).LengthSquared > 32 * 32) continue;
+				Espalhar(pl, pl.TiquesDeVoo);
+				Espalhar(o, pl.TiquesDeVoo);
+				parou = true;
+				break;
+			}
+
+			// PAREDE: se a forca vence a resistencia, ela CAI e o voo continua; senao o corpo se
+			// arrebenta nela e para. E a regra do `Ticked`, e e o que liga o knockback a destruicao.
+			if (!parou && mapa != null && MoveRules.Occupied(mapa, destino))
+			{
+				if (pl.ForcaDoVoo >= Empurrao.ResistenciaPadrao && DerrubarCenario(pl.Zone, destino))
+				{
+					// caiu: o corpo passa
+				}
+				else
+				{
+					Espalhar(pl, pl.TiquesDeVoo);
+					parou = true;
+				}
+			}
+
+			if (!parou) pl.Pos = destino;
+
+			pl.TiquesDeVoo = parou ? 0 : pl.TiquesDeVoo - 1;
+
+			// O CLIENTE PRECISA SABER ONDE ELE ESTA, e com a sequencia carimbada -- senao os pacotes
+			// que ele ja mandou (da posicao antiga) seriam tratados como cliente errado e puxariam o
+			// corpo de volta. Mesma armadilha do dash.
+			pl.LastInputMs = agora;
+			pl.CorrecaoEsperadaAte = agora + 500;
+			pl.SeqDoTeleporte = pl.SeqInput;
+			pl.OrcamentoPx = 0;
+
+			var w = Protocol.Begin(Protocol.S2C.Correction);
+			w.Put(pl.SeqInput);
+			w.PutVec(pl.Pos);
+			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		}
+	}
+
+	/// <summary>O baque: dano espalhado pelo corpo, proporcional ao que faltava voar.</summary>
+	private void Espalhar(ServerPlayer pl, int tiques)
+	{
+		double dano = tiques;
+		foreach (Jandirus.Core.Combat.BodyPart parte in pl.Combate.Corpo.Partes)
+			parte.Vida = Math.Max(0, parte.Vida - dano / pl.Combate.Corpo.Partes.Count);
+		pl.Combate.SincronizarVida();
+	}
+
+	// =====================================================================
+	// DESTRUICAO DE CENARIO
+	// =====================================================================
+	/// <summary>
+	/// AS CELULAS QUE JA CAIRAM, por zona. Vive em memoria e nao no `.col`: o arquivo e imutavel e
+	/// compartilhado (ver `ZoneCollision`), e o mapa tem que voltar ao normal quando o servidor
+	/// reinicia -- o original tambem nao salvava turf destruido fora do `MapSave`.
+	/// </summary>
+	private readonly Dictionary<string, HashSet<(int X, int Y)>> _cenarioCaido =
+		new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// DERRUBA A CELULA que <paramref name="onde"/> toca. Devolve se caiu alguma coisa.
+	///
+	/// ============================ O QUE O ORIGINAL FAZ ============================
+    /// `turf/proc/Destroy()`: se `destroyable`, 25% de chance de poeira e o turf e SUBSTITUIDO por
+    /// `/turf/Ground/Ground8` -- chao liso. Ou seja destruir nao abre buraco, aplaina.
+    ///
+    /// A resistencia padrao de todo turf e todo obj e VINTE (`buildable.dm:353-360`), e por isso
+    /// praticamente tudo e destrutivel desde o primeiro soco: quem protege um pedaco do mapa e o
+    /// `destroyable = 0` (borda do mundo, arena, espaco), nao a resistencia.
+    ///
+    /// AQUI O `destroyable` E APROXIMADO pela BORDA DO MUNDO: o conversor ja marca essas celulas
+    /// com um grupo proprio (`ZoneCollision.BordaDoMundo`), que e exatamente o
+    /// `/turf/Other/Blank` -- o unico `destroyable = 0` que aparece em quantidade nos mapas. As
+    /// outras excecoes do DM (arena, Void_Wall) ficam anotadas como divida.
+	/// =============================================================================
+	/// </summary>
+	private bool DerrubarCenario(ZoneKey zona, Vec2 onde)
+	{
+		ZoneCollision? mapa = _catalogo?.Get(zona)?.Mapa;
+		if (mapa == null) return false;
+
+		int cx = (int)Math.Floor(onde.X / ZoneCollision.TileSize);
+		int cy = (int)Math.Floor((onde.Y + MoveRules.FeetOffsetY) / ZoneCollision.TileSize);
+		if (!mapa.BlockedCell(cx, cy)) return false;
+
+		// borda do mundo nao cai: e geometria, nao cenario
+		if (_catalogo?.Get(zona) is { Visao.Length: > 0 } && mapa.Grupo(cx, cy) == ZoneCollision.BordaDoMundo)
+			return false;
+
+		if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
+		{
+			caidas = [];
+			_cenarioCaido[zona.Name] = caidas;
+		}
+		if (!caidas.Add((cx, cy))) return false;
+
+		// O MAPA MUDA PROS DOIS LADOS: aqui, e no cliente pelo pacote abaixo. A celula deixa de
+		// bloquear e deixa de cegar -- ela virou chao.
+		mapa.Abrir(cx, cy);
+
+		var w = Protocol.Begin(Protocol.S2C.Cenario);
+		w.Put((ushort)cx);
+		w.Put((ushort)cy);
+		foreach (ServerPlayer o in ZoneList(zona.Hash))
+			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		return true;
+	}
+
+	/// <summary>
+	/// O CHAO RACHA NO IMPACTO. E o `attack cmn.dm:49` do original:
+	///
+	///     for(var/turf/T in view(1,src))
+	///         if(prob(40) && !T.isSpecial && !T.proprietor && T.Resistance <= max(expressedBP, M.expressedBP))
+	///             if(prob(60)) createDust(T,1)
+	///             T.Destroy()
+	///
+	/// La isso acontece no ZanzoClash; aqui vale pra todo golpe PESADO ou CRITICO, que e onde o
+	/// dono esperava ver estrago: "mesmo com golpes fortes e criticos que causam knock back e onda
+	/// de choque o chao em si tb n esta quebrando".
+	///
+	/// ============================ CHAO NAO E PAREDE ============================
+	/// O <see cref="DerrubarCenario"/> so mexe em celula que BLOQUEIA -- ele existe pra derrubar o
+	/// muro em que o corpo bateu. Rachar o chao e outra coisa: a celula continua passavel, o que
+	/// muda e o DESENHO (vira terra batida, o Ground8). Por isso o caminho aqui e proprio e nao
+	/// consulta colisao nenhuma.
+	/// ==========================================================================
+	/// </summary>
+	private void RacharChao(ZoneKey zona, Vec2 centro, double bp)
+	{
+		if (bp < Empurrao.ResistenciaPadrao) return;
+		if (_catalogo?.Get(zona)?.Mapa is not { } mapa) return;
+
+		const int T = ZoneCollision.TileSize;
+		int cx0 = (int)Math.Floor(centro.X / T), cy0 = (int)Math.Floor(centro.Y / T);
+
+		if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
+		{
+			caidas = [];
+			_cenarioCaido[zona.Name] = caidas;
+		}
+
+		// `view(1)` sao as nove celulas em volta -- a do impacto e as oito vizinhas.
+		for (int dy = -1; dy <= 1; dy++)
+			for (int dx = -1; dx <= 1; dx++)
+			{
+				int cx = cx0 + dx, cy = cy0 + dy;
+				if (cx < 0 || cy < 0 || cx >= mapa.Width || cy >= mapa.Height) continue;
+				if (_rng.NextDouble() >= 0.40) continue;            // o `prob(40)` do original
+				if (mapa.Grupo(cx, cy) == ZoneCollision.BordaDoMundo) continue;   // borda nao racha
+				if (!caidas.Add((cx, cy))) continue;
+
+				// PAREDE QUE RACHA TAMBEM DEIXA DE BLOQUEAR -- ela caiu. Chao livre so muda de cara.
+				if (mapa.BlockedCell(cx, cy)) mapa.Abrir(cx, cy);
+
+				var w = Protocol.Begin(Protocol.S2C.Cenario);
+				w.Put((ushort)cx);
+				w.Put((ushort)cy);
+				foreach (ServerPlayer o in ZoneList(zona.Hash))
+					o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			}
+	}
+
+	/// <summary>Manda pra quem chega a lista do que ja caiu na zona.</summary>
+	private void MandarCenario(ServerPlayer pl)
+	{
+		if (!_cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? caidas)) return;
+		foreach ((int cx, int cy) in caidas)
+		{
+			var w = Protocol.Begin(Protocol.S2C.Cenario);
+			w.Put((ushort)cx);
+			w.Put((ushort)cy);
+			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		}
+	}
+}

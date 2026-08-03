@@ -63,6 +63,20 @@ public partial class GameServer
 	/// </summary>
 	private const float DistanciaDeParada = 32f;
 
+	/// <summary>
+	/// QUANTO A INVESTIDA PRECISA ANDAR pra valer a pena existir. MEIO tile.
+	///
+	/// Comecou em um tile (o pedido original) e o dono jogou: "achei a distancia minima pro tp pro
+	/// soco mt grande, coloque a metade da atual". Meio tile ainda mata a investida de 8 px que era
+	/// o defeito -- rasgo, som e miragem por um passo que ninguem via -- sem exigir que o alvo esteja
+	/// longe pra o personagem arrancar.
+	///
+	/// E deslocamento, nao distancia ate o alvo: o arranque para a <see cref="DistanciaDeParada"/>
+	/// do outro, entao o que ele efetivamente anda e `dist - 32`. Sem este piso, estar a 40 px do
+	/// alvo disparava uma investida de 8 px -- com rasgo, som e miragem por um passo que ninguem viu.
+	/// </summary>
+	private const float DeslocamentoMinimo = 16f;
+
 	/// <summary>Fracao do Ki maximo que cada arranque custa (`15 * BaseDrain` no original).</summary>
 	private const double CustoDashKi = 0.05;
 
@@ -223,6 +237,15 @@ public partial class GameServer
 
 		ResolverDesfecho(a, alvo, r);
 		AnunciarGolpe(a, alvo, r, nivel, zanzo, investiu);
+
+		// O CORPO SAI DO LUGAR. Vem DEPOIS do dano, como no original (`attack cmn.dm:110`, logo
+		// apos o `hitProc`): o arremesso e consequencia do golpe que ACERTOU, e o `Impact` le o
+		// dano ja calculado. Golpe aparado ou esquivado nao arremessa -- `r.Encostou` diz isso.
+		if (r.Encostou) TentarEmpurrar(a, alvo, r.Dano, golpe);
+
+		// O CHAO RACHA sob um golpe pesado ou critico. Ver `RacharChao`.
+		if (r.Encostou && (golpe == Protocol.Golpe.Pesado || r.Desfecho == Desfecho.Critico))
+			RacharChao(a.Zone, alvo.Pos, Math.Max(a.Ficha.expressedBP, alvo.Ficha.expressedBP));
 	}
 
 	/// <summary>As consequencias fora do corpo: nocaute, morte, Zenkai.</summary>
@@ -297,7 +320,18 @@ public partial class GameServer
 		// exatamente o que apareceu na primeira versao.
 		Vec2 d = alvo.Pos - a.Pos;
 		float dist = d.Length;
-		if (dist <= DistanciaDeParada) return false;   // ja esta de frente: nao ha o que fechar
+
+		// ============================ INVESTIDA PRECISA SER UMA INVESTIDA ============================
+		// A conta antiga so exigia `dist > DistanciaDeParada` -- ou seja, a 40 px do alvo ela
+		// disparava e deslocava OITO pixels. O jogador via o rasgo, ouvia o som e ganhava a miragem
+		// por um passo que nao existiu; e o que o dono descreveu como "o personagem ta dando tp mesmo
+		// estando pertinho do outro".
+		//
+		// Agora o que importa e o DESLOCAMENTO, e ele tem que valer pelo menos um tile. Vale igual
+		// pros dois golpes -- o que muda entre leve e pesado e o ALCANCE (ate onde a investida busca
+		// alguem), nao o quao curta ela pode ser.
+		// =============================================================================================
+		if (dist - DistanciaDeParada < DeslocamentoMinimo) return false;
 
 		Vec2 destino = a.Pos + d.Normalized() * (dist - DistanciaDeParada);
 

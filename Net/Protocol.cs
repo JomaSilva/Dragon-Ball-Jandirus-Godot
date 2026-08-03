@@ -51,6 +51,20 @@ public static class Protocol
         Estilo = 18,       // trocar de estilo de luta ("" ou "-" = soltar a postura)
         Carregar = 19,     // segurando C: reunindo energia (1) ou soltou (0)
         Zanzoken = 20,     // "quero piscar pra este ponto" -- duplo clique no chao
+
+        /// <summary>
+        /// O CANAL DOS VERBS: comando + argumento, como o <see cref="Tech"/> ja fazia pra
+        /// tecnologia.
+        ///
+        /// UM CANAL PRA TODOS de proposito. O original tinha 91 verbs so na aba "Other" e mais 90
+        /// na de admin; um byte de opcode por verb encheria o enum e obrigaria a mexer no protocolo
+        /// a cada verb novo. Aqui o verb novo e uma linha no `switch` do servidor e uma no registro
+        /// do cliente -- o contrato de rede nao muda.
+        ///
+        /// QUEM AUTORIZA E O SERVIDOR, sempre. O cliente so esconde os botoes de admin de quem nao
+        /// e admin; o `switch` do servidor confere de novo, porque esconder botao nao e permissao.
+        /// </summary>
+        Verbo = 21,
     }
 
     /// <summary>
@@ -146,6 +160,7 @@ public static class Protocol
         Estilos = 22,      // meu estilo ativo, os que aprendi e a maestria de cada um
         Zanzo = 23,        // fulano piscou: id + DE ONDE ele saiu (a miragem nasce la)
         Porta = 24,        // porta abriu ou fechou (ou: a lista inteira, ao entrar na zona)
+        Cenario = 25,      // uma celula do cenario CAIU: virou chao (knockback contra parede)
     }
 
     /// <summary>
@@ -533,6 +548,16 @@ public struct SheetState
 
     /// <summary>Tenho rabo. O snapshot nao me inclui (eu me desenho sozinho), entao vem aqui.</summary>
     public bool Rabo => (Estado & 16) != 0;
+
+    /// <summary>
+    /// ESTOU SENDO ARREMESSADO (o `KB` do original).
+    ///
+    /// Precisa chegar ao cliente porque o arremesso e a UNICA parte do movimento que o servidor
+    /// dirige: quem esta voando nao esta dirigindo. Sem este bit o cliente continuaria integrando
+    /// o input e empurrando de volta, e os dois brigariam pelo corpo -- a mesma briga que fazia o
+    /// personagem tremer na parede.
+    /// </summary>
+    public bool Empurrado => (Estado & 32) != 0;
 
     /// <summary>Nem anda nem golpeia: caido ou morto.</summary>
     public bool Imobilizado => KO || Morto;

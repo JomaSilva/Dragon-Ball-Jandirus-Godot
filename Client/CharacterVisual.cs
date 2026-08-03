@@ -367,6 +367,55 @@ public partial class CharacterVisual : Node2D
 		_ => "default",
 	});
 
+	// =====================================================================
+	// O CORPO DEITADO -- nocaute e arremesso
+	// =====================================================================
+	/// <summary>
+	/// DEITA O SPRITE NA DIRECAO CERTA.
+	///
+	/// ============================ O PROBLEMA ============================
+	/// O `.dmi` tem UM desenho de nocaute e ele cai sempre pro mesmo lado -- deitado pra direita.
+	/// Isso vale quando o personagem estava olhando pra direita e fica errado nos outros tres
+	/// casos: o dono viu o corpo cair pro mesmo lado independente de pra onde ele encarava.
+	///
+	/// Nao ha (e nao precisa haver) quatro desenhos de queda: o corpo deitado e simetrico o
+	/// bastante pra que GIRAR resolva, e girar e o que o proprio BYOND fazia com `transform` no
+	/// `Small_Impact`.
+	/// ====================================================================
+	///
+	/// A CONTA E A QUE O DONO DITOU: olhando pra direita cai como hoje (0 graus); pra esquerda gira
+	/// 180; pra cima gira 90 pra baixo; pra baixo gira 90 pra cima.
+	/// </summary>
+	public void DeitarPor(Facing olhando) => Girar(olhando switch
+	{
+		Facing.East => 0f,
+		Facing.West => 180f,
+		Facing.North => 90f,
+		_ => -90f,
+	});
+
+	/// <summary>
+	/// GIRA O CORPO NA DIRECAO DO ARREMESSO -- o mesmo desenho deitado, apontado pra onde ele voa.
+	///
+	/// VETOR ZERO ENDIREITA. E o caminho de volta: fora do voo o sprite tem que estar no prumo, e
+	/// deixar isso a cargo de quem chama seria uma chance a mais de o corpo ficar torto pra sempre.
+	///
+	/// E O SPRITE ACORDADO, nao o de nocaute -- pedido do dono, e faz sentido: quem esta voando
+	/// ainda esta consciente, so nao esta no controle. Quem escolhe o estado e o chamador; aqui so
+	/// se gira.
+	/// </summary>
+	public void GirarPara(Vec2 rumo)
+	{
+		if (rumo.LengthSquared < 1e-6f) { Girar(0f); return; }
+		Girar(Mathf.RadToDeg(MathF.Atan2(rumo.Y, rumo.X)));
+	}
+
+	private void Girar(float graus)
+	{
+		if (Mathf.IsEqualApprox(RotationDegrees, graus)) return;
+		RotationDegrees = graus;
+	}
+
 	public void SetState(string state)
 	{
 		if (_state == state) return;

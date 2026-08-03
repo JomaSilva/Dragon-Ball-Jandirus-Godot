@@ -62,6 +62,13 @@ public partial class RemotePlayer : Node2D
 		if (pose == Jandirus.Net.Protocol.Pose.Atacando && _pose != pose)
 			_visual.RestartState("attack", Jandirus.Net.Protocol.AttackPoseMs / 1000.0);
 		else _visual.SetPose(pose);
+
+		// O CORPO CAI PRO LADO CERTO. O `.dmi` so tem UM desenho de nocaute (deitado pra direita),
+		// entao quem estava olhando pra outro lado caia errado -- e o dono viu. Girar resolve, e e
+		// o que o proprio BYOND fazia com `transform`.
+		if (pose == Jandirus.Net.Protocol.Pose.Nocauteado) _visual.DeitarPor(facing);
+		else _visual.GirarPara(default);
+
 		_pose = pose;
 	}
 
