@@ -46,6 +46,12 @@ public sealed class CharacterSave
 
     /// <summary>O NIVEL de cada skill (e o que os degraus ja somaram). Ver NiveisDeSkill.</summary>
     public Jandirus.Core.Skills.NivelSave Niveis = new();
+
+    /// <summary>
+    /// O BP que ESTE personagem precisa pra cada forma. Sorteado no nascimento e nunca mais --
+    /// e o `rand()` por classe do `statsaiyan.dm`, que faz o SSJ de cada um custar diferente.
+    /// </summary>
+    public Jandirus.Core.Forms.LimiaresPessoais Limiares = new();
     public int MarcosTotais, MarcosLivres;
 
     /// <summary>

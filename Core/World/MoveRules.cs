@@ -38,11 +38,18 @@ public static class MoveRules
 	///
 	/// O original nao tinha um "multiplicador de corrida" pra copiar: la o movimento era por
 	/// TEMPO POR PASSO (`mobTime += 0.5*Epspeed` quando dashing), e o unico numero limpo era
-	/// o `move_boost *= 2` da aproximacao de ataque. Dobrar a velocidade de andar o tempo
-	/// todo faria o mundo inteiro passar voando; 1,6 e o meio-termo -- correr se SENTE, e
-	/// ainda da pra mirar em alguma coisa.
+	/// o `move_boost *= 2` da aproximacao de ataque.
+	///
+	/// COMECOU EM 1,6 E O DONO PEDIU MAIS RAPIDO. 1,6 era um meio-termo defensivo -- eu tinha
+	/// medo de o mundo passar voando --, e na pratica correr quase nao se distinguia de andar:
+	/// 60% e pouco pra um jogo cujo assunto E velocidade sobre-humana. 2,2 e o `move_boost *= 2`
+	/// do original com uma folga, e agora tem tres coisas dizendo "voce esta correndo" ao mesmo
+	/// tempo -- a velocidade, o passo acelerado e o borrao (ver `CharacterVisual.Correr`).
+	///
+	/// O CUSTO SEGURA O ABUSO: correr consome Ki por segundo (`GameServer.PodeCorrer`), entao
+	/// atravessar o mapa correndo custa o Ki que faria falta na luta do outro lado.
 	/// </summary>
-	public const float MultiplicadorCorrida = 1.6f;
+	public const float MultiplicadorCorrida = 2.2f;
 
 	/// <summary>Velocidade final em px/s. O stat vem do Core de stats; 1.0 = base.</summary>
 	public static float SpeedPx(float speedStat) => BaseSpeedPx * (speedStat <= 0 ? 1f : speedStat);
@@ -150,9 +157,9 @@ public static class MoveRules
 	/// (zona procedural ainda sem colisao carregada) e ai so a velocidade e conferida.
 	/// </summary>
 	public static bool ValidateStep(Vec2 from, Vec2 claimed, float dtSeconds, float speedStat,
-		ZoneCollision? mapa, out Vec2 corrected, bool correndo = false)
+		ZoneCollision? mapa, ref float orcamentoPx, out Vec2 corrected, bool correndo = false)
 	{
-		if (!ValidateStep(from, claimed, dtSeconds, speedStat, out corrected, correndo)) return false;
+		if (!ValidateStep(from, claimed, dtSeconds, speedStat, ref orcamentoPx, out corrected, correndo)) return false;
 		if (mapa == null) return true;
 
 		// Ja estava dentro de parede? Nao ha o que conferir -- e mais importante deixar sair
@@ -170,8 +177,36 @@ public static class MoveRules
 		return true;
 	}
 
+	/// <summary>
+	/// Quantos passos de folga o orcamento acumula, no maximo.
+	///
+	/// ============================ POR QUE ORCAMENTO E NAO TETO INSTANTANEO ============================
+	/// A conta antiga comparava a distancia de UM pacote com `velocidade * dt * tolerancia`, e o
+	/// `dt` era medido entre CHEGADAS de pacote. So que o cliente integra por quadro de render e
+	/// envia por acumulador: o intervalo que ele SIMULOU nunca e o que o servidor MEDIU -- os dois
+	/// so batem na media.
+	///
+	/// Medido no log do proprio dono: o cliente manda a cada 33,3 ms e o servidor recebeu com
+	/// 25 ms de intervalo. A razao 33,3/25 = 1,333 sozinha ja consumia 98,8% da tolerancia de
+	/// 1,35 -- em jogo HONESTO, sem nada de errado. Nao sobrava folga pra mais nada, e qualquer
+	/// jitter virava correcao.
+	///
+	/// O orcamento resolve na raiz: o direito de andar ACUMULA com o tempo e e gasto ao andar. Um
+	/// pacote atrasado gasta o que sobrou do anterior, e a media continua limitada exatamente pela
+	/// velocidade -- nao ha velocidade de graca, so ha tolerancia a jitter. O teto de acumulo e o
+	/// que impede alguem de ficar parado juntando credito pra dar um salto depois.
+	/// ================================================================================================
+	/// </summary>
+	public const float PassosDeFolga = 3f;
+
+	/// <summary>
+	/// VALIDA UM PASSO, com orcamento.
+	///
+	/// <paramref name="orcamentoPx"/> entra com o credito acumulado e sai com o que sobrou. O
+	/// chamador guarda esse numero por jogador.
+	/// </summary>
 	public static bool ValidateStep(Vec2 from, Vec2 claimed, float dtSeconds, float speedStat,
-		out Vec2 corrected, bool correndo = false)
+		ref float orcamentoPx, out Vec2 corrected, bool correndo = false)
 	{
 		if (dtSeconds < 0) dtSeconds = 0;
 		if (dtSeconds > MaxDeltaSeconds) dtSeconds = MaxDeltaSeconds;
@@ -179,18 +214,33 @@ public static class MoveRules
 		// O `correndo` que chega aqui e o que o SERVIDOR concedeu, nao o que o cliente
 		// afirmou -- ver GameServer.Input(). Se fosse a afirmacao do cliente, "estou
 		// correndo" seria 60% de velocidade de graca e pra sempre.
-		float allowed = SpeedPx(speedStat, correndo) * dtSeconds * SpeedTolerance;
+		float porPasso = SpeedPx(speedStat, correndo) * dtSeconds;
+		float teto = MathF.Max(SpeedPx(speedStat, correndo) / 30f, 1f) * PassosDeFolga * SpeedTolerance;
+
+		orcamentoPx = MathF.Min(orcamentoPx + porPasso * SpeedTolerance, teto);
+
 		Vec2 delta = claimed - from;
 		float dist = delta.Length;
 
-		if (dist <= allowed + MinCorrectionPx)
+		if (dist <= orcamentoPx + MinCorrectionPx)
 		{
+			orcamentoPx = MathF.Max(0f, orcamentoPx - dist);
 			corrected = claimed;
 			return true;
 		}
 
-		// andou demais: puxa de volta pro limite do que era possivel, mantendo a direcao
-		corrected = from + delta.Normalized() * allowed;
+		// ANDOU DEMAIS: para no limite do que era possivel, mantendo a direcao.
+		//
+		// ATENCAO AO SINAL. Este clamp SO faz sentido quando `delta` aponta PRA FRENTE. Se o
+		// cliente afirmar uma posicao ATRAS da que o servidor tem -- o que acontece depois de um
+		// teleporte, com os pacotes que ja estavam em voo --, `delta` aponta pra tras e este
+		// clamp vira um PASSO PRA TRAS na velocidade maxima. Era essa a causa do "o servidor me
+		// puxa pra tras no dash": cada pacote obsoleto desfazia um pedaco da investida, e o
+		// servidor GRAVAVA o recuo. Quem impede isso e o descarte por sequencia (ver
+		// `GameServer.Input`), que faz o pacote obsoleto nem chegar aqui.
+		float passo = MathF.Min(orcamentoPx, dist);
+		orcamentoPx = MathF.Max(0f, orcamentoPx - passo);
+		corrected = from + delta.Normalized() * passo;
 		return false;
 	}
 

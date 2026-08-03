@@ -1,4 +1,4 @@
-using Jandirus.Core.Stats;
+﻿using Jandirus.Core.Stats;
 
 namespace Jandirus.Core.Combat;
 
@@ -54,6 +54,25 @@ public static class CombatKnobs
 
 	/// <summary>Segundos que a tag de combate dura depois do ultimo golpe (90s no jogo).</summary>
 	public static double TagDeCombate = 90;
+
+	/// <summary>
+	/// O RELOGIO DA MECANICA (`IsInFight`), em segundos -- e ele NAO e a tag de 90 s.
+	///
+	/// ============================ O DM SEPARA OS DOIS DE PROPOSITO ============================
+	/// `UpdateFightingStatus` desliga o `IsInFight` com `spawn(100)`, ou seja 10 s
+	/// (`UpdateFightingList.dm:25-26`), enquanto o `combatTag` dura 900 decisegundos = 90 s. E o
+	/// comentario do proprio original diz por que estao separados:
+	///
+	///   "Deliberately does NOT set IsInFight, so the long tag never drags combat-speed /
+	///    Ki-regen / stun / skill-gain mechanics along with it."
+	///
+	/// O port tinha juntado os dois: `IsInFight = EmCombate > 0`, com 90 s. Consequencia -- a
+	/// regeneracao de Ki (que so passou a existir agora) ficava pela METADE por um minuto e meio
+	/// depois do ultimo golpe, e a velocidade de combate junto. Um minuto e meio de "ainda estou
+	/// lutando" depois de a luta ter acabado.
+	/// =========================================================================================
+	/// </summary>
+	public static double LutaDeVerdade = 10;
 }
 
 /// <summary>

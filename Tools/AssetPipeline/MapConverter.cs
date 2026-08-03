@@ -37,6 +37,18 @@ public static class MapConverter
 		public HashSet<(int X, int Y)> Usadas = [];
 		public HashSet<(int X, int Y)> Densas = [];
 		public HashSet<(int X, int Y)> Opacas = [];
+
+		/// <summary>
+		/// O ATLAS COMPANHEIRO desta folha -- uma tira por estado que nao cabia numa linha.
+		/// Nulo quando todas as animacoes desta folha ja cabiam. Ver <see cref="AtlasAnimado"/>.
+		/// </summary>
+		public Fonte? Companheira;
+
+		/// <summary>Estado reempacotado -> a LINHA dele no companheiro. Vazio = nada foi reempacotado.</summary>
+		public Dictionary<string, int> Refeitos = new(StringComparer.OrdinalIgnoreCase);
+
+		/// <summary>Por linha do companheiro: quantos quadros e quanto dura cada um (ja em segundos).</summary>
+		public List<double[]> Duracoes = [];
 	}
 
 	public static void Convert(string dmmDir, string spritesDir, string outDir, Dictionary<string, TurfDef> turfs)
@@ -130,6 +142,14 @@ public static class MapConverter
 		int opacos = fontes.Values.Sum(f => f.Opacas.Count);
 		Console.WriteLine($"tiles com fisica : {marcados} | com oclusao: {opacos}");
 
+		// ============================ AS ANIMACOES QUE NAO CABIAM ============================
+		// Tem que vir ANTES do tileset E antes das cenas: o reempacote cria FONTES NOVAS e muda a
+		// coordenada das celulas que usam esses estados. Fazer depois deixaria as cenas apontando
+		// pro quadro parado enquanto o tileset ja anunciava o animado.
+		int reempacotadas = Reempacotar(fontes, raiz, ref proxId);
+		if (reempacotadas > 0)
+			Console.WriteLine($"animacoes reempacotadas: {reempacotadas} (nao cabiam numa linha do atlas)");
+
 		EscreverTileSet(Path.Combine(outDir, "tileset.tres"), fontes);
 
 		// O INDICE DE TILES SAI JUNTO DO TILESET, e tem que ser aqui: os `source id` nascem de
@@ -148,7 +168,7 @@ public static class MapConverter
 		foreach (string c in idx.Colisoes) Console.WriteLine("   " + c);
 
 		// ---- passada 2: uma cena por andar + o mapa de colisao que o SERVIDOR le ----
-		int cenas = 0, celulas = 0, bloqueadas = 0;
+		int cenas = 0, celulas = 0, bloqueadas = 0, totalPortas = 0;
 		var manifesto = new List<string>();
 		foreach ((string arquivo, DmmMap.Result dados, int off) in mapas)
 			foreach (DmmLevel nivel in dados.Levels)
@@ -163,17 +183,26 @@ public static class MapConverter
 				// exatamente a queixa que estamos consertando.
 				celulas += EscreverCena(cena, nome, nivel, dados, turfs, fontes, atlasPorNome,
 										semAtlas, ref proxId, out HashSet<(int, int)> paredes,
-										out HashSet<(int, int)> cegos);
+										out Dictionary<(int, int), byte> cegos,
+										out List<string> portas);
 				bloqueadas += EscreverColisao(Path.Combine(outDir, nome + ".col"),
 											  nivel.Width, nivel.Height, paredes);
 				// mesmo formato, outro proposito: este e o que o CAMPO DE VISAO consulta
-				EscreverColisao(Path.Combine(outDir, nome + ".vis"), nivel.Width, nivel.Height, cegos);
+				EscreverColisao(Path.Combine(outDir, nome + ".vis"), nivel.Width, nivel.Height, cegos.Keys, cegos);
+				// AS PORTAS DA ZONA. Sai sempre, mesmo vazio: um arquivo que as vezes existe e as
+				// vezes nao vira um `if` no leitor, e um `if` a menos vale o punhado de bytes.
+				File.WriteAllText(Path.Combine(outDir, nome + ".portas"),
+					"[" + string.Join(",\n ", portas) + "]",
+					new System.Text.UTF8Encoding(false));
+				totalPortas += portas.Count;
+
 				cenas++;
 
 				string zona = nome[(nome.IndexOf('_') + 1)..];
 				manifesto.Add($"  {{ \"zona\": \"{zona}\", \"z\": {nivel.Z + off}, \"cena\": \"res://Assets/Maps/{nome}.tscn\", " +
 							  $"\"colisao\": \"res://Assets/Maps/{nome}.col\", \"visao\": \"res://Assets/Maps/{nome}.vis\", " +
 							  $"\"luzes\": \"res://Assets/Maps/{nome}.luz\", " +
+							$"\"portas\": \"res://Assets/Maps/{nome}.portas\", " +
 							  $"\"w\": {nivel.Width}, \"h\": {nivel.Height} }}");
 			}
 
@@ -184,6 +213,7 @@ public static class MapConverter
 
 		Console.WriteLine($"mapas lidos    : {mapas.Count}");
 		Console.WriteLine($"cenas geradas  : {cenas}");
+		Console.WriteLine($"portas         : {totalPortas}");
 		Console.WriteLine($"celulas        : {celulas}");
 		Console.WriteLine($"fontes no tileset: {fontes.Count}");
 		if (semAtlas.Count > 0)
@@ -302,13 +332,23 @@ public static class MapConverter
 	}
 
 	/// <summary>
-	/// PORTA. No BYOND ela e um turf DENSO que abre no `Enter()` -- e denso no papel, mas
-	/// atravessavel na pratica. O port ainda nao tem sistema de portas, entao copiar a
-	/// densidade crua deixa toda casa do mapa lacrada: parede com desenho de porta e nada por
-	/// tras. Ate existir porta de verdade (abrir, fechar, trancar), a porta e passagem.
+	/// PORTA. No BYOND ela e um turf DENSO que abre no `Enter()` -- denso no papel e atravessavel
+	/// na pratica, porque encostar nele ja o abre.
+	///
+	/// ATE AQUI ELA ERA UMA EXCECAO, e uma excecao espalhada por tres lugares: saia da colisao (ou
+	/// seja, ficava aberta pra sempre), continuava cegando o campo de visao, e o desenho dela era o
+	/// quadro errado. Agora ela SAI DO MAPA COMO ENTIDADE, na lista `.portas`: nasce fechada
+	/// (bloqueia e cega, igual ao DM) e quem a abre e o servidor, em runtime.
+	///
+	/// Este predicado sobrou pra duas coisas: decidir o que vai pra lista, e manter a porta fora do
+	/// `MarcarSolidos` -- fisica FIXA do tileset numa coisa que abre voltaria a lacrar a casa.
 	/// </summary>
 	private static bool EhPorta(string bp) =>
-		bp.StartsWith("/turf/Door/", StringComparison.Ordinal) ||
+		bp.StartsWith("/turf/Door/", StringComparison.Ordinal)
+		// A PORTA DE NAMEK tem o MESMO codigo de abrir (Enter + Open/Close + flick) e mora noutro
+		// ramo da arvore -- entao ela nao casava aqui e virava PAREDE. Medido: 27 celulas em z02,
+		// col=1 e vis=1. As casas de Namek estavam lacradas.
+		|| bp.StartsWith("/turf/NamekBuildings/NamekDoor", StringComparison.Ordinal) ||
 		bp.StartsWith("/turf/build/Door/", StringComparison.Ordinal);
 
 	/// <summary>
@@ -397,6 +437,116 @@ public static class MapConverter
 
 		fontes[png] = f;
 		return f;
+	}
+
+	/// <summary>
+	/// PLANEJA E COMPOE OS ATLAS COMPANHEIROS: uma tira por estado animado que nao cabia numa linha.
+	///
+	/// SO O QUADRO DA DIRECAO 0 interessa. O mapa pinta pelo NOME do estado, e o `Coord` sempre
+	/// devolve o primeiro quadro (dir 0) -- as outras direcoes de um turf nunca sao usadas pelo
+	/// .dmm. Reempacotar as quatro seria quadruplicar a imagem por nada.
+	///
+	/// A FISICA E A OCLUSAO VAO JUNTO. Um tile de agua que virou tira continua sendo o mesmo turf:
+	/// se o original era denso ou opaco, a tira tem que ser tambem, senao a parede animada deixa de
+	/// bloquear ao ser reempacotada -- um defeito que so apareceria no tile que anima.
+	/// </summary>
+	private static int Reempacotar(Dictionary<string, Fonte> fontes, string raiz, ref int proxId)
+	{
+		var trabalho = new Dictionary<string, (string, int, int, int, List<AtlasAnimado.Tira>)>();
+		var novas = new List<Fonte>();
+		int total = 0;
+
+		foreach (Fonte f in fontes.Values.ToList())
+		{
+			var tiras = new List<AtlasAnimado.Tira>();
+			int idx = 0;
+
+			foreach (DmiState st in f.States)
+			{
+				int dirs = Math.Max(1, st.Dirs);
+				int quadros = Math.Max(1, st.Frames);
+				(int X, int Y) baseC = Indice(f, idx);
+
+				// o MESMO teste do DeclararTiles: se cabe na linha, o caminho antigo ja resolve
+				bool cabe = baseC.X + (quadros - 1) * dirs < f.Cols
+							&& idx + (quadros - 1) * dirs < f.TotalQuadros;
+
+				if (quadros > 1 && !cabe && st.Name != null)
+				{
+					var q = new int[quadros];
+					for (int k = 0; k < quadros; k++) q[k] = idx + k * dirs;
+
+					var dur = new double[quadros];
+					for (int k = 0; k < quadros; k++)
+					{
+						double d10 = k < st.Delays.Length ? st.Delays[k] : 1;
+						dur[k] = Math.Max(d10, 0.1) / 10.0;   // decimos do BYOND -> segundos
+					}
+
+					f.Refeitos[st.Name] = tiras.Count;
+					f.Duracoes.Add(dur);
+					tiras.Add(new AtlasAnimado.Tira { Origem = f.Chave, Quadros = q, Linha = tiras.Count });
+					total++;
+				}
+
+				idx += dirs * quadros;
+			}
+
+			if (tiras.Count == 0) continue;
+
+			string destino = Path.ChangeExtension(f.Chave, null) + AtlasAnimado.Sufixo + ".png";
+			int largura = tiras.Max(t => t.Quadros.Length);
+
+			var comp = new Fonte
+			{
+				Id = proxId++,
+				Chave = destino,
+				ResPath = "res://" + Path.GetRelativePath(raiz, destino).Replace('\\', '/'),
+				IconW = f.IconW,
+				IconH = f.IconH,
+				Cols = largura,
+				TotalQuadros = largura * tiras.Count,
+			};
+
+			// a fisica/oclusao do original vale pra tira: e o mesmo turf desenhado noutro lugar
+			foreach ((string estado, int linha) in f.Refeitos)
+			{
+				(int X, int Y) orig = Coord(f, estado);
+				if (f.Densas.Contains(orig)) comp.Densas.Add((0, linha));
+				if (f.Opacas.Contains(orig)) comp.Opacas.Add((0, linha));
+			}
+
+			f.Companheira = comp;
+			comp.Duracoes = f.Duracoes;
+			novas.Add(comp);
+			trabalho[f.Chave] = (destino, f.IconW, f.IconH, f.Cols, tiras);
+		}
+
+		if (total == 0) return 0;
+
+		AtlasAnimado.Compor(trabalho, raiz, Environment.GetEnvironmentVariable("GODOT") is { Length: > 0 } g && File.Exists(g) ? g : null);
+
+		// SO ENTRA NO TILESET O QUE FOI ESCRITO DE VERDADE. Se o Godot nao rodou, a fonte
+		// companheira apontaria pra um arquivo inexistente e o tileset inteiro falharia ao carregar
+		// -- pior que ficar sem a animacao.
+		int entraram = 0;
+		foreach (Fonte comp in novas)
+		{
+			if (!File.Exists(comp.Chave)) continue;
+			fontes[comp.Chave] = comp;
+			entraram++;
+		}
+
+		if (entraram == novas.Count) return total;
+
+		// nao deu: desfaz os apontamentos pra ninguem ficar apontando pro vazio
+		foreach (Fonte f in fontes.Values)
+			if (f.Companheira != null && !File.Exists(f.Companheira.Chave))
+			{
+				f.Companheira = null;
+				f.Refeitos.Clear();
+			}
+		return 0;
 	}
 
 	private static (int X, int Y) Coord(Fonte f, string? state)
@@ -564,7 +714,8 @@ public static class MapConverter
 	private static int EscreverCena(string caminho, string nome, DmmLevel nivel, DmmMap.Result dados,
 		Dictionary<string, TurfDef> turfs, Dictionary<string, Fonte> fontes,
 		Dictionary<string, List<string>> atlasPorNome, HashSet<string> semAtlas, ref int proxId,
-		out HashSet<(int, int)> paredes, out HashSet<(int, int)> cegos)
+		out HashSet<(int, int)> paredes, out Dictionary<(int, int), byte> cegos,
+		out List<string> portasDaCena)
 	{
 		// local de verdade: um `out` nao pode ser capturado por funcao local
 		var muros = new HashSet<(int, int)>();
@@ -580,7 +731,27 @@ public static class MapConverter
 		// Continua sendo um mapa SEPARADO do `.col` porque os dois divergem nos dois sentidos: a
 		// porta cega e nao bloqueia (da pra atravessar), e a borda do mundo bloqueia sem cegar
 		// nada de interessante.
-		var vendados = new HashSet<(int, int)>();
+		// A IDENTIDADE VAI JUNTO, e nao so a posicao. O `f.Id` + a coordenada de atlas ja sao
+		// calculados tres linhas antes de a celula ser marcada como cega -- ate agora esse dado
+		// era simplesmente jogado fora, porque o acumulador era um HashSet de coordenadas.
+		//
+		// A PALETA E POR MAPA e nasce da ordem de descoberta. So a IGUALDADE importa (ver
+		// `ZoneCollision.Grupo`), entao numero pequeno basta: sao 186 identidades distintas no
+		// jogo INTEIRO e no maximo 60 num mapa so.
+		var vendados = new Dictionary<(int, int), byte>();
+		var paleta = new Dictionary<(int, int, int), byte>();
+
+		byte GrupoDe(int fonte, int ax, int ay)
+		{
+			var chave = (fonte, ax, ay);
+			if (paleta.TryGetValue(chave, out byte g)) return g;
+			// 1..254: o 0 e a borda do mundo e o 255 e "nao sei". Estourando (nunca visto), tudo
+			// que passar cai num grupo so -- pior que o ideal, e ainda assim melhor que juntar
+			// com o vizinho errado.
+			g = (byte)Math.Min(paleta.Count + 1, 254);
+			paleta[chave] = g;
+			return g;
+		}
 		// TileMapLayer.tile_map_data: [uint16 formato][por celula: 12 bytes]
 		//   int16 x | int16 y | uint16 fonte | uint16 atlasX | uint16 atlasY | uint16 alternativa
 		var bytes = new List<byte>();
@@ -594,6 +765,13 @@ public static class MapConverter
 
 		var objetos = new List<byte>();
 		AddU16(objetos, 0);
+
+		// AS PORTAS SAEM DO MAPA COMO LISTA. Ate agora a porta era uma EXCECAO espalhada: o
+		// `EhPorta` a tirava da colisao (aberta pra sempre), ela continuava cegando, e o guarda
+		// do campo de visao apagava a tela em cima dela. Como entidade, ela nasce FECHADA
+		// (bloqueia e cega, como no DM) e o estado passa a ser dela -- nenhum dos tres lugares
+		// precisa mais saber que porta existe.
+		var portas = new List<string>();
 
 		int usadas = 0, comObj = 0, objSemArte = 0;
 		var semEstado = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -615,12 +793,19 @@ public static class MapConverter
 			// arte que faltou.
 			if (td.Icon == null)
 			{
-				if (td.Density) { muros.Add((x, y)); if (cega) vendados.Add((x, y)); }
+				if (td.Density) { muros.Add((x, y)); if (cega) vendados[(x, y)] = Jandirus.Core.World.ZoneCollision.BordaDoMundo; }
 				return false;
 			}
 			if (td.Atlas == null || !fontes.TryGetValue(td.Atlas, out Fonte? f)) return false;
 
 			string? estado = EstadoDaCelula(td, x, y, nivel.Height);
+
+			// A PORTA FECHADA E O ESTADO "Closed". O DM so o escreve dentro do `New()`, e o
+			// DmTurfScanner ignora corpo de proc de proposito -- entao `IconState` vinha nulo e o
+			// `Coord` caia no indice 0, que e o estado VAZIO da folha (um desenho diferente).
+			// Como o indice 0 e o fallback silencioso, nem o relatorio de "estado que faltou"
+			// pegava este caso.
+			if (EhPorta(bp) && (estado == null || estado.Length == 0)) estado = "Closed";
 			if (estado != null && !f.StateIndex.ContainsKey(estado))
 			{
 				string chave = $"{bp} -> {td.Icon} estado \"{estado}\"";
@@ -628,20 +813,92 @@ public static class MapConverter
 			}
 
 			(int X, int Y) c = Coord(f, estado);
-			AddI16(destino, (short)x);
-			AddI16(destino, (short)y);
-			AddU16(destino, (ushort)f.Id);
-			AddU16(destino, (ushort)c.X);
-			AddU16(destino, (ushort)c.Y);
-			AddU16(destino, 0);
-			usadas++;
+
+			// ESTADO REEMPACOTADO MORA NOUTRA FONTE. A celula tem que apontar pra tira, senao ela
+			// continua pintando o quadro parado do atlas original enquanto o tile animado que o
+			// tileset declarou fica sem ninguem usando.
+			Fonte fUsada = f;
+			if (estado != null && f.Companheira != null && f.Refeitos.TryGetValue(estado, out int linha))
+			{
+				fUsada = f.Companheira;
+				c = (0, linha);
+			}
+
+			// A PORTA NAO E PINTADA NO TILEMAP -- ela vira um NODE, e o node desenha os quatro
+			// estados dela.
+			//
+			// POR QUE NAO DA PRA DESENHAR O NODE POR CIMA DO TILE: o quadro "Open" do BYOND e um VAO,
+			// quase todo transparente (medido na Door1: 64 pixels opacos de 1024). Com o tile fechado
+			// embaixo, abrir a porta mostraria a porta fechada atraves do buraco.
+			//
+			// E POR QUE NAO APAGAR A CELULA EM RUNTIME: a cena da zona fica CACHEADA entre visitas
+			// (ver `World.GuardarZonaAtual`). Apagar e repor celula nela e mutar um objeto que
+			// sobrevive a saida do planeta -- sair com a porta aberta deixaria o buraco pra sempre.
+			//
+			// O que fica embaixo e o mesmo que ficava no BYOND: o turf de chao, se o prefab tinha um,
+			// e o vazio se nao tinha (la o turf E a camada de baixo, entao porta aberta ja mostrava
+			// o escuro).
+			bool porta = EhPorta(bp);
+			if (porta)
+			{
+				// o .tres da folha e o mesmo caminho do .png, com outra extensao. Sai o da fonte
+				// ORIGINAL de proposito: o companheiro de animacao (ver AtlasAnimado) so existe pro
+				// tileset, e o node quer o SpriteFrames com os estados nomeados.
+				string tres = Path.ChangeExtension(f.ResPath, ".tres");
+				portas.Add($"{{ \"x\": {x}, \"y\": {y}, \"arte\": \"{tres}\" }}");
+			}
+			else
+			{
+				AddI16(destino, (short)x);
+				AddI16(destino, (short)y);
+				AddU16(destino, (ushort)fUsada.Id);
+				AddU16(destino, (ushort)c.X);
+				AddU16(destino, (ushort)c.Y);
+				AddU16(destino, 0);
+				usadas++;
+			}
 
 			// SO BLOQUEIA O QUE FOI DESENHADO -- e a porta e a excecao declarada, senao a casa
 			// fica lacrada com um desenho de porta na frente.
-			if (td.Density && !EhPorta(bp)) muros.Add((x, y));
+			// ============================ BARREIRA BLOQUEIA SEM SER DENSA ============================
+			// `/obj/barrier/*` para o corpo no BYOND por `NOENTER`/`selectivecollide`, e o comentario do
+			// proprio jogo diz isso com todas as letras: "Barriers block via selectivecollide/NOENTER
+			// (NOT native density)" (barrier.dm:61-62). O pipeline le so `density`, entao as cercas e
+			// bordas do original viraram cenario atravessavel.
+			//
+			// Medido: 8.765 celulas nos 4 mapas -- 1.683 so na Terra. E o maior buraco de colisao do
+			// port, e nao aparecia em lugar nenhum porque cada uma parece uma cerca decorativa.
+			//
+			// APROXIMACAO DECLARADA: o `NOENTER` do original e POR DIRECAO (`list(SOUTH, SOUTHWEST...)`)
+			// e o `.col` e 1 bit por celula, sem direcao. Bloquear inteiro erra pro lado seguro -- uma
+			// borda de mapa que so barrava por um lado agora barra pelos dois. O `kaio_gate` fica de
+			// fora: ele e condicional (`kaiTrainingAllowed`) e virar parede fixa trancaria o treino.
+			bool barreira = bp.StartsWith("/obj/barrier/", StringComparison.Ordinal)
+							&& !bp.Contains("kaio_gate", StringComparison.OrdinalIgnoreCase);
+
+			// A PORTA BLOQUEIA E CEGA, como no original: `density = 1` e `opacity = 1` enquanto
+			// fechada (Doors.dm:56-65). Quem a abre e o servidor, em runtime -- ver GameServer.Portas.
+			if (td.Density || barreira) muros.Add((x, y));
 
 			// ...e a porta CEGA mesmo sem bloquear: ela esta fechada no desenho.
-			if (td.Density && cega) vendados.Add((x, y));
+			// ============================ O QUE CEGA NAO E O QUE BLOQUEIA ============================
+			// O dono fotografou uma PEDRA projetando leque preto de muro. A pedra e
+			// `/turf/decor/LargeRock` (`Turfs.dm:1662`): densa -- voce nao passa por cima -- e
+			// obviamente nao esconde nada, porque ela bate na canela.
+			//
+			// TENTEI `opacity` PRIMEIRO, e estava errado. O BYOND tem o campo certo (`opacity = 1`
+			// e literalmente "bloqueia visao") e o `DmTurfScanner` ja o extraia. So que ESTE codigo
+			// nao o mantem: sao 397 declaracoes de `density` contra 45 de `opacity` no jogo inteiro.
+			// Trocar um pelo outro derrubou as celulas que cegam de 5.956 pra 174 -- ou seja, teria
+			// deixado os MUROS transparentes. O campo certo existe e o dado nao esta la.
+			//
+			// O que o dado TEM e a arvore de tipos, e nela `turf/decor` e exatamente a familia do
+			// cenario solto (Rock, LargeRock, firewood). E a MESMA regra que ja vale pros `/obj`
+			// oito linhas abaixo -- "cenario solto PARA, mas nao ESCONDE" --, agora aplicada a um
+			// ramo de turf que tinha escapado dela.
+			// =====================================================================================
+			bool decor = bp.StartsWith("/turf/decor", StringComparison.Ordinal);
+			if (td.Density && cega && !decor) vendados[(x, y)] = GrupoDe(f.Id, c.X, c.Y);
 
 			// FONTE DE LUZ. Fogueira, tocha, lampada e lava acendem o cenario -- ver LightCatalog.
 			if (LightCatalog.Da(bp) is { } luz)
@@ -756,6 +1013,7 @@ public static class MapConverter
 		if (luzes.Count > 0) Console.WriteLine($"  {nome}: {luzes.Count} fontes de luz");
 		paredes = muros;
 		cegos = vendados;
+		portasDaCena = portas;
 		if (comObj > 0 || objSemArte > 0)
 			Console.WriteLine($"  {nome}: {comObj} objetos desenhados"
 							  + (objSemArte > 0 ? $" | {objSemArte} celulas com objeto SEM arte" : ""));
@@ -864,6 +1122,34 @@ public static class MapConverter
 			return true;
 		}
 
+		// ============================ O COMPANHEIRO E SO TIRAS ============================
+		// Uma linha por estado, comecando sempre na coluna zero -- foi pra isso que ele foi feito.
+		// Entao aqui nao ha teste de "cabe": cabe por construcao, e o `animation_columns = 0` que o
+		// Godot ja entendia volta a valer sem nenhuma aritmetica de wrap.
+		if (f.States.Count == 0 && f.Duracoes.Count > 0)
+		{
+			for (int linha = 0; linha < f.Duracoes.Count; linha++)
+			{
+				double[] dur = f.Duracoes[linha];
+				var t = new StringBuilder();
+				t.Append($"0:{linha}/0 = 0\n");
+				t.Append($"0:{linha}/animation_columns = 0\n");
+				t.Append($"0:{linha}/animation_speed = 1.0\n");
+				for (int q = 0; q < dur.Length; q++)
+					t.Append($"0:{linha}/animation_frame_{q}/duration = "
+							 + dur[q].ToString("0.####", CultureInfo.InvariantCulture) + "\n");
+				Ancora((0, linha), t);
+				Fisica((0, linha), t);
+				linhas.Add((0, linha, t.ToString()));
+				animados++;
+				for (int q = 0; q < dur.Length; q++) ocupadas.Add((q, linha));
+			}
+
+			foreach ((int X, int Y, string Texto) l in linhas.OrderBy(l => l.Y).ThenBy(l => l.X))
+				sub.Append(l.Texto);
+			return (linhas.Count, animados);
+		}
+
 		int idx = 0;
 		foreach (DmiState st in f.States)
 		{
@@ -968,7 +1254,8 @@ public static class MapConverter
 	///
 	/// As paredes chegam PRONTAS de quem desenhou a cena -- ver EscreverCena.
 	/// </summary>
-	private static int EscreverColisao(string caminho, int w, int h, HashSet<(int, int)> paredes)
+	private static int EscreverColisao(string caminho, int w, int h, IEnumerable<(int, int)> paredes,
+									   Dictionary<(int, int), byte>? grupos = null)
 	{
 		var bits = new byte[(w * h + 7) / 8];
 		int bloqueadas = 0;
@@ -986,6 +1273,15 @@ public static class MapConverter
 		fs.WriteByte((byte)(w & 0xFF)); fs.WriteByte((byte)(w >> 8));
 		fs.WriteByte((byte)(h & 0xFF)); fs.WriteByte((byte)(h >> 8));
 		fs.Write(bits);
+
+		// O PLANO DE IDENTIDADE, so no `.vis`. Vai DEPOIS do bitset porque o leitor copia apenas
+		// os bytes do bitset e ignora a cauda -- entao acrescentar aqui nao quebra nada, e o
+		// `.col` do servidor continua exatamente do tamanho que era.
+		if (grupos == null) return bloqueadas;
+		var plano = new byte[w * h];
+		foreach (((int x, int y) c, byte g) in grupos)
+			if (c.x >= 0 && c.y >= 0 && c.x < w && c.y < h) plano[c.y * w + c.x] = g;
+		fs.Write(plano);
 		return bloqueadas;
 	}
 

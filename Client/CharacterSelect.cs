@@ -141,18 +141,14 @@ public partial class CharacterSelect : CanvasLayer
             nome.AddThemeFontSizeOverride("font_size", 19);
             caixa.AddChild(nome);
 
-            var linhagem = new Label
-            {
-                Text = s.Classe.Length > 0 ? s.Classe : "sem linhagem",
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-            linhagem.AddThemeFontSizeOverride("font_size", 12);
-            linhagem.AddThemeColorOverride("font_color", Tema.Destaque);
-            caixa.AddChild(linhagem);
-
+            // NEM CLASSE NEM BP. Aqui nao existe personagem em jogo, logo nao existe scouter --
+            // e a CLASSE nunca aparece em situacao nenhuma, com scouter ou sem. O servidor ja
+            // manda os dois campos censurados (`SlotVisivel`); apagar os rotulos e o outro lado
+            // da mesma regra, pra que ninguem os reponha achando que o dado esta ali.
+            //
+            // O que sobra e o que identifica o personagem sem entregar o jogo: nome, raca, idade.
             caixa.AddChild(new HSeparator());
             caixa.AddChild(Info($"{s.Raca}  ·  {s.Idade} anos"));
-            caixa.AddChild(Info($"BP {Numero(s.BP)}"));
 
             caixa.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
             var jogar = new Button { Text = "Jogar" };

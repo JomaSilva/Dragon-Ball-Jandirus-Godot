@@ -511,7 +511,17 @@ public partial class CreationScreen : CanvasLayer
 			? " Voce escolhe a sua."
 			: " A sua e revelada quando o combate mostrar do que voce e feito.";
 
-		return $"Poder inicial base: {bp:0}. {classes}{escolhe}";
+		// SEM O NUMERO. Eu tinha decidido manter ("e ficha de RACA, nao BP de ninguem"), mas o
+		// dono pediu TODA referencia de BP escondida, e ele tem razao pelo lado que importa: o
+		// jogador nao distingue "poder inicial da especie" de "meu poder" -- ve um numero de
+		// poder de luta na tela e aprende que numero de poder e coisa que se le.
+		//
+		// A FAIXA continua servindo pra comparar raca com raca, que era o unico uso legitimo.
+		string inicio = bp >= 400 ? "Comeca MUITO forte."
+					   : bp >= 100 ? "Comeca forte."
+					   : bp >= 30 ? "Comeca mediano."
+					   : "Comeca fraco.";
+		return $"{inicio} {classes}{escolhe}";
 	}
 
 	private void Confirmar()

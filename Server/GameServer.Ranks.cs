@@ -63,6 +63,14 @@ public partial class GameServer
 		BpBase = pl.Ficha.BP,
 		Karma = pl.Karma,
 		CargoAtual = CargoDe(pl.Conta),
+
+		// OS QUATRO CAMPOS NOVOS. Sem preencher aqui, todo requisito que depende deles passava
+		// de graca (bool false e double 0 sao os defaults, e a comparacao e ">=") -- os cargos de
+		// Kaio, que o DM gateia por God Ki desperto, abririam pra qualquer um.
+		RacaMae = pl.Ficha.Genoma?.MajorityRace ?? pl.Race,
+		GodKiDesperto = pl.Ficha.godki?.awakened == true,
+		GodKiMaestria = pl.Ficha.godki?.mastery ?? 0,
+		Zeni = pl.Ficha.Zeni,
 	};
 
 	/// <summary>

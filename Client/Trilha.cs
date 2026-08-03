@@ -144,8 +144,35 @@ public static class Trilha
     /// <summary>O rasgo do dash de aproximacao.</summary>
     public const string Dash = E + "chainswoop.ogg";
 
+    /// <summary>
+    /// O ZANZOKEN. E `teleport.wav` no original -- conferido no `Zanzoken_Dodge`
+    /// (`Physical Skills.dm:26-35`), que faz `flick('Zanzoken.dmi', src)` + `Move(...)` +
+    /// `emit_Sound('teleport.wav')`.
+    ///
+    /// Eu tinha usado o `chainswoop` do dash, e o dono ouviu a diferenca. Nao e o mesmo gesto:
+    /// investir e atravessar a distancia (ar rasgando); piscar e nao atravessar coisa nenhuma.
+    /// </summary>
+    public const string Teleporte = E + "teleport.ogg";
+
     /// <summary>Aura de quem esta carregando/treinando.</summary>
     public const string PowerUp = E + "powerup.wav";
+
+    /// <summary>
+    /// O ESTALO DE COMECAR a reunir energia -- um toque so, no instante em que a tecla desce.
+    /// E o `emit_Sound('chargeaura.wav')` do `Draw_Energy` (Meditate.dm:181).
+    /// </summary>
+    public const string CargaInicio = E + "chargeaura.wav";   // Effects/, NAO Ki Effects/
+
+    /// <summary>
+    /// O ZUMBIDO CONTINUO de quem esta carregando. Toca EM LACO enquanto durar.
+    ///
+    /// E o mesmo arquivo do original, no mesmo papel: `Sound.dm:68` monta
+    /// `sound('aurapowered.wav', repeat=1, channel=50)` e o liga/desliga conforme alguem em
+    /// volta esteja com `poweruprunning`. Aqui o laco e um player dedicado no corpo de quem
+    /// carrega, o que resolve de graca a parte que la era um `for(var/mob/M in view(src))` a
+    /// cada 0,2 s: quem esta perto ouve porque o som tem posicao.
+    /// </summary>
+    public const string CargaLaco = K + "aurapowered.wav";
 
     /// <summary>Zona de dano nova destravada / marco de poder.</summary>
     public const string NovaHabilidade = E + "NEWSKILL.WAV";

@@ -105,7 +105,10 @@ public partial class GameServer
 
 		return pior switch
 		{
-			RecusaForma.SemPoder => $"{candidato.Nome} pede {candidato.PortaBp:N0} de BP base (voce tem {pl.Ficha.BP:N0}).",
+			// SEM NUMERO. Esta frase desfazia sozinha a reforma da aba Forms: o limiar saia da tela e
+			// voltava pela mensagem de erro. E o limiar e SORTEADO por personagem -- dize-lo entrega
+			// de graca o que o jogo quer que se descubra tentando.
+			RecusaForma.SemPoder => $"{candidato.Nome} ainda esta alem do seu alcance.",
 			RecusaForma.SemMaestria => $"{candidato.Nome} pede {candidato.PedeMaestria:0}% de maestria no degrau anterior "
 									 + $"(voce tem {est.Maestria.De(candidato.Vem):0.#}%).",
 			RecusaForma.SemKi => "Ki baixo demais pra sustentar a forma.",

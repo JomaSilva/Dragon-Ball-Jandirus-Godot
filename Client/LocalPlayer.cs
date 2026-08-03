@@ -89,6 +89,13 @@ public partial class LocalPlayer : Node2D
 		// 3% de folga sobre o custo de um segundo de corrida: no fio do Ki, correr e desistir
 		// a cada quadro daria um solavanco a cada passo
 		_temKiPraCorrer = ficha.MaxKi <= 0 || ficha.Ki > ficha.MaxKi * 0.03;
+
+		// A FICHA NAO ACENDE MAIS AURA NENHUMA.
+		//
+		// Ela acendia -- `Definir(_carregando || _sobrecarregado, ...)` -- e esse era o SEGUNDO
+		// ponto do defeito que o dono viu: mesmo consertando a tecla, o proximo pacote de ficha
+		// (varios por segundo) religava a luz que o servidor tinha negado. Quem sabe se a carga
+		// esta acontecendo e o servidor, e ele ja avisa pelo canal de efeito.
 	}
 
 	/// <summary>Nocauteado ou morto: o servidor recusa qualquer passo, entao aqui nem se tenta.</summary>
@@ -119,7 +126,14 @@ public partial class LocalPlayer : Node2D
 		// ESCREVENDO NO CHAT NAO SE JOGA. `Input.IsActionPressed` le a TECLA FISICA e nao sabe
 		// que ha um campo de texto com foco -- sem esta guarda, escrever "sai da frente" faz o
 		// personagem andar pra direita (D), treinar (T) e mirar na cabeca (1).
-		var input = _caido || Foco.Digitando
+		// CARREGANDO NAO SE ANDA -- e nao e "rende menos", e nao anda.
+		//
+		// A versao anterior so SUSPENDIA o ganho em movimento, e o dono voltou: "ao apertar C o
+		// personagem tem q ficar PARADO e n pode se mexer enquanto carrega". Ele esta certo e o
+		// motivo e de leitura: um personagem que anda enquanto "carrega" nao mostra que a carga
+		// parou -- ele parece estar carregando andando, que e justamente o que a regra proibe.
+		// Travar o corpo faz a regra ser OBVIA sem uma linha de texto.
+		var input = _caido || _carregando || Foco.Digitando
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			: new Vector2(
 				Godot.Input.GetActionStrength("move_right") - Godot.Input.GetActionStrength("move_left"),
@@ -152,7 +166,14 @@ public partial class LocalPlayer : Node2D
 		// daria um soco leve -- e o dono pediu justamente SHIFT+ESPACO como o golpe forte.
 		_shift = !_caido && Godot.Input.IsActionPressed("run");
 
-		bool querCorrer = _shift && tentandoAndar && _temKiPraCorrer;
+		// O C TEM PRIORIDADE SOBRE O SHIFT.
+		//
+		// O dono: "ao correr e segurar C ele ainda faz o som de carregar ki -- o certo seria ele
+		// dar prioridade ao C e parar de correr e começar a carregar o ki parado". Faz sentido:
+		// reunir energia exige pe plantado (o servidor ja nao rende nada em movimento), entao
+		// deixar a corrida ligada punha o jogador num estado que nao produz nada e ainda gasta Ki.
+		// Segurar C desliga a corrida; soltar devolve.
+		bool querCorrer = _shift && tentandoAndar && _temKiPraCorrer && !_carregando;
 		if (querCorrer && !_correndo) AudioDirector.EfeitoNoLugar(this, Trilha.Dash, 0.5f);
 		_correndo = querCorrer;
 
@@ -166,6 +187,27 @@ public partial class LocalPlayer : Node2D
 
 		if (tentandoAndar) _facing = MoveRules.FacingFrom(dir, _facing);
 		_visual.SetMotion(_facing, andando);
+
+		// O BORRAO SEGUE A INTENCAO (`_correndo`), e nao o deslocamento quadro a quadro.
+		//
+		// ============================ POR QUE MUDOU ============================
+		// A versao anterior usava `_correndo && andando`, com o argumento de que rastro saindo de
+		// quem nao saiu do lugar nao faz sentido. O argumento e bom e o efeito colateral era pior:
+		// `andando` e `(_pos - antes) > 0,01 px`, que PISCA -- um quadro curto, uma quina de
+		// parede, um passo diagonal raspando. Cada piscada zerava o alvo do borrao e a subida/
+		// descida (0,10 s / 0,22 s) transformava isso num pulso visivel. Foi o que o dono viu:
+		// "ele da umas piscadinhas".
+		//
+		// `_correndo` ja exige tecla de direcao E Ki (`_shift && tentandoAndar && _temKiPraCorrer`),
+		// entao empurrar parede segurando SHIFT ainda mostra rastro -- mas isso e um estado raro e
+		// visivelmente travado, enquanto a piscada acontecia correndo em linha reta.
+		// =======================================================================
+		Vec2 desl = _pos - antes;
+		_visual.Correr(_correndo, new Vector2(desl.X, desl.Y));
+
+		// O RASTRO segue o deslocamento REAL: parado empurrando parede nao deixa rastro, porque
+		// rastro e do corpo que passou por um lugar.
+		if (GetNodeOrNull<RastroDeCorrida>("Rastro") is { } rastro) rastro.Definir(_correndo && andando);
 
 		LerAcoes(tentandoAndar, delta);
 
@@ -208,11 +250,11 @@ public partial class LocalPlayer : Node2D
 
 		if (!Foco.Digitando) LerMira();
 
-		if (!Foco.Digitando)
-		{
-			if (Godot.Input.IsActionJustPressed("transformar")) GameClient.Instance?.SendTransformar(true);
-			else if (Godot.Input.IsActionJustPressed("reverter")) GameClient.Instance?.SendTransformar(false);
-		}
+		if (!Foco.Digitando) LerTeclaC(delta);
+		else if (_carregando) { _carregando = false; GameClient.Instance?.SendCarregar(false); }
+
+		if (!Foco.Digitando && Godot.Input.IsActionJustPressed("reverter"))
+			GameClient.Instance?.SendTransformar(false);
 
 		// UM soco por vez. Sem esta trava, martelar o espaco re-armava o cronometro a cada
 		// tecla e o personagem ficava preso na pose de soco pra sempre -- e como todo estado
@@ -229,7 +271,16 @@ public partial class LocalPlayer : Node2D
 			// o rasgo da investida sai NA HORA, sem esperar o servidor: e o feedback do
 			// controle. O que o servidor decide e se ela acerta, nao se ela aconteceu.
 			if (golpe == Protocol.Golpe.Pesado)
-				AudioDirector.EfeitoNoLugar(this, Trilha.Dash, 0.7f);
+			{
+				// DE ONDE EU SAIRIA, guardado pro caso de ter havido investida.
+				//
+				// O VULTO NAO NASCE MAIS AQUI. Nascia -- e o dono viu o defeito: apertar SHIFT+ESPACO
+				// sem ninguem por perto deixava miragem parado no lugar. O cliente nao tem como saber
+				// se a investida ACONTECEU: quem escolhe o alvo, cobra o Ki e testa a parede no
+				// caminho e o servidor. Ele agora responde isso no relato do golpe (`HitEvent.Zanzo`),
+				// e o vulto sai la -- neste ponto, que e onde o corpo estava.
+				_deOndeSai = new Vector2(_pos.X, _pos.Y);
+			}
 
 			_ataqueAte = dura;
 			// a animacao e ESTICADA pra caber no golpe: com a cadencia nova (~0,33 s) o ciclo
@@ -264,6 +315,95 @@ public partial class LocalPlayer : Node2D
 			Protocol.Activity.Meditando => "meditate",
 			_ => "default",
 		});
+	}
+
+	// =====================================================================
+	// A TECLA C
+	// =====================================================================
+	/// <summary>Segurando C agora (o `is_drawing` do original).</summary>
+	private bool _carregando;
+
+	/// <summary>Quanto falta do prazo do toque duplo. 0 = nao ha toque pendente.</summary>
+	private double _duploAte;
+
+	/// <summary>
+	/// A JANELA DO TOQUE DUPLO, em segundos. E o `spawn(10) dblclk=0` do DM -- dez decimos.
+	///
+	/// Um segundo parece largo pra duplo clique de mouse, mas isto NAO e duplo clique: e uma tecla
+	/// que tambem tem funcao de segurar, e quem toca duas vezes esta alternando entre dois gestos
+	/// com o mesmo dedo. Janela curta faria o jogador falhar a transformacao e sair carregando.
+	/// </summary>
+	private const double JanelaDoDuplo = 1.0;
+
+	/// <summary>
+	/// C FAZ TRES COISAS, e era isso que faltava: o dono avisou que "o C não é só pra transformar".
+	///
+	///   segurar          reune energia (o servidor decide o quanto, ver `CargaDeKi`)
+	///   tocar duas vezes tenta subir a escada de transformacao
+	///   soltar           para
+	///
+	/// A ORDEM IMPORTA: o toque e detectado ANTES de a carga comecar, e a carga comeca no mesmo
+	/// quadro. Isso deixa o gesto natural -- tocar duas vezes carrega um tiquinho no meio, que e
+	/// exatamente o que acontecia no original (`Draw_Energy` chama `Energy_Draw` E conta o clique
+	/// na mesma passada).
+	/// </summary>
+	private void LerTeclaC(double delta)
+	{
+		if (_duploAte > 0) _duploAte -= delta;
+
+		if (Godot.Input.IsActionJustPressed("transformar"))
+		{
+			if (_duploAte > 0) { _duploAte = 0; GameClient.Instance?.SendTransformar(true); }
+			else _duploAte = JanelaDoDuplo;
+		}
+
+		// SEGURAR. Caido nao carrega -- o servidor recusa de qualquer jeito, e mandar mesmo assim
+		// seria um pacote por quadro pra ouvir nao.
+		bool quer = !_caido && Godot.Input.IsActionPressed("transformar");
+		if (quer == _carregando) return;
+
+		_carregando = quer;
+		GameClient.Instance?.SendCarregar(quer);
+
+		// E SO ISSO. A tecla PEDE; quem decide e o servidor, e quem acende e o `World` ao receber
+		// o efeito de volta (ver World.AoCairEfeito).
+		//
+		// A VERSAO ANTERIOR ACENDIA AQUI MESMO, com o comentario "o meu corpo nao entra no
+		// snapshot, entao tem que ser ligado aqui". O raciocinio estava certo sobre o snapshot e
+		// errado sobre a conclusao: o corpo local realmente nao vem no snapshot, mas a resposta
+		// nao era adivinhar -- era usar o canal de efeito, que o servidor ja mandava e ninguem
+		// escutava. Sem isso, apertar C sem Ki Unlocked acendia aura pra um poder que o servidor
+		// tinha recusado, e o jogador ficava com luz, som e Ki parado.
+	}
+
+	/// <summary>O typepath da skill que libera a imagem remanescente (`misc.dm:35`).</summary>
+	private const string PathDoZanzoken = "/datum/skill/ki/Afterimage";
+
+	/// <summary>
+	/// Sei fazer o Zanzoken?
+	///
+	/// O CLIENTE PODE DECIDIR ISTO SOZINHO porque a resposta nao muda nada no mundo -- ela decide
+	/// se um sprite semitransparente aparece por meio segundo. A lista de skills ja chega aqui
+	/// (`S2C.Skills`), entao perguntar ao servidor seria uma ida e volta de rede pra desenhar.
+	///
+	/// Se algum dia o vulto virar mecanica (confundir a mira do adversario, como o
+	/// `Zanzoken_Afterimage` de nivel 4 faz no original), a decisao muda de lado na hora: efeito
+	/// que altera o resultado da luta e do servidor, sem excecao.
+	/// </summary>
+	private static bool TemZanzoken() =>
+		GameClient.Instance?.SkillsAprendidas.Contains(PathDoZanzoken) == true;
+
+	/// <summary>
+	/// Onde o corpo estava quando o golpe saiu. O relato do servidor chega um RTT depois, e ate la
+	/// o personagem JA investiu -- desenhar o vulto na posicao do momento o poria em cima do alvo,
+	/// que e o oposto de "ficou pra tras".
+	/// </summary>
+	private Vector2 _deOndeSai;
+
+	/// <summary>O servidor confirmou a investida: e aqui que o vulto nasce.</summary>
+	public void DeixarVulto()
+	{
+		if (GetParent() is { } palco) Zanzoken.Deixar(palco, this, _deOndeSai);
 	}
 
 	/// <summary>

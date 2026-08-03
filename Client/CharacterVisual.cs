@@ -60,6 +60,7 @@ public partial class CharacterVisual : Node2D
 
 		void fragment() {
 			vec4 c = texture(TEXTURE, UV);
+
 			c.rgb = clamp(c.rgb + tinta, 0.0, 1.0);
 
 			// CONTORNO: acende onde o pixel e opaco e um vizinho e transparente
@@ -411,6 +412,84 @@ public partial class CharacterVisual : Node2D
 		Aplicar(force: false);
 	}
 
+	// =====================================================================
+	// A IMAGEM REMANESCENTE (Zanzoken)
+	// =====================================================================
+	/// <summary>
+	/// UMA FOTOGRAFIA DESTE CORPO no instante atual -- o `image(icon=target, icon_state=..., dir=...)`
+	/// que o original larga no chao (`Buff Effects.dm:41-46`).
+	///
+	/// COPIA A PILHA INTEIRA, e nao so o corpo: um fantasma sem roupa nem cabelo nao parece "voce
+	/// que ficou pra tras", parece outra pessoa. A textura de cada camada e a MESMA (nao ha copia
+	/// de pixels), entao um fantasma custa alguns Sprite2D e nada de memoria de imagem.
+	///
+	/// SAI SOLTO DA ARVORE deste no de proposito: o fantasma tem que ficar ONDE O CORPO ESTAVA
+	/// enquanto o corpo continua andando. Filho, ele iria junto -- e "imagem remanescente" que
+	/// acompanha o dono e so um borrao grudado.
+	/// </summary>
+	public Node2D Fotografar()
+	{
+		var copia = new Node2D { Name = "Fantasma" };
+		foreach (AnimatedSprite2D s in _camadas)
+		{
+			if (!s.Visible || s.SpriteFrames is not { } f || !f.HasAnimation(s.Animation)) continue;
+			Texture2D? tex = f.GetFrameTexture(s.Animation, s.Frame);
+			if (tex == null) continue;
+
+			var q = new Sprite2D
+			{
+				Texture = tex,
+				Centered = s.Centered,
+				Offset = s.Offset,
+				Position = s.Position,
+				FlipH = s.FlipH,
+				TextureFilter = TextureFilterEnum.Nearest,
+			};
+
+			// A TINTA VAI JUNTO. Sem ela o cabelo do Super Saiyajin volta a preto no fantasma, e a
+			// imagem remanescente de um SSJ sairia com o cabelo da forma base.
+			if (s.Material is ShaderMaterial m)
+			{
+				var mat = new ShaderMaterial { Shader = ShaderTinta };
+				mat.SetShaderParameter("tinta", m.GetShaderParameter("tinta"));
+				q.Material = mat;
+			}
+			copia.AddChild(q);
+		}
+		return copia;
+	}
+
+	// =====================================================================
+	// CORRIDA
+	// =====================================================================
+	/// <summary>Quanto o passo acelera a plena corrida. Casa com o `MultiplicadorCorrida` (2,2x).</summary>
+	private const double RitmoDaCorrida = 2.2;
+
+	private bool _correndo;
+
+	/// <summary>
+	/// ESTOU CORRENDO -- e com isso o passo acelera.
+	///
+	/// ============================ O BORRAO SAIU DAQUI ============================
+	/// Havia um smear no shader: 4 amostras extras da PROPRIA textura ao longo do rumo. O dono
+	/// reportou duas vezes que o personagem "pisca" correndo, e a segunda vez veio com o conserto
+	/// junto: "n teria como o efeito ser um motion blur?".
+	///
+	/// Ele apontou a natureza do defeito. Aquilo NAO era motion blur -- era um borrao ESPACIAL
+	/// calculado dentro do quadro atual da animacao. E como a animacao de corrida roda 2,2x mais
+	/// rapido, cada troca de quadro trocava de uma vez todo o conteudo amostrado: o borrao dava um
+	/// salto por quadro do .dmi, o que o olho le exatamente como piscada. Suavizar a direcao (o que
+	/// tentei antes) nao alcanca isso, porque a descontinuidade nao esta na direcao -- esta na
+	/// FONTE.
+	///
+	/// Motion blur de verdade e TEMPORAL: ele mostra onde o corpo ESTEVE. Quem faz isso agora e o
+	/// <see cref="RastroDeCorrida"/>, que larga copias do corpo nas posicoes passadas. Copia velha
+	/// guarda o quadro velho, entao trocar de quadro nao muda nada do que ja foi desenhado -- a
+	/// piscada nao tem por onde nascer.
+	/// ============================================================================
+	/// </summary>
+	public void Correr(bool correndo, Vector2 rumo) => _correndo = correndo;
+
 	// O soco NAO volta ao normal por "animacao terminou": todo estado vindo do .dmi tem
 	// loop=true (o BYOND repetia o ciclo eternamente), entao esse evento nunca dispararia.
 	// Quem encerra a pose e o RELOGIO, dos dois lados.
@@ -519,7 +598,13 @@ public partial class CharacterVisual : Node2D
 		// (a "respiracao"). Quem NAO anima e a camada que caiu numa pose emprestada.
 		SpriteFrames? corpoF = _corpo.SpriteFrames;
 		double ciclo = corpoF == null ? 0 : Ciclo(corpoF, _corpo.Animation);
-		_relogio = ciclo > 0 ? (_relogio + delta * _ritmo) % ciclo : 0;
+
+		// O PASSO ACELERA NA CORRIDA. Sem isto o personagem desliza: as pernas andam na cadencia
+		// de caminhada enquanto o corpo atravessa o dobro do chao, e o cerebro le como patinacao.
+		// So vale enquanto ANDANDO -- correndo parado (empurrando parede) nao existe, e acelerar a
+		// pose de respiracao daria um personagem ofegante de pe.
+		double ritmo = _ritmo * (_correndo && _moving && _state == "default" ? RitmoDaCorrida : 1);
+		_relogio = ciclo > 0 ? (_relogio + delta * ritmo) % ciclo : 0;
 
 		double fase = ciclo > 0 ? _relogio / ciclo : 0;   // 0..1 dentro do ciclo do corpo
 
@@ -558,13 +643,32 @@ public partial class CharacterVisual : Node2D
 	/// caminhada, por cima de um corpo socando pro lado. Errar a direcao e muito mais visivel
 	/// que emprestar a pose.
 	/// </summary>
+	/// <summary>O nome da animacao termina em `_north/_south/_east/_west`?</summary>
+	private static bool TemSufixoDeDirecao(string nome) =>
+		nome.EndsWith("_north", StringComparison.Ordinal) || nome.EndsWith("_south", StringComparison.Ordinal)
+		|| nome.EndsWith("_east", StringComparison.Ordinal) || nome.EndsWith("_west", StringComparison.Ordinal);
+
 	private string? Escolher(AnimatedSprite2D sprite, string? doCorpo)
 	{
 		SpriteFrames? f = sprite.SpriteFrames;
 		if (f == null) return null;
 
-		string dir = MoveRules.FacingSuffix(_facing);
 		string fam = Familia();
+
+		// ============================ A DIRECAO SAI DO CORPO, NAO DO FACING ============================
+		// Quando a pose do CORPO nao tem sufixo de direcao -- e o caso do `train`, que no .dmi e uma
+		// unica animacao virada pro SUL --, as camadas nao podem usar o facing do jogador: o corpo
+		// vai estar de frente e o cabelo iria pro lado pra onde o personagem estava olhando quando
+		// comecou a treinar.
+		//
+		// Foi o que o dono viu: "se eu treinar quando estava virado pra esquerda ou pra cima o
+		// cabelo buga, ele n gira pro lado certo -- a animacao de train e sempre pra mesma direcao
+		// entao n importa a posicao inicial do personagem".
+		//
+		// Regra: pose sem direcao no corpo => as camadas usam SUL, que e a direcao em que o BYOND
+		// desenha um estado unico.
+		bool corpoSemDirecao = doCorpo != null && !TemSufixoDeDirecao(doCorpo);
+		string dir = corpoSemDirecao ? "south" : MoveRules.FacingSuffix(_facing);
 
 		if (doCorpo != null && f.HasAnimation(doCorpo)) return doCorpo;
 		if (f.HasAnimation($"{fam}_{dir}")) return $"{fam}_{dir}";

@@ -11,6 +11,23 @@ public sealed class Construcao
 	public double Custo;
 	public double Tech;
 	public string[] Racas = [];
+
+	/// <summary>res:// do SpriteFrames do que E ERGUIDO. Vazio = o .dmi nao existe no port.</summary>
+	public string Arte = "";
+
+	/// <summary>O `icon_state` dele. Vazio = a animacao "default" da folha.</summary>
+	public string Estado = "";
+
+	/// <summary>
+	/// BLOQUEIA PASSAGEM. Sai do `create_type` -- o objeto que vai pro CHAO --, e nao do item de
+	/// loja: o Creatable de Research_Station tem `density = 0` e o `/obj/Technology/Research_Station`
+	/// que ele cria tem `density = 1`. Ler o errado deixava a bancada construida atravessavel ao
+	/// lado da mesma maquina, vinda do mapa, que bloqueia.
+	/// </summary>
+	public bool Densa;
+
+	/// <summary>`pixel_x`/`pixel_y`: a Research Bench e 96 px de largura com `pixel_x = -32`.</summary>
+	public double PixelX, PixelY;
 }
 
 /// <summary>Por que uma construcao foi recusada. Tipado pelo mesmo motivo das skills.</summary>
@@ -61,6 +78,27 @@ public sealed class CatalogoDeObras
 		return l;
 	}
 
+	/// <summary>
+	/// A CELULA QUE UMA CONSTRUCAO OCUPA.
+	///
+	/// UMA celula, mesmo quando o desenho tem tres tiles de largura -- e a mesma regra que o
+	/// conversor de mapa aplica a arvore: no BYOND densidade e do OBJETO, e um objeto mora num
+	/// tile. Usar a extensao do icone faria a bancada barrar o corredor inteiro.
+	///
+	/// A ANCORA SAO OS PES, nao o centro do corpo: a construcao nasce onde o jogador ESTAVA, e a
+	/// posicao guardada e a do no dele (o meio do sprite). Sem o deslocamento, construir encostado
+	/// na parede de baixo poria a maquina uma celula acima de onde o jogador a viu nascer.
+	///
+	/// Mora no Core porque as DUAS pontas precisam da mesma conta: o servidor pra bloquear, o
+	/// cliente pra desenhar. Se divergirem, a maquina aparece num lugar e barra noutro.
+	/// </summary>
+	public static (int X, int Y) Celula(double x, double y)
+	{
+		const int t = Jandirus.Core.World.ZoneCollision.TileSize;
+		return ((int)Math.Floor(x / t),
+				(int)Math.Floor((y + Jandirus.Core.World.MoveRules.FeetOffsetY) / t));
+	}
+
 	public static RecusaObra Permitida(Construcao c, Fighter f, string raca)
 	{
 		if (c.Racas.Length > 0 && !c.Racas.Contains(raca, StringComparer.OrdinalIgnoreCase))
@@ -83,6 +121,11 @@ public sealed class CatalogoDeObras
 				Custo = Num(bloco, "custo"),
 				Tech = Num(bloco, "tech"),
 				Racas = Lista(bloco, "racas"),
+				Arte = Str(bloco, "arte"),
+				Estado = Str(bloco, "estado"),
+				Densa = Num(bloco, "densa") > 0,
+				PixelX = Num(bloco, "px"),
+				PixelY = Num(bloco, "py"),
 			};
 			if (c.Id.Length > 0) cat._porId[c.Id] = c;
 		}

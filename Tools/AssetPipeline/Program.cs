@@ -134,6 +134,23 @@ if (args.Length >= 2 && args[0] == "colisao")
     return 0;
 }
 
+if (args.Length >= 1 && args[0] == "carga")
+{
+    // carga [races.json] : a tecla C segurada -- as duas chaves, os tempos, o BP e o preco
+    Jandirus.Core.Races.RaceCatalog? cc2 = args.Length > 1 && File.Exists(args[1])
+        ? Jandirus.Core.Races.RaceCatalog.Parse(File.ReadAllText(args[1]))
+        : null;
+    CargaBench.Run(cc2);
+    return 0;
+}
+
+if (args.Length >= 2 && args[0] == "portas")
+{
+    // portas <pastaMaps> : as portas de verdade -- bloqueiam fechadas, abrem, e voltam a fechar
+    PortaBench.Run(Path.GetFullPath(args[1]));
+    return 0;
+}
+
 if (args.Length >= 1 && args[0] == "luta")
 {
     // luta [races.json] : banco de prova do combate (cadencia, gap, duelos, corpo)
@@ -220,6 +237,24 @@ if (args.Length >= 2 && args[0] == "effector")
     return 0;
 }
 
+if (args.Length >= 2 && args[0] == "cargos")
+{
+    // cargos <pastaCode> [saida.json] : extrai os cargos do DM cruzando as SEIS fontes
+    //
+    // Um cargo no BYOND nao e um registro -- e uma global solta, e o que se sabe dela esta
+    // espalhado por Save_Rank (quem persiste), CheckRank (quem se libera), Rank_Verb_Assign,
+    // o painel HTML (o nome que o jogador le), rq_* (requisitos) e ordered/*.dm (as skills).
+    // E o CRUZAMENTO que revela as divergencias -- inclusive as do proprio DM.
+    string pasta = args[1];
+    string saida = args.Length >= 3 ? args[2] : System.IO.Path.Combine("Assets", "data", "cargos.json");
+
+    var v = Jandirus.Tools.DmRankScanner.Scan(pasta);
+    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(saida)!);
+    System.IO.File.WriteAllText(saida, Jandirus.Tools.DmRankScanner.ParaJson(v));
+    Console.WriteLine($"gravado: {saida}");
+    return 0;
+}
+
 if (args.Length >= 2 && args[0] == "planetas")
 {
     // planetas <pastaCode> [saida.json] : extrai a gravidade de cada planeta do DM
@@ -293,10 +328,30 @@ if (args.Length >= 2 && args[0] == "tech")
     string pasta = args[1];
     string saida = args.Length >= 3 ? args[2] : System.IO.Path.Combine("Assets", "data", "construcoes.json");
 
+    string pastaSprites = args.Length >= 4 ? args[3] : System.IO.Path.Combine("Assets", "Sprites");
+
     var defs = Jandirus.Tools.DmTechScanner.Scan(pasta);
+
+    // O QUE VAI PRO CHAO sai da MESMA arvore que o conversor de mapa le. Sem isto a construcao
+    // erguida por um jogador era um retangulo desenhado por codigo, atravessavel -- ao lado da
+    // mesma maquina, vinda do .dmm, que bloqueia normalmente.
+    var arvore = Jandirus.Tools.DmTurfScanner.Scan(pasta);
+    var idxSprites = System.IO.Directory.Exists(pastaSprites)
+        ? Jandirus.Tools.DmAppearanceScanner.IndiceDeSprites(pastaSprites)
+        : [];
+    (int comArte, List<string> semArte) = Jandirus.Tools.DmTechScanner.Resolver(defs, arvore, idxSprites);
+
     Console.WriteLine($"construcoes com preco ou requisito: {defs.Count}");
     Console.WriteLine($"  so pra certas racas : {defs.Count(d => d.Racas.Count > 0)}");
     Console.WriteLine($"  tech necessario 0   : {defs.Count(d => d.TechNecessario <= 0)}");
+    Console.WriteLine($"  com sprite          : {comArte}");
+    Console.WriteLine($"  DENSAS (bloqueiam)  : {defs.Count(d => d.Densa)}");
+    if (semArte.Count > 0)
+    {
+        Console.WriteLine($"  sem sprite ({semArte.Count}):");
+        foreach (string f in semArte.Take(12)) Console.WriteLine("     " + f);
+        if (semArte.Count > 12) Console.WriteLine($"     ... e mais {semArte.Count - 12}");
+    }
 
     Console.WriteLine($"\n{"CONSTRUCAO",-32} {"TECH",5} {"CUSTO",12}  RACAS");
     Console.WriteLine(new string('-', 72));
@@ -597,6 +652,31 @@ if (args.Length >= 5 && args[0] == "maps")
     Console.WriteLine($"planetas com ficha: {fichas.Count}");
     Console.WriteLine($"turfs: {turfDefs.Count}");
     MapConverter.Convert(Path.GetFullPath(args[1]), Path.GetFullPath(args[3]), Path.GetFullPath(args[4]), turfDefs);
+
+    // ============================ A CONVERSAO PRA BINARIO E PARTE DO `maps` ============================
+    // Ela JA existia como comando separado (`binario`) e ja tinha rodado uma vez -- e foi
+    // exatamente isso que deu errado: quem roda `maps` reescreve os .tscn E o manifesto apontando
+    // pra eles, e os .scn de antes viram lixo obsoleto ao lado. Foi o estado em que o projeto
+    // ficou, e o sintoma foi 1 segundo de travamento por planeta.
+    //
+    // Passo que alguem precisa LEMBRAR de rodar e passo que um dia nao roda. Encadeado aqui, a
+    // saida do pipeline e sempre coerente: .tscn (fonte legivel) + .scn (o que o jogo le) +
+    // manifesto apontando pro .scn.
+    //
+    // Sem o Godot a mao isto AVISA em vez de falhar calado -- o jogo funciona com .tscn, so lento.
+    string? godot = Environment.GetEnvironmentVariable("GODOT");
+    if (string.IsNullOrEmpty(godot) || !File.Exists(godot)) godot = SceneBinary.AcharGodot();
+    if (godot != null)
+    {
+        Console.WriteLine("convertendo as cenas pra binario (o texto custa ~830 ms por planeta ao entrar)...");
+        SceneBinary.Converter(Path.GetFullPath(args[4]), godot);
+    }
+    else
+    {
+        Console.WriteLine("AVISO: Godot nao encontrado -- as cenas ficaram em TEXTO.");
+        Console.WriteLine("       Entrar num planeta vai custar ~1 s. Rode depois:");
+        Console.WriteLine($"       dotnet run --project Tools/AssetPipeline -- binario {args[4]} \"<godot.exe>\"");
+    }
     return 0;
 }
 

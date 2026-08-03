@@ -634,7 +634,8 @@ public partial class GameServer
 			pl.Pos = d;
 			pl.Facing = MoveRules.FacingFrom(alvo.Pos - d, pl.Facing);
 			pl.LastInputMs = NowMs();
-			pl.CorrecaoEsperadaAte = NowMs() + 500;   // os pacotes em voo do cliente sao da posicao velha
+			pl.CorrecaoEsperadaAte = NowMs() + 500;   // + a SEQUENCIA: input montado antes deste instante nao opina sobre onde o corpo esta
+			pl.SeqDoTeleporte = pl.SeqInput;   // os pacotes em voo do cliente sao da posicao velha
 			MandarCorrecaoG3(pl);
 		}
 
@@ -944,7 +945,8 @@ public partial class GameServer
 			{
 				pl.Pos = c.Ancora;
 				pl.LastInputMs = agora;
-				pl.CorrecaoEsperadaAte = agora + 400;   // nao e cliente desonesto: e a trava
+				pl.CorrecaoEsperadaAte = agora + 400;   // + a SEQUENCIA: input montado antes deste instante nao opina sobre onde o corpo esta
+				pl.SeqDoTeleporte = pl.SeqInput;   // nao e cliente desonesto: e a trava
 				MandarCorrecaoG3(pl);
 			}
 
@@ -1135,7 +1137,8 @@ public partial class GameServer
 		a.Pos = destino;
 		a.Facing = MoveRules.FacingFrom(d, a.Facing);
 		a.LastInputMs = NowMs();
-		a.CorrecaoEsperadaAte = NowMs() + 500;
+		a.CorrecaoEsperadaAte = NowMs() + 500;   // + a SEQUENCIA: input montado antes deste instante nao opina sobre onde o corpo esta
+		a.SeqDoTeleporte = a.SeqInput;
 		MandarCorrecaoG3(a);
 	}
 
@@ -1143,6 +1146,9 @@ public partial class GameServer
 	private static void MandarCorrecaoG3(ServerPlayer pl)
 	{
 		var w = Protocol.Begin(Protocol.S2C.Correction);
+		w.Put(pl.SeqInput);   // O PACOTE TEM DUAS PARTES desde o conserto do dash:
+		// sequencia + posicao. Escrever so a posicao aqui mandava um pacote MALFORMADO --
+		// o cliente leria a coordenada X como se fosse a sequencia.
 		w.PutVec(pl.Pos);
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}

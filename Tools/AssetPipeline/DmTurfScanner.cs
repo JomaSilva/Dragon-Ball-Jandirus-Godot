@@ -19,6 +19,18 @@ public sealed class TurfDef
 	public bool OpacitySet;
 
 	/// <summary>
+	/// `pixel_x`/`pixel_y`: o desenho NAO mora no canto do tile.
+	///
+	/// A Research Bench e 96x64 com `pixel_x = -32` -- ela transborda um tile pra cada lado, e o
+	/// tile dela e o do MEIO. Sem este par, uma construcao de tres tiles de largura aparece um
+	/// tile pra direita de onde ela esta.
+	///
+	/// Quem le hoje e o catalogo de tecnologia (`DmTechScanner.Resolver`). O conversor de mapa
+	/// ainda desenha tudo colado no tile -- os `pixel_x` do cenario ficam anotados como divida.
+	/// </summary>
+	public double PixelX, PixelY;
+
+	/// <summary>
 	/// TURF HD: o desenho nao e UM tile, e um MOSAICO montado por coordenada.
 	///
 	/// O `autofill()` do original (`Turfs.dm:50-57`) escreve o icon_state em RUNTIME:
@@ -56,12 +68,12 @@ public sealed class TurfDef
 public static class DmTurfScanner
 {
 	private static readonly Regex RxProp = new(
-		@"^(icon|icon_state|density|opacity|isHD|getWidth|getHeight)\s*=\s*(.+?)\s*$",
+		@"^(icon|icon_state|density|opacity|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
 		RegexOptions.Compiled);
 
 	/// <summary>`Nome propriedade = valor` numa linha so -- forma que o DM aceita e o jogo usa.</summary>
 	private static readonly Regex RxUmaLinha = new(
-		@"^([A-Za-z_][A-Za-z0-9_/]*)\s+(icon|icon_state|density|opacity|isHD|getWidth|getHeight)\s*=\s*(.+?)\s*$",
+		@"^([A-Za-z_][A-Za-z0-9_/]*)\s+(icon|icon_state|density|opacity|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
 		RegexOptions.Compiled);
 
 	public static Dictionary<string, TurfDef> Scan(string codeRoot)
@@ -172,6 +184,14 @@ public static class DmTurfScanner
 				break;
 			case "getHeight":
 				if (int.TryParse(val, out int gh)) { d.GetHeight = gh; d.TamanhoSet = true; }
+				break;
+			case "pixel_x":
+				if (double.TryParse(val, System.Globalization.NumberStyles.Float,
+									System.Globalization.CultureInfo.InvariantCulture, out double pxv)) d.PixelX = pxv;
+				break;
+			case "pixel_y":
+				if (double.TryParse(val, System.Globalization.NumberStyles.Float,
+									System.Globalization.CultureInfo.InvariantCulture, out double pyv)) d.PixelY = pyv;
 				break;
 		}
 	}

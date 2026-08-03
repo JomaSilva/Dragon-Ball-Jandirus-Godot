@@ -41,6 +41,19 @@ public partial class RemotePlayer : Node2D
 		_moving = moving;
 		_visual.SetMotion(facing, moving);
 
+		// CORRENDO SE DEDUZ, nao se recebe. O snapshot nao carrega "este esta correndo" e nao
+		// precisa: correr E andar mais rapido, e a velocidade esta ali, na distancia entre dois
+		// pacotes dividida pelo tempo entre eles. Um bit a mais no pacote diria a mesma coisa que
+		// a posicao ja diz -- e poderia DISCORDAR dela, que e o pior dos dois mundos.
+		//
+		// O CORTE EM 1,35x E A FOLGA DE VALIDACAO do proprio servidor (`MoveRules.SpeedTolerance`):
+		// abaixo disso a diferenca cabe em jitter de rede, acima disso e corrida de verdade.
+		float andou = _from.DistanceTo(_to);
+		double vps = _interval > 0.001 ? andou / _interval : 0;
+		bool correndo = moving && vps > MoveRules.BaseSpeedPx * MoveRules.SpeedTolerance;
+		_visual.Correr(correndo, _to - _from);
+		if (GetNodeOrNull<RastroDeCorrida>("Rastro") is { } rastro) rastro.Definir(correndo);
+
 		// Socar REINICIA a animacao a cada vez que a pose (re)aparece -- e o que faz uma
 		// sequencia de golpes parecer varios socos em vez de um ciclo continuo.
 		// A animacao de soco e encaixada na duracao do golpe -- o mesmo que o LocalPlayer faz.

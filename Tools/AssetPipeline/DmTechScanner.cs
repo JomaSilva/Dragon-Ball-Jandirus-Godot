@@ -14,6 +14,25 @@ public sealed class ConstrucaoDef
 	public double TechNecessario;   // `neededtech`
 	public List<string> Racas = []; // `allowedRaces`: o mainframe de androide e so pra Humano
 	public string Arquivo = "";     // de onde veio, pra conferir
+
+	// ============================ O QUE APARECE NO CHAO ============================
+	// A construcao tem DOIS typepaths no original: o `obj/Creatables/X` que voce compra (preco,
+	// requisito, descricao) e o `create_type` que e ERGUIDO. Sao objetos diferentes, e a
+	// diferenca importa: o Creatable de Research_Station tem `density = 0` -- e o
+	// `/obj/Technology/Research_Station` que ele cria e que tem `density = 1`.
+	//
+	// Ler so o Creatable e o erro que deixava a bancada atravessavel: a MESMA maquina que o
+	// mapa desenha (e que bloqueia, porque o conversor le a arvore certa) virava decoracao
+	// quando um jogador a construia. O dono fotografou os dois lado a lado.
+	// ===============================================================================
+	public string CreateType = "";  // `create_type`: o typepath que vai pro chao
+	public string? Icone;           // .dmi de quem foi erguido
+	public string? Estado;          // icon_state dele
+	public bool Densa;              // density DELE, nao do item de loja
+	public double PixelX, PixelY;   // `pixel_x`/`pixel_y`: o desenho nao mora no canto do tile
+
+	/// <summary>res:// do SpriteFrames convertido. Vazio = o .dmi nao existe no port.</summary>
+	public string Arte = "";
 }
 
 /// <summary>
@@ -32,6 +51,9 @@ public static class DmTechScanner
 {
 	private static readonly Regex RxNum = new(@"^-?[0-9.]+$", RegexOptions.Compiled);
 	private static readonly Regex RxStr = new("\"(?<s>[^\"]*)\"", RegexOptions.Compiled);
+
+	/// <summary>No DM o .dmi vai entre ASPAS SIMPLES (`icon = 'ResearchBench.dmi'`).</summary>
+	private static readonly Regex RxIcone = new("'(?<s>[^']*)'", RegexOptions.Compiled);
 
 	public static List<ConstrucaoDef> Scan(string pastaCode)
 	{
@@ -96,8 +118,62 @@ public static class DmTechScanner
 					if (RxStr.Match(valor) is { Success: true } md) atual.Desc = md.Groups["s"].Value; break;
 				case "allowedRaces":
 					foreach (Match m in RxStr.Matches(valor)) atual.Racas.Add(m.Groups["s"].Value); break;
+				// o typepath do que vai pro chao. Sem aspas no DM: `create_type = /obj/Technology/X`
+				case "create_type":
+					atual.CreateType = valor.Trim(); break;
+				// o icone do PROPRIO Creatable serve de reserva: nem toda entrada tem create_type
+				// (varias sao `/obj/buildables`, que se ergue como si mesmo).
+				case "icon":
+					if (RxIcone.Match(valor) is { Success: true } mi) atual.Icone ??= mi.Groups["s"].Value; break;
+				case "icon_state":
+					if (RxStr.Match(valor) is { Success: true } mis) atual.Estado ??= mis.Groups["s"].Value; break;
 			}
 		}
+	}
+
+	/// <summary>
+	/// PREENCHE O QUE VAI PRO CHAO: icone, estado, densidade e deslocamento de quem foi ERGUIDO.
+	///
+	/// Reusa o <see cref="DmTurfScanner"/> em vez de reler o DM: ele ja varre `/obj` inteiro com
+	/// herança de `density` resolvida, e foi ele que descobriu que o Creatable e o objeto do chao
+	/// tem densidades DIFERENTES. Um segundo leitor da mesma arvore seria uma segunda chance de
+	/// divergir.
+	///
+	/// Devolve quantas ficaram sem arte -- e o numero que diz se o pipeline de sprites cobriu o
+	/// que a tecnologia precisa.
+	/// </summary>
+	public static (int comArte, List<string> semArte) Resolver(
+		IEnumerable<ConstrucaoDef> defs, Dictionary<string, TurfDef> arvore, Dictionary<string, string> sprites)
+	{
+		int ok = 0;
+		var faltando = new List<string>();
+
+		foreach (ConstrucaoDef d in defs)
+		{
+			// O QUE FOI ERGUIDO MANDA. O `create_type` e quem tem a densidade de verdade; o proprio
+			// Creatable so entra quando ele nao existe (varios se erguem como si mesmos).
+			if (d.CreateType.Length > 0 && arvore.TryGetValue(d.CreateType, out TurfDef? posto))
+			{
+				d.Icone = posto.Icon ?? d.Icone;
+				d.Estado = posto.IconState ?? d.Estado;
+				d.Densa = posto.Density;
+				d.PixelX = posto.PixelX;
+				d.PixelY = posto.PixelY;
+			}
+			else if (arvore.TryGetValue("/obj/Creatables/" + d.Id, out TurfDef? proprio))
+			{
+				d.Icone = proprio.Icon ?? d.Icone;
+				d.Estado = proprio.IconState ?? d.Estado;
+				d.Densa = proprio.Density;
+				d.PixelX = proprio.PixelX;
+				d.PixelY = proprio.PixelY;
+			}
+
+			d.Arte = DmAppearanceScanner.Resolver(sprites, d.Icone) ?? "";
+			if (d.Arte.Length > 0) ok++;
+			else faltando.Add($"{d.Id} -> {d.Icone ?? "(sem icone)"}");
+		}
+		return (ok, faltando);
 	}
 
 	public static string ParaJson(IEnumerable<ConstrucaoDef> defs)
@@ -112,7 +188,11 @@ public static class DmTechScanner
 			sb.Append($"\"id\": {J(d.Id)}, \"nome\": {J(d.Nome)}, \"desc\": {J(d.Desc)}, ");
 			sb.Append($"\"custo\": {d.Custo.ToString("0.##", CultureInfo.InvariantCulture)}, ");
 			sb.Append($"\"tech\": {d.TechNecessario.ToString("0.##", CultureInfo.InvariantCulture)}, ");
-			sb.Append($"\"racas\": [{string.Join(", ", d.Racas.Select(J))}]");
+			sb.Append($"\"racas\": [{string.Join(", ", d.Racas.Select(J))}], ");
+			sb.Append($"\"arte\": {J(d.Arte)}, \"estado\": {J(d.Estado ?? "")}, ");
+			sb.Append($"\"densa\": {(d.Densa ? 1 : 0)}, ");
+			sb.Append($"\"px\": {d.PixelX.ToString("0.##", CultureInfo.InvariantCulture)}, ");
+			sb.Append($"\"py\": {d.PixelY.ToString("0.##", CultureInfo.InvariantCulture)}");
 			sb.Append(" }");
 		}
 		return sb.Append("\n]\n").ToString();

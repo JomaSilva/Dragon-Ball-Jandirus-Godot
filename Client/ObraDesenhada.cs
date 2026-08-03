@@ -1,19 +1,29 @@
 using Godot;
+using Jandirus.Core.World;
 
 namespace Jandirus.Client;
 
 /// <summary>
 /// UMA CONSTRUCAO NO CHAO -- a bancada de pesquisa, o mainframe de androides.
 ///
-/// DESENHADA POR CODIGO, e nao por sprite, e isso e uma escolha e nao preguica: os icones das 99
-/// construcoes do original estao espalhados por dezenas de .dmi que o pipeline ainda nao converte,
-/// e uma construcao invisivel e pior que uma construcao feia -- o jogador ergue um mainframe de
-/// meio milhao de zeni e nao ve nada no chao. Uma forma geometrica com a cor do tipo diz onde a
-/// coisa esta, se ela esta aparafusada e de quem e; quando os icones chegarem, troca-se o _Draw
-/// e nada mais.
+/// ============================ AGORA ELA USA O SPRITE DO BYOND ============================
+/// Ate aqui era um retangulo desenhado por codigo, e o comentario antigo dizia por que: "os icones
+/// das 99 construcoes estao espalhados por dezenas de .dmi que o pipeline ainda nao converte".
+/// Isso deixou de ser verdade -- o pipeline resolve 98 das 99 (`tech` no AssetPipeline), e ele
+/// resolve o icone do que E ERGUIDO (`create_type`) e nao o do item de loja, que sao objetos
+/// diferentes com propriedades diferentes.
 ///
-/// ENTRA NO Y-SORT como qualquer corpo (ancorada nos PES, ver <see cref="Ancora"/>): sem isso o
-/// personagem passaria por tras da bancada e continuaria desenhado por cima dela.
+/// A Research Bench, que o dono citou, tem CINCO QUADROS e 96 px de largura com `pixel_x = -32`.
+/// O retangulo nao tinha como mostrar nem a animacao nem o tamanho.
+/// =======================================================================================
+///
+/// O RETANGULO CONTINUA EXISTINDO como reserva: uma construcao sem .dmi convertido (hoje so a
+/// Crafting_Bench) e melhor feia do que invisivel -- o jogador ergue uma coisa de meio milhao de
+/// zeni e tem que ver onde ela caiu.
+///
+/// ENTRA NO Y-SORT como qualquer corpo, ancorada na BASE da celula que ela ocupa -- a mesma que o
+/// servidor bloqueia (ver <see cref="CatalogoDeObras.Celula"/>). Ancorar no ponto solto onde o
+/// jogador estava faria o desenho e a parede ficarem em lugares diferentes.
 /// </summary>
 public partial class ObraDesenhada : Node2D
 {
@@ -22,23 +32,72 @@ public partial class ObraDesenhada : Node2D
 	public bool Aparafusada;
 	public int Lab;
 
-	/// <summary>Metade da largura, em pixels. Uma construcao ocupa dois tiles de frente.</summary>
+	/// <summary>res:// do SpriteFrames, vindo do servidor. Vazio = cai no retangulo.</summary>
+	public string Arte = "";
+	public string Estado = "";
+	public Vector2 Pixel;
+
+	/// <summary>Metade da largura do retangulo de reserva, em pixels.</summary>
 	private const float Largura = 28f;
 	private const float Altura = 34f;
 
-	/// <summary>
-	/// A BASE DA CAIXA E A ANCORA. O desenho sobe a partir de (0,0), que fica nos pes -- e o mesmo
-	/// contrato dos personagens, e e o que faz o Y-sort comparar coisas comparaveis.
-	/// </summary>
-	private const float Ancora = 0f;
+	private AnimatedSprite2D? _sprite;
 
 	public override void _Ready()
 	{
 		YSortEnabled = true;
 		ZIndex = 0;
+		MontarSprite();
 	}
 
-	/// <summary>Cor por familia de construcao -- o que o icone diria, dito por cor.</summary>
+	/// <summary>
+	/// O sprite do original, ancorado como o BYOND ancora: o canto INFERIOR ESQUERDO do icone
+	/// encosta no canto inferior esquerdo do tile, mais o `pixel_x`/`pixel_y`.
+	///
+	/// O `pixel_y` inverte de sinal: no BYOND o Y cresce PRA CIMA e no Godot pra baixo. Copiar o
+	/// numero cru poria a bancada meio tile enterrada no chao em vez de meio tile acima dele.
+	/// </summary>
+	private void MontarSprite()
+	{
+		if (Arte.Length == 0 || !ResourceLoader.Exists(Arte)) return;
+		if (ResourceLoader.Load<SpriteFrames>(Arte) is not { } folha) return;
+
+		string anim = Estado.Length > 0 ? Sanear(Estado) : "default";
+		if (!folha.HasAnimation(anim))
+		{
+			// o .dmi pode nomear o estado de um jeito que o conversor saneou diferente; sem o
+			// estado certo, o primeiro serve mais do que nada
+			string[] nomes = [.. folha.GetAnimationNames()];
+			if (nomes.Length == 0) return;
+			anim = nomes[0];
+		}
+
+		if (folha.GetFrameTexture(anim, 0) is not { } quadro) return;
+		Vector2 tam = quadro.GetSize();
+
+		_sprite = new AnimatedSprite2D
+		{
+			SpriteFrames = folha,
+			Animation = anim,
+			Centered = false,
+			// da ancora (a base da celula) pro canto superior esquerdo do desenho
+			Position = new Vector2(Pixel.X, -tam.Y - Pixel.Y),
+		};
+		AddChild(_sprite);
+		_sprite.Play();
+	}
+
+	/// <summary>Mesmo saneamento de nome que o `SpriteFramesWriter` aplicou ao converter.</summary>
+	private static string Sanear(string s)
+	{
+		var sb = new System.Text.StringBuilder(s.Length);
+		foreach (char c in s.ToLowerInvariant()) sb.Append(char.IsLetterOrDigit(c) ? c : '_');
+		string r = sb.ToString().Trim('_');
+		while (r.Contains("__")) r = r.Replace("__", "_");
+		return r.Length == 0 ? "state" : r;
+	}
+
+	/// <summary>Cor por familia de construcao -- so a reserva usa.</summary>
 	private Color Cor => Tipo switch
 	{
 		"Research_Station" => new Color(0.35f, 0.62f, 0.85f),
@@ -54,27 +113,37 @@ public partial class ObraDesenhada : Node2D
 
 	public override void _Draw()
 	{
-		Color c = Cor;
-		var corpo = new Rect2(-Largura, Ancora - Altura, Largura * 2, Altura);
-
-		// SOMBRA NO CHAO. Sem ela a construcao parece flutuar -- e num jogo com Y-sort, "parece
-		// flutuar" e indistinguivel de "esta na camada errada".
-		DrawCircle(new Vector2(0, Ancora - 2), Largura * 0.9f, new Color(0, 0, 0, 0.28f));
-
-		DrawRect(corpo, c);
-		DrawRect(corpo, c.Darkened(0.5f), filled: false, width: 2f);
-
-		// o painel: a "cara" da maquina
-		DrawRect(new Rect2(-Largura * 0.6f, Ancora - Altura * 0.85f, Largura * 1.2f, Altura * 0.4f),
-				 c.Lightened(0.35f));
-
 		// SOLTA PISCA. Uma construcao nao aparafusada nao funciona, e descobrir isso so ao clicar
-		// e a diferenca entre um jogo que ensina e um que esconde.
+		// e a diferenca entre um jogo que ensina e um que esconde. Vale com sprite ou sem.
+		Rect2 corpo = _sprite != null
+			? new Rect2(_sprite.Position, TamanhoDoSprite())
+			: new Rect2(-Largura, -Altura, Largura * 2, Altura);
+
+		if (_sprite == null)
+		{
+			Color c = Cor;
+
+			// SOMBRA NO CHAO. Sem ela a construcao parece flutuar -- e num jogo com Y-sort,
+			// "parece flutuar" e indistinguivel de "esta na camada errada".
+			DrawCircle(new Vector2(0, -2), Largura * 0.9f, new Color(0, 0, 0, 0.28f));
+
+			DrawRect(corpo, c);
+			DrawRect(corpo, c.Darkened(0.5f), filled: false, width: 2f);
+			DrawRect(new Rect2(-Largura * 0.6f, -Altura * 0.85f, Largura * 1.2f, Altura * 0.4f),
+					 c.Lightened(0.35f));
+		}
+
 		if (!Aparafusada)
 		{
 			float p = 0.5f + 0.5f * Mathf.Sin(Time.GetTicksMsec() / 250f);
 			DrawRect(corpo.Grow(3), new Color(1f, 0.85f, 0.35f, 0.25f + 0.35f * p), filled: false, width: 2f);
 		}
+	}
+
+	private Vector2 TamanhoDoSprite()
+	{
+		if (_sprite?.SpriteFrames?.GetFrameTexture(_sprite.Animation, 0) is { } t) return t.GetSize();
+		return new Vector2(ZoneCollision.TileSize, ZoneCollision.TileSize);
 	}
 
 	public override void _Process(double delta)

@@ -26,7 +26,15 @@ public sealed class FormaDef
 	public string Nome = "";
 	public string Desc = "";
 
-	/// <summary>BP BASE necessario. Ver <see cref="EscadaSaiyajin"/> sobre por que e o base.</summary>
+	/// <summary>
+	/// BP BASE necessario -- O VALOR DE FABRICA. Ver <see cref="EscadaSaiyajin"/> sobre por que
+	/// e o base e nao o expresso.
+	///
+	/// NAO E O NUMERO QUE GATEIA UM PERSONAGEM. Cada personagem sorteia o proprio limiar ao
+	/// nascer (`statsaiyan.dm:45-77`): este campo e o `initial()` de onde aquele sorteio parte, e
+	/// o valor que vale pra quem ainda nao rolou. Quem tem o numero de verdade e
+	/// <see cref="LimiaresPessoais.Porta"/>.
+	/// </summary>
 	public double PortaBp;
 
 	/// <summary>De onde se sobe pra ca. Base = a porta de entrada da escada.</summary>
@@ -58,20 +66,65 @@ public sealed class FormaDef
 /// 3. **PISO DE (ANTERIOR + 2).** Uma forma nunca vale menos que a anterior mais 2x, ate superar
 ///    naturalmente. Sem isso, um SSJ3 de raca nerfada (mult 2) ficaria MAIS FRACO que o proprio
 ///    SSJ2 dele, e subir a escada puniria.
+///
+/// 4. **AS PORTAS DAQUI NAO SAO AS PORTAS DE NINGUEM.** Os `Porta*` sao o `initial()` do BYOND:
+///    cada personagem sorteia o proprio limiar ao nascer (`statsaiyan.dm:45-77`) e guarda em
+///    <see cref="LimiaresPessoais"/>. Comparar BP com a constante e comparar com a media --
+///    dois Elite da mesma idade tem portas diferentes de proposito.
 /// </summary>
 public static class EscadaSaiyajin
 {
+	// =====================================================================
+	// OS `initial()` DA CONTA -- e NAO o limiar de ninguem
+	//
+	// No BYOND estes numeros sao o valor de fabrica de `mob/var/ssjat`, `ssj2at`... e o
+	// `special_info()` do proto racial os REESCREVE no nascimento, multiplicando cada um por um
+	// `rand()` proprio (`statsaiyan.dm:45-77`). Eles sao o ponto de partida do sorteio, nao o
+	// resultado dele: o limiar que vale para uma pessoa mora em <see cref="LimiaresPessoais"/>.
+	//
+	// Continuam aqui, e nao la, porque sao a DEFINICAO da escada -- mexer neles reequilibra o
+	// jogo inteiro; mexer nos de la seria trapacear com um personagem so.
+	// =====================================================================
+
 	/// <summary>`ssjat` -- 1,5 milhao de BP base. supersaiyanbuff.dm:6.</summary>
-	public const double PortaSsj1 = 1_500_000;
+	public const double SsjatInicial = 1_500_000;
 
-	/// <summary>`ssj2at/6` -- o limiar cru e 3,5 bilhoes de BP EXPRESSO; dividido pelo SSJ1 cheio.</summary>
-	public const double PortaSsj2 = 3.5e9 / 6;
+	/// <summary>`ssj2at` -- 3,5 bilhoes de BP EXPRESSO. supersaiyanbuff.dm:37.</summary>
+	public const double Ssj2atInicial = 3.5e9;
 
-	/// <summary>`ssj3at/10` -- 20 bilhoes expressos divididos pelo SSJ2 cheio.</summary>
-	public const double PortaSsj3 = 2e10 / 10;
+	/// <summary>`ssj3at` -- 20 bilhoes de BP EXPRESSO. supersaiyanbuff.dm:48.</summary>
+	public const double Ssj3atInicial = 2e10;
 
-	/// <summary>`rawssj4at` -- este ja e base no original (rework 2026-07-10).</summary>
-	public const double PortaSsj4 = 15e9;
+	/// <summary>`rawssj4at` -- este ja e BASE no original (rework 2026-07-10). supersaiyanbuff.dm:55.</summary>
+	public const double RawSsj4atInicial = 15e9;
+
+	/// <summary>`ultrassjat` -- 750 milhoes, o USSJ. supersaiyanbuff.dm:18.</summary>
+	public const double UltrassjatInicial = 750e6;
+
+	/// <summary>
+	/// O DIVISOR QUE TRAZ O LIMIAR DO SSJ2 PRO BP BASE: `BP >= ssj2at/6`
+	/// (Transformation Controls.dm:19). E o `ssj1_gate_mult()` do original com o SSJ1 cheio --
+	/// dividir aqui e o que impede a propria forma anterior de "pagar" o requisito da seguinte.
+	/// </summary>
+	public const double Ssj1GateMult = 6;
+
+	/// <summary>O mesmo pro SSJ3: `BP >= ssj3at/10` (Transformation Controls.dm:45).</summary>
+	public const double Ssj2GateMult = 10;
+
+	// --- o valor de fabrica ja pronto pra comparar com BP BASE -------------
+	// E o que um personagem SEM sorteio usa (save antigo, NPC, catalogo de racas).
+
+	/// <summary>Fabrica do SSJ1. Ver <see cref="LimiaresPessoais.Porta"/> pro numero pessoal.</summary>
+	public const double PortaSsj1 = SsjatInicial;
+
+	/// <summary>Fabrica do SSJ2: o limiar expresso dividido pelo SSJ1 cheio.</summary>
+	public const double PortaSsj2 = Ssj2atInicial / Ssj1GateMult;
+
+	/// <summary>Fabrica do SSJ3: o limiar expresso dividido pelo SSJ2 cheio.</summary>
+	public const double PortaSsj3 = Ssj3atInicial / Ssj2GateMult;
+
+	/// <summary>Fabrica do SSJ4 -- ja e base no original.</summary>
+	public const double PortaSsj4 = RawSsj4atInicial;
 
 	/// <summary>Maestria do SSJ1 que abre cada grade. `SSJ_GRADE2_PCT` / `SSJ_GRADE3_PCT`.</summary>
 	public const double Grade2Pct = 50, Grade3Pct = 70;

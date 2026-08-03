@@ -705,7 +705,10 @@ public partial class GameServer
 		}
 		if (pl.Ficha.BP < d.PortaBp)
 		{
-			Avisar(pl, $"{d.Nome} pede {d.PortaBp:N0} de BP base (você tem {pl.Ficha.BP:N0}).");
+			// SEM NUMERO -- mesmo motivo de `GameServer.Formas.cs`: o limiar e sorteado por
+			// personagem, e a mensagem de erro estava devolvendo de graca o que a aba Forms
+			// acabou de tirar da tela.
+			Avisar(pl, $"{d.Nome} ainda está além do seu alcance.");
 			return;
 		}
 
@@ -909,9 +912,11 @@ public partial class GameServer
 
 		quem.Pos = pos;
 		quem.LastInputMs = NowMs();   // sem isto o proximo pacote em voo vira "correcao" e conta cheat
-		quem.CorrecaoEsperadaAte = NowMs() + 1000;
+		quem.CorrecaoEsperadaAte = NowMs() + 1000;   // + a SEQUENCIA: input montado antes deste instante nao opina sobre onde o corpo esta
+		quem.SeqDoTeleporte = quem.SeqInput;
 
 		var w = Protocol.Begin(Protocol.S2C.Correction);
+		w.Put(quem.SeqInput);   // sequencia + posicao -- ver o comentario nos outros pontos
 		w.PutVec(pos);
 		quem.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}

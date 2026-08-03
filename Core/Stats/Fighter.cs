@@ -86,6 +86,39 @@ public sealed partial class Fighter
 	public double kiregenMod = 1, basekiregen = 1, Tkiregen = 1;
 	public double kicirculationskill, kigatheringskill, kicontrolskill;
 	public double TwillpowerMod = 1, willpowerMod = 1;
+
+	/// <summary>
+	/// AS DUAS CHAVES DA TECLA C, e elas sao DIFERENTES -- e o dono chamou a atencao pra isso.
+	///
+	///   <c>MeditateGivesKiRegen</c>  Ki Unlocked (`Mind.dm:79`). Sem ela, segurar C nao faz NADA:
+	///                                quem nunca sentiu o proprio ki nao tem o que reunir. E a
+	///                                unica das duas que nasce ligada -- a criacao a DESLIGA
+	///                                (`CharacterCreation.dm:87`), entao todo mundo comeca sem.
+	///   <c>canPower</c>              Basic Ki Control NIVEL 5 (`Mind.dm:281`), o "controle de ki
+	///                                bom". E ela que libera o power-up de verdade: carga mais
+	///                                rapida, `powerMod` de volta a 1 e -- so ela -- passar dos
+	///                                100% de Ki, que e de onde sai o buff de BP.
+	///
+	/// SAO `double` PORQUE O CANAL DE EFEITO E DOUBLE. Todo efeito de skill entra por reflexao
+	/// (<c>EfeitosDeSkill</c> / <c>NiveisDeSkill</c>) e escreve `double`; um `bool` aqui seria um
+	/// campo que o extrator ENXERGA no DM e nao consegue escrever -- e falharia calado, que e o
+	/// pior jeito de falhar. `!= 0` e ligado.
+	/// </summary>
+	public double MeditateGivesKiRegen, canPower;
+
+	/// <summary>
+	/// Carga acumulada da sessao de power-up (`extracharge`, tetado em 50 no DM). Ela nao entra em
+	/// formula nenhuma do original -- e um CONTADOR de quanto se carregou, que outras coisas leem.
+	/// Guardado porque zerar a cada tick esconderia esforco que o jogo mede.
+	/// </summary>
+	public double extracharge;
+
+	/// <summary>
+	/// Ja passou do teto seguro e ESTA pagando por isso. No DM (`Power Control.dm:118-130`) esta
+	/// var desarma o dano enquanto o Ki desce sozinho: sem ela, quem ultrapassa leva dano em todo
+	/// tick ate voltar, em vez de vazar energia e se estabilizar.
+	/// </summary>
+	public bool overcharge;
 	public double staminagainMod = 1, satiationMod = 1;
 
 	/// <summary>

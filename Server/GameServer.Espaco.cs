@@ -116,6 +116,8 @@ public partial class GameServer
 					Moving = pl.Moving, Pose = pl.Pose(agora),
 					Vida = (byte)Math.Clamp(Math.Round(pl.Ficha.HP), 0, 100),
 					Rabo = pl.TemRaboAgora(),
+					Carregando = pl.AuraDaCarga,   // o VISUAL, nao o estado -- ver GameServer.Carga.cs
+					Sobrecarregado = pl.AuraDeCarga,
 				}.Write(w);
 
 			eu.Peer.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);

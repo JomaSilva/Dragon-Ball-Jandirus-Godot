@@ -188,7 +188,7 @@ public partial class RoboDeSoco : Node
             case 0: cli.SendTech("lista"); break;
             case 1: cli.SendTech("construir", "Research_Station"); break;
             case 2: cli.SendTech("aparafusar"); break;
-            case 3: cli.SendTech("estudar"); break;
+            case 3: ConferirFisicaDaObra(cli); cli.SendTech("estudar"); break;
             case 4: break;                            // deixa estudar um pouco
             case 5: cli.SendTech("estudar"); break;   // para
             // ANDA UM POUCO ANTES DO PROXIMO: construcao nao empilha no mesmo ponto, e o teste
@@ -219,6 +219,29 @@ public partial class RoboDeSoco : Node
             case 15: cli.SendTech("lista"); break;
             default: _fezTech = true; break;
         }
+    }
+
+    /// <summary>
+    /// A CONSTRUCAO ERGUIDA VIROU PAREDE? -- a queixa do dono era "eu atravesso ele".
+    ///
+    /// A conta e feita nos DOIS lados e tem que dar igual: o servidor bloqueia a celula
+    /// (`AplicarColisaoDasObras`) e o cliente bloqueia a mesma (`World.DesenharObras`). Conferir
+    /// pelo mapa do CLIENTE prova o caminho inteiro -- extrair a densidade do `create_type`,
+    /// mandar no pacote, aplicar no `ZoneCollision`. Se so o servidor soubesse, o jogador
+    /// atravessaria e levaria correcao de movimento; se so o cliente, ele travaria no nada.
+    /// </summary>
+    private static void ConferirFisicaDaObra(GameClient cli)
+    {
+        if (cli.Obras.Count == 0) { GD.Print("[robo] obra: NENHUMA na zona -- nao da pra conferir a fisica"); return; }
+
+        GameClient.ObraInfo o = cli.Obras[^1];
+        (int cx, int cy) = Jandirus.Core.Tech.CatalogoDeObras.Celula(o.Pos.X, o.Pos.Y);
+        bool barra = World.Instancia?.Colisao?.BlockedCell(cx, cy) ?? false;
+
+        GD.Print($"[robo] obra '{o.Tipo}' na celula ({cx},{cy}): densa={(o.Densa ? "sim" : "nao")}"
+                 + $" | arte={(o.Arte.Length > 0 ? System.IO.Path.GetFileName(o.Arte) : "NENHUMA")}"
+                 + $" | barra o corpo={(barra ? "sim" : "nao")}"
+                 + (o.Densa == barra ? "  ok" : "  ERRADO (densa e barra tem que casar)"));
     }
 
     private int _passoTech;

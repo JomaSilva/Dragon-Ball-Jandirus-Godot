@@ -1,4 +1,4 @@
-using Jandirus.Core.World;
+﻿using Jandirus.Core.World;
 
 namespace Jandirus.Tools;
 
@@ -70,6 +70,7 @@ public static class MoveBench
 		for (int tentativa = 0; tentativa < 200; tentativa++)
 		{
 			// larga em algum lugar livre e caminha em direcao aleatoria, trocando de rumo
+			float orcamento = 0f;
 			Vec2 pos = LugarLivre(mapa, rng);
 			var dir = new Vec2(rng.Next(-1, 2), rng.Next(-1, 2));
 
@@ -83,7 +84,9 @@ public static class MoveBench
 
 				// o servidor mede o tempo ENTRE PACOTES; uso o mesmo intervalo do cliente
 				passos++;
-				if (!MoveRules.ValidateStep(doPacote, pos, dtCliente * porPacote, 1f, mapa, out Vec2 corrigido))
+				// O ORCAMENTO E POR JOGADOR e persiste entre pacotes -- e justamente o acumulo
+				// que absorve o jitter. Passar um zero novo a cada volta mediria a regra ANTIGA.
+				if (!MoveRules.ValidateStep(doPacote, pos, dtCliente * porPacote, 1f, mapa, ref orcamento, out Vec2 corrigido))
 				{
 					recusas++;
 					pos = corrigido;

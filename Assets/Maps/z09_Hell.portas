@@ -1,0 +1,11 @@
+[{ "x": 24, "y": 66, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+ { "x": 29, "y": 66, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+ { "x": 50, "y": 69, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+ { "x": 24, "y": 76, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+ { "x": 29, "y": 76, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+ { "x": 24, "y": 84, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+ { "x": 29, "y": 84, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+ { "x": 36, "y": 90, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+ { "x": 24, "y": 96, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+ { "x": 29, "y": 96, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+ { "x": 60, "y": 115, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" }]

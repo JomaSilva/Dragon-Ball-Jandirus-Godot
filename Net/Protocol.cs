@@ -49,6 +49,8 @@ public static class Protocol
         Cargo = 16,        // "" = me manda a lista de cargos; senao = reivindico este
         Tech = 17,         // tecnologia: comando + argumento ("construir", "Research_Station")
         Estilo = 18,       // trocar de estilo de luta ("" ou "-" = soltar a postura)
+        Carregar = 19,     // segurando C: reunindo energia (1) ou soltou (0)
+        Zanzoken = 20,     // "quero piscar pra este ponto" -- duplo clique no chao
     }
 
     /// <summary>
@@ -142,6 +144,41 @@ public static class Protocol
         Construcoes = 20,  // as construcoes de pe na minha zona
         Tech = 21,         // meu nivel de tecnologia, meu zeni e o catalogo com o motivo de cada nao
         Estilos = 22,      // meu estilo ativo, os que aprendi e a maestria de cada um
+        Zanzo = 23,        // fulano piscou: id + DE ONDE ele saiu (a miragem nasce la)
+        Porta = 24,        // porta abriu ou fechou (ou: a lista inteira, ao entrar na zona)
+    }
+
+    /// <summary>
+    /// UMA PORTA MUDOU DE ESTADO -- ou, com <paramref name="completo"/>, ESTA E A LISTA INTEIRA.
+    ///
+    /// O mesmo pacote serve pros dois casos de proposito. Entrar numa zona precisa do estado de
+    /// TODAS as portas dela (senao uma que ficou aberta apareceria fechada pra quem chega), e uma
+    /// porta que abre precisa de uma mensagem so. Dois pacotes pra isso seriam duas leituras a
+    /// manter em sincronia -- e a lista completa e minuscula: 99 portas no jogo INTEIRO, no maximo
+    /// 29 numa zona (Namek), e so as ABERTAS viajam.
+    ///
+    /// `completo = 1` quer dizer "feche tudo que nao estiver aqui". E o que devolve o mapa ao
+    /// estado de arquivo antes de aplicar o que o servidor sabe -- ver `ZoneCollision.FecharTudo`.
+    /// </summary>
+    public static void PutPortas(this NetDataWriter w, bool completo, IReadOnlyList<(int X, int Y, bool Aberta)> portas)
+    {
+        w.Put(completo);
+        w.Put((ushort)Math.Min(portas.Count, ushort.MaxValue));
+        for (int i = 0; i < portas.Count && i < ushort.MaxValue; i++)
+        {
+            w.Put((ushort)portas[i].X);
+            w.Put((ushort)portas[i].Y);
+            w.Put(portas[i].Aberta);
+        }
+    }
+
+    public static (bool Completo, List<(int X, int Y, bool Aberta)> Portas) GetPortas(this NetDataReader r)
+    {
+        bool completo = r.GetBool();
+        int n = r.GetUShort();
+        var l = new List<(int, int, bool)>(n);
+        for (int i = 0; i < n; i++) l.Add((r.GetUShort(), r.GetUShort(), r.GetBool()));
+        return (completo, l);
     }
 
     /// <summary>
@@ -294,13 +331,48 @@ public static class Protocol
         public string Membro;
         public bool Quebrou, Decepou, Nocauteou, Morreu, Rabo;
 
+        /// <summary>
+        /// O ATACANTE DEIXOU UMA IMAGEM REMANESCENTE ao investir (o Zanzoken).
+        ///
+        /// QUEM DECIDE E O SERVIDOR porque so ele sabe quais skills o OUTRO tem -- e o cliente nao
+        /// deve saber: a lista de skills alheia e ficha, do mesmo naipe que o BP. Aqui so trafega
+        /// o resultado ("houve vulto"), que e o que os olhos veriam de qualquer forma.
+        ///
+        /// CABE NUM BIT QUE JA SOBRAVA no byte de desfechos (o 32) -- ver o `Write` abaixo. Ainda
+        /// ficam dois livres.
+        /// </summary>
+        public bool Zanzo;
+
+    /// <summary>
+    /// HOUVE INVESTIDA -- o corpo REALMENTE fechou a distancia.
+    ///
+    /// Separado do <see cref="Zanzo"/> porque sao coisas diferentes: investir e do golpe pesado
+    /// com alguem no alcance; a miragem exige a SKILL por cima disso. O dono relatou o sintoma de
+    /// os dois nao existirem: "ao ficar parado e bater segurando o shift ele faz o som de corrida"
+    /// -- o cliente tocava o rasgo na tecla, sem saber se houve arranque.
+    ///
+    /// Cabe no bit 64 do mesmo byte de desfechos. Ainda sobra um.
+    /// </summary>
+    public bool Investiu;
+
+    /// <summary>
+    /// QUEM ESQUIVOU tem a Afterimage -- e por isso deixa vulto no lugar.
+    ///
+    /// PRECISA SER UM BIT PROPRIO: o <see cref="Zanzo"/> fala da skill do ATACANTE (a miragem da
+    /// investida). Reusar aquele desenharia o vulto da esquiva com base na skill da pessoa errada
+    /// -- quem apanhou apareceria piscando porque quem BATEU sabe Zanzoken.
+    ///
+    /// E o ultimo bit livre do byte de desfechos (128).
+    /// </summary>
+    public bool ZanzoEsquiva;
+
         public void Write(NetDataWriter w)
         {
             w.Put(Atacante); w.Put(Alvo); w.Put(Desfecho); w.Put(Nivel);
             w.Put(TemDano);
             if (TemDano) { w.Put(Dano); w.Put(Membro ?? ""); }
             w.Put((byte)((Quebrou ? 1 : 0) | (Decepou ? 2 : 0) | (Nocauteou ? 4 : 0)
-                       | (Morreu ? 8 : 0) | (Rabo ? 16 : 0)));
+                       | (Morreu ? 8 : 0) | (Rabo ? 16 : 0) | (Zanzo ? 32 : 0) | (Investiu ? 64 : 0) | (ZanzoEsquiva ? 128 : 0)));
         }
 
         public static HitEvent Read(NetDataReader r)
@@ -314,6 +386,9 @@ public static class Protocol
             byte f = r.GetByte();
             h.Quebrou = (f & 1) != 0; h.Decepou = (f & 2) != 0;
             h.Nocauteou = (f & 4) != 0; h.Morreu = (f & 8) != 0; h.Rabo = (f & 16) != 0;
+            h.Zanzo = (f & 32) != 0;
+            h.Investiu = (f & 64) != 0;
+            h.ZanzoEsquiva = (f & 128) != 0;
             return h;
         }
     }
@@ -419,6 +494,16 @@ public struct SheetState
     public double BP;            // o poder REAL, o que o treino sobe
     public double ExpressedBP;   // o que o mundo le
     public double Ki, MaxKi, HP;
+
+    /// <summary>
+    /// VIGOR: o folego. Nao e o STAT (`Rstamina`, que vai na ficha lenta) -- e o valor VIVO, que
+    /// cai ao correr, ao socar e ao reunir energia, e volta parado.
+    ///
+    /// Vai na ficha rapida porque o jogador precisa VER: desde que carregar Ki passou a exigir
+    /// folego e a parar sozinho quando ele acaba, ficar sem vigor virou uma coisa que acontece --
+    /// e acontecer sem barra e o jogo parar de responder sem dizer por que.
+    /// </summary>
+    public double Vigor, VigorMax;
     public float SpeedStat;
 
     /// <summary>
@@ -455,14 +540,15 @@ public struct SheetState
     public void Write(NetDataWriter w)
     {
         w.Put(Class); w.Put(BP); w.Put(ExpressedBP);
-        w.Put(Ki); w.Put(MaxKi); w.Put(HP); w.Put(SpeedStat);
+        w.Put(Ki); w.Put(MaxKi); w.Put(HP); w.Put(Vigor); w.Put(VigorMax); w.Put(SpeedStat);
         w.Put(SocoMs); w.Put(MembrosRuins); w.Put(Estado);
     }
 
     public static SheetState Read(NetDataReader r) => new()
     {
         Class = r.GetString(32), BP = r.GetDouble(), ExpressedBP = r.GetDouble(),
-        Ki = r.GetDouble(), MaxKi = r.GetDouble(), HP = r.GetDouble(), SpeedStat = r.GetFloat(),
+        Ki = r.GetDouble(), MaxKi = r.GetDouble(), HP = r.GetDouble(),
+        Vigor = r.GetDouble(), VigorMax = r.GetDouble(), SpeedStat = r.GetFloat(),
         SocoMs = r.GetInt(), MembrosRuins = r.GetByte(), Estado = r.GetByte(),
     };
 }
@@ -536,6 +622,27 @@ public struct EntityState
     /// </summary>
     public bool Oculto;
 
+    /// <summary>
+    /// ESTA REUNINDO ENERGIA (a tecla C segurada) -- a aura de power-up.
+    ///
+    /// POR QUE ISTO VAI NO SNAPSHOT e nao pelo canal de `Efeito`. O canal de efeito e PESSOAL
+    /// (`MandarEfeito` escreve pro peer de um jogador so), e power-up nao e coisa pessoal: ver o
+    /// adversario juntar poder na sua frente e informacao de COMBATE -- e o aviso de que o proximo
+    /// golpe vem mais forte, e a deixa pra atacar antes que ele termine. Esconder isso de quem
+    /// esta lutando tiraria a leitura da luta.
+    ///
+    /// PRECISOU DE UM BYTE NOVO porque o de flags encheu: direcao (2 bits) + pose (3) + rabo +
+    /// oculto + andando = 8. Este segundo byte nasce com um bit usado e sete livres, e e onde os
+    /// proximos estados de zona devem entrar em vez de espremer o primeiro.
+    /// </summary>
+    public bool Carregando;
+
+    /// <summary>Passou dos 100% de Ki: a aura FECHA, mais forte que a de simples carga.</summary>
+    public bool Sobrecarregado;
+
+    private const byte BitCarregando = 0x01;
+    private const byte BitSobrecarregado = 0x02;
+
     public void Write(NetDataWriter w)
     {
         w.Put(Id);
@@ -544,6 +651,7 @@ public struct EntityState
         w.Put((byte)((Facing & 0x03) | ((byte)Pose & 0x07) << 2
                    | (Rabo ? 0x20 : 0x00) | (Oculto ? 0x40 : 0x00)
                    | (Moving ? 0x80 : 0x00)));
+        w.Put((byte)((Carregando ? BitCarregando : 0) | (Sobrecarregado ? BitSobrecarregado : 0)));
         w.Put(Vida);
     }
 
@@ -556,6 +664,9 @@ public struct EntityState
         e.Rabo = (flags & 0x20) != 0;
         e.Oculto = (flags & 0x40) != 0;
         e.Moving = (flags & 0x80) != 0;
+        byte flags2 = r.GetByte();
+        e.Carregando = (flags2 & BitCarregando) != 0;
+        e.Sobrecarregado = (flags2 & BitSobrecarregado) != 0;
         e.Vida = r.GetByte();
         return e;
     }

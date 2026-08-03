@@ -22,6 +22,19 @@ public sealed class Degrau
 	/// <summary>As habilidades ativas que este degrau destrava (os `assignverb` do DM).</summary>
 	public string[] Verbos = [];
 
+	/// <summary>
+	/// CHAVE LIGADA, e nao valor somado: `campo = n` no DM (`savant.canPower = 1`).
+	///
+	/// TEM QUE SER UM CANAL SEPARADO do <see cref="Buffs"/>. Somar 1 num campo de chave funciona
+	/// da primeira vez e mente na segunda -- dois degraus que ligam a mesma chave deixariam o
+	/// campo em 2, e qualquer teste de igualdade a 1 passaria a falhar. Chave se ESCREVE.
+	///
+	/// Foi por aqui que o `canPower` -- a permissao de fazer power-up, a metade da tecla C --
+	/// ficou extraida no `niveis.json` e sem ninguem pra consumir: o extrator emitia `flags`, o
+	/// leitor lia so `buffs`, e nada na tela dizia que a skill nao tinha feito nada.
+	/// </summary>
+	public Dictionary<string, double> Flags = new(StringComparer.Ordinal);
+
 	/// <summary>O que o jogador le quando cruza. Vazio = o servidor monta a frase generica.</summary>
 	public string Aviso = "";
 }
@@ -308,6 +321,7 @@ public sealed class NiveisDeSkill
 	public int Aplicar(Fighter f)
 	{
 		var alvo = new Dictionary<string, double>(StringComparer.Ordinal);
+		var chaves = new Dictionary<string, double>(StringComparer.Ordinal);
 		foreach ((string path, Progresso pr) in _p)
 		{
 			RegraDeNivel? r = RegrasDeNivel.Get(path);
@@ -317,10 +331,17 @@ public sealed class NiveisDeSkill
 				if (d.Nivel > pr.Nivel) continue;
 				foreach ((string campo, double v) in d.Buffs)
 					alvo[campo] = alvo.GetValueOrDefault(campo) + v;
+
+				// CHAVE SE ESCREVE, nao se acumula -- e por isso ela nao entra no razao
+				// `_somados`: nao ha o que desfazer. Duas skills que ligam a mesma chave chegam
+				// no mesmo estado, que e o que "ligado" quer dizer.
+				foreach ((string campo, double v) in d.Flags) chaves[campo] = v;
 			}
 		}
 
 		int mexidos = 0;
+		foreach ((string campo, double v) in chaves)
+			if (Escrever(f, campo, v)) mexidos++;
 		foreach ((string campo, double antigo) in _somados)
 			if (!alvo.ContainsKey(campo) && Somar(f, campo, -antigo)) mexidos++;
 
@@ -355,6 +376,19 @@ public sealed class NiveisDeSkill
 		System.Reflection.FieldInfo? fi = EfeitosDeSkill.Campo(campo);
 		if (fi == null) return false;
 		fi.SetValue(f, (double)fi.GetValue(f)! + delta);
+		return true;
+	}
+
+	/// <summary>
+	/// ESCREVE uma chave (`campo = n`), em vez de somar. Idempotente por natureza: chamar dez
+	/// vezes deixa o mesmo valor, entao nao ha razao a manter nem nada a desfazer no login.
+	/// </summary>
+	private static bool Escrever(Fighter f, string campo, double valor)
+	{
+		System.Reflection.FieldInfo? fi = EfeitosDeSkill.Campo(campo);
+		if (fi == null) return false;
+		if ((double)fi.GetValue(f)! == valor) return false;
+		fi.SetValue(f, valor);
 		return true;
 	}
 

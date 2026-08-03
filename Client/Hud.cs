@@ -19,19 +19,36 @@ namespace Jandirus.Client;
 /// o painel inteiro abre no TAB. Interface de jogo nao e manual: quem ja sabe as teclas nao
 /// deveria continuar lendo elas a partida toda.
 ///
-/// O BP proprio aparece como o jogador o SENTE (o real, que ele treinou); o expresso e o que
-/// um scouter leria, e um dia vai depender de ter scouter.
+/// O PODER DE LUTA E SEGREDO, e este painel e o primeiro lugar onde isso aparece: sem scouter
+/// o BP le "???". Nao e a interface sendo modesta -- e a regra do jogo (HUD.dm:28 do BYOND faz
+/// exatamente isto, `if(!usr.scouteron) bptext = "???"`), e ela vale pro proprio poder tambem.
+/// Quando o servidor tambem para de MANDAR o numero (ver Server/GameServer.Sigilo.cs), ele
+/// chega como ausencia de dado e nem ha o que esconder aqui.
+///
+/// A CLASSE NAO APARECE, e por isso nao ha linha de classe neste painel. No BYOND inteiro a
+/// `Class` so e lida por codigo, nunca impressa: a unica pista que o jogador recebe e uma
+/// frase no chat, uma vez, na criacao do personagem.
 /// </summary>
 public partial class Hud : CanvasLayer
 {
 	/// <summary>O painel vivo. O mundo chama pra narrar golpe sem precisar procurar o node.</summary>
 	public static Hud? Instancia { get; private set; }
 
-	private Label _nome = null!, _classe = null!, _bp = null!, _atividade = null!, _relato = null!;
+	private Label _nome = null!, _bp = null!, _atividade = null!, _relato = null!;
 	private Label _mira = null!, _letal = null!, _hora = null!;
-	private Barra _hp = null!, _ki = null!;
+	private Barra _hp = null!, _ki = null!, _vigor = null!;
 	private PanelContainer _ajuda = null!;
 	private double _relatoAte;
+
+	/// <summary>
+	/// TENHO SCOUTER? So ele destrava a leitura de BP em numero, e quem diz e o SERVIDOR: o bit
+	/// vem na ficha lenta (<see cref="Protocol.Poder.Scouter"/>), nunca de uma decisao daqui.
+	/// Fosse do cliente, bastaria mexer nele pra passar a ler poder de luta.
+	/// </summary>
+	private bool _temScouter;
+
+	/// <summary>A ultima ficha recebida -- o painel se redesenha quando o scouter vai ou vem.</summary>
+	private SheetState _ficha;
 
 	public override void _Ready()
 	{
@@ -51,9 +68,11 @@ public partial class Hud : CanvasLayer
 		if (GameClient.Instance is { } cli)
 		{
 			cli.SheetUpdated += Mostrar;
+			cli.AtributosRecebidos += MostrarPoderes;
 			cli.ActivityChanged += MostrarAtividade;
 			cli.MiraMudou += _ => MostrarCombate();
 			cli.LetalidadeMudou += _ => MostrarCombate();
+			MostrarPoderes(cli.Atributos);
 			Mostrar(cli.Sheet);
 		}
 		MostrarCombate();
@@ -64,6 +83,7 @@ public partial class Hud : CanvasLayer
 		if (Instancia == this) Instancia = null;
 		if (GameClient.Instance is not { } cli) return;
 		cli.SheetUpdated -= Mostrar;
+		cli.AtributosRecebidos -= MostrarPoderes;
 		cli.ActivityChanged -= MostrarAtividade;
 	}
 
@@ -86,17 +106,17 @@ public partial class Hud : CanvasLayer
 		_nome.AddThemeFontSizeOverride("font_size", 18);
 		v.AddChild(_nome);
 
-		_classe = new Label { Text = "" };
-		_classe.AddThemeFontSizeOverride("font_size", 12);
-		_classe.AddThemeColorOverride("font_color", Tema.Destaque);
-		v.AddChild(_classe);
-
 		v.AddChild(new HSeparator());
 
 		_hp = new Barra("VIDA", Tema.Vida);
 		v.AddChild(_hp);
 		_ki = new Barra("KI", Tema.Ki);
 		v.AddChild(_ki);
+
+		// VIGOR embaixo do Ki de proposito: e ele que LIMITA o Ki agora (carregar gasta folego e
+		// para sozinho quando acaba), entao ler de cima pra baixo conta a historia na ordem certa.
+		_vigor = new Barra("VIGOR", Tema.Vigor);
+		v.AddChild(_vigor);
 
 		_bp = new Label { Text = "" };
 		_bp.AddThemeFontSizeOverride("font_size", 13);
@@ -248,14 +268,42 @@ public partial class Hud : CanvasLayer
 		_letal.AddThemeColorOverride("font_color", cli.Letal ? Tema.Perigo : Tema.TextoFraco);
 	}
 
+	/// <summary>
+	/// O scouter chegou (ou foi embora). Redesenha a leitura de BP na hora: o BYOND tratava
+	/// esse mesmo caso -- tirar o scouter com o painel aberto tinha que apagar o numero.
+	/// </summary>
+	private void MostrarPoderes(Protocol.AtributosState a)
+	{
+		bool antes = _temScouter;
+		_temScouter = a.Tem(Protocol.Poder.Scouter);
+		if (antes != _temScouter) Mostrar(_ficha);
+	}
+
 	private void Mostrar(SheetState f)
 	{
+		_ficha = f;
 		_nome.Text = GameClient.Instance?.LocalName ?? "";
-		_classe.Text = f.Class;
-		_bp.Text = $"BP {Numero(f.BP)}      expresso {Numero(f.ExpressedBP)}";
+		_bp.Text = $"BP {Leitura(f.ExpressedBP)}";
 		_hp.Valor = f.HP / 100.0;
 		_ki.Valor = f.MaxKi > 0 ? f.Ki / f.MaxKi : 0;
+		_vigor.Valor = f.VigorMax > 0 ? f.Vigor / f.VigorMax : 0;
 	}
+
+	/// <summary>
+	/// O BP COMO ELE PODE SER LIDO. Duas portas, e as duas fecham do mesmo jeito:
+	///
+	///   1. O NUMERO NEM VEIO. O servidor manda ausencia de dado (NaN) pra quem nao tem como
+	///      ler poder -- ver <c>GameServer.Sigilo.SemLeitura</c>. Nao ha o que esconder porque
+	///      nao ha o que mostrar, e nem um cliente modificado tira numero de onde nao tem.
+	///   2. O NUMERO VEIO MAS EU NAO TENHO SCOUTER. Enquanto o corte do servidor nao estiver
+	///      ligado nos dois envios de ficha, a tela nao pode contradizer a regra.
+	///
+	/// So o BP EXPRESSO e mostrado, e e o que o HUD do BYOND fazia (HUD.dm:24-28: `beepee =
+	/// usr.expressedBP`). O BP base e a conta interna do treino; quem le poder le o que o corpo
+	/// esta expressando AGORA.
+	/// </summary>
+	private string Leitura(double bp) =>
+		double.IsNaN(bp) || !_temScouter ? "???" : Numero(bp);
 
 	/// <summary>
 	/// Narra o golpe pra quem esta nele. Diz ONDE acertou, nao so quanto: o corpo e por

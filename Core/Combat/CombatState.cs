@@ -1,4 +1,4 @@
-using Jandirus.Core.Stats;
+﻿using Jandirus.Core.Stats;
 
 namespace Jandirus.Core.Combat;
 
@@ -85,8 +85,19 @@ public sealed class CombatState
 	/// <summary>Quanto falta de atordoamento. Acima de zero, nao ataca nem anda direito.</summary>
 	public double Stun;
 
-	/// <summary>Quanto ainda dura a tag de "em combate" (90s no jogo original).</summary>
+	/// <summary>
+	/// A TAG DE "EM COMBATE" (90 s no original) -- e ela e so DISPLAY e MUSICA.
+	///
+	/// Nao confundir com <see cref="LutandoDeVerdade"/>: sao dois relogios com duracoes e
+	/// propositos diferentes, e o DM os mantem separados de proposito (ver `CombatKnobs`).
+	/// </summary>
 	public double EmCombate;
+
+	/// <summary>
+	/// O RELOGIO DA MECANICA: 10 s desde o ultimo golpe. E ele que alimenta o `IsInFight` --
+	/// velocidade de combate, regeneracao de Ki pela metade, ganho de skill.
+	/// </summary>
+	public double LutandoDeVerdade;
 
 	/// <summary>Ate quando o corpo fica desligado depois de um nocaute, em segundos.</summary>
 	public double NocauteRestante;
@@ -134,10 +145,11 @@ public sealed class CombatState
 		if (Carencia > 0) Carencia = Math.Max(0, Carencia - dt);
 		if (Stun > 0) Stun = Math.Max(0, Stun - dt);
 		if (EmCombate > 0) EmCombate = Math.Max(0, EmCombate - dt);
+		if (LutandoDeVerdade > 0) LutandoDeVerdade = Math.Max(0, LutandoDeVerdade - dt);
 
 		TempoDeGuarda = Bloqueando ? TempoDeGuarda + dt : 0;
 
-		F.IsInFight = EmCombate > 0;
+		F.IsInFight = LutandoDeVerdade > 0;   // o CURTO, nao a tag -- ver CombatKnobs.LutaDeVerdade
 
 		if (NocauteRestante > 0)
 		{
@@ -165,7 +177,11 @@ public sealed class CombatState
 	}
 
 	/// <summary>Marca o inicio (ou a renovacao) da luta pros dois lados.</summary>
-	public void EntrarEmCombate() => EmCombate = CombatKnobs.TagDeCombate;
+	public void EntrarEmCombate()
+	{
+		EmCombate = CombatKnobs.TagDeCombate;          // 90 s: a tag que o jogador VE e OUVE
+		LutandoDeVerdade = CombatKnobs.LutaDeVerdade;  // 10 s: o que a mecanica sente
+	}
 
 	/// <summary>
 	/// Cai. A guarda cai junto -- quem esta desmaiado nao bloqueia -- e o corpo fica um tempo
@@ -206,6 +222,7 @@ public sealed class CombatState
 		Bloqueando = false;
 		NocauteRestante = 0;
 		EmCombate = 0;
+		LutandoDeVerdade = 0;
 	}
 
 	public void Reviver(double fracaoDeVida = 1, double carencia = 0)

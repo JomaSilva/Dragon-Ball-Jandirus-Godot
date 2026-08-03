@@ -1,4 +1,4 @@
-namespace Jandirus.Core.Forms;
+﻿namespace Jandirus.Core.Forms;
 
 /// <summary>Por que a transformacao nao rolou. Vazio = rolou.</summary>
 public enum RecusaForma
@@ -22,6 +22,14 @@ public enum RecusaForma
 /// </summary>
 public sealed class EstadoDeForma
 {
+	/// <summary>
+	/// OS LIMIARES DESTE PERSONAGEM. Nulo = usa a constante da escada.
+	///
+	/// Vive aqui e nao no <see cref="Jandirus.Core.Stats.Fighter"/> porque e dado de FORMA,
+	/// nao de corpo -- quem pergunta "posso virar?" ja tem este objeto na mao.
+	/// </summary>
+	public LimiaresPessoais? Limiares;
+
 	public Forma Atual = Forma.Base;
 	public Maestrias Maestria = new();
 
@@ -81,7 +89,13 @@ public sealed class EstadoDeForma
 
 		// A PORTA E O BP BASE. Ver o cabecalho de EscadaSaiyajin -- gatear pelo expresso deixaria
 		// a propria forma anterior "fingir" o requisito da seguinte.
-		if (bpBase < d.PortaBp) return RecusaForma.SemPoder;
+		//
+		// E A PORTA E DESTE PERSONAGEM, nao da especie: no original cada um sorteia o proprio
+		// limiar ao nascer (`statsaiyan.dm:50-56`), e por isso um Saiyajin vira SSJ antes do
+		// irmao com o mesmo poder. Sem `Limiares` (personagem velho, ou raca sem sorteio) vale a
+		// constante da escada -- o mesmo numero de antes, entao nada quebra.
+		double porta = Limiares?.Porta(d.Id) is > 0 and var p ? p : d.PortaBp;
+		if (bpBase < porta) return RecusaForma.SemPoder;
 
 		// entrar numa forma no fio do Ki e cair dela no segundo seguinte
 		if (kiFracao < 0.1) return RecusaForma.SemKi;

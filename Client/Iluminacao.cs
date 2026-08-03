@@ -217,7 +217,26 @@ public partial class Fogo : Node2D
     }
 
     /// <summary>Textura radial gerada em codigo: nao depende de arte importada.</summary>
+    /// <summary>
+    /// AS TEXTURAS SAO COMPARTILHADAS POR RAIO. Cada `Fogo` criava um Gradient e uma
+    /// GradientTexture2D novos no `_Ready` -- e nos 40 mapas existem so TRES raios distintos (88,
+    /// 104 e 112) entre 125 luzes. Ou seja, 122 das 125 texturas eram copias exatas, cada uma
+    /// custando alocacao + upload de ~121 KB pra GPU no meio da troca de zona.
+    ///
+    /// Medido: `CarregarLuzes` custava 8,6 ms com as 4 luzes da Terra (2,15 ms por luz), e Vegeta
+    /// tem 25 -- ~54 ms so de acender fogueira. Com o cache, a segunda zona em diante paga zero.
+    /// </summary>
+    private static readonly Dictionary<int, GradientTexture2D> _radiais = [];
+
     public static GradientTexture2D Radial(int raio)
+    {
+        if (_radiais.TryGetValue(raio, out GradientTexture2D? pronta)) return pronta;
+        GradientTexture2D nova = MontarRadial(raio);
+        _radiais[raio] = nova;
+        return nova;
+    }
+
+    private static GradientTexture2D MontarRadial(int raio)
     {
         var g = new Gradient();
         g.SetColor(0, Colors.White);

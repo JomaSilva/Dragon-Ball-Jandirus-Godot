@@ -26,6 +26,14 @@ public partial class GameServer
 	/// <summary>Quanto tempo o corpo fica no chao antes de renascer, em milissegundos.</summary>
 	private const long MsAteRenascer = 15_000;
 
+	/// <summary>
+	/// A skill que deixa imagem remanescente (`misc.dm:35`, a `Afterimage Technique`).
+	///
+	/// O SERVIDOR E QUEM CONSULTA porque a lista de skills do outro e ficha -- ninguem precisa
+	/// saber o que o adversario aprendeu, so precisa VER o vulto. Ver `HitEvent.Zanzo`.
+	/// </summary>
+	private const string PathDoZanzoken = "/datum/skill/ki/Afterimage";
+
 	/// <summary>Segundos de carencia de quem acabou de renascer (ver CombatState.Carencia).</summary>
 	private const double SegundosDeCarencia = 6;
 
@@ -151,7 +159,17 @@ public partial class GameServer
 		// APROXIMAR VEM ANTES DE SOCAR, e e assim no original: o `Attack()` fecha a distancia e
 		// SO ENTAO chama o `MeleeAttack`. E o que faz o combate parecer Dragon Ball em vez de
 		// dois bonecos se cutucando -- voce aponta pra alguem e o personagem VAI.
-		Aproximar(a, longo: golpe == Protocol.Golpe.Pesado);
+		bool investiu = Aproximar(a, longo: golpe == Protocol.Golpe.Pesado);
+
+		// A IMAGEM REMANESCENTE nasce AQUI, junto da investida, e nao no relato do golpe: ela
+		// marca o lugar de ONDE o corpo saiu. Decidida uma vez e carregada nos dois anuncios
+		// (acertou e errou) -- errar uma investida deixa vulto igual, porque o vulto e do
+		// deslocamento e nao do soco.
+		// SO HA MIRAGEM SE HOUVE DESLOCAMENTO. O dono viu o contrario: "se eu usar shift + espaco
+		// mesmo sem ninguem perto e eu tenho after image, eu crio uma miragem no meu lugar mesmo
+		// nao me movendo". O vulto e do Zanzoken -- do corpo que saiu rapido demais pra vista
+		// acompanhar --, entao sem deslocamento nao ha nada que a vista tenha perdido.
+		bool zanzo = investiu && a.Livro?.Sabe(PathDoZanzoken) == true;
 
 		double tipo = Protocol.PesoDoGolpe(golpe);
 		double espera = CombatMath.Cadencia(a.Ficha, tipo);
@@ -168,7 +186,7 @@ public partial class GameServer
 			// sozinho num canto do mapa -- so que sem o multiplicador de lutar contra alguem.
 			a.Ficha.AttackGain(_rng);
 			ca.ZerarCombo();
-			AnunciarSocoNoAr(a);
+			AnunciarSocoNoAr(a, zanzo, investiu);
 			return;
 		}
 
@@ -200,11 +218,11 @@ public partial class GameServer
 				cd, ca, MeleeArea.AnguloDeChegada(a.Pos, a.Facing, alvo.Pos), _rng, tipo);
 			a.UltimoAgressor = alvo.Id;
 			ResolverDesfecho(alvo, a, devolta);
-			AnunciarGolpe(alvo, a, devolta, 2);
+			AnunciarGolpe(alvo, a, devolta, 2, zanzo: false);   // o contra nao investe
 		}
 
 		ResolverDesfecho(a, alvo, r);
-		AnunciarGolpe(a, alvo, r, nivel);
+		AnunciarGolpe(a, alvo, r, nivel, zanzo, investiu);
 	}
 
 	/// <summary>As consequencias fora do corpo: nocaute, morte, Zenkai.</summary>
@@ -256,31 +274,37 @@ public partial class GameServer
 	/// existe pra recusar. Feito aqui, o cliente so aperta a tecla -- a posicao nova volta
 	/// como correcao e o golpe volta como relato, os dois ja decididos.
 	/// </summary>
-	private void Aproximar(ServerPlayer a, bool longo)
+	/// <returns>
+	/// Houve deslocamento de verdade. E o que decide a IMAGEM REMANESCENTE: o dono viu que
+	/// "shift + espaco mesmo sem ninguem perto" deixava miragem parado no lugar, e miragem de quem
+	/// nao saiu do lugar e o oposto do que o Zanzoken quer dizer. Todos os `return` daqui sao
+	/// "nao investiu": sem alvo, ja colado, sem Ki, em recarga, ou parede no caminho.
+	/// </returns>
+	private bool Aproximar(ServerPlayer a, bool longo)
 	{
 		long agora = NowMs();
-		if (a.Combate == null || agora < a.DashLivreEm) return;
+		if (a.Combate == null || agora < a.DashLivreEm) return false;
 
 		float alcance = longo ? AlcanceDoDash : AlcanceDoPasso;
 		ServerPlayer? alvo = AlvoParaArranque(a, alcance);
-		if (alvo == null) return;
+		if (alvo == null) return false;
 
 		double custo = a.Ficha.MaxKi * CustoDashKi * (longo ? 1 : 0.5);
-		if (a.Ficha.Ki < custo) return;
+		if (a.Ficha.Ki < custo) return false;
 
 		// PARA ONDE: a um TILE do alvo, na linha que liga os dois. Encostado, nao POR CIMA --
 		// parar dentro do alcance do soco mas colado empilha um sprite no outro, que foi
 		// exatamente o que apareceu na primeira versao.
 		Vec2 d = alvo.Pos - a.Pos;
 		float dist = d.Length;
-		if (dist <= DistanciaDeParada) return;   // ja esta de frente: nao ha o que fechar
+		if (dist <= DistanciaDeParada) return false;   // ja esta de frente: nao ha o que fechar
 
 		Vec2 destino = a.Pos + d.Normalized() * (dist - DistanciaDeParada);
 
 		// PAREDE MANDA MAIS QUE O ARRANQUE. Sem esta checagem, investir contra um muro com
 		// alguem do outro lado atravessaria a parede -- o unico jeito de andar por dentro dela.
 		ZoneCollision? mapa = _catalogo?.Get(a.Zone)?.Mapa;
-		if (mapa != null && MoveRules.PathOccupied(mapa, a.Pos, destino)) return;
+		if (mapa != null && MoveRules.PathOccupied(mapa, a.Pos, destino)) return false;
 
 		a.Ficha.Ki -= custo;
 		a.Pos = destino;
@@ -289,13 +313,18 @@ public partial class GameServer
 		a.LastInputMs = agora;   // o cliente vai reportar da posicao NOVA: nao conta como passo
 		// os pacotes que o cliente ja mandou com a posicao ANTIGA vao chegar e ser corrigidos.
 		// Isso e o arranque funcionando, nao um cliente desonesto -- nao conta no medidor.
-		a.CorrecaoEsperadaAte = agora + 500;
+		a.CorrecaoEsperadaAte = agora + 500;   // + a SEQUENCIA: input montado antes deste instante nao opina sobre onde o corpo esta
+		a.SeqDoTeleporte = a.SeqInput;
 
 		// a posicao nova precisa chegar ao dono AGORA, senao o proximo pacote dele parte do
 		// lugar antigo e o servidor devolve correcao em cima de correcao
 		var w = Protocol.Begin(Protocol.S2C.Correction);
+		w.Put(a.SeqInput);   // O PACOTE TEM DUAS PARTES desde o conserto do dash:
+		// sequencia + posicao. Escrever so a posicao aqui mandava um pacote MALFORMADO --
+		// o cliente leria a coordenada X como se fosse a sequencia.
 		w.PutVec(a.Pos);
 		a.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		return true;   // investiu de verdade: houve deslocamento
 	}
 
 	/// <summary>
@@ -391,12 +420,12 @@ public partial class GameServer
 	/// "nao aconteceu nada" e o tipo de trafego que nao vale um unico byte de garantia. Perder
 	/// um custa um som.
 	/// </summary>
-	private void AnunciarSocoNoAr(ServerPlayer a)
+	private void AnunciarSocoNoAr(ServerPlayer a, bool zanzo = false, bool investiu = false)
 	{
 		var e = new Protocol.HitEvent
 		{
 			Atacante = a.Id, Alvo = 0, Desfecho = (byte)Desfecho.Errou,
-			Nivel = 1, Membro = "",
+			Nivel = 1, Membro = "", Zanzo = zanzo, Investiu = investiu,
 		};
 		var w = Protocol.Begin(Protocol.S2C.Hit);
 		e.Write(w);
@@ -409,7 +438,13 @@ public partial class GameServer
 	/// Conta o golpe pra zona. Os DOIS ENVOLVIDOS recebem o dano; quem so assistiu recebe o
 	/// evento sem numero -- ve o impacto e ouve o som, mas nao le a ficha alheia.
 	/// </summary>
-	private void AnunciarGolpe(ServerPlayer a, ServerPlayer d, GolpeResultado r, int nivel)
+	/// <param name="zanzo">
+	/// Houve imagem remanescente. PADRAO FALSO porque o vulto e da INVESTIDA do soco pesado, e
+	/// golpe de tecnica (as quatro chamadas de `Tecnicas.G2/G3`) nao investe -- ele acontece de
+	/// onde o corpo ja estava. Deixar o padrao aqui evita que cada tecnica nova tenha que decidir
+	/// sobre um efeito que nao e dela.
+	/// </param>
+	private void AnunciarGolpe(ServerPlayer a, ServerPlayer d, GolpeResultado r, int nivel, bool zanzo = false, bool investiu = false)
 	{
 		var cheio = new Protocol.HitEvent
 		{
@@ -417,7 +452,9 @@ public partial class GameServer
 			Nivel = (byte)Math.Clamp(nivel, 1, 3),
 			TemDano = true, Dano = (float)r.Dano, Membro = r.Membro,
 			Quebrou = r.Quebrou, Decepou = r.Decepou, Nocauteou = r.Nocauteou, Morreu = r.Morreu,
-			Rabo = r.RaboArrancado,
+			Rabo = r.RaboArrancado, Zanzo = zanzo, Investiu = investiu,
+			// a esquiva e do OUTRO: quem se desviou e quem deixa o vulto
+			ZanzoEsquiva = r.Desfecho == Desfecho.Esquivou && d.Livro?.Sabe(PathDoZanzoken) == true,
 		};
 		Protocol.HitEvent magro = cheio;
 		magro.TemDano = false;
@@ -587,6 +624,9 @@ public partial class GameServer
 		{
 			pl.Pos = SpawnPos;
 			var w = Protocol.Begin(Protocol.S2C.Correction);
+			w.Put(pl.SeqInput);   // O PACOTE TEM DUAS PARTES desde o conserto do dash:
+			// sequencia + posicao. Escrever so a posicao aqui mandava um pacote MALFORMADO --
+			// o cliente leria a coordenada X como se fosse a sequencia.
 			w.PutVec(pl.Pos);
 			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}

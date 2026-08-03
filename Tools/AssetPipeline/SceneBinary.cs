@@ -98,7 +98,17 @@ public static class SceneBinary
             if (!File.Exists(scn)) continue;
             antes += new FileInfo(t).Length;
             depois += new FileInfo(scn).Length;
-            File.Delete(t);
+
+            // O .tscn FICA. A versao anterior o apagava, e isso quebrava um fluxo inteiro em
+            // silencio: `SceneCollision.Regerar` (o comando `colisao`) acha as cenas com
+            // `GetFiles(*.tscn)` e le o `tile_map_data` por REGEX SOBRE TEXTO. Sem .tscn ele nao
+            // acha nada, nao casa nada e nao reclama -- ou seja, "editei o mapa no editor e regerei
+            // a colisao" passaria a nao fazer nada, e o que voce apagasse no editor continuaria
+            // sendo parede pro servidor.
+            //
+            // O preco e disco (os 40 .tscn somam ~200 MB), e disco e a coisa mais barata que este
+            // projeto tem. O .scn e o que o JOGO le (o manifesto aponta pra ele); o .tscn e a
+            // fonte legivel, pro editor e pras ferramentas.
             string imp = t + ".import";       // sobra do importador, se houver
             if (File.Exists(imp)) File.Delete(imp);
         }
@@ -147,6 +157,9 @@ public static class SceneBinary
     }
 
     /// <summary>Procura o Godot nos lugares onde ele costuma estar neste projeto.</summary>
+    /// <summary>Publico pro comando  encadear a conversao sem duplicar a busca.</summary>
+    public static string? AcharGodot() => Achar();
+
     private static string? Achar()
     {
         string? env = Environment.GetEnvironmentVariable("GODOT");

@@ -89,6 +89,45 @@ public sealed class ServerPlayer
 	public Jandirus.Core.Forms.EstadoDeForma Forma = new();
 	public string SigSkills = "";
 
+	/// <summary>
+	/// SEGURANDO C: reunindo energia agora. Estado VIVO (nao vai pro disco) -- ninguem continua
+	/// carregando depois de deslogar, e o `is_drawing` do original tambem nao persistia.
+	/// </summary>
+	public bool Carregando;
+
+	/// <summary>A aura acesa por excesso de Ki. Guardada pra ter HISTERESE -- ver CargaDeKi.AuraAcesa.</summary>
+	public bool AuraDeCarga;
+
+	/// <summary>
+	/// A aura do POWER-UP (desenho + zumbido). Separada de <see cref="Carregando"/> porque no
+	/// original ela pede `canPower && stamina > 1` -- quem so tem Ki Unlocked carrega em silencio.
+	/// </summary>
+	public bool AuraDaCarga;
+
+	/// <summary>
+	/// A ULTIMA FICHA QUE FOI ENVIADA. E contra ELA que se decide reenviar.
+	///
+	/// ============================ POR QUE NAO DA PRA COMPARAR NO LUGAR ============================
+	/// O `TickFichas` roda a 5 Hz e comparava o valor de ANTES com o de DEPOIS **dentro da propria
+	/// chamada**. So que quase tudo que mexe no Ki roda FORA dela, a 30 Hz: a carga da tecla C, a
+	/// regeneracao, o custo de correr. Quando o `TickFichas` acordava, o Ki ja tinha subido -- os
+	/// dois lados da comparacao ja eram o valor NOVO, davam iguais, e o pacote nao saia.
+	///
+	/// O sintoma que o dono descreveu e exatamente isso: entrar no servidor com o tanque cheio e
+	/// segurar C nao mexia a barra. So depois de GASTAR um pouco e que voltava a funcionar -- porque
+	/// ai o `kiratio` passava a mudar o `expressedBP`, que E recalculado dentro do `Tick`, e esse
+	/// sim aparecia na comparacao.
+	/// ==========================================================================================
+	/// </summary>
+	public double EnvBP = double.NaN, EnvKi = double.NaN, EnvHp = double.NaN, EnvAct = double.NaN,
+				  EnvVigor = double.NaN;
+
+	/// <summary>O ultimo byte de estado enviado (KO, morto, guarda, letal, rabo).</summary>
+	public int EnvEstado = -1;
+
+	/// <summary>Ultimo estagio de carga anunciado. So se avisa o jogador quando o estagio MUDA.</summary>
+	public Jandirus.Core.Combat.EstagioDaCarga EstagioDaCarga;
+
 	/// <summary>Bits de <see cref="Protocol.Poder"/> que as skills aprendidas acenderam.</summary>
 	public Protocol.Poder Poderes;
 
@@ -108,6 +147,9 @@ public sealed class ServerPlayer
 	/// <summary>Quando o proximo dash de aproximacao libera (relogio real, ms).</summary>
 	public long DashLivreEm;
 
+	/// <summary>Quando a proxima piscada do Zanzoken libera (relogio real, ms).</summary>
+	public long ZanzoLivreEm;
+
 	/// <summary>
 	/// Ate quando uma correcao de movimento e ESPERADA (acabei de dar dash neste jogador).
 	///
@@ -117,6 +159,30 @@ public sealed class ServerPlayer
 	/// um sinal que dispara sozinho toda vez que o jogo funciona nao denuncia nada.
 	/// </summary>
 	public long CorrecaoEsperadaAte;
+
+	/// <summary>
+	/// A ULTIMA SEQUENCIA DE INPUT recebida, e a que valia quando o servidor TELEPORTOU este
+	/// corpo pela ultima vez.
+	///
+	/// ============================ O QUE ISTO CONSERTA ============================
+	/// O dash move o personagem no servidor e manda uma correcao. Mas o cliente ja tinha pacotes
+	/// EM VOO, montados antes de saber do teleporte, afirmando a posicao antiga. Sem carimbo, o
+	/// servidor nao tinha como distinguir "pacote velho" de "cliente errado": ele validava o
+	/// pacote velho, o clamp `from + delta.Normalized()*allowed` apontava PRA TRAS (do destino de
+	/// volta pra origem) e virava um passo pra tras na velocidade maxima -- GRAVADO no estado
+	/// autoritativo. Um por pacote em voo, ou seja um RTT inteiro de trancos.
+	///
+	/// Com o carimbo a regra fica trivial: input com sequencia <= a do teleporte foi montado ANTES
+	/// dele e nao tem opiniao valida sobre onde o corpo esta. Descarta-se, sem clamp e sem gravar.
+	/// ============================================================================
+	/// </summary>
+	public uint SeqInput, SeqDoTeleporte;
+
+	/// <summary>
+	/// Credito de deslocamento acumulado, em pixels. Ver <see cref="MoveRules.PassosDeFolga"/> --
+	/// e o que absorve o jitter entre o dt que o cliente SIMULOU e o que o servidor MEDIU.
+	/// </summary>
+	public float OrcamentoPx;
 
 	/// <summary>
 	/// EM QUEM EU ESTOU MIRANDO (0 = ninguem). Marcado com duplo clique pelo jogador.
@@ -170,6 +236,8 @@ public sealed class ServerPlayer
 		Ki = Ficha.Ki,
 		MaxKi = Ficha.MaxKi,
 		HP = Ficha.HP,
+		Vigor = Ficha.stamina,
+		VigorMax = Ficha.maxstamina,
 		SpeedStat = SpeedStat,
 		// a cadencia vai calculada: ela muda com o Ki carregado, e o cliente precisa dela
 		// pro proprio cooldown e pra duracao da animacao de soco
@@ -377,6 +445,12 @@ public partial class GameServer : Node
 			GD.Print($"[server] BANCADA: tecnologia {_techDeTeste:0} e {_zeniDeTeste:N0} zeni pra todo mundo");
 		}
 
+		// `--portateste`: nasce colado numa porta. As 82 portas do jogo estao dentro de casas, a
+		// dezenas de tiles do ponto de nascimento -- andar ate uma leva meio minuto, e um teste
+		// automatico que leva meio minuto pra COMECAR nao roda. Ver `NascerNaPorta`.
+		_portaDeTeste = Array.IndexOf(args, "--portateste") >= 0;
+		if (_portaDeTeste) GD.Print("[server] BANCADA: todo mundo nasce colado numa porta");
+
 		// `--gestacaoteste N`: encurta a gestacao do bio-androide pra N segundos. Sem isto o teste
 		// levaria DOZE HORAS -- e um sistema que so da pra testar em doze horas nao e testado.
 		int gIdx = Array.IndexOf(args, "--gestacaoteste");
@@ -489,6 +563,11 @@ public partial class GameServer : Node
 			if (e.Mapa != null) ok++;
 		}
 		GD.Print($"[server] zonas: {_catalogo.Todas.Count()} | com colisao: {ok}");
+
+		// AS PORTAS VEM JUNTO e nao por acaso: elas ESCREVEM no `Mapa` que acabou de ser lido
+		// (abrir uma porta e limpar a celula dela -- ver GameServer.Portas.cs). Carregar as duas
+		// coisas no mesmo lugar deixa obvio que uma depende da outra.
+		CarregarPortas();
 	}
 
 	/// <summary>
@@ -658,6 +737,18 @@ public partial class GameServer : Node
 				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemTransforma)) Transformar(quemTransforma, subir);
 				break;
 			}
+			case Protocol.C2S.Zanzoken:
+			{
+				Vec2 alvo = reader.GetVec();
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemPisca)) Zanzoken(quemPisca, alvo);
+				break;
+			}
+			case Protocol.C2S.Carregar:
+			{
+				bool ligado = reader.GetBool();
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemCarrega)) Carregar(quemCarrega, ligado);
+				break;
+			}
 			case Protocol.C2S.Aprender:
 			{
 				string path = reader.GetString(96);
@@ -745,13 +836,15 @@ public partial class GameServer : Node
 		for (int i = 0; i < AccountStore.Slots; i++)
 		{
 			CharacterSave? c = acc.Slots[i];
-			new SlotInfo
+			// CENSURADO ANTES DE SAIR. Na tela de selecao nao existe personagem em jogo, logo nao
+			// existe scouter -- e classe nunca aparece, em situacao nenhuma.
+			SlotVisivel(new SlotInfo
 			{
 				Ocupado = c != null,
 				Nome = c?.Nome ?? "", Raca = c?.Raca ?? "", Classe = c?.Ficha.Class ?? "",
 				Genero = c?.Genero ?? "Male", Idade = c?.Idade ?? 0, BP = c?.Ficha.BP ?? 0,
 				Visual = c?.Visual ?? new Jandirus.Core.Appearance.Appearance(),
-			}.Write(w);
+			}).Write(w);
 		}
 		peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
@@ -801,11 +894,24 @@ public partial class GameServer : Node
 			Linhagem = ficha.ChosenClass, Idade = ficha.Age, Visual = visual, Ficha = lutador,
 			Zona = SpawnZone.Name, X = SpawnPos.X, Y = SpawnPos.Y, CriadoEm = NowMs(),
 		};
+		// OS LIMIARES SAO SORTEADOS AGORA, uma vez, e vao pro disco junto do personagem.
+		// Cada Saiyajin tem o proprio BP de SSJ (o `rand(9,13)/10` do `statsaiyan.dm:50-56`).
+		// Re-sortear no login faria o jogador virar SSJ e destransformar pra sempre.
+		novo.Limiares = Jandirus.Core.Forms.LimiaresPessoais.Rolar(
+			novo.Raca, lutador.Class, Jandirus.Core.World.Espaco.Misturar(
+				(ulong)novo.CriadoEm, (ulong)slot, (ulong)nome.GetHashCode()));
+
 		acc.Slots[slot] = novo;
 		_store?.Gravar(acc);
 		GD.Print($"[server] {acc.Conta} criou '{nome}' no slot {slot + 1} | {novo.Raca}/{lutador.Class}");
 
 		Entrar(peer, acc, slot, novo);
+
+		// A DICA DE CLASSE, e ela e a UNICA pista que o jogador jamais recebe sobre a propria
+		// linhagem -- uma frase no chat, na criacao, que sugere sem dizer. Sem esta linha a
+		// classe simplesmente nunca e insinuada, e a regra "classe nunca aparece" vira
+		// "classe nao existe".
+		if (_byPeer.TryGetValue(peer, out ServerPlayer? recem)) DicaDeClasse(recem);
 	}
 
 	// =====================================================================
@@ -819,6 +925,7 @@ public partial class GameServer : Node
 		pl.Slot = slot;
 		pl.Zone = ZoneKey.Premade(c.Zona);
 		if (pl.Pos.X == 0 && pl.Pos.Y == 0) pl.Pos = SpawnPos;
+		if (_portaDeTeste) NascerNaPorta(pl);
 		pl.Facing = Facing.South;
 		pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed);
 		PrepararCombate(pl, c);
@@ -856,6 +963,8 @@ public partial class GameServer : Node
 		// MAESTRIA (semanas de jogo) e quais formas ja despertaram (a cinematica so roda uma vez).
 		pl.Forma = new Jandirus.Core.Forms.EstadoDeForma();
 		pl.Forma.Maestria.DoSave(c?.Maestrias);
+		// OS LIMIARES DESTE PERSONAGEM vem do disco -- sorteados no nascimento, nunca de novo.
+		pl.Forma.Limiares = c?.Limiares;
 		if (c?.FormasDespertadas is { Count: > 0 }) pl.Forma.JaDespertou = [.. c.FormasDespertadas];
 		AplicarForma(pl);
 
@@ -866,6 +975,7 @@ public partial class GameServer : Node
 		// SO AGORA da pra mandar as construcoes: `MandarObras` varre `_players` procurando quem
 		// esta na zona, e quem acabou de entrar so esta la depois desta linha.
 		MandarObras(pl.Zone);
+		MandarPortas(pl);
 		MandarCatalogoDeObras(pl);
 		AplicarEstilo(pl);   // o estilo veio do save; os multiplicadores nao
 		MandarEstilos(pl);
@@ -879,7 +989,10 @@ public partial class GameServer : Node
 		w.PutZone(pl.Zone);
 		w.PutVec(pl.Pos);
 		w.Put(pl.Name);
-		pl.Sheet().Write(w);
+		// A FICHA CENSURADA, e nao a crua. Sem isto o corte do sigilo esconde o ROTULO e o
+		// servidor continua mandando o NUMERO -- quem abrir o pacote ve tudo, e esconder do
+		// olho nao e esconder do jogo.
+		FichaVisivel(pl).Write(w);
 		w.PutAppearance(pl.Visual);
 		peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 
@@ -970,19 +1083,34 @@ public partial class GameServer : Node
 	{
 		if (!_byPeer.TryGetValue(peer, out ServerPlayer? pl)) return;
 
+		uint seq = reader.GetUInt();
 		Vec2 claimed = reader.GetVec();
 		byte flags = reader.GetByte();
+
+		// PACOTE OBSOLETO: foi montado antes do ultimo teleporte, entao a posicao que ele afirma
+		// e de outra vida. Nao valida, nao grava, nao corrige -- so mantem o relogio do dt em dia
+		// (senao o proximo pacote legitimo chega com um dt gigante e vira violacao sozinho).
+		if (seq <= pl.SeqDoTeleporte)
+		{
+			pl.LastInputMs = NowMs();
+			return;
+		}
+		pl.SeqInput = seq;
 		var facing = (Facing)(flags & 0x03);
 		bool moving = (flags & Protocol.InputAndando) != 0;
 		bool querCorrer = (flags & Protocol.InputCorrendo) != 0;
 
-		// QUEM ESTA NO CHAO NAO ANDA. A checagem tem que vir antes da validacao de passo:
-		// senao o corpo caido "anda" livremente enquanto a pose diz que ele esta desmaiado.
-		if (pl.Ficha.dead || pl.Ficha.KO)
+		// QUEM ESTA NO CHAO NAO ANDA -- e quem esta REUNINDO ENERGIA tambem nao.
+		//
+		// O cliente ja nem tenta (ver LocalPlayer), mas a regra tem que morar aqui: e o servidor
+		// que decide onde os corpos estao, e um cliente modificado que ignorasse a trava andaria
+		// carregando -- que e exatamente o "op demais" que o dono quis cortar.
+		if (pl.Ficha.dead || pl.Ficha.KO || pl.Carregando)
 		{
 			pl.LastInputMs = NowMs();
 			pl.Moving = false;
 			var parado = Protocol.Begin(Protocol.S2C.Correction);
+			parado.Put(pl.SeqInput);
 			parado.PutVec(pl.Pos);
 			peer.Send(parado, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 			return;
@@ -1001,7 +1129,7 @@ public partial class GameServer : Node
 		bool correndo = querCorrer && moving && PodeCorrer(pl, dt);
 
 		ZoneCollision? mapa = _catalogo?.Get(pl.Zone)?.Mapa;
-		if (MoveRules.ValidateStep(pl.Pos, claimed, dt, pl.SpeedStat, mapa, out Vec2 ok, correndo))
+		if (MoveRules.ValidateStep(pl.Pos, claimed, dt, pl.SpeedStat, mapa, ref pl.OrcamentoPx, out Vec2 ok, correndo))
 		{
 			pl.Pos = ok;
 		}
@@ -1018,6 +1146,7 @@ public partial class GameServer : Node
 				GD.PushWarning($"[server] {pl.Name}: {pl.Corrections} correcoes de movimento (dt={dt:0.000}s)");
 
 			var w = Protocol.Begin(Protocol.S2C.Correction);
+			w.Put(pl.SeqInput);
 			w.PutVec(pl.Pos);
 			peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
@@ -1080,8 +1209,19 @@ public partial class GameServer : Node
 		// do Ki zerado, e e justamente nesse instante que a luta costuma virar.
 		foreach (ServerPlayer pl in _players.Values) TickDaForma(pl, Protocol.TickSeconds);
 
+		// A CARGA ANDA NO TICK CHEIO, junto da forma, porque as duas mexem no MESMO Ki: a forma
+		// dreno e a carga enche. Rodar em cadencias diferentes faria o saldo depender da ordem em
+		// que os dois relogios se cruzam -- o mesmo SSJ carregando renderia coisas diferentes em
+		// tiques diferentes, sem nada no jogo explicando por que.
+		foreach (ServerPlayer pl in _players.Values) TickDaCarga(pl, Protocol.TickSeconds);
+
 		// os NPCs pensam e agem no tick cheio, pelas mesmas funcoes do jogador
 		TickDosClones(Protocol.TickSeconds);
+
+		// A PORTA ABRE NO TICK CHEIO. Ela e uma parede que some, e uma parede que some com atraso
+		// visivel e uma parede em que o jogador esbarra -- 5 Hz dariam ate 200 ms de porta fechada
+		// depois de encostar nela.
+		TickDasPortas();
 
 		// no espaco: troca de chunk e pouso por encostar
 		foreach (ServerPlayer pl in _players.Values.ToList()) TickDoEspaco(pl);
@@ -1119,6 +1259,8 @@ public partial class GameServer : Node
 					Vida = (byte)Math.Clamp(Math.Round(pl.Ficha.HP), 0, 100),
 					Rabo = pl.TemRaboAgora(),
 					Oculto = EstaOculto(pl.Id),
+					Carregando = pl.AuraDaCarga,   // o VISUAL, nao o estado -- ver GameServer.Carga.cs
+					Sobrecarregado = pl.AuraDeCarga,
 				}.Write(w);
 
 			// mesmo buffer pra todos daquela zona: quem esta noutro planeta nao recebe nada
@@ -1135,21 +1277,36 @@ public partial class GameServer : Node
 	{
 		foreach (ServerPlayer pl in _players.Values)
 		{
-			double antes = pl.Ficha.expressedBP;
-			double antesKi = pl.Ficha.Ki;
-			double antesHp = pl.Ficha.HP;
-			double antesAct = pl.Ficha.Eactspeed;   // muda a cadencia do soco, que vai na ficha
-
 			Treinar(pl.Ficha);
 			pl.Ficha.Tick(agoraMs: NowMs());
 			pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed);
 			GainKnobs.TopBP = Math.Max(GainKnobs.TopBP, pl.Ficha.BP);
 
-			if (antes == pl.Ficha.expressedBP && antesKi == pl.Ficha.Ki && antesHp == pl.Ficha.HP
-				&& antesAct == pl.Ficha.Eactspeed) continue;
+			// CONTRA O QUE FOI ENVIADO, e nao contra o valor de tres linhas atras -- ver os campos
+			// `Env*` no ServerPlayer. Comparar dentro da propria chamada perde tudo que mudou entre
+			// duas chamadas, que e justamente onde a carga de Ki e a regeneracao vivem.
+			// O `Estado` TAMBEM. Ele carrega KO, morto, guarda, LETAL e rabo -- e nenhum deles
+			// mexe nos numeros acima. O dono viu o sintoma: apertou a tecla de golpe letal, o HUD
+			// (que le o proprio toggle do cliente) mudou, e a aba Stats (que le a FICHA) continuou
+			// dizendo "nao-letal" -- porque a ficha nunca era reenviada.
+			//
+			// Mesma familia do bug da barra de Ki: a lista de campos comparados era menor que a
+			// lista de campos ENVIADOS. Todo campo que vai no pacote precisa estar aqui, senao ele
+			// so chega de carona quando outro muda.
+			byte estado = pl.Sheet().Estado;
+			if (pl.EnvBP == pl.Ficha.expressedBP && pl.EnvKi == pl.Ficha.Ki
+				&& pl.EnvHp == pl.Ficha.HP && pl.EnvAct == pl.Ficha.Eactspeed
+				&& pl.EnvVigor == pl.Ficha.stamina && pl.EnvEstado == estado) continue;
+
+			pl.EnvBP = pl.Ficha.expressedBP;
+			pl.EnvKi = pl.Ficha.Ki;
+			pl.EnvHp = pl.Ficha.HP;
+			pl.EnvAct = pl.Ficha.Eactspeed;
+			pl.EnvVigor = pl.Ficha.stamina;
+			pl.EnvEstado = estado;
 
 			var w = Protocol.Begin(Protocol.S2C.Stats);
-			pl.Sheet().Write(w);
+			FichaVisivel(pl).Write(w);
 			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 	}
@@ -1178,6 +1335,13 @@ public partial class GameServer : Node
 		pl.Pos = spawn;
 		ZoneList(destino.Hash).Add(pl);
 
+		// TROCAR DE ZONA E O MAIOR TELEPORTE DE TODOS -- do outro lado do mapa, ou de outro
+		// planeta. Os pacotes que o cliente tinha em voo falam da zona ANTIGA, e sem este carimbo
+		// o servidor tentaria "corrigir" a posicao nova em direcao a uma coordenada de outro
+		// mundo. O orcamento tambem zera: credito acumulado andando la nao vale aqui.
+		pl.SeqDoTeleporte = pl.SeqInput;
+		pl.OrcamentoPx = 0;
+
 		var w = Protocol.Begin(Protocol.S2C.ZoneChanged);
 		w.PutZone(destino);
 		w.PutVec(spawn);
@@ -1186,6 +1350,9 @@ public partial class GameServer : Node
 		// AS CONSTRUCOES SAO POR ZONA: sem reenviar, quem muda de planeta continua vendo as
 		// construcoes do planeta anterior desenhadas no chao do novo.
 		MandarObras(destino);
+		// ...e as PORTAS pelo mesmo motivo: quem chega tem que ver as que estao abertas agora, e o
+		// `.col` do cliente tem que casar com o do servidor (ver MandarPortas).
+		MandarPortas(pl);
 		pl.Estudando = false;   // ninguem estuda de outro planeta
 		AplicarGravidade(pl);   // o chao mudou: o peso dele tambem
 	}

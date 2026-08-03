@@ -357,6 +357,12 @@ public partial class Boot : Node2D
 		// unico jeito de exercitar a CADEIA INTEIRA do combate sem janela: pacote de golpe ->
 		// escolha de alvo -> resolucao -> transmissao -> relato. Dois processos com esta flag
 		// no mesmo servidor brigam de verdade.
+		// --porta: bancada AO VIVO das portas. Anda contra a porta mais proxima e narra o que
+		// mede -- fechada bloqueia e cega, abriu ao encostar, atravessou, fechou sozinha. Sobe
+		// junto do `--portateste` no servidor, que faz nascer colado numa.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--porta") >= 0)
+			AddChild(new RoboDePorta { Name = "RoboDePorta" });
+
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--socar") >= 0)
 		{
 			var robo = new RoboDeSoco();

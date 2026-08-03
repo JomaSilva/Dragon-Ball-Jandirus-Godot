@@ -9,6 +9,10 @@ public sealed class ZoneEntry
 	public string Colisao = "";   // res:// do bitset que o SERVIDOR le
 	public string Visao = "";     // res:// do bitset do que CEGA (parede e porta; ver Visao.cs)
 	public string Luzes = "";     // res:// das fontes de luz do cenario (fogueira, tocha, lava)
+
+	/// <summary>res:// das PORTAS da zona -- elas nao sao tile, sao entidade (ver MapConverter.EhPorta).</summary>
+	public string Portas = "";
+
 	public int W, H;
 	public ZoneCollision? Mapa;   // carregado sob demanda
 }
@@ -42,6 +46,7 @@ public sealed class ZoneCatalog
 				Colisao = Str(bloco, "colisao"),
 				Visao = Str(bloco, "visao"),
 				Luzes = Str(bloco, "luzes"),
+				Portas = Str(bloco, "portas"),
 				W = (int)Num(bloco, "w"),
 				H = (int)Num(bloco, "h"),
 			};

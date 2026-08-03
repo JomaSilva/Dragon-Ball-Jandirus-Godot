@@ -72,8 +72,18 @@ public static class RegrasDoDisco
 								System.Globalization.CultureInfo.InvariantCulture, out double v))
 							d.Buffs[par[..ig]] = v;
 					}
+					// AS CHAVES (`campo = n`). Canal separado dos buffs -- ver `Degrau.Flags`.
+					foreach (string par in Lista(bloco, "flags"))
+					{
+						int ig = par.IndexOf('=');
+						if (ig <= 0) continue;
+						if (double.TryParse(par[(ig + 1)..], System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double v))
+							d.Flags[par[..ig]] = v;
+					}
+
 					d.Verbos = Lista(bloco, "verbos");
-					if (d.Buffs.Count == 0 && d.Verbos.Length == 0 && d.Aviso.Length == 0) break;
+					if (d.Buffs.Count == 0 && d.Flags.Count == 0 && d.Verbos.Length == 0 && d.Aviso.Length == 0) break;
 
 					if (!degraus.TryGetValue(path, out List<Degrau>? l)) degraus[path] = l = [];
 					l.Add(d);

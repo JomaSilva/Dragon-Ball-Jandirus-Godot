@@ -144,10 +144,24 @@ public partial class GameClient : Node
 	}
 
 	/// <summary>Manda a posicao que EU calculei. O servidor confere e corrige se nao couber.</summary>
+	/// <summary>
+	/// A SEQUENCIA DO INPUT. Sobe a cada pacote e nunca volta.
+	///
+	/// Ela existe por um motivo so: deixar o servidor saber se um pacote foi montado ANTES ou
+	/// DEPOIS de ele ter teleportado o personagem. Sem esse carimbo os dois estados sao
+	/// indistinguiveis -- e o servidor tratava "posicao velha porque o pacote e velho" como
+	/// "posicao velha porque o cliente esta errado", e puxava o jogador pra tras.
+	/// </summary>
+	private uint _seq;
+
+	/// <summary>A ultima sequencia que o servidor confirmou ter processado (vem na correcao).</summary>
+	public uint SeqConfirmada { get; private set; }
+
 	public void SendState(Vec2 pos, Facing facing, bool moving, bool correndo = false)
 	{
 		if (!Connected) return;
 		var w = Protocol.Begin(Protocol.C2S.InputState);
+		w.Put(++_seq);
 		w.PutVec(pos);
 		w.Put((byte)(((byte)facing & 0x03)
 					 | (correndo ? Protocol.InputCorrendo : 0)
@@ -244,7 +258,13 @@ public partial class GameClient : Node
 	public event Action<string, long>? EfeitoCaiu;
 
 	/// <summary>Uma construcao de pe na minha zona.</summary>
-	public readonly record struct ObraInfo(int Id, string Tipo, Vector2 Pos, bool Aparafusada, int Lab, string Dono);
+	/// <summary>
+	/// Uma construcao de pe. `Arte`/`Estado`/`Pixel` vem DO SERVIDOR e nao do catalogo local: o
+	/// catalogo do cliente so tem o que ELE pode comprar, e a bancada de outra pessoa tem que
+	/// aparecer do mesmo jeito.
+	/// </summary>
+	public readonly record struct ObraInfo(int Id, string Tipo, Vector2 Pos, bool Aparafusada, int Lab, string Dono,
+										   string Arte, string Estado, Vector2 Pixel, bool Densa);
 
 	/// <summary>Uma linha do catalogo de tecnologia, com o motivo do nao (0 = pode).</summary>
 	public readonly record struct OfertaDeObra(string Id, string Nome, double Custo, double Tech, int Recusa);
@@ -273,6 +293,15 @@ public partial class GameClient : Node
 	public double TechXpAlvo { get; private set; } = 100;
 	public event Action? ObrasMudaram;
 	public event Action? TechMudou;
+
+	/// <summary>
+	/// PORTAS: `completo` (esta e a lista inteira da zona) + as celulas que mudaram.
+	///
+	/// A lista nao fica guardada aqui, ao contrario das obras: o estado de porta e do MAPA -- ele
+	/// vive no `ZoneCollision` e nos nodes que o `World` criou. Guardar uma segunda copia so criaria
+	/// a chance de as duas discordarem.
+	/// </summary>
+	public event Action<bool, List<(int X, int Y, bool Aberta)>>? PortasMudaram;
 
 	/// <summary>O canal unico de tecnologia. Ver `GameServer.Tech.cs`.</summary>
 	public void SendTech(string cmd, string arg = "")
@@ -343,6 +372,39 @@ public partial class GameClient : Node
 		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
+	/// <summary>
+	/// Segurei ou soltei o C: reunir energia.
+	///
+	/// SO NA BORDA -- o cliente manda quando o estado MUDA, nunca por quadro. Carregar dura
+	/// segundos e um pacote a 60 Hz durante um power-up de dez segundos seriam 600 pacotes pra
+	/// dizer duas coisas. Quem conta o tempo e o tick do servidor, que ja roda de qualquer jeito.
+	///
+	/// CONFIAVEL E ORDENADO porque perder o "soltei" deixaria o personagem carregando pra sempre
+	/// -- um estado que so o proximo aperto de tecla desfaria.
+	/// </summary>
+	/// <summary>
+	/// "Quero piscar pra este ponto." So um PEDIDO: o servidor confere skill, Ki, alcance,
+	/// recarga e parede -- se o cliente decidisse, a tecnica seria teleporte livre.
+	/// </summary>
+	public void SendZanzoken(Vec2 destino)
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.Zanzoken);
+		w.PutVec(destino);
+		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>Alguem piscou: o id e DE ONDE ele saiu. A miragem nasce na origem.</summary>
+	public event Action<int, Vec2>? Piscou;
+
+	public void SendCarregar(bool ligado)
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.Carregar);
+		w.Put(ligado);
+		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
 	/// <summary>Em quem estou mirando (0 = ninguem). Marcado com duplo clique.</summary>
 	public int AlvoId { get; private set; }
 	public event Action<int>? AlvoMudou;
@@ -381,8 +443,9 @@ public partial class GameClient : Node
 				LocalName = nome;
 				Sheet = SheetState.Read(reader);
 				Visual = reader.GetAppearance();   // o servidor devolve a versao SANEADA
-				GD.Print($"[client] entrei como id {LocalId} em {Zone} @ {spawn} " +
-						 $"| {Sheet.Class} | BP {Sheet.ExpressedBP:0}");
+				// SEM CLASSE E SEM BP. Isto e o console DO JOGADOR (o .log dele), nao o do servidor:
+				// imprimir a classe aqui e contar no arquivo o que a regra esconde na tela.
+				GD.Print($"[client] entrei como id {LocalId} em {Zone.Name} @ ({spawn.X:0}, {spawn.Y:0})");
 				Joined?.Invoke(LocalId, Zone, spawn, nome);
 				SheetUpdated?.Invoke(Sheet);
 				break;
@@ -424,7 +487,12 @@ public partial class GameClient : Node
 				if (antes > 0 && Sheet.BP >= antes * 1.1)
 				{
 					GD.Print($"[client] BP {antes:0} -> {Sheet.BP:0}");
-					Chat.Sistema($"seu poder de luta subiu: {antes:0} -> {Sheet.BP:0}");
+					// O SALTO SE SENTE, NAO SE LE. O numero cru aqui furava o sigilo inteiro por um
+					// caminho que ninguem olhava -- o chat. O DM ja da o molde: o que o corpo percebe e
+					// a PROPORCAO do salto, nunca o valor.
+					Chat.Sistema(antes > 0 && Sheet.BP / antes >= 1.5
+						? "algo se rompe por dentro: seu poder deu um salto que voce nao esperava."
+						: "voce se sente mais forte do que ontem.");
 				}
 				SheetUpdated?.Invoke(Sheet);
 				break;
@@ -453,6 +521,13 @@ public partial class GameClient : Node
 			// UM EFEITO CAIU (ou saiu de cima) DE MIM. Um canal so pra todas as tecnicas: id do
 			// efeito + por quantos ms (0 = acabou, negativo = enquanto durar). Ver
 			// `GameServer.Tecnicas.cs`; a alternativa era um pacote por tecnica, e sao 47.
+			case Protocol.S2C.Zanzo:
+			{
+				int quem = reader.GetInt();
+				Piscou?.Invoke(quem, reader.GetVec());
+				break;
+			}
+
 			case Protocol.S2C.Efeito:
 			{
 				string efeito = reader.GetString(24);
@@ -485,9 +560,21 @@ public partial class GameClient : Node
 				for (int i = 0; i < n; i++)
 					l.Add(new ObraInfo(reader.GetInt(), reader.GetString(48),
 						new Vector2(reader.GetFloat(), reader.GetFloat()),
-						reader.GetBool(), reader.GetByte(), reader.GetString(32)));
+						reader.GetBool(), reader.GetByte(), reader.GetString(32),
+						reader.GetString(160), reader.GetString(48),
+						new Vector2(reader.GetFloat(), reader.GetFloat()), reader.GetBool()));
 				Obras = l;
 				ObrasMudaram?.Invoke();
+				break;
+			}
+
+			// AS PORTAS mudaram de estado -- ou, com `completo`, esta e a lista inteira da zona.
+			// Nao vai por evento agregado como as obras: o `World` e o unico interessado e ele
+			// precisa saber SE foi a lista completa (pra fechar tudo antes de aplicar).
+			case Protocol.S2C.Porta:
+			{
+				(bool completo, List<(int X, int Y, bool Aberta)> portas) = reader.GetPortas();
+				PortasMudaram?.Invoke(completo, portas);
 				break;
 			}
 
@@ -563,9 +650,18 @@ public partial class GameClient : Node
 				CorpoAtualizado?.Invoke(Corpo);
 				break;
 
+			// A CORRECAO VEM CARIMBADA com a sequencia que o servidor considerou. Guardar o
+			// carimbo permite ao cliente ignorar correcao mais velha que a ultima que ele ja
+			// aplicou -- caso o canal entregue fora de ordem.
 			case Protocol.S2C.Correction:
-				Corrected?.Invoke(reader.GetVec());
+			{
+				uint seq = reader.GetUInt();
+				Vec2 pos = reader.GetVec();
+				if (seq < SeqConfirmada) break;   // correcao atrasada: a atual ja e mais nova
+				SeqConfirmada = seq;
+				Corrected?.Invoke(pos);
 				break;
+			}
 
 			case Protocol.S2C.PeerLeft:
 				PeerLeft?.Invoke(reader.GetInt());

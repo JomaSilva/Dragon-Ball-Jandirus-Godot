@@ -129,6 +129,17 @@ public partial class GameServer
 			}
 		}
 		catch (Exception e) { GD.PushWarning($"[server] mundo.json ilegivel: {e.Message}"); }
+
+		// AS OBRAS DO DISCO TAMBEM BLOQUEIAM. Sem esta volta, uma bancada erguida ontem so viraria
+		// parede quando alguem construisse OUTRA coisa na mesma zona -- e o `MandarObras` fosse
+		// chamado por acaso. Bloquear na carga e o que faz o mundo salvo valer desde o boot.
+		int densas = 0;
+		foreach (string zona in _noChao.Select(o => o.Zona).Distinct())
+		{
+			AplicarColisaoDasObras(ZoneKey.Premade(zona));
+			densas += _noChao.Count(o => o.Zona == zona && _obras?.Get(o.Tipo) is { Densa: true });
+		}
+		if (densas > 0) GD.Print($"[server] construcoes que bloqueiam: {densas}");
 	}
 
 	private void GravarMundo()
@@ -454,6 +465,7 @@ public partial class GameServer
 		w.Put((ushort)daZona.Count);
 		foreach (Obra o in daZona)
 		{
+			Construcao? c = _obras?.Get(o.Tipo);
 			w.Put(o.Id);
 			w.Put(o.Tipo);
 			w.Put(o.X);
@@ -461,9 +473,51 @@ public partial class GameServer
 			w.Put(o.Aparafusada);
 			w.Put((byte)o.Lab);
 			w.Put(o.DonoNome);
+			// A ARTE VIAJA JUNTO. O cliente tem o catalogo, mas so o que ELE pode comprar -- e a
+			// bancada de outra pessoa tem que aparecer do mesmo jeito. Mandar o caminho aqui evita
+			// que "ver" dependa de "poder construir".
+			w.Put(c?.Arte ?? "");
+			w.Put(c?.Estado ?? "");
+			w.Put((float)(c?.PixelX ?? 0));
+			w.Put((float)(c?.PixelY ?? 0));
+			// ...e a DENSIDADE pelo mesmo motivo: o cliente tem que barrar o corpo no que o
+			// servidor barra, e sem isto ele teria que adivinhar pelo catalogo -- que so lista o
+			// que ELE pode comprar.
+			w.Put(c?.Densa ?? false);
 		}
 		foreach (ServerPlayer pl in _players.Values)
 			if (pl.Zone.Equals(zona)) pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+
+		AplicarColisaoDasObras(zona);
+	}
+
+	/// <summary>
+	/// AS CONSTRUCOES VIRAM PAREDE no mapa da zona.
+	///
+	/// ============================ POR QUE ISTO FALTAVA ============================
+	/// A queixa do dono foi sobre o banco: "o banco n tem fisica, eu atravesso ele". O banco do
+	/// MAPA foi consertado na arvore de tipos do proprio DM. Mas a construcao ERGUIDA por um
+	/// jogador nunca teve fisica em lugar nenhum -- ela era so um desenho no cliente. A mesma
+	/// Research Station bloqueia quando vem do `.dmm` e nao bloqueava quando alguem a construia.
+	/// ==============================================================================
+	///
+	/// REFAZ A ZONA INTEIRA em vez de somar a celula nova: e uma lista de dezenas, muda so quando
+	/// alguem constroi ou derruba, e o caminho incremental teria que acertar tambem o caso de
+	/// remocao -- que e onde uma parede fantasma ficaria pra tras sem nada apontando pra ela.
+	/// </summary>
+	private void AplicarColisaoDasObras(ZoneKey zona)
+	{
+		ZoneCollision? mapa = _catalogo?.Get(zona)?.Mapa;
+		if (mapa == null) return;
+
+		mapa.LimparObras();
+		foreach (Obra o in _noChao)
+		{
+			if (o.Zona != zona.Name) continue;
+			if (_obras?.Get(o.Tipo) is not { Densa: true }) continue;
+			(int cx, int cy) = CatalogoDeObras.Celula(o.X, o.Y);
+			mapa.Bloquear(cx, cy);
+		}
 	}
 
 	/// <summary>Manda o catalogo com o motivo de cada recusa PRA MIM. E a aba Tech.</summary>

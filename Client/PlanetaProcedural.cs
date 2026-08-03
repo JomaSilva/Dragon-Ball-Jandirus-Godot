@@ -416,16 +416,23 @@ public partial class PlanetaProcedural : Planeta
 	private static ZoneCollision? MapaDoQueEsconde(TerrenoGerado t)
 	{
 		int n = t.Largura * t.Altura;
-		var blob = new byte[8 + (n + 7) / 8];
-		blob[0] = (byte)'J'; blob[1] = (byte)'C'; blob[2] = (byte)'O'; blob[3] = (byte)'L';
-		blob[4] = (byte)(t.Largura & 0xFF); blob[5] = (byte)(t.Largura >> 8);
-		blob[6] = (byte)(t.Altura & 0xFF); blob[7] = (byte)(t.Altura >> 8);
+		var bits = new byte[(n + 7) / 8];
+
+		// O PLANO DE IDENTIDADE SAI DE GRACA AQUI: a "identidade do tile" de um planeta gerado e
+		// a propria CLASSE DE TERRENO, que ja esta no `t.Chao`. Sem ele, a sombra num mundo gerado
+		// cairia no caminho de degradacao (`SemGrupo`) e voltaria a parar na primeira parede --
+		// que e menos errado, mas nao e o que os planetas pre-feitos passam a fazer.
+		var grupo = new byte[n];
 
 		for (int i = 0; i < n; i++)
-			if (t.Chao[i] == (byte)ClasseDeTerreno.Montanha)
-				blob[8 + (i >> 3)] |= (byte)(1 << (i & 7));
+		{
+			if (t.Chao[i] != (byte)ClasseDeTerreno.Montanha) continue;
+			bits[i >> 3] |= (byte)(1 << (i & 7));
+			// +1 pra nao colidir com o 0, que e "borda do mundo" nos mapas pre-feitos
+			grupo[i] = (byte)(t.Chao[i] + 1);
+		}
 
-		return ZoneCollision.Load(blob);
+		return ZoneCollision.Montar(t.Largura, t.Altura, bits, grupo);
 	}
 
 	/// <summary>

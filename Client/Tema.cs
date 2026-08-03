@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 
 namespace Jandirus.Client;
 
@@ -33,6 +33,10 @@ public static class Tema
     public static readonly Color Destaque = new("f0a041");     // laranja do gi
     public static readonly Color Vida = new("d8483f");
     public static readonly Color Ki = new("3fa9d8");
+
+    /// <summary>VIGOR: verde-oliva. Longe do vermelho da vida e do azul do Ki -- tres barras
+    /// empilhadas precisam se distinguir de relance, no meio de uma luta.</summary>
+    public static readonly Color Vigor = new("7fb356");
     public static readonly Color Perigo = new("e05a4a");
     public static readonly Color Bom = new("5fc46a");
 
