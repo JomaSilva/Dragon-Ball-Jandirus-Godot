@@ -159,6 +159,7 @@ public partial class World : Node2D
 			cli.PortasMudaram += AoMudarPortas;
 			cli.CenarioCaiu += AoCairCenario;
 			cli.CenarioRefeito += AoRefazerCenario;
+			cli.FeridasMudaram += AoMudarFeridas;
 			// O Boot instancia o World DENTRO do callback de Joined, ou seja, este _Ready
 			// roda DEPOIS do evento. Assinar nao basta: se ja entramos, aplica agora.
 			if (cli.LocalId != 0) AoEntrar(cli.LocalId, cli.Zone, cli.LocalSpawn, cli.LocalName);
@@ -204,6 +205,7 @@ public partial class World : Node2D
 			cli.PortasMudaram -= AoMudarPortas;
 			cli.CenarioCaiu -= AoCairCenario;
 			cli.CenarioRefeito -= AoRefazerCenario;
+			cli.FeridasMudaram -= AoMudarFeridas;
 		}
 	}
 
@@ -1411,7 +1413,31 @@ public partial class World : Node2D
 	/// <summary>Veste um boneco recem-criado com a aparencia que ja tiver chegado.</summary>
 	private void VestirSePuder(int id, Node corpo)
 	{
-		if (_visual == null || !_looks.TryGetValue(id, out var l)) return;
-		corpo.GetNode<CharacterVisual>("Visual").Vestir(_visual, l.Ap, l.Raca, l.Genero);
+		var v = corpo.GetNodeOrNull<CharacterVisual>("Visual");
+		if (v == null) return;
+
+		if (_visual != null && _looks.TryGetValue(id, out var l)) v.Vestir(_visual, l.Ap, l.Raca, l.Genero);
+
+		// AS FERIDAS TAMBEM SAO GUARDADAS. Mesma razao do `_looks`: o pacote pode ter chegado antes
+		// de este boneco existir -- e um corpo que nasce limpo depois de o servidor ja ter dito que
+		// ele esta destrocado e o mesmo desencontro que a aparencia teve.
+		if (GameClient.Instance?.Feridas.TryGetValue(id, out var m) == true) v.Ferir(m, id);
+	}
+
+	/// <summary>O CharacterVisual do meu proprio boneco. SO PRA BANCADA (`--diagferida`).</summary>
+	public CharacterVisual? VisualLocalDeTeste =>
+		_local != null && IsInstanceValid(_local) ? _local.GetNodeOrNull<CharacterVisual>("Visual") : null;
+
+	/// <summary>Chegou mascara nova: acha o boneco (meu ou de outro) e repinta.</summary>
+	private void AoMudarFeridas(int id)
+	{
+		if (GameClient.Instance is not { } cli || !cli.Feridas.TryGetValue(id, out var m)) return;
+
+		CharacterVisual? v = id == cli.LocalId
+			? _local?.GetNodeOrNull<CharacterVisual>("Visual")
+			: _remotos.TryGetValue(id, out RemotePlayer? r) && IsInstanceValid(r)
+				? r.GetNodeOrNull<CharacterVisual>("Visual")
+				: null;
+		v?.Ferir(m, id);
 	}
 }

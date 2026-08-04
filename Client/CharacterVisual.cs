@@ -31,59 +31,38 @@ namespace Jandirus.Client;
 public partial class CharacterVisual : Node2D
 {
 	/// <summary>
-	/// O `ICON_ADD` do BYOND em GLSL: soma a cor depois da textura, preservando o alfa.
-	/// Compartilhado por todas as camadas de todos os personagens -- cada uma tem so o seu
-	/// material, com o seu valor de `tinta`.
+	/// O SHADER DE TODA CAMADA DO PERSONAGEM: a tinta do BYOND, os efeitos de impacto e as
+	/// FERIDAS. Um arquivo `.gdshader` de verdade, e nao uma string aqui dentro.
+	///
+	/// ============================ POR QUE ARQUIVO, E NAO CONSTANTE ============================
+	/// Ele era uma `const string` compilada junto. Funcionava -- e cobrava um preco alto pra quem
+	/// AJUSTA o efeito: cada meio ponto de intensidade de sangue custava recompilar o C# e reabrir
+	/// o jogo. Um efeito procedural nao se acerta lendo codigo, se acerta arrastando o valor e
+	/// OLHANDO; foi assim que o dono acertou o do jogo anterior, e ele pediu o mesmo aqui.
+	///
+	/// Como `.gdshader`, o editor do Godot abre, mostra os uniformes num painel e a previa
+	/// atualiza enquanto se arrasta -- exatamente o print que ele mandou de referencia.
+	/// ==========================================================================================
+	///
+	/// CARREGADO UMA VEZ e compartilhado por todas as camadas de todos os personagens; cada
+	/// camada tem so o seu `ShaderMaterial`, com os seus valores.
 	/// </summary>
-	private const string CodigoTinta = """
-		shader_type canvas_item;
-
-		// --- o ICON_ADD do BYOND: a APARENCIA depende disto, nao mexer ---
-		uniform vec3 tinta = vec3(0.0);
-
-		// --- impacto ---
-		uniform float flash : hint_range(0.0, 1.0) = 0.0;
-		uniform vec4  flash_cor : source_color = vec4(1.0, 0.95, 0.9, 1.0);
-		uniform float contorno : hint_range(0.0, 1.0) = 0.0;
-		uniform vec4  contorno_cor : source_color = vec4(1.0, 0.85, 0.35, 1.0);
-
-		// --- o corpo CEDE na direcao do golpe ---
-		uniform vec2  empurrao = vec2(0.0);
-		uniform float achatar : hint_range(-0.5, 0.5) = 0.0;
-
-		void vertex() {
-			// Centered = true: o quad ja esta centrado em (0,0) em pixels locais
-			VERTEX.x *= (1.0 + achatar);
-			VERTEX.y *= (1.0 - achatar);
-			VERTEX   += empurrao;
-		}
-
-		void fragment() {
-			vec4 c = texture(TEXTURE, UV);
-
-			c.rgb = clamp(c.rgb + tinta, 0.0, 1.0);
-
-			// CONTORNO: acende onde o pixel e opaco e um vizinho e transparente
-			if (contorno > 0.0) {
-				vec2 p = TEXTURE_PIXEL_SIZE;
-				float viz = texture(TEXTURE, UV + vec2( p.x, 0.0)).a
-						  * texture(TEXTURE, UV + vec2(-p.x, 0.0)).a
-						  * texture(TEXTURE, UV + vec2(0.0,  p.y)).a
-						  * texture(TEXTURE, UV + vec2(0.0, -p.y)).a;
-				c.rgb = mix(c.rgb, contorno_cor.rgb, c.a * (1.0 - viz) * contorno);
-			}
-
-			// FLASH por MISTURA, nao por multiplicacao: preserva a silhueta e o desenho.
-			// O `modulate` que fazia isto antes ESCURECIA o boneco -- levar um soco deixava
-			// o personagem mais apagado, que e o oposto do que um impacto deve parecer.
-			c.rgb = mix(c.rgb, flash_cor.rgb, flash * step(0.01, c.a));
-
-			COLOR = c;
-		}
-		""";
+	private const string CaminhoDoShader = "res://Assets/Shaders/Personagem.gdshader";
 
 	private static Shader? _shaderTinta;
-	private static Shader ShaderTinta => _shaderTinta ??= new Shader { Code = CodigoTinta };
+
+	private static Shader ShaderTinta => _shaderTinta ??= Carregar();
+
+	private static Shader Carregar()
+	{
+		if (ResourceLoader.Load<Shader>(CaminhoDoShader) is { } sh) return sh;
+
+		// SEM O ARQUIVO O PERSONAGEM NAO E DESENHADO DIREITO -- a tinta e o que da cor de pele e
+		// de cabelo. Um shader vazio deixaria o boneco na cor do arquivo bruto, e sem esta linha
+		// ninguem saberia por que.
+		GD.PushError($"[visual] nao achei {CaminhoDoShader} -- o personagem vai sair sem tinta nem ferida");
+		return new Shader { Code = "shader_type canvas_item;" };
+	}
 
 	private readonly List<AnimatedSprite2D> _camadas = [];
 	private AnimatedSprite2D? _corpo;
@@ -143,9 +122,34 @@ public partial class CharacterVisual : Node2D
 			Material = new ShaderMaterial { Shader = ShaderTinta },
 		};
 		s.SetMeta("ordem", ordem);
+
+		// A CAIXA DO QUADRO TEM QUE ACOMPANHAR A ANIMACAO.
+		//
+		// O shader de ferida divide o corpo em faixas (cabeca em cima, pernas embaixo) e pra isso
+		// precisa do UV DO QUADRO -- mas `UV` cobre a FOLHA inteira, e cada pose mora num
+		// retangulo diferente dela. Sem reenviar a caixa a cada troca de quadro, as faixas ficariam
+		// travadas no primeiro quadro e a ferida escorreria pelo corpo enquanto o boneco anda.
+		//
+		// Pelo SINAL, e nao por quadro de render: `FrameChanged` dispara quando a pose troca de
+		// verdade (~5-10 Hz), e nao 60 vezes por segundo pra reescrever o mesmo valor.
+		s.FrameChanged += () => AtualizarCaixa(s);
+		s.AnimationChanged += () => AtualizarCaixa(s);
+
 		AddChild(s);
 		_camadas.Add(s);
 		return s;
+	}
+
+	/// <summary>Manda pro shader onde este quadro comeca e acaba dentro da folha.</summary>
+	private static void AtualizarCaixa(AnimatedSprite2D s)
+	{
+		if (!IsInstanceValid(s) || s.Material is not ShaderMaterial m) return;
+		if (s.SpriteFrames is not { } sf || s.Animation.IsEmpty) return;
+		if (s.Frame < 0 || s.Frame >= sf.GetFrameCount(s.Animation)) return;
+
+		(Vector2 min, Vector2 max) = BorraoDirecional.Caixa(sf.GetFrameTexture(s.Animation, s.Frame));
+		m.SetShaderParameter("quadro_min", min);
+		m.SetShaderParameter("quadro_max", max);
 	}
 
 	/// <summary>
@@ -205,6 +209,155 @@ public partial class CharacterVisual : Node2D
 
 	private bool _corNaturalGuardada;
 	private Vector3 _corNatural;
+
+	// =====================================================================
+	// FERIDAS
+	// =====================================================================
+	/// <summary>Quem recebe ferida, e de que tipo. Ver o bloco `ferida_modo` no shader.</summary>
+	private const int ModoNada = 0, ModoPele = 1, ModoPano = 2;
+
+	/// <summary>A ultima mascara aplicada -- pra nao reescrever dez uniformes por quadro.</summary>
+	private Jandirus.Core.Combat.MascaraDeFeridas _feridas;
+	private bool _temFeridas;
+
+	/// <summary>
+	/// O SORTEIO DESTE CORPO. Dois lutadores com o mesmo estrago tem manchas em lugares
+	/// diferentes -- sem isto, uma briga de dois deixaria os dois com o MESMO respingo, e a
+	/// coincidencia denuncia o efeito como desenho gerado.
+	/// </summary>
+	private float _semente;
+
+	/// <summary>
+	/// PINTA (ou rasga) o corpo conforme o estrago que o servidor mandou.
+	///
+	/// ============================ QUEM RECEBE O QUE ============================
+	///   * CORPO -> hematoma e sangue. E a pele: ela fica roxa e depois sangra.
+	///   * ROUPA -> rasgo. Pano nao fica roxo, ele abre -- e o buraco mostra a pele ferida que a
+	///     camada de baixo ja pintou, que e o encaixe que faz o efeito valer a pena.
+	///   * CABELO, OLHOS, RABO -> nada. Foi o que o dono pediu, e faz sentido: cabelo nao
+	///     hematoma e olho nao rasga.
+	/// ===========================================================================
+	///
+	/// So mexe nos uniformes quando a mascara MUDA. Ela vem do servidor a 5 Hz e so quando o
+	/// corpo muda de cara -- reescrever dez parametros por quadro pra repetir o mesmo valor seria
+	/// pagar o efeito inteiro em todo mundo da tela, o tempo todo.
+	/// </summary>
+	public void Ferir(Jandirus.Core.Combat.MascaraDeFeridas m, int semente)
+	{
+		if (_temFeridas && _feridas == m) return;
+		_feridas = m;
+		_temFeridas = true;
+		_semente = (semente % 997) * 0.37f;
+
+		var hema = new float[Jandirus.Core.Combat.MascaraDeFeridas.Zonas];
+		var sang = new float[Jandirus.Core.Combat.MascaraDeFeridas.Zonas];
+		for (int i = 0; i < hema.Length; i++)
+		{
+			var z = (Jandirus.Core.Combat.ZonaDeFerida)i;
+			hema[i] = m.Hematoma(z);
+			sang[i] = m.Sangue(z);
+		}
+
+		if (_corpo != null) AplicarFerida(_corpo, ModoPele, hema, sang);
+		foreach (AnimatedSprite2D r in _roupa) AplicarFerida(r, ModoPano, hema, sang);
+	}
+
+	private void AplicarFerida(AnimatedSprite2D s, int modo, float[] hema, float[] sang)
+	{
+		if (!IsInstanceValid(s) || s.Material is not ShaderMaterial m) return;
+		m.SetShaderParameter("ferida_modo", modo);
+		m.SetShaderParameter("f_hema", hema);
+		m.SetShaderParameter("f_sang", sang);
+		m.SetShaderParameter("ferida_semente", _semente);
+		AplicarAmputacao(s);
+		AtualizarCaixa(s);
+	}
+
+	/// <summary>
+	/// O LADO DO CORPO NAO E O LADO DA IMAGEM, e a diferenca inverte quando o boneco vira.
+	///
+	/// De frente (o sprite `south`), o braco ESQUERDO dele aparece a DIREITA de quem olha -- a
+	/// mesma inversao de olhar alguem no espelho. De costas (`north`) os lados coincidem; de perfil
+	/// so um braco aparece e tanto faz.
+	///
+	/// Sem esta traducao, arrancar o braco esquerdo apagaria o direito na tela metade das vezes, e
+	/// o jogador veria o boneco discordando do paperdoll (que mostra o lado certo).
+	/// </summary>
+	private void AplicarAmputacao(AnimatedSprite2D s)
+	{
+		if (!IsInstanceValid(s) || s.Material is not ShaderMaterial m) return;
+
+		bool espelha = _facing is Facing.South;
+		Vector2 Lados(bool esq, bool dir) => espelha
+			? new Vector2(dir ? 1 : 0, esq ? 1 : 0)
+			: new Vector2(esq ? 1 : 0, dir ? 1 : 0);
+
+		m.SetShaderParameter("amp_braco", Lados(
+			_feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.BracoEsq),
+			_feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.BracoDir)));
+		m.SetShaderParameter("amp_perna", Lados(
+			_feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.PernaEsq),
+			_feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.PernaDir)));
+	}
+
+	/// <summary>
+	/// A direcao mudou: os lados do corpo trocam de lado na imagem, entao a amputacao tem que ser
+	/// reescrita. So faz trabalho se houver membro faltando.
+	/// </summary>
+	private void SeguirDirecaoNaAmputacao()
+	{
+		if (!_temFeridas || _feridas.Amputados == Jandirus.Core.Combat.MascaraDeFeridas.Membro.Nenhum) return;
+		if (_corpo != null) AplicarAmputacao(_corpo);
+		foreach (AnimatedSprite2D r in _roupa) AplicarAmputacao(r);
+	}
+
+	/// <summary>
+	/// Reaplica a mascara depois de uma troca de roupa.
+	///
+	/// Camada de roupa NASCE limpa: `Vestir` cria um `AnimatedSprite2D` novo com material novo, e
+	/// o material novo nao sabe de ferida nenhuma. Sem esta volta, trocar de camisa no meio de uma
+	/// luta curava a roupa -- e trocar de roupa nao fecha ferimento.
+	/// </summary>
+	/// <summary>
+	/// Em que modo cada familia de camada esta. SO PRA BANCADA (`--diagferida`).
+	///
+	/// Devolve (corpo, quantas roupas em modo pano, quantas OUTRAS camadas fora do modo 0) -- e a
+	/// terceira que importa: ela e zero quando cabelo, olhos e rabo ficaram de fora, como o dono
+	/// pediu. Sem isto, "so o corpo e a roupa recebem" seria afirmacao minha.
+	/// </summary>
+	public (int Corpo, int Roupas, int Outras) ModosDeTeste()
+	{
+		int Modo(AnimatedSprite2D? s) =>
+			s != null && IsInstanceValid(s) && s.Material is ShaderMaterial m
+				? (int)m.GetShaderParameter("ferida_modo") : -1;
+
+		int roupas = _roupa.Count(r => Modo(r) == ModoPano);
+		int outras = 0;
+		foreach (AnimatedSprite2D? o in new[] { _cabelo, _olhos, _rabo })
+			if (o != null && Modo(o) > 0) outras++;
+
+		return (Modo(_corpo), roupas, outras);
+	}
+
+	/// <summary>O shader sabe que o desenho esta deitado? SO PRA BANCADA (`--diagferida`).</summary>
+	public bool DeitadoDeTeste => _deitadoEnviado;
+
+	/// <summary>A caixa do quadro que o corpo mandou pro shader. SO PRA BANCADA.</summary>
+	public (float Min, float Max)? CaixaDeTeste()
+	{
+		if (_corpo is not { } s || !IsInstanceValid(s) || s.Material is not ShaderMaterial m) return null;
+		Vector2 mn = m.GetShaderParameter("quadro_min").AsVector2();
+		Vector2 mx = m.GetShaderParameter("quadro_max").AsVector2();
+		return (mn.X + mn.Y, mx.X + mx.Y);
+	}
+
+	private void ReaplicarFeridas()
+	{
+		if (!_temFeridas) return;
+		Jandirus.Core.Combat.MascaraDeFeridas m = _feridas;
+		_temFeridas = false;   // forca o `Ferir` a passar pelo caminho inteiro
+		Ferir(m, (int)(_semente / 0.37f));
+	}
 
 	/// <summary>Cor SOMADA a esta camada. Nulo = a cor natural do sprite.</summary>
 	private static void Tingir(AnimatedSprite2D s, Rgb? cor)
@@ -272,6 +425,9 @@ public partial class CharacterVisual : Node2D
 		MontarRabo();
 		Reordenar();
 		Aplicar(force: true);
+
+		// A ROUPA NOVA NASCE LIMPA, e trocar de roupa nao fecha ferimento. Ver `ReaplicarFeridas`.
+		ReaplicarFeridas();
 	}
 
 	/// <summary>
@@ -492,9 +648,12 @@ public partial class CharacterVisual : Node2D
 	public void SetMotion(Facing facing, bool moving)
 	{
 		if (_facing == facing && _moving == moving) return;
+		bool virou = _facing != facing;
 		_facing = facing;
 		_moving = moving;
 		Aplicar(force: false);
+		// VIROU: o braco esquerdo dele mudou de lado na tela. Ver `AplicarAmputacao`.
+		if (virou) SeguirDirecaoNaAmputacao();
 	}
 
 	// =====================================================================
@@ -720,6 +879,38 @@ public partial class CharacterVisual : Node2D
 		string? doCorpo = _corpo == null ? null : Escolher(_corpo, null);
 		foreach (AnimatedSprite2D s in _camadas) Aplicar(s, doCorpo, force);
 		_relogio = 0;
+		AvisarSeDeitado(doCorpo);
+	}
+
+	/// <summary>
+	/// AS POSES EM QUE O CORPO ESTA DEITADO DENTRO DO QUADRO.
+	///
+	/// Medido: das 48 animacoes do corpo, so o `ko` e um desenho deitado (pes em x=0, cabeca em
+	/// x=0.78). `flight`, `train` e `meditate` sao desenhos EM PE -- neles o node gira e o UV gira
+	/// junto, e o shader nao precisa saber de nada.
+	/// </summary>
+	private static bool PoseDeitada(string? pose) =>
+		pose != null && pose.StartsWith("ko", StringComparison.Ordinal);
+
+	private bool _deitadoEnviado;
+
+	/// <summary>
+	/// Diz ao shader que o corpo virou de lado DENTRO do desenho.
+	///
+	/// Sem isto o dono via o defeito exato: "quando voce gira o personagem por knock back ou ko, o
+	/// shader nao gira, com isso os ferimentos ficam no lugar errado (e a roupa tb fica errada)".
+	/// Girar o NODE resolve a pose na tela e nao mexe no que esta desenhado no quadro -- e o quadro
+	/// de nocaute ja vem deitado.
+	/// </summary>
+	private void AvisarSeDeitado(string? pose)
+	{
+		bool deitado = PoseDeitada(pose);
+		if (deitado == _deitadoEnviado) return;
+		_deitadoEnviado = deitado;
+
+		foreach (AnimatedSprite2D s in _camadas)
+			if (IsInstanceValid(s) && s.Material is ShaderMaterial m)
+				m.SetShaderParameter("ferida_deitado", deitado ? 1f : 0f);
 	}
 
 	/// <summary>

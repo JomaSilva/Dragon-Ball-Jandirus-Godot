@@ -303,6 +303,19 @@ public partial class GameClient : Node
 	/// </summary>
 	public event Action<bool, List<(int X, int Y, bool Aberta)>>? PortasMudaram;
 
+	/// <summary>
+	/// AS FERIDAS DE CADA CORPO DA ZONA, guardadas por id.
+	///
+	/// GUARDADAS, e nao so emitidas: o pacote chega quando o servidor quer, e o boneco de quem ele
+	/// descreve pode nem existir ainda -- quem CRIA o `RemotePlayer` e o snapshot. E a mesma dupla
+	/// do `PeerLook`, que ja resolveu isto: guarda sempre, aplica se o boneco existir, e o
+	/// nascimento do boneco consulta o que estava guardado.
+	/// </summary>
+	public readonly Dictionary<int, Jandirus.Core.Combat.MascaraDeFeridas> Feridas = [];
+
+	/// <summary>Chegou (ou mudou) a mascara de alguem: id.</summary>
+	public event Action<int>? FeridasMudaram;
+
 	/// <summary>Uma celula do cenario caiu (knockback contra parede): virou chao.</summary>
 	public event Action<int, int>? CenarioCaiu;
 
@@ -698,6 +711,14 @@ public partial class GameClient : Node
 					lista.Add(new CargoInfo(reader.GetString(32), reader.GetString(32), reader.GetString(160)));
 				Cargos = lista;
 				CargosMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Feridas:
+			{
+				int quem = reader.GetInt();
+				Feridas[quem] = reader.GetFeridas();
+				FeridasMudaram?.Invoke(quem);
 				break;
 			}
 

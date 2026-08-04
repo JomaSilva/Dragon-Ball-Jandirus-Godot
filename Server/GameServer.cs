@@ -171,6 +171,12 @@ public sealed class ServerPlayer
 	public Protocol.Poder Poderes;
 
 	/// <summary>
+	/// A ultima mascara de FERIDAS enviada. Mesma disciplina dos `Env*`: o pacote so sai quando o
+	/// corpo muda de cara, e nao a cada tique. Ver `GameServer.Feridas.cs`.
+	/// </summary>
+	public Jandirus.Core.Combat.MascaraDeFeridas EnvFeridas;
+
+	/// <summary>
 	/// OS BITS QUE NAO VEM DE SKILL -- hoje so o <see cref="Protocol.Poder.Admin"/>.
 	///
 	/// ============================ POR QUE ELE PRECISA EXISTIR ============================
@@ -517,6 +523,12 @@ public partial class GameServer : Node
 		// automatico que leva meio minuto pra COMECAR nao roda. Ver `NascerNaPorta`.
 		_portaDeTeste = Array.IndexOf(args, "--portateste") >= 0;
 		if (_portaDeTeste) GD.Print("[server] BANCADA: todo mundo nasce colado numa porta");
+
+		// `--feridateste`: nasce com uma ESCADA de estrago -- cada regiao do corpo num degrau
+		// diferente. E o unico jeito de ver as duas fases do efeito (o roxo e o sangue) na MESMA
+		// tela: numa luta de verdade elas aparecem separadas por minutos, e uma foto so pega uma.
+		_feridaDeTeste = Array.IndexOf(args, "--feridateste") >= 0;
+		if (_feridaDeTeste) GD.Print("[server] BANCADA: todo mundo nasce com uma escada de ferimentos");
 
 		// `--sem-admin-local`: ninguem vira admin so por conectar da propria maquina.
 		// E o que quem hospeda ATRAS DE TUNEL (playit.gg, ngrok, Docker) precisa ligar: por la
@@ -1116,6 +1128,10 @@ public partial class GameServer : Node
 		if (_techDeTeste > 0) pl.Ficha.techskill = Math.Max(pl.Ficha.techskill, _techDeTeste);
 		if (_zeniDeTeste > 0) pl.Ficha.Zeni = Math.Max(pl.Ficha.Zeni, _zeniDeTeste);
 		if (_marcosDeTeste > 0 && pl.Livro.MarcosLivres < _marcosDeTeste) pl.Livro.Conceder(_marcosDeTeste);
+		// DEPOIS do `PrepararCombate`, e nao antes: e ele que CRIA o corpo. A primeira versao
+		// disto rodava la em cima e saia calada, porque `pl.Combate` ainda era nulo -- exatamente
+		// o mesmo tropeco que o `--quebrarteste` deu com a zona.
+		if (_feridaDeTeste) FerirDeTeste(pl);
 		foreach (string sk in _skillsDeTeste) pl.Livro.Dar(sk);
 
 		// BANCADA: nasce direto num mundo sorteado (ver `--geradoteste`).
@@ -1185,6 +1201,7 @@ public partial class GameServer : Node
 		peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 
 		TrocarAparencias(pl);
+		TrocarFeridas(pl);
 
 		GD.Print($"[server] {pl.Name} entrou (id {pl.Id}) em {pl.Zone} | {pl.Race}/{pl.Class} " +
 				 $"| BP {pl.Ficha.BP:0.0} (expresso {pl.Ficha.expressedBP:0})");
@@ -1447,7 +1464,7 @@ public partial class GameServer : Node
 		// calibrado em 0,2 s por tique (5 Hz) e `TicksPorFicha` da exatamente isso a 30 Hz.
 		// Cadencia errada aqui nao quebra nada -- so faz a skill subir mais rapido ou mais
 		// devagar do que o original, calada.
-		if (++_tickCount % TicksPorFicha == 0) { TickFichas(); TickDosNiveis(); }
+		if (++_tickCount % TicksPorFicha == 0) { TickFichas(); TickDosNiveis(); TickDasFeridas(); }
 		if (_tickCount % TicksPorSegundo == 0)
 			{ TickDasTecnicas(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); }
 
@@ -1579,6 +1596,17 @@ public partial class GameServer : Node
 		// `.col` do cliente tem que casar com o do servidor (ver MandarPortas).
 		MandarPortas(pl);
 		MandarCenario(pl);
+
+		// A APARENCIA E AS FERIDAS TAMBEM SAO POR ZONA -- e isto faltava.
+		//
+		// `TrocarAparencias` so rodava no LOGIN. Quem viajava pra Namek entrava numa zona onde
+		// ninguem jamais recebeu o `PeerLook` dele: os que ja estavam la o viam com a aparencia
+		// padrao, e ele via os deles pelo mesmo motivo invertido. E a mesma familia de defeito das
+		// construcoes e das portas -- o pacote existe, sai uma vez, e quem nao estava presente
+		// naquele instante nunca soube. Mudar de planeta e exatamente "nao estar presente".
+		TrocarAparencias(pl);
+		TrocarFeridas(pl);
+
 		pl.Estudando = false;   // ninguem estuda de outro planeta
 		AplicarGravidade(pl);   // o chao mudou: o peso dele tambem
 	}

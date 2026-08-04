@@ -193,6 +193,25 @@ public static class Protocol
         /// NAO CARREGA SENHA: nem o sal, nem o hash. So o que o painel desenha.
         /// </summary>
         Contas = 26,
+
+        /// <summary>
+        /// AS FERIDAS DE UM CORPO: cinco bytes dizendo quanto cada regiao esta marcada.
+        ///
+        /// ============================ POR QUE UM PACOTE PROPRIO ============================
+        /// O <see cref="Corpo"/> ja carrega o estado de cada membro -- mas SO PRO DONO, porque
+        /// membro alheio e informacao de combate (saber que o braco do outro esta quebrado vale
+        /// uma luta). As feridas sao a parte VISIVEL disso: um corpo ensanguentado se ve de longe,
+        /// e todo mundo tem que ver o MESMO corpo.
+        ///
+        /// Nao entra no snapshot: dano por membro muda quando alguem apanha, nao trinta vezes por
+        /// segundo. Vai pelo caminho do <see cref="PeerLook"/> -- quando muda, e de novo pra quem
+        /// chega na zona.
+        ///
+        /// CINCO BYTES, um por regiao (cabeca, torso, abdomen, bracos, pernas), cada um com dois
+        /// nibbles: hematoma e sangue. Ver `Core.Combat.MascaraDeFeridas`.
+        /// ==================================================================================
+        /// </summary>
+        Feridas = 27,
     }
 
     /// <summary>
@@ -207,6 +226,21 @@ public static class Protocol
     /// `completo = 1` quer dizer "feche tudo que nao estiver aqui". E o que devolve o mapa ao
     /// estado de arquivo antes de aplicar o que o servidor sabe -- ver `ZoneCollision.FecharTudo`.
     /// </summary>
+    /// <summary>
+    /// A mascara de feridas: cinco bytes crus. Ver <see cref="Protocol.S2C.Feridas"/>.
+    ///
+    /// Escrita e leitura no MESMO lugar de proposito: o formato tem cinco campos anonimos e um
+    /// leitor escrito noutro arquivo e um leitor que vai destoar quando o corpo ganhar uma zona.
+    /// </summary>
+    public static void PutFeridas(this NetDataWriter w, Jandirus.Core.Combat.MascaraDeFeridas m)
+    {
+        for (int i = 0; i < Jandirus.Core.Combat.MascaraDeFeridas.Zonas; i++) w.Put(m.Bruto(i));
+        w.Put(m.AmputadosBruto);   // os quatro membros que somem quando arrancados
+    }
+
+    public static Jandirus.Core.Combat.MascaraDeFeridas GetFeridas(this NetDataReader r) =>
+        new(r.GetByte(), r.GetByte(), r.GetByte(), r.GetByte(), r.GetByte(), r.GetByte());
+
     public static void PutPortas(this NetDataWriter w, bool completo, IReadOnlyList<(int X, int Y, bool Aberta)> portas)
     {
         w.Put(completo);

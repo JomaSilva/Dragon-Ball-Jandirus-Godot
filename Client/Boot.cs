@@ -378,6 +378,12 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagnav") >= 0)
 			AddChild(new RoboDeNav { Name = "RoboDeNav" });
 
+		// --diagferida: bancada das FERIDAS. Confere a curva (roxo primeiro, sangue so no fim), que
+		// as camadas certas recebem, e tira uma foto. Sobe junto do `--feridateste` do servidor,
+		// que faz o corpo nascer com uma escada de estrago.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagferida") >= 0)
+			AddChild(new RoboDeFerida { Name = "RoboDeFerida" });
+
 		// --porta: bancada AO VIVO das portas. Anda contra a porta mais proxima e narra o que
 		// mede -- fechada bloqueia e cega, abriu ao encostar, atravessou, fechou sozinha. Sobe
 		// junto do `--portateste` no servidor, que faz nascer colado numa.
