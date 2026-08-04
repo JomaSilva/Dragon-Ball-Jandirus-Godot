@@ -143,7 +143,15 @@ public sealed class ServerPlayer
 	public int TiquesDeVoo;
 	public Vec2 RumoDoVoo;
 	public double ForcaDoVoo;
-	public long ProximoTiqueDeVoo;
+
+	/// <summary>
+	/// QUANTO DO TIQUE DO ORIGINAL ja foi andado, de 0 a 1.
+	///
+	/// O voo do DM anda em passos de 0,1 s valendo dois tiles cada. Andar isso de uma vez fazia o
+	/// corpo ficar 100 ms parado e depois pular 64 px -- ver `TickDoEmpurrao`. O passo agora e
+	/// fatiado pelo tique do servidor, e esta fracao e o que sobra entre um tique do DM e o outro.
+	/// </summary>
+	public double VooNoTique;
 
 	/// <summary>A aura acesa por excesso de Ki. Guardada pra ter HISTERESE -- ver CargaDeKi.AuraAcesa.</summary>
 	public bool AuraDeCarga;
@@ -570,6 +578,18 @@ public partial class GameServer : Node
 		{
 			_quebrarDeTeste = Math.Clamp(qv, 0, 200);
 			GD.Print($"[server] BANCADA: {_quebrarDeTeste} celulas de cenario caem no nascimento");
+		}
+
+		// `--diaggolpe`: cada soco relata a propria conta no console -- os dois BP expressos, o
+		// multiplicador que sai deles, os stats ofensivo e defensivo, e o motivo de um erro.
+		// Existe porque as duas queixas do dono ("a hitbox ta meio estranha" e "o adm tava dando
+		// +100 de dano") sao invisiveis pelo jogo: o cliente desenha erro de geometria e erro de
+		// pontaria do mesmo jeito, e nenhuma tela mostra o BP EXPRESSO do outro, que e o termo
+		// que multiplica o dano. Ver `ExplicarGolpe`.
+		if (Array.IndexOf(args, "--diaggolpe") >= 0)
+		{
+			_diagGolpe = true;
+			GD.Print("[server] BANCADA: cada soco vai relatar a propria conta ([golpe])");
 		}
 
 		// `--gestacaoteste N`: encurta a gestacao do bio-androide pra N segundos. Sem isto o teste

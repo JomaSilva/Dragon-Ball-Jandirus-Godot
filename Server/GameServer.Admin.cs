@@ -382,14 +382,33 @@ public sealed partial class GameServer
 		// arquivo com a marca velha e desfaria isto sozinho.
 		EmTodaCopiaViva(a.Conta, v => v.Admin = virar);
 
+		// ============================ O BIT NAO ESPERA O PROXIMO TIQUE ============================
+		// `AplicarPoderes` zera a assinatura pra o pacote de atributos sair "no proximo tique", e
+		// era so isso que ligava a promocao a aba do menu do outro lado. O dono reportou o furo:
+		// promover alguem online nao dava a aba a ele nem fechando e reabrindo o menu -- so depois
+		// de relogar, que e o caminho do disco.
+		//
+		// Zerar assinatura e uma DICA ("da pra mandar"); mandar e outra coisa. Aqui o pacote sai na
+		// hora, no mesmo lugar onde a decisao foi tomada, e a promocao deixa de depender de outro
+		// laco lembrar dela.
+		//
+		// O CONTADOR EXISTE porque o modo de falhar deste laco e silencioso: se nenhum
+		// `ServerPlayer` casar com a conta, a promocao grava em disco e some da sessao sem uma
+		// linha sequer. Dizer "0 online" e a diferenca entre um bug visivel e um bug invisivel.
+		int online = 0;
 		foreach (ServerPlayer p in _players.Values.Where(
 			p => string.Equals(p.Conta, a.Conta, StringComparison.OrdinalIgnoreCase)))
 		{
 			if (virar) p.PoderesConcedidos |= Protocol.Poder.Admin;
 			else if (!EhHost(p.Peer)) p.PoderesConcedidos &= ~Protocol.Poder.Admin;   // o host nunca perde
 			AplicarPoderes(p);
+			MandarAtributos(p);
 			Avisar(p, virar ? "voce recebeu poderes de administrador." : "seus poderes de administrador foram retirados.");
+			online++;
 		}
+
+		GD.Print($"[server] conta '{a.Conta}' {(virar ? "promovida" : "rebaixada")}"
+				 + $" -- {online} personagem(ns) online receberam o bit na hora");
 
 		Registrar(adm, $"{(virar ? "promoveu" : "rebaixou")} a conta '{a.Conta}'");
 		Avisar(adm, $"conta '{a.Conta}' {(virar ? "agora e administradora" : "nao e mais administradora")}.");

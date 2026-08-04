@@ -217,6 +217,7 @@ public partial class GameServer
 			// sozinho num canto do mapa -- so que sem o multiplicador de lutar contra alguem.
 			a.Ficha.AttackGain(_rng);
 			ca.ZerarCombo();
+			if (_diagGolpe) ExplicarSocoNoAr(a, investiu);
 			AnunciarSocoNoAr(a, zanzo, investiu);
 			return;
 		}
@@ -233,6 +234,7 @@ public partial class GameServer
 		// do original. Teto de 10: estilo desempata luta parelha, nao vence luta perdida.
 		GolpeResultado r = MeleeResolver.Resolver(ca, cd, angulo, _rng, tipo, DanoDeEstilo(a, alvo));
 		alvo.UltimoAgressor = a.Id;
+		if (_diagGolpe) ExplicarGolpe(a, alvo, r, angulo, investiu);
 
 		if (r.Encostou) ca.SomarCombo();
 		else ca.ZerarCombo();          // errou, foi aparado de longe ou tomou contra: recomeca
@@ -563,6 +565,86 @@ public partial class GameServer
 			else
 				o.Peer?.Send(wMagro, Protocol.ChannelState, DeliveryMethod.Unreliable);
 		}
+	}
+
+	// =====================================================================
+	// `--diaggolpe`: A CONTA DO SOCO, EM VOZ ALTA
+	// =====================================================================
+	/// <summary>
+	/// Liga o relato de cada soco no console do servidor. Ver <see cref="ExplicarGolpe"/>.
+	/// </summary>
+	private bool _diagGolpe;
+
+	/// <summary>
+	/// POR QUE O SOCO NAO PEGOU NINGUEM -- a diferenca que o jogador nao consegue ver.
+	///
+	/// ============================ DOIS ERROS QUE PARECEM UM ============================
+	/// Um soco pode falhar de dois jeitos completamente diferentes, e o cliente desenha os dois
+	/// igual (o mesmo som de vento):
+	///
+	///   * ERRO DE GEOMETRIA -- nao havia ninguem no alcance nem no cone. E o que este metodo
+	///     relata. Se acontece logo depois de uma investida, ha algo errado: a investida para a
+	///     um tile do alvo, bem dentro do alcance do soco.
+	///   * ERRO DE PONTARIA -- havia alguem, e o sorteio de `CombatMath.Pontaria` falhou. Isso e
+	///     mecanica, nao defeito, e sai pelo outro relato (`ExplicarGolpe`).
+	///
+	/// O dono relatou "mesmo dando o tp de soco o hit n pega". Sem separar os dois, nao da pra
+	/// saber se a queixa e de uma hitbox furada ou da taxa de acerto do personagem dele.
+	/// ===================================================================================
+	/// </summary>
+	private void ExplicarSocoNoAr(ServerPlayer a, bool investiu)
+	{
+		// QUEM ESTAVA POR PERTO, e por que cada um ficou de fora. Sem isto o relato diria so
+		// "nao achei ninguem", que e a pergunta e nao a resposta.
+		var perto = new List<string>();
+		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
+		{
+			if (o == a || o.Ficha.dead) continue;
+			Vec2 d = o.Pos - a.Pos;
+			float dist = d.Length;
+			if (dist > 200) continue;
+			double ang = MeleeArea.Angulo(MeleeArea.Frente(a.Facing), d);
+			perto.Add($"{o.Name} a {dist:0} px, {ang:0}° do olhar"
+					  + $" ({(dist <= CombatKnobs.Alcance ? "no alcance" : "LONGE")},"
+					  + $" {(ang <= CombatKnobs.MeioAnguloCone ? "no cone" : "FORA do cone")})");
+		}
+
+		GD.Print($"[golpe] {a.Name} socou o AR{(investiu ? " DEPOIS DE INVESTIR" : "")}"
+				 + $" | olhando {a.Facing} | alcance {CombatKnobs.Alcance:0} px, cone ±{CombatKnobs.MeioAnguloCone:0}°"
+				 + (perto.Count > 0 ? $" | por perto: {string.Join(" ; ", perto)}" : " | ninguem por perto"));
+	}
+
+	/// <summary>
+	/// A CONTA DO GOLPE QUE ACHOU ALGUEM: quem, quanto, e de onde saiu o numero.
+	///
+	/// ============================ POR QUE ISTO EXISTE ============================
+	/// O dono relatou um admin dando "+100 de dano" com apenas ~10 pontos de diferenca de BP.
+	/// Com BP parelho a formula rende uns 3 de dano por soco -- pra chegar a 100 falta um fator
+	/// de mais de trinta, e ele tem que estar em ALGUM dos termos.
+	///
+	/// O suspeito de sempre e o `BpModulus`, que e a RAZAO entre os dois BP EXPRESSOS e nao tem
+	/// teto: nocaute derruba o expresso pra um decimo do BP base, invisibilidade o trava em 5, e
+	/// um defensor com expresso zerado devolve 999 de multiplicador. Nenhuma dessas tres coisas
+	/// aparece na tela de quem esta apanhando, e todas produzem exatamente o que foi relatado.
+	///
+	/// Por isso o relato imprime os dois BP expressos e o multiplicador SEPARADOS do dano final:
+	/// com essas tres colunas na frente, o fator de trinta ou esta ali ou nao esta em lugar nenhum.
+	/// =============================================================================
+	/// </summary>
+	private void ExplicarGolpe(ServerPlayer a, ServerPlayer d, GolpeResultado r, double angulo, bool investiu)
+	{
+		double bpA = a.Ficha.expressedBP, bpD = d.Ficha.expressedBP;
+		GD.Print($"[golpe] {a.Name} -> {d.Name}: {r.Desfecho}, dano {r.Dano:0.##}"
+				 + $" | BP expresso {bpA:N0} vs {bpD:N0} (razao x{CombatMath.BpModulus(bpA, bpD):0.##})"
+				 + $" | BP base {a.Ficha.BP:N0} vs {d.Ficha.BP:N0}"
+				 + $" | physoff {a.Ficha.Ephysoff:0.##} vs physdef {d.Ficha.Ephysdef:0.##}"
+				 + $" | tecnica {a.Ficha.Etechnique:0.##}"
+				 + $" | angulo {angulo:0}° | dist {(d.Pos - a.Pos).Length:0} px"
+				 + $"{(investiu ? " | investiu" : "")}"
+				 + $"{(d.Ficha.KO ? " | ALVO NOCAUTEADO" : "")}"
+				 + $"{(d.Ficha.isconcealed ? " | ALVO INVISIVEL (expresso travado)" : "")}"
+				 + $"{(a.Ficha.isconcealed ? " | EU INVISIVEL (expresso travado)" : "")}"
+				 + $" | admin {(EhAdmin(a) ? "sim" : "nao")}");
 	}
 
 	// =====================================================================

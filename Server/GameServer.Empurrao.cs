@@ -59,7 +59,7 @@ public sealed partial class GameServer
 				d.TiquesDeVoo = tiques;
 				d.RumoDoVoo = MeleeArea.Frente(a.Facing);
 				d.ForcaDoVoo = a.Ficha.expressedBP;
-				d.ProximoTiqueDeVoo = NowMs();
+				d.VooNoTique = 0;
 
 				// A FICHA SAI AGORA, e nao no proximo tique de 5 Hz.
 				//
@@ -85,18 +85,38 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// O VOO, tique a tique. Roda no tick cheio e so mexe em quem esta no ar.
+	/// O VOO. Roda no tick cheio e so mexe em quem esta no ar.
+	///
+	/// ============================ O TIQUE DO DM E GROSSO DEMAIS PRA DESENHAR ============================
+	/// O original anda em passos de 0,1 s valendo DOIS TILES cada, e era assim que isto estava: o
+	/// corpo ficava 100 ms exatamente parado e entao pulava 64 px de uma vez. Quem assiste recebe
+	/// snapshot a 30 Hz, entao via dois quadros de corpo imovel e um de corpo deslizando 64 px --
+	/// dispara-para-dispara. Era o "quando toma knock back voa sem fluidez", e nao tinha conserto
+	/// possivel no cliente: a interpolacao estava reproduzindo com fidelidade um movimento que de
+	/// fato acontecia aos solavancos.
+	///
+	/// Agora o passo e FATIADO pelo tique do servidor -- um terco dele por vez, ~21 px a 30 Hz.
+	/// Distancia e duracao totais nao mudam (tres fatias fecham os mesmos dois tiles no mesmo
+	/// decimo de segundo), e `TiquesDeVoo` continua contando na moeda do DM, que e o que o dano do
+	/// baque le. O que muda e so que o corpo atravessa o caminho em vez de aparecer no fim dele.
+	///
+	/// A COLISAO SO MELHOROU: o caminho continua sendo varrido de meio tile em meio tile pra nao
+	/// pular parede, e agora isso acontece tres vezes por tique do original em vez de uma.
+	/// ======================================================================================================
 	/// </summary>
 	private void TickDoEmpurrao()
 	{
 		long agora = NowMs();
+
+		// Que fracao do tique do original cabe num tique do servidor. Com 30 Hz e 0,1 s, um terco.
+		double fatia = Protocol.TickSeconds / Empurrao.SegundosPorTique;
+
 		foreach (ServerPlayer pl in _players.Values)
 		{
-			if (pl.TiquesDeVoo <= 0 || agora < pl.ProximoTiqueDeVoo) continue;
-			pl.ProximoTiqueDeVoo = agora + (long)(Empurrao.SegundosPorTique * 1000);
+			if (pl.TiquesDeVoo <= 0) continue;
 
 			ZoneCollision? mapa = _catalogo?.Get(pl.Zone)?.Mapa;
-			Vec2 passo = pl.RumoDoVoo * (float)(Empurrao.TilesPorTique * ZoneCollision.TileSize);
+			Vec2 passo = pl.RumoDoVoo * (float)(Empurrao.TilesPorTique * ZoneCollision.TileSize * fatia);
 			Vec2 destino = pl.Pos + passo;
 
 			// ---- o que tem no caminho ----
@@ -114,13 +134,16 @@ public sealed partial class GameServer
 			}
 
 			// ============================ TODA PAREDE DO CAMINHO, NAO SO A DO FIM ============================
-			// O tique anda DOIS TILES de uma vez, e a versao anterior so testava a celula de DESTINO.
-			// Resultado: a parede que ficava no meio do salto era simplesmente atravessada -- o dono
-			// viu exatamente isso, "algumas paredes q ele passa n quebram".
+			// Quando o passo andava dois tiles de uma vez, testar so a celula de DESTINO deixava a
+			// parede do MEIO do salto ser atravessada -- o dono viu exatamente isso, "algumas paredes
+			// q ele passa n quebram". Por isso o passo e caminhado de meio tile em meio tile.
 			//
-			// Agora o passo e caminhado de MEIO TILE em meio tile. Cada parede encontrada e derrubada
-			// (se a forca vence) e o voo continua; a primeira que RESISTE para o corpo ali, no ultimo
-			// ponto livre -- que e a regra que o dono pediu e a mesma do `Ticked` do original.
+			// A VARREDURA CONTINUA VALENDO com o passo fatiado, e so ficou mais fina: a fatia mede
+			// 21 px contra os 16 do meio tile, entao sao duas amostras por tique do servidor e seis
+			// por tique do original -- onde antes eram quatro.
+			//
+			// Cada parede encontrada e derrubada (se a forca vence) e o voo continua; a primeira que
+			// RESISTE para o corpo ali, no ultimo ponto livre -- a mesma regra do `Ticked` do original.
 			// ================================================================================================
 			if (!parou && mapa != null)
 			{
@@ -148,10 +171,20 @@ public sealed partial class GameServer
 
 			pl.Pos = destino;
 
+			// O RELOGIO DO DM SO VIRA QUANDO AS FATIAS FECHAM UM TIQUE INTEIRO. `TiquesDeVoo` e a
+			// moeda do original -- e dela que sai o dano do baque (`Espalhar`) e a duracao do voo --
+			// entao ela continua contando de 0,1 em 0,1 s, por mais que o corpo ande tres vezes
+			// nesse intervalo. A folga no teste absorve o erro de ponto flutuante das tres somas.
+			if (parou) { pl.TiquesDeVoo = 0; pl.VooNoTique = 0; }
+			else
+			{
+				pl.VooNoTique += fatia;
+				if (pl.VooNoTique >= 1 - 1e-6) { pl.VooNoTique -= 1; pl.TiquesDeVoo--; }
+			}
+
 			// A OUTRA BORDA: o pouso. Mesma razao da decolagem -- sem isto o corpo ficava ate 200 ms
 			// torto e sem aceitar comando DEPOIS de ja ter parado.
-			bool pousou = parou || pl.TiquesDeVoo - 1 <= 0;
-			pl.TiquesDeVoo = parou ? 0 : pl.TiquesDeVoo - 1;
+			bool pousou = pl.TiquesDeVoo <= 0;
 
 			// O CLIENTE PRECISA SABER ONDE ELE ESTA, e com a sequencia carimbada -- senao os pacotes
 			// que ele ja mandou (da posicao antiga) seriam tratados como cliente errado e puxariam o

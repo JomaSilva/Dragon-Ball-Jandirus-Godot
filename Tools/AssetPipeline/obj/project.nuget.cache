@@ -1,13 +1,13 @@
 {
   "version": 2,
-  "dgSpecHash": "Tmsk25/I5js=",
+  "dgSpecHash": "bnT4cZIHHI0=",
   "success": true,
   "projectFilePath": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Tools\\AssetPipeline\\AssetPipeline.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\2a1bc3e0e0e1ceec226b5269a369ff2a\\nuget\\microsoft.netcore.app.ref\\8.0.27\\microsoft.netcore.app.ref.8.0.27.nupkg.sha512",
-    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\2a1bc3e0e0e1ceec226b5269a369ff2a\\nuget\\microsoft.windowsdesktop.app.ref\\8.0.27\\microsoft.windowsdesktop.app.ref.8.0.27.nupkg.sha512",
-    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\2a1bc3e0e0e1ceec226b5269a369ff2a\\nuget\\microsoft.aspnetcore.app.ref\\8.0.27\\microsoft.aspnetcore.app.ref.8.0.27.nupkg.sha512",
-    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\2a1bc3e0e0e1ceec226b5269a369ff2a\\nuget\\microsoft.netcore.app.host.win-x64\\8.0.27\\microsoft.netcore.app.host.win-x64.8.0.27.nupkg.sha512"
+    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\a20a225ac62e13f418c81a591d11aaa4\\nuget\\microsoft.netcore.app.ref\\8.0.27\\microsoft.netcore.app.ref.8.0.27.nupkg.sha512",
+    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\a20a225ac62e13f418c81a591d11aaa4\\nuget\\microsoft.windowsdesktop.app.ref\\8.0.27\\microsoft.windowsdesktop.app.ref.8.0.27.nupkg.sha512",
+    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\a20a225ac62e13f418c81a591d11aaa4\\nuget\\microsoft.aspnetcore.app.ref\\8.0.27\\microsoft.aspnetcore.app.ref.8.0.27.nupkg.sha512",
+    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\a20a225ac62e13f418c81a591d11aaa4\\nuget\\microsoft.netcore.app.host.win-x64\\8.0.27\\microsoft.netcore.app.host.win-x64.8.0.27.nupkg.sha512"
   ],
   "logs": []
 }
