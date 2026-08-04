@@ -179,6 +179,17 @@ public partial class RoboDeClima : Node
 
 				ConferirCamadasDoMapa(mundo);
 
+				// AS MAQUINAS DO MAPA. O `.dmm` da Terra tem uma bancada de pesquisa e dois
+				// bancos; ate agora eles eram celula de tilemap -- desenho parado, sem interacao.
+				// Chegarem aqui como CONSTRUCAO e a prova da cadeia inteira: conversor -> sidecar
+				// -> servidor -> pacote -> cliente.
+				int banco = cli.Obras.Count(o => o.Tipo == "Bank");
+				int bancada = cli.Obras.Count(o => o.Tipo == "Research_Station");
+				Conferir(banco > 0, $"os bancos do mapa chegam como construcao ({banco} na Terra)");
+				Conferir(bancada > 0, $"a bancada de pesquisa do mapa chega como construcao ({bancada})");
+				Conferir(cli.Obras.All(o => o.Densa || o.Tipo.Length == 0),
+					"as maquinas do mapa bloqueiam passagem, como no original");
+
 				// O NUBLADO É NOSSO, e tem que estar em todo planeta que já tem clima -- é o
 				// degrau leve que o DM não tinha.
 				Conferir(Array.IndexOf(Planetas.Clima(ZoneKey.Premade("Earth")).Permitidos,

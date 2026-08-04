@@ -1734,6 +1734,10 @@ public partial class GameServer : Node
 		Rabo = pl.TemRaboAgora(),
 		Oculto = EstaOculto(pl.Id),
 		Deitado = pl.Deitado,
+		// CORRER E DADO, NAO DEDUCAO. O cliente media a velocidade entre snapshots e comparava com
+		// a velocidade BASE do jogo -- entao quem tinha velocidade alta deixava rastro de corrida
+		// ANDANDO. Ver `EntityState.Correndo`.
+		Correndo = pl.Correndo && pl.Moving,
 		Carregando = pl.AuraDaCarga,   // o VISUAL, nao o estado -- ver GameServer.Carga.cs
 		Sobrecarregado = pl.AuraDeCarga,
 	};

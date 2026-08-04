@@ -19,6 +19,20 @@ public sealed class Obra
 	public bool Aparafusada;        // `Bolted`: aparafusada nao se carrega, e so o dono desfaz
 
 	/// <summary>
+	/// VEIO DO MAPA, e nao de alguem que a ergueu.
+	///
+	/// ============================ POR QUE ELA NAO VAI PRO DISCO ============================
+	/// Ela nasce do `.objetos` da zona a cada boot -- a fonte dela e o mapa, nao o `mundo.json`.
+	/// Gravar as duas juntas duplicaria cada bancada a cada reinicio, e no dia em que o mapa fosse
+	/// reconvertido o disco teria a versao velha discutindo com a nova.
+	///
+	/// No mais ela e uma construcao como qualquer outra: bloqueia, aparece na tela, responde aos
+	/// comandos e conta pro alcance de uso. E isso e a coisa toda -- a bancada que estava no mapa
+	/// desde sempre passa a servir pra estudar.
+	/// </summary>
+	public bool DoMapa;
+
+	/// <summary>
 	/// QUE LABORATORIO FOI INSTALADO no mainframe: 0 nenhum, 1 Android Lab, 2 Bio-Android Lab.
 	///
 	/// E assim no original e vale manter: nao se CONSTROI um laboratorio, se constroi o
@@ -140,14 +154,79 @@ public partial class GameServer
 			densas += _noChao.Count(o => o.Zona == zona && _obras?.Get(o.Tipo) is { Densa: true });
 		}
 		if (densas > 0) GD.Print($"[server] construcoes que bloqueiam: {densas}");
+
+		CarregarObjetosDoMapa();
+	}
+
+	/// <summary>
+	/// AS MAQUINAS QUE O MAPA JA TRAZ viram construcoes de pe.
+	///
+	/// ============================ O QUE ISTO CONSERTA ============================
+	/// Banco, bancada de pesquisa, sala de gravidade e os laboratorios estao espalhados pelos
+	/// `.dmm` do original desde sempre -- e eram celula de tilemap: desenho parado, sem estado e
+	/// sem resposta. Um jogador podia ERGUER uma bancada ao lado de outra que ja estava la e so a
+	/// dele funcionava. As duas eram a mesma maquina; uma era um node e a outra era pintura.
+	///
+	/// Registrando-as aqui, elas entram inteiras no sistema que ja existe: o mesmo pacote as
+	/// desenha, a mesma colisao as bloqueia, o mesmo alcance de uso as alcanca e os mesmos
+	/// comandos as usam. Estudar numa bancada do mapa passa a funcionar sem uma linha nova no
+	/// caminho de estudar.
+	/// =============================================================================
+	///
+	/// APARAFUSADAS de saida: `estudar` exige bancada aparafusada, e mobilia de mapa nao tem dono
+	/// pra aparafusar. Ela sempre esteve la -- e o mesmo que dizer que ela e parte do lugar.
+	/// </summary>
+	private void CarregarObjetosDoMapa()
+	{
+		if (_catalogo == null) return;
+
+		int n = 0, semArte = 0;
+		foreach (ZoneEntry e in _catalogo.Todas)
+		{
+			if (e.Objetos.Length == 0 || !Godot.FileAccess.FileExists(e.Objetos)) continue;
+
+			foreach (ObjetoDoMapa o in ObjetosDoMapa.Parse(Godot.FileAccess.GetFileAsString(e.Objetos)))
+			{
+				if (_obras?.Get(o.Id) == null) { semArte++; continue; }
+
+				// A CELULA VIRA PIXEL NO MEIO DELA. O conversor grava a celula; a obra guarda a
+				// posicao do CORPO que a ergueu, e `CatalogoDeObras.Celula` desfaz isso somando o
+				// deslocamento dos pes. Aqui a conta e a inversa, e tem que ser a mesma -- senao a
+				// maquina desenha uma celula acima de onde ela esta no mapa.
+				const int t = ZoneCollision.TileSize;
+				_noChao.Add(new Obra
+				{
+					Id = _proximaObraId++,
+					Tipo = o.Id,
+					Zona = e.Zona,
+					X = o.X * t + t / 2f,
+					Y = o.Y * t + t / 2f - MoveRules.FeetOffsetY,
+					DonoNome = "",
+					Aparafusada = true,
+					DoMapa = true,
+					ErguidaEm = 0,
+				});
+				n++;
+			}
+
+			AplicarColisaoDasObras(ZoneKey.Premade(e.Zona));
+		}
+
+		if (n > 0) GD.Print($"[server] maquinas do mapa: {n} viraram construcoes de pe");
+		if (semArte > 0)
+			GD.PushWarning($"[server] {semArte} maquina(s) do mapa sem entrada no catalogo -- "
+						   + "rode o AssetPipeline ('tech' e depois 'maps')");
 	}
 
 	private void GravarMundo()
 	{
 		try
 		{
+			// SO O QUE ALGUEM ERGUEU. A mobilia do mapa nasce do `.objetos` a cada boot; grava-la
+			// aqui duplicaria cada bancada a cada reinicio. Ver `Obra.DoMapa`.
 			System.IO.File.WriteAllText(CaminhoDoMundo,
-				JsonSerializer.Serialize(_noChao, new JsonSerializerOptions { IncludeFields = true, WriteIndented = true }));
+				JsonSerializer.Serialize(_noChao.Where(o => !o.DoMapa).ToList(),
+										 new JsonSerializerOptions { IncludeFields = true, WriteIndented = true }));
 		}
 		catch (Exception e) { GD.PushWarning($"[server] nao gravei o mundo: {e.Message}"); }
 	}

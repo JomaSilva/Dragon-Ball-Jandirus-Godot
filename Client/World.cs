@@ -47,7 +47,6 @@ public partial class World : Node2D
 	private readonly Dictionary<int, (string Raca, string Genero, Jandirus.Core.Appearance.Appearance Ap)> _looks = [];
 	private LocalPlayer? _local;
 	private readonly Dictionary<int, RemotePlayer> _remotos = [];
-	private readonly Dictionary<int, ulong> _ultimoPacoteMs = [];
 	private Iluminacao _luzDoMundo = null!;
 	private ZoneCatalog? _catalogo;
 	private ZoneCollision? _colisao;
@@ -188,13 +187,17 @@ public partial class World : Node2D
 			// O VISLUMBRE: por um quinto de segundo o meu proprio corpo volta a tela, ja no meio de
 			// um golpe. Pros OUTROS isto chega sozinho pelo snapshot (bit `Oculto` + pose Atacando);
 			// so o corpo local precisa de aviso, porque e o unico que nao vem por snapshot.
-			cli.ClashVislumbre += aparece =>
+			cli.ClashVislumbre += (aparece, olhar) =>
 			{
 				if (_local == null) return;
 				_local.Visible = aparece;
-				if (aparece)
-					_local.GetNodeOrNull<CharacterVisual>("Visual")?
-						  .RestartState("attack", Jandirus.Net.Protocol.AttackPoseMs / 1000.0);
+				// PELO DONO DA POSE, e nao escrevendo no visual direto. O corpo local reescreve o
+				// proprio estado a cada quadro (`LocalPlayer.LerAcoes`), entao uma pose posta por
+				// fora durava um quadro so -- e o vislumbre mostrava o OUTRO socando e eu parado.
+				//
+				// A DIRECAO VEM DO SERVIDOR: no embate quem decide quem encara quem e ele, e o
+				// teclado do jogador nao opina. Sem isto os dois socavam pra lados diferentes.
+				if (aparece) _local.PosarDeGolpe(Jandirus.Net.Protocol.AttackPoseMs / 1000.0, olhar);
 			};
 			// O CLIMA FORCADO: so ele vem do servidor. O natural as duas pontas calculam do
 			// mesmo tempo do mundo -- ver `S2C.Clima`.
@@ -951,9 +954,7 @@ public partial class World : Node2D
 				GD.Print($"[world] entrou no meu campo de visao: id {e.Id}");
 			}
 
-			double desde = _ultimoPacoteMs.TryGetValue(e.Id, out ulong antes) ? (agora - antes) / 1000.0 : Protocol.TickSeconds;
-			_ultimoPacoteMs[e.Id] = agora;
-			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, desde, e.Rabo);
+			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, e.Correndo, e.Rabo);
 			if (r.GetNodeOrNull<HealthBar>("Vida") is { } barra) barra.Vida = e.Vida / 100f;
 
 			// A AURA DE POWER-UP DO OUTRO. Vem no snapshot justamente pra isto (ver
@@ -992,7 +993,6 @@ public partial class World : Node2D
 			_marca = null;
 			c.SendAlvo(0);
 		}
-		_ultimoPacoteMs.Remove(id);
 	}
 
 	// =====================================================================

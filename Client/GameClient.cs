@@ -533,11 +533,15 @@ public partial class GameClient : Node
 	public event Action<int, int>? ClashAcabou;
 
 	/// <summary>
-	/// UM VISLUMBRE: apareci (true) ou sumi de novo (false).
+	/// UM VISLUMBRE: apareci (true) ou sumi de novo (false), e PRA ONDE eu estou virado.
 	///
 	/// So o corpo LOCAL precisa disto -- os outros aparecem sozinhos, pelo bit `Oculto` do snapshot.
+	///
+	/// A DIRECAO VEM JUNTO porque o corpo local desenha o olhar que o TECLADO manda, e num embate
+	/// quem manda e o servidor: sem ela, eu socava pro lado que estava segurando e o adversario
+	/// socava pro lado certo. Ver `GameServer.MandarVislumbre`.
 	/// </summary>
-	public event Action<bool>? ClashVislumbre;
+	public event Action<bool, Facing>? ClashVislumbre;
 
 	/// <summary>
 	/// A tecla CRUA que o jogador apertou. Quem julga se ela e a pedida e o SERVIDOR -- daqui sai
@@ -712,8 +716,11 @@ public partial class GameClient : Node
 						ClashBaque?.Invoke(reader.GetVec());
 						break;
 					case Protocol.ClashSub.Vislumbre:
-						ClashVislumbre?.Invoke(reader.GetBool());
+					{
+						bool aparece = reader.GetBool();
+						ClashVislumbre?.Invoke(aparece, (Facing)reader.GetByte());
 						break;
+					}
 
 					case Protocol.ClashSub.Acabou:
 					{

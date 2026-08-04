@@ -7,17 +7,43 @@ namespace Jandirus.Client;
 /// Outro jogador. O servidor manda posicao 30x por segundo; desenhar isso cru daria um
 /// personagem andando aos saltos.
 ///
-/// Solucao: RENDERIZAR UM PASSO ATRAS. Guardamos a amostra anterior e a atual e interpolamos
-/// entre as duas ao longo do intervalo do tick. O boneco fica ~33 ms no passado, e em troca
-/// se move liso mesmo com jitter. Se um pacote se perde (o canal e sequenciado, sem reenvio),
-/// a interpolacao simplesmente estica ate a proxima amostra.
+/// ============================ POR QUE A PRIMEIRA VERSAO ANDAVA "POR TILE" ============================
+/// Ela guardava duas amostras e interpolava entre elas ao longo do intervalo do pacote ANTERIOR,
+/// supondo que o proximo chegaria depois do mesmo tempo. Rede nao faz isso. Quando um pacote
+/// atrasava, o lerp terminava antes e o corpo FICAVA PARADO ate o proximo; quando adiantava, o
+/// lerp era cortado no meio e o corpo SALTAVA. Anda-para-anda-para -- que e exatamente a leitura
+/// de "movimento por tile" que o dono descreveu, e a mesma causa do arremesso sem fluidez.
+///
+/// Agora ha um BUFFER com carimbo de tempo e um ATRASO FIXO: desenha-se sempre o estado do mundo
+/// como ele era ha <see cref="Atraso"/> segundos, interpolando entre as duas amostras que cercam
+/// esse instante. O relogio do desenho e o do CLIENTE, contínuo, e nao a chegada dos pacotes --
+/// entao jitter deixa de virar movimento. Um pacote perdido tambem some: as amostras vizinhas
+/// cobrem o buraco, porque a que falta nao e mais o unico caminho entre duas posicoes.
+///
+/// E o esquema padrao de interpolacao de estado (o mesmo do Source e de qualquer coisa em rede);
+/// o preco e ver o outro corpo dois quadros no passado, que a 30 Hz sao 66 ms.
+/// ======================================================================================================
 /// </summary>
 public partial class RemotePlayer : Node2D
 {
+	/// <summary>
+	/// QUANTO DO PASSADO SE DESENHA, em segundos.
+	///
+	/// Dois tiques (66 ms). Um so nao deixa folga: qualquer pacote que chegue um milissegundo
+	/// atrasado ja obriga a extrapolar, e volta o engasgo. Tres seriam 100 ms de atraso visual,
+	/// que num jogo de troca de socos ja se sente na hora de reagir.
+	/// </summary>
+	private const double Atraso = 2 * Jandirus.Net.Protocol.TickSeconds;
+
+	/// <summary>
+	/// Quantas amostras guardar. Oito cobrem um quarto de segundo -- muito mais que o atraso, e o
+	/// bastante pra atravessar uma rajada de pacotes perdidos sem ficar sem par pra interpolar.
+	/// </summary>
+	private const int Amostras = 8;
+
 	private CharacterVisual _visual = null!;
-	private Vector2 _from, _to;
-	private double _elapsed;
-	private double _interval = Jandirus.Net.Protocol.TickSeconds;
+	private readonly List<(double T, Vector2 Pos)> _linha = [];
+	private double _relogio;
 	private Facing _facing = Facing.South;
 	private bool _moving;
 	private Jandirus.Net.Protocol.Pose _pose = Jandirus.Net.Protocol.Pose.Normal;
@@ -25,19 +51,8 @@ public partial class RemotePlayer : Node2D
 	public override void _Ready()
 	{
 		_visual = GetNode<CharacterVisual>("Visual");
-		_from = _to = Position;
 	}
 
-	/// <summary>
-	/// CRAVA O CORPO num ponto, sem suavizar.
-	///
-	/// A interpolacao existe pra encobrir os 33 ms entre dois snapshots -- ela NAO serve pra
-	/// suavizar um teleporte de servidor. Quando o servidor diz "este corpo esta AQUI, e o golpe
-	/// saiu daqui", deslizar ate la e mostrar um passado que ja acabou.
-	///
-	/// Zera o lerp inteiro (`_from`, `_to` e o relogio) pra o proximo snapshot partir DESTE ponto:
-	/// deixar `_to` velho faria o corpo voltar meio caminho no quadro seguinte.
-	/// </summary>
 	/// <summary>
 	/// Acima de quantos pixels num intervalo de snapshot o deslocamento SO pode ser teleporte.
 	///
@@ -48,20 +63,33 @@ public partial class RemotePlayer : Node2D
 	/// </summary>
 	private const float LimiteDeSalto = 3 * Jandirus.Core.World.ZoneCollision.TileSize;
 
+	/// <summary>
+	/// CRAVA O CORPO num ponto, sem suavizar.
+	///
+	/// A interpolacao existe pra encobrir o vao entre dois snapshots de um corpo que ANDA -- ela
+	/// NAO serve pra suavizar um teleporte de servidor. Quando o servidor diz "este corpo esta
+	/// AQUI, e o golpe saiu daqui", deslizar ate la e mostrar um passado que ja acabou.
+	/// </summary>
 	public void Cravar(Vector2 onde)
 	{
-		Position = _from = _to = onde;
-		_elapsed = 0;
+		Position = onde;
+		// A LINHA DO TEMPO INTEIRA MORRE. Deixar amostras velhas faria o corpo deslizar de volta
+		// pro caminho de onde ele acabou de ser arrancado, no quadro seguinte.
+		_linha.Clear();
+		_linha.Add((_relogio, onde));
 	}
 
+	/// <summary>
+	/// Chega um snapshot. NAO recebe mais "quanto tempo desde o ultimo pacote": a interpolacao
+	/// agora corre no relogio do cliente, com atraso fixo, e o intervalo entre chegadas -- que era
+	/// o que fazia o corpo engasgar -- deixou de participar do desenho. Ver o cabecalho da classe.
+	/// </summary>
 	public void Receive(Vec2 pos, Facing facing, bool moving, bool deitado, Jandirus.Net.Protocol.Pose pose,
-						double sinceLast, bool rabo = false)
+						bool correndo = false, bool rabo = false)
 	{
 		_visual.MostrarRabo(rabo);
-		_from = Position;                 // parte de onde o boneco esta DESENHADO (nao de onde deveria)
-		_to = new Vector2(pos.X, pos.Y);
-		_interval = sinceLast > 0.001 ? sinceLast : Jandirus.Net.Protocol.TickSeconds;
-		_elapsed = 0;
+		var alvo = new Vector2(pos.X, pos.Y);
+		Vector2 ultima = _linha.Count > 0 ? _linha[^1].Pos : alvo;
 
 		// ============================ SALTO NAO SE SUAVIZA ============================
 		// A interpolacao existe pra encobrir os 33 ms entre dois snapshots de um corpo que ANDA.
@@ -75,23 +103,22 @@ public partial class RemotePlayer : Node2D
 		// O CORTE E FISICO, nao um palpite: corpo nenhum anda mais que `LimiteDeSalto` num intervalo
 		// de snapshot -- o proprio servidor recusaria o passo (`MoveRules.ValidarPasso`). Acima
 		// disso so ha uma explicacao possivel, e ela nao se interpola.
-		if (_from.DistanceSquaredTo(_to) > LimiteDeSalto * LimiteDeSalto) Cravar(_to);
+		if (ultima.DistanceSquaredTo(alvo) > LimiteDeSalto * LimiteDeSalto) Cravar(alvo);
+		else
+		{
+			_linha.Add((_relogio, alvo));
+			if (_linha.Count > Amostras) _linha.RemoveAt(0);
+		}
 
 		_facing = facing;
 		_moving = moving;
 		_visual.SetMotion(facing, moving);
 
-		// CORRENDO SE DEDUZ, nao se recebe. O snapshot nao carrega "este esta correndo" e nao
-		// precisa: correr E andar mais rapido, e a velocidade esta ali, na distancia entre dois
-		// pacotes dividida pelo tempo entre eles. Um bit a mais no pacote diria a mesma coisa que
-		// a posicao ja diz -- e poderia DISCORDAR dela, que e o pior dos dois mundos.
-		//
-		// O CORTE EM 1,35x E A FOLGA DE VALIDACAO do proprio servidor (`MoveRules.SpeedTolerance`):
-		// abaixo disso a diferenca cabe em jitter de rede, acima disso e corrida de verdade.
-		float andou = _from.DistanceTo(_to);
-		double vps = _interval > 0.001 ? andou / _interval : 0;
-		bool correndo = moving && vps > MoveRules.BaseSpeedPx * MoveRules.SpeedTolerance;
-		_visual.Correr(correndo, _to - _from);
+		// CORRENDO VEM DO SERVIDOR, e nao da conta de velocidade que estava aqui. Ela comparava a
+		// distancia entre dois pacotes com a velocidade BASE do jogo -- e a velocidade de andar de
+		// cada personagem sai do `Espeed` dele, que cresce a vida inteira. Quem era rapido andando
+		// passava do corte e deixava rastro de corrida sem apertar shift. Ver `EntityState.Correndo`.
+		_visual.Correr(correndo, alvo - ultima);
 		if (GetNodeOrNull<RastroDeCorrida>("Rastro") is { } rastro) rastro.Definir(correndo);
 
 		// Socar REINICIA a animacao a cada vez que a pose (re)aparece -- e o que faz uma
@@ -122,8 +149,32 @@ public partial class RemotePlayer : Node2D
 
 	public override void _Process(double delta)
 	{
-		_elapsed += delta;
-		float t = (float)Math.Clamp(_elapsed / _interval, 0.0, 1.0);
-		Position = _from.Lerp(_to, t);
+		_relogio += delta;
+		if (_linha.Count == 0) return;
+
+		double quando = _relogio - Atraso;
+
+		// AINDA NAO HA PASSADO SUFICIENTE (o corpo acabou de entrar em campo): fica na primeira
+		// amostra em vez de deslizar de um lugar onde nunca esteve.
+		if (quando <= _linha[0].T) { Position = _linha[0].Pos; return; }
+
+		// O PAR QUE CERCA O INSTANTE. Varre de tras pra frente porque o que se procura esta quase
+		// sempre no fim -- o buffer inteiro tem 8 amostras, mas o caso comum e a ultima ou a penultima.
+		for (int i = _linha.Count - 1; i > 0; i--)
+		{
+			if (_linha[i - 1].T > quando) continue;
+
+			(double t0, Vector2 p0) = _linha[i - 1];
+			(double t1, Vector2 p1) = _linha[i];
+			double vao = t1 - t0;
+			Position = vao > 0.0001 ? p0.Lerp(p1, (float)Math.Clamp((quando - t0) / vao, 0, 1)) : p1;
+			return;
+		}
+
+		// O PACOTE ATRASOU e o instante de desenho passou da ultima amostra. NAO SE EXTRAPOLA:
+		// inventar posicao futura poe o corpo onde ele talvez nao va, e o preco do erro e um
+		// puxao pra tras quando o pacote chega. Segurar no ultimo ponto conhecido custa alguns
+		// milissegundos de corpo parado -- e a mentira menor das duas.
+		Position = _linha[^1].Pos;
 	}
 }

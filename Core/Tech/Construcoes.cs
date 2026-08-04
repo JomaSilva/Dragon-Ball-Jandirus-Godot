@@ -28,6 +28,28 @@ public sealed class Construcao
 
 	/// <summary>`pixel_x`/`pixel_y`: a Research Bench e 96 px de largura com `pixel_x = -32`.</summary>
 	public double PixelX, PixelY;
+
+	/// <summary>
+	/// O TYPEPATH DO QUE VAI PRO CHAO (`create_type`): `/obj/Technology/Research_Station`.
+	///
+	/// E a chave que liga o CATALOGO ao MAPA. Os `.dmm` do original ja tem bancadas, bancos e
+	/// mainframes espalhados, e ate agora eles viravam celula de tilemap -- desenho parado, sem
+	/// interacao nenhuma, ao lado de uma copia construida por jogador que funcionava. Com o
+	/// typepath aqui, o conversor reconhece a maquina no mapa e a transforma na MESMA coisa.
+	/// </summary>
+	public string Tipo = "";
+
+	/// <summary>
+	/// DA PRA CONSTRUIR ISTO, ou e so mobilia do mapa?
+	///
+	/// O banco e a unica coisa deste catalogo que ninguem ergue: ele nao e um `Creatable` do DM,
+	/// e um `/obj/Bank` posto a mao nos mapas. Ele entra aqui mesmo assim porque precisa de tudo
+	/// o que uma construcao tem -- arte, densidade, deslocamento, alcance de uso -- e duplicar
+	/// isso num segundo catalogo seria manter duas verdades sobre a mesma maquina.
+	///
+	/// Custo negativo e a marca. Ver `Ofertas`, que o esconde da loja.
+	/// </summary>
+	public bool Construivel => Custo >= 0;
 }
 
 /// <summary>Por que uma construcao foi recusada. Tipado pelo mesmo motivo das skills.</summary>
@@ -54,10 +76,20 @@ public enum RecusaObra
 public sealed class CatalogoDeObras
 {
 	private readonly Dictionary<string, Construcao> _porId = new(StringComparer.OrdinalIgnoreCase);
+	private readonly Dictionary<string, Construcao> _porTipo = new(StringComparer.Ordinal);
 
 	public int Total => _porId.Count;
 	public IEnumerable<Construcao> Todas => _porId.Values;
 	public Construcao? Get(string id) => _porId.GetValueOrDefault(id);
+
+	/// <summary>
+	/// A CONSTRUCAO CUJO `create_type` E ESTE TYPEPATH -- a ponte entre o catalogo e os `.dmm`.
+	///
+	/// E o que o conversor de mapa usa pra decidir que aquela celula nao e cenario: ela e uma
+	/// maquina que o jogo ja sabe desenhar, bloquear e usar. Ver `MapConverter`.
+	/// </summary>
+	public Construcao? PorTypepath(string typepath) =>
+		typepath.Length == 0 ? null : _porTipo.GetValueOrDefault(typepath);
 
 	/// <summary>
 	/// O QUE ESTE PERSONAGEM CONSEGUE COMPRAR AGORA, e o motivo de cada nao.
@@ -71,6 +103,9 @@ public sealed class CatalogoDeObras
 		var l = new List<(Construcao, RecusaObra)>();
 		foreach (Construcao c in _porId.Values.OrderBy(c2 => c2.Tech).ThenBy(c2 => c2.Custo))
 		{
+			// MOBILIA DE MAPA NAO E OFERTA. O banco existe no catalogo pra ter arte e densidade,
+			// nao pra ser vendido -- ver `Construcao.Construivel`.
+			if (!c.Construivel) continue;
 			RecusaObra r = Permitida(c, f, raca);
 			if (r == RecusaObra.RacaErrada) continue;   // nem existe pra voce: nao vira linha
 			l.Add((c, r));
@@ -101,6 +136,9 @@ public sealed class CatalogoDeObras
 
 	public static RecusaObra Permitida(Construcao c, Fighter f, string raca)
 	{
+		// NAO SE CONSTROI MOBILIA DE MAPA. A guarda mora aqui e nao so no `Ofertas` porque o
+		// pedido de construir chega do CLIENTE, e esconder da lista nunca foi permissao.
+		if (!c.Construivel) return RecusaObra.NaoExiste;
 		if (c.Racas.Length > 0 && !c.Racas.Contains(raca, StringComparer.OrdinalIgnoreCase))
 			return RecusaObra.RacaErrada;
 		if (f.techskill < c.Tech) return RecusaObra.SemTech;
@@ -126,8 +164,15 @@ public sealed class CatalogoDeObras
 				Densa = Num(bloco, "densa") > 0,
 				PixelX = Num(bloco, "px"),
 				PixelY = Num(bloco, "py"),
+				Tipo = Str(bloco, "tipo"),
 			};
-			if (c.Id.Length > 0) cat._porId[c.Id] = c;
+			if (c.Id.Length == 0) continue;
+			cat._porId[c.Id] = c;
+
+			// A PRIMEIRA VENCE. Duas entradas podem apontar pro mesmo `create_type` (o Creatable e
+			// uma variante dele); a ordem do arquivo e por tech e custo, entao a primeira e a mais
+			// barata -- que e a que faz sentido um mapa ter espalhado.
+			if (c.Tipo.Length > 0) cat._porTipo.TryAdd(c.Tipo, c);
 		}
 		return cat;
 	}

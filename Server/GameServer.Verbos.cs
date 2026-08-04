@@ -74,6 +74,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private void Verbo(ServerPlayer pl, string cmd, string arg)
 	{
+		// O BANCO ANTES DO RESTO. Sao tres comandos com prefixo proprio e uma guarda so (estar
+		// perto de um caixa), entao eles moram num arquivo separado -- ver GameServer.Banco.cs.
+		if (ComandoDeBanco(pl, cmd, arg)) return;
+
 		switch (cmd)
 		{
 			// ---------------------------------------------------------- todos

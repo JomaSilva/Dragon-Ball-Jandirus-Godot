@@ -665,6 +665,19 @@ if (args.Length >= 5 && args[0] == "maps")
     var fichas = Jandirus.Tools.DmPlanetScanner.Scan(Path.GetFullPath(args[2]));
     MapConverter.UsarPlanetas(Jandirus.Core.World.CatalogoDePlanetas.Parse(
         Jandirus.Tools.DmPlanetScanner.ParaJson(fichas)));
+
+    // O CATALOGO DE CONSTRUCOES, pra reconhecer maquina no meio do mapa. Sem ele nada e extraido
+    // e banco e bancada continuam virando tile -- um pipeline pela metade nao pode APAGAR objeto
+    // do mapa. Rode o comando `tech` antes se este aviso aparecer.
+    string cjObras = System.IO.Path.Combine("Assets", "Data", "construcoes.json");
+    if (System.IO.File.Exists(cjObras))
+    {
+        var cat = Jandirus.Core.Tech.CatalogoDeObras.Parse(System.IO.File.ReadAllText(cjObras));
+        MapConverter.UsarObras(cat);
+        Console.WriteLine($"construcoes no catalogo: {cat.Total}");
+    }
+    else Console.WriteLine("AVISO: sem construcoes.json -- as maquinas do mapa ficam como tile "
+                           + "(rode o comando 'tech' antes)");
     Console.WriteLine($"planetas com ficha: {fichas.Count}");
     Console.WriteLine($"turfs: {turfDefs.Count}");
     MapConverter.Convert(Path.GetFullPath(args[1]), Path.GetFullPath(args[3]), Path.GetFullPath(args[4]), turfDefs);

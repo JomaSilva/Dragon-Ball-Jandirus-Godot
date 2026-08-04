@@ -89,6 +89,22 @@ public static class VerbosDoJogo
 			"Quem esta no mundo agora, e onde.",
 			() => C?.SendVerbo("quem")));
 
+		// O BANCO. Ele existe nos mapas do original desde sempre (dezessete deles, um por cidade)
+		// e ate agora era celula de tilemap -- desenho parado. Agora e uma construcao de verdade,
+		// e estes tres verbos sao o que ele FAZ. Sem argumento = tudo, que e o uso de sempre:
+		// chegar, guardar, sair. Ver `GameServer.Banco.cs`.
+		Verbos.Registrar(new Verbo("Bank: Balance", Verbos.Outros,
+			"Quanto voce tem no bolso e quanto tem guardado. Precisa estar num banco.",
+			() => C?.SendVerbo("banco_ver")));
+
+		Verbos.Registrar(new Verbo("Bank: Deposit All", Verbos.Outros,
+			"Guarda todo o zeni do bolso. O que esta no banco nao se perde ao morrer.",
+			() => C?.SendVerbo("banco_depositar")));
+
+		Verbos.Registrar(new Verbo("Bank: Withdraw All", Verbos.Outros,
+			"Tira do cofre tudo o que voce guardou.",
+			() => C?.SendVerbo("banco_sacar")));
+
 		// =====================================================================
 		// ADMIN -- o servidor confere de novo. Ver GameServer.Admin.cs.
 		//

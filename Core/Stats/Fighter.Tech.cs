@@ -34,8 +34,20 @@ public partial class Fighter
 	/// </summary>
 	public bool AndroideAbsorcao, AndroideInfinito;
 
-	/// <summary>Dinheiro. O laboratorio de androide custa 1.000.000 disto.</summary>
+	/// <summary>Dinheiro NO BOLSO. O laboratorio de androide custa 1.000.000 disto.</summary>
 	public double Zeni;
+
+	/// <summary>
+	/// DINHEIRO NO BANCO -- o `Bank()` do original (`Modules/Tech/Bank.dm:2-23`).
+	///
+	/// POR QUE UM BANCO EXISTE NUM JOGO DE PORRADA: porque morrer custa, e o que esta guardado nao
+	/// se perde. Ele e a unica forma de poupanca do jogo, e e o que torna as construcoes de meio
+	/// milhao alcancaveis por quem apanha no caminho.
+	///
+	/// Campo novo em `Fighter`, que e serializado INTEIRO no save: quem nunca depositou carrega
+	/// zero e nada precisa migrar.
+	/// </summary>
+	public double ZeniBanco;
 
 	/// <summary>
 	/// XP acumulado rumo ao proximo ponto de tech. Guardado separado do nivel porque o nivel e

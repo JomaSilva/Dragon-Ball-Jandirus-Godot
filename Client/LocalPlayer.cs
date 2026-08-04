@@ -302,6 +302,39 @@ public partial class LocalPlayer : Node2D
 	private void Desenhar() => Position = new Vector2(MathF.Floor(_pos.X), MathF.Floor(_pos.Y));
 
 	/// <summary>
+	/// PÕE O CORPO NA POSE DE GOLPE por um tempo, sem que o golpe tenha vindo do teclado.
+	///
+	/// ============================ POR QUE ISTO PRECISA EXISTIR ============================
+	/// O corpo LOCAL não recebe pose por snapshot -- ele mesmo decide a sua, e `LerAcoes` reescreve
+	/// o estado a cada quadro ("default", "train", "meditate"). A única coisa que segura a pose de
+	/// soco é o relógio `_ataqueAte`, e ele só é armado no ramo do teclado.
+	///
+	/// Quem chamava `RestartState("attack")` de fora -- o vislumbre do Zanzo Clash -- via a pose
+	/// durar exatamente UM quadro: no seguinte, `LerAcoes` passava por cima. E como o corpo REMOTO
+	/// recebe a pose pelo snapshot, ela ficava lá; era essa a assimetria de "o outro aparece
+	/// socando e eu não".
+	///
+	/// Com isto o relógio e a pose andam juntos, e há um dono só pra os dois.
+	/// ======================================================================================
+	/// </summary>
+	public void PosarDeGolpe(double segundos, Facing? olhar = null)
+	{
+		if (segundos <= 0) return;
+
+		// A DIRECAO, QUANDO QUEM MANDA E O SERVIDOR. No embate e ele quem crava quem encara quem
+		// (ver `GameServer.Cruzar`), e o teclado do jogador nao opina -- sem isto o meu boneco
+		// socava pro lado que eu estava segurando enquanto o outro socava pro lado certo.
+		if (olhar is { } d)
+		{
+			_facing = d;
+			_visual.SetMotion(d, false);
+		}
+
+		_ataqueAte = segundos;
+		_visual.RestartState("attack", segundos);
+	}
+
+	/// <summary>
 	/// T treina, M medita, ESPACO soca. O cliente so DECLARA -- quem soma BP (e mais tarde
 	/// quem calcula o dano) e o servidor. A animacao roda na hora pra nao ter atraso no
 	/// controle; o servidor confirma pros OUTROS verem.

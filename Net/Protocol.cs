@@ -873,6 +873,9 @@ public struct EntityState
     /// <summary>Caido ou voando: o corpo desenha DEITADO, e o `Facing` vira a direcao da cabeca.</summary>
     public bool Deitado;
 
+    /// <summary>Correndo de verdade (concedido pelo servidor). Ver <see cref="BitCorrendo"/>.</summary>
+    public bool Correndo;
+
     private const byte BitCarregando = 0x01;
     private const byte BitSobrecarregado = 0x02;
 
@@ -890,6 +893,24 @@ public struct EntityState
     /// </summary>
     private const byte BitDeitado = 0x04;
 
+    /// <summary>
+    /// ESTE CORPO ESTA CORRENDO -- e nao andando depressa.
+    ///
+    /// ============================ POR QUE ISTO NAO SE DEDUZ ============================
+    /// O cliente deduzia: media a distancia entre dois snapshots e chamava de corrida tudo acima
+    /// de `BaseSpeedPx * SpeedTolerance`. A conta compara com a velocidade BASE do jogo, e nao
+    /// com a velocidade DESTE personagem -- que sai do `Espeed` dele e cresce a vida inteira.
+    /// Resultado: qualquer um com velocidade alta deixava rastro de corrida ANDANDO, e o dono viu
+    /// exatamente isso ("andar mesmo sem apertar shift tava deixando rastro").
+    ///
+    /// Nao havia como consertar a deducao sem mandar tambem a velocidade do personagem -- que sao
+    /// quatro bytes pra dizer o que um bit diz. E correr, aqui, nao e uma leitura de velocidade:
+    /// e uma DECISAO que o servidor concede (`GameServer.PodeCorrer`, que cobra Ki por segundo).
+    /// O dado existe, e autoritativo, e agora viaja.
+    /// ===================================================================================
+    /// </summary>
+    private const byte BitCorrendo = 0x08;
+
     public void Write(NetDataWriter w)
     {
         w.Put(Id);
@@ -899,7 +920,7 @@ public struct EntityState
                    | (Rabo ? 0x20 : 0x00) | (Oculto ? 0x40 : 0x00)
                    | (Moving ? 0x80 : 0x00)));
         w.Put((byte)((Carregando ? BitCarregando : 0) | (Sobrecarregado ? BitSobrecarregado : 0)
-                   | (Deitado ? BitDeitado : 0)));
+                   | (Deitado ? BitDeitado : 0) | (Correndo ? BitCorrendo : 0)));
         w.Put(Vida);
     }
 
@@ -916,6 +937,7 @@ public struct EntityState
         e.Carregando = (flags2 & BitCarregando) != 0;
         e.Sobrecarregado = (flags2 & BitSobrecarregado) != 0;
         e.Deitado = (flags2 & BitDeitado) != 0;
+        e.Correndo = (flags2 & BitCorrendo) != 0;
         e.Vida = r.GetByte();
         return e;
     }

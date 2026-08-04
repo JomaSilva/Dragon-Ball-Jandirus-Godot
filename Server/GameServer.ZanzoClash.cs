@@ -549,17 +549,23 @@ public sealed partial class GameServer
 			float r = RaioDoEmbate * (0.45f + (float)_rng.NextDouble() * 0.55f);
 			Vec2 tenta = e.Meio + new Vec2((float)Math.Cos(ang) * r, (float)Math.Sin(ang) * r);
 
-			// UM DE CADA LADO, a MEIO tile do ponto de encontro -- um tile entre os dois corpos, que
-			// e o `clung` do DM: adjacentes, colados, se encarando.
+			// ============================ SEMPRE LADO A LADO, NUNCA UM EM CIMA DO OUTRO ============================
+			// O deslocamento era um angulo sorteado no CIRCULO INTEIRO, com o argumento de que isso
+			// variava as poses. Variava -- e metade das variacoes ficava ruim: com os dois no eixo
+			// vertical um cobre o outro (o de baixo desenha por cima, por Y-sort), e nas diagonais o
+			// `FacingFrom` tem que escolher entre dois eixos e os dois podem cair em direcoes que
+			// nao se encaram.
 			//
-			// O ANGULO E SORTEADO A CADA CRUZAMENTO, e e ele que faz as poses variarem quando os dois
-			// aparecem: ora um a esquerda do outro, ora a direita, ora um acima.
+			// Sorteia-se o LADO, e nao o angulo: eles ficam sempre na horizontal, um de frente pro
+			// outro, e o que varia e QUEM fica na esquerda. E o `clung` do DM (adjacentes e virados
+			// um pro outro) sem o caso em que a camera de cima nao consegue mostrar a troca.
 			//
-			// ERA 0,9 TILE, e o dono viu: "a posiçao deles ainda esta estranha" -- 1,8 tile entre os
-			// corpos poe quase dois personagens de folga no meio, e a cena vira dois sujeitos
-			// olhando um pro outro de longe em vez de dois trocando golpes.
-			double la = _rng.NextDouble() * Math.Tau;
-			var meio = new Vec2((float)Math.Cos(la), (float)Math.Sin(la)) * (ZoneCollision.TileSize * 0.5f);
+			// A DISTANCIA E MEIO TILE PRA CADA LADO -- um tile entre os corpos. Ja foi 0,9, e o dono
+			// viu: "a posiçao deles ainda esta estranha", porque 1,8 tile de folga vira dois sujeitos
+			// se olhando de longe em vez de dois trocando golpes.
+			// =======================================================================================================
+			float sinal = _rng.Next(2) == 0 ? 1f : -1f;
+			var meio = new Vec2(sinal * ZoneCollision.TileSize * 0.5f, 0);
 
 			// A BEIRADA DO MAPA ESTA FORA. O `Occupied` recusaria um ponto FORA do mapa (celula de
 			// fora conta como parede), mas nao recusa a ultima coluna DE DENTRO -- e um embate que
@@ -583,8 +589,13 @@ public sealed partial class GameServer
 
 		// OS DOIS SE ENCARAM, como no `clung` do DM (`dir` e `turn(Dd,180)`). Importa pro fim: o
 		// vencedor nasce ATRAS do perdedor, e "atras" depende de pra onde ele esta olhando.
-		e.A.Facing = MoveRules.FacingFrom(e.B.Pos - e.A.Pos, e.A.Facing);
-		e.B.Facing = MoveRules.FacingFrom(e.A.Pos - e.B.Pos, e.B.Facing);
+		//
+		// LESTE E OESTE, CRAVADOS. Com os corpos sempre na horizontal (ver `lado` acima) nao ha o
+		// que deduzir, e cravar tira do caminho o `FacingFrom`, que precisa escolher um eixo e
+		// pode devolver o olhar ANTERIOR quando o vetor e curto demais.
+		bool aEstaNaDireita = lado.X > 0;
+		e.A.Facing = aEstaNaDireita ? Facing.West : Facing.East;
+		e.B.Facing = aEstaNaDireita ? Facing.East : Facing.West;
 
 		AvisarZona(e, w => { w.Put((byte)Protocol.ClashSub.Baque); w.PutVec(novo); });
 
@@ -639,11 +650,26 @@ public sealed partial class GameServer
 		}
 	}
 
+	/// <summary>
+	/// O VISLUMBRE VAI COM A DIRECAO, e e por isso que ele tem um byte a mais.
+	///
+	/// ============================ O CORPO LOCAL NAO SABE PRA ONDE ESTA VIRADO ============================
+	/// Quem desenha o corpo local e o proprio cliente, a partir do TECLADO dele -- o servidor manda
+	/// posicao (`Correction`) e ficha, mas o olhar de andar nasce no input. Num embate o corpo e do
+	/// SERVIDOR: ele recoloca os dois e crava quem encara quem (ver `Cruzar`). Quando o vislumbre
+	/// abria, o dono via o proprio boneco socando pro lado que ele estava segurando a tecla, e o
+	/// adversario -- que vem por snapshot, com a direcao certa -- socando pro outro. Os dois no
+	/// mesmo instante, virados pra lugares diferentes.
+	///
+	/// A direcao do embate so existe aqui, entao ela viaja aqui.
+	/// ======================================================================================================
+	/// </summary>
 	private static void MandarVislumbre(ServerPlayer p, bool aparece)
 	{
 		var w = Protocol.Begin(Protocol.S2C.Clash);
 		w.Put((byte)Protocol.ClashSub.Vislumbre);
 		w.Put(aparece);
+		w.Put((byte)p.Facing);
 		p.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 

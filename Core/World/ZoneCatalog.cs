@@ -13,6 +13,14 @@ public sealed class ZoneEntry
 	/// <summary>res:// das PORTAS da zona -- elas nao sao tile, sao entidade (ver MapConverter.EhPorta).</summary>
 	public string Portas = "";
 
+	/// <summary>
+	/// res:// das MAQUINAS que o mapa ja traz (banco, bancada, gravidade, labs).
+	///
+	/// Pelo mesmo motivo das portas: sao coisas com que se INTERAGE, e interacao nao cabe numa
+	/// celula de tilemap. O servidor as registra como construcoes -- ver `ObjetosDoMapa`.
+	/// </summary>
+	public string Objetos = "";
+
 	public int W, H;
 	public ZoneCollision? Mapa;   // carregado sob demanda
 }
@@ -47,6 +55,7 @@ public sealed class ZoneCatalog
 				Visao = Str(bloco, "visao"),
 				Luzes = Str(bloco, "luzes"),
 				Portas = Str(bloco, "portas"),
+				Objetos = Str(bloco, "objetos"),
 				W = (int)Num(bloco, "w"),
 				H = (int)Num(bloco, "h"),
 			};

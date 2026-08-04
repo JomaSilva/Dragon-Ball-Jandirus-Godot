@@ -63,8 +63,40 @@ public static class DmTechScanner
 
 		// SO INTERESSA O QUE TEM PRECO OU REQUISITO. `obj/Creatables` tambem e usado como base
 		// abstrata e por blocos que so declaram icone; sem preco nem requisito nao ha o que vender.
-		return [.. todas.Where(c => c.Custo > 0 || c.TechNecessario > 0)];
+		var lista = todas.Where(c => c.Custo > 0 || c.TechNecessario > 0).ToList();
+		lista.AddRange(MobiliaDeMapa());
+		return lista;
 	}
+
+	/// <summary>
+	/// ============================ A MOBILIA QUE NAO SE CONSTROI ============================
+	/// Maquinas que existem nos `.dmm` e NAO sao `Creatable` nenhum -- o dono nao as compra, elas
+	/// ja estao lá. O banco e o caso: `obj/Bank` (`Modules/Tech/Bank.dm:25`), com tres verbos
+	/// (`Bank`, `Deposit_Item`, `Retrieve_Item`) e `density = 1`.
+	///
+	/// ELAS ENTRAM NO MESMO CATALOGO das construidas, e nao num segundo arquivo, porque precisam
+	/// exatamente das mesmas coisas: arte, `icon_state`, densidade, deslocamento e alcance de uso.
+	/// Um catalogo separado seria uma segunda verdade sobre a mesma maquina, e a primeira coisa a
+	/// divergir seria a densidade -- que foi justamente o defeito que ja aconteceu aqui entre o
+	/// item de loja e o `create_type`.
+	///
+	/// CUSTO -1 E A MARCA de "nao se ergue" (ver `Construcao.Construivel`), e e ela que as tira da
+	/// loja e faz o servidor recusar um pedido de construir vindo de cliente modificado.
+	///
+	/// LISTA DECLARADA, e nao varredura. Da pra achar todo `/obj/` com `verb/` no DM, mas isso
+	/// traria arma, comida e remedio junto -- coisas que se CARREGAM, nao que ficam no chao. O que
+	/// entra aqui e mobilia: fica parada num tile e se usa de perto.
+	/// =======================================================================================
+	/// </summary>
+	private static IEnumerable<ConstrucaoDef> MobiliaDeMapa() =>
+	[
+		new()
+		{
+			Id = "Bank", Nome = "Bank", CreateType = "/obj/Bank",
+			Desc = "Deposita e saca zeni. O que fica no banco nao se perde ao morrer.",
+			Custo = -1, TechNecessario = -1,
+		},
+	];
 
 	private static void Ler(string arq, List<ConstrucaoDef> saida)
 	{
@@ -192,7 +224,10 @@ public static class DmTechScanner
 			sb.Append($"\"arte\": {J(d.Arte)}, \"estado\": {J(d.Estado ?? "")}, ");
 			sb.Append($"\"densa\": {(d.Densa ? 1 : 0)}, ");
 			sb.Append($"\"px\": {d.PixelX.ToString("0.##", CultureInfo.InvariantCulture)}, ");
-			sb.Append($"\"py\": {d.PixelY.ToString("0.##", CultureInfo.InvariantCulture)}");
+			sb.Append($"\"py\": {d.PixelY.ToString("0.##", CultureInfo.InvariantCulture)}, ");
+			// O TYPEPATH DO QUE VAI PRO CHAO. E a chave que o conversor de mapa usa pra reconhecer
+			// a mesma maquina dentro de um `.dmm` -- ver `CatalogoDeObras.PorTypepath`.
+			sb.Append($"\"tipo\": {J(d.CreateType)}");
 			sb.Append(" }");
 		}
 		return sb.Append("\n]\n").ToString();

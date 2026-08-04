@@ -49,7 +49,7 @@ public partial class RoboDeEmbate : Node
 	private double _fotoEm;
 	private readonly List<Vector2> _ondeCruzou = [];
 	private readonly HashSet<(int, int)> _celulasCaidas = [];
-	private int _vislumbres, _sumicos, _golpesVistos;
+	private int _vislumbres, _sumicos, _golpesVistos, _olharTorto;
 	private float _maiorVaoDoGolpe;
 	private bool _aVista;
 	private float _meuMult = 1;
@@ -108,10 +108,16 @@ public partial class RoboDeEmbate : Node
 			_maiorVaoDoGolpe = Math.Max(_maiorVaoDoGolpe, pa.DistanceTo(pd));
 		};
 
-		cli.ClashVislumbre += aparece =>
+		cli.ClashVislumbre += (aparece, olhar) =>
 		{
 			if (aparece) _vislumbres++; else _sumicos++;
 			_aVista = aparece;
+
+			// O EMBATE POE OS DOIS LADO A LADO, sempre -- nunca um em cima do outro. Se um
+			// vislumbre chegar com o olhar no eixo vertical, `Cruzar` voltou a sortear o circulo
+			// inteiro, e a cena vira um corpo cobrindo o outro (ver `GameServer.Cruzar`).
+			if (aparece && olhar is not (Jandirus.Core.World.Facing.East or Jandirus.Core.World.Facing.West))
+				_olharTorto++;
 		};
 		cli.ClashAcabou += Acabou;
 		GD.Print("[embate] esperando um adversario que saiba sumir...");
@@ -260,6 +266,12 @@ public partial class RoboDeEmbate : Node
 
 		Conferir(_vislumbres == _sumicos && !_aVista,
 			$"todo vislumbre fechou: {_vislumbres} apareceu / {_sumicos} sumiu");
+
+		// OS DOIS SE ENCARAM DE LADO, e a camera de cima consegue mostrar a troca. Com o corpo no
+		// eixo vertical um desenha por cima do outro (Y-sort) e o soco fica escondido -- era a
+		// queixa do dono ("n estao se batendo de frente, e as vezes eles estao pra lados opostos").
+		Conferir(_olharTorto == 0,
+			$"o olhar do embate e sempre leste/oeste: {_olharTorto} vislumbre(s) fora do eixo");
 		Conferir(_maiorPasso > 32,
 			$"quem moveu o corpo foi o SERVIDOR: {_maiorPasso:0} px sem um unico pedido de passo");
 		Conferir(_letras >= 3, $"o quick time event pediu {_letras} letra(s)");

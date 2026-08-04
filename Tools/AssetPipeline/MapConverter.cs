@@ -168,7 +168,7 @@ public static class MapConverter
 		foreach (string c in idx.Colisoes) Console.WriteLine("   " + c);
 
 		// ---- passada 2: uma cena por andar + o mapa de colisao que o SERVIDOR le ----
-		int cenas = 0, celulas = 0, bloqueadas = 0, totalPortas = 0;
+		int cenas = 0, celulas = 0, bloqueadas = 0, totalPortas = 0, totalMaquinas = 0;
 		var manifesto = new List<string>();
 		foreach ((string arquivo, DmmMap.Result dados, int off) in mapas)
 			foreach (DmmLevel nivel in dados.Levels)
@@ -184,7 +184,8 @@ public static class MapConverter
 				celulas += EscreverCena(cena, nome, nivel, dados, turfs, fontes, atlasPorNome,
 										semAtlas, ref proxId, out HashSet<(int, int)> paredes,
 										out Dictionary<(int, int), byte> cegos,
-										out List<string> portas);
+										out List<string> portas,
+										out List<string> maquinas);
 				bloqueadas += EscreverColisao(Path.Combine(outDir, nome + ".col"),
 											  nivel.Width, nivel.Height, paredes);
 				// mesmo formato, outro proposito: este e o que o CAMPO DE VISAO consulta
@@ -196,6 +197,12 @@ public static class MapConverter
 					new System.Text.UTF8Encoding(false));
 				totalPortas += portas.Count;
 
+				// AS MAQUINAS DO MAPA, pelo mesmo caminho e pelo mesmo motivo das portas.
+				File.WriteAllText(Path.Combine(outDir, nome + ".objetos"),
+					"[" + string.Join(",\n ", maquinas) + "]",
+					new System.Text.UTF8Encoding(false));
+				totalMaquinas += maquinas.Count;
+
 				cenas++;
 
 				string zona = nome[(nome.IndexOf('_') + 1)..];
@@ -203,6 +210,7 @@ public static class MapConverter
 							  $"\"colisao\": \"res://Assets/Maps/{nome}.col\", \"visao\": \"res://Assets/Maps/{nome}.vis\", " +
 							  $"\"luzes\": \"res://Assets/Maps/{nome}.luz\", " +
 							$"\"portas\": \"res://Assets/Maps/{nome}.portas\", " +
+							$"\"objetos\": \"res://Assets/Maps/{nome}.objetos\", " +
 							  $"\"w\": {nivel.Width}, \"h\": {nivel.Height} }}");
 			}
 
@@ -214,6 +222,7 @@ public static class MapConverter
 		Console.WriteLine($"mapas lidos    : {mapas.Count}");
 		Console.WriteLine($"cenas geradas  : {cenas}");
 		Console.WriteLine($"portas         : {totalPortas}");
+		Console.WriteLine($"maquinas       : {totalMaquinas} (saem do tilemap e viram construcao)");
 		Console.WriteLine($"celulas        : {celulas}");
 		Console.WriteLine($"fontes no tileset: {fontes.Count}");
 		if (semAtlas.Count > 0)
@@ -655,6 +664,17 @@ public static class MapConverter
 
 	public static void UsarPlanetas(Jandirus.Core.World.CatalogoDePlanetas c) => Planetas = c;
 
+	/// <summary>
+	/// O CATALOGO DE CONSTRUCOES, pra reconhecer maquina no meio do mapa.
+	///
+	/// Vazio quando o `construcoes.json` nao existe -- e ai nada e extraido e tudo continua virando
+	/// tile, que e o comportamento antigo. Um pipeline pela metade nao pode APAGAR objeto do mapa.
+	/// </summary>
+	private static Jandirus.Core.Tech.CatalogoDeObras Obras =
+		Jandirus.Core.Tech.CatalogoDeObras.Parse("[]");
+
+	public static void UsarObras(Jandirus.Core.Tech.CatalogoDeObras c) => Obras = c;
+
 	private static string NomeDoAndar(DmmMap.Result dados, DmmLevel nivel, int offset)
 	{
 		// a AREA dominante nomeia o andar: e o nome que o jogo ja usa pro lugar
@@ -747,7 +767,7 @@ public static class MapConverter
 		Dictionary<string, TurfDef> turfs, Dictionary<string, Fonte> fontes,
 		Dictionary<string, List<string>> atlasPorNome, HashSet<string> semAtlas, ref int proxId,
 		out HashSet<(int, int)> paredes, out Dictionary<(int, int), byte> cegos,
-		out List<string> portasDaCena)
+		out List<string> portasDaCena, out List<string> maquinasDaCena)
 	{
 		// local de verdade: um `out` nao pode ser capturado por funcao local
 		var muros = new HashSet<(int, int)>();
@@ -794,6 +814,9 @@ public static class MapConverter
 
 		var decoracao = new List<byte>();
 		AddU16(decoracao, 0);
+
+		// AS MAQUINAS DO MAPA saem da cena e viram uma lista ao lado -- mesmo caminho da porta.
+		var interativos = new List<string>();
 
 		var objetos = new List<byte>();
 		AddU16(objetos, 0);
@@ -914,6 +937,24 @@ public static class MapConverter
 			// e o vazio se nao tinha (la o turf E a camada de baixo, entao porta aberta ja mostrava
 			// o escuro).
 			bool porta = EhPorta(bp);
+
+			// ============================ MAQUINA NAO E CENARIO ============================
+			// Banco, bancada de pesquisa, sala de gravidade, regenerador, os laboratorios: no
+			// original todos tem VERBOS (`set src in oview(1)`), ou seja, sao coisas com que se
+			// INTERAGE. Aqui eles viravam celula de tilemap -- pintura no chao, sem estado e sem
+			// resposta -- ao lado de uma copia construida por jogador, que e um node e funciona.
+			// Duas coisas iguais na tela, uma viva e outra nao.
+			//
+			// Agora saem do tilemap pelo MESMO caminho da porta: uma lista ao lado da cena, e o
+			// servidor as registra como construcoes do mapa (ver `.objetos` e
+			// `GameServer.CarregarObjetosDoMapa`). O que as reconhece e o `create_type` do
+			// catalogo de tecnologia -- a mesma chave que ja diz qual arte e qual densidade cada
+			// uma tem, entao nao ha tabela nova pra manter em sincronia.
+			//
+			// A COLISAO CONTINUA NO `.col`, como a da porta: a maquina nao anda, e o bit ja esta
+			// calculado. O que muda e so quem DESENHA.
+			Jandirus.Core.Tech.Construcao? maquina = porta ? null : Obras.PorTypepath(bp);
+
 			if (porta)
 			{
 				// o .tres da folha e o mesmo caminho do .png, com outra extensao. Sai o da fonte
@@ -921,6 +962,10 @@ public static class MapConverter
 				// tileset, e o node quer o SpriteFrames com os estados nomeados.
 				string tres = Path.ChangeExtension(f.ResPath, ".tres");
 				portas.Add($"{{ \"x\": {x}, \"y\": {y}, \"arte\": \"{tres}\" }}");
+			}
+			else if (maquina != null)
+			{
+				interativos.Add($"{{ \"x\": {x}, \"y\": {y}, \"id\": \"{maquina.Id}\" }}");
 			}
 			else
 			{
@@ -1104,6 +1149,9 @@ public static class MapConverter
 		paredes = muros;
 		cegos = vendados;
 		portasDaCena = portas;
+		maquinasDaCena = interativos;
+		if (interativos.Count > 0)
+			Console.WriteLine($"  {nome}: {interativos.Count} maquina(s) saem do tilemap");
 		if (comObj > 0 || objSemArte > 0)
 			Console.WriteLine($"  {nome}: {comObj} objetos desenhados"
 							  + (objSemArte > 0 ? $" | {objSemArte} celulas com objeto SEM arte" : ""));

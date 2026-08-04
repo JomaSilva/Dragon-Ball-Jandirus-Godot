@@ -24,4 +24,4 @@ tile_map_data = PackedByteArray(0, 0, 135, 0, 2, 1, 135, 0, 0, 0, 0, 0, 0, 0, 15
 [node name="Objetos" type="TileMapLayer" parent="."]
 y_sort_enabled = true
 tile_set = ExtResource("1_ts")
-tile_map_data = PackedByteArray(0, 0, 207, 0, 250, 0, 15, 0, 2, 0, 0, 0, 0, 0, 196, 0, 6, 1, 131, 0, 0, 0, 0, 0, 0, 0, 241, 1, 26, 1, 159, 0, 0, 0, 0, 0, 0, 0)
+tile_map_data = PackedByteArray(0, 0, 196, 0, 6, 1, 131, 0, 0, 0, 0, 0, 0, 0, 241, 1, 26, 1, 159, 0, 0, 0, 0, 0, 0, 0)
