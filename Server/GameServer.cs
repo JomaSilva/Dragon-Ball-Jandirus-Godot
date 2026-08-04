@@ -1174,6 +1174,14 @@ public partial class GameServer : Node
 		// olho nao e esconder do jogo.
 		FichaVisivel(pl).Write(w);
 		w.PutAppearance(pl.Visual);
+
+		// A SEED DO UNIVERSO, JA NO LOGIN.
+		//
+		// Ela e a chave que faz o cliente conseguir DESENHAR a galaxia sozinho (todo planeta e
+		// funcao pura de seed + chunk). Antes ela so chegava no `S2C.Vizinhanca`, que so sai no
+		// espaco -- entao a carta estelar em terra firme so tinha os sete pre-feitos, e o motivo
+		// disso era invisivel pra quem estava olhando. Custa oito bytes uma vez por login.
+		w.Put(SeedDoUniverso);
 		peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 
 		TrocarAparencias(pl);

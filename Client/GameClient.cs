@@ -499,6 +499,9 @@ public partial class GameClient : Node
 				LocalName = nome;
 				Sheet = SheetState.Read(reader);
 				Visual = reader.GetAppearance();   // o servidor devolve a versao SANEADA
+				// A seed do universo vem JUNTO: a carta estelar precisa dela em terra firme, e nao
+				// so depois de decolar. Ver `MapaEstelar`.
+				SeedDoUniverso = reader.GetULong();
 				// SEM CLASSE E SEM BP. Isto e o console DO JOGADOR (o .log dele), nao o do servidor:
 				// imprimir a classe aqui e contar no arquivo o que a regra esconde na tela.
 				GD.Print($"[client] entrei como id {LocalId} em {Zone.Name} @ ({spawn.X:0}, {spawn.Y:0})");

@@ -372,6 +372,12 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagadmin") >= 0)
 			AddChild(new RoboDeAdmin { Name = "RoboDeAdmin" });
 
+		// --diagnav: bancada da CARTA ESTELAR. Um mapa desenhado nao devolve nada -- esta bancada
+		// mede o que o `_Draw` pinta: quantos planetas o enquadramento cobre, se os gerados entram
+		// ao aproximar, quanto custa a varredura, e se clicar e viajar fazem o que prometem.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagnav") >= 0)
+			AddChild(new RoboDeNav { Name = "RoboDeNav" });
+
 		// --porta: bancada AO VIVO das portas. Anda contra a porta mais proxima e narra o que
 		// mede -- fechada bloqueia e cega, abriu ao encostar, atravessou, fechou sozinha. Sobe
 		// junto do `--portateste` no servidor, que faz nascer colado numa.

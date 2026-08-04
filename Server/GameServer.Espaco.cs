@@ -41,6 +41,18 @@ public partial class GameServer
 		if (Espaco.EhEspaco(pl.Zone)) { Avisar(pl, "voce ja esta no espaco."); return; }
 		if (pl.CloneId != 0) { Avisar(pl, "primeiro saia da sua mente."); return; }
 
+		// MUNDO GERADO SOBE POR OUTRO CAMINHO -- e sem esta linha ele nao subia de jeito nenhum.
+		//
+		// `DecolarDeProcedural` existia, era publico, e nao era chamado por NINGUEM (o repo inteiro
+		// so tinha a definicao). Como a busca abaixo so varre os sete pre-feitos, um planeta
+		// sorteado -- cujo nome e "Verdejante-1042" e nao esta em lista nenhuma -- sempre caia no
+		// "este lugar nao fica no mapa do universo". Quem pousasse num mundo gerado ficava preso
+		// ali PARA SEMPRE, e o unico jeito de sair era morrer.
+		//
+		// Ficou invisivel enquanto nada convidava a pousar num gerado. A carta estelar convida: ela
+		// desenha centenas deles e poe um botao "Viajar" em cada um.
+		if (DecolarDeProcedural(pl)) return;
+
 		PlanetaNoEspaco? daqui = null;
 		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
 			if (string.Equals(p.Nome, pl.Zone.Name, StringComparison.OrdinalIgnoreCase)) { daqui = p; break; }
@@ -53,7 +65,10 @@ public partial class GameServer
 
 		pl.PlanetaDeOrigem = daqui.Value.Nome;
 		MoveToZone(pl.Id, ZonaDoEspaco, Espaco.PontoDeDecolagem(daqui.Value));
-		MandarVizinhanca(pl, forcar: true);
+		// A CHUNK DE CHEGADA JA E A ATUAL: sem isto o tick veria "mudou de chunk" no quadro
+		// seguinte e mandaria a vizinhanca DE NOVO, duplicada, a cada decolagem.
+		pl.ChunkAtual = ChunkId.De(pl.Pos);
+		MandarVizinhanca(pl);
 
 		Avisar(pl, $"voce deixa {daqui.Value.Nome} para tras. O silencio do espaco.");
 		GD.Print($"[server] {pl.Name} decolou de {daqui.Value.Nome} -> chunk {ChunkId.De(pl.Pos)}");
@@ -122,7 +137,13 @@ public partial class GameServer
 	/// So sai quando a CHUNK muda -- e a mesma disciplina do corpo e dos atributos. Andar dentro
 	/// da mesma chunk nao muda o que se ve.
 	/// </summary>
-	private static void MandarVizinhanca(ServerPlayer pl, bool forcar = false)
+	/// <remarks>
+	/// TINHA UM PARAMETRO `forcar` QUE NINGUEM LIA. Ele existia pra "forcar" o envio numa decolagem
+	/// que cai na mesma chunk -- mas quem decide se manda e o CHAMADOR (este metodo sempre manda),
+	/// entao ele nunca teve efeito nenhum. Saiu junto com o carimbo de `ChunkAtual`, que e o que
+	/// resolvia o problema de verdade.
+	/// </remarks>
+	private static void MandarVizinhanca(ServerPlayer pl)
 	{
 		if (pl.Peer == null) return;
 

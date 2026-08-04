@@ -179,6 +179,18 @@ public partial class LocalPlayer : Node2D
 		// preenche a direcao que o jogador preencheria com as teclas, e o passo continua
 		// passando pelo MoveRules e sendo conferido pelo servidor. Uma viagem de sete dias tem
 		// que custar sete dias.
+		// CAIDO OU CARREGANDO, O PILOTO DESLIGA -- e nao "fica guiando um corpo que nao anda".
+		//
+		// As duas condicoes zeram o INPUT logo acima, mas o piloto rodava depois e reenchia `dir`.
+		// O cliente entao andava; o servidor, que recusa movimento de quem esta carregando ou no
+		// chao, devolvia uma Correction por PACOTE -- trinta por segundo, o corpo tremendo e o
+		// console cuspindo aviso. Segurar C no meio de uma viagem e o caso comum.
+		if ((_caido || _carregando) && Destino != null)
+		{
+			Destino = null;
+			Chat.Sistema("piloto automatico desligado.");
+		}
+
 		if (!tentandoAndar && Destino is { } alvo)
 		{
 			Vec2 rumo = alvo - _pos;

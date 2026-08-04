@@ -616,7 +616,8 @@ public partial class GameServer
 			// e exatamente a regra do original.
 			// O NAV so existe NO ESPACO. Em terra firme um mapa estelar nao serve pra nada, e a
 			// aba apareceria vazia -- e aba vazia ensina que o sistema nao funciona.
-			Poderes = (uint)(Espaco.EhEspaco(pl.Zone) ? pl.Poderes | Protocol.Poder.Nav : pl.Poderes),
+			// A CARTA ESTELAR VALE EM QUALQUER LUGAR -- ver `PoderesVisiveis`, que e quem explica.
+			Poderes = (uint)PoderesVisiveis(pl),
 			FormaAtual = (ushort)pl.Forma.Atual,
 			Maestrias = [.. pl.Forma.Maestria.Todas.Select(t => ((ushort)t.F, (float)t.V))],
 		};

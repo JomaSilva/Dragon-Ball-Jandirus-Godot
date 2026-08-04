@@ -184,10 +184,11 @@ public partial class GameServer
 
 		pl.PlanetaDeOrigem = viva.NoEspaco.Nome;
 		MoveToZone(pl.Id, ZonaDoEspaco, Espaco.PontoDeDecolagem(viva.NoEspaco));
+		pl.ChunkAtual = ChunkId.De(pl.Pos);   // ver o mesmo carimbo no `Decolar`
 		// FORCAR a vizinhanca: ela so sai quando a CHUNK muda, e decolar cai na mesma chunk do
 		// planeta. Sem isto o jogador chega ao espaco sem nenhum planeta desenhado -- inclusive
 		// sem o que ele acabou de deixar.
-		MandarVizinhanca(pl, forcar: true);
+		MandarVizinhanca(pl);
 		Avisar(pl, $"voce deixa {viva.NoEspaco.Nome} para tras. O silencio do espaco.");
 		GD.Print($"[server] {pl.Name} decolou de {viva.NoEspaco.Nome} -> chunk {ChunkId.De(pl.Pos)}");
 		return true;

@@ -369,6 +369,19 @@ public partial class MenuJogo : CanvasLayer
 			// assinatura dela e so o que o painel DESENHA (a lista de contas e as marcas de cada
 			// uma) -- nada que mude a cada tick. O que o admin digitou fica fora da pagina, em
 			// `_avisoDigitado`/`_contaDigitada`, e volta pra caixa na remontagem.
+			// A ABA NAV TEM UM WIDGET COM ESTADO (zoom, arrasto, selecao), e por isso a assinatura
+			// dela NAO passa pelo `comum`.
+			//
+			// Uma assinatura vazia mandaria remontar a pagina a cada pacote de ficha e o mapa
+			// nasceria de novo, enquadrado no padrao, no meio do arrasto. Mas o `comum` tambem nao
+			// serve: ele carrega `f.Estado`, cujos dois bits altos sao a DIRECAO DO CORPO -- e ela
+			// e reescrita a cada pacote de input enquanto se anda. Com o menu aberto o personagem
+			// continua andando (o `Foco.Digitando` so vale se a BUSCA tiver foco), entao virar pra
+			// esquerda remontava a aba e jogava fora o zoom que o jogador acabou de ajustar.
+			//
+			// O que a aba mostra que muda de verdade: a zona (espaco ou nao, que liga o botao de
+			// viajar), a seed do universo, e a busca -- que troca o conteudo da pagina inteira.
+			"Nav" => $"{_busca.Text.Trim()}|{c?.Zone.Hash}|{c?.SeedDoUniverso}",
 			Verbos.Admin => $"{comum}|{c?.AlvoId}|"
 						  + string.Join(',', (c?.Contas ?? []).Select(a => $"{a.Conta}{a.Admin}{a.Banida}{a.Online}")),
 			"Ki" => $"{comum}|{f.Ki:0}|{f.MaxKi:0}|{c?.SkillsAprendidas.Count}",
@@ -650,57 +663,211 @@ public partial class MenuJogo : CanvasLayer
 	// NAV -- o mapa do espaco
 	// =====================================================================
 	/// <summary>
-	/// O MAPA ESTELAR: quem esta por perto, a que distancia, e quanto tempo leva pra chegar.
+	/// O MAPA ESTELAR: a galaxia desenhada, com zoom, arrasto e clique.
 	///
-	/// O TEMPO E O QUE IMPORTA na tela, nao a distancia. "1.608.035 px" nao diz nada a ninguem;
-	/// "7 dias" diz tudo -- e a mesma unidade em que o anime mede a viagem pra Namek. A conta sai
-	/// do Core (velocidade de voo x ciclo do dia), entao ela nao pode divergir do que a viagem
-	/// vai custar de verdade.
+	/// ============================ ERA UMA LISTA, E LISTA NAO E MAPA ============================
+	/// Esta aba mostrava os corpos celestes das tres chunks em volta, em texto, ordenados por
+	/// distancia. Isso responde "o que ha por perto" -- e nao responde a pergunta que faz um mapa
+	/// estelar existir, que e "PRA ONDE EU VOU". Sem posicao relativa nao da pra escolher rota, nao
+	/// da pra saber que Namek fica do lado oposto de Vegeta, e o universo inteiro cabe em cinco
+	/// linhas de texto que mudam quando voce anda.
+	///
+	/// O pedido do dono: "faca um mapa do espaco com todos os planetas que o servidor sabe onde
+	/// estao... voce clica nos planetas e seleciona viajar... e voce pode dar zoom e zoom out".
+	/// O desenho, o zoom e o clique moram no <see cref="MapaEstelar"/>; esta aba e a moldura.
+	/// ===========================================================================================
+	///
+	/// O TEMPO CONTINUA SENDO O QUE IMPORTA no texto: "1.608.035 px" nao diz nada a ninguem, "7
+	/// dias" diz tudo -- e a mesma unidade em que o anime mede a viagem pra Namek. A conta sai do
+	/// Core (velocidade de voo x ciclo do dia), entao ela nao pode divergir do que a viagem custa.
 	/// </summary>
 	private void AbaNav()
 	{
 		if (GameClient.Instance is not { } cli) return;
 
-		if (!Jandirus.Core.World.Espaco.EhEspaco(cli.Zone))
+		bool noEspaco = Jandirus.Core.World.Espaco.EhEspaco(cli.Zone);
+
+		// O MAPA APARECE EM TERRA FIRME TAMBEM -- so o botao de viajar e que nao.
+		//
+		// Ele e uma CARTA: consultar antes de decolar e metade do uso de uma carta estelar, e
+		// esconder o mapa de quem esta no chao obrigaria a subir pra descobrir aonde subir.
+		Secao(noEspaco ? "Carta estelar" : "Carta estelar (em terra: so leitura)");
+
+		_mapa = new MapaEstelar { Name = "MapaEstelar" };
+
+		// A BARRA VEM ANTES DO MAPA na arvore, e isso e proposital.
+		//
+		// O mapa e alto (a carta so serve grande) e a aba mora num ScrollContainer: com a barra
+		// EMBAIXO ela caia fora da area visivel e so aparecia depois de rolar -- os controles de
+		// zoom ficavam escondidos justamente na tela que existe pra dar zoom. Em cima, eles sao a
+		// primeira coisa que se ve.
+		var barra = new HBoxContainer();
+		foreach ((string rotulo, Action acao, string dica) in new (string, Action, string)[]
 		{
-			Aviso("o mapa estelar so serve no espaco. Use 'Decolar' (aba Other) pra subir.");
+			("+", () => _mapa.Zoom(1.6f), "aproximar (roda do mouse pra cima)"),
+			("-", () => _mapa.Zoom(1f / 1.6f), "afastar (roda do mouse pra baixo)"),
+			("centralizar em mim", () => _mapa.VerMim(), "poe voce no meio, num zoom de vizinhanca"),
+			("ver tudo", () => _mapa.VerTudo(), "enquadra os mundos com mapa proprio"),
+		})
+		{
+			var b = new Button { Text = rotulo, TooltipText = dica };
+			Action fazer = acao;
+			b.Pressed += () => fazer();
+			barra.AddChild(b);
+		}
+		_conteudo.AddChild(barra);
+		_conteudo.AddChild(_mapa);
+
+		// O PAINEL DO DESTINO fica FORA da remontagem da pagina: ele muda a cada clique no mapa, e
+		// remontar a aba inteira a cada clique jogaria fora o zoom e o arrasto que o jogador acabou
+		// de ajustar. Por isso o mapa avisa por evento e so este pedaco se refaz.
+		var painel = new VBoxContainer();
+		_conteudo.AddChild(painel);
+		_mapa.SelecaoMudou += () => DesenharDestino(painel, noEspaco);
+		_mapa.PediuViagem += p => Viajar(p, noEspaco);
+		DesenharDestino(painel, noEspaco);
+
+		Aviso("\nClique num planeta pra selecionar, duplo clique pra viajar. Arraste pra mover o mapa, "
+			+ "roda pra zoom. O laranja tem superficie pra pousar; o azul-acinzentado e mundo gerado -- "
+			+ "os menores so aparecem quando voce aproxima.");
+		Aviso("A viagem leva o tempo que diz: o piloto anda no passo normal, nao teleporta. "
+			+ "Terra a Namek sao 7 dias in-game, como no anime.");
+	}
+
+	/// <summary>O mapa da aba Nav. Guardado pra os botoes da barra alcancarem a camera dele.</summary>
+	private MapaEstelar _mapa = null!;
+
+	/// <summary>O mapa vivo, ou nulo se a aba Nav ainda nao foi montada. SO PRA BANCADA (`--diagnav`).</summary>
+	public MapaEstelar? MapaDeTeste => IsInstanceValid(_mapa) ? _mapa : null;
+
+	/// <summary>
+	/// O QUE ESTA SELECIONADO: nome, distancia, tempo de viagem, e o botao que liga o piloto.
+	///
+	/// Refeito sozinho a cada clique no mapa -- e so ele, nao a aba.
+	/// </summary>
+	private void DesenharDestino(VBoxContainer painel, bool noEspaco)
+	{
+		foreach (Node n in painel.GetChildren()) { painel.RemoveChild(n); n.QueueFree(); }
+
+		if (_mapa.Selecionado is not { } p)
+		{
+			var vazio = new Label
+			{
+				Text = _mapa.VendoProcedurais
+					? "nenhum destino selecionado."
+					: "nenhum destino selecionado. Aproxime pra os mundos gerados aparecerem.",
+				AutowrapMode = TextServer.AutowrapMode.WordSmart,
+			};
+			vazio.AddThemeColorOverride("font_color", Tema.TextoFraco);
+			vazio.AddThemeFontSizeOverride("font_size", 12);
+			painel.AddChild(vazio);
 			return;
 		}
 
-		Vector2? eu = World.Instancia?.PosicaoLocal;
-		if (eu == null) { Aviso("posicao ainda desconhecida."); return; }
+		// A POSICAO DE GALAXIA, e nao a do corpo -- ver `MapaEstelar.MinhaPosicaoNaGalaxia`.
+		// Pousado, a coordenada do corpo e de superficie e o "X dias daqui" sairia de um ponto
+		// que nao existe no mapa.
+		Vector2? eu = MapaEstelar.MinhaPosicaoNaGalaxia();
+		var titulo = new Label { Text = p.Nome };
+		titulo.AddThemeColorOverride("font_color", Tema.Destaque);
+		painel.AddChild(titulo);
 
-		var chunk = Jandirus.Core.World.ChunkId.De(new Jandirus.Core.World.Vec2(eu.Value.X, eu.Value.Y));
-		Secao($"Voce esta na chunk {chunk}");
-
-		if (cli.Planetas.Count == 0) { Aviso("nenhum corpo celeste por perto."); return; }
-
-		Secao("Corpos celestes por perto");
-		foreach (GameClient.PlanetaInfo p in cli.Planetas.OrderBy(p => (p.Pos - eu.Value).Length()))
+		var info = new Label
 		{
-			float dist = (p.Pos - eu.Value).Length();
-			double dias = Jandirus.Core.World.Espaco.DiasInGame(dist);
-			double min = Jandirus.Core.World.Espaco.SegundosDeViagem(dist) / 60;
+			Text = FichaDoPlaneta(p)
+				 + (eu is { } meu
+					? $"   \u00b7   {Jandirus.Core.World.Espaco.DiasInGame((new Vector2(p.Pos.X, p.Pos.Y) - meu).Length()):0.0} dias in-game"
+					+ $" ({Jandirus.Core.World.Espaco.SegundosDeViagem((new Vector2(p.Pos.X, p.Pos.Y) - meu).Length()) / 60:0} min reais)"
+					: ""),
+			AutowrapMode = TextServer.AutowrapMode.WordSmart,
+		};
+		info.AddThemeColorOverride("font_color", Tema.TextoFraco);
+		info.AddThemeFontSizeOverride("font_size", 12);
+		painel.AddChild(info);
 
-			var b = new Button
+		var linha = new HBoxContainer();
+		var viajar = new Button
+		{
+			Text = $"Viajar para {p.Nome}",
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+			// SO NO ESPACO. Viajar e voar entre mundos: em terra firme o piloto automatico andaria
+			// contra a parede do planeta. Continua APARECENDO, apagado, porque saber que o destino
+			// existe e que falta decolar e informacao -- sumir com o botao seria esconder o jogo.
+			Disabled = !noEspaco,
+			TooltipText = noEspaco
+				? "liga o piloto automatico. Qualquer tecla de movimento desliga."
+				: "so no espaco. Use 'Decolar' (aba Other) pra subir.",
+		};
+		Jandirus.Core.World.PlanetaNoEspaco alvo = p;
+		viajar.Pressed += () => Viajar(alvo, noEspaco);
+		linha.AddChild(viajar);
+
+		if (World.Instancia?.DestinoDoPiloto != null)
+		{
+			var parar = new Button { Text = "Parar", TooltipText = "desliga o piloto automatico" };
+			parar.Pressed += () =>
 			{
-				Text = $"{p.Nome}   ·   {Tempo(dias, min)}"
-					 + (p.Premade ? "   ·   da pra pousar" : "   ·   sem superficie ainda"),
-				Alignment = HorizontalAlignment.Left,
-				TooltipText = $"{dist:N0} px daqui",
+				World.Instancia?.SoltarPiloto();
+				Chat.Sistema("piloto automatico desligado.");
 			};
-			Vector2 destino = p.Pos;
-			b.Pressed += () =>
-			{
-				World.Instancia?.Pilotar(destino);
-				Chat.Sistema($"rumo a {p.Nome}. Qualquer tecla de movimento desliga o piloto.");
-				Fechar();
-			};
-			_conteudo.AddChild(b);
+			linha.AddChild(parar);
 		}
+		painel.AddChild(linha);
+	}
 
-		Aviso("\nA viagem leva o tempo que diz: o piloto anda no passo normal, nao teleporta. "
-			+ "Terra a Namek sao 7 dias in-game, como no anime.");
+	/// <summary>
+	/// O QUE SE SABE DO MUNDO ANTES DE IR: superficie, bioma e GRAVIDADE.
+	///
+	/// ============================ A GRAVIDADE NAO E ENFEITE ============================
+	/// O `Chronology.dm` e explicito: "O Nav System mostra a gravidade dos planetas antes de
+	/// pousar" -- e o motivo e que acima da sua maestria de gravidade o planeta te ESMAGA (anda
+	/// devagar, o corpo todo toma dano, muito acima desmaia, absurdamente acima explode). Um
+	/// planeta gerado pode ter ate 80x.
+	///
+	/// Sem este numero na tela, escolher destino no mapa e apostar. Com ele, a carta estelar faz o
+	/// que uma carta faz: avisa onde nao se atracar.
+	/// ==================================================================================
+	///
+	/// Os dois lados saem de funcao PURA -- a tabela dos pre-feitos (`planetas.json`, o mesmo
+	/// arquivo que o servidor le) e a seed do gerado. Nenhum pacote de rede.
+	/// </summary>
+	private static string FichaDoPlaneta(Jandirus.Core.World.PlanetaNoEspaco p)
+	{
+		if (!p.Premade)
+		{
+			Jandirus.Core.World.MundoProcedural m = Jandirus.Core.World.MundoProcedural.DaSeed(p.Seed, p.Nome);
+			return $"mundo gerado · {m.Bioma} · gravidade {m.Gravidade:0.##}x";
+		}
+		double g = PlanetasPublico()?.De(p.Nome).Gravidade ?? 1;
+		return $"mundo com superficie -- da pra pousar · gravidade {g:0.##}x";
+	}
+
+	/// <summary>
+	/// A TABELA DE GRAVIDADE dos pre-feitos, lida uma vez.
+	///
+	/// E o MESMO `planetas.json` que o servidor le (`GameServer.CarregarPlanetas`): duas leituras
+	/// do mesmo dado extraido, cada uma no lado que precisa dele -- e nao dois numeros que podem
+	/// divergir.
+	/// </summary>
+	private static Jandirus.Core.World.CatalogoDePlanetas? _planetas;
+	private static bool _tenteiPlanetas;
+
+	private static Jandirus.Core.World.CatalogoDePlanetas? PlanetasPublico()
+	{
+		if (_tenteiPlanetas) return _planetas;
+		_tenteiPlanetas = true;
+		const string a = "res://Assets/Data/planetas.json";
+		if (Godot.FileAccess.FileExists(a))
+			_planetas = Jandirus.Core.World.CatalogoDePlanetas.Parse(Godot.FileAccess.GetFileAsString(a));
+		return _planetas;
+	}
+
+	private void Viajar(Jandirus.Core.World.PlanetaNoEspaco p, bool noEspaco)
+	{
+		if (!noEspaco) { Chat.Sistema("voce precisa estar no espaco pra viajar."); return; }
+		World.Instancia?.Pilotar(new Vector2(p.Pos.X, p.Pos.Y));
+		Chat.Sistema($"rumo a {p.Nome}. Qualquer tecla de movimento desliga o piloto.");
+		Fechar();
 	}
 
 	/// <summary>Distancia em TEMPO, que e como o anime mede: dias in-game e minutos reais.</summary>

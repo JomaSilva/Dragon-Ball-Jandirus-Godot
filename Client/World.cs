@@ -165,6 +165,10 @@ public partial class World : Node2D
 
 			cli.ZoneChanged += (z, spawn) =>
 			{
+				// GUARDA ANTES DE TROCAR: a posicao de agora ainda e a da zona VELHA. Se ela era o
+				// espaco, e ali que a nave ficou. Ver `UltimaNoEspaco`.
+				if (Jandirus.Core.World.Espaco.EhEspaco(_zonaDoAtual) && PosicaoLocal is { } antes)
+					UltimaNoEspaco = antes;
 				CarregarZona(z);
 				_local?.Teleportar(spawn);
 			};
@@ -1246,6 +1250,33 @@ public partial class World : Node2D
 	{
 		if (_local == null) return;
 		_local.Destino = new Vec2(destino.X, destino.Y);
+	}
+
+	/// <summary>
+	/// A ULTIMA POSICAO NO ESPACO -- de onde eu desci.
+	///
+	/// ============================ POR QUE A CARTA PRECISA DISTO ============================
+	/// `PosicaoLocal` e a coordenada do CORPO, e ela troca de significado ao pousar: no espaco e
+	/// coordenada de GALAXIA, em terra e coordenada de SUPERFICIE. O spawn da Terra, por exemplo,
+	/// e (7984, 8016) -- que na galaxia cai a 11 mil px da origem, FORA do raio 220 da propria
+	/// Terra. Usar isso no mapa punha o "voce esta aqui" num ponto sem sentido, fazia o
+	/// "centralizar em mim" centrar no vazio e calculava o tempo de viagem a partir de uma posicao
+	/// falsa.
+	///
+	/// Guardado no momento em que a zona muda, ou seja no instante ANTES do pouso: e onde a nave
+	/// ficou. Pra os sete pre-feitos o mapa prefere a posicao do proprio planeta (que e exata);
+	/// isto aqui e o que salva o mundo GERADO, cuja posicao ninguem mais sabe depois da descida.
+	/// =======================================================================================
+	/// </summary>
+	public Vector2? UltimaNoEspaco { get; private set; }
+
+	/// <summary>Pra onde o piloto automatico esta indo, ou nulo. E o que o mapa estelar desenha.</summary>
+	public Vec2? DestinoDoPiloto => _local != null && IsInstanceValid(_local) ? _local.Destino : null;
+
+	/// <summary>Desliga o piloto. O mesmo caminho que encostar numa tecla de movimento usa.</summary>
+	public void SoltarPiloto()
+	{
+		if (_local != null && IsInstanceValid(_local)) _local.Destino = null;
 	}
 
 	/// <summary>Onde EU estou, em coordenada de mundo. Nulo antes de entrar.</summary>

@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.World;
 using Jandirus.Net;
 
@@ -74,11 +74,19 @@ public partial class GameServer
 	/// existe pra que exista UM lugar onde se decide o que a interface do outro lado tem
 	/// direito de montar -- e o mesmo bit que faz a aba Sense virar Scan (HtmlUI.dm:402-404).
 	/// </summary>
-	public Protocol.Poder PoderesVisiveis(ServerPlayer pl)
+	public static Protocol.Poder PoderesVisiveis(ServerPlayer pl)
 	{
-		Protocol.Poder p = pl.Poderes;
-		if (Espaco.EhEspaco(pl.Zone)) p |= Protocol.Poder.Nav;
-		return p;
+		// O NAV VALE EM TERRA TAMBEM, desde que ele virou CARTA ESTELAR.
+		//
+		// A regra anterior era "so no espaco, porque em terra firme um mapa estelar nao serve pra
+		// nada e a aba apareceria vazia -- e aba vazia ensina que o sistema nao funciona". O
+		// raciocinio estava certo pro que a aba ERA: uma lista dos corpos celestes das tres chunks
+		// em volta, que em terra e sempre vazia.
+		//
+		// Agora ela desenha a galaxia inteira, e consultar a carta ANTES de decolar e metade do uso
+		// de uma carta. O que continua valendo so no espaco e VIAJAR -- e disso quem cuida e o
+		// botao, que aparece apagado com o motivo escrito nele.
+		return pl.Poderes | Protocol.Poder.Nav;
 	}
 
 	/// <summary>
