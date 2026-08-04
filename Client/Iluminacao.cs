@@ -1,4 +1,5 @@
 ﻿using Godot;
+using Jandirus.Core.World;
 
 namespace Jandirus.Client;
 
@@ -37,11 +38,14 @@ public partial class Iluminacao : Node2D
     // O CICLO DO DIA
     // =====================================================================
     /// <summary>
-    /// Quanto dura um dia inteiro, em segundos reais. 24 minutos = 1 minuto por hora, que e o
-    /// bastante pra alguem numa sessao normal ver amanhecer e anoitecer sem que a luz mude
-    /// debaixo do pe enquanto se luta.
+    /// Quanto dura o dia PADRAO (o da Terra), em segundos reais. Mora no
+    /// <see cref="Jandirus.Core.World.Ceu"/> porque a escala do universo tambem depende dele --
+    /// eram duas copias, com um comentario pedindo pra quem mexesse numa lembrar da outra.
+    ///
+    /// CADA PLANETA TEM A SUA. Este e so o padrao de quem nao diz o contrario; a duracao real
+    /// vem da ficha do mundo (ver <see cref="Relogio"/>).
     /// </summary>
-    public const double SegundosPorDia = 24 * 60;
+    public const double SegundosPorDia = Ceu.SegundosPorDia;
 
     /// <summary>
     /// A cor do ambiente ao longo do dia. Nao e um degrade de "claro pra escuro": o
@@ -82,16 +86,67 @@ public partial class Iluminacao : Node2D
     /// </summary>
     public static readonly Color AmbienteDia = new("dcdcd2");
 
+    /// <summary>
+    /// A COR DE UMA NOITE DE LUA CHEIA. E pra onde o azul da meia-noite caminha conforme o luar
+    /// aumenta -- mais claro e um tom mais frio, que e como o olho le "prateado".
+    ///
+    /// ISTO E MECANICA, NAO ENFEITE: a lua cheia e o gatilho do Oozaru, e um gatilho que nao
+    /// muda a imagem da tela e um gatilho que o jogador so descobre lendo o chat. A diferenca
+    /// entre a lua nova e a cheia tem que dar pra ver do lado de fora da janela.
+    /// </summary>
+    public static readonly Color AmbienteLuar = new("41507f");
+
+    /// <summary>
+    /// QUANTO O CLIMA PERDE DE FORCA A NOITE.
+    ///
+    /// Nuvem tira LUZ DO SOL. A meia-noite nao ha sol pra tirar, entao aplicar o mesmo fator de
+    /// uma tempestade de meio-dia sobre um ambiente que ja esta em 13% de brilho deixa a tela
+    /// preta e o jogo injogavel. Aqui o efeito do clima na luz encolhe conforme a base escurece
+    /// -- que e o mesmo raciocinio, so que escrito.
+    ///
+    /// Nao vale pro que o clima faz DE COR (o ocre da areia, o vermelho da chuva de sangue): isso
+    /// continua inteiro, porque cor do ar nao depende de haver sol.
+    /// </summary>
+    private const float ClimaPerdeANoite = 0.55f;
+
     private CanvasModulate _ambiente = null!;
     private Node2D _luzes = null!;
-    private double _fase = 0.42;   // comeca de manha: e o horario em que o mapa se le melhor
+    private ClimaNaTela _clima = null!;
 
-    /// <summary>A hora do dia, de 0 (meia-noite) a 1. Quem manda e o SERVIDOR.</summary>
-    public double Fase
-    {
-        get => _fase;
-        set { _fase = value - Math.Floor(value); AplicarAmbiente(); }
-    }
+    /// <summary>
+    /// A FICHA DE CEU DO PLANETA em que se esta: quanto dura o dia daqui, se ha noite, e que lua.
+    ///
+    /// Trocada a cada mudanca de zona (ver `World.CarregarZona`). Era isto que faltava pra "cada
+    /// planeta com o proprio horario": a curva de luz sempre foi a mesma, o que muda e a
+    /// VELOCIDADE e a DEFASAGEM com que se anda nela.
+    /// </summary>
+    public RelogioDoPlaneta Relogio { get; set; } = RelogioDoPlaneta.Padrao;
+
+    /// <summary>Que climas podem cair neste planeta, e com que frequencia. Trocado por zona.</summary>
+    public ClimaDoPlaneta ClimaDaqui { get; set; } = ClimaDoPlaneta.Nenhum;
+
+    /// <summary>O sal do sorteio do clima -- e o que faz o ceu de Vegeta nao ser o da Terra.</summary>
+    public ulong SalDoClima { get; set; }
+
+    /// <summary>
+    /// QUE HORAS SAO NO UNIVERSO, em segundos. Quem manda e o servidor (`S2C.Ceu`); isto so anda
+    /// sozinho entre um pacote e outro, pra a luz nao dar saltos a cada correcao.
+    /// </summary>
+    public double Tempo { get; private set; }
+
+    /// <summary>O ceu de agora, ja resolvido pro planeta atual. O HUD e a bancada leem daqui.</summary>
+    public EstadoDoCeu Estado { get; private set; }
+
+    /// <summary>
+    /// O CLIMA de agora: natural, ou o que o servidor mandou (ver `S2C.Clima`).
+    ///
+    /// Chama-se assim e nao `Clima` porque `Clima` e o tipo do Core que esta classe usa a cada
+    /// quadro -- uma propriedade com o nome do tipo o esconderia dentro da propria classe.
+    /// </summary>
+    public EstadoDoClima TempoQueFaz { get; private set; }
+
+    /// <summary>A hora LOCAL deste planeta, de 0 (meia-noite) a 1. O menu mostra.</summary>
+    public double Fase => Estado.Hora;
 
     public override void _Ready()
     {
@@ -101,7 +156,49 @@ public partial class Iluminacao : Node2D
         _luzes = new Node2D { Name = "Fontes" };
         AddChild(_luzes);
 
-        AplicarAmbiente();
+        _clima = new ClimaNaTela { Name = "Clima" };
+        AddChild(_clima);
+
+        if (GameClient.Instance is { } cli)
+        {
+            if (cli.TempoChegou) { Tempo = cli.TempoDoMundo; _temHora = true; }
+            cli.HoraDoMundo += AcertarRelogio;
+        }
+        Recalcular(0);
+    }
+
+    /// <summary>
+    /// JA SEI QUE HORAS SAO?
+    ///
+    /// ============================ POR QUE ESPERAR IMPORTA ============================
+    /// O `World` nasce DENTRO do callback de `Joined`, ou seja, no meio do tratamento do
+    /// `JoinAccepted` -- e o `S2C.Ceu` e o pacote SEGUINTE. Por alguns quadros o cliente esta
+    /// montado e nao sabe a hora, e antes desta guarda ele desenhava esses quadros com o relogio
+    /// em ZERO: meia-noite de 1970, e o clima do bloco de tempo de 1970 junto.
+    ///
+    /// Nao dava pra ver de olho (sao dois ou tres quadros no meio da carga da zona), mas a
+    /// bancada do clima pegou: a forca do ceu saltava 59 por segundo no instante em que o
+    /// relogio pulava 56 anos de uma vez. Um salto que ninguem ve continua sendo um salto, e o
+    /// conserto certo nao e afrouxar a medida -- e nao desenhar o ceu antes de saber qual e.
+    /// ================================================================================
+    /// </summary>
+    private bool _temHora;
+
+    public override void _ExitTree()
+    {
+        if (GameClient.Instance is { } cli) cli.HoraDoMundo -= AcertarRelogio;
+    }
+
+    /// <summary>
+    /// O SERVIDOR CORRIGIU A HORA. Encaixa direto em vez de interpolar: os dois relogios andam na
+    /// mesma escala (segundos reais), entao entre uma sincronia e outra a diferenca e de
+    /// milissegundos e nao se ve. O salto que se ve e o PRIMEIRO -- e esse tem que ser um salto,
+    /// porque antes dele o cliente nao sabia que horas eram.
+    /// </summary>
+    private void AcertarRelogio(double segundos)
+    {
+        Tempo = segundos;
+        _temHora = true;
     }
 
     /// <summary>
@@ -110,12 +207,89 @@ public partial class Iluminacao : Node2D
     /// </summary>
     public override void _Process(double delta)
     {
-        _fase += delta / SegundosPorDia;
-        if (_fase >= 1) _fase -= 1;
-        AplicarAmbiente();
+        Tempo += delta;
+        Recalcular(delta);
     }
 
-    private void AplicarAmbiente() => _ambiente.Color = CorDaFase((float)_fase);
+    private void Recalcular(double delta)
+    {
+        // ANTES DE SABER A HORA, o mundo fica em luz de dia e o ceu fica vazio -- ver `_temHora`.
+        // Chutar um horario aqui seria pintar a cena errada pra corrigi-la na cara do jogador.
+        if (!_temHora)
+        {
+            _ambiente.Color = AmbienteDia;
+            _clima.Aplicar(default, delta, AmbienteDia);
+            return;
+        }
+
+        Estado = Ceu.De(Relogio, Tempo);
+        TempoQueFaz = Clima.De(ClimaDaqui, Tempo, SalDoClima, Forcado);
+
+        Color cor = CorDoCeu(Estado, TempoQueFaz);
+        _ambiente.Color = cor;
+        // A COR DO AMBIENTE VAI JUNTO: o veu do clima e de tela e escapa do `CanvasModulate`, entao
+        // e ele que tem que se escurecer. Sem isto, neblina branca brilharia a meia-noite.
+        //
+        // A LUA NAO ESTA MAIS AQUI: ela virou mostrador do HUD (ver `LuaNoCeu`), porque fase da
+        // lua e informacao e nao cenario -- e no ceu ela passava por cima do combate.
+        _clima.Aplicar(TempoQueFaz, delta, cor);
+    }
+
+    /// <summary>
+    /// CAIU UM RAIO NAQUELE PONTO DO MAPA -- o servidor contou pra zona inteira (ver `S2C.Raio`).
+    /// Repassa pro desenho, que decide entre mostrar o risco e so acender o clarao.
+    /// </summary>
+    public void Raio(Vector2 onde, float semente) => _clima.Estourar(onde, semente);
+
+    /// <summary>
+    /// O CLIMA QUE O SERVIDOR MANDOU. Vazio = o ceu segue o ciclo natural.
+    ///
+    /// So o forcado viaja pelo fio; o natural as duas pontas calculam do mesmo tempo do mundo.
+    /// Ver `S2C.Clima` e `GameServer.Clima.cs`.
+    /// </summary>
+    public ClimaForcado Forcado { get; set; }
+
+    /// <summary>
+    /// A COR DO AMBIENTE: a curva do dia, clareada pelo LUAR e lavada pelo CLIMA.
+    ///
+    /// O luar so tem efeito de noite (de dia a lua esta abaixo do horizonte e o valor e zero), e
+    /// ele ja embute a altura -- lua cheia no horizonte quase nao clareia, lua cheia a pino
+    /// clareia tudo. O teto de 0,7 existe pra que a noite de lua cheia continue sendo NOITE: uma
+    /// noite tao clara quanto o dia tiraria da escuridao o unico peso que ela tem.
+    ///
+    /// A ORDEM IMPORTA, e o luar vem PRIMEIRO. Nuvem carregada tapa a lua: aplicar o luar depois
+    /// do clima daria uma noite de tempestade CLAREADA por uma lua cheia que ninguem consegue
+    /// ver. O `Encobre` do clima ja derruba o luar antes de ele chegar aqui (ver `Recalcular`),
+    /// e a cor do ar entra por cima do que sobrou.
+    ///
+    /// ============================ O CLIMA MULTIPLICA, NAO MISTURA ============================
+    /// A versao anterior misturava a cena com um cinza CLARO e preservava a luminancia -- e por
+    /// isso, de dia, nao mudava quase nada: o tom do dia (`dcdcd2`) ja e quase cinza, entao
+    /// "dessaturar mantendo o brilho" era operacao nula. Nublado, neblina e nevasca ficavam
+    /// invisiveis em pleno 100%.
+    ///
+    /// Agora o clima e a COR DO AR (ver `Clima.CorDoAr`) e ela MULTIPLICA. Abaixo de 1 tira luz
+    /// (tempestade), acima de 1 poe (nevasca, que e um whiteout). Multiplicar escala em vez de
+    /// comprimir, entao o mundo escurece ou clareia de verdade sem que nada perca contraste.
+    /// =========================================================================================
+    /// </summary>
+    public static Color CorDoCeu(EstadoDoCeu ceu, EstadoDoClima clima)
+    {
+        double luar = ceu.Luar * (1 - clima.Encobre);
+        Color cor = CorDaFase((float)ceu.Hora).Lerp(AmbienteLuar, (float)(luar * 0.7));
+
+        (double r, double g, double b) = clima.Ar;
+
+        // A NOITE ABRANDA O QUE E PERDA DE LUZ (fator < 1) e deixa o resto passar inteiro.
+        float noite = 1 - Mathf.Clamp(cor.Luminance, 0, 1);
+        float alivio = noite * ClimaPerdeANoite;
+        float Suave(double v) => v < 1 ? Mathf.Lerp((float)v, 1f, alivio) : (float)v;
+
+        return new Color(
+            Mathf.Clamp(cor.R * Suave(r), 0, 1),
+            Mathf.Clamp(cor.G * Suave(g), 0, 1),
+            Mathf.Clamp(cor.B * Suave(b), 0, 1));
+    }
 
     /// <summary>Interpola a curva do dia. Publico porque o menu de pause mostra a hora.</summary>
     public static Color CorDaFase(float fase)
@@ -132,17 +306,8 @@ public partial class Iluminacao : Node2D
         return Curva[^1].Cor;
     }
 
-    /// <summary>Nome legivel da hora, pro HUD ("amanhecer", "tarde", "noite").</summary>
-    public static string NomeDaFase(double fase) => (fase - Math.Floor(fase)) switch
-    {
-        < 0.26 => "madrugada",
-        < 0.33 => "amanhecer",
-        < 0.45 => "manha",
-        < 0.62 => "meio-dia",
-        < 0.72 => "tarde",
-        < 0.80 => "poente",
-        _ => "noite",
-    };
+    /// <summary>Nome legivel da hora. Mora no Core -- servidor e cliente dizem a mesma coisa.</summary>
+    public static string NomeDaFase(double fase) => Ceu.NomeDaHora(fase);
 
     // =====================================================================
     // FONTES DE CENARIO

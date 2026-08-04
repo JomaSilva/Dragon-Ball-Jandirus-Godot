@@ -230,6 +230,66 @@ public static class Protocol
         /// segundos -- cinco opcodes pra isso encheriam o enum sem separar nada.
         /// </summary>
         Clash = 28,
+
+        /// <summary>
+        /// A HORA DO MUNDO: UM `double` com os segundos decorridos desde a origem do tempo.
+        ///
+        /// ============================ POR QUE SO UM NUMERO ============================
+        /// Nao vai aqui nem a hora do planeta, nem a fase da lua, nem se e noite. Tudo isso e
+        /// FUNCAO PURA deste numero mais a ficha do planeta (`Core.World.Ceu`), e as duas pontas
+        /// tem a ficha -- o cliente le o mesmo `planetas.json` que o servidor, e mundo gerado sai
+        /// da seed. Mandar o resultado em vez do instante criaria uma segunda fonte pra hora, que
+        /// e exatamente o que este pacote veio matar.
+        ///
+        /// De quebra, com o instante o cliente sabe que horas sao em QUALQUER planeta, nao so no
+        /// que ele esta: a carta estelar consegue dizer "em Namek e dia" sem pedir nada.
+        /// ==============================================================================
+        ///
+        /// O CICLO DO DIA ERA LOCAL ATE AQUI. O `Iluminacao` do cliente somava `delta` a partir
+        /// de 0,42 a cada `_Ready` -- dois jogadores no mesmo planeta viam horas diferentes e
+        /// quem entrava depois nunca alcancava. Enquanto o ceu era enfeite isso passava; com o
+        /// Oozaru pendurado na lua cheia, viraria um virando macaco numa lua que o outro nao ve.
+        /// </summary>
+        Ceu = 29,
+
+        /// <summary>
+        /// UM CLIMA FORCADO nesta zona: tipo, ate quando (segundos do mundo), duracao e forca.
+        ///
+        /// ============================ SO O FORCADO VIAJA ============================
+        /// O clima NATURAL nao vem por aqui, e nao precisa: ele e funcao pura da ficha do planeta
+        /// mais o tempo do mundo, que o <see cref="Ceu"/> ja sincroniza. As duas pontas chegam a
+        /// mesma chuva sem trocar um byte -- mesma jogada do terreno, da lua e do ceu de estrelas.
+        ///
+        /// O que NAO se deriva e alguem MANDANDO o ceu mudar: um SSJ3 escurecendo o mundo, um
+        /// ritual de magia, um verb de admin. Isso e decisao, e decisao precisa ser contada.
+        /// ============================================================================
+        ///
+        /// `tipo = 0` (Limpo) com `ate = 0` quer dizer "esqueca o que eu mandei" -- o ceu volta a
+        /// ser o que o tempo disser. Sem esse caso, cancelar um clima forcado seria impossivel de
+        /// anunciar e a zona ficaria presa na tempestade ate o prazo vencer.
+        /// </summary>
+        Clima = 30,
+
+        /// <summary>
+        /// CAIU UM RAIO, e ele caiu NUM LUGAR: posicao no mundo + a semente do desenho.
+        ///
+        /// ============================ POR QUE O RAIO E DO SERVIDOR ============================
+        /// Ele era sorteado no cliente, e por isso era um efeito de tela: cada jogador via os
+        /// proprios raios, em instantes diferentes, em lugares diferentes. Dois amigos lado a lado
+        /// numa tempestade nao viam a MESMA tempestade -- e num jogo em rede isso e a diferenca
+        /// entre um clima e um protetor de tela.
+        ///
+        /// Com a posicao vinda de fora, o raio vira acontecimento do MUNDO: quem esta com a camera
+        /// naquele pedaco ve o risco cair; quem nao esta ve o clarao e ouve o trovao, e o trovao
+        /// chega atrasado conforme a distancia. E o que da tamanho a tempestade -- saber que
+        /// aquilo caiu longe, e onde.
+        /// ======================================================================================
+        ///
+        /// A SEMENTE VIAJA JUNTO pra que o risco tenha a MESMA forma nas duas telas. Sem ela cada
+        /// cliente desenharia um zigue-zague diferente pro mesmo raio, e quem estivesse do lado
+        /// veria outro relampago.
+        /// </summary>
+        Raio = 31,
     }
 
     /// <summary>Os momentos do ZanzoClash. Ver <see cref="S2C.Clash"/>.</summary>

@@ -99,7 +99,10 @@ public static class VerbosDoJogo
 		// Ficaram de fora do port, com motivo: os que so mexem em variavel de balanceamento
 		// (`Gravity_Cap`, `Change_Ascension`, `Set_KO_Time_Mult`, `Global_EXP_Rate`), que o dono
 		// pediu pra nao trazer; e os que dependem de sistema nao portado (torneio, conquista de
-		// planetas, esferas, fusao, magia, dungeons, clima).
+		// planetas, esferas, fusao, magia, dungeons).
+		//
+		// O CLIMA SAIU DESSA LISTA: ele existe agora (ver `Core.World.Clima`), e forcar um tipo
+		// e escolher a forca moram no PAINEL da aba Admin, porque pedem dois argumentos.
 		// =====================================================================
 
 		// ---------------------------------------------------------- corpo do alvo
@@ -229,6 +232,20 @@ public static class VerbosDoJogo
 		Verbos.Registrar(new Verbo("Save All", Verbos.Admin,
 			"Grava agora todos os personagens, o mundo e os cargos.",
 			() => C?.SendVerbo("admin_salvar")));
+
+		// A FICHA DO CEU no chat. O painel da aba mostra o TIPO, que muda devagar; os numeros
+		// vivos (forca, cinza, quanto a nuvem encobre) so fazem sentido lidos no instante em que
+		// se pede -- por isso saem no chat e nao numa pagina que se remonta sozinha.
+		Verbos.Registrar(new Verbo("Weather Report", Verbos.Admin,
+			"O ceu desta zona agora: o que esta caindo, com que forca, e o que pode cair aqui.",
+			() => C?.SendVerbo("admin_clima_ficha")));
+
+		// Forcar um clima pede DOIS argumentos (qual e quao forte) e mora no painel da aba, junto
+		// do seletor. Soltar nao pede nenhum, entao cabe aqui -- e e a saida rapida de quem
+		// deixou uma nevasca ligada.
+		Verbos.Registrar(new Verbo("Release Weather", Verbos.Admin,
+			"Solta o ceu desta zona: o clima volta a ser sorteado pelo relogio do mundo.",
+			() => C?.SendVerbo("admin_clima_natural")));
 	}
 
 	/// <summary>Zera o registro -- o personagem trocou (volta ao menu de slots).</summary>

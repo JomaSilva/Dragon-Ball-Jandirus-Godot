@@ -1058,17 +1058,32 @@ public static class MapConverter
 		sb.Append($"Tipo = {ficha.Tipo}\n");
 		sb.Append("Procedural = false\n\n");
 
+		// ============================ TRES CAMADAS, TRES ALTURAS ============================
+		// O corpo do jogador desenha em z 0, ordenando por Y junto dos objetos. Pra ele ficar
+		// ACIMA do chao e da decoracao e ABAIXO das arvores, as tres precisam de z DIFERENTES --
+		// e nao havia degrau entre o chao (-1) e os atores (0), entao a decoracao dividia o z 0
+		// com o jogador e qualquer tufo de grama com Y maior desenhava por cima dele.
+		//
+		//   -2  chao          (grama, terra)
+		//   -1  decoracao     (litoral, plantas, cadeiras)
+		//    0  atores E objetos, ordenando por Y entre si (arvores)
+		// ====================================================================================
+
 		// O CHAO NUNCA ORDENA e fica sempre embaixo: e chao. Ordenar 250 mil tiles de grama
 		// contra os personagens seria caro e nao mudaria nada -- ninguem passa atras da grama.
 		sb.Append("[node name=\"Chao\" type=\"TileMapLayer\" parent=\".\"]\n");
-		sb.Append("z_index = -1\n");
+		sb.Append("z_index = -2\n");
 		sb.Append("tile_set = ExtResource(\"1_ts\")\n");
 		sb.Append($"tile_map_data = PackedByteArray({string.Join(", ", bytes)})\n\n");
 
 		// DECORACAO: o turf que estava POR CIMA do chao no prefab. E onde moram a porta, o
 		// litoral curvo, as plantas e as cadeiras -- tudo que o "primeiro turf vence" comia.
+		//
+		// NAO ORDENA MAIS POR Y. Ela esta inteira abaixo dos atores agora, entao ordenar nao muda
+		// desenho nenhum -- so custaria a classificacao de mais uma camada de 250 mil celulas.
+		// Nada aqui e alto o bastante pra alguem passar atras: quem tem altura mora em `Objetos`.
 		sb.Append("[node name=\"Decor\" type=\"TileMapLayer\" parent=\".\"]\n");
-		sb.Append("y_sort_enabled = true\n");
+		sb.Append("z_index = -1\n");
 		sb.Append("tile_set = ExtResource(\"1_ts\")\n");
 		sb.Append($"tile_map_data = PackedByteArray({string.Join(", ", decoracao)})\n\n");
 

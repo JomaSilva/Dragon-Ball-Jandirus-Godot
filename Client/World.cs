@@ -18,8 +18,25 @@ public partial class World : Node2D
 	/// <summary>O mundo vivo. O menu de pause precisa dele pra mexer no zoom.</summary>
 	public static World? Instancia { get; private set; }
 
-	/// <summary>A hora do dia (0 = meia-noite, 1 = meia-noite de novo). O HUD mostra.</summary>
+	/// <summary>A hora LOCAL deste planeta (0 = meia-noite, 1 = meia-noite de novo).</summary>
 	public double? Hora => _luzDoMundo?.Fase;
+
+	/// <summary>O ceu daqui, agora: hora, fase da lua e altura dela. Nulo antes de montar.</summary>
+	public Jandirus.Core.World.EstadoDoCeu? Ceu => _luzDoMundo?.Estado;
+
+	/// <summary>A ficha de ceu do planeta atual: rotacao, dia/noite e lua.</summary>
+	public Jandirus.Core.World.RelogioDoPlaneta RelogioDoLugar =>
+		_luzDoMundo?.Relogio ?? Jandirus.Core.World.RelogioDoPlaneta.Padrao;
+
+	/// <summary>O que pode cair do ceu neste planeta -- o `allowedWeatherTypes` do DM.</summary>
+	public Jandirus.Core.World.ClimaDoPlaneta ClimaDoLugar =>
+		_luzDoMundo?.ClimaDaqui ?? Jandirus.Core.World.ClimaDoPlaneta.Nenhum;
+
+	/// <summary>O clima de agora. Nulo antes de montar a cena.</summary>
+	public Jandirus.Core.World.EstadoDoClima? TempoQueFaz => _luzDoMundo?.TempoQueFaz;
+
+	/// <summary>A hora do UNIVERSO em segundos -- a mesma pra todo planeta. Quem manda e o servidor.</summary>
+	public double TempoDoMundo => _luzDoMundo?.Tempo ?? 0;
 
 	private Camera2D? _camera;
 
@@ -179,6 +196,16 @@ public partial class World : Node2D
 					_local.GetNodeOrNull<CharacterVisual>("Visual")?
 						  .RestartState("attack", Jandirus.Net.Protocol.AttackPoseMs / 1000.0);
 			};
+			// O CLIMA FORCADO: so ele vem do servidor. O natural as duas pontas calculam do
+			// mesmo tempo do mundo -- ver `S2C.Clima`.
+			cli.ClimaMudou += () => { if (_luzDoMundo != null) _luzDoMundo.Forcado = cli.ClimaForcado; };
+			_luzDoMundo.Forcado = cli.ClimaForcado;
+
+			// O RAIO CAI NUM PONTO DO MAPA, e o servidor conta pra zona inteira: quem esta olhando
+			// pra la ve o risco, quem nao esta ve o clarao e ouve o trovao atrasado.
+			cli.RaioCaiu += (onde, semente) =>
+				_luzDoMundo?.Raio(new Vector2(onde.X, onde.Y), semente);
+
 			cli.PortasMudaram += AoMudarPortas;
 			cli.CenarioCaiu += AoCairCenario;
 			cli.CenarioRefeito += AoRefazerCenario;
@@ -396,6 +423,15 @@ public partial class World : Node2D
 	private void CarregarZona(ZoneKey zona)
 	{
 		GuardarZonaAtual();
+
+		// O CEU DO LUGAR, ANTES DE QUALQUER SAIDA. Cada planeta tem a propria rotacao, a propria
+		// defasagem, a propria lua e os proprios climas (ver `Core.World.Ceu` e `Core.World.Clima`),
+		// e esta funcao tem cinco caminhos que terminam em `return` -- espaco, gerado, sem cena,
+		// pre-feita, erro. Pendurar isto num deles deixaria os outros quatro com o ceu do planeta
+		// ANTERIOR: chuva de sangue de Vegeta caindo na Terra.
+		_luzDoMundo.Relogio = Planetas.Relogio(zona);
+		_luzDoMundo.ClimaDaqui = Planetas.Clima(zona);
+		_luzDoMundo.SalDoClima = Jandirus.Core.World.Clima.SalDaZona(zona);
 
 		_catalogo ??= Godot.FileAccess.FileExists(Manifesto)
 			? ZoneCatalog.Parse(Godot.FileAccess.GetFileAsString(Manifesto))

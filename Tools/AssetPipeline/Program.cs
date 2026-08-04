@@ -272,15 +272,24 @@ if (args.Length >= 2 && args[0] == "planetas")
     System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(saida)!);
     System.IO.File.WriteAllText(saida, Jandirus.Tools.DmPlanetScanner.ParaJson(defs));
 
-    Console.WriteLine($"planetas com gravidade declarada: {defs.Count}\n");
-    Console.WriteLine($"{"PLANETA",-24} {"GRAV",6}  TIPO");
-    Console.WriteLine(new string('-', 48));
+    Console.WriteLine($"planetas: {defs.Count} | com lua: {defs.Count(p2 => p2.TemLua)} | "
+                      + $"sem noite: {defs.Count(p2 => !p2.TemNoite)} | sem dia: {defs.Count(p2 => !p2.TemDia)}\n");
+    Console.WriteLine($"{"PLANETA",-22} {"GRAV",6}  {"DIA",-9} {"LUA",-4} CLIMAS");
+    Console.WriteLine(new string('-', 96));
     foreach (var d in defs.OrderByDescending(p2 => p2.Gravidade))
-        Console.WriteLine($"{d.Nome,-24} {d.Gravidade,6:0.##}x  {d.Tipo}");
+    {
+        string ciclo = !d.TemDia && !d.TemNoite ? "crepusc."
+                     : !d.TemNoite ? "sol etern"
+                     : !d.TemDia ? "noite et."
+                     : $"{d.SegundosPorDia / 60:0.#} min";
+        string climas = !d.TemClima || d.Climas.Count == 0 ? "-" : string.Join(", ", d.Climas);
+        Console.WriteLine($"{d.Nome,-22} {d.Gravidade,6:0.##}x  {ciclo,-9} {(d.TemLua ? "sim" : "nao"),-4} {climas}");
+    }
 
     Console.WriteLine($"\ngravado: {saida}");
-    Console.WriteLine("\nA GRAVIDADE vem do DM (Gravity.dm). O TIPO nao existe la -- e leitura "
-                      + "nossa, declarada em DmPlanetScanner.TipoPorNome.");
+    Console.WriteLine("\nDO DM: a GRAVIDADE (Gravity.dm) e o HasMoon/HasDay/HasNight das areas (Areas.dm).");
+    Console.WriteLine("NOSSO: o TIPO (DmPlanetScanner.TipoPorNome) e a DURACAO do dia de cada mundo");
+    Console.WriteLine("       (DmPlanetScanner.DiaPorNome) -- no original havia um relogio global so.");
     return 0;
 }
 

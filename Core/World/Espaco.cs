@@ -69,11 +69,11 @@ public static class Espaco
 	public const int RaioAtivo = 1;
 
 	/// <summary>
-	/// Duração de um dia in-game, em segundos reais. É o MESMO valor do ciclo dia/noite do
-	/// cliente (`Iluminacao.SegundosPorDia`); repetido aqui porque o Core não conhece o cliente.
-	/// Mudou lá, mude aqui -- e a distância Terra→Namek se ajusta sozinha.
+	/// Duração de um dia in-game, em segundos reais. É o MESMO valor do ciclo dia/noite -- e
+	/// agora é literalmente o mesmo, e não uma cópia: a constante mora no <see cref="Ceu"/>, e a
+	/// distância Terra→Namek se ajusta sozinha se o dia mudar de duração.
 	/// </summary>
-	public const double SegundosPorDiaInGame = 24 * 60;
+	public const double SegundosPorDiaInGame = Ceu.SegundosPorDia;
 
 	/// <summary>Terra→Namek no anime. É daqui que sai a escala do universo inteiro.</summary>
 	public const double DiasTerraNamek = 7;

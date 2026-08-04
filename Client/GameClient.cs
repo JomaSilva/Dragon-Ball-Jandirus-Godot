@@ -430,6 +430,35 @@ public partial class GameClient : Node
 	public event Action<int, int, int, bool>? FormaMudou;
 
 	/// <summary>
+	/// QUE HORAS SAO NO UNIVERSO, em segundos. Quem manda e o servidor (`S2C.Ceu`), e entre um
+	/// pacote e outro isto anda sozinho no `_Process` do <see cref="Iluminacao"/> -- nao pra
+	/// inventar a hora, mas pra a luz nao andar aos saltos a cada correcao de quinze segundos.
+	///
+	/// Vale ZERO ate o primeiro pacote chegar, e quem le trata isso: desenhar o mundo na hora
+	/// errada por um quadro e pior do que esperar um.
+	/// </summary>
+	public double TempoDoMundo { get; private set; }
+	public bool TempoChegou { get; private set; }
+	public event Action<double>? HoraDoMundo;
+
+	/// <summary>
+	/// O CLIMA FORCADO da minha zona -- o unico pedaco do ceu que vem do servidor.
+	///
+	/// O clima NATURAL nao chega por pacote nenhum: ele e funcao pura da ficha do planeta mais o
+	/// <see cref="TempoDoMundo"/>, que ja esta sincronizado. Ver `S2C.Clima`.
+	/// </summary>
+	public Jandirus.Core.World.ClimaForcado ClimaForcado { get; private set; }
+	public event Action? ClimaMudou;
+
+	/// <summary>
+	/// CAIU UM RAIO em (x, y) do mundo, com esta semente de desenho.
+	///
+	/// Vem do servidor, e nao do sorteio de cada cliente, pra que a mesma descarga aconteca no
+	/// mesmo lugar e com a mesma forma pra todo mundo da zona. Ver `S2C.Raio`.
+	/// </summary>
+	public event Action<Vec2, float>? RaioCaiu;
+
+	/// <summary>
 	/// Sobe (ou desce) a escada de transformacao. O cliente NAO escolhe a forma -- pede a
 	/// direcao e o servidor decide qual degrau cabe, como a tecla C do original.
 	/// </summary>
@@ -782,6 +811,34 @@ public partial class GameClient : Node
 						reader.GetDouble(), reader.GetDouble(), reader.GetByte()));
 				Catalogo = l;
 				TechMudou?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Ceu:
+			{
+				TempoDoMundo = reader.GetDouble();
+				TempoChegou = true;
+				HoraDoMundo?.Invoke(TempoDoMundo);
+				break;
+			}
+
+			case Protocol.S2C.Clima:
+			{
+				ClimaForcado = new Jandirus.Core.World.ClimaForcado
+				{
+					Tipo = (Jandirus.Core.World.TipoDeClima)reader.GetByte(),
+					Ate = reader.GetDouble(),
+					Duracao = reader.GetDouble(),
+					Forca = reader.GetFloat(),
+				};
+				ClimaMudou?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Raio:
+			{
+				Vec2 onde = reader.GetVec();
+				RaioCaiu?.Invoke(onde, reader.GetFloat());
 				break;
 			}
 

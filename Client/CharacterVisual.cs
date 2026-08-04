@@ -756,6 +756,12 @@ public partial class CharacterVisual : Node2D
 				TextureFilter = TextureFilterEnum.Nearest,
 			};
 
+			// A ORDEM DA PILHA VAI JUNTO. E o unico jeito de saber, olhando so a foto, qual copia
+			// e o cabelo e qual e o corpo -- as camadas nao tem nome, elas se identificam por este
+			// meta (ver `NovaCamada`). Quem precisa: a bancada, que confere que o cabelo fica na
+			// parte de cima da caixa do corpo em TODAS as direcoes; e quem for depurar um vulto.
+			if (s.HasMeta("ordem")) q.SetMeta("ordem", s.GetMeta("ordem"));
+
 			// A TINTA VAI JUNTO. Sem ela o cabelo do Super Saiyajin volta a preto no fantasma, e a
 			// imagem remanescente de um SSJ sairia com o cabelo da forma base.
 			//

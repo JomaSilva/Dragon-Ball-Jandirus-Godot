@@ -497,6 +497,11 @@ public sealed partial class GameServer
 			case "admin_salvar": AdminSalvarTudo(pl); break;
 			case "admin_anunciar": AdminAnunciar(pl, arg); break;
 
+			// ---------------------------------------------------------- ceu (ver GameServer.Clima.cs)
+			case "admin_clima": AdminClima(pl, arg); break;
+			case "admin_clima_natural": AdminClimaNatural(pl); break;
+			case "admin_clima_ficha": AdminClimaFicha(pl); break;
+
 			// ---------------------------------------------------------- informacao
 			case "admin_quem": VerboQuem(pl); break;
 			case "admin_fichas": AdminFichaDeTodos(pl); break;

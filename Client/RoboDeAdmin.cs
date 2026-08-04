@@ -168,11 +168,53 @@ public partial class RoboDeAdmin : Node
 					"REGRESSAO: a aba Admin continua na lista depois de aprender");
 				break;
 
+			// -------------------------------------------------------------- o clima
+			// O PAINEL DE CLIMA E FERRAMENTA DE DEPURACAO, e por isso ele tem que funcionar mesmo
+			// quando o resto esta quebrado -- se ele falhar calado, o proximo defeito de clima vai
+			// ser investigado com uma ferramenta que nao responde.
+			case 14:
+				// NEVASCA de proposito: a Terra tem nevasca na lista do DM, mas sortea-la pelo
+				// ciclo natural pode levar meia hora. E exatamente o caso de uso do painel.
+				cli.SendVerbo("admin_clima", "Nevasca|1.00");
+				break;
+
+			case 15:
+			{
+				Jandirus.Core.World.EstadoDoClima agora = World.Instancia?.TempoQueFaz ?? default;
+				Conferir(agora.Tipo == Jandirus.Core.World.TipoDeClima.Nevasca,
+					$"o painel FORCA o clima pedido (pedi nevasca, veio {Jandirus.Core.World.Clima.Nome(agora.Tipo)})");
+				Conferir(agora.Forcado, "e o cliente sabe que ele foi forcado (nao confundiu com o natural)");
+				break;
+			}
+
+			case 16:
+				// FORCAR UM CLIMA QUE NAO CAI AQUI TEM QUE FUNCIONAR. Recusar tiraria justamente o
+				// caso pra que a ferramenta existe: olhar o desenho da chuva de sangue sem ter de
+				// viajar cinco dias in-game ate Vegeta.
+				cli.SendVerbo("admin_clima", "ChuvaDeSangue|0.50");
+				break;
+
+			case 17:
+			{
+				Jandirus.Core.World.EstadoDoClima agora = World.Instancia?.TempoQueFaz ?? default;
+				Conferir(agora.Tipo == Jandirus.Core.World.TipoDeClima.ChuvaDeSangue,
+					"forcar um clima que NAO cai neste planeta funciona (e o ponto da ferramenta)");
+				cli.SendVerbo("admin_clima_natural");
+				break;
+			}
+
+			case 18:
+				Conferir(!(World.Instancia?.TempoQueFaz?.Forcado ?? false),
+					"'voltar ao natural' solta o ceu de volta pro ciclo do relogio");
+				cli.SendVerbo("admin_clima", "NaoExisteEsteClima");
+				Conferir(true, "clima inexistente nao derruba o servidor");
+				break;
+
 			// -------------------------------------------------------------- refazer o cenario
 			// So vale quando ha estrago -- e ha quando esta bancada roda junto do `--socar --mente`,
 			// que produz knockback contra parede. Sem estrago o verb nao tem o que provar, e dizer
 			// "ok" ali seria mentir: o passo se declara NAO TESTADO.
-			case 14:
+			case 19:
 				_quebradas = cli.CenarioCaido.Count;
 				if (_quebradas == 0)
 				{
@@ -180,7 +222,7 @@ public partial class RoboDeAdmin : Node
 					// pesado contra parede, e isso nao acontece no primeiro segundo -- se o outro
 					// processo (`--socar`) ainda esta se aproximando, desistir aqui seria declarar
 					// "nada a testar" sem ter esperado nada.
-					if (++_esperas < EsperasPorEstrago) { _passo = 14; return; }
+					if (++_esperas < EsperasPorEstrago) { _passo = 19; return; }
 					_passos.Add("  --     refazer cenario: nao houve estrago em "
 							  + $"{EsperasPorEstrago * 0.6:0}s (rode com --quebrarteste 12)");
 					_passo = 99;
@@ -190,7 +232,7 @@ public partial class RoboDeAdmin : Node
 				cli.SendVerbo("admin_consertar_cenario");
 				break;
 
-			case 15:
+			case 20:
 				Conferir(cli.CenarioCaido.Count == 0,
 					$"refazer o cenario zera o estrago da zona ({_quebradas} celula(s) antes)");
 				break;

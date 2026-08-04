@@ -104,9 +104,23 @@ public partial class Zanzoken : Node2D
 			return;
 		}
 
-		// O SHADER VAI EM CADA CAMADA da foto (corpo, roupa, cabelo, rabo). A `Fotografar` ja poe um
-		// material com a TINTA de cada uma; aqui ele e trocado pelo da miragem -- a tinta do cabelo
-		// de Super Saiyajin se perde, e vale a pena: o que importa no vulto e a silhueta se desfazendo.
+		// ============================ A PILHA SE DESFAZ COMO UM CORPO SO ============================
+		// O personagem sao quatro camadas (corpo, roupa, cabelo, rabo), cada uma com a propria
+		// folha. Se cada uma dissolve no proprio espaco, elas somem em ordens diferentes -- e o
+		// que se via era o vulto ficando CARECA por alguns quadros, virado pra direita e pra
+		// baixo (nas outras duas direcoes os quadros calhavam de cair em linhas parecidas da
+		// folha, e o defeito nao aparecia).
+		//
+		// A caixa da UNIAO e o corpo inteiro. Cada camada recebe essa mesma caixa expressa no
+		// proprio espaco local -- por isso o `- s.Position`. Com isso o `p` do shader e o mesmo
+		// ponto do corpo em todas elas, e a dissolucao passa a ser uma so.
+		// ============================================================================================
+		Rect2 corpo2 = CaixaDoCorpo(foto);
+		var tamanho = new Vector2(Mathf.Max(corpo2.Size.X, 1), Mathf.Max(corpo2.Size.Y, 1));
+
+		// O SHADER VAI EM CADA CAMADA da foto. A `Fotografar` ja poe um material com a TINTA de
+		// cada uma; aqui ele e trocado pelo da miragem -- a tinta do cabelo de Super Saiyajin se
+		// perde, e vale a pena: o que importa no vulto e a silhueta se desfazendo.
 		foreach (Node n in foto.GetChildren())
 		{
 			if (n is not Sprite2D s) continue;
@@ -114,11 +128,34 @@ public partial class Zanzoken : Node2D
 			(Vector2 min, Vector2 max) = BorraoDirecional.Caixa(s.Texture);
 			m.SetShaderParameter("quadro_min", min);
 			m.SetShaderParameter("quadro_max", max);
+			m.SetShaderParameter("corpo_origem", corpo2.Position - s.Position);
+			m.SetShaderParameter("corpo_tamanho", tamanho);
 			s.Material = m;
 			v._mats.Add(m);
 		}
 
 		palco.AddChild(v);
+	}
+
+	/// <summary>
+	/// A CAIXA DO CORPO INTEIRO numa foto de <see cref="CharacterVisual.Fotografar"/>, em
+	/// coordenada da propria foto (a uniao das camadas).
+	///
+	/// E o espaco comum em que a dissolucao roda. Publico porque a bancada confere, direcao por
+	/// direcao, que o cabelo cai na parte de CIMA dele -- que e o que garante que ele seja a
+	/// ultima coisa a sumir, e portanto que o vulto nunca fique careca.
+	/// </summary>
+	public static Rect2 CaixaDoCorpo(Node2D foto)
+	{
+		Rect2? uniao = null;
+		foreach (Node n in foto.GetChildren())
+		{
+			if (n is not Sprite2D s) continue;
+			Rect2 r = s.GetRect();
+			r.Position += s.Position;
+			uniao = uniao?.Merge(r) ?? r;
+		}
+		return uniao ?? new Rect2(Vector2.Zero, new Vector2(32, 32));
 	}
 
 	public override void _Process(double delta)

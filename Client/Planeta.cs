@@ -20,6 +20,47 @@ public enum TipoDePlaneta
 }
 
 /// <summary>
+/// AS FICHAS DOS PLANETAS, do lado do cliente -- lidas UMA vez.
+///
+/// E o MESMO `planetas.json` que o servidor le (`GameServer.CarregarPlanetas`): duas leituras do
+/// mesmo dado extraido, cada uma no lado que precisa dele, e nao dois numeros que podem divergir.
+///
+/// POR QUE ISTO SAIU DO MENU: o carregador vivia dentro do `MenuJogo`, que e tela. Quando a luz
+/// do mundo passou a precisar da mesma tabela (cada planeta tem o proprio dia e a propria lua --
+/// ver `Core.World.Ceu`), a alternativa era o cenario depender da interface pra saber que horas
+/// sao. Uma tabela lida do disco nao pertence a quem a desenha.
+/// </summary>
+public static class Planetas
+{
+	private const string Arquivo = "res://Assets/Data/planetas.json";
+
+	private static Jandirus.Core.World.CatalogoDePlanetas? _catalogo;
+	private static bool _tentei;
+
+	public static Jandirus.Core.World.CatalogoDePlanetas? Catalogo
+	{
+		get
+		{
+			if (_tentei) return _catalogo;
+			_tentei = true;
+			if (Godot.FileAccess.FileExists(Arquivo))
+				_catalogo = Jandirus.Core.World.CatalogoDePlanetas.Parse(
+					Godot.FileAccess.GetFileAsString(Arquivo));
+			else GD.PushWarning("[planetas] sem planetas.json -- todo mundo com ceu de Terra");
+			return _catalogo;
+		}
+	}
+
+	/// <summary>A ficha de ceu de uma zona: rotacao, dia/noite e lua.</summary>
+	public static Jandirus.Core.World.RelogioDoPlaneta Relogio(Jandirus.Core.World.ZoneKey zona) =>
+		Jandirus.Core.World.Ceu.RelogioDaZona(zona, Catalogo);
+
+	/// <summary>Os climas que podem cair numa zona -- o `allowedWeatherTypes` do DM.</summary>
+	public static Jandirus.Core.World.ClimaDoPlaneta Clima(Jandirus.Core.World.ZoneKey zona) =>
+		Jandirus.Core.World.Clima.DaZona(zona, Catalogo);
+}
+
+/// <summary>
 /// UM PLANETA -- e a raiz da cena dele.
 ///
 /// ============================ A ARQUITETURA, EM UMA FRASE ============================

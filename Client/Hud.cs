@@ -36,6 +36,10 @@ public partial class Hud : CanvasLayer
 
 	private Label _nome = null!, _bp = null!, _atividade = null!, _relato = null!;
 	private Label _mira = null!, _letal = null!, _hora = null!;
+	private LuaNoCeu _lua = null!;
+
+	/// <summary>O mostrador da lua. A bancada confere que ele so aparece com a lua no ceu.</summary>
+	public LuaNoCeu Lua => _lua;
 	private Barra _hp = null!, _ki = null!, _vigor = null!;
 	private PanelContainer _ajuda = null!;
 	private double _relatoAte;
@@ -144,9 +148,20 @@ public partial class Hud : CanvasLayer
 	private void MontarDireita(Control raiz)
 	{
 		PanelContainer painel = Tema.Painel1(8);
+
+		// ============================ O PAINEL CRESCE PRA ESQUERDA ============================
+		// Ele tinha LARGURA FIXA, calculada a mao a partir do que havia dentro. Bastou a lua
+		// entrar na linha pra o conteudo passar do tamanho e o boneco ser empurrado pra fora da
+		// tela -- e nao era um valor errado, era o metodo: largura cravada nao sobrevive a nada
+		// que se acrescente.
+		//
+		// Ancorado nas duas pontas a direita e crescendo pra `Begin`, o painel passa a ter o
+		// tamanho do que cabe dentro dele e se estica pra esquerda. E o que tambem resolve a lua
+		// APARECER E SUMIR: de dia ela nao existe, o painel encolhe sozinho e nao fica buraco.
+		// ======================================================================================
 		painel.AnchorLeft = 1; painel.AnchorRight = 1;
-		painel.OffsetLeft = -(96 + 32 * ZonePicker.Escala + 46);
-		painel.OffsetRight = -14;
+		painel.OffsetLeft = -14; painel.OffsetRight = -14;
+		painel.GrowHorizontal = Control.GrowDirection.Begin;
 		painel.OffsetTop = 14;
 		painel.MouseFilter = Control.MouseFilterEnum.Pass;   // o seletor precisa do clique
 		raiz.AddChild(painel);
@@ -158,6 +173,13 @@ public partial class Hud : CanvasLayer
 		var linha = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
 		linha.AddThemeConstantOverride("separation", 8);
 		v.AddChild(linha);
+
+		// A LUA VEM PRIMEIRO NA LINHA, à esquerda da mira e do boneco. Ela só aparece de noite
+		// (ver `LuaNoCeu`), e o painel encolhe sozinho quando ela some -- por isso ela pode
+		// dividir a linha sem empurrar nada de lugar durante o dia.
+		_lua = new LuaNoCeu { Name = "Lua" };
+		linha.AddChild(_lua);
+
 		linha.AddChild(new ZonePicker { Name = "Mira" });
 		linha.AddChild(new BodyDoll { Name = "Corpo" });
 
@@ -343,8 +365,18 @@ public partial class Hud : CanvasLayer
 
 	public override void _Process(double delta)
 	{
-		if (World.Instancia?.Hora is { } hora)
-			_hora.Text = Iluminacao.NomeDaFase(hora);
+		// A HORA E O CLIMA. A FASE DA LUA NAO ENTRA AQUI: ela tem mostrador proprio no canto
+		// direito (ver `LuaNoCeu`), com o disco desenhado -- repetir o nome dela nesta linha seria
+		// dizer duas vezes a mesma coisa em dois cantos da tela.
+		if (World.Instancia?.Ceu is { } ceu)
+		{
+			string txt = Jandirus.Core.World.Ceu.NomeDaHora(ceu.Hora);
+			if (World.Instancia.TempoQueFaz is { Ativo: true } tq)
+				txt += " · " + Jandirus.Core.World.Clima.Nome(tq.Tipo);
+			_hora.Text = txt;
+
+			_lua.Aplicar(ceu, World.Instancia.TempoQueFaz?.Encobre ?? 0);
+		}
 
 		if (_relatoAte <= 0) return;
 		_relatoAte -= delta;

@@ -13,7 +13,7 @@ config_version=5
 config/name="Dragon ball Jandirus"
 run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
-config/icon="res://icon.svg"
+config/icon="uid://n0ma0sivho4k"
 
 [autoload]
 

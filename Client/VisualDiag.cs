@@ -108,8 +108,67 @@ public partial class VisualDiag : Node2D
         GD.Print(linha.ToString());
     }
 
+    /// <summary>
+    /// O VULTO DO ZANZOKEN NAO PODE FICAR CARECA.
+    ///
+    /// ============================ O DEFEITO QUE ISTO GUARDA ============================
+    /// A miragem dissolve a pilha inteira (corpo, roupa, cabelo, rabo). Enquanto a dissolucao
+    /// corria na UV de ATLAS, cada camada media o proprio limiar num lugar diferente da FOLHA --
+    /// e como a posicao do quadro na folha muda com a DIRECAO, virado pra direita e pra baixo o
+    /// cabelo cruzava o limiar antes do corpo e o vulto aparecia careca por alguns quadros. Pra
+    /// esquerda e pra cima os quadros calhavam de cair em linhas parecidas, e nada aparecia.
+    ///
+    /// O conserto poe todas as camadas no MESMO espaco: a caixa do corpo, passada a cada uma ja
+    /// descontada da posicao dela. O que isto confere e a premissa desse conserto -- que as
+    /// camadas estao de fato EMPILHADAS, ocupando a mesma celula. Se uma sair do lugar, cada uma
+    /// volta a medir o limiar num ponto diferente e a careca volta junto.
+    ///
+    /// NAS QUATRO DIRECOES, porque foi a direcao que expos o defeito da primeira vez: o quadro de
+    /// cada direcao mora num lugar diferente da folha, e era exatamente isso que a UV de atlas
+    /// deixava vazar pro calculo.
+    ///
+    /// O QUE ISTO **NAO** ALCANCA e o shader em si (nao da pra ler uniforme de dentro do C#).
+    /// A outra metade do conserto -- o topo dissolver por ultimo -- esta no `Zanzoken.gdshader`,
+    /// no sinal do `1.0 - p.y`, e so se confere olhando.
+    /// ==================================================================================
+    /// </summary>
+    private void ConferirVulto()
+    {
+        GD.Print("\n[diag] --- vulto do Zanzoken: as camadas estao empilhadas no mesmo lugar? ---");
+
+        foreach (Facing dir in new[] { Facing.South, Facing.North, Facing.East, Facing.West })
+        {
+            _v.SetMotion(dir, false);
+            Node2D foto = _v.Fotografar();
+            Rect2 corpo = Zanzoken.CaixaDoCorpo(foto);
+
+            int camadas = 0;
+            float maiorDesvio = 0;
+            foreach (Node n in foto.GetChildren())
+            {
+                if (n is not Sprite2D s) continue;
+                camadas++;
+                Rect2 r = s.GetRect();
+                r.Position += s.Position;
+
+                // O QUANTO ESTA CAMADA DESTOA DA CAIXA COMUM, em pixels. Zero = perfeitamente
+                // empilhada, que e o caso quando todas sao celulas 32x32 da mesma grade.
+                maiorDesvio = Mathf.Max(maiorDesvio, Mathf.Max(
+                    (r.Position - corpo.Position).Abs().MaxAxisIndex() == Vector2.Axis.X
+                        ? Mathf.Abs(r.Position.X - corpo.Position.X) : Mathf.Abs(r.Position.Y - corpo.Position.Y),
+                    Mathf.Max(Mathf.Abs(r.Size.X - corpo.Size.X), Mathf.Abs(r.Size.Y - corpo.Size.Y))));
+            }
+
+            bool ok = camadas > 1 && maiorDesvio < 1f;
+            GD.Print($"[diag]   {dir,-6} {(ok ? "ok   " : "FALHA")} {camadas} camadas na caixa "
+                     + $"{corpo.Size.X:0}x{corpo.Size.Y:0}, maior desvio {maiorDesvio:0.##} px");
+            foto.QueueFree();
+        }
+    }
+
     private void Quit()
     {
+        ConferirVulto();
         GD.Print("\n[diag] fim");
         GetTree().Quit();
     }

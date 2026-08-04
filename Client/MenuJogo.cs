@@ -382,7 +382,12 @@ public partial class MenuJogo : CanvasLayer
 			// O que a aba mostra que muda de verdade: a zona (espaco ou nao, que liga o botao de
 			// viajar), a seed do universo, e a busca -- que troca o conteudo da pagina inteira.
 			"Nav" => $"{_busca.Text.Trim()}|{c?.Zone.Hash}|{c?.SeedDoUniverso}",
-			Verbos.Admin => $"{comum}|{c?.AlvoId}|"
+			// O CLIMA ENTRA AQUI SO PELO QUE E DISCRETO -- o tipo e "e forcado?". A FORCA fica de
+			// fora de proposito: ela sobe e desce continuamente durante os 45 s de transicao, e
+			// remontar a pagina a cada quadro do fade recriaria as caixas de texto vazias na mao
+			// de quem esta digitando. E a mesma armadilha que o comentario acima descreve.
+			Verbos.Admin => $"{comum}|{c?.AlvoId}"
+						  + $"|{World.Instancia?.TempoQueFaz?.Tipo}|{World.Instancia?.TempoQueFaz?.Forcado}|"
 						  + string.Join(',', (c?.Contas ?? []).Select(a => $"{a.Conta}{a.Admin}{a.Banida}{a.Online}")),
 			"Ki" => $"{comum}|{f.Ki:0}|{f.MaxKi:0}|{c?.SkillsAprendidas.Count}",
 			// As abas fixas sem dado proprio (Items, Equip, Other) sao texto parado: uma assinatura
@@ -651,12 +656,50 @@ public partial class MenuJogo : CanvasLayer
 	{
 		Secao("Onde voce esta");
 		Linha("Zona", GameClient.Instance?.Zone.Name ?? "");
-		if (World.Instancia?.Hora is { } h)
+
+		Jandirus.Core.World.RelogioDoPlaneta r = World.Instancia?.RelogioDoLugar
+											 ?? Jandirus.Core.World.RelogioDoPlaneta.Padrao;
+		Linha("Ciclo", Jandirus.Core.World.Ceu.NomeDoCiclo(r));
+
+		if (World.Instancia?.Ceu is { } c)
 		{
-			Linha("Hora", Iluminacao.NomeDaFase(h));
-			Linha("Ciclo", $"{h * 24:00.0}h");
+			Linha("Hora", $"{Jandirus.Core.World.Ceu.NomeDaHora(c.Hora)} ({c.Hora * 24:00.0}h)");
+
+			if (!r.Lua.Existe) Linha("Lua", "este mundo nao tem lua");
+			else
+			{
+				Linha("Lua", Jandirus.Core.World.Ceu.NomeDaFase(c.Fase)
+							 + (c.LuaNoCeu ? " (no ceu)" : " (abaixo do horizonte)"));
+
+				// QUANTO FALTA PRA CHEIA. E a informacao com que se PLANEJA -- sem ela o ciclo
+				// da lua e uma surpresa que cai na cabeca de quem tem rabo.
+				double faltam = Jandirus.Core.World.Ceu.SegundosAteACheia(r, World.Instancia.TempoDoMundo);
+				Linha("Lua cheia", faltam < 0 ? "nunca (a lua nao chega a nascer aqui)"
+							 : faltam < 1 ? "AGORA"
+							 : faltam < 60 ? $"em {faltam:0} s"
+							 : $"em {faltam / 60:0} min");
+			}
 		}
-		Aviso("\nGravidade, clima e conquista do planeta entram aqui com os sistemas deles.");
+
+		Jandirus.Core.World.ClimaDoPlaneta cl = World.Instancia?.ClimaDoLugar
+											?? Jandirus.Core.World.ClimaDoPlaneta.Nenhum;
+		if (World.Instancia?.TempoQueFaz is { } tq)
+		{
+			Linha("Clima", tq.Ativo
+				? $"{Jandirus.Core.World.Clima.Nome(tq.Tipo)} ({tq.Forca:P0})"
+					+ (tq.Forcado ? " -- forcado" : "")
+				: "ceu limpo");
+
+			// O QUE PODE CAIR AQUI vem do `allowedWeatherTypes` do DM, e e informacao de LUGAR:
+			// saber que em Vegeta chove sangue e nao agua e parte de conhecer Vegeta.
+			if (cl.Existe && cl.Permitidos.Length > 0)
+				Linha("Pode cair", string.Join(", ",
+					cl.Permitidos.Select(Jandirus.Core.World.Clima.Nome)));
+			else Linha("Pode cair", "nada -- o ceu daqui nao muda");
+		}
+
+		Aviso("\nCada planeta corre o proprio dia e o proprio tempo: a hora e o ceu daqui");
+		Aviso("nao sao os da Terra. A conquista do planeta entra aqui com o sistema dela.");
 	}
 
 	// =====================================================================
@@ -833,33 +876,34 @@ public partial class MenuJogo : CanvasLayer
 	/// </summary>
 	private static string FichaDoPlaneta(Jandirus.Core.World.PlanetaNoEspaco p)
 	{
+		var zona = p.Premade
+			? Jandirus.Core.World.ZoneKey.Premade(p.Nome)
+			: Jandirus.Core.World.ZoneKey.Procedural(p.Nome, p.Seed);
+
+		// O CEU DE LA, DAQUI. A hora de cada planeta e funcao pura do relogio do mundo mais a
+		// ficha dele, entao a carta consegue dizer "em Namek e dia" sem pedir nada ao servidor --
+		// e saber que o destino esta em plena noite de lua cheia e informacao de viagem.
+		Jandirus.Core.World.RelogioDoPlaneta r = Planetas.Relogio(zona);
+		string ceu = Ceu(r);
+
 		if (!p.Premade)
 		{
 			Jandirus.Core.World.MundoProcedural m = Jandirus.Core.World.MundoProcedural.DaSeed(p.Seed, p.Nome);
-			return $"mundo gerado · {m.Bioma} · gravidade {m.Gravidade:0.##}x";
+			return $"mundo gerado · {m.Bioma} · gravidade {m.Gravidade:0.##}x · {ceu}";
 		}
-		double g = PlanetasPublico()?.De(p.Nome).Gravidade ?? 1;
-		return $"mundo com superficie -- da pra pousar · gravidade {g:0.##}x";
+		double g = Planetas.Catalogo?.De(p.Nome).Gravidade ?? 1;
+		return $"mundo com superficie -- da pra pousar · gravidade {g:0.##}x · {ceu}";
 	}
 
-	/// <summary>
-	/// A TABELA DE GRAVIDADE dos pre-feitos, lida uma vez.
-	///
-	/// E o MESMO `planetas.json` que o servidor le (`GameServer.CarregarPlanetas`): duas leituras
-	/// do mesmo dado extraido, cada uma no lado que precisa dele -- e nao dois numeros que podem
-	/// divergir.
-	/// </summary>
-	private static Jandirus.Core.World.CatalogoDePlanetas? _planetas;
-	private static bool _tenteiPlanetas;
-
-	private static Jandirus.Core.World.CatalogoDePlanetas? PlanetasPublico()
+	/// <summary>Que horas sao naquele mundo agora, e em que fase a lua dele esta.</summary>
+	private static string Ceu(Jandirus.Core.World.RelogioDoPlaneta r)
 	{
-		if (_tenteiPlanetas) return _planetas;
-		_tenteiPlanetas = true;
-		const string a = "res://Assets/Data/planetas.json";
-		if (Godot.FileAccess.FileExists(a))
-			_planetas = Jandirus.Core.World.CatalogoDePlanetas.Parse(Godot.FileAccess.GetFileAsString(a));
-		return _planetas;
+		if (GameClient.Instance is not { TempoChegou: true } cli)
+			return Jandirus.Core.World.Ceu.NomeDoCiclo(r);
+
+		Jandirus.Core.World.EstadoDoCeu e = Jandirus.Core.World.Ceu.De(r, cli.TempoDoMundo);
+		string hora = Jandirus.Core.World.Ceu.NomeDaHora(e.Hora);
+		return e.LuaNoCeu ? $"{hora}, {Jandirus.Core.World.Ceu.NomeDaFase(e.Fase)}" : hora;
 	}
 
 	private void Viajar(Jandirus.Core.World.PlanetaNoEspaco p, bool noEspaco)
@@ -1515,6 +1559,113 @@ public partial class MenuJogo : CanvasLayer
 	/// <summary>Ja pedi a lista de contas nesta sessao? Ver o comentario em <see cref="AbaAdmin"/>.</summary>
 	private bool _pediContas;
 
+	/// <summary>O clima escolhido no painel de admin, e a forca dele. Sobrevivem ao redesenho.</summary>
+	private Jandirus.Core.World.TipoDeClima _climaEscolhido = Jandirus.Core.World.TipoDeClima.Chuva;
+	private float _forcaEscolhida = 1f;
+
+	/// <summary>
+	/// O PAINEL DE CLIMA DA ABA ADMIN -- forcar o ceu pra poder OLHAR o efeito.
+	///
+	/// ============================ POR QUE ISTO NAO E UM VERB DA LISTA ============================
+	/// Os verbs da lista sao botoes sem argumento. Clima pede DOIS (qual e quao forte), e a
+	/// alternativa seria um verb por tipo -- onze botoes chamados "Force Rain", "Force Snow"... que
+	/// e o tipo de lista que ninguem le. Um seletor com um botao diz a mesma coisa em uma linha, e
+	/// e o mesmo caminho que o painel de contas ja usa pra promover por nome.
+	/// =============================================================================================
+	///
+	/// A LISTA MOSTRA O QUE CAI AQUI PRIMEIRO. Todo tipo continua escolhivel (forcar neve em Vampa
+	/// e exatamente o tipo de coisa que se quer poder fazer pra conferir o desenho da neve), mas o
+	/// que pertence ao planeta vem em cima e sem marca -- e o resto vem marcado com um ponto.
+	/// </summary>
+	private void PainelDoClima(GameClient cli)
+	{
+		Secao("Clima deste planeta");
+
+		Jandirus.Core.World.ClimaDoPlaneta daqui = World.Instancia?.ClimaDoLugar
+											   ?? Jandirus.Core.World.ClimaDoPlaneta.Nenhum;
+		Jandirus.Core.World.EstadoDoClima agora = World.Instancia?.TempoQueFaz ?? default;
+
+		// SEM A PORCENTAGEM AQUI. Ela muda a cada quadro durante a transicao e esta pagina so se
+		// remonta quando o TIPO muda -- o numero ficaria congelado mentindo. Quem quer o valor
+		// vivo usa o verb "Weather Report", que imprime no chat na hora em que se pede.
+		Linha("Agora", agora.Ativo
+			? Jandirus.Core.World.Clima.Nome(agora.Tipo) + (agora.Forcado ? " (forcado)" : " (natural)")
+			: "ceu limpo");
+
+		if (!daqui.Existe)
+			Aviso("Este lugar nao tem clima proprio (o `HasWeather=0` do DM) -- mas forcar funciona.");
+
+		// ---- o seletor ----
+		var escolha = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+		var ordem = new List<Jandirus.Core.World.TipoDeClima>();
+		foreach (Jandirus.Core.World.TipoDeClima t in Enum.GetValues<Jandirus.Core.World.TipoDeClima>())
+		{
+			if (t == Jandirus.Core.World.TipoDeClima.Limpo) continue;   // "limpo" e o botao de soltar
+			ordem.Add(t);
+		}
+		ordem.Sort((a, b) =>
+		{
+			bool na = Array.IndexOf(daqui.Permitidos, a) >= 0, nb = Array.IndexOf(daqui.Permitidos, b) >= 0;
+			return na == nb ? string.CompareOrdinal(a.ToString(), b.ToString()) : na ? -1 : 1;
+		});
+
+		for (int i = 0; i < ordem.Count; i++)
+		{
+			bool nativo = Array.IndexOf(daqui.Permitidos, ordem[i]) >= 0;
+			escolha.AddItem(Jandirus.Core.World.Clima.Nome(ordem[i]) + (nativo ? "" : "  ·"), i);
+			if (ordem[i] == _climaEscolhido) escolha.Selected = i;
+		}
+		escolha.TooltipText = "os marcados com · nao caem aqui naturalmente -- forcar continua valendo";
+		escolha.ItemSelected += i => _climaEscolhido = ordem[(int)i];
+
+		var linha = new HBoxContainer();
+		linha.AddChild(escolha);
+
+		// ---- a forca ----
+		var forca = new HSlider
+		{
+			MinValue = 10, MaxValue = 100, Step = 5, Value = _forcaEscolhida * 100,
+			CustomMinimumSize = new Vector2(120, 0),
+			SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+			TooltipText = "quao forte: garoa a temporal",
+		};
+		var rotuloForca = new Label { Text = $"{_forcaEscolhida:P0}", CustomMinimumSize = new Vector2(46, 0) };
+		forca.ValueChanged += v =>
+		{
+			_forcaEscolhida = (float)v / 100f;
+			rotuloForca.Text = $"{_forcaEscolhida:P0}";
+		};
+		linha.AddChild(forca);
+		linha.AddChild(rotuloForca);
+
+		var bForcar = new Button
+		{
+			Text = "Forcar",
+			TooltipText = "poe este clima nesta zona por 20 min. Vale pra todo mundo que esta aqui.",
+		};
+		// A FORCA VAI NO MESMO ARGUMENTO, depois de uma barra -- o canal de verb leva UMA string, e
+		// e o mesmo formato que `admin_marco` ja usa ("id|quantos").
+		bForcar.Pressed += () => cli.SendVerbo("admin_clima",
+			$"{_climaEscolhido}|{_forcaEscolhida.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");
+		linha.AddChild(bForcar);
+
+		var bSoltar = new Button
+		{
+			Text = "Voltar ao natural",
+			Disabled = !agora.Forcado,
+			TooltipText = "solta o ceu: o clima volta a ser sorteado pelo relogio do mundo",
+		};
+		bSoltar.Pressed += () => cli.SendVerbo("admin_clima_natural");
+		linha.AddChild(bSoltar);
+
+		_conteudo.AddChild(linha);
+
+		Aviso(daqui.Existe && daqui.Permitidos.Length > 0
+			? "Cai aqui naturalmente: " + string.Join(", ",
+				daqui.Permitidos.Select(Jandirus.Core.World.Clima.Nome))
+			: "");
+	}
+
 	/// <summary>
 	/// A ABA DE ADMIN.
 	///
@@ -1566,6 +1717,9 @@ public partial class MenuJogo : CanvasLayer
 		bAviso.Pressed += Anunciar;
 		linhaAviso.AddChild(bAviso);
 		_conteudo.AddChild(linhaAviso);
+
+		// ------------------------------------------------- clima
+		PainelDoClima(cli);
 
 		// ------------------------------------------------- contas
 		Secao("Contas deste servidor");

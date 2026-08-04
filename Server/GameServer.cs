@@ -85,6 +85,17 @@ public sealed class ServerPlayer
 	/// <summary>Quando a regeneracao volta a ficar disponivel (relogio real, ms).</summary>
 	public long RegenLivreEm;
 
+	/// <summary>
+	/// A FASE DA LUA QUE ESTE JOGADOR JA VIU ANUNCIADA neste ceu, e se ela estava no alto.
+	///
+	/// Sao dois campos e nao um porque o ceu tem dois eventos distintos: a lua NASCER (a fase
+	/// entra no ceu) e a lua SE POR. Guardar so a fase faria a lua cheia ser anunciada de novo
+	/// toda vez que o tique rodasse, e um aviso em vermelho por segundo nao e um acontecimento --
+	/// e ruido. Zeram na troca de zona: a lua de Vegeta nao e a da Terra.
+	/// </summary>
+	public int LuaVista;
+	public bool LuaEstavaNoCeu;
+
 	/// <summary>Em que forma esta e quanto domina de cada uma.</summary>
 	public Jandirus.Core.Forms.EstadoDeForma Forma = new();
 	public string SigSkills = "";
@@ -620,6 +631,13 @@ public partial class GameServer : Node
 			_nascerEmGerado = true;
 			GD.Print("[server] BANCADA: todo mundo nasce num planeta gerado");
 		}
+
+		// `--horateste` e `--luateste`: adiantam o relogio do mundo. Ver GameServer.Ceu.cs -- a
+		// lua cheia da Terra so volta a cada oito noites de 24 min, ou seja, mais de tres horas.
+		LerBancadaDoCeu(args);
+
+		// `--climateste <tipo>`: trava o ceu num clima. Ver GameServer.Clima.cs.
+		LerBancadaDoClima(args);
 
 		if (Array.IndexOf(args, "--server") < 0) return;   // processo de cliente
 
@@ -1240,6 +1258,13 @@ public partial class GameServer : Node
 		w.Put(SeedDoUniverso);
 		peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 
+		// A HORA DO MUNDO LOGO NO LOGIN, e nao no primeiro tique de sincronia: o cliente monta a
+		// cena com a luz da hora que ele conhece, e sem isto ele desenharia o primeiro quadro no
+		// horario errado e corrigiria na cara do jogador. Ver GameServer.Ceu.cs.
+		MandarCeu(pl);
+		ClimaDeTeste(pl);   // a bancada `--climateste`, se estiver ligada
+		MandarClima(pl);    // e o temporal que ja estava em curso nesta zona
+
 		TrocarAparencias(pl);
 		TrocarFeridas(pl);
 
@@ -1529,7 +1554,7 @@ public partial class GameServer : Node
 		TickDosEmbates();
 
 		if (_tickCount % TicksPorSegundo == 0)
-			{ TickDasTecnicas(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); }
+			{ TickDasTecnicas(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); }
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
 		// Dois minutos e o maximo de treino que alguem pode perder.
@@ -1672,6 +1697,18 @@ public partial class GameServer : Node
 
 		pl.Estudando = false;   // ninguem estuda de outro planeta
 		AplicarGravidade(pl);   // o chao mudou: o peso dele tambem
+
+		// O CEU MUDOU TAMBEM, e ele nao e o mesmo ceu: cada planeta corre o proprio dia e a
+		// propria lua (ver GameServer.Ceu.cs). Zerar a memoria da lua e o que faz a cheia de
+		// Vegeta ser anunciada pra quem acabou de chegar da Terra em plena madrugada -- sem isto
+		// ele so seria avisado na PROXIMA vez que ela nascesse, oito noites depois.
+		pl.LuaVista = 0;
+		pl.LuaEstavaNoCeu = false;
+		MandarCeu(pl);
+
+		// O CLIMA FORCADO E DA ZONA, entao mudar de zona e trocar de ceu: quem sai de um temporal
+		// forcado por um SSJ3 tem que deixar o temporal pra tras, e quem chega num tem que ve-lo.
+		MandarClima(pl);
 	}
 
 	/// <summary>

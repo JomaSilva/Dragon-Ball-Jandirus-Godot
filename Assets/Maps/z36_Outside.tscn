@@ -12,12 +12,12 @@ Tipo = 0
 Procedural = false
 
 [node name="Chao" type="TileMapLayer" parent="."]
-z_index = -1
+z_index = -2
 tile_set = ExtResource("1_ts")
 tile_map_data = PackedByteArray(0, 0)
 
 [node name="Decor" type="TileMapLayer" parent="."]
-y_sort_enabled = true
+z_index = -1
 tile_set = ExtResource("1_ts")
 tile_map_data = PackedByteArray(0, 0)
 

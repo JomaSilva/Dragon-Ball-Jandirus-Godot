@@ -400,6 +400,18 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvolta") >= 0)
 			AddChild(new RoboDeVolta { Name = "RoboDeVolta" });
 
+		// --diagceu: bancada do CEU E DA LUA. Confere que a hora vem do servidor, que cada planeta
+		// corre o proprio dia e que a fase da lua vira no ANOITECER (e nao no meio da noite). Anda
+		// junto do `--luateste` no servidor -- sem ele a lua cheia so volta a cada tres horas.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagceu") >= 0)
+			AddChild(new RoboDeLua { Name = "RoboDeLua" });
+
+		// --diagclima: bancada do CLIMA. Confere que cada planeta sorteia da lista DELE (a do DM),
+		// que as duas pontas chegam ao mesmo ceu sem trocar byte, que o custo das particulas e
+		// fixo e que a nuvem apaga a lua. Anda junto do `--climateste <tipo>` no servidor.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagclima") >= 0)
+			AddChild(new RoboDeClima { Name = "RoboDeClima" });
+
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagclash") >= 0)
 		{
 			AddChild(new RoboDeEmbate { Name = "RoboDeEmbate" });

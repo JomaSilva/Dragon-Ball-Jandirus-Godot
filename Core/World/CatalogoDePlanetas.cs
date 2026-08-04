@@ -10,6 +10,46 @@ public sealed class FichaDePlaneta
 
 	/// <summary>Jardim, Deserto, Gelado, Rochoso, Vulcanico, Morto. Escolha nossa -- ver o extrator.</summary>
 	public string Tipo = "Rochoso";
+
+	/// <summary>
+	/// ESTE MUNDO TEM LUA? E o `HasMoon` das areas do DM (`Modules/Turfs/Areas.dm`).
+	///
+	/// Verdadeiro por padrao porque e o padrao DE LA: a area base nasce com `HasMoon=1` e os
+	/// mundos sem lua (Namek, Planeta Icer, o Outro Mundo, o espaco) e que se declaram com
+	/// `HasMoon=0`. Um planeta novo sem entrada na tabela nasce com ceu de Terra, e nao mudo.
+	/// </summary>
+	public bool TemLua = true;
+
+	/// <summary>O `HasDay` das areas. Falso = noite eterna.</summary>
+	public bool TemDia = true;
+
+	/// <summary>
+	/// O `HasNight` das areas. Falso = sol eterno -- e o caso de NAMEK, que no anime tem tres
+	/// sois e nao anoitece. Sem noite nao ha lua no ceu, e portanto nao ha Oozaru.
+	/// </summary>
+	public bool TemNoite = true;
+
+	/// <summary>
+	/// QUANTO DURA UMA ROTACAO DESTE MUNDO, em segundos reais. Zero = usa o dia padrao.
+	///
+	/// NAO VEM DO DM: la havia um relogio global (`WorldClock.dm`) e todo planeta obedecia a ele.
+	/// A duracao propria de cada mundo e escolha nossa, declarada em `DmPlanetScanner.DiaPorNome`.
+	/// </summary>
+	public double SegundosPorDia;
+
+	/// <summary>O `HasWeather` das areas. Falso = o ceu daqui nunca muda.</summary>
+	public bool TemClima = true;
+
+	/// <summary>
+	/// OS CLIMAS QUE PODEM CAIR AQUI -- o `allowedWeatherTypes` de cada area do DM, com os nomes
+	/// LITERAIS de la ("Rain", "Blood Rain", "Sandstorm"...). Quem traduz pra enum e
+	/// `Clima.DoNomeDoDm`.
+	///
+	/// Guardado como string e nao como enum de proposito: este arquivo e a copia fiel do que foi
+	/// extraido. Um nome novo aparecendo no DM tem que chegar aqui inteiro, e nao virar "Limpo"
+	/// calado dentro do extrator.
+	/// </summary>
+	public List<string> Climas = [];
 }
 
 /// <summary>
@@ -36,7 +76,24 @@ public sealed class CatalogoDePlanetas
 	/// terrestre em vez de nascer quebrado.
 	/// </summary>
 	public FichaDePlaneta De(string zona) =>
-		_porNome.TryGetValue(zona, out FichaDePlaneta? f) ? f : new FichaDePlaneta { Nome = zona };
+		_porNome.TryGetValue(zona, out FichaDePlaneta? f)
+		|| _porNome.TryGetValue(Apelido(zona), out f)
+			? f
+			: new FichaDePlaneta { Nome = zona };
+
+	/// <summary>
+	/// O NOME DA ZONA NAO E SEMPRE O NOME DO PLANETA NO DM.
+	///
+	/// O mapa do universo (<see cref="Espaco.PreFeitos"/>) chama os mundos de `Icer` e
+	/// `Makyo_Star`; o `switch(Planet)` do DM os chama de "Icer Planet" e "Makyo Star". A busca
+	/// crua falhava calada nos dois e devolvia a ficha padrao -- ou seja, o Planeta Icer treinava
+	/// com gravidade 1 em vez de 15, e nada na tela dizia isso.
+	/// </summary>
+	private static string Apelido(string zona) => zona.Replace('_', ' ') switch
+	{
+		"Icer" => "Icer Planet",
+		var n => n,
+	};
 
 	public static CatalogoDePlanetas Parse(string json)
 	{
@@ -48,6 +105,12 @@ public sealed class CatalogoDePlanetas
 				Nome = Str(bloco, "nome"),
 				Gravidade = Num(bloco, "gravidade", 1),
 				Tipo = Str(bloco, "tipo"),
+				TemLua = Bool(bloco, "lua", true),
+				TemDia = Bool(bloco, "dia", true),
+				TemNoite = Bool(bloco, "noite", true),
+				SegundosPorDia = Num(bloco, "rotacao", 0),
+				TemClima = Bool(bloco, "temclima", true),
+				Climas = Lista(bloco, "climas"),
 			};
 			if (f.Nome.Length > 0) cat._porNome[f.Nome] = f;
 		}
@@ -76,6 +139,46 @@ public sealed class CatalogoDePlanetas
 		if (a < 0) return "";
 		int b = bloco.IndexOf('"', a + 1);
 		return b < 0 ? "" : bloco[(a + 1)..b];
+	}
+
+	/// <summary>
+	/// Uma lista de strings: `"climas": ["Rain", "Snow"]`.
+	///
+	/// O separador de blocos corta por CHAVES (`{}`), e um vetor JSON usa colchetes -- entao a
+	/// lista inteira continua dentro do bloco do planeta e da pra ler daqui.
+	/// </summary>
+	private static List<string> Lista(string bloco, string chave)
+	{
+		var saida = new List<string>();
+		int i = bloco.IndexOf($"\"{chave}\"", StringComparison.Ordinal);
+		if (i < 0) return saida;
+
+		int a = bloco.IndexOf('[', i);
+		int b = a < 0 ? -1 : bloco.IndexOf(']', a);
+		if (a < 0 || b < 0) return saida;
+
+		for (int p = a + 1; p < b;)
+		{
+			int ini = bloco.IndexOf('"', p);
+			if (ini < 0 || ini > b) break;
+			int fim = bloco.IndexOf('"', ini + 1);
+			if (fim < 0 || fim > b) break;
+			saida.Add(bloco[(ini + 1)..fim]);
+			p = fim + 1;
+		}
+		return saida;
+	}
+
+	private static bool Bool(string bloco, string chave, bool padrao)
+	{
+		int i = bloco.IndexOf($"\"{chave}\"", StringComparison.Ordinal);
+		if (i < 0) return padrao;
+		int a = bloco.IndexOf(':', i) + 1;
+		if (a <= 0) return padrao;
+		string resto = bloco[a..].TrimStart();
+		if (resto.StartsWith("true", StringComparison.OrdinalIgnoreCase)) return true;
+		if (resto.StartsWith("false", StringComparison.OrdinalIgnoreCase)) return false;
+		return padrao;
 	}
 
 	private static double Num(string bloco, string chave, double padrao)

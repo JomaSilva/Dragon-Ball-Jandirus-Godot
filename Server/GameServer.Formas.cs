@@ -171,6 +171,11 @@ public partial class GameServer
 	/// </summary>
 	private void AnunciarForma(ServerPlayer pl, Forma de, Forma para, bool primeira)
 	{
+		// O CEU RESPONDE A ALGUMAS FORMAS. Pendurado AQUI e nao no `Transformar` porque este e o
+		// funil unico -- subir, descer e cair por Ki zerado passam todos por esta linha. Ver
+		// `GameServer.Clima.ClimaPorTransformacao`, que e o gancho e a tabela.
+		ClimaPorTransformacao(pl, de, para);
+
 		var w = Protocol.Begin(Protocol.S2C.Forma);
 		w.Put(pl.Id);
 		w.Put((ushort)de);
