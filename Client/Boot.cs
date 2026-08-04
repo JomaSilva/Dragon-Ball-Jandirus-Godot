@@ -396,6 +396,10 @@ public partial class Boot : Node2D
 		// --diagclash: bancada do ZANZO CLASH. Ela MEDE, mas nao briga -- o embate so comeca com
 		// dois lutadores se acertando ao mesmo tempo, entao ela vem acompanhada do robo de soco
 		// (aqui e do outro lado). Ver RoboDeEmbate pro comando das duas pontas.
+		// --diagvolta: bancada da VOLTA DO PLANETA. Anda ate a beirada e confere que sai pela outra.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvolta") >= 0)
+			AddChild(new RoboDeVolta { Name = "RoboDeVolta" });
+
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagclash") >= 0)
 		{
 			AddChild(new RoboDeEmbate { Name = "RoboDeEmbate" });

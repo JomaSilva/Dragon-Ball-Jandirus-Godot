@@ -537,6 +537,9 @@ public partial class GameServer
 		{
 			Atacante = a.Id, Alvo = d.Id, Desfecho = (byte)r.Desfecho,
 			Nivel = (byte)Math.Clamp(nivel, 1, 3),
+			// DE ONDE O SOCO SAIU. `a.Pos` aqui ja e o destino do arranque -- e essa a coordenada
+			// com que o golpe FOI resolvido, e e ela que o desenho precisa. Ver `HitEvent.PosAtacante`.
+			PosAtacante = a.Pos,
 			TemDano = true, Dano = (float)r.Dano, Membro = r.Membro,
 			Quebrou = r.Quebrou, Decepou = r.Decepou, Nocauteou = r.Nocauteou, Morreu = r.Morreu,
 			Rabo = r.RaboArrancado, Investiu = investiu,

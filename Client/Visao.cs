@@ -158,6 +158,17 @@ public partial class Visao : Node2D
 	// =====================================================================
 	// QUANDO REFAZER
 	// =====================================================================
+	/// <summary>
+	/// O MUNDO MUDOU: refaz o leque no proximo quadro mesmo que ninguem tenha se mexido.
+	///
+	/// ============================ SOMBRA E DO MAPA, NAO SO DO OLHO ============================
+	/// O recalculo e pulado quando o olho e a tela estao no mesmo lugar -- e essa e a otimizacao
+	/// que faz a sombra caber no orcamento. Mas ela assume que o MAPA nao muda, e ele muda: uma
+	/// parede que cai com o jogador parado deixava a sombra dela projetada no chao ate ele andar.
+	/// ========================================================================================
+	/// </summary>
+	public void Invalidar() => _ultimoOlho = new Vector2(float.NaN, float.NaN);
+
 	public override void _Process(double delta)
 	{
 		if (Alvo == null || Mapa == null) { Visible = false; return; }

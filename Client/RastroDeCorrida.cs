@@ -102,7 +102,10 @@ public partial class RastroDeCorrida : Node2D
 		// borrao grudado, que e de novo o efeito errado.
 		if (_corpo.GetParent() is not { } palco) return;
 
-		Node2D foto = _visual.Fotografar();
+		// SEM TINTA: cada camada desta foto recebe o material de BORRAO tres linhas abaixo. Pedir a
+		// tinta aqui seria criar um `ShaderMaterial` por camada pra descarta-lo no mesmo quadro --
+		// 120 por segundo, por corpo correndo.
+		Node2D foto = _visual.Fotografar(comTinta: false);
 		foto.GlobalPosition = _corpo.GlobalPosition;
 
 		// CADA COPIA VAI BORRADA no rumo do movimento. E o que faltava: copia NITIDA le como

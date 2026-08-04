@@ -126,7 +126,7 @@ if (args.Length >= 2 && args[0] == "binario")
 
 if (args.Length >= 2 && args[0] == "colisao")
 {
-    // colisao <pastaMaps> : regera os .col A PARTIR DAS CENAS
+    // colisao <pastaMaps> : ACRESCENTA aos .col os muros novos que aparecerem nas cenas
     //
     // Rode depois de editar um mapa no Godot. Sem isto, o que voce apagar no editor continua
     // sendo parede pro servidor -- o jogador ve chao e leva correcao de movimento.

@@ -594,6 +594,13 @@ public partial class GameServer : Node
 			GD.Print($"[server] BANCADA: concedendo {_skillsDeTeste.Count} skills: {string.Join(" | ", _skillsDeTeste)}");
 		}
 
+		// `--voltateste`: quem entrar nasce a SEIS tiles da beirada oeste.
+		//
+		// Sem isto a bancada da volta andaria 249 tiles ate a costura -- cem segundos de caminhada
+		// antes da primeira conferencia, e um teste que demora cem segundos nao e rodado.
+		_nascerNaBeirada = Array.IndexOf(args, "--voltateste") >= 0;
+		if (_nascerNaBeirada) GD.Print("[server] BANCADA: nascendo a 6 tiles da beirada oeste");
+
 		// `--clashteste`: o ZanzoClash sem dado e com desnivel de poder.
 		//
 		// Duas coisas atrapalham medir um embate: o `prob(50)` (uma bancada que so acontece metade
@@ -1163,6 +1170,10 @@ public partial class GameServer : Node
 		// BANCADA DO EMBATE: o host fica mais forte, pra a vantagem de poder ter o que multiplicar.
 		if (_clashSempre && EhHost(peer)) { pl.Ficha.BP *= BpDoHostNoTeste; pl.Ficha.Statify(); }
 
+		// BANCADA DA VOLTA: nasce colado na beirada oeste, na altura do meio.
+		if (_nascerNaBeirada && MapaDaZonaOuCatalogo(pl.Zone) is { } m)
+			pl.Pos = new Vec2(6 * ZoneCollision.TileSize, m.Height / 2 * ZoneCollision.TileSize);
+
 		// BANCADA: nasce direto num mundo sorteado (ver `--geradoteste`).
 		if (_nascerEmGerado)
 		{
@@ -1390,10 +1401,22 @@ public partial class GameServer : Node
 			return;
 		}
 
-		ZoneCollision? mapa = _catalogo?.Get(pl.Zone)?.Mapa;
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
 		if (MoveRules.ValidateStep(pl.Pos, claimed, dt, pl.SpeedStat, mapa, ref pl.OrcamentoPx, out Vec2 ok, correndo))
 		{
 			pl.Pos = ok;
+
+			// A VOLTA DO PLANETA. Depois do passo, e nao no lugar dele: quem chega na beirada sai
+			// pela oposta. Se deu a volta, a correcao certa ja saiu de la e o resto nao se aplica.
+			// Ver `GameServer.Volta.cs`.
+			if (DarAVolta(pl))
+			{
+				pl.Facing = facing;
+				pl.Moving = moving;
+				pl.Correndo = correndo;
+				pl.Ficha.dashing = correndo;
+				return;
+			}
 		}
 		else
 		{

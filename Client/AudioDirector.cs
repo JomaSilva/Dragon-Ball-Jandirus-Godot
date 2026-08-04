@@ -154,9 +154,27 @@ public partial class AudioDirector : Node
     private AudioStreamPlayer Atual() => _usandoA ? _musicaA : _musicaB;
     private AudioStreamPlayer Outro() => _usandoA ? _musicaB : _musicaA;
 
+    /// <summary>
+    /// AS FAIXAS JA CARREGADAS.
+    ///
+    /// ============================ MP3 NAO SE CARREGA DUAS VEZES ============================
+    /// O importador do Godot le o arquivo INTEIRO pra memoria, de forma sincrona, na thread
+    /// principal. As faixas de batalha tem 0,9 a 1,9 MB e a maior do menu tem 14,2 MB -- e o
+    /// carregamento acontecia no PRIMEIRO SOCO de cada briga e a cada abertura do menu de pause.
+    /// Um engasgo de quadro inteiro, no pior instante, toda vez.
+    ///
+    /// O cache troca isso por um custo unico. Ele so cresce com o que a sessao de fato tocou.
+    /// =====================================================================================
+    /// </summary>
+    private readonly Dictionary<string, AudioStream> _faixas = [];
+
     private void Cruzar(string caminho, bool repetir)
     {
-        var fluxo = ResourceLoader.Load<AudioStream>(caminho);
+        if (!_faixas.TryGetValue(caminho, out AudioStream? fluxo))
+        {
+            fluxo = ResourceLoader.Load<AudioStream>(caminho);
+            if (fluxo != null) _faixas[caminho] = fluxo;
+        }
         if (fluxo == null) { GD.PushWarning($"[audio] faixa ausente: {caminho}"); return; }
 
         // o .import do Godot ja resolve o loop de ogg/mp3; wav depende do arquivo

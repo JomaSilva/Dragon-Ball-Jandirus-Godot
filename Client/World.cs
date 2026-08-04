@@ -539,6 +539,10 @@ public partial class World : Node2D
 		ulong tLuz = Time.GetTicksUsec();
 		// fogueiras, tochas e lava do planeta novo (as do anterior somem junto com ele)
 		_luzDoMundo.CarregarLuzes(e.Luzes);
+
+		// E O INDICE DE TILES, que a destruicao de cenario precisa. Aqui, e nao na primeira celula
+		// que cai: la ele cairia no meio do quadro do primeiro golpe pesado da partida.
+		CarregarIndiceDeTiles();
 		GD.Print($"[perf] {e.Zona}: mapas {(tLuz - tCol) / 1000.0:0.0} ms | luzes {(Time.GetTicksUsec() - tLuz) / 1000.0:0.0} ms"
 				 + $" | TOTAL {(Time.GetTicksUsec() - tLoad) / 1000.0:0.0} ms");
 	}
@@ -678,14 +682,29 @@ public partial class World : Node2D
 	private (int Fonte, Vector2I Coord)? ChaoDestruido()
 	{
 		if (_chaoDestruido.HasValue) return _chaoDestruido;
+		CarregarIndiceDeTiles();
+		if (_indice!.Achar("Ground", "Ground8") is not { } t) return null;
+		_chaoDestruido = (t.Fonte, new Vector2I(t.X, t.Y));
+		return _chaoDestruido;
+	}
 
+	/// <summary>
+	/// LE O INDICE DE TILES, uma vez por sessao.
+	///
+	/// ============================ FORA DO QUADRO DA BRIGA ============================
+	/// Sao 87 KB de JSON. Ele era lido PREGUICOSAMENTE, na primeira celula de cenario destruida da
+	/// sessao -- ou seja, dentro do mesmo quadro em que a poeira, a faisca e o tremor estao sendo
+	/// criados, no primeiro golpe pesado da partida. Um engasgo unico, mas exatamente no pior
+	/// instante possivel.
+	///
+	/// Agora sai junto com a zona, onde ja se paga o carregamento de tudo o mais.
+	/// ================================================================================
+	/// </summary>
+	private void CarregarIndiceDeTiles()
+	{
 		const string indice = "res://Assets/Data/tiles.json";
 		_indice ??= Jandirus.Core.World.CatalogoDeTiles.Parse(
 			Godot.FileAccess.FileExists(indice) ? Godot.FileAccess.GetFileAsString(indice) : "");
-
-		if (_indice.Achar("Ground", "Ground8") is not { } t) return null;
-		_chaoDestruido = (t.Fonte, new Vector2I(t.X, t.Y));
-		return _chaoDestruido;
 	}
 
 	private Jandirus.Core.World.CatalogoDeTiles? _indice;
@@ -778,6 +797,10 @@ public partial class World : Node2D
 	{
 		_colisao?.Abrir(cx, cy);
 		_veu.Mapa?.Abrir(cx, cy);
+		// A CELULA DEIXOU DE CEGAR -- e o leque de visao precisa saber AGORA. Ele so se refaz
+		// quando o olho ou a tela se mexem, entao sem isto a sombra da parede derrubada ficava
+		// projetada no chao ate o jogador dar um passo. Ver `Visao.Invalidar`.
+		_veu.Invalidar();
 
 		var celula = new Vector2I(cx, cy);
 		// TODAS AS CAMADAS SAEM, E O CHAO E REPOSTO.
@@ -1001,6 +1024,18 @@ public partial class World : Node2D
 		// (O corpo LOCAL continua usando a posicao que ELE guardou no instante do gesto -- ver
 		// `LocalPlayer.DeixarVulto`. O `AoPiscar` ja trata isso.)
 
+		// ============================ O ATACANTE CHEGA JUNTO COM O SOCO ============================
+		// O arranque e um teleporte de servidor de ate 128 px que acontece no MESMO instante em que
+		// este relato e emitido -- mas a posicao nova so viria no snapshot do proximo tique, e o
+		// corpo remoto ainda interpolaria ate la. Enquanto isso a faisca, que nasce no MEIO dos dois
+		// corpos DESENHADOS, estourava no chao vazio.
+		//
+		// O relato agora traz a coordenada (ver `HitEvent.PosAtacante`), e aqui ela e CRAVADA. So
+		// pro corpo remoto: o proprio atacante ja recebeu a correcao no mesmo canal confiavel, e o
+		// `LocalPlayer` ja aplica sem suavizar.
+		if (h.Alvo != 0 && quemBate is RemotePlayer atacante)
+			atacante.Cravar(new Vector2(h.PosAtacante.X, h.PosAtacante.Y));
+
 		var desfecho = (Jandirus.Core.Combat.Desfecho)h.Desfecho;
 		Vector2 meio = quemBate != null && quemLeva != null
 			? (quemBate.Position + quemLeva.Position) * 0.5f
@@ -1106,6 +1141,35 @@ public partial class World : Node2D
 		_lutaAte -= delta;
 		if (_lutaAte <= 0) AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Combate);
 	}
+
+	/// <summary>Largura do mapa de colisao, em CELULAS. So pras bancadas.</summary>
+	public int LarguraDoMapaDeTeste => _colisao?.Width ?? 0;
+
+	/// <summary>
+	/// ANDA NUMA DIRECAO, pelo caminho de sempre. So pras bancadas.
+	///
+	/// Usa o PILOTO AUTOMATICO (o nav system), e nao um atalho: o passo continua passando pelo
+	/// `MoveRules` e sendo conferido pelo servidor. Uma bancada que teleporta o corpo pra beirada
+	/// testaria o teleporte, e o que se quer testar e CHEGAR la andando.
+	/// </summary>
+	public void AndarDeTeste(Vector2 rumo)
+	{
+		if (_local == null || PosicaoLocal is not { } p) return;
+		Vector2 longe = p + rumo.Normalized() * 100_000f;
+		_local.Destino = new Jandirus.Core.World.Vec2(longe.X, longe.Y);
+	}
+
+	/// <summary>Solta o piloto automatico: o corpo para. So pras bancadas.</summary>
+	public void PararDeTeste() { if (_local != null) _local.Destino = null; }
+
+	/// <summary>
+	/// ONDE UM CORPO ESTA DESENHADO agora. So pras bancadas.
+	///
+	/// A pergunta importa porque a posicao DESENHADA e a posicao do SERVIDOR sao coisas
+	/// diferentes -- e foi a diferenca entre as duas que produziu a queixa da "hitbox que pega
+	/// longe". Sem uma leitura do que esta na tela, nenhum numero prova o conserto.
+	/// </summary>
+	public Vector2? PosicaoDesenhadaDe(int id) => Corpo(id)?.Position;
 
 	private Node2D? Corpo(int id)
 	{

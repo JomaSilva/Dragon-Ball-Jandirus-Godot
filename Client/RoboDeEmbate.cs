@@ -49,7 +49,8 @@ public partial class RoboDeEmbate : Node
 	private double _fotoEm;
 	private readonly List<Vector2> _ondeCruzou = [];
 	private readonly HashSet<(int, int)> _celulasCaidas = [];
-	private int _vislumbres, _sumicos;
+	private int _vislumbres, _sumicos, _golpesVistos;
+	private float _maiorVaoDoGolpe;
 	private bool _aVista;
 	private float _meuMult = 1;
 	private int _duracaoMs;
@@ -88,6 +89,24 @@ public partial class RoboDeEmbate : Node
 		// O ESTRAGO NO CHAO, celula por celula. E a unica leitura de "o cenario caiu MESMO" que o
 		// cliente tem, e ela vem por um pacote proprio (`S2C.Cenario`), nao pelo baque.
 		cli.CenarioCaiu += (cx, cy) => _celulasCaidas.Add((cx, cy));
+
+		// ============================ A DISTANCIA DESENHADA NO GOLPE ============================
+		// Nao e do embate -- e do combate normal, e so esta aqui porque esta e a unica bancada com
+		// DOIS processos, e a queixa so aparece pra quem NAO deu o soco.
+		//
+		// O dono viu (print) dois corpos a ~4 tiles com a faisca no meio e leu como hitbox longa. A
+		// regra nunca passou de 40 px: o que estava longe era o DESENHO, porque o arranque teleporta
+		// o atacante ate 128 px e a posicao nova so chegava no snapshot seguinte. Aqui se mede a
+		// distancia na TELA no instante do relato, que e onde a faisca nasce.
+		cli.Golpe += h =>
+		{
+			if (h.Alvo != cli.LocalId || h.Atacante == cli.LocalId) return;
+			if (World.Instancia is not { } m) return;
+			if (m.PosicaoDesenhadaDe(h.Atacante) is not { } pa) return;
+			if (m.PosicaoDesenhadaDe(h.Alvo) is not { } pd) return;
+			_golpesVistos++;
+			_maiorVaoDoGolpe = Math.Max(_maiorVaoDoGolpe, pa.DistanceTo(pd));
+		};
 
 		cli.ClashVislumbre += aparece =>
 		{
@@ -201,8 +220,23 @@ public partial class RoboDeEmbate : Node
 		Conferir(maiorVao > 64,
 			$"os cruzamentos acontecem em lugares DIFERENTES: {maiorVao:0} px entre o 1o e o mais longe");
 
-		Conferir(_celulasCaidas.Count >= 3,
-			$"o estrago deixa TRILHA: {_celulasCaidas.Count} celula(s) distintas derrubadas");
+		// ============================ SO SE HOUVER FORCA PRA QUEBRAR ============================
+		// A resistencia do cenario e 20 (`Empurrao.ResistenciaPadrao`), e o `RacharChao` compara com
+		// o BP EXPRESSO -- que e o `T.Resistance <= max(expressedBP, M.expressedBP)` do DM, literal.
+		// Um lutador suprimido expressa quase nada (nesta bancada, 5) e nao arranha o chao.
+		//
+		// Isso NAO e defeito: e a regra. Mas faz a conferencia depender do estado dos dois, entao
+		// ela so vale quando ha forca. Sem esta guarda a bancada acusaria a regra de bug.
+		// `ExpressedBP` chega NaN quando o servidor NAO manda o numero -- e o sigilo do BP: sem
+		// scouter o proprio jogador le "???". Nao da pra concluir nada dai, entao nao se conclui.
+		if (cli.Sheet.ExpressedBP >= 20)
+			Conferir(_celulasCaidas.Count >= 3,
+				$"o estrago deixa TRILHA: {_celulasCaidas.Count} celula(s) distintas derrubadas");
+		else
+			_passos.Add(double.IsNaN(cli.Sheet.ExpressedBP)
+				? "  --     nao da pra medir o estrago: o BP expresso vem oculto (sem scouter)"
+				: $"  --     sem estrago: BP expresso {cli.Sheet.ExpressedBP:0} < 20, "
+				  + "a resistencia do cenario (regra do DM, nao defeito)");
 
 		// ============================ O VISLUMBRE ============================
 		// "As vezes" quer dizer duas coisas, e as duas se medem: aconteceu ALGUMA vez, e NAO
@@ -215,6 +249,15 @@ public partial class RoboDeEmbate : Node
 
 		// E NINGUEM FICA A VISTA POR ENGANO. Cada aparecimento tem o seu sumico -- senao o embate
 		// terminaria com um corpo visivel que o servidor acha que esta escondido.
+		// O TETO DA REGRA e 40 px (`CombatKnobs.Alcance`), mais a folga do corpo da vitima, que e
+		// desenhado pela previsao local. Acima de 64 px o que se ve nao e mais o golpe que o
+		// servidor resolveu.
+		if (_golpesVistos > 0)
+			Conferir(_maiorVaoDoGolpe <= 64,
+				$"o golpe e DESENHADO colado: maior vao {_maiorVaoDoGolpe:0} px em {_golpesVistos} golpe(s) (teto da regra: 40)");
+		else
+			_passos.Add("  --     nenhum golpe recebido pra medir o vao desenhado");
+
 		Conferir(_vislumbres == _sumicos && !_aVista,
 			$"todo vislumbre fechou: {_vislumbres} apareceu / {_sumicos} sumiu");
 		Conferir(_maiorPasso > 32,

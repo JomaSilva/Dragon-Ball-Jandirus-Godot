@@ -1,3 +1,12 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# A LINHA DE BASE do comando `colisao` (Tools/AssetPipeline/SceneCollision.cs).
+#
+# E estado de trabalho, nao fonte: guarda as celulas da cena no ultimo estado sincronizado, so
+# pra o comando saber O QUE VOCE EDITOU desde entao. Sao 51 MB e mudam a cada sincronizacao.
+#
+# Faltando, o comando GRAVA a linha de base e nao mexe em nada -- entao um clone novo comeca
+# seguro, e a primeira edicao depois disso e detectada normalmente.
+Assets/Maps/*.cel

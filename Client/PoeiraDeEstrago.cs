@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 
 namespace Jandirus.Client;
 
@@ -107,11 +107,24 @@ public partial class PoeiraDeEstrago : Node2D
 	/// combinar com a paleta de cada planeta; num efeito de meio segundo, a diferenca entre um
 	/// quadradinho e um grao desenhado nao chega ao olho -- o que chega e o movimento.
 	/// </summary>
+	/// <summary>As texturas ja feitas. Ver dentro do <see cref="Quadrado"/>.</summary>
+	private static readonly Dictionary<string, ImageTexture> _cache = [];
+
 	private static ImageTexture Quadrado(int lado, Color cor)
 	{
+		// ============================ DUAS TEXTURAS, UMA VEZ ============================
+		// Sao sempre os MESMOS dois quadrados de cor chapada (3x3 e 10x10). Sem cache, cada celula
+		// de cenario derrubada criava DUAS texturas de GPU novas -- e uma rajada de destruicao
+		// derruba de tres a dez celulas no mesmo quadro.
+		// ===============================================================================
+		string chave = lado + ":" + cor.ToRgba32();
+		if (_cache.TryGetValue(chave, out ImageTexture? pronta)) return pronta;
+
 		Image img = Image.CreateEmpty(lado, lado, false, Image.Format.Rgba8);
 		img.Fill(cor);
-		return ImageTexture.CreateFromImage(img);
+		ImageTexture nova = ImageTexture.CreateFromImage(img);
+		_cache[chave] = nova;
+		return nova;
 	}
 
 	public override void _Process(double delta)

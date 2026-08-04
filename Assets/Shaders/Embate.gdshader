@@ -50,19 +50,31 @@ void fragment()
 	float fina = 1.0 - smoothstep(0.06, 0.26, pos);
 	float viva = smoothstep(0.0, 0.25, corrida) * (1.0 - smoothstep(0.35, 1.0, corrida));
 
-	float raias = faixa * fina * viva * (0.35 + baque * 0.9);
+	float raias = faixa * fina * viva * (0.35 + baque * 0.30);
 
 	// ---- O PULSO DO CRUZAMENTO ----
-	// Um anel branco que sai do foco quando os dois se encontram. Ele e o baque: e a unica coisa
-	// na tela que diz "aconteceu agora".
-	float onda = 1.0 - smoothstep(0.0, 0.09, abs(raio - baque * 0.85));
-	onda *= baque;
+	// Um anel que sai do foco quando os dois se encontram: e a unica coisa na tela que diz
+	// "aconteceu agora".
+	//
+	// ============================ IMPACTO NASCE FORTE E SOME ============================
+	// `baque` vai de 0 (instante do encontro) a 1 (fim do pulso) -- ele mede o quanto o anel JA se
+	// abriu. A primeira versao multiplicava o brilho por ele: o anel nascia apagado, ia ficando mais
+	// forte quanto mais longe do centro, chegava ao maximo cheio de tela e sumia de estalo. E o
+	// contrario de um impacto, e a foto da bancada mostrou o resultado -- um estouro azul cobrindo
+	// tudo, nove vezes em cinco segundos.
+	//
+	// Agora o brilho e `1 - baque`: forte quando nasce, esvaziando enquanto se abre. E o raio para
+	// em 0,42 (antes 0,85, que e a tela inteira) -- uma onda de choque, nao um flash.
+	// ===================================================================================
+	float aberto = baque * 0.42;
+	float onda = 1.0 - smoothstep(0.0, 0.03 + baque * 0.05, abs(raio - aberto));
+	onda *= (1.0 - baque) * step(0.001, baque);
 
 	// ---- VINHETA ----
 	// Fecha as bordas pra que o centro (onde estao a letra e a barra) domine a atencao.
 	float vinheta = smoothstep(0.35, 1.05, raio) * 0.85;
 
-	vec3 cor = cor_vinheta * vinheta + cor_raia * (raias + onda * 1.6);
-	float alfa = (vinheta + raias * 0.9 + onda) * forca;
+	vec3 cor = cor_vinheta * vinheta + cor_raia * (raias + onda);
+	float alfa = (vinheta + raias * 0.9 + onda * 0.85) * forca;
 	COLOR = vec4(cor, clamp(alfa, 0.0, 1.0));
 }

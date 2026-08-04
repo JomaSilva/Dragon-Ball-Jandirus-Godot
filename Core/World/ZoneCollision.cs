@@ -1,4 +1,4 @@
-namespace Jandirus.Core.World;
+﻿namespace Jandirus.Core.World;
 
 /// <summary>
 /// A geometria de uma zona, do jeito que o SERVIDOR consegue usar: 1 bit por celula.
@@ -98,6 +98,35 @@ public sealed class ZoneCollision
 
 	/// <summary>"Nao sei": arquivo sem o plano. Ver <see cref="Grupo"/>.</summary>
 	public const byte SemGrupo = 255;
+
+	/// <summary>
+	/// Quantas celulas da beirada sao INTOCAVEIS.
+	///
+	/// Duas, e nao uma: a destruicao trabalha em `view(1)` -- as nove celulas em volta do impacto --
+	/// entao um golpe na penultima coluna ja alcanca a ultima. Com margem de 1 daria pra abrir a
+	/// borda batendo colado nela.
+	/// </summary>
+	public const int MargemDaBorda = 2;
+
+	/// <summary>
+	/// ESTA CELULA E BEIRADA DO MAPA?
+	///
+	/// ============================ POR QUE NAO BASTA O GRUPO ============================
+	/// O plano do conversor marca `BordaDoMundo` so nas celulas DENSAS E CEGAS -- o `/turf/Other/Blank`
+	/// que cerca os mapas. Um mapa que termina em AGUA ou AREIA nao tem nada marcado na ultima
+	/// coluna, e o `RacharChao` transformava a beirada do oceano em terra batida. Foi o que o dono
+	/// fotografou: o personagem no limite do mundo, com uma mancha de chao quebrado ao lado.
+	///
+	/// Isto aqui nao depende de plano nenhum: e aritmetica com a largura e a altura, e vale em toda
+	/// zona -- inclusive nas geradas por semente, que nao tem plano de grupo.
+	/// ==================================================================================
+	/// </summary>
+	public bool NaBorda(int cx, int cy, int margem = MargemDaBorda) =>
+		cx < margem || cy < margem || cx >= Width - margem || cy >= Height - margem;
+
+	/// <summary>A mesma pergunta, em pixels.</summary>
+	public bool NaBordaEm(Vec2 pos, int margem = MargemDaBorda) =>
+		NaBorda((int)MathF.Floor(pos.X / TileSize), (int)MathF.Floor(pos.Y / TileSize), margem);
 
 	/// <summary>
 	/// CELULAS ABERTAS EM RUNTIME. Hoje so as portas usam isto.

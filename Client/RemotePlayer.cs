@@ -28,6 +28,32 @@ public partial class RemotePlayer : Node2D
 		_from = _to = Position;
 	}
 
+	/// <summary>
+	/// CRAVA O CORPO num ponto, sem suavizar.
+	///
+	/// A interpolacao existe pra encobrir os 33 ms entre dois snapshots -- ela NAO serve pra
+	/// suavizar um teleporte de servidor. Quando o servidor diz "este corpo esta AQUI, e o golpe
+	/// saiu daqui", deslizar ate la e mostrar um passado que ja acabou.
+	///
+	/// Zera o lerp inteiro (`_from`, `_to` e o relogio) pra o proximo snapshot partir DESTE ponto:
+	/// deixar `_to` velho faria o corpo voltar meio caminho no quadro seguinte.
+	/// </summary>
+	/// <summary>
+	/// Acima de quantos pixels num intervalo de snapshot o deslocamento SO pode ser teleporte.
+	///
+	/// Tres tiles. A caminhada base e 160 px/s (5 tiles/s) e correr multiplica por pouco mais de
+	/// um; o arremesso, que e o movimento mais rapido do jogo, faz 640 px/s -- 21 px por intervalo
+	/// de 33 ms. Tres tiles (96 px) fica MUITO acima de qualquer coisa legitima e MUITO abaixo do
+	/// menor teleporte do jogo (o cruzamento do embate salta ~6 tiles).
+	/// </summary>
+	private const float LimiteDeSalto = 3 * Jandirus.Core.World.ZoneCollision.TileSize;
+
+	public void Cravar(Vector2 onde)
+	{
+		Position = _from = _to = onde;
+		_elapsed = 0;
+	}
+
 	public void Receive(Vec2 pos, Facing facing, bool moving, bool deitado, Jandirus.Net.Protocol.Pose pose,
 						double sinceLast, bool rabo = false)
 	{
@@ -36,6 +62,20 @@ public partial class RemotePlayer : Node2D
 		_to = new Vector2(pos.X, pos.Y);
 		_interval = sinceLast > 0.001 ? sinceLast : Jandirus.Net.Protocol.TickSeconds;
 		_elapsed = 0;
+
+		// ============================ SALTO NAO SE SUAVIZA ============================
+		// A interpolacao existe pra encobrir os 33 ms entre dois snapshots de um corpo que ANDA.
+		// Quando o servidor TELEPORTA alguem -- a investida do soco, o Zanzoken, o cruzamento do
+		// embate, o Light Buster -- a mesma suavizacao vira mentira: o boneco desliza por um caminho
+		// que ninguem percorreu, e por um intervalo inteiro ele esta desenhado onde ja nao esta.
+		//
+		// Era a causa da queixa "a hitbox pega MUITO longe": a faisca nasce no meio dos corpos
+		// DESENHADOS, e o atacante ainda estava a ate 128 px do lugar onde socou.
+		//
+		// O CORTE E FISICO, nao um palpite: corpo nenhum anda mais que `LimiteDeSalto` num intervalo
+		// de snapshot -- o proprio servidor recusaria o passo (`MoveRules.ValidarPasso`). Acima
+		// disso so ha uma explicacao possivel, e ela nao se interpola.
+		if (_from.DistanceSquaredTo(_to) > LimiteDeSalto * LimiteDeSalto) Cravar(_to);
 
 		_facing = facing;
 		_moving = moving;

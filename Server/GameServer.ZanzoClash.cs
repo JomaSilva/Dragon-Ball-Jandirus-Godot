@@ -223,6 +223,9 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool _clashSempre;
 
+	/// <summary>Ligado por `--voltateste`: nasce colado na beirada. Ver a bancada da volta.</summary>
+	private bool _nascerNaBeirada;
+
 	/// <summary>Quanto BP a bancada da ao host, pra a vantagem de poder ter o que multiplicar.</summary>
 	private const double BpDoHostNoTeste = 1.25;
 
@@ -534,21 +537,35 @@ public sealed partial class GameServer
 		// PAREDE MANDA MAIS QUE A TECNICA -- a mesma regra do Zanzoken e da investida do soco. Aqui
 		// vale em dobro: sao ate nove saltos seguidos, e um unico ponto dentro de uma casa fechada
 		// poria os dois atravessados no cenario ate o fim da cena.
+		// O FALLBACK NAO PODE EMPILHAR OS DOIS NO MESMO PIXEL. Se as dez tentativas falharem (e a
+		// guarda de borda deixou isso mais provavel perto do fim do mundo), o par fica com o que
+		// estiver aqui -- e `Vec2.Zero` poria os dois corpos na MESMA coordenada. O `FacingFrom` de
+		// um vetor nulo devolve o olhar anterior, entao eles nem se encarariam.
 		Vec2 novo = e.Meio;
-		Vec2 lado = Vec2.Zero;
+		var lado = new Vec2(ZoneCollision.TileSize * 0.5f, 0);
 		for (int t = 0; t < 10; t++)
 		{
 			double ang = _rng.NextDouble() * Math.Tau;
 			float r = RaioDoEmbate * (0.45f + (float)_rng.NextDouble() * 0.55f);
 			Vec2 tenta = e.Meio + new Vec2((float)Math.Cos(ang) * r, (float)Math.Sin(ang) * r);
 
-			// UM DE CADA LADO, a um tile do ponto de encontro -- e o `clung` do DM, adjacentes.
+			// UM DE CADA LADO, a MEIO tile do ponto de encontro -- um tile entre os dois corpos, que
+			// e o `clung` do DM: adjacentes, colados, se encarando.
 			//
-			// O ANGULO E SORTEADO A CADA CRUZAMENTO, e e ele que faz as poses variarem quando os
-			// dois aparecem: ora um a esquerda do outro, ora a direita, ora um acima. Meio tile
-			// (a primeira versao) empilhava os sprites num borrao so.
+			// O ANGULO E SORTEADO A CADA CRUZAMENTO, e e ele que faz as poses variarem quando os dois
+			// aparecem: ora um a esquerda do outro, ora a direita, ora um acima.
+			//
+			// ERA 0,9 TILE, e o dono viu: "a posiçao deles ainda esta estranha" -- 1,8 tile entre os
+			// corpos poe quase dois personagens de folga no meio, e a cena vira dois sujeitos
+			// olhando um pro outro de longe em vez de dois trocando golpes.
 			double la = _rng.NextDouble() * Math.Tau;
-			var meio = new Vec2((float)Math.Cos(la), (float)Math.Sin(la)) * (ZoneCollision.TileSize * 0.9f);
+			var meio = new Vec2((float)Math.Cos(la), (float)Math.Sin(la)) * (ZoneCollision.TileSize * 0.5f);
+
+			// A BEIRADA DO MAPA ESTA FORA. O `Occupied` recusaria um ponto FORA do mapa (celula de
+			// fora conta como parede), mas nao recusa a ultima coluna DE DENTRO -- e um embate que
+			// termina com os dois espremidos contra o fim do mundo foi o que o dono fotografou.
+			if (mapa != null && (mapa.NaBordaEm(tenta + meio, ZoneCollision.MargemDaBorda + 1)
+								 || mapa.NaBordaEm(tenta - meio, ZoneCollision.MargemDaBorda + 1))) continue;
 
 			if (mapa == null || (!MoveRules.Occupied(mapa, tenta + meio)
 								 && !MoveRules.Occupied(mapa, tenta - meio)))
@@ -716,7 +733,8 @@ public sealed partial class GameServer
 		// pra frente enquanto o golpe vem das costas.
 		Vec2 atras = perd.Pos - MeleeArea.Frente(perd.Facing) * (ZoneCollision.TileSize * 0.9f);
 		ZoneCollision? mapa = _catalogo?.Get(perd.Zone)?.Mapa;
-		if (mapa != null && MoveRules.Occupied(mapa, atras)) atras = perd.Pos;   // encostado na parede: sai do lado
+		// parede ou beirada do mundo: nasce em cima do perdedor mesmo, que e livre por construcao
+		if (mapa != null && (MoveRules.Occupied(mapa, atras) || mapa.NaBordaEm(atras))) atras = perd.Pos;
 		Recolocar(venc, atras);
 		venc.Facing = perd.Facing;   // olhando pra mesma direcao: ele esta nas costas do outro
 		MandarFicha(venc);

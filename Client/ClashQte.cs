@@ -322,10 +322,22 @@ public partial class ClashQte : CanvasLayer
 		double alvo = _ligado ? 1 : 0;
 		_forca = Mathf.MoveToward((float)_forca, (float)alvo, (float)(delta * (_ligado ? 6 : 1.2)));
 
+		// ============================ O FOCO SEGUE A LETRA ============================
+		// O uniform `foco` do shader existia e NUNCA foi escrito daqui -- ficava no valor padrao
+		// (0.5, 0.5), o centro da tela. Como o anel da letra mora 150 px ACIMA do centro, as raias
+		// de velocidade e a vinheta convergiam num ponto e o quick time event ficava noutro. Foi o
+		// que o dono viu: "o quick time event n ta centralizado no meio do efeito".
+		//
+		// Escrever o valor certo custa uma linha; o defeito era a linha nao existir. E a mesma
+		// familia de coisa que este projeto ja pegou varias vezes -- a regra escrita e nao ligada.
+		// =============================================================================
+		Vector2 tela = _raiz.Size;
+		float foco = tela.Y > 1 ? 0.5f - AlturaDaLetra / tela.Y : 0.5f;
+		_tinta.SetShaderParameter("foco", new Vector2(0.5f, foco));
+
 		_tinta.SetShaderParameter("tempo", (float)_t);
 		_tinta.SetShaderParameter("forca", (float)_forca);
 		_tinta.SetShaderParameter("baque", (float)(1 - _baque / SegundosDeBaque) * (_baque > 0 ? 1 : 0));
-		Vector2 tela = _raiz.Size;
 		_tinta.SetShaderParameter("razao", tela.Y > 0 ? tela.X / tela.Y : 1.777f);
 
 		// O ANEL FECHANDO. `_prazoResta` some ate zero e leva a escala junto -- e o unico relogio

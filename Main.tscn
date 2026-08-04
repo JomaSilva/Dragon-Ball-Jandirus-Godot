@@ -1,6 +1,6 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://dex2slroslt08"]
 
-[ext_resource type="Script" path="res://Client/Boot.cs" id="1_boot"]
+[ext_resource type="Script" uid="uid://cn3ycorvtq6yl" path="res://Client/Boot.cs" id="1_boot"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" unique_id=1467329602]
 script = ExtResource("1_boot")

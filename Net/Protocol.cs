@@ -456,6 +456,29 @@ public static class Protocol
         public bool TemDano;
         public float Dano;
         public string Membro;
+
+        /// <summary>
+        /// DE ONDE O SOCO SAIU -- a posicao do atacante NO INSTANTE em que o servidor resolveu.
+        ///
+        /// ============================ POR QUE ELA PRECISA VIAJAR ============================
+        /// O arranque do soco (`Aproximar`) e um TELEPORTE de servidor de ate 128 px, e ele
+        /// acontece no mesmo tratador de pacote que anuncia o golpe. A posicao nova so alcanca
+        /// quem assiste no snapshot do PROXIMO tique (ate 33 ms depois) -- e mesmo la o corpo
+        /// remoto nao salta, ele INTERPOLA por mais um intervalo.
+        ///
+        /// Sem esta coordenada o cliente desenhava a faisca no meio das posicoes DESENHADAS: o
+        /// atacante ainda no ponto de partida, a vitima no lugar dela, e o baque estourando no
+        /// chao vazio entre os dois. O dono fotografou isso e leu como o que parecia ser:
+        /// "percebi q as vezes a hitbox pega MUITO longe". A hitbox nunca passou de 40 px -- o
+        /// DESENHO e que estava atrasado.
+        ///
+        /// E o mesmo remedio que este projeto ja aplicou pro vulto do Zanzoken, que nascia no
+        /// lugar errado pela mesma razao (ver `S2C.Zanzo` e `World.AoPiscar`). A faisca tinha
+        /// ficado de fora daquele conserto.
+        ///
+        /// SO VIAJA QUANDO HA ALVO: soco no ar nao desenha faisca, entao nao paga os 8 bytes.
+        /// </summary>
+        public Vec2 PosAtacante;
         public bool Quebrou, Decepou, Nocauteou, Morreu, Rabo;
 
         // O BIT 32 DESTE BYTE ESTA LIVRE. Ele carregava um `Zanzo` ("houve vulto"), e o vulto
@@ -488,6 +511,7 @@ public static class Protocol
         public void Write(NetDataWriter w)
         {
             w.Put(Atacante); w.Put(Alvo); w.Put(Desfecho); w.Put(Nivel);
+            if (Alvo != 0) w.PutVec(PosAtacante);   // ver `PosAtacante`
             w.Put(TemDano);
             if (TemDano) { w.Put(Dano); w.Put(Membro ?? ""); }
             w.Put((byte)((Quebrou ? 1 : 0) | (Decepou ? 2 : 0) | (Nocauteou ? 4 : 0)
@@ -499,8 +523,10 @@ public static class Protocol
             var h = new HitEvent
             {
                 Atacante = r.GetInt(), Alvo = r.GetInt(), Desfecho = r.GetByte(),
-                Nivel = r.GetByte(), TemDano = r.GetBool(), Membro = "",
+                Nivel = r.GetByte(), Membro = "",
             };
+            if (h.Alvo != 0) h.PosAtacante = r.GetVec();
+            h.TemDano = r.GetBool();
             if (h.TemDano) { h.Dano = r.GetFloat(); h.Membro = r.GetString(32); }
             byte f = r.GetByte();
             h.Quebrou = (f & 1) != 0; h.Decepou = (f & 2) != 0;

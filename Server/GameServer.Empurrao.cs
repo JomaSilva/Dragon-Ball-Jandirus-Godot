@@ -215,9 +215,29 @@ public sealed partial class GameServer
 		int cy = (int)Math.Floor((onde.Y + MoveRules.FeetOffsetY) / ZoneCollision.TileSize);
 		if (!mapa.BlockedCell(cx, cy)) return false;
 
-		// borda do mundo nao cai: e geometria, nao cenario
-		if (_catalogo?.Get(zona) is { Visao.Length: > 0 } && mapa.Grupo(cx, cy) == ZoneCollision.BordaDoMundo)
-			return false;
+		// ============================ BORDA NAO CAI: E GEOMETRIA ============================
+		// Duas perguntas, e as duas precisam ser feitas:
+		//
+		// A BEIRADA DO MAPA, por aritmetica. Nao depende de plano nenhum, e e a que faltava: um mapa
+		// que termina em agua nao tem `BordaDoMundo` marcado em lugar nenhum, e a ultima coluna caia
+		// como qualquer cenario.
+		//
+		// O QUE ESTAVA AQUI ERA CODIGO MORTO -- em 100% dos casos, nao "quase".
+		//
+		// A guarda antiga perguntava `Grupo(cx,cy) == BordaDoMundo`. O plano de grupo e escrito no
+		// arquivo `.vis`, e o servidor carrega o `.col`, que sai SEM ele: `Grupo` devolvia
+		// `SemGrupo` (255) em toda celula de toda zona do jogo, e 255 nunca e 0. A condicao
+		// `Visao.Length > 0` que a acompanhava tambem nao protegia nada -- as 40 entradas do
+		// manifest tem `visao`.
+		//
+		// E nem daria pra consertar mandando o servidor ler o `.vis`: o plano nasce ZERADO e so as
+		// celulas cegas sao escritas, entao 244.198 das 250.000 celulas da Terra ficam com grupo 0,
+		// que e o MESMO codigo de `BordaDoMundo`. O sentinela colide com o preenchimento padrao, e
+		// ler o plano faria 97% do mapa responder "sou borda do mundo".
+		//
+		// Sobra a aritmetica, que nao depende de plano nenhum e vale ate em mundo sorteado.
+		// ===================================================================================
+		if (mapa.NaBorda(cx, cy)) return false;
 
 		if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
 		{
@@ -274,7 +294,7 @@ public sealed partial class GameServer
 				int cx = cx0 + dx, cy = cy0 + dy;
 				if (cx < 0 || cy < 0 || cx >= mapa.Width || cy >= mapa.Height) continue;
 				if (_rng.NextDouble() >= 0.40) continue;            // o `prob(40)` do original
-				if (mapa.Grupo(cx, cy) == ZoneCollision.BordaDoMundo) continue;   // borda nao racha
+				if (mapa.NaBorda(cx, cy)) continue;   // beirada do mapa nao racha (ver `DerrubarCenario`)
 				if (!caidas.Add((cx, cy))) continue;
 
 				// PAREDE QUE RACHA TAMBEM DEIXA DE BLOQUEAR -- ela caiu. Chao livre so muda de cara.
@@ -314,6 +334,52 @@ public sealed partial class GameServer
 
 		int quantas = _cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? fim) ? fim.Count : 0;
 		Godot.GD.Print($"[server] BANCADA: {quantas} celula(s) de cenario quebradas em {pl.Zone.Name}");
+
+		MartelarABorda(pl.Zone);
+	}
+
+	/// <summary>
+	/// BANCADA: bate com forca de sobra NOS QUATRO CANTOS do mapa e confere que NADA caiu.
+	///
+	/// ============================ POR QUE ISTO PRECISA DE TESTE ============================
+	/// O dono fotografou o personagem no limite do mundo com uma mancha de chao quebrado ao lado.
+	/// A guarda que existia olhava so o GRUPO da celula (`BordaDoMundo`), que o conversor marca
+	/// apenas no `/turf/Other/Blank` -- um mapa que termina em AGUA nao tem nada marcado na ultima
+	/// coluna, e a beirada do oceano racha como qualquer outro chao.
+	///
+	/// A regra nova (`ZoneCollision.NaBorda`) e aritmetica e nao depende de plano nenhum. Mas uma
+	/// regra escrita nao e uma regra ligada -- e a coisa que este projeto mais erra. Aqui ela e
+	/// EXERCIDA: quatro cantos, forca de um milhao, e a conta antes e depois.
+	/// ======================================================================================
+	/// </summary>
+	private void MartelarABorda(ZoneKey zona)
+	{
+		if (_catalogo?.Get(zona)?.Mapa is not { } mapa) return;
+		const int T = ZoneCollision.TileSize;
+
+		_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? antes);
+		int comecou = antes?.Count ?? 0;
+
+		foreach ((int cx, int cy) in new[]
+		{
+			(0, 0), (mapa.Width - 1, 0), (0, mapa.Height - 1), (mapa.Width - 1, mapa.Height - 1),
+			(mapa.Width / 2, 0), (mapa.Width / 2, mapa.Height - 1),
+			(0, mapa.Height / 2), (mapa.Width - 1, mapa.Height / 2),
+		})
+		{
+			var onde = new Vec2(cx * T + T / 2f, cy * T + T / 2f);
+			RacharChao(zona, onde, 1_000_000);
+			DerrubarCenario(zona, onde);
+		}
+
+		int agora = _cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? fim2) ? fim2.Count : 0;
+		// O RELATO NAO FALA EM "AGUENTAR". A borda nao tem resistencia nem contador: a destruicao
+		// RECUSA antes de olhar forca (ver `NaBorda` em `RacharChao` e `DerrubarCenario`). As oito
+		// marteladas sao do TESTE, e nao um limite -- oitocentas dariam o mesmo zero.
+		Godot.GD.Print(agora == comecou
+			? $"[server] BANCADA: a borda de {zona.Name} ({mapa.Width}x{mapa.Height}) e INQUEBRAVEL -- "
+			  + "a destruicao recusa a beirada antes de olhar forca (8 tentativas, 0 celulas)"
+			: $"[server] BANCADA: FALHA -- a borda de {zona.Name} cedeu em {agora - comecou} celula(s)");
 	}
 
 	/// <summary>Manda pra quem chega a lista do que ja caiu na zona.</summary>

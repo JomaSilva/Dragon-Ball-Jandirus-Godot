@@ -671,7 +671,11 @@ public partial class CharacterVisual : Node2D
 	/// enquanto o corpo continua andando. Filho, ele iria junto -- e "imagem remanescente" que
 	/// acompanha o dono e so um borrao grudado.
 	/// </summary>
-	public Node2D Fotografar()
+	/// <param name="comTinta">
+	/// Copiar tambem o material de tinta de cada camada. Quem vai TROCAR o material logo em
+	/// seguida (o rastro de corrida, que aplica o borrao) pede `false` -- ver o comentario dentro.
+	/// </param>
+	public Node2D Fotografar(bool comTinta = true)
 	{
 		// A FOTO HERDA A ROTACAO. Sem isto, o vulto de quem esta voando (ou caido) nascia EM PE --
 		// o `Girar` escreve no proprio `CharacterVisual`, que e o PAI das camadas, e a copia so
@@ -695,7 +699,19 @@ public partial class CharacterVisual : Node2D
 
 			// A TINTA VAI JUNTO. Sem ela o cabelo do Super Saiyajin volta a preto no fantasma, e a
 			// imagem remanescente de um SSJ sairia com o cabelo da forma base.
-			if (s.Material is ShaderMaterial m)
+			//
+			// ============================ SO SE ALGUEM FOR OLHAR ============================
+			// O rastro de corrida TROCA este material por um de borrao no instante seguinte
+			// (`BorraoDirecional.Aplicar`), entao pra ele a tinta e um `ShaderMaterial` criado e
+			// jogado fora sem nunca ter desenhado nada. A 30 fotos por segundo e com quatro camadas
+			// por foto, sao 120 materiais por segundo de puro desperdicio POR CORPO CORRENDO -- e o
+			// suspeito numero um das travadinhas que o dono relatou, porque e o unico que roda o
+			// tempo todo e justamente enquanto se anda.
+			//
+			// Quem vai borrar avisa (`comTinta: false`) e economiza a criacao inteira. Quem quer o
+			// fantasma parado (a miragem do Zanzoken) continua pedindo a tinta.
+			// ===============================================================================
+			if (comTinta && s.Material is ShaderMaterial m)
 			{
 				var mat = new ShaderMaterial { Shader = ShaderTinta };
 				mat.SetShaderParameter("tinta", m.GetShaderParameter("tinta"));

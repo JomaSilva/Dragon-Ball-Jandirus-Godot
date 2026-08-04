@@ -54,10 +54,19 @@ public static class BorraoDirecional
 		return (r.Position / folha + meio, r.End / folha - meio);
 	}
 
-	/// <summary>Poe o borrao num sprite ja pronto, com o recorte do quadro dele.</summary>
+	/// <summary>
+	/// Poe o borrao num sprite ja pronto, com o recorte do quadro dele.
+	///
+	/// REUSA o material que ja estiver no sprite quando ele for deste mesmo shader. Nao e
+	/// microtuning: este metodo e chamado uma vez por CAMADA por FOTO do rastro de corrida, umas
+	/// 120 vezes por segundo por corpo correndo, e cada `new ShaderMaterial` e um recurso de
+	/// verdade com o custo de alocacao e de coleta que isso tem.
+	/// </summary>
 	public static void Aplicar(Sprite2D s, Vector2 rumo, float forca)
 	{
-		var m = new ShaderMaterial { Shader = Sh };
+		ShaderMaterial m = s.Material is ShaderMaterial velho && velho.Shader == Sh
+			? velho
+			: new ShaderMaterial { Shader = Sh };
 		(Vector2 min, Vector2 max) = Caixa(s.Texture);
 		m.SetShaderParameter("rumo", rumo);
 		m.SetShaderParameter("forca", forca);
