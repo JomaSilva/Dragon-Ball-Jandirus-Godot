@@ -1,6 +1,21 @@
+﻿using System.Text.Json.Serialization;
+
 namespace Jandirus.Core.Appearance;
 
-/// <summary>Uma cor de 8 bits por canal. Viaja em 3 bytes na rede.</summary>
+/// <summary>
+/// Uma cor de 8 bits por canal. Viaja em 3 bytes na rede.
+///
+/// ============================ O `JsonConstructor` NAO E ENFEITE ============================
+/// Os tres campos sao `readonly`, e o `System.Text.Json` GRAVA campo readonly mas nao LE: sem o
+/// atributo, a cor ia pro disco certinha e voltava PRETA. Como a tinta e somada, preto = soma
+/// zero = o sprite cru -- entao o efeito era a cor escolhida sumir no primeiro relogin, calada.
+///
+/// Medido num round-trip real: gravou `{"R":200,"G":10,"B":30}` e leu `#000000`. Com o atributo,
+/// leu `#C80A1E`. Valia pra cabelo, olho e corpo desde sempre; a cor de roupa so tornou o defeito
+/// grande o bastante pra ser achado.
+/// ===========================================================================================
+/// </summary>
+[method: JsonConstructor]
 public readonly struct Rgb(byte r, byte g, byte b)
 {
     public readonly byte R = r, G = g, B = b;
@@ -55,8 +70,14 @@ public sealed class Appearance
     /// <summary>Nulo = o olho como foi desenhado.</summary>
     public Rgb? CorOlho;
 
-    /// <summary>Ate 4 pecas, como o guarda-roupa do jogo. Sao caminhos res:// do catalogo.</summary>
-    public List<string> Roupa = [];
+    /// <summary>
+    /// Ate 4 pecas, como o guarda-roupa do jogo -- cada uma com uma cor OPCIONAL.
+    ///
+    /// A cor por peca e o pedido do dono ("cada roupa q vc selecionar pode ter a cor alterada").
+    /// Nulo = a peca como o artista desenhou, que continua sendo o padrao.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonConverter(typeof(PecaDeRoupaConverter))]
+    public List<PecaDeRoupa> Roupa = [];
 
     public const int MaxRoupa = 4;
 
@@ -64,6 +85,90 @@ public sealed class Appearance
     {
         Corpo = Corpo, Tom = Tom, CorPele = CorPele,
         Cabelo = Cabelo, CorCabelo = CorCabelo, CorOlho = CorOlho,
-        Roupa = [.. Roupa],
+        Roupa = [.. Roupa],   // `PecaDeRoupa` e imutavel: copiar a lista basta
     };
+}
+
+/// <summary>
+/// UMA PECA VESTIDA: o caminho do sprite e a cor que o jogador escolheu pra ela.
+///
+/// RECORD STRUCT, e nao classe, de proposito: ela e copiada por valor em `Appearance.Copiar()`,
+/// entao tingir a roupa de um clone nao pode alcancar o dono. Com classe, o `[.. Roupa]` copiaria
+/// as REFERENCIAS e as duas listas apontariam pras mesmas pecas.
+/// </summary>
+public readonly record struct PecaDeRoupa(string Caminho, Rgb? Cor)
+{
+    public PecaDeRoupa(string caminho) : this(caminho, null) { }
+
+    // SEM CONVERSAO IMPLICITA PRA `string`, de proposito. Ela faria todo consumidor antigo
+    // continuar compilando e DESCARTAR a cor em silencio -- que e o unico modo de falha que um
+    // compilador nao pega. Quem quer o caminho escreve `.Caminho`.
+}
+
+/// <summary>
+/// LE AS DUAS FORMAS DO SAVE: a antiga (so o caminho) e a nova (caminho + cor).
+///
+/// ============================ POR QUE ISTO E OBRIGATORIO ============================
+/// Um save gravado antes desta funcionalidade traz `"Roupa": ["res://a.tres", ...]`. Sem este
+/// conversor, ler aquilo numa lista de objetos estoura `JsonException` -- e a partir dai a cadeia
+/// e brutal: o `CharacterStore.Carregar` captura a excecao e devolve NULO; o `Login` le nulo como
+/// "conta nova", monta uma conta vazia e GRAVA POR CIMA do arquivo. O save nao fica ilegivel: fica
+/// APAGADO, com os tres personagens dentro.
+///
+/// Por isso a forma antiga continua sendo aceita pra sempre. Escrever, escreve so a nova.
+/// ====================================================================================
+/// </summary>
+public sealed class PecaDeRoupaConverter : System.Text.Json.Serialization.JsonConverter<List<PecaDeRoupa>>
+{
+    public override List<PecaDeRoupa> Read(ref System.Text.Json.Utf8JsonReader r, Type t,
+                                           System.Text.Json.JsonSerializerOptions o)
+    {
+        var fora = new List<PecaDeRoupa>();
+        if (r.TokenType != System.Text.Json.JsonTokenType.StartArray) return fora;
+
+        while (r.Read() && r.TokenType != System.Text.Json.JsonTokenType.EndArray)
+        {
+            if (r.TokenType == System.Text.Json.JsonTokenType.String)
+            {
+                // FORMA ANTIGA: a peca era so o caminho, e nao havia cor pra guardar.
+                fora.Add(new PecaDeRoupa(r.GetString() ?? "", null));
+                continue;
+            }
+            if (r.TokenType != System.Text.Json.JsonTokenType.StartObject) { r.Skip(); continue; }
+
+            string caminho = "";
+            Rgb? cor = null;
+            while (r.Read() && r.TokenType != System.Text.Json.JsonTokenType.EndObject)
+            {
+                if (r.TokenType != System.Text.Json.JsonTokenType.PropertyName) continue;
+                string campo = r.GetString() ?? "";
+                r.Read();
+                if (string.Equals(campo, nameof(PecaDeRoupa.Caminho), StringComparison.OrdinalIgnoreCase))
+                    caminho = r.GetString() ?? "";
+                else if (string.Equals(campo, nameof(PecaDeRoupa.Cor), StringComparison.OrdinalIgnoreCase))
+                    cor = r.TokenType == System.Text.Json.JsonTokenType.Null
+                        ? null
+                        : System.Text.Json.JsonSerializer.Deserialize<Rgb>(ref r, o);
+                else r.Skip();
+            }
+            if (caminho.Length > 0) fora.Add(new PecaDeRoupa(caminho, cor));
+        }
+        return fora;
+    }
+
+    public override void Write(System.Text.Json.Utf8JsonWriter w, List<PecaDeRoupa> v,
+                               System.Text.Json.JsonSerializerOptions o)
+    {
+        w.WriteStartArray();
+        foreach (PecaDeRoupa p in v)
+        {
+            w.WriteStartObject();
+            w.WriteString(nameof(PecaDeRoupa.Caminho), p.Caminho);
+            w.WritePropertyName(nameof(PecaDeRoupa.Cor));
+            if (p.Cor is { } c) System.Text.Json.JsonSerializer.Serialize(w, c, o);
+            else w.WriteNullValue();
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+    }
 }

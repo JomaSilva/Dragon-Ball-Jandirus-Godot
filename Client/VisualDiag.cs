@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Appearance;
 using Jandirus.Core.World;
 
@@ -43,7 +43,7 @@ public partial class VisualDiag : Node2D
         foreach (string alvo in new[] { "ClothesSaiyanSuit", "GokuDBSSuit" })
         {
             string? achou = _cat.Roupas.FirstOrDefault(r => r.Contains(alvo, StringComparison.OrdinalIgnoreCase));
-            if (achou != null) ap.Roupa.Add(achou);
+            if (achou != null) ap.Roupa.Add(new(achou));
             else GD.Print($"[diag] roupa '{alvo}' nao esta no catalogo");
         }
 

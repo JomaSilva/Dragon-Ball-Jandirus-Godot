@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Ai;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Stats;
@@ -92,7 +92,10 @@ public partial class GameServer
 			Race = dono.Race,
 			Class = dono.Class,
 			SpeedStat = dono.SpeedStat,
-			Visual = dono.Visual,
+			// COPIA, e nao a mesma instancia. Dono e clone dividiam o MESMO objeto (e a mesma lista
+			// de roupa): tingir uma peca num aparecia no outro, e o `Sanear` de um reescrevia a
+			// lista do outro. O `Copiar()` existia pra isto e nunca tinha sido chamado.
+			Visual = dono.Visual.Copiar(),
 			Genero = dono.Genero,
 			Planeta = dono.Planeta,
 			Idade = dono.Idade,

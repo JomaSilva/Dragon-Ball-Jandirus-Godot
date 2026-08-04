@@ -600,7 +600,12 @@ public static class Protocol
         w.PutRgb(a.CorCabelo);
         w.PutRgb(a.CorOlho);
         w.Put((byte)Math.Min(a.Roupa.Count, Appearance.MaxRoupa));
-        for (int i = 0; i < a.Roupa.Count && i < Appearance.MaxRoupa; i++) w.Put(a.Roupa[i]);
+        for (int i = 0; i < a.Roupa.Count && i < Appearance.MaxRoupa; i++)
+        {
+            // O CAMINHO E A COR, nesta ordem -- e a leitura tem que casar byte a byte.
+            w.Put(a.Roupa[i].Caminho);
+            w.PutRgb(a.Roupa[i].Cor);
+        }
     }
 
     public static Appearance GetAppearance(this NetDataReader r)
@@ -617,7 +622,18 @@ public static class Protocol
         // o teto vem do PROTOCOLO, nao do que o pacote afirma: um byte diz ate 255 pecas e
         // ler 255 strings de um cliente forjado seria trabalho de graca pro servidor
         int n = Math.Min((int)r.GetByte(), Appearance.MaxRoupa);
-        for (int i = 0; i < n; i++) a.Roupa.Add(r.GetString(120));
+        for (int i = 0; i < n; i++)
+        {
+            // A COR E LIDA SEMPRE, mesmo quando o caminho e descartado.
+            //
+            // O `GetString(max)` do LiteNetLib NAO trunca: acima do teto ele CONSOME os bytes e
+            // devolve string VAZIA. Pular a leitura da cor junto desalinharia o resto do pacote --
+            // e o `SlotList` manda tres aparencias em fila, entao um desalinho vira "meu
+            // personagem sumiu". Le-se o par inteiro; descarta-se depois.
+            string caminho = r.GetString(120);
+            Rgb? cor = r.GetRgb();
+            if (caminho.Length > 0) a.Roupa.Add(new PecaDeRoupa(caminho, cor));
+        }
         return a;
     }
 

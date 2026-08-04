@@ -151,6 +151,13 @@ if (args.Length >= 2 && args[0] == "portas")
     return 0;
 }
 
+if (args.Length >= 1 && args[0] == "cor")
+{
+    // cor : bancada da COR DE ROUPA no que toca o DISCO -- ida e volta do JSON, o save do
+    // formato antigo, e a copia de aparencia. Ver RoupaBench.
+    return RoupaBench.Rodar();
+}
+
 if (args.Length >= 1 && args[0] == "luta")
 {
     // luta [races.json] : banco de prova do combate (cadencia, gap, duelos, corpo)

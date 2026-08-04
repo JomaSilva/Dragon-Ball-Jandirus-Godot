@@ -135,6 +135,28 @@ public partial class RoboDeFerida : Node
 
 			case 3:
 			{
+				// ============================ A COR DE ROUPA ============================
+				// O `--feridateste` veste o boneco com duas pecas TINGIDAS. Isso exercita a cadeia
+				// inteira num lugar so: o servidor escolhe a cor, ela viaja no `PeerLook`, e a
+				// camada de roupa tem que acabar com a tinta gravada no material -- a MESMA camada
+				// em que o rasgo e desenhado.
+				CharacterVisual? vr = mundo.VisualLocalDeTeste;
+				List<(Vector3 Cor, int Modo)> tintas = vr?.TintaDaRoupaDeTeste() ?? [];
+				Conferir(tintas.Count >= 2, $"as duas pecas viraram camada ({tintas.Count})");
+
+				if (tintas.Count >= 2)
+				{
+					// azul (60,110,220) e vermelho (200,70,60), do `FerirDeTeste`
+					Conferir(tintas[0].Cor.Z > tintas[0].Cor.X && tintas[1].Cor.X > tintas[1].Cor.Z,
+						$"cada peca ficou com a SUA cor (1a azulada {tintas[0].Cor}, 2a avermelhada {tintas[1].Cor})");
+					Conferir(tintas.TrueForAll(t => t.Modo == 1),
+						"a roupa usa o modo MATIZ, e nao a soma (que nao mudaria a cor de peca clara)");
+				}
+				break;
+			}
+
+			case 4:
+			{
 				// A CAIXA DO QUADRO. Se ela nao acompanhar a animacao, as faixas do corpo ficam
 				// travadas no primeiro quadro e a ferida escorre pelo boneco enquanto ele anda.
 				CharacterVisual? v = mundo.VisualLocalDeTeste;
@@ -143,22 +165,22 @@ public partial class RoboDeFerida : Node
 				break;
 			}
 
-			case 4:
+			case 5:
 				Fotografar("user://feridas.png");
 				break;
 
-			case 5:
+			case 6:
 				// DERRUBA O PROPRIO BONECO. O host e admin, e o verb aceita um id -- o meu.
 				// E o unico jeito de por o corpo na pose de NOCAUTE num teste: ela e um desenho
 				// DEITADO, e era nela que as faixas mediam o eixo errado.
 				cli.SendVerbo("admin_kb", cli.LocalId.ToString());
 				break;
 
-			case 6:
 			case 7:
+			case 8:
 				break;   // deixa a pose trocar e o corpo assentar
 
-			case 8:
+			case 9:
 			{
 				CharacterVisual? v = mundo.VisualLocalDeTeste;
 				Conferir(v != null && v.DeitadoDeTeste,

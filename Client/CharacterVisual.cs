@@ -339,6 +339,21 @@ public partial class CharacterVisual : Node2D
 		return (Modo(_corpo), roupas, outras);
 	}
 
+	/// <summary>
+	/// A TINTA GRAVADA em cada camada de roupa: a cor e o modo. SO PRA BANCADA.
+	///
+	/// Nao ha outro jeito de provar que a cor CHEGOU AO DESENHO -- um shader nao devolve nada, e a
+	/// alternativa seria olhar uma foto e confiar no olho.
+	/// </summary>
+	public List<(Vector3 Cor, int Modo)> TintaDaRoupaDeTeste()
+	{
+		var fora = new List<(Vector3, int)>();
+		foreach (AnimatedSprite2D r in _roupa)
+			if (IsInstanceValid(r) && r.Material is ShaderMaterial m)
+				fora.Add((m.GetShaderParameter("tinta").AsVector3(), (int)m.GetShaderParameter("tinta_modo")));
+		return fora;
+	}
+
 	/// <summary>O shader sabe que o desenho esta deitado? SO PRA BANCADA (`--diagferida`).</summary>
 	public bool DeitadoDeTeste => _deitadoEnviado;
 
@@ -359,12 +374,45 @@ public partial class CharacterVisual : Node2D
 		Ferir(m, (int)(_semente / 0.37f));
 	}
 
-	/// <summary>Cor SOMADA a esta camada. Nulo = a cor natural do sprite.</summary>
-	private static void Tingir(AnimatedSprite2D s, Rgb? cor)
+	/// <summary>Soma a cor por cima -- o `ICON_ADD` do BYOND. Corpo, cabelo e olho usam este.</summary>
+	private const int ModoSoma = 0;
+
+	/// <summary>
+	/// TROCA A COR mantendo o sombreado do desenho. E o modo da ROUPA.
+	///
+	/// ============================ POR QUE A ROUPA NAO PODE SOMAR ============================
+	/// Somar so CLAREIA. Em 8 bits: gi branco (255,255,255) + azul = branco -- nao acontece nada.
+	/// Gi vermelho + azul = MAGENTA, nao azul. E o unico resultado alcancavel e sempre mais claro
+	/// que o original.
+	///
+	/// Isso serve pro cabelo (base preta, e o dourado do Super Saiyajin E clareamento) e serve pro
+	/// olho (o sprite base do DM e `Eyes_Black`). Nao serve pra um catalogo de roupa que ja vem
+	/// PINTADO. O dono pediu "mudar as cores das roupas... pra deixar mais customizavel", e com
+	/// soma a maioria das pecas nao mudaria de cor nenhuma.
+	///
+	/// DIVERGE DO DM DE PROPOSITO: la a tintura de roupa era comprada e assada no icone com `+=`,
+	/// que e ICON_ADD -- ou seja, o original tinha exatamente esta limitacao.
+	/// ========================================================================================
+	/// </summary>
+	private const int ModoMatiz = 1;
+
+	/// <summary>
+	/// Pinta esta camada. Nulo = a cor natural do sprite.
+	///
+	/// ESCREVE SEMPRE OS DOIS uniformes. Cor nula volta pro modo SOMA com tinta zero, que e o unico
+	/// neutro de verdade: deixar o modo MATIZ com tinta zero pintaria a peca de PRETO.
+	/// </summary>
+	private static void Tingir(AnimatedSprite2D s, Rgb? cor, int modo = ModoSoma)
 	{
 		if (s.Material is not ShaderMaterial m) return;
-		Vector3 t = cor is { } c ? new Vector3(c.R / 255f, c.G / 255f, c.B / 255f) : Vector3.Zero;
-		m.SetShaderParameter("tinta", t);
+		if (cor is not { } c)
+		{
+			m.SetShaderParameter("tinta_modo", ModoSoma);
+			m.SetShaderParameter("tinta", Vector3.Zero);
+			return;
+		}
+		m.SetShaderParameter("tinta_modo", modo);
+		m.SetShaderParameter("tinta", new Vector3(c.R / 255f, c.G / 255f, c.B / 255f));
 	}
 
 	// =====================================================================
@@ -394,7 +442,18 @@ public partial class CharacterVisual : Node2D
 		for (int i = 0; i < ap.Roupa.Count; i++)
 		{
 			if (i >= _roupa.Count) _roupa.Add(NovaCamada(2 + i));
-			Trocar(_roupa[i], ap.Roupa[i]);
+			Trocar(_roupa[i], ap.Roupa[i].Caminho);
+
+			// ============================ A COR VEM DEPOIS, E VEM SEMPRE ============================
+			// FORA do `Trocar`, porque ele SAI ANTECIPADO quando o caminho e o mesmo -- mexer so na
+			// cor nao mudaria um pixel, e a previa da criacao ficaria muda.
+			//
+			// E SEM `if (cor != null)`, porque a camada e RECICLADA entre chamadas: o material (e a
+			// tinta gravada nele) sobrevive. Condicionar deixaria a cor velha grudada ao desmarcar o
+			// "cor", e faria a peca 0 herdar a cor da peca que estava ali antes quando a lista
+			// desliza. E o mesmo cuidado que o cabelo ja toma na linha do `Tingir` dele.
+			// =======================================================================================
+			Tingir(_roupa[i], ap.Roupa[i].Cor, ModoMatiz);
 		}
 
 		// --- cabelo: acima da roupa, como no jogo (plano 4 contra 3) ---
@@ -713,8 +772,12 @@ public partial class CharacterVisual : Node2D
 			// ===============================================================================
 			if (comTinta && s.Material is ShaderMaterial m)
 			{
+				// OS DOIS UNIFORMES, ou nenhum. Copiar so a cor deixaria o material novo no modo
+				// SOMA (o padrao) com a cor da roupa -- e, pior, se um dia o padrao mudar, copiar
+				// a cor sem o modo pinta a peca de PRETO. Ver `Tingir`.
 				var mat = new ShaderMaterial { Shader = ShaderTinta };
 				mat.SetShaderParameter("tinta", m.GetShaderParameter("tinta"));
+				mat.SetShaderParameter("tinta_modo", m.GetShaderParameter("tinta_modo"));
 				q.Material = mat;
 			}
 			copia.AddChild(q);

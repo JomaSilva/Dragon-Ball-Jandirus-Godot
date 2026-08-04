@@ -141,14 +141,23 @@ public sealed class VisualCatalog
         if (!CorposDe(raca).CorLivre) ap.CorPele = null;   // so Majin/Kai escolhem cor de corpo
 
         // roupa: so o que esta no catalogo, e no maximo o teto do guarda-roupa
-        var limpo = new List<string>();
-        foreach (string peca in ap.Roupa)
+        //
+        // A COR VIAJA JUNTO. O filtro e por CAMINHO -- duas pecas iguais com cores diferentes
+        // continuam sendo a mesma peca, e vence a primeira --, mas a peca que passa leva a cor
+        // que o jogador escolheu. Filtrar so o caminho e remontar sem a cor perderia a tintura
+        // toda vez que alguem confirmasse a criacao.
+        var limpo = new List<PecaDeRoupa>();
+        foreach (PecaDeRoupa peca in ap.Roupa)
         {
             if (limpo.Count >= Appearance.MaxRoupa) { erros.Add("mais roupa que o guarda-roupa aguenta"); break; }
-            if (!Roupas.Contains(peca)) { erros.Add($"roupa fora do catalogo: {peca}"); continue; }
-            if (!limpo.Contains(peca)) limpo.Add(peca);
+            if (!Roupas.Contains(peca.Caminho)) { erros.Add($"roupa fora do catalogo: {peca.Caminho}"); continue; }
+            if (!limpo.Any(p => p.Caminho == peca.Caminho)) limpo.Add(peca);
         }
-        ap.Roupa = limpo;
+        // ESCREVE NO LUGAR, e nao troca a instancia: a tela de criacao guarda widgets ligados a
+        // ESTA lista, e trocar o objeto por baixo deles deixava os botoes da grade afirmando que
+        // uma peca esta vestida depois de o `Sanear` te-la tirado.
+        ap.Roupa.Clear();
+        ap.Roupa.AddRange(limpo);
 
         return string.Join("; ", erros);
     }

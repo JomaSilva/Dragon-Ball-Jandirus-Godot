@@ -1,4 +1,5 @@
 ﻿using Godot;
+using Jandirus.Core.Appearance;
 using Jandirus.Core.Combat;
 using Jandirus.Net;
 using LiteNetLib;
@@ -75,8 +76,10 @@ public sealed partial class GameServer
 		if (pl.Visual.Roupa.Count == 0)
 			pl.Visual.Roupa =
 			[
-				"res://Assets/Sprites/Clothes/Clothes_GiTop.tres",
-				"res://Assets/Sprites/Clothes/Clothes_GiBottom.tres",
+				// TINGIDAS de propria: a bancada de ferida tambem exercita a cor por peca, que usa
+				// o mesmo material da camada em que o rasgo e desenhado.
+				new("res://Assets/Sprites/Clothes/Clothes_GiTop.tres", new Rgb(60, 110, 220)),
+				new("res://Assets/Sprites/Clothes/Clothes_GiBottom.tres", new Rgb(200, 70, 60)),
 			];
 
 		double Por(string zona) => zona switch

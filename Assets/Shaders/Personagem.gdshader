@@ -3,6 +3,10 @@ shader_type canvas_item;
 // --- o ICON_ADD do BYOND: a APARENCIA depende disto, nao mexer ---
 uniform vec3 tinta = vec3(0.0);
 
+/// 0 = SOMA (o ICON_ADD do BYOND, e o padrao), 1 = MATIZ com o sombreado do desenho preservado.
+/// Ver o bloco no `fragment` -- e `CharacterVisual.Tingir`, que escreve os dois SEMPRE juntos.
+uniform int tinta_modo = 0;
+
 // --- impacto ---
 uniform float flash : hint_range(0.0, 1.0) = 0.0;
 uniform vec4  flash_cor : source_color = vec4(1.0, 0.95, 0.9, 1.0);
@@ -93,7 +97,23 @@ void vertex() {
 void fragment() {
 	vec4 c = texture(TEXTURE, UV);
 
-	c.rgb = clamp(c.rgb + tinta, 0.0, 1.0);
+	// ============================ DOIS MODOS DE TINGIR ============================
+	// MODO 0 (SOMA) e o padrao e o de sempre -- o `ICON_ADD` do BYOND. Ele clareia sem apagar o
+	// desenho, que e o que corpo, cabelo e olho precisam (base escura, realce desenhado). Como e o
+	// valor padrao do uniform, camada que nunca escreve o modo continua exatamente como era.
+	//
+	// MODO 1 (MATIZ) e o da ROUPA. Somar nao serve pra um catalogo que ja vem pintado: gi branco
+	// mais azul continua branco, gi vermelho mais azul vira magenta. Aqui a LUMINANCIA do pixel
+	// (o sombreado que o artista desenhou: dobras, vincos, sombra) e mantida como intensidade, e a
+	// COR e substituida. Cinza medio devolve a cor pedida; a dobra escura devolve a cor escura; o
+	// realce estoura pro claro. A peca troca de cor de verdade e continua parecendo pano.
+	// ==============================================================================
+	if (tinta_modo == 1) {
+		float luz = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+		c.rgb = clamp(tinta * (luz * 2.0), 0.0, 1.0);
+	} else {
+		c.rgb = clamp(c.rgb + tinta, 0.0, 1.0);
+	}
 
 	// CONTORNO: acende onde o pixel e opaco e um vizinho e transparente
 	//

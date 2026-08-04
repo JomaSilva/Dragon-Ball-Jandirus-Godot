@@ -248,16 +248,63 @@ public partial class CreationScreen : CanvasLayer
 		return painel;
 	}
 
+	/// <summary>
+	/// A LISTA DAS PECAS VESTIDAS, uma linha por peca: nome, cor e "tirar".
+	///
+	/// ============================ A COR E POR PECA, E MORA NA PECA ============================
+	/// Pedido do dono: "cada roupa q vc selecionar pode ter a cor alterada". A cor nao e um estado
+	/// desta tela -- ela e um campo de `PecaDeRoupa`, dentro da `Appearance`. E por isso que ela
+	/// sobrevive de graca ao save, a rede, a troca de zona e ao olhar dos outros: tudo isso ja
+	/// carrega a aparencia inteira.
+	///
+	/// A LINHA E LIGADA POR CAMINHO, e nao por indice. A lista e reconstruida do zero a cada
+	/// mexida, e o `Sanear` pode reordenar ou remover: um widget preso ao indice 0 acabaria
+	/// pintando a peca errada.
+	/// =========================================================================================
+	/// </summary>
 	private void RedesenharRoupa()
 	{
 		foreach (Node n in _listaRoupa.GetChildren()) n.QueueFree();
-		foreach (string peca in _visual.Roupa.ToArray())
+		foreach (PecaDeRoupa peca in _visual.Roupa.ToArray())
 		{
+			string alvo = peca.Caminho;
 			var h = new HBoxContainer();
-			h.AddChild(new Label { Text = "  " + NomeDeArquivo(peca), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+			h.AddChild(new Label
+			{
+				Text = "  " + NomeDeArquivo(alvo),
+				SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+			});
+
+			// O MARCADOR DE "TINGIR" e o mesmo par de `LinhaDeCor`: sem ele nao ha como VOLTAR
+			// pra cor natural do sprite, que e o padrao e o que a maioria das pecas quer.
+			var tingir = new CheckBox { Text = "cor", ButtonPressed = peca.Cor != null };
+			var cor = new ColorPickerButton
+			{
+				Color = peca.Cor is { } c ? new Color(c.R / 255f, c.G / 255f, c.B / 255f) : new Color("ffffff"),
+				CustomMinimumSize = new Vector2(70, 24),
+				Disabled = peca.Cor == null,
+				EditAlpha = false,
+			};
+
+			void Pintar()
+			{
+				cor.Disabled = !tingir.ButtonPressed;
+				int i = _visual.Roupa.FindIndex(p => p.Caminho == alvo);
+				if (i < 0) return;
+				_visual.Roupa[i] = new PecaDeRoupa(alvo, tingir.ButtonPressed ? DeCor(cor.Color) : null);
+				// SO REPINTA A PREVIA. `Repintar()` reconstroi esta lista inteira, e reconstruir a
+				// linha embaixo do seletor que o jogador esta arrastando fecha o seletor a cada
+				// pixel de mudanca -- escolher cor viraria impossivel.
+				Previa();
+			}
+
+			tingir.Toggled += _ => Pintar();
+			cor.ColorChanged += _ => Pintar();
+			h.AddChild(tingir);
+			h.AddChild(cor);
+
 			var x = new Button { Text = "tirar" };
-			string alvo = peca;
-			x.Pressed += () => { _visual.Roupa.Remove(alvo); Repintar(); };
+			x.Pressed += () => { _visual.Roupa.RemoveAll(p => p.Caminho == alvo); Repintar(); };
 			h.AddChild(x);
 			_listaRoupa.AddChild(h);
 		}
@@ -342,14 +389,14 @@ public partial class CreationScreen : CanvasLayer
 			string alvo = peca;
 			b.Pressed += () =>
 			{
-				if (_visual.Roupa.Remove(alvo)) { b.ButtonPressed = false; Repintar(); return; }
+				if (_visual.Roupa.RemoveAll(p => p.Caminho == alvo) > 0) { b.ButtonPressed = false; Repintar(); return; }
 				if (_visual.Roupa.Count >= Appearance.MaxRoupa)
 				{
 					b.ButtonPressed = false;
 					_erro.Text = $"o guarda-roupa leva no maximo {Appearance.MaxRoupa} pecas";
 					return;
 				}
-				_visual.Roupa.Add(alvo);
+				_visual.Roupa.Add(new PecaDeRoupa(alvo));
 				b.ButtonPressed = true;
 				_erro.Text = "";
 				Repintar();
@@ -492,6 +539,17 @@ public partial class CreationScreen : CanvasLayer
 	private void Repintar()
 	{
 		RedesenharRoupa();
+		Previa();
+	}
+
+	/// <summary>
+	/// So o BONECO, sem remontar a lista de pecas.
+	///
+	/// Existe pro seletor de cor: `Repintar` reconstroi a lista inteira, e reconstruir a linha
+	/// embaixo do seletor que o jogador esta arrastando fecharia o seletor a cada pixel.
+	/// </summary>
+	private void Previa()
+	{
 		if (_cat == null) return;
 		_boneco.Vestir(_cat, _visual, _ficha.Race, Genero());
 		_boneco.SetMotion(_facingAtual, false);
@@ -554,6 +612,13 @@ public partial class CreationScreen : CanvasLayer
 	/// </summary>
 	public void Reabrir()
 	{
+		// ZERA O GUARDA-ROUPA. Esta tela nao e destruida (e o que tira a travadinha de abrir) e a
+		// `Appearance` dela e um campo unico: sem isto, criar um segundo personagem comecava com a
+		// roupa, as cores e os botoes marcados do primeiro.
+		_visual.Roupa.Clear();
+		foreach (Node n in _gradeRoupa.GetChildren()) if (n is Button b) b.ButtonPressed = false;
+		RedesenharRoupa();
+
 		_erro.Text = "";
 		Visible = true;
 		_nome.GrabFocus();
