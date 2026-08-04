@@ -55,6 +55,22 @@ public partial class ClashQte : CanvasLayer
 	/// <summary>Ja mandei tecla nesta letra? O servidor so aceita uma; a tela tem que dizer isso.</summary>
 	private bool _respondi;
 
+	/// <summary>
+	/// O PISCA DO VEREDITO: quanto falta do brilho, e se ele e verde (acertei) ou vermelho (errei).
+	///
+	/// ============================ POR QUE ISSO PRECISAVA EXISTIR ============================
+	/// A unica resposta que a tela dava a uma tecla era o anel APAGAR -- o mesmo apagar pro acerto
+	/// e pro erro. Num teste de reflexo em que a letra some logo depois, o jogador nao tinha como
+	/// saber se pegou ou nao; so o placar dizia, e o placar fica no alto da tela enquanto os olhos
+	/// estao no anel. Agora o anel e a letra respondem na hora, na cor do que aconteceu.
+	/// ========================================================================================
+	/// </summary>
+	private double _veredito;
+	private bool _acertei;
+
+	/// <summary>Quanto tempo o brilho de acerto/erro fica na tela.</summary>
+	private const double SegundosDeVeredito = 0.35;
+
 	// =====================================================================
 	// MONTAGEM
 	// =====================================================================
@@ -81,6 +97,12 @@ public partial class ClashQte : CanvasLayer
 			cli.ClashComecou += Comecou;
 			cli.ClashTeclaPedida += Pediu;
 			cli.ClashPlacar += Placar;
+			cli.ClashJulgou += acertou =>
+			{
+				if (!_ligado) return;
+				_acertei = acertou;
+				_veredito = SegundosDeVeredito;
+			};
 			cli.ClashBaque += _ => _baque = SegundosDeBaque;
 			cli.ClashAcabou += Acabou;
 		}
@@ -282,6 +304,9 @@ public partial class ClashQte : CanvasLayer
 		if (!_ligado) return;
 		_letra.Text = c.ToString();
 		_respondi = false;
+		// LETRA NOVA APAGA O VEREDITO DA ANTERIOR: o brilho e resposta a UMA tecla, e arrasta-lo
+		// pra proxima diria que a nova ja foi julgada.
+		_veredito = 0;
 		_prazoTotal = _prazoResta = Math.Max(ms / 1000.0, 0.05);
 	}
 
@@ -317,6 +342,12 @@ public partial class ClashQte : CanvasLayer
 
 		_t += delta;
 		if (_baque > 0) _baque = Math.Max(0, _baque - delta);
+		if (_veredito > 0) _veredito = Math.Max(0, _veredito - delta);
+
+		// A COR DO VEREDITO. Verde acertou, vermelho errou -- e ela desbota ate voltar ao normal,
+		// pra o brilho ser um PISCA e nao um estado. `_brilho` vai de 1 (no instante da tecla) a 0.
+		float brilho = (float)(_veredito / SegundosDeVeredito);
+		Color corDoVeredito = _acertei ? Tema.Destaque : Tema.Vida;
 
 		// A FORCA sobe rapido e desce devagar: o embate ENTRA de estouro e SAI de fade.
 		double alvo = _ligado ? 1 : 0;
@@ -349,7 +380,14 @@ public partial class ClashQte : CanvasLayer
 			_anel.Scale = new Vector2(0.42f + f * 0.58f, 0.42f + f * 0.58f);
 			// A VEZ JA FOI USADA: o anel apaga em vez de sumir. Sumir seco daria a impressao de que
 			// a tela travou; apagado ele diz "respondida, espere a proxima".
-			_anel.Modulate = new Color(1, 1, 1, _respondi ? 0.18f : 0.35f + f * 0.65f);
+			//
+			// COM VEREDITO NO AR, a cor manda mais que o apagar: o anel acende inteiro em verde ou
+			// vermelho e so depois volta a apagar. Sem forcar o alfa aqui, o brilho nasceria ja em
+			// 18% de opacidade -- o pisca aconteceria e ninguem veria.
+			float alfa = _respondi ? 0.18f : 0.35f + f * 0.65f;
+			_anel.Modulate = brilho > 0
+				? corDoVeredito.Lerp(new Color(1, 1, 1, alfa), 1 - brilho)
+				: new Color(1, 1, 1, alfa);
 			_anel.Visible = true;
 		}
 		else _anel.Visible = false;
@@ -357,7 +395,9 @@ public partial class ClashQte : CanvasLayer
 		// A LETRA SE APAGA JUNTO. Sem isto ela ficava na tela cheia depois de respondida, e a foto
 		// da bancada mostrou o resultado: um "N" sozinho no meio da tela, sem anel e sem prazo, como
 		// se ainda estivesse valendo.
-		_letra.Modulate = new Color(1, 1, 1, _respondi ? 0.22f : 1f);
+		_letra.Modulate = brilho > 0
+			? corDoVeredito.Lerp(new Color(1, 1, 1, _respondi ? 0.22f : 1f), 1 - brilho)
+			: new Color(1, 1, 1, _respondi ? 0.22f : 1f);
 		_letra.Visible = _ligado && _letra.Text.Length > 0 && _prazoResta > 0;
 		_titulo.Visible = _ligado;
 		_dica.Visible = _ligado;

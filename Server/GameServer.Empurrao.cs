@@ -202,10 +202,15 @@ public sealed partial class GameServer
 		}
 	}
 
-	/// <summary>O baque: dano espalhado pelo corpo, proporcional ao que faltava voar.</summary>
-	private void Espalhar(ServerPlayer pl, int tiques)
+	/// <summary>
+	/// DANO ESPALHADO PELO CORPO INTEIRO, em vez de num membro so.
+	///
+	/// No arremesso ele e o baque, e a dose e o que faltava voar. Mas o mecanismo nao e do
+	/// arremesso: passar fome usa o mesmo caminho (`TickDoEstomago`), e por isso a dose e um
+	/// `double` -- o dano de fome e fracionario por passada, e um `int` o truncaria pra zero.
+	/// </summary>
+	private static void Espalhar(ServerPlayer pl, double dano)
 	{
-		double dano = tiques;
 		foreach (Jandirus.Core.Combat.BodyPart parte in pl.Combate.Corpo.Partes)
 			parte.Vida = Math.Max(0, parte.Vida - dano / pl.Combate.Corpo.Partes.Count);
 		pl.Combate.SincronizarVida();

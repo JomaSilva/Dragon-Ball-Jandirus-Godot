@@ -81,11 +81,29 @@ public sealed class Appearance
 
     public const int MaxRoupa = 4;
 
+    /// <summary>
+    /// OS CORPOS DAS FORMAS DO FROST DEMON, um por degrau, na ordem que
+    /// <see cref="Races.FormasDeFrost.DegrausDe"/> devolve. Vazio pra todas as outras racas.
+    ///
+    /// ============================ POR QUE ISTO E APARENCIA ============================
+    /// Um Frost Demon nao tem "um corpo": ele tem tres (ou sete, se for mutante), e trocar de forma
+    /// TROCA O SPRITE inteiro. Nao ha um passo de "escolha seu corpo" pra ele no original -- o passo
+    /// de aparencia DELE e escolher quais corpos serao as formas, e foi o que o dono confirmou:
+    /// "a aparencia do frost demon e onde ele escolhe as formas dele".
+    ///
+    /// Guardar aqui, e nao no estado de combate, e o que faz a escolha SOBREVIVER: ela e feita uma
+    /// vez na criacao, viaja no mesmo pacote do cabelo e da roupa, e e salva com o personagem. O
+    /// que o combate guarda e so em QUAL dos degraus o corpo esta agora.
+    /// ==================================================================================
+    /// </summary>
+    public List<string> FormasDeFrost = [];
+
     public Appearance Copiar() => new()
     {
         Corpo = Corpo, Tom = Tom, CorPele = CorPele,
         Cabelo = Cabelo, CorCabelo = CorCabelo, CorOlho = CorOlho,
         Roupa = [.. Roupa],   // `PecaDeRoupa` e imutavel: copiar a lista basta
+        FormasDeFrost = [.. FormasDeFrost],
     };
 }
 

@@ -680,9 +680,59 @@ public partial class GameServer
 
 			if (pl.Ficha.dead && agora >= pl.RenasceEm) Renascer(pl);
 
+			TickDoEstomago(pl, dt);
+
 			MandarCorpo(pl);       // barato: sai sozinho quando nada mudou
 			MandarAtributos(pl);   // idem: atributo so muda quando se treina
 			MandarSkills(pl);
+		}
+	}
+
+	/// <summary>
+	/// O ESTOMAGO, na cadencia dele -- ver <see cref="Jandirus.Core.Stats.Nutricao"/>.
+	///
+	/// ============================ ELE NAO RODA NO TIQUE DO SERVIDOR ============================
+	/// As constantes de digestao do original sao POR PASSADA de tres segundos, nao por segundo.
+	/// Chamar isto a 30 Hz multiplicaria a digestao por noventa: o tanque esvaziaria em dois
+	/// segundos e o vigor encheria no mesmo tempo -- os dois defeitos opostos de uma vez.
+	///
+	/// Por isso ha um acumulador por jogador. E a mesma disciplina do `_accumulator` do servidor:
+	/// um sistema com relogio proprio guarda o relogio proprio.
+	/// ===========================================================================================
+	/// </summary>
+	private readonly Dictionary<int, double> _relogioDoEstomago = [];
+
+	/// <summary>Quanto dano de fome ja se acumulou, por jogador. Ver `Nutricao.DanoDaFome`.</summary>
+	private readonly Dictionary<int, double> _fomeAcumulada = [];
+
+	private void TickDoEstomago(ServerPlayer pl, double dt)
+	{
+		double relogio = _relogioDoEstomago.GetValueOrDefault(pl.Id) + dt;
+
+		// O metabolismo acelera as passadas, e nao so aumenta o tanque: quem digere rapido come
+		// mais vezes por minuto. E o `spawn(30 / Metabolism)` do DM.
+		double intervalo = Jandirus.Core.Stats.Nutricao.SegundosPorPassada
+						 / Math.Max(pl.Ficha.Metabolism, 0.1);
+		if (relogio < intervalo) { _relogioDoEstomago[pl.Id] = relogio; return; }
+		_relogioDoEstomago[pl.Id] = relogio - intervalo;
+
+		Jandirus.Core.Stats.Nutricao.QueimarVigor(pl.Ficha);
+		Jandirus.Core.Stats.Nutricao.Digerir(pl.Ficha);
+
+		// PASSAR FOME MACHUCA, e o dano vai pelo mesmo caminho do combate -- espalhado pelo corpo.
+		double acumulado = _fomeAcumulada.GetValueOrDefault(pl.Id);
+		double dano = Jandirus.Core.Stats.Nutricao.DanoDaFome(pl.Ficha, ref acumulado);
+		_fomeAcumulada[pl.Id] = acumulado;
+		if (dano > 0) Espalhar(pl, dano);   // ele ja sincroniza a vida
+
+		// O BARRIGAO RONCA UMA VEZ, e nao a cada tres segundos. O `Hungry` da ficha e o que impede
+		// o aviso de virar spam; ele so volta a zero quando o personagem come.
+		if (!pl.Ficha.Hungry && Jandirus.Core.Stats.Nutricao.TemFome(pl.Ficha))
+		{
+			pl.Ficha.Hungry = true;
+			Avisar(pl, pl.Ficha.CurrentNutrition <= 0
+				? "seu estômago ronca. Você precisa comer ALGUMA COISA."
+				: "seu fôlego está no fim. Comer alguma coisa ajudaria.");
 		}
 	}
 

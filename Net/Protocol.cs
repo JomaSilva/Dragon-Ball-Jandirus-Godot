@@ -290,6 +290,16 @@ public static class Protocol
         /// veria outro relampago.
         /// </summary>
         Raio = 31,
+
+        /// <summary>
+        /// O QUE EU CARREGO. So pro dono -- inventario alheio nao e do snapshot, e ver o que o
+        /// outro tem na mochila e informacao que o jogo nao da de graca.
+        ///
+        /// A LISTA INTEIRA, e nao um delta. Sao no maximo 30 pares de (id, quantidade) e ela muda
+        /// quando alguem colhe ou come -- nao vale um sistema de diferencas, que tem o modo de
+        /// falha de dessincronizar em silencio e so aparecer como "sumiu um item".
+        /// </summary>
+        Inventario = 32,
     }
 
     /// <summary>Os momentos do ZanzoClash. Ver <see cref="S2C.Clash"/>.</summary>
@@ -318,6 +328,22 @@ public static class Protocol
         /// nao vem por snapshot -- quem esta no embate esconde o proprio boneco por conta.
         /// </summary>
         Vislumbre = 5,
+
+        /// <summary>
+        /// O VEREDITO DA LETRA QUE EU ACABEI DE APERTAR -- um byte, 1 acertei, 0 errei.
+        ///
+        /// ============================ POR QUE NAO DA PRA DEDUZIR DO PLACAR ============================
+        /// O cliente sabe que letra foi pedida e que tecla ele mandou, mas quem JULGA e o servidor
+        /// (de proposito -- ver `TeclaDoEmbate`), e ele julga tambem o PRAZO: uma letra certa que
+        /// chega tarde e um erro, e daqui nao da pra saber disso.
+        ///
+        /// Deduzir do placar tambem nao serve: ele chega pros dois lados a cada mudanca, entao o
+        /// meu placar tambem mexe quando o OUTRO acerta -- eu piscaria verde pelo acerto dele.
+        ///
+        /// E PESSOAL: so quem apertou recebe. O adversario nao tem o que fazer com isso.
+        /// ==============================================================================================
+        /// </summary>
+        Julgou = 6,
     }
 
     /// <summary>
@@ -624,12 +650,22 @@ public static class Protocol
     {
         w.Put(d.Name); w.Put(d.Race); w.Put(d.Planet);
         w.Put(d.Gender); w.Put(d.Age); w.Put(d.ChosenClass);
+        // O PORTE MEXE EM STAT, entao o servidor precisa dele -- e vai validar contra a lista.
+        w.Put(d.Porte);
+        w.Put(d.Backstory);
     }
 
     public static CharacterDraft GetDraft(this NetDataReader r) => new()
     {
         Name = r.GetString(24), Race = r.GetString(24), Planet = r.GetString(24),
         Gender = r.GetString(8), Age = r.GetInt(), ChosenClass = r.GetString(32),
+        Porte = r.GetString(16),
+        // O TETO DA LEITURA E MAIOR QUE O DA REGRA de proposito. `GetString(max)` do LiteNetLib
+        // nao trunca: acima do teto ele consome os bytes e devolve VAZIO. Cortar em 500 aqui faria
+        // uma historia de 501 caracteres chegar como historia vazia, e o jogador leria "escreva a
+        // historia" depois de ter escrito demais. Lendo com folga, quem recusa e o `Validar`, que
+        // sabe dizer o motivo certo.
+        Backstory = r.GetString(CharacterDraft.BackstoryMax * 2),
     };
 
     /// <summary>Cor OPCIONAL: um byte de presenca antes. Ausente = a cor natural do sprite.</summary>
@@ -666,6 +702,12 @@ public static class Protocol
             w.Put(a.Roupa[i].Caminho);
             w.PutRgb(a.Roupa[i].Cor);
         }
+
+        // OS CORPOS DAS FORMAS DO FROST DEMON, no fim do pacote. Vazio pra todas as outras racas,
+        // e ai custa um byte -- o preco de nao ter um segundo pacote so pra uma raca.
+        w.Put((byte)Math.Min(a.FormasDeFrost.Count, Jandirus.Core.Races.FormasDeFrost.Total));
+        for (int i = 0; i < a.FormasDeFrost.Count && i < Jandirus.Core.Races.FormasDeFrost.Total; i++)
+            w.Put(a.FormasDeFrost[i]);
     }
 
     public static Appearance GetAppearance(this NetDataReader r)
@@ -694,7 +736,45 @@ public static class Protocol
             Rgb? cor = r.GetRgb();
             if (caminho.Length > 0) a.Roupa.Add(new PecaDeRoupa(caminho, cor));
         }
+
+        // MESMO TETO DO PROTOCOLO, pela mesma razao da roupa: o byte diz ate 255, e ler 255 nomes
+        // de um cliente forjado seria trabalho de graca. O que passar do teto e ignorado, e quem
+        // decide se o nome existe mesmo e `FormasDeFrost.Sanear`, no servidor.
+        int nf = Math.Min((int)r.GetByte(), Jandirus.Core.Races.FormasDeFrost.Total);
+        for (int i = 0; i < nf; i++)
+        {
+            string corpo = r.GetString(64);
+            if (corpo.Length > 0) a.FormasDeFrost.Add(corpo);
+        }
         return a;
+    }
+
+    /// <summary>
+    /// O INVENTARIO INTEIRO, do servidor pro dono. Ele e pequeno (ate 30 pares) e muda pouco, entao
+    /// nao vale a pena um pacote de delta: mandar a lista toda quando ela muda e mais simples e nao
+    /// tem o modo de falha do delta, que e ficar dessincronizado sem ninguem perceber.
+    /// </summary>
+    public static void PutInventario(this NetDataWriter w, Jandirus.Core.Items.Inventario inv)
+    {
+        w.Put((byte)Math.Min(inv.Pilhas.Count, Jandirus.Core.Items.Inventario.Slots));
+        for (int i = 0; i < inv.Pilhas.Count && i < Jandirus.Core.Items.Inventario.Slots; i++)
+        {
+            w.Put(inv.Pilhas[i].Id);
+            w.Put((ushort)Math.Clamp(inv.Pilhas[i].Quantidade, 0, ushort.MaxValue));
+        }
+    }
+
+    public static Jandirus.Core.Items.Inventario GetInventario(this NetDataReader r)
+    {
+        var inv = new Jandirus.Core.Items.Inventario();
+        int n = Math.Min((int)r.GetByte(), Jandirus.Core.Items.Inventario.Slots);
+        for (int i = 0; i < n; i++)
+        {
+            string id = r.GetString(32);
+            int q = r.GetUShort();
+            if (id.Length > 0 && q > 0) inv.Pilhas.Add(new Jandirus.Core.Items.Pilha(id, q));
+        }
+        return inv;
     }
 
     public static NetDataWriter Begin(C2S id) { var w = new NetDataWriter(); w.Put((byte)id); return w; }

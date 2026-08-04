@@ -96,6 +96,24 @@ public static class DmTechScanner
 			Desc = "Deposita e saca zeni. O que fica no banco nao se perde ao morrer.",
 			Custo = -1, TechNecessario = -1,
 		},
+
+		// A ARVORE DE MACA -- `/obj/Trees/AppleTree` (`Modules/Turfs/Plants.dm:54-75`).
+		//
+		// ============================ POR QUE UMA ARVORE E "MOBILIA" ============================
+		// Ela nao parece maquina, mas e exatamente a mesma coisa pro jogo: fica parada num tile,
+		// bloqueia (`density = 1`), e se usa de perto. A alternativa era um segundo sistema de
+		// "objetos do mundo que respondem" ao lado do de construcoes -- duas verdades sobre a mesma
+		// pergunta ("o que tem perto de mim que da pra usar?").
+		//
+		// Entrando aqui, ela ganha de graca tudo o que o banco ja tem: sai do tilemap e vira node,
+		// bloqueia passagem, aparece pra todo mundo pelo mesmo pacote, e o alcance de uso a alcanca.
+		// =======================================================================================
+		new()
+		{
+			Id = "AppleTree", Nome = "Apple Tree", CreateType = "/obj/Trees/AppleTree",
+			Desc = "Da macas. Dez por vez, e leva um tempo pra repor o que foi colhido.",
+			Custo = -1, TechNecessario = -1,
+		},
 	];
 
 	private static void Ler(string arq, List<ConstrucaoDef> saida)

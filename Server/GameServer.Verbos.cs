@@ -77,6 +77,8 @@ public sealed partial class GameServer
 		// O BANCO ANTES DO RESTO. Sao tres comandos com prefixo proprio e uma guarda so (estar
 		// perto de um caixa), entao eles moram num arquivo separado -- ver GameServer.Banco.cs.
 		if (ComandoDeBanco(pl, cmd, arg)) return;
+		if (ComandoDeInteracao(pl, cmd, arg)) return;
+		if (ComandoDeItem(pl, cmd, arg)) return;
 
 		switch (cmd)
 		{

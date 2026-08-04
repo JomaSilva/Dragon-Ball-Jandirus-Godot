@@ -347,6 +347,10 @@ public partial class Boot : Node2D
 		// no meio de uma briga, e montar tela nessa hora e o jeito de perder o primeiro prazo.
 		AddChild(new ClashQte { Name = "ClashQte" });
 		AddChild(new MenuJogo { Name = "Menu" });
+		// A TECLA E: uma porta so pra tudo com que se pode mexer no mundo. Ver `MenuDeInteracao`.
+		AddChild(new MenuDeInteracao { Name = "Interacao" });
+		// A TECLA I: a mochila.
+		AddChild(new TelaDeInventario { Name = "Inventario" });
 
 		_pause = new PauseMenu { Name = "Pause" };
 		_pause.Desconectar += VoltarAoLogin;
@@ -499,8 +503,20 @@ public partial class Boot : Node2D
 			Name = _autoNome, Race = _autoRaca,
 			Planet = Array.Find(CharacterDraft.Planetas,
 				pl => Array.IndexOf(CharacterDraft.RacasDoPlaneta(pl), _autoRaca) >= 0) ?? "Earth",
-			Gender = "Male", Age = 18,
+			Gender = "Male",
+
+			// A HISTORIA E OBRIGATORIA, tambem pro robo. Ela nasceu com minimo de 10 caracteres
+			// (regra do original) e o caminho automatico nao escrevia nenhuma -- o servidor passou a
+			// recusar TODA bancada com "escreva a historia do personagem". Uma linha honesta aqui
+			// vale mais que uma excecao no validador: a bancada tem que atravessar o mesmo portao
+			// que o jogador, senao ela deixa de testar o portao.
+			Backstory = "Personagem de bancada, criado por linha de comando para testes.",
 		};
+
+		// A IDADE RESPEITA O AUGE DA RACA. Dezoito serve pra quase todas, mas nao pro Saibaman, que
+		// vive dez anos -- e uma bancada de Saibaman seria recusada por idade.
+		ficha.Age = Math.Min(18, ficha.IdadeMaxima);
+
 		string[] linhagens = CharacterDraft.EscolhasDeClasse(_autoRaca);
 		if (linhagens.Length > 0) ficha.ChosenClass = linhagens[0];
 

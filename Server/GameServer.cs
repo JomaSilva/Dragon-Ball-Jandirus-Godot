@@ -294,6 +294,18 @@ public sealed class ServerPlayer
 	public int Idade = 18;
 	public long CriadoEm;
 
+	/// <summary>O que este personagem carrega. Ver `Core.Items.Inventario`.</summary>
+	public Jandirus.Core.Items.Inventario Mochila = new();
+
+	/// <summary>Assinatura do ultimo inventario enviado -- mesma disciplina dos outros `Env*`.</summary>
+	public string SigMochila = "";
+
+	/// <summary>A historia que o jogador escreveu na criacao. Sem efeito mecanico -- ver o verb.</summary>
+	public string Historia = "";
+
+	/// <summary>O porte do corpo (Small/Medium/Large). Mexe em stat, e e permanente.</summary>
+	public string Porte = "Medium";
+
 	/// <summary>A conta a que este personagem pertence, e em qual dos tres slots ele mora.</summary>
 	public string Conta = "";
 	public int Slot = -1;
@@ -1111,10 +1123,20 @@ public partial class GameServer : Node
 		string ajuste = _visual?.Sanear(visual, ficha.Race, ficha.Gender) ?? "";
 		if (ajuste.Length > 0) GD.Print($"[server] aparencia de {nome} ajustada: {ajuste}");
 
+		// OS CORPOS DAS FORMAS SO PODEM SER SANEADOS AQUI, e nao no `Sanear` visual: quantos slots
+		// existem depende da CLASSE, e a classe acabou de ser sorteada logo acima (`Nascer`). O
+		// jogador escolheu tres corpos achando que era normal; se saiu Mutante, ele precisa de sete
+		// -- e os quatro que faltam sao preenchidos com os padroes do original.
+		if (Jandirus.Core.Races.FormasDeFrost.EhFrost(ficha.Race))
+			visual.FormasDeFrost = Jandirus.Core.Races.FormasDeFrost.Sanear(lutador.Class, visual.FormasDeFrost);
+		else
+			visual.FormasDeFrost.Clear();
+
 		var novo = new CharacterSave
 		{
 			Nome = nome, Raca = ficha.Race, Planeta = ficha.Planet, Genero = ficha.Gender,
 			Linhagem = ficha.ChosenClass, Idade = ficha.Age, Visual = visual, Ficha = lutador,
+			Historia = ficha.Backstory.Trim(), Porte = ficha.Porte,
 			Zona = SpawnZone.Name, X = SpawnPos.X, Y = SpawnPos.Y, CriadoEm = NowMs(),
 		};
 		// OS LIMIARES SAO SORTEADOS AGORA, uma vez, e vao pro disco junto do personagem.
@@ -1285,6 +1307,11 @@ public partial class GameServer : Node
 		ClimaDeTeste(pl);   // a bancada `--climateste`, se estiver ligada
 		MandarClima(pl);    // e o temporal que ja estava em curso nesta zona
 
+		// A MOCHILA VAI FORCADA no login: a assinatura nasce vazia e uma mochila TAMBEM vazia
+		// casaria com ela, entao o pacote nao sairia -- e a tela de inventario ficaria mostrando o
+		// do personagem anterior desta sessao de cliente.
+		MandarMochila(pl, forcar: true);
+
 		TrocarAparencias(pl);
 		TrocarFeridas(pl);
 
@@ -1363,10 +1390,43 @@ public partial class GameServer : Node
 	/// </summary>
 	private Fighter Nascer(CharacterDraft ficha, string nome)
 	{
-		if (_racas == null)
-			return new Fighter { Name = nome, Race = ficha.Race, BP = 1 };
+		Fighter f = _racas == null
+			? new Fighter { Name = nome, Race = ficha.Race, BP = 1 }
+			: Birth.Nascer(_racas, ficha.Race, ficha.ChosenClass, _rng, nome);
 
-		return Birth.Nascer(_racas, ficha.Race, ficha.ChosenClass, _rng, nome);
+		// A IDADE E O PORTE SAO DA FICHA, e nao so do cadastro. A idade alimenta a curva de
+		// `Envelhecimento` (que multiplica o BP) e o porte mexe direto nos mods -- as duas coisas
+		// tem que estar valendo ANTES do primeiro `Statify`, senao o personagem nasce com os
+		// numeros de outro e so se acerta no proximo recalculo.
+		f.Idade = ficha.Age;
+		AplicarPorte(f, ficha.Porte);
+		f.Statify();
+		return f;
+	}
+
+	/// <summary>
+	/// O PORTE DO CORPO nos mods do lutador -- o passo "TIPO DE CORPO" do original, que faltava.
+	///
+	/// ============================ APLICA-SE UMA VEZ, NO NASCIMENTO ============================
+	/// E a unica escolha da criacao que mexe em numero, e ela e PERMANENTE. "Permanente" aqui nao
+	/// quer dizer "reaplicada todo login": o `CharacterSave` serializa o `Fighter` INTEIRO, mods
+	/// inclusos, entao o efeito ja volta do disco pronto. Chamar isto de novo no login MULTIPLICARIA
+	/// os mods outra vez, e o personagem ficaria mais rapido (ou mais lento) a cada vez que entrasse
+	/// no jogo -- um bug que so apareceria depois de dias e pareceria progressao.
+	///
+	/// O campo `CharacterSave.Porte` existe pra MOSTRAR a escolha e pra um recalculo futuro saber
+	/// de onde partir, e nao pra ser reaplicado.
+	/// ==========================================================================================
+	/// </summary>
+	private static void AplicarPorte(Fighter f, string porte)
+	{
+		CharacterDraft.AjusteDePorte a = CharacterDraft.PorteDoCorpo(porte);
+		f.speedMod *= a.Speed;
+		f.kioffMod *= a.KiOff;
+		f.physoffMod *= a.PhysOff;
+		f.physdefMod *= a.PhysDef;
+		f.kidefMod = f.kidefMod * a.KiDef + a.KiDefSoma;
+		f.kiregenMod += a.KiRegenSoma;
 	}
 
 	private void Input(NetPeer peer, NetPacketReader reader)
@@ -1559,6 +1619,13 @@ public partial class GameServer : Node
 		// O ARREMESSO ANDA NO TICK CHEIO: o tique dele e 0,1 s e cada um vale dois tiles. A 5 Hz
 		// o corpo daria saltos de quatro tiles, e o que se veria seria teleporte, nao voo.
 		TickDoEmpurrao();
+		TickDasArvores();     // as macas brotam de volta -- ver GameServer.Interacao.cs
+		TickDaGravidade();    // a bateria das maquinas drena -- ver GameServer.Gravidade.cs
+
+		// A CURA DAS MAQUINAS VARRE OS JOGADORES POR DENTRO, entao ela roda UMA vez por tique e nao
+		// uma vez por jogador -- chamada de dentro do laco de combate, ela curaria todo mundo tantas
+		// vezes quantos jogadores houvesse online, e o regenerador ficaria mais forte com a lotacao.
+		TickDasMaquinasDeCura(Protocol.TickSeconds);
 
 		// no espaco: troca de chunk e pouso por encostar
 		foreach (ServerPlayer pl in _players.Values.ToList()) TickDoEspaco(pl);
@@ -1609,7 +1676,7 @@ public partial class GameServer : Node
 	{
 		foreach (ServerPlayer pl in _players.Values)
 		{
-			Treinar(pl.Ficha);
+			Treinar(pl);
 			pl.Ficha.Tick(agoraMs: NowMs());
 			pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed);
 			GainKnobs.TopBP = Math.Max(GainKnobs.TopBP, pl.Ficha.BP);
@@ -1666,9 +1733,16 @@ public partial class GameServer : Node
 	/// fazendo, mas quem soma poder e este metodo. A gravidade entra sempre: ela nao treina
 	/// sozinha, ela MULTIPLICA quem ja esta treinando.
 	/// </summary>
-	private void Treinar(Fighter f)
+	private void Treinar(ServerPlayer pl)
 	{
-		if (f.train) f.TrainGain(_rng, 6.0 / (1 + Math.Log(2)));
+		Fighter f = pl.Ficha;
+
+		// O SACO DE PANCADA DOBRA O TREINO, e o bonus vem da PRESENCA e nao de um estado guardado:
+		// se ha um saco aparafusado por perto, treinar rende mais. Um campo "estou no saco" ficaria
+		// preso ligado quando o jogador andasse pra longe. Ver `BonusDeTreinoPerto`.
+		double aparelho = f.train ? BonusDeTreinoPerto(pl) : 1;
+
+		if (f.train) f.TrainGain(_rng, 6.0 / (1 + Math.Log(2)) * aparelho);
 		else if (f.med) f.MedGain(_rng);
 		else { f.BufferTick(); return; }   // parado: so acumula pro proximo treino
 

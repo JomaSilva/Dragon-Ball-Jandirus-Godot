@@ -170,6 +170,19 @@ public sealed class VisualCatalog
     /// </summary>
     public string CorpoSprite(Appearance ap, string raca, string genero)
     {
+        // ============================ O FROST DEMON NAO TEM CORPO NO CATALOGO ============================
+        // E de proposito, e nao um buraco: o corpo dele E a forma em que ele esta, e as formas sao
+        // escolhidas na criacao (ver `Races.FormasDeFrost`). Sem esta saida ele caia no
+        // `CorpoPadrao` la embaixo e o Freeza aparecia como um humano palido -- na previa da
+        // criacao, no retrato do slot, e no mundo pra todo mundo.
+        //
+        // AQUI SEMPRE SAI A FORMA BASE. Trocar de forma em jogo e outro caminho (o combate decide
+        // em que degrau o corpo esta e pede o sprite daquele indice); este metodo responde "como
+        // este personagem se parece", e a resposta e o corpo em que ele anda.
+        // =================================================================================================
+        if (Races.FormasDeFrost.EhFrost(raca) && ap.FormasDeFrost.Count > 0)
+            return Races.FormasDeFrost.Caminho(ap.FormasDeFrost[0]);
+
         List<string> lista = CorposDe(raca).Para(genero);
         if (lista.Count == 0) return genero == "Female" ? CorpoPadraoF : CorpoPadraoM;
 

@@ -17,6 +17,21 @@ public sealed class CharacterSave
     public string Linhagem = "";
     public int Idade = 18;
 
+    /// <summary>
+    /// A HISTORIA que o jogador escreveu na criacao. Sem efeito mecanico -- e identidade, e o verb
+    /// `Backstory` do original existia justamente pra ela poder ser LIDA depois.
+    /// </summary>
+    public string Historia = "";
+
+    /// <summary>
+    /// O PORTE DO CORPO (Small/Medium/Large). Diferente da historia, este MEXE EM STAT e e
+    /// permanente -- por isso e salvo: recalcular a ficha sem ele devolveria outro personagem.
+    /// </summary>
+    public string Porte = "Medium";
+
+    /// <summary>O que o personagem carregava ao sair. Ver `Core.Items.Inventario`.</summary>
+    public Jandirus.Core.Items.Inventario Mochila = new();
+
     public Appearance Visual = new();
 
     /// <summary>
@@ -377,6 +392,9 @@ public sealed class AccountStore(string pasta)
         Genero = pl.Genero,
         Linhagem = pl.Linhagem,
         Idade = pl.Idade,
+        Historia = pl.Historia,
+        Porte = pl.Porte,
+        Mochila = pl.Mochila,
         Visual = pl.Visual,
         Ficha = pl.Ficha,
         Membros = pl.Combate != null ? GameServer.FotografarCorpo(pl.Combate) : [],
@@ -403,9 +421,23 @@ public sealed class AccountStore(string pasta)
         pl.Genero = s.Genero;
         pl.Linhagem = s.Linhagem;
         pl.Idade = s.Idade;
+        pl.Historia = s.Historia;
+        pl.Porte = s.Porte.Length > 0 ? s.Porte : "Medium";
+
+        // SANEIA NA CARGA, e nao na hora de desenhar: um id que o catalogo nao conhece mais (item
+        // renomeado, item removido) vira um slot que a tela nao sabe desenhar e o menu nao sabe
+        // usar -- ocupando espaco pra sempre. Ver `Inventario.Sanear`.
+        pl.Mochila = s.Mochila ?? new();
+        pl.Mochila.Sanear();   // save antigo nao tem porte
         pl.Visual = s.Visual;
         pl.Ficha = s.Ficha;
         pl.Class = s.Ficha.Class;
+
+        // A IDADE PRECISA CHEGAR NA FICHA, e nao so no jogador: quem calcula poder e ela, e o
+        // divisor de idade le daqui. Sem esta linha a curva de `Envelhecimento` receberia sempre o
+        // 18 do valor inicial, e um ancia de 300 anos lutaria como um adulto no auge.
+        pl.Ficha.Idade = s.Idade;
+        pl.Ficha.Race = s.Raca;   // o mesmo motivo: o divisor de idade e por raca
         pl.Pos = new Vec2(s.X, s.Y);
         pl.CriadoEm = s.CriadoEm;
     }

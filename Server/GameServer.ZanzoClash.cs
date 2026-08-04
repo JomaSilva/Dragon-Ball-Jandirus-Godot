@@ -419,15 +419,28 @@ public sealed partial class GameServer
 		long prazo = ehA ? e.PrazoA : e.PrazoB;
 		if (esperada == '\0' || NowMs() > prazo) return;
 
-		// ERROU A LETRA: perde a VEZ, nao o embate.
+		// ERROU A LETRA: perde a vez E UM PONTO.
 		//
 		// Perder a vez e vencer o prazo na hora -- e por isso o castigo e escrito no PRAZO e nao na
 		// letra. A primeira versao apagava a letra (`LetraA = '\0'`), e o tique so pede letra nova
 		// pra quem TEM letra vencida: um unico erro deixava o jogador sem nada na tela ate o fim.
 		// A bancada pegou exatamente isso -- um embate inteiro com UMA letra pedida.
+		//
+		// O PONTO A MENOS E PEDIDO DO DONO ("errando vc perde 1 ponto do clash"), e conserta um
+		// desequilibrio real: sem custo, martelar o teclado era estrategia dominante -- errar so
+		// gastava uma vez que ia acabar sozinha no prazo. Agora chutar CUSTA, e o embate passa a
+		// premiar quem le a letra em vez de quem bate mais rapido nas teclas.
+		//
+		// O CASTIGO E PLANO (um ponto), e nao `Mult`: a vantagem de poder multiplica o que voce
+		// CONQUISTA, e deixar que ela multiplicasse tambem o erro faria o lutador mais forte ser
+		// punido mais duro por um chute -- o oposto do que a vantagem significa.
 		if (char.ToUpperInvariant(c) != esperada)
 		{
-			if (ehA) e.LetraA = '\0'; else e.LetraB = '\0';
+			if (ehA) { e.PtsA -= PontoPorErro; e.LetraA = '\0'; }
+			else { e.PtsB -= PontoPorErro; e.LetraB = '\0'; }
+
+			Julgou(p, false);
+			Placar(e);
 			return;
 		}
 
@@ -436,7 +449,26 @@ public sealed partial class GameServer
 		if (ehA) { e.PtsA += e.MultA; e.LetraA = '\0'; }
 		else { e.PtsB += e.MultB; e.LetraB = '\0'; }
 
+		Julgou(p, true);
 		Placar(e);
+	}
+
+	/// <summary>Quanto custa uma letra errada. Ver <see cref="TeclaDoEmbate"/>.</summary>
+	private const double PontoPorErro = 1;
+
+	/// <summary>
+	/// "ACERTEI OU ERREI" -- o pisca verde/vermelho do quick time event.
+	///
+	/// So pra quem apertou, e so isso: o cliente nao pode julgar sozinho porque o prazo tambem
+	/// conta (letra certa fora da janela e erro) e porque o placar mexe quando o OUTRO pontua.
+	/// Ver <see cref="Protocol.ClashSub.Julgou"/>.
+	/// </summary>
+	private static void Julgou(ServerPlayer p, bool acertou)
+	{
+		var w = Protocol.Begin(Protocol.S2C.Clash);
+		w.Put((byte)Protocol.ClashSub.Julgou);
+		w.Put(acertou);
+		p.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
 	private void Placar(Embate e)

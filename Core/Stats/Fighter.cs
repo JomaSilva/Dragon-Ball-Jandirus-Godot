@@ -122,6 +122,23 @@ public sealed partial class Fighter
 	public double staminagainMod = 1, satiationMod = 1;
 
 	/// <summary>
+	/// O TANQUE DE COMIDA -- `currentNutrition` do DM. E daqui que o vigor volta.
+	///
+	/// Ver <see cref="Nutricao"/>: o port tinha o vigor caindo e subindo do nada, porque a metade
+	/// do sistema que o ALIMENTA nunca foi portada.
+	/// </summary>
+	public double CurrentNutrition = Nutricao.TanqueInicial;
+
+	/// <summary>
+	/// QUAO RAPIDO ESTE CORPO DIGERE. Estica o tanque e acelera as passadas do estomago; Namekuseijin
+	/// e Saiyajin Primal tem 2 no original.
+	/// </summary>
+	public double Metabolism = 1;
+
+	/// <summary>O corpo ja avisou que precisa comer? So pra o aviso nao repetir a cada passada.</summary>
+	public bool Hungry;
+
+	/// <summary>
 	/// OS DOIS CONTADORES QUE ABREM ARVORE. Cada skill de base do corpo soma 1 em um deles, e e a
 	/// SOMA que destrava arvore nova (`Body.dm:24-32`): mais de 2 de `bodyreadiness` abre
 	/// Bodybuilding, mais de 2 de `bodyskill` abre Martial Skill (e Weapons Expert com arma), e 2
@@ -195,6 +212,24 @@ public sealed partial class Fighter
 	// =====================================================================
 	public double weight = 1, BPrestriction = 1, splitformdeBuff = 1;
 	public double splitformMastery = 0, splitformCount = 0;
+
+	/// <summary>
+	/// A IDADE EM ANOS. Mora na ficha porque e a ficha que calcula poder.
+	///
+	/// Ela ja existia no `ServerPlayer.Idade`, mas so pra ser mostrada e salva -- a conta de BP
+	/// nao a alcancava, e por isso <see cref="AgeDiv"/> ficava em 1 pra sempre.
+	/// </summary>
+	public double Idade = 18;
+
+	/// <summary>
+	/// O MULTIPLICADOR DE PODER POR IDADE, recalculado a cada `PowerLevel`.
+	///
+	/// ============================ ELE ERA UM 1 DECORATIVO ============================
+	/// O campo existia, entrava no `netBuff` e NUNCA era escrito: nascia 1 e morria 1. O efeito
+	/// pratico e que a idade nao fazia nada -- um Saiyajin de 8 anos e um de 800 batiam igual, e a
+	/// caixa de idade da criacao era enfeite. Ver `Envelhecimento.DivisorDeIdade`.
+	/// =================================================================================
+	/// </summary>
 	public double AgeDiv = 1;
 
 	// =====================================================================

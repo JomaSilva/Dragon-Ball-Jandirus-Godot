@@ -1,0 +1,21 @@
+[
+  { "x": 153, "y": 202, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 157, "y": 202, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 149, "y": 217, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 155, "y": 217, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 232, "y": 236, "raio": 112, "cor": "ff9a3c", "forca": 1.25, "tremula": true },
+  { "x": 233, "y": 236, "raio": 112, "cor": "ff9a3c", "forca": 1.25, "tremula": true },
+  { "x": 232, "y": 237, "raio": 112, "cor": "ff9a3c", "forca": 1.25, "tremula": true },
+  { "x": 234, "y": 240, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 240, "y": 240, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 363, "y": 253, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 367, "y": 253, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 261, "y": 261, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 267, "y": 261, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 262, "y": 271, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 266, "y": 271, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 242, "y": 276, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 246, "y": 276, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 215, "y": 289, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true },
+  { "x": 220, "y": 289, "raio": 88, "cor": "ffb056", "forca": 1.1, "tremula": true }
+]

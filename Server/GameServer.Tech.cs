@@ -33,6 +33,20 @@ public sealed class Obra
 	public bool DoMapa;
 
 	/// <summary>
+	/// O ESTADO DA MAQUINA DE GRAVIDADE, quando esta obra e uma. Nulo em todo o resto.
+	///
+	/// ============================ POR QUE ELE MORA NA OBRA ============================
+	/// Duas maquinas de gravidade no mesmo mapa sao duas maquinas: uma pode estar a 50x com a
+	/// bateria no fim e a outra desligada e recem-melhorada. Guardar isso num dicionario paralelo
+	/// (id -> estado) funcionaria ate a obra ser destruida sem ninguem limpar o dicionario -- e
+	/// entao a proxima maquina a receber aquele id herdaria a bateria da morta.
+	///
+	/// Dentro da obra, o estado nasce e morre com ela, e vai pro `mundo.json` de graca.
+	/// ==================================================================================
+	/// </summary>
+	public GravidadeDaObra? Gravidade;
+
+	/// <summary>
 	/// QUE LABORATORIO FOI INSTALADO no mainframe: 0 nenhum, 1 Android Lab, 2 Bio-Android Lab.
 	///
 	/// E assim no original e vale manter: nao se CONSTROI um laboratorio, se constroi o
@@ -249,6 +263,28 @@ public partial class GameServer
 
 		RecusaObra r = CatalogoDeObras.Permitida(c, pl.Ficha, pl.Race);
 		if (r != RecusaObra.Pode) { Avisar(pl, MotivoObra(r, c, pl)); return; }
+
+		// ============================ NEM TUDO QUE SE CONSTROI FICA NO CHAO ============================
+		// A mesma bancada que ergue uma maquina de gravidade fabrica uma pa e um scouter -- e no
+		// original a diferenca e clara: uns sao `/obj/items` que vao pro `contents` do jogador,
+		// outros ficam no turf. Aqui quem sabe a diferenca e o catalogo de ITENS: se o id tem ficha
+		// de item, ele e de carregar. Ver `CatalogoDeItens.EhCarregavel`.
+		//
+		// A COBRANCA SO ACONTECE SE COUBER. Tirar o zeni antes de descobrir que a mochila esta
+		// cheia seria vender um item que nao foi entregue.
+		if (Jandirus.Core.Items.CatalogoDeItens.EhCarregavel(c.Id))
+		{
+			if (pl.Mochila.Cheio)
+			{
+				Avisar(pl, $"sua mochila está cheia ({Jandirus.Core.Items.Inventario.Slots} espaços).");
+				return;
+			}
+			pl.Ficha.Zeni -= c.Custo;
+			Guardar(pl, c.Id);
+			Avisar(pl, $"você fabrica {c.Nome}. Está na sua mochila. Restam {pl.Ficha.Zeni:N0} zeni.");
+			MandarCatalogoDeObras(pl);
+			return;
+		}
 
 		// NAO EMPILHA: duas construcoes no mesmo lugar viram uma so na tela e as duas respondem
 		// ao mesmo clique. Meio tile de folga e o bastante pra nao encavalar.

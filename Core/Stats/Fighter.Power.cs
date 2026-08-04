@@ -60,6 +60,15 @@ public sealed partial class Fighter
 		gravFelt = StatCurves.GravFelt(GravMastered, Planetgrav + gravmult, gravBalance);
 		gravBuff = gravFelt;
 
+		// A IDADE ENTRA AQUI, e ate hoje nao entrava em lugar nenhum. Crianca e ancia batem com
+		// ate 3/4 do que o BP diria; o adulto no auge nao sente nada. Ver `Envelhecimento`.
+		//
+		// O SSJ4 E OS IMORTAIS PASSAM DIREITO no original (`Stats.dm:230` testa `ssj<4`, vampiro e
+		// `biologicallyimmortal`). Aqui a excecao que ja da pra fazer honestamente e a da RACA que
+		// nao envelhece -- e a propria funcao trata dela. As outras ficam pra quando o port tiver
+		// vampirismo e imortalidade de verdade, e nao fingidas com um `if`.
+		AgeDiv = Races.Envelhecimento.DivisorDeIdade(Race, Idade);
+
 		// O PACOTE FECHADO: estado, idade, buffs de corpo e os divisores. Vale como UM fator
 		// -- abrir os membros dele numa UI e contar duas vezes.
 		netBuff = deBuff * statusBuff * AgeDiv * buffBuff * Math.Max(bp_remove, 0.01);

@@ -1,0 +1,8 @@
+[
+  { "x": 91, "y": 28, "raio": 104, "cor": "cfe4ff", "forca": 0.9, "tremula": false },
+  { "x": 106, "y": 28, "raio": 104, "cor": "cfe4ff", "forca": 0.9, "tremula": false },
+  { "x": 98, "y": 44, "raio": 104, "cor": "cfe4ff", "forca": 0.9, "tremula": false },
+  { "x": 99, "y": 44, "raio": 104, "cor": "cfe4ff", "forca": 0.9, "tremula": false },
+  { "x": 98, "y": 55, "raio": 104, "cor": "cfe4ff", "forca": 0.9, "tremula": false },
+  { "x": 99, "y": 55, "raio": 104, "cor": "cfe4ff", "forca": 0.9, "tremula": false }
+]

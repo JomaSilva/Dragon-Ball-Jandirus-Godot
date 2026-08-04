@@ -600,13 +600,24 @@ public partial class CharacterVisual : Node2D
 	///
 	/// A CONTA E A QUE O DONO DITOU: olhando pra direita cai como hoje (0 graus); pra esquerda gira
 	/// 180; pra cima gira 90 pra baixo; pra baixo gira 90 pra cima.
+	///
+	/// ============================ OS DOIS EIXOS VERTICAIS ESTAVAM TROCADOS ============================
+	/// A tabela dizia uma coisa e fazia a outra: `South` mandava +90 e `North` -90, que e o inverso
+	/// exato da linha acima. O efeito so aparecia num dos quatro casos, e o dono achou: "quando o
+	/// personagem ta olhando pra baixo e ele desmaia ele ta desmaiando de cabeca pra baixo".
+	///
+	/// A 0 grau a cabeca do sprite de nocaute aponta pro LESTE, e giro positivo e horario (o Y
+	/// cresce pra baixo). Entao +90 leva a cabeca pra BAIXO e -90 leva pra CIMA. Quem cai, cai de
+	/// COSTAS: olhando pra baixo (pra camera), a cabeca termina pra cima; olhando pra cima, termina
+	/// pra baixo. Leste e oeste ja estavam certos, e e por isso que so metade da queixa existia.
+	/// ==================================================================================================
 	/// </summary>
 	public void DeitarPor(Facing olhando) => Girar(olhando switch
 	{
 		Facing.East => 0f,
 		Facing.West => 180f,
-		Facing.South => 90f,
-		_ => -90f,
+		Facing.South => -90f,
+		_ => 90f,
 	});
 
 	/// <summary>

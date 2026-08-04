@@ -285,6 +285,10 @@ public partial class GameClient : Node
 		_peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
+	/// <summary>O que eu carrego. Chega inteiro quando muda -- ver `S2C.Inventario`.</summary>
+	public Jandirus.Core.Items.Inventario Mochila { get; private set; } = new();
+	public event Action? MochilaMudou;
+
 	public List<ObraInfo> Obras { get; private set; } = [];
 	public List<OfertaDeObra> Catalogo { get; private set; } = [];
 	public double TechNivel { get; private set; }
@@ -533,6 +537,15 @@ public partial class GameClient : Node
 	public event Action<int, int>? ClashAcabou;
 
 	/// <summary>
+	/// <summary>
+	/// A LETRA QUE EU APERTEI ERA A CERTA (true) OU NAO (false).
+	///
+	/// Vem do servidor porque so ele julga -- e ele julga tambem o PRAZO, que daqui nao se ve.
+	/// Ver <see cref="Protocol.ClashSub.Julgou"/>.
+	/// </summary>
+	public event Action<bool>? ClashJulgou;
+
+	/// <summary>
 	/// UM VISLUMBRE: apareci (true) ou sumi de novo (false), e PRA ONDE eu estou virado.
 	///
 	/// So o corpo LOCAL precisa disto -- os outros aparecem sozinhos, pelo bit `Oculto` do snapshot.
@@ -721,6 +734,10 @@ public partial class GameClient : Node
 						ClashVislumbre?.Invoke(aparece, (Facing)reader.GetByte());
 						break;
 					}
+
+					case Protocol.ClashSub.Julgou:
+						ClashJulgou?.Invoke(reader.GetBool());
+						break;
 
 					case Protocol.ClashSub.Acabou:
 					{
@@ -923,6 +940,11 @@ public partial class GameClient : Node
 			case Protocol.S2C.Corpo:
 				Corpo = reader.GetCorpo();
 				CorpoAtualizado?.Invoke(Corpo);
+				break;
+
+			case Protocol.S2C.Inventario:
+				Mochila = reader.GetInventario();
+				MochilaMudou?.Invoke();
 				break;
 
 			// A CORRECAO VEM CARIMBADA com a sequencia que o servidor considerou. Guardar o
