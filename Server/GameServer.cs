@@ -167,6 +167,15 @@ public sealed class ServerPlayer
 	/// <summary>Ultimo estagio de carga anunciado. So se avisa o jogador quando o estagio MUDA.</summary>
 	public Jandirus.Core.Combat.EstagioDaCarga EstagioDaCarga;
 
+	/// <summary>
+	/// EM QUEM EU BATI POR ULTIMO, e quando.
+	///
+	/// Existe pro ZANZO CLASH: o embate comeca quando os dois se acertam no MESMO instante, e sem
+	/// este par nao ha como saber que o soco que esta chegando e RESPOSTA a um que acabou de sair.
+	/// </summary>
+	public int UltimoAlvo;
+	public long UltimoSocoMs;
+
 	/// <summary>Bits de <see cref="Protocol.Poder"/> que as skills aprendidas acenderam.</summary>
 	public Protocol.Poder Poderes;
 
@@ -582,8 +591,17 @@ public partial class GameServer : Node
 		{
 			_skillsDeTeste = [.. args[sIdx + 1].Split(',', StringSplitOptions.RemoveEmptyEntries
 													   | StringSplitOptions.TrimEntries)];
-			GD.Print($"[server] BANCADA: concedendo {_skillsDeTeste.Count} skills");
+			GD.Print($"[server] BANCADA: concedendo {_skillsDeTeste.Count} skills: {string.Join(" | ", _skillsDeTeste)}");
 		}
+
+		// `--clashteste`: o ZanzoClash sem dado e com desnivel de poder.
+		//
+		// Duas coisas atrapalham medir um embate: o `prob(50)` (uma bancada que so acontece metade
+		// das vezes nao e bancada) e o fato de dois personagens recem-criados terem o MESMO BP, o
+		// que poe a vantagem em 1,00 e deixa a regra do dono ("o mais forte ganha os pontos
+		// multiplicados pela razao") sem nada pra provar. A flag tira o dado e da poder ao HOST.
+		_clashSempre = Array.IndexOf(args, "--clashteste") >= 0;
+		if (_clashSempre) GD.Print($"[server] BANCADA: embate sem sorteio, e o host com {BpDoHostNoTeste}x de BP");
 
 		// `--geradoteste`: quem entrar nasce num planeta GERADO em vez da Terra.
 		//
@@ -819,6 +837,14 @@ public partial class GameServer : Node
 			}
 
 			// O CANAL DOS VERBS. Mesmo formato do Tech: comando + argumento. Ver GameServer.Verbos.cs.
+			// A TECLA DO ZANZO CLASH. Crua: quem julga se ela bate com a pedida e o servidor.
+			case Protocol.C2S.ClashTecla:
+			{
+				char c = (char)reader.GetByte();
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemTeclou)) TeclaDoEmbate(quemTeclou, c);
+				break;
+			}
+
 			case Protocol.C2S.Verbo:
 			{
 				string cmd = reader.GetString(24);
@@ -1134,6 +1160,9 @@ public partial class GameServer : Node
 		if (_feridaDeTeste) FerirDeTeste(pl);
 		foreach (string sk in _skillsDeTeste) pl.Livro.Dar(sk);
 
+		// BANCADA DO EMBATE: o host fica mais forte, pra a vantagem de poder ter o que multiplicar.
+		if (_clashSempre && EhHost(peer)) { pl.Ficha.BP *= BpDoHostNoTeste; pl.Ficha.Statify(); }
+
 		// BANCADA: nasce direto num mundo sorteado (ver `--geradoteste`).
 		if (_nascerEmGerado)
 		{
@@ -1310,7 +1339,10 @@ public partial class GameServer : Node
 		// O cliente ja nem tenta (ver LocalPlayer), mas a regra tem que morar aqui: e o servidor
 		// que decide onde os corpos estao, e um cliente modificado que ignorasse a trava andaria
 		// carregando -- que e exatamente o "op demais" que o dono quis cortar.
-		if (pl.Ficha.dead || pl.Ficha.KO || pl.Carregando)
+		// (e quem esta num ZANZO CLASH tambem nao: la o corpo e do servidor, que o recoloca a cada
+		// cruzamento. Sem esta linha o jogador andaria entre os teleportes e a briga de posicao
+		// seria com o proprio efeito.)
+		if (pl.Ficha.dead || pl.Ficha.KO || pl.Carregando || _emEmbate.ContainsKey(pl.Id))
 		{
 			pl.LastInputMs = NowMs();
 			pl.Moving = false;
@@ -1410,6 +1442,9 @@ public partial class GameServer : Node
 		_logados.Remove(peer);   // caiu na tela de selecao: nao ha nada a salvar
 		if (!_byPeer.Remove(peer, out ServerPlayer? pl)) { _contas.Remove(peer); return; }
 		Persistir(pl);
+		// SOLTA DO EMBATE ANTES de sumir da lista: o `Terminar` precisa do corpo pra devolver a
+		// visibilidade e o controle ao OUTRO, que continua jogando.
+		SoltarDoEmbate(pl.Id);
 		_contas.Remove(peer);   // ANTES de soltar: sair do jogo nao pode custar o progresso
 		_players.Remove(pl.Id);
 		ZoneList(pl.Zone.Hash).Remove(pl);
@@ -1465,6 +1500,11 @@ public partial class GameServer : Node
 		// Cadencia errada aqui nao quebra nada -- so faz a skill subir mais rapido ou mais
 		// devagar do que o original, calada.
 		if (++_tickCount % TicksPorFicha == 0) { TickFichas(); TickDosNiveis(); TickDasFeridas(); }
+		// O EMBATE ANDA NO TIQUE CHEIO: os corpos se cruzam a cada 260 ms e as letras tem prazo de
+		// 900 ms. A 5 Hz o prazo erraria por ate 200 ms, que num quick time event e a diferenca
+		// entre acertar e nao.
+		TickDosEmbates();
+
 		if (_tickCount % TicksPorSegundo == 0)
 			{ TickDasTecnicas(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); }
 

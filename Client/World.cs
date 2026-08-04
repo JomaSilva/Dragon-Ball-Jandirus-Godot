@@ -156,6 +156,29 @@ public partial class World : Node2D
 			cli.ObrasMudaram += DesenharObras;
 			cli.EfeitoCaiu += AoCairEfeito;
 			cli.Piscou += AoPiscar;
+			cli.ClashBaque += AoBaqueDeEmbate;
+
+			// O MEU CORPO SOME TAMBEM. O bit `Oculto` do snapshot esconde os OUTROS -- o corpo local
+			// nao vem por snapshot, entao ele continuava na tela se teleportando a cada meio segundo
+			// no meio de uma cena que promete "ninguem consegue ver os dois". A foto da bancada
+			// mostrou exatamente isso: o boneco parado no centro, sob as raias de velocidade.
+			//
+			// Nao mexe na invisibilidade da TECNICA (ali o dono continua se vendo, que e o certo pra
+			// quem escolheu sumir e precisa se localizar): isto vale so pelo embate.
+			cli.ClashComecou += (_, _, _, _, _) => { if (_local != null) _local.Visible = false; };
+			cli.ClashAcabou += (_, _) => { if (_local != null) _local.Visible = true; };
+
+			// O VISLUMBRE: por um quinto de segundo o meu proprio corpo volta a tela, ja no meio de
+			// um golpe. Pros OUTROS isto chega sozinho pelo snapshot (bit `Oculto` + pose Atacando);
+			// so o corpo local precisa de aviso, porque e o unico que nao vem por snapshot.
+			cli.ClashVislumbre += aparece =>
+			{
+				if (_local == null) return;
+				_local.Visible = aparece;
+				if (aparece)
+					_local.GetNodeOrNull<CharacterVisual>("Visual")?
+						  .RestartState("attack", Jandirus.Net.Protocol.AttackPoseMs / 1000.0);
+			};
 			cli.PortasMudaram += AoMudarPortas;
 			cli.CenarioCaiu += AoCairCenario;
 			cli.CenarioRefeito += AoRefazerCenario;
@@ -287,6 +310,46 @@ public partial class World : Node2D
 		// sumir de um lugar e aparecer noutro.
 		if (!_investiuAgora) AudioDirector.EfeitoNoLugar(corpo, Trilha.Teleporte, 0.7f);
 		_investiuAgora = false;
+	}
+
+	/// <summary>
+	/// O BAQUE INVISIVEL DO ZANZO CLASH: os dois corpos se cruzaram AQUI.
+	///
+	/// ============================ POR QUE E SO ISTO QUE SE VE ============================
+	/// Os dois estao invisiveis, e o dono foi explicito sobre os teleportes: "esses teleporte n sao
+	/// zanzoken entao n tem after image". Entao nao ha corpo nem vulto pra desenhar -- o que a
+	/// vista pega e o ESTRAGO, e e o estrago que faz o encontro parecer rapido demais pra ser
+	/// visto, em vez de dois bonecos piscando pela tela.
+	/// ====================================================================================
+	///
+	/// Reusa o vocabulario de impacto que ja existe (faisca, anel, poeira, tremor, som), sem
+	/// inventar um efeito proprio: um encontro de dois lutadores tem que soar como os golpes que o
+	/// jogo ja da, so que sem quem os deu.
+	/// </summary>
+	private void AoBaqueDeEmbate(Vec2 onde)
+	{
+		var p = new Vector2(onde.X, onde.Y);
+
+		// O MESMO VOCABULARIO DO CRITICO, que e o golpe mais forte que o jogo desenha: faisca
+		// quente grande, anel dourado largo e um anel de gelo por cima (o encontro e de velocidade,
+		// nao de forca bruta). Sem os dois aneis o cruzamento sumia no meio do cenario.
+		CombatFx.Impacto(_atores, p, 1.6f, Quente);
+		CombatFx.Onda(_atores, p, 96, Dourado, 0.28);
+		CombatFx.Onda(_atores, p, 150, Gelo, 0.34);
+		PoeiraDeEstrago.Soltar(_atores, p);
+
+		// SO TREME PRA QUEM ESTA NO EMBATE. Um cruzamento a cada meio segundo sacudiria a tela de
+		// quem so passava por perto seis a nove vezes seguidas -- e a regra do `Tremer` ja diz que
+		// tremor e de quem esta na briga.
+		if (GameClient.Instance?.EmClash == true) Sacudir(7f);
+
+		// SOM NO PONTO, e nao no corpo: nao ha corpo visivel ali. Um marcador vive o tempo do
+		// efeito e se apaga sozinho.
+		var eco = new Node2D { Position = p };
+		_atores.AddChild(eco);
+		AudioDirector.EfeitoNoLugar(eco, Trilha.Teleporte, 0.85f);
+		AudioDirector.EfeitoNoLugar(eco, Trilha.Acerto(3), 0.7f);
+		GetTree().CreateTimer(2.0).Timeout += () => { if (IsInstanceValid(eco)) eco.QueueFree(); };
 	}
 
 	private bool _auraDaCarga, _sobrecarga;

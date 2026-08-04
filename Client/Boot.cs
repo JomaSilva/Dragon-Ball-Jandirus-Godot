@@ -343,6 +343,9 @@ public partial class Boot : Node2D
 		AddChild(new Chat { Name = "Chat" });
 		AddChild(new World { Name = "World" });
 		AddChild(new Hud { Name = "Hud" });
+		// O QUICK TIME EVENT DO EMBATE. Vive montado e invisivel: ele nasce de um pacote que chega
+		// no meio de uma briga, e montar tela nessa hora e o jeito de perder o primeiro prazo.
+		AddChild(new ClashQte { Name = "ClashQte" });
 		AddChild(new MenuJogo { Name = "Menu" });
 
 		_pause = new PauseMenu { Name = "Pause" };
@@ -389,6 +392,16 @@ public partial class Boot : Node2D
 		// junto do `--portateste` no servidor, que faz nascer colado numa.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--porta") >= 0)
 			AddChild(new RoboDePorta { Name = "RoboDePorta" });
+
+		// --diagclash: bancada do ZANZO CLASH. Ela MEDE, mas nao briga -- o embate so comeca com
+		// dois lutadores se acertando ao mesmo tempo, entao ela vem acompanhada do robo de soco
+		// (aqui e do outro lado). Ver RoboDeEmbate pro comando das duas pontas.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagclash") >= 0)
+		{
+			AddChild(new RoboDeEmbate { Name = "RoboDeEmbate" });
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--socar") < 0)
+				AddChild(new RoboDeSoco { Name = "RoboDeSoco" });
+		}
 
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--socar") >= 0)
 		{

@@ -166,7 +166,10 @@ public partial class LocalPlayer : Node2D
 		// motivo e de leitura: um personagem que anda enquanto "carrega" nao mostra que a carga
 		// parou -- ele parece estar carregando andando, que e justamente o que a regra proibe.
 		// Travar o corpo faz a regra ser OBVIA sem uma linha de texto.
-		var input = _caido || _carregando || Foco.Digitando
+		// NO EMBATE O CORPO NAO E MEU. Durante o ZanzoClash quem escreve a posicao e o servidor,
+		// que recoloca os dois a cada cruzamento -- se as teclas continuassem valendo, o jogador
+		// brigaria com o proprio efeito e receberia trinta correcoes por segundo.
+		var input = _caido || _carregando || Foco.Digitando || GameClient.Instance?.EmClash == true
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			: new Vector2(
 				Godot.Input.GetActionStrength("move_right") - Godot.Input.GetActionStrength("move_left"),

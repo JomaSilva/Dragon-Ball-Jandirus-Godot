@@ -65,6 +65,14 @@ public static class Protocol
         /// e admin; o `switch` do servidor confere de novo, porque esconder botao nao e permissao.
         /// </summary>
         Verbo = 21,
+
+        /// <summary>
+        /// A TECLA DO QUICK TIME EVENT do ZanzoClash: um byte com a letra que o jogador apertou.
+        ///
+        /// Vai CRU, sem "eu acertei": quem confere se a letra bate com a pedida e o servidor, que
+        /// e quem sorteou. Um cliente que mandasse "acertei" venceria todo embate.
+        /// </summary>
+        ClashTecla = 22,
     }
 
     /// <summary>
@@ -212,6 +220,44 @@ public static class Protocol
         /// ==================================================================================
         /// </summary>
         Feridas = 27,
+
+        /// <summary>
+        /// O ZANZO CLASH: o duelo de velocidade que comeca quando dois lutadores com Imagem
+        /// Remanescente se acertam no MESMO instante.
+        ///
+        /// Um opcode so pros cinco momentos (o `Sub` diz qual): comecou, tecla nova, placar,
+        /// baque invisivel, acabou. Sao poucos bytes e acontecem em rajada dentro de quatro
+        /// segundos -- cinco opcodes pra isso encheriam o enum sem separar nada.
+        /// </summary>
+        Clash = 28,
+    }
+
+    /// <summary>Os momentos do ZanzoClash. Ver <see cref="S2C.Clash"/>.</summary>
+    public enum ClashSub : byte
+    {
+        /// <summary>
+        /// Comecou. PESSOAL, um pacote por lutador: eu, o outro, quantos ms dura, quanto vale
+        /// cada acerto MEU e quanto vale cada acerto DELE (a vantagem de poder).
+        /// </summary>
+        Comecou = 0,
+        /// <summary>Uma tecla nova: a letra (byte ASCII) e o prazo em ms.</summary>
+        Tecla = 1,
+        /// <summary>O placar: os meus pontos e os dele, pra barra de cabo de guerra.</summary>
+        Placar = 2,
+        /// <summary>Um baque invisivel em (x, y): os dois corpos se cruzaram ali.</summary>
+        Baque = 3,
+        /// <summary>Acabou: quem venceu.</summary>
+        Acabou = 4,
+
+        /// <summary>
+        /// UM VISLUMBRE: os dois corpos aparecem por um instante, trocando um golpe, e somem de
+        /// novo. Um byte -- 1 aparece, 0 some.
+        ///
+        /// So os DOIS recebem: quem assiste ja ve pelo `Oculto` do snapshot, que e a mesma
+        /// verdade e chega pelo mesmo caminho de sempre. Este pacote existe porque o corpo LOCAL
+        /// nao vem por snapshot -- quem esta no embate esconde o proprio boneco por conta.
+        /// </summary>
+        Vislumbre = 5,
     }
 
     /// <summary>

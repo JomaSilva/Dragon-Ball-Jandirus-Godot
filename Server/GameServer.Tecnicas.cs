@@ -156,6 +156,13 @@ public partial class GameServer
 		foreach (int id in _invisiveis.ToList())
 		{
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _invisiveis.Remove(id); continue; }
+
+			// O ZANZO CLASH NAO PAGA ALUGUEL. Ele usa este mesmo esconderijo (um caminho so pra
+			// sumir), mas quem some la nao esta sustentando a tecnica: esta em cima de uma cena de
+			// quatro segundos que o servidor conduz. Cobrar Ki dela derrubaria os dois no meio do
+			// embate -- e o pior jeito de acabar uma disputa e sem que nenhum dos dois tenha errado.
+			if (_emEmbate.ContainsKey(id)) continue;
+
 			pl.Ficha.Ki -= Tecnicas.InvisDrenoPorSegundo(pl.Ficha);
 			if (pl.Ficha.Ki >= Tecnicas.InvisKiMinimo && !pl.Ficha.KO) continue;
 

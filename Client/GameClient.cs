@@ -466,6 +466,62 @@ public partial class GameClient : Node
 	/// <summary>Alguem piscou: o id e DE ONDE ele saiu. A miragem nasce na origem.</summary>
 	public event Action<int, Vec2>? Piscou;
 
+	// =====================================================================
+	// O ZANZO CLASH
+	// =====================================================================
+	/// <summary>
+	/// ESTOU NUM EMBATE? Enquanto for `true` o corpo nao anda: quem manda nele e o servidor.
+	///
+	/// A METADE DO CLIENTE E OBRIGATORIA. O servidor ja recusa o passo e devolve correcao, mas se
+	/// so ele soubesse, o corpo tremeria -- trinta pedidos de passo por segundo, trinta correcoes
+	/// de volta. E o mesmo par de travas da tecla C (ver <see cref="LocalPlayer"/>).
+	///
+	/// NAO E BIT DE FICHA de proposito: o byte de estado do <see cref="SheetState"/> esta CHEIO
+	/// (os dois ultimos bits sao a direcao da queda). O `Comecou`/`Acabou` chega por canal
+	/// confiavel e ordenado, que da a mesma garantia.
+	/// </summary>
+	public bool EmClash { get; private set; }
+
+	/// <summary>
+	/// Comecou: eu, o outro, quantos ms dura, e QUANTO VALE cada acerto de cada um.
+	///
+	/// A vantagem de poder viaja porque o jogador precisa dela pra ler a propria situacao: num
+	/// encontro desigual o mais fraco pode acertar todas as letras e ainda perder, e descobrir isso
+	/// so no fim seria o quick time event mentindo sobre o que estava sendo disputado.
+	/// </summary>
+	public event Action<int, int, int, float, float>? ClashComecou;
+
+	/// <summary>Aperte ESTA letra, dentro deste prazo (ms).</summary>
+	public event Action<char, int>? ClashTeclaPedida;
+
+	/// <summary>O placar, do meu ponto de vista: meus pontos, os dele.</summary>
+	public event Action<float, float>? ClashPlacar;
+
+	/// <summary>Os dois se cruzaram AQUI. E o unico sinal visivel do embate.</summary>
+	public event Action<Vec2>? ClashBaque;
+
+	/// <summary>Acabou: quem venceu, quem perdeu.</summary>
+	public event Action<int, int>? ClashAcabou;
+
+	/// <summary>
+	/// UM VISLUMBRE: apareci (true) ou sumi de novo (false).
+	///
+	/// So o corpo LOCAL precisa disto -- os outros aparecem sozinhos, pelo bit `Oculto` do snapshot.
+	/// </summary>
+	public event Action<bool>? ClashVislumbre;
+
+	/// <summary>
+	/// A tecla CRUA que o jogador apertou. Quem julga se ela e a pedida e o SERVIDOR -- daqui sai
+	/// so o que foi digitado, senao um cliente mexido acertaria todas.
+	/// </summary>
+	public void SendClashTecla(char c)
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.ClashTecla);
+		w.Put((byte)c);
+		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
 	public void SendCarregar(bool ligado)
 	{
 		if (!Connected) return;
@@ -597,6 +653,47 @@ public partial class GameClient : Node
 			{
 				int quem = reader.GetInt();
 				Piscou?.Invoke(quem, reader.GetVec());
+				break;
+			}
+
+			// O ZANZO CLASH, os cinco momentos num opcode so. Ver `Protocol.ClashSub`.
+			case Protocol.S2C.Clash:
+			{
+				switch ((Protocol.ClashSub)reader.GetByte())
+				{
+					case Protocol.ClashSub.Comecou:
+					{
+						int a = reader.GetInt(), b = reader.GetInt(), ms = reader.GetInt();
+						float meu = reader.GetFloat(), dele = reader.GetFloat();
+						// SO CHEGA A QUEM ESTA NO EMBATE: e um pacote pessoal, e o `a` sou eu.
+						EmClash = true;
+						ClashComecou?.Invoke(a, b, ms, meu, dele);
+						break;
+					}
+					case Protocol.ClashSub.Tecla:
+					{
+						char c = (char)reader.GetByte();
+						ClashTeclaPedida?.Invoke(c, reader.GetInt());
+						break;
+					}
+					case Protocol.ClashSub.Placar:
+						ClashPlacar?.Invoke(reader.GetFloat(), reader.GetFloat());
+						break;
+					case Protocol.ClashSub.Baque:
+						ClashBaque?.Invoke(reader.GetVec());
+						break;
+					case Protocol.ClashSub.Vislumbre:
+						ClashVislumbre?.Invoke(reader.GetBool());
+						break;
+
+					case Protocol.ClashSub.Acabou:
+					{
+						int venc = reader.GetInt(), perd = reader.GetInt();
+						EmClash = false;
+						ClashAcabou?.Invoke(venc, perd);
+						break;
+					}
+				}
 				break;
 			}
 

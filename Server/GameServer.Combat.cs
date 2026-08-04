@@ -205,6 +205,12 @@ public partial class GameServer
 		ca.Guardar(false);
 
 		ServerPlayer? alvo = AlvoNaFrente(a);
+
+		// ZANZO CLASH: os dois se acertaram no mesmo instante? Entao este soco nao acontece -- ele
+		// VIRA o embate. Conferido depois de achar o alvo (precisa saber em quem eu ia bater) e
+		// antes de resolver (senao o dano sairia alem do embate).
+		if (alvo != null && TentarEmbate(a, alvo)) return;
+
 		if (alvo == null)
 		{
 			// SOCAR O AR AINDA TREINA. E o que o BYOND fazia e o que faz o novato progredir
@@ -245,6 +251,11 @@ public partial class GameServer
 			ResolverDesfecho(alvo, a, devolta);
 			AnunciarGolpe(alvo, a, devolta, 2, zanzo: false);   // o contra nao investe
 		}
+
+		// QUEM EU SOQUEI E QUANDO -- e o que deixa o proximo golpe DELE ser reconhecido como troca
+		// simultanea. Ver `TentarEmbate`.
+		a.UltimoAlvo = alvo.Id;
+		a.UltimoSocoMs = NowMs();
 
 		ResolverDesfecho(a, alvo, r);
 		AnunciarGolpe(a, alvo, r, nivel, zanzo, investiu);
