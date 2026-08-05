@@ -1236,10 +1236,28 @@ public partial class World : Node2D
 				float forca = h.Nivel switch { >= 3 => 1.35f, 2 => 1.0f, _ => 0.8f };
 				if (crit) forca = 1.6f;
 
-				Piscar(quemLeva, Quente, crit ? Dourado : Laranja, rumo, crit ? 0.22 : 0.15);
-				CombatFx.Impacto(_atores, meio, forca, crit ? Dourado : Colors.White);
-				if (crit) CombatFx.Onda(_atores, meio, 96, Dourado);
-				Tremer(souEu, crit ? 8f : h.Nivel switch { >= 3 => 5f, 2 => 3f, _ => 1.5f });
+				// ============================ CENARIO SO FAZ BARULHO ============================
+				// Um acerto SEM alvo e um soco em parede, arvore ou bancada (ver
+				// `GameServer.SocarCenario`) -- corpo nenhum, entao `Alvo` vem zero. O relato e o
+				// mesmo de propósito, pra o som e o nivel do baque nao precisarem de um segundo
+				// canal, mas o DESENHO nao pode ser o mesmo.
+				//
+				// A faisca nasce no meio dos dois corpos, e sem o segundo corpo esse meio vira a
+				// posicao de quem bateu: o clarao estourava EM CIMA do personagem, ao lado da
+				// parede, como se ele tivesse acertado a si mesmo. Quem desenha o estrago de
+				// cenario e a poeira da celula que cai (`PoeiraDeEstrago`), que ja acontece no
+				// lugar certo e so quando algo realmente cede.
+				// ===============================================================================
+				bool emCorpo = quemLeva != null;
+
+				if (emCorpo)
+				{
+					Piscar(quemLeva, Quente, crit ? Dourado : Laranja, rumo, crit ? 0.22 : 0.15);
+					CombatFx.Impacto(_atores, meio, forca, crit ? Dourado : Colors.White);
+					if (crit) CombatFx.Onda(_atores, meio, 96, Dourado);
+					Tremer(souEu, crit ? 8f : h.Nivel switch { >= 3 => 5f, 2 => 3f, _ => 1.5f });
+				}
+
 				// DOIS sons por golpe, como no original: o assobio sai de quem BATE e o baque
 				// de quem APANHA. Separar os dois e o que da direcao ao impacto -- um som so,
 				// no meio, soa como se ninguem tivesse acertado ninguem.

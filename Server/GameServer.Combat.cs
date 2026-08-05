@@ -218,6 +218,17 @@ public partial class GameServer
 			a.Ficha.AttackGain(_rng);
 			ca.ZerarCombo();
 			if (_diagGolpe) ExplicarSocoNoAr(a, investiu);
+
+			// MAS NEM SEMPRE E AR. Antes daqui o golpe sem alvo simplesmente acabava, e socar uma
+			// parede de proposito nao fazia nada -- so o corpo ARREMESSADO derrubava cenario. No
+			// original quem soca cenario o quebra (`attack_proc.dm:95-112`), e e assim que se abre
+			// caminho numa casa ou se derruba uma arvore sem depender de levar um golpe antes.
+			//
+			// O NIVEL VAI JUNTO porque ele e o que escolhe o baque: um soco leve na parede soa
+			// pequeno e um pesado soa grande, igual a bater num corpo. Sem combo -- nao ha combo
+			// contra cenario.
+			if (SocarCenario(a, (int)Math.Min(3, tipo))) return;
+
 			AnunciarSocoNoAr(a, zanzo, investiu);
 			return;
 		}

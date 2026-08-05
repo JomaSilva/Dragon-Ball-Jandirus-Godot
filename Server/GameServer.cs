@@ -693,6 +693,13 @@ public partial class GameServer : Node
 			GD.Print("[server] BANCADA: todo mundo nasce num planeta gerado");
 		}
 
+		// `--socoteste`: nasce encostado no cenario mais proximo, virado pra ele. Ver `EncostarNaParede`.
+		if (Array.IndexOf(args, "--socoteste") >= 0)
+		{
+			_nascerNaParede = true;
+			GD.Print("[server] BANCADA: todo mundo nasce colado numa parede");
+		}
+
 		// `--horateste` e `--luateste`: adiantam o relogio do mundo. Ver GameServer.Ceu.cs -- a
 		// lua cheia da Terra so volta a cada oito noites de 24 min, ou seja, mais de tres horas.
 		LerBancadaDoCeu(args);
@@ -1267,6 +1274,9 @@ public partial class GameServer : Node
 		// BANCADA DA VOLTA: nasce colado na beirada oeste, na altura do meio.
 		if (_nascerNaBeirada && MapaDaZonaOuCatalogo(pl.Zone) is { } m)
 			pl.Pos = new Vec2(6 * ZoneCollision.TileSize, m.Height / 2 * ZoneCollision.TileSize);
+
+		// BANCADA DO ESTRAGO: nasce encostado no cenario mais proximo. Ver `EncostarNaParede`.
+		if (_nascerNaParede) EncostarNaParede(pl);
 
 		// BANCADA: nasce direto num mundo sorteado (ver `--geradoteste`).
 		if (_nascerEmGerado)

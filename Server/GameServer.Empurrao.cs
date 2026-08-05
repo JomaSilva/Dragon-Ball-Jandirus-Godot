@@ -154,6 +154,12 @@ public sealed partial class GameServer
 				for (int i = 1; i <= passos && !parou; i++)
 				{
 					Vec2 p = pl.Pos + passo * (i / (float)passos);
+
+					// O QUE O CORPO ATRAVESSA TAMBEM SOFRE. E o `for(var/obj/O in get_step(...))
+					// if(O.fragile) O.takeDamage(pow)` do original: a arvore e a bancada nao
+					// precisam BLOQUEAR pra serem arrancadas por alguem passando voando por cima.
+					EstragarObrasNoCaminho(pl, p);
+
 					if (!MoveRules.Occupied(mapa, p)) { andado = p; continue; }
 
 					if (pl.ForcaDoVoo >= Empurrao.ResistenciaPadrao && DerrubarCenario(pl.Zone, p))
@@ -249,8 +255,7 @@ public sealed partial class GameServer
 		ZoneCollision? mapa = _catalogo?.Get(zona)?.Mapa;
 		if (mapa == null) return false;
 
-		int cx = (int)Math.Floor(onde.X / ZoneCollision.TileSize);
-		int cy = (int)Math.Floor((onde.Y + MoveRules.FeetOffsetY) / ZoneCollision.TileSize);
+		(int cx, int cy) = CelulaDoPonto(onde);
 		if (!mapa.BlockedCell(cx, cy)) return false;
 
 		// ============================ BORDA NAO CAI: E GEOMETRIA ============================
@@ -276,6 +281,22 @@ public sealed partial class GameServer
 		// Sobra a aritmetica, que nao depende de plano nenhum e vale ate em mundo sorteado.
 		// ===================================================================================
 		if (mapa.NaBorda(cx, cy)) return false;
+
+		return DerrubarCelula(zona, cx, cy);
+	}
+
+	/// <summary>
+	/// DERRUBA UMA CELULA JA ESCOLHIDA, sem perguntar de novo se ela podia cair.
+	///
+	/// Separado do <see cref="DerrubarCenario"/> porque agora ha dois caminhos ate aqui -- o corpo
+	/// que voa (que descobre a celula andando) e o SOCO (que ja sabe qual e a celula da frente). O
+	/// que os dois nao podem e ter cada um a sua copia da parte que muda o mundo: as guardas de
+	/// borda ficam com quem escolhe, a mudanca fica aqui.
+	/// </summary>
+	private bool DerrubarCelula(ZoneKey zona, int cx, int cy)
+	{
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
+		if (mapa == null) return false;
 
 		if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
 		{

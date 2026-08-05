@@ -57,6 +57,23 @@ public sealed class Obra
 	public double Vida = 8;         // `DNL_LAB_HEALTH`: 8 golpes derrubam
 	public long ErguidaEm;
 
+	/// <summary>
+	/// A ARMADURA -- e o que decide se esta coisa cai quando alguem soca ou voa nela.
+	///
+	/// ============================ POR QUE NAO E `Resistencia` ============================
+	/// Parede e chao tem `Resistance` e caem por LIMIAR; objeto tem `armor`/`maxarmor` e cai por
+	/// dano ACUMULADO, com um piso de 75% que ignora quem bate fraco. Sao dois sistemas no DM e
+	/// aqui tambem -- ver <see cref="Jandirus.Core.Combat.Armadura"/>.
+	///
+	/// O TETO SAI DE QUEM ERGUEU. No original, `built.maxarmor = intBPcap` (`buildable.dm:414`):
+	/// a bancada de um lutador forte e forte. A mobilia que ja estava no mapa fica no padrao 1 e
+	/// cai no primeiro soco de qualquer um -- de proposito, e sem prejuizo, porque ela renasce do
+	/// `.objetos` no proximo boot (ver <see cref="DoMapa"/>). O que alguem ergueu vai pro disco e
+	/// nao volta, e e por isso que so ela tem armadura de verdade.
+	/// </summary>
+	public double ArmaduraMax = Jandirus.Core.Combat.Armadura.Padrao;
+	public double Armadura = Jandirus.Core.Combat.Armadura.Padrao;
+
 	/// <summary>Se for um laboratorio: em que estado esta a gestacao (ver <see cref="Gestacao"/>).</summary>
 	public Gestacao? Fornada;
 }
@@ -347,6 +364,15 @@ public partial class GameServer
 			DonoConta = pl.Conta,
 			DonoNome = pl.Name,
 			ErguidaEm = NowMs(),
+
+			// A ARMADURA NASCE DO BP DE QUEM ERGUEU -- `built.maxarmor = intBPcap`
+			// (`buildable.dm:414`). E o que faz a bancada de um lutador forte ser dificil de
+			// derrubar e a de um novato nao ser: quem quiser quebrar precisa bater no nivel dela.
+			//
+			// A MOBILIA DO MAPA NAO PASSA POR AQUI e fica no padrao 1, de proposito -- ela cai
+			// facil e volta no proximo boot. Esta vai pro disco e nao volta.
+			ArmaduraMax = Math.Max(Jandirus.Core.Combat.Armadura.Padrao, pl.Ficha.expressedBP),
+			Armadura = Math.Max(Jandirus.Core.Combat.Armadura.Padrao, pl.Ficha.expressedBP),
 		};
 		_noChao.Add(obra);
 		GravarMundo();
