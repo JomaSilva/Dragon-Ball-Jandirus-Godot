@@ -181,33 +181,23 @@ public partial class World : Node2D
 			//
 			// Nao mexe na invisibilidade da TECNICA (ali o dono continua se vendo, que e o certo pra
 			// quem escolheu sumir e precisa se localizar): isto vale so pelo embate.
-			cli.ClashComecou += (_, _, _, _, _) => { if (_local != null) _local.Visible = false; };
-			cli.ClashAcabou += (_, _) => { if (_local != null) _local.Visible = true; };
-
-			// O VISLUMBRE: por um quinto de segundo o meu proprio corpo volta a tela, ja no meio de
-			// um golpe. Pros OUTROS isto chega sozinho pelo snapshot (bit `Oculto` + pose Atacando);
-			// so o corpo local precisa de aviso, porque e o unico que nao vem por snapshot.
-			cli.ClashVislumbre += (aparece, olhar) =>
-			{
-				if (_local == null) return;
-				_local.Visible = aparece;
-				// PELO DONO DA POSE, e nao escrevendo no visual direto. O corpo local reescreve o
-				// proprio estado a cada quadro (`LocalPlayer.LerAcoes`), entao uma pose posta por
-				// fora durava um quadro so -- e o vislumbre mostrava o OUTRO socando e eu parado.
-				//
-				// A DIRECAO VEM DO SERVIDOR: no embate quem decide quem encara quem e ele, e o
-				// teclado do jogador nao opina. Sem isto os dois socavam pra lados diferentes.
-				if (aparece) _local.PosarDeGolpe(Jandirus.Net.Protocol.AttackPoseMs / 1000.0, olhar);
-			};
-			// O CLIMA FORCADO: so ele vem do servidor. O natural as duas pontas calculam do
-			// mesmo tempo do mundo -- ver `S2C.Clima`.
-			cli.ClimaMudou += () => { if (_luzDoMundo != null) _luzDoMundo.Forcado = cli.ClimaForcado; };
+			// ============================ NENHUMA LAMBDA DAQUI PRA BAIXO ============================
+			// Estas sete assinaturas eram lambdas anonimas e por isso NAO TINHAM COMO ser canceladas
+			// no `_ExitTree` -- `-=` exige o mesmo delegate, e lambda nova nunca e igual a anterior.
+			//
+			// O `GameClient` sobrevive ao logout (o `VoltarAoLogin` derruba os filhos do Boot, e ele
+			// nao e um deles), entao o World MORTO continuava assinado. A pior delas era o
+			// `ZoneChanged`: na sessao seguinte, trocar de mapa fazia o World velho tambem carregar
+			// zona, mexendo em `_zonaAtual` -- um `PlanetaPreFeito` ja liberado. E como esse caminho
+			// passa pelo `TelaDeCarregamento.Cobrir`, que e `async void`, a excecao escapava sem
+			// ninguem pegar.
+			// =======================================================================================
+			cli.ClashComecou += AoComecarEmbate;
+			cli.ClashAcabou += AoAcabarEmbate;
+			cli.ClashVislumbre += AoVislumbre;
+			cli.ClimaMudou += AoMudarClima;
+			cli.RaioCaiu += AoCairRaio;
 			_luzDoMundo.Forcado = cli.ClimaForcado;
-
-			// O RAIO CAI NUM PONTO DO MAPA, e o servidor conta pra zona inteira: quem esta olhando
-			// pra la ve o risco, quem nao esta ve o clarao e ouve o trovao atrasado.
-			cli.RaioCaiu += (onde, semente) =>
-				_luzDoMundo?.Raio(new Vector2(onde.X, onde.Y), semente);
 
 			cli.PortasMudaram += AoMudarPortas;
 			cli.CenarioCaiu += AoCairCenario;
@@ -217,39 +207,7 @@ public partial class World : Node2D
 			// roda DEPOIS do evento. Assinar nao basta: se ja entramos, aplica agora.
 			if (cli.LocalId != 0) AoEntrar(cli.LocalId, cli.Zone, cli.LocalSpawn, cli.LocalName);
 
-			cli.ZoneChanged += (z, spawn) =>
-			{
-				// GUARDA ANTES DE TROCAR: a posicao de agora ainda e a da zona VELHA. Se ela era o
-				// espaco, e ali que a nave ficou. Ver `UltimaNoEspaco`.
-				if (Jandirus.Core.World.Espaco.EhEspaco(_zonaDoAtual) && PosicaoLocal is { } antes)
-					UltimaNoEspaco = antes;
-
-				// ============================ OS CORPOS DA ZONA VELHA NAO VEM JUNTO ============================
-				// Todo `RemotePlayer` na tela e de quem estava na zona ANTERIOR -- o corte de
-				// interesse do servidor so manda snapshot de quem divide a zona comigo. Ao trocar,
-				// aqueles bonecos deixam de receber pacote e ficam parados no lugar onde estavam,
-				// agora sobre o cenario do planeta novo.
-				//
-				// Limpar aqui e o certo e nao custa nada: quem estiver na zona nova chega no
-				// primeiro snapshot, que vem no tique seguinte.
-				// ================================================================================================
-				EsvaziarRemotos();
-
-				// A TELA DE CARREGAMENTO ENTRA ANTES DO TRABALHO. Ver `TelaDeCarregamento`: a
-				// montagem do tilemap bloqueia a thread principal por quase um segundo, e sem uma
-				// tela no ar isso e indistinguivel de o jogo ter travado.
-				//
-				// O `Teleportar` vai DENTRO do mesmo bloco: mover o corpo antes da zona carregar o
-				// poria por um quadro nas coordenadas novas sobre o cenario velho.
-				void Trocar()
-				{
-					CarregarZona(z, new Vector2(spawn.X, spawn.Y));
-					_local?.Teleportar(spawn);
-				}
-
-				if (TelaDeCarregamento.Instancia is { } tela) tela.Cobrir(NomeDaZona(z), Trocar);
-				else Trocar();
-			};
+			cli.ZoneChanged += AoMudarZona;
 		}
 	}
 
@@ -283,7 +241,97 @@ public partial class World : Node2D
 			cli.CenarioCaiu -= AoCairCenario;
 			cli.CenarioRefeito -= AoRefazerCenario;
 			cli.FeridasMudaram -= AoMudarFeridas;
+			// Os sete que faltavam -- ver a nota no `_Ready`. O `ZoneChanged` e o mais grave: um
+			// World morto ainda assinado carrega zona por cima da sessao nova.
+			cli.ClashComecou -= AoComecarEmbate;
+			cli.ClashAcabou -= AoAcabarEmbate;
+			cli.ClashVislumbre -= AoVislumbre;
+			cli.ClashBaque -= AoBaqueDeEmbate;
+			cli.ClimaMudou -= AoMudarClima;
+			cli.RaioCaiu -= AoCairRaio;
+			cli.ZoneChanged -= AoMudarZona;
 		}
+	}
+
+	// =====================================================================
+	// OS AVISOS DO SERVIDOR QUE ERAM LAMBDA
+	// =====================================================================
+	private void AoComecarEmbate(int _, int __, int ___, float ____, float _____)
+	{
+		if (_local != null) _local.Visible = false;
+	}
+
+	private void AoAcabarEmbate(int _, int __)
+	{
+		if (_local != null) _local.Visible = true;
+	}
+
+	/// <summary>
+	/// O VISLUMBRE: por um quinto de segundo o meu proprio corpo volta a tela, ja no meio de um
+	/// golpe. Pros OUTROS isto chega sozinho pelo snapshot (bit `Oculto` + pose Atacando); so o
+	/// corpo local precisa de aviso, porque e o unico que nao vem por snapshot.
+	/// </summary>
+	private void AoVislumbre(bool aparece, Jandirus.Core.World.Facing olhar)
+	{
+		if (_local == null) return;
+		_local.Visible = aparece;
+		// PELO DONO DA POSE, e nao escrevendo no visual direto. O corpo local reescreve o
+		// proprio estado a cada quadro (`LocalPlayer.LerAcoes`), entao uma pose posta por
+		// fora durava um quadro so -- e o vislumbre mostrava o OUTRO socando e eu parado.
+		//
+		// A DIRECAO VEM DO SERVIDOR: no embate quem decide quem encara quem e ele, e o
+		// teclado do jogador nao opina. Sem isto os dois socavam pra lados diferentes.
+		if (aparece) _local.PosarDeGolpe(Jandirus.Net.Protocol.AttackPoseMs / 1000.0, olhar);
+	}
+
+	/// <summary>
+	/// O CLIMA FORCADO: so ele vem do servidor. O natural as duas pontas calculam do mesmo tempo
+	/// do mundo -- ver `S2C.Clima`.
+	/// </summary>
+	private void AoMudarClima()
+	{
+		if (_luzDoMundo != null && GameClient.Instance is { } cli) _luzDoMundo.Forcado = cli.ClimaForcado;
+	}
+
+	/// <summary>
+	/// O RAIO CAI NUM PONTO DO MAPA, e o servidor conta pra zona inteira: quem esta olhando pra la
+	/// ve o risco, quem nao esta ve o clarao e ouve o trovao atrasado.
+	/// </summary>
+	private void AoCairRaio(Vec2 onde, float semente) =>
+		_luzDoMundo?.Raio(new Vector2(onde.X, onde.Y), semente);
+
+	private void AoMudarZona(ZoneKey z, Vec2 spawn)
+	{
+		// GUARDA ANTES DE TROCAR: a posicao de agora ainda e a da zona VELHA. Se ela era o
+		// espaco, e ali que a nave ficou. Ver `UltimaNoEspaco`.
+		if (Jandirus.Core.World.Espaco.EhEspaco(_zonaDoAtual) && PosicaoLocal is { } antes)
+			UltimaNoEspaco = antes;
+
+		// ============================ OS CORPOS DA ZONA VELHA NAO VEM JUNTO ============================
+		// Todo `RemotePlayer` na tela e de quem estava na zona ANTERIOR -- o corte de
+		// interesse do servidor so manda snapshot de quem divide a zona comigo. Ao trocar,
+		// aqueles bonecos deixam de receber pacote e ficam parados no lugar onde estavam,
+		// agora sobre o cenario do planeta novo.
+		//
+		// Limpar aqui e o certo e nao custa nada: quem estiver na zona nova chega no
+		// primeiro snapshot, que vem no tique seguinte.
+		// ================================================================================================
+		EsvaziarRemotos();
+
+		// A TELA DE CARREGAMENTO ENTRA ANTES DO TRABALHO. Ver `TelaDeCarregamento`: a
+		// montagem do tilemap bloqueia a thread principal por quase um segundo, e sem uma
+		// tela no ar isso e indistinguivel de o jogo ter travado.
+		//
+		// O `Teleportar` vai DENTRO do mesmo bloco: mover o corpo antes da zona carregar o
+		// poria por um quadro nas coordenadas novas sobre o cenario velho.
+		void Trocar()
+		{
+			CarregarZona(z, new Vector2(spawn.X, spawn.Y));
+			_local?.Teleportar(spawn);
+		}
+
+		if (TelaDeCarregamento.Instancia is { } tela) tela.Cobrir(NomeDaZona(z), Trocar);
+		else Trocar();
 	}
 
 	/// <summary>

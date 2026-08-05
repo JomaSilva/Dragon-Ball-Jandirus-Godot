@@ -43,8 +43,16 @@ public partial class TelaDeInventario : CanvasLayer
 		Montar();
 
 		if (GameClient.Instance is { } cli)
-			cli.MochilaMudou += () => { if (_raiz.Visible) Redesenhar(); };
+			cli.MochilaMudou += AoMudarMochila;
 	}
+
+	/// <summary>Solta a assinatura -- ver a nota no `MenuJogo._Ready`: o `GameClient` sobrevive ao logout.</summary>
+	public override void _ExitTree()
+	{
+		if (GameClient.Instance is { } cli) cli.MochilaMudou -= AoMudarMochila;
+	}
+
+	private void AoMudarMochila() { if (_raiz.Visible) Redesenhar(); }
 
 	private void Montar()
 	{

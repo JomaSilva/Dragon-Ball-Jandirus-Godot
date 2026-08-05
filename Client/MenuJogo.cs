@@ -93,50 +93,100 @@ public partial class MenuJogo : CanvasLayer
 		Montar();
 		Visible = false;
 
+		// ============================ METODOS NOMEADOS, E NAO LAMBDAS ============================
+		// Estas nove assinaturas eram lambdas anonimas, e por isso NAO TINHAM COMO ser canceladas --
+		// `-=` precisa do mesmo delegate, e uma lambda nova nunca e igual a anterior.
+		//
+		// O `GameClient` SOBREVIVE ao logout (o `VoltarAoLogin` derruba os filhos do Boot, e ele nao
+		// e um deles), entao cada volta ao menu deixava nove assinantes apontando pra um node ja
+		// liberado. No login seguinte o pacote de ficha -- que chega a 5 Hz -- acordava os mortos, e
+		// cada um estourava `ObjectDisposedException` dentro do `Handle`, virando um
+		// "[client] pacote invalido" a cada 200 ms. Duas idas ao menu, dezoito erros por segundo.
+		//
+		// O `World` sempre fez certo (metodos nomeados + `-=` no `_ExitTree`); esta classe e as
+		// outras telas e que nasceram fora do padrao.
+		// =========================================================================================
 		if (GameClient.Instance is { } cli)
 		{
-			cli.SheetUpdated += _ => { if (Visible) Redesenhar(); };
-			cli.AtributosRecebidos += a =>
-			{
-				bool trocouRaca = _atributos.Raca != a.Raca;
-				_atributos = a;
-				// A BUSCA TAMBEM PRECISA SABER. Ela varre todas as categorias de proposito, entao
-				// esconder a aba nao bastava pra esconder os verbs de admin de quem nao e admin.
-				Verbos.DefinirAdmin(a.Tem(Protocol.Poder.Admin));
-				// a RACA so chega na ficha lenta, e e ela que diz quais habilidades existem
-				if (trocouRaca) Habilidades.Montar(a.Raca ?? "");
-				if (Visible) Redesenhar();
-			};
-			cli.CorpoAtualizado += _ => { if (Visible && _aba == "Body") Redesenhar(); };
-			cli.SkillsMudaram += () =>
-			{
-				SincronizarLivro();
-				// APRENDER UMA SKILL PODE CRIAR UM BOTAO. Refaz a lista inteira em vez de
-				// acrescentar so o novo: e a mesma funcao do login, entao nao ha um segundo
-				// caminho que possa divergir do primeiro.
-				Habilidades.Montar(_atributos.Raca ?? "");
-				if (Visible) Redesenhar();
-			};
-			cli.CargosMudaram += () => { if (Visible) Redesenhar(); };
-			cli.ContasMudaram += () => { if (Visible && _aba == Verbos.Admin) Redesenhar(); };
-			cli.TechMudou += () => { if (Visible) Redesenhar(); };
-			cli.EstilosMudaram += () =>
-			{
-				Habilidades.Montar(_atributos.Raca ?? "");
-				if (Visible) Redesenhar();
-			};
-			cli.ObrasMudaram += () => { if (Visible && _aba == "Tech") Redesenhar(); };
+			cli.SheetUpdated += AoFicha;
+			cli.AtributosRecebidos += AoAtributos;
+			cli.CorpoAtualizado += AoCorpo;
+			cli.SkillsMudaram += AoSkills;
+			cli.CargosMudaram += AoCargos;
+			cli.ContasMudaram += AoContas;
+			cli.TechMudou += AoTech;
+			cli.EstilosMudaram += AoEstilos;
+			cli.ObrasMudaram += AoObras;
 			_atributos = cli.Atributos;
 			SincronizarLivro();
 		}
-		Verbos.Mudou += () => { if (Visible) Redesenhar(); };
+
+		// O `Verbos.Mudou` E ESTATICO -- ele vive o processo inteiro. Um assinante morto aqui nao
+		// some nem quando o mundo inteiro e derrubado.
+		Verbos.Mudou += AoMudarVerbos;
 	}
 
 	public override void _ExitTree()
 	{
+		if (GameClient.Instance is { } cli)
+		{
+			cli.SheetUpdated -= AoFicha;
+			cli.AtributosRecebidos -= AoAtributos;
+			cli.CorpoAtualizado -= AoCorpo;
+			cli.SkillsMudaram -= AoSkills;
+			cli.CargosMudaram -= AoCargos;
+			cli.ContasMudaram -= AoContas;
+			cli.TechMudou -= AoTech;
+			cli.EstilosMudaram -= AoEstilos;
+			cli.ObrasMudaram -= AoObras;
+		}
+		Verbos.Mudou -= AoMudarVerbos;
+
 		if (Instancia == this) Instancia = null;
 		Aberto = false;
 	}
+
+	// =====================================================================
+	// O QUE O SERVIDOR MANDA
+	// =====================================================================
+	private void AoFicha(SheetState _) { if (Visible) Redesenhar(); }
+
+	private void AoAtributos(Protocol.AtributosState a)
+	{
+		bool trocouRaca = _atributos.Raca != a.Raca;
+		_atributos = a;
+		// A BUSCA TAMBEM PRECISA SABER. Ela varre todas as categorias de proposito, entao
+		// esconder a aba nao bastava pra esconder os verbs de admin de quem nao e admin.
+		Verbos.DefinirAdmin(a.Tem(Protocol.Poder.Admin));
+		// a RACA so chega na ficha lenta, e e ela que diz quais habilidades existem
+		if (trocouRaca) Habilidades.Montar(a.Raca ?? "");
+		if (Visible) Redesenhar();
+	}
+
+	private void AoCorpo(List<Protocol.ParteState> _) { if (Visible && _aba == "Body") Redesenhar(); }
+
+	private void AoSkills()
+	{
+		SincronizarLivro();
+		// APRENDER UMA SKILL PODE CRIAR UM BOTAO. Refaz a lista inteira em vez de
+		// acrescentar so o novo: e a mesma funcao do login, entao nao ha um segundo
+		// caminho que possa divergir do primeiro.
+		Habilidades.Montar(_atributos.Raca ?? "");
+		if (Visible) Redesenhar();
+	}
+
+	private void AoCargos() { if (Visible) Redesenhar(); }
+	private void AoContas() { if (Visible && _aba == Verbos.Admin) Redesenhar(); }
+	private void AoTech() { if (Visible) Redesenhar(); }
+
+	private void AoEstilos()
+	{
+		Habilidades.Montar(_atributos.Raca ?? "");
+		if (Visible) Redesenhar();
+	}
+
+	private void AoObras() { if (Visible && _aba == "Tech") Redesenhar(); }
+	private void AoMudarVerbos() { if (Visible) Redesenhar(); }
 
 	// =====================================================================
 	// ABRIR E FECHAR

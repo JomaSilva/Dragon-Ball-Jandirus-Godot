@@ -74,8 +74,8 @@ public partial class Hud : CanvasLayer
 			cli.SheetUpdated += Mostrar;
 			cli.AtributosRecebidos += MostrarPoderes;
 			cli.ActivityChanged += MostrarAtividade;
-			cli.MiraMudou += _ => MostrarCombate();
-			cli.LetalidadeMudou += _ => MostrarCombate();
+			cli.MiraMudou += AoMudarMira;
+			cli.LetalidadeMudou += AoMudarLetalidade;
 			MostrarPoderes(cli.Atributos);
 			Mostrar(cli.Sheet);
 		}
@@ -89,7 +89,14 @@ public partial class Hud : CanvasLayer
 		cli.SheetUpdated -= Mostrar;
 		cli.AtributosRecebidos -= MostrarPoderes;
 		cli.ActivityChanged -= MostrarAtividade;
+		// ESTES DOIS FALTAVAM, e faltavam por serem lambdas: `-=` precisa do mesmo delegate, e
+		// lambda nova nunca e igual a anterior. Viraram metodos nomeados por isso.
+		cli.MiraMudou -= AoMudarMira;
+		cli.LetalidadeMudou -= AoMudarLetalidade;
 	}
+
+	private void AoMudarMira(byte _) => MostrarCombate();
+	private void AoMudarLetalidade(bool _) => MostrarCombate();
 
 	// =====================================================================
 	// CANTO ESQUERDO: identidade e condicao

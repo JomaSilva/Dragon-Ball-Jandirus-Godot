@@ -97,16 +97,38 @@ public partial class ClashQte : CanvasLayer
 			cli.ClashComecou += Comecou;
 			cli.ClashTeclaPedida += Pediu;
 			cli.ClashPlacar += Placar;
-			cli.ClashJulgou += acertou =>
-			{
-				if (!_ligado) return;
-				_acertei = acertou;
-				_veredito = SegundosDeVeredito;
-			};
-			cli.ClashBaque += _ => _baque = SegundosDeBaque;
+			cli.ClashJulgou += Julgou;
+			cli.ClashBaque += Baque;
 			cli.ClashAcabou += Acabou;
 		}
 	}
+
+	/// <summary>
+	/// SOLTAR O QUE FOI ASSINADO. Esta tela nao tinha `_ExitTree` nenhum.
+	///
+	/// O `GameClient` sobrevive ao logout (ver a nota no `MenuJogo._Ready`), entao os seis
+	/// assinantes ficavam apontando pra um node liberado e estouravam no primeiro embate da
+	/// sessao seguinte -- ou, no caso do baque, a cada golpe.
+	/// </summary>
+	public override void _ExitTree()
+	{
+		if (GameClient.Instance is not { } cli) return;
+		cli.ClashComecou -= Comecou;
+		cli.ClashTeclaPedida -= Pediu;
+		cli.ClashPlacar -= Placar;
+		cli.ClashJulgou -= Julgou;
+		cli.ClashBaque -= Baque;
+		cli.ClashAcabou -= Acabou;
+	}
+
+	private void Julgou(bool acertou)
+	{
+		if (!_ligado) return;
+		_acertei = acertou;
+		_veredito = SegundosDeVeredito;
+	}
+
+	private void Baque(Jandirus.Core.World.Vec2 _) => _baque = SegundosDeBaque;
 
 	private void MontarFundo()
 	{

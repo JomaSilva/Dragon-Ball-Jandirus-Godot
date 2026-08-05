@@ -32,10 +32,18 @@ public partial class TelaDeConstrucao : CanvasLayer
 		Montar();
 
 		if (GameClient.Instance is { } cli)
-			cli.TechMudou += () => { if (_raiz.Visible) Redesenhar(); };
+			cli.TechMudou += AoMudarTech;
 	}
 
-	public override void _ExitTree() { if (Instancia == this) Instancia = null; }
+	public override void _ExitTree()
+	{
+		// A ASSINATURA TEM QUE SAIR JUNTO -- ver a nota no `MenuJogo._Ready`. O `GameClient`
+		// sobrevive ao logout, e um assinante morto vira erro no login seguinte.
+		if (GameClient.Instance is { } cli) cli.TechMudou -= AoMudarTech;
+		if (Instancia == this) Instancia = null;
+	}
+
+	private void AoMudarTech() { if (_raiz.Visible) Redesenhar(); }
 
 	private void Montar()
 	{
