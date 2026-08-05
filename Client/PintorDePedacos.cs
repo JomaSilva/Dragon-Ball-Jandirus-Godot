@@ -83,13 +83,28 @@ public sealed class PintorDePedacos
 	private const int FolgaDeCarga = 24;
 
 	/// <summary>
-	/// Folga, em tiles, pra DESCARTAR -- deliberadamente muito maior que a de carga.
+	/// Folga, em tiles, pra DESCARTAR -- maior que a de carga, mas so o necessario.
 	///
-	/// As duas tem que ser diferentes: com um limiar so, andar pra frente e pra tras em cima de
-	/// uma divisa faria o mesmo pedaco ser montado e desmontado a cada passo. Com esta distancia,
-	/// sair de um pedaco e voltar nao custa nada.
+	/// AS DUAS TEM QUE SER DIFERENTES: com um limiar so, andar pra frente e pra tras em cima de
+	/// uma divisa faria o mesmo pedaco ser montado e desmontado a cada passo. A margem util e UM
+	/// PEDACO: pra provocar a troca o jogador teria de cruzar 64 tiles inteiros de ida e volta.
+	///
+	/// ============================ POR QUE ESTE NUMERO E, ANTES, ERA 160 ============================
+	/// Com 160 este descarte NUNCA ACONTECIA, e o pintor so parecia limitado. A conta: a tela
+	/// mostra ~30 tiles de mundo, entao o retangulo de guarda ia a 15 + 160 = 175 tiles pra cada
+	/// lado -- 350 de ponta a ponta, uns 6 a 7 pedacos. Um planeta gerado de 256 tiles tem 4
+	/// pedacos de lado INTEIRO: a guarda era maior que o mundo, e nada podia sair dela. Na Terra
+	/// (500 tiles, ~8 pedacos) so caia uma coluna com o jogador colado na borda.
+	///
+	/// O efeito era o pico voltar a ser o mapa todo: passear pela zona remontava as 266 mil
+	/// celulas aos poucos, e o cache de zona guardava isso pra proxima visita. O ENGASGO sumia (o
+	/// orcamento por quadro dilui), mas o teto nao existia.
+	///
+	/// Com 64 a guarda fica em 15 + 64 = 79 tiles por lado, ~3 pedacos de ponta a ponta, contra
+	/// ~2 da carga: sobra um pedaco de histerese e o descarte passa a valer em qualquer mapa.
+	/// ===============================================================================================
 	/// </summary>
-	private const int FolgaDeDescarte = 160;
+	private const int FolgaDeDescarte = 64;
 
 	private readonly Node2D _dono;
 	private readonly IFonte _fonte;
@@ -179,6 +194,12 @@ public sealed class PintorDePedacos
 			_pintados.Remove(p);
 			_fila.Remove(p);
 		}
+
+		// SO FALA QUANDO LARGA ALGO. E o unico jeito de ver de fora que o teto existe: um pintor
+		// que nunca descarta e indistinguivel de um que pinta o mapa todo, so mais devagar -- foi
+		// exatamente o que aconteceu com a folga em 160.
+		if (longe.Count > 0)
+			GD.Print($"[pedacos] soltei {longe.Count}, ficam {_pintados.Count}");
 
 		for (int cy = quer.Position.Y; cy < quer.End.Y; cy++)
 			for (int cx = quer.Position.X; cx < quer.End.X; cx++)

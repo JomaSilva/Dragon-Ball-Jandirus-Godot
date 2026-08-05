@@ -157,11 +157,22 @@ public static class Espaco
 		foreach (PlanetaNoEspaco p in PreFeitos())
 			if (p.Chunk == c) return null;   // a chunk já é de um mundo com mapa próprio
 
+		// O DISCO DIZ O TAMANHO DO MUNDO. O raio saia de um sorteio proprio (`110 + (h >> 40) % 90`)
+		// enquanto o lado do mundo saia do raio; agora que o lado sai da GRAVIDADE (ver
+		// `MundoProcedural.LadoDaGravidade`), o raio segue a gravidade tambem -- senao o jogador
+		// veria uma bolinha e pousaria num mundo de um milhao de celulas.
+		//
+		// A FAIXA DO RAIO NAO MUDOU (110..199 px): ela entra na deteccao de pouso (`PlanetaSob`) e
+		// no espacamento dos mundos, e mexer nela seria mexer no layout do universo por tabela.
+		double g = MundoProcedural.GravidadeDaSeed(h);
+		double t = (g - MundoProcedural.GravidadeMinima)
+				   / (MundoProcedural.GravidadeMaxima - MundoProcedural.GravidadeMinima);
+
 		return new PlanetaNoEspaco
 		{
 			Nome = $"{NomeDeBioma(h)}-{Math.Abs(c.X) % 1000}{Math.Abs(c.Y) % 1000}",
 			Pos = pos,
-			Raio = 110 + (h >> 40) % 90,
+			Raio = 110 + (float)(Math.Clamp(t, 0, 1) * 89),
 			Seed = h,
 			Premade = false,
 		};

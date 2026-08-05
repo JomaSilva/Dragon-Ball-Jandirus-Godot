@@ -144,6 +144,15 @@ if (args.Length >= 1 && args[0] == "carga")
     return 0;
 }
 
+if (args.Length >= 1 && args[0] == "terreno")
+{
+    // terreno [amostras] : quanto custa gerar um mundo por tamanho, e que tamanhos o universo
+    // sorteia de verdade. E o que sustenta o teto de `MundoProcedural.LadoMaximo`.
+    int am = args.Length > 1 && int.TryParse(args[1], out int n) ? n : 5000;
+    TerrenoBench.Run(am);
+    return 0;
+}
+
 if (args.Length >= 2 && args[0] == "portas")
 {
     // portas <pastaMaps> : as portas de verdade -- bloqueiam fechadas, abrem, e voltam a fechar

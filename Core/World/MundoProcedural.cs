@@ -55,46 +55,62 @@ public sealed class MundoProcedural
 	// linha, e repetir a constante como sal desfaria o XOR e devolveria a seed crua.
 	private const ulong SalGravidade = 0xC2B2AE3D27D4EB4FUL;
 
+	/// <summary>A gravidade mais leve e a mais pesada que a escada do DM consegue sortear.</summary>
+	public const double GravidadeMinima = 1;
+	public const double GravidadeMaxima = 80;
+
 	/// <summary>
-	/// A FICHA DE UM PLANETA, DEDUZIDA DA SEED.
+	/// Lado do menor e do maior mundo gerado, em tiles.
 	///
-	/// BIOMA: nao ha sorteio novo -- e o mesmo `(seed >> 16) % 6` que o `Espaco` ja usou pra
-	/// batizar o planeta, via <see cref="GeradorDeTerreno.BiomaDaSeed"/>. Precisa ser o mesmo,
-	/// senao um mundo chamado "Gelido-77" nasceria com areia.
+	/// ============================ POR QUE O TETO E 1000, E O QUE ELE CUSTA ============================
+	/// O limite NAO e a pintura: desde que o cenario e entregue ao tilemap em pedacos de 64x64 (ver
+	/// `Client.PintorDePedacos`), desenhar custa o mesmo num mundo de 192 e num de 1000 -- so os
+	/// pedacos em volta da camera entram, e o teto de memoria de desenho e fixo.
 	///
-	/// TAMANHO: sai do RAIO que o planeta tem no mapa do espaco
-	/// (`Espaco.PlanetaDaChunk`: <c>110 + (h >> 40) % 90</c>, e la <c>h</c> E a seed). Ou seja, o
-	/// disco que o jogador ve antes de pousar diz o tamanho do mundo em que ele vai pisar -- um
-	/// planeta grande na tela E grande no chao. Sortear o lado por conta propria daria a
-	/// incoerencia silenciosa de uma bolinha com 200 mil tiles dentro.
+	/// O limite e a GERACAO, que nao da pra fatiar: a colisao tem que existir inteira antes do
+	/// primeiro passo (o servidor valida movimento contra ela) e o ponto de pouso sai de uma busca
+	/// que precisa do mapa pronto. E o custo e linear na area:
 	///
-	/// GRAVIDADE: a escada e a do DM, literal (`ProceduralSpace.dm:448-452`) -- "maioria leve,
-	/// cauda pesada", com o comentario do proprio autor explicando o porque ("com o esmagamento,
-	/// planeta 40x+ e zona de morte"). O `PR.next(n)` de la devolve 1..n, e e por isso que os
-	/// intervalos abaixo comecam em 1 e nao em 0.
+	///     lado    celulas    gerar
+	///      352    124 mil    ~27 ms
+	///     1000      1 mi    ~220 ms
+	///
+	/// NO SERVIDOR esse tempo para o tick de TODO MUNDO, nao so de quem pousou -- e o tick e de
+	/// 33 ms. Um mundo de 1000 custa ~7 ticks parados, UMA vez, no instante em que o primeiro
+	/// jogador pousa nele (depois fica em cache).
+	///
+	/// O que torna isso aceitavel e a ESCADA DE GRAVIDADE ser a mesma que decide o tamanho: mundo
+	/// grande e mundo de gravidade alta, e gravidade alta e rara de proposito (3% passam de 40).
+	/// Ou seja, o caso caro e o caso incomum, e ele vem junto do planeta que o jogo ja trata como
+	/// excepcional. Amarrar o tamanho a um sorteio proprio poria 1 milhao de celulas num planeta
+	/// qualquer.
+	///
+	/// O `GeradorDeTerreno` aceita ate 2048 (4,2 milhoes de celulas, ~1 s). Subir daqui e mexer
+	/// neste numero -- sabendo o que se paga.
+	/// =================================================================================================
 	/// </summary>
-	public static MundoProcedural DaSeed(ulong seed, string nome)
+	public const int LadoMinimo = 192;
+	public const int LadoMaximo = 1000;
+
+	/// <summary>
+	/// A GRAVIDADE DE UM MUNDO, so da seed.
+	///
+	/// Publica porque agora ela decide DUAS coisas: o tamanho do mundo (aqui) e o raio do disco no
+	/// mapa do espaco (`Espaco.PlanetaDaChunk`). Duas copias da escada divergiriam no dia em que
+	/// alguem mexesse numa delas, e o sintoma seria um disco pequeno escondendo um mundo enorme.
+	///
+	/// A escada e a do DM, literal (`ProceduralSpace.dm:448-452`) -- "maioria leve, cauda pesada",
+	/// com o comentario do proprio autor explicando o porque ("com o esmagamento, planeta 40x+ e
+	/// zona de morte"). O `PR.next(n)` de la devolve 1..n, e e por isso que os intervalos abaixo
+	/// comecam em 1 e nao em 0.
+	/// </summary>
+	public static double GravidadeDaSeed(ulong seed)
 	{
-		// o raio do disco no espaco: 110..199 px
-		int raio = 110 + (int)((seed >> 40) % 90);
-
-		// 110..199 -> 192..352 tiles, em degraus de 32.
-		//
-		// O TETO E MEDIDO, e ele nao e limitado pela pintura (que e fatiada) e sim pela GERACAO,
-		// que nao da pra fatiar: a colisao tem que existir inteira antes do primeiro passo. Rodando
-		// dentro do Godot, `Gerar` custou 14 ms num mundo de 256 e 43 ms num de 448 -- e no
-		// SERVIDOR esse tempo para o tick de TODO MUNDO, nao so de quem pousou. 352 (124 mil
-		// celulas, ~27 ms) cabe dentro de um tick de 33 ms com folga; 448 nao cabia.
-		//
-		// O DM usava 500 fixo pra todo planeta (`PSURF_SIZE`), e o `GeradorDeTerreno` aceita ate
-		// 2048. Subir daqui e mexer no divisor abaixo -- sabendo o que se paga por isso.
-		int lado = 192 + (raio - 110) / 15 * 32;
-
 		ulong h = Espaco.Misturar(seed ^ SalGravidade, 0, 0);
 		int faixa = (int)(h % 100);              // o `PR.next(100)` do DM, em 0..99
 		int dentro = (int)((h >> 20) % 100);     // segundo sorteio, faixa de bits independente
 
-		double gravidade =
+		return
 			faixa < 55 ? 1 + dentro % 5 :        // DM: PR.next(5)        -> 1..5
 			faixa < 85 ? 6 + dentro % 10 :       // DM: 5 + PR.next(10)   -> 6..15
 			faixa < 97 ? 16 + dentro % 25        // DM: 15 + PR.next(25)  -> 16..40
@@ -103,13 +119,50 @@ public sealed class MundoProcedural
 					   // gravidade 41..60 sai 50% mais comum que 61..80. Uma faixa de bits INDEPENDENTE do
 					   // mesmo hash nao tem esse estreitamento.
 					   : 41 + (int)((h >> 20) % 40);       // DM: 40 + PR.next(40)  -> 41..80
+	}
+
+	/// <summary>
+	/// O LADO DO MUNDO, EM TILES, A PARTIR DA GRAVIDADE.
+	///
+	/// Regra do dono: o planeta de gravidade mais alta que a natureza consegue sortear e tambem o
+	/// maior possivel, e o de gravidade mais baixa e o menor. E coerente com o que a gravidade
+	/// significa -- mais massa, mundo maior -- e tem a vantagem pratica de por o custo de geracao
+	/// exatamente onde a raridade ja esta (ver <see cref="LadoMaximo"/>).
+	///
+	/// INTERPOLACAO DIRETA, sem degraus: a conta e exata nas duas pontas (gravidade 1 da 192,
+	/// gravidade 80 da 1000). Os degraus de 32 que existiam aqui vinham de o lado ser derivado do
+	/// raio do disco em seis faixas, e nao havia razao pra manter a quantizacao depois que a fonte
+	/// mudou -- um mundo de 233 tiles nao e mais dificil de nada que um de 224.
+	/// </summary>
+	public static int LadoDaGravidade(double gravidade)
+	{
+		double t = (gravidade - GravidadeMinima) / (GravidadeMaxima - GravidadeMinima);
+		t = Math.Clamp(t, 0, 1);
+		return LadoMinimo + (int)Math.Round(t * (LadoMaximo - LadoMinimo));
+	}
+
+	/// <summary>
+	/// A FICHA DE UM PLANETA, DEDUZIDA DA SEED.
+	///
+	/// BIOMA: nao ha sorteio novo -- e o mesmo `(seed >> 16) % 6` que o `Espaco` ja usou pra
+	/// batizar o planeta, via <see cref="GeradorDeTerreno.BiomaDaSeed"/>. Precisa ser o mesmo,
+	/// senao um mundo chamado "Gelido-77" nasceria com areia.
+	///
+	/// TAMANHO: sai da GRAVIDADE (ver <see cref="LadoDaGravidade"/>). Antes saia do raio do disco
+	/// no mapa do espaco, e a coerencia "planeta grande na tela e grande no chao" continua valendo
+	/// -- so que agora pelo outro lado: o `Espaco` e que passou a tirar o raio do disco da mesma
+	/// gravidade. Um sorteio, tres consequencias, nada pra divergir.
+	/// </summary>
+	public static MundoProcedural DaSeed(ulong seed, string nome)
+	{
+		double gravidade = GravidadeDaSeed(seed);
 
 		return new MundoProcedural
 		{
 			Seed = seed,
 			Nome = nome ?? "",
 			Bioma = GeradorDeTerreno.BiomaDaSeed(seed),
-			Lado = lado,
+			Lado = LadoDaGravidade(gravidade),
 			Gravidade = gravidade,
 		};
 	}

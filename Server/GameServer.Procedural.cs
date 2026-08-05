@@ -32,6 +32,50 @@ public partial class GameServer
 	private readonly Dictionary<ulong, ZonaGerada> _zonasGeradas = [];
 
 	/// <summary>
+	/// UM MUNDO NASCENDO FORA DO TICK.
+	///
+	/// ============================ POR QUE ISTO NAO PODE SER SINCRONO ============================
+	/// Gerar era feito aqui mesmo, dentro do tique que atende o pouso. Num mundo de 352 sao ~27 ms
+	/// e cabia num tique de 33 ms -- por pouco, e era esse "por pouco" que fixava o teto de tamanho
+	/// dos planetas. Nao era o desenho que limitava (esse ja e por pedaco, ver `PintorDePedacos`);
+	/// era esta linha.
+	///
+	/// E o preco nao era de quem pousava: um tique parado e o servidor inteiro parado. Um jogador
+	/// encostando num planeta novo fazia todo mundo online engasgar.
+	///
+	/// PODE SER OUTRA THREAD porque `GeradorDeTerreno.Gerar` e funcao pura: recebe parametros,
+	/// devolve objeto novo, nao le nem escreve nada compartilhado (o Core nem conhece o engine). O
+	/// UNICO ponto que precisa voltar pra thread principal e a escrita no cache, e e por isso que
+	/// quem colhe e o <see cref="TickDasGeracoes"/> e nao uma continuacao da tarefa.
+	/// ============================================================================================
+	/// </summary>
+	private sealed class GeracaoEmVoo
+	{
+		/// <summary>
+		/// A tarefa devolve o mundo, quanto ele custou de CPU e a ASSINATURA dele.
+		///
+		/// O tempo de CPU vem junto porque sem ele so da pra medir o relogio de parede entre
+		/// encomendar e colher, e ele mistura duas coisas muito diferentes: o tamanho do mundo e a
+		/// demora em conseguir uma thread e o proximo tique. Confundir as duas leva a mexer no teto
+		/// de tamanho quando o problema era fila.
+		///
+		/// A ASSINATURA VEM JUNTO PORQUE ELA NAO E BARATA: ela mistura byte a byte as duas grades
+		/// de classe e o bitset de colisao -- num mundo de 1000 sao 2,1 milhoes de passadas, uns
+		/// 20 ms. Calcula-la na hora de imprimir o log poria de volta no tique justamente uma parte
+		/// do custo que se acabou de tirar dele, e por um diagnostico.
+		/// </summary>
+		public required System.Threading.Tasks.Task<(TerrenoGerado Terreno, double Ms, ulong Assinatura)> Tarefa { get; init; }
+		public required MundoProcedural Ficha { get; init; }
+		public required PlanetaNoEspaco NoEspaco { get; init; }
+		public required ulong Inicio { get; init; }
+	}
+
+	private readonly Dictionary<ulong, GeracaoEmVoo> _gerando = [];
+
+	/// <summary>Quem ja ouviu "o mundo esta se formando". Ver o porque em <see cref="PousarEmProcedural"/>.</summary>
+	private readonly HashSet<int> _avisadosDeEspera = [];
+
+	/// <summary>
 	/// Esta zona e um planeta GERADO?
 	///
 	/// O espaco fica de fora de proposito: ele tambem e `KindProcedural` (ver `Espaco.Zona`), mas
@@ -41,7 +85,11 @@ public partial class GameServer
 		z.Kind == ZoneKey.KindProcedural && !Espaco.EhEspaco(z);
 
 	/// <summary>
-	/// O mundo desta zona, gerando na hora se for a primeira vez.
+	/// O mundo desta zona, SE ele ja estiver pronto. Nulo tambem quer dizer "ainda nascendo".
+	///
+	/// Encomenda a geracao quando ela ainda nao comecou e quem pergunta sabe de que planeta se
+	/// trata. Quem chama num laco (o pouso, que roda todo tique enquanto o corpo esta sobre o
+	/// disco) so precisa tentar de novo: quando o mundo ficar pronto, esta funcao devolve.
 	///
 	/// <paramref name="noEspaco"/> so e usado quando a zona ainda nao existe: e o planeta do mapa
 	/// do universo, guardado pra saber pra onde a decolagem devolve o corpo.
@@ -52,29 +100,89 @@ public partial class GameServer
 		if (_zonasGeradas.TryGetValue(zona.Hash, out ZonaGerada? viva)) return viva;
 		if (noEspaco == null) return null;   // sem o planeta de origem nao da pra montar a ficha
 
-		PodarZonasVazias();
+		Encomendar(zona, noEspaco.Value);
+		return null;
+	}
+
+	/// <summary>Poe um mundo pra nascer numa thread do pool. Repetir o pedido nao duplica trabalho.</summary>
+	private void Encomendar(ZoneKey zona, PlanetaNoEspaco noEspaco)
+	{
+		if (_gerando.ContainsKey(zona.Hash)) return;
 
 		MundoProcedural ficha = MundoProcedural.DaSeed(zona.Seed, zona.Name);
-		ulong t0 = Time.GetTicksUsec();
-		TerrenoGerado t = GeradorDeTerreno.Gerar(ficha.Parametros());
-		ulong us = Time.GetTicksUsec() - t0;
 
-		viva = new ZonaGerada
+		// A FICHA E OS PARAMETROS SAO CALCULADOS AQUI, na thread principal, e a tarefa so recebe o
+		// objeto pronto. Deixar a tarefa chamar `DaSeed` funcionaria hoje, mas amarraria a thread
+		// de fundo a uma funcao que amanha pode querer ler estado do servidor.
+		ParametrosDeTerreno p = ficha.Parametros();
+
+		_gerando[zona.Hash] = new GeracaoEmVoo
 		{
+			Tarefa = System.Threading.Tasks.Task.Run(() =>
+			{
+				long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+				TerrenoGerado t = GeradorDeTerreno.Gerar(p);
+				double ms = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+				return (t, ms, t.Assinatura());
+			}),
 			Ficha = ficha,
-			Colisao = t.Colisao,
-			Chegada = t.Spawn,
-			NoEspaco = noEspaco.Value,
-			ClareiraEscavada = t.ClareiraEscavada,
+			NoEspaco = noEspaco,
+			Inicio = Time.GetTicksUsec(),
 		};
-		_zonasGeradas[zona.Hash] = viva;
 
-		// A ASSINATURA VAI NO LOG DE PROPOSITO. E o unico jeito barato de descobrir que cliente e
-		// servidor divergiram: o numero daqui tem que bater com o que o cliente imprime ao entrar.
-		GD.Print($"[server] gerado {ficha.Nome}: {ficha.Descricao()} em {us / 1000.0:0.0} ms "
-				 + $"| chegada ({t.SpawnCelX},{t.SpawnCelY}) | assinatura {t.Assinatura():X16}"
-				 + (t.ClareiraEscavada ? " | CLAREIRA ESCAVADA" : ""));
-		return viva;
+		GD.Print($"[server] nascendo {ficha.Nome}: {ficha.Descricao()} (fora do tique)");
+	}
+
+	/// <summary>
+	/// COLHE OS MUNDOS QUE FICARAM PRONTOS. Roda no tique, e e o unico lugar que escreve no cache.
+	///
+	/// A tarefa nao publica o resultado sozinha de proposito: uma continuacao rodaria na thread do
+	/// pool e mexeria em `_zonasGeradas` e `_zones` enquanto o tique os le. Colher aqui custa uma
+	/// varredura de um punhado de itens e dispensa qualquer trava.
+	/// </summary>
+	private void TickDasGeracoes()
+	{
+		if (_gerando.Count == 0) return;
+
+		List<ulong>? prontas = null;
+		foreach ((ulong hash, GeracaoEmVoo g) in _gerando)
+			if (g.Tarefa.IsCompleted) (prontas ??= []).Add(hash);
+		if (prontas == null) return;
+
+		foreach (ulong hash in prontas)
+		{
+			GeracaoEmVoo g = _gerando[hash];
+			_gerando.Remove(hash);
+
+			if (g.Tarefa.IsFaulted)
+			{
+				GD.PushWarning($"[server] {g.Ficha.Nome} nao nasceu: {g.Tarefa.Exception?.GetBaseException().Message}");
+				continue;
+			}
+
+			(TerrenoGerado t, double msDeCpu, ulong assinatura) = g.Tarefa.Result;
+			PodarZonasVazias();
+
+			_zonasGeradas[hash] = new ZonaGerada
+			{
+				Ficha = g.Ficha,
+				Colisao = t.Colisao,
+				Chegada = t.Spawn,
+				NoEspaco = g.NoEspaco,
+				ClareiraEscavada = t.ClareiraEscavada,
+			};
+
+			// A ASSINATURA VAI NO LOG DE PROPOSITO. E o unico jeito barato de descobrir que cliente e
+			// servidor divergiram: o numero daqui tem que bater com o que o cliente imprime ao entrar.
+			//
+			// OS DOIS TEMPOS. O de CPU e o custo do mundo (cresce com a area); o de espera e quanto
+			// o jogador ficou em orbita, e inclui pegar uma thread e esperar o proximo tique. Ver
+			// a nota em `GeracaoEmVoo.Tarefa` pro porque de nao bastar um so.
+			GD.Print($"[server] gerado {g.Ficha.Nome}: {g.Ficha.Descricao()} "
+					 + $"em {msDeCpu:0.0} ms de cpu, {(Time.GetTicksUsec() - g.Inicio) / 1000.0:0.0} ms de espera "
+					 + $"| chegada ({t.SpawnCelX},{t.SpawnCelY}) | assinatura {assinatura:X16}"
+					 + (t.ClareiraEscavada ? " | CLAREIRA ESCAVADA" : ""));
+		}
 	}
 
 	/// <summary>
@@ -131,10 +239,17 @@ public partial class GameServer
 		ZonaGerada? viva = MundoDaZona(zona, destino);
 		if (viva == null)
 		{
-			Avisar(pl, $"{destino.Nome} nao quis nascer -- fique em orbita por enquanto.");
-			GD.PushWarning($"[server] falhei em gerar {destino.Nome} (seed {destino.Seed})");
+			// O MUNDO ESTA NASCENDO numa thread propria (ver `Encomendar`). Nao ha o que fazer
+			// alem de deixar o corpo em orbita: o tique volta aqui no proximo quadro, e o pouso
+			// acontece sozinho assim que a colisao existir.
+			//
+			// AVISA UMA VEZ SO. Este metodo roda a cada tique enquanto o corpo esta sobre o disco,
+			// e um aviso por tique seriam trinta linhas por segundo no chat de quem esta pousando.
+			if (_avisadosDeEspera.Add(pl.Id))
+				Avisar(pl, $"{destino.Nome} esta se formando sob voce -- segure a orbita.");
 			return false;
 		}
+		_avisadosDeEspera.Remove(pl.Id);
 
 		MoveToZone(pl.Id, zona, viva.Chegada);
 

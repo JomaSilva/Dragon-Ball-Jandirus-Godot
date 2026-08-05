@@ -1276,8 +1276,19 @@ public partial class GameServer : Node
 				achado = Espaco.PlanetaDaChunk(SeedDoUniverso, new ChunkId(i, i));
 			if (achado is { } gerado)
 			{
-				pl.Zone = ZoneKey.Procedural(gerado.Nome, gerado.Seed);
-				GD.Print($"[server] BANCADA: {pl.Name} nasce em {gerado.Nome} (seed {gerado.Seed})");
+				// NASCE EM ORBITA, SOBRE O DISCO -- e nao com o pe no chao do planeta.
+				//
+				// Cravar a `ZoneKey` do planeta parecia mais direto e pulava justamente o que a
+				// bancada promete exercitar: o pouso. Ninguem chamava `PousarEmProcedural`, entao o
+				// mundo nunca era gerado NO SERVIDOR -- `MapaDaZona` devolvia nulo, o passo era
+				// validado so por velocidade e dava pra atravessar montanha. A bancada dizia
+				// "o pouso, a colisao e a pintura sao os mesmos" e nenhum dos tres acontecia.
+				//
+				// Em cima do disco, o `TickDoEspaco` faz o resto no proximo tique, pelo caminho de
+				// verdade: encomenda o mundo, segura o corpo em orbita enquanto ele nasce, e pousa.
+				pl.Zone = ZonaDoEspaco;
+				pl.Pos = gerado.Pos;
+				GD.Print($"[server] BANCADA: {pl.Name} nasce em orbita de {gerado.Nome} (seed {gerado.Seed})");
 			}
 			else GD.PushWarning("[server] BANCADA: nao achei planeta gerado em 400 chunks");
 		}
@@ -1617,6 +1628,7 @@ public partial class GameServer : Node
 		EsquecerPassagem(pl.Id);
 		_relogioDoEstomago.Remove(pl.Id);
 		_fomeAcumulada.Remove(pl.Id);
+		_avisadosDeEspera.Remove(pl.Id);
 
 		var w = Protocol.Begin(Protocol.S2C.PeerLeft);
 		w.Put(pl.Id);
@@ -1664,6 +1676,12 @@ public partial class GameServer : Node
 		// O ARREMESSO ANDA NO TICK CHEIO: o tique dele e 0,1 s e cada um vale dois tiles. A 5 Hz
 		// o corpo daria saltos de quatro tiles, e o que se veria seria teleporte, nao voo.
 		TickDoEmpurrao();
+
+		// OS MUNDOS QUE NASCERAM FORA DO TIQUE. Ver `GameServer.Procedural.cs`: gerar um planeta
+		// custa de 27 ms (352 tiles) a ~220 ms (1000), e fazer isso aqui dentro parava o servidor
+		// inteiro por causa de UM jogador encostando num planeta novo. Aqui so se colhe.
+		TickDasGeracoes();
+
 		TickDasArvores();     // as macas brotam de volta -- ver GameServer.Interacao.cs
 		TickDaGravidade();    // a bateria das maquinas drena -- ver GameServer.Gravidade.cs
 
