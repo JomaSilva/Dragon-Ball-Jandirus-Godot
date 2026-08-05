@@ -1,0 +1,3 @@
+[{ "x": 221, "y": 264, "zona": "Hell", "dx": 2032, "dy": 6512, "nome": "Inferno" },
+ { "x": 145, "y": 277, "zona": "Heaven", "dx": 5392, "dy": 15216, "nome": "Céu" },
+ { "x": 146, "y": 277, "zona": "Heaven", "dx": 5392, "dy": 15216, "nome": "Céu" }]

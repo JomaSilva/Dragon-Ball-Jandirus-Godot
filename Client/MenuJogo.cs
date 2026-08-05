@@ -41,10 +41,16 @@ public partial class MenuJogo : CanvasLayer
 	/// </summary>
 	public static bool Digitando => Instancia is { Visible: true } m && m._busca.HasFocus();
 
-	/// <summary>As abas fixas, na ordem do original.</summary>
+	/// <summary>
+	/// As abas fixas, na ordem do original.
+	///
+	/// "ITEMS" SAIU. Ela era um aviso de "vem com o sistema de itens" -- e o sistema chegou: a
+	/// mochila e a tecla I, com grade, pilha e as acoes de cada item. Deixar a aba seria oferecer
+	/// duas portas pra mesma coisa, e uma delas nao abre.
+	/// </summary>
 	private static readonly string[] Fixas =
 	[
-		"Stats", "Items", "Equip", "Body", "Forms", "Ki",
+		"Stats", "Equip", "Body", "Forms", "Ki",
 		"People", "World", "Cargos", "Skills", "Other", "Learning", "Tech",
 	];
 
@@ -356,7 +362,7 @@ public partial class MenuJogo : CanvasLayer
 		string comum = $"{_busca.Text.Trim()}|{_arvoreAberta}|{f.Estado}";
 		return aba switch
 		{
-			"Stats" => $"{comum}|{f.ExpressedBP:0}|{f.Ki:0}|{f.MaxKi:0}|{f.HP:0}|{f.Vigor:0}"
+			"Stats" => $"{comum}|{f.ExpressedBP:0}|{f.Ki:0}|{f.MaxKi:0}|{f.HP:0}|{f.Vigor:0}|{f.Nutricao:0}"
 					 + $"|{_atributos.PhysOff:0.##}|{_atributos.PhysDef:0.##}|{_atributos.KiOff:0.##}"
 					 + $"|{_atributos.Speed:0.##}|{_atributos.Idade}|{f.Class}",
 			"Body" => $"{comum}|{string.Join(',', (c?.Corpo ?? []).Select(p => p.Nome + p.Vida + (p.Decepado ? "x" : "")))}",
@@ -390,9 +396,9 @@ public partial class MenuJogo : CanvasLayer
 						  + $"|{World.Instancia?.TempoQueFaz?.Tipo}|{World.Instancia?.TempoQueFaz?.Forcado}|"
 						  + string.Join(',', (c?.Contas ?? []).Select(a => $"{a.Conta}{a.Admin}{a.Banida}{a.Online}")),
 			"Ki" => $"{comum}|{f.Ki:0}|{f.MaxKi:0}|{c?.SkillsAprendidas.Count}",
-			// As abas fixas sem dado proprio (Items, Equip, Other) sao texto parado: uma assinatura
+			// As abas fixas sem dado proprio (Equip, Other) sao texto parado: uma assinatura
 			// so ja basta pra elas nunca mais serem remontadas.
-			"Items" or "Equip" or Verbos.Outros => comum,
+			"Equip" or Verbos.Outros => comum,
 			// AS QUE DEPENDEM DE QUEM ESTA NA TELA refazem sempre: People e World listam corpos que
 			// entram e saem a cada snapshot, e uma assinatura que os cobrisse custaria o mesmo que
 			// remontar. Devolver vazio e dizer "nao ha cache pra esta".
@@ -575,6 +581,17 @@ public partial class MenuJogo : CanvasLayer
 		Linha("Vida", $"{f.HP:0}%", f.HP >= 66 ? Tema.Bom : f.HP <= 33 ? Tema.Perigo : Tema.Texto);
 		Linha("Ki", $"{f.Ki:N0} / {f.MaxKi:N0}   ({(f.MaxKi > 0 ? f.Ki / f.MaxKi * 100 : 0):0}%)");
 		Linha("Vigor", $"{_atributos.Stamina * 100:0}%");
+
+		// ============================ A NUTRICAO FALTAVA, E ELA EXPLICA O VIGOR ============================
+		// O vigor cai sozinho e so sobe as custas do tanque de comida. Sem este numero na tela, um
+		// jogador com o folego minguando nao tem como saber que o problema e FOME -- ele ve uma
+		// barra caindo e nenhuma causa. Ver `Core.Stats.Nutricao`.
+		//
+		// A COR AVISA ANTES DE DOER: o aviso de fome do servidor bate em 25% de vigor, mas quem fica
+		// sem tanque para de recuperar MUITO antes disso.
+		double pct = f.NutricaoMax > 0 ? f.Nutricao / f.NutricaoMax * 100 : 0;
+		Linha("Nutrição", $"{f.Nutricao:0} / {f.NutricaoMax:0}   ({pct:0}%)",
+			pct >= 50 ? Tema.Bom : pct <= 15 ? Tema.Perigo : Tema.Texto);
 
 		Secao("Atributos");
 		(string Nome, float Valor)[] atts =
@@ -1891,7 +1908,6 @@ public partial class MenuJogo : CanvasLayer
 		Secao(aba);
 		Aviso(aba switch
 		{
-			"Items" => "Inventario, zenni e itens carregados. Vem com o sistema de itens.",
 			"Equip" => "O que esta vestido e equipado. Vem com o sistema de itens.",
 			"Tech" => "Nivel tecnologico, construcoes e androides. Vem com o sistema de tecnologia.",
 			"Sense" => "Leitura de Ki: quem esta por perto e quao forte. Vem com a skill de Sense.",

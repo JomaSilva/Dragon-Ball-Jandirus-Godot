@@ -218,21 +218,49 @@ public static class SceneCollision
     }
 
     /// <summary>
-    /// Le as celulas de todos os TileMapLayer da cena.
-    /// Formato do blob: [uint16 formato][por celula: int16 x, int16 y, uint16 fonte,
-    /// uint16 atlasX, uint16 atlasY, uint16 alternativa].
+    /// Le as celulas do cenario -- do `.pedacos` ao lado da cena E do que ainda estiver DENTRO dela.
+    ///
+    /// ============================ O CHAO SAIU DA CENA ============================
+    /// As celulas moravam num `tile_map_data` por camada dentro do `.tscn`. Hoje elas moram num
+    /// `.pedacos` (ver `Core.World.PedacosDoMapa`), porque um TileMapLayer monta TODAS as celulas
+    /// que tiver no primeiro quadro -- 708 ms na Terra, a travada de tres segundos ao trocar de mapa.
+    ///
+    /// Ler so a cena, aqui, seria pior que um erro: este comando compara o mapa com uma linha de
+    /// base e MEXE no `.col` do que mudou. Uma cena vazia parece "o dono apagou o planeta inteiro",
+    /// e o comando abriria as 250 mil celulas em silencio.
+    ///
+    /// LE OS DOIS de proposito. O `.pedacos` e o cenario convertido; o que sobrar na cena e o que
+    /// alguem pintou a mao no editor. Somar os dois e o que mantem o comando util pros dois casos.
+    /// =============================================================================
     ///
     /// ============================ DOIS JEITOS DE ESCREVER O MESMO BLOB ============================
-    /// O conversor escreve `PackedByteArray(0, 0, 4, ...)` -- decimais separados por virgula, que e
-    /// como o Godot gravava cena de FORMATO 3. Basta abrir o mapa no editor e salvar pra ele subir
-    /// pra FORMATO 4, onde o mesmo blob vira `PackedByteArray("AAAAAAAABAA...")`, em base64.
+    /// Quando ha blob na cena, ele pode vir de duas formas: `PackedByteArray(0, 0, 4, ...)` --
+    /// decimais separados por virgula, o FORMATO 3 -- ou `PackedByteArray("AAAAAAAABAA...")`, em
+    /// base64, que e pra onde o Godot sobe assim que alguem abre o mapa no editor e salva.
     ///
-    /// Ler so o primeiro formato quebrava este comando (com `FormatException`) no dia em que alguem
-    /// edita um mapa no editor -- que e exatamente o dia em que ele importa.
+    /// Ler so o primeiro quebrava este comando (com `FormatException`) no dia em que alguem edita um
+    /// mapa no editor -- que e exatamente o dia em que ele importa.
     /// ==============================================================================================
     /// </summary>
     private static IEnumerable<Celula> Celulas(string tscn)
     {
+        string pedacos = Path.ChangeExtension(tscn, ".pedacos");
+        if (File.Exists(pedacos)
+            && Jandirus.Core.World.PedacosDoMapa.Ler(File.ReadAllBytes(pedacos)) is { } mapa)
+        {
+            for (int c = 0; c < mapa.Camadas.Length; c++)
+                for (int cy = mapa.Cy0; cy < mapa.Cy1; cy++)
+                    for (int cx = mapa.Cx0; cx < mapa.Cx1; cx++)
+                    {
+                        if (!mapa.Achar(cx, cy, c, out int inicio, out int quantas)) continue;
+                        for (int i = 0; i < quantas; i++)
+                        {
+                            Jandirus.Core.World.CelulaDePedaco cel = mapa.Celula(inicio, i);
+                            yield return new Celula(cel.X, cel.Y, cel.Fonte, cel.Ax, cel.Ay);
+                        }
+                    }
+        }
+
         foreach (Match m in Regex.Matches(File.ReadAllText(tscn),
                      @"tile_map_data = PackedByteArray\(([^)]*)\)"))
         {

@@ -36,6 +36,7 @@ public sealed partial class GameServer
 			// isso o reenvio pro canal de sempre em vez de uma copia da logica aqui: duas copias
 			// divergem na primeira mudanca, e estas conferem raca, tecnologia e zeni.
 			case "abrir_tech": ComandoDeTech(pl, "lista", ""); return true;
+			case "pegar":
 			case "aparafusar":
 			case "lab_androide":
 			case "lab_bio":

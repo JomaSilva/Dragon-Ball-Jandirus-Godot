@@ -93,9 +93,13 @@ public partial class CreationScreen : CanvasLayer
 		colunas.AddThemeConstantOverride("separation", 24);
 		centro.AddChild(colunas);
 
-		colunas.AddChild(MontarPalco());
+		_palco = MontarPalco();
+		colunas.AddChild(_palco);
 		colunas.AddChild(MontarFormulario());
 	}
+
+	/// <summary>A coluna do boneco. Escondida na etapa do planeta -- ver `MostrarEtapa`.</summary>
+	private Control? _palco;
 
 	/// <summary>O palco da previa: o boneco grande, girando com as setas.</summary>
 	private Control MontarPalco()
@@ -295,6 +299,17 @@ public partial class CreationScreen : CanvasLayer
 		_dicaEtapa.Visible = e.Dica.Length > 0;
 		_erro.Text = "";
 
+		// ============================ O BONECO SO APARECE QUANDO HA BONECO ============================
+		// Na etapa do PLANETA nao ha personagem nenhum ainda -- o corpo ao lado era o padrao de uma
+		// raça que o jogador nao escolheu, e ele ficava ali sugerindo que aquela ja era a escolha.
+		// A tela de "onde voce nasce" e sobre o mundo, e nao sobre um humano palido de sunga.
+		// ==============================================================================================
+		bool temCorpo = _passo > 0;
+		if (_palco != null) _palco.Visible = temCorpo;
+
+		// O RODAPE FALA DO QUE A TELA PERGUNTA: no planeta, dos povos dele; no resto, da raça.
+		_descricao.Text = _passo == 0 ? DescreverRacasDoPlaneta(_ficha.Planet) : Descrever(_ficha.Race);
+
 		// A TRILHA CONTA SO AS ETAPAS QUE ESTE PERSONAGEM TEM. Mostrar "4 de 9" pra um Namekuseijin
 		// que nunca vera genero nem aparencia de frost seria prometer telas que nao existem.
 		int total = _etapas.Count(x => x.Cabe());
@@ -456,6 +471,23 @@ public partial class CreationScreen : CanvasLayer
 		return p;
 	}
 
+	/// <summary>
+	/// O QUE ESTE MUNDO OFERECE -- os povos que nascem nele.
+	///
+	/// A ETAPA DO PLANETA FALAVA DA RACA ERRADA. O rodape mostra a descricao da raça SELECIONADA, e
+	/// na primeira tela ainda nao ha raça escolhida -- so a primeira da lista, que o jogador nem
+	/// viu. Ele lia "Comeca forte. Linhagens possiveis: Legendary, Elite..." embaixo de uma tela que
+	/// pergunta onde ele nasce, falando de um Saiyajin que ele nao escolheu.
+	///
+	/// O que a tela do planeta tem a dizer e QUEM nasce ali.
+	/// </summary>
+	private static string DescreverRacasDoPlaneta(string planeta)
+	{
+		string[] racas = CharacterDraft.RacasDoPlaneta(planeta);
+		if (racas.Length == 0) return "";
+		return $"Povos deste mundo: {string.Join(", ", racas.Select(NomeBonito))}.";
+	}
+
 	/// <summary>As racas do planeta escolhido, cada uma com o proprio corpo como retrato.</summary>
 	private Control PaginaDeRaca()
 	{
@@ -580,26 +612,43 @@ public partial class CreationScreen : CanvasLayer
 		return p;
 	}
 
-	/// <summary>Repinta o catalogo de corpos marcando o que esta no slot aberto.</summary>
+	/// <summary>Os botoes do catalogo, por corpo. Montados UMA vez -- ver `DesenharGradeDeFormas`.</summary>
+	private readonly Dictionary<string, Button> _botoesDeForma = [];
+
+	/// <summary>
+	/// A GRADE DE CORPOS. Montada uma vez; trocar de aba so remarca qual esta aceso.
+	///
+	/// ============================ ERA UM ENGASGO POR CLIQUE ============================
+	/// A versao anterior destruia e reconstruia os 54 botoes a cada troca de aba, e cada botao
+	/// carrega um `SpriteFrames` do disco pra tirar a miniatura. Sao 54 leituras de recurso no meio
+	/// de um clique -- o dono sentiu exatamente isso ("ao clicar em frost demon o jogo da uma
+	/// travadinha"), e ele acontecia DE NOVO a cada vez que ele trocava de degrau.
+	///
+	/// Montando uma vez, o custo acontece uma vez. E depois disso trocar de aba e mudar um booleano
+	/// em 54 botoes, que e trabalho de um quadro.
+	/// ===================================================================================
+	/// </summary>
 	private void DesenharGradeDeFormas()
 	{
-		foreach (Node n in _gradeFormas.GetChildren()) n.QueueFree();
 		if (_slotDeForma >= _visual.FormasDeFrost.Count) return;
 
-		string atual = _visual.FormasDeFrost[_slotDeForma];
-		foreach (string corpo in Jandirus.Core.Races.FormasDeFrost.Catalogo)
-		{
-			string alvo = corpo;
-			Button b = BotaoIcone(Miniatura(Jandirus.Core.Races.FormasDeFrost.Caminho(corpo)), corpo);
-			b.ButtonPressed = corpo == atual;
-			b.Pressed += () =>
+		if (_botoesDeForma.Count == 0)
+			foreach (string corpo in Jandirus.Core.Races.FormasDeFrost.Catalogo)
 			{
-				_visual.FormasDeFrost[_slotDeForma] = alvo;
-				MarcarSelecionado(_gradeFormas, b);
-				Previa();
-			};
-			_gradeFormas.AddChild(b);
-		}
+				string alvo = corpo;
+				Button b = BotaoIcone(Miniatura(Jandirus.Core.Races.FormasDeFrost.Caminho(corpo)), corpo);
+				b.Pressed += () =>
+				{
+					_visual.FormasDeFrost[_slotDeForma] = alvo;
+					MarcarSelecionado(_gradeFormas, b);
+					Previa();
+				};
+				_gradeFormas.AddChild(b);
+				_botoesDeForma[corpo] = b;
+			}
+
+		string atual = _visual.FormasDeFrost[_slotDeForma];
+		foreach ((string corpo, Button b) in _botoesDeForma) b.ButtonPressed = corpo == atual;
 	}
 
 	private Control PaginaDeRoupa()
@@ -1010,8 +1059,11 @@ public partial class CreationScreen : CanvasLayer
 	/// </summary>
 	private Texture2D? IconeDeRaca(string raca)
 	{
-		if (Jandirus.Core.Races.FormasDeFrost.EhFrost(raca))
-			return Miniatura(Jandirus.Core.Races.FormasDeFrost.Caminho("Changling - Form 1"));
+		// O RETRATO TEM TABELA PROPRIA, e nao sai do catalogo de corpos. O catalogo so conhece as
+		// racas que TEM passo de escolha de corpo, e seis das sete de Vegeta nao tem -- por isso
+		// Saiyan, Tsujin, Saibamen, Heran, Meta e Alien apareciam como o mesmo humano palido. Ver
+		// `IconesDeRaca`.
+		if (IconesDeRaca.De(raca) is { } proprio) return Miniatura(proprio);
 
 		string? corpo = _cat?.CorposDe(raca).Para("Male").FirstOrDefault();
 		return corpo == null ? null : Miniatura(corpo);
@@ -1072,7 +1124,24 @@ public partial class CreationScreen : CanvasLayer
 	private void Previa()
 	{
 		if (_cat == null) return;
-		_boneco.Vestir(_cat, _visual, _ficha.Race, Genero());
+
+		// ============================ O FROST DEMON MOSTRA A FORMA QUE ESTA SENDO EDITADA ============================
+		// `VisualCatalog.CorpoSprite` devolve SEMPRE a forma base -- e certo pro jogo (e nela que o
+		// personagem anda), e errado pra esta tela: quem abre a aba "2ª Evolução" e clica num corpo
+		// via o boneco continuar na base, como se o clique nao tivesse funcionado.
+		//
+		// A COPIA E LOCAL, e nao um estado novo: troca-se a base pelo slot aberto SO pra desenhar, e
+		// a escolha de verdade continua em `_visual`. Mexer no `_visual` faria a previa reordenar a
+		// lista que vai pro servidor.
+		Appearance mostrar = _visual;
+		if (Jandirus.Core.Races.FormasDeFrost.EhFrost(_ficha.Race)
+			&& _slotDeForma > 0 && _slotDeForma < _visual.FormasDeFrost.Count)
+		{
+			mostrar = _visual.Copiar();
+			mostrar.FormasDeFrost[0] = _visual.FormasDeFrost[_slotDeForma];
+		}
+
+		_boneco.Vestir(_cat, mostrar, _ficha.Race, Genero());
 		_boneco.SetMotion(_facingAtual, false);
 	}
 

@@ -141,6 +141,12 @@ public partial class GameServer
 		if (Godot.FileAccess.FileExists(cj))
 		{
 			_obras = CatalogoDeObras.Parse(Godot.FileAccess.GetFileAsString(cj));
+
+			// TODA CONSTRUCAO PASSA A CABER NA MOCHILA. O catalogo de itens tem sete linhas escritas
+			// a mao (as que tem nutricao, pilha ou acao propria); as outras noventa e duas nascem
+			// daqui. Ver `CatalogoDeItens.Get`.
+			Jandirus.Core.Items.CatalogoDeItens.Obras = _obras;
+
 			GD.Print($"[server] construcoes: {_obras.Total} no catalogo");
 		}
 		else GD.PushWarning("[server] sem construcoes.json -- rode o AssetPipeline (comando 'tech')");
@@ -264,42 +270,80 @@ public partial class GameServer
 		RecusaObra r = CatalogoDeObras.Permitida(c, pl.Ficha, pl.Race);
 		if (r != RecusaObra.Pode) { Avisar(pl, MotivoObra(r, c, pl)); return; }
 
-		// ============================ NEM TUDO QUE SE CONSTROI FICA NO CHAO ============================
-		// A mesma bancada que ergue uma maquina de gravidade fabrica uma pa e um scouter -- e no
-		// original a diferenca e clara: uns sao `/obj/items` que vao pro `contents` do jogador,
-		// outros ficam no turf. Aqui quem sabe a diferenca e o catalogo de ITENS: se o id tem ficha
-		// de item, ele e de carregar. Ver `CatalogoDeItens.EhCarregavel`.
+		// ============================ FABRICAR NAO E ERGUER ============================
+		// Ate aqui, comprar uma maquina de gravidade a plantava NA HORA, embaixo dos pes de quem
+		// comprou. Nao havia como escolher onde -- e "onde" e metade da decisao quando a coisa
+		// bloqueia passagem e custa meio milhao.
+		//
+		// Agora a bancada FABRICA e a mochila carrega; assentar e um segundo gesto, com o fantasma
+		// no mouse (ver `Posicionar`). E tambem o que o original faz: o `Click()` do creatable cria
+		// um `/obj/items/...` que vai pro `contents` do jogador.
 		//
 		// A COBRANCA SO ACONTECE SE COUBER. Tirar o zeni antes de descobrir que a mochila esta
 		// cheia seria vender um item que nao foi entregue.
-		if (Jandirus.Core.Items.CatalogoDeItens.EhCarregavel(c.Id))
+		if (pl.Mochila.Cheio)
 		{
-			if (pl.Mochila.Cheio)
-			{
-				Avisar(pl, $"sua mochila está cheia ({Jandirus.Core.Items.Inventario.Slots} espaços).");
-				return;
-			}
-			pl.Ficha.Zeni -= c.Custo;
-			Guardar(pl, c.Id);
-			Avisar(pl, $"você fabrica {c.Nome}. Está na sua mochila. Restam {pl.Ficha.Zeni:N0} zeni.");
-			MandarCatalogoDeObras(pl);
+			Avisar(pl, $"sua mochila está cheia ({Jandirus.Core.Items.Inventario.Slots} espaços).");
 			return;
 		}
 
-		// NAO EMPILHA: duas construcoes no mesmo lugar viram uma so na tela e as duas respondem
-		// ao mesmo clique. Meio tile de folga e o bastante pra nao encavalar.
-		if (_noChao.Any(o => o.Zona == pl.Zone.Name
-							 && Math.Abs(o.X - pl.Pos.X) < 24 && Math.Abs(o.Y - pl.Pos.Y) < 24))
-		{ Avisar(pl, "ja tem coisa demais neste ponto."); return; }
-
 		pl.Ficha.Zeni -= c.Custo;
+		Guardar(pl, c.Id);
+		GD.Print($"[server] {pl.Name} fabricou {c.Nome} ({c.Custo:N0}z)");
+		Avisar(pl, Jandirus.Core.Items.CatalogoDeItens.EhConstrucao(c.Id)
+			? $"você fabrica {c.Nome}. Está na mochila -- use \"posicionar\" pra assentar no chão."
+			: $"você fabrica {c.Nome}. Está na sua mochila.");
+		MandarCatalogoDeObras(pl);
+	}
+
+	/// <summary>
+	/// ASSENTA NO CHAO uma construcao que estava na mochila.
+	///
+	/// ============================ O PONTO E DO CLIENTE, E POR ISSO E CONFERIDO ============================
+	/// Todo o resto do jogo constroi "onde eu estou", que dispensa validacao. Aqui o jogador aponta
+	/// com o mouse, e um ponto que vem do cliente e um ponto que um cliente mexido escolhe: dentro
+	/// de parede, dentro da casa de outro, do outro lado do mapa.
+	///
+	/// As tres guardas sao as mesmas que o construir de antes ja tinha, mais uma nova (o ALCANCE),
+	/// que so faz sentido agora que o ponto deixou de ser os proprios pes.
+	/// =======================================================================================================
+	/// </summary>
+	private void Posicionar(ServerPlayer pl, string arg)
+	{
+		// "<id>/<x>/<y>" -- o canal de verbos tem um argumento so.
+		string[] p = arg.Split('/');
+		if (p.Length < 3 || !float.TryParse(p[1], out float x) || !float.TryParse(p[2], out float y))
+		{ Avisar(pl, "ponto inválido."); return; }
+
+		Construcao? c = _obras?.Get(p[0]);
+		if (c == null) { Avisar(pl, "isso não existe."); return; }
+		if (pl.Mochila.Quantos(c.Id) <= 0) { Avisar(pl, $"você não tem {c.Nome}."); return; }
+
+		// PERTO DE MIM. Sem isto da pra plantar uma bancada do outro lado do planeta.
+		if (Math.Abs(x - pl.Pos.X) > AlcanceDePosicionar || Math.Abs(y - pl.Pos.Y) > AlcanceDePosicionar)
+		{ Avisar(pl, "longe demais -- chegue mais perto do lugar."); return; }
+
+		// NAO EMPILHA: duas construcoes no mesmo lugar viram uma so na tela e as duas respondem ao
+		// mesmo clique. Meio tile de folga e o bastante pra nao encavalar.
+		if (_noChao.Any(o => o.Zona == pl.Zone.Name
+							 && Math.Abs(o.X - x) < 24 && Math.Abs(o.Y - y) < 24))
+		{ Avisar(pl, "já tem coisa demais neste ponto."); return; }
+
+		// NEM DENTRO DE PAREDE. A construcao densa vira parede, e uma parede dentro de outra e um
+		// buraco no mapa que ninguem consegue desfazer sem admin.
+		if (_catalogo?.Get(pl.Zone)?.Mapa is { } mapa && MoveRules.Occupied(mapa, new Vec2(x, y)))
+		{ Avisar(pl, "não dá pra assentar dentro de uma parede."); return; }
+
+		pl.Mochila.Tirar(c.Id);
+		MandarMochila(pl);
+
 		var obra = new Obra
 		{
 			Id = _proximaObraId++,
 			Tipo = c.Id,
 			Zona = pl.Zone.Name,
-			X = pl.Pos.X,
-			Y = pl.Pos.Y,
+			X = x,
+			Y = y,
 			DonoConta = pl.Conta,
 			DonoNome = pl.Name,
 			ErguidaEm = NowMs(),
@@ -307,10 +351,41 @@ public partial class GameServer
 		_noChao.Add(obra);
 		GravarMundo();
 
-		GD.Print($"[server] {pl.Name} ergueu {c.Nome} (#{obra.Id}) em {obra.Zona} @ ({obra.X:0},{obra.Y:0})");
-		Avisar(pl, $"voce ergue {c.Nome}. Restam {pl.Ficha.Zeni:N0} zeni.");
+		GD.Print($"[server] {pl.Name} assentou {c.Nome} (#{obra.Id}) em {obra.Zona} @ ({x:0},{y:0})");
+		Avisar(pl, $"você assenta {c.Nome} no chão.");
 		MandarObras(pl.Zone);
 	}
+
+	/// <summary>
+	/// PEGA DE VOLTA uma construcao que voce ergueu.
+	///
+	/// SO O DONO, e so o que NAO veio do mapa: a mobilia que sempre esteve la (banco, bancada das
+	/// cidades) nao e de ninguem, e deixar alguem guardar o banco da Terra na mochila seria um jeito
+	/// de apagar o mapa. Ver `Obra.DoMapa`.
+	/// </summary>
+	private void PegarObra(ServerPlayer pl)
+	{
+		Obra? o = ObraPerto(pl);
+		if (o == null) { Avisar(pl, "não há nada por perto pra pegar."); return; }
+
+		if (o.DoMapa) { Avisar(pl, "isto faz parte do lugar -- não é seu pra levar."); return; }
+		if (o.DonoConta.Length > 0 && !string.Equals(o.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase))
+		{ Avisar(pl, $"{NomeDaObra(o)} é de {o.DonoNome}."); return; }
+		if (pl.Mochila.Cheio) { Avisar(pl, "sua mochila está cheia."); return; }
+
+		_noChao.Remove(o);
+		GravarMundo();
+		Guardar(pl, o.Tipo);
+
+		// A COLISAO E REFEITA PELA LISTA INTEIRA (ver `AplicarColisaoDasObras`): tirar a obra sem
+		// isto deixaria a parede dela no lugar, e o jogador levaria correcao num ponto vazio.
+		AplicarColisaoDasObras(pl.Zone);
+		Avisar(pl, $"você recolhe {NomeDaObra(o)}.");
+		MandarObras(pl.Zone);
+	}
+
+	/// <summary>A que distancia da pra assentar uma construcao. Tres tiles -- o braco, e nao a vista.</summary>
+	private const float AlcanceDePosicionar = 96f;
 
 	private static string MotivoObra(RecusaObra r, Construcao c, ServerPlayer pl) => r switch
 	{
@@ -654,6 +729,11 @@ public partial class GameServer
 			w.Put(c.Custo);
 			w.Put(c.Tech);
 			w.Put((byte)r);
+			// A ARTE VIAJA porque o cliente NAO le `construcoes.json` -- ele so conhece o que o
+			// servidor manda. Sem ela a grade da bancada seria uma lista de nomes, e o dono pediu
+			// icone justamente pro jogador "saber oq e oq".
+			w.Put(c.Arte);
+			w.Put(c.Estado);
 		}
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
@@ -665,6 +745,8 @@ public partial class GameServer
 		{
 			case "lista": MandarCatalogoDeObras(pl); break;
 			case "construir": Construir(pl, arg); break;
+			case "posicionar": Posicionar(pl, arg); break;
+			case "pegar": PegarObra(pl); break;
 			case "aparafusar": Aparafusar(pl); break;
 			case "estudar":
 				pl.Estudando = !pl.Estudando;

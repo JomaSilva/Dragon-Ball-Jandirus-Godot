@@ -208,7 +208,11 @@ public partial class MenuDeInteracao : CanvasLayer
 				break;
 
 			default:
-				GameClient.Instance?.SendVerbo(acao.Verbo, acao.Arg);
+				// A GRADE DA BANCADA E UMA TELA, e nao um verbo que devolve texto: ela tem icone,
+				// preco e caixa de confirmacao. O servidor manda a lista de qualquer jeito (o
+				// `abrir_tech` pede o catalogo), mas quem a DESENHA e a tela.
+				if (acao.Verbo == "abrir_tech") TelaDeConstrucao.Instancia?.Abrir();
+				else GameClient.Instance?.SendVerbo(acao.Verbo, acao.Arg);
 				Fechar();
 				break;
 		}

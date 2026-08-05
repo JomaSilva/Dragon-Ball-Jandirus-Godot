@@ -46,9 +46,27 @@ public partial class ObraDesenhada : Node2D
 	public override void _Ready()
 	{
 		YSortEnabled = true;
-		ZIndex = 0;
+		ZIndex = AcimaDoJogador(Tipo) ? 1 : 0;
 		MontarSprite();
 	}
+
+	/// <summary>
+	/// ESTA CONSTRUCAO DESENHA POR CIMA DE QUEM PASSA POR BAIXO?
+	///
+	/// ============================ ORDENAR POR Y NAO RESOLVE ARVORE ============================
+	/// O Y-sort poe na frente quem esta mais embaixo, e isso e certo pra uma bancada: ela tem a
+	/// altura de um movel e o jogador que esta abaixo dela realmente esta na frente.
+	///
+	/// A arvore nao. Ela tem tres tiles de altura desenhados PRA CIMA a partir da base, e o corpo
+	/// que anda pelo tronco esta visualmente DENTRO dela -- mas com o Y quase igual ao da base, e
+	/// entao o desempate vira sorte. Foi o que o dono fotografou: o personagem por cima da copa.
+	///
+	/// O ORIGINAL RESOLVE COM PLANO, e nao com ordem: `plane = 8` na `AppleTree` (`Plants.dm:58`),
+	/// acima da camada dos mobs. A arvore SEMPRE cobre quem passa por baixo -- e e o que faz o
+	/// bosque parecer um bosque em vez de um tapete de sprites.
+	/// ==========================================================================================
+	/// </summary>
+	private static bool AcimaDoJogador(string tipo) => tipo == "AppleTree";
 
 	/// <summary>
 	/// O sprite do original, ancorado como o BYOND ancora: o canto INFERIOR ESQUERDO do icone

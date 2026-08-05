@@ -37,10 +37,21 @@ namespace Jandirus.Client;
 /// Deserto de 448). Um `SetCell` que cai num tile inexistente nao desenha e nao reclama -- por isso
 /// a contagem importa mais que a foto.
 ///
+/// ============================ O `SetCell` NUNCA FOI O CUSTO ============================
+/// Estes 0,25 us por celula sao so a CHAMADA. O caro vem depois e nao aparece aqui: o
+/// `TileMapLayer` monta a estrutura de desenho quando o renderizador a pede, no primeiro quadro, e
+/// ali sao ~2,7 us por celula -- dez vezes mais, e fora de qualquer medicao que comece e termine
+/// dentro da pintura (o modo headless, onde esta tabela foi levantada, nem desenha). Um mundo de
+/// 352 pintado inteiro paga isso por 124 mil celulas.
+///
+/// Por isso o planeta gerado deixou de pintar o mundo todo e passou a usar o MESMO
+/// <see cref="PintorDePedacos"/> dos mapas pre-feitos: so os blocos de 64x64 que a camera alcanca
+/// entram no tilemap, e os que ficam pra tras saem. Andar deixa de crescer a conta.
+/// =======================================================================================
+///
 /// GERAR NAO DA PRA FATIAR (a colisao precisa existir inteira antes do primeiro passo), PINTAR DA.
 /// E e por isso que o teto de tamanho foi escolhido pela geracao e nao pela pintura -- ver
-/// `MundoProcedural.DaSeed`. Com o mundo maior de hoje (352), pousar custa ~27 ms de engasgo e mais
-/// ~31 ms diluidos em ~7 quadros, em vez dos 58 ms de uma vez so.
+/// `MundoProcedural.DaSeed`.
 /// </summary>
 [GlobalClass]
 public partial class PlanetaProcedural : Planeta
@@ -50,30 +61,6 @@ public partial class PlanetaProcedural : Planeta
 	/// Um planeta gerado nao tem paleta propria: ele desenha com os mesmos turfs do jogo.
 	/// </summary>
 	private const string CaminhoDoTileSet = "res://Assets/Maps/tileset.tres";
-
-	/// <summary>
-	/// QUANTO TEMPO A PINTURA PODE ROUBAR DE UM QUADRO, em microssegundos.
-	///
-	/// 5 ms num quadro de 16,6 ms (60 fps) deixa folga pro resto do jogo. Com ~0,25 us por celula
-	/// isso da ~20 mil celulas por quadro: um mundo de 256 termina em 4 quadros (~70 ms) e o maior
-	/// de hoje (352) em 7 (~120 ms). O jogador ve o chao "chegando", e nao a tela travando -- e um
-	/// planeta que congela o jogo ao entrar e pior que um planeta feio.
-	///
-	/// O ORCAMENTO E MEDIDO, NAO ESTIMADO: o laco de pintura olha o relogio a cada linha e para.
-	/// Um numero fixo de celulas por quadro seria um chute que envelhece mal (maquina mais lenta,
-	/// bioma com mais cobertura, o dia em que o TileSet crescer).
-	/// </summary>
-	private const ulong OrcamentoDePinturaUs = 5000;
-
-	/// <summary>
-	/// Raio, em tiles, do pedaco pintado NA HORA em volta do ponto de pouso.
-	///
-	/// Existe porque o corpo aparece no primeiro quadro: sem isto, o jogador passa a fracao de
-	/// segundo inicial em pe sobre o vazio (o `ColorRect` de reserva do World), que e exatamente o
-	/// sintoma que o fatiamento deveria estar escondendo. 24 tiles cobrem a tela em zoom 2 e
-	/// custam ~2.300 celulas: meio milissegundo.
-	/// </summary>
-	private const int RaioDaJanelaInicial = 24;
 
 	/// <summary>O terreno pronto. Nulo antes do <see cref="Planeta.Entrar"/>.</summary>
 	public TerrenoGerado? Terreno { get; private set; }
@@ -93,8 +80,16 @@ public partial class PlanetaProcedural : Planeta
 	/// </summary>
 	public ZoneCollision? Sombra { get; private set; }
 
-	/// <summary>A pintura terminou. So interessa a quem for medir ou testar.</summary>
-	public bool Pintado { get; private set; }
+	/// <summary>
+	/// ONDE O CORPO VAI CAIR, em pixels de mundo -- posto antes do <see cref="Planeta.Entrar"/>.
+	///
+	/// A camera so chega la depois, e o chao tem que estar montado ANTES: sem isto o jogador passa
+	/// o primeiro quadro em pe sobre o vazio.
+	/// </summary>
+	public Vector2? CentroInicial { get; set; }
+
+	/// <summary>Quantos pedacos estao montados. So pro diagnostico provar que nao cresce.</summary>
+	public int PedacosVivos => _pintor?.PedacosVivos ?? 0;
 
 	/// <summary>Um pincel pronto: em que camada, com que fonte do TileSet e que quadro do atlas.</summary>
 	private struct Pincel
@@ -112,8 +107,8 @@ public partial class PlanetaProcedural : Planeta
 	// as camadas ja criadas, por (cobertura?, tinta). Ver MontarCamadas pra o porque da chave.
 	private readonly Dictionary<string, TileMapLayer> _camadas = [];
 
-	private int _proximaLinha;
-	private ulong _usDeGeracao, _usDePintura;
+	private PintorDePedacos? _pintor;
+	private ulong _usDeGeracao;
 
 	public override void _Ready()
 	{
@@ -141,7 +136,7 @@ public partial class PlanetaProcedural : Planeta
 		_camadas.Clear();
 		Array.Clear(_chao);
 		Array.Clear(_cobertura);
-		_usDePintura = 0;
+		_pintor = null;
 
 		// ORDENAR POR Y a partir daqui. Sem isto as camadas de cobertura viram um bloco fechado e
 		// o personagem passa SEMPRE na frente (ou sempre atras) das arvores -- o Godot so funde a
@@ -167,12 +162,12 @@ public partial class PlanetaProcedural : Planeta
 
 		MontarCamadas(Terreno);
 
-		// a vizinhanca do pouso PRIMEIRO, no mesmo quadro: o corpo ja vai estar la
-		PintarBloco(Terreno.SpawnCelX - RaioDaJanelaInicial, Terreno.SpawnCelY - RaioDaJanelaInicial,
-					Terreno.SpawnCelX + RaioDaJanelaInicial, Terreno.SpawnCelY + RaioDaJanelaInicial);
-
-		_proximaLinha = 0;
-		Pintado = false;
+		// O CHAO EM VOLTA DO POUSO, AGORA. O resto chega conforme a camera anda -- e o mesmo pintor
+		// dos mapas pre-feitos, pelo mesmo motivo: o custo de um tilemap e por celula MONTADA, e um
+		// mundo inteiro montado de uma vez engasga a entrada e nunca mais devolve a memoria.
+		_pintor = new PintorDePedacos(this, new FonteDoTerreno(Terreno, _chao, _cobertura));
+		_pintor.Pintou += AvisarPedaco;
+		_pintor.Urgente(CentroInicial ?? PontoDeChegada);
 		SetProcess(true);
 
 		// A ASSINATURA NO LOG existe pra uma coisa so: conferir contra a que o servidor imprimiu.
@@ -184,31 +179,13 @@ public partial class PlanetaProcedural : Planeta
 	}
 
 	/// <summary>
-	/// A PINTURA, FATIADA. Pinta linhas inteiras ate estourar o orcamento do quadro.
-	///
-	/// LINHA E A UNIDADE certa porque o terreno esta em ordem de linha (`i = y * Largura + x`):
-	/// varrer por coluna pularia a memoria de um lado inteiro a cada celula e jogaria fora o cache.
-	/// Uma linha de 352 custa ~0,09 ms, entao o orcamento nunca estoura por muito.
+	/// O CHAO ACOMPANHANDO A CAMERA. Ver <see cref="PintorDePedacos"/> pro orcamento e pra folga.
 	/// </summary>
 	public override void _Process(double delta)
 	{
-		if (Pintado || Terreno == null) return;
-
-		ulong inicio = Time.GetTicksUsec();
-		while (_proximaLinha < Terreno.Altura)
-		{
-			PintarFatia(Terreno, _proximaLinha++, 0, Terreno.Largura - 1);
-			if (Time.GetTicksUsec() - inicio >= OrcamentoDePinturaUs) break;
-		}
-		_usDePintura += Time.GetTicksUsec() - inicio;
-
-		if (_proximaLinha < Terreno.Altura) return;
-
-		Pintado = true;
-		SetProcess(false);
-		GD.Print($"[planeta] {NomeDoPlaneta} pintado: {Terreno.Largura}x{Terreno.Altura} "
-				 + $"em {_usDePintura / 1000.0:0.0} ms de trabalho "
-				 + $"({_usDePintura / (double)(Terreno.Largura * Terreno.Altura):0.00} us/celula)");
+		// ZONA GUARDADA NAO STREAMA -- ver a mesma guarda no `PlanetaPreFeito`.
+		if (!Visible) return;
+		_pintor?.Passo();
 	}
 
 	// =====================================================================
@@ -370,37 +347,92 @@ public partial class PlanetaProcedural : Planeta
 	// =====================================================================
 	// PINTAR
 	// =====================================================================
-	/// <summary>Um pedaco de UMA linha. E o unico lugar do arquivo que toca `SetCell`.</summary>
-	private void PintarFatia(TerrenoGerado t, int y, int x0, int x1)
-	{
-		int inicio = y * t.Largura;
-		for (int x = x0; x <= x1; x++)
-		{
-			int i = inicio + x;
-			var celula = new Vector2I(x, y);
-
-			ref Pincel piso = ref _chao[t.Chao[i]];
-			if (piso.Vale) piso.Camada!.SetCell(celula, piso.Fonte, piso.Quadro);
-
-			byte cob = t.Cobertura[i];
-			if (cob == 0) continue;
-			ref Pincel acima = ref _cobertura[cob];
-			if (acima.Vale) acima.Camada!.SetCell(celula, acima.Fonte, acima.Quadro);
-		}
-	}
-
 	/// <summary>
-	/// Pinta um retangulo agora. Repintar depois nao custa nada: `SetCell` sobrescreve com o mesmo
-	/// valor, entao a fatia que passar por aqui de novo so gasta o tempo dela.
+	/// O TERRENO GERADO VISTO COMO PEDACOS DE 64x64.
+	///
+	/// A diferenca pro mapa pre-feito e so de onde sai a celula: la de um arquivo indexado, aqui
+	/// de dois vetores de bytes que ja estao na memoria. O contrato e o mesmo, e por isso os dois
+	/// tipos de planeta compartilham o pintor -- e o gerado deixa de ter uma segunda regra de
+	/// "quando desenhar o chao" que so ele conhece.
+	///
+	/// TODO PEDACO TEM CELULA: o gerador pinta chao em toda coordenada do mundo (agua e uma classe
+	/// de terreno, nao um buraco). Entao a conta de celulas e a area do pedaco cortada pela borda
+	/// do mundo, sem precisar varrer nada pra descobrir.
 	/// </summary>
-	private void PintarBloco(int x0, int y0, int x1, int y1)
+	private sealed class FonteDoTerreno(TerrenoGerado t, Pincel[] chao, Pincel[] cobertura)
+		: PintorDePedacos.IFonte
 	{
-		if (Terreno == null) return;
-		x0 = Math.Max(0, x0); y0 = Math.Max(0, y0);
-		x1 = Math.Min(Terreno.Largura - 1, x1); y1 = Math.Min(Terreno.Altura - 1, y1);
+		public int Lado => Jandirus.Core.World.PedacosDoMapa.LadoPadrao;
 
-		for (int y = Math.Max(0, y0); y <= Math.Min(Terreno.Altura - 1, y1); y++)
-			PintarFatia(Terreno, y, x0, x1);
+		public Rect2I Faixa => new(0, 0,
+								   (t.Largura + Lado - 1) / Lado,
+								   (t.Altura + Lado - 1) / Lado);
+
+		public int Celulas(int cx, int cy)
+		{
+			Recorte(cx, cy, out int x0, out int y0, out int x1, out int y1);
+			return x1 < x0 || y1 < y0 ? 0 : (x1 - x0 + 1) * (y1 - y0 + 1);
+		}
+
+		public int Pintar(int cx, int cy, int feitas, int maximo)
+		{
+			Recorte(cx, cy, out int x0, out int y0, out int x1, out int y1);
+			if (x1 < x0 || y1 < y0) return 0;
+
+			int largura = x1 - x0 + 1;
+			int total = largura * (y1 - y0 + 1);
+			int fim = Math.Min(total, feitas + maximo);
+
+			// ORDEM POR LINHA dentro do pedaco: o terreno esta em `i = y * Largura + x`, e varrer
+			// por coluna pularia a memoria de um mundo inteiro a cada celula.
+			for (int n = feitas; n < fim; n++)
+			{
+				int x = x0 + n % largura;
+				int y = y0 + n / largura;
+				int i = y * t.Largura + x;
+				var celula = new Vector2I(x, y);
+
+				ref Pincel piso = ref chao[t.Chao[i]];
+				if (piso.Vale) piso.Camada!.SetCell(celula, piso.Fonte, piso.Quadro);
+
+				byte cob = t.Cobertura[i];
+				if (cob == 0) continue;
+				ref Pincel acima = ref cobertura[cob];
+				if (acima.Vale) acima.Camada!.SetCell(celula, acima.Fonte, acima.Quadro);
+			}
+
+			return fim - feitas;
+		}
+
+		public void Apagar(int cx, int cy)
+		{
+			Recorte(cx, cy, out int x0, out int y0, out int x1, out int y1);
+			for (int y = y0; y <= y1; y++)
+				for (int x = x0; x <= x1; x++)
+				{
+					int i = y * t.Largura + x;
+					var celula = new Vector2I(x, y);
+
+					ref Pincel piso = ref chao[t.Chao[i]];
+					if (piso.Vale) piso.Camada!.EraseCell(celula);
+
+					byte cob = t.Cobertura[i];
+					if (cob == 0) continue;
+					ref Pincel acima = ref cobertura[cob];
+					if (acima.Vale) acima.Camada!.EraseCell(celula);
+				}
+		}
+
+		/// <summary>O pedaco cortado pela borda do mundo -- os das beiradas sao menores.</summary>
+		private void Recorte(int cx, int cy, out int x0, out int y0, out int x1, out int y1)
+		{
+			x0 = cx * Lado;
+			y0 = cy * Lado;
+			x1 = Math.Min(x0 + Lado - 1, t.Largura - 1);
+			y1 = Math.Min(y0 + Lado - 1, t.Altura - 1);
+			if (x0 < 0) x0 = 0;
+			if (y0 < 0) y0 = 0;
+		}
 	}
 
 	// =====================================================================

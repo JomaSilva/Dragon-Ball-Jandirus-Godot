@@ -1,13 +1,13 @@
 {
   "version": 2,
-  "dgSpecHash": "bnT4cZIHHI0=",
+  "dgSpecHash": "vLpAQwv01BA=",
   "success": true,
   "projectFilePath": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Tools\\AssetPipeline\\AssetPipeline.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\a20a225ac62e13f418c81a591d11aaa4\\nuget\\microsoft.netcore.app.ref\\8.0.27\\microsoft.netcore.app.ref.8.0.27.nupkg.sha512",
-    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\a20a225ac62e13f418c81a591d11aaa4\\nuget\\microsoft.windowsdesktop.app.ref\\8.0.27\\microsoft.windowsdesktop.app.ref.8.0.27.nupkg.sha512",
-    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\a20a225ac62e13f418c81a591d11aaa4\\nuget\\microsoft.aspnetcore.app.ref\\8.0.27\\microsoft.aspnetcore.app.ref.8.0.27.nupkg.sha512",
-    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\a20a225ac62e13f418c81a591d11aaa4\\nuget\\microsoft.netcore.app.host.win-x64\\8.0.27\\microsoft.netcore.app.host.win-x64.8.0.27.nupkg.sha512"
+    "C:\\Users\\Joao\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.27\\microsoft.netcore.app.ref.8.0.27.nupkg.sha512",
+    "C:\\Users\\Joao\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.27\\microsoft.windowsdesktop.app.ref.8.0.27.nupkg.sha512",
+    "C:\\Users\\Joao\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.27\\microsoft.aspnetcore.app.ref.8.0.27.nupkg.sha512",
+    "C:\\Users\\Joao\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\8.0.27\\microsoft.netcore.app.host.win-x64.8.0.27.nupkg.sha512"
   ],
   "logs": []
 }

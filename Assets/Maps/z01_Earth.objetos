@@ -1,3 +1,9 @@
-[{ "x": 69, "y": 259, "id": "Research_Station" },
+[{ "x": 177, "y": 211, "id": "AppleTree" },
+ { "x": 151, "y": 227, "id": "AppleTree" },
+ { "x": 69, "y": 259, "id": "Research_Station" },
  { "x": 71, "y": 259, "id": "Bank" },
+ { "x": 197, "y": 259, "id": "AppleTree" },
+ { "x": 69, "y": 274, "id": "AppleTree" },
+ { "x": 83, "y": 297, "id": "AppleTree" },
+ { "x": 100, "y": 321, "id": "AppleTree" },
  { "x": 245, "y": 414, "id": "Bank" }]

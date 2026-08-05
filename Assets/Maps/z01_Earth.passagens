@@ -1,0 +1,6 @@
+[{ "x": 267, "y": 110, "zona": "Earth_Cave", "dx": 4976, "dy": 6448, "nome": "Caverna da Terra" },
+ { "x": 45, "y": 146, "zona": "Earth_Cave", "dx": 528, "dy": 9424, "nome": "Caverna da Terra" },
+ { "x": 475, "y": 153, "zona": "Earth_Cave", "dx": 11696, "dy": 8080, "nome": "Caverna da Terra" },
+ { "x": 126, "y": 337, "zona": "Lookout", "dx": 4528, "dy": 15952, "nome": "Templo Sagrado" },
+ { "x": 127, "y": 337, "zona": "Lookout", "dx": 4528, "dy": 15952, "nome": "Templo Sagrado" },
+ { "x": 128, "y": 337, "zona": "Lookout", "dx": 4528, "dy": 15952, "nome": "Templo Sagrado" }]

@@ -347,10 +347,26 @@ public partial class Boot : Node2D
 		// no meio de uma briga, e montar tela nessa hora e o jeito de perder o primeiro prazo.
 		AddChild(new ClashQte { Name = "ClashQte" });
 		AddChild(new MenuJogo { Name = "Menu" });
+		// O CATALOGO DE CONSTRUCOES TAMBEM DO LADO DE CA. O servidor manda as OFERTAS (o que eu
+		// posso comprar agora, com preco e motivo do nao), mas a mochila precisa de outra coisa: a
+		// ficha de um item que eu JA TENHO -- nome, arte, descricao. Sem ela, uma maquina de
+		// gravidade guardada seria um slot em branco.
+		//
+		// O arquivo ja viaja com o jogo, entao ler daqui nao expoe nada: ele e a lista do que
+		// EXISTE, e nao a do que este personagem alcanca.
+		const string cjObras = "res://Assets/Data/construcoes.json";
+		if (Godot.FileAccess.FileExists(cjObras))
+			Jandirus.Core.Items.CatalogoDeItens.Obras =
+				Jandirus.Core.Tech.CatalogoDeObras.Parse(Godot.FileAccess.GetFileAsString(cjObras));
+
 		// A TECLA E: uma porta so pra tudo com que se pode mexer no mundo. Ver `MenuDeInteracao`.
 		AddChild(new MenuDeInteracao { Name = "Interacao" });
 		// A TECLA I: a mochila.
 		AddChild(new TelaDeInventario { Name = "Inventario" });
+		// A GRADE DA BANCADA e o fantasma de assentar construcao.
+		AddChild(new TelaDeConstrucao { Name = "Construcao" });
+		// A TELA DE TROCA DE MAPA. Ver `TelaDeCarregamento`: ela nao acelera nada, ela ANUNCIA.
+		AddChild(new TelaDeCarregamento { Name = "Carregando" });
 
 		_pause = new PauseMenu { Name = "Pause" };
 		_pause.Desconectar += VoltarAoLogin;

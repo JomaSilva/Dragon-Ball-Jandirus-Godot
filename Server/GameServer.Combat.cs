@@ -236,6 +236,14 @@ public partial class GameServer
 		alvo.UltimoAgressor = a.Id;
 		if (_diagGolpe) ExplicarGolpe(a, alvo, r, angulo, investiu);
 
+		// A DIRECAO DO SOCO FICA GUARDADA NO ALVO. E ela que deita o corpo se este golpe derrubar --
+		// no ar e no chao, o mesmo angulo. Ver `ServerPlayer.DirecaoDeitado`.
+		//
+		// O VETOR E O MESMO DO ARREMESSO (`MeleeArea.Frente` do atacante), e nao a diferenca entre
+		// as duas posicoes: os corpos ficam colados quando o soco acerta, e um vetor de dois pixels
+		// e ruido -- a direcao do golpe e pra onde quem bateu estava virado.
+		if (r.Encostou) alvo.RumoDoGolpe = MeleeArea.Frente(a.Facing);
+
 		if (r.Encostou) ca.SomarCombo();
 		else ca.ZerarCombo();          // errou, foi aparado de longe ou tomou contra: recomeca
 

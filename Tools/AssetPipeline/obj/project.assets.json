@@ -27,7 +27,7 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\a20a225ac62e13f418c81a591d11aaa4\\nuget": {}
+    "C:\\Users\\Joao\\.nuget\\packages": {}
   },
   "project": {
     "version": "1.0.0",
@@ -35,7 +35,7 @@
       "projectUniqueName": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Tools\\AssetPipeline\\AssetPipeline.csproj",
       "projectName": "AssetPipeline",
       "projectPath": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Tools\\AssetPipeline\\AssetPipeline.csproj",
-      "packagesPath": "C:\\Users\\Joao\\AppData\\Local\\Temp\\cursor-sandbox-cache\\a20a225ac62e13f418c81a591d11aaa4\\nuget",
+      "packagesPath": "C:\\Users\\Joao\\.nuget\\packages",
       "outputPath": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Tools\\AssetPipeline\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [

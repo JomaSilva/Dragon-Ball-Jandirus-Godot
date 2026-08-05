@@ -17,7 +17,54 @@ namespace Jandirus.Tools;
 /// </summary>
 public static class MapConverter
 {
+	/// <summary>
+	/// A MARCA DE UMA CELULA: um numero que muda se qualquer campo dela mudar.
+	///
+	/// Somar os campos nao serviria -- trocar X por Y daria o mesmo total. Passar cada campo por
+	/// uma mistura (FNV) faz duas celulas parecidas caírem longe uma da outra, e o XOR das marcas
+	/// nao depende da ORDEM, que e justamente o que o agrupamento em pedacos muda.
+	/// </summary>
+	private static ulong Marca(Jandirus.Core.World.CelulaDePedaco c, int camada)
+	{
+		ulong h = 1469598103934665603UL;
+		ulong[] campos = [(ushort)c.X, (ushort)c.Y, c.Fonte, c.Ax, c.Ay, (ulong)camada];
+		foreach (ulong v in campos) h = (h ^ v) * 1099511628211UL;
+		return h;
+	}
+
+	private static ulong Assinar(List<Jandirus.Core.World.CelulaDePedaco> celulas, int camada)
+	{
+		ulong x = 0;
+		foreach (Jandirus.Core.World.CelulaDePedaco c in celulas) x ^= Marca(c, camada);
+		return x;
+	}
+
 	private const int Cell = 32;
+
+	/// <summary>
+	/// AS CAMADAS NAO CONSTROEM FISICA -- e essa linha vale quase um segundo por mapa.
+	///
+	/// ============================ O QUE ELA CONSERTA ============================
+	/// O tileset traz poligono de colisao em todo tile denso (447 deles), e um `TileMapLayer` com
+	/// colisao ligada monta um corpo de fisica pra CADA celula solida no primeiro quadro. Sao tres
+	/// camadas de 500x500 por planeta, e o trabalho todo cai num quadro so: medido, 798 ms de tela
+	/// congelada so na Terra.
+	///
+	/// E o pior e que NINGUEM USA. O movimento deste jogo nao passa por fisica do Godot em lugar
+	/// nenhum -- nao ha `CharacterBody2D`, `move_and_slide` nem consulta de mundo fisico no cliente
+	/// inteiro. Quem decide onde da pra andar e o `ZoneCollision`, o bitset do `.col`, no cliente e
+	/// no servidor. A fisica do tilemap era uma copia paralela da mesma verdade, construida toda
+	/// troca de mapa e nunca consultada.
+	///
+	/// A OCLUSAO FICA. Ela e usada de verdade: e o que faz parede esconder o que esta atras
+	/// (`Iluminacao` e `Visao`), e sai por outro campo do tileset.
+	///
+	/// O POLIGONO CONTINUA NO TILESET de proposito: ele nao custa nada parado, e e o que faz o
+	/// EDITOR mostrar onde ha parede pra quem for pintar mapa a mao.
+	/// ============================================================================
+	/// </summary>
+	private const string SemFisica = "collision_enabled = false\n";
+
 
 	private sealed class Fonte
 	{
@@ -167,8 +214,31 @@ public static class MapConverter
 						  + (idx.Colisoes.Count > 0 ? $" | {idx.Colisoes.Count} nome(s) em disputa" : ""));
 		foreach (string c in idx.Colisoes) Console.WriteLine("   " + c);
 
+		// ============================ O MAPA DOS DESTINOS, ANTES DE CONVERTER ============================
+		// Uma passagem da Terra aponta pro z 23 (a caverna), que so vai ser convertido daqui a vinte
+		// andares. Resolver o destino na hora exigiria que a ordem de conversao casasse com a ordem
+		// dos destinos -- o que nao acontece, e nem daria pra garantir com passagens de ida e volta.
+		//
+		// A CONTA DO Y E A INVERSAO DO BYOND: la o eixo cresce pra CIMA e aqui pra baixo, entao a
+		// linha `by` vira `altura - by`. Errar isto poria cada chegada espelhada na vertical -- e,
+		// pior, sem sintoma nenhum a nao ser "a caverna me cospe no lugar errado".
+		var porZ = new Dictionary<int, (string Nome, int W, int H)>();
+		foreach ((string _, DmmMap.Result d2, int off2) in mapas)
+			foreach (DmmLevel n2 in d2.Levels)
+				porZ[n2.Z + off2] = (NomeDoAndar(d2, n2, off2)[(NomeDoAndar(d2, n2, off2).IndexOf('_') + 1)..],
+									 n2.Width, n2.Height);
+
+		Destinos = (bx, by, bz) =>
+		{
+			if (!porZ.TryGetValue(bz, out (string Nome, int W, int H) alvo)) return null;
+			int cx = Math.Clamp(bx - 1, 0, alvo.W - 1);
+			int cy = Math.Clamp(alvo.H - by, 0, alvo.H - 1);
+			const int t = Jandirus.Core.World.ZoneCollision.TileSize;
+			return (alvo.Nome, cx * t + t / 2f, cy * t + t / 2f);
+		};
+
 		// ---- passada 2: uma cena por andar + o mapa de colisao que o SERVIDOR le ----
-		int cenas = 0, celulas = 0, bloqueadas = 0, totalPortas = 0, totalMaquinas = 0;
+		int cenas = 0, celulas = 0, bloqueadas = 0, totalPortas = 0, totalMaquinas = 0, totalPassagens = 0;
 		var manifesto = new List<string>();
 		foreach ((string arquivo, DmmMap.Result dados, int off) in mapas)
 			foreach (DmmLevel nivel in dados.Levels)
@@ -185,7 +255,8 @@ public static class MapConverter
 										semAtlas, ref proxId, out HashSet<(int, int)> paredes,
 										out Dictionary<(int, int), byte> cegos,
 										out List<string> portas,
-										out List<string> maquinas);
+										out List<string> maquinas,
+										out List<string> passagens);
 				bloqueadas += EscreverColisao(Path.Combine(outDir, nome + ".col"),
 											  nivel.Width, nivel.Height, paredes);
 				// mesmo formato, outro proposito: este e o que o CAMPO DE VISAO consulta
@@ -203,14 +274,22 @@ public static class MapConverter
 					new System.Text.UTF8Encoding(false));
 				totalMaquinas += maquinas.Count;
 
+				// AS PASSAGENS, pelo mesmo caminho e pelo mesmo motivo das portas.
+				File.WriteAllText(Path.Combine(outDir, nome + ".passagens"),
+					"[" + string.Join(",\n ", passagens) + "]",
+					new System.Text.UTF8Encoding(false));
+				totalPassagens += passagens.Count;
+
 				cenas++;
 
 				string zona = nome[(nome.IndexOf('_') + 1)..];
 				manifesto.Add($"  {{ \"zona\": \"{zona}\", \"z\": {nivel.Z + off}, \"cena\": \"res://Assets/Maps/{nome}.tscn\", " +
+							  $"\"pedacos\": \"res://Assets/Maps/{nome}.pedacos\", " +
 							  $"\"colisao\": \"res://Assets/Maps/{nome}.col\", \"visao\": \"res://Assets/Maps/{nome}.vis\", " +
 							  $"\"luzes\": \"res://Assets/Maps/{nome}.luz\", " +
 							$"\"portas\": \"res://Assets/Maps/{nome}.portas\", " +
 							$"\"objetos\": \"res://Assets/Maps/{nome}.objetos\", " +
+							$"\"passagens\": \"res://Assets/Maps/{nome}.passagens\", " +
 							  $"\"w\": {nivel.Width}, \"h\": {nivel.Height} }}");
 			}
 
@@ -223,6 +302,7 @@ public static class MapConverter
 		Console.WriteLine($"cenas geradas  : {cenas}");
 		Console.WriteLine($"portas         : {totalPortas}");
 		Console.WriteLine($"maquinas       : {totalMaquinas} (saem do tilemap e viram construcao)");
+		Console.WriteLine($"passagens      : {totalPassagens} (celulas que levam a outro mapa)");
 		Console.WriteLine($"celulas        : {celulas}");
 		Console.WriteLine($"fontes no tileset: {fontes.Count}");
 		if (semAtlas.Count > 0)
@@ -289,6 +369,16 @@ public static class MapConverter
 		{
 			if (td.Icon == null || (!td.Density && !td.Opacity)) continue;
 			if (EhPorta(td.Path)) continue;                       // porta e passagem: ver EhPorta
+
+			// PASSAGEM DENSA NAO E PAREDE, e a diferenca era fatal. `toeg` (a subida da torre do
+			// Karin), `tohbtc` e `fromhbtc` tem `density = 1` no DM -- mas la o `Enter()` dispara
+			// na TENTATIVA de entrar, e o teleporte acontece antes de o bloqueio valer.
+			//
+			// Aqui a densidade virava um bit de parede no `.col`, e o servidor recusava o passo:
+			// o corpo nunca chegava a pisar na celula, e o gatilho que a leva pro Templo Sagrado
+			// nunca rodava. Foi o que o dono viu -- "a porta pra subir na torre do karin n ta
+			// funcionando". Era uma parede com desenho de escada. Ver `Passagens.Eh`.
+			if (Passagens.Eh(td.Path)) continue;
 
 			// O typepath pode nunca ter aparecido num .dmm (e ai nao tem `Atlas`), mas o atlas
 			// DELE pode ja estar no tileset por causa de outro typepath. Resolve sem REGISTRAR
@@ -675,6 +765,15 @@ public static class MapConverter
 
 	public static void UsarObras(Jandirus.Core.Tech.CatalogoDeObras c) => Obras = c;
 
+	/// <summary>
+	/// ONDE FICA UMA COORDENADA BYOND, no mundo convertido.
+	///
+	/// Preenchido antes da segunda passada, porque uma passagem da Terra aponta pra um z que so vai
+	/// ser convertido depois -- resolver na hora exigiria que a ordem dos mapas casasse com a ordem
+	/// dos destinos, o que nao acontece nem por acaso.
+	/// </summary>
+	private static Func<int, int, int, (string Zona, float Px, float Py)?>? Destinos;
+
 	private static string NomeDoAndar(DmmMap.Result dados, DmmLevel nivel, int offset)
 	{
 		// a AREA dominante nomeia o andar: e o nome que o jogo ja usa pro lugar
@@ -699,7 +798,15 @@ public static class MapConverter
 		string curto = dominante[(dominante.LastIndexOf('/') + 1)..];
 		var sb = new StringBuilder();
 		foreach (char c in curto) sb.Append(char.IsLetterOrDigit(c) ? c : '_');
-		return $"z{nivel.Z + offset:00}_{(sb.Length > 0 ? sb.ToString() : "Area")}";
+		string nome = sb.Length > 0 ? sb.ToString() : "Area";
+
+		// AREA GENERICA CEDE LUGAR AO NOME DO MUNDO. Nove andares tem `/area/Outside` como area
+		// dominante, e o catalogo guarda um por nome -- o Templo e as duas cavernas nunca chegavam
+		// a existir. Ver `Passagens.NomeDoZ`.
+		int z = nivel.Z + offset;
+		if (Passagens.NomeGenerico(nome) && Passagens.NomeDoZ(z) is { } canonico) nome = canonico;
+
+		return $"z{z:00}_{nome}";
 	}
 
 	// ---------------------------------------------------------------------
@@ -767,8 +874,12 @@ public static class MapConverter
 		Dictionary<string, TurfDef> turfs, Dictionary<string, Fonte> fontes,
 		Dictionary<string, List<string>> atlasPorNome, HashSet<string> semAtlas, ref int proxId,
 		out HashSet<(int, int)> paredes, out Dictionary<(int, int), byte> cegos,
-		out List<string> portasDaCena, out List<string> maquinasDaCena)
+		out List<string> portasDaCena, out List<string> maquinasDaCena,
+		out List<string> passagensDaCena)
 	{
+		var passagens = new List<string>();
+		int semDestino = 0;
+
 		// local de verdade: um `out` nao pode ser capturado por funcao local
 		var muros = new HashSet<(int, int)>();
 
@@ -804,22 +915,23 @@ public static class MapConverter
 			paleta[chave] = g;
 			return g;
 		}
-		// TileMapLayer.tile_map_data: [uint16 formato][por celula: 12 bytes]
-		//   int16 x | int16 y | uint16 fonte | uint16 atlasX | uint16 atlasY | uint16 alternativa
-		var bytes = new List<byte>();
-		// O TileMapLayer (node novo) tem numeracao PROPRIA de formato e hoje so aceita 0.
-		// Mandar 3 (o formato do TileMap ANTIGO) faz o Godot recusar o blob inteiro em silencio:
-		// a cena carrega, o layer fica VAZIO e nada avisa alem de um erro no log.
-		AddU16(bytes, 0);
-
-		var decoracao = new List<byte>();
-		AddU16(decoracao, 0);
+		// ============================ AS CELULAS NAO VAO MAIS PRA DENTRO DA CENA ============================
+		// Ate aqui cada camada saia como um `tile_map_data` no `.tscn`: 9,6 MB de texto so na Terra,
+		// 659 ms de parse, e -- o pior -- 708 ms no PRIMEIRO QUADRO, porque o TileMapLayer monta o
+		// desenho das 266 mil celulas de uma vez quando o renderizador as pede. Era a travada de
+		// tres segundos ao trocar de mapa.
+		//
+		// Agora elas saem num `.pedacos` ao lado, agrupadas em blocos de 64x64, e o cliente monta
+		// so os que a camera alcanca (ver `Core.World.PedacosDoMapa` e `Client.PintorDePedacos`).
+		// Enquanto o dado estivesse na cena isso seria impossivel: o Godot o monta inteiro antes de
+		// alguem poder escolher.
+		// ====================================================================================================
+		var bytes = new List<Jandirus.Core.World.CelulaDePedaco>();
+		var decoracao = new List<Jandirus.Core.World.CelulaDePedaco>();
+		var objetos = new List<Jandirus.Core.World.CelulaDePedaco>();
 
 		// AS MAQUINAS DO MAPA saem da cena e viram uma lista ao lado -- mesmo caminho da porta.
 		var interativos = new List<string>();
-
-		var objetos = new List<byte>();
-		AddU16(objetos, 0);
 
 		// AS PORTAS SAEM DO MAPA COMO LISTA. Ate agora a porta era uma EXCECAO espalhada: o
 		// `EhPorta` a tirava da colisao (aberta pra sempre), ela continuava cegando, e o guarda
@@ -846,7 +958,7 @@ public static class MapConverter
 		//
 		// `cega` diz se ESTA camada corta a linha de visao. Ver o comentario da chamada dos
 		// objetos: cenario solto (arvore, pedra, poste) PARA, mas nao ESCONDE.
-		bool Por(string? bp, List<byte> destino, int x, int y, bool cega = true)
+		bool Por(string? bp, List<Jandirus.Core.World.CelulaDePedaco> destino, int x, int y, bool cega = true)
 		{
 			if (bp == null) return false;
 			if (!turfs.TryGetValue(bp, out TurfDef? td)) return false;
@@ -969,12 +1081,10 @@ public static class MapConverter
 			}
 			else
 			{
-				AddI16(destino, (short)x);
-				AddI16(destino, (short)y);
-				AddU16(destino, (ushort)fUsada.Id);
-				AddU16(destino, (ushort)c.X);
-				AddU16(destino, (ushort)c.Y);
-				AddU16(destino, 0);
+				// A ALTERNATIVA DO TILE NAO E GRAVADA porque ela sempre foi 0 aqui -- o formato do
+				// `.pedacos` a deixa de fora e economiza dois bytes por celula.
+				destino.Add(new Jandirus.Core.World.CelulaDePedaco(
+					(short)x, (short)y, (ushort)fUsada.Id, (ushort)c.X, (ushort)c.Y));
 				usadas++;
 			}
 
@@ -998,7 +1108,10 @@ public static class MapConverter
 
 			// A PORTA BLOQUEIA E CEGA, como no original: `density = 1` e `opacity = 1` enquanto
 			// fechada (Doors.dm:56-65). Quem a abre e o servidor, em runtime -- ver GameServer.Portas.
-			if (td.Density || barreira) muros.Add((x, y));
+			// A PASSAGEM SAI DA COLISAO pelo mesmo motivo da porta: no DM ela e densa, mas o
+			// `Enter()` teleporta ANTES de o bloqueio valer. Marcada como parede, ela vira uma
+			// escada que ninguem sobe. Ver `MarcarSolidos`.
+			if ((td.Density || barreira) && !Passagens.Eh(bp)) muros.Add((x, y));
 
 			// ...e a porta CEGA mesmo sem bloquear: ela esta fechada no desenho.
 			// ============================ O QUE CEGA NAO E O QUE BLOQUEIA ============================
@@ -1043,6 +1156,26 @@ public static class MapConverter
 				foreach (string tp in tipos)
 				{
 					string bp = DmmMap.BasePath(tp);
+
+					// ============================ AS PASSAGENS SAEM COMO LISTA ============================
+					// Uma celula que TELEPORTA pra outro mapa nao e cenario nem porta: ela nao abre, nao
+					// bloqueia, e o que importa dela e o DESTINO -- que nao cabe num tile.
+					//
+					// O typepath COMPLETO vai pro extrator, e nao o `bp`: metade das passagens guarda o
+					// destino nas propriedades da instancia (`{gotox = 354; gotoy = 2; gotoz = 12}`), e
+					// o `BasePath` corta exatamente essa parte. Ver `Passagens`.
+					//
+					// A CELULA CONTINUA SENDO DESENHADA. No original a boca da caverna e um desenho como
+					// outro qualquer, e apagar o tile deixaria um buraco no chao onde havia uma entrada.
+					if (Passagens.De(tp) is { } dest && Destinos != null)
+					{
+						if (Destinos(dest.X, dest.Y, dest.Z) is { } onde)
+							passagens.Add($"{{ \"x\": {x}, \"y\": {y}, \"zona\": \"{onde.Zona}\", "
+										  + $"\"dx\": {onde.Px:0}, \"dy\": {onde.Py:0}, "
+										  + $"\"nome\": \"{(dest.Nome.Length > 0 ? dest.Nome : onde.Zona)}\" }}");
+						else semDestino++;
+					}
+
 					if (bp.StartsWith("/turf", StringComparison.Ordinal))
 					{
 						fundo ??= bp;
@@ -1114,12 +1247,19 @@ public static class MapConverter
 		//    0  atores E objetos, ordenando por Y entre si (arvores)
 		// ====================================================================================
 
+		// ============================ AS CAMADAS NASCEM VAZIAS ============================
+		// Elas sao a MOLDURA (tileset, altura, ordenacao) e nao o conteudo. As celulas chegam do
+		// `.pedacos` em blocos de 64x64, conforme a camera anda -- ver o comentario la em cima e
+		// `Client.PintorDePedacos`. Uma camada com dado aqui voltaria a ser montada inteira no
+		// primeiro quadro, que e exatamente o que se esta tirando.
+		// ==================================================================================
+
 		// O CHAO NUNCA ORDENA e fica sempre embaixo: e chao. Ordenar 250 mil tiles de grama
 		// contra os personagens seria caro e nao mudaria nada -- ninguem passa atras da grama.
 		sb.Append("[node name=\"Chao\" type=\"TileMapLayer\" parent=\".\"]\n");
 		sb.Append("z_index = -2\n");
-		sb.Append("tile_set = ExtResource(\"1_ts\")\n");
-		sb.Append($"tile_map_data = PackedByteArray({string.Join(", ", bytes)})\n\n");
+		sb.Append(SemFisica);
+		sb.Append("tile_set = ExtResource(\"1_ts\")\n\n");
 
 		// DECORACAO: o turf que estava POR CIMA do chao no prefab. E onde moram a porta, o
 		// litoral curvo, as plantas e as cadeiras -- tudo que o "primeiro turf vence" comia.
@@ -1129,8 +1269,8 @@ public static class MapConverter
 		// Nada aqui e alto o bastante pra alguem passar atras: quem tem altura mora em `Objetos`.
 		sb.Append("[node name=\"Decor\" type=\"TileMapLayer\" parent=\".\"]\n");
 		sb.Append("z_index = -1\n");
-		sb.Append("tile_set = ExtResource(\"1_ts\")\n");
-		sb.Append($"tile_map_data = PackedByteArray({string.Join(", ", decoracao)})\n\n");
+		sb.Append(SemFisica);
+		sb.Append("tile_set = ExtResource(\"1_ts\")\n\n");
 
 		// SEGUNDA CAMADA: o que fica EM CIMA do chao. Precisa ser um layer proprio porque o
 		// TileMapLayer guarda UM tile por celula -- arvore e grama na mesma celula sao duas
@@ -1140,16 +1280,69 @@ public static class MapConverter
 		// mesmo z quem decide e o Y, entre z diferentes quem decide e sempre o z.
 		sb.Append("[node name=\"Objetos\" type=\"TileMapLayer\" parent=\".\"]\n");
 		sb.Append("y_sort_enabled = true\n");
+		sb.Append(SemFisica);
 		sb.Append("tile_set = ExtResource(\"1_ts\")\n");
-		sb.Append($"tile_map_data = PackedByteArray({string.Join(", ", objetos)})\n");
 
 		File.WriteAllText(caminho, sb.ToString(), new UTF8Encoding(false));
+
+		// AS CELULAS, AO LADO DA CENA. A ordem dos nomes casa com a ordem em que as camadas foram
+		// declaradas acima -- e o que deixa o cliente achar o `TileMapLayer` de cada pedaco sem
+		// depender de procurar por nome numa arvore que ele nao montou.
+		string arqPedacos = Path.ChangeExtension(caminho, ".pedacos");
+		Jandirus.Core.World.PedacosDoMapa.Escrever(
+			arqPedacos,
+			Jandirus.Core.World.PedacosDoMapa.LadoPadrao,
+			["Chao", "Decor", "Objetos"],
+			[bytes, decoracao, objetos]);
+
+		// ============================ LER DE VOLTA E CONFERIR A CONTA ============================
+		// Um mapa que perde celulas no caminho nao falha: ele DESENHA errado, e so alguem olhando
+		// pro chao percebe -- meses depois, sem saber de onde veio. Este pipeline ja produziu um
+		// defeito assim (o `tile_map_data` recusado em silencio por causa do numero de formato: a
+		// cena carregava, o layer ficava vazio e nada avisava).
+		//
+		// CONTAR NAO BASTA: uma celula que caisse no balde errado, ou com o X e o Y trocados,
+		// passaria por uma conferencia de quantidade. A assinatura mistura camada, posicao e quadro
+		// de cada celula e NAO depende da ordem -- que e o que muda de propósito no agrupamento.
+		//
+		// Sao ~5 ms por mapa pra transformar "confio no meu agrupamento" em "esta escrito".
+		int esperadas = bytes.Count + decoracao.Count + objetos.Count;
+		ulong assinado = Assinar(bytes, 0) ^ Assinar(decoracao, 1) ^ Assinar(objetos, 2);
+
+		Jandirus.Core.World.PedacosDoMapa? relido =
+			Jandirus.Core.World.PedacosDoMapa.Ler(File.ReadAllBytes(arqPedacos));
+		if (relido == null)
+		{
+			Console.WriteLine($"  {nome}: ERRO -- o .pedacos que acabei de escrever nao volta a ler");
+		}
+		else
+		{
+			ulong lido = 0;
+			for (int c = 0; c < relido.Camadas.Length; c++)
+				for (int cy = relido.Cy0; cy < relido.Cy1; cy++)
+					for (int cx = relido.Cx0; cx < relido.Cx1; cx++)
+					{
+						if (!relido.Achar(cx, cy, c, out int ini, out int q)) continue;
+						for (int i = 0; i < q; i++) lido ^= Marca(relido.Celula(ini, i), c);
+					}
+
+			if (relido.TotalDeCelulas != esperadas || lido != assinado)
+				Console.WriteLine($"  {nome}: ERRO NO .pedacos -- escrevi {esperadas} celulas "
+								  + $"(assinatura {assinado:X16}) e reli {relido.TotalDeCelulas} "
+								  + $"({lido:X16})");
+		}
+
 		LightCatalog.Escrever(Path.ChangeExtension(caminho, ".luz"), luzes);
 		if (luzes.Count > 0) Console.WriteLine($"  {nome}: {luzes.Count} fontes de luz");
 		paredes = muros;
 		cegos = vendados;
 		portasDaCena = portas;
 		maquinasDaCena = interativos;
+		passagensDaCena = passagens;
+		if (passagens.Count > 0)
+			Console.WriteLine($"  {nome}: {passagens.Count} passagem(ns) pra outros mapas");
+		if (semDestino > 0)
+			Console.WriteLine($"  {nome}: ATENCAO -- {semDestino} passagem(ns) apontam pra um z que nao foi convertido");
 		if (interativos.Count > 0)
 			Console.WriteLine($"  {nome}: {interativos.Count} maquina(s) saem do tilemap");
 		if (comObj > 0 || objSemArte > 0)
@@ -1434,6 +1627,4 @@ public static class MapConverter
 		return bloqueadas;
 	}
 
-	private static void AddU16(List<byte> b, ushort v) { b.Add((byte)(v & 0xFF)); b.Add((byte)(v >> 8)); }
-	private static void AddI16(List<byte> b, short v) => AddU16(b, unchecked((ushort)v));
 }

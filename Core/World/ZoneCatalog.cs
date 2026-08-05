@@ -7,6 +7,16 @@ public sealed class ZoneEntry
 	public int Z;                 // o antigo andar do BYOND, so pra rastreabilidade
 	public string Cena = "";      // res:// da cena que o CLIENTE instancia
 	public string Colisao = "";   // res:// do bitset que o SERVIDOR le
+
+	/// <summary>
+	/// res:// das CELULAS do cenario, em pedacos de 64x64 (ver <see cref="PedacosDoMapa"/>).
+	///
+	/// Elas nao moram na cena porque um `TileMapLayer` monta o desenho de TODAS as celulas que
+	/// tiver no primeiro quadro -- 708 ms na Terra. Fora da cena, o cliente entrega ao tilemap so
+	/// os pedacos que a camera alcanca. O SERVIDOR nao le este arquivo: ele nao desenha nada, e o
+	/// que ele precisa do cenario ja esta no `.col`.
+	/// </summary>
+	public string Pedacos = "";
 	public string Visao = "";     // res:// do bitset do que CEGA (parede e porta; ver Visao.cs)
 	public string Luzes = "";     // res:// das fontes de luz do cenario (fogueira, tocha, lava)
 
@@ -20,6 +30,17 @@ public sealed class ZoneEntry
 	/// celula de tilemap. O servidor as registra como construcoes -- ver `ObjetosDoMapa`.
 	/// </summary>
 	public string Objetos = "";
+
+	/// <summary>
+	/// res:// das PASSAGENS -- as celulas que levam a OUTRO mapa (caverna, escada do Templo).
+	///
+	/// Pelo mesmo motivo das portas e das maquinas: o que importa nelas e o DESTINO, e destino nao
+	/// cabe num tile. Ver <see cref="Passagem"/>.
+	/// </summary>
+	public string PassagensArq = "";
+
+	/// <summary>As passagens ja lidas. Carregadas junto com a colisao, no boot do servidor.</summary>
+	public List<Passagem> Passagens = [];
 
 	public int W, H;
 	public ZoneCollision? Mapa;   // carregado sob demanda
@@ -51,11 +72,13 @@ public sealed class ZoneCatalog
 				Zona = Str(bloco, "zona"),
 				Z = (int)Num(bloco, "z"),
 				Cena = Str(bloco, "cena"),
+				Pedacos = Str(bloco, "pedacos"),
 				Colisao = Str(bloco, "colisao"),
 				Visao = Str(bloco, "visao"),
 				Luzes = Str(bloco, "luzes"),
 				Portas = Str(bloco, "portas"),
 				Objetos = Str(bloco, "objetos"),
+				PassagensArq = Str(bloco, "passagens"),
 				W = (int)Num(bloco, "w"),
 				H = (int)Num(bloco, "h"),
 			};

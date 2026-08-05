@@ -223,8 +223,32 @@ public partial class World : Node2D
 				// espaco, e ali que a nave ficou. Ver `UltimaNoEspaco`.
 				if (Jandirus.Core.World.Espaco.EhEspaco(_zonaDoAtual) && PosicaoLocal is { } antes)
 					UltimaNoEspaco = antes;
-				CarregarZona(z);
-				_local?.Teleportar(spawn);
+
+				// ============================ OS CORPOS DA ZONA VELHA NAO VEM JUNTO ============================
+				// Todo `RemotePlayer` na tela e de quem estava na zona ANTERIOR -- o corte de
+				// interesse do servidor so manda snapshot de quem divide a zona comigo. Ao trocar,
+				// aqueles bonecos deixam de receber pacote e ficam parados no lugar onde estavam,
+				// agora sobre o cenario do planeta novo.
+				//
+				// Limpar aqui e o certo e nao custa nada: quem estiver na zona nova chega no
+				// primeiro snapshot, que vem no tique seguinte.
+				// ================================================================================================
+				EsvaziarRemotos();
+
+				// A TELA DE CARREGAMENTO ENTRA ANTES DO TRABALHO. Ver `TelaDeCarregamento`: a
+				// montagem do tilemap bloqueia a thread principal por quase um segundo, e sem uma
+				// tela no ar isso e indistinguivel de o jogo ter travado.
+				//
+				// O `Teleportar` vai DENTRO do mesmo bloco: mover o corpo antes da zona carregar o
+				// poria por um quadro nas coordenadas novas sobre o cenario velho.
+				void Trocar()
+				{
+					CarregarZona(z, new Vector2(spawn.X, spawn.Y));
+					_local?.Teleportar(spawn);
+				}
+
+				if (TelaDeCarregamento.Instancia is { } tela) tela.Cobrir(NomeDaZona(z), Trocar);
+				else Trocar();
 			};
 		}
 	}
@@ -238,7 +262,7 @@ public partial class World : Node2D
 		// varredura, cada volta ao menu (ou cada relog) abandonaria dezenas de MB por zona
 		// cacheada, e o vazamento so apareceria depois de horas jogando.
 		foreach (Node2D no in _zonasVivas.Values)
-			if (GodotObject.IsInstanceValid(no)) no.Free();
+			if (GodotObject.IsInstanceValid(no)) { SoltarDaArvore(no); no.Free(); }
 		_zonasVivas.Clear();
 		_ordemDoCache.Clear();
 
@@ -423,7 +447,14 @@ public partial class World : Node2D
 	/// Trocar de zona descarrega a anterior -- e o que impede carregar Namek pra quem esta
 	/// na Terra, do mesmo jeito que o corte de interesse impede receber os pacotes de la.
 	/// </summary>
-	private void CarregarZona(ZoneKey zona)
+	/// <param name="centro">
+	/// ONDE O CORPO VAI APARECER, em pixels de mundo. O cenario e montado em volta DELE e nao da
+	/// camera: quando esta funcao roda, a camera ainda esta no mapa ANTERIOR (quem a move e o
+	/// `Teleportar`, que so acontece depois), e montar em volta dela poria o chao do outro lado do
+	/// planeta. Nulo = nao sei, use a camera (o caminho do recarregamento por admin, em que
+	/// ninguem saiu do lugar).
+	/// </param>
+	private void CarregarZona(ZoneKey zona, Vector2? centro = null)
 	{
 		GuardarZonaAtual();
 
@@ -475,6 +506,12 @@ public partial class World : Node2D
 			_zonaDoAtual = zona;   // a chave do cache: ver o comentario no ramo pre-feito
 			AddChild(gerado);
 			MoveChild(gerado, 0);   // atras dos atores, como a cena pre-feita
+
+			// ONDE MONTAR O CHAO, antes de gerar: o planeta so pinta o que a camera alcanca, e a
+			// camera ainda esta no mapa de onde o jogador saiu (ver o parametro `centro`).
+			gerado.CentroInicial = centro;
+			gerado.PedacoPintado -= ReaplicarEstrago;
+			gerado.PedacoPintado += ReaplicarEstrago;
 			gerado.Entrar(zona.Seed);   // e a seed do SERVIDOR que decide o mundo
 
 			_colisao = gerado.Colisao;
@@ -503,10 +540,21 @@ public partial class World : Node2D
 		ulong tLoad = Time.GetTicksUsec();
 
 		// AINDA VIVO? Entao nao ha o que ler nem instanciar -- so recolocar na arvore.
+		bool jaNaArvore = false;
 		if (_zonasVivas.Remove(zona, out Node2D? guardado) && GodotObject.IsInstanceValid(guardado))
 		{
 			_ordemDoCache.Remove(zona);
 			_zonaAtual = guardado;
+
+			// ELA NUNCA SAIU DA ARVORE (ver `GuardarZonaAtual`): voltar e so reacender. Sem isto o
+			// `AddChild` la embaixo reclamaria de um node que ja tem pai.
+			jaNaArvore = guardado.GetParent() == this;
+			if (jaNaArvore)
+			{
+				guardado.Visible = true;
+				guardado.ProcessMode = ProcessModeEnum.Inherit;
+			}
+
 			GD.Print($"[perf] {e.Zona}: DA MEMORIA em {(Time.GetTicksUsec() - tLoad) / 1000.0:0.0} ms");
 		}
 		else
@@ -529,10 +577,30 @@ public partial class World : Node2D
 		// O MoveChild(_, 0) NAO E ENFEITE: o AddChild poe no FIM da lista, e com YSortEnabled o
 		// indice do filho e o desempate quando o Y empata -- sem ele o cenario inteiro desenha na
 		// frente dos personagens. Vale igual pro caminho do cache.
-		AddChild(_zonaAtual);
+		if (!jaNaArvore) AddChild(_zonaAtual);
+
+		// O `MoveChild(_, 0)` VALE PROS DOIS CAMINHOS. Com `YSortEnabled`, o indice do filho e o
+		// desempate quando o Y empata -- e as zonas escondidas no cache continuam na lista, entao
+		// a que volta precisa ser reposta na frente ou o cenario desenha por cima dos corpos.
 		MoveChild(_zonaAtual, 0);
 
 		_zonaDoAtual = zona;
+
+		// ============================ O CENARIO ENTRA AGORA, E SO O PEDACO DAQUI ============================
+		// As camadas da cena vem VAZIAS: as celulas moram no `.pedacos` e chegam em blocos de 64x64
+		// conforme a camera anda (ver `PlanetaPreFeito.Semear` e `PintorDePedacos`). Era isto ou
+		// continuar pagando 708 ms de montagem no primeiro quadro toda vez que alguem troca de mapa.
+		//
+		// REASSINAR TODA VEZ, tirando antes: uma zona que volta do cache passa por aqui de novo, e
+		// sem o `-=` o estrago seria reaplicado uma vez por visita acumulada.
+		ulong tPed = Time.GetTicksUsec();
+		if (_zonaAtual is PlanetaPreFeito pre)
+		{
+			pre.PedacoPintado -= ReaplicarEstrago;
+			pre.PedacoPintado += ReaplicarEstrago;
+			pre.Semear(e.Pedacos, centro);
+			GD.Print($"[perf] {e.Zona}: {pre.PedacosVivos} pedaco(s) montado(s) na chegada");
+		}
 
 		ulong tCol = Time.GetTicksUsec();
 
@@ -582,8 +650,14 @@ public partial class World : Node2D
 		// E O INDICE DE TILES, que a destruicao de cenario precisa. Aqui, e nao na primeira celula
 		// que cai: la ele cairia no meio do quadro do primeiro golpe pesado da partida.
 		CarregarIndiceDeTiles();
-		GD.Print($"[perf] {e.Zona}: mapas {(tLuz - tCol) / 1000.0:0.0} ms | luzes {(Time.GetTicksUsec() - tLuz) / 1000.0:0.0} ms"
+		GD.Print($"[perf] {e.Zona}: pedacos {(tCol - tPed) / 1000.0:0.0} ms"
+				 + $" | mapas {(tLuz - tCol) / 1000.0:0.0} ms | luzes {(Time.GetTicksUsec() - tLuz) / 1000.0:0.0} ms"
 				 + $" | TOTAL {(Time.GetTicksUsec() - tLoad) / 1000.0:0.0} ms");
+
+		// E AGORA O QUE VEM DEPOIS. Ver `_fimDaCarga`: o desenho do tilemap so e montado no
+		// primeiro quadro, e e ali que a janela congela.
+		_fimDaCarga = Time.GetTicksUsec();
+		_zonaMedida = e.Zona;
 	}
 
 	/// <summary>
@@ -601,14 +675,30 @@ public partial class World : Node2D
 	{
 		if (_zonaAtual == null) return;
 
+		ulong tSai = Time.GetTicksUsec();
+
 		Node2D saindo = _zonaAtual;
 		ZoneKey chave = _zonaDoAtual;
 		_zonaAtual = null;
 
-		RemoveChild(saindo);
-
 		// zona sem chave util (o mundo ainda nao entrou em nenhuma): nao da pra cachear
-		if (chave.Hash == 0) { saindo.Free(); return; }
+		if (chave.Hash == 0) { RemoveChild(saindo); saindo.Free(); return; }
+
+		// ============================ SAIR DA ARVORE CUSTA CARO, E NAO PRECISAVA ============================
+		// `RemoveChild` dispara `EXIT_TREE` no planeta inteiro, e um `TileMapLayer` de 500x500 solta
+		// ali TODOS os canvas items de render e os occluders -- centenas de milhares deles. Voltar
+		// pra zona reconstroi tudo de novo. Era o custo que nao aparecia em medicao nenhuma: os
+		// marcos de `CarregarZona` comecam DEPOIS desta funcao, e o modo headless nem desenha.
+		//
+		// O cache ja aceitava o preco de manter a zona VIVA em memoria. Manter tambem NA ARVORE, so
+		// que invisivel e sem processar, custa a mesma RAM e economiza os dois lados da conta: nao
+		// desmonta ao sair, nao remonta ao voltar.
+		//
+		// INVISIVEL NAO DESENHA E NAO OCLUI: a visibilidade do Godot desce pela arvore inteira, e
+		// occluder de node escondido nao entra no calculo de luz.
+		// ====================================================================================================
+		saindo.Visible = false;
+		saindo.ProcessMode = ProcessModeEnum.Disabled;
 
 		_zonasVivas[chave] = saindo;
 		_ordemDoCache.Remove(chave);
@@ -618,8 +708,30 @@ public partial class World : Node2D
 		{
 			ZoneKey velha = _ordemDoCache[0];
 			_ordemDoCache.RemoveAt(0);
-			if (_zonasVivas.Remove(velha, out Node2D? no) && GodotObject.IsInstanceValid(no)) no.Free();
+			if (_zonasVivas.Remove(velha, out Node2D? no) && GodotObject.IsInstanceValid(no))
+			{
+				// SO QUEM SAI DO CACHE PAGA O DESMONTE -- e ai ele e inevitavel, porque a zona vai
+				// mesmo embora. Uma vez a cada `TetoDoCache` trocas, em vez de a cada troca.
+				SoltarDaArvore(no);
+				no.Free();
+			}
 		}
+
+		double ms = (Time.GetTicksUsec() - tSai) / 1000.0;
+		if (ms > 5) GD.Print($"[perf] saindo de {chave.Name}: {ms:0.0} ms");
+	}
+
+	/// <summary>
+	/// TIRA A ZONA DA ARVORE antes de liberar.
+	///
+	/// Desde que o cache passou a guardar as zonas DENTRO da arvore (escondidas), todo `Free()`
+	/// precisa saber que pode haver um pai. O Godot desliga sozinho, mas fazer isso explicitamente
+	/// e o que impede o proximo leitor de achar que zona guardada esta fora da arvore -- que era
+	/// verdade ate aqui e deixou de ser.
+	/// </summary>
+	private void SoltarDaArvore(Node no)
+	{
+		if (no.GetParent() == this) RemoveChild(no);
 	}
 
 	/// <summary>
@@ -782,7 +894,9 @@ public partial class World : Node2D
 			ZoneKey alvo = _zonasVivas.Keys.FirstOrDefault(z => z.Hash == zonaLimpa);
 			if (alvo.Hash != 0 && _zonasVivas.Remove(alvo, out Node2D? velha))
 			{
-				if (GodotObject.IsInstanceValid(velha)) velha.Free();
+				// A ZONA GUARDADA CONTINUA NA ARVORE, so escondida (ver `GuardarZonaAtual`) -- tirar
+				// antes de liberar deixa explicito de onde ela sai.
+				if (GodotObject.IsInstanceValid(velha)) { SoltarDaArvore(velha); velha.Free(); }
 				_ordemDoCache.Remove(alvo);
 			}
 			return;
@@ -804,11 +918,15 @@ public partial class World : Node2D
 			_zonaAtual.Free();
 			_zonaAtual = null;
 		}
-		if (_zonasVivas.Remove(zona, out Node2D? guardado) && GodotObject.IsInstanceValid(guardado)) guardado.Free();
+		if (_zonasVivas.Remove(zona, out Node2D? guardado) && GodotObject.IsInstanceValid(guardado))
+		{
+			SoltarDaArvore(guardado);
+			guardado.Free();
+		}
 		_ordemDoCache.Remove(zona);
 
 		_zonaDoAtual = default;   // senao o `GuardarZonaAtual` de dentro do CarregarZona reempilha o nada
-		CarregarZona(zona);
+		CarregarZona(zona, _local?.Position);
 		Chat.Sistema("o cenario desta zona foi refeito.");
 	}
 
@@ -900,7 +1018,7 @@ public partial class World : Node2D
 
 	private void AoEntrar(int id, ZoneKey zona, Vec2 spawn, string nome)
 	{
-		CarregarZona(zona);
+		CarregarZona(zona, new Vector2(spawn.X, spawn.Y));
 		if (_local != null) return;
 
 		var corpo = new LocalPlayer { Name = "LocalPlayer", Position = new Vector2(spawn.X, spawn.Y), Mapa = _colisao };
@@ -977,6 +1095,35 @@ public partial class World : Node2D
 			// ele reaparecer no lugar errado quando voltasse (o cliente teria perdido a
 			// interpolacao inteira) -- e reaparecer teleportando entrega quem estava escondido.
 			r.Visible = !e.Oculto;
+		}
+	}
+
+	/// <summary>
+	/// O NOME DO LUGAR, pra tela de carregamento. O espaco nao tem entrada no catalogo.
+	/// </summary>
+	private string NomeDaZona(ZoneKey z)
+	{
+		if (Jandirus.Core.World.Espaco.EhEspaco(z)) return "Espaço";
+		return _catalogo?.Get(z)?.Zona.Replace('_', ' ') is { Length: > 0 } n ? n : z.Name.Replace('_', ' ');
+	}
+
+	/// <summary>
+	/// APAGA TODOS OS CORPOS REMOTOS. Chamado ao trocar de zona -- ver o `ZoneChanged`.
+	///
+	/// A APARENCIA CONTINUA GUARDADA de proposito: `_looks` e a ficha visual de cada pessoa, e ela
+	/// chega UMA vez por sessao (`PeerLook`). Jogar fora aqui faria quem voltasse pro mesmo planeta
+	/// aparecer com o corpo padrao ate o servidor reenviar -- e ele so reenvia em troca de zona,
+	/// entao seria um boneco errado a cada ida e volta.
+	/// </summary>
+	private void EsvaziarRemotos()
+	{
+		foreach (RemotePlayer r in _remotos.Values) r.QueueFree();
+		_remotos.Clear();
+
+		if (GameClient.Instance is { } c && c.AlvoId != 0)
+		{
+			_marca = null;
+			c.SendAlvo(0);
 		}
 	}
 
@@ -1163,8 +1310,35 @@ public partial class World : Node2D
 			Hud.Instancia?.Narrar(h, GameClient.Instance!.LocalId);
 	}
 
+	/// <summary>
+	/// QUANDO A CARGA DA ZONA TERMINOU -- pra medir o QUADRO SEGUINTE. Zero = nada pendente.
+	///
+	/// ============================ O CUSTO NAO ESTA NA CARGA ============================
+	/// `CarregarZona` mede 130 ms de ponta a ponta, com janela e tudo -- e o dono ve tres segundos
+	/// de tela congelada. Os dois numeros sao verdadeiros: o que a funcao faz e barato, e o que
+	/// vem DEPOIS dela nao.
+	///
+	/// Um `TileMapLayer` de 500x500 nao monta a estrutura de desenho ao entrar na arvore; ele a
+	/// monta quando o renderizador precisa dela, no primeiro quadro. Esse trabalho acontece fora de
+	/// qualquer medicao que comece e termine dentro da carga -- e o modo headless, que usa um
+	/// renderizador de mentira, nunca o faz.
+	///
+	/// Este marco fecha o buraco: ele conta do fim da carga ate o proximo `_Process`, que so roda
+	/// depois de o quadro ter sido desenhado.
+	/// ===================================================================================
+	/// </summary>
+	private ulong _fimDaCarga;
+	private string _zonaMedida = "";
+
 	public override void _Process(double delta)
 	{
+		if (_fimDaCarga != 0)
+		{
+			double ms = (Time.GetTicksUsec() - _fimDaCarga) / 1000.0;
+			_fimDaCarga = 0;
+			if (ms > 5) GD.Print($"[perf] {_zonaMedida}: PRIMEIRO QUADRO {ms:0.0} ms (montagem do tilemap)");
+		}
+
 		if (_tremor > 0 && _camera != null)
 		{
 			_tremor = Mathf.MoveToward(_tremor, 0, (float)delta * 40f);

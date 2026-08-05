@@ -125,6 +125,21 @@ public partial class Planeta : Node2D
 	/// <summary>Onde o corpo aparece ao chegar. O gerador garante que este ponto e livre.</summary>
 	public Vector2 PontoDeChegada { get; protected set; }
 
+	/// <summary>
+	/// UM PEDACO NOVO DE CENARIO ENTROU NO TILEMAP.
+	///
+	/// Existe pelo estrago: as celulas derrubadas sao apagadas do tilemap na hora em que caem, e um
+	/// pedaco que entra depois chega com a parede INTEIRA de novo -- o mapa desenhado passaria a
+	/// discordar da colisao, que e o desync que faz o corpo tremer no muro. Quem reaplica e o
+	/// `World.ReaplicarEstrago`.
+	///
+	/// NA BASE E NAO NAS FILHAS porque quem escuta nao quer saber se o chao veio de arquivo ou de
+	/// uma seed: os dois streamam, os dois esquecem o estrago do mesmo jeito.
+	/// </summary>
+	public event System.Action? PedacoPintado;
+
+	protected void AvisarPedaco() => PedacoPintado?.Invoke();
+
 	private bool _nasceu;
 
 	public override void _Ready()

@@ -86,7 +86,10 @@ public static class FormasDeFrost
 		3 => "3ª Forma (supressão 75%)",
 		4 => "4ª Forma (supressão 90%)",
 		6 => "1ª Evolução",
-		7 => "Forma Black",
+		// O DM CHAMA DE "Forma Black", e o dono pediu o nome que a escada explica: se a anterior e
+		// a primeira evolucao, esta e a segunda. "Black" e nome proprio de uma forma especifica --
+		// aqui o degrau e generico, e o corpo dele quem escolhe e o jogador.
+		7 => "2ª Evolução",
 		_ => "Forma Base",
 	};
 
@@ -211,8 +214,22 @@ public static class FormasDeFrost
 	/// <summary>Onde moram os sprites deste catalogo.</summary>
 	public const string Pasta = "res://Assets/Sprites/Character Icons/Frost Demons/";
 
-	/// <summary>O caminho do `.tres` de um corpo do catalogo.</summary>
-	public static string Caminho(string corpo) => $"{Pasta}{corpo}.tres";
+	/// <summary>
+	/// O caminho do `.tres` de um corpo do catalogo.
+	///
+	/// ============================ UM CORPO NAO MORA COM OS OUTROS ============================
+	/// O `GoldIcer` esta em `Character Icons/Transformations/`, e nao em `Frost Demons/` -- ele e
+	/// arte de TRANSFORMACAO, e a pasta foi organizada por isso. Montar o caminho por concatenacao
+	/// cega punha o jogo procurando `Frost Demons/GoldIcer.tres`, que nao existe: a grade desenhava
+	/// um botao vazio escrito "Gold" e o console enchia de "Cannot open file".
+	///
+	/// A excecao mora aqui, num lugar so, porque este metodo e a UNICA porta pro caminho -- a grade
+	/// da criacao e o desenho do corpo em jogo passam os dois por ele.
+	/// =========================================================================================
+	/// </summary>
+	public static string Caminho(string corpo) => corpo == "GoldIcer"
+		? "res://Assets/Sprites/Character Icons/Transformations/GoldIcer.tres"
+		: $"{Pasta}{corpo}.tres";
 
 	/// <summary>
 	/// ARRUMA A LISTA DE CORPOS ESCOLHIDOS pra ela ter exatamente um por degrau desta classe.

@@ -13,15 +13,15 @@ Procedural = false
 
 [node name="Chao" type="TileMapLayer" parent="."]
 z_index = -2
+collision_enabled = false
 tile_set = ExtResource("1_ts")
-tile_map_data = PackedByteArray(0, 0)
 
 [node name="Decor" type="TileMapLayer" parent="."]
 z_index = -1
+collision_enabled = false
 tile_set = ExtResource("1_ts")
-tile_map_data = PackedByteArray(0, 0)
 
 [node name="Objetos" type="TileMapLayer" parent="."]
 y_sort_enabled = true
+collision_enabled = false
 tile_set = ExtResource("1_ts")
-tile_map_data = PackedByteArray(0, 0)

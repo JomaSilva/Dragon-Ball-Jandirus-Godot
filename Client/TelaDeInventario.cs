@@ -235,6 +235,15 @@ public partial class TelaDeInventario : CanvasLayer
 				// ver `GameServer.ComandoDeItem`.
 				if (a == "ajustar") { AbrirTeclado(def); return; }
 
+				// POSICIONAR NAO MANDA VERBO: ela poe a construcao na MAO e fecha o inventario. O
+				// verbo sai depois, quando o jogador clicar no chao -- ver `TelaDeConstrucao`.
+				if (a == "posicionar")
+				{
+					Fechar();
+					TelaDeConstrucao.Instancia?.Segurar(def.Id);
+					return;
+				}
+
 				GameClient.Instance?.SendVerbo($"item_{a}", def.Id);
 				FecharAcoes();
 			};
@@ -283,6 +292,7 @@ public partial class TelaDeInventario : CanvasLayer
 		"tirar" => "Tirar os pesos",
 		"usar" => "Usar",
 		"cavar" => "Cavar aqui",
+		"posicionar" => "Assentar no chão",
 		"largar" => "Jogar fora",
 		_ => char.ToUpperInvariant(acao[0]) + acao[1..],
 	};

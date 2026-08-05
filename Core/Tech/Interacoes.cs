@@ -85,8 +85,9 @@ public static class Interacoes
 
 		"Research_Station" =>
 		[
+			new Acao("Fabricar...", "abrir_tech", "", "a grade do que a sua tecnologia já alcança"),
 			new Acao("Estudar", "estudar", "", "fica debruçado na bancada ganhando tecnologia"),
-			new Acao("Construir...", "abrir_tech", "", "a lista do que a sua tecnologia já alcança"),
+			new Acao("Pegar", "pegar", "", "recolhe a bancada pra mochila (só a sua)"),
 		],
 
 		"AppleTree" =>
@@ -109,6 +110,7 @@ public static class Interacoes
 			new Acao("Melhorar...", "grav_upgrades", "upgrades", "gasta zeni pra empurrar os limites",
 					 Forma.Submenu),
 			new Acao("Ver estado", "grav_info", "", "força, bateria, alcance"),
+			new Acao("Pegar", "pegar", "", "recolhe a máquina pra mochila (só a sua)"),
 		],
 
 		// O SUBMENU DE MELHORIAS -- a lista do `verb/Upgrade` do DM (Gravity.dm:224-276).

@@ -103,16 +103,54 @@ public static class CatalogoDeItens
 			Empilhavel: false, Acoes: ["cavar"]),
 	};
 
-	public static ItemDef? Get(string id) => Tudo.GetValueOrDefault(id);
+	/// <summary>
+	/// O CATALOGO DE CONSTRUCOES, quando alguem o ligou. Ver <see cref="Get"/>.
+	///
+	/// E uma referencia e nao uma copia: quem monta (servidor e cliente) ja tem o catalogo lido do
+	/// JSON, e duplicar 99 fichas pra ter dois formatos do mesmo dado seria a receita de eles
+	/// discordarem no dia em que um item novo entrasse.
+	/// </summary>
+	public static Tech.CatalogoDeObras? Obras;
+
+	/// <summary>
+	/// A FICHA DE UM ITEM -- do catalogo escrito a mao, ou derivada de uma CONSTRUCAO.
+	///
+	/// ============================ TODA CONSTRUCAO E UM ITEM ============================
+	/// A tabela acima tem sete linhas; o catalogo de construcoes tem noventa e nove. Escrever as
+	/// noventa e nove aqui seria manter duas listas do mesmo mundo em sincronia na mao -- e a
+	/// primeira a ficar pra tras seria a que alguem esqueceu de atualizar.
+	///
+	/// A regra e simples: se o id nao esta na tabela mas EXISTE como construcao, ele vira item com
+	/// a arte, o nome e a descricao dela. E o que faz uma maquina de gravidade caber na mochila
+	/// entre a bancada e o momento de assenta-la no chao.
+	///
+	/// AS SETE ESCRITAS A MAO CONTINUAM VALENDO porque elas tem algo que a construcao nao tem:
+	/// nutricao, empilhamento, e acoes proprias (comer, equipar, cavar).
+	/// ===================================================================================
+	/// </summary>
+	public static ItemDef? Get(string id)
+	{
+		if (Tudo.TryGetValue(id, out ItemDef? mao)) return mao;
+
+		Tech.Construcao? c = Obras?.Get(id);
+		if (c == null) return null;
+
+		// UMA CONSTRUCAO NA MOCHILA SO SABE FAZER UMA COISA: virar construcao de novo. "posicionar"
+		// e a acao, e ela abre o fantasma no mouse -- ver `TelaDeInventario`.
+		return new ItemDef(c.Id, c.Nome, c.Desc, c.Arte, c.Estado,
+						   Empilhavel: false, Acoes: ["posicionar"]);
+	}
+
 	public static IEnumerable<ItemDef> Todos => Tudo.Values;
 
 	/// <summary>
-	/// ESTA CONSTRUCAO E, NA VERDADE, UM ITEM DE CARREGAR?
+	/// ESTE ITEM E UMA CONSTRUCAO -- ou seja, da pra assentar no chao?
 	///
-	/// E a pergunta que `Construir` faz: pa, scouter e bandagem sao comprados na mesma bancada que
-	/// a maquina de gravidade, mas nao ficam no chao -- vao pra mochila.
+	/// A pergunta separa uma pa (que se usa na mao) de uma bancada (que se pousa). O que decide e
+	/// a AUSENCIA na tabela escrita a mao: pa, scouter e bandagem estao la porque tem acao propria;
+	/// tudo o mais que existe como construcao e coisa de por no chao.
 	/// </summary>
-	public static bool EhCarregavel(string idDaConstrucao) => Tudo.ContainsKey(idDaConstrucao);
+	public static bool EhConstrucao(string id) => !Tudo.ContainsKey(id) && Obras?.Get(id) != null;
 }
 
 /// <summary>

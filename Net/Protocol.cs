@@ -804,6 +804,16 @@ public struct SheetState
     /// e acontecer sem barra e o jogo parar de responder sem dizer por que.
     /// </summary>
     public double Vigor, VigorMax;
+
+    /// <summary>
+    /// NUTRICAO: o tanque de comida, que e de onde o vigor VOLTA.
+    ///
+    /// Vai na ficha rapida pelo mesmo motivo do vigor -- e mais ainda: o vigor cai sozinho e so
+    /// sobe as custas disto, entao um jogador com a barra de folego caindo e sem nenhum numero de
+    /// comida na tela nao tem como saber que o problema e fome. Ver `Core.Stats.Nutricao`.
+    /// </summary>
+    public double Nutricao, NutricaoMax;
+
     public float SpeedStat;
 
     /// <summary>
@@ -850,7 +860,8 @@ public struct SheetState
     public void Write(NetDataWriter w)
     {
         w.Put(Class); w.Put(BP); w.Put(ExpressedBP);
-        w.Put(Ki); w.Put(MaxKi); w.Put(HP); w.Put(Vigor); w.Put(VigorMax); w.Put(SpeedStat);
+        w.Put(Ki); w.Put(MaxKi); w.Put(HP); w.Put(Vigor); w.Put(VigorMax);
+        w.Put(Nutricao); w.Put(NutricaoMax); w.Put(SpeedStat);
         w.Put(SocoMs); w.Put(MembrosRuins); w.Put(Estado);
     }
 
@@ -858,7 +869,8 @@ public struct SheetState
     {
         Class = r.GetString(32), BP = r.GetDouble(), ExpressedBP = r.GetDouble(),
         Ki = r.GetDouble(), MaxKi = r.GetDouble(), HP = r.GetDouble(),
-        Vigor = r.GetDouble(), VigorMax = r.GetDouble(), SpeedStat = r.GetFloat(),
+        Vigor = r.GetDouble(), VigorMax = r.GetDouble(),
+        Nutricao = r.GetDouble(), NutricaoMax = r.GetDouble(), SpeedStat = r.GetFloat(),
         SocoMs = r.GetInt(), MembrosRuins = r.GetByte(), Estado = r.GetByte(),
     };
 }

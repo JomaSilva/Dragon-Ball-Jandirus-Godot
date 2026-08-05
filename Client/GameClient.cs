@@ -266,8 +266,14 @@ public partial class GameClient : Node
 	public readonly record struct ObraInfo(int Id, string Tipo, Vector2 Pos, bool Aparafusada, int Lab, string Dono,
 										   string Arte, string Estado, Vector2 Pixel, bool Densa);
 
-	/// <summary>Uma linha do catalogo de tecnologia, com o motivo do nao (0 = pode).</summary>
-	public readonly record struct OfertaDeObra(string Id, string Nome, double Custo, double Tech, int Recusa);
+	/// <summary>
+	/// Uma linha do catalogo de tecnologia, com o motivo do nao (0 = pode) e a ARTE.
+	///
+	/// A arte vem do servidor porque o cliente nao le `construcoes.json` -- ele so conhece o que
+	/// pode comprar, e conhece pelo pacote. Ver `MandarCatalogoDeObras`.
+	/// </summary>
+	public readonly record struct OfertaDeObra(string Id, string Nome, double Custo, double Tech,
+											   int Recusa, string Arte, string Estado);
 
 	/// <summary>Um estilo de luta que eu sei, com a maestria e o teto dela.</summary>
 	public readonly record struct EstiloInfo(string Id, string Nome, double Maestria, double Teto);
@@ -832,7 +838,8 @@ public partial class GameClient : Node
 				var l = new List<OfertaDeObra>(n);
 				for (int i = 0; i < n; i++)
 					l.Add(new OfertaDeObra(reader.GetString(48), reader.GetString(48),
-						reader.GetDouble(), reader.GetDouble(), reader.GetByte()));
+						reader.GetDouble(), reader.GetDouble(), reader.GetByte(),
+						reader.GetString(160), reader.GetString(48)));
 				Catalogo = l;
 				TechMudou?.Invoke();
 				break;

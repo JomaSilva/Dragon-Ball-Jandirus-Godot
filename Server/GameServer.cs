@@ -134,8 +134,35 @@ public sealed class ServerPlayer
 	/// <summary>O corpo esta deitado? Caido ou voando -- e a mesma pergunta pro desenho.</summary>
 	public bool Deitado => Ficha.KO || Ficha.dead || TiquesDeVoo > 0;
 
-	public Facing DirecaoDeitado =>
-		TiquesDeVoo > 0 ? MoveRules.FacingFrom(RumoDoVoo, FacingDaQueda) : FacingDaQueda;
+	/// <summary>
+	/// DE ONDE VEIO O ULTIMO GOLPE QUE ENCOSTOU -- o vetor do soco, apontando pra longe de quem bateu.
+	///
+	/// E o MESMO vetor que o arremesso usa (`RumoDoVoo`), guardado tambem pros golpes que derrubam
+	/// sem arremessar. Zero quando o corpo caiu sem levar pancada (fome, por exemplo).
+	/// </summary>
+	public Vec2 RumoDoGolpe;
+
+	/// <summary>
+	/// PRA ONDE A CABECA APONTA quando o corpo esta deitado.
+	///
+	/// ============================ ERAM DOIS ANGULOS PRA UM CORPO SO ============================
+	/// Voando, isto devolvia a direcao do ARREMESSO; caido, a direcao pra onde o sujeito ESTAVA
+	/// OLHANDO. Sao duas perguntas diferentes, e quem leva knockback e desmaia no ar responde as
+	/// duas ao mesmo tempo -- entao o corpo voava deitado num angulo e, ao encostar no chao,
+	/// estalava pra outro. O dono descreveu exatamente isso: "enquanto voava desmaiado ele ficava
+	/// virado pra um lado nada a ver".
+	///
+	/// A SAIDA FOI DELE, e e a certa: quem decide o angulo de um corpo caido nao e pra onde ele
+	/// olhava, e a direcao DE ONDE VEIO O GOLPE. Um soco que joga pra leste deita o corpo pra leste,
+	/// esteja ele no ar ou no chao -- e como o arremesso ja usava esse mesmo vetor, os dois casos
+	/// passam a ser um so.
+	///
+	/// O OLHAR SOBROU DE RESERVA, pra quem cai sem ter apanhado: `FacingFrom` devolve o olhar
+	/// anterior quando o vetor e nulo, e ai a direcao antiga e a unica resposta que existe.
+	/// ===========================================================================================
+	/// </summary>
+	public Facing DirecaoDeitado => MoveRules.FacingFrom(
+		TiquesDeVoo > 0 ? RumoDoVoo : RumoDoGolpe, FacingDaQueda);
 
 	/// <summary>De onde o corpo SAIU na ultima investida. E onde a miragem nasce -- ver Aproximar.</summary>
 	public Vec2 SaiuDe;
@@ -178,7 +205,7 @@ public sealed class ServerPlayer
 	/// ==========================================================================================
 	/// </summary>
 	public double EnvBP = double.NaN, EnvKi = double.NaN, EnvHp = double.NaN, EnvAct = double.NaN,
-				  EnvVigor = double.NaN;
+				  EnvVigor = double.NaN, EnvNutricao = double.NaN;
 
 	/// <summary>O ultimo byte de estado enviado (KO, morto, guarda, letal, rabo).</summary>
 	public int EnvEstado = -1;
@@ -339,6 +366,8 @@ public sealed class ServerPlayer
 		HP = Ficha.HP,
 		Vigor = Ficha.stamina,
 		VigorMax = Ficha.maxstamina,
+		Nutricao = Ficha.CurrentNutrition,
+		NutricaoMax = Jandirus.Core.Stats.Nutricao.Tanque(Ficha.Metabolism),
 		SpeedStat = SpeedStat,
 		// a cadencia vai calculada: ela muda com o Ki carregado, e o cliente precisa dela
 		// pro proprio cooldown e pra duracao da animacao de soco
@@ -744,6 +773,11 @@ public partial class GameServer : Node
 		// (abrir uma porta e limpar a celula dela -- ver GameServer.Portas.cs). Carregar as duas
 		// coisas no mesmo lugar deixa obvio que uma depende da outra.
 		CarregarPortas();
+
+		// AS PASSAGENS TAMBEM, e depois das zonas de proposito: elas apontam pra OUTRAS zonas, e o
+		// carregador recusa as que apontam pra uma que nao existe -- pergunta que so tem resposta
+		// com o catalogo inteiro na mao.
+		CarregarPassagens();
 	}
 
 	/// <summary>
@@ -1577,6 +1611,13 @@ public partial class GameServer : Node
 		_players.Remove(pl.Id);
 		ZoneList(pl.Zone.Hash).Remove(pl);
 
+		// OS RELOGIOS POR JOGADOR SOMEM JUNTO. Sao dicionarios indexados por id, e id se reusa: sem
+		// isto, quem entrasse depois herdaria a carencia de passagem e o relogio de estomago do
+		// anterior -- e o dicionario cresceria a sessao inteira.
+		EsquecerPassagem(pl.Id);
+		_relogioDoEstomago.Remove(pl.Id);
+		_fomeAcumulada.Remove(pl.Id);
+
 		var w = Protocol.Begin(Protocol.S2C.PeerLeft);
 		w.Put(pl.Id);
 		foreach (ServerPlayer other in ZoneList(pl.Zone.Hash))
@@ -1615,6 +1656,10 @@ public partial class GameServer : Node
 		// visivel e uma parede em que o jogador esbarra -- 5 Hz dariam ate 200 ms de porta fechada
 		// depois de encostar nela.
 		TickDasPortas();
+
+		// AS PASSAGENS NO TIQUE CHEIO, junto das portas e pelo mesmo motivo: elas reagem a ENCOSTAR,
+		// e uma reacao a 5 Hz deixaria o corpo atravessar a celula sem que ninguem percebesse.
+		TickDasPassagens();
 
 		// O ARREMESSO ANDA NO TICK CHEIO: o tique dele e 0,1 s e cada um vale dois tiles. A 5 Hz
 		// o corpo daria saltos de quatro tiles, e o que se veria seria teleporte, nao voo.
@@ -1695,7 +1740,8 @@ public partial class GameServer : Node
 			byte estado = pl.Sheet().Estado;
 			if (pl.EnvBP == pl.Ficha.expressedBP && pl.EnvKi == pl.Ficha.Ki
 				&& pl.EnvHp == pl.Ficha.HP && pl.EnvAct == pl.Ficha.Eactspeed
-				&& pl.EnvVigor == pl.Ficha.stamina && pl.EnvEstado == estado) continue;
+				&& pl.EnvVigor == pl.Ficha.stamina && pl.EnvNutricao == pl.Ficha.CurrentNutrition
+				&& pl.EnvEstado == estado) continue;
 
 			MandarFicha(pl);
 		}
@@ -1721,6 +1767,7 @@ public partial class GameServer : Node
 		pl.EnvHp = pl.Ficha.HP;
 		pl.EnvAct = pl.Ficha.Eactspeed;
 		pl.EnvVigor = pl.Ficha.stamina;
+		pl.EnvNutricao = pl.Ficha.CurrentNutrition;
 		pl.EnvEstado = pl.Sheet().Estado;
 
 		var w = Protocol.Begin(Protocol.S2C.Stats);
@@ -1754,10 +1801,29 @@ public partial class GameServer : Node
 	{
 		if (!_players.TryGetValue(playerId, out ServerPlayer? pl)) return;
 
+		ulong tEntrou = Time.GetTicksUsec();
+		ZoneKey saiuDe = pl.Zone;
 		ZoneList(pl.Zone.Hash).Remove(pl);
 		pl.Zone = destino;
 		pl.Pos = spawn;
 		ZoneList(destino.Hash).Add(pl);
+
+		// ============================ QUEM FICA PRECISA SABER QUE VOCE FOI EMBORA ============================
+		// O snapshot so descreve quem ESTA na zona -- ele nao diz "fulano saiu". Quem some da lista
+		// simplesmente para de aparecer nos pacotes, e o cliente nao tem como distinguir isso de um
+		// pacote perdido: ele mantem o boneco na tela, parado, pra sempre.
+		//
+		// Era o corpo fantasma que o dono viu: viajar pra outro planeta deixava uma copia sua de pe
+		// no anterior, na ultima posicao conhecida. O caminho de DESCONECTAR ja mandava este pacote
+		// desde sempre; mudar de zona e a mesma coisa pra quem ficou -- a pessoa sumiu de vista.
+		// ======================================================================================================
+		if (saiuDe.Hash != destino.Hash)
+		{
+			var fui = Protocol.Begin(Protocol.S2C.PeerLeft);
+			fui.Put(pl.Id);
+			foreach (ServerPlayer o in ZoneList(saiuDe.Hash))
+				o.Peer?.Send(fui, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		}
 
 		// TROCAR DE ZONA E O MAIOR TELEPORTE DE TODOS -- do outro lado do mapa, ou de outro
 		// planeta. Os pacotes que o cliente tinha em voo falam da zona ANTIGA, e sem este carimbo
@@ -1791,6 +1857,15 @@ public partial class GameServer : Node
 
 		pl.Estudando = false;   // ninguem estuda de outro planeta
 		AplicarGravidade(pl);   // o chao mudou: o peso dele tambem
+
+		// ============================ QUEM HOSPEDA PAGA AS DUAS CONTAS ============================
+		// Servidor e cliente sao o MESMO processo quando se joga com `--host`, e no mesmo thread: um
+		// segundo gasto aqui e um segundo com a janela congelada, indistinguivel de travamento do
+		// cliente. Como o dono joga hospedando, a metade do servidor precisava de marco proprio --
+		// sem ele, "o jogo trava ao trocar de mapa" nao tem como apontar de que lado esta.
+		// ==========================================================================================
+		double msServidor = (Time.GetTicksUsec() - tEntrou) / 1000.0;
+		if (msServidor > 5) GD.Print($"[perf] servidor: trocar pra {destino.Name} levou {msServidor:0.0} ms");
 
 		// O CEU MUDOU TAMBEM, e ele nao e o mesmo ceu: cada planeta corre o proprio dia e a
 		// propria lua (ver GameServer.Ceu.cs). Zerar a memoria da lua e o que faz a cheia de
