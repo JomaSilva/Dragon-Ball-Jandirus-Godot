@@ -172,6 +172,19 @@ public partial class GameClient : Node
 		_peer!.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
 	}
 
+	/// <summary>
+	/// APAGA O PERSONAGEM DE UM SLOT. O <paramref name="nome"/> e o que o jogador DIGITOU -- quem
+	/// confere se ele bate com o do save e o servidor (ver `GameServer.DeleteChar`).
+	/// </summary>
+	public void SendDeleteChar(int slot, string nome)
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.DeleteChar);
+		w.Put((byte)slot);
+		w.Put(nome);
+		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
 	/// <summary>Declara o que estou fazendo. O servidor e quem decide o que isso vale em BP.</summary>
 	public void SendActivity(Protocol.Activity a)
 	{

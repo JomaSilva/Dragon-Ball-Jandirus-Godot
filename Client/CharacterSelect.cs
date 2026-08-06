@@ -155,6 +155,19 @@ public partial class CharacterSelect : CanvasLayer
             int alvo = indice;
             jogar.Pressed += () => Jogar?.Invoke(alvo);
             caixa.AddChild(jogar);
+
+            // APAGAR FICA LONGE DE JOGAR, e discreto de proposito: e o unico botao desta tela que
+            // destroi alguma coisa, e ele divide espaco com o que se aperta toda vez que se entra
+            // no jogo. Rotulo pequeno, cor de aviso, e a confirmacao pedindo o NOME.
+            var apagar = new Button
+            {
+                Text = "Excluir personagem",
+                TooltipText = "apaga este personagem para sempre",
+            };
+            apagar.AddThemeFontSizeOverride("font_size", 12);
+            apagar.AddThemeColorOverride("font_color", new Color("c96a6a"));
+            apagar.Pressed += () => PerguntarSeApaga(alvo, s.Nome);
+            caixa.AddChild(apagar);
         }
         else
         {
@@ -170,6 +183,49 @@ public partial class CharacterSelect : CanvasLayer
         }
 
         return painel;
+    }
+
+    /// <summary>
+    /// A CONFIRMACAO DE APAGAR: pede o NOME digitado, e nao um "tem certeza?".
+    ///
+    /// ============================ POR QUE NAO BASTA SIM/NAO ============================
+    /// Quem clicou em "Excluir" por engano clica em "Sim" por engano tambem -- os dois botoes ficam
+    /// no mesmo lugar da tela e o dedo ja esta em movimento. Digitar o nome obriga a LER qual dos
+    /// tres personagens vai morrer, que e exatamente a informacao que falta em um clique errado.
+    ///
+    /// E o botao so acende quando o texto BATE. Assim o erro nao chega nem a ser possivel de
+    /// cometer: nao ha "confirmar" pra apertar enquanto o nome estiver errado.
+    ///
+    /// O servidor confere de novo (`GameServer.DeleteChar`) -- esta tela e conveniencia, nao trava.
+    /// ==================================================================================
+    /// </summary>
+    private void PerguntarSeApaga(int slot, string nome)
+    {
+        var caixa = new ConfirmationDialog
+        {
+            Title = "Excluir personagem",
+            DialogText = $"\"{nome}\" vai ser apagado PARA SEMPRE — o BP, as skills e os cargos\n"
+                       + "deste personagem nao voltam.\n\nDigite o nome dele para confirmar:",
+            OkButtonText = "Excluir",
+            Exclusive = true,
+        };
+        caixa.GetOkButton().Disabled = true;
+
+        var campo = new LineEdit { PlaceholderText = nome, MaxLength = 32 };
+        campo.TextChanged += t =>
+            caixa.GetOkButton().Disabled = !string.Equals(t.Trim(), nome, StringComparison.OrdinalIgnoreCase);
+        caixa.AddChild(campo);
+
+        caixa.Confirmed += () => GameClient.Instance?.SendDeleteChar(slot, campo.Text.Trim());
+        // O DIALOGO MORRE COM A RESPOSTA. Sem isto cada clique em "Excluir" deixaria um node
+        // escondido na arvore -- e o proximo `Remontar` nao os apaga, porque eles nao sao filhos
+        // da fileira de slots.
+        caixa.Canceled += caixa.QueueFree;
+        caixa.Confirmed += caixa.QueueFree;
+
+        AddChild(caixa);
+        caixa.PopupCentered();
+        campo.GrabFocus();
     }
 
     private static Label Info(string t)

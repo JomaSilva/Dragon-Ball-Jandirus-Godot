@@ -88,7 +88,7 @@ public partial class RemotePlayer : Node2D
 						bool correndo = false, bool rabo = false, float altitude = 0f)
 	{
 		_visual.MostrarRabo(rabo);
-		Altura(altitude);
+		_alturaDoPacote = altitude;
 		var alvo = new Vector2(pos.X, pos.Y);
 		Vector2 ultima = _linha.Count > 0 ? _linha[^1].Pos : alvo;
 
@@ -173,6 +173,18 @@ public partial class RemotePlayer : Node2D
 	private SombraDeVoo? _sombra;
 
 	/// <summary>
+	/// A altura que o ULTIMO PACOTE trouxe. O desenho a persegue por quadro -- ver `_Process`.
+	///
+	/// A POSICAO deste corpo ja e interpolada com atraso fixo (ver o cabecalho da classe), mas a
+	/// altura vinha CRUA do pacote: horizontal macio e vertical aos degraus de 30 Hz no mesmo corpo.
+	/// Medido no corpo LOCAL, que tem o mesmo cano: 81% dos quadros da subida sem mexer nada.
+	/// </summary>
+	private float _alturaDoPacote;
+
+	/// <summary>A mesma taxa do corpo local -- ver `LocalPlayer.PerseguicaoDaAltura`.</summary>
+	private const float PerseguicaoDaAltura = 25f;
+
+	/// <summary>
 	/// A sombra so nasce QUANDO ALGUEM VOA. Corpo remoto e o que mais se instancia no jogo (todo
 	/// mundo que entra no campo de visao vira um), e a maioria nunca sai do chao -- dar um node de
 	/// desenho a mais pra cada um seria pagar por todos o preco de poucos.
@@ -186,6 +198,15 @@ public partial class RemotePlayer : Node2D
 
 	public override void _Process(double delta)
 	{
+		// A ALTURA PERSEGUE O PACOTE, por quadro -- a posicao ja e interpolada com atraso fixo, e
+		// deixar a vertical crua daria horizontal macio com vertical aos degraus no MESMO corpo.
+		// Ver `_alturaDoPacote`.
+		float falta = _alturaDoPacote - _altitude;
+		if (MathF.Abs(falta) > 0.5f)
+			Altura(_altitude + falta * Mathf.Min(1f, (float)delta * PerseguicaoDaAltura));
+		else if (!Mathf.IsEqualApprox(_altitude, _alturaDoPacote))
+			Altura(_alturaDoPacote);   // colado: crava, senao sobra rabo de meio pixel no pouso
+
 		_relogio += delta;
 		if (_linha.Count == 0) return;
 

@@ -64,6 +64,20 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// ============================ ESTA BANCADA VIVE ANTES DO MUNDO ============================
+		// `--diagslot` dirige a TELA DE SELECAO -- criar, apagar, relogar. As outras bancadas sao
+		// registradas em `AoEntrarNoMundo`, e la ela nunca rodaria: quando aquele metodo e chamado, a
+		// tela de selecao ja passou. Foi exatamente o que aconteceu na primeira tentativa (nenhuma
+		// linha de log). Aqui, junto das que tambem nao precisam de mundo.
+		//
+		// NAO montar o login: quem conecta e o robo, com conta e senha proprias.
+		// =========================================================================================
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagslot") >= 0)
+		{
+			AddChild(new RoboDeSlot { Name = "RoboDeSlot" });
+			return;
+		}
+
 		MontarLogin();
 
 		// MUSICA DESDE A PRIMEIRA TELA: no BYOND a criacao de personagem tinha trilha, e e

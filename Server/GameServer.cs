@@ -927,6 +927,7 @@ public partial class GameServer : Node
 		{
 			case Protocol.C2S.Login: Login(peer, reader.GetString(24), reader.GetString(64)); break;
 			case Protocol.C2S.PickSlot: PickSlot(peer, reader.GetByte()); break;
+			case Protocol.C2S.DeleteChar: DeleteChar(peer, reader.GetByte(), reader.GetString(32)); break;
 			case Protocol.C2S.CreateChar:
 				CreateChar(peer, reader.GetByte(), reader.GetDraft(), reader.GetAppearance()); break;
 			case Protocol.C2S.InputState: Input(peer, reader); break;
@@ -1185,6 +1186,52 @@ public partial class GameServer : Node
 		if (c == null) { Recusar(peer, "esse slot esta vazio"); return; }
 
 		Entrar(peer, acc, slot, c);
+	}
+
+	/// <summary>
+	/// APAGA O PERSONAGEM DE UM SLOT. Nao ha volta, e por isso ha quatro guardas antes.
+	///
+	/// ============================ O QUE ISTO NAO PRECISA LIMPAR ============================
+	/// CARGO NAO. O trono e da CONTA e nao do personagem (`_tronos` guarda conta -- ver
+	/// `GameServer.Ranks.cs`), entao apagar um personagem nao deixa cargo ocupado por um fantasma.
+	/// Isso foi conferido antes de escrever a funcao, e nao suposto: se fosse por personagem, este
+	/// metodo teria que vagar o trono aqui, e esquecer disso travaria o cargo para sempre.
+	/// ======================================================================================
+	/// </summary>
+	private void DeleteChar(NetPeer peer, int slot, string nomeDigitado)
+	{
+		if (!_logados.TryGetValue(peer, out AccountSave? acc)) { Recusar(peer, "faca login primeiro"); return; }
+		if (slot < 0 || slot >= AccountStore.Slots) { Recusar(peer, "slot invalido"); return; }
+
+		CharacterSave? c = acc.Slots[slot];
+		if (c == null) { Recusar(peer, "esse slot ja esta vazio"); return; }
+
+		// O NOME CONFERIDO AQUI, e nao na tela. O cliente mostra o campo; quem decide se bate e
+		// quem tem o save na mao -- senao bastava mandar o pacote na mao pra pular a trava.
+		if (!string.Equals(nomeDigitado.Trim(), c.Nome, StringComparison.OrdinalIgnoreCase))
+		{
+			Recusar(peer, $"o nome nao confere -- digite exatamente \"{c.Nome}\" pra confirmar");
+			return;
+		}
+
+		// NAO SE APAGA QUEM ESTA EM JOGO. Outra conexao da MESMA conta pode estar jogando com este
+		// personagem agora: apagar o save por baixo dela deixaria um corpo vivo sem ficha nenhuma,
+		// e o proximo salvamento periodico o traria de volta do nada.
+		if (_players.Values.Any(p => string.Equals(p.Conta, acc.Conta, StringComparison.OrdinalIgnoreCase)))
+		{
+			Recusar(peer, "esta conta esta em jogo agora -- saia do mundo antes de apagar");
+			return;
+		}
+
+		acc.Slots[slot] = null;
+		_store?.Gravar(acc);
+
+		// O LOG GUARDA O QUE FOI PERDIDO. Nao da pra desfazer, mas da pra saber o que havia --
+		// e um "sumiu meu personagem" sem nenhuma linha no log e impossivel de responder.
+		GD.Print($"[server] {acc.Conta} APAGOU o slot {slot + 1}: '{c.Nome}' "
+			+ $"({c.Raca}, {c.Idade} anos, BP {c.Ficha.BP:0})");
+
+		MandarSlots(peer, acc);
 	}
 
 	private void CreateChar(NetPeer peer, int slot, CharacterDraft ficha,

@@ -70,17 +70,62 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	private float _altitude;
 
+	/// <summary>
+	/// A ALTURA QUE SE DESENHA -- a do servidor perseguida QUADRO A QUADRO.
+	///
+	/// ============================ MEDIDO: 81% DOS QUADROS PARADOS ============================
+	/// A altura chega no SNAPSHOT, a 30 Hz, e a tela roda muito acima disso. Aplicada crua, a
+	/// bancada mediu 81% dos 483 quadros da subida sem mexer nada -- e como a CAMERA segue a altura
+	/// (`AplicarAltura`), o que treme nao e o boneco: e o mundo inteiro.
+	///
+	/// E o MESMO problema que o arremesso ja resolvia fatiando o passo grosso do DM no tique do
+	/// servidor (`TickDoEmpurrao`), so que um andar acima: ali era passo de 0,1 s dentro de tique de
+	/// 33 ms; aqui e pacote de 33 ms dentro de quadro de 8 ms. Andar e correr nunca tiveram isso
+	/// porque o corpo local integra no PROPRIO quadro e o remoto tem buffer com atraso.
+	///
+	/// A SEPARACAO E O QUE IMPORTA: isto e SO desenho. Quem decide se o corpo atravessa parede
+	/// continua sendo <see cref="_altitude"/>, o valor cru do servidor -- suavizar a REGRA poria as
+	/// duas pontas em desacordo por alguns quadros, que e como nasce correcao de posicao em jogo
+	/// honesto.
+	/// ========================================================================================
+	/// </summary>
+	private float _altitudeNaTela;
+
+	/// <summary>
+	/// Quanto a altura desenhada persegue a do servidor, por segundo.
+	///
+	/// 25 nao e chute: a subida do servidor e de 6 tiles/s (192 px/s), e o atraso permanente de uma
+	/// perseguicao exponencial e `velocidade / taxa` -- 192/25 da menos de 8 px de altura, ou 2 px
+	/// no desenho. Mais lento arrasta visivelmente; mais rapido volta a deixar quadro parado.
+	/// </summary>
+	private const float PerseguicaoDaAltura = 25f;
+
 	/// <summary>O que ela ja foi no quadro anterior -- so pra nao repintar o que nao mudou.</summary>
 	private float _altitudeDesenhada = -1f;
 
 	private SombraDeVoo? _sombra;
+
+	/// <summary>
+	/// SONDA: quadros com altura, e quantos deles NAO mexeram o desenho. So pras bancadas.
+	///
+	/// A pergunta que ela responde: a altura anda no ritmo do QUADRO ou no do PACOTE? Se metade dos
+	/// quadros nao mexe nada, ela esta andando a 30 Hz contra uma tela de 60 -- e o mundo inteiro
+	/// treme junto, porque a camera segue a altura.
+	/// </summary>
+	public static int QuadrosDeAltura, QuadrosParadosDeAltura;
 	/// <summary>A camera deste corpo. Cacheada: procurar por tipo todo quadro nao vale a pena.</summary>
 	private Camera2D? _cam;
 
-	/// <summary>A altura de agora, em pixels. Lida pelo mundo (zoom, veu, nevoa) e pela bancada.</summary>
-	public float Altitude => _altitude;
+	/// <summary>
+	/// A altura DESENHADA, em pixels. E o que o mundo usa pra nevoa, veu e zoom, e o que a bancada
+	/// le -- tudo isso e desenho, e desenho anda no ritmo do quadro.
+	/// </summary>
+	public float Altitude => _altitudeNaTela;
 
-	/// <summary>Estou acima do cenario? E a MESMA pergunta que o servidor faz, pelo mesmo numero.</summary>
+	/// <summary>
+	/// Estou acima do cenario? Pergunta de REGRA, entao usa o valor CRU do servidor -- e a MESMA
+	/// pergunta que ele faz, pelo mesmo numero. Suavizar aqui poria as duas pontas em desacordo.
+	/// </summary>
 	public bool AtravessandoCenario => Voo.AtravessaCenario(_altitude);
 
 	/// <summary>O servidor mandou a minha altura. Ver o laco de snapshot em <c>World</c>.</summary>
@@ -344,6 +389,7 @@ public partial class LocalPlayer : Node2D
 		if (!Foco.Digitando && Godot.Input.IsActionJustPressed("voar"))
 			GameClient.Instance?.SendHabilidade("voar");
 
+		SeguirAltura(delta);
 		AplicarAltura();
 
 		_sendAccumulator += delta;
@@ -368,16 +414,42 @@ public partial class LocalPlayer : Node2D
 	/// A barra de vida tambem sobe, senao ela ficaria plantada no chao longe do dono.
 	/// ===================================================================================
 	/// </summary>
+	/// <summary>
+	/// PERSEGUE a altura do servidor, por quadro. Ver <see cref="_altitudeNaTela"/>.
+	///
+	/// A sonda conta so os quadros em que ela DEVERIA estar andando (ainda ha distancia a cobrir) --
+	/// contar os quadros parados no teto acusaria como defeito exatamente o comportamento certo.
+	/// </summary>
+	private void SeguirAltura(double delta)
+	{
+		float falta = _altitude - _altitudeNaTela;
+		bool deveriaAndar = MathF.Abs(falta) > 0.5f;
+
+		if (deveriaAndar)
+		{
+			QuadrosDeAltura++;
+			float antes = _altitudeNaTela;
+			_altitudeNaTela += falta * Mathf.Min(1f, (float)delta * PerseguicaoDaAltura);
+			if (Mathf.IsEqualApprox(antes, _altitudeNaTela)) QuadrosParadosDeAltura++;
+		}
+		else
+		{
+			// COLADO: crava. Perseguicao exponencial nunca CHEGA, e um rabo de meio pixel no pouso
+			// deixaria a sombra e a nevoa vivas depois de o corpo ja estar no chao.
+			_altitudeNaTela = _altitude;
+		}
+	}
+
 	private void AplicarAltura()
 	{
-		if (Mathf.IsEqualApprox(_altitude, _altitudeDesenhada)) return;
-		_altitudeDesenhada = _altitude;
+		if (Mathf.IsEqualApprox(_altitudeNaTela, _altitudeDesenhada)) return;
+		_altitudeDesenhada = _altitudeNaTela;
 
-		var deslocamento = new Vector2(0, -_altitude * Voo.EscalaNaTela);
+		var deslocamento = new Vector2(0, -_altitudeNaTela * Voo.EscalaNaTela);
 		_visual.Position = deslocamento;
 		if (GetNodeOrNull<Aura>("Aura") is { } aura) aura.Position = deslocamento;
 		if (GetNodeOrNull<HealthBar>("Vida") is { } vida) vida.Position = deslocamento;
-		if (_sombra != null) _sombra.Altura = _altitude;
+		if (_sombra != null) _sombra.Altura = _altitudeNaTela;
 
 		// ============================ A CAMERA VAI JUNTO, E TEM QUE IR ============================
 		// A camera e FILHA deste no, e o no fica na posicao do CHAO -- e o corpo e desenhado ate

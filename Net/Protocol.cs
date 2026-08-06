@@ -73,6 +73,21 @@ public static class Protocol
         /// e quem sorteou. Um cliente que mandasse "acertei" venceria todo embate.
         /// </summary>
         ClashTecla = 22,
+
+        /// <summary>
+        /// APAGAR O PERSONAGEM DE UM SLOT: numero do slot + o NOME digitado a mao.
+        ///
+        /// ============================ POR QUE O NOME VIAJA JUNTO ============================
+        /// Um "tem certeza? [sim]" nao protege nada: quem esta com o dedo no botao clica nos dois.
+        /// Digitar o nome do personagem obriga a LER qual deles vai morrer -- e e a unica defesa
+        /// que funciona contra apagar o slot errado, que aqui e uma perda que nao volta.
+        ///
+        /// A conferencia e do SERVIDOR e nao da tela. O cliente pode ate mostrar o campo, mas quem
+        /// decide se o nome bate e quem tem o save na mao; senao bastaria mandar o pacote na mao
+        /// pra pular a trava inteira.
+        /// ===================================================================================
+        /// </summary>
+        DeleteChar = 23,
     }
 
     /// <summary>

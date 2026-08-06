@@ -291,6 +291,7 @@ public partial class RoboDeVoo : Node
 					"VOANDO a mesma parede NAO barra: o corpo chegou a ficar DENTRO de celula bloqueada");
 
 				// ---------- sobe ate o teto ----------
+				LocalPlayer.QuadrosDeAltura = LocalPlayer.QuadrosParadosDeAltura = 0;
 				Godot.Input.ActionPress("subir");
 				break;
 			}
@@ -326,6 +327,17 @@ public partial class RoboDeVoo : Node
 				Fotografar("user://voo-no-teto.png");
 
 				// ---------- a tela respondeu a altura? ----------
+				// ============================ A ALTURA ANDA POR QUADRO? ============================
+				// Ela chega no SNAPSHOT (30 Hz) e a tela roda a 60+. Aplicada crua, metade dos quadros
+				// nao mexeria nada -- e como a CAMERA segue a altura, o mundo inteiro trepidaria na
+				// subida. E a mesma familia do que o arremesso ja resolvia fatiando o passo do DM.
+				// ==================================================================================
+				double parados = LocalPlayer.QuadrosDeAltura == 0 ? 0
+					: 100.0 * LocalPlayer.QuadrosParadosDeAltura / LocalPlayer.QuadrosDeAltura;
+				Conferir(parados < 15,
+					$"a altura anda TODO QUADRO na subida: so {parados:0}% dos "
+					+ $"{LocalPlayer.QuadrosDeAltura} quadros ficaram parados");
+
 				Conferir(mundo.NevoaDeTeste > 0.3f,
 					$"a nevoa de altitude subiu com o corpo ({mundo.NevoaDeTeste:0.00} de 1,00)");
 				// O ZOOM TEM PISO, e o teste tem que provar o PISO e nao o afastamento: o dono
