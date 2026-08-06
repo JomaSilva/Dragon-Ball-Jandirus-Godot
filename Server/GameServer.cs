@@ -195,6 +195,18 @@ public sealed class ServerPlayer
 	public double ForcaDoVoo;
 
 	/// <summary>
+	/// COM QUANTOS TIQUES O ARREMESSO COMECOU -- e so isso que diz a distancia TOTAL.
+	///
+	/// O rastro de terra do DU so aparece em arremesso de 8 tiles ou mais (`death.dm:218`), e essa
+	/// e uma pergunta sobre o voo INTEIRO: no meio dele, `TiquesDeVoo` ja e o que FALTA, e um voo
+	/// curto no comeco e indistinguivel de um voo longo no fim.
+	/// </summary>
+	public int TiquesIniciaisDoVoo;
+
+	/// <summary>O corpo ja passou por aqui neste arremesso? Evita dois sulcos na mesma celula.</summary>
+	public Vec2 UltimoSulco;
+
+	/// <summary>
 	/// QUANTO DO TIQUE DO ORIGINAL ja foi andado, de 0 a 1.
 	///
 	/// O voo do DM anda em passos de 0,1 s valendo dois tiles cada. Andar isso de uma vez fazia o

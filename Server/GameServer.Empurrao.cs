@@ -57,9 +57,15 @@ public sealed partial class GameServer
 		{
 			case EfeitoDeImpacto.Arremesso:
 				d.TiquesDeVoo = tiques;
+				d.TiquesIniciaisDoVoo = tiques;
 				d.RumoDoVoo = MeleeArea.Frente(a.Facing);
 				d.ForcaDoVoo = a.Ficha.expressedBP;
 				d.VooNoTique = 0;
+				d.UltimoSulco = default;
+				// A PONTA DE COMECO sai aqui, e nao no primeiro tique: no DU o "begin" e carimbado
+				// quando `knock_dist == original_distance-1`, ou seja no primeiro passo, com o corpo
+				// ainda na origem.
+				MarcarSulco(d, Protocol.Decal.SulcoPonta);
 
 				// A FICHA SAI AGORA, e nao no proximo tique de 5 Hz.
 				//
@@ -177,6 +183,19 @@ public sealed partial class GameServer
 
 			pl.Pos = destino;
 
+			// ============================ UM SULCO POR TILE, E NAO POR TIQUE ============================
+			// A primeira versao carimbava no fim de cada tique do DM. So que o tique do DM anda DOIS
+			// tiles (`Empurrao.TilesPorTique`), e o DU carimba dentro do laco que anda UM
+			// (`step(src,knock_dir,32)` -- death.dm:216-224). Resultado: uma marca a cada 64 px, com
+			// um buraco de um tile entre elas. O dono fotografou: "o rastro ta vindo picotado e n
+			// continuo".
+			//
+			// Aqui a chamada e por FATIA (~21 px) e quem faz a conta certa e a guarda de celula que
+			// ja existia dentro do `MarcarSulco`: ela deixa passar a primeira fatia de cada celula e
+			// recusa as seguintes. Uma marca por tile, sem buraco e sem sobreposicao.
+			// ==========================================================================================
+			if (!parou && pl.TiquesDeVoo > 0) MarcarSulco(pl, Protocol.Decal.Sulco);
+
 			// O RELOGIO DO DM SO VIRA QUANDO AS FATIAS FECHAM UM TIQUE INTEIRO. `TiquesDeVoo` e a
 			// moeda do original -- e dela que sai o dano do baque (`Espalhar`) e a duracao do voo --
 			// entao ela continua contando de 0,1 em 0,1 s, por mais que o corpo ande tres vezes
@@ -185,12 +204,35 @@ public sealed partial class GameServer
 			else
 			{
 				pl.VooNoTique += fatia;
-				if (pl.VooNoTique >= 1 - 1e-6) { pl.VooNoTique -= 1; pl.TiquesDeVoo--; }
+				if (pl.VooNoTique >= 1 - 1e-6)
+				{
+					pl.VooNoTique -= 1;
+					pl.TiquesDeVoo--;
+				}
 			}
 
 			// A OUTRA BORDA: o pouso. Mesma razao da decolagem -- sem isto o corpo ficava ate 200 ms
 			// torto e sem aceitar comando DEPOIS de ja ter parado.
 			bool pousou = pl.TiquesDeVoo <= 0;
+
+			// ============================ O FIM DO ARRASTO ============================
+			// No DU sao duas coisas no mesmo instante: a ULTIMA marca do sulco vira "begin" de novo
+			// (`knock_dist==0`), e onde o corpo para nasce uma CRATERA (`obj/Crater`, que cresce de
+			// 1% ate o tamanho cheio). A fumaca nao vem do DU -- e o pedido do dono, e nasce junto
+			// com a cratera porque e ela que a levanta.
+			//
+			// Vale pros DOIS fins: parar numa parede e chegar ao fim da distancia. E o que o dono
+			// pediu -- "no final (ou se alguma parede parasse o jogador/npc voando)".
+			// ==========================================================================
+			if (pousou)
+			{
+				MarcarSulco(pl, Protocol.Decal.SulcoPonta);
+				if (RastroVale(pl))
+				{
+					MandarDecalque(pl.Zone, Protocol.Decal.Cratera, pl.Pos, pl.Facing);
+					MandarDecalque(pl.Zone, Protocol.Decal.Fumaca, pl.Pos, pl.Facing);
+				}
+			}
 
 			// O CLIENTE PRECISA SABER ONDE ELE ESTA, e com a sequencia carimbada -- senao os pacotes
 			// que ele ja mandou (da posicao antiga) seriam tratados como cliente errado e puxariam o
@@ -206,6 +248,76 @@ public sealed partial class GameServer
 			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 			if (pousou) MandarFicha(pl);   // a posicao final vai ANTES do "acabou"
 		}
+	}
+
+	/// <summary>
+	/// ESTE ARREMESSO DEIXA RASTRO NO CHAO?
+	///
+	/// ============================ AS REGRAS SAO DO DU, MENOS UMA ============================
+	/// `death.dm:218` pede tres coisas: a flag `dirt_trail`, distancia total >= 8 tiles, e direcao
+	/// CARDEAL.
+	///
+	/// A terceira NAO VIRA CODIGO AQUI, e isso e de proposito: `RumoDoVoo` sai de
+	/// `MeleeArea.Frente(a.Facing)`, e `Facing` so tem quatro valores (as quatro do BYOND). Um
+	/// `if` de direcao cardeal seria uma guarda que nunca falha -- codigo morto vestido de regra.
+	///
+	/// A `dirt_trail` do DU e um parametro por chamada (o `Stat Loop` passa 0 num caso); aqui ela
+	/// virou "esta no CHAO", que e o que o dono pediu -- quem esta voando nao ara a terra.
+	/// ======================================================================================
+	/// </summary>
+	private static bool RastroVale(ServerPlayer pl)
+		=> pl.Altitude <= 0f
+		   && pl.TiquesIniciaisDoVoo * Empurrao.TilesPorTique >= TilesParaDeixarRastro;
+
+	/// <summary>Distancia minima do arremesso pra ele arar o chao. `death.dm:218` -- oito tiles.</summary>
+	private const int TilesParaDeixarRastro = 8;
+
+	/// <summary>
+	/// CARIMBA UM SULCO onde o corpo esta, se o arremesso merecer rastro.
+	///
+	/// A guarda de celula repetida existe porque as tres fatias de um tique podem cair na mesma
+	/// celula quando o corpo bate em algo e anda pouco -- e duas marcas sobrepostas leem como uma
+	/// mancha, nao como pegada.
+	/// </summary>
+	private void MarcarSulco(ServerPlayer pl, Protocol.Decal tipo)
+	{
+		if (!RastroVale(pl)) return;
+
+		// ============================ A CELULA E A DOS PES, NAO A DO CENTRO ============================
+		// `pl.Pos` e o CENTRO do corpo; quem encosta no chao sao os pes, 8 px abaixo
+		// (`MoveRules.FeetOffsetY` -- a mesma ancora que a colisao e a sombra de voo ja usam).
+		//
+		// Escolher a celula pelo centro punha o sulco uma fileira acima do arrasto de verdade, e como
+		// a marca e alinhada a grade esse erro nao se dissolve: ele aparece como um rastro deslocado
+		// do personagem. O dono viu: "as vezes fica um pouco torto com a posiçao do personagem".
+		//
+		// So a ESCOLHA DA CELULA muda -- o alinhamento a grade (que foi o que fechou os buracos)
+		// continua igual.
+		// ==============================================================================================
+		Vec2 pes = pl.Pos + new Vec2(0, MoveRules.FeetOffsetY);
+		var celula = new Vec2(MathF.Floor(pes.X / ZoneCollision.TileSize),
+							  MathF.Floor(pes.Y / ZoneCollision.TileSize));
+		if (celula.X == pl.UltimoSulco.X && celula.Y == pl.UltimoSulco.Y) return;
+		pl.UltimoSulco = celula;
+
+		// ============================ O SULCO VAI NO CENTRO DA CELULA ============================
+		// Nao na posicao do corpo. O DU carimba no TURF (`var/turf/t=loc; TimedOverlay(t,600,i)` --
+		// death.dm:223), ou seja alinhado a grade; carimbar no pixel exato onde o corpo estava faz a
+		// distancia entre duas marcas VARIAR.
+		//
+		// A conta: o passo do servidor e ~21 px e a celula tem 32. O corpo entra em cada celula com
+		// uma sobra diferente (0, 10, 20, 30...), entao duas marcas consecutivas ficam de 22 a 42 px
+		// uma da outra -- e o sprite tem 32. Onde a sobra e grande, aparece o buraco. Era o "ta
+		// melhor mas n ta continuo" do dono.
+		//
+		// Alinhado a celula sao 32 px exatos entre marcas de 32 px: encostam, sem vao e sem
+		// sobreposicao.
+		// ========================================================================================
+		float t = ZoneCollision.TileSize;
+		var noCentro = new Vec2((celula.X + 0.5f) * t, (celula.Y + 0.5f) * t);
+
+		// A DIRECAO E A DO ARREMESSO, e nao pra onde o corpo olha: o sulco e a marca do arrasto.
+		MandarDecalque(pl.Zone, tipo, noCentro, MoveRules.FacingFrom(pl.RumoDoVoo, pl.Facing));
 	}
 
 	/// <summary>

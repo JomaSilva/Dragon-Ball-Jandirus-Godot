@@ -141,6 +141,31 @@ public static class Protocol
     public enum Pose : byte { Normal = 0, Treinando = 1, Meditando = 2, Atacando = 3, Voando = 4, Nocauteado = 5 }
 
     /// <summary>
+    /// OS DECALQUES DE CHAO -- marcas que o mundo ganha e perde. Ver `Client/Decalques.cs`.
+    ///
+    /// Sao SEIS coisas diferentes num sistema so porque, do ponto de vista do desenho, elas sao a
+    /// MESMA coisa: um sprite no chao, atras dos corpos, com prazo de validade. Ter seis sistemas
+    /// paralelos daria seis tetos de efeito pra calibrar e seis lugares pra esquecer de apagar.
+    /// </summary>
+    public enum Decal : byte
+    {
+        /// <summary>`craterseries` estado "crater": o sulco do meio do arrasto.</summary>
+        Sulco = 0,
+        /// <summary>`craterseries` estado "begin": as pontas do sulco (comeco e fim).</summary>
+        SulcoPonta = 1,
+        /// <summary>`Craters` estado "small crater": a cratera do fim, que CRESCE.</summary>
+        Cratera = 2,
+        /// <summary>`Dust Cloud 2018`: a fumaca que sobe da cratera.</summary>
+        Fumaca = 3,
+        /// <summary>`Damaged Ground`: terra revirada em volta do que caiu.</summary>
+        ChaoDanificado = 4,
+        /// <summary>`KiWater` (NS/EW): a agua se afastando de quem passa por cima.</summary>
+        Agua = 5,
+        /// <summary>`Blood spray`: respingo em volta de quem esta se acabando.</summary>
+        Sangue = 6,
+    }
+
+    /// <summary>
     /// Quanto tempo a pose de soco fica no ar, quando o servidor ainda nao disse outra coisa.
     ///
     /// E so um DEFAULT de partida: a cadencia de verdade vem na ficha (<see cref="SheetState.SocoMs"/>),
@@ -295,6 +320,21 @@ public static class Protocol
         /// anunciar e a zona ficaria presa na tempestade ate o prazo vencer.
         /// </summary>
         Clima = 30,
+
+        /// <summary>
+        /// UM DECALQUE NO CHAO: tipo + onde + em que direcao. Vai pra ZONA INTEIRA.
+        ///
+        /// ============================ POR QUE ISTO VEM DO SERVIDOR ============================
+        /// A maioria dos decalques o cliente decide sozinho (chao danificado, agua, sangue) -- sao
+        /// consequencia de coisas que ele ja ve. O RASTRO DE ARREMESSO nao: ele so existe se o
+        /// arremesso todo tiver 8 tiles ou mais (regra do DU, `death.dm:218`), e a distancia TOTAL
+        /// e uma coisa que so quem lancou o corpo sabe -- o cliente ve o corpo passar e nao tem como
+        /// saber se ele vai parar no proximo tile ou dez adiante.
+        ///
+        /// E porque e da zona: quem assiste a briga tem que ver o sulco no chao, nao so quem voou.
+        /// =====================================================================================
+        /// </summary>
+        Decalque = 33,
 
         /// <summary>
         /// CAIU UM RAIO, e ele caiu NUM LUGAR: posicao no mundo + a semente do desenho.

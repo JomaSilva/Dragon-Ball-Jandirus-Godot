@@ -181,6 +181,14 @@ public partial class RemotePlayer : Node2D
 	/// </summary>
 	private float _alturaDoPacote;
 
+	/// <summary>A altura DESENHADA deste corpo, a vida e pra onde ele olha. Lidos pelos decalques.</summary>
+	public float AlturaDeTeste => _altitude;
+	public byte VidaDeTeste { get; private set; }
+	public Facing OlharDeTeste => _facing;
+
+	/// <summary>A vida deste corpo, em porcento. Vem do snapshot -- ver `World.AoReceberSnapshot`.</summary>
+	public void GuardarVida(byte v) => VidaDeTeste = v;
+
 	/// <summary>A mesma taxa do corpo local -- ver `LocalPlayer.PerseguicaoDaAltura`.</summary>
 	private const float PerseguicaoDaAltura = 25f;
 

@@ -59,7 +59,24 @@ public partial class PoeiraDeEstrago : Node2D
 
 	private static readonly List<PoeiraDeEstrago> _vivos = [];
 
-	private double _resta = Duracao;
+	/// <summary>
+	/// QUANTO FALTA ATE O NODE PODER MORRER. Calculado a partir dos EMISSORES, e nao escrito a mao.
+	///
+	/// ============================ O CORTE SECO ============================
+	/// Era `Duracao` (1,9 s), o mesmo numero do `Lifetime` da nuvem -- e isso esta errado por uma
+	/// razao que o `Explosiveness` esconde: com `OneShot` e `Explosiveness = 0,6`, a nuvem nao sai
+	/// toda no instante zero. Ela EMITE ao longo dos primeiros `Lifetime x (1 - Explosiveness)` =
+	/// 0,76 s, e a ultima particula so terminaria a vida dela em 0,76 + 1,9 = 2,66 s.
+	///
+	/// O node se apagava aos 1,9 s. Tudo que ainda estava no ar sumia no mesmo quadro -- o "corte
+	/// seco" que o dono viu. Nao era a curva de dissipacao: essa sempre esteve certa, cada particula
+	/// desbota direitinho. Era o palco sendo retirado com os atores em cena.
+	///
+	/// DERIVADO E NAO CONSTANTE de proposito: mexer no `Lifetime` ou no `Explosiveness` de qualquer
+	/// emissor volta a criar o corte se o numero for escrito a mao. Aqui ele se recalcula sozinho.
+	/// =====================================================================
+	/// </summary>
+	private double _resta;
 
 	/// <summary>A cor padrao, quando quem chamou nao sabe de que tile a poeira saiu.</summary>
 	private static readonly Color TerraPadrao = new(0.46f, 0.36f, 0.26f);
@@ -234,6 +251,9 @@ public partial class PoeiraDeEstrago : Node2D
 				TurbulenceInfluenceMax = 0.25f,
 			},
 		});
+
+		// DEPOIS DE TODOS OS EMISSORES: quem decide quando o node morre sao eles. Ver `CalcularFim`.
+		CalcularFim();
 	}
 
 	// =====================================================================
@@ -351,6 +371,35 @@ public partial class PoeiraDeEstrago : Node2D
 		g.SetColor(1, new Color(1, 1, 1, 0));
 		return new GradientTexture1D { Gradient = g, Width = 64 };
 	}
+
+	/// <summary>
+	/// O INSTANTE EM QUE A ULTIMA PARTICULA DE TODOS OS EMISSORES TERMINA.
+	///
+	/// Pra um `GpuParticles2D` em `OneShot`: a emissao dura `Lifetime x (1 - Explosiveness)` e cada
+	/// particula vive `Lifetime`, entao a ultima acaba em `Lifetime x (2 - Explosiveness)`. Com
+	/// `Explosiveness = 1` (tudo de uma vez) isso da o proprio `Lifetime`, como deve ser.
+	/// </summary>
+	private void CalcularFim()
+	{
+		double fim = 0;
+		foreach (Node n in GetChildren())
+			if (n is GpuParticles2D g)
+				fim = Math.Max(fim, g.Lifetime * (2 - g.Explosiveness));
+
+		// A FOLGA cobre o quadro em que a ultima particula ainda esta sendo desenhada com alfa
+		// baixinho. Sem ela o corte volta, so que pequeno demais pra alguem descrever e grande o
+		// bastante pra incomodar.
+		_resta = fim + 0.1;
+
+		// SONDAS DA BANCADA: o que a ultima particula PRECISA e o que o node CONCEDE. Ver
+		// `RoboDePoeira` -- o teste compara os dois em vez de cronometrar, que e o unico jeito de
+		// ele reprovar o corte seco sem depender de o relogio cair no instante certo.
+		FimNecessarioDeTeste = fim;
+		FimConcedidoDeTeste = _resta;
+	}
+
+	/// <summary>Quando a ultima particula termina, e ate quando o node vive. So pras bancadas.</summary>
+	public static double FimNecessarioDeTeste, FimConcedidoDeTeste;
 
 	public override void _Process(double delta)
 	{

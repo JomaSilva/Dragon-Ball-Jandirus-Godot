@@ -19,6 +19,23 @@ namespace Jandirus.Server;
 /// </summary>
 public partial class GameServer
 {
+	/// <summary>
+	/// UM DECALQUE PRA ZONA INTEIRA -- o unico caminho de servidor pro <c>Client/Decalques.cs</c>.
+	///
+	/// Vai pra todo mundo da zona, e nao so pro dono: uma marca no chao e cenario, e cenario que so
+	/// uma pessoa ve nao e cenario. Canal confiavel, porque um decalque perdido nao volta -- ao
+	/// contrario da posicao, que o proximo snapshot conserta sozinho.
+	/// </summary>
+	private void MandarDecalque(ZoneKey zona, Protocol.Decal tipo, Vec2 onde, Facing dir)
+	{
+		var w = Protocol.Begin(Protocol.S2C.Decalque);
+		w.Put((byte)tipo);
+		w.PutVec(onde);
+		w.Put((byte)dir);
+		foreach (ServerPlayer o in ZoneList(zona.Hash))
+			o.Peer?.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
+	}
+
 	/// <summary>A skill que destrava tudo isto.</summary>
 	private const string SkillDoVoo = "/datum/skill/flying";
 

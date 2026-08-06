@@ -69,6 +69,20 @@ public partial class RoboDePoeira : Node
 					+ $" contra teto {PoeiraDeEstrago.MaxVivos}");
 				Conferir(_pico <= PoeiraDeEstrago.MaxVivos,
 					$"e o teto SEGUROU: nunca passou de {_pico} efeito(s) vivos");
+
+				// ============================ O NODE SOBREVIVE A PROPRIA FUMACA ============================
+				// O emissor da nuvem e `OneShot` com `Explosiveness = 0,6`: ele EMITE ao longo dos
+				// primeiros `Lifetime x 0,4` e cada particula vive mais um `Lifetime` -- entao a ultima
+				// so termina em `Lifetime x 1,6`. O node se apagava no `Lifetime` puro e levava junto
+				// tudo que ainda estava no ar. Era o "corte seco" que o dono viu.
+				//
+				// A conferencia COMPARA os dois numeros em vez de cronometrar: cronometrar dependeria
+				// de o passo da bancada cair entre 1,9 s e 2,66 s, e um teste que so reprova quando o
+				// relogio ajuda nao reprova nada.
+				// ==========================================================================================
+				Conferir(PoeiraDeEstrago.FimConcedidoDeTeste >= PoeiraDeEstrago.FimNecessarioDeTeste,
+					$"o node vive ate {PoeiraDeEstrago.FimConcedidoDeTeste:0.00}s e a ultima particula"
+					+ $" termina em {PoeiraDeEstrago.FimNecessarioDeTeste:0.00}s -- sem corte seco");
 				break;
 
 			case 2:

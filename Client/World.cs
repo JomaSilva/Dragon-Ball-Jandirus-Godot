@@ -154,6 +154,7 @@ public partial class World : Node2D
 
 		_veu = new Visao { Name = "Visao" };
 		AddChild(_veu);
+		MontarDecalques();
 
 		_ceu = new CeuDoEspaco { Name = "Ceu", Visible = false };
 		AddChild(_ceu);
@@ -550,6 +551,7 @@ public partial class World : Node2D
 			_veu.Mapa = null;
 			_veu.Colisao = null;
 			_veu.Camadas = [];
+			_decalques?.Limpar();   // marca da Terra nao vai pra Namek
 			if (_local != null) _local.Mapa = null;
 			_zonaDoAtual = zona;   // ver o comentario no ramo pre-feito
 			DesenharPlanetas();
@@ -1019,6 +1021,21 @@ public partial class World : Node2D
 	/// <param name="poeira">Falso ao REAPLICAR o que ja tinha caido: o estrago e velho, o efeito nao.</param>
 	private void AplicarEstrago(int cx, int cy, bool poeira)
 	{
+		// ============================ A TERRA REVIRADA VALE SEMPRE ============================
+		// Eu tinha posto `if (poeira)` aqui, copiando a regra da POEIRA -- e estava errado. Poeira e
+		// um ACONTECIMENTO: ela so faz sentido pra quem viu a parede cair, e por isso nao sai na
+		// lista do que ja estava caido quando o jogador chegou. Terra revirada e o contrario: e
+		// ESTADO do mapa, tao permanente quanto o buraco que ela cerca.
+		//
+		// Com o `if`, quem entrasse no planeta depois via os buracos sem marca nenhuma em volta, e
+		// dois jogadores no mesmo lugar viam chaos diferentes. O dono notou: "o damaged ground n e
+		// sincronizado com jogadores q entraram dps no planeta".
+		//
+		// SINCRONIZA SEM MANDAR UM BYTE porque o sorteio dos vizinhos e funcao pura da celula (ver
+		// `Embaralhar`): quem chega depois recalcula exatamente as mesmas marcas.
+		// =====================================================================================
+		ChaoDanificadoEmVolta(cx, cy);
+
 		_colisao?.Abrir(cx, cy);
 		_veu.Mapa?.Abrir(cx, cy);
 		// A CELULA DEIXOU DE CEGAR -- e o leque de visao precisa saber AGORA. Ele so se refaz
@@ -1266,6 +1283,7 @@ public partial class World : Node2D
 				Jandirus.Core.World.Voo.Andar(_local?.Altitude ?? 0f),
 				Jandirus.Core.World.Voo.Andar(e.Altitude));
 			if (r.GetNodeOrNull<HealthBar>("Vida") is { } barra) barra.Vida = e.Vida / 100f;
+			r.GuardarVida(e.Vida);   // os decalques de sangue perguntam por ela
 
 			// A AURA DE POWER-UP DO OUTRO. Vem no snapshot justamente pra isto (ver
 			// EntityState.Carregando): quem esta lutando precisa ver o adversario juntando poder.
@@ -1568,6 +1586,7 @@ public partial class World : Node2D
 		}
 
 		EfeitosDaAltura();
+		TickDosDecalques(delta);
 
 		if (_lutaAte <= 0) return;
 		_lutaAte -= delta;

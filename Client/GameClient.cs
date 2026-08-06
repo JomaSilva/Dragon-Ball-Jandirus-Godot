@@ -259,6 +259,9 @@ public partial class GameClient : Node
 	/// <summary>Alguem falou e eu estou no alcance: canal, quem falou, o que foi dito.</summary>
 	public event Action<Protocol.Fala, string, string>? Falou;
 
+	/// <summary>O servidor plantou um decalque no chao da zona. Ver `Client/Decalques.cs`.</summary>
+	public event Action<Protocol.Decal, Vec2, Facing>? DecalqueCaiu;
+
 	/// <summary>
 	/// O QUE EU APRENDI e quantos marcos tenho. Chega quando muda, como o corpo e os atributos.
 	/// </summary>
@@ -866,6 +869,17 @@ public partial class GameClient : Node
 				TempoDoMundo = reader.GetDouble();
 				TempoChegou = true;
 				HoraDoMundo?.Invoke(TempoDoMundo);
+				break;
+			}
+
+			// UM DECALQUE NO CHAO, vindo do servidor. Hoje so o rastro de arremesso vem por aqui --
+			// os outros o cliente decide sozinho. Ver `Client/Decalques.cs`.
+			case Protocol.S2C.Decalque:
+			{
+				var tipo = (Protocol.Decal)reader.GetByte();
+				Vec2 onde = reader.GetVec();
+				var dir = (Facing)reader.GetByte();
+				DecalqueCaiu?.Invoke(tipo, onde, dir);
 				break;
 			}
 

@@ -435,6 +435,11 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpoeira") >= 0)
 			AddChild(new RoboDePoeira { Name = "RoboDePoeira" });
 
+		// --diagdecalque: bancada dos DECALQUES DE CHAO. Vem com `--quebrarteste N` no servidor, que
+		// derruba cenario -- e e a queda que pinta a terra revirada em volta.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdecalque") >= 0)
+			AddChild(new RoboDeDecalque { Name = "RoboDeDecalque" });
+
 		// --diagvoo: bancada do VOO. Vem com `--vooteste` no servidor, que da a skill de voo (sem
 		// ela nao ha o que medir) e tira o freeflight do admin (sem isso o custo mediria zero).
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvoo") >= 0)
