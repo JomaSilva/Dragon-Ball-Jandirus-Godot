@@ -10,7 +10,7 @@
         "projectUniqueName": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Core\\Jandirus.Core.csproj",
         "projectName": "Jandirus.Core",
         "projectPath": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Core\\Jandirus.Core.csproj",
-        "packagesPath": "C:\\Users\\Joao\\.nuget\\packages",
+        "packagesPath": "C:\\Users\\Joao\\.nuget\\packages\\",
         "outputPath": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Core\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
@@ -86,7 +86,7 @@
         "projectUniqueName": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Tools\\AssetPipeline\\AssetPipeline.csproj",
         "projectName": "AssetPipeline",
         "projectPath": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Tools\\AssetPipeline\\AssetPipeline.csproj",
-        "packagesPath": "C:\\Users\\Joao\\.nuget\\packages",
+        "packagesPath": "C:\\Users\\Joao\\.nuget\\packages\\",
         "outputPath": "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Tools\\AssetPipeline\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [

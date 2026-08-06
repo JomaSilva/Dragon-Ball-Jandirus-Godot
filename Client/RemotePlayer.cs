@@ -85,9 +85,10 @@ public partial class RemotePlayer : Node2D
 	/// o que fazia o corpo engasgar -- deixou de participar do desenho. Ver o cabecalho da classe.
 	/// </summary>
 	public void Receive(Vec2 pos, Facing facing, bool moving, bool deitado, Jandirus.Net.Protocol.Pose pose,
-						bool correndo = false, bool rabo = false)
+						bool correndo = false, bool rabo = false, float altitude = 0f)
 	{
 		_visual.MostrarRabo(rabo);
+		Altura(altitude);
 		var alvo = new Vector2(pos.X, pos.Y);
 		Vector2 ultima = _linha.Count > 0 ? _linha[^1].Pos : alvo;
 
@@ -145,6 +146,42 @@ public partial class RemotePlayer : Node2D
 		else _visual.GirarPara(default);
 
 		_pose = pose;
+	}
+
+	/// <summary>
+	/// A ALTURA DE QUEM EU ESTOU VENDO. Mesma regra do corpo local (ver `LocalPlayer.AplicarAltura`):
+	/// quem sobe e o DESENHO, nunca o node -- a posicao do node e onde o corpo esta pro alcance do
+	/// soco, pro Y-sort e pra faisca de impacto. Um corpo desenhado 160 px acima de onde ele esta ja
+	/// custou caro neste projeto (a queixa de "a hitbox pega MUITO longe"); repetir isso pelo lado do
+	/// desenho seria o mesmo defeito com outra roupa.
+	/// </summary>
+	private void Altura(float altitude)
+	{
+		if (Mathf.IsEqualApprox(_altitude, altitude)) return;
+		_altitude = altitude;
+
+		var deslocamento = new Vector2(0, -altitude * Jandirus.Core.World.Voo.EscalaNaTela);
+		_visual.Position = deslocamento;
+		if (GetNodeOrNull<Aura>("Aura") is { } aura) aura.Position = deslocamento;
+		if (GetNodeOrNull<HealthBar>("Vida") is { } vida) vida.Position = deslocamento;
+
+		_sombra ??= CriarSombra();
+		_sombra.Altura = altitude;
+	}
+
+	private float _altitude;
+	private SombraDeVoo? _sombra;
+
+	/// <summary>
+	/// A sombra so nasce QUANDO ALGUEM VOA. Corpo remoto e o que mais se instancia no jogo (todo
+	/// mundo que entra no campo de visao vira um), e a maioria nunca sai do chao -- dar um node de
+	/// desenho a mais pra cada um seria pagar por todos o preco de poucos.
+	/// </summary>
+	private SombraDeVoo CriarSombra()
+	{
+		var s = new SombraDeVoo { Name = "SombraDeVoo" };
+		AddChild(s);
+		return s;
 	}
 
 	public override void _Process(double delta)

@@ -142,6 +142,17 @@ public static class Protocol
     public const byte InputCorrendo = 0x40;
     public const byte InputAndando = 0x80;
 
+    /// <summary>
+    /// SUBIR e DESCER voando -- dois dos quatro bits que sobravam neste byte.
+    ///
+    /// Vem no INPUT e nao pelo canal de habilidade porque altitude e continua: e "estou segurando
+    /// espaco agora", igual a "estou andando", e nao um comando que acontece uma vez. Mandar por
+    /// `Habilidade` obrigaria a inventar um "parei de subir" e a torcer pra ele nao se perder --
+    /// aqui a ausencia do bit JA e o parar.
+    /// </summary>
+    public const byte InputSubir = 0x04;
+    public const byte InputDescer = 0x08;
+
     /// <summary>Os golpes de melee. O `tipo` da conta de dano/cadencia sai daqui.</summary>
     public enum Golpe : byte { Leve = 0, Pesado = 1 }
 
@@ -968,6 +979,15 @@ public struct EntityState
     /// <summary>Correndo de verdade (concedido pelo servidor). Ver <see cref="BitCorrendo"/>.</summary>
     public bool Correndo;
 
+    /// <summary>Este corpo esta VOANDO. Ver <see cref="BitVoando"/>.</summary>
+    public bool Voando;
+
+    /// <summary>
+    /// A que altura, em pixels (0 = chao). So chega quando <see cref="Voando"/> -- ver
+    /// <see cref="BitVoando"/>.
+    /// </summary>
+    public float Altitude;
+
     private const byte BitCarregando = 0x01;
     private const byte BitSobrecarregado = 0x02;
 
@@ -1003,6 +1023,16 @@ public struct EntityState
     /// </summary>
     private const byte BitCorrendo = 0x08;
 
+    /// <summary>
+    /// ESTE CORPO ESTA VOANDO -- e o portao do byte de altitude.
+    ///
+    /// A altura NAO vai sempre. Ela so interessa a quem esta no ar, e quem esta no ar e a minoria
+    /// em qualquer instante: cobrar um byte por corpo por snapshot pra dizer "zero" a vida inteira
+    /// seria pagar por todo mundo o preco de poucos. Com o bit, quem anda no chao continua custando
+    /// exatamente o que custava, e o byte extra so aparece quando ha altura pra contar.
+    /// </summary>
+    private const byte BitVoando = 0x10;
+
     public void Write(NetDataWriter w)
     {
         w.Put(Id);
@@ -1012,8 +1042,10 @@ public struct EntityState
                    | (Rabo ? 0x20 : 0x00) | (Oculto ? 0x40 : 0x00)
                    | (Moving ? 0x80 : 0x00)));
         w.Put((byte)((Carregando ? BitCarregando : 0) | (Sobrecarregado ? BitSobrecarregado : 0)
-                   | (Deitado ? BitDeitado : 0) | (Correndo ? BitCorrendo : 0)));
+                   | (Deitado ? BitDeitado : 0) | (Correndo ? BitCorrendo : 0)
+                   | (Voando ? BitVoando : 0)));
         w.Put(Vida);
+        if (Voando) w.Put(Jandirus.Core.World.Voo.ParaByte(Altitude));
     }
 
     public static EntityState Read(NetDataReader r)
@@ -1030,7 +1062,9 @@ public struct EntityState
         e.Sobrecarregado = (flags2 & BitSobrecarregado) != 0;
         e.Deitado = (flags2 & BitDeitado) != 0;
         e.Correndo = (flags2 & BitCorrendo) != 0;
+        e.Voando = (flags2 & BitVoando) != 0;
         e.Vida = r.GetByte();
+        if (e.Voando) e.Altitude = Jandirus.Core.World.Voo.DeByte(r.GetByte());
         return e;
     }
 }

@@ -22,7 +22,14 @@ public sealed class DmiState
 /// </summary>
 public static class DmiFile
 {
-    public sealed record Result(int SheetWidth, int SheetHeight, int IconWidth, int IconHeight, List<DmiState> States);
+    /// <param name="SemDescricao">
+    /// O arquivo NAO trazia o chunk "Description" -- a folha virou um icone estatico por falta de
+    /// informacao. Isto e um campo e nao um palpite de quem le: um turf comum (`state = ""`, 1 dir,
+    /// 1 quadro) sai IGUALZINHO no resultado, e o relatorio contava esses como "sem metadados",
+    /// inflando o numero com arquivos perfeitamente lidos.
+    /// </param>
+    public sealed record Result(int SheetWidth, int SheetHeight, int IconWidth, int IconHeight,
+        List<DmiState> States, bool SemDescricao = false);
 
     public static Result? Read(string path)
     {
@@ -84,7 +91,7 @@ public static class DmiFile
         // sem metadados: trata a folha inteira como um unico icone estatico
         if (string.IsNullOrEmpty(desc))
             return new Result(sheetW, sheetH, sheetW, sheetH,
-                [new DmiState { Name = "", Dirs = 1, Frames = 1 }]);
+                [new DmiState { Name = "", Dirs = 1, Frames = 1 }], SemDescricao: true);
 
         var (iw, ih, states) = ParseDescription(desc!);
         if (iw <= 0 || ih <= 0) (iw, ih) = GuessIconSize(sheetW, sheetH, states);

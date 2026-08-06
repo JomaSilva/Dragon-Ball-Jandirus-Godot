@@ -51,6 +51,20 @@ public static class Habilidades
 			+ "universo -- do Outro Mundo nao se decola.",
 			() => GameClient.Instance?.SendHabilidade("decolar")));
 
+		// ============================ O VOO NAO TEM VERB, E NAO DEVE TER ============================
+		// Eu tinha posto dois botoes aqui -- "Voar" e "Velocidade de voo" -- atras da skill
+		// `/datum/skill/flying`. O dono cortou os dois:
+		//
+		//   * voar LIBERA SOZINHO em metade da maestria de Ki (que se treina MEDITANDO), e antes
+		//     disso nem deve aparecer. E tecla V, nao botao: quem chegou la ja sabe, porque o
+		//     servidor avisa no degrau.
+		//   * "velocidade de voo" nao existe -- e o SHIFT, a mesma tecla de correr no chao.
+		//
+		// Fica anotado pra ninguem "consertar" isto de volta: um verb aqui reintroduziria uma
+		// compra pra uma coisa que e consequencia de treinar, e uma marcha que se esquece ligada
+		// drenando o Ki mais caro do jogo. Ver `GameServer.Voo.cs`.
+		// ==========================================================================================
+
 		if (raca is "Namekian" or "Majin" or "BioAndroid" or "Shapeshifter")
 			Verbos.Registrar(new Verbo(
 				"Regenerar",

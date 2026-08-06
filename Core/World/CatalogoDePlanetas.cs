@@ -1,4 +1,4 @@
-namespace Jandirus.Core.World;
+﻿namespace Jandirus.Core.World;
 
 /// <summary>A ficha de um planeta: o que a cena dele carrega e o que o servidor precisa saber.</summary>
 public sealed class FichaDePlaneta
@@ -92,6 +92,25 @@ public sealed class CatalogoDePlanetas
 	private static string Apelido(string zona) => zona.Replace('_', ' ') switch
 	{
 		"Icer" => "Icer Planet",
+
+		// A AREA DO MAPA E O `switch` DO DM ESCREVEM O MESMO LUGAR DE JEITOS DIFERENTES.
+		//
+		// A Estrela Geti e o caso mais bobo e mais caro: a area do .dmm diz "Geti", o `switch` diz
+		// "Gete". Um `i` de diferenca custava 25x de gravidade.
+		//
+		// A Sala do Tempo tem nome inteiro diferente: a zona sai da area (`Hyperbolic_Time_Chamber`)
+		// e o `switch` a chama de "Hyperbolic Time Dimension" -- que e o nome da DIMENSAO, nao o da
+		// sala. Medido: as duas caiam na ficha padrao, gravidade 1.
+		"Big Geti Star" => "Big Gete Star",
+		"Hyperbolic Time Chamber" => "Hyperbolic Time Dimension",
+
+		// O ESPACO EM JOGO NAO SE CHAMA COMO O MAPA. A zona viva e `Espaco`
+		// (`Espaco.NomeDoEspaco`, criada por semente e sem arquivo); a ficha do DM se chama "Space",
+		// que e o nome do mapa z26. Sem isto, viajar rodava com gravidade 1 -- e o comentario do
+		// proprio metodo que le a ficha diz o contrario: "no espaco a gravidade e ZERO, e por isso
+		// que ninguem treina viajando".
+		"Espaco" => "Space",
+
 		var n => n,
 	};
 

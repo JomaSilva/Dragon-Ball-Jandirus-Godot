@@ -41,6 +41,19 @@ public sealed partial class Fighter
 	public double staminadeBuff = 100;
 	public bool dead, KO, IsInFight, dashing, isconcealed;
 
+	/// <summary>
+	/// `flightability`: a proficiencia de voo, 1 a 100. DIVIDE o custo de Ki de voar.
+	///
+	/// MORA NA FICHA e nao no <c>ServerPlayer</c> por um motivo so: a ficha inteira e serializada
+	/// no save (ver <c>CharacterSave.Ficha</c>), entao um numero que o jogador CONQUISTA voando
+	/// persiste de graca. Deixado no jogador vivo, ele zeraria no logout -- e a familia de defeito
+	/// de "buff persistente que morre no relog" ja custou caro neste projeto.
+	///
+	/// Comeca em 1, que no original nao e "1% de pericia": e a sentinela de quem NUNCA aprendeu
+	/// (ver <c>Voo.HabilidadeSemVoo</c>).
+	/// </summary>
+	public double flightability = 1;
+
 	// =====================================================================
 	// STATS CRUS (vem do genoma) e seus tres canais de modificacao
 	//   Mod  = MULTIPLICA (transformacoes, itens permanentes)

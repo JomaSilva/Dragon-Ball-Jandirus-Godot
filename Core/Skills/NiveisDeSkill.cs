@@ -69,6 +69,60 @@ public sealed class RegraDeNivel
 	/// </summary>
 	public bool GanhoPorTempo;
 
+	/// <summary>
+	/// EXP POR ESTADO DO CORPO: quanto esta skill ganha por tique quando a condicao vale.
+	///
+	/// ============================ ISTO ESTAVA EXTRAIDO E MORTO ============================
+	/// O `niveis.json` tem 146 blocos `exp`, cada um com `quanto` e `cond` -- lidos direto do DM.
+	/// O leitor (`RegrasDoDisco`) abria o bloco, olhava so pra `prob`, e jogava o resto fora.
+	/// Resultado: as 122 regras cuja condicao NAO e "por tempo" nunca creditaram nada.
+	///
+	/// A mais visivel e a raiz da arvore de Ki: `/datum/skill/mind/Ki_Unlocked` ganha
+	/// `KiSkillGains(2)` MEDITANDO e `KiSkillGains(2)` VOANDO (Mind.dm:81), e 1 andando por ai.
+	/// Nenhum dos tres chegava -- a skill que abre o Ki inteiro estava congelada no nivel em que
+	/// tivesse sido comprada, e nada na tela dizia isso.
+	///
+	/// Mesma familia do `canPower` e do `expbarrier`: o extrator entregou, ninguem consumiu.
+	/// =====================================================================================
+	/// </summary>
+	public sealed class GanhoPorEstado
+	{
+		/// <summary>Quanto exp por tique.</summary>
+		public double Quanto;
+
+		/// <summary>Que estado do corpo liga este ganho.</summary>
+		public Estado Quando;
+	}
+
+	/// <summary>
+	/// AS CONDICOES QUE ESTE PORT SABE AVALIAR.
+	///
+	/// O `cond` do extrator e uma EXPRESSAO do DM em texto (`savant.med`,
+	/// `savant.kiratio>1&&savant.lssj>=2`, `attackcounter&lt;savant.beamcounter`...). Escrever um
+	/// avaliador de expressoes de DM aqui seria construir um interpretador pra usar tres casos --
+	/// e um interpretador incompleto erra CALADO, que e pior que nao ter.
+	///
+	/// Entao so as condicoes reconhecidas viram regra, e o carregador CONTA as que ficaram de fora
+	/// (ver o aviso no `RegrasDoDisco`). O que nao entra continua nao creditando, exatamente como
+	/// antes -- a diferenca e que agora isso e um numero no log e nao um silencio.
+	/// </summary>
+	public enum Estado
+	{
+		/// <summary>Sem condicao: sempre.</summary>
+		Sempre,
+		/// <summary>`savant.med` -- meditando.</summary>
+		Meditando,
+		/// <summary>`savant.flight` -- no ar.</summary>
+		Voando,
+		/// <summary>`savant.train` -- treinando.</summary>
+		Treinando,
+		/// <summary>`!savant.med&amp;&amp;!savant.flight` -- nem uma coisa nem outra.</summary>
+		Ocioso,
+	}
+
+	/// <summary>Os ganhos por estado desta skill.</summary>
+	public List<GanhoPorEstado> PorEstado = [];
+
 	public Degrau[] Degraus = [];
 
 	/// <summary>Quanto exp falta pra sair de <paramref name="nivel"/> pro seguinte.</summary>
@@ -203,7 +257,17 @@ public sealed class NiveisDeSkill
 	/// ganho por tempo, e roda o `effector()` base (skill.dm:86-95). Devolve as subidas do tique
 	/// -- lista vazia (o caso normal) nao custa alocacao.
 	/// </summary>
-	public List<Subida> Efetor(Random rng, SkillCatalog cat, SkillBook livro)
+	/// <summary>
+	/// O QUE O CORPO ESTA FAZENDO neste tique -- o que decide quais ganhos por estado valem.
+	///
+	/// Um struct e nao tres parametros porque a lista vai crescer (o DM tem `currush`, `kiratio`,
+	/// contadores de golpe...), e trocar a assinatura de um metodo chamado de tres lugares toda vez
+	/// que uma condicao nova entra e como se perde chamada pelo caminho.
+	/// </summary>
+	public readonly record struct EstadoDoCorpo(bool Meditando, bool Voando, bool Treinando);
+
+	public List<Subida> Efetor(Random rng, SkillCatalog cat, SkillBook livro,
+							   EstadoDoCorpo corpo = default)
 	{
 		Sincronizar(livro);
 		List<Subida>? subidas = null;
@@ -223,6 +287,22 @@ public sealed class NiveisDeSkill
 			// acumula. Deixar o exp correr no teto faria a skill "estourar" no dia em que o
 			// maxlevel subisse.
 			if (r.GanhoPorTempo && pr.Nivel < max && rng.NextDouble() < ChanceDeGanho) pr.Exp++;
+
+			// GANHO POR ESTADO DO CORPO -- o que estava extraido e nunca creditado. Ver
+			// `RegraDeNivel.PorEstado`. Mesma trava do ganho por tempo: quem ja esta no teto nao
+			// acumula, senao a skill "estouraria" no dia em que o maxlevel subisse.
+			if (pr.Nivel < max)
+				foreach (RegraDeNivel.GanhoPorEstado g in r.PorEstado)
+					if (g.Quando switch
+						{
+							RegraDeNivel.Estado.Sempre => true,
+							RegraDeNivel.Estado.Meditando => corpo.Meditando,
+							RegraDeNivel.Estado.Voando => corpo.Voando,
+							RegraDeNivel.Estado.Treinando => corpo.Treinando,
+							RegraDeNivel.Estado.Ocioso => !corpo.Meditando && !corpo.Voando,
+							_ => false,
+						})
+						pr.Exp += g.Quanto;
 
 			// skill.dm:92-95 -- a subida em si
 			double barreira = r.BarreiraEm(pr.Nivel);

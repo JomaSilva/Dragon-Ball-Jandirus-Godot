@@ -15,9 +15,23 @@ namespace Jandirus.Core.Skills;
 /// </summary>
 public static class RegrasDoDisco
 {
+	/// <summary>
+	/// O QUE FICOU DE FORA na ultima carga -- ganhos por estado aceitos, por contador (que sao de
+	/// evento e nao deste caminho) e condicoes que este port nao sabe avaliar.
+	///
+	/// Existe porque "regra descartada em silencio" e o defeito recorrente deste projeto. Se um dia
+	/// alguem portar mais condicoes, este numero e o que diz quantas faltam.
+	/// </summary>
+	public static int GanhosPorEstado => _porEstado;
+	public static int GanhosPorContador => _porContador;
+	public static int CondicoesNaoEntendidas => _condDesconhecida;
+
+	private static int _porEstado, _porContador, _condDesconhecida;
+
 	/// <summary>Le e registra. Devolve quantas regras entraram.</summary>
 	public static int Carregar(string json)
 	{
+		_porEstado = _porContador = _condDesconhecida = 0;
 		// path -> regra em construcao. Os registros de uma mesma skill vem em sequencia, mas
 		// depender disso seria depender da ordem do extrator; um mapa nao depende.
 		var emObra = new Dictionary<string, RegraDeNivel>(StringComparer.OrdinalIgnoreCase);
@@ -50,8 +64,35 @@ public static class RegrasDoDisco
 					// SO E "POR TEMPO" QUEM SOBE SOZINHO. O extrator marca `contador` quando o
 					// exp vem de uma acao contada (golpes disparados, blasts); nesse caso quem
 					// credita e o evento, nao o relogio -- ver `NiveisDeSkill.Creditar`.
-					if (Str(bloco, "contador").Length == 0 && Num(bloco, "prob", 0) > 0)
+					bool porContador = Str(bloco, "contador").Length > 0;
+					if (!porContador && Num(bloco, "prob", 0) > 0)
+					{
 						r.GanhoPorTempo = true;
+						break;
+					}
+
+					// GANHO POR ESTADO DO CORPO. Ate aqui este bloco era ABERTO E DESCARTADO --
+					// ver `RegraDeNivel.PorEstado`. As condicoes que este port sabe avaliar viram
+					// regra; as outras sao CONTADAS e aparecem no log, em vez de sumirem.
+					if (porContador) { _porContador++; break; }
+
+					string cond = Str(bloco, "cond").Replace(" ", "");
+					RegraDeNivel.Estado? quando = cond switch
+					{
+						"" => RegraDeNivel.Estado.Sempre,
+						"savant.med" => RegraDeNivel.Estado.Meditando,
+						"savant.flight" => RegraDeNivel.Estado.Voando,
+						"savant.train" => RegraDeNivel.Estado.Treinando,
+						"!savant.med&&!savant.flight" => RegraDeNivel.Estado.Ocioso,
+						_ => null,
+					};
+
+					if (quando is not { } q) { _condDesconhecida++; break; }
+
+					double quanto = Num(bloco, "quanto", 0);
+					if (quanto <= 0) break;
+					r.PorEstado.Add(new RegraDeNivel.GanhoPorEstado { Quanto = quanto, Quando = q });
+					_porEstado++;
 					break;
 				}
 

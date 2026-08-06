@@ -155,6 +155,7 @@ public partial class GameServer
 			case "mente": EntrarNaMente(pl); break;
 			case "sairdamente": SairDaMente(pl, "voce abre os olhos."); break;
 			case "decolar": Decolar(pl); break;
+			case "voar": AlternarVoo(pl); break;
 			// AS TECNICAS DE SKILL entram pelo mesmo cano, pelo nome do verb do DM
 			// ("Solar_Flare"). Ver GameServer.Tecnicas.cs.
 			default:

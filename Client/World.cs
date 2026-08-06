@@ -371,6 +371,25 @@ public partial class World : Node2D
 				if (_local?.GetNodeOrNull<CargaVisual>("Carga") is { } som) som.Som(ligado);
 				break;
 
+			// ============================ O VOO TINHA FICADO MUDO ============================
+			// O original toca `buku.wav` ao sair do chao e `buku_land.wav` nos DOIS jeitos de
+			// descer (pousar de proposito, flying.dm:91, e cair de exausto, Stats.dm:422). Os dois
+			// arquivos ja estavam convertidos e ninguem os chamava.
+			//
+			// EU TINHA POSTO UM ZUMBIDO EM LACO por cima disso, argumentando que um estado caro e
+			// silencioso e um estado que o jogador esquece ligado. O dono cortou -- "enquanto ta
+			// voando n deveria ter som nenhum" --, e ele esta certo por dois motivos: o original
+			// tambem e mudo no ar, e um zumbido que dura minutos vira ruido, nao aviso. Quem lembra
+			// que o voo esta ligado e a barra de Ki descendo.
+			// ================================================================================
+			case "voo":
+				if (ligado && _local != null) AudioDirector.EfeitoNoLugar(_local, Trilha.Decolagem, 0.8f);
+				break;
+
+			case "pouso":
+				if (_local != null) AudioDirector.EfeitoNoLugar(_local, Trilha.Pouso, 0.8f);
+				break;
+
 			// A AURA DO POWER-UP: essa sim pede controle de ki de verdade
 			// (`canPower && stamina > 1`, o gate do Meditate.dm:181).
 			case "aura_carga":
@@ -1008,6 +1027,12 @@ public partial class World : Node2D
 		_veu.Invalidar();
 
 		var celula = new Vector2I(cx, cy);
+
+		// A COR DO QUE VAI CAIR, LIDA ANTES DE CAIR. Depois do `EraseCell` a celula esta vazia e nao
+		// ha mais de que tirar cor -- e poeira de pedra cinza saindo marrom entrega que o efeito e
+		// generico. Ver `CorDoEstrago`.
+		Color? corDoTile = poeira ? CorDoEstrago(celula) : null;
+
 		// TODAS AS CAMADAS SAEM, E O CHAO E REPOSTO.
 		//
 		// A primeira versao pulava a camada 0 ("e o chao, apagar abriria buraco") e isso estava
@@ -1030,8 +1055,99 @@ public partial class World : Node2D
 		var centro = new Vector2(cx * t + t / 2f, cy * t + t / 2f);
 		Vector2 rumo = PosicaoLocal is { } eu ? (centro - eu).Normalized() : Vector2.Zero;
 		if (!poeira) return;
-		PoeiraDeEstrago.Soltar(_atores, centro, rumo);
-		CombatFx.Impacto(_atores, centro, 1.2f, new Color(0.75f, 0.65f, 0.5f));
+		PoeiraDeEstrago.Soltar(_atores, centro, rumo, corDoTile);
+		// A FAISCA TAMBEM CLAREIA A COR DO TILE, em vez do bege fixo: e a mesma materia saltando.
+		CombatFx.Impacto(_atores, centro, 1.2f,
+			(corDoTile ?? new Color(0.55f, 0.45f, 0.34f)).Lerp(Colors.White, 0.45f));
+	}
+
+	/// <summary>
+	/// A COR MEDIA DO QUE ESTA DESENHADO NUMA CELULA -- pra poeira sair da cor do que quebrou.
+	///
+	/// ============================ POR QUE LER PIXEL, E POR QUE SO UMA VEZ ============================
+	/// Uma leitura de imagem e um retorno da GPU pra memoria: caro o bastante pra nao caber num
+	/// quadro de briga, e uma rajada derruba de tres a dez celulas de uma vez.
+	///
+	/// Mas o que se le nao e a CELULA, e o TIPO DE TILE -- e sao poucos tipos num mapa inteiro. Com
+	/// cache por `(fonte, atlas)`, o custo e uma vez por tipo por sessao e zero dali em diante; a
+	/// imagem da folha tambem fica guardada, entao dois tiles do mesmo atlas custam uma leitura so.
+	///
+	/// LE DE CIMA PRA BAIXO: a camada mais alta e a que o jogador ve, e portanto a que ele espera
+	/// que vire poeira. Um muro sobre grama tem que soltar pedra, nao capim.
+	/// ================================================================================================
+	/// </summary>
+	private Color? CorDoEstrago(Vector2I celula)
+	{
+		for (int i = _veu.Camadas.Length - 1; i >= 0; i--)
+		{
+			TileMapLayer camada = _veu.Camadas[i];
+			if (!IsInstanceValid(camada) || camada.TileSet is not { } ts) continue;
+
+			int fonte = camada.GetCellSourceId(celula);
+			if (fonte < 0) continue;                       // camada vazia aqui
+			Vector2I atlas = camada.GetCellAtlasCoords(celula);
+			if (CorDoTile(ts, fonte, atlas) is { } c) return c;
+		}
+		return null;
+	}
+
+	private readonly Dictionary<(int Fonte, Vector2I Atlas), Color?> _corPorTile = [];
+	private readonly Dictionary<int, Image?> _folhaPorFonte = [];
+
+	private Color? CorDoTile(TileSet ts, int fonte, Vector2I atlas)
+	{
+		if (_corPorTile.TryGetValue((fonte, atlas), out Color? pronta)) return pronta;
+
+		Color? achada = null;
+		try
+		{
+			if (ts.GetSource(fonte) is TileSetAtlasSource fonteAtlas && fonteAtlas.Texture != null)
+			{
+				if (!_folhaPorFonte.TryGetValue(fonte, out Image? folha))
+					_folhaPorFonte[fonte] = folha = fonteAtlas.Texture.GetImage();
+
+				if (folha != null)
+				{
+					Rect2I r = fonteAtlas.GetTileTextureRegion(atlas);
+					achada = MediaDaRegiao(folha, r);
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			// FALHA ALTO, MAS UMA VEZ SO: textura comprimida sem leitura de CPU e o caso real aqui,
+			// e insistir a cada celula derrubada seria trocar um efeito por um travamento.
+			GD.PushWarning($"[poeira] nao consegui ler a cor do tile {fonte}/{atlas}: {e.Message}");
+		}
+
+		_corPorTile[(fonte, atlas)] = achada;
+		return achada;
+	}
+
+	/// <summary>
+	/// A media dos pixels OPACOS de um recorte. Amostra de 4 em 4 px: um tile de 32 tem 64 amostras,
+	/// e a media de cor nao melhora com mais que isso.
+	///
+	/// PIXEL TRANSPARENTE FICA DE FORA. Muita arte de cenario e uma silhueta com fundo vazio, e
+	/// incluir o vazio puxaria toda cor pro preto -- a poeira de qualquer coisa sairia escura.
+	/// </summary>
+	private static Color? MediaDaRegiao(Image folha, Rect2I r)
+	{
+		double sr = 0, sg = 0, sb = 0;
+		int n = 0;
+		int x1 = Math.Min(r.Position.X + r.Size.X, folha.GetWidth());
+		int y1 = Math.Min(r.Position.Y + r.Size.Y, folha.GetHeight());
+
+		for (int y = Math.Max(r.Position.Y, 0); y < y1; y += 4)
+			for (int x = Math.Max(r.Position.X, 0); x < x1; x += 4)
+			{
+				Color p = folha.GetPixel(x, y);
+				if (p.A < 0.35f) continue;
+				sr += p.R; sg += p.G; sb += p.B;
+				n++;
+			}
+
+		return n == 0 ? null : new Color((float)(sr / n), (float)(sg / n), (float)(sb / n));
 	}
 
 	/// <summary>
@@ -1104,7 +1220,20 @@ public partial class World : Node2D
 		ulong agora = Time.GetTicksMsec();
 		foreach (EntityState e in estados)
 		{
-			if (GameClient.Instance != null && e.Id == GameClient.Instance.LocalId) continue; // eu me desenho sozinho
+			if (GameClient.Instance != null && e.Id == GameClient.Instance.LocalId)
+			{
+				// EU ME DESENHO SOZINHO -- mas nem tudo do meu corpo e meu.
+				//
+				// A posicao eu prevejo e o servidor confere; a ALTURA nao: quem sobe, desce, cobra o
+				// Ki e derruba por exaustao e o `TickDoVoo`, no servidor. O corpo local nao tinha por
+				// onde saber a propria altitude, porque este laco descartava o proprio estado inteiro
+				// -- e sem ela o cliente nao sabe nem se pode atravessar parede.
+				//
+				// Entao o pacote nao e ignorado: os campos que o servidor DECIDE sao entregues, e o
+				// resto (posicao, direcao) continua sendo previsao local.
+				_local?.ReceberAltura(e.Voando, e.Altitude);
+				continue;
+			}
 
 			if (!_remotos.TryGetValue(e.Id, out RemotePlayer? r))
 			{
@@ -1120,7 +1249,22 @@ public partial class World : Node2D
 				GD.Print($"[world] entrou no meu campo de visao: id {e.Id}");
 			}
 
-			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, e.Correndo, e.Rabo);
+			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, e.Correndo, e.Rabo, e.Altitude);
+
+			// ============================ QUEM VOA ALTO SOME DE VISTA ============================
+			// "Se a pessoa estiver voando muito alto, as pessoas que estao no chao nem conseguem ver
+			// elas -- so se voar alto tambem." Um andar de folga (ver `Voo.Enxerga`): quem paira
+			// rasante CONTINUA visivel pra quem esta no chao, e tem que continuar, porque ele pode
+			// bater neles -- levar soco de alguem invisivel seria pior que injusto, seria
+			// incompreensivel.
+			//
+			// FILTRAR AQUI E NAO NO SERVIDOR e a mesma escolha do `Oculto` (ver EntityState): o
+			// snapshot de uma zona e UM buffer compartilhado, e recortar por destinatario custaria um
+			// buffer por jogador. Fica anotado o que e: quem mexer no cliente ve quem voa alto.
+			// =====================================================================================
+			r.Visible = Jandirus.Core.World.Voo.Enxerga(
+				Jandirus.Core.World.Voo.Andar(_local?.Altitude ?? 0f),
+				Jandirus.Core.World.Voo.Andar(e.Altitude));
 			if (r.GetNodeOrNull<HealthBar>("Vida") is { } barra) barra.Vida = e.Vida / 100f;
 
 			// A AURA DE POWER-UP DO OUTRO. Vem no snapshot justamente pra isto (ver
@@ -1268,11 +1412,21 @@ public partial class World : Node2D
 			atacante.Cravar(new Vector2(h.PosAtacante.X, h.PosAtacante.Y));
 
 		var desfecho = (Jandirus.Core.Combat.Desfecho)h.Desfecho;
+		// ============================ A FAISCA NASCE NO DESENHO, NAO NO NO ============================
+		// Voando, o corpo e desenhado ate 160 px acima do no. Tirar o meio das POSICOES DOS NOS punha
+		// o clarao no chao enquanto os dois se socavam no ceu -- o mesmo defeito que o rastro de
+		// corrida tinha, e a mesma familia da queixa antiga de "a hitbox pega MUITO longe": efeito
+		// desenhado longe de onde a acao se ve.
+		//
+		// Repare que a POSICAO DE VERDADE (a que decide alcance e dano) continua sendo a do no. O que
+		// muda aqui e so onde o EFEITO aparece, e ele tem que aparecer onde os corpos estao na tela.
+		// =============================================================================================
+		Vector2 pa = Desenhado(quemBate), pv = Desenhado(quemLeva);
 		Vector2 meio = quemBate != null && quemLeva != null
-			? (quemBate.Position + quemLeva.Position) * 0.5f
-			: (quemLeva ?? quemBate)?.Position ?? Vector2.Zero;
+			? (pa + pv) * 0.5f
+			: quemLeva != null ? pv : quemBate != null ? pa : Vector2.Zero;
 		Vector2 rumo = quemBate != null && quemLeva != null
-			? (quemLeva.Position - quemBate.Position).Normalized()
+			? (pv - pa).Normalized()
 			: Vector2.Zero;
 
 		switch (desfecho)
@@ -1413,13 +1567,117 @@ public partial class World : Node2D
 				: new Vector2(Sorte.Randf() * 2 - 1, Sorte.Randf() * 2 - 1) * _tremor;
 		}
 
+		EfeitosDaAltura();
+
 		if (_lutaAte <= 0) return;
 		_lutaAte -= delta;
 		if (_lutaAte <= 0) AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Combate);
 	}
 
+	/// <summary>A nevoa de altitude. Nasce junto com o mundo e fica quieta enquanto ninguem sobe.</summary>
+	private NevoaDeAltitude? _nevoa;
+
+	/// <summary>O ultimo zoom aplicado, pra nao reescrever a camera todo quadro.</summary>
+	private int _zoomAgora;
+
+	/// <summary>Abaixo disto o personagem deixa de ser legivel na tela. Ver `EfeitosDaAltura`.</summary>
+	private const int PisoDoZoom = 2;
+
+	/// <summary>
+	/// O QUE A ALTURA FAZ NA TELA: afasta a camera, abre o veu e turva o mundo.
+	///
+	/// ============================ O ZOOM E INTEIRO, E TEM QUE SER ============================
+	/// A tentacao e interpolar o zoom continuamente com a altura -- fica macio e esta ERRADO. A
+	/// camera deste jogo nasceu com `Zoom` inteiro e sem suavizacao por um motivo escrito no proprio
+	/// codigo que a cria: em arte de pixel um zoom quebrado (2,5x) mapeia texel em pixel de tela de
+	/// forma irregular, e a imagem CINTILA quando o mundo se move. Foi uma queixa real ("tremendo").
+	///
+	/// Entao a camera afasta em DEGRAUS -- 3x, 2x, 1x --, cada um num terco da subida. O degrau
+	/// aparece, e e o preco certo: um salto de zoom uma vez a cada sete tiles incomoda muito menos
+	/// que o cenario inteiro cintilando o tempo todo.
+	/// ========================================================================================
+	/// </summary>
+	private void EfeitosDaAltura()
+	{
+		if (_local == null) return;
+
+		float f = Jandirus.Core.World.Voo.Fracao(_local.Altitude);
+
+		// A NEVOA. Ela mesma suaviza o numero (ver NevoaDeAltitude), entao aqui vai o valor cru.
+		if (_nevoa == null && f > 0f)
+		{
+			_nevoa = new NevoaDeAltitude { Name = "NevoaDeAltitude" };
+			AddChild(_nevoa);
+		}
+		if (_nevoa != null) _nevoa.Fracao = f;
+
+		// O VEU. Ele desenha a sombra que as PAREDES fazem -- e quem esta por cima das paredes nao
+		// tem sombra nenhuma pra receber. Some junto com a colisao, no MESMO limiar, porque as duas
+		// respondem a mesma pergunta: "este corpo ainda esta no meio do cenario?".
+		float opacidade = 1f - Mathf.Clamp(
+			_local.Altitude / Jandirus.Core.World.Voo.AlturaQueAtravessa, 0f, 1f);
+		if (!Mathf.IsEqualApprox(_veu.Modulate.A, opacidade))
+			_veu.Modulate = new Color(1, 1, 1, opacidade);
+		_veu.Visible = opacidade > 0.01f;
+
+		// ============================ A CAMERA AFASTA UM DEGRAU, E SO UM ============================
+		// A primeira versao descia dois (3x -> 2x -> 1x, ou 2x -> 1x -> 1x). O dono: "voando alto
+		// assim fica com um zoom out MUITO grande, nem da pra ver o personagem" -- e na foto ele
+		// tinha razao, o boneco virou tres pixels.
+		//
+		// O PISO E O QUE CONSERTA, e ele nao e arbitrario: abaixo de 2x um sprite de 32 px ocupa
+		// 32 px de tela num monitor de 1920, e o personagem deixa de ser legivel. Afastar a camera
+		// pra "mostrar mais mundo" nao vale perder de vista o corpo -- pra mostrar mais mundo ja
+		// existe o veu, que abre com a altura sem mexer em escala nenhuma.
+		//
+		// Quem joga em 2x (o padrao) nao ve mudanca de zoom; quem joga em 3x ganha um degrau.
+		// ============================================================================================
+		if (_camera == null) return;
+		int cheio = Math.Max(1, Boot.Config.Zoom);
+		int z = f < 0.5f ? cheio : Math.Max(PisoDoZoom, cheio - 1);
+		if (z > cheio) z = cheio;
+		if (z == _zoomAgora) return;
+		_zoomAgora = z;
+		_camera.Zoom = new Vector2(z, z);
+	}
+
 	/// <summary>Largura do mapa de colisao, em CELULAS. So pras bancadas.</summary>
 	public int LarguraDoMapaDeTeste => _colisao?.Width ?? 0;
+
+	/// <summary>A altura do meu corpo agora, em pixels. So pras bancadas.</summary>
+	public float AlturaDeTeste => _local?.Altitude ?? 0f;
+
+	/// <summary>
+	/// O MEU CORPO ESTA DENTRO DE UMA CELULA BLOQUEADA AGORA? So pras bancadas.
+	///
+	/// ============================ POR QUE ESTA PERGUNTA, E NAO "cruzou a reta?" ============================
+	/// A bancada media "quantas paredes ha na reta entre onde comecei e onde parei". Anda bem pra
+	/// quem voa (voando o caminho E a reta), e MENTE pra quem anda: o `MoveRules.Advance` DESLIZA
+	/// nas quinas, entao um corpo barrado contorna o obstaculo e termina num ponto cuja reta ate a
+	/// origem passa ao LADO da parede. O teste dizia "cruzou 0" nos dois casos e nao separava nada.
+	///
+	/// "Estou dentro de parede?" nao tem esse problema, e e exatamente a diferenca que se quer
+	/// provar: andando isso e IMPOSSIVEL (a colisao recusa o passo), voando e o estado normal de
+	/// quem esta por cima de um muro.
+	/// ======================================================================================================
+	/// </summary>
+	public bool DentroDeParedeDeTeste
+	{
+		get
+		{
+			if (_colisao == null || PosicaoLocal is not { } p) return false;
+			return Jandirus.Core.World.MoveRules.Occupied(_colisao, new Jandirus.Core.World.Vec2(p.X, p.Y));
+		}
+	}
+
+	/// <summary>Que animacao o MEU corpo esta tocando. So pras bancadas.</summary>
+	public string AnimacaoLocalDeTeste => _local?.GetNodeOrNull<CharacterVisual>("Visual")?.AnimacaoDeTeste ?? "";
+
+	/// <summary>Quanto a nevoa esta mostrando AGORA, de 0 a 1. So pras bancadas.</summary>
+	public float NevoaDeTeste => _nevoa?.FracaoNaTela ?? 0f;
+
+	/// <summary>O zoom que a altura escolheu. So pras bancadas.</summary>
+	public int ZoomDeTeste => _zoomAgora;
 
 	/// <summary>
 	/// ANDA NUMA DIRECAO, pelo caminho de sempre. So pras bancadas.
@@ -1439,13 +1697,81 @@ public partial class World : Node2D
 	public void PararDeTeste() { if (_local != null) _local.Destino = null; }
 
 	/// <summary>
+	/// O CENTRO DA PAREDE MAIS PROXIMA, em busca por aneis. So pras bancadas.
+	///
+	/// ============================ POR QUE A BANCADA PRECISA MIRAR ============================
+	/// A primeira versao do teste de voo andava pra LESTE e conferia se o caminho tinha cruzado
+	/// parede. Na Terra, do ponto de nascimento pro leste, nao ha nenhuma em 290 px -- entao ele
+	/// dizia "0 celulas de parede" e reprovava um voo que estava certo.
+	///
+	/// Um teste que depende de o mapa ter um obstaculo por acaso nao testa nada: se o mapa mudar,
+	/// ele passa a mentir nos dois sentidos. Mirar resolve na raiz.
+	/// ========================================================================================
+	/// </summary>
+	public Vector2? ParedeMaisPertoDeTeste(Vector2 de, int raioEmCelulas = 40)
+	{
+		if (_colisao == null) return null;
+		int t = Jandirus.Core.World.ZoneCollision.TileSize;
+		int cx = (int)MathF.Floor(de.X / t), cy = (int)MathF.Floor(de.Y / t);
+
+		for (int r = 2; r <= raioEmCelulas; r++)
+			for (int dx = -r; dx <= r; dx++)
+			for (int dy = -r; dy <= r; dy++)
+			{
+				if (Math.Abs(dx) != r && Math.Abs(dy) != r) continue;   // so a casca do anel
+				int x = cx + dx, y = cy + dy;
+				if (x < 0 || y < 0 || x >= _colisao.Width || y >= _colisao.Height) continue;
+				// A BORDA DO MUNDO NAO SERVE: ela e indestrutivel E da a volta no planeta, entao
+				// voar contra ela testaria o `DarAVolta` e nao a colisao.
+				if (_colisao.NaBorda(x, y, 4)) continue;
+				if (_colisao.BlockedCell(x, y)) return new Vector2((x + 0.5f) * t, (y + 0.5f) * t);
+			}
+		return null;
+	}
+
+	/// <summary>
+	/// QUANTAS CELULAS DE PAREDE HA NA RETA entre dois pontos. So pras bancadas.
+	///
+	/// E o unico jeito de provar que voar atravessa cenario sem depender de conhecer o mapa: se o
+	/// corpo saiu de A, chegou em B, e a reta AB cruza parede, entao ele passou por cima. No chao a
+	/// mesma reta nao existiria -- o corpo teria parado na primeira.
+	/// </summary>
+	public int ParedesNaRetaDeTeste(Vector2 a, Vector2 b)
+	{
+		if (_colisao == null) return 0;
+		int t = Jandirus.Core.World.ZoneCollision.TileSize;
+		int passos = Math.Max(1, (int)(a.DistanceTo(b) / (t * 0.5f)));
+		var vistas = new HashSet<int>();
+		int n = 0;
+		for (int i = 0; i <= passos; i++)
+		{
+			Vector2 p = a.Lerp(b, i / (float)passos);
+			int cx = (int)MathF.Floor(p.X / t), cy = (int)MathF.Floor(p.Y / t);
+			if (!vistas.Add(cy * _colisao.Width + cx)) continue;
+			if (_colisao.BlockedCell(cx, cy)) n++;
+		}
+		return n;
+	}
+
+	/// <summary>
 	/// ONDE UM CORPO ESTA DESENHADO agora. So pras bancadas.
 	///
 	/// A pergunta importa porque a posicao DESENHADA e a posicao do SERVIDOR sao coisas
 	/// diferentes -- e foi a diferenca entre as duas que produziu a queixa da "hitbox que pega
 	/// longe". Sem uma leitura do que esta na tela, nenhum numero prova o conserto.
 	/// </summary>
-	public Vector2? PosicaoDesenhadaDe(int id) => Corpo(id)?.Position;
+	public Vector2? PosicaoDesenhadaDe(int id) => Corpo(id) is { } c ? Desenhado(c) : null;
+
+	/// <summary>
+	/// ONDE UM CORPO ESTA DESENHADO: a posicao do no MAIS o deslocamento de altura do visual.
+	///
+	/// Os dois so coincidem no chao. Quem voa tem o no na posicao real (que e o que a colisao, o
+	/// alcance do soco e o Y-sort usam) e o desenho ate 160 px acima -- ver `LocalPlayer.AplicarAltura`.
+	/// Todo EFEITO que quer nascer "onde o corpo esta" tem que perguntar aqui, e nao ao no.
+	/// </summary>
+	private static Vector2 Desenhado(Node2D? corpo)
+		=> corpo == null ? Vector2.Zero
+		   : corpo.Position + (corpo.GetNodeOrNull<CharacterVisual>("Visual")?.Position ?? Vector2.Zero);
 
 	private Node2D? Corpo(int id)
 	{

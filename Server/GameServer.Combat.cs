@@ -459,6 +459,7 @@ public partial class GameServer
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
 			if (o == a || o.Ficha.dead || o.Combate.Intocavel) continue;
+			if (!AlcancaPelaAltura(a, o)) continue;
 
 			Vec2 d = o.Pos - a.Pos;
 			float dist2 = d.LengthSquared;
@@ -493,6 +494,12 @@ public partial class GameServer
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
 			if (o == a || o.Ficha.dead || o.Combate.Intocavel) continue;
+			// ============================ QUEM ALCANCA QUEM, POR ANDAR ============================
+			// Antes desta linha o alcance era so horizontal, e voar nao mudava NADA no combate --
+			// dois corpos a 20 tiles de altura de diferenca socavam um ao outro normalmente, o que
+			// tornava a altitude decoracao. As regras (assimetricas!) moram no `Voo.PodeAcertar`.
+			// ====================================================================================
+			if (!AlcancaPelaAltura(a, o)) continue;
 			if (!MeleeArea.NoAlcance(a.Pos, a.Facing, o.Pos)) continue;
 
 			float dist = (o.Pos - a.Pos).LengthSquared;
@@ -517,6 +524,10 @@ public partial class GameServer
 			a.AlvoId = 0;   // limpa sozinho: alvo morto nao fica preso na mira pra sempre
 			return null;
 		}
+		// A ALTURA VALE ATE PRO MARCADO, e este e o caso que mais precisava: marcar alguem e
+		// depois subir dois andares nao pode virar um passe livre pra continuar socando de longe.
+		// O alvo NAO e limpo -- ele volta a valer assim que os dois se emparelharem de novo.
+		if (!AlcancaPelaAltura(a, o)) return null;
 		return o;
 	}
 

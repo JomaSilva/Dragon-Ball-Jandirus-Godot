@@ -416,6 +416,16 @@ public partial class Boot : Node2D
 		// --diagclash: bancada do ZANZO CLASH. Ela MEDE, mas nao briga -- o embate so comeca com
 		// dois lutadores se acertando ao mesmo tempo, entao ela vem acompanhada do robo de soco
 		// (aqui e do outro lado). Ver RoboDeEmbate pro comando das duas pontas.
+		// --diagpoeira: bancada da POEIRA. Vem com `--quebrarteste N` no servidor, e com N MAIOR que
+		// o teto de efeitos vivos -- e o unico jeito de provar que o teto dispara.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpoeira") >= 0)
+			AddChild(new RoboDePoeira { Name = "RoboDePoeira" });
+
+		// --diagvoo: bancada do VOO. Vem com `--vooteste` no servidor, que da a skill de voo (sem
+		// ela nao ha o que medir) e tira o freeflight do admin (sem isso o custo mediria zero).
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvoo") >= 0)
+			AddChild(new RoboDeVoo { Name = "RoboDeVoo" });
+
 		// --diagvolta: bancada da VOLTA DO PLANETA. Anda ate a beirada e confere que sai pela outra.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvolta") >= 0)
 			AddChild(new RoboDeVolta { Name = "RoboDeVolta" });
@@ -577,6 +587,15 @@ public partial class Boot : Node2D
 		// qual degrau cabe e o servidor. "X" desce pra base de uma vez.
 		Registrar("transformar", Key.C);
 		Registrar("reverter", Key.X);
+
+		// VOO. "V" liga e desliga o pairar; R/F (ou PageUp/PageDown) sobem e descem.
+		//
+		// NAO REUSAM O ESPACO nem o SHIFT de proposito. Espaco e o soco e Shift e a corrida --
+		// as duas coisas que mais se faz no ar. Subir com a mesma tecla de socar deixaria voar e
+		// lutar mutuamente exclusivos, que e o oposto do que voar serve.
+		Registrar("voar", Key.V);
+		Registrar("subir", Key.R, Key.Pageup);
+		Registrar("descer", Key.F, Key.Pagedown);
 
 		static void Registrar(string acao, params Key[] teclas)
 		{

@@ -86,7 +86,11 @@ public partial class Zanzoken : Node2D
 		var v = new Zanzoken
 		{
 			Name = "Zanzoken",
-			GlobalPosition = onde ?? corpo.GlobalPosition,
+			// O `+ vis.Position` E A ALTURA: voando, o corpo e desenhado acima do no, e a miragem
+			// tem que nascer onde o corpo SE VE -- senao o vulto do dash fica no chao enquanto o
+			// personagem risca o ceu. `vis.Position` e exatamente o deslocamento de altitude (e
+			// zero no chao), entao no chao esta linha nao muda nada.
+			GlobalPosition = (onde ?? corpo.GlobalPosition) + vis.Position,
 			Modulate = new Color(0.78f, 0.90f, 1f, 0.62f),   // frio: e a marca do ki, nao um clone
 			ZIndex = corpo.ZIndex,
 			YSortEnabled = false,

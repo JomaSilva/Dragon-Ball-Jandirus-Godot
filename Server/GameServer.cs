@@ -167,6 +167,29 @@ public sealed class ServerPlayer
 	/// <summary>De onde o corpo SAIU na ultima investida. E onde a miragem nasce -- ver Aproximar.</summary>
 	public Vec2 SaiuDe;
 
+	// ============================== VOO (ver GameServer.Voo.cs) ==============================
+
+	/// <summary>O `flight` do original: pairando. Estado VIVO -- ninguem continua no ar deslogado.</summary>
+	public bool Voando;
+
+	/// <summary>O `flightspeed`: modo Superflight. Multiplica o custo por 450/flightability.</summary>
+	public bool VooRapido;
+
+	/// <summary>
+	/// A que altura o corpo esta, em pixels. Zero = chao.
+	///
+	/// NAO SE CONFUNDE COM <see cref="Voando"/>: quem perde o voo no ar continua com altura por
+	/// alguns quadros enquanto CAI. Separar os dois e o que permite a queda existir -- se altura
+	/// zerasse junto com o voo, quem ficasse sem Ki a 20 tiles apareceria no chao no mesmo quadro.
+	/// </summary>
+	public float Altitude;
+
+	/// <summary>O que o input diz agora: segurando espaco / segurando control.</summary>
+	public bool QuerSubir, QuerDescer;
+
+	/// <summary>Rate-limit do aviso de "nao da pra romper a atmosfera" -- senao ele sai 30x por segundo.</summary>
+	public long AvisoDeTetoAte;
+
 	public int TiquesDeVoo;
 	public Vec2 RumoDoVoo;
 	public double ForcaDoVoo;
@@ -348,6 +371,11 @@ public sealed class ServerPlayer
 	{
 		if (Ficha.dead || Ficha.KO) return Protocol.Pose.Nocauteado;
 		if (agoraMs < AtaqueAte) return Protocol.Pose.Atacando;
+		// A POSE DE VOO ESTAVA DEFINIDA E MORTA: `Protocol.Pose.Voando` existia no enum, o
+		// `CharacterVisual.SetPose` ja mapeava pra animacao "flight", e este metodo NUNCA a
+		// devolvia -- entao a ponta do cliente esperava por um valor que ninguem escrevia.
+		// Vem depois do ataque de proposito: socar no ar mostra o soco, nao o pairar.
+		if (Voando) return Protocol.Pose.Voando;
 		if (Ficha.train) return Protocol.Pose.Treinando;
 		if (Ficha.med) return Protocol.Pose.Meditando;
 		return Protocol.Pose.Normal;
@@ -451,8 +479,14 @@ public partial class GameServer : Node
 		{
 			if (pl.Ficha.dead || pl.Livro == null) continue;
 
+			// O ESTADO DO CORPO ENTRA NO EFETOR. Sem ele, as 122 regras de exp condicionais do
+			// `niveis.json` continuariam abertas e descartadas -- entre elas as tres do
+			// `Ki_Unlocked`, a raiz da arvore de Ki: 2 por tique MEDITANDO, 2 VOANDO, 1 parado.
+			// Era por isso que meditar nao rendia maestria de Ki nenhuma.
 			List<Jandirus.Core.Skills.NiveisDeSkill.Subida> subiu =
-				pl.Niveis.Efetor(_rng, _skills, pl.Livro);
+				pl.Niveis.Efetor(_rng, _skills, pl.Livro,
+					new Jandirus.Core.Skills.NiveisDeSkill.EstadoDoCorpo(
+						Meditando: pl.Ficha.med, Voando: pl.Voando, Treinando: pl.Ficha.train));
 			if (subiu.Count == 0) continue;
 
 			pl.Niveis.Aplicar(pl.Ficha);
@@ -482,6 +516,12 @@ public partial class GameServer : Node
 			return;
 		}
 		int n = Jandirus.Core.Skills.RegrasDoDisco.Carregar(Godot.FileAccess.GetFileAsString(cj));
+		// O QUE ENTROU E O QUE FICOU DE FORA, em numero. Regra descartada em silencio ja custou
+		// caro neste projeto -- e as condicoes de DM que este port nao sabe avaliar continuam
+		// descartadas, so que agora contadas.
+		GD.Print($"[server] exp por estado: {Jandirus.Core.Skills.RegrasDoDisco.GanhosPorEstado} regra(s)"
+			+ $" | por contador (evento): {Jandirus.Core.Skills.RegrasDoDisco.GanhosPorContador}"
+			+ $" | condicao nao entendida: {Jandirus.Core.Skills.RegrasDoDisco.CondicoesNaoEntendidas}");
 		GD.Print($"[server] niveis de skill: {n} regras ({Jandirus.Core.Skills.RegrasDeNivel.Total} no total)");
 	}
 
@@ -681,6 +721,14 @@ public partial class GameServer : Node
 		// multiplicados pela razao") sem nada pra provar. A flag tira o dado e da poder ao HOST.
 		_clashSempre = Array.IndexOf(args, "--clashteste") >= 0;
 		if (_clashSempre) GD.Print($"[server] BANCADA: embate sem sorteio, e o host com {BpDoHostNoTeste}x de BP");
+
+		// `--vooteste`: quem entrar ja sabe voar (skill no nivel 2).
+		//
+		// Sem isso a bancada do voo seria impossivel de rodar: a skill sobe de nivel pelo `effector`,
+		// que precisa de MUITO tempo de jogo -- um teste que exige treinar antes de comecar nao e
+		// rodado. Repare que ela nao liga o voo, so da a skill: a porta continua sendo a de producao.
+		_vooDeTeste = Array.IndexOf(args, "--vooteste") >= 0;
+		if (_vooDeTeste) GD.Print("[server] BANCADA: quem entrar ja sabe voar (Flight nivel 2)");
 
 		// `--geradoteste`: quem entrar nasce num planeta GERADO em vez da Terra.
 		//
@@ -1320,7 +1368,37 @@ public partial class GameServer : Node
 		// nao la em cima: o `--geradoteste` reescreve `pl.Zone` no meio do caminho, e a versao
 		// anterior quebrava a zona de spawn enquanto o jogador nascia noutro planeta -- o teste
 		// procurava o estrago onde ele nao estava e dizia "nao houve estrago" com a flag ligada.
-		if (_quebrarDeTeste > 0) QuebrarCenarioDeTeste(pl);
+		// ============================ QUEBRA DEPOIS DE ENTRAR, e nao durante ============================
+		// Rodando aqui, o estrago acontece ANTES de o jogador entrar na lista da zona: ele nao recebe
+		// o `MandarCelulaCaida` de cada celula, recebe a LISTA do que ja estava caido -- e o cliente
+		// aplica essa lista sem poeira, de proposito ("o estrago e velho, o efeito nao").
+		//
+		// Ou seja, a bancada da destruicao media o mapa mudando e NUNCA media o efeito. Meio segundo
+		// de atraso poe o teste no caminho de producao: parede caindo com alguem olhando.
+		if (_quebrarDeTeste > 0)
+		{
+			ServerPlayer alvo = pl;
+			SceneTreeTimer t = GetTree().CreateTimer(0.5);
+			t.Timeout += () =>
+			{
+				if (_players.ContainsKey(alvo.Id)) QuebrarCenarioDeTeste(alvo);
+			};
+		}
+
+		// BANCADA DO VOO (`--vooteste`): da a skill no nivel 2, que e o que destrava `Fly` E
+		// `Superflight` -- os dois verbs que a bancada precisa exercitar.
+		//
+		// A SKILL E CONCEDIDA, E NAO O VOO. A bancada tem que passar pela porta de verdade (o
+		// `AlternarVoo`, o custo de decolagem, o dreno por tique): ligar `pl.Voando = true` aqui
+		// mediria um atalho e nao o jogo.
+		if (_vooDeTeste)
+		{
+			// A PORTA NOVA, e nao a antiga: metade da maestria de Ki. Dar a skill `flying` aqui
+			// mediria o caminho do DM e deixaria o portao de verdade -- o que o jogador vai
+			// atravessar -- sem teste nenhum.
+			pl.Livro.Dar("/datum/skill/mind/Ki_Unlocked");
+			pl.Niveis.Por("/datum/skill/mind/Ki_Unlocked", MaestriaQueDestravaVoo);
+		}
 
 		// SO AGORA da pra mandar as construcoes: `MandarObras` varre `_players` procurando quem
 		// esta na zona, e quem acabou de entrar so esta la depois desta linha.
@@ -1504,6 +1582,10 @@ public partial class GameServer : Node
 		var facing = (Facing)(flags & 0x03);
 		bool moving = (flags & Protocol.InputAndando) != 0;
 		bool querCorrer = (flags & Protocol.InputCorrendo) != 0;
+		// SUBIR/DESCER SAO PEDIDOS, como correr. Quem le e o `TickDoVoo`, que so obedece a quem
+		// esta voando -- afirmar o bit no chao nao levanta ninguem.
+		pl.QuerSubir = (flags & Protocol.InputSubir) != 0;
+		pl.QuerDescer = (flags & Protocol.InputDescer) != 0;
 
 		// QUEM ESTA NO CHAO NAO ANDA -- e quem esta REUNINDO ENERGIA tambem nao.
 		//
@@ -1534,7 +1616,17 @@ public partial class GameServer : Node
 		// COBRA por segundo de corrida. Sem isto, o bit de "correndo" seria 60% de velocidade
 		// gratuita pra qualquer cliente modificado -- e o tipo de coisa que nao da pra
 		// detectar depois, porque o movimento fica dentro do que a validacao aceita.
-		bool correndo = querCorrer && moving && PodeCorrer(pl, dt);
+		// ============================ NO AR, O SHIFT E O SUPERFLIGHT ============================
+		// A mesma tecla, dois custos que NAO se somam. Voando, quem cobra e o `TickDoVoo` pela
+		// formula do DM (`450*flightspeed/flightability` por tique -- o dreno mais caro do jogo);
+		// deixar o `PodeCorrer` cobrar por cima seria cobrar duas vezes pelo mesmo gesto, e o
+		// jogador cairia do ceu na metade do tempo sem nada explicando por que.
+		//
+		// A VELOCIDADE continua vindo do mesmo lugar: `MoveRules` multiplica por `correndo`, entao
+		// voar com shift e mais rapido exatamente como correr no chao e.
+		// =======================================================================================
+		MarchaDeVoo(pl, querCorrer);
+		bool correndo = querCorrer && moving && (pl.Voando || PodeCorrer(pl, dt));
 
 		// ============================ NO VOO, O SERVIDOR SOLTA ============================
 		// Enquanto o corpo esta sendo ARREMESSADO, quem o move e o servidor -- e o cliente esta
@@ -1561,7 +1653,13 @@ public partial class GameServer : Node
 			return;
 		}
 
-		ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
+		// ============================ VOANDO ALTO, NAO HA MAPA ============================
+		// E o `isflying` do original, e a forma mais barata de dize-lo: `ValidateStep` com mapa nulo
+		// so confere VELOCIDADE. Nao ha um segundo caminho de colisao pra manter em dia, e o cliente
+		// toma a MESMA decisao pelo MESMO numero (ver `LocalPlayer`) -- que e a unica maneira de
+		// isto nao virar briga de posicao entre as duas pontas.
+		// =================================================================================
+		ZoneCollision? mapa = AtravessandoCenario(pl) ? null : MapaDaZonaOuCatalogo(pl.Zone);
 		if (MoveRules.ValidateStep(pl.Pos, claimed, dt, pl.SpeedStat, mapa, ref pl.OrcamentoPx, out Vec2 ok, correndo))
 		{
 			pl.Pos = ok;
@@ -1670,6 +1768,12 @@ public partial class GameServer : Node
 		// que os dois relogios se cruzam -- o mesmo SSJ carregando renderia coisas diferentes em
 		// tiques diferentes, sem nada no jogo explicando por que.
 		foreach (ServerPlayer pl in _players.Values) TickDaCarga(pl, Protocol.TickSeconds);
+
+		// O VOO ANDA COM OS DOIS ACIMA, e pelo mesmo motivo: forma, carga e voo mexem no MESMO Ki.
+		// Alem disso a altura e o que decide se o passo consulta o mapa -- rodar a 5 Hz deixaria o
+		// corpo ate 200 ms com a colisao de outra altura, e a diferenca entre passar e nao passar
+		// por uma parede nao pode depender de qual dos dois relogios acordou primeiro.
+		foreach (ServerPlayer pl in _players.Values) TickDoVoo(pl, Protocol.TickSeconds);
 
 		// os NPCs pensam e agem no tick cheio, pelas mesmas funcoes do jogador
 		TickDosClones(Protocol.TickSeconds);
@@ -1860,6 +1964,13 @@ public partial class GameServer : Node
 		pl.SeqDoTeleporte = pl.SeqInput;
 		pl.OrcamentoPx = 0;
 
+		// O VOO NAO ATRAVESSA A PORTA. A altura e do lugar de onde se saiu: chegar num mapa novo
+		// pairando a 20 tiles deixaria o corpo com a colisao desligada num terreno que ele nunca
+		// viu -- e, no espaco, "altitude" nem quer dizer nada. Quem viaja chega no chao.
+		pl.Voando = false;
+		pl.Altitude = 0f;
+		pl.QuerSubir = pl.QuerDescer = false;
+
 		var w = Protocol.Begin(Protocol.S2C.ZoneChanged);
 		w.PutZone(destino);
 		w.PutVec(spawn);
@@ -1937,6 +2048,11 @@ public partial class GameServer : Node
 		Correndo = pl.Correndo && pl.Moving,
 		Carregando = pl.AuraDaCarga,   // o VISUAL, nao o estado -- ver GameServer.Carga.cs
 		Sobrecarregado = pl.AuraDeCarga,
+		// O BIT E "TEM ALTURA PRA CONTAR", e nao "esta com o voo ligado": quem perdeu o voo no ar
+		// ainda esta la em cima caindo, e desligar o bit no instante do nocaute faria o corpo
+		// aparecer no chao pra todo mundo enquanto o servidor ainda o traz descendo.
+		Voando = pl.Altitude > 0f,
+		Altitude = pl.Altitude,
 	};
 
 	private List<ServerPlayer> ZoneList(ulong hash)

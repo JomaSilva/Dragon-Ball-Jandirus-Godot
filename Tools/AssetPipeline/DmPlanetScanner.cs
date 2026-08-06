@@ -63,6 +63,14 @@ public static class DmPlanetScanner
 	private static readonly Regex RxSoValor = new(
 		@"^\s*Planetgrav\s*=\s*(?<g>[0-9.]+)", RegexOptions.Compiled);
 
+	/// <summary>`switch(z)` -- o caso que distribui gravidade por ANDAR em vez de dar um valor.</summary>
+	private static readonly Regex RxAbreSwitchZ = new(
+		@"^\s*switch\s*\(\s*z\s*\)\s*$", RegexOptions.Compiled);
+
+	/// <summary>`if(13) Planetgrav=10` -- um andar dentro do `switch(z)`.</summary>
+	private static readonly Regex RxAndar = new(
+		@"^\s*if\(\s*\d+\s*\)\s*Planetgrav\s*=\s*(?<g>[0-9.]+)", RegexOptions.Compiled);
+
 	/// <summary>
 	/// O BIOMA de cada planeta pre-feito. NAO vem do DM -- e leitura nossa do que cada lugar e no
 	/// anime e nos mapas. Serve pra que o gerador procedural saiba com o que se parecer, e pra que
@@ -154,10 +162,53 @@ public static class DmPlanetScanner
 		if (!File.Exists(arq)) return achados;
 
 		string? pendente = null;   // nome visto numa linha, esperando o valor na proxima
+		string? porAndar = null;   // nome cujo caso abriu um `switch(z)` -- ver abaixo
 		foreach (string linha in File.ReadAllLines(arq))
 		{
+			// ============================ O CASO QUE ABRE OUTRO SWITCH ============================
+			// A Sala do Tempo nao tem `Planetgrav` na linha do caso nem na de baixo: o caso dela abre
+			// um `switch(z)` e distribui gravidade por ANDAR (`Gravity.dm:94-99`):
+			//
+			//     if("Hyperbolic Time Dimension")
+            //         switch(z)
+            //             if(13) Planetgrav=10   //Sala do Tempo
+            //             if(15) Planetgrav=125  //HBTC
+            //             ...
+			//
+			// As duas formas que o laco conhecia falhavam calado, e a Sala entrava na tabela pela
+			// varredura de AREAS -- com a gravidade PADRAO, 1. O resultado era a sala mais pesada do
+			// jogo rendendo como um parque, e nada acusava.
+			//
+			// FICA O PRIMEIRO ANDAR, e o comentario diz o que se perdeu: os andares 15-18 (125 a 425)
+			// sao os "HBTC" antigos, e NENHUM deles tem mapa no port -- o manifesto so tem o z13. Um
+			// dia que tiverem, isto aqui vira uma ficha por andar e o consumidor passa a perguntar
+			// pelo z alem do nome.
+			// =====================================================================================
+			if (porAndar != null)
+			{
+				Match ma = RxAndar.Match(linha);
+				if (ma.Success)
+				{
+					string alvo = porAndar;
+					porAndar = null;
+					if (!achados.ContainsKey(alvo))
+						achados[alvo] = new PlanetaDef
+						{
+							Nome = alvo,
+							Gravidade = double.Parse(ma.Groups["g"].Value, CultureInfo.InvariantCulture),
+							Tipo = TipoPorNome.GetValueOrDefault(alvo, "Rochoso"),
+						};
+					continue;
+				}
+				// linha que nao e `switch(z)` nem `if(N) Planetgrav=` encerra a espera
+				if (!RxAbreSwitchZ.IsMatch(linha)) porAndar = null;
+			}
+
 			if (pendente != null)
 			{
+				// o caso abriu um `switch(z)` em vez de dar valor: passa a esperar por ANDAR
+				if (RxAbreSwitchZ.IsMatch(linha)) { porAndar = pendente; pendente = null; continue; }
+
 				Match mv = RxSoValor.Match(linha);
 				string alvo = pendente;
 				pendente = null;

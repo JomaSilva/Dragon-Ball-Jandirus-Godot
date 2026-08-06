@@ -157,7 +157,8 @@ public partial class GameClient : Node
 	/// <summary>A ultima sequencia que o servidor confirmou ter processado (vem na correcao).</summary>
 	public uint SeqConfirmada { get; private set; }
 
-	public void SendState(Vec2 pos, Facing facing, bool moving, bool correndo = false)
+	public void SendState(Vec2 pos, Facing facing, bool moving, bool correndo = false,
+						  bool subir = false, bool descer = false)
 	{
 		if (!Connected) return;
 		var w = Protocol.Begin(Protocol.C2S.InputState);
@@ -165,7 +166,9 @@ public partial class GameClient : Node
 		w.PutVec(pos);
 		w.Put((byte)(((byte)facing & 0x03)
 					 | (correndo ? Protocol.InputCorrendo : 0)
-					 | (moving ? Protocol.InputAndando : 0)));
+					 | (moving ? Protocol.InputAndando : 0)
+					 | (subir ? Protocol.InputSubir : 0)
+					 | (descer ? Protocol.InputDescer : 0)));
 		_peer!.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
 	}
 

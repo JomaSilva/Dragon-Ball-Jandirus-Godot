@@ -106,7 +106,18 @@ public partial class RastroDeCorrida : Node2D
 		// tinta aqui seria criar um `ShaderMaterial` por camada pra descarta-lo no mesmo quadro --
 		// 120 por segundo, por corpo correndo.
 		Node2D foto = _visual.Fotografar(comTinta: false);
-		foto.GlobalPosition = _corpo.GlobalPosition;
+		// ============================ A FOTO SAI DO DESENHO, NAO DO NO ============================
+		// Voando, o corpo e DESENHADO ate 160 px acima do no (o no fica na posicao do chao -- ver
+		// `LocalPlayer.AplicarAltura`). Carimbar a copia em `_corpo.GlobalPosition` deixava o rastro
+		// no chao enquanto o personagem cortava o ceu: dois efeitos separados por meia tela, que foi
+		// o que o dono viu como "o efeito de dash no fly ta bugado".
+		//
+		// O RUMO CONTINUA VINDO DO NO, e isso nao e descuido: o no so se move quando o corpo ANDA,
+		// enquanto o visual tambem sobe e desce com a altitude. Tirar o rumo do visual poria uma
+		// componente vertical falsa no borrao toda vez que o jogador subisse -- o rastro apontaria
+		// pra cima com o personagem indo em frente.
+		// =========================================================================================
+		foto.GlobalPosition = _visual.GlobalPosition;
 
 		// CADA COPIA VAI BORRADA no rumo do movimento. E o que faltava: copia NITIDA le como
 		// copia, por mais transparente que seja. Borrada, ela nao tem borda pra o olho fixar --

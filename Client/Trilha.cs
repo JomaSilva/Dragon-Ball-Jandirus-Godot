@@ -178,6 +178,25 @@ public static class Trilha
     public const string NovaHabilidade = E + "NEWSKILL.WAV";
 
     // =====================================================================
+    // VOO
+    // =====================================================================
+    /// <summary>
+    /// O IMPULSO DE SAIR DO CHAO. E o `usr.emit_Sound('buku.wav')` do verb `Fly`
+    /// (flying.dm:95) -- o arquivo do original, no mesmo instante.
+    /// </summary>
+    public const string Decolagem = E + "buku.ogg";
+
+    /// <summary>
+    /// O BAQUE DE POUSAR. `emit_Sound('buku_land.wav')` -- e o original toca esse mesmo som nos
+    /// DOIS jeitos de descer: pousar de proposito (flying.dm:91) e cair de exausto (Stats.dm:422).
+    /// Aqui tambem: quem ouve nao precisa saber qual dos dois foi, mas precisa ouvir que acabou.
+    /// </summary>
+    public const string Pouso = E + "buku_land.ogg";
+
+    // NAO HA SOM DE LACO NO AR, e e decisao do dono: "enquanto ta voando n deveria ter som nenhum".
+    // O original tambem e mudo depois do impulso. `db_flying.ogg` esta convertido e nao e usado.
+
+    // =====================================================================
     // O SACO DE SORTEIO
     // =====================================================================
     /// <summary>

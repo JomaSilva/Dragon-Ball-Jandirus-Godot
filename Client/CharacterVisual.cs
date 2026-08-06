@@ -66,6 +66,14 @@ public partial class CharacterVisual : Node2D
 
 	private readonly List<AnimatedSprite2D> _camadas = [];
 	private AnimatedSprite2D? _corpo;
+
+	/// <summary>
+	/// A ANIMACAO QUE ESTA TOCANDO no corpo agora. So pras bancadas.
+	///
+	/// Existe porque "o personagem trocou pro sprite de voo?" nao se responde por foto: no teto o
+	/// boneco tem tres pixels de tela. O nome da animacao responde sem ambiguidade.
+	/// </summary>
+	public string AnimacaoDeTeste => _corpo?.Animation.ToString() ?? "";
 	private AnimatedSprite2D? _cabelo, _olhos, _rabo;
 	private readonly List<AnimatedSprite2D> _roupa = [];
 

@@ -58,9 +58,40 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	private double _cadencia = Protocol.AttackPoseMs / 1000.0;
 
+	// ============================== VOO ==============================
+
+	/// <summary>
+	/// A minha altura, em pixels. NAO E PREVISTA: quem sobe, desce, cobra o Ki e derruba por
+	/// exaustao e o servidor (`GameServer.Voo.cs`), e ela chega pelo snapshot.
+	///
+	/// Prever altura localmente seria pior do que inutil: o cliente nao sabe quanto Ki sobrou depois
+	/// do dreno deste tique, entao ele erraria justamente no instante em que a altura importa -- o
+	/// da queda por exaustao --, e o corpo desceria no servidor enquanto continuava subindo na tela.
+	/// </summary>
+	private float _altitude;
+
+	/// <summary>O que ela ja foi no quadro anterior -- so pra nao repintar o que nao mudou.</summary>
+	private float _altitudeDesenhada = -1f;
+
+	private SombraDeVoo? _sombra;
+	/// <summary>A camera deste corpo. Cacheada: procurar por tipo todo quadro nao vale a pena.</summary>
+	private Camera2D? _cam;
+
+	/// <summary>A altura de agora, em pixels. Lida pelo mundo (zoom, veu, nevoa) e pela bancada.</summary>
+	public float Altitude => _altitude;
+
+	/// <summary>Estou acima do cenario? E a MESMA pergunta que o servidor faz, pelo mesmo numero.</summary>
+	public bool AtravessandoCenario => Voo.AtravessaCenario(_altitude);
+
+	/// <summary>O servidor mandou a minha altura. Ver o laco de snapshot em <c>World</c>.</summary>
+	public void ReceberAltura(bool voando, float altitude)
+		=> _altitude = voando ? altitude : 0f;
+
 	public override void _Ready()
 	{
 		_visual = GetNode<CharacterVisual>("Visual");
+		_sombra = new SombraDeVoo { Name = "SombraDeVoo" };
+		AddChild(_sombra);
 		_pos = new Vec2(Position.X, Position.Y);   // o World ja nasceu com o spawn no construtor
 		Desenhar();
 
@@ -221,7 +252,15 @@ public partial class LocalPlayer : Node2D
 		// reunir energia exige pe plantado (o servidor ja nao rende nada em movimento), entao
 		// deixar a corrida ligada punha o jogador num estado que nao produz nada e ainda gasta Ki.
 		// Segurar C desliga a corrida; soltar devolve.
-		bool querCorrer = _shift && tentandoAndar && _temKiPraCorrer && !_carregando;
+		// NO AR, O SHIFT E O SUPERFLIGHT -- e o mesmo borrao.
+		//
+		// O `_temKiPraCorrer` fica de FORA quando se voa, de proposito: voando, quem cobra o Ki e o
+		// `TickDoVoo` pela formula do DM, e o servidor concede a velocidade a qualquer um que esteja
+		// no ar (ver `GameServer.Input`). Manter o teste de Ki da corrida aqui faria o borrao piscar
+		// no cliente enquanto o servidor continuava dando a velocidade -- as duas pontas contando
+		// historias diferentes do mesmo gesto.
+		bool querCorrer = _shift && tentandoAndar && !_carregando
+			&& (_altitude > 0f || _temKiPraCorrer);
 		if (querCorrer && !_correndo) AudioDirector.EfeitoNoLugar(this, Trilha.Dash, 0.5f);
 		_correndo = querCorrer;
 
@@ -257,7 +296,12 @@ public partial class LocalPlayer : Node2D
 		}
 
 		Vec2 antes = _pos;
-		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat, Mapa, out _, _correndo);
+		// VOANDO ALTO, NAO HA MAPA -- e o `isflying` do original, e a MESMA linha que o servidor
+		// escreve em `GameServer.Input`. As duas pontas decidem pelo mesmo numero e pela mesma
+		// funcao, entao nao existe a faixa de altura em que uma passa e a outra recusa (que e o
+		// que viraria correcao de posicao em jogo honesto -- o personagem tremendo na parede).
+		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat,
+			AtravessandoCenario ? null : Mapa, out _, _correndo);
 		Desenhar();
 
 		// ANDANDO = saiu do lugar, nao = apertou a tecla. Empurrando a parede o personagem
@@ -290,12 +334,65 @@ public partial class LocalPlayer : Node2D
 
 		LerAcoes(tentandoAndar, delta);
 
+		// SUBIR E DESCER. Sao PEDIDOS continuos, como correr: o servidor so obedece a quem esta
+		// voando (`TickDoVoo`), entao apertar no chao nao faz nada. Escrevendo no chat ninguem sobe.
+		bool subir = !Foco.Digitando && Godot.Input.IsActionPressed("subir");
+		bool descer = !Foco.Digitando && Godot.Input.IsActionPressed("descer");
+
+		// V ALTERNA O VOO. Vai pelo canal de habilidade -- e o MESMO caminho do verb do menu, pra
+		// que a tecla e o botao nao virem duas regras que precisam concordar.
+		if (!Foco.Digitando && Godot.Input.IsActionJustPressed("voar"))
+			GameClient.Instance?.SendHabilidade("voar");
+
+		AplicarAltura();
+
 		_sendAccumulator += delta;
 		if (_sendAccumulator >= SendInterval)
 		{
 			_sendAccumulator -= SendInterval;
-			GameClient.Instance?.SendState(_pos, _facing, andando, _correndo);   // o servidor recebe o EXATO
+			GameClient.Instance?.SendState(_pos, _facing, andando, _correndo, subir, descer);   // o servidor recebe o EXATO
 		}
+	}
+
+	/// <summary>
+	/// LEVANTA O DESENHO DO CORPO, e so o desenho.
+	///
+	/// ============================ O QUE NAO PODE SUBIR JUNTO ============================
+	/// O NODE fica onde esta. Ele e a posicao de verdade: e dele que saem a colisao, o alcance do
+	/// soco, o Y-sort e a camera. Subir o node "pra parecer alto" moveria o corpo pra valer -- o
+	/// jogador acertaria socos a 160 px de onde o servidor acha que ele esta, e a briga com o
+	/// servidor voltaria por um caminho novo.
+	///
+	/// Entao o deslocamento vai nos FILHOS visuais: o desenho do personagem e a aura. A sombra fica
+	/// na origem de proposito -- e o vao entre ela e o corpo que conta a altura (ver SombraDeVoo).
+	/// A barra de vida tambem sobe, senao ela ficaria plantada no chao longe do dono.
+	/// ===================================================================================
+	/// </summary>
+	private void AplicarAltura()
+	{
+		if (Mathf.IsEqualApprox(_altitude, _altitudeDesenhada)) return;
+		_altitudeDesenhada = _altitude;
+
+		var deslocamento = new Vector2(0, -_altitude * Voo.EscalaNaTela);
+		_visual.Position = deslocamento;
+		if (GetNodeOrNull<Aura>("Aura") is { } aura) aura.Position = deslocamento;
+		if (GetNodeOrNull<HealthBar>("Vida") is { } vida) vida.Position = deslocamento;
+		if (_sombra != null) _sombra.Altura = _altitude;
+
+		// ============================ A CAMERA VAI JUNTO, E TEM QUE IR ============================
+		// A camera e FILHA deste no, e o no fica na posicao do CHAO -- e o corpo e desenhado ate
+		// 160 px acima dela. Sem esta linha, subir empurrava o personagem pra borda de cima da tela
+		// e depois pra fora dela: o dono fotografou o boneco encostado no topo com o centro da tela
+		// vazio. O que estava centralizado era a SOMBRA, nao ele.
+		//
+		// Move-se a POSICAO da camera, e nao o `Offset`: o tremor de impacto ja escreve o Offset
+		// todo quadro (ver `World._Process`), e dois donos pro mesmo campo e briga garantida.
+		// =========================================================================================
+		// POR TIPO, e nao pelo nome: a camera e criada em `World` sem `Name`, entao ela se chama o
+		// que o Godot resolver ("Camera2D", "@Camera2D@3"...). Procurar pelo nome funcionaria hoje e
+		// sairia calado no dia em que alguem a batizasse.
+		_cam ??= this.GetChildren().OfType<Camera2D>().FirstOrDefault();
+		if (_cam != null) _cam.Position = deslocamento;
 	}
 
 	/// <summary>O no fica sempre em pixel inteiro -- ver o cabecalho da classe.</summary>
@@ -439,6 +536,23 @@ public partial class LocalPlayer : Node2D
 
 		// a pose de soco tem prioridade enquanto dura
 		if (_ataqueAte > 0) return;
+
+		// ============================ O SPRITE DE VOO EXISTE, E NAO ERA USADO ============================
+		// A folha de cada personagem tem um estado `flight` desenhado -- o mesmo que o `icon_state =
+		// "Flight"` do original (`flying.dm:114`). O `CharacterVisual.SetPose(Voando)` ja mapeava
+		// pra ele e o servidor ja mandava a pose... mas so pros OUTROS.
+		//
+		// O corpo LOCAL nao recebe pose por snapshot: ele decide a sua aqui, e esta linha reescrevia
+		// o estado pra "default" TODO QUADRO. Resultado: quem voava se via andando no ar enquanto
+		// todo mundo o via em pose de voo. E o mesmo tipo de assimetria que ja tinha aparecido no
+		// soco do Zanzo Clash.
+		//
+		// A altura e o criterio, e nao um `_voando` proprio: ela vem do servidor e ja e a fonte de
+		// tudo o mais (colisao, nevoa, sombra). Enquanto o corpo estiver acima do chao -- inclusive
+		// CAINDO por exaustao --, a pose e a de voo.
+		// ================================================================================================
+		if (_altitude > 0f) { _visual.SetState("flight"); return; }
+
 		// NAO existe pose de guarda nos .dmi (o corpo tem meditate, train, attack, flight, ko e
 		// mais nada) -- entao guardar mostra a pose parada, e quem avisa que a guarda esta
 		// erguida e o HUD. Inventar arte aqui so daria um personagem em pose errada.

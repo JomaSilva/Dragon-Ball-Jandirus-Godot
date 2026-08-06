@@ -160,6 +160,20 @@ if (args.Length >= 2 && args[0] == "portas")
     return 0;
 }
 
+if (args.Length >= 1 && args[0] == "gravidade")
+{
+    // gravidade : cruza toda zona do manifesto com a ficha de planeta que ela acha.
+    // Ver GravidadeBench -- o defeito que ela caca nao aparece na tela.
+    return GravidadeBench.Rodar(Directory.GetCurrentDirectory());
+}
+
+if (args.Length >= 1 && args[0] == "maestria")
+{
+    // maestria : as regras de exp CONDICIONAIS do niveis.json chegam ao efetor?
+    // Ver MaestriaBench -- elas estavam extraidas e descartadas, e meditar nao rendia nada.
+    return MaestriaBench.Rodar(Directory.GetCurrentDirectory());
+}
+
 if (args.Length >= 1 && args[0] == "cor")
 {
     // cor : bancada da COR DE ROUPA no que toca o DISCO -- ida e volta do JSON, o save do
@@ -753,7 +767,7 @@ foreach (string file in files.Take(limit))
     {
         DmiFile.Result? dmi = DmiFile.Read(file);
         if (dmi is null) { falhou++; continue; }
-        if (dmi.States.Count == 1 && dmi.States[0].Name == "" && dmi.States[0].Frames == 1) semMeta++;
+        if (dmi.SemDescricao) semMeta++;
 
         string pngPath = Path.Combine(dst, relNoExt + ".png");
         Directory.CreateDirectory(Path.GetDirectoryName(pngPath)!);
