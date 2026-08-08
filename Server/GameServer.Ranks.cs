@@ -155,9 +155,12 @@ public partial class GameServer
 	{
 		foreach (ServerPlayer o in _players.Values)
 		{
+			// `falante: null` -- e o servidor anunciando pro mundo inteiro, e nao alguem falando
+			// perto de voce: ninguem fica mais familiar por ter lido a outorga de um cargo.
 			Mandar(o, Protocol.Fala.Sistema, "",
 				o == pl ? $"VOCE E O NOVO {r.Nome.ToUpperInvariant()}."
-						: $"{pl.Name} assumiu o cargo de {r.Nome}.");
+						: $"{pl.Name} assumiu o cargo de {r.Nome}.",
+				falante: null);
 
 			// E A LISTA VAI JUNTO. O cliente so pede a lista de cargos quando ela esta VAZIA -- ou
 			// seja, quem ja tinha aberto a aba continuaria lendo o dono antigo ate relogar. A

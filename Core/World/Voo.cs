@@ -53,14 +53,19 @@ public static class Voo
 	};
 
 	/// <summary>
-	/// QUANTOS TIQUES DO DM CABEM NUM SEGUNDO.
+	/// QUANTAS VOLTAS DO LACO DO DM CABEM NUM SEGUNDO.
 	///
-	/// O custo por tique do original nao serve de nada sem isto: `world.fps = 12`
-	/// (`Globals/World.dm:5`) e o laco do `Stats` dorme `sleep(2)` (`Stats.dm:126,511`), entao ele
-	/// acorda 6 vezes por segundo. Todo custo "por tique" vira custo por segundo multiplicando aqui
-	/// -- e e o que permite o tique do Godot rodar noutra cadencia sem mudar o quanto se gasta.
+	/// O custo por tique do original nao serve de nada sem isto: o dreno de voo mora no `Stats()`
+	/// (`Stats.dm:411-427`), que dorme `sleep(2)` (`:126` declara, `:511` dorme). `sleep(2)` sao
+	/// **0,2 s** -- ver <see cref="TempoDoDm"/> --, logo o laco acorda **5** vezes por segundo.
+	///
+	/// AQUI ESTAVA 6,0, e o defeito era de unidade: eu dividia o `sleep` pelo `world.fps = 12` em
+	/// vez de por 10. Com 6 o voo drenava 20% de Ki a mais do que o original cobra.
+	///
+	/// Todo custo "por tique" vira custo por segundo multiplicando aqui -- e e o que permite o tique
+	/// do Godot rodar noutra cadencia sem mudar o quanto se gasta.
 	/// </summary>
-	public const double TiquesDoDmPorSegundo = 6.0;
+	public const double TiquesDoDmPorSegundo = TempoDoDm.TiquesPorSegundo / 2;
 
 	/// <summary>
 	/// O QUE CUSTA LEVANTAR VOO. `flying.dm:86`:

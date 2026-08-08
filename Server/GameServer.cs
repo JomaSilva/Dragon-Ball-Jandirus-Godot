@@ -71,6 +71,120 @@ public sealed class ServerPlayer
 	/// <summary>De onde decolei.</summary>
 	public string PlanetaDeOrigem = "";
 
+	// ============================== OOZARU (ver GameServer.Oozaru.cs) ==============================
+
+	/// <summary>Em que Oozaru este corpo esta. Estado VIVO -- ninguem continua macaco deslogado.</summary>
+	public Jandirus.Core.Forms.FormaOozaru Oozaru;
+
+	/// <summary>Quando a forma cai sozinha (relogio real, ms). O `spawn(3000)`/`spawn(1000)` do DM.</summary>
+	public long OozaruAte;
+
+	/// <summary>
+	/// O `angertick`: quanto falta de meditacao pra a raiva passar. Reiniciado a cada transformacao.
+	/// </summary>
+	public double RaivaDoOozaru;
+
+	// ======================= A FURIA LENDARIA (ver GameServer.FuriaLendaria.cs) =======================
+
+	/// <summary>
+	/// O PROXIMO VIRAR DO RELOGIO DA FURIA (relogio real, ms). Zero = desarmado (fora de forma
+	/// lendaria, em cena, ou com a forma dominada).
+	///
+	/// ============================ UM CAMPO SO, PORQUE O SENTIDO E DERIVADO ============================
+	/// Ele quer dizer duas coisas opostas, e quem escolhe qual e o <see cref="Cerebro"/>:
+	///
+	///   * com o cerebro NULO -- **quando eu perco as redeas**;
+	///   * com o cerebro preenchido -- **quando eu as recupero**.
+	///
+	/// Dois campos (`ControleAte` + `PosseAte`) seriam a mesma verdade escrita duas vezes, e um deles
+	/// estaria sempre velho: so um dos dois relogios corre por vez, e o outro so existe pra alguem
+	/// esquecer de zerar. E o mesmo raciocinio que o `TickDoOozaru` ja usa pra NAO ter um
+	/// `bool JaPerdeu` ao lado do cerebro (passo 5, `GameServer.Oozaru.cs`).
+	/// ============================================================================================
+	/// </summary>
+	public long FuriaAte;
+
+	/// <summary>
+	/// ATE QUANDO ESTE CORPO ESTA EM FURIA EXTREMA (relogio real, ms). Zero = nunca esteve.
+	///
+	/// A janela do `rageExpire` do DM (`Murder.dm:110-114`, 1200 decimos = 2 minutos), e metade do
+	/// estado por tras do <see cref="Jandirus.Core.Forms.PerfilDeFormas.Raiva"/> -- a outra metade e
+	/// a <see cref="RaivaLendariaAte"/>. Quem as acende e um ponto so:
+	/// <see cref="GameServer.AmigoAbatido"/>.
+	///
+	/// NAO PERSISTE, e isso e regra e nao economia: luto nao atravessa o logout. Se atravessasse,
+	/// o jeito de despertar o Beast seria ver um amigo morrer e deslogar ate ter os 50% de ki
+	/// divino -- a janela viraria um item guardado no bolso.
+	///
+	/// **NAO E O `Fighter.Anger`.** O buff de BP da raiva (`angerBuff`, `Fighter.Power.cs:56`) e
+	/// outro sistema, e ele continua nao portado -- ver o cabecalho de `AmigoAbatido`.
+	/// </summary>
+	public long FuriaExtremaAte;
+
+	/// <summary>
+	/// ATE QUANDO ESTE CORPO ESTA EM RAIVA LENDARIA (relogio real, ms) -- a de ver um amigo CAIR.
+	///
+	/// ============================ POR QUE SAO DOIS CAMPOS E NAO UM CAMPO + UM NIVEL ============================
+	/// Com um so (`RaivaAte` + `RaivaNivel`) um nocaute chegando no meio de um luto teria que
+	/// decidir se REBAIXA o nivel ou se ignora o evento, e as duas respostas sao erradas: rebaixar
+	/// fecharia o SSJ1 no meio da janela, e ignorar perderia a renovacao do prazo. Com duas
+	/// janelas independentes nao ha decisao nenhuma a tomar -- cada evento renova a sua, e o nivel
+	/// efetivo e simplesmente a mais alta que ainda estiver aberta (ver `NivelDaRaivaDe`).
+	///
+	/// O DM tem um `rageExpire` so porque la o degrau de raiva sai do `Emotion`, que e um NUMERO
+	/// que decai sozinho no `Stats()` (`Stats.dm:445-449`) -- decaimento que este port nao tem.
+	/// ========================================================================================================
+	///
+	/// NAO PERSISTE, pelo mesmo motivo da de cima.
+	/// </summary>
+	public long RaivaLendariaAte;
+
+	/// <summary>
+	/// O DOMINIO SOBRE A FERA EM QUE ESTE CORPO ESTA AGORA, 0 a 100.
+	///
+	/// DERIVADO: e a maestria da forma `oozaru`/`oozaru_dourado` no livro que todas as outras
+	/// formas ja usam. Nao ha campo -- ver o bloco "O `Apeshitskill` FOI DELETADO" em
+	/// `Core/Forms/Oozaru.cs`. Fora da forma da 0, porque `Oozaru.Id(Nao)` e vazio e maestria de
+	/// forma nenhuma e zero: e a resposta certa pra "quanto voce domina a fera que voce nao e".
+	/// </summary>
+	public double MaestriaDaFera =>
+		Forma.Maestria.De(Jandirus.Core.Forms.Oozaru.Id(Oozaru));
+
+	// =====================================================================
+	// AS DUAS DISCIPLINAS DIVINAS -- ver GameServer.Disciplinas.cs
+	//
+	// Os dois estados existem SEMPRE, e so um deles chega a ser aprendido: as escolas se excluem.
+	// Guardar os dois (em vez de um so, com um enum dizendo qual) e o que faz o save sobreviver a
+	// uma mudanca de regra futura sem perder o que a pessoa ja tinha.
+	// =====================================================================
+
+	/// <summary>O Ultra Instinto: precisao, maestria e o toggle da esquiva autonoma.</summary>
+	public Jandirus.Core.Forms.EstadoDeDisciplina UltraInstinct = new();
+
+	/// <summary>O Poder da Destruicao: energia, maestria e o toggle da Aura of Destruction.</summary>
+	public Jandirus.Core.Forms.EstadoDeDisciplina PoderDaDestruicao = new();
+
+	/// <summary>Qual das duas este corpo trilhou. Nulo = nenhuma.</summary>
+	public Jandirus.Core.Forms.TipoDeDisciplina? Disciplina;
+
+	// --- o que e de combate e nao persiste ---
+	/// <summary>Pilhas vivas do bonus pos-esquiva (ate 5), e quando a ultima cai.</summary>
+	public int PilhasDeEsquiva;
+	public long EsquivaAte;
+
+	/// <summary>Dano do ultimo golpe recebido -- alimenta a Destruction Explosion.</summary>
+	public double UltimoGolpeRecebido;
+
+	/// <summary>O death-save da aura e a restauracao do Unbound Ego: UMA vez por luta cada.</summary>
+	public bool AuraSalvouNestaLuta, EgoRestauracaoUsada;
+
+	/// <summary>Godly Display: quem esta marcado, ate quando vale o 2o toque, e a recarga.</summary>
+	public readonly List<int> GdMarcados = [];
+	public long GdJanelaAte, GdRecargaAte;
+
+	/// <summary>Hakai Infusion: ate quando os ataques de ki estao infundidos, e a recarga.</summary>
+	public long HakaiAte, HakaiRecargaAte;
+
 	/// <summary>Rate-limit do aviso de "planeta sem superficie".</summary>
 	public long AvisoDePousoAte;
 
@@ -105,6 +219,31 @@ public sealed class ServerPlayer
 	/// carregando depois de deslogar, e o `is_drawing` do original tambem nao persistia.
 	/// </summary>
 	public bool Carregando;
+
+	/// <summary>
+	/// QUANTOS SEGUNDOS AINDA FALTAM DA CINEMATICA que prende este corpo. 0 = ninguem preso.
+	///
+	/// ============================ POR QUE O SERVIDOR PRECISA SABER DA CENA ============================
+	/// A cena e do cliente e o prazo tambem era. So que o dono relatou o Ki caindo DURANTE a
+	/// transformacao, e com as cenas de volta aos tempos do DM isso deixou de ser detalhe: a do SSJ3
+	/// prende o corpo por 140 s, e o dreno da forma podia esvaziar o tanque e DERRUBAR o jogador da
+	/// forma no meio da estreia dela. Quem cobra o Ki e o servidor, entao quem tem que saber e ele.
+	///
+	/// NAO NASCEU PACOTE NOVO. O servidor ja deriva o degrau da cena (`Cinematicas.Degrau`, dentro do
+	/// `AnunciarForma`) e o Core ja sabe converter degrau em prazo (`NoDegrau` -> `SegundosPreso`) --
+	/// e essa e a MESMA conta que o cliente faz pra decidir por quanto tempo prender o corpo. Perguntar
+	/// ao cliente "voce ainda esta em cena?" seria pedir a quem a tranca prende que diga quanto tempo
+	/// ela dura, alem de por uma segunda verdade no fio sobre um numero que ja existe nos dois lados.
+	///
+	/// CONTAGEM REGRESSIVA e nao "instante em que acaba": o tique da forma ja recebe o `dt`, e um prazo
+	/// em relogio de parede obrigaria a escolher entre `Time.GetTicksMsec` (que a bancada nao controla)
+	/// e um acumulador de tempo de servidor que nao existe.
+	///
+	/// VIVO, nao vai pro disco -- pelo mesmo motivo do `Carregando` logo acima: ninguem continua
+	/// assistindo a propria transformacao depois de deslogar.
+	/// ================================================================================================
+	/// </summary>
+	public double CenaSegundos;
 
 	/// <summary>
 	/// SESSAO DE TREINO (`Training_Session`): o BP de quando ela comecou. Nao persiste -- no
@@ -372,6 +511,83 @@ public sealed class ServerPlayer
 	public string Conta = "";
 	public int Slot = -1;
 
+	/// <summary>
+	/// A ASSINATURA -- a identidade PERMANENTE deste personagem. E o `mob/var/signature` do DM, e e
+	/// a chave de tudo que e social (conhecidos, amizade, inimizade, rivais).
+	///
+	/// ============================ DERIVADA, E NAO UM CAMPO NOVO ============================
+	/// Conta + slot ja E a identidade de um personagem neste projeto: e por esse par que o save o
+	/// acha no disco, e ele nao muda enquanto o personagem existir. Um campo `Assinatura` gravado
+	/// seria uma segunda verdade sobre a mesma coisa -- e a pergunta "e se os dois divergirem?" nao
+	/// tem resposta boa. O `Id` de rede NAO serve: ele e da sessao, e a amizade de ontem apontaria
+	/// pra quem entrou hoje naquele numero.
+	///
+	/// VAZIA PARA QUEM NAO TEM CONTA -- os corpos sem dono (clone da meditacao, NPCs, os corpos
+	/// forjados das bancadas). E vazia e a resposta certa: eles nao entram em lista social nenhuma,
+	/// e todo metodo daqui e do <see cref="Jandirus.Core.Social.Convivio"/> recusa a assinatura
+	/// vazia na primeira linha. E o mesmo `if(!signature) return` que o DM escreve em
+	/// `accrue_friendship` e `add_enmity`.
+	/// =======================================================================================
+	///
+	/// ============================ E ELA E OPACA, PORQUE ELA APARECE NA TELA ============================
+	/// A forma obvia seria `"conta#slot"`. Ela esta ERRADA por um motivo que so aparece na ponta: a
+	/// assinatura VIAJA pro cliente (`S2C.Conhecidos`) e o jogo a MOSTRA -- o `HtmlUI.dm:374` do
+	/// original escreve `??? ([signature])` pra quem voce nao conhece. Com `conta#slot`, cada
+	/// desconhecido na sua aba entregaria o LOGIN de quem esta do outro lado.
+	///
+	/// No DM ela e um numero de 10 digitos sorteado uma vez na criacao (`CreationUI.dm:199-203`).
+	/// Aqui e um HASH de conta+slot no mesmo formato -- opaco igual, e com uma vantagem sobre o
+	/// sorteio: nao precisa de campo no save nem de conferencia de colisao na criacao, porque ele se
+	/// recalcula sempre igual a partir de quem o personagem ja e.
+	/// ====================================================================================================
+	/// </summary>
+	public string Assinatura => Conta.Length == 0 || Slot < 0 ? "" : AssinaturaDe(Conta, Slot);
+
+	/// <summary>
+	/// O hash da assinatura: FNV-1a de 64 bits sobre conta+slot, cortado nos 10 digitos do formato
+	/// do DM.
+	///
+	/// MINUSCULAS de proposito: o nome da conta que o jogador digita no login pode vir com outra
+	/// caixa, e a pasta de saves ja normaliza assim (`AccountStore.Arquivo`). Sem isto, entrar como
+	/// "Joao" depois de ter entrado como "joao" trocaria a identidade do personagem e apagaria, na
+	/// pratica, todas as amizades dele.
+	/// </summary>
+	internal static string AssinaturaDe(string conta, int slot)
+	{
+		ulong h = 14695981039346656037UL;
+		foreach (char c in conta.ToLowerInvariant()) { h ^= c; h *= 1099511628211UL; }
+		h ^= (ulong)(slot + 1);
+		h *= 1099511628211UL;
+		return (h % 10_000_000_000UL).ToString("D10");
+	}
+
+	/// <summary>
+	/// QUEM EU CONHECO, DE QUEM EU GOSTO, DE QUEM EU NAO GOSTO. Ver `Core.Social.Convivio`.
+	///
+	/// PERSISTE INTEIRO (`CharacterSave.Social`): no DM as duas listas sao `mob/var` comuns -- nao
+	/// `tmp` --, entao elas viajam no savefile do mob junto com o resto (`Friendship.dm:10` diz
+	/// isso em voz alta: *"persists in the save"*). Amizade que morre no logout nao e amizade.
+	/// </summary>
+	public Jandirus.Core.Social.Convivio Social = new();
+
+	/// <summary>
+	/// O PEDIDO DE AMIZADE PENDENTE: a assinatura de quem me pediu, e o nome dele pra mensagem.
+	///
+	/// VIVO, nao vai pro disco -- o `tmp/pendingFriendReq` do DM (`Friendship.dm:14-15`) tambem e
+	/// `tmp`. Um pedido e um gesto do momento; guardado no save ele viraria uma caixa de entrada
+	/// que ninguem esvazia, e "aceitar" um pedido de tres semanas atras nao quer dizer nada.
+	/// </summary>
+	public string PedidoDeAmizade = "", NomeDeQuemPediu = "";
+
+	/// <summary>
+	/// Quando este corpo da o proximo passo de aproximacao (relogio real, ms).
+	///
+	/// POR JOGADOR e nao um contador do servidor: o `friend_tick` do DM tambem e do mob
+	/// (`Friendship.dm:13`). Um contador global faria quem entrou agora esperar a vez do relogio
+	/// de quem ja estava -- e, pior, todos os pares do servidor renderiam no mesmo instante.
+	/// </summary>
+	public long ProximaAproximacao;
+
 	/// <summary>Ate quando a pose de soco fica no ar (relogio real, ms).</summary>
 	public long AtaqueAte;
 
@@ -469,6 +685,13 @@ public partial class GameServer : Node
 
 	/// <summary>BP forcado por `--bpteste`. 0 = desligado (o normal).</summary>
 	private double _bpDeTeste;
+
+	/// <summary>`--kiteste`: nasce com Ki_Unlocked e Basic Ki Control nivel 5. Ver o `_Ready`.</summary>
+	private bool _kiDeTeste;
+
+	/// <summary>Os dois caminhos do Ki liberado. Escritos uma vez pra nao divergirem.</summary>
+	private const string SkillKiUnlocked = "/datum/skill/mind/Ki_Unlocked";
+	private const string SkillKiControl = "/datum/skill/mind/Basic_Ki_Control";
 	private double _techDeTeste, _zeniDeTeste;
 	private int _marcosDeTeste;
 	private List<string> _skillsDeTeste = [];
@@ -642,6 +865,23 @@ public partial class GameServer : Node
 		// `--portateste`: nasce colado numa porta. As 82 portas do jogo estao dentro de casas, a
 		// dezenas de tiles do ponto de nascimento -- andar ate uma leva meio minuto, e um teste
 		// automatico que leva meio minuto pra COMECAR nao roda. Ver `NascerNaPorta`.
+		// ============================ `--kiteste`: entra com o Ki LIBERADO ============================
+		// Pra poder testar a tecla C a mao. Nao basta UMA coisa -- sao DUAS, e elas passam por
+		// canais diferentes do motor de skills, o que e justamente o que torna isto facil de errar:
+		//
+		//   `Ki_Unlocked`            e uma skill COMPRADA  -> canal dos efeitos (MeditateGivesKiRegen)
+		//   `Basic_Ki_Control` nv 5  e um DEGRAU de nivel   -> canal das flags de degrau (canPower)
+		//
+		// E o `canPower` (o "controle bom", `Mind.dm:281`) que deixa a carga passar de 100%. Dar so
+		// a primeira faz o C carregar e parar no teto -- que e metade do que se quer testar.
+		//
+		// As duas sao concedidas ANTES do `PrepararSkills`/`Niveis.Aplicar`, e nao depois: assim o
+		// caminho normal aplica os efeitos UMA vez. Conceder depois exigiria reaplicar, e efeito de
+		// skill aplicado duas vezes soma duas vezes.
+		// ================================================================================================
+		_kiDeTeste = Array.IndexOf(args, "--kiteste") >= 0;
+		if (_kiDeTeste) GD.Print("[server] BANCADA: todo mundo entra com o Ki liberado (C carrega e passa de 100%)");
+
 		_portaDeTeste = Array.IndexOf(args, "--portateste") >= 0;
 		if (_portaDeTeste) GD.Print("[server] BANCADA: todo mundo nasce colado numa porta");
 
@@ -741,6 +981,11 @@ public partial class GameServer : Node
 		// rodado. Repare que ela nao liga o voo, so da a skill: a porta continua sendo a de producao.
 		_vooDeTeste = Array.IndexOf(args, "--vooteste") >= 0;
 		if (_vooDeTeste) GD.Print("[server] BANCADA: quem entrar ja sabe voar (Flight nivel 2)");
+
+		// `--formasteste`: sobe a escada inteira no primeiro que entrar e confere o BP degrau a
+		// degrau. Ver GameServer.FormasTeste.cs -- ela MEXE no personagem, entao so com a flag.
+		_formasDeTeste = Array.IndexOf(args, "--formasteste") >= 0;
+		if (_formasDeTeste) GD.Print("[server] BANCADA: escada de formas sera exercitada no 1o login");
 
 		// `--geradoteste`: quem entrar nasce num planeta GERADO em vez da Terra.
 		//
@@ -935,6 +1180,23 @@ public partial class GameServer : Node
 	private void Handle(NetPeer peer, NetPacketReader reader)
 	{
 		var id = (Protocol.C2S)reader.GetByte();
+
+		// ============================ QUEM PERDEU AS REDEAS NAO MEXE O CORPO ============================
+		// A recusa ficava em UM lugar so -- o portao de MOVIMENTO, dentro do `Input`. Soco, guarda,
+		// carga de Ki, habilidade, transformacao e Zanzoken passavam inteiros enquanto a fera dirigia
+		// o corpo, que e metade da queixa do dono ("eu ainda posso tentar mexer").
+		//
+		// A porta e AQUI, no despacho, e nao dentro de cada handler, por dois motivos: um caso novo
+		// (o proximo comando que mexa no corpo) so precisa entrar na lista de `ComandoDeCorpo`, e as
+		// chamadas INTERNAS do servidor -- `Carregar(pl,false)` quando a fera assume, por exemplo --
+		// continuam livres, porque quem esta barrado e o PACOTE do dono, nao a funcao.
+		//
+		// O movimento continua com o portao dele la embaixo: ele nao so recusa, ele tambem preserva o
+		// `Moving` que a IA escreveu e responde a posicao. Ver `Input`.
+		// ============================================================================================
+		if (ComandoDeCorpo(id) && _byPeer.TryGetValue(peer, out ServerPlayer? tomado) && SemAsRedeas(tomado))
+			return;
+
 		switch (id)
 		{
 			case Protocol.C2S.Login: Login(peer, reader.GetString(24), reader.GetString(64)); break;
@@ -1358,9 +1620,27 @@ public partial class GameServer : Node
 		PrepararSkills(pl, c);
 		pl.Niveis = new Jandirus.Core.Skills.NiveisDeSkill();
 		pl.Niveis.DoSave(c?.Niveis);
+
+		// AS DUAS PECAS DO KI LIBERADO SAIRAM DAQUI e viraram `LiberarOKi` (GameServer.Skills.cs):
+		// o `admin_liberar_ki` concede exatamente a mesma coisa em runtime, e duas copias da mesma
+		// concessao e o jeito conhecido de uma delas envelhecer.
+		//
+		// A CHAMADA MORA ENTRE O `DoSave` E O `Aplicar`, e as duas bordas importam:
+		//   * DEPOIS do `PrepararSkills`/`new NiveisDeSkill`, que sao quem CRIA `pl.Livro` e
+		//     `pl.Niveis` -- a primeira versao disto rodava antes e derrubava o servidor com nulo,
+		//     a mesma armadilha que o comentario do `--bpteste`, logo abaixo, ja registrava ter
+		//     acontecido com o `pl.Combate`;
+		//   * ANTES do `Aplicar`/`AplicarEfeitos`, pra o degrau e a skill entrarem numa aplicacao
+		//     so, em vez de duas.
+		if (_kiDeTeste) LiberarOKi(pl);
+
 		pl.Niveis.Aplicar(pl.Ficha);   // o nivel veio do disco; o que ele soma, nao
+
 		AplicarPoderes(pl);
 		AplicarEfeitos(pl);
+
+		// Positiva, e nao so o alarme -- ver `ConferirKiLiberado`.
+		if (_kiDeTeste) ConferirKiLiberado(pl, "--kiteste");
 
 		// BANCADA: `--bpteste N` da BP a quem entrar. Existe porque a escada de transformacao
 		// comeca em 1,5 MILHAO de BP base e um personagem novo nasce com 9 -- sem isto nao ha
@@ -1413,10 +1693,55 @@ public partial class GameServer : Node
 		// A FORMA NAO ATRAVESSA O LOGOUT: quem sai SSJ3 volta na base. O que persiste e a
 		// MAESTRIA (semanas de jogo) e quais formas ja despertaram (a cinematica so roda uma vez).
 		pl.Forma = new Jandirus.Core.Forms.EstadoDeForma();
-		pl.Forma.Maestria.DoSave(c?.Maestrias);
+		// O DESCARTE DAS FORMAS DE DISCIPLINA VOLTA NOMEADO, e e avisado la embaixo (depois do
+		// `JoinAccepted`, quando o cliente ja tem chat). Ver `Maestrias.DoSave` pro porque de
+		// descartar em vez de migrar -- e pro porque de nao dar pra fazer isso calado.
+		List<string> maestriasDescartadas = pl.Forma.Maestria.DoSave(c?.Maestrias);
 		// OS LIMIARES DESTE PERSONAGEM vem do disco -- sorteados no nascimento, nunca de novo.
 		pl.Forma.Limiares = c?.Limiares;
-		if (c?.FormasDespertadas is { Count: > 0 }) pl.Forma.JaDespertou = [.. c.FormasDespertadas];
+		// ============================ O NUMERO DA FORMA PASSA PELA MIGRACAO ============================
+		// O disco guarda forma por `FormaDef.IdRede`, e um numero que saiu do catalogo nao casa com
+		// entrada nenhuma -- vira lixo silencioso no `HashSet`. `Catalogo.RedeDoSave` traduz os que
+		// mudaram de dono (hoje: o `306`, do Mistico Ascendido que virou um ponto da curva do `305`)
+		// e devolve igual todo o resto. Ver o cabecalho de `RedeDoSave` pro porque de nao dar pra
+		// simplesmente deixar o numero velho passar.
+		//
+		// E A TRADUCAO E UMA CHAMADA SO, PRAS DUAS LISTAS (`Catalogo.RedesDoSave`): a expressao estava
+		// escrita duas vezes aqui, e duas copias da mesma migracao e onde a proxima fusao de formas
+		// passa a valer so pra metade -- ver o cabecalho da funcao.
+		if (c?.FormasDespertadas is { Count: > 0 })
+			pl.Forma.Liberadas = Jandirus.Core.Forms.Catalogo.RedesDoSave(c.FormasDespertadas);
+
+		// ============================ A MIGRACAO DOS DOIS BITS ============================
+		// `FormasEstreadas` nasceu depois de `FormasDespertadas` (ver `EstadoDeForma`). Num save
+		// gravado antes dela o campo NAO EXISTE no JSON e chega **null** -- e null aqui quer dizer
+		// "este personagem e de antes da separacao, tudo que ele tem liberado ele ja viu".
+		//
+		// O teste e `is null` e nao `Count == 0` de proposito: lista VAZIA e uma resposta legitima
+		// de um save novo (personagem que nunca se transformou), e trata-la como "save antigo"
+		// copiaria as liberadas por cima -- exatamente no unico caso em que isso apaga uma estreia
+		// devida, que e o do SSJ4 liberado pelo Oozaru Dourado e ainda nao assistido.
+		// ==============================================================================
+		pl.Forma.EstreiaVista = c?.FormasEstreadas is { } vistas
+			? Jandirus.Core.Forms.Catalogo.RedesDoSave(vistas)
+			: [.. pl.Forma.Liberadas];
+
+		// A DISCIPLINA DIVINA. O toggle NAO volta ligado: uma passiva que drena e reacende sozinha
+		// no login gastaria a precisao de quem so entrou pra conversar.
+		if (c is { Disciplina: 1 })
+		{
+			pl.UltraInstinct.Aprendida = true;
+			pl.UltraInstinct.Real = c.DiscReal;
+			pl.UltraInstinct.Atual = Math.Min(c.DiscAtual, c.DiscReal);
+			pl.Disciplina = Jandirus.Core.Forms.TipoDeDisciplina.UltraInstinct;
+		}
+		else if (c is { Disciplina: 2 })
+		{
+			pl.PoderDaDestruicao.Aprendida = true;
+			pl.PoderDaDestruicao.Real = c.DiscReal;
+			pl.PoderDaDestruicao.Atual = Math.Min(c.DiscAtual, c.DiscReal);
+			pl.Disciplina = Jandirus.Core.Forms.TipoDeDisciplina.PoderDaDestruicao;
+		}
 		AplicarForma(pl);
 
 		_logados.Remove(peer);
@@ -1458,6 +1783,9 @@ public partial class GameServer : Node
 			pl.Livro.Dar("/datum/skill/mind/Ki_Unlocked");
 			pl.Niveis.Por("/datum/skill/mind/Ki_Unlocked", MaestriaQueDestravaVoo);
 		}
+
+		// A BANCADA DE FORMAS roda uma vez, no primeiro que entra.
+		if (_formasDeTeste) { _formasDeTeste = false; RodarBancadaDeFormas(pl); }
 
 		// SO AGORA da pra mandar as construcoes: `MandarObras` varre `_players` procurando quem
 		// esta na zona, e quem acabou de entrar so esta la depois desta linha.
@@ -1507,6 +1835,19 @@ public partial class GameServer : Node
 		TrocarAparencias(pl);
 		TrocarFeridas(pl);
 
+		// QUEM ESTE PERSONAGEM CONHECE. Vai no login como a mochila e pelo mesmo motivo: a aba
+		// People e desenhada com o que chegou, e sem isto ela abriria vazia ate a primeira mudanca
+		// -- que num personagem antigo e cheio de gente pode nunca vir.
+		MandarConhecidos(pl);
+
+		// ============================ O QUE O SAVE PERDEU, DITO EM VOZ ALTA ============================
+		// As quatro formas divinas deixaram de ter maestria propria (ver `Maestrias.Por`). Quem ja
+		// tinha registro no disco perde esse numero -- e perder calado e indistinguivel de um defeito:
+		// o jogador abriria a aba, veria a barra em 0% e concluiria que o save corrompeu.
+		if (maestriasDescartadas.Count > 0)
+			Avisar(pl, $"a maestria de {string.Join(" e ", maestriasDescartadas)} nao existe mais: "
+					 + "essas formas sao da SKILL, e usa-las agora sobe a proficiencia da disciplina.");
+
 		GD.Print($"[server] {pl.Name} entrou (id {pl.Id}) em {pl.Zone} | {pl.Race}/{pl.Class} " +
 				 $"| BP {pl.Ficha.BP:0.0} (expresso {pl.Ficha.expressedBP:0})");
 	}
@@ -1555,6 +1896,17 @@ public partial class GameServer : Node
 			if (outro != novo)
 				novo.Peer?.Send(Ficha(outro), Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
+
+		// ============================ A APARENCIA BASE NAO E A APARENCIA ============================
+		// O `PeerLook` acima descreve o corpo de FICHA: cabelo escolhido na criacao, roupa, cor de pele.
+		// Ele nao sabe nada de transformacao -- entao ate aqui quem chegava numa zona via um Super
+		// Saiyajin 3 desenhado como lutador comum, e o dono do SSJ4 nao via a propria pelagem.
+		//
+		// PENDURADO DENTRO DESTE METODO, e nao ao lado das duas chamadas dele: "ligar a regra num
+		// chamador e esquecer do outro" e, escrito por todo este port, o erro que mais se repetiu aqui.
+		// Sao dois caminhos de entrada (login e troca de zona) e os dois ja passam por esta linha; um
+		// terceiro que nasca amanha herda a regra de graca. Ver `SincronizarFormas`.
+		SincronizarFormas(novo);
 	}
 
 	private static void Recusar(NetPeer peer, string motivo)
@@ -1654,10 +2006,31 @@ public partial class GameServer : Node
 		// (e quem esta num ZANZO CLASH tambem nao: la o corpo e do servidor, que o recoloca a cada
 		// cruzamento. Sem esta linha o jogador andaria entre os teleportes e a briga de posicao
 		// seria com o proprio efeito.)
-		if (pl.Ficha.dead || pl.Ficha.KO || pl.Carregando || _emEmbate.ContainsKey(pl.Id))
+		// ============================ O MACACO NAO OBEDECE ============================
+		// O `ctrlParalysis` do DM (Oozaru.dm:163), agora com o PRAZO que o dono pediu no lugar do
+		// interruptor: enquanto a maestria segura as redeas o input passa normalmente, e quando o
+		// prazo vence o servidor assume o corpo (`TomarAsRedeas`) e a recusa comeca a valer. Ver
+		// `Oozaru.SegundosDeControle`.
+		//
+		// A recusa entra na MESMA porta de quem esta caido ou carregando, e nao numa segunda: o
+		// cliente ja e corrigido de volta por este caminho, e duplicar a regra seria criar duas
+		// respostas pra "por que meu personagem nao anda".
+		// =============================================================================
+		if (pl.Ficha.dead || pl.Ficha.KO || pl.Carregando || _emEmbate.ContainsKey(pl.Id)
+			|| SemAsRedeas(pl))
 		{
 			pl.LastInputMs = NowMs();
-			pl.Moving = false;
+
+			// ============================ QUEM DIRIGE ESCREVE O `Moving` ============================
+			// Nos outros casos desta porta o corpo esta MESMO parado, e zerar aqui e o certo. Com a
+			// fera nao: o `TickDosCorposSemDono` acabou de dar um passo e escreveu `Moving = true`, e
+			// o input do dono chega dezenas de vezes por segundo por fora do tique. Zerar cego
+			// apagaria esse passo quase sempre, e nas outras telas o macaco andaria em soluços --
+			// deslizando sem animacao de caminhada. A posicao continua correta; so a ANIMACAO
+			// mentiria, que e o tipo de defeito que ninguem consegue descrever direito.
+			// ====================================================================================
+			if (pl.Cerebro == null) pl.Moving = false;
+
 			var parado = Protocol.Begin(Protocol.S2C.Correction);
 			parado.Put(pl.SeqInput);
 			parado.PutVec(pl.Pos);
@@ -1834,8 +2207,33 @@ public partial class GameServer : Node
 		// por uma parede nao pode depender de qual dos dois relogios acordou primeiro.
 		foreach (ServerPlayer pl in _players.Values) TickDoVoo(pl, Protocol.TickSeconds);
 
-		// os NPCs pensam e agem no tick cheio, pelas mesmas funcoes do jogador
-		TickDosClones(Protocol.TickSeconds);
+		// O OOZARU ANDA COM AS OUTRAS FORMAS: prazo, raiva e pericia sao contados em segundos, e o
+		// rabo pode ser arrancado a qualquer golpe -- a 5 Hz a forma sobreviveria ate 200 ms depois
+		// de o membro cair.
+		foreach (ServerPlayer pl in _players.Values) TickDoOozaru(pl, Protocol.TickSeconds);
+
+		// A FURIA LENDARIA ANDA LOGO DEPOIS DA FERA, e a ordem entre os tres e a regra:
+		//   * DEPOIS do `TickDaForma`, porque e ele quem reverte a forma por Ki zerado ou nocaute --
+		//     e e vendo a forma ja revertida que a furia devolve o corpo (sem isto haveria um tique
+		//     com a IA dirigindo um jogador na forma base);
+		//   * DEPOIS do `TickDoOozaru`, porque as duas possessoes escrevem no MESMO `Cerebro` e a
+		//     fera tem precedencia (a furia se recusa a agir em corpo de macaco);
+		//   * ANTES do `TickDosCorposSemDono`, que e quem executa -- assim tomar e devolver as redeas
+		//     valem no mesmo quadro em que foram decididos.
+		foreach (ServerPlayer pl in _players.Values) TickDaFuriaLendaria(pl, Protocol.TickSeconds);
+
+		// AS DISCIPLINAS DIVINAS: dreno/regeneracao das duas energias, maestria por combate, o
+		// Unbound Ego (que le o corpo a cada tique) e a queda das pilhas de esquiva.
+		foreach (ServerPlayer pl in _players.Values)
+		{
+			TickDasDisciplinas(pl, Protocol.TickSeconds);
+			TickDoUnboundEgo(pl);
+			TickDasPilhasDeEsquiva(pl);
+		}
+
+		// os corpos SEM DONO -- clones da mente e Oozarus fora de controle -- pensam e agem no tick
+		// cheio, pelas mesmas funcoes do jogador
+		TickDosCorposSemDono(Protocol.TickSeconds);
 
 		// A PORTA ABRE NO TICK CHEIO. Ela e uma parede que some, e uma parede que some com atraso
 		// visivel e uma parede em que o jogador esbarra -- 5 Hz dariam ate 200 ms de porta fechada
@@ -1876,8 +2274,12 @@ public partial class GameServer : Node
 		// entre acertar e nao.
 		TickDosEmbates();
 
+		// O CONVIVIO ENTRA NESTE MESMO BLOCO DE 1 Hz e cobra 3 segundos POR PESSOA la dentro (ver
+		// `TickDoConvivio`): quem manda no passo e o prazo de cada jogador, e este laco so pergunta
+		// se ja chegou a hora. Rodar mais rapido nao mudaria nada -- no relogio do DM a amizade
+		// cresce 0,1 a cada 3 s.
 		if (_tickCount % TicksPorSegundo == 0)
-			{ TickDasTecnicas(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); }
+			{ TickDasTecnicas(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); }
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
 		// Dois minutos e o maximo de treino que alguem pode perder.
@@ -2112,6 +2514,11 @@ public partial class GameServer : Node
 		// aparecer no chao pra todo mundo enquanto o servidor ainda o traz descendo.
 		Voando = pl.Altitude > 0f,
 		Altitude = pl.Altitude,
+		// QUEM DIRIGE ESTE CORPO. Vai no snapshot porque e o corpo LOCAL que precisa saber: sem
+		// isto ele continua escolhendo a propria animacao pelo teclado, que durante a possessao nao
+		// da passo nenhum -- posicao andando e animacao parada e o "sai deslizando". Ver
+		// `EntityState.SemRedeas`.
+		SemRedeas = SemAsRedeas(pl),
 	};
 
 	private List<ServerPlayer> ZoneList(ulong hash)

@@ -1,5 +1,6 @@
 ﻿using Godot;
 using Jandirus.Core.Skills;
+using Jandirus.Core.Social;
 using Jandirus.Net;
 
 namespace Jandirus.Client;
@@ -113,6 +114,7 @@ public partial class MenuJogo : CanvasLayer
 			cli.CorpoAtualizado += AoCorpo;
 			cli.SkillsMudaram += AoSkills;
 			cli.CargosMudaram += AoCargos;
+			cli.ConhecidosMudaram += AoConhecidos;
 			cli.ContasMudaram += AoContas;
 			cli.TechMudou += AoTech;
 			cli.EstilosMudaram += AoEstilos;
@@ -135,6 +137,7 @@ public partial class MenuJogo : CanvasLayer
 			cli.CorpoAtualizado -= AoCorpo;
 			cli.SkillsMudaram -= AoSkills;
 			cli.CargosMudaram -= AoCargos;
+			cli.ConhecidosMudaram -= AoConhecidos;
 			cli.ContasMudaram -= AoContas;
 			cli.TechMudou -= AoTech;
 			cli.EstilosMudaram -= AoEstilos;
@@ -176,6 +179,13 @@ public partial class MenuJogo : CanvasLayer
 	}
 
 	private void AoCargos() { if (Visible) Redesenhar(); }
+
+	/// <summary>
+	/// A LISTA DE CONHECIDOS MUDOU. So redesenha na aba People, como o `AoContas` faz com a de
+	/// admin: um pedido de amizade chegando no meio de uma luta nao pode remontar a aba de Stats
+	/// que o jogador esta lendo.
+	/// </summary>
+	private void AoConhecidos() { if (Visible && _aba == "People") Redesenhar(); }
 	private void AoContas() { if (Visible && _aba == Verbos.Admin) Redesenhar(); }
 	private void AoTech() { if (Visible) Redesenhar(); }
 
@@ -418,7 +428,11 @@ public partial class MenuJogo : CanvasLayer
 			"Body" => $"{comum}|{string.Join(',', (c?.Corpo ?? []).Select(p => p.Nome + p.Vida + (p.Decepado ? "x" : "")))}",
 			"Learning" => $"{comum}|{c?.SkillsAprendidas.Count}|{c?.MarcosTotais}|{c?.MarcosLivres}",
 			"Skills" => $"{comum}|{c?.SkillsAprendidas.Count}",
-			"Forms" => $"{comum}|{_atributos.FormaAtual}|{string.Join(',', (_atributos.Maestrias ?? []).Select(m => $"{m.Forma}:{m.Pct:0.#}"))}",
+			// A PROFICIENCIA DA DISCIPLINA ENTRA AQUI porque a aba passou a DESENHA-LA: as quatro
+			// formas divinas relatam a proficiencia da skill no lugar da maestria, e sem este pedaco
+			// a barra delas ficaria congelada na tela enquanto sobe de verdade no servidor.
+			"Forms" => $"{comum}|{_atributos.FormaAtual}|{string.Join(',', (_atributos.Maestrias ?? []).Select(m => $"{m.Forma}:{m.Pct:0.#}"))}"
+					 + $"|{_atributos.Disciplina}:{_atributos.DiscReal:0.#}",
 			"Tech" => $"{comum}|{c?.TechNivel:0.#}|{c?.Zeni:0}|{c?.TechXp:0}|{c?.Obras.Count}|{c?.Catalogo.Count}",
 			"Cargos" => $"{comum}|{string.Join(',', (c?.Cargos ?? []).Select(r => r.Chave + r.Dono + r.Falta))}",
 			// A ABA ADMIN TEM CAIXAS DE TEXTO, e uma remontagem as recria vazias. Por isso a
@@ -442,10 +456,27 @@ public partial class MenuJogo : CanvasLayer
 			// fora de proposito: ela sobe e desce continuamente durante os 45 s de transicao, e
 			// remontar a pagina a cada quadro do fade recriaria as caixas de texto vazias na mao
 			// de quem esta digitando. E a mesma armadilha que o comentario acima descreve.
-			Verbos.Admin => $"{comum}|{c?.AlvoId}"
+			// `FormaAtual` ENTRA porque o painel de formas marca com ● o degrau em uso. Sem ela a
+			// marca ficaria no botao velho depois de forcar uma forma -- o painel diria que nada
+			// aconteceu justamente no clique em que tudo aconteceu.
+			Verbos.Admin => $"{comum}|{c?.AlvoId}|{_atributos.FormaAtual}"
 						  + $"|{World.Instancia?.TempoQueFaz?.Tipo}|{World.Instancia?.TempoQueFaz?.Forcado}|"
 						  + string.Join(',', (c?.Contas ?? []).Select(a => $"{a.Conta}{a.Admin}{a.Banida}{a.Online}")),
 			"Ki" => $"{comum}|{f.Ki:0}|{f.MaxKi:0}|{c?.SkillsAprendidas.Count}",
+			// PEOPLE PRECISA DE ASSINATURA DESDE QUE ELA TEM BOTAO. Ela caia no `_ => ""` (remonta
+			// sempre), que era inofensivo enquanto a aba era so texto -- agora ela tem os botoes de
+			// relacao e o aceitar/recusar do pedido de amizade, e uma pagina refeita 5x por segundo
+			// destroi o botao debaixo do dedo de quem clica. E a MESMA armadilha que o bloco do
+			// Admin acima descreve, e ela mordeu este projeto uma vez.
+			//
+			// Entram: os vinculos (que so mudam a cada 3 s, e devagar), o pedido pendente, e os
+			// NOMES visiveis -- que mudam quando alguem entra ou sai do campo de visao, e nao a
+			// cada quadro. Os pontos vao arredondados de proposito: 0,1 por passo remontaria a
+			// pagina toda vez sem nada visivel mudar.
+			"People" => $"{comum}|{c?.PedidoDeAmizade}|"
+					  + string.Join(',', (c?.Conhecidos ?? []).Select(
+							k => $"{k.Assinatura}{k.Amizade:0}{k.Familiaridade}{k.Relacao}{k.Rival}{k.Inimizade:0}"))
+					  + "|" + string.Join(',', World.Instancia?.NomesVisiveis() ?? []),
 			// As abas fixas sem dado proprio (Equip, Other) sao texto parado: uma assinatura
 			// so ja basta pra elas nunca mais serem remontadas.
 			"Equip" or Verbos.Outros => comum,
@@ -711,12 +742,100 @@ public partial class MenuJogo : CanvasLayer
 	// =====================================================================
 	// PEOPLE -- o "Known People" do original
 	// =====================================================================
+	/// <summary>
+	/// ============================ A ABA PEOPLE -- O KNOWN-PEOPLE DO ORIGINAL ============================
+	/// Ela tinha SO a lista de quem estava na tela, que e o que o `NomesVisiveis` sabia responder.
+	/// Agora ela e o que o `ui_tab_people()` do DM (`HtmlUI.dm:545-560`) mostrava: a lista de quem
+	/// voce CONHECE, com a ficha "como visto da ultima vez" e o degrau de proximidade.
+	///
+	/// AS DUAS SECOES CONVIVEM porque respondem coisas diferentes: "quem esta aqui agora" (que e o
+	/// que voce usa pra marcar alguem) e "quem eu conheco" (que e o que sobrevive ao logout). No
+	/// original as duas tambem existiam, em telas separadas.
+	///
+	/// O RETRATO NAO VEIO. La ele e o icone achatado do corpo (`contact_portrait`), servido por
+	/// `browse_rsc`; aqui a aparencia e montada em camadas pelo cliente e "a foto de como ele
+	/// estava" seria um SEGUNDO caminho de vestir alguem. Ficaram os campos de texto, que sao o que
+	/// a aba de la realmente le.
+	/// ======================================================================================================
+	/// </summary>
 	private void Gente()
 	{
+		if (GameClient.Instance is not { } cli) return;
+
+		// ---- o pedido de amizade pendente vem PRIMEIRO: e o unico item aqui que expira ----
+		if (cli.PedidoDeAmizade.Length > 0)
+		{
+			Secao($"{cli.PedidoDeAmizade} quer ser seu amigo");
+			var linha = new HBoxContainer();
+			var sim = new Button { Text = "Aceitar" };
+			sim.Pressed += () => cli.SendVerbo("amizade_aceitar");
+			var nao = new Button { Text = "Recusar" };
+			nao.Pressed += () => cli.SendVerbo("amizade_recusar");
+			linha.AddChild(sim);
+			linha.AddChild(nao);
+			_conteudo.AddChild(linha);
+		}
+
+		Secao("Quem voce conhece");
+		if (cli.Conhecidos.Count == 0)
+			Aviso("Voce ainda nao conviveu com ninguem de quem valha a pena lembrar.");
+
+		foreach (GameClient.ConhecidoInfo c in cli.Conhecidos)
+		{
+			// SEM FICHA = so vinculo, sem rosto. `??? (assinatura)` e a forma do original.
+			string nome = c.Nome.Length > 0 ? c.Nome : $"??? ({c.Assinatura})";
+			string grau = Convivio.RotuloDeProximidade(c.Amizade);
+			string odio = Convivio.RotuloDeInimizade(c.Inimizade);
+			var rel = (Relacao)c.Relacao;
+
+			Linha(nome, $"{grau} ({c.Amizade:0})");
+			Aviso($"      {c.Raca} / {c.Classe}  ·  como visto da ultima vez"
+				  + $"  ·  convivio {c.Familiaridade}"
+				  + (rel != Relacao.Nenhuma ? $"  ·  {Convivio.NomeDaRelacao(rel)}" : "")
+				  + (c.Rival ? "  ·  RIVAL" : "")
+				  + (odio.Length > 0 ? $"  ·  {odio} ({c.Inimizade:0})" : ""));
+
+			BotoesDeRelacao(cli, c);
+		}
+
 		Secao("Quem esta por perto");
 		List<string> nomes = World.Instancia?.NomesVisiveis() ?? [];
 		if (nomes.Count == 0) { Aviso("Ninguem no seu campo de visao."); return; }
 		foreach (string n in nomes) Linha(n, "");
+	}
+
+	/// <summary>
+	/// AS DECLARACOES QUE ESTA FAMILIARIDADE JA PAGA -- o verb `Relation()` do original, que la era
+	/// um `input()` com a lista inteira e a explicacao dos custos no titulo.
+	///
+	/// O BOTAO APARECE APAGADO em vez de sumir, que e a regra do menu deste port: saber que "Amor"
+	/// existe e que custa 200 de convivio e informacao; esconder e esconder o jogo do jogador.
+	///
+	/// **QUEM DECIDE E O SERVIDOR.** Isto aqui e conveniencia -- o `VerboRelacao` confere a
+	/// familiaridade de novo, porque apagar botao nunca foi permissao.
+	/// </summary>
+	private void BotoesDeRelacao(GameClient cli, GameClient.ConhecidoInfo c)
+	{
+		if (c.Nome.Length == 0) return;   // sem ficha nao ha o que declarar
+
+		var linha = new HBoxContainer();
+		linha.AddThemeConstantOverride("separation", 2);
+		foreach (Relacao r in Convivio.Declaraveis)
+		{
+			int pede = Convivio.FamiliaridadeExigida(r);
+			bool pode = c.Familiaridade >= pede;
+			var b = new Button
+			{
+				Text = Convivio.NomeDaRelacao(r),
+				Disabled = !pode || (Relacao)c.Relacao == r,
+				TooltipText = pode ? "declarar" : $"exige {pede} de convivio (voce tem {c.Familiaridade})",
+			};
+			b.AddThemeFontSizeOverride("font_size", 11);
+			string sig = c.Assinatura, nome = Convivio.NomeDaRelacao(r);
+			b.Pressed += () => cli.SendVerbo("relacao", $"{sig}|{nome}");
+			linha.AddChild(b);
+		}
+		_conteudo.AddChild(linha);
 	}
 
 	private void Mundo()
@@ -1058,24 +1177,52 @@ public partial class MenuJogo : CanvasLayer
 	/// </summary>
 	private void AbaFormas()
 	{
-		var atual = (Jandirus.Core.Forms.Forma)_atributos.FormaAtual;
-		Jandirus.Core.Forms.FormaDef? defAtual = Jandirus.Core.Forms.EscadaSaiyajin.Def(atual);
+		Jandirus.Core.Forms.FormaDef? defAtual = Jandirus.Core.Forms.Catalogo.PorRede(_atributos.FormaAtual);
+		if (defAtual is { Id: "base" }) defAtual = null;
+		string atual = defAtual?.Id ?? Jandirus.Core.Forms.Catalogo.IdBase;
+
+		// O LIVRO UMA VEZ SO, e nao um por linha: o `Livro()` remonta o dicionario inteiro a cada
+		// chamada, e esta aba redesenha a cada quadro em que algo muda. Ele serve as duas leituras de
+		// nome daqui de baixo.
+		Jandirus.Core.Forms.Maestrias livro = Livro();
 
 		Secao("Agora");
-		Linha("Forma", defAtual?.Nome ?? "normal", defAtual != null ? Tema.Destaque : Tema.Texto);
+		// ============================ O NOME SAI DO CATALOGO E NAO DA ENTRADA ============================
+		// `Catalogo.NomeDe` e nao `defAtual.Nome`: o Super Saiyajin a 100% de maestria se chama
+		// "Super Saiyajin Grade 4" e continua sendo a MESMA forma (ver `Catalogo.DominouOSuperSaiyajin`).
+		// Aqui o cliente tem o livro de maestrias do proprio dono da ficha, entao a pergunta se responde
+		// sem pedir nada ao servidor.
+		// ============================================================================================
+		Linha("Forma", defAtual != null ? Jandirus.Core.Forms.Catalogo.NomeDe(defAtual, livro) : "normal",
+			  defAtual != null ? Tema.Destaque : Tema.Texto);
 		if (defAtual != null)
 		{
-			Linha("Maestria desta forma", $"{Maestria(atual):0.#}%");
-			Linha("Dreno de Ki", $"{Jandirus.Core.Forms.EscadaSaiyajin.DrenoPorSegundo(atual, Livro()) * 100:0.##}% do Ki por segundo");
+			// A FORMA DE DISCIPLINA MOSTRA A PROFICIENCIA DA SKILL, e diz o nome dela. Sem isto esta
+			// linha marcaria 0,0% pra sempre em quem esta vivendo dentro do Ultra Instinto -- ver
+			// `ProficienciaDaForma`.
+			if (ProficienciaDaForma(atual) is { } prof)
+				Linha($"Proficiência em {prof.Nome}", $"{prof.Pct:0.#}%");
+			else
+				Linha("Maestria desta forma", $"{Maestria(atual):0.#}%");
+			Linha("Dreno de Ki", $"{Jandirus.Core.Forms.Catalogo.DrenoPorSegundo(atual, Livro()) * 100:0.##}% do Ki por segundo");
 		}
 		Aviso("\nSegure C pra reunir energia  ·  toque C duas vezes pra tentar subir  ·  X volta ao normal.\n"
-			+ "Maestria SÓ cresce dentro da forma, gastando Ki -- é o único eixo do jogo que não se compra.");
+			+ "Maestria SÓ cresce dentro da forma, gastando Ki -- é o único eixo do jogo que não se compra.\n"
+			+ "As formas de uma disciplina divina são exceção: elas não têm maestria própria -- usá-las "
+			+ "sobe a proficiência da SKILL, e essa só cresce LUTANDO.");
 
 		// SO O QUE JA DESPERTOU. Maestria > 0 quer dizer que este corpo ja esteve nessa forma
 		// alguma vez -- e o unico registro honesto de "eu sei fazer isto".
+		//
+		// NAS FORMAS DE DISCIPLINA O REGISTRO HONESTO E OUTRO: elas nao guardam maestria nenhuma, e
+		// o que prova que o corpo as conhece e a FAIXA de proficiencia que as concedeu ter sido
+		// cruzada (`Degrau.Pct`). Sem esta metade elas sumiriam da aba no instante em que o jogador
+		// voltasse pra base -- a regra existiria e ninguem veria.
 		var minhas = new List<Jandirus.Core.Forms.FormaDef>();
-		foreach (Jandirus.Core.Forms.FormaDef d in Jandirus.Core.Forms.EscadaSaiyajin.Degraus)
-			if (d.Id == atual || Maestria(d.Id) > 0) minhas.Add(d);
+		foreach (Jandirus.Core.Forms.FormaDef d in Jandirus.Core.Forms.Catalogo.Todas)
+			if (d.Id != Jandirus.Core.Forms.Catalogo.IdBase
+				&& (d.Id == atual || Maestria(d.Id) > 0 || DespertouPelaDisciplina(d.Id)))
+				minhas.Add(d);
 
 		Secao("Formas que você desperta");
 
@@ -1088,19 +1235,56 @@ public partial class MenuJogo : CanvasLayer
 
 		foreach (Jandirus.Core.Forms.FormaDef d in minhas)
 		{
-			double m = Maestria(d.Id);
-			Linha(d.Nome,
-				d.Id == atual ? $"EM USO  ·  maestria {m:0.#}%" : $"maestria {m:0.#}%",
+			// A MESMA TROCA DA LINHA DE CIMA: forma de disciplina relata a proficiencia da SKILL, e
+			// diz que e da skill -- "maestria 0,0%" ao lado de uma forma que o jogador acabou de usar
+			// leria como progresso perdido.
+			string ficha = ProficienciaDaForma(d.Id) is { } p
+				? $"proficiência em {p.Nome} {p.Pct:0.#}%"
+				: $"maestria {Maestria(d.Id):0.#}%";
+
+			// MESMO FUNIL DA LINHA "Forma" LA DE CIMA. Sao os dois lugares desta tela que escrevem o
+			// nome de uma forma, e escrever `d.Nome` num e `NomeDe` no outro faria a aba dizer
+			// "Grade 4" em cima e "Super Saiyajin" tres linhas abaixo, sobre a mesma forma.
+			Linha(Jandirus.Core.Forms.Catalogo.NomeDe(d, livro),
+				d.Id == atual ? $"EM USO  ·  {ficha}" : ficha,
 				d.Id == atual ? Tema.Destaque : Tema.Bom);
 		}
 
 		Aviso("\nO que vem depois -- se vier -- você descobre tentando.");
 	}
 
-	private double Maestria(Jandirus.Core.Forms.Forma f)
+	/// <summary>
+	/// A PROFICIENCIA QUE ESTA FORMA RELATA NO LUGAR DA MAESTRIA. Nulo = ela tem maestria propria.
+	///
+	/// Quem responde "esta forma e de uma disciplina?" e o <see cref="Jandirus.Core.Forms.Disciplinas.DaForma"/>,
+	/// o mesmo funil que o servidor usa -- ver o cabecalho dele. Aqui so falta cruzar com a disciplina
+	/// que ESTE corpo trilhou, que chega em byte na ficha lenta; os dois caminhos se excluem, entao
+	/// uma forma da outra escola nunca casa e mostra 0 (que e a verdade: ela nao e alcancavel).
+	/// </summary>
+	private (string Nome, double Pct)? ProficienciaDaForma(string forma)
 	{
+		if (Jandirus.Core.Forms.Disciplinas.DaForma(forma) is not { } par) return null;
+		bool minha = _atributos.Disciplina == Jandirus.Core.Forms.Disciplinas.Rede(par.Def.Tipo);
+		return (par.Def.Nome, minha ? _atributos.DiscReal : 0);
+	}
+
+	/// <summary>
+	/// ESTE CORPO JA DESPERTOU ESTA FORMA DE DISCIPLINA? A faixa que a concede foi cruzada.
+	///
+	/// E o substituto do "maestria > 0" pras quatro formas divinas: elas nao acumulam maestria, entao
+	/// o registro de "eu sei fazer isto" e a proficiencia REAL ter passado do <see cref="Jandirus.Core.Forms.Degrau.Pct"/>
+	/// da faixa que anuncia a forma (20% pro Sign/Destroyer, 60% pro Perfected/Ultra Ego).
+	/// </summary>
+	private bool DespertouPelaDisciplina(string forma) =>
+		Jandirus.Core.Forms.Disciplinas.DaForma(forma) is { } par
+		&& _atributos.Disciplina == Jandirus.Core.Forms.Disciplinas.Rede(par.Def.Tipo)
+		&& _atributos.DiscReal >= par.Faixa.Pct;
+
+	private double Maestria(string forma)
+	{
+		ushort alvo = Jandirus.Core.Forms.Catalogo.Rede(forma);
 		foreach ((ushort id, float pct) in _atributos.Maestrias ?? [])
-			if (id == (ushort)f) return pct;
+			if (id == alvo) return pct;
 		return 0;
 	}
 
@@ -1109,7 +1293,7 @@ public partial class MenuJogo : CanvasLayer
 	{
 		var m = new Jandirus.Core.Forms.Maestrias();
 		foreach ((ushort id, float pct) in _atributos.Maestrias ?? [])
-			m.Por((Jandirus.Core.Forms.Forma)id, pct);
+			if (Jandirus.Core.Forms.Catalogo.PorRede(id) is { } d) m.Por(d.Id, pct);
 		return m;
 	}
 
@@ -1627,7 +1811,9 @@ public partial class MenuJogo : CanvasLayer
 	private bool _pediContas;
 
 	/// <summary>O clima escolhido no painel de admin, e a forca dele. Sobrevivem ao redesenho.</summary>
-	private Jandirus.Core.World.TipoDeClima _climaEscolhido = Jandirus.Core.World.TipoDeClima.Chuva;
+	// Nasce em `Limpo`: quem abre esta aba quase sempre quer TIRAR o clima (ver o Oozaru, que so
+	// aparece com a lua livre), nao por chuva. Por chuva e a excecao, e a excecao pode dar um clique.
+	private Jandirus.Core.World.TipoDeClima _climaEscolhido = Jandirus.Core.World.TipoDeClima.Limpo;
 	private float _forcaEscolhida = 1f;
 
 	/// <summary>
@@ -1667,7 +1853,15 @@ public partial class MenuJogo : CanvasLayer
 		var ordem = new List<Jandirus.Core.World.TipoDeClima>();
 		foreach (Jandirus.Core.World.TipoDeClima t in Enum.GetValues<Jandirus.Core.World.TipoDeClima>())
 		{
-			if (t == Jandirus.Core.World.TipoDeClima.Limpo) continue;   // "limpo" e o botao de soltar
+			// ============================ "LIMPO" E UM CLIMA, NAO O BOTAO DE SOLTAR ============================
+			// Isto pulava o `Limpo` com o argumento de que "limpo e o botao de soltar". Nao e: soltar
+			// devolve o ceu ao SORTEIO -- ele pode cair em chuva no quadro seguinte. Forcar limpo e
+			// outra coisa: e cravar que nao ha clima nenhum e ele FICA assim.
+			//
+			// O dono precisou disso e nao tinha: "kd a opçao q pedi de clima limpo, limpar qualquer
+			// clima e deixar sem efeito de clima pra deixar a lua livre". Sem forcar limpo, testar o
+			// Oozaru dependia de o sorteio colaborar -- e o sorteio nao colabora sob demanda.
+			// ================================================================================================
 			ordem.Add(t);
 		}
 		ordem.Sort((a, b) =>
@@ -1725,12 +1919,207 @@ public partial class MenuJogo : CanvasLayer
 		bSoltar.Pressed += () => cli.SendVerbo("admin_clima_natural");
 		linha.AddChild(bSoltar);
 
+		// ============================ O CEU DO OOZARU ============================
+		// Fica NESTA linha, ao lado do clima, porque as duas coisas sao a mesma pergunta pro
+		// testador: "por que o botao de olhar pra lua nao aparece?". A resposta e sempre uma das
+		// duas -- ou nao e lua cheia, ou o ceu esta encoberto -- e ter os dois botoes juntos
+		// responde as duas sem o testador precisar saber qual era.
+		// ====================================================================
+		var bLua = new Button
+		{
+			Text = "Lua cheia agora",
+			TooltipText = "adianta o relogio do mundo ate a proxima noite de lua cheia NESTA zona "
+						+ "(o clima continua como esta -- se estiver encoberta, limpe ao lado)",
+		};
+		bLua.Pressed += () => cli.SendVerbo("admin_lua_cheia");
+		linha.AddChild(bLua);
+
+		// O IRMAO DELE, e ele fica aqui pelo mesmo argumento do bloco acima: a pergunta do testador
+		// tambem e sobre o ceu, so que a mais banal ("por que nao da pra ver nada?"). Um dia inteiro
+		// dura 24 minutos, entao metade das rodadas cai no escuro -- e julgar cor de cabelo no escuro
+		// foi exatamente o que aconteceu na bancada `--diagolhada`. Ver `GameServer.AdminMeioDia`.
+		var bDia = new Button
+		{
+			Text = "Meio-dia agora",
+			TooltipText = "adianta o relogio do mundo ate o proximo meio-dia NESTA zona -- pra julgar "
+						+ "cor (o clima continua como esta: meio-dia sob tempestade tambem e escuro)",
+		};
+		bDia.Pressed += () => cli.SendVerbo("admin_meio_dia");
+		linha.AddChild(bDia);
+
 		_conteudo.AddChild(linha);
 
 		Aviso(daqui.Existe && daqui.Permitidos.Length > 0
 			? "Cai aqui naturalmente: " + string.Join(", ",
 				daqui.Permitidos.Select(Jandirus.Core.World.Clima.Nome))
 			: "");
+	}
+
+	/// <summary>
+	/// O NOME DA ESCADA em portugues, pros cabecalhos do painel de formas.
+	///
+	/// ============================ POR QUE O `_ =>` DEVOLVE O NOME DO ENUM ============================
+	/// Porque linha nova tem que APARECER no painel no mesmo dia em que entra no Core, nem que seja
+	/// com o nome cru ("LegendaryPrimal"). Um `_ => ""` -- ou pior, um dicionario que so contivesse as
+	/// dez de hoje -- daria um cabecalho vazio (ou uma excecao) e as formas da linha nova ficariam
+	/// penduradas em lugar nenhum. Feio e visivel vence bonito e ausente numa ferramenta de teste.
+	/// ==============================================================================================
+	/// </summary>
+	private static string NomeDaLinha(Jandirus.Core.Forms.LinhaDeForma l) => l switch
+	{
+		Jandirus.Core.Forms.LinhaDeForma.Saiyajin => "Saiyajin",
+		Jandirus.Core.Forms.LinhaDeForma.Futuro => "Futuro",
+		Jandirus.Core.Forms.LinhaDeForma.Legendary => "Legendary",
+		Jandirus.Core.Forms.LinhaDeForma.LegendaryPrimal => "Legendary Primal",
+		Jandirus.Core.Forms.LinhaDeForma.GodKi => "Ki divino",
+		Jandirus.Core.Forms.LinhaDeForma.GodKiRose => "Ki divino · Rose",
+		Jandirus.Core.Forms.LinhaDeForma.Mistico => "Mistico",
+		Jandirus.Core.Forms.LinhaDeForma.UltraInstinct => "Ultra Instinto",
+		Jandirus.Core.Forms.LinhaDeForma.UltraEgo => "Ultra Ego",
+		Jandirus.Core.Forms.LinhaDeForma.Oozaru => "Oozaru (fera)",
+		_ => l.ToString(),
+	};
+
+	/// <summary>
+	/// FORCAR QUALQUER FORMA, E SOLTAR O KI -- as duas ferramentas de teste que o dono pediu
+	/// ("forçar me transformar em qualquer transformaçao do jogo pra eu testar, assim como uma opçao
+	/// de liberar as skills de ki pra eu ja poder usar aura etc").
+	///
+	/// ============================ A LISTA SAI DO CATALOGO, NUNCA DA MAO ============================
+	/// Um botao por entrada de <see cref="Jandirus.Core.Forms.Catalogo.Todas"/>. E a mesma razao de o
+	/// catalogo existir: "uma forma nova e uma entrada nova aqui e mais nada". Uma lista escrita a mao
+	/// aqui seria a 37a coisa a lembrar de atualizar, e a que ninguem lembraria -- a forma nova
+	/// simplesmente nao teria como ser testada, calada. O rotulo e o `Nome` e a dica de mouse e o
+	/// `Desc`; os dois ja estao no dado.
+	///
+	/// ============================ POR QUE BOTAO E NAO UM SELETOR ============================
+	/// O painel de clima ao lado usa <c>OptionButton</c> porque clima pede DOIS argumentos (qual e quao
+	/// forte) -- escolher e so metade do gesto. Forma pede UM, e um seletor transformaria "quero ver o
+	/// Blue" em abrir-rolar-escolher-fechar-clicar. Com botao e um clique. Sao 35 deles, e e por isso
+	/// que vem AGRUPADOS: 35 numa fila e uma lista que ninguem le.
+	///
+	/// ============================ O AGRUPAMENTO E O MESMO DO SERVIDOR ============================
+	/// Por <see cref="Jandirus.Core.Forms.LinhaDeForma"/>, e dentro dela por `Ordem` -- identico ao
+	/// `ListarFormas` que responde ao `admin_forma` sem argumento. A pergunta que o admin faz e sempre
+	/// "quais sao os degraus da escada X", e as duas respostas do jogo (a do chat e a da aba) dizerem a
+	/// mesma coisa na mesma ordem e o que impede uma de parecer errada.
+	///
+	/// O `GroupBy` respeita a ordem de DECLARACAO do catalogo, que ja e a ordem em que as linhas fazem
+	/// sentido de ler (Saiyajin primeiro, Oozaru por ultimo). Nao ha sort de linha aqui de proposito:
+	/// alfabetico jogaria "Futuro" antes de "Saiyajin", e o catalogo e quem sabe a ordem boa.
+	/// =============================================================================================
+	/// </summary>
+	private void PainelDeFormas(GameClient cli)
+	{
+		Secao("Forcar transformacao");
+
+		// ---------------------------------------------------------- em QUEM cai
+		// "alvoId|forma", o mesmo formato do `admin_skill_dar` -- e o `PorNome` do servidor devolve
+		// nulo pro id 0, entao SEM alvo marcado o verb cai em quem clicou. Nao ha estado novo aqui:
+		// a caixa de "aplicar no alvo" seria um campo a manter sincronizado com uma verdade que o
+		// `cli.AlvoId` ja carrega. O rotulo abaixo so LE essa verdade -- e como `AlvoId` esta na
+		// assinatura da aba (ver `Assinatura`), marcar alguem remonta a pagina e o rotulo acompanha.
+		bool noAlvo = cli.AlvoId != 0;
+		Aviso(noAlvo
+			? "Cai no CORPO MARCADO (o do duplo clique), e nao em voce."
+			: "Cai em VOCE. Marque alguem com duplo clique pra empurrar outro corpo.");
+
+		Jandirus.Core.Forms.FormaDef? defAtual =
+			Jandirus.Core.Forms.Catalogo.PorRede(_atributos.FormaAtual);
+		// A MARCA SO VALE PRA MIM: `FormaAtual` e a MINHA ficha. Com alvo marcado, o "em uso" seria
+		// uma mentira sobre o corpo errado -- entao ela some.
+		string atual = noAlvo ? "" : defAtual?.Id ?? Jandirus.Core.Forms.Catalogo.IdBase;
+
+		// ---------------------------------------------------------- a linha de cima
+		var topo = new HBoxContainer();
+
+		var bBase = new Button
+		{
+			Text = "Voltar ao normal",
+			TooltipText = "forca a forma base -- desfaz TAMBEM o Oozaru, que e um estado paralelo "
+						+ "a escada e nao sai com o X",
+		};
+		bBase.Pressed += () => cli.SendVerbo("admin_forma",
+			$"{cli.AlvoId}|{Jandirus.Core.Forms.Catalogo.IdBase}");
+		topo.AddChild(bBase);
+
+		var bKi = new Button
+		{
+			Text = "Liberar skills de Ki",
+			TooltipText = "da o Basic Ki Control e o degrau que acende o canPower: segurar C passa a "
+						+ "carregar (aura), e os verbs Power Control e Conceal Power aparecem",
+		};
+		bKi.Pressed += () => cli.SendVerbo("admin_liberar_ki", cli.AlvoId.ToString());
+		topo.AddChild(bKi);
+
+		_conteudo.AddChild(topo);
+
+		// ---------------------------------------------------------- uma faixa por escada
+		foreach (var linha in Jandirus.Core.Forms.Catalogo.Todas
+			.Where(d => d.Id != Jandirus.Core.Forms.Catalogo.IdBase)
+			.GroupBy(d => d.Linha))
+		{
+			var faixa = new HBoxContainer();
+
+			var rotulo = new Label
+			{
+				Text = NomeDaLinha(linha.Key),
+				CustomMinimumSize = new Vector2(140, 0),
+				VerticalAlignment = VerticalAlignment.Center,
+			};
+			rotulo.AddThemeColorOverride("font_color", Tema.TextoFraco);
+			rotulo.AddThemeFontSizeOverride("font_size", 12);
+			faixa.AddChild(rotulo);
+
+			// HFlow E NAO HBox: a linha Futuro tem dez degraus de nome comprido ("Future Super
+			// Saiyajin 10") e o painel nao rola na horizontal (`HorizontalScrollMode.Disabled`) --
+			// numa HBox os ultimos botoes ficariam espremidos a zero e sem como clicar.
+			var botoes = new HFlowContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+
+			foreach (Jandirus.Core.Forms.FormaDef d in linha.OrderBy(d => d.Ordem))
+			{
+				bool emUso = d.Id == atual;
+				var b = new Button
+				{
+					// ============================ AQUI E `d.Nome` CRU, E DE PROPOSITO ============================
+					// A aba Formas passa pelo `Catalogo.NomeDe` porque ela fala da ficha de quem esta
+					// olhando. Este painel nao: cada botao age sobre `cli.AlvoId`, que pode ser OUTRO
+					// jogador -- e a maestria dele nao chega neste cliente (ver `Catalogo.NomeDe`, e o
+					// motivo de o `S2C.Forma` carregar um bit e nao um numero). Nomear o botao pela
+					// maestria do ADMIN seria escrever na tela um fato sobre a pessoa errada.
+					//
+					// Entao o que este painel mostra e a ENTRADA do catalogo, que e o que ele manipula:
+					// "Super Saiyajin" e a forma, e o "Grade 4" e um estado dela que so o dono da barra
+					// tem. Foi por isto que a linha Legendary foi resolvida por RENOME de entrada -- ver
+					// o cabecalho da forma `legendary` em `Formas.cs`.
+					// ========================================================================================
+					Text = (emUso ? "● " : "") + d.Nome,
+					// A DICA E O `Desc` DO CATALOGO, palavra por palavra. Escrever outra aqui seria uma
+					// segunda descricao da mesma forma pra envelhecer sozinha.
+					TooltipText = d.Desc,
+				};
+				b.AddThemeFontSizeOverride("font_size", 12);
+				if (emUso) b.AddThemeColorOverride("font_color", Tema.Destaque);
+
+				// COPIA LOCAL do id: o que a lambda leva pro clique tem que ser o id DESTE botao, e nao
+				// o que a variavel do laco calhar de valer depois. (Em C# moderno a variavel de
+				// `foreach` ja e por iteracao -- a copia e pra deixar visivel que a captura e de uma
+				// STRING e do `cli`, e de mais nada: nada aqui prende o menu vivo depois do relog.)
+				string id = d.Id;
+				b.Pressed += () => cli.SendVerbo("admin_forma", $"{cli.AlvoId}|{id}");
+				botoes.AddChild(b);
+			}
+
+			faixa.AddChild(botoes);
+			_conteudo.AddChild(faixa);
+		}
+
+		Aviso("Ignora BP, maestria, linhagem, classe, degrau anterior, raca e Ki -- as formas que "
+			+ "interessa testar SAO as trancadas. O Ki entra cheio (senao o tique derrubaria a forma "
+			+ "antes de voce olhar) e a cinematica toca pela regra normal: cheia na estreia deste "
+			+ "corpo, encurtada ate 50% de maestria, instantanea depois.\n"
+			+ "A fera nao aparece marcada mesmo quando esta ativa: o estado dela e paralelo a escada "
+			+ "e nao viaja no campo de forma. Ela precisa de RABO INTEIRO pra durar mais que um tique.");
 	}
 
 	/// <summary>
@@ -1787,6 +2176,12 @@ public partial class MenuJogo : CanvasLayer
 
 		// ------------------------------------------------- clima
 		PainelDoClima(cli);
+
+		// ------------------------------------------------- formas e Ki
+		// LOGO DEPOIS DO CLIMA de proposito: as tres coisas respondem a mesma pergunta de testador
+		// ("por que nao consigo ver isto?"). Lua cheia e ceu limpo destravam o Oozaru; forcar forma
+		// destrava o resto; liberar Ki destrava a aura. Juntas, elas sao o kit de olhar o jogo.
+		PainelDeFormas(cli);
 
 		// ------------------------------------------------- contas
 		Secao("Contas deste servidor");

@@ -137,6 +137,10 @@ public static class MeleeResolver
 
 		// === 5. DANO ===================================================
 		double dano = Calcular(a, d, anguloGraus, tipo, addDano);
+
+		// A REDUCAO DE DANO DO DEFENSOR (hoje so a Aura of Destruction). Entra AQUI, antes do
+		// critico e antes de encostar no corpo -- ver `CombatState.ReducaoDeDano`.
+		if (d.ReducaoDeDano > 0) dano *= 1 - Math.Clamp(d.ReducaoDeDano, 0, 100) / 100.0;
 		if (crit)
 		{
 			dano *= (rng.Next(CombatKnobs.CritMin, CombatKnobs.CritMax + 1) + a.F.Etechnique) / 10.0;
@@ -257,10 +261,12 @@ public static class MeleeResolver
 
 		// MORTE antes de NOCAUTE: quem morreu nao precisa cair primeiro. Raca que regenera
 		// membro perdido entra em coma no lugar de morrer.
+		// `Morrer()` pode ser NEGADO (ver `CombatState.NegarMorte`) -- e ai nao houve morte, entao o
+		// resultado nao pode dizer que houve: quem le `r.Morreu` marca prazo de renascer e paga
+		// Zenkai por uma morte que nao aconteceu.
 		if (d.Corpo.DeveMorrer() && !d.Corpo.RegeneraDecepado)
 		{
-			r.Morreu = true;
-			d.Morrer();
+			r.Morreu = d.Morrer();
 		}
 		else if (!d.F.KO && d.Corpo.DeveNocautear())
 		{

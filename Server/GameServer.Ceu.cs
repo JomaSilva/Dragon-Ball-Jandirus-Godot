@@ -54,6 +54,107 @@ public sealed partial class GameServer
 	/// <summary>A ficha de céu de uma zona: rotação, dia/noite e lua. Ver <see cref="Ceu.RelogioDaZona"/>.</summary>
 	public RelogioDoPlaneta RelogioDaZona(ZoneKey zona) => Ceu.RelogioDaZona(zona, _planetas);
 
+	/// <summary>
+	/// ============================ PULA PRA A PROXIMA NOITE DE LUA CHEIA ============================
+	/// Existe porque o Oozaru depende de uma condicao que o testador NAO controla: lua cheia, no
+	/// ceu, a noite. Esperar isso acontecer sozinho e esperar dias, e um sistema que so da pra
+	/// testar por acaso nao e testado.
+	///
+	/// NAO INVENTA CEU: o relogio do universo ja tem o deslocamento `_adiantoDoCeu`, e este verb so
+	/// PROCURA o proximo instante em que a ficha deste planeta diz "cheia, no ceu, de noite" e
+	/// adianta ate la. O ceu continua sendo funcao pura do tempo, entao o cliente chega na mesma
+	/// conclusao sozinho -- nenhum pacote novo.
+	///
+	/// Passo grosso de um minuto e depois recua ate a BORDA da janela: cair no meio dela largaria o
+	/// testador com pouca noite pela frente.
+	///
+	/// O CLIMA NAO E MEXIDO AQUI de proposito -- quem manda no tempo e o `admin_clima`. Juntar as
+	/// duas coisas num verb so esconderia qual das duas resolveu.
+	/// ================================================================================================
+	/// </summary>
+	private void AdminLuaCheia(ServerPlayer pl)
+	{
+		RelogioDoPlaneta relogio = RelogioDaZona(pl.Zone);
+		double agora = TempoDoMundo;
+		const double Teto = 60 * 60 * 24 * 45;   // 45 dias: planeta sem lua nao adianta procurar mais
+		const double Passo = 60;
+
+		double achou = -1;
+		for (double d = 0; d < Teto; d += Passo)
+		{
+			EstadoDoCeu c = Ceu.De(relogio, agora + d);
+			if (!c.Cheia || !c.LuaNoCeu || !c.Noite) continue;
+			achou = d;
+			for (double t = d; t > 0; t -= 5)
+			{
+				EstadoDoCeu antes = Ceu.De(relogio, agora + t - 5);
+				if (!antes.Cheia || !antes.LuaNoCeu || !antes.Noite) break;
+				achou = t - 5;
+			}
+			break;
+		}
+
+		if (achou < 0)
+		{
+			Avisar(pl, "[admin] nao achei lua cheia noturna nesta zona em 45 dias -- este planeta tem lua?");
+			return;
+		}
+
+		_adiantoDoCeu += achou;
+		EstadoDoCeu fim = CeuDe(pl);
+		Avisar(pl, $"[admin] ceu adiantado {achou / 3600:0.#} h: lua {(fim.Cheia ? "CHEIA" : "nao cheia")}, "
+				 + $"altura {fim.Altura:0.00}, {(fim.Noite ? "noite" : "dia")}. "
+				 + "Encoberta? use o clima pra limpar.");
+	}
+
+	/// <summary>
+	/// ============================ PULA PRA O PRÓXIMO MEIO-DIA ============================
+	/// Irmão do <see cref="AdminLuaCheia"/>, e existe pelo mesmo motivo escrito lá -- só que a
+	/// condição que o testador não controla aqui é a mais banal de todas: a LUZ.
+	///
+	/// UM DIA INTEIRO DURA 24 MINUTOS (`Ceu.SegundosPorDia`), então qualquer bancada que julgue COR
+	/// tira metade das fotos no escuro por puro azar do relógio de parede. Isso não é hipótese: a
+	/// bancada `--diagolhada` rodou duas vezes com o mesmo código e a mesma conta, a primeira às
+	/// 07:11 de tarde-no-jogo e a segunda de noite -- na segunda o pixel mais claro do recorte
+	/// inteiro era `#1e274d` e o cabelo dourado do C-Type media quase preto. As duas rodadas
+	/// salvaram as fotos com `ok` no log. Uma bancada de cor que depende da hora em que alguém a
+	/// roda não mede cor nenhuma.
+	///
+	/// ============================ POR QUE CONTA, E NÃO VARREDURA COMO O DA LUA ============================
+	/// O da lua VARRE (passo de um minuto, 45 dias) porque a condição dele é composta -- cheia, no
+	/// céu, de noite -- e não tem inversa. "Meio-dia" tem: a hora local é uma função afim do tempo
+	/// (<see cref="RelogioDoPlaneta.DiaLocal"/>), então dá pra RESOLVER em vez de procurar. Forçar as
+	/// duas no mesmo ajudante deixaria esta aqui varrendo um dia inteiro atrás de um número que ela
+	/// já sabe calcular, e deixaria a outra sem o recuo até a borda da janela, que é o que impede o
+	/// testador de cair no último minuto da lua cheia.
+	///
+	/// O CLIMA NÃO É MEXIDO AQUI, pelo mesmo motivo do irmão: quem manda no tempo é o `admin_clima`.
+	/// Meio-dia debaixo de tempestade continua escuro, e é o clima que tem que resolver isso -- juntar
+	/// as duas coisas esconderia qual das duas resolveu.
+	/// ====================================================================================================
+	/// </summary>
+	private void AdminMeioDia(ServerPlayer pl)
+	{
+		RelogioDoPlaneta relogio = RelogioDaZona(pl.Zone);
+		double dia = relogio.DiaLocal(TempoDoMundo);
+
+		// A PARTE INTEIRA É QUAL DIA, A FRAÇÃO É A HORA. O `+1` cobre o caso de já ter passado do
+		// meio-dia de hoje: sem ele o adianto sairia negativo e o mundo ANDARIA PRA TRÁS -- e o
+		// `_adiantoDoCeu` é acumulado, então isso não se desfaria sozinho.
+		double alvo = Math.Floor(dia) + Ceu.MeioDia;
+		if (alvo <= dia) alvo += 1;
+
+		_adiantoDoCeu += (alvo - dia) * relogio.SegundosPorDia;
+
+		// O QUE O CÉU FICOU, e não o que foi pedido. Num mundo de noite eterna (`TemDia` falso) o
+		// `HoraVisivel` prende a hora e este verb não clareia nada -- e quem leu "pulei pro meio-dia"
+		// iria julgar a cor de um cabelo no escuro achando que estava de dia.
+		EstadoDoCeu fim = CeuDe(pl);
+		Avisar(pl, $"[admin] ceu adiantado pro meio-dia: hora {fim.Hora:0.00}, "
+				 + $"{(fim.Noite ? "NOITE (este mundo nao tem dia)" : "dia")}. "
+				 + "Encoberto? use o clima pra limpar.");
+	}
+
 	/// <summary>O céu que este jogador está vendo agora.</summary>
 	public EstadoDoCeu CeuDe(ServerPlayer pl) => Ceu.De(RelogioDaZona(pl.Zone), TempoDoMundo);
 
@@ -221,8 +322,23 @@ public sealed partial class GameServer
 		if (!TemRaboInteiro(pl)) return;
 
 		// QUEM TEM RABO SENTE ANTES DE VER. No anime a transformação começa pelo corpo, não pela
-		// decisão -- e é esta linha que vai virar a chamada do Oozaru.
+		// decisão.
 		Avisar(pl, "seu rabo se enrija sozinho. Alguma coisa em voce quer olhar pra cima.");
+
+		// ============================ A LUA NAO TRANSFORMA MAIS SOZINHA ============================
+		// Aqui havia um `Apeshit(pl)` -- a lua cheia nascia e o corpo virava, sem o jogador decidir.
+		//
+		// O dono pediu outra coisa: um botao vermelho embaixo da lua, escrito "olhar pra lua", que
+		// so aparece na lua cheia. Olhar e uma ESCOLHA, e e ela que dispara. Deixar a linha aqui
+		// faria dois gatilhos pra a mesma coisa -- e o automatico venceria sempre, tornando o botao
+		// decorativo.
+		//
+		// A frase acima ("seu rabo se enrija sozinho...") continua, e agora ela ganha funcao: e o
+		// aviso que manda o jogador olhar pro canto da tela.
+		//
+		// `Apeshit` segue sendo o funil unico: a lua artificial e as ondas de Blutz, quando vierem,
+		// entram por ele -- so que agora quem o chama pra a lua natural e o botao.
+		// ================================================================================
 	}
 
 	/// <summary>

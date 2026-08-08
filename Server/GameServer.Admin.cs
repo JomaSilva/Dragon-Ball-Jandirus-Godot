@@ -501,6 +501,9 @@ public sealed partial class GameServer
 			case "admin_calar": AdminCalar(pl, arg); break;
 			case "admin_marco": AdminMarcos(pl, arg, todos: false); break;
 			case "admin_dominar": AdminDominarForma(pl, arg); break;
+			// FERRAMENTAS DE TESTE: forcam o que o jogo cobra caro. Ver `AdminForcarForma`.
+			case "admin_forma": AdminForcarForma(pl, arg); break;
+			case "admin_liberar_ki": AdminLiberarKi(pl, arg); break;
 			case "admin_skill_dar": AdminSkill(pl, arg, dar: true); break;
 			case "admin_skill_tirar": AdminSkill(pl, arg, dar: false); break;
 			case "admin_cargo_dar": AdminOutorgarCargo(pl, arg); break;
@@ -519,6 +522,8 @@ public sealed partial class GameServer
 			// ---------------------------------------------------------- ceu (ver GameServer.Clima.cs)
 			case "admin_clima": AdminClima(pl, arg); break;
 			case "admin_clima_natural": AdminClimaNatural(pl); break;
+			case "admin_lua_cheia": AdminLuaCheia(pl); break;
+			case "admin_meio_dia": AdminMeioDia(pl); break;
 			case "admin_clima_ficha": AdminClimaFicha(pl); break;
 
 			// ---------------------------------------------------------- informacao
@@ -642,7 +647,9 @@ public sealed partial class GameServer
 		// voltava com a tag de luta ainda correndo (90s) -- e o tick so regenera fora de combate,
 		// entao ele ficava mais de um minuto parado com meia vida sem se recuperar. De quebra, aos
 		// 12s o nocaute "vencia" e o console anunciava que um morto tinha levantado.
-		p.Combate.Morrer();
+		// `ignorarSeguro: true` -- o verb de admin passa por cima da Aura of Destruction. Uma
+		// ferramenta que uma mecanica de jogador bloqueia deixa de ser ferramenta.
+		p.Combate.Morrer(ignorarSeguro: true);
 		p.RenasceEm = NowMs() + MsAteRenascer;   // o mesmo prazo de qualquer morte
 		MandarFicha(p);
 		Avisar(adm, $"{p.Name} morreu.");
@@ -788,16 +795,274 @@ public sealed partial class GameServer
 	private void AdminDominarForma(ServerPlayer adm, string alvo)
 	{
 		ServerPlayer? p = PorNome(alvo) ?? adm;
-		Forma f = p.Forma.Atual;
-		if (f == Forma.Base) { Avisar(adm, $"{p.Name} esta na forma base -- nao ha maestria a dar."); return; }
+		if (p.Forma.NaBase) { Avisar(adm, $"{p.Name} esta na forma base -- nao ha maestria a dar."); return; }
 
-		p.Forma.Maestria.Por(f, 100);
+		p.Forma.Maestria.Por(p.Forma.Atual, 100);
 		// O MULTIPLICADOR DEPENDE DA MAESTRIA (a forma so vale cheio a 100%). Escrever a maestria
 		// sem reaplicar deixaria o BP no valor da maestria VELHA ate a proxima transformacao -- o
 		// admin veria "100%" na aba e nada teria mudado de fato.
 		AplicarForma(p);
+
+		// ============================ O NOME SE LE DEPOIS DO `Por`, E ESSE E O PONTO ============================
+		// Ele era lido ANTES (`string f = ...` la em cima), e neste verb especificamente isso e mentira:
+		// este e o unico lugar do jogo onde a maestria pula pra 100 num instante, e e exatamente a
+		// travessia dos 100% que renomeia o Super Saiyajin pra "Grade 4" (`Catalogo.NomeDe`). Lido
+		// antes, o verb que ACABOU de dominar a forma a anunciaria pelo nome de quem nao a domina --
+		// e o proximo texto que o jogador visse (a aba Formas, o cabelo `SSjFP`) ja diria outra coisa.
+		// ====================================================================================================
+		string f = Catalogo.NomeDe(p.Forma.Def, p.Forma.Maestria);
 		Avisar(adm, $"{p.Name} agora domina {f}.");
 		if (p != adm) Avisar(p, $"a forma {f} nao tem mais segredos pra voce.");
+	}
+
+	// =====================================================================
+	// FORCAR UMA FORMA -- a ferramenta de teste que o dono pediu
+	// =====================================================================
+	/// <summary>
+	/// A LISTA DE IDS, por linha. E o `admin_forma` sem argumento.
+	///
+	/// Por LINHA e nao numa fila so porque a lista tem mais de trinta entradas e a pergunta que o
+	/// admin faz e sempre "quais sao os degraus da escada X". O mesmo desenho do `admin_clima`, que
+	/// responde "aqui podem cair: ..." quando nao se diz qual.
+	/// </summary>
+	private void ListarFormas(ServerPlayer adm)
+	{
+		Avisar(adm, $"-- formas (use o id) -- volta ao normal: {Catalogo.IdBase}");
+		foreach (IGrouping<LinhaDeForma, FormaDef> g in Catalogo.Todas
+			.Where(d => d.Id != Catalogo.IdBase)
+			.GroupBy(d => d.Linha))
+			Avisar(adm, $"  {g.Key}: " + string.Join(", ", g.OrderBy(d => d.Ordem).Select(d => d.Id)));
+	}
+
+	/// <summary>
+	/// Acha a forma pelo id ou pelo nome.
+	///
+	/// SEM CAIXA nos dois, e nao pelo <see cref="Catalogo.Def"/>: o indice dele e Ordinal, e o admin
+	/// digita "SSJ1" olhando pra um id escrito "ssj1". Pelo nome porque e o que a aba Formas mostra
+	/// ("Super Saiyajin"), e ninguem decora id de catalogo.
+	/// </summary>
+	private static FormaDef? AcharForma(string texto) =>
+		Array.Find(Catalogo.Todas, d => string.Equals(d.Id, texto, StringComparison.OrdinalIgnoreCase))
+		?? Array.Find(Catalogo.Todas, d => string.Equals(d.Nome, texto, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// FORCA UMA FORMA, IGNORANDO TODOS OS REQUISITOS -- BP, maestria, linhagem, classe, degrau
+	/// anterior, raca e Ki.
+	///
+	/// ============================ POR QUE ELA NAO RESPEITA AS PORTAS ============================
+	/// Porque as formas que interessa testar SAO as trancadas. Uma ferramenta que passasse pelo
+	/// <see cref="EstadoDeForma.Avaliar"/> so alcancaria o que o personagem ja alcanca sozinho, e o
+	/// pedido do dono foi literalmente o contrario: "forçar me transformar em qualquer transformaçao
+	/// do jogo pra eu testar". Chegar ao SSJ4 pelo caminho legitimo custa Oozaru Dourado dominado
+	/// (100% de maestria = horas dentro da fera); ao Blue, ki divino a 33%.
+	///
+	/// ============================ MAS ELA PASSA PELOS MESMOS FUNIS ============================
+	/// `Entrar` -> `AplicarForma` -> `AnunciarForma` na escada, e <see cref="VirarFera"/> no macaco.
+	/// Escrever `pl.Forma.Atual` na mao aqui daria um jogo que nao existe: sem `AplicarForma` o
+	/// `ssjBuff` e o teto de Ki nao mudam (o admin veria o nome da forma e o mesmo BP), e sem
+	/// `AnunciarForma` a zona inteira -- inclusive a tela do proprio dono -- continuaria desenhando o
+	/// corpo base. Esse ultimo defeito ja aconteceu de verdade neste arquivo (ver o bloco "A ZONA NAO
+	/// SABIA DISTO" no `DesfazerOozaru`), e o custo dele e o admin concluir que a forma esta quebrada
+	/// quando o que esta quebrado e a ferramenta.
+	///
+	/// ============================ A CINEMATICA ROLA, PELA REGRA NORMAL ============================
+	/// `primeira` e o retorno do `Entrar` e vai cru pro `AnunciarForma`, que deriva o degrau pelo
+	/// <see cref="Cinematicas.Degrau"/> como qualquer transformacao: cena CHEIA na estreia, cena
+	/// encurtada ate 50% de maestria, instantanea depois.
+	///
+	/// Nao ha `semCena: true` aqui, e a escolha e deliberada. A cinematica e justamente uma das
+	/// coisas que o dono quer ver ao testar, e ela e a MAIS dificil de alcancar em jogo: so toca uma
+	/// vez por personagem e so atras da porta da forma. Uma ferramenta de teste que a suprimisse
+	/// tornaria intestavel exatamente o que ela existe pra mostrar. A unica `semCena: true` do jogo
+	/// continua sendo a queda do Oozaru Dourado pro SSJ4, que nao e um gesto do jogador -- esta e.
+	///
+	/// Como o `Entrar` marca a estreia, forcar a mesma forma duas vezes da cena cheia na primeira e a
+	/// regra normal na segunda -- que e o comportamento desejado: da pra testar as duas.
+	/// =========================================================================================
+	///
+	/// O ARGUMENTO E "alvoId|forma" OU so "forma" (sobre mim), como o `admin_skill_dar`.
+	/// </summary>
+	private void AdminForcarForma(ServerPlayer adm, string arg)
+	{
+		string[] partes = arg.Split('|', 2);
+		ServerPlayer p = (partes.Length > 1 ? PorNome(partes[0]) : null) ?? adm;
+		string texto = (partes.Length > 1 ? partes[1] : partes[0]).Trim();
+
+		if (texto.Length == 0) { ListarFormas(adm); return; }
+
+		FormaDef? d = AcharForma(texto);
+		if (d == null)
+		{
+			Avisar(adm, $"nao existe forma '{texto}' -- mande `admin_forma` sem argumento pra ver a lista.");
+			return;
+		}
+
+		// ============================ O NOME E O DO ALVO, E NAO O DA ENTRADA ============================
+		// Cinco frases deste metodo nomeiam a forma, e todas falam sobre `p` -- que pode ser OUTRO
+		// jogador. Entao o livro que decide se o Super Saiyajin dele se chama "Grade 4" e o DELE
+		// (`p.Forma.Maestria`), nunca o do admin. Ver `Catalogo.NomeDe`.
+		//
+		// (Este e o lado servidor da mesma decisao anotada no painel de formas do cliente, que mostra
+		// `d.Nome` cru justamente porque LA a maestria do alvo nao existe.)
+		// ============================================================================================
+		string nome = Catalogo.NomeDe(d, p.Forma.Maestria);
+
+		// ---------------------------------------------------------- 1. A BASE DESFAZ AS DUAS COISAS
+		// `base` tem que estar na lista, e ela e a unica entrada que precisa mexer nos DOIS estados:
+		// a escada (`EstadoDeForma.Atual`) e a fera (`ServerPlayer.Oozaru`), que sao paralelos. Sem a
+		// primeira metade, forcar `base` num macaco nao faria nada visivel e o admin ficaria preso
+		// nele ate o prazo vencer.
+		if (d.Id == Catalogo.IdBase)
+		{
+			// `Reverter` E O FUNIL DA DESCIDA (GameServer.Formas.cs) -- ele ja recebe o motivo, ja
+			// chama `AplicarForma` e ja anuncia pra zona. Uma copia local destas quatro linhas foi
+			// escrita aqui e apagada: e a segunda copia que envelhece no dia em que a descida ganhar
+			// mais um passo.
+			bool mexeu = false;
+			if (p.Oozaru != FormaOozaru.Nao) { DesfazerOozaru(p, "uma mao invisivel desfaz a fera."); mexeu = true; }
+			if (!p.Forma.NaBase) { Reverter(p, "uma mao invisivel te devolve a forma base."); mexeu = true; }
+			Avisar(adm, mexeu ? $"{p.Name} voltou a forma base." : $"{p.Name} ja estava na forma base.");
+			return;
+		}
+
+		// ---------------------------------------------------------- 2. A FERA NAO ESTA NA ESCADA
+		// O Oozaru e o Dourado moram no catalogo (pra terem nome, corpo e cor) mas o estado deles e
+		// paralelo -- `Catalogo.NaoSeSobePraEla` existe justamente pra o C nunca os oferecer. Entrar
+		// neles e o `VirarFera`, e nao o `Entrar`.
+		if (d.Linha == LinhaDeForma.Oozaru)
+		{
+			FormaOozaru fera = d.Id == Oozaru.IdDourado ? FormaOozaru.Dourado : FormaOozaru.Regular;
+			if (p.Oozaru == fera) { Avisar(adm, $"{p.Name} ja e {nome}."); return; }
+			if (p.Oozaru != FormaOozaru.Nao) DesfazerOozaru(p, "a fera se desfaz pra dar lugar a outra.");
+
+			VirarFera(p, fera);
+
+			// O RABO DERRUBA A FERA NO TIQUE SEGUINTE (`TickDoOozaru`, passo 1: `if(!container.Tail)
+			// DeBuff()`). Forcar sem rabo "funciona" por uma fracao de segundo e some -- e o admin
+			// leria isso como a forca nao ter pegado. Avisar e mais barato que recusar: recusar
+			// tiraria da ferramenta justamente o corpo sem rabo, que tambem e um caso a olhar.
+			if (!TemRaboInteiro(p))
+				Avisar(adm, "AVISO: sem rabo inteiro a fera cai no proximo tique -- cure o alvo antes.");
+
+			// o rastro sai do funil do `VerboDeAdmin` (uma linha por comando) -- nao ha nada aqui que
+			// so se saiba depois de resolver, e o `VirarFera` ja imprime o macaco no console
+			Avisar(adm, $"{p.Name} agora e {nome}.");
+			return;
+		}
+
+		// ---------------------------------------------------------- 3. A ESCADA
+		if (p.Forma.Atual == d.Id) { Avisar(adm, $"{p.Name} ja esta em {nome}."); return; }
+
+		// A FERA SAI PRIMEIRO, e nao e cortesia: `AplicarOozaru` escreve o multiplicador do macaco no
+		// MESMO `ssjBuff` que a escada usa (o Dourado vale 18x ali). Forcar uma forma por cima
+		// deixaria o corpo com sprite de macaco e poder de SSJ, ou o contrario -- e a `DesfazerOozaru`
+		// e quem devolve as somas de physoff/speed/tecnica e as redeas, se a fera tiver assumido.
+		if (p.Oozaru != FormaOozaru.Nao) DesfazerOozaru(p, "a fera se desfaz pra dar lugar a outra forma.");
+
+		string anterior = p.Forma.Atual;
+		bool primeira = p.Forma.Entrar(d.Id);
+
+		// KI CHEIO SEMPRE, e nao so na estreia como no caminho normal (`Transformar`).
+		//
+		// O QUE SE GANHOU: a forma forcada dura o bastante pra ser olhada. `AplicarForma` preserva a
+		// RAZAO de Ki na troca, entao um admin com 20% de tanque que forca SSJ3 entra com 20% de um
+		// tanque maior e o `TickDaForma` o derruba em segundos -- "nao funcionou", diria ele.
+		// O QUE SE PERDEU: forcar deixa de ser neutro em relacao ao Ki. E aceitavel num verb que ja
+		// ignora BP, maestria e linhagem; e o `admin_curar` faz o mesmo com o corpo.
+		//
+		// ============================ E ELE ENCHE ANTES DO `AplicarForma`, NAO DEPOIS ============================
+		// Encher depois enchia o tanque e deixava a CONTA DE PODER com a razao velha: o `kiratio` e
+		// fator do `expressedBP` (`Fighter.Power.cs:50`) e quem o le e o `PowerLevel` que roda dentro
+		// do `AplicarForma`. Era o segundo defeito do relato do dono -- o MESMO x6 imprimindo 560 e
+		// depois 545, dois segundos e ~0,6 s de dreno de SSJ1 de diferenca.
+		//
+		// Encher ANTES resolve sem uma segunda conta: `AplicarForma` preserva a RAZAO, e a razao aqui
+		// e 1. Cheio contra o teto velho vira cheio contra o teto novo, e o poder impresso e o de um
+		// corpo com o tanque cheio -- que e o corpo que o admin acabou de criar.
+		// ==================================================================================================
+		p.Ficha.Ki = p.Ficha.MaxKi;
+		AplicarForma(p);
+
+		AnunciarForma(p, anterior, d.Id, primeira);
+
+		// CAIDO NAO SUSTENTA FORMA: o passo 2 do `TickDaForma` reverte quem esta KO ou morto. Mesmo
+		// caso do rabo -- avisar em vez de recusar.
+		if (p.Ficha.KO || p.Ficha.dead)
+			Avisar(adm, "AVISO: o alvo esta caido e o tique vai desfazer a forma -- cure-o antes.");
+
+		// ============================ O QUE ESTES DOIS NUMEROS SAO, E O QUE NAO SAO ============================
+		// `BP` e o BP BASE (o que o treino sobe, o que vai no save) e `expressedBP` e o PODER (o que o
+		// scouter le e o dano usa). `BP x mult` NUNCA vai bater com o segundo, e isso nao e defeito: no
+		// meio passam idade, estado do corpo, gravidade, raiva e os buffs que somam na base -- ver a
+		// taxonomia no topo do `Fighter.Power.cs`. Trocar o print por `BP * mult` seria trocar um
+		// numero verdadeiro por um numero bonito.
+		//
+		// O QUE SE MOVE ENTRE DOIS COMANDOS IGUAIS, e e comportamento e nao bug: o `kiratio`
+		// (`Ki/MaxKi`, um dos fatores do `statusBuff`). A forma nao masterizada DRENA Ki, e a razao
+		// atravessa a volta pra base -- entao forcar SSJ1, esperar, voltar e forcar de novo daria dois
+		// poderes diferentes. Aqui ele esta PINADO EM 1 pelo `Ki = MaxKi` acima, de proposito; no
+		// caminho normal do jogador (`Transformar`) ele se move mesmo, e deve.
+		//
+		// E A OUTRA SURPRESA LEGITIMA, pra nao ser reportada como bug uma segunda vez: forcar um RAMO
+		// (os grades do SSJ1) nao levanta o piso dos vizinhos. O piso por ramo existe
+		// (`Formas.cs:3485`), mas so vale pra forma com `PisoSobreAnterior > 0` -- o SSJ2, nao o SSJ1
+		// -- e o portao dele e a MAESTRIA do tronco, nao a lista de `Liberadas`. Forcar nao move
+		// maestria nenhuma, entao o multiplicador do SSJ1 e o mesmo antes e depois de forcar o Grade 2.
+		// ==================================================================================================
+		double mult = MultiplicadorDaForma(p);   // com o fator do cargo -- ver `MultiplicadorDaForma`
+		GD.Print($"[server] {adm.Name} FORCOU {p.Name}: {anterior} -> {d.Id} "
+				 + $"(x{mult:0.##}, BP {p.Ficha.BP:N0} -> {p.Ficha.expressedBP:N0})"
+				 + (primeira ? "  <- ESTREIA (cena cheia)" : ""));
+
+		Avisar(adm, $"{p.Name} agora esta em {nome} (x{mult:0.##})"
+				  + (primeira ? " -- ESTREIA, a cinematica toca." : "."));
+		if (p != adm) Avisar(p, $"uma vontade alheia te empurra pra {nome}.");
+	}
+
+	/// <summary>
+	/// LIBERA O KI do alvo -- as duas pecas que a tecla C exige.
+	///
+	/// A concessao em si mora em <see cref="LiberarOKi"/> (GameServer.Skills.cs), que e a MESMA
+	/// funcao que a flag de bancada `--kiteste` usa no nascimento. Aqui so ha o que e de runtime: a
+	/// ordem em que as pontas se religam depois de o livro mudar.
+	///
+	/// ============================ A ORDEM DAS QUATRO CHAMADAS ============================
+	/// `Niveis.Aplicar` escreve o `canPower` (o degrau 5) e o `AplicarEfeitos` escreve o
+	/// `MeditateGivesKiRegen` (a skill). Sao canais DIFERENTES -- um vem do `niveis.json`, o outro do
+	/// `skills.json` -- e o `AplicarEfeitos` termina em `Statify`, que e quem recalcula o teto de Ki
+	/// com o `kicapacity` novo. Chamar so um dos dois da meio Ki liberado, que e o modo de falhar
+	/// silencioso deste sistema (ver o comentario do `LiberarOKi`).
+	///
+	/// `MandarSkills(forcar: true)` fecha o circuito com o cliente: o degrau 5 concede os verbs
+	/// `Power_Control` e `Conceal_Power`, e o menu so os desenha quando a lista chega.
+	/// ==================================================================================
+	///
+	/// CONFIRMA COM OS NUMEROS, e nao com "pronto". "Nao deu erro" nunca provou que os dois canais
+	/// pegaram -- e estes dois ja se romperam neste projeto. Ver <see cref="ConferirKiLiberado"/>.
+	/// </summary>
+	private void AdminLiberarKi(ServerPlayer adm, string alvo)
+	{
+		ServerPlayer p = PorNome(alvo) ?? adm;
+		// livro de corpo sem dono nao vai pra disco nenhum -- mesma guarda do `admin_skill_dar`
+		if (!EhPessoa(adm, p)) return;
+
+		LiberarOKi(p);
+		p.Niveis.Aplicar(p.Ficha);
+		AplicarPoderes(p);
+		AplicarEfeitos(p);        // termina em `Statify`: o teto de Ki ja sai com o `kicapacity` novo
+		MandarSkills(p, forcar: true);
+		MandarFicha(p);
+
+		bool ok = ConferirKiLiberado(p, "admin_liberar_ki");
+
+		Avisar(adm, ok
+			? $"{p.Name}: Ki liberado -- canPower={p.Ficha.canPower:0}, "
+			  + $"MeditateGivesKiRegen={p.Ficha.MeditateGivesKiRegen:0}, "
+			  + $"powerupcap={p.Ficha.powerupcap:0.00} (o C passa de 100%)."
+			: $"{p.Name}: a concessao NAO pegou (canPower={p.Ficha.canPower:0}, "
+			  + $"MeditateGivesKiRegen={p.Ficha.MeditateGivesKiRegen:0}) -- veja o console do servidor.");
+
+		if (p != adm && ok) Avisar(p, "voce sente o proprio Ki se soltar: segure C pra carregar.");
 	}
 
 	/// <summary>
@@ -1032,10 +1297,14 @@ public sealed partial class GameServer
 		Avisar(adm, $"  BP {p.Ficha.BP:N0} (expresso {p.Ficha.expressedBP:N0})");
 		Avisar(adm, $"  vida {p.Ficha.HP:0}% · Ki {p.Ficha.Ki:N0}/{p.Ficha.MaxKi:N0}"
 				  + (p.Ficha.dead ? " · MORTO" : p.Ficha.KO ? " · NOCAUTEADO" : ""));
-		Avisar(adm, $"  forma {p.Forma.Atual}"
+		// OS NOMES PELO FUNIL, e a lista de maestrias e o lugar onde isso mais se ve: uma linha que
+		// diz "Super Saiyajin 100%" ao lado de uma aba que chama a mesma forma de "Grade 4" e a
+		// ferramenta do admin discordando do jogo. Ver `Catalogo.NomeDe(FormaDef, Maestrias)`.
+		Avisar(adm, $"  forma {(p.Forma.Def is { } fd ? Catalogo.NomeDe(fd, p.Forma.Maestria) : p.Forma.Atual)}"
 				  + (p.Forma.Maestria.Todas.Any()
 					 ? " · maestrias " + string.Join(", ", p.Forma.Maestria.Todas
-						 .Where(m => m.V > 0).Select(m => $"{m.F} {m.V:0}%"))
+						 .Where(m => m.V > 0)
+						 .Select(m => $"{(Catalogo.Def(m.Id) is { } md ? Catalogo.NomeDe(md, p.Forma.Maestria) : m.Id)} {m.V:0}%"))
 					 : ""));
 		Avisar(adm, $"  skills {p.Livro.Aprendidas.Count} · marcos {p.Livro.MarcosLivres}/{p.Livro.MarcosTotais}");
 		Avisar(adm, $"  tech {p.Ficha.techskill:0.#} · zeni {p.Ficha.Zeni:N0}");

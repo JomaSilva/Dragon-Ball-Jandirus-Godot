@@ -40,7 +40,11 @@ public partial class RoboDeMenu : Node
 		if (_passo == 0)
 		{
 			m.Abrir();
-			GD.Print($"[menu] volta {_volta + 1}/{Voltas}: abriu");
+			// A LISTA VAI NO LOG, e nao so o numero da volta. O cabecalho do `AbasDeTeste` conta que
+			// esta bancada passou um tempo percorrendo so as abas FIXAS -- Sense, Nav e Admin ficavam
+			// de fora e ninguem via, porque "volta 1/3: abriu" e verdade nos dois casos. Imprimir o
+			// que foi percorrido e o que transforma "rodou" em "cobriu".
+			GD.Print($"[menu] volta {_volta + 1}/{Voltas}: abriu -- abas: {string.Join(",", abas)}");
 		}
 		else if (_passo <= abas.Length)
 		{

@@ -110,9 +110,20 @@ public static class Protocol
     /// numeracao deixa a comparacao com `Talking.dm` direta -- quem for conferir se o alcance
     /// do sussurro esta certo abre o `if(2)` de la e o `Sussurro` daqui.
     ///
-    /// <see cref="Sistema"/> nao existe no original e NAO TRAFEGA: e o canal em que o proprio
-    /// cliente escreve o que so interessa a quem esta jogando ("zona carregada", "sem Ki pro
-    /// dash"). Fica fora da faixa 1-6 de proposito.
+    /// <see cref="Sistema"/> nao existe no original: e o canal em que o proprio cliente escreve o
+    /// que so interessa a quem esta jogando ("zona carregada", "sem Ki pro dash"). Fica fora da
+    /// faixa 1-6 de proposito. Ele TAMBEM viaja, ao contrario do que dizia esta linha: o `Avisar`
+    /// do servidor manda por ele, com autor vazio, o recado pessoal de uma pessoa so.
+    ///
+    /// ============================ O TEXTO NUNCA VEM COM O NOME DE QUEM FALA ============================
+    /// O autor viaja no proprio pacote (`S2C.Chat` = canal + autor + texto) e quem monta a frase e o
+    /// cliente -- "Fulano diz, '...'", "* Fulano faz X". Um `Falar(pl, Emote, $"{pl.Name} faz X")`
+    /// sai na tela como "* Fulano Fulano faz X", e foi assim que quatro tecnicas do G4 ficaram
+    /// (rasgo, ponto cronico x2, sugar vida). O balao sobre a cabeca deixou isso pior ainda: la o
+    /// nome nao aparece nenhuma vez, porque o desenho ja aponta pra pessoa.
+    ///
+    /// Regra: `Emote` recebe o predicado SEM sujeito ("rasga o ar e desaparece dentro dele.").
+    /// ==============================================================================================
     /// </summary>
     public enum Fala : byte
     {
@@ -163,6 +174,13 @@ public static class Protocol
         Agua = 5,
         /// <summary>`Blood spray`: respingo em volta de quem esta se acabando.</summary>
         Sangue = 6,
+        /// <summary>
+        /// `big crater`: a cratera GRANDE, das transformacoes que nascem da RAIVA.
+        ///
+        /// E outro TIPO e nao um parametro da <see cref="Cratera"/> porque tudo difere: a folha
+        /// (96x96 contra o recorte `small_crater`), a escala final e o prazo. Ver `Decalques`.
+        /// </summary>
+        CrateraGrande = 7,
     }
 
     /// <summary>
@@ -223,7 +241,7 @@ public static class Protocol
         Chat = 13,         // alguem falou e eu estou no alcance: canal + quem + o que
         Atributos = 14,    // a ficha LENTA: os 8 atributos e o que o menu abre com P mostra
         Skills = 15,       // o que eu aprendi e quantos marcos tenho
-        Forma = 16,        // fulano mudou de forma: de, pra, e se foi a PRIMEIRA vez
+        Forma = 16,        // fulano mudou de forma: de, pra, e o byte de `Core.Forms.DegrauDeCena`
         Cargos = 17,       // a lista de cargos: chave, quem ocupa, e o que falta PRA MIM
         Vizinhanca = 18,   // os planetas por perto no espaco (so quando a CHUNK muda)
         Efeito = 19,       // caiu um efeito em mim: id + por quantos ms (0 = passou)
@@ -366,6 +384,64 @@ public static class Protocol
         /// falha de dessincronizar em silencio e so aparecer como "sumiu um item".
         /// </summary>
         Inventario = 32,
+
+        /// <summary>
+        /// FULANO VIROU (OU DEIXOU DE SER) OOZARU: id, o byte de <c>Core.Forms.FormaOozaru</c>
+        /// (0 nao, 1 regular, 2 dourado), se foi a PRIMEIRA vez daquele macaco, e o byte de
+        /// <c>Core.Forms.DegrauDeCena</c>.
+        ///
+        /// Vai pra ZONA INTEIRA, como o <see cref="Forma"/>: ver alguem virar um macaco de dez
+        /// metros e informacao que o mundo tem que ter, nao ficha pessoal.
+        ///
+        /// ============================ O DEGRAU, NUM PACOTE QUE E SEMPRE CENA CHEIA ============================
+        /// A linha do macaco ignora maestria (`Cinematicas.Degrau`), entao o degrau aqui e sempre
+        /// `Estreia`... enquanto o pacote for um ACONTECIMENTO. Ele tambem sai como ESTADO, unicast, pra
+        /// quem acaba de entrar na zona (`GameServer.SincronizarFormas`) -- e ali vale `Nenhuma`, senao o
+        /// recem-chegado ficaria preso assistindo a transformacao de alguem que virou macaco antes de ele
+        /// pisar no planeta. Ver `World.AoVirarOozaru`.
+        ///
+        /// O `primeira` FICA AO LADO DELE porque diz outra coisa: e o carimbo `** Nome **` no chat do
+        /// dono. A cena do macaco toca toda vez; o texto, so na estreia.
+        /// ==================================================================================================
+        ///
+        /// ============================ POR QUE NAO E O `S2C.Forma` ============================
+        /// A tentacao e obvia -- o Oozaru ate tem entrada no <c>Catalogo</c> (`oozaru`, ordem 10;
+        /// `oozaru_dourado`, ordem 20) e o pacote de forma ja carrega (quem, de, pra, primeira).
+        /// So que quem recebe `S2C.Forma` acaba em `Cinematicas.Para(def)`, e o macaco precisa de
+        /// uma regra propria la dentro pra nao pegar a cena errada. (Ate a leva das 24 cenas novas
+        /// aquela funcao tinha FALLBACK POR ORDEM e nunca devolvia null -- ordem 10 caia em `Ssj1`
+        /// e ordem 20 em `Ssj2`, e o macaco gigante assistiria, paradinho, a cinematica de Super
+        /// Saiyajin. Hoje o fallback nao existe mais, mas a regra da LINHA continua sendo o que
+        /// mantem as duas entradas do Oozaru na cena do Oozaru.)
+        ///
+        /// E o Oozaru e um estado PARALELO no Core (ver o cabecalho de `Core/Forms/Oozaru.cs`:
+        /// ele CONVIVE com o SSJ, o multiplicador sai de outro campo, e nao se sobe pra ele).
+        /// Empurrar dois estados paralelos por um canal que so guarda um sempre acaba com um
+        /// deles apagando o outro.
+        ///
+        /// O que se perdeu ao divergir: mais um opcode e mais um evento no cliente. O que se
+        /// ganhou: a cena do Oozaru fica livre pra ser a que o dono pediu (aura base + tremor de
+        /// camera, e NAO a `AuraBigCombined`), sem tocar em nada da escada SSJ.
+        /// ===================================================================================
+        /// </summary>
+        Oozaru = 34,
+
+        /// <summary>
+        /// QUEM EU CONHECO -- a lista inteira, pessoal, so quando ela MUDA (ou quando eu peco).
+        ///
+        /// ============================ POR QUE A LISTA INTEIRA, E NAO O DELTA ============================
+        /// Ela e pequena (as pessoas com quem alguem realmente convive, com nome e ficha curta) e
+        /// muda devagar -- um passo de amizade a cada 3 s, e so quando ha alguem por perto. Um
+        /// protocolo de delta aqui teria mais estado pra sincronizar do que dados pra mandar, e o
+        /// primeiro relog fora de sincronia deixaria a aba mentindo sem ninguem notar.
+        ///
+        /// PESSOAL, sempre: quem voce conhece e a familiaridade que voce tem com cada um sao SEUS.
+        /// Este e o unico pacote da rede que carrega assinatura de personagem -- e ela e OPACA (um
+        /// numero de 10 digitos, como no DM), porque a tela a MOSTRA pra quem voce nao conhece.
+        /// Ver `ServerPlayer.Assinatura` e `GameServer.MandarConhecidos`.
+        /// ==============================================================================================
+        /// </summary>
+        Conhecidos = 35,
     }
 
     /// <summary>Os momentos do ZanzoClash. Ver <see cref="S2C.Clash"/>.</summary>
@@ -503,6 +579,17 @@ public static class Protocol
         /// </summary>
         public (ushort Forma, float Pct)[] Maestrias;
 
+        /// <summary>
+        /// A DISCIPLINA DIVINA: 0 = nenhuma, 1 = Ultra Instinto, 2 = Poder da Destruicao.
+        ///
+        /// Vem junto da ficha lenta pelo mesmo motivo das maestrias: as duas energias mudam em
+        /// fracoes por segundo, nao por quadro. E o cliente precisa DAS DUAS -- a REAL pra saber
+        /// quais botoes existem, a ATUAL pra mostrar quanto resta antes de a passiva virar enfeite.
+        /// </summary>
+        public byte Disciplina;
+        public float DiscReal, DiscAtual;
+        public bool DiscLigada;
+
         public readonly bool Tem(Poder p) => (Poderes & (uint)p) != 0;
 
         public readonly void Write(NetDataWriter w)
@@ -517,6 +604,7 @@ public static class Protocol
             (ushort, float)[] ms = Maestrias ?? [];
             w.Put((byte)Math.Min(ms.Length, 255));
             for (int i = 0; i < ms.Length && i < 255; i++) { w.Put(ms[i].Item1); w.Put(ms[i].Item2); }
+            w.Put(Disciplina); w.Put(DiscReal); w.Put(DiscAtual); w.Put(DiscLigada);
         }
 
         public static AtributosState Read(NetDataReader r) => new()
@@ -529,6 +617,10 @@ public static class Protocol
             Raca = r.GetString(24),
             FormaAtual = r.GetUShort(),
             Maestrias = LerMaestrias(r),
+            Disciplina = r.GetByte(),
+            DiscReal = r.GetFloat(),
+            DiscAtual = r.GetFloat(),
+            DiscLigada = r.GetBool(),
         };
 
         private static (ushort, float)[] LerMaestrias(NetDataReader r)
@@ -1038,6 +1130,12 @@ public struct EntityState
     public bool Voando;
 
     /// <summary>
+    /// ESTE CORPO ESTA SEM REDEAS: quem o dirige e o SERVIDOR, nao quem esta na frente da tela.
+    /// Ver <see cref="BitSemRedeas"/>.
+    /// </summary>
+    public bool SemRedeas;
+
+    /// <summary>
     /// A que altura, em pixels (0 = chao). So chega quando <see cref="Voando"/> -- ver
     /// <see cref="BitVoando"/>.
     /// </summary>
@@ -1088,6 +1186,28 @@ public struct EntityState
     /// </summary>
     private const byte BitVoando = 0x10;
 
+    /// <summary>
+    /// ============================ ESTE CORPO NAO OBEDECE MAIS O DONO ============================
+    /// O servidor esta dirigindo (o clone da mente, a fera solta -- qualquer corpo com `Cerebro`).
+    ///
+    /// POR QUE PRECISOU VIAJAR. Pros corpos ALHEIOS nao precisava: o cliente ja desenha todo mundo
+    /// pelo que chega no snapshot, entao o clone e o macaco dos OUTROS sempre andaram animados. O
+    /// buraco era o corpo PROPRIO: `World.AoReceberSnapshot` descarta o proprio estado (posicao e
+    /// direcao sao previsao local) e quem escolhe a pose e o `LocalPlayer`, medindo o passo que o
+    /// TECLADO deu. Quando o servidor passa a dirigir, o teclado nao da passo nenhum -- a posicao
+    /// andava e a animacao ficava em `default_<dir>`. E o "sai deslizando" que o dono viu.
+    ///
+    /// Com este bit o corpo local sabe que virou passageiro e passa a se desenhar pelo que o
+    /// servidor manda, como qualquer observador ja fazia.
+    ///
+    /// POR QUE NO SNAPSHOT E NAO NA FICHA: e ESTADO CONTINUO, reafirmado 30x/s. No quadro em que o
+    /// servidor parar de dizer, o cliente esta livre -- nao ha como isto virar a trava permanente
+    /// que ja travou jogador neste projeto (ver o portao global no `LocalPlayer`). E como e por
+    /// CORPO, ele tambem descreve a fera dos outros de graca.
+    /// ============================================================================================
+    /// </summary>
+    private const byte BitSemRedeas = 0x20;
+
     public void Write(NetDataWriter w)
     {
         w.Put(Id);
@@ -1098,7 +1218,7 @@ public struct EntityState
                    | (Moving ? 0x80 : 0x00)));
         w.Put((byte)((Carregando ? BitCarregando : 0) | (Sobrecarregado ? BitSobrecarregado : 0)
                    | (Deitado ? BitDeitado : 0) | (Correndo ? BitCorrendo : 0)
-                   | (Voando ? BitVoando : 0)));
+                   | (Voando ? BitVoando : 0) | (SemRedeas ? BitSemRedeas : 0)));
         w.Put(Vida);
         if (Voando) w.Put(Jandirus.Core.World.Voo.ParaByte(Altitude));
     }
@@ -1118,6 +1238,7 @@ public struct EntityState
         e.Deitado = (flags2 & BitDeitado) != 0;
         e.Correndo = (flags2 & BitCorrendo) != 0;
         e.Voando = (flags2 & BitVoando) != 0;
+        e.SemRedeas = (flags2 & BitSemRedeas) != 0;
         e.Vida = r.GetByte();
         if (e.Voando) e.Altitude = Jandirus.Core.World.Voo.DeByte(r.GetByte());
         return e;

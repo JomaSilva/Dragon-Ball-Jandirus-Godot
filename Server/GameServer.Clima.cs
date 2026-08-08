@@ -111,16 +111,22 @@ public sealed partial class GameServer
 	/// (aba Admin -> "Clima deste planeta"), que chama o mesmo <see cref="ForcarClima"/>.
 	/// =====================================================================================
 	/// </summary>
-	private void ClimaPorTransformacao(ServerPlayer pl, Forma de, Forma para)
+	private void ClimaPorTransformacao(ServerPlayer pl, string de, string para)
 	{
 		if (CeuDaForma(para) is not { } efeito) return;
 
 		// SÓ SUBINDO. Descer da forma não abre tempestade -- e sem esta guarda o `AnunciarForma`
 		// da queda por Ki zerado chamaria o céu do degrau de CHEGADA, que é a base.
-		if ((int)para <= (int)de) return;
+		//
+		// "Subir" agora é a ORDEM DENTRO DA LINHA (era a comparação de dois inteiros). Trocar de
+		// linha -- do SSJ3 pro Blue, por exemplo -- conta como subir, porque a linha divina não
+		// tem como ser um degrau abaixo de nada.
+		FormaDef? dDe = Catalogo.Def(de), dPara = Catalogo.Def(para);
+		if (dPara == null) return;
+		if (dDe != null && dDe.Linha == dPara.Linha && dPara.Ordem <= dDe.Ordem) return;
 
 		ForcarClima(pl.Zone, efeito.Tipo, efeito.Segundos, efeito.Forca,
-					$"{pl.Name} em {EscadaSaiyajin.Def(para)?.Nome ?? para.ToString()}");
+					$"{pl.Name} em {dPara.Nome}");
 
 		if (efeito.Fala.Length > 0)
 			foreach (ServerPlayer o in ZoneList(pl.Zone.Hash)) Avisar(o, efeito.Fala);
@@ -136,14 +142,14 @@ public sealed partial class GameServer
 	/// é a que escurece o mundo):
 	///
 	/// <code>
-	/// Forma.Ssj2 => new(TipoDeClima.Tempestade, 45, 0.75, "o ar fica pesado e um estalo corre pelo ceu."),
+	/// "ssj2" => new(TipoDeClima.Tempestade, 45, 0.75, "o ar fica pesado e um estalo corre pelo ceu."),
 	/// </code>
 	///
 	/// UM CUIDADO PRA QUANDO LIGAR: o SSJ1 é a forma que se usa por horas. Se toda transformação
 	/// fechar o tempo, fechar o tempo deixa de significar alguma coisa -- o céu tem que ser a
 	/// assinatura do que é raro.
 	/// </summary>
-	private static CeuDeForma? CeuDaForma(Forma f) => f switch
+	private static CeuDeForma? CeuDaForma(string id) => id switch
 	{
 		_ => null,
 	};

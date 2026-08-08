@@ -85,6 +85,102 @@ public partial class RoboDeVoo : Node
 		return no.DistanceTo(desenho);
 	}
 
+	/// <summary>
+	/// ONDE CADA FILHO DO CORPO ESTAVA NO CHAO. Colhido ANTES de decolar, apagado nunca -- e a
+	/// referencia contra a qual a subida e medida. Ver <see cref="ConferirQueTodosSubiram"/>.
+	/// </summary>
+	private readonly Dictionary<string, Vector2> _repousoDosFilhos = [];
+
+	/// <summary>Fotografa a posicao de todo filho do corpo, com o corpo ainda no chao.</summary>
+	private void ColherRepouso(Node2D corpo)
+	{
+		_repousoDosFilhos.Clear();
+		foreach (Node filho in corpo.GetChildren())
+			if (Posicao(filho) is { } p) _repousoDosFilhos[filho.Name] = p;
+	}
+
+	/// <summary>A posicao de um filho, seja ele `Node2D` ou `Control`. Outra coisa nao desenha.</summary>
+	private static Vector2? Posicao(Node n) => n switch
+	{
+		Node2D no => no.Position,
+		Control c => c.Position,
+		_ => null,
+	};
+
+	/// <summary>
+	/// ============================ TODO FILHO VISUAL SUBIU JUNTO? ============================
+	/// Esta e a checagem que substitui quatro defeitos identicos, e por isso ela e escrita POR
+	/// CONJUNTO e nunca por nome.
+	///
+	/// A LISTA A MAO JA FALHOU QUATRO VEZES (aura, barra de vida, chama da carga, nebulosa do Ultra
+	/// Instinto): cada uma foi um node que nascia em `World.AoEntrar` e nao entrava na enumeracao de
+	/// `LocalPlayer.AplicarAltura`. Escrever aqui "a nebulosa esta la em cima" seria a MESMA lista a
+	/// mao, so que agora em dois arquivos -- e o quinto node ficaria de fora dos dois calado.
+	///
+	/// ENTAO A PERGUNTA E OUTRA: varre-se a arvore de filhos do corpo, sem saber nome nem tipo de
+	/// ninguem, e exige-se que CADA UM tenha se deslocado exatamente a subida -- menos os que
+	/// declaram <see cref="IFicaNoChao"/>, que sao exigidos PARADOS. Um node novo entra na conta no
+	/// dia em que alguem o pendurar no corpo, sem tocar neste arquivo.
+	///
+	/// A MEDIDA E O DELTA CONTRA O REPOUSO, e nao a posicao absoluta. Isso e o que pega o segundo
+	/// jeito de errar: um node com altura propria em repouso (a barra de vida senta a -22 da cabeca,
+	/// a marca de alvo a +14 nos pes) recebendo a subida como posicao CRUA sobe o tanto errado --
+	/// perde a altura propria no caminho. Foi exatamente o defeito da barra caindo pro umbigo, e
+	/// medindo por delta ele reprova em vez de passar por acidente.
+	///
+	/// O CONTRA-EXEMPLO, PRA A VARREDURA NAO PASSAR VAZIA: um `foreach` sobre zero filhos aprova
+	/// tudo caladamente. Entao exige-se um PISO de nodes de verdade encontrados la em cima, e os
+	/// nomes vao no relatorio -- se um dia a varredura enxergar dois em vez de oito, o teste cai.
+	/// ====================================================================================
+	/// </summary>
+	private void ConferirQueTodosSubiram(Node2D corpo, float altura)
+	{
+		float subida = altura * Voo.EscalaNaTela;
+		// A folga cobre o quadro de perseguicao que roda entre a leitura da altura e esta varredura
+		// (`LocalPlayer.SeguirAltura` persegue por quadro; a altura nao e crava de um golpe).
+		const float folga = 3f;
+
+		var subiram = new List<string>();
+		var erraram = new List<string>();
+		var ficaram = new List<string>();
+
+		foreach (Node filho in corpo.GetChildren())
+		{
+			if (Posicao(filho) is not { } agora) continue;                       // nao desenha, nao conta
+			if (!_repousoDosFilhos.TryGetValue(filho.Name, out Vector2 antes)) continue;   // nasceu depois
+
+			float andou = agora.Y - antes.Y;
+
+			if (filho is IFicaNoChao)
+			{
+				// QUEM DECLAROU QUE FICA TEM QUE FICAR MESMO. Sem este ramo a inversao viraria "mover
+				// tudo", e mover tudo quebra a sombra (o vao ate ela E a altura) e o anel de mira.
+				if (Mathf.Abs(andou) > folga) erraram.Add($"{filho.Name} (declarou IFicaNoChao e mesmo assim andou {andou:0.0} px)");
+				else ficaram.Add(filho.Name);
+				continue;
+			}
+
+			if (Mathf.Abs(andou + subida) <= folga) subiram.Add(filho.Name);
+			else erraram.Add($"{filho.Name} (subiu {-andou:0.0} px de {subida:0.0})");
+		}
+
+		Conferir(erraram.Count == 0,
+			"TODO filho visual do corpo subiu junto com o voo"
+			+ (erraram.Count == 0 ? "" : " -- FICARAM PRA TRAS: " + string.Join(", ", erraram)));
+
+		// O PISO E O CONTRA-EXEMPLO. Ele nao diz QUEM tem que estar la em cima -- diz que a varredura
+		// enxergou gente de verdade. Sao 8 hoje (aura, carga, desenho, nebulosa, raios, camera, barra,
+		// balao); o piso e 6 pra que tirar um efeito do jogo nao reprove o voo, mas a varredura voltar
+		// vazia (corpo sem filhos, nome trocado, arvore remontada) reprove.
+		Conferir(subiram.Count >= 6,
+			$"a varredura achou {subiram.Count} nodes de verdade la em cima [{string.Join(", ", subiram)}]");
+
+		// E A EXCECAO TAMBEM PRECISA EXISTIR: se ninguem declarasse `IFicaNoChao`, o ramo de cima
+		// nunca teria rodado e a metade "quem NAO sobe" do contrato estaria sem prova nenhuma.
+		Conferir(ficaram.Count >= 1,
+			$"...e {ficaram.Count} declararam IFicaNoChao e ficaram parados [{string.Join(", ", ficaram)}]");
+	}
+
 	private void Conferir(bool ok, string oque)
 	{
 		_passos.Add((ok ? "  ok   " : "  FALHA") + "  " + oque);
@@ -194,6 +290,11 @@ public partial class RoboDeVoo : Node
 					$"NO CHAO a parede BARRA: andou {parou.DistanceTo(_deOndeAndou):0} px contra ela "
 					+ "e NUNCA ficou dentro de celula bloqueada");
 
+				// O REPOUSO SAI DAQUI, o ultimo instante em que o corpo ainda esta no chao. Medir a
+				// subida contra ele e o que deixa a checagem valer pra nodes com altura propria (a
+				// barra fica a -22 da cabeca) sem esta bancada precisar saber de quanto e a de cada um.
+				if (mundo.CorpoDeTeste(cli.LocalId) is { } noChao) ColherRepouso(noChao);
+
 				_kiAntesDeDecolar = cli.Sheet.Ki;
 				cli.SendHabilidade("voar");
 				break;
@@ -237,6 +338,13 @@ public partial class RoboDeVoo : Node
 
 				Conferir(mundo.AnimacaoLocalDeTeste.StartsWith("flight"),
 					$"o corpo trocou pro sprite de VOO da folha dele (animacao \"{mundo.AnimacaoLocalDeTeste}\")");
+
+				// ---------- e AGORA o conjunto inteiro, e nao mais tres efeitos escolhidos a dedo ----------
+				// O `Vao` acima mede UM node (o desenho do personagem) e por isso ele passava verde
+				// enquanto a aura, a barra, a chama da carga e a nebulosa ficavam no chao, uma de cada
+				// vez. Ver o cabecalho de `ConferirQueTodosSubiram`.
+				if (mundo.CorpoDeTeste(cli.LocalId) is { } noAr)
+					ConferirQueTodosSubiram(noAr, mundo.AlturaDeTeste);
 
 				// ---------- agora VOANDO, contra a parede mais proxima DAQUI ----------
 				// O rumo E recalculado: a caminhada de controle terminou barrada, contornando o

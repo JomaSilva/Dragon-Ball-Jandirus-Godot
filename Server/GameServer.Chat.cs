@@ -50,8 +50,10 @@ public partial class GameServer
 		switch (canal)
 		{
 			case Protocol.Fala.Ooc:
-				// o unico canal que atravessa planeta: e conversa de jogador, nao de personagem
-				foreach (ServerPlayer o in _players.Values) Mandar(o, canal, a.Name, texto);
+				// o unico canal que atravessa planeta: e conversa de jogador, nao de personagem --
+				// por isso o `falante: null`, que e o que impede duas pessoas em galaxias
+				// diferentes de se conhecerem por escrito (ver `Ouviu`)
+				foreach (ServerPlayer o in _players.Values) Mandar(o, canal, a.Name, texto, falante: null);
 				break;
 
 			case Protocol.Fala.Sussurro:
@@ -61,8 +63,10 @@ public partial class GameServer
 				foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 				{
 					float d = (o.Pos - a.Pos).Length;
-					if (d <= RaioDoSussurro) Mandar(o, canal, a.Name, texto);
-					else if (d <= RaioDaVista) Mandar(o, canal, a.Name, "");
+					if (d <= RaioDoSussurro) Mandar(o, canal, a.Name, texto, a);
+					// QUEM SO VIU QUE HOUVE UM SUSSURRO NAO CONVIVEU: nao chegou palavra nenhuma,
+					// entao o `falante` vai nulo e a familiaridade nao anda.
+					else if (d <= RaioDaVista) Mandar(o, canal, a.Name, "", falante: null);
 				}
 				break;
 
@@ -85,12 +89,27 @@ public partial class GameServer
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
 			Vec2 dd = o.Pos - a.Pos;
-			if (dd.X * dd.X + dd.Y * dd.Y <= raio2) Mandar(o, canal, a.Name, texto);
+			if (dd.X * dd.X + dd.Y * dd.Y <= raio2) Mandar(o, canal, a.Name, texto, a);
 		}
 	}
 
-	private static void Mandar(ServerPlayer para, Protocol.Fala canal, string autor, string texto)
+	/// <param name="falante">
+	/// QUEM ESTA FALANDO, ou nulo quando nao ha ninguem (recado do servidor) ou quando a fala nao
+	/// chega como conversa (OOC, sussurro que voce nao ouviu).
+	///
+	/// ============================ POR QUE ELE NAO TEM VALOR PADRAO ============================
+	/// Ele so serve pra uma coisa: a familiaridade que a CONVERSA faz crescer (ver
+	/// <see cref="Ouviu"/>, o `TestListeners` do DM). E este e o funil unico -- toda fala que chega
+	/// em alguem passa por aqui. Um padrao `= null` deixaria o canal novo do futuro entrar mudo e
+	/// sem ninguem notar; obrigatorio, ele obriga cada chamador a dizer se aquilo e conversa ou nao,
+	/// e esquecer vira erro de compilacao em vez de um sistema que para de crescer em silencio.
+	/// ==========================================================================================
+	/// </param>
+	private void Mandar(ServerPlayer para, Protocol.Fala canal, string autor, string texto,
+						ServerPlayer? falante)
 	{
+		if (falante != null) Ouviu(para, falante);
+
 		var w = Protocol.Begin(Protocol.S2C.Chat);
 		w.Put((byte)canal);
 		w.Put(autor);
@@ -101,8 +120,17 @@ public partial class GameServer
 	}
 
 	/// <summary>Uma linha do servidor pra UM jogador so: aviso, recusa, resultado de comando.</summary>
-	public void Avisar(ServerPlayer para, string texto) =>
-		Mandar(para, Protocol.Fala.Sistema, "", texto);
+	public void Avisar(ServerPlayer para, string texto)
+	{
+		// A BANCADA ESCUTA AQUI. `Avisar` termina num `Peer.Send`, e pacote que saiu no fio nao volta
+		// pra ser conferido -- uma bancada de servidor nao tem como perguntar "o jogador foi avisado?".
+		// E justamente este pedaco ja falhou nesta fase: a punicao do Oozaru dizia o que ACONTECEU e
+		// nao dizia a SAIDA, e nada no projeto percebeu, porque a ausencia de uma frase nao quebra nada.
+		// Nula em jogo (uma comparacao por linha de chat). Ver `GameServer.FormasTeste.cs`.
+		EscutaDeAvisos?.Add(texto);
+		// `falante: null` -- nao ha ninguem falando: e o servidor. Ver o parametro em `Mandar`.
+		Mandar(para, Protocol.Fala.Sistema, "", texto, falante: null);
+	}
 
 	/// <summary>
 	/// O que da pra dizer.

@@ -20,7 +20,12 @@ namespace Jandirus.Client;
 /// sistemas sem nada em comum alem da palavra.
 /// ============================================================================================
 /// </summary>
-public partial class SombraDeVoo : Node2D
+/// <remarks>
+/// <see cref="IFicaNoChao"/>: ela e a EXCECAO da regra "todo filho visual do corpo sobe com o voo".
+/// Ficar na origem nao e descuido -- e o vao entre ela e o corpo que conta a altura, como o
+/// cabecalho acima explica. A altura chega por <see cref="Altura"/>, que e canal proprio.
+/// </remarks>
+public partial class SombraDeVoo : Node2D, IFicaNoChao
 {
 	/// <summary>O raio da mancha no chao (colado), em pixels.</summary>
 	private const float RaioNoChao = 9f;

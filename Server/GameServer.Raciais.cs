@@ -156,9 +156,14 @@ public partial class GameServer
 			case "sairdamente": SairDaMente(pl, "voce abre os olhos."); break;
 			case "decolar": Decolar(pl); break;
 			case "voar": AlternarVoo(pl); break;
+			case "oozaru": ReverterOozaru(pl); break;
+			case "oozaru_olhar": OlharParaALua(pl); break;
 			// AS TECNICAS DE SKILL entram pelo mesmo cano, pelo nome do verb do DM
 			// ("Solar_Flare"). Ver GameServer.Tecnicas.cs.
 			default:
+				// AS DISCIPLINAS DIVINAS entram antes das tecnicas de skill: elas nao SAO skills
+				// (nao se compram com marco), e por isso nao estao no livro que o UsarTecnica varre.
+				if (UsarDisciplina(pl, id)) break;
 				if (!UsarTecnica(pl, id)) Avisar(pl, $"habilidade desconhecida: {id}");
 				break;
 		}

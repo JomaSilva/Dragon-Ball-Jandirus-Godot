@@ -119,7 +119,19 @@ public static class Nutricao
 		}
 
 		f.stamina = Math.Min(f.stamina + vigor, f.maxstamina);
-		f.Ki = Math.Min(f.Ki + ki, f.MaxKi);
+		// ============================ NAO APARE QUEM JA ESTAVA ACIMA ============================
+		// Isto era `Math.Min(f.Ki + ki, f.MaxKi)`, e o `Min` nao limitava so o que a comida
+		// ACRESCENTA -- ele derrubava o Ki de quem ja estava acima do teto. Com `ki = 0` a conta
+		// virava `Min(140, 100) = 100`, todo tique.
+		//
+		// Era o que desfazia a tecla C: o dono comprimia o Ki ate 140% e a NUTRICAO devolvia pra
+		// 100 no quadro seguinte. O motor da carga estava certo o tempo todo (simulado 25 s, ele
+		// segura 140 sem oscilar) -- quem aparava era outro sistema, que nem sabia da sobrecarga.
+		//
+		// A regra certa: a comida enche ATE o teto, e nunca TIRA. Quem passou dos 100% pela tecla
+		// C so desce pelo caminho dela (o dreno, o tempo, o preco do excesso).
+		// ================================================================================
+		f.Ki = Math.Min(f.Ki + ki, Math.Max(f.MaxKi, f.Ki));
 		return (vigor, ki);
 	}
 

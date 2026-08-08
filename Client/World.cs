@@ -45,6 +45,57 @@ public partial class World : Node2D
 	private Jandirus.Core.Appearance.VisualCatalog? _visual;
 	// a aparencia de cada um chega UMA vez, e pode chegar ANTES do boneco existir
 	private readonly Dictionary<int, (string Raca, string Genero, Jandirus.Core.Appearance.Appearance Ap)> _looks = [];
+
+	/// <summary>
+	/// EM QUE FORMA (e em que fera) CADA CORPO DA ZONA ESTA -- a memoria que faltava.
+	///
+	/// ============================ POR QUE GUARDAR, SE O PACOTE JA CHEGA ============================
+	/// Pela mesma razao do `_looks` logo acima, e o servidor acabou de criar o caso: quando eu entro
+	/// numa zona ele me manda o estado de forma de todos que ja estao la (`GameServer.SincronizarFormas`)
+	/// -- e nesse instante nenhum daqueles bonecos existe ainda. Quem CRIA `RemotePlayer` e o snapshot,
+	/// que vem por outro canal e chega depois. Sem esta memoria o `AoMudarForma` acharia `Corpo(id)`
+	/// nulo, sairia calado, e a sincronia inteira do servidor morreria a um metro da tela.
+	///
+	/// Guarda sempre, aplica se o boneco existir, e o nascimento do boneco consulta o que ficou guardado
+	/// (`VestirCorpoInteiro`). Sao as mesmas tres regras do `_looks` e das feridas.
+	/// ============================================================================================
+	///
+	/// GUARDA O ID DE REDE e nao o `FormaDef`: e o que vem no fio, e resolver a entrada do catalogo na
+	/// hora de aplicar mantem uma so conversao (a do `AoMudarForma`).
+	/// </summary>
+	private readonly Dictionary<int, int> _formaDaZona = [];
+
+	/// <summary>
+	/// QUEM DA ZONA DOMINOU (100% de maestria) A FORMA EM QUE ESTA. Gemeo do <see cref="_formaDaZona"/>
+	/// logo acima e guardado pelas MESMAS tres razoes: o pacote pode chegar antes do boneco existir,
+	/// aplica-se quando ele existir, e o nascimento do boneco consulta o que ficou guardado.
+	///
+	/// SO O SUPER SAIYAJIN USA ISTO hoje -- e o Grade 4, que troca a folha de cabelo (ver
+	/// `Catalogo.SufixoDoCabeloDe`). E um HashSet e nao um bool por corpo porque a pergunta e sobre a
+	/// forma ATUAL: quem sai da forma sai do conjunto no mesmo pacote que o tirou dela.
+	/// </summary>
+	private readonly HashSet<int> _dominouDaZona = [];
+
+	/// <summary>
+	/// QUEM DA ZONA ESTA SENDO DIRIGIDO PELO SERVIDOR agora (a furia lendaria, o Oozaru sem controle).
+	/// Gemeo do <see cref="_dominouDaZona"/> logo acima e guardado pelas MESMAS tres razoes -- o fato
+	/// pode chegar antes do boneco existir, aplica-se quando ele existir, e o nascimento do boneco
+	/// consulta o que ficou guardado (`VestirAFormaSemCena`).
+	///
+	/// ============================ NAO HA CANAL NOVO AQUI ============================
+	/// Isto e alimentado pelo `EntityState.SemRedeas` do SNAPSHOT -- o bit `flags2 &amp; 0x20` que o
+	/// Oozaru ja abriu e que ja viaja pra todo mundo que ve o corpo. Um `S2C` proprio pra "a pupila
+	/// mudou de cor" seria um segundo caminho pra manter em dia, e o unico jeito de ele discordar do
+	/// primeiro seria calado.
+	///
+	/// O SNAPSHOT E A FONTE CERTA e nao um pacote de evento por outro motivo: a posse tambem MUDA por
+	/// eventos que nao sao dela (o corpo cai, a forma se desfaz por Ki zerado). O snapshot diz o
+	/// ESTADO todo tique, entao nao ha combinacao de eventos que o deixe velho.
+	/// ==========================================================================
+	/// </summary>
+	private readonly HashSet<int> _semRedeasDaZona = [];
+
+	private readonly Dictionary<int, Jandirus.Core.Forms.FormaOozaru> _feraDaZona = [];
 	private LocalPlayer? _local;
 	private readonly Dictionary<int, RemotePlayer> _remotos = [];
 	private Iluminacao _luzDoMundo = null!;
@@ -167,8 +218,10 @@ public partial class World : Node2D
 			cli.SnapshotReceived += AoReceberSnapshot;
 			cli.PeerLeft += AoSair;
 			cli.PeerLooked += AoReceberAparencia;
+			cli.Falou += AoFalar;
 			cli.Golpe += AoGolpe;
 			cli.FormaMudou += AoMudarForma;
+			cli.OozaruMudou += AoVirarOozaru;
 			cli.VizinhancaMudou += DesenharPlanetas;
 			cli.ObrasMudaram += DesenharObras;
 			cli.EfeitoCaiu += AoCairEfeito;
@@ -232,8 +285,12 @@ public partial class World : Node2D
 			cli.SnapshotReceived -= AoReceberSnapshot;
 			cli.PeerLeft -= AoSair;
 			cli.PeerLooked -= AoReceberAparencia;
+			cli.Falou -= AoFalar;
 			cli.Golpe -= AoGolpe;
 			cli.FormaMudou -= AoMudarForma;
+			// METODO NOMEADO E `-=`, e nao lambda: ver a nota do `_Ready`. O `GameClient` sobrevive
+			// ao logout, entao assinatura que nao se cancela vira ouvinte orfao na sessao seguinte.
+			cli.OozaruMudou -= AoVirarOozaru;
 			cli.VizinhancaMudou -= DesenharPlanetas;
 			cli.ObrasMudaram -= DesenharObras;
 			cli.EfeitoCaiu -= AoCairEfeito;
@@ -353,7 +410,12 @@ public partial class World : Node2D
 	/// carrega os mesmos dois bits) -- o corpo local e que fica de fora dele, porque ele se desenha
 	/// sozinho.
 	/// </summary>
-	private void AoCairEfeito(string efeito, long ms)
+	/// <remarks>
+	/// INTERNAL pelo mesmo motivo do <see cref="AoMudarForma"/>: e por aqui que o `aura_ki` chega, e
+	/// e a sobrecarga que decide se o contorno aparece. Uma bancada que escrevesse `_sobrecarregados` na
+	/// mao estaria testando o campo, nao o canal.
+	/// </remarks>
+	internal void AoCairEfeito(string efeito, long ms)
 	{
 		bool ligado = ms != 0;
 
@@ -395,14 +457,18 @@ public partial class World : Node2D
 			// (`canPower && stamina > 1`, o gate do Meditate.dm:181).
 			case "aura_carga":
 				_auraDaCarga = ligado;
-				AplicarAuraLocal();
+				AplicarChamaDaCargaLocal();
 				break;
 
 			// PASSOU DOS 110% DE KI. Independente da tecla: quem esta sobrecarregado continua
 			// aceso depois de soltar o C, e so apaga quando o Ki volta pro lugar.
+			//
+			// ENTRA PELO MESMO FUNIL DO CORPO ALHEIO (`MarcarSobrecarga`), e nao num campo proprio:
+			// este canal e o meu Ki, o bit `EntityState.Sobrecarregado` e o Ki dos outros, e os dois
+			// dizem A MESMA COISA. Enquanto eram dois estados separados o contorno tinha duas regras
+			// (Ki no meu corpo, FORMA no dos outros) -- e era a errada que os outros viam.
 			case "aura_ki":
-				_sobrecarga = ligado;
-				AplicarAuraLocal();
+				MarcarSobrecarga(GameClient.Instance?.LocalId ?? 0, ligado);
 				break;
 		}
 	}
@@ -474,13 +540,96 @@ public partial class World : Node2D
 		GetTree().CreateTimer(2.0).Timeout += () => { if (IsInstanceValid(eco)) eco.QueueFree(); };
 	}
 
-	private bool _auraDaCarga, _sobrecarga;
+	/// <summary>Segurando o C. So do meu corpo -- nos outros isso e o bit `EntityState.Carregando`.</summary>
+	private bool _auraDaCarga;
 
-	/// <summary>Escreve os dois estados no corpo local. Nulo antes de entrar no mundo.</summary>
-	private void AplicarAuraLocal()
+	/// <summary>
+	/// QUEM ESTA ACIMA DOS 100% DE KI, por id -- e o MEU id entra aqui como qualquer outro.
+	///
+	/// ============================ UM CONJUNTO, E NAO UM BOOL MEU MAIS UM BIT DELES ============================
+	/// Este campo era um `bool _sobrecarga` que so falava do dono da tela, e a consequencia estava
+	/// escrita com todas as letras no `AcenderFormaNoCorpo`: *"o cliente nao sabe o Ki dos OUTROS"*.
+	/// Nao sabia MESMO, quando aquilo foi escrito -- hoje sabe: `EntityState.Sobrecarregado` viaja no
+	/// snapshot 30x/s por corpo (`Protocol.cs:1104`, escrito em `GameServer.cs:2384`) e ja era
+	/// consumido aqui, so que entregue exclusivamente a `CargaVisual`.
+	///
+	/// Enquanto a verdade do meu Ki morava num campo e a dos outros num bit, o contorno tinha DUAS
+	/// regras pro mesmo pixel -- Ki no meu corpo, FORMA no corpo alheio -- e quem se transformava
+	/// ficava contornado pra sempre na tela dos outros. Um conjunto por id fecha a divergencia por
+	/// construcao: nao ha "o meu caso" pra alguem esquecer de atualizar.
+	/// =====================================================================================================
+	/// </summary>
+	private readonly HashSet<int> _sobrecarregados = [];
+
+	/// <summary>O MEU Ki passou dos 100%? Derivado do mesmo conjunto que serve os corpos remotos.</summary>
+	private bool SobrecargaLocal =>
+		GameClient.Instance is { } c && _sobrecarregados.Contains(c.LocalId);
+
+	/// <summary>
+	/// O KI DE ALGUEM PASSOU (ou voltou) DOS 100% -- o FUNIL UNICO dos dois caminhos.
+	///
+	/// Entram por aqui o canal de efeito do meu corpo (`aura_ki`, que o servidor manda so pra mim) e o
+	/// bit do snapshot de todos os outros. Sai daqui o contorno, pelo mesmo `AplicarContorno` nos dois
+	/// casos -- e a chama da carga, que so o meu corpo desenha a partir deste lado (nos outros ela ja
+	/// vem resolvida no proprio snapshot).
+	///
+	/// SO TRABALHA NA MUDANCA: o bit chega por tique, por corpo, e reescrever os uniformes de todas as
+	/// camadas de todo mundo 30x/s pra dizer a mesma coisa e trabalho puro. O `Add`/`Remove` do
+	/// conjunto ja responde "mudou?" sem um campo a mais pra manter em dia.
+	/// </summary>
+	private void MarcarSobrecarga(int id, bool ligado)
+	{
+		// ZERO E "NINGUEM" NESTE ARQUIVO INTEIRO (ver `Corpo`), e sem esta linha ele entraria no
+		// conjunto e ficaria la pra sempre -- ninguem sai da zona com id 0 pra apaga-lo.
+		if (id == 0) return;
+		if (!(ligado ? _sobrecarregados.Add(id) : _sobrecarregados.Remove(id))) return;
+		AplicarContorno(id);
+		// A CHAMA DA CARGA DO MEU CORPO TAMBEM DEPENDE DISTO: quem passa dos 100% continua com a chama
+		// acesa depois de soltar o C (ver `CargaVisual.Definir`). Nos corpos remotos essa mesma linha
+		// e escrita pelo snapshot, com os dois bits que vem nele.
+		if (GameClient.Instance is { } c && id == c.LocalId) AplicarChamaDaCargaLocal();
+	}
+
+	/// <summary>
+	/// ============================ QUEM ESTA DIRIGINDO ESTE CORPO MUDOU ============================
+	/// Gemeo do <see cref="MarcarSobrecarga"/> logo acima, e escrito no mesmo molde de proposito: um
+	/// bit do snapshot, um conjunto por zona, e trabalho SO quando ele vira. A 30 Hz, repintar o olho
+	/// todo tique seria escrever o mesmo uniform de shader trinta vezes por segundo pra cada corpo em
+	/// campo -- e a virada e o unico instante que interessa.
+	///
+	/// ============================ POR QUE SO O OLHO, E NAO UM REVESTIR INTEIRO ============================
+	/// Porque revestir a forma atual DESTRUIRIA O OOZARU: quem virou macaco tem a escada na BASE (o
+	/// `Apeshit` reverte antes de chamar a fera), entao um `VestirAFormaSemCena` disparado pela virada
+	/// da posse arrancaria o corpo do macaco exatamente no instante em que ele perde o controle -- o
+	/// unico instante em que ela acontece. Ver `CharacterVisual._formaVestida`, que e quem sabe qual
+	/// forma esta no corpo e repinta so o que a posse muda.
+	/// ================================================================================================
+	///
+	/// `internal` pelo mesmo motivo do <see cref="AoMudarForma"/>: e por aqui que o bit do fio vira
+	/// pixel, e a bancada precisa exercitar ESTE caminho e nao o `MarcarSemRedeas` na mao -- provar que
+	/// o metodo funciona sem provar que alguem o chama e o defeito que a fase inteira veio consertar.
+	/// </summary>
+	internal void AoMudarPosse(int id, bool semRedeas)
+	{
+		// ZERO E "NINGUEM" NESTE ARQUIVO INTEIRO, e o conjunto guarda quem SAI da zona pela mesma
+		// porta que o `_sobrecarregados`: pelo bit chegando `false`.
+		if (id == 0) return;
+		if (!(semRedeas ? _semRedeasDaZona.Add(id) : _semRedeasDaZona.Remove(id))) return;
+
+		if (Corpo(id)?.GetNodeOrNull<CharacterVisual>("Visual") is { } vis)
+			vis.MarcarSemRedeas(semRedeas);
+	}
+
+	/// <summary>
+	/// A CHAMA DE CARGA DO MEU CORPO. Nulo antes de entrar no mundo.
+	///
+	/// So o corpo LOCAL passa por aqui, e a razao nao mudou: os outros vem resolvidos no snapshot, que
+	/// carrega os mesmos dois bits (`World.AoReceberSnapshot`); o corpo local e que fica de fora dele.
+	/// </summary>
+	private void AplicarChamaDaCargaLocal()
 	{
 		if (_local?.GetNodeOrNull<CargaVisual>("Carga") is { } cg)
-			cg.Definir(_auraDaCarga || _sobrecarga, _sobrecarga);
+			cg.Definir(_auraDaCarga || SobrecargaLocal, SobrecargaLocal);
 	}
 
 	// ---------------------------------------------------------------------
@@ -1203,9 +1352,25 @@ public partial class World : Node2D
 		if (_local != null) return;
 
 		var corpo = new LocalPlayer { Name = "LocalPlayer", Position = new Vector2(spawn.X, spawn.Y), Mapa = _colisao };
-		corpo.AddChild(NovoVisual());
+		// A AURA ENTRA ANTES DO CORPO. Com o `ZIndex = 0` do `SpriteDeAura` quem decide
+		// quem fica atras e a ORDEM DE IRMAO -- e o irmao mais novo desenha por cima.
+		// Trocar o z sem trocar esta ordem inverteria o defeito: a aura taparia o rosto.
 		corpo.AddChild(new Aura { Name = "Aura" });
 		corpo.AddChild(new CargaVisual { Name = "Carga" });
+		corpo.AddChild(NovoVisual());
+		// ============================ E A NEBULOSA ENTRA DEPOIS DO CORPO ============================
+		// Ela era o irmao MAIS VELHO (a primeira linha deste bloco) justamente pra desenhar por tras, e
+		// o dono corrigiu: "o efeito deveria ficar sobre o corpo e nao atras". Aqui a correcao e UMA
+		// LINHA DE LUGAR -- pela mesma regra escrita logo acima, o irmao mais novo desenha por cima.
+		//
+		// NAO SE RESOLVE COM `ZIndex`: z vence Y-sort, entao a nuvem passaria por cima das arvores e
+		// paredes do cenario (o tombo que o `_cabelo` ja levou aqui). Ela fica em z 0 como todo o resto
+		// do corpo e continua entrando na profundidade da cena junto com ele.
+		//
+		// Quem impede que ela TAPE o boneco e o alfa, e nao a ordem: ver `veu_no_corpo` no shader.
+		// ==========================================================================================
+		corpo.AddChild(new NebulosaDaForma { Name = "Nebulosa" });
+		corpo.AddChild(new RaiosDaForma { Name = "Raios" });
 		corpo.AddChild(new RastroDeCorrida { Name = "Rastro" });
 		// SO O SEU personagem tem campo de visao -- e o que VOCE enxerga, nao algo que os outros
 		// veem. Por isso o veu mora no mundo e apenas SEGUE o corpo.
@@ -1221,18 +1386,31 @@ public partial class World : Node2D
 		_camera = cam;
 
 		corpo.AddChild(new HealthBar { Name = "Vida" });
+		// O BALAO E DO CORPO LOCAL TAMBEM. Nao e enfeite: quando VOCE fala, a frase aparece onde
+		// os outros a veem aparecer -- sem isso nao ha como saber se o balao esta alto demais, se
+		// o texto quebrou ou se a fala saiu, a nao ser perguntando pra outra pessoa.
+		corpo.AddChild(new BalaoDeFala { Name = "Balao" });
 		_atores.AddChild(corpo);
 		_local = corpo;
 
 		// OS VERBS FIXOS entram agora. As skills registram os DELAS quando sao aprendidas
 		// (`Habilidades`); estes existem pra todo personagem, entao nascem com o corpo.
 		VerbosDoJogo.Registrar();
-		VestirSePuder(id, corpo);
+		VestirCorpoInteiro(id, corpo);
 		GD.Print($"[world] {nome} pronto em {zona}");
 		Chat.Sistema($"bem-vindo, {nome}.");
 	}
 
-	private void AoReceberSnapshot(List<EntityState> estados)
+	/// <remarks>
+	/// ============================ `internal` PELO MESMO MOTIVO DO <see cref="AoMudarForma"/> ============================
+	/// Este e o unico lugar do jogo que FAZ NASCER um corpo remoto -- e o nascimento e metade da regra
+	/// da sincronia de forma: o pacote de estado chega quando nenhum destes bonecos existe, e quem o
+	/// transforma em pixel e o `VestirCorpoInteiro` daqui de dentro. Com o metodo privado, a bancada so
+	/// poderia chamar `VestirCorpoInteiro` na mao, ou seja provar que a funcao funciona sem provar que
+	/// alguem a chama -- que e exatamente o defeito que a fase inteira veio consertar.
+	/// ================================================================================================================
+	/// </remarks>
+	internal void AoReceberSnapshot(List<EntityState> estados)
 	{
 		ulong agora = Time.GetTicksMsec();
 		foreach (EntityState e in estados)
@@ -1248,25 +1426,57 @@ public partial class World : Node2D
 				//
 				// Entao o pacote nao e ignorado: os campos que o servidor DECIDE sao entregues, e o
 				// resto (posicao, direcao) continua sendo previsao local.
+				//
+				// ============================ E QUANDO O CORPO NAO E MEU? ============================
+				// Quando a fera toma as redeas (ou qualquer outra possessao), posicao, direcao e
+				// "esta andando" PASSAM A SER campos que o servidor decide -- e esta lista era o
+				// unico lugar do jogo que nao tinha sido avisado. Por isso o macaco andava animado na
+				// tela dos outros e deslizava na do dono: la o corpo e um `RemotePlayer`, que sempre
+				// consumiu `Moving`/`Facing`; aqui o corpo escolhia a pose pelo passo do TECLADO, que
+				// durante a possessao e sempre zero.
+				//
+				// Entrega SEMPRE, com ou sem posse: quem decide obedecer e o `LocalPlayer` (o bit
+				// `SemRedeas` vem junto), e mandar so as vezes criaria um segundo caminho pra manter
+				// em dia. Sem posse, ele guarda e ignora.
+				// ====================================================================================
 				_local?.ReceberAltura(e.Voando, e.Altitude);
+				_local?.ReceberPosse(e.SemRedeas, e.Pos, (Facing)e.Facing, e.Moving, e.Pose);
+				// A PUPILA E DO CORPO E NAO DO CONTROLE, entao ela vale pro meu tambem: quem perde as
+				// redeas em furia lendaria PRECISA ver o proprio olho apagar, senao a unica pessoa que
+				// nao sabe o que aconteceu com aquele corpo e a dona dele.
+				AoMudarPosse(e.Id, e.SemRedeas);
 				continue;
 			}
 
 			if (!_remotos.TryGetValue(e.Id, out RemotePlayer? r))
 			{
 				r = new RemotePlayer { Name = $"Remoto{e.Id}", Position = new Vector2(e.Pos.X, e.Pos.Y) };
-				r.AddChild(NovoVisual());
+				// A AURA ENTRA ANTES DO CORPO. Com o `ZIndex = 0` do `SpriteDeAura` quem decide
+				// quem fica atras e a ORDEM DE IRMAO -- e o irmao mais novo desenha por cima.
+				// Trocar o z sem trocar esta ordem inverteria o defeito: a aura taparia o rosto.
 				r.AddChild(new Aura { Name = "Aura" });
 				r.AddChild(new CargaVisual { Name = "Carga" });
+				r.AddChild(NovoVisual());
+				// A NEBULOSA DESENHA POR CIMA DO BONECO -- ver o irmao deste bloco no `AoEntrar`, que
+				// explica por que e ordem de irmao e nao `ZIndex`. AS DUAS LISTAS TEM QUE ANDAR JUNTAS:
+				// a nuvem do vizinho por tras e a sua por cima seria o mesmo efeito com duas leituras.
+				r.AddChild(new NebulosaDaForma { Name = "Nebulosa" });
+				r.AddChild(new RaiosDaForma { Name = "Raios" });
 				r.AddChild(new RastroDeCorrida { Name = "Rastro" });
 				r.AddChild(new HealthBar { Name = "Vida" });
+				r.AddChild(new BalaoDeFala { Name = "Balao" });
 				_atores.AddChild(r);
 				_remotos[e.Id] = r;
-				VestirSePuder(e.Id, r);
+				VestirCorpoInteiro(e.Id, r);
 				GD.Print($"[world] entrou no meu campo de visao: id {e.Id}");
 			}
 
-			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, e.Correndo, e.Rabo, e.Altitude);
+			// `e.Voando` ENTRA AGORA, e ele era o unico campo do `EntityState` que o corpo remoto nao
+			// consumia: a ALTURA vinha (a sombra e o deslocamento do desenho dependem dela), o ESTADO
+			// de voo nao -- e por isso decolar e pousar eram mudos pra quem estava do lado. Ver
+			// `RemotePlayer.OuvirODecolar`.
+			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, e.Correndo, e.Rabo, e.Altitude,
+					  e.Voando);
 
 			// ============================ QUEM VOA ALTO SOME DE VISTA ============================
 			// "Se a pessoa estiver voando muito alto, as pessoas que estao no chao nem conseguem ver
@@ -1279,11 +1489,31 @@ public partial class World : Node2D
 			// snapshot de uma zona e UM buffer compartilhado, e recortar por destinatario custaria um
 			// buffer por jogador. Fica anotado o que e: quem mexer no cliente ve quem voa alto.
 			// =====================================================================================
-			r.Visible = Jandirus.Core.World.Voo.Enxerga(
-				Jandirus.Core.World.Voo.Andar(_local?.Altitude ?? 0f),
-				Jandirus.Core.World.Voo.Andar(e.Altitude));
 			if (r.GetNodeOrNull<HealthBar>("Vida") is { } barra) barra.Vida = e.Vida / 100f;
 			r.GuardarVida(e.Vida);   // os decalques de sangue perguntam por ela
+
+			// ============================ O KI DELE ACIMA DOS 100% -- E ISSO NAO E SO DA CHAMA ============================
+			// O bit `Sobrecarregado` ja viajava e ja era consumido AQUI, so que entregue exclusivamente a
+			// `CargaVisual`. O contorno do corpo alheio, que e a outra coisa que ele decide, foi escrito
+			// pela FORMA por todo esse tempo -- e era o "quem se transforma fica sempre com a outline
+			// mesmo sem ativar a aura" que o dono viu.
+			//
+			// FORA DO `if` DA CARGA de proposito: o contorno nao depende do node `Carga` existir, e
+			// pendurar a segunda regra dentro da guarda da primeira e literalmente como esta se perdeu.
+			// Ver `MarcarSobrecarga`, que so trabalha quando o bit MUDA.
+			// =========================================================================================================
+			MarcarSobrecarga(e.Id, e.Sobrecarregado);
+
+			// ============================ E QUEM ESTA DIRIGINDO AQUELE CORPO ============================
+			// Irmao exato da linha acima -- outro bit do snapshot que so trabalha quando MUDA, e que
+			// decide um pixel do desenho. Aqui ele decide a PUPILA: branca enquanto a furia lendaria
+			// dirige, verde quando o dono retoma (`Catalogo.CorDoOlho(d, semRedeas)`).
+			//
+			// ISTO E INFORMACAO DE JOGO E NAO ENFEITE, e por isso ela nao podia ficar so na tela do
+			// dono: quem esta lutando contra um Legendary precisa saber se o que vem em cima dele e uma
+			// pessoa decidindo ou um corpo largado -- as duas coisas se enfrentam de jeitos diferentes.
+			// =======================================================================================
+			AoMudarPosse(e.Id, e.SemRedeas);
 
 			// A AURA DE POWER-UP DO OUTRO. Vem no snapshot justamente pra isto (ver
 			// EntityState.Carregando): quem esta lutando precisa ver o adversario juntando poder.
@@ -1304,7 +1534,19 @@ public partial class World : Node2D
 			// INVISIVEL: some, mas o no CONTINUA VIVO e recebendo posicao. Apagar o corpo faria
 			// ele reaparecer no lugar errado quando voltasse (o cliente teria perdido a
 			// interpolacao inteira) -- e reaparecer teleportando entrega quem estava escondido.
-			r.Visible = !e.Oculto;
+			//
+			// ============================ UMA ATRIBUICAO SO, E ISTO ERA UM DEFEITO DE PE ============================
+			// A regra do voo alto (o bloco comentado la em cima) era escrita numa linha propria e
+			// APAGADA aqui, vinte linhas depois, por um `r.Visible = !e.Oculto` que nao olhava altura
+			// nenhuma -- a ultima escrita vence sempre. Ou seja: quem voava alto continuava desenhado
+			// na tela de quem estava no chao, e o comentario descrevia uma regra que nao existia.
+			// Achado pela bancada do balao de fala (`--diagbalao`), que perguntou se o texto some
+			// junto com o dono.
+			// ==================================================================================================
+			r.Visible = !e.Oculto
+					 && Jandirus.Core.World.Voo.Enxerga(
+							Jandirus.Core.World.Voo.Andar(_local?.Altitude ?? 0f),
+							Jandirus.Core.World.Voo.Andar(e.Altitude));
 		}
 	}
 
@@ -1327,6 +1569,28 @@ public partial class World : Node2D
 	/// </summary>
 	private void EsvaziarRemotos()
 	{
+		// ============================ A FORMA DELES VAI JUNTO, E AQUI ELA DIVERGE DO `_looks` ============================
+		// A aparencia de ficha fica de proposito (o paragrafo acima). O estado de forma NAO pode ficar:
+		// eu acabei de sair da zona daquela gente, e o servidor so vai voltar a falar deles quando eu
+		// pisar de novo onde eles estao -- e ele so manda pacote de QUEM TEM O QUE DIZER
+		// (`GameServer.MandarEstadoDeForma` cala sobre quem esta na base). Guardando, um Super Saiyajin
+		// que voltou ao normal enquanto eu estava em Namek renasceria dourado na minha tela quando eu
+		// voltasse, e a memoria velha nunca mais seria contestada.
+		//
+		// SO OS REMOTOS. O meu id nao esta em `_remotos` e o meu boneco nao e destruido aqui: apagar a
+		// minha propria linha deixaria o `VestirCorpoInteiro` do proximo corpo local sem o que vestir.
+		foreach (int id in _remotos.Keys)
+		{
+			_formaDaZona.Remove(id);
+			_feraDaZona.Remove(id);
+			// E O QUE A FORMA E O KI DELES DEIXARAM ESCRITO. As duas tabelas sao DERIVADAS das de
+			// cima (a receita do contorno vem da forma; a sobrecarga vem do snapshot, que so chega
+			// de quem divide a zona comigo), entao elas tem que morrer na mesma linha -- senao o
+			// mesmo id reaparecendo noutro planeta herda o contorno de uma forma que ja acabou.
+			_contornoDaForma.Remove(id);
+			_sobrecarregados.Remove(id);
+		}
+
 		foreach (RemotePlayer r in _remotos.Values) r.QueueFree();
 		_remotos.Clear();
 
@@ -1337,11 +1601,27 @@ public partial class World : Node2D
 		}
 	}
 
-	private void AoSair(int id)
+	/// <remarks>
+	/// `internal` pelo mesmo motivo do <see cref="AoReceberSnapshot"/>: e o par dele. A memoria de forma
+	/// que aquele metodo consome e ESTE que apaga, e "apagar" e uma regra com consequencia visivel (um
+	/// Super Saiyajin que voltou ao normal fora do meu campo de visao nao pode renascer dourado na minha
+	/// tela). Provar isso exige as duas pontas na mesma bancada.
+	/// </remarks>
+	internal void AoSair(int id)
 	{
 		if (_remotos.Remove(id, out RemotePlayer? r)) r.QueueFree();
 		_looks.Remove(id);
 		_nomes.Remove(id);
+
+		// A FORMA MORRE COM A PESSOA, e aqui ela DIVERGE do `_looks` (que fica de proposito). A
+		// aparencia de ficha e permanente e chega uma vez por sessao; a forma e volatil -- quem saiu de
+		// vista pode voltar em outra forma, ou na base. Guardar seria vestir o boneco que renasce com um
+		// estado que o servidor nao afirma mais. E ele afirma de novo na entrada: `SincronizarFormas`.
+		_formaDaZona.Remove(id);
+		_feraDaZona.Remove(id);
+		// E as duas tabelas que DERIVAM delas -- ver o irmao deste bloco no `EsvaziarRemotos`.
+		_contornoDaForma.Remove(id);
+		_sobrecarregados.Remove(id);
 
 		// O ALVO SAIU DE CENA. A marca morre junto com o corpo dela (e filha), mas a referencia
 		// ficaria pendurada -- e o servidor tambem solta o alvo do lado dele (ver Marcado()).
@@ -1577,13 +1857,7 @@ public partial class World : Node2D
 			if (ms > 5) GD.Print($"[perf] {_zonaMedida}: PRIMEIRO QUADRO {ms:0.0} ms (montagem do tilemap)");
 		}
 
-		if (_tremor > 0 && _camera != null)
-		{
-			_tremor = Mathf.MoveToward(_tremor, 0, (float)delta * 40f);
-			_camera.Offset = _tremor <= 0
-				? Vector2.Zero
-				: new Vector2(Sorte.Randf() * 2 - 1, Sorte.Randf() * 2 - 1) * _tremor;
-		}
+		TickDoTremor(delta);
 
 		EfeitosDaAltura();
 		TickDosDecalques(delta);
@@ -1699,6 +1973,13 @@ public partial class World : Node2D
 	public int ZoomDeTeste => _zoomAgora;
 
 	/// <summary>
+	/// As camadas de cenario da zona carregada. So pras bancadas -- e a `RoboDeNebulosa` que precisa
+	/// dela: pra provar que um efeito de forma some ATRAS de uma arvore, alguem tem que primeiro
+	/// ACHAR uma arvore, e o cenario e tile e nao node (nao ha o que procurar com `FindChild`).
+	/// </summary>
+	public TileMapLayer[] CamadasDoCenarioDeTeste => CamadasDoCenario(_zonaAtual);
+
+	/// <summary>
 	/// ANDA NUMA DIRECAO, pelo caminho de sempre. So pras bancadas.
 	///
 	/// Usa o PILOTO AUTOMATICO (o nav system), e nao um atalho: o passo continua passando pelo
@@ -1799,6 +2080,15 @@ public partial class World : Node2D
 		return _remotos.TryGetValue(id, out RemotePlayer? r) ? r : null;
 	}
 
+	/// <summary>
+	/// O corpo de um id, pela MESMA busca que o jogo usa. So pras bancadas.
+	///
+	/// Achar o boneco por nome de node (`FindChild("Remoto42")`) daria o mesmo objeto por outro
+	/// caminho -- e passaria mesmo se ele nunca tivesse entrado no `_remotos`, que e o mapa de
+	/// onde a fala, o alvo e a forma tiram o corpo de alguem.
+	/// </summary>
+	public Node2D? CorpoDeTeste(int id) => Corpo(id);
+
 	// A PALETA DO IMPACTO, num lugar so. Sao as cores que o jogador aprende a ler sem pensar:
 	// quente = acertou, dourado = critico, gelo = defendeu, sangue = alguem caiu.
 	private static readonly Color Quente = new(1.0f, 0.95f, 0.90f);
@@ -1819,20 +2109,135 @@ public partial class World : Node2D
 	/// </summary>
 	private void Tremer(bool souEu, float forca)
 	{
-		if (souEu && forca > _tremor) _tremor = forca;
+		if (souEu) LevantarTremor(forca, QuedaDoImpacto, CadenciaDoImpacto);
 	}
 
 	/// <summary>
 	/// Sacode a camera de fora (a cinematica de transformacao usa). O tremor vale so pra
 	/// QUEM esta olhando -- e camera, nao mundo.
 	/// </summary>
-	public void Sacudir(float forca, float peso = 1f)
+	/// <param name="forca">Amplitude em pixels de camera.</param>
+	/// <param name="peso">Fracao da amplitude, pra quem quer o mesmo tremor mais fraco.</param>
+	/// <param name="queda">
+	/// Quanta forca some por segundo -- e portanto quanto o solavanco DURA (`forca / queda`). O
+	/// padrao e o do combate; a cinematica passa o
+	/// <see cref="Jandirus.Core.Forms.Cinematicas.QuedaDoTremor"/>, que e cinco vezes mais lento.
+	/// </param>
+	/// <param name="cadencia">
+	/// Segundos que a camera segura cada rumo -- e portanto a VELOCIDADE do tremor. O padrao e o do
+	/// combate; a cinematica passa o <see cref="Jandirus.Core.Forms.Cinematicas.CadenciaDoTremor"/>.
+	/// </param>
+	public void Sacudir(float forca, float peso = 1f,
+						float queda = QuedaDoImpacto, float cadencia = CadenciaDoImpacto)
+		=> LevantarTremor(forca * Mathf.Clamp(peso, 0f, 1f), queda, cadencia);
+
+	/// <summary>
+	/// COMO O TREMOR DE IMPACTO CAI E TROCA DE RUMO -- soco, critico, embate de clash.
+	///
+	/// A queda de 40/s e a de sempre: um critico de forca 8 sacode por 0,2 s e um soco leve de 1,5
+	/// por 0,04 s. E o solavanco SECO que o combate quer, e ele nao entrou na queixa do dono.
+	///
+	/// A cadencia de 1/60 s reproduz o que o codigo antigo fazia por acidente -- um rumo novo a cada
+	/// `_Process`. A diferenca e que agora e um NUMERO e nao a taxa de quadros: quem jogava a 144 fps
+	/// tinha um tremor duas vezes e meia mais rapido que quem jogava a 60, na mesma cena.
+	/// </summary>
+	private const float QuedaDoImpacto = 40f, CadenciaDoImpacto = 1f / 60f;
+
+	/// <summary>
+	/// LEVANTA O TREMOR -- e quem levanta manda no JEITO dele.
+	///
+	/// A amplitude e uma so pra tela inteira e vence a maior (era assim antes e continua). O que
+	/// mudou e que ela nao viaja mais sozinha: a queda e a cadencia vem junto, porque um soco e uma
+	/// transformacao nao tremem igual. Sem isso, deixar a cinematica mais lenta e mais longa deixaria
+	/// TODO impacto do jogo mais lento e mais longo junto.
+	/// </summary>
+	private void LevantarTremor(float forca, float queda, float cadencia)
 	{
-		float f = forca * Mathf.Clamp(peso, 0f, 1f);
-		if (f > _tremor) _tremor = f;
+		if (forca <= _tremor) return;
+
+		// TREMIDA NOVA COMECA NO CENTRO. Saltar direto pro primeiro rumo sorteado seria um tranco de
+		// um quadro -- exatamente o que a cadencia existe pra tirar. Nao vale pra tremida que apenas
+		// se RENOVA (o rumor continuo da cinematica reacende a cada quadro): ali o rumo tem que
+		// continuar de onde estava, senao a camera nunca sairia do centro.
+		if (_tremor <= 0)
+		{
+			_tremorRelogio = 0;
+			_tremorDe = Vector2.Zero;
+			_tremorPara = RumoDoTremor();
+		}
+
+		_tremor = forca;
+		_tremorQueda = queda;
+		// CADENCIA ZERO TRAVARIA O `while` DO TICK. Nenhum caminho de hoje chega a zero, mas o preco
+		// do piso e uma comparacao e o preco do descuido e o cliente congelado.
+		_tremorCadencia = Mathf.Max(cadencia, 0.001f);
 	}
 
+	/// <summary>
+	/// O TREMOR, QUADRO A QUADRO: a amplitude cai e o rumo passeia.
+	///
+	/// ============================ A FREQUENCIA ERA A TAXA DE QUADROS ============================
+	/// Isto sorteava um `Offset` novo a CADA `_Process`. Ou seja: a velocidade do tremor nao era um
+	/// numero deste jogo, era o fps da maquina -- 60 pulos por segundo num PC, 144 em outro, e menos
+	/// ainda quando o quadro engasga. E dai que vinha o "rapido demais" das cinematicas: 60 pulos por
+	/// segundo nao leem como chao tremendo, leem como zumbido.
+	///
+	/// Agora o rumo tem RELOGIO PROPRIO (<see cref="_tremorCadencia"/>) e a camera CAMINHA de um pro
+	/// outro. Duas consequencias: da pra pedir um tremor lento sem baixar o fps, e o tremor passou a
+	/// ser o mesmo em qualquer maquina.
+	/// ========================================================================================
+	///
+	/// A CAMERA SO E CONSULTADA NA HORA DE ESCREVER. Antes a guarda era `_tremor > 0 && _camera !=
+	/// null`, o que deixava a amplitude PRESA la em cima enquanto nao houvesse camera -- e ela
+	/// descarregaria de uma vez no instante em que uma aparecesse.
+	/// </summary>
+	private void TickDoTremor(double delta)
+	{
+		if (_tremor <= 0) return;
+
+		_tremor = Mathf.MoveToward(_tremor, 0, (float)delta * _tremorQueda);
+		if (_tremor <= 0)
+		{
+			if (_camera != null) _camera.Offset = Vector2.Zero;
+			return;
+		}
+
+		_tremorRelogio += (float)delta;
+		while (_tremorRelogio >= _tremorCadencia)
+		{
+			_tremorRelogio -= _tremorCadencia;
+			_tremorDe = _tremorPara;
+			_tremorPara = RumoDoTremor();
+		}
+
+		// A CAMERA CAMINHA ENTRE OS RUMOS, nao salta. Sem o `Lerp` a cadencia lenta viraria um
+		// estrobo de doze posicoes por segundo -- mais devagar que antes, sim, mas tambem mais duro.
+		if (_camera != null)
+			_camera.Offset = _tremorDe.Lerp(_tremorPara, _tremorRelogio / _tremorCadencia) * _tremor;
+	}
+
+	/// <summary>Um ponto qualquer do quadrado [-1,1]. O contador e como a bancada mede a cadencia.</summary>
+	private static Vector2 RumoDoTremor()
+	{
+		RumosDoTremorDeTeste++;
+		return new Vector2(Sorte.Randf() * 2 - 1, Sorte.Randf() * 2 - 1);
+	}
+
+	/// <summary>
+	/// Quantos rumos o tremor ja sorteou desde que o cliente subiu. So a bancada le: contar rumos e
+	/// o unico jeito de medir a CADENCIA de fora sem depender do fps em que a medicao rodou.
+	/// </summary>
+	public static int RumosDoTremorDeTeste;
+
+	/// <summary>Roda um quadro do tremor com o `delta` que a bancada quiser. Ver <see cref="TickDoTremor"/>.</summary>
+	public void TickDoTremorDeTeste(double delta) => TickDoTremor(delta);
+
+	/// <summary>A amplitude do tremor agora. So a bancada le.</summary>
+	public float TremorDeTeste => _tremor;
+
 	private float _tremor;
+	private float _tremorQueda = QuedaDoImpacto, _tremorCadencia = CadenciaDoImpacto, _tremorRelogio;
+	private Vector2 _tremorDe, _tremorPara;
 	private static readonly RandomNumberGenerator Sorte = new();
 
 	private static void Som(Node2D? onde, string caminho, float volume = 1f)
@@ -1845,17 +2250,89 @@ public partial class World : Node2D
 	/// <summary>
 	/// A aparencia de alguem. Pode chegar ANTES do boneco existir (o snapshot e quem cria
 	/// o RemotePlayer, e ele vem por outro canal) -- entao guarda sempre, e veste se ja der.
+	///
+	/// ============================ E "VESTIR" AQUI E O CORPO INTEIRO, NAO SO A FICHA ============================
+	/// Este metodo chamava `CharacterVisual.Vestir` direto, e era o GEMEO POBRE do nascimento: a ficha
+	/// entrava e a FORMA nao. `Vestir` remonta as camadas do zero -- ele reescreve `_cabeloBase`
+	/// (`CharacterVisual.cs:678`), nao repoe as coladas e nao repoe o contorno --, entao um `PeerLook`
+	/// que chegasse depois do boneco DESPIA quem estava transformado: pelagem certa (essa o `Vestir`
+	/// preserva, linha 716), cabelo base de volta, sem contorno, sem raios, sem nebulosa.
+	///
+	/// E chegar depois e metade dos casos: o `PeerLook` vem no canal CONFIAVEL e o boneco nasce do
+	/// SNAPSHOT, canal NAO-confiavel -- nao ha ordem garantida entre canais diferentes. Ver
+	/// <see cref="VestirCorpoInteiro"/>, que e o funil unico dos dois caminhos.
+	/// ======================================================================================================
 	/// </summary>
-	private void AoReceberAparencia(int id, string nome, string raca, string genero,
+	/// <remarks>
+	/// `internal` PELO MESMO MOTIVO DO <see cref="AoFalar"/>: este e o UNICO lugar do jogo que
+	/// escreve o mapa id -> nome (`_nomes`), e a busca reversa do balao de fala vive dele. Com o
+	/// metodo privado, a bancada so alcanca o atalho do proprio jogador (`LocalName`) -- provaria o
+	/// balao de quem esta jogando e deixaria sem teste o dos OUTROS, que e onde o balao serve pra
+	/// alguma coisa.
+	/// </remarks>
+	internal void AoReceberAparencia(int id, string nome, string raca, string genero,
 									Jandirus.Core.Appearance.Appearance ap)
 	{
 		_looks[id] = (raca, genero, ap);
 		_nomes[id] = nome;
 		if (_visual == null) return;
-		if (GameClient.Instance != null && id == GameClient.Instance.LocalId)
-			_local?.GetNode<CharacterVisual>("Visual").Vestir(_visual, ap, raca, genero);
-		else if (_remotos.TryGetValue(id, out RemotePlayer? r))
-			r.GetNode<CharacterVisual>("Visual").Vestir(_visual, ap, raca, genero);
+		// PELO MESMO `Corpo(id)` que a forma, a fala e o alvo usam: eram dois ramos escritos a mao
+		// aqui (um pro `_local`, outro pro `_remotos`), e essa era a terceira copia daquela busca.
+		if (Corpo(id) is { } corpo) VestirCorpoInteiro(id, corpo);
+	}
+
+	// =====================================================================
+	// FALA SOBRE A CABECA
+	// =====================================================================
+	/// <summary>
+	/// ALGUEM FALOU E EU OUVI: acha o corpo e poe a frase sobre a cabeca dele.
+	///
+	/// ============================ O PACOTE TRAZ NOME, NAO ID ============================
+	/// `S2C.Chat` carrega `[canal][autor][texto]` (ver `GameClient`), e mudar isso mexeria no
+	/// protocolo do chat inteiro por causa de um balao. Nao precisa: o cliente JA TEM o mapa
+	/// id -> nome (`_nomes`, escrito por `PeerLook`), entao a busca reversa resolve com o que
+	/// existe. O preco e o caso de dois personagens homonimos na mesma zona -- o balao iria pro
+	/// primeiro. Nomes de personagem sao unicos por conta e a colisao e teorica; se um dia deixar
+	/// de ser, o conserto e por o id no pacote e apagar esta busca.
+	/// ====================================================================================
+	///
+	/// O portao de canal e do <see cref="BalaoDeFala.EhDeCorpo"/> -- OOC e LOOC sao do jogador e
+	/// nao do personagem, Sistema nem autor tem, e o sussurro de longe chega sem texto.
+	/// </summary>
+	/// <remarks>
+	/// `internal` PELO MESMO MOTIVO DO <see cref="AoMudarForma"/>: quem chama isto em jogo e o
+	/// evento `GameClient.Falou`, e evento nao se dispara de fora da classe que o declara. Com o
+	/// metodo privado a bancada so poderia chamar `BalaoDeFala.Dizer` na mao -- ou seja, provar que
+	/// o balao desenha sem provar que a FALA chega nele, que e justamente onde moram as duas regras
+	/// que importam (o portao de canal e a busca do corpo pelo nome).
+	/// </remarks>
+	internal void AoFalar(Protocol.Fala canal, string autor, string texto)
+	{
+		if (autor.Length == 0 || !BalaoDeFala.EhDeCorpo(canal, texto)) return;
+		if (Corpo(IdPeloNome(autor)) is not { } corpo) return;
+		corpo.GetNodeOrNull<BalaoDeFala>("Balao")?.Dizer(canal, texto);
+	}
+
+	/// <summary>
+	/// O id de quem se chama assim, ou 0. O proprio jogador vem primeiro porque o `LocalName` e a
+	/// unica leitura que nao depende de o `PeerLook` ja ter chegado.
+	/// </summary>
+	private int IdPeloNome(string nome)
+	{
+		if (GameClient.Instance is { } cli && cli.LocalName == nome) return cli.LocalId;
+		foreach ((int id, string n) in _nomes)
+			if (n == nome) return id;
+		return 0;
+	}
+
+	/// <summary>
+	/// Como se chama este id, ou "". O `_nomes` chega pelo `PeerLook`; o proprio jogador tem o
+	/// atalho porque o nome dele existe desde o login, antes de qualquer pacote de aparencia.
+	/// </summary>
+	private string NomeDe(int id)
+	{
+		if (GameClient.Instance is { } cli && id == cli.LocalId) return cli.LocalName;
+		return _nomes.TryGetValue(id, out string? n) ? n : "";
 	}
 
 	// =====================================================================
@@ -1865,30 +2342,103 @@ public partial class World : Node2D
 	/// Alguem mudou de forma. Vale pra QUALQUER um da zona, nao so pra mim: ver o adversario
 	/// virar Super Saiyajin na sua frente e metade da graca.
 	/// </summary>
-	private void AoMudarForma(int id, int de, int para, bool primeira)
+	/// <remarks>
+	/// ============================ `internal` E NAO `private`, E O MOTIVO E A BANCADA ============================
+	/// Quem chama isto em jogo e o evento `GameClient.FormaMudou`, e evento nao se dispara de fora da
+	/// classe que o declara. Com o metodo privado a unica bancada possivel era remontar as duas linhas
+	/// que ele faz (`NoDegrau` + `Transformacao.Rodar`) dentro do robo -- ou seja, testar uma COPIA da
+	/// regra. Este projeto ja deu verde tres vezes assim, com o jogo quebrado.
+	///
+	/// Aberto pra o `--diagforma` chamar O METODO, os tres degraus de maestria sao medidos onde eles
+	/// acontecem de verdade: se alguem trocar o `NoDegrau` daqui por um `if (primeira)`, a bancada
+	/// reprova. O que continua de fora e so o decodificador do byte (mora no `switch` do
+	/// `GameClient`) -- anotado la na bancada como buraco conhecido.
+	/// ========================================================================================================
+	/// </remarks>
+	internal void AoMudarForma(int id, int de, int para, Jandirus.Core.Forms.DegrauDeCena degrau,
+							   bool dominada = false)
 	{
+		// ANTES DO `return` DO CORPO NULO, e a ordem e a regra inteira: o pacote de sincronia da
+		// entrada na zona chega justamente quando os bonecos ainda nao nasceram. Registrando so depois
+		// de achar o corpo, a memoria guardaria exatamente os casos que ja funcionavam e perderia os
+		// que ela existe pra cobrir. Ver `_formaDaZona`.
+		_formaDaZona[id] = para;
+
+		// O DOMINIO JUNTO E NO MESMO GESTO -- ver `_dominouDaZona`. Guardar num lugar e ler no outro
+		// e como o `_looks` e as feridas ja envelheceram bem; separar os dois registros seria criar a
+		// chance de um corpo com forma guardada e dominio esquecido.
+		if (dominada) _dominouDaZona.Add(id); else _dominouDaZona.Remove(id);
+
 		Node2D? corpo = Corpo(id);
 		if (corpo == null) return;
 
-		var forma = (Jandirus.Core.Forms.Forma)para;
-		Jandirus.Core.Forms.FormaDef? def = Jandirus.Core.Forms.EscadaSaiyajin.Def(forma);
+		Jandirus.Core.Forms.FormaDef? def = Jandirus.Core.Forms.Catalogo.PorRede((ushort)para);
+		if (def is { Id: "base" }) def = null;   // a base existe como entrada, mas nao acende nada
 
-		// --- a aura: e o gancho que ficou esperando desde a Etapa 7b ---
-		if (corpo.GetNodeOrNull<Aura>("Aura") is { } aura)
+		PrepararAuraDaForma(corpo, def);
+
+		// ============================ O CONTORNO LOCAL SE GUARDA EM TODO CAMINHO ============================
+		// Isto morava LA EMBAIXO, depois do `return` da cinematica -- e por isso ele nunca rodava quando
+		// havia cena. O estrago que o dono viu: "se eu voltar pra base e virar ssj dnv o outline n volta".
+		//
+		// A conta era esta: voltar pra base passa pelo caminho SEM cena e zera `_forcaDoBrilho`; virar
+		// Super Saiyajin de novo (maestria < 50% -> cena CURTA) saia por aquele `return` e nunca mais
+		// reescrevia a forca. O `Assumir` da cena pintava o contorno direto no sprite, e o PRIMEIRO
+		// pacote de carga que chegasse chamava o aplicador do contorno e o apagava com o valor velho --
+		// zero. Dois donos escrevendo o mesmo pixel, e o que sobrevivia era o desatualizado.
+		//
+		// GUARDAR NAO E ACENDER, e e isso que torna seguro fazer isto ANTES da cena: quem decide se o
+		// contorno aparece e a sobrecarga de Ki (`_sobrecarregados`), nao a forma. Um jogador que entra
+		// na cena ja passando dos 100% ve a linha durante ela -- e isso e verdade, nao vazamento: desde
+		// que o contorno passou a significar "passei do meu limite", ele nao tem por que esperar o fim
+		// da transformacao pra dizer isso.
+		//
+		// E ISTO VALE PRA QUALQUER ID DA ZONA, e nao so pro meu: era `GuardarBrilhoDaForma`, que saia
+		// calado quando o corpo nao era o local. Ver `GuardarContornoDaForma`.
+		// ================================================================================================
+		GuardarContornoDaForma(id, def);
+
+		// ============================ QUANDO HA CINEMATICA, ELA MANDA ============================
+		// Enquanto houver cena o cabelo, a aura e os raios NAO sao aplicados aqui: quem os aplica e o
+		// beat `Assumir` da cena, la no fim. Aplicar agora deixaria o personagem ja transformado
+		// assistindo a propria transformacao -- e o cabelo do SSJ1, que no DM PISCA entre o normal e o
+		// dourado durante a cena, nao teria pra onde piscar.
+		//
+		// A aura de LUZ tambem espera: ela e o clarao do fim.
+		//
+		// ============================ ISTO ERA `if (primeira)` -- SAO TRES DEGRAUS AGORA ============================
+		// O dono: *"ate vc ter 50% de maestria de uma forma, ela ainda vai ter um tempo pra se
+		// transformar, menor q a primeira cinematica mas ainda assim vai ser lenda"*. Ou seja o caminho
+		// de baixo (transformacao direta, sem cena) deixou de ser "tudo o que nao e estreia" e passou a
+		// ser so o terceiro degrau -- quem domina a forma.
+		//
+		// O DEGRAU VEM DO SERVIDOR e a CENA sai do Core: `NoDegrau` e a mesma funcao que o servidor
+		// consultaria se precisasse do prazo. Escolher a cena aqui, no cliente, a partir de um numero
+		// que o servidor mandou, e o que garante que os dois nunca discordem sobre quanto tempo o corpo
+		// fica preso -- porque so existe uma conta, e ela mora no Core.
+		// ====================================================================================================
+		if (def != null
+			&& Jandirus.Core.Forms.Cinematicas.NoDegrau(def, degrau) is { } cena)
 		{
-			if (def == null) aura.Apagar();
-			else aura.Acender(new Color(def.Aura), 0.8f + Degrau(forma) * 0.5f);
+			bool souEu = id == GameClient.Instance?.LocalId;
+			// O NOME VAI JUNTO: e com ele que quem ASSISTE le "Zx: AINDA MAIS ALEM!" no chat. O
+			// balao sobre a cabeca nao precisa dele (o corpo ja esta em maos), a linha do chat sim.
+			Transformacao.Rodar(_atores, corpo, def, cena, souEu, NomeDe(id));
+
+			// O `** Nome **` E DA ESTREIA. Ele e o carimbo de acontecimento, irmao da musica que toca
+			// uma vez na vida do personagem (`ssj1_music_played`); repeti-lo a cada transformacao o
+			// esvaziaria. Quem se transforma de novo ja recebe do servidor o `Nome (x2,5)` de sempre.
+			// O NOME PELO FUNIL (`Catalogo.NomeDe`) e nao `def.Nome`: o `dominada` que chegou no pacote e
+			// o mesmo bit que decide o cabelo `SSjFP` tres linhas abaixo, e um carimbo de chat que
+			// dissesse "Super Saiyajin" sobre um corpo com cabelo de Full Power seria a tela e o texto
+			// discordando. (Na estreia ele e sempre falso -- maestria zero --, e e justamente por isso
+			// que ele tem que passar por aqui: um dia a condicao muda e ninguem vai lembrar desta linha.)
+			if (souEu && degrau == Jandirus.Core.Forms.DegrauDeCena.Estreia)
+				Chat.Sistema($"** {Jandirus.Core.Forms.Catalogo.NomeDe(def, dominada)} **");
+			return;
 		}
 
-		// A AURA DA FORMA CALA A DE CARGA. E a regra do proprio DM: o `AuraCheck()` desiste na
-		// hora quando ja ha aura de forma acesa, com o comentario "o power-up NAO empilha a aura
-		// base por cima (ficavam 2 auras)". Duas PointLight2D no mesmo corpo somam energia e
-		// lavam o sprite -- o personagem vira um borrao branco em vez de um Super Saiyajin.
-		if (corpo.GetNodeOrNull<CargaVisual>("Carga") is { } carga) carga.FormaAcesa = def != null;
-
-		// --- o cabelo: o Saiyajin doura ---
-		if (corpo.GetNodeOrNull<CharacterVisual>("Visual") is { } vis)
-			vis.PintarCabelo(def == null ? null : new Color(def.Cabelo));
+		VestirAFormaSemCena(id, corpo, def);
 
 		if (def == null)
 		{
@@ -1896,27 +2446,427 @@ public partial class World : Node2D
 			return;
 		}
 
-		// --- a cinematica: SO na primeira vez daquela forma ---
-		if (primeira) Transformacao.Rodar(_atores, corpo, new Color(def.Aura), Degrau(forma));
-		else
-		{
-			// nas seguintes, um tranco curto e o som -- o momento continua existindo, so nao
-			// para o jogo por tres segundos
-			Sacudir(3f + Degrau(forma));
-			AudioDirector.EfeitoNoLugar(corpo, Trilha.Dash, 0.9f);
-		}
+		// ============================ TRANSFORMAR E DIRETO SO PRA QUEM DOMINA A FORMA ============================
+		// Este caminho era "tudo o que nao e estreia". Hoje ele e o TERCEIRO degrau e so ele:
+		// `DegrauDeCena.Nenhuma`, que o servidor manda quando a maestria da forma alvo passou dos 50%
+		// (`Cinematicas.MaestriaQueDispensaCena`). Entre a estreia e o dominio ha a cena encurtada, que
+		// sai pelo `return` la de cima.
+		//
+		// O dono, sobre este degrau: *"apartir de 50% de maestria a transformaçao vira instantanea"*.
+		// E o que "instantanea" quer dizer e literalmente estas quatro linhas -- o corpo NAO e preso, os
+		// raios e o contorno acendem no mesmo quadro em que o pacote chega.
+		// ====================================================================================================
+		// Ele ja tinha descrito o defeito que este caminho existe pra evitar: *"vc colocou uma animacao
+		// ao se transformar que ele parece que diminui de tamanho, mas era pra ser algo direto que
+		// simplesmente ativa os raios e o contorno"*. A onda de choque que causava aquilo saiu do jogo
+		// inteiro depois disso (ver `Efeito.Onda`, aposentado no Core).
+		//
+		// O som fica: ele marca o instante sem tomar a tela.
+		//
+		// ============================ MAS SO QUANDO HOUVE INSTANTE ============================
+		// `de == para` e o pacote de ESTADO que o servidor manda pra quem acaba de entrar na zona
+		// (`GameServer.MandarEstadoDeForma`): "ele ESTA em SSJ3", e nao "ele acabou de virar SSJ3".
+		// Sem esta condicao, chegar num planeta com tres transformados dispararia tres estalos de
+		// transformacoes que aconteceram antes de eu por o pe ali -- a mesma mentira da cinematica,
+		// so que no ouvido. E ela nao tira o som de ninguem: "de X pra X" nao e uma mudanca que exista.
+		// ====================================================================================
+		if (de != para) AudioDirector.EfeitoNoLugar(corpo, Trilha.Dash, 0.9f);
 	}
 
-	/// <summary>Quao alto na escada esta a forma. Escala o exagero da cena.</summary>
-	private static int Degrau(Jandirus.Core.Forms.Forma f) => f switch
+	/// <summary>
+	/// A FORMA POSTA NO CORPO DIRETO, sem cena nenhuma: cabelo, corpo proprio, contorno e raios no
+	/// mesmo quadro. <c>def == null</c> desfaz tudo e devolve o lutador comum.
+	///
+	/// ============================ EXTRAIDO PORQUE SAO DOIS DONOS, E ERAM DUAS VERDADES ============================
+	/// Estas linhas moravam soltas no <see cref="AoMudarForma"/>, e o <see cref="AoVirarOozaru"/> tinha
+	/// uma copia parcial delas pra desfazer a fera -- copia com a ORDEM TROCADA, `AcenderFormaNoCorpo`
+	/// antes do `CorpoDaForma`. Era inofensivo so porque aquele caminho sempre passava `null` (sem
+	/// camada nova pra nascer sem contorno); no dia em que o macaco precisasse aparecer sem cena --
+	/// que e exatamente hoje, pra quem entra numa zona onde a fera ja existe -- a copia estaria errada.
+	/// ========================================================================================================
+	/// </summary>
+	private void VestirAFormaSemCena(int id, Node2D corpo, Jandirus.Core.Forms.FormaDef? def)
 	{
-		Jandirus.Core.Forms.Forma.Ssj1 => 1,
-		Jandirus.Core.Forms.Forma.Grade2 or Jandirus.Core.Forms.Forma.Grade3 => 2,
-		Jandirus.Core.Forms.Forma.Ssj2 => 2,
-		Jandirus.Core.Forms.Forma.Ssj3 => 3,
-		Jandirus.Core.Forms.Forma.Ssj4 => 4,
-		_ => 1,
-	};
+		// --- o cabelo: o Saiyajin doura ---
+		if (corpo.GetNodeOrNull<CharacterVisual>("Visual") is { } vis)
+		{
+			// O CORPO PROPRIO DA FORMA (a pelagem do SSJ4, o macaco inteiro). Voltar pra base TEM que
+			// tira-lo -- senao o jogador volta ao normal peludo e vermelho, pra sempre.
+			vis.CorpoDaForma(def?.Corpo ?? Jandirus.Core.Forms.CorpoDeForma.Nenhum);
+
+			// ANTES DO CABELO, e nao e ordem decorativa: e este fato que decide se o Super Saiyajin
+			// pede a folha `SSj` ou a `SSjFP` (o Grade 4). Marcado AQUI e nao no chamador porque este
+			// e o funil por onde passam os tres caminhos que vestem sem cena -- a troca de forma, o
+			// nascimento do boneco e a saida do Oozaru. Ver `CharacterVisual.MarcarFormaDominada`.
+			vis.MarcarFormaDominada(_dominouDaZona.Contains(id));
+
+			// E QUEM DIRIGE O CORPO, NO MESMO GESTO E PELO MESMO MOTIVO. Este e o funil por onde nasce
+			// o boneco de quem eu ainda nao tinha visto -- entrar numa zona onde alguem ja esta em furia
+			// lendaria tem que me mostrar o olho apagado dele no primeiro quadro, e nao so na proxima
+			// vez que a posse virar. Ver `CharacterVisual.MarcarSemRedeas`.
+			vis.MarcarSemRedeas(_semRedeasDaZona.Contains(id));
+
+			// UMA CHAMADA PRA TRES DECISOES -- qual sprite, se pinta, e o que o rabo faz. Eram duas
+			// linhas aqui e duas iguais no `Transformacao.Vestir`, com um comentario em cada uma
+			// explicando a ordem entre elas; hoje a ordem mora dentro do metodo e a regra mora no Core
+			// (`Catalogo.ModoDoCabelo`). Ver `CharacterVisual.VestirCabeloDaForma`.
+			//
+			// DEPOIS DO `CorpoDaForma`, e isso continua sendo regra: quem tem corpo proprio (SSJ4,
+			// Oozaru) ja traz o proprio rabo, e o `PintarRabo` la dentro pergunta por essa camada pra
+			// nao deixar tinta armada num node escondido.
+			vis.VestirCabeloDaForma(def);
+
+			// O OVERLAY COLADO NO CORPO (a fagulha do Legendary, o brilho do ki divino). MESMA REGRA
+			// DE ORDEM dos dois de cima: ele cria camada nova, e camada nova nasce com todo uniform no
+			// padrao -- o contorno la embaixo tem que vir DEPOIS. Ver `CharacterVisual.ColadasDaForma`.
+			vis.ColadasDaForma(def);
+		}
+
+		// O QUE A CENA TERIA ACENDIDO NO FIM DELA, e que aqui acende agora: os RAIOS e a nebulosa.
+		AcenderFormaNoCorpo(corpo, def);
+
+		// E O CONTORNO NO MESMO QUADRO, e nao no seguinte. `CorpoDaForma` CRIA uma camada nova (a
+		// pelagem do SSJ4) com material proprio, e todo uniform dela nasce no padrao -- contorno zero.
+		// O `_Process` do `CharacterVisual` a acertaria no quadro seguinte (ver `AplicarContorno`), mas
+		// um quadro com metade do boneco contornada e visivel numa transformacao instantanea, que e
+		// justamente quando este caminho roda.
+		//
+		// QUEM DECIDE SE ACENDE CONTINUA SENDO O KI: esta chamada so RELE o par (forma, sobrecarga).
+		AplicarContorno(id);
+	}
+
+	/// <summary>
+	/// A COR QUE A AURA VAI TER -- a luz em volta do corpo e a folha que a carga desenha.
+	/// <c>def == null</c> apaga.
+	///
+	/// PREPARA, NAO ACENDE (ver `Aura.Preparar`): a aura so nasce da carga de Ki. Transformar
+	/// escolhe a cor; quem acende e a tecla C.
+	///
+	/// Virou metodo porque o Oozaru precisa exatamente disto e de mais nada -- ele nao tem cabelo
+	/// nem corpo proprio pra trocar (ver <see cref="AoVirarOozaru"/>). Copiar o bloco criaria duas
+	/// verdades sobre a folha da aura, e a segunda envelheceria calada.
+	/// </summary>
+	private static void PrepararAuraDaForma(Node2D corpo, Jandirus.Core.Forms.FormaDef? def)
+	{
+		// --- a aura: e o gancho que ficou esperando desde a Etapa 7b ---
+		if (corpo.GetNodeOrNull<Aura>("Aura") is { } aura)
+		{
+			// ============================ A VOLTA ESCREVE O MESMO QUE A IDA ============================
+			// Este ramo era so `aura.Apagar()`, e nisso estava a segunda queixa do dono: "a aura da base
+			// ainda ta brilhando, e ela sai DOURADA".
+			//
+			// `Apagar` desliga a luz e o desenho, mas NAO desfaz as duas coisas que a ida escreveu: a
+			// FOLHA (`AuraSSjBig`, que e arte ja dourada e nao se tinge -- ver `SpriteDeAura.SemTinta`) e
+			// a COR guardada (`_corAcesa`). O node ficava em base carregando a chama do Super Saiyajin,
+			// esperando alguem acende-lo -- e ha quem acenda: o `Efeito.AuraBase` da cena do Oozaru
+			// precisou escrever `Folha(Base)` na marra justamente porque nao dava pra confiar no que
+			// estava guardado ali. Isso deixa de ser necessario.
+			//
+			// A COR DA BASE E O `Aura.CorDoKiCru` e nao o `Aura` da entrada `base` do catalogo, que
+			// e `ffffff`: branco multiplicando a folha colorivel APAGA a arte (defeito ja pago uma vez,
+			// ver `Aura.Acender`). (Aquela constante morava na `CargaVisual` com o nome `CorCarga`,
+			// de quando a carga tinha cor propria -- hoje ha uma resposta so e ela mora na `Aura`.)
+			//
+			// APAGAR VEM PRIMEIRO. `Preparar` num node ACESO troca a cor E acende (ver `Aura.Preparar`);
+			// na ordem inversa a base piscaria por um quadro antes de sumir.
+			if (def == null) aura.Apagar();
+
+			// A FOLHA ANTES DA COR. "Toda forma usa colorablebigaura MENOS o LSSJ" -- e quem
+			// decide isso e o Core (`Catalogo.Folha`), pela LINHA da forma, e nao um campo por
+			// forma que alguem esqueceria de preencher num degrau novo. `Folha(null)` ja devolve
+			// `Base`, entao a volta cai na folha certa sem precisar de um caso proprio.
+			aura.Folha(Jandirus.Core.Forms.Catalogo.Folha(def));
+			// O TERCEIRO ARGUMENTO E A GUARDA DA LUZ, e este e um dos dois lugares do jogo que sabem
+			// a resposta: `def == null` E estar na base. Sem forma o node `Aura` nao acende nem que o
+			// Ki passe dos 100% -- na base quem desenha e a `CargaVisual`, e ela nao ilumina.
+			// Ver `Aura.Aplicar`.
+			//
+			// A COR E A FORCA SAO PERGUNTADAS (`Aura.CorDaChamaDe` / `ForcaDaChamaDe`) e nao
+			// recalculadas: as mesmas duas contas moram no `Transformacao.Vestir` e agora tambem na
+			// chama da cinematica -- tres desenhos da mesma chama nao podem ter tres contas.
+			aura.Preparar(Aura.CorDaChamaDe(def), Aura.ForcaDaChamaDe(def), def != null);
+		}
+
+		// A CARGA E O SEGUNDO DESENHO DA MESMA COISA. Sem esta linha, carregar transformado desenhava
+		// a folha da BASE tingida de amarelo em vez da `AuraSSjBig`.
+		//
+		// AQUI TAMBEM SE ESCREVIA `carga.FormaAcesa = def != null`, o bit que suprimia a chama da carga
+		// enquanto a forma tivesse aura propria. Ele morreu junto com a supressao (ver o topo de
+		// `CargaVisual.Pintar`): quem impede as duas chamas hoje e a `Aura.ChamaDaCarga`, que e a mesma
+		// linha que acende a luz -- e nao um bit repetido em tres arquivos.
+		corpo.GetNodeOrNull<CargaVisual>("Carga")?.Folha(Jandirus.Core.Forms.Catalogo.Folha(def));
+	}
+
+	/// <summary>
+	/// ============================ O CONTORNO E DO KI, NAO DA FORMA ============================
+	/// Regra do dono: "vamos fazer ele so aparece quando o ki passa de 100% na transformaçao, entao
+	/// 100% ou menos = sem contorno brilhoso, >100% = contorno brilhoso" -- e a cor continua sendo
+	/// a da forma.
+	///
+	/// Isso muda o que o contorno SIGNIFICA. Antes ele dizia "estou transformado", e ficava aceso o
+	/// tempo todo; agora ele diz "estou passando do meu limite", e so aparece quando o Ki esta
+	/// comprimido acima do teto. Um Super Saiyajin parado deixa de brilhar -- ele brilha quando se
+	/// esforca, que e quando a imagem tem o que dizer.
+	///
+	/// A COR e guardada na troca de forma e o ACENDER e do canal de sobrecarga (`aura_ki`), o mesmo
+	/// que ja acende a aura. Guardar em vez de acender e o que permite ele sair na cor certa no
+	/// instante em que o Ki passa, sem a forma precisar avisar de novo -- e o mesmo desenho do
+	/// `Aura.Preparar`, que resolveu este exato problema pra a aura.
+	/// ================================================================================
+	///
+	/// ============================ E ISSO VALE PRA QUALQUER CORPO DA ZONA ============================
+	/// Este metodo comecava com `if (corpo != _local) return;`, e o corpo alheio era servido por uma
+	/// SEGUNDA regra (a forma, com a conta `0,35 + Intensidade * 0,13`) escrita no
+	/// `AcenderFormaNoCorpo` e repetida no `Transformacao.Vestir`. Tres escritas, duas verdades: na
+	/// minha tela um Super Saiyajin parado apagava; na tela dos OUTROS ele ficava contornado enquanto
+	/// a transformacao durasse, foi o que o dono viu ("quem se transforma fica sempre com a outline
+	/// mesmo sem ativar a aura"), e por tabela o SSJ1 saia em 0,48 contra 0,87 do SSJ4 -- a mesma
+	/// conta que o corpo local ja tinha aposentado.
+	///
+	/// A justificativa daquela divisao ("o cliente nao sabe o Ki dos OUTROS -- sigilo do scouter")
+	/// CADUCOU: ver `_sobrecarregados`. O que continua sendo sigilo e o NUMERO (BP e Ki alheios); o
+	/// bit "ele esta acima do proprio limite" e coisa que se ve de longe, e o servidor ja o publica.
+	/// ==========================================================================================
+	/// </summary>
+	private void GuardarContornoDaForma(int id, Jandirus.Core.Forms.FormaDef? def)
+	{
+		_contornoDaForma[id] = (
+			// A COR DO CONTORNO NAO E A DA AURA -- ver `Catalogo.CorDoContorno`. Era `def.Aura` aqui, e
+			// era por isso que ajustar a aura de um degrau mexia no brilho de todos: a escada Saiyajin
+			// tem sete tons de dourado, e o contorno herdava cada um deles.
+			new Color(Jandirus.Core.Forms.Catalogo.CorDoContorno(def)),
+			// ============================ A FORCA E DO FATO, NAO DA FORMA ============================
+			// Era `0.35 + Intensidade * 0.13`, herdado de quando o contorno dizia "sou desta forma" --
+			// ali fazia sentido um SSJ4 brilhar mais que um SSJ1.
+			//
+			// Agora ele diz "passei dos 100%", e esse fato e o MESMO em qualquer forma. Com a conta
+			// velha o SSJ1 saia em 0,48 contra 0,87 do SSJ4, e o dono viu exatamente isso: contorno no
+			// SSJ4, nenhum no SSJ1 -- 0,48 desaparece atras da propria aura, que e grande e clara.
+			//
+			// A MESMA FORCA PRA TODAS e QUAL forca sao decisoes do dono e moram no CORE
+			// (`Catalogo.ForcaDoContorno`), e nao mais num literal aqui. Foi o segundo pedido dele sobre
+			// este numero ("um pouco mais fraco") que mudou o lugar: a bancada precisa medir a faixa que
+			// o jogador ve, e um literal escondido num metodo privado do `World` obrigaria a bancada a
+			// repetir o valor -- que e como se mede um ciclo que o jogo nao tem.
+			//
+			// E ISTO E O TOPO DO PULSO, e nao o valor desenhado: o contorno respira daqui pra baixo, ate
+			// `Catalogo.PisoDoPulsoDoContorno`. Quem faz a respiracao e o
+			// `CharacterVisual.ForcaNaFaseDoPulso`, porque quem tem relogio de quadro e o visual -- este
+			// lado so responde "quanto", como ja fazia.
+			def == null ? 0f : Jandirus.Core.Forms.Catalogo.ForcaDoContorno,
+			// A SEGUNDA COR, quando a forma oscila (so o Beast). Nula = contorno parado -- ver
+			// `CharacterVisual.AnimarContorno`. Ela e GUARDADA junto com a primeira pelo mesmo motivo
+			// que a primeira e guardada: quem acende e o pacote de sobrecarga, e ele nao sabe a forma.
+			ContornoAlterna(def));
+
+		AplicarContorno(id);
+	}
+
+	/// <summary>
+	/// A cor e a forca que o contorno de CADA CORPO DA ZONA tera quando o Ki dele passar dos 100%.
+	///
+	/// Por id e nao tres campos soltos: eram `_corDoBrilho`/`_forcaDoBrilho`/`_corAlternaDoBrilho`, do
+	/// dono da tela e so dele, e era essa singularidade que obrigava o corpo alheio a ter regra
+	/// propria. Some com o corpo -- ver `AoSair` e `EsvaziarRemotos`.
+	/// </summary>
+	private readonly Dictionary<int, (Color Cor, float Forca, Color? Alterna)> _contornoDaForma = [];
+
+	/// <summary>
+	/// A OUTRA PONTA do contorno da forma, ou nulo quando ele nao oscila. Mesmo formato do
+	/// <see cref="Jandirus.Core.Forms.Catalogo.CorDoRabo"/>: o Core devolve hexa ou nulo, e quem
+	/// converte pra <see cref="Color"/> e o cliente. Existe pra os dois chamadores daqui (o
+	/// <see cref="GuardarContornoDaForma"/> e a bancada) nao repetirem o mesmo ternario.
+	/// </summary>
+	private static Color? ContornoAlterna(Jandirus.Core.Forms.FormaDef? def) =>
+		Jandirus.Core.Forms.Catalogo.CorDoContornoAlterna(def) is { } hexa ? new Color(hexa) : null;
+
+	/// <summary>
+	/// ACENDE OU APAGA O CONTORNO DE UM CORPO QUALQUER DA ZONA -- a COR vem da forma
+	/// (<see cref="_contornoDaForma"/>), o ACENDER vem do Ki (<see cref="_sobrecarregados"/>).
+	///
+	/// ============================ ESTE E O FUNIL, E ELE E UM SO PRA OS DOIS CORPOS ============================
+	/// Era `AplicarBrilhoLocal`, e so olhava pro `_local`. O corpo alheio tinha regra propria em dois
+	/// outros arquivos, e por isso um Super Saiyajin remoto ficava contornado o tempo inteiro na sua
+	/// tela enquanto o seu proprio so acendia acima dos 100%. Nao ha "o meu caso" aqui: quem pergunta
+	/// passa um id, e a resposta sai do mesmo par de tabelas.
+	///
+	/// SEM ENTRADA NA TABELA O CONTORNO E ZERO, e nao ha `if` dizendo isso: um corpo de quem nunca se
+	/// transformou nao tem linha em `_contornoDaForma`, o `default` da tupla e forca 0, e forca 0 nao
+	/// desenha nem anima (ver `CharacterVisual.AnimarContorno`). E o mesmo idioma do
+	/// `Catalogo.CorDoContorno`, que devolve branco neutro justamente porque quem chama passa forca 0.
+	///
+	/// NAO PRECISA CORRER ATRAS DE CAMADA NOVA: a pelagem do SSJ4 nasce com material zerado, mas o
+	/// `_Process` do `CharacterVisual` reescreve o contorno em TODAS as camadas de silhueta enquanto
+	/// ele estiver aceso (ver `EscreverContorno`) -- entao a camada que nascer depois se acerta no
+	/// quadro seguinte, e apagado nao ha o que acertar.
+	/// =====================================================================================================
+	/// </summary>
+	private void AplicarContorno(int id)
+	{
+		if (Corpo(id)?.GetNodeOrNull<CharacterVisual>("Visual") is not { } vis) return;
+		(Color cor, float forca, Color? alterna) = _contornoDaForma.TryGetValue(id, out var g)
+			? g : (Colors.White, 0f, (Color?)null);
+		vis.AuraDaForma(cor, _sobrecarregados.Contains(id) ? forca : 0f, alterna);
+	}
+
+	/// <summary>
+	/// O QUE SE VE DE LONGE FORA DA AURA: os RAIOZINHOS e a NEBULOSA.
+	///
+	/// ============================ O CONTORNO SAIU DAQUI ============================
+	/// Ele morava neste metodo, so pro corpo REMOTO e pela FORMA:
+	///
+	///   corpo REMOTO -> contorno pela FORMA (aceso enquanto a transformacao durar)
+	///   corpo LOCAL  -> contorno pelo KI (so acima dos 100%)
+	///
+	/// Duas verdades sobre o mesmo pixel, e a errada era a que os OUTROS viam. Hoje ha uma
+	/// (<see cref="AplicarContorno"/>) e ela vale pros dois corpos -- a divida que justificava a
+	/// divisao (*"o cliente nao sabe o Ki dos OUTROS"*) caducou; ver `_sobrecarregados`.
+	///
+	/// OS RAIOS SAO DOS DOIS, e ja eram: eles sao da FORMA e nao do Ki. Este metodo continua existindo
+	/// exatamente por isso -- ha coisa que a forma acende sozinha, e ha coisa que so o Ki acende. O
+	/// buraco que fechou quando o contorno saiu da guarda `corpo != _local` foi o corpo LOCAL nunca
+	/// receber `RaiosDaForma.Definir`: os raios do dono so eram acesos pela cinematica
+	/// (`Transformacao.Assumir`) e NUNCA apagados -- voltar pra base deixava o jogador crepitando
+	/// dourado na forma base pra sempre. Era a metade audivel do "a aura da base ainda ta brilhando".
+	/// ================================================================================================
+	///
+	/// CHAMADO SO QUANDO NAO HA CENA. Havendo cinematica, quem acende isto e o `Transformacao.Vestir`,
+	/// degrau a degrau.
+	/// </summary>
+	private void AcenderFormaNoCorpo(Node2D corpo, Jandirus.Core.Forms.FormaDef? def)
+	{
+		// --- os RAIOZINHOS: o VOLUME e da forma (`FormaDef.Raios`), a COR e da `CorDosRaios` ---
+		// Era `def.Aura` nos dois, e por isso a faisca do SSJ2 e do SSJ3 saia dourada.
+		//
+		// `Raios > 0` E NAO `def != null`: e o mesmo teste que o `Transformacao.Assumir` faz, e sem ele
+		// o SSJ1 e o SSJ4 (que tem `Raios = 0`) ligavam o node pra emitir zero raio -- um `_Process`
+		// e um sorteio por quadro, por corpo, pra nao desenhar nada.
+		if (corpo.GetNodeOrNull<RaiosDaForma>("Raios") is { } raios)
+			raios.Definir(def is { Raios: > 0 },
+						  new Color(Jandirus.Core.Forms.Catalogo.CorDosRaios(def)), def?.Raios ?? 0);
+
+		// --- A NEBULOSA: quem responde e o Core (`TemNebulosa`), derivado da LINHA da forma ---
+		// Ela e dos DOIS corpos, como a faisca e ao contrario do contorno: a nuvem e da FORMA e nao
+		// do Ki -- ver o cabecalho deste metodo.
+		if (corpo.GetNodeOrNull<NebulosaDaForma>("Nebulosa") is { } nebulosa)
+			nebulosa.Definir(Jandirus.Core.Forms.Catalogo.TemNebulosa(def));
+	}
+
+	/// <summary>
+	/// ALGUEM VIROU (OU DEIXOU DE SER) OOZARU. Irmao do <see cref="AoMudarForma"/>, e pelo mesmo
+	/// motivo dele: ver o adversario virar um macaco de dez metros na sua frente e do mundo, nao
+	/// ficha pessoal -- por isso vale pra qualquer id da zona e resolve o corpo pelo mesmo
+	/// <c>Corpo(id)</c>.
+	///
+	/// ============================ A CENA DELE E PROPRIA, E POR ISSO ELA E BUSCADA POR ID ============================
+	/// `Cinematicas.Para` desvia a LINHA inteira do Oozaru pra cena certa (ver la), e este ponto usa
+	/// `Cinematicas.Oozaru` direto porque o estado nao viaja em `S2C.Forma`: nao ha `FormaDef`
+	/// chegando pelo fio, so o enum <see cref="Jandirus.Core.Forms.FormaOozaru"/>.
+	///
+	/// (Historico que explica o cuidado: aquela funcao TINHA fallback por `Ordem` e nunca devolvia
+	/// null -- e as ordens do Oozaru colidem com as da escada, 10 = SSJ1 e 20 = SSJ2. Chamar `Para`
+	/// aqui poria um macaco de dez metros assistindo, parado, a cinematica de Super Saiyajin. O
+	/// fallback foi DELETADO desde entao: hoje `Para` desvia a linha e devolve `null` de proposito
+	/// quando nao ha cena, e a bancada acusa o null. O desvio pela linha continua sendo o que protege
+	/// este ponto, mas o motivo de nao chamar `Para` aqui virou o outro: nao ha `FormaDef` no fio.)
+	/// ==========================================================================================
+	///
+	/// A CENA TOCA TODA VEZ QUE A FERA NASCE, e nao so na estreia -- ver o comentario de
+	/// `Cinematicas.Oozaru`. So o texto no chat e da estreia.
+	///
+	/// "TODA VEZ QUE ELA NASCE" e nao "todo pacote": desde a sincronia de entrada de zona existe um
+	/// pacote que descreve uma fera que nasceu ANTES de eu chegar, e esse vem com
+	/// <see cref="Jandirus.Core.Forms.DegrauDeCena.Nenhuma"/>. Ver o bloco da bifurcacao la embaixo.
+	/// </summary>
+	/// <remarks>
+	/// `internal` pelo mesmo motivo do <see cref="AoMudarForma"/>: e por AQUI que se prova que o
+	/// macaco NAO segue os tres degraus de maestria. A prova nao e um `if` que se le -- e chamar este
+	/// metodo com `primeira: false` (que em qualquer outra forma daria a cena encurtada) e conferir
+	/// que a cena que nasce e a CHEIA. Ver `RoboDeForma.AFeraForaDosDegraus`.
+	/// </remarks>
+	internal void AoVirarOozaru(int id, Jandirus.Core.Forms.FormaOozaru forma, bool primeira,
+								Jandirus.Core.Forms.DegrauDeCena degrau)
+	{
+		_feraDaZona[id] = forma;   // antes do corpo nulo, pelo mesmo motivo do `AoMudarForma`
+
+		Node2D? corpo = Corpo(id);
+		if (corpo == null) return;
+
+		// O ESTADO VIRA ENTRADA DE CATALOGO, e nao um `switch` de cores aqui. As duas linhas ja
+		// existiam em `Formas.cs` (`oozaru`, castanho; `oozaru_dourado`, dourado com 2 raios) e
+		// nada as lia -- campo escrito e nunca lido e exatamente o que este projeto nao deixa ficar.
+		Jandirus.Core.Forms.FormaDef? def = forma switch
+		{
+			Jandirus.Core.Forms.FormaOozaru.Regular => Jandirus.Core.Forms.Catalogo.Def("oozaru"),
+			Jandirus.Core.Forms.FormaOozaru.Dourado => Jandirus.Core.Forms.Catalogo.Def("oozaru_dourado"),
+			_ => null,
+		};
+
+		// ============================ DEIXAR DE SER O MACACO ============================
+		// Este bloco nao existia, e a falta dele ficou coberta enquanto o macaco nao tinha corpo:
+		// sem `FormaDef.Corpo` nao havia camada pra tirar. Agora ha, e sair sem desfaze-la deixaria o
+		// jogador de bicho pra sempre.
+		//
+		// O CABELO TAMBEM VOLTA. O `oozaru_dourado` tem `SufixoDoCabelo = "SSj"` e o `Assumir` da
+		// cena o aplica -- num corpo de criatura ele fica escondido e ninguem ve, mas ele CONTINUA
+		// trocado por baixo. Sem esta linha, o instante em que o macaco desfaz devolveria um
+		// lutador em forma base com o penteado de Super Saiyajin.
+		//
+		// E o `S2C.Forma` do SSJ4 chega LOGO DEPOIS deste pacote (canal confiavel e ordenado, ver
+		// `GameServer.DesfazerOozaru`), reacendendo por cima o que for dele.
+		if (def == null)
+		{
+			PrepararAuraDaForma(corpo, null);
+			GuardarContornoDaForma(id, null);
+			VestirAFormaSemCena(id, corpo, null);
+			return;
+		}
+
+		// A COR E A FOLHA DA FORMA sao escolhidas AGORA, antes da cena -- e a mesma regra do
+		// `AoMudarForma`: o beat `Assumir` acende, e ele precisa achar a cor ja guardada. O que NAO
+		// vem antes e o `AcenderFormaNoCorpo`: contorno remoto e raios sao o fim da cena, nao o comeco
+		// dela (o macaco estrearia ja brilhando, assistindo a propria transformacao).
+		//
+		// O CACHE DO CONTORNO LOCAL VEM JUNTO, e pelo mesmo motivo do `AoMudarForma`: guardar nao e
+		// acender (quem acende e a sobrecarga de Ki), e sem esta linha o dono entraria no macaco
+		// carregando a cor da forma anterior -- o mesmo defeito, na segunda das duas portas.
+		PrepararAuraDaForma(corpo, def);
+		GuardarContornoDaForma(id, def);
+
+		// ============================ A FERA QUE JA ESTAVA LA NAO SE TRANSFORMA DE NOVO ============================
+		// `NoDegrau` no lugar do `Cinematicas.Oozaru` cravado: e o MESMO funil do `AoMudarForma`, e ele
+		// devolve exatamente a cena do macaco (`Para` desvia pela LINHA -- ver `Cinematicas.Para`).
+		// A diferenca e o unico caso em que ele devolve nulo aqui: `DegrauDeCena.Nenhuma`, que o servidor
+		// so manda pra quem acaba de ENTRAR na zona.
+		//
+		// Sem esta bifurcacao, consertar "quem chega nao ve quem ja e macaco" teria criado algo pior:
+		// quem chega ficaria PRESO assistindo uma transformacao de dez metros que aconteceu antes de ele
+		// existir naquele planeta. A cena do Oozaru dura o roteiro inteiro e o corpo nao anda durante ela.
+		//
+		// O CHAT SEGUE O MESMO DESTINO. `** Oozaru **` e carimbo de acontecimento; ele exige `primeira`
+		// (que a sincronia manda `false`) E a cena. Ver `Protocol.S2C.Oozaru`.
+		// ======================================================================================================
+		if (Jandirus.Core.Forms.Cinematicas.NoDegrau(def, degrau) is not { } cena)
+		{
+			VestirAFormaSemCena(id, corpo, def);
+			return;
+		}
+
+		Transformacao.Rodar(_atores, corpo, def, cena, id == GameClient.Instance?.LocalId, NomeDe(id));
+
+		// PELO FUNIL TAMBEM, com `dominada: false` -- e o `false` aqui e um FATO e nao um chute: o
+		// `S2C.Oozaru` e outro pacote e nao carrega o bit, e nao precisa, porque o unico nome que anda
+		// com maestria e o do `ssj1` (ver `Catalogo.DominouOSuperSaiyajin`) e nenhuma forma da fera e
+		// ele. Passar pelo funil e o que garante que, no dia em que uma segunda forma ganhar nome
+		// derivado, o compilador traga alguem ate esta linha em vez de ela mentir calada.
+		if (primeira && id == GameClient.Instance?.LocalId)
+			Chat.Sistema($"** {Jandirus.Core.Forms.Catalogo.NomeDe(def, dominada: false)} **");
+	}
+
+	// O `Degrau(Forma)` QUE MORAVA AQUI FOI DELETADO. Ele era um switch de cinco casos que dizia o
+	// quao exagerada e a cinematica, e era o quarto lugar que uma forma nova precisava tocar -- a
+	// consequencia de esquecer era sutil e feia: o SSJ4 estreava com o tranco de um SSJ1. Agora o
+	// numero e `FormaDef.Intensidade`, campo da propria entrada do catalogo.
 
 	// =====================================================================
 	// ALVO
@@ -2158,8 +3108,28 @@ public partial class World : Node2D
 		return nomes;
 	}
 
-	/// <summary>Veste um boneco recem-criado com a aparencia que ja tiver chegado.</summary>
-	private void VestirSePuder(int id, Node corpo)
+	/// <summary>
+	/// O ESTADO VISUAL INTEIRO DE UM CORPO, escrito de uma vez: ficha, feridas, forma e fera.
+	///
+	/// ============================ UM SO LUGAR DESCREVE UM CORPO ============================
+	/// Isto se chamava `VestirSePuder` e era so o NASCIMENTO. Havia um segundo caminho, o
+	/// <see cref="AoReceberAparencia"/>, que chamava `CharacterVisual.Vestir` sozinho quando o
+	/// `PeerLook` chegava num corpo que JA existia -- e `Vestir` remonta as camadas do zero: ele
+	/// reescreve o penteado base (`CharacterVisual.cs:678`), nao repoe as coladas e nao repoe o
+	/// contorno. Ou seja o caminho de aparencia DESPIA a forma de quem estava transformado.
+	///
+	/// A corrida e real e nao teorica: o `PeerLook` viaja no canal CONFIAVEL
+	/// (`GameServer.TrocarAparencias`) e o boneco nasce do SNAPSHOT, canal NAO-confiavel. Nao ha ordem
+	/// garantida entre canais diferentes -- ora a ficha chega antes do corpo (e ai o nascimento veste
+	/// tudo), ora chega depois (e ai a ficha despia a forma). Foi essa metade que o dono viu como "as
+	/// transformacoes nao estao sincronizando com quem acabou de entrar no server".
+	///
+	/// Os dois caminhos passam a sair daqui. E a mesma razao de existir do `_formaDaZona` e do
+	/// `_looks`: descricao parcial nao veste -- ela sobrescreve um pedaco e deixa o resto do estado
+	/// anterior no corpo.
+	/// ==================================================================================
+	/// </summary>
+	private void VestirCorpoInteiro(int id, Node corpo)
 	{
 		var v = corpo.GetNodeOrNull<CharacterVisual>("Visual");
 		if (v == null) return;
@@ -2170,11 +3140,58 @@ public partial class World : Node2D
 		// de este boneco existir -- e um corpo que nasce limpo depois de o servidor ja ter dito que
 		// ele esta destrocado e o mesmo desencontro que a aparencia teve.
 		if (GameClient.Instance?.Feridas.TryGetValue(id, out var m) == true) v.Ferir(m, id);
+
+		// ============================ E A FORMA, QUE ERA O TERCEIRO DESENCONTRO ============================
+		// O servidor manda o estado de forma de todo mundo assim que eu entro na zona
+		// (`GameServer.SincronizarFormas`) -- e naquele instante nenhum destes bonecos existia. Este e o
+		// ponto em que o pacote que chegou cedo demais finalmente vira pixel.
+		//
+		// SEM CENA, sempre: um corpo que acaba de nascer na minha tela nunca esta "se transformando".
+		// Por isso o caminho e o `VestirAFormaSemCena` direto, e nao um `AoMudarForma` reencenado.
+		// ============================================================================================
+		if (corpo is not Node2D n2) return;
+		if (_formaDaZona.TryGetValue(id, out int rede)
+			&& Jandirus.Core.Forms.Catalogo.PorRede((ushort)rede) is { Id: not "base" } df)
+		{
+			PrepararAuraDaForma(n2, df);
+			GuardarContornoDaForma(id, df);
+			VestirAFormaSemCena(id, n2, df);
+		}
+
+		// A FERA POR CIMA DA ESCADA, na mesma ordem em que os dois pacotes chegam do servidor: o corpo
+		// do macaco substitui o do lutador, nunca o contrario.
+		if (_feraDaZona.TryGetValue(id, out Jandirus.Core.Forms.FormaOozaru fera)
+			&& Jandirus.Core.Forms.Catalogo.Def(Jandirus.Core.Forms.Oozaru.Id(fera)) is { } dfera)
+		{
+			PrepararAuraDaForma(n2, dfera);
+			GuardarContornoDaForma(id, dfera);
+			VestirAFormaSemCena(id, n2, dfera);
+		}
+
+		// E O CONTORNO, MESMO SEM FORMA NENHUMA. Os dois blocos acima ja o escrevem quando ha forma; um
+		// corpo que nasce (ou reveste a ficha) na BASE tambem tem que ter a resposta escrita, senao ele
+		// fica com o que estivesse no material -- e num `Vestir` que remonta camadas isso e zero por
+		// acidente, e nao por regra. Ver `AplicarContorno`.
+		AplicarContorno(id);
 	}
 
 	/// <summary>O CharacterVisual do meu proprio boneco. SO PRA BANCADA (`--diagferida`).</summary>
 	public CharacterVisual? VisualLocalDeTeste =>
 		_local != null && IsInstanceValid(_local) ? _local.GetNodeOrNull<CharacterVisual>("Visual") : null;
+
+	/// <summary>
+	/// A FICHA VISUAL GUARDADA DE ALGUEM (raca, genero, aparencia). SO PRA BANCADA -- ver
+	/// `--diagforma`, `ORaboEOOlhoSobrevivemAFicha`.
+	///
+	/// Existe pra a bancada poder DEVOLVER o que achou. Aquele teste manda uma ficha adulterada pelo
+	/// <see cref="AoReceberAparencia"/> (o unico canal que existe pra isso) pra provar que a forma nao
+	/// e despida por ela -- e uma ficha adulterada no `_looks` do jogador local nao morre com o teste:
+	/// todo <see cref="VestirCorpoInteiro"/> seguinte a leria, e as FOTOS que a bancada tira depois
+	/// sairiam com o boneco errado. Sem este leitor a bancada so poderia restaurar um palpite
+	/// ("Saiyan"/"Male"), que e como um teste passa a mentir sobre o proximo.
+	/// </summary>
+	internal (string Raca, string Genero, Jandirus.Core.Appearance.Appearance Ap)? LookDeTeste(int id) =>
+		_looks.TryGetValue(id, out var l) ? l : null;
 
 	/// <summary>Chegou mascara nova: acha o boneco (meu ou de outro) e repinta.</summary>
 	private void AoMudarFeridas(int id)

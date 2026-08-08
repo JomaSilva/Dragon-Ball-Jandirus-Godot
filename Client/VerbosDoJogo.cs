@@ -89,6 +89,38 @@ public static class VerbosDoJogo
 			"Quem esta no mundo agora, e onde.",
 			() => C?.SendVerbo("quem")));
 
+		// =====================================================================
+		// O CONVIVIO -- os verbs de `Contacts.dm` e `Friendship.dm`
+		//
+		// OS TRES QUE PEDEM ALGUEM AGEM SOBRE O ALVO MARCADO, e nao sobre um nome digitado. No
+		// BYOND eles eram `set src in oview(N)` -- "aquele ali, o que eu estou vendo" --, e o gesto
+		// equivalente aqui e o duplo clique que o jogador ja usa pra tudo. O ALCANCE de cada um
+		// continua sendo o de la, conferido no servidor: 3 tiles pra pedir amizade, 5 pra declarar
+		// rival, 10 pra anotar alguem.
+		//
+		// A DECLARACAO DE RELACAO NAO ESTA AQUI de proposito: ela nao pede presenca (no original
+		// mora no proprio Contact, que e seu e funciona com a pessoa offline) e precisa escolher
+		// ENTRE NOVE opcoes com custo diferente. Isso e uma tela, nao um botao -- ela vive na aba
+		// People, ao lado da pessoa a que se refere.
+		// =====================================================================
+		Verbos.Registrar(new Verbo("Remember Person", Verbos.Outros,
+			"Guarda o rosto de quem voce marcou. Ele passa a aparecer na aba People.",
+			() => NoAlvo("conhecer"), TemAlvo));
+
+		Verbos.Registrar(new Verbo("Request Friendship", Verbos.Outros,
+			"Pede amizade a quem voce marcou. Conviver aproxima ate certo ponto -- so um pedido "
+			+ "aceito faz de alguem um amigo de verdade.",
+			() => NoAlvo("amizade_pedir"), TemAlvo));
+
+		Verbos.Registrar(new Verbo("Declare Rival", Verbos.Outros,
+			"Declara (ou desfaz) rivalidade com quem voce marcou. Os golpes dele em voce e nos seus "
+			+ "amigos passam a alimentar odio.",
+			() => NoAlvo("rival"), TemAlvo));
+
+		Verbos.Registrar(new Verbo("Known People", Verbos.Outros,
+			"Pede ao servidor a lista de quem voce conhece.",
+			() => C?.SendVerbo("conhecidos")));
+
 		// O BANCO. Ele existe nos mapas do original desde sempre (dezessete deles, um por cidade)
 		// e ate agora era celula de tilemap -- desenho parado. Agora e uma construcao de verdade,
 		// e estes tres verbos sao o que ele FAZ. Sem argumento = tudo, que e o uso de sempre:

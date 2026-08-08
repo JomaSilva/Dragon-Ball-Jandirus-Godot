@@ -107,9 +107,15 @@ public partial class GameServer
 	private static bool TemRabo(string raca) => raca is "Saiyan" or "Halfbreed";
 
 	/// <summary>Monta o corpo de quem acabou de entrar, e devolve a vida ao estado salvo.</summary>
-	private static void PrepararCombate(ServerPlayer pl, CharacterSave? save)
+	// NAO E `static`: ele instala o gancho de negar morte, que precisa da instancia do servidor
+	// (a explosao varre a zona e manda efeito). Ver `CombatState.NegarMorte`.
+	private void PrepararCombate(ServerPlayer pl, CharacterSave? save)
 	{
 		pl.Combate = new CombatState(pl.Ficha, TemRabo(pl.Race), Regenera(pl.Race));
+
+		// QUEM PODE BARRAR A MORTE DESTE CORPO. Instalado UMA vez, aqui, porque `Morrer()` e a porta
+		// unica -- ver `CombatState.NegarMorte`. Hoje so a Aura of Destruction se pendura.
+		pl.Combate.NegarMorte = _ => TentarNegarMorte(pl);
 
 		// A vida dos membros PERSISTE entre sessoes: deslogar com o braco quebrado nao cura.
 		// (Deslogar com o corpo DECEPADO tambem nao -- isso e coisa de regeneracao ou de morte.)
@@ -247,6 +253,18 @@ public partial class GameServer
 		alvo.UltimoAgressor = a.Id;
 		if (_diagGolpe) ExplicarGolpe(a, alvo, r, angulo, investiu);
 
+		// ============================ OS GANCHOS DAS DISCIPLINAS DIVINAS ============================
+		// O `ChanceEsquiva` que o resolvedor consultou foi escrito pelo Ultra Instinto, entao uma
+		// esquiva com a passiva ligada E uma esquiva do instinto -- e ela paga maestria e empilha o
+		// bonus. Sem esta linha a Autonomous Evasion funcionaria e nunca ensinaria nada.
+        if (r.Desfecho == Desfecho.Esquivou) AoEsquivarPorInstinto(alvo);
+
+		// E a AURA OF DESTRUCTION filtra o que passou: reduz o dano, devolve recuo em quem bateu e
+		// guarda o golpe pra Destruction Explosion. Fica DEPOIS do resolvedor porque o corpo ja foi
+		// ferido la dentro -- ver `AuraFiltraDano`, que desconta a diferenca.
+		if (r.Dano > 0) AplicarAuraDepoisDoGolpe(alvo, a, r.Dano, ehKi: false);
+		// ==========================================================================================
+
 		// A DIRECAO DO SOCO FICA GUARDADA NO ALVO. E ela que deita o corpo se este golpe derrubar --
 		// no ar e no chao, o mesmo angulo. Ver `ServerPlayer.DirecaoDeitado`.
 		//
@@ -301,6 +319,11 @@ public partial class GameServer
 					 + $" (ritmo de treino de {d.Name}: x{d.Ficha.tailgain})");
 		}
 
+		// O ODIO POR GOLPE (`ENMITY_HIT`, `CombatMovement.dm:225`): so cresce contra quem a vitima
+		// ja tinha declarado rival. Fica aqui, e nao no `Atacar`, porque este e o ponto que ja
+		// responde "este golpe teve consequencia".
+		if (r.Encostou) GolpeDeRival(d, a);
+
 		if (r.Nocauteou)
 		{
 			GD.Print($"[server] {a.Name} NOCAUTEOU {d.Name} ({r.Membro})");
@@ -308,7 +331,11 @@ public partial class GameServer
 			// luta amistosa (golpe nao-letal e o padrao, e ali ninguem morre) -- justamente onde
 			// a mecanica mais faz sentido. A recarga de uma hora impede o dobro quando o nocaute
 			// vira morte na sequencia.
-			ZenkaiPorDerrota(d, a);
+			//
+			// E DESDE QUE A AMIZADE EXISTE ISTO FAZ MAIS UMA COISA: quem gostava de quem caiu, e
+			// estava vendo, entra em RAIVA LENDARIA -- que e o que a linha Legendary pede. Ver
+			// `AoPerderALuta`, que e o funil unico das consequencias de derrota.
+			AoPerderALuta(d, a, morreu: false);
 		}
 
 		if (!r.Morreu) return;
@@ -319,7 +346,8 @@ public partial class GameServer
 		// ZENKAI: perder pra alguem mais forte arranca poder do corpo. E pago na hora, direto
 		// no BP base -- e recompensa, nao treino, entao nao passa pelo CapCheck. A concessao e
 		// a MESMA do nocaute (ver GameServer.Raciais.cs), inclusive a recarga.
-		ZenkaiPorDerrota(d, a);
+		// E o LUTO, aqui com o grau EXTREMO -- e ele que abre o SSJ1.
+		AoPerderALuta(d, a, morreu: true);
 	}
 
 	// =====================================================================
@@ -794,8 +822,14 @@ public partial class GameServer
 			// aba apareceria vazia -- e aba vazia ensina que o sistema nao funciona.
 			// A CARTA ESTELAR VALE EM QUALQUER LUGAR -- ver `PoderesVisiveis`, que e quem explica.
 			Poderes = (uint)PoderesVisiveis(pl),
-			FormaAtual = (ushort)pl.Forma.Atual,
-			Maestrias = [.. pl.Forma.Maestria.Todas.Select(t => ((ushort)t.F, (float)t.V))],
+			// O FIO CONTINUA FALANDO O MESMO NUMERO de sempre (o `IdRede` do catalogo e o inteiro
+			// que o enum antigo tinha), entao cliente velho e save velho leem sem conversao.
+			FormaAtual = Jandirus.Core.Forms.Catalogo.Rede(pl.Forma.Atual),
+			Maestrias = [.. pl.Forma.Maestria.Todas.Select(t => (Jandirus.Core.Forms.Catalogo.Rede(t.Id), (float)t.V))],
+			Disciplina = (byte)(pl.UltraInstinct.Aprendida ? 1 : pl.PoderDaDestruicao.Aprendida ? 2 : 0),
+			DiscReal = (float)(pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Real : pl.PoderDaDestruicao.Real),
+			DiscAtual = (float)(pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Atual : pl.PoderDaDestruicao.Atual),
+			DiscLigada = pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Ligada : pl.PoderDaDestruicao.Ligada,
 		};
 
 		// assinatura grossa: 1% de resolucao por atributo. Sem isso o ruido de ponto flutuante
@@ -806,6 +840,11 @@ public partial class GameServer
 				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"));
 		if (sig == pl.SigAtributos) return;
 		pl.SigAtributos = sig;
+
+		// A BANCADA ESCUTA A FICHA QUE SAIU. Uma linha, nula em jogo, e pelo mesmo motivo das quatro
+		// escutas do `GameServer.FormasTeste.cs`: pacote que saiu no fio nao volta, e a aba de formas
+		// (que le a proficiencia das disciplinas) mora do outro lado dele. Ver `EscutaDeAtributos`.
+		EscutaDeAtributos?.Add(a);
 
 		var w = Protocol.Begin(Protocol.S2C.Atributos);
 		a.Write(w);

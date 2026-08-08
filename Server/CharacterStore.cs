@@ -63,6 +63,20 @@ public sealed class CharacterSave
     public Jandirus.Core.Skills.NivelSave Niveis = new();
 
     /// <summary>
+    /// QUEM ESTE PERSONAGEM CONHECE, e o que ele sente por cada um. Ver `Core.Social.Convivio`.
+    ///
+    /// PERSISTE PORQUE PERSISTE LA: no DM `known_contact_list`, `friendship`, `enmity` e `rivals`
+    /// sao `mob/var` comuns (nao `tmp`) e o `mob/Write` nao filtra nada -- viajam no savefile do
+    /// mob inteiro. O proprio `Friendship.dm:10` escreve *"persists in the save"*.
+    ///
+    /// E ha uma razao de jogo alem da fidelidade: a amizade e o que abre o SSJ1 (ver
+    /// `GameServer.LutoNaVizinhanca`). Uma amizade que morresse no logout faria a porta do tronco
+    /// Saiyajin depender de o amigo estar online -- ou seja, a mecanica emocional do jogo viraria
+    /// um efeito colateral de quem entrou primeiro.
+    /// </summary>
+    public Jandirus.Core.Social.Convivio Social = new();
+
+    /// <summary>
     /// O BP que ESTE personagem precisa pra cada forma. Sorteado no nascimento e nunca mais --
     /// e o `rand()` por classe do `statsaiyan.dm`, que faz o SSJ de cada um custar diferente.
     /// </summary>
@@ -76,7 +90,28 @@ public sealed class CharacterSave
     /// por forma. Perder isso num save e apagar semanas de alguem.
     /// </summary>
     public Dictionary<string, double> Maestrias = [];
+
+    /// <summary>Formas LIBERADAS (o que os gates leem). Ver <see cref="Jandirus.Core.Forms.EstadoDeForma"/>.</summary>
     public List<int> FormasDespertadas = [];
+
+    /// <summary>
+    /// Formas cuja ESTREIA ja foi assistida -- e a outra metade do antigo `JaDespertou`.
+    ///
+    /// NULAVEL DE PROPOSITO, e e a unica coisa que separa "save de antes desta separacao" de
+    /// "personagem que nunca se transformou": os dois teriam a lista vazia, e so o primeiro pode
+    /// herdar as liberadas. Ver a migracao em `GameServer.cs`.
+    /// </summary>
+    public List<int>? FormasEstreadas;
+
+    /// <summary>
+    /// A DISCIPLINA DIVINA: 0 = nenhuma, 1 = Ultra Instinto, 2 = Poder da Destruicao.
+    ///
+    /// As tres coisas persistem no DM (`ui_learned`/`ui_prof_real`/`ui_prof` sao vars normais do
+    /// mob) e aqui tambem. A ATUAL persiste junto da REAL de proposito: quem desloga com a precisao
+    /// no chao volta com ela no chao -- deslogar nao pode ser um jeito de descansar o instinto.
+    /// </summary>
+    public int Disciplina;
+    public double DiscReal, DiscAtual;
 
     // onde estava quando saiu
     public string Zona = "Earth";
@@ -400,8 +435,13 @@ public sealed class AccountStore(string pasta)
         Membros = pl.Combate != null ? GameServer.FotografarCorpo(pl.Combate) : [],
         Skills = pl.Livro != null ? [.. pl.Livro.Aprendidas] : [],
         Niveis = pl.Niveis?.ParaSave() ?? new(),
+        Social = pl.Social ?? new(),
         Maestrias = pl.Forma?.Maestria.ParaSave() ?? [],
-        FormasDespertadas = pl.Forma != null ? [.. pl.Forma.JaDespertou] : [],
+        Disciplina = pl.UltraInstinct.Aprendida ? 1 : pl.PoderDaDestruicao.Aprendida ? 2 : 0,
+        DiscReal = pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Real : pl.PoderDaDestruicao.Real,
+        DiscAtual = pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Atual : pl.PoderDaDestruicao.Atual,
+        FormasDespertadas = pl.Forma != null ? [.. pl.Forma.Liberadas] : [],
+        FormasEstreadas = pl.Forma != null ? [.. pl.Forma.EstreiaVista] : [],
         MarcosTotais = pl.Livro?.MarcosTotais ?? 0,
         MarcosLivres = pl.Livro?.MarcosLivres ?? 0,
         Zona = pl.Zone.Name,
@@ -429,6 +469,10 @@ public sealed class AccountStore(string pasta)
         // usar -- ocupando espaco pra sempre. Ver `Inventario.Sanear`.
         pl.Mochila = s.Mochila ?? new();
         pl.Mochila.Sanear();   // save antigo nao tem porte
+
+        // SAVE ANTIGO NAO TEM CONVIVIO: o `?? new()` e o que separa "nunca conheceu ninguem" de
+        // uma referencia nula que estouraria no primeiro tique de proximidade.
+        pl.Social = s.Social ?? new();
         pl.Visual = s.Visual;
         pl.Ficha = s.Ficha;
         pl.Class = s.Ficha.Class;

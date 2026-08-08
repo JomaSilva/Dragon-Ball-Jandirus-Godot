@@ -85,10 +85,11 @@ public partial class RemotePlayer : Node2D
 	/// o que fazia o corpo engasgar -- deixou de participar do desenho. Ver o cabecalho da classe.
 	/// </summary>
 	public void Receive(Vec2 pos, Facing facing, bool moving, bool deitado, Jandirus.Net.Protocol.Pose pose,
-						bool correndo = false, bool rabo = false, float altitude = 0f)
+						bool correndo = false, bool rabo = false, float altitude = 0f, bool voando = false)
 	{
 		_visual.MostrarRabo(rabo);
 		_alturaDoPacote = altitude;
+		OuvirODecolar(voando);
 		var alvo = new Vector2(pos.X, pos.Y);
 		Vector2 ultima = _linha.Count > 0 ? _linha[^1].Pos : alvo;
 
@@ -154,20 +155,63 @@ public partial class RemotePlayer : Node2D
 	/// soco, pro Y-sort e pra faisca de impacto. Um corpo desenhado 160 px acima de onde ele esta ja
 	/// custou caro neste projeto (a queixa de "a hitbox pega MUITO longe"); repetir isso pelo lado do
 	/// desenho seria o mesmo defeito com outra roupa.
+	///
+	/// ============================ ESTE METODO ERA A COPIA DA LISTA DE LA ============================
+	/// Ele repetia, node por node, a mesma enumeracao a mao de `LocalPlayer.AplicarAltura` -- e essa
+	/// duplicacao e o que fazia CADA esquecimento valer por dois: quem fosse deixado de fora aqui
+	/// aparecia certo no proprio corpo e errado no de todo mundo, ou o contrario, e a queixa chegava
+	/// como "so acontece com os outros". No corpo alheio isto ainda pesa MAIS: eu so me vejo voando,
+	/// os outros eu vejo o tempo todo.
+	///
+	/// Agora as duas chamam a MESMA varredura, e nao ha mais duas listas pra manter de acordo.
+	/// ==========================================================================================
 	/// </summary>
 	private void Altura(float altitude)
 	{
 		if (Mathf.IsEqualApprox(_altitude, altitude)) return;
 		_altitude = altitude;
 
-		var deslocamento = new Vector2(0, -altitude * Jandirus.Core.World.Voo.EscalaNaTela);
-		_visual.Position = deslocamento;
-		if (GetNodeOrNull<Aura>("Aura") is { } aura) aura.Position = deslocamento;
-		if (GetNodeOrNull<HealthBar>("Vida") is { } vida) vida.Position = deslocamento;
+		SubirComOVoo.Aplicar(this, new Vector2(0, -altitude * Jandirus.Core.World.Voo.EscalaNaTela));
 
+		// A SOMBRA FICA NO CHAO (ela declara `IFicaNoChao`) e recebe a altura por canal proprio -- e o
+		// vao entre ela e o corpo que diz ao vizinho a que altura este sujeito esta.
 		_sombra ??= CriarSombra();
 		_sombra.Altura = altitude;
 	}
+
+	/// <summary>
+	/// O BAQUE DE QUEM SAI DO CHAO E DE QUEM POUSA, no corpo alheio.
+	///
+	/// ============================ O MESMO BURACO DA CHAMA DA CARGA, NUM TERCEIRO SOM ============================
+	/// `buku.wav` e `buku_land.wav` sao acesos pelo canal de EFEITO (`World.AoCairEfeito`, casos "voo"
+	/// e "pouso"), e aquele canal e PESSOAL -- o servidor so o manda pra o dono do corpo. Resultado:
+	/// decolar e pousar era mudo pra todo mundo menos pra quem decolava, exatamente como carregar Ki
+	/// era antes de o `cg.Som(e.Carregando)` entrar no laco do snapshot.
+	///
+	/// No DM os dois saem no mundo como qualquer outro (`flying.dm:91`, `Stats.dm:422`), e o bit ja
+	/// viajava: `EntityState.Voando` estava no snapshot e era o UNICO campo dele que o corpo remoto
+	/// nao consumia -- a altura vinha, o estado de voo nao.
+	///
+	/// ============================ O PRIMEIRO PACOTE NAO E UMA DECOLAGEM ============================
+	/// `null` ate o primeiro pacote, e nao `false`: quem entra no meu campo de visao JA voando nao
+	/// decolou agora. Sem isto, atravessar um planeta cheio de gente no ar dispararia um estalo de
+	/// decolagem por pessoa que aparecesse -- a mesma mentira que o `if (de != para)` da sincronia de
+	/// forma existe pra evitar, so que no ouvido.
+	/// =======================================================================================================
+	/// </summary>
+	private void OuvirODecolar(bool voando)
+	{
+		if (_voando == voando) return;
+		bool primeiro = _voando == null;
+		_voando = voando;
+		if (primeiro) return;
+
+		// POSICIONAL: o `EfeitoNoLugar` pendura o player NESTE corpo, entao o volume ja cai com a
+		// distancia sem mais nada -- e as duas trilhas sao as mesmas que o corpo local usa.
+		AudioDirector.EfeitoNoLugar(this, voando ? Trilha.Decolagem : Trilha.Pouso, 0.8f);
+	}
+
+	private bool? _voando;
 
 	private float _altitude;
 	private SombraDeVoo? _sombra;

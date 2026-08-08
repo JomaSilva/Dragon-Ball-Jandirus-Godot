@@ -95,7 +95,7 @@ public sealed partial class GameServer
 		MandarEfeito(pl, "carregando", 0);
 
 		// A AURA DA CARGA morre com a tecla. A do EXCESSO nao -- ela depende do Ki e continua
-		// acesa em quem passou dos 110%, o que e o certo e e por isso que sao duas.
+		// acesa em quem passou dos 100%, o que e o certo e e por isso que sao duas.
 		if (!pl.AuraDaCarga) return;
 		pl.AuraDaCarga = false;
 		MandarEfeito(pl, "aura_carga", 0);
@@ -110,6 +110,24 @@ public sealed partial class GameServer
 	{
 		Fighter f = pl.Ficha;
 
+		// ============================ EM CENA O TANQUE NAO SE MEXE SOZINHO ============================
+		// Ver `GameServer.Formas.EmCena`. Congelar SO o dreno da forma seria trocar uma mentira por
+		// outra: o Ki SUBIRIA durante a cinematica, e o jogador sairia da propria estreia com mais
+		// energia do que entrou. O honesto e o tanque nao andar -- pra nenhum lado.
+		//
+		// A CARGA (tecla C) PARA JUNTO porque ela e o mesmo tanque por outra porta: o corpo esta preso,
+		// mas so o MOVIMENTO e bloqueado no cliente (`LocalPlayer`: "SO O MOVIMENTO E BLOQUEADO"),
+		// entao segurar C durante a cena continuaria enchendo o Ki -- e o `extracharge` acumulado
+		// voltaria como Ki depois, pelo troco do `RegenDeKi`. Suspensa, e nao cancelada: e o mesmo
+		// tratamento que andar ja recebe, e retomar sozinho e o que evita brigar com o controle.
+		//
+		// O QUE **NAO** PARA E O PRECO DO EXCESSO, la embaixo. Ele e DANO, e dano tem que continuar
+		// correndo pra que o nocaute no meio da cena possa acontecer (e desfazer a forma). O vazamento
+		// de Ki que ele cobra nao fura o congelamento pelo que ele e: ele so morde acima de 100% e para
+		// no proprio 100%, entao nao ha como ele derrubar a forma, que e o que este bloco protege.
+		// ========================================================================================
+		bool emCena = EmCena(pl);
+
 		// A ENERGIA VOLTANDO SOZINHA. Roda ANTES da carga: o `KiRegen()` do original tambem vem
 		// antes do `CheckPowerMod()` no `statify`, e a ordem importa -- a regeneracao para no
 		// teto de MaxKi, e so depois a tecla C empurra dali pra cima.
@@ -117,14 +135,15 @@ public sealed partial class GameServer
 		// O DRENO DA FORMA entra como parametro porque quem conhece a escada e este arquivo, nao
 		// o Core: forma nao masterizada derruba a regeneracao a 20% pra que o dreno fique liquido
 		// negativo. Sem isso a regeneracao passa o dreno e o Super Saiyajin nunca cai.
-		double drenoDaForma = pl.Forma.Atual == Jandirus.Core.Forms.Forma.Base
-			? 0 : pl.Forma.DrenoPorSegundo();
-		RegenDeKi.Passo(f, dt, drenoDaForma);
+		double drenoDaForma = pl.Forma.NaBase ? 0 : pl.Forma.DrenoPorSegundo();
+		if (!emCena) RegenDeKi.Passo(f, dt, drenoDaForma);
 
 		if (pl.Carregando)
 		{
+			// O NOCAUTE CONTINUA SENDO OUVIDO EM CENA -- ele fica FORA do `emCena` de proposito: cair
+			// no meio da cinematica solta a tecla como sempre soltou.
 			if (f.KO || f.dead) PararCarga(pl);
-			else
+			else if (!emCena)
 			{
 				EstagioDaCarga e = CargaDeKi.Passo(f, dt, pl.Moving);
 				AnunciarEstagio(pl, e);
@@ -150,7 +169,7 @@ public sealed partial class GameServer
 		double dano = CargaDeKi.PrecoDoExcesso(f, dt);
 		if (dano > 0) EspalharDanoDaCarga(pl, dano);
 
-		// A AURA E DO KI, NAO DA TECLA. Ver CargaDeKi.AuraAcesa -- o limiar de acender (1,1) e
+		// A AURA E DO KI, NAO DA TECLA. Ver CargaDeKi.AuraAcesa -- o limiar de acender (1,01) e
 		// diferente do de apagar (1,0) justamente pra ela nao piscar em quem parou no limite.
 		bool acesa = CargaDeKi.AuraAcesa(f, pl.AuraDeCarga);
 		if (acesa == pl.AuraDeCarga) return;

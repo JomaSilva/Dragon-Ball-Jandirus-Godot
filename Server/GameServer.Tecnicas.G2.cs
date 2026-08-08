@@ -838,7 +838,9 @@ public partial class GameServer
 			// `ssj` do DM = qual degrau da escada Saiyajin. O port guarda isso no `Forma`, cujo id
 			// e o MESMO numero x10 (ver o comentario do enum Forma). O `Fighter.ssj` existe mas
 			// ninguem escreve nele por aqui -- ler dele deixaria o termo travado em 1 pra sempre.
-			double ssj = (int)pl.Forma.Atual / 10.0;
+			// O `mob/var/ssj` do DM: o catalogo guarda o numero literal de la em `NumeroDm`, e o -1
+			// das formas que o original nao numerava vira 0 -- "nenhum degrau da escada Saiyajin".
+			double ssj = Math.Max(0, pl.Forma.Def?.NumeroDm ?? 0);
 
 			double razao = amt / Math.Max(maestria, 0.01);
 
@@ -965,9 +967,9 @@ public partial class GameServer
 			if (!p.Decepado) pl.Combate.Corpo.Ferir(p, p.VidaMax * 10, letal: true);
 		pl.Combate.SincronizarVida();
 
-		if (pl.Combate.Corpo.DeveMorrer() && !pl.Combate.Corpo.RegeneraDecepado)
+		if (pl.Combate.Corpo.DeveMorrer() && !pl.Combate.Corpo.RegeneraDecepado
+			&& pl.Combate.Morrer())
 		{
-			pl.Combate.Morrer();
 			pl.RenasceEm = NowMs() + MsAteRenascer;
 			GD.Print($"[server] {pl.Name} EXPLODIU com o Kaio-ken");
 		}

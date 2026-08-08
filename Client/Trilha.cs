@@ -145,6 +145,24 @@ public static class Trilha
     public const string Dash = E + "chainswoop.ogg";
 
     /// <summary>
+    /// PEDRAS SE SOLTANDO DO CHAO -- o `rockmoving.wav` que abre a cinematica do SSJ1 e a do SSJ2
+    /// (ver `Cinematicas.Ssj1`, que cita o nome do DM no comentario do beat).
+    ///
+    /// ============================ ELE ESTAVA ESCRITO E NAO TOCAVA ============================
+    /// O arquivo esta convertido e importado desde o pipeline, e as duas cenas pedem
+    /// `Som: "rockmoving"` -- mas o resolvedor de `Transformacao` nao tinha caso pra ele e o `_ =>`
+    /// devolvia o <see cref="Dash"/>. Resultado: a estreia do Super Saiyajin abria com o SWOOSH do
+    /// dash em vez do chao rachando, e nada no jogo dizia que o som pedido nao existia -- um som
+    /// errado toca igual a um som certo.
+    ///
+    /// Quem achou foi a bancada de forma, escrevendo a checagem "todo `Beat.Som` resolve". Por isso
+    /// o resolvedor agora devolve NULO pro nome desconhecido (ver `Transformacao.CaminhoDoSom`):
+    /// silencio + aviso e detectavel; substituicao silenciosa nao e.
+    /// ========================================================================================
+    /// </summary>
+    public const string PedrasRolando = E + "rockmoving.ogg";
+
+    /// <summary>
     /// O ZANZOKEN. E `teleport.wav` no original -- conferido no `Zanzoken_Dodge`
     /// (`Physical Skills.dm:26-35`), que faz `flick('Zanzoken.dmi', src)` + `Move(...)` +
     /// `emit_Sound('teleport.wav')`.
@@ -174,8 +192,63 @@ public static class Trilha
     /// </summary>
     public const string CargaLaco = K + "aurapowered.wav";
 
+    /// <summary>
+    /// O KI DIVINO CHEGANDO -- o `ssg.wav` de `startbuff(/obj/buff/Ritual_God)` (`GodRitual.dm:78`),
+    /// que e a ultima linha do ritual que concede o poder de deus. Toca tambem em
+    /// `GodkiIncreaseScene()` (`godki.dm:157`) e no verb `God_Ki()` (`:207`).
+    ///
+    /// ============================ ELE ESTAVA IMPORTADO E MORTO ============================
+    /// O arquivo esta em `Assets/Sounds/Effects/Ki Effects/ssg.wav` com o `.import` ao lado desde o
+    /// pipeline -- e ate agora nenhum `.cs` do projeto o citava. E a MESMA familia de defeito da
+    /// `FieryGod.tres` e da `FieryGodBlue.tres` (convertidas, importadas, sem um leitor), e do
+    /// `rockmoving.wav` (pedido pelo beat e devolvido como `Dash` pelo resolvedor): arte que chegou e
+    /// nunca foi ligada nao aparece em lugar nenhum -- nem no jogo, nem numa lista de pendencias.
+    ///
+    /// Quem o abriu foi a cena do ritual, que tocava `powerup.wav` no beat do buff porque era o nome
+    /// que o resolvedor tinha. Ver `Cinematicas.RitualDivino`.
+    /// ==================================================================================
+    /// </summary>
+    public const string KiDivino = K + "ssg.wav";
+
+    /// <summary>
+    /// A CHEGADA DO SUPER SAIYAJIN BLUE -- o `ssb.wav` de `do_first_godki_appearance()`
+    /// (`buffs.dm:59-66`), o proc que roda quando o buff de Super Saiyajin nasce com o God Ki ja
+    /// aceso. Ele NAO toca no `do_godki_appearance()` (`:68-74`), a versao de quem ja era SSJ e
+    /// acendeu o divino depois -- la ha o mesmo clarao e nenhum som.
+    ///
+    /// Mesma historia do <see cref="KiDivino"/>: importado, com `.import`, e sem leitor nenhum.
+    /// </summary>
+    public const string KiDivinoAzul = K + "ssb.wav";
+
     /// <summary>Zona de dano nova destravada / marco de poder.</summary>
     public const string NovaHabilidade = E + "NEWSKILL.WAV";
+
+    /// <summary>
+    /// O RUGIDO DO MACACO. `Oozaru.dm:158` -- `if(prob(1)&&prob(50)) container.emit_Sound('Roar.wav')`,
+    /// no `Loop()` da forma: no DM ele e um rugido ALEATORIO e raro de quem ja esta transformado.
+    ///
+    /// Aqui ele estreia no instante em que o macaco NASCE (o beat `Assumir` da cena do Oozaru), que
+    /// e o unico momento em que ele conta alguma coisa a quem esta olhando. O rugido aleatorio do
+    /// `Loop()` continua nao portado -- ver a divida do tique da forma.
+    /// </summary>
+    public const string Rugido = E + "Roar.wav";
+
+    /// <summary>
+    /// A EXPLOSAO -- o `explosion.wav` do original (`Tech/Bombs.dm:42`).
+    ///
+    /// ============================ ELE MUDA DE PAPEL AQUI, E ESTA MARCADO ============================
+    /// No DM este arquivo so toca quando uma BOMBA estoura. Neste port ele estreia num segundo lugar:
+    /// o penultimo beat da cinematica do SSJ3, colado na segunda descarga do ceu.
+    ///
+    /// O motivo e de ritmo e nao de fidelidade. A cena do SSJ3 tem 140 s e termina em sete gritos
+    /// separados por silencios de doze segundos; o unico som que ela tinha da metade pro fim era o
+    /// `powerup` dos 33,0 s. Sem nada novo no ouvido, os ultimos trinta segundos soam iguais aos
+    /// primeiros trinta -- e a cena mais longa do jogo acaba sem clímax sonoro.
+    ///
+    /// **Apagar o `Som: "explosao"` daquele beat devolve o silencio do DM sem mexer em mais nada.**
+    /// ============================================================================================
+    /// </summary>
+    public const string Explosao = E + "explosion.ogg";
 
     // =====================================================================
     // VOO

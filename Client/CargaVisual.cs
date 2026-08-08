@@ -5,16 +5,27 @@ namespace Jandirus.Client;
 /// <summary>
 /// O QUE SE VE E SE OUVE de alguem reunindo energia.
 ///
-/// ============================ NAO HA MAIS LUZ AQUI ============================
-/// A primeira versao acendia um <see cref="PointLight2D"/>. O dono cortou, duas vezes e cada vez
-/// mais claro: "o brilho causado por aura e so quando ESTA TRANSFORMADO, na base aura nao gera
-/// brilho". Ele esta certo e a razao e a mesma que fez a <see cref="Aura"/> nascer desligada:
-/// se todo mundo que aperta uma tecla ilumina o cenario, a luz para de significar "aquele ali
-/// esta transformado" -- que e a unica coisa que ela deveria dizer.
+/// ============================ A LUZ NAO MORA AQUI, MAS SAI DAQUI ============================
+/// A primeira versao acendia um <see cref="PointLight2D"/> PROPRIO. Isso foi cortado e continua
+/// cortado -- duas luzes no mesmo corpo somam energia e lavam o sprite, e cada regra ligada numa e
+/// esquecida na outra virou defeito. A `PointLight2D` e UMA e mora na <see cref="Aura"/>.
 ///
-/// Entao o que sobrou aqui e o DESENHO (<see cref="SpriteDeAura"/>) e o SOM. A luz mora so no
-/// caminho da transformacao.
-/// ==============================================================================
+/// O que mudou foi de quem ela obedece. Enquanto a regra era "so brilha quem esta TRANSFORMADO", a
+/// luz respondia a forma e este node so desenhava. Depois que a forma passou a apenas PREPARAR a
+/// aura (ordem do dono: "e pra ela vir desativada e so ativar se o ki passar de 100% ou eu apertar
+/// C"), quem desenha a chama passou a ser ESTE node -- e a luz ficou orfa, presa numa condicao que
+/// ninguem mais satisfazia. A chama do C saia sem iluminar nada no escuro.
+///
+/// Entao aqui ficam o DESENHO (<see cref="SpriteDeAura"/>) e o SOM, e a chama avisa a `Aura` por
+/// `ChamaDaCarga` -- mesma forca, mesmo instante. A COR nao viaja nesse aviso: ela ja e da `Aura`
+/// (<see cref="Aura.CorDaChama"/>), e este node a LE em vez de a mandar.
+///
+/// E A LUZ NAO VOLTA PRA CA. O aviso acima acende a `PointLight2D` da `Aura` SO SE HOUVER FORMA
+/// (dono: "na base n importa a % do ki, a unica coisa q deve ficar ativa e o node carga"). Logo, na
+/// base este node desenha e NAO ilumina -- e essa e a leitura certa da frase, nao "mudar a luz de
+/// dono": uma luz aqui seria um terceiro dono do mesmo efeito e acenderia justamente na base, que e
+/// a queixa. Ver a guarda em `Aura.Aplicar`.
+/// ==========================================================================================
 ///
 /// ============================ E QUEM MANDA ACENDER E O SERVIDOR ============================
 /// A versao anterior acendia direto da TECLA, sem perguntar nada. Resultado que o dono viu: sem
@@ -29,11 +40,19 @@ namespace Jandirus.Client;
 /// </summary>
 public partial class CargaVisual : Node2D
 {
-	/// <summary>Cor da carga comum: o branco-azulado do ki cru.</summary>
-	private static readonly Color CorCarga = new(0.62f, 0.80f, 1.0f);
-
-	/// <summary>Cor de quem passou dos 100%: puxa pro dourado -- o corpo esta reclamando.</summary>
-	private static readonly Color CorExcesso = new(1.0f, 0.84f, 0.42f);
+	// ============================ AS DUAS CORES DESTE NODE FORAM DELETADAS ============================
+	// Aqui moravam `CorCarga` (o branco-azulado do ki cru) e `CorExcesso` (um dourado fixo pra quem
+	// passou dos 100%). As duas sairam, e a queixa que as matou foi do dono, na BASE: "quando o ki
+	// passa de 100% ele fica brilhando de outra cor" -- ele esperava "a mesma de sempre".
+	//
+	// A raiz nao era o tom escolhido, era haver TRES respostas pra "de que cor e a chama deste
+	// corpo": a da forma (guardada no node `Aura`), a de carga e a de sobrecarga daqui. Quem vencia
+	// era quem escrevesse por ultimo, e como este node repinta todo quadro enquanto o C esta
+	// segurado, quem vencia era sempre este -- inclusive por cima da cor de uma transformacao.
+	//
+	// Hoje ha UMA: `Aura.CorDaChama`, escrita pela forma e com o ki cru (`Aura.CorDoKiCru`) como
+	// padrao, porque um corpo sem forma ESTA na base. Deste node so sai a FORCA -- ver `Pintar`.
+	// ================================================================================================
 
 	private SpriteDeAura _desenho = null!;
 	private AudioStreamPlayer2D? _laco;
@@ -41,13 +60,43 @@ public partial class CargaVisual : Node2D
 	private bool _ligado, _excesso;
 	private double _fase;
 
+	/// <summary>O desenho proprio deste node. Pra bancada -- ele NAO e o mesmo do node `Aura`.</summary>
+	public SpriteDeAura DesenhoDeTeste => _desenho;
+
 	/// <summary>
-	/// A FORMA MANDA. Enquanto houver transformacao acesa, este desenho nao aparece: a aura da
-	/// forma ja esta la, e duas auras empilhadas foi exatamente o defeito que o `AuraCheck` do
-	/// original desarma ("o power-up NAO empilha a aura base por cima"). Escrito pelo World, no
-	/// mesmo lugar em que a forma acende a dela.
+	/// ============================ A TESTEMUNHA INDEPENDENTE DA SOBRECARGA ============================
+	/// O bit `EntityState.Sobrecarregado` tem DOIS consumidores no cliente: este node (a chama) e o
+	/// contorno (`World.MarcarSobrecarga` -> `AplicarContorno`). A bancada que julga o contorno do
+	/// corpo ALHEIO precisa saber se aquele corpo esta acima dos 100% -- e perguntar isso ao
+	/// `_sobrecarregados` seria perguntar ao proprio reu: se o funil inteiro estivesse morto, os dois
+	/// lados da checagem responderiam "nao ha sobrecarga" e ela passaria com o jogo quebrado.
+	///
+	/// Ler pelo OUTRO consumidor fecha isso. Os dois saem do mesmo bit no mesmo `AoReceberSnapshot`,
+	/// mas por caminhos separados -- e sao justamente os dois caminhos que passaram anos discordando
+	/// (o contorno era escrito pela FORMA enquanto a chama ja obedecia ao Ki).
+	/// ==============================================================================================
 	/// </summary>
-	public bool FormaAcesa;
+	public bool ExcessoDeTeste => _excesso;
+
+	/// <summary>O outro bit do mesmo par (`Carregando`): ele esta com o C segurado. Pra bancada.</summary>
+	public bool CarregandoDeTeste => _ligado;
+
+	/// <summary>
+	/// ============================ A CARGA TAMBEM PRECISA DA FOLHA DA FORMA ============================
+	/// Este node monta o PROPRIO <see cref="SpriteDeAura"/>, separado do node <see cref="Aura"/> --
+	/// e por isso ele nao herdou nada quando a troca de folha foi ligada la. O dono viu o resultado
+	/// exato: "ao carregar o C transformado ele ta usando a aura da base, e isso forca com q a aura
+	/// do super saiyajin vire o mesmo sprite da base porem pintado de amarelo".
+	///
+	/// Dois desenhos da mesma coisa, e eu so tinha ensinado um. Agora quem troca a forma avisa os
+	/// dois -- `World.PrepararAuraDaForma` e `Transformacao.Assumir`, os mesmos dois lugares que
+	/// escrevem a folha do node `Aura`.
+	/// ================================================================================================
+	///
+	/// (Quem traduz o simbolo em caminho e a <see cref="SpriteDeAura.CaminhoDa"/>: a tabela estava
+	/// copiada aqui e na <see cref="Aura"/>, e a chama da cinematica seria a terceira copia.)
+	/// </summary>
+	public void Folha(Jandirus.Core.Forms.FolhaDeAura f) => _desenho.DefinirFolha(f);
 
 	public override void _Ready()
 	{
@@ -151,10 +200,17 @@ public partial class CargaVisual : Node2D
 		_laco.Play();
 	}
 
+	/// <summary>
+	/// SOLTOU O C. Passa pelo `Pintar` em vez de apagar o desenho na mao, e isso e o conserto de um
+	/// vazamento: apagar aqui deixava de fora o aviso a <see cref="Aura"/>, entao quem soltava o C
+	/// nunca DEVOLVIA a vez -- a aura de forma ficava suprimida e (desde que a luz passou a seguir a
+	/// chama) a `PointLight2D` ficava acesa pra sempre. Dois lugares apagando a mesma coisa era o
+	/// jeito de a proxima regra nascer so num deles; agora ha um caminho de apagar so.
+	/// </summary>
 	private void Apagar()
 	{
 		SetProcess(false);
-		_desenho.Definir(false, CorCarga);
+		Pintar();   // o ramo `!_ligado`: apaga o desenho E devolve a chama, com a luz, pra `Aura`
 	}
 
 	private void PararLaco()
@@ -176,10 +232,61 @@ public partial class CargaVisual : Node2D
 
 	private void Pintar()
 	{
-		if (!_ligado || FormaAcesa) { _desenho.Definir(false, CorCarga); return; }
+		// ============================ E A FORMA NAO CALA MAIS ESTE DESENHO ============================
+		// A primeira linha daqui era `if (!_ligado || FormaAcesa)`: um campo `FormaAcesa`, escrito pelo
+		// World e pela cinematica, suprimia a chama da carga quando a forma tinha aura propria. Fazia
+		// sentido no desenho antigo, em que transformar ja acendia uma, e duas auras empilhadas ficavam
+		// feias.
+		//
+		// A regra mudou por pedido do dono ("e pra ela vir desativada e so ativar se o ki passar de 100%
+		// ou eu apertar C"): com a forma so PREPARANDO a aura, a guarda parou de proteger de coisa
+		// nenhuma e virou o defeito -- segurar C na base funcionava e em Super Saiyajin nao acendia
+		// nada. O campo foi DELETADO junto com a guarda; deixa-lo escrito e nunca lido so daria a quem
+		// vier depois um fato sem consumidor pra confiar. Quem impede as duas chamas hoje e a
+		// `Aura.ChamaDaCarga` la embaixo, e ela e a mesma linha que acende a luz.
+		// ==========================================================================================
+
+		// A COR VEM DA `Aura`, E ELA E A UNICA. Ver o bloco das duas cores deletadas la em cima: este
+		// node so responde POR QUANTO a chama esta forte, nunca por que cor ela tem. UMA busca por
+		// pintada e nao duas -- as duas escritas abaixo (desenho e luz) tem que sair do mesmo node,
+		// senao voltam a poder discordar.
+		Aura? aura = GetParent()?.GetNodeOrNull<Aura>("Aura");
+		// SEM IRMA `Aura` nao ha luz nem cor guardada; o padrao e o MESMO campo que ela usa, pra os
+		// dois nao poderem divergir num corpo montado pela metade. (Em jogo nunca acontece: os dois
+		// nodes nascem juntos, `World.cs:1241-1242`.)
+		Color cor = aura?.CorDaChama ?? Aura.CorDoKiCru;
+
+		if (!_ligado)
+		{
+			_desenho.Definir(false, cor);
+			aura?.ChamaDaCarga(false, 0);   // devolve a vez
+			return;
+		}
 
 		float onda = 0.5f + 0.5f * Mathf.Sin((float)_fase);
-		float forca = _excesso ? 0.95f + onda * 0.55f : 0.45f + onda * 0.30f;
-		_desenho.Definir(true, _excesso ? CorExcesso : CorCarga, forca);
+		// A SOBRECARGA CONTINUA SE DISTINGUINDO, so que pela FORCA e nao pela cor: ela pulsa mais
+		// forte aqui e mais rapido no `_Process`. E a leitura certa -- passar dos 100% nao troca a
+		// energia do corpo, so aperta mais dela no mesmo lugar; o corpo esta RECLAMANDO. Trocar o
+		// tom dizia "outro tipo de ki", que e o que o dono estranhou.
+		// A FAIXA DA CARGA COMUM SUBIU (era 0,45..0,75). Com a `forca` governando so o ALFA, 0,45
+		// virava uma chama quase invisivel em vez de uma chama fraca -- e o que se quer e presenca
+		// discreta, nao ausencia. 0,70..0,95 le como "esta reunindo energia" sem competir com o
+		// excesso, que continua estourando a cor (acima de 1).
+		float forca = _excesso ? 0.95f + onda * 0.55f : 0.70f + onda * 0.25f;
+
+		// FOLHA JA COLORIDA IGNORA A COR (ver `SpriteDeAura.SemTinta` e o uniform `tingir`): num
+		// Super Saiyajin a chama sai dourada da arte, e nao do que vai aqui. A cor continua sendo
+		// mandada porque quem decide se ela vale e o shader -- mandar branco aqui APAGARIA a arte,
+		// que foi o defeito da rodada passada.
+		// QUEM ESTA DESENHANDO SOU EU, E POR ISSO A LUZ SEGUE A MINHA CHAMA: a aura de forma cala o
+		// desenho e ACENDE a luz com a forca que vai aqui. Uma chama por corpo, uma luz por corpo --
+		// foi ficar so com a metade "cala o desenho" que deixou a aura sem brilho no escuro ao
+		// segurar C. Ver `Aura.ChamaDaCarga`.
+		//
+		// NA BASE ESTE AVISO NAO ACENDE NADA, e e de proposito: a `Aura` so deixa a chama da carga
+		// virar luz se houver FORMA (a guarda `_temForma`, em `Aura.Aplicar`). Aqui se manda a forca
+		// do mesmo jeito -- quem decide e a `Aura`, dona da luz, e nao este node.
+		aura?.ChamaDaCarga(true, forca);
+		_desenho.Definir(true, cor, forca);
 	}
 }

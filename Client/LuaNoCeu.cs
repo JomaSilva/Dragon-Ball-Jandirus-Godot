@@ -38,6 +38,15 @@ public partial class LuaNoCeu : VBoxContainer
 	private const int Lado = 34;
 
 	/// <summary>
+	/// A PARTIR DE QUANTO A LUA CONTA COMO ENCOBERTA.
+	///
+	/// Era um `0.75f` escrito duas vezes (no texto e na cor da legenda) e agora e tres, porque o botao
+	/// de olhar pra lua tambem depende dele. Tres copias de um numero que decide se a lua "existe" pro
+	/// jogador seria o jeito garantido de a legenda dizer "encoberta" com o botao aceso embaixo.
+	/// </summary>
+	private const float Encoberta = 0.75f;
+
+	/// <summary>
 	/// O TERMINADOR -- a fronteira entre a parte acesa e a apagada do disco.
 	///
 	/// A conta é a projeção de um círculo máximo numa esfera: pra uma fase `f` (0 = nova, 0,5 =
@@ -75,6 +84,7 @@ public partial class LuaNoCeu : VBoxContainer
 
 	private TextureRect _disco = null!;
 	private Label _nome = null!;
+	private Button _olhar = null!;
 	private ShaderMaterial _tinta = null!;
 
 	public override void _Ready()
@@ -106,8 +116,92 @@ public partial class LuaNoCeu : VBoxContainer
 		_nome.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
 		AddChild(_nome);
 
+		_olhar = MontarBotao();
+		AddChild(_olhar);
+
 		Visible = false;
 	}
+
+	/// <summary>
+	/// O BOTAO VERMELHO: "olhar pra lua".
+	///
+	/// ============================ POR QUE ELE E UM BOTAO, E VERMELHO ============================
+	/// No jogo antigo virar Oozaru era uma PREFERENCIA guardada (o `Osetting`: "se a lua estiver no
+	/// ceu, eu olho") -- e o jogador que esquecia dela ligada virava macaco sem querer, no meio de
+	/// outra coisa. O dono cortou isso: a lua cheia nao transforma mais sozinha (`GameServer.Ceu.cs`),
+	/// e olhar virou um GESTO. Um gesto precisa de um lugar pra acontecer, e o lugar certo e embaixo
+	/// da propria lua -- o mostrador ja dizia "e lua cheia", faltava o "e dai?".
+	///
+	/// VERMELHO porque isto nao e uma acao a mais no menu: perder o controle do proprio corpo por
+	/// quatro minutos e a coisa mais irreversivel que um Saiyajin pode apertar antes de DOMINAR a
+	/// fera. A cor e o unico aviso que chega antes do clique -- e ela continua valendo depois da
+	/// rampa de maestria (`Oozaru.SegundosDeControle`), porque o que a rampa encurta e o tempo
+	/// SEM controle, nao a duracao da forma: ate os 100% ainda se termina a noite como passageiro.
+	/// ==========================================================================================
+	///
+	/// O ESTILO E LOCAL e nao entrou no <see cref="Tema"/>: um `Button` vermelho nao e uma classe de
+	/// botao do jogo, e um botao so. Promove-lo a tema criaria uma variacao global que ninguem mais
+	/// usa -- e a proxima pessoa teria que adivinhar quando usar a "vermelha".
+	/// </summary>
+	private Button MontarBotao()
+	{
+		var b = new Button
+		{
+			Name = "Olhar",
+			Text = "olhar pra lua",
+			TooltipText = "Encara a lua cheia e vira Oozaru. Sem dominio sobre a fera, "
+						+ "voce nao controla o que ela faz ate ela se cansar.",
+			// CLIP DESLIGADO de proposito: a legenda ao lado NAO pode mandar na largura do painel
+			// (ver `_nome`) porque o nome da fase muda toda noite e o painel piscaria de tamanho; o
+			// botao aparece uma vez por noite de lua cheia e fica. Cortar o texto de uma chamada pra
+			// acao pra economizar trinta pixels seria trocar a unica coisa que ele tem a dizer.
+			ClipText = false,
+			FocusMode = FocusModeEnum.None,   // ninguem quer o TAB parando aqui no meio da luta
+			SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
+			Visible = false,
+		};
+		b.AddThemeFontSizeOverride("font_size", 10);
+		b.AddThemeStyleboxOverride("normal", Tema.Caixa(new Color("5a1b15"), Tema.Perigo, 6));
+		b.AddThemeStyleboxOverride("hover", Tema.Caixa(new Color("8a2a20"), new Color("ff9c8c"), 6));
+		b.AddThemeStyleboxOverride("pressed", Tema.Caixa(new Color("3a100c"), Tema.Perigo, 6));
+		b.AddThemeColorOverride("font_color", Tema.Texto);
+		b.AddThemeColorOverride("font_hover_color", Colors.White);
+		b.AddThemeColorOverride("font_pressed_color", Colors.White);
+
+		// METODO NOMEADO, NUNCA LAMBDA -- e a regra que nasceu das assinaturas vazadas: lambda nao da
+		// pra cancelar. Aqui o emissor e filho deste node e morre junto com ele, entao nao ha `-=` a
+		// fazer no `_ExitTree`; o metodo nomeado fica assim mesmo pra ninguem precisar reavaliar isso
+		// no dia em que este botao virar filho de outra coisa.
+		b.Pressed += AoOlhar;
+		return b;
+	}
+
+	/// <summary>
+	/// O CLIQUE. Manda o id e para de decidir: quem valida e o servidor (`GameServer.OlharParaALua`),
+	/// que confere de novo a lua, a fase, o rabo e o genoma, e responde pelo chat quando recusa.
+	///
+	/// O gate desta tela e de CONVENIENCIA (ver <see cref="PodeOlhar"/>) -- ele existe pra o botao nao
+	/// aparecer pra quem nunca poderia apertar, e nao pra substituir a autoridade.
+	/// </summary>
+	private void AoOlhar() => GameClient.Instance?.SendHabilidade("oozaru_olhar");
+
+	/// <summary>
+	/// ESTE CORPO TEM O QUE PRECISA? Duas perguntas, e a primeira responde tres.
+	///
+	/// `Sheet.Rabo` ja e a resposta de RACA **e** de RABO INTEIRO ao mesmo tempo: o membro "Rabo" so
+	/// existe no corpo de quem tem rabo (`GameServer.Combat.cs:107,114` -- Saiyan e Halfbreed), e o bit
+	/// so vem ligado enquanto ele nao foi decepado (`GameServer.cs:458`). Repetir aqui a lista de racas
+	/// criaria uma segunda verdade sobre quem nasce com rabo, e ela envelheceria calada no dia em que
+	/// uma raca nova entrasse na lista do servidor.
+	///
+	/// A segunda e o <see cref="GameClient.MeuOozaru"/>: o botao some enquanto se e a fera. Ele nao
+	/// vira "voltar ao normal" porque voltar nem sempre e possivel -- o Dourado nao obedece -- e um
+	/// botao que troca de significado no mesmo lugar ensina errado. Voltar mora no menu (tecla P).
+	/// </summary>
+	private static bool PodeOlhar()
+		=> GameClient.Instance is { } cli
+		   && cli.Sheet.Rabo
+		   && cli.MeuOozaru == Jandirus.Core.Forms.FormaOozaru.Nao;
 
 	/// <summary>
 	/// MOSTRA A LUA DESTE PLANETA AGORA. Chamado pelo <see cref="Hud"/> a cada quadro -- este node
@@ -131,11 +225,25 @@ public partial class LuaNoCeu : VBoxContainer
 		// promessa que a tela não cumpre.
 		var tapada = (float)Mathf.Clamp(encoberta, 0, 1);
 		_tinta.SetShaderParameter("brilho", 0.85f + 0.15f * (float)ceu.Aceso);
+		// O `0.75` DESTA LINHA NAO E O `Encoberta`, apesar do mesmo numero: aqui e o quanto a nuvem
+		// pode apagar o disco (sobra 25% de alfa, senao o mostrador some), la e o LIMIAR em que a lua
+		// deixa de contar. Unificar os dois amarraria a transparencia do desenho a uma regra de jogo.
 		_disco.Modulate = new Color(1, 1, 1, 1f - tapada * 0.75f);
 
-		_nome.Text = tapada > 0.75f ? "encoberta" : Ceu.NomeDaFase(ceu.Fase);
+		bool aMostra = tapada <= Encoberta;
+		_nome.Text = aMostra ? Ceu.NomeDaFase(ceu.Fase) : "encoberta";
 		_nome.AddThemeColorOverride("font_color",
-			ceu.Cheia && tapada <= 0.75f ? Tema.Destaque : Tema.TextoFraco);
+			ceu.Cheia && aMostra ? Tema.Destaque : Tema.TextoFraco);
+
+		// ============================ O BOTAO SEGUE A LEGENDA, NAO O CEU ============================
+		// `aMostra` e a MESMA conta que escolhe entre o nome da fase e "encoberta", e e por isso que
+		// ela virou variavel: se o botao olhasse so pra `ceu.Cheia`, a nuvem apagaria o disco, a
+		// legenda diria "encoberta" e logo abaixo um botao vermelho continuaria prometendo o Oozaru.
+		// O mostrador tem que contar UMA verdade -- e a mesma que a janela conta.
+		//
+		// A lua NO CEU ja esta garantida: o `return` la em cima esconde o painel inteiro sem ela.
+		// ==========================================================================================
+		_olhar.Visible = ceu.Cheia && aMostra && PodeOlhar();
 	}
 
 	private static Texture2D? Quadro()

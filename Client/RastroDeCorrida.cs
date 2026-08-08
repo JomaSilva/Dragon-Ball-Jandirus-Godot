@@ -27,7 +27,14 @@ namespace Jandirus.Client;
 /// sem processamento proprio (quem conta o tempo e este node, um so). E menos trabalho por quadro
 /// do que o shader que ele substitui, que rodava 5 amostras por pixel do personagem inteiro.
 /// </summary>
-public partial class RastroDeCorrida : Node2D
+/// <remarks>
+/// <see cref="IFicaNoChao"/>: este node NAO DESENHA NADA por si. As fotos que ele larga sao filhas
+/// do palco e nascem carimbadas em `_visual.GlobalPosition` -- que ja carrega a altitude do voo, e
+/// e justamente a correcao descrita mais abaixo. Mover este node nao mudaria um pixel; a declaracao
+/// existe pra que a varredura de "quem sobe com o voo" saiba que ele ficar parado e a resposta
+/// CERTA, e nao a quinta vez que alguem foi esquecido.
+/// </remarks>
+public partial class RastroDeCorrida : Node2D, IFicaNoChao
 {
 	// ============================ POR QUE ESTES TRES NUMEROS ============================
 	// A primeira calibragem (45 ms / 0,17 s / alfa 0,34) deu o que o dono fotografou: TRES bonecos

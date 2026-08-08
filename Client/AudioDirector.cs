@@ -38,6 +38,26 @@ public partial class AudioDirector : Node
     private double _fade;                    // 0..1 do cruzamento em andamento
     private const double DuracaoFade = 1.2;
 
+    /// <summary>
+    /// QUE CAMADA MANDA AGORA, e QUE FAIXA esta no ar. So a bancada le -- ver `--diagforma`.
+    ///
+    /// ============================ POR QUE ELAS PRECISAM SER LIDAS DE FORA ============================
+    /// A regra "a musica da transformacao alcanca o planeta inteiro" nao tem NADA na tela: ela e a
+    /// diferenca entre um `if (_souEu)` existir ou nao existir no `Transformacao._Ready`. Quem roda o
+    /// jogo sozinho -- que e como este port e testado -- ouve a faixa dos dois jeitos, porque ele e
+    /// sempre o dono da cena. O defeito so aparece com duas pessoas no mesmo planeta, e nessa hora
+    /// ninguem esta com o depurador aberto.
+    ///
+    /// E o comentario do `Rodar` AFIRMAVA por anos que a musica era so de quem virava, com o codigo
+    /// fazendo o contrario. Um campo lido pela bancada e o que impede a proxima afirmacao dessas de
+    /// sobreviver sem ninguem conferir.
+    /// ============================================================================================
+    /// </summary>
+    public Camada CamadaDeTeste => _camadaAtual;
+
+    /// <inheritdoc cref="CamadaDeTeste"/>
+    public string FaixaDeTeste => _faixaAtual;
+
     public override void _Ready()
     {
         Instance = this;

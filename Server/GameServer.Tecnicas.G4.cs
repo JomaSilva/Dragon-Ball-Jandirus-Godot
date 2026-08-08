@@ -421,7 +421,7 @@ public partial class GameServer
 		// chegada. Isso e teleporte cirurgico pra dentro de qualquer lugar do mapa de destino --
 		// inclusive pra dentro de parede, que o DM nem confere. Aqui a chegada e o ponto de
 		// spawn da zona, que e o unico lugar de que se sabe que existe chao.
-		Falar(pl, Protocol.Fala.Emote, $"{pl.Name} rasga o ar e desaparece dentro dele.");
+		Falar(pl, Protocol.Fala.Emote, "rasga o ar e desaparece dentro dele.");
 		MoveToZone(pl.Id, ZoneKey.Premade(escolhido), SpawnPos);
 		MandarEfeito(pl, "rasgo", RecargaDoRasgoMsG4);
 
@@ -450,7 +450,7 @@ public partial class GameServer
 		// --- JA HA PONTO: volta pra ele e o apaga ---------------------------
 		if (_pontoCronoG4.Remove(pl.Id, out PontoCronoG4? cp))
 		{
-			Falar(pl, Protocol.Fala.Emote, $"{pl.Name} volta no tempo!");
+			Falar(pl, Protocol.Fala.Emote, "volta no tempo!");
 
 			pl.Ficha.Ki = cp.Ki;
 			pl.Ficha.stamina = cp.Stamina;
@@ -464,9 +464,8 @@ public partial class GameServer
 				pl.RenasceEm = 0;
 				AjustarGanhoDoRabo(pl);
 			}
-			else if (!pl.Ficha.dead && cp.Morto)
+			else if (!pl.Ficha.dead && cp.Morto && pl.Combate.Morrer())
 			{
-				pl.Combate.Morrer();
 				pl.RenasceEm = NowMs() + MsAteRenascer;
 			}
 
@@ -504,7 +503,7 @@ public partial class GameServer
 		}
 
 		// --- NAO HA PONTO: crava -------------------------------------------
-		Falar(pl, Protocol.Fala.Emote, $"{pl.Name} se concentra, e solta um pouco de tempo.");
+		Falar(pl, Protocol.Fala.Emote, "se concentra, e solta um pouco de tempo.");
 
 		_pontoCronoG4[pl.Id] = new PontoCronoG4
 		{
@@ -613,7 +612,7 @@ public partial class GameServer
 		Avisar(pl, $"você sente o mal dentro da alma de {alvo.Name} e a puxa pra dentro de si "
 				 + $"(+{ganho:N0} de poder, +{alvo.Ficha.MaxKi:0} de energia).");
 		Avisar(alvo, "você se sente drenado, como se a vida tivesse sido sugada do seu corpo.");
-		Falar(pl, Protocol.Fala.Emote, $"{pl.Name} parece sugar a vida direto de {alvo.Name}!");
+		Falar(pl, Protocol.Fala.Emote, $"parece sugar a vida direto de {alvo.Name}!");
 		GD.Print($"[server] {pl.Name} sugou {alvo.Name}: +{ganho:0} BP");
 	}
 
@@ -630,11 +629,29 @@ public partial class GameServer
 	/// isso os testes sao refeitos aqui SEM o de ordem: porta de BP base, maestria do degrau
 	/// anterior, Ki e estado do corpo continuam valendo, um por um.
 	///
-	/// UMA TRAVA A MAIS QUE O DM NAO TEM: so pula pra forma que voce JA DESPERTOU. O DM deixa
+	/// UMA TRAVA A MAIS QUE O DM NAO TEM: so pula pra forma cuja ESTREIA JA ROLOU. O DM deixa
 	/// despertar uma forma nova direto pelo seletor, e isso atropela o unico momento em que a
 	/// forma e um ACONTECIMENTO -- a primeira transformacao e cinematica, roda uma vez na vida do
 	/// personagem, e chegar nela por uma caixa de numero e trocar a cena pela planilha. Despertar
 	/// continua sendo subir a escada; o seletor e pra depois.
+	///
+	/// ============================ QUEM RECUSA LE A ESTREIA; QUEM TRADUZ LE A LIBERACAO ============================
+	/// Este seletor lia `Despertou` nos tres pontos, e isso era UMA resposta ate os dois bits do
+	/// <see cref="EstadoDeForma"/> serem separados. O SSJ4 e exatamente onde eles divergem: sair do
+	/// Oozaru Dourado dominado LIBERA o SSJ4 sem gastar a estreia dele, de proposito (o dono: "a
+	/// cinematica q fizemos toca na primeira vez q ele se transformar em ssj4 apertando o C").
+	///
+	/// O QUE ISSO CUSTAVA: esse jogador digitava `DirectSSJ:4`, o `Entrar()` aqui embaixo marcava a
+	/// estreia e a chamada anunciava `estreia: false`. A cena mais cara da linha Saiyajin morria CALADA,
+	/// por um caminho lateral -- o modo de falha que a separacao dos bits veio impedir, escondido no
+	/// unico lugar que nao foi convertido junto.
+	///
+	/// A DIVISAO FICOU ASSIM, e os dois bits sao lidos de proposito:
+	///   * <see cref="FormaDoNumeroG4"/> le `Despertou` -- ele so TRADUZ o numero digitado na forma que
+	///     o jogador quis dizer. Sumir com a forma daria a mensagem errada ("nao e uma forma sua").
+	///   * a guarda aqui le `JaViuAEstreia` -- e a UNICA que recusa, e ela diz qual das duas faltas e.
+	///   * a lista MOSTRA a liberada sem estreia, marcada: ela e dele, so nao esta no atalho ainda.
+	/// ==========================================================================================================
 	///
 	/// FICOU DE FORA: o ramo `Class == "Legendary"` (supersaiyan.dm:240), onde os numeros querem
 	/// dizer outra coisa (1 = Restrained, 2 = SSJ, 3 = LSSJ) e a escada e a `lssj`. O port ainda
@@ -643,7 +660,7 @@ public partial class GameServer
 	/// </summary>
 	private void FormaDiretaG4(ServerPlayer pl, string arg)
 	{
-		if (!UsaEscadaSaiyajin(pl)) { Avisar(pl, "sua raca não tem essa escada de transformacao."); return; }
+		if (!TemEscada(pl)) { Avisar(pl, "sua raca não tem essa escada de transformacao."); return; }
 
 		EstadoDeForma est = pl.Forma;
 		bool diluido = SangueDiluido(pl);
@@ -666,109 +683,159 @@ public partial class GameServer
 		// consegue descer obrigaria o jogador a usar DOIS controles diferentes pra mesma coisa.
 		if (n <= 0)
 		{
-			if (est.Atual == Forma.Base) { Avisar(pl, "você ja está na forma base."); return; }
-			Forma deBase = est.Atual;
-			est.Entrar(Forma.Base);
+			if (est.NaBase) { Avisar(pl, "você ja está na forma base."); return; }
+			string deBase = est.Atual;
+			est.Entrar(Catalogo.IdBase);
 			AplicarForma(pl);
 			Avisar(pl, "você volta ao normal.");
-			AnunciarForma(pl, deBase, Forma.Base, primeira: false);
+			AnunciarForma(pl, deBase, Catalogo.IdBase, estreia: false);
 			return;
 		}
 
-		Forma? escolhida = FormaDoNumeroG4(n, est);
-		if (escolhida == null)
+		FormaDef? d = FormaDoNumeroG4(n, est, Perfil(pl));
+		if (d == null)
 		{
-			Avisar(pl, $"'{arg}' não e uma forma. Use 0 (base), 1, 1.5 (grade), 2, 3 ou 4.");
+			Avisar(pl, $"'{arg}' não e uma forma sua. Peça a lista com DirectSSJ sem numero.");
 			return;
 		}
 
-		Forma alvo = escolhida.Value;
-		if (alvo == est.Atual) { Avisar(pl, "você ja está nessa forma."); return; }   // `if(usr.ssj==SSJchoice) return`
+		if (d.Id == est.Atual) { Avisar(pl, "você ja está nessa forma."); return; }   // `if(usr.ssj==SSJchoice) return`
 
-		FormaDef? d = EscadaSaiyajin.Def(alvo);
-		if (d == null) { Avisar(pl, "essa forma não existe nestá escada."); return; }
+		// O NOME DERIVADO UMA VEZ, no topo: as cinco frases abaixo falam da mesma forma, e o livro de
+		// maestrias e o mesmo em todas elas. Ver `Catalogo.NomeDe(FormaDef, Maestrias)`.
+		string nome = Catalogo.NomeDe(d, est.Maestria);
 
 		// --- os testes, um a um, SEM o de ordem ----------------------------
 		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "não da, caido."); return; }
 
-		if (!est.JaDespertou.Contains((int)alvo))
+		if (!est.JaViuAEstreia(d.Id))
 		{
-			Avisar(pl, $"você nunca despertou {d.Nome} -- o atalho so leva aonde você ja chegou pela escada.");
+			// A RECUSA SEPARA OS DOIS CASOS porque eles pedem coisas diferentes do jogador. Quem tem a
+			// forma LIBERADA e nunca a viu (o SSJ4 aberto pelo Oozaru Dourado) nao esta faltando
+			// requisito nenhum -- ele so precisa subir uma vez pela tecla, e ai o atalho abre pra
+			// sempre. Mandar esse jogador "subir a escada" sem dizer que a porta ja e dele seria a
+			// mesma economia de tempo perdida da mensagem do SSJ4 no `Avaliar`.
+			// MESMO FUNIL DAS RECUSAS DA ESCADA (`GameServer.Formas.PorQueNao`): o atalho de admin e a
+			// tecla C falam da MESMA forma, e chama-la de dois jeitos faria o jogador achar que sao
+			// duas. Ver `Catalogo.NomeDe`.
+			Avisar(pl, est.Despertou(d.Id)
+				? $"{nome} ja e seu, mas você nunca esteve nele: suba ate ele uma vez pela "
+					+ "transformacao normal (o atalho nao substitui a primeira vez)."
+				: $"você nunca despertou {nome} -- o atalho so leva aonde você ja chegou pela escada.");
 			return;
 		}
-		if (d.PedeMaestria > 0 && est.Maestria.De(d.Vem) < d.PedeMaestria)
+
+		string anteriorNome = Catalogo.Anterior(d) is { } ant
+			? Catalogo.NomeDe(ant, est.Maestria) : "a forma anterior";
+		if (d.PedeMaestria > 0 && est.Maestria.De(Catalogo.IdAnterior(d)) < d.PedeMaestria)
 		{
-			Avisar(pl, $"{d.Nome} pede {d.PedeMaestria:0}% de maestria em "
-					 + $"{EscadaSaiyajin.Def(d.Vem)?.Nome ?? "na forma anterior"} "
-					 + $"(você tem {est.Maestria.De(d.Vem):0.#}%).");
+			Avisar(pl, $"{nome} pede {d.PedeMaestria:0}% de maestria em {anteriorNome} "
+					 + $"(você tem {est.Maestria.De(Catalogo.IdAnterior(d)):0.#}%).");
 			return;
 		}
-		if (pl.Ficha.BP < d.PortaBp)
+		if (d.PortaBp > 0 && pl.Ficha.BP < (est.Limiares?.Porta(d) is > 0 and var lp ? lp : d.PortaBp))
 		{
 			// SEM NUMERO -- mesmo motivo de `GameServer.Formas.cs`: o limiar e sorteado por
 			// personagem, e a mensagem de erro estava devolvendo de graca o que a aba Forms
 			// acabou de tirar da tela.
-			Avisar(pl, $"{d.Nome} ainda está além do seu alcance.");
+			//
+			// E O LIMIAR AQUI E O PESSOAL. Antes esta linha comparava com `d.PortaBp`, o valor de
+			// FABRICA, enquanto a escada normal comparava com o sorteado -- entao o atalho de
+			// admin recusava (ou aceitava) em um numero diferente do caminho normal.
+			Avisar(pl, $"{nome} ainda está além do seu alcance.");
 			return;
 		}
 
 		double fracaoKi = pl.Ficha.MaxKi > 0 ? pl.Ficha.Ki / pl.Ficha.MaxKi : 1;
 		if (fracaoKi < 0.1) { Avisar(pl, "Ki baixo demais pra sustentar a forma."); return; }
 
-		Forma anterior = est.Atual;
-		est.Entrar(alvo);   // ja despertou antes: nao e primeira vez, entao nao ha cinematica
+		string anterior = est.Atual;
+		// O `estreia: false` la embaixo e VERDADE GARANTIDA pela guarda `JaViuAEstreia`: so chega aqui
+		// forma cuja cena ja rolou, entao este `Entrar` devolve false sempre. Descartar o retorno e
+		// deliberado -- se um dia a guarda afrouxar, o certo e passar o retorno pro `AnunciarForma` e
+		// nao cravar o `false`.
+		est.Entrar(d.Id);
 		AplicarForma(pl);
 
-		Avisar(pl, $"{d.Nome} (x{est.Multiplicador(diluido):0.##}).");
-		AnunciarForma(pl, anterior, alvo, primeira: false);
-		GD.Print($"[server] {pl.Name}: DIRETO {anterior} -> {alvo}");
+		// O MESMO `nome` DAS RECUSAS, e ele continua valendo depois do `Entrar`: entrar numa forma nao
+		// mexe na maestria dela (quem a move e o `TickDaForma`), entao o texto do sucesso e o do erro
+		// chamam a forma pelo mesmo nome. E esse nome e o mesmo que o `AnunciarForma` da linha seguinte
+		// manda pro cliente no bit `dominada`.
+		Avisar(pl, $"{nome} (x{MultiplicadorDaForma(pl):0.##}).");   // com o fator do cargo, como o `ssjBuff`
+		AnunciarForma(pl, anterior, d.Id, estreia: false);
+		GD.Print($"[server] {pl.Name}: DIRETO {anterior} -> {d.Id}");
 	}
 
 	/// <summary>
 	/// O numero do DM -> o degrau do port.
 	///
 	/// O 1.5 E UM PRA DOIS. No DM ha UM ultra ("1.5 is USSJ"); este port partiu aquele degrau em
-	/// dois grades (2 e 3), que abrem com maestrias diferentes no SSJ1. Entao o 1.5 leva ao
-	/// MELHOR dos dois que ja estiver despertado -- que e o que a pessoa quis dizer ao pedir "o
-	/// ultra": o mais forte a que ela tem direito.
+	/// dois grades (2 e 3), que abrem com maestrias diferentes no SSJ1. Entao o 1.5 leva ao MELHOR
+	/// dos dois que ja estiver despertado -- que e o que a pessoa quis dizer ao pedir "o ultra": o
+	/// mais forte a que ela tem direito.
+	///
+	/// ============================ E ISSO AGORA VALE PRA TODA LINHA ============================
+	/// Era um `switch` de cinco casos escrito a mao, e com nove linhas de transformacao ele seria
+	/// ambiguo: o "3" e o SSJ3, o Legendary Super Saiyajin ou o LSSJ2 do Primal? A resposta e "o
+	/// da SUA linha", e ela sai sozinha filtrando pelo perfil -- o mesmo filtro que a escada normal
+	/// usa, entao os dois caminhos nao podem discordar.
+	/// =====================================================================================
 	/// </summary>
-	private static Forma? FormaDoNumeroG4(double n, EstadoDeForma est)
+	private static FormaDef? FormaDoNumeroG4(double n, EstadoDeForma est, PerfilDeFormas perfil)
 	{
-		if (n == 1) return Forma.Ssj1;
-		if (n == 1.5) return est.JaDespertou.Contains((int)Forma.Grade3) ? Forma.Grade3 : Forma.Grade2;
-		if (n == 2) return Forma.Ssj2;
-		if (n == 3) return Forma.Ssj3;
-		if (n == 4) return Forma.Ssj4;
-		return null;
+		HashSet<LinhaDeForma> abertas = Catalogo.LinhasAbertas(perfil);
+		FormaDef? melhor = null;
+		foreach (FormaDef d in Catalogo.Todas)
+		{
+			if (d.NumeroDm != n || d.Id == Catalogo.IdBase) continue;
+			// ESTE FICA EM `Despertou` DE PROPOSITO, e e a unica das tres leituras que nao virou
+			// estreia. Aqui nao se decide nada: traduz-se o numero que o jogador digitou na forma que
+			// ele quis dizer. Filtrar pela estreia faria o SSJ4 recem-liberado sumir do mapa e o
+			// jogador ouviria "'4' nao e uma forma sua" um minuto depois de o jogo lhe dizer que o
+			// SSJ4 esta ao alcance dele. Quem recusa e a guarda, e ela recusa DIZENDO o que falta.
+			if (!abertas.Contains(d.Linha) || !est.Despertou(d.Id)) continue;
+			if (melhor == null || d.Ordem > melhor.Ordem) melhor = d;
+		}
+		return melhor;
 	}
 
 	private void ListarFormasDiretasG4(ServerPlayer pl, EstadoDeForma est, bool diluido)
 	{
-		var abertas = new List<string>();
-		foreach (FormaDef d in EscadaSaiyajin.Degraus)
+		HashSet<LinhaDeForma> abertas = Catalogo.LinhasAbertas(Perfil(pl));
+		var lista = new List<string>();
+		foreach (FormaDef d in Catalogo.Todas)
 		{
-			if (!est.JaDespertou.Contains((int)d.Id)) continue;
-			bool ok = pl.Ficha.BP >= d.PortaBp
-					  && (d.PedeMaestria <= 0 || est.Maestria.De(d.Vem) >= d.PedeMaestria);
-			string num = d.Id switch
-			{
-				Forma.Ssj1 => "1",
-				Forma.Grade2 or Forma.Grade3 => "1.5",
-				Forma.Ssj2 => "2",
-				Forma.Ssj3 => "3",
-				_ => "4",
-			};
-			abertas.Add($"{num}={d.Nome}{(ok ? "" : " (requisito nao cumprido)")}");
+			// SO O QUE TEM NUMERO DO DM. As formas que o original nao numerava (as divinas moram em
+			// `god_form_mult`, nao no `mob/var/ssj`) nao entram no atalho -- inventar um numero pra
+			// elas seria criar protocolo que o BYOND nao tem.
+			if (d.NumeroDm < 0 || d.Id == Catalogo.IdBase) continue;
+			if (!abertas.Contains(d.Linha) || !est.Despertou(d.Id)) continue;
+
+			double porta = est.Limiares?.Porta(d) is > 0 and var lp ? lp : d.PortaBp;
+			bool ok = (d.PortaBp <= 0 || pl.Ficha.BP >= porta)
+					  && (d.PedeMaestria <= 0 || est.Maestria.De(Catalogo.IdAnterior(d)) >= d.PedeMaestria);
+
+			// A FORMA LIBERADA E NUNCA VISTA APARECE NA LISTA, MARCADA -- ela nao some. Some seria dizer
+			// que ela nao e dele, e ela e (ver o cabecalho: o SSJ4 chega liberado pelo Oozaru Dourado).
+			// O marcador usa o mesmo formato do "(requisito nao cumprido)" que ja existia e vem ANTES
+			// dele na escolha porque e o que o jogador tem que resolver primeiro: sem a primeira
+			// subida, cumprir BP e maestria nao abre o atalho.
+			string marca = !est.JaViuAEstreia(d.Id) ? " (suba ate ele uma vez pela escada)"
+						 : ok ? "" : " (requisito nao cumprido)";
+			// PELO FUNIL: esta lista e o menu do atalho, e o numero ao lado do nome e o que o jogador
+			// vai digitar. Se a aba Formas chama de "Grade 4" e a lista chama de "Super Saiyajin", ele
+			// procura na lista uma forma que a aba prometeu e nao acha.
+			lista.Add($"{d.NumeroDm:0.#}={Catalogo.NomeDe(d, est.Maestria)}{marca}");
 		}
 
-		if (abertas.Count == 0)
+		if (lista.Count == 0)
 		{
 			Avisar(pl, "você ainda não despertou nenhuma forma -- suba a escada uma vez e o atalho abre.");
 			return;
 		}
-		Avisar(pl, $"formas ao seu alcance: 0=base, {string.Join(", ", abertas)}");
-		Avisar(pl, $"para ir direto: DirectSSJ:<numero> (agora: {EscadaSaiyajin.Def(est.Atual)?.Nome ?? "base"}, "
-				 + $"x{est.Multiplicador(diluido):0.##})");
+		Avisar(pl, $"formas ao seu alcance: 0=base, {string.Join(", ", lista)}");
+		Avisar(pl, $"para ir direto: DirectSSJ:<numero> (agora: {est.Def?.Nome ?? "base"}, "
+				 + $"x{MultiplicadorDaForma(pl):0.##})");   // idem: uma conta so pro numero que aparece
 	}
 
 	// =====================================================================

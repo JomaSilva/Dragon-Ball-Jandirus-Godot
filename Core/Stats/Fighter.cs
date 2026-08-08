@@ -54,6 +54,10 @@ public sealed partial class Fighter
 	/// </summary>
 	public double flightability = 1;
 
+	// O `Apeshitskill` (dominio sobre o Oozaru, 0 a 10) MORAVA AQUI e foi deletado: o Oozaru passou
+	// a usar o livro de maestrias das outras formas, por id de catalogo. Ver o bloco "O
+	// `Apeshitskill` FOI DELETADO" em `Core/Forms/Oozaru.cs`.
+
 	// =====================================================================
 	// STATS CRUS (vem do genoma) e seus tres canais de modificacao
 	//   Mod  = MULTIPLICA (transformacoes, itens permanentes)
@@ -95,6 +99,26 @@ public sealed partial class Fighter
 	// KI e vontade
 	// =====================================================================
 	public double baseKi = 100, KiMod = 1, kiAmp = 1, trueKiMod = 1, TMaxKi = 1;
+
+	/// <summary>
+	/// ============================ O TETO DE KI QUE CADA FORMA DA ============================
+	/// No BYOND a escada inteira levanta o teto de Ki enquanto esta ativa, via `trueKiMod`
+	/// (`supersaiyanbuff.dm:69-73`, `lssjbuff.dm:151-153`). O port nao tinha nada disso: as 36
+	/// entradas do catalogo valiam 1,0x.
+	///
+	/// SAO CAMPOS, E NAO CONSTANTES NO `FormaDef`, porque no original eles sao `mob/var` que SKILLS
+	/// reescrevem -- `heran.dm:135-136` poe `ssjenergymod = 3` e `ssj2energymod = 4`;
+	/// `saiyan legendary.dm:57` faz `lssjenergymod *= 1.5`, levando LSSJ3/4 a 6x. Congelar o numero
+	/// no catalogo desligaria essas skills EM SILENCIO, que e o pior modo de falha deste projeto.
+	///
+	/// Quem escolhe qual deles vale pra cada forma e `Catalogo.TetoDeKi`, derivado de (Linha,
+	/// Ordem) -- irmao de `Folha` e `NasceDaRaiva`.
+	/// ================================================================================
+	/// </summary>
+	public double ssjenergymod = 2, ssj2energymod = 3, ssj3energymod = 3.5, ssj4energymod = 4.5;
+
+	/// <summary>Os tres da linha Legendary: Wrathful, C-Type e Legendary pra cima.</summary>
+	public double rssjenergymod = 1.3, ussjenergymod = 2, lssjenergymod = 4;
 	public double KiUnlockPercent = 0.1, kicapacityMod = 1, kicapacity_remove = 1;
 	public double kiregenMod = 1, basekiregen = 1, Tkiregen = 1;
 	public double kicirculationskill, kigatheringskill, kicontrolskill;
@@ -206,7 +230,23 @@ public sealed partial class Fighter
 	public double formsBuff = 1;      // slot generico de forma
 	public double gateBuff = 1;       // Portao do Inferno
 	public double HellstarBuff = 1;   // Estrela Makyo
-	public double ue_ego_mult = 1;    // Unbound Ego (BP por membro ferido)
+	/// <summary>
+	/// O UNBOUND EGO (`ue_ego_mult`): multiplicador de BP pelos membros FERIDOS.
+	///
+	/// ============================ ELE ESTAVA DECLARADO E ORFAO ============================
+	/// O campo nasceu no porte da ficha e NINGUEM o lia -- nem o `PowerLevel()`, nem o servidor.
+	/// Um multiplicador que nunca entra na conta e indistinguivel de multiplicador nenhum: o
+	/// Unbound Ego "existia" e valia exatamente 1x. Agora o `PowerLevel()` o soma na base, junto
+	/// do Mistico, e quem o escreve e o `TickDoUnboundEgo`.
+	/// ==================================================================================
+	///
+	/// Campo PROPRIO e nao um dos `*Pcnt` porque ele e reescrito por INTEIRO a cada tique (o corpo
+	/// muda o tempo todo): somar num campo compartilhado o faria empilhar consigo mesmo, e
+	/// colidiria com o Mistico, que e de outra linhagem e pode coexistir.
+	///
+	/// 1 = sem bonus. Ver `Disciplinas.UnboundEgo`.
+	/// </summary>
+	public double ue_ego_mult = 1;
 	public double expandBuff = 1, giantFormbuff = 1, ArtifactsBuff = 1, eyeBuff = 1;
 	public double BPBoost = 1;        // Ascensao
 	public double powerMod = 1;       // Controle de Poder (pode ser < 1)
@@ -217,6 +257,7 @@ public sealed partial class Fighter
 	// =====================================================================
 	public double FuseDanceMod = 1, FPotaraMod = 1;
 	public double MysticPcnt = 1, MajinPcnt = 1, aurasBuff = 1;
+
 	public double KaioPcnt = 1;             // o Kaio-ken VIVO (a maestria e outro numero)
 	public double ParanormalBPMult = 1;     // Vampiro / Lobisomem
 

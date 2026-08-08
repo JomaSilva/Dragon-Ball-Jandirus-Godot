@@ -48,6 +48,21 @@ public sealed class CombatState
 	/// </summary>
 	public double ChanceEsquiva;
 
+	/// <summary>
+	/// REDUCAO DE DANO em porcento, 0-100. Zero pra todo mundo -- e a Aura of Destruction que enche
+	/// este numero (`UE_DR_BASE 15` + `UE_DR_PER_EN 0.10` x energia).
+	///
+	/// ============================ POR QUE UM CAMPO E NAO UM DESCONTO DEPOIS ============================
+	/// A tentacao e reduzir o dano DEPOIS do resolvedor, no servidor. Nao funciona: quando o
+	/// resolvedor devolve, o membro JA foi ferido, o corpo ja decidiu se quebrou e a morte ja foi
+	/// avaliada -- devolver vida depois seria curar, nao reduzir, e um golpe fatal continuaria fatal.
+	///
+	/// Entao a reducao mora aqui, igual a esquiva: o Core le, o servidor escreve. E o Core continua
+	/// sem saber que existe uma disciplina divina.
+	/// ============================================================================================
+	/// </summary>
+	public double ReducaoDeDano;
+
 	/// <summary>Zona que este lutador esta mirando: "cabeca", "torso", "bracos", "pernas".</summary>
 	public string? ZonaMirada;
 
@@ -214,15 +229,46 @@ public sealed class CombatState
 		SincronizarVida();
 	}
 
-	/// <summary>Morrer. O corpo volta inteiro: ninguem renasce sem braco.</summary>
-	public void Morrer()
+	/// <summary>
+	/// ALGUEM PODE NEGAR ESTA MORTE. Devolve true quando negou -- e ai o corpo NAO morre.
+	///
+	/// ============================ POR QUE UM GANCHO E NAO UM `if` ============================
+	/// Antes deste gancho havia SETE lugares chamando `Morrer()`: o resolvedor de socos, o dano em
+	/// area, a Final Explosion, o Kaio-ken que estoura, a volta no tempo, o verb de admin. Um seguro
+	/// contra a morte escrito em UM deles seria um seguro que funciona contra soco e nao contra
+	/// Kamehameha -- e o jogador nao teria como saber por que.
+	///
+	/// Entao a morte passou a ter uma porta so, e quem quiser barra-la se pendura AQUI. Hoje quem
+	/// se pendura e a Aura of Destruction (`GameServer.Disciplinas.TentarNegarMorte`), mas o desenho
+	/// nao sabe disso: o Core continua sem conhecer disciplina divina nenhuma.
+	/// ====================================================================================
+	/// </summary>
+	public Func<CombatState, bool>? NegarMorte;
+
+	/// <summary>
+	/// MORRER. Devolve **false** quando a morte foi NEGADA -- e ai nada mudou no corpo além do que
+	/// quem negou tenha feito.
+	///
+	/// Todo chamador precisa olhar o retorno antes de fazer o que vem depois (marcar o prazo de
+	/// renascer, pagar Zenkai, anunciar). Anunciar a morte de quem nao morreu e pior que nao ter o
+	/// seguro: o jogador ve "voce morreu" e continua de pe.
+	/// </summary>
+	/// <param name="ignorarSeguro">
+	/// Pula o <see cref="NegarMorte"/>. E pro verb de admin: uma ferramenta que uma mecanica de
+	/// jogador consegue bloquear deixa de ser ferramenta.
+	/// </param>
+	public bool Morrer(bool ignorarSeguro = false)
 	{
+		if (F.dead) return false;
+		if (!ignorarSeguro && NegarMorte?.Invoke(this) == true) return false;
+
 		F.dead = true;
 		F.KO = false;
 		Bloqueando = false;
 		NocauteRestante = 0;
 		EmCombate = 0;
 		LutandoDeVerdade = 0;
+		return true;
 	}
 
 	public void Reviver(double fracaoDeVida = 1, double carencia = 0)

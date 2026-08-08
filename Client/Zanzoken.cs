@@ -57,6 +57,7 @@ public partial class Zanzoken : Node2D
 	/// <summary>Quanto dura o vulto. O DM usa `spawn(10)` = 1 s; 0,55 s le melhor num jogo mais rapido.</summary>
 	private const double Duracao = 0.55;
 
+
 	/// <summary>
 	/// O CODIGO DESTE EFEITO mora num `.gdshader` de verdade -- ver o comentario de
 	/// <see cref="CharacterVisual"/>: efeito procedural nao se acerta lendo codigo, se acerta

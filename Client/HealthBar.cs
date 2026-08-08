@@ -12,9 +12,26 @@ namespace Jandirus.Client;
 /// Desenhada em codigo (`_Draw`) e nao com nodes de UI: sao dois retangulos, e um Control
 /// dentro do mundo 2D traria layout, tema e ancoragem pra resolver o que duas linhas resolvem.
 /// </summary>
-public partial class HealthBar : Node2D
+public partial class HealthBar : Node2D, ISobeComOCorpo
 {
     private const float Largura = 26f, Altura = 3f;
+
+    /// <summary>Acima da cabeca do sprite de 32px (que e `Centered`, entao o topo fica em -16).</summary>
+    internal const float AlturaBase = -22f;
+
+    /// <summary>
+    /// O DESLOCAMENTO DE ALTITUDE, escrito pela varredura do voo (<see cref="SubirComOVoo.Aplicar"/>),
+    /// que chega aqui porque esta classe declara <see cref="ISobeComOCorpo"/>.
+    ///
+    /// PROPRIEDADE, e nao `Position` na mao: os dois chamadores escreviam direto na posicao e
+    /// APAGAVAM a <see cref="AlturaBase"/> junto -- a barra caia da cabeca pro umbigo assim que a
+    /// pessoa saia do chao. Nunca apareceu porque no chao o deslocamento e zero e a conta dava no
+    /// mesmo por acidente. O balao de fala nasceu da mesma lista e teria herdado o defeito.
+    /// </summary>
+    public Vector2 Deslocamento
+    {
+        set => Position = new Vector2(0, AlturaBase) + value;
+    }
 
     /// <summary>Vida de 0 a 1. Acima do limiar de "cheia" a barra nao aparece.</summary>
     public float Vida
@@ -34,7 +51,7 @@ public partial class HealthBar : Node2D
 
     public override void _Ready()
     {
-        Position = new Vector2(0, -22);   // acima da cabeca do sprite de 32px
+        Position = new Vector2(0, AlturaBase);
         ZIndex = 20;
         Visible = false;
     }

@@ -65,6 +65,28 @@ public static class Habilidades
 		// drenando o Ki mais caro do jogo. Ver `GameServer.Voo.cs`.
 		// ==========================================================================================
 
+		// ============================ O OOZARU TINHA IDA E NAO TINHA VOLTA ============================
+		// `case "oozaru": ReverterOozaru(pl)` existe em `GameServer.Raciais.cs:159` desde que o Oozaru
+		// foi portado, e NINGUEM no jogo conseguia manda-lo: nao havia tecla, botao nem verb. Era o
+		// caso classico deste port -- a regra escrita de um lado do fio e sem chamador do outro.
+		//
+		// A IDA mora embaixo da lua (o botao vermelho do `LuaNoCeu`); a VOLTA mora aqui, e nao la, de
+		// proposito: virar e um gesto que se faz OLHANDO pra lua, voltar e uma acao que se procura no
+		// menu. Um mesmo lugar que troca de significado ensinaria que os dois sao a mesma coisa.
+		//
+		// A raca decide quem VE (o mesmo par de `GameServer.Combat.cs:107` -- e o unico jeito de haver
+		// um rabo pra a lua morder), e o estado decide quem pode APERTAR. Apagado e visivel de novo
+		// pelo motivo de sempre: quem nunca virou macaco descobre pelo botao cinza que da pra virar.
+		if (raca is "Saiyan" or "Halfbreed")
+			Verbos.Registrar(new Verbo(
+				"Voltar ao normal",
+				Verbos.Skills,
+				"Domina o Oozaru e volta ao seu corpo. Exige dominio sobre a fera -- e o Oozaru "
+				+ "Dourado nao volta por vontade: ele se cansa, ou vira Super Saiyajin 4.",
+				() => GameClient.Instance?.SendHabilidade("oozaru"),
+				() => GameClient.Instance is { } c
+					  && c.MeuOozaru != Jandirus.Core.Forms.FormaOozaru.Nao));
+
 		if (raca is "Namekian" or "Majin" or "BioAndroid" or "Shapeshifter")
 			Verbos.Registrar(new Verbo(
 				"Regenerar",
@@ -76,8 +98,72 @@ public static class Habilidades
 				// falta Ki e informacao util; sumir com ela e esconder o jogo.
 				() => GameClient.Instance is { } c && c.Sheet.MaxKi > 0 && c.Sheet.Ki >= c.Sheet.MaxKi * 0.7));
 
+		DasDisciplinas();
 		DasSkills();
 		DosEstilos();
+	}
+
+	/// <summary>
+	/// OS BOTOES DAS DISCIPLINAS DIVINAS -- Ultra Instinto e Poder da Destruicao.
+	///
+	/// ============================ CADA FAIXA APARECE QUANDO DESTRAVA ============================
+	/// A lista sai do <see cref="Jandirus.Core.Forms.Disciplinas"/>, entao acrescentar uma faixa la
+	/// e ve-la aqui e a mesma coisa -- pela mesma razao do catalogo de formas: uma habilidade que
+	/// existe no servidor e nao tem botao e uma habilidade que ninguem usa.
+	///
+	/// As PASSIVAS entram como texto, sem acao: elas nao tem o que apertar, mas o jogador precisa
+	/// saber que as tem. Passiva que ninguem sabe que ganhou e indistinguivel de passiva quebrada.
+	/// ========================================================================================
+	/// </summary>
+	public static void DasDisciplinas()
+	{
+		if (GameClient.Instance is not { } cli) return;
+		Jandirus.Net.Protocol.AtributosState a = cli.Atributos;
+		if (a.Disciplina == 0) return;
+
+		Jandirus.Core.Forms.DisciplinaDef def = a.Disciplina == 1
+			? Jandirus.Core.Forms.Disciplinas.UltraInstinct
+			: Jandirus.Core.Forms.Disciplinas.PoderDaDestruicao;
+		string pre = a.Disciplina == 1 ? "ui" : "ue";
+
+		foreach (Jandirus.Core.Forms.Degrau d in def.Degraus)
+		{
+			if (a.DiscReal < d.Pct) continue;   // ainda nao destravou
+
+			// O TOGGLE (faixa 0%) e a unica passiva com acao: ligar e desligar.
+			if (d.Pct <= 0)
+			{
+				Verbos.Registrar(new Verbo(
+					a.DiscLigada ? $"{d.Nome}  (ligada)" : d.Nome,
+					Verbos.Skills,
+					$"{d.Desc}\n\nEnergia atual {a.DiscAtual:0}% de {a.DiscReal:0}% -- ela CAI "
+					+ "enquanto estiver ligada e nao volta em combate. Transformar renova.",
+					() => GameClient.Instance?.SendHabilidade($"{pre}_toggle")));
+				continue;
+			}
+
+			if (!d.Ativa)
+			{
+				// PASSIVA JA GANHA: sem acao, so a ficha. `null` de acao = so leitura.
+				Verbos.Registrar(new Verbo($"{d.Nome}  ({d.Pct:0}%)", Verbos.Skills, d.Desc, null));
+				continue;
+			}
+
+			string id = d.Nome.Contains("Godly", StringComparison.OrdinalIgnoreCase)
+				? "ui_godlydisplay" : "ue_hakai";
+			Verbos.Registrar(new Verbo(d.Nome, Verbos.Skills, d.Desc,
+				() => GameClient.Instance?.SendHabilidade(id)));
+		}
+
+		// ENSINAR: quem sabe pode passar adiante. E o unico caminho de a disciplina existir no
+		// servidor -- ver a cadeia de ensino em `GameServer.Disciplinas.cs`.
+		Verbos.Registrar(new Verbo(
+			$"Ensinar {def.Nome}",
+			Verbos.Skills,
+			$"Ensina o {def.Nome} a quem estiver na sua frente. O aluno precisa de "
+			+ $"{Jandirus.Core.Forms.Disciplinas.GodKiParaAprender:0}% de maestria no ki divino e "
+			+ "nao pode ter trilhado a outra disciplina -- as duas se excluem, e nao ha volta.",
+			() => GameClient.Instance?.SendHabilidade($"{pre}_ensinar")));
 	}
 
 	/// <summary>

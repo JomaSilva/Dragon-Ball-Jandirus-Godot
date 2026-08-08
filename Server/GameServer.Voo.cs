@@ -215,28 +215,44 @@ public partial class GameServer
 			return;
 		}
 
-		// ============================ O CUSTO, LITERAL ============================
-		// `Stats.dm:411-427`. O gasto so acontece com `Ki > 5`; abaixo disso o original desliga o
-		// voo e diz "You're exhausted.". Admin nao paga -- e o `freeflight` de la.
-		// ==========================================================================
-		if (PagaPeloVoo(pl))
+		// ============================ EM CENA O VOO NEM COBRA NEM TREINA ============================
+		// Ver `GameServer.Formas.EmCena`. Quem se transforma no ar continua no ar -- e o terceiro dos
+		// relogios que mexem no MESMO Ki (o comentario do `Tick()` ja os chama de irmaos por isso).
+		// Sem esta guarda, congelar o dreno da forma nao resolveria nada pra quem estivesse voando:
+		// o custo do voo esvaziaria o tanque durante os 140 s da cena do SSJ3 do mesmo jeito.
+		//
+		// A PROFICIENCIA PARA JUNTO pelo mesmo motivo da maestria da forma: ela e paga POR ESTE custo
+		// (`flying.dm:34,40` -- voar e o unico jeito de ela subir), e manter o ganho com o preco
+		// congelado seria treino de graca por assistir a uma cinematica.
+		//
+		// A ALTURA, LOGO ABAIXO, CONTINUA SENDO CUIDADA: corpo preso nao pode cair do ceu, e descer
+		// nao custa Ki nenhum.
+		// =======================================================================================
+		if (!EmCena(pl))
 		{
-			if (pl.Ficha.Ki > Voo.KiQueDerruba)
+			// ============================ O CUSTO, LITERAL ============================
+			// `Stats.dm:411-427`. O gasto so acontece com `Ki > 5`; abaixo disso o original desliga o
+			// voo e diz "You're exhausted.". Admin nao paga -- e o `freeflight` de la.
+			// ==========================================================================
+			if (PagaPeloVoo(pl))
 			{
-				pl.Ficha.Ki -= Voo.CustoPorSegundo(HabilidadeDeVoo(pl), pl.VooRapido) * dt;
+				if (pl.Ficha.Ki > Voo.KiQueDerruba)
+				{
+					pl.Ficha.Ki -= Voo.CustoPorSegundo(HabilidadeDeVoo(pl), pl.VooRapido) * dt;
+				}
+				else
+				{
+					pl.Voando = false;
+					MandarEfeito(pl, "voo", 0);
+					Avisar(pl, "voce esta exausto.");
+					return;
+				}
 			}
-			else
-			{
-				pl.Voando = false;
-				MandarEfeito(pl, "voo", 0);
-				Avisar(pl, "voce esta exausto.");
-				return;
-			}
-		}
 
-		// A PROFICIENCIA SOBE VOANDO (`flying.dm:34,40`) -- e o unico jeito de ela subir.
-		pl.Ficha.flightability = Voo.SubirHabilidade(
-			HabilidadeDeVoo(pl), NivelEfetivoDeVoo(pl), pl.VooRapido, dt);
+			// A PROFICIENCIA SOBE VOANDO (`flying.dm:34,40`) -- e o unico jeito de ela subir.
+			pl.Ficha.flightability = Voo.SubirHabilidade(
+				HabilidadeDeVoo(pl), NivelEfetivoDeVoo(pl), pl.VooRapido, dt);
+		}
 
 		// ---------------------------- a altura ----------------------------
 		if (pl.QuerDescer)

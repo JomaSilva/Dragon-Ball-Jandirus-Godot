@@ -19,6 +19,25 @@ public partial class GameClient : Node
 	public bool Connected => _peer is { ConnectionState: ConnectionState.Connected };
 	public int LocalId { get; private set; }
 	public ZoneKey Zone { get; private set; }
+
+	/// <summary>
+	/// A ZONA DESTA TELA, ESCRITA A MAO. So a bancada -- ver `--diagforma`.
+	///
+	/// ============================ ISTO NAO E FORJAR A REGRA, E FORJAR O LUGAR ============================
+	/// A cinematica pergunta `Espaco.EhPlaneta(GameClient.Instance.Zone)` uma vez, no `_Ready`, e a
+	/// resposta decide se quem esta longe sente o eco do tremor ou NADA (ver `Transformacao._noPlaneta`).
+	/// O degrau do "nada" e o do ESPACO -- e a bancada roda sempre na Terra, entao ele nunca era medido.
+	/// Ficou anotado como buraco conhecido por uma fase inteira.
+	///
+	/// Escrever a zona aqui poe a bancada no OUTRO estado legitimo do jogo ("estou no espaco", que e o
+	/// que todo mundo que decola fica): o que roda depois e o codigo de producao inteiro, sem desvio.
+	/// O que NAO se pode fazer -- e por isso a distincao vale a nota -- e forjar a RESPOSTA: repetir o
+	/// `EhPlaneta` dentro do teste mediria o teste.
+	///
+	/// A escrita e sincrona e o valor volta no mesmo quadro; nada mais le a zona no meio disso.
+	/// ================================================================================================
+	/// </summary>
+	internal ZoneKey ZonaDeTeste { get => Zone; set => Zone = value; }
 	// guardados porque o World nasce DEPOIS do Joined: sem isto ele perde o evento e o
 	// jogador local nunca e criado (so os remotos, que chegam por snapshot)
 	public Vec2 LocalSpawn { get; private set; }
@@ -437,6 +456,24 @@ public partial class GameClient : Node
 	public List<CargoInfo> Cargos { get; private set; } = [];
 	public event Action? CargosMudaram;
 
+	/// <summary>
+	/// UMA PESSOA QUE EU CONHECO, do jeito que a aba People precisa dela.
+	///
+	/// O <c>Nome</c> vem VAZIO pra quem tem vinculo sem ficha (pontos de amizade com alguem que
+	/// voce apagou da lista, um rival que voce nunca anotou). A aba desenha esses como
+	/// <c>??? (assinatura)</c> -- e o mesmo que o `HtmlUI.dm:374` do original faz com quem voce
+	/// nao conhece.
+	/// </summary>
+	public readonly record struct ConhecidoInfo(string Assinatura, string Nome, string Raca,
+											   string Classe, int Familiaridade, byte Relacao,
+											   float Amizade, float Inimizade, bool Rival);
+
+	public List<ConhecidoInfo> Conhecidos { get; private set; } = [];
+
+	/// <summary>Quem pediu minha amizade e ainda espera resposta ("" = ninguem).</summary>
+	public string PedidoDeAmizade { get; private set; } = "";
+	public event Action? ConhecidosMudaram;
+
 	/// <summary>Chave vazia = so me manda a lista; com chave = reivindico aquele cargo.</summary>
 	public void SendCargo(string chave = "")
 	{
@@ -455,8 +492,54 @@ public partial class GameClient : Node
 	public List<ContaInfo> Contas { get; private set; } = [];
 	public event Action? ContasMudaram;
 
-	/// <summary>Alguem mudou de forma: quem, de que forma, pra qual, e se foi a PRIMEIRA vez.</summary>
-	public event Action<int, int, int, bool>? FormaMudou;
+	/// <summary>
+	/// Alguem mudou de forma: quem, de que forma, pra qual, QUANTA cena isso merece e se ele DOMINOU
+	/// a forma que esta assumindo.
+	///
+	/// O quarto parametro era um `bool primeira` e virou <see cref="Jandirus.Core.Forms.DegrauDeCena"/>:
+	/// sao TRES estados agora (estreia / encurtada / instantanea), e quem decide e o servidor -- ele e
+	/// quem tem a maestria no instante da troca. Ver `Cinematicas.Degrau`.
+	///
+	/// O QUINTO E OUTRA FAIXA DA MESMA BARRA (100% em vez de 50%) e viaja pelo mesmo motivo: a
+	/// maestria dos OUTROS nunca chega aqui -- `AtributosState.Maestrias` e a ficha de quem esta na
+	/// frente da tela. Sem ele, o cabelo de Grade 4 dos outros jogadores seria indeduzivel.
+	/// </summary>
+	public event Action<int, int, int, Jandirus.Core.Forms.DegrauDeCena, bool>? FormaMudou;
+
+	/// <summary>
+	/// ALGUEM VIROU (OU DEIXOU DE SER) OOZARU: quem, qual macaco, se foi a PRIMEIRA vez, e QUANTA
+	/// cena isso merece.
+	///
+	/// Irmao do <see cref="FormaMudou"/> e NAO um caso dele -- ver `Protocol.S2C.Oozaru`: quem
+	/// entrasse pelo canal de forma cairia no fallback por ordem do `Cinematicas.Para`, que nunca
+	/// devolve null, e o macaco gigante assistiria a cinematica de Super Saiyajin.
+	///
+	/// O tipo e o do Core (`FormaOozaru`) e nao um `byte` cru: quem escuta desenha de acordo com
+	/// regular ou dourado, e um byte solto obrigaria cada ouvinte a lembrar o que 1 e 2 querem
+	/// dizer. A traducao acontece uma vez, na leitura do pacote.
+	///
+	/// O QUARTO PARAMETRO NAO E REDUNDANTE COM O TERCEIRO: a cena do macaco toca toda vez (ela E a
+	/// transformacao, nao a comemoracao da estreia), entao `primeira` nunca serviu pra decidir cena --
+	/// ele so carimba o `** Nome **` no chat. Quem decide cena e o degrau, e ele so vale `Nenhuma`
+	/// quando o pacote e ESTADO e nao acontecimento: eu cheguei numa zona onde a fera ja existia.
+	/// </summary>
+	public event Action<int, Jandirus.Core.Forms.FormaOozaru, bool, Jandirus.Core.Forms.DegrauDeCena>? OozaruMudou;
+
+	/// <summary>
+	/// EM QUE MACACO **EU** ESTOU. Espelho local do ultimo <see cref="Protocol.S2C.Oozaru"/> que veio
+	/// com o meu id -- o servidor continua sendo a autoridade, isto aqui e leitura pra a tela.
+	///
+	/// ============================ POR QUE UM CAMPO, E NAO UMA DERIVACAO ============================
+	/// A regra do projeto e derivar antes de criar campo, e eu procurei de onde derivar: o
+	/// `AtributosState` carrega `FormaAtual` e as maestrias, mas NAO o Oozaru -- e nao carrega de
+	/// proposito, porque o Oozaru e estado PARALELO a escada (ver o cabecalho de `Core.Forms.Oozaru`)
+	/// e a ficha lenta chega de tres em tres segundos, tarde demais pra um botao que some no instante
+	/// em que a fera nasce. O `S2C.Oozaru` e a unica fonte, e ela e um EVENTO: quem chega depois nao
+	/// pode perguntar. Guardar o ultimo valor e o minimo pra o botao da lua e o "Voltar ao normal"
+	/// existirem sem cada um manter a sua propria copia (que foi como duas verdades nasceram antes).
+	/// ============================================================================================
+	/// </summary>
+	public Jandirus.Core.Forms.FormaOozaru MeuOozaru { get; private set; }
 
 	/// <summary>
 	/// QUE HORAS SAO NO UNIVERSO, em segundos. Quem manda e o servidor (`S2C.Ceu`), e entre um
@@ -637,6 +720,11 @@ public partial class GameClient : Node
 				string nome = reader.GetString();
 				LocalSpawn = spawn;
 				LocalName = nome;
+				// NINGUEM CONTINUA MACACO DESLOGADO -- `ServerPlayer.Oozaru` e estado VIVO e nasce
+				// `Nao` a cada entrada (`GameServer.cs:77`). Sem zerar aqui, trocar de personagem
+				// dentro da mesma sessao herdaria a fera do anterior e o botao da lua ficaria escondido
+				// pra um corpo que nunca se transformou.
+				MeuOozaru = Jandirus.Core.Forms.FormaOozaru.Nao;
 				Sheet = SheetState.Read(reader);
 				Visual = reader.GetAppearance();   // o servidor devolve a versao SANEADA
 				// A seed do universo vem JUNTO: a carta estelar precisa dela em terra firme, e nao
@@ -929,6 +1017,21 @@ public partial class GameClient : Node
 				break;
 			}
 
+			case Protocol.S2C.Conhecidos:
+			{
+				int n = reader.GetUShort();
+				PedidoDeAmizade = reader.GetString(64);
+				var lista = new List<ConhecidoInfo>(n);
+				for (int i = 0; i < n; i++)
+					lista.Add(new ConhecidoInfo(
+						reader.GetString(96), reader.GetString(64), reader.GetString(32),
+						reader.GetString(48), reader.GetUShort(), reader.GetByte(),
+						reader.GetFloat(), reader.GetFloat(), reader.GetBool()));
+				Conhecidos = lista;
+				ConhecidosMudaram?.Invoke();
+				break;
+			}
+
 			case Protocol.S2C.Feridas:
 			{
 				int quem = reader.GetInt();
@@ -954,7 +1057,46 @@ public partial class GameClient : Node
 				int quem = reader.GetInt();
 				int de = reader.GetUShort();
 				int para = reader.GetUShort();
-				FormaMudou?.Invoke(quem, de, para, reader.GetBool());
+				// O BYTE VIRA `DegrauDeCena` AQUI e so aqui -- a mesma escolha do `S2C.Oozaru` logo
+				// abaixo, e pelo mesmo motivo: um byte solto obrigaria cada ouvinte a lembrar o que 0,
+				// 1 e 2 querem dizer. Valor desconhecido cai em `Nenhuma`, que e o certo pra um pacote
+				// de estado: melhor uma transformacao sem cena do que um corpo preso por uma cena que
+				// este binario nao sabe tocar.
+				byte db = reader.GetByte();
+				var degrau = Enum.IsDefined(typeof(Jandirus.Core.Forms.DegrauDeCena), db)
+					? (Jandirus.Core.Forms.DegrauDeCena)db
+					: Jandirus.Core.Forms.DegrauDeCena.Nenhuma;
+				// O BIT DO DOMINIO vem depois do degrau. Ele NAO entrou no byte de cima justamente
+				// por causa do `Enum.IsDefined` tres linhas acima: um bit alto ali derrubaria o
+				// pacote inteiro pra `Nenhuma`. Ver `GameServer.PacoteDeForma`.
+				bool dominada = reader.GetBool();
+				FormaMudou?.Invoke(quem, de, para, degrau, dominada);
+				break;
+			}
+
+			case Protocol.S2C.Oozaru:
+			{
+				int quem = reader.GetInt();
+				// O BYTE VIRA `FormaOozaru` AQUI e so aqui. Um valor que o enum nao conheca cai em
+				// `Nao` -- e o certo pra um pacote de estado: melhor um corpo que voltou ao normal
+				// do que um macaco meio desenhado.
+				byte b = reader.GetByte();
+				var forma = Enum.IsDefined(typeof(Jandirus.Core.Forms.FormaOozaru), b)
+					? (Jandirus.Core.Forms.FormaOozaru)b
+					: Jandirus.Core.Forms.FormaOozaru.Nao;
+				// GUARDA ANTES DE AVISAR: quem escuta o evento pode consultar o estado no mesmo
+				// quadro, e um ouvinte que lesse `MeuOozaru` velho desenharia o quadro anterior.
+				if (quem == LocalId) MeuOozaru = forma;
+				bool estreou = reader.GetBool();
+				// O DEGRAU TAMBEM AQUI, e pelo mesmo motivo do `S2C.Forma` logo acima. Ele existe pra
+				// um caso so e ele e o que evita o remedio virar doenca: quando eu ENTRO numa zona onde
+				// alguem ja e macaco, o servidor manda `Nenhuma` e a fera aparece pronta -- sem eu
+				// assistir, preso, a uma transformacao que aconteceu antes de eu chegar.
+				byte gb = reader.GetByte();
+				var grau = Enum.IsDefined(typeof(Jandirus.Core.Forms.DegrauDeCena), gb)
+					? (Jandirus.Core.Forms.DegrauDeCena)gb
+					: Jandirus.Core.Forms.DegrauDeCena.Nenhuma;
+				OozaruMudou?.Invoke(quem, forma, estreou, grau);
 				break;
 			}
 

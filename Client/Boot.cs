@@ -38,6 +38,20 @@ public partial class Boot : Node2D
 
 	public override void _Ready()
 	{
+		// ============================ QUAL BUILD ESTA RODANDO ============================
+		// Existe porque nesta sessao a bancada rodou o binario ANTIGO depois de um erro de compile
+		// e deu "TUDO OK" -- e o dono e eu passamos uma rodada discutindo um conserto que nunca
+		// chegou na tela dele. A hora do .dll e a unica coisa que resolve isso sem adivinhacao:
+		// se a linha abaixo nao mudar depois de compilar, o jogo esta com a versao velha.
+		// ============================================================================
+		try
+		{
+			string dll = System.Reflection.Assembly.GetExecutingAssembly().Location;
+			if (dll.Length > 0 && System.IO.File.Exists(dll))
+				GD.Print($"[build] {System.IO.File.GetLastWriteTime(dll):dd/MM HH:mm:ss}  ({dll.GetFile()})");
+		}
+		catch (Exception e) { GD.Print($"[build] nao deu pra ler a data do binario: {e.Message}"); }
+
 		RegistrarTeclas();
 
 		Config = Settings.Carregar();
@@ -54,6 +68,15 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvisual") >= 0)
 		{
 			AddChild(new VisualDiag { Name = "Diag" });
+			return;
+		}
+
+		// A TINTA DO CABELO E DO RABO, medida na TELA. Vive aqui em cima com as outras bancadas sem
+		// mundo porque ela nao precisa de rede nem de zona -- so da folha, do shader e de um quadro
+		// desenhado. E ela PRECISA de janela: e a foto que responde.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtinta") >= 0)
+		{
+			AddChild(new RoboDeTinta { Name = "RoboDeTinta" });
 			return;
 		}
 
@@ -421,6 +444,46 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagferida") >= 0)
 			AddChild(new RoboDeFerida { Name = "RoboDeFerida" });
 
+		// --diagtintamundo: a irma da `--diagtinta` que roda DENTRO do jogo. A outra mede o cabelo e o
+		// rabo numa cena de laboratorio; esta mede o boneco de verdade, com o ceu do planeta mandando na
+		// luz, e e a unica que responde se o ambiente alcanca o personagem na arvore real.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtintamundo") >= 0)
+			AddChild(new RoboDeTintaNoMundo { Name = "RoboDeTintaNoMundo" });
+
+		// --diagforma: bancada dos EFEITOS DE FORMA -- raiozinhos, contorno brilhoso e luz da aura.
+		// Confere o que efeito visual esconde: shader que nao compilou, uniform que nao existe e
+		// campo do catalogo que nunca chegou no node. Ver RoboDeForma.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagforma") >= 0)
+			AddChild(new RoboDeForma { Name = "RoboDeForma" });
+
+		// --diagcolada: bancada da COLADA DE FORMA, e ela so tira FOTO. As checagens de colada do
+		// `--diagforma` (folha, tinta, pose, quadro) passaram verdes enquanto o dono via na tela um
+		// brilho cinza em camera lenta -- entao esta monta uma TIRA de quadros consecutivos e deixa o
+		// olho julgar cor e cadencia, que e o que numero nao responde. Ver RoboDeColada.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcolada") >= 0)
+			AddChild(new RoboDeColada { Name = "RoboDeColada" });
+
+		// --diagolhada: a bancada que so OLHA -- cabelo e pupila, recortados na CABECA e ampliados.
+		// Separada do `--diagcolada` porque aquela enquadra o corpo inteiro pra julgar CADENCIA de
+		// animacao, e a 40 px de mundo o cabelo tem 10 px na foto: cabe julgar "tem brilho", nao cabe
+		// julgar "este azul e marinho ou e ciano" -- que sao as tres reclamacoes de cor desta rodada.
+		// Ver RoboDeOlhada.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagolhada") >= 0)
+			AddChild(new RoboDeOlhada { Name = "RoboDeOlhada" });
+
+		// --diagnebulosa: bancada da NUVEM DE GALAXIA do Ultra Instinto. Separada do `--diagforma` de
+		// proposito: aquela mede catalogo e texto (e o `Posar` dela pinta o node direto, sem rede),
+		// esta veste a forma PELA REDE e tira a foto. Ver RoboDeNebulosa.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagnebulosa") >= 0)
+			AddChild(new RoboDeNebulosa { Name = "RoboDeNebulosa" });
+
+		// --diagbalao: bancada do BALAO DE FALA sobre a cabeca. Confere o portao de canal (OOC nao
+		// e voz de personagem), a busca do corpo pelo NOME que vem no pacote, a quebra de linha, a
+		// substituicao com piso de leitura, e as duas coisas que so aparecem com o corpo no ar ou
+		// em cena: a subida junto de quem voa e a fala de cinematica alheia. Ver RoboDeBalao.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbalao") >= 0)
+			AddChild(new RoboDeBalao { Name = "RoboDeBalao" });
+
 		// --porta: bancada AO VIVO das portas. Anda contra a porta mais proxima e narra o que
 		// mede -- fechada bloqueia e cega, abriu ao encostar, atravessou, fechou sozinha. Sobe
 		// junto do `--portateste` no servidor, que faz nascer colado numa.
@@ -460,6 +523,50 @@ public partial class Boot : Node2D
 		// fixo e que a nuvem apaga a lua. Anda junto do `--climateste <tipo>` no servidor.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagclima") >= 0)
 			AddChild(new RoboDeClima { Name = "RoboDeClima" });
+
+		// --dois <a|b>: bancada de DOIS PROCESSOS. `a` se transforma, `b` olha o corpo alheio e
+		// fotografa. Os tres defeitos de corpo REMOTO (forma que nao chega a quem entrou depois,
+		// contorno aceso sem Ki, aura solta) nao aparecem com um cliente so -- as bancadas de um
+		// processo forjam fantasmas e chamam os handlers na mao, o que prova a funcao e nao a
+		// corrida entre o canal confiavel e o snapshot. Ver RoboDeDoisCorpos.
+		if (Arg(OS.GetCmdlineArgs(), "--dois") is { } papel)
+		{
+			var rd = new RoboDeDoisCorpos
+			{
+				Name = "RoboDeDoisCorpos",
+				Papel = papel,
+				Forma = Arg(OS.GetCmdlineArgs(), "--doisforma") ?? "",
+				Rotulo = Arg(OS.GetCmdlineArgs(), "--doisrotulo") ?? papel,
+				Conta = Arg(OS.GetCmdlineArgs(), "--conta") ?? "",
+			};
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--doisatraso"),
+								System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double segD))
+				rd.Atraso = segD;
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--doisvoar"),
+								System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double segV))
+				rd.Voar = segV;
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--doiscarga"),
+								System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double segC))
+				rd.Carga = segC;
+			// `--doissoltar`: o segundo em que o A larga o C. E a VOLTA da regra do contorno -- sem
+			// soltar, a bancada mede o interruptor acendendo e nunca desligando com a forma no corpo.
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--doissoltar"),
+								System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double segS))
+				rd.Soltar = segS;
+			// `--doisficha`: o segundo em que a FICHA volta a passar por cima da forma. No A e a hora do
+			// `admin_ir` (que faz o servidor reemitir o `PeerLook`); no B e a expectativa de que ele
+			// chegue num corpo que ja existe. Vai nos DOIS processos -- ver `RoboDeDoisCorpos.Ficha`.
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--doisficha"),
+								System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double segF))
+				rd.Ficha = segF;
+			if (int.TryParse(Arg(OS.GetCmdlineArgs(), "--doisfim"), out int nFim)) rd.Fim = nFim;
+			AddChild(rd);
+		}
 
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagclash") >= 0)
 		{
@@ -515,9 +622,23 @@ public partial class Boot : Node2D
 		string[] args = OS.GetCmdlineArgs();
 
 		bool hospedando = Array.IndexOf(args, "--host") >= 0;
+
+		// ============================ `--rede <n>`: A PORTA, PRAS DUAS PONTAS DE UMA VEZ ============================
+		// A porta era a constante `Protocol.DefaultPort` nos dois lados, e por isso UMA bancada por
+		// maquina: enquanto um `--host` estivesse no ar, nenhuma outra subia -- e as bancadas nao saem
+		// sozinhas. (O `--port` que ja existia so serve pro servidor DEDICADO, `--server`; o cliente
+		// continuava discando 7777, entao ele nunca fechava um par.) O nome nao e `--porta`: aquele ja
+		// e a bancada das PORTAS de construcao, e reusa-lo trocaria uma bancada pela outra em silencio.
+		//
+		// UM SO NUMERO PRO SERVIDOR E PRO CLIENTE de proposito: quem hospeda disca em si mesmo, e dois
+		// campos separados so poderiam divergir.
+		// ==========================================================================================
+		int porta = Jandirus.Net.Protocol.DefaultPort;
+		if (int.TryParse(Arg(args, "--rede"), out int pRede) && pRede > 0) porta = pRede;
+
 		// `--host` sobe o servidor e conecta em 127.0.0.1 logo abaixo -- e o endereco que faz o
 		// servidor reconhecer o dono como admin, sem marca nenhuma daqui.
-		if (hospedando && Jandirus.Server.GameServer.Instance is { } srvAuto) srvAuto.Start();
+		if (hospedando && Jandirus.Server.GameServer.Instance is { } srvAuto) srvAuto.Start(porta);
 
 		int i = Array.IndexOf(args, "--connect");
 		string alvo = i >= 0 && i + 1 < args.Length ? args[i + 1] : (hospedando ? "127.0.0.1" : "");
@@ -527,7 +648,7 @@ public partial class Boot : Node2D
 		_autoRaca = Arg(args, "--raca") ?? "Human";
 		_auto = true;
 
-		GameClient.Instance?.Conectar(alvo, Jandirus.Net.Protocol.DefaultPort,
+		GameClient.Instance?.Conectar(alvo, porta,
 			Arg(args, "--conta") ?? _autoNome, Arg(args, "--senha") ?? "teste");
 	}
 
@@ -565,7 +686,15 @@ public partial class Boot : Node2D
 		string[] linhagens = CharacterDraft.EscolhasDeClasse(_autoRaca);
 		if (linhagens.Length > 0) ficha.ChosenClass = linhagens[0];
 
-		GameClient.Instance?.CriarPersonagem(0, ficha, new Jandirus.Core.Appearance.Appearance());
+		// ============================ O CABELO DA BANCADA E O DO GOKU ============================
+		// Pedido do dono, e ele tem razao: a aparencia padrao e `Bald`, e um teste de transformacao
+		// num personagem CARECA nao prova que o cabelo troca de cor -- nao ha cabelo pra trocar.
+		// Com o do Goku, a passagem pra dourado (e o piscar da cinematica do SSJ1) fica visivel na
+		// foto, que e o unico juiz de efeito visual.
+		// ====================================================================================
+		var visual = new Jandirus.Core.Appearance.Appearance { Cabelo = "Goku" };
+
+		GameClient.Instance?.CriarPersonagem(0, ficha, visual);
 	}
 
 	/// <summary>

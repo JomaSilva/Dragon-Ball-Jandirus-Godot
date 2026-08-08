@@ -33,6 +33,35 @@ public partial class LocalPlayer : Node2D
 	public ZoneCollision? Mapa;
 
 	private CharacterVisual _visual = null!;
+
+	/// <summary>
+	/// ============================ DERIVADO, PORQUE 40 JA FICOU VELHO ============================
+	/// Segundos que o corpo pode ficar sem poder ANDAR antes de o cliente destravar sozinho. E uma
+	/// rede: "preso pra sempre" nao pode ser um estado alcancavel.
+	///
+	/// Isto era `40.0` cravado, com um comentario meu dizendo "generoso: a cena mais longa do jogo
+	/// prende 32". Era verdade no dia em que escrevi. Depois as cenas voltaram aos tempos reais do
+	/// DM e a do SSJ3 passou a prender 140 s -- entao a rede disparava aos 40 e devolvia o
+	/// controle NO MEIO da cinematica. O dono viu: "durante a cinematica do nada o jogo libera ele
+	/// andar dnv".
+	///
+	/// O salva-vidas virou o afogamento, e por um motivo que o proprio projeto ja sabia evitar: o
+	/// outro cao de guarda (`Transformacao.PrazoMaximoPreso`) e `CenaMaisLonga * 2` e acompanhou a
+	/// mudanca sozinho. Este ficou pra tras porque eu escrevi um NUMERO onde cabia uma CONTA.
+	///
+	/// Agora ele sai do catalogo: o dobro da cena mais longa, com piso de 40 s pra o caso de
+	/// alguem encurtar tudo. Cena nova, por mais longa que seja, ja nasce coberta.
+	/// ================================================================================
+	/// </summary>
+	/// <summary>A rede, pra bancada afirmar que ela cobre a cena mais longa.</summary>
+	public static double SegundosAteDestravarDeTeste => SegundosAteDestravar;
+
+	private static double SegundosAteDestravar =>
+		Math.Max(40.0, Jandirus.Core.Forms.Cinematicas.CenaMaisLonga * 2.0);
+
+	private double _presoHa;
+
+
 	private Facing _facing = Facing.South;
 	private Vec2 _pos;
 	private double _sendAccumulator;
@@ -113,8 +142,6 @@ public partial class LocalPlayer : Node2D
 	/// treme junto, porque a camera segue a altura.
 	/// </summary>
 	public static int QuadrosDeAltura, QuadrosParadosDeAltura;
-	/// <summary>A camera deste corpo. Cacheada: procurar por tipo todo quadro nao vale a pena.</summary>
-	private Camera2D? _cam;
 
 	/// <summary>
 	/// A altura DESENHADA, em pixels. E o que o mundo usa pra nevoa, veu e zoom, e o que a bancada
@@ -131,6 +158,79 @@ public partial class LocalPlayer : Node2D
 	/// <summary>O servidor mandou a minha altura. Ver o laco de snapshot em <c>World</c>.</summary>
 	public void ReceberAltura(bool voando, float altitude)
 		=> _altitude = voando ? altitude : 0f;
+
+	/// <summary>
+	/// ============================ O SERVIDOR ESTA DIRIGINDO ESTE CORPO ============================
+	/// Chega no snapshot, 30x/s, junto da altura (ver `World.AoReceberSnapshot`). Enquanto
+	/// <paramref name="semRedeas"/> for verdade este corpo e PASSAGEIRO: a posicao vira alvo a
+	/// perseguir e a pose vem de quem dirige, exatamente como um `RemotePlayer` sempre fez.
+	///
+	/// O ESTADO NAO TEM PRAZO NEM CONTADOR de proposito. Ele e reafirmado a cada pacote, entao no
+	/// quadro em que o servidor parar de dizer "sem redeas" o corpo volta a ser do dono -- e nao ha
+	/// como isto virar a trava permanente que ja travou jogador neste projeto (o portao global de
+	/// input, cujo contador `static` sobrevivia ate ao respawn -- ver `_Process`).
+	/// ============================================================================================
+	/// </summary>
+	public void ReceberPosse(bool semRedeas, Vec2 pos, Facing facing, bool andando, Protocol.Pose pose)
+	{
+		if (semRedeas && !_semRedeas)
+		{
+			// COMECOU AGORA. O corpo local guarda estados que o dono ligou e que o servidor acabou de
+			// desligar sozinho (`TomarAsRedeas` zera a guarda). Sem esta faxina, largar as teclas
+			// depois da possessao nao geraria pacote -- as duas pontas discordariam calado.
+			_alvoDaPosse = pos;               // comeca perseguindo de onde estou: nada de salto inicial
+			_guarda = false;
+			_correndo = false;
+			if (Destino != null) { Destino = null; Chat.Sistema("piloto automatico desligado."); }
+			Chat.Sistema("o seu corpo nao te obedece.");
+		}
+
+		_semRedeas = semRedeas;
+		if (!semRedeas) return;
+
+		_alvoDaPosse = pos;
+		_facing = facing;      // pra as redeas voltarem com o corpo olhando pra onde ele esta olhando
+		_andandoNaPosse = andando;
+
+		// A POSE DE GOLPE E EVENTO, nao estado: reinicia a animacao a cada soco novo, senao uma
+		// sequencia de golpes vira um ciclo continuo. E o MESMO tratamento do `RemotePlayer.Receive`
+		// -- e tem que ser, porque quem esta desenhando e o mesmo servidor pros dois.
+		if (pose == Protocol.Pose.Atacando && _poseDaPosse != pose)
+			_visual.RestartState("attack", Protocol.AttackPoseMs / 1000.0);
+		else _visual.SetPose(pose);
+		_poseDaPosse = pose;
+	}
+
+	/// <summary>Quem dirige este corpo e o servidor. Ver <see cref="ReceberPosse"/>.</summary>
+	private bool _semRedeas;
+
+	/// <summary>Ate onde quem dirige ja levou o corpo -- o cliente persegue este ponto.</summary>
+	private Vec2 _alvoDaPosse;
+
+	/// <summary>Andando e pose ditados por quem dirige. A animacao sai daqui, e nao do teclado.</summary>
+	private bool _andandoNaPosse;
+	private Protocol.Pose _poseDaPosse = Protocol.Pose.Normal;
+
+	/// <summary>
+	/// Quanto o corpo persegue, por segundo, o ponto que o servidor mandou.
+	///
+	/// PERSEGUIR e nao teleportar: o ponto chega a 30 Hz e a tela roda acima disso, entao aplica-lo
+	/// cru deixaria a maioria dos quadros parada e o resto saltando -- e como a camera e FILHA deste
+	/// no, o que treme nao e o boneco, e o mundo inteiro. E o mesmo argumento (e o mesmo remedio) da
+	/// altura de voo, ver <see cref="PerseguicaoDaAltura"/>.
+	///
+	/// 20 deixa o atraso permanente em `velocidade / taxa` -- uns 10 px na velocidade de caminhada,
+	/// constante, que nao se acumula. Salto grande (teleporte, troca de zona) nao se interpola: ver
+	/// <see cref="SaltoDaPosse"/>.
+	/// </summary>
+	private const float PerseguicaoDaPosse = 20f;
+
+	/// <summary>
+	/// Acima disto o ponto novo nao e perseguido, e CRAVADO. E o mesmo corte do `RemotePlayer`:
+	/// corpo nenhum anda tanto entre dois snapshots, entao so ha uma explicacao possivel (teleporte,
+	/// volta do planeta, troca de zona) -- e teleporte nao se desliza.
+	/// </summary>
+	private const float SaltoDaPosse = 160f;
 
 	public override void _Ready()
 	{
@@ -232,6 +332,57 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	public override void _Process(double delta)
 	{
+		// ============================ A REDE PRECISA DE UM LUGAR SEM SAIDA ============================
+		// A vigilancia da tranca estava no caminho de FISICA -- e aquele metodo tem `return` antes
+		// dela (corpo arremessado, e o ramo de voo). Bastava o jogador estar num desses estados pra
+		// a rede nunca rodar, que e o pior lugar possivel pra por uma rede: ela falharia exatamente
+		// nos casos estranhos, que sao os que produzem o defeito.
+		// ================================================================================================
+		Transformacao.VigiarTranca(delta);
+
+		// ============================ SEM AS REDEAS, ESTE CORPO E PASSAGEIRO ============================
+		// Enquanto o servidor dirige (a fera solta, e qualquer possessao que venha depois) este quadro
+		// nao le UMA tecla: o vetor de andar, o SHIFT, o piloto automatico e o `LerAcoes` ficam todos
+		// abaixo deste ponto. E a diferenca entre "o dono nao consegue mexer" e "o dono mexe e nao
+		// adianta", que foi o que ele viu: *"eu ainda posso tentar mexer ai ele faz animaçao mas
+		// continua deslizando"* -- a tecla dava o passo local (animacao de andar) e a posicao vinha da
+		// IA (deslize). Duas fontes escrevendo o mesmo corpo.
+		//
+		// A POSE VEM DE QUEM DIRIGE, e e isso que mata o deslize: a animacao deixa de ser medida no
+		// passo do teclado (`andando = _pos - antes`, la embaixo) e passa a ser o `Moving` que a IA
+		// escreveu -- o MESMO campo pelo qual todo mundo ja via o macaco andando na tela deles.
+		//
+		// A REDE FICA ACIMA de proposito (`VigiarTranca`): este `return` e mais um caminho sem saida, e
+		// a rede num caminho sem saida nao vigia nada.
+		//
+		// NAO MANDA `SendState`. Nao ha o que declarar -- o servidor recusaria o passo e responderia
+		// uma correcao por PACOTE (trinta por segundo) so pra repetir o que o snapshot ja diz.
+		if (_semRedeas)
+		{
+			Vec2 falta = _alvoDaPosse - _pos;
+			_pos = falta.LengthSquared > SaltoDaPosse * SaltoDaPosse
+				? _alvoDaPosse                                    // teleporte nao se desliza
+				: _pos + falta * MathF.Min(1f, (float)(delta * PerseguicaoDaPosse));
+			Desenhar();
+			_visual.SetMotion(_facing, _andandoNaPosse);
+
+			// O rastro e o borrao de corrida sao do DONO correndo. Possessao pode durar um minuto, e
+			// um rastro pendurado nesse tempo todo e um efeito que ninguem sabe de onde veio.
+			_visual.Correr(false, Vector2.Zero);
+			if (GetNodeOrNull<RastroDeCorrida>("Rastro") is { } rastroParado) rastroParado.Definir(false);
+
+			// A ALTURA CONTINUA ANDANDO. Ela e do servidor tambem, mas quem a DESENHA e este quadro --
+			// pular estas duas linhas congelaria a sombra e o zoom de quem foi possuido no ar.
+			SeguirAltura(delta);
+			AplicarAltura();
+
+			// A UNICA TECLA QUE CONTINUA VALENDO: M. Meditar e a saida da fera (o `angertick` do DM),
+			// e o servidor deixa esse pacote passar justamente pra que a paralisia tenha resposta.
+			// Sem esta linha o dono ficaria com a saida bloqueada pelo proprio cliente.
+			LerAtividade(andando: false, soASaida: true);
+			return;
+		}
+
 		// ESCREVENDO NO CHAT NAO SE JOGA. `Input.IsActionPressed` le a TECLA FISICA e nao sabe
 		// que ha um campo de texto com foco -- sem esta guarda, escrever "sai da frente" faz o
 		// personagem andar pra direita (D), treinar (T) e mirar na cabeca (1).
@@ -245,7 +396,24 @@ public partial class LocalPlayer : Node2D
 		// NO EMBATE O CORPO NAO E MEU. Durante o ZanzoClash quem escreve a posicao e o servidor,
 		// que recoloca os dois a cada cruzamento -- se as teclas continuassem valendo, o jogador
 		// brigaria com o proprio efeito e receberia trinta correcoes por segundo.
+		// A CINEMATICA DE ESTREIA PRENDE O CORPO -- o `move = 0` do DM. So pelo tempo de
+		// `Cinematica.SegundosPreso`, que vai ate o beat em que a forma FICA -- ver o comentario la
+		// sobre por que o prazo e a soma dos `sleep` do DM. Eu tinha escrito aqui que "vinte segundos
+		// parado com alguem socando voce nao e cinematografia" e por isso comprimi as cenas; o dono
+		// decidiu o contrario, com a pergunta na mao: prazos como o DM, e o corpo preso o tempo
+		// inteiro da transformacao -- 140 s no SSJ3. Quem joga decide o que e longo demais.
+		// ============================ SO O MOVIMENTO E BLOQUEADO ============================
+		// Eu tinha trocado isto por um portao GLOBAL que barrava as 15 leituras de tecla deste
+		// arquivo. Ninguem pediu: o dono queria a aura consertada, e disse depois, com todas as
+		// letras, que "o personagem ficar proibido de se mover na animaçao ja tava funcionando".
+		//
+		// O portao global tinha um modo de falha que este nao tem: o contador e `static` e
+		// sobrevive a troca de zona, a morte e ao respawn, entao um unico vazamento travava o
+		// jogador PARA SEMPRE -- e foi o que aconteceu. Zerar so o vetor de andar, no pior caso,
+		// deixa alguem parado enquanto a cena roda.
+		// ================================================================================
 		var input = _caido || _carregando || Foco.Digitando || GameClient.Instance?.EmClash == true
+			|| Transformacao.PrendendoOCorpo
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			: new Vector2(
 				Godot.Input.GetActionStrength("move_right") - Godot.Input.GetActionStrength("move_left"),
@@ -353,8 +521,40 @@ public partial class LocalPlayer : Node2D
 		// fica parado de pe em vez de marchar sem sair do lugar.
 		bool andando = (_pos - antes).LengthSquared > 0.01f;
 
-		if (tentandoAndar) _facing = MoveRules.FacingFrom(dir, _facing);
-		_visual.SetMotion(_facing, andando);
+		// ============================ A CINEMATICA MANDA NA POSE, E MANDA TODO QUADRO ============================
+		// Durante a cena de estreia o corpo fica PARADO e virado pra frente -- o `move = 0;
+		// dir = SOUTH` do DM.
+		//
+		// A guarda precisa estar AQUI, e nao numa chamada unica no comeco da cena. Esta linha roda
+		// a cada quadro e reescreveria qualquer pose que a cinematica tivesse posto -- e o
+		// resultado era o personagem "andando" durante a transformacao inteira. E o MESMO tombo que
+		// o comentario do sprite de voo, umas linhas abaixo, ja documenta ter acontecido antes: o
+		// corpo local decide a propria pose por quadro, entao quem quiser manda-la tem que entrar
+		// no quadro.
+		// ================================================================================================
+		// O RELOGIO DA SAIDA DE EMERGENCIA. Ver `SegundosAteDestravar`.
+		if (Transformacao.PrendendoOCorpo)
+		{
+			_presoHa += delta;
+			if (_presoHa > SegundosAteDestravar)
+			{
+				Transformacao.DestravarTudo($"o corpo local ficou {_presoHa:0}s sem aceitar comando");
+				_presoHa = 0;
+				_visual.TravarPose(false);   // a pose tambem: as duas trancas andam juntas
+			}
+		}
+		else _presoHa = 0;
+
+		if (Transformacao.PrendendoOCorpo)
+		{
+			_facing = Facing.South;
+			_visual.SetMotion(Facing.South, moving: false);
+		}
+		else
+		{
+			if (tentandoAndar) _facing = MoveRules.FacingFrom(dir, _facing);
+			_visual.SetMotion(_facing, andando);
+		}
 
 		// O BORRAO SEGUE A INTENCAO (`_correndo`), e nao o deslocamento quadro a quadro.
 		//
@@ -401,20 +601,6 @@ public partial class LocalPlayer : Node2D
 	}
 
 	/// <summary>
-	/// LEVANTA O DESENHO DO CORPO, e so o desenho.
-	///
-	/// ============================ O QUE NAO PODE SUBIR JUNTO ============================
-	/// O NODE fica onde esta. Ele e a posicao de verdade: e dele que saem a colisao, o alcance do
-	/// soco, o Y-sort e a camera. Subir o node "pra parecer alto" moveria o corpo pra valer -- o
-	/// jogador acertaria socos a 160 px de onde o servidor acha que ele esta, e a briga com o
-	/// servidor voltaria por um caminho novo.
-	///
-	/// Entao o deslocamento vai nos FILHOS visuais: o desenho do personagem e a aura. A sombra fica
-	/// na origem de proposito -- e o vao entre ela e o corpo que conta a altura (ver SombraDeVoo).
-	/// A barra de vida tambem sobe, senao ela ficaria plantada no chao longe do dono.
-	/// ===================================================================================
-	/// </summary>
-	/// <summary>
 	/// PERSEGUE a altura do servidor, por quadro. Ver <see cref="_altitudeNaTela"/>.
 	///
 	/// A sonda conta so os quadros em que ela DEVERIA estar andando (ainda ha distancia a cobrir) --
@@ -440,31 +626,34 @@ public partial class LocalPlayer : Node2D
 		}
 	}
 
+	/// <summary>
+	/// LEVANTA O DESENHO DO CORPO, e so o desenho -- o node fica onde esta (ver
+	/// <see cref="SubirComOVoo.Aplicar"/> pra o porque).
+	///
+	/// ============================ AQUI HAVIA UMA LISTA DE NOMES, E ELA ERA O DEFEITO ============================
+	/// Este metodo enumerava a mao quem sobe: `"Aura"`, `"Vida"`, `"Balao"`, `"Carga"`... e esqueceu
+	/// alguem QUATRO vezes. O proprio comentario que estava aqui registrava tres delas antes de a
+	/// quarta (a nebulosa do Ultra Instinto) ser encontrada por um robo. Uma lista escrita a mao nao
+	/// tem como saber que nasceu um node novo em `World.AoEntrar`: o unico aviso e o defeito na tela.
+	///
+	/// A pergunta foi invertida -- **todo filho visual sobe, menos quem declarar que nao** -- e a
+	/// resposta mudou de lugar: ela mora agora na declaracao de cada node (`IFicaNoChao`), que e onde
+	/// quem escreve o node esta olhando. O node novo entra na conta sozinho, sem tocar neste arquivo.
+	///
+	/// A CAMERA SUMIU DAQUI E CONTINUA SUBINDO. Ela tinha uma linha propria (achada por tipo, porque
+	/// nasce sem nome); agora e so mais um filho `Node2D` e cai no caso normal da varredura.
+	/// ========================================================================================================
+	/// </summary>
 	private void AplicarAltura()
 	{
 		if (Mathf.IsEqualApprox(_altitudeNaTela, _altitudeDesenhada)) return;
 		_altitudeDesenhada = _altitudeNaTela;
 
-		var deslocamento = new Vector2(0, -_altitudeNaTela * Voo.EscalaNaTela);
-		_visual.Position = deslocamento;
-		if (GetNodeOrNull<Aura>("Aura") is { } aura) aura.Position = deslocamento;
-		if (GetNodeOrNull<HealthBar>("Vida") is { } vida) vida.Position = deslocamento;
-		if (_sombra != null) _sombra.Altura = _altitudeNaTela;
+		SubirComOVoo.Aplicar(this, new Vector2(0, -_altitudeNaTela * Voo.EscalaNaTela));
 
-		// ============================ A CAMERA VAI JUNTO, E TEM QUE IR ============================
-		// A camera e FILHA deste no, e o no fica na posicao do CHAO -- e o corpo e desenhado ate
-		// 160 px acima dela. Sem esta linha, subir empurrava o personagem pra borda de cima da tela
-		// e depois pra fora dela: o dono fotografou o boneco encostado no topo com o centro da tela
-		// vazio. O que estava centralizado era a SOMBRA, nao ele.
-		//
-		// Move-se a POSICAO da camera, e nao o `Offset`: o tremor de impacto ja escreve o Offset
-		// todo quadro (ver `World._Process`), e dois donos pro mesmo campo e briga garantida.
-		// =========================================================================================
-		// POR TIPO, e nao pelo nome: a camera e criada em `World` sem `Name`, entao ela se chama o
-		// que o Godot resolver ("Camera2D", "@Camera2D@3"...). Procurar pelo nome funcionaria hoje e
-		// sairia calado no dia em que alguem a batizasse.
-		_cam ??= this.GetChildren().OfType<Camera2D>().FirstOrDefault();
-		if (_cam != null) _cam.Position = deslocamento;
+		// A SOMBRA E O CONTRARIO DE TODO O RESTO, e por isso ela tem canal proprio: o vao entre ela e o
+		// corpo E a altura na tela. Ela declara `IFicaNoChao`, entao a varredura acima passa por ela.
+		if (_sombra != null) _sombra.Altura = _altitudeNaTela;
 	}
 
 	/// <summary>O no fica sempre em pixel inteiro -- ver o cabecalho da classe.</summary>
@@ -586,25 +775,12 @@ public partial class LocalPlayer : Node2D
 
 			_ataqueAte = dura;
 			// a animacao e ESTICADA pra caber no golpe: com a cadencia nova (~0,33 s) o ciclo
-			// que veio do .dmi (~0,67 s) nao terminaria antes do proximo soco
+			// que veio do .dmi (~0,8 s) nao terminaria antes do proximo soco
 			_visual.RestartState("attack", dura);
 			GameClient.Instance?.SendAction(golpe);
 		}
 
-		Protocol.Activity nova = _atividade;
-		if (Foco.Digitando) { }   // "treinar" e "meditar" sao T e M: no meio de uma frase, nao
-		else if (Godot.Input.IsActionJustPressed("train"))
-			nova = _atividade == Protocol.Activity.Treinando ? Protocol.Activity.Parado : Protocol.Activity.Treinando;
-		else if (Godot.Input.IsActionJustPressed("meditate"))
-			nova = _atividade == Protocol.Activity.Meditando ? Protocol.Activity.Parado : Protocol.Activity.Meditando;
-
-		if (andando) nova = Protocol.Activity.Parado;   // nao se treina correndo
-
-		if (nova != _atividade)
-		{
-			_atividade = nova;
-			GameClient.Instance?.SendActivity(nova);
-		}
+		LerAtividade(andando);
 
 		// a pose de soco tem prioridade enquanto dura
 		if (_ataqueAte > 0) return;
@@ -635,6 +811,50 @@ public partial class LocalPlayer : Node2D
 			_ => "default",
 		});
 	}
+
+	/// <summary>
+	/// T TREINA, M MEDITA.
+	///
+	/// ============================ POR QUE ISTO SAIU DO `LerAcoes` ============================
+	/// Porque MEDITAR E A SAIDA DA FERA. O `TickDoOozaru` derruba a forma pela raiva de quem esta
+	/// meditando -- e a unica resposta de quem perdeu o controle sem ter pericia --, e o servidor
+	/// deixa o pacote de atividade passar de proposito. Se a unica porta desse teclado ficasse
+	/// dentro do `LerAcoes` (que a possessao pula inteiro), a saida existiria no servidor e seria
+	/// inalcancavel pelo jogador: uma regra escrita e desligada, que e a falha assinatura deste port.
+	///
+	/// <paramref name="soASaida"/> corta o TREINO e deixa so a meditacao: treinar com uma fera
+	/// dirigindo o seu corpo nao e um estado que o jogo deva aceitar, e o servidor renderia BP por
+	/// ele.
+	/// ====================================================================================
+	/// </summary>
+	private void LerAtividade(bool andando, bool soASaida = false)
+	{
+		Protocol.Activity nova = _atividade;
+		if (Foco.Digitando) { }   // "treinar" e "meditar" sao T e M: no meio de uma frase, nao
+		else if (!soASaida && Godot.Input.IsActionJustPressed("train"))
+			nova = _atividade == Protocol.Activity.Treinando ? Protocol.Activity.Parado : Protocol.Activity.Treinando;
+		else if (Godot.Input.IsActionJustPressed("meditate"))
+			nova = _atividade == Protocol.Activity.Meditando ? Protocol.Activity.Parado : Protocol.Activity.Meditando;
+
+		if (andando) nova = Protocol.Activity.Parado;   // nao se treina correndo
+
+		if (nova != _atividade)
+		{
+			_atividade = nova;
+			GameClient.Instance?.SendActivity(nova);
+		}
+	}
+
+	/// <summary>
+	/// O QUE ESTE CORPO ESTA FAZENDO (parado, treinando, meditando). SO PRA BANCADA (`--diagforma`).
+	///
+	/// Existe por causa de UMA linha: o `LerAtividade(soASaida: true)` la em cima, dentro do `return`
+	/// da posse. Ela e a saida da fera do lado do cliente, e o jeito dela sumir e o pior possivel --
+	/// ninguem ve falta de uma tecla que so importa enquanto o corpo nao responde a nenhuma outra.
+	/// Sem esta propriedade a bancada teria que perguntar ao `GameClient` se um pacote saiu, e o
+	/// `SendActivity` some no fio igual ao `Avisar` do servidor.
+	/// </summary>
+	public Protocol.Activity AtividadeDeTeste => _atividade;
 
 	// =====================================================================
 	// A TECLA C
@@ -788,6 +1008,10 @@ public partial class LocalPlayer : Node2D
 		// NO VOO a correcao vira ALVO, nao teleporte: o corpo desliza ate la (ver _Process). Fora
 		// dele continua valendo na hora -- correcao de passo tem que ser imediata.
 		if (_empurrado) { _alvoDoVoo = pos; return; }
+		// SEM AS REDEAS, IDEM: a correcao que ainda estiver no ar (pacotes de input que sairam antes de
+		// a fera assumir) vira ALVO. Aplicada crua, ela teleportaria o corpo entre dois quadros e
+		// desfaria a perseguicao -- que e o proprio deslize voltando por outra porta.
+		if (_semRedeas) { _alvoDaPosse = pos; return; }
 		_pos = pos;
 		Desenhar();
 	}
@@ -814,6 +1038,10 @@ public partial class LocalPlayer : Node2D
 	public void Teleportar(Vec2 pos)
 	{
 		_pos = pos;
+		// O ALVO DA POSSESSAO VAI JUNTO. Sem isto, quem for teleportado enquanto o servidor dirige o
+		// corpo seria puxado de volta pelo alvo antigo no quadro seguinte -- ate o proximo snapshot
+		// chegar, o corpo andaria pro lugar de onde acabou de sair.
+		_alvoDaPosse = pos;
 		Destino = null;   // chegou noutro lugar: o piloto anterior nao vale mais
 		Desenhar();
 	}

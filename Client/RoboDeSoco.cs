@@ -35,10 +35,18 @@ public partial class RoboDeSoco : Node
         // Com alvo marcado a investida vai atras dele, entao a briga acontece de verdade.
         cli.SnapshotReceived += Avistou;
         cli.SkillsMudaram += () => GD.Print($"[robo] skills: {cli.SkillsAprendidas.Count} | marcos {cli.MarcosLivres}/{cli.MarcosTotais}");
-        cli.FormaMudou += (quem, de, para, primeira) =>
+        cli.FormaMudou += (quem, de, para, degrau, dominada) =>
         {
             if (quem != cli.LocalId) return;
-            GD.Print($"[robo] forma {de} -> {para}{(primeira ? "  (PRIMEIRA VEZ: cinematica)" : "")}"
+            // O DEGRAU POR EXTENSO no lugar do velho "(PRIMEIRA VEZ)": este log e o unico jeito de
+            // ver, num teste longo, se o robo esta ganhando cena curta quando deveria (maestria < 50)
+            // ou instantanea quando ja domina a forma.
+            //
+            // E O `dominada` ANDA COLADO NELE: os dois saem do mesmo pacote e dizem coisas que se
+            // conferem -- forma dominada e cena `Nenhuma` sao o mesmo instante (ver
+            // `Cinematicas.MaestriaQueDispensaCena`), entao um log com "cena: Curta, DOMINADA" e
+            // sinal de que os dois campos discordaram no servidor.
+            GD.Print($"[robo] forma {de} -> {para}  (cena: {degrau}{(dominada ? ", DOMINADA" : "")})"
                      + $" | BP expresso {cli.Sheet.ExpressedBP:N0}");
         };
         GD.Print("[robo] socando -- alvo: quem estiver na frente");

@@ -57,30 +57,18 @@ public sealed partial class GameServer
 	/// <summary>Onde o corpo REAPARECE, contado da borda oposta. `nx = 4` / `maxx - 3` do DM.</summary>
 	private const int PousoDaVolta = 4;
 
-	/// <summary>
-	/// ESTA ZONA E A SUPERFICIE DE UM PLANETA?
-	///
-	/// So planeta da a volta. Um interior nao: dar a volta na Sala do Tempo, na estacao espacial ou
-	/// dentro de uma nave seria atravessar a parede pelo outro lado. O espaco tambem nao -- ele ja
-	/// tem a propria travessia, por chunks (ver `Espaco`), e e infinito.
-	///
-	/// Os dois casos que valem:
-	///   * mundo SORTEADO -- e literalmente onde o DM punha o `Stars_Exit`;
-	///   * mundo PRE-FEITO que aparece na carta estelar, ou seja, um lugar onde se POUSA.
-	/// O criterio do segundo nao e uma lista minha: e a mesma <see cref="Espaco.PreFeitos"/> que a
-	/// carta estelar e o pouso ja consultam. Zona que nao esta la (Sala do Tempo, Inferno, Paraiso,
-	/// Lookout, interiores) nao e planeta e nao da volta.
-	/// </summary>
-	private static bool ZonaEhPlaneta(ZoneKey zona)
-	{
-		if (zona.Kind == ZoneKey.KindProcedural) return true;
-		if (zona.Kind != ZoneKey.KindPremade) return false;
-		if (Espaco.EhEspaco(zona)) return false;
-
-		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
-			if (string.Equals(p.Nome, zona.Name, StringComparison.OrdinalIgnoreCase)) return true;
-		return false;
-	}
+	// ============================ O `ZonaEhPlaneta` DAQUI VIROU `Espaco.EhPlaneta` ============================
+	// Ele morava nestas linhas e foi DELETADO, nao copiado: o cliente passou a precisar da mesma
+	// resposta (a musica e o tremor de uma transformacao alcancam o planeta inteiro -- ver
+	// `Client/Transformacao.cs`), e duas definicoes de "isto e um planeta" envelheceriam separadas.
+	//
+	// UM DEFEITO FOI JUNTO. A versao daqui abria com `if (Kind == KindProcedural) return true;` e so
+	// DEPOIS perguntava pelo espaco -- mas a zona do espaco E procedural
+	// (`Espaco.Zona` = `ZoneKey.Procedural(NomeDoEspaco, seed)`), entao ela nunca chegava naquela
+	// linha e o espaco respondia "sou planeta". Ficava inofensivo por acidente: o `DarAVolta` logo
+	// abaixo desiste por falta de mapa de colisao. A do Core pergunta pelo espaco DENTRO do caso
+	// procedural, que e onde a pergunta cabe.
+	// ====================================================================================================
 
 	/// <summary>
 	/// O CORPO CHEGOU NA BEIRADA? Entao ele sai pela outra ponta.
@@ -94,7 +82,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DarAVolta(ServerPlayer pl)
 	{
-		if (!ZonaEhPlaneta(pl.Zone)) return false;
+		if (!Espaco.EhPlaneta(pl.Zone)) return false;
 
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
 		if (mapa == null || mapa.Width <= FaixaDaVolta * 4 || mapa.Height <= FaixaDaVolta * 4) return false;

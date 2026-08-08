@@ -140,8 +140,10 @@ if (args.Length >= 1 && args[0] == "carga")
     Jandirus.Core.Races.RaceCatalog? cc2 = args.Length > 1 && File.Exists(args[1])
         ? Jandirus.Core.Races.RaceCatalog.Parse(File.ReadAllText(args[1]))
         : null;
-    CargaBench.Run(cc2);
-    return 0;
+    // DEVOLVE O NUMERO DE FALHAS, e nao zero fixo: sem isto o `SegurandoEmForma` podia acusar "5
+    // forma(s) presa(s) no teto de 100%" no meio da tabela e o comando sair 0 -- o defeito voltava
+    // inteiro e nada reprovava. Ver o cabecalho do `CargaBench.Conferir`.
+    return CargaBench.Run(cc2);
 }
 
 if (args.Length >= 1 && args[0] == "terreno")
@@ -172,6 +174,35 @@ if (args.Length >= 1 && args[0] == "maestria")
     // maestria : as regras de exp CONDICIONAIS do niveis.json chegam ao efetor?
     // Ver MaestriaBench -- elas estavam extraidas e descartadas, e meditar nao rendia nada.
     return MaestriaBench.Rodar(Directory.GetCurrentDirectory());
+}
+
+if (args.Length >= 1 && args[0] == "disciplinas")
+{
+    // disciplinas : Ultra Instinto e Poder da Destruicao -- as cinco faixas, os numeros literais
+    // do DM e, o principal, o CICLO das duas energias. Ver DisciplinasBench.
+    return DisciplinasBench.Rodar();
+}
+
+if (args.Length >= 1 && args[0] == "formas")
+{
+    // formas : o catalogo de transformacoes. Prova que a migracao pro sistema por DADO nao mudou
+    // o comportamento das 6 formas antigas, e que toda entrada nova esta inteira. Ver FormasBench.
+    return FormasBench.Rodar();
+}
+
+if (args.Length >= 1 && args[0] == "raiva")
+{
+    // raiva : de que furia cada forma nasce, e quem fica sem porta. Varre o catalogo INTEIRO pelo
+    // mesmo `Avaliar` do jogo, e a secao [8] le os fontes -- entao roda da RAIZ do repo. Ver
+    // RaivaBench.
+    return RaivaBench.Rodar();
+}
+
+if (args.Length >= 1 && args[0] == "convivio")
+{
+    // convivio : o known-people portado (Contacts.dm + Friendship.dm) e as tres perguntas que
+    // decidem se alguem entra em furia -- ou seja, o que destrava o SSJ1. Ver ConvivioBench.
+    return ConvivioBench.Rodar();
 }
 
 if (args.Length >= 1 && args[0] == "cor")

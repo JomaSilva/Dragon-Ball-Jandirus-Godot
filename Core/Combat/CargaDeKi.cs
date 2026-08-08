@@ -140,12 +140,42 @@ public static class CargaDeKi
 		}
 
 		// --- 1) o tanque -----------------------------------------------------
+		// ============================ O TANQUE NAO PODE SER UMA PAREDE ============================
+		// Aqui havia `Ki = min(Ki + ..., MaxKi)` seguido de `return`. Parece inofensivo -- e o DM nem
+		// clampa (`Power Control.dm:151` faz `Ki += (MaxKi/90)` seco, e passa do MaxKi de proposito:
+		// e ESSE excesso que faz a chamada seguinte cair no `else if` de baixo e a escada andar).
+		//
+		// COM UM DRENO CONCORRENDO, o clamp vira uma barreira ABSORVENTE em exatamente 100%. Dentro de
+		// uma forma o `TickDaForma` (`GameServer.Formas.cs:285`) tira Ki ANTES da carga no mesmo tique;
+		// entao todo tique chegava aqui com `Ki < MaxKi`, enchia de volta ate o MaxKi CRAVADO, e
+		// voltava. O estagio 3 era inalcancavel -- nao por falta de taxa, por nunca ser consultado.
+		// Era o defeito do dono: "nao consigo passar do 100% de ki ao carregar no ssj3" (na base
+		// funciona porque la nao ha dreno, e o clamp nunca chega a ser exercido duas vezes seguidas).
+		//
+		// A CORRECAO E O TEMPO, NAO O TETO: gasta-se do `dt` so o que fez falta pra encher, e o que
+		// sobra do tique SEGUE pros estagios de baixo. Copiar o "passa do MaxKi" do DM tambem
+		// destravaria, mas o tanto que passa seria o resto de um passo -- ou seja dependeria da
+		// CADENCIA do servidor, e o mesmo personagem carregaria diferente a 30 e a 60 Hz. Repartir o
+		// `dt` da o mesmo resultado em qualquer cadencia, que e a regra que este port ja segue ao
+		// escrever tudo como taxa por segundo.
+		// ==========================================================================================
 		if (f.Ki < f.MaxKi)
 		{
-			f.Ki = Math.Min(f.Ki + f.MaxKi * EncheComControle * dt, f.MaxKi);
-			f.stamina -= f.maxstamina * FolegoEnchendoComControle * dt;
-			f.extracharge = Math.Min(f.extracharge + PorSegundo * dt, TetoDaCarga);
-			return EstagioDaCarga.Enchendo;
+			double taxa = f.MaxKi * EncheComControle;                 // por segundo
+			double atePassar = (f.MaxKi - f.Ki) / Math.Max(taxa, 1e-9);
+			// CLAMP e nao `Min`: um MaxKi degenerado (zero) faria `atePassar` sair negativo, e um
+			// `gasto` negativo devolveria folego e ALONGARIA o tique em vez de encurta-lo.
+			double gasto = Math.Clamp(atePassar, 0, dt);
+
+			f.Ki = Math.Min(f.Ki + taxa * gasto, f.MaxKi);
+			f.stamina -= f.maxstamina * FolegoEnchendoComControle * gasto;
+			f.extracharge = Math.Min(f.extracharge + PorSegundo * gasto, TetoDaCarga);
+
+			// nao encheu dentro deste tique: o tanque e mesmo o assunto do momento
+			if (gasto >= dt) return EstagioDaCarga.Enchendo;
+
+			// encheu no meio do tique -- o resto do tempo pertence aos estagios seguintes
+			dt -= gasto;
 		}
 
 		// --- 2) o proprio poder de volta -------------------------------------
@@ -263,8 +293,22 @@ public static class CargaDeKi
 	/// </summary>
 	public static bool AuraAcesa(Fighter f, bool acesaAgora)
 	{
+		// ============================ ACENDE EM 100%, NAO EM 110% ============================
+		// Era `> 1.1` pra acender e `<= 1.0` pra apagar -- uma histerese de dez pontos, escrita pra
+		// a aura nao piscar em quem parou exatamente no limite.
+		//
+		// O dono mediu e nao gostou: "a aura constante so ativa quando ki ta em torno de 110/114% e
+		// nao apartir de 101% como deveria ser (o contorno deveria começar ai tb)". Ele esta certo
+		// -- passar dos 100% E o acontecimento; fazer o jogador comprimir mais dez pontos pra a tela
+		// admitir isso desliga o retorno visual justo no comeco, que e onde ele ensina a mecanica.
+		//
+		// A HISTERESE FICA, so encolhe: acende em 1,01 e apaga em 1,00. Um ponto e o bastante pra
+		// nao tremular (a carga sobe bem mais que 1% por tique) e e estreito o bastante pra parecer
+		// imediato. Zerar a folga faria a aura piscar em quem para no limite, que era o defeito que
+		// a versao antiga evitava -- e nao vale desfazer uma correcao pra fazer outra.
+		// ================================================================================
 		double razao = f.Ki / Math.Max(f.MaxKi, 1e-9);
-		if (razao > 1.1) return true;
+		if (razao > 1.01) return true;
 		if (razao <= 1.0) return false;
 		return acesaAgora;
 	}

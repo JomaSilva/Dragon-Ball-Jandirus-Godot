@@ -221,6 +221,36 @@ public static class Espaco
 		string.Equals(z.Name, NomeDoEspaco, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
+	/// ESTA ZONA É A SUPERFÍCIE DE UM PLANETA?
+	///
+	/// Os dois casos que valem:
+	///   * mundo SORTEADO -- é literalmente onde o DM punha o `Stars_Exit` (`NewTurfs.dm:48`);
+	///   * mundo PRÉ-FEITO que aparece na carta estelar, ou seja, um lugar onde se POUSA.
+	/// O critério do segundo não é uma lista escrita: é a mesma <see cref="PreFeitos"/> que a carta
+	/// estelar e o pouso já consultam. Zona que não está lá (Sala do Tempo, Inferno, Paraíso,
+	/// Lookout, o interior de uma nave, a Dimensão Mental) não é planeta.
+	///
+	/// ============================ ELA MORAVA NO SERVIDOR, E AGORA SÃO DOIS DONOS ============================
+	/// Nasceu como `GameServer.ZonaEhPlaneta` (`GameServer.Volta.cs`), pra decidir quem dá a volta na
+	/// borda do mapa. O CLIENTE passou a precisar da mesma resposta -- a música e o tremor de uma
+	/// transformação alcançam o PLANETA inteiro, e "planeta" não pode significar o espaço (que é UMA
+	/// zona só pro universo inteiro, ver <see cref="NomeDoEspaco"/>) nem um interior.
+	///
+	/// Copiar as seis linhas pro cliente seria ter duas definições de planeta que envelheceriam
+	/// separadas -- e a primeira a errar seria a do cliente, calada, num efeito. Aqui é uma só.
+	/// ==================================================================================================
+	/// </summary>
+	public static bool EhPlaneta(ZoneKey z)
+	{
+		if (z.Kind == ZoneKey.KindProcedural) return !EhEspaco(z);
+		if (z.Kind != ZoneKey.KindPremade) return false;
+
+		foreach (PlanetaNoEspaco p in PreFeitos())
+			if (string.Equals(p.Nome, z.Name, StringComparison.OrdinalIgnoreCase)) return true;
+		return false;
+	}
+
+	/// <summary>
 	/// Onde o corpo aparece ao DECOLAR de um planeta: logo acima da superficie dele.
 	///
 	/// Fora do raio de proposito -- nascer DENTRO do planeta faria o teste de pouso disparar no

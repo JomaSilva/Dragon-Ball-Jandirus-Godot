@@ -12,7 +12,21 @@ namespace Jandirus.Client;
 /// GIRA DEVAGAR. Uma marca parada some do olho depois de dois segundos; o giro lento e o que
 /// faz o olho voltar nela sozinho no meio da briga sem que ela precise piscar ou gritar.
 /// </summary>
-public partial class MarcaDeAlvo : Node2D
+/// <remarks>
+/// <see cref="IFicaNoChao"/>, e este e o caso que quase se perdeu nos dois sentidos.
+///
+/// Ela e filha do corpo alheio (`World.MarcarNaCena`) e NUNCA esteve na lista de "quem sobe com o
+/// voo" -- por acidente, porque aquela lista era escrita a mao e ninguem a revisitou quando a marca
+/// nasceu. O acidente calhou de dar o resultado CERTO: ela e um decalque de piso (achatado, `ZIndex`
+/// -3, atras de todo mundo) e o lugar dela e o chao, ao lado da sombra, dizendo onde o sujeito esta
+/// de verdade. Anel achatado boiando a 160 px do chao nao le como mira, le como defeito.
+///
+/// Quando a regra virou "todo filho visual sobe", ela passou a subir sozinha -- e junto levaria uma
+/// segunda quebra: o `Position = (0, 14)` que a poe AOS PES seria apagado pela escrita da subida.
+/// Por isso a declaracao. E o exemplo de que a inversao nao e "mover tudo": e "mover tudo menos
+/// quem tiver motivo, dito onde da pra ver o motivo".
+/// </remarks>
+public partial class MarcaDeAlvo : Node2D, IFicaNoChao
 {
 	private const float Raio = 15f;
 	private const int Lados = 3;

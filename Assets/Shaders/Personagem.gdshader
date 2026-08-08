@@ -13,6 +13,49 @@ uniform vec4  flash_cor : source_color = vec4(1.0, 0.95, 0.9, 1.0);
 uniform float contorno : hint_range(0.0, 1.0) = 0.0;
 uniform vec4  contorno_cor : source_color = vec4(1.0, 0.85, 0.35, 1.0);
 
+// ============================ O CONTORNO DA FORMA ============================
+// Um segundo contorno, PERMANENTE enquanto a transformacao dura, na cor dela.
+//
+// E separado do `contorno` acima porque os dois querem coisas diferentes: aquele e o do IMPACTO,
+// um lampejo de 0,15 s; este e o da forma, que fica horas ligado. Compartilhar o uniform faria cada
+// soco levado apagar a marca do Super Saiyajin por um sexto de segundo -- e o impacto ficaria
+// invisivel em quem esta transformado.
+//
+// ============================ ELE E UMA LINHA, E NAO UM BRILHO ============================
+// Palavras do dono: *"oq brilha nao e o contorno e sim a aura (isso vale pra TODAS AS FORMAS)"*.
+//
+// Isto derrubou as duas metades do efeito anterior:
+//
+//   * o HALO POR FORA morreu. Ele escrevia alfa onde nao havia desenho, e era ele que o dono via
+//     "amarronzado por cima do verde do chao": um halo aditivo sobre grama e cor de aura mais cor
+//     de chao, e o resultado nao e nem uma nem outra. Quem tem que brilhar por fora do corpo e a
+//     aura, que ja e um sprite com luz propria (`SpriteDeAura` + a `PointLight2D` do node `Aura`).
+//   * a SOMA DE LUZ virou MISTURA. Somar clareia o pixel e vira brilho; misturar PINTA. O contorno
+//     agora e um traco da cor da forma na borda da silhueta -- desenho, nao iluminacao.
+//
+// PERDA CONHECIDA E ACEITA: dentro da silhueta o traco depende de contraste, e o corpo padrao e
+// claro. Um amarelo em cima de pele clara le fraco -- foi por isso que o halo existiu. A resposta
+// do dono e que essa leitura e trabalho da aura, e nao deste canal.
+//
+// O `aura_pulso` FOI DELETADO junto: um uniform que ninguem escreve e campo morto.
+//
+// O CONTORNO VOLTOU A PULSAR (pedido do dono: "um pouco mais fraco e ... pulsando lentamente"), e
+// mesmo assim o uniform NAO voltou -- quem oscila e o `aura` aqui embaixo, escrito quadro a quadro
+// pelo `CharacterVisual.ForcaNaFaseDoPulso`. Duas razoes: um relogio de shader nao para quando o
+// contorno apaga (e a regra do dono e que ele so acende acima de 100% de Ki, sem gastar quadro
+// abaixo disso), e a fase tem que ser a MESMA em todas as camadas do boneco -- coisa que so quem ve
+// a pilha inteira consegue garantir.
+//
+// ============================ E ELE NAO VALE EM TODA CAMADA ============================
+// `borda = c.a * (1 - viz)` quer dizer "pixel opaco encostado em vazio", e isso so descreve um fio
+// de contorno em desenho GRANDE. Num sprite de detalhe -- os OLHOS -- quase todo pixel tem vizinho
+// transparente, entao `borda` da ~1 no desenho inteiro e a mistura pinta o olho de ponta a ponta
+// (defeito visto pelo dono). NAO HA CONSERTO AQUI: quem decide e a lista de quem recebe o uniform,
+// e ela mora no `CharacterVisual.EhSilhueta`. Este shader continua fazendo a conta certa.
+// ==========================================================================================
+uniform float aura : hint_range(0.0, 2.0) = 0.0;
+uniform vec4  aura_cor : source_color = vec4(1.0, 0.85, 0.35, 1.0);
+
 // --- o corpo CEDE na direcao do golpe ---
 uniform vec2  empurrao = vec2(0.0);
 uniform float achatar : hint_range(-0.5, 0.5) = 0.0;
@@ -87,11 +130,21 @@ float fer_fbm(vec2 p) {
 	return fer_ruido(p) * 0.60 + fer_ruido(p * 2.3) * 0.30 + fer_ruido(p * 5.1) * 0.10;
 }
 
+/// O MODULATE DO NODE, PEGO ONDE ELE AINDA E SO ELE. Ver o bloco do `COLOR` no fim do `fragment`:
+/// la em baixo o `COLOR` ja vem multiplicado pela textura, e usa-lo desenhava a folha ao quadrado.
+///
+/// E ELE E MESMO SO O NODE, medido e nao suposto: o `CanvasModulate` do mundo NAO entra aqui -- o
+/// Godot o aplica DEPOIS do fragment. Ver o fim do `fragment`, no bloco "O QUE O AMBIENTE FAZ".
+varying vec4 cor_do_node;
+
 void vertex() {
 	// Centered = true: o quad ja esta centrado em (0,0) em pixels locais
 	VERTEX.x *= (1.0 + achatar);
 	VERTEX.y *= (1.0 - achatar);
 	VERTEX   += empurrao;
+
+	// AQUI o `COLOR` e o `modulate` x `self_modulate` x cor do vertice, SEM textura nenhuma.
+	cor_do_node = COLOR;
 }
 
 void fragment() {
@@ -121,13 +174,27 @@ void fragment() {
 	// quadro nao e "transparente" -- e o QUADRO AO LADO na folha, e o contorno some justamente
 	// onde o desenho encosta na borda. E o mesmo tombo que o `BorraoDirecional` documenta ter
 	// levado duas vezes; este bloco tinha ficado pra tras porque a caixa nao existia aqui.
-	if (contorno > 0.0) {
+	if (contorno > 0.0 || aura > 0.0) {
 		vec2 p = TEXTURE_PIXEL_SIZE;
 		float viz = texture(TEXTURE, clamp(UV + vec2( p.x, 0.0), quadro_min, quadro_max)).a
 				  * texture(TEXTURE, clamp(UV + vec2(-p.x, 0.0), quadro_min, quadro_max)).a
 				  * texture(TEXTURE, clamp(UV + vec2(0.0,  p.y), quadro_min, quadro_max)).a
 				  * texture(TEXTURE, clamp(UV + vec2(0.0, -p.y), quadro_min, quadro_max)).a;
-		c.rgb = mix(c.rgb, contorno_cor.rgb, c.a * (1.0 - viz) * contorno);
+		float borda = c.a * (1.0 - viz);
+
+		// A FORMA VEM PRIMEIRO e o IMPACTO por cima -- assim um soco levado continua se lendo em
+		// quem esta transformado, que e o caso em que ele mais precisa aparecer.
+		//
+		// UMA LINHA, DENTRO DA SILHUETA, e nada alem disso: nenhum alfa novo, nenhum pulso, nenhuma
+		// soma. `c.a` nao e tocado, entao o corpo continua ocupando exatamente os pixels que a arte
+		// desenhou -- e todo o problema de amostra fora da caixa do quadro deixou de existir junto
+		// com o halo.
+		//
+		// E o MESMO idioma da linha do impacto logo abaixo, de proposito: sao dois tracos na mesma
+		// borda, um permanente e um de 0,15 s, e eles se sobrepoem na ordem certa.
+		if (aura > 0.0) c.rgb = mix(c.rgb, aura_cor.rgb, clamp(borda * aura, 0.0, 1.0));
+
+		if (contorno > 0.0) c.rgb = mix(c.rgb, contorno_cor.rgb, borda * contorno);
 	}
 
 	// ============================ AS FERIDAS ============================
@@ -286,5 +353,92 @@ void fragment() {
 	// o personagem mais apagado, que e o oposto do que um impacto deve parecer.
 	c.rgb = mix(c.rgb, flash_cor.rgb, flash * step(0.01, c.a));
 
-	COLOR = c;
+	// ============================ O `COLOR` QUE CHEGOU E A TERCEIRA OPERACAO ============================
+	// `COLOR = c` DESCARTAVA o `modulate`/`self_modulate` do node -- calado. No Godot esse e o canal
+	// pelo qual o `CanvasItem` entrega a cor (o produto do `modulate` de todos os pais, do
+	// `self_modulate` proprio e da cor do vertice); quem escreve `COLOR` sem le-lo joga tudo fora. Como
+	// nada aqui reclama, o efeito era so "a cor nao aparece", e TRES coisas escritas e documentadas
+	// estavam mortas por isso:
+	//
+	//   1. A TINTA DA COLADA (`CharacterVisual.ColadasDaForma`, `s.Modulate`) -- o defeito que o dono
+	//      relatou: *"no wrathfull e nas formas de lssj o `god - grey.png` ta CINZA ainda e n verde"*.
+	//      O Rose sofria igual e ninguem tinha visto, porque a linha e mais dificil de alcancar.
+	//   2. O TOM DO NAMEKUSEIJIN (`CharacterVisual.Vestir`, `_corpo.SelfModulate`) -- o `Brilho`
+	//      1,18/0,82 do `VisualCatalog.TintaDoCorpo`, cujo comentario diz "sem isso os quatro tons de
+	//      Namekuseijin sairiam todos iguais". E era exatamente o que acontecia.
+	//   3. O VULTO SIMPLES do `Zanzoken` (estilo `Simples`, que fica com o material desta classe): ele
+	//      some pelo `Modulate` do proprio node (`Zanzoken.cs:175`) e nascia com o azul frio de
+	//      `:94` -- nao sumia e nao era azul.
+	//
+	// ============================ E MULTIPLICAR E A OPERACAO CERTA, NAO UM ATALHO ============================
+	// `COLOR` multiplica, e multiplicar E o `color = rgb(110,255,140)` do `EffectLayer.dm:32` -- na
+	// linguagem do BYOND o `color` de um atom multiplica, e a folha `god - grey.dmi` foi desenhada pra
+	// isso. Medido nos 4 tons que sao 95,4% dos pixels opacos da folha (192, 190, 187, 184 -- cinza
+	// puro), com o verde `6eff8c`:
+	//
+	//     SOMA  (tinta_modo 0)  ->  (255,255,255) nos QUATRO -- branco chapado, saturacao 0
+	//     MATIZ (tinta_modo 1)  ->  (166,255,211) -- verde lavado, e o canal G satura em 255 nos
+	//                               quatro, ou seja o sombreado do desenho SOME no canal dominante
+	//     MULTIPLICA            ->  ( 83,192,105) -- saturacao 0,568, a mesma da tinta (0,569)
+	//
+	// E o `192 x 110/255 = 83` que o `Catalogo.VerdeDaAmeaca` ja documentava: as duas constantes
+	// (`6eff8c` e `ff7ac6`) foram DIMENSIONADAS pra multiplicar, e nenhum dos dois modos do uniform
+	// entrega isso. Por isso o conserto e ligar o canal, e nao criar um `tinta_modo = 2`.
+	//
+	// NAO ATRAPALHA QUEM NAO USA: `modulate` e `self_modulate` nascem brancos, e branco e o neutro da
+	// multiplicacao -- toda camada que nao escreve nada continua pixel por pixel como era.
+	//
+	// ============================ MAS O `COLOR` DO FRAGMENT NAO E O MODULATE (TOMBO 2) ============================
+	// A frase acima ("branco e o neutro, quem nao escreve continua como era") era FALSA, e foi ela que
+	// pintou o jogo inteiro de preto. No canvas_item do Godot o `COLOR` que CHEGA no fragment ja vem
+	// **multiplicado pela textura** ("Color from vertex function multiplied by the TEXTURE color"), e
+	// nao e o modulate sozinho. Entao `c * COLOR` nao era "aplicar o modulate": era
+	// `textura x textura x modulate` -- a folha ELEVADA AO QUADRADO.
+	//
+	// MEDIDO NA GPU, e nao na conta (Godot 4.7, sprite real, `get_viewport().get_texture().get_image()`):
+	//
+	//   * shader vazio (`COLOR = texture(...)`) sobre `Hair_GokuSSj.png` -> `#948c08 #c6b508 #f7de29
+	//     #f7ef94`, a folha intacta;
+	//   * a MESMA folha com `c * COLOR` e tinta zero -> `#564d00 #9a8000 #efc107 #efe056`. Cada canal e
+	//     o quadrado do original (148/255 ao quadrado = 86 = `0x56`, e assim nos doze).
+	//
+	// E O ESTRAGO NAO ERA "um pouco mais escuro": onde a folha e PRETA, o quadrado zera tudo.
+	//
+	//   * o penteado base do jogo e preto (`Hair_Goku.png`, 40% em `#000000`), e e nele que caem o
+	//     vermelho do SSG e o roxo do Ultra Ego. Medido com `e2331c`: **`#000000` em 40% dos pixels**
+	//     (e `#290f0b`, `#421e18` no resto) -- cabelo PRETO, nao vermelho. Com o conserto: `#e2331c`,
+	//     `#ff5c45`, `#ff755e`;
+	//   * a camada de olho e `Eyes_Black.png`, preta em 100% dos pixels opacos. As NOVE cores de
+	//     `Catalogo.CorDoOlho` (o verde do SSJ, o branco sem iris das duas linhas lendarias, a prata do
+	//     Ultra Instinto) mediram **`#000000` em 100%** -- o eixo inteiro estava invisivel. Com o
+	//     conserto cada uma mede exatamente o seu hexa (`40a060`, `fcfdfd`, `e0409a`).
+	//
+	// Isto e a metade de baixo do *"o cabelo do ssj blue ta MUITO escuro"* do dono: quem tem penteado
+	// sem arte de Super Saiyajin (41 dos 59) nao via um azul escuro, via cabelo preto. A outra metade
+	// -- os hexas em si -- esta em `Catalogo.AzulDoCabeloDivino`.
+	//
+	// O conserto foi o VARYING: no **vertex** a textura ainda nao entrou, entao guardar o `COLOR` la e
+	// multiplicar aqui aplica o modulate UMA vez. A colada do `god - grey` passou a medir `#b85c95` sobre
+	// o cinza 192 com o `ff7ac6`, que e o `192 x rosa/255` que a constante ja documentava.
+	//
+	// ============================ O QUE O AMBIENTE FAZ, E O QUE ELE NUNCA DEPENDEU DAQUI ============================
+	// Houve uma TERCEIRA suspeita, e ela era sobre esta linha: a de que ligar o `COLOR` teria trazido
+	// junto o `CanvasModulate` do mundo (a luz do dia da `Iluminacao`), e que era por isso que o boneco
+	// tinha comecado a escurecer com o ceu -- o relato do dono de que *"o cabelo e o rabo n eram tao
+	// escuros assim antes"*. ELA E FALSA, e foi medida na GPU dos dois lados:
+	//
+	//   * troque este fim por uma cor CONSTANTE (`COLOR.rgb = vec3(1,0,0) * c.a`, que nao le `COLOR`
+	//     nenhum) e o sprite AINDA sai multiplicado pelo ambiente: `#ff0000` vira `#dc0000` ao meio-dia
+	//     (`dc` = o R do `dcdcd2`) e `#1b0000` a meia-noite. O `CanvasModulate` e aplicado pelo Godot
+	//     DEPOIS do fragment -- nenhuma linha escrita aqui escapa dele, e a antiga (`COLOR = c`) tambem
+	//     nao escapava;
+	//   * e o `cor_do_node` NAO o carrega: com ambiente de noite, a razao de brilho do personagem medida
+	//     em jogo (`--diagtintamundo`) deu 0,187 contra 0,182 do chao. Se o ambiente entrasse tambem por
+	//     aqui, o boneco seria multiplicado DUAS vezes e a razao dele seria o QUADRADO (0,03).
+	//
+	// Ou seja: o personagem sempre obedeceu a luz do dia -- antes e depois desta linha -- e obedece UMA
+	// vez so, como o cenario. Tirar o boneco do ciclo do dia nao e assunto deste arquivo: e topologia
+	// (em que canvas ele desenha), porque o ambiente nao passa por aqui pra ser recusado.
+	// ======================================================================================================
+	COLOR = c * cor_do_node;
 }

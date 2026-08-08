@@ -201,6 +201,9 @@ public sealed class NiveisDeSkill
 	/// um COMENTARIO (speedy.dm:94, "The process' loop, handled in Unitimer"), sobra de um
 	/// agendador central que nao existe mais. O laco por skill do skill.dm E o Unitimer hoje.
 	///
+	/// (A UNIDADE ESTA EXPLICADA E PROVADA EM <see cref="TempoDoDm"/> -- este arquivo foi um dos
+	/// poucos que sempre a leu certo, e o resto do port dividia por `world.fps`.)
+	///
 	/// UMA RESSALVA HONESTA: o mundo roda a 12 fps (World.dm:5), entao um tick vale 0,833
 	/// decimos e um `sleep(2)` cai no primeiro tick DEPOIS de 0,2 s -- 0,25 s de verdade. Os
 	/// 0,2 s daqui sao a leitura do que o codigo PEDE; a diferenca e artefato do relogio do

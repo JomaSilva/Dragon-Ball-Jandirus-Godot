@@ -84,6 +84,63 @@ public partial class GameServer
 		pl.SigAtributos = "";
 	}
 
+	// =====================================================================
+	// O KI LIBERADO -- as duas pecas que a tecla C exige
+	// =====================================================================
+	/// <summary>
+	/// DESTRAVA O KI: a compra da raiz da arvore E o degrau que acende o `canPower`.
+	///
+	/// ============================ SAO DUAS PECAS, E ELAS NAO SAO A MESMA ============================
+	/// `Ki_Unlocked` e uma SKILL COMPRADA: ela carrega os flags do proprio catalogo
+	/// (`KiUnlockPercent`, `MeditateGivesKiRegen`) e quem os escreve e o <see cref="AplicarEfeitos"/>.
+	/// `Basic_Ki_Control` no NIVEL 5 e outro canal: o flag `canPower=1` mora num DEGRAU do
+	/// `niveis.json`, e quem o escreve e o <see cref="Jandirus.Core.Skills.NiveisDeSkill.Aplicar"/>.
+	/// E o `canPower` -- e so ele -- que deixa a carga do C passar de 100%.
+	///
+	/// Ter uma sem a outra e o modo de falhar silencioso deste sistema: meditar regenera Ki e o C nao
+	/// carrega, ou o C carrega e a meditacao nao rende nada. Por isso as duas moram numa funcao so.
+	/// ==========================================================================================
+	///
+	/// ============================ E POR QUE O `Basic_Ki_Control` TAMBEM ENTRA NO LIVRO ============================
+	/// A versao anterior desta logica (`--kiteste`) escrevia so o NIVEL, sem por a skill no livro. O
+	/// nivel nao sobrevive a isso: `NiveisDeSkill.Efetor` comeca chamando `Sincronizar(livro)`, que
+	/// APAGA todo path que o livro nao conhece ("skill esquecida perde o nivel"). Ou seja, o degrau 5
+	/// era removido no primeiro tique do efetor e o nivel nunca chegava ao save -- so nao aparecia
+	/// como defeito porque o `canPower` ja escrito no `Fighter` nao e desfeito por ninguem (flag se
+	/// escreve, nao se acumula) e porque a flag de bancada reaplicava tudo a cada login.
+	///
+	/// Numa concessao de RUNTIME isso deixaria de ser invisivel: o admin liberaria o Ki, jogaria, e
+	/// perderia o `canPower` no relog seguinte sem uma linha explicando. Dar a skill custa nada
+	/// (`SkillBook.Dar` e presente, nao compra) e faz o nivel persistir pelo caminho normal.
+	/// ======================================================================================================
+	/// </summary>
+	private static void LiberarOKi(ServerPlayer pl)
+	{
+		pl.Livro.Dar(SkillKiUnlocked);
+		pl.Livro.Dar(SkillKiControl);
+		pl.Niveis.Por(SkillKiControl, 5);
+	}
+
+	/// <summary>
+	/// CONFERE QUE A CONCESSAO PEGOU, e nao so que ela foi escrita.
+	///
+	/// Os dois canais (skill -> flag, degrau -> flag) ja se romperam neste projeto -- a
+	/// `Tools/AssetPipeline/CargaBench.cs` existe por causa disso. "Nao deu erro" nao e prova: podia
+	/// ser o personagem nao ter nascido, ou o `niveis.json` nao ter sido gerado. A linha imprime os
+	/// DOIS canais e o teto de carga, e devolve se esta inteiro.
+	/// </summary>
+	private static bool ConferirKiLiberado(ServerPlayer pl, string origem)
+	{
+		bool ok = pl.Ficha.canPower != 0 && pl.Ficha.MeditateGivesKiRegen != 0;
+		string msg = $"[server] {origem} em `{pl.Name}`: canPower={pl.Ficha.canPower:0} "
+				   + $"MeditateGivesKiRegen={pl.Ficha.MeditateGivesKiRegen:0} "
+				   + $"kicapacity={pl.Ficha.kicapacity:0.00} powerupcap={pl.Ficha.powerupcap:0.00}";
+		if (ok) GD.Print(msg + "  OK");
+		else GD.PushError(msg + "  <<< NAO PEGOU: o elo skill -> flag esta roto "
+						+ "(ver Tools/AssetPipeline/CargaBench.cs)");
+		return ok;
+	}
+
 	/// <summary>
 	/// O aviso de aprendizado DIZ O QUE MUDOU. "voce aprendeu Backstab" nao ensina nada; o
 	/// jogador nao tem como saber se comprou um numero ou uma tecnica, e as duas coisas se jogam

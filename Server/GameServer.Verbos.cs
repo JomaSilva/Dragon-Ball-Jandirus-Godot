@@ -80,6 +80,10 @@ public sealed partial class GameServer
 		if (ComandoDeInteracao(pl, cmd, arg)) return;
 		if (ComandoDeItem(pl, cmd, arg)) return;
 
+		// O CONVIVIO: conhecidos, amizade, rivais e relacoes. Arquivo proprio pelo mesmo motivo do
+		// banco -- e um sistema inteiro com regras proprias, e nao meia duzia de `case`.
+		if (ComandoDeConvivio(pl, cmd, arg)) return;
+
 		switch (cmd)
 		{
 			// ---------------------------------------------------------- todos

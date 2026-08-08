@@ -211,6 +211,28 @@ public partial class Iluminacao : Node2D
         Recalcular(delta);
     }
 
+    /// <summary>
+    /// QUAO ESCURA A CENA ESTA AGORA: 0 = meio-dia cheio, 1 = breu.
+    ///
+    /// ============================ QUEM PRECISA DISSO E POR QUE ============================
+    /// A aura de transformacao (<see cref="Aura"/>) acende uma <c>PointLight2D</c>. De noite ela e
+    /// o efeito; ao meio-dia ela e um borrao branco -- o ambiente ja esta claro, entao somar luz so
+    /// estoura a cena e some com o proprio personagem dentro dela.
+    ///
+    /// E ESTATICO porque a luz e de CADA CORPO e a escuridao e do MUNDO: dez corpos transformados
+    /// procurando o node de iluminacao na arvore, todo quadro, seria dez buscas pra ler um numero
+    /// que e o mesmo pros dez.
+    /// ==================================================================================
+    /// </summary>
+    public static float Escuridao { get; private set; }
+
+    /// <summary>Força a escuridao. SO PRA BANCADA -- em jogo quem manda e o relogio do planeta.</summary>
+    public static void EscuridaoDeTeste(float v) => Escuridao = Mathf.Clamp(v, 0, 1);
+
+    /// <summary>Guarda a escuridao a partir da cor do ambiente. Chamado sempre que ela muda.</summary>
+    private static void AnotarEscuridao(Color ambiente) =>
+        Escuridao = 1 - Mathf.Clamp(ambiente.Luminance, 0, 1);
+
     private void Recalcular(double delta)
     {
         // ANTES DE SABER A HORA, o mundo fica em luz de dia e o ceu fica vazio -- ver `_temHora`.
@@ -218,6 +240,7 @@ public partial class Iluminacao : Node2D
         if (!_temHora)
         {
             _ambiente.Color = AmbienteDia;
+            AnotarEscuridao(AmbienteDia);
             _clima.Aplicar(default, delta, AmbienteDia);
             return;
         }
@@ -227,6 +250,7 @@ public partial class Iluminacao : Node2D
 
         Color cor = CorDoCeu(Estado, TempoQueFaz);
         _ambiente.Color = cor;
+        AnotarEscuridao(cor);
         // A COR DO AMBIENTE VAI JUNTO: o veu do clima e de tela e escapa do `CanvasModulate`, entao
         // e ele que tem que se escurecer. Sem isto, neblina branca brilharia a meia-noite.
         //

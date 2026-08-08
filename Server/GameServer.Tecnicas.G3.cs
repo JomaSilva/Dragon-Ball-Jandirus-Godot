@@ -545,9 +545,9 @@ public partial class GameServer
 		// machucado ou nocauteado, morte certa.
 		if (carga.Contador > CargaLetalG3
 			&& (_rng.NextDouble() * 100 < CargaMortePct || f.HP <= 10 || f.KO)
-			&& !f.dead)
+			&& !f.dead
+			&& pl.Combate.Morrer())
 		{
-			pl.Combate.Morrer();
 			pl.RenasceEm = NowMs() + MsAteRenascer;
 			AvisarPertoG3(pl, 20 * ZoneCollision.TileSize, $"{pl.Name} morre na propria Final Explosion.");
 			GD.Print($"[server] {pl.Name} morreu na propria Final Explosion (carga {carga.Contador})");
@@ -1083,17 +1083,24 @@ public partial class GameServer
 		c.SincronizarVida();
 		if (autor != vitima) vitima.UltimoAgressor = autor.Id;
 
-		if (c.Corpo.DeveMorrer() && !c.Corpo.RegeneraDecepado)
+		// PELO FUNIL DA DERROTA, e nao pelo Zenkai direto: uma explosao que mata na frente dos
+		// amigos da vitima e exatamente a cena que o `Death.dm` descreve. Ver `AoPerderALuta`.
+		//
+		// `autor != vitima` porque uma tecnica pode ferir quem a soltou (a Final Explosion pega
+		// quem a usou, `misc.dm:317`) -- e morrer da propria explosao nao e "ser abatido por um
+		// inimigo": nao ha algoz, e o DM tambem so enfurece com `deathKiller` preenchido.
+		if (c.Corpo.DeveMorrer() && !c.Corpo.RegeneraDecepado && c.Morrer())
 		{
-			c.Morrer();
 			vitima.RenasceEm = NowMs() + MsAteRenascer;
-			ZenkaiPorDerrota(vitima, autor);
+			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: true);
+			else ZenkaiPorDerrota(vitima, autor);
 			GD.Print($"[server] {autor.Name} MATOU {vitima.Name} com dano em area");
 		}
 		else if (!vitima.Ficha.KO && c.Corpo.DeveNocautear())
 		{
 			c.Nocautear(MeleeResolver.SegundosDeNocaute);
-			ZenkaiPorDerrota(vitima, autor);
+			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: false);
+			else ZenkaiPorDerrota(vitima, autor);
 		}
 	}
 

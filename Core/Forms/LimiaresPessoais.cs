@@ -37,9 +37,10 @@ public sealed class LimiaresPessoais
 	// =====================================================================
 	// OS "INITIAL" QUE ESTA CLASSE NAO POSSUI
 	//
-	// Os da escada Saiyajin moram em EscadaSaiyajin (Formas.cs) porque a escada e dela. Os de
-	// baixo sao de ladeiras que o port ainda nao tem motor -- ficam aqui, com o dm:linha, e nao
-	// em EscadaSaiyajin, que so conhece a escada normal.
+	// Os da escada Saiyajin moram no Catalogo (Formas.cs) porque mexer neles reequilibra o jogo
+	// inteiro. Os de baixo ficam aqui, com o dm:linha, porque sao limiares de linhas cujo motor
+	// nasceu depois -- e o comentario antigo dizia "ladeiras que o port ainda nao tem motor". Tem
+	// agora: a linha Legendary usa restssjat/unrestssjat/lssjat, pelo ChaveDoLimiar do catalogo.
 	// =====================================================================
 
 	/// <summary>`restssjat` -- Restrained SSJ do Legendary. lssjbuff.dm:139.</summary>
@@ -86,23 +87,23 @@ public sealed class LimiaresPessoais
 	// =====================================================================
 
 	/// <summary>SSJ1. BP BASE direto -- nao passa por divisor.</summary>
-	public double ssjat = EscadaSaiyajin.SsjatInicial;
+	public double ssjat = Catalogo.SsjatInicial;
 
 	/// <summary>SSJ2. E BP EXPRESSO: o gate divide por 6 (Transformation Controls.dm:19).</summary>
-	public double ssj2at = EscadaSaiyajin.Ssj2atInicial;
+	public double ssj2at = Catalogo.Ssj2atInicial;
 
 	/// <summary>SSJ3. E BP EXPRESSO: o gate divide por 10 (Transformation Controls.dm:45).</summary>
-	public double ssj3at = EscadaSaiyajin.Ssj3atInicial;
+	public double ssj3at = Catalogo.Ssj3atInicial;
 
 	/// <summary>SSJ4. Ja e BP BASE no original (rework 2026-07-10, supersaiyanbuff.dm:55).</summary>
-	public double rawssj4at = EscadaSaiyajin.RawSsj4atInicial;
+	public double rawssj4at = Catalogo.RawSsj4atInicial;
 
 	/// <summary>
 	/// USSJ. No port os grades abrem por MAESTRIA no SSJ1 e nao por BP, entao este numero nao
 	/// gateia nada hoje -- mas e sorteado no nascimento igual aos outros (statsaiyan.dm:53) e o
 	/// re-sorteio no dia em que ele voltar a valer seria justamente o bug que esta classe evita.
 	/// </summary>
-	public double ultrassjat = EscadaSaiyajin.UltrassjatInicial;
+	public double ultrassjat = Catalogo.UltrassjatInicial;
 
 	/// <summary>Restrained SSJ (escada Legendary). statsaiyan.dm:66.</summary>
 	public double restssjat = RestSsjatInicial;
@@ -127,15 +128,32 @@ public sealed class LimiaresPessoais
 
 	/// <summary>
 	/// O BP BASE que abre esta forma PARA ESTE PERSONAGEM. E o numero que a checagem de
-	/// transformacao tem que comparar -- o `FormaDef.PortaBp` e so o valor de fabrica.
+	/// transformacao tem que comparar -- o <see cref="FormaDef.PortaBp"/> e so o valor de fabrica.
+	///
+	/// ============================ ISTO ERA UM SWITCH E VIROU DADO ============================
+	/// Antes do rework de catalogo havia aqui um `switch` sobre o enum de formas, e ele era o
+	/// QUINTO lugar que uma forma nova precisava tocar -- o que dava uma forma que transformava,
+	/// tinha cabelo, drenava Ki, e mesmo assim ignorava o limiar sorteado do personagem. Agora a
+	/// entrada do catalogo diz qual limiar manda nela (<see cref="FormaDef.ChaveDoLimiar"/>), e
+	/// esquecer o campo da porta ZERO, que e obvio na bancada, em vez de a porta media, que nao e.
+	/// ========================================================================================
+	///
+	/// Os divisores estao aqui e nao no catalogo porque sao propriedade do LIMIAR e nao da forma:
+	/// `ssj2at` e `ssj3at` sao BP EXPRESSO no original (Transformation Controls.dm:19 e :45),
+	/// enquanto `ssjat` e `rawssj4at` ja sao base.
 	/// </summary>
-	public double Porta(Forma f) => f switch
+	public double Porta(FormaDef d) => d.ChaveDoLimiar switch
 	{
 		// os grades saem do SSJ1 e custam o mesmo BP dele; quem separa e a maestria
-		Forma.Ssj1 or Forma.Grade2 or Forma.Grade3 => ssjat,
-		Forma.Ssj2 => ssj2at / EscadaSaiyajin.Ssj1GateMult,
-		Forma.Ssj3 => ssj3at / EscadaSaiyajin.Ssj2GateMult,
-		Forma.Ssj4 => rawssj4at,
+		"ssjat" => ssjat,
+		"ssj2at" => ssj2at / Catalogo.Ssj1GateMult,
+		"ssj3at" => ssj3at / Catalogo.Ssj2GateMult,
+		"rawssj4at" => rawssj4at,
+		"ultrassjat" => ultrassjat,
+		"restssjat" => restssjat,
+		"unrestssjat" => unrestssjat,
+		"lssjat" => lssjat,
+		"snamekat" => snamekat,
 		_ => 0,
 	};
 
@@ -174,9 +192,9 @@ public sealed class LimiaresPessoais
 	private void RolarSaiyajin(string classe)
 	{
 		// --- iguais pra todas as classes (statsaiyan.dm:52-56) ---------------
-		ssj3at = EscadaSaiyajin.Ssj3atInicial * Faixa("ssj3at", 9, 13);          // :52
-		ultrassjat = EscadaSaiyajin.UltrassjatInicial * Faixa("ultrassjat", 9, 13); // :53
-		rawssj4at = EscadaSaiyajin.RawSsj4atInicial * Faixa("rawssj4at", 9, 13); // :54
+		ssj3at = Catalogo.Ssj3atInicial * Faixa("ssj3at", 9, 13);          // :52
+		ultrassjat = Catalogo.UltrassjatInicial * Faixa("ultrassjat", 9, 13); // :53
+		rawssj4at = Catalogo.RawSsj4atInicial * Faixa("rawssj4at", 9, 13); // :54
 		unrestssjat = UnrestSsjatInicial * Faixa("unrestssjat", 9, 13);          // :55
 		lssjat = LssjatInicial * Faixa("lssjat", 9, 13);                         // :56
 
@@ -185,14 +203,14 @@ public sealed class LimiaresPessoais
 		{
 			// ELITE: SSJ1 mais TARDE (1,1-1,4x), SSJ2 mais CEDO (0,9-1,2x). statsaiyan.dm:58-61
 			case "Elite":
-				ssjat = EscadaSaiyajin.SsjatInicial * Faixa("ssjat", 11, 14);
-				ssj2at = EscadaSaiyajin.Ssj2atInicial * Faixa("ssj2at", 9, 12);
+				ssjat = Catalogo.SsjatInicial * Faixa("ssjat", 11, 14);
+				ssj2at = Catalogo.Ssj2atInicial * Faixa("ssj2at", 9, 12);
 				break;
 
 			// LOW-CLASS: o espelho do Elite -- SSJ1 cedo, SSJ2 tarde. statsaiyan.dm:62-64
 			case "Low-Class":
-				ssjat = EscadaSaiyajin.SsjatInicial * Faixa("ssjat", 9, 12);
-				ssj2at = EscadaSaiyajin.Ssj2atInicial * Faixa("ssj2at", 11, 14);
+				ssjat = Catalogo.SsjatInicial * Faixa("ssjat", 9, 12);
+				ssj2at = Catalogo.Ssj2atInicial * Faixa("ssj2at", 11, 14);
 				break;
 
 			// LEGENDARY: NAO mexe em ssjat/ssj2at (statsaiyan.dm:65-70). Nao e esquecimento do
@@ -204,15 +222,15 @@ public sealed class LimiaresPessoais
 
 			// LEGENDARY PRIMAL: a unica classe que so ENCURTA o SSJ1 (0,9-1,1x). statsaiyan.dm:72-73
 			case "Legendary Primal Saiyan":
-				ssjat = EscadaSaiyajin.SsjatInicial * Faixa("ssjat", 9, 11);
-				ssj2at = EscadaSaiyajin.Ssj2atInicial * Faixa("ssj2at", 9, 12);
+				ssjat = Catalogo.SsjatInicial * Faixa("ssjat", 9, 11);
+				ssj2at = Catalogo.Ssj2atInicial * Faixa("ssj2at", 9, 12);
 				break;
 
 			// O RESTO (statsaiyan.dm:75-77): Normal, Normal Primal, Kaio e as tres linhagens
 			// Half-Saiyan (New Generation / Future Lineage / Prodigial). O `else` do DM.
 			default:
-				ssjat = EscadaSaiyajin.SsjatInicial * Faixa("ssjat", 10, 12);
-				ssj2at = EscadaSaiyajin.Ssj2atInicial * Faixa("ssj2at", 9, 12);
+				ssjat = Catalogo.SsjatInicial * Faixa("ssjat", 10, 12);
+				ssj2at = Catalogo.Ssj2atInicial * Faixa("ssj2at", 9, 12);
 				break;
 		}
 
