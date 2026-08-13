@@ -605,28 +605,59 @@ if (args.Length >= 1 && args[0] == "espaco")
                           + $"{Jandirus.Core.World.Espaco.SegundosDeViagem(dist) / 60,10:0}");
     }
 
-    // DENSIDADE: o espaco tem que parecer vazio. Um planeta a cada ~40 chunks e o alvo.
+    // DENSIDADE: o espaco tem que parecer vazio. Os planetas agora nascem em SISTEMAS, entao a
+    // varredura e por celula (32x32 chunks) e nao por chunk.
     const ulong seed = 20260802;
-    int achados = 0, varridas = 0;
+    long planetas = 0; int celulas = 0, anuladas = 0, vazias = 0;
     for (int y = -60; y <= 60; y++)
         for (int x = -60; x <= 60; x++)
         {
-            varridas++;
-            if (Jandirus.Core.World.Espaco.PlanetaDaChunk(seed, new Jandirus.Core.World.ChunkId(x, y)) != null) achados++;
+            celulas++;
+            // OS DOIS NULOS SEPARADOS: "sorteada vazia" e projeto (`Sistemas.VaziosPor256`) e
+            // "anulada" e a guarda do ancorado. Somados, a linha de densidade esconderia as duas.
+            if (Jandirus.Core.World.Sistemas.Do(seed, x, y, out Jandirus.Core.World.CelulaVazia pq) is not { } s)
+            {
+                if (pq == Jandirus.Core.World.CelulaVazia.Sorteada) vazias++; else anuladas++;
+                continue;
+            }
+            planetas += s.Orbitas;
         }
-    Console.WriteLine($"\nvarredura de {varridas:N0} chunks: {achados} planetas procedurais "
-                      + $"(1 a cada {(double)varridas / Math.Max(achados, 1):0.0} chunks)");
+    long chunks = (long)celulas * Jandirus.Core.World.Sistemas.ChunksPorSistema
+                                * Jandirus.Core.World.Sistemas.ChunksPorSistema;
+    Console.WriteLine($"\nvarredura de {celulas:N0} celulas ({chunks:N0} chunks): {planetas:N0} planetas "
+                      + $"(1 a cada {(double)chunks / Math.Max(planetas, 1):0.0} chunks; "
+                      + $"{vazias:N0} celulas sorteadas VAZIAS ({vazias * 100.0 / celulas:0.0}%), {anuladas} anuladas pela guarda)");
 
-    // ESTABILIDADE: a mesma chunk tem que dar o mesmo planeta SEMPRE -- e o que permite cliente
+    // ESTABILIDADE: a mesma celula tem que dar o mesmo sistema SEMPRE -- e o que permite cliente
     // e servidor gerarem o universo sem trocar um byte.
-    var c = new Jandirus.Core.World.ChunkId(17, -33);
-    var a1 = Jandirus.Core.World.Espaco.PlanetaDaChunk(seed, c);
-    var a2 = Jandirus.Core.World.Espaco.PlanetaDaChunk(seed, c);
-    Console.WriteLine($"estabilidade em {c}: {(a1?.Nome ?? "vazio")} == {(a2?.Nome ?? "vazio")} -> "
-                      + ((a1?.Nome == a2?.Nome && a1?.Pos.X == a2?.Pos.X) ? "OK" : "DIVERGIU"));
+    var a1 = Jandirus.Core.World.Sistemas.Do(seed, 17, -33);
+    var a2 = Jandirus.Core.World.Sistemas.Do(seed, 17, -33);
+    Console.WriteLine($"estabilidade em [17:-33]: {a1?.NomeDaEstrela ?? "vazio"} == {a2?.NomeDaEstrela ?? "vazio"} -> "
+                      + ((a1?.NomeDaEstrela == a2?.NomeDaEstrela && a1?.Estrela.Pos.X == a2?.Estrela.Pos.X) ? "OK" : "DIVERGIU"));
 
     var perto = Jandirus.Core.World.Espaco.PorPerto(seed, new Jandirus.Core.World.ChunkId(0, 0));
     Console.WriteLine($"visiveis da chunk (0,0): {string.Join(", ", perto.Select(p => p.Nome))}");
+    return 0;
+}
+
+if (args.Length >= 1 && args[0] == "sistemas")
+{
+    // sistemas : a bancada da camada de sistemas solares -- ver `SistemasBench`
+    SistemasBench.Run(args.Length > 1 && ulong.TryParse(args[1], out ulong sd) ? sd : 20260802);
+    return 0;
+}
+
+if (args.Length >= 1 && args[0] == "estrelas")
+{
+    // estrelas [raiz] : mede a arte das estrelas e escreve a copia que a tela do sistema carrega
+    return EstrelasArte.Run(args.Length > 1 ? args[1] : Directory.GetCurrentDirectory());
+}
+
+if (args.Length >= 1 && args[0] == "sol")
+{
+    // sol : as contas do sol que queima -- curva de poder, fator de dano, piso contra a cura, e a
+    // tabela de quanto tempo cada corpo aguenta. A CORRENTE e a bancada ao vivo `--solteste`.
+    SolBench.Run();
     return 0;
 }
 

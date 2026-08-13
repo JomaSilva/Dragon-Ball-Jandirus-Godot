@@ -532,6 +532,8 @@ public sealed partial class GameServer
 			case "admin_racas": AdminRacas(pl); break;
 			case "admin_ips": AdminIps(pl); break;
 			case "admin_galaxia": AdminGalaxia(pl); break;
+			// "me poe dentro da estrela mais proxima" -- ver GameServer.Universo.cs.
+			case "admin_estrela": AdminIrParaAEstrela(pl); break;
 
 			// ---------------------------------------------------------- sobre mim
 			case "admin_invisivel": AdminInvisivel(pl); break;
@@ -588,7 +590,11 @@ public sealed partial class GameServer
 		// dois lado a lado justamente por isso.
 		AjustarGanhoDoRabo(p);
 
-		p.Ficha.Ki = p.Ficha.MaxKi;
+		// CURAR NAO TIRA. Irmao do `Nutricao.cs:134` e do `if (primeira)` do `GameServer.Formas.cs`:
+		// `Ki = MaxKi` seco e um PRESENTE que vira CORTE, e este verb tambem cura quem esta de pe --
+		// um jogador com o Ki comprimido a 140% pela tecla C pedia "Heal" e voltava pra 100%. O
+		// original nunca corta a sobrecarga por decreto (`Power Control.dm:113-134`: ela vaza).
+		p.Ficha.Ki = Math.Max(p.Ficha.MaxKi, p.Ficha.Ki);
 		p.RenasceEm = 0;
 		MandarFicha(p);
 		MandarCorpo(p);
@@ -669,7 +675,10 @@ public sealed partial class GameServer
 	{
 		ServerPlayer? p = PorNome(alvo);
 		if (p == null) { Avisar(adm, "marque alguem antes (duplo clique nele)."); return; }
-		MoveToZone(p.Id, SpawnZone, SpawnPos);
+		// PRO BERCO DELE, e nao pra Terra: o `Send_Spawn` do original (`Admin.dm:30`) chama o mesmo
+		// `Locate()` do nascimento. Um admin que quer devolver alguem "pro comeco" quer o comeco
+		// DAQUELA pessoa -- mandar todo mundo pra Terra seria uma mudanca de planeta disfarcada.
+		MandarProBerco(p);
 		Avisar(adm, $"{p.Name} foi mandado pro ponto de partida.");
 		Avisar(p, "o mundo te devolve ao comeco.");
 	}
@@ -979,8 +988,19 @@ public sealed partial class GameServer
 		// Encher ANTES resolve sem uma segunda conta: `AplicarForma` preserva a RAZAO, e a razao aqui
 		// e 1. Cheio contra o teto velho vira cheio contra o teto novo, e o poder impresso e o de um
 		// corpo com o tanque cheio -- que e o corpo que o admin acabou de criar.
+		//
+		// ============================ E `Max` E NAO ATRIBUICAO SECA ============================
+		// A atribuicao seca fazia forcar uma forma DESFAZER a tecla C: um admin a 140% caia pra 100%.
+		// Mesmo defeito do caminho do jogador (`GameServer.Formas.cs`, `if (primeira)`), do
+		// `Nutricao.cs:134` e da absorcao Majin -- presente escrito como escrita absoluta vira corte.
+		// O que este verb promete e "o tanque nao fica vazio", nao "o tanque fica exatamente em 100%".
+		//
+		// A BANCADA SEGUE VALENDO: `GameServer.AdminTeste.cs:235` planta 20% de tanque antes de cada
+		// `admin_forma` justamente pra que "cheio no fim" so possa ter vindo daqui, e a 20% o `Max`
+		// devolve o `MaxKi` igualzinho. O que muda e so o caso do admin JA sobrecarregado, e ai o
+		// `kiratio` propagado e o do corpo que existe de verdade -- que e mais honesto que pina-lo.
 		// ==================================================================================================
-		p.Ficha.Ki = p.Ficha.MaxKi;
+		p.Ficha.Ki = Math.Max(p.Ficha.MaxKi, p.Ficha.Ki);
 		AplicarForma(p);
 
 		AnunciarForma(p, anterior, d.Id, primeira);
@@ -1000,8 +1020,10 @@ public sealed partial class GameServer
 		// O QUE SE MOVE ENTRE DOIS COMANDOS IGUAIS, e e comportamento e nao bug: o `kiratio`
 		// (`Ki/MaxKi`, um dos fatores do `statusBuff`). A forma nao masterizada DRENA Ki, e a razao
 		// atravessa a volta pra base -- entao forcar SSJ1, esperar, voltar e forcar de novo daria dois
-		// poderes diferentes. Aqui ele esta PINADO EM 1 pelo `Ki = MaxKi` acima, de proposito; no
-		// caminho normal do jogador (`Transformar`) ele se move mesmo, e deve.
+		// poderes diferentes. Aqui o `Math.Max(MaxKi, Ki)` acima o leva pra 1 sempre que o admin
+		// chega com o tanque abaixo do cheio -- ou seja em todo caso normal e em toda a bancada. Ele
+		// so continua se movendo pra quem chega SOBRECARREGADO pela tecla C, e ai a razao impressa e
+		// a do corpo de verdade. No caminho normal do jogador (`Transformar`) ele se move mesmo, e deve.
 		//
 		// E A OUTRA SURPRESA LEGITIMA, pra nao ser reportada como bug uma segunda vez: forcar um RAMO
 		// (os grades do SSJ1) nao levanta o piso dos vizinhos. O piso por ramo existe

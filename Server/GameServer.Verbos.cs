@@ -103,6 +103,14 @@ public sealed partial class GameServer
 			// ranks so era alcancavel por quem soubesse que existia.
 			case "cargos": MandarCargos(pl); break;
 
+			// A ASSINATURA DO UNIVERSO PELA PONTA DO SERVIDOR -- ver GameServer.Universo.cs.
+			//
+			// FORA DA FAIXA DE ADMIN de proposito: ela nao revela nada que o cliente ja nao tenha
+			// (a seed chega no login, e o universo e funcao pura dela). O que ela faz e deixar o
+			// cliente COMPARAR a enumeracao dele com a do servidor -- que e a regra 0.2 virando
+			// checagem em vez de promessa. O teto do tamanho da regiao mora la.
+			case "universo_assinatura": VerboAssinaturaDoUniverso(pl, arg); break;
+
 			// KNOCKBACK LIGADO/DESLIGADO -- o `knockbackon` do original, que existe justamente pra
 			// treinar com alguem sem arremessar o parceiro pra longe a cada golpe.
 			case "knockback":
@@ -112,8 +120,12 @@ public sealed partial class GameServer
 
 			// VOLTAR PRO PONTO DE NASCIMENTO. O `Goto_Spawn` do original -- a saida pra quem ficou
 			// preso em geometria quebrada, e o motivo de ele existir la tambem.
+			//
+			// PRO BERCO, e nao pra Terra: no DM este verb chama o MESMO `Locate()` do nascimento
+			// (`SpawnPoints.dm:37`), e mandar pra Terra quem nasceu noutro planeta transformaria a
+			// saida de emergencia num teleporte interplanetario de graca.
 			case "spawn":
-				MoveToZone(pl.Id, SpawnZone, SpawnPos);
+				MandarProBerco(pl);
 				Avisar(pl, "voce volta ao ponto de partida.");
 				break;
 

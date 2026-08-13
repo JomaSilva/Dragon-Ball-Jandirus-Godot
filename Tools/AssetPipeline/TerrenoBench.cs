@@ -49,24 +49,30 @@ public static class TerrenoBench
 		double somaLado = 0;
 		int maior = 0;
 
-		// AS SEEDS SAO AS DE VERDADE: o `PlanetaDaChunk` e quem decide que uma chunk tem planeta e
-		// com que seed. Sortear um ulong qualquer mediria a escada de gravidade, e nao o universo.
+		// AS SEEDS SAO AS DE VERDADE: quem decide que um planeta existe e com que seed e o
+		// `Sistemas.Do`, varrendo celula por celula e pegando as orbitas. Sortear um `ulong` qualquer
+		// mediria a escada de gravidade, e nao o universo.
 		int achados = 0;
-		for (int i = 0; achados < amostras && i < amostras * ChunksPorTentativa; i++)
+		for (int i = 0; achados < amostras && i < amostras; i++)
 		{
-			if (Espaco.PlanetaDaChunk(1234567, new ChunkId(i % 4096, i / 4096)) is not { } p) continue;
-			achados++;
+			if (Sistemas.Do(1234567, i % 4096, i / 4096) is not { } s) continue;
 
-			MundoProcedural m = MundoProcedural.DaSeed(p.Seed, p.Nome);
-			somaLado += m.Lado;
-			if (m.Lado > maior) maior = m.Lado;
+			foreach (PlanetaNoEspaco p in s.Planetas())
+			{
+				if (p.Premade) continue;   // pre-feito tem mapa proprio: nao passa pelo gerador
+				achados++;
 
-			int b = m.Lado <= 250 ? 0 : m.Lado <= 350 ? 1 : m.Lado <= 500 ? 2
-				  : m.Lado <= 700 ? 3 : m.Lado <= 900 ? 4 : 5;
-			baldes[b]++;
+				MundoProcedural m = MundoProcedural.DaSeed(p.Seed, p.Nome);
+				somaLado += m.Lado;
+				if (m.Lado > maior) maior = m.Lado;
+
+				int b = m.Lado <= 250 ? 0 : m.Lado <= 350 ? 1 : m.Lado <= 500 ? 2
+					  : m.Lado <= 700 ? 3 : m.Lado <= 900 ? 4 : 5;
+				baldes[b]++;
+			}
 		}
 
-		if (achados == 0) { Console.WriteLine("nenhum planeta encontrado -- confira o ChunksPorPlaneta"); return; }
+		if (achados == 0) { Console.WriteLine("nenhum planeta encontrado -- confira o `Sistemas.Do`"); return; }
 
 		for (int b = 0; b < baldes.Length; b++)
 		{
@@ -81,9 +87,6 @@ public static class TerrenoBench
 		double custoMedio = somaLado / achados * (somaLado / achados) * 0.22 / 1000;
 		Console.WriteLine($"  custo medio estimado por pouso novo: ~{custoMedio:0} ms");
 	}
-
-	/// <summary>Quantas chunks varrer por planeta pedido. Um planeta a cada 40, com folga.</summary>
-	private const int ChunksPorTentativa = 120;
 
 	private static double Medir(int lado, int vezes)
 	{

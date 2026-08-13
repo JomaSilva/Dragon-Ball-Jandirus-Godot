@@ -442,6 +442,34 @@ public static class Protocol
         /// ==============================================================================================
         /// </summary>
         Conhecidos = 35,
+
+        /// <summary>
+        /// A FURIA DE ALGUEM IRROMPEU: um id, e mais nada.
+        ///
+        /// ============================ UM PACOTE VAZIO, E ELE E VAZIO DE PROPOSITO ============================
+        /// Nao vai grau, nao vai prazo, nao vai duracao de cena. O grau (`NivelDeRaiva`) e coisa do
+        /// SERVIDOR -- e ele que le o gate das formas --, e a cena so existe pra UM deles (a furia
+        /// EXTREMA, `Do_Anger_Stuff(1)`); mandar o grau daria ao cliente um numero que ele nao tem o
+        /// que fazer com, e o primeiro a "usar" seria alguem escrevendo regra de jogo na tela.
+        ///
+        /// O prazo tambem nao: a cena mede 5,0 s no Core (`Cinematicas.Furia`) e as duas pontas leem o
+        /// mesmo arquivo. Mandar a duracao criaria uma segunda verdade sobre o relogio dela.
+        ///
+        /// ============================ PRA ZONA INTEIRA, COMO O <see cref="Forma"/> E O <see cref="Oozaru"/> ============================
+        /// No DM a cena e do MUNDO: as ondas de choque sao objetos no chao, o `to_chat` vai pra
+        /// `view(src)` e o `emit_RageMusic` toca pra todo `mob` do `view`. Ver alguem explodir de raiva
+        /// e informacao que quem esta em volta tem que ter -- e o mesmo argumento que ja tirou o Oozaru
+        /// do caminho pessoal.
+        ///
+        /// ============================ E POR QUE NAO E O <see cref="Efeito"/> ============================
+        /// A tentacao era obvia: aquele pacote ja carrega "caiu um efeito em mim: id + por quantos ms".
+        /// So que ele e PESSOAL (um buff no meu corpo, com prazo) e a furia e um ACONTECIMENTO da zona,
+        /// sem estado a sincronizar -- quem chega depois nao deve assistir a uma erupcao que aconteceu
+        /// antes de ele pisar ali. Empurrar um acontecimento por um canal de estado e o que fez o
+        /// Oozaru precisar de opcode proprio, e pelo mesmo motivo.
+        /// =====================================================================================================
+        /// </summary>
+        Furia = 36,
     }
 
     /// <summary>Os momentos do ZanzoClash. Ver <see cref="S2C.Clash"/>.</summary>
@@ -811,6 +839,8 @@ public static class Protocol
         // O PORTE MEXE EM STAT, entao o servidor precisa dele -- e vai validar contra a lista.
         w.Put(d.Porte);
         w.Put(d.Backstory);
+        // O PEDIDO DE BERCO. Um bit, e nao um planeta: ver `CharacterDraft.PertoDeCasa`.
+        w.Put(d.PertoDeCasa);
     }
 
     public static CharacterDraft GetDraft(this NetDataReader r) => new()
@@ -824,6 +854,7 @@ public static class Protocol
         // historia" depois de ter escrito demais. Lendo com folga, quem recusa e o `Validar`, que
         // sabe dizer o motivo certo.
         Backstory = r.GetString(CharacterDraft.BackstoryMax * 2),
+        PertoDeCasa = r.GetBool(),
     };
 
     /// <summary>Cor OPCIONAL: um byte de presenca antes. Ausente = a cor natural do sprite.</summary>
@@ -866,6 +897,16 @@ public static class Protocol
         w.Put((byte)Math.Min(a.FormasDeFrost.Count, Jandirus.Core.Races.FormasDeFrost.Total));
         for (int i = 0; i < a.FormasDeFrost.Count && i < Jandirus.Core.Races.FormasDeFrost.Total; i++)
             w.Put(a.FormasDeFrost[i]);
+
+        // A COR DA CHAMA DESTE CORPO, no fim de tudo. Quatro bytes (ver `PutRgb`), uma vez por
+        // pessoa por zona -- o `PeerLook` nao repete.
+        //
+        // SEM BUMP DE VERSAO e sem tolerancia, de proposito: `Protocol.ConnectionKey` e a unica
+        // porta e o `AcceptIfKey` nao olha build. Cliente e servidor sobem juntos (auto-host /
+        // `servidor.bat`), e o precedente e o proprio `FormasDeFrost` logo acima, anexado do mesmo
+        // jeito. O que isso EXIGE e que escrita e leitura andem no mesmo commit -- um dos dois
+        // sozinho desalinha o pacote inteiro, e o `SlotList` manda tres aparencias em fila.
+        w.PutRgb(a.CorAura);
     }
 
     public static Appearance GetAppearance(this NetDataReader r)
@@ -904,6 +945,11 @@ public static class Protocol
             string corpo = r.GetString(64);
             if (corpo.Length > 0) a.FormasDeFrost.Add(corpo);
         }
+
+        // A COR DA CHAMA, no fim de tudo -- na MESMA ordem do `PutAppearance`. Nulo aqui e legitimo
+        // e nao e defeito: quem le DERIVA (ver `Appearance.CorAura`). No caminho de entrada
+        // (`CreateChar`) ela e descartada de qualquer jeito, porque quem sorteia e o servidor.
+        a.CorAura = r.GetRgb();
         return a;
     }
 

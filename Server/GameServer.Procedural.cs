@@ -19,6 +19,18 @@ public partial class GameServer
 
 		/// <summary>O gerador teve de abrir uma clareira na marra (planeta sem chao livre).</summary>
 		public required bool ClareiraEscavada { get; init; }
+
+		/// <summary>
+		/// A ASSINATURA DESTE MUNDO -- o mesmo numero que sai no log de <see cref="TickDasGeracoes"/>
+		/// e que o cliente imprime ao pintar o planeta (`PlanetaProcedural.Nascer`).
+		///
+		/// GUARDADA E NAO RECALCULADA: ela ja foi paga na thread de fundo (sao 2,1 milhoes de passadas
+		/// num mundo de 1000 -- ver o comentario em `GeracaoEmVoo.Tarefa`), e recalcula-la pra
+		/// comparar poria de volta no tique exatamente o custo que se tirou dele. Oito bytes por mundo
+		/// vivo, e com eles da pra PERGUNTAR ao servidor "que mundo voce gerou?" em vez de so ler o
+		/// log com o olho -- que era o unico jeito de conferir as duas pontas ate agora.
+		/// </summary>
+		public required ulong Assinatura { get; init; }
 	}
 
 	/// <summary>
@@ -170,6 +182,7 @@ public partial class GameServer
 				Chegada = t.Spawn,
 				NoEspaco = g.NoEspaco,
 				ClareiraEscavada = t.ClareiraEscavada,
+				Assinatura = assinatura,
 			};
 
 			// A ASSINATURA VAI NO LOG DE PROPOSITO. E o unico jeito barato de descobrir que cliente e
@@ -222,6 +235,16 @@ public partial class GameServer
 	/// </summary>
 	public double GravidadeDaZonaGerada(ZoneKey zona) =>
 		_zonasGeradas.TryGetValue(zona.Hash, out ZonaGerada? v) ? v.Ficha.Gravidade : 0;
+
+	/// <summary>
+	/// O ponto de chegada de um mundo gerado que JA ESTA VIVO no servidor, ou nulo se ele nao esta.
+	///
+	/// Existe pro berco: quem morre no proprio planeta gerado nao precisa dar a volta pela orbita
+	/// (`DestinoDoBerco`). Nulo nao e erro -- e "este mundo nao esta carregado", e a resposta certa
+	/// e mandar o corpo pro espaco e deixar o `TickDoEspaco` pousar pelo caminho de verdade.
+	/// </summary>
+	public Vec2? ChegadaDaZonaGerada(ZoneKey zona) =>
+		_zonasGeradas.TryGetValue(zona.Hash, out ZonaGerada? v) ? v.Chegada : null;
 
 	// =====================================================================
 	// POUSAR E DECOLAR

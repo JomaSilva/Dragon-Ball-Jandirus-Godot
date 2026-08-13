@@ -52,6 +52,27 @@ public sealed class CharacterDraft
 	/// </summary>
 	public string Porte = "Medium";
 
+	/// <summary>
+	/// "QUERO NASCER NUM PLANETA QUALQUER PERTO DE CASA" -- a segunda metade do pedido do dono.
+	///
+	/// ============================ E UM PEDIDO, E NAO UMA ESCOLHA DE PLANETA ============================
+	/// O campo e um BOOLEANO e nao o nome (nem a seed) do mundo, e a diferenca e de seguranca: a
+	/// gravidade do berco vira `GravMastered` de graca no nascimento (`race.dm:130-131`), entao
+	/// deixar o cliente dizer PARA ONDE ir seria deixa-lo escolher um atributo permanente -- e a
+	/// tela de criacao e justamente onde este projeto ja decidiu que "sorteio no cliente e sorteio
+	/// ate sair o resultado desejado" (ver o cabecalho desta classe).
+	///
+	/// Quem sorteia qual das irmas sai e o servidor, de uma semente que so ele conhece
+	/// (<see cref="Bercos.SementeDoBerco"/>). O cliente ENUMERA as candidatas pela mesma funcao pura
+	/// (<see cref="Bercos.IrmasDoNatal"/>) e as mostra -- ele sabe o sorteio inteiro, so nao sabe o
+	/// resultado.
+	/// ==============================================================================================
+	///
+	/// Falso e o padrao, e o padrao e nascer em casa. O <see cref="Bercos.Onde"/> ignora este campo
+	/// quando o corpo e o do Lendario: exilio nao e opcao de ninguem.
+	/// </summary>
+	public bool PertoDeCasa;
+
 	public static readonly string[] Portes = ["Medium", "Small", "Large"];
 
 	/// <summary>Raças que NAO passam pelo passo de genero (o BYOND forcava Male).</summary>

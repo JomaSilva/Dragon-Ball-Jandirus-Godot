@@ -218,7 +218,26 @@ public sealed partial class Fighter
 	// =====================================================================
 	// RAIVA
 	// =====================================================================
-	public double Anger = 100, baseAnger = 100, angerMod = 1;
+	/// <summary>
+	/// A RAIVA COMO NUMERO -- 100 e "calmo" (1,0x), e o teto e o <see cref="MaxAnger"/>. Unica
+	/// entrada do `angerBuff` (`Fighter.Power.cs`), e o `Anger` do DM (`base.dm:88`).
+	///
+	/// **CAMPO DERIVADO, E NAO ESTADO.** Quem o escreve e UM lugar so, o `GameServer.ProjetarRaiva`,
+	/// e ele nao acumula: copia pra ca uma funcao pura das duas janelas de raiva do `ServerPlayer`
+	/// (`GameServer.RaivaComoNumero`, que porta `Stats.dm:438-443`). Ele mora aqui, e nao la, porque
+	/// a conta de poder e do Core e o Core nao tem relogio -- nao porque alguem seja dono dele.
+	///
+	/// SOMAR OU MULTIPLICAR NISTO E O BUG DO 20x, literalmente: o DM ja pagou por ele e escreveu o
+	/// remedio no proprio codigo (`Murder.dm:112`, *"never stack, sum, or multiply"*). Quem quiser
+	/// enfurecer alguem chama `GameServer.AmigoAbatido`, que mexe na JANELA. Nao ha caminho legitimo
+	/// que escreva este campo direto -- e a bancada `raiva` [8] varre os fontes atras de um.
+	///
+	/// O 100 do valor inicial e o que sobra depois de todo prazo vencer, e tambem o que um corpo
+	/// recem-carregado tem: raiva **nao persiste** (a janela nao vai pro save, e este campo nao esta
+	/// no `CharacterStore`).
+	/// </summary>
+	public double Anger = 100;
+	public double baseAnger = 100, angerMod = 1;
 	/// <summary>Skill Legendary Anger: +100 aqui = +1x no teto de raiva (2x -> 3x).</summary>
 	public double legendaryAngerBonus = 0;
 

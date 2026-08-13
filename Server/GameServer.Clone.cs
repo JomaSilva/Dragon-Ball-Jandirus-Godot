@@ -98,7 +98,9 @@ public partial class GameServer
 			Pos = dono.Pos + new Vec2(DistanciaDoClone, 0),
 			Race = dono.Race,
 			Class = dono.Class,
-			SpeedStat = dono.SpeedStat,
+			// `SpeedStat` NAO E COPIADO do dono desde que o nascimento virou funcao unica: quem o
+			// calcula e o `PorNoMundo`, a partir do `Espeed` da ficha -- que e a mesma ficha, entao
+			// o numero e o mesmo. Copiar um campo derivado e como ele envelhece.
 			// COPIA, e nao a mesma instancia. Dono e clone dividiam o MESMO objeto (e a mesma lista
 			// de roupa): tingir uma peca num aparecia no outro, e o `Sanear` de um reescrevia a
 			// lista do outro. O `Copiar()` existia pra isto e nunca tinha sido chamado.
@@ -112,12 +114,12 @@ public partial class GameServer
 			Ficha = ClonarFicha(dono.Ficha),
 		};
 
-		PrepararCombate(clone, null);
+		// A SEQUENCIA DE NASCER UM CORPO SEM DONO E UMA FUNCAO SO (`GameServer.Npc.cs`): statify,
+		// velocidade, corpo, entrar no `_players` e na lista da zona, gravidade do chao. Era escrita
+		// aqui e na bancada de convivio, e a fabrica de NPC seria a terceira copia.
+		PorNoMundo(clone);
 		clone.Livro = new Jandirus.Core.Skills.SkillBook();
 		clone.Combate.Letal = false;   // a mente nao decepa membro nem mata: e treino
-
-		_players[clone.Id] = clone;
-		ZoneList(zona.Hash).Add(clone);
 
 		// a APARENCIA precisa ir pro dono, senao ele ve um boneco sem roupa nem cabelo
 		MandarLook(dono, clone);
@@ -183,87 +185,140 @@ public partial class GameServer
 	/// segunda fisica pela porta dos fundos.
 	/// ================================================================================
 	/// </summary>
+	/// <summary>
+	/// O BUFFER DOS CORPOS DIRIGIDOS, reusado a cada tique.
+	///
+	/// ============================ ERA UM `Where().ToList()` A 30 Hz ============================
+	/// A lista a parte E necessaria (o `Atacar` pode matar e mexer nas colecoes no meio da volta),
+	/// mas ela era ALOCADA de novo 30 vezes por segundo, varrendo TODOS os jogadores -- inclusive
+	/// num servidor sem nenhum corpo dirigido, onde o resultado e sempre vazio. Com 20 NPCs numa
+	/// zona isso e lixo constante pro coletor, e o custo cresce com a quantidade de gente ONLINE e
+	/// nao com a de NPCs.
+	///
+	/// O `Cerebro != null` continua sendo a unica verdade de posse: o filtro nao mudou, so parou de
+	/// alocar. E `Clear()` num `List` reusado nao devolve a capacidade -- e exatamente o que se
+	/// quer.
+	/// ======================================================================================
+	/// </summary>
+	private readonly List<ServerPlayer> _dirigidos = [];
+
 	private void TickDosCorposSemDono(double dt)
 	{
-		// lista a parte: `Atacar` pode matar e mexer nas colecoes durante a volta
-		List<ServerPlayer> npcs = _players.Values.Where(p => p.Cerebro != null).ToList();
+		_dirigidos.Clear();
+		foreach (ServerPlayer p in _players.Values)
+			if (p.Cerebro != null) _dirigidos.Add(p);
 
-		foreach (ServerPlayer npc in npcs)
+		foreach (ServerPlayer npc in _dirigidos)
 		{
-			// --- 1. DE QUEM E ESTE CORPO, E ATRAS DE QUEM ELE VAI ---------------------
-			Vec2 posAlvo;
-			bool alvoCaido;
+			// ============================ MOB-ZUMBI: A CADA VOLTA, DE NOVO ============================
+			// A volta anterior pode ter matado este corpo, tirado o cerebro dele (a posse venceu) ou
+			// removido o clone. O DM pagou este defeito caro (`NPCAI.dm:751` -- laco segurando mob ja
+			// deletado) e a receita de la e a mesma: **todo laco confere `loc`/vida a cada volta**.
+			// Aqui `loc` e "ainda esta no `_players`", e "vida" e o cerebro continuar sendo dele.
+			// =====================================================================================
+			if (npc.Cerebro == null || !_players.ContainsKey(npc.Id)) continue;
 
-			if (npc.DonoDoClone != 0)
+			// ============================ UM NPC QUEBRADO NAO DERRUBA O SERVIDOR ============================
+			// O `try` e POR CORPO e nunca em volta do tique. Em volta do tique ele viraria o
+			// esconderijo de todo defeito da IA -- o servidor seguiria "funcionando" com a luta toda
+			// errada e ninguem saberia. Por corpo, o estrago e um NPC que vira estatua, com o nome
+			// dele e a excecao no console; o resto da zona nao percebe.
+			// ==========================================================================================
+			try { TicarUmCorpo(npc, dt); }
+			catch (Exception ex)
 			{
-				// O CLONE DA MENTE. Ele so existe enquanto o dono existe e esta no mesmo bolso.
-				if (!_players.TryGetValue(npc.DonoDoClone, out ServerPlayer? dono)
-					|| dono.Zone.Hash != npc.Zone.Hash)
-				{
-					RemoverClone(npc);   // o dono sumiu: o clone nao tem por que existir
-					continue;
-				}
-
-				if (npc.Ficha.dead || npc.Ficha.KO)
-				{
-					// O CLONE CAIU: fim do treino. Ele nao renasce -- vencer a si mesmo e o objetivo,
-					// e deixar o corpo no chao pra socar de novo esvaziaria a coisa.
-					SairDaMente(dono, "o seu reflexo se desfaz. Voce abre os olhos.");
-					continue;
-				}
-
-				posAlvo = dono.Pos;
-				alvoCaido = dono.Ficha.KO || dono.Ficha.dead;
+				GD.PushError($"[server] IA de '{npc.Name}' (id {npc.Id}) quebrou e o corpo foi solto: {ex}");
+				npc.Cerebro = null;
+				LargarOInput(npc);
 			}
-			else
-			{
-				// O CORPO POSSUIDO. Ele e de um jogador -- nao se remove, nao se mata: quando a
-				// posse acaba, quem a armou tira o cerebro e o dono volta a dirigir.
-				//
-				// ============================ ESTE RAMO ERA "A FERA", E HOJE SAO DUAS ============================
-				// O Oozaru sem controle (`TickDoOozaru`, passo 5) e a furia lendaria
-				// (`TickDaFuriaLendaria`) caem os dois aqui, e de proposito: o comportamento que o DM
-				// pede pros dois e o mesmo -- *"receita do rampage do Oozaru selvagem"*, palavra do
-				// proprio `lssjbuff.dm:566`. O que difere entre elas mora no CEREBRO (temperos
-				// diferentes) e no RELOGIO, nao aqui.
-				// ==========================================================================================
-				//
-				// CAIDO, O CORPO PARA. Ele nao "morre" como o clone (o Oozaru sobrevive ao KO no DM
-				// -- o que o KO tira e o ganho de maestria; e o `while` do berserk tem `!KO && !dead`);
-				// ele so nao age. Sem esta guarda o `Atacar` seria chamado a 30 Hz contra o
-				// `PodeAtacar()` de um corpo no chao.
-				if (npc.Ficha.dead || npc.Ficha.KO) { npc.Moving = false; continue; }
-
-				// "ele sai batendo em qualquer coisa e atacando tudo" (a fera) / "ataca TUDO que ve
-				// (player OU NPC)" (a furia): QUALQUER corpo da zona, sem dono, sem faccao, sem alvo
-				// marcado. Inclusive outro possuido.
-				ServerPlayer? presa = PresaDaFera(npc);
-				posAlvo = presa?.Pos ?? RumoDaFera(npc);
-				alvoCaido = false;   // sem presa, o destino e um ponto: ponto nao cai
-			}
-
-			// --- 2. A DECISAO E A EXECUCAO, IDENTICAS PROS DOIS ------------------------
-			Decisao d = npc.Cerebro!.Pensar(
-				npc.Pos, posAlvo,
-				npc.Ficha.HP / 100.0,
-				npc.Ficha.MaxKi > 0 ? npc.Ficha.Ki / npc.Ficha.MaxKi : 1,
-				alvoCaido,
-				dt, _rng);
-
-			// MOVIMENTO PELAS MESMAS REGRAS do jogador -- inclusive a parede.
-			if (d.Rumo.LengthSquared > 1e-6f)
-			{
-				ZoneCollision? mapa = _catalogo?.Get(npc.Zone)?.Mapa;
-				Vec2 antes = npc.Pos;
-				npc.Pos = MoveRules.Advance(npc.Pos, d.Rumo, (float)dt, npc.SpeedStat, mapa, out _);
-				npc.Moving = (npc.Pos - antes).LengthSquared > 0.01f;
-				npc.Facing = MoveRules.FacingFrom(d.Rumo, npc.Facing);
-			}
-			else npc.Moving = false;
-
-			npc.Combate.Guardar(d.Guardar);
-			if (d.Atacar) Atacar(npc, d.Pesado ? Protocol.Golpe.Pesado : Protocol.Golpe.Leve);
 		}
+	}
+
+	/// <summary>UM corpo dirigido, um tique. Separado pra o `try` poder ser POR CORPO.</summary>
+	private void TicarUmCorpo(ServerPlayer npc, double dt)
+	{
+		// --- 1. DE QUEM E ESTE CORPO, E ATRAS DE QUEM ELE VAI ---------------------
+		ServerPlayer? presa;
+		Vec2 destino;
+
+		if (npc.DonoDoClone != 0)
+		{
+			// O CLONE DA MENTE. Ele so existe enquanto o dono existe e esta no mesmo bolso.
+			if (!_players.TryGetValue(npc.DonoDoClone, out ServerPlayer? dono)
+				|| dono.Zone.Hash != npc.Zone.Hash)
+			{
+				RemoverClone(npc);   // o dono sumiu: o clone nao tem por que existir
+				return;
+			}
+
+			if (npc.Ficha.dead || npc.Ficha.KO)
+			{
+				// O CLONE CAIU: fim do treino. Ele nao renasce -- vencer a si mesmo e o objetivo,
+				// e deixar o corpo no chao pra socar de novo esvaziaria a coisa.
+				SairDaMente(dono, "o seu reflexo se desfaz. Voce abre os olhos.");
+				return;
+			}
+
+			presa = dono;
+			destino = dono.Pos;
+		}
+		else
+		{
+			// O CORPO POSSUIDO. Ele e de um jogador -- nao se remove, nao se mata: quando a
+			// posse acaba, quem a armou tira o cerebro e o dono volta a dirigir.
+			//
+			// ============================ ESTE RAMO ERA "A FERA", E HOJE SAO DUAS ============================
+			// O Oozaru sem controle (`TickDoOozaru`, passo 5) e a furia lendaria
+			// (`TickDaFuriaLendaria`) caem os dois aqui, e de proposito: o comportamento que o DM
+			// pede pros dois e o mesmo -- *"receita do rampage do Oozaru selvagem"*, palavra do
+			// proprio `lssjbuff.dm:566`. O que difere entre elas mora no CEREBRO (temperos
+			// diferentes) e no RELOGIO, nao aqui.
+			// ==========================================================================================
+			//
+			// CAIDO, O CORPO PARA. Ele nao "morre" como o clone (o Oozaru sobrevive ao KO no DM
+			// -- o que o KO tira e o ganho de maestria; e o `while` do berserk tem `!KO && !dead`);
+			// ele so nao age. Sem esta guarda o `Atacar` seria chamado a 30 Hz contra o
+			// `PodeAtacar()` de um corpo no chao.
+			if (npc.Ficha.dead || npc.Ficha.KO) { npc.Moving = false; return; }
+
+			// "ele sai batendo em qualquer coisa e atacando tudo" (a fera) / "ataca TUDO que ve
+			// (player OU NPC)" (a furia): QUALQUER corpo da zona, sem dono, sem faccao, sem alvo
+			// marcado. Inclusive outro possuido.
+			presa = PresaDaFera(npc);
+			destino = presa?.Pos ?? RumoDaFera(npc);
+		}
+
+		// --- 2. O QUE O JOGO RESPONDE QUE ELE PODE (1 Hz) -------------------------
+		// A leitura varre o catalogo de formas; pagar isso 30 vezes por segundo por corpo seria o
+		// custo da IA crescendo com o numero de bichos sem nada em troca. Nada aqui muda em 33 ms.
+		Cerebro cerebro = npc.Cerebro!;
+		if (cerebro.PrecisaLerCapacidades(dt)) cerebro.Poderes = LerCapacidades(npc);
+
+		// --- 3. A DECISAO E A EXECUCAO, IDENTICAS PROS DOIS -----------------------
+		// O RELATO E LIGADO AQUI E NAO NO NASCIMENTO DO CEREBRO, e a diferenca importa: sao tres
+		// lugares que criam cerebro (clone, fera, furia) e um quarto viria com a proxima posse.
+		// Escrever todo tique e uma atribuicao de bool e nao ha onde esquecer.
+		cerebro.Explicando = _diagIa;
+
+		// A LINHA DE VISAO SO E TRACADA PRA QUEM TEM O QUE ATIRAR -- hoje, ninguem (o arsenal de
+		// longe sai vazio de todo corpo: ver `TecnicasDeLonge`). Passar a resposta do arsenal como
+		// argumento e o que mantem a varredura de segmento fora do caminho de 30 Hz.
+		Percepcao p = LerPercepcao(npc, presa, destino, cerebro.Poderes.DeLonge.TemAlguma);
+		Plano antes = cerebro.Atual;
+		Comando c = cerebro.Pensar(p, dt, _rng);
+		AplicarComando(npc, c, dt);
+
+		// ============================ A DECISAO VIRA DADO ============================
+		// So na TROCA de plano: um despejo por tique seriam 30 linhas por segundo por corpo, e o
+		// console viraria inutil exatamente quando fosse mais preciso.
+		//
+		// Isto existe pro risco que este desenho ja sabe que vai correr: a calibragem come mais
+		// tempo que o codigo, e calibrar sem ver POR QUE ele decidiu e tentativa e erro no escuro.
+		// ==========================================================================
+		if (_diagIa && cerebro.Atual != antes)
+			GD.Print($"[ia] {npc.Name}: {antes} -> {cerebro.Atual}  ({cerebro.Porque})"
+				   + $" | vida {p.VidaFrac:0.00} ki {p.KiFrac:0.00} dist {p.Distancia:0} "
+				   + $"andares {p.MeuAndar}/{p.AndarDoAlvo}");
 	}
 
 	/// <summary>
@@ -341,7 +396,18 @@ public partial class GameServer
 	///     possuido com a tecla de subir apertada subiria pra sempre, drenando Ki, sem nada explicando
 	///     por que;
 	///   * a guarda -- um corpo dirigido pela IA que continuasse aparando por conta do dono seria a
-	///     unica parte dele que ainda obedece.
+	///     unica parte dele que ainda obedece;
+	///   * **a CARGA DE KI** -- e esta faltava. `Carregando` PRENDE o corpo (o portao do `Input`
+	///     recusa andar carregando, e agora o `PodeMexerOCorpo` diz isso pros dois lados), entao
+	///     quem fosse possuido com o C apertado ficaria plantado no chao com aura acesa **pela posse
+	///     inteira**, sem nada explicando por que a fera nao anda. E o `PararCarga` e o unico
+	///     caminho que desliga as tres partes do estado juntas (a flag, a aura e o efeito no
+	///     cliente) -- zerar `pl.Carregando` na mao deixaria o zumbido tocando.
+	///
+	/// ============================ E FOI POR ISTO QUE ESTA FUNCAO DEIXOU DE SER `static` ============================
+	/// `PararCarga` e de instancia (ela manda pacote). O `static` daqui era o que fazia a falta
+	/// passar despercebida: nao dava pra chamar, entao ninguem tentou.
+	/// ========================================================================================================
 	///
 	/// ============================ ISTO ERA O MIOLO DO `TomarAsRedeas` DO OOZARU ============================
 	/// Saiu de la e veio pra ca junto com o <see cref="SemAsRedeas"/> e o <see cref="DevolverAsRedeas"/>,
@@ -350,7 +416,7 @@ public partial class GameServer
 	/// a copia que esquecesse o `dashing` daria um bug de DANO que ninguem ligaria a possessao.
 	/// ================================================================================================
 	/// </summary>
-	private static void LargarOInput(ServerPlayer pl)
+	private void LargarOInput(ServerPlayer pl)
 	{
 		pl.Moving = false;
 		pl.Correndo = false;
@@ -358,6 +424,7 @@ public partial class GameServer
 		pl.QuerSubir = false;
 		pl.QuerDescer = false;
 		pl.Combate.Guardar(false);
+		PararCarga(pl);
 	}
 
 	/// <summary>

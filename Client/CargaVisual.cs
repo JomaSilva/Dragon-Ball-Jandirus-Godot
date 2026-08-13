@@ -251,6 +251,21 @@ public partial class CargaVisual : Node2D
 		// pintada e nao duas -- as duas escritas abaixo (desenho e luz) tem que sair do mesmo node,
 		// senao voltam a poder discordar.
 		Aura? aura = GetParent()?.GetNodeOrNull<Aura>("Aura");
+
+		// ============================ E EM ULTRA INSTINTO (E NO ULTRA EGO) QUEM DESENHA A CARGA E A NUVEM ============================
+		// Ordem do dono: *"a aura/carga do ultra instinto deveria ser essa aura em shaders, e nao o icone
+		// de carga atual"* -- e depois *"a aura/carga do ultra ego e a mesma do instinto superior so q
+		// ROXA"*. NENHUMA LINHA DESTE ARQUIVO MUDOU pra o segundo pedido, e isso e o teste do desenho:
+		// a carga do Ultra Ego passou a sair na nuvem pelo mesmo caminho, so por causa do simbolo.
+		// Nao ha `if` por forma aqui, e nao pode haver: quem responde "esta forma nao
+		// tem folha" e o Core, pelo simbolo `FolhaDeAura.Nebulosa`, e quem obedece e o `SpriteDeAura`
+		// (o `_desenho` abaixo fica MUDO sozinho). Este node so entrega a mesma `forca` num terceiro
+		// lugar -- e quem decide se ela vale e a nuvem, que sabe se esta acesa.
+		//
+		// PELO IRMAO, como a `Aura` logo acima, e com o mesmo cuidado: um corpo remoto montado pela
+		// metade nao tem o node ainda, e travar aqui faria a carga do Ultra Instinto sumir CALADA num
+		// corpo que chegou fora de ordem. (Em jogo os tres nascem juntos, `World.cs:1358-1372`.)
+		NebulosaDaForma? nuvem = GetParent()?.GetNodeOrNull<NebulosaDaForma>("Nebulosa");
 		// SEM IRMA `Aura` nao ha luz nem cor guardada; o padrao e o MESMO campo que ela usa, pra os
 		// dois nao poderem divergir num corpo montado pela metade. (Em jogo nunca acontece: os dois
 		// nodes nascem juntos, `World.cs:1241-1242`.)
@@ -260,6 +275,7 @@ public partial class CargaVisual : Node2D
 		{
 			_desenho.Definir(false, cor);
 			aura?.ChamaDaCarga(false, 0);   // devolve a vez
+			nuvem?.Carga(false, 0);         // e a nuvem volta ao papel de overlay da forma
 			return;
 		}
 
@@ -287,6 +303,13 @@ public partial class CargaVisual : Node2D
 		// virar luz se houver FORMA (a guarda `_temForma`, em `Aura.Aplicar`). Aqui se manda a forca
 		// do mesmo jeito -- quem decide e a `Aura`, dona da luz, e nao este node.
 		aura?.ChamaDaCarga(true, forca);
+		// A MESMA `forca` NOS TRES, e isso e o ponto: a chama, a luz e a nuvem sao o mesmo esforco visto
+		// de tres jeitos. Mandar um numero proprio pra nuvem seria a quarta resposta pra "quanto este
+		// corpo esta carregando" -- e este arquivo ja apagou duas (as cores que moravam aqui).
+		//
+		// Em Ultra Instinto o `_desenho` nao desenha nada (folha nula) e a nuvem adensa; em qualquer
+		// outra forma a nuvem esta apagada e sai na primeira linha do `Carga`. Nunca as duas.
+		nuvem?.Carga(true, forca);
 		_desenho.Definir(true, cor, forca);
 	}
 }

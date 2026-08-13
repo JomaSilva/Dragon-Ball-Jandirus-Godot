@@ -1,4 +1,4 @@
-﻿using Godot;
+using Godot;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Stats;
 using Jandirus.Core.World;
@@ -238,6 +238,20 @@ public partial class GameServer
 			AnunciarSocoNoAr(a, zanzo, investiu);
 			return;
 		}
+
+		// ============================ O UNICO SENTIDO QUE A IA TEM DO OPONENTE ============================
+		// Chamado ANTES de resolver, e com o golpe que vai ACONTECER -- acertando, sendo aparado ou
+		// errando, tanto faz: o que um lutador ve e o GESTO, e nao o resultado. A partir daqui o
+		// cerebro estima a cadencia e prepara a guarda pro proximo (`Cerebro.ViuUmGolpe`).
+		//
+		// **E POR ISSO QUE ELE NAO LE O `alvo.Combate.Recarga`.** O servidor tem na mao o instante
+		// exato do proximo soco de qualquer um -- daria uma IA que apara SEMPRE, impossivel de
+		// enganar e sem nada pra o jogador descobrir. Aqui ela aprende apanhando, com atraso
+		// (`TempoDeReacao`) e com erro, e o jeito de vencê-la e quebrar o proprio ritmo.
+		//
+		// Vale pro clone da mente, pro NPC e pro corpo possuido -- e nao vale pra jogador nenhum,
+		// porque `Cerebro` nulo e a definicao de "quem dirige e o dono".
+		alvo.Cerebro?.ViuUmGolpe();
 
 		CombatState cd = alvo.Combate;
 		double angulo = MeleeArea.AnguloDeChegada(alvo.Pos, alvo.Facing, a.Pos);
@@ -539,6 +553,24 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// MARCAR ALGUEM. Zero limpa a mira.
+	///
+	/// ============================ ISTO ESTAVA DENTRO DO `switch` DO DESPACHO ============================
+	/// A validacao ("so vale mirar em quem existe e esta na MESMA zona -- o resto e cliente
+	/// inventando") era duas linhas soltas no `case Protocol.C2S.Alvo`. Enquanto so o pacote mirava,
+	/// tanto fazia; a partir do momento em que a IA tambem mira -- e ela mira pra poder atirar de
+	/// longe --, ou a regra vira funcao ou ela vira DUAS regras, e a segunda e sempre a mais frouxa.
+	///
+	/// Continua sendo o mesmo funil pros dois lados: `Handle` chama isto, `AplicarComando` chama
+	/// isto, e nao ha uma terceira escrita em `AlvoId` no servidor inteiro fora do auto-limpar do
+	/// <see cref="Marcado"/>.
+	/// ==============================================================================================
+	/// </summary>
+	private void Mirar(ServerPlayer quem, int alvo) =>
+		quem.AlvoId = alvo != 0 && _players.TryGetValue(alvo, out ServerPlayer? o)
+					  && o != quem && o.Zone.Hash == quem.Zone.Hash ? alvo : 0;
+
+	/// <summary>
 	/// O ALVO MARCADO, se ainda valer a pena. Devolve nulo quando ninguem foi marcado ou
 	/// quando o marcado saiu de cena (morreu, trocou de zona, virou intocavel) -- e ai o
 	/// combate volta a escolher pelo cone, sozinho.
@@ -728,13 +760,7 @@ public partial class GameServer
 				GD.Print($"[server] {pl.Name} levantou");
 			}
 
-			// REGENERACAO PASSIVA: so fora de combate, e so pra quem nao esta morto. Enquanto
-			// a tag de luta esta no ar o corpo nao se recupera -- senao ninguem perde nunca.
-			if (!pl.Ficha.dead && !pl.Ficha.KO && c.EmCombate <= 0 && pl.Ficha.HP < 99.99)
-			{
-				c.Corpo.Curar(RegenPorSegundo * dt);
-				c.SincronizarVida();
-			}
+			RegenerarPassivo(pl, dt);
 
 			if (pl.Ficha.dead && agora >= pl.RenasceEm) Renascer(pl);
 
@@ -888,15 +914,49 @@ public partial class GameServer
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
-	/// <summary>
-	/// Vida por segundo que o corpo recupera fora de combate. Um corpo inteiro leva ~1 minuto
-	/// pra sair de zero -- lento o bastante pra derrota doer, rapido o bastante pra nao
-	/// obrigar ninguem a ficar sentado esperando.
-	/// </summary>
-	private const double RegenPorSegundo = 100.0 / 60.0;
+	// ============================ A CURA PASSIVA MUDOU DE CASA ============================
+	// Ela era um `private const` daqui. Foi pra `CombatKnobs.RegenPorSegundo`, no Core, e a razao e
+	// a regra 0.1 da especificacao: **e uma regra que decide resultado de jogo**, e agora ela decide
+	// mais de um. O calor da estrela e calibrado CONTRA ela (o piso do dano existe pra ficar acima da
+	// cura -- ver `CalorDaEstrela.FatorMinimo`), e a bancada do AssetPipeline precisa afirmar essa
+	// desigualdade sem subir o Godot. Duas copias do 1,67 seriam duas copias que envelhecem separadas.
+	// ==================================================================================
 
 	/// <summary>
-	/// Morrer devolve o personagem inteiro no ponto de spawn, com metade da vida.
+	/// REGENERACAO PASSIVA: so fora de combate, e so pra quem nao esta morto. Enquanto a tag de
+	/// luta esta no ar o corpo nao se recupera -- senao ninguem perde nunca.
+	///
+	/// ============================ POR QUE ISTO VIROU FUNCAO ============================
+	/// Eram cinco linhas soltas dentro do <see cref="TickCombate"/>. Elas sairam de la quando a
+	/// estrela passou a queimar, e o motivo e medido: o dano do sol e de 3,0 a 80 por segundo e a
+	/// cura e de 1,67 -- ou seja **a cura e um TERCO do dano no caso mais leve**, e o piso de
+	/// <see cref="Jandirus.Core.World.CalorDaEstrela.FatorMinimo"/> so faz sentido contra ela.
+	///
+	/// Uma bancada que medisse "quanto tempo o corpo aguenta dentro do sol" sem regeneracao mediria
+	/// outro jogo. E copiar as cinco linhas pra dentro da bancada seria justamente o "atalho
+	/// paralelo" que a regra 0.7 recusa: testaria a copia, e no dia em que a cura mudasse aqui, a
+	/// bancada continuaria verde medindo a cura antiga. Uma casa so, dois chamadores.
+	/// ==============================================================================
+	/// </summary>
+	private static void RegenerarPassivo(ServerPlayer pl, double dt)
+	{
+		CombatState? c = pl.Combate;
+		if (c == null || pl.Ficha.dead || pl.Ficha.KO || c.EmCombate > 0 || pl.Ficha.HP >= 99.99) return;
+
+		c.Corpo.Curar(CombatKnobs.RegenPorSegundo * dt);
+		c.SincronizarVida();
+	}
+
+	/// <summary>
+	/// Morrer devolve o personagem inteiro no BERCO dele, com metade da vida.
+	///
+	/// ============================ ERA A TERRA CRAVADA, E ESSE E O BUG QUE NAO APARECE ============================
+	/// Este metodo mandava todo mundo pra `SpawnZone` -- a Terra. Ligar o berco so no NASCIMENTO
+	/// teria deixado o jogador nascendo em casa e ressuscitando na Terra, e ninguem perceberia por
+	/// semanas: sao dois caminhos diferentes no codigo pra a mesma pergunta do jogador ("onde eu
+	/// apareco?"). Por isso os dois saem do mesmo funil (`GameServer.Berco.cs`), que e o que o DM
+	/// tinha num lugar so (`mob/proc/Locate()`).
+	/// ========================================================================================================
 	///
 	/// O JULGAMENTO DO ENMA (karma, o alem, o revive por Zeni) e outra etapa -- ate la, morrer
 	/// custa a luta, o tempo no chao e mais nada. Fica marcado aqui pra nao virar "esqueci".
@@ -911,10 +971,15 @@ public partial class GameServer
 		pl.Ficha.Ki = pl.Ficha.MaxKi * 0.5;
 		pl.RenasceEm = 0;
 
-		if (pl.Zone.Hash != SpawnZone.Hash) MoveToZone(pl.Id, SpawnZone, SpawnPos);
+		(ZoneKey destino, Vec2 onde) = DestinoDoBerco(pl.Berco);
+
+		if (pl.Zone.Hash != destino.Hash) MandarProBerco(pl);
 		else
 		{
-			pl.Pos = SpawnPos;
+			// MESMA ZONA: nao ha o que recarregar, so um teleporte dentro dela. O ponto vem do
+			// funil do mesmo jeito -- num mundo gerado ele e a chegada que o gerador garantiu
+			// livre, e num pre-feito e a celula livre mais perto do (249,250).
+			pl.Pos = onde;
 			var w = Protocol.Begin(Protocol.S2C.Correction);
 			w.Put(pl.SeqInput);   // O PACOTE TEM DUAS PARTES desde o conserto do dash:
 			// sequencia + posicao. Escrever so a posicao aqui mandava um pacote MALFORMADO --
@@ -923,6 +988,6 @@ public partial class GameServer
 			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 
-		GD.Print($"[server] {pl.Name} renasceu ({SegundosDeCarencia:0}s de carencia)");
+		GD.Print($"[server] {pl.Name} renasceu em {destino.Name} ({SegundosDeCarencia:0}s de carencia)");
 	}
 }

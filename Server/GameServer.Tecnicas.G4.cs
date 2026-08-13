@@ -589,7 +589,15 @@ public partial class GameServer
 		// `powerlevel()` e `Ki/MaxKi` SEM teto por cima (Fighter.Power.cs:40), entao Ki acima do
 		// maximo viraria BP expresso de graca -- absorver duas vezes daria mais poder pela conta
 		// de energia do que pela conta de absorcao.
-		pl.Ficha.Ki = Math.Min(pl.Ficha.Ki + alvo.Ficha.MaxKi, pl.Ficha.MaxKi);
+		//
+		// MAS O TETO E DO GANHO, NAO DO ESTOQUE. Escrito `Math.Min(..., MaxKi)` seco, ele fazia o
+		// que a absorcao nunca prometeu: DERRUBAVA pra 100% quem chegasse comprimido a 140% pela
+		// tecla C -- absorver um inimigo TIRAVA energia de quem estava sobrecarregado. Irmao do
+		// `Nutricao.cs:134` e do `if (primeira)` do `GameServer.Formas.cs`; o remedio e o mesmo, e
+		// nao afrouxa o teto: quem estava em 100% continua parando em 100%, e quem ja estava acima
+		// so desce pelo caminho da carga (`CargaDeKi.PrecoDoExcesso`).
+		pl.Ficha.Ki = Math.Min(pl.Ficha.Ki + alvo.Ficha.MaxKi,
+							   Math.Max(pl.Ficha.MaxKi, pl.Ficha.Ki));
 
 		// --- as duas formulas de BP ----------------------------------------
 		double bpAlvo = alvo.Ficha.BP;

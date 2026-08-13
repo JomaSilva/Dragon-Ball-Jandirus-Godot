@@ -39,7 +39,38 @@ public partial class Transformacao : Node2D
 	// --- o que a cena precisa saber ---
 	private Node2D _alvo = null!;
 	private Cinematica _cena = null!;
-	private FormaDef _forma = null!;
+
+	/// <summary>
+	/// QUE FORMA ESTA CENA ESTA CONTANDO -- e **nulo quando ela nao conta forma nenhuma**.
+	///
+	/// ============================ O NULO E A FURIA, E ELE E UM ESTADO E NAO UM ERRO ============================
+	/// Ate aqui toda cena deste tocador era a estreia de uma forma, e o campo era `null!` -- a promessa
+	/// de que nunca faltaria. A <see cref="Jandirus.Core.Forms.Cinematicas.Furia"/> quebra a promessa
+	/// de proposito: ela e o `AngerCinematic()` do DM (`Murder.dm:136`), que nao veste cabelo, nao
+	/// acende aura de forma e nao termina com ninguem transformado.
+	///
+	/// Os onze usos deste campo passaram a perguntar, e cada um responde o que o DM responde:
+	///
+	///   * a CHAMA da cena (`ChamaDoDegrau`) -- sem forma ela e o vermelho da raiva, que e o unico
+	///     lugar do port onde a `Aurabigcombined` mantem cor propria (ver `Cinematicas.CorDaFuria`);
+	///   * a CRATERA (`Catalogo.NasceDaRaiva`) -- ja aceitava nulo, e devolve a cratera PEQUENA, que e
+	///     o `createCrater(loc,2)` da furia contra o `(loc,3)` do SSJ1;
+	///   * `Assumir`, `VesteDegrau`, `PiscaCabelo`, `Raios` e `BanhoDeCor` -- **nao existem na cena da
+	///     furia**, e mesmo assim cada um foi fechado: um beat escrito por engano num roteiro futuro
+	///     nao pode despir o personagem.
+	///
+	/// A ALTERNATIVA ERA PASSAR A `base` DO CATALOGO no lugar do nulo, e ela e pior de um jeito calado:
+	/// `Assumir` com a base VESTE a base -- ou seja, a cena de furia de um Super Saiyajin o devolveria
+	/// ao normal. Nulo obriga a pergunta; a base a esconde.
+	/// ======================================================================================================
+	/// </summary>
+	private FormaDef? _forma;
+
+	/// <summary>
+	/// COMO CHAMAR ESTA CENA NUM AVISO DE LOG. `_cena.Forma` e o id quando ha forma; sem forma ele e
+	/// vazio, e ai o nome e "furia" -- o unico caso que existe hoje. Serve so pra prosa de diagnostico.
+	/// </summary>
+	private string NomeDaCena() => _cena.Forma.Length > 0 ? _cena.Forma : "furia";
 
 	// ============================ DUAS CORES, E ANTES ERA UMA SO ============================
 	// Era um `_cor` unico, tirado da `FormaDef.Aura`, e ele pintava a chama, o contorno do sprite,
@@ -153,13 +184,68 @@ public partial class Transformacao : Node2D
 	/// calculasse a propria cor sairia de um tom no meio da cinematica e de outro no fim dela.
 	/// ====================================================================================================
 	/// </summary>
-	private void ChamaDoDegrau(FormaDef d)
+	private void ChamaDoDegrau(FormaDef? d)
 	{
+		// ============================ A CENA SEM FORMA TEM CHAMA PROPRIA, E E A UNICA ============================
+		// A furia nao veste ninguem, entao nao ha `FormaDef.Aura` de onde tirar a cor -- e o DM escreve
+		// o hexa na mao (`Murder.dm:146-150`: `Aurabigcombined.dmi` tingida de `#ff2a2a`, `plane = 7`).
+		// Este `if` e a unica excecao viva a regra "a chama e a aura da forma"; ver `Cinematicas.CorDaFuria`.
+		//
+		// A FOLHA E A BASE (`Catalogo.Folha(null)` ja devolve `FolhaDeAura.Base`), que e a
+		// `colorablebigaura` -- a folha COLORIVEL, que e o que um vermelho escrito precisa. A `AuraSSjBig`
+		// da escada Saiyajin nao se tinge (ver `SpriteDeAura.SemTinta`) e sairia dourada.
+		//
+		// FORCA 1: a mesma que `Aura.ForcaDaChamaDe` da pra quem nao esta transformado. A furia nao tem
+		// `Intensidade` porque nao tem entrada no catalogo, e inventar um numero aqui seria a chama da
+		// raiva ser mais densa (ou menos) que a de qualquer forma, sem nada que justificasse.
+		if (d == null)
+		{
+			_auraGrande.DefinirFolha(Jandirus.Core.Forms.FolhaDeAura.Base);
+			_chamaDaCena = (new Color(Cinematicas.CorDaFuria), 1f);
+			return;
+		}
+
 		// A FOLHA ANTES DA COR, a mesma ordem do resto do jogo: trocar a folha REMONTA o sprite (a
 		// ancora depende da altura do quadro), e remontar repinta com o que estiver guardado.
-		_auraGrande.DefinirFolha(Jandirus.Core.Forms.Catalogo.Folha(d));
-		_chamaDaCena = (Aura.CorDaChamaDe(d), Aura.ForcaDaChamaDe(d));
+		//
+		// ============================ E A CENA DIZ EXPLICITAMENTE O QUE VESTE QUANDO NAO HA FOLHA ============================
+		// Este e o TERCEIRO desenhista da chama, e o unico dos tres que nao pode ficar mudo. Os outros
+		// dois (`Aura` e `CargaVisual`) desenham a aura PERSISTENTE, e em Ultra Instinto ela e a nuvem --
+		// entao calar os dois e o conserto. Aqui e outra coisa: e a coluna de luz do beat
+		// `Efeito.AuraGrande`, que a propria cena NARRA (*"uma coluna de luz azul-prateada engole
+		// tudo"*, `Cinematicas.UiSign`). Deixar o nulo passar apagaria um beat escrito.
+		//
+		// E a nuvem NAO cobre esse buraco: ela so acende no `Assumir`, 22 s depois -- o beat da coluna
+		// cai aos 12 s, com o corpo ainda vestindo o degrau anterior.
+		//
+		// A ESCOLHA E ESCRITA, e nao herdada de um `_ =>`: era exatamente um fallback calado
+		// (`FolhaDeAura.Base` por omissao) que punha a chama de todo mundo por cima do Ultra Instinto, e
+		// que esta tarefa deletou. Aqui a folha de todo mundo e o que se QUER -- tingida com a cor da
+		// forma, que na linha do Ultra Instinto e o azul-prateado que a narracao promete.
+		// ==============================================================================================================
+		var f = Jandirus.Core.Forms.Catalogo.Folha(d);
+		_auraGrande.DefinirFolha(SpriteDeAura.CaminhoDa(f) is null
+									 ? Jandirus.Core.Forms.FolhaDeAura.Base : f);
+		_chamaDaCena = (Aura.CorDaChamaDe(d, CorPessoalDoAlvo), Aura.ForcaDaChamaDe(d));
 	}
+
+	/// <summary>
+	/// A COR DA CHAMA PESSOAL DE QUEM ESTA NESTA CENA. Ver <see cref="Aura.CorPessoal"/>.
+	///
+	/// ============================ E POR ISSO QUE ELA TEM QUE SAIR DO CORPO ============================
+	/// Os beats desta cena vestem a BASE de verdade (o primeiro degrau da escada do SSJ3), e a base e
+	/// pessoal desde sempre. Enquanto a chama pessoal era uma constante compartilhada isso nao tinha
+	/// consequencia; com uma cor por personagem, ler a constante aqui poria a chama de OUTRA pessoa na
+	/// coluna de luz -- ao lado do corpo, que estaria com a cor certa, no mesmo quadro.
+	///
+	/// PELO NODE `Aura` DO PROPRIO ALVO, e nao por um campo copiado no comeco da cena: uma copia so
+	/// poderia divergir. O fallback e o mesmo dos outros dois leitores (`CargaVisual.Pintar`,
+	/// `World.VestirCorpoInteiro`) -- corpo montado pela metade, que na cinematica nem chega a existir.
+	/// ==========================================================================================
+	/// </summary>
+	private Color CorPessoalDoAlvo =>
+		_alvo != null && IsInstanceValid(_alvo) && _alvo.GetNodeOrNull<Aura>("Aura") is { } a
+			? a.CorPessoal : Aura.CorDoKiCru;
 
 	/// <summary>
 	/// ============================ A AURA CRESCE A PARTIR DOS PES ============================
@@ -434,7 +520,11 @@ public partial class Transformacao : Node2D
 	/// AINDA MAIS ALEM!"); o balao sobre a cabeca nao precisa dele, porque ele ja mora no corpo.
 	/// Vazio (o padrao das bancadas) sai da linha do chat alheio e nao muda mais nada.
 	/// </param>
-	public static Transformacao Rodar(Node pai, Node2D alvo, FormaDef forma, Cinematica cena,
+	/// <param name="forma">
+	/// A forma que esta cena conta -- **nulo quando ela nao conta forma nenhuma** (a cena da furia).
+	/// Ver o campo <see cref="_forma"/>: o nulo e um estado, e nao um esquecimento.
+	/// </param>
+	public static Transformacao Rodar(Node pai, Node2D alvo, FormaDef? forma, Cinematica cena,
 									  bool souEu, string nome = "")
 	{
 		var t = new Transformacao
@@ -443,8 +533,13 @@ public partial class Transformacao : Node2D
 			_alvo = alvo,
 			_cena = cena,
 			_forma = forma,
-			_corAura = new Color(forma.Aura),
-			_corRaios = new Color(Jandirus.Core.Forms.Catalogo.CorDosRaios(forma)),
+			// SEM FORMA A CENA E VERMELHA, e as duas cores caem no mesmo lugar: o vermelho da furia
+			// (`Murder.dm:149`). `CorDosRaios(null)` ja devolvia um neutro proprio, mas ele existe pra
+			// "forma desconhecida" e nao pra "cena sem forma" -- e nenhuma cena de furia acende raio.
+			_corAura = new Color(forma?.Aura ?? Cinematicas.CorDaFuria),
+			_corRaios = new Color(forma == null
+									  ? Cinematicas.CorDaFuria
+									  : Jandirus.Core.Forms.Catalogo.CorDosRaios(forma)),
 			_souEu = souEu,
 			_nome = nome,
 		};
@@ -535,7 +630,36 @@ public partial class Transformacao : Node2D
 			GD.PushWarning($"[cena] `{CaminhoDasPedras}` nao resolve -- o Godot nao importou a folha. "
 						 + "A cinematica vai rodar sem as pedras subindo.");
 
-		Prender();
+		// DEPOIS DA FOLHA E DEPOIS DO `_pedrasRaiz`: ele mede a camera, o boneco e o relogio da cena
+		// pra saber quanta pedra cabe e de quanto em quanto tempo ela nasce. Uma vez -- a area nao pode
+		// mudar no meio da cena, senao o `_ocupadas` passaria a guardar celulas de outra grade.
+		MontarOChaoSolto();
+
+		// PELA MESMA RAZAO E NO MESMO LUGAR: ela congela ONDE a cena esta acontecendo antes de o corpo
+		// poder sair de la. Ver `MontarATempestade` -- em 33 das 34 cenas ela nao faz nada.
+		MontarATempestade();
+
+		// ============================ CENA QUE NAO PRENDE NAO TRANCA NADA ============================
+		// `SegundosPreso == 0` e a cena da FURIA, e o zero e do proprio DM: `AngerCinematic()` abre com
+		// `set waitfor = 0` e o comentario do original explica -- *"Non-blocking so it never freezes the
+		// player mid-fight"*. E a diferenca de natureza entre as duas cenas: transformar e escolha,
+		// enfurecer e coisa que ACONTECE com voce no meio de uma briga (ver `Cinematicas.Furia`).
+		//
+		// O `if` nao e cosmetico. Sem ele o caminho seria "tranca no `_Ready`, destranca no primeiro
+		// `_Process`" -- um quadro de `PrendendoOCorpo` verdadeiro e um quadro de pose travada. Um
+		// quadro nao se ve, mas ele existe: o contador e `static` e serve o jogo inteiro, e o pior
+		// defeito deste arquivo (o jogador preso pra sempre) mora exatamente no par prender/devolver.
+		// Nao entrar nele e mais barato que sair dele.
+		//
+		// `_soltou` JA VAI VERDADEIRO nesse caso, pra o `_Process` nao chamar `TravarPose(false)` numa
+		// pose que ninguem travou.
+		//
+		// E ELE **NAO** PULA O RESTO DO `_Ready`: a musica, o `_noPlaneta` e a chama continuam valendo.
+		// A furia toca o tema do DM (`emit_RageMusic`) e treme a camera como qualquer cena -- o que ela
+		// nao faz e tomar o corpo de quem esta lutando.
+		// ======================================================================================
+		_soltou = _cena.SegundosPreso <= 0;
+		if (!_soltou) Prender();
 
 		// ============================ O CORPO SO PARA -- NAO CONGELA ============================
 		// O `move = 0; dir = SOUTH` do DM. E "parar" aqui e exatamente o que o corpo ja faz quando
@@ -560,7 +684,11 @@ public partial class Transformacao : Node2D
 		// escrever depois. Pro corpo REMOTO ela ja era necessaria de todo jeito (quem assiste
 		// recebe pose por snapshot, e sem tranca via o outro andando a cinematica inteira).
 		// ================================================================================================
-		_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.TravarPose(true);
+		//
+		// **SO QUEM PRENDE TRAVA A POSE**, e as duas andam juntas por definicao: travar a pose de um
+		// corpo que continua andando (a furia) deixaria o boneco deslizando pelo chao em pose parada.
+		// Ver o bloco de cima.
+		if (!_soltou) _alvo.GetNodeOrNull<CharacterVisual>("Visual")?.TravarPose(true);
 
 		// ONDE ESTA CENA ACONTECEU. Lido aqui e guardado porque o rumor da aura base pergunta por ele
 		// TODO QUADRO, e `Espaco.EhPlaneta` varre os pre-feitos -- sessenta varreduras por segundo
@@ -592,9 +720,25 @@ public partial class Transformacao : Node2D
 		// `AudioDirector`, entao ela abafa a de combate pelo periodo -- que e o `duck_battle_music`
 		// do original.
 		// =========================================================================================
+		//
+		// ============================ E A CAMADA SAI DA CENA, NAO DE UM PARAMETRO ============================
+		// Cena SEM FORMA e a furia, e o DM poe o tema dela num canal proprio, ABAIXO do de transformacao:
+		// `emit_TransformMusic` corta o canal de raiva antes de tocar (*"a transformation always wins"*,
+		// `BattleMusic.dm:133`) e `emit_RageMusic` nem comeca se um tema de forma estiver no ar (`:148`).
+		//
+		// Isso e exatamente `Camada.Raiva < Camada.Transformacao` -- a hierarquia do `AudioDirector` ja
+		// faz as duas coisas (a de cima interrompe, a de baixo fica de sobreaviso), e o `duck` do combate
+		// e o mesmo `Raiva > Combate`. Nao ha canal novo nem `if` de audio; ha uma pergunta.
+		//
+		// DERIVADA DE `_forma` E NAO UM CAMPO DA CENA: "que canal esta faixa usa" seria a MESMA
+		// informacao que "esta cena tem forma?", escrita duas vezes -- e o dia em que as duas
+		// discordassem daria o tema da furia por cima de uma transformacao, calado.
+		// ==============================================================================================
 		if (_cena.Musica.Length > 0)
 			AudioDirector.Instance?.Musica($"res://Assets/Sounds/Music/{_cena.Musica}",
-										   AudioDirector.Camada.Transformacao, repetir: false);
+										   _forma == null ? AudioDirector.Camada.Raiva
+														  : AudioDirector.Camada.Transformacao,
+										   repetir: false);
 	}
 
 	// ======================================================================================
@@ -631,91 +775,288 @@ public partial class Transformacao : Node2D
 	/// </summary>
 	internal const string CaminhoDasPedras = "res://Assets/Sprites/Decor/Rising Rocks.tres";
 
+	// ======================================================================================
+	//  O CHAO SOLTO -- e ele e um ESTADO DA CENA, nao um acontecimento dela
+	// ======================================================================================
+	// ============================ O QUE O DONO PEDIU, E O QUE ELE TINHA ============================
+	//   * *"deveria ter mais `rising rocks.png` q ficariam do INICIO AO FIM em todas as
+	//     transformacoes"*;
+	//   * *"aumente a area q o jogo pode spawnar esse efeito de rising rock, pq ta mt perto do
+	//     personagem e dura mt pouco"*.
+	//
+	// MEDIDO ANTES DE MEXER: a pedra era uma leva de 10 disparada pelo bit `Efeito.PedrasSubindo`,
+	// num retangulo de 3x2 tiles, viva 2,4 ou 3,6 s. Das 32 cenas, ONZE nao levantavam nenhuma; a do
+	// SSJ1 tinha pedra em 13,1% do tempo e a melhor de todas em 46,5%.
+	//
+	// ============================ E A CULPA ERA DA FORMA, NAO DOS NUMEROS ============================
+	// Um bit de beat so sabe dizer INSTANTE. "Do inicio ao fim" com beats seria escrever um beat de
+	// pedra a cada dois segundos em trinta e duas cenas -- e a versao ENCURTADA multiplica os
+	// instantes por `k`, entao a densidade mudaria sozinha entre as duas versoes da MESMA cena.
+	//
+	// Entao a pedra virou o que o <see cref="Cinematicas.PiscaCabelo"/> ja tinha virado antes dela:
+	// um estado, com o tocador contando o tempo. Nem beat pra escrever, nem beat pra esquecer.
+	//
+	// ============================ TODO NUMERO DAQUI E DO DM ============================
+	// E nao e coincidencia: o original ja fazia isto por fora do roteiro. `SSJCinematic.dm:28-31`
+	// varre o `view()` inteiro e, em cada tile, `if(prob(15)) spawn(rand(10,150)) createDustmisc(T,2)`
+	// -- 15% do chao, com atraso de 1,0 a 15,0 s --, e cada `/obj/meff/Rising` vive
+	// `spawn(rand(100,400))` = 10 a 40 s (`dusts.dm:203-208`). Ou seja: um fundo que ENCHE ao longo
+	// da cena e fica. O port tinha copiado o sprite e jogado fora o comportamento.
+	// ==============================================================================================
+
 	/// <summary>
-	/// QUANTAS PEDRAS POR BEAT -- uma por tile sorteado, sem repetir tile.
+	/// QUANTO DO CHAO A VISTA FICA SOLTO -- o `prob(15)` de `SSJCinematic.dm:31` e `SSJ2Cinematic.dm:13`,
+	/// literal.
 	///
-	/// Dez e o pedido do dono ("ate uns 10 tiles"), e casa com o que a camera mostra: no zoom padrao
-	/// (3) a tela cobre 384x216 px = 12x6,75 tiles. Vinte pedras num retangulo desse tamanho nao
-	/// seriam "o chao se soltando", seriam um chao de pedra.
-	/// </summary>
-	private const int PedrasPorDisparo = 10;
-
-	/// <summary>
-	/// O RETANGULO DO SORTEIO, EM TILES (meia-largura e meia-altura).
+	/// E uma FRACAO e nao um numero de pedras de proposito: quem multiplica e a quantidade de tiles
+	/// que a camera mostra (ver <see cref="MontarOChaoSolto"/>), entao a densidade na TELA e a mesma
+	/// em qualquer zoom. Um "17 pedras" cravado aqui daria chao vazio no zoom 2 e chao de pedra no 6.
 	///
-	/// O DM sorteia bem mais longe (`rand(-7,7)` no `lssjbuff.dm:470`, `view(8)` no `GroundGrind`)
-	/// porque a tela do BYOND mostrava 15x15 tiles inteiros. Aqui a camera e outra: no zoom padrao
-	/// cabem ~6 tiles pra cada lado na horizontal e ~3,4 na vertical, e no zoom maximo (6) cabem 3 e
-	/// 1,7. Sortear a 7 tiles poria a maioria das pedras FORA DA TELA -- efeito pago e nao visto.
+	/// (O SSJ3 do DM usa `prob(20)`, mas sobre `view(24)` -- 2401 tiles, ~480 pedras. Aquilo e a
+	/// escala do BYOND, nao a nossa; o 15 e o numero das duas cenas que todo mundo ve.)
 	/// </summary>
-	private const int AlcanceEmTilesX = 3, AlcanceEmTilesY = 2;
+	internal const double FracaoDoChaoSolto = 0.15;
 
 	/// <summary>
-	/// OS TILES CANDIDATOS, montados uma vez. Todo o retangulo MENOS o tile de baixo do personagem:
-	/// uma pedra de 32x32 exatamente sob os pes fica escondida pelo corpo -- efeito pago e nao visto,
-	/// de novo, e ainda por cima ocupando uma das dez vagas.
+	/// ATE QUANDO A LEVA INICIAL TERMINA DE NASCER -- o teto do `spawn(rand(10,150))` de
+	/// `SSJCinematic.dm:31`, que sao 15,0 s.
+	///
+	/// A pedra NAO nasce toda no primeiro quadro, e isso e do original: la o chao vai se soltando
+	/// enquanto o poder sobe. Dezessete pedras aparecendo juntas em `_t = 0` leriam como um piscar.
+	///
+	/// E ele e um TETO e nao o prazo: quem manda e o <see cref="Cinematica.SegundosPreso"/> (o chao
+	/// tem que estar todo solto quando a forma fica, que e quando a cratera cai). O teto so existe
+	/// pro SSJ3, cujos 140 s de prazo deixariam a tela quase vazia pelos primeiros dois minutos.
 	/// </summary>
-	private static readonly Vector2I[] TilesEmVolta = MontarTilesEmVolta();
+	internal const double EnchimentoMaximo = 15.0;
 
-	private static Vector2I[] MontarTilesEmVolta()
-	{
-		var l = new List<Vector2I>();
-		for (int dx = -AlcanceEmTilesX; dx <= AlcanceEmTilesX; dx++)
-			for (int dy = -AlcanceEmTilesY; dy <= AlcanceEmTilesY; dy++)
-				if (dx != 0 || dy != 0) l.Add(new Vector2I(dx, dy));
-		return [.. l];
-	}
+	/// <summary>
+	/// QUANTO UMA PEDRA VIVE -- `spawn(rand(100,400))` em `dusts.dm:207`, que sao 10,0 a 40,0 s.
+	///
+	/// ANTES ERAM 2,4 ou 3,6 s (dois ou tres ciclos da folha), e era daqui que saia o *"dura mt
+	/// pouco"* do dono: quatro a onze vezes menos que o original. O encurtamento foi nosso e o
+	/// numero certo sempre esteve no DM.
+	/// </summary>
+	internal const double VidaMinima = 10.0, VidaMaxima = 40.0;
+
+	/// <summary>
+	/// O RETANGULO DO SORTEIO, EM TILES (meia-largura e meia-altura) -- e ele e MEDIDO, nao escrito.
+	///
+	/// ============================ POR QUE ELE DEIXOU DE SER CONSTANTE ============================
+	/// Era `3 x 2` cravado, com a justificativa certa e a conta feita a mao: "no zoom padrao cabem ~6
+	/// tiles pra cada lado na horizontal e ~3,4 na vertical". O dono reclamou do resultado (*"ta mt
+	/// perto do personagem"*), e com razao -- o retangulo era METADE do que a camera mostra.
+	///
+	/// Refazer a conta a mao daria o mesmo defeito com outro numero. Agora a pergunta e feita a
+	/// CAMERA: o sorteio cobre todo tile que ela toca, nem um a mais. O que esta fora da tela e
+	/// efeito pago e nao visto; o que esta dentro e o pedido do dono, e os dois lados se resolvem
+	/// sozinhos em qualquer zoom, em qualquer janela.
+	/// ========================================================================================
+	/// </summary>
+	private int _alcanceX = 3, _alcanceY = 2;
+
+	/// <summary>
+	/// OS TILES CANDIDATOS -- todo o retangulo MENOS o que o corpo desenha por cima.
+	///
+	/// POR INSTANCIA, e nao mais estatico: os dois numeros que o montam mudam de cena pra cena (a
+	/// camera, la em cima; e o TAMANHO DO BONECO, aqui). Uma pedra de 32x32 embaixo de quem esta se
+	/// transformando fica escondida pelo sprite -- efeito pago e nao visto, e ainda ocupando uma vaga.
+	///
+	/// O BURACO SAI DA FOLHA DO CORPO (`CharacterVisual.TamanhoDoQuadro`) e nao de um "1 tile"
+	/// escrito: num boneco de 32 ele da exatamente a celula dos pes, que e o que valia antes; num
+	/// macaco de 96 ele da 3x3, que e o que sempre devia valer. Cravar 1 aqui seria a mentira que
+	/// este arquivo ja pagou caro duas vezes (`AuraObject.dm`, `SpriteDeAura.AncoraPara`).
+	/// </summary>
+	private Vector2I[] _tilesEmVolta = [];
+
+	/// <summary>Quantas pedras ficam vivas ao mesmo tempo. Ver <see cref="MontarOChaoSolto"/>.</summary>
+	private int _alvoDePedras;
+
+	/// <summary>De quanto em quanto tempo nasce uma. Ver <see cref="MontarOChaoSolto"/>.</summary>
+	private double _intervaloDePedra = 1.0;
+
+	/// <summary>Quando nasce a proxima. Tempo de cena.</summary>
+	private double _proximaPedra;
+
+	/// <summary>
+	/// A CELULA DO CHAO QUE SE SOLTA, congelada no comeco da cena.
+	///
+	/// O chao que quebra e o chao ONDE A TRANSFORMACAO ACONTECEU. Perguntar a posicao do corpo a cada
+	/// nascimento parece igual (o corpo esta preso), mas nao e: o `Devolver` solta o jogador no beat
+	/// que assume, e a cauda da cena ainda dura ate 2,2 s -- pedra nascendo em volta de quem ja saiu
+	/// andando e pedra perseguindo o dono, que e o mesmo defeito que fez o `_pedrasRaiz` ser `TopLevel`.
+	/// </summary>
+	private Vector2I _celulaDoChao;
 
 	private SpriteFrames? _framesDaPedra;
 
-	/// <summary>Uma pedra viva: o node, quando ela APARECE e quando ela morre. Tempo de cena.</summary>
-	private readonly record struct PedraViva(AnimatedSprite2D No, double Nasce, double Morre);
+	/// <summary>
+	/// Uma pedra viva: o node, a CELULA que ela ocupa, quando ela APARECE e quando ela morre.
+	///
+	/// A celula esta aqui porque ela precisa ser DEVOLVIDA na morte -- ver <see cref="_ocupadas"/>.
+	/// </summary>
+	private readonly record struct PedraViva(AnimatedSprite2D No, Vector2I Celula, double Nasce, double Morre);
 
 	private readonly List<PedraViva> _pedras = [];
 
 	/// <summary>
-	/// SOLTA UMA LEVA DE PEDRAS -- o `Efeito.PedrasSubindo`.
+	/// AS CELULAS QUE JA TEM PEDRA. Uma por tile, e o teto de populacao sai daqui de graca.
+	///
+	/// Antes o "sem repetir" valia dentro de UMA leva (a sacola de tiles livres do sorteio). Com a
+	/// pedra virando estado, as levas acabaram: agora as pedras nascem uma a uma ao longo da cena
+	/// inteira, e duas nascidas com trinta segundos de diferenca cairiam no mesmo tile sem que
+	/// ninguem visse -- desenhadas uma sobre a outra, o efeito perde uma pedra e paga por duas.
+	/// </summary>
+	private readonly HashSet<Vector2I> _ocupadas = [];
+
+	/// <summary>
+	/// MEDE O CHAO QUE VAI SE SOLTAR -- area, populacao e cadencia. Uma vez, no `_Ready`.
+	///
+	/// ============================ A AREA E O QUE A CAMERA TOCA ============================
+	/// `GetViewportRect().Size / zoom` sao os pixels de MUNDO que cabem na tela; metade disso pra
+	/// cada lado, dividido pelo tile, e o retangulo. `CeilToInt` e de proposito: o tile da borda
+	/// aparece pela metade, e meia pedra na beirada e melhor que uma faixa de chao intocado exatamente
+	/// onde a tela acaba.
+	///
+	/// SEM CAMERA (bancada headless antes do mundo montar) cai no zoom da configuracao, que e o que o
+	/// jogador escolheu -- e nao um "3" escrito aqui, que mentiria pra quem joga em 2 ou em 6.
+	///
+	/// ============================ A POPULACAO SAI DA AREA, E NAO O CONTRARIO ============================
+	/// <see cref="FracaoDoChaoSolto"/> vezes os tiles candidatos. Assim a densidade NA TELA nao muda
+	/// com o zoom nem com o tamanho da janela: quem afasta a camera ve mais chao e mais pedra, na
+	/// mesma proporcao.
+	///
+	/// ============================ E A CADENCIA SAI DO RELOGIO DA CENA ============================
+	/// A leva enche ate o <see cref="Cinematica.SegundosPreso"/> -- o instante em que a forma fica e a
+	/// cratera cai --, porque e ai que o chao tem que estar no seu pior. Com o teto do DM
+	/// (<see cref="EnchimentoMaximo"/>) por cima, que e quem impede os 140 s do SSJ3 de virarem dois
+	/// minutos de tela quase vazia.
+	/// ================================================================================================
+	/// </summary>
+	private void MontarOChaoSolto()
+	{
+		const int T = ZoneCollision.TileSize;
+
+		float zoom = GetViewport()?.GetCamera2D() is { } cam && cam.Zoom.X > 0.01f
+			? cam.Zoom.X
+			: Math.Max(1, Boot.Config.Zoom);
+		Vector2 meiaVista = GetViewportRect().Size / (2f * zoom);
+		_alcanceX = Math.Max(1, Mathf.CeilToInt(meiaVista.X / T));
+		_alcanceY = Math.Max(1, Mathf.CeilToInt(meiaVista.Y / T));
+
+		// A CELULA DOS PES, e nao a do centro do sprite. A origem do corpo fica no meio dele e o
+		// `MoveRules.FeetOffsetY` e o desconto que poe a caixa no chao -- o MESMO que o `Plantar`
+		// (cratera, fumaca) ja usa. Sem ele, com o corpo perto da borda de cima de um tile, o chao
+		// inteiro sai deslocado uma celula pra cima.
+		Vector2 pes = _alvo.GlobalPosition + new Vector2(0, MoveRules.FeetOffsetY);
+		_celulaDoChao = new Vector2I(Mathf.FloorToInt(pes.X / T), Mathf.FloorToInt(pes.Y / T));
+
+		// ============================ O BURACO DO CORPO, MEDIDO DA FOLHA ============================
+		// O boneco desenha um quadrado de `lado` px com a BASE na linha dos pes (e por isso o retangulo
+		// sobe de `pes.Y - lado` ate `pes.Y`) -- a mesma ancoragem que o `CharacterVisual` usa pra
+		// alinhar o macaco de 96 pelo pe em vez de pelo centro.
+		//
+		// Um boneco de 32 da exatamente a celula dos pes, que e o que valia antes. O de 96 da 3x3.
+		float lado = CharacterVisual.TamanhoDoQuadro(
+			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.FolhaDoCorpo).X;
+		if (lado <= 0) lado = T;
+		var corpo = new Rect2(pes.X - lado * 0.5f, pes.Y - lado, lado, lado);
+
+		var l = new List<Vector2I>();
+		for (int dx = -_alcanceX; dx <= _alcanceX; dx++)
+			for (int dy = -_alcanceY; dy <= _alcanceY; dy++)
+			{
+				// A CELULA DOS PES SAI SEMPRE, mesmo que o retangulo do corpo nao a pegue: com os pes
+				// exatamente na borda de duas celulas, `Floor` cai numa e o retangulo cobre a outra.
+				if (dx == 0 && dy == 0) continue;
+				var centro = new Vector2((_celulaDoChao.X + dx + 0.5f) * T, (_celulaDoChao.Y + dy + 0.5f) * T);
+				if (corpo.HasPoint(centro)) continue;
+				l.Add(new Vector2I(dx, dy));
+			}
+		_tilesEmVolta = [.. l];
+
+		_alvoDePedras = Mathf.RoundToInt(_tilesEmVolta.Length * FracaoDoChaoSolto);
+
+		double janela = Math.Min(Math.Max(_cena.SegundosPreso, 0.1), EnchimentoMaximo);
+		_intervaloDePedra = janela / Math.Max(1, _alvoDePedras);
+		_proximaPedra = 0;
+	}
+
+	/// <summary>
+	/// FAZ NASCER UMA PEDRA, se houver tile livre e tempo de cena pra ela viver.
 	///
 	/// O sorteio e de TILE e o desenho e ALINHADO A GRADE: o quadro tem exatamente
 	/// <see cref="ZoneCollision.TileSize"/> de lado, entao o centro do sprite no centro da celula faz
 	/// a pedra COBRIR o tile -- que e o que o `new/obj/meff/Rising(T)` do BYOND faz de graca, porque
 	/// la o obj herda a posicao do turf.
 	/// </summary>
-	private void SoltarPedras()
+	/// <param name="naMarra">
+	/// Bancada: ignora o prazo da cena. Ver <see cref="SoltarPedrasDeTeste"/> -- a checagem do macaco
+	/// enche o chao DEPOIS de rodar a cena inteira, e sem isto o "o maquinario funciona" mediria o
+	/// relogio no fim em vez de medir a folha.
+	/// </param>
+	/// <returns>Verdadeiro se nasceu.</returns>
+	private bool NascerPedra(bool naMarra = false)
 	{
-		if (_framesDaPedra is not { } frames || frames.GetAnimationNames().Length == 0) return;
+		if (_framesDaPedra is not { } frames || frames.GetAnimationNames().Length == 0) return false;
+		if (_tilesEmVolta.Length == 0 || _ocupadas.Count >= _tilesEmVolta.Length) return false;
 
 		string anim = frames.GetAnimationNames()[0];
 		double ciclo = DuracaoDoCiclo(frames, anim);
 		const int T = ZoneCollision.TileSize;
 
-		// A CELULA DOS PES, e nao a do centro do sprite. A origem do corpo fica no meio dele e o
-		// `MoveRules.FeetOffsetY` e o desconto que poe a caixa no chao -- o MESMO que o `Plantar`
-		// (cratera, fumaca) ja usa. Sem ele, com o corpo perto da borda de cima de um tile, a leva
-		// inteira sai deslocada uma celula pra cima.
-		Vector2 pes = _alvo.GlobalPosition + new Vector2(0, MoveRules.FeetOffsetY);
-		int cx = Mathf.FloorToInt(pes.X / T), cy = Mathf.FloorToInt(pes.Y / T);
+		// ============================ PEDRA QUE NAO CABE NA CENA NAO NASCE ============================
+		// Com a vida do DM (10 a 40 s) e cenas de 4,6 a 143 s, quem nao tem nem UM ciclo da folha pela
+		// frente nem chega a nascer: uma pedra que aparecesse a meio segundo do fim seria um piscar.
+		//
+		// Efeito colateral desejado: no ultimo ciclo da cena a populacao para de se repor, e o chao
+		// assenta sozinho junto com a poeira da cratera.
+		// ==========================================================================================
+		double sobra = naMarra ? VidaMaxima : _cena.Segundos - _t;
+		if (sobra < ciclo) return false;
+
+		// ============================ A VIDA, E OS DOIS CORTES DELA ============================
+		// A DO DM: `spawn(rand(100,400))` = 10,0 a 40,0 s (`dusts.dm:207`). Antes eram 2,4 ou 3,6 s --
+		// quatro a onze vezes menos --, e era dai que saia o *"dura mt pouco"* do dono.
+		//
+		//  1. CICLOS INTEIROS: a pedra some no FIM da animacao e nao no meio dela. O ultimo quadro da
+		//     folha e o fim do movimento, e cortar antes le como a pedra sendo apagada.
+		//  2. E NUNCA ALEM DA CENA: o `QueueFree` da cena leva as pedras junto (e essa limpeza e o que
+		//     fecha os caminhos de saida -- ver `_pedrasRaiz`), entao uma vida maior que o que resta
+		//     nao existe, ela so nao seria cumprida.
+		//
+		// O CORTE 2 VEM DEPOIS DO 1 e engole os ciclos, de proposito: quando ele morde, a pedra morre
+		// no MESMO instante em que a cena inteira some da tela -- e ai nao ha meio-movimento pra
+		// ninguem ver. Cortar em ciclo inteiro tambem aqui deixaria as cenas curtas (4,6 s) com o
+		// ultimo segundo e meio sem uma pedra na tela, que e o contrario do que o dono pediu.
+		// ==================================================================================
+		double vidaCrua = VidaMinima + GD.Randf() * (VidaMaxima - VidaMinima);
+		double vida = Math.Min(Math.Max(1, (int)(vidaCrua / Math.Max(0.01, ciclo))) * ciclo, sobra);
 
 		ZoneCollision? mapa = Mundo()?.Colisao;
 
-		// SORTEIO SEM REPOSICAO: tira da sacola em vez de sortear o offset e torcer. Dois `Rising` no
-		// mesmo tile desenham em cima um do outro e a leva "perde" uma pedra sem ninguem ver.
+		// SORTEIO SEM REPOSICAO, agora com memoria: `_ocupadas` guarda as celulas que ja tem pedra pela
+		// cena inteira, e nao so dentro de uma leva. Ver o campo.
 		//
 		// `GD.Randi` E O SORTEIO DO CLIENTE. Aleatoriedade nao entra no Core -- a cena e do cliente e
 		// nao viaja pela rede, entao duas maquinas assistindo a mesma transformacao veem pedras em
 		// tiles diferentes, e isso nao e defeito: e a mesma licenca que o `Plantar` ja toma.
-		var livres = new List<Vector2I>(TilesEmVolta);
-		for (int i = 0; i < PedrasPorDisparo && livres.Count > 0; i++)
+		//
+		// TENTATIVAS LIMITADAS pelo numero de candidatos: com o chao quase cheio, sortear ate achar um
+		// livre seria um laco sem teto no meio do `_Process`.
+		for (int tentativa = 0; tentativa < _tilesEmVolta.Length; tentativa++)
 		{
-			int k = (int)(GD.Randi() % (uint)livres.Count);
-			Vector2I off = livres[k];
-			livres.RemoveAt(k);
+			Vector2I off = _tilesEmVolta[(int)(GD.Randi() % (uint)_tilesEmVolta.Length)];
+			if (!_ocupadas.Add(off)) continue;
 
-			int tx = cx + off.X, ty = cy + off.Y;
+			int tx = _celulaDoChao.X + off.X, ty = _celulaDoChao.Y + off.Y;
 
 			// PEDRA NAO SAI DE DENTRO DE PAREDE. `if(T && !T.density)` -- `lssjbuff.dm:471`. Sem
 			// mapa (bancada, zona ainda carregando) nao ha o que checar e a pedra vai assim mesmo.
-			if (mapa != null && mapa.BlockedCell(tx, ty)) continue;
+			//
+			// A CELULA FICA MARCADA MESMO ASSIM: ela e um lugar onde nao vai nascer pedra nunca, e
+			// devolve-la a sacola faria o sorteio insistir na mesma parede a cena inteira.
+			if (mapa != null && mapa.BlockedCell(tx, ty)) return false;
 
 			var p = new AnimatedSprite2D
 			{
@@ -742,16 +1083,16 @@ public partial class Transformacao : Node2D
 			};
 			_pedrasRaiz.AddChild(p);
 
-			// ESCALONADO NO TEMPO. No DM a leva nasce numa varredura COM `sleep` no meio
-			// (`if(prob(20)) sleep(1)` a cada turf, `Ascension.dm:42`): as pedras nao aparecem todas
-			// no mesmo quadro. Dez surgindo juntas leem como um piscar, nao como o chao se soltando.
-			double nasce = _t + GD.Randf() * 0.35;
+			// UM PINGO DE ATRASO, e ele e o `if(prob(20)) sleep(1)` que o DM tem dentro da varredura
+			// (`Ascension.dm:42`). O escalonamento GRANDE nao mora mais aqui -- ele e a cadencia da
+			// cena inteira (ver `MontarOChaoSolto`); este resto so tira as pedras do compasso exato do
+			// intervalo, que a olho vira ritmo de metronomo.
+			double nasce = _t + GD.Randf() * 0.2;
 
-			// VIVE UM NUMERO INTEIRO DE CICLOS pra sumir no FIM da animacao e nao no meio dela -- o
-			// ultimo quadro da folha e o fim do movimento, e cortar antes le como a pedra sendo
-			// apagada. Dois ou tres ciclos (2,4 s / 3,6 s) e o que sobra depois de a leva escalonar.
-			_pedras.Add(new PedraViva(p, nasce, nasce + ciclo * (2 + GD.Randi() % 2)));
+			_pedras.Add(new PedraViva(p, off, nasce, nasce + vida));
+			return true;
 		}
+		return false;
 	}
 
 	/// <summary>
@@ -771,7 +1112,13 @@ public partial class Transformacao : Node2D
 	}
 
 	/// <summary>
-	/// ACENDE E RECOLHE AS PEDRAS. Roda por quadro, junto com o resto da cena.
+	/// FAZ NASCER, ACENDE E RECOLHE AS PEDRAS. Roda por quadro, junto com o resto da cena.
+	///
+	/// ============================ O RELOGIO DO CHAO INTEIRO MORA AQUI ============================
+	/// Enquanto a cena roda: se falta pedra pro alvo e a hora da proxima chegou, nasce uma. E so.
+	/// A mesma linha faz o ENCHIMENTO do comeco (a lista comeca vazia, entao nascem `_alvoDePedras`
+	/// seguidas, uma a cada `_intervaloDePedra`) e a REPOSICAO do resto da cena (uma morreu, falta
+	/// uma, nasce uma). Nao ha "modo de encher" e "modo de manter" pra sair de sincronia.
 	///
 	/// SEM `Tween` E SEM `SceneTreeTimer` de proposito: os dois so sabem chamar de volta por LAMBDA,
 	/// e lambda nao da pra cancelar quando a cena morre antes da pedra (foi o que custou 19 assinaturas
@@ -780,11 +1127,22 @@ public partial class Transformacao : Node2D
 	/// </summary>
 	private void TocarPedras()
 	{
+		// O GATE E DA CENA E VEM DO CORE: `OChaoSeSolta` e falso so na linha do Oozaru, e por pedido
+		// do dono (*"oozaru n tem esse efeito de rocks nem de particulas"*). Ver a propriedade la.
+		if (_cena.OChaoSeSolta)
+			while (_pedras.Count < _alvoDePedras && _t >= _proximaPedra)
+			{
+				_proximaPedra += _intervaloDePedra;
+				if (!NascerPedra()) break;
+			}
+
 		for (int i = _pedras.Count - 1; i >= 0; i--)
 		{
 			PedraViva p = _pedras[i];
-			if (!IsInstanceValid(p.No)) { _pedras.RemoveAt(i); continue; }
-			if (_t >= p.Morre) { p.No.QueueFree(); _pedras.RemoveAt(i); continue; }
+			if (!IsInstanceValid(p.No)) { _pedras.RemoveAt(i); _ocupadas.Remove(p.Celula); continue; }
+			// A CELULA VOLTA PRA SACOLA na morte: sem isto o chao encheria uma vez e nunca mais se
+			// renovaria numa cena longa -- o SSJ3 tem 143 s e a pedra vive no maximo 40.
+			if (_t >= p.Morre) { p.No.QueueFree(); _pedras.RemoveAt(i); _ocupadas.Remove(p.Celula); continue; }
 			if (!p.No.Visible && _t >= p.Nasce) { p.No.Visible = true; p.No.Play(); }
 		}
 	}
@@ -792,12 +1150,30 @@ public partial class Transformacao : Node2D
 	/// <summary>Quantas pedras estao vivas agora. Pra bancada.</summary>
 	public int PedrasVivasDeTeste => _pedras.Count;
 
+	/// <summary>Quantas deveriam ficar vivas ao mesmo tempo -- o teto de custo da cena. Pra bancada.</summary>
+	public int AlvoDePedrasDeTeste => _alvoDePedras;
+
+	/// <summary>Quantos tiles o sorteio alcanca (o teto ABSOLUTO: uma pedra por tile). Pra bancada.</summary>
+	public int TilesDePedraDeTeste => _tilesEmVolta.Length;
+
+	/// <summary>A meia-extensao do sorteio, em tiles. Pra bancada conferir que ela veio da camera.</summary>
+	public Vector2I AlcanceDePedraDeTeste => new(_alcanceX, _alcanceY);
+
 	/// <summary>Onde as pedras vivas estao, no mundo. Pra bancada medir o alinhamento a grade.</summary>
 	public Vector2[] PedrasDeTeste =>
 		[.. _pedras.Where(p => IsInstanceValid(p.No)).Select(p => p.No.GlobalPosition)];
 
-	/// <summary>Dispara uma leva na marra, sem esperar o beat. Pra bancada.</summary>
-	public void SoltarPedrasDeTeste() => SoltarPedras();
+	/// <summary>
+	/// ENCHE O CHAO NA MARRA, sem esperar a cadencia. Pra bancada.
+	///
+	/// Ela existe pelo mesmo motivo de sempre: o zero da cena do Oozaru precisa ser uma ESCOLHA
+	/// provada, e nao uma folha que nao carregou. Por isso ela pula o gate `OChaoSeSolta` -- e o
+	/// unico caminho do arquivo que pula.
+	/// </summary>
+	public void SoltarPedrasDeTeste()
+	{
+		for (int i = 0; i < _alvoDePedras && NascerPedra(naMarra: true); i++) { }
+	}
 
 	public override void _Process(double delta)
 	{
@@ -840,7 +1216,10 @@ public partial class Transformacao : Node2D
 		// ================================================================================
 		if (_t > _cena.Segundos + FolgaDoTeto)
 		{
-			GD.PushWarning($"[transformacao] TETO: a cena de `{_forma.Id}` passou de "
+			// O ROTULO SAI DA CENA e nao da forma: `_cena.Forma` e o id quando ha forma e a string
+			// vazia quando nao ha (a furia). Escrever `_forma.Id` aqui explodiria com `NullReference`
+			// -- dentro do bloco que existe pra impedir que o jogador fique preso pra sempre.
+			GD.PushWarning($"[transformacao] TETO: a cena de `{NomeDaCena()}` passou de "
 						 + $"{_cena.Segundos + FolgaDoTeto:0.#}s sem terminar -- soltando na marra.");
 			_tetos++;
 			_fim = FimDaCena.Teto;
@@ -863,6 +1242,12 @@ public partial class Transformacao : Node2D
 		// `Nasce` vencido (o sorteio permite atraso zero), e faze-la esperar o quadro seguinte pra
 		// aparecer seria um quadro de nada no comeco do efeito.
 		TocarPedras();
+
+		// DEPOIS DOS BEATS TAMBEM, e o motivo aqui e o inverso do das pedras: o beat que ASSUME acende
+		// o `ClaraoDeTela`, e um raio caindo no MESMO quadro tem que somar clarao POR CIMA dele em vez
+		// de ser lavado por ele. Rodando antes, o unico instante da cena que o dono chama de climax
+		// seria o unico em que a tempestade nao aparece.
+		TocarTempestade();
 
 		// ============================ O CABELO PISCANDO, ATE A FORMA FICAR ============================
 		// DEPOIS dos beats pelo mesmo motivo das pedras: o beat que ARMA o piscar tem que poder trocar o
@@ -1125,7 +1510,8 @@ public partial class Transformacao : Node2D
 
 		if (b.Faz.HasFlag(Efeito.AuraBase)) AcenderAuraBase();
 
-		if (b.Faz.HasFlag(Efeito.PedrasSubindo)) SoltarPedras();
+		// AQUI HAVIA `Efeito.PedrasSubindo` -> `SoltarPedras()`. A pedra deixou de ser um beat: ela
+		// corre por baixo da cena inteira agora, no `TocarPedras`. Ver o bloco do CHAO SOLTO.
 
 		if (b.Faz.HasFlag(Efeito.Cratera))
 		{
@@ -1164,7 +1550,11 @@ public partial class Transformacao : Node2D
 
 		// OS RAIOS DA CENA sao os MESMOS do estado transformado (`RaiosDaForma`), disparados a mao.
 		// Ter dois sistemas de raio no jogo seria ter dois lugares pra consertar o mesmo defeito.
-		if (b.Faz.HasFlag(Efeito.Raios) && _alvo.GetNodeOrNull<RaiosDaForma>("Raios") is { } r)
+		// `_forma != null` NAO E PARANOIA DE COMPILADOR: sem forma nao ha `Raios` a ler, e a faisca
+		// e ESTADO da forma (`RaiosDaForma.Definir` deixa o node armado depois da cena). Uma cena de
+		// furia que acendesse faisca deixaria o corpo faiscando pra sempre, sem forma pra apagar.
+		if (b.Faz.HasFlag(Efeito.Raios) && _forma != null
+			&& _alvo.GetNodeOrNull<RaiosDaForma>("Raios") is { } r)
 		{
 			r.Definir(true, _corRaios, Math.Max(1, _forma.Raios));
 			r.DispararDeTeste();
@@ -1172,15 +1562,19 @@ public partial class Transformacao : Node2D
 
 		if (b.Faz.HasFlag(Efeito.FeixesNoChao)) Feixes();
 
-		// ============================ OS QUATRO DO ENCHIMENTO ============================
-		// Nenhum deles inventa engine: o anel e o `CombatFx.Onda` do combate, o cascalho e a
-		// `PoeiraDeEstrago` do cenario caindo, a descarga e o `Iluminacao.Raio` da tempestade, e o
-		// clarao e um `ColorRect` numa `CanvasLayer`. Ver os metodos, um a um, e os comentarios dos
-		// proprios `Efeito` no Core sobre o que e porte e o que e invencao.
+		// ============================ OS TRES DO ENCHIMENTO ============================
+		// Nenhum deles inventa engine: o anel e o `CombatFx.Onda` do combate, a descarga e o
+		// `Iluminacao.Raio` da tempestade, e o clarao e um `ColorRect` numa `CanvasLayer`. Ver os
+		// metodos, um a um, e os comentarios dos proprios `Efeito` no Core sobre o que e porte e o
+		// que e invencao.
+		//
+		// ERAM QUATRO. O quarto era o `Efeito.Cascalho` -> `Cascalho()` -> `PoeiraDeEstrago.Soltar`, e
+		// o dono o descreveu com precisao antes de mandar tirar: *"uns quadrados marrons caindo e
+		// criando uma fumaca parecendo q quebrou uma parede ou objeto"*. Era literalmente isso -- a
+		// cinematica chamando o sistema de ESTRAGO DE CENARIO pra fazer enfeite. A `PoeiraDeEstrago`
+		// continua inteira e em uso no combate; o que morreu foi a chamada daqui.
 		// ============================================================================
 		if (b.Faz.HasFlag(Efeito.AnelDeChoque)) Anel();
-
-		if (b.Faz.HasFlag(Efeito.Cascalho)) Cascalho();
 
 		if (b.Faz.HasFlag(Efeito.DescargaNoCeu)) Descarga();
 
@@ -1195,9 +1589,13 @@ public partial class Transformacao : Node2D
 		// e o `Banhar` decai LINEAR do pico, entao 1,2 s de escoamento cobre os dois gestos com um
 		// relogio so. `LSSj()` usa `time=7` (0,7 s); a diferenca de um tique nao vale um segundo campo.
 		// =====================================================================================================
-		if (b.Faz.HasFlag(Efeito.BanhoDeCor)
+		//
+		// SEM FORMA NAO HA BANHO: `Aura.CorDaChamaDe(null)` devolve o branco do ki cru, e lavar o
+		// corpo de branco no meio de uma cena vermelha nao e o gesto do DM -- os cinco `animate` que
+		// isto porta sao todos de transformacao.
+		if (b.Faz.HasFlag(Efeito.BanhoDeCor) && _forma != null
 			&& _alvo.GetNodeOrNull<CharacterVisual>("Visual") is { } vb)
-			vb.Banhar(Aura.CorDaChamaDe(_forma), Cinematicas.SegundosDoBanho);
+			vb.Banhar(Aura.CorDaChamaDe(_forma, CorPessoalDoAlvo), Cinematicas.SegundosDoBanho);
 
 		// ============================ O PISCAR DE CABELO: O BEAT SO ARMA ============================
 		// Era `_piscando = !_piscando` aqui -- uma troca por beat. Virou um interruptor porque a cena
@@ -1211,7 +1609,11 @@ public partial class Transformacao : Node2D
 		// bancada cobra que seja um so), e se houvesse ele nao poderia significar "pisca mais rapido" --
 		// a cadencia e do roteiro, nao do numero de beats.
 		// ========================================================================================
-		if (b.Faz.HasFlag(Efeito.PiscaCabelo) && !_piscaLigada)
+		//
+		// E SEM FORMA ELE NEM ARMA: piscar e alternar ENTRE dois penteados, e um dos dois e a forma.
+		// Sem ela o `_Process` chamaria `VestirCabeloDaForma(null)` metade do tempo -- que e "sem forma
+		// nenhuma", ou seja o Super Saiyajin em luto piscaria de volta pra base duas vezes por segundo.
+		if (b.Faz.HasFlag(Efeito.PiscaCabelo) && _forma != null && !_piscaLigada)
 		{
 			_piscaLigada = true;
 			_proximaPiscada = _t;   // a primeira troca sai no MESMO quadro do beat, e nao um sorteio depois
@@ -1278,7 +1680,11 @@ public partial class Transformacao : Node2D
 		// `colorablebigaura`, e a folha da forma so vale quando a forma JA E dele -- o que so
 		// acontece no `Assumir`, que reescreve a folha logo depois (pelo `Vestir`).
 		aura.Folha(Jandirus.Core.Forms.FolhaDeAura.Base);
-		aura.Acender(Aura.CorDoKiCru, 1.4f);
+		// A COR PESSOAL DESTE CORPO, e nao o `Aura.CorDoKiCru` que estava cravado aqui. O beat se
+		// chama `Efeito.AuraBase` e a aura da base e pessoal -- com a constante, o Oozaru era o
+		// unico momento do jogo em que o jogador via a chama de outra pessoa acender no proprio
+		// corpo. O node ja tem a resposta; pedir a ele e o que impede uma segunda.
+		aura.Acender(aura.CorPessoal, 1.4f);
 		_auraBaseAcesa = true;
 	}
 
@@ -1334,9 +1740,20 @@ public partial class Transformacao : Node2D
 		// ====================================================================================================
 		_piscaLigada = false;
 
-		// E SO ISTO: vestir a forma alvo. Aura, raios e folha da carga sao APARENCIA e por isso
-		// moram no `Vestir` -- o bloco de tres que ficava aqui foi deletado, e nao copiado pra la.
-		Vestir(_forma);
+		// ============================ E QUANDO NAO HA FORMA, A VIRADA NAO VESTE NINGUEM ============================
+		// Este e o ponto em que o <see cref="Efeito.Assumir"/> deixa de ser "assumir a forma" e passa a
+		// ser o que ele sempre foi estruturalmente: a VIRADA da cena (ver o bit no Core). Na furia a
+		// virada e a erupcao -- a cratera e o `powerup.wav` de `Murder.dm:158-160` --, e o DM nao
+		// escreve cabelo, aura nem contorno em lugar nenhum daquele proc.
+		//
+		// `Vestir(null)` NAO seria "nao fazer nada": ele desfaz sprite, tinta e rabo (ver
+		// `VestirAFormaSemCena` no `World`), ou seja um SSJ3 que perdesse um amigo voltaria ao normal
+		// no meio da propria furia. Por isso a pergunta, e nao um `?`.
+		//
+		// As duas linhas de cima FICAM valendo mesmo sem forma, e de proposito: se um roteiro futuro de
+		// cena sem forma acender a aura base ou o piscar, quem os apaga continua sendo a virada.
+		// ======================================================================================================
+		if (_forma != null) Vestir(_forma);
 	}
 
 	/// <summary>
@@ -1353,6 +1770,9 @@ public partial class Transformacao : Node2D
 	/// </summary>
 	private void VestirODegrauSeguinte()
 	{
+		// SEM FORMA NAO HA ESCADA -- e nao ha o que vestir. `EscadaDaCena` deriva os degraus ABAIXO da
+		// forma da cena; sem forma a pergunta nao existe.
+		if (_forma == null) return;
 		_escada ??= Jandirus.Core.Forms.Cinematicas.EscadaDaCena(_forma);
 		if (_degrau >= _escada.Length) return;
 
@@ -1461,12 +1881,16 @@ public partial class Transformacao : Node2D
 		// o unico lugar que descreve como uma forma se PARECE, e um degrau intermediario da cena que
 		// nao passasse por ele deixaria a nuvem do degrau anterior acesa.
 		//
-		// A BASE APAGA SOZINHA: ela esta na linha Saiyajin do catalogo, e `TemNebulosa` so responde
-		// sim pra a linha do Ultra Instinto. Nao ha `if (ehBase)` aqui de proposito -- seria uma
+		// A BASE APAGA SOZINHA: ela esta na linha Saiyajin do catalogo, e a paleta so existe pra a linha
+		// do Ultra Instinto e pro `ultra_ego`. Nao ha `if (ehBase)` aqui de proposito -- seria uma
 		// segunda verdade sobre a mesma pergunta.
+		//
+		// E A COR VEM JUNTA, no mesmo `nulo = apagar`: a nuvem tem duas paletas (indigo e roxa) desde o
+		// pedido do Ultra Ego, e quem escolhe e o Core. Ver `NebulosaDaForma.Definir` pra o porque de
+		// isto nao ser um `bool` mais uma chamada de cor.
 		// ==============================================================================================
 		if (_alvo.GetNodeOrNull<NebulosaDaForma>("Nebulosa") is { } nebulosa)
-			nebulosa.Definir(Jandirus.Core.Forms.Catalogo.TemNebulosa(d));
+			nebulosa.Definir(Jandirus.Core.Forms.Catalogo.PaletaDaNebulosa(d));
 
 		// ============================ A AURA E A CARGA: A COR E A FOLHA, NAO O ACENDER ============================
 		// PREPARA, NAO ACENDE -- nem na estreia. A cinematica tem os proprios efeitos (a aura GRANDE,
@@ -1498,7 +1922,10 @@ public partial class Transformacao : Node2D
 			// A COR E A FORCA VEM DAS MESMAS DUAS FUNCOES que a chama da cena usa logo abaixo (e que o
 			// `World` usa fora da cinematica): eram duas contas escritas a mao aqui, e a terceira copia
 			// nasceria agora. Ver `Aura.CorDaChamaDe`.
-			aura.Preparar(Aura.CorDaChamaDe(d), Aura.ForcaDaChamaDe(d), !ehBase);
+			// A FORMA INTEIRA, e nao o par (cor, forca) ja resolvido: quem tem a cor PESSOAL deste
+			// corpo em maos e o proprio node (ver `Aura.Preparar`). Este era o segundo dos dois
+			// lugares que escreviam as duas contas a mao.
+			aura.Preparar(d, !ehBase);
 		}
 		_alvo.GetNodeOrNull<CargaVisual>("Carga")?.Folha(Jandirus.Core.Forms.Catalogo.Folha(d));
 
@@ -1566,6 +1993,19 @@ public partial class Transformacao : Node2D
 			m.SetShaderParameter("grossura", 0.07f);
 			m.SetShaderParameter("halo", 1.4f);
 
+			// ============================ O FEIXE NAO E UM RAIOZINHO ============================
+			// O afinamento pedido pelo dono ("uns sao mt coisa") e dos raios que correm NO CORPO, e
+			// mora no padrao do shader -- que este feixe herdaria por reusar o mesmo arquivo. Ele
+			// se prende no 1,0 porque o quad dele tem 10 px de largura contra os 16 do raio: os
+			// mesmos 0,07 de grossura ja dao um traco mais FINO em pixel de tela, e afinar de novo
+			// deixaria os oito feixes do chao com meio pixel de nucleo -- some contra o clarao da
+			// cinematica.
+			//
+			// E a variacao fica em zero porque os oito saem JUNTOS e em leque: a graca deles e a
+			// simetria da estrela. Grossura sorteada aqui nao le como acaso, le como feixe torto.
+			m.SetShaderParameter("afinar", 1.0f);
+			m.SetShaderParameter("variacao_grossura", 0.0f);
+
 			float ang = i * Mathf.Pi / 4f;
 			var s = new Sprite2D
 			{
@@ -1588,14 +2028,20 @@ public partial class Transformacao : Node2D
 	}
 
 	// ======================================================================================
-	//  OS QUATRO EFEITOS DO ENCHIMENTO -- ver `Efeito.AnelDeChoque`, `Cascalho`, `ClaraoDeTela`
-	//  e `DescargaNoCeu` no Core, que e onde esta escrito o que e porte e o que e invencao.
+	//  OS TRES EFEITOS DO ENCHIMENTO -- ver `Efeito.AnelDeChoque`, `ClaraoDeTela` e
+	//  `DescargaNoCeu` no Core, que e onde esta escrito o que e porte e o que e invencao.
 	// ======================================================================================
 
 	/// <summary>
-	/// QUE TAMANHO TEM O ANEL, em tiles. Tres, e a conta e a mesma do <see cref="TilesEmVolta"/>: o
-	/// sorteio das pedras cobre 3 tiles pra cada lado na horizontal, entao o anel que "abre o chao"
-	/// tem exatamente a largura do chao que as pedras usam.
+	/// QUE TAMANHO TEM O ANEL, em tiles. TRES, e agora o numero e do DM e nao de uma coincidencia:
+	/// `createShockwavemisc(loc,3)` -- o raio com que os quatro procs de surto (`SSj4FP` e irmaos)
+	/// abrem, e o mesmo do `BeastUp` (`Mystic.dm:142`).
+	///
+	/// A justificativa ANTIGA era outra e morreu neste passe: "a mesma conta do `TilesEmVolta`, o
+	/// sorteio das pedras cobre 3 tiles pra cada lado". O sorteio das pedras deixou de ser 3 (ele e
+	/// medido da camera agora, ver <see cref="_alcanceX"/>), e amarrar o anel a ele teria dobrado o
+	/// anel de tabela -- num efeito de que o dono nao reclamou. Sao duas coisas diferentes: a pedra e
+	/// o CHAO que se solta, e o anel e o AR sendo empurrado.
 	///
 	/// Escrever o pixel envelheceria calado no dia em que o tile mudasse -- o mesmo motivo pelo qual
 	/// o <see cref="Cinematicas.TilesDoTremorCheio"/> tambem esta em tiles.
@@ -1623,45 +2069,20 @@ public partial class Transformacao : Node2D
 					  new Color(_corAura.R, _corAura.G, _corAura.B, 0.75f), duracao: 0.5);
 	}
 
-	/// <summary>
-	/// QUANTOS PONTOS DE CASCALHO POR BEAT.
-	///
-	/// TRES, e o teto do sistema e que manda: a <see cref="PoeiraDeEstrago"/> so deixa 24 efeitos
-	/// vivos ao mesmo tempo, e o mais velho sai quando estoura. Numa cena longa os beats de cascalho
-	/// vem de quatro em quatro segundos, entao tres por vez cabe com folga -- seis comecariam a
-	/// despejar os proprios pedacos do beat anterior, e o efeito ficaria mais fraco quanto MAIS se
-	/// pedisse dele.
-	/// </summary>
-	private const int PedacosDeCascalho = 3;
-
-	/// <summary>
-	/// O CHAO SE QUEBRANDO EM VOLTA -- a <see cref="PoeiraDeEstrago"/>, o mesmo sistema que cospe
-	/// cascalho quando uma parede cai.
-	///
-	/// ============================ O RUMO E PRA FORA, E ISSO NAO E ENFEITE ============================
-	/// O `Soltar` aceita o rumo do impacto e joga os pedacos preferencialmente pra la; vetor ZERO
-	/// espalha pra todo lado ("chao rachando sozinho", diz o comentario de la). Aqui o rumo e o
-	/// versor que sai do corpo -- porque o que quebra o chao esta no CENTRO, e cascalho voando pra
-	/// dentro contaria o contrario.
-	///
-	/// A COR FICA A PADRAO (terra): quem sabe de que tile o pedaco saiu e quem derruba a celula, e a
-	/// cena nao derruba nenhuma. Chutar a cor daria pedra cinza saindo verde num planeta qualquer.
-	/// ============================================================================================
-	/// </summary>
-	private void Cascalho()
-	{
-		CascalhoDeTeste++;
-		Vector2 pes = _alvo.GlobalPosition + new Vector2(0, MoveRules.FeetOffsetY);
-		for (int i = 0; i < PedacosDeCascalho; i++)
-		{
-			float ang = GD.Randf() * Mathf.Tau;
-			var fora = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
-			// DE MEIO A DOIS TILES: colado no corpo o pedaco fica atras do sprite, e alem de dois
-			// tiles ele se solta do que o causou -- vira poeira de outra coisa acontecendo ao lado.
-			Vector2 onde = pes + fora * ((0.5f + GD.Randf() * 1.5f) * ZoneCollision.TileSize);
-			PoeiraDeEstrago.Soltar(_chaoRaiz, onde, fora);
-		}
-	}
+	// ============================ AQUI MORAVA O `Cascalho()` ============================
+	// Ele soltava tres pontos de `PoeiraDeEstrago` por beat -- 73 beats em 22 cenas, 219 despejos --,
+	// e foi cortado pelo dono: *"vc colocou uns efeitos de particula nas cinematicas q parecem q tem
+	// uns quadrados marrons caindo e criando uma fumaca parecendo q quebrou uma parede ou objeto,
+	// TIRE esse efeito"*.
+	//
+	// A DESCRICAO BATE COM O CODIGO DE LA, linha por linha (`PoeiraDeEstrago.cs:155,164`): a textura
+	// e um `Quadrado(3, pedra)` -- 3x3 px de cor chapada --, a `Gravity` e `(0, 420)` (cai), a cor
+	// padrao e `TerraPadrao` = marrom, e o node leva dois sistemas de fumaca junto.
+	//
+	// **A `PoeiraDeEstrago` NAO foi tocada.** Ela e do estrago de cenario, tem dono proprio e e usada
+	// em combate; o defeito era esta classe estar chamando ela. O buraco que ela preenchia (as cenas
+	// longas com tela parada) e da PEDRA agora, do inicio ao fim -- ver o bloco do CHAO SOLTO.
+	// ==================================================================================
 
 	/// <summary>
 	/// UM RAIO CAI DO CEU EM CIMA DE QUEM ESTA VIRANDO.
@@ -1684,8 +2105,152 @@ public partial class Transformacao : Node2D
 	{
 		if (!_noPlaneta) return;
 		DescargasDeTeste++;
-		Mundo()?.GetNodeOrNull<Iluminacao>("Iluminacao")?.Raio(_alvo.GlobalPosition, GD.Randf() * 1000f);
+		Cair(_alvo.GlobalPosition);
 	}
+
+	/// <summary>
+	/// CAI UM RAIO NAQUELE PONTO. O unico caminho de desenho de descarga desta classe.
+	///
+	/// Extraido porque passaram a existir DOIS pedidos de raio -- o pulso do beat
+	/// (<see cref="Descarga"/>) e a tempestade da estreia (<see cref="TocarTempestade"/>) -- e duas
+	/// chamadas iguais a `Iluminacao.Raio` seriam duas oportunidades de uma delas envelhecer sozinha
+	/// no dia em que o canal do clima mudar de assinatura. Os CONTADORES e que continuam separados: e
+	/// a bancada que precisa distinguir "o roteiro pediu" de "o estado da cena pediu".
+	///
+	/// A SEMENTE E SORTEADA AQUI e nao viaja pela rede -- ver <see cref="Descarga"/> sobre isso.
+	/// </summary>
+	private void Cair(Vector2 onde) =>
+		Mundo()?.GetNodeOrNull<Iluminacao>("Iluminacao")?.Raio(onde, GD.Randf() * 1000f);
+
+	// ======================================================================================
+	//  A TEMPESTADE DA ESTREIA -- e ela e um ESTADO DA CENA, como a pedra e como o piscar
+	// ======================================================================================
+	// O dono: *"o ssj1 na cinematica da primeira vez, deveria fazer raios cairem durante TODA a
+	// cinematica na regiao q o personagem esta se transformando"*.
+	//
+	// QUEM RESPONDE "esta cena?" E O CORE, numa linha (`Cinematica.OCeuDescarrega`): so o `ssj1` e so
+	// a versao cheia. O tocador nao sabe o nome de forma nenhuma, e nao e ele que decide quando a
+	// estreia acontece -- essa e a mesma divisao que o `OChaoSeSolta` e o `PiscaCabelo` ja usam.
+	//
+	// NAO HA DESENHO NOVO: e o `Iluminacao.Raio` -> `ClimaNaTela.Estourar` da tempestade, que ja
+	// desenha o risco em zigue-zague, acende o ceu com forca que cai com a distancia e agenda o trovao
+	// pelo tempo que o som leva pra chegar. O beat `Efeito.DescargaNoCeu` ja o usava como pulso; aqui
+	// ele vira cadencia.
+
+	/// <summary>ONDE a tempestade cai, congelado no comeco da cena. Ver <see cref="MontarATempestade"/>.</summary>
+	private Vector2 _centroDaTempestade;
+
+	/// <summary>O buraco do meio, em pixels. Ver <see cref="MontarATempestade"/>.</summary>
+	private float _mioloDaTempestade;
+
+	/// <summary>Quando cai o proximo. Tempo de cena.</summary>
+	private double _proximoRaio;
+
+	private readonly List<Vector2> _pontosDeRaio = [];
+
+	/// <summary>
+	/// MEDE A REGIAO ONDE O CEU VAI DESCARREGAR -- centro, buraco do meio e o primeiro prazo. Uma vez,
+	/// no `_Ready`.
+	///
+	/// ============================ O CENTRO E CONGELADO, E ISSO NAO E DETALHE ============================
+	/// O `Devolver` solta o corpo no beat que assume (25,0 s) e a cena ainda tem 1,4 s de cauda: raio
+	/// perguntando a posicao do corpo a cada queda PERSEGUIRIA o jogador que ja saiu andando. E o mesmo
+	/// defeito -- e a mesma correcao -- do <see cref="_celulaDoChao"/> das pedras.
+	///
+	/// Nos PES e nao no centro do sprite: `MoveRules.FeetOffsetY` e o mesmo desconto que o `Plantar`
+	/// (cratera, fumaca) e o chao solto ja usam. O raio atinge o CHAO, e o chao esta nos pes.
+	///
+	/// ============================ O BURACO DO MEIO SAI DO BONECO ============================
+	/// *"na regiao"* e uma area EM VOLTA, e o `Descarga` do beat ja cobre o caso de cair em cima (ele
+	/// atinge o proprio corpo). Aqui o pe do risco tem que sobrar do sprite, senao dezessete descargas
+	/// caem todas dentro do mesmo boneco e a "regiao" some.
+	///
+	/// O numero e o LADO DA FOLHA DO CORPO (`CharacterVisual.TamanhoDoQuadro`) -- a mesma medida, da
+	/// mesma fonte, que ja faz o buraco das pedras. Num boneco de 32 e um tile inteiro de folga (meio
+	/// tile ja tiraria o pe de cima do sprite; um tile e a primeira distancia em que a descarga LE como
+	/// estando ao lado dele); num macaco de 96 sao tres, sozinho.
+	///
+	/// O TETO EM METADE DO ALCANCE existe pra que o anel nunca se inverta: uma folha maior que o
+	/// proprio `RaioDoTremorCheio` daria `miolo > raio` e um sorteio negativo, que e um defeito que
+	/// nao acusa -- ele so poe o raio do lado errado do personagem.
+	/// ================================================================================================
+	/// </summary>
+	private void MontarATempestade()
+	{
+		if (!_cena.OCeuDescarrega) return;
+
+		_centroDaTempestade = _alvo.GlobalPosition + new Vector2(0, MoveRules.FeetOffsetY);
+
+		float lado = CharacterVisual.TamanhoDoQuadro(
+			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.FolhaDoCorpo).X;
+		if (lado <= 0) lado = ZoneCollision.TileSize;
+		_mioloDaTempestade = Math.Min(lado, Cinematicas.RaioDoTremorCheio * 0.5f);
+
+		// O PRIMEIRO JA SORTEADO, e nao em `_t = 0`: no DM tambem nao cai raio antes do primeiro
+		// segundo (`spawn(rand(10,150))`, `SSJCinematic.dm:51-52`), e uma descarga no quadro de
+		// abertura disputaria a tela com o `rockmoving` e o tremor que abrem a cena.
+		_proximoRaio = IntervaloDoRaio();
+	}
+
+	/// <summary>
+	/// QUANTO O CEU SEGURA ATE O PROXIMO -- o sorteio do Core, ver <see cref="Cinematicas.DescargaMinima"/>.
+	/// </summary>
+	private static double IntervaloDoRaio() =>
+		Cinematicas.DescargaMinima
+		+ GD.Randf() * (Cinematicas.DescargaMaxima - Cinematicas.DescargaMinima);
+
+	/// <summary>
+	/// FAZ CAIR O QUE VENCEU. Chamado todo quadro, do primeiro segundo da cena ao ultimo.
+	///
+	/// ============================ DO INICIO AO FIM, E SEM UM BEAT SEQUER ============================
+	/// O prazo nao para no `Assumir`: o dono disse *"durante TODA a cinematica"*, e a cauda de 1,4 s da
+	/// cena e a poeira da cratera baixando -- uma ultima descarga ali fecha o acontecimento em vez de
+	/// deixa-lo terminar no silencio. Quem para o efeito e o `_Process` deixando de rodar quando a cena
+	/// morre, que e o mesmo guarda das pedras.
+	///
+	/// `while` E NAO `if` pelo mesmo motivo do chao solto: a bancada bombeia o relogio a mao em passos
+	/// de 0,1 s, mas um quadro engasgado em jogo pode passar de 2,0 s -- e ai o prazo vencido teria que
+	/// esperar o quadro seguinte, e o seguinte, acumulando atraso que nunca se paga. Ele TERMINA sempre:
+	/// cada volta soma pelo menos <see cref="Cinematicas.DescargaMinima"/> a um alvo que nao anda.
+	/// ============================================================================================
+	/// </summary>
+	private void TocarTempestade()
+	{
+		// AS DUAS PERGUNTAS, e nenhuma delas e redundante: a primeira e do ROTEIRO (so a estreia do
+		// SSJ1 tem tempestade) e a segunda e do LUGAR (nao ha ceu pra rachar no espaco, dentro de uma
+		// nave ou na Sala do Tempo). O `Descarga` do beat faz a segunda pela mesma razao.
+		if (!_cena.OCeuDescarrega || !_noPlaneta) return;
+
+		while (_t >= _proximoRaio)
+		{
+			_proximoRaio += IntervaloDoRaio();
+
+			RaiosDaEstreiaDeTeste++;
+			float ang = GD.Randf() * Mathf.Tau;
+			// UNIFORME NO RAIO e nao na AREA, de proposito: sortear a area espalharia a maioria das
+			// descargas na borda do circulo (ha mais area longe do centro que perto), e o pedido e
+			// *"na regiao q o personagem esta se transformando"* -- ele e o centro do acontecimento,
+			// nao o furo de uma rosca.
+			float d = _mioloDaTempestade
+					+ GD.Randf() * (Cinematicas.RaioDoTremorCheio - _mioloDaTempestade);
+			Vector2 onde = _centroDaTempestade + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * d;
+
+			_pontosDeRaio.Add(onde);
+			Cair(onde);
+		}
+	}
+
+	/// <summary>Quantos raios da tempestade cairam nesta cena. Pra bancada. Ver <see cref="TocarTempestade"/>.</summary>
+	public int RaiosDaEstreiaDeTeste { get; private set; }
+
+	/// <summary>Onde cada um caiu, em coordenada de mundo. Pra bancada medir a regiao.</summary>
+	public Vector2[] PontosDeRaioDeTeste => [.. _pontosDeRaio];
+
+	/// <summary>O centro congelado da regiao. Pra bancada -- ver <see cref="MontarATempestade"/>.</summary>
+	public Vector2 CentroDaTempestadeDeTeste => _centroDaTempestade;
+
+	/// <summary>O buraco do meio, em pixels. Pra bancada.</summary>
+	public float MioloDaTempestadeDeTeste => _mioloDaTempestade;
 
 	/// <summary>
 	/// EM QUE CAMADA O CLARAO VIVE.
@@ -1753,9 +2318,6 @@ public partial class Transformacao : Node2D
 
 	/// <summary>Quantas vezes cada efeito novo disparou nesta cena. Pra bancada.</summary>
 	public int AneisDeTeste { get; private set; }
-
-	/// <inheritdoc cref="AneisDeTeste"/>
-	public int CascalhoDeTeste { get; private set; }
 
 	/// <inheritdoc cref="AneisDeTeste"/>
 	public int DescargasDeTeste { get; private set; }

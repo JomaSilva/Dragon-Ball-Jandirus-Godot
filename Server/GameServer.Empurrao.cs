@@ -264,9 +264,24 @@ public sealed partial class GameServer
 	/// A `dirt_trail` do DU e um parametro por chamada (o `Stat Loop` passa 0 num caso); aqui ela
 	/// virou "esta no CHAO", que e o que o dono pediu -- quem esta voando nao ara a terra.
 	/// ======================================================================================
+	///
+	/// ============================ E NO ESPACO NAO HA CHAO PRA ARAR ============================
+	/// A guarda de altura NAO cobria o vacuo: `pl.Altitude` e zero no espaco (a altitude e um
+	/// sistema de planeta -- `TentarRomperAAtmosfera` devolve na porta quando a zona e o espaco), e
+	/// `TiquesIniciaisDoVoo` passa de 4 em qualquer arremesso decente. Resultado: arremessar alguem
+	/// no vacuo carimbava SULCO DE TERRA e CRATERA no nada, e o pacote ia pro `ZoneList` do espaco,
+	/// que e o universo INTEIRO -- todo mundo online via a cratera, a qualquer distancia.
+	///
+	/// Ficou invisivel enquanto ninguem brigava no espaco. Jogar alguem no sol e exatamente brigar
+	/// no espaco, entao a Fase 4 e quem paga esta conta.
+	///
+	/// A pergunta certa nao e "estou no chao": e "existe chao". `Espaco.EhPlaneta` e quem responde
+	/// isso, e ja e o mesmo criterio que a volta da borda e a musica de transformacao usam.
+	/// ======================================================================================
 	/// </summary>
 	private static bool RastroVale(ServerPlayer pl)
 		=> pl.Altitude <= 0f
+		   && Espaco.EhPlaneta(pl.Zone)
 		   && pl.TiquesIniciaisDoVoo * Empurrao.TilesPorTique >= TilesParaDeixarRastro;
 
 	/// <summary>Distancia minima do arremesso pra ele arar o chao. `death.dm:218` -- oito tiles.</summary>

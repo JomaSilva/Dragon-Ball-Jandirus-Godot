@@ -22,7 +22,65 @@ render_mode blend_add, unshaded;
 uniform vec4 cor : source_color = vec4(1.0, 0.96, 0.62, 1.0);
 
 /// Meia-largura do nucleo, em fracao do quad. Fino: raio grosso vira borrao.
+/// E a grossura BASE da rajada -- quem escreve e o `RaiosDaForma.Definir`, por intensidade de forma.
 uniform float grossura : hint_range(0.005, 0.2) = 0.045;
+
+// ============================ OS DOIS BOTOES DA GROSSURA ============================
+// Queixa do dono: "os raiozinhos podem ter grossura diferente, so q uns sao mt coisa, poderia
+// afinar a MEDIA dos raiozinhos". Ou seja: a variacao esta aprovada; o que sobra e o topo.
+//
+// Os dois moram AQUI e nao no C# de proposito -- a mesma razao da rampa do `NebulosaDaForma`: e
+// afinacao de olho, e afinar de olho recompilando o jogo a cada tentativa nao se faz. Nenhum dos
+// dois e escrito pelo `RaiosDaForma` (a bancada confere que continua assim); quem escreve e so o
+// feixe de chao da cinematica, que se PRENDE no 1,0/0,0 por nao ser um raiozinho de corpo.
+//
+// POR QUE MULTIPLICADOR E NAO TETO: a grossura base cai com a intensidade da forma, mas o raio do
+// SSJ3 aparece mais grosso que o do SSJ2 porque a PARTICULA dele e maior. Um teto cortaria so o
+// degrau de cima e apagaria a diferenca entre as formas -- que e justamente o que o volume de
+// raios existe pra dizer. Multiplicando, os dois degraus caem na mesma proporcao e a distancia
+// entre eles fica intacta.
+//
+// MEDIDO NO FRAGMENT REAVALIADO (largura da luz que o blend_add deposita, em px de mundo, corpo =
+// 32 px):
+//   intensidade 2 (SSJ3/LB)  media 1,69 -> 1,01 px | p90 2,58 -> 1,70 | max 3,27 -> 2,77
+//   intensidade 1 (SSJ2)     media 1,28 -> 0,77 px | p90 1,92 -> 1,23 | max 2,60 -> 2,21
+//   raios acima de 2 px: 32% -> 4% na intensidade 2 (era UM EM TRES -- e esse era o "mt coisa")
+//   e a variacao SUBIU: p90/p10 de 3,25 pra 3,95.
+//
+// ============================ E DEPOIS MEDIDO NO PIXEL, NA GPU ============================
+// O bloco de cima e simulacao: eu reavaliei a conta do fragment em float64 e chamei de largura. A
+// versao anterior desta anotacao terminava em "NAO validado contra a GPU", e agora esta.
+//
+// COMO: `--diagforma` duas vezes, com o `primal_legendary2` posado (intensidade 2) em campo aberto e
+// ao meio-dia, dez fotos por rodada; a segunda rodada com `afinar = 1,0` e `variacao_grossura = 0,0`,
+// que e este arquivo ANTES desta mudanca. Mesma cena, mesmo instrumento, so os dois botoes mudando.
+// A faisca e recortada da foto por ser a unica coisa azulada ali (grama e aura tem G >> B), e o que
+// se mede sao os cortes horizontais dela, convertidos de pixel de tela pra px de mundo pelo zoom 2.
+//
+//   ANTES (afinar 1,0 / var 0)   media 1,70 px | p90 5,00 | max 7,50 | 39% acima de 1,5 px
+//   HOJE  (afinar 0,6 / var 0,45) media 1,09 px | p90 2,95 | max 3,00 | 25% acima de 1,5 px
+//
+// A media cai 36% (a simulacao previa 40%) e o "antes" bate com o 1,69 previsto na PRIMEIRA casa --
+// a conta do bloco de cima descreve mesmo o que a placa desenha. O que a simulacao subestimou foi a
+// CAUDA: na tela o raio mais gordo tinha 7,5 px de mundo, quase um quarto do corpo, e nao 3,3. Era
+// esse o "mt coisa" do dono, e ele cai pra 3,0 px.
+//
+// TETO DA MEDIDA: o limiar recorta a luz inteira (nucleo + halo), entao estes numeros nao se
+// comparam com uma medida so do nucleo -- a mesma foto lida so pelo pixel azul-dominante da 0,64
+// contra 0,68 px e nao distingue nada, porque o nucleo e sub-pixel nos dois casos. Quem quiser
+// remedir tem que recortar a luz, e nao o fio.
+// ==========================================================================================
+// ================================================================================
+
+/// Multiplicador da grossura de TODOS os raios. E o botao de "afinar a media".
+uniform float afinar : hint_range(0.2, 1.5) = 0.6;
+
+/// O quanto a grossura varia DE UM RAIO PRA OUTRO, em fracao da base. 0 = todos iguais.
+///
+/// `afinar * (1 + variacao_grossura)` fica em 0,87 -- abaixo de 1 de proposito: assim nem o raio
+/// mais gordo que este sorteio consegue produzir chega ao gordo de antes. Passar de 1 devolveria
+/// pela cauda o exagero que o multiplicador tirou da media.
+uniform float variacao_grossura : hint_range(0.0, 0.9) = 0.45;
 
 /// Quanto o raio serpenteia. 0 = risco reto.
 uniform float zigue : hint_range(0.0, 1.0) = 0.34;
@@ -87,8 +145,22 @@ void fragment() {
 
 	float d = abs(UV.x - 0.5 - desvio - arco);
 
-	float nucleo = 1.0 - smoothstep(0.0, grossura, d);
-	float aura = 1.0 - smoothstep(0.0, grossura * 4.0, d);
+	// ============================ CADA RAIO TEM A GROSSURA DELE ============================
+	// Ate aqui a grossura era UMA pra a rajada inteira, e a unica coisa que fazia um raio parecer
+	// mais grosso que o vizinho era a ESCALA da particula -- que escala tambem o COMPRIMENTO. Dava
+	// pra ter raio fino ou raio comprido, nunca fino E comprido: a variacao que o dono elogiou
+	// vinha amarrada num eixo so.
+	//
+	// O sorteio e por PARTICULA, do mesmo hash da posicao (mais um canal, custa um seno). Conferido
+	// que nao correlaciona com os outros dois sorteios do arquivo -- o do arco e o do zigue-zague
+	// (|r| < 0,002 em 200 mil amostras): senao sairia "todo raio curvo e gordo", que le como padrao
+	// e nao como acaso.
+	// ==================================================================================
+	float sgrossura = ruido(floor(semente) + vec2(59.0, 5.0));
+	float g = grossura * afinar * (1.0 + variacao_grossura * (sgrossura * 2.0 - 1.0));
+
+	float nucleo = 1.0 - smoothstep(0.0, g, d);
+	float aura = 1.0 - smoothstep(0.0, g * 4.0, d);
 
 	// AS PONTAS AFINAM. Sem isso o raio comeca e termina em corte reto -- fica um traco, nao uma
 	// descarga.

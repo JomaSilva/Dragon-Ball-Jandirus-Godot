@@ -723,9 +723,16 @@ public enum FolhaDeAura
 	/// **ki divino aceso e a escada Saiyajin ZERADA**. O `mob/var/gkaura = 'FieryGod.dmi'`
 	/// (`AuraObject.dm:10`) e o padrao de todo mundo.
 	///
-	/// Quem cai aqui: o SSG (`ssj == 0`), o SSG da linha Rose, e a linha inteira do Prodigial -- o
-	/// Mistico e o Beast chamam `Revert()` ao entrar (`Mystic.dm:33` e `:138`), o que zera `ssj` e
-	/// `lssj` e joga os tres no MESMO ramo.
+	/// Quem cai aqui: o SSG (`ssj == 0`) e o SSG da linha Rose.
+	///
+	/// ============================ E A LINHA DO PRODIGIAL SAIU DAQUI ============================
+	/// **No DM ela cai neste mesmo ramo** -- o Mistico e o Beast chamam `Revert()` ao entrar
+	/// (`Mystic.dm:33` e `:138`), o que zera `ssj` e `lssj` e joga os dois aqui junto com o SSG. Foi
+	/// leitura correta e ficou assim ate o dono derrubar: *"o mistico e beast tao usando a aura de
+	/// carga do ssj god"*. Os dois voltaram pra a <see cref="Base"/>, que se tinge -- ver
+	/// <see cref="Catalogo.Folha"/> e <see cref="Catalogo.ChamaDoJogador"/>, onde a divergencia esta
+	/// declarada por extenso.
+	/// ======================================================================================
 	///
 	/// **ELA NAO SE TINGE**: `icolor = null` na linha seguinte (`AuraObject.dm:175`). A arte ja vem
 	/// colorida, igual a `AuraSSjBig` -- ver `SpriteDeAura.PreColorida`.
@@ -765,7 +772,66 @@ public enum FolhaDeAura
 	/// ==========================================================================================
 	/// </summary>
 	DeusRosa,
+
+	/// <summary>
+	/// ============================ ESTA NAO E UMA FOLHA: E O AVISO DE QUE NAO HA FOLHA ============================
+	/// A linha do Ultra Instinto nao acende chama nenhuma. O que ela mostra e a NEBULOSA -- a nuvem
+	/// procedural que envolve a silhueta (`Client/NebulosaDaForma.cs`), e que ja fica ligada o tempo
+	/// todo como overlay da forma. Ordem do dono: *"a aura/carga do ultra instinto deveria ser essa
+	/// aura em shaders, e nao o icone de carga atual"*.
+	///
+	/// ============================ E O ULTRA EGO ENTROU AQUI DEPOIS ============================
+	/// Palavra do dono, literal: *"a aura/carga do ultra ego e a mesma do instinto superior so q ROXA
+	/// ao inves de branca/prateada, mas tem os mesmos efeitos"*. "Os mesmos efeitos" e o que decide o
+	/// desenho da solucao: nao ha efeito novo nem shader novo -- ha uma PALETA a mais, e por isso este
+	/// simbolo passou a ter DOIS donos e nasceu a <see cref="Catalogo.PaletaDaNebulosa"/>.
+	///
+	/// SO O `ultra_ego`, e NAO a linha inteira: a `destroyer` fica de fora de proposito. O dono nomeou
+	/// o Ultra Ego, e o DM diz que a diferenca visual entre as duas formas da disciplina e justamente
+	/// o cabelo e a cena (`UltraEgo.dm:395-396`) -- dar a nuvem as duas apagaria essa diferenca. E o
+	/// mesmo criterio que ja manteve a `destroyer` sem tinta de cabelo e sem cinematica.
+	///
+	/// ============================ POR QUE ISSO ENTRA AQUI, E NAO NUM `if` NO CLIENTE ============================
+	/// O canal que ja existe e ESTE simbolo: quem decide e o Core (`Catalogo.Folha`, derivado da
+	/// LINHA), e os TRES desenhistas da chama (`Aura`, `CargaVisual` e a chama da cinematica) ja o
+	/// recebem pelo mesmo par de chamadas. Um `if (forma.Id == "ui_sign")` no cliente seria uma quarta
+	/// descricao da mesma regra -- e a familia de defeito deste arquivo inteiro e justamente essa:
+	/// duas verdades sobre a mesma forma, uma delas envelhecendo calada (ver o cabecalho da
+	/// <see cref="Catalogo.Folha"/>, onde CINCO formas divinas ficaram anos na folha errada).
+	///
+	/// O GANHO DE BRINDE e que <see cref="Catalogo.TemNebulosa"/> passou a ser DERIVADO daqui em vez de
+	/// repetir o predicado `Linha == UltraInstinct`. Eram duas fontes de verdade dizendo a mesma coisa;
+	/// hoje uma linha nova que ganhe nebulosa a ganha nos dois lugares de uma vez, e e impossivel um
+	/// corpo desenhar a nuvem E a chama -- porque "tem nuvem" e literalmente "nao tem folha".
+	///
+	/// E O ULTRA EGO COBROU ESSE BRINDE NA HORA: bastou a linha nova no `switch` da
+	/// <see cref="Catalogo.Folha"/> pra ele parar de acender a `colorablebigaura` do `b96bff` E ganhar
+	/// a nuvem, num movimento so. Se os dois fatos ainda fossem dois predicados, o `ultra_ego` teria
+	/// saido com a nuvem roxa E a chama roxa por cima -- que foi exatamente a queixa original do dono
+	/// sobre o Ultra Instinto.
+	///
+	/// QUEM TRADUZ ISTO EM `res://` (`SpriteDeAura.CaminhoDa`) devolve NULO pra este simbolo, e nulo la
+	/// quer dizer "a minha nao e folha". O Core continua sem conhecer o Godot: aqui so ha o simbolo.
+	/// ==========================================================================================================
+	/// </summary>
+	Nebulosa,
 }
+
+/// <summary>
+/// ============================ AS QUATRO CORES DA NUVEM ============================
+/// A paleta que o `NebulosaDaForma.gdshader` desenha, do que esta LONGE do corpo pro que esta
+/// ENCOSTADO nele. Ela existe porque a nuvem passou a ter DOIS donos (Ultra Instinto e Ultra Ego) e
+/// a unica coisa que os separa e a cor -- ver <see cref="Catalogo.PaletaDaNebulosa"/>.
+///
+/// A ORDEM DOS CAMPOS E A ORDEM DA RAMPA, e isso e proposital: e a mesma sequencia do
+/// `neb_rampa(t)` do shader (`cor_borda` -> `cor_meio` -> `cor_perto`), entao ler a declaracao de uma
+/// paleta e ver o degrade. <paramref name="Pontos"/> fica por ultimo porque ele nao esta na rampa:
+/// e a microparticula que sobe POR CIMA de tudo, composta no fim do `fragment`.
+///
+/// SAO HEXA SEM `#`, como a <see cref="Catalogo.CorDoContorno"/> e a <see cref="Catalogo.CorDosRaios"/>
+/// -- o Core nao conhece o Godot e nao tem tipo de cor. Quem traduz e o cliente.
+/// </summary>
+public readonly record struct PaletaDeNebulosa(string Borda, string Meio, string Perto, string Pontos);
 
 /// <summary>
 /// ============================ O OVERLAY COLADO NO CORPO -- E ELE NAO E UMA AURA ============================
@@ -939,6 +1005,27 @@ public static class Catalogo
 	/// baixo?" (`ssj > 0 || lssj > 0`), e o degrau 20 e onde o ki divino passa a acender SOBRE o SSJ1.
 	/// Um degrau divino novo acima do Blue ja nasce com a chama fria sem tocar aqui.
 	/// ==========================================================================================
+	///
+	/// ============================ MAS A LINHA DO MISTICO VOLTOU PRA A COLORIVEL ============================
+	/// O paragrafo acima cita "God, Blue, Rose, Mistico e Beast" como o lote inteiro que subiu pra as
+	/// folhas dedicadas. **Os dois ultimos desceram de novo**, por ordem do dono: *"o mistico e beast
+	/// tao usando a aura de carga do ssj god"*, e ele nomeou os DOIS.
+	///
+	/// ISSO E DIVERGENCIA DECLARADA E NAO CONSERTO -- o DM POE os dois na `FieryGod` mesmo, e a leitura
+	/// que os levou pra la continua correta linha por linha (`Mystic.dm:33` e `:138` chamam `Revert()`,
+	/// que zera `ssj`/`lssj`, e o `AuraObject.dm:174-176` manda quem tem ki divino com a escada zerada
+	/// pra a `container.gkaura`). Ler o `AuraObject.dm` e concluir que estes dois "estao errados aqui"
+	/// nao e achado: e o caminho pra devolver a chama do SSG a eles e reabrir a queixa. A palavra do
+	/// dono vence o DM, e este bloco existe pra isso ficar por escrito no lugar em que a tentacao mora.
+	///
+	/// E A VOLTA PRA A <see cref="FolhaDeAura.Base"/> NAO E "cair no fallback": e a unica folha do jogo
+	/// que SE TINGE, e sao os dois degraus que precisam disso -- o Beast pra acender o `7d5af0` que a
+	/// propria entrada dele declara (e que ate aqui nao chegava em pixel nenhum, porque a `FieryGod`
+	/// nao se pinta), e o Mistico pra acender a chama do JOGADOR, que e o pedido literal
+	/// (*"a aura do mistico tem q ser a mesma aura da BASE DO PERSONAGEM"*). Quem responde a segunda
+	/// metade -- de QUE cor -- e a <see cref="ChamaDoJogador"/> logo abaixo; aqui so se escolhe o
+	/// desenho.
+	/// ====================================================================================================
 	/// </remarks>
 	public static FolhaDeAura Folha(FormaDef? d) => d?.Linha switch
 	{
@@ -951,13 +1038,76 @@ public static class Catalogo
 		LinhaDeForma.GodKiRose => d.Ordem >= OrdemDoKiSobreOSuperSaiyajin
 									? FolhaDeAura.DeusRosa : FolhaDeAura.DeusQuente,
 
-		// A LINHA DO MISTICO INTEIRA FICA NA QUENTE, e nao ha corte de Ordem: `Mystic.dm:33`
-		// (Mistico) e `:138` (Beast) chamam `Revert()` ao entrar, entao os dois degraus vivem com
-		// `ssj == 0` e caem no MESMO ramo do `AuraObject.dm` que o SSG. Nao e escolha de cor: e
-		// onde o DM cai.
-		LinhaDeForma.Mistico => FolhaDeAura.DeusQuente,
+		// A LINHA DO MISTICO NAO TEM RAMO AQUI, e a AUSENCIA e a regra -- ver o bloco do `<remarks>`.
+		// Havia um `LinhaDeForma.Mistico => FolhaDeAura.DeusQuente` nesta linha (o ramo do DM), e o
+		// dono o derrubou nos dois degraus. Sem ramo, os dois caem no `_` de baixo, que e a folha
+		// COLORIVEL -- a unica que aceita a cor que cada um deles ja declara.
+
+		// A LINHA DO ULTRA INSTINTO NAO TEM CHAMA: ela tem a NUVEM. Ver `FolhaDeAura.Nebulosa` --
+		// este simbolo e o que diz "nao ha folha", e e dele que o `TemNebulosa` sai hoje.
+		LinhaDeForma.UltraInstinct => FolhaDeAura.Nebulosa,
+
+		// O ULTRA EGO TEM A MESMA NUVEM, EM ROXO -- e SO ele, nao a linha. O corte e por `Ordem` como
+		// o das divinas logo acima: a `destroyer` (Ordem 10) continua na folha colorivel com o `9b4dff`
+		// que a entrada dela declara. Ver o bloco do Ultra Ego em `FolhaDeAura.Nebulosa` pro porque.
+		LinhaDeForma.UltraEgo when d.Ordem >= OrdemDoEgoSobreADestruicao => FolhaDeAura.Nebulosa,
 
 		_ => FolhaDeAura.Base,
+	};
+
+	/// <summary>
+	/// ============================ ESTA FORMA ACENDE A CHAMA NA COR DO **JOGADOR**? ============================
+	/// A <see cref="Folha"/> diz QUAL DESENHO a chama usa; esta diz DE QUEM E A COR dele. Sao duas
+	/// perguntas e o par <see cref="FolhaDeAura.Base"/> / "pre-colorida" nao responde a segunda: uma
+	/// folha PRE-COLORIDA e uma folha que ja tem a cor DENTRO do arquivo (`icolor = null` no DM), e a
+	/// folha colorivel e uma folha que aceita QUALQUER cor de fora. Nenhuma das duas diz *"a cor de
+	/// fora e a do jogador, e nao a da forma"* -- e confundir essas ideias e o que ja deixou aura
+	/// cinza neste projeto uma vez.
+	///
+	/// ============================ O DONO PEDIU EXATAMENTE ISTO ============================
+	/// *"a aura do mistico tem q ser a mesma aura da BASE DO PERSONAGEM, porem com os efeitos de
+	/// raiozinhos q ja existem"* -- ou seja a chama pessoal, e nao mais uma cor de forma. E **e o que o
+	/// DM faz**, o que torna este ponto PORTE e nao divergencia: sem ki divino aceso o
+	/// `AuraObject.dm:191-192` usa `container.AURA` (a folha colorivel), e o `centerAura()` chamado em
+	/// `:194` escreve `icolor = rgb(AuraR, AuraG, AuraB)` -- a cor sorteada no nascimento
+	/// (`CharacterCreation.dm:25-27`). O Mistico nao pede ki divino nenhum (`PedeGodKi = -1`), entao no
+	/// original ele cai ali.
+	///
+	/// ============================ E A COR SORTEADA AINDA NAO EXISTE NESTE PORT ============================
+	/// A `Core/Appearance/Appearance.cs` nao tem campo de aura, nem sorteio, nem canal de rede, nem save.
+	/// O que existe e UMA chama pessoal compartilhada -- o `Aura.CorDoKiCru` do cliente --, e ela e
+	/// literalmente "a aura da base do personagem" que o dono nomeou. Entao esta funcao devolve a
+	/// PERGUNTA ("use a do jogador") e nao a cor: no dia em que a cor virar campo de ficha, muda quem
+	/// responde do lado do cliente e nem esta linha nem o catalogo sabem que algo mudou.
+	///
+	/// ============================ POR QUE `bool`, E NAO UM VALOR NOVO EM `FolhaDeAura` ============================
+	/// Porque nao e uma folha. Um simbolo `FolhaDeAura.DoJogador` teria que ser traduzido em
+	/// `res://` pela `SpriteDeAura.CaminhoDa` e apontaria pra a MESMA `colorablebigaura` da
+	/// <see cref="FolhaDeAura.Base"/> -- duas folhas do enum pro mesmo `.tres`, que e exatamente o
+	/// estado que ja fez o `SemTinta` mentir (ver o cabecalho da `SpriteDeAura.PreColorida`).
+	///
+	/// ============================ A DERIVACAO E O OUTRO LADO DE UM CORTE QUE JA EXISTE ============================
+	/// `PedeGodKi >= GodkiRoyalePct` e o corte que o <see cref="ParDoContorno"/> e a
+	/// <see cref="RaivaExigida"/> ja usam pra isolar o Beast dentro da linha do Mistico; aqui se usa o
+	/// MESMO corte virado do avesso, e por isso os dois degraus nao podem divergir por engano: quem
+	/// mexer no `PedeGodKi` do Beast move contorno, raiva e chama de uma vez, que e o que se quer.
+	///
+	/// E O BEAST FICA DE FORA COM RAZAO PROPRIA: ele tem cor de chama declarada na entrada (`7d5af0`,
+	/// o `rgb(125,90,240)` do `Mystic.dm:95`) e o Mistico nao tem nada equivalente no DM. Nao e
+	/// simetria quebrada -- sao dois degraus que o original descreve de dois jeitos diferentes.
+	///
+	/// TETO CONHECIDO, o mesmo do `ParDoContorno`: um terceiro degrau nesta linha acima do Beast ja
+	/// nasce com chama propria. Quem inserir que decida de novo.
+	/// ==========================================================================================================
+	/// </summary>
+	public static bool ChamaDoJogador(FormaDef? d) => d?.Linha switch
+	{
+		// SEM FORMA **E** A BASE SAO O MESMO ESTADO, e a base e o caso original desta pergunta: a
+		// chama de quem nao esta transformado sempre foi a pessoal. Escrever isto aqui e o que
+		// permite ao cliente ter UMA conta em vez de duas ("e base?" mais "e Mistico?").
+		null => true,
+		LinhaDeForma.Mistico => d.PedeGodKi < GodkiRoyalePct,
+		_ => d.Id == IdBase,
 	};
 
 	/// <summary>
@@ -1070,14 +1220,38 @@ public static class Catalogo
 	{
 		if (d == null || d.Id == IdBase) return null;
 
-		// ============================ DUAS LINHAS NAO TEM RABO DE FORMA ============================
+		// ============================ UMA LINHA NAO TEM RABO DE FORMA ============================
 		// A tabela inteira do rabo mora em `SaiyanObjects.dm:98-118` e e chaveada por `ssj`, `lssj` e
-		// `godki` -- as vars da escada Saiyajin. O Oozaru nao escreve nenhuma delas, e o Prodigial
-		// CHAMA `Revert()` ao entrar (`Mystic.dm:33` e `:138`), que zera as duas: o Mistico e o Beast
-		// andam com o rabo na cor base, sem tinta.
+		// `godki` -- as vars da escada Saiyajin. O Oozaru nao escreve nenhuma delas: ele anda com o
+		// rabo na cor base, sem tinta. (E ele nem PODERIA cair na derivacao de baixo -- a `Cabelo`
+		// dele e `5a3a1b`, marrom, porque descreve a PELAGEM; ver o cabecalho desta funcao.)
 		//
-		// E ISTO E O QUE IMPEDE A TINTA DO CABELO DE VAZAR pro rabo onde ela nao deve: o Beast tinge
-		// o cabelo de branco-gelo e nao pinta pelo nenhum.
+		// ============================ A LINHA DO MISTICO SAIU DAQUI ============================
+		// Ela estava nesta lista pelo mesmo motivo que as divinas estiveram -- e a leitura do DM
+		// continua correta: o Prodigial CHAMA `Revert()` ao entrar (`Mystic.dm:33` e `:138`), zera
+		// `ssj`/`lssj`, e a tabela do `SaiyanObjects.dm` nao tem o que responder pra ele.
+		//
+		// O DONO PEDIU OUTRA COISA, e ela e DIVERGENCIA declarada e nao porte: *"o rabo do beast n ta
+		// branco"* -- tem que ficar branco.
+		//
+		// E DE NOVO NAO PRECISOU DE REGRA NOVA, exatamente como no Ultra Instinto e no Ultra Ego logo
+		// abaixo: bastou tirar a linha da lista, e a derivacao que ja existia ("o rabo recebe a MESMA
+		// tinta que o cabelo") responde os DOIS degraus sozinha --
+		//
+		//   `beast`   -> `b6bac4` (o branco-gelo do `Mystic.dm:76-85`), e a cauda, que e escura
+		//                (`313131` e `4d4d4d` medidos em `Tail.png`), SOMA pra branco: `31`+`b6` =
+		//                (231,235,245) e `4d`+`b6` estoura os tres canais em 255. Branco de verdade,
+		//                nao um cinza claro;
+		//   `mistico` -> sem tinta de cabelo (`CorDoCabelo` devolve nulo -- a entrada nao tem `Cabelo =`)
+		//                e fora da `escadaQueEscreveSsjOuLssj` la embaixo, entao **nulo**: rabo intacto.
+		//                E isso importa tanto quanto o branco -- o dono NAO citou o Mistico, cujo
+		//                enunciado inteiro e *"tudo igual a base"*. Ele nao pode ganhar cor de brinde.
+		//
+		// ASSIMETRIA CONHECIDA, e ela nao muda o resultado: o CABELO do Beast usa MATIZ
+		// (`ModoDoCabelo.TrocarERecolorir` -- somar nao faz branco-gelo sobre loiro de SSJ2) e o rabo
+		// sai por SOMA. Os dois tons da cauda sao escuros o bastante pra a soma saturar, entao os dois
+		// canais chegam em branco por caminhos diferentes. Num rabo redesenhado mais claro isso deixa
+		// de valer -- e por isso a bancada mede o PNG e nao compara strings.
 		//
 		// ============================ O ULTRA INSTINCT E O ULTRA EGO SAIRAM DAQUI ============================
 		// Eram quatro linhas, e as duas divinas estavam nesta lista com o motivo certo -- **no DM o rabo
@@ -1117,9 +1291,10 @@ public static class Catalogo
 		// existencia da cor.
 		//
 		// O bench guarda o conjunto (`RoboDeForma.cs`, bloco "2. O RABO"): ele reprova tanto quem
-		// devolver as duas linhas pra a exclusao quanto quem "simetrizar" pintando as quatro.
+		// devolver as duas linhas pra a exclusao quanto quem "simetrizar" pintando as quatro. **O mesmo
+		// vale agora pra o Beast** -- e a linha que guarda ele mede o pixel da cauda, nao o hexa.
 		// ==================================================================================================
-		if (d.Linha is LinhaDeForma.Oozaru or LinhaDeForma.Mistico) return null;
+		if (d.Linha is LinhaDeForma.Oozaru) return null;
 
 		// QUEM TEM CORPO PROPRIO JA TRAZ O PROPRIO RABO. `SaiyanObjects.dm:134`: `else if(container.ssj
 		// >= 4) alpha = 0` -- o overlay do rabo some porque a folha do corpo SSJ4 ja o desenha. Aqui a
@@ -1380,8 +1555,22 @@ public static class Catalogo
 			// SO O DEGRAU QUE PINTA, e por isso a pergunta e a tinta e nao a Ordem -- ver o cabecalho.
 			LinhaDeForma.UltraEgo => CorDoCabelo(d),
 
-			// O MISTICO E O PRODIGIAL NAO MEXEM NO OLHO, e e enunciado do dono ("igual a base, nada
-			// muda"). Ele cai no `_` junto com o Oozaru, que nem olho desenhado tem.
+			// SO O BEAST DA LINHA DO MISTICO, no MESMO corte que o `ParDoContorno` e a `RaivaExigida`
+			// ja usam pra isolar ele: dos dois degraus, so a Fera pede ki divino MADURO
+			// (`GodkiRoyalePct`). Nao ha `if` por id nesta funcao alem do Wrathful, que o dono nomeou,
+			// e este nao seria o segundo.
+			//
+			// PEDIDO LITERAL DO DONO -- *"o olho do beast era pra ser vermelho"* -- e ele e o unico
+			// canal da Fera que nao deriva de nada: nenhuma cor que ela ja tem e vermelha (cabelo
+			// `b6bac4`, chama `7d5af0`, contorno `3f8cff`/`b163ff`, faisca lilas). Ver
+			// `VermelhoDaFera` pro porque de nao ser o `VermelhoDoLimitBreaker`.
+			//
+			// E O MISTICO CONTINUA NO `_` LOGO ABAIXO, que e metade do ponto: o enunciado dele e
+			// *"igual a base, nada muda"* e o dono citou a Fera, nao a linha.
+			LinhaDeForma.Mistico when d.PedeGodKi >= GodkiRoyalePct => VermelhoDaFera,
+
+			// O MISTICO NAO MEXE NO OLHO, e e enunciado do dono ("igual a base, nada muda"). Ele cai
+			// no `_` junto com o Oozaru, que nem olho desenhado tem.
 			_ => null,
 		};
 	}
@@ -1619,6 +1808,18 @@ public static class Catalogo
 	private const int OrdemDoKiSobreOSuperSaiyajin = 20;
 
 	/// <summary>
+	/// ONDE O EGO ACENDE SOBRE A DESTRUICAO. Abaixo deste degrau (Ordem 10) esta a `destroyer`, que e
+	/// a mesma disciplina com OUTRO desenho: cabelo base, sem cinematica e -- desde que a nuvem
+	/// chegou -- sem nebulosa. O dono nomeou o Ultra Ego e so ele.
+	///
+	/// ESCRITO SEPARADO DO <see cref="OrdemDoKiSobreOSuperSaiyajin"/> apesar de os dois valerem 20: sao
+	/// linhas diferentes que nao se devem nada, e reusar a constante faria o dia em que alguem mexer no
+	/// corte das divinas mexer no Ultra Ego calado. E o mesmo criterio do par
+	/// <see cref="RoxoDoEgo"/> / <see cref="RoxoDaFera"/>.
+	/// </summary>
+	private const int OrdemDoEgoSobreADestruicao = 20;
+
+	/// <summary>
 	/// ============================ O CONTORNO NAO E A AURA ============================
 	/// A <see cref="FormaDef.Aura"/> estava servindo a TRES desenhos ao mesmo tempo: a chama em
 	/// volta do corpo, o contorno brilhoso no proprio sprite e os raiozinhos. Enquanto foi um campo
@@ -1783,21 +1984,33 @@ public static class Catalogo
 		LinhaDeForma.Saiyajin or LinhaDeForma.Futuro or LinhaDeForma.Legendary
 			or LinhaDeForma.LegendaryPrimal when d.Id != IdBase => AzulDaFaisca,
 
-		// ============================ A LINHA PRODIGIAL TEM FAISCA PROPRIA, E ELA E BRANCA ============================
+		// ============================ A LINHA PRODIGIAL TEM FAISCA PROPRIA, E ELA E DUAS ============================
 		// Ela entrou junto com o `Raios` dos tres degraus (ver `FormaDef.Raios`), e a cor NAO podia
 		// cair no `_ => d.Aura` de baixo: a aura do Mistico e `d8c8ff`, um lilas PALIDO, e faisca lilas
 		// dentro de chama lilas e literalmente o defeito que o dono ja mandou consertar uma vez -- o
 		// `primal_legendary2` saia verde-sobre-verde e sumia (ver `AzulDaFaisca`).
 		//
-		// E O BRANCO NAO E ESCOLHA MINHA: `Electric_Mystic.dmi` -- a folha que o `MysticEffect`
-		// (`Mystic.dm:20-23`) veste -- foi medida e **nao tem matiz nenhuma**. Sao 1112 pixels opacos
-		// em cinco tons neutros, `c4c4c4`, `bdbdbd`, `ffffff`, `cbcbcb` e `d2d2d2`. O DM desenhou a
-		// faisca do Mistico em branco e cinza, ponto.
+		// ============================ ERA UMA RESPOSTA PRA OS DOIS, E O DONO SEPAROU ============================
+		// *"no beast os raiozinhos sao roxos"*. Ele nomeou a Fera e SO ela, entao o Mistico fica no
+		// branco -- e o corte e o mesmo `GodkiRoyalePct` do contorno, do olho e da `RaivaExigida`, nao
+		// um `if` por id.
 		//
-		// FICA NO REALCE (`ffffff`) E NAO NO TOM DOMINANTE (`c4c4c4`) porque quem recebe esta cor e o
-		// HALO do `RaioDaForma.gdshader` (o nucleo ja e branco-quente por conta dele) -- e o proprio
-		// shader tem escrito na linha 139 que a cor existe *"so pra o raio nao virar risco cinza contra
-		// fundo claro"*. Passar o cinza do arquivo seria pedir exatamente o risco cinza.
+		// **NAO CONFUNDA ISTO COM O ARGUMENTO ANTIGO.** O que estava escrito aqui era que a faisca da
+		// linha e branca porque `Electric_Mystic.dmi` -- a folha que o `MysticEffect` (`Mystic.dm:20-23`)
+		// veste -- foi medida e **nao tem matiz nenhuma** (1112 pixels em cinco tons neutros: `c4c4c4`,
+		// `bdbdbd`, `ffffff`, `cbcbcb`, `d2d2d2`). A medida continua verdadeira e continua valendo pro
+		// Mistico; o que ela NAO e, e um veto ao roxo. A decisao mudou de dono: aqui o DM perde.
+		//
+		// E O SEGUNDO ARGUMENTO DO BLOCO ANTIGO ESTAVA IMPRECISO, o que importa porque ele parecia
+		// proibir cor: ele dizia que o branco existe *"pra o raio nao virar risco cinza"*, citando o
+		// shader. O que o `RaioDaForma.gdshader:209` faz e `mix(cor.rgb, vec3(1.0), nucleo * 0.55)` --
+		// **o nucleo ja e branco-quente por construcao, seja qual for a cor**, e a `:211` so devolve
+		// cor as BORDAS. O aviso original era contra passar o CINZA `c4c4c4` do arquivo, nao contra uma
+		// cor saturada. (A citacao tambem envelheceu: a frase mora na `:211`, nao na 139.)
+		LinhaDeForma.Mistico when d.PedeGodKi >= GodkiRoyalePct => RoxoDaFaiscaDaFera,
+
+		// FICA NO REALCE (`ffffff`) E NAO NO TOM DOMINANTE (`c4c4c4`) pelo que esta escrito acima: o
+		// cinza do arquivo e que daria o risco cinza.
 		LinhaDeForma.Mistico => BrancoDaFaiscaMistica,
 
 		_ => d.Aura,
@@ -1812,31 +2025,147 @@ public static class Catalogo
 	/// <see cref="CorDoContorno"/> e da <see cref="CorDosRaios"/> e mora aqui pelo mesmo motivo
 	/// delas: efeito de forma se decide no catalogo, nao num `if` espalhado pelo cliente.
 	///
-	/// ============================ POR QUE ELA DEVOLVE `bool` E NAO AS CORES ============================
-	/// As irmas devolvem hexa porque a cor VARIA por degrau -- amarelo na escada Saiyajin, vermelho
-	/// no Limit Breaker, azul e rosa nas divinas. A nebulosa nao tem essa variacao: ela e UMA paleta
-	/// de tres pontos, e a paleta e AJUSTE DE ARTE -- o dono vai querer afinar o indigo e o ciano
-	/// olhando a tela, varias vezes.
+	/// ============================ ELA CONTINUA DEVOLVENDO `bool`, E AGORA HA UMA IRMA QUE DA A COR ============================
+	/// Aqui estava escrito o TETO: *"no dia em que uma SEGUNDA linha ganhar nebulosa de outra paleta,
+	/// esta assinatura tem que virar a das irmas (devolver as cores, ou nulo)"*. O dia chegou -- o
+	/// Ultra Ego --, e a resposta foi a metade certa daquela previsao: quem passou a devolver as cores
+	/// foi uma funcao NOVA (<see cref="PaletaDaNebulosa"/>), e esta continua respondendo SIM/NAO.
 	///
-	/// Se os tres hexa morassem aqui, cada ajuste custaria uma recompilacao do jogo inteiro. Eles
-	/// moram nos `uniform` do shader (`cor_borda`, `cor_meio`, `cor_perto`, `parada_meio`), que sao
-	/// texto que o Godot recarrega sozinho. O Core continua dono da REGRA (quem tem nebulosa); o
-	/// shader e dono do DESENHO.
+	/// Partir em duas, e nao trocar a assinatura, e o que mantem a regra do dono: *"o `Folha(d) ==
+	/// Nebulosa` continua sendo a unica verdade sobre quem tem nuvem"*. Uma funcao que devolvesse
+	/// "paleta ou nulo" viraria uma SEGUNDA maneira de perguntar a mesma coisa, e alguem escreveria
+	/// `PaletaDaNebulosa(d) != null` em um lugar e `TemNebulosa(d)` em outro -- as duas fontes de
+	/// verdade de sempre. Hoje a paleta CONSULTA esta funcao pra saber se existe; a pergunta e uma so.
 	///
-	/// TETO CONHECIDO, e vale dize-lo por escrito: no dia em que uma SEGUNDA linha ganhar nebulosa
-	/// **de outra paleta**, esta assinatura tem que virar a das irmas (devolver as cores, ou nulo).
-	/// Enquanto for uma linha so, um segundo canal de cor seria campo morto.
+	/// O PRECO ESTA PAGO E VALE DIZE-LO: a paleta era ajuste de arte que morava nos `uniform` do
+	/// `.gdshader` justamente pra o dono afinar o indigo olhando a tela, sem recompilar. Com DUAS
+	/// paletas isso nao para de pe -- o shader nao sabe que forma esta vestindo, e um valor padrao so
+	/// pode servir a uma delas. Os hexa mudaram-se pro Core, junto das irmas, e afinar a nuvem passou a
+	/// custar uma compilacao. O default do shader continua sendo a paleta do Ultra Instinto, mas hoje
+	/// ele e DOCUMENTACAO (e a previa do editor), nao a fonte.
 	/// ==============================================================================================
 	///
-	/// NAO RAMIFICA POR <see cref="FormaDef.Ordem"/>, e isso e o DM: o `Buff()` do
-	/// `UltraInstinct.dm:479-480` veste os mesmos dois overlays sem olhar o estagio, entao `ui_sign`
-	/// e `ui_perfected` mostram exatamente a mesma coisa -- o que o dono confirmou de viva voz.
+	/// NAO RAMIFICA POR <see cref="FormaDef.Ordem"/> DENTRO DA LINHA DO ULTRA INSTINTO, e isso e o DM:
+	/// o `Buff()` do `UltraInstinct.dm:479-480` veste os mesmos dois overlays sem olhar o estagio,
+	/// entao `ui_sign` e `ui_perfected` mostram exatamente a mesma coisa -- o que o dono confirmou de
+	/// viva voz. Na linha do Ultra Ego ele RAMIFICA, e por outro motivo: ver abaixo.
 	///
-	/// O Ultra EGO fica de fora de proposito: ele e o caminho EXCLUSIVO oposto (ver
-	/// <see cref="LinhaDeForma.UltraEgo"/>) e a aura dele e a `god - grey` tingida de carmesim
-	/// (`UltraEgo.dm:353`), que e outro desenho e outra leitura.
+	/// ============================ O ULTRA EGO ENTROU; A DESTROYER NAO ============================
+	/// Aqui estava escrito que *"o Ultra EGO fica de fora de proposito"*, e a razao dada era que a aura
+	/// dele e a `god - grey` tingida (`UltraEgo.dm:353`). Isso valia enquanto o porte fosse literal; o
+	/// dono passou por cima: *"a aura/carga do ultra ego e a mesma do instinto superior so q ROXA ao
+	/// inves de branca/prateada, mas tem os mesmos efeitos"*. E DIVERGENCIA DECLARADA do DM, como o
+	/// rabo branco do Perfected foi.
+	///
+	/// A `destroyer` fica de fora, e as duas metades disso concordam: **o dono nomeou o Ultra Ego**, e
+	/// o DM diz que o cabelo (e, aqui, a cena) e a diferenca visual entre as duas formas da disciplina
+	/// (`UltraEgo.dm:395-396`). Dar a nuvem as duas apagaria a unica coisa que as separa aos olhos.
+	/// E o mesmo criterio que ja a deixou sem tinta de cabelo, sem tinta de rabo e sem cinematica.
+	///
+	/// ============================ E ELE E DERIVADO DA <see cref="Folha"/>, NAO UM SEGUNDO PREDICADO ============================
+	/// Isto era `d?.Linha == LinhaDeForma.UltraInstinct` escrito por extenso -- a MESMA regra que a
+	/// `Folha` ja respondia, em duas fontes de verdade. Elas nao divergiram por sorte: a `Folha` nao
+	/// tinha ramo pra esta linha e devolvia `Base`, entao o Ultra Instinto acendia a nuvem E a chama
+	/// `colorablebigaura` por cima, que foi exatamente a queixa do dono.
+	///
+	/// Agora ha UMA pergunta: "que folha esta forma usa?". <see cref="FolhaDeAura.Nebulosa"/> quer dizer
+	/// "nenhuma -- a minha e a nuvem", e as duas respostas saem da mesma linha do mesmo `switch`. Uma
+	/// linha nova com nebulosa nao tem como acender chama junto, porque os dois fatos sao um so.
+	/// ====================================================================================================================
 	/// </summary>
-	public static bool TemNebulosa(FormaDef? d) => d?.Linha == LinhaDeForma.UltraInstinct;
+	public static bool TemNebulosa(FormaDef? d) => Folha(d) == FolhaDeAura.Nebulosa;
+
+	// ================================================================================================
+	// AS DUAS PALETAS DA NUVEM. Os oito hexa abaixo eram os `= vec4(...)` de tres uniforms e um
+	// `vec3(1.0)` cravado no meio do `fragment` do `NebulosaDaForma.gdshader`. Mudaram-se pra ca
+	// quando a nuvem ganhou um segundo dono -- ver o bloco "O PRECO ESTA PAGO" da `TemNebulosa`.
+	// ================================================================================================
+
+	/// <summary>
+	/// A PONTA ESCURA da nuvem do Ultra Instinto: o indigo quase preto das bordas, longe do corpo.
+	/// Valor do `.gdshader` sem uma virgula de mudanca -- ele foi calibrado na FOTO, em tres fundos
+	/// diferentes (o `atenua_escuro` existe por causa desta cor sobre grama).
+	/// </summary>
+	private const string IndigoDaNebulosa = "241a3d";
+
+	/// <inheritdoc cref="IndigoDaNebulosa"/>
+	private const string VioletaDaNebulosa = "6f5fae";
+
+	/// <inheritdoc cref="IndigoDaNebulosa"/>
+	private const string CianoDaNebulosa = "d8e8ff";
+
+	/// <summary>
+	/// A MICROPARTICULA que sobe. Branco puro, e ele NAO estava num uniform: era `mix(rgb, vec3(1.0),
+	/// pontos)` escrito no `fragment`. Virou dado aqui porque o Ultra Ego pede a mesma particula em
+	/// outro tom -- e uma cor cravada dentro de um shader e uma cor que nenhuma forma pode mudar.
+	/// </summary>
+	private const string BrancoDosPontos = "ffffff";
+
+	/// <summary>
+	/// ============================ A MESMA NUVEM, EM ROXO ============================
+	/// A ponta ESCURA da nuvem do Ultra Ego: ameixa quase preta. As tres cores abaixo nao sao arte
+	/// nova -- sao a rampa do Ultra Instinto GIRADA pro eixo do Ego, e "girada" e literal:
+	///
+	///     ponta escura   `241a3d` H 257,1  ->  `2e1837` H 282,6   (L 30,7 -> 30,9)
+	///     meio           `6f5fae` H 252,2  ->  `8d56ac` H 278,4   (L 104,1 -> 103,9)
+	///     ponta clara    `d8e8ff` H 215,4  ->  `e9c0ff` H 279,0   (L 230,3 -> 205,3)
+	///     particula      `ffffff`          ->  `f6e4ff` H 280,0   (L 255,0 -> 233,8)
+	///
+	/// A MATIZ DE CHEGADA E A DO PROPRIO EGO: `8c32be` -- o `rgb(140,50,190)` que o `UltraEgo.dm:387-392`
+	/// poe no cabelo e que ja veste olho e rabo da forma -- mede H 278,6, e as tres pontas caem entre
+	/// 278,4 e 282,6. Nao ha um roxo novo no jogo; ha o roxo do Ego em tres claridades.
+	///
+	/// ============================ AS DUAS PONTAS FORAM MEDIDAS, E SO UMA PODIA FICAR IGUAL ============================
+	/// Este projeto ja calibrou uma rampa **so pelo topo** e o dono reclamou duas vezes: foi assim que
+	/// o Blue saiu marinho e o Rose saiu vinho. Entao as duas pontas aqui foram medidas em luminancia
+	/// (0,2126R + 0,7152G + 0,0722B), que e o que decide se a nuvem le igual:
+	///
+	///   * a ponta ESCURA fica em 30,9 contra 30,7 -- 0,6% de diferenca, ou seja a MESMA leitura. Ela e
+	///     a que cobre mais area e a que o `atenua_escuro` afina sobre fundo claro; mudar o brilho dela
+	///     mudaria o quanto a nuvem suja o cenario, que e correcao de foto ja paga.
+	///   * a ponta CLARA cai pra 89% (205,3 contra 230,3), e a queda e o PEDIDO: em roxo com V=1 a
+	///     luminancia e refem do verde, e manter 230 exigiria S=0,10 -- que e um lilas lavado, ou seja
+	///     "branca/prateada" de novo, exatamente o que o dono mandou tirar. Os 11% compram S 0,153 ->
+	///     0,247, e o anel colado no corpo continua sendo, de longe, a coisa mais clara da nuvem
+	///     (205 contra 104 do meio).
+	///
+	/// A PARTICULA PERDE O MESMO TANTO e por isso continua se lendo como faisca: ela sai 1,14x acima da
+	/// ponta clara (233,8 / 205,3), e no Ultra Instinto sai 1,11x (255,0 / 230,3). O contraste que a
+	/// separa da nuvem e o mesmo; o que mudou foi o par inteiro.
+	/// ==============================================================================================
+	/// </summary>
+	private const string AmeixaDaNebulosaDoEgo = "2e1837";
+
+	/// <inheritdoc cref="AmeixaDaNebulosaDoEgo"/>
+	private const string VioletaDaNebulosaDoEgo = "8d56ac";
+
+	/// <inheritdoc cref="AmeixaDaNebulosaDoEgo"/>
+	private const string LilasDaNebulosaDoEgo = "e9c0ff";
+
+	/// <inheritdoc cref="AmeixaDaNebulosaDoEgo"/>
+	private const string LilasDosPontosDoEgo = "f6e4ff";
+
+	/// <summary>
+	/// ============================ DE QUE COR E A NUVEM DESTA FORMA ============================
+	/// A irma da <see cref="TemNebulosa"/>: aquela diz SE ha nuvem, esta diz DE QUE COR. Nulo quer
+	/// dizer "esta forma nao tem nuvem", e a resposta sai da PROPRIA <see cref="TemNebulosa"/> -- nao
+	/// ha um segundo predicado aqui, e nao pode haver (ver o bloco de la).
+	///
+	/// ============================ E O `_` NAO DEVOLVE A PALETA DO ULTRA INSTINTO ============================
+	/// O ramo do Ultra Ego e nomeado e o `_` cai na paleta do Ultra Instinto -- o que parece um default
+	/// preguicoso e nao e: quem chega no `_` ja passou pela `TemNebulosa`, entao ou e Ultra Instinto ou
+	/// e uma LINHA NOVA que alguem acabou de por na <see cref="FolhaDeAura.Nebulosa"/>. Nesse dia a
+	/// nuvem nova nasce indigo em vez de nascer sem cor nenhuma (o quad preto), e o defeito aparece na
+	/// tela como "a cor errada" em vez de "sumiu" -- que e o que se conserta rapido.
+	/// ============================================================================================
+	/// </summary>
+	public static PaletaDeNebulosa? PaletaDaNebulosa(FormaDef? d) =>
+		!TemNebulosa(d) ? null
+		: d!.Linha == LinhaDeForma.UltraEgo
+			? new PaletaDeNebulosa(AmeixaDaNebulosaDoEgo, VioletaDaNebulosaDoEgo,
+								   LilasDaNebulosaDoEgo, LilasDosPontosDoEgo)
+			: new PaletaDeNebulosa(IndigoDaNebulosa, VioletaDaNebulosa,
+								   CianoDaNebulosa, BrancoDosPontos);
 
 	/// <summary>
 	/// ============================ QUANTO ESTA FORMA LEVANTA O TETO DE KI ============================
@@ -2589,18 +2918,91 @@ public static class Catalogo
 	private const string RosaDoOlhoDivino = "e0409a";
 
 	/// <summary>
-	/// A FAISCA DA LINHA PRODIGIAL. Medida em `Electric_Mystic.dmi` -- a folha que o `MysticEffect`
-	/// veste (`Mystic.dm:20-23`) -- que **nao tem matiz nenhuma**: cinco tons neutros, `c4c4c4`,
-	/// `bdbdbd`, `ffffff`, `cbcbcb` e `d2d2d2`.
+	/// O VERMELHO DO OLHO DO BEAST -- *"o olho do beast era pra ser vermelho"*.
+	///
+	/// ============================ ELE NAO DERIVA DE NADA, E ISSO E MEDIDO ============================
+	/// Todas as outras cores desta tabela ou vem do DM (a prata do Instinto) ou sao buscadas na tinta
+	/// de cabelo da propria forma (o vermelho do SSG, o roxo do Ego). A Fera nao tem de onde: as
+	/// QUATRO cores que ela ja declara sao `b6bac4` (cabelo), `7d5af0` (chama), `3f8cff`/`b163ff`
+	/// (o par do contorno) e a faisca lilas -- nenhuma vermelha, e nenhuma perto de vermelho. Um
+	/// vermelho derivado aqui seria vermelho inventado com cara de derivacao.
+	///
+	/// ============================ E NAO E O <see cref="VermelhoDoLimitBreaker"/> ============================
+	/// `ff2d2f` esta a um passo daqui e reusa-lo seria de graca. **A regra deste arquivo diz que nao**:
+	/// e a mesma razao pela qual <see cref="RoxoDaFera"/> existe separado do <see cref="RoxoDoEgo"/>
+	/// e <see cref="RosaDaColada"/> separado do <see cref="RosaDivino"/> -- sao formas de linhas
+	/// diferentes que nao se devem nada, e a constante compartilhada faz o dia em que alguem afinar o
+	/// Limit Breaker mexer no olho da Fera, com o defeito aparecendo longe da mudanca.
+	///
+	/// ============================ O VALOR: 90% DO VERMELHO QUE O JOGO JA FALA ============================
+	/// (255,45,47) x 0,9 = (229,40,42). A escolha do FAMILIA e deliberada -- o vermelho do jogo e o do
+	/// Limit Breaker, e um segundo vermelho de outra familia leria como erro de paleta --, e os 10% de
+	/// desconto sao o criterio do <see cref="VerdeDoOlhoSuperSaiyajin"/>: a iris tem dois pixels
+	/// cercados por esclerotica `#fcfdfd`, entao o contraste vem do VALOR e a cor tem que descer.
+	///
+	/// Luminancia 80 (0,2126R + 0,7152G + 0,0722B), entre os ~100 do par divino
+	/// (<see cref="AzulDoOlhoDivino"/> 99, <see cref="RosaDoOlhoDivino"/> 104) e os 54 do vermelho
+	/// puro. Vermelho e a matiz mais ESCURA da roda -- `ff0000` nem chega perto dos 100 do azul --,
+	/// entao a conta aqui e o contrario da do amarelo: nao ha como subir sem lavar pra rosa, e o que
+	/// se cuida e nao afundar no `#000000` do cilio desenhado por cima (80 contra 0, folgado).
+	/// ==================================================================================================
+	/// </summary>
+	private const string VermelhoDaFera = "e5282a";
+
+	/// <summary>
+	/// A FAISCA DO MISTICO -- e SO dele desde que o dono pediu roxo na Fera (ver
+	/// <see cref="RoxoDaFaiscaDaFera"/>). Medida em `Electric_Mystic.dmi` -- a folha que o
+	/// `MysticEffect` veste (`Mystic.dm:20-23`) -- que **nao tem matiz nenhuma**: cinco tons neutros,
+	/// `c4c4c4`, `bdbdbd`, `ffffff`, `cbcbcb` e `d2d2d2`.
 	///
 	/// O REALCE E NAO O TOM DOMINANTE, e o porque esta na `CorDosRaios`: esta cor vai pro HALO do
-	/// raio, e o shader avisa na linha 139 que ela existe pra o raio *"nao virar risco cinza"*.
+	/// raio, e o `RaioDaForma.gdshader:211` avisa que o empurrao de cor nas bordas existe pra o raio
+	/// *"nao virar risco cinza"* -- passar o `c4c4c4` do arquivo seria pedir o risco cinza.
+	///
+	/// ============================ E ELE PERDEU CONTRASTE NESTA MESMA PASSADA ============================
+	/// Ate aqui o branco caia sobre a `FieryGod` (tom dominante `ff411c`, luminancia 102,7): 152 pontos
+	/// de diferenca. Com o Mistico acendendo a chama do JOGADOR (ver <see cref="ChamaDoJogador"/>), o
+	/// fundo virou o `#9ECCFF` do `Aura.CorDoKiCru` -- luminancia **197,9**, e a distancia caiu pra
+	/// **57**. Continua legivel (a faisca desenha SOBRE o corpo e a chama fica ATRAS dele, entao os
+	/// dois so se encostam na silhueta), mas e menos do que era e o dono nao pediu isso -- e efeito
+	/// colateral do pedido 4. Anotado pra ele olhar; nao mexi porque ele nomeou a Fera.
+	/// ==================================================================================================
 	///
 	/// TEM O MESMO VALOR DO <see cref="BrancoNeutro"/> e sao duas escritas de proposito, como o
 	/// <see cref="VermelhoDoLimitBreaker"/> e a `Aura` dele: aquele e "nao ha forma nenhuma", este e
 	/// a arte do Mistico. Mudar um nao pode mexer no outro.
 	/// </summary>
 	private const string BrancoDaFaiscaMistica = "ffffff";
+
+	/// <summary>
+	/// A FAISCA DA FERA -- *"no beast os raiozinhos sao roxos"*.
+	///
+	/// ============================ ELA NASCE NUMA COLISAO, E A COLISAO E MEDIDA ============================
+	/// Este e o unico lugar do jogo em que dois pedidos do dono se cruzam. O outro pedido tirou a Fera
+	/// da chama do SSG (ver <see cref="Folha"/>), e com isso a chama dela passou a ser o `7d5af0` que a
+	/// propria entrada declara: **roxo**. Faisca roxa dentro de chama roxa e a familia do defeito
+	/// verde-sobre-verde do `primal_legendary2`.
+	///
+	/// A MATIZ NAO SALVA, e nao adianta fingir que sim: `7d5af0` esta em H=254 e este esta em H=271 --
+	/// **17 graus**, contra os ~180 que separam o <see cref="AzulDaFaisca"/> da aura dourada que ele
+	/// atravessa. Quem le a faisca da Fera nao le pela cor: le pelo VALOR.
+	///
+	/// ENTAO O QUE SE ESCOLHEU FOI O VALOR, e o criterio ja existia -- e literalmente o do
+	/// <see cref="AzulDaFaisca"/> (*"claro e lavado pra ele aparecer POR CIMA da aura"*), aplicado do
+	/// lado roxo do circulo. Luminancia (0,2126R + 0,7152G + 0,0722B): a chama da 108,3 e esta da
+	/// **190,4** -- 1,76x mais clara. E o mesmo truque do branco do Mistico com a cor que o dono pediu
+	/// por cima, e nao um roxo escolhido "porque roxo".
+	///
+	/// ============================ O QUE ISTO **NAO** RESOLVE, e o dono tem que ver ============================
+	/// 1,76x de luminancia e o bastante pra a faisca existir sobre a chama, mas ela vai ler como um
+	/// LILAS CLARO sobre roxo -- nao como o contraste que o azul tem sobre o dourado. Se ele achar
+	/// fraco, o precedente dele mesmo diz onde mexer: no `primal_legendary2` a resposta foi trocar a
+	/// COR DO RAIO, nao a da aura. O proximo passo daquele lado e sair da matiz (o par do contorno da
+	/// Fera ja oscila pro <see cref="AzulDaFera"/>, que esta a 40 graus daqui) -- mas isso e a palavra
+	/// dele, nao minha, porque ele pediu ROXO.
+	/// ==================================================================================================
+	/// </summary>
+	private const string RoxoDaFaiscaDaFera = "d9b0ff";
 
 	/// <summary>
 	/// OS DOIS SUFIXOS DO ULTRA INSTINCT -- e sao os unicos do catalogo que NAO nomeiam uma variante

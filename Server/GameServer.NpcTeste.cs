@@ -1,0 +1,389 @@
+using Godot;
+using Jandirus.Core.Combat;
+using Jandirus.Core.Forms;
+using Jandirus.Core.Npc;
+using Jandirus.Core.Skills;
+using Jandirus.Core.World;
+
+namespace Jandirus.Server;
+
+/// <summary>
+/// BANCADA AO VIVO DA FICHA DE NPC (`--npcteste`).
+///
+/// ============================ O QUE SO DAQUI SE VE ============================
+/// O sorteio e Core puro e daria pra provar num teste de mesa. O que um teste de mesa NAO prova e
+/// justamente o que esta sessao entrega:
+///
+///   * que a ficha sorteada VIRA UM CORPO NO MUNDO (`_players`, lista da zona, aparencia no fio);
+///   * que a guarda do "tem a forma e nao a usa" esta no FUNIL de producao -- ou seja, que chamar
+///     `Transformar(npc, true)`, a mesma funcao da tecla C, nao move o chefe;
+///   * que o roteiro avanca pelo membro mais ferido e avanca UMA VEZ SO por rajada.
+///
+/// As tres ja falharam neste projeto na forma "a regra existe e ninguem a chama": o `AmigoAbatido`
+/// sem chamador, a API de sigilo de BP 100% orfa. Bancada de Core nao pega nenhuma delas.
+/// ==============================================================================
+///
+///     Godot --headless -- --server --npcteste
+/// </summary>
+public partial class GameServer
+{
+	private bool _npcDeTeste;
+
+	/// <summary>Roda uma vez, no primeiro login. MEXE no mundo (spawna e remove corpos) -- so com a flag.</summary>
+	private void RodarBancadaDeNpc(ServerPlayer pl)
+	{
+		GD.Print("\n===== BANCADA AO VIVO DA FICHA DE NPC =====");
+
+		int ok = 0, falhou = 0;
+		void Checa(string nome, bool cond, string detalhe = "")
+		{
+			if (cond) { ok++; GD.Print($"  OK   {nome}"); }
+			else { falhou++; GD.PrintErr($"  FALHA {nome}   {detalhe}"); }
+		}
+
+		// A ZONA VAZIA: um pre-feito onde ninguem esta conectado, pra os anuncios do roteiro nao
+		// chegarem a tela de ninguem. Mesmo gesto da bancada de convivio.
+		ZoneKey zona = ZoneKey.Premade(
+			Espaco.PreFeitos().Select(p => p.Nome)
+				.FirstOrDefault(n => !_players.Values.Any(
+					p => string.Equals(p.Zone.Name, n, StringComparison.OrdinalIgnoreCase)))
+			?? "Namek");
+
+		var nascidos = new List<ServerPlayer>();
+		ServerPlayer? Spawnar(string molde, ulong lugar)
+		{
+			ServerPlayer? n = NascerNpc(molde, zona, new Vec2(64 * lugar, 0), lugar);
+			if (n != null) nascidos.Add(n);
+			return n;
+		}
+
+		try
+		{
+			// =====================================================================
+			// 1. O CATALOGO
+			// =====================================================================
+			Checa("o npcs.json carregou", _moldes is { Total: > 0 }, $"{_moldes?.Total ?? 0} moldes");
+			Checa("o races.json carregou (sem ele nao nasce NPC nenhum)", _racas != null);
+			if (_moldes == null || _racas == null) return;
+
+			List<string> problemas = [.. _moldes.Todos.SelectMany(m => m.Problemas())];
+			Checa("nenhum molde do arquivo e contraditorio", problemas.Count == 0,
+				  string.Join(" | ", problemas));
+
+			// =====================================================================
+			// 2. DETERMINISMO -- a pergunta que o dono fez
+			// =====================================================================
+			// Duas execucoes com a MESMA semente tem que dar o MESMO NPC. Sem isto, "dois servidores
+			// com a mesma semente" e promessa, e o proximo campo sorteado a esmo quebraria calado.
+			MoldeDeNpc soldado = _moldes.Get("soldado_saiyajin")!;
+			string Assinar(FichaSorteada f) =>
+				$"{f.Raca}/{f.Classe}/{f.Genero}/{f.Nome}/{f.Ficha.BP:0.000}/"
+				+ $"{string.Join(",", f.Livro.Aprendidas.OrderBy(x => x, StringComparer.Ordinal))}";
+
+			FichaSorteada a1 = SorteioDeNpc.Sortear(soldado, 12345, _racas!, _skills, zona.Name, 0);
+			FichaSorteada a2 = SorteioDeNpc.Sortear(soldado, 12345, _racas!, _skills, zona.Name, 0);
+			FichaSorteada b1 = SorteioDeNpc.Sortear(soldado, 12346, _racas!, _skills, zona.Name, 0);
+
+			Checa("mesma semente = MESMA ficha (raca, classe, nome, BP e skills)",
+				  Assinar(a1) == Assinar(a2), Assinar(a1) + "  !=  " + Assinar(a2));
+			Checa("semente diferente = ficha diferente", Assinar(a1) != Assinar(b1), Assinar(b1));
+
+			// E O SORTEIO NAO DEPENDE DA ORDEM DAS CHAMADAS: pedir um campo novo amanha nao pode
+			// deslocar os de hoje. E o que o gerador POR CAMPO garante -- o mesmo (semente, campo)
+			// da sempre a mesma sequencia, e campos diferentes sao sequencias independentes.
+			Checa("o gerador por campo e reproduzivel",
+				  SorteioDeNpc.Sorteador(999, "raca").Next(1_000_000)
+				  == SorteioDeNpc.Sorteador(999, "raca").Next(1_000_000));
+			Checa("...e dois campos da MESMA semente nao sao a mesma sequencia",
+				  SorteioDeNpc.Sorteador(999, "raca").Next(1_000_000)
+				  != SorteioDeNpc.Sorteador(999, "bp").Next(1_000_000));
+
+			// =====================================================================
+			// 3. COERENCIA -- o NPC nao sabe o que um jogador nao poderia saber
+			// =====================================================================
+			if (_skills != null)
+				foreach (MoldeDeNpc m in _moldes.Todos)
+				{
+					FichaSorteada f = SorteioDeNpc.Sortear(m, Espaco.Hash64(m.Id), _racas!, _skills, zona.Name, 50_000);
+					var proibidas = new List<string>();
+					var sabidas = new HashSet<string>(f.Livro.Aprendidas, StringComparer.OrdinalIgnoreCase);
+
+					foreach (string path in f.Livro.Aprendidas)
+					{
+						if (Array.IndexOf(m.Dadas, path) >= 0) continue;   // ensinada, nao comprada
+						Skill? s = _skills.Get(path);
+						if (s == null) { proibidas.Add($"{path}=inexistente"); continue; }
+						if (!_skills.Permitida(s, f.Raca, f.Classe, false)) { proibidas.Add($"{path}=raca/classe"); continue; }
+						if (!f.Livro.PenduraEmArvoreDe(_skills, s, f.Raca, f.Classe)) { proibidas.Add($"{path}=sem arvore"); continue; }
+						if (!SkillCatalog.PreReqsOk(s, sabidas)) proibidas.Add($"{path}=pre-requisito");
+					}
+
+					Checa($"'{m.Id}': toda skill dele passaria pelo gate de um jogador",
+						  proibidas.Count == 0, string.Join(" | ", proibidas));
+
+					// O PODER ANUNCIADO E O PODER SENTIDO. Sem a normalizacao do `init_citizen`, o
+					// `staminaratio` deflacionava o BP expresso pra 0,3x -- era o bug do "Sense %%"
+					// (PlanetPopulation.dm:325-327). Um NPC que anuncia 530 mil e bate como 160 mil
+					// e um inimigo que ninguem entende.
+					double razao = f.Ficha.expressedBP / Math.Max(f.Ficha.BP, 1);
+					Checa($"'{m.Id}': BP expresso bate com o BP da ficha (normalizacao do init_citizen)",
+						  razao is > 0.9 and < 2.5, $"{f.Ficha.expressedBP:N0} / {f.Ficha.BP:N0} = {razao:0.00}");
+				}
+
+			// =====================================================================
+			// 4. O ORCAMENTO -- poder compra pericia
+			// =====================================================================
+			// O boneco que o dono descreveu ("BP de SSJ3 e nenhuma skill de Ki") so existe se o
+			// numero do soco e a lista de skills forem sorteados separados. Aqui um e funcao do outro.
+			if (_skills != null)
+			{
+				var fraco = new MoldeDeNpc
+				{
+					Id = "bancada_fraco", Racas = ["Saiyan"], BpMin = 1000, BpMax = 1000,
+					MarcosBase = 0, MarcosPorDecada = 1.5, Vocacao = soldado.Vocacao,
+				};
+				var forte = new MoldeDeNpc
+				{
+					Id = "bancada_forte", Racas = ["Saiyan"], BpMin = 1e12, BpMax = 1e12,
+					MarcosBase = 0, MarcosPorDecada = 1.5, Vocacao = soldado.Vocacao,
+				};
+				int nFraco = SorteioDeNpc.Sortear(fraco, 7, _racas!, _skills, zona.Name, 0).Livro.Aprendidas.Count;
+				int nForte = SorteioDeNpc.Sortear(forte, 7, _racas!, _skills, zona.Name, 0).Livro.Aprendidas.Count;
+
+				Checa("mais BP compra mais pericia (o orcamento de marcos e funcao do poder)",
+					  nForte > nFraco, $"{nFraco} skills com 1e3 de BP, {nForte} com 1e12");
+				Checa("...e sem orcamento nenhum ele nao sabe nada",
+					  SorteioDeNpc.Sortear(new MoldeDeNpc { Id = "z", Racas = ["Saiyan"], BpMin = 1000,
+						  BpMax = 1000, MarcosBase = 0, MarcosPorDecada = 0 },
+						  7, _racas!, _skills, zona.Name, 0).Livro.Aprendidas.Count == 0);
+
+				// ============================ A ARVORE POR PROGRESSO ESTA MORTA NO CATALOGO ============================
+				// A checagem que estava aqui era "comprar ABRIU arvore nova", e ela REPROVOU. Investigando,
+				// o defeito nao e do sorteio: das 364 skills do catalogo, 198 estao LIGADAS, e apenas DUAS
+				// carregam os contadores `bodyskill`/`bodyreadiness` (`training` e `force`). A `force` e tier 2
+				// e pende de `/datum/skill/physical`, que esta `enabled = 0` -- ou seja, inalcancavel.
+				//
+				// O teto real dos contadores e 1, e `RecalcularDestravadas` pede `> 2` (SkillBook.cs:114-122).
+				// **Bodybuilding, Martial Skill, Weapons Expert e Cultivation sao inalcancaveis por compra --
+				// PRA JOGADOR TAMBEM**, e nao so pro NPC. Nao e uma regra deste port: e o `enabled = 0` que veio
+				// do DM em todo o meio da arvore de corpo.
+				//
+				// Entao a bancada afirma o que E VERDADE hoje, e a checagem existe pra VIRAR: no dia em que
+				// alguem religar aquelas skills no `skills.json`, esta linha reprova e manda trocar a
+				// afirmacao pela de cima ("comprar abriu arvore nova"). Afirmar o mundo que se queria em vez
+				// do que se tem e como uma bancada fica vermelha pra sempre e todo mundo aprende a ignora-la.
+				// ==================================================================================================
+				FichaSorteada rico = SorteioDeNpc.Sortear(forte, 7, _racas!, _skills, zona.Name, 0);
+				int contadoras = _skills.Todas.Count(s => s.Ligada && !s.Arvore
+					&& (s.Buffs.ContainsKey("bodyskill") || s.Buffs.ContainsKey("bodyreadiness")));
+
+				Checa("o destravamento de arvore por progresso continua INALCANCAVEL neste catalogo "
+					+ "(2 skills ligadas carregam os contadores, e o teto delas e 1 contra o `> 2` do gate) "
+					+ "-- se esta linha reprovar, o dado mudou e a checagem tem que virar",
+					  contadoras <= 2 && rico.Ficha.bodyskill <= 2 && rico.Ficha.bodyreadiness <= 2,
+					  $"{contadoras} skills ligadas contam | bodyskill={rico.Ficha.bodyskill:0.#} "
+					  + $"bodyreadiness={rico.Ficha.bodyreadiness:0.#}");
+
+				// O QUE DA PRA PROVAR HOJE sobre as voltas: o sorteio para quando nao ha mais oferta, e nao
+				// quando acaba o marco. Sobrar marco com o catalogo desta raca esgotado e o comportamento
+				// certo -- e e a prova de que ele consultou `Ofertas` de novo depois de cada compra.
+				Checa("o sorteio para por falta de OFERTA, nao por falta de marco (ele reconsulta a cada compra)",
+					  rico.Livro.MarcosLivres > 0 && rico.Livro.Aprendidas.Count > 0,
+					  $"{rico.Livro.Aprendidas.Count} skills, {rico.Livro.MarcosLivres}/{rico.Livro.MarcosTotais} marcos sobrando");
+			}
+
+			// =====================================================================
+			// 5. AS FORMAS -- so as que aquele BP abriria
+			// =====================================================================
+			var comEscada = new MoldeDeNpc
+			{
+				Id = "bancada_escada", Racas = ["Saiyan"], Classe = "Saiyan",
+				BpMin = 1e13, BpMax = 1e13, MarcosBase = 0, MarcosPorDecada = 0,
+				EscadaAutomatica = true, Maestria = 100,
+			};
+			{
+				FichaSorteada f = SorteioDeNpc.Sortear(comEscada, 4242, _racas!, _skills, zona.Name, 0);
+				var corpo = new ServerPlayer
+				{
+					Id = _nextId++, Peer = null, Name = "bancada: escada", Zone = zona,
+					Pos = new Vec2(-256, 0), Race = f.Raca, Class = f.Classe, Genero = f.Genero,
+					Ficha = f.Ficha, Livro = f.Livro, Niveis = f.Niveis, Papel = f.Papel,
+					LastInputMs = NowMs(),
+				};
+				PorNoMundo(corpo);
+				nascidos.Add(corpo);
+
+				int abertas = SorteioDeNpc.AbrirFormas(corpo.Forma, comEscada, corpo.Ficha.BP, Perfil(corpo));
+				Checa("com 1e13 de BP a escada automatica abre varios degraus", abertas >= 3, $"{abertas}");
+				Checa("...e ele COMECA NA BASE (ter a forma nao e estar nela)", corpo.Forma.NaBase, corpo.Forma.Atual);
+
+				// A coerencia: nenhuma forma liberada tem porta de BP acima do BP dele.
+				List<string> altasDemais = [.. corpo.Forma.Liberadas
+					.Select(r => Catalogo.PorRede((ushort)r))
+					.Where(d => d != null && d.PortaBp > corpo.Ficha.BP).Select(d => d!.Id)];
+				Checa("nenhuma forma liberada esta acima da porta de BP dele",
+					  altasDemais.Count == 0, string.Join(", ", altasDemais));
+			}
+
+			// E o avesso: um soldado de 45 mil de BP nao tem escada nenhuma (a porta do SSJ1 e 1,5 mi)
+			{
+				FichaSorteada f = SorteioDeNpc.Sortear(soldado, 99, _racas!, _skills, zona.Name, 0);
+				var corpo = new ServerPlayer
+				{
+					Id = _nextId++, Peer = null, Name = "bancada: soldado", Zone = zona,
+					Pos = new Vec2(-320, 0), Race = f.Raca, Class = f.Classe, Genero = f.Genero,
+					Ficha = f.Ficha, Livro = f.Livro, Niveis = f.Niveis, Papel = f.Papel,
+					LastInputMs = NowMs(),
+				};
+				PorNoMundo(corpo);
+				nascidos.Add(corpo);
+				SorteioDeNpc.AbrirFormas(corpo.Forma, soldado, corpo.Ficha.BP, Perfil(corpo));
+				Checa("um soldado comum nao ganha forma nenhuma (o BP dele nao abre a porta)",
+					  corpo.Forma.Liberadas.Count == 0, $"{corpo.Forma.Liberadas.Count} formas com BP {corpo.Ficha.BP:N0}");
+			}
+
+			// =====================================================================
+			// 6. "TEM A FORMA E NAO A USA" -- o pedido literal do dono
+			// =====================================================================
+			ServerPlayer? guardiao = Spawnar("guardiao_saiyajin", 1);
+			Checa("o guardiao nasceu", guardiao != null);
+			if (guardiao != null)
+			{
+				Checa("ele TEM o SSJ (o Despertou() dele e verdadeiro)",
+					  guardiao.Forma.Despertou("ssj1"), string.Join(",", guardiao.Forma.Liberadas));
+				Checa("...e comeca na base", guardiao.Forma.NaBase, guardiao.Forma.Atual);
+
+				// A MESMA FUNCAO DA TECLA C, cinco vezes. Se a guarda estivesse so no comentario (ou
+				// so num futuro cerebro), ele subiria aqui.
+				for (int i = 0; i < 5; i++) Transformar(guardiao, subir: true);
+				Checa("apertar C cinco vezes NAO o transforma (a guarda esta no funil, nao no papel)",
+					  guardiao.Forma.NaBase, guardiao.Forma.Atual);
+
+				// O CONTROLE, e ele e o que separa "a regra funciona" de "nada acontece por outro
+				// motivo": o MESMO corpo, com o MESMO BP e a MESMA forma liberada, sobe assim que o
+				// papel sai. Sem esta metade, a checagem acima passaria ate se `Transformar` tivesse
+				// sido apagado.
+				PapelDeNpc guardado = guardiao.Papel!;
+				guardiao.Papel = null;
+				Transformar(guardiao, subir: true);
+				Checa("...e o MESMO corpo sobe assim que o papel sai (era a guarda, e nao outra recusa)",
+					  !guardiao.Forma.NaBase, guardiao.Forma.Atual);
+				Transformar(guardiao, subir: false);
+				guardiao.Papel = guardado;
+			}
+
+			// =====================================================================
+			// 7. O ROTEIRO -- quatro limiares, quatro transicoes
+			// =====================================================================
+			EscutaDoRoteiro = [];
+			ServerPlayer? freeza = Spawnar("freeza_namek", 2);
+			Checa("o Freeza de Namek nasceu", freeza != null);
+			if (freeza != null)
+			{
+				MoldeDeNpc m = freeza.Papel!.Molde;
+				Checa("a ficha dele tem CINCO degraus", m.Estagios.Length == 5, $"{m.Estagios.Length}");
+				Checa("e ele comeca no primeiro, com o BP do primeiro",
+					  freeza.Papel.Estagio == 0 && Math.Abs(freeza.Ficha.BP - m.Estagios[0].Bp) < 1,
+					  $"degrau {freeza.Papel.Estagio} BP {freeza.Ficha.BP:N0}");
+
+				// desce o pior membro ate um triz ABAIXO de cada limiar, um de cada vez
+				for (int passo = 0; passo < 4; passo++)
+				{
+					double limiar = m.Estagios[passo].GatilhoMembro;
+					PorPiorMembroEm(freeza, limiar - 0.01);
+					TickDoRoteiro();
+					Checa($"cruzar {limiar:0.00} avanca pro degrau {passo + 2}",
+						  freeza.Papel.Estagio == passo + 1, $"esta no {freeza.Papel.Estagio + 1}");
+					Checa($"...e o BP e o DA FICHA, nao uma media ({m.Estagios[passo + 1].Bp:N0})",
+						  Math.Abs(freeza.Ficha.BP - m.Estagios[passo + 1].Bp) < 1, $"{freeza.Ficha.BP:N0}");
+					Checa("...e ele volta com o folego cheio (bev_pin_bp enche o Ki)",
+						  freeza.Ficha.Ki >= freeza.Ficha.MaxKi - 1e-6);
+				}
+
+				Checa("no ultimo degrau nao ha mais gatilho -- nada o encerra",
+					  freeza.Papel.GatilhoAtual < 0, $"{freeza.Papel.GatilhoAtual}");
+				PorPiorMembroEm(freeza, 0.01);
+				TickDoRoteiro();
+				Checa("...e nem destruido ele passa do quinto", freeza.Papel.Estagio == 4, $"{freeza.Papel.Estagio}");
+				Checa("a zona ouviu um anuncio por degrau", EscutaDoRoteiro!.Count == 4,
+					  $"{EscutaDoRoteiro!.Count} anuncios");
+			}
+
+			// UMA RAJADA UNICA PRODUZ UMA TRANSICAO SO. E o `+0,01` do `freeza_transform`
+			// (BossEvents.dm:662): sem ele, um golpe que leve a vida de 0,72 pra 0,05 curaria pela
+			// metade e AINDA estaria abaixo do proximo limiar -- e o chefe pularia metade da ficha.
+			EscutaDoRoteiro = [];
+			ServerPlayer? freeza2 = Spawnar("freeza_namek", 3);
+			if (freeza2 != null)
+			{
+				PorPiorMembroEm(freeza2, 0.01);      // a rajada que quase o mata, de uma vez
+				TickDoRoteiro();
+				Checa("uma rajada unica avanca EXATAMENTE UM degrau (o reancoramento de +0,01)",
+					  freeza2.Papel!.Estagio == 1, $"pulou pro degrau {freeza2.Papel!.Estagio + 1}");
+				Checa("...e o pior membro dele ficou ACIMA do limiar seguinte",
+					  PiorMembro(freeza2) > LimiarDoDegrau(freeza2), $"{PiorMembro(freeza2):0.000}");
+
+				// e o tique seguinte, sem dano novo, nao avanca de novo
+				TickDoRoteiro();
+				Checa("...e o tique seguinte, sem golpe novo, nao avanca", freeza2.Papel!.Estagio == 1);
+			}
+
+			// =====================================================================
+			// 8. O FREEZA DE VEGETA -- a lista de um item so
+			// =====================================================================
+			ServerPlayer? freeza1 = Spawnar("freeza_vegeta", 4);
+			if (freeza1 != null)
+			{
+				Checa("a ficha dele tem UM degrau so", freeza1.Papel!.Molde.Estagios.Length == 1);
+				Checa("...entao nao ha gatilho nenhum", freeza1.Papel!.GatilhoAtual < 0);
+				PorPiorMembroEm(freeza1, 0.01);
+				TickDoRoteiro();
+				TickDoRoteiro();
+				Checa("...e destrui-lo nao o transforma: ele NAO transforma porque a lista acabou "
+					+ "(nenhum `if` de nome proprio em lugar nenhum)",
+					  freeza1.Papel!.Estagio == 0 && Math.Abs(freeza1.Ficha.BP - 530_000) < 1,
+					  $"degrau {freeza1.Papel!.Estagio + 1} BP {freeza1.Ficha.BP:N0}");
+			}
+
+			// =====================================================================
+			// 9. O CORPO EXISTE MESMO -- ele esta no mundo, nao so na memoria
+			// =====================================================================
+			if (guardiao != null)
+			{
+				Checa("o NPC esta no `_players`", _players.ContainsKey(guardiao.Id));
+				Checa("...e na lista da zona (fora dela ninguem o ve, e um teste daria verde por ausencia)",
+					  ZoneList(zona.Hash).Contains(guardiao));
+				Checa("...e ele tem CORPO (membros), como qualquer jogador",
+					  guardiao.Combate is { } c && c.Corpo.Partes.Count > 0);
+				Checa("...e nao tem dono na tela (`Peer == null` e a definicao de NPC deste servidor)",
+					  guardiao.Peer == null);
+			}
+		}
+		finally
+		{
+			EscutaDoRoteiro = null;
+			foreach (ServerPlayer n in nascidos) RemoverNpc(n);
+			GD.Print($"===== FIM: {ok} ok, {falhou} falha(s) =====\n");
+			if (falhou > 0) GD.PushError($"[server] bancada de NPC: {falhou} falha(s)");
+			Avisar(pl, $"bancada de NPC: {ok} ok, {falhou} falha(s) -- veja o console.");
+		}
+	}
+
+	/// <summary>O limiar que encerra o degrau ATUAL -- so pra deixar a checagem legivel.</summary>
+	private static double LimiarDoDegrau(ServerPlayer pl) => pl.Papel?.GatilhoAtual ?? -1;
+
+	/// <summary>
+	/// POE O PIOR MEMBRO NUMA FRACAO EXATA, ferindo pelo caminho de producao (`Body.Ferir`).
+	///
+	/// Escrever `p.Vida = x` direto seria mais curto e mediria outra coisa: o `Ferir` propaga dano
+	/// pros vizinhos e pode decepar, e e nesse estado que o chefe de verdade vai estar quando o
+	/// gatilho disparar.
+	/// </summary>
+	private static void PorPiorMembroEm(ServerPlayer pl, double fracao)
+	{
+		BodyPart alvo = pl.Combate.Corpo.Partes.OrderByDescending(p => p.Fracao).First();
+		double desejada = Math.Clamp(fracao, 0, 1) * alvo.VidaMax;
+		if (alvo.Vida > desejada) pl.Combate.Corpo.Ferir(alvo, alvo.Vida - desejada, letal: false);
+		pl.Combate.SincronizarVida();
+	}
+}

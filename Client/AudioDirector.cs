@@ -24,8 +24,27 @@ public partial class AudioDirector : Node
     public const string BusEfeitos = "Efeitos";
     public const string BusAmbiente = "Ambiente";
 
-    /// <summary>Quem manda quando duas musicas querem tocar. Maior vence.</summary>
-    public enum Camada { Lugar = 0, Menu = 1, Combate = 2, Transformacao = 3 }
+    /// <summary>
+    /// Quem manda quando duas musicas querem tocar. Maior vence.
+    ///
+    /// ============================ A `Raiva` NASCEU ENTRE `Combate` E `Transformacao`, E O LUGAR E O DM ============================
+    /// O original tem tres canais de musica e a ordem entre eles esta escrita: `emit_TransformMusic`
+    /// abre cortando o canal de raiva (*"a transformation always wins: cut any rage theme first"*,
+    /// `BattleMusic.dm:133`) e `emit_RageMusic` desiste se um tema de forma estiver no ar
+    /// (`:148`, `if(world.time &lt; M.transform_music_until) continue`); os dois chamam
+    /// `duck_battle_music`, que cala o combate enquanto tocam.
+    ///
+    /// Essas TRES regras sao exatamente o que a comparacao numerica deste enum ja faz -- camada maior
+    /// interrompe, camada menor so fica de sobreaviso (ver <see cref="Musica"/>). Nao houve canal novo,
+    /// nem `if` novo: houve um valor no meio da fila.
+    ///
+    /// E POR ISSO O `Transformacao` MUDOU DE NUMERO. Ele e ordinal puro -- nao viaja na rede, nao vai
+    /// pro save e nao e escrito em lugar nenhum como literal --, entao renumerar e de graca. Enfiar a
+    /// raiva como `4` (acima da transformacao) custaria nada em compilacao e inverteria a unica regra
+    /// que o DM escreveu duas vezes.
+    /// ================================================================================================================
+    /// </summary>
+    public enum Camada { Lugar = 0, Menu = 1, Combate = 2, Raiva = 3, Transformacao = 4 }
 
     private AudioStreamPlayer _musicaA = null!, _musicaB = null!;   // dois: a troca e por fade
     private AudioStreamPlayer _ambiente = null!;

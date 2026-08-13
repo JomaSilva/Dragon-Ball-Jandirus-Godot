@@ -608,7 +608,7 @@ public static class GeradorDeTerreno
 	///
 	/// Aceita tanto o vocabulario do projeto (o do `DmPlanetScanner`) quanto os nomes que o DM
 	/// usa nos planetas procedurais, porque sao esses que aparecem no NOME do planeta gerado
-	/// (`Espaco.NomeDeBioma`: "Verdejante-1042", "Gelido-77"...). Desconhecido cai em Rochoso,
+	/// (`Sistemas.NomeDeBioma`: "Verdejante-1042", "Gelido-77"...). Desconhecido cai em Rochoso,
 	/// que e o mesmo padrao do `DmPlanetScanner.Scan`.
 	///
 	/// O "Alienigena" do DM (:244) cai em JARDIM, e isso e escolha nossa: olhando o que o DM faz
@@ -630,7 +630,8 @@ public static class GeradorDeTerreno
 	/// O bioma de um planeta PROCEDURAL, tirado da propria seed dele.
 	///
 	/// Nao e um sorteio novo: e a MESMA conta que o <see cref="Espaco"/> ja usou pra batizar o
-	/// planeta (`NomeDeBioma`, `(h >> 16) % 6`, e `Seed = h` no `PlanetaDaChunk`). Precisa ser a
+	/// planeta (`Sistemas.NomeDeBioma`, `(seed >> 16) % 6`, sobre a mesma seed que o
+	/// `SistemaSolar.Planeta` deu ao corpo). Precisa ser a
 	/// mesma, senao um mundo chamado "Gelido-77" nasceria com areia -- o tipo de incoerencia que
 	/// ninguem reporta como bug e todo mundo estranha.
 	/// </summary>

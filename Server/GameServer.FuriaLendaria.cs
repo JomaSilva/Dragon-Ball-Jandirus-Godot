@@ -145,7 +145,16 @@ public partial class GameServer
 	///     `MeleeAttack()` so, sem leve/pesado (`attack_proc.dm:1`). O valor fica entre o clone (0,35 --
 	///     que e VOCE lutando, medindo o golpe) e a fera (0,85 -- *"braco de macaco gigante nao da
 	///     jab"*). A furia bate forte porque nao mede, e nao porque e grande.
-	/// ========================================================================================================
+	///
+	/// ============================ E AS DUAS MANIVELAS NOVAS, PELA MESMA REGRA DO DM ============================
+	///   * `Disciplina = 0` -- nao apara. O `legendary_berserk_loop` nao tem **um unico** ramo de
+	///     guarda, e o argumento e o mesmo do `VidaCautelosa = 0` logo acima: furia que se protege
+	///     nao e furia.
+	///   * `Inteligencia = 0` -- nao recarrega, nao paira rasante e nao decide transformar. Note que
+	///     este ultimo importa aqui e nao no macaco: o corpo em furia lendaria E de um Saiyajin com
+	///     escada aberta, e sem esta linha ele subiria de forma sozinho no meio da posse -- um
+	///     jogador veria o proprio personagem virar Legendary de novo sem ter apertado nada.
+	/// ======================================================================================================
 	/// </summary>
 	private void TomarAsRedeasDaFuria(ServerPlayer pl, FormaDef? d, double maestria)
 	{
@@ -154,6 +163,8 @@ public partial class GameServer
 			VidaCautelosa = 0,
 			ChanceDePesado = 0.6,
 			IntervaloDeDecisao = 0.2,
+			Disciplina = 0,
+			Inteligencia = 0,
 		};
 
 		// O rastro de input do dono morre aqui -- ver `LargarOInput` pro porque de cada campo.

@@ -44,6 +44,24 @@ public partial class RoboDeForma : Node
 	private readonly List<string> _passos = [];
 
 	/// <summary>
+	/// ============================ A COR PESSOAL DO SUJEITO DESTA BANCADA ============================
+	/// A chama da base (e a do Mistico) deixou de ser uma constante compartilhada: cada personagem
+	/// sorteia a propria no nascimento (`Appearance.CorAura`). Entao a pergunta "de que cor e a chama"
+	/// passou a ter um segundo argumento, e esta e a resposta que este robo da.
+	///
+	/// **NAO E o <see cref="Aura.CorDoKiCru"/>, E ESSE E O PONTO.** Enquanto o sujeito de teste usasse
+	/// o fallback, todas as afirmacoes desta bancada ficariam verdes com a cor pessoal NUNCA saindo do
+	/// lugar -- que e exatamente o defeito que ela precisa pegar. Com um tom que so pode ter vindo
+	/// daqui, "a chama do Mistico e a do jogador" vira uma medida em vez de uma coincidencia.
+	///
+	/// E ELE E UM SORTEIO PLAUSIVEL, e nao um hexa bonito: os tres canais estao em 200..255, que e a
+	/// faixa inteira que `CorDeAura.Sortear` pode produzir (`min(255, 200 + rand(0,255))`). Um tom
+	/// escuro aqui testaria uma cor que o jogo nao sabe sortear.
+	/// ==========================================================================================
+	/// </summary>
+	private static readonly Color CorPessoalDeTeste = new("ffd2c8");
+
+	/// <summary>
 	/// Formas percorridas, da mais fraca a mais forte.
 	///
 	/// AS CINCO QUE ACENDEM RAIO ESTAO TODAS AQUI, e e o ponto: depois do enunciado do dono elas sao
@@ -90,11 +108,15 @@ public partial class RoboDeForma : Node
 		// o contorno tambem faz (verde da linha, nao vermelho). O dono nomeou um Limit Breaker.
 		Jandirus.Core.Forms.LinhaDeForma.Legendary
 			or Jandirus.Core.Forms.LinhaDeForma.LegendaryPrimal => "8fe3ff",
-		// A LINHA DO MISTICO E A UNICA FORA DAS ESCADAS DE SANGUE COM COR PROPRIA. Branca porque a
-		// folha do DM (`Electric_Mystic.dmi`) e neutra e porque a aura dela e um lilas palido -- o
-		// enunciado inteiro esta no `Catalogo.CorDosRaios`. Escrito aqui pelo mesmo motivo do
-		// vermelho acima: repetir a derivacao do Core faria os dois lados errarem juntos.
-		Jandirus.Core.Forms.LinhaDeForma.Mistico => "ffffff",
+		// A LINHA DO MISTICO E A UNICA FORA DAS ESCADAS DE SANGUE COM COR PROPRIA, e ela e DUAS desde
+		// que o dono pediu *"no beast os raiozinhos sao roxos"*. Branca no Mistico porque a folha do
+		// DM (`Electric_Mystic.dmi`) e neutra; roxo-clara na Fera porque foi pedida assim -- o
+		// enunciado inteiro (e a colisao com a chama roxa dela) esta no `Catalogo.CorDosRaios`.
+		//
+		// POR ID AQUI e derivado la, exatamente como o vermelho do Limit Breaker acima: repetir a
+		// derivacao `PedeGodKi >= GodkiRoyalePct` na bancada faria os dois lados errarem juntos no dia
+		// em que alguem mexesse no `PedeGodKi` da Fera.
+		Jandirus.Core.Forms.LinhaDeForma.Mistico => d.Id == "beast" ? "d9b0ff" : "ffffff",
 		_ => null,   // divinas, Oozaru e a base: seguem a aura
 	};
 
@@ -104,8 +126,17 @@ public partial class RoboDeForma : Node
 		if (!ok) _falhas.Add(oque);
 	}
 
-	private static Node2D? Corpo => GameClient.Instance?.LocalId is { } id && id != 0
-		? (Node2D?)null : null;
+	/// <summary>
+	/// O CORPO LOCAL. Estava escrito `... is { } id && id != 0 ? (Node2D?)null : null` -- os DOIS
+	/// ramos devolviam nulo, entao a propriedade era um `null` com dez palavras em volta. Ninguem a
+	/// consumia e por isso ela nunca reprovou nada; quem precisava do boneco o procurava na mao, com
+	/// a linha repetida em quatro lugares deste arquivo.
+	///
+	/// Ela voltou a existir porque o recorte da foto (ver <see cref="Fotografar"/>) precisa saber
+	/// ONDE o boneco esta na tela -- e a foto da rajada e o unico ponto desta bancada que responde
+	/// "esta bonito".
+	/// </summary>
+	private Node2D? Corpo => GetTree().Root.FindChild("LocalPlayer", true, false) as Node2D;
 
 	public override void _Process(double delta)
 	{
@@ -123,7 +154,12 @@ public partial class RoboDeForma : Node
 		// cravado: a cena escolhida e a mais curta de `Cinematicas.Todas`, e o dia em que ela mudar de
 		// duracao -- foi o que a restauracao dos prazos do DM fez -- a espera acompanha sozinha.
 		// ==================================================================================
-		if (_t < (_passo == PassoDaEspera ? _esperaDaCena : _passo >= 3 ? 0.14 : 1.2)) return;
+		// A CAMINHADA DECIDE A CADA 0,2 s, e ela tem que vir ANTES dos outros dois ramos: o passo dela
+		// e o 0, que cairia no 1,2 s dos passos de abertura -- 200 decisoes a 1,2 s sao quatro minutos
+		// de bancada pra atravessar quatro tiles. Ver `SairDaCopa`.
+		if (_t < (_caminhando ? 0.2
+				: _passo == PassoDaEspera ? _esperaDaCena
+				: _passo >= 3 ? 0.14 : 1.2)) return;
 		_t = 0;
 
 		// ============================ A CAMARA ESCURA SEGURA O PASSO ============================
@@ -140,9 +176,24 @@ public partial class RoboDeForma : Node
 
 		switch (_passo++)
 		{
-			case 0: Shaders(); break;
+			// O CEU E O CLIMA SAEM AQUI porque sao pedidos ao SERVIDOR e precisam da viagem de ida e
+			// volta; a caminhada, nao -- ela so pode acontecer depois que a sujeira existir. Ver
+			// `OCeuEOClimaDaFoto` e `SairDaSujeira`.
+			case 0: Shaders(); OCeuEOClimaDaFoto(); break;
 			case 1:
 				Catalogo(); AsCoresNoCatalogoInteiro(); AsCoresNaoSaoAAura(); Cinematicas_();
+					// LOGO DEPOIS DO BLOCO DO VENENO, e a ordem conta pra quem le o log: os dois usam a
+					// MESMA tecnica (trocar a cor declarada e ver quem se mexe) em canais diferentes --
+					// la contorno e faisca, aqui a CHAMA, que era o canal que faltava. Ele tambem mexe no
+					// catalogo vivo e devolve tudo, entao ficar colado no irmao deixa as duas janelas de
+					// veneno juntas em vez de espalhadas pela varredura.
+					AChamaDeQuemEDeQueFolha();
+					// E LOGO DEPOIS A FAMILIA QUE OLHA O **DISCO**, pela mesma logica de leitura do log:
+					// as duas falam da cor pessoal, e a de cima so tem assunto porque a de baixo garante
+					// que a cor existe em todo personagem -- inclusive nos que nasceram antes do campo.
+					// Ela nao precisa de mundo, de rede nem de corpo; roda cedo de proposito, pra uma
+					// rodada que morra la na frente ainda entregar o veredito que protege a CONTA.
+					OSaveVelhoCarrega();
 				AEscadaDoSsj3NoRoteiro();
 				// OS TRES DEPOIS DO `Cinematicas_`, e a ordem importa pra quem LE o log: a duracao do DM
 				// e o teto da encurtada sao afirmacoes sobre as mesmas cenas que o bloco de cima acabou
@@ -220,10 +271,55 @@ public partial class RoboDeForma : Node
 			// existe, mas nao mostrava o que ele FAZ. Como agora ele se contorce, estroba e se
 			// parte em cacos ao longo de ~0,9 s, o que interessa e a SEQUENCIA: um disparo e as
 			// fotos seguidas atravessando a vida inteira.
-			case 3: ForcarRajada(); break;
+			// A CAMINHADA MORA DENTRO DO PASSO 3, repetindo-o, e nao num caso proprio: `PassoDaEspera` e
+			// 8, os nomes das fotos saem do `_passo` (`raj05..raj12`) e o `CenaDepois` mora no 9 --
+			// inserir um caso aqui deslocaria os tres e renomearia as fotos que o dono compara entre
+			// rodadas.
+			case 3:
+				if (SairDaSujeira()) { _passo--; break; }
+				break;
 			default:
+				// ============================ AS QUATRO PRIMEIRAS FOTOS FORAM DELETADAS ============================
+				// Elas saiam nos passos 5 a 8 -- ou seja, DENTRO da cena do teto, que o `OTetoDaEncurtada`
+				// monta no passo 1 justamente pra ela nao conseguir terminar. Fotografado, isso da o
+				// personagem gritando "HAAAAH!!!" no meio de uma coluna de poeira que o cobre inteiro. Eu
+				// abri as quatro achando que ia julgar a grossura do raio e o que estava na tela era terra.
+				//
+				// Nao ha o que salvar ali: o corpo esta no meio de uma cinematica proposital, e nenhuma
+				// espera resolve porque a cena SO acaba no passo 9. Entao a rajada inteira mudou de lado --
+				// e disparada DEPOIS de a cena se liberar, e as dez fotos limpas atravessam a vida dela.
+				// ==============================================================================================
+				if (_passo <= PassoDaEspera) break;
 				if (_passo == PassoDaEspera + 1) { CenaDepois(); break; }
-				if (_passo > 12) { Fechar(); break; }
+				// ============================ E O CORPO E REPOSADO ANTES DA RAJADA ============================
+				// O `Posar` do passo 2 pinta o node direto, mas entre ele e aqui passaram a cena do teto e
+				// o `CenaDepois` -- e cena veste e DESPE forma, o que chama `RaiosDaForma.Definir(false)` e
+				// esconde o node. O `DispararDeTeste` nao pergunta nada: ele restarta o emissor de um node
+				// invisivel e devolve `emitindo=True`, alegre.
+				//
+				// Foi exatamente o que aconteceu: dez fotos limpas, em campo aberto, ao meio-dia, com o log
+				// dizendo "rajada forcada: 2 raio(s), emitindo=True" -- e ZERO pixel azul em qualquer uma
+				// delas (medido: nenhum pixel com B>140 e B>R+25 nas dez). Um relatorio de "os raios
+				// sumiram" sairia dali, sobre um efeito intacto.
+				// ==========================================================================================
+				if (_passo == PassoDaEspera + 2) { Posar("primal_legendary2"); ForcarRajada(); break; }
+				if (_passo > 20) { Fechar(); break; }
+
+				// ============================ DUAS TIRAS, E ELAS RESPONDEM PERGUNTAS DIFERENTES ============
+				// `raj11..raj15` sao UMA rajada vivendo: nascer, estrobar, partir-se em cacos, apagar. E a
+				// tira que mostra o que o raio FAZ.
+				//
+				// `raj16..raj20` sao CINCO RAJADAS NOVAS, uma por quadro. Ela existe porque a primeira nao
+				// responde a pergunta do dono: numa rodada o sorteio deu UM raio, e o estrobo o apagou em
+				// oito dos dez quadros -- sobraram 22 e 32 pixels de faisca no strip inteiro. Julgar
+				// "a grossura variada esta preservada?" com um raio a cada duas fotos e adivinhacao.
+				//
+				// `Restart()` num OneShot MATA a leva anterior, entao as duas coisas nao cabem na mesma
+				// tira: ou se ve uma rajada envelhecer, ou se veem muitas rajadas distintas. Sao cinco
+				// amostras independentes de ate quatro raios cada -- ate 20 raios de sorteios diferentes,
+				// que e amostra pra o olho comparar grossura de um pro outro.
+				// ==========================================================================================
+				if (_passo > 15) ForcarRajada(cobrar: false);
 				Fotografar($"user://raj{_passo:00}.png");
 				break;
 		}
@@ -256,7 +352,14 @@ public partial class RoboDeForma : Node
 			// "nao funcionar" sem nenhuma mensagem.
 			string code = sh.Code ?? "";
 			if (caminho.Contains("Raio"))
-				foreach (string u in new[] { "cor", "zigue", "grossura", "halo" })
+				// O `afinar` e o `variacao_grossura` entram na lista pela razao da rampa da nebulosa,
+				// logo abaixo: sao os dois botoes com que o dono afina a grossura dos raiozinhos de
+				// olho, sem recompilar. Quem os "limpar" pra constante mata a propriedade em
+				// silencio -- o raio continua desenhando, e so o ajuste e que passa a custar um build.
+				// E eles PRECISAM continuar uniform tambem porque o feixe de chao da cinematica
+				// (`Transformacao.Feixes`) escreve os dois pra NAO ser afinado junto.
+				foreach (string u in new[]
+						 { "cor", "zigue", "grossura", "halo", "afinar", "variacao_grossura" })
 					Conferir(code.Contains($"uniform") && code.Contains($" {u} "),
 							 $"RaioDaForma tem o uniform '{u}'");
 			else if (caminho.Contains("Nebulosa"))
@@ -424,8 +527,8 @@ public partial class RoboDeForma : Node
 
 		// LITERAIS, como no resto das cores: escrever `== AzulDaFaisca` conferiria a constante com
 		// ela mesma e passaria com qualquer valor trocado por engano.
-		Conferir(tomDaFaisca.Count == 3,
-				 $"as sete faiscas saem em TRES tons ({tomDaFaisca.Count}: "
+		Conferir(tomDaFaisca.Count == 4,
+				 $"as sete faiscas saem em QUATRO tons ({tomDaFaisca.Count}: "
 			   + $"{string.Join(" / ", tomDaFaisca.Select(p => $"{p.Key}={p.Value.Count}"))})");
 		Conferir(tomDaFaisca.TryGetValue("8fe3ff", out List<string>? azuis) && azuis.Count == 4,
 				 $"QUATRO delas sao azuis #8fe3ff ({Quem("8fe3ff")})");
@@ -433,12 +536,20 @@ public partial class RoboDeForma : Node
 			  && vermelhas.Count == 1 && vermelhas[0] == "ssj4_limit_breaker",
 				 $"e UMA e vermelha #ff2d2f, o Limit Breaker ({Quem("ff2d2f")})");
 
-		// E AS DUAS DO MISTICO SAO BRANCAS. Elas sao o terceiro tom, e a razao de nao serem nem o azul
-		// das escadas de sangue nem a aura da propria forma esta no `Catalogo.CorDosRaios`: a folha do
-		// DM (`Electric_Mystic.dmi`) nao tem matiz nenhuma, e a aura do Mistico e um lilas palido --
-		// faisca lilas dentro de chama lilas some, que foi o defeito corrigido no `primal_legendary2`.
-		Conferir(tomDaFaisca.TryGetValue("ffffff", out List<string>? brancas) && brancas.Count == 2,
-				 $"e DUAS sao brancas #ffffff, a linha do Mistico ({Quem("ffffff")})");
+		// ============================ E A LINHA DO MISTICO VIROU DOIS TONS ============================
+		// Esta conta era TRES tons com DUAS brancas -- a linha inteira dividia o `ffffff`. O dono
+		// separou: *"no beast os raiozinhos sao roxos"*, e so a Fera.
+		//
+		// UMA branca e UMA roxa, cada uma na sua linha: uma conta unica de "duas cores na linha"
+		// passaria com as duas trocadas de lugar, que e justamente o erro provavel aqui (o Mistico e o
+		// degrau de BAIXO e e ele que fica com o branco do arquivo do DM).
+		Conferir(tomDaFaisca.TryGetValue("ffffff", out List<string>? brancas)
+			  && brancas.Count == 1 && brancas[0] == "mistico",
+				 $"e UMA e branca #ffffff, o Mistico -- a folha `Electric_Mystic.dmi` nao tem matiz "
+			   + $"nenhuma ({Quem("ffffff")})");
+		Conferir(tomDaFaisca.TryGetValue("d9b0ff", out List<string>? roxas)
+			  && roxas.Count == 1 && roxas[0] == "beast",
+				 $"e UMA e roxa #d9b0ff, a Fera -- pedido do dono ({Quem("d9b0ff")})");
 	}
 
 	// =====================================================================
@@ -468,7 +579,19 @@ public partial class RoboDeForma : Node
 		// COPIAR O BLOCO seria a outra saida, e o modo de falha dela e o de sempre aqui: consertar uma
 		// regra numa copia e esquecer da outra.
 		// ==========================================================================================
-		void ConferirRoteiro(Jandirus.Core.Forms.Cinematica c, string rotulo)
+		// ============================ E ELAS VALEM PRA CENA QUE NAO E DE FORMA NENHUMA ============================
+		// O `prendeOCorpo` nasceu com a cena da FURIA (`Cinematicas.Furia`), a unica que legitimamente
+		// nao trava o jogador (`set waitfor = 0`, `Murder.dm:137`). Ele isola a UNICA regra desta funcao
+		// que fala de forma -- "o corpo fica preso ate o beat que assume" -- e deixa todo o resto valendo
+		// pra ela: a cratera no instante da troca, a poeira que so vem com a cratera, a cauda que so
+		// assenta, o vao, o beat vazio, o clarao, o piscar, os sons.
+		//
+		// A ALTERNATIVA ERA COPIAR AS REGRAS, e ela ja estava em uso: a bancada `raiva` [10] confere as
+		// quatro principais na cena da furia por uma copia escrita a mao. Copia envelhece de um jeito so
+		// -- a regra numero cinco entra AQUI, a copia nao sabe, e a cena nova fica de fora sem ninguem
+		// notar. Com o parametro, a furia entra na varredura das 34 e sai junto com elas.
+		// ======================================================================================================
+		void ConferirRoteiro(Jandirus.Core.Forms.Cinematica c, string rotulo, bool prendeOCorpo = true)
 		{
 			Conferir(c.Beats.Length >= 3, $"cena de '{rotulo}': tem beats ({c.Beats.Length})");
 
@@ -521,9 +644,19 @@ public partial class RoboDeForma : Node
 				// `preso = nb.Em` do `Encurtar` pelo `alvo` cru e ela cai so na versao CURTA, que e o lado
 				// que ninguem olha.
 				// =======================================================================================
-				Conferir(Math.Abs(quando - c.SegundosPreso) < 0.001,
-						 $"cena de '{rotulo}': o corpo fica preso ATE o beat que assume, sem folga "
-					   + $"({c.SegundosPreso:0.###}s preso, forma aos {quando:0.###}s)");
+				//
+				// E A CENA QUE NAO PRENDE TEM QUE NAO PRENDER **NADA** -- o outro lado da mesma regra,
+				// e nao uma dispensa. Meio segundo de prisao numa cena que se anuncia livre seria pior
+				// que a prisao inteira: o jogador que acabou de ver um amigo morrer nao entenderia por
+				// que travou, e nao ha tela nenhuma que diga isso.
+				if (prendeOCorpo)
+					Conferir(Math.Abs(quando - c.SegundosPreso) < 0.001,
+							 $"cena de '{rotulo}': o corpo fica preso ATE o beat que assume, sem folga "
+						   + $"({c.SegundosPreso:0.###}s preso, forma aos {quando:0.###}s)");
+				else
+					Conferir(c.SegundosPreso == 0,
+							 $"cena de '{rotulo}': nao prende o corpo NEM UM INSTANTE "
+						   + $"({c.SegundosPreso:0.###}s preso)");
 
 				// ============================ E DEPOIS DELE SO CABE O ASSENTAMENTO ============================
 				// O pedido era "o beat que ASSUME e o ultimo". Ele NAO e: nas 34 cenas ha exatamente um beat
@@ -548,8 +681,10 @@ public partial class RoboDeForma : Node
 						 $"cena de '{rotulo}': depois do beat que assume so cabe UM de assentamento "
 					   + $"(o assumir e o {ondeNaLista + 1}o de {c.Beats.Length})");
 
+				// O CASCALHO SAIU DESTA MASCARA junto com o efeito (bit 8192 aposentado, cortado pelo
+				// dono). O que sobra e o que assenta de verdade: poeira, cratera e a faisca do corpo.
 				const Jandirus.Core.Forms.Efeito assentar =
-					Jandirus.Core.Forms.Efeito.Poeira | Jandirus.Core.Forms.Efeito.Cascalho
+					Jandirus.Core.Forms.Efeito.Poeira
 					| Jandirus.Core.Forms.Efeito.Cratera | Jandirus.Core.Forms.Efeito.Raios;
 				string vazou = "";
 				foreach (Jandirus.Core.Forms.Beat b in c.Beats.Skip(ondeNaLista + 1))
@@ -557,7 +692,7 @@ public partial class RoboDeForma : Node
 						|| b.Fala.Length > 0 || b.Narra.Length > 0 || b.Som.Length > 0)
 						vazou = $"{b.Em:0.##}s: {b.Faz} '{b.Fala}{b.Narra}' {b.Som}";
 				Conferir(vazou.Length == 0,
-						 $"cena de '{rotulo}': e essa cauda so ASSENTA (poeira/cascalho/cratera/faisca) -- {vazou}");
+						 $"cena de '{rotulo}': e essa cauda so ASSENTA (poeira/cratera/faisca) -- {vazou}");
 			}
 
 			// O CORPO NAO PODE FICAR PRESO A CENA INTEIRA -- ver `Cinematica.SegundosPreso`.
@@ -672,6 +807,74 @@ public partial class RoboDeForma : Node
 								   || b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Assumir)),
 					 $"cena de '{rotulo}': o clarao so acende no beat que ASSUME a forma");
 
+			// ============================ A CRATERA E O INSTANTE DA TROCA -- SEMPRE ============================
+			// O pedido do dono foi textual: *"tem transformacao q estao criando a cratera no meio da
+			// cinematica (deveria ser sempre no final, assim q se transformar cria a cratera)"*. Doze das
+			// trinta e duas cenas erravam, e as doze saiam de QUATRO linhas -- ou seja o defeito era a
+			// cratera ser um campo livre do beat, e nao as cenas.
+			//
+			// Quem garante hoje e o funil da `Cinematica.Beats` (ver o Core), e ele garante por
+			// construcao: isto aqui NAO conserta nada, so testemunha que o funil continua no caminho. E
+			// nao e checagem de decoracao -- o jeito de o funil sumir e alguem trocar o `init` do `Beats`
+			// por uma atribuicao direta "porque estava sobrando", e nesse instante as trinta e duas cenas
+			// voltam a ter cratera onde o roteiro escrever. Sao TRES afirmacoes e cada uma cai sozinha:
+			//
+			//   1. EXATAMENTE UMA cratera por cena. Nao zero (uma transformacao abre o chao) e nao duas.
+			//   2. Ela mora NO beat que assume.
+			//   3. NENHUMA poeira antes dele -- ver o pedido irmao, *"a dust cloud ... deveria apenas vir
+			//      quando a animacao cria uma cratera"*. Depois do beat que assume ela pode ficar: e a
+			//      poeira DA cratera baixando, na cauda de assentamento que a checagem de cima ja limita
+			//      a um beat.
+			//
+			// NAS DUAS VERSOES, porque quem confere e esta funcao compartilhada -- e a encurtada e
+			// reconstruida pelo `Encurtar`, que passa pelo mesmo funil.
+			//
+			// COMO REPROVA SE A REGRA SUMIR: tire o funil do `Cinematica.Beats` e as doze cenas antigas
+			// caem na hora; escreva `| Efeito.Cratera` num beat de meio de cena e ele cai na (2).
+			// =============================================================================================
+			int crateras = c.Beats.Count(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cratera));
+			Conferir(crateras == 1, $"cena de '{rotulo}': UMA cratera, e uma so ({crateras})");
+			Conferir(c.Beats.All(b => !b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cratera)
+								   || b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Assumir)),
+					 $"cena de '{rotulo}': a cratera cai NO beat que assume a forma, e em nenhum outro");
+
+			int poeiraSolta = c.Beats
+				.TakeWhile(b => !b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Assumir))
+				.Count(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Poeira));
+			Conferir(poeiraSolta == 0,
+					 $"cena de '{rotulo}': nenhuma poeira ANTES da cratera ({poeiraSolta} beat(s))");
+
+			// ============================ E O AVESSO: ONDE HA CRATERA, HA POEIRA ============================
+			// A linha de cima diz onde a poeira NAO pode estar. Faltava a que diz onde ela TEM que estar,
+			// e as duas sao a MESMA frase do dono lida pelos dois lados -- *"a dust cloud ... deveria
+			// apenas vir quando a animacao cria uma cratera"* nao e so "poeira nunca sem cratera", e
+			// tambem "cratera nunca sem poeira", porque o que ele descreve e um acontecimento unico.
+			//
+			// O DEFEITO QUE ESTA PEGA E O SILENCIOSO DOS DOIS. O funil escreve as duas juntas
+			// (`Chao = Cratera | Poeira`); basta o `| Efeito.Poeira` cair de la -- uma "simplificacao"
+			// de uma linha -- pro chao passar a abrir SEM levantar terra. Nenhuma checagem anterior
+			// via isso: `crateras == 1` continua verde, "a cratera cai no beat que assume" continua
+			// verde, "nenhuma poeira antes" fica MAIS verde ainda. E em jogo o buraco aparecendo seco
+			// le como cratera, nao como efeito faltando.
+			//
+			// A TERCEIRA E DA CENA INTEIRA, e ela pega o que as duas de beat nao alcancam: uma cena SEM
+			// beat que assume (que o funil deixa de proposito sem cratera nenhuma, ver o comentario de
+			// la) cujos beats de cauda carreguem poeira escrita a mao. Ali a poeira baixaria de um
+			// buraco que nunca se abriu.
+			//
+			// COMO REPROVAM SE A REGRA SUMIR: tire o `| Efeito.Poeira` do `Chao` do funil e a primeira
+			// cai nas 64; troque o `faz |= Chao` por `faz |= Efeito.Poeira` (cratera fora) e caem a
+			// primeira e a terceira juntas.
+			// =============================================================================================
+			Conferir(c.Beats.All(b => !b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cratera)
+								   || b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Poeira)),
+					 $"cena de '{rotulo}': o beat da cratera LEVANTA a poeira dela");
+
+			bool algumaPoeira = c.Beats.Any(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Poeira));
+			bool algumaCratera = c.Beats.Any(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cratera));
+			Conferir(!algumaPoeira || algumaCratera,
+					 $"cena de '{rotulo}': nao ha poeira nenhuma sem cratera nenhuma");
+
 			// ============================ TODO `Som` DE BEAT TEM QUE RESOLVER ============================
 			// Um som e a coisa mais facil de "ligar" sem ligar, e esta bancada ja tinha a checagem pra
 			// MUSICA e nao pra EFEITO. A diferenca importava: o `Transformacao.Som` tinha um
@@ -728,9 +931,38 @@ public partial class RoboDeForma : Node
 					 $"cena de '{c.Forma}': a faisca casa com o catalogo "
 				   + $"(Raios={raiosDaForma}, {beatsComFaisca} beat(s) com raio)");
 
+			// ============================ CENA DE FORMA PRENDE O CORPO. SEM EXCECAO ============================
+			// O `ConferirRoteiro` cobra "o corpo fica preso ATE o beat que assume, sem folga" -- e essa
+			// regra tem uma saida que ninguem tinha fechado: `SegundosPreso = 0` num roteiro que assume
+			// aos 0,0 s tambem casa com um `==`. Ela nao era alcancavel enquanto TODA cena era de forma;
+			// passou a ser no dia em que nasceu uma cena que legitimamente nao prende (a furia).
+			//
+			// A furia nao passa por aqui (ela nao esta na `Todas`, ver `Cinematicas.Furia`), e esta linha
+			// e o que garante que nenhuma das 34 aprenda o truque dela: transformar para o corpo, e o
+			// dono decidiu isso com todas as letras (*"no dm e o tempo inteiro da transformaçao parado"*).
+			// =============================================================================================
+			Conferir(c.SegundosPreso > 0, $"cena de '{c.Forma}': prende o corpo ({c.SegundosPreso:0.###}s)");
+
 			ConferirRoteiro(c, c.Forma);
 			ConferirRoteiro(Jandirus.Core.Forms.Cinematicas.Encurtada(c), $"{c.Forma} curta");
 		}
+
+		// ============================ A CENA DA FURIA, PELA MESMA REGUA DAS 34 ============================
+		// Ela nao esta na `Todas` de proposito (nao e de forma nenhuma -- nao veste cabelo, nao entra no
+		// `Encurtar`, nao responde ao `Cinematicas.Para`), e por isso ela ficava FORA desta varredura: as
+		// quatro regras de cena valiam pra ela por uma copia escrita a mao na bancada `raiva` [10].
+		//
+		// Aqui ela entra pelo caminho certo -- a MESMA funcao, com a unica regra de forma desligada (ver
+		// o `prendeOCorpo`). O que isso compra e uma coisa so, e ela e o motivo: **a regra que alguem
+		// escrever amanha ali dentro passa a valer pra ela sozinha**. Sem isto, a proxima cena avulsa
+		// nasce com a mesma divida que esta tinha.
+		//
+		// SEM A ENCURTADA: a furia nao tem versao curta. O `Encurtar` existe pra cena de forma que se
+		// repete ate a maestria dispensa-la (`Cinematicas.Encurtada`), e a furia nao se repete nem se
+		// domina -- ela tem a propria recarga (`SegundosEntreFurias`). Encurta-la aqui testaria uma cena
+		// que o jogo nunca toca.
+		// ==============================================================================================
+		ConferirRoteiro(Jandirus.Core.Forms.Cinematicas.Furia, "furia", prendeOCorpo: false);
 
 		AsTresDuracoes();
 
@@ -805,36 +1037,56 @@ public partial class RoboDeForma : Node
 		Conferir(Jandirus.Core.Forms.Cinematicas.Oozaru.Musica.Length == 0,
 				 "a cena do Oozaru continua sem musica (senao ela abafa a trilha da luta)");
 
-		// ============================ E ELA CONTINUA SEM PARTICULA NENHUMA ============================
+		// ============================ E ELA CONTINUA SEM LEVANTAR PEDRA ============================
 		// *"oozaru n tem esse efeito de rocks nem de particulas, o resto da cinematica do oozaru pode
-		// deixar"*. A metade das PEDRAS ja tem checagem (a leva ao vivo, mais abaixo); a do CASCALHO
-		// nasce junto com o efeito, porque a passada que encheu as cenas longas passou por todas as
-		// fabricas e esta cena e a unica do arquivo que tinha que ficar de fora.
+		// deixar"*. A pergunta mudou de lugar neste passe e a checagem foi atras dela: a pedra deixou
+		// de ser um bit de beat e virou o estado `Cinematica.OChaoSeSolta`, derivado do CATALOGO
+		// (`Catalogo.NaoSeSobePraEla` -- a linha do Oozaru inteira).
 		//
-		// E ela e do tipo que ninguem pega jogando: cascalho a mais em volta de um macaco de 96 px
-		// parece intencional. Foi assim que a pedra a mais sobreviveu ali por meses.
+		// PERGUNTAR AO CAMPO DERIVADO E MELHOR QUE CONTAR BEATS, e por um motivo concreto: o
+		// `oozaru_dourado` divide esta cena hoje, mas no dia em que ele ganhar a dele a resposta certa
+		// ja vem junto -- e a antiga (contar beats de uma cena so) ficaria verde com o macaco dourado
+		// levantando pedra.
+		//
+		// A metade AO VIVO (a cena inteira rodada sem uma pedra nascer) esta mais abaixo, e ela e que
+		// prova que o `false` daqui chega no tocador.
 		// ========================================================================================
-		Conferir(!Jandirus.Core.Forms.Cinematicas.Oozaru.Beats.Any(
-					 b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cascalho)),
-				 "a cena do Oozaru continua sem cascalho (o dono cortou as particulas dela)");
+		Conferir(!Jandirus.Core.Forms.Cinematicas.Oozaru.OChaoSeSolta,
+				 "a cena do Oozaru nao solta o chao (o dono cortou as pedras dela)");
+		foreach (string idDaFera in new[] { "oozaru", "oozaru_dourado" })
+			if (Jandirus.Core.Forms.Cinematicas.De(idDaFera) is { } daFeraCena)
+				Conferir(!daFeraCena.OChaoSeSolta,
+						 $"...e `{idDaFera}` cai na mesma resposta pelo catalogo, sem lista de isentos");
 
-		// ============================ E O RITUAL DIVINO CONTINUA SEM CHAO QUEBRADO ============================
-		// O `INITIALIZEGODPROTOCOL` e a UNICA cena sem `createCrater` no DM, e por uma razao que a
-		// propria cena narra: o corpo SOBE (*"[src] rises into the air!!"*) -- nao ha impacto porque
-		// ninguem esta pisando em nada. A checagem da cratera nao existia, e por isso a do cascalho
-		// leva as duas: sao a mesma decisao, e quem acrescentar uma acrescentaria a outra.
+		// ============================ E TODAS AS OUTRAS SOLTAM ============================
+		// *"deveria ter mais `rising rocks.png` q ficariam do INICIO AO FIM em TODAS as
+		// transformacoes"*. O "todas" e literal: antes deste passe onze cenas nao levantavam pedra
+		// nenhuma, e uma delas (`ui_sign`) por DECISAO ESCRITA minha -- "o -Sign- e a contencao, ele
+		// nao levanta pedra". A decisao era minha e o dono disse todas; ela caiu.
 		//
-		// A cena divina GANHOU efeito nesta passada (dois aneis de choque, que sao literais --
-		// `GodRitual.dm:62-69` solta quatro `createShockwavemisc`), entao isto nao e "esta cena nao
-		// muda": e "esta cena muda por cima, e nao por baixo".
-		// ================================================================================================
-		foreach (string idDoRitual in new[] { "ssg", "rose_ssg", "mistico" })
-		{
-			if (Jandirus.Core.Forms.Cinematicas.De(idDoRitual) is not { } ritual) continue;
-			Conferir(!ritual.Beats.Any(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cratera)
-										 || b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cascalho)),
-					 $"o ritual de '{idDoRitual}' nao racha o chao (o corpo sobe, ninguem pisa em nada)");
-		}
+		// A checagem e o contrario da de cima e vale a mesma coisa: sem ela, `OChaoSeSolta` podendo
+		// devolver falso pra qualquer forma deixaria o efeito sumir de uma cena sem ninguem ver.
+		foreach (Jandirus.Core.Forms.Cinematica cSolta in Jandirus.Core.Forms.Cinematicas.Todas)
+			if (!Jandirus.Core.Forms.Catalogo.NaoSeSobePraEla(
+					Jandirus.Core.Forms.Catalogo.Def(cSolta.Forma)))
+				Conferir(cSolta.OChaoSeSolta, $"cena de '{cSolta.Forma}': o chao se solta nela");
+
+		// ============================ E NENHUMA DELAS QUEBRA CENARIO ============================
+		// *"vc colocou uns efeitos de particula nas cinematicas q parecem q tem uns quadrados marrons
+		// caindo e criando uma fumaca parecendo q quebrou uma parede ou objeto, TIRE esse efeito"*.
+		//
+		// O `Efeito.Cascalho` foi aposentado, entao o COMPILADOR ja e a primeira barreira -- mas ele
+		// so cobre o bit, e nao a chamada: nada impede alguem de por `PoeiraDeEstrago.Soltar` direto
+		// no `Disparar`, que e exatamente como o efeito chegou ali da primeira vez. Quem prova que
+		// ninguem chamou e o contador da PROPRIA `PoeiraDeEstrago`, medido em volta de cada cena --
+		// ver o laco das 64 cenas, mais abaixo.
+		//
+		// AQUI SO FICA A AFIRMACAO SOBRE O SISTEMA: ele continua vivo e inteiro. Cortar o efeito da
+		// cinematica nao podia virar mutilar o estrago de cenario, que tem dono proprio e roda em
+		// combate.
+		Conferir(Jandirus.Client.PoeiraDeEstrago.MaxVivos > 0,
+				 $"a `PoeiraDeEstrago` continua inteira ({Jandirus.Client.PoeiraDeEstrago.MaxVivos} vivos) "
+			   + "-- o corte foi na CHAMADA da cinematica, nao no sistema de estrago");
 
 		// O SSJ3 E A CENA FALADA. Se ela perder as falas, perde o que a torna memoravel.
 		int falas = Jandirus.Core.Forms.Cinematicas.Ssj3.Beats.Count(b => b.Fala.Length > 0);
@@ -846,6 +1098,105 @@ public partial class RoboDeForma : Node
 				  + $"{Jandirus.Core.Forms.Cinematicas.Todas.Max(c => c.Segundos):0.#}s");
 
 		OPrazoCasaComOBeatNoFunil();
+		OFunilDaCrateraReprovaODefeito();
+	}
+
+	// =====================================================================
+	// 2b-bis. O FUNIL DA CRATERA, COM O DEFEITO INJETADO
+	// =====================================================================
+	/// <summary>
+	/// A REGRA DA CRATERA MEDIDA NUM ROTEIRO ESCRITO ERRADO DE PROPOSITO.
+	///
+	/// ============================ POR QUE ESTA PRECISA EXISTIR ============================
+	/// As checagens do <c>ConferirRoteiro</c> varrem as 64 cenas de producao -- e as 64 ja sairam
+	/// LIMPAS deste passe: nenhum roteiro do arquivo escreve `Efeito.Cratera`, e a poeira so aparece
+	/// em beat de cauda. Ou seja, hoje elas confirmam que o resultado esta certo e nao chegam a
+	/// exercitar o funil: se o `ACrateraECoisaDoInstanteDaTroca` virasse a funcao identidade, o unico
+	/// sinal seria a cratera SUMIR (`crateras == 1` cai) -- e o dia em que alguem "consertar" isso
+	/// devolvendo `| Efeito.Cratera` aos roteiros, as 64 voltam a passar com a cratera onde o autor
+	/// escrever, que e exatamente o estado que o dono reclamou.
+	///
+	/// Entao aqui a bancada ESCREVE o defeito que ele descreveu -- *"tem transformacao q estao criando
+	/// a cratera no meio da cinematica"* -- e cobra que o funil o desfaca. Nenhuma cena de producao e
+	/// tocada: os roteiros abaixo nascem e morrem dentro deste metodo.
+	///
+	/// ============================ OS QUATRO ROTEIROS, E O QUE CADA UM PROVA ============================
+	///   1. CRATERA NO MEIO (o defeito literal do dono, e o dos 12 antigos): ela tem que sair do beat
+	///      de meio e aparecer no que assume.
+	///   2. POEIRA SOLTA ANTES (o *"colocou ela de mais durante as cinematicas"*): apagada.
+	///   3. DUAS CRATERAS, uma antes e uma depois: sobra UMA, e no lugar certo. Este e o unico que pega
+	///      um funil que so soubesse ACRESCENTAR sem apagar.
+	///   4. ROTEIRO SEM `Assumir`: cratera nenhuma e poeira nenhuma -- o funil nao inventa um instante
+	///      de troca que a cena nao tem. Sem esta, um funil que puzesse a cratera "no ultimo beat, se
+	///      nao houver quem assuma" esconderia a cena defeituosa em vez de deixa-la reprovar.
+	///
+	/// ============================ E A IDEMPOTENCIA, QUE E O QUE O `Encurtar` USA ============================
+	/// O `Cinematicas.Encurtar` reconstroi uma cena JA funilada (`new Cinematica { Beats = ... }` sobre
+	/// beats que ja passaram por aqui). Um funil que acumulasse -- que somasse poeira a cada passada,
+	/// por exemplo -- daria uma curta diferente da cheia sem nada reprovar, porque as duas continuariam
+	/// obedecendo a todas as regras de cima. Por isso a segunda passada e conferida, e por igualdade de
+	/// mascara e nao por "continua valendo a regra".
+	/// ==============================================================================================
+	/// </summary>
+	private void OFunilDaCrateraReprovaODefeito()
+	{
+		const Jandirus.Core.Forms.Efeito Cr = Jandirus.Core.Forms.Efeito.Cratera;
+		const Jandirus.Core.Forms.Efeito Po = Jandirus.Core.Forms.Efeito.Poeira;
+		const Jandirus.Core.Forms.Efeito As = Jandirus.Core.Forms.Efeito.Assumir;
+
+		// O `Beats` de uma `Cinematica` E o funil (ele mora no `init`), entao montar a cena JA e
+		// aplica-lo. Nao ha como pedir "o roteiro cru" de volta -- e e essa a garantia que o Core da.
+		static Jandirus.Core.Forms.Cinematica Cena(params Jandirus.Core.Forms.Beat[] bs) =>
+			new() { Forma = "teste_do_funil", SegundosPreso = 20.0, Beats = bs };
+
+		// --- 1. A CRATERA ESCRITA NO MEIO ------------------------------------
+		Jandirus.Core.Forms.Cinematica m = Cena(
+			new(2.0, Jandirus.Core.Forms.Efeito.AuraGrande),
+			new(10.0, Cr | Po | Jandirus.Core.Forms.Efeito.Tremor),   // o defeito do dono, literal
+			new(20.0, As),
+			new(22.0, Jandirus.Core.Forms.Efeito.Tremor));
+		Conferir(!m.Beats[1].Faz.HasFlag(Cr) && !m.Beats[1].Faz.HasFlag(Po),
+				 $"funil: a cratera escrita no MEIO sai de la ({m.Beats[1].Faz})");
+		Conferir(m.Beats[1].Faz.HasFlag(Jandirus.Core.Forms.Efeito.Tremor),
+				 $"funil: ...e o resto daquele beat fica intacto ({m.Beats[1].Faz})");
+		Conferir(m.Beats[2].Faz.HasFlag(Cr) && m.Beats[2].Faz.HasFlag(Po),
+				 $"funil: ela reaparece no beat que ASSUME, com a poeira ({m.Beats[2].Faz})");
+		Conferir(m.Beats.Count(b => b.Faz.HasFlag(Cr)) == 1,
+				 "funil: e sobra uma cratera so no roteiro inteiro");
+
+		// --- 2. A POEIRA SOLTA, LONGE DE QUALQUER CRATERA --------------------
+		Jandirus.Core.Forms.Cinematica p = Cena(
+			new(1.0, Po), new(5.0, Po), new(12.0, Po | Jandirus.Core.Forms.Efeito.Raios),
+			new(20.0, As), new(22.0, Po));
+		Conferir(p.Beats.Take(3).All(b => !b.Faz.HasFlag(Po)),
+				 "funil: as tres poeiras soltas ANTES da troca foram apagadas");
+		Conferir(p.Beats[2].Faz.HasFlag(Jandirus.Core.Forms.Efeito.Raios),
+				 $"funil: ...e a faisca que dividia o beat com ela ficou ({p.Beats[2].Faz})");
+		Conferir(p.Beats[4].Faz.HasFlag(Po) && !p.Beats[4].Faz.HasFlag(Cr),
+				 $"funil: a da CAUDA fica (e a poeira baixando), sem cratera junto ({p.Beats[4].Faz})");
+
+		// --- 3. DUAS CRATERAS, DOS DOIS LADOS DA TROCA -----------------------
+		// O caso que separa "o funil poe" de "o funil MANDA": um que so soubesse acrescentar deixaria
+		// as tres em pe, e a cena teria buraco antes, no meio e depois da transformacao.
+		Jandirus.Core.Forms.Cinematica d = Cena(
+			new(3.0, Cr | Po), new(20.0, As), new(24.0, Cr | Po));
+		Conferir(d.Beats.Count(b => b.Faz.HasFlag(Cr)) == 1,
+				 $"funil: das duas crateras escritas a mao sobra UMA "
+			   + $"({d.Beats.Count(b => b.Faz.HasFlag(Cr))})");
+		Conferir(d.Beats[1].Faz.HasFlag(Cr), "funil: e a que sobrou e a do beat que assume");
+		Conferir(!d.Beats[0].Faz.HasFlag(Po), "funil: a poeira de antes da troca saiu com a cratera dela");
+
+		// --- 4. SEM QUEM ASSUMA, NAO SE INVENTA INSTANTE ---------------------
+		Jandirus.Core.Forms.Cinematica s = Cena(new(2.0, Cr | Po), new(10.0, Po));
+		Conferir(s.Beats.All(b => !b.Faz.HasFlag(Cr) && !b.Faz.HasFlag(Po)),
+				 "funil: roteiro SEM beat que assume fica sem cratera e sem poeira "
+			   + "-- a cena defeituosa reprova em vez de se disfarcar");
+
+		// --- 5. A SEGUNDA PASSADA NAO ACUMULA (o que o `Encurtar` faz) -------
+		Jandirus.Core.Forms.Cinematica outraVez = Cena([.. m.Beats]);
+		Conferir(outraVez.Beats.Length == m.Beats.Length
+				 && !outraVez.Beats.Where((b, i) => b.Faz != m.Beats[i].Faz).Any(),
+				 "funil: reconstruir uma cena JA funilada da exatamente a mesma cena (idempotente)");
 	}
 
 	// =====================================================================
@@ -959,6 +1310,29 @@ public partial class RoboDeForma : Node
 		Conferir(nomes == Jandirus.Core.Forms.Cinematicas.Todas.Length,
 				 $"nenhuma forma tem duas cenas em `Todas` ({nomes} nomes pra "
 			   + $"{Jandirus.Core.Forms.Cinematicas.Todas.Length} entradas)");
+
+		// ============================ A TEMPESTADE E DE UMA CENA SO ============================
+		// *"o ssj1 na cinematica da PRIMEIRA VEZ"*. A varredura das 64 cenas (`NoCorpo`) mede cada uma
+		// contra o proprio `OCeuDescarrega` dela, e por isso ela e verdadeira pra qualquer resposta que
+		// a propriedade der -- se um dia ela devolvesse `true` pro catalogo inteiro, trinta e quatro
+		// cinematicas ganhariam tempestade e o placar la continuaria verde.
+		//
+		// Esta linha pergunta a outra metade, e ela e uma AFIRMACAO sobre o recorte: uma cena, esta
+		// cena, e a versao cheia dela. As tres partes estao aqui porque as tres foram pedidas, e cada
+		// uma tem um jeito proprio de se perder:
+		//   * `== 1` pega a propriedade generalizando (um `Musica.Length > 0` sozinho daria 34);
+		//   * `ssj1` pega a propriedade mirando na forma errada;
+		//   * a ENCURTADA falsa pega o "so na primeira vez" vazando -- que e o unico dos tres que o
+		//     jogador veria como defeito de jogo (tempestade em toda transformacao) e nao como efeito.
+		// ==================================================================================
+		Jandirus.Core.Forms.Cinematica[] comCeu =
+			[.. Jandirus.Core.Forms.Cinematicas.Todas.Where(c => c.OCeuDescarrega)];
+		Conferir(comCeu.Length == 1 && comCeu[0].Forma == Jandirus.Core.Forms.Catalogo.IdSsj1,
+				 "so a estreia do SSJ1 parte o ceu de ponta a ponta "
+			   + $"({comCeu.Length}: {string.Join(", ", comCeu.Select(c => c.Forma))})");
+		Conferir(comCeu.Length != 1
+				 || !Jandirus.Core.Forms.Cinematicas.Encurtada(comCeu[0]).OCeuDescarrega,
+				 "e a versao ENCURTADA dela nao parte -- a tempestade e da PRIMEIRA vez");
 	}
 
 	// =====================================================================
@@ -2112,6 +2486,33 @@ public partial class RoboDeForma : Node
 		Conferir(leves.Max() <= 2, $"o crepitar do SSJ2 nunca passa de 2 raios (maior: {leves.Max()})");
 		Conferir(leves.Max() < 4, "o teto do SSJ2 e MENOR que o do SSJ3");
 
+		// ============================ A GROSSURA AFINOU SEM PERDER A VARIACAO ============================
+		// O pedido do dono tem DUAS metades e uma delas e facil de perder: baixar a media e trivial,
+		// manter a variacao e o que um "conserto" futuro apaga sem perceber (basta escrever a
+		// grossura pronta no C# e pronto -- todos os raios voltam a sair iguais, e nenhuma foto
+		// mostra isso porque a foto tem UM raio).
+		//
+		// Entao a bancada mede as tres propriedades separadas: (1) a base ainda desce com a
+		// intensidade da forma, (2) a queda e MULTIPLICADOR e nao teto -- teto cortaria so o degrau
+		// de cima e apagaria a distancia entre SSJ2 e SSJ3 -- e (3) cada raio ainda sorteia a
+		// grossura dele.
+		// ==========================================================================================
+		float baseLeve = raios.GrossuraBaseDeTeste;
+		raios.Definir(true, new Color(Jandirus.Core.Forms.Catalogo.CorDosRaios(forte)), forte.Raios);
+		float baseForte = raios.GrossuraBaseDeTeste;
+		_passos.Add($"  --     grossura base: leve {baseLeve:0.###} · cheio {baseForte:0.###}"
+					+ " (x afinar x sorteio por particula, no shader)");
+		Conferir(baseForte < baseLeve,
+				 $"a grossura base ainda desce com a forma ({baseForte:0.###} < {baseLeve:0.###})");
+		Conferir(raios.BotoesDaGrossuraIntactosDeTeste,
+				 "o C# NAO escreve os botoes da grossura (senao o dono perde a afinacao sem recompilar)");
+		Conferir(shRaio?.Code?.Contains("grossura * afinar") == true,
+				 "a queda da grossura e proporcional (multiplicador, nao teto)");
+		Conferir(shRaio?.Code?.Contains("variacao_grossura * (sgrossura") == true,
+				 "e cada raio continua sorteando a grossura dele pela propria semente");
+
+		AGrossuraEmPixel(raios, shRaio);
+
 		// O CONTORNO SOBE COM A FORMA.
 		Conferir(vivosPorForma.First(v => v.Id == "ssj3").Contorno
 				 > vivosPorForma.First(v => v.Id == "ssj1").Contorno,
@@ -2677,7 +3078,19 @@ public partial class RoboDeForma : Node
 					? Jandirus.Core.Forms.FolhaDeAura.DeusFrio : Jandirus.Core.Forms.FolhaDeAura.DeusQuente,
 				Jandirus.Core.Forms.LinhaDeForma.GodKiRose => d.Ordem >= 20
 					? Jandirus.Core.Forms.FolhaDeAura.DeusRosa : Jandirus.Core.Forms.FolhaDeAura.DeusQuente,
-				Jandirus.Core.Forms.LinhaDeForma.Mistico => Jandirus.Core.Forms.FolhaDeAura.DeusQuente,
+				// A LINHA DO MISTICO NAO TEM RAMO, e a ausencia e a regra: havia aqui um
+				// `Mistico => DeusQuente` (o ramo do DM) e o dono derrubou os dois degraus --
+				// *"o mistico e beast tao usando a aura de carga do ssj god"*. Eles caem na COLORIVEL,
+				// que e a unica folha que aceita a cor que cada um deles ja declara. Ver `Catalogo.Folha`.
+				// A LINHA DO ULTRA INSTINTO NAO TEM FOLHA: ela tem a NUVEM. Ela caia neste `_ => Base`
+				// -- e era o defeito, nao a regra: o `colorablebigaura` acendia POR CIMA da nebulosa.
+				Jandirus.Core.Forms.LinhaDeForma.UltraInstinct => Jandirus.Core.Forms.FolhaDeAura.Nebulosa,
+				// E O `ultra_ego` TAMBEM, mas SO ele: *"a aura/carga do ultra ego e a mesma do instinto
+				// superior so q ROXA"*. A `destroyer` (Ordem 10) fica na colorivel com o `9b4dff` dela --
+				// o cabelo e a cena sao a diferenca visual entre as duas (`UltraEgo.dm:395-396`), e a
+				// nuvem nas duas apagaria isso. O corte por `Ordem` e o mesmo das divinas acima.
+				Jandirus.Core.Forms.LinhaDeForma.UltraEgo when d.Ordem >= 20
+					=> Jandirus.Core.Forms.FolhaDeAura.Nebulosa,
 				_ => Jandirus.Core.Forms.FolhaDeAura.Base,
 			};
 			var f = Jandirus.Core.Forms.Catalogo.Folha(d);
@@ -2685,19 +3098,41 @@ public partial class RoboDeForma : Node
 			porFolha[f] = porFolha.GetValueOrDefault(f) + 1;
 		}
 		// UMA CONTAGEM POR FOLHA, porque "todas Base" tambem passaria em todas as linhas acima se o
-		// resolvedor devolvesse Base sempre. As SEIS tem que aparecer -- uma folha com zero entradas e
+		// resolvedor devolvesse Base sempre. As SETE tem que aparecer -- uma folha com zero entradas e
 		// arte importada e morta, que e exatamente o que as duas divinas eram ate esta varredura.
-		Conferir(porFolha.Count == 6,
-				 "o catalogo usa as SEIS folhas ("
+		//
+		// A SETIMA NAO E ARTE: e a `Nebulosa`, o simbolo que diz "esta forma nao usa folha" (ver o Core).
+		// Ela conta aqui pelo mesmo motivo das outras -- se a linha do Ultra Instinto voltasse a cair na
+		// `Base`, este numero cairia pra seis e a chama voltaria a acender por cima da nuvem.
+		Conferir(porFolha.Count == 7,
+				 "o catalogo usa as SETE folhas ("
 			   + string.Join(", ", porFolha.OrderBy(p => p.Key).Select(p => $"{p.Key} {p.Value}")) + ")");
 
 		// ============================ E TODAS EXISTEM MESMO NO DISCO ============================
 		// Percorrer o ENUM e nao uma lista escrita a mao: foi assim que as duas divinas passaram anos
 		// convertidas, importadas e nao citadas por nenhum `.cs`. Uma folha nova que nao tenha `.tres`
 		// (ou que o Godot nunca tenha importado) reprova aqui, e nao vira uma aura invisivel em jogo.
+		//
+		// ============================ E O SIMBOLO SEM ARQUIVO E COBRADO PELO AVESSO ============================
+		// A `FolhaDeAura.Nebulosa` NAO tem `.tres`, de proposito -- ela e o jeito de o Core dizer "esta
+		// forma nao usa folha" (o Ultra Instinto desenha a nuvem). Pular a entrada em silencio seria
+		// abrir um buraco do tamanho do enum: qualquer folha nova que alguem esquecesse de traduzir
+		// devolveria nulo e passaria por aqui sem uma palavra.
+		//
+		// Entao o nulo e uma AFIRMACAO e nao uma excecao: exatamente UM simbolo pode nao ter arquivo, e
+		// tem que ser a `Nebulosa`. Um `CaminhoDa` que devolvesse nulo pra qualquer outro cai aqui.
+		// ==================================================================================================
 		foreach (Jandirus.Core.Forms.FolhaDeAura fl in Enum.GetValues<Jandirus.Core.Forms.FolhaDeAura>())
-			Conferir(ResourceLoader.Exists(SpriteDeAura.CaminhoDa(fl)),
-					 $"a folha {fl} existe e esta IMPORTADA ({SpriteDeAura.CaminhoDa(fl).GetFile()})");
+		{
+			if (SpriteDeAura.CaminhoDa(fl) is not { } cm)
+			{
+				Conferir(fl == Jandirus.Core.Forms.FolhaDeAura.Nebulosa,
+						 $"a folha {fl} nao tem arquivo, e a UNICA que pode nao ter e a Nebulosa "
+					   + "(o simbolo de 'esta forma nao usa folha')");
+				continue;
+			}
+			Conferir(ResourceLoader.Exists(cm), $"a folha {fl} existe e esta IMPORTADA ({cm.GetFile()})");
+		}
 
 		// ============================ E "EXISTE" NAO E "IMPORTADA": ELAS TEM QUE CARREGAR ============================
 		// O `ResourceLoader.Exists` responde sobre o ARQUIVO `.tres`, e o `.tres` e so uma lista de
@@ -2715,7 +3150,8 @@ public partial class RoboDeForma : Node
 		// ========================================================================================================
 		foreach (Jandirus.Core.Forms.FolhaDeAura fl in Enum.GetValues<Jandirus.Core.Forms.FolhaDeAura>())
 		{
-			string caminho = SpriteDeAura.CaminhoDa(fl);
+			// A `Nebulosa` nao tem arquivo pra carregar -- a linha de cima ja cobrou que ela e a unica.
+			if (SpriteDeAura.CaminhoDa(fl) is not { } caminho) continue;
 			var folha = ResourceLoader.Load<SpriteFrames>(caminho);
 			int quadros = 0, semTextura = 0;
 			if (folha != null)
@@ -2774,14 +3210,54 @@ public partial class RoboDeForma : Node
 			// folha nova que so um dos dois desenhos conhecesse sairia certa na aura e errada na carga.
 			foreach (Jandirus.Core.Forms.FolhaDeAura fl in Enum.GetValues<Jandirus.Core.Forms.FolhaDeAura>())
 			{
-				string esperado = SpriteDeAura.CaminhoDa(fl);
 				aura.Folha(fl);
 				cgt.Folha(fl);
-				Conferir(aura.DesenhoDeTeste.FolhaDeTeste == esperado,
+
+				// ============================ E O SIMBOLO SEM ARQUIVO CALA OS DOIS, NO MESMO INSTANTE ============================
+				// Este e o requisito "nao pode empilhar duas chamas" medido na sua forma mais forte. A
+				// queixa original do dono era uma chama por cima da outra (foto); em Ultra Instinto o
+				// numero certo de chamas nao e uma, e ZERO -- o desenho e a nuvem.
+				//
+				// Os DOIS sao perguntados porque sao dois `SpriteDeAura` distintos, e este arquivo ja
+				// registrou o que custa ensinar so um deles ("em Super Saiyajin o C acendia a folha da
+				// BASE tingida"). `SemFolha` e a medida certa e nao `Visible`: um sprite apagado por estar
+				// em repouso tambem daria `Visible == false`, e o que se quer saber e se ele PODE acender.
+				// ============================================================================================================
+				if (SpriteDeAura.CaminhoDa(fl) is not { } esperado)
+				{
+					Conferir(aura.DesenhoDeTeste.SemFolha && cgt.DesenhoDeTeste.SemFolha,
+							 $"pra {fl} os DOIS desenhos ficam sem folha -- nenhuma chama pode acender "
+						   + $"(aura {aura.DesenhoDeTeste.SemFolha}, carga {cgt.DesenhoDeTeste.SemFolha})");
+					Conferir(!aura.DesenhoDeTeste.Visible && !cgt.DesenhoDeTeste.Visible,
+							 $"e nenhum dos dois esta desenhando pra {fl}");
+					continue;
+				}
+
+				Conferir(aura.DesenhoDeTeste.FolhaDeTeste == esperado && !aura.DesenhoDeTeste.SemFolha,
 						 $"a AURA usa {esperado.GetFile()} pra {fl}");
-				Conferir(cgt.DesenhoDeTeste.FolhaDeTeste == esperado,
+				Conferir(cgt.DesenhoDeTeste.FolhaDeTeste == esperado && !cgt.DesenhoDeTeste.SemFolha,
 						 $"a CARGA usa {esperado.GetFile()} pra {fl}");
 			}
+
+			// ============================ E A VOLTA REMONTA, QUE E O QUE UM `return` CEDO ESCONDE ============================
+			// Sair do Ultra Instinto tem que devolver a chama. O laco acima termina na ULTIMA folha do
+			// enum -- que hoje e justamente a `Nebulosa` --, entao a linha abaixo faz o caminho de volta
+			// de proposito: sem ela, um `SpriteDeAura` que apagasse a folha e nunca mais remontasse
+			// passaria a rodada inteira verde. (Foi por isso que o `_folha` vai a vazio junto com o
+			// `_semFolha`: com o caminho velho guardado, `DefinirFolha` sairia no `if (_folha == caminho)`
+			// e o sprite ficaria morto pra sempre.)
+			// ==========================================================================================================
+			aura.Folha(Jandirus.Core.Forms.FolhaDeAura.Nebulosa);
+			cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.Nebulosa);
+			aura.Folha(Jandirus.Core.Forms.FolhaDeAura.Ssj);
+			cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.Ssj);
+			Conferir(aura.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaSsj
+				  && !aura.DesenhoDeTeste.SemFolha
+				  && cgt.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaSsj
+				  && !cgt.DesenhoDeTeste.SemFolha,
+					 "e SAIR do Ultra Instinto devolve a folha aos dois desenhos "
+				   + $"(aura {aura.DesenhoDeTeste.FolhaDeTeste.GetFile()}, "
+				   + $"carga {cgt.DesenhoDeTeste.FolhaDeTeste.GetFile()})");
 
 			// ============================ O ROSE DEIXOU DE DIVIDIR O ARQUIVO ============================
 			// Esta medicao ja disse o contrario: `DeusFrio` e `DeusRosa` eram a MESMA `FieryGodBlue` e
@@ -2801,7 +3277,9 @@ public partial class RoboDeForma : Node
 			int naoSePintam = 0;
 			foreach (Jandirus.Core.Forms.FolhaDeAura fl in dedicadas)
 			{
-				vistos.Add(SpriteDeAura.CaminhoDa(fl));
+				// AS QUATRO TEM ARQUIVO POR DEFINICAO (sao as pre-coloridas), entao um nulo aqui derruba a
+				// contagem abaixo em vez de virar um `!` que engoliria o caso.
+				if (SpriteDeAura.CaminhoDa(fl) is { } c) vistos.Add(c);
 				aura.Folha(fl);
 				if (aura.DesenhoDeTeste.SemTinta) naoSePintam++;
 			}
@@ -2819,7 +3297,9 @@ public partial class RoboDeForma : Node
 		else Conferir(false, "o corpo de bancada tem node de Carga");
 
 		aura.Apagar();
-		aura.Preparar(new Color("ffd24a"), 1.2f, true);
+		// A FORMA, e nao mais o par (cor, forca): quem resolve os dois hoje e o proprio node, que e
+		// quem tem a cor pessoal deste corpo (ver `Aura.Preparar`).
+		aura.Preparar(Jandirus.Core.Forms.Catalogo.Def("ssj1"), true);
 		Conferir(!aura.AcesaDeTeste, "PREPARAR nao acende a aura");
 		aura.Acender(new Color("ffd24a"), 1.2f);
 		Conferir(aura.AcesaDeTeste, "ACENDER acende (e o caminho da carga)");
@@ -2845,12 +3325,184 @@ public partial class RoboDeForma : Node
 				 == Jandirus.Core.Forms.FolhaDeAura.DeusFrio, "o Blue acende a chama FRIA (FieryGodBlue)");
 		Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("ssg"))
 				 == Jandirus.Core.Forms.FolhaDeAura.DeusQuente, "o SSG acende a chama QUENTE (FieryGod)");
-		// O MISTICO CAI NA QUENTE JUNTO COM O SSG, e nao na base: no DM ele roda com `ssj == 0` porque
-		// o proprio buff chama `Revert()` -- e o ramo do `AuraObject.dm` que ele encontra e o do SSG.
-		Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("mistico"))
-				 == Jandirus.Core.Forms.FolhaDeAura.DeusQuente, "o Mistico cai na MESMA chama do SSG");
+		// ============================ E A LINHA DO MISTICO SAIU DA QUENTE ============================
+		// Esta linha dizia o CONTRARIO ate agora ("o Mistico cai na MESMA chama do SSG"), e era leitura
+		// certa do DM. O dono derrubou: *"o mistico e beast tao usando a aura de carga do ssj god"* --
+		// os DOIS. Os dois voltaram pra a folha COLORIVEL, que e a unica que aceita cor de fora.
+		//
+		// OS DOIS JUNTOS NUMA LINHA SO de proposito: a queixa foi sobre a LINHA, e um conserto que
+		// pegasse so um dos degraus e o jeito mais provavel de isto reaparecer.
+		//
+		// COMO REPROVA SE A REGRA SUMIR: devolva o ramo `LinhaDeForma.Mistico => FolhaDeAura.DeusQuente`
+		// ao `Catalogo.Folha` -- a chama do SSG volta aos dois e esta linha cai, junto com a de baixo.
+		foreach (string prodigial in new[] { "mistico", "beast" })
+			Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def(prodigial))
+					 == Jandirus.Core.Forms.FolhaDeAura.Base,
+					 $"`{prodigial}` NAO usa mais a chama do SSG -- ele acende a folha colorivel "
+				   + $"(deu {Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def(prodigial))})");
+
+		// E ELA SE TINGE MESMO. A folha certa com `PreColorida` verdadeira seria pior que a folha
+		// errada: os dois sairiam CINZAS e nenhuma checagem de cor acusaria -- a cor continuaria certa
+		// no catalogo, certa no node, e jogada fora no shader.
+		Conferir(!SpriteDeAura.PreColorida(Jandirus.Core.Forms.FolhaDeAura.Base),
+				 "-- e essa folha ACEITA cor de fora (senao as duas chamas saem cinzas e iguais)");
+
+		// ============================ E A COR DE CADA UM DOS DOIS VEM DE UM LUGAR DIFERENTE ============================
+		// A folha e a mesma; a COR nao. E esta e a distincao que o par `SemTinta`/`PreColorida` nao
+		// sabe fazer -- "a folha aceita cor" nao diz de QUEM e a cor. Ver `Catalogo.ChamaDoJogador`.
+		//
+		//   `mistico` -> a chama do JOGADOR (*"a mesma aura da BASE DO PERSONAGEM"*), que hoje e a cor
+		//                SORTEADA de cada personagem. E ela e IGUAL a da base, medida, e nao "parecida";
+		//   `beast`   -> o `7d5af0` que a propria entrada dele declara (`Mystic.dm:95`), que ate esta
+		//                passada NAO CHEGAVA EM PIXEL NENHUM: a `FieryGod` nao se tinge.
+		//
+		// COMO REPROVA SE A REGRA SUMIR: apague o ramo `Mistico` do `ChamaDoJogador` e a primeira vira
+		// o `d8c8ff` do catalogo; devolva o Beast pra ele e a segunda vira a cor do jogador.
+		//
+		// E A COR PESSOAL AQUI NAO E O FALLBACK (ver `CorPessoalDeTeste`): com o `Aura.CorDoKiCru` no
+		// lugar dela, estas duas linhas ficariam verdes num jogo em que a cor sorteada nunca saisse do
+		// save.
+		Conferir(Aura.CorDaChamaDe(Jandirus.Core.Forms.Catalogo.Def("mistico"), CorPessoalDeTeste)
+					 .IsEqualApprox(CorPessoalDeTeste)
+			  && Aura.CorDaChamaDe(Jandirus.Core.Forms.Catalogo.Def("mistico"), CorPessoalDeTeste)
+					 .IsEqualApprox(Aura.CorDaChamaDe(Jandirus.Core.Forms.Catalogo.Def("base"),
+													  CorPessoalDeTeste)),
+				 "a chama do Mistico e a MESMA da base do personagem (#"
+			   + $"{Aura.CorDaChamaDe(Jandirus.Core.Forms.Catalogo.Def("mistico"), CorPessoalDeTeste).ToHtml(false)})");
+		Conferir(Aura.CorDaChamaDe(Jandirus.Core.Forms.Catalogo.Def("beast"), CorPessoalDeTeste)
+					 .IsEqualApprox(new Color("7d5af0")),
+				 "e a da Fera e o roxo que a entrada dela declara (#"
+			   + $"{Aura.CorDaChamaDe(Jandirus.Core.Forms.Catalogo.Def("beast"), CorPessoalDeTeste).ToHtml(false)})");
+
+		// ============================ O SORTEIO EM SI, QUE E O QUE ALIMENTA TUDO ISSO ============================
+		// Duas propriedades, e as duas sao do DM e nao de gosto:
+		//
+		//   FAIXA -- `min(255, 200 + rand(0,255))` nunca desce de 200. O `200` e o tom dominante da
+		//            `colorablebigaura` (`c8c8c8`), e o shader normaliza por ele (`PicoDaFolha`); um
+		//            canal abaixo disso seria uma chama que o DM nao sabe produzir. Portar o `rand`
+		//            CRU -- o erro obvio -- daria media 127 e reprovaria aqui.
+		//   MAIORIA BRANCA -- o dono lembrou que "a mais comum e a branca", e isso nao e um peso: e a
+		//            saturacao. ~79% de chance por canal de estourar em 255, ~49% nos tres.
+		//
+		// ESTAVEL, por ultimo: a cor de um personagem e funcao PURA de nome + `CriadoEm`, e e essa
+		// pureza que faz a migracao do save antigo existir sem ramo nenhum (ver `CorDeAura.De`).
+		// ==================================================================================================
+		{
+			int brancas = 0, forasDeFaixa = 0;
+			for (int i = 0; i < 2000; i++)
+			{
+				Jandirus.Core.Appearance.Rgb c = Jandirus.Core.Appearance.CorDeAura.Sortear((ulong)i);
+				if (c.R < Jandirus.Core.Appearance.CorDeAura.PicoDaFolha
+					|| c.G < Jandirus.Core.Appearance.CorDeAura.PicoDaFolha
+					|| c.B < Jandirus.Core.Appearance.CorDeAura.PicoDaFolha) forasDeFaixa++;
+				if (c.R == 255 && c.G == 255 && c.B == 255) brancas++;
+			}
+			Conferir(forasDeFaixa == 0,
+					 $"o sorteio da aura nunca desce de {Jandirus.Core.Appearance.CorDeAura.PicoDaFolha} "
+				   + $"em canal nenhum ({forasDeFaixa} fora da faixa em 2000)");
+			Conferir(brancas > 800 && brancas < 1200,
+					 $"e a aura mais comum e a BRANCA, por saturacao e nao por peso ({brancas}/2000, "
+				   + "esperado ~980)");
+
+			Jandirus.Core.Appearance.Rgb a1 = Jandirus.Core.Appearance.CorDeAura.De("Zx", 1_700_000_000_000L);
+			Jandirus.Core.Appearance.Rgb a2 = Jandirus.Core.Appearance.CorDeAura.De("Zx", 1_700_000_000_000L);
+			Conferir(a1.R == a2.R && a1.G == a2.G && a1.B == a2.B,
+					 $"a cor derivada do mesmo personagem e SEMPRE a mesma ({a1}) -- e por isso que o "
+				   + "save antigo nao precisa de campo nem de migracao");
+
+			// E NAO E UMA CONSTANTE. Comparar DOIS personagens nao serviria: metade dos sorteios da
+			// branco puro, entao dois quaisquer batem em ~24% das vezes e a bancada piscaria vermelha
+			// sozinha uma vez a cada quatro. O que se mede e a POPULACAO -- com ~51% de nao-brancas,
+			// cem personagens tem que produzir dezenas de tons distintos.
+			var tons = new HashSet<string>();
+			for (int i = 0; i < 100; i++)
+				tons.Add(Jandirus.Core.Appearance.CorDeAura.De($"Lutador{i}", 1_700_000_000_000L).ToString());
+			Conferir(tons.Count >= 20,
+					 $"e cem personagens produzem {tons.Count} tons distintos -- a derivacao varia com "
+				   + "o personagem, e nao com o processo");
+		}
+
+		// E A FORCA CONTINUA SEPARANDO OS DOIS DA BASE. Cor igual nao pode virar chama igual: o
+		// Mistico e uma transformacao de 16x, e o que o distingue da base e a DENSIDADE.
+		Conferir(Aura.ForcaDaChamaDe(Jandirus.Core.Forms.Catalogo.Def("mistico"))
+				 > Aura.ForcaDaChamaDe(Jandirus.Core.Forms.Catalogo.Def("base")),
+				 "-- mas a chama dele e mais DENSA que a da base (a cor e do jogador, a forca e da forma)");
+
+		// ============================ E AGORA NO **MATERIAL**, QUE E OUTRA PERGUNTA ============================
+		// Tudo o que esta acima e INTENCAO: funcoes puras conferidas contra hexa. Este projeto ja pagou
+		// caro por parar ai -- quatro defeitos visuais atravessaram milhares de checagens verdes porque
+		// "uniform escrito" nao e "pixel desenhado". As tres linhas acima ficariam verdes com a folha
+		// pre-colorida (a cor certa jogada fora pelo shader) e com o desenho nunca montado.
+		//
+		// ENTAO AQUI SE PERCORRE O CAMINHO DE VERDADE, o mesmo do `World.PrepararAuraDaForma`: escolhe
+		// a folha pelo simbolo do Core, acende com a cor e a forca derivadas, e le a cor DE VOLTA do
+		// `ShaderMaterial` -- que so existe depois do `Montar()`. `CorNoMaterialDeTeste` nulo quer
+		// dizer "nao ha o que medir", e isso reprova em vez de passar calado.
+		// ====================================================================================================
+		//
+		// E O TOM DO MISTICO E A COR PESSOAL DESTE SUJEITO (`ffd2c8`), e nao mais um hexa fixo: e a
+		// unica maneira de esta linha reprovar se a cor sorteada parar de sair do node. A do Beast
+		// continua sendo a declarada na entrada dele -- ele NAO usa a do jogador.
+		foreach ((string id, string tom) in new[] { ("mistico", "ffd2c8"), ("beast", "7d5af0") })
+			if (Jandirus.Core.Forms.Catalogo.Def(id) is { } df)
+			{
+				aura.Apagar();
+				aura.Folha(Jandirus.Core.Forms.Catalogo.Folha(df));
+				aura.Acender(Aura.CorDaChamaDe(df, CorPessoalDeTeste), Aura.ForcaDaChamaDe(df));
+				// DUAS COMPARACOES E NENHUMA E REDUNDANTE. Contra a funcao: e o ENCANAMENTO -- a cor
+				// escolhida chegou inteira ate o `ShaderMaterial`, sem ninguem no meio trocar por
+				// branco. Contra o HEXA escrito: e a cor CERTA -- sem ele, um `CorDaChamaDe` que
+				// devolvesse tudo preto passaria feliz na primeira.
+				//
+				// A FOLGA E DE UM PASSO DE 8 BITS (e nao o `IsEqualApprox`, que exige 1e-5): a
+				// `CorDoKiCru` e escrita como `0.62f` e o hexa mais proximo dela e `9e` = 0,619607 --
+				// meio milesimo de diferenca que nao existe em pixel nenhum, e que reprovava esta
+				// linha imprimindo os dois lados IGUAIS. Erro de bancada, nao de jogo.
+				Color? noMaterial = aura.DesenhoDeTeste.CorNoMaterialDeTeste;
+				var esperada = new Color(tom);
+				const float UmPasso = 1f / 255f;
+				Conferir(noMaterial is { } cm && cm.IsEqualApprox(Aura.CorDaChamaDe(df, CorPessoalDeTeste))
+					  && Mathf.Abs(cm.R - esperada.R) <= UmPasso
+					  && Mathf.Abs(cm.G - esperada.G) <= UmPasso
+					  && Mathf.Abs(cm.B - esperada.B) <= UmPasso,
+						 $"`{id}`: a chama CHEGA no shader em #{tom} "
+					   + $"(deu {(noMaterial is { } c2 ? "#" + c2.ToHtml(false) : "material nao montado")})");
+				Conferir(!aura.DesenhoDeTeste.SemTinta,
+						 $"-- e o desenho dele ACEITA a tinta (senao a cor e descartada e sai a arte crua)");
+			}
+		aura.Apagar();
+		aura.Folha(Jandirus.Core.Forms.FolhaDeAura.Base);
+
 		Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("ssj4"))
 				 == Jandirus.Core.Forms.FolhaDeAura.Ssj, "o SSJ4 usa a folha dourada do SSJ");
+
+		// ============================ O ULTRA INSTINTO NAO TEM CHAMA, E O `TemNebulosa` SAI DAI ============================
+		// As duas metades do pedido do dono, medidas juntas porque hoje elas sao UMA: o simbolo
+		// `Nebulosa` e ao mesmo tempo "nao ha folha" e "ha nuvem" (ver o Core). Enquanto eram dois
+		// predicados, o Ultra Instinto tinha nuvem E caia na `colorablebigaura` -- as duas verdades
+		// discordando, que e a queixa.
+		//
+		// A DERIVACAO E COBRADA NO CATALOGO INTEIRO e nao nos dois ids: um `TemNebulosa` que voltasse a
+		// ser o predicado da linha continuaria certo nas duas formas de UI e poderia divergir da folha em
+		// qualquer degrau novo. O que se afirma e a EQUIVALENCIA, forma por forma.
+		// ==============================================================================================================
+		foreach (string id in new[] { "ui_sign", "ui_perfected", "ultra_ego" })
+			Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def(id))
+					 == Jandirus.Core.Forms.FolhaDeAura.Nebulosa,
+					 $"`{id}` nao usa folha de chama nenhuma -- o desenho dela e a NUVEM");
+		// E A `destroyer` CONTINUA COM CHAMA, nomeada: ela e a irma de linha do `ultra_ego`, e a linha de
+		// cima passaria igual se alguem trocasse o corte por `Ordem` por um ramo de LINHA inteira. Ver
+		// `Catalogo.OrdemDoEgoSobreADestruicao`.
+		Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("destroyer"))
+				 == Jandirus.Core.Forms.FolhaDeAura.Base,
+				 "e a `destroyer` continua na folha COLORIVEL -- o dono nomeou o Ultra Ego, e o cabelo "
+			   + "base e a diferenca visual entre as duas (`UltraEgo.dm:395-396`)");
+		int divergem = Jandirus.Core.Forms.Catalogo.Todas.Count(
+			d => Jandirus.Core.Forms.Catalogo.TemNebulosa(d)
+				 != (Jandirus.Core.Forms.Catalogo.Folha(d) == Jandirus.Core.Forms.FolhaDeAura.Nebulosa));
+		Conferir(divergem == 0,
+				 $"e 'tem nebulosa' e literalmente 'nao tem folha' nas {Jandirus.Core.Forms.Catalogo.Todas.Length} "
+			   + $"formas ({divergem} discordam) -- uma pergunta so, nao duas fontes de verdade");
 
 		// ============================ AS FORMAS QUE NASCEM DA RAIVA ============================
 		// A regra e DERIVADA (ver `Catalogo.NasceDaRaiva`), e derivacao sem teste e palpite: uma
@@ -2978,19 +3630,20 @@ public partial class RoboDeForma : Node
 				 "e o SSG da linha Rose e IGUAL ao SSG comum (era ROSA)");
 		Conferir(Jandirus.Core.Forms.Catalogo.CorDoRabo(Jandirus.Core.Forms.Catalogo.Def("base")) == null,
 				 "na base o rabo NAO se pinta");
-		// O BEAST ENTROU NESTA LISTA: ele TINGE o cabelo de branco-gelo, e sem o corte por linha do
-		// `CorDoRabo` a derivacao "o rabo segue o cabelo" teria vazado pra ele -- que no DM anda com o
-		// rabo na cor base, porque o buff dele chama `Revert()`.
+		// O `beast` SAIU DESTA LISTA, e ele foi o TERCEIRO a sair pelo mesmo caminho. Ele estava aqui
+		// com o motivo certo -- no DM a cauda dele nao pinta, porque o buff chama `Revert()` --, e saiu
+		// por pedido do dono: *"o rabo do beast n ta branco"*. Ver `Catalogo.CorDoRabo`; quem o cobra
+		// agora e o `ORaboMedidoNoDesenho`, que mede o PIXEL e nao o hexa.
 		//
-		// E O `ui_perfected` E O `ultra_ego` SAIRAM DELA nesta passada. Nao foi correcao de leitura do
-		// DM: la eles continuam sem rabo pintado. Foi pedido do dono (*"Perfected Ultra Instinct: o
-		// RABO fica BRANCO"*, *"Ultra Ego: o RABO fica ROXO tambem"*), e as duas cores caem sozinhas da
-		// derivacao que ja existia -- ver `Catalogo.CorDoRabo`, e as linhas que os cobram agora estao
-		// em `AsQuatroDivinas`.
+		// O `ui_perfected` E O `ultra_ego` TINHAM SAIDO ANTES, pelo mesmo motivo (*"Perfected Ultra
+		// Instinct: o RABO fica BRANCO"*, *"Ultra Ego: o RABO fica ROXO tambem"*), e as tres cores caem
+		// sozinhas da derivacao que ja existia.
 		//
-		// OS DOIS IRMAOS DELES FICARAM: `ui_sign` e `destroyer` continuam aqui, e sao eles que provam
-		// que a mudanca foi por DEGRAU e nao por linha.
-		foreach (string semTinta in new[] { "oozaru", "ui_sign", "destroyer", "beast",
+		// OS IRMAOS DE CADA UM DOS TRES FICARAM, e sao eles que provam que a mudanca foi por DEGRAU e
+		// nao por linha: `ui_sign` e `destroyer` nao tem tinta de cabelo, e o **`mistico` tambem nao**
+		// -- ele saiu da lista de exclusao do `CorDoRabo` JUNTO com o Beast (e uma linha so la) e
+		// continua sem rabo pintado por DERIVACAO. Esta linha e o unico lugar que cobra isso aqui.
+		foreach (string semTinta in new[] { "oozaru", "ui_sign", "destroyer",
 										   "mistico", "ssj4", "primal_legendary4" })
 			if (Jandirus.Core.Forms.Catalogo.Def(semTinta) is { } dz)
 				Conferir(Jandirus.Core.Forms.Catalogo.CorDoRabo(dz) == null,
@@ -3100,21 +3753,29 @@ public partial class RoboDeForma : Node
 		// SAO DUAS COISAS SEPARADAS e as duas tem que valer, porque falham em lugares diferentes: o
 		// VOLUME e dado do catalogo (`FormaDef.Raios`) e a COR e derivacao (`CorDosRaios`).
 		//
-		// E A COR E O UNICO CASO DO JOGO QUE NAO E NEM ESCADA DE SANGUE NEM AURA. Ela e branca porque
-		// `Electric_Mystic.dmi` -- a folha do `MysticEffect` (`Mystic.dm:20-23`) -- e neutra, sem matiz
-		// nenhuma; e porque a aura do Mistico e um lilas PALIDO (`d8c8ff`): faisca lilas dentro de chama
-		// lilas e o mesmo defeito verde-sobre-verde que o dono ja mandou consertar no `primal_legendary2`.
+		// E A COR E O UNICO CASO DO JOGO QUE NAO E NEM ESCADA DE SANGUE NEM AURA -- e sao DUAS cores,
+		// nao uma. O VOLUME e da linha inteira (`Mystic.dm:37` e `:112` vestem o MESMO overlay); a COR
+		// se separou quando o dono pediu roxo na Fera.
 		//
-		// COMO REPROVA SE A REGRA SUMIR: tire o ramo `LinhaDeForma.Mistico` do `CorDosRaios` e as duas
-		// linhas de cor caem no `_ => d.Aura` (lilas e roxo). Zere o `Raios` de novo e caem as de volume.
+		//   `mistico` -> `ffffff`, porque `Electric_Mystic.dmi` (a folha do `MysticEffect`,
+		//                `Mystic.dm:20-23`) e neutra, cinco tons sem matiz nenhuma;
+		//   `beast`   -> `d9b0ff`, *"no beast os raiozinhos sao roxos"*.
+		//
+		// AS DUAS SAO COBRADAS CONTRA A AURA DA PROPRIA FORMA, e essa e a parte que nao pode cair: a
+		// faisca nao pode virar a chama de novo (`_ => d.Aura`), que e o defeito verde-sobre-verde do
+		// `primal_legendary2`. Na Fera isso vale DUPLO -- a chama dela agora e `7d5af0`, roxa, e o roxo
+		// da faisca e um roxo DIFERENTE, escolhido pela luminancia (ver `RoxoDaFaiscaDaFera`).
+		//
+		// COMO REPROVA SE A REGRA SUMIR: tire os ramos `LinhaDeForma.Mistico` do `CorDosRaios` e as
+		// duas cores caem no `_ => d.Aura`. Zere o `Raios` de novo e caem as de volume.
 		// ==============================================================================================
-		foreach (string comFaiscaMistica in new[] { "mistico", "beast" })
-			if (Jandirus.Core.Forms.Catalogo.Def(comFaiscaMistica) is { } dmi)
+		foreach ((string id, string tom) in new[] { ("mistico", "ffffff"), ("beast", "d9b0ff") })
+			if (Jandirus.Core.Forms.Catalogo.Def(id) is { } dmi)
 			{
 				Conferir(dmi.Raios > 0,
-						 $"`{comFaiscaMistica}` ACENDE faisca (`Mystic.dm:37` e `:112`) -- volume {dmi.Raios}");
-				Conferir(Jandirus.Core.Forms.Catalogo.CorDosRaios(dmi) == "ffffff",
-						 $"...e ela e BRANCA e nao da cor da aura (#{dmi.Aura}) -- deu "
+						 $"`{id}` ACENDE faisca (`Mystic.dm:37` e `:112`) -- volume {dmi.Raios}");
+				Conferir(Jandirus.Core.Forms.Catalogo.CorDosRaios(dmi) == tom,
+						 $"...e ela e #{tom} e nao a cor da aura dele (#{dmi.Aura}) -- deu "
 					   + $"#{Jandirus.Core.Forms.Catalogo.CorDosRaios(dmi)}");
 			}
 
@@ -3211,6 +3872,10 @@ public partial class RoboDeForma : Node
 		// uma segunda maneira de mexer nele -- ver o comentario do `TetosDeTeste`.
 		int tetosNoCatalogo = Transformacao.TetosDeTeste;
 
+		// LIDO UMA VEZ, e nao por cena: e a mesma folha nas 64. Ver o bloco da vida da pedra, mais
+		// abaixo, pro que ele mede.
+		double cicloDaPedra = CicloDaFolhaDasPedras();
+
 		foreach ((Jandirus.Core.Forms.Cinematica cn, string rotulo) in aRodar)
 		{
 			Jandirus.Core.Forms.FormaDef? df = Jandirus.Core.Forms.Catalogo.Def(cn.Forma);
@@ -3257,16 +3922,85 @@ public partial class RoboDeForma : Node
 			double soltouEm = -1;
 			bool acendeuBase = false;
 			int pedrasMax = 0;
+			// ============================ "DO INICIO AO FIM" SE MEDE POR AMOSTRA, NAO POR PICO ============================
+			// O pedido do dono (*"que ficariam do INICIO AO FIM"*) e sobre COBERTURA, e cobertura e a
+			// unica coisa que um pico nao ve: uma cena que solta trinta pedras num quadro e fica muda
+			// pelos outros vinte e seis segundos tem o mesmo pico de uma que as mantem o tempo todo. Era
+			// exatamente esse o estado anterior -- a melhor cena do arquivo tinha pedra em 46,5% do tempo.
+			//
+			// Entao conta-se em quantos dos instantes amostrados havia pedra viva. So DENTRO da cena: o
+			// laco corre alem do prazo pra provocar o teto, e ali a resposta certa e zero.
+			// =========================================================================================================
+			int amostras = 0, amostrasComPedra = 0;
+			int estragoAntes = PoeiraDeEstrago.PedidosDeTeste;
 			double ateQuando = cn.Segundos + Transformacao.FolgaDoTeto + 1.0;
+
+			// ============================ E A VIDA DE CADA PEDRA SE MEDE NO NODE ============================
+			// Ver <see cref="AVidaDaPedraEADoDm"/> pro enunciado inteiro. O que interessa aqui e por que a
+			// medida e por NODE e nao por campo: a `PedraViva` guarda `Nasce`/`Morre`, e ler aqueles dois
+			// numeros seria perguntar ao tocador o que ele PRETENDIA fazer. Quem some da tela e o node --
+			// e ele tem os dois estados que o olho ve, `Visible` (o `TocarPedras` a acende na hora marcada)
+			// e o `QueueFree`, que marca a morte no MESMO quadro mesmo com a liberacao adiada.
+			//
+			// SO DENTRO DA CENA, e nao ate o fim do bombeamento: depois que a cena se encerra o `_Process`
+			// volta cedo, ninguem mais recolhe pedra, e uma pedra que nunca mais for marcada pareceria
+			// viver ate o fim do laco. Cortar em `cn.Segundos` e o mesmo corte que a cobertura usa, e ele
+			// tambem e a verdade da tela: o `QueueFree` da cena leva as pedras junto.
+			//
+			// ============================ E ELA NAO PODE CUSTAR MAIS QUE O QUE MEDE ============================
+			// O `QueueFree` e ADIADO ate o fim do QUADRO, e este laco bombeia as 64 cenas dentro de UM
+			// quadro so -- entao pedra morta nao sai da arvore: ela se acumula ali ate o fim da rodada.
+			// Numa arvore sa isso e barato (o SSJ3 inteiro produz ~250 pedras), mas o custo cresce com o
+			// numero de NASCIMENTOS, e nascimento e exatamente o que um defeito de vida multiplica.
+			//
+			// Isto ja pagou: com a vida encurtada de proposito pra provar esta checagem, a arvore chegou
+			// a milhares de nodes mortos e a bancada PAROU -- perguntando `IsQueuedForDeletion` a cada um
+			// deles, dez vezes por segundo de cena. Uma bancada que trava quando o defeito aparece nao
+			// reprova o defeito: ela some.
+			//
+			// Duas travas, e as duas sao sobre custo e nao sobre a medida:
+			//   * `mortas` -- a pedra ja recolhida nao e perguntada de novo. Uma vez morta, morta fica;
+			//   * a amostra do CHAO corre a cada 0,5 s e nao a cada 0,1 s. O que se mede aqui vai de 2 a
+			//     40 s; meio segundo de resolucao sobra, e a tolerancia la embaixo ja o absorve.
+			// ==================================================================================================
+			var deQuando = new Dictionary<ulong, double>();
+			var ateQuandoViva = new Dictionary<ulong, double>();
+			var mortas = new HashSet<ulong>();
+			const double PassoDaAmostraDoChao = 0.5;
+			double proximaAmostraDoChao = 0;
+			Node? chao = tc.GetNodeOrNull("Pedras");
+
 			for (double k = 0; k < ateQuando && IsInstanceValid(tc); k += 0.1)
 			{
 				tc._Process(0.1);
 				if (soltouEm < 0 && Transformacao.PresosDeTeste == presosAntes) soltouEm = k;
 				if (tc.AuraBaseDeTeste) acendeuBase = true;
-				// O PICO, e nao o valor do fim: a pedra vive 2 ou 3 ciclos e morre sozinha. Perguntar
-				// "quantas ha agora" depois de bombear a cena inteira mediria o momento em que a
-				// resposta certa e zero nos dois casos.
+				// O PICO, e nao o valor do fim: a pedra morre sozinha quando a animacao dela fecha.
+				// Perguntar "quantas ha agora" depois de bombear a cena inteira mediria o momento em que
+				// a resposta certa e zero nos dois casos.
 				pedrasMax = Math.Max(pedrasMax, tc.PedrasVivasDeTeste);
+				if (k < cn.Segundos)
+				{
+					amostras++;
+					if (tc.PedrasVivasDeTeste > 0) amostrasComPedra++;
+
+					if (k >= proximaAmostraDoChao)
+					{
+						proximaAmostraDoChao = k + PassoDaAmostraDoChao;
+						foreach (Node n in chao?.GetChildren() ?? [])
+						{
+							if (n is not AnimatedSprite2D pedra) continue;
+							ulong quem = pedra.GetInstanceId();
+							if (mortas.Contains(quem)) continue;
+							if (pedra.IsQueuedForDeletion()) { mortas.Add(quem); continue; }
+							// AINDA NAO ACENDEU: o `TocarPedras` a torna visivel na hora sorteada. Contar
+							// daqui seria contar a espera dela junto com a vida.
+							if (!pedra.Visible) continue;
+							if (!deQuando.ContainsKey(quem)) deQuando[quem] = k;
+							ateQuandoViva[quem] = k;
+						}
+					}
+				}
 			}
 			Conferir(soltouEm >= 0, $"`{rotulo}`: SOLTOU o corpo (senao o jogador trava pra sempre)");
 
@@ -3325,33 +4059,208 @@ public partial class RoboDeForma : Node
 					 $"`{rotulo}`: e o TETO NAO disparou nela -- rodou {ateQuando:0.#}s, "
 				   + $"{Transformacao.FolgaDoTeto:0.#}s alem do prazo, e soltou {Transformacao.TetosDeTeste - tetosAntes} aviso(s)");
 
-			// ============================ AS PEDRAS SAO DO ROTEIRO, NOS DOIS SENTIDOS ============================
-			// A checagem dedicada das pedras (`AsPedrasSubindo`) dispara a leva NA MARRA, pra medir grade,
-			// camada e alcance. Ela nao prova que o BEAT chega la -- e o `Efeito.PedrasSubindo` e um bit
-			// num `if` que qualquer refatoracao do `Disparar` pode perder calado.
+			// ============================ AS PEDRAS SAO DA CENA, NOS DOIS SENTIDOS ============================
+			// A checagem dedicada das pedras (`AsPedrasSubindo`) enche o chao NA MARRA, pra medir grade,
+			// camada e alcance. Ela nao prova que o estado da cena CHEGA la -- e o `OChaoSeSolta` e um
+			// `if` que qualquer refatoracao do `TocarPedras` pode perder calado.
 			//
-			// Aqui a pergunta e feita ao roteiro, e nos DOIS sentidos, porque cada lado pega um defeito
+			// Aqui a pergunta e feita a CENA, e nos DOIS sentidos, porque cada lado pega um defeito
 			// diferente:
-			//   * cena com o efeito e sem pedra = o beat nao chegou no `SoltarPedras` (efeito escrito e
-			//     nunca lido, a falha assinatura deste projeto);
-			//   * cena SEM o efeito e com pedra = alguem soltou pedra fora do beat. E e este lado que
-			//     cobre o pedido do dono sobre o macaco -- *"oozaru n tem esse efeito de rocks nem de
+			//   * cena que solta o chao e sem pedra = o estado nao chegou no `NascerPedra` (efeito
+			//     escrito e nunca lido, a falha assinatura deste projeto);
+			//   * cena que NAO solta e com pedra = alguem levantou pedra por fora do gate. E e este lado
+			//     que cobre o pedido do dono sobre o macaco -- *"oozaru n tem esse efeito de rocks nem de
 			//     particulas"* --, porque a cena do Oozaru esta nesta mesma lista.
 			// ================================================================================================
-			bool devePedra = cn.Beats.Any(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.PedrasSubindo));
+			bool devePedra = cn.OChaoSeSolta;
 			Conferir(devePedra ? pedrasMax > 0 : pedrasMax == 0,
-					 $"`{rotulo}`: as pedras casam com o roteiro "
-				   + $"({(devePedra ? "tem" : "nao tem")} beat, nasceram {pedrasMax})");
+					 $"`{rotulo}`: as pedras casam com a cena "
+				   + $"({(devePedra ? "solta" : "nao solta")} o chao, nasceram {pedrasMax})");
+
+			// ============================ E ELAS FICAM, DO INICIO AO FIM ============================
+			// *"deveria ter mais `rising rocks.png` q ficariam do INICIO AO FIM em todas as
+			// transformacoes"*. Esta e a linha que cobra o pedido, e ela nao e a de cima: `pedrasMax > 0`
+			// ficava VERDE com o estado anterior, em que a cena do SSJ1 tinha pedra em 13,1% do tempo.
+			//
+			// O CORTE E 90% e nao 100% porque as duas pontas sao legitimas: a primeira pedra nasce com
+			// ate 0,2 s de atraso (o `if(prob(20)) sleep(1)` da varredura do DM) e a ultima morre ate um
+			// ciclo da folha antes do fim (pedra que nao cabe inteira na cena nao nasce -- ver
+			// `NascerPedra`). Numa cena de 4,6 s isso ja e ~7% dos dois lados somados.
+			//
+			// COMO REPROVA SE A REGRA SUMIR: devolva a pedra ao beat (uma leva por `Efeito`) e a
+			// cobertura despenca pra faixa de 13% a 46% nas 64 cenas -- que e o numero medido antes
+			// deste passe.
+			// ==================================================================================
+			if (devePedra && amostras > 0)
+			{
+				double cobertura = amostrasComPedra / (double)amostras;
+				Conferir(cobertura >= 0.90,
+						 $"`{rotulo}`: e ha pedra viva do inicio ao fim ({cobertura * 100:0.#}% da cena, "
+					   + $"{amostrasComPedra} de {amostras} amostras)");
+			}
+
+			// ============================ E CADA UMA DURA O QUE O DM MANDA ============================
+			// *"aumente a area ... e dura mt pouco"*. A AREA tinha bancada (o alcance e refeito da camera
+			// no `AsPedrasSubindo`); a VIDA nao tinha nenhuma, e ela e a metade da frase que o dono
+			// escreveu. A `VidaMinima`/`VidaMaxima` (10 a 40 s, o `spawn(rand(100,400))` de `dusts.dm:207`)
+			// era um par de constantes que ninguem media -- escritas, e so.
+			//
+			// E A COBERTURA ACIMA NAO A COBRE, que e o ponto: com a vida de volta pros 2,4 s antigos, a
+			// cadencia de reposicao (`_intervaloDePedra`) continua repondo e continua havendo pedra viva
+			// em quase todo instante. A cobertura fica VERDE. O que muda e o que o olho ve -- pedra
+			// piscando em vez de chao solto --, e era exatamente disso que o dono reclamou.
+			//
+			// O QUE SE COBRA E A VIDA OBSERVADA de cada node, contra a faixa DERIVADA:
+			//   * o PISO e `VidaMinima` cortada em ciclos inteiros da folha (a pedra some no fim da
+			//     animacao, nao no meio dela -- ver `NascerPedra`), e ele cede pro que resta de cena
+			//     quando a cena e mais curta que isso. Sem essa segunda metade, as cenas de 4,6 s
+			//     reprovariam por obedecer;
+			//   * o TETO e `VidaMaxima`, cru.
+			// O ciclo e RELIDO da folha (ver `CicloDaFolhaDasPedras`) e nao copiado do tocador.
+			//
+			// A ANCORA DOS DOIS NUMEROS ESTA NO `AVidaDaPedraEADoDm`, e ela e obrigatoria: o piso daqui e
+			// DERIVADO da propria `Transformacao.VidaMinima`, entao baixa-la baixa a regua junto. Este
+			// bloco prova que a constante CHEGA na tela; quem prova que ela e a do original e la.
+			//
+			// COMO REPROVA SE A REGRA SUMIR: troque a vida por `ciclo * (2 + GD.Randi() % 2)`, que e
+			// literalmente a linha anterior a este passe, e as 60 cenas que soltam chao caem aqui.
+			// =====================================================================================
+			if (devePedra && cicloDaPedra > 0 && deQuando.Count > 0)
+			{
+				double piso = Math.Max(1, (int)(Transformacao.VidaMinima / cicloDaPedra)) * cicloDaPedra;
+				int curtas = 0, longas = 0;
+				double pior = double.MaxValue, maisLonga = 0;
+				foreach ((ulong quem, double nasceu) in deQuando)
+				{
+					double vista = ateQuandoViva[quem] - nasceu;
+					maisLonga = Math.Max(maisLonga, vista);
+					// A TOLERANCIA E O PASSO DA AMOSTRA DUAS VEZES, e o "duas" custou uma rodada: a
+					// amostra corta os DOIS extremos da vida, nao um. Ela ve a pedra acesa so na
+					// primeira passada DEPOIS de ela acender (perde ate um passo no comeco) e viva pela
+					// ultima vez na ultima passada ANTES de ela morrer (perde ate um passo no fim).
+					// Com um passo so de folga, o SSJ1 reprovou com uma pedra de 8,8 s contra um piso de
+					// 9,6 -- uma pedra perfeita, medida curta pela regua.
+					//
+					// Mais 0,3 pelo pingo de atraso do nascimento (o `if(prob(20)) sleep(1)` do DM). O
+					// total (1,3 s) continua cabendo de sobra no defeito que este bloco existe pra pegar:
+					// a vida antiga era 2,4 s contra um piso de 9,6.
+					if (vista < Math.Min(piso, cn.Segundos - nasceu) - (PassoDaAmostraDoChao * 2 + 0.3))
+					{
+						curtas++;
+						pior = Math.Min(pior, vista);
+					}
+					// O TETO NAO PRECISA DA MESMA FOLGA -- a amostra so sabe medir MENOS que a vida real,
+					// nunca mais --, mas ele a leva pelo mesmo motivo: a regua e uma so.
+					if (vista > Transformacao.VidaMaxima + (PassoDaAmostraDoChao * 2 + 0.3)) longas++;
+				}
+				Conferir(curtas == 0,
+						 $"`{rotulo}`: nenhuma pedra vive menos que os {piso:0.#}s do DM "
+					   + $"({curtas} de {deQuando.Count}"
+					   + $"{(curtas > 0 ? $", a pior com {pior:0.##}s" : "")})");
+				Conferir(longas == 0,
+						 $"`{rotulo}`: e nenhuma passa dos {Transformacao.VidaMaxima:0.#}s "
+					   + $"({longas} de {deQuando.Count}, a mais longa com {maisLonga:0.##}s)");
+			}
+
+			// ============================ E A POPULACAO TEM TETO, QUE E O CUSTO ============================
+			// A resposta a *"mais pedras"* foi multiplicar a populacao por quatro (de 10 por leva pra 41
+			// vivas o tempo todo) e a vida por dez. As duas juntas sao o unico jeito de este passe virar
+			// custo: o `while` do `TocarPedras` para no `_alvoDePedras`, e se ele parar de parar a cena
+			// do SSJ3 (143 s, reposicao continua) enche a arvore de node.
+			//
+			// A checagem do `AsPedrasSubindo` cobra o teto ABSOLUTO (uma por tile) num enchimento na
+			// marra. Esta cobra o teto DA CENA, ao vivo, com o relogio correndo -- que e o unico lugar
+			// onde a reposicao existe pra ultrapassa-lo.
+			// ==========================================================================================
+			Conferir(pedrasMax <= tc.AlvoDePedrasDeTeste,
+					 $"`{rotulo}`: a populacao de pedra nao passa do alvo derivado "
+				   + $"({pedrasMax} vivas no pico, alvo {tc.AlvoDePedrasDeTeste})");
+
+			// ============================ E O CEU DESCARREGA, NA CENA CERTA E SO NELA ============================
+			// *"o ssj1 na cinematica da primeira vez, deveria fazer raios cairem durante TODA a
+			// cinematica na regiao q o personagem esta se transformando"*.
+			//
+			// A pergunta e feita a CENA (`OCeuDescarrega`) e nao a um id escrito aqui, entao os DOIS
+			// recortes do pedido caem nesta linha de graca -- esta lista roda as 64 cenas, e as 63 que
+			// nao sao a estreia do SSJ1 (inclusive a ENCURTADA dele, que e uma delas) tem que dar ZERO.
+			// Um "so na primeira vez" que vazasse pra encurtada nao teria como se esconder aqui.
+			//
+			// A FAIXA E LARGA PORQUE O INTERVALO E SORTEADO, e ela e mesmo assim a linha que cobra o
+			// *"durante TODA a cinematica"*: o piso `duracao / DescargaMaxima` so e alcancavel se as
+			// descargas atravessarem a cena inteira. Uma tempestade que parasse no `Assumir`, ou que
+			// virasse um pulso, cai aqui -- "aconteceu pelo menos uma vez" nao cairia.
+			//
+			// A DESCARGA SO SAI EM PLANETA (ver `Transformacao.TocarTempestade`), pelo mesmo motivo e
+			// com a mesma forma da checagem do `DescargaNoCeu` mais abaixo: pergunta-se pela zona em
+			// vez de cravar um dos dois lados.
+			// ====================================================================================================
+			bool ceuAberto = cn.OCeuDescarrega
+						  && Jandirus.Core.World.Espaco.EhPlaneta(GameClient.Instance?.Zone ?? default);
+			int minRaios = ceuAberto ? (int)(cn.Segundos / Cinematicas.DescargaMaxima) : 0;
+			int maxRaios = ceuAberto ? (int)((cn.Segundos + 0.2) / Cinematicas.DescargaMinima) : 0;
+			Conferir(tc.RaiosDaEstreiaDeTeste >= minRaios && tc.RaiosDaEstreiaDeTeste <= maxRaios,
+					 $"`{rotulo}`: o ceu descarrega o quanto a cena manda "
+				   + $"({tc.RaiosDaEstreiaDeTeste} raios, esperado {minRaios}..{maxRaios})");
+
+			// ============================ E ELES CAEM EM VOLTA, NAO EM CIMA ============================
+			// *"na regiao q o personagem esta se transformando"* -- uma AREA, e nao a coordenada dele.
+			// O `Efeito.DescargaNoCeu` do beat atinge o proprio corpo (`_alvo.GlobalPosition`), entao
+			// "raio na cinematica" ja existia com o defeito de sempre cair no mesmo pixel: dezessete
+			// deles ali seriam um estrobo em cima do boneco, e a REGIAO nunca apareceria.
+			//
+			// Duas cobrancas, e as duas sao geometricas porque nenhuma foto as pega (o risco fica
+			// visivel 0,333 s e a bancada nao ve quadro):
+			//   * TODO ponto esta no anel [miolo, `RaioDoTremorCheio`] medido do centro CONGELADO --
+			//     o de dentro prova que nao caiu em cima do sprite, o de fora prova que a tempestade
+			//     nao virou uma tela inteira de raio;
+			//   * ha mais de UM ponto distinto -- um sorteio quebrado que devolvesse sempre o mesmo
+			//     angulo passaria no anel e continuaria sendo o defeito que este bloco existe pra pegar.
+			// ==========================================================================================
+			if (ceuAberto && tc.RaiosDaEstreiaDeTeste > 0)
+			{
+				Vector2[] pontos = tc.PontosDeRaioDeTeste;
+				int foraDoAnel = pontos.Count(p =>
+				{
+					float d = p.DistanceTo(tc.CentroDaTempestadeDeTeste);
+					return d < tc.MioloDaTempestadeDeTeste - 0.01f
+						|| d > Cinematicas.RaioDoTremorCheio + 0.01f;
+				});
+				Conferir(foraDoAnel == 0,
+						 $"`{rotulo}`: todo raio caiu no anel de {tc.MioloDaTempestadeDeTeste:0.#} a "
+					   + $"{Cinematicas.RaioDoTremorCheio:0.#}px do centro ({foraDoAnel} fora)");
+				Conferir(pontos.Distinct().Count() > 1,
+						 $"`{rotulo}`: e eles se espalham pela regiao ({pontos.Distinct().Count()} pontos distintos)");
+			}
+
+			// ============================ E A CENA NAO QUEBRA CENARIO ============================
+			// *"...uns quadrados marrons caindo e criando uma fumaca parecendo q quebrou uma parede ou
+			// objeto, TIRE esse efeito"*. Era o `Efeito.Cascalho` -> `PoeiraDeEstrago.Soltar`.
+			//
+			// O bit foi aposentado, entao o compilador ja impede o caminho ANTIGO. Esta linha impede o
+			// caminho NOVO: uma chamada direta a `PoeiraDeEstrago` de dentro do tocador, que e
+            // literalmente como o efeito entrou na primeira vez. O contador e o da propria classe, medido
+			// em volta da cena inteira -- se qualquer beat pedir um pedaco, ele anda.
+			//
+			// A BANCADA E QUEM TEM QUE PERGUNTAR ISSO, e nao o leitor: cascalho a mais numa cinematica
+			// LE COMO EFEITO, e foi assim que ele sobreviveu ali desde que foi escrito.
+			// =================================================================================
+			Conferir(PoeiraDeEstrago.PedidosDeTeste == estragoAntes,
+					 $"`{rotulo}`: nao pediu UM pedaco de cascalho a `PoeiraDeEstrago` "
+				   + $"({PoeiraDeEstrago.PedidosDeTeste - estragoAntes})");
 
 			// ============================ E OS QUATRO EFEITOS NOVOS, PELA MESMA REGRA ============================
-			// Os quatro do enchimento (anel, cascalho, clarao, descarga) sao exatamente o que a checagem das
+			// Os tres do enchimento (anel, clarao, descarga) sao exatamente o que a checagem das
 			// pedras acima existe pra pegar: um bit num `if` do `Disparar`, que qualquer refatoracao perde
 			// calado -- e a perda e INVISIVEL em jogo, porque uma cena com um efeito a menos continua sendo
 			// uma cena.
 			//
+			// ERAM QUATRO. O cascalho saiu com o efeito (bit 8192 aposentado, cortado pelo dono), e a
+			// checagem dele nao virou nada aqui: ela virou o `PoeiraDeEstrago.PedidosDeTeste` la em cima,
+			// que e mais forte -- em vez de contar disparos do bit, cobra que o SISTEMA nao seja tocado.
+			//
 			// A CONTAGEM E POR BEAT e nao por "aconteceu": o contador do tocador sobe uma vez por disparo,
 			// entao ele tem que bater com quantos beats do roteiro pedem aquilo. "Aconteceu pelo menos uma
-			// vez" passaria numa cena que perdesse oito dos nove beats de cascalho do SSJ3.
+			// vez" passaria numa cena que perdesse oito dos nove beats de anel do SSJ3.
 			//
 			// A DESCARGA E A EXCECAO, e ela e honesta: ela so sai em PLANETA (ver `Transformacao.Descarga`).
 			// A bancada roda na Terra, entao o esperado e o numero cheio; fora de um planeta o esperado
@@ -3363,10 +4272,6 @@ public partial class RoboDeForma : Node
 			Conferir(tc.AneisDeTeste == quantos(Jandirus.Core.Forms.Efeito.AnelDeChoque),
 					 $"`{rotulo}`: os aneis de choque casam com o roteiro "
 				   + $"({tc.AneisDeTeste} de {quantos(Jandirus.Core.Forms.Efeito.AnelDeChoque)})");
-
-			Conferir(tc.CascalhoDeTeste == quantos(Jandirus.Core.Forms.Efeito.Cascalho),
-					 $"`{rotulo}`: o cascalho casa com o roteiro "
-				   + $"({tc.CascalhoDeTeste} de {quantos(Jandirus.Core.Forms.Efeito.Cascalho)})");
 
 			Conferir(tc.ClaroesDeTeste == quantos(Jandirus.Core.Forms.Efeito.ClaraoDeTela),
 					 $"`{rotulo}`: o clarao casa com o roteiro "
@@ -3426,6 +4331,11 @@ public partial class RoboDeForma : Node
 				 $"NENHUMA das {aRodar.Count} cenas do catalogo precisou do teto pra se encerrar "
 			   + $"({Transformacao.TetosDeTeste - tetosNoCatalogo} aviso(s) em "
 			   + $"{Jandirus.Core.Forms.Cinematicas.Todas.Length} cheias + as encurtadas)");
+
+		// AQUI, e nao junto do resto das pedras: este bloco roda DUAS cenas inteiras, e o lugar da
+		// bancada onde rodar cena e rotina e este -- logo depois das 64. Chamado la em cima, no meio da
+		// cena da foto, ele mexeria na pose e no corpo que os blocos seguintes medem.
+		AAreaDaPedraEMedidaENaoEscrita(corpo);
 
 		// ============================ O TETO TEM QUE DISPARAR ============================
 		// "Um teto que nunca dispara e indistinguivel de nao ter teto." Se ele nao existisse, o
@@ -3599,6 +4509,10 @@ public partial class RoboDeForma : Node
 		OContornoDaFeraTrocandoDeCor(vis);
 		OContornoMaisFracoEPulsando(vis);
 		AChegadaNaZona(corpo, vis);
+		// DEPOIS DELA E ANTES DO VARREDOR DE APARENCIA: este bloco veste o SSJ3 no boneco de proposito
+		// (a cena da furia tem que deixar o penteado em paz) e o `AAparenciaInteiraDoDegrau` logo abaixo
+		// devolve o corpo a base de todo jeito, entao ele nao herda nada daqui.
+		ACenaDaFuriaAoVivo(corpo, vis);
 		// POR ULTIMO DOS QUE MEXEM NO BONECO: ele veste as 33 formas uma a uma pra provar que a base
 		// as desfaz todas, e termina devolvendo o corpo a base. Rodar antes deixaria os blocos de
 		// cima medindo um boneco que ele acabou de trocar 66 vezes.
@@ -3629,6 +4543,211 @@ public partial class RoboDeForma : Node
 					_passos.Add($"  --         > {c.Name} ({c.GetType().Name}) pos={c2.Position} "
 							  + $"z={c2.ZIndex} escala={c2.Scale} mod={c2.Modulate}");
 		}
+	}
+
+	// =====================================================================
+	// 3a-bis. A GROSSURA DOS RAIOS, EM PIXEL DE MUNDO -- E A VARIACAO DELA
+	// =====================================================================
+	/// <summary>
+	/// O `ruido()` DO `RaioDaForma.gdshader`, LETRA POR LETRA -- e escrito aqui de proposito.
+	///
+	/// ============================ POR QUE REESCREVER EM VEZ DE PERGUNTAR ============================
+	/// Nao ha a quem perguntar: este hash roda no FRAGMENT, uma vez por pixel, dentro da GPU. Nao existe
+	/// propriedade em node nenhum que devolva "a grossura que o raio numero 3 saiu". Medir isso na tela
+	/// exigiria fotografar a faisca e recortar a luz dela -- que e como o relatorio anterior mediu, na
+	/// mao, com dez fotos e duas rodadas de bandeira trocada, e que nenhuma bancada refaz sozinha.
+	///
+	/// Entao a bancada REAVALIA a conta do fragment. Isso tem um teto que fica dito: ela mede a FORMULA
+	/// com os valores que o shader compilado entrega, e nao o pixel rasterizado -- se a placa desenhar
+	/// outra coisa, esta linha nao ve. O que ela ve, e nenhuma outra linha desta casa vê, e a
+	/// DISTRIBUICAO: media, faixa e desvio de milhares de raios, que e a unica forma do pedido do dono
+	/// ("afinar a media SEM achatar a variacao") que uma foto de um raio nao responde.
+	/// ============================================================================================
+	/// </summary>
+	private static double RuidoDoShader(double x, double y)
+	{
+		// `fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453)` -- em float64. A GPU faz em float32 e o
+		// resultado numerico difere; o que se mede aqui e a DISTRIBUICAO do sorteio, e ela e a mesma nas
+		// duas precisoes (um hash de seno espalha uniforme em [0,1) em qualquer largura de mantissa).
+		double v = Math.Sin(x * 127.1 + y * 311.7) * 43758.5453;
+		return v - Math.Floor(v);
+	}
+
+	/// <summary>
+	/// A GROSSURA DE CADA RAIO EM PIXEL DE MUNDO, sobre uma nuvem de posicoes de emissao.
+	///
+	/// A conta e a do shader mais a do emissor, e as DUAS entram porque as duas variam por particula:
+	///   * `g = grossura x afinar x (1 + variacao x (sorteio x 2 - 1))` -- fracao de UV, o sorteio novo;
+	///   * a ESCALA da particula multiplica o quad inteiro -- a variacao que ja existia antes.
+	/// A largura do nucleo na tela e `2 x g x largura do quad x escala`.
+	///
+	/// A SEMENTE E A POSICAO NO MUNDO, `floor`ada (`MODEL_MATRIX[3].xy` no vertex do shader), entao a
+	/// amostra e uma grade de posicoes inteiras do tamanho da caixa de emissao -- e nao um
+	/// `Random.NextDouble()`, que mediria o gerador do C# em vez do hash que a GPU roda.
+	/// </summary>
+	private static double[] GrossurasEmPixel(float baseG, float afinar, float variacao,
+											 Vector2 escala, float larguraDoQuad)
+	{
+		var saida = new List<double>(64 * 64);
+		for (int sx = -32; sx < 32; sx++)
+			for (int sy = -32; sy < 32; sy++)
+			{
+				double s = RuidoDoShader(sx + 59.0, sy + 5.0);
+				double g = baseG * afinar * (1.0 + variacao * (s * 2.0 - 1.0));
+
+				// A ESCALA E SORTEADA A PARTE pelo `ParticleProcessMaterial` (uniforme entre min e max),
+				// e ela e independente do hash de posicao -- entao aqui ela e varrida em degraus em vez
+				// de sorteada: o produto de duas variaveis independentes se mede pelo produto cartesiano,
+				// e assim a amostra nao depende de semente nenhuma do C#.
+				for (int e = 0; e <= 8; e++)
+				{
+					double esc = escala.X + (escala.Y - escala.X) * (e / 8.0);
+					saida.Add(2.0 * g * larguraDoQuad * esc);
+				}
+			}
+
+		saida.Sort();
+		return [.. saida];
+	}
+
+	/// <summary>Media, decil de baixo, decil de cima, maior e desvio-padrao de uma amostra ORDENADA.</summary>
+	private static (double Media, double P10, double P90, double Maior, double Desvio) Resumo(double[] v)
+	{
+		double soma = 0;
+		foreach (double x in v) soma += x;
+		double media = soma / v.Length;
+
+		double s2 = 0;
+		foreach (double x in v) s2 += (x - media) * (x - media);
+
+		return (media, v[v.Length / 10], v[v.Length * 9 / 10], v[^1], Math.Sqrt(s2 / v.Length));
+	}
+
+	/// <summary>
+	/// AS TRES PERGUNTAS DO PEDIDO, e elas sao uma funcao pra poderem ser exercitadas AO CONTRARIO.
+	///
+	/// O dono pediu duas coisas numa frase -- *"uns sao mt coisa, poderia afinar a MEDIA dos
+	/// raiozinhos"* --, e a segunda metade e a que um conserto futuro apaga sem perceber: achatar todo
+	/// raio num valor so DERRUBA A MEDIA e passaria em qualquer linha que so olhasse a media. Por isso
+	/// sao tres:
+	///
+	///   * A MEDIA CAIU  -- contra a MESMA conta com os botoes neutros (`afinar 1`, `variacao 0`), que e
+	///                      literalmente este shader antes da mudanca. Nao contra um numero cravado: um
+	///                      numero cravado envelhece na primeira vez que a grossura base mudar.
+	///   * A FAIXA SOBREVIVEU -- e ela e cobrada de DOIS jeitos, porque um so tem buraco:
+	///                      (a) o desvio relativo do SORTEIO POR RAIO nao pode ser zero -- e o unico
+	///                          numero que enxerga "achataram tudo", ja que a escala da particula
+	///                          continuaria espalhando sozinha e mascarando o achatamento;
+	///                      (b) a faixa p90/p10 do conjunto tem que ser MAIOR que a de antes -- se o
+	///                          eixo novo desaparecer, ela volta a ser exatamente a de antes.
+	///   * O TOPO NAO VOLTA -- `afinar x (1 + variacao) &lt; 1`: o raio mais gordo que este sorteio
+	///                      consegue produzir tem que ser mais fino que o gordo de antes. Sem esta,
+	///                      subir a variacao devolveria pela cauda o exagero que o multiplicador tirou
+	///                      da media, e as duas de cima continuariam verdes.
+	/// </summary>
+	private static (bool Ok, string Laudo) AGrossuraAfinouSemAchatar(
+		(double Media, double P10, double P90, double Maior, double Desvio) hoje,
+		(double Media, double P10, double P90, double Maior, double Desvio) antes,
+		float afinar, float variacao)
+	{
+		bool caiu = hoje.Media <= antes.Media * 0.80;
+		// O DESVIO DO SORTEIO POR RAIO, isolado da escala: `variacao` uniforme em [-1,1] da desvio
+		// relativo `variacao / raiz(3)`. Cobrar 0,08 e cobrar que o eixo EXISTA (hoje ele da 0,26) sem
+		// cravar o 0,45 de hoje -- o dono pode afinar o botao pra baixo sem a bancada reclamar.
+		bool espalha = variacao / Math.Sqrt(3.0) >= 0.08;
+		bool faixa = hoje.P10 > 0 && antes.P10 > 0
+				  && hoje.P90 / hoje.P10 >= antes.P90 / antes.P10 * 1.15;
+		bool topo = afinar * (1f + variacao) < 1f;
+
+		return (caiu && espalha && faixa && topo,
+				$"media {hoje.Media:0.00} px contra {antes.Media:0.00} de antes [caiu {caiu}]  |  "
+			  + $"faixa p10-p90 {hoje.P10:0.00}-{hoje.P90:0.00} px, razao {hoje.P90 / hoje.P10:0.00} "
+			  + $"contra {antes.P90 / antes.P10:0.00} [sobreviveu {faixa}]  |  desvio do sorteio por raio "
+			  + $"{variacao / Math.Sqrt(3.0):0.000} [espalha {espalha}]  |  maior {hoje.Maior:0.00} px "
+			  + $"contra {antes.Maior:0.00} [topo nao volta {topo}]");
+	}
+
+	/// <inheritdoc cref="AGrossuraAfinouSemAchatar"/>
+	private void AGrossuraEmPixel(RaiosDaForma raios, Shader? shRaio)
+	{
+		if (shRaio == null) { Conferir(false, "o shader do raio carregou (sem ele nao ha o que medir)"); return; }
+
+		// ============================ OS DOIS BOTOES SAIEM DO COMPILADO, E NAO DO TEXTO ============================
+		// `RenderingServer.ShaderGetParameterDefault` devolve o padrao que o servidor de renderizacao
+		// guardou depois de COMPILAR -- e a mesma distincao do bloco `Shaders()`: um `.gdshader` que o
+		// Godot recusou continua com as palavras certas no `Code` e nao entrega padrao nenhum.
+		//
+		// E o `RaiosDaForma` NAO escreve estes dois (a linha `BotoesDaGrossuraIntactosDeTeste`, logo
+		// acima, e quem cobra isso), entao o padrao do arquivo E o valor que desenha.
+		// ======================================================================================================
+		Rid rid = shRaio.GetRid();
+		float afinar = RenderingServer.ShaderGetParameterDefault(rid, "afinar").AsSingle();
+		float variacao = RenderingServer.ShaderGetParameterDefault(rid, "variacao_grossura").AsSingle();
+		Conferir(afinar > 0f,
+				 $"os botoes da grossura vem do shader COMPILADO (afinar={afinar:0.##}, "
+			   + $"variacao={variacao:0.##}) -- zero aqui quer dizer uniform sumido, e nao botao no minimo");
+
+		// A INTENSIDADE 2 e a que o dono reclamou (SSJ3, Limit Breaker, primal_legendary), e e a que o
+		// relatorio anterior fotografou. O node ja esta nela quando este bloco roda.
+		float baseG = raios.GrossuraBaseDeTeste;
+		Vector2 escala = raios.EscalaDaParticulaDeTeste;
+		float larg = RaiosDaForma.LarguraDoQuadDeTeste;
+
+		var hoje = Resumo(GrossurasEmPixel(baseG, afinar, variacao, escala, larg));
+		// O "ANTES" NAO E UM NUMERO GUARDADO: e a mesma funcao com os botoes NEUTROS, que e este shader
+		// no dia anterior a mudanca. Guardar "1,70 px" aqui faria a comparacao envelhecer sozinha na
+		// primeira vez que a grossura base ou o tamanho do quad mudassem -- e a bancada acusaria
+		// regressao numa arte que ninguem mexeu.
+		var antes = Resumo(GrossurasEmPixel(baseG, 1f, 0f, escala, larg));
+
+		_passos.Add($"  --     grossura do NUCLEO em px de mundo (corpo = 32 px), intensidade "
+					+ $"{raios.IntensidadeDeTeste}: hoje media {hoje.Media:0.00} · p10 {hoje.P10:0.00} · "
+					+ $"p90 {hoje.P90:0.00} · maior {hoje.Maior:0.00} · desvio {hoje.Desvio:0.00}");
+		_passos.Add($"  --     com os botoes NEUTROS (o shader de antes): media {antes.Media:0.00} · "
+					+ $"p10 {antes.P10:0.00} · p90 {antes.P90:0.00} · maior {antes.Maior:0.00}");
+
+		(bool ok, string laudo) = AGrossuraAfinouSemAchatar(hoje, antes, afinar, variacao);
+		Conferir(ok, "a media da grossura CAIU e a variacao SOBREVIVEU: " + laudo);
+
+		// ============================ E O JULGAMENTO ENXERGA? OS TRES DEFEITOS INJETADOS ============================
+		// Sem estas tres linhas a de cima seria verde vazio -- e os tres casos sao os tres jeitos
+		// REAIS de esta arte regredir, nao invencoes:
+		//   * alguem devolve `afinar` pra 1 achando que "afinou demais"  -> a media volta;
+		//   * alguem escreve a grossura pronta no C# / zera a variacao    -> todo raio sai igual;
+		//   * alguem sobe a variacao pra "ficar mais variado"             -> a cauda gorda volta.
+		// O terceiro e o mais insidioso: ele mantem a media e passa nas duas primeiras perguntas.
+		// ======================================================================================================
+		_passos.Add("  --     agora os DEFEITOS INJETADOS: as tres linhas abaixo tem que dizer que reprovaram");
+
+		var semAfinar = Resumo(GrossurasEmPixel(baseG, 1f, variacao, escala, larg));
+		Conferir(!AGrossuraAfinouSemAchatar(semAfinar, antes, 1f, variacao).Ok,
+				 "[injetado] `afinar = 1` (a grossura de antes, com sorteio) reprova pela MEDIA -- "
+			   + AGrossuraAfinouSemAchatar(semAfinar, antes, 1f, variacao).Laudo);
+
+		var achatado = Resumo(GrossurasEmPixel(baseG, afinar, 0f, escala, larg));
+		Conferir(!AGrossuraAfinouSemAchatar(achatado, antes, afinar, 0f).Ok,
+				 "[injetado] `variacao = 0` (todo raio com a MESMA grossura) reprova mesmo com a media "
+			   + "la embaixo -- e este e o defeito que uma linha so de media nunca pegaria: "
+			   + AGrossuraAfinouSemAchatar(achatado, antes, afinar, 0f).Laudo);
+
+		var caudaGorda = Resumo(GrossurasEmPixel(baseG, afinar, 0.9f, escala, larg));
+		Conferir(!AGrossuraAfinouSemAchatar(caudaGorda, antes, afinar, 0.9f).Ok,
+				 "[injetado] `variacao = 0,9` devolve o raio 'mt coisa' pela CAUDA (a media continua "
+			   + $"caida, o maior sobe pra {caudaGorda.Maior:0.00} px) e reprova pelo topo");
+
+		// ============================ E A MEDIDA ENXERGA A FORMA, E NAO SO OS BOTOES? ============================
+		// As linhas de cima giram os botoes e comparam. Todas passariam se `GrossurasEmPixel` devolvesse
+		// uma constante vezes os argumentos -- ou seja, se o hash nao sorteasse nada. Esta cobra que o
+		// sorteio POR POSICAO produza valores distintos de verdade: 4096 posicoes de emissao, e a caixa
+		// tem 14x22 px, entao ha posicao repetida no jogo -- mas nao 4096 vezes o mesmo numero.
+		// ====================================================================================================
+		var distintos = new HashSet<long>();
+		for (int sx = -32; sx < 32; sx++)
+			for (int sy = -32; sy < 32; sy++)
+				distintos.Add((long)(RuidoDoShader(sx + 59.0, sy + 5.0) * 1e6));
+		Conferir(distintos.Count > 3500,
+				 $"o sorteio por particula sorteia MESMO ({distintos.Count} valores distintos em 4096 "
+			   + "posicoes de emissao) -- um hash preso devolveria um punhado e a variacao seria enfeite");
 	}
 
 	// =====================================================================
@@ -6205,7 +7324,9 @@ public partial class RoboDeForma : Node
 					 == FolhaDeAura.DeusQuente,
 				 "e o `rose_ssg` continua na chama QUENTE (o corte `ssj==0` do AuraObject.dm)");
 
-		string caminho = SpriteDeAura.CaminhoDa(FolhaDeAura.DeusRosa);
+		// `?? ""` E NAO `!`: um simbolo que perdesse o arquivo cairia nas tres linhas abaixo (nome,
+		// distincao e importacao) em vez de estourar o robo inteiro num quadro qualquer.
+		string caminho = SpriteDeAura.CaminhoDa(FolhaDeAura.DeusRosa) ?? "";
 		Conferir(caminho.GetFile() == "Supa Saiyan Rose Aura-1.tres",
 				 $"e o arquivo dela e a `Supa Saiyan Rose Aura-1` ({caminho.GetFile()})");
 		Conferir(caminho != SpriteDeAura.CaminhoDa(FolhaDeAura.DeusFrio),
@@ -6363,7 +7484,12 @@ public partial class RoboDeForma : Node
 			(LinhaDeForma.GodKiRose, 2, "o mesmo corte, do lado rosa"),
 			(LinhaDeForma.UltraInstinct, 1, "a prata da linha -- o `Buff()` do DM nao ramifica por estagio"),
 			(LinhaDeForma.UltraEgo, 1, "so o degrau que PINTA o cabelo (a Destroyer nao pinta nada)"),
-			(LinhaDeForma.Mistico, 0, "*igual a base, nada muda* -- enunciado do dono"),
+			// ERA ZERO ("*igual a base, nada muda*") e virou UMA quando o dono pediu *"o olho do beast
+			// era pra ser vermelho"*. UMA e nao duas: o Mistico continua sem tocar no olho, e quem
+			// separa os dois e o corte `GodkiRoyalePct`. Esta conta sozinha nao distingue "so a Fera"
+			// de "a linha inteira de vermelho" -- quem faz isso e o `OMisticoSoGanhouAFaisca`, que
+			// cobra o NULO do Mistico entrada por entrada.
+			(LinhaDeForma.Mistico, 1, "so o vermelho da Fera -- o Mistico nao mexe no olho"),
 			(LinhaDeForma.Oozaru, 0, "o macaco nem olho desenhado tem"),
 		];
 		foreach ((LinhaDeForma linha, int cores, string porque) in esperado)
@@ -6375,6 +7501,59 @@ public partial class RoboDeForma : Node
 					 $"a linha {linha} usa {cores} cor(es) de olho -- {porque} "
 				   + $"({string.Join(", ", daLinha.Select(c => "#" + c))})");
 		}
+
+		// =====================================================================
+		// 3. O OLHO DA FERA -- *"o olho do beast era pra ser vermelho"*
+		// =====================================================================
+		// ============================ A CONTAGEM DE CIMA NAO BASTA PRA ESTE ============================
+		// "a linha do Mistico usa UMA cor" fica verde tambem se a cor for do MISTICO e nao do Beast, ou
+		// se for verde em vez de vermelha. As duas linhas abaixo dizem QUAL e DE QUEM.
+		//
+		// O NULO DO MISTICO E TAO PEDIDO QUANTO O VERMELHO DA FERA: o dono nomeou o Beast, e o enunciado
+		// do Mistico e *"tudo igual a base, nada muda"*. Um `LinhaDeForma.Mistico => VermelhoDaFera` sem
+		// o `when` daria os dois de vermelho e passaria na contagem acima.
+		//
+		// E O HEXA E LITERAL, como no resto deste arquivo: comparar com a constante conferiria a
+		// constante com ela mesma e passaria com qualquer valor trocado por engano.
+		if (Jandirus.Core.Forms.Catalogo.Def("beast") is { } feraOlho)
+		{
+			string? olhoDaFera = Jandirus.Core.Forms.Catalogo.CorDoOlho(feraOlho);
+			Conferir(olhoDaFera == "e5282a",
+					 $"o olho da Fera e VERMELHO #e5282a (deu {olhoDaFera ?? "nada"})");
+
+			// E ELE NAO E O VERMELHO DE MAIS NINGUEM. A tentacao aqui era reusar o `ff2d2f` do Limit
+			// Breaker, que esta a um passo -- e o arquivo proibe (ver `VermelhoDaFera`): sao linhas que
+			// nao se devem nada. Esta linha e o que acusa se alguem "simplificar" as duas numa.
+			Conferir(olhoDaFera != Jandirus.Core.Forms.Catalogo.CorDoContorno(
+						 Jandirus.Core.Forms.Catalogo.Def("ssj4_limit_breaker")),
+					 "-- e ele NAO e o vermelho do Limit Breaker (constantes separadas, de proposito)");
+
+			// E A COR SAI DA SOMA CERTA: a camada de olho e `Eyes_Black.png`, preta pura, entao o hexa
+			// escrito E o pixel -- e "vermelho" tem que ser vermelho na tela, nao um marrom escuro.
+			static bool EhVermelho(Color c) => c.R > c.G + 0.5f && c.R > c.B + 0.5f;
+			var noOlho = new Color(olhoDaFera ?? "000000");
+			Conferir(EhVermelho(noOlho),
+					 $"-- e sobre o preto da camada de iris ele le VERMELHO mesmo (#{noOlho.ToHtml(false)})");
+
+			// ============================ E O CRITERIO REPROVA ALGUEM ============================
+			// A linha de cima sozinha nao diz se "vermelho" e uma medida ou uma frase: um criterio frouxo
+			// (um `R > 0.5` seco) aprovaria metade do catalogo, inclusive a prata do Ultra Instinct e o
+			// amarelo do Wrathful, que sao as duas cores de olho mais claras do jogo. As duas passam pelo
+			// mesmo criterio aqui e as duas tem que CAIR.
+			//
+			// AS COBAIAS SAIEM DO CATALOGO e nao de hexas escritos: se alguem pintar o olho do Ultra
+			// Instinct de vermelho amanha, este controle reprova e obriga a escolher outra cobaia -- que
+			// e o aviso certo, porque nesse dia o vermelho da Fera deixa de ser dela.
+			// ==================================================================================
+			foreach (string cobaia in new[] { "ui_perfected", Jandirus.Core.Forms.Catalogo.IdWrathful })
+				if (Jandirus.Core.Forms.Catalogo.CorDoOlho(
+						Jandirus.Core.Forms.Catalogo.Def(cobaia)) is { } outro)
+					Conferir(!EhVermelho(new Color(outro)),
+							 $"CONTROLE: o olho de `{cobaia}` (#{outro}) NAO passa por vermelho");
+		}
+		Conferir(Jandirus.Core.Forms.Catalogo.CorDoOlho(
+					 Jandirus.Core.Forms.Catalogo.Def(Jandirus.Core.Forms.Catalogo.IdMistico)) == null,
+				 "e o Mistico continua sem tocar no olho -- o dono nomeou a Fera, nao a linha");
 	}
 
 	// =====================================================================
@@ -6393,8 +7572,9 @@ public partial class RoboDeForma : Node
 	/// dono deixa de ser branco e a bancada avisa.
 	/// ================================================================================================
 	///
-	/// COMO REPROVA SE A REGRA SUMIR: devolva `UltraInstinct` e `UltraEgo` a lista de exclusao do
-	/// `CorDoRabo` (elas estiveram la, e no DM e onde elas ficam) -- caem as quatro linhas de resultado.
+	/// COMO REPROVA SE A REGRA SUMIR: devolva `UltraInstinct`, `UltraEgo` ou `Mistico` a lista de
+	/// exclusao do `CorDoRabo` (as tres estiveram la, e no DM e onde elas ficam) -- caem as linhas de
+	/// resultado da que voltar.
 	/// </summary>
 	private void ORaboMedidoNoDesenho()
 	{
@@ -6436,23 +7616,62 @@ public partial class RoboDeForma : Node
 
 		// BRANCO: os tres canais no alto E juntos. So "claro" nao basta -- um creme tambem e claro, e a
 		// diferenca entre branco e creme e exatamente a distancia entre os canais.
-		MedirRabo("ui_perfected", "b9becb", "BRANCO",
-				  c => c.R > 0.85f && c.G > 0.85f && c.B > 0.85f
-					&& Mathf.Max(c.R, Mathf.Max(c.G, c.B)) - Mathf.Min(c.R, Mathf.Min(c.G, c.B)) < 0.12f);
+		//
+		// ESCRITO UMA VEZ SO E COM NOME. Esta conta estava copiada aqui e no bloco da Fera, palavra por
+		// palavra: duas copias do mesmo criterio afrouxam juntas se alguem "ajustar" uma delas pra fazer
+		// uma linha vermelha passar, e a outra vira um numero diferente com a mesma frase no log. E com
+		// nome ela pode ser usada como CONTROLE la embaixo, que e o que faltava.
+		static bool EhBranco(Color c) =>
+			c.R > 0.85f && c.G > 0.85f && c.B > 0.85f
+			&& Mathf.Max(c.R, Mathf.Max(c.G, c.B)) - Mathf.Min(c.R, Mathf.Min(c.G, c.B)) < 0.12f;
+
+		MedirRabo("ui_perfected", "b9becb", "BRANCO", EhBranco);
 
 		// ROXO: azul e vermelho no alto, verde EMBAIXO. E o verde baixo que separa roxo de branco-lilas
 		// -- sem ele, um `b9becb` qualquer passaria por roxo.
 		MedirRabo("ultra_ego", "8c32be", "ROXO CLARO",
 				  c => c.B > c.G + 0.3f && c.R > c.G + 0.2f && c.B >= c.R && c.G < 0.55f);
 
-		// AS DUAS QUE **NAO** PINTAM, e elas sao metade do enunciado: o dono nomeou o **Perfected** e o
-		// **Ultra Ego**, nao as linhas. Sem estas duas linhas, "pinta a linha inteira" passaria.
+		// ============================ A FERA, PELA MESMA DERIVACAO E POR UM PEDIDO NOVO ============================
+		// *"o rabo do beast n ta branco"*. A linha do Mistico estava na lista de exclusao do
+		// `CorDoRabo` -- como o Ultra Instinto e o Ultra Ego estiveram -- e saiu pelo mesmo caminho:
+		// nenhuma regra nova, so a lista mais curta, e a derivacao "quem pinta o cabelo pinta o rabo"
+		// respondendo sozinha.
+		//
+		// E A MEDIDA IMPORTA MAIS AQUI QUE NAS OUTRAS: o `b6bac4` da Fera e o hexa MAIS ESCURO dos tres
+		// que somam nesta cauda (o Perfected usa `b9becb`), entao ele e o que chega mais perto de
+		// deixar de fechar em branco. Se algum dia alguem clarear o `Tail.png`, ou escurecer o cabelo
+		// da Fera, e esta linha que cai primeiro.
+		MedirRabo("beast", "b6bac4", "BRANCO", EhBranco);
+
+		// AS TRES QUE **NAO** PINTAM, e elas sao metade do enunciado: o dono nomeou o **Perfected**, o
+		// **Ultra Ego** e o **Beast**, nao as linhas. Sem estas linhas, "pinta a linha inteira" passaria.
+		//
+		// O `mistico` E O CASO MAIS DELICADO DOS TRES: ele saiu da lista de exclusao JUNTO com o Beast
+		// (e uma linha so no `CorDoRabo`), e continua sem tinta por DERIVACAO -- ele nao pinta o cabelo,
+		// entao nao pinta o rabo. Ou seja o "nada muda" dele nao esta mais protegido por uma excecao
+		// escrita: esta protegido pela regra. Esta linha e o que garante que continue assim.
 		MedirRabo("ui_sign", null, "", null);
 		MedirRabo("destroyer", null, "", null);
+		MedirRabo("mistico", null, "", null);
 
 		// O CONTROLE: o dourado da escada Saiyajin na MESMA cauda. Ele existe pra provar que a medicao
-		// distingue cor -- se ela aprovasse qualquer soma como "branco", esta linha cairia.
+		// distingue cor -- se a soma devolvesse sempre a mesma coisa, esta linha cairia.
 		MedirRabo("ssj1", "dada26", "DOURADO", c => c.R > 0.7f && c.G > 0.7f && c.B < c.G - 0.25f);
+
+		// ============================ E O CONTROLE DO CRITERIO DE BRANCO, QUE E OUTRA COISA ============================
+		// A linha de cima prova que o DOURADO sai dourado. Ela NAO prova nada sobre o criterio de
+		// "branco": um `EhBranco` frouxo (so `> 0.85` nos tres canais, sem a distancia entre eles)
+		// continuaria aprovando a Fera e o Perfected, e "branco" viraria "claro" sem uma linha vermelha.
+		//
+		// Entao o criterio da Fera e aplicado AO DOURADO de proposito, e cobra-se que ele REPROVE. O
+		// dourado somado nesta cauda da `#ffff57` e `#ffff73` -- claro nos tres canais e a 168 pontos de
+		// distancia entre o maior e o menor: e exatamente o creme que o comentario la de cima descreve.
+		// =============================================================================================
+		Color[] douradoNaCauda = [.. tons.Select(t => EmSoma(t.Cor, new Color("dada26")))];
+		Conferir(douradoNaCauda.Length > 0 && douradoNaCauda.All(c => !EhBranco(c)),
+				 "CONTROLE: o dourado do SSJ na MESMA cauda NAO passa pelo criterio de branco ("
+			   + string.Join(" ", douradoNaCauda.Select(c => "#" + c.ToHtml(false))) + ")");
 	}
 
 	// =====================================================================
@@ -6466,8 +7685,8 @@ public partial class RoboDeForma : Node
 	/// nova por linha (a do cabelo, a do olho, a do rabo, a da colada) pode passar a alcanca-lo sem que
 	/// nada reprove, porque nao ha valor errado pra ver, so um valor onde nao devia haver nenhum.
 	///
-	/// Por isso este bloco pergunta as SEIS ausencias de uma vez, no dado e no boneco, e uma presenca --
-	/// a faisca, que e a unica coisa que ele acende.
+	/// Por isso este bloco pergunta as ausencias de uma vez, no dado e no boneco, e uma presenca -- a
+	/// faisca, que e a unica coisa que ele acende.
 	///
 	/// ============================ E A COR DA FAISCA NAO E A DA AURA ============================
 	/// Esta e a parte que o log tem que dizer em voz alta, porque ela e a UNICA linha do jogo assim: a
@@ -6477,9 +7696,18 @@ public partial class RoboDeForma : Node
 	/// `primal_legendary2`).
 	/// =====================================================================================
 	///
+	/// ============================ A AURA ENTROU NA LISTA DE AUSENCIAS ============================
+	/// Ela era a excecao do enunciado -- "tudo igual a base MENOS a chama, que era a do SSG". Deixou de
+	/// ser: por pedido do dono a chama dele e a do JOGADOR, e o *"tudo igual a base"* passou a ser
+	/// literal em todos os canais. Ver `Catalogo.ChamaDoJogador`.
+	/// ========================================================================================
+	///
 	/// COMO REPROVA SE A REGRA SUMIR: zere o `Raios` do `mistico` -- cai a faisca. Tire o ramo
-	/// `LinhaDeForma.Mistico` do `CorDosRaios` -- a cor cai pro lilas da aura e cai a comparacao. Tire o
-	/// `Mistico` da lista de exclusao do `CorDoRabo` -- cai o rabo (e no boneco tambem).
+	/// `LinhaDeForma.Mistico` do `CorDosRaios` -- a cor cai pro lilas da aura e cai a comparacao.
+	/// Devolva o `Mistico` a lista de exclusao do `CorDoRabo` -- a linha do rabo continua VERDE (ele
+	/// nao tem tinta de cabelo), e quem cai e a do Beast, no bloco do rabo medido. Devolva o ramo
+	/// `Mistico => DeusQuente` ao `Catalogo.Folha`, ou tire o ramo dele do `ChamaDoJogador` -- cai uma
+	/// das duas linhas de aura aqui embaixo, cada uma dizendo qual das duas perguntas quebrou.
 	/// </summary>
 	private void OMisticoSoGanhouAFaisca()
 	{
@@ -6495,15 +7723,56 @@ public partial class RoboDeForma : Node
 		Conferir(Jandirus.Core.Forms.Catalogo.CorDosRaios(mis) != mis.Aura,
 				 $"e NAO a cor da aura dele (#{mis.Aura}) -- lilas dentro de chama lilas some");
 
-		// O BEAST HERDA A FAISCA, e isto nao foi pedido: `Mystic.dm:112` acende o MESMO objeto de
-		// overlay dentro do `Buff()` dele. Deixar so o degrau de baixo faiscando faria a linha PERDER
-		// efeito ao subir, que na tela le como defeito.
+		// ============================ O BEAST HERDA O VOLUME E **NAO** A COR ============================
+		// O volume nao foi pedido: `Mystic.dm:112` acende o MESMO objeto de overlay dentro do `Buff()`
+		// dele, e deixar so o degrau de baixo faiscando faria a linha PERDER efeito ao subir.
+		//
+		// A COR SEPAROU. Esta segunda linha dizia "e branca nele tambem (a linha inteira, e nao um caso
+		// por id)" -- o dono derrubou: *"no beast os raiozinhos sao roxos"*. As duas linhas juntas sao o
+		// que descreve a regra de hoje: MESMO volume, cores DIFERENTES, e o corte e o `GodkiRoyalePct`.
 		if (Jandirus.Core.Forms.Catalogo.Def("beast") is { } fera)
 		{
 			Conferir(fera.Raios == mis.Raios,
 					 $"e o Beast continua com a MESMA faisca do Mistico ({fera.Raios}) -- `Mystic.dm:112`");
-			Conferir(Jandirus.Core.Forms.Catalogo.CorDosRaios(fera) == "ffffff",
-					 "e branca nele tambem (a linha inteira, e nao um caso por id)");
+			Conferir(Jandirus.Core.Forms.Catalogo.CorDosRaios(fera) == "d9b0ff",
+					 $"mas ela e ROXA nele -- pedido do dono, e o corte e o mesmo `GodkiRoyalePct` do "
+				   + $"contorno (deu #{Jandirus.Core.Forms.Catalogo.CorDosRaios(fera)})");
+			Conferir(Jandirus.Core.Forms.Catalogo.CorDosRaios(fera)
+					 != Jandirus.Core.Forms.Catalogo.CorDosRaios(mis),
+					 "-- ou seja os DOIS degraus da linha nao dividem mais a cor da faisca");
+
+			// ============================ E "ROXO" E UMA FORMA DE COR, NAO O HEXA ESCRITO ============================
+			// A mesma regra do rabo branco (ver `ORaboMedidoNoDesenho`): o dono pediu uma COR, e cor se
+			// le pela forma dela. Roxo e azul no alto, vermelho no meio e verde EMBAIXO -- e o verde
+			// baixo e o que separa roxo de branco-lilas. Sem esta linha, trocar o `d9b0ff` por um
+			// `f0f0ff` qualquer passaria em todo hexa deste arquivo desde que a tabela mudasse junto.
+			static bool EhRoxo(Color c) => c.B > c.R && c.R > c.G && c.B - c.G >= 0.25f;
+			var roxo = new Color(Jandirus.Core.Forms.Catalogo.CorDosRaios(fera));
+			Conferir(EhRoxo(roxo),
+					 $"-- e ela le ROXO mesmo (#{roxo.ToHtml(false)}: B {roxo.B:0.##} > R {roxo.R:0.##} "
+				   + $"> G {roxo.G:0.##})");
+
+			// O CONTROLE: a BRANCA do Mistico reprova no mesmo criterio. Sem ele um criterio frouxo
+			// aprovaria as duas, e "roxo" viraria palavra no log em vez de medida.
+			var branca = new Color(Jandirus.Core.Forms.Catalogo.CorDosRaios(mis));
+			Conferir(!EhRoxo(branca),
+					 $"CONTROLE: a faisca branca do Mistico NAO passa por roxa (#{branca.ToHtml(false)})");
+
+			// ============================ E ELA VENCE A CHAMA POR VALOR, NAO POR MATIZ ============================
+			// Este e o UNICO ponto do jogo em que a faisca cai dentro de uma chama da MESMA familia de
+			// cor, e a matiz nao salva: a chama da Fera e `7d5af0` (matiz 254) e a faisca `d9b0ff`
+			// (matiz 271) -- 17 graus, contra os ~180 que separam o azul da faisca do dourado que ela
+			// atravessa nas escadas de sangue. Quem faz a faisca aparecer aqui e o BRILHO, e o criterio
+			// esta escrito no `Catalogo.RoxoDaFaiscaDaFera` ("claro e lavado pra aparecer POR CIMA da
+			// aura"). Esta linha e o que transforma aquela prosa em numero.
+			//
+			// O DIA EM QUE ELA CAIR, o remedio e a cor do RAIO e nao a da chama -- esta dito na constante,
+			// e a colisao entre os dois pedidos do dono esta dita no relatorio.
+			float lumFaisca = roxo.Luminance, lumChama = new Color(fera.Aura).Luminance;
+			Conferir(lumChama > 0f && lumFaisca >= lumChama * 1.5f,
+					 "-- e ela e ao menos 1,5x mais clara que a chama roxa em que cai ("
+				   + $"{lumFaisca:0.###} contra {lumChama:0.###} = "
+				   + $"{(lumChama > 0f ? lumFaisca / lumChama : 0f):0.##}x)");
 		}
 
 		// --- 2. AS AUSENCIAS, no dado ---
@@ -6518,15 +7787,33 @@ public partial class RoboDeForma : Node
 		Conferir(Jandirus.Core.Forms.Catalogo.Coladas(mis).Length == 0,
 				 "-- e nao cola overlay nenhum no corpo (a tabela do dono nao o lista)");
 
-		// A AURA QUE ELE TEM E A DA LINHA, e nao uma arte propria: `Mystic.dm:33` chama `Revert()` ao
-		// entrar, o que zera `ssj`/`lssj` e joga o Mistico no MESMO ramo do `AuraObject.dm` que o SSG.
-		// Escrito aqui porque e a unica coisa visivel que ele muda -- e um leitor do log que veja "nao
-		// muda nada" precisa saber que a chama existe.
-		Conferir(Jandirus.Core.Forms.Catalogo.Folha(mis) == FolhaDeAura.DeusQuente
+		// ============================ E A AURA DELE VIROU A SETIMA AUSENCIA ============================
+		// Este bloco afirmava o CONTRARIO ("a chama dele e a QUENTE da linha, a mesma do SSG"), e era
+		// porte fiel: `Mystic.dm:33` chama `Revert()`, zera `ssj`/`lssj`, e o `AuraObject.dm:174-176`
+		// manda quem tem ki divino com a escada zerada pra a `FieryGod`.
+		//
+		// SO QUE O MISTICO NAO TEM KI DIVINO NENHUM (`PedeGodKi = -1`), e por isso no DM ele cai no
+		// ramo de BAIXO -- `:191-192` usa `container.AURA` e o `centerAura()` de `:194` escreve
+		// `icolor = rgb(AuraR, AuraG, AuraB)`, a cor sorteada no nascimento. O port tinha pego o ramo
+		// errado, e foi isso que o dono viu: *"a aura do mistico tem q ser a mesma aura da BASE DO
+		// PERSONAGEM, porem com os efeitos de raiozinhos q ja existem"*.
+		//
+		// ENTAO A CHAMA DELE ENTROU NA LISTA DE AUSENCIAS em vez de ficar como "a unica coisa que ele
+		// muda": ele acende, e acende na cor do jogador. E o `*tudo igual a base*` do enunciado passou
+		// a valer tambem pra a aura -- que era o unico canal em que nao valia.
+		//
+		// O QUE FICA POR ESCRITO E QUE SAO DUAS PERGUNTAS. A folha (colorivel, que aceita cor de fora)
+		// e a cor (a do jogador). Uma folha certa com a cor da forma daria lilas; a cor certa numa
+		// folha pre-colorida nao chegaria a pixel nenhum. As duas linhas abaixo sao uma cada.
+		Conferir(Jandirus.Core.Forms.Catalogo.Folha(mis) == FolhaDeAura.Base
 			  && Jandirus.Core.Forms.Catalogo.Folha(mis)
-				 == Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("ssg")),
-				 $"a chama dele e a QUENTE da linha, a mesma do SSG (deu "
+				 != Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("ssg")),
+				 $"a chama dele NAO e mais a do SSG -- e a folha colorivel, como a da base (deu "
 			   + $"{Jandirus.Core.Forms.Catalogo.Folha(mis)})");
+		Conferir(Jandirus.Core.Forms.Catalogo.ChamaDoJogador(mis)
+			  && Aura.CorDaChamaDe(mis, CorPessoalDeTeste).IsEqualApprox(CorPessoalDeTeste),
+				 $"-- e a cor dela e a do JOGADOR (a sorteada, ver `CorPessoalDeTeste`) e nao o "
+			   + $"#{mis.Aura} do catalogo (deu #{Aura.CorDaChamaDe(mis, CorPessoalDeTeste).ToHtml(false)})");
 
 		// --- 3. AS MESMAS AUSENCIAS, NUM BONECO ---
 		// O dado pode estar certo e o boneco mudar assim mesmo: basta uma linha do `VestirCabeloDaForma`
@@ -7719,11 +9006,19 @@ public partial class RoboDeForma : Node
 		("rose",                            ModoCabelo.TrocarETingir,    "d15694", "e0409a"),
 		("rose2",                           ModoCabelo.TrocarETingir,    "d15694", "e0409a"),
 
-		// --- MISTICO: cabelo natural no Mistico; o Beast recolore em MATIZ e nao pinta rabo ---
-		// E NENHUM DOS DOIS MEXE NO OLHO -- enunciado do dono, *"Mistico / Prodigial: igual a base,
-		// nada muda"*. O que o Mistico ganhou nesta passada foi a FAISCA, que e outro canal.
+		// --- MISTICO: cabelo natural no Mistico; o Beast recolore em MATIZ ---
+		// ============================ OS DOIS DEGRAUS DIVERGIRAM NESTA PASSADA ============================
+		// A linha inteira era `null, null` (*"Mistico / Prodigial: igual a base, nada muda"*). O dono
+		// separou os dois com dois pedidos: *"o rabo do beast n ta branco"* e *"o olho do beast era pra
+		// ser vermelho"*. O Mistico continua intocado -- ele NAO foi citado, e o enunciado dele
+		// continua sendo a ausencia.
+		//
+		// O RABO DA FERA NAO ESTA ESCRITO DUAS VEZES: `b6bac4` e a mesma tinta que o cabelo dela ja
+		// recebe (coluna do `ModoCabelo.TrocarERecolorir`), e a derivacao "quem pinta o cabelo pinta o
+		// rabo" e que a poe aqui -- por isso o mesmo hexa aparece nas duas colunas. O OLHO nao: ele
+		// e cor propria, e o unico canal da Fera que nao deriva de nada.
 		("mistico",                         ModoCabelo.Base,             null,     null),
-		("beast",                           ModoCabelo.TrocarERecolorir, null,     null),
+		("beast",                           ModoCabelo.TrocarERecolorir, "b6bac4", "e5282a"),
 
 		// --- ULTRA INSTINCT: arte de UMA pessoa, entao a tinta e ALTERNATIVA ---
 		// O OLHO E DA LINHA (o `Buff()` do DM nao ramifica por estagio) e o RABO E DO PERFECTED.
@@ -7836,19 +9131,24 @@ public partial class RoboDeForma : Node
 		// mao dissesse a mesma coisa** -- e o jeito de a tabela dizer a mesma coisa e alguem "arrumar"
 		// as linhas vermelhas uma a uma sem olhar o boneco. Estas duas linhas nao arrumam: elas contam.
 		//
-		// SAO OITO CORES por construcao (verde da escada, amarelado do SSJ4, amarelo do Wrathful,
-		// vermelho do SSG, azul, rosa, prata do UI, roxo do UE) e o numero esta ESCRITO: uma cor nova
-		// entra aqui de proposito, junto com a linha da tabela.
+		// SAO NOVE CORES por construcao (verde da escada, amarelado do SSJ4, amarelo do Wrathful,
+		// vermelho do SSG, azul, rosa, prata do UI, roxo do UE, vermelho da Fera) e o numero esta
+		// ESCRITO: uma cor nova entra aqui de proposito, junto com a linha da tabela.
 		//
-		// ERAM NOVE, E O QUE SAIU FOI O BRANCO SEM IRIS -- nao porque alguem o apagou, mas porque ele
-		// deixou de ser cor de FORMA: ele e a cor de um corpo que a furia lendaria esta dirigindo, e
-		// esta tabela mede a forma com as redeas na mao. Quem o conta hoje e o `OOlhoDaLinhaLendaria`.
+		// O BRANCO SEM IRIS NAO ESTA NA CONTA -- nao porque alguem o apagou, mas porque ele deixou de
+		// ser cor de FORMA: ele e a cor de um corpo que a furia lendaria esta dirigindo, e esta tabela
+		// mede a forma com as redeas na mao. Quem o conta hoje e o `OOlhoDaLinhaLendaria`.
+		//
+		// O NONO E O `e5282a` DA FERA (*"o olho do beast era pra ser vermelho"*), e o numero subir
+		// AQUI e o ponto do bloco: se alguem "simplificar" reusando o `ff2d2f` do Limit Breaker -- que
+		// esta a um passo -- a contagem fica em nove do mesmo jeito, e por isso ha uma linha nomeada
+		// contra isso no `OOlhoDaLinhaLendaria`, no bloco 3. Aqui se conta; la se diz qual.
 		// ============================================================================================
 		Conferir(pintamOlho > 0 && pintamOlho < OQueCadaFormaFazNoCabelo.Length,
 				 $"e o olho se pinta em ALGUMAS e nao em todas ({pintamOlho} de "
 			   + $"{OQueCadaFormaFazNoCabelo.Length})");
-		Conferir(coresDeOlho.Count == 8,
-				 $"e sao OITO cores de olho diferentes no catalogo ({coresDeOlho.Count}: "
+		Conferir(coresDeOlho.Count == 9,
+				 $"e sao NOVE cores de olho diferentes no catalogo ({coresDeOlho.Count}: "
 			   + string.Join(", ", coresDeOlho.Order().Select(c => "#" + c)) + ")");
 
 		// ============================ "SEM IRIS" E A COR DA ESCLEROTICA DO CORPO ============================
@@ -8011,10 +9311,14 @@ public partial class RoboDeForma : Node
 			// O mesmo motivo das duas linhas acima: se o `CorDoOlho` passasse a devolver nulo pra todo
 			// mundo, as 34 linhas de olho ficariam verdes comparando ficha com ficha.
 			//
-			// O NUMERO ERA **2** ate esta passada (as duas formas do Ultra Instinct, as unicas que o DM
-			// pinta) e virou 29 com a tabela do dono. As quatro que sobram fora dele sao a `base`, os
-			// dois do Mistico -- *"igual a base, nada muda"* -- e os dois Oozaru, que nem olho desenhado
-			// tem. Cinco nulos, e cada um deles e uma decisao e nao um esquecimento.
+			// O NUMERO ERA **2** ate a tabela do dono (as duas formas do Ultra Instinct, as unicas que o
+			// DM pinta) e subiu com ela. Os NULOS que sobram sao a `base`, o `mistico` -- *"igual a
+			// base, nada muda"* -- e os Oozaru, que nem olho desenhado tem: cada um e uma decisao, e
+			// nao um esquecimento.
+			//
+			// O `beast` SAIU dessa lista nesta passada (*"o olho do beast era pra ser vermelho"*), e a
+			// conta e derivada do catalogo justamente pra isso -- um numero cravado aqui teria virado
+			// falha num conserto que nao tem nada de errado.
 			// ==================================================================================
 			int olhosEsperados = Jandirus.Core.Forms.Catalogo.Todas.Count(
 				f => Jandirus.Core.Forms.Catalogo.CorDoOlho(f) != null);
@@ -8220,7 +9524,19 @@ public partial class RoboDeForma : Node
 		// =====================================================================
 		// 3. A FOLHA DE AURA: EXISTE, ESTA IMPORTADA, E SE DEIXA TINGIR
 		// =====================================================================
-		// QUE FOLHA E ja sai na varredura de aura (`folha de 'ui_sign' (UltraInstinct) = Base`). O que
+		// ============================ E DUAS DAS QUATRO NAO TEM FOLHA NENHUMA ============================
+		// Este bloco dizia "as quatro dividem UMA folha cinza e se distinguem SO pela cor", e isso deixou
+		// de valer: os dois degraus do Ultra Instinto passaram a devolver `FolhaDeAura.Nebulosa` -- o
+		// simbolo de "esta forma nao usa folha", porque o desenho dela e a nuvem procedural.
+		//
+		// A pergunta 2 (a folha se tinge?) continua valendo, e continua valendo PELOS MESMOS DOIS que
+		// sobraram: Destroyer e Ultra Ego dividem a `Base` cinza e so a cor os separa. E a pergunta 1
+		// (o arquivo existe?) ganhou um lado novo -- pros dois de UI o que se cobra e o contrario, que
+		// NAO haja arquivo. Deixar os dois casos no mesmo laco e o que impede a regressao obvia: um dia
+		// em que o Ultra Instinto voltar a apontar pra uma folha, esta linha cai.
+		// ============================================================================================
+		//
+		// QUE FOLHA E ja sai na varredura de aura. O que
 		// nao sai de lugar nenhum e se essa folha PRESTA pra estas quatro -- e sao duas perguntas:
 		//
 		//   1. o arquivo existe e foi importado? A varredura de folhas percorre o `enum` e pergunta isso
@@ -8237,12 +9553,19 @@ public partial class RoboDeForma : Node
 		// Todo o resto da bancada segue verde e esta linha cai sozinha.
 		foreach (FormaDef d in asQuatro)
 		{
-			string caminho = SpriteDeAura.CaminhoDa(Jandirus.Core.Forms.Catalogo.Folha(d));
-			Conferir(ResourceLoader.Exists(caminho),
+			bool ehUi = Jandirus.Core.Forms.Catalogo.TemNebulosa(d);
+			if (SpriteDeAura.CaminhoDa(Jandirus.Core.Forms.Catalogo.Folha(d)) is not { } caminho)
+			{
+				Conferir(ehUi, $"`{d.Id}`: sem folha de aura -- e so o Ultra Instinto pode estar assim "
+							 + "(o desenho dele e a nuvem)");
+				continue;
+			}
+			Conferir(!ehUi && ResourceLoader.Exists(caminho),
 					 $"`{d.Id}`: a folha de aura dela existe e esta IMPORTADA ({caminho.GetFile()})");
 		}
 		Conferir(!SpriteDeAura.PreColorida(Jandirus.Core.Forms.FolhaDeAura.Base),
-				 "e a folha das quatro SE TINGE (senao as quatro auras saem cinzas e iguais)");
+				 "e a folha das DUAS que tem folha (Destroyer e Ultra Ego) SE TINGE -- senao as duas "
+			   + "auras saem cinzas e iguais");
 
 		// E AS QUATRO CORES SAO QUATRO. Uma folha tingivel nao adianta com o mesmo hexa nas quatro
 		// entradas -- e `Aura` era campo de texto livre ate a varredura das cores, entao "vazio" e um
@@ -8713,16 +10036,22 @@ public partial class RoboDeForma : Node
 					 $"`{mudo}`: nenhuma descarga no ceu, em beat nenhum");
 
 		// --- 3. O SIGN CALA, O PERFECTED NAO ---------------------------------
-		// O contraste interno da linha do Ultra Instinct, e ele tambem esta escrito no roteiro: o -Sign-
-		// e a contencao (*"nada explode, o ar e que sai do lugar"*) e o Perfected e o instinto COMPLETO,
-		// que ja deixou a contencao pra tras. Em efeito isso e uma coisa so: PEDRA. O Sign nao levanta
-		// nenhuma em beat nenhum; o gemeo levanta.
+		// O contraste interno da linha do Ultra Instinct: o -Sign- e a contencao (*"nada explode, o ar e
+		// que sai do lugar"*) e o Perfected e o instinto COMPLETO, que ja deixou a contencao pra tras.
 		//
-		// As duas metades juntas, porque so a primeira passaria numa cena que perdesse o efeito de todo.
-		Conferir(!cenas["ui_sign"].Beats.Any(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.PedrasSubindo)),
-				 "`ui_sign`: o -Sign- nao levanta pedra nenhuma (a contencao da cena)");
-		Conferir(cenas["ui_perfected"].Beats.Any(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.PedrasSubindo)),
-				 "...e o `ui_perfected` levanta (o instinto completo deixou a contencao pra tras)");
+		// ============================ ISTO ERA MEDIDO EM PEDRA. NAO E MAIS ============================
+		// A checagem dizia "o Sign nao levanta pedra em beat nenhum; o gemeo levanta", e ela era MINHA --
+		// saiu da leitura do roteiro, nao de uma palavra do dono. O dono disse o contrario, e sem
+		// excecao: *"deveria ter mais `rising rocks.png` q ficariam do inicio ao fim em TODAS as
+		// transformacoes"*. As duas unicas cenas que ele isentou sao as do macaco.
+		//
+		// Entao o contraste passou a ser medido no que ele SEMPRE foi de verdade -- o silencio. O -Sign-
+		// e a unica cena da linha divina sem descarga no ceu (a checagem 2, logo acima) e sem faisca
+		// (`Raios = 0` no catalogo, checagem 4, logo abaixo). Contencao continua escrita na cena; ela so
+		// deixou de ser escrita no efeito que o dono quis em todas.
+		// ==========================================================================================
+		Conferir(cenas["ui_sign"].OChaoSeSolta && cenas["ui_perfected"].OChaoSeSolta,
+				 "`ui_sign` e `ui_perfected` levantam pedra, como TODAS (a excecao do dono e so o macaco)");
 
 		// --- 4. A FAISCA CORTADA, NAS QUATRO ---------------------------------
 		// *"raiozinhos somente o lssj 2 do primal legendary"*. O `Cinematicas.Faisca` faz as cenas de
@@ -9158,7 +10487,10 @@ public partial class RoboDeForma : Node
 
 		double banhoEm = cheia.Beats
 			.First(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.BanhoDeCor)).Em;
-		Color esperada = Aura.CorDaChamaDe(alvo);
+		// A COR PESSOAL SAI DO PROPRIO CORPO -- o `Legendary` nao a usa (a chama dele e a da forma),
+		// mas passar a de outro corpo aqui esconderia o dia em que ele passasse a usar.
+		Color esperada = Aura.CorDaChamaDe(
+			alvo, corpo.GetNodeOrNull<Aura>("Aura")?.CorPessoal ?? Aura.CorDoKiCru);
 
 		Node atores = corpo.GetParent();
 		List<Transformacao> Cenas()
@@ -9263,15 +10595,17 @@ public partial class RoboDeForma : Node
 	/// </summary>
 	private void AFeraForaDosDegraus(Node2D corpo, CharacterVisual vis)
 	{
-		// --- 1. OS DADOS: nem pedra no roteiro, nem degrau em maestria nenhuma ---
+		// --- 1. OS DADOS: a cena nao solta o chao, nem vira degrau em maestria nenhuma ---
 		var doMacaco = Jandirus.Core.Forms.Cinematicas.Oozaru;
 		foreach (string id in new[] { "oozaru", "oozaru_dourado" })
 		{
 			FormaDef d = Jandirus.Core.Forms.Catalogo.Def(id)!;
 			var c = Jandirus.Core.Forms.Cinematicas.Para(d)!;
 
-			int comPedra = c.Beats.Count(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.PedrasSubindo));
-			Conferir(comPedra == 0, $"`{id}`: o roteiro dele NAO tem beat de pedras ({comPedra})");
+			// A PERGUNTA E A CENA, e nao a contagem de um bit: a pedra deixou de ser um beat e virou o
+			// estado `OChaoSeSolta`, derivado do catalogo. Contar beats aqui ficaria VERDE PRA SEMPRE
+			// depois da mudanca -- nenhuma cena tem beat de pedra hoje --, medindo nada.
+			Conferir(!c.OChaoSeSolta, $"`{id}`: a cena dele NAO solta o chao");
 
 			// A FAIXA INTEIRA DE MAESTRIA, e nao so os 100%. O limiar mora em `Degrau`, e um `if` da
 			// linha do macaco posto DEPOIS do teste de maestria (em vez de antes) so falharia acima do
@@ -9339,7 +10673,7 @@ public partial class RoboDeForma : Node
 				nova.SoltarPedrasDeTeste();
 				Conferir(nova.PedrasVivasDeTeste > 0,
 						 $"`{id}`: e o maquinario de pedra desta cena FUNCIONA ({nova.PedrasVivasDeTeste} "
-					   + "na marra) -- o zero acima e o roteiro, nao a folha faltando");
+					   + "na marra) -- o zero acima e o gate da cena, nao a folha faltando");
 				atores.RemoveChild(nova);
 				nova.QueueFree();
 			}
@@ -9681,6 +11015,132 @@ public partial class RoboDeForma : Node
 	}
 
 	// =====================================================================
+	// 2z. A CENA DA FURIA, AO VIVO -- `AngerCinematic()`, `Murder.dm:136`
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE SO A EXECUCAO PROVA ============================
+	/// O roteiro dela (os tempos, a cratera no beat da virada, a pedra do inicio ao fim, o `SegundosPreso
+	/// = 0`) e dado do Core e a bancada `raiva` [10] ja o mede. Aqui se mede o que o dado NAO diz:
+	///
+	///   1. **O CORPO NAO PARA -- NEM POR UM QUADRO.** Ela e a unica cena do jogo que nao prende, e o
+	///      caminho pra isso e uma condicao no `_Ready` do tocador. Um `SegundosPreso = 0` com o
+	///      `Prender()` incondicional passaria em TODA checagem de dado e travaria o jogador por um
+	///      quadro no meio de uma briga -- e o contador da tranca e `static`, ou seja o vazamento
+	///      sobreviveria a cena.
+	///   2. **ELA NAO DESPE NINGUEM.** E o risco de verdade da cena sem forma: o beat que vira chama
+	///      `Assumir()`, e `Vestir(null)` desfaz cabelo, tinta e rabo. Entao o boneco entra aqui em
+	///      SSJ3 e tem que sair em SSJ3 -- se esta checagem cair, quem perder um amigo em SSJ3 volta
+	///      ao normal sozinho.
+	///   3. **ELA TERMINA.** Roda os 8 beats, morre `Sozinha` e nao encosta no teto.
+	///   4. **A CHAMA E VERMELHA.** Sem forma, `Aura.CorDaChamaDe(null)` daria o branco do ki cru; o DM
+	///      pinta a `Aurabigcombined` de `#ff2a2a` (`Murder.dm:149`). A cor e lida do MATERIAL, e nao do
+	///      campo que a pediu -- mesma regra do resto deste arquivo.
+	///   5. **A PEDRA APARECE.** `OChaoSeSolta` e verdadeiro pra ela por derivacao (forma nula ->
+	///      `NaoSeSobePraEla` falso), e "por derivacao" e exatamente o tipo de verdade que merece uma
+	///      medida: um `Def(null)` que um dia devolvesse a base mataria o efeito sem erro nenhum.
+	///   6. **A `PoeiraDeEstrago` NAO E CHAMADA.** A quarta das regras de cena do dono, medida no
+	///      contador do proprio sistema de estrago.
+	/// ==============================================================================
+	/// </summary>
+	private void ACenaDaFuriaAoVivo(Node2D corpo, CharacterVisual vis)
+	{
+		Jandirus.Core.Forms.Cinematica furia = Jandirus.Core.Forms.Cinematicas.Furia;
+
+		// O BONECO ENTRA TRANSFORMADO -- ver o ponto 2 do cabecalho. SSJ3 porque ele troca CABELO (a
+		// coisa que o `Vestir(null)` desfaria) e nao so tinta.
+		FormaDef ssj3 = Jandirus.Core.Forms.Catalogo.Def("ssj3")!;
+		vis.VestirCabeloDaForma(ssj3);
+		string cabeloAntes = vis.CabeloDeTeste;
+		Conferir(cabeloAntes.Length > 0, $"a furia comeca num corpo transformado (cabelo `{cabeloAntes}`)");
+
+		// OS DOIS SONS DO DM (`chargeaura.wav` na largada, `powerup.wav` na erupcao) RESOLVEM. Pela
+		// MESMA funcao que o tocador usa (`CaminhoDoSom`) e nao por uma tabela paralela -- ver o
+		// comentario dela: nome errado hoje vira SILENCIO, e silencio e o defeito que ninguem repara.
+		foreach (Jandirus.Core.Forms.Beat b in furia.Beats)
+		{
+			if (b.Som.Length == 0) continue;
+			string? cam = Transformacao.CaminhoDoSom(b.Som);
+			Conferir(cam != null && ResourceLoader.Exists(cam),
+					 $"furia: o som `{b.Som}` dos {b.Em:0.#}s resolve ({cam ?? "sem caminho"})");
+		}
+
+		int presosAntes = Transformacao.PresosDeTeste;
+		int poseAntes = vis.DonosDaPoseDeTeste;
+		int tetosAntes = Transformacao.TetosDeTeste;
+		int estragoAntes = PoeiraDeEstrago.PedidosDeTeste;
+
+		// `forma: null` -- E ESTE E O TESTE. Se o tocador voltar a exigir forma, isto nem compila.
+		var t = Transformacao.Rodar(corpo.GetParent(), corpo, forma: null, furia, souEu: true);
+		t.SetProcess(false);   // o relogio e nosso
+
+		// ---- 1. o corpo nao para, e a medida e ANTES do primeiro `_Process` ----
+		// AQUI E QUE ESTA O QUADRO. A soltura pelo prazo acontece no `_Process`; se o `_Ready` tivesse
+		// prendido, este `==` seria `+ 1` e so voltaria ao normal no proximo quadro -- que e o defeito
+		// invisivel que esta linha existe pra pegar.
+		Conferir(Transformacao.PresosDeTeste == presosAntes,
+				 "a furia NAO prende o corpo (nem por um quadro) -- o `set waitfor = 0` do DM");
+		Conferir(vis.DonosDaPoseDeTeste == poseAntes,
+				 "...e nao trava a pose (um corpo que anda em pose parada desliza pelo chao)");
+
+		int pedrasMax = 0;
+		Color? corDaChama = null;
+		double ateQuando = furia.Segundos + Transformacao.FolgaDoTeto + 1.0;
+		for (double k = 0; k < ateQuando && IsInstanceValid(t); k += 0.1)
+		{
+			t._Process(0.1);
+			pedrasMax = Math.Max(pedrasMax, t.PedrasVivasDeTeste);
+
+			// A CHAMA MEDIDA NO MEIO DA CENA e nao no instante zero: ela nasce com forca 0 (ver o
+			// `_Ready` do tocador) e o `_Process` e quem a acende. Aos ~1,5 s ela esta cheia.
+			if (Math.Abs(k - 1.5) < 0.051) corDaChama = t.ChamaDaCenaDeTeste.CorNoMaterialDeTeste;
+		}
+
+		// ============================ A COR SAI DO MATERIAL, E A LEITURA E COBRADA ============================
+		// `CorNoMaterialDeTeste` e um `Color?`: sem material ele e nulo. Um `if (... is { } cor)` dentro
+		// do laco faria a checagem SUMIR nesse caso em vez de reprovar -- que e o modo de falha que este
+		// arquivo inteiro persegue (bancada que mede nada e verde). Entao o nulo e uma reprova propria.
+		Conferir(corDaChama != null, "a chama da furia tem material pra medir");
+		if (corDaChama is { } cor)
+		{
+			var esperada = new Color(Jandirus.Core.Forms.Cinematicas.CorDaFuria);
+			Conferir(Mathf.Abs(cor.R - esperada.R) < 0.02f && Mathf.Abs(cor.G - esperada.G) < 0.02f
+					 && Mathf.Abs(cor.B - esperada.B) < 0.02f,
+					 $"a chama da furia chega VERMELHA no material ({cor.ToHtml(false)}, "
+				   + $"esperado {Jandirus.Core.Forms.Cinematicas.CorDaFuria})");
+		}
+
+		// ---- 3. ela termina sozinha ----
+		Conferir(t.BeatsDeTeste == furia.Beats.Length,
+				 $"a furia disparou os {furia.Beats.Length} beats ({t.BeatsDeTeste})");
+		Conferir(!IsInstanceValid(t) || t.FimDeTeste == Transformacao.FimDaCena.Sozinha,
+				 "a furia termina SOZINHA (nao no teto, nao no alvo sumido)");
+		Conferir(Transformacao.TetosDeTeste == tetosAntes, "e o teto nao disparou nela");
+
+		// ---- 1b. e ela nao deixou tranca nenhuma pra tras ----
+		Conferir(Transformacao.PresosDeTeste == presosAntes,
+				 "a furia acabou sem deixar o corpo preso");
+		Conferir(vis.DonosDaPoseDeTeste == poseAntes, "...nem a pose travada");
+
+		// ---- 2. ela nao despe ninguem ----
+		// A CHECAGEM MAIS IMPORTANTE DESTE BLOCO. Ver o ponto 2 do cabecalho: `Vestir(null)` no beat da
+		// virada devolveria o corpo a base, e isso nao daria erro nenhum -- daria um Super Saiyajin que
+		// vira gente comum ao perder um amigo.
+		Conferir(vis.CabeloDeTeste == cabeloAntes,
+				 $"a furia NAO desfaz a forma de quem ja esta transformado "
+			   + $"(entrou `{cabeloAntes}`, saiu `{vis.CabeloDeTeste}`)");
+
+		// ---- 5. a pedra do chao ----
+		Conferir(pedrasMax > 0, $"o chao se solta na furia (pico de {pedrasMax} pedras)");
+
+		// ---- 6. e o sistema de estrago fica de fora ----
+		Conferir(PoeiraDeEstrago.PedidosDeTeste == estragoAntes,
+				 "a furia nao chama o sistema de ESTRAGO de cenario (o bit `Cascalho`, aposentado)");
+
+		// devolve o boneco a base pro resto da bancada
+		vis.VestirCabeloDaForma(null);
+	}
+
+	// =====================================================================
 	// 3a. AS PEDRAS SUBINDO -- a folha do BYOND, alinhada a grade
 	// =====================================================================
 	/// <summary>
@@ -9769,11 +11229,55 @@ public partial class RoboDeForma : Node
 		// ============================ NAO E PARTICULA, E SPRITE ============================
 		// A reprova mais direta que esta bancada tem: se alguem repuser o `GpuParticles2D`, o node
 		// `Pedras` volta a ser um emissor e nao um `Node2D` com `AnimatedSprite2D` dentro.
+		//
+		// O dono ja recusou particula pra isto uma vez, com estas palavras: *"nas cinematicas e pra
+		// tirar o efeito de pedras levitando em particulas, ficou mt feio, prefiro usar o proprio
+		// rising rocks .png"*. "Mais pedras" foi lido como mais INSTANCIAS do sprite, nunca como
+		// emissor novo.
 		int antes = t.PedrasVivasDeTeste;
 		t.SoltarPedrasDeTeste();
 		int nasceram = t.PedrasVivasDeTeste - antes;
-		Conferir(nasceram > 0 && nasceram <= 10,
-				 $"um beat solta ate 10 pedras, uma por tile ({nasceram})");
+
+		// ============================ A POPULACAO E DERIVADA, E ELA E O TETO DE CUSTO ============================
+		// O alvo sai de `FracaoDoChaoSolto` (o `prob(15)` do DM) vezes os tiles que a camera alcanca, e
+		// o teto ABSOLUTO e uma pedra por tile (o `_ocupadas`). Cobrar os dois aqui e o que impede a
+		// resposta a *"mais pedras"* de virar "mil nodes vivos numa cena de dois minutos".
+		//
+		// A CONTA E REFEITA e nao lida do proprio objeto: perguntar `AlvoDePedrasDeTeste` dos dois lados
+		// aprovaria qualquer numero que ele devolvesse, inclusive zero.
+		// ===================================================================================================
+		int alvoEsperado = Mathf.RoundToInt(
+			t.TilesDePedraDeTeste * Transformacao.FracaoDoChaoSolto);
+		Conferir(t.AlvoDePedrasDeTeste == alvoEsperado,
+				 $"a populacao de pedra e {Transformacao.FracaoDoChaoSolto:P0} dos tiles alcancados "
+			   + $"({t.AlvoDePedrasDeTeste} de {t.TilesDePedraDeTeste} tiles, esperado {alvoEsperado})");
+		Conferir(nasceram > 0 && nasceram <= t.AlvoDePedrasDeTeste,
+				 $"o enchimento respeita o alvo ({nasceram} de {t.AlvoDePedrasDeTeste})");
+		Conferir(t.PedrasVivasDeTeste <= t.TilesDePedraDeTeste,
+				 $"e o teto absoluto e UMA pedra por tile ({t.PedrasVivasDeTeste} de {t.TilesDePedraDeTeste})");
+
+		// ============================ A AREA E A DA CAMERA, E ELA CRESCEU ============================
+		// *"aumente a area q o jogo pode spawnar esse efeito de rising rock, pq ta mt perto do
+		// personagem"*. Era `3 x 2` cravado; agora e `GetViewportRect().Size / (2 * zoom) / tile`,
+		// arredondado pra CIMA (o tile da borda aparece pela metade e conta).
+		//
+		// A CONTA E REFEITA AQUI, da camera desta bancada, e nao lida do tocador -- pelo mesmo motivo do
+		// alvo logo acima. E o `>= 3 x 2` e a CATRACA: seja qual for o zoom, a area nunca pode voltar a
+		// ser menor do que a que o dono reclamou.
+		// =======================================================================================
+		float zoomDaTela = GetViewport()?.GetCamera2D() is { } camDaTela && camDaTela.Zoom.X > 0.01f
+			? camDaTela.Zoom.X
+			: Math.Max(1, Boot.Config.Zoom);
+		// `GetVisibleRect` do viewport e o MESMO retangulo que o `GetViewportRect()` do `CanvasItem`
+		// devolve la no tocador -- este robo nao e um `CanvasItem` e nao tem o atalho.
+		Vector2 meiaVista = (GetViewport()?.GetVisibleRect().Size ?? Vector2.Zero) / (2f * zoomDaTela);
+		var alcanceEsperado = new Vector2I(
+			Math.Max(1, Mathf.CeilToInt(meiaVista.X / T)), Math.Max(1, Mathf.CeilToInt(meiaVista.Y / T)));
+		Conferir(t.AlcanceDePedraDeTeste == alcanceEsperado,
+				 $"o alcance das pedras e o que a camera mostra ({t.AlcanceDePedraDeTeste}, "
+			   + $"esperado {alcanceEsperado} no zoom {zoomDaTela:0.#})");
+		Conferir(t.AlcanceDePedraDeTeste.X >= 3 && t.AlcanceDePedraDeTeste.Y >= 2,
+				 $"e ele nunca encolhe abaixo do 3x2 de antes ({t.AlcanceDePedraDeTeste})");
 
 		Vector2[] onde = t.PedrasDeTeste;
 		bool naGrade = true, semRepetir = onde.Distinct().Count() == onde.Length;
@@ -9788,18 +11292,25 @@ public partial class RoboDeForma : Node
 		Conferir(naGrade, "toda pedra nasce ALINHADA a grade (centro da celula)");
 		Conferir(semRepetir, "o sorteio nao repete tile (duas pedras no mesmo lugar somem uma na outra)");
 
-		// PERTO DO PERSONAGEM, e dentro do que a camera mostra: o DM sorteia a 7 tiles porque a tela
-		// dele era outra. Aqui uma pedra a 7 tiles e efeito pago e nao visto.
+		// DENTRO DO QUE A CAMERA MOSTRA, e nem um tile alem: o DM sorteia a 7 tiles porque a tela dele
+		// era outra (15x15 tiles inteiros). Uma pedra fora do quadro e efeito pago e nao visto.
+		//
+		// O LIMITE E O ALCANCE MEDIDO (mais meio tile, que e do centro do sprite ao canto da celula), e
+		// nao um numero solto: escrito a mao, ele ficaria pra tras no dia em que a janela mudasse -- que
+		// e literalmente o defeito que este passe veio consertar.
 		Vector2 pes = corpo.GlobalPosition + new Vector2(0, Jandirus.Core.World.MoveRules.FeetOffsetY);
 		bool perto = true, foraDosPes = true;
 		foreach (Vector2 p in onde)
 		{
-			if (Mathf.Abs(p.X - pes.X) > 4 * T || Mathf.Abs(p.Y - pes.Y) > 3 * T) perto = false;
+			if (Mathf.Abs(p.X - pes.X) > (t.AlcanceDePedraDeTeste.X + 1) * T
+			 || Mathf.Abs(p.Y - pes.Y) > (t.AlcanceDePedraDeTeste.Y + 1) * T) perto = false;
 			// NENHUMA embaixo do corpo: uma pedra de 32x32 sob os pes fica escondida pelo personagem.
+			// O buraco e derivado da FOLHA do boneco (ver `Transformacao.MontarOChaoSolto`), entao num
+			// macaco de 96 ele e 3x3 -- aqui o boneco e de 32 e a celula dos pes basta.
 			if (Mathf.FloorToInt(p.X / T) == Mathf.FloorToInt(pes.X / T)
 			 && Mathf.FloorToInt(p.Y / T) == Mathf.FloorToInt(pes.Y / T)) foraDosPes = false;
 		}
-		Conferir(perto, "as pedras caem perto do personagem (dentro do que a camera mostra)");
+		Conferir(perto, "as pedras caem dentro do que a camera mostra, e nao alem");
 		Conferir(foraDosPes, "nenhuma pedra nasce DEBAIXO do corpo (o personagem a taparia)");
 
 		// ============================ SOBRE O CHAO E SOB O CORPO ============================
@@ -9833,7 +11344,171 @@ public partial class RoboDeForma : Node
 		Conferir(emissores == 0,
 				 $"nenhum `GpuParticles2D` de pe na arvore da cinematica ({emissores}) -- as pedras sao sprite");
 
+		AVidaDaPedraEADoDm();
 		OGpuParticlesNaoVoltouAoFonte();
+	}
+
+	// =====================================================================
+	// 3a-ter. OS NUMEROS DA PEDRA, CONTRA O ORIGINAL
+	// =====================================================================
+	/// <summary>
+	/// OS QUATRO NUMEROS DO CHAO SOLTO, ESCRITOS AQUI A MAO -- lidos do `dusts.dm` e do
+	/// `SSJCinematic.dm`, e NAO do <see cref="Transformacao"/>.
+	///
+	/// ============================ POR QUE A MAO, SE O TOCADOR JA OS TEM ============================
+	/// Porque um numero conferido consigo mesmo nao e conferido. A bancada mede a vida observada de
+	/// cada pedra contra `Transformacao.VidaMinima` (ver o laco das 64 cenas) -- e o piso daquela
+	/// comparacao DESCE junto com a constante. Sem uma ancora fora do arquivo medido, aquele bloco
+	/// prova que o tocador e coerente com o que ele mesmo declara, e nao que o numero e o do original.
+	///
+	/// (Medido, injetando `VidaMinima = 2,4`: esta linha reprova, e a la tambem -- mas a de la so
+	/// porque a amostra do chao corre a cada 0,5 s e uma vida de 2,4 s nao sobra folga. Numa regressao
+	/// mais branda -- 6 s, digamos -- a de la passaria e esta continuaria reprovando.)
+	///
+	/// E o <see cref="TetoDaCurtaEscritoAMao"/> ja tinha aberto o precedente pelo mesmo motivo.
+	///
+	/// ============================ E ELES SAO O PEDIDO DO DONO, NAO GOSTO MEU ============================
+	/// *"aumente a area q o jogo pode spawnar esse efeito de rising rock, pq ta mt perto do personagem
+	/// e dura mt pouco"*. A resposta a "dura mt pouco" foi tirada do original e nao inventada: eram
+	/// 2,4/3,6 s aqui contra 10 a 40 s la, quatro a onze vezes menos. Se alguem "otimizar" a vida de
+	/// volta um dia, e este bloco que diz de onde o numero veio.
+	/// ==========================================================================================
+	/// </summary>
+	private void AVidaDaPedraEADoDm()
+	{
+		// `spawn(rand(100,400))` em `dusts.dm:207` -- tique do BYOND e um DECIMO de segundo.
+		const double VidaMinimaDoDm = 100 / 10.0, VidaMaximaDoDm = 400 / 10.0;
+		// `if(prob(15))` sobre o `view()` inteiro -- `SSJCinematic.dm:31` e `SSJ2Cinematic.dm:13`.
+		const double FracaoDoDm = 0.15;
+		// O TETO do `spawn(rand(10,150))` da mesma varredura: o chao termina de se soltar aos 15,0 s.
+		const double EnchimentoDoDm = 150 / 10.0;
+
+		Conferir(Math.Abs(Transformacao.VidaMinima - VidaMinimaDoDm) < 0.001
+				 && Math.Abs(Transformacao.VidaMaxima - VidaMaximaDoDm) < 0.001,
+				 $"a pedra vive os {VidaMinimaDoDm:0.#} a {VidaMaximaDoDm:0.#}s do `dusts.dm:207` "
+			   + $"(esta com {Transformacao.VidaMinima:0.#} a {Transformacao.VidaMaxima:0.#})");
+
+		Conferir(Math.Abs(Transformacao.FracaoDoChaoSolto - FracaoDoDm) < 0.0001,
+				 $"e {FracaoDoDm:P0} do chao a vista se solta, como o `prob(15)` do DM "
+			   + $"(esta com {Transformacao.FracaoDoChaoSolto:P0})");
+
+		Conferir(Math.Abs(Transformacao.EnchimentoMaximo - EnchimentoDoDm) < 0.001,
+				 $"e o chao termina de se soltar em {EnchimentoDoDm:0.#}s, o teto do `spawn(rand(10,150))` "
+			   + $"(esta com {Transformacao.EnchimentoMaximo:0.#}s)");
+
+		// ============================ E A VIDA E MUITO MAIOR QUE A QUE O DONO RECLAMOU ============================
+		// A linha acima ja tranca o numero. Esta tranca a DISTANCIA dele pro estado anterior, e existe
+		// porque o numero pode voltar disfarcado: `VidaMinima = 3.6` com um comentario novo dizendo que
+		// "10 s era exagero" passaria pela comparacao acima so se alguem lembrasse de mudar o
+		// `VidaMinimaDoDm` junto -- que e justamente o que quem mexe faz pra a bancada calar.
+		//
+		// A VIDA ANTIGA E DERIVADA e nao escrita: eram DOIS OU TRES ciclos da folha, entao o pior caso
+		// dela e `ciclo * 3`. Trocar a arte por uma de mais quadros nao pode afrouxar esta linha, e por
+		// isso o numero vem do `.tres` e nao de um "3,6" copiado do relatorio.
+		//
+		// O FATOR E DOIS, e nao os quatro a onze que a medida deu: o que se cobra e a ORDEM de grandeza,
+		// porque o dia em que o dono pedir mais tempo ainda isto nao pode atrapalhar.
+		// ====================================================================================================
+		double cicloDaFolha = CicloDaFolhaDasPedras();
+		Conferir(cicloDaFolha > 0, $"a folha da pedra diz quanto dura um ciclo dela ({cicloDaFolha:0.##}s)");
+		Conferir(cicloDaFolha <= 0 || Transformacao.VidaMinima >= cicloDaFolha * 3 * 2,
+				 $"e a mais curta ainda e ao menos o DOBRO da vida antiga "
+			   + $"({Transformacao.VidaMinima:0.#}s contra os {cicloDaFolha * 3:0.##}s de tres ciclos)");
+	}
+
+	/// <summary>
+	/// QUANTO DURA UMA VOLTA DA FOLHA DA PEDRA -- relido do `.tres`, do jeito que o tocador o le.
+	///
+	/// A conta e a mesma do `Transformacao.DuracaoDoCiclo` (que e privado). Repetida de proposito: e
+	/// a UNICA maneira de a bancada ter um ciclo proprio pra comparar com o que o tocador usou. Pedir
+	/// o numero ao tocador aprovaria qualquer resposta que ele desse -- inclusive zero, que e o que
+	/// sai de uma folha que o Godot nao importou.
+	/// </summary>
+	private static double CicloDaFolhaDasPedras()
+	{
+		var f = ResourceLoader.Load<SpriteFrames>(Transformacao.CaminhoDasPedras);
+		if (f == null || f.GetAnimationNames().Length == 0) return 0;
+		string a = f.GetAnimationNames()[0];
+		double fps = f.GetAnimationSpeed(a);
+		if (fps <= 0) return 0;
+		double soma = 0;
+		for (int i = 0; i < f.GetFrameCount(a); i++) soma += f.GetFrameDuration(a, i);
+		return soma > 0 ? soma / fps : 0;
+	}
+
+	// =====================================================================
+	// 3a-quater. A AREA E MEDIDA -- provado mudando a camera
+	// =====================================================================
+	/// <summary>
+	/// O ALCANCE DO SORTEIO ACOMPANHA O ZOOM. Provado rodando a MESMA cena em duas camaras.
+	///
+	/// ============================ O FURO QUE ESTE BLOCO FECHA ============================
+	/// A checagem do <see cref="AsPedrasSubindo"/> refaz a conta da camera e compara com o
+	/// `AlcanceDePedraDeTeste`. Ela pega o `3 x 2` cravado de volta -- mas so porque a janela desta
+	/// bancada, hoje, da `10 x 6`. Um literal que por acaso EMPATE com a medida (e `10 x 6` cravado
+	/// e o candidato obvio, porque e o numero que o autor veria no relatorio) passa por ela inteirinho,
+	/// e o defeito volta na maquina de quem joga em outra resolucao ou noutro zoom.
+	///
+	/// Uma medida so nao distingue "derivado" de "cravado no valor certo". Duas distinguem.
+	///
+	/// ============================ POR QUE UMA CENA NOVA, E POR QUE A MAIS CURTA ============================
+	/// O alcance e montado no `_Ready` (`MontarOChaoSolto`), entao mexer no zoom depois nao remonta
+	/// nada: e preciso uma cena que NASCA com a outra camera. Escolhida a mais curta do catalogo, e ela
+	/// e bombeada ate o fim -- uma cena abandonada no meio dispararia o teto, e o `Fechar` cobra que na
+	/// rodada inteira ele dispare uma vez so.
+	///
+	/// O ZOOM VOLTA no `finally`: metade desta bancada mede pixel na tela, e deixar a camera torta
+	/// derrubaria blocos que nao tem nada com pedra.
+	/// ====================================================================================================
+	/// </summary>
+	private void AAreaDaPedraEMedidaENaoEscrita(Node2D corpo)
+	{
+		if (GetViewport()?.GetCamera2D() is not { } cam || cam.Zoom.X <= 0.01f)
+		{
+			Conferir(false, "ha camera 2D pra provar que o alcance da pedra e medido");
+			return;
+		}
+
+		// A MAIS CURTA DO CATALOGO: o laco de bombeamento e proporcional ao tamanho dela, e este bloco
+		// paga uma cena inteira so pra ler um `Vector2I`.
+		Jandirus.Core.Forms.Cinematica curta = Jandirus.Core.Forms.Cinematicas.Todas
+			.OrderBy(c => c.Segundos).First();
+		FormaDef? df = Jandirus.Core.Forms.Catalogo.Def(curta.Forma);
+		if (df == null) { Conferir(false, "a cena mais curta aponta pra uma forma do catalogo"); return; }
+
+		Vector2 zoomAntes = cam.Zoom;
+		Vector2I comOZoomDaBancada = default, comODobro = default;
+		try
+		{
+			var a = Transformacao.Rodar(corpo.GetParent(), corpo, df, curta, souEu: true);
+			a.SetProcess(false);
+			comOZoomDaBancada = a.AlcanceDePedraDeTeste;
+			for (double k = 0; k < curta.Segundos + 1.0 && IsInstanceValid(a); k += 0.1) a._Process(0.1);
+
+			// DOBRAR O ZOOM E ENXERGAR A METADE: `GetViewportRect().Size / (2 * zoom)` -- o mundo visivel
+			// encolhe na mesma proporcao. Por isso a comparacao la embaixo e por METADE e nao por
+			// "mudou": "mudou" ficaria verde com o alcance reagindo ao contrario.
+			cam.Zoom = zoomAntes * 2f;
+			var b = Transformacao.Rodar(corpo.GetParent(), corpo, df, curta, souEu: true);
+			b.SetProcess(false);
+			comODobro = b.AlcanceDePedraDeTeste;
+			for (double k = 0; k < curta.Segundos + 1.0 && IsInstanceValid(b); k += 0.1) b._Process(0.1);
+		}
+		finally { cam.Zoom = zoomAntes; }
+
+		const int T = Jandirus.Core.World.ZoneCollision.TileSize;
+		Vector2 meiaVista = (GetViewport()?.GetVisibleRect().Size ?? Vector2.Zero) / (2f * zoomAntes.X * 2f);
+		var esperadoNoDobro = new Vector2I(
+			Math.Max(1, Mathf.CeilToInt(meiaVista.X / T)), Math.Max(1, Mathf.CeilToInt(meiaVista.Y / T)));
+
+		Conferir(comODobro == esperadoNoDobro,
+				 $"com o zoom DOBRADO o alcance da pedra vira {esperadoNoDobro} "
+			   + $"(veio {comODobro}, era {comOZoomDaBancada}) -- ele e medido, nao escrito");
+
+		// E O SENTIDO. Um `Vector2I` cravado daria o MESMO nas duas camaras; um alcance que reagisse ao
+		// contrario (crescendo com o zoom) casaria com "mudou" e nao com esta.
+		Conferir(comODobro.X < comOZoomDaBancada.X || comODobro.Y < comOZoomDaBancada.Y,
+				 $"e ele ENCOLHE quando a camera se aproxima ({comOZoomDaBancada} -> {comODobro})");
 	}
 
 	/// <summary>Quantos emissores de particula ha nesta arvore, deste node pra baixo.</summary>
@@ -9842,6 +11517,35 @@ public partial class RoboDeForma : Node
 		int n = raiz is GpuParticles2D or CpuParticles2D ? 1 : 0;
 		foreach (Node f in raiz.GetChildren()) n += ContarParticulas(f);
 		return n;
+	}
+
+	/// <summary>
+	/// QUANTAS LINHAS DE CODIGO (nao de comentario) de um arquivo citam uma palavra.
+	///
+	/// Era funcao local de um bloco so. Virou metodo porque DOIS blocos varrem o mesmo fonte por
+	/// palavras diferentes -- o emissor de particula e o sistema de estrago de cenario. Copiada, ela
+	/// viraria dois filtros de comentario pra manter iguais, e o modo de falha de um filtro que
+	/// envelhece e sempre o mesmo: passa a descartar demais e a checagem devolve zero pra sempre.
+	///
+	/// Devolve `(-1, 0)` quando o arquivo nao existe -- e `-1` nunca e igual ao zero que os
+	/// chamadores exigem, entao um caminho errado REPROVA em vez de virar ausencia.
+	/// </summary>
+	private static (int codigo, int linhas) VarrerFonte(string res, string palavra)
+	{
+		string arq = ProjectSettings.GlobalizePath(res);
+		if (!System.IO.File.Exists(arq)) return (-1, 0);
+
+		int achados = 0, total = 0;
+		foreach (string l in System.IO.File.ReadAllLines(arq))
+		{
+			total++;
+			string s = l.TrimStart();
+			// COMENTARIO DE LINHA, DE DOC E CORPO DE BLOCO. Basta pro que se mede aqui, e os
+			// controles dos dois chamadores provam que basta.
+			if (s.StartsWith("//") || s.StartsWith("*") || s.StartsWith("/*")) continue;
+			if (l.Contains(palavra)) achados++;
+		}
+		return (achados, total);
 	}
 
 	// =====================================================================
@@ -9876,25 +11580,7 @@ public partial class RoboDeForma : Node
 	/// </summary>
 	private void OGpuParticlesNaoVoltouAoFonte()
 	{
-		(int codigo, int linhas) Varrer(string res, string palavra)
-		{
-			string arq = ProjectSettings.GlobalizePath(res);
-			if (!System.IO.File.Exists(arq)) return (-1, 0);
-
-			int achados = 0, total = 0;
-			foreach (string l in System.IO.File.ReadAllLines(arq))
-			{
-				total++;
-				string s = l.TrimStart();
-				// COMENTARIO DE LINHA, DE DOC E CORPO DE BLOCO. Basta pro que se mede aqui, e o
-				// controle abaixo prova que basta.
-				if (s.StartsWith("//") || s.StartsWith("*") || s.StartsWith("/*")) continue;
-				if (l.Contains(palavra)) achados++;
-			}
-			return (achados, total);
-		}
-
-		(int noTocador, int linhasTocador) = Varrer("res://Client/Transformacao.cs", "GpuParticles2D");
+		(int noTocador, int linhasTocador) = VarrerFonte("res://Client/Transformacao.cs", "GpuParticles2D");
 		Conferir(linhasTocador > 100,
 				 $"o fonte do tocador esta legivel pra varrer ({linhasTocador} linhas) -- "
 			   + "sem isto a varredura passaria vazia");
@@ -9902,14 +11588,82 @@ public partial class RoboDeForma : Node
 				 $"`GpuParticles2D` nao existe mais em codigo no tocador ({noTocador} linha(s) fora de comentario)");
 
 		// O CONTROLE. Ver o cabecalho: sem ele, um filtro quebrado daria verde eterno.
-		(int noRaio, _) = Varrer("res://Client/RaiosDaForma.cs", "GpuParticles2D");
+		(int noRaio, _) = VarrerFonte("res://Client/RaiosDaForma.cs", "GpuParticles2D");
 		Conferir(noRaio > 0,
 				 $"a varredura ACHA emissor onde ele existe de verdade ({noRaio} em RaiosDaForma.cs)");
 
 		// E O QUE SUBSTITUIU ELE CONTINUA LA. Se alguem apagar o `AnimatedSprite2D` das pedras junto
 		// com o emissor, as duas checagens de cima ficam verdes com a cinematica sem efeito nenhum.
-		(int comSprite, _) = Varrer("res://Client/Transformacao.cs", "AnimatedSprite2D");
+		(int comSprite, _) = VarrerFonte("res://Client/Transformacao.cs", "AnimatedSprite2D");
 		Conferir(comSprite > 0, $"e o sprite que tomou o lugar dele esta la ({comSprite} linha(s))");
+
+		OEstragoDeCenarioNaoVoltouAoFonte();
+	}
+
+	// =====================================================================
+	// 3a-sexies. O QUADRADO MARROM, VARRIDO NO FONTE
+	// =====================================================================
+	/// <summary>
+	/// NENHUMA CINEMATICA CHAMA O SISTEMA DE QUEBRAR CENARIO -- conferido NO ARQUIVO.
+	///
+	/// ============================ A CHECAGEM QUE IMPEDE A AUSENCIA DE VOLTAR CALADA ============================
+	/// O pedido do dono foi *"vc colocou uns efeitos de particula nas cinematicas q parecem q tem uns
+	/// quadrados marrons caindo e criando uma fumaca parecendo q quebrou uma parede ou objeto, TIRE
+	/// esse efeito"* -- e o efeito era a cinematica chamando a <see cref="PoeiraDeEstrago"/>, o sistema
+	/// do cenario sendo derrubado, pra fazer enfeite.
+	///
+	/// Ha duas barreiras antes desta, e as duas tem furo:
+	///   * o COMPILADOR, porque o `Efeito.Cascalho` foi aposentado. Ele cobre o bit e nao a chamada:
+	///     `PoeiraDeEstrago.Soltar(...)` escrito direto dentro do `Disparar` compila perfeitamente, e
+	///     e literalmente assim que o efeito entrou ali da primeira vez;
+	///   * o CONTADOR (`PedidosDeTeste`, medido em volta de cada uma das 64 cenas). Ele so ve o que a
+	///     bancada EXECUTA -- uma chamada dentro de um `if` de forma, de zona ou de caminho de erro que
+	///     nenhuma das 64 percorre nao aparece nele, e continua no jogo.
+	///
+	/// O fonte nao tem instante nem caminho: se a palavra estiver escrita como codigo, ela esta la.
+	///
+	/// ============================ E O SISTEMA CONTINUA VIVO -- E ISSO E METADE DA REGRA ============================
+	/// Cortar o efeito da cinematica nao podia virar mutilar o estrago de cenario, que tem dono proprio
+	/// e roda em combate. Por isso o CONTROLE aqui nao e um arquivo qualquer: e o `World`, que chama a
+	/// `PoeiraDeEstrago` de verdade quando o cenario cai. Ele responde as duas perguntas de uma vez --
+	/// a varredura enxerga (senao o zero do tocador nao valeria nada) E o caminho legitimo nao foi
+	/// levado junto no corte.
+	///
+	/// ============================ COMENTARIO NAO CONTA ============================
+	/// Pelo mesmo motivo do bloco irmao: o `Transformacao.cs` FALA muito de `PoeiraDeEstrago` -- sao os
+	/// comentarios que guardam por que o `Cascalho()` foi deletado e por que o sistema nao foi tocado.
+	/// Apagar aquilo pra a bancada calar seria o pior desfecho possivel, entao o filtro descarta
+	/// comentario e o controle prova que ele nao esta descartando tudo.
+	/// ====================================================================================================
+	/// </summary>
+	private void OEstragoDeCenarioNaoVoltouAoFonte()
+	{
+		const string Sistema = "PoeiraDeEstrago";
+
+		(int noTocador, int linhasTocador) = VarrerFonte("res://Client/Transformacao.cs", Sistema);
+		Conferir(linhasTocador > 100,
+				 $"o fonte do tocador esta legivel pra varrer o estrago ({linhasTocador} linhas)");
+		Conferir(noTocador == 0,
+				 $"`{Sistema}` nao existe mais em codigo no tocador da cinematica "
+			   + $"({noTocador} linha(s) fora de comentario)");
+
+		// E NO ROTEIRO TAMBEM. O Core nao conhece o Godot e nao poderia chamar a classe; o que ele pode
+		// e ganhar o bit de volta. `Cascalho` esta escrito nos comentarios de la (a memoria do corte),
+		// entao vale a mesma regra -- e o `Efeito.` na frente e o que separa o bit da prosa.
+		(int noRoteiro, int linhasRoteiro) = VarrerFonte("res://Core/Forms/Cinematicas.cs", "Efeito.Cascalho");
+		Conferir(linhasRoteiro > 100, $"o fonte do roteiro esta legivel pra varrer ({linhasRoteiro} linhas)");
+		Conferir(noRoteiro == 0,
+				 $"e o bit `Efeito.Cascalho` nao voltou ao roteiro ({noRoteiro} linha(s) fora de comentario)");
+
+		// ============================ O CONTROLE, QUE E TAMBEM A OUTRA METADE DA REGRA ============================
+		// Ver o cabecalho. Zero aqui significa uma de duas coisas, e as duas sao reprova: ou o filtro de
+		// comentario esta comendo o arquivo inteiro (e o zero do tocador la em cima nao vale nada), ou o
+		// corte da cinematica levou junto o estrago de cenario -- o sistema que o dono NAO mandou tirar.
+		// ====================================================================================================
+		(int noMundo, _) = VarrerFonte("res://Client/World.cs", Sistema + ".Soltar");
+		Conferir(noMundo > 0,
+				 $"a varredura ACHA a chamada onde ela e legitima ({noMundo} em World.cs) "
+			   + "-- o estrago de cenario continua inteiro e continua sendo chamado");
 	}
 
 	// =====================================================================
@@ -11151,14 +12905,19 @@ public partial class RoboDeForma : Node
 		Conferir(faiscaErrada.Count == 0,
 				 $"a faisca das {Jandirus.Core.Forms.Catalogo.Todas.Length} entradas sai como o dono "
 			   + $"ditou ({string.Join(" | ", faiscaErrada)})");
-		// TRES TONS NO CATALOGO INTEIRO, e nao um: o azul das escadas de sangue, o vermelho do Limit
-		// Breaker e o branco da linha do Mistico. Com `== 1` a checagem passaria se o vermelho
-		// escorregasse pro azul, que e a metade da regra que chegou por ultimo -- e o branco, que
-		// chegou depois dela, e o tom que uma "simplificacao" do `CorDosRaios` apagaria primeiro (ele
-		// e o unico ramo que nao e nem escada de sangue nem aura).
-		Conferir(tonsDaFaisca.Count == 3 && tonsDaFaisca.Contains(AzulDaFaisca)
-			  && tonsDaFaisca.Contains(Vermelho) && tonsDaFaisca.Contains("ffffff"),
-				 $"a faisca da regra sai em TRES tons -- azul, vermelho e branco ({string.Join("/", tonsDaFaisca)})");
+		// QUATRO TONS NO CATALOGO INTEIRO, e nao um: o azul das escadas de sangue, o vermelho do Limit
+		// Breaker, o branco do Mistico e o roxo da Fera. Com `== 1` a checagem passaria se o vermelho
+		// escorregasse pro azul, que e a metade da regra que chegou por ultimo.
+		//
+		// ERAM TRES ATE AGORA -- a linha do Mistico dividia o branco. O dono separou os dois degraus:
+		// *"no beast os raiozinhos sao roxos"*, e so a Fera. Os dois ultimos tons sao os que uma
+		// "simplificacao" do `CorDosRaios` apagaria primeiro, porque sao os unicos ramos que nao sao
+		// nem escada de sangue nem aura -- e agora sao DOIS ramos e nao um, com um `when` entre eles.
+		Conferir(tonsDaFaisca.Count == 4 && tonsDaFaisca.Contains(AzulDaFaisca)
+			  && tonsDaFaisca.Contains(Vermelho) && tonsDaFaisca.Contains("ffffff")
+			  && tonsDaFaisca.Contains("d9b0ff"),
+				 $"a faisca da regra sai em QUATRO tons -- azul, vermelho, branco e roxo "
+			   + $"({string.Join("/", tonsDaFaisca)})");
 		// E O CONTROLE: tem que sobrar catalogo seguindo a aura. Se ele zerar, a regra virou "azul
 		// pra todo mundo" e a checagem de cima passaria feliz.
 		Conferir(faiscaPelaAura.Count >= 10,
@@ -11376,6 +13135,645 @@ public partial class RoboDeForma : Node
 		_passos.Add($"  --     veneno #{Veneno}: contorno {daRegra} parados / {seguemAAura} seguiram, "
 				  + $"faisca {faiscaDaRegra} parados / {faiscaPelaAura} seguiram; "
 				  + $"coincidencias cobertas: {string.Join(",", coincidencias)}");
+	}
+
+	// =====================================================================
+	// 6-ter. A CHAMA -- DE QUE FOLHA ELA E, E DE QUEM E A COR
+	// =====================================================================
+	/// <summary>
+	/// AS DUAS PERGUNTAS DA CHAMA, EM CONJUNTO E NO CATALOGO INTEIRO: qual DESENHO ela usa
+	/// (`Catalogo.Folha`) e de QUEM e a cor dele (`Catalogo.ChamaDoJogador`).
+	///
+	/// ============================ O QUE ESTE BLOCO VE QUE OS OUTROS NAO VEEM ============================
+	/// A folha ja e varrida forma a forma no <see cref="Catalogo"/>, contra uma derivacao independente, e
+	/// os dois degraus do Prodigial ja tem linha com nome la. O que faltava eram os CONJUNTOS, e sao eles
+	/// que respondem as duas metades do enunciado do dono:
+	///
+	///   * *"o mistico e beast tao usando a aura de carga do ssj god"* -- "eles sairam da folha do God"
+	///     fica verde tambem num jogo em que NINGUEM usa mais essa folha. O `ssg` e o `rose_ssg` sao o
+	///     CONTRA-EXEMPLO: enquanto os dois estiverem la, "sair de la" quer dizer alguma coisa. E o
+	///     `rose_ssg` e o que mais escorrega dos dois, porque ele responde por um ramo PROPRIO
+	///     (`GodKiRose`, com corte de `Ordem`) -- uma edicao que derrubasse so ele passaria inteira por
+	///     uma checagem que so nomeasse o `ssg`;
+	///
+	///   * `Catalogo.ChamaDoJogador` NASCEU nesta passada e nao tinha varredura nenhuma. Um `_ => true`,
+	///     ou um ramo novo por linha, daria a chama do jogador a formas que tem cor propria declarada --
+	///     e as linhas que existiam perguntam pelos dois ids do Prodigial e mais nada. A cor da chama
+	///     ENTRA na foto da <see cref="Aparencia"/> (`aura=folha/cor`), mas la ela e comparada com a
+	///     foto da BASE, procurando canal que VAZA -- ninguem afirma o valor dela forma a forma.
+	///
+	/// DEFEITO INJETADO E RODADO, pra isto nao ser suposicao: com um `LinhaDeForma.GodKi => true` no
+	/// `ChamaDoJogador`, a linha do conjunto aqui embaixo cai imprimindo
+	/// `[base, blue, blue_evolution, mistico, ssg]`. Do resto da bancada so o <see cref="AIdaEAVolta"/>
+	/// reclamou, e so de DOIS dos tres (`blue` e `ssg`, que ele posa) -- o `blue_evolution` nao e posado
+	/// por ninguem e sairia com a chama trocada em silencio.
+	/// ================================================================================================
+	///
+	/// ============================ A COR PESSOAL VIROU CAMPO DE FICHA, E ISTO AQUI MUDOU ============================
+	/// Este bloco dizia que a prova natural do pedido *"a aura do mistico tem q ser a mesma aura da BASE
+	/// DO PERSONAGEM"* -- dois personagens com auras diferentes -- **nao era possivel neste port**, porque
+	/// a cor pessoal era UMA constante compartilhada (o `Aura.CorDoKiCru`) e nenhuma funcao do funil
+	/// aceitava um jogador como argumento. Deixou de ser verdade: `Appearance.CorAura` e sorteada no
+	/// nascimento como no DM (`CharacterCreation.dm:25-27`) e `Aura.CorDaChamaDe` pede a cor de QUEM esta
+	/// acendendo.
+	///
+	/// O QUE ESTA FUNCAO PASSOU A FAZER com isso e o minimo honesto: ela usa o
+	/// <see cref="CorPessoalDeTeste"/> -- um tom que NAO e o fallback -- em todas as contas. Com o
+	/// `CorDoKiCru` no lugar dele, tudo aqui ficaria verde num jogo em que a cor sorteada nunca saisse do
+	/// save, que e o modo de falha que nasceu junto com o campo.
+	///
+	/// E A PROVA POR VENENO CONTINUA, porque ela mede outra coisa: em vez de duas cores de JOGADOR, duas
+	/// cores de FORMA. Com a `FormaDef.Aura` de cada entrada trocada por um veneno, quem usa a chama do
+	/// jogador tem que ficar PARADO e quem usa a propria tem que ACOMPANHAR. Isso e o que separa "a
+	/// resposta e a do jogador" de "a resposta e essa cor por acaso" -- se alguem apagar o ramo do
+	/// Mistico e escrever `Aura = "ffd2c8"` na entrada dele, a tela fica identica, todas as checagens de
+	/// hexa continuam verdes, e SO esta varredura reprova. (O veneno e a tecnica do
+	/// <see cref="AsCoresNaoSaoAAura"/>, que ja a usa pro contorno e pra faisca e nao alcanca a chama.)
+	///
+	/// O QUE CONTINUA FORA DAQUI, e esta dito no relatorio: **dois corpos ao mesmo tempo**. Tudo nesta
+	/// funcao e funcao pura com uma cor pessoal so; "chega certa num corpo e errada no outro" e pergunta
+	/// de dois bonecos vivos, e o lugar dela e o `RoboDeDoisCorpos`, que ja monta dois com `Aura`,
+	/// `Carga` e `Nebulosa`.
+	/// ==============================================================================================================
+	///
+	/// ============================ E OS DOIS CONTROLES SAO DEFEITO INJETADO DE VERDADE ============================
+	/// Conjunto e a familia de checagem que mais passa por acaso: um `Where` que nao case com nada devolve
+	/// vazio, e vazio comparado com vazio e verde. Entao os dois conjuntos sao medidos DE NOVO com um
+	/// defeito armado no catalogo vivo, e o que se cobra e que a medida MUDE:
+	///
+	///   * `rose_ssg.Ordem` de 10 pra 20 -- o corte do `OrdemDoKiSobreOSuperSaiyajin` o joga na folha
+	///     ROSA e a folha do God fica com um degrau so;
+	///   * `beast.PedeGodKi` de 50 pra -1 -- e literalmente a regressao que o dono viu: o Beast passa a
+	///     dividir a chama com o Mistico. O Core promete que esse campo move contorno, raiva e chama de
+	///     uma vez (ver `Catalogo.ChamaDoJogador`), e este controle e quem cobra a promessa.
+	///
+	/// OS DOIS SAO DESFEITOS NO `finally` E A DEVOLUCAO E CONFERIDA, pelo motivo do bloco do veneno: o
+	/// catalogo esta VIVO e o jogo esta rodando atras desta janela.
+	/// ========================================================================================================
+	/// </summary>
+	private void AChamaDeQuemEDeQueFolha()
+	{
+		// A folha do God e o `ChamaDoJogador` sao perguntados tantas vezes aqui que escrever
+		// `Jandirus.Core.Forms.Catalogo.` por extenso (a convencao deste arquivo, por causa do choque
+		// com o metodo `Catalogo()`) esconderia os conjuntos dentro do proprio prefixo.
+		static string[] NaFolha(FolhaDeAura f) =>
+			[.. Jandirus.Core.Forms.Catalogo.Todas
+				.Where(d => Jandirus.Core.Forms.Catalogo.Folha(d) == f).Select(d => d.Id).Order()];
+		static string[] ComAChamaDoJogador() =>
+			[.. Jandirus.Core.Forms.Catalogo.Todas
+				.Where(Jandirus.Core.Forms.Catalogo.ChamaDoJogador).Select(d => d.Id).Order()];
+
+		// ============================ 1. A FOLHA DO GOD TEM DOIS DONOS, E ELES TEM NOME ============================
+		// Os ids estao LITERAIS pelo motivo do resto deste arquivo: escrever a esperada como "as formas
+		// divinas com Ordem < 20" seria repetir a derivacao do Core e as duas errariam juntas.
+		string[] noDeus = NaFolha(FolhaDeAura.DeusQuente);
+		Conferir(noDeus.SequenceEqual(new[] { "rose_ssg", "ssg" }),
+				 "a chama do SSG (`FieryGod`) e de DOIS degraus e eles tem nome -- `ssg` e `rose_ssg` "
+			   + $"([{string.Join(", ", noDeus)}])");
+
+		// E O `rose_ssg` DITO DE NOVO, sozinho: ele e o que sai de um ramo proprio (`GodKiRose`), e a
+		// linha de cima o cobre em conjunto -- mas quem ler o log vermelho precisa saber que o degrau
+		// rosa e o que ninguem posa e o que ninguem lembra de conferir.
+		Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("rose_ssg"))
+				 == FolhaDeAura.DeusQuente,
+				 "-- e o SSG da linha Rose continua nela junto com o comum (ramo proprio, corte proprio)");
+
+		// ============================ 2. E O PRODIGIAL NAO ESTA MAIS LA ============================
+		// A queixa foi sobre a LINHA (*"o mistico e beast"*), entao os dois sao nomeados: um conserto
+		// que pegasse so um degrau e o jeito mais provavel de isto reaparecer.
+		foreach (string prodigial in new[] { Jandirus.Core.Forms.Catalogo.IdMistico, "beast" })
+			Conferir(!noDeus.Contains(prodigial),
+					 $"`{prodigial}` NAO esta na folha do God -- e ela continua tendo {noDeus.Length} "
+				   + "dono(s), entao \"saiu\" quer dizer alguma coisa");
+
+		// ============================ 3. QUEM ACENDE A CHAMA **DO JOGADOR** ============================
+		// Dois, e os dois por motivo diferente: a `base` porque nao e transformacao nenhuma (e o caso
+		// original da pergunta), e o `mistico` por PORTE -- ele nao pede ki divino (`PedeGodKi = -1`) e
+		// no DM cai no ramo de baixo do `AuraObject.dm:191-194`, que usa `container.AURA` mais o
+		// `icolor = rgb(AuraR, AuraG, AuraB)` do `centerAura()`.
+		//
+		// O BEAST FICA DE FORA COM RAZAO PROPRIA e por isso ele nao esta nesta lista: ele tem cor de
+		// chama declarada (`7d5af0`, o `rgb(125,90,240)` do `Mystic.dm:95`).
+		string[] doJogador = ComAChamaDoJogador();
+		Conferir(doJogador.SequenceEqual(new[] { Jandirus.Core.Forms.Catalogo.IdBase,
+												 Jandirus.Core.Forms.Catalogo.IdMistico }),
+				 "a chama do JOGADOR e de DUAS formas -- a `base` e o `mistico` "
+			   + $"([{string.Join(", ", doJogador)}])");
+
+		// ============================ 4. E A CHAMA DE TODAS AS OUTRAS E A COR QUE ELAS DECLARAM ============================
+		// Este e o "as 33 outras nao se moveram" desta passada. A afirmacao NAO e "a funcao concorda com
+		// ela mesma": e que a chama de cada uma das outras entradas e o hexa ESCRITO na entrada dela --
+		// a unica fonte que nao passa pelo `ChamaDoJogador`. Um ramo novo em `ChamaDoJogador` que
+		// alcancasse uma linha inteira apagaria a cor declarada dessas formas, e cai aqui pelo nome.
+		var chamaTrocada = new List<string>();
+		foreach (FormaDef d in Jandirus.Core.Forms.Catalogo.Todas)
+		{
+			if (Jandirus.Core.Forms.Catalogo.ChamaDoJogador(d)) continue;
+			if (!Aura.CorDaChamaDe(d, CorPessoalDeTeste).IsEqualApprox(new Color(d.Aura)))
+				chamaTrocada.Add($"{d.Id}: {Aura.CorDaChamaDe(d, CorPessoalDeTeste).ToHtml(false)} != {d.Aura}");
+		}
+		Conferir(chamaTrocada.Count == 0,
+				 $"e as outras {Jandirus.Core.Forms.Catalogo.Todas.Length - doJogador.Length} acendem a "
+			   + $"COR QUE DECLARAM ({string.Join(" | ", chamaTrocada)})");
+
+		// ============================ 5. O VENENO: DUAS CORES DE FORMA NO LUGAR DE DOIS JOGADORES ============================
+		// Ver o cabecalho. O mesmo veneno do `AsCoresNaoSaoAAura` -- e conferido do mesmo jeito, porque
+		// um veneno que por acaso fosse a cor de alguem faria o teste daquela forma passar sem medir.
+		const string Veneno = "010203";
+		var deVerdade = new Dictionary<string, string>();
+		foreach (FormaDef d in Jandirus.Core.Forms.Catalogo.Todas) deVerdade[d.Id] = d.Aura;
+		Conferir(!deVerdade.ContainsValue(Veneno),
+				 $"o veneno (#{Veneno}) nao e a chama de ninguem no catalogo -- senao ele nao envenena");
+
+		var seMexeuSemDever = new List<string>();
+		var ficouParadaSemDever = new List<string>();
+		foreach (FormaDef d in Jandirus.Core.Forms.Catalogo.Todas)
+		{
+			Color limpa = Aura.CorDaChamaDe(d, CorPessoalDeTeste);
+			Color venenada;
+			// `try/finally` PELO MOTIVO DO BLOCO IRMAO: se o `new Color` estourar num hexa torto, sem
+			// ele a bancada morre DEIXANDO o catalogo envenenado -- e o jogo continua rodando com ele.
+			try { d.Aura = Veneno; venenada = Aura.CorDaChamaDe(d, CorPessoalDeTeste); }
+			finally { d.Aura = deVerdade[d.Id]; }
+
+			bool mexeu = !venenada.IsEqualApprox(limpa);
+			if (Jandirus.Core.Forms.Catalogo.ChamaDoJogador(d))
+			{
+				if (mexeu) seMexeuSemDever.Add($"{d.Id}: {limpa.ToHtml(false)} -> {venenada.ToHtml(false)}");
+			}
+			else if (!mexeu) ficouParadaSemDever.Add($"{d.Id}: {limpa.ToHtml(false)}");
+		}
+		Conferir(seMexeuSemDever.Count == 0,
+				 $"com a cor da forma envenenada, a chama das {doJogador.Length} do JOGADOR nao se mexe "
+			   + $"({string.Join(" | ", seMexeuSemDever)}) -- e o que separa \"e a do jogador\" de \"e "
+			   + "branca por acaso\"");
+		Conferir(ficouParadaSemDever.Count == 0,
+				 "e a das outras ACOMPANHA o veneno, uma a uma "
+			   + $"({string.Join(" | ", ficouParadaSemDever)})");
+
+		// E O MISTICO DITO PELO NOME NA PONTA DOS DOIS: ele e quem o dono nomeou, e as duas listas acima
+		// falam por contagem. Aqui se afirma o valor -- a chama dele continua sendo o ki cru DEPOIS de a
+		// entrada dele ter passado pelo veneno e voltado.
+		if (Jandirus.Core.Forms.Catalogo.Def(Jandirus.Core.Forms.Catalogo.IdMistico) is { } mis)
+			Conferir(Aura.CorDaChamaDe(mis, CorPessoalDeTeste).IsEqualApprox(CorPessoalDeTeste)
+				  && mis.Aura == deVerdade[mis.Id],
+					 $"-- e a do Mistico e a cor do jogador #{CorPessoalDeTeste.ToHtml(false)} com a "
+				   + $"entrada dele intacta (#{mis.Aura})");
+
+		// ============================ 6. OS DOIS CONTROLES, COM O DEFEITO ARMADO ============================
+		// (a) O `rose_ssg` FORA da folha do God -- ver o cabecalho.
+		if (Jandirus.Core.Forms.Catalogo.Def("rose_ssg") is { } rosa)
+		{
+			int ordemDeVerdade = rosa.Ordem;
+			string[] comDefeito;
+			try { rosa.Ordem = 20; comDefeito = NaFolha(FolhaDeAura.DeusQuente); }
+			finally { rosa.Ordem = ordemDeVerdade; }
+
+			Conferir(!comDefeito.SequenceEqual(noDeus) && !comDefeito.Contains("rose_ssg"),
+					 "CONTROLE: com o `rose_ssg` empurrado pra cima do corte, a folha do God fica com "
+				   + $"[{string.Join(", ", comDefeito)}] -- a medida ENXERGA um degrau saindo dela");
+			Conferir(rosa.Ordem == ordemDeVerdade
+					 && NaFolha(FolhaDeAura.DeusQuente).SequenceEqual(noDeus),
+					 "-- e o catalogo sai do controle como entrou");
+		}
+
+		// (b) O BEAST DIVIDINDO A CHAMA COM O MISTICO -- a regressao do dono, armada de proposito.
+		if (Jandirus.Core.Forms.Catalogo.Def("beast") is { } fera)
+		{
+			double pedeDeVerdade = fera.PedeGodKi;
+			string[] comDefeito;
+			Color chamaComDefeito;
+			try
+			{
+				fera.PedeGodKi = -1;
+				comDefeito = ComAChamaDoJogador();
+				chamaComDefeito = Aura.CorDaChamaDe(fera, CorPessoalDeTeste);
+			}
+			finally { fera.PedeGodKi = pedeDeVerdade; }
+
+			Conferir(comDefeito.Contains("beast") && chamaComDefeito.IsEqualApprox(CorPessoalDeTeste),
+					 "CONTROLE: com o `PedeGodKi` da Fera abaixo do corte ela CAI na chama do jogador "
+				   + $"([{string.Join(", ", comDefeito)}]) -- a medida enxerga a regressao que o dono viu");
+			Conferir(fera.PedeGodKi == pedeDeVerdade
+					 && ComAChamaDoJogador().SequenceEqual(doJogador)
+					 && Aura.CorDaChamaDe(fera, CorPessoalDeTeste).IsEqualApprox(new Color("7d5af0")),
+					 "-- e a Fera volta ao roxo declarado dela "
+				   + $"(#{Aura.CorDaChamaDe(fera, CorPessoalDeTeste).ToHtml(false)})");
+		}
+
+		_passos.Add($"  --     folha do God: {string.Join(", ", noDeus)}; chama do jogador: "
+				  + string.Join(", ", doJogador));
+	}
+
+	// =====================================================================
+	// 6b. O SAVE DO BINARIO ANTIGO -- a unica familia daqui que protege a CONTA
+	// =====================================================================
+	/// <summary>
+	/// ============================ POR QUE ESTA FAMILIA NAO SE PARECE COM NENHUMA OUTRA DAQUI ============================
+	/// Todo o resto desta bancada erra PIXEL. Esta erra CONTA. O `Appearance.CorAura` nasceu DENTRO de
+	/// um objeto que ja esta gravado no disco de todo mundo, e o modo de falha desse tipo de mudanca ja
+	/// tem nome e cadeia escritos neste repo (cabecalho do `PecaDeRoupaConverter`): um `JsonException`
+	/// na leitura faz o `AccountStore.Carregar` devolver **nulo**, o `Login` le nulo como "conta nova",
+	/// monta uma conta vazia e GRAVA POR CIMA. O save nao fica ilegivel -- fica APAGADO, com os tres
+	/// personagens dentro. Nenhuma checagem de cor deste arquivo tem uma palavra a dizer sobre isso.
+	///
+	/// ============================ E POR ISSO A PECA E UM ARQUIVO DE VERDADE ============================
+	/// As duas pecas em `Assets/Data/bancada-save-*.json` **nao foram escritas a mao**: sao dois saves
+	/// que o binario ANTIGO deste projeto gravou (7 e 3 de agosto, antes de este campo existir), copiados
+	/// do `%APPDATA%` com tres campos trocados -- `Conta`, `Sal` e `Hash`, porque credencial nao entra em
+	/// repositorio (sal vazio = "conta antiga, sem senha", que o `AccountStore.Confere` ja aceita).
+	///
+	/// Montar o JSON aqui dentro seria escrever o que EU acho que o binario antigo escrevia, e o que se
+	/// quer medir e justamente a diferenca entre as duas coisas. A segunda peca prova que isso importa:
+	/// ela e de DUAS geracoes atras e nao tem oito campos que o `CharacterSave` de hoje tem
+	/// (`Mochila`, `Porte`, `Historia`, `Social`, `FormasEstreadas`, `Disciplina`, `DiscReal`,
+	/// `DiscAtual`) nem o `FormasDeFrost` dentro do `Visual` -- eu nao teria lembrado de omitir nenhum.
+	///
+	/// ============================ AS SEIS PERGUNTAS, E COMO CADA UMA REPROVA ============================
+	///   (a) A PECA CARREGA -- `Carregar` nao devolve nulo. REPROVA se qualquer campo novo do
+	///       `CharacterSave` mudar de TIPO por baixo de um save existente. E o primeiro elo da cadeia
+	///       que apaga a conta, e o item (g) prova que esta medida enxerga esse elo.
+	///   (b) O PERSONAGEM NAO PERDE NADA -- os literais desta peca (BP de 10 trilhoes, 35 maestrias, 15
+	///       membros, disciplina 2 a 100%...) atravessam o parser. REPROVA com qualquer regressao que
+	///       faca um pedaco do JSON ser engolido calado.
+	///   (c) A COR NASCE PREENCHIDA E E A DERIVADA -- `CorDeAura.De(nome, CriadoEm)`. REPROVA se alguem
+	///       trocar a derivacao por um sorteio na carga, ou tirar o `??=` do `ParaJogador`.
+	///   (d) DUAS CARGAS DAO A MESMA COR, e uma TERCEIRA depois de passar pelo DISCO. REPROVA com a
+	///       cor rerrolando por login (o pior defeito possivel aqui) e com o `Rgb` voltando PRETO do
+	///       JSON -- que e o que acontece sem o `[JsonConstructor]` daquela struct, e que sumiria
+	///       calado porque preto e a mesma coisa que "sem tinta".
+	///   (e) O CAMPO E OVERRIDE E NAO CACHE -- uma cor gravada FORA da faixa do sorteio sobrevive a
+	///       carga. REPROVA no dia em que alguem escrever `=` no lugar do `??=` (a tela fica igual, e
+	///       so o verb `Aura_Color()` do DM, quando for portado, descobriria).
+	///   (f) O BINARIO VELHO LENDO SAVE NOVO -- propriedade desconhecida e IGNORADA, nao estoura. E o
+	///       mecanismo que faz campo novo ser seguro nas duas direcoes; REPROVA se alguem ligar
+	///       `JsonUnmappedMemberHandling.Disallow` nas opcoes do `AccountStore`.
+	///   (g) OS DOIS CONTROLES, com defeito injetado -- ver os blocos.
+	///
+	/// ============================ E O QUE ELA **NAO** MEDE ============================
+	/// O `ParaJogador` e o funil "save -> jogador", e nao o `Entrar` inteiro: maestria, skill e membro
+	/// sao remontados depois dele, no `GameServer.Entrar`. Por isso o item (b) cobra esses tres no
+	/// `CharacterSave` LIDO (o parser atravessou) e nao no `ServerPlayer` (que ainda nao os tem).
+	///
+	/// TUDO ISTO RODA NUMA PASTA TEMPORARIA. A pasta de saves de verdade nao e tocada em momento
+	/// nenhum -- `AccountStore` recebe a pasta no construtor exatamente por isso.
+	/// ==============================================================================================================
+	/// </summary>
+	private void OSaveVelhoCarrega()
+	{
+		const string PecaSemCor = "res://Assets/Data/bancada-save-sem-cor-de-aura.json";
+		const string PecaAntiga = "res://Assets/Data/bancada-save-sem-formas-de-frost.json";
+
+		if (!Godot.FileAccess.FileExists(PecaSemCor) || !Godot.FileAccess.FileExists(PecaAntiga))
+		{
+			Conferir(false, "as duas pecas de save do binario antigo estao no repo "
+						  + "(`Assets/Data/bancada-save-*.json`) -- sem elas esta familia nao mede nada");
+			return;
+		}
+
+		// A PASTA E TEMPORARIA E E APAGADA NO FIM. Escrever na pasta de saves de verdade faria uma
+		// bancada de leitura virar uma bancada que MEXE na conta do dono -- que e o acidente que ela
+		// existe pra impedir.
+		string pasta = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "jandirus-bancada-save");
+		try
+		{
+			if (System.IO.Directory.Exists(pasta)) System.IO.Directory.Delete(pasta, true);
+			System.IO.Directory.CreateDirectory(pasta);
+			var loja = new Jandirus.Server.AccountStore(pasta);
+
+			// Escreve a peca na pasta temporaria, com uma mexida OPCIONAL no texto cru -- e o texto cru
+			// que importa nos controles: o defeito mora no arquivo, nao no objeto.
+			string Semear(string peca, string conta, Func<string, string>? mexer = null)
+			{
+				string txt = Godot.FileAccess.GetFileAsString(peca);
+				if (mexer != null) txt = mexer(txt);
+				System.IO.File.WriteAllText(System.IO.Path.Combine(pasta, conta + ".json"), txt,
+								  new System.Text.UTF8Encoding(false));
+				return txt;
+			}
+
+			// ============================ O RELOGIO PRECISA ANDAR ENTRE DUAS CARGAS ============================
+			// ISTO NAO E PRECAUCAO, E CONSERTO DE UM CEGO MEDIDO. Com o `??=` do `ParaJogador` trocado
+			// por `= CorDeAura.Sortear((ulong)Environment.TickCount64)` -- o desenho alternativo que esta
+			// familia inteira existe pra proibir, "sortear na carga" --, as duas linhas de estabilidade
+			// abaixo ficaram VERDES numa rodada de verdade: as duas cargas caem no MESMO tique de ~16 ms
+			// do relogio, o sorteio recebe a mesma semente e devolve a mesma cor. Ou seja "carregue duas
+			// vezes e compare" nao mede nada quando as duas vezes acontecem no mesmo instante.
+			//
+			// Quarenta milissegundos sao mais de dois tiques. Custa 80 ms na rodada inteira e e o preco
+			// de a frase "a cor nao muda entre dois carregamentos" querer dizer o que ela diz.
+			// ==============================================================================================
+			static void EsperarORelogioAndar()
+			{
+				// `System.Environment` POR EXTENSO: `Godot.Environment` (o ambiente 3D) esta no `using
+				// Godot` deste arquivo e o nome cru fica ambiguo.
+				long inicio = System.Environment.TickCount64;
+				while (System.Environment.TickCount64 - inicio < 40) System.Threading.Thread.Sleep(1);
+			}
+
+			// O CAMINHO DE PRODUCAO INTEIRO NUMA LINHA: `Carregar` (o parser) + `ParaJogador` (o funil
+			// unico save->jogador, chamado so pelo `Entrar`). Nada aqui remonta objeto na mao.
+			(Jandirus.Server.AccountSave? Conta, Jandirus.Server.ServerPlayer? Jogador) Entrar(string conta)
+			{
+				Jandirus.Server.AccountSave? a = loja.Carregar(conta);
+				if (a?.Slots is not { Length: > 0 } || a.Slots[0] is not { } s) return (a, null);
+				var pl = new Jandirus.Server.ServerPlayer();
+				Jandirus.Server.AccountStore.ParaJogador(s, pl);
+				return (a, pl);
+			}
+
+			// =============================================================
+			// (a) A PECA E MESMO DE ANTES DO CAMPO, E ELA CARREGA
+			// =============================================================
+			// A PRIMEIRA LINHA E SOBRE A PECA E NAO SOBRE O JOGO, e ela e obrigatoria: uma peca que
+			// (por descuido meu ou de quem regravar o arquivo um dia) JA TIVESSE a cor dentro faria
+			// toda esta familia medir o caminho do save NOVO e passar verde sem nunca ter exercitado a
+			// migracao. E o mesmo cuidado do veneno la em cima -- conferir que o teste testa.
+			const string ContaVelha = "bancadasavevelho";
+			string cru = Semear(PecaSemCor, ContaVelha);
+			Conferir(!cru.Contains("CorAura"),
+					 "a peca `bancada-save-sem-cor-de-aura.json` REALMENTE nao tem o campo -- ela e um "
+				   + "save que o binario antigo gravou, e nao um save de hoje com o campo apagado");
+			Conferir(loja.Existe(ContaVelha),
+					 "-- e o `AccountStore` a acha pelo nome de conta (o arquivo e `<conta saneada>.json`)");
+
+			(Jandirus.Server.AccountSave? accVelha, Jandirus.Server.ServerPlayer? plVelho) = Entrar(ContaVelha);
+			Conferir(accVelha is not null,
+					 "o save do binario ANTIGO carrega -- `Carregar` nao devolveu nulo, que e o primeiro "
+				   + "elo da cadeia que apaga a conta (ver o cabecalho)");
+			if (accVelha?.Slots[0] is not { } sv || plVelho is not { } pv)
+			{ Conferir(false, "-- e o personagem do slot 1 esta la"); return; }
+
+			// =============================================================
+			// (b) E O PERSONAGEM NAO PERDE NADA
+			// =============================================================
+			// OS LITERAIS SAO DA PECA e nao do objeto lido: comparar o objeto com ele mesmo passaria com
+			// o arquivo pela metade. Estes numeros foram lidos do JSON antes de escrever esta linha.
+			Conferir(pv.Name == "Zv" && pv.Race == "Saiyan" && pv.Class == "Low-Class"
+				  && pv.Planeta == "Vegeta" && pv.Genero == "Male" && pv.Linhagem == "Saiyan"
+				  && pv.Idade == 18 && pv.Porte == "Medium" && pv.Historia.Length > 0
+				  && pv.CriadoEm == 1786169643894L,
+					 $"o personagem volta inteiro pelo `ParaJogador` ({pv.Name}/{pv.Race}/{pv.Class}, "
+				   + $"idade {pv.Idade}, porte {pv.Porte}, criado em {pv.CriadoEm})");
+			Conferir(System.Math.Abs(pv.Ficha.BP - 1e13) < 1e6 && pv.Ficha.Race == "Saiyan" && pv.Ficha.Idade == 18,
+					 $"-- com a FICHA inteira junto (BP {pv.Ficha.BP:0}, esperado 1e13)");
+			Conferir(Mathf.Abs(pv.Pos.X - 7692.4277f) < 0.01f && Mathf.Abs(pv.Pos.Y - 7849.0176f) < 0.01f,
+					 $"-- e no lugar onde ele deslogou ({pv.Pos.X:0.##}, {pv.Pos.Y:0.##})");
+			// O QUE O `ParaJogador` NAO CARREGA (o `Entrar` remonta depois) e cobrado no save LIDO: o
+			// que se afirma aqui e que o PARSER atravessou o JSON inteiro, que e o que "nao perde nada"
+			// quer dizer num save.
+			Conferir(sv.Maestrias.Count == 35 && sv.Membros.Count == 15 && sv.Skills.Count == 2
+				  && sv.FormasDespertadas.Count == 4 && sv.FormasEstreadas is { Count: 5 }
+				  && sv.MarcosTotais == 3 && sv.Limiares.ssjat == 1_500_000
+				  && sv is { Disciplina: 2, DiscReal: 100, DiscAtual: 100 },
+					 $"-- e o resto do save atravessou o parser ({sv.Maestrias.Count} maestrias, "
+				   + $"{sv.Membros.Count} membros, {sv.Skills.Count} skills, "
+				   + $"{sv.FormasDespertadas.Count} formas liberadas, disciplina {sv.Disciplina})");
+
+			// =============================================================
+			// (c) A COR NASCE PREENCHIDA, E E A DERIVADA
+			// =============================================================
+			Jandirus.Core.Appearance.Rgb esperada =
+				Jandirus.Core.Appearance.CorDeAura.De(sv.Nome, sv.CriadoEm);
+			Conferir(pv.Visual.CorAura is { } cv
+				  && cv.R == esperada.R && cv.G == esperada.G && cv.B == esperada.B,
+					 $"o personagem de antes do campo ganha a cor DERIVADA de nome + `CriadoEm` "
+				   + $"({pv.Visual.CorAura?.ToString() ?? "NULA"}, esperado {esperada}) -- sem ramo de "
+				   + "migracao nenhum, que e o `??=` do `ParaJogador`");
+			Conferir(pv.Visual.CorAura is { } cf
+				  && cf.R >= Jandirus.Core.Appearance.CorDeAura.PicoDaFolha
+				  && cf.G >= Jandirus.Core.Appearance.CorDeAura.PicoDaFolha
+				  && cf.B >= Jandirus.Core.Appearance.CorDeAura.PicoDaFolha,
+					 "-- e ela esta na faixa que o sorteio do DM produz (>= "
+				   + $"{Jandirus.Core.Appearance.CorDeAura.PicoDaFolha} nos tres canais)");
+
+			// =============================================================
+			// (d) DUAS CARGAS, E UMA TERCEIRA DEPOIS DO DISCO
+			// =============================================================
+			// UMA COR QUE RERROLA E PIOR QUE NENHUMA COR: o jogador veria a propria aura mudar toda vez
+			// que entrasse. E o teste tem que ser CARGA DE VERDADE, do arquivo -- comparar
+			// `CorDeAura.De(x)` com ele mesmo prova a funcao pura, que ja e provada la em cima, e nao
+			// que o caminho do disco chega no mesmo lugar.
+			EsperarORelogioAndar();
+			(_, Jandirus.Server.ServerPlayer? plDeNovo) = Entrar(ContaVelha);
+			Conferir(plDeNovo?.Visual.CorAura is { } c2 && pv.Visual.CorAura is { } c1
+				  && c2.R == c1.R && c2.G == c1.G && c2.B == c1.B,
+					 $"CARREGAR DE NOVO da a MESMA cor ({plDeNovo?.Visual.CorAura?.ToString() ?? "NULA"}) "
+				   + "-- a derivacao nao depende do processo nem do relogio");
+
+			// E AGORA COM O CAMPO NO DISCO. O `ParaJogador` MUTA o `Visual` que veio do save (e o mesmo
+			// objeto), entao gravar a conta recem-carregada e exatamente o que o `Persistir` do servidor
+			// faz no primeiro tique -- e a partir dai o campo deixa de ser derivado e passa a ser LIDO.
+			//
+			// ESTA E A LINHA QUE PEGA O `Rgb` VOLTANDO PRETO: sem o `[JsonConstructor]` da struct, os
+			// tres campos `readonly` sao gravados e nao lidos, a cor volta #000000 -- e preto, na tinta
+			// somada, e indistinguivel de "sem cor". Ele sumiria calado em toda parte menos aqui.
+			loja.Gravar(accVelha!);
+			string gravado = System.IO.File.ReadAllText(System.IO.Path.Combine(pasta, ContaVelha + ".json"));
+			Conferir(gravado.Contains("CorAura"),
+					 "-- e depois de gravar, o campo esta NO DISCO (o `Persistir` do servidor faz isso "
+				   + "no primeiro tique)");
+			EsperarORelogioAndar();
+			(_, Jandirus.Server.ServerPlayer? plDoDisco) = Entrar(ContaVelha);
+			Conferir(plDoDisco?.Visual.CorAura is { } c3 && pv.Visual.CorAura is { } c0
+				  && c3.R == c0.R && c3.G == c0.G && c3.B == c0.B
+				  && !(c3.R == 0 && c3.G == 0 && c3.B == 0),
+					 $"-- e relendo do disco ela e a MESMA e nao PRETA "
+				   + $"({plDoDisco?.Visual.CorAura?.ToString() ?? "NULA"}): o round-trip do `Rgb` "
+				   + "`readonly` esta de pe");
+
+			// =============================================================
+			// (e) O CAMPO E OVERRIDE, E NAO CACHE DA DERIVACAO
+			// =============================================================
+			// A COR ESCOLHIDA ESTA FORA DA FAIXA DO SORTEIO de proposito (10/20/30, e o sorteio nunca
+			// desce de 200): assim "ela sobreviveu" nao pode ser confundido com "ela foi derivada de
+			// novo e calhou de bater". E o lugar onde o verb `Aura_Color()` do DM
+			// (`CharacterCreation.dm:129-151`) vai escrever no dia em que for portado.
+			//
+			// COMO REPROVA: troque o `??=` do `AccountStore.ParaJogador` por `=`. A tela fica
+			// exatamente igual, todo o resto desta bancada continua verde, e so esta linha cai.
+			accVelha!.Slots[0]!.Visual.CorAura = new Jandirus.Core.Appearance.Rgb(10, 20, 30);
+			loja.Gravar(accVelha);
+			(_, Jandirus.Server.ServerPlayer? plComEscolha) = Entrar(ContaVelha);
+			Conferir(plComEscolha?.Visual.CorAura is { R: 10, G: 20, B: 30 },
+					 "uma cor JA GRAVADA sobrevive a carga -- o campo e OVERRIDE e nao cache "
+				   + $"({plComEscolha?.Visual.CorAura?.ToString() ?? "NULA"}, esperado #0A141E)");
+
+			// =============================================================
+			// (f) O BINARIO VELHO LENDO UM SAVE NOVO
+			// =============================================================
+			// O outro sentido da compatibilidade, e ele nao se testa com dois binarios: o que faz
+			// "save novo -> binario velho" ser seguro e o leitor IGNORAR propriedade que nao conhece.
+			// Entao e isso que se mede, pelo `Carregar` de verdade (com as opcoes de verdade, que sao
+			// privadas do `AccountStore` -- repeti-las aqui seria conferir a bancada com ela mesma).
+			const string ContaDoFuturo = "bancadasavedofuturo";
+			int trocas = 0;
+			Semear(PecaSemCor, ContaDoFuturo, t =>
+			{
+				string fora = t.Replace("\"Corpo\": 0,",
+					"\"Corpo\": 0,\n      \"CorDeUmaCoisaQueAindaNaoExiste\": 7,");
+				trocas = fora.Length != t.Length ? 1 : 0;
+				return fora;
+			});
+			Conferir(trocas == 1, "a peca do 'save do futuro' recebeu mesmo a propriedade desconhecida");
+			(_, Jandirus.Server.ServerPlayer? plDoFuturo) = Entrar(ContaDoFuturo);
+			Conferir(plDoFuturo is { Name: "Zv" } && plDoFuturo.Visual.CorAura is not null,
+					 "um save com campo que este binario NAO conhece carrega inteiro (a propriedade e "
+				   + "ignorada) -- e o que faz o sentido inverso da migracao ser seguro");
+
+			// =============================================================
+			// (g) OS DOIS CONTROLES, COM DEFEITO INJETADO
+			// =============================================================
+			// (g1) A MEDIDA ENXERGA O DESASTRE. Item (a) so vale se "carregar" pudesse ter dado errado:
+			// aqui a cor e gravada numa FORMA que o parser nao le (texto no lugar do objeto), e o que se
+			// cobra e que o `Carregar` devolva NULO -- o primeiro elo da cadeia que apaga a conta. E
+			// tambem o aviso pra quem for mexer nisto: mudar a FORMA de um campo gravado mata contas.
+			const string ContaPodre = "bancadasavepodre";
+			int trocasPodres = 0;
+			Semear(PecaSemCor, ContaPodre, t =>
+			{
+				// a peca ainda nao tem `CorAura`; o defeito e escrito no `CorCabelo`, que e o mesmo
+				// `Rgb?` e ja esta la em todas as geracoes de save
+				string fora = t.Replace("\"CorCabelo\": null", "\"CorCabelo\": \"branco\"");
+				trocasPodres = fora.Length != t.Length ? 1 : 0;
+				return fora;
+			});
+			Conferir(trocasPodres == 1, "CONTROLE: a peca do defeito recebeu mesmo o `Rgb` malformado");
+			Conferir(loja.Carregar(ContaPodre) is null,
+					 "CONTROLE: com um `Rgb` gravado numa forma que o parser nao le, o `Carregar` "
+				   + "devolve NULO -- ou seja esta familia ENXERGA o elo que apaga a conta, e o verde "
+				   + "de (a) e uma medida e nao uma formalidade");
+
+			// (g2) A DERIVACAO LE MESMO O NOME E O INSTANTE. Sem este controle, um `CorDeAura.De` que
+			// devolvesse uma CONSTANTE passaria em (c), (d) e (e) -- "estavel" e a propriedade mais
+			// facil de acertar errando.
+			//
+			// POPULACAO E NAO PAR: metade dos sorteios da branco puro, entao dois personagens quaisquer
+			// batem em ~24% das vezes e um par cravado aqui piscaria vermelho sozinho uma vez a cada
+			// quatro rodadas.
+			var porNome = new HashSet<string>();
+			var porInstante = new HashSet<string>();
+			for (int i = 0; i < 32; i++)
+			{
+				porNome.Add(Jandirus.Core.Appearance.CorDeAura.De(sv.Nome + i, sv.CriadoEm).ToString());
+				porInstante.Add(Jandirus.Core.Appearance.CorDeAura.De(sv.Nome, sv.CriadoEm + i).ToString());
+			}
+			Conferir(porNome.Count >= 5 && porInstante.Count >= 5,
+					 $"CONTROLE: a cor MUDA com o nome ({porNome.Count} tons em 32) e com o `CriadoEm` "
+				   + $"({porInstante.Count} tons em 32) -- ela nao e uma constante disfarcada de derivacao");
+
+			// E O ARQUIVO MEXIDO CONFIRMA NO CAMINHO INTEIRO: trocado o nome do personagem dentro do
+			// JSON, a cor carregada acompanha a derivacao do nome NOVO. (Nao se cobra "e diferente da
+			// outra" aqui pelo motivo do paragrafo acima -- o que se cobra e que ela SEGUE o campo.)
+			const string ContaRenomeada = "bancadasaverenomeada";
+			Semear(PecaSemCor, ContaRenomeada, t => t.Replace("\"Nome\": \"Zv\"", "\"Nome\": \"Zk\""));
+			(_, Jandirus.Server.ServerPlayer? plOutroNome) = Entrar(ContaRenomeada);
+			Jandirus.Core.Appearance.Rgb esperadaZk =
+				Jandirus.Core.Appearance.CorDeAura.De("Zk", sv.CriadoEm);
+			Conferir(plOutroNome is { Name: "Zk" } && plOutroNome.Visual.CorAura is { } ck
+				  && ck.R == esperadaZk.R && ck.G == esperadaZk.G && ck.B == esperadaZk.B,
+					 $"-- e no caminho INTEIRO ela segue o campo: com outro nome no arquivo sai "
+				   + $"{plOutroNome?.Visual.CorAura?.ToString() ?? "NULA"} (esperado {esperadaZk})");
+
+			// =============================================================
+			// (h) A PECA DE DUAS GERACOES ATRAS
+			// =============================================================
+			// Ela nao tem OITO campos que o `CharacterSave` de hoje tem, nem o `FormasDeFrost` dentro do
+			// `Visual`. E a prova de que "anexar campo no fim" ja e um caminho ANDADO neste save, e nao
+			// uma aposta desta passada -- e ela exercita os `?? new()` do `ParaJogador`, que sao o que
+			// separa "campo ausente" de um nulo estourando no primeiro tique.
+			const string ContaAntiga = "bancadasaveantigo";
+			string cruAntigo = Semear(PecaAntiga, ContaAntiga);
+			Conferir(!cruAntigo.Contains("FormasDeFrost") && !cruAntigo.Contains("Disciplina")
+				  && !cruAntigo.Contains("Mochila"),
+					 "a peca de DUAS geracoes atras nao tem `FormasDeFrost`, `Disciplina` nem `Mochila`");
+			(Jandirus.Server.AccountSave? accAntiga, Jandirus.Server.ServerPlayer? plAntigo) = Entrar(ContaAntiga);
+			Conferir(accAntiga is not null && plAntigo is { Name: "AdmTres", Race: "Human" },
+					 $"-- e ela carrega igual ({plAntigo?.Name ?? "NULO"}/{plAntigo?.Race ?? "-"})");
+			Conferir(plAntigo is not null && plAntigo.Visual.FormasDeFrost is not null
+				  && plAntigo.Mochila is not null && plAntigo.Social is not null
+				  && plAntigo.Porte == "Medium",
+					 "-- com os campos que faltam preenchidos pelo padrao, e nao nulos");
+			Jandirus.Core.Appearance.Rgb esperadaAntiga = accAntiga?.Slots[0] is { } sa
+				? Jandirus.Core.Appearance.CorDeAura.De(sa.Nome, sa.CriadoEm)
+				: default;
+			Conferir(plAntigo?.Visual.CorAura is { } ca
+				  && ca.R == esperadaAntiga.R && ca.G == esperadaAntiga.G && ca.B == esperadaAntiga.B,
+					 $"-- e ela tambem ganha a cor derivada ({plAntigo?.Visual.CorAura?.ToString() ?? "NULA"})");
+
+			// ============================ E O ALCANCE DESTA LINHA, DITO EM VOZ ALTA ============================
+			// A cor derivada DESTE personagem e o BRANCO PURO, que e o resultado mais provavel do sorteio
+			// (~49%, ver `CorDeAura`) -- ou seja a linha acima, sozinha, e uma MOEDA. Medido: na rodada com
+			// o `??=` trocado por um sorteio, ela ficou VERDE porque o sorteio tambem calhou de dar branco.
+			//
+			// QUATRO CARGAS, COM O RELOGIO ANDADO ENTRE ELAS, e o que sobra dela: uma cor que rerrola so
+			// escapa se as QUATRO derem branco (0,49^3 ~ 12%), e o que carrega a afirmacao de verdade e o
+			// `Zv` la em cima, cuja derivada NAO e branca (#EBFFFF) e portanto reprova sempre.
+			// ================================================================================================
+			var tonsDaAntiga = new HashSet<string>();
+			if (plAntigo?.Visual.CorAura is { } caPrimeira) tonsDaAntiga.Add(caPrimeira.ToString());
+			for (int i = 0; i < 3; i++)
+			{
+				EsperarORelogioAndar();
+				(_, Jandirus.Server.ServerPlayer? deNovo) = Entrar(ContaAntiga);
+				if (deNovo?.Visual.CorAura is { } cn) tonsDaAntiga.Add(cn.ToString());
+			}
+			Conferir(tonsDaAntiga.Count == 1,
+					 $"-- e ela NAO MUDA em QUATRO cargas seguidas ([{string.Join(", ", tonsDaAntiga)}]) "
+				   + "-- a linha de cima e branco contra branco, e quem carrega a afirmacao e o `Zv`");
+
+			// =============================================================
+			// (i) OS DOIS CORPOS QUE NAO SAEM DE SAVE NENHUM
+			// =============================================================
+			// A cor chega em tres corpos por caminhos diferentes, e ate aqui so o do JOGADOR tinha
+			// medida. Os outros dois nunca passam pelo `ParaJogador`:
+			//
+			//   * O CLONE, que copia o `Visual` do dono (`GameServer.Clone.cs`, o `A.AuraR = AuraR` do
+			//     `CopyMaker.dm:98`). Quem faz a copia e o `Appearance.Copiar()`, que lista campo a
+			//     campo -- e o cabecalho dele ja diz, por escrito, que esquecer a linha da cor faz o
+			//     clone nascer com o fallback CALADO, e que "isso so aparece jogando". Uma armadilha
+			//     nomeada e sem teste e uma armadilha.
+			//   * O NPC, cuja cor sai do lugar onde ele nasceu (`CorDeAura.DeSemente`) e nao de um save.
+			//     O `Hash64("aura")` no meio dela existe pra o NPC de cabelo tal NAO ter sempre a aura
+			//     tal; o que se cobra aqui e o que da pra cobrar sem inventar regra: que a semente do
+			//     lugar mande (estavel) e que o resultado esteja na faixa do sorteio do DM.
+			// =============================================================
+			var doDono = new Jandirus.Core.Appearance.Appearance
+			{
+				Cabelo = "Goku",
+				CorAura = new Jandirus.Core.Appearance.Rgb(210, 233, 201),
+			};
+			Jandirus.Core.Appearance.Appearance doClone = doDono.Copiar();
+			Conferir(doClone.CorAura is { R: 210, G: 233, B: 201 },
+					 $"o CLONE herda a chama do dono pelo `Appearance.Copiar()` "
+				   + $"({doClone.CorAura?.ToString() ?? "NULA"}, esperado #D2E9C9) -- a linha que aquele "
+				   + "metodo diz, por escrito, que so falha jogando");
+
+			Jandirus.Core.Appearance.Rgb npc1 = Jandirus.Core.Appearance.CorDeAura.DeSemente(0xC0FFEE);
+			Jandirus.Core.Appearance.Rgb npc2 = Jandirus.Core.Appearance.CorDeAura.DeSemente(0xC0FFEE);
+			var tonsDeNpc = new HashSet<string>();
+			for (ulong s = 0; s < 64; s++) tonsDeNpc.Add(Jandirus.Core.Appearance.CorDeAura.DeSemente(s).ToString());
+			Conferir(npc1.R == npc2.R && npc1.G == npc2.G && npc1.B == npc2.B
+				  && npc1.R >= Jandirus.Core.Appearance.CorDeAura.PicoDaFolha
+				  && npc1.G >= Jandirus.Core.Appearance.CorDeAura.PicoDaFolha
+				  && npc1.B >= Jandirus.Core.Appearance.CorDeAura.PicoDaFolha
+				  && tonsDeNpc.Count >= 5,
+					 $"e o NPC tira a dele da SEMENTE DO LUGAR ({npc1}), estavel e na faixa do sorteio "
+				   + $"-- e 64 lugares dao {tonsDeNpc.Count} tons, entao ela nao e uma constante");
+
+			_passos.Add($"  --     save velho: `Zv` -> {esperada}; `AdmTres` -> {esperadaAntiga} "
+					  + $"(pasta de bancada {pasta})");
+		}
+		catch (Exception e)
+		{
+			// EXCECAO AQUI E FALHA, e nao bancada que morre calada: tudo o que esta familia toca e
+			// disco, e "estourou" e um resultado tao valido quanto "deu a cor errada".
+			Conferir(false, $"a familia do save velho rodou sem estourar ({e.GetType().Name}: {e.Message})");
+		}
+		finally
+		{
+			try { if (System.IO.Directory.Exists(pasta)) System.IO.Directory.Delete(pasta, true); } catch { /* pasta temporaria */ }
+		}
 	}
 
 	// =====================================================================
@@ -11598,7 +13996,9 @@ public partial class RoboDeForma : Node
 			// A ESPERADA SAI DO PROPRIO `Catalogo.Folha`, e nao de uma tabela escrita aqui: a tabela
 			// paralela que morava nestas linhas ja tinha o Blue na folha errada no minuto em que a
 			// derivacao mudou -- e ela teria reprovado o codigo CERTO.
-			string esperada = SpriteDeAura.CaminhoDa(Jandirus.Core.Forms.Catalogo.Folha(d));
+			// AS QUATRO DAQUI TEM FOLHA (nenhuma e Ultra Instinto). O `?? ""` derruba a comparacao
+			// abaixo em vez de estourar, caso alguem troque um id desta lista por um que nao tenha.
+			string esperada = SpriteDeAura.CaminhoDa(Jandirus.Core.Forms.Catalogo.Folha(d)) ?? "";
 
 			Mudar(Base, id, Jandirus.Core.Forms.DegrauDeCena.Nenhuma);
 			Conferir(aura.CorDaChama.IsEqualApprox(new Color(d.Aura)),
@@ -11612,9 +14012,14 @@ public partial class RoboDeForma : Node
 
 			Mudar(id, Base, Jandirus.Core.Forms.DegrauDeCena.Nenhuma);
 			Conferir(!aura.AcesaDeTeste, $"`{id}` -> base: a aura apaga");
-			Conferir(aura.CorDaChama.IsEqualApprox(Aura.CorDoKiCru),
-					 $"`{id}` -> base: a cor guardada volta a ser a da CARGA e nao a da forma "
-				   + $"({aura.CorDaChama.ToHtml(false)})");
+			// A VOLTA E PRA A COR **PESSOAL DESTE CORPO**, e nao mais pra a constante compartilhada:
+			// a chama da base e a sorteada no nascimento (`Appearance.CorAura`), que chegou aqui pelo
+			// `PeerLook` e mora no node. Comparar com o `Aura.CorDoKiCru` passaria a ser comparar com
+			// o FALLBACK -- ou seja, ficaria verde exatamente no dia em que a cor sorteada nao
+			// chegasse.
+			Conferir(aura.CorDaChama.IsEqualApprox(aura.CorPessoal),
+					 $"`{id}` -> base: a cor guardada volta a ser a PESSOAL deste corpo e nao a da "
+				   + $"forma ({aura.CorDaChama.ToHtml(false)}, pessoal {aura.CorPessoal.ToHtml(false)})");
 			Conferir(aura.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaBase
 				  && carga.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaBase,
 					 $"`{id}` -> base: as duas chamas voltam pra a folha colorivel "
@@ -12090,11 +14495,53 @@ public partial class RoboDeForma : Node
 				 "-- e nem o DESENHO: na base quem desenha a chama e a `CargaVisual`, e ela sozinha");
 
 		Color naBase = ChamaDaCarga() ?? Colors.Black;
-		Conferir(ChamaDaCarga() is { } cb && cb.IsEqualApprox(Aura.CorDoKiCru),
-				 $"na BASE ela sai no ki cru DE SEMPRE ({naBase.ToHtml(false)}, "
-			   + $"esperado {Aura.CorDoKiCru.ToHtml(false)})");
+		Conferir(ChamaDaCarga() is { } cb && cb.IsEqualApprox(aura.CorPessoal),
+				 $"na BASE ela sai na cor PESSOAL deste personagem ({naBase.ToHtml(false)}, "
+			   + $"esperado {aura.CorPessoal.ToHtml(false)})");
+
+		// ============================ E ESSA COR VEIO MESMO DO SERVIDOR ============================
+		// A linha de cima compara a chama com o node, e as duas pontas seriam o FALLBACK num jogo em
+		// que a cor sorteada nunca saisse do save -- o modo de falha inteiro da cor pessoal, e ele
+		// ficaria verde. Esta aqui e a que fecha: em jogo o `AccountStore.ParaJogador` deriva a cor de
+		// TODO personagem antes de o corpo existir, entao o `Aura.CorDoKiCru` aqui significa
+		// "a ficha nao chegou" ou "o campo se perdeu no caminho".
+		//
+		// E OS TRES CANAIS TEM QUE ESTAR NA FAIXA DO SORTEIO (>= 200/255, ver `CorDeAura`): uma cor
+		// pessoal fora dela nao veio do sorteio do jogo, veio de outro lugar.
+		float piso = Jandirus.Core.Appearance.CorDeAura.PicoDaFolha / 255f - 1f / 255f;
+		Conferir(!aura.CorPessoal.IsEqualApprox(Aura.CorDoKiCru)
+			  && aura.CorPessoal.R >= piso && aura.CorPessoal.G >= piso && aura.CorPessoal.B >= piso,
+				 $"-- e ela e a SORTEADA que o servidor mandou (#{aura.CorPessoal.ToHtml(false)}), nao "
+			   + $"o fallback #{Aura.CorDoKiCru.ToHtml(false)} de quem nao tem ficha");
 		Conferir(ChamaDaCarga() is { } cl && !cl.IsEqualApprox(laranjaAntigo),
 				 $"-- e nao no laranja fixo que a sobrecarga tinha ({laranjaAntigo.ToHtml(false)})");
+
+		// ============================ E ELA E **A DELE**, PERGUNTADA AO SERVIDOR ============================
+		// AS DUAS LINHAS ACIMA SAO UMA MOEDA EM METADE DAS RODADAS, e isso foi medido nesta passada, nao
+		// suposto: o sorteio da aura devolve BRANCO PURO em ~49% dos casos (a saturacao do `min(255,
+		// 200+rand)`), e o sujeito desta bancada nasce na hora -- ou seja, uma rodada em cada duas
+		// compara branco com branco. Nesse caso um defeito que pintasse branco passaria verde, e branco
+		// e exatamente o defeito historico deste port ("branco multiplicando a folha colorivel APAGA a
+		// arte"). O `!= CorDoKiCru` e a faixa nao separam os dois.
+		//
+		// ENTAO A AFIRMACAO DEIXA DE SER SOBRE UMA COR E PASSA A SER SOBRE O CAMINHO: a cor que o
+		// SERVIDOR guarda pra este corpo (`CorDeAuraDeTeste`, a ficha autoritativa, do lado de la do fio)
+		// e a que chegou no node `Aura`, seja ela qual for. Coincidencia nao passa nisto.
+		//
+		// COMO REPROVA: qualquer coisa que perca a cor entre o `JoinAccepted` e o `VestirCorpoInteiro`
+		// -- o `PutRgb`/`GetRgb` fora de ordem no pacote, o `_looks` sem a ficha, o node nao escrito --
+		// derruba esta linha mesmo quando a cor sorteada calhou de ser a mesma dos dois lados.
+		// ==============================================================================================
+		int euNaRede = GameClient.Instance?.LocalId ?? 0;
+		Jandirus.Core.Appearance.Rgb? noServidor =
+			Jandirus.Server.GameServer.Instance?.CorDeAuraDeTeste(euNaRede);
+		Conferir(noServidor is { } rs
+			  && Mathf.Abs(aura.CorPessoal.R - rs.R / 255f) <= 1f / 255f
+			  && Mathf.Abs(aura.CorPessoal.G - rs.G / 255f) <= 1f / 255f
+			  && Mathf.Abs(aura.CorPessoal.B - rs.B / 255f) <= 1f / 255f,
+				 $"-- e ela e A DESTE personagem: o servidor guarda {noServidor?.ToString() ?? "NADA"} e o "
+			   + $"node carrega #{aura.CorPessoal.ToHtml(false)} (afirmacao sobre o CAMINHO, e nao sobre "
+			   + "uma cor -- as duas linhas acima sao branco contra branco em ~49% das rodadas)");
 
 		// (A medida "o DESENHO e a LUZ saem da mesma cor" morava aqui e MUDOU DE LUGAR, nao sumiu: na
 		// base nao ha mais luz pra comparar. Ela vive agora no bloco verde la embaixo, onde ha forma --
@@ -12533,8 +14980,32 @@ public partial class RoboDeForma : Node
 		string fonte = System.IO.File.Exists(alvo) ? System.IO.File.ReadAllText(alvo) : "";
 		Conferir(fonte.Contains("AplicarForma"),
 				 $"a bancada leu o fonte do servidor ({alvo.GetFile()}, {fonte.Length} chars)");
-		Conferir(!fonte.Contains("TetoDeCarga"),
-				 "o corte do Ki no teto da carga NAO existe mais em `GameServer.Formas.cs`");
+		// ============================ E ELA OLHA CODIGO, E NAO PROSA ============================
+		// Isto era `!fonte.Contains("TetoDeCarga")` sobre o arquivo INTEIRO -- comentario incluido --,
+		// e reprovou no dia em que o conserto do Ki foi escrito: o bloco que explica por que encher
+		// deixou de esvaziar (*"o teto absoluto continua de pe, porque nao e este: quem limita a
+		// sobrecarga e o dono dela, o `CargaDeKi.TetoDeCarga`"*) CITA a constante pra dizer onde ela
+		// mora agora. A bancada leu a citacao como se fosse a chamada.
+		//
+		// O modo de falha disso e o pior que uma bancada tem: ela ficou vermelha com o codigo certo, e
+		// a saida obvia pra quem quisesse o verde de volta era APAGAR a explicacao -- ou seja, a
+		// checagem pressionava contra o proprio comentario que documenta a regra que ela protege.
+		//
+		// Varrer linha a linha pulando `//` e `///` e a mesma disciplina das varreduras da bancada
+		// `raiva` (ver `RaivaBench.OGanchoLigado`), e nao afrouxa nada: uma CHAMADA de verdade nunca
+		// mora dentro de um comentario.
+		// ==================================================================================
+		var citacoes = new List<string>();
+		string[] linhasDoFonte = fonte.Replace("\r\n", "\n").Split('\n');
+		for (int i = 0; i < linhasDoFonte.Length; i++)
+		{
+			string l = linhasDoFonte[i].Trim();
+			if (l.StartsWith("//")) continue;
+			if (l.Contains("TetoDeCarga")) citacoes.Add($"linha {i + 1}");
+		}
+		Conferir(citacoes.Count == 0,
+				 "o corte do Ki no teto da carga NAO existe mais em `GameServer.Formas.cs`"
+			   + (citacoes.Count > 0 ? $" ({string.Join(", ", citacoes)})" : ""));
 
 		string outro = ProjectSettings.GlobalizePath("res://Core/Combat/CargaDeKi.cs");
 		string carga = System.IO.File.Exists(outro) ? System.IO.File.ReadAllText(outro) : "";
@@ -12778,7 +15249,15 @@ public partial class RoboDeForma : Node
 				string foto = Aparencia(corpo, vis);
 				if (foto != zero) mudaram++;
 
-				string folhaEsperada = SpriteDeAura.CaminhoDa(Jandirus.Core.Forms.Catalogo.Folha(d));
+				// ============================ A CENA VESTE A `Base` QUANDO A FORMA NAO TEM FOLHA ============================
+				// E a regra que o `Transformacao.ChamaDoDegrau` escreve por extenso, repetida aqui de
+				// proposito: a coluna de luz do beat `Efeito.AuraGrande` esta NARRADA na cinematica do
+				// Ultra Instinto (*"uma coluna de luz azul-prateada engole tudo"*), e a nuvem so acende no
+				// `Assumir`, 10 s depois daquele beat. Calar a chama da CENA junto com as outras duas
+				// apagaria um beat escrito -- e o buraco so apareceria pra quem assistisse a estreia.
+				// ======================================================================================================
+				string folhaEsperada = SpriteDeAura.CaminhoDa(Jandirus.Core.Forms.Catalogo.Folha(d))
+									?? SpriteDeAura.FolhaBase;
 				if (t.ChamaDaCenaDeTeste.FolhaDeTeste != folhaEsperada)
 				{
 					chamaErrada++;
@@ -13438,12 +15917,29 @@ public partial class RoboDeForma : Node
 	/// leitura dela. Com o `blue` posado (`Raios = 0`) a foto saia com faisca numa forma que nao tem
 	/// nenhuma, e o unico jeito de descobrir isso era alguem abrir o PNG e desconfiar.
 	/// </summary>
-	private void ForcarRajada()
+	/// <param name="cobrar">
+	/// Se as duas checagens saem. FALSO nas cinco repeticoes da segunda tira de fotos: elas rodam no
+	/// mesmo corpo, na mesma forma, a 0,14 s uma da outra -- cinco copias da mesma linha verde nao
+	/// medem nada de novo e enterrariam o log.
+	/// </param>
+	private void ForcarRajada(bool cobrar = true)
 	{
 		if (GetTree().Root.FindChild("LocalPlayer", true, false) is not Node2D corpo) return;
 		if (corpo.GetNodeOrNull<RaiosDaForma>("Raios") is not { } r) return;
+		if (!cobrar) { r.DispararDeTeste(); return; }
 		Conferir((Jandirus.Core.Forms.Catalogo.Def(_posada)?.Raios ?? 0) > 0,
 				 $"a forma posada pra a foto (`{_posada}`) TEM raio -- senao a foto mente");
+
+		// ============================ E O NODE PRECISA ESTAR LIGADO, NAO SO EMITINDO ============================
+		// A linha de cima cobra o CATALOGO; esta cobra o NODE. Sao coisas diferentes e a diferenca custou
+		// uma rodada inteira: `Definir(false, ...)` (que toda cinematica dispara ao despir a forma) apaga
+		// `_ligado` e esconde o emissor, e o `DispararDeTeste` continua devolvendo `emitindo=True` porque
+		// `Restart()` nao pergunta se alguem vai ver. Dez fotos limpas sairam sem um pixel de faisca com
+		// esta bancada dando TUDO OK.
+		// ====================================================================================================
+		Conferir(r.IntensidadeDeTeste > 0,
+				 $"e o node de raios esta LIGADO na hora da rajada (intensidade {r.IntensidadeDeTeste}) -- "
+			   + "emissor restartado com o node apagado da foto sem faisca e log verde");
 		r.DispararDeTeste();
 		_passos.Add($"  --     rajada forcada: {r.UltimaRajadaDeTeste} raio(s), emitindo={r.EmitindoDeTeste}");
 	}
@@ -13476,7 +15972,124 @@ public partial class RoboDeForma : Node
 		_passos.Add($"  --     posando em {d.Nome} (aura #{d.Aura}) pra a segunda foto");
 	}
 
-	/// <summary>Salva a tela, se houver renderizador. No headless o `GetImage` volta vazio.</summary>
+	// =====================================================================
+	// A FOTO DA RAJADA PRECISA DE CAMPO ABERTO, MEIO-DIA E LUPA
+	// =====================================================================
+	/// <summary>
+	/// ============================ POR QUE ESTE BLOCO EXISTE ============================
+	/// As fotos `raj05..raj12` sao a UNICA parte desta bancada que responde "esta bonito", e a rodada
+	/// que me mandou escrever isto mostrou que elas nao respondiam nada: o recorte inteiro era uma
+	/// NUVEM MARRON opaca com o personagem invisivel debaixo dela. Nao e defeito de arte -- e a
+	/// POEIRA das cinematicas que os blocos do passo 2 rodam (`NoCorpo`, `AIdaEAVolta`,
+	/// `AVoltaDesfazTudo`), que despejam poeira, cascalho e cratera em volta do corpo e nao evaporam
+	/// a tempo. A `RoboDeNebulosa` ja tinha levado esse tombo e o anotou com todas as letras: *"as
+	/// quatro fotos daquela rodada sairam com uma nuvem MARROM cobrindo o personagem ... eu quase
+	/// reportei 'a rampa esta saindo marrom'"*.
+	///
+	/// Nenhuma das 4800 checagens desta bancada enxerga isso: o raio E emitido, o uniform E escrito,
+	/// o shader E o compilado -- tudo verde, e a foto mostrando terra. E o cego que esta casa ja
+	/// nomeou ("uniform escrito nao e pixel desenhado"), agora do lado do ENQUADRAMENTO.
+	///
+	/// E A MINHA PRIMEIRA HIPOTESE ESTAVA ERRADA, o que vale guardar: na foto de madrugada e debaixo
+	/// de nevasca a mancha saia VERDE-ESCURA e eu a li como copa de arvore. Foi o meio-dia sem
+	/// nevasca que revelou que ela era marrom. Por isso a busca de copa (que a versao anterior deste
+	/// bloco fazia) foi DELETADA: ela media o cenario, respondia "ja estou em campo aberto, 462 px da
+	/// copa mais perto" -- corretamente -- e a foto continuava sendo terra.
+	///
+	/// Tres consertos, e os tres sao de camera e nao de arte:
+	///   1. MEIO-DIA pelo verb (`admin_meio_dia`), nao pelo `--horateste`: quem roda a bancada sem a
+	///      bandeira ficava com a hora sorteada. E o clima no minimo, pelo mesmo `admin_clima` que a
+	///      `--diagnebulosa` ja usa (nao da pra pedir "limpo" -- ver o comentario de la).
+	///   2. ANDAR PRA LONGE DA SUJEIRA, que e o unico jeito confiavel: a poeira e local e nao segue o
+	///      corpo, e a cratera e um decalque que NAO evapora (esperar nao resolve o segundo).
+	///   3. LUPA: a tela e 1920x1080 e o raio tem ~1 px de largura. Uma foto de tela inteira nao
+	///      distingue "afinou" de "sumiu" -- e a queixa do dono era justamente sobre GROSSURA.
+	/// ==========================================================================================
+	/// </summary>
+	private void OCeuEOClimaDaFoto()
+	{
+		GameClient.Instance?.SendVerbo("admin_meio_dia");
+		GameClient.Instance?.SendVerbo("admin_clima", "Neblina|0.05");
+		_passos.Add("  --     ceu pedido no meio-dia e clima no minimo -- sem isto a foto da rajada "
+				  + "sai de madrugada e/ou debaixo de nevasca (a nevasca ainda salpica ponto branco, "
+				  + "que ja foi lido como faisca uma vez neste arquivo)");
+	}
+
+	/// <summary>
+	/// Um passo da fuga da poeira. Devolve `true` enquanto ainda ha o que andar -- quem chama repete
+	/// o proprio passo. Ver <see cref="OCeuEOClimaDaFoto"/> pra o motivo.
+	///
+	/// O ALVO E ESCOLHIDO NA PRIMEIRA CHAMADA e e simplesmente "longe daqui": onde o corpo esta
+	/// quando esta funcao roda pela primeira vez e, por construcao, o epicentro de tudo que as cenas
+	/// do passo 2 cavaram. Nao ha o que procurar no cenario -- o estorvo nao e cenario.
+	///
+	/// A TOLERANCIA DE 24 px E A DA `RoboDeNebulosa.AndarAteOAlvo`, e pelo mesmo motivo escrito la:
+	/// uma decisao a cada 0,2 s ja anda ~22 px, entao um alvo com meio passo de folga faz o robo
+	/// oscilar em volta dele ate estourar o prazo.
+	/// </summary>
+	private bool SairDaSujeira()
+	{
+		string[] teclas = ["move_left", "move_right", "move_up", "move_down"];
+		if (Corpo is not { } corpo) return false;
+
+		if (_alvoLimpo is not { } alvo)
+		{
+			// PRA CIMA E PRA DIREITA: pra cima porque a poeira sobe e o boneco tem que sair de baixo
+			// dela, e nao so de dentro; 224 px sao 7 tiles, o dobro do raio da cratera cheia
+			// (`Cinematicas.TilesDoTremorCheio` e 6).
+			alvo = corpo.GlobalPosition + new Vector2(160, -160);
+			_alvoLimpo = alvo;
+			_caminhando = true;
+			_passos.Add($"  --     saindo da poeira das cenas: de {corpo.GlobalPosition} pra {alvo} "
+					  + "(a foto da rajada e a unica coisa aqui que responde 'esta bonito')");
+		}
+
+		Vector2 falta = alvo - corpo.GlobalPosition;
+		bool travou = _voltasDaCaminhada > 0 && corpo.GlobalPosition.DistanceTo(_ondeEuEstava) < 0.5f;
+
+		if (falta.Length() > 24f && !travou && _voltasDaCaminhada++ < 60)
+		{
+			_ondeEuEstava = corpo.GlobalPosition;
+			foreach (string t in teclas) Input.ActionRelease(t);
+			Input.ActionPress(Mathf.Abs(falta.X) > Mathf.Abs(falta.Y)
+				? falta.X > 0 ? "move_right" : "move_left"
+				: falta.Y > 0 ? "move_down" : "move_up");
+			return true;
+		}
+
+		foreach (string t in teclas) Input.ActionRelease(t);
+		if (_voltasDeAssentar == 0)
+			_passos.Add($"  --     caminhada: parei a {falta.Length():0} px do alvo em "
+					  + $"{_voltasDaCaminhada * 0.2:0.0}s"
+					  + (travou ? " (TRAVEI num obstaculo -- a foto pode sair com ele na frente)" : ""));
+
+		// ============================ E DEPOIS DE CHEGAR, UM RESPIRO ============================
+		// A POEIRA DO PROPRIO PASSO tambem levanta, e ela e a ultima coisa que fica entre a camera e o
+		// raio. Seis voltas de 0,2 s (o `_caminhando` continua ligado justamente pra a guarda usar os
+		// 0,2 s) sao 1,2 s -- o mesmo respiro que a `RoboDeNebulosa.PararDeAndar` da, pelo mesmo motivo.
+		// ====================================================================================
+		if (_voltasDeAssentar++ < 6) return true;
+
+		_caminhando = false;
+		return false;
+	}
+
+	/// <inheritdoc cref="SairDaSujeira"/>
+	private bool _caminhando;
+	private Vector2? _alvoLimpo;
+	private int _voltasDaCaminhada;
+	private int _voltasDeAssentar;
+	private Vector2 _ondeEuEstava;
+
+	/// <summary>
+	/// Salva a tela, se houver renderizador. No headless o `GetImage` volta vazio.
+	///
+	/// E SALVA A LUPA JUNTO (`-zoom`), centrada no boneco. Ver o item 3 do <see cref="SairDaCopa"/>:
+	/// o raio tem ~1 px de largura numa tela de 1920, e a pergunta que estas fotos existem pra
+	/// responder e sobre a GROSSURA dele. `Nearest` e nao `Bilinear` pelo motivo de sempre em arte de
+	/// pixel -- interpolar INVENTA tons, e um raio de 1 px ampliado com suavizacao vira um borrao de
+	/// 4 px que se le como "engordou".
+	/// </summary>
 	private void Fotografar(string destino)
 	{
 		try
@@ -13486,6 +16099,16 @@ public partial class RoboDeForma : Node
 			string caminho = ProjectSettings.GlobalizePath(destino);
 			img.SavePng(caminho);
 			_passos.Add("  ok     foto salva em " + caminho);
+
+			if (Corpo is not { } corpo) return;
+			Vector2 p = corpo.GetGlobalTransformWithCanvas().Origin;
+			const int Meio = 160;   // 320 px de tela em volta do boneco: ele tem 32 e a rajada ~64
+			int lado = Mathf.Min(Meio * 2, Mathf.Min(img.GetWidth(), img.GetHeight()));
+			int x = Mathf.Clamp((int)p.X - lado / 2, 0, img.GetWidth() - lado);
+			int y = Mathf.Clamp((int)p.Y - lado / 2, 0, img.GetHeight() - lado);
+			Image lupa = img.GetRegion(new Rect2I(x, y, lado, lado));
+			lupa.Resize(lado * 3, lado * 3, Image.Interpolation.Nearest);
+			lupa.SavePng(ProjectSettings.GlobalizePath(destino.Replace(".png", "-zoom.png")));
 		}
 		catch (Exception e) { _passos.Add("  --     sem foto: " + e.Message); }
 	}

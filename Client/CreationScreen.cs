@@ -254,8 +254,16 @@ public partial class CreationScreen : CanvasLayer
 
 	private void MontarEtapas()
 	{
-		_etapas.Add(new Etapa("ONDE VOCÊ NASCE?",
-			"O planeta decide quais povos podem te gerar.", PaginaDePlaneta(), () => true));
+		// ============================ ESTA ETAPA NAO E MAIS "ONDE VOCE NASCE" ============================
+		// Ela nunca foi, na verdade: `pl.Planeta` so filtra QUAIS RACAS aparecem e nunca decidiu lugar
+		// nenhum de jogo. Enquanto todo mundo nascia na Terra cravada, o titulo era so impreciso;
+		// agora que existe a etapa "O BERCO", que decide de verdade, dois passos prometendo a mesma
+		// coisa e uma tela contradizendo a si mesma -- um Frost Demon escolhido nesta pagina sob
+		// "Vegeta" nasce em Icer, e nada explicaria isso ao jogador.
+		// ==========================================================================================
+		_etapas.Add(new Etapa("DE ONDE VEM O SEU POVO?",
+			"O mundo que você escolhe aqui decide quais povos podem te gerar -- onde você "
+			+ "vai acordar quem diz é o seu povo, mais adiante.", PaginaDePlaneta(), () => true));
 
 		_etapas.Add(new Etapa("ESCOLHA SUA RAÇA",
 			"O que você é importa mais que tudo o que vier depois.", PaginaDeRaca(), () => true));
@@ -263,6 +271,14 @@ public partial class CreationScreen : CanvasLayer
 		_etapas.Add(new Etapa("LINHAGEM",
 			"O sangue de onde você vem, dentro do seu próprio povo.", PaginaDeLinhagem(),
 			() => CharacterDraft.EscolhasDeClasse(_ficha.Race).Length > 0));
+
+		// O BERCO VEM DEPOIS DA LINHAGEM, e a ordem e a da regra: o planeta e funcao da RACA (e, nas
+		// duas excecoes, da classe que ainda vai ser sorteada). Perguntar antes de a raca existir
+		// seria mostrar o berco de outro corpo -- o mesmo erro que a etapa do planeta ja teve com a
+		// descricao da raca (ver `DescreverRacasDoPlaneta`).
+		_etapas.Add(new Etapa("O BERÇO",
+			"Onde o seu povo te põe no mundo -- e se você prefere acordar longe dele.",
+			PaginaDeBerco(), () => true));
 
 		_etapas.Add(new Etapa("GÊNERO", "", PaginaDeGenero(), () => _ficha.TemGenero));
 
@@ -507,6 +523,170 @@ public partial class CreationScreen : CanvasLayer
 		p.AddChild(_caixaLinhagem);
 		return p;
 	}
+
+	// =====================================================================
+	// O BERCO
+	// =====================================================================
+	private VBoxContainer _caixaBerco = null!;
+
+	/// <summary>
+	/// ONDE ESTE CORPO VAI NASCER -- e a unica escolha desta tela que muda o MUNDO em vez do corpo.
+	///
+	/// ============================ O CLIENTE CALCULA ISTO SOZINHO ============================
+	/// Nada aqui vem do servidor, e nao e economia de pacote: e a regra 0.2. O planeta natal e uma
+	/// tabela pura (<see cref="Bercos.PlanetaNatal"/>) e as irmas de um pre-feito saem so do nome
+	/// dele (`Sistemas.Ancorar` deriva tudo de `Hash64(nome)`), entao esta tela chega no MESMO
+	/// resultado que o servidor sem trocar um byte -- inclusive antes de existir conexao, que e
+	/// quando esta tela roda.
+	///
+	/// O QUE ELA NAO SABE E QUAL DAS IRMAS SAI, e isso e de proposito: a gravidade do berco vira
+	/// `GravMastered` de graca no nascimento (`race.dm:130-131`), entao um cliente que escolhesse o
+	/// mundo escolheria um atributo permanente. Ele mostra o SORTEIO inteiro e manda um BIT
+	/// (<see cref="CharacterDraft.PertoDeCasa"/>); quem sorteia e o servidor.
+	/// ====================================================================================
+	/// </summary>
+	private Control PaginaDeBerco()
+	{
+		VBoxContainer p = NovaPagina();
+		_caixaBerco = new VBoxContainer();
+		_caixaBerco.AddThemeConstantOverride("separation", 8);
+		p.AddChild(Rolagem(_caixaBerco, 320));
+		return p;
+	}
+
+	/// <summary>
+	/// Refaz a pagina do berco pra raca escolhida. Chamada do <see cref="EscolherRaca"/> porque e
+	/// a raca que decide TUDO aqui -- o natal, as irmas e se ha escolha.
+	/// </summary>
+	private void AtualizarBerco()
+	{
+		if (_caixaBerco == null) return;
+		foreach (Node n in _caixaBerco.GetChildren()) n.QueueFree();
+
+		// O PADRAO E CASA, e ele e reafirmado a cada troca de raca. Sem esta linha, marcar "vizinho"
+		// como Saiyajin e depois voltar pra escolher Kai deixaria o pedido ligado numa raca que nem
+		// mostra a opcao -- o servidor o ignoraria, mas o save carregaria uma escolha fantasma que o
+		// renascimento leria pra sempre.
+		_ficha.PertoDeCasa = false;
+
+		string natal = Bercos.PlanetaNatal(_ficha.Race);
+		List<Jandirus.Core.World.PlanetaNoEspaco> irmas = Bercos.IrmasDoNatal(natal);
+
+		var titulo = new Label
+		{
+			Text = $"VOCÊ NASCE EM {NomeDeMundo(natal).ToUpperInvariant()}",
+			AutowrapMode = TextServer.AutowrapMode.Word,
+		};
+		titulo.AddThemeColorOverride("font_color", Tema.Destaque);
+		titulo.AddThemeFontSizeOverride("font_size", 16);
+		_caixaBerco.AddChild(titulo);
+
+		var lore = new Label { Text = LoreDoBerco(_ficha.Race), AutowrapMode = TextServer.AutowrapMode.Word };
+		lore.AddThemeColorOverride("font_color", Tema.TextoFraco);
+		lore.AddThemeFontSizeOverride("font_size", 13);
+		_caixaBerco.AddChild(lore);
+
+		// ============================ A RACA QUE NAO TEM VIZINHANCA ============================
+		// Paraiso e Inferno existem como ZONA e nao como CORPO -- no DM sao `area/afterlifeareas` e
+		// nao planetas --, entao nao ha orbita irma a oferecer. O `Bercos.Vizinho` devolveria o
+		// proprio natal; esconder a opcao e dizer a mesma coisa antes, em vez de aceitar um pedido
+		// e nao cumpri-lo.
+		// ==================================================================================
+		if (irmas.Count == 0)
+		{
+			var so = new Label
+			{
+				Text = $"Não há para onde ser mandado: {NomeDeMundo(natal)} não é um corpo no mapa do "
+					 + "universo, é um plano. Daqui não se decola -- daqui se renasce.",
+				AutowrapMode = TextServer.AutowrapMode.Word,
+			};
+			so.AddThemeFontSizeOverride("font_size", 13);
+			_caixaBerco.AddChild(so);
+			return;
+		}
+
+		string nomes = string.Join(", ", irmas.Select(i => i.Nome));
+		var opcoes = new VBoxContainer();
+		opcoes.AddThemeConstantOverride("separation", 6);
+		_caixaBerco.AddChild(opcoes);
+
+		Button casa = CartaoLargo($"Em casa — {NomeDeMundo(natal)}",
+			"O mundo do seu povo, com o chão que alguém desenhou à mão.");
+		casa.Pressed += () => { MarcarSelecionado(opcoes, casa); _ficha.PertoDeCasa = false; };
+		opcoes.AddChild(casa);
+
+		// A LISTA DAS CANDIDATAS E O QUE FAZ A OPCAO SIGNIFICAR ALGUMA COISA. "Um planeta aleatorio"
+		// sem dizer quais e um botao que promete o desconhecido; com os nomes, o jogador sabe que sao
+		// dois ou tres mundos concretos da estrela de casa -- e o numero MUDA por raca (Icer tem uma
+		// irma so, medido), o que e informacao de jogo e nao enfeite.
+		Button perto = CartaoLargo(
+			$"Num mundo vizinho — {irmas.Count} possível{(irmas.Count > 1 ? "eis" : "")}: {nomes}",
+			"Mesma estrela, outro chão: um mundo gerado, sem cidade e sem ninguém. Qual deles "
+			+ "é sorteio do berço, e você só descobre ao abrir os olhos.");
+		perto.Pressed += () => { MarcarSelecionado(opcoes, perto); _ficha.PertoDeCasa = true; };
+		opcoes.AddChild(perto);
+
+		casa.ButtonPressed = true;
+
+		// ============================ O AVISO DO SANGUE SAIYAJIN ============================
+		// As duas excecoes do dono dependem da CLASSE, e a classe e sorteada pelo servidor e nunca
+		// mostrada (e por isso que existe a "dica de classe" no chat). Entao esta tela nao pode
+		// prometer Vegeta a um Saiyajin -- ela mentiria pra 46% deles.
+		//
+		// O TEXTO DIZ AS DUAS REGRAS E NAO DIZ QUAL E A SUA. Isso e sabor e nao limitacao: o
+		// classe-baixa despachado e o Lendario exilado sao as duas historias mais conhecidas da
+		// raca, e le-las aqui faz o jogador ENTENDER o berco estranho em vez de achar que o jogo
+		// quebrou. O que ele nao recebe e a confirmacao -- o berco vira mais uma pista, do mesmo
+		// tamanho da dica de classe, e nao uma ficha aberta.
+		// ================================================================================
+		if (Bercos.PlanetaNatal(_ficha.Race) == "Vegeta" && _ficha.Race == "Saiyan")
+		{
+			var sangue = new Label
+			{
+				Text = "MAS NEM TODO SAIYAJIN NASCE EM VEGETA. O de classe baixa é despachado ainda "
+					 + "bebê para um mundo fraco de se conquistar -- a Terra --, e o Lendário não é "
+					 + "criado em lugar nenhum que se possa procurar: puseram o berço numa cápsula e "
+					 + "a cápsula num rumo que ninguém anotou, porque tinham medo dele.\n"
+					 + "Nada disso se escolhe aqui. O seu sangue decide, e você só saberá ao acordar.",
+				AutowrapMode = TextServer.AutowrapMode.Word,
+			};
+			sangue.AddThemeColorOverride("font_color", Tema.Perigo);
+			sangue.AddThemeFontSizeOverride("font_size", 12);
+			_caixaBerco.AddChild(sangue);
+		}
+	}
+
+	/// <summary>De onde cada povo vem, na voz do mundo. O planeta em si sai do <see cref="Bercos"/>.</summary>
+	private static string LoreDoBerco(string raca) => raca switch
+	{
+		"Saiyan" or "Tsujin" or "Saibaman" =>
+			"O mundo vermelho dos guerreiros, e o chão mais pesado onde alguém escolhe morar.",
+		"Namekian" or "Gray" or "Kanassa" or "Yardrat" =>
+			"O planeta verde, de três sóis e nenhuma noite.",
+		"Icer" => "O mundo gelado da estirpe que cobrou tributo do universo inteiro.",
+		"Arlian" => "Arlia, o mundo dos insetos -- pequeno, duro e esquecido.",
+		"Makyo" => "A Estrela Makyo, que só se aproxima da Terra a cada cinco mil anos.",
+		"Kai" => "O Paraíso. Não se chega aqui de nave.",
+		"Demon" => "O Inferno. Não se chega aqui de nave.",
+		"Alien" =>
+			"O seu povo não tem lar: os mundos que ele conhece são todos de passagem. Você começa "
+			+ "no porto mais movimentado que existe.",
+		"Android" or "BioAndroid" or "SpiritDoll" =>
+			"Você não nasce: alguém te monta. Sem um criador, o mundo te deixa onde deixa todo mundo.",
+		"Halfbreed" =>
+			"Sangue misturado não tem mundo próprio. Nascido de gravidez, você herdaria o planeta de "
+			+ "quem te gerou; nascido aqui, começa na Terra.",
+		_ => "O lar do seu povo.",
+	};
+
+	/// <summary>O nome de um mundo como gente escreve: `Makyo_Star` vira "Makyo Star".</summary>
+	private static string NomeDeMundo(string zona) => zona switch
+	{
+		"Earth" => "Terra",
+		"Heaven" => "Paraíso",
+		"Hell" => "Inferno",
+		_ => zona.Replace('_', ' '),
+	};
 
 	private Control PaginaDeGenero()
 	{
@@ -1002,6 +1182,10 @@ public partial class CreationScreen : CanvasLayer
 
 		// AS RACAS SEM GENERO CRAVAM MASCULINO -- a etapa some, e o valor tem que ir junto.
 		if (!_ficha.TemGenero) _generoEscolhido = "Male";
+
+		// O BERCO E FUNCAO DA RACA, entao ele se refaz junto com ela -- inclusive pra ZERAR o pedido
+		// de vizinho quando a raca nova nao tem vizinhanca. Ver `AtualizarBerco`.
+		AtualizarBerco();
 
 		// A FAIXA DE IDADE E DA RACA. Trocar de raca reaperta o teto, e um valor que ficou acima
 		// dele desce sozinho: deixar 200 numa raca que vive 15 anos so adiaria o erro pro fim.

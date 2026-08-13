@@ -81,6 +81,25 @@ public partial class GameServer
 	internal static List<(int Quem, int Para)>? EscutaDeDestinos;
 
 	/// <summary>
+	/// QUEM TEVE A CINEMATICA DE FURIA DISPARADA -- anotada dentro do <see cref="TalvezACenaDaFuria"/>,
+	/// depois das quatro condicoes e da recarga.
+	///
+	/// ============================ ELA MEDE UMA DECISAO QUE NAO DEIXA RASTRO ============================
+	/// A cena da furia nao muda estado nenhum: nao ha forma nova, nao ha buff novo (o `angerBuff` ja
+	/// vinha da janela), nao ha campo pra perguntar depois. As quatro condicoes do `Murder.dm:119` --
+	/// grau extremo, nao estava em furia, tem dono, e a raiva nao vai virar transformacao -- decidem
+	/// entre "o pacote sai" e "o pacote nao sai", e mais nada muda no servidor.
+	///
+	/// Sem esta lista, a unica forma de conferi-las seria reimplementa-las na bancada -- que e o
+	/// "node isolado" que este arquivo inteiro existe pra recusar.
+	///
+	/// O `FuriaCenaAte` E A OUTRA METADE e ele deixa rastro (e por isso a recarga se confere lendo o
+	/// campo). Esta lista responde a pergunta que ele nao responde: se o pacote SAIU.
+	/// ============================================================================================
+	/// </summary>
+	internal static List<int>? EscutaDeFurias;
+
+	/// <summary>
 	/// O ESTADO DE FORMA DE UM JOGADOR, PRA A BANCADA LER -- e so ler.
 	///
 	/// ============================ POR QUE UMA BANCADA DO CLIENTE PRECISA DISTO ============================
@@ -101,6 +120,24 @@ public partial class GameServer
 	/// </summary>
 	internal EstadoDeForma? FormaDeTeste(int id) =>
 		_players.TryGetValue(id, out ServerPlayer? pl) ? pl.Forma : null;
+
+	/// <summary>
+	/// ============================ A COR DE AURA QUE O **SERVIDOR** GUARDA PRA ESTE CORPO ============================
+	/// Irma da de cima, e ela existe por um motivo medido, nao por simetria: metade dos sorteios de
+	/// aura da BRANCO PURO (~49%, ver `Core.Appearance.CorDeAura`). Ou seja toda checagem do cliente
+	/// que compare a chama do corpo com um branco -- e o sujeito de bancada sai branco em uma rodada a
+	/// cada duas -- fica verde com um defeito que pinte branco, que e justamente o defeito historico
+	/// deste port ("branco multiplicando a folha colorivel APAGA a arte").
+	///
+	/// Com esta janela a afirmacao deixa de ser sobre uma cor e passa a ser sobre um CAMINHO: a cor
+	/// que o servidor sorteou (ou derivou do save) e a mesma que chegou no node `Aura` do corpo, seja
+	/// ela qual for. Isso nao tem como passar por coincidencia.
+	///
+	/// SO LEITURA, como a irma: devolve a `Rgb` da ficha, que e struct e portanto copia.
+	/// ============================================================================================
+	/// </summary>
+	internal Jandirus.Core.Appearance.Rgb? CorDeAuraDeTeste(int id) =>
+		_players.TryGetValue(id, out ServerPlayer? pl) ? pl.Visual.CorAura : null;
 
 	/// <summary>O que um pacote de estado DIZ, lido dos bytes. Ver <see cref="LerPacote"/>.</summary>
 	private readonly record struct PacoteLido(Protocol.S2C Tipo, int Quem, string De, string Para,
@@ -354,6 +391,27 @@ public partial class GameServer
 		// ==========================================================================================
 		AmigoAbatido(pl, "um amigo de bancada", NivelDeRaiva.Extrema);
 
+		// ============================ E O "VALOR BASE" E REMEDIDO DEPOIS DA RAIVA ============================
+		// A RAIVA VIROU PODER DE VERDADE. O `bpBase` do comeco deste metodo foi lido com o corpo em
+		// PAZ; desde que o `Fighter.Anger` passou a ser escrito (ver `GameServer.ProjetarRaiva`), a
+		// linha acima acende ate 2x de `angerBuff` e o corpo na base ja nao vale o que valia. Sem
+		// esta releitura o "descer volta o BP expresso pro valor base" reprova por 1,5x -- e a
+		// bancada estaria certa e o codigo tambem: os dois numeros e que descreviam corpos
+		// diferentes.
+		//
+		// E O PONTO E ESSE: `bpBase` significa *"este corpo, na forma base, agora"*, e nao *"este
+		// corpo antes de qualquer coisa acontecer com ele"*. As checagens que o usam sao todas sobre
+		// o que a FORMA multiplica -- comparar contra um corpo mais calmo mediria forma + raiva.
+		//
+		// COM O TANQUE CHEIO, e isto nao e detalhe: o `kiratio` e fator do `powerlevel()`
+		// (`Fighter.Power.cs`), e o laco logo abaixo enche o Ki antes de cada degrau. Remedir com o
+		// Ki que sobrou dos blocos anteriores compararia um corpo cheio (o de depois de descer) com
+		// um corpo pela metade -- a primeira tentativa deste conserto errou por 1,67x exatamente
+		// assim, e o numero enganava porque *parecia* a raiva.
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		Medir(pl);
+		bpBase = pl.Ficha.expressedBP;
+
 		// --- SUBIR: a MESMA funcao da tecla C -----------------------------
 		var visitadas = new List<string>();
 		for (int i = 0; i < 12; i++)
@@ -386,6 +444,128 @@ public partial class GameServer
 		Checa("descer volta o BP expresso pro valor base",
 			  Math.Abs(pl.Ficha.expressedBP - bpBase) / bpBase < 0.01,
 			  $"{pl.Ficha.expressedBP:N0} contra {bpBase:N0}");
+
+		// ======================== A SOBRECARGA DE KI ATRAVESSA A TRANSFORMACAO ========================
+		// O DEFEITO DO DONO: *"ao travar o ki ao se transformar, ele volta pro 100%, oq n deveria
+		// acontecer"*. A causa era o `if (primeira) Ki = MaxKi` do `Transformar` -- um PRESENTE de
+		// tanque cheio escrito como atribuicao absoluta, que virava CORTE pra quem chegava comprimido
+		// pela tecla C.
+		//
+		// ============================ POR QUE ISTO NAO E O `AProporcaoDeKi` DE NOVO ============================
+		// A bancada `--diagforma` ja media a razao a 190% subindo e descendo, em quatro formas, e
+		// passou VERDE o tempo todo enquanto o dono via o defeito em jogo. O motivo e que ela chama o
+		// `AplicarForma` DIRETO -- e `AplicarForma` sempre esteve certo. Quem cortava era a linha que
+		// vem DEPOIS dele, dentro do funil da tecla C, e so na ESTREIA.
+		//
+		// Entao o que este bloco tem de diferente e exatamente isso, e nada mais: ele passa pelo
+		// `Transformar` (a mesma funcao que a tecla C chama) e apaga a estreia de proposito, pra cair
+		// no ramo `primeira`. Medir pelo `AplicarForma` aqui seria reescrever a bancada que ja existe
+		// e continuar cega no mesmo lugar.
+		// ==================================================================================================
+		{
+			var estreiasDoKi = new HashSet<int>(pl.Forma.EstreiaVista);
+			const double sobrecarga = 1.90;
+			double tetoDaBase = pl.Ficha.MaxKi;
+
+			// --- 1) SUBIR sobrecarregado, na ESTREIA -----------------------
+			pl.Ficha.Ki = sobrecarga * pl.Ficha.MaxKi;
+			pl.Forma.EstreiaVista.Clear();
+			Transformar(pl, subir: true);
+			double razaoNoTopo = pl.Ficha.MaxKi > 0 ? pl.Ficha.Ki / pl.Ficha.MaxKi : -1;
+			Checa($"ESTREIA com {sobrecarga * 100:0}% de Ki: subir NAO derruba pros 100%",
+				  !pl.Forma.NaBase && Math.Abs(razaoNoTopo - sobrecarga) < 1e-9,
+				  $"{pl.Forma.Atual}: {razaoNoTopo * 100:0.##}% ({pl.Ficha.Ki:0.0}/{pl.Ficha.MaxKi:0.0})");
+
+			// A REGRA E RAZAO, E RAZAO E GANHO ABSOLUTO. O dono pediu *"mantendo as proporcoes
+			// sempre"*: 190% de um tanque pequeno viram 190% de um tanque grande, ou seja MAIS pontos
+			// de Ki. Sem esta segunda checagem, "manteve a razao" seria indistinguivel de "nao mexeu
+			// no numero" -- que e a outra metade do defeito, a barra despencando ao subir.
+			//
+			// E ELA E ESCRITA CONTRA O CRESCIMENTO DO TANQUE, nao contra um limiar. A primeira versao
+			// dizia `Ki > 1,05 x (190% da base)` e o teste de mutacao a pegou passando VERDE com a
+			// linha sabotada: 280 contra o limiar 279,3, por um fio. Um numero cravado mede o tamanho
+			// do defeito, e este defeito e pequeno em SSJ1 e grande em SSJ4.
+			double cresceu = pl.Ficha.MaxKi / Math.Max(tetoDaBase, 1e-9);
+			Checa("...e a razao mantida vira Ki ABSOLUTO a mais (o tanque cresceu junto)",
+				  cresceu > 1.01
+					  && Math.Abs(pl.Ficha.Ki - sobrecarga * tetoDaBase * cresceu) < 1e-6,
+				  $"{pl.Ficha.Ki:0.0} contra {sobrecarga * tetoDaBase * cresceu:0.0} "
+				+ $"({sobrecarga * tetoDaBase:0.0} na base x {cresceu:0.00} de tanque)");
+
+			// --- 2) E A VOLTA PRA BASE, o outro sentido --------------------
+			// Sem `PassarACena` de proposito: o tique dentro da cena drena Ki, e o que se mede aqui e
+			// a troca de tanque e nao o dreno. Descer nao e barrado pela cena (ver `Transformar`).
+			Transformar(pl, subir: false);
+			double razaoNaVolta = pl.Ficha.MaxKi > 0 ? pl.Ficha.Ki / pl.Ficha.MaxKi : -1;
+			Checa($"...e DESCER devolve os mesmos {sobrecarga * 100:0}% no tanque pequeno",
+				  pl.Forma.NaBase && Math.Abs(razaoNaVolta - sobrecarga) < 1e-9
+					  && Math.Abs(pl.Ficha.Ki - sobrecarga * tetoDaBase) < 1e-6,
+				  $"{razaoNaVolta * 100:0.##}% ({pl.Ficha.Ki:0.0}/{pl.Ficha.MaxKi:0.0}), "
+				+ $"esperado {sobrecarga * tetoDaBase:0.0}");
+
+			// --- 3) O PRESENTE CONTINUA SENDO PRESENTE ---------------------
+			// `Math.Max` nao pode ter virado "nunca mexe no Ki": a forma nova ainda tem que nascer com
+			// folego pra ser usada. Quem chega com o tanque pela metade estreia CHEIO, como antes.
+			pl.Ficha.Ki = pl.Ficha.MaxKi * 0.30;
+			pl.Forma.EstreiaVista.Clear();
+			Transformar(pl, subir: true);
+			Checa("estreia com 30% de tanque continua enchendo pra 100% (o presente sobreviveu)",
+				  !pl.Forma.NaBase && Math.Abs(pl.Ficha.Ki - pl.Ficha.MaxKi) < 1e-6,
+				  $"{pl.Forma.Atual}: {pl.Ficha.Ki:0.0}/{pl.Ficha.MaxKi:0.0}");
+
+			// --- 4) O CONTRA-EXEMPLO: 60% CONTINUA SENDO 60% ---------------
+			// ============================ POR QUE 190% SOZINHO NAO BASTA ============================
+			// As tres medidas de cima so olham ACIMA do cheio, e por isso todas elas passariam verdes
+			// num mundo em que a linha da estreia virasse `Ki = Math.Max(MaxKi, Ki)` **pra toda
+			// transformacao** -- a "simplificacao" plausivel, ja que o `if (primeira)` parece sobra
+			// depois que o `Max` entrou. Nesse mundo o 190% atravessa (o `Max` o preserva), o ganho
+			// absoluto atravessa, a volta atravessa... e o jogador que sobe com o tanque pela metade
+			// ganha o tanque cheio de graca em TODO degrau, pra sempre. O presente da estreia teria
+			// virado uma torneira, e ninguem veria: encher o Ki nao parece defeito.
+			//
+			// Entao esta medida e a de baixo do cheio, na REPETICAO: o degrau ja foi estreado agora ha
+			// pouco (a checagem 3 acabou de entrar nele), entao este `Transformar` cai no ramo em que
+			// `primeira` e falso -- que e onde a razao tem que atravessar sozinha, pelo `AplicarForma`,
+			// sem presente nenhum por cima.
+			//
+			// A RAZAO ESCOLHIDA E 60% E NAO 30% de proposito: com 30% a barra sobe pra 100% no ramo
+			// certo E no ramo errado quando a estreia esta acesa, e a bancada nao saberia dizer qual
+			// dos dois ela mediu. 60% nao e redondo com nada -- se sair 100%, foi presente indevido;
+			// se sair qualquer outro numero, foi a razao que se perdeu na troca de tanque.
+			// ========================================================================================
+			Transformar(pl, subir: false);
+			double tetoDaBase60 = pl.Ficha.MaxKi;
+			const double meio = 0.60;
+			pl.Ficha.Ki = meio * tetoDaBase60;
+			Transformar(pl, subir: true);
+
+			double razao60 = pl.Ficha.MaxKi > 0 ? pl.Ficha.Ki / pl.Ficha.MaxKi : -1;
+			double cresceu60 = pl.Ficha.MaxKi / Math.Max(tetoDaBase60, 1e-9);
+			Checa($"REPETICAO com {meio * 100:0}% de Ki: subir mantem {meio * 100:0}% (nao enche pra 100%)",
+				  !pl.Forma.NaBase && Math.Abs(razao60 - meio) < 1e-9,
+				  $"{pl.Forma.Atual}: {razao60 * 100:0.##}% ({pl.Ficha.Ki:0.0}/{pl.Ficha.MaxKi:0.0})");
+			Checa($"...e {meio * 100:0}% do tanque NOVO e mais Ki absoluto que {meio * 100:0}% do velho",
+				  cresceu60 > 1.01
+					  && Math.Abs(pl.Ficha.Ki - meio * tetoDaBase60 * cresceu60) < 1e-6,
+				  $"{pl.Ficha.Ki:0.0} contra {meio * tetoDaBase60 * cresceu60:0.0} "
+				+ $"({meio * tetoDaBase60:0.0} na base x {cresceu60:0.00} de tanque)");
+
+			Transformar(pl, subir: false);
+			double razao60NaVolta = pl.Ficha.MaxKi > 0 ? pl.Ficha.Ki / pl.Ficha.MaxKi : -1;
+			Checa($"...e descer devolve os mesmos {meio * 100:0}%, no tanque pequeno",
+				  pl.Forma.NaBase && Math.Abs(razao60NaVolta - meio) < 1e-9
+					  && Math.Abs(pl.Ficha.Ki - meio * tetoDaBase60) < 1e-6,
+				  $"{razao60NaVolta * 100:0.##}% ({pl.Ficha.Ki:0.0}/{pl.Ficha.MaxKi:0.0}), "
+				+ $"esperado {meio * tetoDaBase60:0.0}");
+
+			// devolve o estado: a cena pendente e queimada, a estreia volta como estava e o tanque
+			// enche, que e como os blocos seguintes esperam encontrar o corpo.
+			PassarACena(pl);
+			Transformar(pl, subir: false);
+			pl.Forma.EstreiaVista.Clear();
+			pl.Forma.EstreiaVista.UnionWith(estreiasDoKi);
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+		}
 
 		// --- O KI DERRUBA A FORMA -----------------------------------------
 		// A regra "sem Ki, sem forma" so vale se ela DISPARAR: um dreno que nunca esvazia o tanque

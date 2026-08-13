@@ -98,13 +98,119 @@ public sealed class Appearance
     /// </summary>
     public List<string> FormasDeFrost = [];
 
+    /// <summary>
+    /// ============================ A COR DA CHAMA DESTE PERSONAGEM ============================
+    /// A aura da BASE (e a do Mistico, ver `Catalogo.ChamaDoJogador`) e pessoal: no original ela e
+    /// sorteada no nascimento -- `AuraR/G/B = rand(0,255)` (`CharacterCreation.dm:25-27`), somada
+    /// (`ICON_ADD`) sobre a `colorablebigaura` em `:32-40`.
+    ///
+    /// NULO NAO E "sem cor", E "ainda nao escrita": quem le DERIVA de nome + instante de criacao
+    /// (<see cref="CorDeAura.De"/>), que e o par que todo save ja tem. Por isso um personagem de
+    /// antes desta funcionalidade nao precisa de ramo de migracao nenhum -- ele cai na MESMA regra
+    /// do personagem novo, e a cor dele e estavel entre logins porque a conta e pura.
+    ///
+    /// E POR ISSO O CAMPO EXISTE MESMO SENDO DERIVAVEL: ele e o OVERRIDE. O DM deixa o jogador
+    /// trocar a cor depois (o verb `Aura_Color()`, `CharacterCreation.dm:129-151`), e esse dia
+    /// escreve aqui sem que ninguem mais precise saber. E a mesma semantica de
+    /// <see cref="CorCabelo"/> / <see cref="CorOlho"/>: nulo = o padrao, preenchido = a escolha.
+    ///
+    /// ANULAVEL TAMBEM POR SEGURANCA DE SAVE, e isso foi MEDIDO nas duas direcoes (save velho no
+    /// binario novo le nulo; save novo no binario velho ignora a propriedade desconhecida). O que
+    /// derruba uma conta neste projeto nao e campo novo: e mudar o TIPO de algo que ja esta no
+    /// disco -- ver o cabecalho do <see cref="PecaDeRoupaConverter"/>.
+    /// =====================================================================================
+    /// </summary>
+    public Rgb? CorAura;
+
     public Appearance Copiar() => new()
     {
         Corpo = Corpo, Tom = Tom, CorPele = CorPele,
         Cabelo = Cabelo, CorCabelo = CorCabelo, CorOlho = CorOlho,
         Roupa = [.. Roupa],   // `PecaDeRoupa` e imutavel: copiar a lista basta
         FormasDeFrost = [.. FormasDeFrost],
+        // O CLONE HERDA A CHAMA DO DONO, que e o `A.AuraR = AuraR` do `CopyMaker.dm:98`. Esquecer
+        // esta linha nao quebra nada: faz o clone nascer com a cor do fallback, calado, e isso so
+        // aparece jogando -- este metodo lista campo a campo e e o unico lugar onde isso pode
+        // acontecer.
+        CorAura = CorAura,
     };
+}
+
+/// <summary>
+/// ============================ O SORTEIO DA COR DA AURA, COMO NO ORIGINAL ============================
+/// O DM sorteia `rand(0,255)` nos tres canais (`CharacterCreation.dm:25-27`) e SOMA o resultado na
+/// folha `colorablebigaura` (`ICON_ADD`, `:32-40`). A folha tem tom dominante `c8c8c8` -- 6.278 dos
+/// 17.564 pixels --, entao a soma satura pro branco na maioria dos sorteios. **E por isso que a aura
+/// mais comum no original e a branca**: nao ha peso nenhum favorecendo o branco, e a consequencia de
+/// somar um sorteio medio numa folha que ja esta a 200.
+///
+/// ============================ MAS O NUMERO DO DM NAO SE PORTA, O RESULTADO SIM ============================
+/// Portar `rand(0,255)` cru pra ca daria chamas quase PRETAS. O DM SOMA e este port MULTIPLICA:
+/// `Assets/Shaders/Aura.gdshader:46` faz `cor * i`, com `i` normalizado por `PicoDaFolha = 0.784`
+/// -- que e 200/255, o mesmo `c8` da folha. Ou seja no pixel dominante o shader devolve `cor` puro,
+/// e `cor` tem que ser o RESULTADO da soma do DM, nao a parcela dela.
+///
+/// A conta e <c>min(255, 200 + rand(0,255))</c> por canal, e o `200` nao e chute: e a mesma
+/// constante que o shader ja nomeia. Media ~247 por canal, ~79% de chance de um canal estourar em
+/// 255 e ~49% de os tres estourarem -- metade branca pura, o resto com uma tintura leve. E a
+/// distribuicao do original, medida e nao inventada.
+/// ==================================================================================================
+/// </summary>
+public static class CorDeAura
+{
+    /// <summary>
+    /// O TOM DOMINANTE DA FOLHA, em 8 bits. E o `c8` de `c8c8c8` -- e o mesmo numero que o
+    /// `Aura.gdshader` guarda normalizado (`PicoDaFolha = 0.784 = 200/255`). Escrito nos dois
+    /// lugares porque um e GLSL e o outro e C#; se um dia a folha for retrabalhada, os dois mudam
+    /// juntos ou a cor sorteada deixa de bater com o pixel desenhado.
+    /// </summary>
+    public const int PicoDaFolha = 200;
+
+    /// <summary>
+    /// O sorteio, a partir de uma semente qualquer. Ver o cabecalho da classe pra a conta.
+    ///
+    /// `Random` semeado (e nao um corte de bits da semente) pelo mesmo motivo do
+    /// `LimiaresPessoais.Sorteador`: e o gerador que este Core ja usa pra sortear ficha, ele e
+    /// estavel entre maquinas e execucoes, e a uniformidade dele nao depende de o misturador ter
+    /// avalanche boa nos bits que eu escolhesse cortar.
+    /// </summary>
+    public static Rgb Sortear(ulong semente)
+    {
+        var r = new Random(unchecked((int)(semente ^ (semente >> 32))));
+        return new Rgb(Canal(r), Canal(r), Canal(r));
+    }
+
+    private static byte Canal(Random r) => (byte)Math.Min(255, PicoDaFolha + r.Next(0, 256));
+
+    /// <summary>
+    /// A COR A PARTIR DA SEMENTE DE UM CORPO -- a de um personagem salvo ou a de um NPC (que e o
+    /// LUGAR onde ele nasceu, e nao um save).
+    ///
+    /// O `Hash64("aura")` no meio e o mesmo desenho de "um gerador por campo" do
+    /// `LimiaresPessoais.Sorteador`: sem ele, dois sistemas que sorteassem da semente crua do mesmo
+    /// corpo andariam juntos pra sempre (o NPC de cabelo tal teria sempre a aura tal).
+    /// </summary>
+    public static Rgb DeSemente(ulong semente) =>
+        Sortear(Jandirus.Core.World.Espaco.Misturar(
+            semente, Jandirus.Core.World.Espaco.Hash64("aura"), 0xA57E_1B2C_4D3F_9E01UL));
+
+    /// <summary>
+    /// A COR DE UM PERSONAGEM, DERIVADA DO QUE JA O IDENTIFICA NO SAVE.
+    ///
+    /// Sortear na CARGA seria uma cor nova a cada login. Guardar um campo obrigatorio deixaria o
+    /// personagem antigo sem resposta. A saida e a que este repo ja usou uma vez, e esta escrita no
+    /// cabecalho de <see cref="Jandirus.Core.Forms.LimiaresPessoais.SementeDe"/>: nome + instante de criacao e a
+    /// dupla que TODO save tem, e por isso a semente e "reconstruivel se o campo dela se perder num
+    /// save antigo".
+    ///
+    /// NAO SE USA `Limiares.Semente` pra isto, por dois motivos medidos: ela e `0` em save anterior
+    /// aos limiares, e na criacao ela e montada com `nome.GetHashCode()` (`GameServer.cs:1629`) --
+    /// que o proprio `LimiaresPessoais:296` documenta como randomizado por processo, ou seja NAO
+    /// reproduzivel; aquele campo so sobrevive porque foi gravado.
+    ///
+    /// </summary>
+    public static Rgb De(string nome, long criadoEm) =>
+        DeSemente(Jandirus.Core.Forms.LimiaresPessoais.SementeDe(nome, criadoEm));
 }
 
 /// <summary>

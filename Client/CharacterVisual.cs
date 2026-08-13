@@ -1928,9 +1928,16 @@ public partial class CharacterVisual : Node2D
 	/// CAMADA DO CORPO e nao a roupa nem o cabelo: quem pergunta quer a silhueta.
 	///
 	/// ============================ QUEM PERGUNTA, E POR QUE NAO DA PRA CRAVAR ============================
-	/// A <see cref="NebulosaDaForma"/>. O dono pediu a nuvem do Ultra Instinto a "no MAXIMO 5 pixels de
-	/// distancia do corpo", e distancia precisa de um corpo: ela MEDE a caixa do alfa deste quadro e
-	/// soma a folga. Sem isto o unico caminho seria cravar "a silhueta tem 16 px" num `.cs` -- que e
+	/// A BANCADA DA NEBULOSA (`RoboDeNebulosa.AFolgaEDerivada`), que remede o alfa desta folha por conta
+	/// propria pra cobrar que o efeito tenha chegado no mesmo numero.
+	///
+	/// A PROPRIA <see cref="NebulosaDaForma"/> DEIXOU DE PERGUNTAR ISTO. Ela pedia a folha do CORPO
+	/// enquanto a mascara dela era uma ELIPSE ajustada a caixa do alfa; agora ela pede a
+	/// <see cref="SilhuetaDesenhada"/>, que entrega o quadro VIVO de TODAS as camadas -- a folha do corpo
+	/// sozinha nao tem topete de Super Saiyajin nem rabo, e eram justamente esses dois que sobravam pra
+	/// fora da aura na foto do dono.
+	///
+	/// Sem isto o unico caminho seria cravar "a silhueta tem 16 px" num `.cs` -- que e
 	/// verdade pras folhas de 32 e mentira pro macaco de 96, e o tipo de numero que este projeto ja
 	/// pagou caro (`AuraObject.dm` versus `SpriteDeAura.AncoraPara`).
 	///
@@ -1951,11 +1958,65 @@ public partial class CharacterVisual : Node2D
 	}
 
 	/// <summary>
+	/// ============================ A SILHUETA VIVA: O QUADRO QUE CADA CAMADA ESTA DESENHANDO AGORA ============================
+	/// Recheia <paramref name="saida"/> com o par (quadro, centro dele no espaco deste node) de cada
+	/// camada que compoe o DESENHO DO LUTADOR. Quem pergunta e a <see cref="NebulosaDaForma"/>, pra
+	/// compor a mascara que a nuvem do Ultra Instinto veste -- o dono pediu que o efeito "CONTORNE O
+	/// CORPO", e contorno de corpo e a uniao do alfa das camadas, nao a caixa de uma delas.
+	///
+	/// ============================ QUEM ENTRA E A `EhSilhueta`, E ELA JA EXISTIA ============================
+	/// A mesma pergunta que decide quem recebe o CONTORNO da forma decide quem entra aqui, e nao e
+	/// coincidencia: as duas querem "o traco de fora do lutador". Entao corpo, corpo-da-forma, rabo,
+	/// roupa e cabelo entram; os OLHOS e as COLADAS ficam de fora.
+	///
+	/// E as duas exclusoes valem por motivos diferentes:
+	///   * o olho e um detalhe DENTRO da cabeca -- incluir nao mudaria um pixel do contorno e so custaria
+	///     mais uma folha decodificada;
+	///   * a colada NAO PODE entrar. Em Ultra Instinto as coladas sao justamente as duas folhas de aura
+	///     do DM (`ui_aura` e `ui_dots`), que enchem o quadro de 32x32 quase inteiro. A mascara passaria
+	///     a abracar a AURA em vez do lutador -- ou seja, voltaria a ser um retangulo folgado, que e
+	///     exatamente o defeito que este canal existe pra consertar. Circular, e calado.
+	///
+	/// A `Visible` E QUEM CORTA O RESTO, e por isso ela e consultada em vez de uma segunda regra: e ela
+	/// que a <see cref="Escondida"/> escreve, e e como o Oozaru some com o corpo de 32 por baixo dele. Um
+	/// `if (_criatura)` aqui seria a terceira copia dessa decisao.
+	///
+	/// ============================ A LISTA E DE QUEM CHAMA ============================
+	/// Ela e recheada e nao devolvida porque o chamador le isto POR QUADRO (a mascara acompanha a
+	/// animacao): alocar uma lista de seis tuplas 60 vezes por segundo por corpo pra quase sempre
+	/// concluir "a pose nao mudou" seria lixo puro.
+	/// ==========================================================================================================
+	/// </summary>
+	public void SilhuetaDesenhada(List<(Texture2D Quadro, Vector2 Centro)> saida)
+	{
+		saida.Clear();
+
+		foreach (AnimatedSprite2D s in _camadas)
+		{
+			if (!IsInstanceValid(s) || !s.Visible || !EhSilhueta(s)) continue;
+			if (s.SpriteFrames is not { } f || s.Animation.IsEmpty) continue;
+			if (s.Frame < 0 || s.Frame >= f.GetFrameCount(s.Animation)) continue;
+			if (f.GetFrameTexture(s.Animation, s.Frame) is not { } t) continue;
+
+			// `Centered` e sempre `true` nestas camadas (ver `NovaCamada`), entao o MEIO do quadro cai
+			// em `Position + Offset` -- e o `Offset` e quem ancora folha de tamanho estranho pelos pes
+			// (ver `Ancorar` e a linha do `_corpoDaForma`). Somar os dois e o que faz o macaco de 96
+			// cair no lugar certo sem ninguem repetir a conta la.
+			saida.Add((t, s.Position + s.Offset));
+		}
+	}
+
+	/// <summary>
 	/// O tamanho do quadro desta folha, em pixels. Pega o primeiro quadro da primeira animacao:
 	/// todo `.tres` do pipeline sai de um `.dmi`, e um `.dmi` tem UM tamanho de icone -- nao ha
 	/// folha com quadros de tamanhos diferentes.
+	///
+	/// `internal` porque a <see cref="Transformacao"/> pergunta o mesmo: o buraco que ela abre no
+	/// meio do sorteio das pedras e o retangulo DESENHADO do corpo (ver `TilesEmVolta`), e um
+	/// segundo "quanto mede este boneco" escrito la seria a mentira de sempre -- 32 e verdade pras
+	/// folhas normais e mentira pro macaco de 96.
 	/// </summary>
-	private static Vector2 TamanhoDoQuadro(SpriteFrames? f)
+	internal static Vector2 TamanhoDoQuadro(SpriteFrames? f)
 	{
 		if (f == null) return Vector2.Zero;
 		foreach (StringName a in f.GetAnimationNames())

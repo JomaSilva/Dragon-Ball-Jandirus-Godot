@@ -30,6 +30,9 @@ namespace Jandirus.Tools;
 ///   [8] O GANCHO DA AMIZADE TEM DONO: varredura dos fontes atras do chamador de producao (e de
 ///       quem escreve as janelas de raiva por fora dele).
 ///   [9] COBERTURA: toda entrada do catalogo tem porta DECLARADA, e a porta DISPARA pelo `Avaliar`.
+///  [10] A CINEMATICA DA FURIA: o roteiro contra os `sleep()` do `AngerCinematic()`, as quatro
+///       regras de cena que este projeto ja pagou caro, e a varredura dos fontes atras de quem
+///       dispara o pacote (e de quem NAO pode dispara-lo).
 /// ====================================================================================================
 ///
 ///     dotnet run --project Tools/AssetPipeline -- raiva     (da RAIZ do repo -- a secao [8] le os fontes)
@@ -57,6 +60,7 @@ public static class RaivaBench
 		AsDivinas();
 		OGanchoLigado();
 		Cobertura();
+		ACinematicaDaFuria();
 
 		Console.WriteLine($"\n=== {_ok} OK, {_falhou} FALHA ===");
 		return _falhou == 0 ? 0 : 1;
@@ -685,8 +689,10 @@ public static class RaivaBench
 		string raiz = Directory.GetCurrentDirectory();
 		var chamadores = new List<string>();
 		var escritoresDaJanela = new List<string>();
+		var escritoresDaRaiva = new List<string>();
 		var funil = new List<string>();
-		int definicoes = 0, chamadas = 0;
+		var tiqueDaRaiva = new List<string>();
+		int definicoes = 0, chamadas = 0, projecoes = 0;
 
 		// OS ARQUIVOS QUE PODEM FALAR DE RAIVA SEM SEREM O CHAMADOR: a definicao do proprio gancho
 		// e as bancadas ao vivo. Qualquer outro arquivo que o chame e um chamador de producao.
@@ -699,6 +705,18 @@ public static class RaivaBench
 		string[] podemEscreverAJanela =
 			["GameServer.cs", "GameServer.Formas.cs", "GameServer.FormasTeste.cs",
 			 "GameServer.RaivaTeste.cs", "GameServer.ConvivioTeste.cs"];
+
+		// ============================ E QUEM PODE ESCREVER O `Anger` -- A OUTRA METADE DA MESMA REGRA ============================
+		// O `Fighter.Anger` e DERIVADO das duas janelas (`GameServer.RaivaComoNumero`), e a unica
+		// mao que o escreve e a `ProjetarRaiva`. Uma segunda mao seria pior que a porta dos fundos
+		// da janela: `angerBuff` chega a 3x, entao um `Anger = MaxAnger` solto em qualquer arquivo
+		// e ate 3x de BP que NUNCA DECAI -- e foi exatamente esse risco que manteve este sistema
+		// desligado por varias sessoes. Sao tres arquivos, e cada um por um motivo diferente:
+		//   * `Fighter.cs`         -- a declaracao do campo e o `ClampAnger` (o teto, que so corta);
+		//   * `GameServer.Formas.cs` -- a `ProjetarRaiva`, a mao unica;
+		//   * `GameServer.RaivaTeste.cs` -- a bancada ao vivo, que REPOE o valor de antes no `finally`.
+		string[] podemEscreverARaiva =
+			["Fighter.cs", "GameServer.Formas.cs", "GameServer.RaivaTeste.cs"];
 
 		foreach (string dir in new[] { "Core", "Server", "Client" })
 		{
@@ -728,6 +746,28 @@ public static class RaivaBench
 					if (escreve && Array.IndexOf(podemEscreverAJanela, nome) < 0)
 						escritoresDaJanela.Add($"{nome}:{i + 1}");
 
+					// E O `Anger` EM SI. `\bAnger\s*=[^=]` pega o campo e so ele: `MaxAnger`,
+					// `baseAnger` e `legendaryAngerBonus` nao tem fronteira de palavra antes do `A`,
+					// e o `[^=]` deixa a comparacao `Anger ==` passar.
+					//
+					// APAGAR PODE EM QUALQUER LUGAR; ACENDER, NAO. `Anger = 100` e o PISO -- e
+					// `angerBuff = 1,0x`, ou seja "este corpo esta calmo". O DM escreve exatamente
+					// isso em cinco lugares que fabricam ou reciclam corpos
+					// (`PlanetPopulation.dm:334`, `BossEvents.dm:240`, `Tournament.dm:189` e `:742`,
+					// `PlanetConquest.dm:695`), e nenhum deles e uma porta dos fundos: nao existe
+					// exploit em ficar calmo. O que esta regra protege e o outro sentido -- um
+					// `Anger = MaxAnger` solto e ate 3x de BP que ninguem baixa.
+					if (System.Text.RegularExpressions.Regex.IsMatch(l, @"\bAnger\s*=[^=]")
+						&& !System.Text.RegularExpressions.Regex.IsMatch(l, @"\bAnger\s*=\s*100\s*;")
+						&& Array.IndexOf(podemEscreverARaiva, nome) < 0)
+						escritoresDaRaiva.Add($"{nome}:{i + 1}");
+
+					// E A PROJECAO: quem a define, e quem a chama DO TIQUE. Sem a chamada do tique o
+					// `Anger` volta a ser o campo morto que era -- e o sintoma seria zero: nenhum
+					// erro, nenhuma tela errada, so um sistema inteiro valendo 1,0x pra sempre.
+					if (l.Contains("private void ProjetarRaiva")) { projecoes++; continue; }
+					if (l.Contains("ProjetarRaiva(")) tiqueDaRaiva.Add(nome);
+
 					// E QUEM CHAMA O FUNIL DA DERROTA. Ele e o unico caminho entre "perdeu a luta" e
 					// o luto -- ver `AoPerderALuta`.
 					if (l.Contains("AoPerderALuta(") && !l.Contains("private void AoPerderALuta"))
@@ -749,6 +789,19 @@ public static class RaivaBench
 
 		Checa("ninguem escreve as duas janelas de raiva por fora do gancho",
 			  escritoresDaJanela.Count == 0, string.Join(" | ", escritoresDaJanela));
+
+		// ============================ A RAIVA COMO NUMERO TEM UMA MAO SO, E ELA ANDA ============================
+		Checa("ninguem ACENDE o `Anger` por fora da projecao (apagar pra 100 pode em qualquer lugar)",
+			  escritoresDaRaiva.Count == 0, string.Join(" | ", escritoresDaRaiva));
+		Checa("a projecao da raiva existe, e e uma so", projecoes == 1, $"{projecoes} definicoes");
+
+		// SE ISTO REPROVAR, o `angerBuff` volta a valer 1,0x pra sempre e nada mais quebra: e o modo
+		// de falha mais caro deste sistema, porque ele nao tem sintoma.
+		Checa("a projecao e chamada DO TIQUE (senao o `Anger` vira campo morto de novo)",
+			  tiqueDaRaiva.Contains("GameServer.cs"), string.Join(" | ", tiqueDaRaiva.Distinct()));
+		Checa("...e tambem do gancho do luto (a raiva vale no instante, e nao no proximo tique)",
+			  tiqueDaRaiva.Contains("GameServer.Formas.cs"),
+			  string.Join(" | ", tiqueDaRaiva.Distinct()));
 
 		// ============================ E O FUNIL E CHAMADO DOS DOIS LUGARES QUE RESOLVEM DERROTA ============================
 		// O luto so acontece se `AoPerderALuta` for chamado, e ele so e chamado de onde uma derrota
@@ -929,5 +982,232 @@ public static class RaivaBench
 		}
 
 		Console.WriteLine();
+	}
+
+	// =====================================================================
+	// 10. A CINEMATICA DA FURIA -- `AngerCinematic()`, `Murder.dm:136-163`
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE ESTA SECAO MEDE, E O QUE ELA **NAO** MEDE ============================
+	/// Ela mede o ROTEIRO (o dado do Core) e o ENCANAMENTO (varredura de fontes). O desenho -- a
+	/// camera tremendo, o anel abrindo, a pedra nascendo -- e do tocador e quem o mede e o
+	/// `--diagforma`, ao vivo, com o node na arvore. Repetir aqui as contas de la seria o "node
+	/// isolado" que esta bancada inteira recusa.
+	///
+	/// ============================ AS QUATRO REGRAS DE CENA QUE ELA TRANCA ============================
+	/// Sao as que este projeto pagou uma vez cada, e todas as quatro valem tambem pra uma cena que
+	/// nao e de forma nenhuma:
+	///   * a CRATERA cai no beat da virada -- e em nenhum outro;
+	///   * a POEIRA so vem com a cratera (e a cauda, que e a mesma poeira baixando);
+	///   * a PEDRA fica do inicio ao fim (`OChaoSeSolta`), e nao e beat;
+	///   * a `PoeiraDeEstrago` NAO e chamada de cinematica -- o bit dela esta aposentado, e a
+	///     varredura de fontes confere que o tocador continua sem chamar aquele sistema.
+	///
+	/// A primeira e a segunda sao conferidas no RESULTADO e nao na intencao: eu construo uma cena de
+	/// sonda escrevendo cratera e poeira nos lugares errados, e o funil da `Cinematica.Beats` tem que
+	/// apaga-las. Conferir a `Cinematicas.Furia` sozinha provaria que eu escrevi o roteiro certo --
+	/// nao que o funil impede o roteiro errado, que e a regra de verdade.
+	/// ==========================================================================================
+	/// </summary>
+	private static void ACinematicaDaFuria()
+	{
+		Console.WriteLine("[10] A CINEMATICA DA FURIA (o roteiro, as 4 regras de cena, o encanamento)");
+
+		Cinematica c = Cinematicas.Furia;
+
+		// ---- o roteiro contra os `sleep()` do DM ----
+		Checa("a cena existe e tem os 8 instantes do `AngerCinematic()`", c.Beats.Length == 8,
+			  $"{c.Beats.Length} beats");
+		Checa("os beats estao em ordem de tempo",
+			  c.Beats.Zip(c.Beats.Skip(1)).All(p => p.Second.Em >= p.First.Em));
+
+		// 6 ciclos de `sleep(5)` (0,5 s) + a virada + `sleep(20)` (2,0 s) = 5,0 s de cena.
+		Checa("ela mede 5,0 s -- os `sleep` do DM em decissegundo", Math.Abs(c.Segundos - 5.0) < 0.001,
+			  $"{c.Segundos:0.###}s");
+
+		// ============================ O CORPO NAO PARA -- `set waitfor = 0` ============================
+		// A checagem mais importante desta secao, e a que separa esta cena de todas as outras 34. Se
+		// isto reprovar, a furia passou a prender o jogador no meio de uma briga que outra pessoa
+		// comecou. Ver `Cinematicas.Furia` e `Murder.dm:137`.
+		Checa("ela NAO prende o corpo (o `set waitfor = 0` do DM)", c.SegundosPreso == 0,
+			  $"{c.SegundosPreso:0.###}s preso");
+
+		// ---- a virada ----
+		int viradas = c.Beats.Count(b => b.Faz.HasFlag(Efeito.Assumir));
+		Checa("tem UM beat de virada, e um so", viradas == 1, $"{viradas}");
+
+		Beat virada = c.Beats.First(b => b.Faz.HasFlag(Efeito.Assumir));
+		Checa("a virada cai aos 3,0 s (`createCrater` + `Quake` + `powerup.wav`, `Murder.dm:158-160`)",
+			  Math.Abs(virada.Em - 3.0) < 0.001, $"{virada.Em:0.###}s");
+		Checa("...e ela leva o `powerup.wav` do original", virada.Som == "powerup", virada.Som);
+
+		// ---- REGRA 1: a cratera e do instante da virada, e so dele ----
+		Checa("a cratera cai NO beat da virada", virada.Faz.HasFlag(Efeito.Cratera));
+		Checa("e em nenhum outro beat da cena",
+			  c.Beats.Count(b => b.Faz.HasFlag(Efeito.Cratera)) == 1);
+
+		// ---- REGRA 2: poeira so com a cratera (e a cauda) ----
+		Checa("a poeira nasce com a cratera", virada.Faz.HasFlag(Efeito.Poeira));
+		Checa("nao ha poeira ANTES da virada",
+			  !c.Beats.Any(b => b.Em < virada.Em && b.Faz.HasFlag(Efeito.Poeira)));
+
+		Beat[] depois = [.. c.Beats.Where(b => b.Em > virada.Em)];
+		Checa("depois da virada ha exatamente UM beat -- a poeira assentando", depois.Length == 1,
+			  $"{depois.Length} beats de cauda");
+		Checa("...e ele cai aos 4,0 s (o `sleep(20)` antes de a aura sair)",
+			  depois.Length == 1 && Math.Abs(depois[0].Em - 4.0) < 0.001);
+
+		// ---- REGRA 3: a pedra do inicio ao fim, e ela nao e beat ----
+		Checa("o chao fica solto a cena inteira (a pedra nao e um instante)", c.OChaoSeSolta);
+
+		// ---- e o que ela NAO tem ----
+		// O CLARAO E DO INSTANTE EM QUE UMA FORMA FICA, e nesta cena nao fica forma nenhuma. O DM
+		// tambem nao tem clarao de tela em lugar nenhum (ver `Efeito.ClaraoDeTela`).
+		Checa("nao ha clarao de tela (nao ha forma pra distinguir)",
+			  !c.Beats.Any(b => b.Faz.HasFlag(Efeito.ClaraoDeTela)));
+		Checa("nao ha piscar de cabelo, degrau vestido, faisca nem banho de cor",
+			  !c.Beats.Any(b => b.Faz.HasFlag(Efeito.PiscaCabelo) || b.Faz.HasFlag(Efeito.VesteDegrau)
+								|| b.Faz.HasFlag(Efeito.Raios) || b.Faz.HasFlag(Efeito.BanhoDeCor)));
+		Checa("o ceu nao descarrega (isso e da estreia do SSJ1, e so dela)", !c.OCeuDescarrega);
+
+		// ---- ela nao e de forma nenhuma ----
+		Checa("ela nao pertence a forma nenhuma (o id e vazio)", c.Forma.Length == 0, c.Forma);
+		Checa("e nao esta na lista das cenas de forma (`Cinematicas.Todas`)",
+			  !Cinematicas.Todas.Contains(c),
+			  "dentro da `Todas` ela cairia no `Encurtar` e na regra 'toda forma tem cena'");
+		Checa("nenhuma forma do catalogo cai nela",
+			  Catalogo.Todas.All(d => !ReferenceEquals(Cinematicas.Para(d), c)));
+
+		// ---- o tema ----
+		Checa("ela tem o tema de raiva do DM", c.Musica.Contains("Anger Theme"), c.Musica);
+		string musica = Path.Combine(Directory.GetCurrentDirectory(), "Assets", "Sounds", "Music", c.Musica);
+		// EXISTIR NA PASTA NAO E ESTAR IMPORTADO -- e por isso o `.import` tambem. Um mp3 no disco sem
+		// o `.import` do Godot carrega nulo e a cena fica MUDA, calada. Ver a mesma regra nas pedras.
+		Checa("o arquivo do tema esta no disco", File.Exists(musica), musica);
+		Checa("...e o Godot o importou", File.Exists(musica + ".import"));
+
+		// ---- a recarga ----
+		Checa("a recarga da cena e 60 s (o `rageCinematicCD` do DM)",
+			  Math.Abs(Cinematicas.SegundosEntreFurias - 60) < 0.001,
+			  $"{Cinematicas.SegundosEntreFurias}");
+		// E ELA NAO E O PRAZO DA RAIVA. Amarrar os dois faria mexer no balanceamento do luto mudar,
+		// em silencio, quantas vezes a cinematica toca -- ver o campo `ServerPlayer.FuriaCenaAte`.
+		Checa("...e ela nao e o prazo da raiva (120 s): sao dois relogios",
+			  Math.Abs(Cinematicas.SegundosEntreFurias - 120) > 0.001);
+
+		// ---- REGRA 1 e 2 conferidas no FUNIL, e nao no roteiro ----
+		// A CENA DE SONDA ESCREVE ERRADO DE PROPOSITO: cratera e poeira antes da virada, e cratera
+		// depois dela. O `init` da `Cinematica` tem que apagar as tres coisas e por a cratera + poeira
+		// exatamente no beat que vira. Se este bloco reprovar, o funil parou de ser o unico caminho --
+		// e a proxima cena escrita a mao vai abrir o chao na hora errada, calada.
+		var sonda = new Cinematica
+		{
+			Forma = "",
+			SegundosPreso = 0,
+			Beats =
+			[
+				new(0.0, Efeito.Cratera | Efeito.Poeira),
+				new(1.0, Efeito.Poeira),
+				new(2.0, Efeito.Assumir),
+				new(3.0, Efeito.Cratera | Efeito.Poeira),
+			],
+		};
+		Checa("o funil apaga a cratera escrita ANTES da virada", !sonda.Beats[0].Faz.HasFlag(Efeito.Cratera));
+		Checa("...e a poeira tambem", !sonda.Beats[0].Faz.HasFlag(Efeito.Poeira)
+									  && !sonda.Beats[1].Faz.HasFlag(Efeito.Poeira));
+		Checa("o funil poe cratera E poeira no beat da virada",
+			  sonda.Beats[2].Faz.HasFlag(Efeito.Cratera) && sonda.Beats[2].Faz.HasFlag(Efeito.Poeira));
+		Checa("o funil apaga a cratera escrita DEPOIS da virada, e deixa a poeira assentar",
+			  !sonda.Beats[3].Faz.HasFlag(Efeito.Cratera) && sonda.Beats[3].Faz.HasFlag(Efeito.Poeira));
+
+		OEncanamentoDaFuria();
+		Console.WriteLine();
+	}
+
+	/// <summary>
+	/// ============================ O ENCANAMENTO: QUEM DISPARA A CENA, E QUEM NAO PODE ============================
+	/// Varredura de fontes, como a secao [8] e pelo mesmo motivo: a decisao de tocar a cinematica **nao
+	/// deixa rastro nenhum no estado**. Nao ha forma nova, nao ha buff novo (o `angerBuff` ja vinha da
+	/// janela), nao ha campo pra perguntar depois -- so um pacote que sai ou nao sai. O modo de falha
+	/// e o classico deste port: alguem "simplifica" o gatilho pra dentro do chamador, a cena passa a
+	/// tocar em todo nocaute, e nada acusa.
+	///
+	/// Sao tres perguntas:
+	///   * o pacote `S2C.Furia` tem UM emissor de producao, e ele mora no funil da raiva;
+	///   * as quatro condicoes do `Murder.dm:119` estao TODAS escritas la (grau extremo, `wasRaging`,
+	///     corpo com dono, e a previsao de transformacao) -- mais a recarga;
+	///   * o cliente tem UM tocador, e ele passa `forma: null` (a cena da furia nao veste ninguem).
+	/// ========================================================================================================
+	/// </summary>
+	private static void OEncanamentoDaFuria()
+	{
+		string raiz = Directory.GetCurrentDirectory();
+		var emissores = new List<string>();
+		var tocadores = new List<string>();
+		int gatilhos = 0, previsao = 0, recarga = 0, semDono = 0, wasRaging = 0, grauExtremo = 0;
+		bool estragoNaCena = false;
+
+		// QUEM PODE FALAR DO PACOTE SEM SER O EMISSOR: o proprio protocolo (a declaracao), o cliente
+		// (que o LE) e as bancadas ao vivo.
+		string[] naoSaoEmissores =
+			["Protocol.cs", "GameClient.cs", "GameServer.RaivaTeste.cs", "GameServer.FormasTeste.cs",
+			 "RoboDeForma.cs"];
+
+		foreach (string dir in new[] { "Core", "Server", "Client", "Net" })
+		{
+			string caminho = Path.Combine(raiz, dir);
+			if (!Directory.Exists(caminho)) continue;
+
+			foreach (string arq in Directory.EnumerateFiles(caminho, "*.cs", SearchOption.AllDirectories))
+			{
+				string nome = Path.GetFileName(arq);
+				string[] linhas = File.ReadAllLines(arq);
+				for (int i = 0; i < linhas.Length; i++)
+				{
+					string l = linhas[i].Trim();
+					if (l.StartsWith("//") || l.StartsWith("///")) continue;
+
+					if (l.Contains("Protocol.S2C.Furia") && Array.IndexOf(naoSaoEmissores, nome) < 0)
+						emissores.Add($"{nome}:{i + 1}");
+
+					if (l.Contains("private void TalvezACenaDaFuria")) { gatilhos++; continue; }
+					if (l.Contains("AFuriaVaiVirarForma")) previsao++;
+					if (l.Contains("FuriaCenaAte")) recarga++;
+					if (l.Contains("enlutado.Peer == null")) semDono++;
+					if (l.Contains("estavaEmFuria")) wasRaging++;
+					if (l.Contains("grau != NivelDeRaiva.Extrema")) grauExtremo++;
+
+					if (l.Contains("Cinematicas.Furia")) tocadores.Add($"{nome}:{i + 1}");
+
+					// A `PoeiraDeEstrago` E DO CENARIO CAINDO, E NAO DE CINEMATICA. O dono mandou tirar
+					// ("uns quadrados marrons caindo... TIRE esse efeito") e o bit `Cascalho` ficou
+					// aposentado. Se ela voltar ao tocador, a cena nova traz o defeito de volta junto.
+					if (nome == "Transformacao.cs" && l.Contains("PoeiraDeEstrago")) estragoNaCena = true;
+				}
+			}
+		}
+
+		Checa("o gatilho da cena existe, e e um so", gatilhos == 1, $"{gatilhos} definicoes");
+		Checa("o pacote `S2C.Furia` tem emissor de producao", emissores.Count > 0,
+			  "nenhum -- a cinematica nunca sai do servidor");
+		Checa("...e ele e o funil da raiva, e so ele",
+			  emissores.All(e => e.StartsWith("GameServer.Formas.cs")), string.Join(" | ", emissores));
+
+		// AS QUATRO CONDICOES DO `Murder.dm:119`, uma a uma.
+		Checa("condicao 1: so o grau EXTREMO toca a cena", grauExtremo >= 1);
+		Checa("condicao 2: o `wasRaging` e lido (nao toca duas vezes na mesma furia)", wasRaging >= 2,
+			  $"{wasRaging} usos -- ele nasce no gancho e e lido no gatilho");
+		Checa("condicao 3: corpo SEM DONO nao assiste cinematica (o `client` do DM)", semDono >= 1);
+		Checa("condicao 4: a transformacao fica com o momento (`anger_will_transform`)", previsao >= 2,
+			  $"{previsao} usos -- a definicao e a chamada");
+		Checa("e a recarga de 60 s e lida E escrita", recarga >= 3,
+			  $"{recarga} usos -- o campo, a leitura e a escrita");
+
+		// O TOCADOR E UM SO, e ele mora no `World` (o funil de eventos do cliente).
+		Checa("o cliente tem UM tocador pra a cena da furia",
+			  tocadores.Count(t => t.StartsWith("World.cs")) == 1, string.Join(" | ", tocadores));
+
+		Checa("a cinematica NAO chama o sistema de estrago de cenario", !estragoNaCena,
+			  "a `PoeiraDeEstrago` voltou pro tocador -- ver `Efeito` 8192, aposentado");
 	}
 }

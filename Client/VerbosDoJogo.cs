@@ -232,6 +232,13 @@ public static class VerbosDoJogo
 			"A seed do universo, as zonas com gente e os planetas da sua chunk.",
 			() => C?.SendVerbo("admin_galaxia")));
 
+		// NAO TEM ORIGINAL: o DM nao tinha estrela nenhuma. Existe porque a estrela mais perto do
+		// nascimento fica a 7.952 px -- dois minutos de voo --, e conferir o sol em jogo sem isto
+		// custaria dois minutos por tentativa.
+		Verbos.Registrar(new Verbo("Ir Para A Estrela", Verbos.Admin,
+			"Salta pro centro da estrela mais proxima. So no espaco -- e ela QUEIMA.",
+			() => C?.SendVerbo("admin_estrela")));
+
 		// ---------------------------------------------------------- punir
 		// `Boot()` (Admin.dm:450)
 		Verbos.Registrar(new Verbo("Boot Target", Verbos.Admin,

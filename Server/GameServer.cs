@@ -60,16 +60,53 @@ public sealed class ServerPlayer
 	public int Karma;
 
 	/// <summary>
-	/// O CEREBRO. Nulo em jogador de verdade; preenchido no clone da meditacao (e depois nos
-	/// NPCs do mundo). Ter cerebro E o que define um corpo como NPC.
+	/// O CEREBRO -- QUEM DIRIGE ESTE CORPO AGORA. Nulo = o dono (ou ninguem, num NPC parado).
+	/// Preenchido no clone da meditacao, no Oozaru sem controle e na furia lendaria.
+	///
+	/// **NAO E "isto e um NPC"**: um jogador possuido tem cerebro e continua sendo jogador (ver
+	/// `SemAsRedeas`, GameServer.Clone.cs:327). Quem responde "de onde este corpo veio" e o
+	/// <see cref="Papel"/>, e quem responde "ele tem dono na tela" e o <see cref="Peer"/>.
 	/// </summary>
 	public Jandirus.Core.Ai.Cerebro? Cerebro;
+
+	/// <summary>
+	/// O PAPEL -- de que molde este corpo saiu, com que semente, e em que degrau do roteiro esta.
+	/// Nulo em todo corpo de jogador.
+	///
+	/// A FICHA NAO MORA AQUI: um NPC tem `Ficha`, `Livro`, `Niveis` e `Forma` como qualquer
+	/// jogador, montados pelas mesmas funcoes. O papel e so o que um jogador nao tem.
+	/// Ver <see cref="Jandirus.Core.Npc.PapelDeNpc"/>.
+	/// </summary>
+	public Jandirus.Core.Npc.PapelDeNpc? Papel;
 
 	/// <summary>Em que chunk do espaco estou. Trocar de chunk dispara o pacote de vizinhanca.</summary>
 	public ChunkId ChunkAtual;
 
 	/// <summary>De onde decolei.</summary>
 	public string PlanetaDeOrigem = "";
+
+	// ============================ O SOL QUEIMANDO ESTE CORPO ============================
+	// Tres campos e nada mais: quem decide e o `GameServer.Sol.cs`, que e uma funcao pura de
+	// (posicao, seed, ficha) mais estes marcadores de BORDA. Eles existem porque "entrou" e "saiu"
+	// sao eventos, e um tique nao sabe o que o tique anterior viu.
+	/// <summary>
+	/// Onde eu estava em relacao a estrela no tique passado. E o que transforma o estado continuo
+	/// ("estou a 900 px do centro") nos tres eventos que o jogador percebe: o aviso da coroa, o
+	/// grito de entrada e o alivio da saida.
+	/// </summary>
+	public Jandirus.Core.World.ProximidadeDaEstrela CalorNoTique;
+
+	/// <summary>Rate-limit do berro de "voce esta queimando" -- senao ele sai 30x por segundo.</summary>
+	public long AvisoDeCalorAte;
+
+	/// <summary>
+	/// Quanto de vida a estrela ja tirou deste corpo NA QUEIMADA ATUAL. Zera ao sair.
+	///
+	/// Nao e mecanica: e o que a mensagem de saida usa pra dizer o preco ("voce sai com 34 de vida
+	/// a menos"), e o que a bancada le pra provar que houve dano ANTES da morte -- sem ele, a
+	/// unica evidencia de queimadura seria o cadaver.
+	/// </summary>
+	public double VidaQueimada;
 
 	// ============================== OOZARU (ver GameServer.Oozaru.cs) ==============================
 
@@ -116,8 +153,14 @@ public sealed class ServerPlayer
 	/// o jeito de despertar o Beast seria ver um amigo morrer e deslogar ate ter os 50% de ki
 	/// divino -- a janela viraria um item guardado no bolso.
 	///
-	/// **NAO E O `Fighter.Anger`.** O buff de BP da raiva (`angerBuff`, `Fighter.Power.cs:56`) e
-	/// outro sistema, e ele continua nao portado -- ver o cabecalho de `AmigoAbatido`.
+	/// ============================ E O `Fighter.Anger` NASCE DAQUI ============================
+	/// O texto anterior deste bloco dizia *"NAO E o `Fighter.Anger`, aquilo e outro sistema e
+	/// continua nao portado"*. Deixou de ser verdade nos dois pedacos: o buff de BP da raiva
+	/// (`angerBuff`, `Fighter.Power.cs:56`) esta ligado, e **estas duas janelas sao a fonte dele**.
+	/// O numero e derivado (`GameServer.RaivaComoNumero`) e nao guardado -- e por isso este campo
+	/// nao persistir tambem resolve a persistencia do `Anger`: sem janela, o corpo que volta do
+	/// logout nasce em 100, que e "calmo". Uma unica regra, um unico lugar pra revoga-la.
+	/// =======================================================================================
 	/// </summary>
 	public long FuriaExtremaAte;
 
@@ -132,12 +175,37 @@ public sealed class ServerPlayer
 	/// efetivo e simplesmente a mais alta que ainda estiver aberta (ver `NivelDaRaivaDe`).
 	///
 	/// O DM tem um `rageExpire` so porque la o degrau de raiva sai do `Emotion`, que e um NUMERO
-	/// que decai sozinho no `Stats()` (`Stats.dm:445-449`) -- decaimento que este port nao tem.
+	/// (`Stats.dm:445-449`) -- e aquela regua de cinco degraus e MAGNITUDE, nao fonte: os dois
+	/// graus do port escrevem o mesmo `Anger = MaxAnger` no DM (`Murder.dm:112`). E por isso que a
+	/// seta da derivacao aponta daqui pro `Anger`, e nunca ao contrario: um numero nao sabe dizer
+	/// se voce viu o amigo cair ou morrer. Ver `GameServer.RaivaComoNumero` pro argumento inteiro.
 	/// ========================================================================================================
 	///
 	/// NAO PERSISTE, pelo mesmo motivo da de cima.
 	/// </summary>
 	public long RaivaLendariaAte;
+
+	/// <summary>
+	/// ATE QUANDO A CENA DE FURIA DESTE CORPO ESTA EM RECARGA (relogio real, ms). Zero = pode tocar.
+	///
+	/// O `rageCinematicCD` do DM (`Murder.dm:139-140`: `world.time + 600` -> 60,0 s, ver
+	/// <see cref="Jandirus.Core.Forms.Cinematicas.SegundosEntreFurias"/>).
+	///
+	/// ============================ POR QUE ELE NAO E DERIVAVEL DAS OUTRAS DUAS JANELAS ============================
+	/// A tentacao era usar a propria <see cref="FuriaExtremaAte"/>: "se ja ha luto aberto, nao toca".
+	/// Isso ja acontece por outro caminho (a cena so sai na ERUPCAO, e nao no prolongamento) e nao
+	/// cobre o caso que este campo existe pra cobrir: duas mortes separadas por, digamos, quatro
+	/// minutos, a segunda com a janela ja fechada. Sao duas erupcoes legitimas, e sem uma recarga
+	/// PROPRIA a cena tocaria nas duas... o que ate estaria certo. O caso que a quebra e o oposto e e
+	/// o comum: uma briga em grupo, tres amigos caindo em sequencia. A primeira morte enfurece, a
+	/// segunda chega com a janela ainda aberta -- prolongamento, sem cena --, e a terceira chega DEPOIS
+	/// de a janela vencer: erupcao nova, cena de novo, 130 s depois da anterior. E o DM recusa: 60 s e
+	/// 60 s.
+	///
+	/// NAO PERSISTE, pelo mesmo motivo das duas de cima -- e no DM ele e literalmente `var/tmp`.
+	/// ========================================================================================================
+	/// </summary>
+	public long FuriaCenaAte;
 
 	/// <summary>
 	/// O DOMINIO SOBRE A FERA EM QUE ESTE CORPO ESTA AGORA, 0 a 100.
@@ -494,6 +562,25 @@ public sealed class ServerPlayer
 	public string Planeta = "Earth", Genero = "Male", Linhagem = "";
 	public int Idade = 18;
 	public long CriadoEm;
+
+	/// <summary>
+	/// O BERCO DESTE CORPO, calculado UMA VEZ no `Entrar` e lido por todo mundo que precisa mandar
+	/// alguem "pro comeco" -- morte, verb `spawn`, admin, zona que sumiu.
+	///
+	/// Calculado no login e nao a cada uso porque ele nao muda enquanto o personagem existir: a
+	/// semente e do disco e a raca/classe/linhagem tambem. Recalcular a cada morte custaria o exilio
+	/// inteiro (ate 96 celulas) dentro do tique, por nada.
+	///
+	/// **Vazio (`Planeta` nulo) e o corpo SEM DONO** -- clone da mente, NPC, corpo de bancada. Eles
+	/// nao tem save, entao nao tem berco, e quem os manda pro comeco cai no `SpawnZone` de sempre.
+	/// </summary>
+	public Jandirus.Core.Races.Berco Berco;
+
+	/// <summary>A semente do berco. Do disco, ou derivada -- ver `AccountStore.ParaJogador`.</summary>
+	public ulong SeedDoBerco;
+
+	/// <summary>O pedido de "nascer perto de casa" que este personagem fez na criacao.</summary>
+	public bool PertoDeCasa;
 
 	/// <summary>O que este personagem carrega. Ver `Core.Items.Inventario`.</summary>
 	public Jandirus.Core.Items.Inventario Mochila = new();
@@ -965,6 +1052,13 @@ public partial class GameServer : Node
 		_nascerNaBeirada = Array.IndexOf(args, "--voltateste") >= 0;
 		if (_nascerNaBeirada) GD.Print("[server] BANCADA: nascendo a 6 tiles da beirada oeste");
 
+		// `--solteste`: cozinha corpos dentro de estrelas e arremessa um deles la pra dentro.
+		//
+		// Ela NAO mexe em quem esta jogando -- os corpos sao forjados e recolhidos dentro do mesmo
+		// bloco sincrono --, mas mata gente, entao so acontece com a flag.
+		_solDeTeste = Array.IndexOf(args, "--solteste") >= 0;
+		if (_solDeTeste) GD.Print("[server] BANCADA: o sol letal sera exercitado no 1o login");
+
 		// `--clashteste`: o ZanzoClash sem dado e com desnivel de poder.
 		//
 		// Duas coisas atrapalham medir um embate: o `prob(50)` (uma bancada que so acontece metade
@@ -986,6 +1080,29 @@ public partial class GameServer : Node
 		// degrau. Ver GameServer.FormasTeste.cs -- ela MEXE no personagem, entao so com a flag.
 		_formasDeTeste = Array.IndexOf(args, "--formasteste") >= 0;
 		if (_formasDeTeste) GD.Print("[server] BANCADA: escada de formas sera exercitada no 1o login");
+
+		// `--npcteste`: sorteia fichas de NPC, poe corpos no mundo e exercita o roteiro dos chefes.
+		//
+		// Ela SPAWNA e REMOVE corpos de verdade (e machuca os dois Freezas de propositoo), entao so
+		// roda com a flag. O que ela prova nao cabe numa bancada de Core: que a ficha vira corpo no
+		// `_players` e na lista da zona, que a guarda do "tem a forma e nao a usa" esta no FUNIL
+		// (`Transformar`) e nao num comentario, e que o roteiro avanca um degrau por rajada.
+		_npcDeTeste = Array.IndexOf(args, "--npcteste") >= 0;
+		if (_npcDeTeste) GD.Print("[server] BANCADA: fichas de NPC e roteiro de chefe no 1o login");
+
+		// `--iateste`: o CORPO da IA -- voar, aparar, carregar, transformar.
+		//
+		// Ela nao mede se o NPC "faz" cada gesto (isso um teste de mesa mediria); mede se ele
+		// **PAGA** -- o Ki da decolagem, o dreno por segundo, o custo da guarda por golpe aparado, a
+		// corrida a 2% do tanque por segundo -- comparando com a MESMA formula que cobra do jogador.
+		// E ela mede o que faz parecer gente e da pra medir: variancia da reacao, piso de 100 ms, e
+		// que o plano nao troca a cada quadro.
+		_iaDeTeste = Array.IndexOf(args, "--iateste") >= 0;
+		if (_iaDeTeste) GD.Print("[server] BANCADA: corpo da IA (voo, guarda, carga, forma) no 1o login");
+
+		// `--diagia`: por que a IA decidiu o que decidiu. Uma linha por TROCA de plano.
+		_diagIa = Array.IndexOf(args, "--diagia") >= 0;
+		if (_diagIa) GD.Print("[server] DIAG: toda troca de plano da IA sai no console");
 
 		// `--geradoteste`: quem entrar nasce num planeta GERADO em vez da Terra.
 		//
@@ -1036,6 +1153,24 @@ public partial class GameServer : Node
 			CarregarVisual();
 			Wire();
 			_carregado = true;
+
+			// `--diagberco`: a bancada do BERCO, e ela roda no BOOT e nao no primeiro login.
+			//
+			// Ela e a unica do projeto que nao precisa de ninguem em jogo, porque o que ela mede e
+			// uma funcao pura mais o catalogo de zonas -- e as duas coisas ja estao prontas nesta
+			// linha. Esperar um jogador so atrasaria a resposta e obrigaria a bancada a mexer num
+			// corpo de verdade pra medir onde ele nasceria.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagberco") >= 0) RodarBancadaDeBerco();
+
+			// `--bercovivo`: a IRMA da de cima, e ela poe CORPO no mundo e POUSA.
+			//
+			// Tambem no boot, e por um motivo que a de cima nao tinha: ela precisa de zonas, racas,
+			// catalogo de planetas e do `AccountStore` -- e as quatro coisas acabaram de carregar
+			// nestas linhas --, mas NAO precisa de ninguem logado. Os corpos dela nascem sem `Peer`,
+			// entao nenhum pacote sai no fio e nenhum jogador de verdade e tocado. Poe-la no primeiro
+			// login (como a do sol e a da IA) obrigaria um cliente a existir pra testar uma regra que
+			// e do servidor sozinho -- e ninguem roda uma bancada que precisa de duas janelas.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--bercovivo") >= 0) RodarBancadaDoBercoVivo();
 		}
 
 		Running = _net.Start(port);
@@ -1131,6 +1266,10 @@ public partial class GameServer : Node
 		CarregarEstilos();
 		CarregarPlanetas();
 		CarregarNiveis();
+		// DEPOIS do `CarregarSkills` e do `CarregarNiveis`, e nao antes: um molde de NPC gasta
+		// marcos no catalogo de skills e crava degraus no de niveis. Carregado antes, o primeiro
+		// NPC nasceria sem livro e ninguem ligaria a causa a ordem desta lista.
+		CarregarMoldes();
 
 		// OS QUATRO LOTES SE ANUNCIAM. Cada um vive no proprio arquivo e registra as tecnicas dele
 		// -- portar o proximo lote nao mexe nesta lista, so acrescenta uma linha.
@@ -1324,9 +1463,9 @@ public partial class GameServer : Node
 			{
 				int alvo = reader.GetInt();
 				if (!_byPeer.TryGetValue(peer, out ServerPlayer? quem)) break;
-				// so vale mirar em quem existe e esta na MESMA zona -- o resto e cliente inventando
-				quem.AlvoId = alvo != 0 && _players.TryGetValue(alvo, out ServerPlayer? o)
-							  && o != quem && o.Zone.Hash == quem.Zone.Hash ? alvo : 0;
+				// so vale mirar em quem existe e esta na MESMA zona -- o resto e cliente inventando.
+				// A regra saiu daqui pra o `Mirar` porque a IA tambem mira: ver `GameServer.Combat.cs`.
+				Mirar(quem, alvo);
 				break;
 			}
 			// FALAR. E AQUI que o mute e conferido, e nao dentro do `Falar`.
@@ -1533,6 +1672,17 @@ public partial class GameServer : Node
 		string ajuste = _visual?.Sanear(visual, ficha.Race, ficha.Gender) ?? "";
 		if (ajuste.Length > 0) GD.Print($"[server] aparencia de {nome} ajustada: {ajuste}");
 
+		// A COR DA AURA NAO SE ESCOLHE: ela e SORTEADA (`rand(0,255)` nos tres canais, como o
+		// `CharacterCreation.dm:25-27`), e o sorteio e do servidor. O que chega do cliente aqui e
+		// descartado -- nao porque a cor de uma chama de vantagem, mas porque "o cliente escolhe" e
+		// "o mundo sorteia" sao duas coisas diferentes e o dono pediu a sorteada.
+		//
+		// ANULAR **E** SORTEAR: quem responde e o `ParaJogador`, logo abaixo no `Entrar`, derivando
+		// de nome + `CriadoEm` (que a linha seguinte acaba de fixar). Sortear um numero aqui e
+		// grava-lo seria uma SEGUNDA regra pra a mesma cor -- e a do personagem antigo, que nao
+		// passa por este metodo, continuaria sendo a outra.
+		visual.CorAura = null;
+
 		// OS CORPOS DAS FORMAS SO PODEM SER SANEADOS AQUI, e nao no `Sanear` visual: quantos slots
 		// existem depende da CLASSE, e a classe acabou de ser sorteada logo acima (`Nascer`). O
 		// jogador escolheu tres corpos achando que era normal; se saiu Mutante, ele precisa de sete
@@ -1542,13 +1692,28 @@ public partial class GameServer : Node
 		else
 			visual.FormasDeFrost.Clear();
 
+		long nasceuEm = NowMs();
 		var novo = new CharacterSave
 		{
 			Nome = nome, Raca = ficha.Race, Planeta = ficha.Planet, Genero = ficha.Gender,
 			Linhagem = ficha.ChosenClass, Idade = ficha.Age, Visual = visual, Ficha = lutador,
 			Historia = ficha.Backstory.Trim(), Porte = ficha.Porte,
-			Zona = SpawnZone.Name, X = SpawnPos.X, Y = SpawnPos.Y, CriadoEm = NowMs(),
+			CriadoEm = nasceuEm,
+			// O PEDIDO DO JOGADOR VAI PRO DISCO, e nao so pro nascimento: o RENASCIMENTO sai da
+			// mesma funcao, e sem este bit gravado quem escolheu o vizinho ressuscitaria no natal.
+			PertoDeCasa = ficha.PertoDeCasa,
+			SeedDoBerco = Jandirus.Core.Races.Bercos.SementeDoBerco(nome, nasceuEm),
 		};
+
+		// ============================ O BERCO SUBSTITUI A TERRA CRAVADA ============================
+		// A zona e a posicao saiam daqui como `SpawnZone`/`SpawnPos` -- a Terra, sempre, pra todo
+		// mundo. Agora saem do funil, que e o MESMO que a morte usa (`GameServer.Berco.cs`). A
+		// ordem importa: o berco depende da CLASSE, e a classe acabou de ser sorteada no `Nascer`
+		// logo acima; calcula-lo antes daria o berco de um Saiyajin normal pra um Lendario.
+		// ======================================================================================
+		Jandirus.Core.Races.Berco berco = BercoDe(novo);
+		AplicarBercoNoSave(novo, berco);
+
 		// OS LIMIARES SAO SORTEADOS AGORA, uma vez, e vao pro disco junto do personagem.
 		// Cada Saiyajin tem o proprio BP de SSJ (o `rand(9,13)/10` do `statsaiyan.dm:50-56`).
 		// Re-sortear no login faria o jogador virar SSJ e destransformar pra sempre.
@@ -1558,7 +1723,8 @@ public partial class GameServer : Node
 
 		acc.Slots[slot] = novo;
 		_store?.Gravar(acc);
-		GD.Print($"[server] {acc.Conta} criou '{nome}' no slot {slot + 1} | {novo.Raca}/{lutador.Class}");
+		GD.Print($"[server] {acc.Conta} criou '{nome}' no slot {slot + 1} | {novo.Raca}/{lutador.Class} "
+			+ $"| berco {berco.Planeta} ({berco.Motivo}{(berco.Despejado ? ", despejado" : "")})");
 
 		Entrar(peer, acc, slot, novo);
 
@@ -1566,7 +1732,14 @@ public partial class GameServer : Node
 		// linhagem -- uma frase no chat, na criacao, que sugere sem dizer. Sem esta linha a
 		// classe simplesmente nunca e insinuada, e a regra "classe nunca aparece" vira
 		// "classe nao existe".
-		if (_byPeer.TryGetValue(peer, out ServerPlayer? recem)) DicaDeClasse(recem);
+		if (_byPeer.TryGetValue(peer, out ServerPlayer? recem))
+		{
+			// A HISTORIA DO BERCO VEM ANTES DA DICA DE CLASSE, e a ordem e a da narrativa: primeiro
+			// onde voce acordou, depois quem voce parece ser. Ver `HistoriaDoBerco` pro porque de
+			// nenhuma das duas frases dizer a classe.
+			Avisar(recem, HistoriaDoBerco(berco));
+			DicaDeClasse(recem);
+		}
 	}
 
 	// =====================================================================
@@ -1599,13 +1772,34 @@ public partial class GameServer : Node
 		// pra ele, porque quando o save foi escrito so existia esse caso no disco.
 		pl.Zone = c == null ? SpawnZone : new ZoneKey(c.ZonaTipo, c.Zona, c.ZonaSeed);
 
-		// ...MAS UMA ZONA QUE NAO EXISTE MAIS DEVOLVE PRO SPAWN. Um planeta gerado some quando o
+		// ============================ O BERCO DESTE CORPO, UMA VEZ POR LOGIN ============================
+		// Calculado AQUI e guardado, porque ele nao muda enquanto o personagem existir -- e porque
+		// quem vai precisar dele (a morte, o verb `spawn`, o admin) so tem o `ServerPlayer` na mao.
+		// Recalcular a cada morte custaria o exilio inteiro (ate 96 celulas do universo) dentro do
+		// tique, pra chegar sempre no mesmo planeta.
+		//
+		// PERSONAGEM ANTIGO GANHA UM AQUI: a semente e derivada de nome + `CriadoEm` quando o save
+		// nao a tem (ver `AccountStore.ParaJogador`), entao quem nasceu na Terra cravada passa a ter
+		// o berco que teria se tivesse nascido hoje. Ele NAO e movido -- continua exatamente onde
+		// deslogou --, mas a partir de agora e pra la que ele volta ao morrer.
+		// ===========================================================================================
+		pl.Berco = c == null ? default : BercoDe(c);
+
+		// ...E UMA ZONA QUE NAO EXISTE MAIS DEVOLVE PRO BERCO. Um planeta gerado some quando o
 		// universo e regerado com outra seed, e uma zona pre-feita some se o mapa for reconvertido
-		// sem ela. Nascer num lugar que nao carrega e ficar presa no vazio.
+		// sem ela. Nascer num lugar que nao carrega e ficar preso no vazio.
+		//
+		// PRO BERCO E NAO PRA TERRA: era `SpawnZone` cravada, e com berco de verdade isso mandaria
+		// pra Terra justamente quem nao nasceu nela. `PousarNoBercoSemPacote` escreve zona E posicao
+		// de uma vez -- as duas tem que andar juntas, senao o corpo chega no mapa novo com a
+		// coordenada do antigo (que e como se atravessa montanha num mundo que nunca se viu).
 		if (pl.Zone.Kind == ZoneKey.KindPremade && _catalogo?.Get(pl.Zone) == null
 			&& !Espaco.EhEspaco(pl.Zone))
-			pl.Zone = SpawnZone;
-		if (pl.Pos.X == 0 && pl.Pos.Y == 0) pl.Pos = SpawnPos;
+			PousarNoBercoSemPacote(pl);
+
+		// POSICAO ZERADA (save antigo, ou canto do mapa) cai no ponto de chegada da zona em que o
+		// corpo esta -- e nao no berco: quem deslogou em Namek tem que acordar em Namek.
+		if (pl.Pos.X == 0 && pl.Pos.Y == 0) pl.Pos = PontoDeNascimento(pl.Zone);
 
 		// OS PODERES CONCEDIDOS (admin) SAO DECIDIDOS AQUI, e ANTES do `AplicarPoderes` la embaixo.
 		// Eles vao pra `PoderesConcedidos` e nao pra `Poderes` de proposito: `AplicarPoderes` refaz
@@ -1668,9 +1862,13 @@ public partial class GameServer : Node
 		// BANCADA: nasce direto num mundo sorteado (ver `--geradoteste`).
 		if (_nascerEmGerado)
 		{
+			// O PRIMEIRO PLANETA GERADO NA DIAGONAL. Antes isto varria chunk por chunk atras de um
+			// hash que calhasse de dar planeta (1 em 40); agora toda celula tem um sistema, entao a
+			// primeira que nao for anulada ja responde -- e o corpo escolhido e o da orbita mais
+			// interna, que e o mais perto da estrela e portanto o caso mais apertado pra bancada.
 			PlanetaNoEspaco? achado = null;
 			for (int i = 1; i <= 400 && achado == null; i++)
-				achado = Espaco.PlanetaDaChunk(SeedDoUniverso, new ChunkId(i, i));
+				if (Sistemas.Do(SeedDoUniverso, i, i) is { Ancorado: false } sis) achado = sis.Planeta(0);
 			if (achado is { } gerado)
 			{
 				// NASCE EM ORBITA, SOBRE O DISCO -- e nao com o pe no chao do planeta.
@@ -1787,6 +1985,22 @@ public partial class GameServer : Node
 		// A BANCADA DE FORMAS roda uma vez, no primeiro que entra.
 		if (_formasDeTeste) { _formasDeTeste = false; RodarBancadaDeFormas(pl); }
 
+		// A DE NPC tambem, e pelo mesmo motivo de estar AQUI e nao no boot: ela poe corpos numa
+		// zona e confere que eles aparecem na lista dela -- e sem ninguem no mundo, "aparecer" nao
+		// tem como ser medido. Ver `RodarBancadaDeNpc`.
+		if (_npcDeTeste) { _npcDeTeste = false; RodarBancadaDeNpc(pl); }
+
+		// A DA IA depois da de NPC, e a ordem importa: ela usa o molde `guardiao_saiyajin` pra
+		// provar que o comando da IA respeita o "tem a forma e nao a usa", e os moldes precisam ter
+		// carregado (o `CarregarMoldes` grita no boot se algum for contraditorio).
+		if (_iaDeTeste) { _iaDeTeste = false; RodarBancadaDeIa(pl); }
+
+		// A DO SOL tambem entra aqui e nao no boot, e por uma razao propria: ela forja corpos NO
+		// ESPACO e roda o `TickDoEmpurrao`, que varre `_players` -- sem ninguem no mundo o laco de
+		// arremesso nao tem sobre quem correr, e "o corpo andou 576 px" mediria a lista vazia.
+		// Ver `GameServer.SolTeste.cs`.
+		if (_solDeTeste) { _solDeTeste = false; RodarBancadaDoSol(); }
+
 		// SO AGORA da pra mandar as construcoes: `MandarObras` varre `_players` procurando quem
 		// esta na zona, e quem acabou de entrar so esta la depois desta linha.
 		MandarObras(pl.Zone);
@@ -1848,8 +2062,13 @@ public partial class GameServer : Node
 			Avisar(pl, $"a maestria de {string.Join(" e ", maestriasDescartadas)} nao existe mais: "
 					 + "essas formas sao da SKILL, e usa-las agora sobe a proficiencia da disciplina.");
 
+		// A COR DA AURA VAI NO LOG, e nao e enfeite: ela e DERIVADA de nome + `CriadoEm` quando o
+		// save nao a tem (ver `AccountStore.ParaJogador`), e uma derivacao que mudasse entre logins
+		// seria invisivel de qualquer outro jeito -- o jogador so notaria a chama trocando de cor.
+		// Com ela impressa, duas entradas do mesmo personagem provam a estabilidade num `grep`.
 		GD.Print($"[server] {pl.Name} entrou (id {pl.Id}) em {pl.Zone} | {pl.Race}/{pl.Class} " +
-				 $"| BP {pl.Ficha.BP:0.0} (expresso {pl.Ficha.expressedBP:0})");
+				 $"| BP {pl.Ficha.BP:0.0} (expresso {pl.Ficha.expressedBP:0}) " +
+				 $"| aura {pl.Visual.CorAura}");
 	}
 
 	/// <summary>
@@ -2016,8 +2235,16 @@ public partial class GameServer : Node
 		// cliente ja e corrigido de volta por este caminho, e duplicar a regra seria criar duas
 		// respostas pra "por que meu personagem nao anda".
 		// =============================================================================
-		if (pl.Ficha.dead || pl.Ficha.KO || pl.Carregando || _emEmbate.ContainsKey(pl.Id)
-			|| SemAsRedeas(pl))
+		// ============================ AS QUATRO CONDICOES VIRARAM UMA FUNCAO ============================
+		// Elas eram escritas aqui e SO aqui, e por isso a IA nao as obedecia -- um NPC andava
+		// carregando, que e exatamente o "op demais" que o dono cortou do jogador. Agora sao o
+		// `PodeMexerOCorpo` (`GameServer.Ia.cs`), e o atuador da IA chama a MESMA funcao.
+		//
+		// A POSSE CONTINUA SEPARADA, e nao e desleixo: `SemAsRedeas` nao responde "este corpo pode
+		// andar?", responde "quem manda nele?". Pro jogador possuido e recusa; pra a IA e a licenca.
+		// Somar as duas numa funcao so faria a IA recusar a si mesma.
+		// ==========================================================================================
+		if (!PodeMexerOCorpo(pl) || SemAsRedeas(pl))
 		{
 			pl.LastInputMs = NowMs();
 
@@ -2278,8 +2505,11 @@ public partial class GameServer : Node
 		// `TickDoConvivio`): quem manda no passo e o prazo de cada jogador, e este laco so pergunta
 		// se ja chegou a hora. Rodar mais rapido nao mudaria nada -- no relogio do DM a amizade
 		// cresce 0,1 a cada 3 s.
+		// O ROTEIRO DOS CHEFES ENTRA AQUI e nao no tique cheio: o gatilho dele e a fracao de vida do
+		// membro mais ferido, que nao muda de forma interessante em 33 ms -- e avancar um degrau e um
+		// EVENTO (cura, sprite novo, anuncio pra zona), nao algo pra conferir 30x por segundo.
 		if (_tickCount % TicksPorSegundo == 0)
-			{ TickDasTecnicas(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); }
+			{ TickDasTecnicas(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); }
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
 		// Dois minutos e o maximo de treino que alguem pode perder.
@@ -2315,6 +2545,19 @@ public partial class GameServer : Node
 		foreach (ServerPlayer pl in _players.Values)
 		{
 			Treinar(pl);
+
+			// A RAIVA ANDA AQUI, e este e o tique CERTO e nao um qualquer: `TicksPorFicha` da 5 Hz,
+			// que e exatamente o `sleep(sleep_tiem)` com `sleep_tiem = 2` do `mob/proc/Stats()`
+			// (`Stats.dm:125`), o laco onde o decaimento de raiva do DM mora (`Stats.dm:438-443`).
+			// E o mesmo tique que roda `Statify` (quem escreve o `MaxAnger`) e `PowerLevel` (quem le
+			// o `angerBuff`) -- os tres no lugar em que o original os poe.
+			//
+			// ANTES do `Ficha.Tick` de proposito: o `ClampAnger` mora DENTRO dele, entre o `Statify`
+			// e o `PowerLevel` (`Fighter.cs:392-397`). Projetar depois deixaria o poder deste tique
+			// ser calculado com a raiva do anterior, e o corte pelo `MaxAnger` valeria um tique
+			// atrasado. Ver `ProjetarRaiva` (`GameServer.Formas.cs`).
+			ProjetarRaiva(pl);
+
 			pl.Ficha.Tick(agoraMs: NowMs());
 			pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed);
 			GainKnobs.TopBP = Math.Max(GainKnobs.TopBP, pl.Ficha.BP);

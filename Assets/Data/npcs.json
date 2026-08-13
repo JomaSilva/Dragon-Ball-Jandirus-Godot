@@ -1,0 +1,138 @@
+{
+  "_leia": [
+    "MOLDES DE NPC. Dado, nao codigo -- o servidor le isto no boot (GameServer.Npc.cs:CarregarMoldes).",
+    "Editar e reiniciar o servidor e o ciclo inteiro: nao ha recompilacao.",
+    "",
+    "AS TRES MANIVELAS DE DIFICULDADE:",
+    "  bpMin/bpMax    faixa fixa de poder (sorteio linear, como o rand() do DM)",
+    "  bpRelativo     multiplo da MEDIA dos jogadores online -- o bicho acompanha quem joga",
+    "                 (troca determinismo por dificuldade; ver MoldeDeNpc.BpRelativo)",
+    "  marcosBase / marcosPorDecada   quanta PERICIA aquele poder compra. E o que impede",
+    "                 o boneco: BP de SSJ3 sem uma skill de Ki.",
+    "",
+    "A FICHA PRONTA DE UM CHEFE e a lista 'estagios'. O Freeza de Vegeta e o de Namek sao o",
+    "MESMO molde com listas de tamanho diferente -- e so isso que os separa, como no original.",
+    "'ascendePorDecisao': false quer dizer TEM A FORMA E NAO A USA (o ai_no_powerup do DM)."
+  ],
+
+  "moldes": [
+    {
+      "id": "saibaman",
+      "nome": "Saibaman",
+      "racas": ["Saibaman"],
+      "generos": ["Male"],
+      "bpMin": 1200, "bpMax": 2600,
+      "marcosBase": 2, "marcosPorDecada": 0.5,
+      "vocacao": ["/datum/skill/tree/Body"],
+      "nivelDasSkills": 10,
+      "inteligencia": 20, "agressividade": 85, "coragem": 90, "furia": 70,
+      "escadaAutomatica": false
+    },
+
+    {
+      "id": "soldado_saiyajin",
+      "nome": "Soldado Saiyajin",
+      "racas": ["Saiyan"],
+      "nomes": ["Toma", "Borgos", "Shugesh", "Fasha", "Celipa", "Onio", "Leek", "Berry", "Spinach", "Daikon"],
+      "generos": ["Male", "Male", "Male", "Female"],
+      "bpMin": 3000, "bpMax": 45000,
+      "marcosBase": 3, "marcosPorDecada": 1.5,
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 25,
+      "maestria": 10,
+      "inteligencia": 45, "agressividade": 70, "coragem": 65, "furia": 60
+    },
+
+    {
+      "id": "guerreiro_namekuseijin",
+      "nome": "Guerreiro Namekuseijin",
+      "racas": ["Namekian"],
+      "classe": "Warrior clan",
+      "nomes": ["Nail", "Cymbal", "Drum", "Tambourine", "Piano", "Muri", "Moori", "Esca"],
+      "bpMin": 5000, "bpMax": 120000,
+      "marcosBase": 4, "marcosPorDecada": 1.6,
+      "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Body"],
+      "nivelDasSkills": 35,
+      "inteligencia": 60, "agressividade": 45, "coragem": 70, "furia": 35
+    },
+
+    {
+      "id": "rival_do_mundo",
+      "nome": "Desafiante",
+      "bpRelativo": 0.8, "bpPiso": 5000,
+      "marcosBase": 4, "marcosPorDecada": 1.8,
+      "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Body"],
+      "nivelDasSkills": 50,
+      "maestria": 25,
+      "inteligencia": 55, "agressividade": 60, "coragem": 60, "furia": 50,
+      "_nota": "sem 'racas': usa as racas jogaveis do planeta onde nasce. bpRelativo o faz seguir a media."
+    },
+
+    {
+      "id": "guardiao_saiyajin",
+      "nome": "Guardiao",
+      "racas": ["Saiyan"],
+      "classe": "Saiyan",
+      "nomes": ["Turles", "Nappa", "Paragus", "Cumber"],
+      "escadaAutomatica": false,
+      "formas": ["ssj1"],
+      "maestria": 60,
+      "marcosBase": 5, "marcosPorDecada": 1.8,
+      "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Body"],
+      "nivelDasSkills": 55,
+      "ascendePorDecisao": false,
+      "inteligencia": 80, "agressividade": 70, "coragem": 85, "furia": 75,
+      "estagios": [
+        { "bp": 3000000, "gatilhoMembro": 0.50, "cura": 0.5 },
+        { "bp": 9000000, "forma": "ssj1", "cura": 0.5,
+          "anuncio": "O guardiao ruge -- e o cabelo dele levanta, dourado." }
+      ],
+      "_nota": "O EXEMPLO LITERAL do pedido: ele TEM o SSJ ('formas'), o Despertou() dele e verdadeiro, e mesmo assim nunca sobe sozinho (ascendePorDecisao=false). Quem o transforma e o degrau 2, disparado pelo dano."
+    },
+
+    {
+      "id": "freeza_vegeta",
+      "nome": "Freeza",
+      "racas": ["Icer"],
+      "classe": "Frost Demon",
+      "marcosBase": 6, "marcosPorDecada": 2.0,
+      "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Spirit", "/datum/skill/tree/Body"],
+      "nivelDasSkills": 70,
+      "escadaAutomatica": false,
+      "maestria": 100,
+      "ascendePorDecisao": false,
+      "inteligencia": 85, "agressividade": 75, "coragem": 95, "furia": 80,
+      "estagios": [
+        { "bp": 530000 }
+      ],
+      "_nota": "BEV_FREEZA1_BP (BossEvents.dm:53). UM degrau: nao ha o que disparar, e por isso ele nao transforma."
+    },
+
+    {
+      "id": "freeza_namek",
+      "nome": "Freeza",
+      "racas": ["Icer"],
+      "classe": "Frost Demon",
+      "marcosBase": 6, "marcosPorDecada": 2.0,
+      "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Spirit", "/datum/skill/tree/Body"],
+      "nivelDasSkills": 70,
+      "escadaAutomatica": false,
+      "maestria": 100,
+      "ascendePorDecisao": false,
+      "inteligencia": 85, "agressividade": 75, "coragem": 95, "furia": 80,
+      "estagios": [
+        { "bp": 530000,   "gatilhoMembro": 0.70, "cura": 0.5, "corpo": "Changling - Form 1",
+          "anuncio": "Freeza estala o pescoco. -- Voces me obrigaram a mudar de forma." },
+        { "bp": 1000000,  "gatilhoMembro": 0.50, "cura": 0.5, "corpo": "Changling - Form 2",
+          "anuncio": "Freeza TRANSFORMOU-SE! Sua nova forma pulsa com um poder ainda maior! (Forma 2)" },
+        { "bp": 2000000,  "gatilhoMembro": 0.35, "cura": 0.5, "corpo": "Changling - Form 3",
+          "anuncio": "Freeza TRANSFORMOU-SE! Sua nova forma pulsa com um poder ainda maior! (Forma 3)" },
+        { "bp": 3000000,  "gatilhoMembro": 0.25, "cura": 0.5, "corpo": "Changeling Form 4",
+          "anuncio": "Freeza TRANSFORMOU-SE! Sua nova forma pulsa com um poder ainda maior! (Forma 4)" },
+        { "bp": 4000000,  "cura": 0.5, "corpo": "Changeling Frieza 100% 3",
+          "anuncio": "FREEZA ATINGIU SUA FORMA FINAL! Derrotem-no antes que ele destrua o planeta!" }
+      ],
+      "_nota": "BEV_FREEZA2_BPS e BEV_FREEZA2_THRESHOLDS (BossEvents.dm:54,67). O ULTIMO degrau nao tem gatilho: nada o encerra."
+    }
+  ]
+}

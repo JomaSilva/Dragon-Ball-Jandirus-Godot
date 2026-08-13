@@ -82,6 +82,112 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// QUANTO TEMPO A FOLGA INTEIRA DE RAIVA LEVARIA PRA ESCORRER -- 1600 segundos.
+	///
+	/// `Stats.dm:443` tira `((MaxAnger-100)/8000)` por volta do laco `mob/proc/Stats()`, e aquele
+	/// laco dorme `sleep(sleep_tiem)` com `sleep_tiem = 2` (`Stats.dm:125` e `:511`), ou seja 0,2 s
+	/// por volta -- **nao** e o `GlobalStats()` de `sleep(3)`. 8000 voltas x 0,2 s = 1600 s.
+	///
+	/// E E DE PROPOSITO QUE ISTO SEJA MUITO MAIOR QUE <see cref="SegundosDeRaiva"/>: no DM o
+	/// gotejamento quase nao aparece (26,7 min contra 2 min de prazo), e quem realmente derruba a
+	/// raiva e o `rageExpire`. Portar so o gotejamento e esquecer o prazo daria uma raiva que dura
+	/// meia hora; portar so o prazo e esquecer o gotejamento daria um degrau perfeitamente reto que
+	/// cai de 2x pra 1x sem aviso. Os dois estao aqui, e o prazo continua mandando.
+	/// </summary>
+	private const double SegundosDeGotejamento = 1600;
+
+	/// <summary>
+	/// ============================ A RAIVA COMO **NUMERO** -- E ELA E DERIVADA DAS JANELAS ============================
+	/// <see cref="NivelDaRaivaDe"/> devolve o DEGRAU (quem pode virar o que); isto devolve a
+	/// MAGNITUDE (quanto de poder a raiva vale), que e o `Anger` do DM e a unica entrada do
+	/// `angerBuff` (`Fighter.Power.cs:56`). As duas leem exatamente o mesmo estado -- as duas
+	/// janelas --, e por isso nao ha como uma dizer "calmo" enquanto a outra da 2x.
+	///
+	/// ============================ POR QUE A SETA APONTA **DESTE** LADO ============================
+	/// A pergunta que sobrou desta sessao foi: as janelas viram derivadas do `Anger`, ou o `Anger`
+	/// vira derivado das janelas? Tem que ser este lado, por duas razoes que nao sao de gosto:
+	///
+	///   1. **O DEGRAU NAO CABE NUM NUMERO.** No DM `Do_Anger_Stuff(0)` e `Do_Anger_Stuff(1)`
+	///      escrevem o MESMO `Anger = max(Anger, MaxAnger)` (`Murder.dm:112`) -- o que muda entre
+	///      "vi um amigo cair" e "vi um amigo morrer" e a FONTE, nao a intensidade. Derivar o degrau
+	///      de um limiar (`Anger >= X` = Extrema) seria reintroduzir a regua de cinco degraus do
+	///      `Emotion` (`Stats.dm:445-449`), que e justamente o que o <see cref="NivelDeRaiva"/>
+	///      substituiu a pedido do dono (o Legendary compra o dele mais barato, ver
+	///      <see cref="Catalogo.RaivaExigida"/>). Ou seja: derivar pro outro lado nao unificaria
+	///      nada -- desfaria uma decisao ja tomada.
+	///
+	///   2. **O `Fighter` NAO TEM RELOGIO.** O Core nao conhece `NowMs()` nem o `ServerPlayer`. Um
+	///      `Anger` autoritativo teria que ser BAIXADO por alguem, e esse alguem seria um tique --
+	///      que e exatamente onde uma raiva esquecida fica acesa pra sempre. Foi por isso que a
+	///      versao anterior deste arquivo se RECUSOU a escrever `Anger` (o paragrafo esta preservado
+	///      no cabecalho do <see cref="AmigoAbatido"/>), e a recusa estava certa. O que mudou nao foi
+	///      a coragem: e que agora o numero **nao e guardado** -- ele e recalculado do prazo. Uma
+	///      janela vencida devolve 100 sem ninguem apagar nada, que e a mesma propriedade pela qual o
+	///      <see cref="Perfil"/> ja lia o degrau do relogio.
+	///
+	/// FUNCAO PURA DO RELOGIO, e isso importa alem da elegancia: como o resultado nasce do PRAZO e
+	/// nao de uma subtracao acumulada, chamar isto a 5 Hz, a 30 Hz ou duas vezes no mesmo quadro da
+	/// o mesmo numero. Um decaimento por acumulacao (`Anger -= passo`) mudaria de velocidade com a
+	/// cadencia de quem chama -- e este port ja pagou esse preco uma vez (ver a nota de unidade de
+	/// tempo do `sleep(N)`).
+	/// ==================================================================================================================
+	/// </summary>
+	private static double RaivaComoNumero(ServerPlayer pl)
+	{
+		long agora = NowMs();
+
+		// A MAIOR DAS DUAS JANELAS, pelo mesmo motivo do `NivelDaRaivaDe`: um nocaute chegando no
+		// meio de um luto nao pode encurtar o luto, e a raiva que vale e a que ainda corre.
+		long ate = Math.Max(pl.FuriaExtremaAte, pl.RaivaLendariaAte);
+
+		// PRAZO VENCIDO = CALMA SECA, e nao um decaimento suave ate la. E literalmente
+		// `Stats.dm:438-441`: `rageExpire = 0; Anger = 100`. O corte e do DM, e ele e o que impede
+		// que "ver um amigo morrer" vire 2x de BP permanente -- o motivo pelo qual este sistema
+		// ficou parado.
+		if (ate <= agora) return 100;
+
+		// E O GOTEJAMENTO POR CIMA (`Stats.dm:443`). A folga e `MaxAnger - 100` porque 100 e o piso
+		// (`Stats.dm:444`) e tambem o "1,0x" do `angerBuff` -- raiva nenhuma nao e zero, e 100.
+		double folga = Math.Max(0, pl.Ficha.MaxAnger - 100);
+		double decorrido = Math.Max(0, SegundosDeRaiva - (ate - agora) / 1000.0);
+		return Math.Max(100, pl.Ficha.MaxAnger - folga * decorrido / SegundosDeGotejamento);
+	}
+
+	/// <summary>
+	/// ESCREVE A RAIVA NA FICHA -- **o unico lugar do jogo que toca o `Fighter.Anger`**.
+	///
+	/// O Core precisa do numero em campo porque e la que a conta de poder mora
+	/// (`Fighter.Power.cs:56`), e o Core nao pode perguntar as horas. Entao este metodo e a ponte:
+	/// ele copia a funcao pura de <see cref="RaivaComoNumero"/> pra dentro da ficha, e nada mais.
+	/// Ninguem "acumula" raiva aqui; sobrescrever com o valor derivado e o ponto.
+	///
+	/// ONDE ELE E CHAMADO, e por que sao esses dois lugares:
+	///   * <see cref="TickFichas"/>, a 5 Hz -- que e exatamente a cadencia do `Stats()` do DM
+	///     (`sleep(2)`), e o tique que roda `Statify` + `PowerLevel`;
+	///   * <see cref="RepercutirPoder"/> -- o funil que recalcula o poder FORA do tique (toda
+	///     transformacao passa por ele). Sem isto, quem se transformasse no instante seguinte a um
+	///     luto calcularia o `expressedBP` com a raiva de antes, por ate 200 ms -- a mesma familia de
+	///     defeito que aquele metodo existe pra fechar.
+	/// E o <see cref="AmigoAbatido"/> chama tambem, pra a raiva valer NO INSTANTE do luto: no DM o
+	/// `Anger` e escrito dentro do proprio `Do_Anger_Stuff` (`Murder.dm:112`), antes mesmo de o
+	/// `anger_will_transform()` da linha seguinte ler o resultado.
+	///
+	/// A FRASE DA CALMA SAI NA **BORDA**, e a borda e detectada sem campo novo: o valor que ainda
+	/// esta na ficha e o da ultima passada. `Stats.dm:441` so imprime no tique em que o prazo vence,
+	/// e nao em todo tique de calma -- imprimir por estado encheria o chat de "voce se sente calmo"
+	/// pra sempre.
+	/// </summary>
+	private void ProjetarRaiva(ServerPlayer pl)
+	{
+		double antes = pl.Ficha.Anger;
+		double depois = RaivaComoNumero(pl);
+		pl.Ficha.Anger = depois;
+
+		if (antes > 100 && depois <= 100)
+			Avisar(pl, "sua fúria se apaga e você se sente calmo de novo.");
+	}
+
+	/// <summary>
 	/// Quem tem ALGUMA escada de transformacao. Era `pl.Race is "Saiyan" or "Halfbreed"`, e passou a
 	/// ser derivado: quem tem linha aberta no catalogo tem escada, inclusive o nao-Saiyajin que
 	/// despertou o ki divino -- que antes ouvia "sua raca nao tem essa escada" com o SSG na mao.
@@ -175,14 +281,27 @@ public partial class GameServer
 	/// ficar sem chamador de producao, ou se aparecer um segundo. E o `OConvivioAoVivo`
 	/// (`GameServer.ConvivioTeste.cs`) percorre a corrente inteira, do convivio ate a tecla C.
 	///
-	/// ============================ O QUE ELE **NAO** FAZ: O BUFF DE BP DA RAIVA ============================
-	/// O `Do_Anger_Stuff` do DM faz duas coisas -- abre a janela E poe `Anger = MaxAnger`, que no
-	/// port viraria ate 2x de BP pelo `angerBuff` (`Fighter.Power.cs:56`). Aqui so a primeira
-	/// acontece, e a razao e concreta: **o port nao tem decaimento de raiva**. No DM o `Anger` cai
-	/// sozinho no laco `Stats()` (`Stats.dm:449`); aqui ninguem o escreve nem o baixa, entao
-	/// escrever `MaxAnger` daria 2x PERMANENTE ao primeiro enlutado da historia do servidor. O
-	/// buff de raiva e um sistema proprio por portar, e este gancho nao e o lugar de improvisa-lo.
-	/// ==============================================================================================
+	/// ============================ O BUFF DE BP DA RAIVA -- A DIVIDA QUE ESTE CABECALHO ANUNCIAVA ============================
+	/// O paragrafo que ficou aqui por varias sessoes dizia, com razao, que este gancho abria a
+	/// janela mas **nao** dava o buff: o `Do_Anger_Stuff` do DM faz as duas coisas
+	/// (`Murder.dm:112-113`, `Anger = max(Anger, MaxAnger)` + `rageExpire`), e escrever `MaxAnger`
+	/// aqui daria ate 2x de BP PERMANENTE ao primeiro enlutado da historia do servidor, porque
+	/// **o port nao tinha decaimento de raiva**. A recusa estava certa.
+	///
+	/// **A divida esta fechada, e o que faltava era menor do que aquele paragrafo supunha.** O
+	/// decaimento do DM nao e um sistema: e `Anger = 100` no instante em que o prazo vence
+	/// (`Stats.dm:438-441`) -- e o prazo ja estava portado aqui, com a mesma constante
+	/// (<see cref="SegundosDeRaiva"/>). O que o gotejamento de `Stats.dm:443` faz por cima leva
+	/// 26,7 min pra drenar a folga inteira, contra 2 min de janela; ele arredonda a curva e nunca
+	/// decide nada. Hoje os dois estao em <see cref="RaivaComoNumero"/>, e o `Anger` **nao e
+	/// guardado**: ele e recalculado do prazo a cada leitura, entao a janela vencida devolve 100
+	/// sozinha. Nao ha 2x permanente possivel -- nao ha onde ele ficaria guardado.
+	///
+	/// Por isso a linha do <see cref="ProjetarRaiva"/> logo abaixo NAO e um segundo caminho de
+	/// poder: ela nao soma nada, so faz o numero derivado chegar a ficha no MESMO instante em que a
+	/// janela abriu (no DM o `Anger` ja esta escrito quando a linha seguinte, o
+	/// `anger_will_transform()`, o le). Sem ela o buff so apareceria no proximo tique de ficha.
+	/// ==================================================================================================================
 	/// </summary>
 	/// <param name="enlutado">Quem viu. E ele que entra em raiva -- nao quem caiu.</param>
 	/// <param name="nomeDoAmigo">Nome do amigo, so pra mensagem.</param>
@@ -204,6 +323,19 @@ public partial class GameServer
 		long agora = NowMs();
 		bool jaEstava = NivelDaRaivaDe(enlutado) >= grau;
 
+		// ============================ O `wasRaging` DO DM E OUTRA PERGUNTA -- E ELA E DA CENA ============================
+		// `jaEstava` logo acima e "ja estava neste GRAU" e serve ao valor de retorno (erupcao deste
+		// grau x prolongamento dele). O `wasRaging` de `Murder.dm:111` e mais largo: `rageExpire >
+		// world.time`, ou seja **qualquer** raiva aberta -- e e ele, e nao o outro, que decide a
+		// cinematica na linha `:119`.
+		//
+		// A diferenca aparece num caso real e comum: um amigo cai (janela lendaria abre, sem cena) e
+		// dez segundos depois outro morre. `jaEstava` da falso -- e uma erupcao EXTREMA de verdade, o
+		// grau subiu --, mas o corpo ja estava enfurecido e o DM nao toca a cena de novo. Sao dois
+		// conceitos e por isso sao duas leituras, as duas do mesmo estado e nenhuma guardada.
+		// =========================================================================================================
+		bool estavaEmFuria = NivelDaRaivaDe(enlutado) != NivelDeRaiva.Nenhuma;
+
 		// `=` E NAO `max(...)`: o prazo REINICIA a cada evento, e nunca soma. Somar era a anomalia
 		// do 20x que o DM ja pagou uma vez (`Murder.dm:112`, *"never stack, sum, or multiply"*).
 		//
@@ -215,13 +347,104 @@ public partial class GameServer
 		if (grau == NivelDeRaiva.Extrema) enlutado.FuriaExtremaAte = prazo;
 		else enlutado.RaivaLendariaAte = prazo;
 
+		// E A RAIVA VALE JA. Ver o bloco do buff no cabecalho: isto nao acumula nada, so traz o
+		// numero derivado (que a janela acima acabou de mudar) pra dentro da ficha antes que
+		// qualquer coisa leia o poder deste corpo neste mesmo quadro.
+		ProjetarRaiva(enlutado);
+
 		GD.Print($"[server] {enlutado.Name}: RAIVA {grau} ({nomeDoAmigo})"
 				 + (jaEstava ? "  <- prolongada" : ""));
 		Avisar(enlutado, grau == NivelDeRaiva.Extrema
 			? $"{nomeDoAmigo} se foi. Alguma coisa dentro de voce se PARTE."
 			: $"{nomeDoAmigo} cai na sua frente, e voce nao chegou a tempo.");
+
+		// A CENA, DEPOIS DO AVISO -- a ordem e a do DM (`Murder.dm:119` vem depois das tres escritas
+		// de `:112-114`), e ela importa por um motivo so: a `AFuriaVaiVirarForma` la dentro le a raiva
+		// que acabou de ser escrita, exatamente como o `anger_will_transform()` do original.
+		TalvezACenaDaFuria(enlutado, grau, estavaEmFuria, agora);
+
 		return !jaEstava;
 	}
+
+	/// <summary>
+	/// ============================ A CINEMATICA DA FURIA EXTREMA -- `AngerCinematic()`, `Murder.dm:136` ============================
+	/// Quatro condicoes, e as quatro sao literais do DM (`Murder.dm:119`):
+	/// `if(extreme &amp;&amp; !wasRaging &amp;&amp; client &amp;&amp; !anger_will_transform()) AngerCinematic()`, mais a recarga
+	/// que o proprio proc guarda (`:139-140`).
+	///
+	///   1. **GRAU EXTREMO.** Ver um amigo CAIR aplica o buff e nao toca cena nenhuma; o original diz
+	///      isso no comentario do `Do_Anger_Stuff` -- *"A friend simply going down ('very angry')
+	///      applies the rage buff but plays NO cinematic/music (extreme=0)"*.
+	///   2. **NAO ESTAVA JA ENFURECIDO** (o `wasRaging`, ver o bloco no <see cref="AmigoAbatido"/>):
+	///      uma briga em grupo com quatro amigos caindo nao vale quatro cenas.
+	///   3. **NAO E CORPO SEM DONO.** O `client` do DM -- NPC nao assiste a cinematica. Aqui a
+	///      pergunta e o `Peer` nulo, que e a mesma coisa neste port (ver o cabecalho do clone).
+	///   4. **A RAIVA NAO VAI VIRAR TRANSFORMACAO** -- ver <see cref="AFuriaVaiVirarForma"/>.
+	///
+	/// ============================ E POR QUE ELA MORA AQUI, E NAO NO CHAMADOR ============================
+	/// O cabecalho do <see cref="AmigoAbatido"/> dizia *"quem ligar a cena que leia isto"*, apontando o
+	/// valor de retorno. Ligar a cena LA seria o defeito que aquele mesmo cabecalho ja explica pro
+	/// gancho ser um so: o `LutoNaVizinhanca` nao e o unico chamador possivel (a absorcao Majin entra
+	/// por aqui no dia em que a saga vier), e cada chamador novo teria que lembrar de tocar a cena.
+	///
+	/// No DM ela tambem mora dentro do `Do_Anger_Stuff`, e pelo mesmo motivo.
+	///
+	/// O RETORNO CONTINUA VALENDO e continua sendo outra coisa: ele responde "esta raiva e nova?" pra
+	/// quem chamou, e o `Convivio` o usa. Nao e o gatilho da cena -- se fosse, a condicao 2 estaria
+	/// escrita com a pergunta errada (ver o bloco do `wasRaging`).
+	/// ============================================================================================
+	/// </summary>
+	private void TalvezACenaDaFuria(ServerPlayer enlutado, NivelDeRaiva grau, bool estavaEmFuria,
+									long agora)
+	{
+		if (grau != NivelDeRaiva.Extrema || estavaEmFuria || enlutado.Peer == null) return;
+
+		// A RECARGA (`rageCinematicCD`). O prazo mora no Core porque e prazo de CENA -- ver
+		// `Cinematicas.SegundosEntreFurias`, que explica por que ele nao e o `SegundosDeRaiva`.
+		if (agora < enlutado.FuriaCenaAte) return;
+
+		if (AFuriaVaiVirarForma(enlutado)) return;
+
+		enlutado.FuriaCenaAte = agora + (long)(Cinematicas.SegundosEntreFurias * 1000);
+
+		// PRA ZONA INTEIRA, como o anuncio de forma -- as ondas de choque, o tremor e a musica sao do
+		// MUNDO e nao do enlutado (no DM: `to_chat(view(src))`, `emit_RageMusic` pra cada `mob` do
+		// `view`, e os `createShockwavemisc` sao objetos no chao). Ver `Protocol.S2C.Furia`.
+		var w = Protocol.Begin(Protocol.S2C.Furia);
+		w.Put(enlutado.Id);
+		foreach (ServerPlayer o in ZoneList(enlutado.Zone.Hash))
+			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+
+		EscutaDeFurias?.Add(enlutado.Id);
+		GD.Print($"[server] {enlutado.Name}: CINEMATICA DE FURIA");
+	}
+
+	/// <summary>
+	/// ESTA RAIVA VAI VIRAR TRANSFORMACAO? -- o `anger_will_transform()` do DM (`Murder.dm:124-131`).
+	///
+	/// Quando SIM, a cena da furia nao toca: *"if this rage can power them UP a form (SSJ/SSJ2), the
+	/// transformation owns the moment"*. E o mesmo instante disputado por duas cinematicas, e o
+	/// original decide pela mais rara.
+	///
+	/// ============================ E AQUI ELA E DERIVADA, ENQUANTO LA E UMA LISTA ============================
+	/// O DM enumera: Heran ou Saiyajin, `ssj==0 &amp;&amp; BP&gt;=ssjat &amp;&amp; hasssj`, `ssj==1 &amp;&amp; BP&gt;=ssj2at/6
+	/// &amp;&amp; hasssj2`. Sao dois degraus escritos a mao, e um terceiro (o Beast, que tambem nasce de
+	/// raiva) ja ficava de fora daquela lista.
+	///
+	/// Aqui a pergunta ja tem dono: <see cref="EstadoDeForma.Proxima"/> devolve o degrau que este
+	/// corpo pode assumir AGORA -- com a raiva ja escrita, ou seja com o passo 9 do `Avaliar` (o
+	/// `RecusaForma.SemFuria`) ja satisfeito --, e `Catalogo.NasceDaRaiva` responde se aquele degrau e
+	/// dos que a raiva abre. Duas funcoes que ja existem, nenhum id digitado, e um degrau novo de
+	/// Legendary (ou o Beast) entra sozinho.
+	///
+	/// ============================ NAO CONFUNDIR COM "VAI TRANSFORMAR AGORA" ============================
+	/// Nem no DM nem aqui a raiva transforma ninguem sozinha: quem aperta a tecla e o jogador. Isto e
+	/// uma PREVISAO -- "o proximo gesto dele vai ser uma transformacao, e ela merece o momento" --, e e
+	/// por isso que ela pode errar sem custo: no maximo o jogador fica sem uma cena de 5 s.
+	/// ====================================================================================================
+	/// </summary>
+	private static bool AFuriaVaiVirarForma(ServerPlayer pl) =>
+		Catalogo.NasceDaRaiva(pl.Forma.Proxima(pl.Ficha.BP, Perfil(pl)));
 
 	/// <summary>
 	/// "Quero subir" (ou descer). O cliente NAO escolhe a forma -- ele pede a direcao e o servidor
@@ -252,6 +475,19 @@ public partial class GameServer
 
 		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "nao da, caido."); return; }
 
+		// ============================ O CHEFE TEM A FORMA E NAO A USA ============================
+		// Vale so pra corpo com ficha ROTEIRIZADA (`ServerPlayer.Papel`): jogador nao tem papel e
+		// `AscendePorDecisao` devolve verdadeiro pra ele. Ver `GameServer.Npc.cs` -- e a resposta ao
+		// *"o freeza do planeta vegeta nao transforma enquanto o freeza de namek transforma"*: ele
+		// TEM a forma (o `Despertou()` dele e verdadeiro, o multiplicador existe), so nao sobe
+		// sozinho. Quem o move e o `TickDoRoteiro`, pelo dano no membro mais ferido.
+		//
+		// A GUARDA MORA NO FUNIL, e nao no futuro cerebro. Aqui passam a tecla C, o `DirectSSJ` do
+		// admin e -- quando existir -- a decisao da IA; escrever a regra so no lado de quem decide
+		// seria mais uma API orfa, defeito que este projeto ja pagou inteiro (o sigilo de BP).
+		// DESCER continua livre: quem barra e o `subir`, e o ramo de descida ja voltou la em cima.
+		if (!AscendePorDecisao(pl)) return;
+
 		FormaDef? alvo = est.Proxima(pl.Ficha.BP, perfil);
 		if (alvo == null)
 		{
@@ -265,7 +501,31 @@ public partial class GameServer
 
 		// KI CHEIO AO DESPERTAR. E o que o original faz nas primeiras vezes e o que transforma a
 		// cena: a forma nova nao pode nascer sem folego pra ser usada.
-		if (primeira) pl.Ficha.Ki = pl.Ficha.MaxKi;
+		//
+		// ============================ ENCHER NAO PODE ESVAZIAR ============================
+		// Isto era `pl.Ficha.Ki = pl.Ficha.MaxKi` seco, e ERA o defeito que o dono relatou: *"ao
+		// travar o ki ao se transformar, ele volta pro 100%, oq n deveria acontecer"*. Medido no
+		// funil, com o corpo a 190%: 266/140 antes, 532/280 depois do `AplicarForma` (a razao
+		// atravessa intacta, como ele promete) e 280/280 DEPOIS DESTA LINHA. Nao "cai pra 40%",
+		// nao "some" -- volta pro 100% cravado, exatamente a frase do dono. E como toda conta nova
+		// estreia todo degrau, ele via em toda subida.
+		//
+		// A DOENCA E A MESMA DO `Nutricao.cs:134`: um PRESENTE escrito como atribuicao absoluta
+		// vira um CORTE pra quem ja estava acima do teto. O original nunca corta -- `Power
+		// Control.dm:151` (`Energy_Draw`) deixa o Ki passar do `MaxKi` de proposito, e o
+		// `CheckPowerMod` (`Power Control.dm:113-134`) so faz o excesso VAZAR devagar, com dano
+		// acima do `kicapacity`. Sobrecarga se perde pagando, nunca por decreto.
+		//
+		// `Math.Max` E NAO UM PORTAO `if (Ki < MaxKi)`: os dois dao o mesmo numero, mas o `Max`
+		// diz a regra numa expressao so -- "o despertar nao deixa ninguem abaixo do cheio" -- em
+		// vez de esconde-la num `if` que a proxima pessoa le como "as vezes nao enche".
+		//
+		// E O TETO ABSOLUTO CONTINUA DE PE, porque nao e este: quem limita a sobrecarga e o dono
+		// dela, o `CargaDeKi.TetoDeCarga` (`MaxKi * powerupcap`) e o `PrecoDoExcesso` (que cobra
+		// folego e machuca acima do `kicapacity`). 100% nunca foi teto de Ki -- e so o tamanho
+		// nominal do tanque.
+		// =================================================================================
+		if (primeira) pl.Ficha.Ki = Math.Max(pl.Ficha.MaxKi, pl.Ficha.Ki);
 
 		// PELO `MultiplicadorDaForma` E NAO PELO `est.Multiplicador`: o `ssjBuff` logo acima ja saiu
 		// com o fator do cargo, e duas contas diferentes pro mesmo numero e como o chat passaria a
@@ -513,6 +773,11 @@ public partial class GameServer
 	/// </summary>
 	private void RepercutirPoder(ServerPlayer pl)
 	{
+		// A RAIVA ANTES DO CORTE E DO PODER, que e a ordem do `Stats()` do DM: la o decaimento
+		// (`Stats.dm:438-443`) roda no mesmo laco e ANTES de o `powerlevel()` ler o `angerBuff`.
+		// Depois do `ClampAnger` o valor projetado seria usado sem teto por um quadro; depois do
+		// `PowerLevel` ele so valeria no proximo. Ver `ProjetarRaiva`.
+		ProjetarRaiva(pl);
 		pl.Ficha.ClampAnger();
 		pl.Ficha.PowerLevel(agoraMs: NowMs());
 	}

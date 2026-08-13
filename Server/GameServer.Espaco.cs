@@ -91,6 +91,11 @@ public partial class GameServer
 			MandarVizinhanca(pl);
 		}
 
+		// O SOL VEM ANTES DO POUSO, e as duas perguntas sao IRMAS e nao uma dentro da outra: a
+		// estrela nao entra em `PlanetaSob` porque o que aparece la e um lugar onde se POUSA.
+		// Ver o cabecalho de `GameServer.Sol.cs`.
+		TickDoSol(pl, Protocol.TickSeconds);
+
 		if (Espaco.PlanetaSob(SeedDoUniverso, pl.Pos) is not { } destino) return;
 
 		// PROCEDURAL AGORA TEM CHAO. O servidor gera a MESMA superficie que o cliente, a partir
@@ -99,7 +104,23 @@ public partial class GameServer
 		// ponto de chegada; quem desenha e a cena.
 		if (!destino.Premade) { PousarEmProcedural(pl, destino); return; }
 
-		MoveToZone(pl.Id, ZoneKey.Premade(destino.Nome), SpawnPos);
+		// ============================ O (249,250) E O CAMPO DA TERRA, E SO DELA ============================
+		// Aqui estava `SpawnPos` cru -- o `locate(rand(240,260),rand(240,260),1)` do BYOND, que e o
+		// campo aberto do meio da TERRA -- usado como chegada de TODO mapa feito a mao. Em Icer essa
+		// celula e ROCHA (medido: 309 das 441 celulas do quadrado 21x21 em volta sao densas), entao
+		// quem descia la chegava dentro da pedra.
+		//
+		// Ninguem tinha reparado porque ninguem ia a Icer: nao havia regra que mandasse alguem pra
+		// la, e do espaco so se chega voando por horas. O berco mandou -- o Frost Demon nasce em Icer
+		// --, e a bancada `--bercovivo` largou um corpo em orbita de cada um dos sete pre-feitos e
+		// mediu a queda: seis em chao livre e Icer DENTRO DE PAREDE.
+		//
+		// `PontoDeNascimento` pergunta a colisao em vez de confiar no numero, e e o MESMO ponto que o
+		// berco ja usava (`GameServer.Berco.cs`) -- ou seja, nascer em Icer e cair em Icer vindo do
+		// espaco passam a chegar no mesmo lugar, que e o que "o funil e unico" quer dizer.
+		// ==============================================================================================
+		var zonaDoPouso = ZoneKey.Premade(destino.Nome);
+		MoveToZone(pl.Id, zonaDoPouso, PontoDeNascimento(zonaDoPouso));
 		Avisar(pl, $"voce pousa em {destino.Nome}.");
 		GD.Print($"[server] {pl.Name} pousou em {destino.Nome}");
 	}

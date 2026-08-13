@@ -177,7 +177,8 @@ public partial class RoboDeDoisCorpos : Node
 	{
 		bool meu = GameClient.Instance is { } c && c.LocalId == quem;
 		Anotar($"servidor: PeerLook de {quem}{(meu ? " (EU)" : " (OUTRO)")} ({nome}, {raca}) -- "
-			 + $"cabelo da ficha '{ap.Cabelo}', olho da ficha {ap.CorOlho}");
+			 + $"cabelo da ficha '{ap.Cabelo}', olho da ficha {ap.CorOlho}, "
+			 + $"AURA da ficha {ap.CorAura?.ToString() ?? "nula (deriva)"}");
 		if (meu) return;
 
 		_idDoOutro = quem;
@@ -397,7 +398,8 @@ public partial class RoboDeDoisCorpos : Node
 			if (r.GetNodeOrNull<Aura>("Aura") is { } a)
 			{
 				SpriteDeAura d = a.DesenhoDeTeste;
-				sb.AppendLine($"     AURA    acesa {a.AcesaDeTeste} | luz {a.EnergiaDeTeste:0.00} {a.CorDaLuzDeTeste.ToHtml(false)}"
+				sb.AppendLine($"     AURA    acesa {a.AcesaDeTeste} | pessoal {a.CorPessoal.ToHtml(false)}"
+							  + $" | luz {a.EnergiaDeTeste:0.00} {a.CorDaLuzDeTeste.ToHtml(false)}"
 							  + $" | folha '{System.IO.Path.GetFileName(d.FolhaDeTeste)}' largura {d.LarguraDeTeste:0}");
 				sb.AppendLine($"     AURA-POS base(local) {d.BaseDeTeste:0.0} (pes = {SpriteDeAura.LinhaDosPes})"
 							  + $" | quad global {d.GlobalPosition} vs corpo {r.GlobalPosition}"
@@ -633,6 +635,7 @@ public partial class RoboDeDoisCorpos : Node
 		_raboMedidoSempre = true;
 		_raboDaFormaSempre = true;
 		_olhoDaFormaSempre = true;
+		_chamaPessoalSempre = true;
 		if (porque.Length > 0) Anotar($"janela REABERTA em '{estado}': {porque}");
 	}
 
@@ -691,11 +694,23 @@ public partial class RoboDeDoisCorpos : Node
 		if (outro.GetNodeOrNull<CargaVisual>("Carga") is { } cga)
 			_cargaDesenhouSempre &= cga.DesenhoDeTeste.Visible;
 
+		// A COR PESSOAL DO CORPO ALHEIO, no mesmo passo e pela mesma janela. Ver
+		// <see cref="AChamaPessoalAlheia"/>: esta e a unica bancada do projeto com DOIS corpos de
+		// personagens diferentes na mesma tela, e portanto a unica que pode pegar uma cor que chega
+		// certa num corpo e errada no outro.
+		if (outro.GetNodeOrNull<Aura>("Aura") is { } aoutro)
+		{
+			_ultimaChamaPessoal = aoutro.CorPessoal;
+			if (_fichaDoOutro is { } fo)
+				_chamaPessoalSempre &= aoutro.CorPessoal.IsEqualApprox(Aura.CorPessoalDe(fo));
+		}
+
 		if (_relogio - _janelaAberta < Janela || _retrato.Amostras < MinimoDeAmostras) return;
 		if (!_jaJulguei.Add($"{_travessia}|{estado}")) { _janelaAberta = _relogio; return; }
 
 		OContornoAlheio(estado, excesso);
 		ORaboEOOlhoAlheios(estado);
+		AChamaPessoalAlheia(estado);
 		OsDoisCorpos(estado);
 		_janelaAberta = _relogio;
 	}
@@ -819,6 +834,60 @@ public partial class RoboDeDoisCorpos : Node
 				 $"[{estado}] o OLHO do corpo ALHEIO carrega a tinta {(naBase ? "da FICHA" : "da FORMA")} "
 			   + $"(esperado {eOlho}, ultimo medido {Tinta(_ultimoOlho)}), em TODO quadro da janela");
 	}
+
+	/// <summary>
+	/// ============================ A COR PESSOAL CHEGA NO CORPO **DO OUTRO** ============================
+	/// A chama da base (e a do Mistico) deixou de ser uma constante compartilhada: cada personagem
+	/// sorteia a propria no nascimento (`Appearance.CorAura`, o `rand(0,255)` do
+	/// `CharacterCreation.dm:25-27`) e ela viaja no `PeerLook`.
+	///
+	/// E ESTA E A UNICA BANCADA QUE PODE COBRAR ISSO. O `--diagforma` mede funcoes puras e UM corpo:
+	/// com um sujeito so, "a cor pessoal chegou" e indistinguivel de "todo mundo usa a mesma cor" --
+	/// que e exatamente o estado anterior do port. Aqui ha dois personagens de contas diferentes, cada
+	/// um com o proprio sorteio, e o que se afirma e que o corpo ALHEIO carrega a cor da ficha DELE.
+	///
+	/// CONTRA A FICHA RECEBIDA, e nao contra um hexa escrito: o hexa seria a cor de um personagem
+	/// especifico e a bancada nasceria presa a uma conta. A ficha e a mesma que o servidor mandou, e
+	/// comparar as duas e perguntar "o que chegou pela rede virou estado neste corpo".
+	///
+	/// POR QUADRO E COM `&amp;&amp;`, como o rabo e o olho: a pergunta e sobre a JANELA. Um `Vestir` que
+	/// remontasse o corpo e reescrevesse a cor pelo fallback por meio segundo e o defeito que uma
+	/// leitura pontual perde.
+	///
+	/// O QUE ELA **NAO** PROVA: que as duas cores sao DIFERENTES entre si. Metade dos sorteios da
+	/// branco puro (ver `CorDeAura`), entao dois personagens quaisquer batem em ~24% das vezes e
+	/// exigir diferenca faria esta linha piscar vermelha sozinha uma vez a cada quatro rodadas. O que
+	/// se mede e a correspondencia corpo a corpo, que e a pergunta certa.
+	/// ==============================================================================================
+	/// </summary>
+	private void AChamaPessoalAlheia(string estado)
+	{
+		if (_fichaDoOutro is not { } fo)
+		{
+			// Sem ficha nao ha esperado, e comparar com o fallback seria comparar zero com zero. A
+			// falta da ficha ja e reprovada no ramo da base do `ORaboEOOlhoAlheios`.
+			Anotar($"[{estado}] a cor pessoal do corpo alheio nao pode ser julgada: a ficha dele nao chegou");
+			return;
+		}
+
+		Color esperada = Aura.CorPessoalDe(fo);
+		Conferir(_chamaPessoalSempre,
+				 $"[{estado}] o corpo ALHEIO carrega a COR DE AURA da ficha dele "
+			   + $"({esperada.ToHtml(false)}, ultima medida {_ultimaChamaPessoal?.ToHtml(false) ?? "-"}), "
+			   + "em TODO quadro da janela");
+
+		// E ELA NAO E O FALLBACK. Sem esta linha, tudo acima ficaria verde num jogo em que a cor
+		// sorteada nunca saisse do save: as duas pontas seriam o `Aura.CorDoKiCru` e concordariam.
+		Conferir(fo.CorAura is not null && !esperada.IsEqualApprox(Aura.CorDoKiCru),
+				 $"-- e ela e uma cor SORTEADA de verdade ({fo.CorAura?.ToString() ?? "nula"}), e nao o "
+			   + $"#{Aura.CorDoKiCru.ToHtml(false)} de quem nao tem ficha");
+	}
+
+	/// <summary>Ver <see cref="AChamaPessoalAlheia"/>. Como o rabo e o olho: um `&amp;&amp;` por quadro.</summary>
+	private bool _chamaPessoalSempre = true;
+
+	/// <summary>A ultima cor pessoal lida no corpo alheio. So pra o log reprovar dizendo o valor.</summary>
+	private Color? _ultimaChamaPessoal;
 
 	/// <summary>
 	/// A CHAMA DA CARGA DESENHOU EM TODO QUADRO da janela corrente. E o CONTROLE da regra da base --
@@ -1010,24 +1079,37 @@ public partial class RoboDeDoisCorpos : Node
 				 $"as folhas exercitadas tem {alturas.Count} ALTURAS distintas ({string.Join("/", alturas.OrderBy(a => a))}) "
 			   + "-- e e isso que torna impossivel um Offset cravado passar");
 
-		// E A DO ULTRA INSTINTO, PELO CAMINHO DO CORE. As duas formas de UI nao declaram `Folha`, entao
-		// caem no fallback `FolhaDeAura.Base`; quem traduz o simbolo em `res://` e a `CaminhoDa`. Ler o
-		// caminho daqui em vez de perguntar ao Core amarraria a bancada ao nome do arquivo -- que e
-		// justamente o acoplamento que a `CaminhoDa` existe pra ter num lugar so.
+		// ============================ E O ULTRA INSTINTO NAO TEM ANCORA PORQUE NAO TEM FOLHA ============================
+		// Estas linhas mediam a ancora da aura das duas formas de UI, e o comentario delas dizia o
+		// diagnostico inteiro sem saber: *"as duas formas de UI nao declaram `Folha`, entao caem no
+		// fallback `FolhaDeAura.Base`"*. Era o defeito, escrito como se fosse a regra -- a chama
+		// `colorablebigaura` acendia por cima da nebulosa, que e a queixa do dono.
+		//
+		// Hoje o Core devolve `FolhaDeAura.Nebulosa` pras duas, e a `CaminhoDa` responde NULO: "a minha
+		// nao e folha". Medir a ancora de uma folha que nao existe deixou de fazer sentido, entao o que
+		// esta bancada cobra e o fato que substituiu aquele -- e ela continua perguntando ao CORE, que
+		// era o unico ponto bom do bloco antigo.
+		// ==========================================================================================================
 		foreach (string id in new[] { "ui_sign", "ui_perfected" })
 		{
 			Jandirus.Core.Forms.FormaDef? def = Jandirus.Core.Forms.Catalogo.Def(id);
-			string caminho = SpriteDeAura.CaminhoDa(Jandirus.Core.Forms.Catalogo.Folha(def));
-			var frames = ResourceLoader.Load<SpriteFrames>(caminho);
-			string anim = frames?.HasAnimation("default") == true ? "default"
-						: frames?.GetAnimationNames() is { Length: > 0 } n ? n[0] : "";
-			float altura = frames?.GetFrameTexture(anim, 0)?.GetHeight() ?? 0;
+			var simbolo = Jandirus.Core.Forms.Catalogo.Folha(def);
 
-			Conferir(Mathf.IsEqualApprox(SpriteDeAura.AncoraPara(altura).Y,
-										 SpriteDeAura.LinhaDosPes - altura * 0.5f)
-					 && altura > 0,
-					 $"a ancora da aura de `{id}` sai da folha que o CORE escolheu "
-				   + $"({caminho.GetFile()}, quadro {altura:0} px -> {SpriteDeAura.AncoraPara(altura).Y:0.#})");
+			Conferir(simbolo == Jandirus.Core.Forms.FolhaDeAura.Nebulosa
+					 && SpriteDeAura.CaminhoDa(simbolo) == null,
+					 $"`{id}` nao tem folha de aura: o Core devolve {simbolo} e a traducao devolve nulo "
+				   + "-- o desenho dele e a nuvem, e nenhuma chama pode acender por cima dela");
+
+			// E O NODE OBEDECE, que e a outra metade: o simbolo certo nao vale nada se o `SpriteDeAura`
+			// ainda montasse alguma coisa. Um sprite proprio, sem corpo nenhum em volta.
+			var d = new SpriteDeAura { Name = "SemFolhaDeTeste" };
+			AddChild(d);
+			d.DefinirFolha(simbolo);
+			d.Definir(true, Colors.White);
+			Conferir(d.SemFolha && !d.Visible,
+					 $"e mandar a folha de `{id}` num desenho e ACENDE-LO nao desenha nada "
+				   + $"(sem folha {d.SemFolha}, visivel {d.Visible})");
+			d.QueueFree();
 		}
 	}
 

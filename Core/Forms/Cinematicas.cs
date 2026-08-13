@@ -23,9 +23,58 @@ public enum Efeito
 	/// ==================================================================
 	/// </summary>
 	Onda = 2,
-	/// <summary>Cratera no chao. `createCrater`.</summary>
+	/// <summary>
+	/// CRATERA NO CHAO (`createCrater`) -- E ELA NAO SE ESCREVE, ELA SE DERIVA.
+	///
+	/// ============================ ESCREVER AQUI NAO ADIANTA ============================
+	/// Quem poe a cratera na cena e a <see cref="Cinematica.Beats"/> (ver o funil la): ela cai no
+	/// beat que <see cref="Assumir"/> e em nenhum outro, em toda cena, sem excecao e sem lista. Um
+	/// `Efeito.Cratera` escrito a mao noutro instante e apagado; escrito no beat que assume e
+	/// redundante. As duas coisas sao inofensivas de proposito -- o que nao pode existir e uma cena
+	/// que abra o chao antes de a forma chegar.
+	///
+	/// ============================ POR QUE VIROU REGRA E NAO CONSERTO ============================
+	/// O dono: *"tem transformacao q estao criando a cratera no meio da cinematica (deveria ser
+	/// sempre no final, assim q se transformar cria a cratera)"*. Doze das trinta e duas cenas
+	/// erravam -- oito segundos ANTES no molde do SSJ1, dois DEPOIS no do SSJ2, e sessenta e sete
+	/// antes no SSJ3 --, e as doze saiam de QUATRO lugares. Consertar os quatro deixaria a cratera
+	/// continuando a ser um campo livre do beat: a decima terceira cena erraria do mesmo jeito, e
+	/// caladamente, porque nada no arquivo diria onde ela deveria cair.
+	///
+	/// O que estava escrito nos quatro lugares era porte literal do DM (`spawn(20) createCrater` cai
+	/// 2,0 s depois do `move = 1`). So que la o `move = 1` e o fim da PROC e nao o instante em que
+	/// `ssj = 1` e escrito -- o original tambem abre o chao quando a forma chega, e a nossa lista de
+	/// beats e que tinha separado as duas coisas. Ver `SSJCinematic.dm:83` / `SSJ2Cinematic.dm:45`.
+	///
+	/// ============================ E A GRANDE CONTINUA SENDO DERIVADA TAMBEM ============================
+	/// Qual das duas artes cai (`Decal.Cratera` ou `Decal.CrateraGrande`) NAO se decide aqui e nem no
+	/// beat: quem responde e `Catalogo.NasceDaRaiva(forma)`, no tocador. Ver
+	/// `Jandirus.Client.Transformacao.Disparar`.
+	/// ==================================================================================
+	/// </summary>
 	Cratera = 4,
-	/// <summary>Poeira ao redor. `createDustmisc`.</summary>
+
+	/// <summary>
+	/// POEIRA (`createDustmisc`) -- E ELA E A POEIRA DA CRATERA, so isso.
+	///
+	/// ============================ ANTES DA TROCA NAO HA POEIRA ============================
+	/// O dono: *"a dust cloud vc colocou ela de mais durante as cinematicas, ela deveria apenas vir
+	/// quando a animacao cria uma cratera"*. Eram 137 beats de poeira nas 32 cenas -- 441 nuvens --,
+	/// e so 8% deles caiam junto de uma cratera; o `ssj4_full_power` chegava a 2,17 nuvens por
+	/// segundo. O DM concorda com o dono, e isso e o que fecha a questao: as cinematicas do original
+	/// nao tem nuvem NENHUMA (todo `createDustmisc` delas e `s=2`, que e o Rising Rocks, ou `s=3`,
+	/// que e o tornado -- a nuvem grande e `s=4` e nao aparece em cinematica alguma).
+	///
+	/// Entao o funil da <see cref="Cinematica.Beats"/> apaga toda poeira ANTERIOR ao
+	/// <see cref="Assumir"/> e poe uma no proprio beat que assume, junto da <see cref="Cratera"/>.
+	///
+	/// ============================ E DEPOIS DELA, A POEIRA ASSENTA ============================
+	/// O que vem DEPOIS do beat que assume o funil deixa passar -- e e a unica coisa que ele deixa.
+	/// Nao e frouxidao: toda cena tem exatamente um beat de cauda (a bancada reprova o segundo, ver
+	/// `RoboDeForma.ConferirRoteiro`), e ele existe justamente pra poeira levantada pelo impacto
+	/// baixar. Poeira ali nao e poeira solta, e a mesma cratera acabando.
+	/// ==============================================================================
+	/// </summary>
 	Poeira = 8,
 	/// <summary>Raios espalhados pelo cenario. `createLightningmisc`.</summary>
 	Raios = 16,
@@ -79,9 +128,46 @@ public enum Efeito
 	AuraGrande = 64,
 	/// <summary>Feixes de energia saindo pelo chao nas 8 direcoes (`Electricgroundbeam.dmi`).</summary>
 	FeixesNoChao = 128,
-	/// <summary>Pedras subindo do chao. `EliteGroundGrind` / `SSj2GroundGrind`.</summary>
-	PedrasSubindo = 256,
-	/// <summary>O cabelo assume a forma DE VEZ, e a aura acende.</summary>
+	// ============================ 256 APOSENTADO: `PedrasSubindo` ============================
+	// Era o beat que soltava uma leva de `Rising Rocks.dmi`. Morreu porque a pedra deixou de ser
+	// ACONTECIMENTO e virou ESTADO -- ver <see cref="Cinematica.OChaoSeSolta"/>: o chao fica solto
+	// pela cena inteira, e quem conta o tempo e o tocador, exatamente como o
+	// <see cref="PiscaCabelo"/> ja fazia com o cabelo.
+	//
+	// O QUE O DONO PEDIU: *"deveria ter mais `rising rocks.png` q ficariam do INICIO AO FIM em todas
+	// as transformacoes"*. Com o bit, "do inicio ao fim" seria escrever um beat de pedra a cada dois
+	// segundos em trinta e duas cenas -- e a versao ENCURTADA multiplicaria os instantes por `k` e
+	// mudaria a densidade sozinha. Sem o bit nao ha o que escrever nem o que esquecer.
+	//
+	// E O DM CONCORDA: as pedras de la nao vem de um instante do roteiro, vem de uma varredura do
+	// `view()` com `spawn(rand(10,150))` (1,0 a 15,0 s de atraso) e `spawn(rand(100,400))` de vida
+	// (10 a 40 s) -- `SSJCinematic.dm:31` e `dusts.dm:203-208`. Um fundo, e nao um pulso.
+	//
+	// O bit fica RESERVADO, como o 2: reusar um numero aposentado faz uma cena antiga escrita com o
+	// valor velho acender um efeito que ela nunca pediu.
+	// ==========================================================================================
+	/// <summary>
+	/// A VIRADA DA CENA -- e numa transformacao a virada e o cabelo assumindo a forma DE VEZ, com a
+	/// aura acendendo.
+	///
+	/// ============================ POR QUE O NOME DIZ MENOS DO QUE ELE FAZ ============================
+	/// Este bit sempre teve dois papeis, e so um deles estava escrito aqui. O outro e estrutural: e
+	/// ele que o funil da <see cref="Cinematica.Beats"/> procura pra por a cratera e a poeira, que o
+	/// <see cref="Cinematicas.Encurtar"/> usa pra achar o `k` da versao curta, e que a bancada conta
+	/// pra cobrar "um por cena". Ou seja, ele ja era **o instante em que a cena entrega o que veio
+	/// entregar** -- assumir a forma so e o que isso quer dizer numa cena que tem forma.
+	///
+	/// A <see cref="Cinematicas.Furia"/> e a primeira que nao tem: la a virada e a erupcao (a cratera
+	/// e o `powerup.wav` de `Murder.dm:158-160`), e o tocador simplesmente nao veste ninguem. Ver o
+	/// `Assumir()` do <see cref="Jandirus.Client.Transformacao"/>, onde a ausencia de forma e uma
+	/// pergunta e nao um caso especial.
+	///
+	/// A ALTERNATIVA ERA UM SEGUNDO BIT (`Climax`) valendo a mesma coisa pra cenas sem forma -- e ele
+	/// duplicaria as tres regras acima, que teriam que aprender a olhar pros dois. Um bit que o funil
+	/// esquecesse deixaria uma cena sem cratera, calada; e o funil existe justamente porque essa
+	/// familia de esquecimento ja custou doze cenas erradas uma vez.
+	/// =========================================================================================
+	/// </summary>
 	Assumir = 512,
 
 	/// <summary>
@@ -136,28 +222,30 @@ public enum Efeito
 	/// </summary>
 	AnelDeChoque = 4096,
 
-	/// <summary>
-	/// CASCALHO VOANDO -- o chao se quebrando em volta dos pes.
-	///
-	/// ============================ ISTO E NOVO, E NAO VEM DO DM ============================
-	/// O DM tem `createDustmisc` (a baforada que sobe e some, que aqui e a <see cref="Poeira"/>) e
-	/// `createCrater` (a marca no chao, que e a <see cref="Cratera"/>). Nao ha, em cinematica
-	/// nenhuma, pedra QUEBRANDO e sendo cuspida pra fora.
-	///
-	/// Ele entra porque o dono abriu a porta -- *"no dm a transformaçao n tinha mts efeitos, aqui vc
-	/// pode colocar mais efeitos"* -- e porque as cenas restauradas ficaram com buracos que o DM
-	/// preenchia de graca: os `spawn(rand(10,150))` do original espalham efeito o tempo todo por
-	/// baixo dos `sleep`, e a lista de beats nao tem esse fundo. Onze segundos de silencio entre
-	/// dois gritos do SSJ3 sao ritmo; onze segundos de tela PARADA sao um travamento.
-	///
-	/// ============================ E ELE NAO E ENGINE NOVA ============================
-	/// Quem desenha e a <see cref="Jandirus.Client.PoeiraDeEstrago"/>, o mesmo sistema que ja cuspia
-	/// cascalho quando uma parede caia -- com o mesmo teto de 24 vivos, que e o que impede a cena
-	/// longa de virar mil nodes. A cor tambem e a de la (terra), pelo mesmo motivo de sempre: pedra
-	/// cinza saindo marrom entrega que o efeito e generico.
-	/// ==============================================================================
-	/// </summary>
-	Cascalho = 8192,
+	// ============================ 8192 APOSENTADO: `Cascalho` ============================
+	// Era o chao se quebrando em volta dos pes, desenhado pela `Jandirus.Client.PoeiraDeEstrago` --
+	// o MESMO sistema que cospe escombro quando uma parede cai. Ele era invencao minha (nao ha
+	// `createDustmisc` de pedra quebrada em cinematica nenhuma do DM) e o dono mandou tirar:
+	//
+	//   *"vc colocou uns efeitos de particula nas cinematicas q parecem q tem uns quadrados marrons
+	//   caindo e criando uma fumaca parecendo q quebrou uma parede ou objeto, TIRE esse efeito"*.
+	//
+	// A DESCRICAO DELE E LITERAL, e por isso nao houve o que investigar: a `PoeiraDeEstrago` desenha
+	// o pedaco com `Image.CreateEmpty(3,3)` preenchido de cor CHAPADA (um quadrado de 3 px, mesmo) e
+	// `Gravity = (0, 420)` (ele cai), na cor `TerraPadrao` = 0,46/0,36/0,26 (marrom), com dois
+	// sistemas de fumaca no mesmo node. Quadrado marrom caindo e criando fumaca de parede quebrada.
+	//
+	// ============================ O QUE **NAO** FOI MEXIDO ============================
+	// A `PoeiraDeEstrago` continua inteira: ela tem dono proprio (o cenario sendo derrubado, em
+	// combate) e o defeito nunca foi dela -- foi a cinematica ter chamado o sistema de ESTRAGO pra
+	// fazer enfeite. O conserto e parar de chamar.
+	//
+	// E o buraco que ele preenchia (as cenas longas com onze segundos de tela parada) passou a ser
+	// preenchido pelo que o DM usa pra isso: a pedra do chao, agora do inicio ao fim -- ver
+	// <see cref="Cinematica.OChaoSeSolta"/>.
+	//
+	// Bit RESERVADO pelo mesmo motivo do 256 e do 2.
+	// ================================================================================
 
 	/// <summary>
 	/// O CLARAO QUE LAVA A TELA INTEIRA.
@@ -368,8 +456,145 @@ public sealed class Cinematica
 	/// <summary>Duracao total da cena, em segundos.</summary>
 	public double Segundos => _beats.Length == 0 ? 0 : _beats[^1].Em + 1.0;
 
+	/// <summary>
+	/// O CHAO FICA SOLTO DURANTE ESTA CENA? -- a pedra do `Rising Rocks.dmi`, do primeiro segundo ao
+	/// ultimo.
+	///
+	/// ============================ O PEDIDO, E POR QUE ELE VIROU UM CAMPO DERIVADO ============================
+	/// *"deveria ter mais `rising rocks.png` q ficariam do INICIO AO FIM em todas as transformacoes"*
+	/// e *"aumente a area q o jogo pode spawnar esse efeito de rising rock, pq ta mt perto do
+	/// personagem e dura mt pouco"*.
+	///
+	/// Medido antes de mexer: das 32 cenas, ONZE nao levantavam uma pedra sequer, e a melhor de todas
+	/// (`wrathful`) tinha pedra em 46,5% do tempo -- a do SSJ1, em 13,1%. Nenhuma chegava perto de
+	/// "do inicio ao fim", porque a pedra era um bit de beat (`Efeito.PedrasSubindo`, hoje
+	/// aposentado) e beat e instante.
+	///
+	/// ============================ E POR QUE NAO E UMA LISTA DE CENAS ============================
+	/// A UNICA excecao e do dono e ele foi explicito: *"oozaru n tem esse efeito de rocks nem de
+	/// particulas, o resto da cinematica do oozaru pode deixar"*. Escrever `Forma != "oozaru"` aqui
+	/// daria uma lista de isentos de um elemento -- e uma lista de isentos e a forma de defeito que o
+	/// funil da <see cref="Beats"/> existe pra impedir (o `oozaru_dourado` divide esta MESMA cena
+	/// hoje, mas uma cena propria pra ele nasceria fora da lista, calada).
+	///
+	/// Entao a pergunta e feita ao CATALOGO, e a resposta ja existia: <see cref="Catalogo.NaoSeSobePraEla"/>
+	/// e a linha do Oozaru inteira -- *"nao se sobe pra ele, ele acontece POR OLHAR A LUA"*. E e essa
+	/// a diferenca fisica tambem: nas outras trinta e uma o chao se solta porque o poder esta sendo
+	/// EMPURRADO pra fora de um corpo parado; no macaco o que acontece e o corpo crescendo.
+	///
+	/// FORMA DESCONHECIDA levanta pedra (`Def` nulo -> `NaoSeSobePraEla` falso). E o lado certo do
+	/// erro: cena nova sem entrada no catalogo nasce com o efeito, e nao muda.
+	/// ======================================================================================================
+	/// </summary>
+	public bool OChaoSeSolta => !Catalogo.NaoSeSobePraEla(Catalogo.Def(Forma));
+
+	/// <summary>
+	/// O CEU DESCARREGA DURANTE ESTA CENA? -- raio caindo do alto, na regiao, do primeiro segundo ao
+	/// ultimo. Verdadeiro numa unica cena do jogo: a ESTREIA do Super Saiyajin.
+	///
+	/// ============================ O PEDIDO ============================
+	/// *"o ssj1 na cinematica da primeira vez, deveria fazer raios cairem durante TODA a cinematica na
+	/// regiao q o personagem esta se transformando"*.
+	///
+	/// Sao tres recortes numa frase e os tres estao nesta linha: **ssj1**, **primeira vez** e **toda a
+	/// cinematica**. O terceiro e o motivo de isto ser uma propriedade e nao um bit de beat -- a mesma
+	/// licao que ja custou o piscar de cabelo (<see cref="Efeito.PiscaCabelo"/>) e a pedra
+	/// (<see cref="OChaoSeSolta"/>): beat e INSTANTE, e "durante toda a cena" escrito em beats seria
+	/// uma fileira de dezessete instantes que a <see cref="Cinematicas.Encurtar"/> multiplicaria por
+	/// `k`, mudando a cadencia sozinha entre as duas versoes da MESMA cena.
+	///
+	/// ============================ E "PRIMEIRA VEZ" NAO PRECISOU DE CAMPO NOVO ============================
+	/// <see cref="Musica"/> JA e o marcador da estreia, e por construcao: o tema so existe na cena
+	/// cheia (*"toca uma vez na vida do personagem"*, ver o campo) e a <see cref="Cinematicas.Encurtar"/>
+	/// o apaga na primeira coisa que faz. Uma bandeira `Estreia` ao lado dele seria a MESMA informacao
+	/// escrita duas vezes, e o dia em que as duas discordassem daria a cena do dono com trilha e sem
+	/// raio -- ou o contrario, que e pior porque ninguem repara.
+	///
+	/// ============================ POR QUE UM `==` DE ID AQUI E O <see cref="OChaoSeSolta"/> PERGUNTA AO CATALOGO ============================
+	/// Sao pedidos de naturezas diferentes. La o dono falou de TODAS as formas e isentou UMA linha, e
+	/// escrever a isencao daria uma lista de excecoes que uma cena nova driblaria calada. Aqui ele
+	/// falou de UMA forma, nominalmente, e o efeito e sobre o acontecimento que aquela cena narra --
+	/// nao ha regra a generalizar. O id vem do <see cref="Catalogo.IdSsj1"/>, que ja existe e ja e
+	/// usado pelo resolvedor de cabelo, entao nao ha string solta pra digitar errado.
+	///
+	/// E ele NAO conflita com o corte anterior do dono (*"ssj n tem efeitos de raio"*, que tirou os
+	/// tres beats de <see cref="Efeito.Raios"/> desta cena): aquilo e a FAISCA rasteira que corre pelo
+	/// chao e pelo corpo -- `createLightningmisc`, um sprite por tile. Isto e a descarga vinda de cima,
+	/// com clarao de ceu e trovao atrasado. Sao dois canais de desenho diferentes e o dono pediu um
+	/// depois de cortar o outro. Ver <see cref="Efeito.DescargaNoCeu"/>, que e o mesmo desenho num pulso.
+	/// ============================================================================================================
+	/// </summary>
+	public bool OCeuDescarrega => Forma == Catalogo.IdSsj1 && Musica.Length > 0;
+
 	private Beat[] _beats = [];
-	public Beat[] Beats { get => _beats; init => _beats = value; }
+
+	/// <summary>
+	/// O ROTEIRO -- e ele passa pelo funil da cratera antes de virar cena. Ver
+	/// <see cref="ACrateraECoisaDoInstanteDaTroca"/>.
+	/// </summary>
+	public Beat[] Beats { get => _beats; init => _beats = ACrateraECoisaDoInstanteDaTroca(value); }
+
+	/// <summary>Os dois efeitos de chao que NENHUM roteiro decide. Ver o funil logo abaixo.</summary>
+	private const Efeito Chao = Efeito.Cratera | Efeito.Poeira;
+
+	/// <summary>
+	/// A CRATERA CAI NO BEAT DA TROCA. SEMPRE, EM TODA CENA, POR CONSTRUCAO.
+	///
+	/// ============================ A REGRA, EM TRES LINHAS ============================
+	///   * antes do beat que <see cref="Efeito.Assumir"/>: nem cratera, nem poeira;
+	///   * NO beat que assume: cratera + poeira, escritas por este funil e nao pelo roteiro;
+	///   * depois dele: a cratera sai de novo (ela e um instante, nao um estado) e a poeira fica --
+	///     e a mesma poeira baixando, na cauda de assentamento que toda cena tem.
+	///
+	/// ============================ POR QUE UM FUNIL, E NAO DOZE CONSERTOS ============================
+	/// O pedido do dono foi *"deveria ser sempre no final, assim q se transformar cria a cratera"*, e
+	/// doze cenas o violavam. Mas as doze saiam de QUATRO linhas de codigo (dois ramos da
+	/// <see cref="Cinematicas.EspinhaSaiyajin"/>, a <see cref="Cinematicas.Ssj1"/> escrita a mao e a
+	/// <see cref="Cinematicas.Ssj3"/>) -- ou seja, o defeito nunca foi das cenas, foi de a cratera ser
+	/// um campo LIVRE do beat. Consertar as quatro devolveria doze cenas certas e trinta e tres
+	/// oportunidades de errar de novo: e este arquivo ja mostrou tres vezes o que acontece com uma
+	/// regra que mora em comentario (o clarao, o piscar de cabelo, as pedras do Oozaru).
+	///
+	/// Com o funil a pergunta "em que beat vai a cratera?" deixa de existir. Nao ha resposta errada
+	/// possivel porque nao ha mais pergunta -- e uma cena nova nasce certa sem que ninguem leia isto.
+	///
+	/// ============================ E ELE E O UNICO CAMINHO ============================
+	/// Toda cena do jogo se constroi por `new Cinematica { ... Beats = [...] }` -- as escritas a mao,
+	/// as seis fabricas, o <see cref="Cinematicas.Encurtar"/> e ate as cenas sinteticas da bancada.
+	/// Nao ha como montar uma <see cref="Cinematica"/> sem passar por este `init`, e por isso a regra
+	/// nao tem furo por onde uma cena escapar.
+	///
+	/// IDEMPOTENTE de proposito: apagar-e-repor da o mesmo resultado na segunda passada, que e o que
+	/// permite o `Encurtar` reconstruir uma cena ja funilada sem acumular nada.
+	///
+	/// ============================ O QUE ELE NAO FAZ ============================
+	/// NAO mexe em `Em`, NAO cria nem apaga beat, NAO toca em fala, narracao ou som. Os prazos desta
+	/// classe sao os `sleep()` do DM recontados um a um e nao se mexe neles por causa de efeito.
+	///
+	/// SEM BEAT QUE ASSUME (cena defeituosa, que a bancada ja reprova por outro caminho) a cratera
+	/// simplesmente nao entra e a poeira toda sai: uma cena sem instante de troca nao tem onde por o
+	/// chao quebrando, e inventar um lugar esconderia o buraco.
+	/// ==========================================================================================
+	/// </summary>
+	private static Beat[] ACrateraECoisaDoInstanteDaTroca(Beat[] roteiro)
+	{
+		var saida = new Beat[roteiro.Length];
+		bool jaTrocou = false;
+		for (int i = 0; i < roteiro.Length; i++)
+		{
+			Beat b = roteiro[i];
+			Efeito faz = b.Faz;
+
+			// O PRIMEIRO `Assumir`, e nao qualquer um: e a mesma escolha que o `Encurtar` faz pra
+			// achar o `k`. Uma cena com dois deles (que a bancada reprova) poria duas crateras.
+			if (!jaTrocou && faz.HasFlag(Efeito.Assumir)) { jaTrocou = true; faz |= Chao; }
+			else if (!jaTrocou) faz &= ~Chao;             // antes da troca o chao esta inteiro
+			else faz &= ~Efeito.Cratera;                  // depois so assenta o que ja caiu
+
+			saida[i] = b with { Faz = faz };
+		}
+		return saida;
+	}
 }
 
 /// <summary>
@@ -445,13 +670,24 @@ public static class Cinematicas
 	/// virar Super Saiyajin.
 	/// =====================================================================================
 	/// </summary>
-	// O SSJ1 NAO SOLTA RAIO. O dono: "ssj n tem efeitos de raio". O catalogo ja estava certo
+	// ============================ A FAISCA NAO. O RAIO SIM -- E SAO DUAS COISAS ============================
+	// O SSJ1 NAO SOLTA FAISCA. O dono: "ssj n tem efeitos de raio". O catalogo ja estava certo
 	// (`Raios` do `ssj1` e 0); quem os acendia era esta CENA, em tres beats -- efeito escrito em
 	// dois lugares, e o segundo contradizia o primeiro.
 	//
 	// A faisca comeca no SSJ2 e ACABA no SSJ3: numa segunda passada o dono cortou o resto da escada
 	// e das linhas divinas, e sobrou uma unica forma fora dela (`primal_legendary2`). Ver
 	// `FormaDef.Raios`.
+	//
+	// **E MESMO ASSIM O CEU DESCARREGA AQUI, e nao ha contradicao.** O dono, depois: *"o ssj1 na
+	// cinematica da primeira vez, deveria fazer raios cairem durante TODA a cinematica na regiao q o
+	// personagem esta se transformando"*. O que ele cortou foi a eletricidade RASTEIRA que corre pelo
+	// corpo e pelo chao (`Efeito.Raios` / `FormaDef.Raios`); o que ele pediu foi a descarga vinda de
+	// CIMA, com clarao de ceu e trovao. Sao dois desenhos diferentes e dois pedidos diferentes.
+	//
+	// E ela nao esta escrita em beat NENHUM desta lista, de proposito: e o estado
+	// `Cinematica.OCeuDescarrega`, que so vale nesta cena e so na versao cheia. Ver la.
+	// ====================================================================================================
 	public static readonly Cinematica Ssj1 = new()
 	{
 		Forma = "ssj1",
@@ -466,13 +702,14 @@ public static class Cinematicas
 			// UM BEAT, e ele ARMA -- ver `Efeito.PiscaCabelo`. Aqui havia quatro (0,7 / 1,3 / 2,0 / 2,9 s),
 			// um por troca, e era assim que o piscar acabava aos 2,9 s de uma cena de 25,0: o dono viu
 			// exatamente isso (*"e so no inicio da cinematica"*). Os tres beats que sobravam foram
-			// DELETADOS, e o `Poeira` do quarto desceu pra ca -- ele nao tinha nada a ver com o cabelo.
+			// DELETADOS, e o `Poeira` do quarto desceu pra um beat proprio aos 2,9 s -- que morreu
+			// depois, quando a poeira passou a ser da cratera (ver `Efeito.Poeira`): sem ela aquele
+			// instante nao tinha mais nada dentro.
 			//
 			// Daqui ate o `Assumir` (25,0 s na estreia, 10,0 s na encurtada) o penteado alterna sozinho,
 			// na cadencia do DM (`Cinematicas.PiscadaMinima`/`PiscadaMaxima`).
 			// ================================================================================================
 			new(0.7, Efeito.PiscaCabelo),
-			new(2.9, Efeito.Poeira),
 
 			// `sleep(50)` = 5,0 s -- a `Aurabigcombined.dmi` entra (`SSJCinematic.dm:57-60`).
 			new(5.0, Efeito.AuraGrande | Efeito.Tremor, Som: "chargeaura",
@@ -482,28 +719,39 @@ public static class Cinematicas
 			// (ver `Efeito.AnelDeChoque`). AQUI porque este era o unico trecho da cena em que a aura ja
 			// estava acesa e NADA respondia a ela -- o chao tem que comecar a ceder antes de a cena
 			// falar em cratera.
-			new(7.4, Efeito.AnelDeChoque | Efeito.Cascalho),
+			new(7.4, Efeito.AnelDeChoque),
 
 			// O VAZIO DO MEIO E DO DM E NAO DESCUIDO: entre a aura e o `sleep(100)` o original nao
 			// agenda nada NOVO -- o que preenche esses oito segundos sao os `spawn(rand(10,150))` da
 			// abertura (`:29-31`), que espalham raio e poeira ate os 15,0 s. Este beat e a cauda deles.
-			new(10.0, Efeito.Poeira,
-				Narra: "faíscas correm pela terra em volta."),
+			//
+			// SO A NARRACAO, hoje: a poeira que ele tinha foi pra cratera (ver `Efeito.Poeira`). O
+			// instante fica porque ele e o que quebra os 7,5 s entre o anel e o proximo tremor -- e
+			// porque narracao E conteudo de beat.
+			//
+			// A FALA MUDOU PORQUE ELA MENTIA: ela dizia *"faíscas correm pela terra em volta"*, e a
+			// faisca rasteira o dono cortou desta cena (ver o bloco la em cima) -- o beat narrava um
+			// efeito que nenhum desenho fazia mais. Agora ela conta o que a tela mostra de verdade do
+			// primeiro segundo ao ultimo, que e a descarga caindo (`Cinematica.OCeuDescarrega`).
+			new(10.0, Efeito.Nada,
+				Narra: "o céu se parte sobre a região."),
 
 			// SO CASCALHO E TREMOR: o acumulo continua e nao muda de patamar. Um segundo anel aqui
 			// faria os tres tempos da cena (subir, estourar, ficar) virarem um so.
-			new(12.5, Efeito.Cascalho | Efeito.Tremor),
+			new(12.5, Efeito.Tremor),
 
 			// `sleep(100)` = 15,0 s: os dois `Quake()` e os oito feixes de chao (`:65-79`).
 			new(15.0, Efeito.Tremor | Efeito.FeixesNoChao, Som: "powerup"),
 
-			// `spawn(20) createCrater(loc,3)` (`:83`) -- a cratera cai 2,0 s depois dos feixes, e nao
-			// junto com a forma. No DM e aqui tambem que o `move = 1` acontece; ver o `SegundosPreso`.
-			new(17.0, Efeito.Tremor | Efeito.Cratera | Efeito.Poeira),
-
-			// `spawn(130)` (`:62`): a aura grande sai. Daqui ate o fim o DM fica em SILENCIO, e o
-			// silencio e o que faz o ultimo beat parecer o clímax em vez de mais um efeito.
-			new(18.0, Efeito.Poeira),
+			// `spawn(20) createCrater(loc,3)` (`:83`): AQUI o DM abre o chao, 2,0 s depois dos feixes e
+			// oito segundos antes de a forma ficar. A CRATERA NAO ESTA MAIS NESTE BEAT -- ela e do
+			// instante da troca por regra, e o beat guarda o `Quake()` que tambem cai aqui. O porque,
+			// e por que nao foi conserto de cena, esta em `Efeito.Cratera`.
+			//
+			// `spawn(130)` (`:62`) -- a aura grande sai aos 18,0 s -- tinha um beat so pra poeira, e ele
+			// morreu com ela. Daqui ate o fim o DM fica em SILENCIO, e o silencio e o que faz o ultimo
+			// beat parecer o clímax em vez de mais um efeito.
+			new(17.0, Efeito.Tremor),
 
 			// ============================ OS 7,0 s MUDOS ANTES DO CLIMAX ============================
 			// Este era o maior buraco da cena: entre a aura grande sair (18,0 s) e a forma ficar (25,0 s)
@@ -515,8 +763,8 @@ public static class Cinematicas
 			// que anuncia. O `zumbido` e o laco de carga do proprio jogo (`aurapowered.wav`) -- ele enche
 			// o intervalo com SOM em vez de mais um estalo.
 			// ====================================================================================
-			new(20.4, Efeito.PedrasSubindo | Efeito.Tremor),
-			new(22.8, Efeito.AnelDeChoque | Efeito.Cascalho | Efeito.Tremor, Som: "zumbido"),
+			new(20.4, Efeito.Tremor),
+			new(22.8, Efeito.AnelDeChoque | Efeito.Tremor, Som: "zumbido"),
 
 			// O INSTANTE. No DM e quando a proc RETORNA (250 tiques) e o `SSj()` escreve `ssj = 1`.
 			// O CLARAO SO AQUI, e e a regra de um-por-cena (ver `Efeito.ClaraoDeTela`): depois de vinte
@@ -554,7 +802,7 @@ public static class Cinematicas
 				Narra: "o ar fica pesado, e um estalo corre pelo chão."),
 
 			// `spawn(rand(40,60))` (`SSJ2Cinematic.dm:14`): o anel de raios cai entre 3,3 e 5,0 s.
-			new(1.8, Efeito.Raios | Efeito.Poeira),
+			new(1.8, Efeito.Raios),
 
 			// `sleep(50)`.
 			new(5.0, Efeito.AuraGrande | Efeito.Tremor, Som: "chargeaura",
@@ -562,14 +810,14 @@ public static class Cinematicas
 
 			// O ANEL, no mesmo lugar da espinha do SSJ1: logo depois de a aura grande entrar. E o que da
 			// ao vazio de 5 s uma consequencia -- a energia que acabou de se juntar EMPURRA alguma coisa.
-			new(7.2, Efeito.AnelDeChoque | Efeito.Cascalho),
+			new(7.2, Efeito.AnelDeChoque),
 
 			// A cauda dos `spawn(rand(10,150))` da abertura (`:11-13`), que vao ate os 15,0 s.
-			new(10.0, Efeito.Raios | Efeito.Poeira),
+			new(10.0, Efeito.Raios),
 
 			// A ULTIMA SUBIDA antes dos tres tremores colados. Pedra e cascalho e nao anel: o anel ja
 			// gastou o susto la atras, e o que falta aqui e o chao ficando instavel.
-			new(12.0, Efeito.Cascalho | Efeito.PedrasSubindo | Efeito.Tremor),
+			new(12.0, Efeito.Tremor),
 
 			// OS TRES `Quake()` SEGUIDOS (`:26-28`). E o que separa a cena do SSJ2 da do SSJ1 no DM,
 			// e no original os tres caem COLADOS no fim do `sleep(100)` -- o terceiro e o mesmo
@@ -581,8 +829,10 @@ public static class Cinematicas
 					| Efeito.AnelDeChoque | Efeito.ClaraoDeTela, Som: "powerup",
 				Narra: "faíscas percorrem a aura, e ela não se apaga mais."),
 
-			// `spawn(20) createCrater(loc,3)` (`:45`): a cratera vem DEPOIS da forma.
-			new(17.0, Efeito.Cratera | Efeito.Raios | Efeito.Poeira),
+			// A CAUDA. No DM o `spawn(20) createCrater(loc,3)` (`:45`) cai aqui, 2,0 s DEPOIS da forma;
+			// a cratera passou pro beat que assume (ver `Efeito.Cratera`) e o que sobra neste instante
+			// e o assentamento: a faisca e a poeira que o impacto levantou baixando.
+			new(17.0, Efeito.Raios | Efeito.Poeira),
 		],
 	};
 
@@ -653,7 +903,7 @@ public static class Cinematicas
 			// `sleep(50)` -> as falas de QUEM ASSISTE (:44-49): "Has [src] really done it!?", "[src]
 			// must be bluffing". Aqui vira narracao porque a cena do port nao tem elenco de apoio --
 			// o beat existe pelo INSTANTE, que e uma pausa de quatro segundos no meio do discurso.
-			new(19.0, Efeito.Poeira,
+			new(19.0, Efeito.Nada,
 				Narra: "quem está por perto não consegue acreditar no que vê."),
 
 			// "AND THIS..." + *[src] leans inward and pumps their fists next to their sides!!*
@@ -663,10 +913,10 @@ public static class Cinematicas
 				Narra: "se encolhe e fecha os punhos ao lado do corpo!"),
 
 			// "IS TO GO..." -- `sleep(50)`, :56-57.
-			new(28.0, Efeito.Tremor | Efeito.Poeira, Fala: "É PARA IR..."),
+			new(28.0, Efeito.Tremor, Fala: "É PARA IR..."),
 
 			// "EVEN FURTHER BEYOND" / *[src] leans forward!!* -- `sleep(20)`, :58-60.
-			new(30.0, Efeito.Tremor | Efeito.PedrasSubindo,
+			new(30.0, Efeito.Tremor,
 				Fala: "AINDA MAIS ALÉM!",
 				Narra: "se inclina para a frente!"),
 
@@ -678,13 +928,13 @@ public static class Cinematicas
 
 			// `sleep(30)`: a aura sai, a onda de poder, o 1o grito, o tremor em todo mundo na tela e
 			// a chuva de poeira/raio em 24 tiles (:61-72).
-			new(33.0, Efeito.AuraGrande | Efeito.Tremor | Efeito.Raios | Efeito.Poeira,
+			new(33.0, Efeito.AuraGrande | Efeito.Tremor | Efeito.Raios,
 				Som: "powerup",
 				Fala: "AAAAAAAAAAAAAAAAA!!!",
 				Narra: "grita, e uma quantidade inacreditável de energia se solta."),
 
-			new(38.0, Efeito.Tremor | Efeito.Cascalho),                   // `sleep(50)` -> `Quake()`
-			new(43.0, Efeito.Tremor | Efeito.Poeira,                     // `sleep(50)` -> 2o grito
+			new(38.0, Efeito.Tremor),                   // `sleep(50)` -> `Quake()`
+			new(43.0, Efeito.Tremor,                                     // `sleep(50)` -> 2o grito
 				Fala: "AAAAAAAAAAAAAAAAA!!!"),
 
 			// ============================ OS NOVE SILENCIOS, PREENCHIDOS UM A UM ============================
@@ -696,72 +946,90 @@ public static class Cinematicas
 			// Entao cada silencio ganha UM beat no meio dele (o vao continua com ~4 s de folga dos dois
 			// lados) e os nove SOBEM juntos, que e o unico jeito de noventa segundos nao virarem repeticao:
 			//
-			//   40,0  cascalho              -- o chao so range
-			//   48,3  + anel                -- ele passa a empurrar
-			//   56,7  + pedra               -- e passa a se soltar
-			//   66,2  anel + tremor         -- o vao mais longo da cena (10,9 s) e o que mais precisa
-			//   75,8  pedra + tremor
-			//   85,8  anel + zumbido        -- entra SOM continuo; daqui pro fim nao ha mais so estalo
-			//   95,8  DESCARGA no ceu       -- a narracao ja dizia `terremotos por toda parte`
-			//  104,2  tudo junto
-			//  112,5  descarga + explosao   -- o ultimo degrau antes do clarao
+			//   48,0  tremor                -- o chao so estremece
+			//   58,0  anel                  -- o poder passa a empurrar o ar
+			//   68,0  anel + tremor         -- os dois juntos
+			//   79,4  anel + tremor         -- o vao mais longo da cena (10,9 s) e o que mais precisa
+			//   91,0  tremor
+			//  103,0  anel + zumbido        -- entra SOM continuo; daqui pro fim nao ha mais so estalo
+			//  115,0  DESCARGA no ceu       -- a narracao ja dizia `terremotos por toda parte`
+			//  125,0  tudo junto
+			//  135,0  descarga + explosao   -- o ultimo degrau antes do clarao
+			//
+			// ============================ O DEGRAU DE BAIXO MUDOU DE DONO ============================
+			// Esta escada comecava em CASCALHO ("o chao so range"), e o cascalho era a `PoeiraDeEstrago`
+			// -- o efeito que o dono mandou tirar (ver o bit 8192 aposentado). O fundo que ele dava nao
+			// se perdeu: ele virou a PEDRA, que agora nao e mais um beat e sim o estado do chao pela
+			// cena inteira (ver `Cinematica.OChaoSeSolta`). E melhor assim -- o fundo continuo passou a
+			// ser fundo de verdade, em vez de nove pontinhos espalhados por noventa segundos.
+			//
+			// Os dois instantes que ficariam VAZIOS com o cascalho fora (48,0 e 68,0) receberam o que o
+			// DM tem neles: `Quake()`. `SSJ3Cinematic.dm:74-76` e `:87-93` -- os quakes de planeta
+			// inteiro que separam o segundo grito do terceiro. Nao ha beat inventado aqui, e nenhum
+			// prazo mudou.
 			// ============================================================================================
-			new(48.0, Efeito.Cascalho),
+			new(48.0, Efeito.Tremor),                                    // `sleep(50)` -> `Quake()`
 
 			// `sleep(100)`: tremor no PLANETA inteiro e a troca pra `Aurabigcombined.dmi` (:78-89).
-			new(53.0, Efeito.AuraGrande | Efeito.Tremor | Efeito.PedrasSubindo,
+			new(53.0, Efeito.AuraGrande | Efeito.Tremor,
 				Fala: "AAAAAAAAAAAAAAAAA!!!"),
 
-			new(58.0, Efeito.Cascalho | Efeito.AnelDeChoque),
+			new(58.0, Efeito.AnelDeChoque),
 
 			new(63.0, Efeito.Tremor),                                    // `sleep(100)` -> `Quake()`
 
-			new(68.0, Efeito.Cascalho | Efeito.PedrasSubindo),
+			// O DEGRAU DE CIMA DO ANEL DE 58,0 -- ver a escada dos nove silencios la em cima. Era
+			// cascalho; e o `Quake()` de `:87-93` mais o anel, que e o mesmo passo que o 79,4 repete.
+			new(68.0, Efeito.AnelDeChoque | Efeito.Tremor),
 
 			// `sleep(100)`: *[src]'s voice grows very hoarse!* + `SSj2GroundGrind()` (:94-99).
-			new(73.0, Efeito.Tremor | Efeito.Cratera,
+			//
+			// AQUI HAVIA UMA CRATERA, sessenta e sete segundos antes de a forma ficar -- a mais errada
+			// das doze que o dono pegou. O `SSj2GroundGrind()` do DM e o RANGER do chao (pedra subindo),
+			// e nao o buraco; o buraco e do instante da troca. Ver `Efeito.Cratera`.
+			new(73.0, Efeito.Tremor,
 				Fala: "AAAAAAAAAAAAAAAAAAAA!!!!",
 				Narra: "a voz fica muito rouca!"),
 
 			// O VAO MAIS LONGO (10,9 s). Ele leva o beat mais cheio dos primeiros quatro justamente por
 			// ser o maior -- e o unico em que um beat magro deixaria o buraco de pe.
-			new(79.4, Efeito.AnelDeChoque | Efeito.Cascalho | Efeito.Tremor),
+			new(79.4, Efeito.AnelDeChoque | Efeito.Tremor),
 
 			// `sleep(130)` -- o maior silencio da cena. Troca pra `ss3transformaurafinal.dmi` (:104-112).
-			new(86.0, Efeito.AuraGrande | Efeito.Tremor | Efeito.PedrasSubindo,
+			new(86.0, Efeito.AuraGrande | Efeito.Tremor,
 				Fala: "AAAAAAAAAAAAAAAAAAHHHH!!!!",
 				Narra: "está sacudindo o planeta inteiro!"),
 
-			new(91.0, Efeito.Cascalho | Efeito.PedrasSubindo | Efeito.Tremor),
+			new(91.0, Efeito.Tremor),
 
 			new(96.0, Efeito.Tremor),                                    // `sleep(100)`
 
 			// O SOM ENTRA AQUI. Daqui pro fim a cena nao volta a ficar muda -- e o que separa a ultima
 			// quarta parte das tres anteriores sem precisar de mais um efeito na tela.
-			new(103.0, Efeito.AnelDeChoque | Efeito.Cascalho | Efeito.Tremor, Som: "zumbido"),
+			new(103.0, Efeito.AnelDeChoque | Efeito.Tremor, Som: "zumbido"),
 
 			// `sleep(140)` -- o outro silencio longo (:120-125).
-			new(110.0, Efeito.Tremor | Efeito.Poeira | Efeito.Raios,
+			new(110.0, Efeito.Tremor | Efeito.Raios,
 				Fala: "AAAAAAAAAAAAAAAAAAAAHHHH!!!!",
 				Narra: "está causando terremotos por toda parte!"),
 
 			// A PRIMEIRA DESCARGA, e ela vem logo DEPOIS da fala que a autoriza: o beat de 91,7 s narra
 			// *esta causando terremotos por toda parte*. O ceu reagindo e a unica escalada que sobrou --
 			// tremor, pedra e anel ja foram usados tres vezes cada nesta cena.
-			new(115.0, Efeito.DescargaNoCeu | Efeito.Cascalho),
+			new(115.0, Efeito.DescargaNoCeu),
 
 			new(120.0, Efeito.Tremor),                                   // `sleep(100)`
 
-			new(125.0, Efeito.AnelDeChoque | Efeito.Cascalho | Efeito.PedrasSubindo | Efeito.Tremor),
+			new(125.0, Efeito.AnelDeChoque | Efeito.Tremor),
 
 			// `sleep(100)`: *The ocean itself is curling away from [src]'s immense power!!!* (:131-135).
-			new(130.0, Efeito.Tremor | Efeito.PedrasSubindo,
+			new(130.0, Efeito.Tremor,
 				Fala: "AAAAAAAAAAAAAAAAAAAAAAHHHH!!!!",
 				Narra: "o próprio oceano se afasta deste poder!"),
 
 			// O ULTIMO DEGRAU ANTES DO CLIMAX. Segunda descarga + `explosao`: e o unico beat da cena
 			// que empilha ceu e estouro, e ele existe pra o clarao de 140 s nao chegar do nada.
-			new(135.0, Efeito.DescargaNoCeu | Efeito.Cascalho | Efeito.Tremor, Som: "explosao"),
+			new(135.0, Efeito.DescargaNoCeu | Efeito.Tremor, Som: "explosao"),
 
 			// `sleep(100)`: o ultimo tremor, o overlay sai, a proc RETORNA -- e e so entao que o
 			// `SSj3()` escreve `ssj = 3` (`supersaiyanbuff.dm:519`).
@@ -769,7 +1037,7 @@ public static class Cinematicas
 			// O CLARAO E A DESCARGA JUNTOS, e e a unica vez na cena inteira: dois minutos de acumulo
 			// precisam terminar em alguma coisa que nao aconteceu antes. Um clarao por cena -- ver
 			// `Efeito.ClaraoDeTela`.
-			new(140.0, Efeito.Assumir | Efeito.Cratera | Efeito.Tremor | Efeito.FeixesNoChao
+			new(140.0, Efeito.Assumir | Efeito.Tremor | Efeito.FeixesNoChao
 					 | Efeito.AnelDeChoque | Efeito.ClaraoDeTela | Efeito.DescargaNoCeu,
 				Narra: "o cabelo cresce até a cintura e as sobrancelhas somem."),
 
@@ -848,26 +1116,29 @@ public static class Cinematicas
 			new(2.0, Efeito.AnelDeChoque),
 
 			// A SUBIDA: os `Quake()` dos ciclos 4, 8 e 12 (`if(cyc % 4 == 0)`).
-			new(4.0, Efeito.Tremor | Efeito.Poeira),
-			new(8.0, Efeito.Tremor | Efeito.Poeira),
+			new(4.0, Efeito.Tremor),
+			new(8.0, Efeito.Tremor),
 
-			new(10.0, Efeito.Cascalho),
+			// AQUI HAVIA UM BEAT DE CASCALHO AOS 10,0 s, e ele saiu inteiro: era a unica coisa nele, e
+			// o cascalho foi cortado pelo dono (ver o bit 8192 aposentado). O vao que ele deixa vai de
+			// 8,0 a 12,0 s -- quatro segundos, bem dentro do limite de 7,2 da bancada --, e ele nao e
+			// tela parada: a pedra do chao corre por baixo da cena inteira agora.
 
 			// SEM FAISCA, e a correcao e a mesma do `ssj4`: `ui_sign` tem `Raios = 0` no catalogo
 			// -- o Ultra Instinto -Sign- nao estala, ele silencia. Ver `Faisca`, que passou a
 			// decidir isso pelo catalogo nas cenas novas; esta e escrita a mao e foi acertada junto.
-			new(12.0, Efeito.AuraGrande | Efeito.Poeira | Efeito.Tremor | Efeito.FeixesNoChao,
+			new(12.0, Efeito.AuraGrande | Efeito.Tremor | Efeito.FeixesNoChao,
 				Narra: "uma coluna de luz azul-prateada engole tudo; o ar dobra os joelhos de quem assiste."),
 
 			// O SURTO: os `Quake()` dos ciclos 3, 6 e 9 (`if(cyc % 3 == 0)`).
 			new(15.0, Efeito.Tremor),
-			new(18.0, Efeito.Tremor | Efeito.Poeira),
+			new(18.0, Efeito.Tremor),
 			new(21.0, Efeito.Tremor),
 
 			// O CLARAO E O ANEL, E NADA ALEM. O DM fecha esta cena com *... e entao, silencio* -- entao o
 			// instante da forma nao pode ganhar descarga nem cascalho. Uma luz e um anel de ar sao
 			// exatamente o que se pode acrescentar sem contradizer a cena.
-			new(22.0, Efeito.Assumir | Efeito.Cratera | Efeito.Tremor
+			new(22.0, Efeito.Assumir | Efeito.Tremor
 					| Efeito.AnelDeChoque | Efeito.ClaraoDeTela,
 				Narra: "os olhos prateiam. o corpo passa a se mover sozinho."),
 
@@ -892,17 +1163,17 @@ public static class Cinematicas
 			// SEM FAISCA: o `ui_perfected` foi a zero no corte do dono ("raiozinhos somente o lssj 2
 			// do primal legendary"). Esta cena e escrita a mao e por isso nao segue o `Faisca`.
 			new(2.0, Efeito.AnelDeChoque),
-			new(4.0, Efeito.Poeira),
-			new(8.0, Efeito.Tremor | Efeito.Poeira),
+			// Havia um beat so de poeira aos 4,0 s; ele morreu com ela (ver `Efeito.Poeira`).
+			new(8.0, Efeito.Tremor),
 			// O SEGUNDO ANEL vem com cascalho: o Perfected ja e o instinto COMPLETO, e a contencao do
 			// -Sign- (onde o anel sai sozinho) e o que ele deixou pra tras.
-			new(10.0, Efeito.AnelDeChoque | Efeito.Cascalho),
+			new(10.0, Efeito.AnelDeChoque),
 
-			new(12.0, Efeito.AuraGrande | Efeito.Tremor | Efeito.PedrasSubindo | Efeito.FeixesNoChao),
+			new(12.0, Efeito.AuraGrande | Efeito.Tremor | Efeito.FeixesNoChao),
 			new(15.0, Efeito.Tremor),
-			new(18.0, Efeito.Tremor | Efeito.PedrasSubindo),
+			new(18.0, Efeito.Tremor),
 			new(21.0, Efeito.Tremor),
-			new(22.0, Efeito.Assumir | Efeito.Cratera | Efeito.Tremor
+			new(22.0, Efeito.Assumir | Efeito.Tremor
 					| Efeito.AnelDeChoque | Efeito.ClaraoDeTela,
 				Narra: "o cabelo prateia. o instinto está completo."),
 			new(24.0, Efeito.Poeira),
@@ -930,17 +1201,17 @@ public static class Cinematicas
 		SegundosPreso = 6.0,
 		Beats =
 		[
-			new(0.0, Efeito.Tremor | Efeito.Poeira, Som: "powerup",
+			new(0.0, Efeito.Tremor, Som: "powerup",
 				Narra: "a aura da Destruição se acende, roxa e pesada."),
 			// DOIS BEATS numa cena de 6 s -- ela tinha TRES no total e vaos de 3 s entre eles, que numa
 			// forma de 72x le como o efeito nao ter carregado. Esta cena e invencao (o DM diz que a
 			// Destroyer nao tem cinematica), entao encher nao contradiz original nenhum.
-			new(1.5, Efeito.AnelDeChoque | Efeito.Cascalho),
+			new(1.5, Efeito.AnelDeChoque),
 
 			// SEM FAISCA, pelo mesmo corte do `ui_perfected` -- o `destroyer` tambem foi a zero.
 			new(3.0, Efeito.AuraGrande | Efeito.Tremor),
-			new(4.5, Efeito.Cascalho | Efeito.PedrasSubindo | Efeito.Tremor),
-			new(6.0, Efeito.Assumir | Efeito.Cratera | Efeito.Tremor
+			new(4.5, Efeito.Tremor),
+			new(6.0, Efeito.Assumir | Efeito.Tremor
 					| Efeito.AnelDeChoque | Efeito.ClaraoDeTela),
 
 			new(7.5, Efeito.Poeira),
@@ -967,26 +1238,27 @@ public static class Cinematicas
 			// SEM FAISCA, pelo mesmo corte -- o `ultra_ego` tambem foi a zero.
 			// QUATRO BEATS, e o motivo esta escrito no proprio DM: *o EGO nao conhece silencio*. Onde o
 			// Ultra Instinto ganhou dois beats magros, este ganha quatro que se empilham -- e a mesma
-			// proc, com 220 tiques iguais, contando o oposto.
-			new(2.0, Efeito.Cascalho),
-			new(4.0, Efeito.Poeira | Efeito.Tremor),
-			new(6.0, Efeito.AnelDeChoque | Efeito.Cascalho),
-			new(8.0, Efeito.Poeira | Efeito.Tremor),
-			new(10.0, Efeito.Cascalho | Efeito.PedrasSubindo | Efeito.Tremor),
+			// proc, com 220 tiques iguais, contando o oposto. Hoje sao TRES: o primeiro deles era
+			// cascalho sozinho e saiu com o efeito (bit 8192, cortado pelo dono). O empilhamento
+			// sobrevive porque ele nunca foi a CONTAGEM, foi a subida -- tremor, anel, tremor, tremor.
+			new(4.0, Efeito.Tremor),
+			new(6.0, Efeito.AnelDeChoque),
+			new(8.0, Efeito.Tremor),
+			new(10.0, Efeito.Tremor),
 
-			new(12.0, Efeito.AuraGrande | Efeito.PedrasSubindo | Efeito.Tremor | Efeito.FeixesNoChao,
+			new(12.0, Efeito.AuraGrande | Efeito.Tremor | Efeito.FeixesNoChao,
 				Narra: "uma coluna de luz púrpura irrompe: a própria destruição tomando forma."),
 			new(15.0, Efeito.Tremor),
 			// O ZUMBIDO no meio do surto: e o que impede os `Quake()` dos ciclos 3, 6 e 9 de soarem
 			// iguais entre si. Som continuo onde ha tres solavancos identicos.
-			new(16.6, Efeito.AnelDeChoque | Efeito.Cascalho | Efeito.Tremor, Som: "zumbido"),
-			new(18.0, Efeito.Tremor | Efeito.PedrasSubindo),
+			new(16.6, Efeito.AnelDeChoque | Efeito.Tremor, Som: "zumbido"),
+			new(18.0, Efeito.Tremor),
 			new(21.0, Efeito.Tremor),
 
 			// A DESCARGA AQUI E O CONTRAPONTO DO UI: as duas cenas sao a MESMA proc no DM (220 tiques,
 			// 12 + 10 ciclos), e a unica coisa que as separa e o que acontece no fim. La, silencio; aqui,
 			// o ceu partindo junto.
-			new(22.0, Efeito.Assumir | Efeito.Cratera | Efeito.Tremor
+			new(22.0, Efeito.Assumir | Efeito.Tremor
 					| Efeito.AnelDeChoque | Efeito.ClaraoDeTela | Efeito.DescargaNoCeu, Som: "powerup",
 
 				Fala: "HAAAAAAAAAH!!!",
@@ -1048,24 +1320,28 @@ public static class Cinematicas
 			new(0.0, Efeito.AuraBase | Efeito.Tremor, Som: "chargeaura",
 				Narra: "a lua prende o seu olhar, e alguma coisa responde por dentro."),
 
-			new(1.6, Efeito.Poeira,
+			new(1.6, Efeito.Nada,
 				Narra: "o corpo dói e não para de doer."),
 
-			// ============================ AQUI NAO SOBE PEDRA -- E O DONO FOI EXPLICITO ============================
+			// ============================ NESTA CENA NAO SOBE PEDRA -- E O DONO FOI EXPLICITO ============================
 			// *"oozaru n tem esse efeito de rocks nem de particulas, o resto da cinematica do oozaru
-			// pode deixar"*. Este beat tinha `Efeito.PedrasSubindo` e ninguem tinha percebido: pedra a
-			// mais nao da erro, nao trava ninguem e ainda LE COMO EFEITO -- quem visse acharia que era
-			// de proposito. Quem achou foi a bancada (`--diagforma`, `AFeraForaDosDegraus`), pelo
-			// caminho de sempre: a regra estava escrita em comentario (ver `Para`) e nao em checagem.
+			// pode deixar"*. Este beat teve `Efeito.PedrasSubindo` por meses e ninguem tinha percebido:
+			// pedra a mais nao da erro, nao trava ninguem e ainda LE COMO EFEITO -- quem visse acharia
+			// que era de proposito. Quem achou foi a bancada (`--diagforma`, `AFeraForaDosDegraus`),
+			// pelo caminho de sempre: a regra estava escrita em comentario e nao em checagem.
 			//
-			// O tremor e o `powerup` ficam. O que o dono cortou foi o efeito das pedras, e nao o beat --
-			// tirar o instante inteiro deixaria um silencio de 1,4 s entre a poeira e o rugido.
-			// ====================================================================================================
+			// HOJE A REGRA NAO MORA MAIS NESTE BEAT, e por isso este comentario e historico: a pedra
+			// deixou de ser um bit de beat e virou o estado <see cref="Cinematica.OChaoSeSolta"/>,
+			// derivado do catalogo (`Catalogo.NaoSeSobePraEla` -- a linha do Oozaru inteira). Escrever
+			// ou nao escrever alguma coisa aqui nao levanta nem abaixa uma pedra sequer.
+			//
+			// O tremor e o `powerup` ficam.
+			// ==========================================================================================================
 			new(3.0, Efeito.Tremor, Som: "powerup"),
 
 			// O INSTANTE. `Assumir` troca o corpo pelo do macaco E APAGA a aura base -- o dono:
 			// "ele vai virar o oozaru e nesse momento a aura desativa".
-			new(4.0, Efeito.Assumir | Efeito.Cratera | Efeito.Tremor, Som: "roar",
+			new(4.0, Efeito.Assumir | Efeito.Tremor, Som: "roar",
 				Narra: "a pele estica, o corpo cresce, e você deixa de caber em si mesmo."),
 
 			new(5.2, Efeito.Poeira),
@@ -1164,7 +1440,7 @@ public static class Cinematicas
 		// espinha do SSJ1 e a do Grade abrem com pedra rolando e poeira.
 		var b = new List<Beat>
 		{
-			new(0.0, Efeito.Tremor | Efeito.Poeira | (largada == Largada.TresTremores ? f : Efeito.Nada),
+			new(0.0, Efeito.Tremor | (largada == Largada.TresTremores ? f : Efeito.Nada),
 				Som: "rockmoving", Narra: abre),
 		};
 
@@ -1173,11 +1449,14 @@ public static class Cinematicas
 			// UM BEAT ARMA O PISCAR e ele dura ate o `Assumir` -- ver `Efeito.PiscaCabelo` e o mesmo
 			// bloco na cena escrita a mao do <see cref="Ssj1"/>. Eram quatro beats, um por troca.
 			b.Add(new(0.7, Efeito.PiscaCabelo));
-			b.Add(new(2.9, Efeito.Poeira));
 		}
-		else
+		// A FAISCA DE LARGADA e so do SSJ2 (`SSJ2Cinematic.dm:14`), e por isso este beat e CONDICIONAL
+		// hoje: ele tambem carregava poeira, e a poeira virou coisa da cratera (ver `Efeito.Poeira`).
+		// Sem os dois ele seria um instante em que a cena para pra nada acontecer -- que e o beat vazio
+		// que a bancada reprova, e com razao.
+		else if (f != Efeito.Nada)
 		{
-			b.Add(new(1.8, Efeito.Poeira | f));
+			b.Add(new(1.8, f));
 		}
 
 		b.Add(new(5.0, Efeito.AuraGrande | Efeito.Tremor, Som: "chargeaura"));
@@ -1191,15 +1470,20 @@ public static class Cinematicas
 		// numeros novos -- por isso os dois relogios recebem contas diferentes em vez da mesma lista
 		// esticada. Escrever "7,4" e "12,5" pras duas versoes poria dois beats colados no fim da curta.
 		// =====================================================================================================
-		b.Add(new(doSsj1 ? 7.4 : 7.2, Efeito.AnelDeChoque | Efeito.Cascalho));
+		b.Add(new(doSsj1 ? 7.4 : 7.2, Efeito.AnelDeChoque));
 
 		// O VAZIO DO MEIO E DO DM: entre o `sleep(50)` e o `sleep(100)` nada NOVO e agendado -- quem
 		// preenche sao os `spawn(rand(10,150))` da abertura, que espalham raio e poeira ate os 15,0 s.
-		b.Add(new(10.0, Efeito.Poeira | (largada == Largada.Direta ? Efeito.PedrasSubindo : Efeito.Nada) | f));
+		//
+		// CONDICIONAL pelo mesmo motivo do beat de 1,8 s: tirada a poeira, o que sobra aqui e a faisca
+		// de quem a tem. Nas outras o instante nao tem mais conteudo, e beat vazio nao existe neste
+		// arquivo. (A PEDRA saiu daqui junto com o bit 256: ela deixou de ser um instante da largada
+		// Direta e passou a correr por baixo das duas, do primeiro segundo ao ultimo.)
+		if (f != Efeito.Nada) b.Add(new(10.0, f));
 
 		// A ULTIMA SUBIDA antes do estouro. Na versao curta ela cai a 12,0 s, colada nos tres `Quake()`
 		// do SSJ2 (14,3 / 14,6) -- e e ai que ela serve: o chao ja esta instavel quando eles batem.
-		b.Add(new(doSsj1 ? 12.5 : 12.0, Efeito.Cascalho | Efeito.PedrasSubindo | Efeito.Tremor));
+		b.Add(new(doSsj1 ? 12.5 : 12.0, Efeito.Tremor));
 
 		if (largada == Largada.TresTremores)
 		{
@@ -1214,15 +1498,19 @@ public static class Cinematicas
 			// Os `Quake()` e os oito feixes caem aos 15,0 s -- mas a cena continua por mais dez
 			// segundos, e e nesse silencio que a forma finalmente fica.
 			b.Add(new(15.0, Efeito.Tremor | Efeito.FeixesNoChao, Som: "powerup"));
-			b.Add(new(17.0, Efeito.Tremor | Efeito.Cratera | Efeito.Poeira)); // `spawn(20) createCrater`
-			b.Add(new(18.0, Efeito.Poeira));                                  // `spawn(130)`: a aura sai
+
+			// O `spawn(20) createCrater` do DM caia AQUI, oito segundos antes de a forma ficar -- este
+			// era um dos quatro lugares que produziam as doze cenas erradas que o dono pegou. A cratera
+			// e do instante da troca por regra agora (ver `Efeito.Cratera`); o beat guarda o `Quake()`.
+			// O de 18,0 s (`spawn(130)`, a aura grande saindo) era so poeira e morreu com ela.
+			b.Add(new(17.0, Efeito.Tremor));
 
 			// OS 7,0 s MUDOS. Este vao so existe no molde do SSJ1 (o `sleep(100)` a mais do
 			// `SSJCinematic.dm:101`) e era o maior buraco da fabrica inteira: a aura ja saiu, a cratera ja
 			// abriu, e a cena passa sete segundos sem nada ate a forma ficar. Dois beats que SOBEM --
 			// o chao se solta, depois estoura -- e o `zumbido` (`aurapowered.wav`) pra o intervalo ter som.
-			b.Add(new(20.4, Efeito.PedrasSubindo | Efeito.Tremor));
-			b.Add(new(22.8, Efeito.AnelDeChoque | Efeito.Cascalho | Efeito.Tremor, Som: "zumbido"));
+			b.Add(new(20.4, Efeito.Tremor));
+			b.Add(new(22.8, Efeito.AnelDeChoque | Efeito.Tremor, Som: "zumbido"));
 
 			b.Add(new(assume, Efeito.Assumir | Efeito.Tremor
 							| Efeito.AnelDeChoque | Efeito.ClaraoDeTela, Narra: vira));
@@ -1233,7 +1521,11 @@ public static class Cinematicas
 			b.Add(new(assume, Efeito.Assumir | Efeito.Tremor | Efeito.FeixesNoChao
 							| Efeito.AnelDeChoque | Efeito.ClaraoDeTela,
 					  Som: "powerup", Narra: vira));
-			b.Add(new(17.0, Efeito.Cratera | Efeito.Poeira | f));             // `spawn(20) createCrater`
+
+			// A CAUDA, e ela e o OUTRO dos quatro lugares errados: aqui a cratera caia DOIS SEGUNDOS
+			// DEPOIS da forma (o `spawn(20) createCrater` do `SSJ2Cinematic.dm:45`, que no DM segue o
+			// `move = 1`). Ficou o assentamento -- a poeira dela baixando, e a faisca de quem a tem.
+			b.Add(new(17.0, Efeito.Poeira | f));
 		}
 
 		return new Cinematica { Forma = forma, Musica = musica, SegundosPreso = assume, Beats = [.. b] };
@@ -1268,12 +1560,12 @@ public static class Cinematicas
 			SegundosPreso = 28.0,
 			Beats =
 			[
-				new(0.0, Efeito.Tremor | Efeito.Poeira, Som: "rockmoving", Narra: abre),
+				new(0.0, Efeito.Tremor, Som: "rockmoving", Narra: abre),
 
 				// A SUBIDA LENTA: pedra solta se rasgando do chao e subindo devagar. O DM narra
 				// isso em `lssj_transform_buildup()` -- "loose rocks tear free and drift slowly
 				// upward" -- e e a assinatura da linha.
-				new(4.0, Efeito.Tremor | Efeito.PedrasSubindo),
+				new(4.0, Efeito.Tremor),
 
 				// ============================ CINCO BEATS, E A SUBIDA E O ARGUMENTO ============================
 				// Esta e a segunda cena mais longa do jogo (26 s) e o DM a descreve como uma SUBIDA LENTA --
@@ -1281,13 +1573,15 @@ public static class Cinematicas
 				// estouro. Com nove beats, "lenta" virava "parada": vaos de 3,3 s em que so o que mudava era
 				// qual dos tres efeitos de sempre repetia.
 				//
-				// Os cinco novos formam a rampa que o texto promete: cascalho -> anel -> tremor -> o ceu.
+				// Os novos formam a rampa que o texto promete: cascalho -> anel -> tremor -> o ceu.
 				// ==========================================================================================
-				new(6.0, Efeito.AnelDeChoque | Efeito.Cascalho),
-				new(8.0, Efeito.Poeira | f),
-				new(10.0, Efeito.Cascalho | Efeito.Tremor),
-				new(12.0, Efeito.Tremor | Efeito.PedrasSubindo | f),
-				new(14.0, Efeito.AnelDeChoque | Efeito.Cascalho | Efeito.Tremor),
+				new(6.0, Efeito.AnelDeChoque),
+				// O beat de 8,0 s era poeira + faisca; sem a poeira (ver `Efeito.Poeira`) sobrava a
+				// faisca, que so o `primal_legendary2` tem -- e sem ela um instante vazio. Ele desceu
+				// pro proprio 10,0 s, que ja estava aqui.
+				new(10.0, Efeito.Tremor | f),
+				new(12.0, Efeito.Tremor | f),
+				new(14.0, Efeito.AnelDeChoque | Efeito.Tremor),
 
 				// O SURTO. `*The ground erupts as [src]'s power tears the air apart!*` -- esta
 				// narracao do meio e da PROPRIA proc compartilhada, e por isso e a mesma nas
@@ -1295,19 +1589,19 @@ public static class Cinematicas
 				new(16.0, Efeito.AuraGrande | Efeito.Tremor | Efeito.FeixesNoChao, Som: "chargeaura",
 					Narra: "o chão se abre, e o poder rasga o ar."),
 
-				new(19.0, Efeito.Tremor | Efeito.Poeira),
+				new(19.0, Efeito.Tremor),
 
 				// A DESCARGA NO MEIO DO SURTO. Esta e a unica fabrica em que o ceu entra ANTES do climax, e o
 				// motivo e o que a cena narra: *o chao se abre, e o poder rasga o ar*. Rasgar o ar e o unico
 				// verbo do arquivo que pede uma descarga, e ele ja estava escrito -- faltava a tela concordar.
-				new(20.5, Efeito.Cascalho | Efeito.DescargaNoCeu),
+				new(20.5, Efeito.DescargaNoCeu),
 
-				new(22.0, Efeito.Tremor | Efeito.PedrasSubindo | f),
-				new(25.0, Efeito.Tremor | Efeito.Poeira | f),
+				new(22.0, Efeito.Tremor | f),
+				new(25.0, Efeito.Tremor | f),
 
 				// O ULTIMO DEGRAU: som continuo colado no grito, pra o climax nao ser o primeiro instante
 				// alto da cena.
-				new(26.4, Efeito.AnelDeChoque | Efeito.Cascalho | Efeito.Tremor, Som: "zumbido"),
+				new(26.4, Efeito.AnelDeChoque | Efeito.Tremor, Som: "zumbido"),
 
 				// O BANHO DE COR ENTRA AQUI, e ele e do `LSSj()` (`lssjbuff.dm:439`):
 				// `animate(src, time=7, color=rgb(46,245,72))` no MESMO instante em que `lssj = 3` e o
@@ -1321,7 +1615,7 @@ public static class Cinematicas
 				// quanto a narracao *"o chao se abre, e o poder rasga o ar"* que ja esta no beat de
 				// 16,0 s -- e a cor sai da forma (`Efeito.BanhoDeCor`), entao o Wrathful se lava no
 				// verde dele e o C-Type no dele.
-				new(28.0, Efeito.Assumir | Efeito.Cratera | Efeito.Tremor | Efeito.PedrasSubindo
+				new(28.0, Efeito.Assumir | Efeito.Tremor
 						| Efeito.AnelDeChoque | Efeito.ClaraoDeTela | Efeito.DescargaNoCeu
 						| Efeito.BanhoDeCor,
 					Som: "powerup", Fala: grita, Narra: vira),
@@ -1341,12 +1635,21 @@ public static class Cinematicas
 	/// alguem sendo escolhido. Poe-se musica aqui e ela vira comemoracao.
 	/// ==================================================================================================
 	///
-	/// ============================ E O CHAO NAO RACHA ============================
-	/// Unica cena do jogo sem <see cref="Efeito.Cratera"/>, e tambem e do DM: o
-	/// `INITIALIZEGODPROTOCOL` so faz `createShockwavemisc` e `createDustmisc` -- nenhum
-	/// `createCrater`. Faz sentido no que ela mostra: o corpo SOBE (*"[src] rises into the
-	/// air!!"*). Nao ha impacto porque ninguem esta pisando em nada.
-	/// ========================================================================
+	/// ============================ E O CHAO RACHA, SIM -- MAS SO NO FIM ============================
+	/// Esta era a UNICA cena sem cratera do jogo, e era fiel: o `INITIALIZEGODPROTOCOL` so faz
+	/// `createShockwavemisc` e `createDustmisc`, nenhum `createCrater`, e a cena narra o corpo
+	/// SUBINDO (*"[src] rises into the air!!"*) -- ninguem esta pisando em nada.
+	///
+	/// A REGRA DO DONO PASSOU POR CIMA, e de proposito: *"assim q se transformar cria a cratera"* nao
+	/// abre excecao, e uma lista de cenas isentas seria exatamente a coisa que este funil existe pra
+	/// nao ter (ver <see cref="Cinematica.Beats"/>). Sao TRES cenas afetadas -- `ssg`, `rose_ssg` e
+	/// `mistico` --, e o que elas ganham e um buraco no instante em que o corpo volta a descer, que e
+	/// o que o `Assumir` desta cena e. Se o dono achar que contradiz o ritual, a correcao e dele e e
+	/// de uma linha; o que nao volta e a cratera ser campo livre do beat.
+	///
+	/// O CASCALHO CONTINUA FORA -- ver o beat de 3,5 s. Aquela decisao e sobre o MEIO da cena (chao se
+	/// quebrando enquanto o corpo flutua) e nao sobre o instante da troca, e ninguem a revogou.
+	/// ==========================================================================================
 	///
 	/// Relogio do DM: poeira e raio em volta + `Quake()`, `sleep(20)` = 2,0 s pro brilho vermelho,
 	/// `sleep(30)` = 5,0 s pros tons se juntarem, `sleep(40)` = 9,0 s pro corpo se erguer, quatro
@@ -1362,14 +1665,13 @@ public static class Cinematicas
 			SegundosPreso = 14.5,
 			Beats =
 			[
-				new(0.0, Efeito.Poeira | Efeito.Tremor | f, Narra: abre),
-				new(2.0, Efeito.Poeira),
+				new(0.0, Efeito.Tremor | f, Narra: abre),
+				// O beat de 2,0 s era so poeira, e morreu com ela (ver `Efeito.Poeira`).
 
 				// ============================ AQUI SO ENTRA O ANEL -- E NADA DE CASCALHO ============================
-				// O `INITIALIZEGODPROTOCOL` e a UNICA cena do jogo sem cratera, e o comentario acima ja diz por
-				// que: o corpo SOBE (*"[src] rises into the air!!"*), ninguem esta pisando em nada. Cascalho
-				// voando aqui contradiria a propria cena -- e seria o tipo de efeito a mais que ninguem
-				// estranharia, porque efeito a mais parece efeito.
+				// O corpo SOBE nesta cena (*"[src] rises into the air!!"*), ninguem esta pisando em nada no meio
+				// dela. Cascalho voando aqui contradiria a propria cena -- e seria o tipo de efeito a mais que
+				// ninguem estranharia, porque efeito a mais parece efeito.
 				//
 				// O anel, ao contrario, e literal: `GodRitual.dm:62-69` solta QUATRO `createShockwavemisc(loc,1)`
 				// separados por `sleep(10)`. Tres deles ja viraram os tremores de 9,0 / 10,0 / 11,0 s; estes dois
@@ -1377,14 +1679,14 @@ public static class Cinematicas
 				// ==============================================================================================
 				new(3.5, Efeito.AnelDeChoque),
 				new(5.0, Efeito.AuraGrande, Narra: sobe),
-				new(7.2, Efeito.AnelDeChoque | Efeito.Poeira),
+				new(7.2, Efeito.AnelDeChoque),
 
 				// AS QUATRO ONDAS de `createShockwavemisc(loc,1)` separadas por `sleep(10)`. O
 				// `Efeito.Onda` esta aposentado (ver o enum), entao quem as conta e o tremor --
 				// que e o que elas faziam de util num corpo de 32 px.
-				new(9.0, Efeito.Tremor | Efeito.Poeira),
+				new(9.0, Efeito.Tremor),
 				new(10.0, Efeito.Tremor),
-				new(11.0, Efeito.Tremor | Efeito.Poeira),
+				new(11.0, Efeito.Tremor),
 
 				// ============================ O `godhue` DOS 13,0 s, QUE FALTAVA INTEIRO ============================
 				// `GodRitual.dm:71` -> `updateOverlay(/obj/overlay/godhue)` (`:130-146`): uma chama de corpo
@@ -1405,13 +1707,13 @@ public static class Cinematicas
 				// mesmo `animate` morto do `LSSj()` (ver `Efeito.BanhoDeCor`), e a mesma decisao: porta-se
 				// a intencao. Ou seja, os dois gestos do original apontam pro laranja-vermelho da forma.
 				// =================================================================================================
-				new(13.0, Efeito.AuraGrande | Efeito.Poeira | Efeito.BanhoDeCor | f),
+				new(13.0, Efeito.AuraGrande | Efeito.BanhoDeCor | f),
 
 				// O `ssg.wav` E DO `startbuff(/obj/buff/Ritual_God)` (`GodRitual.dm:78`), que e o que
 				// acontece neste beat. Ele tambem estava importado e sem um unico leitor em `.cs` -- ver
 				// `Trilha.KiDivino`. O `powerup` que estava aqui era chute meu; o arquivo certo sempre
 				// esteve na pasta.
-				new(14.5, Efeito.Assumir | Efeito.Tremor | Efeito.Poeira
+				new(14.5, Efeito.Assumir | Efeito.Tremor
 						| Efeito.AnelDeChoque | Efeito.ClaraoDeTela, Som: "ssg", Narra: vira),
 				new(16.2, Efeito.Poeira),
 			],
@@ -1456,19 +1758,22 @@ public static class Cinematicas
 				// piscar nenhum -- o `spawn` do piscar so roda quando ha cabelo comum a trocar (ver o sumario) --
 				// e a cena divina abria com 5,0 s de absolutamente nada depois da fala.
 				// ====================================================================================================
-				new(2.5, Efeito.AnelDeChoque | Efeito.Cascalho),
-				new(5.0, Efeito.AuraGrande | Efeito.Tremor | Efeito.Poeira),   // `sleep(50)`
-				new(7.4, Efeito.AnelDeChoque | Efeito.Cascalho),
-				new(10.0, Efeito.Poeira | f),                                   // a cauda dos `spawn(rand(...))`
-				new(12.5, Efeito.Cascalho | Efeito.PedrasSubindo | Efeito.Tremor),
+				new(2.5, Efeito.AnelDeChoque),
+				new(5.0, Efeito.AuraGrande | Efeito.Tremor),                   // `sleep(50)`
+				new(7.4, Efeito.AnelDeChoque),
+				// A cauda dos `spawn(rand(...))` era poeira + faisca; sem a poeira sobra a faisca, que
+				// as divinas nao tem. Ver `Efeito.Poeira` -- e o beat de 12,5 s ja segura este trecho.
+				new(12.5, Efeito.Tremor | f),
 				new(15.0, Efeito.Tremor | Efeito.FeixesNoChao, Som: "powerup"),// `sleep(100)`
-				new(17.0, Efeito.Tremor | Efeito.Cratera | Efeito.Poeira),     // `spawn(20) createCrater`
-				new(18.0, Efeito.Poeira),                                      // `spawn(130)`: a aura sai
+				// O `spawn(20) createCrater` caia aos 17,0 s -- oito segundos antes da forma. A cratera
+				// e do instante da troca agora (ver `Efeito.Cratera`); ficou o `Quake()`. O beat de
+				// 18,0 s (`spawn(130)`, a aura grande saindo) era so poeira e morreu com ela.
+				new(17.0, Efeito.Tremor),
 
 				// OS 7,0 s MUDOS, os mesmos da espinha Saiyajin e pela mesma razao (o `sleep(100)` a mais do
 				// `SSJCinematic.dm:101`, que o caminho divino atravessa igual).
-				new(20.4, Efeito.AnelDeChoque | Efeito.PedrasSubindo | Efeito.Tremor),
-				new(22.8, Efeito.Cascalho | Efeito.Tremor, Som: "zumbido"),
+				new(20.4, Efeito.AnelDeChoque | Efeito.Tremor),
+				new(22.8, Efeito.Tremor, Som: "zumbido"),
 
 				// ============================ O KI DIVINO CHEGA COM SOM E COM BANHO ============================
 				// `do_first_godki_appearance()` (`buffs.dm:59-66`) roda no instante em que o
@@ -1527,7 +1832,7 @@ public static class Cinematicas
 			SegundosPreso = 16.0,
 			Beats =
 			[
-				new(0.0, Efeito.Tremor | Efeito.Poeira, Som: "powerup", Narra: abre),
+				new(0.0, Efeito.Tremor, Som: "powerup", Narra: abre),
 
 				// ============================ TRES BEATS NUMA CENA QUE ERA `QUASE TODA ESPERA` ============================
 				// O sumario logo acima ja dizia o defeito com todas as letras: *"ela e quase toda espera, com 32
@@ -1537,14 +1842,14 @@ public static class Cinematicas
 				//
 				// O 2,5 s abre o vao que ia de 0 a 5,0; os outros dois enchem os dois vaos de 5,0 s seguintes.
 				// ====================================================================================================
-				new(2.5, Efeito.AnelDeChoque | Efeito.Cascalho),
+				new(2.5, Efeito.AnelDeChoque),
 				new(5.0, Efeito.AuraGrande | Efeito.Tremor),                      // `sleep(50)`
-				new(7.4, Efeito.Cascalho | Efeito.Tremor),
-				new(10.0, Efeito.Tremor | Efeito.PedrasSubindo | f),               // cauda dos `spawn(rand(...))`
-				new(12.5, Efeito.AnelDeChoque | Efeito.Cascalho | Efeito.PedrasSubindo | Efeito.Tremor,
+				new(7.4, Efeito.Tremor),
+				new(10.0, Efeito.Tremor | f),               // cauda dos `spawn(rand(...))`
+				new(12.5, Efeito.AnelDeChoque | Efeito.Tremor,
 					Som: "zumbido"),
 				new(15.0, Efeito.Tremor | Efeito.FeixesNoChao),                   // `sleep(100)`: os 32 feixes
-				new(16.0, Efeito.Assumir | Efeito.Cratera | Efeito.Tremor
+				new(16.0, Efeito.Assumir | Efeito.Tremor
 						| Efeito.AnelDeChoque | Efeito.ClaraoDeTela, Narra: vira),   // `sleep(10)`: `ssj = 4`
 				new(17.8, Efeito.Poeira | f),
 			],
@@ -1607,13 +1912,14 @@ public static class Cinematicas
 				// abaixo do `Ssj4LimitBreaker`); a regra fica escrita porque e ela que autoriza o banho
 				// nas outras tres. Ver `Efeito.BanhoDeCor`.
 				// =====================================================================================================
-				new(0.0, Efeito.Tremor | Efeito.Poeira | Efeito.AnelDeChoque | Efeito.BanhoDeCor,
+				new(0.0, Efeito.Tremor | Efeito.AnelDeChoque | Efeito.BanhoDeCor,
 					Som: "powerup", Fala: grita),
-				new(Math.Round(assumeEm * 0.36, 2), Efeito.Tremor | Efeito.Poeira | f),
+				new(Math.Round(assumeEm * 0.36, 2), Efeito.Tremor | f),
 				new(Math.Round(assumeEm * 0.68, 2), Efeito.AuraGrande | Efeito.Tremor),
 				// `createShockwavemisc(loc,2)` + `createCrater(loc,5)` -- a penultima linha dos quatro procs,
-				// e ela e um anel MAIS o buraco. A cratera ja estava aqui; o anel voltou com ela.
-				new(assumeEm, Efeito.Assumir | Efeito.Cratera | Efeito.Tremor | Efeito.AnelDeChoque,
+				// e ela e um anel MAIS o buraco. Estas quatro cenas ja acertavam o instante da cratera
+				// sozinhas; hoje quem a poe e o funil (ver `Efeito.Cratera`) e o beat so traz o anel.
+				new(assumeEm, Efeito.Assumir | Efeito.Tremor | Efeito.AnelDeChoque,
 					Som: "chargeaura", Narra: vira),
 				new(Math.Round(assumeEm * 1.44, 2), Efeito.Poeira | f),
 			],
@@ -1915,6 +2221,159 @@ public static class Cinematicas
 		"o cabelo se ergue num branco-gelo e uma aura entre o azul e o roxo explode: a FERA acordou.");
 
 	// ==================================================================================
+	// A FURIA EXTREMA -- `mob/proc/AngerCinematic()`, `Code/Modules/CombatMechanics/Murder.dm:136-163`
+	// ==================================================================================
+
+	/// <summary>
+	/// A COR DO CLARAO DE RAIVA -- `#ff2a2a`, literal de `Murder.dm:149`.
+	///
+	/// ============================ POR QUE ELA E ESCRITA E NAO DERIVADA ============================
+	/// Toda outra chama deste arquivo sai do <see cref="FormaDef.Aura"/> (ver <see cref="Efeito.AuraGrande"/>:
+	/// *"a aura da propria transformacao q vc ta virando"*). A furia **nao tem forma** -- ela e o
+	/// acontecimento que as vezes leva a uma --, entao nao ha de onde derivar: o DM escreve o hexa na
+	/// mao, uma vez, e este e o unico lugar do port que o repete.
+	///
+	/// E ela e o ultimo uso vivo da `Aurabigcombined.dmi` COMO ARTE DE COR PROPRIA. Nas cinematicas de
+	/// transformacao o dono trocou aquela folha pela aura da forma; aqui nao havia troca possivel, e
+	/// e por isso que a excecao existe sem virar excecao de ninguem mais.
+	/// ========================================================================================
+	/// </summary>
+	public const string CorDaFuria = "ff2a2a";
+
+	/// <summary>
+	/// QUANTO TEMPO ATE A CENA DE FURIA PODER TOCAR DE NOVO -- o `rageCinematicCD` do DM
+	/// (`Murder.dm:140`: `world.time + 600`, e tique e DECISSEGUNDO -> 60,0 s).
+	///
+	/// ============================ E ELE NAO E O PRAZO DA RAIVA ============================
+	/// A raiva dura 120 s (`GameServer.SegundosDeRaiva`, o `rageExpire`); a CENA se recarrega em 60.
+	/// Sao dois relogios de proposito e no DM tambem: a raiva pode ser prolongada varias vezes dentro
+	/// da mesma janela (cada amigo que cai reinicia o prazo), e sem uma recarga propria a cena tocaria
+	/// a cada morte de uma briga em grupo.
+	///
+	/// Mora no Core, e nao ao lado do `SegundosDeRaiva` no servidor, pelo mesmo motivo da
+	/// <see cref="PiscadaMinima"/>: e prazo de CENA, e a bancada precisa mede-lo sem recopiar.
+	/// ==============================================================================
+	/// </summary>
+	public const double SegundosEntreFurias = 60;
+
+	/// <summary>
+	/// A CINEMATICA DA FURIA EXTREMA -- 5,0 s, e ela e a UNICA cena deste arquivo que nao pertence a
+	/// forma nenhuma.
+	///
+	/// ============================ POR QUE ELA CABE NO MOTOR QUE JA EXISTE ============================
+	/// Foi a primeira pergunta, e a resposta se mede: dos gestos do `AngerCinematic()` --
+	/// `createShockwavemisc`, `createDustmisc`, `Quake()`, `createCrater`, o overlay de aura, os dois
+	/// `emit_Sound`, a musica e a linha de chat -- **nenhum e novo**. Todos ja tem canal no tocador
+	/// (<see cref="Jandirus.Client.Transformacao"/>), e tres deles (a pedra do chao, o funil da cratera
+	/// e o rumor de camera) so existem la. Escrever um segundo tocador significaria uma segunda
+	/// implementacao do chao solto -- 250 linhas -- pra desenhar exatamente a mesma coisa.
+	///
+	/// O QUE ELA **NAO** USA e o que a distingue: nao ha forma, entao nao ha cabelo, nem degrau, nem
+	/// escada, nem clarao de tela. E, sobretudo, ela **nao prende o corpo**.
+	///
+	/// ============================ O CORPO NAO PARA, E ISSO E DO DM ============================
+	/// `AngerCinematic()` abre com `set waitfor = 0` e o comentario do original diz o porque com todas
+	/// as letras: *"Non-blocking so it never freezes the player mid-fight"*. E a diferenca de natureza
+	/// entre as duas cenas -- transformacao e uma coisa que o jogador ESCOLHE fazer (e o dono decidiu
+	/// que ela para o corpo o tempo inteiro), furia e uma coisa que ACONTECE com ele, no meio de uma
+	/// briga, por causa de um golpe que outra pessoa deu. Prender aqui seria punir o enlutado.
+	///
+	/// Entao <see cref="Cinematica.SegundosPreso"/> e ZERO, e o tocador nem chega a trancar (ver o
+	/// `_Ready` la: a tranca e a pose travada so nascem com prazo > 0). Nao ha "prende e solta no
+	/// quadro seguinte".
+	///
+	/// ============================ E ELA TEM UM BEAT QUE `Assumir`, SEM ASSUMIR NADA ============================
+	/// Parece contradicao e nao e: <see cref="Efeito.Assumir"/> e **a virada da cena** -- o instante em
+	/// que ela entrega o que veio entregar --, e "a forma fica" e o que isso significa QUANDO HA FORMA.
+	/// Aqui a virada e a erupcao: `createCrater(loc,2)` + `Quake()` + `powerup.wav`, `Murder.dm:158-160`.
+	///
+	/// E ele nao esta ali por gosto: e o beat da virada que o funil <see cref="Cinematica.Beats"/> usa
+	/// pra por a cratera e a poeira. Sem ele esta cena perderia a cratera que o DM abre -- e ganha-la
+	/// por um caminho proprio seria reabrir exatamente o campo livre que aquele funil fechou.
+	///
+	/// ============================ A CRATERA E A PEQUENA, E ISSO TAMBEM SE MEDE ============================
+	/// `createCrater(loc, 2)` = `BurntCrater` (`craters.dm:6`), contra o `createCrater(loc, 3)` =
+	/// `BigCrater` da cena do SSJ1 (`SSJCinematic.dm:83`). No port a escolha e derivada de
+	/// `Catalogo.NasceDaRaiva(forma)`, e sem forma ela devolve falso -- a cratera pequena, que e a
+	/// certa. A derivacao acerta sozinha; nao houve o que escrever.
+	///
+	/// ============================ A POEIRA DO DM VIROU PEDRA, E ELA CONTINUA SENDO A DO DM ============================
+	/// O original solta `createDustmisc(loc, rand(1,3))` em cada um dos seis ciclos -- e `s=2` e o
+	/// `/obj/meff/Rising`, a pedra que sobe (`dusts.dm:19`). Aqui isso e o
+	/// <see cref="Cinematica.OChaoSeSolta"/>, que corre por baixo da cena inteira: sem forma no
+	/// catalogo, `NaoSeSobePraEla` e falso e o chao se solta -- que e o lado certo do erro descrito la.
+	///
+	/// A NUVEM (`Efeito.Poeira`) nao esta escrita em beat nenhum, de proposito: ela e da cratera, e
+	/// quem a poe e o funil. Ver <see cref="Efeito.Poeira"/>.
+	///
+	/// ============================ FORA DA <see cref="Todas"/>, E POR CONSTRUCAO ============================
+	/// Aquela lista responde "que cena cada FORMA tem" -- ela alimenta o <see cref="Curtas"/> (que
+	/// precisa do beat que assume pra reescalar o relogio, e reescalar uma furia nao quer dizer nada) e
+	/// a bancada que cobra "toda forma tem cena, e cena propria". Uma cena sem forma dentro dela seria
+	/// uma entrada que nenhuma daquelas perguntas sabe responder.
+	///
+	/// A furia tambem nao tem os tres degraus (<see cref="DegrauDeCena"/>): nao ha maestria de ficar
+	/// com raiva. Ela toca inteira ou nao toca -- ver `GameServer.AmigoAbatido`, que e quem decide.
+	/// =========================================================================================================
+	/// </summary>
+	public static readonly Cinematica Furia = new()
+	{
+		// SEM FORMA, e a string vazia e o jeito de dizer isso sem inventar um id que o catalogo nao
+		// tem: `Catalogo.Def("")` e nulo, e as duas propriedades derivadas desta classe
+		// (`OChaoSeSolta`, `OCeuDescarrega`) ja tratam o nulo.
+		Forma = "",
+
+		// O TEMA DA RAIVA, e ele **nao** e o marcador de estreia que o campo `Musica` costuma ser (ver
+		// la): a furia nao tem primeira vez guardada em save nenhum -- o que impede o tema de virar
+		// toque de celular e a recarga de `SegundosEntreFurias`. O arquivo e o mesmo do DM
+		// (`Murder.dm:144`), e ele ja estava no disco deste port.
+		//
+		// QUEM O ABAFA CONTINUA SENDO A HIERARQUIA: `emit_RageMusic` toca num canal proprio *"so a
+		// dedicated rage channel so a later transformation theme silences it (transform wins)"*, e o
+		// `duck_battle_music` da vez calava o combate. As duas coisas sao a `AudioDirector.Camada.Raiva`,
+		// que nasceu entre `Combate` e `Transformacao` exatamente por isto -- nao ha canal novo.
+		Musica = "Dragon Ball Z - Gohan's Anger Theme   Epic Rock Cover.mp3",
+
+		// ZERO. Ver o bloco do corpo la em cima -- `set waitfor = 0`, `Murder.dm:137`.
+		SegundosPreso = 0,
+
+		Beats =
+		[
+			// `emit_Sound('chargeaura.wav')` (`:141`), a musica (`:144`), a linha vermelha do chat
+			// (`:145`) e o overlay de aura vermelha (`:146-150`), todos no instante zero. O primeiro
+			// dos seis `createShockwavemisc(loc, rand(2,4))` cai aqui tambem (`:152`).
+			//
+			// A NARRACAO E A DO DM, traduzida: *"[src]'s fury erupts, blasting shockwaves out in every
+			// direction!"*. Ela e narracao e nao fala -- ninguem DISSE isso --, entao vai pro chat e
+			// nao pro balao. Ver o `Disparar` do tocador.
+			new(0.0, Efeito.AuraGrande | Efeito.AnelDeChoque, Som: "chargeaura",
+				Narra: "a fúria irrompe, e ondas de choque saem em todas as direções!"),
+
+			// OS SEIS CICLOS, `sleep(5)` = 0,5 s entre eles (`:151-157`). O `Quake()` sai nos ciclos
+			// PARES (`if(cyc % 2 == 0)`), ou seja no 2o, 4o e 6o -- 0,5 / 1,5 / 2,5 s.
+			//
+			// UM ANEL POR CICLO e nao os varios que o DM espalha pelo `view()`: o `Efeito.AnelDeChoque`
+			// do port e o `CombatFx.Onda`, um anel PROCEDURAL que abre de 32 a 512 px -- ele ja cobre
+			// sozinho o raio que la precisava de uma varredura de turfs a 18%. Ver `Efeito.AnelDeChoque`.
+			new(0.5, Efeito.AnelDeChoque | Efeito.Tremor),
+			new(1.0, Efeito.AnelDeChoque),
+			new(1.5, Efeito.AnelDeChoque | Efeito.Tremor),
+			new(2.0, Efeito.AnelDeChoque),
+			new(2.5, Efeito.AnelDeChoque | Efeito.Tremor),
+
+			// A VIRADA (`:158-160`): `createCrater(loc,2)`, `Quake()`, `powerup.wav`. A cratera e a
+			// poeira NAO estao escritas aqui -- o funil da `Cinematica.Beats` as poe, que e a regra.
+			new(3.0, Efeito.Assumir | Efeito.Tremor, Som: "powerup"),
+
+			// `sleep(20)` = 2,0 s ate o overlay sair (`:161-163`). Este e o UNICO beat de cauda, como
+			// em toda cena deste arquivo, e ele carrega a poeira baixando -- o que o funil deixa
+			// passar depois da virada. Com ele em 4,0 s a cena mede 5,0 (`Segundos` = ultimo + 1,0),
+			// que e exatamente o instante em que o DM tira a aura vermelha.
+			new(4.0, Efeito.Poeira),
+		],
+	};
+
+	// ==================================================================================
 	// AS CONSULTAS
 	// ==================================================================================
 
@@ -2023,6 +2482,37 @@ public static class Cinematicas
 	/// </summary>
 	public const double PiscadaMinima = 3 / TempoDoDm.TiquesPorSegundo,
 						PiscadaMaxima = 10 / TempoDoDm.TiquesPorSegundo;
+
+	/// <summary>
+	/// QUANTO O CEU SEGURA ENTRE UM RAIO E O PROXIMO, na cena que <see cref="Cinematica.OCeuDescarrega"/>.
+	///
+	/// ============================ A CONTA VEM DO DM, E NAO DE UM RITMO ESCOLHIDO ============================
+	/// `SSJCinematic.dm:51-52` varre o `view(src)` inteiro e sorteia DUAS vezes por tile:
+	/// `if(prob(5)) ... createLightningmisc(T,4)` e `else if(prob(5)) ... (T,2)`. Com o
+	/// <see cref="TilesDoTremorCheio"/> (que E o alcance daquele mesmo `view(src)`, ja medido e
+	/// justificado la) sao 13x13 = 169 tiles, e a esperanca sai em 169 x 0,05 = 8,4 mais
+	/// 169 x 0,95 x 0,05 = 8,0 -- **~16,5 descargas por cena**.
+	///
+	/// A cena da estreia tem 25,0 s ate a forma ficar, e 16,5 descargas nela dao um intervalo MEDIO de
+	/// 1,5 s. E e exatamente a media de 1,0 e 2,0.
+	///
+	/// ============================ O PISO TAMBEM E DO DM, E ELE PROTEGE O DESENHO ============================
+	/// 1,0 s e o chao do `spawn(rand(10,150))` daquelas mesmas linhas (10 tiques = 1,0 s): no original
+	/// tambem nao cai raio nenhum antes do primeiro segundo.
+	///
+	/// E ele resolve, de graca, o unico limite duro do desenho: o `ClimaNaTela` tem **um** node de raio,
+	/// e cada risco fica visivel 0,333 s (`_idadeDoRaio += delta * 3`). Duas descargas no mesmo instante
+	/// mostrariam UMA. Com o piso em 1,0 s ha tres vezes a duracao do risco entre uma e a seguinte --
+	/// nao ha sobreposicao possivel, e nao foi preciso inventar um segundo quad pra isso.
+	///
+	/// ============================ E POR QUE SORTEADO, COMO A PISCADA ============================
+	/// Mesmo argumento da <see cref="PiscadaMinima"/>, e o proprio jogo ja o aplicava a faisca
+	/// (`RaiosDaForma`: *"o mesmo estalo repetido a cada 1,3..2,7 s vira metronomo"*). Intervalo fixo
+	/// em 1,5 s daria dezessete raios em compasso, que le como efeito de jogo; tempestade nao tem
+	/// compasso.
+	/// ====================================================================================================
+	/// </summary>
+	public const double DescargaMinima = 1.0, DescargaMaxima = 2.0;
 
 	/// <summary>
 	/// QUANTO O <see cref="Efeito.BanhoDeCor"/> LEVA PRA ESCOAR.

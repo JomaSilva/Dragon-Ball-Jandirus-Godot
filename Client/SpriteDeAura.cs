@@ -49,8 +49,13 @@ public partial class SpriteDeAura : Node2D
 	public const string FolhaSsj = "res://Assets/Sprites/Auras/AuraSSjBig.tres";
 
 	/// <summary>
-	/// A CHAMA QUENTE DO KI DIVINO -- `gkaura = 'FieryGod.dmi'` (`AuraObject.dm:10`). SSG, o SSG da
-	/// linha Rose e a linha Prodigial inteira. Arte ja colorida (pessego/laranja).
+	/// A CHAMA QUENTE DO KI DIVINO -- `gkaura = 'FieryGod.dmi'` (`AuraObject.dm:10`). SSG e o SSG da
+	/// linha Rose, e mais ninguem. Arte ja colorida (pessego/laranja) -- medida: 10.912 pixels opacos,
+	/// tom dominante `ff411c`, a folha inteira entre 7 e 10 graus de matiz.
+	///
+	/// A LINHA PRODIGIAL ESTAVA AQUI E SAIU por ordem do dono (*"o mistico e beast tao usando a aura
+	/// de carga do ssj god"*). Ver `Catalogo.Folha` no Core -- e nao "conserte" isto de volta lendo o
+	/// `AuraObject.dm`, que de fato poe os dois aqui.
 	///
 	/// ============================ ELA ESTAVA NO DISCO E MORTA ============================
 	/// O `.png`, o `.import` e o `.tres` ja existiam e o Godot ja os tinha importado; nenhum `.cs`
@@ -92,8 +97,13 @@ public partial class SpriteDeAura : Node2D
 	/// O caminho continua sendo o fallback pra quem entra pelo `DefinirFolha(string)` (so a bancada),
 	/// e ai a resposta antiga vale porque ali nao ha simbolo pra ler.
 	/// ==================================================================================================
+	///
+	/// SEM FOLHA NAO HA TINTA, e este ramo vem PRIMEIRO de proposito. Ele fecha a armadilha 2 do
+	/// simbolo novo: a <see cref="PreColorida"/> responde por uma lista, e um simbolo fora dela cai em
+	/// "se pinta" -- ou seja a <see cref="FolhaDeAura.Nebulosa"/> responderia que se tinge, e mandar cor
+	/// pra uma folha que nao existe e ruido que passa VERDE numa leitura de uniform.
 	/// </summary>
-	public bool SemTinta => _simbolo is { } s ? PreColorida(s) : _folha == FolhaSsj;
+	public bool SemTinta => _semFolha || (_simbolo is { } s ? PreColorida(s) : _folha == FolhaSsj);
 
 	/// <summary>
 	/// AS FOLHAS QUE JA VEM PINTADAS -- hoje TODAS menos a `Base` e a `Lssj`. A `AuraSSjBig` e dourada
@@ -134,16 +144,42 @@ public partial class SpriteDeAura : Node2D
 	/// Quem DECIDE continua sendo o Core (`Catalogo.Folha`, derivado da linha da forma); aqui so se
 	/// traduz o simbolo em `res://`, que e a fronteira exata entre o Core e o Godot.
 	/// ================================================================================
+	///
+	/// ============================ NULO E UMA RESPOSTA: "A MINHA NAO E FOLHA" ============================
+	/// A <see cref="Jandirus.Core.Forms.FolhaDeAura.Nebulosa"/> nao tem arquivo -- o Ultra Instinto e o
+	/// `ultra_ego` desenham a nuvem procedural e chama nenhuma (a segunda em roxo, pedido do dono; a
+	/// paleta e do Core e o simbolo e o mesmo). Quem chama isto tem que tratar o nulo; quem desenha
+	/// (este proprio node, ver <see cref="DefinirFolha(Jandirus.Core.Forms.FolhaDeAura)"/>) trata uma
+	/// vez pelos tres desenhistas.
+	///
+	/// ============================ E O `_ =>` MORREU, QUE ERA A ARMADILHA 1 ============================
+	/// Havia um `_ => FolhaBase` aqui, e ele e literalmente o defeito que esta tarefa conserta: o Ultra
+	/// Instinto nao tinha ramo no Core, caia no fallback, e acendia a `colorablebigaura` por cima da
+	/// nuvem. Um simbolo sem arquivo cai CALADO na folha de todo mundo, e o unico sintoma e uma chama
+	/// que ninguem pediu -- sem uma linha vermelha em lugar nenhum.
+	///
+	/// Sem o `_`, o `switch` passa a ser exaustivo sobre o enum: um simbolo novo vira **aviso de
+	/// compilacao** (CS8509) na hora, e nao uma aura errada descoberta em jogo tres meses depois. Foi
+	/// pra isso que ele saiu -- nao por estilo.
+	/// ==================================================================================================
 	/// </summary>
-	public static string CaminhoDa(Jandirus.Core.Forms.FolhaDeAura f) => f switch
+	// CS8524 e o aviso de "e se alguem fizer `(FolhaDeAura)7`?", e essa nao e uma pergunta deste
+	// projeto: o simbolo sempre vem do `Catalogo.Folha`. O aviso que se QUER e o outro (CS8509, "falta
+	// um membro do enum"), e ele so existe enquanto nao houver `_ =>` -- calar o primeiro com um
+	// `default` calaria o segundo junto, que e o defeito inteiro desta tarefa voltando pela porta dos
+	// fundos. Entao o silencio e cirurgico: um pragma nesta linha, e nao um ramo.
+#pragma warning disable CS8524
+	public static string? CaminhoDa(Jandirus.Core.Forms.FolhaDeAura f) => f switch
 	{
+		Jandirus.Core.Forms.FolhaDeAura.Base => FolhaBase,
 		Jandirus.Core.Forms.FolhaDeAura.Lssj => FolhaLssj,
 		Jandirus.Core.Forms.FolhaDeAura.Ssj => FolhaSsj,
 		Jandirus.Core.Forms.FolhaDeAura.DeusQuente => FolhaDeusQuente,
 		Jandirus.Core.Forms.FolhaDeAura.DeusFrio => FolhaDeusFrio,
 		Jandirus.Core.Forms.FolhaDeAura.DeusRosa => FolhaDeusRosa,
-		_ => FolhaBase,
+		Jandirus.Core.Forms.FolhaDeAura.Nebulosa => null,
 	};
+#pragma warning restore CS8524
 
 	/// <inheritdoc cref="CaminhoDa"/>
 	public void DefinirFolha(Jandirus.Core.Forms.FolhaDeAura f)
@@ -157,8 +193,39 @@ public partial class SpriteDeAura : Node2D
 		// arquivo proprio, entao a condicao nunca e verdadeira. Codigo que so pode ser falso e codigo
 		// morto, e ele saiu junto com o motivo dele.)
 		_simbolo = f;
-		DefinirFolha(CaminhoDa(f));
+
+		// ============================ O SIMBOLO SEM ARQUIVO APAGA O DESENHO, AQUI E SO AQUI ============================
+		// `CaminhoDa` devolvendo nulo quer dizer "esta forma nao usa folha" (hoje so o Ultra Instinto).
+		// A decisao mora NESTE node, e nao nos donos dele, porque os donos sao TRES -- o node `Aura`, a
+		// `CargaVisual` e a chama da cinematica -- e cada um deles ja mostrou, uma vez, o que custa
+		// ensinar uma regra a dois e esquecer o terceiro. Aqui a regra e uma e vale pra quem quer que
+		// esteja segurando este sprite: sem folha, nao ha o que desenhar.
+		//
+		// E E ISTO QUE IMPEDE AS DUAS CHAMAS EMPILHADAS em Ultra Instinto -- os dois desenhistas do
+		// corpo recebem o MESMO simbolo (ver `World.PrepararAuraDaForma`), entao os dois ficam mudos
+		// no mesmo instante. Nao ha estado em que um saiba e o outro nao.
+		//
+		// `_folha` VAI A VAZIO junto: ele e a memoria de "ja estou com este arquivo montado", e deixar
+		// o caminho velho ali faria a VOLTA pra uma forma com folha (sair do Ultra Instinto) cair no
+		// `if (_folha == caminho) return` e nunca remontar o sprite -- a chama sumiria pra sempre.
+		// ==========================================================================================================
+		if (CaminhoDa(f) is { } caminho) { _semFolha = false; DefinirFolha(caminho); return; }
+
+		_semFolha = true;
+		_folha = "";
+		if (_s != null) { _s.QueueFree(); _s = null; _mat = null; }
+		Visible = false;
+		SetProcess(false);
 	}
+
+	/// <summary>
+	/// ESTE SPRITE ESTA VESTINDO UM SIMBOLO SEM ARQUIVO? Ver
+	/// <see cref="DefinirFolha(Jandirus.Core.Forms.FolhaDeAura)"/>. Publico pra bancada: e a unica
+	/// medida que separa "a chama esta apagada agora" de "esta chama nao pode acender".
+	/// </summary>
+	public bool SemFolha => _semFolha;
+
+	private bool _semFolha;
 
 	private string _folha = FolhaBase;
 
@@ -263,14 +330,24 @@ public partial class SpriteDeAura : Node2D
 		if (_simbolo is { } s && CaminhoDa(s) != caminho) _simbolo = null;
 		if (_folha == caminho) return;
 		_folha = caminho;
+		_semFolha = false;
 		if (_s != null) { _s.QueueFree(); _s = null; _mat = null; }
-		if (_aceso) { Montar(); Pintar(); }
+		// `Visible` E `SetProcess` ENTRAM AQUI, e nao so o `Montar`: quem estava sem folha (Ultra
+		// Instinto) tem os dois DESLIGADOS mesmo com `_aceso` verdadeiro -- o estado ficou guardado
+		// esperando uma folha. Sem estas duas escritas, sair do Ultra Instinto com o C segurado
+		// remontaria o sprite invisivel e parado.
+		if (_aceso) { Montar(); Visible = true; SetProcess(true); Pintar(); }
 	}
 
 	public void Definir(bool aceso, Color cor, float forca = 1f)
 	{
 		_cor = cor;
 		_forca = forca;
+
+		// SEM FOLHA O ESTADO E GUARDADO E NADA E DESENHADO. Guardar em vez de ignorar e o que faz a
+		// volta funcionar: quem soltou o Ultra Instinto ainda com o C na mao ja esta com `_aceso`
+		// verdadeiro, e o `DefinirFolha` acima acende no mesmo quadro em que a folha chega.
+		if (_semFolha) { _aceso = aceso; Visible = false; SetProcess(false); return; }
 
 		if (aceso == _aceso) { Pintar(); return; }
 		_aceso = aceso;

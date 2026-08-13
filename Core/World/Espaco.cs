@@ -41,7 +41,11 @@ public readonly record struct ChunkId(int X, int Y)
 /// No BYOND cada setor era um `z` porque o motor obrigava, e o número não escalava. Aqui o espaço
 /// é um PLANO CONTÍNUO cortado em chunks quadradas, no modelo do Minecraft: cliente e servidor só
 /// processam a chunk em que se está e as vizinhas. Não há limite de tamanho porque não há lista
-/// de setores -- há uma FUNÇÃO que, dada uma chunk, diz o que existe nela.
+/// de setores -- há uma FUNÇÃO que, dada uma coordenada, diz o que existe nela.
+///
+/// QUEM DECIDE O QUE EXISTE É O <see cref="Sistemas"/>, e não mais este arquivo: os planetas nascem
+/// em ÓRBITA DE UMA ESTRELA, uma estrela por célula de 32x32 chunks. A chunk continua sendo o corte
+/// de INTERESSE (quem enxerga quem, o que se carrega); ela deixou de ser o corte de CONTEÚDO.
 ///
 /// O QUE O SERVIDOR GUARDA é só a posição dos planetas. O fundo de estrelas o cliente gera
 /// sozinho a partir do id da chunk (mesma seed, mesmas estrelas, em qualquer máquina); a
@@ -127,80 +131,60 @@ public static class Espaco
 	};
 
 	// =====================================================================
-	// OS PLANETAS PROCEDURAIS
+	// OS PLANETAS PROCEDURAIS -- ELES ORBITAM ESTRELAS
 	// =====================================================================
 	/// <summary>
-	/// Um planeta procedural a cada N chunks, em média. Espalhado: o espaço tem que parecer
-	/// VAZIO -- é a distância entre os mundos que dá peso a uma viagem de sete dias.
-	/// </summary>
-	public const int ChunksPorPlaneta = 40;
-
-	/// <summary>
-	/// O QUE EXISTE NESTA CHUNK. Função pura da seed do mundo + o id da chunk: nada é sorteado
-	/// em runtime nem guardado numa tabela, então servidor e cliente chegam à MESMA resposta sem
-	/// trocar um byte, e o universo é do tamanho do espaço de inteiros.
+	/// TODOS OS PLANETAS VISIVEIS A PARTIR DE UMA CHUNK (ela e as vizinhas).
 	///
-	/// A chunk (0,0) e as chunks dos pré-feitos NUNCA geram planeta procedural: dois mundos no
-	/// mesmo lugar seria o único jeito de o universo infinito ficar apertado.
+	/// ============================ ELES NAO SAO MAIS SORTEADOS POR CHUNK ============================
+	/// Havia aqui um `PlanetaDaChunk` -- um hash por chunk, um planeta a cada 40 delas, sem estrela e
+	/// sem sistema. Ele foi DELETADO e nao substituido por um irmao: quem decide o que existe no
+	/// espaco agora e <see cref="Sistemas.Do"/>, uma estrela em 62,4% das celulas de 32x32 chunks com
+	/// 1 a 10 planetas em orbita (as outras 37,6% nao tem nada -- <see cref="Sistemas.VaziosPor256"/>).
+	/// O universo passou a ser 7,5x mais vazio em planetas e AGRUPADO -- o que o comentario desta
+	/// classe sempre prometeu ("e a distancia entre os mundos que da peso a uma viagem de sete dias")
+	/// e que com um mundo a cada 42 s de voo nao acontecia.
+	///
+	/// A ASSINATURA DESTE METODO NAO MUDOU de proposito: o servidor (`MandarVizinhanca`), o pouso
+	/// (<see cref="PlanetaSob"/>) e a carta perguntam a mesma coisa que sempre perguntaram.
+	/// ==========================================================================================
+	///
+	/// POR QUE VARRER CELULAS E NAO CHUNKS: um sistema alcanca ate
+	/// <see cref="Sistemas.RaioSistemaTeto"/> px, entao o numero de CELULAS a olhar sai da conta
+	/// abaixo -- e da 1 (o 3x3) pra qualquer `raio` ate 22 chunks. Sao 9 hashes, contra os 9 hashes
+	/// mais 63 voltas nos pre-feitos que a versao por chunk fazia.
 	/// </summary>
-	public static PlanetaNoEspaco? PlanetaDaChunk(ulong seedDoMundo, ChunkId c)
-	{
-		ulong h = Misturar(seedDoMundo, (ulong)(uint)c.X, (ulong)(uint)c.Y);
-		if (h % ChunksPorPlaneta != 0) return null;
-
-		// dentro da chunk, uma posição estável (margem pra o planeta não nascer na divisa)
-		const int margem = 400;
-		float px = c.X * (float)ChunkPx + margem + (h >> 8) % (uint)(ChunkPx - 2 * margem);
-		float py = c.Y * (float)ChunkPx + margem + (h >> 24) % (uint)(ChunkPx - 2 * margem);
-
-		var pos = new Vec2(px, py);
-		foreach (PlanetaNoEspaco p in PreFeitos())
-			if (p.Chunk == c) return null;   // a chunk já é de um mundo com mapa próprio
-
-		// O DISCO DIZ O TAMANHO DO MUNDO. O raio saia de um sorteio proprio (`110 + (h >> 40) % 90`)
-		// enquanto o lado do mundo saia do raio; agora que o lado sai da GRAVIDADE (ver
-		// `MundoProcedural.LadoDaGravidade`), o raio segue a gravidade tambem -- senao o jogador
-		// veria uma bolinha e pousaria num mundo de um milhao de celulas.
-		//
-		// A FAIXA DO RAIO NAO MUDOU (110..199 px): ela entra na deteccao de pouso (`PlanetaSob`) e
-		// no espacamento dos mundos, e mexer nela seria mexer no layout do universo por tabela.
-		double g = MundoProcedural.GravidadeDaSeed(h);
-		double t = (g - MundoProcedural.GravidadeMinima)
-				   / (MundoProcedural.GravidadeMaxima - MundoProcedural.GravidadeMinima);
-
-		return new PlanetaNoEspaco
-		{
-			Nome = $"{NomeDeBioma(h)}-{Math.Abs(c.X) % 1000}{Math.Abs(c.Y) % 1000}",
-			Pos = pos,
-			Raio = 110 + (float)(Math.Clamp(t, 0, 1) * 89),
-			Seed = h,
-			Premade = false,
-		};
-	}
-
-	/// <summary>Os biomas do `ProceduralSpace.dm`, na mesma ordem.</summary>
-	private static string NomeDeBioma(ulong h) => ((h >> 16) % 6) switch
-	{
-		0 => "Verdejante",
-		1 => "Gelido",
-		2 => "Deserto",
-		3 => "Vulcanico",
-		4 => "Alienigena",
-		_ => "Sombrio",
-	};
-
-	/// <summary>Todos os planetas visíveis a partir de uma chunk (ela e as vizinhas).</summary>
 	public static List<PlanetaNoEspaco> PorPerto(ulong seedDoMundo, ChunkId centro, int raio = RaioAtivo)
 	{
 		var l = new List<PlanetaNoEspaco>();
 
-		foreach (PlanetaNoEspaco p in PreFeitos())
-			if (p.Chunk.Longe(centro) <= raio) l.Add(p);
+		// O meio da chunk central. Ancorar na quina faria a celula "certa" mudar de lado conforme o
+		// sinal da coordenada, que e a classe de bug que so aparece do outro lado do zero.
+		var meio = new Vec2(centro.X * (float)ChunkPx + ChunkPx / 2f,
+							centro.Y * (float)ChunkPx + ChunkPx / 2f);
 
-		for (int dy = -raio; dy <= raio; dy++)
-			for (int dx = -raio; dx <= raio; dx++)
-				if (PlanetaDaChunk(seedDoMundo, new ChunkId(centro.X + dx, centro.Y + dy)) is { } p)
-					l.Add(p);
+		// ATE ONDE UM CORPO INTERESSANTE PODE ESTAR: o canto mais longe da vizinhanca pedida, mais o
+		// raio do maior sistema. Dividido pelo lado da celula, da quantas celulas ha pra olhar.
+		double alcance = (raio + 1) * (double)ChunkPx * 1.5 + Sistemas.RaioSistemaTeto;
+		int celulas = (int)Math.Ceiling(alcance / Sistemas.CelulaPx);
+
+		SistemaId c0 = SistemaId.De(meio);
+		for (int dy = -celulas; dy <= celulas; dy++)
+			for (int dx = -celulas; dx <= celulas; dx++)
+			{
+				if (Sistemas.Do(seedDoMundo, c0.Sx + dx, c0.Sy + dy) is not { } s) continue;
+
+				// PREFILTRO: quase sempre nenhum sistema alcanca, e ai nao se calcula planeta nenhum.
+				double ex = s.Estrela.Pos.X - meio.X, ey = s.Estrela.Pos.Y - meio.Y;
+				double limite = s.RaioDoSistema + (raio + 1) * (double)ChunkPx * 1.5;
+				if (ex * ex + ey * ey > limite * limite) continue;
+
+				for (int k = 0; k < s.Orbitas; k++)
+				{
+					PlanetaNoEspaco p = s.Planeta(k);
+					if (p.Chunk.Longe(centro) <= raio) l.Add(p);
+				}
+			}
 
 		return l;
 	}

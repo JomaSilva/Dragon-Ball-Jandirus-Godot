@@ -526,6 +526,23 @@ public partial class GameClient : Node
 	public event Action<int, Jandirus.Core.Forms.FormaOozaru, bool, Jandirus.Core.Forms.DegrauDeCena>? OozaruMudou;
 
 	/// <summary>
+	/// A FURIA DE ALGUEM IRROMPEU -- o `AngerCinematic()` do DM (`Murder.dm:136`).
+	///
+	/// UM `int` E SO: quem. Nao ha grau, prazo nem duracao porque nao ha o que o cliente faca com
+	/// eles -- ver `Protocol.S2C.Furia`. Quem decide SE isto sai (grau extremo, erupcao e nao
+	/// prolongamento, a raiva nao vai virar transformacao, e a recarga de 60 s) e o servidor, e o
+	/// pacote chegar ja e a decisao.
+	///
+	/// ============================ NAO E O <see cref="FormaMudou"/> COM OUTRO NOME ============================
+	/// A cena da furia nao muda forma nenhuma -- ela roda por cima do corpo do jeito que ele esta, e o
+	/// personagem termina exatamente como comecou. Empurra-la pelo canal de forma exigiria mandar uma
+	/// forma falsa e o cliente teria que aprender a nao vesti-la, que e a familia de defeito que ja
+	/// tirou o Oozaru daquele canal.
+	/// ==================================================================================================
+	/// </summary>
+	public event Action<int>? FuriaIrrompeu;
+
+	/// <summary>
 	/// EM QUE MACACO **EU** ESTOU. Espelho local do ultimo <see cref="Protocol.S2C.Oozaru"/> que veio
 	/// com o meu id -- o servidor continua sendo a autoridade, isto aqui e leitura pra a tela.
 	///
@@ -1099,6 +1116,12 @@ public partial class GameClient : Node
 				OozaruMudou?.Invoke(quem, forma, estreou, grau);
 				break;
 			}
+
+			// A FURIA IRROMPEU EM ALGUEM. Um id e mais nada -- ver `Protocol.S2C.Furia` sobre por que o
+			// pacote e vazio e por que ele nao e o `S2C.Efeito`.
+			case Protocol.S2C.Furia:
+				FuriaIrrompeu?.Invoke(reader.GetInt());
+				break;
 
 			case Protocol.S2C.Skills:
 			{

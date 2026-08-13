@@ -438,6 +438,13 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagnav") >= 0)
 			AddChild(new RoboDeNav { Name = "RoboDeNav" });
 
+		// --diaguniverso: a IRMA da `--diagnav`. Aquela mede a carta (o widget); esta mede o
+		// UNIVERSO -- se as duas pontas enumeram o mesmo (assinatura pedida ao servidor PELO FIO),
+		// se os sete pre-feitos continuam bit a bit onde estavam, se a faixa de 1 a 10 mundos e
+		// verdade numa amostra grande, e se morrer no sol chega ate o cliente. Ver RoboDoUniverso.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaguniverso") >= 0)
+			AddChild(new RoboDoUniverso { Name = "RoboDoUniverso" });
+
 		// --diagferida: bancada das FERIDAS. Confere a curva (roxo primeiro, sangue so no fim), que
 		// as camadas certas recebem, e tira uma foto. Sobe junto do `--feridateste` do servidor,
 		// que faz o corpo nascer com uma escada de estrago.
@@ -470,6 +477,23 @@ public partial class Boot : Node2D
 		// Ver RoboDeOlhada.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagolhada") >= 0)
 			AddChild(new RoboDeOlhada { Name = "RoboDeOlhada" });
+
+		// --diagfera: a bancada da linha do Mistico, e ela so tira FOTO. Os cinco pedidos do dono desta
+		// rodada (a chama do Mistico e a do Beast, o rabo branco, o olho vermelho e a faisca roxa) sao
+		// todos "que cor esta na tela", e o `--diagforma` responde os cinco em NUMERO -- passando verde
+		// enquanto a `FieryGod`, que nao se tinge, jogava fora a cor armada no node. O recorte aqui e o
+		// CORPO com folga (a chama e maior que o boneco) e a tira tem oito quadros porque a faisca so
+		// aparece em rajadas de 1,3 s a 2,7 s. Ver RoboDeFera.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagfera") >= 0)
+			AddChild(new RoboDeFera { Name = "RoboDeFera" });
+
+		// --diagcena: a bancada que RODA a cinematica inteira, no relogio da engine, e fotografa ao
+		// longo dela. O `--diagforma` ja tranca o ROTEIRO (uma cratera, no beat que assume, sem poeira
+		// antes) -- esta responde a outra metade, que e a unica que o dono ve: o buraco APARECEU na
+		// tela no fim? caiu raio do comeco ao fim? ha pedra em toda foto? sobrou quadrado marrom?
+		// Ver RoboDeCena.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcena") >= 0)
+			AddChild(new RoboDeCena { Name = "RoboDeCena" });
 
 		// --diagnebulosa: bancada da NUVEM DE GALAXIA do Ultra Instinto. Separada do `--diagforma` de
 		// proposito: aquela mede catalogo e texto (e o `Posar` dela pinta o node direto, sem rede),
@@ -677,6 +701,14 @@ public partial class Boot : Node2D
 			// vale mais que uma excecao no validador: a bancada tem que atravessar o mesmo portao
 			// que o jogador, senao ela deixa de testar o portao.
 			Backstory = "Personagem de bancada, criado por linha de comando para testes.",
+
+			// `--bercoperto`: o caminho automatico marca "nascer perto de casa".
+			//
+			// A OPCAO SO EXISTE NA TELA DE CRIACAO, e o caminho automatico nao passa por ela -- ou
+			// seja, sem esta linha o pedido de vizinho (metade do que o dono pediu) nao teria como
+			// ser exercitado com um corpo de verdade: a bancada `--diagberco` prova a REGRA, esta
+			// flag prova o POUSO (orbita, geracao do mundo fora do tique, colisao, chegada).
+			PertoDeCasa = Array.IndexOf(OS.GetCmdlineArgs(), "--bercoperto") >= 0,
 		};
 
 		// A IDADE RESPEITA O AUGE DA RACA. Dezoito serve pra quase todas, mas nao pro Saibaman, que

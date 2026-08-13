@@ -132,6 +132,31 @@ public sealed class CharacterSave
     public byte ZonaTipo;
     public ulong ZonaSeed;
 
+    /// <summary>
+    /// A SEMENTE DO BERCO -- de onde sai o planeta em que este corpo nasce e RENASCE.
+    ///
+    /// Ver <see cref="Jandirus.Core.Races.Bercos.SementeDoBerco"/>: **zero quer dizer "deriva"**, e
+    /// e assim que o personagem criado antes desta regra ganha um berco sem ramo de migracao e sem
+    /// flag de "ja escolheu" -- exatamente como a cor da aura fez. Quem nasce a partir de hoje leva
+    /// o numero gravado, pra que o berco nao ande no dia em que existir um verb de renomear.
+    ///
+    /// NAO SE GUARDA O PLANETA, e isso e a regra e nao economia: o endereco `(Sx, Sy, K)` e o nome
+    /// e a seed do mundo sao todos DERIVAVEIS desta semente mais a raca, a classe e a linhagem, que
+    /// ja estao aqui do lado. Gravar o resultado seria uma segunda verdade sobre o mesmo lugar --
+    /// e a pergunta "e se as duas divergirem?" nao tem resposta boa (ver o cabecalho do `Berco`).
+    /// </summary>
+    public ulong SeedDoBerco;
+
+    /// <summary>
+    /// O jogador pediu, na criacao, pra nascer num mundo qualquer perto de casa. Ver
+    /// <see cref="Jandirus.Core.Races.CharacterDraft.PertoDeCasa"/>.
+    ///
+    /// PERSISTE PORQUE O RENASCIMENTO USA A MESMA FUNCAO DO NASCIMENTO: sem este bit no disco,
+    /// quem escolheu o vizinho nasceria la e ressuscitaria no natal -- os dois caminhos sairiam da
+    /// mesma funcao com argumentos diferentes, que e o jeito mais silencioso de a regra divergir.
+    /// </summary>
+    public bool PertoDeCasa;
+
     public float X, Y;
 
     public long CriadoEm, VistoEm;
@@ -442,11 +467,31 @@ public sealed class AccountStore(string pasta)
         DiscAtual = pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Atual : pl.PoderDaDestruicao.Atual,
         FormasDespertadas = pl.Forma != null ? [.. pl.Forma.Liberadas] : [],
         FormasEstreadas = pl.Forma != null ? [.. pl.Forma.EstreiaVista] : [],
+
+        // ============================ ESTA LINHA FALTAVA, E ELA APAGAVA OS LIMIARES ============================
+        // Achado escrevendo o berco, e nao e do berco: `Limiares` esta em `CharacterSave` e em
+        // `ParaJogador` (o `Entrar` le `c.Limiares`), mas NUNCA foi escrito de volta aqui. Como este
+        // metodo monta o save do ZERO a cada `Persistir` -- e o `Entrar` chama `Persistir` na mesma
+        // funcao em que acabou de LER os limiares --, o campo virava `new()` no primeiro login e
+        // sumia do disco. Todo Saiyajin do servidor perdeu a propria porta de SSJ (o `rand(9,13)/10`
+        // do `statsaiyan.dm`) e caiu na constante generica, calado: `Limiares?.Porta(d) is > 0`
+        // devolve falso pro objeto vazio e o codigo escorrega pro `d.PortaBp` sem reclamar.
+        //
+        // E a armadilha nomeada na PARTE 3 do plano ("campo novo que se lista a mao some, calado").
+        // Ela mordeu de novo, e e por isso que os dois campos de berco entram JUNTO com esta linha.
+        // ==================================================================================================
+        Limiares = pl.Forma?.Limiares ?? new(),
+
         MarcosTotais = pl.Livro?.MarcosTotais ?? 0,
         MarcosLivres = pl.Livro?.MarcosLivres ?? 0,
         Zona = pl.Zone.Name,
         ZonaTipo = pl.Zone.Kind,
         ZonaSeed = pl.Zone.Seed,
+        // O BERCO VOLTA PRO DISCO tal como veio. `ParaJogador` ja resolveu o "zero = deriva", entao
+        // o que sai daqui e sempre um numero de verdade -- inclusive pro personagem antigo, que
+        // grava hoje o berco que ele sempre teve sem nunca ter tido o campo.
+        SeedDoBerco = pl.SeedDoBerco,
+        PertoDeCasa = pl.PertoDeCasa,
         X = pl.Pos.X,
         Y = pl.Pos.Y,
         CriadoEm = pl.CriadoEm,
@@ -474,6 +519,41 @@ public sealed class AccountStore(string pasta)
         // uma referencia nula que estouraria no primeiro tique de proximidade.
         pl.Social = s.Social ?? new();
         pl.Visual = s.Visual;
+
+        // ============================ A COR DA AURA: SAVE ANTIGO NAO TEM, E NAO PRECISA TER ============================
+        // O `??=` E A MIGRACAO INTEIRA. Nao ha ramo "personagem velho" nenhum: a cor e uma funcao
+        // PURA de nome + instante de criacao (ver `CorDeAura.De`), e essa dupla esta gravada em
+        // todo save desde sempre. Quem nasceu ontem e quem nasceu antes desta funcionalidade caem
+        // na mesma conta e recebem a mesma cor -- todo login, pra sempre.
+        //
+        // AQUI, E NAO NA HORA DE DESENHAR, pela mesma razao que o `Mochila.Sanear` logo acima:
+        // este metodo e o funil unico "save -> jogador em jogo" (o `Entrar` e o unico chamador), e
+        // dele a cor sai de graca pro `JoinAccepted`, pro `PeerLook` de todo mundo da zona e pro
+        // clone (que copia o `Visual` do dono).
+        //
+        // E ELA VAI PRO DISCO no primeiro `Persistir`, o que e desejado e nao efeito colateral: o
+        // campo e o OVERRIDE (o dia do verb `Aura_Color()` do DM escreve nele). Gravado ou
+        // derivado, o valor e o mesmo -- por isso apagar o campo do JSON a mao devolve a MESMA cor,
+        // que e como esta migracao foi provada.
+        // ==========================================================================================
+        pl.Visual.CorAura ??= Jandirus.Core.Appearance.CorDeAura.De(s.Nome, s.CriadoEm);
+
+        // ============================ O BERCO: MESMA MIGRACAO, MESMO MOTIVO ============================
+        // Zero = save de antes do berco (ou save de um personagem que nasceu na Terra cravada). A
+        // conta e a MESMA dupla que a cor da aura acabou de usar duas linhas acima -- nome + instante
+        // de criacao --, e ela esta em todo save desde sempre. Nao ha ramo "personagem velho": ele
+        // ganha o berco que teria se nascesse hoje, e ganha o MESMO em todo login, pra sempre.
+        //
+        // AQUI, e nao no `BercoDe`, pelo mesmo motivo do `Mochila.Sanear` e da cor: este metodo e o
+        // funil unico "save -> jogador em jogo". Derivando aqui, o resto do servidor pode ler
+        // `pl.SeedDoBerco` como se ele sempre tivesse existido.
+        // ==========================================================================================
+        pl.SeedDoBerco = s.SeedDoBerco != 0
+            ? s.SeedDoBerco
+            : Jandirus.Core.Races.Bercos.SementeDoBerco(s.Nome, s.CriadoEm);
+        pl.PertoDeCasa = s.PertoDeCasa;
+
+
         pl.Ficha = s.Ficha;
         pl.Class = s.Ficha.Class;
 

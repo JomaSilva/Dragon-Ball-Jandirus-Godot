@@ -184,6 +184,45 @@ public partial class RaiosDaForma : Node2D
 	public int IntensidadeDeTeste => _ligado ? _intensidade : 0;
 
 	/// <summary>
+	/// A GROSSURA BASE QUE CHEGOU AO SHADER -- lida do uniform pelo mesmo motivo de <see cref="CorDeTeste"/>.
+	/// NAO e a grossura na tela: o shader ainda multiplica por `afinar` e pelo sorteio por particula.
+	/// </summary>
+	public float GrossuraBaseDeTeste => _tinta.GetShaderParameter("grossura").AsSingle();
+
+	/// <summary>
+	/// ESTE NODE ESCREVEU ALGUM DOS DOIS BOTOES DA GROSSURA?
+	///
+	/// Tem que ser NAO. Os dois (`afinar` e `variacao_grossura`) existem pra o dono afinar de olho
+	/// mexendo no .gdshader, sem recompilar -- e um `SetShaderParameter` aqui apagaria o padrao do
+	/// arquivo em silencio: o efeito continuaria desenhando, so que o botao pararia de ter efeito.
+	/// E o mesmo defeito que a rampa da nebulosa ja guarda, e ele nao aparece em foto nenhuma.
+	///
+	/// Um uniform que o material nunca escreveu volta como `Nil` -- e dai que o valor vem do shader.
+	/// </summary>
+	public bool BotoesDaGrossuraIntactosDeTeste =>
+		_tinta.GetShaderParameter("afinar").VariantType == Variant.Type.Nil
+		&& _tinta.GetShaderParameter("variacao_grossura").VariantType == Variant.Type.Nil;
+
+	/// <summary>
+	/// A FAIXA DE ESCALA QUE O EMISSOR SORTEIA POR PARTICULA -- (min, max). Pra bancada.
+	///
+	/// Ela e a SEGUNDA fonte de variacao de grossura, e a unica que existia antes dos dois botoes: a
+	/// escala multiplica o quad inteiro, entao um raio maior sai grosso E comprido. Sem este par a
+	/// bancada nao consegue medir a grossura em pixel de mundo -- so a fracao de UV, que nao e o que
+	/// o dono ve --, e nao consegue separar a variacao NOVA (por raio) da que ja vinha do tamanho.
+	/// </summary>
+	public Vector2 EscalaDaParticulaDeTeste => new((float)_fisica.ScaleMin, (float)_fisica.ScaleMax);
+
+	/// <summary>
+	/// A LARGURA DO QUAD DE UM RAIO em pixels de mundo, ANTES da escala da particula. Pra bancada.
+	///
+	/// E o que converte a `grossura` (que e fracao de UV) em pixel: a meia-largura do nucleo na tela e
+	/// `grossura x esta largura x escala`. Exposta em vez de repetida na bancada porque repetir um 16
+	/// la faria a medida continuar dizendo 1,09 px no dia em que o quad mudasse de tamanho.
+	/// </summary>
+	public static float LarguraDoQuadDeTeste => TamanhoDoRaio.X;
+
+	/// <summary>
 	/// RAIOS POR SEGUNDO, em media -- o numero que responde ao pedido ("um a cada 2 segundos").
 	///
 	/// E a media do sorteio dividida pela media do intervalo. Foi a conta que faltava na primeira
@@ -285,6 +324,11 @@ public partial class RaiosDaForma : Node2D
 
 		_tinta.SetShaderParameter("cor", cor);
 		_tinta.SetShaderParameter("zigue", 0.22f + _intensidade * 0.09f);
+		// A GROSSURA ESCRITA AQUI E SO A BASE DA FORMA. Quem afina a media e quem espalha um raio do
+		// outro sao dois uniforms que moram no `RaioDaForma.gdshader` (`afinar` e
+		// `variacao_grossura`) e que este arquivo NAO ESCREVE de proposito: escrever apagaria o
+		// padrao do shader e o dono perderia o unico jeito de afinar isso sem um build inteiro pelo
+		// meio. Ver o bloco de comentario do shader pras medidas de antes e depois.
 		_tinta.SetShaderParameter("grossura", 0.055f - _intensidade * 0.006f);
 		_tinta.SetShaderParameter("halo", 0.7f + _intensidade * 0.35f);
 

@@ -208,6 +208,64 @@ public sealed class ZoneCollision
 		BlockedCell((int)MathF.Floor(pos.X / TileSize), (int)MathF.Floor(pos.Y / TileSize));
 
 	/// <summary>
+	/// O PONTO LIVRE MAIS PROXIMO DE UM DESEJADO -- o "onde da pra por um corpo aqui".
+	///
+	/// ============================ E ISTO FALTAVA, E O DEFEITO JA ESTAVA EM JOGO ============================
+	/// O servidor tem UM ponto de chegada pra todo mapa pre-feito: o (249,250) do BYOND
+	/// (`locate(rand(240,260),rand(240,260),1)`), que e o campo aberto do meio da TERRA. Ele foi
+	/// escrito pra a Terra e passou a ser usado em todo pouso pre-feito -- e em **Icer o (249,250) e
+	/// PAREDE** (medido no proprio `z04_Icer.col`: 309 das 441 celulas do quadrado 21x21 em volta
+	/// sao densas). Ou seja, quem pousava em Icer chegava dentro da rocha; so ninguem tinha reparado
+	/// porque nenhuma regra do jogo mandava alguem pra la. O berco manda -- e o Frost Demon nasce em
+	/// Icer --, entao o buraco deixa de ser teorico.
+	///
+	/// A alternativa era extrair os 14 `/obj/SpawnPoint` do `.dmm` e ter uma coordenada por planeta.
+	/// Nao foi por dois motivos: seria dado NOVO pra manter em sincronia com mapas que mudam, e nao
+	/// resolveria o caso do mapa cujo spawnpoint cai numa construcao levantada por um jogador (a
+	/// colisao tem `Bloquear`/`Abrir` em runtime). Perguntar a colisao responde as duas coisas.
+	/// ==================================================================================================
+	///
+	/// Anel por anel a partir do desejado, e devolve o CENTRO do tile: um ponto na quina de uma
+	/// celula livre encostada em parede ja nasce em violacao pro `MoveRules`.
+	///
+	/// Custo: uma vez por nascimento/morte, e o primeiro anel resolve em todo mapa menos um. O pior
+	/// caso medido (Icer) para no anel 8 -- 289 celulas olhadas, microssegundos. Nada disto encosta
+	/// no tique de ninguem.
+	/// </summary>
+	/// <param name="raioMax">
+	/// Teto de aneis. 64 tiles cobre metade de um mapa de 500 -- se nao houver chao livre a essa
+	/// distancia, o mapa e que esta errado, e devolver o desejado deixa o defeito VISIVEL (o corpo
+	/// preso na pedra) em vez de escondido atras de uma busca que varre o mundo inteiro.
+	/// </param>
+	public Vec2 PontoLivrePerto(Vec2 desejado, int raioMax = 64)
+	{
+		int cx = (int)MathF.Floor(desejado.X / TileSize);
+		int cy = (int)MathF.Floor(desejado.Y / TileSize);
+
+		if (Serve(cx, cy)) return desejado;
+
+		for (int r = 1; r <= raioMax; r++)
+		{
+			// So a BORDA do quadrado de raio r: o miolo ja foi olhado nos aneis anteriores.
+			for (int dx = -r; dx <= r; dx++)
+				for (int dy = -r; dy <= r; dy++)
+				{
+					if (Math.Abs(dx) != r && Math.Abs(dy) != r) continue;
+					if (Serve(cx + dx, cy + dy))
+						return new Vec2((cx + dx) * TileSize + TileSize / 2f,
+										(cy + dy) * TileSize + TileSize / 2f);
+				}
+		}
+
+		return desejado;
+
+		// A BEIRADA NAO SERVE DE CHAO. `NaBorda` e o que impede sair do mapa (o `MoveRules` recusa
+		// o passo la), entao um corpo posto na beirada nasceria numa celula de onde ele nao pode se
+		// mover -- livre pela colisao e presa pela regra.
+		bool Serve(int x, int y) => !BlockedCell(x, y) && !NaBorda(x, y);
+	}
+
+	/// <summary>
 	/// O caminho de <paramref name="from"/> ate <paramref name="to"/> passa por parede?
 	///
 	/// Amostra o segmento a cada meio tile. Nao e um raycast exato de proposito: o objetivo

@@ -416,8 +416,9 @@ public sealed partial class GameServer
 			// cena e queimada antes porque `EmCena` faz o tique sair no comeco -- dentro da estreia nao
 			// drena um pingo, e a checagem passaria sem nada ter acontecido.
 			//
-			// COMO REPROVA SE A REGRA SUMIR: mova o `p.Ficha.Ki = p.Ficha.MaxKi` do `AdminForcarForma`
-			// pra depois do `AplicarForma` (a ordem antiga) -- o tanque drenado vira poder drenado.
+			// COMO REPROVA SE A REGRA SUMIR: mova o `p.Ficha.Ki = Math.Max(MaxKi, Ki)` do
+			// `AdminForcarForma` pra depois do `AplicarForma` (a ordem antiga) -- o tanque drenado
+			// vira poder drenado.
 			//
 			// A TOLERANCIA DE 1% e por causa da maestria, que sobe com o tempo em forma e pode mudar o
 			// multiplicador em DEGRAU. Dez segundos rendem 0,09% de maestria e nao cruzam degrau

@@ -456,7 +456,15 @@ public partial class GameServer
 		if (todosNoPico && !pl.EgoRestauracaoUsada)
 		{
 			pl.EgoRestauracaoUsada = true;
-			pl.Ficha.Ki = Math.Min(pl.Ficha.MaxKi, pl.Ficha.Ki + pl.Ficha.MaxKi * Disciplinas.EgoRestaura / 100.0);
+			// O TETO LIMITA O QUE A RESTAURACAO ACRESCENTA, E NAO O QUE JA ESTAVA LA. Irmao do
+			// `Nutricao.cs:134` e do `if (primeira)` do `GameServer.Formas.cs`: escrito como
+			// `Math.Min(MaxKi, ...)` este PREMIO virava um CORTE -- quem chegasse ao pico do Ultra
+			// Ego com o Ki comprimido a 140% pela tecla C recebia "25% de Ki" e SAIA com 100%.
+			// O original nao corta (`Power Control.dm:113-134`: o excesso vaza devagar, nunca cai
+			// de degrau). `Math.Max(MaxKi, Ki)` mantem a promessa dos dois lados -- a restauracao
+			// enche ate o cheio e nunca tira.
+			pl.Ficha.Ki = Math.Min(Math.Max(pl.Ficha.MaxKi, pl.Ficha.Ki),
+								   pl.Ficha.Ki + pl.Ficha.MaxKi * Disciplinas.EgoRestaura / 100.0);
 			Avisar(pl, "TODO o seu corpo grita, e o ego responde: a dor vira poder.");
 		}
 	}

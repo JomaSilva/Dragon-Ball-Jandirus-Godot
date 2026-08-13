@@ -222,6 +222,8 @@ public partial class World : Node2D
 			cli.Golpe += AoGolpe;
 			cli.FormaMudou += AoMudarForma;
 			cli.OozaruMudou += AoVirarOozaru;
+			// METODO NOMEADO, como os vizinhos: ver a nota logo abaixo sobre as lambdas orfas.
+			cli.FuriaIrrompeu += AoIrromperFuria;
 			cli.VizinhancaMudou += DesenharPlanetas;
 			cli.ObrasMudaram += DesenharObras;
 			cli.EfeitoCaiu += AoCairEfeito;
@@ -291,6 +293,7 @@ public partial class World : Node2D
 			// METODO NOMEADO E `-=`, e nao lambda: ver a nota do `_Ready`. O `GameClient` sobrevive
 			// ao logout, entao assinatura que nao se cancela vira ouvinte orfao na sessao seguinte.
 			cli.OozaruMudou -= AoVirarOozaru;
+			cli.FuriaIrrompeu -= AoIrromperFuria;
 			cli.VizinhancaMudou -= DesenharPlanetas;
 			cli.ObrasMudaram -= DesenharObras;
 			cli.EfeitoCaiu -= AoCairEfeito;
@@ -2581,10 +2584,11 @@ public partial class World : Node2D
 			// Ki passe dos 100% -- na base quem desenha e a `CargaVisual`, e ela nao ilumina.
 			// Ver `Aura.Aplicar`.
 			//
-			// A COR E A FORCA SAO PERGUNTADAS (`Aura.CorDaChamaDe` / `ForcaDaChamaDe`) e nao
-			// recalculadas: as mesmas duas contas moram no `Transformacao.Vestir` e agora tambem na
-			// chama da cinematica -- tres desenhos da mesma chama nao podem ter tres contas.
-			aura.Preparar(Aura.CorDaChamaDe(def), Aura.ForcaDaChamaDe(def), def != null);
+			// A COR E A FORCA NAO SAO CALCULADAS AQUI: quem as pergunta e o proprio node, que e
+			// quem tem a cor PESSOAL deste corpo em maos (ver `Aura.Preparar`). Este chamador
+			// passava o par ja resolvido, e o `Transformacao.Vestir` passava o mesmo par -- duas
+			// copias da conta que agora teriam que achar, cada uma por si, de quem e a chama.
+			aura.Preparar(def, def != null);
 		}
 
 		// A CARGA E O SEGUNDO DESENHO DA MESMA COISA. Sem esta linha, carregar transformado desenhava
@@ -2745,11 +2749,14 @@ public partial class World : Node2D
 			raios.Definir(def is { Raios: > 0 },
 						  new Color(Jandirus.Core.Forms.Catalogo.CorDosRaios(def)), def?.Raios ?? 0);
 
-		// --- A NEBULOSA: quem responde e o Core (`TemNebulosa`), derivado da LINHA da forma ---
+		// --- A NEBULOSA: quem responde e o Core (`PaletaDaNebulosa`), derivado da forma ---
 		// Ela e dos DOIS corpos, como a faisca e ao contrario do contorno: a nuvem e da FORMA e nao
 		// do Ki -- ver o cabecalho deste metodo.
+		//
+		// A PALETA VEM NA MESMA CHAMADA (nulo = apagar): sao duas hoje -- a indigo do Ultra Instinto e a
+		// roxa do `ultra_ego` --, e a cor e o unico ponto em que as duas diferem.
 		if (corpo.GetNodeOrNull<NebulosaDaForma>("Nebulosa") is { } nebulosa)
-			nebulosa.Definir(Jandirus.Core.Forms.Catalogo.TemNebulosa(def));
+			nebulosa.Definir(Jandirus.Core.Forms.Catalogo.PaletaDaNebulosa(def));
 	}
 
 	/// <summary>
@@ -2863,6 +2870,33 @@ public partial class World : Node2D
 			Chat.Sistema($"** {Jandirus.Core.Forms.Catalogo.NomeDe(def, dominada: false)} **");
 	}
 
+	/// <summary>
+	/// A FURIA DE ALGUEM IRROMPEU -- toca a cena de 5,0 s do `AngerCinematic()` (`Murder.dm:136`) por
+	/// cima do corpo dele, sem mexer em forma nenhuma.
+	///
+	/// ============================ TRES LINHAS, E ELAS SAO TRES DECISOES ============================
+	///   * `Corpo(id) == null` -> nao ha o que enfeitar. E o mesmo corte do <see cref="AoMudarForma"/>,
+	///     e no espaco ele e o que faz o alcance valer sozinho (quem esta a setores de distancia nao
+	///     tem o corpo desenhado);
+	///   * a cena vai com `forma: null` -- **e este e o ponto**. A furia nao veste ninguem, e o
+	///     `Transformacao` sabe o que fazer com o nulo (ver o campo `_forma` la). Passar a `base` do
+	///     catalogo, que era a saida obvia, faria a virada da cena DESPIR quem estivesse transformado;
+	///   * o nome vai junto pela mesma razao das outras cenas: e com ele que quem assiste le a linha do
+	///     chat.
+	///
+	/// NAO HA GUARDA DE REPETICAO AQUI, e nao ha porque nao pode haver duas verdades sobre isso: a
+	/// recarga de 60 s (`rageCinematicCD`, `Murder.dm:139-140`) e do SERVIDOR, e o pacote so sai depois
+	/// dela. Uma segunda contagem no cliente ficaria fora de sincronia no primeiro relog e o sintoma
+	/// seria uma cena que "as vezes nao toca".
+	/// ==========================================================================================
+	/// </summary>
+	private void AoIrromperFuria(int id)
+	{
+		if (Corpo(id) is not { } corpo) return;
+		Transformacao.Rodar(_atores, corpo, forma: null, Jandirus.Core.Forms.Cinematicas.Furia,
+							id == GameClient.Instance?.LocalId, NomeDe(id));
+	}
+
 	// O `Degrau(Forma)` QUE MORAVA AQUI FOI DELETADO. Ele era um switch de cinco casos que dizia o
 	// quao exagerada e a cinematica, e era o quarto lugar que uma forma nova precisava tocar -- a
 	// consequencia de esquecer era sutil e feia: o SSJ4 estreava com o tranco de um SSJ1. Agora o
@@ -2943,6 +2977,64 @@ public partial class World : Node2D
 				Tipo = p.Premade ? ""
 					 : Jandirus.Core.World.MundoProcedural.DaSeed(p.Seed, p.Nome).Bioma.ToString(),
 			});
+
+		DesenharEstrelas(cli);
+	}
+
+	/// <summary>
+	/// AS ESTRELAS DO PEDACO DE UNIVERSO EM QUE ESTOU -- as que QUEIMAM (`Core.World.CalorDaEstrela`).
+	///
+	/// ============================ ELAS NAO VEM DO SERVIDOR, E ISSO E DE PROPOSITO ============================
+	/// O `S2C.Vizinhanca` continua com os mesmos campos de sempre: nao entrou um byte de estrela nele.
+	/// A estrela e funcao pura de `(seed do universo, celula)`, e a seed ja chega naquele pacote --
+	/// entao o cliente pergunta ao MESMO `Sistemas` que o servidor consulta pra decidir quem queima.
+	///
+	/// Uma copia pela rede seria um SEGUNDO numero pra mesma coisa, e o dia em que os dois divergissem
+	/// o jogador morreria ao lado de um sol que parecia longe. Regra 0.2 da especificacao.
+	/// ====================================================================================================
+	///
+	/// TRES CELULAS BASTAM e a conta e fechada: <c>Sistemas.PorPerto</c> varre o 3x3 em volta, nenhum
+	/// sistema passa de 23.000 px de raio e a celula mede 65.536 -- uma estrela de duas celulas de
+	/// distancia nao alcanca nem a coroa. Sao 9 hashes por troca de CHUNK (2.048 px), nao por quadro.
+	///
+	/// A conta continua a mesma depois de a estrela ganhar jitter na celula quase inteira: o que ela
+	/// usa e `CelulaPx + margem`, e o `+ margem` so ajuda. Medido na secao "A GRADE" da bancada
+	/// `sistemas` -- 50.000 pontos contra o anel de 3 celulas, zero sistemas alcancando de fora.
+	///
+	/// ============================ E DAS NOVE, QUASE SEMPRE SE DESENHA ZERO OU UMA ============================
+	/// O 3x3 e a varredura, nao o desenho. Cada folha de estrela e uma textura de **4096x4096** (~64 MB
+	/// em VRAM depois de descomprimida), e as oito estrelas vizinhas estao a pelo menos 23.000 px --
+	/// centenas de telas de distancia numa janela de 384x216. Criar as nove carregaria meio giga de
+	/// textura pra desenhar oito pontos invisiveis.
+	///
+	/// O corte e o MESMO do planeta, escrito em pixel em vez de em chunk: entra quem tem a SUPERFICIE
+	/// dentro da vizinhanca ativa (`RaioAtivo + 1` chunks = 4.096 px alem da borda). Como dois sistemas
+	/// nunca se sobrepoem por construcao (`Sistemas`, a desigualdade `margemA+margemB >= rsysA+rsysB`),
+	/// no maximo uma estrela passa por aqui -- o par mais apertado que a bancada mediu ainda guarda
+	/// 1.933 px entre as BORDAS dos dois discos.
+	/// ====================================================================================================
+	/// </summary>
+	private void DesenharEstrelas(GameClient cli)
+	{
+		if (PosicaoLocal is not { } eu) return;
+
+		var perto = new List<Jandirus.Core.World.SistemaSolar>(9);
+		Jandirus.Core.World.Sistemas.PorPerto(cli.SeedDoUniverso, new Vec2(eu.X, eu.Y), perto);
+
+		const float folga = Jandirus.Core.World.Espaco.ChunkPx * (Jandirus.Core.World.Espaco.RaioAtivo + 1);
+		foreach (Jandirus.Core.World.SistemaSolar s in perto)
+		{
+			var onde = new Vector2(s.Estrela.Pos.X, s.Estrela.Pos.Y);
+			if (eu.DistanceTo(onde) > s.Estrela.Raio + folga) continue;
+
+			_orbes.AddChild(new EstrelaDesenhada
+			{
+				Name = $"E_{s.Id.Sx}_{s.Id.Sy}",
+				Position = onde,
+				Ficha = s.Estrela,
+				Nome = s.NomeDaEstrela,
+			});
+		}
 	}
 
 	/// <summary>Manda o piloto automatico levar o corpo ate um ponto (o nav system).</summary>
@@ -3135,6 +3227,26 @@ public partial class World : Node2D
 		if (v == null) return;
 
 		if (_visual != null && _looks.TryGetValue(id, out var l)) v.Vestir(_visual, l.Ap, l.Raca, l.Genero);
+
+		// ============================ A COR DA CHAMA DESTE CORPO, ANTES DA FORMA ============================
+		// A ficha traz a cor sorteada no nascimento (`Appearance.CorAura`) e o node `Aura` e quem a
+		// guarda -- ele ja e o dono da resposta pra "de que cor e a chama deste corpo", e a
+		// `CargaVisual` e a cinematica leem dele.
+		//
+		// ANTES dos blocos de forma logo abaixo, e nao depois: `Preparar` resolve a cor NA HORA
+		// (`Aura.CorDaChamaDe(d, _corPessoal)`), entao escrever a pessoal depois deixaria a chama do
+		// Mistico -- e a da base -- montada com o fallback ate a proxima troca de forma.
+		//
+		// E O `_looks` E O UNICO LUGAR DE ONDE ISSO PODE SAIR: e a ficha visual de cada pessoa da
+		// zona, escrita pelo `PeerLook`, que e o mesmo pacote que ja traz cabelo e roupa. Um mapa
+		// proprio `id -> cor da aura` seria um segundo registro pra envelhecer sozinho.
+		// ==============================================================================================
+		//
+		// SEM FICHA NAO SE ESCREVE NADA: o node ja nasce no `Aura.CorDoKiCru`, que e exatamente o
+		// que "ainda nao sei de quem e este corpo" quer dizer. Escrever o fallback aqui daria o
+		// mesmo valor e ainda faria parecer que a ficha chegou.
+		if (corpo.GetNodeOrNull<Aura>("Aura") is { } noda && _looks.TryGetValue(id, out var lk))
+			noda.DefinirCorPessoal(Aura.CorPessoalDe(lk.Ap));
 
 		// AS FERIDAS TAMBEM SAO GUARDADAS. Mesma razao do `_looks`: o pacote pode ter chegado antes
 		// de este boneco existir -- e um corpo que nasce limpo depois de o servidor ja ter dito que

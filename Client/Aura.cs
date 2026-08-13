@@ -35,23 +35,100 @@ public partial class Aura : Node2D
     private const int Raio = 160;
 
     /// <summary>
-    /// ============================ A COR DO KI CRU -- A CHAMA DE QUEM NAO ESTA TRANSFORMADO ============================
+    /// ============================ A COR DO KI CRU -- O FALLBACK DA CHAMA PESSOAL ============================
     /// O branco-azulado que todo mundo tem antes de qualquer forma. Ela mora AQUI, junto de
     /// <see cref="_corAcesa"/>, porque este node e o dono da resposta pra "de que cor e a chama
     /// deste corpo" -- e a base e so mais um caso dessa mesma pergunta, nao um assunto da tecla C.
     /// (Ela morava na `CargaVisual` com o nome `CorCarga`, de quando a carga tinha cor propria.)
     ///
-    /// E O PADRAO DE <see cref="_corAcesa"/>, e isso nao e conveniencia: um corpo que ainda nao
-    /// recebeu forma nenhuma ESTA na base, e a cor dele tem que ser esta desde o primeiro quadro.
+    /// ============================ ELA DEIXOU DE SER A CHAMA DE TODO MUNDO ============================
+    /// Era: a chama da base era ESTA cor, igual pra todo personagem do servidor. Hoje cada corpo tem
+    /// a propria (<see cref="CorPessoal"/>, sorteada no nascimento como no `CharacterCreation.dm:25-27`
+    /// e entregue no `PeerLook`), e esta constante ficou sendo o que ela sempre foi por baixo: **a cor
+    /// de quem ainda nao tem ficha**. Ha exatamente tres casos vivos, e nenhum deles e um jogador
+    /// desenhado por inteiro:
+    ///
+    ///   1. o corpo que nasceu do snapshot e cujo `PeerLook` ainda nao chegou (canais diferentes, sem
+    ///      ordem garantida -- ver `World.VestirCorpoInteiro`). Ele fica com esta cor por alguns quadros;
+    ///   2. a `CargaVisual` de um corpo montado pela metade, que ainda nao tem o node `Aura` irmao
+    ///      (`CargaVisual.Pintar`: `aura?.CorDaChama ?? CorDoKiCru`);
+    ///   3. a bancada, que monta nodes soltos sem servidor nenhum.
+    ///
+    /// E O PADRAO DE <see cref="_corPessoal"/> por isso, e nao por conveniencia: um corpo que ainda
+    /// nao recebeu forma nenhuma ESTA na base, e a cor dele tem que ser ALGUMA desde o primeiro quadro.
     /// Com o antigo padrao `Colors.White` um remoto que entrasse na zona e segurasse C antes do
     /// primeiro `PrepararAuraDaForma` desenharia a chama em branco -- e branco multiplicando a folha
-    /// colorivel APAGA a arte (defeito ja pago uma vez).
+    /// colorivel APAGA a arte (defeito ja pago uma vez). Esta cor nunca e branca, e e por isso que ela
+    /// continua sendo o fallback certo.
     ///
     /// A entrada `base` do catalogo NAO serve pra isso: o `Aura` dela e `ffffff`, exatamente o
     /// branco que apaga. Ver `World.PrepararAuraDaForma`, que escreve esta constante no lugar dela.
     /// ==============================================================================================
     /// </summary>
     public static readonly Color CorDoKiCru = new(0.62f, 0.80f, 1.0f);
+
+    /// <summary>
+    /// ============================ A COR DA CHAMA **DESTE** CORPO ============================
+    /// A cor sorteada no nascimento do personagem (`Appearance.CorAura`), que chega pelo `PeerLook`
+    /// e e escrita aqui pelo `World.VestirCorpoInteiro`. Ela e o que a base acende, e o que o
+    /// Mistico acende (ver `Catalogo.ChamaDoJogador`).
+    ///
+    /// MORA NO NODE, E NAO NUM MAPA GLOBAL, por uma razao so: as tres chamas de um corpo (esta, a da
+    /// <see cref="CargaVisual"/> e a da cinematica) ja saem daqui. Um mapa `id -> cor` a parte seria
+    /// uma quarta resposta pra "de que cor e a chama deste corpo", e este arquivo inteiro e a
+    /// historia de quando havia duas.
+    /// ======================================================================================
+    /// </summary>
+    public Color CorPessoal => _corPessoal;
+
+    private Color _corPessoal = CorDoKiCru;
+
+    /// <summary>
+    /// A COR DA CHAMA QUE UMA FICHA DESCREVE. Nulo no campo = ficha de antes desta funcionalidade
+    /// que ainda nao passou pelo servidor; ai vale o <see cref="CorDoKiCru"/>, e o cabecalho dele
+    /// diz por que isso e legitimo.
+    ///
+    /// EM JOGO O NULO NAO ACONTECE: quem manda a ficha e o servidor, e o `AccountStore.ParaJogador`
+    /// DERIVA a cor de todo save que nao a tenha antes de o corpo existir. Este ramo e pra a
+    /// bancada e pra o dia em que alguem montar uma `Appearance` na mao.
+    ///
+    /// A CONVERSAO E CRUA (canal/255) e nao passa por `Color.FromHtml`: a `Rgb` ja e 8 bits por
+    /// canal e o hexa no meio do caminho so seria uma chance de arredondar diferente.
+    /// </summary>
+    public static Color CorPessoalDe(Jandirus.Core.Appearance.Appearance ap) =>
+        ap.CorAura is { } c ? new Color(c.R / 255f, c.G / 255f, c.B / 255f) : CorDoKiCru;
+
+    /// <summary>
+    /// A ficha visual deste corpo chegou (ou mudou). Ver <see cref="CorPessoal"/>.
+    ///
+    /// REPINTA O QUE JA ESTA ACESO, e so quando a chama de agora e a PESSOAL -- um Super Saiyajin
+    /// nao troca de dourado porque a ficha do dono chegou atrasada. Quem sabe se a chama e pessoal
+    /// e o <see cref="_chamaEhPessoal"/>, escrito por quem VESTE (<see cref="Preparar"/>), e nao
+    /// deduzido comparando cores: deduzir pela cor e o erro que o `<param name="temForma">` do
+    /// `Preparar` ja documenta em outro contexto (a base e a cinematica do Oozaru acendem a MESMA
+    /// cor de proposito).
+    ///
+    /// E O CAMINHO COMUM PASSA POR AQUI, nao pelo `Preparar`: um corpo na BASE nunca chama
+    /// `PrepararAuraDaForma` (nao ha forma), entao sem esta linha a chama pessoal so apareceria na
+    /// primeira transformacao -- e voltaria a aparecer errada em todo mundo que nunca se transforma.
+    /// </summary>
+    public void DefinirCorPessoal(Color c)
+    {
+        if (_corPessoal.IsEqualApprox(c)) return;
+        _corPessoal = c;
+        if (!_chamaEhPessoal) return;
+        _corAcesa = c;
+        if (_acesa || _cargaAtiva) Aplicar();
+    }
+
+    /// <summary>
+    /// A chama guardada agora e a do JOGADOR (base, Mistico) ou a da FORMA (todo o resto)?
+    ///
+    /// Nasce VERDADEIRO porque um corpo sem forma esta na base, e a base e pessoal. Quem o escreve
+    /// e o <see cref="Preparar"/>, com a resposta do Core (`Catalogo.ChamaDoJogador`) -- este node
+    /// nao repete a regra, so guarda de quem era a cor que ele acabou de receber.
+    /// </summary>
+    private bool _chamaEhPessoal = true;
 
     /// <summary>
     /// ============================ A CHAMA DE UMA FORMA: UMA CONTA, TRES DESENHOS ============================
@@ -68,9 +145,40 @@ public partial class Aura : Node2D
     /// E A BASE NAO E O `Aura` DA ENTRADA `base` DO CATALOGO, que e `ffffff`: branco multiplicando a
     /// folha colorivel APAGA a arte (defeito ja pago uma vez -- ver <see cref="CorDoKiCru"/>).
     /// ====================================================================================================
+    ///
+    /// ============================ E A BASE DEIXOU DE SER A UNICA CHAMA PESSOAL ============================
+    /// Esta conta perguntava `EhBase`, e isso bastava enquanto "usar a cor do jogador" e "nao estar
+    /// transformado" fossem a mesma coisa. Deixaram de ser: o dono pediu que o **Mistico** acenda a
+    /// chama do personagem -- *"a aura do mistico tem q ser a mesma aura da BASE DO PERSONAGEM, porem
+    /// com os efeitos de raiozinhos q ja existem"*.
+    ///
+    /// QUEM RESPONDE E O CORE (`Catalogo.ChamaDoJogador`), pela mesma razao que a folha e a cor do
+    /// contorno ja moram la: um `if (d.Id == "mistico")` aqui seria uma segunda descricao da mesma
+    /// regra, e este arquivo ja pagou essa familia de defeito tres vezes (a chama da cinematica, a da
+    /// carga e a do corpo sao TRES desenhos da mesma pergunta).
+    ///
+    /// A FORCA CONTINUA PERGUNTANDO `EhBase`, e a assimetria e a regra: o Mistico usa a COR do jogador
+    /// mas e uma transformacao de 16x -- a chama dele e a mesma cor, mais densa. Unificar as duas
+    /// perguntas apagaria justamente o que separa "estou na base" de "estou Mistico".
+    /// ====================================================================================================
+    ///
+    /// ============================ E A COR DO JOGADOR VIROU ARGUMENTO ============================
+    /// Ela era o <see cref="CorDoKiCru"/> -- uma constante, a mesma pra todo mundo. Deixou de ser: cada
+    /// personagem sorteia a propria no nascimento (ver <see cref="CorPessoal"/>), entao a resposta desta
+    /// funcao depende de QUEM esta acendendo, e nao so de QUE forma esta vestida.
+    ///
+    /// SEM SOBRECARGA DE UM ARGUMENTO SO, de proposito. Uma versao "sem o jogador" com o fallback por
+    /// dentro compilaria em todo chamador antigo e devolveria a cor de outra pessoa -- calada. Sendo
+    /// obrigatoria, foi o compilador quem listou os quatro pontos do jogo que precisavam saber disso.
+    /// ==========================================================================================
     /// </summary>
-    public static Color CorDaChamaDe(Jandirus.Core.Forms.FormaDef? d) =>
-        EhBase(d) ? CorDoKiCru : new Color(d!.Aura);
+    /// <param name="pessoal">
+    /// A cor DESTE corpo (<see cref="CorPessoal"/>). Quem nao tem um corpo em maos passa o
+    /// <see cref="CorDoKiCru"/>, e o cabecalho daquela constante lista os tres casos em que isso e
+    /// legitimo.
+    /// </param>
+    public static Color CorDaChamaDe(Jandirus.Core.Forms.FormaDef? d, Color pessoal) =>
+        Jandirus.Core.Forms.Catalogo.ChamaDoJogador(d) ? pessoal : new Color(d!.Aura);
 
     /// <inheritdoc cref="CorDaChamaDe"/>
     public static float ForcaDaChamaDe(Jandirus.Core.Forms.FormaDef? d) =>
@@ -125,6 +233,18 @@ public partial class Aura : Node2D
     /// Core (`Catalogo.Folha`) e quem TRADUZ o simbolo em caminho e a
     /// <see cref="SpriteDeAura.CaminhoDa"/> -- o `switch` que estava escrito aqui era a segunda de
     /// tres copias da mesma tabela.
+    ///
+    /// ============================ E HA UM SIMBOLO QUE APAGA ESTE DESENHO ============================
+    /// `FolhaDeAura.Nebulosa` quer dizer "esta forma nao usa folha" (o Ultra Instinto e o `ultra_ego`
+    /// desenham a nuvem -- a mesma, em duas paletas).
+    /// O `SpriteDeAura` obedece sozinho -- nao ha `if` a acrescentar aqui, e e de proposito: os DOIS
+    /// desenhistas recebem o mesmo simbolo, entao os dois ficam mudos no mesmo instante e nao ha estado
+    /// em que um saiba e o outro nao (foi assim que a chama da carga nasceu certa e a da forma errada).
+    ///
+    /// A `PointLight2D` NAO entra nisso: quem desenha muda, quem ILUMINA nao. Um Ultra Instinto
+    /// carregando no escuro continua acendendo o cenario na cor da forma -- a luz responde a `HaLuz`,
+    /// que pergunta se ha CHAMA e nao se ha folha.
+    /// ==========================================================================================
     /// </summary>
     public void Folha(Jandirus.Core.Forms.FolhaDeAura f) => _desenho.DefinirFolha(f);
 
@@ -195,10 +315,22 @@ public partial class Aura : Node2D
     /// deduzir pela FOLHA muito menos, porque quase toda forma usa a folha `Base`.
     /// Ver a guarda em <see cref="Aplicar"/>: e ele que decide se a luz existe.
     /// </param>
-    public void Preparar(Color cor, float forca, bool temForma)
+    /// <param name="d">
+    /// A FORMA VESTIDA, e nao a cor dela ja resolvida. Era `(Color cor, float forca)` -- as duas
+    /// contas escritas nos dois chamadores --, e passar a forma inteira e o que permite este node
+    /// saber DE QUEM era a cor que ele guardou (<see cref="_chamaEhPessoal"/>). Com a cor pronta na
+    /// mao ele so poderia deduzir isso comparando valores, que e a familia de erro que o
+    /// `<paramref name="temForma"/>` logo abaixo existe pra evitar.
+    /// </param>
+    public void Preparar(Jandirus.Core.Forms.FormaDef? d, bool temForma)
     {
-        _corAcesa = cor;
-        _forcaAcesa = forca;
+        // A COR E A FORCA SAO PERGUNTADAS AQUI, uma vez, e nao em cada chamador. Elas eram duas
+        // linhas repetidas no `World.PrepararAuraDaForma` e no `Transformacao.Vestir`; com a cor
+        // pessoal entrando na conta, seriam duas linhas repetidas que ainda precisariam achar o
+        // corpo certo -- e este node E o corpo certo.
+        _chamaEhPessoal = Jandirus.Core.Forms.Catalogo.ChamaDoJogador(d);
+        _corAcesa = CorDaChamaDe(d, _corPessoal);
+        _forcaAcesa = ForcaDaChamaDe(d);
         _temForma = temForma;
         // PREPARAR NAO ACENDE -- mas repinta o que JA estiver aceso. Vale pros dois donos da chama:
         // se a forma trocar com o C segurado, o desenho e a luz da carga trocam de cor no mesmo
@@ -215,11 +347,20 @@ public partial class Aura : Node2D
     /// </summary>
     private bool _temForma;
 
+    /// <summary>
+    /// ACENDE COM ESTA COR, agora. E o emprestimo: em jogo so a cinematica do Oozaru o usa
+    /// (`Transformacao.AcenderAuraBase`), e ela pede a <see cref="CorPessoal"/> deste corpo.
+    ///
+    /// A COR VEM DE FORA, ENTAO ELA NAO E "A DO JOGADOR" -- <see cref="_chamaEhPessoal"/> cai. E a
+    /// leitura honesta: quem chamou aqui escolheu um valor, e uma ficha que chegasse no meio do
+    /// emprestimo nao pode repintar uma chama que a cena esta usando. Quem devolve o node ao regime
+    /// normal e o `Preparar` seguinte (o `Assumir` da cena faz isso antes de vestir a forma).
+    /// </summary>
     public void Acender(Color cor, float forca = 1f)
     {
         if (forca <= 0) { Apagar(); return; }
 
-        _acesa = true; _corAcesa = cor; _forcaAcesa = forca;
+        _acesa = true; _corAcesa = cor; _forcaAcesa = forca; _chamaEhPessoal = false;
         Aplicar();
     }
 

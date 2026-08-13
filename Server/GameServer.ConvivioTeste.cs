@@ -69,11 +69,11 @@ public partial class GameServer
 				Ficha = new Jandirus.Core.Stats.Fighter { Race = "Saiyan", BP = 3_000_000 },
 			};
 			novo.Ficha.Class = "Normal";
-			novo.Ficha.Statify();
+			// A SEQUENCIA DE POR UM CORPO NO MUNDO virou funcao unica (`PorNoMundo`,
+			// GameServer.Npc.cs) -- era escrita aqui e no clone da mente, e a fabrica de NPC seria a
+			// terceira. O `Ki` cheio vem DEPOIS dela porque so ali o `MaxKi` ja existe.
+			PorNoMundo(novo);
 			novo.Ficha.Ki = novo.Ficha.MaxKi;
-			PrepararCombate(novo, null);
-			_players[novo.Id] = novo;
-			ZoneList(zona.Hash).Add(novo);
 			return novo;
 		}
 

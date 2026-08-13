@@ -96,7 +96,7 @@ public sealed class MundoProcedural
 	/// A GRAVIDADE DE UM MUNDO, so da seed.
 	///
 	/// Publica porque agora ela decide DUAS coisas: o tamanho do mundo (aqui) e o raio do disco no
-	/// mapa do espaco (`Espaco.PlanetaDaChunk`). Duas copias da escada divergiriam no dia em que
+	/// mapa do espaco (`SistemaSolar.Planeta`). Duas copias da escada divergiriam no dia em que
 	/// alguem mexesse numa delas, e o sintoma seria um disco pequeno escondendo um mundo enorme.
 	///
 	/// A escada e a do DM, literal (`ProceduralSpace.dm:448-452`) -- "maioria leve, cauda pesada",

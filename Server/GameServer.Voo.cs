@@ -28,6 +28,13 @@ public partial class GameServer
 	/// </summary>
 	private void MandarDecalque(ZoneKey zona, Protocol.Decal tipo, Vec2 onde, Facing dir)
 	{
+		// A BANCADA ESCUTA AQUI, pela mesma razao das escutas de `GameServer.FormasTeste.cs`: um
+		// decalque termina num `Peer.Send` e pacote que saiu no fio nao volta. A pergunta que so
+		// daqui se responde e a do vacuo -- "o arremesso no espaco carimbou cratera no nada?" --, e
+		// ela e sobre um pacote que NAO devia sair. Ausencia nao deixa rastro em lugar nenhum.
+		// Nula em jogo: uma comparacao contra null por decalque.
+		EscutaDeDecalques?.Add((zona.Hash, tipo));
+
 		var w = Protocol.Begin(Protocol.S2C.Decalque);
 		w.Put((byte)tipo);
 		w.PutVec(onde);

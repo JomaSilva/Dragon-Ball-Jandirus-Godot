@@ -947,18 +947,55 @@ public partial class MenuJogo : CanvasLayer
 		_conteudo.AddChild(barra);
 		_conteudo.AddChild(_mapa);
 
+		// ============================ A TELA DO SISTEMA MORA AQUI DO LADO ============================
+		// Ela e IRMA do mapa e nasce escondida, em vez de ser criada no primeiro duplo clique. Duas
+		// razoes, e as duas ja custaram caro neste projeto:
+		//
+		//   * criar node dentro do tratador do clique remonta o layout do `ScrollContainer` no meio
+		//     do evento, e o mapa perde o zoom e o arrasto -- o mesmo motivo que ja mantem o painel
+		//     do destino fora da remontagem da aba;
+		//   * as duas telas compartilham o painel do destino embaixo. Trocar VISIBILIDADE deixa o
+		//     painel intacto; trocar NODE obrigaria a religar os eventos dele toda vez.
+		// ==========================================================================================
+		_sistema = new TelaDoSistema { Name = "TelaDoSistema", Visible = false };
+		_conteudo.AddChild(_sistema);
+
 		// O PAINEL DO DESTINO fica FORA da remontagem da pagina: ele muda a cada clique no mapa, e
 		// remontar a aba inteira a cada clique jogaria fora o zoom e o arrasto que o jogador acabou
 		// de ajustar. Por isso o mapa avisa por evento e so este pedaco se refaz.
 		var painel = new VBoxContainer();
 		_conteudo.AddChild(painel);
-		_mapa.SelecaoMudou += () => DesenharDestino(painel, noEspaco);
-		_mapa.PediuViagem += p => Viajar(p, noEspaco);
-		DesenharDestino(painel, noEspaco);
 
-		Aviso("\nClique num planeta pra selecionar, duplo clique pra viajar. Arraste pra mover o mapa, "
-			+ "roda pra zoom. O laranja tem superficie pra pousar; o azul-acinzentado e mundo gerado -- "
-			+ "os menores so aparecem quando voce aproxima.");
+		void Repintar() => DesenharDestino(painel, noEspaco);
+
+		_mapa.SelecaoMudou += Repintar;
+		_mapa.PediuViagem += p => Viajar(p, noEspaco);
+		_mapa.PediuSistema += s =>
+		{
+			_sistema.Mostrar(s);
+			_mapa.Visible = false;
+			barra.Visible = false;   // "+/-/ver tudo" sao da carta; a tela do sistema tem os dela
+			_sistema.Visible = true;
+			Repintar();
+		};
+
+		_sistema.SelecaoMudou += Repintar;
+		_sistema.PediuViagem += p => Viajar(p, noEspaco);
+		_sistema.PediuPorto += p => ViajarAoPonto(p, noEspaco);
+		_sistema.PediuVoltar += () =>
+		{
+			_sistema.Visible = false;
+			_mapa.Visible = true;
+			barra.Visible = true;
+			Repintar();
+		};
+
+		Repintar();
+
+		Aviso("\nCada pontinho e um SISTEMA. Clique pra selecionar, DUPLO CLIQUE pra abrir o mapa do "
+			+ "sistema -- estrela no centro, os mundos nos aneis de orbita. Arraste pra mover, roda pra zoom.");
+		Aviso("A cor do ponto e a classe da estrela, medida na propria arte dela. Aproximando, os mundos "
+			+ "aparecem: o laranja tem mapa proprio, o azul-acinzentado e gerado. Duplo clique num MUNDO viaja.");
 		Aviso("A viagem leva o tempo que diz: o piloto anda no passo normal, nao teleporta. "
 			+ "Terra a Namek sao 7 dias in-game, como no anime.");
 	}
@@ -966,8 +1003,14 @@ public partial class MenuJogo : CanvasLayer
 	/// <summary>O mapa da aba Nav. Guardado pra os botoes da barra alcancarem a camera dele.</summary>
 	private MapaEstelar _mapa = null!;
 
+	/// <summary>A tela do sistema, irma do mapa. Ver `AbaNav`.</summary>
+	private TelaDoSistema _sistema = null!;
+
 	/// <summary>O mapa vivo, ou nulo se a aba Nav ainda nao foi montada. SO PRA BANCADA (`--diagnav`).</summary>
 	public MapaEstelar? MapaDeTeste => IsInstanceValid(_mapa) ? _mapa : null;
+
+	/// <summary>A tela do sistema viva, ou nulo. SO PRA BANCADA (`--diagnav`).</summary>
+	public TelaDoSistema? SistemaDeTeste => IsInstanceValid(_sistema) ? _sistema : null;
 
 	/// <summary>
 	/// O QUE ESTA SELECIONADO: nome, distancia, tempo de viagem, e o botao que liga o piloto.
@@ -978,13 +1021,22 @@ public partial class MenuJogo : CanvasLayer
 	{
 		foreach (Node n in painel.GetChildren()) { painel.RemoveChild(n); n.QueueFree(); }
 
-		if (_mapa.Selecionado is not { } p)
+		// DE QUAL TELA VEM O DESTINO: a que esta visivel. Ler sempre do mapa faria o painel mostrar
+		// o ultimo planeta clicado NA GALAXIA enquanto o jogador clica dentro de um sistema -- e o
+		// botao "Viajar" mandaria pro corpo errado, calado.
+		bool dentroDoSistema = IsInstanceValid(_sistema) && _sistema.Visible;
+		Jandirus.Core.World.PlanetaNoEspaco? alvo =
+			dentroDoSistema ? _sistema.Selecionado : _mapa.Selecionado;
+
+		if (alvo is not { } p)
 		{
 			var vazio = new Label
 			{
-				Text = _mapa.VendoProcedurais
-					? "nenhum destino selecionado."
-					: "nenhum destino selecionado. Aproxime pra os mundos gerados aparecerem.",
+				Text = dentroDoSistema
+					? "clique num mundo do sistema pra ver a ficha dele."
+					: _mapa.VendoProcedurais
+						? "nenhum destino selecionado."
+						: "nenhum destino selecionado. Aproxime pra os mundos gerados aparecerem.",
 				AutowrapMode = TextServer.AutowrapMode.WordSmart,
 			};
 			vazio.AddThemeColorOverride("font_color", Tema.TextoFraco);
@@ -1027,8 +1079,8 @@ public partial class MenuJogo : CanvasLayer
 				? "liga o piloto automatico. Qualquer tecla de movimento desliga."
 				: "so no espaco. Use 'Decolar' (aba Other) pra subir.",
 		};
-		Jandirus.Core.World.PlanetaNoEspaco alvo = p;
-		viajar.Pressed += () => Viajar(alvo, noEspaco);
+		Jandirus.Core.World.PlanetaNoEspaco destino = p;
+		viajar.Pressed += () => Viajar(destino, noEspaco);
 		linha.AddChild(viajar);
 
 		if (World.Instancia?.DestinoDoPiloto != null)
@@ -1097,6 +1149,26 @@ public partial class MenuJogo : CanvasLayer
 		if (!noEspaco) { Chat.Sistema("voce precisa estar no espaco pra viajar."); return; }
 		World.Instancia?.Pilotar(new Vector2(p.Pos.X, p.Pos.Y));
 		Chat.Sistema($"rumo a {p.Nome}. Qualquer tecla de movimento desliga o piloto.");
+		Fechar();
+	}
+
+	/// <summary>
+	/// VIAJAR PRO PORTO DE UM SISTEMA -- um ponto, e nao um corpo.
+	///
+	/// O `SistemaSolar.PortoDeEntrada` fica na orbita interna, do lado OPOSTO ao do primeiro mundo,
+	/// justamente pra nao coincidir com nada. Ele existe pra quem quer "ir ate ali" antes de
+	/// escolher em qual mundo pousar.
+	///
+	/// AVISO QUE E HONESTO DAR: a chegada e um lugar VAZIO. O corpo mais proximo fica a 900 px ou
+	/// mais e a janela de mundo mostra 384x216 px -- quem chegar la vai ver espaco preto e achar
+	/// que a viagem falhou. Por isso a mensagem diz o que fazer em seguida.
+	/// </summary>
+	private void ViajarAoPonto(Vector2 destino, bool noEspaco)
+	{
+		if (!noEspaco) { Chat.Sistema("voce precisa estar no espaco pra viajar."); return; }
+		World.Instancia?.Pilotar(destino);
+		Chat.Sistema("rumo ao porto do sistema. A chegada e um ponto vazio -- abra o mapa do sistema "
+					 + "(aba Nav) pra escolher o mundo. Qualquer tecla de movimento desliga o piloto.");
 		Fechar();
 	}
 

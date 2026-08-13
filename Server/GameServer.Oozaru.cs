@@ -480,7 +480,20 @@ public partial class GameServer
 	///   * `IntervaloDeDecisao = 0.5` -- pesada e lenta pra mudar de ideia. Meio segundo e o que da
 	///     ao alvo a chance de sair de perto, e o que evita que ela troque de vitima a cada quadro
 	///     numa zona cheia.
-	/// ==============================================================================
+	///
+	/// ============================ E DUAS MANIVELAS NOVAS, PRA A FERA NAO REGREDIR ============================
+	/// A camada do corpo deu ao cerebro guarda por RITMO, carga de Ki, voo e transformacao. Nenhuma
+	/// delas e da fera, e todas ficam DESLIGADAS por tempero e nao por falta de codigo:
+	///
+	///   * `Disciplina = 0` -- ela nao apara. E a mesma frase que ja justificava `VidaCautelosa = 0`
+	///     ("a fera nao se preserva"), agora valendo tambem pro reflexo novo. Sem esta linha o
+	///     macaco passaria a bloquear no ritmo do oponente, que e o oposto de um desastre.
+	///   * `Inteligencia = 0` -- ela nao recarrega, nao paira rasante e nao decide subir de forma.
+	///     O `chaseState` do DM gateia essas tres decisoes por `prob(ai_intelligence)`
+	///     (`NPCAI.dm:522`), e a fera nao tem nenhuma: ela persegue e bate ate o prazo vencer.
+	///     (Voar continua fisicamente possivel se o corpo souber -- o que se desliga e a DECISAO de
+	///     usar altura taticamente, nao a perna.)
+	/// ====================================================================================================
 	/// </summary>
 	private void TomarAsRedeas(ServerPlayer pl)
 	{
@@ -489,6 +502,8 @@ public partial class GameServer
 			VidaCautelosa = 0,
 			ChanceDePesado = 0.85,
 			IntervaloDeDecisao = 0.5,
+			Disciplina = 0,
+			Inteligencia = 0,
 		};
 
 		// O CORPO PARA DE FAZER O QUE O DONO MANDOU antes de a fera assumir. As seis linhas que moravam
