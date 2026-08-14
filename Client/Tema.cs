@@ -37,6 +37,25 @@ public static class Tema
     /// <summary>VIGOR: verde-oliva. Longe do vermelho da vida e do azul do Ki -- tres barras
     /// empilhadas precisam se distinguir de relance, no meio de uma luta.</summary>
     public static readonly Color Vigor = new("7fb356");
+
+    /// <summary>
+    /// NUTRICAO: amarelo-trigo. A QUARTA barra empilhada, e a mesma regra das outras tres vale --
+    /// e a razao de nao ser mais um verde: ela fica logo abaixo do VIGOR, e verde sobre verde
+    /// numa pilha de quatro obriga a LER o rotulo, que e justamente o que a cor existe pra evitar.
+    ///
+    /// O laranja do gi (<see cref="Destaque"/>) esta perto disto e nao briga: ele so pinta texto e
+    /// borda, nunca o preenchimento de uma barra.
+    /// </summary>
+    public static readonly Color Nutricao = new("d9b64a");
+
+    /// <summary>
+    /// O KI ACIMA DOS 100% -- o pedaco da barra que passou do tanque.
+    ///
+    /// Azul quase branco: e o MESMO Ki, mais quente. Uma cor de outra familia (vermelho, roxo)
+    /// leria como "outro recurso" ou como alarme, e transbordar de Ki nao e problema nenhum --
+    /// e o power-up funcionando. A aura do jogo acende por volta do mesmo ponto (`kiratio > 1,1`).
+    /// </summary>
+    public static readonly Color KiExcesso = new("bfe9ff");
     public static readonly Color Perigo = new("e05a4a");
     public static readonly Color Bom = new("5fc46a");
 

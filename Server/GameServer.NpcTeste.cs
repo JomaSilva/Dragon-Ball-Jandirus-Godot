@@ -104,7 +104,17 @@ public partial class GameServer
 			if (_skills != null)
 				foreach (MoldeDeNpc m in _moldes.Todos)
 				{
-					FichaSorteada f = SorteioDeNpc.Sortear(m, Espaco.Hash64(m.Id), _racas!, _skills, zona.Name, 50_000);
+					// ============================ MOLDE SEM `racas` PRECISA DE UM PLANETA QUE TENHA BERCO ============================
+					// A pool vazia passou a sair do BERCO daquele planeta (`Bercos.RacasNascidasEm`) em
+					// vez da tabela do menu de criacao, e o `Sortear` GRITA quando ninguem nasce ali --
+					// de proposito, pra dado errado nao virar um humano por acidente.
+					//
+					// A zona desta bancada e "a primeira pre-feita sem ninguem", e com o povoamento
+					// ligado isso costuma ser um mapa sem berco nenhum (Arconia). O molde `cidadao`
+					// caia justamente nele. A Terra e a resposta porque ela sempre tem quem nasca la.
+					// ==========================================================================================================
+					string planeta = m.Racas.Length > 0 ? zona.Name : SpawnZone.Name;
+					FichaSorteada f = SorteioDeNpc.Sortear(m, Espaco.Hash64(m.Id), _racas!, _skills, planeta, 50_000);
 					var proibidas = new List<string>();
 					var sabidas = new HashSet<string>(f.Livro.Aprendidas, StringComparer.OrdinalIgnoreCase);
 

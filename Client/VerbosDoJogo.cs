@@ -10,7 +10,13 @@
 /// A regra que usei pra cortar: **so entra verb com mecanica pronta**. Um botao que nao faz nada e
 /// pior que um botao que nao existe, porque ele promete -- e este projeto ja tropecou nisso mais de
 /// uma vez. Ficaram de fora, por enquanto, os que dependem de sistema nao portado (casamento,
-/// faccao, torneio, biografia, musica em streaming, itens) e os de balanceamento.
+/// faccao, torneio, biografia, musica em streaming) e os de balanceamento.
+///
+/// ITENS SAIRAM DESSA LISTA: a mochila existe (`Core/Items/Inventario.cs` +
+/// `GameServer.Mochila.cs`), com catalogo, largar e equipar -- e foi ela que acendeu o bit do
+/// scouter, que dormia escrito e sem dono. As acoes de item nao entram aqui de proposito: elas
+/// moram na TELA DA MOCHILA (tecla I, `TelaDeInventario`), porque pedem um item selecionado na
+/// grade -- um verb de clique seco nao teria em que agir.
 /// ==================================================================================
 ///
 /// OS DE ADMIN AGEM SOBRE O ALVO MARCADO, e nao sobre um nome digitado. O BYOND tinha `input()`
@@ -59,9 +65,33 @@ public static class VerbosDoJogo
 			"Liga e desliga o arremesso dos SEUS golpes.",
 			() => C?.SendVerbo("knockback")));
 
-		Verbos.Registrar(new Verbo("Goto Spawn", Verbos.Outros,
-			"Volta ao ponto de partida. A saida pra quem ficou preso.",
-			() => C?.SendVerbo("spawn")));
+		// ============================ OS GRAUS DO SUPER SAIYAJIN ============================
+		// Pedido do dono. Os dois grades sao um DESVIO da escada -- soco mais pesado, corpo mais
+		// lento e mais facil de acertar (ver `Catalogo.Grade2Mods`/`Grade3Mods`) --, e quem nao quer
+		// pagar esse preco precisava de um jeito de nao passar por eles.
+		//
+		// **O BOTAO NAO SABE O ESTADO, E ISSO E DE PROPOSITO.** Quem guarda a preferencia e o
+		// servidor (ela e por PERSONAGEM e vai pro disco), e ele responde no chat a cada clique --
+		// que e literalmente o que o dono pediu ("ao clicar fala se desativei ou nao"). Um rotulo
+		// "ligado/desligado" aqui no cliente seria uma segunda verdade sobre o mesmo fato, e a que
+		// erra e sempre a copia: bastaria trocar de personagem pra ela mentir.
+		// ==================================================================================
+		Verbos.Registrar(new Verbo("Toggle SSJ Grades", Verbos.Outros,
+			"Liga e desliga os graus do Super Saiyajin no caminho do C: ligados, o SSJ1 sobe pelo "
+			+ "Grade 2 e pelo Grade 3 antes do SSJ2; desligados, vai direto pro SSJ2.",
+			() => C?.SendVerbo("graus")));
+
+		// ============================ O `Goto Spawn` MUDOU DE ABA -- DECISAO DO DONO ============================
+		// Ele ficava aqui, em "Other", pra todo mundo. Saiu por ordem do dono (*"tire o verb
+		// gotospawn, deixe ele so pra adm"*) e reapareceu la embaixo em `Verbos.Admin`.
+		//
+		// TROCAR DE ABA NAO E COSMETICA NESTE MENU: a aba Admin so e desenhada pra quem o servidor
+		// marcou como admin, E a busca filtra por `Verbos.Visivel` -- sem isso um jogador digitaria
+		// "spawn" na barra e receberia o botao de volta. Ver `Verbos.SouAdmin`.
+		//
+		// E o botao seria so a metade: quem fecha a porta de verdade e o servidor, que deixou de
+		// ter `case "spawn"` (`GameServer.Verbos.cs`) -- um cliente mexido nao tem o que mandar.
+		// ====================================================================================================
 
 		Verbos.Registrar(new Verbo("Clear Buffs", Verbos.Outros,
 			"Derruba todos os efeitos temporarios de cima de voce.",
@@ -72,6 +102,82 @@ public static class VerbosDoJogo
 		Verbos.Registrar(new Verbo("Ranks", Verbos.Outros,
 			"Os cargos do mundo: quem ocupa cada um e o que falta pra voce.",
 			() => C?.SendCargo("")));
+
+		// ============================ AS PORTAS DOS CARGOS ============================
+		// Os 14 cargos que nao se reivindicam (nomeacao, sucessao e duelo) passaram a ter mecanismo
+		// -- ver `GameServer.CargoPortas.cs` e `GameServer.CargoDuelo.cs`. Sem estes botoes eles
+		// seriam de novo o que a tabela de cargos ja tinha sido por meses: regra escrita e porta
+		// nenhuma. O canal de fala dos cargos (`RankChat`) mora na caixa de chat (`/cargos`),
+		// porque falar exige texto e botao nao carrega texto.
+		Verbos.Registrar(new Verbo("Appoint Elder", Verbos.Outros,
+			"So o Grande Anciao de Namek: oferece a quem esta marcado um assento de Anciao cardeal.",
+			() => NoAlvo("cargo_nomear")));
+
+		Verbos.Registrar(new Verbo("Accept Elder Seat", Verbos.Outros,
+			"Aceita o assento de Anciao que te ofereceram.",
+			() => C?.SendVerbo("cargo_nomear_aceitar")));
+
+		Verbos.Registrar(new Verbo("Decline Elder Seat", Verbos.Outros,
+			"Recusa o assento de Anciao.",
+			() => C?.SendVerbo("cargo_nomear_recusar")));
+
+		Verbos.Registrar(new Verbo("Name Heir", Verbos.Outros,
+			"So o Rei de Vegeta: poe quem esta marcado na linha de sucessao do trono.",
+			() => NoAlvo("cargo_herdeiro")));
+
+		Verbos.Registrar(new Verbo("Remove Heir", Verbos.Outros,
+			"Tira quem esta marcado da linha de sucessao de Vegeta.",
+			() => NoAlvo("cargo_herdeiro_tirar")));
+
+		Verbos.Registrar(new Verbo("Line of Succession", Verbos.Outros,
+			"Quem herda o trono de Vegeta, na ordem.",
+			() => C?.SendVerbo("cargo_herdeiros")));
+
+		Verbos.Registrar(new Verbo("Challenge God of Destruction", Verbos.Outros,
+			"Desafia FORMALMENTE o portador do titulo. Exige God Ki desperto; nocaute decide.",
+			() => C?.SendVerbo("cargo_desafiar")));
+
+		Verbos.Registrar(new Verbo("Accept Challenge", Verbos.Outros,
+			"Aceita agora o duelo pelo titulo.",
+			() => C?.SendVerbo("cargo_duelo_aceitar")));
+
+		Verbos.Registrar(new Verbo("Postpone Challenge", Verbos.Outros,
+			"Adia o duelo. O terceiro adiamento na mesma semana e covardia e custa o titulo.",
+			() => C?.SendVerbo("cargo_duelo_adiar")));
+
+		Verbos.Registrar(new Verbo("Title Status", Verbos.Outros,
+			"O titulo de God of Destruction: quem carrega, a tarefa em aberto, falhas e prazos.",
+			() => C?.SendVerbo("cargo_titulo")));
+
+		// ============================ OS DEVERES DO CARGO ============================
+		// O `Meu Rank` do original. Sem ele o motor de tarefas seria invisivel: o prazo so apareceria
+		// quando ja tivesse vencido, e a destituicao chegaria como castigo sem aviso. Ver
+		// `GameServer.CargoMissoes.cs`.
+		Verbos.Registrar(new Verbo("Rank Duty", Verbos.Outros,
+			"Os deveres do seu cargo: a tarefa em aberto, o prazo em dias in-game, as falhas e o renome.",
+			() => C?.SendVerbo("cargo_deveres")));
+
+		Verbos.Registrar(new Verbo("Fund Earth", Verbos.Outros,
+			"So o Presidente da Terra, e so com a tarefa de verba aberta: deposita a verba no cofre da Terra.",
+			() => C?.SendVerbo("cargo_verba")));
+
+		// =====================================================================
+		// A SALA DO TEMPO -- os dois verbs do GUARDIAO DA TERRA
+		//
+		// A CHAVE E O RESGATE NASCEM JUNTOS, e os dois sao do mesmo cargo. O `Core/Ranks/Ranks.cs`
+		// ja descrevia o Guardiao como quem "faz chaves da Sala do Tempo e autoriza a entrada", e
+		// nenhum dos dois verbos existia -- era promessa escrita e nao ligada.
+		//
+		// ELES APARECEM PRA TODO MUNDO de proposito: quem nao e Guardiao le a recusa e descobre que
+		// a Sala do Tempo tem dono. Esconder ensinaria menos, e a permissao e do servidor de
+		// qualquer jeito (ver `GameServer.SalaDoTempo.cs`).
+		Verbos.Registrar(new Verbo("Time Chamber: Authorize", Verbos.Outros,
+			"So o Guardiao da Terra. Da ao alvo marcado UMA entrada na Sala do Tempo.",
+			() => NoAlvo("sala_autorizar")));
+
+		Verbos.Registrar(new Verbo("Time Chamber: Release", Verbos.Outros,
+			"So o Guardiao da Terra. Destranca a porta pra quem ficou preso la dentro.",
+			() => NoAlvo("sala_soltar")));
 
 		Verbos.Registrar(new Verbo("Tech Catalog", Verbos.Outros,
 			"O catalogo de construcoes, com o custo e o motivo de cada nao.",
@@ -146,11 +252,17 @@ public static class VerbosDoJogo
 		//
 		// Ficaram de fora do port, com motivo: os que so mexem em variavel de balanceamento
 		// (`Gravity_Cap`, `Change_Ascension`, `Set_KO_Time_Mult`, `Global_EXP_Rate`), que o dono
-		// pediu pra nao trazer; e os que dependem de sistema nao portado (torneio, conquista de
-		// planetas, esferas, fusao, magia, dungeons).
+		// pediu pra nao trazer; e os que dependem de sistema nao portado (torneio, esferas, fusao,
+		// magia, dungeons).
 		//
 		// O CLIMA SAIU DESSA LISTA: ele existe agora (ver `Core.World.Clima`), e forcar um tipo
 		// e escolher a forca moram no PAINEL da aba Admin, porque pedem dois argumentos.
+		//
+		// A CONQUISTA DE PLANETAS SAIU TAMBEM, e pelo mesmo motivo: ela existe
+		// (`Core/Social/Conquista.cs`, `GameServer.Conquista.cs`, `GameServer.Invasao.cs`, bancada
+		// `--conquistateste`). Os verbs dela pedem um planeta por nome, entao seguem a regra desta
+		// lista e vao pro PAINEL, nao pra ca. Esta linha ja mentiu uma vez; se a proxima da lista
+		// nascer, tire-a daqui NO MESMO dia -- lista de ausencias envelhece calada.
 		// =====================================================================
 
 		// ---------------------------------------------------------- corpo do alvo
@@ -200,6 +312,21 @@ public static class VerbosDoJogo
 		Verbos.Registrar(new Verbo("Send Target To Spawn", Verbos.Admin,
 			"Manda o alvo marcado de volta ao ponto de partida.",
 			() => NoAlvo("admin_spawn_alvo"), TemAlvo));
+
+		// O `Goto Spawn` DE ANTES, agora so aqui (decisao do dono). Ele era o unico caminho que
+		// atravessava a tranca da Sala do Tempo sem perguntar nada -- ver `GameServer.SalaDoTempo.cs`.
+		// NAO exige alvo: este manda o PROPRIO admin, e o de cima manda o alvo marcado.
+		Verbos.Registrar(new Verbo("Goto Spawn", Verbos.Admin,
+			"Volta VOCE ao seu ponto de partida. Era o verb do jogador; hoje e so de admin.",
+			() => C?.SendVerbo("admin_spawn")));
+
+		// A VALVULA DA SALA DO TEMPO. Ela nao existe por conveniencia: a regra do dono e que a sala
+		// PRENDE, e quem solta e o Guardiao da Terra -- um jogador preso com o trono vago, ou com o
+		// Guardiao offline, e um jogador que **nao pode jogar**. Este botao e a saida escolhida pra
+		// esse risco (a outra metade e o aviso na propria porta). Ver `GameServer.SalaDoTempo.cs`.
+		Verbos.Registrar(new Verbo("Release From Time Chamber", Verbos.Admin,
+			"Destranca a Sala do Tempo pro alvo marcado. A valvula de quando nao ha Guardiao.",
+			() => NoAlvo("admin_sala_soltar"), TemAlvo));
 
 		// ---------------------------------------------------------- enxergar
 		// O `Assess()` (Assess.dm) -- o verb de admin que mais importa: e o unico jeito de ler o BP
@@ -301,6 +428,36 @@ public static class VerbosDoJogo
 		Verbos.Registrar(new Verbo("Release Weather", Verbos.Admin,
 			"Solta o ceu desta zona: o clima volta a ser sorteado pelo relogio do mundo.",
 			() => C?.SendVerbo("admin_clima_natural")));
+
+		// ============================ A DESTRUICAO DE PLANETA, PELO LADO DO ADMIN ============================
+		// Os quatro que faltavam pro sistema fechar. O `Restore Planet` e o `Restaurar_Planeta` do
+		// original (`Planets.dm:254-280`) e e a **unica volta que existe** neste port: o desejo
+		// "Heal Planet" depende do sistema de Esferas do Dragao, que nao foi portado. Ver a decisao
+		// escrita em `GameServer.RessuscitarPlaneta`.
+		// ==============================================================================================
+		Verbos.Registrar(new Verbo("Villain (target)", Verbos.Admin,
+			"Liga/desliga o bit de VILAO do alvo marcado. E o unico jeito de alguem aprender "
+			+ "Planet Destroy -- no original tambem e o admin quem designa.",
+			() => C?.SendVerbo("admin_vilao", (C?.AlvoId ?? 0).ToString())));
+
+		Verbos.Registrar(new Verbo("Kill This Planet (slow)", Verbos.Admin,
+			"Acende o pavio lento deste planeta: 20 minutos em quatro estagios, e no fim ele explode. "
+			+ "Os habitantes vao morrendo e o chao comeca a se abrir.",
+			() => C?.SendVerbo("admin_morte_lenta")));
+
+		Verbos.Registrar(new Verbo("Destroy This Planet", Verbos.Admin,
+			"Pula o pavio: cinco minutos de tremor e o planeta acaba. Quem estiver aqui com BP "
+			+ "expresso abaixo do seu leva 99 em cada membro; nocauteado morre; o resto vai pro espaco.",
+			() => C?.SendVerbo("admin_destruir_planeta")));
+
+		Verbos.Registrar(new Verbo("Abort Planet Death", Verbos.Admin,
+			"Apaga o pavio deste planeta antes do fim. So funciona ANTES da explosao terminar.",
+			() => C?.SendVerbo("admin_abortar_morte")));
+
+		Verbos.Registrar(new Verbo("Restore Planet", Verbos.Admin,
+			"Tira este planeta da lista de mortos -- ele volta a existir, a se povoar e a receber "
+			+ "pouso. E a unica volta que existe: nao ha desejo de Dragon Ball neste port.",
+			() => C?.SendVerbo("admin_restaurar_planeta")));
 	}
 
 	/// <summary>Zera o registro -- o personagem trocou (volta ao menu de slots).</summary>

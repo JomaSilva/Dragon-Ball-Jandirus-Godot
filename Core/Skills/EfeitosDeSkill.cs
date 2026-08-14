@@ -64,37 +64,60 @@ public static class EfeitosDeSkill
 	/// Aditivo e genetico SOMAM; multiplicativo COMPOE (duas skills que dobram dao 4x).
 	/// </summary>
 	public static (Dictionary<string, double> Soma, Dictionary<string, double> Fator, Dictionary<string, double> Set)
-		Totalizar(SkillCatalog cat, IEnumerable<string> aprendidas)
+		Totalizar(SkillCatalog cat, IEnumerable<string> aprendidas,
+				  IReadOnlyDictionary<string, int>? escolhas = null)
 	{
 		var soma = new Dictionary<string, double>(StringComparer.Ordinal);
 		var fator = new Dictionary<string, double>(StringComparer.Ordinal);
 		var set = new Dictionary<string, double>(StringComparer.Ordinal);
+
+		void Somar1(Dictionary<string, double> buffs, Dictionary<string, double> genes,
+					Dictionary<string, double> mults, Dictionary<string, double> flags)
+		{
+			foreach ((string campo, double v) in buffs)
+				soma[campo] = soma.GetValueOrDefault(campo) + v;
+
+			// o canal genetico cai no MESMO balde do aditivo depois de traduzido -- os dois
+			// terminam somando num campo do lutador, e separa-los aqui so criaria dois caminhos
+			// pra desfazer no relog
+			foreach ((string stat, double v) in genes)
+			{
+				if (!DeGene.TryGetValue(stat, out string? campo)) { Desconhecidos.Add($"gene:{stat}"); continue; }
+				soma[campo] = soma.GetValueOrDefault(campo) + v;
+			}
+
+			foreach ((string campo, double v) in mults)
+				fator[campo] = fator.GetValueOrDefault(campo, 1) * v;
+
+			// ATRIBUICAO: o ULTIMO vence, e nao ha ordem definida entre skills. Nao ha caso real
+			// de duas skills setarem a mesma flag com valores diferentes -- se houvesse, o DM
+			// tambem nao teria ordem. Fica o maior, que e o unico criterio estavel.
+			foreach ((string campo, double v) in flags)
+				set[campo] = Math.Max(set.GetValueOrDefault(campo), v);
+		}
 
 		foreach (string path in aprendidas)
 		{
 			Skill? s = cat.Get(path);
 			if (s == null) continue;
 
-			foreach ((string campo, double v) in s.Buffs)
-				soma[campo] = soma.GetValueOrDefault(campo) + v;
+			Somar1(s.Buffs, s.Genes, s.Mults, s.Flags);
 
-			// o canal genetico cai no MESMO balde do aditivo depois de traduzido -- os dois
-			// terminam somando num campo do lutador, e separa-los aqui so criaria dois caminhos
-			// pra desfazer no relog
-			foreach ((string stat, double v) in s.Genes)
-			{
-				if (!DeGene.TryGetValue(stat, out string? campo)) { Desconhecidos.Add($"gene:{stat}"); continue; }
-				soma[campo] = soma.GetValueOrDefault(campo) + v;
-			}
-
-			foreach ((string campo, double v) in s.Mults)
-				fator[campo] = fator.GetValueOrDefault(campo, 1) * v;
-
-			// ATRIBUICAO: o ULTIMO vence, e nao ha ordem definida entre skills. Nao ha caso real
-			// de duas skills setarem a mesma flag com valores diferentes -- se houvesse, o DM
-			// tambem nao teria ordem. Fica o maior, que e o unico criterio estavel.
-			foreach ((string campo, double v) in s.Flags)
-				set[campo] = Math.Max(set.GetValueOrDefault(campo), v);
+			// ============================ A ESCOLHA UNICA ============================
+			// Uma skill no jogo tem casas EXCLUSIVAS (`Great Robotic Alliance`, meta.dm:104-125).
+			// Enquanto o dono nao escolheu, ela nao rende NADA -- e assim no DM tambem: os buffs
+			// moram dentro do `switch(input(...))`, e sem resposta o switch nao entra em casa
+			// nenhuma. Somar as tres "pra nao ficar de graca" daria ao Metamoriano os tres
+			// conjuntos de uma vez, que e o unico erro pior que nao dar nada.
+			//
+			// O indice e 1-based porque e o que o DM guarda em `chosen` (1, 2, 3); 0 = ainda nao
+			// escolheu.
+			// ======================================================================
+			if (s.Escolhas.Length == 0 || escolhas == null) continue;
+			if (!escolhas.TryGetValue(s.Path, out int qual)) continue;
+			if (qual < 1 || qual > s.Escolhas.Length) continue;
+			Escolha e = s.Escolhas[qual - 1];
+			Somar1(e.Buffs, e.Genes, e.Mults, e.Flags);
 		}
 		return (soma, fator, set);
 	}
@@ -103,10 +126,11 @@ public static class EfeitosDeSkill
 	/// Poe no lutador exatamente os efeitos das skills que ele sabe -- nem mais, nem de novo.
 	/// Devolve quantos campos foram efetivamente mexidos.
 	/// </summary>
-	public static int Aplicar(Fighter f, SkillCatalog cat, IEnumerable<string> aprendidas)
+	public static int Aplicar(Fighter f, SkillCatalog cat, IEnumerable<string> aprendidas,
+							  IReadOnlyDictionary<string, int>? escolhas = null)
 	{
 		(Dictionary<string, double> soma, Dictionary<string, double> fator, Dictionary<string, double> set)
-			= Totalizar(cat, aprendidas);
+			= Totalizar(cat, aprendidas, escolhas);
 		int mexidos = 0;
 
 		// --- ADITIVO: desfaz o que saiu, ajusta o que mudou ---

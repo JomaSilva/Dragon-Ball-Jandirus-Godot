@@ -156,14 +156,32 @@ public partial class GameServer
 			case "sairdamente": SairDaMente(pl, "voce abre os olhos."); break;
 			case "decolar": Decolar(pl); break;
 			case "voar": AlternarVoo(pl); break;
+			// O `Swim` do DM (`Swim.dm:5`). Entra pelo MESMO cano do voo -- uma linha aqui e uma no
+			// registro de verbs do cliente, que e o preco que este canal cobra por acao nova.
+			case "nadar": AlternarNado(pl); break;
 			case "oozaru": ReverterOozaru(pl); break;
 			case "oozaru_olhar": OlharParaALua(pl); break;
 			// AS TECNICAS DE SKILL entram pelo mesmo cano, pelo nome do verb do DM
 			// ("Solar_Flare"). Ver GameServer.Tecnicas.cs.
 			default:
+				// A LEMBRANCA DE UM CHEFE. Prefixo + argumento, como o `ens_ensinar:<typepath>` do
+				// ensino ja fazia: um botao por chefe visto, e nenhum id novo no protocolo. Vem antes
+				// das tecnicas porque nao E tecnica -- nao esta no livro que o `UsarTecnica` varre.
+				// Ver `GameServer.Mente.cs`.
+				if (id.StartsWith("mente_chefe:", StringComparison.Ordinal))
+				{ ChamarChefe(pl, id["mente_chefe:".Length..]); break; }
 				// AS DISCIPLINAS DIVINAS entram antes das tecnicas de skill: elas nao SAO skills
 				// (nao se compram com marco), e por isso nao estao no livro que o UsarTecnica varre.
 				if (UsarDisciplina(pl, id)) break;
+				// O DISCIPULADO entra pelo mesmo cano, e antes das tecnicas pelo mesmo motivo das
+				// disciplinas: ele nao E skill (nao se compra com marco), entao nao esta no livro
+				// que o `UsarTecnica` varre. Ver `GameServer.Mestre.cs`.
+				if (UsarVerboDeMestre(pl, id)) break;
+				// O ENSINO DE SKILL entra aqui e nao no `UsarTecnica` porque ele nao E uma tecnica:
+				// o id que chega e `ens_ensinar:<typepath>`, um GESTO sobre uma skill, e nao o verb
+				// que a skill destrava. Ver `GameServer.Ensino.cs` -- e o cabecalho de la explica
+				// por que ele nao pergunta nada ao discipulado da linha acima.
+				if (UsarVerboDeEnsino(pl, id)) break;
 				if (!UsarTecnica(pl, id)) Avisar(pl, $"habilidade desconhecida: {id}");
 				break;
 		}

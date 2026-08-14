@@ -49,6 +49,18 @@ public partial class GameServer
 	{
 		pl.Livro = new SkillBook();
 		if (save is { Skills.Count: > 0 }) pl.Livro.Carregar(save.Skills);
+
+		// QUAIS DELAS VIERAM DE UM MESTRE (o `wastaught` do DM). **DEPOIS do `Carregar`**, que e o
+		// que a `CarregarEnsinadas` exige pra poder descartar marca orfa.
+		//
+		// SEM ESTA LINHA a marca morre no logout, e o efeito e exatamente a corrente que o sistema
+		// existe pra impedir: aprendeu, deslogou, voltou repassando. E ela some CALADA -- a skill
+		// continua no livro, so o "nao repassa" evapora.
+		if (save is { SkillsEnsinadas.Count: > 0 }) pl.Livro.CarregarEnsinadas(save.SkillsEnsinadas);
+
+		// A CASA ESCOLHIDA nas skills de escolha unica, pela MESMA razao e na MESMA ordem: e um
+		// dado a mais sobre uma skill que ele ja sabe, e o leitor descarta escolha orfa.
+		if (save is { SkillsEscolhas.Count: > 0 }) pl.Livro.CarregarEscolhas(save.SkillsEscolhas);
 		if (save != null && save.MarcosTotais > 0)
 		{
 			pl.Livro.MarcosTotais = save.MarcosTotais;
@@ -69,7 +81,7 @@ public partial class GameServer
 	private void AplicarEfeitos(ServerPlayer pl)
 	{
 		if (_skills == null) return;
-		EfeitosDeSkill.Aplicar(pl.Ficha, _skills, pl.Livro.Aprendidas);
+		EfeitosDeSkill.Aplicar(pl.Ficha, _skills, pl.Livro.Aprendidas, pl.Livro.Escolhas);
 
 		// A ORDEM IMPORTA: os contadores `bodyskill`/`bodyreadiness` acabaram de ser escritos
 		// pelos efeitos, e sao eles que dizem que arvore o progresso abriu. Recalcular antes
@@ -166,7 +178,17 @@ public partial class GameServer
 	{
 		if (_skills == null) { Avisar(pl, "o servidor esta sem catalogo de skills."); return; }
 
-		Recusa r = pl.Livro.Aprender(_skills, path, pl.Race, pl.Class, vilao: false);
+		// ============================ O `vilao:` ERA `false` CRAVADO ============================
+		// Enquanto foi assim, **ninguem no port conseguia aprender Planet Destroy** -- a unica skill
+		// `vilao: 1` do catalogo (1 de 366 entradas do `skills.json`). A recusa saia com o texto
+		// certo ("so um vilao aprende isso") sobre uma condicao que nao existia, o que e a pior
+		// forma de uma regra estar quebrada: ela PARECE ligada.
+		//
+		// Agora a pergunta e a ficha, e a ficha e escrita por admin (`admin_vilao`) -- literal ao
+		// `villainonly = 1 //only an admin-designated Villain can learn it` (`Planets.dm:382`).
+		// Ver `GameServer.EhVilao`.
+		// ==================================================================================
+		Recusa r = pl.Livro.Aprender(_skills, path, pl.Race, pl.Class, vilao: EhVilao(pl));
 		if (r != Recusa.Pode)
 		{
 			Avisar(pl, Motivo(r, _skills.Get(path)));
@@ -179,6 +201,64 @@ public partial class GameServer
 		MandarSkills(pl, forcar: true);
 		AplicarPoderes(pl);
 		AplicarEfeitos(pl);
+	}
+
+	/// <summary>
+	/// A ESCOLHA UNICA: `skill_escolha <typepath> <casa>`, ou so `<typepath>` pra LISTAR as casas.
+	///
+	/// ============================ POR QUE ELA E SEPARADA DO APRENDER ============================
+	/// No DM a pergunta e um `input()` que trava o jogador dentro do `after_learn()`
+	/// (`meta.dm:105`). Num servidor autoritativo nao ha "travar o jogador" -- a pergunta vira
+	/// estado: a skill fica aprendida e SEM RENDER NADA ate a resposta chegar. E isso e fiel, nao
+	/// concessao: os buffs do DM moram DENTRO do `switch(input(...))`, e sem resposta nenhuma casa
+	/// entra.
+	///
+	/// O EFEITO SO EXISTE DEPOIS: `AplicarEfeitos` passa `pl.Livro.Escolhas` pro
+	/// <see cref="EfeitosDeSkill"/>, e como a aplicacao e idempotente, escolher (ou trocar, se um
+	/// dia isso for permitido) recalcula do zero em vez de empilhar.
+	/// ==========================================================================================
+	/// </summary>
+	private void VerboEscolhaDeSkill(ServerPlayer pl, string arg)
+	{
+		if (_skills == null || pl.Livro == null) return;
+
+		string[] p = arg.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+		string path = p.Length > 0 ? p[0] : "";
+		Skill? s = _skills.Get(path);
+		if (s == null || s.Escolhas.Length == 0) { Avisar(pl, "essa habilidade nao tem escolha nenhuma."); return; }
+		if (!pl.Livro.Sabe(path)) { Avisar(pl, "voce ainda nao aprendeu isso."); return; }
+
+		// SEM NUMERO = LISTAR. O jogador tem que poder LER as casas antes de fechar uma escolha
+		// que nao volta -- e sem isto o unico jeito de saber o que cada uma faz seria adivinhar.
+		if (p.Length < 2 || !int.TryParse(p[1], out int casa))
+		{
+			Avisar(pl, $"{s.Nome}: escolha uma linhagem.");
+			for (int i = 0; i < s.Escolhas.Length; i++)
+				Avisar(pl, $"   {i + 1}. {s.Escolhas[i].Rotulo} -- {ResumoDaCasa(s.Escolhas[i])}");
+			return;
+		}
+
+		// A ESCOLHA E DEFINITIVA, como no DM: la o `chosen` so muda por `before_forget()`, ou seja,
+		// esquecendo a skill inteira. Deixar trocar de graca transformaria os tres conjuntos num
+		// menu de buff por ocasiao -- fisico pra brigar, Ki pra atirar.
+		if (pl.Livro.Escolhas.ContainsKey(path)) { Avisar(pl, "voce ja escolheu, e isso nao se desfaz."); return; }
+
+		if (!pl.Livro.Escolher(_skills, path, casa)) { Avisar(pl, "essa casa nao existe."); return; }
+
+		Avisar(pl, $"voce escolheu: {s.Escolhas[casa - 1].Rotulo}.");
+		AplicarEfeitos(pl);
+	}
+
+	/// <summary>O que uma casa da, em texto -- pro jogador poder comparar antes de decidir.</summary>
+	private static string ResumoDaCasa(Escolha e)
+	{
+		var partes = new List<string>();
+		foreach ((string campo, double v) in e.Buffs) partes.Add($"{NomesLegiveis.Campo(campo)} +{v:0.##}");
+		foreach ((string campo, double v) in e.Mults) partes.Add($"{NomesLegiveis.Campo(campo)} x{v:0.##}");
+		foreach ((string stat, double v) in e.Genes) partes.Add($"{stat} +{v:0.##}");
+		foreach ((string campo, double v) in e.Flags) partes.Add($"{NomesLegiveis.Campo(campo)} = {v:0.##}");
+		partes.AddRange(e.Verbos.Select(NomesLegiveis.Habilidade));
+		return partes.Count > 0 ? string.Join(", ", partes) : "nada que o port ja entenda";
 	}
 
 	private static string Motivo(Recusa r, Skill? s) => r switch
@@ -227,13 +307,28 @@ public partial class GameServer
 	/// <summary>Manda a lista de aprendidas e os marcos. Como o resto: so quando muda.</summary>
 	private static void MandarSkills(ServerPlayer pl, bool forcar = false)
 	{
-		string sig = $"{pl.Livro.MarcosLivres}/{pl.Livro.MarcosTotais}:{pl.Livro.Aprendidas.Count}";
+		// O BIT DE VILAO ENTRA NA ASSINATURA. Todo campo que vai no pacote precisa estar aqui, senao
+		// ele so chega de carona quando outro muda -- e a promocao a vilao (que nao mexe em marco
+		// nem em skill aprendida) so apareceria na tela quando o jogador comprasse a proxima coisa.
+		// E a mesma familia de defeito do cache da ficha.
+		string sig = $"{pl.Livro.MarcosLivres}/{pl.Livro.MarcosTotais}:{pl.Livro.Aprendidas.Count}"
+				   + $":{(EhVilao(pl) ? 'v' : '-')}";
 		if (!forcar && sig == pl.SigSkills) return;
 		pl.SigSkills = sig;
 
 		var w = Protocol.Begin(Protocol.S2C.Skills);
 		w.Put(pl.Livro.MarcosTotais);
 		w.Put(pl.Livro.MarcosLivres);
+
+		// ============================ POR QUE O CLIENTE PRECISA SABER ============================
+		// O menu de skills monta a lista chamando `PodeAprender(..., vilao:)` por conta propria
+		// (`Client/MenuJogo.cs`), e ele passava `false` cravado. Sem este bit, um vilao veria a
+		// unica skill de vilao do jogo desenhada como "so um vilao aprende isso" -- e ela seria
+		// comprada com sucesso se ele clicasse assim mesmo, porque quem decide e o servidor.
+		// Regra ligada de um lado e desligada do outro e pior do que regra desligada.
+		// ==================================================================================
+		w.Put(EhVilao(pl));
+
 		w.Put((ushort)pl.Livro.Aprendidas.Count);
 		foreach (string p in pl.Livro.Aprendidas) w.Put(p);
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);

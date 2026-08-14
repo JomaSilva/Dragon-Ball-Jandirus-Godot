@@ -5,8 +5,8 @@ E:\Users\Joao\Desktop\dragon-ball-jandirus\Core\obj\Debug\net8.0\Jandirus.Core.G
 E:\Users\Joao\Desktop\dragon-ball-jandirus\Core\obj\Debug\net8.0\Jandirus.Core.AssemblyInfoInputs.cache
 E:\Users\Joao\Desktop\dragon-ball-jandirus\Core\obj\Debug\net8.0\Jandirus.Core.AssemblyInfo.cs
 E:\Users\Joao\Desktop\dragon-ball-jandirus\Core\obj\Debug\net8.0\Jandirus.Core.csproj.CoreCompileInputs.cache
+E:\Users\Joao\Desktop\dragon-ball-jandirus\Core\obj\Debug\net8.0\Jandirus.Core.sourcelink.json
 E:\Users\Joao\Desktop\dragon-ball-jandirus\Core\obj\Debug\net8.0\Jandirus.Core.dll
 E:\Users\Joao\Desktop\dragon-ball-jandirus\Core\obj\Debug\net8.0\refint\Jandirus.Core.dll
 E:\Users\Joao\Desktop\dragon-ball-jandirus\Core\obj\Debug\net8.0\Jandirus.Core.pdb
 E:\Users\Joao\Desktop\dragon-ball-jandirus\Core\obj\Debug\net8.0\ref\Jandirus.Core.dll
-E:\Users\Joao\Desktop\dragon-ball-jandirus\Core\obj\Debug\net8.0\Jandirus.Core.sourcelink.json

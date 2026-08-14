@@ -16,6 +16,39 @@ public sealed class ZoneCollision
 
 	public int Width { get; }
 	public int Height { get; }
+
+	/// <summary>
+	/// FORA DO BITSET E CHAO LIVRE, E NAO O FIM DO MUNDO.
+	///
+	/// ============================ POR QUE ISTO E UM CAMPO E NAO UM CASO ============================
+	/// O bitset tem tamanho fixo (o mapa desenhado: 500x500), e a regra padrao e que fora dele tudo
+	/// bloqueia -- e isso NAO e uma consequencia acidental, e o que impede sair do mapa. A Sala do
+	/// Tempo inverte a regra: o quarto desenhado fica no meio de um vazio branco que continua pra
+	/// sempre (ver <see cref="SalaDoTempo"/>), e ali a beirada do bitset nao significa nada.
+	///
+	/// O campo mora AQUI, e nao num `if` em cada chamador, porque "onde ha parede" ja tem um funil
+	/// so -- <see cref="BlockedCell"/> -- e ele e consultado por caminhos que nunca vao ouvir falar
+	/// da Sala: o passo do `MoveRules` nas duas pontas, o raio do `PathBlocked`, o `PontoLivrePerto`
+	/// do nascimento, o DDA da sombra. Espalhar a excecao seria pedir pra um deles ficar de fora, e
+	/// o sintoma de UM ficar de fora e o pior deste projeto: o cliente e o servidor discordando
+	/// sobre onde da pra andar, com o corpo tremendo na costura.
+	///
+	/// ELE MUDA DUAS RESPOSTAS, e as duas precisam mudar juntas:
+	///   * <see cref="BlockedCell"/> -- fora do bitset passa a ser livre;
+	///   * <see cref="NaBorda"/> -- deixa de existir beirada, e com ela o chao indestrutivel da
+	///     margem e a recusa que faria o corpo parar dois tiles antes do fim do mapa.
+	/// Mudar so a primeira deixaria o jogador andando pelo vazio com uma cerca invisivel de duas
+	/// celulas em volta do quarto, imposta pela regra que existe pra proteger a borda de um mapa
+	/// que aqui nao tem borda.
+	/// ==============================================================================================
+	///
+	/// QUEM LIGA: quem CARREGA o mapa, nas duas pontas (o `CarregarZonas` do servidor e o
+	/// `MapaCacheado` do cliente), perguntando ao <see cref="SalaDoTempo.SemBorda(string)"/>. O
+	/// arquivo nao carrega o bit porque ele nao e do desenho do mapa, e sim do lugar: o mesmo `.col`
+	/// de 500x500 descreve a Sala e descreveria qualquer quarto fechado.
+	/// </summary>
+	public bool SemBorda { get; set; }
+
 	private readonly byte[] _bits;
 
 	/// <summary>
@@ -36,6 +69,27 @@ public sealed class ZoneCollision
 	/// =======================================================================
 	/// </summary>
 	private readonly byte[]? _grupo;
+
+	/// <summary>
+	/// O PLANO DA AGUA -- 1 bit por celula, ou nulo se esta zona nao tiver agua nenhuma.
+	///
+	/// ============================ POR QUE UM PLANO E NAO UM BIT DO `_bits` ============================
+	/// Porque `_bits` significa quatro coisas ao mesmo tempo -- "para o corpo", "da pra socar", "a IA
+	/// contorna", "nao da pra nascer aqui" -- e a agua so quer a primeira, e ainda assim so pra quem
+	/// esta a pe. Ver <see cref="ClasseDeAgua"/>, onde as cinco respostas dela moram juntas.
+	///
+	/// MORA NO MESMO OBJETO que o bitset, e nao numa tabela ao lado, pelo mesmo motivo que o
+	/// `_abertas` das portas mora aqui: "onde da pra andar" ja tem um funil so, e espalhar a
+	/// pergunta e pedir pra um chamador ficar de fora -- com o cliente e o servidor discordando
+	/// sobre onde se anda, que e o pior sintoma deste projeto.
+	///
+	/// DE ONDE VEM: nos mapas pre-feitos, do arquivo `.agua` gravado ao lado do `.col` (ver
+	/// <see cref="CarregarAgua"/> -- arquivo SEPARADO de proposito, pra que um `.col` antigo
+	/// continue abrindo e pra que o servidor nao pague o plano de quem nao tem agua). Nos planetas
+	/// gerados, do proprio `ClasseDeTerreno.Agua` do <see cref="GeradorDeTerreno"/>.
+	/// ================================================================================================
+	/// </summary>
+	private byte[]? _agua;
 
 	private ZoneCollision(int w, int h, byte[] bits, byte[]? grupo)
 	{
@@ -77,6 +131,90 @@ public sealed class ZoneCollision
 	/// </summary>
 	public static ZoneCollision Montar(int w, int h, byte[] bits, byte[]? grupo = null) =>
 		new(w, h, bits, grupo != null && grupo.Length == w * h ? grupo : null);
+
+	// =====================================================================
+	// A AGUA -- a terceira classe de celula. Ver ClasseDeAgua.
+	// =====================================================================
+
+	/// <summary>
+	/// O bitset da agua, cru (mesma ordem de linha do `_bits`). Devolve false se o tamanho nao
+	/// bater -- calar aqui deixaria a zona sem agua nenhuma sem ninguem saber por que.
+	/// </summary>
+	public bool DefinirAgua(byte[]? bits)
+	{
+		if (bits == null) { _agua = null; return true; }
+		if (bits.Length != (Width * Height + 7) / 8) return false;
+		_agua = bits;
+		return true;
+	}
+
+	/// <summary>
+	/// Le o `.agua` -- MESMO cabecalho do `.col` ("JCOL" + largura + altura + bitset), de
+	/// proposito: e o mesmo formato, so que respondendo outra pergunta, e reusar o cabecalho
+	/// evita uma segunda serializacao pra manter em dia.
+	///
+	/// E um arquivo SEPARADO e nao uma cauda do `.col` porque a cauda do `.col` ja tem dono: o
+	/// <see cref="Load"/> le qualquer coisa depois do bitset como o plano de GRUPO da sombra.
+	/// Anexar agua ali faria todo lago virar identidade de tile.
+	///
+	/// Devolve false (e nao lanca) quando o arquivo nao existe, nao e JCOL, ou descreve um mapa de
+	/// outro tamanho -- os tres casos em que a resposta honesta e "esta zona nao tem agua marcada".
+	/// </summary>
+	public bool CarregarAgua(byte[]? data)
+	{
+		if (data == null || data.Length < 8) return false;
+		if (data[0] != 'J' || data[1] != 'C' || data[2] != 'O' || data[3] != 'L') return false;
+		int w = data[4] | (data[5] << 8);
+		int h = data[6] | (data[7] << 8);
+		if (w != Width || h != Height) return false;
+
+		int precisa = (w * h + 7) / 8;
+		if (data.Length < 8 + precisa) return false;
+
+		var bits = new byte[precisa];
+		Array.Copy(data, 8, bits, 0, precisa);
+		_agua = bits;
+		return true;
+	}
+
+	/// <summary>Esta zona tem agua marcada?</summary>
+	public bool TemAgua => _agua != null;
+
+	/// <summary>
+	/// ESTA CELULA E AGUA?
+	///
+	/// FORA DO MAPA NAO E AGUA -- e o vazio, e quem responde por ele e o <see cref="BlockedCell"/>
+	/// (parede, ou chao livre na Sala do Tempo). Devolver "agua" aqui faria o mundo inteiro fora do
+	/// bitset virar um oceano pra quem nada.
+	/// </summary>
+	public bool EhAgua(int cx, int cy)
+	{
+		if (_agua == null) return false;
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return false;
+		int i = cy * Width + cx;
+		return (_agua[i >> 3] & (1 << (i & 7))) != 0;
+	}
+
+	/// <summary>A mesma pergunta, em pixels.</summary>
+	public bool EhAguaEm(Vec2 pos) =>
+		EhAgua((int)MathF.Floor(pos.X / TileSize), (int)MathF.Floor(pos.Y / TileSize));
+
+	/// <summary>
+	/// ESTA CELULA PARA ESTE CORPO? -- parede E agua, na mesma pergunta.
+	///
+	/// E o metodo que o movimento consulta (via `MoveRules.Occupied`). O <see cref="BlockedCell"/>
+	/// de uma so pergunta continua existindo e continua significando **parede**, porque e dele que
+	/// dependem o soco em cenario, o raio da voz e o `NaBorda` -- coisas em que a agua nao entra.
+	///
+	/// O CAMINHO COMUM CONTINUA BARATO: numa zona sem agua o `_agua` e nulo e isto e um teste de
+	/// referencia a mais por celula.
+	/// </summary>
+	public bool Bloqueia(int cx, int cy, ModoDeTravessia modo) =>
+		BlockedCell(cx, cy) || (ClasseDeAgua.Bloqueia(modo) && EhAgua(cx, cy));
+
+	/// <summary>A mesma pergunta, em pixels.</summary>
+	public bool BloqueiaEm(Vec2 pos, ModoDeTravessia modo) =>
+		Bloqueia((int)MathF.Floor(pos.X / TileSize), (int)MathF.Floor(pos.Y / TileSize), modo);
 
 	/// <summary>
 	/// O grupo visual desta celula. 255 = nao sei (arquivo sem plano) -- e um valor que NUNCA
@@ -122,7 +260,8 @@ public sealed class ZoneCollision
 	/// ==================================================================================
 	/// </summary>
 	public bool NaBorda(int cx, int cy, int margem = MargemDaBorda) =>
-		cx < margem || cy < margem || cx >= Width - margem || cy >= Height - margem;
+		!SemBorda
+		&& (cx < margem || cy < margem || cx >= Width - margem || cy >= Height - margem);
 
 	/// <summary>A mesma pergunta, em pixels.</summary>
 	public bool NaBordaEm(Vec2 pos, int margem = MargemDaBorda) =>
@@ -193,8 +332,29 @@ public sealed class ZoneCollision
 
 	public bool BlockedCell(int cx, int cy)
 	{
-		// fora do mapa conta como parede: ninguem sai pela borda
-		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return true;
+		// fora do mapa conta como parede: ninguem sai pela borda -- MENOS onde nao ha borda
+		// (a Sala do Tempo, ver `SemBorda`), e ai fora do bitset e o vazio branco, que e chao.
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return !SemBorda;
+
+		// ============================ E O ANEL DE BORDA DO .dmm TAMBEM NAO E PAREDE ============================
+		// So abrir o lado de fora nao bastava, e isto so se descobre medindo o mapa. O `.dmm` cerca o
+		// retangulo com `/turf/Other/Blank` -- denso e sem icone --, que e o jeito do BYOND de dizer
+		// "o mapa acaba aqui". No z13 esse anel e a coluna x=499 INTEIRA: 500 das 668 celulas densas
+		// da zona, e as 168 restantes sao as paredes do quarto desenhado (x 129..162, y 337..362).
+		//
+		// Sem esta clausula o vazio ficaria com uma parede invisivel de um tile a leste e nenhuma nos
+		// outros tres lados -- o jogador andaria mil tiles pro norte e esbarraria no nada indo pro
+		// leste. E o anel nao e geometria de lugar nenhum: ele existe porque o retangulo precisava
+		// terminar, e aqui o retangulo nao termina.
+		//
+		// A LARGURA E A MESMA <see cref="MargemDaBorda"/> que ja protege a beirada da destruicao,
+		// porque as duas falam da mesma coisa. As paredes de verdade do quarto estao a 336 tiles da
+		// margem mais proxima -- nao ha o que confundir.
+		// ====================================================================================================
+		if (SemBorda && (cx < MargemDaBorda || cy < MargemDaBorda
+						 || cx >= Width - MargemDaBorda || cy >= Height - MargemDaBorda))
+			return false;
+
 		int i = cy * Width + cx;
 		// O CAMINHO COMUM NAO PAGA QUASE NADA: em chao livre e sem construcao nenhuma na zona, isto
 		// e um teste de bit e uma comparacao com nulo. O campo de visao chama este metodo centenas
@@ -262,7 +422,13 @@ public sealed class ZoneCollision
 		// A BEIRADA NAO SERVE DE CHAO. `NaBorda` e o que impede sair do mapa (o `MoveRules` recusa
 		// o passo la), entao um corpo posto na beirada nasceria numa celula de onde ele nao pode se
 		// mover -- livre pela colisao e presa pela regra.
-		bool Serve(int x, int y) => !BlockedCell(x, y) && !NaBorda(x, y);
+		//
+		// E A AGUA TAMPOUCO, e pelo MESMO motivo -- e por isso ela entra aqui e nao num `if` de cada
+		// chamador. Agua nao esta no bitset (nao e parede), entao sem esta clausula um Namekuseijin
+		// podia nascer no meio do oceano de Namek e um piloto pousar dentro de um lago: livres pela
+		// colisao, parados pela regra de personagem. Ver `ClasseDeAgua.ServeDeChao`.
+		bool Serve(int x, int y) =>
+			!BlockedCell(x, y) && !NaBorda(x, y) && !(EhAgua(x, y) && !ClasseDeAgua.ServeDeChao);
 	}
 
 	/// <summary>

@@ -2,6 +2,7 @@
 using Jandirus.Core.Ai;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Forms;
+using Jandirus.Core.Npc;
 using Jandirus.Core.Skills;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -797,38 +798,72 @@ public partial class GameServer
 			//     importados; a API de sigilo de BP 100% orfa).
 			//
 			// Uma bancada que so afirmasse "hoje nao dispara" garantiria contra o primeiro e seria
-			// CUMPLICE do segundo. Entao sao dois blocos: (A) com o arsenal DE VERDADE, nada acontece;
-			// (B) com um `Tiro` sintetico posto na mao -- sem tocar na tabela global, que valeria pro
-			// processo inteiro --, o comportamento inteiro acontece e as cinco perguntas do dono sao
-			// exercitadas uma a uma.
+			// CUMPLICE do segundo. Entao sao dois blocos: (A) com o arsenal DE VERDADE, e (B) com um
+			// `Tiro` sintetico posto na mao -- sem tocar na tabela global --, exercitando as cinco
+			// perguntas do dono uma a uma.
+			//
+			// O BLOCO (A) MUDOU DE SENTIDO quando os ataques de ki chegaram. Ele afirmava que a tabela
+			// estava vazia e que ninguem tinha arsenal; hoje ha tres tecnicas que VIAJAM (raio, bola,
+			// teleguiado) e o que ele afirma e a outra metade da mesma pergunta: quem SABE tem, quem
+			// NAO SABE nao tem, e a linha de visao continua sendo paga so por quem tem.
 			// ==============================================================================================================
 			{
-				// ---------- (A) INERTE, COM O JOGO COMO ELE E HOJE ----------
-				Checa("nenhuma tecnica do jogo e ataque de longe (a tabela nasceu VAZIA, e e o certo)",
-					  !TecnicasDeLonge.Alguma && TecnicasDeLonge.Quantas == 0,
+				// ---------- (A) COM O JOGO COMO ELE E HOJE ----------
+				Checa("as tecnicas que VIAJAM estao na tabela de ataque de longe (uma por tipo)",
+					  TecnicasDeLonge.Alguma && TecnicasDeLonge.Quantas == 3,
 					  $"{TecnicasDeLonge.Quantas} registradas");
+				Checa("...e as instantaneas continuam FORA (o `Light_Buster` e golpe de aproximacao)",
+					  TecnicasDeLonge.Get("Light_Buster") == null && TecnicasDeLonge.Get("Solar_Flare") == null);
+
+				// QUEM NAO SABE NENHUMA DELAS CONTINUA SEM ARSENAL -- a metade que protege o resto do
+				// jogo: o ramo de longe inteiro tem que morrer numa comparacao pra quem nao atira.
+				ServerPlayer pobre = Forjar("ia: nao sabe nada", 50_000, new Vec2(0, 8320));
+				pobre.Cerebro!.Poderes = LerCapacidades(pobre);
+				Checa("quem nao comprou nenhuma delas sai com o arsenal de longe VAZIO",
+					  !pobre.Cerebro.Poderes.DeLonge.TemAlguma,
+					  $"{pobre.Cerebro.Poderes.DeLonge.Quantas} opcoes");
 
 				ServerPlayer sabido = Forjar("ia: sabe tudo", 50_000, new Vec2(0, 8192));
 
-				// O CORPO QUE SABE TUDO: se alguma skill do catalogo destravasse um ataque de longe,
-				// e este corpo que teria. Aprender o catalogo inteiro e o teste mais duro que da pra
-				// fazer contra "o arsenal esta vazio so porque este corpo e pobre".
+				// O CORPO QUE SABE TUDO: aprender o catalogo inteiro e o teste mais duro contra os dois
+				// erros opostos -- "nao acha o que existe" e "acha o que nao existe".
 				int aprendidas = 0;
 				if (_skills != null)
 					foreach (Skill s in _skills.Todas)
 					{ sabido.Livro.Dar(s.Path); aprendidas++; }
 
 				sabido.Cerebro!.Poderes = LerCapacidades(sabido);
-				Checa($"...e um corpo que aprendeu o catalogo INTEIRO ({aprendidas} skills) tambem sai "
-					+ "com o arsenal de longe vazio",
-					  !sabido.Cerebro.Poderes.DeLonge.TemAlguma,
+
+				// ============================ COMPRAR A SKILL NAO E O UNICO JEITO ============================
+				// Das tres tecnicas que voam, so o `Ki_Wave` e concedido por uma SKILL (`skills.json`).
+				// As outras duas vem por NIVEL -- `Basic_Blast` no degrau 35 de `Ki_Unlocked`,
+				// `Guided_Ball` no 30 de `Basic_Ki_Control` (`niveis.json`) --, e era exatamente isso que
+				// `NiveisDeSkill.VerbosAtivos()` respondia sem que ninguem perguntasse. Foi esta
+				// afirmacao que achou a funcao orfa: um corpo com o catalogo inteiro saia com UMA opcao.
+				// ========================================================================================
+				Checa($"o corpo que aprendeu o catalogo INTEIRO ({aprendidas} skills) sai com o RAIO -- "
+					+ "o unico que uma skill destrava",
+					  sabido.Cerebro.Poderes.DeLonge.Quantas == 1,
 					  $"{sabido.Cerebro.Poderes.DeLonge.Quantas} opcoes");
+
+				// E AGORA OS DEGRAUS, pelo caminho de producao (o mesmo `DoSave` do login).
+				var comNiveis = new NivelSave();
+				comNiveis.Skills["/datum/skill/mind/Ki_Unlocked"] = [35, 0];
+				comNiveis.Skills["/datum/skill/mind/Basic_Ki_Control"] = [30, 0];
+				sabido.Niveis.DoSave(comNiveis);
+
+				sabido.Cerebro.Poderes = LerCapacidades(sabido);
+				Checa("...e subindo os degraus que concedem as outras duas, o arsenal sai com as TRES",
+					  sabido.Cerebro.Poderes.DeLonge.Quantas == 3,
+					  $"{sabido.Cerebro.Poderes.DeLonge.Quantas} opcoes");
+				Checa("...e o jogo passa a ACEITAR os verbs vindos de nivel (`SabeTecnica`, o mesmo gate)",
+					  SabeTecnica(sabido, "Basic_Blast") && SabeTecnica(sabido, "Guided_Ball"));
 
 				// A LINHA DE VISAO NAO E TRACADA. O argumento `quemAtira` vem do arsenal, e com ele
 				// falso o `PathBlocked` -- a varredura de segmento -- nem chega a ser chamado. E o que
 				// mantem o gancho fora do caminho de 30 Hz enquanto ele nao servir pra nada.
 				ServerPlayer vizinho = Forjar("alvo: vizinho", 50_000, new Vec2(64, 8192), comCerebro: false);
-				Percepcao semTiro = LerPercepcao(sabido, vizinho, vizinho.Pos, quemAtira: false);
+				Percepcao semTiro = LerPercepcao(pobre, vizinho, vizinho.Pos, quemAtira: false);
 				Percepcao comTiro = LerPercepcao(sabido, vizinho, vizinho.Pos, quemAtira: true);
 				Checa("sem arsenal, a percepcao nem PERGUNTA pela linha de visao (falso = nao sei = nao atira)",
 					  !semTiro.LinhaLivre);
@@ -837,10 +872,11 @@ public partial class GameServer
 				Checa("...e a mira ja vem na percepcao (o id do alvo, o mesmo numero do `C2S.Alvo`)",
 					  comTiro.IdDoAlvo == vizinho.Id, $"{comTiro.IdDoAlvo} != {vizinho.Id}");
 
-				// 10 MIL PERCEPCOES SORTEADAS, arsenal de verdade: nem um pulso de habilidade.
+				// 10 MIL PERCEPCOES SORTEADAS. Duas passadas com o MESMO laco, e a diferenca entre elas
+				// e so QUEM tem arsenal -- que e exatamente o que a poda promete decidir.
 				{
 					var cerebro = new Cerebro { Inteligencia = 1.0, Disciplina = 1.0 };
-					cerebro.Poderes = LerCapacidades(sabido);
+					cerebro.Poderes = LerCapacidades(pobre);
 					var rng = new Random(20260812);
 					int pediu = 0, mirou = 0, planejou = 0;
 					for (int i = 0; i < 10_000; i++)
@@ -861,10 +897,46 @@ public partial class GameServer
 						if (c.Marcar != 0) mirou++;
 						if (cerebro.Atual == Plano.Atirar) planejou++;
 					}
-					Checa("com o arsenal de hoje, 10.000 percepcoes nao produzem UM pedido de tecnica",
+					Checa("sem arsenal, 10.000 percepcoes nao produzem UM pedido de tecnica",
 						  pediu == 0 && planejou == 0, $"{pediu} pedidos, {planejou} tiques no plano de atirar");
 					Checa("...e ela tambem nao MIRA em ninguem (a mira nasceu pro tiro, e nao muda o soco)",
 						  mirou == 0, $"{mirou}");
+				}
+
+				// A MESMA VARREDURA, AGORA COM QUEM TEM OS TRES ATAQUES DE KI NA MAO.
+				//
+				// Esta e a afirmacao que fecha tres camadas de gancho inerte: o plano de atirar deixou
+				// de ser inalcancavel, e o pedido que sai por ele e o id de um verb DE VERDADE -- o
+				// mesmo que o `C2S.Habilidade` do jogador carrega. Sem ela, "o gancho acordou" seria
+				// uma frase de relatorio em vez de uma medicao.
+				{
+					var cerebro = new Cerebro { Inteligencia = 1.0, Disciplina = 1.0 };
+					cerebro.Poderes = LerCapacidades(sabido);
+					var rng = new Random(20260812);
+					int pediu = 0, planejou = 0;
+					var quais = new HashSet<string>();
+					for (int i = 0; i < 10_000; i++)
+					{
+						var p = new Percepcao
+						{
+							TemAlvo = true, IdDoAlvo = 4242, Minha = Vec2.Zero,
+							DoAlvo = new Vec2((float)(rng.NextDouble() * 1200 - 600), 0),
+							AltitudeDoAlvo = (float)(rng.NextDouble() * Voo.AlturaMaxima),
+							AlvoVoando = rng.Next(2) == 0, AlvoSeMovendo = rng.Next(2) == 0,
+							LinhaLivre = rng.Next(2) == 0,
+							VidaFrac = rng.NextDouble(), KiFrac = rng.NextDouble(),
+							Ki = rng.NextDouble() * 5000, FolegoFrac = rng.NextDouble(),
+							MeuPoder = 1000, PoderDoAlvo = rng.NextDouble() * 5000,
+						};
+						Comando c = cerebro.Pensar(p, Protocol.TickSeconds, rng);
+						if (c.Habilidade is { Length: > 0 } id) { pediu++; quais.Add(id); }
+						if (cerebro.Atual == Plano.Atirar) planejou++;
+					}
+					Checa("COM arsenal, o plano de atirar deixa de ser inalcancavel",
+						  planejou > 0, $"{planejou} tiques no plano de atirar");
+					Checa("...e o que sai sao pedidos de tecnicas DE VERDADE, pelo canal do jogador",
+						  pediu > 0 && quais.All(q => TecnicasDeLonge.Get(q) != null),
+						  $"{pediu} pedidos: {string.Join(", ", quais)}");
 				}
 
 				// ---------- (B) O GANCHO EXERCITADO, COM UM TIRO SINTETICO ----------
@@ -1202,8 +1274,10 @@ public partial class GameServer
 				//     por `MoveRules.Advance`, que GERA a posicao. Sao perguntas opostas (`MoveRules.cs:91`
 				//     vs `:159`) e uni-las daria uma funcao com dois modos e um `if`. As POLITICAS -- que
 				//     sao o que da pra compartilhar -- ja sao as mesmas, e sao elas que cobram.
-				//   * `FacingFrom` -- o jogador manda o `facing` no pacote; a IA nao tem pacote, entao
-				//     deriva o dela do proprio rumo. Funcao pura, sem estado e sem custo.
+				//   * `FacingFrom` -- o jogador manda o `facing` no pacote (dois bits do `InputState`) e a
+				//     IA manda no `Comando.Olhar`; os dois passam pela MESMA quantizacao pras quatro
+				//     direcoes do BYOND. A assimetria e so o transporte -- um vem da rede, o outro nao
+				//     tem rede. Funcao pura, sem estado e sem custo.
 				// ==============================================================================================
 				string[] excecoesDeChamada = ["PassoDaIa", "Advance", "FacingFrom"];
 
@@ -1816,6 +1890,499 @@ public partial class GameServer
 				DevolverAsRedeas(lendario);
 				Checa("(faxina) as redeas voltam pelo caminho de producao",
 					  macaco.Cerebro == null && lendario.Cerebro == null);
+			}
+
+			// =====================================================================
+			// 20. NINGUEM SOCA DE COSTAS
+			// =====================================================================
+			// ============================ O QUE ESTA SECAO MEDE, E POR QUE NAO E "A IA VIRA" ============================
+			// O dono viu o boneco *"SOCAR DE COSTAS"*, e o defeito nao era feio: era **sem efeito**. O
+			// golpe do jogo so acha alvo dentro do cone da frente (`AlvoNaFrente` -> `MeleeArea.NoAlcance`,
+			// o `compileRangeMobList` do DM). De costas, a IA nao errava o soco -- ela nao tinha alvo.
+			//
+			// Entao a checagem que vale nao e "o `Facing` mudou": e **o soco encontrou gente**. Uma
+			// bancada que so olhasse a direcao ficaria verde no dia em que alguem trocasse o cone e
+			// mediria a minha propria conta contra ela mesma -- e essa e a forma exata do cego que este
+			// projeto ja documentou ("as duas telas concordam" fica verde com as duas erradas igual).
+			//
+			// A ARMADILHA E ARMADA DE PROPOSITO: o alvo e posto ATRAS (`Facing` cravado no sentido
+			// oposto) e a distancia escolhida DENTRO da faixa em que a `Pressao` manda passo pra tras
+			// (`Distancia < DistanciaIdeal * 0,6`) e o soco vale ao mesmo tempo (`<= DistanciaIdeal *
+			// 1,6`). E a janela em que as duas ordens se sobrepunham -- a que produzia os 180° medidos.
+			// =====================================================================================================
+			{
+				foreach (ServerPlayer velho in _players.Values) velho.Cerebro = null;
+
+				var origem = new Vec2(0, 13400);
+				ServerPlayer soqueiro = Forjar("ia: de costas", 50_000, origem, comCerebro: false);
+				// ATRAS DELE, e colado: 18 px < 34 * 0,6 = 20,4 (a faixa do passo pra tras) e
+				// < 34 * 1,6 = 54,4 (a faixa do soco). Alvo sem cerebro: quem e medido e um so.
+				ServerPlayer vitima = Forjar("ia: alvo nas costas", 50_000, origem - new Vec2(18, 0), comCerebro: false);
+
+				soqueiro.Cerebro = new Cerebro();
+				soqueiro.Facing = Facing.East;    // olhando pro lado OPOSTO ao alvo (que esta a oeste)
+				vitima.Facing = Facing.East;
+
+				Checa("(preparo) o alvo nasce nas COSTAS do soqueiro, no alcance e FORA do cone",
+					  !MeleeArea.NoAlcance(soqueiro.Pos, soqueiro.Facing, vitima.Pos)
+					  && (vitima.Pos - soqueiro.Pos).Length <= CombatKnobs.Alcance,
+					  $"olhando {soqueiro.Facing}, {(vitima.Pos - soqueiro.Pos).Length:0} px");
+
+				// UM TIQUE SO ja tem que virar o corpo: o olhar e reflexo, nao decisao -- ele sai do
+				// `Montar`, que roda em TODO tique, e nao do `Repensar`, que roda a 4 Hz.
+				TickDosCorposSemDono(Protocol.TickSeconds);
+				Checa("UM tique dirigido e o corpo ja encara o alvo -- mesmo antes de decidir o plano",
+					  soqueiro.Facing == Facing.West, $"olhando {soqueiro.Facing}");
+
+				// ---- E O SOCO ACHA GENTE, que e a afirmacao de verdade ----
+				// Mais tiques: o compromisso solta, o plano vira `Pressionar` e a receita passa a mandar
+				// passo pra tras (colado demais) JUNTO com o golpe -- a combinacao que produzia o defeito.
+				//
+				// `cegarOOlhar` REPRODUZ O DEFEITO sem tocar em producao: com `Olhar` zerado o atuador cai
+				// no rumo do passo, que e exatamente o que ele fazia antes desta camada. E o que prova
+				// que a armadilha esta ARMADA -- uma checagem que nao sabe ficar vermelha nao mede nada,
+				// e este projeto ja viu 4000 verdes com quatro defeitos visuais atravessando.
+				(int noAr, int comAlvo, int deCostas) Medir(bool cegarOOlhar)
+				{
+					int socosNoAr = 0, socosComAlvo = 0, deCostas = 0;
+					soqueiro.Facing = Facing.East;
+					for (int i = 0; i < 240; i++)
+					{
+						// o alvo e RECOLADO todo tique: o que se mede e a direcao, e nao a briga de
+						// posicao. Sem isto o passo pra tras afasta os dois e a armadilha se desarma.
+						vitima.Pos = soqueiro.Pos - new Vec2(18, 0);
+						vitima.Ficha.HP = 100; vitima.Ficha.KO = false;
+						soqueiro.Combate.Recarga = 0;
+
+						Comando c = soqueiro.Cerebro!.Pensar(
+							LerPercepcao(soqueiro, vitima, vitima.Pos, quemAtira: false),
+							Protocol.TickSeconds, _rng);
+						if (cegarOOlhar) c = c with { Olhar = Vec2.Zero };
+						AplicarComando(soqueiro, c, Protocol.TickSeconds);
+
+						if (!c.Leve && !c.Pesado) continue;
+						if (soqueiro.Facing != Facing.West) deCostas++;
+						if (AlvoNaFrente(soqueiro) == null) socosNoAr++; else socosComAlvo++;
+					}
+					return (socosNoAr, socosComAlvo, deCostas);
+				}
+
+				(int noAr, int comAlvo, int deCostas) cego = Medir(cegarOOlhar: true);
+				Checa("A ARMADILHA ESTA ARMADA: com o `Olhar` zerado -- o comportamento de antes desta "
+					+ "camada -- o corpo soca de costas e o golpe sai SEM ALVO",
+					  cego.deCostas > 0 && cego.noAr > 0,
+					  $"de costas={cego.deCostas} no ar={cego.noAr} com alvo={cego.comAlvo}");
+
+				(int noAr, int comAlvo, int deCostas) real = Medir(cegarOOlhar: false);
+				Checa("a receita REALMENTE soca nesta janela (senao o verde de baixo seria de graca)",
+					  real.comAlvo + real.noAr >= 5, $"{real.comAlvo + real.noAr} golpes em 240 tiques");
+				Checa("NENHUM golpe sai com o corpo virado pro lado errado",
+					  real.deCostas == 0, $"{real.deCostas} de {real.comAlvo + real.noAr}");
+				Checa("...e NENHUM golpe sai sem alvo, com o oponente colado atras -- eram 38% antes",
+					  real.noAr == 0, $"{real.noAr} no ar de {real.comAlvo + real.noAr}");
+
+				// ---- QUEM VAGA OLHA PRA ONDE VAI, e nao pra um alvo que nao existe ----
+				// A outra metade da regra: `Olhar` zero cai no rumo do passo. Sem esta checagem, "encarar
+				// sempre" passaria despercebido e o bicho que passeia ficaria andando de lado pra sempre.
+				var rngVaga2 = new Random(4242);
+				int olharVazio = 0;
+				for (int i = 0; i < 60; i++)
+				{
+					var p = new Percepcao
+					{
+						TemAlvo = false, Minha = Vec2.Zero, DoAlvo = new Vec2(200, 0),
+						VidaFrac = 1, KiFrac = 1, Ki = 500, FolegoFrac = 1,
+					};
+					if (soqueiro.Cerebro!.Pensar(p, Protocol.TickSeconds, rngVaga2).Olhar.LengthSquared <= 1e-6f)
+						olharVazio++;
+				}
+				Checa("sem alvo, o cerebro nao manda olhar pra lugar nenhum (o passo e que decide)",
+					  olharVazio == 60, $"{olharVazio} de 60");
+
+				// ---- E O CAIDO NAO GIRA ----
+				// Duas travas independentes o protegem (o cerebro devolve `Comando.Nenhum` e o
+				// `PodeMexerOCorpo` barra o atuador). Aqui mede-se o resultado das duas: o corpo no chao
+				// mantem a direcao em que caiu, que e a que o sprite deitado desenha.
+				soqueiro.Facing = Facing.North;
+				soqueiro.Ficha.KO = true;
+				for (int i = 0; i < 30; i++)
+				{
+					vitima.Pos = soqueiro.Pos - new Vec2(18, 0);
+					AplicarComando(soqueiro, soqueiro.Cerebro!.Pensar(
+						LerPercepcao(soqueiro, vitima, vitima.Pos, quemAtira: false),
+						Protocol.TickSeconds, _rng), Protocol.TickSeconds);
+				}
+				Checa("corpo NOCAUTEADO nao vira pra encarar ninguem -- ele fica como caiu",
+					  soqueiro.Facing == Facing.North, $"olhando {soqueiro.Facing}");
+				soqueiro.Ficha.KO = false;
+
+				// ---- E O CORPO LARGADO CONTINUA SENDO UM BONECO ----
+				// Ele nao e barrado por um `if`: ele nasce sem cerebro, entao a volta dos dirigidos nao
+				// o enxerga. A checagem afirma o MECANISMO, porque e ele que continua valendo quando
+				// alguem escrever a proxima posse.
+				ServerPlayer boneco = Forjar("ia: boneco largado", 50_000, origem + new Vec2(0, 120), comCerebro: false);
+				boneco.Facing = Facing.North;
+				vitima.Pos = boneco.Pos - new Vec2(18, 0);
+				for (int i = 0; i < 30; i++) TickDosCorposSemDono(Protocol.TickSeconds);
+				Checa("corpo LARGADO (sem cerebro) nao entra na volta e nao gira",
+					  boneco.Cerebro == null && boneco.Facing == Facing.North, $"olhando {boneco.Facing}");
+
+				soqueiro.Cerebro = null;
+			}
+
+			// =====================================================================
+			// 21. O FUNDO: EMOCAO, FUGA, FINALIZADOR, RAJADA E ECONOMIA
+			// =====================================================================
+			// ============================ O QUE ESTA SECAO PRECISA PROVAR ============================
+			// O dono disse que a IA *"ta mt simples"*. A medicao explicou por que: dos oito planos, um
+			// so era alcancado numa luta de verdade, e o TEMPERO de cada corpo era uma constante --
+			// o mesmo peso de golpe no primeiro soco e no ultimo, o mesmo limiar de recuo com a vida
+			// cheia e no fio, e o mesmo ritmo de soco pra sempre.
+			//
+			// Entao as checagens daqui sao todas da mesma familia: **o mesmo corpo, em duas
+			// situacoes, se comporta diferente**. Uma bancada que so afirmasse "existe o plano
+			// Fugir" ficaria verde com um plano que nunca e escolhido -- que e exatamente o defeito
+			// que a fase 0 mediu (sete dos oito planos existiam e nao aconteciam).
+			//
+			// E cada par tem o seu CONTROLE, pela mesma razao do `cegarOOlhar` da secao 20: sem o
+			// lado que NAO dispara, o lado que dispara pode estar disparando sempre.
+			// ====================================================================================
+			{
+				/// uma cena de duelo pura -- sem corpo, sem mundo: o que se mede e a decisao
+				static Percepcao Duelo(double vida = 1, double vidaAlvo = 1, double razao = 1,
+									   double folego = 1, double kiFrac = 1, double ki = 5000,
+									   float px = 18, bool atordoado = false) => new()
+				{
+					TemAlvo = true, IdDoAlvo = 91, Minha = Vec2.Zero, DoAlvo = new Vec2(px, 0),
+					VidaFrac = vida, VidaDoAlvo = vidaAlvo, FolegoFrac = folego,
+					KiFrac = kiFrac, Ki = ki, Atordoado = atordoado,
+					MeuPoder = 1000, PoderDoAlvo = 1000 * razao,
+				};
+
+				// ---------- (a) AS EMOCOES ANDAM DURANTE A LUTA ----------
+				// O `behavior_check` (`NPCAI.dm:769`) em duas leituras opostas: apanhando de alguem
+				// mais forte, e batendo em alguem mais fraco.
+				{
+					var apanhando = new Cerebro();
+					var rng = new Random(21);
+					double vida = 1;
+					for (int i = 0; i < 900; i++)   // 30 s
+					{
+						vida = Math.Max(0.30, vida - 0.0008);   // ~2,4 HP por leitura de emocao
+						apanhando.Pensar(Duelo(vida: vida, razao: 2.0), Protocol.TickSeconds, rng);
+					}
+					Checa("apanhando de alguem mais forte, a FURIA sobe acima da do molde "
+						+ "(o `behavior_check`, que era constante)",
+						  apanhando.FuriaExpressa > 0.35 + 0.05,
+						  $"furia {apanhando.FuriaExpressa:0.00} vs base 0,35");
+					Checa("...e a CAUTELA sobe junto -- e a metade do `behavior_check` que o clamp do "
+						+ "DM apaga (la a coragem so pode subir)",
+						  apanhando.CautelaExpressa > 0.45 + 0.05,
+						  $"cautela {apanhando.CautelaExpressa:0.00} vs base 0,45");
+
+					var ganhando = new Cerebro();
+					var rng2 = new Random(22);
+					for (int i = 0; i < 900; i++)
+						ganhando.Pensar(Duelo(vida: 1, razao: 0.4), Protocol.TickSeconds, rng2);
+					Checa("...e GANHANDO ele fica afoito: a cautela cai abaixo da do molde",
+						  ganhando.CautelaExpressa < 0.45 - 0.05,
+						  $"cautela {ganhando.CautelaExpressa:0.00} vs base 0,45");
+
+					// O CONTROLE: sem alvo as emocoes zeram (o `resetState`). Sem isto o cidadao
+					// carregaria a raiva da briga de ontem pro passeio de hoje.
+					var semAlvo = new Percepcao { TemAlvo = false, VidaFrac = 1, KiFrac = 1, FolegoFrac = 1 };
+					for (int i = 0; i < 120; i++) apanhando.Pensar(semAlvo, Protocol.TickSeconds, rng);
+					Checa("...e sem alvo elas ZERAM de volta pro tempero do molde (o `resetState`)",
+						  Math.Abs(apanhando.FuriaExpressa - 0.35) < 1e-9,
+						  $"furia {apanhando.FuriaExpressa:0.00}");
+
+					// E A FERA CONTINUA SENDO A FERA: `VidaCautelosa = 0` nao tem como cair, e a
+					// emocao nao pode INVENTAR cautela num corpo que nao tem nenhuma.
+					var fera = new Cerebro { VidaCautelosa = 0, Inteligencia = 0, Disciplina = 0 };
+					var rng3 = new Random(23);
+					double v = 1;
+					for (int i = 0; i < 900; i++)
+					{
+						v = Math.Max(0.2, v - 0.001);
+						fera.Pensar(Duelo(vida: v, razao: 3), Protocol.TickSeconds, rng3);
+					}
+					Checa("...e a fera continua com cautela ZERO depois de 30 s apanhando "
+						+ "(emocao nao inventa medo em quem nao tem)",
+						  fera.CautelaExpressa == 0, $"{fera.CautelaExpressa:0.00}");
+				}
+
+				// ---------- (b) FUGIR DE VERDADE (o `runawayState`, NPCAI.dm:646) ----------
+				{
+					/// roda ate o plano virar `Fugir`, devolvendo o comando do momento
+					static (bool fugiu, Comando c) AteFugir(Cerebro cb, double vida, int tiques = 600)
+					{
+						var rng = new Random(31);
+						Comando ult = default;
+						for (int i = 0; i < tiques; i++)
+						{
+							ult = cb.Pensar(Duelo(vida: vida), Protocol.TickSeconds, rng);
+							if (cb.Atual == Plano.Fugir) return (true, ult);
+						}
+						return (false, ult);
+					}
+
+					// coragem 0 -> cautela 0,9 (> 0,585): este foge
+					var covarde = new Cerebro { VidaCautelosa = 0.9 };
+					(bool fugiu, Comando c) f = AteFugir(covarde, vida: 0.20);
+					Checa("com a vida no fio e sem coragem, ele FOGE (o plano que nunca existiu neste port)",
+						  f.fugiu);
+					Checa("...e a fuga e CORRENDO e pra LONGE do alvo (nao e o passo atras do recuo)",
+						  f.c.Correndo && f.c.Rumo.X < -0.1f, $"correndo={f.c.Correndo} rumo={f.c.Rumo.X:0.00}");
+					Checa("...e quem foge NAO ataca e NAO guarda (o laco do DM nao tem essas linhas)",
+						  !f.c.Leve && !f.c.Pesado && !f.c.Guardar);
+					Checa("...e ele OLHA PRA ONDE CORRE -- a terceira excecao do olhar, prevista quando "
+						+ "o campo nasceu",
+						  f.c.Olhar.LengthSquared <= 1e-6f, $"olhar {f.c.Olhar.X:0.00}");
+
+					// OS CONTROLES: coragem alta nao foge, vida cheia nao foge, e a fera nunca foge.
+					Checa("...mas com a MESMA vida no fio, o corajoso continua brigando (o portao e duplo)",
+						  !AteFugir(new Cerebro { VidaCautelosa = 0.3 }, vida: 0.20).fugiu);
+					Checa("...e com a vida cheia nem o covarde foge",
+						  !AteFugir(new Cerebro { VidaCautelosa = 0.9 }, vida: 1.0).fugiu);
+					Checa("...e a fera (`VidaCautelosa = 0`) nao foge nem no fio da vida",
+						  !AteFugir(new Cerebro { VidaCautelosa = 0, Inteligencia = 0, Disciplina = 0 }, vida: 0.05).fugiu);
+
+					// E ELE VOLTA: `if(src.HP > 25) chaseState` (`NPCAI.dm:650`).
+					var voltou = new Cerebro { VidaCautelosa = 0.9 };
+					AteFugir(voltou, vida: 0.20);
+					var rngV = new Random(32);
+					bool saiu = false;
+					for (int i = 0; i < 300 && !saiu; i++)
+					{
+						voltou.Pensar(Duelo(vida: 0.9), Protocol.TickSeconds, rngV);
+						saiu = voltou.Atual != Plano.Fugir;
+					}
+					Checa("...e com a vida de volta ele PARA de fugir (a fuga nao e um estado grudado)",
+						  saiu, $"plano {voltou.Atual}");
+				}
+
+				// ---------- (c) O FINALIZADOR (`NPCAI.dm:388`) ----------
+				// O consumidor da `Percepcao.VidaDoAlvo`, que era o setimo dado extraido sem leitor.
+				{
+					static int Socos(Cerebro cb, double vidaAlvo, int semente)
+					{
+						var rng = new Random(semente);
+						int n = 0;
+						for (int i = 0; i < 900; i++)   // 30 s
+						{
+							Comando c = cb.Pensar(Duelo(vidaAlvo: vidaAlvo), Protocol.TickSeconds, rng);
+							if (c.Leve || c.Pesado) n++;
+						}
+						return n;
+					}
+
+					int fechando = Socos(new Cerebro { Agressividade = 1 }, vidaAlvo: 0.20, 41);
+					int medindo = Socos(new Cerebro { Agressividade = 0 }, vidaAlvo: 0.20, 41);
+					Checa("com o alvo quase caido, o AGRESSIVO fecha a luta -- ele soca bem mais que o "
+						+ "mesmo corpo sem agressividade",
+						  fechando > medindo * 1.2, $"{fechando} socos contra {medindo} em 30 s");
+
+					int alvoInteiro = Socos(new Cerebro { Agressividade = 1 }, vidaAlvo: 1.0, 41);
+					Checa("...e o MESMO corpo agressivo nao acelera contra um alvo inteiro (e a vida "
+						+ "DELE que liga o modo, e nao a agressividade sozinha)",
+						  fechando > alvoInteiro * 1.2, $"{fechando} contra {alvoInteiro}");
+				}
+
+				// ---------- (d) A RAJADA CONTADA (`BarrageAttack`, NPCAI.dm:412) ----------
+				{
+					static int SocosCom(Cerebro cb, double folego, int semente)
+					{
+						var rng = new Random(semente);
+						int n = 0;
+						for (int i = 0; i < 900; i++)
+							if (cb.Pensar(Duelo(folego: folego), Protocol.TickSeconds, rng) is { } c
+								&& (c.Leve || c.Pesado)) n++;
+						return n;
+					}
+
+					// furia 0,9 (>= 0,325) e folego cheio: rajadas de 2 a 4
+					int furioso = SocosCom(new Cerebro { ChanceDePesado = 0.9, Inteligencia = 1 }, 1.0, 51);
+					// furia 0,1 (< 0,325): golpe avulso, sempre
+					int calmo = SocosCom(new Cerebro { ChanceDePesado = 0.1, Inteligencia = 1 }, 1.0, 51);
+					Checa("o FURIOSO encaixa rajadas e o CALMO da golpes avulsos -- dois ritmos que se "
+						+ "reconhecem na tela",
+						  furioso > calmo * 1.3, $"{furioso} socos contra {calmo} em 30 s");
+
+					int cansado = SocosCom(new Cerebro { ChanceDePesado = 0.9, Inteligencia = 1 }, 0.10, 51);
+					Checa("...e o mesmo furioso SEM FOLEGO volta pro golpe avulso (o esperto poupa a "
+						+ "estamina; o burro nao)",
+						  cansado < furioso * 0.8, $"{cansado} contra {furioso}");
+				}
+
+				// ---------- (e) ECONOMIA DE KI (`NPCAI.dm:404`) ----------
+				{
+					var tiro = new Tiro
+					{
+						Id = "bancada_economia", AlcanceMin = 4 * ZoneCollision.TileSize,
+						AlcanceMax = 12 * ZoneCollision.TileSize, TempoDeConjuracao = 0.2,
+						CustoDeKi = 100, PrecisaDeLinhaLivre = false, Precisao = 0.95,
+					};
+					static bool Atirou(Cerebro cb, Percepcao p)
+					{
+						var rng = new Random(61);
+						for (int i = 0; i < 400; i++)
+							if (cb.Pensar(p, Protocol.TickSeconds, rng).Habilidade != null) return true;
+						return false;
+					}
+					Cerebro Armado(double intel) => new()
+					{
+						Inteligencia = intel, Disciplina = 0,
+						Poderes = new Capacidades { DeLonge = new Arsenal([tiro]) },
+					};
+
+					Percepcao noFundo = Duelo(kiFrac: 0.20, ki: 5000, px: 8 * ZoneCollision.TileSize);
+					Percepcao cheio = Duelo(kiFrac: 1.0, ki: 5000, px: 8 * ZoneCollision.TileSize);
+
+					Checa("com o tanque em 20%, o ESPERTO guarda o Ki e vai de soco (o `NPC_AI_KI_LOW`)",
+						  !Atirou(Armado(1.0), noFundo));
+					Checa("...e o BURRO queima o que sobrou no raio (erro caracteristico, nao aleatorio)",
+						  Atirou(Armado(0.0), noFundo));
+					Checa("...e o mesmo esperto atira com o tanque cheio (era economia, e nao timidez)",
+						  Atirou(Armado(1.0), cheio));
+				}
+
+				// ---------- (f) GUARDA QUE O TANQUE NAO PAGA ----------
+				// O `MeleeResolver` derruba a guarda de quem nao tem Ki pro golpe aparado
+				// (`MeleeResolver.cs:139`); insistir nela e ficar com o gesto erguido levando o soco.
+				{
+					static bool Guardou(Cerebro cb, double ki)
+					{
+						var rng = new Random(71);
+						for (int i = 0; i < 600; i++)
+							if (cb.Pensar(Duelo(vida: 0.20, ki: ki, atordoado: true),
+										  Protocol.TickSeconds, rng).Guardar) return true;
+						return false;
+					}
+					Cerebro Disciplinado() => new()
+					{
+						Disciplina = 1, Inteligencia = 1,
+						Poderes = new Capacidades { TemComQueAparar = true, CustoDaGuarda = 500 },
+					};
+					Checa("sem Ki pra pagar UM golpe aparado, ele nao ergue a guarda (o resolvedor a "
+						+ "derrubaria no primeiro soco)",
+						  !Guardou(Disciplinado(), ki: 100));
+					Checa("...e com Ki pra pagar ele ergue (era o preco, e nao outra recusa)",
+						  Guardou(Disciplinado(), ki: 5000));
+				}
+
+				// ---------- (g) A DEFENSIVA POR CANSACO (`NPCAI.dm:525`) ----------
+				// Vida cheia, sem atordoamento e sem ritmo conhecido: antes desta camada NADA fazia
+				// este corpo erguer a guarda. O folego no chao faz.
+				{
+					static bool GuardouPorCansaco(double folego)
+					{
+						var cb = new Cerebro
+						{
+							Disciplina = 1, Inteligencia = 1,
+							Poderes = new Capacidades { TemComQueAparar = true, CustoDaGuarda = 1 },
+						};
+						var rng = new Random(81);
+						for (int i = 0; i < 900; i++)
+							if (cb.Pensar(Duelo(vida: 1, folego: folego, ki: 5000),
+										  Protocol.TickSeconds, rng).Guardar) return true;
+						return false;
+					}
+					Checa("com o folego no chao e o alvo colado, ele passa a APARAR mesmo inteiro "
+						+ "(a postura defensiva do DM)",
+						  GuardouPorCansaco(0.10));
+					Checa("...e com folego cheio, inteiro e sem ritmo conhecido, ele NAO guarda "
+						+ "(o controle: era o cansaco)",
+						  !GuardouPorCansaco(1.0));
+				}
+
+				// ---------- (h) A DECOLAGEM QUE O TANQUE PAGA ----------
+				{
+					static bool PediuVoo(double ki)
+					{
+						var cb = new Cerebro
+						{
+							Inteligencia = 1,
+							Poderes = new Capacidades
+							{
+								PodeVoar = true, CustoDeDecolar = 200, CustoDoVooPorSegundo = 100,
+							},
+						};
+						var rng = new Random(91);
+						for (int i = 0; i < 400; i++)
+						{
+							// alvo DOIS andares acima: a unica razao de subir que nao depende de gosto
+							var p = new Percepcao
+							{
+								TemAlvo = true, IdDoAlvo = 5, Minha = Vec2.Zero, DoAlvo = new Vec2(64, 0),
+								AltitudeDoAlvo = Voo.AlturaMaxima * 0.5f, AlvoVoando = true,
+								VidaFrac = 1, KiFrac = 0.5, Ki = ki, FolegoFrac = 1,
+								MeuPoder = 1000, PoderDoAlvo = 1000,
+							};
+							if (cb.Pensar(p, Protocol.TickSeconds, rng).AlternarVoo) return true;
+						}
+						return false;
+					}
+					Checa("com Ki pra decolar mas nao pra ficar no ar, ele NAO sobe (os dois custos "
+						+ "vinham das capacidades e ninguem os lia)",
+						  !PediuVoo(300), "500 = 200 de decolagem + 3 s a 100");
+					Checa("...e com o tanque cobrindo a subida ele sobe",
+						  PediuVoo(900));
+				}
+
+				// ---------- (i) DOIS DO MESMO MOLDE NAO SAO O MESMO BICHO ----------
+				{
+					MoldeDeNpc molde = _moldes?.Get("cidadao") ?? new MoldeDeNpc();
+					var cautelas = new HashSet<double>();
+					var pesos = new HashSet<double>();
+					for (ulong s = 1; s <= 40; s++)
+					{
+						Cerebro c = Temperamento.Montar(molde, 0, s);
+						cautelas.Add(Math.Round(c.VidaCautelosa, 4));
+						pesos.Add(Math.Round(c.ChanceDePesado, 4));
+					}
+					Checa("40 cidadaos do MESMO molde nascem com temperos diferentes (o `rand(8,13)/10` "
+						+ "do `bhv_set`)",
+						  cautelas.Count >= 3 && pesos.Count >= 3,
+						  $"{cautelas.Count} cautelas e {pesos.Count} pesos distintos");
+
+					Checa("...e o mesmo corpo nasce sempre igual (o sorteio e da SEMENTE, e nao do relogio)",
+						  Temperamento.Montar(molde, 0, 7).VidaCautelosa
+						  == Temperamento.Montar(molde, 0, 7).VidaCautelosa);
+
+					Checa("...e semente ZERO devolve os numeros do arquivo, sem tempero por cima "
+						+ "(e o que deixa uma bancada medir a receita, e nao o sorteio)",
+						  Math.Abs(Temperamento.Montar(molde, 0).VidaCautelosa
+								   - 0.9 * (1 - molde.Coragem / 100.0)) < 1e-9);
+				}
+
+				// ---------- (j) A DISTANCIA DE AGRESSAO E O LEASH ----------
+				// Aqui o corpo forjado nao serve: `PresaDoHostil` so olha GENTE DE VERDADE
+				// (`EhJogador`), e quem tem `Peer` nesta bancada e o proprio robo que a disparou.
+				{
+					ServerPlayer cacador = Forjar("ia: hostil", 50_000, quem.Pos + new Vec2(40 * ZoneCollision.TileSize, 0), comCerebro: false);
+					ZoneList(cacador.Zone.Hash).Remove(cacador);
+					cacador.Zone = quem.Zone;
+					ZoneList(cacador.Zone.Hash).Add(cacador);
+
+					Checa("(preparo) o robo desta bancada conta como gente pra caca",
+						  EhJogador(quem) && !quem.Ficha.dead && !quem.Ficha.KO);
+
+					Checa("a 40 tiles, o hostil NAO ve ninguem -- ele cacava a zona inteira antes",
+						  PresaDoHostil(cacador) == null);
+
+					cacador.Pos = quem.Pos + new Vec2(10 * ZoneCollision.TileSize, 0);
+					Checa("...a 10 tiles ele NOTA (o `MAX_AGGRO_RANGE` de 20)",
+						  PresaDoHostil(cacador)?.Id == quem.Id);
+
+					cacador.Pos = quem.Pos + new Vec2(40 * ZoneCollision.TileSize, 0);
+					Checa("...e depois de engajado ele SEGUE a 40 tiles -- o raio de largar e maior que "
+						+ "o de adotar, e a folga entre os dois e o que impede a briga de piscar",
+						  PresaDoHostil(cacador)?.Id == quem.Id);
+
+					cacador.Pos = quem.Pos + new Vec2(70 * ZoneCollision.TileSize, 0);
+					Checa("...e alem de 60 tiles ele LARGA (o leash do `aggro_dist*2`)",
+						  PresaDoHostil(cacador) == null && cacador.PresaEngajada == 0);
+				}
 			}
 		}
 		finally

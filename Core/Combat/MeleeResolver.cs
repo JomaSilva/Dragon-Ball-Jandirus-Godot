@@ -5,8 +5,13 @@ namespace Jandirus.Core.Combat;
 /// <summary>O que aconteceu quando o soco chegou.</summary>
 public enum Desfecho : byte
 {
-	Errou,        // a pontaria falhou
-	Esquivou,     // o alvo saiu do caminho (custa Ki dele)
+	// O SOCO NO VAZIO -- nao havia corpo nenhum na frente. NAO e "a pontaria falhou": pontaria que
+	// falha contra alguem e esquiva (ver o passo 1 do `Resolver`), e o `Resolver` nunca devolve isto.
+	Errou,
+	// O ALVO SAIU DA FRENTE. Duas portas chegam aqui, como no original: a passiva (a pontaria de
+	// quem bateu nao alcancou a velocidade de quem apanhou -- de graca) e a ativa, que custa Ki e
+	// marca `GolpeResultado.EsquivaAtiva`.
+	Esquivou,
 	Aparou,       // bloqueou com um membro
 	Contra,       // aparou NA HORA certa e devolveu
 	Acertou,
@@ -27,6 +32,31 @@ public struct GolpeResultado
 
 	/// <summary>O rabo foi arrancado por este golpe (regra separada -- ver o passo 7).</summary>
 	public bool RaboArrancado;
+
+	/// <summary>
+	/// AS PECAS QUE CAIRAM NO CHAO neste golpe -- em geral vazia, uma ou duas quando ha amputacao.
+	///
+	/// NAO E O MESMO QUE <see cref="Decepou"/>. Aquele diz "houve amputacao" e e o que o desenho
+	/// usa pro jato de sangue; esta lista diz QUAIS pecas nascem no mundo, e sao mais de uma porque
+	/// a cascata do `Body.Decepar` leva junto o que estava dentro: arrancar o braco derruba braco E
+	/// mao, dois objetos no chao, como no `LopLimb` do original (`mobparts_logic.dm:116-118`).
+	///
+	/// LISTA E NAO CAMPO UNICO por isso, e ela nasce nula porque o caso comum e nao haver nenhuma:
+	/// alocar uma lista vazia em todo soco de uma briga seria lixo por golpe pra guardar nada.
+	/// </summary>
+	public List<PecaDeCorpo>? PecasCaidas;
+
+	/// <summary>
+	/// A esquiva foi a ATIVA (a que custa Ki e depende de <see cref="CombatState.ChanceEsquiva"/>),
+	/// e nao a passiva por velocidade.
+	///
+	/// As duas saem como <see cref="Desfecho.Esquivou"/> de proposito -- no original elas caem no
+	/// MESMO ramo `if(0)` e desenham a MESMA coisa (`CombatMovement.dm:269-289`). O que muda e
+	/// quem paga e quem aprende: so a ativa alimenta a maestria do Instinto Superior
+	/// (`GameServer.Combat.cs`, `AoEsquivarPorInstinto`) e so ela e a analoga do combo dodge do DM
+	/// (`:290-307`), o unico lugar onde o `haszanzo` decide se ha vulto.
+	/// </summary>
+	public bool EsquivaAtiva;
 
 	public bool Encostou => Desfecho is Desfecho.Acertou or Desfecho.Critico or Desfecho.Aparou;
 }
@@ -86,8 +116,32 @@ public static class MeleeResolver
 		bool indefeso = d.F.KO;
 
 		// === 1. PONTARIA ===============================================
+		// ============================ PONTARIA QUE FALHA E ESQUIVA, NAO "ERRO" ============================
+		// `CombatMovement.dm:192`: `if(!prob(bhit) && !M.blocking) hit = 0`. E o `hit = 0` e o ramo
+		// rotulado `if(0)//dodge` (`:269-289`) -- com o Zanzoken no defensor, o anel de choque nos pes
+		// dele, a faisca em quem bateu, os dois sons e a linha "[M] dodges [src]!". O DM NUNCA teve um
+		// desfecho "errou o soco em alguem": ou o alvo estava fora de alcance (e ai nao havia soco), ou
+		// o alvo SAIU DA FRENTE.
+		//
+		// Este ponto devolvia <see cref="Desfecho.Errou"/>, que o cliente desenha como soco no vazio:
+		// mudo e invisivel. Resultado no jogo -- e foi assim que o dono percebeu -- um personagem
+		// rapido esquivava a luta inteira sem NENHUM sinal de que estava esquivando, porque o unico
+		// caminho que produzia `Esquivou` era o Ultra Instinto (o `TentarEsquiva` la embaixo, unico
+		// escritor de `ChanceEsquiva`). O desfecho estava certo na conta e errado no nome.
+		//
+		// `Desfecho.Errou` continua existindo e continua sendo o soco no VAZIO -- ele nao passa por
+		// aqui, e anunciado direto por `GameServer.AnunciarSocoNoAr` com `Alvo = 0`.
+		//
+		// O `!d.Bloqueando` e o `&& !M.blocking` do DM, e o proprio original explica na linha ao lado:
+		// quem se comprometeu com a guarda NAO esta desviando -- some com o teste de pontaria e vai
+		// direto pro passo 2, onde a guarda ou segura ou cede e o golpe entra inteiro.
+		// =================================================================================================
 		double bhit = CombatMath.Pontaria(a.F, d.F, indefeso ? 0 : d.Deflexao, a.Precisao);
-		if (!indefeso && !Sorteou(rng, bhit)) return r;   // Errou
+		if (!indefeso && !d.Bloqueando && !Sorteou(rng, bhit))
+		{
+			r.Desfecho = Desfecho.Esquivou;
+			return r;
+		}
 
 		// === 2. BLOQUEIO ==============================================
 		if (!indefeso && d.Bloqueando)
@@ -128,6 +182,7 @@ public static class MeleeResolver
 		if (!indefeso && TentarEsquiva(d, rng))
 		{
 			r.Desfecho = Desfecho.Esquivou;
+			r.EsquivaAtiva = true;   // esta paga Ki e paga maestria -- ver `EsquivaAtiva`
 			return r;
 		}
 
@@ -192,7 +247,7 @@ public static class MeleeResolver
 		BodyPart? rabo = d.Corpo.Achar("Rabo");
 		if (rabo == null || rabo.Decepado) return;
 
-		d.Corpo.Decepar(rabo);
+		Anotar(ref r, d.Corpo.Decepar(rabo));
 		d.F.Ki = Math.Max(0, d.F.Ki - d.F.MaxKi * Regras.CustoDeceparKi);
 		d.SincronizarVida();
 		r.RaboArrancado = true;
@@ -239,6 +294,54 @@ public static class MeleeResolver
 		return Math.Max(dmg, 0);
 	}
 
+	/// <summary>
+	/// UM DANO JA CALCULADO NUM MEMBRO SORTEADO -- o `DamageLimb(dmg, selectzone, murderToggle, 5)`
+	/// do DM, que e como o projetil de ki fere (`objects.dm:440`).
+	///
+	/// ============================ POR QUE ELE ENTRA POR AQUI, E NAO POR UM CAMINHO PROPRIO ============================
+	/// A conta do dano de ki e outra (ver <see cref="DanoDeKi"/>), mas o que acontece DEPOIS do
+	/// numero pronto e exatamente o mesmo: sorteia membro, fere, quebra, decepa se for letal e o
+	/// membro ja estava zerado, sincroniza a vida, e entao mata OU nocauteia -- nessa ordem, com o
+	/// `Morrer()` podendo ser negado. Escrever esse trecho de novo do lado do projetil criaria a
+	/// segunda casa de "o que um golpe faz com um corpo", e o dia em que alguem mexer numa delas o
+	/// raio e o soco passam a matar por regras diferentes.
+	///
+	/// O que NAO entra aqui e a pontaria, a guarda, a esquiva e o crit: um raio nao erra por
+	/// `Etechnique` (ele erra por nao encostar, que e geometria do servidor) e nao crita. Por isso
+	/// isto e um metodo separado e nao um parametro do <see cref="Resolver"/> -- juntar os dois
+	/// exigiria um `if` no meio da cadeia de melee pra pular metade dela.
+	/// ==========================================================================================================
+	/// </summary>
+	public static GolpeResultado AplicarDanoPronto(CombatState d, double dano, bool letal,
+												   Random rng, string? zona = null)
+	{
+		var r = new GolpeResultado { Membro = "" };
+		if (d.F.dead || d.Intocavel || dano <= 0) return r;
+
+		BodyPart? membro = d.Corpo.Sortear(zona, rng);
+		if (membro == null) return r;
+
+		r.Desfecho = Desfecho.Acertou;
+		r.Dano = dano;
+		AplicarNoMembro(d, membro, dano, letal, ref r);
+		return r;
+	}
+
+	/// <summary>
+	/// PASSA A CASCATA DO `Decepar` PRO RELATO -- o unico lugar que traduz membro em peca.
+	///
+	/// Existe como funcao porque ha DUAS portas de amputacao no soco (o membro sorteado e o rabo,
+	/// que e regra a parte) e as duas tem que carimbar a mesma coisa. Quando havia so o `Decepou`
+	/// booleano isso nao aparecia; com a peca no chao, uma porta esquecida vira "o rabo caiu mas
+	/// nada apareceu no chao", que ninguem liga ao codigo depois.
+	/// </summary>
+	private static void Anotar(ref GolpeResultado r, List<BodyPart> caiu)
+	{
+		if (caiu.Count == 0) return;
+		r.PecasCaidas ??= [];
+		foreach (BodyPart p in caiu) r.PecasCaidas.Add(Body.PecaDe(p.Nome));
+	}
+
 	private static void AplicarNoMembro(CombatState d, BodyPart membro, double dano, bool letal,
 										ref GolpeResultado r)
 	{
@@ -252,7 +355,7 @@ public static class MeleeResolver
 		// decepa por soco -- cabeca arrancada e coisa de tecnica, nao de troca de golpes.
 		if (letal && membro.Vida <= 0 && membro.Papel == Vitalidade.Membro && !membro.Aninhado)
 		{
-			d.Corpo.Decepar(membro);
+			Anotar(ref r, d.Corpo.Decepar(membro));
 			d.F.Ki = Math.Max(0, d.F.Ki - d.F.MaxKi * Regras.CustoDeceparKi);
 			r.Decepou = true;
 		}
@@ -339,7 +442,19 @@ public static class MeleeResolver
 
 	/// <summary>
 	/// A esquiva ATIVA: custa Ki e so existe pra quem tem <see cref="CombatState.ChanceEsquiva"/>
-	/// acima de zero -- hoje ninguem tem. E o buraco por onde o Ultra Instinct entra depois.
+	/// acima de zero.
+	///
+	/// ============================ O BURACO FOI PREENCHIDO ============================
+	/// Este texto dizia *"hoje ninguem tem -- e o buraco por onde o Ultra Instinct entra depois"*.
+	/// O Ultra Instinto ENTROU: `GameServer.Disciplinas.cs` escreve `pl.Combate.ChanceEsquiva` a
+	/// partir da proficiencia ATUAL de quem esta com a forma ligada, e `GameServer.Combat.cs` ja
+	/// conta com isso ao gastar o Ki da esquiva. O campo tem UM escritor de producao, que era
+	/// exatamente o desenho: quem quiser um segundo (Zanzoken avancado, por exemplo) soma nele em
+	/// vez de abrir uma segunda porta de esquiva.
+	///
+	/// O `<= 0` continua sendo a porta, e continua fechada por padrao -- quem nao tem a disciplina
+	/// nao esquiva, e nao paga Ki por isso.
+	/// ================================================================================
 	/// </summary>
 	private static bool TentarEsquiva(CombatState d, Random rng)
 	{

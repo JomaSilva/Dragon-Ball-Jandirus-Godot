@@ -588,6 +588,32 @@ public partial class CharacterVisual : Node2D
 		return (mn.X + mn.Y, mx.X + mx.Y);
 	}
 
+	/// <summary>
+	/// A FERIDA COMO O SHADER A VE -- lida do MATERIAL da pele, e nao da mascara guardada no campo.
+	///
+	/// ============================ POR QUE O CAMPO NAO BASTA MAIS ============================
+	/// Mesmo motivo do <see cref="ContornoNoMaterialDeTeste"/>, e desde que a vida alheia saiu do
+	/// fio (ver `EntityState`) ele pesa mais: o GRAU e a UNICA coisa que o outro cliente recebe
+	/// sobre como este corpo esta. "A mascara chegou no dicionario" nao e o fim da cadeia -- entre
+	/// o dicionario e o pixel ainda ha o <see cref="Ferir"/>, e um `Ferir` que nao rodasse (ou que
+	/// rodasse antes de a camada nascer) deixaria o corpo alheio LIMPO na tela com a mascara certa
+	/// guardada na memoria. Ninguem repara: e o defeito mais barato que sobrou nesta via.
+	///
+	/// OS DOIS PARES DE AMPUTACAO VEM JA TRADUZIDOS pro lado da IMAGEM (ver
+	/// <see cref="AplicarAmputacao"/>) porque e isso que esta escrito no material -- devolver o lado
+	/// do CORPO aqui obrigaria a bancada a desfazer o espelho, ou seja a repetir a conta que ela
+	/// esta conferindo.
+	/// ========================================================================================
+	/// </summary>
+	public (float[] Hema, float[] Sang, Vector2 AmpBraco, Vector2 AmpPerna)? FeridaNoMaterialDeTeste()
+	{
+		if (_corpo is not { } s || !IsInstanceValid(s) || s.Material is not ShaderMaterial m) return null;
+		return (m.GetShaderParameter("f_hema").AsFloat32Array(),
+				m.GetShaderParameter("f_sang").AsFloat32Array(),
+				m.GetShaderParameter("amp_braco").AsVector2(),
+				m.GetShaderParameter("amp_perna").AsVector2());
+	}
+
 	private void ReaplicarFeridas()
 	{
 		if (!_temFeridas) return;
@@ -767,6 +793,11 @@ public partial class CharacterVisual : Node2D
 
 		MontarRabo();
 
+		// A AUREOLA AO LADO DO RABO, e pelo mesmo motivo: as duas sao camadas de ESTADO (o servidor
+		// manda, e podem estar ligadas quando uma troca de aparencia chega). No-op quando nada
+		// mudou -- `Trocar` sai antecipado com o mesmo caminho, e sem morte nao ha camada nenhuma.
+		MontarAureola();
+
 		// ============================ O CORPO DA FORMA E REFEITO, PORQUE A PELE PODE TER MUDADO ============================
 		// So o <see cref="Jandirus.Core.Forms.CorpoDeForma.Musculoso"/> depende de quem esta dentro
 		// dele, e ele resolve o arquivo na hora em que e vestido. Quem trocar de tom de pele no
@@ -889,6 +920,103 @@ public partial class CharacterVisual : Node2D
 		ReaplicarFeridas();
 	}
 
+	// =====================================================================
+	// A AUREOLA
+	// =====================================================================
+	/// <summary>
+	/// ============================ A FOLHA DA AUREOLA -- E SAO TRES NO DISCO ============================
+	/// `Halo.dmi` existe em DUAS pastas do BYOND, e o `.dme` poe `Icons/Clothes` (linha 24) antes de
+	/// `Icons/Misc` (linha 33). Pela ordem de busca do DreamMaker **o jogo original usa a de
+	/// Clothes** -- que so tem os estados `""` e `"2"`. Na pratica, la, a aureola SOME do sprite
+	/// sempre que o morto esta caido, voando, meditando, treinando ou atacando: um `overlay` sem o
+	/// `icon_state` do dono nao desenha nada.
+	///
+	/// AQUI SE USA A DE `Misc`, e e uma escolha: ela tem as 20 animacoes (walk, flight_mov, meditate,
+	/// train, kb, ko, attack, blast) -- e o autor claramente as desenhou pra isso. A de Clothes tem
+	/// 5. Reproduzir o defeito do original seria portar um acidente de ordem de pasta.
+	///
+	/// ============================ O DESLOCAMENTO JA ESTA NOS PIXELS ============================
+	/// Medido na folha: os 20 pixels amarelos ocupam `y 1..4, x 11..20` do tile de 32x32. Ou seja o
+	/// "sobre a cabeca" **e desenhado**, nao calculado. Nao ha offset a escrever aqui, e escrever um
+	/// somaria duas alturas.
+	/// ========================================================================================
+	/// </summary>
+	public const string SpriteDaAureola = "res://Assets/Sprites/Misc/Halo.tres";
+
+	/// <summary>Este corpo esta morto AGORA (o servidor manda pelo `S2C.Aureola`).</summary>
+	private bool _temAureola;
+
+	private AnimatedSprite2D? _aureola;
+
+	/// <summary>
+	/// ============================ A AUREOLA APARECE E SOME EM JOGO ============================
+	/// Irma gemea do <see cref="MostrarRabo"/>, e pelo mesmo desenho: e estado de CORPO e nao escolha
+	/// de criacao, quem manda e o servidor, e ela nasce tarde (o pacote e outro canal e outro
+	/// instante que o `Vestir`).
+	///
+	/// ============================ POR QUE E CAMADA DAQUI, E NAO UM NODE SOLTO ============================
+	/// Sobre a cabeca ja moram dois nodes -- o `BalaoDeFala` e o `SinalDeVoz` --, e os dois declaram
+	/// `ISobeComOCorpo` e `INaoSomeComOCorpo`. **A aureola nao declara nenhuma das duas**, e as duas
+	/// ausencias sao decisoes:
+	///
+	///   * `INaoSomeComOCorpo` -- NAO. A aureola **e pixel do corpo**, nao rotulo sobre ele: no DM ela
+	///     e literalmente `overlays` do mob (`OverlayMobHandlers.dm:17-18`), herdando `dir` e
+	///     `icon_state` dele, e o `flick('Zanzoken.dmi')` do original **trocava o `icon` inteiro**,
+	///     levando a aureola junto. Uma aureola pairando sozinha no ar enquanto o corpo virou tres
+	///     listras seria a coisa mais errada da tela. Ela some com o corpo, e e o certo.
+	///   * `ISobeComOCorpo` -- NAO, e isto **nao** quer dizer "fica no chao". Aquela interface e pro
+	///     node com ALTURA PROPRIA em repouso, que precisa SOMAR o deslocamento do voo em vez de
+	///     receber a posicao crua. A aureola nao tem altura propria: o deslocamento dela esta **nos
+	///     pixels do sprite** (ver <see cref="SpriteDaAureola"/>). E, sendo camada do `Visual`, ela
+	///     nem chega ao `SubirComOVoo.Aplicar` -- que percorre os filhos do CORPO, e nao os do visual.
+	///     Ela sobe de graca junto com o boneco inteiro, exatamente como o cabelo.
+	///
+	/// ============================ E A POSE PARADA EXISTE, POR HERANCA ============================
+	/// A folha **nao tem** `default_*`: no .dmi o estado `""` da aureola e `movement = 1`, e o
+	/// conversor manda estado-de-movimento pra `walk_*` (`SpriteFramesWriter.cs:116-119`). Nao ha
+	/// buraco: o <see cref="Escolher"/> ja trata isso pra qualquer peca -- com o corpo em `default_*`
+	/// ele cai no ramo do `outra` e usa `walk_south`, congelado no quadro 0 (`sync` falso). E o mesmo
+	/// caminho de 13 roupas sem pose de ataque e 68 sem pose de treino.
+	/// ================================================================================================
+	/// </summary>
+	public void MostrarAureola(bool tem)
+	{
+		if (_temAureola == tem) return;
+		_temAureola = tem;
+		MontarAureola();
+		Reordenar();
+		if (_aureola != null) Aplicar(_aureola, _corpo?.Animation, force: true);
+	}
+
+	private void MontarAureola()
+	{
+		if (!_temAureola)
+		{
+			if (_aureola == null) return;
+			Descartar(_aureola);
+			_aureola = null;
+			Reordenar();
+			return;
+		}
+
+		// POR CIMA DE TUDO (ordem 12, acima dos olhos em 11). No BYOND a aureola entra no
+		// `overlayList` DEPOIS de cabelo e roupa, entao ela desenha por ultimo; e o pixel dela mora
+		// nas quatro primeiras linhas do tile, que e onde o cabelo tambem mora. Poe-la por baixo a
+		// esconderia atras de qualquer penteado alto -- justamente o Super Saiyajin 3.
+		_aureola ??= NovaCamada(12);
+		Trocar(_aureola, SpriteDaAureola);
+	}
+
+	/// <summary>
+	/// A auréola esta na tela? SO PRA BANCADA -- irma da `RaboVisivelDeTeste`.
+	///
+	/// Ela pergunta pelo `Visible` da CAMADA e nao pelo `_temAureola`: o `Escondida` pode apaga-la
+	/// sem que o campo mude (o Oozaru engole todo overlay, como no DM), e uma bancada que lesse o
+	/// campo diria "tem auréola" olhando pra um macaco sem nenhuma.
+	/// </summary>
+	public bool AureolaVisivelDeTeste =>
+		_aureola != null && IsInstanceValid(_aureola) && _aureola.Visible;
+
 	private static void Trocar(AnimatedSprite2D alvo, string caminho)
 	{
 		if (alvo.GetMeta("src", "").AsString() == caminho) return;   // ja e esse: nao reinicia a animacao
@@ -941,6 +1069,11 @@ public partial class CharacterVisual : Node2D
 		Protocol.Pose.Meditando => "meditate",
 		Protocol.Pose.Atacando => "attack",
 		Protocol.Pose.Voando => "flight",
+		// NADAR USA A MESMA FOLHA DO VOO, e isso e literal: o original faz `icon_state = "Flight"`
+		// no verb de nadar (`Swim.dm:17`) e reafirma isso todo tique (`Stats.dm:399`). O que separa
+		// os dois nao esta aqui, esta na ALTURA -- quem nada tem altitude zero, entao nao sobe na
+		// tela e nao ganha sombra. Ver `Protocol.Pose`.
+		Protocol.Pose.Nadando => "flight",
 		Protocol.Pose.Nocauteado => "ko",
 		_ => "default",
 	});
@@ -1575,6 +1708,26 @@ public partial class CharacterVisual : Node2D
 	/// segundo lugar dizendo o que o `.tres` ja diz -- com a chance de os dois discordarem.
 	/// ==========================================================================================
 	/// </summary>
+	/// <summary>
+	/// O MESMO, A PARTIR DA ENTRADA DO CATALOGO -- e e por aqui que o jogo chama.
+	///
+	/// ============================ POR QUE A ENTRADA, E NAO SO O SIMBOLO ============================
+	/// O <see cref="Jandirus.Core.Forms.CorpoDeForma.FrostEscolhido"/> e um valor so pras SETE formas
+	/// do Frost Demon (ver o cabecalho dele) -- o que separa uma da outra e o DEGRAU, e o degrau mora
+	/// na entrada. Sete valores de enum diriam a mesma coisa sete vezes; um segundo parametro solto
+	/// (`CorpoDaForma(simbolo, 6)`) poria o cliente sabendo que "6" quer dizer alguma coisa.
+	///
+	/// A sobrecarga que recebe so o simbolo continua viva e continua sendo a que faz o trabalho: ela
+	/// e a que a bancada exercita e a que o <see cref="Vestir"/> chama pra remontar a camada quando a
+	/// pele muda. O degrau fica GUARDADO entre as duas chamadas, exatamente como `_simboloDoCorpo`.
+	/// ==========================================================================================
+	/// </summary>
+	public void CorpoDaForma(Jandirus.Core.Forms.FormaDef? d)
+	{
+		_degrauDoFrost = Jandirus.Core.Forms.Catalogo.DegrauDoFrost(d);
+		CorpoDaForma(d?.Corpo ?? Jandirus.Core.Forms.CorpoDeForma.Nenhum);
+	}
+
 	public void CorpoDaForma(Jandirus.Core.Forms.CorpoDeForma simbolo)
 	{
 		// ============================ O SIMBOLO VIRA CAMINHO AQUI, E COM A PELE JUNTO ============================
@@ -1592,7 +1745,15 @@ public partial class CharacterVisual : Node2D
 		// tres humanas). Cai no mesmo caminho do `Nenhum`: o corpo fica o que era. Ver
 		// `CorposDeForma.Musculoso`.
 		// ====================================================================================================
-		string? caminho = CorposDeForma.Caminho(simbolo, _corpo?.GetMeta("src", "").AsString() ?? "");
+		// O FROST DEMON RESPONDE PELA FICHA, e nao pela folha que ele veste: os corpos das formas
+		// dele sao os que o JOGADOR escolheu na criacao, e eles viajam dentro do `Appearance`. E o
+		// mesmo `_ficha` que a `BaseDaFicha` ja usa pra "voltar ao normal" -- uma fonte so.
+		//
+		// `_ficha` NULO E LEGITIMO (um boneco que ainda nao se vestiu) e devolve `null`, que cai no
+		// caminho do `Nenhum`. O `Vestir` chama este metodo de novo no fim, ja com a ficha na mao.
+		string? caminho = CorposDeForma.Caminho(
+			simbolo, _corpo?.GetMeta("src", "").AsString() ?? "",
+			_ficha?.FormasDeFrost, _degrauDoFrost);
 
 		if (string.IsNullOrEmpty(caminho))
 		{
@@ -1600,6 +1761,11 @@ public partial class CharacterVisual : Node2D
 			// rabo?" pra `Escondida`; deixa-lo aceso sem camada esconderia o rabo de um lutador que
 			// voltou ao normal -- e o rabo do Saiyajin nao e enfeite (sem ele nao ha Oozaru).
 			_simboloDoCorpo = Jandirus.Core.Forms.CorpoDeForma.Nenhum;
+			// E O DEGRAU CAI JUNTO, pelo mesmo motivo do simbolo: ele so significa alguma coisa
+			// enquanto ha camada de forma vestida. Deixado aceso, um Frost Demon que voltasse ao
+			// repouso e depois trocasse de roupa reveria o corpo da evolucao (o `Vestir` remonta a
+			// camada pelo par simbolo+degrau guardados).
+			_degrauDoFrost = 0;
 
 			if (_corpoDaForma != null && IsInstanceValid(_corpoDaForma))
 			{
@@ -1697,6 +1863,16 @@ public partial class CharacterVisual : Node2D
 	/// separa e o que a arte desenha, e isso so o simbolo sabe.
 	/// </summary>
 	private Jandirus.Core.Forms.CorpoDeForma _simboloDoCorpo = Jandirus.Core.Forms.CorpoDeForma.Nenhum;
+
+	/// <summary>
+	/// EM QUE DEGRAU DO FROST DEMON (`fd_form`, 1 a 7) a forma vestida esta. Zero = ela nao e dele.
+	///
+	/// Vive ao lado do <see cref="_simboloDoCorpo"/> e pelo mesmo motivo: os dois juntos sao "que
+	/// corpo esta vestido", e a sobrecarga que recebe so o simbolo (a que o <see cref="Vestir"/>
+	/// chama pra remontar a camada) precisa achar o degrau ja guardado -- senao o Frost Demon
+	/// voltaria ao corpo de repouso toda vez que trocasse de roupa dentro da 2a Evolucao.
+	/// </summary>
+	private int _degrauDoFrost;
 
 	// =====================================================================
 	// AS CAMADAS COLADAS NO CORPO

@@ -17,6 +17,18 @@
   <ItemGroup>
     <!-- rede: UDP confiavel com canais, escolha do dono do projeto -->
     <PackageReference Include="LiteNetLib" Version="1.3.1" />
+
+    <!--
+      VOZ: Opus em C# PURO (zero binario nativo; e so lib/net8.0/Concentus.dll), o que importa num
+      projeto que exporta pro Windows e depende do Godot pra empacotar.
+
+      MEDIDO, quadro de 20 ms a 16 kHz: codificar 102 us (0,51% de um quadro), decodificar 38,2 us,
+      39,9 bytes por quadro = 1,95 KB/s por fluxo. Contra 31,2 KB/s do PCM cru e 7,8 KB/s do ADPCM:
+      16x e 4x mais barato, e a economia vale no LEQUE (falantes x ouvintes), que e onde a banda
+      multiplica. O SERVIDOR nao carrega esta dependencia; ele repassa o payload opaco.
+      Ver Core/Social/VozLocal.cs.
+    -->
+    <PackageReference Include="Concentus" Version="2.2.2" />
   </ItemGroup>
 
   <ItemGroup>

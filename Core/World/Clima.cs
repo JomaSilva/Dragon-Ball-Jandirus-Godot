@@ -24,6 +24,17 @@ public enum TipoDeClima : byte
 	Areia = 8,
 	ChuvaDeSangue = 9,
 	ChuvaDeNamek = 10,
+
+	/// <summary>
+	/// O CÉU DE UM PLANETA MORRENDO -- o `currentWeather = "Destruction"` do original
+	/// (`Area_Death.dm:95`), que lá vira `icon_state = "Rising Rocks"` (`Weather.dm:115-116`).
+	///
+	/// Ele **não é sorteável**: nenhum planeta o tem em `Permitidos`, e nenhum bioma o oferece. Ele
+	/// só existe forçado, e quem força é a destruição de planeta (`GameServer.Destruicao.cs`).
+	/// Entrou por último no enum de propósito -- o byte viaja no fio e mudar a numeração dos dez
+	/// primeiros quebraria o cliente antigo em silêncio.
+	/// </summary>
+	Destruicao = 11,
 }
 
 /// <summary>O que este planeta pode ter no céu. É o `allowedWeatherTypes` de cada área do DM.</summary>
@@ -194,6 +205,12 @@ public static class Clima
 		TipoDeClima.Neblina => 0.55,
 		TipoDeClima.Fumaca => 0.75,
 		TipoDeClima.Areia => 0.85,
+
+		// O CÉU DA DESTRUIÇÃO FECHA MAIS QUE A TEMPESTADE. É poeira de planeta subindo, e o
+		// original o usa junto com a noite permanente (`Weather.dm:166-167`): quase nada de luz
+		// chega ao chão.
+		TipoDeClima.Destruicao => 0.98,
+
 		_ => 0,
 	};
 
@@ -245,6 +262,16 @@ public static class Clima
 		TipoDeClima.Areia => (1.10, 0.88, 0.55),
 		TipoDeClima.ChuvaDeSangue => (0.60, 0.38, 0.38),
 		TipoDeClima.ChuvaDeNamek => (0.52, 0.68, 0.56),
+
+		// ============================ A COR DE UM MUNDO ACABANDO ============================
+		// Escura como a tempestade e PUXADA PRO VERMELHO -- é a poeira incandescente do
+		// `"Rising Rocks"`, não uma nuvem de chuva. O vermelho fica acima dos outros dois canais
+		// (0,62 contra 0,30/0,24) porque o que se quer é que a pele e a roupa de todo mundo
+		// fiquem alaranjadas, e não que a cena vire cinza: o jogador tem que reconhecer o céu do
+		// fim do mundo sem precisar ler o chat.
+		// ================================================================================
+		TipoDeClima.Destruicao => (0.62, 0.30, 0.24),
+
 		_ => (1, 1, 1),
 	};
 
@@ -261,8 +288,14 @@ public static class Clima
 		return Math.Clamp(Math.Max(Math.Abs(1 - r), Math.Max(Math.Abs(1 - g), Math.Abs(1 - b))), 0, 1);
 	}
 
-	/// <summary>Este clima solta raio? Só a tempestade -- é o `if("Storm")` do `Weather.dm:245`.</summary>
-	public static bool TemRaio(TipoDeClima t) => t == TipoDeClima.Tempestade;
+	/// <summary>
+	/// Este clima solta raio? A tempestade -- é o `if("Storm")` do `Weather.dm:245` -- e a
+	/// DESTRUIÇÃO, que no original acende relâmpagos pelo chão a cada volta do laço
+	/// (`createLightningmisc`, `Area_Death.dm:124-126`). O port não tem esse efeito de chão; o raio
+	/// do céu é o que sobra dele, e é de graça porque o desenho já existe.
+	/// </summary>
+	public static bool TemRaio(TipoDeClima t) =>
+		t is TipoDeClima.Tempestade or TipoDeClima.Destruicao;
 
 	public static string Nome(TipoDeClima t) => t switch
 	{
@@ -277,6 +310,7 @@ public static class Clima
 		TipoDeClima.Areia => "tempestade de areia",
 		TipoDeClima.ChuvaDeSangue => "chuva de sangue",
 		TipoDeClima.ChuvaDeNamek => "chuva de Namek",
+		TipoDeClima.Destruicao => "o ceu se despedacando",
 		_ => "?",
 	};
 
@@ -299,6 +333,14 @@ public static class Clima
 		"blood rain" => TipoDeClima.ChuvaDeSangue,
 		"namek rain" => TipoDeClima.ChuvaDeNamek,
 		"nublado" or "overcast" => TipoDeClima.Nublado,
+
+		// O CLIMA DA MORTE DE PLANETA. Ele nunca aparece num `allowedWeatherTypes` -- o DM o
+		// ESCREVE em `currentWeather` de dentro do `DestroyPlanet` (`Area_Death.dm:95`). Está aqui
+		// mesmo assim porque esta tabela é a ponte com as strings do original, e o dia em que
+		// alguém extrair aquela linha e ela cair no `_ => Limpo`, o céu do fim do mundo sumiria
+		// calado -- a armadilha 5 da PARTE 3.
+		"destruction" => TipoDeClima.Destruicao,
+
 		_ => TipoDeClima.Limpo,
 	};
 

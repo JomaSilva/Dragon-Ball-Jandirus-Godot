@@ -57,11 +57,21 @@ public partial class GameServer
 	/// <summary>
 	/// TEM SCOUTER LIGADO? E o `usr.scouteron` do BYOND, e e a UNICA porta de leitura de BP.
 	///
-	/// Hoje o bit nunca acende -- o port ainda nao tem o item scouter, entao o mundo inteiro le
-	/// "???", que e exatamente a regra pedida. Quando o scouter chegar (item equipavel, ou o
-	/// androide de olho embutido do Cyborgs.dm:930), quem o equipar acende
-	/// <see cref="Protocol.Poder.Scouter"/> em <c>pl.Poderes</c> e tudo aqui passa a valer sem
-	/// mais nenhuma mudanca.
+	/// ============================ O BIT ACENDE. O SCOUTER CHEGOU ============================
+	/// Este texto dizia *"hoje o bit nunca acende -- o port ainda nao tem o item scouter"*, e a
+	/// previsao que vinha junto se cumpriu ao pe da letra: o item existe no catalogo e
+	/// <c>GameServer.Mochila.Equipar</c> liga e desliga
+	/// <see cref="Protocol.Poder.Scouter"/> sem que uma linha DAQUI mudasse.
+	///
+	/// O BIT MORA EM <c>PoderesConcedidos</c>, e este metodo le <c>pl.Poderes</c> -- os dois casam
+	/// porque `AplicarPoderes` termina com `pl.Poderes = (o que as skills dao) | pl.PoderesConcedidos`.
+	/// Escrever direto em `Poderes` seria escrever pra ser apagado na proxima skill aprendida, que e
+	/// a armadilha que ja engoliu o bit de admin uma vez.
+	///
+	/// QUEM NAO EQUIPOU CONTINUA LENDO "???" -- a regra pedida nao mudou, so deixou de valer pra
+	/// todo mundo por falta de item. Falta ainda o androide de olho embutido (`Cyborgs.dm:930`),
+	/// que e outra fonte pro MESMO bit e nao um segundo caminho de leitura.
+	/// ======================================================================================
 	/// </summary>
 	public static bool TemScouter(ServerPlayer pl) => (pl.Poderes & Protocol.Poder.Scouter) != 0;
 
@@ -99,8 +109,33 @@ public partial class GameServer
 	///     informacao que nao existe pro jogador.
 	///
 	/// O resto da ficha continua inteiro: vida, Ki, cadencia do soco, membros ruins e o byte
-	/// de estado. Nada disso e poder de luta -- um corpo machucado se ve, e o proprio jogo
-	/// mostra a barra de vida de todo mundo no snapshot.
+	/// de estado. Nada disso e poder de luta, E NADA DISSO E ALHEIO: este pacote so sai pro DONO
+	/// da ficha (`MandarFicha(pl)`), e e dele que a HUD vive.
+	///
+	/// ============================ ESTA JUSTIFICATIVA MUDOU ============================
+	/// Escrevia-se aqui que deixar a vida passar era inofensivo porque "o proprio jogo mostra a
+	/// barra de vida de todo mundo no snapshot". NAO MOSTRA MAIS: o dono mandou tirar o hp alheio do
+	/// jogo, e o campo de vida do `EntityState` foi deletado junto com a barrinha (ver o bloco la).
+	/// A vida daqui continua passando porque e a SUA -- se um dia este pacote virar informacao de
+	/// terceiro, ela entra na lista de cortes junto com o BP.
+	/// ==============================================================================
+	///
+	/// ============================ AS DUAS RAZOES PASSAM, E DE PROPOSITO ============================
+	/// <see cref="SheetState.Inteireza"/> (a "% de BP efetivo") e <see cref="SheetState.MultTotal"/>
+	/// (o multiplicador total da aba Forms) NAO sao cortadas, e a licenca esta escrita na regra 1 la
+	/// em cima: *"O QUE NAO SE ESCONDE (...) sao os MULTIPLICADORES. 'x2,5 de forma', 'netBuff 80%'
+	/// sao RELATIVOS -- nao revelam o absoluto, e sao a unica leitura de progresso que sobra pra quem
+	/// nao tem aparelho."*
+	///
+	/// E a conta fecha nos dois sentidos: quem esta sem scouter recebe `BP = NaN` e
+	/// `ExpressedBP = NaN`, entao "x345" e "87%" nao tem por onde virar numero absoluto -- falta o
+	/// outro lado das duas fracoes, e ele nao chega por caminho nenhum. E foi por isto que as razoes
+	/// vem CALCULADAS do servidor em vez de o `peakexBP` viajar cru: mandar o pico seria mandar
+	/// poder de luta com outro nome.
+	///
+	/// O <see cref="SheetState.TetoKi"/> tambem passa, pelo mesmo motivo -- e razao sobre o proprio
+	/// tanque, e o DM ja a imprimia direto (`Statistics.dm:349`).
+	/// ==============================================================================================
 	/// </summary>
 	public static SheetState FichaVisivel(ServerPlayer pl)
 	{

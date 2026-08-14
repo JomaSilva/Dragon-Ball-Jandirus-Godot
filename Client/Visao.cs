@@ -592,6 +592,15 @@ public partial class Visao : Node2D
 	}
 
 	/// <summary>Sempre por aqui: fora do mapa CEGA (e a borda do mundo), e isso sai de graca.</summary>
+	/// <summary>
+	/// O QUE TAPA A VISTA. E o `BlockedCell` do mapa de visao, e por isso a Sala do Tempo passa por
+	/// aqui sem uma linha propria: o `SemBorda` (ver `ZoneCollision`) faz o vazio branco em volta do
+	/// quarto responder "nao cega", e o veu simplesmente nao acha nada pra sombrear.
+	///
+	/// SEM ESSE BIT o custo seria escondido e permanente -- medido em `--diagvazio`: 984 celulas de
+	/// tela cegas (uma chamada de `Ve` por celula em <see cref="RepintarParedes"/>) e todo raio
+	/// gastando o teto de 256 passos do DDA, por uma parede que nem chega a projetar sombra.
+	/// </summary>
 	private bool Cega(int cx, int cy) => Mapa!.BlockedCell(cx, cy);
 
 	/// <summary>

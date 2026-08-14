@@ -88,8 +88,14 @@ public static class MoveRules
 	/// Deslize: se o passo cheio nao cabe, tenta so o eixo X e depois so o Y. E o que faz
 	/// andar rente a um muro em diagonal continuar andando em vez de travar.
 	/// </summary>
+	/// <param name="modo">
+	/// COMO este corpo esta atravessando (ver <see cref="ModoDeTravessia"/>). Muda UMA coisa: se a
+	/// agua para ou nao. Parede para em todos os modos -- quem voa alto nem chega aqui, porque o
+	/// chamador manda `mapa = null` (e o `isflying` do original, ver `Voo.AtravessaCenario`).
+	/// </param>
 	public static Vec2 Advance(Vec2 pos, Vec2 dir, float dtSeconds, float speedStat,
-							   ZoneCollision? mapa, out bool blocked, bool correndo = false)
+							   ZoneCollision? mapa, out bool blocked, bool correndo = false,
+							   ModoDeTravessia modo = ModoDeTravessia.APe)
 	{
 		blocked = false;
 		if (dtSeconds <= 0) return pos;
@@ -102,19 +108,23 @@ public static class MoveRules
 		if (mapa == null) return alvo;
 
 		// ja preso dentro de parede (spawn ruim, mapa recarregado): deixa sair
-		if (Occupied(mapa, pos)) return alvo;
-		if (!Occupied(mapa, alvo)) return alvo;
+		//
+		// E ELA E O QUE FAZ A AGUA NAO PRENDER NINGUEM: quem estiver dentro dela quando o nado
+		// desligar (por Ki, por nocaute) sai andando pro lado seco mais proximo em vez de ficar
+		// travado no meio do lago. E a mesma saida que o corpo preso em pedra ja tinha.
+		if (Occupied(mapa, pos, modo)) return alvo;
+		if (!Occupied(mapa, alvo, modo)) return alvo;
 
 		blocked = true;
 		if (step.X != 0)
 		{
 			var sx = new Vec2(alvo.X, pos.Y);
-			if (!Occupied(mapa, sx)) return sx;
+			if (!Occupied(mapa, sx, modo)) return sx;
 		}
 		if (step.Y != 0)
 		{
 			var sy = new Vec2(pos.X, alvo.Y);
-			if (!Occupied(mapa, sy)) return sy;
+			if (!Occupied(mapa, sy, modo)) return sy;
 		}
 		return pos;   // encostou de frente: para
 	}
@@ -127,24 +137,58 @@ public static class MoveRules
 	/// uma faixa onde o servidor reprovava um passo que o cliente considerou legal, gerando
 	/// correcao em jogo honesto. Regra compartilhada so vale se for a MESMA regra.
 	/// </summary>
-	public static bool PathOccupied(ZoneCollision mapa, Vec2 from, Vec2 to)
+	public static bool PathOccupied(ZoneCollision mapa, Vec2 from, Vec2 to,
+									ModoDeTravessia modo = ModoDeTravessia.APe)
 	{
 		Vec2 d = to - from;
 		float dist = d.Length;
 		int passos = Math.Max(1, (int)MathF.Ceiling(dist / (ZoneCollision.TileSize * 0.5f)));
 		for (int i = 1; i <= passos; i++)
-			if (Occupied(mapa, from + d * (i / (float)passos))) return true;
+			if (Occupied(mapa, from + d * (i / (float)passos), modo)) return true;
 		return false;
 	}
 
-	/// <summary>A caixa dos pes encosta em parede nesta posicao?</summary>
-	public static bool Occupied(ZoneCollision mapa, Vec2 centro)
+	/// <summary>
+	/// A caixa dos pes encosta em algo que PARA ESTE CORPO nesta posicao?
+	///
+	/// Parede sempre; agua so pra quem esta a pe (ver <see cref="ClasseDeAgua"/>). O padrao e
+	/// <see cref="ModoDeTravessia.APe"/> de proposito: o modo mais restritivo e o certo pra quem
+	/// esta perguntando "cabe um corpo aqui?" -- pouso, teleporte, construcao, empurrao contra
+	/// parede. Quem passa pela agua tem que DIZER que passa.
+	/// </summary>
+	public static bool Occupied(ZoneCollision mapa, Vec2 centro,
+								ModoDeTravessia modo = ModoDeTravessia.APe)
 	{
 		float y = centro.Y + FeetOffsetY;
-		return mapa.BlockedAt(new Vec2(centro.X - BodyHalfW, y - BodyHalfH))
-			|| mapa.BlockedAt(new Vec2(centro.X + BodyHalfW, y - BodyHalfH))
-			|| mapa.BlockedAt(new Vec2(centro.X - BodyHalfW, y + BodyHalfH))
-			|| mapa.BlockedAt(new Vec2(centro.X + BodyHalfW, y + BodyHalfH));
+		return mapa.BloqueiaEm(new Vec2(centro.X - BodyHalfW, y - BodyHalfH), modo)
+			|| mapa.BloqueiaEm(new Vec2(centro.X + BodyHalfW, y - BodyHalfH), modo)
+			|| mapa.BloqueiaEm(new Vec2(centro.X - BodyHalfW, y + BodyHalfH), modo)
+			|| mapa.BloqueiaEm(new Vec2(centro.X + BodyHalfW, y + BodyHalfH), modo);
+	}
+
+	/// <summary>
+	/// HA AGUA DEBAIXO DESTE CORPO? -- a MESMA caixa dos pes do <see cref="Occupied"/>.
+	///
+	/// ============================ POR QUE NAO BASTA PERGUNTAR PELO CENTRO ============================
+	/// Porque quem decide se o corpo PASSA ja usa a caixa de quatro quinas, e perguntar "ainda estou
+	/// na agua?" pelo ponto do meio abre uma faixa de ~8 px na beira onde as duas respostas
+	/// discordam: o nado desligaria (centro no seco) com a caixa ainda encostando na agua. E nessa
+	/// faixa o corpo fica **livre pela colisao e parado pela regra**, que e o estado que dispara a
+	/// saida de emergencia do <see cref="Advance"/> -- ela devolve o passo CHEIO, sem olhar celula
+	/// nenhuma, e por alguns quadros daria pra atravessar parede na margem.
+	///
+	/// Com a mesma caixa a faixa nao existe: o nado so cai quando o corpo inteiro esta no seco, e a
+	/// saida de emergencia volta a ser o que ela e -- socorro pra quem foi POSTO na agua (deslogar
+	/// dentro do lago, um arremesso), e nao um efeito colateral de andar ate a praia.
+	/// ============================================================================================
+	/// </summary>
+	public static bool NaAgua(ZoneCollision mapa, Vec2 centro)
+	{
+		float y = centro.Y + FeetOffsetY;
+		return mapa.EhAguaEm(new Vec2(centro.X - BodyHalfW, y - BodyHalfH))
+			|| mapa.EhAguaEm(new Vec2(centro.X + BodyHalfW, y - BodyHalfH))
+			|| mapa.EhAguaEm(new Vec2(centro.X - BodyHalfW, y + BodyHalfH))
+			|| mapa.EhAguaEm(new Vec2(centro.X + BodyHalfW, y + BodyHalfH));
 	}
 
 	/// <summary>
@@ -157,19 +201,24 @@ public static class MoveRules
 	/// (zona procedural ainda sem colisao carregada) e ai so a velocidade e conferida.
 	/// </summary>
 	public static bool ValidateStep(Vec2 from, Vec2 claimed, float dtSeconds, float speedStat,
-		ZoneCollision? mapa, ref float orcamentoPx, out Vec2 corrected, bool correndo = false)
+		ZoneCollision? mapa, ref float orcamentoPx, out Vec2 corrected, bool correndo = false,
+		ModoDeTravessia modo = ModoDeTravessia.APe)
 	{
 		if (!ValidateStep(from, claimed, dtSeconds, speedStat, ref orcamentoPx, out corrected, correndo)) return false;
 		if (mapa == null) return true;
 
 		// Ja estava dentro de parede? Nao ha o que conferir -- e mais importante deixar sair
 		// do que insistir num veredito sobre uma posicao que ja era invalida.
-		if (Occupied(mapa, from)) return true;
+		if (Occupied(mapa, from, modo)) return true;
 
 		// velocidade OK, mas atravessou parede? volta pra onde estava. A checagem e a MESMA
 		// que o cliente usou pra andar -- divergir aqui gera correcao em jogo honesto, e
 		// correcao em jogo honesto e o que o jogador ve como o personagem tremendo.
-		if (PathOccupied(mapa, from, corrected))
+		//
+		// O `modo` TEM QUE SER O MESMO NAS DUAS PONTAS. Quem decide se o corpo esta nadando e o
+		// SERVIDOR (como ja decide se esta correndo) -- se fosse a afirmacao do cliente, "estou
+		// nadando" seria atravessar todo lago do mapa de graca.
+		if (PathOccupied(mapa, from, corrected, modo))
 		{
 			corrected = from; // fica onde estava
 			return false;

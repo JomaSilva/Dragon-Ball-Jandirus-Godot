@@ -215,6 +215,27 @@ public static class Voo
 	public const float EscalaNaTela = 0.25f;
 
 	/// <summary>
+	/// ESTE CORPO PROJETA SOMBRA NO CHAO? -- a pergunta tem UM dono, e por causa do nado.
+	///
+	/// ============================ POR QUE VIROU FUNCAO, E EM QUE MOMENTO ============================
+	/// O limiar morava dentro do `Client/SombraDeVoo.Altura` (um `value > 0.5f` no setter), e ali ele
+	/// era invisivel pra qualquer medicao que nao abrisse o Godot. Isso bastava enquanto so o VOO
+	/// mexia em altura -- ai "tem sombra" e "esta voando" eram a mesma frase.
+	///
+	/// O nado desfez isso. O dono pediu, na letra, *"uma animacao PARECIDA COM A DO FLY, porem N CRIA
+	/// A SOMBRA em baixo e NEM FICA MAIS ALTO"*: existe agora uma pose de voo com altura ZERO, e a
+	/// unica coisa que separa o nado do voo rasante na tela e esta resposta. Uma regra que separa duas
+	/// poses e regra de jogo, e regra de jogo mora no Core, onde da pra prova-la sem engine.
+	///
+	/// O MEIO PIXEL NAO E FOLGA ARBITRARIA: a altura chega ao cliente como BYTE (ver
+	/// <see cref="ParaByte"/>, ~2,5 px por degrau) e volta interpolada, entao "zero" no fio pode
+	/// chegar como um epsilon. Meio pixel esta abaixo do primeiro degrau que o fio consegue
+	/// representar -- ou seja, nada que o servidor mande como zero acende a sombra.
+	/// ============================================================================================
+	/// </summary>
+	public static bool TemSombra(float altura) => altura > 0.5f;
+
+	/// <summary>
 	/// A ALTITUDE NO FIO: um byte.
 	///
 	/// Quatro bytes de float por corpo por snapshot pra uma informacao que so alimenta desenho

@@ -44,6 +44,20 @@ public static class GainKnobs
 	/// <summary>Teto do multiplicador de ganho que o PESO da (razao 1 = 2x, 2 = 4x, 4 = 8x).</summary>
 	public static double WeightGainMax = 8;
 
+	/// <summary>
+	/// `WEIGHT_ITEM_CAP_MULT = 2`: quanto peso o corpo aceita VESTIR, em multiplos do proprio limite
+	/// (`weight_cap_hw`). E o teto que o Upgrade da roupa de peso destrava no DM (`Tier 1.dm:145`).
+	///
+	/// Ele existe pra o "100%" do verbo de peso significar alguma coisa: com 2, vestir o maximo na
+	/// gravidade da Terra da razao 2 -- ganho de treino 4x e ja esmagando. Metade disso e a razao 1,
+	/// que e o limite confortavel do corpo (ganho 2x, sem dano).
+	///
+	/// A ESCALA E O PONTO. `Weighted` esta na mesma unidade do `weight_cap_hw` (que vale
+	/// `expressedBP x Ephysoff x 20`), e nao numa fracao de 0 a 1 -- guardar a fracao ali fazia a
+	/// razao dar zero e o sistema de peso inteiro nao existir. Ver `GameServer.AjustarPeso`.
+	/// </summary>
+	public static double WeightItemCapMult = 2;
+
 	// --- lutar com alguem mais forte ------------------------------------------
 	/// <summary>Teto do bonus por encarar um oponente mais forte.</summary>
 	public static double FightGainCap = 2;
@@ -55,7 +69,15 @@ public static class GainKnobs
 	// --- zonas especiais -------------------------------------------------------
 	/// <summary>Sala do Tempo: 1 dia la = 1 ano de treino (28 dias x 10 meses).</summary>
 	public const double TimeChamberMult = 28 * 10;
-	/// <summary>Dimensao Mental: ganho a 1/4 do de fora.</summary>
+	/// <summary>
+	/// Dimensao Mental: ganho a 1/4 do de fora -- o `MIND_GAIN_MULT` (`MindMeditate.dm:18`).
+	///
+	/// ESTA CONSTANTE FICOU ORFA DESDE QUE FOI ESCRITA, e o pedido do dono a nomeia em voz alta
+	/// (*"o GANHO DE BP E REDUZIDO"*). Quem a le hoje e o <see cref="World.RitmoDaZona.Aplicar"/>,
+	/// pelo MESMO campo (<see cref="Fighter.zoneGainMult"/>) e no MESMO funil que a Sala do Tempo
+	/// usa pro 280 -- e nao por um caminho proprio, que seria a segunda maneira de a zona mexer no
+	/// treino.
+	/// </summary>
 	public const double MindDimensionMult = 0.25;
 
 	/// <summary>

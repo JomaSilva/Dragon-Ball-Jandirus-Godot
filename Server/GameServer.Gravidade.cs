@@ -210,7 +210,7 @@ public sealed partial class GameServer
 	private void AnunciarNaZona(Obra obra, string texto)
 	{
 		foreach (ServerPlayer p in _players.Values)
-			if (p.Zone.Name == obra.Zona) Avisar(p, texto);
+			if (p.Zone.Equals(obra.Zona)) Avisar(p, texto);
 	}
 
 	// =====================================================================
@@ -225,16 +225,16 @@ public sealed partial class GameServer
 	/// melhorar uma cara -- e o original deixa isso de pe de proposito.
 	/// =========================================================================
 	/// </summary>
-	private void AplicarCampos(string zona)
+	private void AplicarCampos(ZoneKey zona)
 	{
 		foreach (ServerPlayer pl in _players.Values)
 		{
-			if (pl.Zone.Name != zona) continue;
+			if (!pl.Zone.Equals(zona)) continue;
 
 			double campo = 0;
 			foreach (Obra o in _noChao)
 			{
-				if (o.Zona != zona || o.Gravidade is not { Grav: > 0, Energia: > 0 } g) continue;
+				if (!o.Zona.Equals(zona) || o.Gravidade is not { Grav: > 0, Energia: > 0 } g) continue;
 
 				// O RAIO E EM TILES a partir do centro da maquina, e a caixa e quadrada -- e o
 				// `bounding_box` do original, que tambem e retangular.
@@ -267,7 +267,7 @@ public sealed partial class GameServer
 		if (agora < _proximoDreno) return;
 		_proximoDreno = agora + MsDoDrenoDeGravidade;
 
-		var zonasMexidas = new HashSet<string>();
+		var zonasMexidas = new HashSet<ZoneKey>();
 
 		foreach (Obra o in _noChao)
 		{
@@ -294,6 +294,6 @@ public sealed partial class GameServer
 			}
 		}
 
-		foreach (string z in zonasMexidas) AplicarCampos(z);
+		foreach (ZoneKey z in zonasMexidas) AplicarCampos(z);
 	}
 }

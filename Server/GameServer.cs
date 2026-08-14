@@ -264,6 +264,184 @@ public sealed class ServerPlayer
 	public ZoneKey ZonaDeOrigem;
 	public Vec2 PosDeOrigem;
 
+	// =====================================================================
+	// ============================ OS CAMPOS RECONSTRUIDOS ============================
+	// **NENHUM DESTES E CODIGO NOVO.** Eles existiam, foram apagados por uma reversao acidental
+	// (`git checkout` num arquivo compartilhado de arvore suja) e levaram o comentario autoral
+	// junto. Sem eles o servidor inteiro nao compila -- e nao compilava para NENHUMA das sessoes
+	// que trabalhavam no repo, cada uma esperando que outra desatasse o no.
+	//
+	// O QUE FOI RECONSTRUIDO E SO A DECLARACAO: tipo e valor inicial. Os dois nao foram adivinhados
+	// -- vieram do outro lado do funil de save (`CharacterSave`/`CharacterStore.DeJogador`, que grava
+	// cada um destes campos com o tipo exato) ou de um uso que so aceita um tipo. Nenhum COMPORTAMENTO
+	// foi reescrito: os metodos que leem e escrevem estes campos nunca sairam do lugar.
+	//
+	// **O QUE NAO DEU PRA RECONSTRUIR ASSIM esta relatado e nao chutado** -- ver o fim deste bloco.
+	// =============================================================================
+	// =====================================================================
+
+	/// <summary>
+	/// O BONECO QUE ESTE JOGADOR DEIXOU PRA TRAS (nulo = esta no proprio corpo).
+	/// RECONSTRUIDO; tipo pinado por `GameServer.CorpoLargado.cs:182` (`ServerPlayer? boneco = pl.BonecoLargado`).
+	/// </summary>
+	public ServerPlayer? BonecoLargado;
+
+	/// <summary>
+	/// EU SOU O BONECO DE QUEM (0 = nao sou boneco de ninguem). RECONSTRUIDO; tipo pinado por
+	/// `CorpoLargado.cs:87` (`DonoDoCorpoLargado = pl.Id`).
+	///
+	/// **E a terceira perna do <see cref="Jandirus.Core.Npc.Gente.EhJogador"/>** -- o unico marcador
+	/// que corta o boneco largado, que passa pelas outras duas (ele carrega a Ficha do dono de
+	/// proposito, pro Sense enxergar quem esta em transe). Ver `Core/Npc/Gente.cs`.
+	/// </summary>
+	public int DonoDoCorpoLargado;
+
+	/// <summary>
+	/// O CORPO COMO ELE ENTROU NA MENTE (nulo = nao ha foto). RECONSTRUIDO junto do tipo
+	/// <see cref="Jandirus.Server.FotoDaMente"/>; ver `GameServer.Mente.cs:320` e `:339`.
+	/// </summary>
+	public FotoDaMente? FotoDaMente;
+
+	/// <summary>
+	/// O PINO DE BP DO CORPO QUE A MENTE ERGUEU (0 = nao e pinado por aqui). RECONSTRUIDO.
+	///
+	/// Escrito por `EspelharODono` e reancorado a cada tique pelo `TicarUmCorpo` -- e o
+	/// `mind_seed_bp` do `MindClone.NPCTicker()` (MindMeditate.dm:322-327).
+	///
+	/// Existe porque o reflexo passa pelos MESMOS lacos de ficha de um jogador: sem o pino, lutar
+	/// renderia BP pra ele (`Fighter.FightGain`) e um treino longo deixaria o reflexo mais forte do
+	/// que o dono que o gerou. **A lembranca de chefe nao usa este campo** (fica em zero): o pino
+	/// dela e o `Papel.BpsPinados`, reancorado pelo `TickDoRoteiro` -- dois pinos sobre o mesmo
+	/// numero seriam duas contas discordando no meio da luta.
+	/// </summary>
+	public double BpDaMente;
+
+	/// <summary>
+	/// ESTE CORPO JA CAIU NESTA SESSAO DE TRANSE (e ainda nao se reergueu). RECONSTRUIDO.
+	///
+	/// E o latch do `clone_watch()` do DM: o anuncio da queda sai UMA vez (`DerrubadoNaMente`) e
+	/// quem conta o prazo daqui pra frente e o nocaute; o bit cai quando o corpo e reerguido e curado
+	/// (`ReerguerOOponente`), o que reabre o ciclo pra a proxima queda. E o que faz o reflexo ser um
+	/// parceiro de treino INFINITO -- nocaute levanta, so a morte encerra.
+	/// </summary>
+	public bool CaiuNaMente;
+
+	/// <summary>
+	/// ATE QUANDO O `UltimoAgressor` AINDA VALE (`NowMs()`; 0 = rancor frio). RECONSTRUIDO.
+	///
+	/// E o `combat_tag_duration` do original (`UpdateFightingList.dm:8`, 900 decimos = 90 s, em
+	/// <see cref="Jandirus.Core.Npc.Povoamento.SegundosDeRancor"/>), escrito por um funil so
+	/// (`MarcarAgressao`) e lido por quatro sistemas: a presa do cidadao, o re-engajamento do
+	/// defensor de invasao, o "quem me matou" da conquista e o "a saga esta engajada" do ultimato.
+	///
+	/// **O PRAZO E O ESTADO** -- nao ha um `EstouComRaiva` ao lado, de proposito: quem esquece e o
+	/// relogio, e um segundo campo dizendo a mesma coisa seria a segunda verdade que discorda.
+	/// </summary>
+	public long RancorAte;
+
+	/// <summary>
+	/// QUEM JA VOAVA ANTES DE ENTRAR NA NAVE, pra devolver o voo ao sair. RECONSTRUIDO; tipo pinado
+	/// por `GameServer.Nave.cs:454` (`pl.NaveDevolveVoo = pl.Voando`). E o `pod_had_flight` do DM.
+	/// </summary>
+	public bool NaveDevolveVoo;
+
+	/// <summary>
+	/// HA QUANTO TEMPO ESTE FROST DEMON ESTA NA FORMA INSTAVEL, em segundos. RECONSTRUIDO; tipo
+	/// pinado por `GameServer.Frost.cs:164` (`+= dt`, e `dt` e `double`).
+	/// </summary>
+	public double FrostInstavelSegundos;
+
+	/// <summary>
+	/// QUANTO FALTA PRO PROXIMO AVISO DE INSTABILIDADE, em segundos (0 = pode avisar agora).
+	/// RECONSTRUIDO; tipo pinado pelo mesmo `Math.Max(0, ... - dt)` de `GameServer.Frost.cs:98`.
+	/// </summary>
+	public double FrostAvisoEmSegundos;
+
+	/// <summary>
+	/// A OFERTA DE MESTRE QUE ESTA NA MESA DESTE ALUNO (nulo = ninguem ofereceu nada). RECONSTRUIDO;
+	/// tipo pinado por `GameServer.Mestre.cs:295` (`new PedidoDeMestre(...)`).
+	/// </summary>
+	public PedidoDeMestre? PedidoDoMestre;
+
+	/// <summary>
+	/// A LICAO OFERECIDA A ESTE ALUNO (nulo = ninguem esta ensinando nada). RECONSTRUIDO; tipo
+	/// pinado por `GameServer.Ensino.cs:120` (`new PedidoDeLicao(...)`).
+	/// </summary>
+	public PedidoDeLicao? PedidoDeLicao;
+
+	/// <summary>
+	/// QUANDO ESTE MESTRE PODE ENSINAR UMA SKILL DE NOVO (`NowMs()`). RECONSTRUIDO; tipo pinado por
+	/// `GameServer.Ensino.cs:118` (`agora + (long)(...)`).
+	/// </summary>
+	public long RecargaDaLicao;
+
+	/// <summary>
+	/// QUANDO ESTE MESTRE PODE DESPERTAR UMA FORMA DE NOVO (`NowMs()`). RECONSTRUIDO; tipo pinado
+	/// pelo save (`CharacterSave.MestreRecargaAte`, um `long`) e por `GameServer.Mestre.cs:460`.
+	/// </summary>
+	public long RecargaDeEnsino;
+
+	/// <summary>
+	/// AS FORMAS QUE ESTE PERSONAGEM VIU ALGUEM USAR (por `FormaDef.IdRede`). RECONSTRUIDO.
+	///
+	/// **E CONJUNTO E NAO LISTA**, e isso nao e gosto: `NotarFormaVista` (`Mestre.cs:229`) chama
+	/// `Add` sem conferir duplicata, e roda toda vez que alguem se transforma perto. Numa lista o
+	/// campo cresceria sem teto e iria inteiro pro disco. O save guarda `List&lt;int&gt;` porque JSON
+	/// nao tem conjunto, e a copia `[.. pl.FormasVistas]` funciona nos dois sentidos.
+	/// </summary>
+	public HashSet<int> FormasVistas = [];
+
+	/// <summary>
+	/// OS CHEFES QUE ESTE PERSONAGEM VIU EM JOGO (por id de molde). RECONSTRUIDO.
+	///
+	/// **CONJUNTO por prova direta**: `GameServer.Mente.cs:400` usa o RETORNO do `Add`
+	/// (`if (!o.ChefesVistos.Add(papel.Molde.Id)) continue;`), que so existe em `HashSet`.
+	/// </summary>
+	public HashSet<string> ChefesVistos = [];
+
+	/// <summary>
+	/// AS TECNICAS DE KI QUE ESTE PERSONAGEM CRIOU. RECONSTRUIDO; tipo pinado pelo save
+	/// (`CharacterSave.Customizadas`, `List&lt;TecnicaCustomizada&gt;`) e por `pl.Customizadas.Count`.
+	/// </summary>
+	public List<Jandirus.Core.Skills.TecnicaCustomizada> Customizadas = [];
+
+	/// <summary>
+	/// A TECNICA ABERTA NA BANCADA AGORA (nula = nenhuma). RECONSTRUIDO; tipo pinado por
+	/// `GameServer.Customizadas.cs:125` (`new TecnicaCustomizada { Id = id }`).
+	/// </summary>
+	public Jandirus.Core.Skills.TecnicaCustomizada? Mesa;
+
+	/// <summary>
+	/// QUANDO ESTE PERSONAGEM ENTROU NA SALA DO TEMPO PELA ULTIMA VEZ (`NowMs()`; 0 = nunca).
+	/// RECONSTRUIDO; tipo pinado pelo save (`CharacterSave.SalaUltimaEntrada`, `long`).
+	/// </summary>
+	public long SalaUltimaEntrada;
+
+	/// <summary>
+	/// ELE TEM A CHAVE DA SALA DO TEMPO. RECONSTRUIDO; tipo pinado pelo save (`bool`).
+	/// </summary>
+	public bool SalaAutorizada;
+
+	/// <summary>
+	/// ELE ESTA TRANCADO LA DENTRO. RECONSTRUIDO; tipo pinado pelo save (`bool`).
+	/// </summary>
+	public bool SalaPreso;
+
+	/// <summary>
+	/// QUANTOS DIAS DE SALA ESTA SESSAO JA CONSUMIU. RECONSTRUIDO; tipo pinado pelo save (`double`).
+	/// </summary>
+	public double SalaDiasDaSessao;
+
+	/// <summary>
+	/// QUANDO A JANELA DE SAIDA DA SALA FECHA (`NowMs()`; 0 = janela nao armada). RECONSTRUIDO;
+	/// tipo pinado por `GameServer.SalaSessao.cs:190` (`pl.SalaJanelaAte - NowMs()`).
+	///
+	/// **NAO VAI PRO DISCO, e isso e desenho e nao esquecimento**: os quatro campos de Sala que o
+	/// save guarda descrevem a SITUACAO (entrou quando, tem chave, esta preso, gastou quantos dias);
+	/// este e um relogio de dois minutos que so faz sentido com o servidor no ar.
+	/// </summary>
+	public long SalaJanelaAte;
+
 	/// <summary>Quando a regeneracao volta a ficar disponivel (relogio real, ms).</summary>
 	public long RegenLivreEm;
 
@@ -338,8 +516,22 @@ public sealed class ServerPlayer
 	/// pergunta so ("a cabeca aponta pra onde?"), e porque ter duas fontes pro mesmo angulo foi
 	/// exatamente o defeito anterior: o corpo tremia entre o valor de um e o do outro.
 	/// </summary>
-	/// <summary>O corpo esta deitado? Caido ou voando -- e a mesma pergunta pro desenho.</summary>
-	public bool Deitado => Ficha.KO || Ficha.dead || TiquesDeVoo > 0;
+	/// <summary>
+	/// ESTE MORTO ESTA DE PE? A porta do <see cref="Jandirus.Core.World.Alem.MortoDePe"/> -- ver la
+	/// o argumento de por que a resposta e DERIVADA (morto + lugar de morto) e nao um campo.
+	///
+	/// Falso pra quem esta vivo, entao ela serve sozinha como "estou no alem, morto".
+	/// </summary>
+	public bool MortoDePe => Jandirus.Core.World.Alem.MortoDePe(Ficha.dead, Zone.Name);
+
+	/// <summary>
+	/// O corpo esta deitado? Caido ou voando -- e a mesma pergunta pro desenho.
+	///
+	/// **MORTO NO OUTRO MUNDO NAO ESTA DEITADO.** O DM levanta o morto (`spawn Un_KO()`,
+	/// `Death.dm:89`) antes de manda-lo pro alem, e la dentro ele anda, voa e treina -- a queda dos
+	/// 15 s e o CADAVER, e o cadaver fica no mundo dos vivos. Ver <see cref="MortoDePe"/>.
+	/// </summary>
+	public bool Deitado => Ficha.KO || (Ficha.dead && !MortoDePe) || TiquesDeVoo > 0;
 
 	/// <summary>
 	/// DE ONDE VEIO O ULTIMO GOLPE QUE ENCOSTOU -- o vetor do soco, apontando pra longe de quem bateu.
@@ -422,6 +614,52 @@ public sealed class ServerPlayer
 	/// </summary>
 	public double VooNoTique;
 
+	// ============================== NADO (ver GameServer.Nado.cs) ==============================
+
+	/// <summary>
+	/// O `swim` do original (`Swim.dm:5-23`). Estado VIVO -- ninguem continua nadando deslogado.
+	///
+	/// ELE MUDA **COMO ESTE CORPO ATRAVESSA O MUNDO** e nao so o desenho: e a entrada `nadando` do
+	/// <see cref="Jandirus.Core.World.ClasseDeAgua.ModoDe"/>, e e por ela que a agua deixa de parar
+	/// este corpo. Por isso viaja na FICHA (`SheetState.Estado2`, bit 0) e nao num canal de evento:
+	/// o cliente preve o passo pela MESMA regra que o servidor confere, e um estado que se perde num
+	/// pacote viraria o cliente prevendo por uma regra que o servidor ja nao aceita.
+	///
+	/// SO O `GameServer.Nado.cs` ESCREVE AQUI (mais o `AlternarVoo`, pela porta `PararDeNadar`).
+	/// </summary>
+	public bool Nadando;
+
+	/// <summary>
+	/// PRA ONDE ELE OLHAVA NO ULTIMO TIQUE DE NADO -- o gatilho do `Swim_Gain()` (`Movement.dm:1-4`),
+	/// que no DM so paga quem MUDA de direcao nadando.
+	/// </summary>
+	public Facing UltimaDirDoNado;
+
+	/// <summary>
+	/// ESTE NADO JA MOLHOU O CORPO? -- e o que separa "ainda entrando" de "saiu no seco".
+	///
+	/// ============================ POR QUE ELE PRECISA EXISTIR ============================
+	/// O verb aceita quem tem agua A FRENTE (`PodeComecarANadar`), e o tique desliga quem nao esta EM
+	/// CIMA dela -- sozinhos, os dois se matam no mesmo decimo de segundo e ninguem consegue comecar
+	/// a nadar da margem. No DM eles convivem porque o verb DA O PASSO pra dentro da agua
+	/// (`step(usr, usr.dir)`, `Swim.dm:15`); aqui o corpo entra ANDANDO, pelo movimento do proprio
+	/// jogador, e andar leva alguns decimos.
+	///
+	/// Entao o desligamento por chao seco passa a ter duas leituras, e este bit e quem as separa:
+	///   * FALSO -- ele ainda nao encostou na agua: e a janela de ENTRADA, e ela vale pelo prazo do
+	///     <see cref="Jandirus.Core.World.Nado.PrazoParaEntrar"/>, sem custo de Ki e sem maestria;
+	///   * VERDADE -- ele ja nadou: vale a regra do original, sem carencia nenhuma. Chao seco DESLIGA
+	///     no mesmo tique (`movement handler.dm:283-287`).
+	///
+	/// E POR ISSO QUE A CARENCIA NAO REARMA: ela morre no primeiro pixel de agua e nao volta. Sem
+	/// isso, entrar e sair da agua de proposito renovaria o prazo pra sempre -- que e exatamente o
+	/// defeito oposto ao que se estava consertando (nadar em terra firme).
+	/// </summary>
+	public bool NadoJaMolhou;
+
+	/// <summary>Quantos segundos ele ja passou nadando SEM ter encostado na agua. Ver acima.</summary>
+	public float NadoSecoS;
+
 	/// <summary>A aura acesa por excesso de Ki. Guardada pra ter HISTERESE -- ver CargaDeKi.AuraAcesa.</summary>
 	public bool AuraDeCarga;
 
@@ -449,8 +687,36 @@ public sealed class ServerPlayer
 	public double EnvBP = double.NaN, EnvKi = double.NaN, EnvHp = double.NaN, EnvAct = double.NaN,
 				  EnvVigor = double.NaN, EnvNutricao = double.NaN;
 
+	/// <summary>
+	/// O BP BASE E O TETO DE KI, que TAMBEM vao no pacote e nao estavam sendo comparados.
+	///
+	/// E o buraco que o comentario do `TickFichas` ja descreve com todas as letras -- "a lista de
+	/// campos comparados era menor que a lista de campos ENVIADOS" -- e ele mordia dois campos que
+	/// as leituras novas usam: o multiplicador total e `expressedBP / BP`, e o fim do trilho da
+	/// barra de Ki e o `powerupcap`. Os dois mudam por caminhos que nao mexem no `expressedBP`
+	/// (aprender uma skill de power-up sobe o teto sem mexer no poder), e sem estar aqui a leitura
+	/// so chegaria de carona no proximo soco.
+	///
+	/// A INTEIREZA NAO PRECISA DE CAMPO PROPRIO: ela e `expressedBP / peakexBP`, e o pico deriva do
+	/// proprio poder expresso -- nao existe jeito de ela mexer sem o `EnvBP` mexer junto.
+	///
+	/// (Restaurado em 2026-08-14: um `git checkout` numa arvore suja apagou estes dois campos, e a
+	/// regra que os criou sobreviveu escrita no `EnvEstado2` logo abaixo enquanto os campos dela
+	/// sumiam. Nao apague sem ler os dois comentarios juntos.)
+	/// </summary>
+	public double EnvBpBase = double.NaN, EnvTetoKi = double.NaN;
+
 	/// <summary>O ultimo byte de estado enviado (KO, morto, guarda, letal, rabo).</summary>
 	public int EnvEstado = -1;
+
+	/// <summary>
+	/// ...e o SEGUNDO byte (o nado). Separado, e nao espremido no de cima, pela regra que o proprio
+	/// `TickFichas` escreve: **todo campo que vai no pacote precisa estar na comparacao**, senao ele
+	/// so chega de carona quando outro muda. O nado ate se anuncia na hora (`AnunciarNado` chama
+	/// `MandarFicha`), mas um estado que depende de o seu unico chamador lembrar de avisar e o
+	/// mesmo buraco que ja deixou a barra de Ki e o golpe letal parados na tela.
+	/// </summary>
+	public int EnvEstado2 = -1;
 
 	/// <summary>Ultimo estagio de carga anunciado. So se avisa o jogador quando o estagio MUDA.</summary>
 	public Jandirus.Core.Combat.EstagioDaCarga EstagioDaCarga;
@@ -489,8 +755,28 @@ public sealed class ServerPlayer
 	/// </summary>
 	public Protocol.Poder PoderesConcedidos;
 
-	/// <summary>Quando o corpo volta a se mexer depois de morrer (relogio real, ms).</summary>
-	public long RenasceEm;
+	/// <summary>
+	/// ============================ O PROXIMO PASSO DA MORTE (relogio real, ms) ============================
+	/// Ele se chamava `RenasceEm` e queria dizer uma coisa so ("quando este corpo volta a vida").
+	/// Agora a morte tem DUAS etapas -- o corpo caido no chao e a estadia no Outro Mundo (ver
+	/// <see cref="Jandirus.Core.World.Alem"/>) --, e o mesmo campo marca o vencimento das duas. Qual
+	/// delas esta correndo nao e um segundo campo: e o LUGAR onde o corpo esta (`Alem.EhOAlem`), pelo
+	/// mesmo argumento que o `Alem.MortoDePe` escreve.
+	///
+	/// **SO E LIDO COM `Ficha.dead` LIGADO.** Um valor velho aqui num corpo vivo nao significa nada,
+	/// e por isso nem todo caminho de revive precisa lembrar de zera-lo.
+	///
+	/// QUEM ESCREVE: o gancho `CombatState.AoMorrer` (ver `GameServer.Alem.AMorteAconteceu`) e mais
+	/// ninguem. Antes eram nove atribuicoes a mao espalhadas por oito arquivos.
+	/// ==================================================================================================
+	/// </summary>
+	public long RelogioDaMorte;
+
+	/// <summary>
+	/// A ultima AUREOLA enviada pra zona. Mesma disciplina dos `Env*` e do `EnvFeridas`: o pacote so
+	/// sai quando muda. Ver `GameServer.Alem.TickDasAureolas`.
+	/// </summary>
+	public bool EnvAureola;
 
 	/// <summary>
 	/// DEBRUCADO NUMA RESEARCH STATION. Nao entra no <see cref="Protocol.Activity"/> junto de
@@ -553,6 +839,19 @@ public sealed class ServerPlayer
 
 	/// <summary>Quem me derrubou por ultimo -- e de quem o Zenkai cobra a conta.</summary>
 	public int UltimoAgressor;
+
+	/// <summary>
+	/// A PRESA QUE ESTE NPC JA ENGAJOU (0 = nenhuma). **So o NPC hostil escreve e le isto** -- ver
+	/// <see cref="GameServer.PresaDoHostil"/>.
+	///
+	/// Ela existe por uma razao so: o alvo do DM e um CAMPO (`target`), e um campo tem histerese --
+	/// ele e adotado num raio (`MAX_AGGRO_RANGE`, 20 tiles) e largado noutro, bem maior
+	/// (`aggro_dist*2`, 60). A escolha por varredura pura, que este port fazia, nao tem como ter dois
+	/// raios: ela responde a mesma pergunta toda vez, entao o raio de adotar e o de largar seriam o
+	/// mesmo numero -- e ai ou o chefe caca o mapa inteiro (o que ele fazia) ou o jogador se solta
+	/// dele andando um passo alem do limite, que e pior ainda.
+	/// </summary>
+	public int PresaEngajada;
 
 	/// <summary>Assinatura do ultimo corpo enviado -- so remanda quando algum membro muda.</summary>
 	public string CorpoEnviado = "";
@@ -684,13 +983,25 @@ public sealed class ServerPlayer
 	/// </summary>
 	public Protocol.Pose Pose(long agoraMs)
 	{
-		if (Ficha.dead || Ficha.KO) return Protocol.Pose.Nocauteado;
+		// MORTO CAIDO E MORTO DE PE SAO DUAS COISAS. Enquanto o corpo esta no chao do mundo dos
+		// vivos (os 15 s de <see cref="Jandirus.Core.World.Alem.MsNoChao"/>) ele e um cadaver e
+		// desenha deitado; no Outro Mundo ele levanta e volta a ter poses -- e o `Un_KO()` que o DM
+		// chama ANTES de mover (`Death.dm:89`). Ver <see cref="MortoDePe"/>.
+		if (Ficha.KO || (Ficha.dead && !MortoDePe)) return Protocol.Pose.Nocauteado;
 		if (agoraMs < AtaqueAte) return Protocol.Pose.Atacando;
 		// A POSE DE VOO ESTAVA DEFINIDA E MORTA: `Protocol.Pose.Voando` existia no enum, o
 		// `CharacterVisual.SetPose` ja mapeava pra animacao "flight", e este metodo NUNCA a
 		// devolvia -- entao a ponta do cliente esperava por um valor que ninguem escrevia.
 		// Vem depois do ataque de proposito: socar no ar mostra o soco, nao o pairar.
 		if (Voando) return Protocol.Pose.Voando;
+		// A POSE DE NADO ESTAVA NO MESMO ESTADO EM QUE A DE VOO ESTEVE: `Protocol.Pose.Nadando`
+		// definida, o `CharacterVisual` ja mapeando pra animacao "flight", e este metodo nunca a
+		// devolvendo -- quem olhasse de fora veria o vizinho ANDANDO por cima do lago.
+		//
+		// DEPOIS DO VOO, e a ordem nao e escolha: os dois estados se excluem (`AlternarNado` desliga
+		// o voo e `AlternarVoo` desliga o nado), entao qualquer ordem da o mesmo. Fica aqui porque e
+		// aqui que se le "primeiro o que SOBE, depois o que nao sobe".
+		if (Nadando) return Protocol.Pose.Nadando;
 		if (Ficha.train) return Protocol.Pose.Treinando;
 		if (Ficha.med) return Protocol.Pose.Meditando;
 		return Protocol.Pose.Normal;
@@ -711,6 +1022,18 @@ public sealed class ServerPlayer
 		VigorMax = Ficha.maxstamina,
 		Nutricao = Ficha.CurrentNutrition,
 		NutricaoMax = Jandirus.Core.Stats.Nutricao.Tanque(Ficha.Metabolism),
+
+		// AS DUAS RAZOES SAEM PRONTAS DAQUI, e nao ha escolha: sem scouter o BP e o BP expresso
+		// viram NaN no `FichaVisivel`, entao o cliente nao teria como dividir um pelo outro. Quem
+		// calcula e o Core (`Fighter.Inteireza` / `Fighter.MultiplicadorTotal`); aqui elas so
+		// entram no pacote. Razao nao e poder -- ver o cabecalho de `GameServer.Sigilo`.
+		Inteireza = Ficha.Inteireza,
+		MultTotal = Ficha.MultiplicadorTotal,
+
+		// O FIM DO TRILHO DA BARRA DE KI. `powerupcap` e RAZAO sobre o MaxKi e mora no Statify,
+		// que so roda no servidor -- o cliente nao tem como saber ate onde o proprio tanque sobe.
+		TetoKi = Jandirus.Core.Combat.CargaDeKi.TetoEmRazao(Ficha),
+
 		SpeedStat = SpeedStat,
 		// a cadencia vai calculada: ela muda com o Ki carregado, e o cliente precisa dela
 		// pro proprio cooldown e pra duracao da animacao de soco
@@ -731,6 +1054,13 @@ public sealed class ServerPlayer
 					// Com isto ha UMA fonte: o servidor congela a direcao quando o nocaute acontece e
 					// todo mundo (inclusive quem caiu) desenha por ela.
 					| ((byte)DirecaoDeitado << 6)),
+
+		// O SEGUNDO BYTE DE ESTADO -- hoje ele carrega UMA coisa: o nado.
+		//
+		// Ela vem pela FICHA e nao pelo snapshot porque quem precisa dela e o DONO do corpo, pra
+		// prever o passo pela mesma regra que o servidor vai conferir (ver `SheetState.Nadando` e
+		// `LocalPlayer._nadando`). Quem olha de fora recebe a `Pose.Nadando`, que basta pra desenhar.
+		Estado2 = (byte)(Nadando ? 1 : 0),
 	};
 }
 
@@ -774,6 +1104,21 @@ public partial class GameServer : Node
 	private double _bpDeTeste;
 
 	/// <summary>`--kiteste`: nasce com Ki_Unlocked e Basic Ki Control nivel 5. Ver o `_Ready`.</summary>
+	/// <summary>
+	/// `--esquivateste N`: o HOST entra com N vezes o BP de quem chegar. 0 = desligado.
+	///
+	/// Existe pelo mesmo motivo -- e com a mesma forma -- do `BpDoHostNoTeste` do `--clashteste`:
+	/// a ESQUIVA POR VELOCIDADE nao acontece entre iguais, e isso nao e defeito, e a regra. A
+	/// pontaria e `Etechnique/Espeed * BpModulus * 100` (`CombatMath.Pontaria`), entao dois
+	/// personagens recem-criados batem um no outro 100% das vezes -- e o proprio DM diz isso na
+	/// linha ao lado (`CombatMovement.dm:190`, "two perfectly matched players will hit 100% of
+	/// the time"). Sem desnivel de poder NAO HA o que fotografar.
+	///
+	/// O desnivel vai no HOST porque e ele quem tem janela nas bancadas de dois processos (o
+	/// adversario sobe `--headless`), e a esquiva se desenha em cima de QUEM DESVIA.
+	/// </summary>
+	private double _bpDoHostNaEsquiva;
+
 	private bool _kiDeTeste;
 
 	/// <summary>Os dois caminhos do Ki liberado. Escritos uma vez pra nao divergirem.</summary>
@@ -799,6 +1144,22 @@ public partial class GameServer : Node
 		if (_skills == null) return;
 		foreach (ServerPlayer pl in _players.Values)
 		{
+			// ============================ SO JOGADOR SOBE DE NIVEL SOZINHO ============================
+			// NPC TEM `Livro` e `Niveis` -- eles saem das mesmas funcoes que os do jogador
+			// (`GameServer.Npc.cs:191-192`), e e assim que o molde do `npcs.json` da skill a um chefe.
+			// Sem esta guarda, todo corpo sem dono acumulava exp de skill PRA SEMPRE e o
+			// `Niveis.Aplicar` escrevia buff novo na ficha dele a cada degrau:
+			//
+			//   * no CHEFE isso furava o pino da saga. O `TickDoRoteiro` reancora o `Ficha.BP` de
+			//     segundo em segundo, mas reancora o BP -- nao os buffs de nivel, que o `Statify`
+			//     recalcula por cima e que empurram o `expressedBP` acima do numero anunciado;
+			//   * no CIDADAO nada reancorava: um habitante de dois dias de uptime nao era mais o
+			//     habitante do `npcs.json`.
+			//
+			// O nivel de NASCIMENTO nao se perde -- ele e aplicado no sorteio (`SorteioDeNpc:157-158`),
+			// e o que morre aqui e so a subida sozinha, que e o `effector()` de quem esta JOGANDO.
+			// ======================================================================================
+			if (!EhJogador(pl)) continue;
 			if (pl.Ficha.dead || pl.Livro == null) continue;
 
 			// O ESTADO DO CORPO ENTRA NO EFETOR. Sem ele, as 122 regras de exp condicionais do
@@ -868,18 +1229,86 @@ public partial class GameServer : Node
 	/// NO ESPACO A GRAVIDADE E ZERO (o `if("Space") Planetgrav=0` do DM) -- e por isso que
 	/// ninguem treina viajando.
 	/// </summary>
-	private void AplicarGravidade(ServerPlayer pl)
+	/// <param name="nascendo">
+	/// Este corpo esta sendo POSTO NO MUNDO agora (ver <see cref="PorNoMundo"/>)? Vale pra corpos que
+	/// nao tem berco proprio -- NPC, habitante, clone --, cuja zona de nascimento **e** o berco deles.
+	/// Ver a aclimatacao logo abaixo.
+	/// </param>
+	private void AplicarGravidade(ServerPlayer pl, bool nascendo = false)
 	{
-		if (_planetas == null) return;
-		FichaDePlaneta f = _planetas.De(pl.Zone.Name);
-		if (Math.Abs(pl.Ficha.Planetgrav - f.Gravidade) < 1e-9) return;
+		// ============================ O RITMO DA ZONA VEM PRIMEIRO, E FORA DO ATALHO ============================
+		// Os multiplicadores de TREINO que dependem do lugar sao escritos AQUI porque este metodo e o
+		// funil por onde TODA troca de zona passa: login, passagem, porta, nave, admin, planeta
+		// gerado, mente e leme. Um `Aplicar` chamado em cada um desses caminhos seria oito lugares
+		// pra alguem esquecer de um -- e o esquecido seria justo a SAIDA.
+		//
+		// SAO DOIS LUGARES E UMA CHAMADA SO (ver `Core/World/RitmoDaZona.cs`): a Sala do Tempo
+		// (280x de BP, 4x de maestria) e a DIMENSAO MENTAL (0,25x de BP, o `MindDimensionMult` do
+		// pedido do dono). O `Aplicar` escreve o neutro antes de escrever a excecao, entao sair de
+		// qualquer um dos dois limpa o outro de graca.
+		//
+		// ANTES do atalho de gravidade la embaixo, e isso e o ponto: entrar na Sala vindo de Vegeta
+		// nao muda a gravidade (as duas sao 10x), entao aquele `return` engoliria o ritmo inteiro e a
+		// Sala renderia 1x pra quem chegasse do planeta certo. Silencioso, e so em um caminho.
+		//
+		// O TERCEIRO ARGUMENTO E A SESSAO (13.5). Estar dentro nao basta desde que a sala PRENDE:
+		// quem passou dos 2 dias in-game continua la e nao rende mais nada. Ver `SessaoDaSalaValendo`.
+		// ====================================================================================================
+		Jandirus.Core.World.RitmoDaZona.Aplicar(pl.Ficha, pl.Zone, SessaoDaSalaValendo(pl));
 
-		pl.Ficha.Planetgrav = f.Gravidade;
-		pl.Ficha.Statify();
-		pl.SigAtributos = "";
-		if (f.Gravidade > 1)
-			Avisar(pl, $"o chão de {f.Nome} puxa {f.Gravidade:0.##} vezes mais forte. Cada passo custa, "
-					   + "e cada treino rende.");
+		if (_planetas != null)
+		{
+			FichaDePlaneta f = _planetas.De(pl.Zone.Name);
+
+			// ============================ NINGUEM NASCE ESMAGADO ============================
+			// O `race.dm:130-131` -- ver `Birth.AclimatarAoBerco`, onde a divida esta escrita por
+			// inteiro. Em resumo: um Frost Demon nasce em Icer Planet, que puxa 15x, e a maestria de
+			// berco dele valia 1. Com o esmagamento ligado ele nasceria PRESO no chao perdendo vida.
+			//
+			// **SO NO PROPRIO BERCO**, e essa e a diferenca entre a regra e uma trapaca: chegar de
+			// nave num planeta pesado nao acostuma ninguem a nada -- o unico jeito de dominar
+			// gravidade continua sendo treinar nela (`GravGain`). O DM diz "spawn planet", e o berco
+			// deste port e exatamente isso.
+			//
+			// FORA DO ATALHO de gravidade logo abaixo porque ele desiste quando o numero nao mudou --
+			// e no login o `Planetgrav` do save ja costuma ser o do berco, que e justamente o caso em
+			// que a aclimatacao precisa acontecer.
+			// ============================================================================
+			if (nascendo || string.Equals(pl.Zone.Name, pl.Berco.Planeta, StringComparison.OrdinalIgnoreCase))
+				Jandirus.Core.Races.Birth.AclimatarAoBerco(pl.Ficha, f.Gravidade);
+
+			if (Math.Abs(pl.Ficha.Planetgrav - f.Gravidade) >= 1e-9)
+			{
+				pl.Ficha.Planetgrav = f.Gravidade;
+
+				// O TIQUE INTEIRO, e nao so o `Statify` que estava aqui: o `weight_ratio` multiplica a
+				// gravidade LOCAL (ver `Fighter.WeightTick`), entao quem pisa num chao 10x mais pesado
+				// passa a ser esmagado *neste instante* -- e o passo, que sai daqui poucas linhas
+				// abaixo, precisa ja saber disso. Com so o `Statify`, o corpo andaria 200 ms na
+				// velocidade do planeta anterior.
+				//
+				// `Tick` E NAO `Statify` + `WeightTick`: o `PowerLevel` no meio e o que mantem o
+				// recorde de peso (`weight_cap_hw`) estavel -- ver o comentario longo em `AjustarPeso`,
+				// onde pular esse passo fazia vestir mais peso pesar menos.
+				pl.Ficha.Tick(agoraMs: NowMs());
+
+				pl.SigAtributos = "";
+				if (f.Gravidade > 1)
+					Avisar(pl, $"o chão de {f.Nome} puxa {f.Gravidade:0.##} vezes mais forte. Cada passo custa, "
+							   + "e cada treino rende.");
+			}
+		}
+
+		// A VELOCIDADE E A FICHA SAEM SEMPRE, e nao so quando a gravidade mudou.
+		//
+		// `SpeedStat` **nao esta** na lista de campos que o `TickFichas` compara antes de reenviar a
+		// ficha (ver o comentario la), entao mudar de zona mexeria no passo sem avisar o cliente: ele
+		// continuaria andando na velocidade do mapa anterior ate algum outro numero da ficha mexer
+		// por acaso, e o servidor o corrigiria a cada pacote -- o corpo tremendo. E a MESMA familia de
+		// defeito que o `RecalcularVelocidade` ja documenta pra nave, e a defesa e a mesma: recalcular
+		// e mandar na hora do evento.
+		RecalcularVelocidade(pl);
+		MandarFicha(pl);
 	}
 
 	/// <summary>
@@ -1059,6 +1488,60 @@ public partial class GameServer : Node
 		_solDeTeste = Array.IndexOf(args, "--solteste") >= 0;
 		if (_solDeTeste) GD.Print("[server] BANCADA: o sol letal sera exercitado no 1o login");
 
+		// `--naveteste`: fabrica, assenta, embarca, melhora ate o teto, lanca, viaja e pousa.
+		//
+		// Ela MEXE no personagem vivo (zeni, tecnologia, zona) e o devolve no fim -- por isso a
+		// flag. Ver GameServer.NaveTeste.cs.
+		_naveDeTeste = Array.IndexOf(args, "--naveteste") >= 0;
+		if (_naveDeTeste) GD.Print("[server] BANCADA: a Spacepod sera exercitada no 1o login");
+
+		// `--menteviva`: O CORPO QUE FICA, **COM DOIS CORPOS DE VERDADE**.
+		//
+		// NAO E UMA BANCADA DE BOOT, e nao pode ser: o mecanismo que ela mede (`LargarOCorpo`) recusa
+		// quem nao tem `Peer`, e a recusa e deliberada -- e literalmente a razao pela qual a
+		// `--menteteste` diz nao cobrir a porta. Ela roda no login do SEGUNDO cliente, o que exige
+		// dois processos (ver `GameServer.MenteVivaTeste.cs` e o `testar-mente.bat`).
+		//
+		// Ela MEXE nos dois personagens (zona, BP, membros, forma) e APAGA as duas contas no fim --
+		// por isso a flag, e por isso as contas sao proprias dela.
+		_menteVivaLigada = Array.IndexOf(args, "--menteviva") >= 0;
+		if (_menteVivaLigada) GD.Print("[server] BANCADA: o corpo largado sera medido quando o 2o cliente entrar");
+
+		// `--embarqueteste`: a METADE DE SERVIDOR da bancada da tecla E nas naves. Ela nao pontua --
+		// da tecnologia e zeni ao 1o que entrar e abre tres verbos de fixture (alienar, devolver,
+		// estragar) que o robo `--diagembarque` usa pra chegar em recusas que nenhum verbo de
+		// jogador alcanca. Ver GameServer.EmbarqueTeste.cs.
+		_embarqueDeTeste = Array.IndexOf(args, "--embarqueteste") >= 0;
+		if (_embarqueDeTeste) GD.Print("[server] BANCADA: fixtures do embarque ligadas (tech, zeni e 3 verbos)");
+
+		// ============================ AS DUAS BANCADAS DE VOZ COM CLIENTES DE VERDADE ============================
+		// MAIS NOVAS QUE A COPIA DE 23:07, entao o gancho delas foi deduzido do proprio codigo: o
+		// cabecalho do `VozVivaNoLogin`/`VozDuplaNoLogin` diz, com todas as letras, "chamada no fim do
+		// `Entrar`, como a `--menteviva` -- e pelo mesmo motivo", e o lado CLIENTE ja le as duas flags
+		// (`Client/Boot.cs:742,753`). Sem estas linhas o servidor sobe, os quatro (ou dois) processos
+		// conectam, e nenhuma fase roda: silencio indistinguivel de sucesso.
+		//
+		// O ARGUMENTO DA FLAG E DO CLIENTE (`--vozviva a|b|c|d` = o papel). O servidor so pergunta se
+		// a flag ESTA la -- ele e um so, e nao tem papel.
+		_vozVivaLigada = Array.IndexOf(args, "--vozviva") >= 0;
+		if (_vozVivaLigada) GD.Print("[server] BANCADA: a voz sera medida quando os clientes de verdade entrarem");
+
+		// `--vozvivagente N`: quantos clientes a cena espera antes de comecar (padrao 4, os papeis
+		// a/b/c/d). E argumento e nao constante porque a fase 7 (o teto de quatro ouvintes) precisa de
+		// quatro, mas quem esta depurando uma fase de distancia roda com dois e nao quer esperar.
+		int vvgIdx = Array.IndexOf(args, "--vozvivagente");
+		if (vvgIdx >= 0 && vvgIdx + 1 < args.Length && int.TryParse(args[vvgIdx + 1], out int vvgV) && vvgV > 0)
+		{
+			_vozVivaGente = vvgV;
+			GD.Print($"[server] BANCADA: a voz viva espera {_vozVivaGente} cliente(s) de verdade");
+		}
+
+		// `--vozdupla`: a IRMA QUE JULGA da de cima -- dois corpos, e o DEFEITO na frente de cada regra.
+		// E ela que destranca o `CorteQuebradoDeTeste` (ver `GameServer.Voz.cs:275`, onde o
+		// `_vozDuplaLigada` vem PRIMEIRO no `&&` justamente pra sair de graca em jogo).
+		_vozDuplaLigada = Array.IndexOf(args, "--vozdupla") >= 0;
+		if (_vozDuplaLigada) GD.Print("[server] BANCADA: a voz JULGADA, com dois corpos, quando os dois entrarem");
+
 		// `--clashteste`: o ZanzoClash sem dado e com desnivel de poder.
 		//
 		// Duas coisas atrapalham medir um embate: o `prob(50)` (uma bancada que so acontece metade
@@ -1068,6 +1551,23 @@ public partial class GameServer : Node
 		_clashSempre = Array.IndexOf(args, "--clashteste") >= 0;
 		if (_clashSempre) GD.Print($"[server] BANCADA: embate sem sorteio, e o host com {BpDoHostNoTeste}x de BP");
 
+		// `--esquivateste [N]`: o host entra N vezes mais forte (padrao 10). Ver `_bpDoHostNaEsquiva`.
+		//
+		// (Restaurado em 2026-08-14: um `git checkout` numa arvore suja apagou este bloco, e o lado
+		// CLIENTE da bancada continuou pedindo a flag -- `Client/Boot.cs` e `Client/RoboDeDesvio.cs`.
+		// Sem o servidor, os dois corpos entram com o MESMO BP, a esquiva nunca acontece, e a bancada
+		// do desvio mede o nada em silencio. E o modo de falhar mais caro que existe aqui.)
+		int esqIdx = Array.IndexOf(args, "--esquivateste");
+		if (esqIdx >= 0)
+		{
+			_bpDoHostNaEsquiva = 10;
+			if (esqIdx + 1 < args.Length && double.TryParse(args[esqIdx + 1],
+					System.Globalization.NumberStyles.Float,
+					System.Globalization.CultureInfo.InvariantCulture, out double esqV) && esqV > 0)
+				_bpDoHostNaEsquiva = esqV;
+			GD.Print($"[server] BANCADA: o host entra com {_bpDoHostNaEsquiva:0.##}x o BP -- e o desnivel que faz o outro ERRAR");
+		}
+
 		// `--vooteste`: quem entrar ja sabe voar (skill no nivel 2).
 		//
 		// Sem isso a bancada do voo seria impossivel de rodar: a skill sobe de nivel pelo `effector`,
@@ -1076,10 +1576,45 @@ public partial class GameServer : Node
 		_vooDeTeste = Array.IndexOf(args, "--vooteste") >= 0;
 		if (_vooDeTeste) GD.Print("[server] BANCADA: quem entrar ja sabe voar (Flight nivel 2)");
 
+		// ============================ A BANCADA DA AGUA: TRES BERCOS, UM LAGO SO ============================
+		// As tres poem o corpo no MESMO lago achado por `AcharTravessia` -- muda so ONDE, e cada onde
+		// mede uma coisa que as outras duas nao conseguem medir:
+		//
+		//   * `--aguateste`  na MARGEM, no seco, virado pra agua. E o unico berco em que a pergunta
+		//                    "a agua BARRA quem esta a pe?" tem sentido, e o unico de onde da pra
+		//                    exercitar o gesto de verdade do jogador: apertar N na beira e ENTRAR.
+		//   * `--aguadentro` DENTRO do lago, a pe. O estado que o proprio servidor preve (deslogar no
+		//                    lago, ser jogado la por um arremesso). Mede o MEIO da travessia -- a
+		//                    pose, a altura zero, a sombra que nao nasce.
+		//   * `--aguanoar`   NO AR, por cima do meio do lago. Mede o POUSO em cima da agua, que e o
+		//                    outro caminho que um jogador tem pra comecar a nadar (`DescerAte`).
+		//
+		// SAO TRES FLAGS E NAO UMA COM ARGUMENTO porque as tres medem coisas OPOSTAS: uma quer o corpo
+		// seco (a agua tem que barrar), outra o quer molhado (o nado tem que andar) e a terceira o quer
+		// no ar. Uma flag so obrigaria a bancada a adivinhar qual roteiro rodar.
+		//
+		// O CLIENTE NAO GANHA FLAG NENHUMA: ele descobre o roteiro perguntando ao mundo onde o corpo
+		// nasceu (ver `RoboDeAgua`, passo 0). Duas flags -- uma de cada lado -- poderiam discordar.
+		_aguaDentro = Array.IndexOf(args, "--aguadentro") >= 0;
+		_aguaNoAr = Array.IndexOf(args, "--aguanoar") >= 0;
+		_aguaDeTeste = _aguaDentro || _aguaNoAr || Array.IndexOf(args, "--aguateste") >= 0;
+		if (_aguaDeTeste)
+			GD.Print("[server] BANCADA DA AGUA: quem entrar nasce "
+					 + (_aguaNoAr ? "NO AR por cima do lago" : _aguaDentro ? "DENTRO do lago" : "na BEIRA do lago"));
+
 		// `--formasteste`: sobe a escada inteira no primeiro que entrar e confere o BP degrau a
 		// degrau. Ver GameServer.FormasTeste.cs -- ela MEXE no personagem, entao so com a flag.
 		_formasDeTeste = Array.IndexOf(args, "--formasteste") >= 0;
 		if (_formasDeTeste) GD.Print("[server] BANCADA: escada de formas sera exercitada no 1o login");
+
+		// `--frostteste`: a escada do FROST DEMON -- repouso, supressoes, evolucoes e o motor do
+		// Mutante (fusivel, ki travado, vazamento, bateria). Ver GameServer.FrostTeste.cs.
+		//
+		// SEPARADA DA `--formasteste` de proposito: ela TROCA A RACA do personagem vivo (e a raca
+		// muda a escada inteira), entao rodar as duas no mesmo corpo faria uma bancada medir o
+		// estranho da outra -- que e o modo de falha que o cabecalho da `--formasteste` ja descreve.
+		_frostDeTeste = Array.IndexOf(args, "--frostteste") >= 0;
+		if (_frostDeTeste) GD.Print("[server] BANCADA: escada do Frost Demon no 1o login");
 
 		// `--npcteste`: sorteia fichas de NPC, poe corpos no mundo e exercita o roteiro dos chefes.
 		//
@@ -1090,6 +1625,15 @@ public partial class GameServer : Node
 		_npcDeTeste = Array.IndexOf(args, "--npcteste") >= 0;
 		if (_npcDeTeste) GD.Print("[server] BANCADA: fichas de NPC e roteiro de chefe no 1o login");
 
+		// `--povoteste`: o POVOAMENTO -- quem nasce, onde, quantos, e quem NAO nasce.
+		//
+		// Ela deixa o mundo nascer inteiro pelo `TickDoPovoamento` de producao e entao mede as
+		// quatro coisas que so em jogo aparecem: que nenhum inimigo comum nasce (e que a recusa e o
+		// TIPO), que o cidadao nao caca ninguem mas revida quem bate, que a raca vem do berco e nao
+		// da tabela do menu, e que o teto de lotacao DISPARA. Mais o mob-zumbi por 5400 tiques.
+		_povoDeTeste = Array.IndexOf(args, "--povoteste") >= 0;
+		if (_povoDeTeste) GD.Print("[server] BANCADA: povoamento de cidadaos no 1o login");
+
 		// `--iateste`: o CORPO da IA -- voar, aparar, carregar, transformar.
 		//
 		// Ela nao mede se o NPC "faz" cada gesto (isso um teste de mesa mediria); mede se ele
@@ -1099,6 +1643,65 @@ public partial class GameServer : Node
 		// que o plano nao troca a cada quadro.
 		_iaDeTeste = Array.IndexOf(args, "--iateste") >= 0;
 		if (_iaDeTeste) GD.Print("[server] BANCADA: corpo da IA (voo, guarda, carga, forma) no 1o login");
+
+		// `--kideponta`: o SISTEMA DE KI de ponta a ponta -- tabela de pontos por CONJUNTO, dano
+		// contra a conta do `objects.dm`, os tres tipos, a colisao nos dois sentidos, o teto de
+		// tiros e o save velho. Ela e a metade de SERVIDOR; a metade viva (conta nova pelo fio,
+		// cliente mentindo, relogin) e o `--diagki` do cliente, no mesmo processo.
+		//
+		// No 1o login e nao no boot: ela precisa que o robo ja esteja dentro, e deixa o boneco de
+		// pe na zona DELE. Ver `GameServer.KiDePontaTeste.cs`.
+		_pontaLigada = _pontaDeTeste = Array.IndexOf(args, "--kideponta") >= 0;
+		if (_pontaDeTeste) GD.Print("[server] BANCADA: o sistema de ki de ponta a ponta no 1o login");
+
+		// `--sagateste`: a CADEIA de eventos de chefe -- ordem, BP pinado, dias in-game, recompensa,
+		// save e o gancho (inerte) da destruicao de planeta.
+		//
+		// Ela dispara sagas de verdade, poe chefes no mundo e ESCREVE no `sagas.json` e no
+		// `reputacao.json`; tudo o que ela mexe e devolvido no fim. So com a flag, por isso.
+		_sagaDeTeste = Array.IndexOf(args, "--sagateste") >= 0;
+		if (_sagaDeTeste) GD.Print("[server] BANCADA: cadeia de sagas no 1o login");
+
+		// `--genteteste`: QUEM E GENTE PRA REGRA DE MUNDO. A acusacao do dono ("se algum NPC passa do
+		// minimo ele ATIVA A SAGA") virada em bancada, com o defeito INJETADO em cada familia --
+		// marco de BP, cadeia, jogador possuido, clone/boneco, ultimato, caca do chefe, DNA, niveis e
+		// o topo do servidor. Ver GameServer.GenteTeste.cs.
+		//
+		// Ela dispara sagas, poe chefes e cidadaos no mundo, entra na mente, possui o corpo do jogador
+		// e ergue um laboratorio; tudo o que ela mexe e devolvido no fim.
+		_genteDeTeste = Array.IndexOf(args, "--genteteste") >= 0;
+		if (_genteDeTeste) GD.Print("[server] BANCADA: quem e gente pra regra de mundo, no 1o login");
+
+		_planetaDeTeste = Array.IndexOf(args, "--planetateste") >= 0;
+		if (_planetaDeTeste) GD.Print("[server] BANCADA: destruicao de planeta no 1o login");
+
+		// `--provateste`: as SETE perguntas do dono sobre NPC e saga, cada uma com o defeito INJETADO.
+		//
+		// Ela nao repete o que a `--povoteste` e a `--sagateste` afirmam: ela prova que aquelas
+		// afirmacoes SABEM ficar vermelhas. Cada familia mede o codigo de producao com um criterio
+		// nomeado, injeta um defeito de verdade (dado torto, regra desligada, um segundo chamador que
+		// pula o portao, o save mutilado), exige que o MESMO criterio reprove, desfaz e exige que ele
+		// volte a passar. Ver `GameServer.ProvaTeste.cs`.
+		//
+		// Ela ESTRAGA o mundo de proposito -- inclusive o `sagas.json` -- e devolve tudo no fim. So com
+		// a flag, e de preferencia em conta e porta proprias.
+		_provaDeTeste = Array.IndexOf(args, "--provateste") >= 0;
+		if (_provaDeTeste) GD.Print("[server] BANCADA: as sete familias com defeito injetado no 1o login");
+
+		// `--conquistateste`: a CONQUISTA DE PLANETAS -- chave, invasao por ondas, contestacao,
+		// tributo, e o "manter custa" (que nao existe no DM e por isso precisa provar que dispara).
+		//
+		// Ela finca dominios de verdade, poe defensores no mundo, escreve no `conquista.json` e no
+		// `reputacao.json`, e DESTROI um planeta gerado pra ver o dominio cair junto. Tudo o que ela
+		// mexe e devolvido no fim. So com a flag, e de preferencia em conta e porta proprias.
+		_conquistaDeTeste = Array.IndexOf(args, "--conquistateste") >= 0;
+		if (_conquistaDeTeste) GD.Print("[server] BANCADA: conquista de planetas no 1o login");
+
+		// A DO EMBARALHO mede as DUAS metades do "sem plateia, sem mente": que a mente para num
+		// planeta sem ninguem (com o controle ao lado, que e o mesmo laco com o host na zona) e que
+		// os habitantes mudam de lugar quando o planeta esfria. Ver `GameServer.EmbaralhoTeste.cs`.
+		_embaralhoDeTeste = Array.IndexOf(args, "--embaralhoteste") >= 0;
+		if (_embaralhoDeTeste) GD.Print("[server] BANCADA: congelamento sem plateia + embaralho no 1o login");
 
 		// `--diagia`: por que a IA decidiu o que decidiu. Uma linha por TROCA de plano.
 		_diagIa = Array.IndexOf(args, "--diagia") >= 0;
@@ -1171,6 +1774,191 @@ public partial class GameServer : Node
 			// login (como a do sol e a da IA) obrigaria um cliente a existir pra testar uma regra que
 			// e do servidor sozinho -- e ninguem roda uma bancada que precisa de duas janelas.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--bercovivo") >= 0) RodarBancadaDoBercoVivo();
+
+			// `--obrateste`: A CHAVE DE ZONA DAS CONSTRUCOES -- o disco, e nao a memoria.
+			//
+			// No boot, e num momento MUITO especifico: depois do `CarregarTech`, porque ela fotografa
+			// o `_noChao` de verdade e o devolve no fim. Ela nao precisa de zona carregada nem de
+			// ninguem logado -- o que ela prova acontece inteiro entre a lista e o arquivo, e o
+			// arquivo dela e um temporario proprio (o `mundo.json` de verdade nunca e tocado).
+			// Ver `GameServer.ObraTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--obrateste") >= 0) RodarBancadaDasObras();
+
+			// `--projetilteste`: os ataques de ki. No boot, e pelo mesmo motivo da `--bercovivo`:
+			// ela precisa das zonas com colisao (a familia do cenario mede contra a parede da
+			// Terra) mas nao precisa de ninguem logado -- os corpos dela nascem sem `Peer`, entao
+			// nenhum byte sai no fio. Ver `GameServer.ProjeteisTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--projetilteste") >= 0) RodarBancadaDeProjeteis();
+
+			// `--arsenalteste`: AS CATORZE FOLHAS DO LOTE G5 (o arsenal de ki nomeado). No boot pelos
+			// mesmos motivos da de cima -- ela empresta a infraestrutura da `--projetilteste` (mesmo
+			// forjador, mesma zona da Terra, mesmo corredor livre), entao precisa exatamente do que
+			// aquela precisa e de nada mais. Ver `GameServer.ArsenalTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--arsenalteste") >= 0) RodarBancadaDoArsenal();
+
+			// `--punhoteste`: OS DEZESSEIS DO LOTE G7 (os punhos nomeados + a Bala Dispersa e o
+			// Spirit Gun). Mesma infraestrutura da `--arsenalteste`, pelos mesmos motivos. A familia
+			// 1 dela e a mais importante do arquivo: ela afirma que as NOVE tecnicas que o lote
+			// recusou continuam MUDAS -- e uma tecnica meio-portada nao aparece em lugar nenhum.
+			// Ver `GameServer.PunhoTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--punhoteste") >= 0) RodarBancadaDoPunho();
+
+			// `--tecnicateste`: a criacao de tecnicas de ki. No boot pelos mesmos dois motivos da de
+			// cima -- ela precisa de zonas com colisao (a familia 5 dispara de verdade e o tiro tem
+			// que ter chao) e do `AccountStore` (a familia 4 grava e le), mas nao precisa de ninguem
+			// logado. Ver `GameServer.CustomizadasTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--tecnicateste") >= 0) RodarBancadaDeTecnicas();
+
+			// `--embatekiteste`: a COLISAO DE KI. No boot pelos mesmos motivos das duas de cima -- ela
+			// precisa das zonas com colisao (os raios sao disparados no chao da Terra e o encontro
+			// racha esse chao) e nao precisa de ninguem logado. Ver `GameServer.EmbateDeKiTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--embatekiteste") >= 0) RodarBancadaDeEmbateDeKi();
+
+			// `--tiroiateste`: O TIRO DA IA -- do molde do `npcs.json` ate o projetil na zona.
+			//
+			// No boot pelos mesmos motivos das tres de cima (zonas com colisao, ninguem logado), e
+			// com um a mais que so ela tem: ela le o CATALOGO DE MOLDES, e ele so existe depois do
+			// `CarregarMoldes` -- que roda nesta mesma sequencia, algumas linhas acima. Rodada no
+			// primeiro login (como a `--iateste`), a resposta seria a mesma e exigiria um cliente.
+			// Ver `GameServer.TiroDaIaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--tiroiateste") >= 0) RodarBancadaDoTiroDaIa();
+
+			// `--mestreteste`: MESTRE E ALUNO. No boot pelos mesmos motivos das de cima -- ela forja
+			// corpos e precisa das zonas pre-feitas pra por os dois num planeta onde nao ha ninguem
+			// conectado, mas nao precisa de cliente nenhum: o discipulado inteiro e do servidor.
+			//
+			// E ela e a UNICA que mexe num arquivo do mundo (`mestres.txt`) -- por isso fotografa e
+			// devolve os vinculos de verdade no `finally`. Ver `GameServer.MestreTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--mestreteste") >= 0) RodarBancadaDoMestre();
+
+			// `--ensinoteste`: O ENSINO DE SKILL -- o OUTRO sistema de mestre e aluno
+			// (`teachable.dm`), que no DM nao toca no discipulado em linha nenhuma.
+			//
+			// No boot pelos mesmos motivos, e com um requisito proprio: ela le o CATALOGO DE SKILLS,
+			// que carregou algumas linhas acima -- sem ele nao ha o que ensinar, e a bancada diz
+			// isso em voz alta em vez de passar com zero checagens. Nao mexe em arquivo de mundo
+			// nenhum: o que o ensino muda mora no livro de cada personagem.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--ensinoteste") >= 0) RodarBancadaDoEnsino();
+
+			// `--menteteste`: A DIMENSAO MENTAL -- as tres regras do pedido do dono, cada uma no funil
+			// dela, mais o visitante e o chefe convocado.
+			//
+			// No boot como as duas de cima, e com um requisito proprio: ela faz NASCER um chefe pelo
+			// caminho de producao, entao precisa do `npcs.json` ja carregado (`CarregarMoldes`, la em
+			// cima) -- sem ele a secao do chefe diz em voz alta que nao tinha o que medir.
+			//
+			// O que ela NAO cobre e a porta (`EntrarNaMente`), que exige `Peer`: quem exercita aquilo
+			// e o robo, com `--socar --mente N`. Ver `GameServer.MenteTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--menteteste") >= 0) RodarBancadaDaMente();
+
+			// `--mestrevivo`: MESTRE E ALUNO **COM PERSONAGENS DE VERDADE** -- a IRMA da
+			// `--mestreteste`, na mesma divisao que a `--bercovivo` tem com a `--diagberco`.
+			//
+			// **A ULTIMA DAS BANCADAS DE BOOT**, e a ordem importa: ela cria contas no
+			// `AccountStore`, poe SETE corpos numa zona pre-feita, grava o `mestres.txt` e o
+			// RELE do disco. Rodando depois de todas as outras, nenhuma delas pega o mundo com
+			// os corpos e as contas dela dentro -- e ela mesma fotografa e devolve o vinculo de
+			// verdade, como a `--mestreteste` faz. Ver `GameServer.MestreVivoTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--mestrevivo") >= 0) RodarBancadaDoMestreVivo();
+
+			// `--salateste`: A PORTA DA SALA DO TEMPO. No boot pelos mesmos motivos das de cima, e
+			// com dois requisitos que so ela tem: ela le o CATALOGO DE CONSTRUCOES e as OBRAS DO
+			// MAPA (a porta e mobilia do z12, e a checagem que a fase inteira existe pra fazer
+			// passar e "ha uma porta de pe no Templo"), e os dois so existem depois do
+			// `CarregarMundo`/`CarregarObjetosDoMapa`, que rodam nesta mesma sequencia acima.
+			// Ver `GameServer.SalaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--salateste") >= 0) RodarBancadaDaSalaDoTempo();
+
+			// `--cargoportas`: AS PORTAS DE CARGO -- nomeacao, sucessao, duelo formal e a dadiva.
+			//
+			// No boot pelos mesmos motivos das de cima: ela forja corpos numa zona pre-feita e nao
+			// precisa de cliente nenhum (as tres portas sao do servidor inteiras). Precisa do
+			// CATALOGO DE SKILLS, que carregou nesta mesma sequencia -- sem ele nao ha dadiva pra
+			// conferir, e a bancada diz isso em voz alta em vez de passar com zero checagens.
+			//
+			// E ela mexe em TRES arquivos do mundo (`cargos.txt`, `herdeiros.txt`, `titulo.txt`),
+			// entao fotografa e devolve os tres no `finally` -- mesma precaucao da `--mestreteste`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--cargoportas") >= 0) RodarBancadaDasPortas();
+
+			// `--cargomissoes`: OS DEVERES DE CARGO -- vocacao, prazo em dias in-game, servico,
+			// renome e destituicao.
+			//
+			// IRMA DA `--cargoportas` e no mesmo lugar pelos mesmos motivos: corpos forjados, catalogo
+			// de skills ja carregado (a destituicao tira o kit, e a bancada afirma isso), e ela mexe no
+			// `cargos.txt` e no `missoes-de-cargo.json`, entao fotografa e devolve os dois no `finally`.
+			//
+			// O QUE SO ELA TEM: ela ADIANTA O RELOGIO DO MUNDO pela manivela do ceu (`_adiantoDoCeu`),
+			// que e o unico jeito de exercer um prazo de 72 minutos e uma destituicao que jogando
+			// levaria quase quatro horas. Ver `GameServer.MissoesTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--cargomissoes") >= 0) RodarBancadaDasMissoes();
+
+			// `--censoteste`: O RELATORIO DO CATALOGO + as dezenove folhas do lote G6.
+			//
+			// ELA E A UNICA QUE IMPRIME UM NUMERO ANTES DE AFIRMAR QUALQUER COISA: o relatorio de
+			// quantas skills tem efeito, quantas so dao verbo e quantas continuam mudas sai em toda
+			// rodada, porque foi isso que a especificacao pediu como prova principal -- e porque
+			// numero que so aparece quando alguem procura envelhece calado.
+			//
+			// DEPOIS DAS BANCADAS DE CARGO de proposito: ela le `DadivaDeCargo` pra dizer quantos
+			// verbos os kits entregam vivos, e essa conta so vale com o catalogo de skills e o de
+			// cargos ja carregados. Ver `GameServer.CensoTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--censoteste") >= 0) RodarBancadaDoCenso();
+
+			// `--escolhateste`: A ESCOLHA UNICA -- a skill cujos buffs moram num `proc/choose()`.
+			//
+			// LOGO DEPOIS DO CENSO de proposito: e o censo que chamava a `Great Robotic Alliance` de
+			// muda, e a familia 1 desta bancada afirma o contrario lendo o MESMO catalogo. As duas
+			// vizinhas, e a divida que uma media a outra fecha. Ver `GameServer.EscolhaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--escolhateste") >= 0) RodarBancadaDaEscolha();
+
+			// `--cidadeteste`: A CIDADE E O BANCO, com o servidor DE PE.
+			//
+			// MAIS NOVA QUE A COPIA DE 23:07, entao o lugar dela foi deduzido do proprio cabecalho da
+			// bancada: ela mede o que "so existe depois do boot" -- a colisao das maquinas aplicada em
+			// runtime por `AplicarColisaoDasObras` a partir do `_noChao`, o alarme do `CarregarTech` e o
+			// alcance de uso sobre a posicao do CORPO. Todas as tres ja carregaram nesta sequencia, e
+			// nenhuma delas precisa de cliente. AQUI e nao no login pelo mesmo argumento da
+			// `--obrateste`, que e a irma de disco dela. Ver `GameServer.CidadeTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--cidadeteste") >= 0) RodarBancadaDaCidade();
+
+			// `--vozteste`: O CORTE DA VOZ -- quem recebe e quem NAO recebe.
+			//
+			// MAIS NOVA QUE A COPIA, e no boot pelo motivo que o proprio cabecalho dela declara: ela
+			// pergunta ao funil `QuemOuveAVoz` com corpos FORJADOS (sem `Peer`), mapas de verdade e
+			// distancias de verdade -- entao precisa das zonas com `.vis` carregado (a secao 3 mede a
+			// parede que CEGA) e de mais nada. As irmas que precisam de gente de verdade sao a
+			// `--vozviva` e a `--vozdupla`, e essas duas entram no login. Ver `GameServer.VozTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--vozteste") >= 0) RodarBancadaDaVoz();
+
+			// `--catalogoteste`: O CATALOGO INTEIRO, E NAO UM LOTE.
+			//
+			// **DEPOIS DE TODAS AS OUTRAS DE TECNICA, e a ordem e a afirmacao**: ela varre os verbos
+			// COM CORPO -- todos, de todos os lotes -- e exige que cada um faca alguma coisa. Isso so
+			// significa alguma coisa depois que os lotes ja se registraram (`RegistrarTecnicasG1..G7`,
+			// mais acima nesta mesma sequencia) e depois que as bancadas de lote ja provaram cada um
+			// deles. As outras respondem "o meu lote ficou de pe"; esta responde "o conjunto nao
+			// desencontrou" -- que e o defeito que nenhuma bancada de lote consegue enxergar, porque
+			// ele mora ENTRE elas.
+			//
+			// E ela precisa de tudo o que as vizinhas precisam junto: catalogo de skills (varredura e
+			// marco), cargos carregados (o ciclo dos trinta escreve no `_tronos` e devolve no
+			// `finally`) e a zona pre-feita da bancada de projetil (os corpos e os tiros).
+			// Ver `GameServer.CatalogoTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--catalogoteste") >= 0) RodarBancadaDoCatalogo();
+
+			// `--wipeteste`: A LIMPEZA TOTAL DO SERVIDOR -- e ela e a **ULTIMA DE TODAS**, por um
+			// motivo que nenhuma outra tem: ela APAGA O MUNDO DE VERDADE e devolve depois.
+			//
+			// Depois de tudo porque a secao 2 dela varre a pasta de saves procurando arquivo sem
+			// dono, e as bancadas acima escrevem contas e arquivos temporarios nela (a `--mestrevivo`
+			// cria sete contas, a `--cargoportas` mexe em tres arquivos do mundo). Rodando antes, ela
+			// mediria uma pasta que ainda vai mudar; rodando aqui, ela ve o que o servidor vai
+			// realmente ter no ar.
+			//
+			// E ela precisa de TUDO carregado: sem `_store` nao ha pasta, sem os doze `Carregar*` nao
+			// ha o que zerar, e sem o `_cadeia` das sagas a afirmacao de "volta adormecida" nao teria
+			// com o que comparar. Ver `GameServer.LimpezaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--wipeteste") >= 0) RodarBancadaDaLimpeza();
 		}
 
 		Running = _net.Start(port);
@@ -1207,14 +1995,38 @@ public partial class GameServer : Node
 		}
 
 		_catalogo = ZoneCatalog.Parse(Godot.FileAccess.GetFileAsString(manifesto));
-		int ok = 0;
+		int ok = 0, comVista = 0, comAgua = 0;
 		foreach (ZoneEntry e in _catalogo.Todas)
 		{
 			if (!Godot.FileAccess.FileExists(e.Colisao)) continue;
 			e.Mapa = ZoneCollision.Load(Godot.FileAccess.GetFileAsBytes(e.Colisao));
-			if (e.Mapa != null) ok++;
+			if (e.Mapa == null) continue;
+			ok++;
+
+			// ZONA SEM BEIRADA (hoje so a Sala do Tempo): fora do bitset e chao livre, e nao o fim
+			// do mundo. Ver `ZoneCollision.SemBorda` -- e o cliente pergunta ao MESMO `SalaDoTempo`
+			// em `World.MapaCacheado`, porque duas respostas diferentes pra "aqui ha parede?" e o
+			// corpo tremendo na costura.
+			if (SalaDoTempo.SemBorda(e.Zona)) e.Mapa.SemBorda = true;
+
+			// A AGUA E UM PLANO SEPARADO PENDURADO NO MESMO MAPA (arquivo `.agua` proprio, e nao a
+			// cauda do `.col`, que ja tem dono). Sem esta linha a agua vira chao comum e se anda por
+			// cima do oceano -- o servidor e a autoridade da colisao. O cliente faz o mesmo em
+			// `World.MapaCacheado`, e as duas pontas TEM que ler o mesmo arquivo.
+			if (Godot.FileAccess.FileExists(e.CaminhoDaAgua)
+				&& e.Mapa.CarregarAgua(Godot.FileAccess.GetFileAsBytes(e.CaminhoDaAgua))) comAgua++;
+
+			// O `.vis` E OUTRO MAPA, e nao um campo deste. Ele diz o que CEGA, nao o que bloqueia --
+			// porta cega e nao bloqueia, beirada bloqueia e nao cega. Quem le e a VOZ
+			// (`MapaDaVista`), pra decidir "ha parede entre os dois?" com a MESMA resposta que a
+			// vista do cliente da. Sem esta linha nenhuma parede abafa voz nenhuma, calado.
+			if (Godot.FileAccess.FileExists(e.Visao))
+			{
+				e.Vista = ZoneCollision.Load(Godot.FileAccess.GetFileAsBytes(e.Visao));
+				if (e.Vista != null) comVista++;
+			}
 		}
-		GD.Print($"[server] zonas: {_catalogo.Todas.Count()} | com colisao: {ok}");
+		GD.Print($"[server] zonas: {_catalogo.Todas.Count()} | com colisao: {ok} | com vista: {comVista} | com agua: {comAgua}");
 
 		// AS PORTAS VEM JUNTO e nao por acaso: elas ESCREVEM no `Mapa` que acabou de ser lido
 		// (abrir uma porta e limpar a celula dela -- ver GameServer.Portas.cs). Carregar as duas
@@ -1261,8 +2073,23 @@ public partial class GameServer : Node
 		// os saves ficam FORA do res:// (que e so leitura numa build exportada)
 		string pasta = ProjectSettings.GlobalizePath("user://saves");
 		_store = new AccountStore(pasta);
+
+		// ============================ ANTES DE QUALQUER CARGA, E POR UM MOTIVO ============================
+		// A inscricao dos sistemas do mundo (ver `GameServer.Limpeza.cs`) e quem RESERVA os nomes de
+		// arquivo que nao sao conta -- `mundo.json`, `naves.json`, `cargos.txt` e companhia. Duas
+		// coisas dependem disso e as duas acontecem abaixo: o `_store.Quantas()` do fim deste metodo
+		// (que sem a reserva conta a frota e os dominios como se fossem contas) e o `Login`, que
+		// recusa a conta chamada "naves" antes que ela grave por cima da frota do servidor.
+		//
+		// Ela nao carrega nada e nao le disco: sao lambdas guardadas numa lista. Por isso pode -- e
+		// deve -- vir na frente de tudo.
+		RegistrarSistemasDoMundo();
+
 		CarregarSkills();
 		CarregarTech();
+		// DEPOIS do `CarregarTech`: a nave le o catalogo de construcoes pra saber nome, arte e
+		// densidade dela. Carregada antes, toda nave do disco voltaria sem sprite e sem parede.
+		CarregarNaves();
 		CarregarEstilos();
 		CarregarPlanetas();
 		CarregarNiveis();
@@ -1271,13 +2098,76 @@ public partial class GameServer : Node
 		// NPC nasceria sem livro e ninguem ligaria a causa a ordem desta lista.
 		CarregarMoldes();
 
+		// DEPOIS do `CarregarMoldes`: a cadeia de sagas vive no MESMO arquivo e cita os moldes pelo id
+		// -- a conferencia dela (`Sagas.Problemas`) precisa do catalogo montado. E a reputacao vem
+		// junto porque e a recompensa da cadeia; separadas, a primeira saga vencida num servidor novo
+		// pagaria heroismo num livro-caixa que ainda nao tinha sido lido do disco.
+		CarregarSagas();
+		CarregarReputacao();
+
+		// DEPOIS DAS SAGAS, e a ordem tem razao: e a cadeia que CONDENA um planeta, e o livro dos
+		// mortos e quem o mata. Carregado antes, um servidor que caiu no meio dos cinco minutos de
+		// explosao teria a saga voltando "consumada" e a destruicao ainda nao lida -- e o `Condenado`
+		// do `sagas.json` viraria um segundo estado sobre a mesma coisa. Ver `GameServer.Destruicao.cs`.
+		CarregarPlanetasMortos();
+
+		// DEPOIS DOS MORTOS, e pela mesma razao de cadeia: o livro dos dominios pergunta "este planeta
+		// ainda existe?" a `ZonaMorta` logo na validacao de boot (ver `CarregarConquista`). Carregado
+		// antes, um dominio num planeta explodido sobreviveria ao reinicio -- e so cairia no primeiro
+		// tique, depois de ja ter aparecido no log como se estivesse de pe.
+		//
+		// E DEPOIS DOS MOLDES tambem: `TemPovo` le o plano de povoamento, que e quem separa mundo
+		// habitado de mundo vazio -- a divisao que substituiu o `conq_premade` do original.
+		CarregarConquista();
+
 		// OS QUATRO LOTES SE ANUNCIAM. Cada um vive no proprio arquivo e registra as tecnicas dele
 		// -- portar o proximo lote nao mexe nesta lista, so acrescenta uma linha.
 		RegistrarTecnicasG1();
 		RegistrarTecnicasG2();
 		RegistrarTecnicasG3();
 		RegistrarTecnicasG4();
+
+		// O LOTE QUE ATIRA: Ki Wave (raio), Basic Blast (bola) e Guided Ball (teleguiada) -- um por
+		// tipo de projetil. Ver `GameServer.Projeteis.cs`.
+		RegistrarTecnicasDeProjetil();
+
+		// O ARSENAL NOMEADO: as catorze folhas que atiram e que estavam mudas (Masenko, Final Flash,
+		// Hellzone Grenade, Kienzan, Paralysis...). Depende do lote acima -- todas entram pelo
+		// `Disparar`/`Canalizar` dele. Ver `GameServer.Tecnicas.G5.cs`.
+		RegistrarTecnicasG5();
+
+		// O LOTE DOS CARGOS: os seis raios nomeados (Kamehameha, Galick Ho, Death Beam, Dodon Ray,
+		// Enkumei, Boom Wave), o Kikoho, os quatro buffs de Ki, o sopro inteiro, os dois punhos do
+		// lobo, a cura e a leitura de Ki. Onze dos dezenove sao verbos que um KIT DE CARGO ja
+		// entregava e que nao faziam nada. Ver `GameServer.Tecnicas.G6.cs`.
+		RegistrarTecnicasG6();
+
+		// O LOTE DOS PUNHOS NOMEADOS: os tres combos de boxe, os tres chutes, as quatro artes
+		// marciais, o Lariat, os dois do assassino e as duas bolas que faltavam (Bala Dispersa e
+		// Spirit Gun). Depende do lote G3 (o funil `GolpeG3` e a agenda de barragem) e do lote dos
+		// projeteis. Ver `GameServer.Tecnicas.G7.cs`.
+		RegistrarTecnicasG7();
+
+		// O `Planet_Destroy` -- a unica tecnica so-de-vilao do catalogo. Ver `GameServer.Destruicao.cs`.
+		RegistrarTecnicasDaDestruicao();
 		CarregarCargos();
+		// O DISCIPULADO tem o MESMO ciclo de vida dos cargos: arquivo de texto ao lado dos saves,
+		// lido UMA VEZ aqui e gravado na hora em cada mudanca. Ver `GameServer.Mestre.cs`.
+		CarregarMestres();
+
+		// AS PORTAS DOS CARGOS, mesmo ciclo de vida: a linha de sucessao do trono de Vegeta
+		// (`herdeiros.txt`) e o relogio do titulo em disputa (`titulo.txt` -- carencia, adiamentos,
+		// tarefa e falhas do Deus da Destruicao). Ver `GameServer.CargoPortas.cs`.
+		CarregarHerdeiros();
+		CarregarTitulo();
+
+		// OS DEVERES DOS CARGOS. Mesmo ciclo de vida, arquivo proprio (`missoes-de-cargo.json`), e
+		// com uma coisa que so ele precisa: o PERDAO DE BOOT. O prazo mora no relogio do MUNDO, que
+		// anda com o servidor fora do ar -- sem o perdao, uma manutencao de duas horas venceria toda
+		// tarefa em voo no primeiro tique e cobraria falha de quem nem estava jogando. Ver
+		// `GameServer.CargoMissoes.cs`.
+		CarregarMissoes();
+
 		Directory.CreateDirectory(pasta);
 		GD.Print($"[server] contas: {_store.Quantas()} em {pasta}");
 	}
@@ -1316,8 +2206,29 @@ public partial class GameServer : Node
 	// ---------------------------------------------------------------------
 	// recepcao
 	// ---------------------------------------------------------------------
+	/// <summary>
+	/// O ESPIAO DA ENTRADA: cada pacote que chega, cru, ANTES da primeira leitura. **RECONSTRUIDO**
+	/// com os campos do `ServerPlayer` (ver o bloco de reconstruidos la em cima).
+	///
+	/// Existe pra a bancada de teclas (`Client/RoboDeTecla.cs`), e o cabecalho de la diz por que ela
+	/// nao mede `Verbo.Acionar`: ler o codigo prova que HOJE o botao e a tecla chamam a mesma funcao,
+	/// e nao prova que os dois puseram os MESMOS BYTES no fio -- que e a unica coisa que o servidor
+	/// obedece. Uma segunda escrita do pacote, envelhecendo calada, e invisivel pra qualquer
+	/// checagem que compare intencao.
+	///
+	/// **ESTATICO E NULO EM PRODUCAO**, e por isso ele custa uma comparacao com nulo por pacote: o
+	/// gancho e da bancada, e a bancada e quem o desarma no `_ExitTree`. A copia e feita AQUI, antes
+	/// do primeiro `GetByte()`, porque o `NetPacketReader` e um cursor -- depois do despacho o
+	/// buffer ja andou, e "os bytes que chegaram" nao existem mais.
+	/// </summary>
+	public static Action<byte[]>? EspiaoDeEntrada;
+
 	private void Handle(NetPeer peer, NetPacketReader reader)
 	{
+		EspiaoDeEntrada?.Invoke(reader.RawData is { } cru
+			? cru[reader.UserDataOffset..(reader.UserDataOffset + reader.UserDataSize)]
+			: []);
+
 		var id = (Protocol.C2S)reader.GetByte();
 
 		// ============================ QUEM PERDEU AS REDEAS NAO MEXE O CORPO ============================
@@ -1401,7 +2312,9 @@ public partial class GameServer : Node
 			case Protocol.C2S.ClashTecla:
 			{
 				char c = (char)reader.GetByte();
-				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemTeclou)) TeclaDoEmbate(quemTeclou, c);
+				// UM CANAL, DOIS EMBATES: quem sabe em qual deles este jogador esta e o servidor, que
+				// e quem sorteou a letra. Ver `TeclaDeQualquerEmbate`.
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemTeclou)) TeclaDeQualquerEmbate(quemTeclou, c);
 				break;
 			}
 
@@ -1484,6 +2397,40 @@ public partial class GameServer : Node
 				Falar(a, canal, texto);
 				break;
 			}
+
+			// ============================ RECONSTRUIDO (mais novo que a copia de 23:07) ============================
+			// A VOZ, COLADA NO CHAT. Esta linha nao foi copiada de lugar nenhum: ela foi DEDUZIDA de tres
+			// coisas que sobreviveram intactas e que so casam de um jeito --
+			//   1. `RecebiVoz` (`GameServer.Voz.cs:237`) e o funil, e o cabecalho do parametro `calado`
+			//      manda ler *"o `case Protocol.C2S.Voz` no dispatch, colado no `case Protocol.C2S.Chat`"*
+			//      -- e dai tanto a POSICAO desta linha quanto o fato de o mute vir de FORA, pelo mesmo
+			//      `EstaCalado` que o texto usa logo acima. Sem `Avisar` aqui: o cabecalho de la explica
+			//      que um aviso por quadro recusado seriam 50 linhas de chat por segundo, e que quem
+			//      aperta a tecla ja e avisado uma vez pelo cliente;
+			//   2. `GameClient.MandarVoz` (`Client/GameClient.cs:308`) e o outro lado do fio, e ele grava
+			//      exatamente seq (ushort) + tam (byte) + `tam` bytes -- esta leitura e o inverso dele;
+			//   3. `_quadroDeVoz` (`GameServer.Voz.cs:94`) existe, se declara *"buffer de leitura reusado"*
+			//      e nao era lido por ninguem: e o destino deste `GetBytes`.
+			//
+			// A SEQUENCIA DO CLIENTE E LIDA E JOGADA FORA de proposito -- ela so precisa sair do reader
+			// pros bytes seguintes casarem. Quem numera o quadro e o SERVIDOR (`_seqDeVoz`, cujo cabecalho
+			// diz que o contador e dele e que um buraco na conta quer dizer perda de rede, e nao mentira
+			// do cliente).
+			//
+			// O DESCARTE DE TAMANHO MENTIROSO E COPIA DO ESPELHO do cliente (`S2C.Voz`, com o motivo
+			// escrito la): `GetBytes` estouraria e a excecao viraria uma linha de log por quadro.
+			// ====================================================================================================
+			case Protocol.C2S.Voz:
+			{
+				reader.GetUShort();
+				byte tamVoz = reader.GetByte();
+				if (tamVoz == 0 || tamVoz > Jandirus.Core.Social.VozLocal.MaxBytesDeQuadro
+					|| reader.AvailableBytes < tamVoz) break;
+				reader.GetBytes(_quadroDeVoz, tamVoz);
+				if (!_byPeer.TryGetValue(peer, out ServerPlayer? quemFala)) break;
+				RecebiVoz(quemFala, _quadroDeVoz, tamVoz, EstaCalado(quemFala));
+				break;
+			}
 			case Protocol.C2S.Ping:
 			{
 				var w = Protocol.Begin(Protocol.S2C.Pong);
@@ -1505,6 +2452,11 @@ public partial class GameServer : Node
 	private void Login(NetPeer peer, string conta, string senha)
 	{
 		if (_byPeer.ContainsKey(peer) || _logados.ContainsKey(peer)) return;
+
+		// LIMPEZA EM CURSO: ninguem entra. A janela e de milissegundos, mas quem entrasse nela
+		// gravaria uma conta nova DEPOIS de o disco ser varrido -- e o servidor "novo" nasceria com
+		// um sobrevivente. Ver `GameServer.Limpeza.cs`.
+		if (_limpezaEmCurso) { Recusar(peer, "o servidor esta sendo limpo -- tente de novo em instantes"); return; }
 
 		conta = conta.Trim();
 		if (conta.Length < 2) { Recusar(peer, "escolha um nome de conta com pelo menos 2 letras"); return; }
@@ -1639,6 +2591,12 @@ public partial class GameServer : Node
 		acc.Slots[slot] = null;
 		_store?.Gravar(acc);
 
+		// O DISCIPULADO MORRE COM O PERSONAGEM. E o `mst_purge_sig` do DM (`MasterStudent.dm:123`),
+		// e aqui ele e obrigatorio por um motivo que la nao existia: a assinatura e
+		// `hash(conta, slot)`, entao o proximo personagem criado neste slot **nasce com a mesma
+		// assinatura** -- e herdaria mestre e alunos de um morto. Ver `GameServer.Mestre.cs`.
+		PurgarAssinatura(ServerPlayer.AssinaturaDe(acc.Conta, slot));
+
 		// O LOG GUARDA O QUE FOI PERDIDO. Nao da pra desfazer, mas da pra saber o que havia --
 		// e um "sumiu meu personagem" sem nenhuma linha no log e impossivel de responder.
 		GD.Print($"[server] {acc.Conta} APAGOU o slot {slot + 1}: '{c.Nome}' "
@@ -1723,6 +2681,12 @@ public partial class GameServer : Node
 
 		acc.Slots[slot] = novo;
 		_store?.Gravar(acc);
+
+		// E DE NOVO NA CRIACAO, e nao e redundancia: um save de antes desta limpeza (ou um slot
+		// esvaziado por fora do jogo) deixaria vinculo pendurado numa assinatura que este
+		// personagem novo acaba de reivindicar. O DM chama o `mst_purge_sig` exatamente aqui,
+		// pela mesma razao (`RankAssign.dm:28`).
+		PurgarAssinatura(ServerPlayer.AssinaturaDe(acc.Conta, slot));
 		GD.Print($"[server] {acc.Conta} criou '{nome}' no slot {slot + 1} | {novo.Raca}/{lutador.Class} "
 			+ $"| berco {berco.Planeta} ({berco.Motivo}{(berco.Despejado ? ", despejado" : "")})");
 
@@ -1797,6 +2761,11 @@ public partial class GameServer : Node
 			&& !Espaco.EhEspaco(pl.Zone))
 			PousarNoBercoSemPacote(pl);
 
+		// ...E QUEM DESLOGOU DENTRO DE UMA NAVE QUE FOI DESTRUIDA no meio-tempo tambem. A guarda
+		// acima so olha `KindPremade`, entao o interior de nave (que e `KindInterior`) passava
+		// batido -- ver `ResgatarDeInteriorMorto`, que e onde o caso esta escrito por inteiro.
+		ResgatarDeInteriorMorto(pl);
+
 		// POSICAO ZERADA (save antigo, ou canto do mapa) cai no ponto de chegada da zona em que o
 		// corpo esta -- e nao no berco: quem deslogou em Namek tem que acordar em Namek.
 		if (pl.Pos.X == 0 && pl.Pos.Y == 0) pl.Pos = PontoDeNascimento(pl.Zone);
@@ -1812,6 +2781,7 @@ public partial class GameServer : Node
 		pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed);
 		PrepararCombate(pl, c);
 		PrepararSkills(pl, c);
+		PrepararCustomizadas(pl, c);
 		pl.Niveis = new Jandirus.Core.Skills.NiveisDeSkill();
 		pl.Niveis.DoSave(c?.Niveis);
 
@@ -1852,12 +2822,20 @@ public partial class GameServer : Node
 		// BANCADA DO EMBATE: o host fica mais forte, pra a vantagem de poder ter o que multiplicar.
 		if (_clashSempre && EhHost(peer)) { pl.Ficha.BP *= BpDoHostNoTeste; pl.Ficha.Statify(); }
 
+		// BANCADA DO DESVIO: o mesmo, com o multiplicador da linha de comando. Ver `_bpDoHostNaEsquiva`.
+		if (_bpDoHostNaEsquiva > 0 && EhHost(peer)) { pl.Ficha.BP *= _bpDoHostNaEsquiva; pl.Ficha.Statify(); }
+
 		// BANCADA DA VOLTA: nasce colado na beirada oeste, na altura do meio.
 		if (_nascerNaBeirada && MapaDaZonaOuCatalogo(pl.Zone) is { } m)
 			pl.Pos = new Vec2(6 * ZoneCollision.TileSize, m.Height / 2 * ZoneCollision.TileSize);
 
 		// BANCADA DO ESTRAGO: nasce encostado no cenario mais proximo. Ver `EncostarNaParede`.
 		if (_nascerNaParede) EncostarNaParede(pl);
+
+		// BANCADA DA AGUA: nasce na margem / dentro / por cima de um lago estreito, e alguem nasce na
+		// outra margem. Ver `PorNaBeiraDoLago` -- ela nao inventa colisao nenhuma, so escolhe ONDE a
+		// pergunta vai ser feita.
+		if (_aguaDeTeste) PorNaBeiraDoLago(pl);
 
 		// BANCADA: nasce direto num mundo sorteado (ver `--geradoteste`).
 		if (_nascerEmGerado)
@@ -1888,59 +2866,12 @@ public partial class GameServer : Node
 			else GD.PushWarning("[server] BANCADA: nao achei planeta gerado em 400 chunks");
 		}
 
-		// A FORMA NAO ATRAVESSA O LOGOUT: quem sai SSJ3 volta na base. O que persiste e a
-		// MAESTRIA (semanas de jogo) e quais formas ja despertaram (a cinematica so roda uma vez).
-		pl.Forma = new Jandirus.Core.Forms.EstadoDeForma();
-		// O DESCARTE DAS FORMAS DE DISCIPLINA VOLTA NOMEADO, e e avisado la embaixo (depois do
-		// `JoinAccepted`, quando o cliente ja tem chat). Ver `Maestrias.DoSave` pro porque de
-		// descartar em vez de migrar -- e pro porque de nao dar pra fazer isso calado.
-		List<string> maestriasDescartadas = pl.Forma.Maestria.DoSave(c?.Maestrias);
-		// OS LIMIARES DESTE PERSONAGEM vem do disco -- sorteados no nascimento, nunca de novo.
-		pl.Forma.Limiares = c?.Limiares;
-		// ============================ O NUMERO DA FORMA PASSA PELA MIGRACAO ============================
-		// O disco guarda forma por `FormaDef.IdRede`, e um numero que saiu do catalogo nao casa com
-		// entrada nenhuma -- vira lixo silencioso no `HashSet`. `Catalogo.RedeDoSave` traduz os que
-		// mudaram de dono (hoje: o `306`, do Mistico Ascendido que virou um ponto da curva do `305`)
-		// e devolve igual todo o resto. Ver o cabecalho de `RedeDoSave` pro porque de nao dar pra
-		// simplesmente deixar o numero velho passar.
-		//
-		// E A TRADUCAO E UMA CHAMADA SO, PRAS DUAS LISTAS (`Catalogo.RedesDoSave`): a expressao estava
-		// escrita duas vezes aqui, e duas copias da mesma migracao e onde a proxima fusao de formas
-		// passa a valer so pra metade -- ver o cabecalho da funcao.
-		if (c?.FormasDespertadas is { Count: > 0 })
-			pl.Forma.Liberadas = Jandirus.Core.Forms.Catalogo.RedesDoSave(c.FormasDespertadas);
-
-		// ============================ A MIGRACAO DOS DOIS BITS ============================
-		// `FormasEstreadas` nasceu depois de `FormasDespertadas` (ver `EstadoDeForma`). Num save
-		// gravado antes dela o campo NAO EXISTE no JSON e chega **null** -- e null aqui quer dizer
-		// "este personagem e de antes da separacao, tudo que ele tem liberado ele ja viu".
-		//
-		// O teste e `is null` e nao `Count == 0` de proposito: lista VAZIA e uma resposta legitima
-		// de um save novo (personagem que nunca se transformou), e trata-la como "save antigo"
-		// copiaria as liberadas por cima -- exatamente no unico caso em que isso apaga uma estreia
-		// devida, que e o do SSJ4 liberado pelo Oozaru Dourado e ainda nao assistido.
-		// ==============================================================================
-		pl.Forma.EstreiaVista = c?.FormasEstreadas is { } vistas
-			? Jandirus.Core.Forms.Catalogo.RedesDoSave(vistas)
-			: [.. pl.Forma.Liberadas];
-
-		// A DISCIPLINA DIVINA. O toggle NAO volta ligado: uma passiva que drena e reacende sozinha
-		// no login gastaria a precisao de quem so entrou pra conversar.
-		if (c is { Disciplina: 1 })
-		{
-			pl.UltraInstinct.Aprendida = true;
-			pl.UltraInstinct.Real = c.DiscReal;
-			pl.UltraInstinct.Atual = Math.Min(c.DiscAtual, c.DiscReal);
-			pl.Disciplina = Jandirus.Core.Forms.TipoDeDisciplina.UltraInstinct;
-		}
-		else if (c is { Disciplina: 2 })
-		{
-			pl.PoderDaDestruicao.Aprendida = true;
-			pl.PoderDaDestruicao.Real = c.DiscReal;
-			pl.PoderDaDestruicao.Atual = Math.Min(c.DiscAtual, c.DiscReal);
-			pl.Disciplina = Jandirus.Core.Forms.TipoDeDisciplina.PoderDaDestruicao;
-		}
-		AplicarForma(pl);
+		// A FORMA, O DISCIPULADO E A DISCIPLINA VOLTAM DO DISCO -- ver
+		// <see cref="RestaurarFormaEDisciplina"/>. O bloco virou metodo porque a bancada
+		// `--mestrevivo` precisa RELOGAR de verdade, e um segundo caminho de "save -> corpo" seria a
+		// duplicata que a PARTE 3 da spec chama de "duas casas pra uma formula": a bancada mediria a
+		// copia dela e o jogo continuaria com a sua.
+		List<string> maestriasDescartadas = RestaurarFormaEDisciplina(pl, c);
 
 		_logados.Remove(peer);
 		_contas[peer] = acc;
@@ -1985,21 +2916,90 @@ public partial class GameServer : Node
 		// A BANCADA DE FORMAS roda uma vez, no primeiro que entra.
 		if (_formasDeTeste) { _formasDeTeste = false; RodarBancadaDeFormas(pl); }
 
+		// A DO FROST tambem, e pelo mesmo motivo: metade do que ela mede e o LOGIN (a forma de
+		// repouso escrita pelo `Catalogo.IdDoPiso`) e a outra metade e o tique (o motor do Mutante).
+		// Nenhuma das duas existe sem um corpo dentro do mundo.
+		if (_frostDeTeste) { _frostDeTeste = false; RodarBancadaDoFrost(pl); }
+
 		// A DE NPC tambem, e pelo mesmo motivo de estar AQUI e nao no boot: ela poe corpos numa
 		// zona e confere que eles aparecem na lista dela -- e sem ninguem no mundo, "aparecer" nao
 		// tem como ser medido. Ver `RodarBancadaDeNpc`.
 		if (_npcDeTeste) { _npcDeTeste = false; RodarBancadaDeNpc(pl); }
+
+		// A DO POVOAMENTO tambem, e ela precisa MAIS ainda de estar aqui: metade do que ela mede e
+		// sobre um alvo com `Peer` -- e o cidadao so descongela quando ha gente de verdade na zona
+		// (o `planet_has_players`). Rodada no boot, ela mediria o anti-lag e chamaria isso de
+		// pacifismo.
+		if (_povoDeTeste) { _povoDeTeste = false; RodarBancadaDePovoamento(pl); }
 
 		// A DA IA depois da de NPC, e a ordem importa: ela usa o molde `guardiao_saiyajin` pra
 		// provar que o comando da IA respeita o "tem a forma e nao a usa", e os moldes precisam ter
 		// carregado (o `CarregarMoldes` grita no boot se algum for contraditorio).
 		if (_iaDeTeste) { _iaDeTeste = false; RodarBancadaDeIa(pl); }
 
+		// A DE PONTA A PONTA depois da de IA, e a ordem importa pelo mesmo motivo: ela usa os moldes
+		// (a familia da IA forja duelistas de bancada) e precisa de alguem com `Peer` -- o boneco que
+		// ela deixa de pe nasce na zona de quem acabou de entrar, e e o alvo da metade viva.
+		if (_pontaDeTeste) { _pontaDeTeste = false; RodarBancadaDePontaAPonta(pl); }
+		// E TODA ENTRADA DEPOIS DESSA re-arma o corpo -- a metade viva RELOGA de proposito, e quem
+		// volta encontra o Ki gasto nas rajadas de antes. Ver `_pontaLigada`.
+		else if (_pontaLigada) ArmarAMetadeViva(pl);
+
+		// A DA CADEIA DE SAGAS tambem no primeiro login, e ela precisa MESMO de alguem com `Peer`:
+		// metade do que ela mede depende disso -- o marco de BP so olha jogador de verdade
+		// (`check_triggers` exige `M.client`), a media do servidor que o pino usa so conta quem tem
+		// dono, o ultimato ESPERA se nao ha ninguem online, e a recompensa e paga a uma conta.
+		if (_sagaDeTeste) { _sagaDeTeste = false; RodarBancadaDeSagas(pl); }
+
+		// A DE "QUEM E GENTE" pelo mesmo motivo, e ela precisa MESMO de um `Peer` de verdade: metade
+		// das familias e um CONTROLE (o jogador no marco, o jogador batendo no chefe, o jogador que
+		// pousa e vira presa), e a outra metade EMPRESTA esse `Peer` a corpos sem dono pra ver o laco
+		// de producao decidir com o defeito injetado.
+		if (_genteDeTeste) { _genteDeTeste = false; RodarBancadaDeQuemEGente(pl); }
+
+		// A DA DESTRUICAO DE PLANETA depois da das sagas, e a ordem tem razao: a bancada das sagas
+		// leva um elo ate o ultimato e AGORA isso destroi um planeta de verdade. Rodando antes, a
+		// bancada da destruicao mexeria num registro que a das sagas ainda vai escrever -- e as
+		// duas passariam ou cairiam por motivo alheio.
+		//
+		// Ela tambem precisa de alguem com `Peer`: metade do que mede depende disso -- o "servidor
+		// vazio adia" so tem como ser medido tirando o `Peer` de alguem que o tinha, e a evacuacao
+		// e sobre um corpo que recebe pacote.
+		if (_planetaDeTeste) { _planetaDeTeste = false; RodarBancadaDePlaneta(pl); }
+
+		// A DA CONQUISTA DEPOIS DA DESTRUICAO, e a ordem tem razao: ela pergunta "o planeta ainda
+		// existe?" ao registro dos mortos e MATA um mundo gerado de proposito pra ver o dominio cair
+		// junto. Rodando antes, ela mexeria num livro que a bancada da destruicao ainda vai reescrever.
+		//
+		// E ela precisa MESMO de alguem com `Peer`: o invasor tem que ter assinatura (dominio e do
+		// PERSONAGEM), a invasao fracassa se o invasor "desapareceu" (`Peer == null`), o defensor so
+		// engaja quem esta no mundo e o tributo cai num bolso que persiste.
+		if (_conquistaDeTeste) { _conquistaDeTeste = false; RodarBancadaDaConquista(pl); }
+
+		// A DA PROVA POR ULTIMO ENTRE AS DE NPC, e pela soma dos motivos das outras: ela povoa o mundo
+		// inteiro (precisa de alguem com `Peer` na zona, senao os cidadaos congelam pelo anti-lag),
+		// dispara sagas (o marco de BP so olha jogador de verdade) e paga reputacao (que e de uma
+		// conta). Rodada no boot, ela mediria um servidor vazio e chamaria isso de resultado.
+		if (_provaDeTeste) { _provaDeTeste = false; RodarBancadaDaProva(pl); }
+
 		// A DO SOL tambem entra aqui e nao no boot, e por uma razao propria: ela forja corpos NO
 		// ESPACO e roda o `TickDoEmpurrao`, que varre `_players` -- sem ninguem no mundo o laco de
 		// arremesso nao tem sobre quem correr, e "o corpo andou 576 px" mediria a lista vazia.
 		// Ver `GameServer.SolTeste.cs`.
 		if (_solDeTeste) { _solDeTeste = false; RodarBancadaDoSol(); }
+
+		// A DO EMBARALHO depois das outras: ela precisa dos moldes carregados (nasce vilarejo) e
+		// mede TEMPO -- rodar no meio de outra bancada mediria o custo dos corpos que a outra forjou.
+		if (_embaralhoDeTeste) { _embaralhoDeTeste = false; RodarBancadaDoEmbaralho(pl); }
+
+		// A DA NAVE PRECISA DE UM CORPO DE VERDADE, e por dois motivos que nenhum corpo forjado
+		// atende: ela passa pelo `ComandoDeTech` (que cobra zeni de uma FICHA e enche uma MOCHILA) e
+		// pelo `MoveToZone` (que so mexe em quem esta no `_players`). Ver GameServer.NaveTeste.cs.
+		if (_naveDeTeste) { _naveDeTeste = false; RodarBancadaDaNave(pl); }
+
+		// A DO EMBARQUE nao roda nada aqui: ela so ENTREGA o que o robo do cliente precisa pra
+		// comecar (tecnologia e zeni). O percurso e do outro lado -- ver GameServer.EmbarqueTeste.cs.
+		if (_embarqueDeTeste) PrepararBancadaDeEmbarque(pl);
 
 		// SO AGORA da pra mandar as construcoes: `MandarObras` varre `_players` procurando quem
 		// esta na zona, e quem acabou de entrar so esta la depois desta linha.
@@ -2009,8 +3009,23 @@ public partial class GameServer : Node
 		MandarCatalogoDeObras(pl);
 		AplicarEstilo(pl);   // o estilo veio do save; os multiplicadores nao
 		MandarEstilos(pl);
+		// AS TECNICAS INVENTADAS entram junto dos estilos: as duas sao patrimonio que vira BOTAO, e
+		// um botao que so aparece depois que o jogador abre a tela certa e um botao que ele nao sabe
+		// que tem. Ver `GameServer.Customizadas.cs`.
+		MandarCustomizadas(pl);
+		// E OS CHEFES JA VISTOS, pelo mesmo argumento: cada um deles e um botao ("enfrentar na
+		// mente"), e um botao que so aparece depois de o jogador reencontrar o chefe no mundo seria
+		// um botao que ele nao sabe que tem. Ver `GameServer.Mente.cs`.
+		MandarChefesDaMente(pl);
 		AplicarGravidade(pl);
 		_byPeer[peer] = pl;
+
+		// O PLANETA ESFRIOU ENQUANTO ELE ESTAVA FORA? Uma das duas portas de entrada no mundo (a
+		// outra e o `MoveToZone`), e ela tem que ser ANTES do `JoinAccepted`/do primeiro snapshot:
+		// embaralhar depois seria o cliente ver a cidade inteira dar um pulo. Ver
+		// `GameServer.Embaralho.cs`.
+		EmbaralharSeEsfriou(pl.Zone);
+
 		ZoneList(pl.Zone.Hash).Add(pl);
 		Persistir(pl);
 
@@ -2041,6 +3056,11 @@ public partial class GameServer : Node
 		ClimaDeTeste(pl);   // a bancada `--climateste`, se estiver ligada
 		MandarClima(pl);    // e o temporal que ja estava em curso nesta zona
 
+		// OS PLANETAS MORTOS NO LOGIN, e nao so quando algum morre: a carta estelar do cliente e
+		// desenhada com o que chegou, e quem entra num servidor onde Vegeta ja explodiu ha semanas
+		// nunca receberia o pacote de mudanca. Ver `S2C.Mortos`.
+		MandarMortos(pl);
+
 		// A MOCHILA VAI FORCADA no login: a assinatura nasce vazia e uma mochila TAMBEM vazia
 		// casaria com ela, entao o pacote nao sairia -- e a tela de inventario ficaria mostrando o
 		// do personagem anterior desta sessao de cliente.
@@ -2053,6 +3073,16 @@ public partial class GameServer : Node
 		// People e desenhada com o que chegou, e sem isto ela abriria vazia ate a primeira mudanca
 		// -- que num personagem antigo e cheio de gente pode nunca vir.
 		MandarConhecidos(pl);
+
+		// O QUE ACONTECEU COM SEUS DOMINIOS ENQUANTO VOCE ESTAVA FORA. E o `conq_login_check` do
+		// original (PlanetConquest.dm:208), e ele existe porque quase tudo o que acontece com um
+		// dominio -- invasao, perda, revolta do povo -- acontece com o dono offline.
+		EntregarRecadosDeConquista(pl);
+
+		// QUEM VOLTA JA DENTRO DA SALA DO TEMPO REOCUPA A VAGA -- o `htc_login_check()` do DM.
+		// Sem isto, relogar seria o jeito de liberar a vaga sem sair pela porta, e a lotacao de
+		// duas pessoas viraria uma sugestao. Ver `GameServer.SalaDoTempo.cs`.
+		SalaDoTempoNoLogin(pl);
 
 		// ============================ O QUE O SAVE PERDEU, DITO EM VOZ ALTA ============================
 		// As quatro formas divinas deixaram de ter maestria propria (ver `Maestrias.Por`). Quem ja
@@ -2069,6 +3099,23 @@ public partial class GameServer : Node
 		GD.Print($"[server] {pl.Name} entrou (id {pl.Id}) em {pl.Zone} | {pl.Race}/{pl.Class} " +
 				 $"| BP {pl.Ficha.BP:0.0} (expresso {pl.Ficha.expressedBP:0}) " +
 				 $"| aura {pl.Visual.CorAura}");
+
+		// ============================ AS BANCADAS DE DOIS PROCESSOS ============================
+		// AS TRES SAO AS ULTIMAS LINHAS DO `Entrar` de proposito, e o motivo e o mesmo pras tres: o
+		// corpo que acabou de chegar so esta na `ZoneList` (e portanto so e visivel a quem ja estava)
+		// depois de tudo o que veio acima. Cada uma conta quantos clientes de VERDADE ja entraram e
+		// so comeca quando a conta fecha -- entao chamar em todo login e o que faz a ultima entrada
+		// disparar a cena.
+		//
+		// A BANCADA DO CORPO LARGADO E A UNICA QUE ESPERA O **SEGUNDO** LOGIN.
+		// Ver `GameServer.MenteVivaTeste.cs`.
+		MenteVivaNoLogin();
+
+		// AS DUAS DA VOZ sao mais novas que a copia de 23:07; o gancho delas foi deduzido do cabecalho
+		// de cada uma, que manda chamar "no fim do `Entrar`, como a `--menteviva` -- e pelo mesmo
+		// motivo". A viva espera `--vozvivagente` clientes (padrao 4); a dupla espera 2.
+		VozVivaNoLogin();
+		VozDuplaNoLogin();
 	}
 
 	/// <summary>
@@ -2126,6 +3173,13 @@ public partial class GameServer : Node
 		// Sao dois caminhos de entrada (login e troca de zona) e os dois ja passam por esta linha; um
 		// terceiro que nasca amanha herda a regra de graca. Ver `SincronizarFormas`.
 		SincronizarFormas(novo);
+
+		// E A AUREOLA, PELO MESMO MOTIVO E NO MESMO LUGAR. Ela nao cabe no `PeerLook` acima (que
+		// descreve a ficha de APARENCIA -- cabelo, roupa, pele -- e nao o estado do corpo) nem no
+		// snapshot (os dois bytes de flags estao cheios). Sem esta linha, quem entra no Outro Mundo
+		// veria os mortos de la sem aureola nenhuma -- e o Outro Mundo e onde todo mundo tem uma.
+		// Ver `GameServer.Alem.cs`.
+		TrocarAureolas(novo);
 	}
 
 	private static void Recusar(NetPeer peer, string motivo)
@@ -2136,10 +3190,32 @@ public partial class GameServer : Node
 	}
 
 	/// <summary>Grava o personagem. Chamado ao entrar, de tempos em tempos e ao sair.</summary>
-	private void Persistir(ServerPlayer pl)
+	/// <summary>
+	/// GRAVA O PROGRESSO DESTE CORPO. **RECONSTRUIDO** -- os dois acrescimos abaixo se perderam com o
+	/// resto do arquivo, e nenhum dos dois e invencao: cada um tem um consumidor que diz o contrato.
+	///
+	/// ============================ 1. A LIMPEZA FECHA A PORTA DE GRAVAR ============================
+	/// `GameServer.Limpeza.cs:47` diz literalmente: *"enquanto ele esta ligado, `Persistir` nao grava
+	/// linha nenhuma e `Login` recusa quem chega. Sem ele, o `Drop(peer)` -- que chama `Persistir`
+	/// ANTES de soltar -- recria cada conta na saida, e a limpeza se desfaz sozinha no exato gesto de
+	/// deslogar todo mundo."* A bancada `--wipeteste` mede as duas metades (grava com o portao
+	/// aberto, NAO grava com ele fechado), e sem esta linha a segunda metade nao tem como passar.
+	/// ======================================================================================
+	///
+	/// ============================ 2. A CONTA PODE VIR DE FORA ============================
+	/// O caminho normal acha a conta pelo `Peer`. Quem esta gravando um corpo que ja foi solto do
+	/// `_contas` -- e a sonda da propria bancada de limpeza -- nao tem esse caminho, e passa a conta
+	/// na mao. O padrao nulo mantem todos os chamadores de producao como estavam.
+	/// ================================================================================
+	/// </summary>
+	private void Persistir(ServerPlayer pl, AccountSave? conta = null)
 	{
 		if (_store == null || pl.Slot < 0) return;
-		if (pl.Peer == null || !_contas.TryGetValue(pl.Peer, out AccountSave? acc)) return;
+		if (_limpezaEmCurso) return;
+
+		AccountSave? acc = conta;
+		if (acc == null && (pl.Peer == null || !_contas.TryGetValue(pl.Peer, out acc))) return;
+
 		pl.Ficha.Class = pl.Class;
 		acc.Slots[pl.Slot] = AccountStore.DeJogador(pl, NowMs());
 		acc.VistoEm = NowMs();
@@ -2381,10 +3457,32 @@ public partial class GameServer : Node
 	{
 		_logados.Remove(peer);   // caiu na tela de selecao: nao ha nada a salvar
 		if (!_byPeer.Remove(peer, out ServerPlayer? pl)) { _contas.Remove(peer); return; }
+
+		// ============================ QUEM DESLOGA FORA DO CORPO VOLTA PRO CORPO PRIMEIRO ============================
+		// ANTES do `Persistir`, e a ordem e a regra inteira. O save grava a ZONA em que o personagem
+		// esta (`CharacterStore`), e quem cai enquanto medita esta numa zona `Interior(Interdimension,
+		// id)` -- um bolso de uma pessoa so, sem clone, sem porta e sem ninguem. Ao relogar ele
+		// acordaria dentro dele, e a unica saida (o verb "Sair da mente") nao existiria mais, porque o
+		// `CloneId` morreu com a sessao. O mesmo vale pro leme: o save gravaria o VAZIO DO ESPACO.
+		//
+		// E o `Logout()` do DM, que restaura *"antes do save"* (`MindMeditate.dm:465-468`) -- so que
+		// aqui uma linha so cobre a mente E a nave, porque quem responde "de onde eu volto" e o
+		// mecanismo unico. Sem ela sobraria tambem o boneco: um corpo de pe pra sempre, com a ficha de
+		// alguem que nao esta mais no servidor.
+		// =====================================================================================================
+		if (pl.BonecoLargado != null) VoltarDeOndeEstiver(pl, "");
+
 		Persistir(pl);
 		// SOLTA DO EMBATE ANTES de sumir da lista: o `Terminar` precisa do corpo pra devolver a
 		// visibilidade e o controle ao OUTRO, que continua jogando.
 		SoltarDoEmbate(pl.Id);
+
+		// E DA COLISAO DE KI, pelo mesmo motivo -- so que aqui ha mais em jogo: quem sai no meio de
+		// uma disputa ENTREGA o encontro (o outro vence por desistencia, como quem solta o raio), e
+		// e o `Resolver` que solta a cabeca vencedora e fecha o canal do que saiu. Sem esta linha as
+		// duas cabecas ficariam `EmEmbate` pra sempre -- congeladas no ar, sem quem as tiqueasse.
+		SoltarDoEmbateDeKi(pl.Id);
+
 		_contas.Remove(peer);   // ANTES de soltar: sair do jogo nao pode custar o progresso
 		_players.Remove(pl.Id);
 		ZoneList(pl.Zone.Hash).Remove(pl);
@@ -2393,8 +3491,39 @@ public partial class GameServer : Node
 		// isto, quem entrasse depois herdaria a carencia de passagem e o relogio de estomago do
 		// anterior -- e o dicionario cresceria a sessao inteira.
 		EsquecerPassagem(pl.Id);
+
+		// A SESSAO DA SALA ESQUECE SO O RUIDO (janela, aviso, anti-spam da recusa) -- os dias
+		// gastos e a prisao vao pro disco no `Persistir` la em cima e continuam valendo. E a
+		// janela de saida ser esquecida aqui e o que devolve os 2 minutos inteiros pra quem cair no
+		// meio dela: ver `GameServer.SalaSessao.cs`.
+		EsquecerSessaoDaSala(pl.Id);
+
 		_relogioDoEstomago.Remove(pl.Id);
 		_fomeAcumulada.Remove(pl.Id);
+		// ...e o codigo que ele tinha digitado pra destrancar uma nave. Pelo mesmo motivo escrito
+		// acima, e com um agravante: id se reusa, e um codigo herdado abriria a nave de outra pessoa.
+		_codigoNaMao.Remove(pl.Id);
+
+		// O RAIO NA MAO MORRE COM QUEM SAIU. Sem isto o canal continuaria no dicionario cobrando Ki
+		// de uma ficha que ninguem mais le, e -- pior -- `EnraizadoPorKi` responderia SIM pro id
+		// reusado pelo proximo a entrar, que nasceria sem conseguir andar. Ver `FecharCanal`.
+		SoltarDoRaio(pl.Id);
+		EsquecerParalisia(pl.Id);
+		EsquecerEsmagamento(pl.Id);   // o relogio do aviso, pelo mesmo motivo: id se reusa
+		EsquecerG6(pl.Id);            // recarga do sopro, silaba do Kikoho, cura e rugido em carga
+		EsquecerG7(pl.Id);            // recarga da Bala Dispersa
+		LimparProjeteisDeUmDono(pl.Id, pl.Zone.Hash);
+
+		// ============================ RECONSTRUIDO (mais novo que a copia de 23:07) ============================
+		// A VOZ nasceu depois do retrato que serviu de fonte pro resto deste metodo, entao esta linha
+		// nao foi copiada: ela foi DEDUZIDA do proprio `EsquecerVoz` (`GameServer.Voz.cs:207`), cujo
+		// cabecalho se descreve como *"Este corpo saiu: some com a torneira, a sequencia e o que sobrou
+		// do cache dele"* -- "este corpo saiu" e este metodo -- e cujo comentario interno cita
+		// nominalmente o **id REUSADO**, que e a mesma razao escrita nas seis linhas acima. Ela e a
+		// unica chamadora possivel: nao ha outro ponto no servidor em que um id deixa de existir.
+		// ====================================================================================================
+		EsquecerVoz(pl.Id);
+
 		_avisadosDeEspera.Remove(pl.Id);
 
 		var w = Protocol.Begin(Protocol.S2C.PeerLeft);
@@ -2434,10 +3563,27 @@ public partial class GameServer : Node
 		// por uma parede nao pode depender de qual dos dois relogios acordou primeiro.
 		foreach (ServerPlayer pl in _players.Values) TickDoVoo(pl, Protocol.TickSeconds);
 
+		// O NADO ANDA LOGO DEPOIS DO VOO, e por dois motivos que sao um so:
+		//
+		//   * ele e o QUARTO relogio que mexe no MESMO Ki (forma, carga, voo, nado) -- e o cabecalho
+		//     do `TickDoNado` ja diz que rodar em cadencias diferentes faria o saldo depender de qual
+		//     acordou primeiro;
+		//   * DEPOIS do voo e nao antes: quem largou o voo em cima do lago desce dentro do
+		//     `TickDoVoo` (`DescerAte`), e e a POSICAO ja pousada que o nado precisa consultar pra
+		//     decidir se ainda ha agua embaixo. Na ordem inversa o nado julgaria a altura do tique
+		//     anterior.
+		foreach (ServerPlayer pl in _players.Values) TickDoNado(pl, Protocol.TickSeconds);
+
 		// O OOZARU ANDA COM AS OUTRAS FORMAS: prazo, raiva e pericia sao contados em segundos, e o
 		// rabo pode ser arrancado a qualquer golpe -- a 5 Hz a forma sobreviveria ate 200 ms depois
 		// de o membro cair.
 		foreach (ServerPlayer pl in _players.Values) TickDoOozaru(pl, Protocol.TickSeconds);
+
+		// O MOTOR DO FROST MUTANTE ANDA AQUI, e a posicao e a mesma razao dos tres acima: ele mexe no
+		// MESMO Ki (a bateria das supressoes) e no MESMO poder expresso (o vazamento). DEPOIS do
+		// `TickDaForma` de proposito -- e ele quem reverte por Ki zerado ou nocaute, e a forma ja
+		// revertida e sempre estavel, entao o motor le o estado final e nao um intermediario.
+		foreach (ServerPlayer pl in _players.Values) TickDoFrost(pl, Protocol.TickSeconds);
 
 		// A FURIA LENDARIA ANDA LOGO DEPOIS DA FERA, e a ordem entre os tres e a regra:
 		//   * DEPOIS do `TickDaForma`, porque e ele quem reverte a forma por Ki zerado ou nocaute --
@@ -2458,8 +3604,17 @@ public partial class GameServer : Node
 			TickDasPilhasDeEsquiva(pl);
 		}
 
-		// os corpos SEM DONO -- clones da mente e Oozarus fora de controle -- pensam e agem no tick
-		// cheio, pelas mesmas funcoes do jogador
+		// O POVOAMENTO VEM ANTES DE OS CORPOS PENSAREM, e a ordem e a mesma razao do bloco acima: um
+		// habitante que nasce neste tique ja e dirigido neste tique. Depois, ele passaria um quadro
+		// como estatua -- invisivel, mas e o tipo de meio-estado de onde saem os bugs de "o NPC
+		// deslizou no primeiro instante".
+		//
+		// O CUSTO E O DRENO, e ele e de 1 corpo por tique de proposito (ver `Povoamento.NascimentosPorTique`):
+		// a manutencao decide de 5 em 5 min, este laco so paga a conta espalhada.
+		TickDoPovoamento(Protocol.TickSeconds);
+
+		// os corpos SEM DONO -- clones da mente, NPCs do povoamento e Oozarus fora de controle --
+		// pensam e agem no tick cheio, pelas mesmas funcoes do jogador
 		TickDosCorposSemDono(Protocol.TickSeconds);
 
 		// A PORTA ABRE NO TICK CHEIO. Ela e uma parede que some, e uma parede que some com atraso
@@ -2471,9 +3626,56 @@ public partial class GameServer : Node
 		// e uma reacao a 5 Hz deixaria o corpo atravessar a celula sem que ninguem percebesse.
 		TickDasPassagens();
 
+		// A LOTACAO DA SALA DO TEMPO, logo depois das passagens e nao por acaso: e a passagem
+		// `fromhbtc` que tira gente de la, e quem acabou de sair tem que largar a vaga no MESMO
+		// quadro -- senao a sala fica "cheia" com uma pessoa dentro por um tique inteiro, e um
+		// terceiro seria recusado na porta sem motivo. Ver `GameServer.SalaDoTempo.cs`.
+		TickDaSalaDoTempo();
+
+		// A SESSAO CRONOMETRADA VEM LOGO DEPOIS DA LOTACAO, e a ordem e a mesma razao: quem acabou
+		// de sair ja largou a vaga acima, entao este laco so olha quem esta MESMO dentro -- e a
+		// comida, que e do lugar, some no mesmo quadro em que a sala esvazia. Ver
+		// `GameServer.SalaSessao.cs`.
+		TickDaSessaoDaSala(Protocol.TickSeconds);
+
 		// O ARREMESSO ANDA NO TICK CHEIO: o tique dele e 0,1 s e cada um vale dois tiles. A 5 Hz
 		// o corpo daria saltos de quatro tiles, e o que se veria seria teleporte, nao voo.
 		TickDoEmpurrao();
+
+		// O ARRANQUE DA BANDEIRA NO TIQUE CHEIO, e aqui somos mais duros que o DM de proposito: la o
+		// canal e conferido de segundo em segundo (`sleep(10)`), o que deixa uma janela pra dar um
+		// passo e voltar dentro do mesmo segundo sem cancelar nada. Ver `TickDoArranque`.
+		TickDoArranque(Protocol.TickSeconds);
+
+		// OS ATAQUES DE KI. Dois tiques, e a ORDEM entre eles e a regra:
+		//   * o CANAL primeiro, porque e ele quem PARE o raio (a carga fechando) e quem o mata por
+		//     falta de Ki -- assim o tiro que nasce neste quadro ja anda neste quadro, em vez de
+		//     ficar 33 ms parado na mao;
+		//   * os PROJETEIS depois, e no tique cheio: um raio a 320 px/s anda 10 px por quadro a
+		//     30 Hz, e a 5 Hz andaria 64 px de uma vez -- passaria por dentro de um corpo sem
+		//     encostar nele, que e a pior falha possivel num sistema de acerto.
+		TickDosCanaisDeKi(Protocol.TickSeconds);
+		TickDosProjeteis(Protocol.TickSeconds);
+
+		// A COLISAO DE KI, DEPOIS dos projeteis: e o tique deles que descobre o encontro (dois feixes
+		// a um tile um do outro) e congela as duas cabecas. Rodando antes, uma disputa nascida neste
+		// quadro so seria tiqueada no seguinte -- e as duas cabecas andariam mais um passo DEPOIS de
+		// ja estarem em embate, atravessando uma a outra.
+		TickDosEmbatesDeKi(Protocol.TickSeconds);
+
+		// O PRAZO DO RAIO DE QUEM NAO TEM TECLADO (`BCL_NPC_BEAM_TIME`) -- ver o metodo: e ele que
+		// faz o pulso unico do `Cerebro.Disparo` virar um canal com comeco e fim.
+		TickDoPrazoDeRaioDaIa(Protocol.TickSeconds);
+
+		// A LIMPEZA DO CACHE DE PAREDE DA VOZ. Ela se guarda sozinha (`< 64` sai na hora): varrer um
+		// dicionario de tres entradas 30x por segundo seria pagar pela limpeza mais do que se limpa.
+		TickDaVoz();
+
+		// OS DOIS TIQUES DE BANCADA DA VOZ, guardados pela propria flag (`--vozdupla` / `--vozviva`).
+		// Sem eles as duas bancadas sobem, conectam e NAO ANDAM NENHUMA FASE -- medem o nada em
+		// silencio, que e o mesmo modo de falhar do `--esquivateste`.
+		TickDaVozDupla();
+		TickDaVozViva();
 
 		// OS MUNDOS QUE NASCERAM FORA DO TIQUE. Ver `GameServer.Procedural.cs`: gerar um planeta
 		// custa de 27 ms (352 tiles) a ~220 ms (1000), e fazer isso aqui dentro parava o servidor
@@ -2491,11 +3693,20 @@ public partial class GameServer : Node
 		// no espaco: troca de chunk e pouso por encostar
 		foreach (ServerPlayer pl in _players.Values.ToList()) TickDoEspaco(pl);
 
+		// AS NAVES DEPOIS DO ESPACO, e a ordem tem razao: e o `TickDoEspaco` que POUSA o piloto num
+		// planeta, e a nave copia a zona dele. Rodando antes, ela terminaria o tique descrita na
+		// zona ANTERIOR -- um quadro em que o pod ainda esta em orbita e o dono ja esta no chao.
+		// Ver `GameServer.Nave.cs`.
+		TickDasNaves();
+
 		// O TIQUE DAS SKILLS anda junto do da ficha, e nao por acaso: `NiveisDeSkill` foi
 		// calibrado em 0,2 s por tique (5 Hz) e `TicksPorFicha` da exatamente isso a 30 Hz.
 		// Cadencia errada aqui nao quebra nada -- so faz a skill subir mais rapido ou mais
 		// devagar do que o original, calada.
-		if (++_tickCount % TicksPorFicha == 0) { TickFichas(); TickDosNiveis(); TickDasFeridas(); }
+		// A AUREOLA ENTRA AQUI, ao lado das feridas, e pelo mesmo argumento: e estado LENTO do corpo,
+		// visto por toda a zona, detectado por DIFERENCA e nao por chamada -- ver `TickDasAureolas`.
+		if (++_tickCount % TicksPorFicha == 0)
+			{ TickFichas(); TickDosNiveis(); TickDasFeridas(); TickDasAureolas(); }
 		// O EMBATE ANDA NO TIQUE CHEIO: os corpos se cruzam a cada 260 ms e as letras tem prazo de
 		// 900 ms. A 5 Hz o prazo erraria por ate 200 ms, que num quick time event e a diferenca
 		// entre acertar e nao.
@@ -2508,8 +3719,13 @@ public partial class GameServer : Node
 		// O ROTEIRO DOS CHEFES ENTRA AQUI e nao no tique cheio: o gatilho dele e a fracao de vida do
 		// membro mais ferido, que nao muda de forma interessante em 33 ms -- e avancar um degrau e um
 		// EVENTO (cura, sprite novo, anuncio pra zona), nao algo pra conferir 30x por segundo.
+		// O ESMAGAMENTO ENTRA NESTE BLOCO PORQUE AS CONSTANTES DELE SAO POR SEGUNDO: o dano
+		// (`GRAVCRUSH_DMG_BASE`) e o dreno de folego do DM sao dose/segundo, e o proprio original
+		// se protege com um throttle de 10 ticks (`gravcrush_dmg_next`) justamente porque o `Grav`
+		// e chamado em taxas diferentes. Aqui a cadencia e do laco -- e no tique cheio o castigo
+		// seria trinta vezes maior, que e a mesma armadilha do `TickDoEstomago`.
 		if (_tickCount % TicksPorSegundo == 0)
-			{ TickDasTecnicas(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); }
+			{ TickDasTecnicas(); TickDasTecnicasG6(); TickDoEstudo(); TickDaGestacao(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); TickDasSagas(); TickDaDestruicao(1); TickDasInvasoes(); TickDaConquista(); TickDosCargos(); TickDoEsmagamento(); }
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
 		// Dois minutos e o maximo de treino que alguem pode perder.
@@ -2529,6 +3745,11 @@ public partial class GameServer : Node
 			var w = Protocol.Begin(Protocol.S2C.Snapshot);
 			w.Put((ushort)zona.Count);
 			foreach (ServerPlayer pl in zona) EstadoDe(pl, agora).Write(w);
+
+			// O SEGUNDO BLOCO: os ataques de ki no ar. Vem no MESMO buffer da zona porque e o mesmo
+			// tipo de dado (posicao autoritativa, 30 Hz, sequenced) e porque a zona sem tiro nenhum
+			// paga dois bytes por pacote -- um opcode proprio pagaria cabecalho e um envio a mais.
+			EscreverProjeteis(w, zona[0].Zone.Hash);
 
 			// mesmo buffer pra todos daquela zona: quem esta noutro planeta nao recebe nada
 			foreach (ServerPlayer pl in zona)
@@ -2559,8 +3780,25 @@ public partial class GameServer : Node
 			ProjetarRaiva(pl);
 
 			pl.Ficha.Tick(agoraMs: NowMs());
-			pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed);
-			GainKnobs.TopBP = Math.Max(GainKnobs.TopBP, pl.Ficha.BP);
+
+			// A VELOCIDADE PASSOU A TER DOIS DONOS (o corpo e a nave) e por isso virou UM metodo --
+			// ver `RecalcularVelocidade` em `GameServer.Nave.cs`. Ele continua sendo o unico ponto
+			// que escreve `SpeedStat` por tique.
+			RecalcularVelocidade(pl);
+
+			// ============================ O TOPO E DE QUEM JOGA -- a mesma regra do `MediaDoServidor` ============================
+			// `TopBP` e "o maior BP **BASE** do servidor", ele so SOBE e ele entra na escala de ganho de
+			// todo mundo e no teto do potencial escondido. Este laco varre o `_players` inteiro, e o
+			// `_players` tem corpo sem dono desde o primeiro NPC -- entao um chefe de saga de 1e12 fixava
+			// o topo do servidor pra sempre, e o `MediaDoServidor` ja recusa esse mesmo emprestimo com o
+			// argumento inteiro: *"incluir NPC na media daria realimentacao"*.
+			//
+			// E O REFLEXO DA MENTE E O CASO QUE OBRIGA A ESCREVER ISTO: a ficha dele e ancorada no
+			// **expresso** do dono (ver `EspelharODono`), entao o BP BASE dele nao e um BP base de
+			// ninguem -- quem entrasse na mente em SSJ3 empurraria o topo do servidor pra 20x o proprio
+			// poder, de graca, e o numero nunca mais desceria.
+			// ==============================================================================================================
+			if (EhJogador(pl)) GainKnobs.TopBP = Math.Max(GainKnobs.TopBP, pl.Ficha.BP);
 
 			// CONTRA O QUE FOI ENVIADO, e nao contra o valor de tres linhas atras -- ver os campos
 			// `Env*` no ServerPlayer. Comparar dentro da propria chamada perde tudo que mudou entre
@@ -2573,11 +3811,13 @@ public partial class GameServer : Node
 			// Mesma familia do bug da barra de Ki: a lista de campos comparados era menor que a
 			// lista de campos ENVIADOS. Todo campo que vai no pacote precisa estar aqui, senao ele
 			// so chega de carona quando outro muda.
-			byte estado = pl.Sheet().Estado;
+			SheetState ficha = pl.Sheet();
 			if (pl.EnvBP == pl.Ficha.expressedBP && pl.EnvKi == pl.Ficha.Ki
 				&& pl.EnvHp == pl.Ficha.HP && pl.EnvAct == pl.Ficha.Eactspeed
 				&& pl.EnvVigor == pl.Ficha.stamina && pl.EnvNutricao == pl.Ficha.CurrentNutrition
-				&& pl.EnvEstado == estado) continue;
+				&& pl.EnvBpBase == pl.Ficha.BP
+				&& pl.EnvTetoKi == Jandirus.Core.Combat.CargaDeKi.TetoEmRazao(pl.Ficha)
+				&& pl.EnvEstado == ficha.Estado && pl.EnvEstado2 == ficha.Estado2) continue;
 
 			MandarFicha(pl);
 		}
@@ -2604,7 +3844,11 @@ public partial class GameServer : Node
 		pl.EnvAct = pl.Ficha.Eactspeed;
 		pl.EnvVigor = pl.Ficha.stamina;
 		pl.EnvNutricao = pl.Ficha.CurrentNutrition;
-		pl.EnvEstado = pl.Sheet().Estado;
+		pl.EnvBpBase = pl.Ficha.BP;
+		pl.EnvTetoKi = Jandirus.Core.Combat.CargaDeKi.TetoEmRazao(pl.Ficha);
+		SheetState enviada = pl.Sheet();
+		pl.EnvEstado = enviada.Estado;
+		pl.EnvEstado2 = enviada.Estado2;
 
 		var w = Protocol.Begin(Protocol.S2C.Stats);
 		FichaVisivel(pl).Write(w);
@@ -2639,6 +3883,23 @@ public partial class GameServer : Node
 
 		ulong tEntrou = Time.GetTicksUsec();
 		ZoneKey saiuDe = pl.Zone;
+
+		// TROCAR DE PLANETA SOLTA O RAIO, e o tiro que ja saiu fica pra tras. Um beam cuja cauda
+		// segue o dono atravessaria zonas -- a cauda apontaria pra uma posicao de outro mundo e o
+		// rastro viraria uma linha de mil tiles. E ninguem "leva" um raio na mao pelo espaco.
+		// E A DISPUTA ACABA JUNTO: um encontro de feixes com um dos dois noutro planeta nao existe.
+		SoltarDoEmbateDeKi(pl.Id);
+		SoltarDoRaio(pl.Id);
+		LimparProjeteisDeUmDono(pl.Id, saiuDe.Hash);
+
+		// O PLANETA DE DESTINO ESFRIOU ENQUANTO NINGUEM ESTEVE LA? A outra porta de entrada no mundo
+		// (ver `GameServer.Embaralho.cs`), e ela vem ANTES do `ZoneChanged` e do primeiro snapshot da
+		// zona nova pelo mesmo motivo do login: quem chega ve o resultado, nunca o pulo.
+		//
+		// SAIR NAO PRECISA DE LINHA NENHUMA AQUI: a marca de "esvaziou" e derivada do `_zonasComGente`
+		// uma vez por tique, e por isso ela vale igual pra nave, logout, transe, morte e o que vier.
+		EmbaralharSeEsfriou(destino);
+
 		ZoneList(pl.Zone.Hash).Remove(pl);
 		pl.Zone = destino;
 		pl.Pos = spawn;
@@ -2742,7 +4003,10 @@ public partial class GameServer : Node
 		Facing = (byte)(pl.Deitado ? pl.DirecaoDeitado : pl.Facing),
 		Moving = pl.Moving,
 		Pose = pl.Pose(agora),
-		Vida = (byte)Math.Clamp(Math.Round(pl.Ficha.HP), 0, 100),
+		// A VIDA NAO VAI MAIS NO SNAPSHOT, e a linha nao voltou junto com o resto do arquivo: o dono
+		// mandou tirar o HP alheio do jogo, e o campo foi DELETADO do `EntityState` junto com a
+		// barrinha por cima da cabeca. Ver `GameServer.Sigilo.cs` -- a vida que ainda sai no fio e a
+		// SUA, pelo `MandarFicha`, e ela nao passa por aqui.
 		Rabo = pl.TemRaboAgora(),
 		Oculto = EstaOculto(pl.Id),
 		Deitado = pl.Deitado,
@@ -2762,6 +4026,14 @@ public partial class GameServer : Node
 		// da passo nenhum -- posicao andando e animacao parada e o "sai deslizando". Ver
 		// `EntityState.SemRedeas`.
 		SemRedeas = SemAsRedeas(pl),
+		// A NAVE EM CIMA DELE. Um bit, e ele descreve um objeto inteiro: a nave pilotada sai da
+		// lista de construcoes da zona e passa a ser desenhada pelo corpo que a carrega -- que e
+		// literalmente o que o `verb/Use` do DM faz (`PlanetTech.dm:140-144`). Ver
+		// `EntityState.Pilotando`.
+		Pilotando = EstaPilotando(pl.Id),
+		// ...E QUAL DELAS. Um segundo bit porque os dois sprites nao sao parecidos -- ver
+		// `EntityState.NaveGrande`.
+		NaveGrande = PilotaNaveGrande(pl.Id),
 	};
 
 	private List<ServerPlayer> ZoneList(ulong hash)

@@ -1,4 +1,4 @@
-﻿using Godot;
+using Godot;
 using Jandirus.Core.Forms;
 using Jandirus.Core.Social;
 using Jandirus.Net;
@@ -308,6 +308,37 @@ public partial class GameServer
 	/// </param>
 	private void AoPerderALuta(ServerPlayer vitima, ServerPlayer algoz, bool morreu)
 	{
+		// ============================ NADA DISTO ACONTECE DENTRO DE UMA MENTE ============================
+		// *"la dentro os FERIMENTOS NAO SAO TRANSFERIDOS pro corpo real, NAO TEM COMO TER ZENKAI"* --
+		// e o pedido nomeia so o Zenkai, mas as OUTRAS TRES consequencias deste funil sao piores se
+		// escaparem:
+		//
+		//   * o ZENKAI -- a regra 2 do pedido, cobrada exatamente aqui. Sem este corte, "perder de
+		//     proposito pro proprio reflexo" seria a maneira mais barata de ganhar BP no jogo, uma vez
+		//     por hora, pra sempre;
+		//   * o LUTO (`LutoNaVizinhanca`) -- **e este e o mais perigoso**. Um amigo "morrendo" numa luta
+		//     SIMULADA acenderia raiva de verdade, e raiva de verdade abre SSJ. Duas pessoas na mesma
+		//     mente poderiam fabricar a transformacao mais cara do jogo se matando de mentira;
+		//   * o ODIO (`AmigoFoiFerido`) -- inimizade permanente por um treino que nao aconteceu;
+		//   * a SUCESSAO (`SucessaoPorMorte`) -- o trono de Vegeta trocando de dono porque alguem
+		//     "morreu" dentro da propria cabeca. Este seria irreversivel.
+		//
+		// O CORTE E AQUI, NO FUNIL, e nao um `if` dentro de cada uma das quatro: e literalmente o
+		// argumento que criou este metodo ("quatro lugares onde a proxima pessoa pode ligar uma e
+		// esquecer a outra"), e a quinta consequencia da derrota ja nasce cortada.
+		//
+		// PELA ZONA DA VITIMA: o algoz de dentro da mente e sempre um corpo do mesmo bolso (o reflexo,
+		// a lembranca, ou a outra pessoa em transe), entao perguntar por um dos dois basta -- e a
+		// vitima e quem paga todas as quatro contas.
+		//
+		// **E O `ZenkaiPorDerrota` NAO GANHOU UM SEGUNDO GATE**, apesar de ter dois chamadores fora
+		// deste funil (`GameServer.Tecnicas.G3.cs:1209` e `:1216`). Os dois sao o caso `autor ==
+		// vitima` -- morrer da propria explosao --, e ali o `GainZenkai` ja recusa antes de qualquer
+		// coisa: `poderInimigo <= meuPoder` quando o inimigo e voce mesmo. Escrever a regra de novo la
+		// seria a segunda copia que um dia discorda desta, pra fechar uma porta que nao abre.
+		// ============================================================================================
+		if (NaMente(vitima)) return;
+
 		ZenkaiPorDerrota(vitima, algoz);
 		LutoNaVizinhanca(vitima, algoz, morreu);
 
@@ -315,6 +346,12 @@ public partial class GameServer
 		// dois valores do DM. Ja e travado por rival declarado la dentro.
 		AmigoFoiFerido(vitima, algoz,
 			morreu ? Convivio.InimizadePorAmigoMorto : Convivio.InimizadePorAmigoCaido);
+
+		// A TERCEIRA CONSEQUENCIA, e ela entrou exatamente onde este bloco previu que entraria: a
+		// SUCESSAO. Matar quem carrega o trono de Vegeta ou o titulo de Lorde do Gelo troca o dono
+		// do cargo (`Murder.dm:85-101`) -- e so a MORTE conta, nunca o nocaute, que e o que o DM faz
+		// ao pendurar a regra dentro do `killer_stuff`. Ver `GameServer.CargoPortas.cs`.
+		if (morreu) SucessaoPorMorte(vitima, algoz);
 	}
 
 	/// <summary>

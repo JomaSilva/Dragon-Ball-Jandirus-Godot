@@ -234,6 +234,34 @@ public partial class GameServer
 			return ditos;
 		}
 
+		// ============================ ANTES DE TUDO: O CORPO PRECISA SER DE UM **SAIYAJIN** ============================
+		// Esta bancada mede a escada Saiyajin do comeco ao fim (SSJ1 ate o SSJ4 vindo da lua, os degraus
+		// de raiva, a maestria, a razao de Ki) num corpo VIVO -- e o corpo vivo e o do primeiro jogador
+		// que logar, com a raca que a criacao sorteou pra ele.
+		//
+		// **ELA NUNCA TINHA PERGUNTADO A RACA, E PASSAVA.** Passava por um defeito, nao por sorte: o
+		// `Catalogo.LinhasAbertas` entregava a escada Saiyajin a QUALQUER raca que nao fosse Primal,
+		// Legendary, Futuro ou Frost Demon -- entao um Humano subia ate o Super Saiyajin 4 e a bancada
+		// dizia OK. Na primeira execucao depois de a porta ser fechada por raca (ver `LinhasAbertas`),
+		// esta bancada reprovou 24 vezes com a conta `Guerreiro`, que e um **Humano/Peak Human** -- e
+		// nenhuma das 24 falhas era sobre o que a checagem dizia estar medindo.
+		//
+		// O CONSERTO E O MESMO PADRAO DO `--frostteste`, que ja vestia o corpo antes de medir
+		// (`VestirDeFrost`): quem mede uma escada de SANGUE tem que trazer o sangue. A `Class` vai junto
+		// e e "Normal" de proposito -- ela nao pode ser Legendary (linha propria), Kaio (Rose no lugar
+		// do Blue), Elite (Blue Evolution) nem Prodigial (linha do Mistico), e cada um desses trocaria
+		// silenciosamente a escada que os blocos abaixo esperam.
+		//
+		// **NAO HA `finally` PRA DESFAZER**, e isso e proposital e nao esquecimento: os blocos desta
+		// bancada ja escrevem BP, maestria, formas liberadas, ki divino e classe no personagem de
+		// verdade -- ela existe atras de uma flag de linha de comando justamente porque MEXE no corpo.
+		// Devolver a raca no fim daria a impressao de que o resto foi devolvido tambem.
+		// =========================================================================================================
+		pl.Race = "Saiyan";
+		pl.Ficha.Race = pl.Race;
+		pl.Ficha.Class = "Normal";
+		if (pl.Ficha.Genoma != null) pl.Ficha.Genoma.Class = pl.Ficha.Class;
+
 		// --- o personagem de teste: BP de sobra e Ki cheio -----------------
 		pl.Ficha.BP = 1e13;
 		pl.Ficha.Statify();
@@ -1077,7 +1105,30 @@ public partial class GameServer
 		// rabo e de genoma porque ele exercita a LUA, que confere os dois; o `admin_forma` existe
 		// justamente pra ignorar essas portas -- e por isso ele tem que ser exercitado em qualquer
 		// corpo, inclusive num que a lua nunca responderia. Ver `GameServer.AdminTeste.cs`.
+		// A TECLA DE FORMA ANTES DAS FERRAMENTAS DE ADMIN, e a vizinhanca e o assunto: a secao abaixo
+		// prova que o `admin_forma` IGNORA os requisitos, e esta prova que o comando do JOGADOR nao
+		// ignora nenhum. Lidas em sequencia elas contam a diferenca entre as duas portas.
+		ATeclaDeForma(pl, Checa, Ouvido);
+
+		// LOGO DEPOIS DA TECLA DE FORMA, e o parentesco e o assunto: aquela secao prova que PEDIR uma
+		// forma pelo nome nao pula portao, e esta prova que mudar o CAMINHO da tecla C tambem nao.
+		OsGradesNoCaminhoDoC(pl, Checa, Ouvido);
+
+		// E LOGO EM SEGUIDA O PRECO DELES. A secao acima prova por ONDE a tecla C anda; esta prova o
+		// que cada degrau faz com o CORPO (a % de BP efetivo, a forca, a velocidade, a cadencia e a
+		// pontaria) e que a preferencia atravessa o .json de verdade. Ver `GameServer.GradesTeste.cs`.
+		AsContasDosGrades(pl, Checa, Ouvido);
+
 		AsFerramentasDeAdmin(pl, Checa);
+
+		// ============================ AS OUTRAS ESCADAS DE SANGUE, PELA MESMA TECLA C ============================
+		// POR ULTIMO, e nao por ordem de importancia: esta secao troca a RACA do personagem uma vez por
+		// linha (Saiyajin, meio-Saiyajin, Frost Demon, Namekuseijin, Alien, Heran) e compra skill no
+		// livro dele. Tudo acima daqui mede a escada Saiyajin num corpo Saiyajin -- rodar antes faria
+		// aquelas checagens medirem o estranho desta, que e o modo de falha que o cabecalho deste
+		// arquivo descreve. Ela tem `finally` proprio e mora em `GameServer.RaciaisTeste.cs`.
+		// =================================================================================================
+		AsEscadasRaciaisAoVivo(pl, Checa);
 
 		Transformar(pl, subir: false);
 		// NINGUEM SAI DAQUI COM ESCUTA LIGADA. Elas sao estaticas: uma esquecida armada acumularia o
@@ -1095,6 +1146,316 @@ public partial class GameServer
 	// =====================================================================
 	/// <summary>
 	/// ============================ O QUE SO DAQUI SE VE ============================
+	/// ============================ A TECLA DE FORMA -- `verbo forma &lt;id&gt;` ============================
+	/// O jogador pode ligar uma tecla a uma transformacao (`Client/TelaDeTeclas.cs`), e ela estreou um
+	/// comando: `TransformarPara`. Esta secao existe porque um atalho e o lugar mais provavel do jogo
+	/// pra alguem pular um portao sem querer -- e porque a unica coisa que prova que ele NAO pula e
+	/// exercitar o portao.
+	///
+	/// ============================ ELA ENTRA PELO `Verbo`, E NAO PELO `TransformarPara` ============================
+	/// Chamar `TransformarPara` direto mediria a funcao que eu escrevi. O que precisa ser medido e a
+	/// CADEIA: o `case "forma"` do switch de verbos existe, nao foi engolido por nenhum dos sete
+	/// despachantes de prefixo que rodam antes dele, e cai na funcao certa. Um `case` escrito e nunca
+	/// alcancado e a falha assinatura deste port.
+	/// ======================================================================================================
+	///
+	/// ============================ E O QUE ELA MEDE NAO E O QUE EU ESCREVI ============================
+	/// As tres checagens que valem alguma coisa nao leem o retorno de funcao nenhuma:
+	///
+	///   * o `pl.Forma.Atual` DEPOIS de uma recusa -- prova que a recusa nao deixou rastro;
+	///   * o `pl.Ficha.ssjBuff` DEPOIS de um aceite -- prova que passou pelo `EntrarNaForma` e nao por
+	///     um `Atual =` na mao. Escrever a forma sem o buff daria uma transformacao que nao multiplica
+	///     nada, e o `Atual` diria que deu certo;
+	///   * o `EscutaDeAnuncios` -- prova que a ZONA soube. Sem o anuncio, a tela de todo mundo (a do
+	///     proprio dono inclusive) continua desenhando o corpo base: transformacao invisivel.
+	/// ============================================================================================
+	/// </summary>
+	private void ATeclaDeForma(ServerPlayer pl, Action<string, bool, string> Checa,
+							   Func<List<string>> Ouvido)
+	{
+		// ---------------------------------------------------------------- o corpo de partida
+		Transformar(pl, subir: false);
+		while (pl.Forma.Atual != Catalogo.IdBase && pl.Forma.Def != null) Transformar(pl, subir: false);
+		pl.Ficha.KO = false;
+		pl.Ficha.dead = false;
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		AplicarForma(pl);
+
+		Checa("[tecla] o corpo comeca na base", pl.Forma.Atual == Catalogo.IdBase, pl.Forma.Atual);
+
+		// ---------------------------------------------------------------- 1. NAO PULA DEGRAU
+		//
+		// A checagem mais importante desta secao inteira. "Tecla 3 = SSJ3" e exatamente o que um
+		// jogador espera ao ligar a tecla, e exatamente o que NAO pode acontecer -- senao o atalho
+		// passa por cima da escada e o jogo perde a progressao que ele tem.
+		EscutaDeAvisos = [];
+		Verbo(pl, "forma", "ssj3");
+		List<string> recusa3 = Ouvido();
+		Checa("[tecla] pedir SSJ3 da base NAO transforma", pl.Forma.Atual == Catalogo.IdBase, pl.Forma.Atual);
+		Checa("[tecla] ...e a recusa diz que ele vem DEPOIS de outra forma",
+			  recusa3.Any(a => a.Contains("vem depois", StringComparison.OrdinalIgnoreCase)),
+			  string.Join(" | ", recusa3));
+
+		// ---------------------------------------------------------------- 2. A FORMA PEDIDA VEM
+		double buffAntes = pl.Ficha.ssjBuff;
+		EscutaDeAvisos = [];
+		EscutaDeAnuncios = [];
+		Verbo(pl, "forma", "ssj1");
+		List<string> aceite = Ouvido();
+		var anunciados = EscutaDeAnuncios ?? [];
+		EscutaDeAnuncios = null;
+
+		Checa("[tecla] pedir SSJ1 da base transforma", pl.Forma.Atual == "ssj1", pl.Forma.Atual);
+		// O BUFF E A PROVA DE QUE PASSOU PELO `EntrarNaForma`. Um `Atual = "ssj1"` escrito na mao
+		// deixaria esta linha em 1 e a de cima verde -- transformacao que nao multiplica nada.
+		Checa("[tecla] ...e o multiplicador subiu (passou pelo EntrarNaForma)",
+			  pl.Ficha.ssjBuff > buffAntes + 1e-9, $"{buffAntes} -> {pl.Ficha.ssjBuff}");
+		Checa("[tecla] ...e a ZONA foi avisada (aura, cabelo, cinematica)",
+			  anunciados.Any(a => a.Quem == pl.Id && a.Para == "ssj1"),
+			  $"{anunciados.Count} anuncios");
+		Checa("[tecla] ...e o jogador leu o nome da forma",
+			  aceite.Any(a => a.Contains("Super Saiyajin", StringComparison.OrdinalIgnoreCase)),
+			  string.Join(" | ", aceite));
+
+		// ---------------------------------------------------------------- 3. A MESMA DE NOVO
+		EscutaDeAvisos = [];
+		Verbo(pl, "forma", "ssj1");
+		List<string> jaEsta = Ouvido();
+		Checa("[tecla] pedir a forma em que ja se esta responde, e nao cala",
+			  jaEsta.Any(a => a.Contains("ja esta", StringComparison.OrdinalIgnoreCase)),
+			  string.Join(" | ", jaEsta));
+
+		// ---------------------------------------------------------------- 4. VOLTAR AO NORMAL
+		EscutaDeAvisos = [];
+		Verbo(pl, "forma", Catalogo.IdBase);
+		Ouvido();
+		Checa("[tecla] pedir a BASE recua pelo mesmo caminho da tecla X",
+			  pl.Forma.Atual == Catalogo.IdBase, pl.Forma.Atual);
+
+		// ---------------------------------------------------------------- 5. FORMA QUE NAO E DELE
+		//
+		// O Blue e da linha divina e este corpo nao tem ki divino nenhum -- e ele NAO pode virar por
+		// atalho so porque o jogador conseguiu digitar o id. Vale por todas as portas: quem passa aqui
+		// passa pelo `Avaliar` inteiro.
+		EscutaDeAvisos = [];
+		Verbo(pl, "forma", "blue");
+		List<string> semDivino = Ouvido();
+		Checa("[tecla] uma forma de outra linha NAO vem por atalho",
+			  pl.Forma.Atual == Catalogo.IdBase, pl.Forma.Atual);
+		Checa("[tecla] ...e a recusa nao e muda", semDivino.Count > 0, string.Join(" | ", semDivino));
+
+		// ---------------------------------------------------------------- 6. ID QUE NAO EXISTE
+		EscutaDeAvisos = [];
+		Verbo(pl, "forma", "kamehameha_dourado_2");
+		List<string> inventada = Ouvido();
+		Checa("[tecla] um id inventado nao derruba nada e responde",
+			  pl.Forma.Atual == Catalogo.IdBase && inventada.Count > 0, string.Join(" | ", inventada));
+
+		// ---------------------------------------------------------------- 7. CAIDO
+		//
+		// A guarda de topo do `Transformar` -- ela e do GESTO e nao do degrau, entao nao mora no
+		// `Avaliar` e teria sido a mais facil de esquecer no caminho novo.
+		pl.Ficha.KO = true;
+		EscutaDeAvisos = [];
+		Verbo(pl, "forma", "ssj1");
+		List<string> caido = Ouvido();
+		pl.Ficha.KO = false;
+		Checa("[tecla] caido nao transforma", pl.Forma.Atual == Catalogo.IdBase, pl.Forma.Atual);
+		Checa("[tecla] ...e diz que e por estar caido",
+			  caido.Any(a => a.Contains("caido", StringComparison.OrdinalIgnoreCase)),
+			  string.Join(" | ", caido));
+
+		// ---------------------------------------------------------------- 8. KI NO FIO
+		//
+		// Entrar numa forma sem folego e cair dela no segundo seguinte, e o `Avaliar` recusa por isso.
+		// Medido AQUI porque um atalho e o gesto mais barato do jogo: sem esta porta, a tecla viraria
+		// o jeito de entrar em forma com 1% de Ki repetidamente.
+		double kiAntes = pl.Ficha.Ki;
+		pl.Ficha.Ki = pl.Ficha.MaxKi * 0.02;
+		EscutaDeAvisos = [];
+		Verbo(pl, "forma", "ssj1");
+		List<string> semKi = Ouvido();
+		pl.Ficha.Ki = kiAntes;
+		Checa("[tecla] Ki no fio nao transforma", pl.Forma.Atual == Catalogo.IdBase, pl.Forma.Atual);
+		Checa("[tecla] ...e diz que o Ki e o problema",
+			  semKi.Any(a => a.Contains("Ki", StringComparison.Ordinal)), string.Join(" | ", semKi));
+
+		AplicarForma(pl);
+	}
+
+	/// <summary>
+	/// ============================ OS GRADES NO CAMINHO DA TECLA C -- o verb `graus` ============================
+	/// Pedido do dono: *"um verb no OTHER q ao clicar fala se desativei ou nao os grades; com eles
+	/// LIGADOS, no ssj1 (masterizado ou nao) apertar C duas vezes passa pelos grades antes do ssj2;
+	/// DESLIGADOS, pula direto pro ssj2"*.
+	///
+	/// ============================ POR QUE ELE PRECISA DE UM CORPO VIVO ============================
+	/// A regra mora no Core (`EstadoDeForma.Proxima`), mas as tres coisas que podem quebrar sem
+	/// ninguem ver sao todas de fora dele:
+	///
+	///   * **o `case "graus"`** existir no switch de verbos e nao ser engolido pelos sete despachantes
+	///     de prefixo que rodam antes -- a falha assinatura deste port (botao que promete e nao faz);
+	///   * **o `PorQueNao`** enxergar o mesmo caminho que o `Proxima`. Com os grades desligados e o
+	///     SSJ2 trancado por BP, um `PorQueNao` que ainda visse o Grade 2 responderia *"pede 50% de
+	///     maestria"* -- a porta do degrau que o jogador acabou de tirar do caminho;
+	///   * **a preferencia atravessar o disco.** Ela e escrita em `DeJogador` e lida em
+	///     `RestaurarFormaEDisciplina`, e este projeto ja perdeu duas escolhas de jogador exatamente
+	///     nessa costura (o `wastaught` e a casa escolhida do Metamoriano).
+	/// ==========================================================================================
+	///
+	/// E O CASO QUE MAIS IMPORTA E O DO SSJ1 **DOMINADO**: com 100% de maestria o SSJ1 vale 6x e os
+	/// dois grades valem 3x e 4x, entao o seletor de sempre (o mais forte vence) os apaga da escada.
+	/// E ali que a preferencia tem que aparecer -- e e ali que uma implementacao que so mexesse em
+	/// multiplicador daria verde no papel e nada em jogo.
+	/// </summary>
+	private void OsGradesNoCaminhoDoC(ServerPlayer pl, Action<string, bool, string> Checa,
+									  Func<List<string>> Ouvido)
+	{
+		// TUDO O QUE SERA REPOSTO PELO MESMO FUNIL QUE O LOGIN USA. `DeJogador` fotografa forma,
+		// maestria, liberadas, limiares e disciplina; `RestaurarFormaEDisciplina` devolve. Reescrever
+		// a reposicao a mao seria a copia da migracao morando dentro do teste que deveria vigia-la.
+		CharacterSave antes = AccountStore.DeJogador(pl, 0);
+		double bpAntes = pl.Ficha.BP;
+
+		void ABase()
+		{
+			while (pl.Forma.Atual != Catalogo.IdBase && pl.Forma.Def != null) Transformar(pl, subir: false);
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			pl.Ficha.KO = false;
+			pl.Ficha.dead = false;
+		}
+
+		string SobeUm()
+		{
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			Transformar(pl, subir: true);
+			return pl.Forma.Atual;
+		}
+
+		ABase();
+		pl.Ficha.BP = 1e13;
+
+		// O SSJ1 **DOMINADO** e os dois degraus seguintes ja liberados: sem `Liberar`, o passo 9 do
+		// `Avaliar` cobraria FURIA no SSJ2 (o tronco Saiyajin desperta no luto) e a bancada estaria
+		// medindo a raiva em vez do caminho. Os grades nao pedem furia -- eles pedem maestria.
+		pl.Forma.Liberar("ssj1");
+		pl.Forma.Liberar("ssj2");
+		pl.Forma.Maestria.Por("ssj1", 100);
+		Verbo(pl, "forma", "ssj1");
+		Checa("[graus] o corpo parte do SSJ1 DOMINADO", pl.Forma.Atual == "ssj1", pl.Forma.Atual);
+
+		// ---------------------------------------------------------------- 1. LIGADOS: passa pelos dois
+		pl.Forma.GradesLigados = true;
+		Checa("[graus] ligados, o C sai do SSJ1 dominado pro GRADE 2 (e nao pro SSJ2)",
+			  SobeUm() == "grade2", pl.Forma.Atual);
+		Checa("[graus] ...e do Grade 2 pro GRADE 3", SobeUm() == "grade3", pl.Forma.Atual);
+		Checa("[graus] ...e so entao pro SSJ2", SobeUm() == "ssj2", pl.Forma.Atual);
+
+		// ---------------------------------------------------------------- 2. O VERB: ele FALA
+		ABase();
+		Verbo(pl, "forma", "ssj1");
+		EscutaDeAvisos = [];
+		Verbo(pl, "graus", "");
+		List<string> desligou = Ouvido();
+		Checa("[graus] o verb `graus` chega no servidor e DESLIGA", pl.Forma.GradesLigados == false,
+			  $"{pl.Forma.GradesLigados}");
+		Checa("[graus] ...e diz em que pe ficou (o dono pediu que ele FALASSE)",
+			  desligou.Any(a => a.Contains("direto", StringComparison.OrdinalIgnoreCase)),
+			  string.Join(" | ", desligou));
+
+		// ---------------------------------------------------------------- 3. DESLIGADOS: pula direto
+		Checa("[graus] desligados, o C vai do SSJ1 direto pro SSJ2", SobeUm() == "ssj2", pl.Forma.Atual);
+
+		// ---------------------------------------------------------------- 4. PULAR O GRADE NAO PULA O GATE
+		//
+		// A checagem que o dono pediu em voz alta: *"se a pessoa nao pode entrar no ssj2, ela ouve a
+		// recusa DELE, nao cai no grade calada"*. Aqui o SSJ2 esta trancado por BP -- e o Grade 2, que
+		// tem a porta do SSJ1 e a maestria de sobra, estaria alcancavel se ainda estivesse no caminho.
+		//
+		// O `Limiares = null` e pra a porta ser a CONSTANTE do catalogo: o limiar sorteado no
+		// nascimento deste corpo poderia estar abaixo do BP que eu escrevo aqui, e a bancada mediria
+		// "nao ha recusa" achando que mediu a recusa certa.
+		ABase();
+		Verbo(pl, "forma", "ssj1");
+		LimiaresPessoais? limiaresAntes = pl.Forma.Limiares;
+		pl.Forma.Limiares = null;
+		pl.Ficha.BP = Catalogo.PortaSsj2 - 1;
+		EscutaDeAvisos = [];
+		Transformar(pl, subir: true);
+		List<string> semPoder = Ouvido();
+		pl.Ficha.BP = 1e13;
+		pl.Forma.Limiares = limiaresAntes;
+
+		Checa("[graus] com o SSJ2 fora de alcance, o C NAO desvia pro grade", pl.Forma.Atual == "ssj1",
+			  pl.Forma.Atual);
+		Checa("[graus] ...e a recusa e a do SSJ2, nao a maestria do Grade",
+			  semPoder.Any(a => a.Contains("Super Saiyajin 2", StringComparison.Ordinal))
+			  && !semPoder.Any(a => a.Contains("Grade", StringComparison.OrdinalIgnoreCase)),
+			  string.Join(" | ", semPoder));
+
+		// ---------------------------------------------------------------- 5. DESLIGAR ESTANDO NUM GRADE
+		//
+		// A pergunta que o desenho tinha que responder. A resposta e "fica" -- preferencia nao
+		// transforma ninguem --, e o teste mede as duas metades: o corpo nao se mexe E o jogador e
+		// avisado (o silencio aqui faria o botao parecer quebrado).
+		ABase();
+		pl.Forma.GradesLigados = true;
+		Verbo(pl, "forma", "ssj1");
+		SobeUm();
+		Checa("[graus] (preparo) o corpo esta num grade", pl.Forma.Atual == "grade2", pl.Forma.Atual);
+
+		EscutaDeAvisos = [];
+		Verbo(pl, "graus", "");
+		List<string> noGrade = Ouvido();
+		Checa("[graus] desligar ESTANDO num grade nao transforma ninguem", pl.Forma.Atual == "grade2",
+			  pl.Forma.Atual);
+		Checa("[graus] ...e o jogador e avisado de que continua nele",
+			  noGrade.Any(a => a.Contains("continua", StringComparison.OrdinalIgnoreCase)),
+			  string.Join(" | ", noGrade));
+		Checa("[graus] ...e o proximo C o tira de la (pro SSJ2, pulando o Grade 3)",
+			  SobeUm() == "ssj2", pl.Forma.Atual);
+
+		// ---------------------------------------------------------------- 6. CORPO SEM DONO: NADA MUDA
+		//
+		// O NPC sorteado e o cerebro da IA sobem por este mesmo `Proxima` e nao tem jogador pra
+		// apertar botao nenhum. Com `null` eles ficam com a regra de ontem -- e as duas alternativas
+		// os machucariam (ver `EstadoDeForma.GradesLigados`).
+		var semDono = new EstadoDeForma();
+		semDono.Liberar("ssj1");
+		semDono.Liberar("ssj2");
+		semDono.Maestria.Por("ssj1", 100);
+		semDono.Entrar("ssj1");
+		Checa("[graus] corpo SEM DONO (preferencia nula) continua no mais forte: SSJ1 dominado -> SSJ2",
+			  semDono.Proxima(1e13, Perfil(pl))?.Id == "ssj2",
+			  semDono.Proxima(1e13, Perfil(pl))?.Id ?? "nenhuma");
+
+		// ---------------------------------------------------------------- 7. E ELA ATRAVESSA O DISCO
+		ABase();
+		pl.Forma.GradesLigados = false;
+		CharacterSave gravado = AccountStore.DeJogador(pl, 0);
+		Checa("[graus] a escolha e GRAVADA no save", gravado.GradesLigados == false,
+			  $"{gravado.GradesLigados}");
+
+		RestaurarFormaEDisciplina(pl, gravado);
+		Checa("[graus] ...e volta do disco no login", pl.Forma.GradesLigados == false,
+			  $"{pl.Forma.GradesLigados}");
+
+		// SAVE DE ANTES DO VERB EXISTIR: o campo chega NULO e o login o traduz pra LIGADO, que e o
+		// comportamento que aquele personagem ja tinha. Um `bool` cru teria desligado os grades do
+		// servidor inteiro, calado, no primeiro login depois da mudanca.
+		gravado.GradesLigados = null;
+		RestaurarFormaEDisciplina(pl, gravado);
+		Checa("[graus] save ANTIGO (campo nulo) volta LIGADO, e nao desligado",
+			  pl.Forma.GradesLigados == true, $"{pl.Forma.GradesLigados}");
+
+		// ---------------------------------------------------------------- repoe o corpo
+		RestaurarFormaEDisciplina(pl, antes);
+		pl.Ficha.BP = bpAntes;
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		AplicarForma(pl);
+	}
+
+	/// <summary>
 	/// A bancada do Core prova a CURVA (`FormasBench`, secao [10]) chamando o
 	/// `EstadoDeForma.Multiplicador` com um perfil escrito a mao. Ela nao pode provar que o perfil
 	/// **do jogo** carrega os dois campos que a curva le: a curva do Mistico e a unica do catalogo

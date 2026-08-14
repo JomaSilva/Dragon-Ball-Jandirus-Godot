@@ -200,8 +200,60 @@ public sealed class TerrenoGerado
 	/// </summary>
 	public required byte[] BytesDeColisao { get; init; }
 
+	/// <summary>
+	/// O BITSET DA AGUA deste mundo (1 bit por celula, mesma ordem de linha do `Chao`), ja
+	/// pendurado na <see cref="Colisao"/>. Fica exposto pra bancada poder conta-lo sem refazer a
+	/// derivacao -- contar de novo aqui seria a segunda copia da regra "agua e `ClasseDeTerreno.Agua`".
+	/// </summary>
+	public required byte[] BytesDeAgua { get; init; }
+
 	/// <summary>A mesma colisao, ja lida. E o que o servidor consulta em `PathBlocked`/`BlockedAt`.</summary>
 	public required ZoneCollision Colisao { get; init; }
+
+	/// <summary>
+	/// O MAPA DO QUE **ESCONDE** deste mundo -- so montanha. O irmao gerado do `.vis` dos pre-feitos.
+	///
+	/// ============================ POR QUE ELE MUDOU DE CASA ============================
+	/// Isto morava no `Client/PlanetaProcedural.cs` e era do CLIENTE, porque so o cliente desenhava
+	/// sombra. A voz local o trouxe pra ca: quem responde *"ha parede entre estas duas pessoas?"* e o
+	/// SERVIDOR (e ele quem decide quem recebe voz de quem), e a resposta dele tem que ser a MESMA que
+	/// o olho da -- duas derivacoes do mesmo mapa sao duas oportunidades de divergir, e o sintoma
+	/// seria voz abafada sem parede na tela.
+	///
+	/// **NAO DA PRA REUSAR A <see cref="Colisao"/>**, e essa e a linha inteira: la a arvore tambem e
+	/// parede -- e ela PARA o corpo, com razao --, e uma floresta cegando o jogador inteiro seria
+	/// outro jogo. Ceg**ar** e bloque**ar** sao duas perguntas, exatamente como o `.col` e o `.vis`
+	/// dos mapas desenhados a mao.
+	/// =================================================================================
+	///
+	/// PREGUICOSO E GUARDADO: sao 250 mil a 1 milhao de passadas num mundo grande, e quem pergunta e
+	/// o leque da voz (por quadro). Calcular a cada pergunta poria no tique o custo de uma geracao.
+	/// </summary>
+	public ZoneCollision QueEsconde => _queEsconde ??= MontarOQueEsconde();
+
+	private ZoneCollision? _queEsconde;
+
+	private ZoneCollision MontarOQueEsconde()
+	{
+		int n = Largura * Altura;
+		var bits = new byte[(n + 7) / 8];
+
+		// O PLANO DE IDENTIDADE SAI DE GRACA AQUI: a "identidade do tile" de um planeta gerado e a
+		// propria CLASSE DE TERRENO, que ja esta no `Chao`. Sem ele, a sombra num mundo gerado cairia
+		// no caminho de degradacao (`SemGrupo`) e voltaria a parar na primeira parede -- que e menos
+		// errado, mas nao e o que os planetas pre-feitos fazem.
+		var grupo = new byte[n];
+
+		for (int i = 0; i < n; i++)
+		{
+			if (Chao[i] != (byte)ClasseDeTerreno.Montanha) continue;
+			bits[i >> 3] |= (byte)(1 << (i & 7));
+			// +1 pra nao colidir com o 0, que e "borda do mundo" nos mapas pre-feitos
+			grupo[i] = (byte)(Chao[i] + 1);
+		}
+
+		return ZoneCollision.Montar(Largura, Altura, bits, grupo);
+	}
 
 	public required int SpawnCelX { get; init; }
 	public required int SpawnCelY { get; init; }
@@ -724,6 +776,13 @@ public static class GeradorDeTerreno
 		var cobertura = new byte[w * h];
 		var bits = new byte[(w * h + 7) / 8];
 
+		// O PLANO DA AGUA, montado na MESMA passada que o de parede. Sao dois bitsets porque sao
+		// duas classes de celula diferentes (ver `ClasseDeAgua`): montanha para todo mundo, agua
+		// para so quem esta a pe. Deriva-lo depois, de um segundo laco sobre o `chao`, seria uma
+		// segunda derivacao do mesmo dado -- e a clareira mexe nos dois, entao eles precisam
+		// envelhecer juntos.
+		var agua = new byte[(w * h + 7) / 8];
+
 		// as tabelas de permutacao do Perlin: UMA vez por planeta, nao uma por tile
 		(RuidoPerlin grosso, RuidoPerlin fino) = CamadasDeRelevo(p.Seed);
 
@@ -773,14 +832,24 @@ public static class GeradorDeTerreno
 				cobertura[i] = (byte)cob;
 
 				if (Bloqueia(classe, cob)) bits[i >> 3] |= (byte)(1 << (i & 7));
+				if (classe == ClasseDeTerreno.Agua) agua[i >> 3] |= (byte)(1 << (i & 7));
 			}
 		}
 
-		(int sx, int sy, bool escavou) = AcharOuAbrirClareira(w, h, chao, cobertura, bits);
+		(int sx, int sy, bool escavou) = AcharOuAbrirClareira(w, h, chao, cobertura, bits, agua);
 
 		// o blob e montado DEPOIS da clareira -- montar antes congelaria os bits que a escavacao
 		// ainda ia apagar, e o servidor acharia parede exatamente no ponto de pouso
 		byte[] jcol = MontarJcol(w, h, bits);
+
+		// A COLISAO SAI JA COM A AGUA DENTRO, e e isto que fecha o buraco do lado do SERVIDOR: ele
+		// guarda de cada planeta gerado so a `ZonaGerada` (`GameServer.Procedural.cs:193-204`) e
+		// JOGA FORA o `TerrenoGerado` -- ou seja, o `Chao`, que e onde a agua mora. O cliente
+		// regenera pela semente e sabe onde e agua; a autoridade nao saberia. Pendurar o plano no
+		// proprio `ZoneCollision` faz ele viajar pelo caminho que o servidor ja guarda, sem campo
+		// novo em lugar nenhum.
+		ZoneCollision colisao = ZoneCollision.Load(jcol)!;
+		colisao.DefinirAgua(agua);
 
 		return new TerrenoGerado
 		{
@@ -792,8 +861,9 @@ public static class GeradorDeTerreno
 			Chao = chao,
 			Cobertura = cobertura,
 			BytesDeColisao = jcol,
+			BytesDeAgua = agua,
 			// so falharia com w/h fora do uint16, e o Clamp la em cima ja impede
-			Colisao = ZoneCollision.Load(jcol)!,
+			Colisao = colisao,
 			SpawnCelX = sx,
 			SpawnCelY = sy,
 			ClareiraEscavada = escavou,
@@ -816,8 +886,16 @@ public static class GeradorDeTerreno
 		classe == ClasseDeTerreno.Montanha
 		|| cobertura is CoberturaDeTerreno.Arvore or CoberturaDeTerreno.ArvoreAcento;
 
-	/// <summary>Cabecalho "JCOL" + uint16 largura + uint16 altura + bitset (ver ZoneCollision.Load).</summary>
-	private static byte[] MontarJcol(int w, int h, byte[] bits)
+	/// <summary>
+	/// Cabecalho "JCOL" + uint16 largura + uint16 altura + bitset (ver ZoneCollision.Load).
+	///
+	/// PUBLICA DESDE QUE O INTERIOR DE NAVE PASSOU A PRODUZIR CHAO (<see cref="Tech.NaveGrande"/>):
+	/// ele monta o proprio bitset a mao (uma sala, nao um mundo de ruido) mas tem que gravar o
+	/// MESMO cabecalho, senao o `ZoneCollision.Load` recusa calado e a nave vira uma zona sem
+	/// parede. Uma segunda copia de oito bytes de cabecalho e exatamente o tipo de verdade
+	/// duplicada que a regra 4 da casa proibe.
+	/// </summary>
+	public static byte[] MontarJcol(int w, int h, byte[] bits)
 	{
 		var blob = new byte[8 + bits.Length];
 		blob[0] = (byte)'J'; blob[1] = (byte)'C'; blob[2] = (byte)'O'; blob[3] = (byte)'L';
@@ -839,14 +917,25 @@ public static class GeradorDeTerreno
 	/// Aqui a busca tem tres degraus, e o terceiro nao pode falhar:
 	///
 	///   1. planicie limpa, a mais perto do centro (o criterio do DM);
-	///   2. qualquer celula que nao seja parede (planeta quase todo montanha);
+	///   2. qualquer celula que nao seja parede NEM AGUA (planeta quase todo montanha);
 	///   3. ESCAVA uma clareira de 3x3 no centro -- vira planicie, sem cobertura, sem colisao.
 	///
 	/// E em qualquer um dos casos as oito vizinhas perdem a cobertura: nascer cercado por oito
 	/// arvores e tecnicamente "livre" e na pratica e nascer preso.
+	///
+	/// ============================ O DEGRAU 2 ACEITAVA AGUA, E ISSO VIROU DEFEITO ============================
+	/// Enquanto agua era chao comum, "nao e parede" bastava. Agora que ela para quem esta a pe, um
+	/// planeta oceanico (o Verdejante tem 15% de agua, e um Aquatico existiria) podia largar o corpo
+	/// no meio do mar: livre pela colisao, parado pela regra. A escavacao do degrau 3 tambem passa a
+	/// secar a agua do 3x3 -- o degrau 3 e o unico que nao pode falhar.
+	///
+	/// **ISTO MUDA O PONTO DE POUSO DE ALGUMAS SEMENTES ANTIGAS** -- so as que caiam no degrau 2 em
+	/// cima de agua. Nao muda o TERRENO de nenhuma: o ruido, os limiares e a cobertura sao os
+	/// mesmos, e a mesma semente continua dando o mesmo mapa.
+	/// ========================================================================================================
 	/// </summary>
 	private static (int X, int Y, bool Escavou) AcharOuAbrirClareira(
-		int w, int h, byte[] chao, byte[] cobertura, byte[] bits)
+		int w, int h, byte[] chao, byte[] cobertura, byte[] bits, byte[] agua)
 	{
 		int cx = w / 2;
 		int cy = h / 2;
@@ -862,6 +951,9 @@ public static class GeradorDeTerreno
 
 				int i = y * w + x;
 				if ((bits[i >> 3] & (1 << (i & 7))) != 0) return false;
+				// AGUA NAO E CHAO: ela nao esta no `bits` (nao e parede) e precisa ser recusada
+				// aqui, senao o degrau 2 pousa o corpo dentro do lago. Ver `ClasseDeAgua.ServeDeChao`.
+				if (chao[i] == (byte)ClasseDeTerreno.Agua) return false;
 				if (cobertura[i] != (byte)CoberturaDeTerreno.Nada) return false;
 				return exigente == 0 || chao[i] == (byte)ClasseDeTerreno.Planicie;
 			}
@@ -885,22 +977,23 @@ public static class GeradorDeTerreno
 
 		(int, int, bool) Aceitar(int x, int y)
 		{
-			LimparEmVolta(w, h, chao, cobertura, bits, x, y, cavar: false);
+			LimparEmVolta(w, h, chao, cobertura, bits, agua, x, y, cavar: false);
 			return (x, y, false);
 		}
 
-		// planeta 100% parede: abre a clareira na marra
-		LimparEmVolta(w, h, chao, cobertura, bits, cx, cy, cavar: true);
+		// planeta 100% parede OU 100% agua: abre a clareira na marra
+		LimparEmVolta(w, h, chao, cobertura, bits, agua, cx, cy, cavar: true);
 		return (cx, cy, true);
 	}
 
 	/// <summary>
 	/// Tira a cobertura das oito vizinhas (e, quando <paramref name="cavar"/>, tambem derruba a
-	/// montanha delas e a do centro). Mantem as tres estruturas coerentes -- chao, cobertura e
-	/// bitset saem juntos, senao o cliente desenharia arvore onde o servidor ja diz que passa.
+	/// montanha delas, SECA a agua delas, e faz o mesmo com a do centro). Mantem as QUATRO
+	/// estruturas coerentes -- chao, cobertura, parede e agua saem juntos, senao o cliente
+	/// desenharia agua onde o servidor ja diz que se anda.
 	/// </summary>
 	private static void LimparEmVolta(int w, int h, byte[] chao, byte[] cobertura, byte[] bits,
-		int cx, int cy, bool cavar)
+		byte[] agua, int cx, int cy, bool cavar)
 	{
 		for (int dy = -1; dy <= 1; dy++)
 		{
@@ -912,8 +1005,14 @@ public static class GeradorDeTerreno
 
 				int i = y * w + x;
 				cobertura[i] = (byte)CoberturaDeTerreno.Nada;
-				if (cavar && chao[i] == (byte)ClasseDeTerreno.Montanha)
+				if (cavar && (chao[i] == (byte)ClasseDeTerreno.Montanha
+							  || chao[i] == (byte)ClasseDeTerreno.Agua))
+				{
 					chao[i] = (byte)ClasseDeTerreno.Planicie;
+					// o desenho E a regra saem juntos: sem esta linha o cliente pintaria mar e o
+					// servidor deixaria andar por cima
+					agua[i >> 3] &= (byte)~(1 << (i & 7));
+				}
 
 				if (!cavar && chao[i] == (byte)ClasseDeTerreno.Montanha) continue;  // montanha fica
 				bits[i >> 3] &= (byte)~(1 << (i & 7));

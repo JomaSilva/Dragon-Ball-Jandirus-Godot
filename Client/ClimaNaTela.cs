@@ -318,6 +318,19 @@ public partial class ClimaNaTela : Node2D
 		TipoDeClima.Fumaca => new(false, default, 0, 0, Vector2.One, 0,
 								  new Color(0.10f, 0.09f, 0.08f), 0.28f, 280, new Vector2(0.09f, 0.025f), 0.75f, 0.80f),
 
+		// ============================ O CÉU DE UM PLANETA MORRENDO ============================
+		// É o `"Rising Rocks"` do original (`Weather.dm:115-116`) e a única receita em que o que
+		// CAI vai **para cima**: velocidade negativa. Não é chuva -- são pedaços do chão sendo
+		// arrancados pela explosão que vem de baixo, e a direção é a coisa que conta a história.
+		//
+		// A "gota" é grande, opaca e cor de rocha quente; a massa é a mais densa da tabela, porque
+		// a poeira de um mundo se partindo tapa o sol de verdade. A paralaxe fica ALTA (0,9): as
+		// pedras estão na altura do corpo, passando ao lado do jogador, e não numa camada distante.
+		// ==================================================================================
+		TipoDeClima.Destruicao => new(true, new Color(0.55f, 0.29f, 0.16f, 0.9f), -900, 0.25f,
+									  new Vector2(1.4f, 1.8f), 1.4f,
+									  new Color(0.13f, 0.05f, 0.03f), 0.36f, 300, new Vector2(0.18f, 0.06f), 0.9f, 0.90f),
+
 		_ => new(false, default, 0, 0, Vector2.One, 0, Colors.White, 0, 320, Vector2.Zero, 1, 0.5f),
 	};
 
@@ -494,17 +507,24 @@ public partial class ClimaNaTela : Node2D
 	{
 		float folga = mundo.X * 0.35f + Mathf.Abs(r.Inclinacao) * mundo.Y;
 
-		// o topo da faixa fica acima da borda visível, deslocado contra a inclinação: é de lá que
-		// a gota precisa partir pra entrar no quadro no lugar certo
+		// ============================ QUEM SOBE NASCE EMBAIXO ============================
+		// A faixa de emissão fica acima da borda visível -- é de lá que a gota precisa partir pra
+		// entrar no quadro no lugar certo. A destruição é o único clima que SOBE (velocidade
+		// negativa), e nascer acima do topo a faria sair da tela no primeiro quadro: nenhuma pedra
+		// seria vista. O sinal da velocidade decide de que lado do quadro a faixa fica.
+		// =============================================================================
+		float lado = r.Velocidade < 0 ? +1 : -1;
 		_queda.GlobalPosition = new Vector2(
 			origem.X + mundo.X * 0.5f - r.Inclinacao * mundo.Y * 0.5f,
-			origem.Y - AlturaDeSaida);
+			origem.Y + (lado > 0 ? mundo.Y + AlturaDeSaida : -AlturaDeSaida));
 
 		// SÓ QUANDO MUDA DE VERDADE. Estes dois só dependem do tamanho da janela e do tipo de
 		// clima, mas ficavam sendo reescritos a cada quadro; reatribuir propriedade de sistema de
 		// partícula em laço de desenho é o tipo de coisa que às vezes reinicia o pool e sempre
 		// custa à toa. A posição acima é a única que precisa andar todo quadro.
-		float vida = Mathf.Max(0.35f, (mundo.Y + AlturaDeSaida * 2) / Mathf.Max(r.Velocidade, 1) * 1.4f);
+		// MODULO pelo mesmo motivo do `QuedaDe`: velocidade negativa (a destruicao sobe) viraria 1
+		// no `Max` e daria vida de minutos por particula.
+		float vida = Mathf.Max(0.35f, (mundo.Y + AlturaDeSaida * 2) / Mathf.Max(Mathf.Abs(r.Velocidade), 1) * 1.4f);
 		var caixa = new Vector3((mundo.X + folga) * 0.5f, 8, 0);
 
 		if (Mathf.Abs(_queda.Lifetime - vida) > 0.01f) _queda.Lifetime = vida;
@@ -701,7 +721,11 @@ public partial class ClimaNaTela : Node2D
 	{
 		Receita r = Do(t);
 		if (!r.Cai) return float.MaxValue;
-		float vida = Mathf.Max(0.35f, (MundoVisivelTipico * 0.567f + AlturaDeSaida * 2) / Mathf.Max(r.Velocidade, 1) * 1.4f);
-		return r.Velocidade * vida;
+		// MODULO, e nao o valor cru: a destruicao SOBE (velocidade negativa, ver a receita dela) e
+		// sem isto o `Max(v, 1)` a transformava em 1 px/s -- vida de quinze minutos por pedra e uma
+		// resposta de "percorre -900 px", que passaria batido nesta bancada por ser um numero.
+		float v = Mathf.Max(Mathf.Abs(r.Velocidade), 1);
+		float vida = Mathf.Max(0.35f, (MundoVisivelTipico * 0.567f + AlturaDeSaida * 2) / v * 1.4f);
+		return v * vida;
 	}
 }

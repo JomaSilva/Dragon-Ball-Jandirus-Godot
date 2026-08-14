@@ -92,8 +92,8 @@ public readonly struct Capacidades
 	public double CustoDaGuarda { get; init; }
 
 	/// <summary>
-	/// O QUE ELE PODE ATIRAR DE LONGE. **Vazio em todo corpo do jogo, hoje** -- ver
-	/// <see cref="Arsenal"/> e `TecnicasDeLonge`.
+	/// O QUE ELE PODE ATIRAR DE LONGE -- vazio pra quem nao comprou nenhuma das tres skills que
+	/// voam. Ver <see cref="Arsenal"/> e `TecnicasDeLonge`.
 	///
 	/// ============================ POR QUE ISTO MORA AQUI E NAO NUM CAMPO NOVO DO CEREBRO ============================
 	/// Porque e exatamente a mesma pergunta que os outros campos deste struct fazem -- *"o que o

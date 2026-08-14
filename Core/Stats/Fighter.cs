@@ -42,6 +42,18 @@ public sealed partial class Fighter
 	public bool dead, KO, IsInFight, dashing, isconcealed;
 
 	/// <summary>
+	/// `mob/var/isVillain` -- **designado por ADMIN**, e nao conquistado.
+	///
+	/// A skill que o le e uma so no catalogo inteiro (Planet Destroy, `vilao: 1` -- medido: 1 de 366
+	/// entradas do `skills.json`), e o proprio original diz como o bit e escrito: *"only an
+	/// admin-designated Villain can learn it"* (`Planets.dm:382`).
+	///
+	/// MORA NA FICHA porque a ficha inteira e serializada no save: sem isto, ser vilao morreria no
+	/// logout e a arma se destrancaria a cada sessao. Ver `GameServer.EhVilao`.
+	/// </summary>
+	public bool isVillain;
+
+	/// <summary>
 	/// `flightability`: a proficiencia de voo, 1 a 100. DIVIDE o custo de Ki de voar.
 	///
 	/// MORA NA FICHA e nao no <c>ServerPlayer</c> por um motivo so: a ficha inteira e serializada
@@ -53,6 +65,20 @@ public sealed partial class Fighter
 	/// (ver <c>Voo.HabilidadeSemVoo</c>).
 	/// </summary>
 	public double flightability = 1;
+
+	/// <summary>
+	/// `swimmastery`: a maestria de NADO (`mobvars.dm:59`, comeca em 0,01). DIVIDE o custo de Ki de
+	/// nadar -- ver <see cref="Jandirus.Core.World.Nado"/>.
+	///
+	/// MORA NA FICHA pelo mesmo motivo do <see cref="flightability"/> logo acima: a ficha inteira e
+	/// serializada no save, entao um numero que o jogador conquista nadando persiste de graca. No
+	/// original ela e `mob/var` sem `tmp`, ou seja, tambem vai pro save de la.
+	///
+	/// SAVE ANTIGO CHEGA COM ZERO (o campo nao existia), e zero e proibido: ele esta no DENOMINADOR
+	/// do custo. Quem le trata isso -- ver `Nado.CustoPorTiqueDoDm` e `Nado.SubirMaestria`, que
+	/// caem no valor de nascenca quando recebem <= 0.
+	/// </summary>
+	public double swimmastery = Jandirus.Core.World.Nado.MaestriaInicial;
 
 	// O `Apeshitskill` (dominio sobre o Oozaru, 0 a 10) MORAVA AQUI e foi deletado: o Oozaru passou
 	// a usar o livro de maestrias das outras formas, por id de catalogo. Ver o bloco "O
@@ -81,6 +107,78 @@ public sealed partial class Fighter
 	public double physoffStyle = 1, physdefStyle = 1, techniqueStyle = 1;
 	public double kioffStyle = 1, kidefStyle = 1, kiskillStyle = 1, speedStyle = 1, magiStyle = 1;
 	public double kiregenStyle = 1, staminadrainStyle = 1;
+
+	// =====================================================================
+	// OS STATS QUE A **FORMA** MEXE
+	// =====================================================================
+	/// <summary>
+	/// ============================ O CANAL DE STAT DA FORMA ATIVA ============================
+	/// Uma forma nao muda so o BP. No DM ela mexe em stat, e mexe em varias:
+	///
+	///   * Oozaru  -- `Tphysoff += 1.2`, `Tspeed -= 1.5`, `Ttechnique -= 1.5`  (`Oozaru.dm:127-129`)
+	///   * Gray Full Power -- `Tphysoff/Tkioff/Tspeed += 1.2`                  (`grays.dm:90-92`)
+	///   * Icer Full Power -- `Tphysoff += 1.3`, `Tkioff += 1.2`, `Tspeed += 1.3` (`IcerTransform.dm:292-294`)
+	///   * Giant Form -- `Tphysoff/Tphysdef += 1.5`, `Tspeed -= 0.5`  (`Giant Form.dm:72-74`)
+	///   * Majin -- `physoffMod *= 1.3`  (`Majin.dm:37`)  -- o DM usa OS DOIS canais
+	///
+	/// O port so tinha isso pro Oozaru, escrito a mao no servidor (`GameServer.Oozaru.cs:211-213`).
+	/// O catalogo de formas -- 40 campos -- nao tinha campo nenhum de stat, entao NENHUMA das outras
+	/// formas tinha os stats dela. Estes campos sao a casa que faltava, e servem a QUALQUER entrada
+	/// do catalogo (ver `FormaDef.Mods`).
+	///
+	/// ---- POR QUE MULTIPLICATIVO, E NAO SOMA NO CANAL `T*` COMO O DM ----
+	/// Porque o `T*` NAO FUNCIONA PRA VELOCIDADE, nem aqui nem la. Repare na linha do `Rspeed`
+	/// (`Fighter.Statify.cs`, portada literal de `master.dm:144`): todos os stats somam
+	/// `buff + T<stat>`, mas a velocidade faz `speedBuff * Tspeed` -- e `speedBuff` NASCE EM ZERO e
+	/// so skill escreve nele. Zero vezes qualquer coisa e zero: o `Tspeed -= 1.5` do Oozaru nao tem
+	/// efeito nenhum num personagem sem as skills de `Body.dm`, e tem efeito ALEATORIO num que as
+	/// tenha. O dono pediu "debuff de velocidade" -- pelo `Tspeed` ele nao chegaria.
+	///
+	/// Multiplicativo tambem e o que faz o buff dizer a mesma coisa a vida inteira: uma SOMA de 1,2
+	/// e +20% num stat cru 6 e +2% num stat cru 60, entao a mesma forma seria transformadora no
+	/// comeco e decorativa no fim.
+	///
+	/// ---- ONDE ELES ENTRAM ----
+	/// Como fator do R INTEIRO, no mesmo lugar do `*Style` (o canal de estilo de luta do DM), e
+	/// ANTES do `StatCap`. Ou seja: sao stat, e nao poder -- **nenhum deles entra no
+	/// `powerlevel()`**. Isso e deliberado e e o desenho do DM: `Tphysoff` e `physoffMod` nao
+	/// aparecem em lugar nenhum daquela conta. Um debuff de velocidade que descesse o BP nao seria
+	/// "lento", seria "mais fraco", que e outra coisa. O preco em BP de uma forma ja tem canal
+	/// proprio (`Mult`/`MultDiluido` -> `ssjBuff` -> familia 1, e `Dreno`).
+	///
+	/// SAO ESCRITOS, NUNCA ACUMULADOS: `AplicarForma` os afirma do catalogo a cada chamada -- a
+	/// mesma regra do `ssjBuff` e do `trueKiMod`, que moram no mesmo metodo. Nao existe "desfazer"
+	/// pra dar errado, e o tique pode reescrever mil vezes sem deriva.
+	/// ========================================================================================
+	/// </summary>
+	public double formaPhysoff = 1, formaPhysdef = 1, formaKioff = 1, formaKidef = 1;
+	public double formaTecnica = 1, formaSpeed = 1;
+
+	/// <summary>
+	/// A CADENCIA que a forma impoe -- irma dos seis acima, mas fora do `Statify`: quem a le e
+	/// `CombatMath.Cadencia`. Divide como o <see cref="hitspeedMod"/> do DM: 0,60 = soca 1,67x mais
+	/// devagar. Fica em campo SEPARADO do `hitspeedMod` de proposito -- aquele e do equipamento, e
+	/// como a forma AFIRMA o valor dela a cada `AplicarForma`, escrever no mesmo campo apagaria a
+	/// espada do sujeito toda vez que ele transformasse.
+	/// </summary>
+	public double formaCadencia = 1;
+
+	/// <summary>
+	/// `hitspeedMod` -- A CADENCIA DO SOCO, e ela e um canal SEPARADO da velocidade.
+	///
+	/// O dono pediu que o Grade 3 "soque mais devagar", e isso NAO sai do `Espeed`: medido, mexer o
+	/// `speedMod` de 1,00 a 0,50 deixa a cadencia parada em 0,333 s. A causa e que o `Eactspeed`
+	/// esta cravado em 20 pra todo mundo -- o denominador dele so sai do piso 1 com o argumento
+	/// interno acima de ~2154, e o `StatCap` o segura em ~2,96. O comentario de `CombatMath.Cadencia`
+	/// dizia que o `Eactspeed` "cai quando o personagem carrega Ki"; ele nao cai nunca.
+	///
+	/// O lever de cadencia POR PERSONAGEM do DM sempre foi este campo:
+	/// `testactspeed /= 3 * globalmeleeattackspeed * hitspeedMod` (`attack cmn.dm:100/137`), escrito
+	/// pelo equipamento (`Equipment.dm:289/307/329/349/387`). Ele nunca tinha sido portado. Divide,
+	/// entao **acima de 1 e mais rapido, abaixo de 1 e mais lento** -- a mesma orientacao do DM, de
+	/// proposito, pra o dia em que o equipamento chegar e usar o numero do original sem traduzir.
+	/// </summary>
+	public double hitspeedMod = 1;
 
 	// =====================================================================
 	// SAIDA de Statify -- R = cru composto, E = depois da curva de retorno decrescente
@@ -337,6 +435,22 @@ public sealed partial class Fighter
 	/// <summary>Vazamento do Frost mutante: abaixo de 1 o poder escapa ate o piso.</summary>
 	public double fd_release = 1;
 
+	/// <summary>
+	/// O `fd_ki_locked` do original: o Mutante PERDEU o controle do ki.
+	///
+	/// Mora aqui, ao lado do vazamento que ele causa, porque no DM os dois sao `mob/var` vizinhos --
+	/// e porque quem o LE nao e o motor de formas e sim a carga (`CargaDeKi.Passo`, o
+	/// `Power Control.dm:141`): com o ki solto, a tecla C morre ate ele recuar pra uma forma que
+	/// segure. Quem o ESCREVE e o motor do Mutante (`GameServer.Frost.cs`), e so ele.
+	///
+	/// **NAO da pra derivar de `fd_release &lt; 1`**, e a ordem do original e o motivo: o controle se
+	/// perde PRIMEIRO (`fd_ki_locked = 1`, com aviso no chat) e so entao a liberacao comeca a cair,
+	/// 1,2% por segundo. No instante em que ele trava, `fd_release` ainda vale 1 -- e e exatamente
+	/// esse instante que precisa matar a tecla C, senao o jogador enche o tanque no unico segundo em
+	/// que a regra ainda nao pegou.
+	/// </summary>
+	public bool fd_ki_locked;
+
 	// =====================================================================
 	// GANHOS
 	// =====================================================================
@@ -362,8 +476,35 @@ public sealed partial class Fighter
 	/// <summary>
 	/// Ritmo da ZONA. Sala do Tempo multiplica por 280 (1 dia la = 1 ano), Dimensao Mental
 	/// divide por 4. O servidor escreve isto na troca de zona.
+	///
+	/// ============================ ELE PASSOU A SER ESCRITO DE VERDADE ============================
+	/// Ate a camada 2 da Sala do Tempo (13.4) este campo era lido em quatro caminhos de ganho
+	/// (`TrainGain`, `AttackGain`, `BlastGain`, `GravGain`) e **o servidor nunca o escrevia** -- so a
+	/// `TrainBench` do pipeline. Ou seja: a constante `GainKnobs.TimeChamberMult` existia, a
+	/// multiplicacao existia, e mesmo assim a Sala rendia igual a um campo qualquer da Terra.
+	///
+	/// Quem escreve agora e <see cref="Jandirus.Core.World.SalaDoTempo.AplicarRitmo"/>, e ele escreve
+	/// **os dois** campos de zona de uma vez, nas duas direcoes (entrando 280, saindo 1). Uma casa so
+	/// pros dois porque "ligou e esqueceu de desligar" e o modo de falha obvio aqui -- um jogador que
+	/// saisse da Sala com 280 no bolso treinaria a 280x na Terra pra sempre.
+	/// ==========================================================================================
 	/// </summary>
 	public double zoneGainMult = 1;
+
+	/// <summary>
+	/// Ritmo de MAESTRIA DE FORMA da zona -- campo separado do <see cref="zoneGainMult"/> de
+	/// proposito, e o proposito e um numero diferente.
+	///
+	/// Dentro da Sala do Tempo o BP rende **280x** e a maestria sobe **4x**, e isso NAO e
+	/// inconsistencia: o 280 e tempo comprimido (um dia la vale um ano de treino), e maestria e
+	/// COSTUME COM A FORMA -- acelerar as duas no mesmo fator entregaria todas as formas dominadas
+	/// numa unica sessao de 48 minutos. E regra do dono (13.6d) e esta e a razao escrita, pra ninguem
+	/// "consertar" a diferenca depois.
+	///
+	/// Quem le e o funil de maestria do servidor (`GameServer.SubirMaestriaDaZona`), que e o unico
+	/// ponto por onde os dois tiques de forma (a escada e o Oozaru) creditam maestria.
+	/// </summary>
+	public double zoneMasteryMult = 1;
 
 	// --- estado do laco de treino (o que o BYOND guardava em tmp) ---------
 	public bool train, med, minuteshot, train_med_to_hp;
@@ -403,6 +544,17 @@ public sealed partial class Fighter
 	public double kiratio = 1, hpratio = 1, staminaratio = 1;
 	public double buffBuff, formBuff, deBuff, statusBuff, netBuff, nnetBuff = 1;
 	public double fusionBuff = 1, angerBuff = 1;
+
+	/// <summary>
+	/// A GRAVIDADE COMO DIVISOR DE CONDICAO -- irma de <see cref="deBuff"/>, <see cref="statusBuff"/>
+	/// e <see cref="AgeDiv"/>, e ate agora a unica da familia que era VARIAVEL LOCAL do PowerLevel.
+	///
+	/// Ela subiu pra campo quando a <see cref="Inteireza"/> passou a sair do produto dos fatores de
+	/// condicao em vez de sair da razao `expressedBP / peakexBP`: sem isto a % nao teria como
+	/// enxergar a gravidade, que e justamente um dos tres fatores que o dono citou. Nasce em 1
+	/// (nenhum peso de planeta) e o ramo do poder escondido a deixa assim de proposito.
+	/// </summary>
+	public double gravDiv = 1;
 
 	/// <summary>
 	/// Um tick completo, na ORDEM do GlobalStats do BYOND: primeiro os stats, depois o poder.

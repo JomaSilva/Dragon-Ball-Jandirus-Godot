@@ -196,7 +196,7 @@ public partial class GameServer
 				  queimou > 0 && s > 1, $"{queimou:0.#} de vida em {s:0.00} s");
 			Checa("...com a bandeira `dead` levantada pelo `Morrer()`", pl.Ficha.dead, "");
 			Checa("...e com o prazo de renascer marcado (o mesmo de qualquer morte)",
-				  pl.RenasceEm > 0, $"{pl.RenasceEm}");
+				  pl.RelogioDaMorte > 0, $"{pl.RelogioDaMorte}");
 			Checa("...e o jogador foi avisado do que o matou",
 				  ditos.Any(l => l.Contains("consumido")), string.Join(" | ", ditos.TakeLast(3)));
 

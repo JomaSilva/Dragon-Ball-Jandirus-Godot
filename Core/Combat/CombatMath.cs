@@ -170,12 +170,29 @@ public static class CombatMath
 	/// <summary>
 	/// Quanto tempo ate poder golpear de novo, em segundos.
 	///
-	/// Escala pelo `Eactspeed`, que cai quando o personagem carrega Ki -- entao carregar
-	/// poder deixa a luta mais rapida, nao so mais forte.
+	/// ============================ O `Eactspeed` NAO SE MEXE, E ISSO FOI MEDIDO ============================
+	/// Aqui estava escrito que ele "cai quando o personagem carrega Ki". NAO CAI -- nem com Ki, nem
+	/// com velocidade, nem com nada. Medido com `speedMod` de 1,00 a 0,50 em stat cru 5, 20 e 60: o
+	/// `Espeed` desce 31% e o `Eactspeed` fica em 20,000 nos nove casos, cadencia 0,333 s parada.
+	///
+	/// A razao esta em `Fighter.Statify`: `Eactspeed = clamp(actspeed / denom, 5, 22)` com
+	/// `denom = max(log10(max(log10(dentro)*3, 1)) * 4, 1)`. Pra `denom` sair do piso 1 e preciso
+	/// `dentro > 10^(10/3)`, ou seja ~2154 -- e com `Espeed` e `Ekiskill` saturados pelo `StatCap`
+	/// (que satura perto de 10) o maximo que `dentro` alcanca e ~2,96. Alem disso `actspeed` e
+	/// constante 20 e ninguem nunca escreve nele (`Fighter.cs`, `master.dm:68`).
+	///
+	/// ENTAO O LEVER POR PERSONAGEM E O DIVISOR, e ele e o do DM:
+	/// `testactspeed /= 3 * globalmeleeattackspeed * hitspeedMod` (`attack cmn.dm:100/137`).
+	/// `DivisorCadencia` e o `3`, `VelocidadeGlobal` e o global -- faltava o terceiro, que e por
+	/// personagem. Divide: acima de 1 soca mais rapido, abaixo de 1 mais devagar.
+	/// ==================================================================================================
 	/// </summary>
 	public static double Cadencia(Fighter atacante, double tipo = 1)
 	{
-		double div = Math.Max(CombatKnobs.DivisorCadencia * CombatKnobs.VelocidadeGlobal, 0.01);
+		// `hitspeedMod` e do equipamento (ainda sem escritor no port); `formaCadencia` e da forma
+		// ativa. Dois donos, dois campos, e compoem multiplicando -- ver `Fighter.cs`.
+		double pessoal = Math.Max(atacante.hitspeedMod * atacante.formaCadencia, 0.01);
+		double div = Math.Max(CombatKnobs.DivisorCadencia * CombatKnobs.VelocidadeGlobal * pessoal, 0.01);
 		return Math.Max(atacante.Eactspeed / div * Math.Max(tipo, 0.1) / 10, 0.05);
 	}
 }

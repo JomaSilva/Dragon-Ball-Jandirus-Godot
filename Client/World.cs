@@ -98,6 +98,12 @@ public partial class World : Node2D
 	private readonly Dictionary<int, Jandirus.Core.Forms.FormaOozaru> _feraDaZona = [];
 	private LocalPlayer? _local;
 	private readonly Dictionary<int, RemotePlayer> _remotos = [];
+
+	/// <summary>
+	/// OS ATAQUES DE KI NA TELA, por id. Eles NAO sao atores: nao tem aparencia, nao tem forma, nao
+	/// tem nome e nao entram em nenhuma das tabelas de corpo -- so nascem, deslizam e somem.
+	/// </summary>
+	private readonly Dictionary<int, ProjetilDesenhado> _tiros = [];
 	private Iluminacao _luzDoMundo = null!;
 	private ZoneCatalog? _catalogo;
 	private ZoneCollision? _colisao;
@@ -207,6 +213,14 @@ public partial class World : Node2D
 		AddChild(_veu);
 		MontarDecalques();
 
+		// ============================ A VOZ VIVE E MORRE COM O MUNDO ============================
+		// Os dois sao filhos DAQUI e nao autoloads, e essa e a terceira forma de desligar o microfone
+		// (as outras duas sao a opcao e a tecla): sair pra tela de login libera este no, o `Microfone`
+		// fecha o dispositivo no `_ExitTree` e as vozes penduradas somem junto. Um autoload teria
+		// deixado o microfone aberto na tela de titulo.
+		AddChild(new Microfone { Name = "Microfone" });
+		AddChild(new VozOuvida { Name = "VozOuvida" });
+
 		_ceu = new CeuDoEspaco { Name = "Ceu", Visible = false };
 		AddChild(_ceu);
 		_orbes = new Node2D { Name = "Planetas" };
@@ -219,6 +233,7 @@ public partial class World : Node2D
 			cli.PeerLeft += AoSair;
 			cli.PeerLooked += AoReceberAparencia;
 			cli.Falou += AoFalar;
+			cli.VozRecebida += AoOuvirVoz;
 			cli.Golpe += AoGolpe;
 			cli.FormaMudou += AoMudarForma;
 			cli.OozaruMudou += AoVirarOozaru;
@@ -229,6 +244,12 @@ public partial class World : Node2D
 			cli.EfeitoCaiu += AoCairEfeito;
 			cli.Piscou += AoPiscar;
 			cli.ClashBaque += AoBaqueDeEmbate;
+
+			// OS ATAQUES DE KI: dois eventos (nasceu/morreu) e a lista de posicoes por snapshot.
+			// Metodos nomeados, como todo o resto daqui -- ver a nota das lambdas orfas abaixo.
+			cli.TiroNasceu += AoNascerTiro;
+			cli.TiroMorreu += AoMorrerTiro;
+			cli.TirosNoAr += AoMoverTiros;
 
 			// O MEU CORPO SOME TAMBEM. O bit `Oculto` do snapshot esconde os OUTROS -- o corpo local
 			// nao vem por snapshot, entao ele continuava na tela se teleportando a cada meio segundo
@@ -259,6 +280,7 @@ public partial class World : Node2D
 			cli.CenarioCaiu += AoCairCenario;
 			cli.CenarioRefeito += AoRefazerCenario;
 			cli.FeridasMudaram += AoMudarFeridas;
+			cli.AureolaMudou += AoMudarAureola;
 			// O Boot instancia o World DENTRO do callback de Joined, ou seja, este _Ready
 			// roda DEPOIS do evento. Assinar nao basta: se ja entramos, aplica agora.
 			if (cli.LocalId != 0) AoEntrar(cli.LocalId, cli.Zone, cli.LocalSpawn, cli.LocalName);
@@ -288,6 +310,7 @@ public partial class World : Node2D
 			cli.PeerLeft -= AoSair;
 			cli.PeerLooked -= AoReceberAparencia;
 			cli.Falou -= AoFalar;
+			cli.VozRecebida -= AoOuvirVoz;
 			cli.Golpe -= AoGolpe;
 			cli.FormaMudou -= AoMudarForma;
 			// METODO NOMEADO E `-=`, e nao lambda: ver a nota do `_Ready`. O `GameClient` sobrevive
@@ -298,10 +321,14 @@ public partial class World : Node2D
 			cli.ObrasMudaram -= DesenharObras;
 			cli.EfeitoCaiu -= AoCairEfeito;
 			cli.Piscou -= AoPiscar;
+			cli.TiroNasceu -= AoNascerTiro;
+			cli.TiroMorreu -= AoMorrerTiro;
+			cli.TirosNoAr -= AoMoverTiros;
 			cli.PortasMudaram -= AoMudarPortas;
 			cli.CenarioCaiu -= AoCairCenario;
 			cli.CenarioRefeito -= AoRefazerCenario;
 			cli.FeridasMudaram -= AoMudarFeridas;
+			cli.AureolaMudou -= AoMudarAureola;
 			// Os sete que faltavam -- ver a nota no `_Ready`. O `ZoneChanged` e o mais grave: um
 			// World morto ainda assinado carrega zona por cima da sessao nova.
 			cli.ClashComecou -= AoComecarEmbate;
@@ -317,9 +344,17 @@ public partial class World : Node2D
 	// =====================================================================
 	// OS AVISOS DO SERVIDOR QUE ERAM LAMBDA
 	// =====================================================================
-	private void AoComecarEmbate(int _, int __, int ___, float ____, float _____)
+	/// <summary>
+	/// O EMBATE COMECOU: no ZanzoClash o meu corpo SOME (os dois ficam invisiveis, e quem assiste ve
+	/// so o estrago). Na colisao de ki NAO -- ali os dois estao de pe, plantados, empurrando o feixe:
+	/// sumir seria apagar justamente a imagem que o embate existe pra mostrar.
+	///
+	/// Foi o byte de <see cref="Protocol.TipoDeEmbate"/> que tornou esta distincao possivel sem uma
+	/// segunda conversa no fio.
+	/// </summary>
+	private void AoComecarEmbate(Protocol.TipoDeEmbate tipo, int _, int __, int ___, float ____, float _____)
 	{
-		if (_local != null) _local.Visible = false;
+		if (tipo == Protocol.TipoDeEmbate.Velocidade && _local != null) _local.Visible = false;
 	}
 
 	private void AoAcabarEmbate(int _, int __)
@@ -456,6 +491,24 @@ public partial class World : Node2D
 				if (_local != null) AudioDirector.EfeitoNoLugar(_local, Trilha.Pouso, 0.8f);
 				break;
 
+			// ============================ O `Quake()` DO PLANETA MORRENDO ============================
+			// `M.Quake()` (`Area_Death.dm:86, :100`) -- o chao inteiro sacudindo. Aqui e a camera, e
+			// e a MESMA `Sacudir` da cinematica de transformacao: um segundo tremor proprio teria
+			// duas curvas de queda pro mesmo fenomeno.
+			//
+			// A QUEDA E A LENTA (a da cinematica, 8/s) e nao a do soco (40/s): o tremor de um
+			// planeta se partindo dura segundos, nao um solavanco seco. O `ms` que vem do servidor
+			// e quanto o abalo deve durar, e a forca sai dele -- `forca = queda * duracao`.
+			// ==================================================================================
+			case "terremoto":
+			{
+				float dura = Mathf.Clamp((float)ms / 1000f, 0.2f, 3f);
+				Sacudir(dura * Jandirus.Core.Forms.Cinematicas.QuedaDoTremor, 1f,
+						Jandirus.Core.Forms.Cinematicas.QuedaDoTremor,
+						Jandirus.Core.Forms.Cinematicas.CadenciaDoTremor);
+				break;
+			}
+
 			// A AURA DO POWER-UP: essa sim pede controle de ki de verdade
 			// (`canPower && stamina > 1`, o gate do Meditate.dm:181).
 			case "aura_carga":
@@ -517,6 +570,110 @@ public partial class World : Node2D
 	/// inventar um efeito proprio: um encontro de dois lutadores tem que soar como os golpes que o
 	/// jogo ja da, so que sem quem os deu.
 	/// </summary>
+	// =====================================================================
+	// OS ATAQUES DE KI
+	// =====================================================================
+	/// <summary>
+	/// NASCEU UM TIRO. A COR SAI DO DONO -- ela nao viaja no pacote, porque o cliente ja recebeu a
+	/// aura de cada um pelo `PeerLook` e ja a usa na chama e na carga. Mandar a cor junto criaria a
+	/// segunda resposta pra "de que cor e o ki deste sujeito" (ver o cabecalho de `Client/Aura.cs`).
+	/// </summary>
+	private void AoNascerTiro(int id, int dono, byte tipo, Vec2 onde)
+	{
+		if (_tiros.ContainsKey(id)) return;
+
+		var p = new Vector2(onde.X, onde.Y);
+		var no = new ProjetilDesenhado
+		{
+			Name = $"Tiro{id}",
+			Tipo = (Jandirus.Core.Combat.TipoDeProjetil)tipo,
+			Cor = CorDoKiDe(dono),
+			Position = p,
+		};
+		no.Mirar(p, p);
+		_atores.AddChild(no);
+		_tiros[id] = no;
+
+		// O SOM SAI DA MAO DE QUEM ATIROU, e nao da camera: ouvir de onde veio e metade da leitura
+		// de uma luta a distancia.
+		AudioDirector.EfeitoNoLugar(no, Trilha.Acerto(1), 0.55f);
+	}
+
+	/// <summary>
+	/// ACABOU. O MOTIVO ESCOLHE O EFEITO, e por isso ele viaja: um tiro que estoura numa cara, um
+	/// que lasca numa parede e um que simplesmente se apaga no ar sao tres coisas diferentes, e sem
+	/// o motivo o cliente teria que adivinhar pela ultima posicao -- que e o tipo de deducao que ja
+	/// errou neste projeto (ver o rastro de corrida no `EntityState`).
+	/// </summary>
+	private void AoMorrerTiro(int id, byte fim, Vec2 onde)
+	{
+		Color cor = Aura.CorDoKiCru;
+		if (_tiros.Remove(id, out ProjetilDesenhado? no))
+		{
+			cor = no.Cor;
+			no.QueueFree();
+		}
+
+		var p = new Vector2(onde.X, onde.Y);
+		switch ((Jandirus.Core.Combat.FimDeProjetil)fim)
+		{
+			case Jandirus.Core.Combat.FimDeProjetil.Acertou:
+				CombatFx.Impacto(_atores, p, 1.3f, cor);
+				CombatFx.Onda(_atores, p, 84, cor, 0.26);
+				PoeiraDeEstrago.Soltar(_atores, p);
+				break;
+
+			case Jandirus.Core.Combat.FimDeProjetil.Cenario:
+				CombatFx.Impacto(_atores, p, 0.9f, cor);
+				PoeiraDeEstrago.Soltar(_atores, p);
+				break;
+
+			case Jandirus.Core.Combat.FimDeProjetil.Defletido:
+				CombatFx.Onda(_atores, p, 60, cor, 0.2);
+				break;
+
+			// APAGOU e CESSOU nao estouram: o alcance acabou, ou o dono soltou o raio. Um estouro
+			// aqui ensinaria o jogador que o tiro acertou alguma coisa quando ele so se dissolveu.
+			default:
+				break;
+		}
+	}
+
+	/// <summary>
+	/// ONDE OS TIROS ESTAO AGORA -- a lista inteira, por snapshot.
+	///
+	/// QUEM NAO ESTA NA LISTA NAO MORRE AQUI. A morte vem pelo canal confiavel (com o motivo, que e
+	/// o que escolhe o efeito); sumir da lista so quer dizer "este pacote nao o trouxe", e pacote de
+	/// snapshot se perde por design. Apagar por ausencia faria todo tiro piscar em rede ruim.
+	/// </summary>
+	private void AoMoverTiros(IReadOnlyList<Jandirus.Net.ProjetilState> tiros)
+	{
+		foreach (Jandirus.Net.ProjetilState t in tiros)
+			if (_tiros.TryGetValue(t.Id, out ProjetilDesenhado? no))
+				no.Mirar(new Vector2(t.Pos.X, t.Pos.Y), new Vector2(t.Cauda.X, t.Cauda.Y));
+	}
+
+	/// <summary>
+	/// A COR DA CHAMA DE UM CORPO DA ZONA -- o proprio ou um remoto. Fora da zona (ou antes de o
+	/// `PeerLook` dele chegar) vale o ki cru, que e o mesmo padrao que a `Aura` ja usa.
+	/// </summary>
+	private Color CorDoKiDe(int id)
+	{
+		Node2D? corpo = GameClient.Instance?.LocalId == id ? _local : _remotos.GetValueOrDefault(id);
+		return corpo?.GetNodeOrNull<Aura>("Aura")?.CorPessoal ?? Aura.CorDoKiCru;
+	}
+
+	/// <summary>
+	/// TODO TIRO SOME AO TROCAR DE ZONA. Eles sao da zona que ficou pra tras, e o servidor nao vai
+	/// anunciar a morte deles pra quem nao esta mais la -- sem esta linha, um raio congelado no meio
+	/// da tela viajaria de planeta junto com o jogador.
+	/// </summary>
+	private void EsvaziarTiros()
+	{
+		foreach (ProjetilDesenhado no in _tiros.Values) no.QueueFree();
+		_tiros.Clear();
+	}
+
 	private void AoBaqueDeEmbate(Vec2 onde)
 	{
 		var p = new Vector2(onde.X, onde.Y);
@@ -591,6 +748,39 @@ public partial class World : Node2D
 		// acesa depois de soltar o C (ver `CargaVisual.Definir`). Nos corpos remotos essa mesma linha
 		// e escrita pelo snapshot, com os dois bits que vem nele.
 		if (GameClient.Instance is { } c && id == c.LocalId) AplicarChamaDaCargaLocal();
+	}
+
+	/// <summary>
+	/// ALGUEM ENTROU (OU SAIU) DE UMA NAVE -- irmao do <see cref="MarcarSobrecarga"/> logo acima, e
+	/// escrito no mesmo molde: um bit do snapshot, e trabalho SO quando ele vira.
+	///
+	/// ============================ O ESTADO E O PROPRIO NODE, E NAO UM CONJUNTO ============================
+	/// Os outros bits deste arquivo guardam um `HashSet&lt;int&gt;` porque o que eles decidem (um uniform
+	/// de shader, a cor da pupila) nao vive em node nenhum -- nao ha objeto pra perguntar. Aqui ha: a
+	/// nave E um node filho do corpo.
+	///
+	/// Isso mata a classe de bug que os conjuntos daqui pagam com linhas de limpeza (ver
+	/// `EsvaziarRemotos` e `AoSair`, que apagam quatro tabelas a cada troca de planeta): um filho morre
+	/// com o pai, entao o corpo que sai de vista leva a nave junto, sem ninguem lembrar de apagar nada.
+	/// Uma segunda verdade sobre "quem esta pilotando" so poderia divergir da primeira.
+	/// ==================================================================================================
+	/// </summary>
+	internal void MarcarNaNave(int id, bool dentro, bool grande = false)
+	{
+		if (id == 0) return;
+		if (Corpo(id) is not { } corpo) return;
+
+		Node? ja = corpo.GetNodeOrNull(NaveDesenhada.NomeDoNode);
+
+		// TROCAR DE NAVE TAMBEM E UMA VIRADA. O atalho antigo era `dentro == (ja != null)`, e ele
+		// bastava enquanto so havia um desenho possivel. Com dois, um jogador que saisse de um pod e
+		// assumisse o leme de uma Capital Ship continuaria com a capsula pequena colada nele -- o
+		// node existe, o bit continua ligado, e nada pediria pra redesenhar.
+		bool jaEhGrande = ja is NaveDesenhada nd && nd.Grande;
+		if (dentro == (ja != null) && (!dentro || jaEhGrande == grande)) return;
+
+		ja?.QueueFree();
+		if (dentro) corpo.AddChild(new NaveDesenhada { Name = NaveDesenhada.NomeDoNode, Grande = grande });
 	}
 
 	/// <summary>
@@ -714,6 +904,52 @@ public partial class World : Node2D
 		}
 		foreach (Node n in _orbes.GetChildren()) n.QueueFree();
 
+		// ============================ O INTERIOR DE UMA NAVE ============================
+		// Tambem nao tem cena, e pelo mesmo motivo do planeta gerado: ele nao e um arquivo, e uma
+		// PLANTA -- funcao pura no Core, a mesma de que o servidor tira a colisao (ver
+		// `Core.Tech.NaveGrande`). Zero byte de mapa na rede.
+		//
+		// ELE REUSA O `PlanetaProcedural` INTEIRO, so trocando de onde vem o terreno (ver
+		// `TerrenoPronto`): montagem de camadas por tinta, resolucao dos pinceis contra o
+		// `tileset.tres` e entrega por PEDACO (regra 0.6) sao os mesmos. Uma classe propria copiaria
+		// duzentas linhas pra desenhar uma sala.
+		//
+		// ANTES DA CONSULTA AO CATALOGO, como o ramo do gerado: o nome da zona e "Nave", e o
+		// manifesto nao tem entrada nenhuma com esse nome -- ela cairia no "chao provisorio", que e
+		// uma zona sem colisao. Numa nave isso seria sair andando pelo casco.
+		if (Jandirus.Core.Tech.NaveGrande.EhInterior(zona, out int idDaNave))
+		{
+			var interior = new PlanetaProcedural
+			{
+				Name = "InteriorDeNave",
+				TerrenoPronto = Jandirus.Core.Tech.NaveGrande.Planta(),
+				NomeDoPlaneta = "Nave",
+			};
+			_zonaAtual = interior;
+			_zonaDoAtual = zona;
+			AddChild(interior);
+			MoveChild(interior, 0);
+
+			interior.CentroInicial = centro;
+			interior.PedacoPintado -= ReaplicarEstrago;
+			interior.PedacoPintado += ReaplicarEstrago;
+			interior.Entrar(zona.Seed);   // a seed aqui e o ID DA NAVE: identidade, nao geracao
+
+			_colisao = interior.Colisao;
+			_veu.Mapa = interior.Sombra ?? interior.Colisao;
+			_veu.Colisao = interior.Colisao;
+			_veu.Camadas = CamadasDoCenario(interior);
+			if (_local != null) _local.Mapa = _colisao;
+			DesenharObras();
+			ReaplicarEstrago();
+			AudioDirector.Instance?.Ambiente("");
+			GD.Print($"[world] zona: INTERIOR da nave #{idDaNave} "
+					 + $"({Jandirus.Core.Tech.NaveGrande.Lado}x{Jandirus.Core.Tech.NaveGrande.Lado})");
+			Chat.Sistema("você está dentro da nave. A ponte fica no canto superior esquerdo; "
+					   + "a plataforma de saída, no centro.");
+			return;
+		}
+
 		// PLANETA GERADO: nao ha cena no catalogo, e nem deveria haver -- ele nasce da seed.
 		// Este ramo tem que vir ANTES da consulta ao catalogo, senao a zona cai no aviso de
 		// "sem cena" e o jogador pousa num chao provisorio em vez do planeta dele.
@@ -819,7 +1055,13 @@ public partial class World : Node2D
 		{
 			pre.PedacoPintado -= ReaplicarEstrago;
 			pre.PedacoPintado += ReaplicarEstrago;
-			pre.Semear(e.Pedacos, centro);
+
+			// O VAZIO EM VOLTA -- so a Sala do Tempo. Fora do retangulo do mapa o pintor repete o
+			// chao branco ate onde a camera for (ver `PlanetaPreFeito.FonteComVazio`), e quem diz
+			// que este lugar nao tem beirada e o MESMO `SalaDoTempo` que a colisao pergunta logo
+			// abaixo -- se os dois discordassem, o chao apareceria onde o corpo nao pode andar.
+			pre.Semear(e.Pedacos, centro,
+					   Jandirus.Core.World.SalaDoTempo.SemBorda(e.Zona) ? new Vector2I(e.W, e.H) : null);
 			GD.Print($"[perf] {e.Zona}: {pre.PedacosVivos} pedaco(s) montado(s) na chegada");
 		}
 
@@ -827,12 +1069,12 @@ public partial class World : Node2D
 
 		// A MESMA colisao que o servidor usa. Sem ela o cliente atravessa parede, o servidor
 		// recusa e devolve correcao -- e e ESSA briga que faz o personagem tremer no muro.
-		_colisao = MapaCacheado(e.Colisao);
+		_colisao = MapaCacheado(e.Colisao, e.Zona, e.CaminhoDaAgua);
 		if (_colisao == null) GD.PushWarning($"[world] zona '{zona}' sem colisao: da pra atravessar parede");
 		if (_local != null) _local.Mapa = _colisao;
 
 		// O QUE CEGA e outro mapa: parede e porta cegam, arvore e cerca nao (ver MapConverter).
-		_veu.Mapa = MapaCacheado(e.Visao);
+		_veu.Mapa = MapaCacheado(e.Visao, e.Zona);
 		_veu.Colisao = _colisao;
 		_veu.Camadas = CamadasDoCenario(_zonaAtual);
 		if (_veu.Mapa == null) GD.PushWarning($"[world] zona '{zona}' sem mapa de visao: parede nao esconde nada");
@@ -862,7 +1104,7 @@ public partial class World : Node2D
 
 		// o som do LUGAR: vento, mar, cidade. Troca junto com o planeta.
 		AudioDirector.Instance?.Ambiente(Trilha.AmbienteDe(e.Zona));
-		AudioDirector.Instance?.Musica(Trilha.MusicaDe(e.Zona), AudioDirector.Camada.Lugar);
+		AudioDirector.Instance?.Musica(Trilha.MusicaDe(e.Zona), AudioDirector.Camada.Lugar, $"cheguei em `{e.Zona}`");
 
 		ulong tLuz = Time.GetTicksUsec();
 		// fogueiras, tochas e lava do planeta novo (as do anterior somem junto com ele)
@@ -962,12 +1204,35 @@ public partial class World : Node2D
 	/// cada entrada. Custa pouco (0,3 ms medidos) e nao ha razao nenhuma pra pagar de novo; as 40
 	/// zonas juntas dao ~12 MB.
 	/// </summary>
-	private ZoneCollision? MapaCacheado(string caminho)
+	/// <param name="agua">
+	/// O `.agua` desta zona -- a TERCEIRA classe de celula (ver `ClasseDeAgua`). Vazio pro mapa de
+	/// VISAO, e nao por esquecimento: agua nao cega (nenhum turf de agua do DM declara `opacity`),
+	/// entao carrega-la no `.vis` poria leque preto de muro em cada lago.
+	///
+	/// E ELE ENTRA AQUI, junto da leitura, pelo MESMO motivo que o `SemBorda`: o mapa e cacheado
+	/// por sessao, e um caminho que carregasse sem a agua deixaria a copia seca guardada pra
+	/// sempre -- com o cliente deixando andar sobre o lago e o servidor puxando de volta.
+	/// </param>
+	private ZoneCollision? MapaCacheado(string caminho, string zona = "", string agua = "")
 	{
 		if (_mapas.TryGetValue(caminho, out ZoneCollision? m)) return m;
 		m = Godot.FileAccess.FileExists(caminho)
 			? ZoneCollision.Load(Godot.FileAccess.GetFileAsBytes(caminho))
 			: null;
+
+		// zona sem `.agua` e zona SECA -- e isso e a verdade em boa parte dos andares
+		if (m != null && agua.Length > 0 && Godot.FileAccess.FileExists(agua))
+			m.CarregarAgua(Godot.FileAccess.GetFileAsBytes(agua));
+
+		// ZONA SEM BEIRADA: fora do bitset e chao, e nao o fim do mundo (ver `ZoneCollision.SemBorda`).
+		// O bit e ligado AQUI, junto da leitura, e nao no chamador -- o mapa e cacheado por sessao,
+		// e um caminho que carregasse sem ligar o bit deixaria a copia errada guardada pra sempre.
+		//
+		// AS DUAS PONTAS PERGUNTAM AO MESMO `SalaDoTempo`: o servidor faz o mesmo em `CarregarZonas`.
+		// Se so uma ligasse, o cliente andaria pelo vazio e o servidor puxaria de volta -- o corpo
+		// tremendo na costura, que e o modo de falha classico de regra de colisao duplicada.
+		if (m != null && Jandirus.Core.World.SalaDoTempo.SemBorda(zona)) m.SemBorda = true;
+
 		_mapas[caminho] = m;
 		return m;
 	}
@@ -1388,11 +1653,14 @@ public partial class World : Node2D
 		corpo.AddChild(cam);
 		_camera = cam;
 
-		corpo.AddChild(new HealthBar { Name = "Vida" });
 		// O BALAO E DO CORPO LOCAL TAMBEM. Nao e enfeite: quando VOCE fala, a frase aparece onde
 		// os outros a veem aparecer -- sem isso nao ha como saber se o balao esta alto demais, se
 		// o texto quebrou ou se a fala saiu, a nao ser perguntando pra outra pessoa.
 		corpo.AddChild(new BalaoDeFala { Name = "Balao" });
+		// O SINAL DE VOZ NO CORPO LOCAL TAMBEM, e pelo mesmo motivo do balao: quem fala precisa VER que
+		// esta transmitindo. Num sistema de microfone, "eu nao sabia que estava aberto" e a queixa que
+		// importa -- e aqui ele nao le a rede, le o proprio microfone (`Meu = true`).
+		corpo.AddChild(new SinalDeVoz { Name = "SinalDeVoz", Id = id, Meu = true });
 		_atores.AddChild(corpo);
 		_local = corpo;
 
@@ -1444,6 +1712,9 @@ public partial class World : Node2D
 				// ====================================================================================
 				_local?.ReceberAltura(e.Voando, e.Altitude);
 				_local?.ReceberPosse(e.SemRedeas, e.Pos, (Facing)e.Facing, e.Moving, e.Pose);
+				// A NAVE VALE PRO MEU CORPO TAMBEM: quem embarca precisa VER que embarcou. Sem esta
+				// linha o unico jogador que nao veria a propria nave seria o piloto dela.
+				MarcarNaNave(e.Id, e.Pilotando, e.NaveGrande);
 				// A PUPILA E DO CORPO E NAO DO CONTROLE, entao ela vale pro meu tambem: quem perde as
 				// redeas em furia lendaria PRECISA ver o proprio olho apagar, senao a unica pessoa que
 				// nao sabe o que aconteceu com aquele corpo e a dona dele.
@@ -1466,8 +1737,8 @@ public partial class World : Node2D
 				r.AddChild(new NebulosaDaForma { Name = "Nebulosa" });
 				r.AddChild(new RaiosDaForma { Name = "Raios" });
 				r.AddChild(new RastroDeCorrida { Name = "Rastro" });
-				r.AddChild(new HealthBar { Name = "Vida" });
 				r.AddChild(new BalaoDeFala { Name = "Balao" });
+				r.AddChild(new SinalDeVoz { Name = "SinalDeVoz", Id = e.Id });
 				_atores.AddChild(r);
 				_remotos[e.Id] = r;
 				VestirCorpoInteiro(e.Id, r);
@@ -1492,8 +1763,6 @@ public partial class World : Node2D
 			// snapshot de uma zona e UM buffer compartilhado, e recortar por destinatario custaria um
 			// buffer por jogador. Fica anotado o que e: quem mexer no cliente ve quem voa alto.
 			// =====================================================================================
-			if (r.GetNodeOrNull<HealthBar>("Vida") is { } barra) barra.Vida = e.Vida / 100f;
-			r.GuardarVida(e.Vida);   // os decalques de sangue perguntam por ela
 
 			// ============================ O KI DELE ACIMA DOS 100% -- E ISSO NAO E SO DA CHAMA ============================
 			// O bit `Sobrecarregado` ja viajava e ja era consumido AQUI, so que entregue exclusivamente a
@@ -1517,6 +1786,10 @@ public partial class World : Node2D
 			// pessoa decidindo ou um corpo largado -- as duas coisas se enfrentam de jeitos diferentes.
 			// =======================================================================================
 			AoMudarPosse(e.Id, e.SemRedeas);
+
+			// ...E SE AQUELE CORPO ESTA DENTRO DE UMA NAVE. Mesmo molde dos dois de cima: bit do
+			// snapshot, trabalho so na virada. Ver `MarcarNaNave`.
+			MarcarNaNave(e.Id, e.Pilotando, e.NaveGrande);
 
 			// A AURA DE POWER-UP DO OUTRO. Vem no snapshot justamente pra isto (ver
 			// EntityState.Carregando): quem esta lutando precisa ver o adversario juntando poder.
@@ -1596,6 +1869,9 @@ public partial class World : Node2D
 
 		foreach (RemotePlayer r in _remotos.Values) r.QueueFree();
 		_remotos.Clear();
+
+		// OS TIROS SAEM COM OS CORPOS, e pelo mesmo motivo: eles sao da zona que ficou pra tras.
+		EsvaziarTiros();
 
 		if (GameClient.Instance is { } c && c.AlvoId != 0)
 		{
@@ -1791,24 +2067,84 @@ public partial class World : Node2D
 				Som(quemBate, Trilha.Acerto(2));
 				break;
 
+			// ============================ A ESQUIVA, INTEIRA, COMO O ORIGINAL DESENHAVA ============================
+			// O ramo `if(0)//dodge` do DM (`CombatMovement.dm:269-289`) e QUASE tao alto quanto um
+			// acerto, e de proposito: quem esquiva precisa SABER que esquivou. Sao tres coisas, e
+			// aqui estao as tres, na mesma ordem e nos mesmos donos:
+			//
+			//   1. `flick('Zanzoken.dmi', M)`      (:286) -- o corpo do DEFENSOR TROCADO por tres quadros
+			//   2. `updateOverlay(.../attack)`     (:282) -- faisca em QUEM BATEU, no vazio
+			//   3. `emit_Sound` x2                 (:284-285) -- os dois sons, de quem bateu
+			//
+			// ============================ O ANEL SAIU, E E DIVERGENCIA DELIBERADA DO DM ============================
+			// O `createShockwavemisc(M.loc,1)` (:283) EXISTE no original e desenhava um anel de 128 px
+			// nos pes do defensor. Ele foi tirado A PEDIDO DO DONO, que viu a tela e disse: *"o CIRCULO
+			// em volta da onda de choque nem deveria ter"*. Nao e simplificacao nem esquecimento -- e o
+			// unico item desta lista em que este porte escolhe NAO seguir o DM, e fica escrito aqui pra
+			// que ninguem o "conserte" de volta lendo o `CombatMovement.dm`.
+			//
+			// O `CombatFx.Onda` continua vivo e nao perdeu nada: ele serve o critico, a queda e as
+			// cinematicas de transformacao. Quem saiu foi a chamada da esquiva, so ela.
+			// =======================================================================================================
+			//
+			// O QUE NAO E COPIADO, E POR QUE: o DM emite os sons com `view(src)` (`Ambiance.dm:26`),
+			// ou seja a tela inteira ouve no mesmo volume; aqui eles saem POSICIONADOS no atacante
+			// (`AudioDirector.EfeitoNoLugar`, 480 px de alcance), como todos os outros golpes deste
+			// porte -- quem esta perto ouve, quem esta longe nao. E o texto branco "[M] dodges [src]!"
+			// que o DM manda pra `view` inteira vai so pros DOIS envolvidos, que e a convencao do HUD
+			// daqui pra todos os desfechos (quem so assiste recebe o relato sem numero).
+			//
+			// E O SOM E O DO DM, NAO O DO IMPACTO: `meleeflash` + `meleemiss1/2/3` sao ar cortado.
+			// Nenhum deles e o baque do `Trilha.Acerto` -- esquivar nao pode soar como apanhar.
+			// =======================================================================================================
 			case Jandirus.Core.Combat.Desfecho.Esquivou:
-				// QUEM ESQUIVA COM AFTERIMAGE deixa o vulto SIMPLES no lugar de onde saiu. E o
-				// `deflection+=20` do buff Afterimage do original (`Buff Effects.dm:29-46`), que
-				// larga uma imagem no turf a cada tique enquanto dura -- aqui, no instante que
-				// importa. O servidor ja marca quem tem a skill no relato (`h.ZanzoEsquiva`).
+				// O VULTO DO CORPO (a foto das quatro camadas) e o luxo da esquiva ATIVA de quem tem
+				// Afterimage -- e o `if(haszanzo) flick(...)` do combo dodge (`:298`), o unico lugar
+				// onde o DM condiciona alguma coisa da esquiva a skill. O servidor decide
+				// (`h.ZanzoEsquiva`), e por isso ele nao nasce em cada soco desviado de uma troca.
 				if (h.ZanzoEsquiva && quemLeva != null)
 					Zanzoken.Deixar(_atores, quemLeva, null, EstiloDeVulto.Simples);
-				// o unico desfecho que era MUDO na tela: agora deixa o borrao do Zanzoken
-				if (quemLeva != null) CombatFx.Esquiva(_atores, quemLeva.Position, -rumo);
+
+				// 1. O CORPO VIRA AS LISTRAS. `flick()` no BYOND nao sobrepoe: ele TROCA o icone do
+				// mob e devolve. Por isso nao ha nada a desenhar na camada de atores aqui -- o efeito
+				// e filho do PROPRIO corpo, que e quem ele esconde e devolve. Ver `EsquivaZanzoken`,
+				// que tambem explica por que ele nao precisa de `pv`: sendo filho do corpo, a altura
+				// de voo ja chega nele pelo `SubirComOVoo`.
+				EsquivaZanzoken.Trocar(quemLeva);
+				// 2. A FAISCA EM QUEM BATEU. No DM ela e um overlay NO ATACANTE (`pixel_x/y = -18`,
+				// `EffectLayer.dm:82-97`) -- o punho passando em falso, e nao um impacto entre os
+				// dois. Por isso `pa`, e nao o `meio` que os acertos usam. Ela NAO e o "circulo" da
+				// queixa: nasce no outro corpo, tem 0,45 de escala e e a estrela do `attackspark`.
+				if (quemBate != null) CombatFx.Impacto(_atores, pa, 0.45f, Gelo);
+				// 3. OS DOIS SONS, e os dois saem de QUEM BATEU (`src.emit_Sound`).
+				Som(quemBate, Trilha.Assobio, 0.5f);
 				Som(quemBate, Trilha.SocoNoAr(), 0.7f);
 				break;
 
 			case Jandirus.Core.Combat.Desfecho.Errou:
+				// SOCO NO VAZIO -- nao havia ninguem na frente (`AnunciarSocoNoAr`, `Alvo = 0`).
+				// Errar EM ALGUEM nao passa mais por aqui: aquilo e esquiva, e sempre foi (o
+				// `hit = 0` de `CombatMovement.dm:192`).
 				Som(quemBate, Trilha.SocoNoAr(), 0.7f);   // o corte do soco passando em falso
 				break;
 		}
 
-		if (h.Decepou || h.Rabo) Som(quemLeva, Trilha.Decepou);
+		if (h.Decepou || h.Rabo)
+		{
+			Som(quemLeva, Trilha.Decepou);
+			// ============================ O JATO SAI NO MOMENTO, E O MOMENTO E ESTE ============================
+			// O `LopLimb` do original solta o `bloodspray` como overlay do corpo
+			// (`mobparts_logic.dm:119-121`), e o bit `Decepou` deste pacote e literalmente o relato
+			// daquela chamada. Nenhum byte novo foi preciso: o bit ja viajava, e ja chegava tambem pra
+			// quem so ASSISTE -- o campo que a plateia nao recebe e o `Membro`, nao o desfecho.
+			//
+			// A PECA NO CHAO NAO VEM DAQUI: ela precisa saber QUAL membro caiu, e vem pelo
+			// `S2C.Decalque` logo depois (ver `GameServer.SoltarPecas`). Sao dois canais porque sao
+			// duas exigencias diferentes -- meio segundo de sangue pode se perder no fio, uma marca
+			// de 60 s no chao nao pode.
+			// ==================================================================================================
+			if (quemLeva != null) CombatFx.JatoDeSangue(_atores, quemLeva);
+		}
 		if (h.Morreu || h.Nocauteou)
 		{
 			Som(quemLeva, Trilha.Queda);
@@ -1817,17 +2153,25 @@ public partial class World : Node2D
 		}
 		if (h.Morreu || h.Nocauteou || h.Decepou) Piscar(quemLeva, Sangue, Sangue, rumo, 0.4);
 
-		// MUSICA DE LUTA: entra no primeiro golpe que me envolve e sai sozinha depois de um
-		// tempo sem troca. A camada Combate cede pra transformacao e volta quando ela acaba.
+		// MUSICA DE LUTA: entra no primeiro golpe que me envolve e PARA quando a tag cai (ver o
+		// `PararCamada` do `_Process`). Enquanto a tag esta de pe o pedido da camada `Combate`
+		// existe, e faixa que acaba puxa OUTRA de combate -- quem encadeia e o `AudioDirector`,
+		// que e o unico que sabe que uma faixa acabou. Aqui so se levanta e se derruba a tag.
 		//
 		// SOCO NO AR NAO E LUTA. Sem esta guarda, treinar sozinho num canto do mapa poria a
 		// trilha de batalha no ar -- e o jogador ficaria ouvindo tema de briga socando o vento.
 		if (!souEu || h.Alvo == 0) return;
 		// uma faixa DIFERENTE a cada briga -- sao 39 na pasta `battle ost`
-		if (_lutaAte <= 0) AudioDirector.Instance?.Musica(Trilha.Combate(), AudioDirector.Camada.Combate);
+		if (_lutaAte <= 0) AudioDirector.Instance?.Musica(Trilha.Combate(), AudioDirector.Camada.Combate,
+														 "1o golpe que me envolve: tag de combate SUBIU");
 		_lutaAte = SegundosDeLuta;
 
-		if (h.TemDano && h.Membro.Length > 0)
+		// A ESQUIVA TAMBEM SE ESCREVE. A condicao era "houve dano num membro", e por isso o unico
+		// desfecho sem membro nenhum era o unico que nao virava linha -- justamente o que o jogador
+		// menos consegue deduzir sozinho (a vida do outro nao muda, e nada acontece com o corpo).
+		// O DM narra a esquiva como narra o acerto: `GenerateAttackFlavorText("Dodge", src)`
+		// (`CombatMovement.dm:277`) -> "[M] dodges [src]!" em branco (`AttackFlavor.dm:3,50-56`).
+		if (desfecho == Jandirus.Core.Combat.Desfecho.Esquivou || (h.TemDano && h.Membro.Length > 0))
 			Hud.Instancia?.Narrar(h, GameClient.Instance!.LocalId);
 	}
 
@@ -1867,7 +2211,7 @@ public partial class World : Node2D
 
 		if (_lutaAte <= 0) return;
 		_lutaAte -= delta;
-		if (_lutaAte <= 0) AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Combate);
+		if (_lutaAte <= 0) AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Combate, "a tag de combate CAIU");
 	}
 
 	/// <summary>A nevoa de altitude. Nasce junto com o mundo e fica quieta enquanto ninguem sobe.</summary>
@@ -2091,6 +2435,46 @@ public partial class World : Node2D
 	/// onde a fala, o alvo e a forma tiram o corpo de alguem.
 	/// </summary>
 	public Node2D? CorpoDeTeste(int id) => Corpo(id);
+
+	/// <summary>
+	/// O CAMPO DE VISAO DESTE CLIENTE -- com o `.vis` que ele carregou pra desenhar a sombra. So bancada.
+	///
+	/// ============================ POR QUE ELE PRECISA SAIR DAQUI ============================
+	/// A `--vozdupla` afirma que *"a parede que a voz enxerga e a mesma que a VISTA enxerga"*, e o defeito
+	/// que essa afirmacao persegue e alguem escrever um SEGUNDO tracador de raios no servidor: dois
+	/// tracadores leem igual e respondem diferente. A unica pergunta que separa os dois e a que a bancada
+	/// faz ao mapa **do desenho** -- este -- e compara com o bit que veio carimbado no pacote de voz.
+	///
+	/// Carregar o `.vis` na bancada pelo `MapaCacheado` daria o mesmo arquivo por outro caminho, e
+	/// passaria mesmo no dia em que o `_veu` deixasse de recebe-lo -- ou seja, provaria o arquivo e nao
+	/// a vista.
+	/// ==================================================================================
+	/// </summary>
+	public Visao VeuDeTeste => _veu;
+
+	/// <summary>
+	/// UM RELATO DE GOLPE ENTREGUE NA MAO, pelo MESMO metodo que a rede chama.
+	///
+	/// ============================ POR QUE ELE PRECISA EXISTIR ============================
+	/// Duas afirmacoes desta rodada moram no <see cref="AoGolpe"/> e em nenhum outro lugar:
+	///
+	///   * o ANEL saiu da esquiva -- e continua saindo no impacto e na queda (a divergencia
+	///     deliberada do `createShockwavemisc(M.loc,1)`, `CombatMovement.dm:283`);
+	///   * so a esquiva TROCA o corpo -- acerto, aparada, contra e soco no vazio nao escondem
+	///     ninguem.
+	///
+	/// As duas sao sobre o `switch` de desfechos, e um desfecho e escolha do SERVIDOR. Numa briga
+	/// de verdade a bancada espera o desfecho que quiser aparecer e mede o que calhar de acontecer
+	/// -- foi o que a `--diagdesvio` fez, e ela nunca conseguiu provar o CONTRA-EXEMPLO (que o anel
+	/// continua vivo no impacto), porque nao da pra encomendar um critico. Aqui os seis desfechos
+	/// entram um a um, na ordem, pelo caminho verdadeiro.
+	///
+	/// NAO E UM ATALHO NO DESENHO: o que entra e o mesmo `HitEvent` que o `GameClient.Golpe`
+	/// entrega, e o que roda e o metodo inteiro. Reimplementar o `switch` na bancada provaria a
+	/// copia -- e a copia envelheceria calada, que e como esta casa ja perdeu quatro defeitos.
+	/// ====================================================================================
+	/// </summary>
+	internal void GolpeDeTeste(Protocol.HitEvent h) => AoGolpe(h);
 
 	// A PALETA DO IMPACTO, num lugar so. Sao as cores que o jogador aprende a ler sem pensar:
 	// quente = acertou, dourado = critico, gelo = defendeu, sangue = alguem caiu.
@@ -2317,10 +2701,47 @@ public partial class World : Node2D
 	}
 
 	/// <summary>
+	/// CHEGOU UM QUADRO DE VOZ. Este metodo faz UMA coisa: achar o corpo de quem fala e entregar tudo
+	/// ao <see cref="VozOuvida"/>.
+	///
+	/// ============================ POR QUE O ROTEAMENTO MORA AQUI E NAO LA ============================
+	/// Porque quem sabe onde estao os corpos e o `World` (o `_remotos` e o `_local` sao dele), e essa e
+	/// exatamente a mesma razao pela qual o <see cref="AoFalar"/> mora aqui em vez de dentro do balao.
+	/// O `VozOuvida` fica sabendo de audio e de nada mais -- e por isso ele nao precisa saber o que e
+	/// uma zona, o que e um remoto ou como se acha um id.
+	///
+	/// **O CORPO PODE SER NULO E ISSO NAO E ERRO**: quem voa alto some da minha tela (`Voo.Enxerga`) e
+	/// eu continuo com direito de ouvir. O `VozOuvida` trata os dois casos -- ver o bloco "DE ONDE O
+	/// SOM SAI" la dentro.
+	/// ============================================================================================
+	/// </summary>
+	/// <remarks>
+	/// `internal` PELO MESMO MOTIVO DO <see cref="AoFalar"/>: quem chama isto em jogo e o evento
+	/// `GameClient.VozRecebida`, e evento nao se dispara de fora da classe que o declara. Com o metodo
+	/// privado, a bancada so poderia chamar `VozOuvida.Receber` na mao -- ou seja, provar que o audio
+	/// toca sem provar que a VOZ chega nele, que e onde mora a busca do corpo.
+	/// </remarks>
+	internal void AoOuvirVoz(int id, ushort seq, byte distancia, bool parede, byte[] dados, int n)
+	{
+		if (VozOuvida.Instancia is not { } voz) return;
+		// DE ONDE EU OUCO: a posicao do meu proprio corpo. E o ponto de queda pra voz sem corpo -- ver
+		// o bloco "DE ONDE O SOM SAI" em `VozOuvida.Receber`.
+		Vector2 ouvinte = _local != null && IsInstanceValid(_local) ? _local.GlobalPosition : Vector2.Zero;
+		voz.Receber(id, seq, distancia, parede, dados, n, Corpo(id), ouvinte);
+	}
+
+	/// <summary>
 	/// O id de quem se chama assim, ou 0. O proprio jogador vem primeiro porque o `LocalName` e a
 	/// unica leitura que nao depende de o `PeerLook` ja ter chegado.
 	/// </summary>
-	private int IdPeloNome(string nome)
+	/// <remarks>
+	/// `internal` PRA AS BANCADAS DE DOIS PROCESSOS ESCOLHEREM O ADVERSARIO. O robo de soco marcava
+	/// "o primeiro corpo que aparecer no snapshot", e num berco povoado o primeiro e um NPC -- a
+	/// primeira rodada da bancada do desvio terminou com o socador nocauteado pelo Krillin e UM
+	/// unico golpe no alvo que ela existia pra medir. O nome e a unica identidade que a linha de
+	/// comando conhece antes de o servidor sortear os ids.
+	/// </remarks>
+	internal int IdPeloNome(string nome)
 	{
 		if (GameClient.Instance is { } cli && cli.LocalName == nome) return cli.LocalId;
 		foreach ((int id, string n) in _nomes)
@@ -2495,7 +2916,7 @@ public partial class World : Node2D
 		{
 			// O CORPO PROPRIO DA FORMA (a pelagem do SSJ4, o macaco inteiro). Voltar pra base TEM que
 			// tira-lo -- senao o jogador volta ao normal peludo e vermelho, pra sempre.
-			vis.CorpoDaForma(def?.Corpo ?? Jandirus.Core.Forms.CorpoDeForma.Nenhum);
+			vis.CorpoDaForma(def);
 
 			// ANTES DO CABELO, e nao e ordem decorativa: e este fato que decide se o Super Saiyajin
 			// pede a folha `SSj` ou a `SSjFP` (o Grade 4). Marcado AQUI e nao no chamador porque este
@@ -3106,6 +3527,16 @@ public partial class World : Node2D
 	/// <summary>O mapa do que CEGA na zona atual. Ver <see cref="Portas"/>.</summary>
 	public ZoneCollision? Visao => _veu?.Mapa;
 
+	/// <summary>
+	/// ESTE PONTO DO MUNDO ESTA VISIVEL DAQUI? So pras bancadas -- e o MESMO juiz que a lista de
+	/// "People" usa (<see cref="NomesVisiveis"/>).
+	///
+	/// A bancada da agua precisa dele pra uma afirmacao que nenhum numero de colisao responde: agua
+	/// nao entra no `.vis`, entao quem esta do outro lado do lago tem que ser visto. Perguntar ao
+	/// `Visible` do node nao serviria -- o veu esconde por outro caminho, e e ele quem decide.
+	/// </summary>
+	public bool VeDeTeste(Vector2 ponto) => _veu?.Ve(ponto) ?? true;
+
 	/// <summary>A skill que abre a piscada por duplo clique -- a mesma da imagem remanescente.</summary>
 	private const string PathDoZanzoken = "/datum/skill/ki/Afterimage";
 
@@ -3253,6 +3684,12 @@ public partial class World : Node2D
 		// ele esta destrocado e o mesmo desencontro que a aparencia teve.
 		if (GameClient.Instance?.Feridas.TryGetValue(id, out var m) == true) v.Ferir(m, id);
 
+		// E A AUREOLA, PELO MESMO MOTIVO E COM O MESMO REMEDIO. O `S2C.Aureola` e reliable e chega
+		// quando o servidor quer -- inclusive antes de este boneco existir (quem CRIA o corpo e o
+		// snapshot, por outro canal). Sem esta linha, entrar no Outro Mundo desenharia todos os
+		// mortos de la sem auréola, e eles so a ganhariam se morressem de novo -- o que nao acontece.
+		v.MostrarAureola(GameClient.Instance?.ComAureola.Contains(id) == true);
+
 		// ============================ E A FORMA, QUE ERA O TERCEIRO DESENCONTRO ============================
 		// O servidor manda o estado de forma de todo mundo assim que eu entro na zona
 		// (`GameServer.SincronizarFormas`) -- e naquele instante nenhum destes bonecos existia. Este e o
@@ -3309,12 +3746,35 @@ public partial class World : Node2D
 	private void AoMudarFeridas(int id)
 	{
 		if (GameClient.Instance is not { } cli || !cli.Feridas.TryGetValue(id, out var m)) return;
+		VisualDe(id)?.Ferir(m, id);
+	}
 
-		CharacterVisual? v = id == cli.LocalId
+	/// <summary>
+	/// ALGUEM MORREU OU VOLTOU A VIDA: acende (ou apaga) a auréola daquele corpo.
+	///
+	/// **VALE PRO MEU CORPO TAMBEM**, e por isso passa pelo <see cref="VisualDe"/> e nao so pelos
+	/// remotos: o servidor manda o pacote pra ZONA INTEIRA, o dono incluso. A ficha pessoal
+	/// (`SheetState.Estado`) tambem carrega o bit de morte, e seria a segunda fonte pra a mesma
+	/// pergunta -- duas fontes pro mesmo desenho e o defeito que este cliente ja pagou no angulo do
+	/// corpo caido, onde uma escrevia por quadro e a outra desfazia.
+	/// </summary>
+	private void AoMudarAureola(int id) =>
+		VisualDe(id)?.MostrarAureola(GameClient.Instance?.ComAureola.Contains(id) == true);
+
+	/// <summary>
+	/// O `CharacterVisual` de um id -- o meu ou o de qualquer um da zona.
+	///
+	/// Nasceu como o corpo do <see cref="AoMudarFeridas"/>; virou funcao quando a auréola precisou
+	/// da mesma busca. Duas copias desta escada (local? remoto? ainda existe?) e o comeco de duas
+	/// respostas diferentes pra "de quem e este boneco".
+	/// </summary>
+	private CharacterVisual? VisualDe(int id)
+	{
+		if (GameClient.Instance is not { } cli) return null;
+		return id == cli.LocalId
 			? _local?.GetNodeOrNull<CharacterVisual>("Visual")
 			: _remotos.TryGetValue(id, out RemotePlayer? r) && IsInstanceValid(r)
 				? r.GetNodeOrNull<CharacterVisual>("Visual")
 				: null;
-		v?.Ferir(m, id);
 	}
 }

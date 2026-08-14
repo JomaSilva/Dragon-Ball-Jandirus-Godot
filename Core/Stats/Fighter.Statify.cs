@@ -51,8 +51,10 @@ public sealed partial class Fighter
         StamBPGainMod = DmMath.Clamp(stamina / (maxstamina * 0.5), 0.5, 1.25);
 
         // --- velocidade -------------------------------------------------
+        // `formaSpeed` entra AQUI e nao no `Tspeed` porque o `Tspeed` esta morto nesta linha: ele
+        // multiplica `speedBuff`, que nasce em zero. Ver o cabecalho do canal em `Fighter.cs`.
         Rspeed = (Math.Max(speed, 0.1) * Math.Max(speedMod, 0.1) + Math.Max(speedBuff * Tspeed, 0.1))
-                 * speedStyle * DmMath.Clamp(staminapercent * Ewillpower, 0.75, 1);
+                 * speedStyle * formaSpeed * DmMath.Clamp(staminapercent * Ewillpower, 0.75, 1);
         Espeed = StatCurves.StatCap(Rspeed);
 
         if (!IsInFight) speedDIFF = 1;
@@ -66,16 +68,18 @@ public sealed partial class Fighter
         // conhecimento, nao musculo.
         double fadiga = DmMath.Clamp(statstamina * Ewillpower, 0.6, 1);
 
+        // Os `forma*` sao o canal da FORMA ATIVA (ver `Fighter.cs`): entram como fator do R inteiro,
+        // no mesmo posto do `*Style`, e ficam de fora do `powerlevel()` de proposito.
         Rphysoff = (Math.Max(physoff, 0.1) * Math.Max(physoffMod, 0.1) + Math.Max(physoffBuff + Tphysoff, 0.1))
-                   * physoffStyle * fadiga * Math.Max(0.01, phys_remove);
+                   * physoffStyle * formaPhysoff * fadiga * Math.Max(0.01, phys_remove);
         Rphysdef = (Math.Max(physdef, 0.1) * Math.Max(physdefMod, 0.1) + Math.Max(physdefBuff + Tphysdef, 0.1))
-                   * physdefStyle * fadiga;
+                   * physdefStyle * formaPhysdef * fadiga;
         Rtechnique = (Math.Max(technique, 0.1) * Math.Max(techniqueMod, 0.1) + Math.Max(techniqueBuff + Ttechnique, 0.1))
-                   * techniqueStyle;
+                   * techniqueStyle * formaTecnica;
         Rkioff = (Math.Max(kioff, 0.1) * Math.Max(kioffMod, 0.1) + Math.Max(kioffBuff + Tkioff, 0.1))
-                   * kioffStyle * fadiga;
+                   * kioffStyle * formaKioff * fadiga;
         Rkidef = (Math.Max(kidef, 0.1) * Math.Max(kidefMod, 0.1) + Math.Max(kidefBuff + Tkidef, 0.1))
-                   * kidefStyle * fadiga;
+                   * kidefStyle * formaKidef * fadiga;
         Rkiskill = (Math.Max(kiskill, 0.1) * Math.Max(kiskillMod, 0.1) + Math.Max(kiskillBuff + Tkiskill, 0.1))
                    * kiskillStyle;
         Rmagiskill = (Math.Max(magiskill, 0.1) * Math.Max(magiMod, 0.1) + Math.Max(magiBuff + Tmagi, 0.1))

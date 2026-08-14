@@ -156,7 +156,6 @@ public sealed partial class GameServer
 			// tira o corpo do fogo.
 			if (c.Morrer())
 			{
-				pl.RenasceEm = NowMs() + MsAteRenascer;
 				Avisar(pl, $"você é consumido por {NomeDaEstrela(e)}.");
 				GD.Print($"[server] {pl.Name} MORREU DENTRO de {NomeDaEstrela(e)} "
 						 + $"(BP expresso {pl.Ficha.expressedBP:N0} contra poder {CalorDaEstrela.PoderDe(e.Classe):N0})");

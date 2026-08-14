@@ -42,9 +42,19 @@ public static class FormasDeFrost
 	public const string ClasseNormal = "Frost Demon";
 	public const string ClasseMutante = "Mutant Frost Demon";
 
+	/// <summary>
+	/// O NOME DA RACA NO `races.json`: <b>"Icer"</b> -- e ele NAO e "Frost Demon".
+	///
+	/// As duas grafias existem e as duas sao do original: `Icer` e o nome do proto racial (e do
+	/// planeta natal), e `Frost Demon` e o nome da CLASSE comum dentro dele (a outra e
+	/// `Mutant Frost Demon`). Ler uma pela outra e um erro facil e mudo -- um `Race == "Frost Demon"`
+	/// nunca casa com ninguem --, entao a constante existe pra quem precisa escrever o nome.
+	/// </summary>
+	public const string Raca = "Icer";
+
 	/// <summary>Esta raca usa este sistema? Aceita as duas grafias que circulam no projeto.</summary>
 	public static bool EhFrost(string raca) =>
-		raca is "Icer" or "Frost Demon";
+		raca is Raca or ClasseNormal;
 
 	/// <summary>
 	/// O MULTIPLICADOR DE PODER de cada degrau -- o `fd_form_mult` (IcerTransform.dm:38-46).
@@ -252,4 +262,118 @@ public static class FormasDeFrost
 
 		return saida;
 	}
+
+	/// <summary>
+	/// ============================ QUAL SLOT DA LISTA DESENHA ESTE DEGRAU ============================
+	/// A lista de corpos e SANEADA (<see cref="Sanear"/>) e por isso o tamanho dela ja diz de que
+	/// classe ela e: sete corpos = Mutante (degraus 1..7), tres = normal (degraus 5..7). O primeiro
+	/// degrau da lista e portanto `Total - quantos + 1`, e o slot e a distancia ate ele.
+	///
+	/// ============================ POR QUE A CONTA SAI DO TAMANHO, E NAO DA CLASSE ============================
+	/// Quem desenha o corpo de OUTRO jogador e o cliente, e o cliente nao recebe a classe dos outros
+	/// -- ele recebe a aparencia. Pedir a classe aqui obrigaria a por mais um byte no fio pra dizer
+	/// uma coisa que a propria lista ja diz, e no dia em que os dois discordassem (um save antigo com
+	/// a lista de tres num personagem que virou Mutante) o sprite sairia de outro degrau, calado.
+	///
+	/// **SLOT 0 E SEMPRE O REPOUSO.** E o que faz `VisualCatalog.CorpoSprite` (que serve
+	/// `FormasDeFrost[0]` como "o corpo desta pessoa") concordar com a camada de forma sem ninguem
+	/// sincronizar os dois -- ver `CorpoDeForma.FrostEscolhido`.
+	///
+	/// Devolve -1 quando o degrau nao cabe nesta lista (Frost Demon normal perguntando por uma
+	/// supressao, ou lista vazia). Quem chama deixa o corpo como esta.
+	/// ====================================================================================================
+	/// </summary>
+	public static int SlotDoDegrau(int degrau, int quantosCorpos)
+	{
+		if (quantosCorpos <= 0 || quantosCorpos > Total) return -1;
+		int slot = degrau - (Total - quantosCorpos + 1);
+		return slot >= 0 && slot < quantosCorpos ? slot : -1;
+	}
+
+	// =====================================================================
+	// O MOTOR DO MUTANTE -- os knobs `FD_*` do `1A Defines.dm`
+	//
+	// ============================ POR QUE ELES MORAM AQUI, E NAO NO SERVIDOR ============================
+	// No original os sete sao `#define` num arquivo so (`1A Defines.dm:37-43`) lido pelo
+	// `IcerTransform.dm`, pelo `icer.dm` e pelo `base.dm`. Aqui eles ficam ao lado dos degraus que
+	// governam pelo mesmo motivo: quem for reequilibrar o Mutante mexe num arquivo, e a bancada le
+	// os MESMOS numeros que o motor -- uma bancada que redigite `90` mede a bancada.
+	//
+	// ============================ O OITAVO KNOB **NAO** ESTA AQUI, E ISSO E DIVIDA ============================
+	// `FD_ASC_CAP 2.8` (`1A Defines.dm:34`, lido em `ascensioncontrols.dm:82,98`) e o teto da ASCENSAO
+	// dos Frost Demons -- o que faz a 2a Evolucao chegar a 20 x 2,8 = 56x e empatar com o topo das
+	// outras racas. Ele nao virou constante porque **o port nao tem Ascensao**: o `Fighter.BPBoost`
+	// e multiplicado no `powerlevel()` e NUNCA e escrito por ninguem (vale 1 pra todo mundo, sempre).
+	//
+	// Escreve-lo aqui daria um numero que nada le -- e este projeto ja pagou caro por API orfa (a nota
+	// do sigilo de BP). O numero fica NESTE comentario, que e onde quem for portar a Ascensao vai
+	// procurar, e o teto do Frost Demon entra junto com o sistema que o usa.
+	// =====================================================================================================
+	// ================================================================================================
+	// =====================================================================
+
+	/// <summary>
+	/// `FD_LOSS_SECS_F5` (90): segundos ate PERDER o controle do ki numa forma base instavel, com
+	/// zero de maestria. As outras formas escalam por <see cref="FatorDoFusivel"/> e a maestria
+	/// ALONGA o fusivel (100% = 3x).
+	/// </summary>
+	public const double SegundosAtePerderOControle = 90;
+
+	/// <summary>`FD_RELEASE_DECAY_PCT` (1,2): % da liberacao de BP perdida por segundo com o ki solto.</summary>
+	public const double VazamentoPorSegundoPct = 1.2;
+
+	/// <summary>`FD_RELEASE_FLOOR` (0,10): o piso da liberacao -- ele fica com 10% do proprio poder.</summary>
+	public const double PisoDaLiberacao = 0.10;
+
+	/// <summary>`FD_RELEASE_RECOVER_PCT` (4): % da liberacao recuperada por segundo em forma ESTAVEL.</summary>
+	public const double RecuperacaoPorSegundoPct = 4;
+
+	/// <summary>
+	/// `FD_REGEN_PCT` (0,2): com 100% de maestria da base, cada GRAU de supressao regenera esta
+	/// porcentagem do Ki maximo por segundo. A forma 1 sao quatro graus -- 0,8%/s.
+	/// </summary>
+	public const double RegeneracaoPorGrauPct = 0.2;
+
+	/// <summary>
+	/// O `fd_form_losstime` (`IcerTransform.dm:60-68`): o FATOR de tempo do fusivel em cada forma.
+	///
+	/// Quanto mais perto da base, menos tempo sobra -- e as evolucoes queimam ainda mais rapido: a
+	/// Forma Black dura um quarto do que a base duraria. Nao e progressao linear porque no original
+	/// tambem nao e; e a "spec da imagem do design" citada na propria linha do DM.
+	/// </summary>
+	public static double FatorDoFusivel(int forma) => forma switch
+	{
+		2 => 8,
+		3 => 4,
+		4 => 2,
+		6 => 0.5,
+		7 => 0.25,
+		_ => 1,       // forma 5 (base) -- e as supressoes, que nunca chegam aqui
+	};
+
+	/// <summary>
+	/// ATE QUE DEGRAU O MUTANTE SEGURA O PODER **PRA SEMPRE** -- o `fd_stable_gate()`
+	/// (`IcerTransform.dm:71-78`), pela maestria da forma base.
+	///
+	/// Zero de maestria e ele so aguenta a casca mais apertada; a cada 25 pontos ele destranca mais
+	/// uma, e aos 100 a forma base e dele. **Acima disto ele PODE entrar** -- o gate nao e de entrada,
+	/// e de permanencia: entrar numa forma que nao se segura e o drama inteiro do Mutante (a cena
+	/// vermelha, o ki que trava, o poder que vaza). Fosse gate de entrada, ele nunca poderia entrar na
+	/// forma 5 -- e e SO na forma 5 que a maestria cresce. Ficaria trancado em 0% pra sempre.
+	/// </summary>
+	public static int DegrauEstavel(double maestriaDaBase) => maestriaDaBase switch
+	{
+		>= 100 => Base,
+		>= 75 => 4,
+		>= 50 => 3,
+		>= 25 => 2,
+		_ => PrimeiraSupressao,
+	};
+
+	/// <summary>
+	/// Os quatro degraus de maestria em que o Mutante ganha uma forma estavel nova. Sao os mesmos
+	/// numeros do <see cref="DegrauEstavel"/> -- lidos daqui pelo aviso no chat e pela bancada, pra
+	/// ninguem redigitar os 25/50/75/100.
+	/// </summary>
+	public static readonly double[] MarcosDaBase = [25, 50, 75, 100];
 }

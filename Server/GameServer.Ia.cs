@@ -1,4 +1,4 @@
-using Jandirus.Core.Ai;
+﻿using Jandirus.Core.Ai;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Forms;
 using Jandirus.Core.Skills;
@@ -33,16 +33,17 @@ namespace Jandirus.Server;
 ///   C2S.Guard       -> Comando.Guardar           -> npc.Combate.Guardar(bool)
 ///   C2S.Carregar    -> Comando.Carregar          -> Carregar(npc, bool)
 ///   C2S.Transformar -> Comando.SubirForma/.Descer-> Transformar(npc, subir)
-///   C2S.InputState  -> Comando.Rumo/.Correndo/
+///   C2S.InputState  -> Comando.Rumo/.Olhar/.Correndo/
 ///                      .QuerSubir/.QuerDescer    -> PassoDaIa (as MESMAS tres politicas do `Input`)
 ///   C2S.Habilidade  -> Comando.Habilidade        -> UsarHabilidade(npc, id)
 ///   C2S.Alvo        -> Comando.Marcar            -> Mirar(npc, id)
 ///   (o voo do jogador entra pelo verbo `Fly`)    -> AlternarVoo(npc)
 ///
-/// As duas ultimas nasceram com o GANCHO DO ATAQUE DE LONGE, e hoje nenhum corpo do jogo as usa: o
-/// arsenal de todo mundo esta vazio porque nenhuma tecnica portada viaja entre tiques. Elas existem
-/// escritas, pelo funil certo e exercitadas na bancada, pra que o dia do beam seja "registrar uma
-/// linha de dado" e nao "ensinar a IA a atirar". Ver `Core/Skills/TecnicasDeLonge.cs`.
+/// As duas ultimas nasceram com o GANCHO DO ATAQUE DE LONGE e ficaram tres camadas sem uso, porque
+/// nenhuma tecnica portada viajava entre tiques. Elas foram escritas mesmo assim -- pelo funil
+/// certo e exercitadas na bancada -- pra que o dia do beam fosse "registrar uma linha de dado" e nao
+/// "ensinar a IA a atirar". Foi o que aconteceu: hoje `TecnicasDeLonge` tem as tres que voam (raio,
+/// bola, teleguiado) e estas duas linhas passaram a receber trafego sem mudar de forma.
 ///
 /// Fica de fora, e de proposito: `C2S.Zanzoken` -- a IA nao pisca, e o respondedor de QTE do
 /// ZanzoClash continua sendo uma decisao do dono (ou a IA ganha o lado dela, ou `TentarEmbate`
@@ -112,11 +113,10 @@ public partial class GameServer
 		PassoDaIa(npc, c, dt);
 
 		// --- 8. A TECNICA ----------------------------------------------------
-		// ============================ HOJE ESTA LINHA NUNCA RECEBE NADA ============================
-		// O cerebro so preenche `Habilidade` na receita de atirar, e ela exige um arsenal que hoje e
-		// vazio em todo corpo do jogo (`TecnicasDeLonge` esta vazia porque nenhuma tecnica portada
-		// viaja). A linha existe porque e o CANAL, e ele e o mesmo do jogador: `UsarHabilidade` e
-		// literalmente a funcao que o `case Protocol.C2S.Habilidade` chama.
+		// ============================ O CANAL E O MESMO DO JOGADOR ============================
+		// O cerebro so preenche `Habilidade` na receita de atirar, e ela exige arsenal -- quem nao
+		// comprou nenhuma das tres skills que voam nunca chega aqui. `UsarHabilidade` e literalmente
+		// a funcao que o `case Protocol.C2S.Habilidade` do jogador chama.
 		//
 		// Como todo o resto deste arquivo, ela nao confere nada. Nao ha `if (SabeTecnica)` nem
 		// `if (temKi)`: quem responde "voce nao sabe isso", "ainda se recompoe" e "isso pede pelo
@@ -175,6 +175,46 @@ public partial class GameServer
 		bool andando = c.Rumo.LengthSquared > 1e-6f;
 		bool correndo = c.Correndo && andando && (npc.Voando || PodeCorrer(npc, (float)dt));
 
+		// ============================ O OLHAR VEM ANTES DO PASSO, E ELE E O CONSERTO DO SOCO DE COSTAS ============================
+		// **Esta e a UNICA linha do projeto que escreve a direcao de um corpo dirigido**, e ela agora
+		// roda mesmo com o corpo parado -- que e a mudanca.
+		//
+		// Antes ela morava depois do `if (!andando) return` la embaixo, ou seja: **so quem andava
+		// virava**. Um corpo parado guardava a direcao do ULTIMO passo, e as receitas de combate dao
+		// passos pra tras (colado demais na pressao, `Cerebro.Pressao`; abrindo espaco pro tiro,
+		// `Cerebro.Disparo`; respirando, `Plano.Recuar`). O passo pra tras escrevia "olhando pro lado
+		// oposto ao inimigo" e no MESMO tique saia o soco -- que so acha alvo dentro do cone da frente
+		// (`AlvoNaFrente` -> `MeleeArea.NoAlcance`, o `compileRangeMobList` do DM). Resultado medido
+		// pelo `--diaggolpe`: 38% dos golpes da IA sem alvo nenhum, 81% deles com o oponente a 180°,
+		// no alcance e fora do cone. Nao era pontaria ruim -- era o inimigo estar atras.
+		//
+		// E o `dir = get_dir(src,target)` do DM (`NPCAI.dm:386`), a primeira linha do seletor de acao
+		// da IA de la, logo depois do `step_away(src,target)` do `attackState` (`:536`). A estrutura
+		// do port ja era a mesma; faltava a linha.
+		//
+		// ---- POR QUE AQUI DENTRO, E DEPOIS DO PORTAO DO PASSO ----
+		// Porque e assim que o jogador funciona, e paridade nao e detalhe aqui. O `Input` recusa o
+		// pacote INTEIRO -- olhar junto com passo -- quando `!PodeMexerOCorpo(pl)`: quem esta caido,
+		// carregando, paralisado, prensado pela gravidade ou num embate nao gira, e nao gira porque
+		// nesses estados a direcao do corpo e do SERVIDOR (o ZanzoClash crava as duas em
+		// `GameServer.ZanzoClash.cs:657`, e o desfecho poe o vencedor nas costas do perdedor em
+		// `:825`). Estando atras do mesmo portao, a IA herda as cinco recusas de graca e nao ha uma
+		// segunda lista pra manter em dia.
+		//
+		// Os tres casos que o dono nomeou saem resolvidos por consequencia, e nao por excecao escrita:
+		//   * CORPO NOCAUTEADO -- `PodeMexerOCorpo` ja barra (`KO`/`dead`), e antes dele o proprio
+		//     cerebro devolve `Comando.Nenhum` (`Cerebro.Pensar`, "caido nao faz nada"). O sprite
+		//     deitado desenha pela `DirecaoDeitado`, que nem le este campo.
+		//   * CORPO LARGADO (o boneco do transe) -- ele nasce com `Cerebro == null` e `Peer == null`
+		//     (`GameServer.CorpoLargado.cs:86`), entao nao entra no `TickDosCorposSemDono` e nunca
+		//     chega aqui. Continua parado, olhando pra onde parou.
+		//   * QUEM FOGE -- nao ha fuga neste cerebro ainda (o `runawayState` do DM, `:646`, nao foi
+		//     portado). Quando houver, ela desliga o olhar do lado do CEREBRO mandando `Olhar` zero,
+		//     e nao com um `if` novo aqui: com zero, a linha abaixo cai no rumo do passo sozinha.
+		// ==================================================================================================================
+		Vec2 olhar = c.Olhar.LengthSquared > 1e-6f ? c.Olhar : c.Rumo;
+		if (olhar.LengthSquared > 1e-6f) npc.Facing = MoveRules.FacingFrom(olhar, npc.Facing);
+
 		if (!andando)
 		{
 			npc.Moving = false;
@@ -186,9 +226,20 @@ public partial class GameServer
 		ZoneCollision? mapa = AtravessandoCenario(npc) ? null : MapaDaZonaOuCatalogo(npc.Zone);
 
 		Vec2 antes = npc.Pos;
-		npc.Pos = MoveRules.Advance(npc.Pos, c.Rumo, (float)dt, npc.SpeedStat, mapa, out _, correndo);
+		// ============================ A AGUA VALE PRA IA PELA MESMA FUNCAO ============================
+		// O `modo` sai do MESMO `ModoDeTravessiaDe` que o `Input` do jogador usa -- e nao de um `if`
+		// escrito aqui --, que e a regra deste arquivo desde o `PodeMexerOCorpo`: "as mesmas menos
+		// uma" e o jeito classico de o NPC ficar op sem ninguem notar. Nenhum NPC nada hoje (nao ha
+		// verb de IA pra isso), entao na pratica ele so responde `APe` ou `Voando` -- e e por isso
+		// que o NPC que voa continua passando por cima do lago.
+		//
+		// A PE, A AGUA PARA O NPC IGUAL A UMA PAREDE, e nao ha caminhamento nenhum a consertar: a IA
+		// nao contorna obstaculo (nao ha A* aqui), ela desliza no eixo livre e para. O lago se
+		// comporta exatamente como o muro que ja existia.
+		// =========================================================================================
+		npc.Pos = MoveRules.Advance(npc.Pos, c.Rumo, (float)dt, npc.SpeedStat, mapa, out _, correndo,
+									ModoDeTravessiaDe(npc));
 		npc.Moving = (npc.Pos - antes).LengthSquared > 0.01f;
-		npc.Facing = MoveRules.FacingFrom(c.Rumo, npc.Facing);
 		npc.Correndo = correndo;
 		npc.Ficha.dashing = correndo;   // entra na conta de dano, igualzinho ao do jogador
 	}
@@ -207,8 +258,41 @@ public partial class GameServer
 	/// Por isso o `Input` a pergunta separado.
 	/// ==================================================================================
 	/// </summary>
+	/// <remarks>
+	/// O `EnraizadoPorKi` e o `canmove = 0` dos verbs de raio (`beams.dm:294`) -- quem esta
+	/// carregando ou segurando um beam fica PLANTADO. Ele entra aqui, e nao numa trava de input,
+	/// porque e um gate de VETOR: o pacote continua chegando, o olhar continua girando, a guarda e a
+	/// fala continuam valendo, e -- o que importa -- o proprio verb continua podendo ser apertado
+	/// pra soltar o raio. Uma trava de input global deixaria o jogador preso dentro da tecnica ate
+	/// o Ki acabar.
+	///
+	/// E entrando NESTA funcao ele vale tambem pra IA, que e o unico jeito de o NPC nao ganhar de
+	/// graca um raio que anda -- o defeito classico de "o NPC obedece as mesmas regras menos uma".
+	///
+	/// O `_emEmbateDeKi` (a colisao de ki) entra pelo mesmo motivo, e a linha nao e redundante: quem
+	/// esta ATIRANDO ja estava preso pelo `EnraizadoPorKi`, mas quem esta SEGURANDO o feixe com as
+	/// maos nao tem canal nenhum -- e sao os pes dele cavando o chao que a disputa representa.
+	/// </remarks>
+	/// <remarks>
+	/// A PARALISIA entra aqui pelo mesmo motivo do raio: e um gate de VETOR e nao de input. Quem
+	/// levou uma Paralysis continua socando, bloqueando e defletindo -- so nao sai do lugar
+	/// (`movement handler.dm:89`). E, entrando NESTA funcao, ela vale pra IA sem uma linha a mais:
+	/// um NPC paralisado para de andar pela regra do jogador. Ver `_paralisadoAte`.
+	/// </remarks>
+	/// <remarks>
+	/// O ESMAGAMENTO (`gravParalysis`) e a mesma familia: no DM ele vira `mobTime = 0`
+	/// (`movement handler.dm:132`), lado a lado com a paralisia de tecnica. Quem esta a quatro vezes
+	/// a propria maestria de gravidade -- ou carregando quatro vezes o que o corpo aguenta -- fica
+	/// PRENSADO no chao; continua socando e defendendo, so nao sai do lugar.
+	///
+	/// A diferenca pras outras entradas desta lista e que ela nao consulta dicionario nenhum: e uma
+	/// funcao pura da ficha (`Esmagamento.Prende`). Tirar o peso ou sair do planeta solta o corpo no
+	/// tique seguinte, sem ninguem precisar lembrar de apagar um bit.
+	/// </remarks>
 	private bool PodeMexerOCorpo(ServerPlayer pl) =>
-		!pl.Ficha.dead && !pl.Ficha.KO && !pl.Carregando && !_emEmbate.ContainsKey(pl.Id);
+		!pl.Ficha.dead && !pl.Ficha.KO && !pl.Carregando && !_emEmbate.ContainsKey(pl.Id)
+		&& !_emEmbateDeKi.ContainsKey(pl.Id) && !EnraizadoPorKi(pl.Id) && !Paralisado(pl.Id)
+		&& !PrensadoPelaGravidade(pl);
 
 	/// <summary>
 	/// O QUE O JOGO RESPONDE QUE ESTE CORPO PODE FAZER. Lido a 1 Hz por corpo (ver
@@ -254,13 +338,13 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// O QUE ESTE CORPO PODE ATIRAR DE LONGE. **Devolve vazio pra todo mundo, hoje.**
+	/// O QUE ESTE CORPO PODE ATIRAR DE LONGE -- as tecnicas de `TecnicasDeLonge` que ele SABE.
 	///
 	/// ============================ A PODA VEM ANTES DA VARREDURA, E ELA E O PONTO ============================
 	/// A pergunta "quais das minhas skills sao ataque a distancia?" custa varrer o livro inteiro e,
 	/// pra cada skill, a lista de verbs dela -- e o `SabeTecnica` ja faz exatamente isso e ja e o
-	/// caminho caro do sistema de tecnicas. Pago 1 vez por segundo por corpo, tudo bem; mas hoje nao
-	/// se paga NADA, porque a tabela de tecnicas de longe esta vazia e a primeira linha sai fora.
+	/// caminho caro do sistema de tecnicas. Pago 1 vez por segundo por corpo, tudo bem -- e quem nao
+	/// tem nenhuma das tres skills paga so a varredura, sem alocar nada.
 	///
 	/// Esta e a resposta direta ao risco que este desenho carrega desde a camada 2: *a percepcao vai
 	/// engordar, e cada campo novo e uma varredura*. Aqui a varredura nasce ja atras de um portao, e
@@ -268,21 +352,26 @@ public partial class GameServer
 	/// nenhuma ate alguem cronometrar o quadro certo.
 	/// ==================================================================================================
 	///
-	/// E O ARRAY SO NASCE SE HOUVER ALGO NELE: `Arsenal.Vazio` nao aloca, entao o tique de leitura de
-	/// capacidades continua com o mesmo lixo por tique que a bancada ja afirma hoje.
+	/// E O ARRAY SO NASCE SE HOUVER ALGO NELE: `Arsenal.Vazio` nao aloca, entao um corpo sem tecnica
+	/// de longe continua com o mesmo lixo por tique que a bancada ja afirma.
 	/// </summary>
 	private Arsenal ArsenalDeLonge(ServerPlayer pl)
 	{
 		if (!TecnicasDeLonge.Alguma || _skills == null) return Arsenal.Vazio;
 
 		List<Tiro>? achados = null;
-		foreach (string verb in TecnicasDe(pl))
+		foreach (TecnicasDeLonge.Linha linha in TecnicasDeLonge.Todas)
 		{
-			// A MESMA lista de verbs que o menu do cliente recebe e que o `SabeTecnica` confere --
-			// ou seja, o arsenal da IA nao pode conter uma tecnica que o jogo recusaria por "voce
-			// nao sabe isso". Se puder, e porque as duas leituras divergiram, e ai o defeito e uma
-			// IA timida (ela ignora um golpe que tem), nunca uma IA que atira sem saber.
-			if (TecnicasDeLonge.Get(verb) is not { } linha) continue;
+			// A PERGUNTA E A DO JOGADOR, e e a mesma funcao: `SabeTecnica` e quem responde "voce nao
+			// sabe isso" quando o verb chega pelo `C2S.Habilidade`. Entao o arsenal da IA nao pode
+			// conter uma tecnica que o jogo recusaria -- se puder, e porque duas leituras divergiram,
+			// e o defeito seria uma IA que atira sem saber.
+			//
+			// PERGUNTAR PELAS TRES, e nao listar os verbs todos: a versao anterior chamava `TecnicasDe`,
+			// que monta a lista COMPLETA de habilidades do corpo pra depois filtrar tres. Num
+			// personagem com muitas skills isso e uma lista de centenas de strings por segundo, e a
+			// bancada de alocacao da IA reprovou na hora em que a tabela deixou de estar vazia.
+			if (!SabeTecnica(pl, linha.Id)) continue;
 
 			(achados ??= []).Add(new Tiro
 			{
@@ -324,8 +413,8 @@ public partial class GameServer
 	/// o alvo ja vem escolhido de fora (o <see cref="PresaDaFera"/>, que era quem ja escolhia).
 	///
 	/// A UNICA EXCECAO E A LINHA DE VISAO, e ela e paga so por quem tem o que atirar -- ver
-	/// <see cref="LinhaDeVisaoLivre"/>. Com o jogo de hoje, ninguem tem: `quemAtira` e sempre falso
-	/// e o metodo nem e chamado.
+	/// <see cref="LinhaDeVisaoLivre"/>. Quem nao comprou nenhuma das tres skills que voam tem
+	/// `quemAtira` falso e o metodo nem e chamado.
 	/// </summary>
 	private Percepcao LerPercepcao(ServerPlayer npc, ServerPlayer? alvo, Vec2 destino, bool quemAtira)
 	{

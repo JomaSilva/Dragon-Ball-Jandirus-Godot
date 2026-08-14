@@ -113,6 +113,17 @@ public static class CargaDeKi
 	public static double TetoDeCarga(Fighter f) => f.MaxKi * Math.Max(f.powerupcap, 1);
 
 	/// <summary>
+	/// O MESMO TETO, mas EM RAZAO sobre o tanque -- 1,4 de fabrica, mais de 3,8 com as skills de
+	/// power-up no talo.
+	///
+	/// Existe pra a barra de Ki do HUD: ela desenha razao, e um trilho que acaba em 1,0 e o que
+	/// fazia o excedente sumir da tela. O DM ja expunha este numero ao jogador com esta cara
+	/// (`Statistics.dm:349`: `Ki Capacity: [(kicapacity/MaxKi)*100]%`), entao mostra-lo nao e
+	/// invencao do port.
+	/// </summary>
+	public static double TetoEmRazao(Fighter f) => Math.Max(f.powerupcap, 1);
+
+	/// <summary>
 	/// UM PASSO DE CARGA. Mexe no lutador e devolve em que estagio ele ficou.
 	///
 	/// <paramref name="mexendo"/> e o `powermovetimer` do DM: carregar andando funciona, mas rende
@@ -123,6 +134,18 @@ public static class CargaDeKi
 	{
 		if (dt <= 0 || !SabeReunir(f)) return EstagioDaCarga.Nada;
 		if (f.KO || f.dead) return EstagioDaCarga.Nada;
+
+		// ============================ O FROST MUTANTE COM O KI SOLTO NAO REUNE NADA ============================
+		// `Power Control.dm:141`: *"MUTANT FROST com ki descontrolado: nao carrega energia nem sobe
+		// power-up (tecla C morta ate recuar pra forma estavel)"*. E a punicao inteira do motor do
+		// Mutante -- sem ela, ficar numa forma que ele nao segura custaria so o vazamento de BP, e
+		// vazamento de BP se compensa enchendo o tanque, que e o que a tecla C faz.
+		//
+		// AQUI E NAO NO SERVIDOR: e neste arquivo que o DM poe o `if`, e e daqui que saem os TRES
+		// estagios da carga. Escrito la em cima, no `TickDaCarga`, ele valeria pro jogador segurando
+		// C e nao pra mais nenhum caminho que chame `Passo` -- e a IA chama.
+		// =================================================================================================
+		if (f.fd_ki_locked) return EstagioDaCarga.Nada;
 		if (f.stamina <= FolegoMinimo) return EstagioDaCarga.SemFolego;
 
 		// PE PLANTADO. Nao ha ganho nenhum em movimento -- ver EstagioDaCarga.Andando.

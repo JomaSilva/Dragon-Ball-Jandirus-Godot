@@ -15,6 +15,10 @@ run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 config/icon="uid://n0ma0sivho4k"
 
+[audio]
+
+driver/enable_input=true
+
 [autoload]
 
 GameClient="*res://Client/GameClient.cs"

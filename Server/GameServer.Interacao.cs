@@ -50,6 +50,44 @@ public sealed partial class GameServer
 			case "treinar_saco": TreinarNoSaco(pl); return true;
 			case "maq_info": InfoDaMaquina(pl); return true;
 
+			// A NAVE. Prefixo `nave_` e arquivo proprio (`GameServer.Nave.cs`) pela mesma razao do
+			// banco: e um sistema com registro proprio (a nave NAO e uma `Obra` -- ver o cabecalho
+			// de la) e nao meia duzia de `case`.
+			//
+			// ELA NAO PASSA PELO `ObraQueAceita`, e nao poderia: aquele varre `_noChao` filtrando
+			// por NOME de zona, que e justamente o defeito que a nave nao pode herdar. O alcance e
+			// conferido la dentro, contra a `ZoneKey` inteira.
+			case "nave_usar":
+			case "nave_lancar":
+			case "nave_melhorar":
+			case "nave_info":
+			case "nave_pegar":
+			case "nave_recondicionar":
+			// A CAMADA 2 entra pelo MESMO canal, e nao por um paralelo: `nave_embarcar` e
+			// `nave_pilotar` sao a mesma familia de "mexer com a nave" que `nave_usar`, e o despacho
+			// de la ja sabe separar as tres naves. Um segundo `case` aqui pra cada verbo novo faria
+			// desta lista o lugar que esquece um.
+			case "nave_embarcar":
+			case "nave_sair":
+			case "nave_observar":
+			case "nave_pilotar":
+			case "nave_senha":
+				return ComandoDeNave(pl, cmd, arg);
+
+			// A PORTA DA SALA DO TEMPO. Ela e mobilia como o banco e a macieira, mas o que ela FAZ
+			// e um sistema inteiro (autorizacao, recarga, lotacao, prisao) -- por isso mora em
+			// arquivo proprio, pela mesma razao do banco. Ver `GameServer.SalaDoTempo.cs`.
+			//
+			// OS DOIS VERBOS DO GUARDIAO ENTRAM PELO MESMO CANAL de proposito: eles nao dependem
+			// de estar perto da porta (o Guardiao autoriza de onde estiver, e solta quem esta a um
+			// mapa de distancia), mas sao a MESMA regra -- separa-los em dois despachos seria a
+			// tranca num arquivo e a chave noutro.
+			case "sala_entrar":
+			case "sala_regras":
+			case "sala_autorizar":
+			case "sala_soltar":
+				return ComandoDaSalaDoTempo(pl, cmd, arg);
+
 			default: return ComandoDeGravidade(pl, cmd, arg);
 		}
 	}
@@ -85,7 +123,7 @@ public sealed partial class GameServer
 	{
 		foreach (Obra o in _noChao)
 		{
-			if (o.Zona != pl.Zone.Name || !o.Aparafusada) continue;
+			if (!o.Zona.Equals(pl.Zone) || !o.Aparafusada) continue;
 			if (o.Tipo is not ("Punching_Bag" or "Punching_Machine")) continue;
 			if (Math.Abs(o.X - pl.Pos.X) > AlcanceDeUso || Math.Abs(o.Y - pl.Pos.Y) > AlcanceDeUso) continue;
 			return DobraDoSaco;
@@ -136,7 +174,7 @@ public sealed partial class GameServer
 			double cura = 0;
 			foreach (Obra o in _noChao)
 			{
-				if (o.Zona != pl.Zone.Name || !o.Aparafusada) continue;
+				if (!o.Zona.Equals(pl.Zone) || !o.Aparafusada) continue;
 
 				(float raio, double porSegundo) = o.Tipo switch
 				{
@@ -163,7 +201,7 @@ public sealed partial class GameServer
 	/// "colher" tem que achar a ARVORE, mesmo que o banco esteja um pixel mais perto.
 	/// </summary>
 	private Obra? ObraQueAceita(ServerPlayer pl, string verbo) => _noChao
-		.Where(o => o.Zona == pl.Zone.Name && Interacoes.Aceita(o.Tipo, verbo))
+		.Where(o => o.Zona.Equals(pl.Zone) && Interacoes.Aceita(o.Tipo, verbo))
 		.OrderBy(o => (o.X - pl.Pos.X) * (o.X - pl.Pos.X) + (o.Y - pl.Pos.Y) * (o.Y - pl.Pos.Y))
 		.FirstOrDefault(o => Math.Abs(o.X - pl.Pos.X) <= AlcanceDeUso
 						  && Math.Abs(o.Y - pl.Pos.Y) <= AlcanceDeUso);

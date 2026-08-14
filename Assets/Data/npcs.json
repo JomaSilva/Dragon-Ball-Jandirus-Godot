@@ -12,13 +12,164 @@
     "",
     "A FICHA PRONTA DE UM CHEFE e a lista 'estagios'. O Freeza de Vegeta e o de Namek sao o",
     "MESMO molde com listas de tamanho diferente -- e so isso que os separa, como no original.",
-    "'ascendePorDecisao': false quer dizer TEM A FORMA E NAO A USA (o ai_no_powerup do DM)."
+    "'ascendePorDecisao': false quer dizer TEM A FORMA E NAO A USA (o ai_no_powerup do DM).",
+    "",
+    "O CAMPO 'tipo' E OBRIGATORIO e vale \"cidadao\", \"inimigo\" ou \"chefe\". E por ele que o",
+    "recorte do dono corta -- hoje CIDADAO nasce, CHEFE nasce, INIMIGO COMUM NAO (o dono vai rever",
+    "essa parte). Molde sem tipo e RECUSADO no boot de proposito: se o padrao fosse 'cidadao', um",
+    "inimigo que esquecesse a linha atravessaria o recorte disfarcado de habitante.",
+    "",
+    "A SECAO 'povoamento' diz QUANTOS habitantes cada planeta mantem de pe -- e NAO diz a raca.",
+    "A raca sai do BERCO (a mesma regra que decide onde o jogador nasce, lida ao contrario), entao",
+    "um cidadao de Namek e Namekuseijin/Gray/Kanassa/Yardrat sem ninguem escrever isso. Escrever a",
+    "raca aqui seria a segunda tabela raca->planeta do projeto, e a primeira ja tem linhas erradas.",
+    "A manutencao COMPLETA ate o numero a cada 5 min; ela nunca mata pra chegar nele.",
+    "",
+    "A SECAO 'sagas' e a CADEIA DE EVENTOS (BossEvents.dm). Ela e SEQUENCIAL: um elo so comeca",
+    "depois que o anterior terminou (vilao derrotado, vilao vitorioso ou cancelado). O 'gatilhoBp'",
+    "e sempre BP **BASE** e nao expresso. Cada chefe do elo tem a propria contagem em DIAS IN-GAME",
+    "(1 dia = 24 min reais), e e assim que 'os androides na hora e o Cell dois dias depois' vira",
+    "dado em vez de codigo. Acrescentar chefe ao jogo e acrescentar ELO aqui -- a lacuna entre Cell",
+    "(5M) e Boo (1,5B) e o lugar natural pro proximo.",
+    "",
+    "O BP DO CHEFE E PINADO NO DISPARO DO MARCO e vai pro save: quem chegar depois nao empurra a",
+    "dificuldade. Pra ficha de BP constante isso da o proprio numero da ficha; pra ficha com",
+    "'bpRelativo' e a diferenca entre o BP anunciado e o BP que o servidor virou dias depois.",
+    "",
+    "'destroiPlaneta' liga o ULTIMATO -- e o gancho da destruicao de planeta, que HOJE E INERTE:",
+    "o prazo corre, o mundo e avisado, o elo fecha como consumado e o planeta fica marcado no save,",
+    "mas nada no mundo muda. A destruicao de planeta e o bloco 10 e ainda nao existe."
+  ],
+
+  "povoamento": [
+    { "planeta": "Earth",      "molde": "cidadao", "quantos": 40 },
+    { "planeta": "Vegeta",     "molde": "cidadao", "quantos": 40 },
+    { "planeta": "Namek",      "molde": "cidadao", "quantos": 32 },
+    { "planeta": "Icer",       "molde": "cidadao", "quantos": 12 },
+    { "planeta": "Arlia",      "molde": "cidadao", "quantos": 12 },
+    { "planeta": "Makyo_Star", "molde": "cidadao", "quantos": 12 }
+  ],
+
+  "sagas": [
+    {
+      "id": "freeza_vegeta",
+      "nome": "Freeza no Planeta Vegeta",
+      "planeta": "Vegeta",
+      "gatilhoBp": 20000,
+      "gatilhoRaca": "Saiyan",
+      "destroiPlaneta": true,
+      "minutosDeOcio": 18,
+      "minutosDeLuta": 6,
+      "anuncioDoMarco": "O poder crescente dos Saiyajins chamou uma atencao terrivel... Freeza se aproxima do Planeta Vegeta! Ele chegara em {dias} dias.",
+      "anuncioDiario": "A nave de Freeza se aproxima do Planeta Vegeta... chegada em {dias} dia(s).",
+      "anuncioDoUltimato": "FREEZA concentra uma energia colossal sobre {planeta}! Nocauteiem-no em 30 SEGUNDOS para interromper!",
+      "anuncioDaVitoria": "FREEZA FOI DERROTADO! O Planeta Vegeta esta a salvo!",
+      "chefes": [
+        { "molde": "freeza_vegeta", "diasMin": 3, "diasMax": 5, "recompensa": 100,
+          "anuncioDaChegada": "A nave de Freeza pousou! FREEZA esta no Planeta Vegeta -- se ninguem o enfrentar, ele DESTRUIRA o planeta!",
+          "anuncioDaQueda": "Freeza cai de joelhos no Planeta Vegeta." }
+      ],
+      "_nota": "BEV_M1_TRIGGER_BP 20000 + bev_is_saiyan (BossEvents.dm:39,164). Dias 3..5 (BEV_M1_DAYS_MIN/MAX)."
+    },
+    {
+      "id": "freeza_namek",
+      "nome": "Freeza em Namek",
+      "planeta": "Namek",
+      "gatilhoBp": 100000,
+      "destroiPlaneta": true,
+      "ultimatoSoNoUltimoDegrau": true,
+      "minutosDeLuta": 5,
+      "minutosDeOcio": 5,
+      "anuncioDoMarco": "Freeza partiu em direcao a Namek atras das Esferas do Dragao! Ele chegara em {dias} dias.",
+      "anuncioDiario": "Freeza se aproxima de Namek... chegada em {dias} dia(s).",
+      "anuncioDoUltimato": "FREEZA vai destruir {planeta}! Nocauteiem-no em 30 SEGUNDOS!",
+      "anuncioDaVitoria": "FREEZA FOI DERROTADO EM NAMEK! As Esferas do Dragao estao seguras!",
+      "chefes": [
+        { "molde": "freeza_namek", "diasMin": 7, "diasMax": 7, "recompensa": 100,
+          "anuncioDaChegada": "Freeza chegou a Namek atras das Esferas do Dragao! Os Namekuseijins estao em perigo!",
+          "anuncioDaQueda": "O corpo de Freeza se desfaz sobre a terra verde de Namek." }
+      ],
+      "_nota": "BEV_M2_TRIGGER_BP 100000, BEV_M2_DAYS 7. O prazo de 5 min (BEV_FREEZA2_FINAL_TIMER) so passa a correr na FORMA FINAL -- e por isso 'ultimatoSoNoUltimoDegrau'."
+    },
+    {
+      "id": "cell",
+      "nome": "Os Androides e Cell",
+      "planeta": "Earth",
+      "gatilhoBp": 5000000,
+      "anuncioDoMarco": "Duas maquinas assassinas surgiram na Terra: os ANDROIDES 17 e 18 estao espalhando destruicao!",
+      "anuncioDaVitoria": "A AMEACA DOS ANDROIDES ACABOU! A Terra esta finalmente livre.",
+      "chefes": [
+        { "molde": "androide_17", "diasMin": 0, "diasMax": 0, "recompensa": 50,
+          "anuncioDaQueda": "O Androide 17 foi destruido!" },
+        { "molde": "androide_18", "diasMin": 0, "diasMax": 0, "recompensa": 50,
+          "anuncioDaQueda": "A Androide 18 foi destruida!" },
+        { "molde": "cell", "diasMin": 2, "diasMax": 2, "recompensa": 100,
+          "absorve": true, "ressurgeNoDegrau": 3, "ressurgeEmSegundos": 60,
+          "anuncioDaChegada": "Uma criatura aterrorizante emergiu na Terra... CELL esta cacando os androides!",
+          "anuncioDaQueda": "CELL FOI DESTRUIDO! A Terra esta a salvo!" }
+      ],
+      "_nota": "BEV_M3_TRIGGER_BP 5M, BEV_CELL_DELAY_DAYS 2. 'absorve' e o cell_absorb_contact (:680): encostar num androide NOCAUTEADO sobe um degrau da ficha dele. 'ressurgeNoDegrau: 3' e o Cell morto na forma Perfeita voltando Super Perfeito em 1 min (:760). Esta saga NAO destroi planeta -- no original ela tambem nao."
+    },
+    {
+      "id": "boo",
+      "nome": "Majin Boo",
+      "planeta": "Earth",
+      "gatilhoBp": 1500000000,
+      "anuncioDoMarco": "Uma presenca maligna e ancestral comeca a despertar... Algo terrivel acontecera em {dias} dias.",
+      "anuncioDiario": "A presenca maligna fica mais forte a cada dia... {dias} dia(s) restante(s).",
+      "anuncioDaVitoria": "MAJIN BOO FOI DESTRUIDO! A paz retorna a Terra... por enquanto.",
+      "chefes": [
+        { "molde": "majin_boo", "diasMin": 7, "diasMax": 7, "recompensa": 100,
+          "anuncioDaChegada": "O selo foi quebrado... MAJIN BOO despertou na Terra! Corram!",
+          "anuncioDaQueda": "Majin Boo explode em fumaca rosa e some." }
+      ],
+      "_nota": "BEV_M4_TRIGGER_BP 1,5B, BEV_M4_DAYS 7, BEV_BUU_BP 30B."
+    }
   ],
 
   "moldes": [
     {
+      "id": "cidadao",
+      "nome": "Habitante",
+      "tipo": "cidadao",
+      "generos": ["Male", "Male", "Male", "Female"],
+      "bpMin": 500, "bpMax": 5000,
+      "marcosBase": 2, "marcosPorDecada": 1.2,
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 20,
+      "escadaAutomatica": false,
+      "inteligencia": 50, "agressividade": 60, "coragem": 80, "furia": 70,
+      "nomesPorRaca": {
+        "Saiyan":      ["Vegeta", "Nappa", "Raditz", "Tarble", "Cabba", "Caulifla", "Kale", "Renso", "Toma", "Borgos", "Shugesh", "Fasha", "Celipa", "Gine", "Onio", "Leek", "Berry", "Spinach", "Daikon", "Tsumuri", "Totepo", "Panbukin", "Seripa", "Caraya", "Letti"],
+        "Human":       ["Krillin", "Yamcha", "Tien", "Chiaotzu", "Roshi", "Hercule", "Videl", "Sharpner", "Erasa", "Mark", "Jack", "Sam", "Lena", "Mira", "Otto", "Lime", "Suno", "Upa", "Bora", "Pamput", "Caroni", "Pirozhki", "Chobi", "Nam", "Annin"],
+        "Namekian":    ["Piccolo", "Nail", "Dende", "Cargo", "Kami", "Slug", "Katas", "Tsuno", "Moori", "Esca", "Maima", "Taitan", "Dengar", "Saichi", "Muri", "Cymbal", "Drum", "Tambourine", "Piano", "Tamo"],
+
+        "Tsujin":      ["Kaji", "Renbu", "Sora", "Hakuto", "Iwane", "Yura"],
+        "Saibaman":    ["Broto", "Talo", "Verde", "Raiz", "Espinho", "Bulbo"],
+        "Heran":       ["Bojack", "Zangya", "Bido", "Bujin", "Kogu", "Hera"],
+        "Meta":        ["Getti", "Cooler-9", "Nucleo", "Circuito", "Falange", "Ferrolho"],
+
+        "Gray":        ["Zeeun", "Abo", "Kado", "Sansho", "Misokatsun", "Ebifurya"],
+        "Kanassa":     ["Toolo", "Kanas", "Vidente", "Ohme", "Rasil", "Nubi"],
+        "Yardrat":     ["Pybara", "Yadrat", "Selipa", "Nunn", "Torbie", "Kamin"],
+
+        "Icer":        ["Kuriza", "Chilled", "Frost", "Berryblue", "Nevo", "Glace"],
+        "Arlian":      ["Lesoy", "Atla", "Moah", "Quilha", "Elitra", "Tarsa"],
+        "Makyo":       ["Garlic", "Nicky", "Ginger", "Sansho", "Spice", "Vinegar"],
+
+        "Majin":       ["Bibidi", "Yamu", "Spopovich", "Pui Pui", "Dabura", "Mijuu"],
+        "Demigod":     ["Kibito", "Shin", "Ogum", "Tapion", "Minosha", "Elu"],
+        "Shapeshifter":["Oolong", "Puar", "Nezu", "Miira", "Fantoche", "Talco"],
+        "Alien":       ["Zarbon", "Dodoria", "Cui", "Appule", "Raspberry", "Blueberry", "Orlen", "Namole"]
+      },
+      "_notaNomes": "As TRES primeiras pools sao literais do npc_random_name (PlanetPopulation.dm:340-354). As outras treze sao NOVAS: o DM so povoava Terra, Vegeta e Namek, entao ele nunca precisou de nome pra Icer, Arlia, Makyo_Star nem pras racas que so o berco deste port poe num planeta. Onde havia nome canonico do desenho ele foi usado; o resto e inventado. Raca sem pool cai no 'nome' do molde -- o 'Stranger' do original com outro texto.",
+      "_nota": "SEM 'racas' e SEM 'nomes' de proposito: a raca vem do berco do planeta onde ele nasce, e o nome vem do sorteio da propria raca. A faixa de BP cobre as tres do DM de uma vez (make_human 500-3500, make_saiyan_commoner 800-5000, make_namekian 1500-4000: PlanetPopulation.dm:362,390,407). O temperamento e o behavior_vals = list(80,70,5,50) do mob/npc/Citizen (:74) -- coragem 80 (nao foge), furia 70 (barragem), agressividade alta porque o chase_speed dele e 2 e nao 3. escadaAutomatica: false porque um habitante nao e um Super Saiyajin dormente."
+    },
+
+    {
       "id": "saibaman",
       "nome": "Saibaman",
+      "tipo": "inimigo",
       "racas": ["Saibaman"],
       "generos": ["Male"],
       "bpMin": 1200, "bpMax": 2600,
@@ -32,11 +183,14 @@
     {
       "id": "soldado_saiyajin",
       "nome": "Soldado Saiyajin",
+      "tipo": "inimigo",
       "racas": ["Saiyan"],
       "nomes": ["Toma", "Borgos", "Shugesh", "Fasha", "Celipa", "Onio", "Leek", "Berry", "Spinach", "Daikon"],
       "generos": ["Male", "Male", "Male", "Female"],
       "bpMin": 3000, "bpMax": 45000,
       "marcosBase": 3, "marcosPorDecada": 1.5,
+      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
       "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
       "nivelDasSkills": 25,
       "maestria": 10,
@@ -46,11 +200,15 @@
     {
       "id": "guerreiro_namekuseijin",
       "nome": "Guerreiro Namekuseijin",
+      "tipo": "inimigo",
       "racas": ["Namekian"],
       "classe": "Warrior clan",
       "nomes": ["Nail", "Cymbal", "Drum", "Tambourine", "Piano", "Muri", "Moori", "Esca"],
       "bpMin": 5000, "bpMax": 120000,
       "marcosBase": 4, "marcosPorDecada": 1.6,
+      "dadas": ["/datum/skill/ki/Ki_Wave", "/datum/skill/namek/SuperNamek"],
+      "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
+      "_supernamek": "A `SuperNamek` entrou junto com a escada Namekuseijin, e ela CONSERTA uma coisa em vez de acrescentar: este molde tem `escadaAutomatica` no padrao (true) e, ate a escada existir, o `LinhasAbertas` entregava a ele a escada SAIYAJIN -- um Namekuseijin de cabelo dourado. Fechada a porta por raca, ele passaria a nao ter forma nenhuma, porque o `snamek` e gateado pela FLAG que so esta skill escreve (`FormaDef.PedeFlag`). Dar a skill e o que o DM faz na pratica: la o `snamek` do NPC vem do mesmo `after_learn`. O gate de BP continua valendo por cima -- com `bpMax` 120 mil ele nao chega aos ~2 milhoes do `snamekat` e nao se transforma; quem chega la e o Nail de um roteiro de chefe.",
       "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Body"],
       "nivelDasSkills": 35,
       "inteligencia": 60, "agressividade": 45, "coragem": 70, "furia": 35
@@ -59,8 +217,11 @@
     {
       "id": "rival_do_mundo",
       "nome": "Desafiante",
+      "tipo": "inimigo",
       "bpRelativo": 0.8, "bpPiso": 5000,
       "marcosBase": 4, "marcosPorDecada": 1.8,
+      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
       "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Body"],
       "nivelDasSkills": 50,
       "maestria": 25,
@@ -71,6 +232,7 @@
     {
       "id": "guardiao_saiyajin",
       "nome": "Guardiao",
+      "tipo": "chefe",
       "racas": ["Saiyan"],
       "classe": "Saiyan",
       "nomes": ["Turles", "Nappa", "Paragus", "Cumber"],
@@ -78,6 +240,8 @@
       "formas": ["ssj1"],
       "maestria": 60,
       "marcosBase": 5, "marcosPorDecada": 1.8,
+      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
       "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Body"],
       "nivelDasSkills": 55,
       "ascendePorDecisao": false,
@@ -93,9 +257,12 @@
     {
       "id": "freeza_vegeta",
       "nome": "Freeza",
+      "tipo": "chefe",
       "racas": ["Icer"],
       "classe": "Frost Demon",
       "marcosBase": 6, "marcosPorDecada": 2.0,
+      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
       "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Spirit", "/datum/skill/tree/Body"],
       "nivelDasSkills": 70,
       "escadaAutomatica": false,
@@ -111,9 +278,12 @@
     {
       "id": "freeza_namek",
       "nome": "Freeza",
+      "tipo": "chefe",
       "racas": ["Icer"],
       "classe": "Frost Demon",
       "marcosBase": 6, "marcosPorDecada": 2.0,
+      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
       "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Spirit", "/datum/skill/tree/Body"],
       "nivelDasSkills": 70,
       "escadaAutomatica": false,
@@ -133,6 +303,87 @@
           "anuncio": "FREEZA ATINGIU SUA FORMA FINAL! Derrotem-no antes que ele destrua o planeta!" }
       ],
       "_nota": "BEV_FREEZA2_BPS e BEV_FREEZA2_THRESHOLDS (BossEvents.dm:54,67). O ULTIMO degrau nao tem gatilho: nada o encerra."
+    },
+
+    {
+      "id": "androide_17",
+      "nome": "Androide 17",
+      "tipo": "chefe",
+      "racas": ["Human"],
+      "classe": "Peak Human",
+      "generos": ["Male"],
+      "marcosBase": 6, "marcosPorDecada": 2.0,
+      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 75,
+      "escadaAutomatica": false,
+      "ascendePorDecisao": false,
+      "inteligencia": 80, "agressividade": 85, "coragem": 95, "furia": 40,
+      "estagios": [ { "bp": 100000000 } ],
+      "_nota": "BEV_ANDROID_BP 100M (BossEvents.dm:55). UM degrau: androide nao transforma. A raca e Human/classe cravada como no original (init_event_boss usa \"Human\",\"Normal\" e so depois escreve Race=\"Android\" -- e o proprio comentario de la diz que isso e COSMETICO e nao afeta os stats). O 'inf_ki'/'inf_stam' do original (nucleo de energia infinita) NAO esta portado: nao ha canal de Ki infinito neste port."
+    },
+    {
+      "id": "androide_18",
+      "nome": "Androide 18",
+      "tipo": "chefe",
+      "racas": ["Human"],
+      "classe": "Peak Human",
+      "generos": ["Female"],
+      "marcosBase": 6, "marcosPorDecada": 2.0,
+      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 75,
+      "escadaAutomatica": false,
+      "ascendePorDecisao": false,
+      "inteligencia": 80, "agressividade": 80, "coragem": 90, "furia": 40,
+      "estagios": [ { "bp": 100000000 } ],
+      "_nota": "Igual ao 17, com genero feminino -- e os dois sao MOLDES SEPARADOS e nao um com dois generos, porque a saga cita cada um pelo id e paga 50 de reputacao por cabeca (BEV_HERO_REP_ANDROID)."
+    },
+    {
+      "id": "cell",
+      "nome": "Cell",
+      "tipo": "chefe",
+      "racas": ["BioAndroid"],
+      "classe": "Majin-Type",
+      "generos": ["Male"],
+      "marcosBase": 8, "marcosPorDecada": 2.2,
+      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
+      "vocacao": ["/datum/skill/tree/Spirit", "/datum/skill/tree/Mind", "/datum/skill/tree/Body"],
+      "nivelDasSkills": 85,
+      "escadaAutomatica": false,
+      "ascendePorDecisao": false,
+      "inteligencia": 90, "agressividade": 85, "coragem": 95, "furia": 60,
+      "estagios": [
+        { "bp": 150000000,  "gatilhoMembro": 0.35, "cura": 0.6 },
+        { "bp": 500000000,  "gatilhoMembro": 0.30, "cura": 0.6,
+          "anuncio": "O corpo de Cell se retorce -- Semi-Perfeito." },
+        { "bp": 3500000000, "gatilhoMembro": 0.25, "cura": 0.6,
+          "anuncio": "CELL ATINGIU A FORMA PERFEITA! Um poder monstruoso emana dele!" },
+        { "bp": 5000000000, "cura": 1.0,
+          "anuncio": "IMPOSSIVEL... CELL VOLTOU DA MORTE em seu poder maximo!" }
+      ],
+      "_nota": "BEV_CELL_BPS (BossEvents.dm:56). A escada dele sobe por DOIS gatilhos: absorver um androide nocauteado (o 'absorve' da saga -- e o caminho canonico) OU o dano no membro mais ferido, pra ele nao ficar preso na forma 1 se os jogadores matarem os androides antes. DIVERGENCIA CONSCIENTE: o original constroi Cell com genoma Human e so troca o Race por cosmetica (o comentario dele admite isso); aqui ele nasce da raca BioAndroid que este port TEM -- a mesma que um jogador vira no laboratorio de DNA. Ganha-se coerencia com o resto do jogo; perde-se a literalidade do spread de stats, que o BP pinado torna quase invisivel."
+    },
+    {
+      "id": "majin_boo",
+      "nome": "Majin Boo",
+      "tipo": "chefe",
+      "racas": ["Majin"],
+      "classe": "Corrupted Majin",
+      "generos": ["Male"],
+      "marcosBase": 8, "marcosPorDecada": 2.2,
+      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Spirit"],
+      "nivelDasSkills": 90,
+      "escadaAutomatica": false,
+      "ascendePorDecisao": false,
+      "inteligencia": 45, "agressividade": 100, "coragem": 100, "furia": 100,
+      "estagios": [ { "bp": 30000000000 } ],
+      "_nota": "BEV_BUU_BP 30B (BossEvents.dm:57). UM degrau: o Kid Boo do original nao transforma. Inteligencia BAIXA de proposito -- o behavior_vals do EventBoss e (95,80,0,90), mas o Boo e a excecao que o proprio jogo desenha como bicho e nao como tatico. O 'inf_stam' dele (Kid Boo nunca cansa) NAO esta portado."
     }
   ]
 }

@@ -62,6 +62,36 @@ public sealed class EstagioDeChefe
 }
 
 /// <summary>
+/// O QUE ESTE CORPO E NO MUNDO -- e a unica pergunta que o recorte do dono precisa responder.
+///
+/// ============================ A TAXONOMIA E DO PROPRIO DM, E ELA JA ERA O RECORTE ============================
+/// O original nao tem um campo destes, mas tem a mesma divisao escrita em TIPO DE MOB, e as tres
+/// classes fazem coisas diferentes no `NPCTicker`:
+///
+///   `mob/npc/Citizen`          (PlanetPopulation.dm:64)  -- pacifico ate apanhar, BP FIXO
+///   `mob/npc/Enemy/*`          (NPClist.dm, NPCspawner.dm) -- hostil de nascenca, BP acompanha a media
+///   `mob/npc/Enemy/EventBoss`  (BossEvents.dm:170)       -- roteirizado, BP PINADO pelo evento
+///
+/// O pedido do dono -- *"cidadao sim, chefe de saga sim, inimigo comum nao"* -- e um corte NESTA
+/// linha, e por isso ele e um CAMPO DO DADO e nao um `if` no spawner nem uma lista de ids escrita
+/// no codigo: o recorte precisa ser afirmavel pela bancada (*"nenhum inimigo comum nasce hoje"*),
+/// e uma lista de ids no codigo envelhece calada no dia em que alguem acrescentar um molde novo.
+/// Ver <see cref="Povoamento.PodeNascer"/>.
+/// ========================================================================================================
+/// </summary>
+public enum TipoDeNpc
+{
+	/// <summary>Habitante. Nasce no planeta da raca dele e **nao ataca ninguem sozinho**.</summary>
+	Cidadao,
+
+	/// <summary>Inimigo comum de ambiente. **DESLIGADO hoje** -- ver <see cref="Povoamento"/>.</summary>
+	Inimigo,
+
+	/// <summary>Chefe de saga: tem <see cref="MoldeDeNpc.Estagios"/> e quem o move e o roteiro.</summary>
+	Chefe,
+}
+
+/// <summary>
 /// O MOLDE: a receita de onde sai uma ficha de NPC. **Dado, nao codigo.**
 ///
 /// ============================ POR QUE ISTO NAO E UMA CLASSE POR INIMIGO ============================
@@ -95,6 +125,36 @@ public sealed class MoldeDeNpc
 
 	/// <summary>Nomes possiveis (o `npc_random_name`, PlanetPopulation.dm:349). Sorteado.</summary>
 	public string[] Nomes = [];
+
+	/// <summary>
+	/// NOMES POR RACA -- o `npc_random_name(race)` do original inteiro, e nao so uma das pools.
+	///
+	/// ============================ O MOLDE DO CIDADAO NAO SABE DE QUE RACA ELE E ============================
+	/// Um molde de inimigo crava a raca (`racas: ["Saiyan"]`) e por isso a lista plana
+	/// <see cref="Nomes"/> basta pra ele. O molde de CIDADAO nao crava: a raca so e conhecida depois
+	/// do sorteio, porque ela vem do berco do planeta onde o corpo esta nascendo. Uma lista plana ali
+	/// daria nome de Saiyajin a um Namekuseijin.
+	///
+	/// E o original tem exatamente esta forma -- um `switch(race)` com uma pool por raca
+	/// (PlanetPopulation.dm:349-354) --, so que como codigo. Aqui e dado, e por isso o dono acrescenta
+	/// nomes de uma raca nova sem recompilar.
+	/// ==================================================================================================
+	///
+	/// Raca sem pool cai no <see cref="Nomes"/>, e depois no <see cref="Nome"/> -- que e o
+	/// `return "Stranger"` do original com outro texto.
+	/// </summary>
+	public Dictionary<string, string[]> NomesPorRaca = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// O QUE ELE E NO MUNDO -- ver <see cref="TipoDeNpc"/>. Escrito no `npcs.json` como
+	/// `"tipo": "cidadao" | "inimigo" | "chefe"`, e **obrigatorio**: o padrao do C# seria
+	/// `Cidadao`, e um molde de inimigo que esquecesse a linha passaria pelo recorte do dono
+	/// disfarcado de habitante. `Problemas()` recusa o molde sem tipo declarado.
+	/// </summary>
+	public TipoDeNpc Tipo = TipoDeNpc.Cidadao;
+
+	/// <summary>O `tipo` estava escrito no arquivo? So pra `Problemas()` poder exigir. Ver acima.</summary>
+	public bool TipoDeclarado;
 
 	// =====================================================================
 	// QUEM ELE E
@@ -258,6 +318,20 @@ public sealed class MoldeDeNpc
 		var p = new List<string>();
 		if (Id.Length == 0) p.Add("molde sem id");
 
+		// O TIPO E EXIGIDO, e nao herdado do padrao do C#: ver <see cref="Tipo"/>. Um molde de
+		// inimigo sem a linha viraria "cidadao" e ATRAVESSARIA o recorte do dono -- exatamente o
+		// modo de falha da armadilha 5 da PARTE 3 ("silencio no lugar de erro").
+		if (!TipoDeclarado)
+			p.Add($"'{Id}': sem 'tipo' -- declare \"cidadao\", \"inimigo\" ou \"chefe\". Sem ele o "
+				+ "recorte do dono (inimigo comum nao nasce) nao teria como distinguir este molde.");
+
+		// TIPO E ROTEIRO SAO A MESMA VERDADE e tem que concordar: `EhChefe` e derivado dos estagios
+		// (e continua sendo a autoridade de quem tem roteiro), e o `Tipo` e o que o povoamento le.
+		if (EhChefe && Tipo != TipoDeNpc.Chefe)
+			p.Add($"'{Id}': tem roteiro de estagios mas o tipo e '{Tipo}' -- chefe e quem tem roteiro.");
+		if (!EhChefe && Tipo == TipoDeNpc.Chefe)
+			p.Add($"'{Id}': tipo 'chefe' e nenhum estagio -- um chefe sem ficha pronta nao teria BP.");
+
 		if (EhChefe && AscendePorDecisao)
 			p.Add($"'{Id}': tem roteiro de estagios E ascendePorDecisao=true -- os dois moveriam a "
 				+ "mesma escada (o roteiro pelo dano, a IA pela decisao). Escolha um.");
@@ -291,10 +365,27 @@ public sealed class CatalogoDeMoldes
 	public int Total => _porId.Count;
 	public MoldeDeNpc? Get(string id) => _porId.GetValueOrDefault(id);
 
+	/// <summary>
+	/// O PLANO DE POVOAMENTO, do MESMO arquivo. Mora junto porque a linha do plano so faz sentido
+	/// com o molde a que ela se refere -- e um segundo arquivo seria uma segunda chance de o dono
+	/// editar um e esquecer o outro. Ver <see cref="Povoamento.Problemas"/>, que cruza os dois.
+	/// </summary>
+	public LinhaDePovoamento[] Plano = [];
+
+	/// <summary>
+	/// A CADEIA DE SAGAS, do MESMO arquivo e pelo mesmo motivo do <see cref="Plano"/>: cada elo cita
+	/// moldes pelo id, e um segundo arquivo seria uma segunda chance de renomear um molde aqui e
+	/// esquecer o elo la. Ver <see cref="Sagas.Problemas"/>, que cruza os dois.
+	/// </summary>
+	public EloDaSaga[] Cadeia = [];
+
 	public static CatalogoDeMoldes Parse(string json)
 	{
 		var cat = new CatalogoDeMoldes();
 		using JsonDocument doc = JsonDocument.Parse(json);
+
+		cat.Plano = Povoamento.Ler(doc);
+		cat.Cadeia = Sagas.Ler(doc);
 
 		if (!doc.RootElement.TryGetProperty("moldes", out JsonElement moldes)) return cat;
 
@@ -328,6 +419,28 @@ public sealed class CatalogoDeMoldes
 
 			string[] generos = Lista(e, "generos");
 			if (generos.Length > 0) m.Generos = generos;
+
+			// O TIPO E LIDO COMO TEXTO e nao como numero: um `"tipo": 1` no arquivo nao diria nada a
+			// quem o edita. Texto desconhecido NAO cai num padrao -- ele deixa `TipoDeclarado` falso e
+			// o molde e recusado com o nome do campo, que e o unico jeito de o dono ver o erro de
+			// digitacao em vez de um NPC que nasce onde nao devia.
+			string tipo = Txt(e, "tipo");
+			switch (tipo.ToLowerInvariant())
+			{
+				case "cidadao": m.Tipo = TipoDeNpc.Cidadao; m.TipoDeclarado = true; break;
+				case "inimigo": m.Tipo = TipoDeNpc.Inimigo; m.TipoDeclarado = true; break;
+				case "chefe": m.Tipo = TipoDeNpc.Chefe; m.TipoDeclarado = true; break;
+			}
+
+			if (e.TryGetProperty("nomesPorRaca", out JsonElement pools) && pools.ValueKind == JsonValueKind.Object)
+				foreach (JsonProperty kv in pools.EnumerateObject())
+				{
+					var l = new List<string>();
+					if (kv.Value.ValueKind == JsonValueKind.Array)
+						foreach (JsonElement s in kv.Value.EnumerateArray())
+							if (s.ValueKind == JsonValueKind.String && s.GetString() is { Length: > 0 } t) l.Add(t);
+					if (l.Count > 0) m.NomesPorRaca[kv.Name] = [.. l];
+				}
 
 			if (e.TryGetProperty("niveis", out JsonElement niveis) && niveis.ValueKind == JsonValueKind.Object)
 				foreach (JsonProperty kv in niveis.EnumerateObject())

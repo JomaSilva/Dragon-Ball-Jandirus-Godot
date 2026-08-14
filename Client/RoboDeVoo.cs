@@ -123,10 +123,11 @@ public partial class RoboDeVoo : Node
 	/// dia em que alguem o pendurar no corpo, sem tocar neste arquivo.
 	///
 	/// A MEDIDA E O DELTA CONTRA O REPOUSO, e nao a posicao absoluta. Isso e o que pega o segundo
-	/// jeito de errar: um node com altura propria em repouso (a barra de vida senta a -22 da cabeca,
+	/// jeito de errar: um node com altura propria em repouso (o balao de fala senta a -26 da cabeca,
 	/// a marca de alvo a +14 nos pes) recebendo a subida como posicao CRUA sobe o tanto errado --
-	/// perde a altura propria no caminho. Foi exatamente o defeito da barra caindo pro umbigo, e
-	/// medindo por delta ele reprova em vez de passar por acidente.
+	/// perde a altura propria no caminho. Foi exatamente o defeito da antiga barra de vida caindo
+	/// pro umbigo (ela ja nao existe -- ver `EntityState`), e medindo por delta ele reprova em vez
+	/// de passar por acidente.
 	///
 	/// O CONTRA-EXEMPLO, PRA A VARREDURA NAO PASSAR VAZIA: um `foreach` sobre zero filhos aprova
 	/// tudo caladamente. Entao exige-se um PISO de nodes de verdade encontrados la em cima, e os
@@ -169,9 +170,10 @@ public partial class RoboDeVoo : Node
 			+ (erraram.Count == 0 ? "" : " -- FICARAM PRA TRAS: " + string.Join(", ", erraram)));
 
 		// O PISO E O CONTRA-EXEMPLO. Ele nao diz QUEM tem que estar la em cima -- diz que a varredura
-		// enxergou gente de verdade. Sao 8 hoje (aura, carga, desenho, nebulosa, raios, camera, barra,
-		// balao); o piso e 6 pra que tirar um efeito do jogo nao reprove o voo, mas a varredura voltar
-		// vazia (corpo sem filhos, nome trocado, arvore remontada) reprove.
+		// enxergou gente de verdade. Sao 7 hoje (aura, carga, desenho, nebulosa, raios, camera,
+		// balao) -- eram 8 ate a barra de vida ser deletada a pedido do dono (ver `EntityState`), e o
+		// piso NAO se mexeu por isso: ele e 6 justamente pra que tirar um efeito do jogo nao reprove
+		// o voo, e a varredura voltar vazia (corpo sem filhos, nome trocado, arvore remontada) sim.
 		Conferir(subiram.Count >= 6,
 			$"a varredura achou {subiram.Count} nodes de verdade la em cima [{string.Join(", ", subiram)}]");
 

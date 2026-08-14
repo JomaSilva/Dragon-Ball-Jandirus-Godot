@@ -112,14 +112,49 @@ public static class CorposDeForma
 	/// nao se vestiu) e devolve `null` -- que e o mesmo que o DM faz quando o `icon` nao bate com
 	/// nenhum dos tres: `if(musc)` sai sem trocar nada.
 	/// </summary>
-	public static string? Caminho(CorpoDeForma simbolo, string corpoBase) => simbolo switch
+	public static string? Caminho(CorpoDeForma simbolo, string corpoBase) =>
+		Caminho(simbolo, corpoBase, null, 0);
+
+	/// <summary>
+	/// O MESMO, SABENDO QUEM E O FROST DEMON -- ver <see cref="Frost"/>.
+	/// </summary>
+	/// <param name="corposDoFrost">A lista `Appearance.FormasDeFrost` de quem se transformou. Nula = ninguem.</param>
+	/// <param name="degrau">O `fd_form` da entrada (<see cref="Jandirus.Core.Forms.Catalogo.DegrauDoFrost"/>). 0 = nao e do Frost.</param>
+	public static string? Caminho(CorpoDeForma simbolo, string corpoBase,
+								  IReadOnlyList<string>? corposDoFrost, int degrau) => simbolo switch
 	{
 		CorpoDeForma.Musculoso => Musculoso(corpoBase),
 		CorpoDeForma.Ssj4 => Ssj4,
 		CorpoDeForma.Oozaru => Oozaru,
 		CorpoDeForma.OozaruDourado => OozaruDourado,
+		CorpoDeForma.FrostEscolhido => Frost(corposDoFrost, degrau),
 		_ => null,
 	};
+
+	/// <summary>
+	/// ============================ O CORPO QUE **ESTE** FROST DEMON ESCOLHEU PRA ESTE DEGRAU ============================
+	/// Irmao do <see cref="Musculoso"/> logo acima, e pelo motivo que o cabecalho desta classe ja
+	/// explica: a forma diz QUE corpo, o personagem diz DE QUEM. A diferenca e por onde o personagem
+	/// responde -- o Musculoso le a PELE que o boneco ja veste (o `container.icon` do
+	/// `apply_ussj_body()`), e este le a LISTA que o jogador montou na criacao (o
+	/// `form1icon`..`form7icon` do `icer_poll_icon()`, `IcerTransform.dm:129-137`).
+	///
+	/// Quem traduz degrau -> slot e o Core (<see cref="Jandirus.Core.Races.FormasDeFrost.SlotDoDegrau"/>),
+	/// porque a conta depende de quantos corpos a classe tem e essa e uma regra de raca, nao de
+	/// desenho. Aqui so sobra abrir a lista e montar o caminho.
+	///
+	/// `null` de volta -- lista vazia, degrau que nao cabe nela, ou zero (nao e forma de Frost) -- cai
+	/// no mesmo lugar do `Nenhum`: o corpo fica o que era. E o que acontece com todo NPC de Frost
+	/// Demon montado sem lista e com todo save antigo, e ficar com o corpo base e a resposta certa
+	/// pros dois.
+	/// ==============================================================================================================
+	/// </summary>
+	public static string? Frost(IReadOnlyList<string>? corpos, int degrau)
+	{
+		if (degrau <= 0 || corpos == null || corpos.Count == 0) return null;
+		int slot = Jandirus.Core.Races.FormasDeFrost.SlotDoDegrau(degrau, corpos.Count);
+		return slot < 0 ? null : Jandirus.Core.Races.FormasDeFrost.Caminho(corpos[slot]);
+	}
 
 	/// <summary>
 	/// TODAS as folhas que este arquivo sabe apontar. Pra bancada -- ela varre a lista em vez de

@@ -543,6 +543,18 @@ public static class RegrasDeNivel
 	public static RegraDeNivel? Get(string path) => Mapa.GetValueOrDefault(path);
 	public static int Total => Mapa.Count;
 
+	/// <summary>
+	/// TODOS OS VERBOS QUE ALGUM DEGRAU CONCEDE, sem repetir.
+	///
+	/// Existe pro <see cref="CensoDeSkills"/>, e a razao de ele precisar disto e a mesma que ja
+	/// custou dois dos tres verbos de tiro do jogo: um verb concedido por NIVEL nao aparece em
+	/// `Skill.Verbos`, entao um censo que so olhasse o catalogo daria 127 verbos quando o jogo
+	/// concede 186 -- e os 59 que faltassem seriam justamente os que ninguem sabe que existem.
+	/// </summary>
+	public static IEnumerable<string> VerbosDeDegrau =>
+		Mapa.Values.SelectMany(r => r.Degraus).SelectMany(d => d.Verbos)
+			.Where(v => v.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase);
+
 	public static void Registrar(RegraDeNivel r)
 	{
 		if (r.Path.Length > 0) Mapa[r.Path] = r;

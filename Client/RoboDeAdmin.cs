@@ -105,8 +105,11 @@ public partial class RoboDeAdmin : Node
 				// MENOS UM: o que REFAZ O CENARIO tem passo proprio la embaixo, e disparado aqui ele
 				// consumia o estrago antes de o passo dedicado poder medi-lo -- o teste dizia "nao
 				// houve estrago" justamente porque ele mesmo ja tinha limpado. Custou uma rodada.
-				var disparados = Verbos.Da(Verbos.Admin).Where(v => v.Nome != RefazerCenario).ToList();
-				foreach (Verbo v in disparados) v.Acionar();
+				// SEM ACAO FICA DE FORA -- ver `Verbo.Acionar`. Nenhum verb de admin nasce assim
+				// hoje, e o filtro existe pra que o primeiro que nascer nao derrube a bancada.
+				var disparados = Verbos.Da(Verbos.Admin)
+					.Where(v => v.Nome != RefazerCenario && v.Acionar != null).ToList();
+				foreach (Verbo v in disparados) v.Acionar!();
 				Conferir(true, $"os {disparados.Count} verbs de admin foram disparados");
 				break;
 			}
@@ -225,7 +228,13 @@ public partial class RoboDeAdmin : Node
 					if (++_esperas < EsperasPorEstrago) { _passo = 19; return; }
 					_passos.Add("  --     refazer cenario: nao houve estrago em "
 							  + $"{EsperasPorEstrago * 0.6:0}s (rode com --quebrarteste 12)");
-					_passo = 99;
+					// PULA SO O PASSO DO CENARIO, e nao o resto da bancada. Aqui estava um
+					// `_passo = 99`, que caia direto no relatorio -- e enquanto o cenario era a
+					// ultima coisa medida isso era inofensivo. Deixou de ser no minuto em que uma
+					// familia nova (a previa da limpeza) entrou depois dele: sem estrago -- o caso
+					// COMUM de rodar o `--diagadmin` sozinho --, os passos novos nunca rodariam, e
+					// a bancada diria "TUDO OK" sem ter medido dois tercos do que ela agora mede.
+					_passo = 21;
 					break;
 				}
 				Conferir(true, $"o estrago do servidor chega ao cliente ({_quebradas} celula(s))");
@@ -236,6 +245,51 @@ public partial class RoboDeAdmin : Node
 				Conferir(cli.CenarioCaido.Count == 0,
 					$"refazer o cenario zera o estrago da zona ({_quebradas} celula(s) antes)");
 				break;
+
+			// -------------------------------------------------------------- a previa da limpeza total
+			// ============================ SO O PASSO 1, E NUNCA O PASSO 2 ============================
+			// O segundo verb (`admin_limpar_ja`) APAGA O SERVIDOR, e ele nao entra em bancada nenhuma
+			// que rode contra a pasta de verdade -- quem exercita a limpeza inteira e a `--wipeteste`,
+			// que faz isso numa pasta de mentira. Aqui se prova a UNICA parte que so existe no fio: a
+			// previa sai do servidor, atravessa o `S2C.Limpeza` e chega inteira no cliente.
+			//
+			// E POR QUE ISSO PRECISA DE ROBO: a `--wipeteste` roda dentro do servidor e nunca ve um
+			// pacote. Se o leitor do outro lado errasse a ORDEM dos campos (codigo, segundos, linhas),
+			// o painel de perigo desenharia a lista vazia e o botao nunca acenderia -- e nada, em lugar
+			// nenhum, ficaria vermelho. E o mesmo cego que este projeto ja registrou: "uniform escrito
+			// nao e pixel desenhado".
+			//
+			// A PREVIA NAO APAGA NADA (a `--wipeteste` afirma exatamente isso), entao rodar aqui,
+			// contra o mundo de verdade, e seguro.
+			// ====================================================================================
+			case 21:
+				_esperas = 0;   // o contador vem usado do passo do cenario
+				cli.SendVerbo("admin_limpar");
+				break;
+
+			case 22:
+			{
+				GameClient.PreviaDeLimpeza p = cli.Limpeza;
+				// A resposta pode nao ter chegado ainda: o pacote sai por caminho confiavel, mas o
+				// robo anda a cada 0,6 s e a varredura da pasta de contas leva o tempo que leva.
+				if (p.Codigo.Length == 0 && ++_esperas < 10) { _passo = 22; return; }
+
+				Conferir(p.Codigo.Length == 4, $"a previa da limpeza chega ao cliente com codigo ('{p.Codigo}')");
+				Conferir(p.Segundos > 0, $"...com o prazo de validade ({p.Segundos}s)");
+				Conferir(p.Linhas.Count > 0, $"...e com o inventario do que sumiria ({p.Linhas.Count} linha(s))");
+				// AS LINHAS TEM QUE TER CONTEUDO. Um `GetString` com teto curto devolve VAZIO (e nao
+				// truncado) -- foi assim que a lista de personagens do painel de contas virou uma
+				// linha em branco uma vez. Uma lista de oito strings vazias passaria na conferencia
+				// de cima e nao diria nada a quem vai apagar o servidor.
+				Conferir(p.Linhas.All(l => l.Trim().Length > 0), "...e nenhuma linha veio vazia (teto do GetString)");
+				Conferir(p.Linhas.Any(l => l.Contains("conta")), "...com a contagem de contas dentro");
+
+				// O PAINEL DE PERIGO DESENHA. `Redesenhar` monta a aba inteira; se o painel quebrasse
+				// (uma `LineEdit` sem pai, um `Tema` faltando), seria aqui.
+				menu.IrPara(Verbos.Admin);
+				Conferir(true, "a aba Admin remonta com o painel de perigo aberto");
+				break;
+			}
 
 			// -------------------------------------------------------------- relatorio
 			default:

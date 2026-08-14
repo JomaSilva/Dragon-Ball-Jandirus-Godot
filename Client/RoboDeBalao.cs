@@ -200,8 +200,14 @@ public partial class RoboDeBalao : Node
 			case 5:
 				if (EuSubi(corpo, balao)) { Passar(); break; }
 				if (_t < 1.0) return;
+				// O QUE SE VIU, E NAO SO "nao subiu". Sao dois defeitos diferentes com a mesma cara:
+				// a altura nao chegou no corpo (altitude 0 -- o snapshot injetado foi sobrescrito
+				// pelo do servidor, que reafirma "no chao" 30x por segundo) ou chegou e nao virou
+				// desenho (altitude viva e Y parado -- ai o defeito e a varredura dos filhos).
 				Conferir(false, "em 1s o meu corpo chegou a ser DESENHADO no ar (a altura do "
-							  + "snapshot chegou no `LocalPlayer.AplicarAltura`)");
+							  + "snapshot chegou no `LocalPlayer.AplicarAltura`) -- desenho em "
+							  + $"{corpo.GetNode<CharacterVisual>("Visual").Position.Y:0.##} px, "
+							  + $"altitude {(corpo as LocalPlayer)?.Altitude ?? -1f:0.##}");
 				Passar();
 				break;
 
@@ -386,7 +392,6 @@ public partial class RoboDeBalao : Node
 			Id = cli.LocalId,
 			Facing = (byte)Jandirus.Core.World.Facing.South,
 			Pose = Protocol.Pose.Normal,
-			Vida = 100,
 			Voando = true,
 			Altitude = AlturaDoTeste,
 		}]);
@@ -395,8 +400,13 @@ public partial class RoboDeBalao : Node
 	/// ============================ NAO SE MEDE A ALTURA, SE MEDE O ACORDO ============================
 	/// A altura injetada nao se sustenta, e nem precisa: o servidor reafirma "altitude 0" trinta
 	/// vezes por segundo e o desenho ja comeca a descer no quadro seguinte. Por isso o teste nao
-	/// pergunta QUANTO o corpo subiu -- pergunta se os tres desenhos (corpo, barra e balao)
-	/// receberam o MESMO empurrao, que e verdade em qualquer altura da subida ou da descida.
+	/// pergunta QUANTO o corpo subiu -- pergunta se os dois desenhos (corpo e balao) receberam o
+	/// MESMO empurrao, que e verdade em qualquer altura da subida ou da descida.
+	///
+	/// ERAM TRES: a barra de vida sobre a cabeca era o outro `ISobeComOCorpo` e era conferida aqui.
+	/// Ela foi DELETADA a pedido do dono (ver `EntityState`), e com ela o balao passou a ser o unico
+	/// node com altura propria -- entao esta bancada e agora a UNICA guarda da regra "quem tem altura
+	/// propria SOMA o deslocamento, nao o substitui".
 	/// ==========================================================================================
 	/// </summary>
 	private bool EuSubi(Node2D corpo, BalaoDeFala balao)
@@ -404,12 +414,9 @@ public partial class RoboDeBalao : Node
 		float visual = corpo.GetNode<CharacterVisual>("Visual").Position.Y;
 		if (visual > -1f) return false;   // ainda nao saiu do chao neste quadro
 
-		float vida = corpo.GetNode<HealthBar>("Vida").Position.Y;
 		Conferir(Mathf.Abs(balao.Position.Y - (BalaoDeFala.AlturaBase + visual)) < 0.01f,
 				 $"o MEU balao recebeu o mesmo empurrao do meu desenho ({visual:0.#} px) e manteve a "
 			   + $"altura propria ({balao.Position.Y:0.#} px) -- e outra lista de filhos, a do `LocalPlayer`");
-		Conferir(Mathf.Abs(vida - (HealthBar.AlturaBase + visual)) < 0.01f,
-				 $"a minha barra de vida tambem ({vida:0.#} px)");
 		return true;
 	}
 
@@ -438,7 +445,6 @@ public partial class RoboDeBalao : Node
 			Facing = (byte)Jandirus.Core.World.Facing.South,
 			Moving = andando,
 			Pose = Protocol.Pose.Normal,
-			Vida = 100,
 			Altitude = altitude,
 			Voando = altitude > 0f,
 		}]);
@@ -500,22 +506,19 @@ public partial class RoboDeBalao : Node
 
 		float esperado = -AlturaDoTeste * Voo.EscalaNaTela;
 		float visual = r.GetNode<CharacterVisual>("Visual").Position.Y;
-		float vida = r.GetNode<HealthBar>("Vida").Position.Y;
 		BalaoDeFala dele = r.GetNode<BalaoDeFala>("Balao");
 
 		Conferir(Mathf.Abs(visual - esperado) < 1f,
 				 $"o corpo remoto subiu {AlturaDoTeste:0} de altitude ({visual:0.#} px de desenho)");
 
 		// ============================ A SOMA, E NAO A SUBSTITUICAO ============================
-		// Este e o teste que o defeito antigo teria reprovado: a barra e o balao TEM altura propria
-		// sobre a cabeca, e quem escrevia `Position = deslocamento` cru a apagava -- os dois iam
-		// parar no umbigo de quem voa, exatamente onde o corpo NAO esta.
+		// Este e o teste que o defeito antigo teria reprovado: o balao TEM altura propria sobre a
+		// cabeca, e quem escrevia `Position = deslocamento` cru a apagava -- ele ia parar no umbigo
+		// de quem voa, exatamente onde o corpo NAO esta.
 		// ==================================================================================
 		Conferir(Mathf.Abs(dele.Position.Y - (BalaoDeFala.AlturaBase + esperado)) < 1f,
 				 $"o BALAO subiu junto E manteve a altura propria ({dele.Position.Y:0.#} px, esperado "
 			   + $"{BalaoDeFala.AlturaBase + esperado:0.#})");
-		Conferir(Mathf.Abs(vida - (HealthBar.AlturaBase + esperado)) < 1f,
-				 $"a barra de vida tambem ({vida:0.#} px) -- ela vinha caindo pro umbigo desde o voo");
 
 		Conferir(dele.Visible && dele.IsVisibleInTree(),
 				 $"e o texto do voador continua na tela durante a subida (\"{dele.TextoDeTeste}\")");

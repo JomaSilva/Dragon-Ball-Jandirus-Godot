@@ -1,5 +1,5 @@
-[{ "x": 420, "y": 28, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
- { "x": 421, "y": 28, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
+[{ "x": 420, "y": 28, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" },
+ { "x": 421, "y": 28, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" },
  { "x": 152, "y": 216, "arte": "res://Assets/Sprites/Turfs/Namek.tres" },
  { "x": 168, "y": 216, "arte": "res://Assets/Sprites/Turfs/Namek.tres" },
  { "x": 37, "y": 218, "arte": "res://Assets/Sprites/Turfs/Namek.tres" },

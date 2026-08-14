@@ -100,6 +100,29 @@ public partial class GameServer
 			// com dois nomes".
 			pl.Ficha.Class = "Normal";
 			pl.Forma.Entrar(Catalogo.IdBase);
+
+			// ============================ E O CORPO PRECISA CHEGAR AQUI **LIMPO** ============================
+			// Estas quatro linhas sao as MESMAS que o bloco do Legendary logo abaixo ja executava, e a
+			// falta delas aqui era assimetria e nao economia. Duas coisas atravessavam de cima:
+			//
+			//   * **A JANELA DE LUTO.** `ACinematicaDaFuriaAoVivo` (chamado dez linhas acima) acende
+			//     `NivelDeRaiva.Extrema` varias vezes, e o prazo dela e de DOIS MINUTOS de relogio real.
+			//     A bancada inteira roda em segundos: quando esta checagem perguntava "com raiva LENDARIA
+			//     o C nao sai da base?", o corpo ainda estava em luto -- e a escada abria com razao.
+			//   * **AS FORMAS JA LIBERADAS.** A raiva paga a entrada UMA VEZ (`!Despertou(d.Id)` no passo 9
+			//     do `Avaliar`, o `hasbeast` do DM). Uma forma despertada por um bloco anterior dispensa a
+			//     furia pra sempre, entao bastaria o SSJ1 ter sido visto antes pra esta medicao nao medir
+			//     mais nada.
+			//
+			// O DEFEITO ERA INVISIVEL ATE AGORA porque a checagem passava por OUTRO motivo: com a escada
+			// Saiyajin fechada pra raca deste corpo (ver `LinhasAbertas`), a tecla C era recusada por
+			// `LinhaFechada` antes de a raiva ser sequer consultada. Verde, e cega.
+			// ==============================================================================================
+			pl.Forma.Liberadas.Clear();
+			pl.Forma.EstreiaVista.Clear();
+			pl.FuriaExtremaAte = 0;
+			pl.RaivaLendariaAte = 0;
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			AplicarForma(pl);
 
 			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Lendaria);

@@ -231,8 +231,11 @@ public sealed partial class Fighter
     public void GravGain()
     {
         double gravidade = gravmult + Planetgrav;
-        double effgrav = gravidade;
-        if (GravMastered > gravidade) effgrav += (GravMastered - gravidade) * GainKnobs.GravAccustomWeight;
+
+        // A CONTA DA ACLIMATACAO SAIU DAQUI e virou `GravidadeEfetiva()` -- ver la: ela e lida
+        // tambem pelo `MultiplicadorDeGanho()`, que e o numero que a TELA mostra, e as duas copias
+        // divergiriam no dia em que alguem mexesse no peso da aclimatacao.
+        double effgrav = GravidadeEfetiva();
 
         bool treinando = train || med || IsInFight || minuteshot;
         if (effgrav > 0 && gravidade >= 1 && treinando)
@@ -245,6 +248,58 @@ public sealed partial class Fighter
             GravMastered += 0.001 + GainKnobs.BPTick * 10 * gravidade * GravMod * GainKnobs.GlobalGravGain * 0.02;
             GravMastered = Math.Min(Math.Min(gravidade, GravMastered), GainKnobs.GravityCap);
         }
+    }
+
+    /// <summary>
+    /// A GRAVIDADE EFETIVA que o ganho enxerga: a de verdade, mais a folga da aclimatacao.
+    ///
+    /// Existe como metodo porque a mesma conta era escrita em DOIS lugares -- dentro do
+    /// <see cref="GravGain"/> (onde ela paga BP) e dentro do <see cref="MultiplicadorDeGanho"/>
+    /// (onde ela e MOSTRADA). Sao exatamente as duas copias que a PARTE 3 do plano manda evitar: no
+    /// dia em que alguem mexesse na aclimatacao, a tela passaria a mentir sobre o proprio ganho.
+    /// </summary>
+    public double GravidadeEfetiva()
+    {
+        double gravidade = Planetgrav + gravmult;
+        if (gravidade < 1) return 0;   // gravidade zero de verdade (o espaco) nao treina nada
+        return GravMastered > gravidade
+            ? gravidade + (GravMastered - gravidade) * GainKnobs.GravAccustomWeight
+            : gravidade;
+    }
+
+    /// <summary>
+    /// QUANTO O TREINO ESTA RENDENDO AGORA, em vezes -- o `bp_gain_mult()` do DM
+    /// (`HtmlUI.dm:108-116`), que la existe **so** pra alimentar a linha "BP GAIN" do painel.
+    ///
+    /// ============================ SEM ESTE NUMERO O SISTEMA NAO EXISTE ============================
+    /// Peso, gravidade e Sala do Tempo sao tres multiplicadores invisiveis: eles mudam quanto BP
+    /// entra por tique, e BP por tique nao se ve. A queixa que abriu esta camada e literalmente essa
+    /// -- "o sistema e invisivel e parece nao existir". Uma linha na tela e o que transforma tres
+    /// numeros escondidos numa DECISAO (vale a pena carregar mais peso? vale ir pra Vegeta?).
+    /// ==========================================================================================
+    ///
+    /// A conta e a razao entre o ganho de agora e o de uma sessao neutra (gravidade 1, sem peso,
+    /// fora de zona especial): os termos `BpGainBase * BPTick * TrainMod * GravGainDiv` aparecem nos
+    /// dois lados e se cancelam, sobrando `Egains * StamBPGainMod * GainsRate * GlobalGravGain *
+    /// effgrav * weight`. Gravidade e LINEAR, entao 10x de gravidade le ~10x.
+    ///
+    /// ============================ UMA DIVERGENCIA DELIBERADA DO DM ============================
+    /// O `bp_gain_mult()` original **nao inclui o `htc_gain_mult()`**: dentro da Sala do Tempo o
+    /// painel do BYOND mostra ~10x (so a gravidade) enquanto o ganho de verdade e 2800x. E um furo do
+    /// original, e copia-lo aqui seria construir a camada 2 inteira e continuar sem a unica coisa que
+    /// o dono pediu -- ver o multiplicador. O <see cref="zoneGainMult"/> entra na conta.
+    /// ======================================================================================
+    /// </summary>
+    public double MultiplicadorDeGanho()
+    {
+        double area = Math.Max(Egains, 0) * Math.Max(StamBPGainMod, 0) * Math.Max(GainsRate, 0);
+        double gmult = area * Math.Max(GainKnobs.GlobalGravGain, 0) * GravidadeEfetiva();
+
+        // O PESO MULTIPLICA O TREINO, e so pra cima: `weight` nasce em 1 e o `WeightTick` ja o
+        // prende entre 1 e 8.
+        double wmult = weight > 1 ? weight : 1;
+
+        return Math.Max(gmult, 0.01) * wmult * Math.Max(zoneGainMult, 0);
     }
 
     /// <summary>

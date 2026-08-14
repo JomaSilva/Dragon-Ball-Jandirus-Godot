@@ -160,6 +160,34 @@ public partial class LocalPlayer : Node2D
 		=> _altitude = voando ? altitude : 0f;
 
 	/// <summary>
+	/// ESTOU NADANDO. Vem da FICHA (`SheetState.Nadando`), e nao do snapshot nem de um palpite local.
+	///
+	/// ============================ POR QUE ELE NAO E LOCAL ============================
+	/// Nadar parece um estado do teclado (aperta N, liga), e nao e: o servidor pode RECUSAR (fora
+	/// d'agua, nocauteado) e pode DESLIGAR sozinho (a agua acabou, o Ki acabou). Um espelho local
+	/// otimista acertaria no caso comum e mentiria exatamente nos quatro casos em que a resposta
+	/// importa -- e um cliente que se acha nadando em terra seca preveria o passo por uma regra que
+	/// o servidor ja nao aceita, o que vira correcao de posicao (o corpo tremendo) em jogo honesto.
+	///
+	/// A FICHA E CONTINUA (5 Hz, e na hora quando muda), entao nao ha evento a perder. Mesmo canal e
+	/// mesmo motivo do `Empurrado`, que e a outra coisa que muda COMO este corpo atravessa o mundo.
+	/// ================================================================================
+	/// </summary>
+	private bool _nadando;
+
+	/// <summary>
+	/// COMO ESTE CORPO ESTA ATRAVESSANDO AGORA -- a MESMA funcao que o servidor chama
+	/// (<c>ClasseDeAgua.ModoDe</c>), com o mesmo estado, pra que nao exista a faixa em que uma ponta
+	/// passa pela agua e a outra recusa.
+	///
+	/// O `_empurrado` nao entra: durante o arremesso este metodo nem e alcancado -- o `_Process`
+	/// devolve antes, deslizando ate a posicao que o servidor confirmou (e la o modo `Arremessado`
+	/// e escolhido no `TickDoEmpurrao`, no servidor).
+	/// </summary>
+	private ModoDeTravessia ModoDoCorpo =>
+		ClasseDeAgua.ModoDe(arremessado: false, noAr: _altitude > 0f, nadando: _nadando);
+
+	/// <summary>
 	/// ============================ O SERVIDOR ESTA DIRIGINDO ESTE CORPO ============================
 	/// Chega no snapshot, 30x/s, junto da altura (ver `World.AoReceberSnapshot`). Enquanto
 	/// <paramref name="semRedeas"/> for verdade este corpo e PASSAGEIRO: a posicao vira alvo a
@@ -277,6 +305,7 @@ public partial class LocalPlayer : Node2D
 		else if (ficha.Empurrado) _visual.VoarPara(dir);
 		else _visual.GirarPara(default);
 		_empurrado = ficha.Empurrado;   // o servidor esta dirigindo o corpo: ver _Process
+		_nadando = ficha.Nadando;       // ...e este diz por ONDE ele passa: ver _nadando
 		_visual.MostrarRabo(ficha.Rabo);
 		// 3% de folga sobre o custo de um segundo de corrida: no fio do Ki, correr e desistir
 		// a cada quadro daria um solavanco a cada passo
@@ -292,6 +321,18 @@ public partial class LocalPlayer : Node2D
 
 	/// <summary>Nocauteado ou morto: o servidor recusa qualquer passo, entao aqui nem se tenta.</summary>
 	private bool _caido;
+
+	/// <summary>
+	/// PRENSADO NO CHAO pela gravidade ou pelo peso -- a mesma regra que o servidor aplica em
+	/// `PodeMexerOCorpo`, lida da MESMA funcao do `Core` e do MESMO numero que veio no fio.
+	///
+	/// E uma propriedade e nao um campo de proposito: nao ha o que sincronizar nem o que esquecer de
+	/// limpar. Tirar o peso ou sair do planeta muda a razao no proximo pacote de atributos e o corpo
+	/// anda de novo -- sem um bit pendurado esperando alguem apaga-lo.
+	/// </summary>
+	private static bool Prensado =>
+		GameClient.Instance is { } c
+		&& c.Atributos.Esmagamento >= Jandirus.Core.Stats.Esmagamento.RazaoQuePrende;
 
 	/// <summary>Estou sendo ARREMESSADO -- quem move o corpo agora e o servidor.</summary>
 	private bool _empurrado;
@@ -309,6 +350,30 @@ public partial class LocalPlayer : Node2D
 	/// fotografou nas duas telas.
 	/// </summary>
 	private Facing _dirDoCorpo = Facing.South;
+
+	/// <summary>
+	/// PRA ONDE ESTE CORPO ESTA VIRADO -- o mesmo nome que o `RemotePlayer` ja publicava, pra que
+	/// quem le a direcao de um corpo na tela leia a MESMA coisa nos dois.
+	///
+	/// ============================ POR QUE ISTO PRECISOU EXISTIR ============================
+	/// O rastro da agua perguntava a direcao com `corpo is RemotePlayer r ? r.OlharDeTeste : South`.
+	/// O corpo do DONO nao e `RemotePlayer` -- ele caia no `else` e recebia `South` FIXO, ou seja
+	/// eixo norte-sul sempre. Foi exatamente o que o dono fotografou: voando de leste pra oeste sobre
+	/// a agua, a onda continuava desenhada de pe. Quem visse OUTRO jogador voando de lado veria a
+	/// onda certa; so o proprio corpo estava travado, porque so ele nao tinha por onde ser lido.
+	/// =======================================================================================
+	///
+	/// NAO E UM SEGUNDO RUMO: e o mesmo par de campos que o `_Process` usa pra escolher a folha do
+	/// sprite, devolvido na MESMA ordem. Arremessado, quem manda e o `_dirDoCorpo` (o `_Process`
+	/// volta antes das linhas que atualizam o `_facing`, e desenhar por ele daria uma onda apontando
+	/// pra onde o corpo olhava ANTES do golpe); nos outros casos e o `_facing`. Guardar um rumo
+	/// proprio aqui seria criar a segunda fonte que ja custou caro neste arquivo.
+	///
+	/// PARADO NAO VOLTA PRO PADRAO: o `_facing` so muda quando ha tecla de direcao
+	/// (`MoveRules.FacingFrom` devolve `atual` com vetor nulo), entao pairar sobre a agua mantem a
+	/// ultima onda -- que e o que um corpo parado no ar faz.
+	/// </summary>
+	public Facing OlharDeTeste => _empurrado ? _dirDoCorpo : _facing;
 
 	/// <summary>Ainda ha Ki pro servidor conceder a corrida.</summary>
 	private bool _temKiPraCorrer = true;
@@ -412,8 +477,21 @@ public partial class LocalPlayer : Node2D
 		// jogador PARA SEMPRE -- e foi o que aconteceu. Zerar so o vetor de andar, no pior caso,
 		// deixa alguem parado enquanto a cena roda.
 		// ================================================================================
+		// ============================ PRENSADO PELA GRAVIDADE (OU PELO PESO) ============================
+		// O `gravParalysis` do original (`Gravity.dm:67` -> `movement handler.dm:132`): a partir de
+		// quatro vezes a maestria de gravidade -- ou quatro vezes o que o corpo aguenta de peso -- o
+		// corpo fica PRESO no chao. Ele continua socando e defendendo; so nao sai do lugar.
+		//
+		// A GUARDA PRECISA ESTAR DOS DOIS LADOS. O servidor ja recusa o passo pelo `PodeMexerOCorpo`;
+		// sem esta linha o cliente continuaria integrando o input e levando uma correcao por pacote --
+		// trinta por segundo, o personagem TREMENDO no lugar. E o modo de falha classico deste port, e
+		// a defesa e sempre a mesma: as duas pontas decidindo pelo MESMO numero e pela MESMA funcao.
+		//
+		// O numero vem da ficha lenta (`AtributosState.Esmagamento`) porque `SheetState.Estado` nao
+		// tem mais bit livre -- os dois ultimos sao a direcao de quem esta caido.
+		// ============================================================================================
 		var input = _caido || _carregando || Foco.Digitando || GameClient.Instance?.EmClash == true
-			|| Transformacao.PrendendoOCorpo
+			|| Transformacao.PrendendoOCorpo || Prensado
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			: new Vector2(
 				Godot.Input.GetActionStrength("move_right") - Godot.Input.GetActionStrength("move_left"),
@@ -513,8 +591,10 @@ public partial class LocalPlayer : Node2D
 		// escreve em `GameServer.Input`. As duas pontas decidem pelo mesmo numero e pela mesma
 		// funcao, entao nao existe a faixa de altura em que uma passa e a outra recusa (que e o
 		// que viraria correcao de posicao em jogo honesto -- o personagem tremendo na parede).
+		// ...E ABAIXO DELA, A AGUA: quem esta baixo consulta o mapa, e o `modo` diz se a agua o para.
+		// A funcao e a MESMA do servidor (ver `ModoDoCorpo`).
 		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat,
-			AtravessandoCenario ? null : Mapa, out _, _correndo);
+			AtravessandoCenario ? null : Mapa, out _, _correndo, ModoDoCorpo);
 		Desenhar();
 
 		// ANDANDO = saiu do lugar, nao = apertou a tecla. Empurrando a parede o personagem
@@ -588,6 +668,11 @@ public partial class LocalPlayer : Node2D
 		// que a tecla e o botao nao virem duas regras que precisam concordar.
 		if (!Foco.Digitando && Godot.Input.IsActionJustPressed("voar"))
 			GameClient.Instance?.SendHabilidade("voar");
+
+		// N ALTERNA O NADO, pelo MESMO canal do voo e do botao do menu. Quem decide se liga (tem agua
+		// aqui? esta de pe?) e o servidor -- o cliente so pede, e recebe a resposta na ficha.
+		if (!Foco.Digitando && Godot.Input.IsActionJustPressed("nadar"))
+			GameClient.Instance?.SendHabilidade("nadar");
 
 		SeguirAltura(delta);
 		AplicarAltura();
@@ -799,7 +884,14 @@ public partial class LocalPlayer : Node2D
 		// tudo o mais (colisao, nevoa, sombra). Enquanto o corpo estiver acima do chao -- inclusive
 		// CAINDO por exaustao --, a pose e a de voo.
 		// ================================================================================================
-		if (_altitude > 0f) { _visual.SetState("flight"); return; }
+		// ============================ NADAR ENTRA NA MESMA LINHA, E DE PROPOSITO ============================
+		// A pose e a MESMA folha (`flight`), porque o original faz literalmente isso
+		// (`icon_state = "Flight"`, `Swim.dm:17`). O que o nado NAO traz junto e o resto do voo: a
+		// altura continua zero, entao o corpo nao sobe na tela (o `AplicarAltura` nao mexe nada), a
+		// sombra nao nasce (o node so e criado quando a altura sai de zero) e a nevoa de altitude
+		// tambem nao. "Entrar na animacao do fly sem sair do chao" e, aqui, exatamente esta linha.
+		// ================================================================================================
+		if (_altitude > 0f || _nadando) { _visual.SetState("flight"); return; }
 
 		// NAO existe pose de guarda nos .dmi (o corpo tem meditate, train, attack, flight, ko e
 		// mais nada) -- entao guardar mostra a pose parada, e quem avisa que a guarda esta

@@ -306,12 +306,21 @@ public sealed partial class GameServer
 	///
 	/// O QUE JÁ EXISTE NO PORT: o passo 1 (aqui), o rabo do passo 2 (<see cref="TemRaboInteiro"/>)
 	/// e o passo 3 -- interior é zona sem céu, então a lua nunca chega a nascer lá dentro
-	/// (`Ceu.RelogioDaZona`). O que falta é a forma em si: `Osetting`, `Apeshit` e o buff.
+	/// (`Ceu.RelogioDaZona`).
 	///
-	/// QUANDO O OOZARU FOR PORTADO, ele entra NESTA função e em mais lugar nenhum -- a lua
-	/// artificial (`Artificial_Moon`) e as ondas de Blutz da magia chamam o mesmo `Apeshit()` do
-	/// DM, então os três gatilhos devem convergir pra uma chamada só, e não pra três cópias da
-	/// regra.
+	/// ============================ O OOZARU FOI PORTADO ============================
+	/// Este bloco dizia *"o que falta é a forma em si: `Osetting`, `Apeshit` e o buff"* e prometia
+	/// *"quando o Oozaru for portado, ele entra NESTA função"*. **A forma existe** --
+	/// `Core/Forms/Oozaru.cs` (as regras puras) e `GameServer.Oozaru.cs` (o estado e a decisão) --,
+	/// e a promessa foi cumprida com uma correção de desenho por cima: o `Apeshit` NÃO é chamado
+	/// daqui. O dono pediu que **olhar pra lua seja uma escolha**, então quem chama é o botão
+	/// vermelho (`oozaru_olhar` -> `OlharParaALua`), e esta função só avisa e enrijece o rabo.
+	///
+	/// O QUE CONTINUA VALENDO é a parte que importava: `Apeshit` é FUNIL ÚNICO. A lua artificial
+	/// (`Artificial_Moon`) e as ondas de Blutz da magia, quando vierem, entram por ele -- três
+	/// gatilhos, uma regra, e não três cópias dela. Ver o corpo desta função logo abaixo, que já
+	/// registra a mudança no lugar em que o `Apeshit(pl)` morava.
+	/// ==============================================================================
 	/// ============================================================================
 	/// </summary>
 	private void LuaCheiaNasceu(ServerPlayer pl, EstadoDoCeu ceu)

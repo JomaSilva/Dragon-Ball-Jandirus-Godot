@@ -212,6 +212,14 @@ public partial class GameServer
 		if (UsarTecnicasG3(pl, id)) return true;
 		if (UsarTecnicasG4(pl, id)) return true;
 
+		// AS TECNICAS QUE O JOGADOR INVENTOU entram AQUI, antes do gate generico, e pelo mesmo
+		// motivo dos lotes acima: `SabeTecnica` pergunta se alguma SKILL destrava este verbo, e
+		// nenhuma skill destrava `Custom_Attack7` -- no DM os verbos custom sao concedidos pelo
+		// `after_learn()` do proprio datum (`:122-127`), sem `assignverb` e sem arvore. Passando
+		// depois do gate, toda tecnica inventada ouviria "voce nao sabe" -- sobre uma tecnica que
+		// o jogador desenhou com a propria mao.
+		if (UsarTecnicaCustomizada(pl, id)) return true;
+
 		Tecnicas.Tecnica? t = Tecnicas.Get(id);
 		if (t == null) return false;
 
@@ -233,34 +241,109 @@ public partial class GameServer
 			case "Ki_Shield": KiShield(pl); break;
 			case "Regenerate": Regenerar(pl); break;
 			case "Space_Flight": Decolar(pl); break;
-			default: Avisar(pl, $"{t.Nome} ainda nao tem efeito."); break;
+
+			// OS TRES QUE ATIRAM entram AQUI e nao num lote proprio antes do gate, de proposito:
+			// eles nao aceitam id com argumento (nao ha "Basic_Blast:3"), entao o `SabeTecnica` logo
+			// acima ja e a porta certa -- e assim quem nao comprou a skill ouve "voce nao sabe" pelo
+			// mesmo caminho de todo mundo, em vez de cada tecnica repetir a recusa.
+			case "Ki_Wave":
+			case "Basic_Blast":
+			case "Guided_Ball": UsarTecnicasDeProjetil(pl, id); break;
+
+			// A UNICA TECNICA SO-DE-VILAO do catalogo. Entra aqui e nao num lote proprio porque ela
+			// tambem nao aceita id com argumento -- a caixa "Sim/Nao" do original virou os trinta
+			// segundos de carga, que sao publicos. Ver `GameServer.Destruicao.cs`.
+			case "Planet_Destroy": PlanetDestroy(pl); break;
+
+			// O ARSENAL NOMEADO (lote G5): catorze verbos de ki que uma skill ja concedia e que o
+			// servidor nao atendia. Entram pelo `default` e nao por catorze `case` porque a lista
+			// deles mora no proprio lote (`IdsG5`) -- acrescentar a decima quinta nao deve mexer
+			// neste arquivo. Nenhum aceita argumento, entao o `SabeTecnica` la em cima ja e o
+			// portao, igual aos tres de projetil.
+			default:
+				if (EhDoLoteG5(id)) UsarTecnicasG5(pl, id);
+				// O LOTE G6 entra pela mesma porta e pelo mesmo motivo: a lista dos dezenove mora no
+				// proprio lote (`IdsG6`), entao portar o vigesimo nao deve mexer neste arquivo.
+				else if (EhDoLoteG6(id)) UsarTecnicasG6(pl, id);
+				// E O LOTE G7 pela terceira vez pela mesma porta: catorze punhos nomeados e as duas
+				// bolas que faltavam. A lista mora no proprio lote (`IdsG7`).
+				else if (EhDoLoteG7(id)) UsarTecnicasG7(pl, id);
+				else Avisar(pl, $"{t.Nome} ainda nao tem efeito.");
+				break;
 		}
 		return true;
 	}
 
-	/// <summary>Alguma skill aprendida destrava este verb?</summary>
+	/// <summary>
+	/// Alguma skill aprendida destrava este verb?
+	///
+	/// ============================ CORPO SEM LIVRO E UM ESTADO LEGITIMO ============================
+	/// `ServerPlayer.Livro` nasce `null!` e so e preenchido por quem passa pelo login ou pelo clone --
+	/// um corpo forjado por bancada, ou um NPC cujo molde nao trouxe livro, tem NULO ali. O
+	/// `TentarEmbate` do ZanzoClash ja sabia disso (`a.Livro?.Sabe(...)`) e a bancada da IA chega a
+	/// NULAR o livro de proposito pra provar que um corpo quebrado nao derruba o servidor.
+	///
+	/// Isto aqui era seguro por ACIDENTE: as duas funcoes so eram chamadas por verb de jogador. Com a
+	/// tabela de tecnicas de longe preenchida, o `ArsenalDeLonge` passou a varrer o livro de TODO
+	/// corpo dirigido, 1 vez por segundo -- e a primeira coisa que a bancada da colisao de ki viu foi
+	/// um `NullReferenceException` aqui. Em jogo o estrago seria pior que um teste vermelho: o `try`
+	/// por corpo do `TicarUmCorpo` engoliria a excecao e o NPC viraria estatua, com o defeito a tres
+	/// arquivos de distancia da causa.
+	/// ==========================================================================================
+	/// </summary>
 	private bool SabeTecnica(ServerPlayer pl, string verb)
 	{
-		if (_skills == null) return false;
+		if (_skills == null || pl.Livro == null) return false;
 		foreach (string path in pl.Livro.Aprendidas)
 		{
 			Skill? s = _skills.Get(path);
 			if (s != null && s.Verbos.Contains(verb, StringComparer.OrdinalIgnoreCase)) return true;
 		}
+
+		// ============================ E OS DEGRAUS DE NIVEL, QUE NINGUEM LIA ============================
+		// COMPRAR a skill nao e o unico jeito de destravar uma habilidade: o `effector()` do DM concede
+		// verbs por NIVEL (`assignverb` dentro do degrau), e o extrator ja trazia isso -- `niveis.json`
+		// tem `Basic_Blast` no nivel 35 de `Ki_Unlocked` e `Guided_Ball` no nivel 30 de
+		// `Basic_Ki_Control`. `NiveisDeSkill.VerbosAtivos()` foi escrita pra responder exatamente essa
+		// pergunta e **nao tinha um unico chamador**.
+		//
+		// O efeito era invisivel porque nada dependia dela ate a camada 1 dos ataques de ki: dois dos
+		// tres verbs que atiram sao concedidos POR NIVEL, entao um jogador que subisse `Ki_Unlocked`
+		// ate 35 continuaria ouvindo "voce nao sabe Bola de Ki" -- e a tecnica nao apareceria no menu,
+		// porque o menu sai do `TecnicasDe`, que tinha o mesmo buraco.
+		//
+		// Quem achou foi a bancada da IA, e por um caminho torto: ela afirma que um corpo que aprendeu
+		// o catalogo INTEIRO sai com as tres tecnicas de longe, e ele saia com UMA. E a quarta vez que
+		// este projeto encontra dado extraido sem consumidor.
+		// ==========================================================================================
+		foreach (string v in pl.Niveis.VerbosAtivos())
+			if (string.Equals(v, verb, StringComparison.OrdinalIgnoreCase)) return true;
+
 		return false;
 	}
 
-	/// <summary>As tecnicas ATIVAS que este personagem tem, pra mandar pro menu do cliente.</summary>
+	/// <summary>
+	/// As tecnicas ATIVAS que este personagem tem -- pro menu do cliente e pro arsenal da IA.
+	///
+	/// A GUARDA DE LIVRO NULO E A MESMA DO <see cref="SabeTecnica"/>, e pela mesma razao: desde que a
+	/// tabela de tecnicas de longe deixou de estar vazia, esta funcao roda pra todo corpo dirigido.
+	/// </summary>
 	private List<string> TecnicasDe(ServerPlayer pl)
 	{
 		var l = new List<string>();
-		if (_skills == null) return l;
+		if (_skills == null || pl.Livro == null) return l;
 		foreach (string path in pl.Livro.Aprendidas)
 		{
 			Skill? s = _skills.Get(path);
 			if (s == null) continue;
 			foreach (string v in s.Verbos) if (!l.Contains(v)) l.Add(v);
 		}
+
+		// OS VERBS CONCEDIDOS POR NIVEL entram pela mesma porta -- ver o bloco no `SabeTecnica` sobre
+		// por que esta chamada faltava. As duas listas tem que ser a MESMA: o que o menu mostra e o
+		// que o `SabeTecnica` aceita, senao o botao existe e o servidor diz nao (ou o contrario).
+		foreach (string v in pl.Niveis.VerbosAtivos()) if (!l.Contains(v)) l.Add(v);
+
 		return l;
 	}
 }

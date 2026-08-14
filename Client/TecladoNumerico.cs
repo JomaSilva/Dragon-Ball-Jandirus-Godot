@@ -24,8 +24,26 @@ namespace Jandirus.Client;
 /// </summary>
 public partial class TecladoNumerico : PanelContainer
 {
-	/// <summary>Quantos algarismos cabem. Quatro cobrem os 500 do maior teto do jogo com folga.</summary>
-	private const int MaxDigitos = 4;
+	/// <summary>
+	/// QUANTOS ALGARISMOS CABEM -- os do PROPRIO TETO, e nao um numero escrito aqui.
+	///
+	/// ============================ ELE ERA 4, E ISSO TRANCAVA A NAVE ============================
+	/// A constante nascia com o comentario "quatro cobrem os 500 do maior teto do jogo com folga", e
+	/// era verdade: o unico cliente deste teclado era a maquina de gravidade (teto 500). Depois
+	/// chegou a senha da Capital Ship, que se declara `Forma.Numero, 0, 999999` e cujo botao promete
+	/// "um código de até 6 dígitos" -- e o quinto algarismo simplesmente NAO ENTRAVA. O visor nem
+	/// ficava vermelho: ele parava de aceitar dedo, que e o jeito mais silencioso de recusar.
+	///
+	/// Ninguem tinha como notar: o teclado nao reclama, e quem trancou a nave com "1234" acha que
+	/// escolheu um codigo de quatro digitos por vontade propria.
+	///
+	/// Agora o teto de algarismos SAI DO TETO DO NUMERO, entao ele nao pode discordar dele: a
+	/// gravidade continua com tres (500), a senha ganha os seis que o rotulo promete, e o proximo
+	/// cliente deste widget nasce certo sem ninguem lembrar de mexer aqui. Ver a bancada
+	/// `--diagembarque`, familia 6, que cobra isso pra TODA acao `Forma.Numero` do catalogo.
+	/// ======================================================================================
+	/// </summary>
+	private int MaxDigitos => Math.Max(1, ((long)Math.Max(_max, 0)).ToString().Length);
 
 	private string _digitado = "";
 	private Label _visor = null!;
@@ -87,7 +105,10 @@ public partial class TecladoNumerico : PanelContainer
 		grade.AddChild(Tecla("<", () => { if (_digitado.Length > 0) _digitado = _digitado[..^1]; }));
 
 		// ZERO A ESQUERDA NAO ENTRA: "007" e um numero que ninguem quis digitar.
-		grade.AddChild(Tecla("0", () => { if (_digitado.Length is > 0 and < MaxDigitos) _digitado += "0"; }));
+		grade.AddChild(Tecla("0", () =>
+		{
+			if (_digitado.Length > 0 && _digitado.Length < MaxDigitos) _digitado += "0";
+		}));
 
 		grade.AddChild(Tecla("C", () => _digitado = ""));
 
@@ -126,5 +147,34 @@ public partial class TecladoNumerico : PanelContainer
 	{
 		_visor.Text = _digitado.Length == 0 ? "0" : _digitado;
 		_visor.AddThemeColorOverride("font_color", Cabe(out _) ? Tema.Destaque : Tema.Perigo);
+	}
+
+	// =====================================================================
+	// SUPERFICIE DE BANCADA (`--diagembarque`)
+	// =====================================================================
+	/// <summary>O que o VISOR esta mostrando. E o unico jeito de ver o que o dedo conseguiu digitar.</summary>
+	public string VisorDeTeste => IsInstanceValid(_visor) ? _visor.Text : "";
+
+	/// <summary>
+	/// APERTA UMA TECLA DESTE TECLADO pelo rotulo ("7", "&lt;", "C", "Confirmar", "Cancelar").
+	///
+	/// Pelo SINAL do botao, e nao pelo `Action` que ele guarda: o teto de algarismos mora dentro do
+	/// tratador, e uma bancada que escrevesse `_digitado` na mao mediria o atalho -- ela passaria com
+	/// o teto quebrado, que e exatamente o defeito que esta superficie existe pra pegar.
+	/// </summary>
+	public bool ApertarTecla(string rotulo)
+	{
+		foreach (Button b in Botoes(this))
+			if (b.Text == rotulo) { b.EmitSignal(BaseButton.SignalName.Pressed); return true; }
+		return false;
+	}
+
+	private static IEnumerable<Button> Botoes(Node raiz)
+	{
+		foreach (Node n in raiz.GetChildren())
+		{
+			if (n is Button b) yield return b;
+			foreach (Button f in Botoes(n)) yield return f;
+		}
 	}
 }

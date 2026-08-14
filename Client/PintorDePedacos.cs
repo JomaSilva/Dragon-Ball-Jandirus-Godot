@@ -47,8 +47,21 @@ public sealed class PintorDePedacos
 		/// <summary>Tiles por lado de um pedaco.</summary>
 		int Lado { get; }
 
-		/// <summary>A faixa valida de (cx, cy) -- fora dela nao ha mapa.</summary>
-		Rect2I Faixa { get; }
+		/// <summary>
+		/// A faixa valida de (cx, cy) -- fora dela nao ha mapa. **Nulo = SEM LIMITE**: o espaco de
+		/// inteiros inteiro, e ai o pintor so recorta pelo que a camera alcanca.
+		///
+		/// ============================ POR QUE ELA PRECISOU ACEITAR "SEM LIMITE" ============================
+		/// Ate aqui toda fonte tinha fim: o `.pedacos` sabe a faixa pelo indice e o terreno gerado
+		/// pelo tamanho do mundo. A Sala do Tempo nao tem -- o quarto desenhado fica no meio de um
+		/// vazio branco que continua pra sempre (ver `Core/World/SalaDoTempo.cs`).
+		///
+		/// UM RETANGULO ENORME NAO SERVIRIA. `PedacosPerto` faz `faixa.End.X - 1`, e `End` e
+		/// `Position + Size`: uma faixa "quase infinita" estoura o int e o corte sai NEGATIVO -- o
+		/// pintor pararia de pedir pedaco nenhum, calado. Nulo diz a mesma coisa sem aritmetica.
+		/// ================================================================================================
+		/// </summary>
+		Rect2I? Faixa { get; }
 
 		/// <summary>Quantas celulas o pedaco tem ao todo. Zero = nada a desenhar ali.</summary>
 		int Celulas(int cx, int cy);
@@ -282,11 +295,14 @@ public sealed class PintorDePedacos
 		int x1 = Mathf.FloorToInt((centro.X + meiaX) / lado);
 		int y1 = Mathf.FloorToInt((centro.Y + meiaY) / lado);
 
-		Rect2I faixa = _fonte.Faixa;
-		x0 = Math.Max(x0, faixa.Position.X);
-		y0 = Math.Max(y0, faixa.Position.Y);
-		x1 = Math.Min(x1, faixa.End.X - 1);
-		y1 = Math.Min(y1, faixa.End.Y - 1);
+		// FONTE SEM LIMITE nao recorta nada: o que a camera alcanca JA e o corte (ver `IFonte.Faixa`).
+		if (_fonte.Faixa is { } faixa)
+		{
+			x0 = Math.Max(x0, faixa.Position.X);
+			y0 = Math.Max(y0, faixa.Position.Y);
+			x1 = Math.Min(x1, faixa.End.X - 1);
+			y1 = Math.Min(y1, faixa.End.Y - 1);
+		}
 
 		if (x1 < x0 || y1 < y0) return new Rect2I(x0, y0, 0, 0);
 		return new Rect2I(x0, y0, x1 - x0 + 1, y1 - y0 + 1);

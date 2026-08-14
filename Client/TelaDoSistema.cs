@@ -248,8 +248,17 @@ public partial class TelaDoSistema : Control
 		{
 			switch (b.ButtonIndex)
 			{
-				case MouseButton.WheelUp when b.Pressed: Aproximar(PassoDeZoom, b.Position); return;
-				case MouseButton.WheelDown when b.Pressed: Aproximar(1f / PassoDeZoom, b.Position); return;
+				// A RODA DA ZOOM E NAO ROLA A PAGINA -- mesmo freio da carta, pelo mesmo motivo, e o
+				// bloco comprido que explica o `AcceptEvent` mora la (`MapaEstelar._GuiInput`): o
+				// `MouseFilter = Stop` nao segura roda porque `mouse_force_pass_scroll_events` nasce
+				// ligado, e o freio tem que ser no braco que TRATOU o evento.
+				//
+				// Aqui era pior que desconforto: quando esta tela abre, `MenuJogo` esconde a barra de
+				// "+/-" da carta (ela e da carta) e a barra propria desta tela nao tem botao de zoom
+				// nenhum -- a roda e o UNICO jeito de aproximar de um planeta. As duas telas sao irmas
+				// na arvore e o manuseio delas tem que ser o mesmo.
+				case MouseButton.WheelUp when b.Pressed: Aproximar(PassoDeZoom, b.Position); AcceptEvent(); return;
+				case MouseButton.WheelDown when b.Pressed: Aproximar(1f / PassoDeZoom, b.Position); AcceptEvent(); return;
 
 				case MouseButton.Left when b.Pressed:
 					GrabFocus();
@@ -811,4 +820,24 @@ public partial class TelaDoSistema : Control
 		 ArteDeEstrela.NucleoDeTeste(_sis.Estrela));
 
 	public float EscalaDeTeste => _escala;
+
+	/// <summary>
+	/// OS DOIS FINS DA ESCADA DE ZOOM. SO PRA BANCADA -- ver o irmao em <see cref="MapaEstelar"/>.
+	///
+	/// "A escala parou de mudar" fica verde tambem com o zoom morto; o que prova que o LIMITE segurou
+	/// e o ponto de parada bater com o numero escrito aqui.
+	/// </summary>
+	public static (float Min, float Max) LimitesDeTeste => (EscalaMin, EscalaMax);
+
+	/// <summary>
+	/// A CONVERSAO LOCAL &lt;-&gt; TELA, em coordenadas GLOBais. SO PRA BANCADA.
+	///
+	/// Aqui a copia da formula seria pior que na carta: o meio do desenho NAO e o meio do widget (ver
+	/// <see cref="MeioDoMapa"/> -- ele desconta a barra de cima e o painel da direita). Uma bancada com
+	/// a conta propria mediria a ancora a partir de um centro que o desenho nao usa.
+	/// </summary>
+	public Vector2 TelaDeTeste(Vector2 local) => GetGlobalRect().Position + ParaTela(local);
+
+	/// <summary>A volta do <see cref="TelaDeTeste"/>: que ponto do sistema esta debaixo deste pixel.</summary>
+	public Vector2 LocalDeTeste(Vector2 telaGlobal) => ParaLocal(telaGlobal - GetGlobalRect().Position);
 }

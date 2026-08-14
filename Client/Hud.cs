@@ -35,13 +35,48 @@ public partial class Hud : CanvasLayer
 	public static Hud? Instancia { get; private set; }
 
 	private Label _nome = null!, _bp = null!, _atividade = null!, _relato = null!;
-	private Label _mira = null!, _letal = null!, _hora = null!;
+	private Label _mira = null!, _letal = null!, _hora = null!, _efetivo = null!;
 	private LuaNoCeu _lua = null!;
 
 	/// <summary>O mostrador da lua. A bancada confere que ele so aparece com a lua no ceu.</summary>
 	public LuaNoCeu Lua => _lua;
-	private Barra _hp = null!, _ki = null!, _vigor = null!;
+	private Barra _hp = null!, _ki = null!, _vigor = null!, _nutricao = null!;
+
+	/// <summary>
+	/// A BARRA DE KI DESENHADA. Pra bancada: ela media `Sheet.Ki / Sheet.MaxKi` e afirmava que
+	/// aquilo era "o que a barra do HUD desenha" -- e o corte em 100% morava DEPOIS disso, dentro
+	/// do widget. Com esta porta a checagem passa a ler o que saiu na tela. Ver <see cref="Barra.TextoDeTeste"/>.
+	/// </summary>
+	public Barra BarraDeKi => _ki;
+
+	/// <summary>
+	/// AS OUTRAS TRES BARRAS DESENHADAS, pela mesma razao da <see cref="BarraDeKi"/>.
+	///
+	/// A DE NUTRICAO E A QUE PRECISA DISTO DE VERDADE: ela nasce cheia e uma barra congelada em
+	/// 100% desenha o MESMO pixel que uma barra correta. Sem uma porta que devolva o que ela
+	/// ESCREVEU, a unica prova possivel seria "o campo existe na ficha" -- que era exatamente o
+	/// que a bancada media quando o corte de Ki atravessou quatro mil checagens verdes.
+	///
+	/// VIDA E VIGOR entram junto porque elas sao o CONTRA-EXEMPLO do teto: as tres tem que
+	/// continuar com o trilho acabando em 1,0 enquanto so o Ki ganha folga.
+	/// </summary>
+	public Barra BarraDeNutricao => _nutricao;
+	public Barra BarraDeVida => _hp;
+	public Barra BarraDeVigor => _vigor;
+
+	/// <summary>
+	/// AS DUAS LABELS DA LINHA DO BP, como elas sairam na tela. Pra bancada, e so pra ela.
+	///
+	/// O BP e o campo do SIGILO ("???" sem scouter) e a % efetivo e a que o dono pediu -- e as
+	/// duas so valem alguma coisa comparadas com o que a MESMA informacao virou no menu P. Ler a
+	/// ficha nos dois lados provaria que a ficha e uma so, que nunca esteve em duvida: a queixa
+	/// do dono foi sobre duas TELAS discordando.
+	/// </summary>
+	public string TextoDeBpDeTeste => _bp.Text;
+	public string TextoDeEfetivoDeTeste => _efetivo.Text;
+
 	private PanelContainer _ajuda = null!;
+	private GridContainer _gradeAjuda = null!;
 	private double _relatoAte;
 
 	/// <summary>
@@ -129,9 +164,38 @@ public partial class Hud : CanvasLayer
 		_vigor = new Barra("VIGOR", Tema.Vigor);
 		v.AddChild(_vigor);
 
+		// ============================ A NUTRICAO FECHA A CADEIA ============================
+		// E a quarta e ultima da pilha, e ela continua a mesma leitura de cima pra baixo: o Ki e
+		// limitado pelo VIGOR, e o vigor so volta as custas DESTE tanque. Sem ela o jogador ve o
+		// folego minguar e nao tem como saber que a causa e fome -- uma barra caindo sem causa na
+		// tela e o jogo deixando de responder sem dizer por que.
+		//
+		// O dado ja viajava: `SheetState.Nutricao` esta no pacote, o servidor preenche, o `TickFichas`
+		// o compara e o menu P ja o desenhava. So faltava a barra.
+		_nutricao = new Barra("NUTRIÇÃO", Tema.Nutricao);
+		v.AddChild(_nutricao);
+
+		// ============================ O BP GANHOU COMPANHIA ============================
+		// A % de poder EFETIVO fica na MESMA linha do BP e alinhada a direita, porque as duas
+		// respondem a mesma pergunta em dois tempos: quanto eu valho, e quanto disso eu estou
+		// conseguindo colocar pra fora agora. Duas Labels e nao uma string so pra a % poder mudar de
+		// cor sozinha -- um corpo a 40% precisa gritar sem pintar a palavra "BP" de vermelho.
+		var linhaBp = new HBoxContainer();
+		linhaBp.AddThemeConstantOverride("separation", 8);
+		v.AddChild(linhaBp);
+
 		_bp = new Label { Text = "" };
 		_bp.AddThemeFontSizeOverride("font_size", 13);
-		v.AddChild(_bp);
+		linhaBp.AddChild(_bp);
+
+		_efetivo = new Label
+		{
+			Text = "",
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+			HorizontalAlignment = HorizontalAlignment.Right,
+		};
+		_efetivo.AddThemeFontSizeOverride("font_size", 13);
+		linhaBp.AddChild(_efetivo);
 
 		var linha = new HBoxContainer();
 		linha.AddThemeConstantOverride("separation", 10);
@@ -217,41 +281,18 @@ public partial class Hud : CanvasLayer
 		_ajuda.AnchorLeft = 0.5f; _ajuda.AnchorRight = 0.5f;
 		_ajuda.AnchorTop = 1; _ajuda.AnchorBottom = 1;
 		_ajuda.OffsetLeft = -230; _ajuda.OffsetRight = 230;
-		_ajuda.OffsetTop = -232; _ajuda.OffsetBottom = -56;
+		_ajuda.OffsetTop = -268; _ajuda.OffsetBottom = -56;
 		_ajuda.Visible = false;
 		_ajuda.MouseFilter = Control.MouseFilterEnum.Ignore;
 		raiz.AddChild(_ajuda);
 
-		var grade = new GridContainer { Columns = 2 };
-		grade.AddThemeConstantOverride("h_separation", 18);
-		grade.AddThemeConstantOverride("v_separation", 5);
-		_ajuda.AddChild(grade);
+		_gradeAjuda = new GridContainer { Columns = 2 };
+		_gradeAjuda.AddThemeConstantOverride("h_separation", 18);
+		_gradeAjuda.AddThemeConstantOverride("v_separation", 5);
+		_ajuda.AddChild(_gradeAjuda);
+		MontarAjuda();
 
-		foreach ((string tecla, string oque) in new[]
-		{
-			("WASD", "andar"),
-			("SHIFT", "correr"),
-			("ESPACO", "socar"),
-			("SHIFT + ESPACO", "investida + golpe pesado"),
-			("ALT", "guarda (na hora certa = contra-ataque)"),
-			("0 - 5", "onde mirar (ou clique no boneco)"),
-			("K", "alternar golpe letal"),
-			("T / M", "treinar / meditar"),
-			("TAB", "esconder esta lista"),
-			("ESC", "menu"),
-		})
-		{
-			var k = new Label { Text = tecla };
-			k.AddThemeColorOverride("font_color", Tema.Destaque);
-			k.AddThemeFontSizeOverride("font_size", 12);
-			grade.AddChild(k);
-
-			var d = new Label { Text = oque };
-			d.AddThemeFontSizeOverride("font_size", 12);
-			grade.AddChild(d);
-		}
-
-		Label dica = Tema.Legenda("TAB  teclas", Tema.TextoFraco, 12);
+		Label dica = Tema.Legenda($"{Teclas.NomeDaAcao("ui_ajuda")}  teclas", Tema.TextoFraco, 12);
 		dica.AnchorLeft = 0.5f; dica.AnchorRight = 0.5f;
 		dica.AnchorTop = 1; dica.AnchorBottom = 1;
 		dica.OffsetLeft = -60; dica.OffsetRight = 60;
@@ -261,14 +302,40 @@ public partial class Hud : CanvasLayer
 		raiz.AddChild(dica);
 	}
 
+	/// <summary>
+	/// A LISTA DO TAB. Ela LE o registro de teclas em vez de escrever "C" e "ALT" na mao: quem
+	/// religou o carregar de Ki pro G tem que ver G aqui, senao a ajuda passa a ensinar errado
+	/// justamente o jogador que a mudou. Ver `Teclas.Ajuda`.
+	/// </summary>
+	private void MontarAjuda()
+	{
+		foreach (Node n in _gradeAjuda.GetChildren()) n.QueueFree();
+
+		foreach ((string tecla, string oque) in Teclas.Ajuda())
+		{
+			var k = new Label { Text = tecla };
+			k.AddThemeColorOverride("font_color", Tema.Destaque);
+			k.AddThemeFontSizeOverride("font_size", 12);
+			_gradeAjuda.AddChild(k);
+
+			var d = new Label { Text = oque };
+			d.AddThemeFontSizeOverride("font_size", 12);
+			_gradeAjuda.AddChild(d);
+		}
+	}
+
 	public override void _Input(InputEvent e)
 	{
 		if (Foco.Digitando) return;   // TAB no meio de uma frase e navegacao de campo, nao atalho
-		if (e is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Tab })
-		{
-			_ajuda.Visible = !_ajuda.Visible;
-			GetViewport().SetInputAsHandled();
-		}
+		if (e is not InputEventKey { Pressed: true, Echo: false } k) return;
+		if (!Teclas.Bate("ui_ajuda", k)) return;
+
+		// REMONTA AO ABRIR. A lista e feita uma vez no boot; sem isto, quem trocasse uma tecla na
+		// pausa e abrisse o TAB leria a tecla ANTIGA -- uma tela dizendo o contrario da tela que
+		// acabou de mudar.
+		if (!_ajuda.Visible) MontarAjuda();
+		_ajuda.Visible = !_ajuda.Visible;
+		GetViewport().SetInputAsHandled();
 	}
 
 	// =====================================================================
@@ -313,9 +380,27 @@ public partial class Hud : CanvasLayer
 		_ficha = f;
 		_nome.Text = GameClient.Instance?.LocalName ?? "";
 		_bp.Text = $"BP {Leitura(f.ExpressedBP)}";
+
+		// ============================ A % DE PODER EFETIVO ============================
+		// Ela APARECE MESMO SEM SCOUTER, e nao e furo no sigilo: e RAZAO, e o DM e explicito em nao
+		// esconder multiplicador ("x2,5 de forma", "netBuff 80%"). Sem aparelho o BP ao lado le
+		// "???" e esta linha e a unica leitura de condicao que sobra -- que e exatamente o papel
+		// que o original dava aos numeros relativos.
+		//
+		// QUEM CALCULA E O SERVIDOR (`Fighter.Inteireza`, pelo `peakexBP`). Aqui nao ha conta
+		// nenhuma pra copiar: sem scouter o cliente nem recebe os dois lados da fracao.
+		_efetivo.Text = $"{f.Inteireza * 100:0}% efetivo";
+		_efetivo.AddThemeColorOverride("font_color",
+			f.Inteireza >= 0.9 ? Tema.Bom : f.Inteireza <= 0.5 ? Tema.Perigo : Tema.Texto);
+
 		_hp.Valor = f.HP / 100.0;
-		_ki.Valor = f.MaxKi > 0 ? f.Ki / f.MaxKi : 0;
-		_vigor.Valor = f.VigorMax > 0 ? f.Vigor / f.VigorMax : 0;
+
+		// O TRILHO ANTES DO VALOR: e ele que decide se o excedente cabe na barra. Ver `Barra.Teto`.
+		_ki.Teto = f.TrilhoDeKi;
+		_ki.Valor = f.RazaoDeKi;
+
+		_vigor.Valor = f.RazaoDeVigor;
+		_nutricao.Valor = f.RazaoDeNutricao;
 	}
 
 	/// <summary>
@@ -365,8 +450,18 @@ public partial class Hud : CanvasLayer
 		Chat.Sistema(txt);
 
 		_relato.Text = txt;
+		// A ESQUIVA SAI BRANCA, e nao no laranja de "aconteceu dano" -- e branca e o DM literal:
+		// `attackcolor = "white"` (`AttackFlavor.dm:54`), contra o vermelho dos acertos e o amarelo
+		// do contra-ataque.
+		//
+		// ELA JA FOI AZUL-GELO AQUI, justificada por "e a mesma leitura do anel e do borrao". Os dois
+		// morreram: o anel saiu da esquiva a pedido do dono e o borrao tingido virou a TROCA de sprite
+		// do `flick`, que nao tem cor nenhuma (a arte e preta -- ver `EsquivaZanzoken`). Sem eles a
+		// justificativa do azul evaporou, e o que sobra e o que o DM sempre mandou.
 		_relato.AddThemeColorOverride("font_color",
-			h.Morreu || h.Decepou || h.Rabo ? Tema.Perigo : Tema.Destaque);
+			h.Morreu || h.Decepou || h.Rabo ? Tema.Perigo
+			: (Jandirus.Core.Combat.Desfecho)h.Desfecho == Jandirus.Core.Combat.Desfecho.Esquivou ? Tema.Texto
+			: Tema.Destaque);
 		_relatoAte = 3;
 	}
 
@@ -410,25 +505,85 @@ public partial class Hud : CanvasLayer
 /// A BARRA SOZINHA NAO BASTA: "quase cheia" e "cheia" sao o mesmo desenho a dois pixels de
 /// distancia, e a diferenca entre 100% e 91% de Ki decide se da pra correr. O numero por cima
 /// resolve, e o rotulo diz o que e sem precisar decorar a cor.
+///
+/// ============================ O CORTE EM 100% MORAVA AQUI ============================
+/// O dono relatou que a barra de Ki do jogo trava em 100% enquanto o menu P mostra 118%. As duas
+/// telas liam a MESMA ficha -- o corte era uma linha SO, dentro deste widget: um
+/// `Mathf.Clamp(value, 0, 1)` no setter, que cortava a barra E o numero escrito ao lado. O menu P
+/// imprime o valor cru e por isso acertava.
+///
+/// O clamp nao podia simplesmente sair: VIDA e VIGOR tambem sao desenhadas por esta classe, e
+/// pra elas "acima de 100%" nao existe. Virou <see cref="Teto"/>, que e opt-in: quem nao mexe
+/// nele continua com o trilho acabando em 1,0 exatamente como antes.
+///
+/// COM TETO, O TRILHO INTEIRO PASSA A SER O TETO DE CARGA do personagem (1,4 de fabrica, mais de
+/// 3,8 com as skills de power-up), com um TRACO fixo no ponto dos 100%. Assim a barra nunca
+/// estoura, o excedente tem pra onde crescer, o traco mostra onde acaba o tanque e comeca o buff,
+/// e o segmento acima dele ganha cor de sobrecarga. O numero ao lado continua sendo a razao CRUA,
+/// que e o que o dono quer ver.
+/// ====================================================================================
 /// </summary>
 public partial class Barra : VBoxContainer
 {
 	private readonly ProgressBar _b;
 	private readonly Label _txt;
-	private double _valor = 1;
+	private readonly Panel _excesso;
+	private readonly ColorRect _marca;
+	private double _valor = 1, _teto = 1;
 
+	/// <summary>
+	/// ATE ONDE O TRILHO VAI, em razao. 1 = a barra de sempre (o comportamento de VIDA e VIGOR).
+	///
+	/// Acima de 1 a barra ganha o traco dos 100% e o segmento de sobrecarga. Nunca abaixo de 1:
+	/// um trilho menor que o cheio nao quer dizer nada.
+	/// </summary>
+	public double Teto
+	{
+		get => _teto;
+		set { _teto = Math.Max(value, 1); Reaplicar(); }
+	}
+
+	/// <summary>
+	/// O valor, em razao. NAO E MAIS CORTADO EM 1 -- ver o cabecalho da classe. O piso em zero
+	/// fica: razao negativa nao existe e viraria desenho invertido.
+	/// </summary>
 	public double Valor
 	{
 		get => _valor;
-		set
-		{
-			_valor = Mathf.Clamp(value, 0, 1);
-			_b.Value = _valor;
-			_txt.Text = $"{_valor * 100:0}%";
-			// abaixo de um quinto o numero fica VERMELHO: e o aviso que se ve pelo canto do olho
-			_txt.AddThemeColorOverride("font_color", _valor < 0.2 ? Tema.Perigo : Tema.Texto);
-		}
+		set { _valor = Math.Max(value, 0); Reaplicar(); }
 	}
+
+	/// <summary>
+	/// ============================ O QUE A BARRA REALMENTE ESCREVEU ============================
+	/// Pra bancada, e so pra ela. A bancada afirmava cobrir este bug lendo `Sheet.Ki / Sheet.MaxKi`
+	/// e chamando isso de "a mesma que a barra do HUD desenha" -- e nao era: a razao passava inteira
+	/// pela ficha e morria no clamp DAQUI. Quatro mil checagens verdes com o defeito na tela.
+	///
+	/// Medir intencao (o valor que se MANDOU) nunca ia pegar isso. Estes dois expoem o que saiu do
+	/// outro lado: o texto desenhado e o quanto do trilho o desenho preencheu.
+	/// ========================================================================================
+	/// </summary>
+	public string TextoDeTeste => _txt.Text;
+
+	/// <summary>Quanto do trilho o desenho encheu, de 0 a 1. Ver <see cref="TextoDeTeste"/>.</summary>
+	public double PreenchimentoDeTeste => _b.MaxValue > 0 ? _b.Value / _b.MaxValue : 0;
+
+	/// <summary>
+	/// O SEGMENTO DE SOBRECARGA, como ele saiu: quanto do trilho ele ocupa, ou 0 quando ele nao
+	/// esta na tela. Ver <see cref="TextoDeTeste"/> pra por que estas portas devolvem DESENHO.
+	///
+	/// Ele e a metade visual do conserto e a unica que o numero nao cobre: com o excedente
+	/// invisivel, a barra de quem esta a 130% desenha exatamente a barra de quem esta a 100% --
+	/// numero certo, desenho errado, que e a forma deste bug que ja passou por aqui uma vez.
+	/// </summary>
+	public double SobrecargaDeTeste =>
+		_excesso.Visible ? Math.Max(_excesso.AnchorRight - _excesso.AnchorLeft, 0) : 0;
+
+	/// <summary>Onde o traco dos 100% ficou no trilho, ou 0 quando ele nao existe (trilho sem folga).</summary>
+	public double MarcaDeTeste => _marca.Visible ? _marca.AnchorLeft : 0;
+
+	/// <summary>O trilho que a barra realmente montou -- e nao o que se mandou pra ela.</summary>
+	public double TetoDeTeste => _b.MaxValue;
 
 	public Barra(string rotulo, Color cor)
 	{
@@ -456,10 +611,67 @@ public partial class Barra : VBoxContainer
 			ShowPercentage = false,
 			MaxValue = 1,
 			Value = 1,
+			MouseFilter = MouseFilterEnum.Ignore,
 		};
 		var cheio = new StyleBoxFlat { BgColor = cor };
 		cheio.SetCornerRadiusAll(3);
 		_b.AddThemeStyleboxOverride("fill", cheio);
 		AddChild(_b);
+
+		// ---- o pedaco acima dos 100%, por cima do preenchimento ----
+		// Uma `ProgressBar` tem UMA cor de preenchimento so, e o excedente precisa se distinguir do
+		// tanque: os dois sao Ki, mas um e o que cabe no corpo e o outro e o que esta transbordando.
+		// Ancorado nas duas pontas, ele acompanha a largura do painel sem conta de pixel.
+		//
+		// PANEL E NAO ColorRect, e o motivo e a PONTA DIREITA: o preenchimento da barra tem canto
+		// arredondado de 3, e um retangulo cru encostado nele deixaria um degrau quadrado saindo do
+		// desenho justo no Ki no talo -- que e o instante que alguem fotografa. So a direita
+		// arredonda: a esquerda encosta no traco dos 100% e um canto ali leria como falha no meio.
+		var sobrecarga = new StyleBoxFlat { BgColor = Tema.KiExcesso };
+		sobrecarga.CornerRadiusTopRight = sobrecarga.CornerRadiusBottomRight = 3;
+		_excesso = new Panel
+		{
+			Visible = false,
+			AnchorTop = 0, AnchorBottom = 1,
+			MouseFilter = MouseFilterEnum.Ignore,
+		};
+		_excesso.AddThemeStyleboxOverride("panel", sobrecarga);
+		_b.AddChild(_excesso);
+
+		// ---- o traco dos 100%, DEPOIS do excesso pra ficar por cima dele ----
+		_marca = new ColorRect
+		{
+			Color = new Color(1, 1, 1, 0.85f), Visible = false,
+			AnchorTop = 0, AnchorBottom = 1,
+			OffsetLeft = -1, OffsetRight = 1,
+			MouseFilter = MouseFilterEnum.Ignore,
+		};
+		_b.AddChild(_marca);
+
+		Reaplicar();
+	}
+
+	private void Reaplicar()
+	{
+		_b.MaxValue = _teto;
+		_b.Value = Math.Clamp(_valor, 0, _teto);
+
+		// O NUMERO SAI CRU. E o pedido do dono, e e o que o menu P ja escrevia.
+		_txt.Text = $"{_valor * 100:0}%";
+
+		// abaixo de um quinto o numero fica VERMELHO: e o aviso que se ve pelo canto do olho.
+		// Acima do tanque ele fica LARANJA -- nao e alarme, e "voce esta carregado".
+		_txt.AddThemeColorOverride("font_color",
+			_valor > 1 ? Tema.Destaque : _valor < 0.2 ? Tema.Perigo : Tema.Texto);
+
+		bool sobra = _teto > 1;
+		float umCheio = (float)(1 / _teto);
+
+		_marca.Visible = sobra;
+		_marca.AnchorLeft = _marca.AnchorRight = umCheio;
+
+		_excesso.Visible = sobra && _valor > 1;
+		_excesso.AnchorLeft = umCheio;
+		_excesso.AnchorRight = (float)(Math.Clamp(_valor, 1, _teto) / _teto);
 	}
 }

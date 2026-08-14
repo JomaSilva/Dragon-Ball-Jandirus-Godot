@@ -601,7 +601,23 @@ public partial class GameServer
 	// =====================================================================
 	/// <summary>
 	/// `mob/var/HBCost = 25` (Spirit.dm:242). O nivel 1 da skill baixa pra 12 e o nivel 2 pra 5 --
-	/// o port nao tem niveis de skill, entao fica o de nivel 0: a cura mais CARA das tres.
+	/// aqui fica o de nivel 0: a cura mais CARA das tres.
+	///
+	/// ============================ NAO E "O PORT NAO TEM NIVEIS". A ESCADA EXISTE E CAI NO VAZIO ============================
+	/// Este texto dizia *"o port nao tem niveis de skill"*, e isso CADUCOU:
+	/// `Core/Skills/NiveisDeSkill.cs` esta no jogo, e o `Assets/Data/niveis.json` traz a escada
+	/// DESTA skill inteira -- `/datum/skill/HamonBreathing`, degrau 1 com `flags: ["HBCost=12"]` e
+	/// degrau 2 com `["HBCost=5"]`, exatamente os dois numeros do original.
+	///
+	/// O QUE ACONTECE HOJE COM ELES: `NiveisDeSkill.Aplicar` manda cada flag pro `Escrever`, que
+	/// procura um campo `HBCost` no <see cref="Jandirus.Core.Stats.Fighter"/>. **Nao existe** --
+	/// entao `Escrever` devolve `false` e a flag some sem uma linha de aviso. O divisor abaixo
+	/// continua cravado em 25 porque nada o contradiz, e nao porque a escada nao chegou.
+	///
+	/// E A MESMA FAMILIA DE DEFEITO do `canPower` e do `bonusShots`: dado extraido, carregado e sem
+	/// consumidor. Fechar isto e dar um campo ao lutador (ou uma leitura de `Nivel(caminho)` aqui) --
+	/// e esta anotado como DEFEITO e nao como divida de porte, que e o que este comentario dizia antes.
+	/// ==================================================================================================================
 	/// </summary>
 	private const double HamonCustoDivisorG2 = 25;
 
@@ -751,12 +767,13 @@ public partial class GameServer
 		finally { CombatKnobs.ChanceCrit = critAntes; }
 
 		pl.Ficha.stamina -= custo;
-		alvo.UltimoAgressor = pl.Id;
+		MarcarAgressao(alvo, pl);
 
 		if (r.Encostou) ca.SomarCombo(); else ca.ZerarCombo();
 
-		pl.Ficha.AttackGain(_rng, pl.Ficha.FightGainMult(alvo.Ficha));
-		if (r.Encostou) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(pl.Ficha));
+		// O bit do mestre, igual ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
+		pl.Ficha.AttackGain(_rng, pl.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(pl, alvo)));
+		if (r.Encostou) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(pl.Ficha, EhMeuMestre(alvo, pl)));
 
 		// O CONTRA CONTINUA VALENDO. Deixar o punho ignorar a guarda perfeita faria dele o jeito
 		// de furar o sistema de contra-ataque -- e ai ninguem mais usaria soco.
@@ -764,7 +781,7 @@ public partial class GameServer
 		{
 			GolpeResultado devolta = MeleeResolver.Resolver(
 				cd, ca, MeleeArea.AnguloDeChegada(pl.Pos, pl.Facing, alvo.Pos), _rng, tipo: 1);
-			pl.UltimoAgressor = alvo.Id;
+			MarcarAgressao(pl, alvo);
 			ResolverDesfecho(alvo, pl, devolta);
 			AnunciarGolpe(alvo, pl, devolta, 2);
 		}
@@ -970,7 +987,6 @@ public partial class GameServer
 		if (pl.Combate.Corpo.DeveMorrer() && !pl.Combate.Corpo.RegeneraDecepado
 			&& pl.Combate.Morrer())
 		{
-			pl.RenasceEm = NowMs() + MsAteRenascer;
 			GD.Print($"[server] {pl.Name} EXPLODIU com o Kaio-ken");
 		}
 		else if (!pl.Ficha.KO && pl.Combate.Corpo.DeveNocautear())

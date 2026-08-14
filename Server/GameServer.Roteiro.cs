@@ -66,6 +66,19 @@ public partial class GameServer
 		foreach (ServerPlayer npc in _players.Values.Where(p => p.Papel is { EhChefe: true }).ToList())
 		{
 			PapelDeNpc papel = npc.Papel!;
+
+			// ============================ QUEM ESTA VENDO ESTE CHEFE ANOTA QUE O VIU ============================
+			// *"tem a opcao de enfrentar NPCS BOSS Q VC JA VIU ANTES na sua mente"* -- e este laco e o
+			// unico do servidor que ja varre **todo corpo com ficha de chefe que existe agora**,
+			// independente de quem o pos no mundo (a cadeia de sagas, o admin, uma bancada). Pendurar a
+			// testemunha no monitor da saga deixaria de fora justamente os chefes que o dono invoca pra
+			// testar. Ver `AnotarChefesVistos` (`GameServer.Mente.cs`).
+			//
+			// ANTES dos `continue` de morte e nocaute: ver um chefe caido tambem e te-lo visto -- e o
+			// caido e, quase sempre, o instante em que mais gente esta olhando.
+			// ================================================================================================
+			AnotarChefesVistos(npc);
+
 			if (npc.Ficha.dead) continue;
 
 			// NOCAUTEADO NAO TRANSFORMA -- `!boss2.KO` (BossEvents.dm:588), com o comentario que
@@ -73,6 +86,25 @@ public partial class GameServer
 			// novo exatamente no instante em que o jogador conseguiu derruba-lo, e o nocaute deixa
 			// de significar alguma coisa.
 			if (npc.Ficha.KO) continue;
+
+			// ============================ O BP PINADO SE REANCORA, TODO SEGUNDO ============================
+			// E o `NPCTicker()` do `EventBoss` (BossEvents.dm:189-194) inteiro, e ele existe pela mesma
+			// razao la e aqui: *"BP anunciado = BP real"*. O corpo de um chefe passa pelos MESMOS lacos
+			// de um jogador -- `TickFichas` chama `Treinar` e `Ficha.Tick` pra todo mundo no `_players`,
+			// e o Zenkai paga na hora da derrota --, entao um chefe Saiyajin nocauteado numa luta longa
+			// terminaria com um BP que ninguem anunciou.
+			//
+			// A conta e a do degrau atual, e ela vem do PAPEL: quem nasceu por uma saga carrega o vetor
+			// que o marco pinou; quem nasceu pelo admin ou pela bancada cai na ficha do `npcs.json`.
+			// ==========================================================================================
+			double pinado = papel.BpAtual;
+			if (pinado > 0 && Math.Abs(npc.Ficha.BP - pinado) > 0.5)
+			{
+				npc.Ficha.BP = pinado;
+				npc.Ficha.Statify();
+				npc.Ficha.PowerLevel();
+				npc.SigAtributos = "";
+			}
 
 			double gatilho = papel.GatilhoAtual;
 			if (gatilho < 0) continue;                     // ultimo degrau: nada o encerra
@@ -101,11 +133,35 @@ public partial class GameServer
 		PapelDeNpc papel = npc.Papel!;
 		EstagioDeChefe? saindo = papel.Degrau;
 		papel.Estagio++;
+		EntrarNoDegrau(npc, Math.Clamp(saindo?.Cura ?? 0.5, 0, 1));
+	}
 
+	/// <summary>
+	/// ENTRA NO DEGRAU EM QUE O PAPEL JA ESTA. Separado do <see cref="AvancarEstagio"/> porque ha
+	/// **dois** jeitos de um corpo chegar num degrau, e o segundo nasceu com a cadeia de sagas:
+	///
+	///   * subindo por dano (ou por absorcao) -- <see cref="AvancarEstagio"/>, que cura o que sobrou;
+	///   * NASCENDO ja nele -- o Freeza que estava na forma 3 quando o servidor caiu, e o Cell que
+	///     volta Super Perfeito. E o `spawn_freeza_namek(s2_form, resume)` (BossEvents.dm:472), que
+	///     usa a MESMA fabrica com o degrau salvo.
+	///
+	/// A cura e o que difere: nascer no degrau 3 nao "recupera 50% do dano" de um corpo que acabou de
+	/// ser montado inteiro. Por isso ela e argumento e nao um passo fixo -- e por isso a de nascimento
+	/// e zero e nao um numero parecido com meio.
+	/// </summary>
+	/// <param name="anunciar">
+	/// CHEGAR NUM DEGRAU E TRANSFORMAR-SE NELE SAO COISAS DIFERENTES. A frase da ficha ("Freeza
+	/// TRANSFORMOU-SE!") pertence a TRANSICAO; um corpo que **nasce** no degrau 3 -- porque o servidor
+	/// caiu no meio da luta -- nao se transformou em nada, e anunciar ali faria o mundo ouvir uma
+	/// transformacao que ninguem viu. E o proprio original separa os dois textos: o `resume` do
+	/// `spawn_freeza_namek` diz *"Freeza AINDA esta em Namek"* (BossEvents.dm:488).
+	/// </param>
+	private void EntrarNoDegrau(ServerPlayer npc, double cura, bool anunciar = true)
+	{
+		PapelDeNpc papel = npc.Papel!;
 		EstagioDeChefe? novo = papel.Degrau;
 		if (novo == null) return;
 
-		double cura = Math.Clamp(saindo?.Cura ?? 0.5, 0, 1);
 		double proximoLimiar = papel.GatilhoAtual;   // ja e o do degrau NOVO
 
 		foreach (BodyPart p in npc.Combate.Corpo.Partes)
@@ -129,7 +185,7 @@ public partial class GameServer
 			string antes = npc.Forma.Atual;
 			npc.Forma.Entrar(novo.Forma);
 			AplicarForma(npc);
-			AnunciarForma(npc, antes, novo.Forma, estreia: false);
+			if (anunciar) AnunciarForma(npc, antes, novo.Forma, estreia: false);
 		}
 
 		// O CORPO, quando o degrau troca de sprite -- o `boss2.icon = BEV_FREEZA2_ICONS[s2_form]`.
@@ -146,11 +202,16 @@ public partial class GameServer
 
 		// O BP PINADO, e a normalizacao junto -- `bev_pin_bp` (BossEvents.dm:230) tambem enche o Ki:
 		// *"transformar renova o folego"*.
-		npc.Ficha.BP = novo.Bp;
+		//
+		// PELO PAPEL, e nao pelo `novo.Bp` direto: quando a saga pinou o vetor no disparo do marco, e
+		// ELE que manda -- inclusive nos degraus que so vao ser alcancados quinze minutos depois, no
+		// meio da luta. Ler a ficha do disco aqui deixaria o primeiro degrau pinado e os outros quatro
+		// livres pra mudar com o servidor, que e o defeito com quatro quintos do tamanho.
+		npc.Ficha.BP = papel.BpAtual;
 		Jandirus.Core.Npc.SorteioDeNpc.Normalizar(npc.Ficha);
 		npc.SigAtributos = "";
 
-		if (novo.Anuncio.Length > 0) AnunciarNaZona(npc, novo.Anuncio);
+		if (anunciar && novo.Anuncio.Length > 0) AnunciarNaZona(npc, novo.Anuncio);
 
 		GD.Print($"[server] ROTEIRO: '{npc.Name}' entrou no degrau {papel.Estagio + 1}/"
 			   + $"{papel.Molde.Estagios.Length} | BP {npc.Ficha.BP:N0}"

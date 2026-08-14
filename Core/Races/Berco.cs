@@ -235,6 +235,73 @@ public static class Bercos
 	};
 
 	// =====================================================================
+	// 1.b A MESMA TABELA, LIDA AO CONTRARIO -- quem NASCE aqui?
+	// =====================================================================
+	/// <summary>
+	/// ESTA RACA POVOA UM PLANETA?
+	///
+	/// ============================ O CRIVO EXISTE PORQUE O RECUO MENTE ============================
+	/// A <see cref="PlanetaNatal"/> nunca devolve vazio -- raca que ela nao conhece cai em "Earth",
+	/// e ha um comentario dizendo por que ("um corpo sem lugar e um corpo no vazio"). Isso e certo
+	/// pra a pergunta dela ("onde ponho ESTE corpo?") e e VENENO pra a pergunta inversa ("quem mora
+	/// aqui?"): lida ao contrario sem crivo, a tabela entrega como habitante da Terra tudo o que ela
+	/// nao soube classificar.
+	/// ======================================================================================
+	///
+	/// Duas familias saem, e as duas com o motivo escrito no proprio DM:
+	///
+	///   Android / BioAndroid / SpiritDoll -- nascem na COORDENADA DE QUEM OS CRIOU
+	///                                        (SpawnPoints.dm:149-168), sem planeta nenhum;
+	///   Halfbreed                         -- nasce de gravidez ou de ovo e HERDA o `spawnPlanet`
+	///                                        do pai/mae (SpawnPoints.dm:141), e essa heranca vence
+	///                                        a tabela (CreationUI.dm:305-309: nem se escolhe);
+	///   Dog                               -- **nao e uma raca do jogo**: e a "Example prototype
+	///                                        race" do `Genetic_Prototype.dm:66`, um bloco de
+	///                                        documentacao que o extrator leu junto com as de
+	///                                        verdade e despejou no `races.json`. Ela nao aparece em
+	///                                        nenhuma tela e chega na Terra pelo recuo.
+	///
+	/// Sem estas quatro linhas, o primeiro povoamento da Terra teria sorteado androides orfaos e
+	/// cachorros, e o defeito seria plausivel o bastante pra ninguem investigar.
+	/// </summary>
+	public static bool PovoaUmPlaneta(string raca) =>
+		raca is not ("Android" or "BioAndroid" or "SpiritDoll" or "Halfbreed" or "Dog");
+
+	/// <summary>
+	/// QUEM NASCE NESTE PLANETA -- a <see cref="PlanetaNatal"/> lida ao contrario.
+	///
+	/// ============================ POR QUE ISTO E DERIVADO, E NAO UMA SEGUNDA TABELA ============================
+	/// O port ja tem uma tabela planeta->racas: <see cref="CharacterDraft.RacasDoPlaneta"/>, que
+	/// alimenta o MENU DE CRIACAO. E ela **nao e** a inversa desta -- ela tem tres divergencias que
+	/// o proprio cabecalho da <see cref="PlanetaNatal"/> ja explicava:
+	///
+	///   `RacasDoPlaneta("Vegeta")` inclui **Icer**, mas `PlanetaNatal("Icer") = "Icer"`;
+	///   `RacasDoPlaneta("Namek")`  inclui **Arlian** e **Makyo**, cujos bercos sao Arlia e Makyo_Star.
+	///
+	/// A divergencia e legitima la (o menu do DM oferecia os tres nesses planetas, e o berco
+	/// consertou isso *pelo lado da raca*), e seria um DEFEITO aqui: o povoamento chamava
+	/// `RacasDoPlaneta` e um cidadao de Vegeta podia sair Icer -- um Frost Demon morando no planeta
+	/// dos Saiyajins, pela regra errada, enquanto o jogador Frost Demon nasce em Icer pela certa.
+	///
+	/// Entao o pool sai DAQUI: um filtro sobre a MESMA funcao que decide o berco do jogador. Nao ha
+	/// segunda tabela pra envelhecer -- acrescentar uma raca a <see cref="PlanetaNatal"/> a poe no
+	/// planeta dela nos dois caminhos, no mesmo commit, sem ninguem lembrar de nada.
+	/// ======================================================================================================
+	///
+	/// ============================ A ORDEM E ESTAVEL DE PROPOSITO ============================
+	/// O resultado e ordenado por nome (Ordinal). `todasAsRacas` costuma vir de um `Dictionary`, e a
+	/// ordem de enumeracao de dicionario **nao e contratual**: sem a ordenacao, o mesmo servidor com
+	/// a mesma semente sortearia racas diferentes depois de um reinicio, e a promessa de determinismo
+	/// do <see cref="Npc.SorteioDeNpc"/> viraria mentira de um jeito quase impossivel de reproduzir.
+	/// ==================================================================================
+	/// </summary>
+	public static string[] RacasNascidasEm(string planeta, IEnumerable<string> todasAsRacas) =>
+		[.. todasAsRacas
+			.Where(r => PovoaUmPlaneta(r)
+					 && string.Equals(PlanetaNatal(r), planeta, StringComparison.OrdinalIgnoreCase))
+			.OrderBy(r => r, StringComparer.Ordinal)];
+
+	// =====================================================================
 	// 2. O CRIVO: O PLANETA TEM QUE EXISTIR E TEM QUE DAR PRA VIVER NELE
 	// =====================================================================
 	/// <summary>

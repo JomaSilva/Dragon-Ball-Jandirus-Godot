@@ -1,4 +1,5 @@
 ﻿using Godot;
+using Jandirus.Core.Combat;
 using Jandirus.Core.Races;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -83,13 +84,20 @@ public partial class GameClient : Node
 	private string _conta = "", _senha = "";
 	private readonly List<EntityState> _scratch = [];
 
+	/// <summary>
+	/// Os ataques de ki do ultimo snapshot. Lista REUSADA, como a dos corpos: o snapshot chega 30
+	/// vezes por segundo e alocar uma lista por pacote e lixo por lixo.
+	/// </summary>
+	private readonly List<ProjetilState> _scratchTiros = [];
+
 	public GameClient()
 	{
 		_net = new NetManager(_listener)
 		{
 			AutoRecycle = true,
 			UpdateTime = 15,
-			ChannelsCount = 2,
+			// TRES, e o servidor abre os mesmos tres -- ver `Protocol.ChannelVoz`.
+			ChannelsCount = Protocol.TotalDeCanais,
 		};
 	}
 
@@ -278,8 +286,45 @@ public partial class GameClient : Node
 	/// <summary>Alguem falou e eu estou no alcance: canal, quem falou, o que foi dito.</summary>
 	public event Action<Protocol.Fala, string, string>? Falou;
 
-	/// <summary>O servidor plantou um decalque no chao da zona. Ver `Client/Decalques.cs`.</summary>
-	public event Action<Protocol.Decal, Vec2, Facing>? DecalqueCaiu;
+	/// <summary>
+	/// CHEGOU UM QUADRO DE VOZ: (id de quem fala, sequencia, distancia 0-255, ha parede, buffer, tamanho).
+	///
+	/// ============================ O BUFFER E REUSADO: CONSUMA AGORA ============================
+	/// O ultimo par e o buffer INTERNO deste cliente e quantos bytes valem nele. Guardar a referencia
+	/// pra usar no quadro seguinte le a voz de outra pessoa. E assim de proposito: sao 50 quadros por
+	/// segundo por falante, e alocar um array por quadro seria lixo por lixo -- a mesma disciplina que
+	/// o `_scratch` do snapshot ja segue, pelo mesmo motivo.
+	/// ======================================================================================
+	/// </summary>
+	public event Action<int, ushort, byte, bool, byte[], int>? VozRecebida;
+
+	/// <summary>O quadro de voz que acabou de chegar. Ver o aviso em <see cref="VozRecebida"/>.</summary>
+	private readonly byte[] _vozEntrando = new byte[Jandirus.Core.Social.VozLocal.MaxBytesDeQuadro];
+
+	/// <summary>
+	/// MANDA UM QUADRO DE VOZ. **Nao ha destinatario** -- quem ouve e decisao do servidor. Ver
+	/// <see cref="Protocol.C2S.Voz"/>.
+	/// </summary>
+	public void MandarVoz(ushort seq, byte[] dados, int tam)
+	{
+		if (!Connected || tam <= 0 || tam > Jandirus.Core.Social.VozLocal.MaxBytesDeQuadro) return;
+
+		var w = Protocol.Begin(Protocol.C2S.Voz);
+		w.Put(seq);
+		w.Put((byte)tam);
+		w.Put(dados, 0, tam);
+		// NAO CONFIAVEL. Quadro perdido se joga fora: retransmitir chega depois do proximo e trava a
+		// fila atras dele. Ver `Protocol.ChannelVoz`.
+		_peer!.Send(w, Protocol.ChannelVoz, DeliveryMethod.Unreliable);
+	}
+
+	/// <summary>
+	/// O servidor plantou um decalque no chao da zona. Ver `Client/Decalques.cs`.
+	///
+	/// O ultimo parametro so tem valor no <see cref="Protocol.Decal.Membro"/> (qual peca do corpo
+	/// caiu); nos outros sete ele chega <c>Nenhuma</c> e e ignorado.
+	/// </summary>
+	public event Action<Protocol.Decal, Vec2, Facing, PecaDeCorpo>? DecalqueCaiu;
 
 	/// <summary>
 	/// O QUE EU APRENDI e quantos marcos tenho. Chega quando muda, como o corpo e os atributos.
@@ -287,6 +332,26 @@ public partial class GameClient : Node
 	public HashSet<string> SkillsAprendidas { get; } = new(StringComparer.OrdinalIgnoreCase);
 	public int MarcosTotais { get; private set; }
 	public int MarcosLivres { get; private set; }
+
+	/// <summary>
+	/// ESTE PERSONAGEM FOI DESIGNADO VILAO por um admin (`mob/var/isVillain` do DM).
+	///
+	/// Chega junto das skills, e serve **so pro desenho do menu**: quem decide se a compra sai e o
+	/// servidor. Ver `GameServer.MandarSkills`.
+	/// </summary>
+	public bool SouVilao { get; private set; }
+
+	/// <summary>
+	/// OS PLANETAS MORTOS, replicados por `S2C.Mortos`.
+	///
+	/// O cliente PRECISA da lista porque ele enumera planetas sozinho: a carta estelar chama
+	/// `Espaco.PreFeitos()` e `Sistemas.Do` direto e desenha o que esta a anos-luz daqui. Sem isto
+	/// ela poria um botao "Viajar" em cima de um mundo que virou po.
+	/// </summary>
+	public readonly Jandirus.Core.World.RegistroDeMortos Mortos = new();
+
+	/// <summary>A lista de mortos mudou -- a carta estelar se redesenha.</summary>
+	public event Action? MortosMudaram;
 	public event Action? SkillsMudaram;
 
 	/// <summary>Os efeitos ligados em mim agora ("invisivel", "escudo"). So pra HUD.</summary>
@@ -295,13 +360,19 @@ public partial class GameClient : Node
 	/// <summary>Caiu um efeito: id e por quantos ms (0 = saiu, negativo = enquanto durar).</summary>
 	public event Action<string, long>? EfeitoCaiu;
 
-	/// <summary>Uma construcao de pe na minha zona.</summary>
 	/// <summary>
-	/// Uma construcao de pe. `Arte`/`Estado`/`Pixel` vem DO SERVIDOR e nao do catalogo local: o
+	/// Uma construcao de pe. `Nome`/`Arte`/`Estado`/`Pixel` vem DO SERVIDOR e nao do catalogo local: o
 	/// catalogo do cliente so tem o que ELE pode comprar, e a bancada de outra pessoa tem que
 	/// aparecer do mesmo jeito.
+	///
+	/// O `Nome` ENTROU DEPOIS, e pelo mesmo argumento da arte -- ele so faltava. O catalogo do cliente
+	/// vem do `Ofertas`, que **esconde mobilia de mapa** (custo negativo): banco, macieira, porta da
+	/// Sala do Tempo e as duas pecas da ponte nunca chegavam nele, e o menu da tecla E caia no ultimo
+	/// recurso (`tipo.Replace('_', ' ')`) -- o jogador lia "Ship Control" e "Time Chamber Door", em
+	/// ingles, no meio de um jogo em portugues.
 	/// </summary>
-	public readonly record struct ObraInfo(int Id, string Tipo, Vector2 Pos, bool Aparafusada, int Lab, string Dono,
+	public readonly record struct ObraInfo(int Id, string Tipo, string Nome, Vector2 Pos, bool Aparafusada,
+										   int Lab, string Dono,
 										   string Arte, string Estado, Vector2 Pixel, bool Densa);
 
 	/// <summary>
@@ -319,6 +390,35 @@ public partial class GameClient : Node
 	public List<EstiloInfo> Estilos { get; private set; } = [];
 	public string EstiloAtual { get; private set; } = "";
 	public event Action? EstilosMudaram;
+
+	/// <summary>
+	/// UM CHEFE QUE EU JA VI, e portanto posso reenfrentar dentro da propria mente.
+	///
+	/// O NOME VEM DO SERVIDOR porque o cliente nao le o `npcs.json` -- mesmo argumento (e mesma
+	/// frase) da <see cref="OfertaDeObra"/> logo acima. Ver `Protocol.S2C.MenteChefes`.
+	/// </summary>
+	public readonly record struct ChefeVisto(string Molde, string Nome);
+
+	public List<ChefeVisto> ChefesVistos { get; private set; } = [];
+	public event Action? ChefesVistosMudaram;
+
+	/// <summary>
+	/// AS TECNICAS DE KI QUE EU INVENTEI, e o rascunho aberto na mesa (nulo = nenhum).
+	///
+	/// ============================ O CLIENTE NAO CALCULA PONTO NENHUM ============================
+	/// Estes objetos sao o modelo do `Core`, mas a tela NUNCA chama `Aplicar` neles: ela manda o
+	/// verbo `ca_comprar` e desenha o que voltou. E de proposito, e e a regra 4 da casa -- a tabela
+	/// de precos tem dezoito linhas e tres guardas que o proprio DM escreveu diferente entre si;
+	/// duas copias dela divergiriam no primeiro ajuste.
+	///
+	/// Que o modelo VIAJE nao e o mesmo que o cliente DECIDIR: ele viaja porque a tela precisa
+	/// mostrar `Gasto`, e mostrar um `Gasto` calculado do lado errado e como um jogo passa a
+	/// discordar de si mesmo.
+	/// ========================================================================================
+	/// </summary>
+	public List<Jandirus.Core.Skills.TecnicaCustomizada> Customizadas { get; private set; } = [];
+	public Jandirus.Core.Skills.TecnicaCustomizada? Mesa { get; private set; }
+	public event Action? CustomizadasMudaram;
 
 	/// <summary>Assume (ou solta, com "-") uma postura de luta.</summary>
 	public void SendEstilo(string id)
@@ -364,6 +464,22 @@ public partial class GameClient : Node
 	/// <summary>Chegou (ou mudou) a mascara de alguem: id.</summary>
 	public event Action<int>? FeridasMudaram;
 
+	/// <summary>
+	/// QUEM ESTA MORTO na minha zona -- o id de cada corpo com AUREOLA.
+	///
+	/// GUARDADO pelo mesmo motivo das <see cref="Feridas"/> e do `PeerLook`: o pacote e reliable e
+	/// chega quando o servidor quer, e o boneco que ele descreve pode nem existir ainda (quem CRIA o
+	/// `RemotePlayer` e o snapshot, por outro canal). Sem guardar, um morto que entra na minha tela
+	/// nasceria sem aureola e so a ganharia se morresse de novo -- o que nao acontece.
+	///
+	/// UM CONJUNTO E NAO UM `Dictionary&lt;int,bool&gt;`: "nao esta aqui" ja quer dizer vivo, e um
+	/// mapa de bools teria dois jeitos de dizer a mesma coisa (ausente e `false`).
+	/// </summary>
+	public readonly HashSet<int> ComAureola = [];
+
+	/// <summary>Alguem morreu ou voltou a vida: id.</summary>
+	public event Action<int>? AureolaMudou;
+
 	/// <summary>Uma celula do cenario caiu (knockback contra parede): virou chao.</summary>
 	public event Action<int, int>? CenarioCaiu;
 
@@ -403,8 +519,28 @@ public partial class GameClient : Node
 	/// mesmo motivo -- sao dezenas de acoes soltas, e um opcode por acao encheria o protocolo.
 	/// Quem autoriza (admin, por exemplo) e o SERVIDOR.
 	/// </summary>
+	/// <summary>
+	/// O ESPIAO DE VERBOS -- nulo em jogo. SO PRA BANCADA (`--diagembarque`).
+	///
+	/// ============================ POR QUE UMA VARREDURA PRECISA DELE ============================
+	/// A pergunta *"nao ha um segundo caminho pra a mesma acao"* nao se responde lendo rotulo de
+	/// botao: o rotulo pode dizer "Ir" e o `Pressed` mandar `nave_lancar`. Quem sabe o que um botao
+	/// FAZ e este metodo, porque ele e o funil unico -- e a unica varredura honesta e apertar tudo e
+	/// ver o que sai por aqui.
+	///
+	/// E ele DEVOLVE se deixa passar (`false` = engole) porque apertar tudo pra ver o que sai nao
+	/// pode ser o mesmo que MANDAR tudo: uma varredura que mande de verdade dispara viagem
+	/// interestelar, invasao de planeta e o que mais estiver na aba. Com o espiao engolindo, a
+	/// bancada exercita a LIGACAO do botao sem exercitar o comando.
+	/// ========================================================================================
+	/// </summary>
+	public static Func<string, string, bool>? EspiaoDeVerbos;
+
 	public void SendVerbo(string cmd, string arg = "")
 	{
+		// ANTES do `Connected`: o que esta sob varredura e o que a TELA tentou mandar, e um botao
+		// religado a um verbo velho continua sendo um segundo caminho mesmo com o fio caido.
+		if (EspiaoDeVerbos is { } espiao && !espiao(cmd, arg)) return;
 		if (!Connected) return;
 		var w = Protocol.Begin(Protocol.C2S.Verbo);
 		w.Put(cmd);
@@ -444,6 +580,32 @@ public partial class GameClient : Node
 
 	/// <summary>Um planeta no mapa do universo, do jeito que o cliente precisa desenha-lo.</summary>
 	public readonly record struct PlanetaInfo(string Nome, Vector2 Pos, float Raio, ulong Seed, bool Premade);
+
+	/// <summary>
+	/// ONDE ESTA A NAVE EM QUE EU ESTOU, na coordenada da galaxia -- o "Observar" da ponte.
+	///
+	/// Nulo quase sempre: ela so existe entre pedir Observar e sair do interior. Enquanto existe, a
+	/// carta estelar mostra a NAVE no lugar de mim (ver `MapaEstelar.MinhaPosicaoNaGalaxia`) -- que e
+	/// o que responde "onde eu estou" pra quem esta numa sala sem janela.
+	/// </summary>
+	public readonly record struct NaveNoMapa(Vector2 Pos, string Zona, float CascoPct);
+	public NaveNoMapa? NaveVista { get; private set; }
+
+	/// <summary>
+	/// O TIPO DA NAVE QUE ESTA EMBAIXO DE MIM ("" = nenhuma) -- ver <see cref="Protocol.S2C.Veiculo"/>.
+	///
+	/// E o que faz a tecla E alcancar o proprio veiculo: a nave pilotada NAO esta na lista de
+	/// construcoes da zona (ela deixou de estar no chao), entao sem este campo o piloto nao teria
+	/// alvo nenhum pra apertar -- nem pra descer. Ver `MenuDeInteracao.Abrir`.
+	///
+	/// QUEM O ESCREVE E SO O SERVIDOR, nos dois sentidos: ele manda o tipo ao embarcar e manda vazio
+	/// ao desembarcar. O cliente nao deduz nada daqui -- deduzir "sai da nave quando muda de zona"
+	/// quebraria justamente o caso em que a nave leva voce pra outra zona (o lancamento).
+	/// </summary>
+	public string VeiculoMontado { get; private set; } = "";
+
+	/// <summary>O nome da nave montada, pra o menu escrever. Vazio quando nao ha nenhuma.</summary>
+	public string NomeDoVeiculo { get; private set; } = "";
 
 	/// <summary>Os planetas da minha vizinhanca no espaco. Chega quando a CHUNK muda.</summary>
 	public List<PlanetaInfo> Planetas { get; private set; } = [];
@@ -491,6 +653,34 @@ public partial class GameClient : Node
 
 	public List<ContaInfo> Contas { get; private set; } = [];
 	public event Action? ContasMudaram;
+
+	/// <summary>
+	/// A PREVIA DA LIMPEZA TOTAL: o inventario do que vai sumir + o codigo que a confirma.
+	///
+	/// ============================ ELA VIVE AQUI E NAO NO MENU ============================
+	/// O codigo tem PRAZO (um minuto), e o menu se remonta varias vezes por segundo. Guardado num
+	/// campo da tela, ele morreria na primeira remontagem -- o painel pediria a previa de novo
+	/// sozinho, em laco, e o servidor sortearia um codigo novo a cada volta.
+	///
+	/// Codigo VAZIO quer dizer "nao ha previa" (nunca pedida, consumida, ou vencida) e e o que
+	/// fecha o painel de perigo. Ver `Protocol.S2C.Limpeza`.
+	/// ==================================================================================
+	/// </summary>
+	public readonly record struct PreviaDeLimpeza(string Codigo, int Segundos, List<string> Linhas);
+
+	public PreviaDeLimpeza Limpeza { get; private set; } = new("", 0, []);
+	public event Action? LimpezaMudou;
+
+	/// <summary>
+	/// FECHA O PAINEL DE PERIGO DESTE CLIENTE. So local: o codigo do servidor continua valendo ate
+	/// vencer sozinho (um minuto), e nao ha verb de "cancelar" -- um caminho a mais pra manter com o
+	/// unico efeito de encurtar um prazo que ja e curto. Quem desistiu so nao quer mais ver a tela.
+	/// </summary>
+	public void EsquecerLimpeza()
+	{
+		Limpeza = new PreviaDeLimpeza("", 0, []);
+		LimpezaMudou?.Invoke();
+	}
 
 	/// <summary>
 	/// Alguem mudou de forma: quem, de que forma, pra qual, QUANTA cena isso merece e se ele DOMINOU
@@ -625,6 +815,25 @@ public partial class GameClient : Node
 	public event Action<int, Vec2>? Piscou;
 
 	// =====================================================================
+	// OS ATAQUES DE KI
+	// =====================================================================
+	/// <summary>
+	/// ONDE ESTAO OS TIROS AGORA -- a lista inteira, a cada snapshot. Nao e delta: sao poucos e a
+	/// posicao deles e o unico dado que muda, entao a lista cheia e mais barata que sincronizar
+	/// diferencas (e nao tem como dessincronizar em silencio).
+	/// </summary>
+	public event Action<IReadOnlyList<ProjetilState>>? TirosNoAr;
+
+	/// <summary>
+	/// UM TIRO NASCEU: id, dono, tipo e onde. Vem no canal confiavel porque e o instante em que ha
+	/// efeito pra tocar -- e porque e a unica hora em que o DONO e dito (e do dono que sai a cor).
+	/// </summary>
+	public event Action<int, int, byte, Vec2>? TiroNasceu;
+
+	/// <summary>UM TIRO ACABOU: id, o motivo (`Core.Combat.FimDeProjetil`) e onde.</summary>
+	public event Action<int, byte, Vec2>? TiroMorreu;
+
+	// =====================================================================
 	// O ZANZO CLASH
 	// =====================================================================
 	/// <summary>
@@ -641,13 +850,18 @@ public partial class GameClient : Node
 	public bool EmClash { get; private set; }
 
 	/// <summary>
-	/// Comecou: eu, o outro, quantos ms dura, e QUANTO VALE cada acerto de cada um.
+	/// Comecou: QUE embate (ver <see cref="Protocol.TipoDeEmbate"/>), eu, o outro, quantos ms dura,
+	/// e QUANTO VALE cada acerto de cada um.
 	///
 	/// A vantagem de poder viaja porque o jogador precisa dela pra ler a propria situacao: num
 	/// encontro desigual o mais fraco pode acertar todas as letras e ainda perder, e descobrir isso
 	/// so no fim seria o quick time event mentindo sobre o que estava sendo disputado.
+	///
+	/// O TIPO viaja pelo mesmo motivo, e e a unica coisa que separa o ZanzoClash da colisao de ki
+	/// nesta ponta: a mecanica e identica (letra, prazo, cabo de guerra) e o que muda e o que a tela
+	/// escreve. Ver o cabecalho de `Protocol.TipoDeEmbate`.
 	/// </summary>
-	public event Action<int, int, int, float, float>? ClashComecou;
+	public event Action<Protocol.TipoDeEmbate, int, int, int, float, float>? ClashComecou;
 
 	/// <summary>Aperte ESTA letra, dentro deste prazo (ms).</summary>
 	public event Action<char, int>? ClashTeclaPedida;
@@ -658,7 +872,7 @@ public partial class GameClient : Node
 	/// <summary>Os dois se cruzaram AQUI. E o unico sinal visivel do embate.</summary>
 	public event Action<Vec2>? ClashBaque;
 
-	/// <summary>Acabou: quem venceu, quem perdeu.</summary>
+	/// <summary>Acabou: quem venceu, quem perdeu. Os DOIS zerados = empate (so a colisao de ki).</summary>
 	public event Action<int, int>? ClashAcabou;
 
 	/// <summary>
@@ -807,7 +1021,16 @@ public partial class GameClient : Node
 				int n = reader.GetUShort();
 				_scratch.Clear();
 				for (int i = 0; i < n; i++) _scratch.Add(EntityState.Read(reader));
+
+				// O SEGUNDO BLOCO -- os ataques de ki no ar. Ele SEMPRE vem, mesmo vazio (ver
+				// `GameServer.EscreverProjeteis`): um bloco opcional sem marcador desalinharia o
+				// resto do pacote em silencio.
+				int t = reader.GetUShort();
+				_scratchTiros.Clear();
+				for (int i = 0; i < t; i++) _scratchTiros.Add(ProjetilState.Read(reader));
+
 				SnapshotReceived?.Invoke(_scratch);
+				TirosNoAr?.Invoke(_scratchTiros);
 				break;
 			}
 			case Protocol.S2C.Hit:
@@ -822,6 +1045,25 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// UM QUADRO DE VOZ. Ele so chega porque o servidor JA decidiu que eu posso ouvir -- nao ha
+			// nada a filtrar aqui, e nao pode haver: um filtro no cliente seria a admissao de que o
+			// pacote chega em quem nao devia. Ver `GameServer.Voz.cs`.
+			case Protocol.S2C.Voz:
+			{
+				int quem = reader.GetInt();
+				ushort seq = reader.GetUShort();
+				byte dist = reader.GetByte();
+				bool parede = reader.GetByte() != 0;
+				byte tam = reader.GetByte();
+				// TAMANHO MENTIROSO E DESCARTE, antes de ler: o `GetBytes` estouraria e a excecao
+				// viraria uma linha de log por quadro -- 50 por segundo por falante.
+				if (tam == 0 || tam > Jandirus.Core.Social.VozLocal.MaxBytesDeQuadro
+					|| reader.AvailableBytes < tam) break;
+				reader.GetBytes(_vozEntrando, tam);
+				VozRecebida?.Invoke(quem, seq, dist, parede, _vozEntrando, tam);
+				break;
+			}
+
 			// UM EFEITO CAIU (ou saiu de cima) DE MIM. Um canal so pra todas as tecnicas: id do
 			// efeito + por quantos ms (0 = acabou, negativo = enquanto durar). Ver
 			// `GameServer.Tecnicas.cs`; a alternativa era um pacote por tecnica, e sao 47.
@@ -832,18 +1074,38 @@ public partial class GameClient : Node
 				break;
 			}
 
-			// O ZANZO CLASH, os cinco momentos num opcode so. Ver `Protocol.ClashSub`.
+			// UM ATAQUE DE KI NASCEU OU MORREU. So os dois instantes -- a posicao vem no snapshot.
+			case Protocol.S2C.Projetil:
+			{
+				var sub = (Protocol.ProjetilSub)reader.GetByte();
+				int tiro = reader.GetInt();
+				if (sub == Protocol.ProjetilSub.Nasceu)
+				{
+					int dono = reader.GetInt();
+					byte tipo = reader.GetByte();
+					TiroNasceu?.Invoke(tiro, dono, tipo, reader.GetVec());
+				}
+				else
+				{
+					byte fim = reader.GetByte();
+					TiroMorreu?.Invoke(tiro, fim, reader.GetVec());
+				}
+				break;
+			}
+
+			// OS EMBATES (ZanzoClash e colisao de ki), os momentos num opcode so. Ver `Protocol.ClashSub`.
 			case Protocol.S2C.Clash:
 			{
 				switch ((Protocol.ClashSub)reader.GetByte())
 				{
 					case Protocol.ClashSub.Comecou:
 					{
+						var tipo = (Protocol.TipoDeEmbate)reader.GetByte();
 						int a = reader.GetInt(), b = reader.GetInt(), ms = reader.GetInt();
 						float meu = reader.GetFloat(), dele = reader.GetFloat();
 						// SO CHEGA A QUEM ESTA NO EMBATE: e um pacote pessoal, e o `a` sou eu.
 						EmClash = true;
-						ClashComecou?.Invoke(a, b, ms, meu, dele);
+						ClashComecou?.Invoke(tipo, a, b, ms, meu, dele);
 						break;
 					}
 					case Protocol.ClashSub.Tecla:
@@ -905,12 +1167,37 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// OS CHEFES QUE EU JA VI. Lista inteira, como os estilos -- ver `S2C.MenteChefes`.
+			case Protocol.S2C.MenteChefes:
+			{
+				int n = reader.GetByte();
+				var l = new List<ChefeVisto>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new ChefeVisto(reader.GetString(64), reader.GetString(64)));
+				ChefesVistos = l;
+				ChefesVistosMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Customizadas:
+			{
+				int n = reader.GetByte();
+				var l = new List<Jandirus.Core.Skills.TecnicaCustomizada>(n);
+				for (int i = 0; i < n; i++) l.Add(Jandirus.Net.CustomWire.Ler(reader));
+				Customizadas = l;
+				// A MESA VEM NO MESMO PACOTE, e o `bool` na frente e o que separa "nao ha rascunho"
+				// de "o rascunho e o primeiro da lista". Ver `S2C.Customizadas`.
+				Mesa = reader.GetBool() ? Jandirus.Net.CustomWire.Ler(reader) : null;
+				CustomizadasMudaram?.Invoke();
+				break;
+			}
+
 			case Protocol.S2C.Construcoes:
 			{
 				int n = reader.GetUShort();
 				var l = new List<ObraInfo>(n);
 				for (int i = 0; i < n; i++)
-					l.Add(new ObraInfo(reader.GetInt(), reader.GetString(48),
+					l.Add(new ObraInfo(reader.GetInt(), reader.GetString(48), reader.GetString(64),
 						new Vector2(reader.GetFloat(), reader.GetFloat()),
 						reader.GetBool(), reader.GetByte(), reader.GetString(32),
 						reader.GetString(160), reader.GetString(48),
@@ -984,7 +1271,12 @@ public partial class GameClient : Node
 				var tipo = (Protocol.Decal)reader.GetByte();
 				Vec2 onde = reader.GetVec();
 				var dir = (Facing)reader.GetByte();
-				DecalqueCaiu?.Invoke(tipo, onde, dir);
+				// O BYTE SO EXISTE PRO MEMBRO ARRANCADO -- mesma condicao do escritor
+				// (`GameServer.MandarDecalque`). Ler incondicionalmente estouraria o buffer nos
+				// outros sete tipos.
+				PecaDeCorpo peca = tipo == Protocol.Decal.Membro
+					? (PecaDeCorpo)reader.GetByte() : PecaDeCorpo.Nenhuma;
+				DecalqueCaiu?.Invoke(tipo, onde, dir, peca);
 				break;
 			}
 
@@ -1057,6 +1349,15 @@ public partial class GameClient : Node
 				break;
 			}
 
+			case Protocol.S2C.Aureola:
+			{
+				int quem = reader.GetInt();
+				if (reader.GetBool()) ComAureola.Add(quem);
+				else ComAureola.Remove(quem);
+				AureolaMudou?.Invoke(quem);
+				break;
+			}
+
 			case Protocol.S2C.Contas:
 			{
 				int n = reader.GetUShort();
@@ -1066,6 +1367,21 @@ public partial class GameClient : Node
 											reader.GetBool(), reader.GetString(160)));
 				Contas = lista;
 				ContasMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Limpeza:
+			{
+				string codigo = reader.GetString(16);
+				int segundos = reader.GetUShort();
+				int n = reader.GetByte();
+				var linhas = new List<string>(n);
+				// O TETO DE 200 E O MESMO DO LADO DE LA (as linhas sao contagens curtas). Ler sem
+				// teto seria confiar num numero que veio do fio -- e este pacote so chega pra admin,
+				// mas "so chega pra admin" nunca foi uma garantia de tamanho.
+				for (int i = 0; i < n; i++) linhas.Add(reader.GetString(200));
+				Limpeza = new PreviaDeLimpeza(codigo, segundos, linhas);
+				LimpezaMudou?.Invoke();
 				break;
 			}
 
@@ -1127,10 +1443,34 @@ public partial class GameClient : Node
 			{
 				MarcosTotais = reader.GetInt();
 				MarcosLivres = reader.GetInt();
+				// O bit de VILAO -- ver `GameServer.MandarSkills`. Ele decide se o menu desenha o
+				// Planet Destroy como comprável ou como "so um vilao aprende isso".
+				SouVilao = reader.GetBool();
 				int quantas = reader.GetUShort();
 				SkillsAprendidas.Clear();
 				for (int i = 0; i < quantas; i++) SkillsAprendidas.Add(reader.GetString(96));
 				SkillsMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Mortos:
+			{
+				int n = reader.GetByte();
+				var lista = new List<Jandirus.Core.World.EstadoDaMorte>(n);
+				for (int i = 0; i < n; i++)
+					lista.Add(new Jandirus.Core.World.EstadoDaMorte
+					{
+						Chave = reader.GetString(64),
+						Nome = reader.GetString(64),
+						Fase = (Jandirus.Core.World.FaseDaMorte)reader.GetByte(),
+						Estagio = reader.GetByte(),
+					});
+
+				// SUBSTITUI, nao acrescenta: o pacote e a lista INTEIRA (ver `S2C.Mortos`), e e
+				// exatamente isso que faz um planeta RESTAURADO por admin voltar a aparecer na carta
+				// sem precisar de um segundo pacote pra dizer "esqueca aquele".
+				Mortos.Substituir(lista);
+				MortosMudaram?.Invoke();
 				break;
 			}
 
@@ -1168,10 +1508,29 @@ public partial class GameClient : Node
 
 			// TROCOU DE PLANETA: o estrago do anterior nao vale aqui. O servidor manda a lista da
 			// zona nova logo em seguida (`MandarCenario`).
+			// ONDE ESTA A MINHA NAVE -- ver `Protocol.S2C.Nave` e `NaveVista`.
+			case Protocol.S2C.Nave:
+				NaveVista = new NaveNoMapa(new Vector2(reader.GetFloat(), reader.GetFloat()),
+										   reader.GetString(48), reader.GetFloat());
+				break;
+
+			// QUAL NAVE ESTA EMBAIXO DE MIM -- o alvo da tecla E enquanto se pilota. Vazio = nenhuma.
+			case Protocol.S2C.Veiculo:
+				VeiculoMontado = reader.GetString(48);
+				NomeDoVeiculo = reader.GetString(64);
+				break;
+
 			case Protocol.S2C.ZoneChanged when LimparCenario():
 			{
 				Zone = reader.GetZone();
 				Vec2 spawn = reader.GetVec();
+
+				// SAIU DA NAVE, A MARCACAO MORRE. Quem apaga e o cliente e nao o servidor, e ele
+				// apaga AQUI porque este e o instante exato em que ele deixa de estar a bordo --
+				// ver o comentario do opcode. Sem isto, a carta continuaria centrada num casco que
+				// ficou pra tras (e, pior, num que pode ter explodido).
+				if (!Jandirus.Core.Tech.NaveGrande.EhInterior(Zone, out _)) NaveVista = null;
+
 				ZoneChanged?.Invoke(Zone, spawn);
 				break;
 			}

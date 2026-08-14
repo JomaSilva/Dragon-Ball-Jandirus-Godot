@@ -47,7 +47,67 @@ public sealed class PapelDeNpc(MoldeDeNpc molde, ulong semente)
 	/// </summary>
 	public int Estagio;
 
+	/// <summary>
+	/// ============================ O BP PINADO PELA SAGA, DEGRAU A DEGRAU ============================
+	/// Vazio no corpo comum (e no chefe nascido fora de uma saga -- admin, bancada): ai o BP e o da
+	/// ficha do `npcs.json`, lido direto. Preenchido pela cadeia de sagas com o vetor que ela resolveu
+	/// **no disparo do marco** (ver <see cref="Sagas.Pinar"/>), dias in-game antes deste corpo existir.
+	///
+	/// Mora aqui, e nao no estado da saga sozinho, porque quem PRECISA do numero e o corpo: o
+	/// `TickDoRoteiro` reancora o BP a cada segundo e o `AvancarEstagio` pina o degrau novo, e nenhum
+	/// dos dois tem por que conhecer a cadeia. E o `boss_seed_bp`, que no original tambem e campo do
+	/// mob e nao do controlador (BossEvents.dm:186).
+	/// ==========================================================================================
+	/// </summary>
+	public double[] BpsPinados = [];
+
+	/// <summary>
+	/// O BP DESTE DEGRAU: o pinado quando ha um, senao o da ficha. Uma casa so -- as duas fontes
+	/// respondidas por lugares diferentes divergiriam no primeiro degrau que alguem esquecesse.
+	/// </summary>
+	public double BpDoDegrau(int degrau) =>
+		degrau >= 0 && degrau < BpsPinados.Length ? BpsPinados[degrau]
+		: degrau >= 0 && degrau < Molde.Estagios.Length ? Molde.Estagios[degrau].Bp
+		: 0;
+
+	/// <summary>Atalho: o BP do degrau em que ele esta agora.</summary>
+	public double BpAtual => BpDoDegrau(Estagio);
+
+	/// <summary>
+	/// ============================ O ALVO QUE O ROTEIRO IMPOE -- o `bev_prey` ============================
+	/// Id de um corpo que este NPC persegue **por ordem do evento**, acima de qualquer decisao da IA.
+	/// Zero = ele caca pelo criterio normal.
+	///
+	/// E o `mob/npc/var/tmp/mob/bev_prey` (BossEvents.dm:264), e a razao de existir e literal: o Cell
+	/// atras de um androide NOCAUTEADO. A caca normal (`PresaDaFera`) pula quem esta no chao -- e tem
+	/// que pular, senao a fera fica parada em cima de um corpo caido ate o prazo vencer --, entao sem
+	/// este canal o Cell simplesmente nunca chegaria perto da vitima. O comentario do original diz o
+	/// desenho inteiro: *"absorcao e prioridade ABSOLUTA: larga a luta atual"*.
+	///
+	/// Nao persiste: e um alvo de agora, e o corpo do outro nao atravessa reinicio.
+	/// ================================================================================================
+	/// </summary>
+	public int PresaDoRoteiro;
+
 	public bool EhChefe => Molde.EhChefe;
+
+	/// <summary>De que tipo este corpo e. Ver <see cref="TipoDeNpc"/> -- e por ele que o recorte corta.</summary>
+	public TipoDeNpc Tipo => Molde.Tipo;
+
+	/// <summary>
+	/// ============================ ELE ATACA POR CONTA PROPRIA? ============================
+	/// Cidadao: **nao**. E o `AIAlwaysActive = 0` do `mob/npc/Citizen` (PlanetPopulation.dm:66), e o
+	/// comentario do autor diz a regra inteira numa linha: *"a fightable being -> base foundTarget
+	/// ENGAGES when provoked ... but never aggros on sight -> peaceful until hit"*.
+	///
+	/// A distincao e entre `monster = 1` (da pra bater nele, e ele revida) e `AIAlwaysActive = 1`
+	/// (ele procura alvo sozinho): o cidadao tem a primeira e nao a segunda. Sem isso o povoamento
+	/// entregaria quarenta habitantes que caem em cima do primeiro jogador que pousar no planeta --
+	/// o `PresaDaFera` do servidor devolve *o corpo em pe mais proximo, seja quem for*, que e a
+	/// receita do Oozaru selvagem e nao a de um vilarejo.
+	/// ==============================================================================
+	/// </summary>
+	public bool Pacifico => Tipo == TipoDeNpc.Cidadao;
 
 	/// <summary>Ver <see cref="MoldeDeNpc.AscendePorDecisao"/> -- "tem a forma e nao a usa".</summary>
 	public bool AscendePorDecisao => Molde.AscendePorDecisao;

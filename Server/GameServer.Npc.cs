@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Appearance;
 using Jandirus.Core.Forms;
 using Jandirus.Core.Npc;
@@ -63,25 +63,40 @@ public partial class GameServer
 		foreach (MoldeDeNpc m in _moldes.Todos)
 			foreach (string p in m.Problemas()) { GD.PushError($"[server] npcs.json: {p}"); ruins++; }
 
+		// O PLANO DE POVOAMENTO PASSA PELA MESMA PORTA. Ele cruza dado com dado (a linha aponta um
+		// molde, e o tipo do molde tem que servir) -- por isso e conferido aqui, com o catalogo ja
+		// montado, e nao dentro do `Parse`.
+		foreach (string p in Povoamento.Problemas(_moldes.Plano, _moldes))
+		{ GD.PushError($"[server] npcs.json: {p}"); ruins++; }
+
 		GD.Print($"[server] moldes de NPC: {_moldes.Total} "
 			   + $"({_moldes.Todos.Count(m => m.EhChefe)} com ficha pronta de chefe)"
 			   + (ruins > 0 ? $"  <<< {ruins} problema(s)" : ""));
+
+		// O RECORTE DO DONO SAI NO BOOT, com o motivo. Uma regra temporaria que so existe no codigo
+		// e uma regra que alguem vai reencontrar por acidente daqui a tres meses.
+		GD.Print($"[server] povoamento: {_moldes.Plano.Sum(l => l.Quantos)} cidadaos planejados em "
+			   + $"{_moldes.Plano.Length} planeta(s); chefes de saga LIGADOS; inimigo comum "
+			   + (Povoamento.InimigoComumLigado ? "ligado" : $"DESLIGADO ({Povoamento.MotivoDoInimigoDesligado})"));
 	}
 
 	/// <summary>
 	/// A MEDIA DE PODER DOS JOGADORES -- o `AverageBP` do original (NPClist.dm:72), que e o que faz
 	/// o bicho de mundo acompanhar quem esta jogando.
 	///
-	/// So conta quem tem `Peer`: incluir NPC na media daria realimentacao (um NPC forte puxa a
-	/// media, que gera NPCs mais fortes) e o servidor escalaria sozinho ate o infinito com ninguem
-	/// online.
+	/// So conta JOGADOR: incluir NPC na media daria realimentacao (um NPC forte puxa a media, que gera
+	/// NPCs mais fortes) e o servidor escalaria sozinho ate o infinito com ninguem online. O crivo e o
+	/// funil do `Core` (<see cref="Jandirus.Core.Npc.Gente.EhJogador"/>) e nao um `Peer != null` a
+	/// mao: o clone da mente carrega o `expressedBP` do dono e o boneco do corpo largado COMPARTILHA a
+	/// ficha dele -- os dois contariam a mesma pessoa duas vezes, e esta media e o que PINA o BP de
+	/// todo chefe de saga no disparo do marco.
 	/// </summary>
 	private double MediaDoServidor()
 	{
 		double soma = 0;
 		int n = 0;
 		foreach (ServerPlayer p in _players.Values)
-			if (p.Peer != null && p.Ficha is { BP: > 0 }) { soma += p.Ficha.BP; n++; }
+			if (EhJogador(p) && p.Ficha is { BP: > 0 }) { soma += p.Ficha.BP; n++; }
 		return n == 0 ? 0 : soma / n;
 	}
 
@@ -106,7 +121,12 @@ public partial class GameServer
 		PrepararCombate(corpo, null);
 		_players[corpo.Id] = corpo;
 		ZoneList(corpo.Zone.Hash).Add(corpo);
-		AplicarGravidade(corpo);
+
+		// `nascendo: true` -- um corpo sem dono nao tem berco no save, e a zona em que ele e posto no
+		// mundo E o berco dele. Sem isto um habitante de Icer Planet (15x) ou de Vegeta (10x) nasceria
+		// esmagado e preso no chao, e morreria de gravidade sem nunca ter andado. Ver
+		// `Birth.AclimatarAoBerco`.
+		AplicarGravidade(corpo, nascendo: true);
 		return corpo;
 	}
 
@@ -127,7 +147,34 @@ public partial class GameServer
 		}
 		if (_racas == null) { GD.PushError("[server] sem races.json: nao da pra nascer NPC"); return null; }
 
-		ulong semente = SorteioDeNpc.SementeDe(SeedDoUniverso, molde.Id, lugar);
+		// ============================ O RECORTE DO DONO, NO FUNIL ============================
+		// *"NPCs INIMIGOS que nao sao chefe POR ENQUANTO NAO SPAWNAM."* A guarda mora AQUI, na unica
+		// funcao por onde todo nascimento passa (o povoamento, o admin, as duas bancadas), e nao no
+		// laco do povoamento -- do outro jeito ela valeria pra um dos quatro chamadores e a bancada
+		// que provasse o recorte estaria provando o caminho que ninguem mais usa.
+		//
+		// E a recusa e FALADA. Um `return null` calado aqui viraria "o NPC nao nasceu e ninguem sabe
+		// por que", que e a armadilha 5 da PARTE 3 exatamente onde ela custa mais caro: numa regra
+		// temporaria, que alguem vai querer religar.
+		if (!Povoamento.PodeNascer(molde.Tipo))
+		{
+			GD.Print($"[server] NPC '{molde.Id}' NAO nasceu: {Povoamento.PorQueNaoNasce(molde.Tipo)}");
+			return null;
+		}
+
+		// ============================ A ZONA FAZ PARTE DO "LUGAR" ============================
+		// `SementeDe` recebe (universo, molde, lugar), e o povoamento numera o lugar por planeta --
+		// entao o habitante numero 4 da Terra e o numero 4 de Vegeta caiam na MESMA semente. A raca
+		// disfarcava (ela vem do berco do planeta, e por isso saia diferente), mas BP, genero, idade
+		// e indice do nome eram identicos, planeta por planeta, linha por linha. Da pra ver no log de
+		// nascimento: `BP 2.318` na Terra, `BP 2.318` em Vegeta, `BP 2.318` em Namek.
+		//
+		// O conserto e aqui e nao no contador porque o contador nao e o unico chamador: o admin e as
+		// bancadas tambem passam um indice qualquer, e todos eles querem dizer "este lugar, naquele
+		// mapa". Misturar a zona onde a semente e MONTADA cobre os tres de uma vez.
+		// ==================================================================================
+		ulong semente = SorteioDeNpc.SementeDe(
+			SeedDoUniverso, molde.Id, Espaco.Misturar(zona.Hash, lugar, 0));
 		FichaSorteada s = SorteioDeNpc.Sortear(molde, semente, _racas, _skills, zona.Name, MediaDoServidor());
 
 		var npc = new ServerPlayer
@@ -148,6 +195,41 @@ public partial class GameServer
 			Niveis = s.Niveis,
 			Papel = s.Papel,
 			Visual = AparenciaDeNpc(s.Raca, s.Genero, semente),
+
+			// ============================ SEM CEREBRO ELE E UMA ESTATUA ============================
+			// `TickDosCorposSemDono` filtra por `Cerebro != null` -- essa e a definicao de "quem o
+			// servidor esta dirigindo". A fabrica nao escrevia este campo, e as duas bancadas que a
+			// usavam anexavam o cerebro a mao depois (`GameServer.IaTeste.cs:504`): ou seja, **todo
+			// NPC nascido pelo caminho de producao era um boneco parado**, e nenhuma bancada podia
+			// pegar isso, porque nenhuma usava o caminho de producao inteiro.
+			//
+			// O temperamento vem dos quatro numeros do molde (ver `Temperamento.Montar`), e a FASE da
+			// leitura de capacidades vem da semente: corpos nascidos no mesmo tique nao podem ficar
+			// em fase na camada cara de 1 Hz. Ver `Cerebro.DesfasarCapacidades`.
+			//
+			// A SEMENTE VAI JUNTO porque o molde diz o que a especie e e o sorteio diz quem ESTE
+			// corpo e: e o `rand(8,13)/10` por traco do `bhv_set` (`NPCAI.dm:816`), sem o qual os
+			// quarenta cidadaos de um planeta recuam, socam e mudam de ideia todos no mesmo instante.
+			Cerebro = Temperamento.Montar(molde, SorteioDeNpc.Sorteador(semente, "fase").NextDouble(), semente),
+
+			// ============================ O BERCO DELE E ONDE ELE NASCEU ============================
+			// Um NPC nao tem save, entao ele nao tinha berco -- e `Berco.Planeta` vazio faz o
+			// `DestinoDoBerco` cair na `SpawnZone`, a Terra. Com o renascimento automatico do
+			// `TickCombate` varrendo TODOS os `_players` sem olhar `Peer`, o cidadao de Namek morto
+			// reaparecia **na Terra**, vivo, 15 s depois -- e o Freeza voltaria sozinho.
+			//
+			// Hoje NPC morto e REMOVIDO do mundo (ver `TickCombate`), entao esta linha nao e o que
+			// impede o defeito. Ela existe porque o berco e a resposta a "de onde este corpo e", e
+			// todo caminho que pergunte isso -- um admin mandando o NPC pro comeco, uma saga que
+			// devolva um chefe ao planeta dele -- tem que achar o planeta certo em vez da Terra.
+			// (`Zona` e derivado de `Planeta` + `PreFeito`, e nao um campo -- por isso so os tres.)
+			Berco = new Jandirus.Core.Races.Berco
+			{
+				Planeta = zona.Name,
+				Natal = zona.Name,
+				Seed = zona.Seed,
+				PreFeito = zona.Kind != ZoneKey.KindProcedural,
+			},
 		};
 
 		PorNoMundo(npc);
@@ -158,6 +240,13 @@ public partial class GameServer
 		// e "acrescentar a linha nova em dois dos tres lugares" e o erro que aquele comentario ja
 		// registra como o mais repetido deste port.
 		int formas = SorteioDeNpc.AbrirFormas(npc.Forma, molde, npc.Ficha.BP, Perfil(npc));
+
+		// E O CORPO COMECA NO **PISO** DELE, que nem sempre e a base -- o mesmo `Catalogo.IdDoPiso`
+		// que o login de um jogador usa. Hoje isso muda uma raca: um NPC de Frost Demon nasce na
+		// forma base dele (o corpo que o `SorteioDeNpc` escolheu) em vez de num `base` sem escada
+		// nenhuma -- e sem isto o roteiro de chefe dele nao conseguiria subir pra 1a Evolucao, porque
+		// o degrau anterior dela (a forma base) exige estar NELA.
+		npc.Forma.Atual = Catalogo.IdDoPiso(Perfil(npc));
 
 		// o multiplicador de forma volta pra 1 (ele comeca na base) e a ficha fecha
 		AplicarForma(npc);

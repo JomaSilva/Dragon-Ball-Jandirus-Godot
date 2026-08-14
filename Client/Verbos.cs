@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 
 namespace Jandirus.Client;
 
@@ -14,7 +14,15 @@ namespace Jandirus.Client;
 /// <param name="Nome">Como aparece no painel. E tambem o que a busca casa.</param>
 /// <param name="Categoria">A ABA em que ele mora: "Skills", "Learning", "Other", "Admin".</param>
 /// <param name="Descricao">Uma linha explicando. Vira a dica ao passar o mouse.</param>
-/// <param name="Acionar">O que fazer. Normalmente mandar um pacote pro servidor.</param>
+/// <param name="Acionar">
+/// O que fazer. Normalmente mandar um pacote pro servidor.
+///
+/// NULO E LEGITIMO e agora esta escrito no tipo: as faixas PASSIVAS de uma disciplina divina
+/// entram no catalogo sem acao (`Habilidades.DasDisciplinas`) porque o jogador precisa saber que
+/// as tem -- passiva que ninguem sabe que ganhou e indistinguivel de passiva quebrada. O tipo dizia
+/// `Action` nao-anulavel e o `null` passava com aviso do compilador; quem clicasse numa dessas
+/// linhas no menu levava uma `NullReferenceException`. Os dois unicos consumidores conferem agora.
+/// </param>
 /// <param name="Disponivel">
 /// Quando o verb PODE ser usado agora (Ki suficiente, nao estar caido, cooldown). Nulo = sempre.
 /// Um verb indisponivel continua APARECENDO, so que apagado -- saber que a tecnica existe e que
@@ -24,10 +32,38 @@ public sealed record Verbo(
 	string Nome,
 	string Categoria,
 	string Descricao,
-	Action Acionar,
+	Action? Acionar,
 	Func<bool>? Disponivel = null)
 {
 	public bool PodeAgora => Disponivel == null || Disponivel();
+
+	/// <summary>
+	/// O ID ESTAVEL DESTE VERB -- o que uma tecla ligada a ele guarda no `config.json`.
+	///
+	/// ============================ POR QUE O NOME NAO SERVE ============================
+	/// Porque o <see cref="Nome"/> MUDA COM O ESTADO. Sao quatro casos no `Habilidades.cs`, e todos
+	/// acontecem no jogo normal:
+	///
+	///   * a disciplina divina vira `"Ultra Instinto  (ligada)"` quando ligada;
+	///   * a faixa passiva carrega a porcentagem no nome (`"Sign  (20%)"`);
+	///   * o estilo vira `"Turtle  (em uso)"` enquanto e o estilo atual;
+	///   * a tecnica ainda nao portada vira `"Kamehameha (nao portada)"` -- e volta ao nome seco
+	///     no dia em que o efeito sair.
+	///
+	/// Uma tecla gravada pelo nome se perderia no instante em que o jogador LIGASSE o Ultra
+	/// Instinto. E o id estavel ja existia em toda fonte (`Tecnicas.Tecnica.Id`, `EstiloInfo.Id`,
+	/// `TecnicaCustomizada.Verbo`, o `cmd` do `SendVerbo`) -- ele so era jogado fora ao montar o
+	/// `Verbo`. Este campo e o lugar onde ele para de ser jogado fora.
+	///
+	/// VAZIO CAI NO NOME (ver <see cref="ChaveOuNome"/>), e e o certo pros 65 verbs fixos do
+	/// `VerbosDoJogo`: o nome deles e literal no fonte e nao muda em tempo de execucao. Quem
+	/// registra verb com nome MONTADO tem que preencher isto.
+	/// =================================================================================
+	/// </summary>
+	public string Chave { get; init; } = "";
+
+	/// <summary>Por onde uma tecla se lembra deste verb.</summary>
+	public string ChaveOuNome => Chave.Length > 0 ? Chave : Nome;
 }
 
 /// <summary>
@@ -104,7 +140,17 @@ public static class Verbos
 	}
 
 	/// <summary>Este verb pode sequer APARECER pra mim?</summary>
-	private static bool Visivel(Verbo v) => SouAdmin || v.Categoria != Admin;
+	public static bool Visivel(Verbo v) => SouAdmin || v.Categoria != Admin;
+
+	/// <summary>
+	/// O verb que uma tecla guardou, ou nulo se este personagem nao o tem.
+	///
+	/// NULO E UM RESULTADO NORMAL e nao um erro: a ligacao e de MAQUINA (mora no `config.json`) e o
+	/// catalogo e do PERSONAGEM. O Namekuseijin que virou Saiyajin continua com a tecla do
+	/// "Regenerar" gravada -- e ela tem que dizer isso em vez de sumir. Ver `Atalhos.Disparar`.
+	/// </summary>
+	public static Verbo? PorChave(string chave) =>
+		_todos.Find(v => string.Equals(v.ChaveOuNome, chave, StringComparison.Ordinal));
 
 	/// <summary>
 	/// Busca em TODAS as categorias. E o que o dono pediu ("barra de pesquisa pra procurar os

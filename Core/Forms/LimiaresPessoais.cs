@@ -147,6 +147,18 @@ public sealed class LimiaresPessoais
 		// os grades saem do SSJ1 e custam o mesmo BP dele; quem separa e a maestria
 		"ssjat" => ssjat,
 		"ssj2at" => ssj2at / Catalogo.Ssj1GateMult,
+
+		// ============================ O MESMO `ssj2at`, OUTRO DIVISOR -- e o Heran ============================
+		// `heran.dm:38` cobra `ssj2at/50` onde o `Transformation Controls.dm:19` cobra `ssj2at/6`. A
+		// var e A MESMA (o DM nao criou `heran2at`), entao o que muda e o gate e nao o limiar -- e por
+		// isso e uma CHAVE nova aqui e nao um campo novo no personagem.
+		//
+		// E O NUMERO GRANDE NAO E ENGANO DO ORIGINAL: o `RolarHeran` nao toca `ssj2at`, ele fica nos
+		// 3,5 bilhoes de fabrica. Com o divisor 6 a segunda forma do Heran pediria 583 milhoes de BP
+		// BASE -- mais que o Super Saiyajin 3 -- e ninguem a alcancaria. Com 50, pede 70 milhoes.
+		// ==================================================================================================
+		"ssj2at_heran" => ssj2at / Catalogo.HeranGateMult2,
+
 		"ssj3at" => ssj3at / Catalogo.Ssj2GateMult,
 		"rawssj4at" => rawssj4at,
 		"ultrassjat" => ultrassjat,

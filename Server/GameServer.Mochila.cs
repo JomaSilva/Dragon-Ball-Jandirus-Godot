@@ -131,6 +131,25 @@ public sealed partial class GameServer
 
 		AplicarPoderes(pl);
 		MandarAtributos(pl);
+
+		// ============================ A FICHA TEM QUE IR JUNTO, E ISSO ERA UM BUG ============================
+		// Achado pela bancada `--diagbancada`: equipar o scouter acendia o bit, o cliente recebia os
+		// atributos novos... e continuava com `BP = NaN` na ficha. A aba Stats, que ja entrava no ramo
+		// "tem scouter", passava a imprimir **"NaN (base NaN)"**, e a HUD seguia em "???".
+		//
+		// A CAUSA E DA MESMA FAMILIA do bug da barra de Ki, so que um passo mais fundo: o `TickFichas`
+		// so reenvia a ficha quando algum campo COMPARADO muda, e ele compara os campos CRUS do
+		// `Fighter` (`EnvBP == Ficha.expressedBP`...). O que sai no fio, porem, passa pelo
+		// `FichaVisivel`, que troca BP e BP expresso por NaN pra quem nao tem scouter. Ligar o aparelho
+		// muda o CONTEUDO ENVIADO sem mexer em um unico campo comparado -- entao, pro tique, nao mudou
+		// nada, e o cliente ficava com a ficha censurada ate que outra coisa qualquer se mexesse.
+		//
+		// Era intermitente por isso: num corpo carregando Ki a ficha ia junto no tique seguinte e
+		// ninguem via; num corpo parado ela nao ia. Nao da pra "consertar no tique" sem por o bit de
+		// sigilo na lista de comparacao -- e a casa certa e esta, que e onde o bit muda.
+		// ================================================================================================
+		MandarFicha(pl);
+
 		Avisar(pl, tinha
 			? "você tira o scouter. Os números voltam a ser \"???\"."
 			: "o scouter liga com um bipe. Agora você lê o poder de quem olha.");
@@ -147,22 +166,83 @@ public sealed partial class GameServer
 	/// </summary>
 	private const double PesoMaximoPct = 100;
 
+	/// <summary>
+	/// ============================ O PESO ESTAVA EM UNIDADE ERRADA, E ISSO O MATAVA ============================
+	/// No DM, `Weighted` e o peso da roupa em **KG**, e o teto que o Upgrade destrava e
+	/// `weight_cap_hw * WEIGHT_ITEM_CAP_MULT` (`Tier 1.dm:145`) -- ou seja **duas vezes** o limite do
+	/// corpo. O `Change_Weight` escolhe uma FRACAO desse teto (`pounds = pounds_max * frac`), e a
+	/// razao que sai disso (`weight_ratio = Weighted * grav / weight_cap_hw`) vai de 0 a 2 no chao da
+	/// Terra: 50% = razao 1 (o limite, ganho 2x), 100% = razao 2 (o dobro, ganho 4x e ja esmagando).
+	///
+	/// O port guardava a FRACAO direto em `Weighted` (0 a 1). Como `weight_cap_hw` vale
+	/// `expressedBP x Ephysoff x 20` -- centenas ja num personagem novo, bilhoes num veterano --, a
+	/// razao dava praticamente ZERO, e o `WeightTick` devolvia `weight = 1` sempre. Consequencias, e
+	/// as duas eram mudas:
+	///
+	///   * o multiplicador de ganho por peso (ate 8x) **nunca saia de 1**;
+	///   * o `weight = 1 + Weighted` escrito logo abaixo desta linha durava ate o proximo tique de
+	///     ficha (200 ms), que e quando o `WeightTick` o reescrevia -- o bonus aparecia e sumia.
+	///
+	/// Ou seja o sistema de peso inteiro estava morto, e nao "sem penalidade": ele nao dava nem o
+	/// premio. Nada disso aparecia em teste porque nada reclamava -- e o numero na tela (13.4 item 5)
+	/// e justamente o que teria mostrado o 1x parado.
+	/// ======================================================================================================
+	/// </summary>
+	private static double TetoDePeso(Jandirus.Core.Stats.Fighter f) =>
+		Math.Max(f.weight_cap_hw, 1) * Jandirus.Core.Stats.GainKnobs.WeightItemCapMult;
+
 	private void AjustarPeso(ServerPlayer pl, string valor)
 	{
 		if (!double.TryParse(valor, out double pct)) { Avisar(pl, "número inválido."); return; }
 		pct = Math.Clamp(pct, 0, PesoMaximoPct);
 
-		// `Weighted` E O QUANTO SE VESTE e `weight` e o DEBUFF que sai disso. Sao dois campos porque
-		// o segundo entra na conta de poder (`deBuff`) e o primeiro e a escolha do jogador -- juntar
-		// os dois faria tirar o peso exigir desfazer uma conta.
-		pl.Ficha.Weighted = pct / 100.0;
-		pl.Ficha.weight = 1 + pl.Ficha.Weighted;
-		pl.Ficha.Statify();
+		// `Weighted` E O QUANTO SE VESTE (em kg, na escala do `weight_cap_hw` -- ver `TetoDePeso`) e
+		// `weight` e o multiplicador que sai disso. Sao dois campos porque o segundo entra na conta de
+		// poder (`deBuff`) e o primeiro e a escolha do jogador -- juntar os dois faria tirar o peso
+		// exigir desfazer uma conta.
+		//
+		// O `weight` NAO E MAIS ESCRITO A MAO AQUI. Ele era `1 + Weighted`, um palpite que o
+		// `WeightTick` reescrevia no tique seguinte -- duas contas pro mesmo campo, e a que o jogador
+		// via era a que morria. Quem escreve `weight` e o `WeightTick`, tres linhas abaixo, e so ele.
+		pl.Ficha.Weighted = pct / 100.0 * TetoDePeso(pl.Ficha);
+
+		// ============================ O TIQUE INTEIRO, E NAO `Statify` + `WeightTick` ============================
+		// "Cada passo pesa" era uma frase VAZIA ate a camada 2: o peso nao custava nada. Agora custa
+		// (`Esmagamento.FatorDePasso`), e o custo tem que valer no mesmo instante em que o jogador
+		// aperta o botao -- senao ele ajusta o peso, sai andando na velocidade antiga, e o servidor
+		// corrige trinta vezes por segundo.
+		//
+		// **A ORDEM E A DO `Fighter.Tick` E TEM QUE SER ELA.** Chamar `Statify` + `WeightTick` pulando
+		// o `PowerLevel` no meio parece equivalente e nao e: o `weight_cap_hw` e um recorde que sobe
+		// com `expressedBP x (weight x BPrestriction)`, e esse produto so se cancela porque o
+		// `expressedBP` ja veio DIVIDIDO pelo peso anterior. Com o `expressedBP` velho, o recorde subia
+		// 4x a cada ajuste e o peso novo virava metade do anterior -- vestir mais peso pesava MENOS. A
+		// bancada pegou isso na segunda troca (50% e depois 100%), que e o gesto mais comum que existe.
+		// ====================================================================================================
+		pl.Ficha.Tick(agoraMs: NowMs());
+		RecalcularVelocidade(pl);
+		MandarFicha(pl);
 		pl.SigAtributos = "";
 
-		Avisar(pl, pct <= 0
-			? "você tira os pesos."
-			: $"você ajusta os pesos para {pct:0}% do próprio corpo. Cada passo pesa -- e cada treino rende mais.");
+		if (pct <= 0) { Avisar(pl, "você tira os pesos."); return; }
+
+		// A FRASE DIZ OS TRES NUMEROS DA DECISAO, e e o mesmo trio que o painel de peso do DM mostra
+		// (`HtmlUI.dm:641-655`): quanto se vestiu, quanto isso e do limite DO CORPO NESTA GRAVIDADE, e
+		// quanto rende. Sem o do meio o jogador nao teria como saber que 40% na Terra e 40% num chao
+		// 10x mais pesado sao coisas completamente diferentes -- o `weight_ratio` multiplica a
+		// gravidade local, e e essa multiplicacao que vira panqueca.
+		double r = Jandirus.Core.Stats.Esmagamento.Razao(pl.Ficha);
+		Avisar(pl, $"você veste {pct:0}% do peso máximo: {r:0.##}x o que seu corpo aguenta nesta "
+				   + $"gravidade, e {pl.Ficha.weight:0.##}x de ganho no treino.");
+
+		// E O AVISO DE QUE PASSOU DO PONTO. O peso esmaga pela MESMA regra da gravidade (a pior das
+		// duas razoes manda), entao vestir demais nao e "mais lento": e perder vida por segundo, e
+		// acima de 4x e ficar preso no chao sem conseguir tirar os pesos andando ate alguem. Descobrir
+		// isso pela barra de vida caindo seria uma pegadinha.
+		if (r > 1)
+			Avisar(pl, r >= Jandirus.Core.Stats.Esmagamento.RazaoQuePrende
+				? "ATENÇÃO: você não consegue nem andar com isso, e vai perder vida enquanto estiver assim."
+				: "seu corpo range sob o peso: você vai perder vida e velocidade enquanto estiver assim.");
 	}
 
 	private void TirarPeso(ServerPlayer pl) => AjustarPeso(pl, "0");

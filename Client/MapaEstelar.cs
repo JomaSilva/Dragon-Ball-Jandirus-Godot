@@ -248,8 +248,11 @@ public partial class MapaEstelar : Control
 	// =====================================================================
 	public override void _Ready()
 	{
-		// PARA O EVENTO AQUI. Este widget mora dentro do ScrollContainer do menu: sem `Stop`, a roda
-		// do mouse rolaria a pagina em vez de dar zoom, e o arrasto arrastaria a rolagem.
+		// PARA O EVENTO AQUI. Este widget mora dentro do ScrollContainer do menu: sem `Stop`, o
+		// arrasto arrastaria a rolagem e o clique vazaria pro que estiver atras.
+		//
+		// `Stop` NAO segura a roda do mouse, e a correcao dela mora no `_GuiInput` -- ver o bloco
+		// comprido no braco `WheelUp`/`WheelDown`, que explica por que o freio da roda e outro.
 		MouseFilter = MouseFilterEnum.Stop;
 		// ALTO O BASTANTE PRA SER CARTA, baixo o bastante pra o painel do destino caber embaixo
 		// sem rolagem. Medido na tela: com 380 o botao "Viajar" ficava fora da area visivel.
@@ -284,6 +287,17 @@ public partial class MapaEstelar : Control
 	public static Vector2? MinhaPosicaoNaGalaxia()
 	{
 		if (GameClient.Instance is not { } cli) return null;
+
+		// ============================ A BORDO, "EU" SOU A NAVE ============================
+		// O interior de uma Capital Ship nao fica em lugar nenhum do universo -- ele e uma
+		// `ZoneKey.Interior`, sem chunk e sem planeta. Sem esta linha a escada abaixo cairia no
+		// `UltimaNoEspaco`, que e de onde o jogador DESCEU pela ultima vez: alguem que embarcou na
+		// Terra e viajou uma hora se veria na Terra.
+		//
+		// A resposta chega do servidor pelo "Observar" da ponte (`Protocol.S2C.Nave`), que e o unico
+		// que sabe onde o casco esta -- o cliente nao recebe pacote nenhum da zona de fora.
+		if (cli.NaveVista is { } nave) return nave.Pos;
+
 		if (Espaco.EhEspaco(cli.Zone)) return World.Instancia?.PosicaoLocal;
 
 		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
@@ -308,8 +322,35 @@ public partial class MapaEstelar : Control
 		{
 			switch (b.ButtonIndex)
 			{
-				case MouseButton.WheelUp when b.Pressed: Aproximar(PassoDeZoom, b.Position); return;
-				case MouseButton.WheelDown when b.Pressed: Aproximar(1f / PassoDeZoom, b.Position); return;
+				// ============================ A RODA DA ZOOM, E NAO ROLA A PAGINA ============================
+				// O pedido do dono, literal: *"vc roda o scroll do mouse ele DESCE A TELA ao inves de dar
+				// ZOOM, deveria dar PRIORIDADE PRO ZOOM ao inves de rolar a pagina"*.
+				//
+				// O zoom nunca deixou de funcionar -- o que faltava era o evento PARAR aqui. Medido, um
+				// clique de roda pra baixo: a escala caiu o passo exato (0,00007662 -> 0,00006130) E o
+				// `ScrollContainer` do menu rolou 52 px no mesmo quadro. O jogador via as duas coisas, e
+				// 52 px de pagina andando ganham do olho contra 25% de zoom.
+				//
+				// O `MouseFilter = Stop` do `_Ready` NAO fecha isso: no Godot 4 todo Control nasce com
+				// `mouse_force_pass_scroll_events = true`, uma excecao que existe pra rolagem ANINHADA
+				// funcionar e que, de proposito, fura o `Stop` -- so pros eventos de roda.
+				//
+				// POR QUE `AcceptEvent()`, E POR QUE AQUI DENTRO:
+				//   * `AcceptEvent` marca o evento como consumido no viewport, e essa marca e o UNICO
+				//     freio que a subida pela arvore respeita ANTES de consultar o `force_pass`. Nao
+				//     basta o `return`: o `return` sai do MEU tratador, nao da subida.
+				//   * no braco da roda, e nao no `_Ready` (`MouseForcePassScrollEvents = false` tambem
+				//     resolveria): assim eu engulo so o evento que eu REALMENTE tratei. Roda horizontal
+				//     e gestos de pan, que este mapa nao trata, continuam subindo pra quem trata.
+				//   * e JAMAIS no ScrollContainer: ele e o unico rolador vertical do menu P e rola TODAS
+				//     as abas (Stats, Learning, Tech...). Consertar o mapa mexendo nele trocaria este
+				//     defeito por um bem maior.
+				//
+				// A consequencia e a que o dono pediu: DENTRO do retangulo do mapa a roda so da zoom; um
+				// pixel fora dele a pagina rola como sempre rolou.
+				// ==========================================================================================
+				case MouseButton.WheelUp when b.Pressed: Aproximar(PassoDeZoom, b.Position); AcceptEvent(); return;
+				case MouseButton.WheelDown when b.Pressed: Aproximar(1f / PassoDeZoom, b.Position); AcceptEvent(); return;
 
 				case MouseButton.Left when b.Pressed:
 					GrabFocus();
@@ -624,6 +665,29 @@ public partial class MapaEstelar : Control
 	/// <summary>Os dois tetos da varredura de sistemas, em numero. SO PRA BANCADA.</summary>
 	public static (float CelulaMinima, int CelulasMaximas) TetosDeTeste => (CelulaMinimaPx, CelulasMax);
 
+	/// <summary>
+	/// OS DOIS FINS DA ESCADA DE ZOOM. SO PRA BANCADA.
+	///
+	/// Sem eles a bancada so conseguiria afirmar "a escala parou de mudar" -- e isso fica VERDE tambem
+	/// quando o zoom morreu por inteiro. O que separa "o limite segurou" de "a roda parou de funcionar"
+	/// e comparar o ponto de parada com o limite ESCRITO aqui.
+	/// </summary>
+	public static (float Min, float Max) LimitesDeTeste => (EscalaMin, EscalaMax);
+
+	/// <summary>
+	/// A CONVERSAO MUNDO &lt;-&gt; TELA, em coordenadas GLOBais. SO PRA BANCADA.
+	///
+	/// A bancada empurra roda de verdade pelo viewport, e pra isso ela precisa de ponto GLOBAL -- o
+	/// <see cref="ParaTela"/> devolve ponto LOCAL do widget. Ela ja teve uma copia da formula dentro
+	/// dela, e copia de formula e o tipo de coisa que fica verde depois que o original muda: o dia em
+	/// que o desenho ganhar uma margem, a copia continuaria apontando pro lugar velho e a checagem da
+	/// ancora aprovaria um zoom que fugiu do cursor.
+	/// </summary>
+	public Vector2 TelaDeTeste(Vector2 mundo) => GetGlobalRect().Position + ParaTela(mundo);
+
+	/// <summary>A volta do <see cref="TelaDeTeste"/>: que ponto do mundo esta debaixo deste pixel.</summary>
+	public Vector2 MundoDeTeste(Vector2 telaGlobal) => ParaMundo(telaGlobal - GetGlobalRect().Position);
+
 	/// <summary>Clica onde este sistema esta desenhado. E o caminho do mouse, sem mouse.</summary>
 	public bool ClicarNoSistema(SistemaSolar s)
 	{
@@ -919,11 +983,30 @@ public partial class MapaEstelar : Control
 		// PRE-FEITO x GERADO se distinguem pela COR, e a diferenca importa: so o pre-feito tem
 		// superficie pra pousar hoje. Um mapa que os desenha igual promete pouso onde nao ha.
 		bool ehSelecionado = Selecionado is { } s && s.Nome == p.Nome;
-		Color cor = p.Premade ? Tema.Destaque : new Color("6d7ba8");
 
-		DrawCircle(c, r, new Color(cor, 0.22f));            // a atmosfera
-		DrawCircle(c, r * 0.72f, cor);                       // o corpo
-		if (p.Premade) DrawArc(c, r + 2, 0, Mathf.Tau, 24, new Color(cor, 0.55f), 1.5f);
+		// ============================ O MUNDO MORTO NAO PODE PARECER VIVO ============================
+		// A carta e a unica coisa que o jogador consulta antes de gastar horas de voo -- e ela
+		// **enumera planetas sozinha**, sem perguntar ao servidor. Sem esta consulta ela desenharia
+		// um disco azul cheio, com nome, e um botao "Viajar" em cima de um campo de destrocos.
+		//
+		// O DESENHO E O DE UM CADAVER e nao um sumico: apagar o planeta da carta seria pior --
+		// quem conhecia Vegeta acharia que a carta quebrou, e ninguem saberia que a saga aconteceu.
+		// Fica um anel vazio, cinza, sem miolo: a forma diz "havia algo aqui".
+		// ======================================================================================
+		bool morto = GameClient.Instance?.Mortos.Morto(p) ?? false;
+		Color cor = morto ? new Color("4a4a4e") : p.Premade ? Tema.Destaque : new Color("6d7ba8");
+
+		if (morto)
+		{
+			DrawArc(c, r, 0, Mathf.Tau, 24, new Color(cor, 0.85f), 1.5f);
+			DrawArc(c, r * 0.45f, 0, Mathf.Tau, 16, new Color(cor, 0.4f), 1f);
+		}
+		else
+		{
+			DrawCircle(c, r, new Color(cor, 0.22f));            // a atmosfera
+			DrawCircle(c, r * 0.72f, cor);                       // o corpo
+			if (p.Premade) DrawArc(c, r + 2, 0, Mathf.Tau, 24, new Color(cor, 0.55f), 1.5f);
+		}
 
 		if (ehSelecionado)
 		{
@@ -937,9 +1020,15 @@ public partial class MapaEstelar : Control
 
 		Font fonte = ThemeDB.FallbackFont;
 		int tam = p.Premade ? 13 : 11;
-		Vector2 medida = fonte.GetStringSize(p.Nome, HorizontalAlignment.Left, -1, tam);
-		DrawString(fonte, c + new Vector2(-medida.X / 2f, r + tam + 2), p.Nome,
-				   HorizontalAlignment.Left, -1, tam, p.Premade ? Tema.Texto : Tema.TextoFraco);
+
+		// O ROTULO DIZ O QUE ACONTECEU. "Vegeta" desenhado em cinza ainda parece um planeta que
+		// existe -- e a diferenca entre "nao consigo pousar" e "nao ha onde pousar" e a coisa que o
+		// jogador precisa saber antes de sair voando pra la.
+		string rotulo = morto ? $"{p.Nome} (destruído)" : p.Nome;
+		Vector2 medida = fonte.GetStringSize(rotulo, HorizontalAlignment.Left, -1, tam);
+		DrawString(fonte, c + new Vector2(-medida.X / 2f, r + tam + 2), rotulo,
+				   HorizontalAlignment.Left, -1, tam,
+				   morto ? new Color("8a6a6a") : p.Premade ? Tema.Texto : Tema.TextoFraco);
 
 		// "VOCE ESTA AQUI": estou dentro da area de pouso deste planeta.
 		if (eu is { } meu && meu.DistanceTo(new Vector2(p.Pos.X, p.Pos.Y)) <= p.Raio)

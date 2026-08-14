@@ -21,9 +21,6 @@ public static class CombatFx
     /// <summary>Seis variantes de faisca, um quadro cada. E o `attackspark` do original.</summary>
     private const string Faisca = Arte + "effects/attackspark.tres";
 
-    /// <summary>O borrao de velocidade da esquiva.</summary>
-    private const string Zanzo = Arte + "Zanzoken.tres";
-
     private static readonly RandomNumberGenerator Rng = new();
 
     // =====================================================================
@@ -108,53 +105,81 @@ public static class CombatFx
     }
 
     // =====================================================================
-    // FANTASMA DE ESQUIVA
+    // O JATO DE SANGUE DO MEMBRO ARRANCADO
     // =====================================================================
-    private const string ShaderSilhueta = """
-        shader_type canvas_item;
-        uniform vec4  cor : source_color = vec4(0.55, 0.80, 1.00, 1.0);
-        uniform float forca : hint_range(0.0, 1.0) = 1.0;
-        void fragment() {
-            float a = texture(TEXTURE, UV).a;
-            COLOR = vec4(cor.rgb, a * cor.a * forca);   // silhueta chapada
-        }
-        """;
-
-    private static Shader? _silhueta;
-    private static Shader SilhuetaShader => _silhueta ??= new Shader { Code = ShaderSilhueta };
+    /// <summary>Tres quadros de 32 px. E o `Blood Spray.dmi` do original, sem variante direcional.</summary>
+    private const string Jato = Arte + "Blood Spray.tres";
 
     /// <summary>
-    /// O BORRAO DA ESQUIVA. Tres silhuetas azul-gelo que somem em cascata -- o vocabulario do
-    /// `Zanzoken` do original, que hoje era o unico desfecho SEM nada na tela.
+    /// Meio segundo, e o numero e do original: `EffectStart` carrega o icone e faz `sleep(5)` antes
+    /// do `EffectEnd` (`EffectLayer.dm:110-116`), e `sleep(5)` no BYOND e 0,5 s. A folha confirma
+    /// por outro caminho -- os tres quadros duram 1+2+2 = 5 tiques a 10 fps. A arte foi desenhada
+    /// pra caber exatamente nesse prazo.
     /// </summary>
-    public static void Esquiva(Node2D pai, Vector2 onde, Vector2 fuga)
+    private const double DuracaoDoJato = 0.5;
+
+    /// <summary>
+    /// O JATO DE SANGUE de quem acabou de perder um membro.
+    ///
+    /// ============================ ELE ACOMPANHA O CORPO, MAS NAO E FILHO DELE ============================
+    /// No original o jato e um overlay do mob com `VIS_INHERIT_DIR|VIS_INHERIT_ID` (`Overlays.dm:19`):
+    /// nasce NO corpo e anda com ele. Aqui ele nao pode ser filho do corpo -- e a regra do cabecalho
+    /// desta classe, e ela existe por um caso que e exatamente este: perder um membro pode MATAR, e
+    /// um efeito filho do corpo some junto quando o node do morto e liberado, cortando justamente a
+    /// animacao que anunciava a morte.
+    ///
+    /// A saida e o <see cref="RemoteTransform2D"/>: um node sem desenho, filho do corpo, que EMPURRA
+    /// a posicao pro jato que vive na camada de atores. O jato acompanha sem herdar escala, sem
+    /// herdar o `Modulate` do flash vermelho de dano, e -- quando o corpo morre e some -- ele apenas
+    /// para de seguir e termina onde estava, em vez de sumir no meio.
+    ///
+    /// `UpdateRotation`/`UpdateScale` DESLIGADOS de proposito: o que se quer copiar e onde o corpo
+    /// esta, nao o que fizeram com ele.
+    /// ====================================================================================================
+    /// </summary>
+    public static void JatoDeSangue(Node2D pai, Node2D corpo)
     {
-        var f = ResourceLoader.Load<SpriteFrames>(Zanzo);
-        if (f == null) return;
-        string[] nomes = f.GetAnimationNames();
-        if (nomes.Length == 0 || f.GetFrameCount(nomes[0]) == 0) return;
+        var f = ResourceLoader.Load<SpriteFrames>(Jato);
+        if (f == null || !f.HasAnimation("default")) return;
 
-        Texture2D tex = f.GetFrameTexture(nomes[0], 0);
-
-        for (int i = 0; i < 3; i++)
+        var s = new AnimatedSprite2D
         {
-            var mat = new ShaderMaterial { Shader = SilhuetaShader };
-            mat.SetShaderParameter("forca", 0.7f);
+            SpriteFrames = f,
+            Animation = "default",
+            Frame = 0,
+            // GLOBAL, e nao `corpo.Position`: o `pai` e a camada de atores e o corpo e filho dela,
+            // mas ler a global e o que continua certo se um dia o corpo passar a viver aninhado em
+            // outro node (a montaria, o veiculo, o interior de nave).
+            Position = corpo.GlobalPosition,
+            ZIndex = 28,
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+        };
+        pai.AddChild(s);
+        s.Play();
 
-            var s = new Sprite2D
-            {
-                Texture = tex,
-                Position = onde + fuga * (i * 6),
-                Material = mat,
-                ZIndex = 28,
-                TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
-            };
-            pai.AddChild(s);
+        // O ELO QUE FAZ ELE SEGUIR. Ver o cabecalho.
+        var elo = new RemoteTransform2D
+        {
+            UseGlobalCoordinates = true,
+            UpdateRotation = false,
+            UpdateScale = false,
+            RemotePath = s.GetPath(),
+        };
+        corpo.AddChild(elo);
 
-            Tween t = s.CreateTween();
-            t.TweenInterval(i * 0.05);
-            t.TweenMethod(Callable.From<float>(v => mat.SetShaderParameter("forca", v)), 0.7f, 0f, 0.18);
-            t.TweenCallback(Callable.From(s.QueueFree));
-        }
+        // O ELO MORRE COM O JATO. Sem isto ele ficaria no corpo pra sempre empurrando posicao pra um
+        // node liberado -- um vazamento por membro arrancado, do tipo que so aparece em sessao longa.
+        Tween t = s.CreateTween();
+        t.TweenInterval(DuracaoDoJato);
+        t.TweenCallback(Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(elo)) elo.QueueFree();
+            s.QueueFree();
+        }));
     }
+
+    // A ESQUIVA SAIU DAQUI. Ela nao e efeito de impacto: e uma TROCA de sprite (o `flick` do DM),
+    // e por isso mora num node que e filho do proprio corpo -- ver `EsquivaZanzoken`. O que estava
+    // aqui era o oposto do original (tres silhuetas TINGIDAS por cima de um corpo que continuava
+    // visivel) e foi deletado inteiro, junto com o shader de tinta que so ele usava.
 }

@@ -69,9 +69,41 @@ public partial class GameServer
 			return true;
 		}
 
+		// ---- 1b. UMA NAVE NA CELULA? ----
+		// O `verb/Destroy` do `obj/PlayerShip` (`ShipVessel.dm:239-247`) e um verb de clique: `set src
+		// in view(6)`, e ele bate com `usr.expressedBP / 7 * usr.Ephysoff`. Aqui ele entra pelo SOCO,
+		// que e o caminho de primeira classe deste port pra quebrar cenario -- e com o mesmo `bp` que
+		// a obra recebe, pra a nave e a bancada do mesmo dono cairem sob a mesma forca.
+		//
+		// DEPOIS DA OBRA E ANTES DO TURF, no mesmo lugar em que a obra entra e pelo mesmo motivo: a
+		// nave OCUPA a celula (ela e parede pelo `AplicarColisaoDasObras`), e perguntar do chao antes
+		// derrubaria o piso debaixo dela.
+		if (NaveNaCelula(a.Zone, cx, cy) is { } nave)
+		{
+			Baque(a, nivel);
+			EstragarNave(nave, bp, a);
+			return true;
+		}
+
 		// ---- 2. UM TILE DENSO? ----
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(a.Zone);
-		if (mapa == null || !mapa.BlockedCell(cx, cy)) return false;
+
+		// ============================ AGUA NAO SE SOCA ============================
+		// A pergunta inteira ("o punho alcanca o cenario desta celula?") e do `ClasseDeAgua`, e nao
+		// de duas linhas escritas aqui -- ver `ClasseDeAgua.SocoAlcanca`, que testa a agua ANTES do
+		// bitset. Hoje isso nao muda desfecho nenhum (agua nao esta no `.col`, entao o `BlockedCell`
+		// ja diria nao), e e de proposito: no dia em que alguem marcar agua no `.col` (a tentacao
+		// obvia, "e tipo uma parede"), o lago viraria cenario socavel e o `DerrubarCelula` o abriria
+		// em chao seco permanente, sem nada dizendo que aquilo esta errado.
+		//
+		// E o que o dono pediu, na letra: "ela e tipo uma parede, mas N DA PRA SOCAR (igual o
+		// chao)". No original o punho tambem nao a alcanca -- `attack_proc.dm:96` exige
+		// `T.Resistance && T.density`, e agua tem `density = 0`.
+		//
+		// ESTA E A FUNCAO QUE A BANCADA MEDE (`agua-prova`, familia 3), e por isso ela mora no Core:
+		// enquanto a regra estava escrita aqui dentro, a bancada so conseguia testar uma copia dela.
+		// ==========================================================================
+		if (mapa == null || !ClasseDeAgua.SocoAlcanca(mapa, cx, cy)) return false;
 
 		// O SOM SAI ANTES DE SABER SE QUEBROU, e sai sempre. E o que o original faz
 		// (`attack_proc.dm:99-103`: os sons de soco vem antes do `prob(34)`), e e o que da peso a
@@ -136,6 +168,23 @@ public partial class GameServer
 		Construcao? c = _obras?.Get(o.Tipo);
 		string nome = c?.Nome ?? o.Tipo;
 
+		// ============================ O QUE NAO SE QUEBRA ============================
+		// `turf/Teleporters` tem `destroyable = 0` no DM (`Code/Turfs.dm:102`), e a porta da Sala do
+		// Tempo e um deles. Ela virou mobilia pra ganhar a tecla E (ver `GameServer.SalaDoTempo.cs`),
+		// e mobilia de mapa nasce com a armadura PADRAO -- ou seja, cai no primeiro soco de
+		// qualquer um. Isso e inofensivo num banco (ele volta no proximo boot), e nao e aqui: a
+		// porta e o UNICO caminho pra dentro do z13, e um soco a esmo trancaria a sala pro servidor
+		// inteiro ate alguem reiniciar.
+		//
+		// A GUARDA E POR TIPO e nao um campo do catalogo porque `destroyable` nao e extraido hoje
+		// -- o dia em que outra coisa indestrutivel entrar no catalogo, o certo e o extrator trazer
+		// o campo e esta linha virar `c?.Destrutivel == false`.
+		if (o.Tipo == TipoDaPorta)
+		{
+			if (autor != null) Avisar(autor, $"{nome} não cede: a barreira mágica engole a pancada.");
+			return;
+		}
+
 		double antes = o.Armadura;
 		o.Armadura = Armadura.Bater(o.Armadura, o.ArmaduraMax, dano);
 
@@ -151,7 +200,7 @@ public partial class GameServer
 		{
 			if (autor != null)
 				Avisar(autor, $"{nome} range ({o.Armadura / o.ArmaduraMax * 100:0}% inteira).");
-			MandarObras(ZoneKey.Premade(o.Zona));
+			MandarObras(o.Zona);
 			return;
 		}
 
@@ -159,7 +208,7 @@ public partial class GameServer
 		_noChao.Remove(o);
 		if (!o.DoMapa) GravarMundo();
 
-		var zona = ZoneKey.Premade(o.Zona);
+		ZoneKey zona = o.Zona;
 
 		// A COLISAO E REFEITA PELA LISTA INTEIRA (ver `AplicarColisaoDasObras`): tirar a obra sem
 		// isto deixaria a parede dela no lugar, e o corpo levaria correcao num ponto vazio.
@@ -186,8 +235,23 @@ public partial class GameServer
 	/// </summary>
 	private Obra? ObraNaCelula(ZoneKey zona, int cx, int cy) => _noChao.FirstOrDefault(o =>
 	{
-		if (o.Zona != zona.Name) return false;
+		if (!o.Zona.Equals(zona)) return false;
 		(int ox, int oy) = CatalogoDeObras.Celula(o.X, o.Y);
+		return ox == cx && oy == cy;
+	});
+
+	/// <summary>
+	/// A NAVE PARADA que ocupa uma celula. Irma do <see cref="ObraNaCelula"/>, e com a MESMA conta de
+	/// celula pelo mesmo motivo: se as duas divergirem meio tile, existe uma celula que bloqueia por
+	/// causa da nave e onde nenhum soco a encontra.
+	///
+	/// O CRIVO E A `ZoneKey` INTEIRA (`NavesParadasEm`) e nao o nome -- e o mesmo motivo de sempre
+	/// neste sistema: socar o chao de um planeta gerado nao pode acertar a nave de um planeta
+	/// homonimo do outro lado da galaxia. A `Obra` acima ainda filtra por nome, e ainda esta errada.
+	/// </summary>
+	private Nave? NaveNaCelula(ZoneKey zona, int cx, int cy) => NavesParadasEm(zona).FirstOrDefault(n =>
+	{
+		(int ox, int oy) = CatalogoDeObras.Celula(n.X, n.Y);
 		return ox == cx && oy == cy;
 	});
 
@@ -256,7 +320,7 @@ public partial class GameServer
 	private void MartelarNaObra(ServerPlayer pl)
 	{
 		Obra? alvo = _noChao
-			.Where(o => o.Zona == pl.Zone.Name)
+			.Where(o => o.Zona.Equals(pl.Zone))
 			.OrderBy(o => (o.X - pl.Pos.X) * (o.X - pl.Pos.X) + (o.Y - pl.Pos.Y) * (o.Y - pl.Pos.Y))
 			.FirstOrDefault();
 		if (alvo == null) { GD.Print("[server] BANCADA: esta zona nao tem obra pra socar"); return; }

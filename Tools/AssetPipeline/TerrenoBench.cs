@@ -86,6 +86,75 @@ public static class TerrenoBench
 		// 1000 custa ~8x um de 352, mas so aparece em 3% dos mundos.
 		double custoMedio = somaLado / achados * (somaLado / achados) * 0.22 / 1000;
 		Console.WriteLine($"  custo medio estimado por pouso novo: ~{custoMedio:0} ms");
+
+		Agua();
+	}
+
+	/// <summary>
+	/// A AGUA DOS MUNDOS GERADOS -- e as duas coisas que ela podia ter quebrado.
+	///
+	/// ============================ AS DUAS PERGUNTAS ============================
+	/// 1. **DETERMINISMO**: a mesma semente da o mesmo mundo? O plano de agua nasce no MESMO laco
+	///    que o de parede e a clareira mexe nos dois, entao ele entrou no caminho que decide o
+	///    ponto de pouso -- e ponto de pouso que muda entre duas geracoes iguais e um mundo que se
+	///    reescreve debaixo de quem esta nele. A `Assinatura` cobre chao, cobertura e colisao.
+	///
+	/// 2. **NINGUEM POUSA NO MAR**: enquanto agua era chao comum, o degrau 2 da busca de clareira
+	///    (`AcharOuAbrirClareira`) aceitava qualquer celula "que nao fosse parede" -- inclusive um
+	///    oceano. Agora que ela para quem esta a pe, isso seria nascer preso: livre pela colisao,
+	///    parado pela regra. Um planeta Aquatico e o caso que expoe, e ele e SORTEAVEL.
+	/// ==========================================================================
+	/// </summary>
+	private static void Agua()
+	{
+		Console.WriteLine("\n=== AGUA NOS MUNDOS GERADOS ===");
+
+		int seco = 0, molhado = 0, noMar = 0, divergiu = 0;
+		foreach (BiomaDeTerreno bioma in Enum.GetValues<BiomaDeTerreno>())
+		{
+			double somaPct = 0;
+			int n = 0;
+			for (int i = 0; i < 12; i++)
+			{
+				var p = new ParametrosDeTerreno
+				{
+					Seed = (ulong)(0x51EED + i * 104729),
+					Largura = 256,
+					Altura = 256,
+					Bioma = bioma,
+					Gravidade = 5,
+					Nome = "bancada",
+				};
+
+				TerrenoGerado t = GeradorDeTerreno.Gerar(p);
+
+				// MESMA SEMENTE, SEGUNDA GERACAO: tem que dar o mesmo mundo e o MESMO pouso.
+				TerrenoGerado t2 = GeradorDeTerreno.Gerar(p);
+				// COM OS PARENTESES. `Assinatura` e METODO, e sem eles o C# converte os dois em
+				// delegates e compara as REFERENCIAS -- que nunca sao iguais. A bancada saiu
+				// vermelha em 72 de 72 mundos que estavam perfeitamente determinísticos, e um
+				// vermelho falso e tao caro quanto um verde falso: ele manda procurar defeito onde
+				// nao ha.
+				if (t.Assinatura() != t2.Assinatura()
+					|| t.SpawnCelX != t2.SpawnCelX || t.SpawnCelY != t2.SpawnCelY) divergiu++;
+
+				int agua = 0;
+				for (int y = 0; y < t.Altura; y++)
+					for (int x = 0; x < t.Largura; x++)
+						if (t.Colisao.EhAgua(x, y)) agua++;
+
+				if (agua == 0) seco++; else molhado++;
+				if (t.Colisao.EhAgua(t.SpawnCelX, t.SpawnCelY)) noMar++;
+
+				somaPct += 100.0 * agua / (t.Largura * t.Altura);
+				n++;
+			}
+			Console.WriteLine($"  {bioma,-12} agua media {somaPct / n,5:0.0}% do mapa");
+		}
+
+		Console.WriteLine($"\n  mundos gerados: {seco + molhado} | com agua: {molhado} | secos: {seco}");
+		Console.WriteLine($"  [{(divergiu == 0 ? "ok  " : "FALHA")}] mesma semente = mesmo mundo E mesmo pouso ({divergiu} divergencia(s))");
+		Console.WriteLine($"  [{(noMar == 0 ? "ok  " : "FALHA")}] nenhum pouso caiu dentro da agua ({noMar} caso(s))");
 	}
 
 	private static double Medir(int lado, int vezes)

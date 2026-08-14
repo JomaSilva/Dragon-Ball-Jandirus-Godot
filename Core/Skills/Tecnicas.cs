@@ -73,9 +73,85 @@ public static partial class Tecnicas
 	}
 	public static IEnumerable<Tecnica> Todas => Tudo.Values;
 
+	/// <summary>
+	/// OS IDS QUE ESTA TECNICA CONHECE COM EFEITO -- o numerador do relatorio do catalogo.
+	///
+	/// Nao e o mesmo que <see cref="Portadas"/> (que e a contagem): esta lista existe pra ser
+	/// COMPARADA com o espelho do Core, e a comparacao e a unica coisa que impede o console de
+	/// subcontar o proprio progresso. Ver <see cref="DesencontroDoEspelho"/>.
+	/// </summary>
+	public static IEnumerable<string> Vivas =>
+		Tudo.Values.Where(t => t.Modo != Modo.NaoPortada).Select(t => t.Id);
+
+	// =====================================================================
+	// O ESPELHO DO CORE -- e a conta que ele existe pra fechar
+	// =====================================================================
+	/// <summary>
+	/// OS IDS QUE O ESPELHO DO CORE (<c>Tecnicas.Portadas.cs</c>) DECLARA.
+	///
+	/// ============================ POR QUE ISTO PRECISOU VIRAR DADO ============================
+	/// O efeito de cada tecnica e codigo de servidor e mora nos `GameServer.Tecnicas.G*.cs`; o
+	/// DESCRITOR (id, nome, modo, texto) e dado puro e mora aqui, porque o console do extrator
+	/// (`dotnet run -- efeitos`) nao carrega Godot e mesmo assim precisa contar o que ja foi
+	/// portado. Sao, portanto, DUAS BOCAS pro mesmo fato -- e o cabecalho de `Tecnicas.Portadas.cs`
+	/// ja avisava, por escrito, o que acontece quando elas divergem: *"um relatorio que subconta o
+	/// proprio progresso e tao ruim quanto um que superconta"*.
+	///
+	/// E foi exatamente o que aconteceu de novo: o lote G7 registrou dezesseis verbos no servidor e
+	/// **nenhuma linha foi acrescentada ao espelho**. Durante uma sessao inteira o console respondeu
+	/// "52 com efeito portado" enquanto o jogo tinha 68. Ninguem viu, porque um numero baixo demais
+	/// nao quebra nada -- ele so faz a divida parecer maior do que e, que e o jeito mais silencioso
+	/// de um relatorio mentir.
+	///
+	/// Enquanto o registro era so uma chamada, a divergencia era invisivel: as duas bocas escreviam
+	/// no MESMO dicionario e o segundo registro cobria o primeiro. Guardando QUEM veio do espelho, a
+	/// pergunta "as duas contam a mesma coisa?" passa a ter resposta em codigo -- e a bancada
+	/// `--catalogoteste` a faz toda rodada.
+	/// ======================================================================================
+	/// </summary>
+	public static IEnumerable<string> NoEspelho => Espelho;
+
+	private static readonly HashSet<string> Espelho = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// AS DUAS BOCAS DIVERGIRAM? Funcao PURA -- ela recebe os dois conjuntos em vez de le-los, e e
+	/// por isso que a bancada consegue INJETAR o defeito (chamar com um par sintetico) em vez de
+	/// so afirmar sobre o par de verdade. Uma checagem que so sabe olhar pro estado real nunca
+	/// prova que ela reprovaria.
+	///
+	/// As duas direcoes sao defeitos DIFERENTES, e por isso saem separadas:
+	///   * <c>SoNoJogo</c>  -- o servidor porta e o espelho nao sabe: **o console subconta**;
+	///   * <c>SoNoEspelho</c> -- o espelho promete um efeito que o servidor nao registra mais: o
+	///     jogador ve o botao, aperta, e ouve *"ainda nao tem efeito"* sobre uma tecnica que o
+	///     catalogo jura estar pronta.
+	/// </summary>
+	public static (List<string> SoNoJogo, List<string> SoNoEspelho) DesencontroDoEspelho(
+		IEnumerable<string> vivas, IEnumerable<string> espelho)
+	{
+		var e = new HashSet<string>(espelho, StringComparer.OrdinalIgnoreCase);
+		var v = new HashSet<string>(vivas, StringComparer.OrdinalIgnoreCase);
+		return ([.. v.Where(x => !e.Contains(x)).Order(StringComparer.OrdinalIgnoreCase)],
+				[.. e.Where(x => !v.Contains(x)).Order(StringComparer.OrdinalIgnoreCase)]);
+	}
+
+	/// <summary>
+	/// O MARCO DE ONDE ESTE CATALOGO SAIU: **34 verbos com corpo**, medidos no censo que abriu esta
+	/// frente (165 folhas vivas concediam 94 verbos e 34 tinham efeito; 60 botoes prometiam e nao
+	/// entregavam).
+	///
+	/// E um numero HISTORICO e por isso pode ser uma constante: ele nao mede o hoje, ele marca o
+	/// ontem. A bancada imprime `34 -> N` toda rodada e exige que N nunca desca -- que e a unica
+	/// forma de uma contagem provar progresso em vez de so descreve-lo.
+	/// </summary>
+	public const int MarcoDeVerbosComCorpo = 34;
+
 	static Tecnicas()
 	{
-		// as 28 portadas: tabela gerada, no Core, pra que a bancada tambem as enxergue
+		// AS DUAS PORTAS DESTA CASA SAO ESPELHO. O que for registrado depois -- os lotes do
+		// servidor -- e "vivo mas fora do espelho" ate alguem trazer a linha pra ca.
+		_montandoEspelho = true;
+
+		// as portadas: tabela gerada, no Core, pra que a bancada tambem as enxergue
 		RegistrarPortadas();
 
 		Por("Solar_Flare", "Solar Flare", Modo.Instantanea,
@@ -100,7 +176,12 @@ public static partial class Tecnicas
 		// AS NAO-PORTADAS NAO SAO LISTADAS AQUI. Antes havia uma lista de quarenta nomes; ela
 		// virou divida no dia em que o extrator achou setenta e cinco verbs a mais. Quem nao
 		// esta nesta tabela e sintetizado por `Get()` como nao-portado, com o mesmo texto.
+
+		_montandoEspelho = false;
 	}
+
+	/// <summary>Verdadeiro enquanto o construtor estatico monta o espelho. Ver <see cref="NoEspelho"/>.</summary>
+	private static bool _montandoEspelho;
 
 	/// <summary>
 	/// REGISTRA uma tecnica portada. Publico pra que cada lote de tecnicas viva no proprio
@@ -110,7 +191,10 @@ public static partial class Tecnicas
 		=> Por(id, nome, modo, desc, aba);
 
 	private static void Por(string id, string nome, Modo modo, string desc, string aba = "Skills")
-		=> Tudo[id] = new Tecnica { Id = id, Nome = nome, Modo = modo, Desc = desc, Aba = aba };
+	{
+		Tudo[id] = new Tecnica { Id = id, Nome = nome, Modo = modo, Desc = desc, Aba = aba };
+		if (_montandoEspelho && modo != Modo.NaoPortada) Espelho.Add(id);
+	}
 
 	// =====================================================================
 	// AS FORMULAS -- copiadas do corpo dos verbs, nao inventadas

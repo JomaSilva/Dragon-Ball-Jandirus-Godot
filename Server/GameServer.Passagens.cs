@@ -98,6 +98,13 @@ public sealed partial class GameServer
 			foreach (Passagem p in lista)
 			{
 				if (p.X != cx || p.Y != cy) continue;
+
+				// A PRISAO DA SALA DO TEMPO RECUSA AQUI, e nao no `Atravessar`: a recusa e uma
+				// resposta ao GESTO (pisar na saida), e ela precisa acontecer antes de a carencia
+				// ser armada la dentro -- senao quem esta preso ficaria 1,5 s sem nem ouvir por que
+				// nao saiu. Ver `GameServer.SalaSessao.cs`.
+				if (APrisaoRecusaASaida(pl, p)) break;
+
 				Atravessar(pl, p);
 				break;
 			}

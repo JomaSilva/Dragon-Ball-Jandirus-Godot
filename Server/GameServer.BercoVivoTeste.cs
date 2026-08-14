@@ -511,27 +511,36 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// A DIVIDA DA GRAVIDADE NATAL -- e ela e MEDIDA, nao afirmada, de proposito.
+	/// A GRAVIDADE NATAL -- **esta divida foi PAGA, e agora isto e uma checagem.**
 	///
-	/// ============================ POR QUE ISTO NAO E UMA CHECAGEM ============================
+	/// ============================ O QUE ERA, E O QUE MUDOU ============================
 	/// O DM acostuma o corpo a gravidade do PROPRIO BERCO: `GravMastered = max(GravMastered,
 	/// PlanetGravity(spawnPlanet))` (`race.dm:130-131`), com o comentario do autor *"so high-grav
-	/// races aren't crushed/frozen at spawn"*. O port so tem a metade da RACA
-	/// (`Birth.GravidadeNatal`), e o `max` do berco nunca foi ligado.
+	/// races aren't crushed/frozen at spawn"*. O port so tinha a metade da RACA
+	/// (<see cref="Birth.GravidadeNatal"/>), e o `max` do berco nunca tinha sido ligado.
 	///
-	/// Enquanto todo mundo nascia na Terra a diferenca nao existia -- 1g contra 1g. Com berco de
-	/// verdade ela existe, e este bloco diz QUANTO: quantos corpos, de quantas racas, acordam num
-	/// chao mais pesado do que a raca deles domina.
+	/// Este bloco existia pra MEDIR a divida em vez de reprovar por ela -- a regra certa enquanto a
+	/// divida era conhecida e declarada, porque vermelho permanente e vermelho que ninguem le. Ele
+	/// media 17 bercos mais pesados que a maestria da raca, e o pior deles (Icer Planet, 15g) dava
+	/// razao 15 contra maestria 1.
 	///
-	/// Ela nao vira `Afirmar` porque a bancada nao pode ficar vermelha por uma divida CONHECIDA e
-	/// declarada -- vermelho permanente e vermelho que ninguem le mais, e ai o dia em que aparecer
-	/// um vermelho de verdade ninguem repara. O numero fica no log, com nome, ate o `max` entrar.
-	/// ====================================================================================
+	/// **A camada 2 da Sala do Tempo ligou o esmagamento**, e com ele a divida deixou de ser teorica:
+	/// razao 4 PRENDE o corpo no chao e 3 de vida por segundo comecam a cair. Um Frost Demon nasceria
+	/// imovel, morrendo, sem ter dado um passo. Entao o `max` entrou
+	/// (<see cref="Birth.AclimatarAoBerco"/>, chamado pelo `AplicarGravidade` e pelo pouso
+	/// procedural) e este bloco virou o que ele sempre quis ser: uma checagem.
+	///
+	/// ELE MEDE O CORPO, E NAO A TABELA. A conta antiga comparava `GravidadeNatal(raca)` com a
+	/// gravidade do berco -- e essa diferenca CONTINUA existindo, porque a tabela da raca nao mudou.
+	/// O que mudou e o que acontece com o corpo: ele e aclimatado ao chegar. Por isso a checagem
+	/// pergunta ao <see cref="Esmagamento"/>, que e quem o jogo consulta.
+	/// ==============================================================================
 	/// </summary>
 	private void MedirADividaDaGravidadeNatal()
 	{
 		var rng = new Random(555);
 		var pesados = new List<string>();
+		var esmagados = new List<string>();
 
 		foreach (string raca in ConjuntoDeRacas())
 			foreach (bool perto in new[] { false, true })
@@ -544,14 +553,33 @@ public partial class GameServer
 				// A gravidade do berco: a do mundo gerado, ou a ficha do pre-feito no `planetas.json`.
 				double doChao = b.PreFeito ? _planetas?.De(b.Planeta).Gravidade ?? 1 : b.Gravidade;
 				double daRaca = Birth.GravidadeNatal(raca);
+				if (doChao <= daRaca + 1e-9) continue;
 
-				if (doChao > daRaca + 1e-9)
-					pesados.Add($"{raca}{(perto ? "+vizinho" : "")} nasce em {b.Planeta} ({doChao:0.#}g) "
-							  + $"dominando {daRaca:0.#}g");
+				pesados.Add($"{raca}{(perto ? "+vizinho" : "")} nasce em {b.Planeta} ({doChao:0.#}g) "
+						  + $"e a raca domina {daRaca:0.#}g");
+
+				// O CORPO PELO CAMINHO DE PRODUCAO: nasce pela porta unica e e aclimatado pela mesma
+				// funcao que o servidor chama ao poe-lo no chao. Nada cravado a mao -- era justamente a
+				// atribuicao que faltava.
+				Jandirus.Core.Stats.Fighter f = Birth.Nascer(_racas!, raca,
+					escolhas.Length > 0 ? escolhas[0] : "", rng, $"Grav {raca}");
+				Birth.AclimatarAoBerco(f, doChao);
+				f.Planetgrav = doChao;
+				f.Tick();
+
+				if (Jandirus.Core.Stats.Esmagamento.Prende(f))
+					esmagados.Add($"{raca} em {b.Planeta} ({doChao:0.#}g), maestria {f.GravMastered:0.#}");
 			}
 
-		GD.Print($"[bercovivo]      DIVIDA (nao e falha): {pesados.Count} berco(s) mais pesados que a "
-			+ $"gravidade que a raca domina -- falta o `max` do race.dm:130-131");
+		// O TETO DESTA CHECAGEM DISPARA: se a lista de bercos pesados esvaziar (alguem mudou a tabela
+		// de bercos, ou o `planetas.json`), ela para de provar qualquer coisa -- e passaria verde por
+		// ausencia, que e o modo de falha registrado na PARTE 0.7 do plano.
+		Afirmar($"ha bercos mais pesados que a maestria da raca ({pesados.Count}) -- a checagem abaixo "
+				+ "tem o que testar", pesados.Count > 0);
+		Afirmar($"e NENHUM deles nasce esmagado: o `max` do race.dm:130-131 esta LIGADO "
+				+ $"({pesados.Count} berco(s) conferidos)", esmagados.Count == 0,
+				string.Join(" | ", esmagados.Take(4)));
+
 		foreach (string p in pesados.Take(8)) GD.Print($"[bercovivo]         {p}");
 		if (pesados.Count > 8) GD.Print($"[bercovivo]         ... e mais {pesados.Count - 8}");
 	}

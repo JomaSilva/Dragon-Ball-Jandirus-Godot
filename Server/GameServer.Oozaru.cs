@@ -432,8 +432,11 @@ public partial class GameServer
 		//    jeito de ganha-la -- e ela usa o MESMO livro e o MESMO `Subir` das formas da escada,
 		//    inclusive o aviso de marco ("forma DOMINADA"), que aqui e o aviso mais importante do
 		//    sistema: e a hora em que a fera para de ser um acidente.
+		//    E ELA PASSA PELO FUNIL DE ZONA (`SubirMaestriaDaZona`), como a da escada: dentro da Sala
+		//    do Tempo a maestria sobe 4x, e ligar isso so no tique das formas deixaria a fera de fora
+		//    -- calada, porque ninguem cronometra duas barras ao mesmo tempo.
 		if (!pl.Ficha.KO
-			&& pl.Forma.Maestria.Subir(Oozaru.Id(pl.Oozaru), Oozaru.MaestriaPorSegundo * dt, out string marco))
+			&& SubirMaestriaDaZona(pl, Oozaru.Id(pl.Oozaru), Oozaru.MaestriaPorSegundo, dt, out string marco))
 		{
 			Avisar(pl, $"{Catalogo.Def(Oozaru.Id(pl.Oozaru))?.Nome}: {marco}.");
 			pl.SigAtributos = "";   // a aba Formas mostra maestria: forca o proximo pacote a sair

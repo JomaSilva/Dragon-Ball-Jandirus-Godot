@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Forms;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -713,12 +713,17 @@ public partial class Transformacao : Node2D
 		// AQUI ELA E MAIS GENEROSA QUE O ORIGINAL, e e decisao do dono: o `emit_TransformMusic`
 		// (`BattleMusic.dm:135`) toca pra `view(src)`, ou seja so pra quem esta na tela.
 		//
-		// COMECA JUNTO COM A CENA E TOCA ATE O FIM DA FAIXA -- o `repetir: false` mais o
-		// `AudioDirector.AoTerminarMusica` devolvem o comando pra camada de baixo quando o arquivo
-		// acaba, e NADA aqui a corta no fim da cinematica (o DM tambem nao: la a faixa dura os
-		// `durationDs` dela, muito alem da cena). A camada `Transformacao` e a mais alta do
-		// `AudioDirector`, entao ela abafa a de combate pelo periodo -- que e o `duck_battle_music`
-		// do original.
+		// COMECA JUNTO COM A CENA E TOCA ATE O FIM DA FAIXA -- e NADA aqui a corta no fim da
+		// cinematica (o DM tambem nao: la a faixa dura os `durationDs` dela, muito alem da cena). A
+		// camada `Transformacao` e a mais alta do `AudioDirector`, entao ela abafa a de combate pelo
+		// periodo -- que e o `duck_battle_music` do original.
+		//
+		// E QUANDO O ARQUIVO ACABA, ESTA CENA NAO PEDE MAIS NADA. Nao ha `repetir` pra passar: a
+		// camada ja diz que este pedido e passageiro, e quem decide o que vem depois e o
+		// `AudioDirector.AoTerminar`, sozinho. Fora de combate o que vem depois e o silencio (*"no
+		// momento q ela acabar N TOCA MAIS NADA"*); com a tag de combate de pe o que vem depois e a
+		// trilha de batalha de volta (*"VOLTA PRA MUSICA DE COMBATE"*). Nenhuma das duas e decidida
+		// aqui -- daqui so sai o pedido.
 		// =========================================================================================
 		//
 		// ============================ E A CAMADA SAI DA CENA, NAO DE UM PARAMETRO ============================
@@ -738,7 +743,7 @@ public partial class Transformacao : Node2D
 			AudioDirector.Instance?.Musica($"res://Assets/Sounds/Music/{_cena.Musica}",
 										   _forma == null ? AudioDirector.Camada.Raiva
 														  : AudioDirector.Camada.Transformacao,
-										   repetir: false);
+										   $"cinematica `{NomeDaCena()}` comecou");
 	}
 
 	// ======================================================================================
@@ -1856,7 +1861,7 @@ public partial class Transformacao : Node2D
 		// PRIMEIRO AS CAMADAS: `CorpoDaForma` cria a camada da pelagem do SSJ4 com material novo, e
 		// uniform novo nasce zerado -- escrevendo o contorno antes, a pelagem estreava sem ele.
 		// Mesma ordem do `World.AoMudarForma`.
-		vis?.CorpoDaForma(d.Corpo);
+		vis?.CorpoDaForma(d);
 		// UMA CHAMADA, e a ordem entre sprite, tinta e rabo mora dentro dela -- ver
 		// `CharacterVisual.VestirCabeloDaForma` e o bloco de cima sobre a ordem contra o `CorpoDaForma`.
 		vis?.VestirCabeloDaForma(d);

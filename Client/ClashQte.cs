@@ -4,7 +4,17 @@ using Jandirus.Net;
 namespace Jandirus.Client;
 
 /// <summary>
-/// O QUICK TIME EVENT DO ZANZO CLASH.
+/// O QUICK TIME EVENT DOS EMBATES -- o de VELOCIDADE (ZanzoClash) e o de KI (colisao de feixes).
+///
+/// ============================ UMA TELA, DOIS EMBATES ============================
+/// A colisao de ki nasceu depois e podia ter ganhado tela propria. Nao ganhou, e a razao e que ela
+/// seria a MESMA tela: anel que fecha, letra sorteada, veredito que pisca, cabo de guerra no alto e
+/// barra de tempo no pe. O que muda entre os dois e o VOCABULARIO -- o titulo, a dica e a frase do
+/// desfecho --, e isso cabe num byte (`Protocol.TipoDeEmbate`) e em tres `switch`.
+///
+/// Duplicar valeria uma segunda copia do shader, do anel, do prazo, do veredito e das seis
+/// assinaturas do `_ExitTree` -- e a segunda copia e onde as duas telas comecam a divergir.
+/// ================================================================================
 ///
 /// ============================ POR QUE ELE EXISTE ============================
 /// No BYOND o embate e uma ANIMACAO: dois lutadores piscam pelo mapa, o chao racha, e no fim
@@ -54,6 +64,9 @@ public partial class ClashQte : CanvasLayer
 
 	/// <summary>Ja mandei tecla nesta letra? O servidor so aceita uma; a tela tem que dizer isso.</summary>
 	private bool _respondi;
+
+	/// <summary>Qual dos embates esta na tela. So muda o que se ESCREVE -- ver o cabecalho.</summary>
+	private Protocol.TipoDeEmbate _tipo = Protocol.TipoDeEmbate.Velocidade;
 
 	/// <summary>
 	/// O PISCA DO VEREDITO: quanto falta do brilho, e se ele e verde (acertei) ou vermelho (errei).
@@ -294,18 +307,31 @@ public partial class ClashQte : CanvasLayer
 	// =====================================================================
 	// OS MOMENTOS
 	// =====================================================================
-	private void Comecou(int a, int b, int ms, float meu, float dele)
+	private void Comecou(Protocol.TipoDeEmbate tipo, int a, int b, int ms, float meu, float dele)
 	{
 		// SO OS DOIS JOGAM. Quem esta na zona ve o chao rachando (isso e do mundo, nao daqui) mas
 		// nao ganha tela de quick time event por assistir briga alheia -- e por isso o pacote nem
 		// chega pra plateia.
 		if (GameClient.Instance is not { } cli || (cli.LocalId != a && cli.LocalId != b)) return;
 
+		_tipo = tipo;
+		_titulo.Text = tipo switch
+		{
+			Protocol.TipoDeEmbate.FeixeContraFeixe => "DISPUTA DE KI",
+			Protocol.TipoDeEmbate.FeixeContraGuarda => "SEGURANDO O ATAQUE",
+			_ => "ZANZO CLASH",
+		};
+
 		// A VANTAGEM, dita em uma linha: o jogador tem que saber se esta correndo atras ou na
 		// frente ANTES de apertar a primeira letra.
+		//
+		// NO EMBATE DE KI a frase e outra porque o que se disputa e outro: la o acerto e um PONTO e
+		// quem tiver mais vence; aqui ele e um EMPURRAO, e o que se empurra e o ponto de encontro --
+		// que esta caminhando pra cima de alguem enquanto o jogador le isto.
+		string oQueEuGanho = tipo == Protocol.TipoDeEmbate.Velocidade ? "acerto" : "empurrao";
 		_dica.Text = meu > dele
-			? $"voce e mais forte: cada acerto seu vale {meu:0.##}"
-			: dele > meu ? $"ele e mais forte: cada acerto dele vale {dele:0.##} -- seja mais rapido"
+			? $"voce e mais forte: cada {oQueEuGanho} seu vale {meu:0.##}"
+			: dele > meu ? $"ele e mais forte: cada {oQueEuGanho} dele vale {dele:0.##} -- seja mais rapido"
 						 : "forcas parelhas: quem acertar mais, vence";
 
 		_ligado = true;
@@ -348,9 +374,17 @@ public partial class ClashQte : CanvasLayer
 		_letra.Text = "";
 		_prazoResta = 0;
 
+		// EMPATE: os dois zerados. So a colisao de ki produz isso (`draw()` do `BeamClash.dm`) -- no
+		// ZanzoClash o desempate por poder garante um vencedor.
+		bool empate = venc == 0 && perd == 0;
 		bool ganhei = GameClient.Instance?.LocalId == venc;
-		_desfecho.Text = ganhei ? "VOCE FOI MAIS RAPIDO" : "ELE FOI MAIS RAPIDO";
-		_desfecho.AddThemeColorOverride("font_color", ganhei ? Tema.Destaque : Tema.Vida);
+		_desfecho.Text = empate
+			? "OS DOIS EXPLODEM"
+			: _tipo == Protocol.TipoDeEmbate.Velocidade
+				? ganhei ? "VOCE FOI MAIS RAPIDO" : "ELE FOI MAIS RAPIDO"
+				: ganhei ? "VOCE ENGOLIU O ATAQUE DELE" : "O ATAQUE DELE TE ENGOLIU";
+		_desfecho.AddThemeColorOverride("font_color",
+			empate ? Tema.Destaque : ganhei ? Tema.Destaque : Tema.Vida);
 		_desfecho.Visible = true;
 		_desfechoResta = SegundosDeDesfecho;
 	}

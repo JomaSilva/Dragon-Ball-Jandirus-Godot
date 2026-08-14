@@ -42,15 +42,18 @@ public readonly struct Tiro
 }
 
 /// <summary>
-/// O QUE ESTE CORPO PODE ATIRAR AGORA. **Hoje esta sempre vazio** -- ver `TecnicasDeLonge`.
+/// O QUE ESTE CORPO PODE ATIRAR AGORA -- as tecnicas de `TecnicasDeLonge` que ele SABE, ja com o
+/// preco em Ki resolvido pra ficha dele.
 ///
-/// ============================ ELE E UM GANCHO, E GANCHO TEM QUE SER INERTE ============================
-/// Este projeto ja pagou caro por codigo escrito e nunca ligado (35 atlas e 178 animacoes mortas; a
-/// API de sigilo de BP 100% orfa). A diferenca entre "terreno preparado" e "codigo morto" e que o
-/// terreno tem (a) um consumidor de verdade -- o <see cref="Cerebro"/> pergunta por ele em toda
-/// decisao --, (b) uma afirmacao de que hoje ele nao dispara, e (c) uma bancada que o EXERCITA com
-/// dado sintetico, provando que no dia em que a tabela tiver uma linha o comportamento nasce
-/// inteiro. As tres coisas existem; sem qualquer uma delas isto aqui seria enfeite.
+/// ============================ ELE FOI UM GANCHO INERTE POR TRES CAMADAS ============================
+/// Nasceu vazio de proposito, com a regra de admissao escrita aqui: um gancho so nao e codigo morto
+/// se tiver (a) um consumidor de verdade -- o <see cref="Cerebro"/> pergunta por ele em toda decisao
+/// --, (b) uma afirmacao de que hoje ele nao dispara, e (c) uma bancada que o EXERCITA com dado
+/// sintetico. As tres existiam.
+///
+/// A condicao pra ele deixar de ser inerte era existir ataque que VIAJA, e ela foi cumprida na
+/// camada 1 do sistema de ki. Hoje a tabela tem tres linhas (raio, bola, teleguiado) e este arsenal
+/// sai preenchido pra quem comprou as skills -- sem uma linha de codigo novo no cerebro.
 /// ================================================================================================
 ///
 /// `default(Arsenal)` e vazio de proposito: um corpo cujas capacidades nunca foram lidas nao tem
@@ -62,7 +65,7 @@ public readonly struct Arsenal
 
 	public Arsenal(Tiro[]? opcoes) => _opcoes = opcoes;
 
-	/// <summary>Nenhum ataque de longe. E o valor de TODO corpo do jogo, hoje.</summary>
+	/// <summary>Nenhum ataque de longe -- o valor de quem nao comprou nenhuma das tres skills.</summary>
 	public static readonly Arsenal Vazio = new(null);
 
 	public int Quantas => _opcoes?.Length ?? 0;

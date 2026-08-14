@@ -114,6 +114,57 @@ public static class DmTechScanner
 			Desc = "Da macas. Dez por vez, e leva um tempo pra repor o que foi colhido.",
 			Custo = -1, TechNecessario = -1,
 		},
+
+		// ============================ A PORTA DA SALA DO TEMPO ============================
+		// `/turf/Teleporters/tohbtc` (`Code/Turfs.dm:157-165`), no Templo Sagrado (z12).
+		//
+		// ELA E A UNICA MOBILIA DESTE CATALOGO QUE E UM `/turf`, e isso e deliberado. No DM ela ja
+		// NAO era uma passagem comum: o `Enter()` dela devolve **0** (nunca se atravessa a porta) e
+		// chama `htc_try_enter()`, que confere autorizacao do Guardiao e a recarga de 24 h antes de
+		// teleportar. Ou seja, no original ela ja e um OBJETO QUE RESPONDE com o desenho de uma
+		// porta, e nao um chao que leva a algum lugar.
+		//
+		// Por isso o `Tools/AssetPipeline/Passagens.cs` a deixou de fora da tabela de passagens
+		// automaticas -- exporta-la como "pisou, foi" entregaria de graca a coisa mais cara do jogo.
+		// O que faltava era o SUBSTITUTO, e ele e este: virando mobilia, a porta ganha de graca o
+		// mesmo caminho do banco e da macieira (sai do tilemap, vira node, bloqueia, aparece pra
+		// todo mundo, e o menu da tecla E a alcanca), e o gate mora no servidor
+		// (`GameServer.SalaDoTempo.cs`), que e quem decide.
+		//
+		// O ICONE E O ESTADO SAEM DA ARVORE DO DM (`Door6.dmi`, `icon_state = "Closed"`) pelo
+		// `Resolver` abaixo, como os outros dois -- nao ha arte digitada aqui.
+		// =================================================================================
+		// ============================ A COMIDA DA SALA DO TEMPO ============================
+		// `/obj/items/food/Cooked_Meat` (`Modules/Stamina/Food.dm:102-106`: `icon = 'food.dmi'`,
+		// `icon_state = "meatcooked"`, `nutrition = 30`).
+		//
+		// ELA E O UNICO ITEM DESTA LISTA, e o cabecalho acima diz em voz alta que comida NAO entra
+		// aqui ("o que entra e mobilia: fica parada num tile e se usa de perto"). A excecao tem
+		// motivo, e ele e que **esta** comida e exatamente isso: as duas porcoes da Sala do Tempo
+		// (regra do dono 13.6b) nascem no chao perto da porta, ficam paradas, se usam de perto e
+		// **nao passam pela mochila** -- se passassem, o teto de duas porcoes viraria "duas por
+		// viagem" e a dupla sairia de la com comida no bolso.
+		//
+		// CUSTO -1: ninguem constroi uma refeicao. Quem as poe no chao e o servidor, quando a
+		// sessao comeca e quando alguem come uma (ver `GameServer.SalaSessao.cs`).
+		// =================================================================================
+		new()
+		{
+			Id = "Cooked_Meat", Nome = "Refeicao da Sala do Tempo",
+			CreateType = "/obj/items/food/Cooked_Meat",
+			Desc = "Comida quente das provisoes da Sala do Tempo. Enche o estomago de verdade -- "
+				 + "e outra porcao aparece no lugar quando esta acabar.",
+			Custo = -1, TechNecessario = -1,
+		},
+
+		new()
+		{
+			Id = "Time_Chamber_Door", Nome = "Porta da Sala do Tempo",
+			CreateType = "/turf/Teleporters/tohbtc",
+			Desc = "A porta da Sala do Tempo. Precisa da autorizacao do Guardiao da Terra, "
+				 + "e o corpo so aguenta uma visita por dia.",
+			Custo = -1, TechNecessario = -1,
+		},
 	];
 
 	private static void Ler(string arq, List<ConstrucaoDef> saida)

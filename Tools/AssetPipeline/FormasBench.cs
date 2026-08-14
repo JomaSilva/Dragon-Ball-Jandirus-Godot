@@ -59,6 +59,9 @@ public static class FormasBench
 		AEntradaApagadaEOSaveVelho();
 		OsDoisNomesDaLinhaLendaria();
 		AsCoresComoFORMADECOR();
+		AsLinhasRaciais();
+		UmDegrauNovoEmCadaLinha();
+		OsGanchosQueFicaram();
 
 		Console.WriteLine($"\n=== {_ok} OK, {_falhou} FALHA ===");
 		return _falhou == 0 ? 0 : 1;
@@ -1922,6 +1925,514 @@ public static class FormasBench
 			Checa($"{id}: e pede a MESMA folha de cabelo que ele (`{ssj1.SufixoDoCabelo}`)",
 				  c.SufixoDoCabelo == ssj1.SufixoDoCabelo, c.SufixoDoCabelo);
 		}
+
+		Console.WriteLine();
+	}
+
+	// =====================================================================
+	// 19. AS TRES LINHAS RACIAIS -- Namekuseijin, Heran e Alien
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE ESTA SECAO EXISTE PRA TRANCAR ============================
+	/// Ela nao mede "a forma nova funciona" -- mede as quatro coisas que este porte ja errou antes e
+	/// que uma linha racial nova erra de novo:
+	///
+	///   1. **A ESCADA ERRADA.** Ate esta sessao o `LinhasAbertas` entregava a escada Saiyajin a
+	///      QUALQUER raca que nao fosse Primal/Legendary/Futuro/Frost. Um Namekuseijin virava Super
+	///      Saiyajin de cabelo dourado. As checagens de exclusao aqui sao a rede daquilo -- e elas
+	///      medem os DOIS lados (a raca certa tem a linha dela, e nao tem a Saiyajin).
+	///   2. **A FORMA DE GRACA.** `snamek` e as duas Alien so existem pra quem COMPROU a skill. Sem
+	///      o `PedeFlag` ligado no funil, comprar nao faria nada e nao comprar tambem nao.
+	///   3. **O MULTIPLICADOR QUE NAO OLHA A CLASSE.** O Heran e o unico do jogo cujo numero sai da
+	///      classe, e o modo de falhar disso e silencioso: todo mundo multiplicaria pela curva crua
+	///      e ninguem notaria, porque 1x-2,016x tambem "parece" uma escada.
+	///   4. **O LIMIAR PESSOAL SEM CONSUMIDOR.** `snamekat` era sorteado no nascimento havia meses e
+	///      nao gateava nada. A checagem confere que a porta do `snamek` SAI do sorteio e nao da
+	///      constante de fabrica.
+	/// ==========================================================================================
+	/// </summary>
+	private static void AsLinhasRaciais()
+	{
+		Console.WriteLine("[19] AS TRES LINHAS RACIAIS (Namekuseijin, Heran, Alien)");
+
+		// --- 1. CADA RACA TEM A **SUA** ESCADA, E SO A SUA -------------------------------
+		(string Raca, LinhaDeForma Linha)[] donos =
+		[
+			(Catalogo.RacaNamekuseijin, LinhaDeForma.Namekuseijin),
+			(Catalogo.RacaHeran,        LinhaDeForma.Heran),
+			(Catalogo.RacaAlien,        LinhaDeForma.Alien),
+		];
+
+		foreach ((string raca, LinhaDeForma linha) in donos)
+		{
+			var p = new PerfilDeFormas(Raca: raca);
+			HashSet<LinhaDeForma> abertas = Catalogo.LinhasAbertas(p);
+
+			Checa($"{raca} tem a linha {linha}", abertas.Contains(linha), string.Join(", ", abertas));
+			Checa($"{raca} NAO tem a escada Saiyajin", !abertas.Contains(LinhaDeForma.Saiyajin),
+				  string.Join(", ", abertas));
+			Checa($"{raca} nao vira Oozaru", !abertas.Contains(LinhaDeForma.Oozaru));
+
+			// E NENHUMA DAS OUTRAS DUAS -- sem isto, um `LinhasAbertas` que somasse todas as linhas
+			// raciais passaria nas duas checagens acima.
+			foreach ((string outra, LinhaDeForma linhaOutra) in donos)
+				if (linhaOutra != linha)
+					Checa($"{raca} nao tem a linha de {outra}", !abertas.Contains(linhaOutra));
+		}
+
+		// O AVESSO: o Saiyajin continua com a escada dele. Sem esta linha, um `LinhasAbertas` que
+		// tivesse deixado de abrir QUALQUER coisa passaria em todas as recusas acima.
+		Checa("o Saiyajin continua com a escada Saiyajin",
+			  Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: "Saiyan")).Contains(LinhaDeForma.Saiyajin));
+
+		// E A RACA SEM TRANSFORMACAO FICA SEM NENHUMA -- o preco declarado do conserto do
+		// `LinhasAbertas`. O Humano e o caso puro: no DM ele nao tem uma unica forma.
+		HashSet<LinhaDeForma> humano = Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: "Human"));
+		Checa("o Humano SEM ki divino nao tem escada nenhuma", humano.Count == 0,
+			  string.Join(", ", humano));
+
+		// ...mas as DIVINAS nao sao de raca, e continuam nao sendo: elas se aprendem.
+		Checa("o Humano COM ki divino continua tendo a escada divina",
+			  Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: "Human", GodKi: 80))
+					  .Contains(LinhaDeForma.GodKi));
+
+		// --- 2. A FORMA QUE SE COMPRA -----------------------------------------------------
+		var semLivro = new PerfilDeFormas(Raca: Catalogo.RacaNamekuseijin);
+		var comLivro = semLivro with
+		{
+			FlagsDeSkill = new Dictionary<string, double> { ["snamek"] = 1 },
+		};
+		var estN = new EstadoDeForma();
+		const double bpFolgado = 1e12;
+
+		Checa("`snamek` sem a skill: recusado por SEM HABILIDADE",
+			  estN.Avaliar("snamek", bpFolgado, 1, false, semLivro) == RecusaForma.SemHabilidade,
+			  estN.Avaliar("snamek", bpFolgado, 1, false, semLivro).ToString());
+		Checa("`snamek` com a skill e poder de sobra: abre",
+			  estN.Avaliar("snamek", bpFolgado, 1, false, comLivro) == RecusaForma.Pode,
+			  estN.Avaliar("snamek", bpFolgado, 1, false, comLivro).ToString());
+		// E A SKILL NAO PAGA O PODER: as duas portas sao independentes, e um `||` no lugar do funil
+		// deixaria a skill dispensar o BP.
+		Checa("`snamek` com a skill e SEM poder: recusado por poder",
+			  estN.Avaliar("snamek", 1, 1, false, comLivro) == RecusaForma.SemPoder,
+			  estN.Avaliar("snamek", 1, 1, false, comLivro).ToString());
+
+		// O DEGRAU DA FLAG DO ALIEN -- a mesma flag, dois minimos. `hasayyform = 1` abre a 1a e NAO
+		// a 2a; e isso e literal do DM (`if(hasayyform)` contra `hasayyform == 2`).
+		var alienUm = new PerfilDeFormas(Raca: Catalogo.RacaAlien,
+			FlagsDeSkill: new Dictionary<string, double> { ["hasayyform"] = 1 });
+		var alienDois = alienUm with
+		{
+			FlagsDeSkill = new Dictionary<string, double> { ["hasayyform"] = 2 },
+		};
+		var estA = new EstadoDeForma();
+		estA.Entrar("alien1");   // o degrau anterior pago, pra a recusa medida ser a da flag
+
+		Checa("`alien2` com a flag em 1: recusado por SEM HABILIDADE",
+			  estA.Avaliar("alien2", bpFolgado, 1, false, alienUm) == RecusaForma.SemHabilidade,
+			  estA.Avaliar("alien2", bpFolgado, 1, false, alienUm).ToString());
+		Checa("`alien2` com a flag em 2: abre",
+			  estA.Avaliar("alien2", bpFolgado, 1, false, alienDois) == RecusaForma.Pode,
+			  estA.Avaliar("alien2", bpFolgado, 1, false, alienDois).ToString());
+		Checa("`alien1` ja abria com a flag em 1 (o minimo dela e 1)",
+			  new EstadoDeForma().Avaliar("alien1", bpFolgado, 1, false, alienUm) == RecusaForma.Pode);
+
+		// CONTROLE NEGATIVO DO CANAL INTEIRO: EXATAMENTE tres entradas do catalogo pedem flag. Se
+		// alguem colar um `PedeFlag` numa forma Saiyajin por engano, isto cai.
+		string[] comFlag = [.. Catalogo.Todas.Where(d => d.PedeFlag != null).Select(d => d.Id)];
+		Checa($"exatamente 3 formas do catalogo se COMPRAM ({string.Join(", ", comFlag)})",
+			  comFlag.Length == 3, $"{comFlag.Length}");
+
+		// --- 3. O MULTIPLICADOR DO HERAN SAI DA CLASSE -------------------------------------
+		// Os numeros sao os do `statheran.dm:26-42`, escritos a mao aqui de proposito (mesma regra
+		// da tabela de paridade la em cima: gerar do catalogo provaria a si mesmo).
+		(string Classe, double Base1, double Base2)[] classes =
+		[
+			("Omega",     1.30, 2),
+			("Low-Class", 3,    4),
+			("Epsilon",   2.4,  3),
+		];
+		var cru = new Maestrias();
+		var dominado = new Maestrias();
+		dominado.Por("heran1", 100); dominado.Por("heran2", 100);
+
+		foreach ((string classe, double b1, double b2) in classes)
+		{
+			var p = new PerfilDeFormas(Raca: Catalogo.RacaHeran, Classe: classe);
+			Perto($"Heran {classe}: Max Power cru = {b1}x", Catalogo.Multiplicador("heran1", cru, p), b1);
+			Perto($"Heran {classe}: True Max Power cru = {b2}x", Catalogo.Multiplicador("heran2", cru, p), b2);
+
+			// DOMINADA = base x 2,016 -- o topo da `stepped_mastery_mult`, que so abre em 100%.
+			Perto($"Heran {classe}: Max Power dominado = {b1 * 2.016:0.####}x",
+				  Catalogo.Multiplicador("heran1", dominado, p), b1 * 2.016);
+		}
+
+		// A CLASSE DESCONHECIDA CAI NO `else` DO DM (Epsilon) e nao em 1x. Um Heran de save antigo
+		// com `Class` vazia multiplicaria por 1 -- ou seja, transformaria pra ficar igual.
+		Perto("Heran de classe desconhecida cai no `else` (Epsilon, 2,4x)",
+			  Catalogo.Multiplicador("heran1", cru,
+									 new PerfilDeFormas(Raca: Catalogo.RacaHeran, Classe: "???")), 2.4);
+
+		// CONTROLE NEGATIVO: as tres classes dao numeros DIFERENTES. Sem isto, um `BaseDaClasse`
+		// ignorado devolveria a curva crua pras tres e todas as linhas acima cairiam juntas -- mas um
+		// `BaseDaClasse` que lesse sempre a MESMA chave passaria em duas delas.
+		Checa("as tres classes de Heran multiplicam DIFERENTE",
+			  Catalogo.Multiplicador("heran1", cru, new PerfilDeFormas(Raca: Catalogo.RacaHeran, Classe: "Omega"))
+			  != Catalogo.Multiplicador("heran1", cru, new PerfilDeFormas(Raca: Catalogo.RacaHeran, Classe: "Low-Class")));
+
+		// E A CLASSE **NAO** VAZA PRAS OUTRAS LINHAS: nenhuma outra entrada tem `BaseDaClasse`.
+		string[] porClasse = [.. Catalogo.Todas.Where(d => d.BaseDaClasse != null).Select(d => d.Id)];
+		Checa($"so as duas formas Heran escalam por classe ({string.Join(", ", porClasse)})",
+			  porClasse.Length == 2);
+
+		// --- 4. AS PORTAS: o limiar PESSOAL do Namekuseijin, e o divisor 50 do Heran --------
+		LimiaresPessoais lim = LimiaresPessoais.Rolar(Catalogo.RacaNamekuseijin, "Warrior clan",
+													  LimiaresPessoais.SementeDe("Piccolo", 1));
+		Checa($"o `snamekat` sorteado ({lim.snamekat:N0}) fica a +-5% da fabrica",
+			  Math.Abs(lim.snamekat / LimiaresPessoais.SNamekatInicial - 1) <= 0.05 + 1e-9,
+			  $"{lim.snamekat:N0}");
+		Perto("...e a porta do `snamek` SAI do sorteio (nao da constante)",
+			  lim.Porta(Catalogo.Def("snamek")!), lim.snamekat, 1e-6);
+
+		LimiaresPessoais limH = LimiaresPessoais.Rolar(Catalogo.RacaHeran, "Omega",
+													   LimiaresPessoais.SementeDe("Bojack", 2));
+		Perto("a porta do Max Power e o `ssjat` do Heran (faixa absoluta da classe)",
+			  limH.Porta(Catalogo.Def("heran1")!), limH.ssjat, 1e-6);
+		Checa($"...e o Omega acende tarde: {limH.ssjat:N0} entre 5,5 e 8 milhoes",
+			  limH.ssjat is >= 5_500_000 and <= 8_000_000, $"{limH.ssjat:N0}");
+		Perto("a porta do True Max Power divide o `ssj2at` por 50 (e nao por 6)",
+			  limH.Porta(Catalogo.Def("heran2")!), limH.ssj2at / Catalogo.HeranGateMult2, 1e-6);
+		// O DIVISOR ERRADO SERIA INVISIVEL EM JOGO -- a forma so ficaria inalcancavel pra sempre.
+		Checa("o divisor 6 do Super Saiyajin 2 daria uma porta 8x maior (e inalcancavel)",
+			  limH.Porta(Catalogo.Def("heran2")!) * 8 < limH.ssj2at / Catalogo.Ssj1GateMult * 1.01);
+
+		// --- 5. AS DERIVACOES: a forma nova nasceu certa sozinha? -------------------------
+		// Ver o pedido desta sessao: "cada forma nova tem que nascer certa nas derivacoes". Aqui se
+		// mede o que elas DEVEM ser, e o interessante sao as NEGATIVAS -- nenhuma das cinco troca
+		// cabelo, pinta olho ou tinge rabo, porque nenhuma das tres racas tem penteado de Super
+		// Saiyajin nem rabo, e o DM nao mexe no olho de nenhuma delas.
+		string[] raciais = ["snamek", "heran1", "heran2", "alien1", "alien2"];
+		foreach (string id in raciais)
+		{
+			FormaDef d = Catalogo.Def(id)!;
+			Checa($"`{id}`: folha de aura COLORIVEL (a base, como toda forma fora do Legendary)",
+				  Catalogo.Folha(d) == FolhaDeAura.Base, Catalogo.Folha(d).ToString());
+			Checa($"`{id}`: acende a chama DA FORMA e nao a do jogador", !Catalogo.ChamaDoJogador(d));
+			Checa($"`{id}`: nao troca nem tinge cabelo",
+				  d.SufixoDoCabelo.Length == 0 && Catalogo.CorDoCabelo(d) == null,
+				  Catalogo.CorDoCabelo(d) ?? "nulo");
+			Checa($"`{id}`: nao pinta o olho", Catalogo.CorDoOlho(d) == null);
+			Checa($"`{id}`: nao tinge rabo (nao ha rabo fora do sangue Saiyajin)",
+				  Catalogo.CorDoRabo(d) == null);
+			Checa($"`{id}`: nao troca o corpo", d.Corpo == CorpoDeForma.Nenhum);
+			// A FAISCA SAI DA PROPRIA CHAMA (`CorDosRaios` cai no `d.Aura` fora das escadas
+			// Saiyajin/Legendary/Mistica), e por isso a cor da entrada e a cor do raio.
+			Checa($"`{id}`: a faisca e da cor da propria chama",
+				  Catalogo.CorDosRaios(d) == d.Aura, Catalogo.CorDosRaios(d));
+			// E CADA UMA TEM CENA PROPRIA -- o `Cinematicas.Para` deixou de ter fallback justamente
+			// pra uma forma nova nao estrear com a cena de outra.
+			Checa($"`{id}`: tem cinematica propria",
+				  Cinematicas.De(id) != null && Cinematicas.Para(d)?.Forma == id);
+		}
+
+		// O TETO DE KI: o Namekuseijin DOBRA o tanque (o `trueKiMod = 2` do buff dele) e o Heran e o
+		// Alien pegam o do Saiyajin. Sem o ramo na `TetoDeKi` os tres cairiam no `_ => 1` e a
+		// promessa de "sua energia dobra" nao existiria -- calada.
+		var corpo = new Jandirus.Core.Stats.Fighter();
+		Perto("`snamek` dobra o tanque de Ki (trueKiMod = 2)",
+			  Catalogo.TetoDeKi(Catalogo.Def("snamek"), corpo), Catalogo.SuperNamekKi);
+		Perto("`heran1` usa o `ssjenergymod` do Saiyajin",
+			  Catalogo.TetoDeKi(Catalogo.Def("heran1"), corpo), corpo.ssjenergymod);
+		Perto("`heran2` usa o `ssj2energymod`",
+			  Catalogo.TetoDeKi(Catalogo.Def("heran2"), corpo), corpo.ssj2energymod);
+		Perto("`alien2` usa o `ssjenergymod` tambem (o DM nao sobe o tanque no 2o degrau)",
+			  Catalogo.TetoDeKi(Catalogo.Def("alien2"), corpo), corpo.ssjenergymod);
+
+		// --- 6. O DRENO DO HERAN ZERA COM A MAESTRIA -------------------------------------
+		// E a recompensa inteira da linha, e ela e o ultimo degrau de `list(0.025, 0.015, 0.008, 0)`.
+		//
+		// O `0,32` E A CONVERSAO DE CICLO PRA SEGUNDO (`DrenoPorSegundo`: `0,4` por ciclo x `0,8`
+		// ciclos por segundo), e ela esta escrita aqui a mao de proposito -- chamar a mesma constante
+		// dos dois lados faria a checagem provar a si mesma. O numero do DM e o do catalogo; o que
+		// esta secao mede e que ele CHEGA ao jogo pela regua certa.
+		const double porSegundo = 0.4 * 0.8;
+		Perto("Max Power cru drena 2,5% do Ki por ciclo", Catalogo.DrenoPorSegundo("heran1", cru), 0.025 * porSegundo);
+		Perto("...e DOMINADO nao drena nada", Catalogo.DrenoPorSegundo("heran1", dominado), 0);
+		Perto("True Max Power cru drena 4,0%", Catalogo.DrenoPorSegundo("heran2", cru), 0.040 * porSegundo);
+		Perto("...e dominado tambem zera", Catalogo.DrenoPorSegundo("heran2", dominado), 0);
+		// O SUPER NAMEKUSEIJIN NAO TEM MAESTRIA e por isso o dreno dele e fixo -- sustentar nao o
+		// barateia, que e a diferenca de desenho entre a linha dele e a do Heran.
+		Perto("o Super Namekuseijin drena 1,5% e a maestria nao muda isso",
+			  Catalogo.DrenoPorSegundo("snamek", dominado), Catalogo.SuperNamekDreno * porSegundo);
+
+		Console.WriteLine();
+	}
+
+	// =====================================================================
+	// 20. UM DEGRAU NOVO EM CADA LINHA -- e nenhuma derivacao o trata diferente
+	// =====================================================================
+	/// <summary>
+	/// ============================ COMO SE PROVA QUE NAO HA CASO ESCRITO A MAO ============================
+	/// A promessa do rework e *"acrescentar um estagio e UMA ENTRADA, e mais nada"*, e a secao [8] ja a
+	/// mede -- pra a escada Saiyajin, com um degrau escrito a mao e tres perguntas. As linhas raciais
+	/// entraram depois, e sao justamente as candidatas naturais a ganhar um `case` de emergencia: cada
+	/// uma tem uma peculiaridade (o corpo escolhido do Frost Demon, a base por classe do Heran, a flag
+	/// comprada do Alien) que **parece** pedir um `if` por id.
+	///
+	/// A varredura por conjunto nao pega isso. `Catalogo.Todas` so conhece as entradas que existem, e
+	/// um `d.Id == "snamek"` escondido numa derivacao devolve a resposta CERTA pra todas elas -- o
+	/// defeito nasce no dia em que a 2a forma do Super Namekuseijin entrar, meses depois, sem cabelo
+	/// ou sem faisca, e ninguem vai ligar uma coisa a outra.
+	///
+	/// ENTAO A BANCADA CRIA O DEGRAU QUE NAO EXISTE. Pra cada linha, um IRMAO SINTETICO de uma entrada
+	/// real: id novo, `IdRede` novo, `Ordem` nova, e **os mesmos campos visuais**. As doze derivacoes
+	/// tem que responder a ele exatamente o que respondem ao irmao -- porque a unica coisa que mudou e
+	/// aquilo que uma derivacao nao deveria estar olhando.
+	///
+	/// Uma checagem textual (varrer os fontes atras de `"snamek"`) nao serviria: o arquivo esta cheio
+	/// de mencoes legitimas -- constantes, comentarios, a propria entrada. Esta e comportamental, e
+	/// falha exatamente quando o comportamento diverge.
+	/// ================================================================================================
+	/// </summary>
+	private static void UmDegrauNovoEmCadaLinha()
+	{
+		Console.WriteLine("[20] UM DEGRAU NOVO EM CADA LINHA (nenhuma derivacao olha o id)");
+
+		// AS LINHAS QUE INTERESSAM SAO **TODAS**, e sai da varredura e nao de uma lista: uma linha nova
+		// entra aqui sozinha, que e o ponto. A base fica de fora porque ela nao e uma forma.
+		foreach (LinhaDeForma linha in Enum.GetValues<LinhaDeForma>())
+		{
+			FormaDef? irmao = Catalogo.DaLinha(linha).LastOrDefault();
+			if (irmao == null) continue;
+
+			// O IRMAO SINTETICO: tudo o que a APARENCIA usa, copiado; tudo o que a IDENTIDADE usa,
+			// diferente. Um `IdRede` acima de 60000 nao colide com nada e nao entra em save nenhum --
+			// este objeto nunca e posto no catalogo, so passado as derivacoes.
+			var novo = new FormaDef
+			{
+				Id = irmao.Id + "_teste", IdRede = (ushort)(60000 + (int)linha),
+				Linha = linha, Ordem = irmao.Ordem + 1, Nome = irmao.Nome + " (novo)",
+				Desc = "degrau sintetico da bancada",
+				Mult = irmao.Mult, Limiares = irmao.Limiares, Dreno = irmao.Dreno,
+				EscalaComGodKi = irmao.EscalaComGodKi, BaseDaClasse = irmao.BaseDaClasse,
+				ForaDoTronco = irmao.ForaDoTronco, PortaBp = irmao.PortaBp,
+				ChaveDoLimiar = irmao.ChaveDoLimiar, PedeFlag = irmao.PedeFlag,
+				PedeMaestria = irmao.PedeMaestria, PedeMaestriaDe = irmao.PedeMaestriaDe,
+				PedeGodKi = irmao.PedeGodKi, PedeEnergiaUe = irmao.PedeEnergiaUe,
+				PedeProficienciaUi = irmao.PedeProficienciaUi, SoPorConcessao = irmao.SoPorConcessao,
+				PedeFormaDespertada = irmao.PedeFormaDespertada, PedeFormaAtual = irmao.PedeFormaAtual,
+				PedeClasseUmaDe = irmao.PedeClasseUmaDe, PedeOrigemUmaDe = irmao.PedeOrigemUmaDe,
+				PedeLinhagem = irmao.PedeLinhagem, ProibidoParaClasse = irmao.ProibidoParaClasse,
+				// A APARENCIA, IDENTICA -- e o controle do experimento.
+				Aura = irmao.Aura, Cabelo = irmao.Cabelo, Corpo = irmao.Corpo,
+				SufixoDoCabelo = irmao.SufixoDoCabelo, Intensidade = irmao.Intensidade,
+				Raios = irmao.Raios, Absoluta = irmao.Absoluta,
+			};
+
+			string ondeIrmao = $"`{irmao.Id}`";
+			Igual($"{linha}: a FOLHA de aura do degrau novo e a de {ondeIrmao}",
+				  Catalogo.Folha(novo).ToString(), Catalogo.Folha(irmao).ToString());
+			Igual($"{linha}: a CHAMA (do jogador ou da forma) e a de {ondeIrmao}",
+				  Catalogo.ChamaDoJogador(novo).ToString(), Catalogo.ChamaDoJogador(irmao).ToString());
+			Igual($"{linha}: o CONTORNO e o de {ondeIrmao}",
+				  Catalogo.CorDoContorno(novo), Catalogo.CorDoContorno(irmao));
+			Igual($"{linha}: o contorno ALTERNADO e o de {ondeIrmao}",
+				  Catalogo.CorDoContornoAlterna(novo) ?? "nulo", Catalogo.CorDoContornoAlterna(irmao) ?? "nulo");
+			Igual($"{linha}: a cor dos RAIOS e a de {ondeIrmao}",
+				  Catalogo.CorDosRaios(novo), Catalogo.CorDosRaios(irmao));
+			Igual($"{linha}: a cor do CABELO e a de {ondeIrmao}",
+				  Catalogo.CorDoCabelo(novo) ?? "nulo", Catalogo.CorDoCabelo(irmao) ?? "nulo");
+			Igual($"{linha}: o MODO do cabelo e o de {ondeIrmao}",
+				  Catalogo.ModoDoCabelo(novo).ToString(), Catalogo.ModoDoCabelo(irmao).ToString());
+			Igual($"{linha}: a cor do OLHO e a de {ondeIrmao}",
+				  Catalogo.CorDoOlho(novo) ?? "nulo", Catalogo.CorDoOlho(irmao) ?? "nulo");
+			Igual($"{linha}: a cor do RABO e a de {ondeIrmao}",
+				  Catalogo.CorDoRabo(novo) ?? "nulo", Catalogo.CorDoRabo(irmao) ?? "nulo");
+			Igual($"{linha}: as folhas COLADAS sao as de {ondeIrmao}",
+				  string.Join("+", Catalogo.Coladas(novo)), string.Join("+", Catalogo.Coladas(irmao)));
+			Igual($"{linha}: a NEBULOSA e a de {ondeIrmao}",
+				  Catalogo.TemNebulosa(novo).ToString(), Catalogo.TemNebulosa(irmao).ToString());
+			Igual($"{linha}: a RAIVA exigida e a de {ondeIrmao}",
+				  Catalogo.RaivaExigida(novo).ToString(), Catalogo.RaivaExigida(irmao).ToString());
+			// A `ChaveDaMaestria` FICA DE FORA DESTA VARREDURA, e a razao vale ser dita: ela recebe um
+			// **id** e nao um `FormaDef`, entao ela resolve pelo catalogo -- e um degrau sintetico nao
+			// esta la. Nao e defeito nem excecao: um degrau de verdade estaria. Quem a mede por linha e
+			// a `--frostteste` ("os sete degraus compartilham UMA barra").
+			Igual($"{linha}: SUSTENTAR treina igual a {ondeIrmao}",
+				  Catalogo.SustentarTreina(novo).ToString(), Catalogo.SustentarTreina(irmao).ToString());
+
+			// E O ENCADEAMENTO: o degrau novo enxerga o irmao como anterior, sem ninguem escrever isso.
+			// (Ramo lateral e ramo lateral: o `ForaDoTronco` copiado faz o `Anterior` pular o irmao, que
+			// e exatamente o comportamento certo -- e por isso a checagem pergunta pela LINHA.)
+			FormaDef? anterior = Catalogo.Anterior(novo);
+			Checa($"{linha}: o degrau novo acha um anterior da PROPRIA linha, sozinho",
+				  anterior == null || anterior.Id == Catalogo.IdBase || anterior.Linha == linha,
+				  anterior?.Id ?? "nenhum");
+		}
+
+		Console.WriteLine();
+	}
+
+	/// <summary>Compara duas respostas de derivacao -- o texto do obtido e do esperado no detalhe.</summary>
+	private static void Igual(string nome, string obtido, string esperado) =>
+		Checa(nome, obtido == esperado, $"obtido `{obtido}`, o irmao da `{esperado}`");
+
+	// =====================================================================
+	// 21. OS GANCHOS QUE FICARAM -- inertes hoje, e provaveis amanha
+	// =====================================================================
+	/// <summary>
+	/// ============================ AS DIVIDAS DESTE PORTE TEM DUAS METADES, E SO UMA E OBVIA ============================
+	/// O relatorio das formas nomeia onze divid ass, e cada uma tem um sistema faltando. Uma divida
+	/// nomeada, porem, e uma promessa em duas partes:
+	///
+	///   * **INERTE**: o pedaco que ficou nao afeta o jogo de hoje. Uma forma que existisse pela
+	///     metade seria pior que forma nenhuma, e este projeto ja pagou por isso -- o `fd_release`
+	///     ficou orfao no `powerlevel()` por meses, o corte de sigilo de BP foi escrito e nunca
+	///     aplicado, a `RecusaForma.NaoEhSaiyajin` existiu como nome de enum e nada mais.
+	///   * **PROVAVEL**: o pedaco que ficou FUNCIONA no dia em que alguem o ligar. Um gancho que nao
+	///     e exercitado nao e um gancho, e o descobridor disso e sempre quem implementa o sistema
+	///     que ia usa-lo -- na pior hora possivel.
+	///
+	/// As duas metades sao mediveis, e nenhuma delas estava medida.
+	/// ==============================================================================================================
+	/// </summary>
+	private static void OsGanchosQueFicaram()
+	{
+		Console.WriteLine("[21] OS GANCHOS QUE FICARAM (inertes hoje, provaveis amanha)");
+
+		// --- 1. A ASCENSAO (`Fighter.BPBoost`) ------------------------------
+		// E o sistema que falta em QUATRO das onze dividas (Gray Full Power, Super Majin, Purification
+		// e o teto de 2,8x do Frost Demon). O port nao o tem; o que ele tem e o ponto onde o numero
+		// entraria, e e esse ponto que esta secao exercita.
+		var corpo = new Jandirus.Core.Stats.Fighter { BP = 1000, Name = "gancho" };
+		corpo.Tick();
+		double semAscensao = corpo.expressedBP;
+		Checa($"a Ascensao esta DESLIGADA num corpo novo (BPBoost = {corpo.BPBoost:0.##})",
+			  Math.Abs(corpo.BPBoost - 1) < 1e-9, $"{corpo.BPBoost}");
+
+		// PROVAVEL: escrever o campo multiplica o poder, hoje, sem mais nada. O 2,8 e o `FD_ASC_CAP`
+		// do DM, que e a divida concreta logo abaixo.
+		//
+		// A TOLERANCIA E DE UM MILESIMO e nao exata porque o `expressedBP` passa por arredondamento no
+		// fim do `powerlevel()` (2745 contra 2744,x). Exigir igualdade aqui seria a bancada medindo o
+		// arredondamento e nao o fator -- e ela ficaria vermelha no dia em que alguem trocasse o
+		// `Round` por `Floor`, dizendo "a Ascensao parou de funcionar".
+		corpo.BPBoost = 2.8;
+		corpo.Tick(agoraMs: 0);
+		Perto("...e escrever nele JA multiplica o BP expresso (o ponto de entrada existe)",
+			  corpo.expressedBP / semAscensao, 2.8, 2.8e-3);
+
+		// INERTE: nenhuma forma do catalogo depende dela pra dar o numero que promete. A 2a Evolucao
+		// do Frost Demon e a divida concreta -- ela para em 20x onde o DM chega a 56x (`FD_ASC_CAP`),
+		// e o que fica registrado aqui e o numero de HOJE, pra que o dia em que a Ascensao entrar a
+		// bancada mostre a mudanca em vez de a esconder.
+		Perto("a 2a Evolucao do Frost Demon vale 20x hoje (o 56x do DM depende da Ascensao)",
+			  Catalogo.Multiplicador("frost7", new Maestrias(),
+									 new PerfilDeFormas(Raca: Jandirus.Core.Races.FormasDeFrost.Raca,
+														Classe: Jandirus.Core.Races.FormasDeFrost.ClasseNormal)),
+			  20);
+
+		// E NINGUEM ESCREVE `BPBoost` NO CODIGO DE PRODUCAO -- a varredura dos fontes, mesmo padrao da
+		// `raiva` [8]. Um dia isto vai ficar vermelho, e sera pelo motivo certo: alguem portou a
+		// Ascensao. A lista de permitidos e onde o campo pode aparecer sem ser um escritor.
+		string[] podemEscrever = ["Fighter.cs", "StatBench.cs", "FormasBench.cs"];
+		var escritores = new List<string>();
+		int leitores = 0;
+
+		foreach (string dir in new[] { "Core", "Server", "Client", "Tools" })
+		{
+			string caminho = Path.Combine(Directory.GetCurrentDirectory(), dir);
+			if (!Directory.Exists(caminho)) continue;
+
+			foreach (string arq in Directory.EnumerateFiles(caminho, "*.cs", SearchOption.AllDirectories))
+			{
+				// O `obj/` E O `bin/` GUARDAM COPIAS GERADAS dos mesmos arquivos, e uma copia contando
+				// como escritor daria uma bancada vermelha por causa de um artefato de compilacao.
+				if (arq.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+					|| arq.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")) continue;
+
+				string nome = Path.GetFileName(arq);
+				string[] linhas = File.ReadAllLines(arq);
+				for (int i = 0; i < linhas.Length; i++)
+				{
+					string l = linhas[i].Trim();
+					if (l.StartsWith("//") || l.StartsWith("///")) continue;
+					if (!l.Contains("BPBoost")) continue;
+
+					if (System.Text.RegularExpressions.Regex.IsMatch(l, @"\bBPBoost\s*=[^=]"))
+					{
+						if (Array.IndexOf(podemEscrever, nome) < 0) escritores.Add($"{nome}:{i + 1}");
+					}
+					else leitores++;
+				}
+			}
+		}
+
+		Checa("nenhum arquivo de producao ESCREVE `BPBoost` -- a Ascensao esta mesmo desligada",
+			  escritores.Count == 0, string.Join(", ", escritores));
+		// E OS LEITORES EXISTEM, o que e a outra metade: `Fighter.Training` conta marcos de ascensao e
+		// o `GameServer.Tecnicas.G1` le `BPBoost > 1` como "esta ascendido". Sao consumidores parados
+		// esperando o escritor -- e uma divida com consumidor e barata; sem consumidor, e reescrita.
+		Checa($"...e ha consumidores esperando por ele ({leitores} leituras)", leitores >= 2, $"{leitores}");
+
+		// --- 2. AS DUAS SKILLS QUE EXISTEM E ESTAO APAGADAS -----------------
+		// Golden Form (o 28x do Frost Demon) e o buff Majin do Demonio. As duas sao SKILL e nao degrau,
+		// as duas estao no `skills.json` com `ligada: 0` -- exatamente como no DM --, e as duas
+		// dependem de um sistema que o port nao tem (a segunda, de liberacao de skill por CARGO).
+		const string cs = "Assets/Data/skills.json", ct = "Assets/Data/skilltrees.json";
+		if (File.Exists(cs) && File.Exists(ct))
+		{
+			var cat = Jandirus.Core.Skills.SkillCatalog.Parse(File.ReadAllText(cs), File.ReadAllText(ct));
+
+			foreach (string path in new[] { "/datum/skill/icer/Golden_Form", "/datum/skill/demon/Majin" })
+			{
+				Jandirus.Core.Skills.Skill? s = cat.Get(path);
+				// PROVAVEL: a skill EXISTE, com nome, e portanto ha o que ligar.
+				Checa($"`{path}` existe no catalogo extraido do DM", s != null, "nao existe");
+				if (s == null) continue;
+
+				// INERTE, E PELA PORTA DE PRODUCAO: quem responde nao e o campo, e o
+				// `SkillBook.PodeAprender` -- a mesma funcao que a loja chama.
+				var livro = new Jandirus.Core.Skills.SkillBook();
+				livro.Conceder(99);
+				Jandirus.Core.Skills.Recusa r = livro.PodeAprender(cat, path, "Icer", "Frost Demon", vilao: false);
+				Checa($"...e NAO se aprende hoje ({s.Nome}): a loja recusa por DESLIGADA",
+					  r == Jandirus.Core.Skills.Recusa.Desligada, r.ToString());
+
+				// E NENHUMA FORMA DO CATALOGO A ESPERA: uma entrada que pedisse a flag de uma skill
+				// desligada seria uma forma inalcancavel pra sempre -- e inalcancavel e indistinguivel
+				// de "ainda nao cheguei la", que e o pior jeito de uma divida se esconder.
+				Checa($"...e nenhuma forma do catalogo depende dela",
+					  !Catalogo.Todas.Any(d => d.PedeFlag is { } f && s.Flags.ContainsKey(f.Campo)),
+					  "");
+			}
+		}
+		else Console.WriteLine("  (sem skills.json -- rode da raiz do projeto)");
+
+		// --- 3. AS FORMAS QUE DEPENDEM DE ABSORCAO ------------------------
+		// Bio-Androide, Majin Corrompido e Purification. Elas NAO estao no catalogo, e a ausencia e
+		// deliberada: os degraus 1-4 do Majin nao tem multiplicador nenhum no DM (cada um faz
+		// `genome.add_to_stat("Battle Power", 1)`), e uma entrada com `Mult = [1]` e sem porta seria
+		// lida pelo `PodeSerRepouso` como **forma de descanso** -- cinco candidatas a repouso entrando
+		// de uma vez, e o `ParaOndeSeRecua` do jogo inteiro mudando de comportamento em silencio.
+		//
+		// A CHECAGEM E A AUSENCIA, e ela vale por ser barata: no dia em que alguem colar as entradas
+		// "so pra ficar registrado", esta linha e a secao 6 da `--formasteste` acendem juntas.
+		string[] dividas = ["majin1", "majin2", "majin3", "majin4", "majin_pure", "purification",
+							"bio2", "bio3", "bio_super_perfect", "golden", "wolf",
+							"limiter_overload", "gray_full_power"];
+		string[] plantadas = [.. Catalogo.Todas.Where(d => dividas.Contains(d.Id)).Select(d => d.Id)];
+		Checa("nenhuma forma de ABSORCAO/ASCENSAO entrou no catalogo antes do sistema dela",
+			  plantadas.Length == 0, string.Join(", ", plantadas));
+
+		// E O GANCHO QUE A SAGA MAJIN VAI USAR EXISTE E FUNCIONA: ver um amigo ser ABSORVIDO vale o
+		// mesmo grau de luto que ve-lo morrer (`MajinSaga.dm:173`), e o grau que abre as escadas de
+		// sangue e a `Extrema`. O gancho e o `GameServer.AmigoAbatido`, cuja unicidade a bancada
+		// `raiva` [8] ja vigia; o que se mede aqui e que o GRAU ainda significa o que a saga espera.
+		Checa("a raiva EXTREMA continua sendo a que abre as escadas de sangue (o grau que a absorcao vai usar)",
+			  Catalogo.RaivaExigida(Catalogo.Def("ssj1")) == NivelDeRaiva.Extrema
+			  && NivelDeRaiva.Extrema > NivelDeRaiva.Lendaria,
+			  Catalogo.RaivaExigida(Catalogo.Def("ssj1")).ToString());
 
 		Console.WriteLine();
 	}

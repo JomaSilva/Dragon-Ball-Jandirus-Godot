@@ -378,7 +378,9 @@ public partial class RoboDeDoisCorpos : Node
 			sb.AppendLine($"  -- {(ehMeu ? "MEU CORPO" : "REMOTO")} {r.Name} em {r.GlobalPosition}"
 						  + (!ehMeu && corpos[0] is LocalPlayer eu
 							 ? $"  (distancia {eu.GlobalPosition.DistanceTo(r.GlobalPosition):0} px)" : ""));
-			if (r is RemotePlayer rp) sb.AppendLine($"     altura {rp.AlturaDeTeste:0.0} | vida {rp.VidaDeTeste} | olhar {rp.OlharDeTeste}");
+			// SEM VIDA: o corpo alheio nao carrega mais hp nenhum (ver `EntityState`). O estado dele
+			// se le pelas FERIDAS, que sao desenhadas no sprite logo abaixo.
+			if (r is RemotePlayer rp) sb.AppendLine($"     altura {rp.AlturaDeTeste:0.0} | olhar {rp.OlharDeTeste}");
 
 			if (r.GetNodeOrNull<CharacterVisual>("Visual") is { } v)
 			{

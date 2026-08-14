@@ -7,7 +7,7 @@
 y_sort_enabled = true
 script = ExtResource("1_pl")
 NomeDoPlaneta = "Hyperbolic Time Chamber"
-Gravidade = 1
+Gravidade = 10
 Tipo = 0
 Procedural = false
 

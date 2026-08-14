@@ -92,6 +92,33 @@ public sealed class CatalogoDeObras
 		typepath.Length == 0 ? null : _porTipo.GetValueOrDefault(typepath);
 
 	/// <summary>
+	/// AS CONSTRUCOES MUDAS: as que BLOQUEIAM e nao tem desenho. Uma lista vazia e o unico
+	/// resultado aceitavel, e por isso ela e uma pergunta e nao um `if` solto no meio da carga.
+	///
+	/// ============================ POR QUE ISTO MORA NO CORE ============================
+	/// Porque a regra tem TRES leitores e eles nao se falam:
+	///
+	///   * o SERVIDOR bloqueia a celula pelo campo <see cref="Construcao.Densa"/>;
+	///   * o CLIENTE desenha pelo campo <see cref="Construcao.Arte"/>;
+	///   * a BANCADA cobra os dois de uma vez.
+	///
+	/// Enquanto cada lado so olhava o campo dele, uma construcao densa e sem arte era um obstaculo
+	/// que nao existe na tela -- e ninguem tinha como notar, porque nenhum dos dois lados via o par.
+	/// Foi metade da queixa do dono ("tem uma PAREDE INVISIVEL no meio do mapa") e o port ja
+	/// produziu esse defeito quatro vezes por outros caminhos (a bandeira de conquista sem `.dmi`
+	/// convertido, o `Ship_Control`/`Ship_Pad` fora do catalogo, 35 atlas escritos e nunca
+	/// importados, a costura de Hera).
+	///
+	/// Escrita aqui, ela e a MESMA pergunta pro servidor (que grita na carga) e pra bancada (que
+	/// reprova antes de o jogo subir). Duas copias divergiriam no primeiro campo que alguem
+	/// acrescentasse, e a que envelheceria seria a da bancada -- a que ninguem olha quando esta
+	/// verde.
+	/// ==================================================================================
+	/// </summary>
+	public IEnumerable<Construcao> SemDesenho() =>
+		Todas.Where(c => c.Densa && c.Arte.Length == 0);
+
+	/// <summary>
 	/// O QUE ESTE PERSONAGEM CONSEGUE COMPRAR AGORA, e o motivo de cada nao.
 	///
 	/// Devolve TUDO que a raca permite, inclusive o que nao cabe no bolso -- ver a lista inteira

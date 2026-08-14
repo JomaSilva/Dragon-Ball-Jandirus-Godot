@@ -135,10 +135,15 @@ public partial class RoboDeEmbate : Node
 	// =====================================================================
 	// OS MOMENTOS
 	// =====================================================================
-	private void Comecou(int a, int b, int ms, float meu, float dele)
+	private void Comecou(Protocol.TipoDeEmbate tipo, int a, int b, int ms, float meu, float dele)
 	{
 		if (C is not { } cli) return;
 		if (cli.LocalId != a && cli.LocalId != b) return;   // embate dos outros nao me diz respeito
+
+		// ESTE ROBO MEDE O EMBATE DE VELOCIDADE. A colisao de ki chega pelo MESMO opcode (ver
+		// `Protocol.TipoDeEmbate`) e tem bancada propria no servidor (`--embatekiteste`); sem esta
+		// linha, um encontro de feixes no meio da medicao seria contado como cruzamento de Zanzoken.
+		if (tipo != Protocol.TipoDeEmbate.Velocidade) return;
 
 		_viuComeco = true;
 		_meuMult = meu;

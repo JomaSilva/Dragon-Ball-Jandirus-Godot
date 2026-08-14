@@ -45,7 +45,10 @@ public partial class SombraDeVoo : Node2D, IFicaNoChao
 		{
 			if (Mathf.IsEqualApprox(_altura, value)) return;
 			_altura = value;
-			Visible = value > 0.5f;
+			// QUEM DECIDE E O CORE (`Voo.TemSombra`), e nao um `>` escrito aqui: e a mesma resposta
+			// que separa o nado do voo rasante, e ela precisa poder ser provada sem abrir o engine.
+			// Ver o cabecalho de `Voo.TemSombra` -- o nado e uma pose de voo com altura ZERO.
+			Visible = Voo.TemSombra(value);
 			QueueRedraw();
 		}
 	}
@@ -61,7 +64,7 @@ public partial class SombraDeVoo : Node2D, IFicaNoChao
 
 	public override void _Draw()
 	{
-		if (_altura <= 0.5f) return;
+		if (!Voo.TemSombra(_altura)) return;
 
 		float f = Voo.Fracao(_altura);
 		float escala = Mathf.Lerp(1f, MenorEscala, f);

@@ -59,6 +59,35 @@ public sealed class CharacterSave
     /// </summary>
     public List<string> Skills = [];
 
+    /// <summary>
+    /// QUAIS DAS <see cref="Skills"/> ALGUEM ENSINOU A ELE -- o `wastaught` do DM
+    /// (`teachable.dm:2`), que la e var do datum e viaja no savefile do mob junto com a skill.
+    ///
+    /// **E o unico jeito de "quem foi ensinado nao repassa" atravessar o logout.** Sem esta lista a
+    /// marca some e a skill fica, ou seja: aprendeu de um mestre, deslogou, voltou podendo ensinar.
+    /// A regra central do sistema viraria um deslogar.
+    ///
+    /// Subconjunto de <see cref="Skills"/> por construcao, e o leitor
+    /// (<see cref="Jandirus.Core.Skills.SkillBook.CarregarEnsinadas"/>) descarta o que sobrar --
+    /// save antigo chega com a lista vazia, que e a resposta certa: ninguem ainda foi ensinado.
+    /// </summary>
+    public List<string> SkillsEnsinadas = [];
+
+    /// <summary>
+    /// A CASA ESCOLHIDA nas skills de escolha unica (typepath -> 1, 2 ou 3). Uma skill no jogo
+    /// inteiro usa isto -- a `Great Robotic Alliance` do Metamoriano (`meta.dm:104-125`), cujo
+    /// `after_learn` abre um `input()` de tres casas exclusivas.
+    ///
+    /// **SEM PERSISTIR, A ESCOLHA MORRE NO LOGOUT** e o Metamoriano volta com a skill no livro e
+    /// sem buff nenhum -- que e exatamente a falha silenciosa que o `wastaught` aqui do lado ja
+    /// custou uma vez: a skill continua na lista, so o que ela VALE evapora. No DM o `chosen` e
+    /// var do datum e viaja no savefile do mob junto com a skill.
+    ///
+    /// Save antigo chega vazio, que e a resposta certa: ninguem escolheu ainda, e o dono volta a
+    /// ser perguntado.
+    /// </summary>
+    public Dictionary<string, int> SkillsEscolhas = [];
+
     /// <summary>O NIVEL de cada skill (e o que os degraus ja somaram). Ver NiveisDeSkill.</summary>
     public Jandirus.Core.Skills.NivelSave Niveis = new();
 
@@ -102,6 +131,57 @@ public sealed class CharacterSave
     /// herdar as liberadas. Ver a migracao em `GameServer.cs`.
     /// </summary>
     public List<int>? FormasEstreadas;
+
+    /// <summary>
+    /// FORMAS QUE ESTE PERSONAGEM JA VIU ALGUEM USAR -- o `mst_seen_forms` do DM
+    /// (`MasterStudent.dm:36`), que la e var comum do mob e por isso entra no savefile sozinha.
+    ///
+    /// E o pre-requisito da transformacao assistida: **o aluno tem que ter visto a forma**, ou o
+    /// mestre tem que conhece-la. Guardado por <see cref="Jandirus.Core.Forms.FormaDef.IdRede"/>,
+    /// no mesmo formato dos dois vizinhos de cima -- o DM guarda tambem DE QUEM se viu, e isso
+    /// aqui e sabor: o portao le a existencia da chave.
+    ///
+    /// NAO CONFUNDIR COM `FormasEstreadas`: aquela e *"a MINHA estreia nesta forma ja rolou"* (o
+    /// gate da cinematica), esta e *"eu vi OUTRA PESSOA nesta forma"*. Perguntas opostas, nomes
+    /// parecidos -- este arquivo ja pagou uma vez por dois conceitos num nome so.
+    /// </summary>
+    public List<int> FormasVistas = [];
+
+    /// <summary>
+    /// OS CHEFES QUE ESTE PERSONAGEM JA VIU DE PERTO, por id de molde do `npcs.json`.
+    ///
+    /// E o pre-requisito da luta simulada na mente (*"enfrentar NPCS BOSS Q VC JA VIU ANTES"*), e
+    /// nao ha nada disso no original -- la a dimensao mental so tem o proprio reflexo.
+    ///
+    /// POR ID DE MOLDE E NAO POR NOME: dois Freezas do mesmo molde sao a mesma lembranca, e o nome
+    /// que o corpo carrega e sorteado. Molde que sumir do JSON continua na lista (o dono pode estar
+    /// so renomeando uma saga) -- quem recusa e a convocacao, que pergunta ao catalogo.
+    /// </summary>
+    public List<string> ChefesVistos = [];
+
+    /// <summary>
+    /// AS PORTAS QUE UM MESTRE CORTOU PELA METADE. Ver
+    /// <see cref="Jandirus.Core.Forms.EstadoDeForma.PortasCortadas"/> -- no DM isto e o `ssjat /= 2`
+    /// gravado no proprio limiar; aqui o limiar sorteado no nascimento fica intacto e o que
+    /// persiste e o corte.
+    ///
+    /// **Persistir e obrigatorio, nao enfeite**: sem esta linha o aluno desperta com o mestre,
+    /// desloga, e volta sem conseguir reentrar na propria forma.
+    /// </summary>
+    public List<int> PortasCortadas = [];
+
+    /// <summary>
+    /// ATE QUANDO A RECARGA DE ENSINO DESTE MESTRE CORRE (relogio de parede, ms de Unix).
+    ///
+    /// PERSISTE porque no DM tambem persiste: `mst_teach_cd` (`MasterStudent.dm:37`) e var comum do
+    /// mob, e o comentario de la diz em voz alta que *"relogar nao zera"*. Sem isso a recarga de 5
+    /// minutos viraria "aperte alt+F4 entre um ensino e outro".
+    ///
+    /// UNIX MS E NAO O RELOGIO DO PROCESSO: o `NowMs()` do servidor ja e
+    /// `DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()`, entao o prazo atravessa reboot do servidor
+    /// sem virar um numero do passado (ou do futuro distante) por acidente.
+    /// </summary>
+    public long MestreRecargaAte;
 
     /// <summary>
     /// A DISCIPLINA DIVINA: 0 = nenhuma, 1 = Ultra Instinto, 2 = Poder da Destruicao.
@@ -160,6 +240,71 @@ public sealed class CharacterSave
     public float X, Y;
 
     public long CriadoEm, VistoEm;
+
+    /// <summary>
+    /// AS TECNICAS DE KI QUE ESTE PERSONAGEM INVENTOU (ate 10). Ver `Core.Skills.TecnicaCustomizada`.
+    ///
+    /// ============================ NULAVEL, E NO FIM, E ISSO E MEDIDO ============================
+    /// No original elas persistem porque `mob/var/list/customattacks` nao e `tmp` e o `mob/Write`
+    /// nao filtra nada -- viajam no savefile do mob. Aqui a mesma coisa precisa de um campo, e a
+    /// forma dele nao e gosto: **campo NOVO, ANULAVEL, no FIM da classe e seguro**; o que apaga
+    /// conta e mudar o TIPO de um item de lista que ja esta no disco (foi o que quase aconteceu com
+    /// a cor de roupa -- ver o registro `dbclimax-port-cor-de-roupa`).
+    ///
+    /// Nulo quer dizer "save escrito antes disto existir", e ele cai no mesmo lugar que uma lista
+    /// vazia: ninguem inventou tecnica nenhuma. Nao ha ramo de migracao, pela mesma razao da cor de
+    /// aura e do berco -- os dois casos sao indistinguiveis E devem ser tratados igual.
+    ///
+    /// E ELA E GRAVADA EM `DeJogador`. Escrever o campo aqui e esquecer a linha de la e como os
+    /// `Limiares` sumiram do disco por meses: o metodo monta o save do ZERO a cada `Persistir`, e
+    /// campo nao escrito e campo apagado.
+    /// ==========================================================================================
+    /// </summary>
+    public List<Jandirus.Core.Skills.TecnicaCustomizada>? Customizadas;
+
+    // ============================ A SALA DO TEMPO ============================
+    // Tres campos NOVOS, no FIM da classe e de tipo de VALOR -- a forma segura descrita no bloco
+    // das `Customizadas` logo acima. Um save gravado antes disto existir chega com 0/false, e os
+    // tres defaults sao exatamente a resposta certa pra "este personagem nunca entrou na sala":
+    // nunca visitou, nao tem chave, nao esta preso. Nao ha ramo de migracao porque nao ha nada
+    // que distinguir.
+    //
+    // O QUE CADA UM SEGURA, e o motivo de nenhum poder morrer no logout, esta em `ServerPlayer`
+    // (`GameServer.cs`) e em `GameServer.SalaDoTempo.cs`.
+
+    /// <summary>`htc_last_visit`: quando entrou na Sala do Tempo pela ultima vez (Unix ms).</summary>
+    public long SalaUltimaEntrada;
+
+    /// <summary>`permission`: a chave do Guardiao da Terra, boa por UMA entrada.</summary>
+    public bool SalaAutorizada;
+
+    /// <summary>Ficou preso na sala. Regra do dono (13.6c): relogar NAO solta.</summary>
+    public bool SalaPreso;
+
+    /// <summary>
+    /// `htc_session_years`: quantos DIAS IN-GAME esta sessao ja gastou. O DM guarda isto no save
+    /// pelo mesmo motivo, e escreve o motivo do lado ("relogar la dentro NAO zera a conta e
+    /// re-ganha 2 anos"). Zero num save antigo = "sessao nenhuma", que e a resposta certa.
+    /// </summary>
+    public double SalaDiasDaSessao;
+
+    /// <summary>
+    /// A TECLA C DESTE PERSONAGEM PASSA PELOS GRADES DO SSJ1? Ver
+    /// <see cref="Jandirus.Core.Forms.EstadoDeForma.GradesLigados"/> e o verb `graus`.
+    ///
+    /// ============================ CAMPO NOVO, ANULAVEL E NO FIM -- A FORMA SEGURA ============================
+    /// A mesma receita das `Customizadas` la em cima, e pelo mesmo motivo: o que apaga conta e mudar
+    /// o TIPO de um item de lista que ja esta no disco; campo novo no fim so chega ausente. Aqui o
+    /// nulo AINDA por cima diz alguma coisa -- "este save e de antes do verb existir" --, e quem le
+    /// (`GameServer.RestaurarFormaEDisciplina`) o traduz pra LIGADO, que e o comportamento que aquele
+    /// personagem ja tinha ontem. Um `bool` cru chegaria `false` e teria DESLIGADO os grades de todo
+    /// mundo do servidor calado, no primeiro login depois desta linha.
+    /// =======================================================================================================
+    ///
+    /// E ELE E GRAVADO EM `DeJogador`: este arquivo ja explicou duas vezes (nas `Customizadas` e nos
+    /// `Limiares`) que o metodo monta o save do ZERO e campo nao escrito e campo APAGADO.
+    /// </summary>
+    public bool? GradesLigados;
 }
 
 /// <summary>
@@ -247,7 +392,13 @@ public sealed class AccountStore(string pasta)
     /// <summary>
     /// Nome de arquivo seguro a partir do nome da conta. Sem isto, um nome com "../" ou ":"
     /// escreveria fora da pasta -- e o nome vem do cliente.
+    ///
+    /// PUBLICO porque a limpeza total precisa fazer a pergunta inversa ("este arquivo da pasta e a
+    /// conta que ele diz ser?") pelo MESMO saneamento que gravou o nome. Uma segunda copia da regra
+    /// responderia "sim" pra arquivos que este metodo nunca produziria.
     /// </summary>
+    public static string NomeDeArquivo(string nome) => Arquivo(nome);
+
     private static string Arquivo(string nome)
     {
         var sb = new StringBuilder();
@@ -293,7 +444,7 @@ public sealed class AccountStore(string pasta)
     }
 
     /// <summary>
-    /// OS .json DA PASTA QUE NAO SAO CONTA.
+    /// OS ARQUIVOS DA PASTA QUE NAO SAO CONTA -- e esta lista **nao e escrita a mao**.
     ///
     /// ============================ POR QUE ISTO PRECISA EXISTIR ============================
     /// A pasta de saves guarda mais do que contas: o `mundo.json` (as construcoes de pe) mora ali
@@ -305,11 +456,37 @@ public sealed class AccountStore(string pasta)
     /// e um erro que ninguem le mais, inclusive os de verdade.
     /// ======================================================================================
     ///
-    /// Lista explicita e nao heuristica: "todo array nao e conta" seria verdade hoje e mentira no
-    /// dia em que o formato mudasse, e o silencio esconderia um save corrompido de verdade.
+    /// ============================ ELA ERA UMA LISTA A MAO, E JA TINHA APODRECIDO ============================
+    /// Ate aqui os quatro nomes estavam cravados neste arquivo. Tres sistemas nasceram depois e
+    /// ninguem lembrou de voltar: `conquista.json`, `naves.json` e `missoes-de-cargo.json` ficaram de
+    /// fora. O resultado media-se: `Todas()` tentava ler a lista de naves (um ARRAY) como conta e
+    /// cuspia "conta ilegivel" a cada abertura do painel de admin -- exatamente o ruido que o
+    /// paragrafo acima jura ter resolvido --, e `Quantas()` inflava a contagem de contas do boot em
+    /// tres. Pior: `NomeReservado` tambem le desta lista, entao **"naves" e "conquista" eram nomes de
+    /// conta alcancaveis** (o saneamento so mata o hifen), e quem logasse com um deles gravaria a
+    /// propria conta por cima da frota, ou dos dominios, do servidor inteiro.
+    ///
+    /// Agora quem preenche e o REGISTRO DOS SISTEMAS DO MUNDO (`GameServer.Limpeza.cs`): o mesmo
+    /// lugar onde um sistema declara o que ele persiste. Um arquivo novo entra aqui no dia em que
+    /// entra la, sem ninguem lembrar de nada -- e a bancada `--wipeteste` reprova quando alguem
+    /// grava na pasta sem se declarar.
+    /// ====================================================================================================
     /// </summary>
-    private static readonly HashSet<string> NaoSaoContas =
-        new(StringComparer.OrdinalIgnoreCase) { "mundo.json" };
+    private static readonly HashSet<string> NaoSaoContas = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// "ESTE ARQUIVO E MEU, E NAO E CONTA." Chamado pelo registro dos sistemas do mundo, no boot.
+    ///
+    /// Idempotente de proposito: o registro roda uma vez por processo, mas as bancadas sobem o
+    /// servidor mais de uma vez e uma segunda inscricao nao pode virar erro.
+    /// </summary>
+    public static void ReservarArquivo(string arquivo)
+    {
+        if (arquivo.Length > 0) NaoSaoContas.Add(arquivo);
+    }
+
+    /// <summary>Os nomes reservados hoje. Existe pra bancada conferir o que o registro inscreveu.</summary>
+    public static IReadOnlyCollection<string> ArquivosReservados => NaoSaoContas;
 
     private static bool EhArquivoDeConta(string caminho) =>
         !NaoSaoContas.Contains(Path.GetFileName(caminho));
@@ -318,17 +495,38 @@ public sealed class AccountStore(string pasta)
     /// ESTE NOME DE CONTA COLIDE COM UM ARQUIVO DO SERVIDOR?
     ///
     /// O arquivo de uma conta e o nome dela saneado + ".json", na MESMA pasta em que o mundo mora.
-    /// Ou seja: a conta "mundo" (ou "Mundo", ou "mu ndo" -- o saneamento troca tudo por '_' e
-    /// junta) aponta pro `mundo.json`. Quem logasse com esse nome faria o servidor gravar uma
-    /// conta por cima das construcoes de todo mundo.
+    /// Ou seja: a conta "mundo" -- ou "Mundo", ou "MUNDO" -- aponta pro `mundo.json`. Quem logasse
+    /// com esse nome faria o servidor gravar uma conta por cima das construcoes de todo mundo.
     ///
     /// Confere pela forma SANEADA, e nao pelo texto cru, porque e ela que vira caminho.
+    ///
+    /// ============================ O QUE O SANEAMENTO FAZ, E O QUE ELE **NAO** FAZ ============================
+    /// Ele TROCA cada caractere que nao e letra nem digito por '_', **um por um**. Ele nao apaga e
+    /// nao junta: "mu ndo" vira `mu_ndo.json`, que e um arquivo diferente e inofensivo.
+    ///
+    /// Esta linha ja disse o contrario ("troca tudo por '_' e junta"), e a diferenca importa porque e
+    /// dela que sai a conclusao de que o hifen protege o `planetas-mortos.json` e o
+    /// `missoes-de-cargo.json`: um nome de conta nunca produz um hifen, entao esses dois sao
+    /// inalcancaveis por construcao. A afirmacao errada foi pega pela bancada `--wipeteste`, que
+    /// tinha acreditado nela.
+    /// ====================================================================================================
     /// </summary>
     public static bool NomeReservado(string conta) =>
         NaoSaoContas.Contains(Arquivo(conta) + ".json");
 
     private IEnumerable<string> ArquivosDeConta() =>
         Directory.Exists(Pasta) ? Directory.GetFiles(Pasta, "*.json").Where(EhArquivoDeConta) : [];
+
+    /// <summary>
+    /// TUDO O QUE ESTA NA PASTA, caminho cheio. Sem filtro nenhum -- inclusive `.txt`, `.log` e o
+    /// `.tmp` orfao de uma escrita atomica interrompida.
+    ///
+    /// E o crivo da limpeza total e da bancada dela: as duas precisam ver o que EXISTE, e nao o que
+    /// alguem se lembrou de listar. Um filtro aqui seria a lista a mao voltando pela porta dos
+    /// fundos -- o arquivo que ninguem previu e justamente o que tem que aparecer.
+    /// </summary>
+    public IEnumerable<string> TodosOsArquivos() =>
+        Directory.Exists(Pasta) ? Directory.GetFiles(Pasta) : [];
 
     public int Quantas() => ArquivosDeConta().Count();
 
@@ -459,6 +657,8 @@ public sealed class AccountStore(string pasta)
         Ficha = pl.Ficha,
         Membros = pl.Combate != null ? GameServer.FotografarCorpo(pl.Combate) : [],
         Skills = pl.Livro != null ? [.. pl.Livro.Aprendidas] : [],
+        SkillsEnsinadas = pl.Livro != null ? [.. pl.Livro.Ensinadas] : [],
+        SkillsEscolhas = pl.Livro != null ? new Dictionary<string, int>(pl.Livro.Escolhas) : [],
         Niveis = pl.Niveis?.ParaSave() ?? new(),
         Social = pl.Social ?? new(),
         Maestrias = pl.Forma?.Maestria.ParaSave() ?? [],
@@ -467,6 +667,31 @@ public sealed class AccountStore(string pasta)
         DiscAtual = pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Atual : pl.PoderDaDestruicao.Atual,
         FormasDespertadas = pl.Forma != null ? [.. pl.Forma.Liberadas] : [],
         FormasEstreadas = pl.Forma != null ? [.. pl.Forma.EstreiaVista] : [],
+
+        // A PREFERENCIA DOS GRADES. Vai crua, INCLUSIVE o nulo: um corpo que nunca passou pelo login
+        // de jogador (a bancada, o clone) nao tem opiniao, e gravar `true` no lugar dela inventaria
+        // uma escolha que ninguem fez. Ver `CharacterSave.GradesLigados`.
+        GradesLigados = pl.Forma?.GradesLigados,
+
+        // O DISCIPULADO. O VINCULO em si nao vem pra ca -- ele e do MUNDO e mora no
+        // `mestres.txt` (mesmo ciclo de vida do `cargos.txt`); o que e do PERSONAGEM sao estas
+        // tres coisas: o que ele viu, a porta que abriram pra ele e o folego de quem ensina.
+        FormasVistas = [.. pl.FormasVistas],
+        PortasCortadas = pl.Forma != null ? [.. pl.Forma.PortasCortadas] : [],
+        MestreRecargaAte = pl.RecargaDeEnsino,
+
+        // OS CHEFES VISTOS. Mesma disciplina dos tres de cima -- e este metodo monta o save do ZERO a
+        // cada `Persistir`, entao campo nao escrito e campo APAGADO (foi assim que os `Limiares`
+        // sumiram do disco por meses; ver o bloco mais abaixo).
+        ChefesVistos = [.. pl.ChefesVistos],
+
+        // A SALA DO TEMPO. As tres escritas AQUI e nao so declaradas la em cima: este metodo monta
+        // o save do ZERO a cada `Persistir`, e campo nao escrito e campo APAGADO -- foi assim que
+        // os `Limiares` sumiram do disco por meses (ver o bloco logo abaixo).
+        SalaUltimaEntrada = pl.SalaUltimaEntrada,
+        SalaAutorizada = pl.SalaAutorizada,
+        SalaPreso = pl.SalaPreso,
+        SalaDiasDaSessao = pl.SalaDiasDaSessao,
 
         // ============================ ESTA LINHA FALTAVA, E ELA APAGAVA OS LIMIARES ============================
         // Achado escrevendo o berco, e nao e do berco: `Limiares` esta em `CharacterSave` e em
@@ -492,6 +717,13 @@ public sealed class AccountStore(string pasta)
         // grava hoje o berco que ele sempre teve sem nunca ter tido o campo.
         SeedDoBerco = pl.SeedDoBerco,
         PertoDeCasa = pl.PertoDeCasa,
+
+        // AS TECNICAS INVENTADAS. Lista NOVA e nao a referencia viva: `Persistir` roda com o
+        // jogador em jogo, e guardar a mesma lista que o servidor continua editando faria o JSON
+        // ser serializado enquanto alguem a altera. Os itens vao por referencia de proposito --
+        // eles nao mudam depois de salvos (a mesa edita uma COPIA; ver `TecnicaCustomizada`).
+        Customizadas = pl.Customizadas.Count > 0 ? [.. pl.Customizadas] : null,
+
         X = pl.Pos.X,
         Y = pl.Pos.Y,
         CriadoEm = pl.CriadoEm,
@@ -564,5 +796,20 @@ public sealed class AccountStore(string pasta)
         pl.Ficha.Race = s.Raca;   // o mesmo motivo: o divisor de idade e por raca
         pl.Pos = new Vec2(s.X, s.Y);
         pl.CriadoEm = s.CriadoEm;
+
+        // ============================ A SALA DO TEMPO ============================
+        // AQUI, e nao no bloco de forma/disciplina do `GameServer`, porque este metodo se declara
+        // (tres vezes, la em cima) o **funil unico "save -> jogador em jogo"** -- e a bancada
+        // `--salateste` provou que a segunda casa nao basta: os tres campos eram escritos por
+        // `DeJogador` e nunca voltavam por aqui, entao uma ida e volta pelo disco devolvia
+        // "nunca entrou, sem chave, solto" pra quem estava preso.
+        //
+        // OS TRES DEFAULTS SAO A MIGRACAO INTEIRA. Save de antes disto existir chega com 0/false,
+        // e 0/false e a resposta certa -- nao ha ramo de personagem velho porque nao ha nada que
+        // distinguir. Ver `GameServer.SalaDoTempo.cs`.
+        pl.SalaUltimaEntrada = s.SalaUltimaEntrada;
+        pl.SalaAutorizada = s.SalaAutorizada;
+        pl.SalaPreso = s.SalaPreso;
+        pl.SalaDiasDaSessao = s.SalaDiasDaSessao;
     }
 }

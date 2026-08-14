@@ -25,6 +25,40 @@ public readonly struct FichaDeRank
 	public bool GodKiDesperto { get; init; }
 	public double GodKiMaestria { get; init; }   // 0-100
 	public double Zeni { get; init; }
+
+	/// <summary>
+	/// ============================ A REPUTACAO DE PLANETA, QUE QUATRO CARGOS PEDIAM EM TEXTO ============================
+	/// Quatro `RankDef` carregavam a pendencia escrita *"o port nao tem reputacao de planeta"*. Ela
+	/// CADUCOU: o livro-caixa entrou com a cadeia de sagas (`Core.Social.Reputacao` +
+	/// `GameServer.Reputacao.cs`), persiste em disco e agora tem tres fontes (chefe derrotado,
+	/// habitante morto, conquista). O que faltava era ele CHEGAR aqui.
+	///
+	/// E um mapa e nao um numero porque a pergunta do DM e sempre por planeta: o Guardiao quer ser
+	/// heroi **da Terra** e o Grande Anciao quer ser amigavel **de Namek** -- um escalar so responderia
+	/// a pergunta errada com um numero plausivel.
+	///
+	/// Nulo = "este servidor nao respondeu", e ai toda regra de reputacao FALHA em vez de passar. E o
+	/// mesmo cuidado que o comentario dos quatro campos acima ja registra: `double` zero com
+	/// comparacao `>=` abriria os cargos de graca.
+	/// ============================================================================================================
+	/// </summary>
+	public IReadOnlyDictionary<string, double>? ReputacaoDePlaneta { get; init; }
+
+	/// <summary>Quanto o povo deste planeta gosta desta alma. Zero pra quem nunca fez nada la.</summary>
+	public double ReputacaoCom(string planeta) =>
+		ReputacaoDePlaneta != null && ReputacaoDePlaneta.TryGetValue(planeta, out double v) ? v : 0;
+
+	/// <summary>
+	/// QUANTOS PLANETAS ESTA ALMA DOMINA -- o `conq_count_owned` (PlanetConquest.dm:101), que no DM
+	/// e o gate de compra da criacao de Esferas do Cla do Dragao.
+	///
+	/// Ele entra aqui porque a especificacao das quests de cargo vai querer dizer "conquiste um
+	/// planeta", e porque uma API de conquista que ninguem consulta e o defeito que este projeto ja
+	/// pagou uma vez inteiro (o sigilo de BP, escrito e 100% orfao). Nenhum cargo do DM exige isto
+	/// hoje -- o campo existe LIGADO e sem regra que o use, e essa e a ordem certa: a regra e uma
+	/// linha, a fiacao e que e cara.
+	/// </summary>
+	public int PlanetasDominados { get; init; }
 }
 
 /// <summary>O que um requisito olha na ficha.</summary>
@@ -37,6 +71,12 @@ public enum CampoDeRank
 	Cargo,
 	GodKi,
 	Zeni,
+
+	/// <summary>Reputacao com UM planeta: `Valores[0]` e o planeta, `Valor` e o piso.</summary>
+	Reputacao,
+
+	/// <summary>Quantos planetas esta alma domina (`conq_count_owned`).</summary>
+	Dominios,
 }
 
 /// <summary>Uma condicao unica. Varias delas ANDadas formam uma OPCAO de uma <see cref="Regra"/>.</summary>
@@ -60,6 +100,14 @@ public sealed class Exigencia
 		CampoDeRank.Classe => Valores.Contains(f.Classe, StringComparer.OrdinalIgnoreCase),
 		CampoDeRank.Cargo => Valores.Contains(f.CargoAtual, StringComparer.OrdinalIgnoreCase),
 		CampoDeRank.GodKi => Op == "desperto" ? f.GodKiDesperto : f.GodKiDesperto && f.GodKiMaestria >= Valor,
+
+		// NULO REPROVA. Ver `FichaDeRank.ReputacaoDePlaneta`: um servidor que nao respondeu nao pode
+		// abrir cargo de graca -- e o mesmo motivo pelo qual os quatro campos de God Ki foram
+		// preenchidos em vez de ficarem no default.
+		CampoDeRank.Reputacao => f.ReputacaoDePlaneta != null
+							  && f.ReputacaoCom(Valores.Length > 0 ? Valores[0] : "") >= Valor,
+
+		CampoDeRank.Dominios => f.PlanetasDominados >= Valor,
 		_ => true,
 	};
 }
@@ -146,9 +194,20 @@ public sealed class RankDef
 	public string[] Concede = [];
 
 	/// <summary>
-	/// Requisitos que o DM COBRA e que este port ainda nao tem como medir (reputacao de planeta,
-	/// contador de mortes). Ficam de fora do <see cref="Cargos.OqueFalta"/> -- e ficam AQUI, com
-	/// a linha do DM, pra nao sumirem da conta quando o sistema chegar.
+	/// Requisitos que o DM COBRA e que este port ainda nao tem como medir. Ficam de fora do
+	/// <see cref="Cargos.OqueFalta"/> -- e ficam AQUI, com a linha do DM, pra nao sumirem da conta
+	/// quando o sistema chegar.
+	///
+	/// ============================ A LISTA ENCOLHEU, E ELA TEM QUE ENCOLHER ============================
+	/// Este campo ja citou "reputacao de planeta" como exemplo do que nao se mede. **Nao cita mais**:
+	/// o livro-caixa existe (`Core.Social.Reputacao` + `GameServer.Reputacao.cs`), chega aqui pelo
+	/// <see cref="FichaDeRank.ReputacaoDePlaneta"/> e virou requisito que COBRA nos quatro cargos que
+	/// so o pediam em texto. Sobra hoje UM exemplo de verdade: o contador de mortes do Enma
+	/// (`RankQuests.dm:238`) -- ver a `Pendencias` dele mais abaixo.
+	///
+	/// Exemplo em comentario e afirmacao, nao ilustracao: quem le "o port nao mede reputacao" fecha a
+	/// questao e nao vai conferir. Quando a proxima pendencia for paga, ELA SAI DAQUI TAMBEM.
+	/// ============================================================================================
 	/// </summary>
 	public string[] Pendencias = [];
 }
@@ -175,9 +234,10 @@ public sealed class RankDef
 ///    fechada pro verb de reivindicar, que e o que o original faz.
 ///
 /// O QUE AINDA NAO ESTA AQUI: a PROVA contra o Espirito do Cargo (NPC a 1,15x do seu BP expresso,
-/// RankQuests.dm:48), o motor de tarefas com prazo e destituicao, e o RENOME de 3 tarefas que
-/// destranca a ascensao (RankQuests.dm:53). Sem eles a escada dos Kaios sobe so com o requisito
-/// -- mais barato que o original, e esta e a divida mais cara deste arquivo.
+/// RankQuests.dm:48). **As outras duas dividas foram pagas**: o motor de tarefas com prazo e
+/// destituicao existe (`Core/Ranks/MissoesDeCargo.cs` + `Server/GameServer.CargoMissoes.cs`,
+/// bancada `--cargomissoes`) e o RENOME de 3 tarefas e cobrado pelo `ReivindicarCargo`, entao a
+/// escada dos Kaios deixou de subir so com o requisito.
 /// </summary>
 public static class Cargos
 {
@@ -199,6 +259,25 @@ public static class Cargos
 	private static Exigencia Cargo(params string[] k) => new() { Campo = CampoDeRank.Cargo, Valores = k };
 	private static Exigencia GodKiDesperto() => new() { Campo = CampoDeRank.GodKi, Op = "desperto" };
 	private static Exigencia GodKiMaestria(double p) => new() { Campo = CampoDeRank.GodKi, Op = "maestria>=", Valor = p };
+
+	/// <summary>
+	/// Reputacao MINIMA com o povo de um planeta. O nome e o da ZONA ("Earth", "Namek") porque e assim
+	/// que o livro-caixa indexa (`GameServer.SomarReputacao`) -- escrever "Terra" aqui daria um
+	/// requisito que nunca casa e nunca reclama.
+	/// </summary>
+	private static Exigencia Rep(string planeta, double minimo) =>
+		new() { Campo = CampoDeRank.Reputacao, Valores = [planeta], Valor = minimo };
+
+	/// <summary>
+	/// "Domine N planetas". **Nenhum cargo do DM exige isto**, e por isso ela e PUBLICA em vez de
+	/// privada: quem a exercita hoje e a bancada da conquista, que monta a regra e afirma que ela
+	/// reprova com zero dominios e passa com um. Sem esse uso o campo seria API escrita e nunca
+	/// chamada -- o defeito exato que o sigilo de BP ja custou a este projeto uma vez.
+	///
+	/// Quando as quests de cargo forem construidas, "conquiste um planeta" e uma linha usando isto.
+	/// </summary>
+	public static Exigencia ExigirDominios(int quantos) =>
+		new() { Campo = CampoDeRank.Dominios, Valor = quantos };
 
 	/// <summary>
 	/// FROST DEMON x ICER: no DM a raca se chama "Frost Demon" (staticer.dm:13) e o requisito
@@ -247,8 +326,10 @@ public static class Cargos
 				R("ser um Namekuseijin do Clã do Dragão (a tradição de Kami)", "Modules/Ranks/RankQuests.dm:216",
 					Raca("Namekian"), Classe("Dragon clan")),
 				R("karma 50+", "Modules/Ranks/RankQuests.dm:217", KarmaMin(50)),
+				// A PENDENCIA CADUCOU: o livro-caixa de reputacao existe e agora chega na ficha.
+				R("ser HERÓI do povo da Terra (reputação 50+)", "Modules/Ranks/RankQuests.dm:218",
+					Rep("Earth", Social.Reputacao.LimiarDeHeroi)),
 			],
-			Pendencias = ["ser HERÓI do povo da Terra (reputação 50+) -- RankQuests.dm:218; o port não tem reputação de planeta"],
 			Concede =
 			[
 				"estilo dos Deuses", "Autorizar Sala do Tempo", "Guardar Corpo", "Ver Mortos",
@@ -260,8 +341,12 @@ public static class Cargos
 			Chave = "korin", Global = "Assistant_Guardian", Nome = "Korin", Porta = PortaDoCargo.Prova,
 			Desc = "O assistente do Guardião: cultiva sementes dos deuses e abre o portal da Água Sagrada.",
 			TemDeveres = true, Sabedoria = true,
-			Regras = [R("karma 25+", "Modules/Ranks/RankQuests.dm:220", KarmaMin(25))],
-			Pendencias = ["ser Amigável com o povo da Terra (reputação 15+) -- RankQuests.dm:221; o port não tem reputação de planeta"],
+			Regras =
+			[
+				R("karma 25+", "Modules/Ranks/RankQuests.dm:220", KarmaMin(25)),
+				R("ser Amigável com o povo da Terra (reputação 15+)", "Modules/Ranks/RankQuests.dm:221",
+					Rep("Earth", Social.Reputacao.LimiarDeAmigavel)),
+			],
 			Concede = ["Imbuir Semente (senzu)", "Autorizar Sala do Tempo", "Selo Superior", "Cura"],
 		},
 		new()
@@ -274,8 +359,9 @@ public static class Cargos
 				R("karma 0+", "Modules/Ranks/RankQuests.dm:241", KarmaMin(0)),
 				// o zeni e COBRADO ao vencer a prova (RankQuests.dm:405), nao so exigido em caixa
 				R("250.000 zeni de campanha (cobrados ao vencer a prova)", "Modules/Ranks/RankQuests.dm:243", Zeni(250_000)),
+				R("ser Amigável com o povo da Terra (reputação 15+)", "Modules/Ranks/RankQuests.dm:242",
+					Rep("Earth", Social.Reputacao.LimiarDeAmigavel)),
 			],
-			Pendencias = ["ser Amigável com o povo da Terra (reputação 15+) -- RankQuests.dm:242; o port não tem reputação de planeta"],
 			Concede = ["Impostos da Terra"],
 		},
 
@@ -289,8 +375,9 @@ public static class Cargos
 			[
 				R("sangue Namekuseijin", "Modules/Ranks/RankQuests.dm:223", Raca("Namekian")),
 				R("karma 25+", "Modules/Ranks/RankQuests.dm:224", KarmaMin(25)),
+				R("ser Amigável com o povo de Namek (reputação 15+)", "Modules/Ranks/RankQuests.dm:225",
+					Rep("Namek", Social.Reputacao.LimiarDeAmigavel)),
 			],
-			Pendencias = ["ser Amigável com o povo de Namek (reputação 15+) -- RankQuests.dm:225; o port não tem reputação de planeta"],
 			Concede = ["Nomear Ancião", "estilo Namek", "Enkumei", "Liberar Potencial", "Guardar Corpo", "Ver Mortos", "Cura"],
 		},
 		// OS QUATRO ANCIAOS CARDEAIS. Nao tem requisito no codigo: sao NOMEADOS pelo Grande Anciao
@@ -332,7 +419,9 @@ public static class Cargos
 				R("ser um dos 4 Kaios cardeais (a escada dos deuses)", "Modules/Ranks/RankQuests.dm:231",
 					Cargo("nkai", "skai", "ekai", "wkai")),
 			],
-			Pendencias = ["3 tarefas cumpridas no cargo atual (RENOME) -- RankQuests.dm:53; o port não tem o motor de tarefas"],
+			// A PENDÊNCIA CADUCOU: o RENOME é cobrado. O motor de tarefas existe
+			// (`Core/Ranks/MissoesDeCargo.cs`), o Kaio cardeal só sobe com `RQ_PROMO_QUESTS` (3)
+			// tarefas cumpridas NO CARGO DE AGORA, e quem confere é o `ReivindicarCargo`.
 			Concede =
 			[
 				"estilo dos Deuses", "Liberar Potencial", "Guardar Corpo", "Ver Mortos", "Observar",
@@ -354,7 +443,7 @@ public static class Cargos
 					[Raca("Kai"), GodKiMaestria(33)]),   // GODKI_BLUE_PCT, 1A Defines.dm:53
 				R("karma 75+", "Modules/Ranks/RankQuests.dm:235", KarmaMin(75)),
 			],
-			Pendencias = ["3 tarefas cumpridas no cargo atual (RENOME) -- RankQuests.dm:53; o port não tem o motor de tarefas"],
+			// A PENDÊNCIA CADUCOU junto com a do Grand Kai -- ver lá.
 			Concede =
 			[
 				"estilo dos Deuses", "Místico", "Guardar Corpo", "Ver Mortos", "Reencarnar", "Reviver",
@@ -433,7 +522,11 @@ public static class Cargos
 			// Nao se reivindica: mata-se o Rei sendo Saiyajin (Murder.dm:85-96) -- ou o Principe/
 			// Princesa herda. O NPC Rei tambem entrega o trono a quem o mata (PlanetPopulation.dm:203).
 			Concede = ["Impostos", "Final Flash", "estilo Saiyajin", "Galick Gun"],
-			Pendencias = ["a sucessão exige matar o portador sendo Saiyajin -- Murder.dm:85; o port não tem o gancho de assassinato"],
+			// A PENDÊNCIA CADUCOU: a sucessão está LIGADA. O gancho é o `AoPerderALuta` com
+			// `morreu: true` (o funil único da derrota), a regra é `Core/Ranks/PortasDeCargo.cs`
+			// (`Sucessao`) e a linha de sangue é escrita pelo próprio Rei (verb `cargo_herdeiro`,
+			// o `Vegeta Managament` do DM). Matar o Rei sendo Saiyajin toma o trono; não sendo, o
+			// herdeiro nomeado herda; não havendo, o trono VAGA.
 		},
 		SoDeAdmin("kingofacronia", "King_Of_Acronia", "King Of Acronia", "Modules/Admin/Rewards.dm:310",
 			"O trono de Acronia.", ["Kill Driver", "estilo Alienígena"]),
@@ -475,14 +568,21 @@ public static class Cargos
 				"o Power of Destruction desperta (ou, no caminho do Instinto, o kit emprestado a 25%)", // :95-102
 				"aura e cabelo púrpura (godki.dm:280, HairObject.dm:68) e a Língua dos Deuses (WishTable.dm:33)",
 			],
-			Pendencias =
-			[
-				"DUELO FORMAL pelo título: desafio a cada 2 dias, 7 dias de carência para o novo Deus, "
-				+ "2 adiamentos por semana (o 3º é covardia e custa o título), nocaute decide -- GodOfDestruction.dm:30-35",
-				"TAREFAS automáticas com prazo (destruir um planeta ou eliminar um vilão); 3 falhas destituem "
-				+ "-- GodOfDestruction.dm:36-38",
-				"o desafiante precisa do God Ki DESPERTO -- GodOfDestruction.dm:434",
-			],
+			// ============================ A LISTA ZEROU, E CADA LINHA DELA MORREU POR UM MOTIVO ============================
+			// Eram TRÊS. O **duelo formal** ficou ligado inteiro (`Core/Ranks/PortasDeCargo.cs` +
+			// `GameServer.CargoDuelo.cs` -- carência de 7 dias, intervalo de 2, 2 adiamentos por semana
+			// com o 3º custando o título, nocaute decide, 10 min de teto); o **portão do God Ki
+			// desperto** é conferido no verb de desafiar; e a última, a tarefa de **DESTRUIR UM
+			// PLANETA**, caiu com os deveres de cargo.
+			//
+			// Ela dizia: *"o DM sorteia entre os `pspace_planets`, um registro de mundos procedurais
+			// vivos, e aqui o universo é função pura da seed -- só existe o livro dos MORTOS"*. O Lorde
+			// do Gelo precisou da MESMA resposta (a tarefa dele é só essa) e ela apareceu: o SETOR do
+			// portador na carta estelar (`SortearMundoParaDestruir`), que é mais perto do original do
+			// que uma lista global, porque o `pspace_planets` do DM também só contém o que está perto de
+			// alguém. Os dois ramos do `god_task_new` estão ligados, na ordem de lá -- o mundo só entra
+			// quando não há ameaça online.
+			// ========================================================================================================
 		},
 		new()
 		{
@@ -525,9 +625,15 @@ public static class Cargos
 		Chave = chave, Global = global, Nome = nome, Porta = PortaDoCargo.Nomeacao,
 		Desc = "Guardião de 1 Esfera do Dragão de Namek.",
 		Concede = ["estilo Namek", "Makankosappo", "Enkumei", "Liberar Potencial", "Telepatia", "Cura"],
+		// A NOMEAÇÃO ESTÁ LIGADA (`Nomeacao`, em `Core/Ranks/PortasDeCargo.cs`): o Grande Ancião
+		// oferece o assento pelo verb `cargo_nomear`, o convidado aceita, e o kit dos quatro chega
+		// pela dádiva. **Duas coisas do DM não vieram junto de propósito, e as duas são bugs dele**:
+		// `North_Elder=key` (NamekRanks.dm:63) grava a `key` de QUEM NOMEIA -- e o `Rank_Verb_Assign`
+		// compara os quatro globais por SIGNATURE (RankAssign.dm:95) --, e `if(M.Rank=="Namekian
+		// Elder")` (:58) só deixa nomear quem JÁ é Ancião, porta trancada por dentro num servidor novo.
 		Pendencias =
 		[
-			$"nomeado pelo Grande Ancião (NamekRanks.dm:56); sem requisito próprio no DM -- também sai do admin em {fonte}",
+			$"o DM não dá requisito próprio ao assento -- ele também sai do verb Give Rank do admin em {fonte}",
 			"no DM os quatro compartilham o mesmo mob.Rank (\"Namekian Elder\"), então a árvore de skills não os distingue",
 		],
 	};
@@ -564,12 +670,18 @@ public static class Cargos
 		{
 			case PortaDoCargo.Admin:
 				return "este cargo não se reivindica: no original ele é dado por um administrador";
+			// AS TRES FRASES ABAIXO DEIXARAM DE SER SO UMA RECUSA. Enquanto as portas não existiam,
+			// dizer "não se reivindica" era tudo o que havia de honesto; agora as três têm mecanismo
+			// (ver `PortasDeCargo.cs`), então a frase diz COMO -- que é a mesma regra do resto deste
+			// método: um "não pode" seco faz a pessoa tentar de novo sem saber o que mudar.
 			case PortaDoCargo.Duelo:
-				return "este cargo não se reivindica: toma-se em DUELO FORMAL pelo título";
+				return "este cargo não se reivindica: toma-se em DUELO FORMAL pelo título "
+					 + "(verb Challenge God of Destruction; exige God Ki desperto)";
 			case PortaDoCargo.Sucessao:
-				return "este cargo não se reivindica: herda-se derrubando quem o carrega";
+				return "este cargo não se reivindica: toma-se MATANDO quem o carrega, sendo do sangue "
+					 + "-- ou herda-se, sendo da linha de sucessão";
 			case PortaDoCargo.Nomeacao:
-				return "este cargo não se reivindica: é nomeado por quem ocupa o cargo acima";
+				return "este cargo não se reivindica: é NOMEADO pelo Grande Ancião de Namek";
 		}
 
 		foreach (Regra g in r.Regras)

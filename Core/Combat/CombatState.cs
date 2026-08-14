@@ -246,12 +246,37 @@ public sealed class CombatState
 	public Func<CombatState, bool>? NegarMorte;
 
 	/// <summary>
+	/// ============================ ESTE CORPO ACABOU DE MORRER -- O OUTRO LADO DO `NegarMorte` ============================
+	/// O irmao do gancho acima, e ele nasceu pelo mesmo motivo, medido: **`RenasceEm = agora +
+	/// MsAteRenascer` estava escrito a mao em OITO lugares** (o resolvedor de socos, a explosao do
+	/// planeta, o calor da estrela, a Final Explosion, o Kaio-ken que estoura, a gestacao do
+	/// bio-androide, o dano espalhado do G3, o verb de admin) -- e o `PrepararCombate` era o nono,
+	/// pra quem loga ja morto.
+	///
+	/// Quando a morte ganhou uma SEGUNDA consequencia (a viagem pro Outro Mundo e a aureola),
+	/// acrescentar a linha nova em sete dos oito lugares e literalmente o defeito que este port
+	/// registra como o mais repetido dele. Entao a consequencia virou gancho: `Morrer()` ja era a
+	/// porta unica da morte, e agora ela AVISA.
+	///
+	/// ============================ O GANCHO SO PODE ENFILEIRAR ============================
+	/// `Morrer()` e chamado de dentro do `MeleeResolver`, do laco de dano em area e do tique de
+	/// combate -- todos percorrendo a lista de uma zona. Um gancho que chamasse `MoveToZone` daqui
+	/// mexeria nas listas de DUAS zonas no meio dessa varredura, que e o "Collection was modified"
+	/// que o `_npcsPraTirar` e o `TickDeQuemVolta` ja existem pra evitar. Ver
+	/// `GameServer.Alem.AMorteAconteceu`: ele escreve um relogio e mais nada.
+	/// ==================================================================================
+	/// </summary>
+	public Action<CombatState>? AoMorrer;
+
+	/// <summary>
 	/// MORRER. Devolve **false** quando a morte foi NEGADA -- e ai nada mudou no corpo além do que
 	/// quem negou tenha feito.
 	///
-	/// Todo chamador precisa olhar o retorno antes de fazer o que vem depois (marcar o prazo de
-	/// renascer, pagar Zenkai, anunciar). Anunciar a morte de quem nao morreu e pior que nao ter o
-	/// seguro: o jogador ve "voce morreu" e continua de pe.
+	/// Todo chamador precisa olhar o retorno antes de fazer o que vem depois (pagar Zenkai,
+	/// anunciar). Anunciar a morte de quem nao morreu e pior que nao ter o seguro: o jogador ve
+	/// "voce morreu" e continua de pe.
+	///
+	/// O PRAZO DE RENASCER NAO E MAIS CONTA DO CHAMADOR -- ver <see cref="AoMorrer"/>.
 	/// </summary>
 	/// <param name="ignorarSeguro">
 	/// Pula o <see cref="NegarMorte"/>. E pro verb de admin: uma ferramenta que uma mecanica de
@@ -268,6 +293,10 @@ public sealed class CombatState
 		NocauteRestante = 0;
 		EmCombate = 0;
 		LutandoDeVerdade = 0;
+
+		// DEPOIS DE TUDO ESCRITO, e nao antes: quem ouve este aviso le `F.dead` pra decidir, e um
+		// gancho chamado no meio veria o corpo ainda vivo.
+		AoMorrer?.Invoke(this);
 		return true;
 	}
 

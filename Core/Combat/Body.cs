@@ -11,6 +11,32 @@ public enum Vitalidade
 	Interno,
 }
 
+/// <summary>
+/// A PECA QUE CAI NO CHAO quando um membro e arrancado -- o `icon_state` do `/obj/bodyparts`
+/// do BYOND, virado em simbolo.
+///
+/// E ENUM, e nao nome de animacao, porque o Core nao conhece arte: quem traduz isto no recorte da
+/// folha `Body Parts Bloody` e o cliente (`Client/Decalques.cs`). O que o Core garante e a TABELA
+/// -- ver <see cref="Body.PecaDe"/>, que e onde o original erra facil.
+///
+/// SAO DEZ e nao onze porque o rabo nao tem peca propria: ver a tabela.
+/// </summary>
+public enum PecaDeCorpo : byte
+{
+	/// <summary>Nao ha peca (o membro nao caiu). Nunca viaja pela rede.</summary>
+	Nenhuma = 0,
+	Cabeca = 1,
+	Cerebro = 2,
+	Torso = 3,
+	Abdomen = 4,
+	Visceras = 5,
+	Reprodutor = 6,
+	Braco = 7,
+	Mao = 8,
+	Perna = 9,
+	Pe = 10,
+}
+
 /// <summary>Uma parte do corpo.</summary>
 public sealed class BodyPart
 {
@@ -115,6 +141,45 @@ public sealed class Body
 	}
 
 	public BodyPart? Achar(string nome) => Partes.FirstOrDefault(p => p.Nome == nome);
+
+	/// <summary>
+	/// DE QUAL MEMBRO SAI QUAL PECA -- a tabela do BYOND, colada linha a linha.
+	///
+	/// No original ela mora em DOIS lugares: o `bodypartType` de cada `/datum/Body` diz que OBJETO
+	/// nasce no chao (`mobparts.dm:119-324`), e cada objeto declara o proprio `icon_state`
+	/// (`mobparts.dm:401-477`). Aqui os dois passos viram um so, porque o unico consumidor daquilo
+	/// e o desenho.
+	///
+	/// ============================ AS DUAS ARMADILHAS, E AS DUAS SAO DO ORIGINAL ============================
+	///   * PERNA DESENHA "Limb". `/datum/Body/Leg` aponta pra `/obj/bodyparts/Limb`
+	///     (`mobparts.dm:270`), que tem `icon_state = "Limb"` (`:420`) -- NAO "leg", que nem existe
+	///     na folha. Qualquer mapeamento espertinho por nome minusculo cai fora exatamente aqui, e o
+	///     sintoma seria uma peca errada num evento raro demais pra alguem conferir depois.
+	///   * RABO DESENHA "Guts". `/datum/Body/Tail` aponta pra `/obj/bodyparts/Tail`, e esse objeto
+	///     declara `icon_state = "Guts"` (`mobparts.dm:477`): a folha nao tem recorte de rabo e o
+	///     BYOND reusa visceras. E o que ele faz -- nao e invencao daqui, e nao e pra "consertar".
+	/// =======================================================================================================
+	///
+	/// O DESCONHECIDO VIRA CABECA, e isso tambem e do original: o `/datum/Body` base nasce com
+	/// `bodypartType = /obj/bodyparts/Head` (`mobparts_logic.dm:56`), entao um membro sem linha na
+	/// tabela ja caia nesse padrao la. Membro novo que apareca aqui cai numa cabeca no chao -- e
+	/// visivel, que e melhor do que nao cair nada e ninguem descobrir.
+	/// </summary>
+	public static PecaDeCorpo PecaDe(string nome) => nome switch
+	{
+		"Cabeca" => PecaDeCorpo.Cabeca,          // `/obj/bodyparts/Head`,     "Head"     (:406)
+		"Cerebro" => PecaDeCorpo.Cerebro,        // `/obj/bodyparts/Brain`,    "Brain"    (:413)
+		"Torso" => PecaDeCorpo.Torso,            // `/obj/bodyparts/Torso`,    "Torso"    (:427)
+		"Abdomen" => PecaDeCorpo.Abdomen,        // `/obj/bodyparts/Abdomen`,  "Abdomen"  (:434)
+		"Orgaos" => PecaDeCorpo.Visceras,        // `/obj/bodyparts/Guts`,     "Guts"     (:469)
+		"Reprodutor" => PecaDeCorpo.Reprodutor,  // `/obj/bodyparts/SOrgans`,  "SOrgans"  (:455)
+		"Braco esquerdo" or "Braco direito" => PecaDeCorpo.Braco,   // `/obj/bodyparts/Arm`,   "Arm"   (:448)
+		"Mao esquerda" or "Mao direita" => PecaDeCorpo.Mao,         // `/obj/bodyparts/Hands`, "Hands" (:441)
+		"Perna esquerda" or "Perna direita" => PecaDeCorpo.Perna,   // `/obj/bodyparts/Limb`,  "Limb"  (:420)
+		"Pe esquerdo" or "Pe direito" => PecaDeCorpo.Pe,            // `/obj/bodyparts/Foot`,  "Foot"  (:462)
+		"Rabo" => PecaDeCorpo.Visceras,          // `/obj/bodyparts/Tail`, mas `icon_state = "Guts"` (:477)
+		_ => PecaDeCorpo.Cabeca,                 // o padrao do `/datum/Body` base (mobparts_logic.dm:56)
+	};
 
 	/// <summary>
 	/// A vida do personagem: MEDIA SIMPLES das partes que ainda existem.

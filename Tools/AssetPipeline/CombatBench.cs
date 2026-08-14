@@ -24,6 +24,7 @@ public static class CombatBench
 
 		Anatomia(cat);
 		Guarda(cat);
+		Desvio(cat);
 
 		Console.WriteLine("\n=== DUELOS ===");
 		Duelos(cat);
@@ -186,6 +187,65 @@ public static class CombatBench
 	}
 
 	/// <summary>
+	/// O DESVIO TEM NOME -- e esta bancada mede o NOME, nao a conta.
+	///
+	/// A conta da esquiva sempre funcionou: quem e muito mais rapido derruba o `bhit` e o soco nao
+	/// entra. O que estava errado era o ROTULO -- o golpe saia como <see cref="Desfecho.Errou"/>,
+	/// que o cliente desenha como soco no vazio (mudo e invisivel), e o dono jogou meses sem
+	/// nenhum sinal de que estava esquivando. Nenhuma bancada pegou porque todas mediam dano,
+	/// duracao e `Encostou` -- e os tres estavam certos.
+	///
+	/// Entao aqui se conta DESFECHO. Duas coisas tem que aparecer:
+	///
+	///   * contra um defensor muito mais rapido, o que NAO encosta sai como `Esquivou`, e a coluna
+	///     de `Errou` fica em ZERO -- `Errou` e soco no vazio, e no vazio nao ha defensor;
+	///   * um defensor que esta com a GUARDA ERGUIDA nao esquiva nunca (o `&& !M.blocking` do
+	///     `CombatMovement.dm:192`): ou apara, ou come o golpe.
+	/// </summary>
+	private static void Desvio(RaceCatalog? cat)
+	{
+		Console.WriteLine();
+		Console.WriteLine("=== O DESVIO TEM NOME ===");
+		var rng = new Random(1234);
+		Console.WriteLine("  cenario                     esquivou%  errou%  aparou%  encostou%");
+
+		void Caso(string rotulo, double bpA, double bpB, bool guarda = false)
+		{
+			var a = Lutador(cat, "Human", bpA, rng);
+			var b = Lutador(cat, "Human", bpB, rng);
+			a.C.Letal = false;
+			b.C.Guardar(guarda);
+
+			int esq = 0, err = 0, apa = 0, enc = 0;
+			const int n = 4000;
+			for (int i = 0; i < n; i++)
+			{
+				b.C.Corpo.Restaurar();
+				b.F.dead = false;
+				b.F.KO = false;
+				b.F.Ki = b.F.MaxKi;      // guarda custa Ki: sem repor, ela cai sozinha no meio
+				b.C.Guardar(guarda);
+				GolpeResultado r = MeleeResolver.Resolver(a.C, b.C, 0, rng);
+				switch (r.Desfecho)
+				{
+					case Desfecho.Esquivou: esq++; break;
+					case Desfecho.Errou: err++; break;
+					case Desfecho.Aparou: apa++; break;
+				}
+				if (r.Encostou) enc++;
+			}
+			Console.WriteLine($"  {rotulo,-26}  {esq * 100.0 / n,8:0.0}%  {err * 100.0 / n,5:0.0}%"
+							  + $"  {apa * 100.0 / n,6:0.0}%  {enc * 100.0 / n,8:0.0}%");
+		}
+
+		Caso("10x mais FRACO que o alvo", 100, 1000);
+		Caso("iguais", 100, 100);
+		Caso("10x mais forte", 1000, 100);
+		Caso("10x fraco, alvo NA GUARDA", 100, 1000, guarda: true);
+		Console.WriteLine("  (errou% tem que ser ZERO em todas: soco no vazio nao passa pelo resolvedor)");
+	}
+
+	/// <summary>
 	/// A guarda vale a pena? Mede quantos golpes ela apara, quantos viram contra-ataque e
 	/// quanto passa quando ela cede.
 	/// </summary>
@@ -270,6 +330,26 @@ public static class CombatBench
 		List<BodyPart> caiu = c.Decepar(braco);
 		Console.WriteLine($"  decepado -> caiu junto: {string.Join(", ", caiu.Select(p => p.Nome))}"
 						  + "   <- CONSERTO 2: a mao vai com o braco");
+		Console.WriteLine($"  e no chao nascem: {string.Join(", ", caiu.Select(p => Body.PecaDe(p.Nome)))}"
+						  + "   <- duas pecas, nao uma");
+
+		// ============================ QUEM CAIU NO PADRAO DA TABELA ============================
+		// `Body.PecaDe` responde `Cabeca` pro membro que nao conhece -- e o padrao do BYOND
+		// (`mobparts_logic.dm:56`), entao ele nao pode lancar nem avisar sozinho. O preco disso e que
+		// RENOMEAR uma parte em `Body.Novo` nao quebra nada: a peca simplesmente vira uma cabeca no
+		// chao, e "o braco arrancado virou cabeca" e o tipo de defeito que so aparece quando alguem
+		// olha, num evento que acontece uma vez por briga.
+		//
+		// Entao a auditoria e por AUSENCIA: toda parte do corpo, menos a cabeca, tem que responder
+		// alguma coisa que NAO seja cabeca. E o unico jeito de o padrao continuar existindo sem
+		// virar esconderijo.
+		// =======================================================================================
+		var orfas = Body.Novo(comRabo: true).Partes
+			.Where(p => p.Nome != "Cabeca" && Body.PecaDe(p.Nome) == PecaDeCorpo.Cabeca)
+			.Select(p => p.Nome).ToList();
+		Console.WriteLine(orfas.Count == 0
+			? "  tabela de pecas: as 15 partes tem recorte proprio (nenhuma caiu no padrao)"
+			: $"  FALHA: sem linha na tabela e caindo como CABECA -> {string.Join(", ", orfas)}");
 		Console.WriteLine($"  vida do corpo apos decepar: {c.Vida():0.0} (o decepado sai do denominador)");
 
 		BodyPart cabeca = c.Achar("Cabeca")!;

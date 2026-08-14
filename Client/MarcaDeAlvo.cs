@@ -5,9 +5,12 @@ namespace Jandirus.Client;
 /// <summary>
 /// O ANEL QUE MARCA O ALVO. Fica no chao, aos pes de quem voce escolheu.
 ///
-/// NO CHAO, e nao em cima da cabeca, por uma razao pratica: a cabeca ja tem a barra de vida e
-/// o nome, e num amontoado de gente a marca em cima some no meio deles. Aos pes ela fica no
-/// unico lugar que so pertence a um personagem.
+/// NO CHAO, e nao em cima da cabeca, por uma razao pratica: num amontoado de gente uma marca em
+/// cima some no meio das cabecas e dos baloes de fala. Aos pes ela fica no unico lugar que so
+/// pertence a um personagem.
+///
+/// (Este comentario dizia "a cabeca ja tem a barra de vida e o nome". Nome nunca foi desenhado no
+/// mundo, e a barra de vida foi deletada a pedido do dono -- ver `EntityState`.)
 ///
 /// GIRA DEVAGAR. Uma marca parada some do olho depois de dois segundos; o giro lento e o que
 /// faz o olho voltar nela sozinho no meio da briga sem que ela precise piscar ou gritar.
@@ -26,7 +29,13 @@ namespace Jandirus.Client;
 /// Por isso a declaracao. E o exemplo de que a inversao nao e "mover tudo": e "mover tudo menos
 /// quem tiver motivo, dito onde da pra ver o motivo".
 /// </remarks>
-public partial class MarcaDeAlvo : Node2D, IFicaNoChao
+/// <remarks>
+/// <see cref="INaoSomeComOCorpo"/> pela mesma leitura que a poe no chao: ela nao e o sujeito, e a
+/// MIRA em cima dele. Some-la junto com o corpo durante a esquiva
+/// (<see cref="EsquivaZanzoken"/>) faria a mira piscar a cada soco desviado -- e desviar e o que
+/// mais acontece contra alguem mais forte.
+/// </remarks>
+public partial class MarcaDeAlvo : Node2D, IFicaNoChao, INaoSomeComOCorpo
 {
 	private const float Raio = 15f;
 	private const int Lados = 3;

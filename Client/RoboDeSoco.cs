@@ -60,9 +60,41 @@ public partial class RoboDeSoco : Node
         cli.SnapshotReceived -= Avistou;
     }
 
+    /// <summary>
+    /// `--socaralvo <nome>`: soca ESTE e mais ninguem. Vazio = o primeiro que aparecer (o padrao).
+    ///
+    /// ============================ "O PRIMEIRO QUE APARECER" NAO SERVE NUM BERCO POVOADO ============================
+    /// O berco tem NPCs, e o primeiro corpo do snapshot e quase sempre um deles. O robo marcava o
+    /// Krillin, ia bater NELE, apanhava de volta e passava a rodada inteira nocauteado -- a bancada
+    /// do desvio, que existe pra contar golpes num alvo especifico, recebeu UM golpe em 45 s.
+    ///
+    /// Nao e caso de afrouxar a marcacao automatica: ela esta certa pro `--socar` sozinho, onde
+    /// bater em quem aparecer e exatamente o que se quer. O que faltava era a bancada de DOIS
+    /// processos poder dizer em quem.
+    /// ============================================================================================================
+    /// </summary>
+    public string AlvoPreferido = "";
+
     private void Avistou(List<Jandirus.Net.EntityState> estados)
     {
         if (GameClient.Instance is not { } cli) return;
+
+        // O PEDIDO MANDA, e manda SEMPRE -- nao so na primeira vez. O `PeerLook` que traz o nome
+        // pode chegar depois do snapshot que criou o corpo (canais diferentes, sem ordem entre
+        // eles), entao a busca por nome falha nos primeiros quadros e o robo ja teria marcado um
+        // NPC. Reconferir a cada snapshot corrige a marcacao assim que o nome chegar.
+        if (AlvoPreferido.Length > 0)
+        {
+            int quero = World.Instancia?.IdPeloNome(AlvoPreferido) ?? 0;
+            if (quero != 0 && quero != cli.AlvoId)
+            {
+                cli.SendAlvo(quero);
+                GD.Print($"[robo] alvo PEDIDO na linha de comando: '{AlvoPreferido}' = id {quero}");
+            }
+            foreach (Jandirus.Net.EntityState e in estados)
+                if (e.Id == quero) _alvoPos = new Vector2(e.Pos.X, e.Pos.Y);
+            return;
+        }
 
         foreach (Jandirus.Net.EntityState e in estados)
         {
@@ -274,6 +306,25 @@ public partial class RoboDeSoco : Node
     public double DecolarEm;
     private double _proximoRumo;
 
+    /// <summary>
+    /// Em quantos segundos o robo LEVANTA VOO (`--socarvoando N`). Zero = fica no chao (o padrao).
+    ///
+    /// ============================ POR QUE O SOCADOR PRECISA VOAR ============================
+    /// Nao e capricho da bancada do desvio: e a regra assimetrica do <see cref="Jandirus.Core.World.Voo.PodeAcertar"/>.
+    /// Quem paira no andar 1 alcanca quem esta no chao, mas quem esta no chao NAO alcanca de volta.
+    /// Entao, pra fotografar uma esquiva NO AR, nao basta o defensor subir -- se so ele subisse, o
+    /// socador no chao pararia de acertar e nao haveria golpe nenhum pra esquivar. Os DOIS tem que
+    /// estar no mesmo andar.
+    ///
+    /// Vai pelo mesmo canal da tecla do jogador (`SendHabilidade("voar")`), e nao por um atalho de
+    /// teste: assim o servidor cobra o Ki de decolagem e recusa quem nao pode, como recusaria uma
+    /// pessoa. EXIGE `--vooteste` no servidor -- sem a skill de voo o pedido e negado e o robo fica
+    /// no chao (a bancada que pediu o voo e quem tem que notar isso, e ela nota pela altura).
+    /// ========================================================================================
+    /// </summary>
+    public double VoarEm;
+    private bool _voou;
+
     private void Ouviu(Protocol.Fala canal, string autor, string texto) =>
         GD.Print($"[robo] ouvi ({canal}) {autor}: " + (texto.Length > 0 ? texto : "(sussurro sem conteudo)"));
 
@@ -320,6 +371,13 @@ public partial class RoboDeSoco : Node
         {
             _proximoPassoTech -= delta;
             if (_proximoPassoTech <= 0) { _proximoPassoTech = 3; PassoDeTech(); }
+        }
+
+        // LEVANTA VOO. `--socarvoando N`: sobe pro andar 1 depois de N segundos -- ver `VoarEm`.
+        if (VoarEm > 0 && !_voou)
+        {
+            VoarEm -= delta;
+            if (VoarEm <= 0) { _voou = true; cli.SendHabilidade("voar"); GD.Print("[robo] levantando voo (pra alcancar quem tambem esta no ar)"); }
         }
 
         // DECOLA E VOA. `--espaco N`: sobe ao espaco depois de N segundos e liga o piloto
@@ -401,7 +459,7 @@ public partial class RoboDeSoco : Node
         if (eu == null || _alvoPos == null) { Parar(); return; }
 
         Vector2 d = _alvoPos.Value - eu.Value;
-        if (d.Length() < 40f) { Parar(); return; }   // ja esta no alcance: para e soca
+        if (d.Length() < PararA) { Parar(); return; }   // ja esta no alcance: para e soca
 
         Segurar("move_right", d.X > 8f);
         Segurar("move_left", d.X < -8f);
@@ -424,6 +482,26 @@ public partial class RoboDeSoco : Node
 
     private static readonly string[] Direcoes = ["move_right", "move_left", "move_up", "move_down"];
 
+    /// <summary>
+    /// A que distancia o robo PARA de andar, em pixels. Padrao 40 -- o alcance do soco.
+    ///
+    /// ============================ 40 PX FAZ OS DOIS CORPOS SE EMPILHAREM ============================
+    /// O robo anda apertando tecla e mede pela POSICAO DO SNAPSHOT, que ja e velha quando chega; com o
+    /// limite exatamente no alcance do soco ele passa do ponto e para EM CIMA do outro. A bancada do
+    /// desvio mediu vao ZERO entre os dois corpos, e a foto saiu com um sprite dentro do outro -- da
+    /// pra ver o efeito, nao da pra ver quem desviou de quem.
+    ///
+    /// E o conserto nao e afastar o robo na marra: parando um pouco ALEM do alcance, quem fecha a
+    /// distancia passa a ser o SERVIDOR, que ja tem regra pra isso e para a um tile (`DistanciaDeParada`,
+    /// "encostado, nao POR CIMA"). Ou seja, o espacamento da foto passa a ser o do JOGO.
+    ///
+    /// Abaixo de ~48 px o servidor nem se mexe (a aproximacao a pe exige `dist > Alcance`); acima de
+    /// ~48 o passo que falta e curto demais pra virar investida (`DeslocamentoMinimo`), entao ele anda
+    /// o resto de graca, sem gastar Ki e sem miragem. E essa a janela util.
+    /// ================================================================================================
+    /// </summary>
+    public float PararA = 40f;
+
     /// <summary>Onde o alvo estava no ultimo snapshot.</summary>
     private Vector2? _alvoPos;
 
@@ -438,6 +516,9 @@ public partial class RoboDeSoco : Node
             case Jandirus.Core.Combat.Desfecho.Critico: if (bati) _acertos++; break;
             case Jandirus.Core.Combat.Desfecho.Aparou: if (bati) _aparados++; break;
             case Jandirus.Core.Combat.Desfecho.Contra: if (bati) _contras++; break;
+            // `erros` E SOCO NO VAZIO, e so isso: golpe que nao acha ninguem (`AnunciarSocoNoAr`).
+            // Pontaria que falha CONTRA ALGUEM sai como `Esquivou` -- e o `hit = 0` do
+            // `CombatMovement.dm:192`. Num robo que sempre tem alvo, `erros` fica em zero.
             case Jandirus.Core.Combat.Desfecho.Errou: if (bati) _erros++; break;
             case Jandirus.Core.Combat.Desfecho.Esquivou: if (bati) _esquivas++; break;
         }

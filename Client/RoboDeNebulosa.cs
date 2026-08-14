@@ -174,9 +174,36 @@ public partial class RoboDeNebulosa : Node
 		GD.Print("[nebulosa] " + linha);
 	}
 
-	/// <summary>A razao de Ki que o CLIENTE conhece (a mesma que a barra do HUD desenha).</summary>
+	/// <summary>
+	/// A razao de Ki que o CLIENTE conhece.
+	///
+	/// ============================ ELA NAO ERA "A QUE A BARRA DESENHA" ============================
+	/// Este comentario dizia isso, e era falso -- o custo foi quatro mil checagens verdes com o
+	/// defeito na tela. A ficha chegava inteira (1,18), a barra do HUD a cortava em 1,0 DENTRO do
+	/// widget, e esta propriedade lia a ficha, antes do corte. Media a INTENCAO.
+	///
+	/// Agora ela sai do mesmo lugar que as tres telas usam (<see cref="SheetState.RazaoDeKi"/>) e
+	/// serve so pra dizer o que o servidor mandou. Quem cobra o que foi DESENHADO le a barra --
+	/// ver <see cref="Hud.BarraDeKi"/> e <see cref="Barra.TextoDeTeste"/>.
+	/// ============================================================================================
+	/// </summary>
 	private static double RazaoDeKi =>
-		C?.Sheet is { MaxKi: > 0 } s ? s.Ki / s.MaxKi : double.NaN;
+		C?.Sheet is { MaxKi: > 0 } s ? s.RazaoDeKi : double.NaN;
+
+	/// <summary>
+	/// O EXCEDENTE COMO A TELA O ESCREVEU, em percentual -- NaN se nao ha HUD montado.
+	///
+	/// Le o texto que saiu do widget e o converte de volta. Dar a volta pelo texto e o ponto: e o
+	/// unico numero desta bancada que nenhum campo interno pode desmentir.
+	/// </summary>
+	private static double KiEscritoNaBarra
+	{
+		get
+		{
+			if (Hud.Instancia?.BarraDeKi.TextoDeTeste is not { } txt) return double.NaN;
+			return double.TryParse(txt.TrimEnd('%'), out double v) ? v : double.NaN;
+		}
+	}
 
 	public override void _Process(double delta)
 	{
@@ -1557,6 +1584,35 @@ public partial class RoboDeNebulosa : Node
 
 		Conferir(RazaoDeKi > 1.0, $"segurar C passou dos 100% ({RazaoDeKi * 100:0}%)");
 
+		// ============================ E A BARRA TEM QUE DIZER O MESMO ============================
+		// A checagem de cima sozinha e a que ficou verde por meses com o dono olhando uma barra
+		// travada em 100%: ela le a FICHA, e o corte morava depois dela, no widget. Estas duas leem
+		// o que saiu na tela -- o texto desenhado e o quanto do trilho o desenho encheu.
+		//
+		// O PREENCHIMENTO CONFERE O TRILHO, e nao so a cor: com o Ki a 118% e o teto de carga em
+		// 140%, a barra tem que estar em 0,84 do trilho. Se ela estivesse cheia (1,0) o numero
+		// poderia ate estar certo ao lado, mas o DESENHO -- que e o que o dono olha a partida
+		// inteira -- estaria de novo dizendo "no talo" com 22 pontos de folga.
+		// =========================================================================================
+		// SEM HUD MONTADO A CHECAGEM NAO RODA, E ELA DIZ ISSO. Uma rodada sem painel (o headless de
+		// diagnostico pode subir sem ele) daria FALHA num codigo intacto, e uma falha mentirosa custa
+		// a mesma confianca que um verde mentiroso. Passar batido calado seria pior ainda: pareceria
+		// coberto. Entao ou ela mede, ou ela avisa que nao mediu.
+		if (Hud.Instancia is { } h)
+		{
+			double escrito = KiEscritoNaBarra;
+			Conferir(escrito > 100,
+					 $"e a BARRA DO HUD ESCREVE o excedente ({escrito:0}%) -- nao e a ficha, e o texto desenhado");
+			Conferir(h.BarraDeKi.PreenchimentoDeTeste < 0.999,
+					 $"e o trilho dela ainda tem folga ({h.BarraDeKi.PreenchimentoDeTeste:0.###} do "
+				   + "teto de carga) -- a barra cresce pro excedente em vez de saturar");
+		}
+		else
+		{
+			Nota("  --     [carga] NAO HA HUD montado nesta rodada: as duas checagens da barra "
+			   + "DESENHADA nao rodaram (nao e falha nem aprovacao)");
+		}
+
 		// ============================ 1. NENHUMA CHAMA, E NAO "SO UMA" ============================
 		// Os DOIS desenhistas ficam mudos porque os dois recebem o mesmo simbolo `FolhaDeAura.Nebulosa`
 		// do Core (ver `SpriteDeAura.DefinirFolha`). `SemFolha` diz que eles nao PODEM acender, o que e
@@ -2527,7 +2583,7 @@ public partial class RoboDeNebulosa : Node
 
 	/// <summary>
 	/// Some com o personagem inteiro por um quadro -- corpo, cabelo, olhos, roupa e rabo, que sao todos
-	/// filhos do `Visual` (`CharacterVisual.NovaCamada`). A nebulosa, a aura e a barra de vida NAO sao,
+	/// filhos do `Visual` (`CharacterVisual.NovaCamada`). A nebulosa, a aura e o balao NAO sao,
 	/// e e de proposito: elas tem que ficar em pe nas duas fotos pra cancelarem na subtracao.
 	/// Ver <see cref="AFolgaNaImagem"/>.
 	/// </summary>

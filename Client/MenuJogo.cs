@@ -36,11 +36,26 @@ public partial class MenuJogo : CanvasLayer
 	public static bool Aberto { get; private set; }
 
 	/// <summary>
-	/// A BUSCA esta com o foco? So ela engole o teclado -- com o menu aberto e o campo solto,
-	/// da pra continuar andando e lutando enquanto se olha a ficha, que e como o painel do
-	/// BYOND funcionava.
+	/// ALGUM CAMPO DE TEXTO DESTE MENU ESTA COM O FOCO? Com todos soltos da pra continuar andando e
+	/// lutando enquanto se olha a ficha, que e como o painel do BYOND funcionava.
+	///
+	/// ============================ ERA SO A BUSCA, E ISSO ERA UM BURACO ============================
+	/// A pergunta era `m._busca.HasFocus()` -- e o menu tem OUTROS CINCO `LineEdit`: o aviso pro
+	/// servidor, a conta/personagem de promover e banir, o campo do alvo (que aceita 248 caracteres)
+	/// e o do painel de admin. Digitando o nome de quem ia ser banido, o personagem ANDAVA (WASD),
+	/// treinava (T) e trocava a mira (1-5) -- ja era assim antes das teclas configuraveis, so que
+	/// ninguem tinha ligado nada as letras do meio do alfabeto.
+	///
+	/// Com tecla ligavel em QUALQUER tecla isso deixa de ser esquisito e vira grave: cada letra do
+	/// nome digitado viraria uma tecnica disparada. Por isso a pergunta virou "algum campo MEU tem o
+	/// foco" em vez de nomear um campo -- assim o sexto `LineEdit` que nascer neste arquivo ja
+	/// nasce coberto, que e o defeito que este projeto mais repetiu.
+	/// ========================================================================================
 	/// </summary>
-	public static bool Digitando => Instancia is { Visible: true } m && m._busca.HasFocus();
+	public static bool Digitando =>
+		Instancia is { Visible: true } m
+		&& m.GetViewport()?.GuiGetFocusOwner() is LineEdit campo
+		&& m.IsAncestorOf(campo);
 
 	/// <summary>
 	/// As abas fixas, na ordem do original.
@@ -116,8 +131,11 @@ public partial class MenuJogo : CanvasLayer
 			cli.CargosMudaram += AoCargos;
 			cli.ConhecidosMudaram += AoConhecidos;
 			cli.ContasMudaram += AoContas;
+			cli.LimpezaMudou += AoLimpeza;
 			cli.TechMudou += AoTech;
 			cli.EstilosMudaram += AoEstilos;
+			cli.ChefesVistosMudaram += AoChefesVistos;
+			cli.CustomizadasMudaram += AoCustomizadas;
 			cli.ObrasMudaram += AoObras;
 			_atributos = cli.Atributos;
 			SincronizarLivro();
@@ -139,8 +157,11 @@ public partial class MenuJogo : CanvasLayer
 			cli.CargosMudaram -= AoCargos;
 			cli.ConhecidosMudaram -= AoConhecidos;
 			cli.ContasMudaram -= AoContas;
+			cli.LimpezaMudou -= AoLimpeza;
 			cli.TechMudou -= AoTech;
 			cli.EstilosMudaram -= AoEstilos;
+			cli.ChefesVistosMudaram -= AoChefesVistos;
+			cli.CustomizadasMudaram -= AoCustomizadas;
 			cli.ObrasMudaram -= AoObras;
 		}
 		Verbos.Mudou -= AoMudarVerbos;
@@ -187,9 +208,44 @@ public partial class MenuJogo : CanvasLayer
 	/// </summary>
 	private void AoConhecidos() { if (Visible && _aba == "People") Redesenhar(); }
 	private void AoContas() { if (Visible && _aba == Verbos.Admin) Redesenhar(); }
+
+	/// <summary>
+	/// A PREVIA DA LIMPEZA CHEGOU (ou foi consumida). Mesma regra do `AoContas`: so remonta na aba
+	/// de admin. E o campo do codigo e ZERADO aqui, e nao no desenho -- previa nova, codigo novo;
+	/// deixar o que estava digitado seria oferecer um codigo velho pra confirmar uma lista nova.
+	/// </summary>
+	private void AoLimpeza()
+	{
+		_codigoDaLimpeza = "";
+		if (Visible && _aba == Verbos.Admin) Redesenhar();
+	}
 	private void AoTech() { if (Visible) Redesenhar(); }
 
 	private void AoEstilos()
+	{
+		Habilidades.Montar(_atributos.Raca ?? "");
+		if (Visible) Redesenhar();
+	}
+
+	/// <summary>
+	/// VI UM CHEFE NOVO -- e cada um deles e um botao ("enfrentar na mente"). Remonta a lista
+	/// inteira, pelo mesmo argumento do <see cref="AoCustomizadas"/>.
+	/// </summary>
+	private void AoChefesVistos()
+	{
+		Habilidades.Montar(_atributos.Raca ?? "");
+		if (Visible) Redesenhar();
+	}
+
+	/// <summary>
+	/// UMA TECNICA INVENTADA NASCEU, MUDOU DE NOME OU MORREU -- e cada uma delas e um BOTAO.
+	///
+	/// Remonta a lista inteira, como o `AoSkills` e o `AoEstilos`: renomear a tecnica 3 deixaria o
+	/// botao velho de pe (o `Verbos.Registrar` deduplica por NOME, entao o novo entraria ao lado do
+	/// antigo em vez de substitui-lo), e o antigo continuaria mandando o mesmo verbo -- dois botoes
+	/// com nomes diferentes pra o mesmo tiro.
+	/// </summary>
+	private void AoCustomizadas()
 	{
 		Habilidades.Montar(_atributos.Raca ?? "");
 		if (Visible) Redesenhar();
@@ -205,12 +261,20 @@ public partial class MenuJogo : CanvasLayer
 	{
 		if (e is not InputEventKey { Pressed: true, Echo: false } k) return;
 
-		// ESCREVENDO NO CHAT, "p" e a letra p. A regra que o dono deu, e a mesma que ja vale
-		// pra andar e socar.
-		if (Chat.Digitando) return;
-
-		if (k.Keycode == Key.P)
+		// ============================ O PORTAO SO VALE PRO ATALHO, E NAO PRO ESC ============================
+		// "Escrevendo no chat, `p` e a letra p" -- a regra que o dono deu, e a mesma que ja vale pra
+		// andar e socar. Ela era `Chat.Digitando` no topo da funcao e virou `Foco.Digitando`, que e a
+		// pergunta unica da casa: escrever o nome de uma tecnica na mesa de tecnicas abria o menu por
+		// cima da palavra, porque so o CHAT estava sendo consultado.
+		//
+		// Mas o portao desceu pra dentro do `if` da tecla do menu, e isso e obrigatorio: `Foco` inclui
+		// o proprio menu (a busca dele e um campo de texto), entao no topo ele engoliria o ESC -- e o
+		// ESC daqui e justamente quem LIMPA a busca. Barrar tudo teria trancado o jogador dentro do
+		// campo que ele quis fechar.
+		// ==============================================================================================
+		if (Teclas.Bate("ui_menu", k))
 		{
+			if (Foco.Digitando) return;
 			Alternar();
 			GetViewport().SetInputAsHandled();
 			return;
@@ -422,17 +486,32 @@ public partial class MenuJogo : CanvasLayer
 		string comum = $"{_busca.Text.Trim()}|{_arvoreAberta}|{f.Estado}";
 		return aba switch
 		{
-			"Stats" => $"{comum}|{f.ExpressedBP:0}|{f.Ki:0}|{f.MaxKi:0}|{f.HP:0}|{f.Vigor:0}|{f.Nutricao:0}"
+			// A SECAO DE TREINO ENTRA AQUI, e sem isto ela seria uma linha CONGELADA: o multiplicador
+			// muda ao trocar de planeta, ao mexer no peso e ao atravessar a porta da Sala, e nenhum
+			// desses eventos mexe nos outros numeros desta assinatura. O painel mostraria o ganho do
+			// mapa anterior ate o jogador levar um soco.
+			// A INTEIREZA ENTRA AQUI, e nao e redundante com o BP expresso: gravidade e peso a mexem
+			// por caminhos que passam ao largo dos outros campos desta linha.
+			"Stats" => $"{comum}|{f.Inteireza:0.###}"
+					 + $"|{f.ExpressedBP:0}|{f.Ki:0}|{f.MaxKi:0}|{f.HP:0}|{f.Vigor:0}|{f.Nutricao:0}"
 					 + $"|{_atributos.PhysOff:0.##}|{_atributos.PhysDef:0.##}|{_atributos.KiOff:0.##}"
-					 + $"|{_atributos.Speed:0.##}|{_atributos.Idade}|{f.Class}",
+					 + $"|{_atributos.Speed:0.##}|{_atributos.Idade}|{f.Class}"
+					 + $"|{_atributos.GanhoDeTreino:0.##}|{_atributos.Gravidade:0.#}"
+					 + $"|{_atributos.GravEfetiva:0.#}|{_atributos.PesoMult:0.##}"
+					 + $"|{_atributos.ZonaMult:0.#}|{_atributos.Esmagamento:0.##}",
 			"Body" => $"{comum}|{string.Join(',', (c?.Corpo ?? []).Select(p => p.Nome + p.Vida + (p.Decepado ? "x" : "")))}",
 			"Learning" => $"{comum}|{c?.SkillsAprendidas.Count}|{c?.MarcosTotais}|{c?.MarcosLivres}",
 			"Skills" => $"{comum}|{c?.SkillsAprendidas.Count}",
 			// A PROFICIENCIA DA DISCIPLINA ENTRA AQUI porque a aba passou a DESENHA-LA: as quatro
 			// formas divinas relatam a proficiencia da skill no lugar da maestria, e sem este pedaco
 			// a barra delas ficaria congelada na tela enquanto sobe de verdade no servidor.
+			// O MULTIPLICADOR TOTAL E O PODER EFETIVO ENTRAM COMO O TEXTO QUE VAO VIRAR, e nao como o
+			// double: a aba passou a desenhar os dois, e comparar o numero cru remontaria a pagina
+			// inteira a cada oscilacao de Ki -- cinco vezes por segundo, sem um pixel mudar. Assinar o
+			// texto faz a remontagem acontecer exatamente quando a tela muda.
 			"Forms" => $"{comum}|{_atributos.FormaAtual}|{string.Join(',', (_atributos.Maestrias ?? []).Select(m => $"{m.Forma}:{m.Pct:0.#}"))}"
-					 + $"|{_atributos.Disciplina}:{_atributos.DiscReal:0.#}",
+					 + $"|{_atributos.Disciplina}:{_atributos.DiscReal:0.#}"
+					 + $"|{MultTexto(f.MultTotal)}|{f.Inteireza * 100:0.#}",
 			"Tech" => $"{comum}|{c?.TechNivel:0.#}|{c?.Zeni:0}|{c?.TechXp:0}|{c?.Obras.Count}|{c?.Catalogo.Count}",
 			"Cargos" => $"{comum}|{string.Join(',', (c?.Cargos ?? []).Select(r => r.Chave + r.Dono + r.Falta))}",
 			// A ABA ADMIN TEM CAIXAS DE TEXTO, e uma remontagem as recria vazias. Por isso a
@@ -459,10 +538,17 @@ public partial class MenuJogo : CanvasLayer
 			// `FormaAtual` ENTRA porque o painel de formas marca com ● o degrau em uso. Sem ela a
 			// marca ficaria no botao velho depois de forcar uma forma -- o painel diria que nada
 			// aconteceu justamente no clique em que tudo aconteceu.
+			// O CODIGO DA LIMPEZA ENTRA, e so ele: a previa chegar (ou vencer) TEM que remontar a
+			// pagina, senao o painel de perigo aparece so quando outra coisa qualquer mudar. As
+			// LINHAS do inventario ficam de fora porque elas nunca mudam sem o codigo mudar junto --
+			// e porque somar oito strings a uma assinatura que se compara 5x por segundo e caro a toa.
 			Verbos.Admin => $"{comum}|{c?.AlvoId}|{_atributos.FormaAtual}"
-						  + $"|{World.Instancia?.TempoQueFaz?.Tipo}|{World.Instancia?.TempoQueFaz?.Forcado}|"
+						  + $"|{World.Instancia?.TempoQueFaz?.Tipo}|{World.Instancia?.TempoQueFaz?.Forcado}"
+						  + $"|{c?.Limpeza.Codigo}|"
 						  + string.Join(',', (c?.Contas ?? []).Select(a => $"{a.Conta}{a.Admin}{a.Banida}{a.Online}")),
-			"Ki" => $"{comum}|{f.Ki:0}|{f.MaxKi:0}|{c?.SkillsAprendidas.Count}",
+			// O TETO DE CARGA ENTRA porque a aba passou a imprimi-lo: ele so muda ao aprender uma skill
+			// de power-up, e nenhum dos outros campos desta linha se mexe quando isso acontece.
+			"Ki" => $"{comum}|{f.Ki:0}|{f.MaxKi:0}|{f.TetoKi:0.##}|{c?.SkillsAprendidas.Count}",
 			// PEOPLE PRECISA DE ASSINATURA DESDE QUE ELA TEM BOTAO. Ela caia no `_ => ""` (remonta
 			// sempre), que era inofensivo enquanto a aba era so texto -- agora ela tem os botoes de
 			// relacao e o aceitar/recusar do pedido de amizade, e uma pagina refeita 5x por segundo
@@ -597,7 +683,7 @@ public partial class MenuJogo : CanvasLayer
 			case "People": Gente(); break;
 			case "World": Mundo(); break;
 			case "Learning": Aprendizado(); break;
-			case "Forms": AbaFormas(); break;
+			case "Forms": AbaFormas(f); break;
 			case "Cargos": AbaCargos(); break;
 			case "Nav": AbaNav(); break;
 			case "Skills": Sabidas(); break;
@@ -634,6 +720,86 @@ public partial class MenuJogo : CanvasLayer
 		_conteudo.AddChild(h);
 	}
 
+	// =====================================================================
+	// AS PORTAS DE BANCADA -- o que a ABA ESCREVEU
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE UMA LINHA DESTA ABA REALMENTE DESENHOU ============================
+	/// Pra bancada, e so pra ela. E ela existe por causa da queixa exata do dono: *"ao abrir o menu do P
+	/// o ki vai estar certo (...) porem na barra do jogo em si ela fica sempre em 100%"*. DUAS TELAS
+	/// DISCORDANDO.
+	///
+	/// Uma bancada que leia `Sheet.RazaoDeKi` dos dois lados prova que a FICHA e uma so -- e isso nunca
+	/// esteve em duvida: a ficha ja era uma so quando o bug estava vivo. O corte morava no widget, DEPOIS
+	/// da ficha. A unica leitura que separa "as duas telas concordam" de "as duas telas leem o mesmo
+	/// campo" e comparar os dois TEXTOS desenhados, e este metodo e a metade do menu dessa comparacao
+	/// (a outra e <see cref="Barra.TextoDeTeste"/>).
+	///
+	/// ACHA PELO ROTULO e nao por indice: a ordem das linhas de uma aba muda a cada feature, e uma
+	/// bancada presa em "a quarta linha da aba Stats" quebraria sem que nada tivesse quebrado.
+	///
+	/// DEVOLVE `null` QUANDO A PAGINA NAO EXISTE -- aba nunca visitada, ou menu que nunca abriu. Nao
+	/// devolve vazio: "nao ha o que ler" e "a aba escreveu vazio" sao coisas diferentes, e a bancada
+	/// precisa saber reprovar a primeira em vez de compara-la com a HUD e achar que achou um bug.
+	/// =================================================================================================
+	/// </summary>
+	public string? ValorDesenhado(string aba, string rotulo)
+	{
+		if (!_paginas.TryGetValue(aba, out VBoxContainer? pg) || !IsInstanceValid(pg)) return null;
+
+		string? porPrefixo = null;
+		foreach (Node n in pg.GetChildren())
+		{
+			if (n is not HBoxContainer h || h.GetChildCount() < 2) continue;
+			if (h.GetChild(0) is not Label r || h.GetChild(1) is not Label v) continue;
+			if (r.Text == rotulo) return v.Text;
+			// o prefixo e o plano B: "Maestria desta forma" x "Proficiencia em X" trocam de nome
+			// conforme a forma, e cravar o nome exato faria a bancada reprovar a aba certa.
+			porPrefixo ??= r.Text.StartsWith(rotulo, StringComparison.Ordinal) ? v.Text : null;
+		}
+		return porPrefixo;
+	}
+
+	/// <summary>
+	/// A PAGINA MONTADA DE UMA ABA, ou nula se ela nunca foi visitada. SO PRA BANCADA.
+	///
+	/// ============================ ELA EXISTE PRA UMA VARREDURA, E NAO PRA UMA LEITURA ============================
+	/// O <see cref="ValorDesenhado"/> responde "quanto esta escrito nesta linha", e isso serve pra
+	/// comparar numero. A pergunta desta bancada e outra e nao cabe naquele metodo: *"sobrou em
+	/// ALGUM lugar deste menu um botao que mexe com a nave?"* -- ou seja, ela precisa percorrer a
+	/// arvore inteira da aba sem saber de antemao o que procura.
+	///
+	/// Devolver a pagina (e nao uma lista de textos pronta) e o que deixa a bancada tambem APERTAR o
+	/// que achou: uma varredura que so le rotulos provaria que o botao sumiu da TELA, e nao que o
+	/// caminho pro verbo sumiu. Ver a familia 4 da `--diagembarque`.
+	/// =========================================================================================================
+	/// </summary>
+	public Control? PaginaDeTeste(string aba) =>
+		_paginas.TryGetValue(aba, out VBoxContainer? p) && IsInstanceValid(p) ? p : null;
+
+	/// <summary>
+	/// FORCA A ABA DA VEZ A SE REDESENHAR AGORA, ignorando a assinatura de reaproveitamento.
+	///
+	/// ============================ POR QUE A BANCADA PRECISA DISTO ============================
+	/// A pagina so e remontada quando a `Assinatura` muda, e ela e GROSSEIRA de proposito (numeros
+	/// arredondados). Entre um pacote e outro o Ki pode andar meio ponto: a HUD, que redesenha a cada
+	/// ficha, ja escreve o numero novo, e a aba continua com o texto de um instante atras. Comparar os
+	/// dois nesse intervalo acusaria uma discordancia que nao existe.
+	///
+	/// Com o redesenho forcado no MESMO quadro, as duas telas leem literalmente o mesmo `SheetState`, e
+	/// ai a comparacao pode exigir IGUALDADE EXATA -- que e o que se quer afirmar.
+	///
+	/// E A ABA PRESA CONTINUA SENDO COBERTA, so que por outra checagem: a bancada tambem le a aba SEM
+	/// forcar depois de mexer no valor, justamente pra pegar o dia em que um campo novo ficar de fora
+	/// da assinatura e a aba congelar. As duas leituras respondem perguntas diferentes.
+	/// =====================================================================================
+	/// </summary>
+	public void ForcarRedesenho()
+	{
+		_assinaturas.Remove(_aba);
+		Redesenhar();
+	}
+
 	private void Aviso(string texto)
 	{
 		var l = new Label { Text = texto, AutowrapMode = TextServer.AutowrapMode.WordSmart };
@@ -659,8 +825,22 @@ public partial class MenuJogo : CanvasLayer
 		Linha("Battle Power", _atributos.Tem(Protocol.Poder.Scouter)
 			? $"{f.ExpressedBP:N0}   (base {f.BP:N0})"
 			: "???   (sem scouter)");
+
+		// ============================ QUANTO DISSO ESTA SAINDO ============================
+		// A MESMA leitura que o HUD poe ao lado do BP, do MESMO campo -- e por isso as duas telas nao
+		// tem como divergir. Aparece com scouter ou sem: e razao, nao poder (ver `GameServer.Sigilo`).
+		//
+		// A frase explica o que ela nao e: transformar multiplica os dois lados da fracao, entao a
+		// forma nao mexe nela. Quem mexe e Ki, ferimento, peso, gravidade e idade.
+		Linha("Poder efetivo", $"{f.Inteireza * 100:0.#}%   (do seu pico sem desgaste)",
+			f.Inteireza >= 0.9 ? Tema.Bom : f.Inteireza <= 0.5 ? Tema.Perigo : Tema.Texto);
+
 		Linha("Vida", $"{f.HP:0}%", f.HP >= 66 ? Tema.Bom : f.HP <= 33 ? Tema.Perigo : Tema.Texto);
-		Linha("Ki", $"{f.Ki:N0} / {f.MaxKi:N0}   ({(f.MaxKi > 0 ? f.Ki / f.MaxKi * 100 : 0):0}%)");
+
+		// A RAZAO SAI DO STRUCT, e nao de um `Ki / MaxKi` escrito aqui: era essa copia -- tres delas,
+		// nesta aba, na aba Ki e no HUD -- que deixava o corte de uma passar despercebido nas outras.
+		Linha("Ki", $"{f.Ki:N0} / {f.MaxKi:N0}   ({f.RazaoDeKi * 100:0}%)",
+			f.RazaoDeKi > 1 ? Tema.Destaque : Tema.Texto);
 		Linha("Vigor", $"{_atributos.Stamina * 100:0}%");
 
 		// ============================ A NUTRICAO FALTAVA, E ELA EXPLICA O VIGOR ============================
@@ -670,9 +850,13 @@ public partial class MenuJogo : CanvasLayer
 		//
 		// A COR AVISA ANTES DE DOER: o aviso de fome do servidor bate em 25% de vigor, mas quem fica
 		// sem tanque para de recuperar MUITO antes disso.
-		double pct = f.NutricaoMax > 0 ? f.Nutricao / f.NutricaoMax * 100 : 0;
+		//
+		// A BARRA DE NUTRICAO AGORA EXISTE NO HUD, e ela le esta mesma razao (`RazaoDeNutricao`).
+		double pct = f.RazaoDeNutricao * 100;
 		Linha("Nutrição", $"{f.Nutricao:0} / {f.NutricaoMax:0}   ({pct:0}%)",
 			pct >= 50 ? Tema.Bom : pct <= 15 ? Tema.Perigo : Tema.Texto);
+
+		Treino();
 
 		Secao("Atributos");
 		(string Nome, float Valor)[] atts =
@@ -713,6 +897,83 @@ public partial class MenuJogo : CanvasLayer
 		Linha("Cadencia do soco", $"{f.SocoMs} ms");
 	}
 
+	/// <summary>
+	/// QUANTO O TREINO ESTA RENDENDO -- a linha "BP GAIN" do painel do original (`HtmlUI.dm:182-187`).
+	///
+	/// ============================ ESTA SECAO E O SISTEMA ============================
+	/// Peso, gravidade e Sala do Tempo mudam quanto BP entra por tique. BP por tique nao se ve: o
+	/// numero da tela e o mesmo antes e depois, e so muda mais rapido -- o que, num jogo onde o BP
+	/// sobe a vida inteira, e indistinguivel de nada acontecendo. A queixa que abriu esta camada e
+	/// literalmente essa ("o sistema e invisivel e parece nao existir").
+	///
+	/// Por isso a linha nao mostra so o produto: ela mostra as PARTES. "2800x (10x grav · 1,4x pesos ·
+	/// Sala 280x)" e uma frase acionavel -- diz o que aumentar. "2800x" sozinho e um numero magico.
+	///
+	/// O NUMERO VEM PRONTO DO SERVIDOR (`Fighter.MultiplicadorDeGanho`, no Core). O cliente nao refaz
+	/// a conta: ele nao tem `Egains`, nem `GravMastered`, nem `zoneGainMult`, e uma segunda copia da
+	/// formula seria a que envelhece calada.
+	/// =============================================================================
+	/// </summary>
+	private void Treino()
+	{
+		Secao("Treino");
+
+		var partes = new List<string>();
+		if (_atributos.Gravidade > 0) partes.Add($"{_atributos.Gravidade:0.#}x grav");
+		// A ACLIMATACAO SO APARECE QUANDO EXISTE: quem domina mais gravidade do que sente treina com
+		// parte da folga (`GravAccustomWeight`), e sem esta pista o jogador nao entenderia por que
+		// rende 3x num chao de 1x.
+		if (_atributos.GravEfetiva > _atributos.Gravidade + 0.05f)
+			partes.Add($"aclimatado → {_atributos.GravEfetiva:0.#}");
+		if (_atributos.PesoMult > 1.001f) partes.Add($"{_atributos.PesoMult:0.##}x pesos");
+		if (_atributos.ZonaMult > 1.001f) partes.Add($"Sala {_atributos.ZonaMult:0}x");
+		else if (_atributos.ZonaMult < 0.999f) partes.Add($"zona {_atributos.ZonaMult:0.##}x");
+
+		double g = _atributos.GanhoDeTreino;
+		Linha("Ganho de BP", $"{g:0.##}x   ({string.Join(" · ", partes)})",
+			g >= 1.5 ? Tema.Bom : g < 0.9 ? Tema.Perigo : Tema.Texto);
+
+		// ============================ A SESSAO DA SALA DO TEMPO ============================
+		// A sala e a unica coisa deste jogo que tem PRAZO com castigo no fim (a porta tranca aos 50
+		// minutos e so o Guardiao solta). Um prazo cujo unico sinal e uma frase que ja rolou pra
+		// cima no chat e uma armadilha -- e esta linha e onde se olha pra saber quanto falta.
+		//
+		// O NUMERO VEM PRONTO, como o de cima: quem conta o tempo (em DIAS in-game, por tique) e o
+		// servidor. O cliente nao tem o relogio do mundo dele nem sabe quando a janela foi armada.
+		// ================================================================================
+		switch (_atributos.SalaFase)
+		{
+			case 1:
+				Linha("Sessão na Sala", $"~{_atributos.SalaMinutos:0} min de treino restantes",
+					_atributos.SalaMinutos <= 5 ? Tema.Perigo : Tema.Bom);
+				break;
+			case 2:
+				Linha("Sessão na Sala", $"ACABOU -- {_atributos.SalaMinutos:0.#} min pra sair pela porta",
+					Tema.Perigo);
+				break;
+			case 3:
+				Linha("Sessão na Sala", "PRESO -- só o Guardião da Terra (ou um admin) solta", Tema.Perigo);
+				break;
+		}
+
+		// ============================ O ESMAGAMENTO E O OUTRO LADO DA MESMA MOEDA ============================
+		// A razao acima de 1 e o que a gravidade alta COBRA: dano por segundo, folego drenado e passo
+		// mais lento. Ela fica logo abaixo do ganho de proposito -- as duas linhas juntas sao a
+		// decisao inteira ("rende 10x e me machuca 1,8x do que aguento").
+		//
+		// A partir de `RazaoQuePrende` o corpo nao anda. Sem esta linha, um jogador preso no chao teria
+		// as teclas mortas e nenhuma explicacao na tela.
+		// ==================================================================================================
+		double r = _atributos.Esmagamento;
+		if (r <= 1.0001f) return;
+
+		bool preso = r >= Jandirus.Core.Stats.Esmagamento.RazaoQuePrende;
+		Linha("Esmagamento", preso
+				? $"{r:0.##}x do seu limite   (PRESO NO CHÃO)"
+				: $"{r:0.##}x do seu limite   (perdendo vida e velocidade)",
+			Tema.Perigo);
+	}
+
 	// =====================================================================
 	// BODY -- os membros, os mesmos que o boneco do HUD desenha
 	// =====================================================================
@@ -735,8 +996,19 @@ public partial class MenuJogo : CanvasLayer
 		Secao("Energia");
 		Linha("Ki atual", $"{f.Ki:N0}");
 		Linha("Ki maximo", $"{f.MaxKi:N0}");
-		Linha("Percentual", $"{(f.MaxKi > 0 ? f.Ki / f.MaxKi * 100 : 0):0.#}%");
-		Aviso("\nCarregar Ki, tecnicas e formas entram aqui quando as skills forem portadas.");
+
+		// MESMA RAZAO DO HUD E DA ABA STATS -- ver `SheetState.RazaoDeKi`.
+		Linha("Percentual", $"{f.RazaoDeKi * 100:0.#}%",
+			f.RazaoDeKi > 1 ? Tema.Destaque : Tema.Texto);
+
+		// O TETO DE CARGA E O FIM DO TRILHO DA BARRA, e mostra-lo nao e invencao do port: o original
+		// imprimia este mesmo numero com esta mesma cara (`Statistics.dm:349`, `Ki Capacity`). Ele so
+		// sobe com as skills de power-up, e sem ele o jogador nao tem como saber quanto ainda cabe.
+		Linha("Teto de carga", $"{f.TrilhoDeKi * 100:0}% do tanque");
+
+		Aviso("\nSegure C pra reunir energia. Acima de 100% o Ki NAO para de contar: ele entra "
+			+ "linear no poder -- 118% de Ki é 1,18x de BP -- e a barra do HUD desenha esse "
+			+ "excedente até o teto de carga.");
 	}
 
 	// =====================================================================
@@ -916,6 +1188,8 @@ public partial class MenuJogo : CanvasLayer
 
 		bool noEspaco = Jandirus.Core.World.Espaco.EhEspaco(cli.Zone);
 
+		BlocoDeDominio(cli);
+
 		// O MAPA APARECE EM TERRA FIRME TAMBEM -- so o botao de viajar e que nao.
 		//
 		// Ele e uma CARTA: consultar antes de decolar e metade do uso de uma carta estelar, e
@@ -998,6 +1272,103 @@ public partial class MenuJogo : CanvasLayer
 			+ "aparecem: o laranja tem mapa proprio, o azul-acinzentado e gerado. Duplo clique num MUNDO viaja.");
 		Aviso("A viagem leva o tempo que diz: o piloto anda no passo normal, nao teleporta. "
 			+ "Terra a Namek sao 7 dias in-game, como no anime.");
+
+		// ============================ AS DUAS LEGENDAS DA CARTA ============================
+		// Elas sao o que sobrou do bloco de botoes da nave, e sobraram porque NAO SAO ACOES: sao
+		// legenda desta carta, e agora moram embaixo dela, que e onde legenda mora.
+		//
+		// A PRIMEIRA explica por que a bolinha do mapa mudou de dono -- sem ela, quem pediu Observar
+		// no console da ponte fica olhando pra um ponto e achando que e ele mesmo. A SEGUNDA e a
+		// ESCALA da carta: "1.608.035 px" nao diz nada, "7 dias" diz tudo, e o numero da nave ao lado
+		// e o que transforma comprar velocidade numa decisao.
+		// ================================================================================
+		if (cli.NaveVista is { } nv)
+			Aviso($"\nA carta está centrada na NAVE (em {nv.Zona}, casco {nv.CascoPct:0}%), e não em você. "
+				+ "Ela volta a mostrar você quando desembarcar.");
+
+		double dTN = Jandirus.Core.World.Espaco.DistanciaTerraNamek;
+		Aviso($"A pé, Terra→Namek leva {Jandirus.Core.World.Espaco.SegundosDeViagem(dTN) / 60:0} min "
+			+ $"({Jandirus.Core.World.Espaco.DiasInGame(dTN):0.#} dias in-game). "
+			+ $"Numa Spacepod no limite ({Jandirus.Core.Tech.Naves.VelocidadeMaxima}x), "
+			+ $"{Jandirus.Core.Tech.Naves.SegundosDeViagem(dTN, Jandirus.Core.Tech.Naves.VelocidadeMaxima) / 60:0.#} min.");
+	}
+
+	// ============================ O BLOCO DE BOTOES DA NAVE FOI DELETADO DAQUI ============================
+	// Eram OITO botoes (entrar/sair, lancar, melhorar, ver estado, largar o leme, observar, desembarcar,
+	// recondicionar) e os oito eram INTERACAO com um objeto, e nao decisao de menu. O dono disse isso com
+	// todas as letras: *"a MAIORIA deles nem eram pra ser verbs do menu, e sim INTERACAO com as naves (ao
+	// apertar E perto delas...)"*. Todos os oito ja viviam tambem no `Interacoes`, ou seja: eram a segunda
+	// porta pra mesma coisa, que e o defeito que este repo mais paga.
+	//
+	// ELES ESTAVAM AQUI POR UM MOTIVO REAL, e o motivo foi RESOLVIDO em vez de ignorado: a nave PILOTADA
+	// sai da lista de construcoes da zona, entao a tecla E nao tinha alvo nenhum pra oferecer ao piloto --
+	// nem pra descer. Hoje o servidor diz qual veiculo esta embaixo de voce (`Protocol.S2C.Veiculo`) e o
+	// menu da tecla E o alcanca como alcanca a macieira. Ver `Interacoes.DoVeiculo` e `MenuDeInteracao`.
+	//
+	// O QUE SOBROU sao as duas LEGENDAS (a nave observada e a escala Terra->Namek): elas nao sao acoes, e
+	// por isso desceram pra debaixo da carta, no fim da `AbaNav`, que e onde legenda de mapa mora.
+	// ====================================================================================================
+
+	/// <summary>
+	/// ============================ A CONQUISTA MORA NA ABA NAV, E NAO NUMA ABA PROPRIA ============================
+	/// Ela e sobre PLANETAS, e a aba Nav ja e a tela dos planetas -- a carta estelar, o sistema, a
+	/// viagem. Uma aba nova custaria uma entrada permanente na barra pra uma coisa que so faz sentido
+	/// quando voce esta pisando num mundo.
+	///
+	/// ============================ E SAO BOTOES, NAO UM PAINEL DE DADOS ============================
+	/// Nenhum destes botoes desenha estado: eles mandam VERBO e o servidor responde no chat. Isso e
+	/// deliberado e nao preguica -- no DM a conquista inteira e `alert()`, `input()` e `to_chat()`,
+	/// e um painel de dominios exigiria um opcode novo (dominios, lealdade, tributo) pra ser sempre
+	/// verdadeiro. "Ver este planeta" e "Meus domínios" respondem tudo isso em texto, e o servidor
+	/// continua sendo a unica fonte.
+	///
+	/// QUEM AUTORIZA E O SERVIDOR: esconder botao nunca foi permissao neste projeto, e por isso os
+	/// botoes aparecem sempre que se esta num planeta -- a recusa ("você é fraco demais", "chegue
+	/// mais perto da bandeira") e a resposta do verbo, com o motivo.
+	/// ======================================================================================================
+	/// </summary>
+	private void BlocoDeDominio(GameClient cli)
+	{
+		// EM TERRA FIRME SO. O crivo e o `Espaco.EhPlaneta` do Core -- a MESMA definicao de "planeta"
+		// que o servidor usa pra recusar (e a mesma que a destruicao de planeta ja consulta). Duas
+		// nocoes de planeta envelheceriam separadas, e a primeira a errar seria a do cliente.
+		if (!Jandirus.Core.World.Espaco.EhPlaneta(cli.Zone)) return;
+
+		Secao("Domínio planetário");
+
+		var linha1 = new HBoxContainer();
+		var linha2 = new HBoxContainer();
+
+		foreach ((string rotulo, string cmd, string arg, string dica, bool segunda) in
+			new (string, string, string, string, bool)[]
+			{
+				("Ver este planeta", "conq_ver", "",
+					"quem manda aqui, quanto vale de tributo e quanto poder a invasão exige", false),
+				("Meus domínios", "conq_dominios", "",
+					"seus planetas, a lealdade de cada um e o tributo acumulado", false),
+				("Conquistar planeta", "conq_invadir", "",
+					"finca a bandeira. Herói de um povo sem dono reivindica em PAZ", false),
+				("...à força", "conq_invadir", "forca",
+					"invade mesmo sendo herói do povo daqui -- matar defensores mancha sua reputação", false),
+
+				("Coletar tributo", "conq_tributo", "", "junto da sua bandeira", true),
+				("Renascer aqui", "conq_spawn", "", "liga/desliga este domínio como ponto de renascimento", true),
+				("Abandonar domínio", "conq_abandonar", "sim", "a posse se perde na hora", true),
+				("Arrancar bandeira", "conq_arrancar", "",
+					"8s parado e sem levar dano frustram a invasão de outra pessoa", true),
+			})
+		{
+			string c = cmd, a = arg;
+			var b = new Button { Text = rotulo, TooltipText = dica };
+			b.AddThemeFontSizeOverride("font_size", 12);
+			b.Pressed += () => cli.SendVerbo(c, a);
+			(segunda ? linha2 : linha1).AddChild(b);
+		}
+
+		_conteudo.AddChild(linha1);
+		_conteudo.AddChild(linha2);
+		Aviso("Domínio sem soberano por perto se perde: o tributo mingua, a guarnição afrouxa e o povo "
+			+ "acaba derrubando a bandeira. Apareça.");
 	}
 
 	/// <summary>O mapa da aba Nav. Guardado pra os botoes da barra alcancarem a camera dele.</summary>
@@ -1222,6 +1593,24 @@ public partial class MenuJogo : CanvasLayer
 			+ "A escada dos Kaios e a excecao: subir larga o cargo anterior.");
 	}
 
+	/// <summary>
+	/// O MULTIPLICADOR COMO SE LE. A escala deste jogo vai de 1x a milhoes, e "x345191,1" ocupa a
+	/// linha inteira sem dizer mais do que "x345 mil".
+	///
+	/// ELE TAMBEM E A ASSINATURA DA ABA FORMS (ver <see cref="Assinatura"/>), e isso e de proposito:
+	/// a pagina remonta exatamente quando o TEXTO muda, nem antes nem depois. Comparar o double cru
+	/// remontaria a aba cinco vezes por segundo enquanto o Ki oscila, sem um pixel mudar.
+	/// </summary>
+	private static string MultTexto(double m) => m switch
+	{
+		>= 1e9 => $"×{m / 1e9:0.##} B",
+		>= 1e6 => $"×{m / 1e6:0.##} M",
+		>= 1000 => $"×{m / 1000:0.##} mil",
+		>= 100 => $"×{m:0}",
+		>= 10 => $"×{m:0.#}",
+		_ => $"×{m:0.##}",
+	};
+
 	private static string NomeDoCargo(string chave) =>
 		Jandirus.Core.Ranks.Cargos.Get(chave)?.Nome ?? chave;
 
@@ -1247,7 +1636,7 @@ public partial class MenuJogo : CanvasLayer
 	///
 	/// Quem quiser subir aperta C: a tentativa falhando E a informacao, como no original.
 	/// </summary>
-	private void AbaFormas()
+	private void AbaFormas(SheetState f)
 	{
 		Jandirus.Core.Forms.FormaDef? defAtual = Jandirus.Core.Forms.Catalogo.PorRede(_atributos.FormaAtual);
 		if (defAtual is { Id: "base" }) defAtual = null;
@@ -1259,6 +1648,7 @@ public partial class MenuJogo : CanvasLayer
 		Jandirus.Core.Forms.Maestrias livro = Livro();
 
 		Secao("Agora");
+
 		// ============================ O NOME SAI DO CATALOGO E NAO DA ENTRADA ============================
 		// `Catalogo.NomeDe` e nao `defAtual.Nome`: o Super Saiyajin a 100% de maestria se chama
 		// "Super Saiyajin Grade 4" e continua sendo a MESMA forma (ver `Catalogo.DominouOSuperSaiyajin`).
@@ -1278,6 +1668,36 @@ public partial class MenuJogo : CanvasLayer
 				Linha("Maestria desta forma", $"{Maestria(atual):0.#}%");
 			Linha("Dreno de Ki", $"{Jandirus.Core.Forms.Catalogo.DrenoPorSegundo(atual, Livro()) * 100:0.##}% do Ki por segundo");
 		}
+
+		// ============================ O MULTIPLICADOR TOTAL ============================
+		// DEPOIS do nome da forma de proposito: ele e a CONSEQUENCIA dela, e lido antes viraria um
+		// numero solto no topo da aba. As duas linhas juntas contam a historia inteira -- quanto voce
+		// esta multiplicado, e quao inteiro voce esta.
+		//
+		// O TOTAL SAI DA RAZAO `expressedBP / BP`, calculada no servidor, e NAO de multiplicar os
+		// fatores um a um. Isso nao e preferencia de estilo: neste jogo os fatores tem tres FAMILIAS
+		// (ver o cabecalho de `Fighter.Power.cs`). Medido: Kaio-ken 2x com Mistico 2x da 3x de
+		// verdade, porque os dois SOMAM na base -- o produto ingenuo diria 4x, 33% a mais. Com forma,
+		// raiva, Kaio-ken, Mistico e gravidade juntos o erro passa de 126%, e o corte de 25% do revive
+		// por Zeni nao teria nem onde caber num produto de fatores.
+		//
+		// POR ISSO NAO HA QUEBRA POR FATOR AQUI. Uma lista "forma 56x · raiva 1,3x · ..." e ilustracao
+		// legitima, mas ela so fecha com o total se for desenhada em DOIS blocos (o que soma na base e
+		// o que multiplica depois) -- e uma fila de "x" que nao bate com o numero de cima ensina que a
+		// tela mente. Enquanto os fatores nao viajarem no pacote, fica o total, que e o honesto.
+		//
+		// SEM SCOUTER ELES APARECEM DO MESMO JEITO: "x345" nao diz de QUE numero, e sem aparelho o BP e
+		// o BP expresso nem chegam ao cliente. E o oposto da faixa de distancia que esta aba tinha, que
+		// nascia de `BP / PortaBp` e por isso ENTREGAVA o absoluto contra a escada de degraus conhecida.
+		Linha("Multiplicador total", MultTexto(f.MultTotal),
+			f.MultTotal > 1.01 ? Tema.Destaque : Tema.Texto);
+		Linha("Poder efetivo", $"{f.Inteireza * 100:0.#}%",
+			f.Inteireza >= 0.9 ? Tema.Bom : f.Inteireza <= 0.5 ? Tema.Perigo : Tema.Texto);
+		Aviso("O multiplicador é o que o seu BP BASE virou agora; o poder efetivo é quanto dele o "
+			+ "corpo está conseguindo botar pra fora. Transformar mexe no primeiro e NÃO no segundo "
+			+ "-- a forma multiplica os dois lados dessa conta. Quem mexe no segundo é Ki, ferimento, "
+			+ "peso, gravidade e idade.");
+
 		Aviso("\nSegure C pra reunir energia  ·  toque C duas vezes pra tentar subir  ·  X volta ao normal.\n"
 			+ "Maestria SÓ cresce dentro da forma, gastando Ki -- é o único eixo do jogo que não se compra.\n"
 			+ "As formas de uma disciplina divina são exceção: elas não têm maestria própria -- usá-las "
@@ -1473,6 +1893,78 @@ public partial class MenuJogo : CanvasLayer
 	private AcceptDialog? _fichaAberta;
 
 	/// <summary>
+	/// A ESCOLHA UNICA de uma skill: as casas lado a lado, com o que cada uma da.
+	///
+	/// QUEM DECIDE E O SERVIDOR, como sempre. Daqui so sai `skill_escolha <path> <n>`; se a pessoa
+	/// ja escolheu (a escolha e definitiva, igual ao `chosen` do DM, que so morre esquecendo a
+	/// skill), quem responde "voce ja escolheu" e ele. O cliente nao guarda a resposta porque nao
+	/// e dele -- e o mesmo motivo de o botao de compra nao descontar marco sozinho.
+	/// </summary>
+	private void AbrirEscolhaDaSkill(Skill s)
+	{
+		if (_fichaAberta != null && IsInstanceValid(_fichaAberta)) _fichaAberta.QueueFree();
+
+		var janela = new AcceptDialog
+		{
+			Title = s.Nome,
+			MinSize = new Vector2I(460, 0),
+			OkButtonText = "Fechar",
+		};
+		var caixa = new VBoxContainer();
+		janela.AddChild(caixa);
+
+		var aviso = new Label
+		{
+			Text = "Escolha uma linhagem. A escolha é definitiva e, até você escolher, "
+				 + "esta habilidade não faz nada.",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart,
+			CustomMinimumSize = new Vector2(440, 0),
+		};
+		aviso.AddThemeColorOverride("font_color", Tema.TextoFraco);
+		caixa.AddChild(aviso);
+		caixa.AddChild(new HSeparator());
+
+		for (int i = 0; i < s.Escolhas.Length; i++)
+		{
+			Escolha e = s.Escolhas[i];
+			int casa = i + 1;
+			string path = s.Path;
+			var b = new Button { Text = e.Rotulo, Alignment = HorizontalAlignment.Left };
+			b.Pressed += () =>
+			{
+				GameClient.Instance?.SendVerbo("skill_escolha", $"{path} {casa}");
+				janela.Hide();
+				_fichaAberta = null;
+			};
+			caixa.AddChild(b);
+
+			// O QUE A CASA DA, pelo mesmo canal de sempre: os efeitos EXTRAIDOS. Sem isto a
+			// escolha definitiva seria feita por nome de linhagem, que nao diz nada.
+			var l = new Label { Text = "      " + TextoDaCasa(e), AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(440, 0) };
+			l.AddThemeColorOverride("font_color", Tema.Destaque);
+			caixa.AddChild(l);
+		}
+
+		janela.Confirmed += () => _fichaAberta = null;
+		janela.Canceled += () => _fichaAberta = null;
+		AddChild(janela);
+		_fichaAberta = janela;
+		janela.PopupCentered();
+	}
+
+	/// <summary>O que uma casa da, em portugues -- mesma fonte do <see cref="EfeitosEmTexto"/>.</summary>
+	private static string TextoDaCasa(Escolha e)
+	{
+		var p = new List<string>();
+		foreach ((string campo, double v) in e.Buffs) p.Add($"{NomesLegiveis.Campo(campo)} +{v:0.##}");
+		foreach ((string campo, double v) in e.Mults) p.Add($"{NomesLegiveis.Campo(campo)} ×{v:0.##}");
+		foreach ((string stat, double v) in e.Genes) p.Add($"{stat} +{v:0.##}");
+		foreach ((string campo, double v) in e.Flags) p.Add($"{NomesLegiveis.Campo(campo)} = {v:0.##}");
+		p.AddRange(e.Verbos.Select(NomesLegiveis.Habilidade));
+		return p.Count > 0 ? string.Join(", ", p) : "sem efeito portado ainda";
+	}
+
+	/// <summary>
 	/// O QUE A SKILL FAZ, em portugues. Sai dos efeitos EXTRAIDOS do DM -- por isso a lista fica
 	/// vazia justamente nas que ainda nao tem efeito portado, o que e a verdade e nao um descuido.
 	/// </summary>
@@ -1626,7 +2118,13 @@ public partial class MenuJogo : CanvasLayer
 	/// </summary>
 	private Recusa Estado(SkillCatalog cat, Skill s, string raca, string classe)
 	{
-		Recusa r = _livro.PodeAprender(cat, s.Path, raca, classe, vilao: false);
+		// O `vilao:` era `false` cravado, e por isso a unica skill de vilao do catalogo (Planet
+		// Destroy) aparecia trancada ate pra quem o admin tinha designado vilao -- e o servidor
+		// teria aceitado a compra. O bit chega junto das skills (`S2C.Skills`); sem cliente na mao
+		// (a bancada monta o menu solto) a resposta e "nao", que e o erro pro lado seguro descrito
+		// no comentario acima.
+		Recusa r = _livro.PodeAprender(cat, s.Path, raca, classe,
+									   vilao: GameClient.Instance?.SouVilao ?? false);
 		if (r == Recusa.RacaOuClasse && classe.Length == 0 && s.Classes.Length > 0) return Recusa.Pode;
 		return r;
 	}
@@ -1763,7 +2261,26 @@ public partial class MenuJogo : CanvasLayer
 		{
 			Secao($"Já são suas  ({jaSao.Count})");
 			foreach (Skill s in jaSao.OrderBy(x => x.Tier).ThenBy(x => x.Nome, StringComparer.OrdinalIgnoreCase))
+			{
 				Linha($"{s.Nome}  (tier {s.Tier})", "aprendida", Tema.Bom);
+
+				// A ESCOLHA UNICA. Uma skill no catalogo inteiro tem casas exclusivas (a `Great
+				// Robotic Alliance` do Metamoriano) e, enquanto o dono nao escolhe, ela nao rende
+				// NADA -- exatamente como no DM, onde os buffs moram dentro do `switch(input(...))`.
+				//
+				// O BOTAO FICA AQUI E NAO NA COMPRA porque a pergunta sobrevive ao relog: quem
+				// comprou e saiu antes de responder precisa achar a pergunta de novo. Quem manda na
+				// resposta e o servidor -- se ja houver escolha feita, e ele quem diz.
+				if (s.Escolhas.Length == 0) continue;
+				var bEsc = new Button
+				{
+					Text = "      escolher linhagem…",
+					Alignment = HorizontalAlignment.Left,
+				};
+				Skill comEscolha = s;
+				bEsc.Pressed += () => AbrirEscolhaDaSkill(comEscolha);
+				_conteudo.AddChild(bEsc);
+			}
 		}
 
 		Trancadas(cat, trancadas);
@@ -1878,6 +2395,16 @@ public partial class MenuJogo : CanvasLayer
 	/// campo de texto, e o que faz a diferenca entre "digitei e sumiu" e um painel usavel.
 	/// </summary>
 	private string _avisoDigitado = "", _contaDigitada = "", _textoDoAlvo = "";
+
+	/// <summary>
+	/// O CODIGO DA LIMPEZA TOTAL, digitado. Fora da pagina pelo mesmo motivo dos tres acima -- e com
+	/// um agravante proprio: aqui o campo tem PRAZO de um minuto, e perder o que foi digitado a cada
+	/// remontagem transformaria a confirmacao numa corrida contra o relogio do menu.
+	///
+	/// Zerado quando chega uma previa nova (ver <see cref="AoLimpeza"/>): codigo de outra lista nao
+	/// pode ficar de bobeira num campo que confirma o apagamento do servidor.
+	/// </summary>
+	private string _codigoDaLimpeza = "";
 
 	/// <summary>Ja pedi a lista de contas nesta sessao? Ver o comentario em <see cref="AbaAdmin"/>.</summary>
 	private bool _pediContas;
@@ -2049,6 +2576,13 @@ public partial class MenuJogo : CanvasLayer
 		Jandirus.Core.Forms.LinhaDeForma.UltraInstinct => "Ultra Instinto",
 		Jandirus.Core.Forms.LinhaDeForma.UltraEgo => "Ultra Ego",
 		Jandirus.Core.Forms.LinhaDeForma.Oozaru => "Oozaru (fera)",
+		// AS QUATRO LINHAS RACIAIS. O `_ =>` ja as mostrava com o nome cru do enum ("FrostDemon"),
+		// que e o que este metodo promete no cabecalho -- mas "cru" era pra ser o estado do PRIMEIRO
+		// dia da linha, e nao o definitivo.
+		Jandirus.Core.Forms.LinhaDeForma.FrostDemon => "Frost Demon",
+		Jandirus.Core.Forms.LinhaDeForma.Namekuseijin => "Namekuseijin",
+		Jandirus.Core.Forms.LinhaDeForma.Heran => "Heran",
+		Jandirus.Core.Forms.LinhaDeForma.Alien => "Alien",
 		_ => l.ToString(),
 	};
 
@@ -2372,6 +2906,10 @@ public partial class MenuJogo : CanvasLayer
 			("dar skill", "admin_skill_dar", "o `Give (Skill)` do original: por nome ou typepath"),
 			("tirar skill", "admin_skill_tirar", "o `Take_Skill`: desfaz um presente errado"),
 			("dar cargo", "admin_cargo_dar", "o `Give (Rank)`: poe no trono ignorando os requisitos"),
+			// DESTITUIR NAO OLHA O ALVO: destitui-se um TRONO pela chave escrita ao lado, e o dono
+			// dele costuma estar offline -- que e o motivo mais comum de precisar disto. O botao mora
+			// nesta linha porque e aqui que existe o campo de texto.
+			("tirar cargo", "admin_cargo_tirar", "esvazia o trono da chave escrita ao lado (o alvo marcado e ignorado)"),
 			("PM", "admin_pm", "mensagem particular. Os outros admins recebem copia"),
 		})
 		{
@@ -2392,6 +2930,142 @@ public partial class MenuJogo : CanvasLayer
 		ListaDeVerbos(Verbos.Admin);
 		Aviso("\nOs verbs marcados com \"Target\" agem sobre quem voce marcou com DUPLO CLIQUE. "
 			+ "A permissao e conferida de novo no servidor -- esconder botao nunca foi permissao.");
+
+		// ------------------------------------------------- a zona de perigo
+		// POR ULTIMO, e isso e a unica coisa que a posicao dela pode fazer de util: e preciso
+		// ROLAR ATE O FIM da aba mais longa do jogo pra ver o botao que apaga o servidor. Nao e
+		// seguranca (a seguranca sao os dois passos e o codigo), e afastar a mao.
+		PainelDePerigo(cli);
+	}
+
+	/// <summary>
+	/// A LIMPEZA TOTAL DO SERVIDOR -- o pedido do dono: *"um verb pra adm no menu P q LIMPA O SERVER
+	/// TODO... dando uma limpa total como se tivesse acabado de rodar pela primeira vez"*.
+	///
+	/// ============================ UM CLIQUE NAO PODE BASTAR, E AQUI SAO DOIS PASSOS ============================
+	/// Isto apaga contas, personagens, construcoes, naves, dominios, tronos, discipulados e sagas --
+	/// e nao volta. A confirmacao tem que ser dificil de dar POR ACIDENTE (e nao dificil de dar):
+	///
+	///   1. "Preparar limpeza" nao apaga nada. Ele pede ao servidor o INVENTARIO -- quantas contas,
+	///      quantas obras, quantos planetas dominados, quantos jogadores online -- e um codigo de
+	///      quatro caracteres sorteado na hora, que vale por um minuto.
+	///   2. So depois de LER a lista e DIGITAR esse codigo o segundo botao acende.
+	///
+	/// O codigo e sorteado no servidor e nunca existiu antes desta tela: nao da pra decorar, nao da
+	/// pra colar de um comando de ontem, e um painel esquecido aberto vence sozinho. E como a lista
+	/// e recontada a cada previa, quem confirma esta confirmando o numero que esta vendo.
+	///
+	/// A PERMISSAO NAO ESTA AQUI. Este painel so aparece pra quem tem a aba, e a aba e escondida de
+	/// quem nao e admin -- mas os dois verbs sao conferidos de novo no servidor, pelo mesmo funil de
+	/// admin de todos os outros. Esconder botao nunca foi permissao.
+	/// ========================================================================================================
+	/// </summary>
+	private void PainelDePerigo(GameClient cli)
+	{
+		Secao("ZONA DE PERIGO");
+
+		GameClient.PreviaDeLimpeza p = cli.Limpeza;
+
+		if (p.Codigo.Length == 0)
+		{
+			Aviso("Limpar o servidor apaga TUDO o que foi jogado aqui: contas e personagens, "
+				+ "construcoes, naves, planetas dominados, cargos, discipulados e o andamento das "
+				+ "sagas. O mundo volta a ser o que era no primeiro boot. Nao ha como desfazer.\n"
+				+ "O botao abaixo NAO apaga nada -- ele mostra a lista do que sumiria, com contagem.");
+
+			var preparar = new Button
+			{
+				Text = "Preparar limpeza total do servidor...",
+				Alignment = HorizontalAlignment.Left,
+				TooltipText = "passo 1 de 2: pede ao servidor o inventario do que existe hoje. "
+							+ "Nada e apagado por este botao",
+			};
+			preparar.AddThemeColorOverride("font_color", Tema.Perigo);
+			preparar.Pressed += () => cli.SendVerbo("admin_limpar");
+			_conteudo.AddChild(preparar);
+			return;
+		}
+
+		// ---------------------------------------------------------- a previa chegou
+		var titulo = new Label
+		{
+			Text = "ISTO VAI SUMIR PARA SEMPRE:",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart,
+		};
+		titulo.AddThemeColorOverride("font_color", Tema.Perigo);
+		_conteudo.AddChild(titulo);
+
+		// UMA LINHA POR SISTEMA, com o numero na frente. E o que o dono pediu em voz alta: "quem
+		// confirma tem que saber o tamanho do que esta fazendo" -- e tamanho e numero, nao adjetivo.
+		foreach (string l in p.Linhas)
+		{
+			var item = new Label { Text = "   " + l, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+			item.AddThemeColorOverride("font_color", Tema.Texto);
+			item.AddThemeFontSizeOverride("font_size", 13);
+			_conteudo.AddChild(item);
+		}
+
+		Aviso($"\nPara confirmar, digite o codigo abaixo. Ele vale por {p.Segundos} segundos e nao "
+			+ "serve pra mais nada depois disso.");
+
+		var codigo = new Label
+		{
+			Text = p.Codigo,
+			HorizontalAlignment = HorizontalAlignment.Center,
+		};
+		codigo.AddThemeColorOverride("font_color", Tema.Perigo);
+		codigo.AddThemeFontSizeOverride("font_size", 28);
+		_conteudo.AddChild(codigo);
+
+		var campo = new LineEdit
+		{
+			PlaceholderText = "digite o codigo acima",
+			Text = _codigoDaLimpeza,
+			MaxLength = 16,
+			Alignment = HorizontalAlignment.Center,
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+
+		var confirmar = new Button
+		{
+			Text = "APAGAR O SERVIDOR",
+			// COMECA DESLIGADO e so acende com o codigo certo digitado. Nao e a guarda de verdade
+			// (o servidor confere de novo, e e la que a decisao vale) -- e o que impede o clique
+			// reflexo de quem nem leu a lista.
+			Disabled = !string.Equals(_codigoDaLimpeza.Trim(), p.Codigo, StringComparison.OrdinalIgnoreCase),
+			TooltipText = "passo 2 de 2: derruba todo mundo SEM salvar e apaga a pasta de saves",
+		};
+		confirmar.AddThemeColorOverride("font_color", Tema.Perigo);
+
+		// O BOTAO SO LIGA/DESLIGA, e a pagina NAO se remonta a cada tecla: remontar recriaria a
+		// `LineEdit` (e o foco, e o cursor) no meio da digitacao. Por isso o `TextChanged` mexe no
+		// `Disabled` do botao na mao em vez de chamar `Redesenhar`.
+		campo.TextChanged += t =>
+		{
+			_codigoDaLimpeza = t;
+			confirmar.Disabled = !string.Equals(t.Trim(), p.Codigo, StringComparison.OrdinalIgnoreCase);
+		};
+
+		void Apagar()
+		{
+			if (confirmar.Disabled) return;
+			cli.SendVerbo("admin_limpar_ja", _codigoDaLimpeza.Trim());
+			_codigoDaLimpeza = "";
+		}
+		campo.TextSubmitted += _ => Apagar();
+		confirmar.Pressed += Apagar;
+
+		var linha = new HBoxContainer();
+		linha.AddChild(campo);
+		linha.AddChild(confirmar);
+		_conteudo.AddChild(linha);
+
+		var desistir = new Button { Text = "cancelar", Alignment = HorizontalAlignment.Left };
+		// CANCELAR E PEDIR A PREVIA DE NOVO? Nao: e so esquecer o codigo daqui. O do servidor vence
+		// sozinho em um minuto, e um verb novo pra "cancelar" seria um caminho a mais pra manter --
+		// com o unico efeito de encurtar um prazo que ja e curto.
+		desistir.Pressed += () => { _codigoDaLimpeza = ""; cli.EsquecerLimpeza(); };
+		_conteudo.AddChild(desistir);
 	}
 
 	private void Achados(string termo)
@@ -2409,9 +3083,13 @@ public partial class MenuJogo : CanvasLayer
 			Text = mostrarCategoria ? $"{v.Nome}   [{v.Categoria}]" : v.Nome,
 			TooltipText = v.Descricao,
 			Alignment = HorizontalAlignment.Left,
-			Disabled = !v.PodeAgora,
+			// SEM ACAO = APAGADO. A faixa passiva de uma disciplina entra no catalogo so pra ser
+			// LIDA (ver `Verbo.Acionar`), e ate aqui ela virava botao clicavel que estourava uma
+			// NullReferenceException no clique. Apagada ela continua dizendo o que diz e nao promete
+			// mais nada -- a mesma regra do verb indisponivel, na linha de cima.
+			Disabled = !v.PodeAgora || v.Acionar == null,
 		};
-		b.Pressed += () => { v.Acionar(); Redesenhar(); };
+		b.Pressed += () => { v.Acionar?.Invoke(); Redesenhar(); };
 		_conteudo.AddChild(b);
 	}
 

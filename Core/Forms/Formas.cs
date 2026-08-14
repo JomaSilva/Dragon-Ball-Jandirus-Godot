@@ -71,6 +71,66 @@ public enum LinhaDeForma
 	/// poder exigi-la por campo em vez de por codigo.
 	/// </summary>
 	Oozaru,
+
+	/// <summary>
+	/// ============================ A ESCADA DO FROST DEMON -- `IcerTransform.dm` ============================
+	/// A PRIMEIRA linha nao-Saiyajin do catalogo, e ela e diferente das dez de cima em duas coisas
+	/// que valem estar escritas aqui, porque as duas vao surpreender quem ler o resto do arquivo:
+	///
+	/// 1. **A `Ordem` desta linha E o `fd_form` do DM** -- 1 a 7, e nao 10, 20, 30. A folga de dez em
+	///    dez existe pra caber um estagio no meio (ver <see cref="FormaDef.Ordem"/>); aqui NAO cabe:
+	///    o numero da forma escolhe o CORPO que o jogador desenhou na criacao
+	///    (`Appearance.FormasDeFrost`, um sprite por degrau), entao um degrau novo no meio nao e uma
+	///    entrada -- e um slot novo na tela de criacao e um save antigo com a lista curta.
+	///
+	/// 2. **Ela tem degraus ABAIXO da base.** As formas 1 a 4 sao SUPRESSAO (0,25x a 0,90x) e so o
+	///    Mutante as tem: ele NASCE preso na primeira, com o BP de fabrica 4x maior por causa disso
+	///    (`body_custom.dm:234`, `Genome.cs`). O 5 e a forma BASE (1x), o 6 e a primeira evolucao
+	///    (10x) e o 7 e a Forma Black (20x).
+	///
+	/// E POR ISSO O FROST DEMON NAO DESCANSA NO `Catalogo.IdBase`: o repouso dele e uma ENTRADA desta
+	/// linha (a 5 pro normal, a 1 pro Mutante) -- ver <see cref="Catalogo.PisoDaEscada"/>. Se ele
+	/// descansasse na base, o Mutante ficaria com 1x de multiplicador em cima de um BP quadruplicado,
+	/// que e exatamente o buraco que este porte veio fechar.
+	/// =====================================================================================================
+	/// </summary>
+	FrostDemon,
+
+	/// <summary>
+	/// ============================ O SUPER NAMEKUSEIJIN -- `Super_Namek.dm` ============================
+	/// UM degrau, 5x, e ele e a linha inteira. Nao ha escada: `snamek` e um booleano no DM (a skill
+	/// `namek/SuperNamek` o escreve) e o `Loop` do buff so conhece `if(1)`.
+	///
+	/// E a linha mais BARATA que este catalogo ja recebeu, e nao por acaso: o
+	/// <see cref="LimiaresPessoais.snamekat"/> ja era sorteado no nascimento e a chave `"snamekat"`
+	/// ja estava no `Porta()` -- groundwork pago por uma sessao anterior que ficou sem consumidor.
+	/// Ela e a prova de que o catalogo aguenta raca nao-Saiyajin sem mecanismo novo.
+	/// ==================================================================================================
+	/// </summary>
+	Namekuseijin,
+
+	/// <summary>
+	/// ============================ O HERAN -- `HeranBuff.dm` ============================
+	/// Max Power e True Max Power, os dois com maestria em DEGRAUS pela % (`heran_form_mult()`), os
+	/// dois nascendo da RAIVA (`heran.dm:20-52`, o mesmo `switch(Emotion)` do Super Saiyajin).
+	///
+	/// **A UNICA LINHA DO JOGO CUJO MULTIPLICADOR BASE SAI DA CLASSE** -- ver
+	/// <see cref="FormaDef.BaseDaClasse"/>. Omega 1,30x, Epsilon 2,4x, Low-Class 3x
+	/// (`statheran.dm:26-42`), e a inversao e o desenho do original: o Omega acende quase 7x mais
+	/// tarde (`RolarHeran`) e transforma pior, pagando isso com stats muito melhores.
+	/// ==================================================================================
+	/// </summary>
+	Heran,
+
+	/// <summary>
+	/// ============================ O ALIEN -- `Alien_Transformations.dm` ============================
+	/// Duas formas, 2x e 4x, sem maestria e sem raiva: gates puros de BP em cima de uma skill
+	/// comprada (`alien/transformation`, que escreve `hasayyform = 2`). E a linha mais simples do
+	/// catalogo, e serve de contraste -- ela mostra que "forma nova" pode nao custar nada alem das
+	/// duas entradas quando o original tambem nao cobra nada alem do numero.
+	/// ==============================================================================================
+	/// </summary>
+	Alien,
 }
 
 /// <summary>
@@ -124,6 +184,34 @@ public enum CorpoDeForma
 
 	/// <summary>O macaco dourado. Mesma folha, pelagem dourada -- `goldoozaruhayate.dmi`.</summary>
 	OozaruDourado,
+
+	/// <summary>
+	/// ============================ O CORPO QUE O **JOGADOR** ESCOLHEU PRA ESTE DEGRAU ============================
+	/// `icer_poll_icon()` (`IcerTransform.dm:129-137`): `if(1) icon = form1icon`, `if(2) icon =
+	/// form2icon`... Cada forma do Frost Demon e um SPRITE DIFERENTE, e os sprites nao sao do
+	/// catalogo -- sao os que o jogador escolheu na criacao (`Appearance.FormasDeFrost`, tres slots
+	/// pro normal e sete pro Mutante).
+	///
+	/// ============================ POR QUE UM VALOR SO, E NAO SETE ============================
+	/// Este e o SEGUNDO valor deste enum cuja arte depende do personagem, e ele e irmao do
+	/// <see cref="Musculoso"/> ate na frase: **a forma diz QUE corpo, o personagem diz DE QUEM**. O
+	/// que muda e por onde o personagem responde -- o Musculoso resolve pela PELE que o boneco ja
+	/// veste, e este resolve pelo SLOT que o degrau aponta.
+	///
+	/// Sete valores (`Frost1`..`Frost7`) diriam a mesma coisa sete vezes e ainda obrigariam quem
+	/// traduz a manter uma tabela paralela a `FormasDeFrost.DegrausDe`; com um valor so, o indice sai
+	/// da propria entrada (<see cref="Catalogo.DegrauDoFrost"/> -> a `Ordem`, que nesta linha E o
+	/// `fd_form`) e a lista de corpos sai da ficha. Ver `Jandirus.Client.CorposDeForma`.
+	///
+	/// **E O SLOT 0 E SEMPRE O REPOUSO** -- e e o que faz a aparencia de criacao e a forma de combate
+	/// nao virarem duas verdades. `VisualCatalog.CorpoSprite` desenha `FormasDeFrost[0]` como "o
+	/// corpo desta pessoa"; o degrau de repouso (<see cref="Catalogo.PisoDaEscada"/>) e o PRIMEIRO da
+	/// lista de degraus da classe (1 pro Mutante, 5 pro normal), entao a camada que esta forma veste
+	/// no repouso e o MESMO arquivo que o corpo ja usa. Elas concordam por construcao, e nao porque
+	/// alguem lembrou de sincroniza-las.
+	/// ==========================================================================================================
+	/// </summary>
+	FrostEscolhido,
 }
 
 /// <summary>Como a maestria vira multiplicador.</summary>
@@ -138,6 +226,16 @@ public enum Curva
 	/// <summary>RAMPA linear do primeiro ao ultimo valor conforme a maestria de 0 a 100.</summary>
 	Rampa,
 }
+
+/// <summary>
+/// UMA FLAG DE SKILL EXIGIDA, e o minimo que ela precisa valer. Ver <see cref="FormaDef.PedeFlag"/>.
+///
+/// O <paramref name="Campo"/> e o nome do `mob/var` do DM, tal e qual -- `"snamek"`, `"hasayyform"`
+/// --, porque e assim que ele chega do `skills.json` e e assim que o `Fighter.FlagsDeSkill` o
+/// guarda. Renomear pra portugues aqui obrigaria a uma tabela de traducao entre o extrator e o
+/// catalogo, que e uma segunda copia da mesma tabela.
+/// </summary>
+public readonly record struct FlagDeSkill(string Campo, double Minimo = 1);
 
 /// <summary>
 /// TUDO que o jogo precisa saber de uma forma. **Uma forma nova e uma entrada nova aqui e mais
@@ -239,6 +337,32 @@ public sealed class FormaDef
 	public double[]? MultDiluido;
 
 	/// <summary>
+	/// ============================ O MULTIPLICADOR BASE SAI DA **CLASSE** ============================
+	/// Nulo em 38 das 41 entradas, e so a linha <see cref="LinhaDeForma.Heran"/> o preenche. Quando
+	/// preenchido, o <see cref="Mult"/> deixa de ser o multiplicador e passa a ser a CURVA dele --
+	/// fatores relativos que este numero escala.
+	///
+	/// ============================ POR QUE UM CAMPO E NAO SEIS ENTRADAS ============================
+	/// No DM o Heran tem `mob/var/ssjmult`, escrito no nascimento pelo `special_info()` da genetica
+	/// (`statheran.dm:26-42`): Omega 1,30 / Epsilon 2,4 / Low-Class 3. Ou seja **o multiplicador nao e
+	/// da forma, e da pessoa** -- duas pessoas na MESMA forma multiplicam diferente, o que nenhuma
+	/// outra linha deste jogo faz.
+	///
+	/// A alternativa era o precedente do Rose/Blue -- formas IRMAS na mesma <see cref="Ordem"/>, uma
+	/// por classe (ver `EstaEmOuAcimaDe`). Ele funcionaria, e custaria SEIS entradas, seis ids de
+	/// rede, seis cinematicas identicas e um `Anterior` que atravessa classe (o `heran2` da Omega
+	/// acharia o `heran1` da Low-Class como degrau anterior, porque `Anterior` desempata por Ordem e
+	/// nao por classe). Um campo que le o perfil diz a mesma coisa com duas entradas, e e o mesmo
+	/// idioma do <see cref="EscalaComGodKi"/>, que ja existe justamente pra "o numero desta forma
+	/// depende de quem esta nela".
+	///
+	/// A CLASSE QUE NAO ESTIVER NO MAPA CAI NO `""` (chave vazia = o `else` do DM). No Heran esse
+	/// `else` e o Epsilon, que e literalmente o ramo sem `if` do `special_info()`.
+	/// ==========================================================================================
+	/// </summary>
+	public IReadOnlyDictionary<string, double>? BaseDaClasse;
+
+	/// <summary>
 	/// RAMPA DE COMBATE ESTILO LSSJ: `max(piso pela maestria, rampa do combate)`. A luta continua
 	/// sobe o multiplicador do minimo ao maximo em ~3 min (`LSSJ_RAMP_TICKS 600`), e a maestria so
 	/// define um PISO. lssjbuff.dm:184.
@@ -265,6 +389,33 @@ public sealed class FormaDef
 
 	/// <summary>Qual limiar pessoal manda nesta forma ("ssjat", "ssj2at"...). Vazio = usa o de fabrica.</summary>
 	public string ChaveDoLimiar = "";
+
+	/// <summary>
+	/// ============================ A FORMA QUE SE **COMPRA** ANTES DE PODER TER ============================
+	/// Nulo = a forma nao pede skill nenhuma, que e o caso das 38 primeiras entradas: as escadas de
+	/// sangue vem do CORPO (raca, classe, linhagem) e as divinas vem de ENSINO, que ja tem canal
+	/// proprio (`PedeGodKi`, `PedeProficienciaUi`, `SoPorConcessao`).
+	///
+	/// Tres entradas quebram isso e as tres sao do mesmo jeito no DM: `snamek()` so roda `if(snamek)`
+	/// e `Alien_Trans()` so roda `if(hasayyform)` -- vars que nascem em ZERO e que apenas o
+	/// `after_learn()` de uma skill comprada escreve (`namekian.dm:37-38`, `alien.dm:32-33`). Sem
+	/// isto, comprar a skill nao faria nada e a forma seria de graca -- os dois defeitos ao mesmo
+	/// tempo.
+	///
+	/// ============================ E ELE NAO INVENTA CANAL: O CANAL JA ESTAVA EXTRAIDO ============================
+	/// `EfeitosDeSkill` ja separa QUATRO canais do `after_learn`, e o quarto -- ATRIBUICAO -- e
+	/// exatamente este: `Skill.Flags` traz `"snamek=1"` e `"hasayyform=2"` direto do
+	/// `Assets/Data/skills.json`, extraidos do DM pelo pipeline, e o `Aplicar` os deposita em
+	/// <see cref="Jandirus.Core.Stats.Fighter.FlagsDeSkill"/> -- **inclusive os que o `Fighter` nao
+	/// tem como campo**, que e o caso destes dois. Nao ha numero digitado a mao aqui: o catalogo so
+	/// diz o NOME da flag e o minimo, e quem preenche o valor e o livro de skills do jogador.
+	///
+	/// O MINIMO EXISTE POR CAUSA DO ALIEN, e ele e literal: a skill escreve `hasayyform = 2`, a 1a
+	/// forma cobra `if(hasayyform)` (>= 1) e a 2a cobra `if(hasayyform == 2)`. Um booleano perderia a
+	/// segunda metade, e o campo unico com minimo cobre as duas sem um segundo canal.
+	/// ========================================================================================================
+	/// </summary>
+	public FlagDeSkill? PedeFlag;
 
 	/// <summary>Maestria exigida NO DEGRAU ANTERIOR. 0 = nao pede.</summary>
 	public double PedeMaestria;
@@ -519,7 +670,65 @@ public sealed class FormaDef
 	/// SUBSTITUEM o valor.
 	/// </summary>
 	public bool Absoluta;
+
+	/// <summary>
+	/// OS STATS DESTA FORMA -- nulo quando ela nao mexe em nenhum (o caso de 38 das 40 entradas hoje).
+	/// Ver <see cref="ModsDeForma"/>.
+	/// </summary>
+	public ModsDeForma? Mods;
 }
+
+/// <summary>
+/// ============================ O QUE UMA FORMA FAZ COM OS STATS ============================
+/// Ate aqui o catalogo sabia dizer quanto uma forma multiplica o BP, quanto ela drena, que porta ela
+/// pede e de que cor e a aura -- 40 campos -- e NAO sabia dizer que ela deixa o sujeito mais forte e
+/// mais lento. Nao havia campo. O unico lugar do port onde uma forma mexia em stat era o Oozaru, com
+/// tres linhas escritas a mao dentro do servidor (`GameServer.Oozaru.cs:211-213`).
+///
+/// E o DM MEXE, em varias (`Oozaru.dm:127-129`, `grays.dm:90-92`, `IcerTransform.dm:292-294`,
+/// `Giant Form.dm:72-74`, `Majin.dm:37`). Este record e a casa que faltava, e por isso ele e do
+/// CATALOGO e nao dos grades: o Gray, o Icer Full Power, o Giant Form e o Heran tambem tem mods la,
+/// e uma solucao so-pros-grades seria a primeira coisa a reescrever quando o proximo chegasse.
+///
+/// ============================ TUDO AQUI E FATOR, E O NEUTRO E 1 ============================
+/// 1,60 = +60% no R do stat antes do `StatCap`; 0,60 = -40%. Nao ha soma: ver o cabecalho do canal
+/// em `Fighter.cs` pra por que o `T*` do DM nao serve (o `Tspeed` esta morto la e aqui).
+///
+/// **O `StatCap` COMPRIME, e isso e do jogo, nao defeito daqui.** Medido em stat cru 20: fator 1,25
+/// no `physoff` vira +9,6% de `Ephysoff`; 1,50 vira +16,6%; 1,80 vira +22,7%; e de 2,00 pra cima a
+/// curva ja saturou. Numeros "grandes" aqui sao normais e nao sao inflacao.
+///
+/// ============================ NENHUM DELES E DA FAMILIA DO `powerlevel()` ============================
+/// Nem multiplica, nem soma na base, nem se aplica no fim: eles nao entram naquela conta. Sao
+/// `statify()`, que e a outra metade do personagem. O DM separa as duas do mesmo jeito, e a separacao
+/// tem consequencia de projeto: um Grade 3 lento continua marcando o mesmo numero no scouter, o que e
+/// exatamente o que "forte e desajeitado" quer dizer. O preco em BP de uma forma tem canal proprio
+/// (<see cref="FormaDef.Mult"/> -> `ssjBuff` -> familia 1) e o preco em folego tambem
+/// (<see cref="FormaDef.Dreno"/>).
+/// ====================================================================================================
+/// </summary>
+/// <param name="Physoff">Ofensiva FISICA. Grays/Icer/Oozaru/Giant todos mexem nesta.</param>
+/// <param name="Physdef">Defesa fisica. So o Giant Form do DM usa hoje.</param>
+/// <param name="Kioff">Ofensiva de KI -- o outro "offensive" que o dono citou.</param>
+/// <param name="Kidef">Defesa de ki. Sem consumidor no DM ainda; existe pra fechar o par.</param>
+/// <param name="Tecnica">
+/// A PONTARIA. Quem quer que a forma ERRE mais tem que mexer AQUI e nao na velocidade: a chance de
+/// acertar e `Etechnique` de quem BATE contra `Espeed` de quem APANHA
+/// (`calcs.dm:120`, `CombatMath.Pontaria`) -- a velocidade do atacante nao entra na conta.
+/// </param>
+/// <param name="Speed">
+/// A VELOCIDADE, e ela paga em dois lugares: quem esta lento e ACERTADO mais (entra no divisor da
+/// pontaria alheia -- medido, 0,60 faz o adversario acertar +30%) e ANDA mais devagar
+/// (`MoveRules.SpeedStatFrom`). O que ela NAO faz e mudar a cadencia; pra isso ha o campo abaixo.
+/// </param>
+/// <param name="Cadencia">
+/// QUANTOS SOCOS POR SEGUNDO. Divide, como o `hitspeedMod` do DM (`attack cmn.dm:100`): 0,60 = soca
+/// 1,67x mais devagar. Canal separado da velocidade porque no jogo ELES SAO SEPARADOS -- o
+/// `Eactspeed` esta cravado em 20 e nao escuta o `Espeed` (medido; ver `CombatMath.Cadencia`).
+/// </param>
+public sealed record ModsDeForma(double Physoff = 1, double Physdef = 1,
+								 double Kioff = 1, double Kidef = 1,
+								 double Tecnica = 1, double Speed = 1, double Cadencia = 1);
 
 /// <summary>
 /// A CURVA DE UMA FORMA QUE ESCALA COM O KI DIVINO -- os quatro numeros e mais nada.
@@ -557,8 +766,23 @@ public sealed record CurvaDeGodKi(string[] Origens, double SemGodKi, double AoDe
 ///   * <see cref="Extrema"/> -- `Do_Anger_Stuff(1)`, de `Death.dm:81` (amigo MORTO por um inimigo,
 ///     com o comentario *"friend was KILLED by an enemy -> EXTREMELY enraged"*) e de
 ///     `MajinSaga.dm:173` (amigo ABSORVIDO -- ve-lo sumir vale o mesmo que ve-lo morrer). **O
-///     segundo nao tem chamador aqui**, e nao por esquecimento: a absorcao do Majin nao existe
-///     neste port. Quando a saga vier, ela chama o mesmo gancho com este grau.
+///     segundo continua sem chamador aqui**, e o motivo MUDOU -- ver o bloco logo abaixo.
+///
+/// ============================ A ABSORCAO EXISTE; ABSORVER AMIGO E QUE NAO ============================
+/// Este texto dizia *"a absorcao do Majin nao existe neste port; quando a saga vier, ela chama o
+/// mesmo gancho"*. A saga VEIO (`Core/Npc/Sagas.cs` + `GameServer.Sagas.cs`) e trouxe absorcao
+/// junto: `AbsorverCompanheiroCaido` e o `cell_absorb_contact` do original, com o chefe subindo de
+/// degrau em cima do companheiro nocauteado.
+///
+/// SO QUE ELA COME CHEFE, E NAO AMIGO. A presa e sempre outro `EstadoDoChefe` do mesmo elo -- um
+/// NPC de roteiro --, e o luto deste arquivo e entre PESSOAS que se conhecem (o convivio, por
+/// assinatura de conta). Ninguem nunca ve um amigo ser absorvido, entao o gancho continua mudo com
+/// razao, e nao por fiacao esquecida.
+///
+/// O DIA EM QUE A PRESA PUDER SER UM JOGADOR, a chamada e uma linha dentro do
+/// `AbsorverCompanheiroCaido`, com <see cref="Extrema"/> -- e a mesma porta do `AmigoAbatido` que a
+/// morte ja usa. Ate la, este comentario diz o que E, e nao o que falta.
+/// ================================================================================================
 ///
 /// Os dois filtram por INIMIGO e pulam o proprio autor (`Death.dm:75-77`, `KO.dm:30-35`): um spar
 /// entre amigos nao acende raiva nenhuma, e quem derrubou o amigo nao ganha forma por isso.
@@ -649,8 +873,20 @@ public readonly record struct PerfilDeFormas(
 	double GodKi = -1,
 	double EnergiaUe = 0,
 	double ProficienciaUi = 0,
-	NivelDeRaiva Raiva = NivelDeRaiva.Nenhuma)
+	NivelDeRaiva Raiva = NivelDeRaiva.Nenhuma,
+	IReadOnlyDictionary<string, double>? FlagsDeSkill = null)
 {
+	/// <summary>
+	/// QUANTO VALE ESTA FLAG DE SKILL NESTE CORPO. Zero quando ele nao sabe a skill que a escreve --
+	/// e o zero e o valor de fabrica do `mob/var` do DM, entao o padrao ja e o lado seguro (quem
+	/// esquecer de preencher o <see cref="FlagsDeSkill"/> RECUSA a forma em vez de conceder).
+	///
+	/// E o mesmo raciocinio do <see cref="Raiva"/>: o dicionario e NULAVEL porque a maioria dos
+	/// chamadores (bancadas, NPCs sem livro, o cliente desenhando a base) nao tem livro de skills
+	/// nenhum -- e nao ter livro nao pode ser confundido com "sabe tudo".
+	/// </summary>
+	public double Flag(string campo) => FlagsDeSkill?.GetValueOrDefault(campo) ?? 0;
+
 	/// <summary>Um Saiyajin qualquer, sem nada de especial. Serve de padrao e de bancada.</summary>
 	public static readonly PerfilDeFormas Comum = new(Raca: "Saiyan");
 
@@ -1107,6 +1343,20 @@ public static class Catalogo
 		// permite ao cliente ter UMA conta em vez de duas ("e base?" mais "e Mistico?").
 		null => true,
 		LinhaDeForma.Mistico => d.PedeGodKi < GodkiRoyalePct,
+
+		// ============================ O FROST DEMON NAO TROCA DE CHAMA -- ELE TROCA DE CORPO ============================
+		// A linha inteira, e nao um degrau: NENHUMA das sete formas acende overlay de aura no original.
+		// `Frost_Demon_Forms` (`IcerTransform.dm:83-114`) faz tres coisas -- toca `1aura.wav`, chama
+		// `icer_poll_icon()` e anuncia no chat. Quem veste aura nele e o GOLDEN (`/obj/overlay/icergod`,
+		// que e skill separada e nao esta nesta linha) e o DESCONTROLE do Mutante (`fd_menacing_red`,
+		// que e estado e nao forma).
+		//
+		// Derivado da LINHA pelo mesmo motivo de sempre: a 8a forma que alguem acrescentar aqui ja nasce
+		// com a chama do dono. E a alternativa -- cada entrada declarando a propria cor de aura -- daria
+		// um Frost Demon que muda de cor de chama ao evoluir, que e uma coisa que o jogo dele nunca fez.
+		// ============================================================================================================
+		LinhaDeForma.FrostDemon => true,
+
 		_ => d.Id == IdBase,
 	};
 
@@ -2199,7 +2449,26 @@ public static class Catalogo
 			  : d.Ordem < 30 ? f.ussjenergymod     // c_type
 			  :                f.lssjenergymod,    // legendary e full power
 
-			_ => 1,                                 // GodKi, Rose, Prodigial, UI, UE, Oozaru
+			// ============================ AS TRES LINHAS NOVAS, E SO DUAS LEEM O `Fighter` ============================
+			// O HERAN E O ALIEN dividem o tanque do Saiyajin de proposito, e o DM diz isso na cara: o
+			// `MaxPower/Loop` usa `container.ssjenergymod` / `ssj2energymod` (`HeranBuff.dm:57`, `:62`) com
+			// o comentario *"herans share the saiyans energy boost"*, e o `Alien_Trans/Loop` usa
+			// `ssjenergymod` nos DOIS degraus (`Alien_Transformations.dm:58`, `:63`) -- nao e engano, a
+			// segunda forma Alien nao aumenta o tanque alem da primeira.
+			//
+			// Ler o campo do `Fighter` (e nao um literal) e o que faz a skill `Energy_Blues` do Heran
+			// valer: ela poe `ssjenergymod = 3` e `ssj2energymod = 4` (`heran.dm:135-136`), e com um 2
+			// cravado aqui ela nao faria nada -- exatamente a classe de defeito que este arquivo ja
+			// documenta ("skill que promete e nao faz").
+			//
+			// O NAMEKUSEIJIN E O UNICO COM NUMERO PROPRIO, e por isso ele tem constante: `trueKiMod = 2`
+			// esta escrito no buff dele (`Super_Namek.dm:41`) e nao sai de var nenhuma. Ver `SuperNamekKi`.
+			// ====================================================================================================
+			LinhaDeForma.Namekuseijin => SuperNamekKi,
+			LinhaDeForma.Alien => f.ssjenergymod,
+			LinhaDeForma.Heran => d.Ordem < 20 ? f.ssjenergymod : f.ssj2energymod,
+
+			_ => 1,                                 // GodKi, Rose, Prodigial, UI, UE, Oozaru, Frost
 		};
 
 	/// <summary>
@@ -2312,7 +2581,32 @@ public static class Catalogo
 			LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal
 				=> tronco ? NivelDeRaiva.Lendaria : NivelDeRaiva.Nenhuma,
 
-			LinhaDeForma.Saiyajin or LinhaDeForma.Futuro
+			// ============================ AS ESCADAS DE **SANGUE** -- e o Heran estava faltando ============================
+			// O enunciado do cabecalho e "a raiva abre o TRONCO das escadas de SANGUE", e ate aqui essa
+			// frase estava escrita no comentario e nao no codigo: o `switch` listava Saiyajin e Futuro, e
+			// tudo o mais caia no `_ => Nenhuma`.
+			//
+			// **A LINHA HERAN PROVOU QUE ISSO ERA UM DEFEITO LATENTE, E O PROPRIO ARQUIVO JA O PREVIA E
+			// ERRAVA A PREVISAO.** O comentario logo acima (o do SSJ3 saindo da lista) dizia: *"A escada
+			// `Heran` ainda NAO existe no port; no dia em que vier, os degraus dela nascem no tronco e
+			// esta funcao os pega sozinha, que e o ponto de derivar."* Nao pegaria: uma linha nova cai no
+			// `_`, e o Heran teria acendido sem raiva nenhuma -- CALADO, que e o pior modo de falhar
+			// deste projeto. E ele PEDE raiva no original, duas vezes: `heran.dm:20-52` roda o mesmo
+			// `switch(savant.Emotion)` do Super Saiyajin nos dois degraus, e o `mst_form_needs_rage`
+			// (`MasterStudent.dm:246-249`) lista `heran1` e `heran2` junto com `ssj` e `ssj2`.
+			//
+			// O CONSERTO E NA DERIVACAO E NAO NA ENTRADA: nenhuma das duas entradas Heran declara raiva.
+			// O que mudou foi o braco passar a nomear a FAMILIA que a frase sempre descreveu -- as
+			// escadas que vem do corpo com que a pessoa nasceu. As tres linhas nao-Saiyajin novas
+			// separam-se sozinhas por aqui, e as duas que NAO pedem raiva ficam de fora por serem o que
+			// sao: o Super Namekuseijin e as formas Alien se COMPRAM (`PedeFlag`), e o que se compra nao
+			// se desperta -- o `snamek()` e o `Alien_Trans()` nao olham `Emotion` uma unica vez.
+			//
+			// O FROST DEMON TAMBEM E DE SANGUE E TAMBEM FICA DE FORA, e por escolha do original: o
+			// `Frost_Demon_Forms` gateia por `fd_form_at` e maestria, nunca por furia. Ele esta no `_`
+			// junto com as divinas, e o comentario existe pra ninguem "consertar" isso depois.
+			// ==========================================================================================================
+			LinhaDeForma.Saiyajin or LinhaDeForma.Futuro or LinhaDeForma.Heran
 				=> tronco ? NivelDeRaiva.Extrema : NivelDeRaiva.Nenhuma,
 
 			// So o Beast. O `mistico` da mesma linha e `PedeGodKi = -1` e cai fora sem citar id.
@@ -2408,6 +2702,56 @@ public static class Catalogo
 
 	/// <summary>Fatores dos grades sobre a base do SSJ1. `SSJ_GRADE2_FACTOR` / `_GRADE3_FACTOR`.</summary>
 	public const double Grade2Fator = 1.5, Grade3Fator = 2;
+
+	/// <summary>
+	/// ============================ OS STATS DOS GRADES -- E O DM NAO OS TEM ============================
+	/// Isto E DECLARADO EM VOZ ALTA porque a instrucao era portar numeros do DM e **eles nao existem
+	/// la**. Varridos: `supersaiyanbuff.dm` inteiro (855 linhas), `1A Defines.dm`, e o repo do DM
+	/// inteiro atras de `speedMod|physoffMod|kioffMod|techniqueMod|Tspeed|Tphysoff|Ttechnique`. O que
+	/// o DM da aos grades e SO: a porta de maestria (`SSJ_GRADE2_PCT` 50 / `SSJ_GRADE3_PCT` 70), o
+	/// fator de BP (`SSJ_GRADE2_FACTOR` 1,5 / `_GRADE3_FACTOR` 2), o dreno
+	/// (`SSJ_GRADE2_DRAIN` 0,040 / `_GRADE3_DRAIN` 0,055) e o corpo musculoso
+	/// (`apply_ussj_body()`, `supersaiyanbuff.dm:222`). Zero stat. O `DU-SOURCE-master` original nem
+	/// conhece a palavra `ultrassj` -- o USSJ e invencao deste DM e nunca teve penalidade nenhuma.
+	///
+	/// ============================ ENTAO O DM ENTRA COMO FORMA, E NAO COMO VALOR ============================
+	/// O arquetipo existe e e o OOZARU (`Oozaru.dm:127-129`): `Tphysoff += 1.2`, `Tspeed -= 1.5`,
+	/// `Ttechnique -= 1.5` -- forte, lento, e desajeitado NA MESMA ORDEM DE GRANDEZA do bonus, com a
+	/// penalidade um pouco maior que ele. E a descricao do dono para o Grade 3, palavra por palavra
+	/// ("um belo buff physical mas seria lento e teria dificuldade de acertar"). A escala dos fatores
+	/// segue a que o proprio DM usa quando mexe em stat por multiplicacao: `tsujin.dm:110-116` vai de
+	/// 1,20 a 1,50, o Majin usa 1,30 (`Majin.dm:37`), a criacao de personagem vai de 0,7 a 1,4
+	/// (`CharacterCreation.dm:177-188`).
+	///
+	/// ============================ E O GRADE 2 TEM QUE SER POUCO ============================
+	/// *"o grade 2 n teria tanta diferenca, mas teria"*. Ele fica proximo do neutro nos quatro eixos.
+	/// O que separa os dois grades e o TAMANHO do desvio, nao o sinal dele.
+	///
+	/// Com o `StatCap` comprimindo (medido em stat cru 20: fator 1,60 no physoff ~= +19% de
+	/// `Ephysoff`), o efeito final e:
+	///
+	///           physoff   kioff   tecnica   speed   cadencia        | na pratica
+	///   Grade 2   1,15     1,10     0,96     0,92     0,92          | +6% de soco, quase nada de custo
+	///   Grade 3   1,60     1,20     0,75     0,60     0,60          | +19% de soco, erra ~12% mais,
+	///                                                               | e acertado +30%, soca 1,67x mais devagar
+	///
+	/// SAO NUMEROS PROPOSTOS, e a estrutura e que importa: mexer qualquer um deles e mexer aqui, e
+	/// nenhum outro arquivo precisa saber.
+	/// ==================================================================================================
+	/// </summary>
+	public static readonly ModsDeForma Grade2Mods =
+		new(Physoff: 1.15, Kioff: 1.10, Tecnica: 0.96, Speed: 0.92, Cadencia: 0.92);
+
+	/// <inheritdoc cref="Grade2Mods"/>
+	public static readonly ModsDeForma Grade3Mods =
+		new(Physoff: 1.60, Kioff: 1.20, Tecnica: 0.75, Speed: 0.60, Cadencia: 0.60);
+
+	/// <summary>
+	/// O NEUTRO: tudo 1. E o que a base e as 38 formas sem <see cref="FormaDef.Mods"/> valem, e existe
+	/// pra `AplicarForma` poder AFIRMAR os sete campos sem um `if` -- voltar pra base tem que escrever
+	/// 1 em cada um, e nao "deixar como estava".
+	/// </summary>
+	public static readonly ModsDeForma SemMods = new();
 
 	/// <summary>A base do SSJ1 por raca: 2 normal, 1,35 diluido. `ssj1base`.</summary>
 	public const double Ssj1Base = 2, Ssj1BaseDiluido = 1.35;
@@ -2631,6 +2975,105 @@ public static class Catalogo
 
 	/// <summary>A classe do Beast. `godki.dm:349`.</summary>
 	public const string ClasseProdigial = "Prodigial";
+
+	// ==================================================================================
+	// AS TRES LINHAS NAO-SAIYAJIN QUE NAO SAO O FROST DEMON
+	//
+	// Os numeros do BYOND, um por constante, com o arquivo:linha de onde saem. Eles moram aqui e nao
+	// soltos nas entradas pelo mesmo motivo das tintas de cabelo logo abaixo: cada um responde por
+	// mais de um lugar (o multiplicador do Heran aparece na curva E no `BaseDaClasse`, a porta do
+	// Alien aparece na entrada E na conta da segunda forma), e literal repetido e literal que diverge.
+	// ==================================================================================
+
+	/// <summary>As racas destas tres linhas, como o `races.json` as escreve.</summary>
+	public const string RacaNamekuseijin = "Namekian", RacaHeran = "Heran", RacaAlien = "Alien";
+
+	/// <summary>
+	/// O MEIO-SAIYAJIN, como o `races.json` o escreve: <b>"Halfbreed"</b> -- e a grafia e o problema
+	/// inteiro (ver <see cref="EhSaiyajin"/>). Na tela ele se chama "Half-Saiyan"
+	/// (`CreationScreen.cs:1135`), no genoma ele carrega o proto "Saiyan" (`Birth.cs:98`), e a raca
+	/// gravada no personagem e esta.
+	/// </summary>
+	public const string RacaMeioSaiyajin = "Halfbreed";
+
+	/// <summary>`snamekmult` -- 5x. `Super_Namek.dm:5`.</summary>
+	public const double SuperNamekMult = 5;
+
+	/// <summary>`snamekdrain` -- 1,5% do Ki maximo. `Super_Namek.dm:6`.</summary>
+	public const double SuperNamekDreno = 0.015;
+
+	/// <summary>
+	/// `trueKiMod = 2` -- o Super Namekuseijin DOBRA o tanque de Ki (`Super_Namek.dm:41`).
+	///
+	/// E o unico numero de <see cref="TetoDeKi"/> que nao sai de um campo do `Fighter`: as escadas
+	/// Saiyajin leem `ssjenergymod` e companhia (que skills reescrevem), e o Namekuseijin tem o 2
+	/// cravado no proprio buff. Copiar `ssjenergymod` aqui daria 2 por acidente hoje e mentiria no
+	/// dia em que uma skill mexesse naquele campo.
+	/// </summary>
+	public const double SuperNamekKi = 2;
+
+	/// <summary>`ayyform1mult` / `ayyform2mult` -- 2x e 4x. `Alien_Transformations.dm:4-5`.</summary>
+	public const double AlienMult1 = 2, AlienMult2 = 4;
+
+	/// <summary>`ayyform1at` -- 1 milhao de BP. `Alien_Transformations.dm:3`.</summary>
+	public const double PortaAlien1 = 1_000_000;
+
+	/// <summary>
+	/// A porta da 2a forma Alien -- **10 milhoes**, e ela e uma CONTA e nao o `ayyform2at`.
+	///
+	/// `Alien_Trans()` cobra `BP >= ayyform2at / ayyform1mult` (`:9`), ou seja 20 milhoes divididos
+	/// por 2. Escrever 10 milhoes direto perderia a razao de ser do numero: se o multiplicador da 1a
+	/// forma mudar, a porta da 2a anda junto no original.
+	/// </summary>
+	public const double PortaAlien2 = 20_000_000 / AlienMult1;
+
+	/// <summary>`ayyform1drain` / `ayyform2drain` -- 1,0% e 1,5%. `Alien_Transformations.dm:7-8`.</summary>
+	public const double AlienDreno1 = 0.010, AlienDreno2 = 0.015;
+
+	/// <summary>
+	/// A CURVA DE MAESTRIA DO HERAN -- os fatores relativos de `heran_form_mult()`
+	/// (`HeranBuff.dm:245-249`): 1x no degrau cru, e ate 2,016x com a forma dominada.
+	///
+	/// Ela e a MESMA nas duas formas (o DM repete a lista trocando so o `ssjmult` pelo `ssj2mult`), e
+	/// por isso e uma constante em vez de dois literais: o dia em que o dono quiser a maestria do
+	/// Heran valendo mais, ele mexe num lugar e as duas formas andam.
+	/// </summary>
+	public static readonly double[] CurvaDoHeran = [1, 1.2, 1.68, 2.016];
+
+	/// <summary>
+	/// `ssjmult` por classe -- `statheran.dm:26-42`. A chave vazia e o `else` do original (Epsilon).
+	///
+	/// A INVERSAO E DE PROPOSITO e e o desenho do Heran: o Omega transforma PIOR (1,30x contra 3x do
+	/// Low-Class) e acende quase 7x mais tarde (ver `LimiaresPessoais.RolarHeran`), e o que ele
+	/// compra com isso sao stats muito melhores. Quem "consertar" o 1,30 quebra a classe rara.
+	/// </summary>
+	public static readonly IReadOnlyDictionary<string, double> HeranBasePorClasse =
+		new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+		{ ["Omega"] = 1.30, ["Low-Class"] = 3, [""] = 2.4 };
+
+	/// <summary>`ssj2mult` por classe -- as mesmas tres linhas do `statheran.dm`.</summary>
+	public static readonly IReadOnlyDictionary<string, double> Heran2BasePorClasse =
+		new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+		{ ["Omega"] = 2, ["Low-Class"] = 4, [""] = 3 };
+
+	/// <summary>
+	/// O dreno do Max Power por degrau de maestria -- `list(0.025, 0.015, 0.008, 0)`
+	/// (`HeranBuff.dm:39`). **A forma DOMINADA nao drena nada**, que e a recompensa inteira.
+	/// </summary>
+	public static readonly double[] HeranDreno1 = [0.025, 0.015, 0.008, 0];
+
+	/// <summary>O dreno do True Max Power -- `list(0.040, 0.025, 0.012, 0)` (`HeranBuff.dm:43`).</summary>
+	public static readonly double[] HeranDreno2 = [0.040, 0.025, 0.012, 0];
+
+	/// <summary>
+	/// O DIVISOR DA PORTA DO **True Max Power** -- 50, e ele e do Heran e de mais ninguem.
+	///
+	/// `heran.dm:38` cobra `ssj2at/50 <= BP`, contra o `/6` que o `Transformation Controls.dm:19`
+	/// cobra do Super Saiyajin 2. Nao e engano do original: o `ssj2at` do Heran NAO e sorteado (ver
+	/// `LimiaresPessoais.RolarHeran` -- ele fica no valor de fabrica, 3,5 bilhoes), e sem o divisor
+	/// maior a segunda forma dele seria inalcancavel a vida inteira.
+	/// </summary>
+	public const double HeranGateMult2 = 50;
 
 	// ==================================================================================
 	// AS TINTAS DE CABELO -- os `rgb()` literais do DM, um por linha que pinta
@@ -3053,18 +3496,20 @@ public static class Catalogo
 		new() { Id = "grade2", IdRede = 15, Linha = LinhaDeForma.Saiyajin, Ordem = 15,
 				Nome = "Super Saiyajin Grade 2", NumeroDm = 1.5, Intensidade = 2,
 				Mult = [Ssj1Base * Grade2Fator], MultDiluido = [Ssj1BaseDiluido * Grade2Fator],
-				Dreno = [0.035],
+				Dreno = [0.035], Mods = Grade2Mods,
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat", PedeMaestria = Grade2Pct, ForaDoTronco = true,
 				Aura = "ffcf3a", SufixoDoCabelo = "USSj", Corpo = CorpoDeForma.Musculoso,
-				Desc = "Musculatura inchada. Nao se compra: abre com 50% de maestria no SSJ1." },
+				Desc = "Musculatura inchada: soca um pouco mais forte e fica um pouco mais lento. "
+					 + "Nao se compra: abre com 50% de maestria no SSJ1." },
 
 		new() { Id = "grade3", IdRede = 16, Linha = LinhaDeForma.Saiyajin, Ordem = 16,
 				Nome = "Super Saiyajin Grade 3", NumeroDm = 1.5, Intensidade = 2,
 				Mult = [Ssj1Base * Grade3Fator], MultDiluido = [Ssj1BaseDiluido * Grade3Fator],
-				Dreno = [0.05],
+				Dreno = [0.05], Mods = Grade3Mods,
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat", PedeMaestria = Grade3Pct, ForaDoTronco = true,
 				Aura = "ffc21f", SufixoDoCabelo = "USSj", Corpo = CorpoDeForma.Musculoso,
-				Desc = "Poder bruto no limite do corpo. Abre com 70% de maestria no SSJ1." },
+				Desc = "Poder bruto no limite do corpo: soco muito mais pesado, mas lento, "
+					 + "desajeitado e facil de acertar. Abre com 70% de maestria no SSJ1." },
 
 		new() { Id = "ssj2", IdRede = 20, Linha = LinhaDeForma.Saiyajin, Ordem = 20,
 				// RAIOS = 1 (leve): o `if(2)` do DM acende UMA folha de eletricidade. O SSJ3 acende
@@ -3721,6 +4166,229 @@ public static class Catalogo
 				Aura = "ffd24a", SufixoDoCabelo = "SSj",
 				Corpo = CorpoDeForma.OozaruDourado,
 				Desc = "18x (20x pro Legendary Primal). Sair dele e o unico caminho pro SSJ4." },
+
+		// ---------------------------------------------------------------------------
+		// FROST DEMON -- `IcerTransform.dm` + `icer.dm` (rework de 2026-07-10 do original)
+		//
+		// ============================ OS SETE DEGRAUS, E DE ONDE VEM CADA NUMERO ============================
+		// Os multiplicadores NAO estao escritos aqui: eles ja moram em `Races.FormasDeFrost.Multiplicador`
+		// (o porte do `fd_form_mult`), que a tela de criacao le pra mostrar "multiplica o seu poder por N"
+		// no tooltip de cada slot. Duas copias do 10 e do 20 e como a tela passaria a prometer um numero
+		// que o combate nao paga -- e a promessa e feita ANTES de o personagem existir, entao o jogador
+		// escolheria os corpos por uma escada errada.
+		//
+		// A `Ordem` E O `fd_form`. Ver o cabecalho de `LinhaDeForma.FrostDemon` pro porque de esta linha
+		// nao usar a folga de dez em dez do resto do catalogo.
+		//
+		// ============================ AS SUPRESSOES SAO `ForaDoTronco`, E ISSO E LITERAL ============================
+		// O campo diz "ramo lateral: nao e o degrau anterior de NINGUEM" -- e e exatamente o que as formas
+		// 1 a 4 sao. O tronco do Frost Demon e base(5) -> 6 -> 7; as supressoes penduram ABAIXO da base e
+		// so o Mutante desce ate elas. Sem esta marca, `Anterior(frost5)` devolveria a 4a Forma e o Frost
+		// Demon NORMAL -- que nunca tem supressao nenhuma -- ficaria com a propria forma base recusada por
+		// `ForaDeOrdem`, calado. (A bancada `--frostteste` guarda exatamente isso.)
+		//
+		// ============================ SEM DRENO DE KI, E SEM MEXER NO TANQUE ============================
+		// `Dreno` fica no `[0]` de fabrica e nao ha ramo pra esta linha em `TetoDeKi`. As duas ausencias
+		// sao do original e estao escritas na cara do arquivo dele: *"Formas NAO mexem mais no pool de Ki
+		// (o sistema antigo dava +Ki na supressao e -Ki na final)"* (`IcerTransform.dm:12-13`), e nao ha
+		// `*drain` nenhum no `Frost_Demon_Forms` nem no `effector` do `icer.dm`. O custo do Frost Demon
+		// nao e folego -- e o CONTROLE (ver o motor do Mutante em `GameServer.Frost.cs`).
+		//
+		// ============================ A CHAMA CONTINUA SENDO A DELE ============================
+		// Nenhuma das sete acende aura propria no DM: `Frost_Demon_Forms` toca `1aura.wav`, troca o icone
+		// e acabou. Quem poe overlay e o GOLDEN (`/obj/overlay/icergod`, skill separada) e o DESCONTROLE
+		// do Mutante (`fd_menacing_red`). Por isso a linha inteira responde `true` no
+		// `Catalogo.ChamaDoJogador` -- ver la. O hexa da `Aura` abaixo sobra pro CONTORNO, que e outro
+		// canal (`ParDoContorno`), e por isso ele e frio: um Frost Demon com brilho dourado de Saiyajin
+		// e a primeira coisa que o olho estranha.
+		// =============================================================================================
+		new() { Id = "frost1", IdRede = 700, Linha = LinhaDeForma.FrostDemon, Ordem = 1,
+				Nome = Races.FormasDeFrost.Nome(1), NumeroDm = 1, Intensidade = 1,
+				Mult = [Races.FormasDeFrost.Multiplicador(1)], ForaDoTronco = true,
+				PedeClasseUmaDe = [Races.FormasDeFrost.ClasseMutante],
+				Corpo = CorpoDeForma.FrostEscolhido, Aura = "8fd0ff",
+				Desc = "0,25x. A casca mais apertada. O Mutante NASCE aqui -- e o BP dele ja e "
+					 + "quatro vezes maior por causa disso." },
+
+		new() { Id = "frost2", IdRede = 710, Linha = LinhaDeForma.FrostDemon, Ordem = 2,
+				Nome = Races.FormasDeFrost.Nome(2), NumeroDm = 2, Intensidade = 1,
+				Mult = [Races.FormasDeFrost.Multiplicador(2)], ForaDoTronco = true,
+				PedeClasseUmaDe = [Races.FormasDeFrost.ClasseMutante],
+				Corpo = CorpoDeForma.FrostEscolhido, Aura = "8fd0ff",
+				Desc = "0,50x. Metade do poder liberado. Estavel pra sempre com 25% de maestria da base." },
+
+		new() { Id = "frost3", IdRede = 720, Linha = LinhaDeForma.FrostDemon, Ordem = 3,
+				Nome = Races.FormasDeFrost.Nome(3), NumeroDm = 3, Intensidade = 1,
+				Mult = [Races.FormasDeFrost.Multiplicador(3)], ForaDoTronco = true,
+				PedeClasseUmaDe = [Races.FormasDeFrost.ClasseMutante],
+				Corpo = CorpoDeForma.FrostEscolhido, Aura = "9ad8ff",
+				Desc = "0,75x. Estavel pra sempre com 50% de maestria da base." },
+
+		new() { Id = "frost4", IdRede = 730, Linha = LinhaDeForma.FrostDemon, Ordem = 4,
+				Nome = Races.FormasDeFrost.Nome(4), NumeroDm = 4, Intensidade = 2,
+				Mult = [Races.FormasDeFrost.Multiplicador(4)], ForaDoTronco = true,
+				PedeClasseUmaDe = [Races.FormasDeFrost.ClasseMutante],
+				Corpo = CorpoDeForma.FrostEscolhido, Aura = "a6e0ff",
+				Desc = "0,90x. Quase tudo. Estavel pra sempre com 75% de maestria da base." },
+
+		// ============================ A FORMA BASE E UMA ENTRADA, E NAO O `IdBase` ============================
+		// Ver o cabecalho da linha. Ela e o repouso do Frost Demon NORMAL (que nasce nela) e o topo da
+		// subida do Mutante -- que so a segura pra sempre com 100% de maestria da base, e e SO nela que
+		// essa maestria cresce (`Catalogo.SustentarTreina`).
+		//
+		// `Intensidade = 2` E NAO 0, e a diferenca nao e enfeite: quem chega aqui pela primeira vez e o
+		// Mutante ABRINDO a ultima casca, que e o acontecimento central do personagem dele. Pro normal a
+		// cena nunca roda -- ele ja NASCE nesta forma (`Catalogo.PisoDaEscada`), e o repouso nao passa
+		// por `Entrar`. Ou seja o degrau tem cena pra quem a merece e e mudo pra quem nao.
+		// ==================================================================================================
+		new() { Id = "frost5", IdRede = 740, Linha = LinhaDeForma.FrostDemon, Ordem = 5,
+				Nome = Races.FormasDeFrost.Nome(5), NumeroDm = 5, Intensidade = 2,
+				Mult = [Races.FormasDeFrost.Multiplicador(5)],
+				Corpo = CorpoDeForma.FrostEscolhido, Aura = "b6e8ff",
+				Desc = "1x. O corpo sem casca nenhuma. Pro Mutante, e aqui que a maestria da base cresce." },
+
+		// ============================ AS DUAS EVOLUCOES NAO SORTEIAM LIMIAR PESSOAL ============================
+		// `ChaveDoLimiar` fica VAZIO, e a ausencia e do original: nao ha `RolarIcer` no `statsaiyan.dm`
+		// nem em lugar nenhum -- o `FD_FORM6_AT`/`FD_FORM7_AT` sao `#define`, iguais pra todo Frost Demon
+		// do servidor. Inventar um sorteio aqui daria a cada um uma porta diferente, o que e bonito e
+		// nao e o jogo. Com o campo vazio, `LimiaresPessoais.Porta` devolve 0 e o `Avaliar` cai no
+		// `PortaBp` de fabrica, que e o numero certo.
+		//
+		// E O CORTE DO MESTRE CONTINUA VALENDO, e e assim no DM tambem: `IcerTransform.dm:89` multiplica
+		// o proprio `#define` por `MST_HALF`. Ver `Skills.Discipulado.Ensinavel`.
+		new() { Id = "frost6", IdRede = 750, Linha = LinhaDeForma.FrostDemon, Ordem = 6,
+				Nome = Races.FormasDeFrost.Nome(6), NumeroDm = 6, Intensidade = 4,
+				Mult = [Races.FormasDeFrost.Multiplicador(6)],
+				PortaBp = Races.FormasDeFrost.BpNecessario(6),
+				Corpo = CorpoDeForma.FrostEscolhido, Aura = "c9b0ff",
+				Desc = "10x. A primeira evolucao -- o corpo se refaz inteiro." },
+
+		new() { Id = "frost7", IdRede = 760, Linha = LinhaDeForma.FrostDemon, Ordem = 7,
+				Nome = Races.FormasDeFrost.Nome(7), NumeroDm = 7, Intensidade = 5,
+				Mult = [Races.FormasDeFrost.Multiplicador(7)],
+				PortaBp = Races.FormasDeFrost.BpNecessario(7),
+				Corpo = CorpoDeForma.FrostEscolhido, Aura = "d8c0ff",
+				Desc = "20x. A evolucao final. O DM a chama de Forma Black." },
+
+		// ==================================================================================
+		// O SUPER NAMEKUSEIJIN -- `Super_Namek.dm`
+		// ==================================================================================
+		// ============================ O `Raios` DESTAS CINCO E CONTADO EM **FOLHAS**, COMO O RESTO ============================
+		// A regra do campo (ver <see cref="FormaDef.Raios"/>) e literal e a escala vai de 0 a 2: conte
+		// quantas folhas de eletricidade o buff do DM veste ENQUANTO a forma esta de pe. Nas cinco a
+		// conta e curta:
+		//
+		//   * `snamek` -> UMA (`overlayList += 'snamek Elec.dmi'`, `Super_Namek.dm:42`);
+		//   * `heran1` -> **NENHUMA**. O `obj/buff/MaxPower` nao veste folha de eletricidade alguma; o
+		//     que o Heran tem sao os `createLightningmisc` espalhados pela view DURANTE o
+		//     `Max_Power()` -- transformacao, e nao aura. Zero aqui e o porte certo, e o preco esta
+		//     declarado: como o `Cinematicas.Faisca` deriva deste mesmo campo, a cena dele nasce sem o
+		//     raio e fica com o tremor. Subir o campo pra 1 devolveria o raio da cena e daria ao Heran
+		//     um crepitar PERMANENTE que o jogo dele nunca teve;
+		//   * `heran2` -> UMA (`overlayList += 'Electric_Red.dmi'`, `HeranBuff.dm:212`) -- e e por isso
+		//     que a escada dele ganha faisca ao subir, que e o que se ve no original;
+		//   * `alien1` e `alien2` -> UMA cada, e e a MESMA (`updateOverlay(.../spc)` nos dois galhos do
+		//     switch, `Alien_Transformations.dm:60` e `:66`). O segundo degrau nao acende mais nada.
+		//
+		// A PRIMEIRA ESCRITA DESTAS ENTRADAS USOU 2/3/5/2/4, tratando o campo como "intensidade
+		// dramatica". O `RaiosDaForma` do cliente satura em 2 (`Mathf.Clamp(intensidade, 0, 2)`), entao
+		// os tres acima do teto viravam o MESMO valor na tela -- tres formas prometendo volumes
+		// diferentes e desenhando o mesmo. Quem pegou foi a `--diagforma` ("3 forca(s) errada(s)"), e o
+		// que ela pegou nao foi um numero errado: foi uma ESCALA errada.
+		// ==================================================================================================================
+		// UMA ENTRADA, E ELA E A LINHA INTEIRA. O `snamek` do DM e booleano e o `Loop` do buff so tem
+		// `if(1)`: nao ha segundo degrau pra portar, nao ha maestria (nada escreve maestria de
+		// `snamek` no original) e nao ha raiva (o gate e skill + BP, `Super_Namek.dm:10`).
+		//
+		// O `ChaveDoLimiar` E O PONTO DESTA ENTRADA. `LimiaresPessoais.snamekat` ja era sorteado no
+		// nascimento e a chave `"snamekat"` ja estava no `Porta()` desde que aquela classe nasceu --
+		// groundwork pago e sem consumidor, anotado por escrito em dois arquivos ("a escada Heran ainda
+		// NAO existe no port"). Esta linha e o consumidor.
+		//
+		// A AURA E VERDE E ELA E MEDIDA, nao escolhida: o buff veste `snamek Elec.dmi`, e o corpo
+		// Namekuseijin do jogo e verde. O `blue_effect=1` do buff (`:23`) e o flash de ENTRADA -- o
+		// `animate(src, color=rgb(255,255,255))` do `snamek()` --, nao a cor da chama.
+		new() { Id = "snamek", IdRede = 800, Linha = LinhaDeForma.Namekuseijin, Ordem = 10,
+				Nome = "Super Namekuseijin", NumeroDm = 1, Intensidade = 3, Raios = 1,
+				Mult = [SuperNamekMult],
+				Dreno = [SuperNamekDreno],
+				PortaBp = LimiaresPessoais.SNamekatInicial, ChaveDoLimiar = "snamekat",
+				PedeFlag = new FlagDeSkill("snamek"),
+				Aura = "6fe36f",
+				Desc = "5x, e o tanque de Ki DOBRA. Pede a skill Super Namekuseijin e uns dois "
+					 + "milhoes de poder base." },
+
+		// ==================================================================================
+		// O HERAN -- `HeranBuff.dm` + `heran.dm`
+		// ==================================================================================
+		// ============================ DUAS ENTRADAS, E O MULTIPLICADOR VEM DA CLASSE ============================
+		// Ver `FormaDef.BaseDaClasse` pro porque de nao serem SEIS (uma por classe por degrau, como o
+		// Rose e o Blue). O `Mult` aqui e a CURVA de `heran_form_mult()` e nao o poder: a maestria
+		// escolhe o degrau (1x -> 2,016x) e o `BaseDaClasse` diz por quanto ele multiplica.
+		//
+		// ============================ A MAESTRIA E DEGRAU, E ELA ZERA O DRENO ============================
+		// `stepped_mastery_mult` nos dois canais -- multiplicador (`:245-249`) e dreno (`:39` e `:43`)
+		// --, e o ultimo degrau do dreno e ZERO. Uma forma Heran dominada nao custa folego nenhum, o
+		// que e a recompensa inteira da linha: ela troca poder bruto (1,30x na classe rara) por poder
+		// que se sustenta pra sempre.
+		//
+		// ============================ A RAIVA E DO TRONCO, E ELA E DERIVADA ============================
+		// Nenhuma das duas declara raiva: `Catalogo.RaivaExigida` as encontra pelo ARCO DA LINHA. Ver
+		// la -- foi esta linha que revelou que a derivacao nao pegava o Heran (o comentario dela
+		// PROMETIA que pegaria), e o conserto foi na derivacao e nao numa marca por entrada.
+		// ====================================================================================================
+		new() { Id = "heran1", IdRede = 810, Linha = LinhaDeForma.Heran, Ordem = 10,
+				Nome = "Max Power", NumeroDm = 1, Intensidade = 3, Raios = 0,
+				Mult = CurvaDoHeran, BaseDaClasse = HeranBasePorClasse,
+				Dreno = HeranDreno1,
+				PortaBp = SsjatInicial, ChaveDoLimiar = "ssjat",
+				Aura = "ffd24a",
+				Desc = "O poder maximo do corpo de Hera. O multiplicador sai da CLASSE (Omega 1,30x, "
+					 + "Epsilon 2,4x, Low-Class 3x) e a maestria o leva a 2,016x do proprio." },
+
+		new() { Id = "heran2", IdRede = 820, Linha = LinhaDeForma.Heran, Ordem = 20,
+				Nome = "True Max Power", NumeroDm = 2, Intensidade = 4, Raios = 1,
+				Mult = CurvaDoHeran, BaseDaClasse = Heran2BasePorClasse,
+				Dreno = HeranDreno2,
+				PortaBp = Ssj2atInicial / HeranGateMult2, ChaveDoLimiar = "ssj2at_heran",
+				// `Electric_Red.dmi` (`HeranBuff.dm:212`) -- a unica forma nao-Legendary do jogo cujas
+				// faiscas o DM pinta de VERMELHO. Como `CorDosRaios` cai no `d.Aura` desta linha, a cor
+				// da chama E a cor da faisca, e as duas tem que ser esta.
+				Aura = "ff4a4a",
+				Desc = "O poder VERDADEIRO -- faiscas vermelhas. Base da classe (Omega 2x, Epsilon 3x, "
+					 + "Low-Class 4x), e a maestria a leva a 2,016x do proprio." },
+
+		// ==================================================================================
+		// O ALIEN -- `Alien_Transformations.dm`
+		// ==================================================================================
+		// A LINHA MAIS SIMPLES DO CATALOGO, e ela e simples porque o original tambem e: dois numeros,
+		// duas portas de BP, uma skill comprada. Sem maestria (nada a escreve), sem raiva (o
+		// `Alien_Trans()` nao olha `Emotion`), sem limiar pessoal (nao ha `RolarAlien`) e sem corpo ou
+		// cabelo proprio -- o unico visual e a faisca `spc` (`:60`, `:66`).
+		//
+		// O `PedeFlag` COBRA DOIS VALORES DA MESMA FLAG e e literal do DM: a skill escreve
+		// `hasayyform = 2`, a 1a forma testa `if(hasayyform)` e a 2a testa `hasayyform == 2`. Hoje o
+		// unico jeito de ter a flag e comprando a skill, entao as duas abrem juntas -- mas o degrau
+		// esta no dado, e um `hasayyform = 1` vindo de outro lugar (o DM tem esse costume) ja daria a
+		// 1a forma e nao a 2a, sozinho.
+		new() { Id = "alien1", IdRede = 830, Linha = LinhaDeForma.Alien, Ordem = 10,
+				Nome = "Forma Alien", NumeroDm = 1, Intensidade = 2, Raios = 1,
+				Mult = [AlienMult1],
+				Dreno = [AlienDreno1],
+				PortaBp = PortaAlien1,
+				PedeFlag = new FlagDeSkill("hasayyform"),
+				Aura = "b48cff",
+				Desc = "2x. O pico da propria especie. Pede a skill Alien Transformation e um milhao "
+					 + "de poder base." },
+
+		new() { Id = "alien2", IdRede = 840, Linha = LinhaDeForma.Alien, Ordem = 20,
+				Nome = "Forma Alien Final", NumeroDm = 2, Intensidade = 3, Raios = 1,
+				Mult = [AlienMult2],
+				Dreno = [AlienDreno2],
+				PortaBp = PortaAlien2,
+				PedeFlag = new FlagDeSkill("hasayyform", 2),
+				Aura = "c8a0ff",
+				Desc = "4x. O segundo e ultimo degrau da especie -- dez milhoes de poder base." },
 	];
 
 	// ==================================================================================
@@ -3829,6 +4497,191 @@ public static class Catalogo
 	public static string IdAnterior(FormaDef d) => Anterior(d)?.Id ?? IdBase;
 
 	/// <summary>
+	/// ============================ ONDE ESTE CORPO **DESCANSA** ============================
+	/// Devolve a entrada em que o personagem fica quando nao esta transformado, ou NULO quando esse
+	/// lugar e o <see cref="IdBase"/> -- que e o caso de todo mundo menos o Frost Demon.
+	///
+	/// ============================ POR QUE ISTO PRECISOU EXISTIR ============================
+	/// Ate aqui "nao transformado" e "base" eram a mesma coisa, e eram porque toda forma do jogo
+	/// valia MAIS que 1x: quem nao esta em nenhuma esta em 1x, e 1x e a base. O Frost Demon quebra
+	/// isso pelos dois lados de uma vez -- a forma de repouso dele e um SPRITE PROPRIO (o corpo que
+	/// ele escolheu na criacao, e nao o corpo generico da raca), e a do Mutante ainda vale **0,25x**,
+	/// porque ele nasce lacrado dentro da primeira supressao com um BP de fabrica quadruplicado.
+	///
+	/// Cair no `IdBase` daria ao Mutante 1x sobre esse BP quadruplicado -- quatro vezes o poder que
+	/// ele deve ter, calado, desde o primeiro segundo do personagem.
+	///
+	/// ============================ E ELA E DERIVADA, NAO UM CAMPO `EhORepouso` ============================
+	/// A pergunta e "qual e o degrau mais FRACO que este personagem alcanca de graca?", e as duas
+	/// metades ja estao no dado:
+	///
+	///   * **de graca** -- sem porta de BP, sem maestria, sem raiva, sem forma despertada, sem
+	///     concessao, sem porta divina, e com a linha/classe/linhagem batendo. Ninguem "conquista"
+	///     um repouso;
+	///   * **mais fraco que a base, ou a propria base** (`Mult[0] <= 1`) -- e o que separa um repouso
+	///     de um degrau. Toda transformacao do jogo vale mais que 1x; o que vale menos e casca.
+	///
+	/// Com isso o Saiyajin cai no proprio `IdBase` (`Mult` 1, `Ordem` 0, sem gate nenhum), o Frost
+	/// Demon normal cai na forma 5 e o Mutante na forma 1 -- **sem uma linha citando raca nenhuma**, e
+	/// a proxima raca que tiver casca ja nasce certa aqui.
+	///
+	/// O `null` como resposta de "e a base" nao e desleixo: o `IdBase` E uma entrada e seria devolvido
+	/// por esta varredura de qualquer jeito, mas quem chama precisa distinguir "descansa na base"
+	/// (nao ha corpo proprio, nao ha multiplicador, `NaBase` verdadeiro) de "descansa numa forma".
+	/// Devolver a entrada da base faria o chamador escrever `Atual = "base"` -- que e o mesmo -- e
+	/// perder a chance de dizer isso numa comparacao so.
+	/// ==================================================================================================
+	/// </summary>
+	public static FormaDef? PisoDaEscada(PerfilDeFormas p)
+	{
+		HashSet<LinhaDeForma> abertas = LinhasAbertas(p);
+		FormaDef? melhor = null;
+
+		foreach (FormaDef d in Todas)
+		{
+			if (d.Id == IdBase) continue;                       // a base ja e a resposta padrao
+			if (!abertas.Contains(d.Linha)) continue;
+			if (!PodeSerRepouso(d)) continue;
+
+			// LINHAGEM, CLASSE E ORIGEM -- as mesmas tres perguntas do passo 2 do `Avaliar`. Sao elas
+			// que separam o Mutante (que tem as quatro supressoes) do Frost Demon normal (que nao tem
+			// nenhuma e portanto descansa na forma 5).
+			if (d.PedeLinhagem.Length > 0
+				&& !string.Equals(p.Linhagem, d.PedeLinhagem, StringComparison.OrdinalIgnoreCase)) continue;
+			if (d.PedeClasseUmaDe.Length > 0 && !Alguma(d.PedeClasseUmaDe, p.Classe)) continue;
+			if (d.PedeOrigemUmaDe.Length > 0
+				&& !Alguma(d.PedeOrigemUmaDe, p.Linhagem) && !Alguma(d.PedeOrigemUmaDe, p.Classe)) continue;
+			if (d.ProibidoParaClasse.Any(c => string.Equals(p.Classe, c, StringComparison.OrdinalIgnoreCase)))
+				continue;
+
+			if (melhor == null || d.Ordem < melhor.Ordem) melhor = d;
+		}
+		return melhor;
+	}
+
+	/// <summary>Id do repouso deste personagem -- <see cref="IdBase"/> quando ele nao tem forma de repouso.</summary>
+	public static string IdDoPiso(PerfilDeFormas p) => PisoDaEscada(p)?.Id ?? IdBase;
+
+	/// <summary>
+	/// ============================ ESTE DEGRAU E UM **REPOUSO**, E NAO UMA CONQUISTA? ============================
+	/// A metade de <see cref="PisoDaEscada"/> que NAO depende de quem esta perguntando: "este degrau
+	/// nao custa nada e nao e mais forte que a base".
+	///
+	/// Ela e publica por um motivo especifico, e o motivo e uma bancada. A `RaivaBench` varre o
+	/// catalogo cobrando que **toda entrada declare uma porta** -- e a razao dela e boa e ja pegou um
+	/// defeito real neste projeto (a entrada `oozaru` sem porta nenhuma virou o degrau mais forte
+	/// disponivel pra quem nem tinha SSJ1). A forma base do Frost Demon cai naquela varredura como um
+	/// "almoco de graca", e ela nao e: ela e onde o corpo dele simplesmente esta.
+	///
+	/// A saida NAO podia ser acrescentar `frost5` na lista de isencoes escritas a mao da bancada --
+	/// aquela lista existe pra que uma forma REALMENTE gratuita apareca como falha, e uma isencao por
+	/// id nao distingue "e repouso" de "esqueceram a porta". Com a pergunta em forma de dado, a
+	/// bancada passa a aceitar exatamente a familia certa: **degrau que vale 1x ou menos e nao cobra
+	/// nada**. Nenhuma transformacao do jogo cabe nessa descricao, e a 8a forma de Frost Demon cabe.
+	///
+	/// A CLASSE/LINHAGEM FICA DE FORA daqui de proposito: elas nao dizem se o degrau e repouso, dizem
+	/// de QUEM ele e. Quem cruza as duas coisas e o <see cref="PisoDaEscada"/>.
+	/// ========================================================================================================
+	/// </summary>
+	public static bool PodeSerRepouso(FormaDef d)
+	{
+		if (d.Id == IdBase) return false;            // a base e a resposta padrao, nao um candidato
+		if (NaoSeSobePraEla(d)) return false;        // o Oozaru nao e repouso de ninguem
+		if (d.SoPorConcessao) return false;
+		if (d.Mult.Length == 0 || d.Mult[0] > 1) return false;   // transformacao, e nao casca
+
+		// CUSTA ALGUMA COISA? Entao nao e repouso. A lista e a mesma do `EstadoDeForma.Avaliar`,
+		// campo a campo -- e ela e verbosa de proposito: um gate novo que entre no `Avaliar` e nao
+		// entre aqui faria uma forma CARA virar o repouso de alguem, o que e um jeito silencioso de
+		// dar poder de graca.
+		return d.PortaBp <= 0 && d.PedeMaestria <= 0 && d.PedeGodKi < 0
+			&& d.PedeEnergiaUe <= 0 && d.PedeProficienciaUi <= 0
+			&& d.PedeFormaDespertada.Length == 0 && d.PedeFormaAtual.Length == 0
+			&& d.PedeFlag == null            // forma comprada NAO e repouso -- ver FormaDef.PedeFlag
+			&& RaivaExigida(d) == NivelDeRaiva.Nenhuma;
+	}
+
+	private static bool Alguma(string[] lista, string valor) =>
+		lista.Any(x => string.Equals(x, valor, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// ============================ O DEGRAU IMEDIATAMENTE ABAIXO -- E ELE NAO E O `Anterior` ============================
+	/// `Anterior` responde "de onde se SOBE pra ca" e por isso pula os ramos laterais. Este responde
+	/// "pra onde se DESCE daqui", e ai o ramo lateral e justamente o destino: a 4a Forma do Frost
+	/// Demon e `ForaDoTronco` (ela nao e o anterior de ninguem) e mesmo assim e exatamente onde o
+	/// Mutante cai quando recua da forma base.
+	///
+	/// E o `revertIcer()` do original (`IcerTransform.dm:116-127`), que faz `fd_form--` -- **um degrau
+	/// por vez**, e nao um salto ate o chao. Ver `GameServer.Formas.Transformar` pra a regra que
+	/// decide quando usar isto e quando ir direto ao <see cref="PisoDaEscada"/>.
+	/// ================================================================================================================
+	/// </summary>
+	public static FormaDef? DegrauAbaixo(FormaDef d)
+	{
+		FormaDef? melhor = null;
+		foreach (FormaDef o in Todas)
+		{
+			if (o.Linha != d.Linha || o.Ordem >= d.Ordem || o.Id == IdBase) continue;
+			if (melhor == null || o.Ordem > melhor.Ordem) melhor = o;
+		}
+		return melhor;
+	}
+
+	/// <summary>
+	/// O `fd_form` DESTA ENTRADA -- 1 a 7 -- ou ZERO quando ela nao e do Frost Demon.
+	///
+	/// Uma linha, mas com nome, porque ela e a ponte entre o catalogo e a lista de corpos que o
+	/// jogador escolheu na criacao: quem desenha (`Jandirus.Client.CorposDeForma`) precisa do numero
+	/// do degrau pra achar o slot, e ler `d.Ordem` na cara seria o cliente sabendo que NESTA linha a
+	/// ordem tem esse significado -- que e o tipo de conhecimento que envelhece longe de quem o criou.
+	/// </summary>
+	public static int DegrauDoFrost(FormaDef? d) =>
+		d is { Linha: LinhaDeForma.FrostDemon } ? d.Ordem : 0;
+
+	/// <summary>O id da forma BASE do Frost Demon -- o degrau 5, onde a maestria da raca inteira mora.</summary>
+	public static readonly string IdDaBaseDoFrost =
+		Todas.First(d => d.Linha == LinhaDeForma.FrostDemon
+					  && d.Ordem == Races.FormasDeFrost.Base).Id;
+
+	/// <summary>
+	/// ============================ EM QUE CHAVE A MAESTRIA DESTA FORMA E GUARDADA ============================
+	/// Pra 31 das 38 entradas a resposta e "no proprio id", e nao ha nada a dizer. A linha do Frost
+	/// Demon e a excecao, e ela e do original: la NAO EXISTE maestria por forma -- existe **uma so**,
+	/// o `fd_base_mastery` (`IcerTransform.dm:27`), e ela mede uma coisa que nao e "quanto voce domina
+	/// a 2a Evolucao": mede quanto do PROPRIO CORPO o Frost Demon ja consegue destrancar. E a mesma
+	/// barra que decide ate que casca ele se segura pra sempre (`FormasDeFrost.DegrauEstavel`).
+	///
+	/// Guardar sete numeros e depois perguntar "qual deles e o `fd_base_mastery`?" seria inventar
+	/// seis campos pra jogar fora, e o pior: o degrau em que a barra cresce (5 ou acima) nao e o
+	/// degrau em que ela e COBRADA (todos), entao os seis registros divergiriam do que o jogo le.
+	///
+	/// **E ISTO NAO E UM `if` POR ID** -- e uma propriedade da LINHA, com o degrau saindo do dado. A
+	/// oitava forma de Frost Demon que alguem acrescentar ja compartilha a mesma barra sozinha.
+	/// ====================================================================================================
+	/// </summary>
+	public static string ChaveDaMaestria(string? id) =>
+		Def(id) is { Linha: LinhaDeForma.FrostDemon } ? IdDaBaseDoFrost : id ?? IdBase;
+
+	/// <summary>
+	/// ============================ SUSTENTAR **ESTA** FORMA TREINA ALGUMA COISA? ============================
+	/// "Maestria so cresce dentro da forma -- sustentar a transformacao E o treino dela" e a regra do
+	/// port desde o primeiro dia, e ela vale pra tudo que e transformacao. As SUPRESSOES do Frost
+	/// Demon nao sao: elas sao o corpo se FECHANDO, e o original diz isso numa linha --
+	/// `icer.dm:45`, `if(S.fd_form >= 5 && ...)`: a barra so anda da forma base pra cima.
+	///
+	/// Faz sentido literal no jogo dele: o que o Mutante esta aprendendo e a segurar o proprio poder
+	/// solto. Recolher a casca e o contrario disso -- e o descanso, e por isso e tambem onde a
+	/// liberacao se recupera e onde a bateria de Ki carrega.
+	///
+	/// Derivado de (linha, ordem) e nao de um `bool TreinaSozinha` no catalogo: um campo aqui falharia
+	/// CALADO -- a forma nova nasceria com o padrao e ninguem notaria por meses.
+	/// ==================================================================================================
+	/// </summary>
+	public static bool SustentarTreina(FormaDef? d) =>
+		d != null && d.Id != IdBase
+		&& (d.Linha != LinhaDeForma.FrostDemon || d.Ordem >= Races.FormasDeFrost.Base);
+
+	/// <summary>
 	/// QUAIS LINHAS ESTE PERSONAGEM PODE PERCORRER.
 	///
 	/// ============================ AS LINHAS SE EXCLUEM ============================
@@ -3846,7 +4699,54 @@ public static class Catalogo
 		if (primal) abertas.Add(LinhaDeForma.LegendaryPrimal);
 		else if (p.Legendary) abertas.Add(LinhaDeForma.Legendary);
 		else if (p.Futuro) { abertas.Add(LinhaDeForma.Futuro); abertas.Add(LinhaDeForma.Saiyajin); }
-		else abertas.Add(LinhaDeForma.Saiyajin);
+
+		// ============================ O FROST DEMON TROCA A ESCADA SAIYAJIN PELA DELE ============================
+		// Ele entra na MESMA cascata das outras (Primal, Legendary, Futuro) e nao como um `Add` a parte,
+		// e a exclusao e o ponto: sem ela, o Frost Demon teria as duas escadas ao mesmo tempo. Isso nao
+		// e teoria -- o `else` de baixo abre a linha Saiyajin pra QUEM QUER QUE SEJA (a recusa
+		// `RecusaForma.NaoEhSaiyajin` esta declarada no `EstadoDeForma` e nao tem uma unica referencia),
+		// entao um Frost Demon com BP acima do `ssjat` apertaria C e viraria Super Saiyajin, de cabelo
+		// dourado, por cima do corpo de Freeza.
+		//
+		// **O BURACO ERA MAIOR DO QUE ESTE RAMO, E ELE FOI FECHADO NESTA SESSAO** -- ver o bloco do
+		// `else` la embaixo.
+		// ====================================================================================================
+		else if (Races.FormasDeFrost.EhFrost(p.Raca)) abertas.Add(LinhaDeForma.FrostDemon);
+
+		// AS TRES LINHAS RACIAIS NOVAS entram na MESMA cascata, pela mesma razao do Frost Demon: elas
+		// SUBSTITUEM a escada Saiyajin, nao se somam a ela. Um Namekuseijin com as duas teria um cabelo
+		// dourado brotando de uma cabeca que nao tem cabelo.
+		else if (EhDaRaca(p.Raca, RacaNamekuseijin)) abertas.Add(LinhaDeForma.Namekuseijin);
+		else if (EhDaRaca(p.Raca, RacaHeran)) abertas.Add(LinhaDeForma.Heran);
+		else if (EhDaRaca(p.Raca, RacaAlien)) abertas.Add(LinhaDeForma.Alien);
+
+		// ============================ O `else` DEIXOU DE ENTREGAR A ESCADA SAIYAJIN A QUALQUER UM ============================
+		// Ele era `else abertas.Add(Saiyajin)` -- sem olhar raca nenhuma. Quem nao fosse Primal,
+		// Legendary, Futuro nem Frost Demon recebia a escada inteira do Super Saiyajin: o Namekuseijin,
+		// o Humano, o Majin, o Bio-Androide, o Gray, o Makyo, o Demonio, o Android, o Kai. A recusa que
+		// existiria pra isso -- `RecusaForma.NaoEhSaiyajin` -- esta declarada desde o primeiro dia e
+		// **nunca teve uma unica referencia**, o que e o retrato do buraco: a regra estava escrita no
+		// nome de um enum e em lugar nenhum mais.
+		//
+		// A sessao do Frost Demon fechou so o proprio ramo e registrou o resto como divida de
+		// BALANCEAMENTO. Ele deixa de ser divida agora porque as tres linhas raciais acima o tornariam
+		// ABSURDO em vez de generoso: um Heran com o Max Power E o Super Saiyajin escolheria o maior dos
+		// dois e a linha racial dele nunca seria usada -- ou seja, portar as formas das outras racas sem
+		// fechar isto seria portar codigo morto.
+		//
+		// **O QUE SE PERDE, DITO EM VOZ ALTA:** as racas que nao tem transformacao no DM ficam sem
+		// transformacao nenhuma aqui -- Humano, Majin, Bio-Androide, Gray, Makyo, Demonio, Android, Kai,
+		// Tsujin, Meta, Kanassa, Yardrat, Arlian, Shapeshifter, Spirit Doll, Saibaman e Demigod. Isso E
+		// o DM (nenhuma delas tem `slot=sFORM` na propria arvore alem do que ficou de fora deste porte),
+		// mas ate ontem elas tinham a escada Saiyajin de graca, e quem estava jogando com elas VAI
+		// notar. As que tem forma no original e ainda nao a tem aqui estao nomeadas no relatorio desta
+		// sessao, uma por uma, com o sistema que falta pra cada.
+		//
+		// O `EhSaiyajin` cobre puro e meio (`"Half Saiyan"`, `"Halfbreed"`), e e o MESMO predicado que o
+		// Oozaru ja usava duas linhas abaixo -- de proposito: duas perguntas diferentes sobre "tem
+		// sangue Saiyajin?" e o jeito de um Saiyajin ganhar o macaco e perder o SSJ, ou o contrario.
+		// ============================================================================================================
+		else if (EhSaiyajin(p.Raca)) abertas.Add(LinhaDeForma.Saiyajin);
 
 		// O OOZARU e paralelo: quem tem sangue Saiyajin o tem, independente da escada escolhida.
 		if (EhSaiyajin(p.Raca)) abertas.Add(LinhaDeForma.Oozaru);
@@ -3885,9 +4785,45 @@ public static class Catalogo
 	/// <summary>
 	/// Sangue Saiyajin -- puro ou meio. O meio-Saiyajin ("Half Saiyan"/"Quarter") tambem vira
 	/// Oozaru; o que ele nao faz e passar do SSJ3 (`stathalfbreed.dm:9` poe `ssj4mult = 1.75`).
+	///
+	/// ============================ O `Contains` SOZINHO PERDIA O MEIO-SAIYAJIN, E ELE NAO AVISAVA ============================
+	/// A frase acima -- "puro ou meio" -- estava escrita aqui desde o primeiro dia, e o codigo abaixo
+	/// dela **nao a cumpria**: a raca que o `races.json` grava no meio-Saiyajin chama-se `"Halfbreed"`,
+	/// e "Halfbreed" nao contem "Saiyan". Enquanto o `else` do <see cref="LinhasAbertas"/> dava a
+	/// escada Saiyajin a qualquer raca, isso nao tinha consequencia nenhuma -- ele caia no `else` e
+	/// recebia a escada por acidente. No dia em que o `else` passou a perguntar `EhSaiyajin`, o
+	/// meio-Saiyajin perdeu **as duas** linhas dele (a Saiyajin e o Oozaru) de uma vez, em silencio.
+	///
+	/// E o resto do jogo nunca concordou com essa perda. `GameServer.Combat.TemRabo` da rabo a
+	/// `"Halfbreed"`; `LimiaresPessoais.Rolar` sorteia o `ssjat` dele; `Fighter.Training` o conta como
+	/// meio-Saiyajin; a criacao lhe oferece as tres classes de meio-Saiyajin; o `FormaDef.MultDiluido`
+	/// existe **so** pra ele; e o comentario do proprio `TemEscada` guarda a frase que isto era antes:
+	/// *"era `pl.Race is "Saiyan" or "Halfbreed"`"*.
+	///
+	/// A CONSTANTE E NAO O LITERAL, e a comparacao e EXATA nela: `Contains("Halfbreed")` casaria com
+	/// qualquer raca futura cujo nome a contivesse, que e o erro que o <see cref="EhDaRaca"/> logo
+	/// abaixo existe pra descrever.
+	///
+	/// Quem vigia isto e a secao 1 da `GameServer.RaciaisTeste`: ela varre o `races.json` inteiro e
+	/// cobra que toda raca pra quem o NASCIMENTO sorteia limiar de transformacao tenha alguma escada.
+	/// =================================================================================================================
 	/// </summary>
 	public static bool EhSaiyajin(string raca) =>
-		raca.Contains("Saiyan", StringComparison.OrdinalIgnoreCase);
+		raca.Contains("Saiyan", StringComparison.OrdinalIgnoreCase)
+		|| string.Equals(raca, RacaMeioSaiyajin, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// E DESTA RACA? Comparacao exata e sem caixa -- o oposto do <see cref="EhSaiyajin"/>, que e por
+	/// SUBSTRING de proposito (ele precisa pegar "Half Saiyan"; "Halfbreed" ele pega pelo nome, ver
+	/// la -- confiar na substring pra aquele foi exatamente o que custou a escada do meio-Saiyajin).
+	///
+	/// Aqui a exatidao e que importa: `Contains("Alien")` casaria com qualquer raca futura cujo nome
+	/// contivesse a palavra, e daria a escada Alien pra ela sem ninguem notar. As tres racas destas
+	/// linhas tem nome fechado no `races.json` (`Namekian`, `Heran`, `Alien`) e nenhuma tem meio-sangue
+	/// no port.
+	/// </summary>
+	private static bool EhDaRaca(string raca, string alvo) =>
+		string.Equals(raca, alvo, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>Todas as formas de uma linha, em ordem.</summary>
 	public static IEnumerable<FormaDef> DaLinha(LinhaDeForma l) =>
@@ -3993,6 +4929,24 @@ public static class Catalogo
 			? MultPorGodKi(d, curva, perfil)
 			: MultBruto(d, m.De(d.Id), perfil.Diluido);
 
+		// ============================ A ESCALA DA CLASSE -- ver FormaDef.BaseDaClasse ============================
+		// Depois da curva de maestria e ANTES de tudo o mais, porque e assim no DM: o
+		// `heran_form_mult()` (`HeranBuff.dm:245-249`) monta a lista de degraus JA multiplicada pelo
+		// `ssjmult` da classe -- `list(ssjmult, ssjmult*1.2, ssjmult*1.68, ssjmult*2.016)` -- e so
+		// entao pergunta em que degrau a maestria esta. Multiplicar aqui da o mesmo numero e mantem a
+		// tabela do catalogo legivel como o que ela e: a CURVA, e nao o poder.
+		//
+		// A chave vazia e o `else` do original (Epsilon, no Heran). Um mapa sem `""` e sem a classe
+		// deste personagem cairia em 1 e a forma valeria a curva crua -- por isso a fabrica e o
+		// `else`, e nao um `throw`: o catalogo nunca deve derrubar o servidor por dado incompleto.
+		// ======================================================================================================
+		if (d.BaseDaClasse is { } porClasse)
+		{
+			double baseDaClasse = porClasse.TryGetValue(perfil.Classe, out double b) ? b
+								: porClasse.GetValueOrDefault("", 1);
+			v *= baseDaClasse;
+		}
+
 		// LSSJ: a luta sobe do MINIMO ao MAXIMO, e a maestria e so um piso. `max` dos dois.
 		if (d.CombateSobeAoMaximo && d.Mult.Length > 1)
 		{
@@ -4084,7 +5038,16 @@ public sealed class Maestrias
 {
 	private readonly Dictionary<string, double> _v = new(StringComparer.Ordinal);
 
-	public double De(string? id) => id == null ? 0 : _v.GetValueOrDefault(id);
+	/// <summary>
+	/// Quanto se domina esta forma. **A chave passa pelo <see cref="Catalogo.ChaveDaMaestria"/>** --
+	/// ver la: a linha do Frost Demon inteira compartilha uma barra so, que e o `fd_base_mastery` do
+	/// original.
+	///
+	/// Ler e escrever pela MESMA canonizacao e o ponto: quem perguntar pela 2a Evolucao recebe a
+	/// mesma barra que o motor do Mutante consulta pro `fd_stable_gate`, e nao ha um segundo numero
+	/// pra divergir.
+	/// </summary>
+	public double De(string? id) => id == null ? 0 : _v.GetValueOrDefault(Catalogo.ChaveDaMaestria(id));
 
 	/// <summary>
 	/// ============================ FORMA DE DISCIPLINA NAO TEM MAESTRIA PROPRIA ============================
@@ -4105,7 +5068,7 @@ public sealed class Maestrias
 	public void Por(string id, double v)
 	{
 		if (Disciplinas.DaForma(id) != null) return;
-		_v[id] = Math.Clamp(v, 0, 100);
+		_v[Catalogo.ChaveDaMaestria(id)] = Math.Clamp(v, 0, 100);
 	}
 
 	/// <summary>
@@ -4191,8 +5154,14 @@ public sealed class Maestrias
 			// A MAIOR VENCE, e nao a ultima lida: quando duas formas viram uma, o save traz as duas
 			// chaves e o dicionario nao promete ordem. Ficar com a menor apagaria progresso por
 			// sorteio -- o tipo de defeito que so aparece num personagem em cada tantos.
+			// A CANONIZACAO ENTRA AQUI TAMBEM (`ChaveDaMaestria`): um save gravado com uma chave por
+			// degrau de Frost Demon (ou por um binario futuro que os separe de novo) chega como
+			// varias, e as varias sao a MESMA barra. Sem isto, a linha do Frost teria no disco uma
+			// verdade que a memoria nao tem -- e a de baixo, "a maior vence", e justamente a regra
+			// que resolve o encontro.
+			string chave = Catalogo.ChaveDaMaestria(def.Id);
 			double agora = Math.Clamp(v, 0, 100);
-			_v[def.Id] = _v.TryGetValue(def.Id, out double ja) ? Math.Max(ja, agora) : agora;
+			_v[chave] = _v.TryGetValue(chave, out double ja) ? Math.Max(ja, agora) : agora;
 		}
 		return descartadas;
 	}

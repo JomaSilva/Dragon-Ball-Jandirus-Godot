@@ -1,7 +1,7 @@
-[{ "x": 73, "y": 262, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
- { "x": 247, "y": 399, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
- { "x": 238, "y": 409, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
- { "x": 256, "y": 409, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
- { "x": 242, "y": 418, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
- { "x": 252, "y": 418, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
- { "x": 247, "y": 421, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" }]
+[{ "x": 73, "y": 262, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" },
+ { "x": 247, "y": 399, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" },
+ { "x": 238, "y": 409, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" },
+ { "x": 256, "y": 409, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" },
+ { "x": 242, "y": 418, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" },
+ { "x": 252, "y": 418, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" },
+ { "x": 247, "y": 421, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" }]

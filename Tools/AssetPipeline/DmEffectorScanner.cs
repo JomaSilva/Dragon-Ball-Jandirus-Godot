@@ -265,7 +265,7 @@ public static class DmEffectorScanner
 		string rel = Path.GetRelativePath(raiz, arq).Replace('\\', '/');
 
 		var pilha = new string[64];      // typepath aberto em cada nivel de indentacao
-		bool comentado = false;          // dentro de /* */
+		int profCom = 0;                 // profundidade de /* */ (o DM permite um dentro do outro)
 		int indProc = -1;                // corpo de proc que nao interessa
 		int indEff = -1;                 // indentacao da linha `effector()`
 		EffectorDef? eff = null;
@@ -283,13 +283,13 @@ public static class DmEffectorScanner
 
 			// CODIGO MORTO EM /* */: o DM guarda ali coisa que nem compila. Ler isso poe no
 			// catalogo degrau que nunca acontece -- o pior tipo, o que parece funcionar.
-			if (corpo.StartsWith("/*", StringComparison.Ordinal)) comentado = true;
-			if (comentado)
-			{
-				if (corpo.Contains("*/", StringComparison.Ordinal)) comentado = false;
-				continue;
-			}
-			if (corpo.Length == 0 || corpo.StartsWith("//", StringComparison.Ordinal)) continue;
+			//
+			// A CONTA E A MESMA DO CATALOGO DE SKILLS, e por isso e a mesma FUNCAO: os dois
+			// scanners leem os mesmos .dm, e as duas armadilhas (`/*/` fechando a propria abertura
+			// e `/* */` aninhado) valem igual aqui. Duas copias divergiriam, e divergir aqui e o
+			// degrau existir num arquivo e nao no outro.
+			corpo = DmSkillScanner.SemComentario(corpo, ref profCom).TrimEnd();
+			if (corpo.Length == 0) continue;
 
 			// COMENTARIO COLADO NO TYPEPATH. `/datum/skill/mind/Ki_Unlocked//this skill is the
 			// basis for all other ki skills` (Core Trees/Mind.dm:65) e um typepath valido com um

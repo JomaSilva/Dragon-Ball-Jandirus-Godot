@@ -64,7 +64,19 @@ public partial class GameServer
 		// Derivada do prazo e nao de um campo guardado: um campo precisaria de alguem pra apaga-lo,
 		// e o alguem seria um tick -- que e onde uma raiva esquecida ficaria acesa pra sempre.
 		// Passado o prazo, isto ja e `Nenhuma` sem ninguem fazer nada.
-		Raiva: NivelDaRaivaDe(pl));
+		Raiva: NivelDaRaivaDe(pl),
+
+		// ============================ AS FLAGS QUE AS SKILLS ESCREVERAM NESTE CORPO ============================
+		// O quarto canal do `EfeitosDeSkill` -- ATRIBUICAO -- ja depositava tudo aqui e **ninguem lia**:
+		// `Fighter.FlagsDeSkill` guarda ate os nomes que o `Fighter` nao tem como campo, e `snamek` e
+		// `hasayyform` sao exatamente esses dois. Ver `FormaDef.PedeFlag`.
+		//
+		// PASSA-SE O DICIONARIO INTEIRO e nao dois booleanos, e a razao e a mesma do perfil existir: a
+		// proxima forma comprada nao vai precisar de campo novo aqui. E ele e o objeto VIVO do lutador
+		// -- `Aplicar` o TROCA por um novo a cada recalculo em vez de mutar o antigo (`EfeitosDeSkill`,
+		// ultima linha), entao o perfil nao guarda referencia pra nada que mude debaixo dele.
+		// ====================================================================================================
+		FlagsDeSkill: pl.Ficha.FlagsDeSkill);
 
 	/// <summary>
 	/// EM QUE RAIVA ESTE CORPO ESTA -- a mais alta das duas janelas que ainda estiver aberta.
@@ -194,8 +206,16 @@ public partial class GameServer
 	/// </summary>
 	private static bool TemEscada(ServerPlayer pl) => Catalogo.LinhasAbertas(Perfil(pl)).Count > 0;
 
-	/// <summary>Sangue diluido puxa a base do SSJ1 de 2 pra 1,35 (`ssj1base` nerfado).</summary>
-	private static bool SangueDiluido(ServerPlayer pl) => pl.Race == "Halfbreed";
+	/// <summary>
+	/// Sangue diluido puxa a base do SSJ1 de 2 pra 1,35 (`ssj1base` nerfado).
+	///
+	/// PELA CONSTANTE DO CATALOGO e nao pelo literal: a grafia `"Halfbreed"` ja custou a escada
+	/// inteira do meio-Saiyajin uma vez (ver `Catalogo.EhSaiyajin`), e duas copias dela sao duas
+	/// chances de a proxima pessoa escrever "Half-Saiyan" num dos dois lugares e diluir metade das
+	/// contas de metade dos personagens.
+	/// </summary>
+	private static bool SangueDiluido(ServerPlayer pl) =>
+		string.Equals(pl.Race, Catalogo.RacaMeioSaiyajin, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// CONCEDE O MISTICO. **E ESTE O GANCHO DO RITUAL DO KAIOSHIN** -- o ritual em si nao existe
@@ -343,14 +363,7 @@ public partial class GameServer
 		// andamento, e uma morte nao precisa reacender a janela lendaria porque a extrema ja a
 		// satisfaz (`NivelDeRaiva` e ordenado). Sem essa separacao, "um amigo caiu" logo depois de
 		// "um amigo morreu" rebaixaria a raiva de quem esta de luto.
-		long prazo = agora + (long)(SegundosDeRaiva * 1000);
-		if (grau == NivelDeRaiva.Extrema) enlutado.FuriaExtremaAte = prazo;
-		else enlutado.RaivaLendariaAte = prazo;
-
-		// E A RAIVA VALE JA. Ver o bloco do buff no cabecalho: isto nao acumula nada, so traz o
-		// numero derivado (que a janela acima acabou de mudar) pra dentro da ficha antes que
-		// qualquer coisa leia o poder deste corpo neste mesmo quadro.
-		ProjetarRaiva(enlutado);
+		AcenderJanelaDeRaiva(enlutado, grau, agora + (long)(SegundosDeRaiva * 1000));
 
 		GD.Print($"[server] {enlutado.Name}: RAIVA {grau} ({nomeDoAmigo})"
 				 + (jaEstava ? "  <- prolongada" : ""));
@@ -364,6 +377,39 @@ public partial class GameServer
 		TalvezACenaDaFuria(enlutado, grau, estavaEmFuria, agora);
 
 		return !jaEstava;
+	}
+
+	/// <summary>
+	/// ACENDE A JANELA DE RAIVA. **E O UNICO LUGAR DO SERVIDOR QUE ESCREVE ESSES DOIS PRAZOS.**
+	///
+	/// ============================ POR QUE ISTO VIROU FUNCAO ============================
+	/// Ate aqui as duas linhas moravam soltas dentro do <see cref="AmigoAbatido"/>, e isso bastava
+	/// enquanto o luto era o unico jeito de alguem se enfurecer. **O discipulado abriu o segundo**:
+	/// o mestre que PROVOCA o aluno (`mst_ignite_anger`, `MasterStudent.dm:540`) acende a mesma
+	/// janela sem que ninguem tenha caido -- nao ha amigo abatido, nao ha luto, nao ha cena.
+	///
+	/// Podiam ter virado duas escritas em dois arquivos. Nao viraram, e a razao esta no proprio
+	/// <see cref="Jandirus.Core.Stats.Fighter"/> (`:225`): a raiva e **campo derivado**, e o
+	/// contrato dele e "quem escreve e UM lugar so". Dois escritores e onde o
+	/// <see cref="ProjetarRaiva"/> passa a ser esquecido num deles -- e uma raiva escrita sem
+	/// projetar so vale no tique seguinte, o que em combate quer dizer "as vezes o SSJ1 nao vem".
+	/// ==============================================================================
+	/// </summary>
+	/// <param name="grau">
+	/// <see cref="NivelDeRaiva.Nenhuma"/> nao faz nada -- o mesmo `return` de guarda do
+	/// <see cref="AmigoAbatido"/>, e aqui ele importa mais: o despertar assistido pergunta ao
+	/// catalogo qual raiva a forma exige, e a maioria das formas nao exige nenhuma.
+	/// </param>
+	private void AcenderJanelaDeRaiva(ServerPlayer pl, NivelDeRaiva grau, long prazo)
+	{
+		if (grau == NivelDeRaiva.Nenhuma) return;
+		if (grau == NivelDeRaiva.Extrema) pl.FuriaExtremaAte = prazo;
+		else pl.RaivaLendariaAte = prazo;
+
+		// E A RAIVA VALE JA. Ver o bloco do buff no cabecalho do `AmigoAbatido`: isto nao acumula
+		// nada, so traz o numero derivado (que a janela acima acabou de mudar) pra dentro da ficha
+		// antes que qualquer coisa leia o poder deste corpo neste mesmo quadro.
+		ProjetarRaiva(pl);
 	}
 
 	/// <summary>
@@ -464,12 +510,16 @@ public partial class GameServer
 
 		if (!subir)
 		{
-			if (est.NaBase) return;
 			string antes = est.Atual;
-			est.Entrar(Catalogo.IdBase);
+			string recuo = ParaOndeSeRecua(est, perfil);
+			if (recuo == antes) return;
+
+			bool estreou = est.Entrar(recuo);
 			AplicarForma(pl);
-			Avisar(pl, "voce volta ao normal.");
-			AnunciarForma(pl, antes, Catalogo.IdBase, estreia: false);
+			Avisar(pl, recuo == Catalogo.IdBase
+				? "voce volta ao normal."
+				: $"voce recua para {Catalogo.NomeDe(Catalogo.Def(recuo), Dominou(pl, recuo))}.");
+			AnunciarForma(pl, antes, recuo, estreou);
 			return;
 		}
 
@@ -495,6 +545,185 @@ public partial class GameServer
 			return;
 		}
 
+		EntrarNaForma(pl, alvo);
+	}
+
+	/// <summary>
+	/// LIGA E DESLIGA OS GRADES NO CAMINHO DA TECLA C, e diz em que pe ficou. E o verb `graus`, da
+	/// aba Other -- pedido do dono: *"um verb no OTHER q ao clicar fala se desativei ou nao os
+	/// grades; com eles LIGADOS, no ssj1 (masterizado ou nao) apertar C duas vezes passa pelos grades
+	/// antes do ssj2; DESLIGADOS, pula direto pro ssj2"*.
+	///
+	/// ============================ ELE NAO TRANSFORMA NINGUEM, NEM PRA CIMA NEM PRA BAIXO ============================
+	/// O caso que obriga a decidir: **e se eu ja estiver num grade e desligar?** Fica onde esta, e o
+	/// proximo C e que o tira de la (com os grades fora do caminho, o seletor pula pro SSJ2). As duas
+	/// alternativas sao piores, e cada uma quebra uma regra que ja esta escrita neste arquivo:
+	///
+	///   * **cair pro SSJ1** seria uma transformacao que ninguem pediu. Quem transforma e o jogador
+	///     apertando a tecla (`AFuriaVaiVirarForma` diz isso em voz alta: nem a raiva transforma
+	///     sozinha), e alem disso o recuo tem regra propria -- `ParaOndeSeRecua` --, entao um
+	///     `Entrar` escrito aqui seria a segunda copia dela;
+	///   * **subir pro SSJ2** seria pior ainda: a subida cobra gate (porta de BP, maestria, Ki), e um
+	///     botao de preferencia que atropela isso e exatamente o "atalho que pula o portao" que o
+	///     `TransformarPara` recusou ser. Sem contar que o SSJ2 pode nem estar aberto.
+	///
+	/// Ficar parado tambem e o unico dos tres que nao mente: a preferencia diz por onde o C ANDA, e
+	/// nao onde o corpo esta. Por isso a frase avisa, quando o caso acontece -- o silencio aqui faria
+	/// o jogador achar que o botao nao funcionou.
+	/// ============================================================================================================
+	///
+	/// **A ESCRITA VAI PRO DISCO NA HORA** (`Persistir`), como as tecnicas customizadas: e uma escolha
+	/// do jogador, e escolha que morre num desligamento do servidor vira "por que isso voltou sozinho?".
+	/// </summary>
+	private void VerboGrades(ServerPlayer pl)
+	{
+		// `!= false` E NAO `== true`: `null` (ninguem opinou) conta como LIGADO, que e o lado que o
+		// jogo ja tinha -- ver `EstadoDeForma.GradesLigados`. O login de jogador ja resolve o nulo,
+		// mas quem le esta linha nao deveria precisar saber disso pra ter certeza do que ela faz.
+		bool ligados = pl.Forma.GradesLigados != false;
+		pl.Forma.GradesLigados = !ligados;
+		Persistir(pl);
+
+		if (!ligados)
+		{
+			Avisar(pl, "os graus do Super Saiyajin voltam pro seu caminho: no Super Saiyajin, "
+					 + "subir passa pelo Grade 2 e pelo Grade 3 antes do Super Saiyajin 2.");
+			return;
+		}
+
+		Avisar(pl, "os graus do Super Saiyajin saem do seu caminho: no Super Saiyajin, subir vai "
+				 + "direto pro Super Saiyajin 2.");
+
+		// E SE ELA JA ESTIVER NUM GRADE -- ver o cabecalho. A pergunta e `ForaDoTronco` e nao uma
+		// lista de ids pelo mesmo motivo do `NoCaminhoDoC`: quem acrescentar um ramo lateral novo nao
+		// precisa vir reescrever esta frase.
+		if (pl.Forma.Def is { ForaDoTronco: true } atual)
+			Avisar(pl, $"voce continua em {Catalogo.NomeDe(atual, Dominou(pl, atual.Id))} -- isto e "
+					 + "uma preferencia, nao uma transformacao. O proximo C te tira dai.");
+	}
+
+	/// <summary>
+	/// "QUERO ESTA FORMA" -- o gesto que a tecla de forma do jogador estreou.
+	///
+	/// ============================ POR QUE ELE PRECISOU EXISTIR ============================
+	/// Nao havia como PEDIR uma forma. O toque duplo no C manda uma DIRECAO (`Transformar(subir)`) e
+	/// o `Proxima` escolhe sozinho o degrau MAIS FORTE que couber -- o que e certo pra escada, e
+	/// deixa um buraco: quem tem SSJ2 e Blue abertos nunca consegue pedir o Blue, porque o seletor
+	/// so oferece o mais forte. O unico caso que hoje escapa disso e o Blue Evolution, e escapa por
+	/// acidente feliz (`PedeFormaAtual` aceita a camada de baixo, `EstadoDeForma.cs:315`).
+	///
+	/// O outro caminho pra uma forma nomeada era o `admin_forma`, e ele **nao serve**: o proprio
+	/// arquivo dele diz que ignora todos os requisitos, porque "as formas que interessa testar SAO as
+	/// trancadas" (`GameServer.Admin.cs:906`). E ferramenta de teste. Uma tecla de jogador que
+	/// caisse nela seria o pior tipo de atalho: o que pula o portao.
+	/// ======================================================================================
+	///
+	/// ============================ E ELE E ESCOLHA, NAO SALTO ============================
+	/// O `Avaliar` cobra o degrau anterior (passo 5), e essa cobranca fica de pe aqui. "Tecla 3 =
+	/// SSJ3" NAO leva da base ao SSJ3: recusa por `ForaDeOrdem`, com a frase que diz isso em voz
+	/// alta (ver `FraseDaRecusa`). O que a tecla resolve e "quero Blue e nao SSJ2" -- que ate hoje
+	/// nao tinha como ser pedido.
+	///
+	/// TUDO O QUE O `Transformar` CONFERE ANTES, ELE CONFERE TAMBEM: a escada da raca, o caido, e o
+	/// `AscendePorDecisao` (o chefe roteirizado que TEM a forma e nao a usa). Sao as guardas de
+	/// topo, e sao do GESTO e nao do degrau -- por isso nao estao dentro do `Avaliar` e precisam
+	/// estar aqui. E quem entra na forma continua sendo o `EntrarNaForma`, o mesmo do C e o mesmo do
+	/// despertar assistido: escrever `pl.Forma.Atual` na mao daria uma transformacao sem buff, sem
+	/// teto de Ki novo, sem cena e sem aura -- ver o cabecalho dele.
+	/// ================================================================================
+	/// </summary>
+	private void TransformarPara(ServerPlayer pl, string id)
+	{
+		if (!TemEscada(pl)) { Avisar(pl, "sua raca nao tem essa escada de transformacao."); return; }
+
+		// VOLTAR AO NORMAL E O RAMO DE DESCIDA DE SEMPRE, e nao um `Entrar(base)` escrito aqui: o
+		// recuo tem regra propria (o Frost Demon recolhe a casca um degrau por vez, ver
+		// `ParaOndeSeRecua`), e uma segunda escrita dela daria ao jogador com tecla um recuo
+		// diferente do que a tecla X faz.
+		if (id == Catalogo.IdBase) { Transformar(pl, subir: false); return; }
+
+		if (Catalogo.Def(id) is not { } d) { Avisar(pl, "essa forma nao existe."); return; }
+		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "nao da, caido."); return; }
+		if (!AscendePorDecisao(pl)) return;
+
+		EstadoDeForma est = pl.Forma;
+		PerfilDeFormas perfil = Perfil(pl);
+		double kiFracao = pl.Ficha.MaxKi > 0 ? pl.Ficha.Ki / pl.Ficha.MaxKi : 1;
+
+		RecusaForma r = est.Avaliar(id, pl.Ficha.BP, kiFracao, caido: false, perfil);
+		if (r != RecusaForma.Pode) { Avisar(pl, FraseDaRecusa(est, d, r)); return; }
+
+		EntrarNaForma(pl, d);
+	}
+
+	/// <summary>
+	/// ============================ PRA ONDE ESTE CORPO RECUA -- E POR QUE NAO E SEMPRE A BASE ============================
+	/// Duas respostas, e a segunda so existe por causa do Frost Demon:
+	///
+	///   * **UM DEGRAU**, quando o degrau imediatamente abaixo nao e mais forte que a base. E o
+	///     `revertIcer()` do original (`IcerTransform.dm:116-127`, `fd_form--`): o Mutante escapa do
+	///     descontrole recolhendo a casca aos poucos -- da forma base pra 4a, da 4a pra 3a --, e cada
+	///     parada dessas e uma forma em que ele consegue viver enquanto a maestria nao alcanca a de
+	///     cima. Saltar direto pro fundo do poco tiraria dele exatamente as tres formas que a
+	///     maestria destrava (`FormasDeFrost.DegrauEstavel`);
+	///   * **O PISO** (<see cref="Catalogo.PisoDaEscada"/>, que pra quase todo mundo e a propria
+	///     base) em todo o resto.
+	///
+	/// ============================ A PERGUNTA E `PodeSerRepouso`, E ELA JA ERA UMA -- SO NAO ERA ESTA ============================
+	/// Ela le como uma frase: **"o degrau de baixo e casca (ou e a propria base)? entao recuar e
+	/// afrouxar um ponto. Senao, recuar e sair da transformacao."**
+	///
+	/// ESTA CONDICAO ERA `abaixo.Mult[0] &lt;= 1` ESCRITO A MAO AQUI, e vinha acompanhada da promessa
+	/// *"conferido entrada por entrada no catalogo de hoje: nenhum deles passa"*. **A promessa
+	/// envelheceu e a bancada pegou** (`GameServer.RaciaisTeste`, secao 6): o `heran1` tem
+	/// `Mult[0] == 1` -- porque na linha Heran o `Mult` **nao e o multiplicador**, e a CURVA dele
+	/// (`FormaDef.BaseDaClasse` e quem diz por quanto ela multiplica: 1,30x no Omega, 3x no
+	/// Low-Class). Ler o array cru chamava de "casca" a forma Max Power, e recuar do True Max Power
+	/// parava nela em vez de voltar ao normal -- o que o DM nao faz: o Heran usa a MESMA var `ssj`
+	/// do Saiyajin (`HeranBuff.dm:97` e `:193` fazem `ssj=1` / `ssj=2`), e sair e `ssj = 0`.
+	///
+	/// O CONSERTO E TROCAR A COPIA PELA PERGUNTA QUE JA EXISTIA. `Catalogo.PodeSerRepouso` responde
+	/// exatamente "este degrau e casca?" -- e ela nao le so o `Mult`: exige tambem que o degrau nao
+	/// cobre NADA (porta de BP, maestria, ki divino, flag de skill, raiva). O `heran1` cobra
+	/// `ssjat`, entao cai fora por onde deveria ter caido desde o comeco, e as quatro supressoes do
+	/// Frost Demon continuam passando por serem o que sao. Duas escritas da mesma regra viraram uma.
+	///
+	/// Ou seja: esta funcao muda o comportamento de EXATAMENTE uma raca, sem citar raca nenhuma.
+	/// ======================================================================================================================
+	/// </summary>
+	private static string ParaOndeSeRecua(EstadoDeForma est, PerfilDeFormas perfil)
+	{
+		string piso = Catalogo.IdDoPiso(perfil);
+		if (est.Def is not { } agora) return piso;
+
+		if (Catalogo.DegrauAbaixo(agora) is { } abaixo
+			&& Catalogo.PodeSerRepouso(abaixo)
+			&& est.Avaliar(abaixo.Id, bpBase: double.MaxValue, kiFracao: 1,
+						   caido: false, perfil) == RecusaForma.Pode)
+			return abaixo.Id;
+
+		return piso;
+	}
+
+	/// <summary>
+	/// ASSUMIR A FORMA -- tudo o que acontece DEPOIS de o degrau ter sido escolhido e aprovado.
+	///
+	/// ============================ POR QUE ISTO SAIU DO `Transformar` ============================
+	/// Porque agora ha DOIS gestos que chegam ate aqui: a tecla C (`Transformar`) e o **despertar
+	/// assistido por um mestre** (`GameServer.Mestre.DespertarAssistido`). O DM tem o mesmo par --
+	/// la o `mst_form_apply` (`MasterStudent.dm:361`) chama a proc canonica (`SSj()`, `SSj2()`,
+	/// `Restrained_SSj()`) em vez de escrever `ssj = 1` na mao, e o comentario dele diz o porque:
+	/// quem seta a forma por fora perde tudo o que a proc faz.
+	///
+	/// Aqui o "tudo" e concreto e caro de reescrever: o Ki cheio na estreia, o multiplicador que sai
+	/// pela MESMA conta do buff, o log, o nome com maestria, o anuncio pra zona (que carrega
+	/// cinematica, clima, cabelo e aura). Um segundo caminho que fizesse metade disso daria um
+	/// despertar assistido sem cena e sem aura -- e ninguem ligaria o defeito ao mestre.
+	/// ======================================================================================
+	/// </summary>
+	private void EntrarNaForma(ServerPlayer pl, FormaDef alvo)
+	{
+		EstadoDeForma est = pl.Forma;
 		string anterior = est.Atual;
 		bool primeira = est.Entrar(alvo.Id);
 		AplicarForma(pl);
@@ -554,7 +783,10 @@ public partial class GameServer
 	}
 
 	/// <summary>A mensagem que explica o que falta. Ver o comentario de `Avaliar`.</summary>
-	private static string PorQueNao(EstadoDeForma est, ServerPlayer pl, PerfilDeFormas perfil)
+	// DEIXOU DE SER `static` porque a recusa `SemHabilidade` nomeia a SKILL, e o catalogo de skills
+	// mora no `_skills` da instancia. Passa-lo por parametro so empurraria o mesmo acoplamento pro
+	// unico chamador.
+	private string PorQueNao(EstadoDeForma est, ServerPlayer pl, PerfilDeFormas perfil)
 	{
 		// procura o degrau mais barato a partir daqui e conta o que falta NELE
 		FormaDef? candidato = null;
@@ -562,6 +794,13 @@ public partial class GameServer
 		foreach (FormaDef d in Catalogo.Todas)
 		{
 			if (d.Id == est.Atual || d.Id == Catalogo.IdBase) continue;
+
+			// O DEGRAU QUE O JOGADOR TIROU DO CAMINHO NAO EXPLICA NADA. Com os grades desligados, o
+			// Grade 2 vinha antes do SSJ2 nesta varredura (ordem 15 contra 20) e respondia por ele:
+			// quem pedisse o SSJ2 sem maestria ouviria "voce precisa de 50% de maestria no Super
+			// Saiyajin", que e a porta do GRADE. Mesmo funil do `Proxima` -- ver `NoCaminhoDoC`.
+			if (!est.NoCaminhoDoC(d)) continue;
+
 			RecusaForma r = est.Avaliar(d.Id, pl.Ficha.BP,
 										pl.Ficha.MaxKi > 0 ? pl.Ficha.Ki / pl.Ficha.MaxKi : 1,
 										pl.Ficha.KO || pl.Ficha.dead, perfil);
@@ -594,15 +833,26 @@ public partial class GameServer
 		}
 		if (candidato == null) return "nao ha mais degrau acima deste.";
 
-		// ============================ TODO NOME DESTA FUNCAO SAI DO `Catalogo.NomeDe` ============================
-		// Sao SETE frases nomeando forma no mesmo `switch`, e elas falam com quem tem o livro de
-		// maestrias na mao (`est.Maestria`) -- a sobrecarga do Core resolve o "dominada" a partir dele,
-		// e nenhuma destas linhas precisa saber que o teto e 100.
-		//
-		// Importa mais aqui do que parece: a recusa por Ki baixo pode cair sobre o SSJ1 de quem ja o
-		// domina, e ai a mensagem certa e "Super Saiyajin Grade 4 ...". Uma recusa que chama a forma
-		// por um nome que a aba Formas nao usa e o jogador procurando na tela uma forma que nao existe.
-		// ====================================================================================================
+		return FraseDaRecusa(est, candidato, pior);
+	}
+
+	/// <summary>
+	/// A FRASE DE UMA RECUSA -- o texto que o jogador le quando uma forma nao vem.
+	///
+	/// ============================ ELA SAIU DO `PorQueNao` PORQUE AGORA HA DOIS PERGUNTADORES ============================
+	/// O `PorQueNao` responde a pergunta ABERTA da tecla C ("nao subi, por que?"): ele varre o catalogo
+	/// atras do degrau mais barato e conta o que falta NELE. O `TransformarPara` responde a pergunta
+	/// FECHADA da tecla de forma ("por que nao virei Blue?"), e ali o degrau ja e conhecido -- nao ha
+	/// o que varrer.
+	///
+	/// O que os dois compartilham e exatamente isto: as frases. Duplica-las teria dado ao jogador dois
+	/// textos pra a mesma falta, divergindo no primeiro ajuste -- e o pior deles seria o `SemPoder`,
+	/// que e escrito SEM NUMERO de proposito (o limiar e sorteado por personagem, e dize-lo entrega de
+	/// graca o que o jogo quer que se descubra tentando). Uma copia esquecida teria vazado o numero.
+	/// ==============================================================================================================
+	/// </summary>
+	private string FraseDaRecusa(EstadoDeForma est, FormaDef candidato, RecusaForma pior)
+	{
 		string nome = Catalogo.NomeDe(candidato, est.Maestria);
 		string anterior = Catalogo.Anterior(candidato) is { } ant
 			? Catalogo.NomeDe(ant, est.Maestria) : "a forma anterior";
@@ -649,10 +899,75 @@ public partial class GameServer
 				: $"{nome} nao vem de treino -- ele vem de ver alguem seu cair na sua "
 				+ "frente e nao chegar a tempo.",
 			RecusaForma.SemEnergia => $"{nome} pede mais energia de Ultra Ego.",
+
+			// ============================ A UNICA RECUSA QUE SE RESOLVE NA LOJA ============================
+			// Todas as outras mandam TREINAR, ESPERAR ou NAO PROCURAR. Esta manda gastar um ponto de
+			// marco, e por isso ela nomeia a skill em vez de descrever a falta: "voce ainda nao
+			// aprendeu isso" deixaria o Namekuseijin procurando na aba errada. `NomesLegiveis` ja
+			// traduz o path do DM (`/datum/skill/namek/SuperNamek`) pro nome que a loja mostra, e usar
+			// outra fonte aqui daria dois nomes pra a mesma compra.
+			//
+			// ELA NAO E FILTRADA como a `NaoConcedida` e a `LinhaFechada`: ao contrario do Mistico
+			// (dom de outro jogador) e das linhas de outra raca, esta forma E deste personagem e esta
+			// a um clique -- esconde-la seria esconder o proprio caminho.
+			// ==========================================================================================
+			RecusaForma.SemHabilidade =>
+				$"{nome} pede uma habilidade que voce ainda nao comprou"
+				+ (SkillDaFlag(candidato) is { } skill ? $" -- {skill}." : "."),
 			RecusaForma.SemKi => "Ki baixo demais pra sustentar a forma.",
 			RecusaForma.Caido => "nao da, caido.",
+
+			// ============================ AS CINCO DE BAIXO SO SAEM PELA PERGUNTA FECHADA ============================
+			// O `PorQueNao` FILTRA todas elas antes de chegar aqui (ver o `continue` la em cima), e por
+			// bons motivos: `LinhaFechada` e `NaoConcedida` contariam de um jogo que nao e o desta
+			// pessoa, e `ForaDeOrdem` num sorteio de degrau e so "voce ainda nao chegou ali".
+			//
+			// Na pergunta FECHADA elas invertem de valor, porque o jogador NOMEOU a forma: quem ligou
+			// uma tecla ao Super Saiyajin 3 e apertou na base precisa ouvir que falta o degrau do meio,
+			// e nao "ainda nao". E essa e a frase mais importante desta tela inteira -- ela e o que
+			// impede a tecla de forma de ser lida como um SALTO. Ver `TransformarPara`.
+			// ==================================================================================================
+			RecusaForma.ForaDeOrdem => $"{nome} vem depois de {anterior} -- a tecla escolhe a forma, "
+									 + "nao pula degrau.",
+			RecusaForma.JaEsta => $"voce ja esta em {nome}.",
+			RecusaForma.LinhaFechada => $"{nome} nao e uma forma sua.",
+			RecusaForma.NaoConcedida => $"{nome} nao se treina: alguem precisa te conceder.",
+			RecusaForma.SemLinhagem or RecusaForma.SemClasse =>
+				$"{nome} nao e da sua linhagem.",
+
 			_ => "ainda nao.",
 		};
+	}
+
+	/// <summary>
+	/// ============================ QUE SKILL ESCREVE A FLAG QUE ESTA FORMA PEDE ============================
+	/// Nulo quando a forma nao pede flag nenhuma, ou quando nenhuma skill do catalogo a escreve.
+	///
+	/// **E UMA BUSCA E NAO UMA TABELA**, e essa e a unica coisa interessante desta funcao. A tentacao
+	/// era um `switch (flag) { "snamek" => "Super Namekuseijin", ... }` -- tres linhas, imediato, e
+	/// uma SEGUNDA verdade sobre quem destrava o que. O `skills.json` sai do DM pelo pipeline: no dia
+	/// em que o nome da skill mudar la, ou em que outra skill passar a escrever a mesma flag, a
+	/// tabela mentiria e ninguem notaria, porque a mensagem so aparece pra quem ainda NAO tem a
+	/// forma -- ou seja, pra quem nao sabe qual e o nome certo.
+	///
+	/// Varrer o catalogo inteiro e barato aqui: isto roda quando um jogador aperta C e nao ha degrau
+	/// acima, nunca no tique.
+	/// =================================================================================================
+	/// </summary>
+	private string? SkillDaFlag(FormaDef d)
+	{
+		if (d.PedeFlag is not { } flag || _skills == null) return null;
+
+		// A MAIOR DAS CANDIDATAS, e nao a primeira: a flag do Alien vale 2 e uma skill que escrevesse
+		// `hasayyform = 1` nao seria a que abre a 2a forma. `Totalizar` ja resolve empate pelo maior
+		// valor (`EfeitosDeSkill`, canal de ATRIBUICAO) -- a mesma regra, aqui.
+		Jandirus.Core.Skills.Skill? melhor = null;
+		foreach (Jandirus.Core.Skills.Skill s in _skills.Todas)
+		{
+			if (!s.Flags.TryGetValue(flag.Campo, out double v) || v < flag.Minimo) continue;
+			if (melhor == null || v > melhor.Flags[flag.Campo]) melhor = s;
+		}
+		return melhor?.Nome;
 	}
 
 	/// <summary>
@@ -705,8 +1020,35 @@ public partial class GameServer
 		//
 		// Escrito AQUI porque este e "o unico lugar que mexe no ssjBuff" -- teto e multiplicador
 		// sao a mesma decisao (que forma esta ativa) e separa-los criaria duas verdades.
-		pl.Ficha.trueKiMod = Jandirus.Core.Forms.Catalogo.TetoDeKi(
-			Jandirus.Core.Forms.Catalogo.Def(pl.Forma.Atual), pl.Ficha);
+		Jandirus.Core.Forms.FormaDef? def = Jandirus.Core.Forms.Catalogo.Def(pl.Forma.Atual);
+		pl.Ficha.trueKiMod = Jandirus.Core.Forms.Catalogo.TetoDeKi(def, pl.Ficha);
+
+		// ============================ E OS STATS DA FORMA, PELA MESMA REGRA ============================
+		// Terceira coisa que este metodo afirma, ao lado do `ssjBuff` e do `trueKiMod`, e pelo mesmo
+		// motivo: forma, teto de Ki e stats sao UMA decisao so (qual entrada do catalogo esta ativa),
+		// e separa-los criaria duas verdades. O dono: *"o ssj grade 2 e grade 3 n estao dando o DEBUFF
+		// DE VELOCIDADE ... e tb n estao tendo os buffs de OFFENSIVE"*. Nao estavam porque o catalogo
+		// nao tinha onde guardar isso -- agora tem (`FormaDef.Mods`), e vale pra qualquer entrada.
+		//
+		// AFIRMA, NAO ACUMULA -- e e isto que o torna seguro num metodo que roda TODO TIQUE
+		// (`TickDaForma` reavalia o degrau de maestria a cada passada). Nao ha "desfazer": voltar pra
+		// base escreve 1 em tudo porque `Mods` da base e nulo. Ver a regra de ouro do
+		// `GameServer.Buffs` -- aqui ela nem chega a ser necessaria, porque nao existe delta guardado
+		// pra divergir do estado real.
+		//
+		// FORA DO CANAL DE BUFF DE PROPOSITO: `DerrubarBuffs` limpa tudo no nocaute, e um buff de
+		// forma limpo por ali deixaria os stats no valor da base com a forma ainda de pe -- calado,
+		// e so ate o proximo tique reescrever. Campo afirmado nao tem esse estado intermediario.
+		// ==============================================================================================
+		Jandirus.Core.Forms.ModsDeForma m = def?.Mods ?? Jandirus.Core.Forms.Catalogo.SemMods;
+		pl.Ficha.formaPhysoff = m.Physoff;
+		pl.Ficha.formaPhysdef = m.Physdef;
+		pl.Ficha.formaKioff = m.Kioff;
+		pl.Ficha.formaKidef = m.Kidef;
+		pl.Ficha.formaTecnica = m.Tecnica;
+		pl.Ficha.formaSpeed = m.Speed;
+		pl.Ficha.formaCadencia = m.Cadencia;
+
 		pl.Ficha.Statify();   // `MaxKi` e derivado: sem isto o teto novo so valeria no proximo tique
 
 		// ============================ E A RAZAO VOLTA, CONTRA O TETO NOVO ============================
@@ -908,8 +1250,21 @@ public partial class GameServer
 		// de Ultra Instinto ou de Destruicao o `Subir` abaixo nao escreve nada e devolve false; quem
 		// paga o uso dela e o `TickDasDisciplinas`, que credita a proficiencia REAL da SKILL pelo
 		// `emForma` -- o `ui_form`/`ue_form` do DM (`UltraInstinct.dm:209-216`, `UltraEgo.dm:330`).
+		// ============================ E NEM TODA FORMA SE TREINA SENDO SUSTENTADA ============================
+		// A pergunta e do Core (`Catalogo.SustentarTreina`) e hoje ela recusa exatamente uma coisa: as
+		// quatro SUPRESSOES do Frost Demon. Elas nao sao transformacao -- sao o corpo se recolhendo --,
+		// e o original poe a barra pra andar so da forma base pra cima (`icer.dm:45`). Sem esta guarda o
+		// Mutante masterizaria a propria base sentado na casca mais apertada, que e onde ele NAO corre
+		// risco nenhum: o motor de instabilidade (a coisa que a maestria existe pra vencer) nunca
+		// chegaria a rodar.
+		//
+		// No `if` e nao dentro do `Subir` porque quem sabe que este tique E o pagamento e este arquivo;
+		// o livro de maestrias so guarda numero. (O caso vizinho -- forma de disciplina -- mora la
+		// dentro por outro motivo: la sao TRES escritores e a recusa tem que valer pros tres.)
+		// ================================================================================================
 		bool dominavaAntes = Dominou(pl, est.Atual);
-		if (est.Maestria.Subir(est.Atual, Catalogo.MaestriaPorSegundo * dt, out string marco))
+		if (Catalogo.SustentarTreina(est.Def)
+			&& SubirMaestriaDaZona(pl, est.Atual, Catalogo.MaestriaPorSegundo, dt, out string marco))
 		{
 			// O NOME SAI DO FUNIL, e aqui isso muda o texto de verdade: quem acaba de cruzar os 100%
 			// no SSJ1 le "Super Saiyajin Grade 4: forma DOMINADA" -- o nome novo chega junto com o
@@ -937,13 +1292,45 @@ public partial class GameServer
 		AplicarForma(pl);
 	}
 
+	/// <summary>
+	/// O FUNIL UNICO DA MAESTRIA POR TEMPO NA FORMA -- e a porta por onde o ritmo da ZONA entra.
+	///
+	/// ============================ POR QUE UM FUNIL, E NAO DOIS MULTIPLIQUES ============================
+	/// Ha DOIS tiques que creditam maestria por sustentar uma forma: o da escada
+	/// (<see cref="TickDaForma"/>) e o do Oozaru (`GameServer.Oozaru.cs`). Os dois chamavam
+	/// `Maestria.Subir` direto, cada um com a propria taxa. Ligar o `zoneMasteryMult` "nos dois
+	/// lugares" e exatamente a forma de falha que os comentarios deste port mais repetem: liga-se num,
+	/// esquece-se do outro, e o defeito e mudo -- a maestria de macaco simplesmente nao acelerava
+	/// dentro da Sala, e ninguem teria como notar sem cronometrar as duas.
+	///
+	/// Aqui a multiplicacao acontece UMA vez. Um terceiro tique de forma que apareça amanha ganha o
+	/// ritmo de zona de graca -- ou nao compila, se chamar o `Subir` direto e alguem reparar.
+	/// ==============================================================================================
+	///
+	/// **4x, e nao 280x** -- a razao esta escrita em <see cref="Jandirus.Core.World.SalaDoTempo.MaestriaMult"/>.
+	/// </summary>
+	private static bool SubirMaestriaDaZona(ServerPlayer pl, string id, double porSegundo, double dt,
+											out string marco) =>
+		pl.Forma.Maestria.Subir(id, porSegundo * dt * Math.Max(pl.Ficha.zoneMasteryMult, 0), out marco);
+
+	/// <summary>
+	/// A FORMA SE DESFAZ (Ki zerado, nocaute). Vai direto ao PISO e nao um degrau -- ver
+	/// <see cref="ParaOndeSeRecua"/> pro caminho voluntario.
+	///
+	/// A diferenca e a intencao: recuar e uma DECISAO (afrouxa um ponto e para onde quiser), e cair
+	/// nao e -- quem desmaia larga tudo. Pro Frost Demon isso quer dizer que o Mutante nocauteado
+	/// volta a primeira supressao, que e onde o corpo dele descansa, e nao a base que ele ainda nao
+	/// segura.
+	/// </summary>
 	private void Reverter(ServerPlayer pl, string motivo)
 	{
 		string antes = pl.Forma.Atual;
-		pl.Forma.Entrar(Catalogo.IdBase);
+		string piso = Catalogo.IdDoPiso(Perfil(pl));
+		if (antes == piso) return;
+		pl.Forma.Entrar(piso);
 		AplicarForma(pl);
 		Avisar(pl, motivo);
-		AnunciarForma(pl, antes, Catalogo.IdBase, estreia: false);
+		AnunciarForma(pl, antes, piso, estreia: false);
 	}
 
 	/// <summary>
@@ -1008,6 +1395,13 @@ public partial class GameServer
 			// verde no dia em que alguem trocasse ESTE laco por `_players.Values`. Ver
 			// `GameServer.FormasTeste.EscutaDeDestinos`.
 			EscutaDeDestinos?.Add((pl.Id, o.Id));
+
+			// QUEM ESTA PERTO O BASTANTE **VIU** ESTA FORMA, e ver e o pre-requisito de ser
+			// ensinado nela. E o `mst_note_form` do DM (`MasterStudent.dm:207`), que la esta
+			// repetido em sete buffs raciais e aqui e uma linha no funil. O RAIO e conferido dentro
+			// do metodo -- este laco e da zona inteira. Ver `GameServer.Mestre.NotarFormaVista`.
+			NotarFormaVista(o, pl, para);
+
 			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 	}
@@ -1141,5 +1535,147 @@ public partial class GameServer
 			saida.Add(PacoteDeOozaru(quem.Id, quem.Oozaru, primeira: false, DegrauDeCena.Nenhuma));
 
 		return saida;
+	}
+	/// <summary>
+	/// O QUE O DISCO DEVOLVE AO CORPO: forma, maestria, limiares, o lado pessoal do DISCIPULADO e a
+	/// disciplina divina. Devolve os nomes das maestrias descartadas, pra quem chamou avisar.
+	///
+	/// ============================ POR QUE ISTO E UM METODO ============================
+	/// Era um bloco no meio do <see cref="Entrar"/>, e continua sendo chamado so de la em producao.
+	/// Virou metodo porque a bancada `--mestrevivo` precisa RELOGAR de verdade (o vinculo de mestre,
+	/// a porta cortada, a recarga de 5 min e o `wastaught` sao todos coisas que so o relogin prova),
+	/// e um `ServerPlayer` sem `NetPeer` nao pode passar pelo `Entrar` -- ele manda pacote na
+	/// primeira linha.
+	///
+	/// A alternativa seria a bancada reescrever estas trinta linhas. Seria a duplicata da PARTE 3
+	/// ("duas casas pra uma formula"), com o agravante de que a copia estaria justamente no lugar
+	/// que deveria vigiar a original: o dia em que alguem esquecesse de restaurar `PortasCortadas`
+	/// no login, a bancada continuaria verde restaurando a sua.
+	/// ==============================================================================
+	///
+	/// ============================ NOTA DE RESTAURO (2026-08-14) ============================
+	/// O CORPO ABAIXO E O ORIGINAL DE 23:07, nao uma reconstrucao. A versao que estava aqui era uma
+	/// reconstrucao de memoria feita depois do `git checkout` -- e ela DIVERGIA em sete pontos:
+	/// nao restaurava `GradesLigados` do jeito certo, perdia `FormasVistas`, nao migrava
+	/// `PortasCortadas`, esquecia `RecargaDeEnsino` e `ChefesVistos`, nao punha o corpo no PISO
+	/// (`Catalogo.IdDoPiso`) e nao zerava `fd_release`/`fd_ki_locked`. O ultimo deixava o Frost Demon
+	/// Mutante logar em `base`, com quatro vezes o poder devido.
+	/// ======================================================================================
+	/// </summary>
+	private List<string> RestaurarFormaEDisciplina(ServerPlayer pl, CharacterSave? c)
+	{
+		// A FORMA NAO ATRAVESSA O LOGOUT: quem sai SSJ3 volta na base. O que persiste e a
+		// MAESTRIA (semanas de jogo) e quais formas ja despertaram (a cinematica so roda uma vez).
+		pl.Forma = new Jandirus.Core.Forms.EstadoDeForma();
+		// O DESCARTE DAS FORMAS DE DISCIPLINA VOLTA NOMEADO, e e avisado pelo `Entrar` (depois do
+		// `JoinAccepted`, quando o cliente ja tem chat). Ver `Maestrias.DoSave` pro porque de
+		// descartar em vez de migrar -- e pro porque de nao dar pra fazer isso calado.
+		List<string> maestriasDescartadas = pl.Forma.Maestria.DoSave(c?.Maestrias);
+		// OS LIMIARES DESTE PERSONAGEM vem do disco -- sorteados no nascimento, nunca de novo.
+		pl.Forma.Limiares = c?.Limiares;
+
+		// ============================ A PREFERENCIA DOS GRADES, E O NULO QUE VIRA `true` ============================
+		// **AQUI E QUE UM CORPO GANHA OPINIAO.** `EstadoDeForma.GradesLigados` nasce NULO de proposito
+		// -- corpo sem dono (NPC sorteado, cerebro da IA) sobe a escada pela regra de sempre --, e este
+		// metodo e o unico caminho "save -> JOGADOR em jogo". Quem passa por aqui tem alguem apertando
+		// o C, entao a preferencia deixa de ser nula: o que o disco disser, e LIGADO quando ele nao diz
+		// nada (save de antes do verb existir, ou personagem novo). Ligado e o que o jogo ja fazia.
+		//
+		// COMO REPROVA SE ESTA LINHA SUMIR: o verb `graus` continuaria respondendo no chat e a escolha
+		// morreria no logout -- o defeito que este arquivo ja pagou com o `wastaught` e com a escolha de
+		// skill do Metamoriano. A bancada `--formasteste` relogo e conferiu (ver `OsGradesNoCaminhoDoC`).
+		// ========================================================================================================
+		pl.Forma.GradesLigados = c?.GradesLigados ?? true;
+
+		// ============================ O NUMERO DA FORMA PASSA PELA MIGRACAO ============================
+		// O disco guarda forma por `FormaDef.IdRede`, e um numero que saiu do catalogo nao casa com
+		// entrada nenhuma -- vira lixo silencioso no `HashSet`. `Catalogo.RedeDoSave` traduz os que
+		// mudaram de dono (hoje: o `306`, do Mistico Ascendido que virou um ponto da curva do `305`)
+		// e devolve igual todo o resto. Ver o cabecalho de `RedeDoSave` pro porque de nao dar pra
+		// simplesmente deixar o numero velho passar.
+		//
+		// E A TRADUCAO E UMA CHAMADA SO, PRAS DUAS LISTAS (`Catalogo.RedesDoSave`): a expressao estava
+		// escrita duas vezes aqui, e duas copias da mesma migracao e onde a proxima fusao de formas
+		// passa a valer so pra metade -- ver o cabecalho da funcao.
+		if (c?.FormasDespertadas is { Count: > 0 })
+			pl.Forma.Liberadas = Jandirus.Core.Forms.Catalogo.RedesDoSave(c.FormasDespertadas);
+
+		// ============================ A MIGRACAO DOS DOIS BITS ============================
+		// `FormasEstreadas` nasceu depois de `FormasDespertadas` (ver `EstadoDeForma`). Num save
+		// gravado antes dela o campo NAO EXISTE no JSON e chega **null** -- e null aqui quer dizer
+		// "este personagem e de antes da separacao, tudo que ele tem liberado ele ja viu".
+		//
+		// O teste e `is null` e nao `Count == 0` de proposito: lista VAZIA e uma resposta legitima
+		// de um save novo (personagem que nunca se transformou), e trata-la como "save antigo"
+		// copiaria as liberadas por cima -- exatamente no unico caso em que isso apaga uma estreia
+		// devida, que e o do SSJ4 liberado pelo Oozaru Dourado e ainda nao assistido.
+		// ==============================================================================
+		pl.Forma.EstreiaVista = c?.FormasEstreadas is { } vistas
+			? Jandirus.Core.Forms.Catalogo.RedesDoSave(vistas)
+			: [.. pl.Forma.Liberadas];
+
+		// O DISCIPULADO, LADO DO PERSONAGEM. As tres passam pela MESMA migracao de numero de forma
+		// que as duas de cima -- sao ids de rede, e um id que saiu do catalogo viraria lixo mudo no
+		// `HashSet`. A recarga e prazo de relogio de parede e vem crua. Ver
+		// `GameServer.Mestre.cs` (o vinculo em si mora no `mestres.txt`, nao aqui).
+		pl.FormasVistas = c?.FormasVistas is { Count: > 0 } vv
+			? Jandirus.Core.Forms.Catalogo.RedesDoSave(vv) : [];
+		pl.Forma.PortasCortadas = c?.PortasCortadas is { Count: > 0 } pc
+			? Jandirus.Core.Forms.Catalogo.RedesDoSave(pc) : [];
+		pl.RecargaDeEnsino = c?.MestreRecargaAte ?? 0;
+
+		// OS CHEFES JA VISTOS -- crus, sem migracao nenhuma: sao ids de molde do `npcs.json`, e um
+		// molde que saiu do arquivo continua sendo uma coisa que a pessoa VIU (o dono pode estar so
+		// renomeando uma saga). Quem confere o catalogo e a convocacao. Ver `GameServer.Mente.cs`.
+		pl.ChefesVistos = c?.ChefesVistos is { Count: > 0 } cv
+			? new HashSet<string>(cv, StringComparer.OrdinalIgnoreCase)
+			: new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+		// A SALA DO TEMPO **NAO ENTRA AQUI**, e a ausencia e uma decisao: os tres campos dela
+		// (recarga, chave do Guardiao, prisao) sao lidos no `AccountStore.ParaJogador`, que se
+		// declara o funil unico "save -> jogador em jogo". Le-los nos dois lugares seria a mesma
+		// migracao escrita duas vezes -- e a segunda a envelhecer seria esta, calada.
+
+		// A DISCIPLINA DIVINA. O toggle NAO volta ligado: uma passiva que drena e reacende sozinha
+		// no login gastaria a precisao de quem so entrou pra conversar.
+		if (c is { Disciplina: 1 })
+		{
+			pl.UltraInstinct.Aprendida = true;
+			pl.UltraInstinct.Real = c.DiscReal;
+			pl.UltraInstinct.Atual = Math.Min(c.DiscAtual, c.DiscReal);
+			pl.Disciplina = Jandirus.Core.Forms.TipoDeDisciplina.UltraInstinct;
+		}
+		else if (c is { Disciplina: 2 })
+		{
+			pl.PoderDaDestruicao.Aprendida = true;
+			pl.PoderDaDestruicao.Real = c.DiscReal;
+			pl.PoderDaDestruicao.Atual = Math.Min(c.DiscAtual, c.DiscReal);
+			pl.Disciplina = Jandirus.Core.Forms.TipoDeDisciplina.PoderDaDestruicao;
+		}
+
+		// ============================ E O CORPO VOLTA PRO **PISO** DELE, QUE NEM SEMPRE E A BASE ============================
+		// "A forma nao atravessa o logout" continua valendo -- quem sai em 2a Evolucao volta na forma
+		// de repouso. O que mudou e que repouso deixou de ser sinonimo de `IdBase`: o Frost Demon
+		// descansa numa ENTRADA da escada dele (a 5 pro normal, a 1 pro Mutante, ver
+		// `Catalogo.PisoDaEscada`), porque a forma de repouso dele tem sprite proprio e -- no caso do
+		// Mutante -- multiplicador 0,25x sobre um BP de fabrica quadruplicado.
+		//
+		// Sem esta linha o Mutante logaria em `base`: 1x sobre esse BP, ou seja QUATRO VEZES o poder
+		// que ele deve ter, do primeiro segundo em diante e sem nada na tela dizendo por que.
+		//
+		// `Atual =` E NAO `Entrar()`: entrar LIBERA a forma e QUEIMA a estreia dela (`EstadoDeForma`),
+		// e nenhuma das duas coisas descreve logar. O repouso nao se conquista e nao tem cinematica.
+		//
+		// O VAZAMENTO E O TRAVAMENTO ZERAM JUNTO, e nao e generosidade: o piso e, por construcao, a
+		// forma mais fraca que o corpo alcanca -- ou seja SEMPRE estavel (`fd_stable_gate` nunca fica
+		// abaixo da primeira supressao). O motor devolveria os dois campos em ~25 s de qualquer jeito;
+		// zerar aqui e so nao comecar a sessao mentindo. Ver `GameServer.Frost.cs`.
+		pl.Forma.Atual = Jandirus.Core.Forms.Catalogo.IdDoPiso(Perfil(pl));
+		pl.Ficha.fd_release = 1;
+		pl.Ficha.fd_ki_locked = false;
+
+		AplicarForma(pl);
+
+		return maestriasDescartadas;
 	}
 }

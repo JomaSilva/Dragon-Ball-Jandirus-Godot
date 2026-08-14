@@ -4,5 +4,5 @@
  { "x": 381, "y": 428, "arte": "res://Assets/Sprites/Turfs/Objects/Door6.tres" },
  { "x": 336, "y": 470, "arte": "res://Assets/Sprites/Turfs/Objects/Door6.tres" },
  { "x": 371, "y": 470, "arte": "res://Assets/Sprites/Turfs/Objects/Door6.tres" },
- { "x": 353, "y": 499, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" },
- { "x": 354, "y": 499, "arte": "res://Assets/Sprites/Turfs/Objects/Door4.tres" }]
+ { "x": 353, "y": 499, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" },
+ { "x": 354, "y": 499, "arte": "res://Assets/Sprites/DU/Map/Door4.tres" }]

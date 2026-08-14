@@ -497,6 +497,8 @@ public sealed partial class GameServer
 			case "admin_reviver": AdminReviver(pl, arg); break;
 			case "admin_ficha": AdminFicha(pl, arg); break;
 			case "admin_spawn_alvo": AdminMandarProSpawn(pl, arg); break;
+			// O ANTIGO `Goto Spawn` DO JOGADOR, agora so daqui -- ver `AdminIrProSpawn`.
+			case "admin_spawn": AdminIrProSpawn(pl); break;
 			case "admin_expulsar": AdminExpulsar(pl, arg); break;
 			case "admin_calar": AdminCalar(pl, arg); break;
 			case "admin_marco": AdminMarcos(pl, arg, todos: false); break;
@@ -507,7 +509,14 @@ public sealed partial class GameServer
 			case "admin_skill_dar": AdminSkill(pl, arg, dar: true); break;
 			case "admin_skill_tirar": AdminSkill(pl, arg, dar: false); break;
 			case "admin_cargo_dar": AdminOutorgarCargo(pl, arg); break;
+			case "admin_cargo_tirar": AdminDestituirCargo(pl, arg); break;
 			case "admin_pm": AdminPm(pl, arg); break;
+
+			// A VALVULA DA SALA DO TEMPO. Ela nao esta aqui por conveniencia de admin: ela E a
+			// decisao sobre o risco da regra 13.6c -- um jogador preso sem Guardiao online e um
+			// jogador que nao pode jogar, e a saida escolhida foi "o admin solta, e a porta avisa
+			// antes de alguem entrar". Ver o cabecalho de `GameServer.SalaDoTempo.cs`.
+			case "admin_sala_soltar": AdminSoltarDaSala(pl, arg); break;
 
 			// ---------------------------------------------------------- sobre o mundo
 			case "admin_curar_todos": AdminCurarTodos(pl); break;
@@ -525,6 +534,13 @@ public sealed partial class GameServer
 			case "admin_lua_cheia": AdminLuaCheia(pl); break;
 			case "admin_meio_dia": AdminMeioDia(pl); break;
 			case "admin_clima_ficha": AdminClimaFicha(pl); break;
+
+			// ---------------------------------------------------------- morte de planeta (GameServer.Destruicao.cs)
+			case "admin_vilao": AdminVilao(pl, arg); break;
+			case "admin_morte_lenta": AdminMorteLenta(pl); break;
+			case "admin_destruir_planeta": AdminDestruirPlaneta(pl); break;
+			case "admin_abortar_morte": AdminAbortarMorte(pl); break;
+			case "admin_restaurar_planeta": AdminRestaurarPlaneta(pl); break;
 
 			// ---------------------------------------------------------- informacao
 			case "admin_quem": VerboQuem(pl); break;
@@ -544,6 +560,17 @@ public sealed partial class GameServer
 			case "admin_rebaixar": AdminPromover(pl, arg, virar: false); break;
 			case "admin_banir": AdminBanir(pl, arg, banir: true); break;
 			case "admin_perdoar": AdminBanir(pl, arg, banir: false); break;
+
+			// ---------------------------------------------------------- a limpeza total (dois passos)
+			// SAO DOIS VERBS E NAO UM, e essa e a confirmacao inteira: o primeiro so MOSTRA (a lista
+			// do que vai sumir, com contagem) e sorteia um codigo que vale por um minuto; o segundo
+			// exige esse codigo DIGITADO. Um clique nao apaga o servidor, e um comando decorado de
+			// ontem tambem nao. Ver `GameServer.Limpeza.cs`.
+			//
+			// Os dois passam pelo `Registrar` do topo deste metodo, entao o `admin.log` -- que
+			// SOBREVIVE a limpeza -- guarda quem pediu, quem confirmou e quando.
+			case "admin_limpar": AdminPrepararLimpeza(pl); break;
+			case "admin_limpar_ja": AdminLimparServidor(pl, arg); break;
 
 			default: return false;
 		}
@@ -595,7 +622,7 @@ public sealed partial class GameServer
 		// um jogador com o Ki comprimido a 140% pela tecla C pedia "Heal" e voltava pra 100%. O
 		// original nunca corta a sobrecarga por decreto (`Power Control.dm:113-134`: ela vaza).
 		p.Ficha.Ki = Math.Max(p.Ficha.MaxKi, p.Ficha.Ki);
-		p.RenasceEm = 0;
+		p.RelogioDaMorte = 0;
 		MandarFicha(p);
 		MandarCorpo(p);
 	}
@@ -655,8 +682,7 @@ public sealed partial class GameServer
 		// 12s o nocaute "vencia" e o console anunciava que um morto tinha levantado.
 		// `ignorarSeguro: true` -- o verb de admin passa por cima da Aura of Destruction. Uma
 		// ferramenta que uma mecanica de jogador bloqueia deixa de ser ferramenta.
-		p.Combate.Morrer(ignorarSeguro: true);
-		p.RenasceEm = NowMs() + MsAteRenascer;   // o mesmo prazo de qualquer morte
+		p.Combate.Morrer(ignorarSeguro: true);   // o prazo e a viagem saem do gancho `AoMorrer`
 		MandarFicha(p);
 		Avisar(adm, $"{p.Name} morreu.");
 		Avisar(p, "uma mao invisivel apaga a sua luz.");
@@ -684,16 +710,39 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// O ADMIN VOLTA AO PROPRIO BERCO -- o `Goto_Spawn` do original (`SpawnPoints.dm:37`).
+	///
+	/// ============================ ELE ERA DO JOGADOR, E O DONO TIROU ============================
+	/// Ate aqui isto era `case "spawn"` no despacho comum (`GameServer.Verbos.cs`) e qualquer um
+	/// apertava. O dono mandou tirar: *"tire o verb gotospawn, deixe ele so pra adm"*. O motivo
+	/// concreto e a Sala do Tempo -- a prisao da regra 13.6c so vale se **nenhum** caminho de
+	/// jogador atravessar a tranca, e este atravessava sem perguntar nada.
+	///
+	/// O IRMAO DELE (`admin_spawn_alvo`) MANDA O ALVO; este manda o proprio admin. Sao dois verbos
+	/// e nao um com fallback de propósito: `admin_spawn_alvo` com o alvo desmarcado teleportaria o
+	/// admin em vez de reclamar, e um botao que faz outra coisa quando erra e pior que um que falha.
+	/// =========================================================================================
+	///
+	/// PRO BERCO, e nao pra Terra: o funil (`MandarProBerco`) e o mesmo `Locate()` do nascimento,
+	/// entao um admin que nasceu noutro planeta volta pro planeta dele.
+	/// </summary>
+	private void AdminIrProSpawn(ServerPlayer adm)
+	{
+		MandarProBerco(adm);
+		Avisar(adm, "voce volta ao ponto de partida.");
+	}
+
+	/// <summary>
 	/// O alvo e uma PESSOA, e nao um corpo sem dono?
 	///
-	/// Duplo clique marca qualquer coisa que apareca na tela, e o clone da mente e os NPCs aparecem
-	/// (`Peer == null`, `Cerebro != null`). Expulsar ou calar um deles nao faz nada -- e o verb
+	/// Duplo clique marca qualquer coisa que apareca na tela, e o clone da mente, o boneco do corpo
+	/// largado e os NPCs aparecem. Expulsar ou calar um deles nao faz nada -- e o verb
 	/// diria que fez. Pior no caso do mute: a conta de um clone e "", e calar "" enfia uma entrada
 	/// fantasma no conjunto que o "Unmute All" depois contaria como se fosse gente.
 	/// </summary>
 	private bool EhPessoa(ServerPlayer adm, ServerPlayer p)
 	{
-		if (p.Peer != null) return true;
+		if (EhJogador(p)) return true;
 		Avisar(adm, $"{p.Name} nao e um jogador -- e um corpo sem dono.");
 		return false;
 	}
@@ -776,7 +825,7 @@ public sealed partial class GameServer
 		if (todos)
 		{
 			int n = 0;
-			foreach (ServerPlayer p in Gente.ToList())
+			foreach (ServerPlayer p in Jogadores.ToList())
 			{
 				p.Livro.Conceder(quantos);
 				MandarSkills(p, forcar: true);
@@ -1088,16 +1137,6 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// SO GENTE DE VERDADE.
-	///
-	/// `_players` guarda tambem os corpos SEM DONO -- o clone da mente, os NPCs (`Peer == null`,
-	/// `Cerebro != null`). Eles andam no snapshot como qualquer um, e por isso todo laco "em massa"
-	/// que esquecer este filtro vai curar, arrastar e contar robo junto com jogador. "3 no mundo"
-	/// quando ha uma pessoa so e um numero que faz o admin duvidar do painel inteiro.
-	/// </summary>
-	private IEnumerable<ServerPlayer> Gente => _players.Values.Where(p => p.Peer != null);
-
-	/// <summary>
 	/// DA OU TIRA UMA SKILL do alvo marcado -- o `Give (Skill)` e o `Take_Skill` do original.
 	///
 	/// ============================ O `Esquecer` ERA ORFAO ============================
@@ -1174,6 +1213,41 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// ESVAZIA UM TRONO -- a outra metade, que faltava inteira.
+	///
+	/// Dar cargo tinha tres caminhos (reivindicar, outorgar, e agora as portas novas) e TIRAR nao
+	/// tinha nenhum ao alcance de uma pessoa: so a covardia e a negligencia do Deus da Destruicao
+	/// destituem sozinhas. Sem isto, um cargo dado por engano -- ou o dono que virou problema --
+	/// so sairia do trono passando o cargo pra outra pessoa, que e conserto que estraga outra coisa.
+	///
+	/// **A CHAVE, E NAO O ALVO**: destitui-se um TRONO, e o dono dele costuma estar offline (e o
+	/// motivo mais comum de precisar disto). Marcar alguem exigiria que a pessoa estivesse em jogo.
+	/// Ver `Destronar` -- ele avisa o mundo, tira o kit e limpa o relogio do titulo em disputa.
+	/// </summary>
+	private void AdminDestituirCargo(ServerPlayer adm, string arg)
+	{
+		// O PAINEL MANDA "alvoId|texto" (e o formato da linha inteira de botoes com campo), e este
+		// verb nao usa alvo nenhum: fica com o que veio depois da barra. Aceitar as duas formas deixa
+		// o comando utilizavel tambem por quem o digitar direto.
+		string[] partes = arg.Split('|');
+		string chave = partes[^1].Trim();
+		if (chave.Length == 0) { Avisar(adm, "escreva a chave do cargo (veja em Ranks)."); return; }
+
+		Jandirus.Core.Ranks.RankDef? r = Jandirus.Core.Ranks.Cargos.Get(chave)
+			?? Array.Find(Jandirus.Core.Ranks.Cargos.Todos,
+				x => string.Equals(x.Nome, chave, StringComparison.OrdinalIgnoreCase));
+		if (r == null) { Avisar(adm, $"nao existe cargo '{chave}'."); return; }
+
+		if (!Destronar(r.Chave, $"decisao de um administrador ({adm.Name})"))
+		{
+			Avisar(adm, $"{r.Nome} ja estava vago.");
+			return;
+		}
+		Registrar(adm, $"destituiu o cargo '{r.Nome}'");
+		Avisar(adm, $"{r.Nome} esta vago.");
+	}
+
+	/// <summary>
 	/// Mensagem particular do admin pro alvo -- o `cmd_admin_pm` do original.
 	///
 	/// A COPIA VAI PROS OUTROS ADMINS, como no original: PM de staff que ninguem mais ve e como o
@@ -1190,14 +1264,14 @@ public sealed partial class GameServer
 
 		Avisar(p, $"[admin] {adm.Name}: {texto}");
 		Avisar(adm, $"[pra {p.Name}] {texto}");
-		foreach (ServerPlayer o in Gente.ToList())
+		foreach (ServerPlayer o in Jogadores.ToList())
 			if (o != adm && o != p && EhAdmin(o)) Avisar(o, $"[admin] {adm.Name} -> {p.Name}: {texto}");
 	}
 
 	private void AdminCurarTodos(ServerPlayer adm)
 	{
 		int n = 0;
-		foreach (ServerPlayer p in Gente.ToList()) { Restaurar(p); n++; }
+		foreach (ServerPlayer p in Jogadores.ToList()) { Restaurar(p); n++; }
 		Avisar(adm, $"{n} corpo(s) restaurados.");
 		Anunciar("uma luz quente passa pelo mundo e fecha todas as feridas.");
 	}
@@ -1218,7 +1292,7 @@ public sealed partial class GameServer
 	private void AdminTrazerTodos(ServerPlayer adm)
 	{
 		int n = 0;
-		foreach (ServerPlayer p in Gente.ToList())
+		foreach (ServerPlayer p in Jogadores.ToList())
 		{
 			if (p == adm) continue;
 			MoveToZone(p.Id, adm.Zone, adm.Pos);
@@ -1274,7 +1348,7 @@ public sealed partial class GameServer
 	private void AdminSalvarTudo(ServerPlayer adm)
 	{
 		int n = 0;
-		foreach (ServerPlayer p in Gente.ToList()) { Persistir(p); n++; }
+		foreach (ServerPlayer p in Jogadores.ToList()) { Persistir(p); n++; }
 		GravarMundo();
 		SalvarCargos();
 		Avisar(adm, $"{n} personagem(ns), o mundo e os cargos foram gravados.");
@@ -1295,7 +1369,7 @@ public sealed partial class GameServer
 
 	private void Anunciar(string texto)
 	{
-		foreach (ServerPlayer p in Gente.ToList()) Avisar(p, texto);
+		foreach (ServerPlayer p in Jogadores.ToList()) Avisar(p, texto);
 	}
 
 	// =====================================================================
@@ -1343,8 +1417,8 @@ public sealed partial class GameServer
 	/// <summary>O `AssessAll` + `BP_Lists`: quem esta no mundo, do mais forte pro mais fraco.</summary>
 	private void AdminFichaDeTodos(ServerPlayer adm)
 	{
-		Avisar(adm, $"-- {Gente.Count()} no mundo, por poder --");
-		foreach (ServerPlayer p in Gente.OrderByDescending(p => p.Ficha.expressedBP))
+		Avisar(adm, $"-- {Jogadores.Count()} no mundo, por poder --");
+		foreach (ServerPlayer p in Jogadores.OrderByDescending(p => p.Ficha.expressedBP))
 			Avisar(adm, $"  {p.Ficha.expressedBP,16:N0}  {p.Name} ({p.Race}) em {p.Zone.Name}"
 					  + (p.Ficha.dead ? " [morto]" : p.Ficha.KO ? " [KO]" : ""));
 	}
@@ -1352,9 +1426,9 @@ public sealed partial class GameServer
 	/// <summary>O `Races()`: quantos de cada raca estao jogando agora.</summary>
 	private void AdminRacas(ServerPlayer adm)
 	{
-		if (!Gente.Any()) { Avisar(adm, "nao ha ninguem no mundo."); return; }
+		if (!Jogadores.Any()) { Avisar(adm, "nao ha ninguem no mundo."); return; }
 		Avisar(adm, "-- racas no mundo --");
-		foreach (IGrouping<string, ServerPlayer> g in Gente
+		foreach (IGrouping<string, ServerPlayer> g in Jogadores
 			.GroupBy(p => p.Race).OrderByDescending(g => g.Count()))
 			Avisar(adm, $"  {g.Key}: {g.Count()}");
 	}
@@ -1366,7 +1440,7 @@ public sealed partial class GameServer
 	private void AdminIps(ServerPlayer adm)
 	{
 		Avisar(adm, "-- enderecos --");
-		foreach (ServerPlayer p in Gente.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+		foreach (ServerPlayer p in Jogadores.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
 			Avisar(adm, $"  {p.Name} ({p.Conta}): {p.Peer?.Address.ToString() ?? "?"}"
 					  + (EhHost(p.Peer) ? "  [host]" : ""));
 	}
@@ -1378,7 +1452,7 @@ public sealed partial class GameServer
 	private void AdminGalaxia(ServerPlayer adm)
 	{
 		Avisar(adm, $"-- galaxia (seed {SeedDoUniverso}) --");
-		Avisar(adm, $"  zonas com gente: {Gente.Select(p => p.Zone.Name).Distinct().Count()}");
+		Avisar(adm, $"  zonas com gente: {Jogadores.Select(p => p.Zone.Name).Distinct().Count()}");
 		Avisar(adm, $"  construcoes de pe: {_noChao.Count}");
 
 		if (!Espaco.EhEspaco(adm.Zone))

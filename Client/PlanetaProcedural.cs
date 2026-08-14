@@ -77,6 +77,9 @@ public partial class PlanetaProcedural : Planeta
 	/// (arvore, pedra, poste) PARA o corpo mas nao corta a linha de visao. Aqui vale igual: so a
 	/// montanha cega. Sem este segundo mapa, ou a arvore viraria muro visual (uma floresta deixaria
 	/// o jogador cego) ou nada esconderia nada.
+	///
+	/// A DERIVACAO E DO CORE (<see cref="TerrenoGerado.QueEsconde"/>) e nao daqui: o servidor le a
+	/// mesma coisa pra decidir se ha parede entre duas vozes.
 	/// </summary>
 	public ZoneCollision? Sombra { get; private set; }
 
@@ -87,6 +90,25 @@ public partial class PlanetaProcedural : Planeta
 	/// o primeiro quadro em pe sobre o vazio.
 	/// </summary>
 	public Vector2? CentroInicial { get; set; }
+
+	/// <summary>
+	/// UM TERRENO JA PRONTO, posto ANTES do <see cref="Planeta.Entrar"/>. Nulo = o caminho normal
+	/// (perguntar a seed e gerar).
+	///
+	/// ============================ QUEM USA, E POR QUE NAO NASCEU UMA CLASSE NOVA ============================
+	/// O interior da Capital Ship (`Core.Tech.NaveGrande.Planta`). Ele nao vem de uma seed -- e uma
+	/// planta fixa, uma sala com casco e uma ponte --, mas dali pra frente ele e IDENTICO a um
+	/// planeta gerado: grade de chao, grade de cobertura, colisao em memoria e um
+	/// <see cref="PaletaDeBioma"/> dizendo com que tile cada classe se desenha.
+	///
+	/// Uma `InteriorDeNaveDesenhado : Planeta` teria que copiar as duzentas linhas que vem depois
+	/// daqui -- montar camadas por tinta, resolver os dez pinceis contra o `tileset.tres`, criar o
+	/// `PintorDePedacos` e ceder orcamento por quadro. Duzentas linhas duplicadas e a receita
+	/// conhecida de duas coisas que divergem: a primeira a ficar pra tras seria a entrega por
+	/// pedaco, e o sintoma seria a nave engasgando na entrada enquanto o planeta nao.
+	/// ====================================================================================================
+	/// </summary>
+	public TerrenoGerado? TerrenoPronto { get; set; }
 
 	/// <summary>Quantos pedacos estao montados. So pro diagnostico provar que nao cresce.</summary>
 	public int PedacosVivos => _pintor?.PedacosVivos ?? 0;
@@ -109,6 +131,13 @@ public partial class PlanetaProcedural : Planeta
 
 	private PintorDePedacos? _pintor;
 	private ulong _usDeGeracao;
+
+	/// <summary>
+	/// O QUE ESCREVER NO LOG sobre este mundo. Dois caminhos escrevem nele (a seed e a planta
+	/// injetada) e so um deles tem uma `MundoProcedural` pra pedir a descricao -- guardar o TEXTO em
+	/// vez da ficha e o que permite a linha final ser uma so.
+	/// </summary>
+	private string _descricao = "";
 
 	public override void _Ready()
 	{
@@ -143,22 +172,39 @@ public partial class PlanetaProcedural : Planeta
 		// ordenacao quando ela e continua de pai pra filho, e o World ja ordena acima.
 		YSortEnabled = true;
 
-		// QUALIFICADO DE PROPOSITO: a ficha de um mundo gerado e regra de SERVIDOR (ele e quem
-		// decide o que uma zona e), e o cliente aqui esta perguntando, nao decidindo. O caminho
-		// Client -> Server ja existe no projeto (Boot.cs, PauseMenu.cs). O lugar definitivo dela e
-		// o Core, em `PlanetaNoEspaco` -- ver o relatorio.
-		Jandirus.Core.World.MundoProcedural ficha = Jandirus.Core.World.MundoProcedural.DaSeed(Seed, NomeDoPlaneta);
-		Gravidade = ficha.Gravidade;
-		Tipo = TipoDoBioma(ficha.Bioma);
-		Largura = ficha.Lado;
-		Altura = ficha.Lado;
+		// TERRENO INJETADO: nao ha seed pra perguntar nem ruido pra rodar -- ver `TerrenoPronto`. A
+		// gravidade fica em 1 (uma nave nao puxa) e o "bioma" e so o rotulo que a planta trouxe.
+		if (TerrenoPronto is { } feito)
+		{
+			ulong tp = Time.GetTicksUsec();
+			Terreno = feito;
+			Gravidade = 1;
+			Tipo = TipoDoBioma(feito.Bioma);
+			Largura = feito.Largura;
+			Altura = feito.Altura;
+			_usDeGeracao = Time.GetTicksUsec() - tp;
+			_descricao = $"planta fixa {feito.Largura}x{feito.Altura}";
+		}
+		else
+		{
+			// QUALIFICADO DE PROPOSITO: a ficha de um mundo gerado e regra de SERVIDOR (ele e quem
+			// decide o que uma zona e), e o cliente aqui esta perguntando, nao decidindo. O caminho
+			// Client -> Server ja existe no projeto (Boot.cs, PauseMenu.cs). O lugar definitivo dela e
+			// o Core, em `PlanetaNoEspaco` -- ver o relatorio.
+			Jandirus.Core.World.MundoProcedural ficha = Jandirus.Core.World.MundoProcedural.DaSeed(Seed, NomeDoPlaneta);
+			Gravidade = ficha.Gravidade;
+			Tipo = TipoDoBioma(ficha.Bioma);
+			Largura = ficha.Lado;
+			Altura = ficha.Lado;
 
-		ulong t0 = Time.GetTicksUsec();
-		Terreno = GeradorDeTerreno.Gerar(ficha.Parametros());
-		_usDeGeracao = Time.GetTicksUsec() - t0;
+			ulong t0 = Time.GetTicksUsec();
+			Terreno = GeradorDeTerreno.Gerar(ficha.Parametros());
+			_usDeGeracao = Time.GetTicksUsec() - t0;
+			_descricao = ficha.Descricao();
+		}
 
 		PontoDeChegada = new Vector2(Terreno.Spawn.X, Terreno.Spawn.Y);
-		Sombra = MapaDoQueEsconde(Terreno);
+		Sombra = Terreno.QueEsconde;
 
 		MontarCamadas(Terreno);
 
@@ -173,7 +219,7 @@ public partial class PlanetaProcedural : Planeta
 		// A ASSINATURA NO LOG existe pra uma coisa so: conferir contra a que o servidor imprimiu.
 		// Dois numeros iguais provam que as duas pontas geraram o mesmo mundo; e o unico teste de
 		// determinismo que da pra fazer com o jogo rodando.
-		GD.Print($"[planeta] {NomeDoPlaneta}: {ficha.Descricao()} gerado em {_usDeGeracao / 1000.0:0.0} ms "
+		GD.Print($"[planeta] {NomeDoPlaneta}: {_descricao} gerado em {_usDeGeracao / 1000.0:0.0} ms "
 				 + $"| assinatura {Terreno.Assinatura():X16}"
 				 + (Terreno.ClareiraEscavada ? " | CLAREIRA ESCAVADA" : ""));
 	}
@@ -364,9 +410,10 @@ public partial class PlanetaProcedural : Planeta
 	{
 		public int Lado => Jandirus.Core.World.PedacosDoMapa.LadoPadrao;
 
-		public Rect2I Faixa => new(0, 0,
-								   (t.Largura + Lado - 1) / Lado,
-								   (t.Altura + Lado - 1) / Lado);
+		/// <summary>O mundo gerado TEM fim (o lado do planeta), entao a faixa nunca e nula.</summary>
+		public Rect2I? Faixa => new Rect2I(0, 0,
+										   (t.Largura + Lado - 1) / Lado,
+										   (t.Altura + Lado - 1) / Lado);
 
 		public int Celulas(int cx, int cy)
 		{
@@ -438,34 +485,10 @@ public partial class PlanetaProcedural : Planeta
 	// =====================================================================
 	// O QUE ESCONDE
 	// =====================================================================
-	/// <summary>
-	/// O mapa de VISAO: so montanha. Sai no formato "JCOL", o mesmo do `.vis` dos pre-feitos, pra
-	/// entrar direto no <see cref="Visao"/> sem um segundo tipo de mapa no jogo.
-	///
-	/// Nao da pra reusar o `TerrenoGerado.Colisao`: la a arvore tambem e parede (e ela PARA o
-	/// corpo, com razao), e uma floresta cegando o jogador inteiro seria outro jogo.
-	/// </summary>
-	private static ZoneCollision? MapaDoQueEsconde(TerrenoGerado t)
-	{
-		int n = t.Largura * t.Altura;
-		var bits = new byte[(n + 7) / 8];
-
-		// O PLANO DE IDENTIDADE SAI DE GRACA AQUI: a "identidade do tile" de um planeta gerado e
-		// a propria CLASSE DE TERRENO, que ja esta no `t.Chao`. Sem ele, a sombra num mundo gerado
-		// cairia no caminho de degradacao (`SemGrupo`) e voltaria a parar na primeira parede --
-		// que e menos errado, mas nao e o que os planetas pre-feitos passam a fazer.
-		var grupo = new byte[n];
-
-		for (int i = 0; i < n; i++)
-		{
-			if (t.Chao[i] != (byte)ClasseDeTerreno.Montanha) continue;
-			bits[i >> 3] |= (byte)(1 << (i & 7));
-			// +1 pra nao colidir com o 0, que e "borda do mundo" nos mapas pre-feitos
-			grupo[i] = (byte)(t.Chao[i] + 1);
-		}
-
-		return ZoneCollision.Montar(t.Largura, t.Altura, bits, grupo);
-	}
+	// A DERIVACAO MUDOU DE CASA e este metodo foi DELETADO: ela agora e o
+	// `TerrenoGerado.QueEsconde`, no Core. A voz local obrigou -- o SERVIDOR precisa da mesma
+	// resposta pra saber se ha parede entre duas pessoas, e duas derivacoes do mesmo mapa sao duas
+	// chances de divergir. Ver o cabecalho de `TerrenoGerado.QueEsconde`.
 
 	/// <summary>
 	/// Bioma do Core -> tipo da cena. Os seis nomes sao os MESMOS dos dois lados (foi de proposito:

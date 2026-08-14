@@ -82,6 +82,16 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DarAVolta(ServerPlayer pl)
 	{
+		// ============================ E ELE E QUEM DESLIGA A VOLTA NA SALA DO TEMPO ============================
+		// A Sala tem um vazio branco INFINITO em volta do quarto desenhado (ver `SalaDoTempo`), e a
+		// volta e o oposto exato disso: ela existe pra que o mundo nao acabe, e ali o mundo nao acaba
+		// sozinho. Se ela valesse la, o corpo daria a volta na beirada do BITSET e nunca chegaria ao
+		// vazio -- o sistema inteiro da 13.3 seria invisivel.
+		//
+		// NAO PRECISOU DE CASO NOVO: a Sala nao aparece em `Espaco.PreFeitos()` (nao se pousa nela),
+		// entao `EhPlaneta` ja responde falso. Fica escrito porque a proxima pessoa a ler a 13.3 vem
+		// procurar exatamente esta linha.
+		// ====================================================================================================
 		if (!Espaco.EhPlaneta(pl.Zone)) return false;
 
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
@@ -153,12 +163,27 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// O MAPA DE COLISAO DE UMA ZONA, seja ela de arquivo ou sorteada.
+	/// O MAPA DE COLISAO DE UMA ZONA, seja ela de arquivo, sorteada ou o INTERIOR DE UMA NAVE.
 	///
 	/// Os 18 lugares que precisam de colisao escrevem `_catalogo?.Get(...)?.Mapa` na mao, e por
 	/// isso NENHUM deles funciona em planeta gerado -- o catalogo so conhece os mapas de arquivo.
 	/// A volta precisa dos dois, entao ela pergunta pelos dois.
+	///
+	/// ============================ E AGORA SAO TRES, E O TERCEIRO E O QUE PROVA O DESENHO ============================
+	/// O interior da Capital Ship nao e arquivo nem seed: e uma PLANTA, funcao pura no Core
+	/// (<see cref="Jandirus.Core.Tech.NaveGrande.Planta"/>). Ele entrou aqui e em nenhum outro lugar,
+	/// e foi so isso: no mesmo instante em que esta linha existiu, a parede da nave passou a valer
+	/// pro `ValidateStep`, pro `PathBlocked` dos tiros, pro `PontoLivrePerto` da ejecao e pros outros
+	/// dezoito chamadores -- sem que nenhum deles soubesse que naves existem.
+	///
+	/// E o argumento inteiro pra este metodo ter sido escrito: um funil so pra "onde ha parede".
+	/// ============================================================================================================
 	/// </summary>
 	private ZoneCollision? MapaDaZonaOuCatalogo(ZoneKey zona) =>
-		zona.Kind == ZoneKey.KindProcedural ? MapaDaZona(zona) : _catalogo?.Get(zona)?.Mapa;
+		zona.Kind switch
+		{
+			ZoneKey.KindProcedural => MapaDaZona(zona),
+			ZoneKey.KindInterior => MapaDoInterior(zona) ?? _catalogo?.Get(zona)?.Mapa,
+			_ => _catalogo?.Get(zona)?.Mapa,
+		};
 }

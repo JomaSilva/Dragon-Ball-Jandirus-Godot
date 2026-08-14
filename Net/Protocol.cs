@@ -1,5 +1,6 @@
 ﻿using Jandirus.Core.Appearance;
 using Jandirus.Core.Races;
+using Jandirus.Core.Skills;
 using Jandirus.Core.World;
 using LiteNetLib;
 using LiteNetLib.Utils;
@@ -20,6 +21,26 @@ public static class Protocol
     /// <summary>Canais do LiteNetLib. Estado que se repete vai por canal NAO confiavel: o proximo pacote conserta.</summary>
     public const byte ChannelReliable = 0;   // login, troca de zona, correcao
     public const byte ChannelState = 1;      // input e snapshot (sequenciado, sem reenvio)
+
+    /// <summary>
+    /// A VOZ, E SO ELA. Canal PROPRIO e nao confiavel -- ver <see cref="C2S.Voz"/>.
+    ///
+    /// ============================ POR QUE NAO CABIA NO <see cref="ChannelState"/> ============================
+    /// Os dois sao nao confiaveis, entao a tentacao era reusar. Nao da: o `ChannelState` e
+    /// **sequenciado**, e sequenciado quer dizer *"o pacote velho e descartado quando um novo ja passou"*.
+    /// Isso e exatamente certo pro snapshot (a posicao de agora torna a de 33 ms atras inutil) e
+    /// exatamente errado pra voz: dois quadros de voz seguidos sao dois PEDACOS DIFERENTES da mesma
+    /// frase, e nenhum deles substitui o outro. Compartilhar o canal faria o snapshot comer silabas.
+    /// ======================================================================================================
+    ///
+    /// **AS DUAS PONTAS TEM QUE SUBIR JUNTAS**: `ChannelsCount` e do `NetManager` e vale por conexao. Um
+    /// servidor com 3 canais e um cliente com 2 nao negociam -- o pacote do canal 2 e simplesmente
+    /// jogado fora, calado.
+    /// </summary>
+    public const byte ChannelVoz = 2;
+
+    /// <summary>Quantos canais o `NetManager` das DUAS pontas abre. Ver <see cref="ChannelVoz"/>.</summary>
+    public const byte TotalDeCanais = 3;
 
     /// <summary>
     /// A ENTRADA TEM TRES PASSOS, e nessa ordem: entrar na CONTA, escolher (ou criar) o
@@ -88,6 +109,23 @@ public static class Protocol
         /// ===================================================================================
         /// </summary>
         DeleteChar = 23,
+
+        /// <summary>
+        /// UM QUADRO DE VOZ SAINDO DA MINHA BOCA: `ushort seq` + `byte n` + n bytes de Opus.
+        ///
+        /// ============================ NAO HA "PRA QUEM" NESTE PACOTE ============================
+        /// E a metade mais importante do desenho. O cliente diz *"estou falando"* e nada mais -- quem
+        /// ouve **e uma decisao que ele nunca toma**. Um campo de destino aqui (ainda que "so pra a
+        /// zona") seria a porta pra um cliente modificado escolher a mesa ao lado, e nao ha conferencia
+        /// no servidor que valha mais do que simplesmente nao existir o campo.
+        /// ====================================================================================
+        ///
+        /// Vai no <see cref="ChannelVoz"/>, **nao confiavel**: quadro de voz perdido se JOGA FORA.
+        /// Retransmitir voz e pior que perde-la -- o quadro atrasado chega depois do proximo e trava a
+        /// fila inteira atras dele. O servidor recusa em silencio o que passar do teto (ver
+        /// <see cref="Core.Social.VozLocal.Torneira"/>).
+        /// </summary>
+        Voz = 24,
     }
 
     /// <summary>
@@ -148,8 +186,29 @@ public static class Protocol
     /// A POSE que os outros veem. Cabe em 3 bits dentro do byte que ja carregava direcao e
     /// "andando" -- entao mostrar todo mundo socando e meditando custa ZERO byte a mais por
     /// jogador por tick.
+    ///
+    /// ============================ POR QUE `Nadando` E POSE, E NAO UM BIT ============================
+    /// Nadar precisava viajar (quem esta do lado tem que ver a pose de voo e NAO ver sombra nenhuma),
+    /// e o segundo byte de flags do <see cref="EntityState"/> fechou no `BitNaveGrande` -- o proprio
+    /// comentario de la diz que espremer mais um seria errado. Aqui havia espaco de graca: o campo ja
+    /// tem 3 bits e usava 0..5.
+    ///
+    /// E DIZER A COISA CERTA sai mais barato do que o bit diria: nadar **e** uma pose (o DM faz
+    /// literalmente `icon_state = "Flight"`, `Swim.dm:17`), e nao um modificador de voo -- o corpo
+    /// nao sobe, nao muda de andar e nao ganha altura no fio. Um bit ao lado de `Voando` teria
+    /// convidado exatamente a leitura errada.
+    ///
+    /// O QUE ELA NAO E: a fonte do MODO DE TRAVESSIA. Socar nadando devolve `Atacando` (o ataque vem
+    /// antes no `ServerPlayer.Pose`), e quem lesse o modo daqui veria o corpo "parar de nadar" a cada
+    /// soco -- no meio do lago. Quem carrega o modo pro dono do corpo e o bit de nado do
+    /// <see cref="SheetState"/>, que e continuo. Ver `SheetState.Nadando`.
+    /// =============================================================================================
     /// </summary>
-    public enum Pose : byte { Normal = 0, Treinando = 1, Meditando = 2, Atacando = 3, Voando = 4, Nocauteado = 5 }
+    public enum Pose : byte
+    {
+        Normal = 0, Treinando = 1, Meditando = 2, Atacando = 3, Voando = 4, Nocauteado = 5,
+        Nadando = 6,
+    }
 
     /// <summary>
     /// OS DECALQUES DE CHAO -- marcas que o mundo ganha e perde. Ver `Client/Decalques.cs`.
@@ -181,6 +240,26 @@ public static class Protocol
         /// (96x96 contra o recorte `small_crater`), a escala final e o prazo. Ver `Decalques`.
         /// </summary>
         CrateraGrande = 7,
+        /// <summary>
+        /// `Body Parts Bloody`: O MEMBRO ARRANCADO, caido no chao.
+        ///
+        /// ============================ POR QUE ELE E UM DECALQUE ============================
+        /// No BYOND a peca e um OBJETO de verdade (`/obj/bodyparts`, `mobparts.dm:328-477`): da pra
+        /// pegar, largar e ate comer (`Eat`, `:383-393`, 20 de nutricao). Aqui ela e desenho, e a
+        /// diferenca esta assumida: este porte nao tem item-no-chao nenhum -- `Core/Items` so tem
+        /// inventario, e ate colher uma maca poe o item direto na mochila sem passar pelo mundo.
+        /// Fazer o braco pegavel seria inventar um sistema de objeto solto com dono no servidor pra
+        /// atender um caso; o pedido do dono foi "SPAWNAR NO CHAO o icon", que e o que isto faz.
+        ///
+        /// Se a peca precisar virar comida um dia, ela sai daqui e vira item -- e nao se acrescenta
+        /// "pegavel" a um decalque, que e chao por definicao.
+        /// ==================================================================================
+        ///
+        /// UNICO TIPO COM CARGA: leva um byte a mais no fio (`Core.Combat.PecaDeCorpo`),
+        /// porque cabeca, braco e visceras sao recortes diferentes da MESMA folha. Ver
+        /// `GameServer.MandarDecalque`.
+        /// </summary>
+        Membro = 8,
     }
 
     /// <summary>
@@ -470,23 +549,281 @@ public static class Protocol
         /// =====================================================================================================
         /// </summary>
         Furia = 36,
+
+        /// <summary>
+        /// UM ATAQUE DE KI NASCEU OU MORREU: o ACONTECIMENTO, nao o estado.
+        ///
+        /// ============================ POR QUE DOIS CANAIS PRO MESMO TIRO ============================
+        /// A POSICAO do projetil viaja no <see cref="Snapshot"/>, num segundo bloco depois dos corpos
+        /// (ver <see cref="ProjetilState"/>) -- e o lugar certo: e estado continuo, 30 Hz, sequenced,
+        /// um buffer por zona, e um pacote perdido custa um quadro de posicao velha e nada mais.
+        ///
+        /// Mas NASCER e MORRER nao sao estado: sao os dois instantes em que ha efeito pra tocar (o
+        /// fogo saindo da mao, o estouro na cara de quem levou) e a unica hora em que o tipo, a cor e
+        /// o dono precisam ser ditos. Perder isso num canal sem garantia deixa o projetil aparecer do
+        /// nada no meio do caminho e sumir sem estourar -- e o cliente nao teria como saber que
+        /// perdeu. Entao os dois eventos vao no canal confiavel, e so eles.
+        ///
+        /// E A MESMA DIVISAO DO <see cref="Zanzo"/>/<see cref="Clash"/>: evento confiavel, estado
+        /// barato. O `Sub` diz qual dos dois -- ver <see cref="ProjetilSub"/>.
+        /// ===========================================================================================
+        /// </summary>
+        Projetil = 37,
+
+        /// <summary>
+        /// AS TECNICAS DE KI QUE EU INVENTEI, e a MESA aberta (se houver).
+        ///
+        /// ============================ UM PACOTE SO PRA AS DUAS COISAS ============================
+        /// A tela de montagem precisa das duas ao mesmo tempo -- a lista (pra escolher qual editar,
+        /// e pra saber quantos slots restam) e o rascunho em edicao com os pontos ja gastos. Manda-las
+        /// em dois pacotes deixaria um quadro em que a tela mostra a mesa nova ao lado da contagem
+        /// velha, e o numero de pontos e justamente o que o jogador esta olhando quando clica.
+        ///
+        /// E ELE E A UNICA FONTE DOS PONTOS. O cliente NAO recalcula custo nenhum: aperta o botao,
+        /// o servidor aplica a regra do `Core` e devolve a mesa inteira. Uma segunda copia da tabela
+        /// de precos no cliente e a regra 4 da casa sendo violada -- e a tabela tem dezoito linhas.
+        /// ====================================================================================
+        /// </summary>
+        Customizadas = 38,
+
+        /// <summary>
+        /// OS PLANETAS MORTOS -- a lista inteira, sempre que ela muda (e no login).
+        ///
+        /// ============================ POR QUE ELE PRECISA EXISTIR ============================
+        /// O cliente **enumera planetas sozinho**: a carta estelar chama `Espaco.PreFeitos()` e
+        /// `Sistemas.Do` direto, e desenha o que esta a anos-luz da vizinhanca ativa. Um bit no
+        /// <see cref="Vizinhanca"/> (que so fala dos planetas por perto) nao alcancaria a carta --
+        /// ela poria "Viajar" em cima de um planeta que ja virou po.
+        ///
+        /// **LISTA INTEIRA, e nao delta.** Ela e pequena por construcao (so entra o que alguem
+        /// matou: duas ou tres entradas num servidor com as sagas consumadas), e um delta exigiria
+        /// que as duas pontas concordassem sobre o que ja foi mandado -- estado a mais, pra
+        /// economizar bytes que nao existem.
+        ///
+        /// Formato: `byte n`, e por entrada `string chave` + `string nome` + `byte fase` +
+        /// `byte estagio`. A CHAVE e a identidade (nome de pre-feito, ou "#seed" de procedural) --
+        /// ver `Core.World.ChaveDePlaneta`, e por que o nome sozinho nao serve.
+        /// ================================================================================
+        /// </summary>
+        Mortos = 39,
+
+        /// <summary>
+        /// ONDE ESTA A MINHA NAVE, na coordenada da GALAXIA -- o "Observar" da ponte da Capital Ship.
+        ///
+        /// ============================ POR QUE UM PACOTE, E NAO UMA LINHA DE CHAT ============================
+        /// O texto o `Chat` ja daria. O que ele nao da e a CARTA ESTELAR se centrar na nave: dentro de
+        /// uma sala de 100x100 sem janela, `MapaEstelar.MinhaPosicaoNaGalaxia()` nao tem o que
+        /// responder -- a zona do interior nao fica em lugar nenhum do universo, e o jogador ficaria
+        /// olhando pra o ultimo lugar de onde ele desceu, que pode ser outra galaxia.
+        ///
+        /// No DM isso era `client.eye = ship`, uma camera. Este port nao tem olho remoto (o corte de
+        /// interesse e por ZONA), e a carta estelar responde melhor a mesma pergunta -- ver
+        /// `GameServer.NaveGrande.ObservarDaPonte`.
+        ///
+        /// Formato: `float x` + `float y` + `string zona` + `float cascoPct`.
+        ///
+        /// NAO HA PACOTE DE "APAGAR", e nao deve haver: quem apaga a marcacao e o proprio cliente,
+        /// quando a zona dele deixa de ser o interior de uma nave (ver `World.OnZoneChanged`). Ele
+        /// sabe disso sozinho e sabe na hora; um segundo caminho pelo servidor seria uma verdade
+        /// duplicada que um dia chega atrasada -- e o sintoma seria a carta apontando pra um casco
+        /// que ficou pra tras.
+        /// ================================================================================================
+        /// </summary>
+        Nave = 40,
+
+        /// <summary>
+        /// A PREVIA DA LIMPEZA TOTAL DO SERVIDOR -- o primeiro dos dois passos do verb que apaga tudo.
+        ///
+        /// ============================ POR QUE A PREVIA E UM PACOTE, E NAO LINHAS DE CHAT ============================
+        /// O que este pacote carrega nao e informacao: e o SEGUNDO PASSO da confirmacao. Ele traz um
+        /// codigo sorteado na hora, que so existe no servidor e so vale por um minuto -- e sem ele o
+        /// verb que apaga o mundo nao roda. Isso torna impossivel: apagar o servidor com um clique,
+        /// apagar por um botao que o mouse encostou, e apagar com um comando decorado de antes
+        /// (o codigo de ontem nao vale hoje).
+        ///
+        /// Pelo chat isso seria fragil de um jeito bobo: a linha rola pra cima com qualquer conversa,
+        /// e o admin confirmaria de memoria -- ou pior, copiaria do log um codigo velho. Num pacote, o
+        /// painel desenha a lista, o codigo e o campo de digitacao no mesmo lugar, e o codigo morre
+        /// junto com a tela.
+        ///
+        /// AS LINHAS SAO O INVENTARIO: uma por sistema do mundo, com a CONTAGEM ("858 conta(s)",
+        /// "12 construcao(oes) de pe"). Quem confirma tem que saber o tamanho do que esta fazendo --
+        /// e o tamanho e um numero, nao um adjetivo.
+        /// ========================================================================================================
+        ///
+        /// Formato: `string codigo` + `ushort segundosDeValidade` + `byte n` + n x `string linha`.
+        /// Codigo vazio quer dizer "a previa venceu ou foi consumida" -- e o que fecha o painel.
+        /// </summary>
+        Limpeza = 41,
+
+        /// <summary>
+        /// QUAL NAVE ESTA EMBAIXO DE MIM -- o alvo da tecla E quando nao ha nada no chao pra apertar.
+        ///
+        /// ============================ POR QUE O SNAPSHOT NAO RESPONDE ISTO ============================
+        /// Ele quase responde: <see cref="EntityState.Pilotando"/> diz que ha uma nave, e
+        /// <see cref="EntityState.NaveGrande"/> diz se ela e a grande. Dois bits, e eles bastavam pra
+        /// escolher o SPRITE, que era pra que nasceram. Nao bastam pra montar um MENU: o menu do pod
+        /// oferece "Melhorar velocidade" e o do foguete oferece "Recondicionar", e os dois bits nao
+        /// distinguem pod de foguete. E nao ha um terceiro bit: o segundo byte de flags fechou com o
+        /// `BitNaveGrande` (ver o comentario de la).
+        ///
+        /// ALARGAR O SNAPSHOT SERIA O CANAL ERRADO de qualquer jeito. Ele sai 30 vezes por segundo
+        /// POR CORPO, e "em que veiculo eu estou" muda uma vez por embarque e so interessa a UMA
+        /// pessoa -- a que embarcou. E o mesmo argumento que o proprio `BitNaveGrande` escreveu pra
+        /// nao mandar o caminho da arte, invertido: aquilo todo mundo precisa ver, isto nao.
+        ///
+        /// Entao ele e pessoal e por evento, igual ao <see cref="Nave"/> logo acima: sai no embarque,
+        /// no desembarque, ao assumir e ao largar o leme, e quando a nave deixa de existir.
+        /// ==========================================================================================
+        ///
+        /// Formato: `string tipo` + `string nome`. O tipo e o id do catalogo ("Spacepod",
+        /// "Rocket_Ship", "Capital_Ship") e e ele que escolhe as acoes do menu; o nome e o que o
+        /// menu ESCREVE, e vem junto porque o veiculo nao esta em lista nenhuma do cliente -- ele
+        /// saiu do pacote de construcoes ao ser pilotado.
+        ///
+        /// **TIPO VAZIO QUER DIZER "NENHUM"**, e por isso este pacote tem o "apagar" que o
+        /// <see cref="Nave"/> nao tem: aqui quem desembarca continua na mesma zona (o pod fica aos
+        /// seus pes), entao o cliente nao tem como saber sozinho que deixou de estar a bordo.
+        /// </summary>
+        Veiculo = 42,
+
+        /// <summary>
+        /// OS CHEFES QUE EU JA VI, e portanto posso reenfrentar dentro da propria mente.
+        ///
+        /// ============================ POR QUE O NOME VIAJA JUNTO DO ID ============================
+        /// Porque o cliente **nao le o `npcs.json`**. Ele conhece o que pode apertar, e conhece pelo
+        /// pacote -- exatamente o argumento que o <see cref="Tech"/> ja escreveu pro catalogo de
+        /// obras ("a arte vem do servidor porque o cliente nao le `construcoes.json`") e que o
+        /// <see cref="Veiculo"/> repetiu pro nome do veiculo. Mandar so o id faria o menu oferecer
+        /// "enfrentar freeza_namek".
+        ///
+        /// LISTA INTEIRA E NAO INCREMENTO, como os <see cref="Estilos"/> e as
+        /// <see cref="Customizadas"/>: ela tem poucas entradas, cresce uma vez por chefe na vida do
+        /// personagem e um "acrescente este" exigiria que as duas pontas nunca perdessem um pacote.
+        /// Sai no login e a cada chefe novo anotado.
+        /// ====================================================================================
+        ///
+        /// Formato: `byte n` + n x (`string molde`, `string nome`). O molde volta ao servidor no
+        /// canal de habilidade como `mente_chefe:&lt;molde&gt;`.
+        /// </summary>
+        MenteChefes = 43,
+
+        /// <summary>
+        /// UM QUADRO DE VOZ DE ALGUEM QUE EU TENHO DIREITO DE OUVIR.
+        ///
+        /// ============================ ELE SO EXISTE PORQUE O SERVIDOR JA CORTOU ============================
+        /// Este pacote **nunca sai** pra quem esta longe, em outra zona, ou pra quem nao cabe nas quatro
+        /// vozes mais proximas (<see cref="Core.Social.VozLocal.MaxFalantesPorOuvinte"/>). Nao ha campo
+        /// "ignore isto": quem nao devia ouvir nao recebe o byte. Ver o cabecalho de `VozLocal`.
+        /// ================================================================================================
+        ///
+        /// Formato: `int falante` + `ushort seq` + `byte distancia` + `byte parede` + `byte n` + n bytes
+        /// de payload Opus. **49 B tipicos**, + 28 B de UDP/IP = 77 B por quadro, 50x por segundo.
+        ///
+        ///   * `seq` -- numero do quadro NA ORIGEM. O canal e sequenciado e nao confiavel, entao chega
+        ///     buraco: e o `seq` que diz ao decodificador que houve perda (o Opus preenche o vao) em
+        ///     vez de ele emendar duas metades de silabas diferentes.
+        ///   * `distancia` -- 0..255 sobre o alcance da fala. **Nao e redundante com a posicao do corpo**:
+        ///     quem voa alto some do snapshot de quem esta no chao (`Voo.Enxerga`), e ai o ouvinte tem a
+        ///     voz e nao tem o corpo. Ver `VozOuvida.Tocar`.
+        ///   * `parede` -- 1 quando ha parede no meio. **Quem responde isso e o servidor**, consultando o
+        ///     MESMO bitset que cega a vista (`.vis`). O cliente decide como aquilo SOA; ele nao decide
+        ///     se ha parede, senao a voz e a vista discordariam sobre o que e parede.
+        /// </summary>
+        Voz = 44,
+
+        /// <summary>
+        /// ESTE CORPO ESTA MORTO -- e o desenho disso e a AUREOLA sobre a cabeca.
+        ///
+        /// Formato: `int id` + `bool tem`. Dois campos, cinco bytes.
+        ///
+        /// ============================ POR QUE NAO E UM BIT DO SNAPSHOT ============================
+        /// Os dois bytes de flags do <see cref="EntityState"/> estao CHEIOS -- o primeiro com direcao
+        /// (2 bits), pose (3) e rabo/oculto/andando; o segundo com os oito de carga, sobrecarga,
+        /// deitado, correndo, voando, sem-redeas, pilotando e nave grande. Um terceiro byte custaria
+        /// um byte por corpo por tique (com 151 habitantes na zona, ~4,5 KB/s) pra carregar UM bit
+        /// que muda **duas vezes por vida de personagem**.
+        ///
+        /// Entao ela vai pelo canal do estado LENTO, que este port ja tem em duas cores -- o
+        /// <see cref="Feridas"/> e o <see cref="Forma"/>: reliable, so quando MUDA, e reenviado a
+        /// quem entra na zona. Custo por tique: zero.
+        ///
+        /// ============================ E A POSE NAO RESPONDE ISTO ============================
+        /// A tentacao seguinte era um valor novo no enum <see cref="Pose"/> (sobra o 7). Nao serve:
+        /// pose e o que o corpo ESTA FAZENDO, e o morto do Outro Mundo anda, voa e treina -- a
+        /// aureola sumiria a cada passo dele. Ver `Core/World/Alem.cs`.
+        /// ======================================================================================
+        /// </summary>
+        Aureola = 45,
     }
 
-    /// <summary>Os momentos do ZanzoClash. Ver <see cref="S2C.Clash"/>.</summary>
+    /// <summary>Os dois instantes de um ataque de ki. Ver <see cref="S2C.Projetil"/>.</summary>
+    public enum ProjetilSub : byte
+    {
+        /// <summary>
+        /// Saiu da mao de alguem: id do tiro, id do dono, tipo, cor, e o rumo. O cliente ja pode
+        /// desenha-lo antes do primeiro snapshot chegar.
+        /// </summary>
+        Nasceu = 0,
+
+        /// <summary>
+        /// Acabou: id do tiro, o motivo (<c>Core.Combat.FimDeProjetil</c>) e onde. O motivo escolhe o
+        /// efeito -- estouro em corpo, lasca em parede, apagar no ar.
+        /// </summary>
+        Morreu = 1,
+    }
+
+    /// <summary>
+    /// QUE DISPUTA E ESTA -- o primeiro byte do <see cref="ClashSub.Comecou"/>.
+    ///
+    /// ============================ UM OPCODE, TRES DISPUTAS ============================
+    /// O ZanzoClash e o embate de ki sao a MESMA conversa no fio: comecou, letra, placar, veredito,
+    /// acabou. Dar opcode proprio ao segundo duplicaria as cinco mensagens, os cinco eventos do
+    /// cliente e a tela inteira do quick time event -- e a instrucao desta camada foi explicita:
+    /// *"nao escreva um segundo embate; generalize se precisar"*.
+    ///
+    /// O que muda entre eles e SO O VOCABULARIO na tela (o titulo, a dica e a frase do desfecho), e
+    /// pra isso um byte basta. O `Placar` serve os dois porque um cabo de guerra e um cabo de guerra:
+    /// no ZanzoClash sao pontos meus contra pontos dele, no embate de ki e o medidor de 0 a 100
+    /// contra o que falta dele -- a barra desenha `meus / (meus + dele)` nos dois casos.
+    /// ==================================================================================
+    /// </summary>
+    public enum TipoDeEmbate : byte
+    {
+        /// <summary>ZANZO CLASH: dois corpos rapidos demais pra vista. Ver `GameServer.ZanzoClash.cs`.</summary>
+        Velocidade = 0,
+
+        /// <summary>Dois FEIXES se encontrando no ar. `BeamClash.dm`.</summary>
+        FeixeContraFeixe = 1,
+
+        /// <summary>Um feixe contra as MAOS de quem aguenta. Ver `EmbateDeKi.PoderDeSegurar`.</summary>
+        FeixeContraGuarda = 2,
+    }
+
+    /// <summary>Os momentos de um embate -- ZanzoClash e colisao de ki. Ver <see cref="S2C.Clash"/>.</summary>
     public enum ClashSub : byte
     {
         /// <summary>
-        /// Comecou. PESSOAL, um pacote por lutador: eu, o outro, quantos ms dura, quanto vale
-        /// cada acerto MEU e quanto vale cada acerto DELE (a vantagem de poder).
+        /// Comecou. PESSOAL, um pacote por lutador: o <see cref="TipoDeEmbate"/>, eu, o outro,
+        /// quantos ms dura, quanto vale cada acerto MEU e quanto vale cada acerto DELE (a vantagem
+        /// de poder).
         /// </summary>
         Comecou = 0,
         /// <summary>Uma tecla nova: a letra (byte ASCII) e o prazo em ms.</summary>
         Tecla = 1,
         /// <summary>O placar: os meus pontos e os dele, pra barra de cabo de guerra.</summary>
         Placar = 2,
-        /// <summary>Um baque invisivel em (x, y): os dois corpos se cruzaram ali.</summary>
+        /// <summary>
+        /// Um baque em (x, y). No ZanzoClash e o cruzamento invisivel dos dois corpos; no embate de
+        /// ki e o ponto de encontro estourando -- que ANDA, e por isso o ponto viaja no pacote.
+        /// </summary>
         Baque = 3,
-        /// <summary>Acabou: quem venceu.</summary>
+
+        /// <summary>
+        /// Acabou: quem venceu e quem perdeu. **Os dois zerados = EMPATE** (`draw()` do
+        /// `BeamClash.dm:355`), que so o embate de ki produz: no ZanzoClash o desempate por poder
+        /// garante que sempre ha um vencedor.
+        /// </summary>
         Acabou = 4,
 
         /// <summary>
@@ -618,6 +955,49 @@ public static class Protocol
         public float DiscReal, DiscAtual;
         public bool DiscLigada;
 
+        /// <summary>
+        /// ============================ O MULTIPLICADOR DE TREINO, E AS PARTES DELE ============================
+        /// <see cref="GanhoDeTreino"/> e o `bp_gain_mult()` do DM (`HtmlUI.dm:108`) ja calculado pelo
+        /// SERVIDOR: quantas vezes o treino de agora rende, comparado com uma sessao neutra
+        /// (gravidade 1, sem peso, fora de zona especial).
+        ///
+        /// **Ele vem pronto, e nao em pedacos pro cliente montar.** Peso, gravidade, aclimatacao,
+        /// folego e Sala do Tempo entram numa formula que ja existe uma vez no `Core`
+        /// (`Fighter.MultiplicadorDeGanho`); refaze-la aqui seria a segunda copia que a PARTE 3 do
+        /// plano manda evitar -- e a copia do CLIENTE e sempre a que envelhece calada, porque so o
+        /// servidor tem `Egains`, `GravMastered` e `zoneGainMult`.
+        ///
+        /// Os quatro campos ao lado sao os PEDACOS, e eles existem so pra a frase entre parenteses:
+        /// "2800x (10x grav · 1,4x pesos · Sala 280x)". Sem eles o jogador leria um numero magico e
+        /// nao saberia o que mudar pra ele subir -- que e o mesmo que nao mostrar nada.
+        ///
+        /// <see cref="Esmagamento"/> e a razao de esmagamento (gravidade/maestria, ou o peso, o que
+        /// for pior). Ela e o AVISO da conta: acima de 1 o corpo perde vida e velocidade, e a partir
+        /// de `Core.Stats.Esmagamento.RazaoQuePrende` ele fica preso no chao -- e o cliente le este
+        /// mesmo campo pra parar de tentar andar, em vez de brigar com as correcoes do servidor.
+        /// ==================================================================================================
+        /// </summary>
+        public float GanhoDeTreino, Gravidade, GravEfetiva, PesoMult, ZonaMult, Esmagamento;
+
+        /// <summary>
+        /// ============================ A SESSAO DA SALA DO TEMPO ============================
+        /// <see cref="SalaFase"/>: 0 = nao esta na Sala, 1 = sessao rendendo, 2 = acabou e a janela
+        /// de saida esta aberta, 3 = PRESO. <see cref="SalaMinutos"/> sao os minutos REAIS que
+        /// faltam pra a fase virar (a sessao acabar, ou a porta trancar).
+        ///
+        /// **ELES VEM PRONTOS, e pelo mesmo motivo do multiplicador acima**: o cliente nao tem o
+        /// relogio do mundo do servidor, nao sabe quantos dias in-game a sessao gastou e nao pode
+        /// saber quando a janela foi armada (ela e um estado vivo do servidor). Uma conta de tempo
+        /// duplicada seria a que atrasa e mostra "restam 2 minutos" pra alguem que ja esta preso.
+        ///
+        /// A CONTA E EM DIAS IN-GAME do lado de la (ver `Core/World/SalaDoTempo.cs`); o que viaja e
+        /// minuto real porque e o que se le num relogio -- ninguem conta a propria vida em dias de
+        /// um planeta de 24 minutos.
+        /// ================================================================================
+        /// </summary>
+        public byte SalaFase;
+        public float SalaMinutos;
+
         public readonly bool Tem(Poder p) => (Poderes & (uint)p) != 0;
 
         public readonly void Write(NetDataWriter w)
@@ -633,6 +1013,9 @@ public static class Protocol
             w.Put((byte)Math.Min(ms.Length, 255));
             for (int i = 0; i < ms.Length && i < 255; i++) { w.Put(ms[i].Item1); w.Put(ms[i].Item2); }
             w.Put(Disciplina); w.Put(DiscReal); w.Put(DiscAtual); w.Put(DiscLigada);
+            w.Put(GanhoDeTreino); w.Put(Gravidade); w.Put(GravEfetiva);
+            w.Put(PesoMult); w.Put(ZonaMult); w.Put(Esmagamento);
+            w.Put(SalaFase); w.Put(SalaMinutos);
         }
 
         public static AtributosState Read(NetDataReader r) => new()
@@ -649,6 +1032,14 @@ public static class Protocol
             DiscReal = r.GetFloat(),
             DiscAtual = r.GetFloat(),
             DiscLigada = r.GetBool(),
+            GanhoDeTreino = r.GetFloat(),
+            Gravidade = r.GetFloat(),
+            GravEfetiva = r.GetFloat(),
+            PesoMult = r.GetFloat(),
+            ZonaMult = r.GetFloat(),
+            Esmagamento = r.GetFloat(),
+            SalaFase = r.GetByte(),
+            SalaMinutos = r.GetFloat(),
         };
 
         private static (ushort, float)[] LerMaestrias(NetDataReader r)
@@ -1018,6 +1409,37 @@ public struct SheetState
     /// </summary>
     public double Nutricao, NutricaoMax;
 
+    /// <summary>
+    /// QUAO INTEIRO O CORPO ESTA, de 0 a 1 -- a "% de BP efetivo" ao lado do BP.
+    ///
+    /// VEM CALCULADA DO SERVIDOR, e tem que vir: ela e `expressedBP / peakexBP`, e sem scouter os
+    /// DOIS chegam como <see cref="double.NaN"/> (ver `GameServer.Sigilo`). O cliente nao teria de
+    /// onde tirar a razao, e mandar o `peakexBP` cru pra ele fazer a conta seria vazar poder
+    /// absoluto pra quem nao tem aparelho. Razao pode; numero nao.
+    ///
+    /// Quem a define e o Core -- <see cref="Jandirus.Core.Stats.Fighter.Inteireza"/>. Aqui ela so viaja.
+    /// </summary>
+    public double Inteireza;
+
+    /// <summary>
+    /// O MULTIPLICADOR TOTAL sobre o BP base (`expressedBP / BP`), pra aba Forms.
+    ///
+    /// Mesma licenca de sigilo da <see cref="Inteireza"/>: "x345" nao diz de QUE numero, e o DM e
+    /// explicito em nao esconder multiplicador. Ver <see cref="Jandirus.Core.Stats.Fighter.MultiplicadorTotal"/>.
+    /// </summary>
+    public double MultTotal;
+
+    /// <summary>
+    /// ATE ONDE O KI PODE IR CARREGANDO, em RAZAO sobre o <see cref="MaxKi"/> (o `powerupcap`).
+    ///
+    /// A barra de Ki precisa dele pra ter pra onde crescer: de fabrica o teto e 1,4 (140% do
+    /// tanque) e com as skills de power-up no talo passa de 3,8. Sem este numero o trilho teria
+    /// que ser 1,0 -- que e exatamente o corte que fazia o HUD mentir acima dos 100%.
+    ///
+    /// Nunca menor que 1: um teto abaixo do proprio tanque nao existe e viraria divisao esquisita.
+    /// </summary>
+    public double TetoKi;
+
     public float SpeedStat;
 
     /// <summary>
@@ -1058,15 +1480,83 @@ public struct SheetState
     /// </summary>
     public bool Empurrado => (Estado & 32) != 0;
 
+    /// <summary>
+    /// O SEGUNDO BYTE DO CORPO. Nasce com um bit usado e sete livres.
+    ///
+    /// ============================ O PRIMEIRO ENCHEU, E ENCHEU POR CIMA ============================
+    /// <see cref="Estado"/> parece ter espaco (KO, morto, guarda, letal, rabo, arremessado = 6 bits),
+    /// mas os DOIS DE CIMA ja tem dono: `DirecaoDeitado &lt;&lt; 6` carrega o angulo do corpo caido.
+    /// Quem "achasse" o 64 livre apagaria a direcao da queda -- um defeito que so aparece no instante
+    /// do nocaute, e que este projeto ja pagou uma vez (o dono fotografou as duas telas com o mesmo
+    /// corpo caido pra lados diferentes).
+    ///
+    /// UM BYTE NOVO NAO E CARO AQUI, e vale dizer por que: a ficha e um pacote PESSOAL de 5 Hz, nao o
+    /// snapshot de zona de 30 Hz. Sao 5 bytes por segundo por jogador -- contra os ~110 que o pacote
+    /// ja tem em `double`.
+    /// =========================================================================================
+    /// </summary>
+    public byte Estado2;
+
+    /// <summary>
+    /// ESTOU NADANDO (o `swim` do original).
+    ///
+    /// ============================ POR QUE ELE VEM PELA FICHA ============================
+    /// Este bit e o irmao do <see cref="Empurrado"/>, e nao por acaso: os dois sao a MESMA especie de
+    /// informacao -- **como o meu corpo esta atravessando o mundo** --, e e ela que o cliente precisa
+    /// pra prever o passo pela mesma regra que o servidor vai conferir. Ter um vindo pela ficha e o
+    /// outro por um canal de evento seria manter duas verdades sobre a mesma pergunta.
+    ///
+    /// A FICHA E CONTINUA, e e isso que fecha o buraco: um canal de evento ("ligou"/"desligou")
+    /// perde o estado se o pacote se perder ou se o servidor desligar o nado por um caminho que
+    /// alguem esqueceu de avisar. A ficha reafirma o bit 5 vezes por segundo, e o servidor a manda na
+    /// hora quando ele muda (`MandarFicha`) -- o mesmo idioma do arremesso.
+    ///
+    /// PRA QUEM OLHA DE FORA quem conta e a `Pose.Nadando` do snapshot: um observador nao precisa
+    /// prever passo nenhum, precisa desenhar o boneco.
+    /// ================================================================================
+    /// </summary>
+    public bool Nadando => (Estado2 & 1) != 0;
+
     /// <summary>Nem anda nem golpeia: caido ou morto.</summary>
     public bool Imobilizado => KO || Morto;
+
+    // =====================================================================
+    // AS RAZOES, NUM LUGAR SO
+    // =====================================================================
+    /// <summary>
+    /// ============================ UMA FONTE, UMA EXPRESSAO ============================
+    /// O Ki em razao do tanque. Parece obvio demais pra virar propriedade, e virou justamente pelo
+    /// bug que o dono relatou: o HUD e as duas abas do menu P escreviam `Ki / MaxKi` cada um por
+    /// si. A FONTE ja era a mesma (este struct), mas a EXPRESSAO estava copiada em tres lugares --
+    /// e o dia em que uma delas passou por um widget que cortava em 100% as tres passaram a
+    /// discordar, com a que mente sendo a que o jogador olha a partida inteira.
+    ///
+    /// Copia de conta e o defeito; ter tres consumidores nao e. Com a conta aqui, mexer nela mexe
+    /// nas tres telas ou em nenhuma.
+    ///
+    /// NAO TEM TETO EM 1: acima do tanque o Ki e linear e vira poder de verdade (Ki a 118% da
+    /// 1,18x de BP). Quem quiser desenhar isso usa o <see cref="TetoKi"/> como fim do trilho.
+    /// ==================================================================================
+    /// </summary>
+    public readonly double RazaoDeKi => MaxKi > 0 ? Ki / MaxKi : 0;
+
+    /// <summary>O folego em razao. Mesma regra da <see cref="RazaoDeKi"/>: uma conta, um lugar.</summary>
+    public readonly double RazaoDeVigor => VigorMax > 0 ? Vigor / VigorMax : 0;
+
+    /// <summary>O tanque de comida em razao. Mesma regra.</summary>
+    public readonly double RazaoDeNutricao => NutricaoMax > 0 ? Nutricao / NutricaoMax : 0;
+
+    /// <summary>O fim do trilho da barra de Ki, em razao. Nunca abaixo de 1 (ver <see cref="TetoKi"/>).</summary>
+    public readonly double TrilhoDeKi => Math.Max(TetoKi, 1);
 
     public void Write(NetDataWriter w)
     {
         w.Put(Class); w.Put(BP); w.Put(ExpressedBP);
         w.Put(Ki); w.Put(MaxKi); w.Put(HP); w.Put(Vigor); w.Put(VigorMax);
-        w.Put(Nutricao); w.Put(NutricaoMax); w.Put(SpeedStat);
-        w.Put(SocoMs); w.Put(MembrosRuins); w.Put(Estado);
+        w.Put(Nutricao); w.Put(NutricaoMax);
+        w.Put(Inteireza); w.Put(MultTotal); w.Put(TetoKi);
+        w.Put(SpeedStat);
+        w.Put(SocoMs); w.Put(MembrosRuins); w.Put(Estado); w.Put(Estado2);
     }
 
     public static SheetState Read(NetDataReader r) => new()
@@ -1074,8 +1564,11 @@ public struct SheetState
         Class = r.GetString(32), BP = r.GetDouble(), ExpressedBP = r.GetDouble(),
         Ki = r.GetDouble(), MaxKi = r.GetDouble(), HP = r.GetDouble(),
         Vigor = r.GetDouble(), VigorMax = r.GetDouble(),
-        Nutricao = r.GetDouble(), NutricaoMax = r.GetDouble(), SpeedStat = r.GetFloat(),
+        Nutricao = r.GetDouble(), NutricaoMax = r.GetDouble(),
+        Inteireza = r.GetDouble(), MultTotal = r.GetDouble(), TetoKi = r.GetDouble(),
+        SpeedStat = r.GetFloat(),
         SocoMs = r.GetInt(), MembrosRuins = r.GetByte(), Estado = r.GetByte(),
+        Estado2 = r.GetByte(),
     };
 }
 
@@ -1122,11 +1615,26 @@ public struct EntityState
     public bool Moving;
     public Protocol.Pose Pose;
 
-    /// <summary>
-    /// Vida em porcento, num byte. Vai no snapshot porque um corpo machucado se VE -- e a
-    /// unica coisa da ficha alheia que nao depende de scouter. Poder continua escondido.
-    /// </summary>
-    public byte Vida;
+    /// ============================ E A VIDA ALHEIA NAO VIAJA MAIS ============================
+    /// Havia aqui um `byte Vida` (0-100) que ia pra TODA a zona, todo tique, e alimentava a
+    /// barrinha sobre a cabeca. Os dois sairam a pedido do dono: *"n deveria dar pra ver o hp dos
+    /// outros, so ter uma ideia com base nos FERIMENTOS"*.
+    ///
+    /// DIVERGENCIA DELIBERADA DO BYOND -- a barra de vida/Ki sobre a cabeca foi portada de la de
+    /// proposito, e agora e retirada de proposito. O que se GANHA: a vida do outro deixa de ser
+    /// numero e passa a ser o CORPO dele (hematoma, sangue, rasgo na roupa, membro arrancado), que
+    /// e o mesmo sigilo que o BP ja tem sem scouter. O que se PERDE, e e real: nao da mais pra
+    /// saber quanto falta pra derrubar alguem -- so "ele esta destrocado".
+    ///
+    /// APAGAR SO O DESENHO SERIA MEIA SOLUCAO: com o byte no fio a informacao continuaria no jogo
+    /// e voltaria na primeira tela que alguem escrevesse. Este port ja pagou essa conta uma vez, no
+    /// sigilo do BP, onde escrever o corte nao foi aplicar o corte.
+    ///
+    /// QUEM CONTA A HISTORIA AGORA e o pacote `S2C.Feridas` (ver `GameServer.Feridas.cs`): 5 bytes
+    /// de mascara por regiao + 1 de membros arrancados, GRAU e nao numero, ja mandados pra zona
+    /// inteira e so quando mudam. O dono da ficha continua recebendo a PROPRIA vida pelo `S2C.Sheet`
+    /// -- a HUD depende disso e nao mudou.
+    /// =======================================================================================
 
     /// <summary>
     /// Este personagem tem RABO agora. Vai num bit que ja estava sobrando no byte de
@@ -1180,6 +1688,9 @@ public struct EntityState
     /// Ver <see cref="BitSemRedeas"/>.
     /// </summary>
     public bool SemRedeas;
+
+    /// <summary>Este corpo esta pilotando uma nave. Ver <see cref="BitPilotando"/>.</summary>
+    public bool Pilotando;
 
     /// <summary>
     /// A que altura, em pixels (0 = chao). So chega quando <see cref="Voando"/> -- ver
@@ -1254,6 +1765,54 @@ public struct EntityState
     /// </summary>
     private const byte BitSemRedeas = 0x20;
 
+    /// <summary>
+    /// ESTE CORPO ESTA DENTRO DE UMA NAVE -- e por isso ela e desenhada em cima dele.
+    ///
+    /// ============================ POR QUE UM BIT DE SNAPSHOT E NAO UM PACOTE ============================
+    /// A nave PARADA viaja no <see cref="S2C.Construcoes"/>, que e o canal certo pra ela: objeto no
+    /// chao, confiavel, so quando muda. A nave PILOTADA nao esta no chao -- ela anda 30 vezes por
+    /// segundo, colada num corpo. Manda-la por aquele canal seria reenviar a lista inteira de
+    /// construcoes da zona a cada quadro; manda-la num opcode proprio seria um segundo snapshot com
+    /// a mesma posicao que ja esta sendo enviada logo ali.
+    ///
+    /// Um bit resolve porque a posicao ja viaja: o cliente pendura o sprite do pod no corpo que
+    /// disse "estou pilotando" (ver `World.MarcarNaNave`), e o DM faz literalmente isso -- o
+    /// `verb/Use` copia `loc = locate(pilot.x,pilot.y,pilot.z)` cinco vezes por segundo
+    /// (`PlanetTech.dm:140-144`).
+    ///
+    /// E ELE CABIA: o segundo byte de flags nasceu "com um bit usado e sete livres" (ver
+    /// <see cref="Carregando"/>) e ainda tinha dois. Ver alguem passar dentro de uma nave e
+    /// informacao do MUNDO, como ver alguem voar -- nao e ficha pessoal.
+    /// ================================================================================================
+    /// </summary>
+    private const byte BitPilotando = 0x40;
+
+    /// <summary>
+    /// A NAVE QUE ELE PILOTA E A GRANDE (a Capital Ship), e nao um pod.
+    ///
+    /// ============================ UM BIT PRA ESCOLHER UM SPRITE ============================
+    /// O cliente pendura o desenho da nave no corpo que disse "estou pilotando"
+    /// (`World.MarcarNaNave`), e ate a camada 2 so havia um desenho possivel. Agora ha dois -- e
+    /// eles nao sao parecidos: a Spacepod e uma capsula de um tile, a Capital Ship tem 128x138 px
+    /// (`pixel_x = -48` no `construcoes.json`, vindo do `ShipVessel.dm:74`). Desenhar a capsula
+    /// pequena em cima de quem pilota a grande faria a nave de dois milhoes de zeni parecer um pod.
+    ///
+    /// A ALTERNATIVA seria mandar o CAMINHO DA ARTE, e ela e cara do jeito errado: o snapshot e o
+    /// unico pacote que sai 30 vezes por segundo por corpo, e uma string por entidade nele seria
+    /// pagar por quadro uma informacao que muda uma vez por embarque.
+    ///
+    /// ============================ ESTE ERA O ULTIMO BIT LIVRE ============================
+    /// O segundo byte de flags nasceu com um bit usado e sete livres (ver <see cref="Carregando"/>);
+    /// com este ele fecha. O PROXIMO estado de mundo que precisar viajar no snapshot nao tem onde
+    /// entrar, e a saida honesta nao e espremer -- e um terceiro byte, pago so por quem o usa (o
+    /// `Altitude` ja e opcional assim: ele so vai no fio quando `Voando` esta ligado).
+    /// ==================================================================================
+    /// </summary>
+    private const byte BitNaveGrande = 0x80;
+
+    /// <summary>A nave em cima dele e a Capital Ship. So faz sentido com <see cref="Pilotando"/>.</summary>
+    public bool NaveGrande;
+
     public void Write(NetDataWriter w)
     {
         w.Put(Id);
@@ -1264,8 +1823,9 @@ public struct EntityState
                    | (Moving ? 0x80 : 0x00)));
         w.Put((byte)((Carregando ? BitCarregando : 0) | (Sobrecarregado ? BitSobrecarregado : 0)
                    | (Deitado ? BitDeitado : 0) | (Correndo ? BitCorrendo : 0)
-                   | (Voando ? BitVoando : 0) | (SemRedeas ? BitSemRedeas : 0)));
-        w.Put(Vida);
+                   | (Voando ? BitVoando : 0) | (SemRedeas ? BitSemRedeas : 0)
+                   | (Pilotando ? BitPilotando : 0)
+                   | (NaveGrande ? BitNaveGrande : 0)));
         if (Voando) w.Put(Jandirus.Core.World.Voo.ParaByte(Altitude));
     }
 
@@ -1285,8 +1845,156 @@ public struct EntityState
         e.Correndo = (flags2 & BitCorrendo) != 0;
         e.Voando = (flags2 & BitVoando) != 0;
         e.SemRedeas = (flags2 & BitSemRedeas) != 0;
-        e.Vida = r.GetByte();
+        e.Pilotando = (flags2 & BitPilotando) != 0;
+        e.NaveGrande = (flags2 & BitNaveGrande) != 0;
         if (e.Voando) e.Altitude = Jandirus.Core.World.Voo.DeByte(r.GetByte());
         return e;
+    }
+}
+
+/// <summary>
+/// UM ATAQUE DE KI VIVO, dentro do snapshot -- o segundo bloco, depois dos corpos.
+///
+/// ============================ POR QUE ELE NAO E UM `EntityState` ============================
+/// A tentacao era obvia: o snapshot ja carrega entidades, bastaria um valor novo de `Pose`. So que
+/// o <see cref="EntityState"/> descreve CORPO -- rabo, oculto, carregando, sobrecarregado,
+/// deitado, correndo, voando, sem-redeas: oito bits que um raio nunca vai ter --, e um projetil
+/// precisa de duas coisas que corpo nenhum precisa: a COR (cada um pinta o seu ki) e o FIM DO
+/// RASTRO (um beam e um segmento, nao um ponto). Enfiar os dois num campo de corpo faria todo corpo
+/// da zona pagar por eles.
+///
+/// Sao 15 bytes por bola e 23 por raio, e so quando ha tiro no ar. Uma zona em paz escreve o
+/// contador zero: DOIS bytes.
+/// ===========================================================================================
+/// </summary>
+public struct ProjetilState
+{
+    public int Id;
+
+    /// <summary>A CABECA -- a unica parte que acerta, e por isso a unica posicao autoritativa.</summary>
+    public Vec2 Pos;
+
+    /// <summary>O tipo (`Core.Combat.TipoDeProjetil`) nos dois bits baixos.</summary>
+    public byte Tipo;
+
+    /// <summary>
+    /// O FIM DO RASTRO. So viaja pro <c>Beam</c> -- ver <see cref="BitTemCauda"/>. Uma bola nao tem
+    /// rastro, e mandar oito bytes de "igual a cabeca" pra cada bola no ar seria pagar o preco do
+    /// raio em todo tiro.
+    /// </summary>
+    public Vec2 Cauda;
+
+    private const byte MascaraDoTipo = 0x03;
+    private const byte BitTemCauda = 0x04;
+
+    public void Write(NetDataWriter w)
+    {
+        w.Put(Id);
+        w.PutVec(Pos);
+        bool cauda = (Tipo & MascaraDoTipo) == (byte)Jandirus.Core.Combat.TipoDeProjetil.Beam;
+        w.Put((byte)((Tipo & MascaraDoTipo) | (cauda ? BitTemCauda : 0)));
+        if (cauda) w.PutVec(Cauda);
+    }
+
+    public static ProjetilState Read(NetDataReader r)
+    {
+        var p = new ProjetilState { Id = r.GetInt(), Pos = r.GetVec() };
+        byte flags = r.GetByte();
+        p.Tipo = (byte)(flags & MascaraDoTipo);
+        p.Cauda = (flags & BitTemCauda) != 0 ? r.GetVec() : p.Pos;
+        return p;
+    }
+}
+
+/// <summary>
+/// A SERIALIZACAO DE UMA TECNICA INVENTADA -- as duas pontas, no MESMO arquivo.
+///
+/// ============================ POR QUE AQUI E NAO EM CADA LADO ============================
+/// O objeto que viaja e o proprio <see cref="TecnicaCustomizada"/> do `Core`: o cliente nao tem uma
+/// cópia-de-tela do modelo, ele recebe o modelo. Faltava so a ordem dos bytes, e ela e o classico
+/// lugar de divergir -- um campo novo escrito de um lado e nao lido do outro desalinha TUDO que vem
+/// depois, e o sintoma aparece num campo que ninguem tocou.
+///
+/// Escrita e leitura coladas uma na outra sao a unica defesa barata: quem acrescentar um campo ve
+/// as duas metades na mesma tela.
+///
+/// O CLIENTE RECEBER O MODELO NAO O DEIXA DECIDIR NADA: `Aplicar` nunca e chamado la (ver
+/// `TelaDeTecnicas`), e o servidor devolve a mesa inteira depois de cada compra. O modelo viaja
+/// porque e o que a TELA precisa MOSTRAR -- e mostrar `Gasto` calculado do lado errado e como um
+/// jogo passa a discordar de si mesmo.
+/// ====================================================================================
+/// </summary>
+public static class CustomWire
+{
+    private const byte BitDizGrito = 1 << 0;
+    private const byte BitDizGritoDeCarga = 1 << 1;
+    private const byte BitUsaStamina = 1 << 2;
+    private const byte BitCarregavel = 1 << 3;
+    private const byte BitInstantaneo = 1 << 4;
+    private const byte BitCriada = 1 << 5;
+
+    public const int MaxNome = 32;
+    public const int MaxDesc = 160;
+    public const int MaxGrito = 48;
+
+    public static void Escrever(NetDataWriter w, TecnicaCustomizada t)
+    {
+        w.Put((byte)t.Id);
+        w.Put((byte)t.Tipo);
+        w.Put(t.Nome);
+        w.Put(t.Desc);
+        w.Put(t.Grito);
+        w.Put(t.GritoDeCarga);
+        w.Put((byte)((t.DizGrito ? BitDizGrito : 0)
+                   | (t.DizGritoDeCarga ? BitDizGritoDeCarga : 0)
+                   | (t.UsaStamina ? BitUsaStamina : 0)
+                   | (t.Carregavel ? BitCarregavel : 0)
+                   | (t.Instantaneo ? BitInstantaneo : 0)
+                   | (t.Criada ? BitCriada : 0)));
+        w.Put((float)t.BaseDano);
+        w.Put((float)t.CargaMinima);
+        w.Put((float)t.CustoKi);
+        w.Put((float)t.CustoStamina);
+        w.Put((float)t.Velocidade);
+        w.Put((float)t.Alcance);
+        w.Put((float)t.DistanciaMod);
+        // COM SINAL, e nao byte -- e agora e o LEITOR que faz esse valor caber. `Gasto` vive em 0..5
+        // desde que o dono poz piso em zero (ver `TecnicaCustomizada.Gasto`), entao um byte bastaria;
+        // o `short` fica porque um pacote velho ou adulterado PODE trazer negativo, e um byte sem
+        // sinal transformaria -5 em 251 caladamente. Ver o `RestaurarGasto` do lado da leitura.
+        w.Put((short)t.Gasto);
+    }
+
+    public static TecnicaCustomizada Ler(NetDataReader r)
+    {
+        var t = new TecnicaCustomizada
+        {
+            Id = r.GetByte(),
+            Tipo = (Jandirus.Core.Combat.TipoDeProjetil)r.GetByte(),
+            Nome = r.GetString(MaxNome),
+            Desc = r.GetString(MaxDesc),
+            Grito = r.GetString(MaxGrito),
+            GritoDeCarga = r.GetString(MaxGrito),
+        };
+        byte f = r.GetByte();
+        t.DizGrito = (f & BitDizGrito) != 0;
+        t.DizGritoDeCarga = (f & BitDizGritoDeCarga) != 0;
+        t.UsaStamina = (f & BitUsaStamina) != 0;
+        t.Carregavel = (f & BitCarregavel) != 0;
+        t.Instantaneo = (f & BitInstantaneo) != 0;
+        t.Criada = (f & BitCriada) != 0;
+        t.BaseDano = r.GetFloat();
+        t.CargaMinima = r.GetFloat();
+        t.CustoKi = r.GetFloat();
+        t.CustoStamina = r.GetFloat();
+        t.Velocidade = r.GetFloat();
+        t.Alcance = r.GetFloat();
+        t.DistanciaMod = r.GetFloat();
+        // GRAMPEADO NA ENTRADA. `Gasto` nao tem `set` publico de proposito: quem compra passa pelo
+        // funil do `Core`, e quem RECONSTROI (fio e disco) entra por aqui, que prende em 0..5. Um
+        // save velho com saldo negativo -- legitimo antes do piso -- daria orcamento inflado se
+        // entrasse cru.
+        t.RestaurarGasto(r.GetShort());
+        return t;
     }
 }

@@ -14,6 +14,16 @@ public partial class GameServer
 	{
 		public required MundoProcedural Ficha { get; init; }
 		public required ZoneCollision Colisao { get; init; }
+
+		/// <summary>
+		/// O QUE **CEGA** neste mundo -- so montanha. O irmao gerado do `.vis` dos pre-feitos.
+		///
+		/// Nao e a <see cref="Colisao"/>: la a arvore tambem para o corpo, e uma floresta nao cega
+		/// ninguem. Quem pergunta e a VOZ LOCAL (`GameServer.Voz.cs`), e a resposta tem que ser a
+		/// mesma que o olho do cliente da -- por isso a derivacao mora no Core
+		/// (<see cref="TerrenoGerado.QueEsconde"/>) e nao aqui.
+		/// </summary>
+		public required ZoneCollision Vista { get; init; }
 		public required Vec2 Chegada { get; init; }
 		public required PlanetaNoEspaco NoEspaco { get; init; }
 
@@ -134,6 +144,11 @@ public partial class GameServer
 			{
 				long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
 				TerrenoGerado t = GeradorDeTerreno.Gerar(p);
+				// O MAPA DO QUE CEGA NASCE AQUI DENTRO, e nao na colheita. Ele varre a grade inteira
+				// (ate um milhao de celulas num mundo de 1000) e e preguicoso -- tocar nele no tique
+				// poria de volta ali exatamente o custo que esta thread existe pra tirar. Quem o
+				// consome e a voz local, por quadro de audio: ela nao pode ser a primeira a pagar.
+				_ = t.QueEsconde;
 				double ms = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
 				return (t, ms, t.Assinatura());
 			}),
@@ -179,6 +194,10 @@ public partial class GameServer
 			{
 				Ficha = g.Ficha,
 				Colisao = t.Colisao,
+				// AQUI, e nao na primeira pergunta da voz: o `QueEsconde` varre a grade inteira (ate um
+				// milhao de celulas num mundo de 1000), e esta linha roda na volta da thread de geracao
+				// -- fora do caminho de qualquer quadro de audio. Nada pesado dentro do tique.
+				Vista = t.QueEsconde,
 				Chegada = t.Spawn,
 				NoEspaco = g.NoEspaco,
 				ClareiraEscavada = t.ClareiraEscavada,
@@ -298,8 +317,24 @@ public partial class GameServer
 	{
 		if (Math.Abs(pl.Ficha.Planetgrav - ficha.Gravidade) < 1e-9) return;
 
+		// NINGUEM NASCE ESMAGADO, tambem nos mundos SORTEADOS -- e aqui a divida era mais visivel:
+		// o teto de 15g dos bercos procedurais (`Bercos.GravidadeMaximaDeBerco`) foi escolhido
+		// CITANDO esta regra ("o que salva o exilado de nascer esmagado"), e ela nunca rodava. Com o
+		// esmagamento ligado, um berco de 15g contra maestria 1 da razao 15 -- quase quatro vezes o
+		// que ja PRENDE o corpo. Ver `Birth.AclimatarAoBerco`.
+		if (string.Equals(pl.Zone.Name, pl.Berco.Planeta, StringComparison.OrdinalIgnoreCase))
+			Jandirus.Core.Races.Birth.AclimatarAoBerco(pl.Ficha, ficha.Gravidade);
+
 		pl.Ficha.Planetgrav = ficha.Gravidade;
-		pl.Ficha.Statify();
+
+		// AS MESMAS TRES LINHAS DO `AplicarGravidade`, e pelo mesmo motivo: o `weight_ratio`
+		// multiplica a gravidade LOCAL, e o passo sai dele. Um mundo gerado de gravidade 40 tem que
+		// esmagar e frear no instante do pouso -- nao no proximo tique de ficha, com o corpo ja
+		// correndo na velocidade da orbita. (`Tick` e nao `Statify`: ver `AjustarPeso`.)
+		pl.Ficha.Tick(agoraMs: NowMs());
+		RecalcularVelocidade(pl);
+		MandarFicha(pl);
+
 		pl.SigAtributos = "";
 		if (ficha.Gravidade > 1)
 			Avisar(pl, $"o chão de {ficha.Nome} puxa {ficha.Gravidade:0.##} vezes mais forte. "

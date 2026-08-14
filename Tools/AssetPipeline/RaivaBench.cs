@@ -93,6 +93,23 @@ public static class RaivaBench
 		("primal_c_type",      NivelDeRaiva.Lendaria),
 		("primal_legendary",   NivelDeRaiva.Lendaria),
 		("primal_legendary2",  NivelDeRaiva.Lendaria),
+
+		// O HERAN. Ele entra aqui pelo mesmo motivo do tronco Saiyajin -- `heran.dm:20-52` roda o
+		// MESMO `switch(savant.Emotion)` do `supersaiyan.dm` nos dois degraus, e o
+		// `mst_form_needs_rage` (`MasterStudent.dm:246-249`) lista `heran1` e `heran2` ao lado de
+		// `ssj` e `ssj2`. Ele nao ganha o desconto da `legendary anger`: aquela skill e da linha
+		// Legendary e de mais ninguem.
+		//
+		// **E ELE E A ENTRADA QUE PEGOU UM DEFEITO REAL NA DERIVACAO.** Antes desta sessao o
+		// `RaivaExigida` listava so `Saiyajin` e `Futuro`, com um comentario prometendo que a linha
+		// Heran seria pega sozinha quando viesse. Nao seria: linha nova cai no `_ => Nenhuma`, e as
+		// duas formas teriam nascido de graca, caladas.
+		("heran1",             NivelDeRaiva.Extrema),
+		("heran2",             NivelDeRaiva.Extrema),
+
+		// O SUPER NAMEKUSEIJIN E AS DUAS FORMAS ALIEN **NAO** ENTRAM, e a ausencia e medida: elas se
+		// COMPRAM (`FormaDef.PedeFlag`), e o `snamek()` / `Alien_Trans()` nao olham `Emotion` uma
+		// unica vez. O que se compra nao se desperta.
 	];
 
 	private static NivelDeRaiva Esperada(string id) =>
@@ -242,18 +259,53 @@ public static class RaivaBench
 			&& !Bate(d.PedeOrigemUmaDe, linhagem) && !Bate(d.PedeOrigemUmaDe, classe))
 			linhagem = d.PedeOrigemUmaDe[0];
 
+		// ============================ A RACA TAMBEM SAI DA LINHA -- e ela FALTAVA ============================
+		// Este preparador cravava `Raca: "Saiyan"`, e enquanto todas as linhas de sangue eram Saiyajin
+		// isso passava despercebido. A linha do Frost Demon ja tinha exposto metade do problema (com
+		// raca errada ela cai em `LinhaFechada`), e sobreviveu porque nenhuma forma dela pede raiva --
+		// so a secao [4], que e NEGATIVA, olhava pra ela. O Heran nao sobreviveria: ele pede raiva, e a
+		// secao [3] cobra `Pode`.
+		//
+		// Derivado da linha e nao uma lista de ids, pelo mesmo argumento que o cabecalho deste metodo
+		// ja faz: a proxima linha racial nasce com raca certa aqui sozinha.
+		// ================================================================================================
+		string raca = d.Linha switch
+		{
+			LinhaDeForma.FrostDemon => Jandirus.Core.Races.FormasDeFrost.Raca,
+			LinhaDeForma.Namekuseijin => Catalogo.RacaNamekuseijin,
+			LinhaDeForma.Heran => Catalogo.RacaHeran,
+			LinhaDeForma.Alien => Catalogo.RacaAlien,
+			_ => "Saiyan",
+		};
+
+		// AS FLAGS DE SKILL QUE A ENTRADA PEDE, PAGAS -- o mesmo criterio de "tudo o que se aprende,
+		// aprendido" que o ki divino e a proficiencia ja seguem tres linhas abaixo. Sem isto o
+		// `snamek` e as formas Alien seriam recusadas por `SemHabilidade` e a secao [4] mediria o
+		// gate errado (ela so proibe `SemFuria`, entao passaria verde sem ter chegado perto da raiva).
+		Dictionary<string, double>? flags = d.PedeFlag is { } f
+			? new Dictionary<string, double>(StringComparer.Ordinal) { [f.Campo] = f.Minimo }
+			: null;
+
 		var perfil = new PerfilDeFormas(
-			Raca: "Saiyan", Classe: classe, Linhagem: linhagem,
+			Raca: raca, Classe: classe, Linhagem: linhagem,
 			Legendary: d.Linha == LinhaDeForma.Legendary,
 			Futuro: d.Linha == LinhaDeForma.Futuro,
 			// TUDO O QUE SE APRENDE, APRENDIDO. O `-1` do ki divino so fica pra quem esta numa linha
 			// de SANGUE: despertar o ki divino la abriria a escada divina junto, e o `Proxima` de
 			// outras checagens passaria a oferecer o SSG no meio da escada Saiyajin.
+			// AS LINHAS DE SANGUE ficam sem ki divino: despertar o ki divino nelas abriria a escada
+			// divina junto, e o `Proxima` de outras checagens passaria a oferecer o SSG no meio da
+			// escada. As quatro linhas raciais entraram nesta lista pelo mesmo motivo -- e nao por
+			// simetria: um Heran com 100% de maestria divina teria o Blue disponivel ao lado do
+			// Max Power, o que e outro jogo.
 			GodKi: d.Linha is LinhaDeForma.Saiyajin or LinhaDeForma.Futuro
-						   or LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal ? -1 : 100,
+						   or LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal
+						   or LinhaDeForma.FrostDemon or LinhaDeForma.Namekuseijin
+						   or LinhaDeForma.Heran or LinhaDeForma.Alien ? -1 : 100,
 			EnergiaUe: d.Linha == LinhaDeForma.UltraEgo ? 100 : 0,
 			ProficienciaUi: d.Linha == LinhaDeForma.UltraInstinct ? 100 : 0,
-			Raiva: raiva);
+			Raiva: raiva,
+			FlagsDeSkill: flags);
 
 		var est = new EstadoDeForma();
 
@@ -696,15 +748,38 @@ public static class RaivaBench
 
 		// OS ARQUIVOS QUE PODEM FALAR DE RAIVA SEM SEREM O CHAMADOR: a definicao do proprio gancho
 		// e as bancadas ao vivo. Qualquer outro arquivo que o chame e um chamador de producao.
+		// A `GameServer.RaciaisTeste.cs` ENTROU NAS DUAS LISTAS, e pelo motivo de sempre: ela e a
+		// bancada que sobe a escada de CADA raca pela tecla C, e a unica linha racial que pede raiva
+		// (o Heran) so tem as duas metades medidas se a bancada puder ACENDER o luto (pelo gancho) e
+		// APAGA-LO (pelas janelas) entre uma checagem e outra. O prazo e de dois minutos de relogio
+		// real contra uma bancada que roda em segundos: sem apagar, o luto de um corpo atravessaria
+		// pro seguinte e a recusa por falta de raiva passaria verde sem nunca ter sido medida -- que
+		// foi exatamente o defeito da secao 2 da `RaivaTeste`. O codigo de PRODUCAO continua fora.
 		string[] permitidos =
 			["GameServer.Formas.cs", "GameServer.FormasTeste.cs", "GameServer.RaivaTeste.cs",
-			 "GameServer.ConvivioTeste.cs"];
+			 "GameServer.ConvivioTeste.cs", "GameServer.RaciaisTeste.cs"];
 
 		// QUEM PODE ESCREVER NAS DUAS JANELAS: so quem as define (o `AmigoAbatido` mora la) e as
 		// bancadas, que as puxam pra tras pra nao esperar dois minutos de teste.
+		//
+		// ============================ O DISCIPULADO ABRIU O SEGUNDO ACENDEDOR, E ELE NAO ENTRA AQUI ============================
+		// O mestre que PROVOCA o aluno (`mst_ignite_anger`, `MasterStudent.dm:540`) acende a mesma
+		// janela sem que ninguem tenha morrido. **`GameServer.Mestre.cs` continua fora desta lista
+		// de proposito**: ele nao escreve os campos -- chama a `AcenderJanelaDeRaiva`, que mora no
+		// `GameServer.Formas.cs` junto do `AmigoAbatido` e continua sendo a mao unica (e a unica que
+		// lembra de chamar a `ProjetarRaiva`). Se um dia `GameServer.Mestre.cs` aparecer nesta
+		// lista, e porque alguem furou o funil.
+		//
+		// O que entra e a BANCADA dele, pelo mesmo motivo das outras tres: ela zera as janelas entre
+		// as checagens pra provar que a tentativa fadada NAO acende raiva nenhuma. Vale pras DUAS
+		// bancadas do discipulado -- a de corpos forjados (`--mestreteste`) e a de personagens de
+		// verdade (`--mestrevivo`); o codigo de producao delas, o `GameServer.Mestre.cs`, continua
+		// fora desta lista.
+		// ================================================================================================================
 		string[] podemEscreverAJanela =
 			["GameServer.cs", "GameServer.Formas.cs", "GameServer.FormasTeste.cs",
-			 "GameServer.RaivaTeste.cs", "GameServer.ConvivioTeste.cs"];
+			 "GameServer.RaivaTeste.cs", "GameServer.ConvivioTeste.cs", "GameServer.MestreTeste.cs",
+			 "GameServer.MestreVivoTeste.cs", "GameServer.RaciaisTeste.cs"];
 
 		// ============================ E QUEM PODE ESCREVER O `Anger` -- A OUTRA METADE DA MESMA REGRA ============================
 		// O `Fighter.Anger` e DERIVADO das duas janelas (`GameServer.RaivaComoNumero`), e a unica
@@ -886,6 +961,19 @@ public static class RaivaBench
 				portas.Add("sangue");
 			if (Catalogo.NaoSeSobePraEla(d)) portas.Add("a lua (nao se sobe)");
 
+			// ============================ E HA UM DEGRAU QUE NAO SE CONQUISTA: O REPOUSO ============================
+			// A forma BASE do Frost Demon nao cobra nada, e nao e um esquecimento: e onde o corpo dele
+			// esta quando nao esta transformado (`Catalogo.PisoDaEscada`) -- o equivalente, pra a raca
+			// dele, do que a `base` e pra todo mundo. Ela so nao E a `base` porque tem sprite proprio e
+			// porque o Mutante repousa ainda mais abaixo, em 0,25x.
+			//
+			// **NAO E UMA ISENCAO POR ID.** A pergunta e do catalogo e ela e estreita: `Mult <= 1` e
+			// nenhuma porta declarada. Nenhuma transformacao do jogo cabe ai -- a mais fraca de todas
+			// vale 1,35x --, entao um degrau REALMENTE gratuito continua caindo como falha, que e o
+			// motivo desta varredura existir.
+			// ==================================================================================================
+			if (Catalogo.PodeSerRepouso(d)) portas.Add("repouso (nao se conquista)");
+
 			Checa($"`{d.Id}` declara porta: {string.Join(" + ", portas)}", portas.Count > 0,
 				  "NENHUMA porta declarada -- este degrau e de graca");
 		}
@@ -918,7 +1006,19 @@ public static class RaivaBench
 			double bp = d.PortaBp > 0 ? d.PortaBp - 1 : bpTeto;
 
 			RecusaForma r = est.Avaliar(d.Id, bp, 1, false, perfil);
-			bool isenta = Array.IndexOf(isentas, d.Id) >= 0;
+
+			// ============================ O REPOUSO E ISENTO NAS **DUAS** PASSADAS ============================
+			// A passada A ja aceitava `PodeSerRepouso` como porta declarada ("nao se conquista"); esta
+			// nao perguntava, e sobrevivia por acidente: o `Preparado` cravava `Raca: "Saiyan"` e as
+			// sete formas do Frost Demon caiam em `LinhaFechada` antes de chegar aqui. Com a raca vindo
+			// da linha (ver o `Preparado`), elas passaram a ser ALCANCAVEIS -- que e o certo, e e o que
+			// repouso significa -- e a passada B as reprovou.
+			//
+			// A mesma pergunta do catalogo nas duas, e nao uma segunda lista escrita a mao: se a
+			// definicao de repouso mudar, as duas passadas mudam juntas. Uma isencao por id aqui era
+			// exatamente o que o comentario da passada A diz pra nao fazer.
+			// =============================================================================================
+			bool isenta = Array.IndexOf(isentas, d.Id) >= 0 || Catalogo.PodeSerRepouso(d);
 
 			Checa($"`{d.Id}` e recusado a quem nao conquistou nada -> {r}",
 				  isenta || r != RecusaForma.Pode,

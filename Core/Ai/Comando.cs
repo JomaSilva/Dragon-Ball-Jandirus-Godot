@@ -43,6 +43,32 @@ public readonly struct Comando
 	/// <summary>Pra onde andar. Zero = parado. E o vetor de direcao do WASD.</summary>
 	public Vec2 Rumo { get; init; }
 
+	/// <summary>
+	/// PRA ONDE OLHAR. Zero = **olha pra onde anda** (o <see cref="Rumo"/>).
+	///
+	/// ============================ ESTE CAMPO FALTAVA, E A FALTA DELE ERA O SOCO DE COSTAS ============================
+	/// O pacote do jogador SEMPRE carregou olhar e passo separados: o `InputState` traz dois bits de
+	/// `facing` ao lado do vetor de movimento (`GameServer.Input`), e por isso o jogador pode andar
+	/// pra tras encarando quem o persegue. Este teclado nao tinha a tecla: o unico jeito de a IA
+	/// escrever a propria direcao era ANDANDO naquele sentido.
+	///
+	/// O preco disso nao era cosmetico. O golpe do jogo so acha alvo dentro do CONE da frente
+	/// (`MeleeArea.NoAlcance`, o `compileRangeMobList` do DM), entao toda vez que a receita mandava
+	/// dar um passo pra tras -- e ela manda: colado demais na pressao, abrindo espaco pro tiro,
+	/// respirando no recuo -- o corpo virava as costas e o soco do mesmo tique saia **sem alvo
+	/// nenhum**. Nao era mira ruim: era o oponente estar fora do cone.
+	///
+	/// No DM quem garante isso e a propria IA, e e a PRIMEIRA linha do seletor de acao dela:
+	/// `dir = get_dir(src,target)` (`NPCAI.dm:386`), logo depois do `step_away(src,target)` do
+	/// `attackState` (`:536`) -- a mesma estrutura deste port, com a linha que faltava.
+	/// ==========================================================================================================
+	///
+	/// E VETOR, E NAO `Facing`, porque o `Core` nao decide direcao de sprite: ele diz pra onde o
+	/// corpo esta voltado no mundo, e quem quantiza pras quatro do BYOND e o `MoveRules.FacingFrom`
+	/// -- a MESMA funcao que quantiza o olhar do jogador. Duas quantizacoes seriam duas verdades.
+	/// </summary>
+	public Vec2 Olhar { get; init; }
+
 	/// <summary>SHIFT. No chao e correr (e o `PodeCorrer` COBRA); no ar e o Superflight.</summary>
 	public bool Correndo { get; init; }
 

@@ -154,6 +154,35 @@ public static class MapConverter
 			offset += d.Levels.Count;
 		}
 
+		// ============================ A CIDADE DE VEGETA NAO ESTA NO `.dmm` ============================
+		// Ela e o unico cenario do jogo que o original ERGUE POR CODIGO no boot (`VegetaCity.dm`), e
+		// por isso nunca existiu no port: quem le so o mapa nao ve o que o mapa nao guarda. Ela entra
+		// AQUI, antes da passada 1, porque as pecas dela precisam registrar atlas como qualquer outra
+		// celula -- carimbar depois deixaria as paredes sem fonte no tileset.
+		//
+		// O FREIO E O `temArte`: peca sem desenho nao e carimbada. Ver `CidadeDeVegeta.Erguer`.
+		bool TemArte(string bp)
+		{
+			if (!turfs.TryGetValue(bp, out TurfDef? td) || td.Icon == null) return false;
+			Fonte? f = Garantir(td.Icon, td.IconState, raiz, fontes, atlasPorNome, semAtlas, ref proxId);
+			return f != null && f.StateIndex.ContainsKey(td.IconState ?? "");
+		}
+		foreach ((string _, DmmMap.Result d3, int off3) in mapas)
+			foreach (DmmLevel n3 in d3.Levels)
+			{
+				if (n3.Z + off3 != CidadeDeVegeta.Z) continue;
+				CidadeDeVegeta.Relatorio r = CidadeDeVegeta.Erguer(d3, n3, TemArte);
+				Console.WriteLine($"cidade de Vegeta: {r.Celulas} celulas carimbadas "
+								  + $"({r.Paredes} paredes, {r.Portas} portas, {r.Moveis} moveis, "
+								  + $"{r.Maquinas} maquinas)");
+				// O QUE NAO ENTROU SE ANUNCIA. Peca sem arte que virasse celula densa seria uma
+				// parede invisivel -- exatamente o defeito que este pipeline existe pra nao produzir.
+				foreach (string bp in r.SemArte)
+					Console.WriteLine($"   SEM ARTE, NAO CARIMBADA: {bp} "
+									  + $"(icon_state '{(turfs.GetValueOrDefault(bp)?.IconState ?? "")}' "
+									  + $"nao existe em '{turfs.GetValueOrDefault(bp)?.Icon ?? "?"}')");
+			}
+
 		// TURF E OBJ, os dois. So o turf era registrado, e essa era a causa de duas queixas que
 		// pareciam separadas: "falta coisa no mapa" e "tem parede invisivel". Sao a MESMA coisa
 		// -- 41% dos prefabs da Terra tem um /obj (arvore, minerio, cerca, cadeira), o desenho
@@ -239,6 +268,7 @@ public static class MapConverter
 
 		// ---- passada 2: uma cena por andar + o mapa de colisao que o SERVIDOR le ----
 		int cenas = 0, celulas = 0, bloqueadas = 0, totalPortas = 0, totalMaquinas = 0, totalPassagens = 0;
+		int totalAgua = 0;
 		var manifesto = new List<string>();
 		foreach ((string arquivo, DmmMap.Result dados, int off) in mapas)
 			foreach (DmmLevel nivel in dados.Levels)
@@ -261,6 +291,19 @@ public static class MapConverter
 											  nivel.Width, nivel.Height, paredes);
 				// mesmo formato, outro proposito: este e o que o CAMPO DE VISAO consulta
 				EscreverColisao(Path.Combine(outDir, nome + ".vis"), nivel.Width, nivel.Height, cegos.Keys, cegos);
+
+				// ...e este e a TERCEIRA CLASSE DE CELULA: agua. Mesmo formato de novo, e um
+				// arquivo separado pelo mesmo motivo que o `.vis` e separado do `.col` -- as tres
+				// perguntas ("para o corpo", "esconde", "e agua") divergem entre si em quase toda
+				// celula que importa. Zona seca nao ganha arquivo. Ver `ConverterAguas`.
+				List<(int X, int Y)> molhadas = CelulasDeAgua(nivel, dados, turfs);
+				string arqAgua = Path.Combine(outDir, nome + ".agua");
+				if (molhadas.Count > 0)
+				{
+					EscreverColisao(arqAgua, nivel.Width, nivel.Height, molhadas);
+					totalAgua += molhadas.Count;
+				}
+				else if (File.Exists(arqAgua)) File.Delete(arqAgua);
 				// AS PORTAS DA ZONA. Sai sempre, mesmo vazio: um arquivo que as vezes existe e as
 				// vezes nao vira um `if` no leitor, e um `if` a menos vale o punhado de bytes.
 				File.WriteAllText(Path.Combine(outDir, nome + ".portas"),
@@ -286,6 +329,7 @@ public static class MapConverter
 				manifesto.Add($"  {{ \"zona\": \"{zona}\", \"z\": {nivel.Z + off}, \"cena\": \"res://Assets/Maps/{nome}.tscn\", " +
 							  $"\"pedacos\": \"res://Assets/Maps/{nome}.pedacos\", " +
 							  $"\"colisao\": \"res://Assets/Maps/{nome}.col\", \"visao\": \"res://Assets/Maps/{nome}.vis\", " +
+							  $"\"agua\": \"res://Assets/Maps/{nome}.agua\", " +
 							  $"\"luzes\": \"res://Assets/Maps/{nome}.luz\", " +
 							$"\"portas\": \"res://Assets/Maps/{nome}.portas\", " +
 							$"\"objetos\": \"res://Assets/Maps/{nome}.objetos\", " +
@@ -303,6 +347,7 @@ public static class MapConverter
 		Console.WriteLine($"portas         : {totalPortas}");
 		Console.WriteLine($"maquinas       : {totalMaquinas} (saem do tilemap e viram construcao)");
 		Console.WriteLine($"passagens      : {totalPassagens} (celulas que levam a outro mapa)");
+		Console.WriteLine($"agua           : {totalAgua} celulas (terceira classe: para a pe, nao para nadando/voando)");
 		Console.WriteLine($"celulas        : {celulas}");
 		Console.WriteLine($"fontes no tileset: {fontes.Count}");
 		if (semAtlas.Count > 0)
@@ -688,7 +733,15 @@ public static class MapConverter
 	}
 
 	/// <summary>Le a ordem dos .dmm no .dme: e ela que define o z real de cada mapa.</summary>
-	private static List<string> OrdemDoDme(string dmmDir)
+	/// <summary>
+	/// A ordem em que o `.dme` inclui os `.dmm` -- e ela DECIDE o z de cada nivel (ver a chamada).
+	///
+	/// `internal` e nao `private` porque a bancada `cidade` precisa da MESMA ordem pra achar, no
+	/// `.dmm`, a celula que ela esta julgando no `.col`. Uma segunda copia desta leitura acertaria
+	/// hoje e erraria no dia em que alguem acrescentasse um mapa no meio da lista -- e o sintoma
+	/// seria a bancada julgando Arconia com as celulas do Inferno, calada.
+	/// </summary>
+	internal static List<string> OrdemDoDme(string dmmDir)
 	{
 		var ordem = new List<string>();
 		string? raiz = Directory.GetParent(dmmDir)?.FullName;
@@ -942,6 +995,84 @@ public static class MapConverter
 
 		int usadas = 0, comObj = 0, objSemArte = 0;
 
+		/// <summary>Maquina que o catalogo reconhece mas que nao conseguiu virar desenho.</summary>
+		var maquinaSemArte = new Dictionary<string, int>(StringComparer.Ordinal);
+
+		/// <summary>Celulas que ALGUEM desenha: tile de qualquer camada, porta ou maquina.</summary>
+		var desenhadas = new HashSet<(int, int)>();
+
+		// ============================ QUAL "VAZIO" E BORDA E QUAL E COSTURA DO MAPEADOR ============================
+		// `/turf/Other/Blank` e denso e sem icone, e a regra ate aqui era simples demais: TODO Blank
+		// vira parede, porque "denso e sem icone e geometria deliberada". Isso e verdade no ANEL que
+		// cerca o retangulo e no VAZIO em volta do Lookout -- e e falso no meio de um oceano.
+		//
+		// O dono achou o caso pelo lado de dentro: "tem uma PAREDE INVISIVEL no meio do mapa". Medido,
+		// z11 (Hera) tem uma COLUNA INTEIRA de Blank em x=250 do `.dmm`, de y=1 a y=500, com
+		// `/turf/Water/Water3` nas duas colunas vizinhas. E uma costura que o mapeador deixou ao
+		// emendar dois pedacos de agua aberta -- 500 celulas solidas cortando o mapa ao meio, e sobre
+		// agua azul lisa ela e literalmente invisivel.
+		//
+		// A DIFERENCA E TOPOLOGICA, e nao de posicao: o VAZIO tem MIOLO e a COSTURA nao. Uma regiao de
+		// Blank que e limite de mundo sempre contem alguma celula cujos quatro vizinhos tambem sao
+		// Blank (o anel tem espessura, o vazio do Lookout tem 11.536 celulas de miolo); uma linha de
+		// um tile de largura nao tem nenhuma. Testar isso separa os quarenta mapas sem uma unica
+		// excecao escrita a mao:
+		//
+		//     z11 Hera        500 celulas, miolo 0  -> costura   (a queixa do dono)
+		//     z13 Sala        500 celulas, miolo 0  -> costura   (o anel da coluna 499)
+		//     z05 Arconia       5 celulas, miolo 0  -> costura   (celulas soltas)
+		//     z10 Heaven        3 celulas, miolo 0  -> costura
+		//     z05 Arconia     313 celulas, miolo 83 -> BORDA     (a mordida no leste do mapa)
+		//     z12 Lookout   14.315 celulas, miolo 11.536 -> BORDA (o ceu em volta da plataforma)
+		//     z15..z18/z22/z23  mapa inteiro        -> BORDA     (as cavernas e o `Outside`)
+		//
+		// NAO DA PRA CONSERTAR ISSO DEIXANDO DE BLOQUEAR TUDO que e denso e invisivel: seria devolver
+		// o bug que este trecho conserta, com quase dois milhoes de celulas de borda de mundo abertas.
+		// ==========================================================================================
+		var mudas = new HashSet<(int, int)>();
+		for (int y = 0; y < nivel.Height; y++)
+			for (int x = 0; x < nivel.Width; x++)
+			{
+				string? k = nivel.Cells[x, y];
+				if (k == null || !dados.Keys.TryGetValue(k, out string[]? tipos)) continue;
+				foreach (string tp in tipos)
+				{
+					string bp = DmmMap.BasePath(tp);
+					if (turfs.TryGetValue(bp, out TurfDef? td) && td.Icon == null && td.Density)
+					{ mudas.Add((x, y)); break; }
+				}
+			}
+
+		var costuras = new HashSet<(int, int)>();
+		if (mudas.Count > 0)
+		{
+			var visto = new HashSet<(int, int)>();
+			var fila = new Queue<(int, int)>();
+			var comp = new List<(int, int)>();
+			foreach ((int, int) semente in mudas)
+			{
+				if (!visto.Add(semente)) continue;
+				comp.Clear();
+				fila.Enqueue(semente);
+				bool temMiolo = false;
+				while (fila.Count > 0)
+				{
+					(int cx, int cy) = fila.Dequeue();
+					comp.Add((cx, cy));
+					int vizinhos = 0;
+					foreach ((int dx, int dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+					{
+						(int, int) n = (cx + dx, cy + dy);
+						if (!mudas.Contains(n)) continue;
+						vizinhos++;
+						if (visto.Add(n)) fila.Enqueue(n);
+					}
+					if (vizinhos == 4) temMiolo = true;
+				}
+				if (!temMiolo) foreach ((int, int) c in comp) costuras.Add(c);
+			}
+		}
+
 		// QUANTAS CELULAS APONTAM PRA UMA TIRA. Sem este numero, "178 estados reempacotados" parece
 		// prova de que a animacao chegou ao mapa -- e nao e: o reempacotamento escreve o atlas e
 		// declara o tile, mas quem faz a animacao APARECER e a celula apontar pra la. Foram duas
@@ -968,9 +1099,15 @@ public static class MapConverter
 			// pra arvore sem sprite) tirava a parede do vazio: quase 2 MILHOES de celulas, e
 			// andares inteiros ficaram sem borda. Denso E SEM ICONE e geometria deliberada, nao
 			// arte que faltou.
+			// ...MENOS quando este vazio e uma COSTURA e nao o limite do mundo. Ver o levantamento
+			// de topologia la em cima: e a parede invisivel que o dono atravessou o mapa pra achar.
 			if (td.Icon == null)
 			{
-				if (td.Density) { muros.Add((x, y)); if (cega) vendados[(x, y)] = Jandirus.Core.World.ZoneCollision.BordaDoMundo; }
+				if (td.Density && !costuras.Contains((x, y)))
+				{
+					muros.Add((x, y));
+					if (cega) vendados[(x, y)] = Jandirus.Core.World.ZoneCollision.BordaDoMundo;
+				}
 				return false;
 			}
 			if (td.Atlas == null || !fontes.TryGetValue(td.Atlas, out Fonte? f)) return false;
@@ -1088,6 +1225,10 @@ public static class MapConverter
 				usadas++;
 			}
 
+			// ESTA CELULA TEM DONO NA TELA -- tile, porta ou maquina. E o outro lado da conta do
+			// relatorio de parede fantasma la embaixo: solido sem ninguem que o desenhe e defeito.
+			desenhadas.Add((x, y));
+
 			// SO BLOQUEIA O QUE FOI DESENHADO -- e a porta e a excecao declarada, senao a casa
 			// fica lacrada com um desenho de porta na frente.
 			// ============================ BARREIRA BLOQUEIA SEM SER DENSA ============================
@@ -1150,7 +1291,7 @@ public static class MapConverter
 				// jogava fora tudo que estava POR CIMA do chao: a porta da casa, o litoral
 				// curvo, as plantas, as cadeiras, as pedras, as mesas. So na Terra sao 575
 				// turfs em 572 celulas, e e metade da queixa "falta coisa no mapa".
-				string? fundo = null, topo = null, objeto = null;
+				string? fundo = null, topo = null, objeto = null, maquina = null;
 				bool tinhaObj = false;
 
 				foreach (string tp in tipos)
@@ -1184,7 +1325,25 @@ public static class MapConverter
 					else if (bp.StartsWith("/obj", StringComparison.Ordinal))
 					{
 						tinhaObj = true;
-						objeto ??= bp;
+
+						// ============================ A MAQUINA E A MOBILIA NAO DISPUTAM A CELULA ============================
+						// Antes havia um `objeto` so, preenchido pelo PRIMEIRO `/obj` da lista, e isso
+						// engoliu o unico banco de Vegeta. A celula (123,286) do `.dmm` e
+						// `['/obj/buildables/chair', '/obj/Bank', '/turf/Tile/Tile5', ...]`: a cadeira vem
+						// primeiro, travava a variavel, e `Obras.PorTypepath` nunca era chamado com
+						// `/obj/Bank`. O banco nao ficou invisivel -- ele nunca chegou ao `.objetos`, e o
+						// bit de densidade dele nunca foi assado. Quatro tiles do ponto onde o jogador
+						// nasce em Vegeta, e a UNICA maquina perdida dos 26 andares.
+						//
+						// Elas nao competem porque nao vao pro mesmo lugar: a maquina sai da cena e vira
+						// construcao (`interativos`), a mobilia continua sendo celula de tilemap. Cabem
+						// as duas na mesma celula, como cabiam no original.
+						//
+						// SO ESTA CELULA EMPILHA MOVEL EM CIMA DE MAQUINA hoje: das 1.823 celulas com
+						// dois ou mais `/obj` nos 26 mapas, 1.797 sao pares de `/obj/barrier/Edges`
+						// (colisao, que entra por outro caminho).
+						if (Obras.PorTypepath(bp) != null) maquina ??= bp;
+						else objeto ??= bp;
 					}
 				}
 
@@ -1206,10 +1365,54 @@ public static class MapConverter
 				// A ARVORE CONTINUA PARANDO O CORPO: `muros` (fisica) segue recebendo a celula; so
 				// `vendados` (visao) deixa de receber. Bloquear passagem e bloquear visao viraram
 				// duas perguntas separadas, que e o que o DM fazia com `density` e `opacity`.
+				// A MAQUINA PRIMEIRO, e por um caminho separado: ela sai da cena pela lista
+				// `interativos` e nao disputa o tile com a mobilia. Ver o comentario do
+				// `Obras.PorTypepath` vinte linhas acima.
+				bool posMaq = Por(maquina, objetos, x, y, cega: false);
+				if (maquina != null && !posMaq)
+					maquinaSemArte[maquina] = maquinaSemArte.GetValueOrDefault(maquina) + 1;
+
 				bool posObj = Por(objeto, objetos, x, y, cega: false);
-				if (posObj) comObj++;
-				if (tinhaObj && !posObj) objSemArte++;
+				if (posObj || posMaq) comObj++;
+				if (tinhaObj && !posObj && !posMaq) objSemArte++;
 			}
+
+		// ============================ A COSTURA TAMBEM PRECISA FECHAR NO DESENHO ============================
+		// Tirar o bloqueio resolve metade: a celula de vazio continua sem tile, e no meio de um oceano
+		// azul liso ela vira uma FRESTA PRETA de um tile cortando o mapa de cima a baixo. Trocar
+		// "parede invisivel" por "risco preto" e trocar um defeito por outro -- e o segundo o dono ve
+		// de longe.
+		//
+		// A COSTURA PEGA O CHAO DO VIZINHO, e nao um tile escolhido a dedo: ela existe porque o
+		// mapeador emendou dois pedacos do MESMO terreno, entao o desenho certo dela e, literalmente,
+		// o do lado. Oeste primeiro e depois leste/norte/sul, sempre na mesma ordem -- a saida e a
+		// mesma toda vez que o mesmo `.dmm` entra.
+		//
+		// ISTO NAO INVENTA ARTE. O tile copiado ja esta no mapa, a uma celula de distancia; nada de
+		// novo entra no tileset. Onde nao ha vizinho com chao (o anel na beirada do retangulo, onde
+		// do lado de fora nao ha nada), a celula continua vazia -- que e o certo, porque ali o mapa
+		// realmente acaba.
+		if (costuras.Count > 0)
+		{
+			var chao = new Dictionary<(int, int), Jandirus.Core.World.CelulaDePedaco>();
+			foreach (Jandirus.Core.World.CelulaDePedaco c in bytes) chao[(c.X, c.Y)] = c;
+
+			int remendadas = 0;
+			foreach ((int x, int y) in costuras.OrderBy(c => c.Item2).ThenBy(c => c.Item1))
+			{
+				if (chao.ContainsKey((x, y))) continue;
+				foreach ((int dx, int dy) in new[] { (-1, 0), (1, 0), (0, -1), (0, 1) })
+				{
+					if (!chao.TryGetValue((x + dx, y + dy), out Jandirus.Core.World.CelulaDePedaco v)) continue;
+					bytes.Add(v with { X = (short)x, Y = (short)y });
+					usadas++;
+					remendadas++;
+					break;
+				}
+			}
+			if (remendadas > 0)
+				Console.WriteLine($"  {nome}: {remendadas} celula(s) de costura remendadas com o chao do vizinho");
+		}
 
 		var sb = new StringBuilder();
 		sb.Append("[gd_scene load_steps=3 format=3]\n\n");
@@ -1364,6 +1567,40 @@ public static class MapConverter
 			foreach ((string q, int n) in semEstado.OrderByDescending(kv => kv.Value).Take(6))
 				Console.WriteLine($"        {n,7}x  {q}");
 		}
+
+		// ============================ NADA PODE SER SOLIDO E INVISIVEL CALADO ============================
+		// Esta e a regra que faltava, e ela vale mais que os tres consertos que a trouxeram. As duas
+		// queixas do dono ("falta o banco" e "tem parede invisivel no meio do mapa") sao o mesmo
+		// defeito visto de dois lados: alguma coisa que o servidor sabe que existe e que a tela nao
+		// mostra. O port ja produziu esse par pelo menos quatro vezes -- a bandeira de conquista sem
+		// `.dmi` convertido, o `Ship_Control`/`Ship_Pad` fora do catalogo, 35 atlas escritos e nunca
+		// importados, e agora a costura de Hera.
+		//
+		// Um erro visivel aqui vale mais que trinta e cinco atlas mudos: o custo de descobrir isto
+		// pelo jogo e o dono andando mil tiles ate esbarrar no nada.
+		//
+		// O QUE E LEGITIMO FICA DE FORA da conta, e sao dois casos so: a BORDA DO MUNDO (`mudas`, o
+		// Blank com miolo) e a PASSAGEM, que e desenhada mas nao bloqueia. Tudo o mais que bloqueia
+		// tem que ter dono na tela.
+		var fantasmas = muros.Where(c => !desenhadas.Contains(c) && !mudas.Contains(c)).ToList();
+		if (fantasmas.Count > 0)
+		{
+			Console.WriteLine($"     PAREDE INVISIVEL: {fantasmas.Count} celula(s) BLOQUEIAM e ninguem as desenha");
+			foreach ((int x, int y) in fantasmas.OrderBy(c => c.Item2).ThenBy(c => c.Item1).Take(8))
+				Console.WriteLine($"        ({x},{y})");
+		}
+
+		if (maquinaSemArte.Count > 0)
+		{
+			Console.WriteLine($"     MAQUINA SEM DESENHO: {maquinaSemArte.Values.Sum()} celula(s). O catalogo "
+							  + "a reconhece e o `.dmi` nao virou arte -- ela NAO entrou no `.objetos`:");
+			foreach ((string q, int n) in maquinaSemArte.OrderByDescending(kv => kv.Value))
+				Console.WriteLine($"        {n,7}x  {q}");
+		}
+
+		if (costuras.Count > 0)
+			Console.WriteLine($"  {nome}: {costuras.Count} celula(s) de vazio DESARMADAS "
+							  + "(sem miolo -- costura do mapeador, nao limite do mundo)");
 
 		if (semAnimacao.Count > 0)
 		{
@@ -1581,6 +1818,136 @@ public static class MapConverter
 	private static (int X, int Y) Indice(Fonte f, int i) => (i % f.Cols, i / f.Cols);
 
 	private static string Inv(float v) => v.ToString("0.####", CultureInfo.InvariantCulture);
+
+	// =====================================================================
+	// A AGUA -- a terceira classe de celula (ver Core/World/Agua.cs)
+	// =====================================================================
+
+	/// <summary>
+	/// AS CELULAS DE AGUA DESTE ANDAR.
+	///
+	/// ============================ QUAL TURF DECIDE, NUMA CELULA COM VARIOS ============================
+	/// O ULTIMO, e e a mesma regra que o desenho ja usa vinte linhas acima ("o ultimo turf vence" --
+	/// no DM cada `new /turf/X(loc)` de um prefab SUBSTITUI o anterior, entao quem existe no fim e o
+	/// unico que existe). Perguntar pelo PRIMEIRO daria agua onde o mapeador pos uma ponte ou uma
+	/// pedra por cima do lago, e chao onde ele pos agua por cima da areia.
+	/// ================================================================================================
+	///
+	/// Sai como funcao propria, e nao dentro do `EscreverCena`, porque ela precisa rodar tambem no
+	/// comando `agua` -- que existe justamente pra NAO reconverter os sprites (ver `Program.cs`).
+	/// Duas derivacoes de "o que e agua" divergiriam do mesmo jeito que a colisao e a cena
+	/// divergiam em 2% das celulas antes de virarem uma passada so.
+	/// </summary>
+	internal static List<(int X, int Y)> CelulasDeAgua(DmmLevel nivel, DmmMap.Result dados,
+													   Dictionary<string, TurfDef> turfs)
+	{
+		var molhadas = new List<(int, int)>();
+		for (int y = 0; y < nivel.Height; y++)
+			for (int x = 0; x < nivel.Width; x++)
+			{
+				string? k = nivel.Cells[x, y];
+				if (k == null || !dados.Keys.TryGetValue(k, out string[]? tipos)) continue;
+
+				string? ultimoTurf = null;
+				foreach (string tp in tipos)
+				{
+					string bp = DmmMap.BasePath(tp);
+					if (bp.StartsWith("/turf", StringComparison.Ordinal)) ultimoTurf = bp;
+				}
+
+				if (ultimoTurf == null || !turfs.TryGetValue(ultimoTurf, out TurfDef? td)) continue;
+				if (Aguas.Eh(ultimoTurf, td)) molhadas.Add((x, y));
+			}
+		return molhadas;
+	}
+
+	/// <summary>
+	/// Grava o `.agua` de todos os andares E MAIS NADA -- nem tileset, nem cena, nem sprite.
+	///
+	/// ============================ POR QUE UM CAMINHO SO PRA ISTO ============================
+	/// A conversao cheia reescreve o tileset, o `tiles.json`, os 40 `.tscn`/`.pedacos` e o indice de
+	/// sprites -- e o indice resolve nome repetido por `TryAdd`, entao rodar tudo pra buscar UM bit
+	/// por celula reescreveria 21 artes (4 delas genuinamente diferentes) sem ninguem ter pedido.
+	/// O dado que falta e novo e independente: um bitset por andar, derivado do `.dmm` e da arvore
+	/// de tipos, que nao toca em nenhum arquivo que ja existe.
+	///
+	/// O `.agua` E UM ARQUIVO NOVO, nao uma cauda do `.col`: a cauda do `.col` ja tem dono (o plano
+	/// de grupo da sombra, ver `ZoneCollision.Load`), e uma zona sem agua simplesmente nao ganha
+	/// arquivo -- o leitor trata a ausencia como "sem agua", que e a verdade.
+	/// =======================================================================================
+	/// </summary>
+	public static void ConverterAguas(string dmmDir, string outDir, Dictionary<string, TurfDef> turfs)
+	{
+		Directory.CreateDirectory(outDir);
+
+		var mapas = new List<(string Arquivo, DmmMap.Result Dados, int Offset)>();
+		int offset = 0;
+		foreach (string dmm in OrdemDoDme(dmmDir))
+		{
+			DmmMap.Result d = DmmMap.Read(dmm);
+			mapas.Add((dmm, d, offset));
+			offset += d.Levels.Count;
+		}
+
+		int andares = 0, comAgua = 0, total = 0, apagados = 0;
+		foreach ((string _, DmmMap.Result dados, int off) in mapas)
+			foreach (DmmLevel nivel in dados.Levels)
+			{
+				string nome = NomeDoAndar(dados, nivel, off);
+				string caminho = Path.Combine(outDir, nome + ".agua");
+				List<(int X, int Y)> molhadas = CelulasDeAgua(nivel, dados, turfs);
+				andares++;
+
+				// ZONA SECA NAO GANHA ARQUIVO -- e um `.agua` velho de uma zona que virou seca e
+				// APAGADO. Deixar o arquivo antigo seria pior que nao ter nenhum: o leitor confiaria
+				// nele e o lago continuaria existindo pra colisao depois de sumir do mapa.
+				if (molhadas.Count == 0)
+				{
+					if (File.Exists(caminho)) { File.Delete(caminho); apagados++; }
+					continue;
+				}
+
+				EscreverColisao(caminho, nivel.Width, nivel.Height, molhadas);
+				comAgua++;
+				total += molhadas.Count;
+
+				// ============================ RELER O QUE ACABOU DE SER ESCRITO ============================
+				// Nao e paranoia: o que interessa nao e "o conversor decidiu N celulas", e "o objeto
+				// que o JOGO consulta responde agua em N celulas". Sao coisas diferentes -- o
+				// `.agua` passa por um cabecalho, por um bitset e por um leitor que RECUSA calado
+				// quando o tamanho nao bate (`ZoneCollision.CarregarAgua`), e uma recusa calada aqui
+				// seria exatamente o defeito que este projeto mais paga caro: verde na bancada, seco
+				// em jogo. Entao a conta sai do `EhAgua`, celula por celula.
+				//
+				// A SOBREPOSICAO COM O `.col` TAMBEM SAI, porque ela e legitima e vale ser vista: uma
+				// `/obj/barrier` ou uma ponte por cima do lago deixa a celula parede E agua. Parede
+				// vence pra todo mundo (ver `ZoneCollision.Bloqueia`), que e o certo -- ninguem nada
+				// atravessando uma cerca.
+				var lido = Jandirus.Core.World.ZoneCollision.Load(File.ReadAllBytes(
+					Path.Combine(outDir, nome + ".col")));
+				int conferidas = 0, sobrepostas = 0;
+				var relido = Jandirus.Core.World.ZoneCollision.Montar(
+					nivel.Width, nivel.Height, new byte[(nivel.Width * nivel.Height + 7) / 8]);
+				if (!relido.CarregarAgua(File.ReadAllBytes(caminho)))
+					Console.WriteLine($"  {nome,-34} FALHOU: o .agua escrito nao volta pelo CarregarAgua");
+				else
+					for (int y = 0; y < nivel.Height; y++)
+						for (int x = 0; x < nivel.Width; x++)
+							if (relido.EhAgua(x, y))
+							{
+								conferidas++;
+								if (lido != null && lido.BlockedCell(x, y)) sobrepostas++;
+							}
+
+				string aviso = conferidas == molhadas.Count ? "" : $"  <-- RELEU {conferidas}, DIVERGE";
+				Console.WriteLine($"  {nome,-34} {molhadas.Count,8} celulas de agua"
+								  + (sobrepostas > 0 ? $" ({sobrepostas} tambem parede no .col)" : "")
+								  + aviso);
+			}
+
+		Console.WriteLine($"andares: {andares} | com agua: {comAgua} | celulas: {total}"
+						  + (apagados > 0 ? $" | .agua apagados (zona secou): {apagados}" : ""));
+	}
 
 	/// <summary>
 	/// Mapa de colisao compacto: 1 BIT por celula. Um andar de 500x500 cabe em ~31 KB, entao

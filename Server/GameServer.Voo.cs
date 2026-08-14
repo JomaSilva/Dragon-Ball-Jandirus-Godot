@@ -1,3 +1,4 @@
+using Jandirus.Core.Combat;
 using Jandirus.Core.World;
 using Jandirus.Net;
 
@@ -26,7 +27,18 @@ public partial class GameServer
 	/// uma pessoa ve nao e cenario. Canal confiavel, porque um decalque perdido nao volta -- ao
 	/// contrario da posicao, que o proximo snapshot conserta sozinho.
 	/// </summary>
-	private void MandarDecalque(ZoneKey zona, Protocol.Decal tipo, Vec2 onde, Facing dir)
+	/// <param name="peca">
+	/// SO PRO <see cref="Protocol.Decal.Membro"/>: qual recorte da folha `Body Parts Bloody` cai no
+	/// chao. Vai no fio SO quando o tipo e esse -- os outros sete decalques nao pagariam o byte pra
+	/// escrever zero, e este e um pacote que numa briga sai varias vezes por segundo.
+	///
+	/// O CAMPO E PUBLICO NO SENTIDO DO JOGO e isso e deliberado: amputacao ja e informacao de zona
+	/// inteira (os quatro bits de membro arrancado do `S2C.Feridas`), e a peca no chao e a MESMA
+	/// informacao com outro desenho. O que ela NAO leva e numero nenhum de ficha -- nem vida, nem
+	/// dano, nem de quem era o corpo. Quem assiste ve um braco no chao, que e o que ele veria.
+	/// </param>
+	private void MandarDecalque(ZoneKey zona, Protocol.Decal tipo, Vec2 onde, Facing dir,
+								PecaDeCorpo peca = PecaDeCorpo.Nenhuma)
 	{
 		// A BANCADA ESCUTA AQUI, pela mesma razao das escutas de `GameServer.FormasTeste.cs`: um
 		// decalque termina num `Peer.Send` e pacote que saiu no fio nao volta. A pergunta que so
@@ -39,6 +51,9 @@ public partial class GameServer
 		w.Put((byte)tipo);
 		w.PutVec(onde);
 		w.Put((byte)dir);
+		// O BYTE CONDICIONAL. Ver o parametro `peca`: o leitor do cliente le pela MESMA condicao
+		// (`GameClient`), entao as duas pontas concordam sem precisar de tamanho no pacote.
+		if (tipo == Protocol.Decal.Membro) w.Put((byte)peca);
 		foreach (ServerPlayer o in ZoneList(zona.Hash))
 			o.Peer?.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
 	}
@@ -169,13 +184,29 @@ public partial class GameServer
 			return;
 		}
 
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "nao da pra voar assim."); return; }
+		// ============================ O MORTO DO OUTRO MUNDO VOA ============================
+		// No DM **nao ha gate nenhum de `dead` no voo**: o morto e `Un_KO()`'d antes de subir pro alem
+		// (`Death.dm:86-89`) e `move = 1` e escrito quatro vezes no proprio `Death()`. E preciso: o
+		// planeta do Sr. Kaioh fica no mesmo z6, do outro lado da Snake Way.
+		//
+		// O CORTE FICA NO CADAVER, e nao na morte: durante os 15 s em que o corpo esta caido no chao
+		// do mundo dos vivos (`Alem.MsNoChao`) ele nao decola -- seria um boneco desenhado DEITADO
+		// subindo. `MortoDePe` responde as duas coisas com uma pergunta so. Ver `Core/World/Alem.cs`.
+		if (pl.Ficha.KO || (pl.Ficha.dead && !pl.MortoDePe))
+		{ Avisar(pl, "nao da pra voar assim."); return; }
 
 		double custo = Voo.CustoParaLigar(HabilidadeDeVoo(pl), pl.VooRapido);
 		if (pl.Ficha.Ki < custo) { Avisar(pl, "voce esta cansado demais pra voar."); return; }
 
 		pl.Ficha.Ki -= custo;
 		pl.Voando = true;
+		// LEVANTAR VOO DESLIGA O NADO -- `savant.swim = 0` (`flying.dm:112`, dentro do
+		// `start_flying`). E a outra metade do par: `AlternarNado` desliga o voo. Sem as duas, um
+		// corpo poderia estar nos dois estados e pagar os dois Kis ao mesmo tempo.
+		//
+		// SEM AVISO: quem apertou "voar" em cima da agua nao precisa ler que parou de nadar -- ele
+		// esta subindo, que e o que ele pediu.
+		PararDeNadar(pl, null);
 		MandarEfeito(pl, "voo", -1);
 		Avisar(pl, "voce comeca a pairar.");
 	}
@@ -209,7 +240,11 @@ public partial class GameServer
 	{
 		// QUEM CAIU, CAI. Nocaute e morte tiram o voo na hora (`KO.dm:71` faz `isflying=0`), mas a
 		// altura sobra -- e o corpo desce sozinho pelo trecho de queda logo abaixo.
-		if (pl.Voando && (pl.Ficha.KO || pl.Ficha.dead))
+		//
+		// MORRER VOANDO DERRUBA -- e isso continua valendo, e e o certo: quem morre no ar cai. O que
+		// mudou e que o morto que ja esta DE PE no Outro Mundo nao e derrubado a cada tique (senao o
+		// voo de la seria ligado e desligado 30 vezes por segundo). Mesma pergunta do gate de cima.
+		if (pl.Voando && (pl.Ficha.KO || (pl.Ficha.dead && !pl.MortoDePe)))
 		{
 			pl.Voando = false;
 			MandarEfeito(pl, "voo", 0);
@@ -305,7 +340,21 @@ public partial class GameServer
 		pl.Voando = false;
 
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
-		if (mapa != null && MoveRules.Occupied(mapa, pl.Pos) && ChaoLivrePerto(mapa, pl.Pos) is { } saida)
+
+		// ============================ A PERGUNTA VAI COM O **MODO** ============================
+		// `Occupied` sem modo e a pergunta A PE, e a pe a agua para -- entao pousar em cima do lago
+		// caia no desvio do "pousou dentro da pedra": o corpo era teleportado pra margem e o tique
+		// seguinte apagava o nado por falta de agua embaixo. Quem larga o voo em cima da agua
+		// NADANDO tem que continuar nadando; quem larga a pe continua sendo desviado, porque agua
+		// nao serve de chao (`ClasseDeAgua.ServeDeChao`).
+		//
+		// O modo e lido DEPOIS de zerar a altura e o voo, logo acima: aqui `noAr` ja e falso e a
+		// resposta e a do corpo POUSADO, que e sobre quem esta se perguntando.
+		//
+		// (Era a quinta chamada esquecida do `ClasseDeAgua.ModoDe` -- as outras quatro sao o passo do
+		// cliente, a validacao do servidor, o passo da IA e o arremesso.)
+		ModoDeTravessia modo = ModoDeTravessiaDe(pl);
+		if (mapa != null && MoveRules.Occupied(mapa, pl.Pos, modo) && ChaoLivrePerto(mapa, pl.Pos) is { } saida)
 		{
 			pl.Pos = saida;
 			// O IDIOMA DO DESLOCAMENTO PELO SERVIDOR, igual ao do dash e do Zanzoken: carimba a
@@ -319,7 +368,11 @@ public partial class GameServer
 			w.Put(pl.SeqInput);
 			w.PutVec(pl.Pos);
 			pl.Peer?.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
-			Avisar(pl, "voce pousa ao lado da rocha.");
+			// A MENSAGEM DEIXOU DE CITAR ROCHA porque o desvio deixou de ser so por rocha: agua
+			// tambem nao serve de chao (`ClasseDeAgua.ServeDeChao`), e o `MoveRules.Occupied` aqui
+			// pergunta A PE -- entao pousar em cima do lago cai neste mesmo desvio, de graca. Dizer
+			// "rocha" pra quem pousou num rio seria a tela contando outra historia.
+			Avisar(pl, "nao dava pra pousar ai -- voce desce ao lado.");
 		}
 
 		MandarEfeito(pl, "voo", 0);

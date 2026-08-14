@@ -255,8 +255,9 @@ public partial class GameServer
 		var achados = new List<string>();
 		foreach (ServerPlayer o in _players.Values)
 		{
-			// NPC nao tem mente pra alcancar: `Peer` nulo e o que define corpo sem dono no port
-			if (o == pl || o.Peer == null) continue;
+			// NPC nao tem mente pra alcancar -- e nem o clone nem o boneco do corpo largado, que sao
+			// ECOS de uma mente que ja esta na lista. O crivo e o do `Core` (ver `Gente.EhJogador`).
+			if (o == pl || !EhJogador(o)) continue;
 			if (!AchoAEnergiaG4(o)) continue;
 			achados.Add(o.Name);
 		}
@@ -309,7 +310,7 @@ public partial class GameServer
 		alvo.Combate.Reviver(1, SegundosDeCarencia);   // corpo INTEIRO, decepado incluso
 		alvo.Ficha.Ki = alvo.Ficha.MaxKi;
 		alvo.Ficha.stamina = alvo.Ficha.maxstamina;
-		alvo.RenasceEm = 0;                            // o renascimento automatico perde a corrida
+		alvo.RelogioDaMorte = 0;                       // o percurso da morte perde a corrida
 		AjustarGanhoDoRabo(alvo);
 		alvo.Ficha.Statify();
 
@@ -367,7 +368,10 @@ public partial class GameServer
 			Avisar(pl, "você precisa parar de treinar pra se concentrar no rasgo.");
 			return;
 		}
-		if (pl.CloneId != 0) { Avisar(pl, "primeiro saia da sua mente."); return; }
+		// PELO LUGAR e nao pelo reflexo -- ver `GameServer.Mente.NaMente`. (Na pratica o `med` acima ja
+		// barra quem esta em transe; esta linha continua aqui porque ela responde outra coisa: nao ha
+		// realidade pra rasgar dentro de uma mente.)
+		if (NaMente(pl)) { Avisar(pl, "primeiro saia do transe."); return; }
 
 		long agora = NowMs();
 		if (_prontoRiftG4.TryGetValue(pl.Id, out long pronto) && agora < pronto)
@@ -461,13 +465,10 @@ public partial class GameServer
 			if (pl.Ficha.dead && !cp.Morto)
 			{
 				pl.Combate.Reviver(1, SegundosDeCarencia);
-				pl.RenasceEm = 0;
+				pl.RelogioDaMorte = 0;
 				AjustarGanhoDoRabo(pl);
 			}
-			else if (!pl.Ficha.dead && cp.Morto && pl.Combate.Morrer())
-			{
-				pl.RenasceEm = NowMs() + MsAteRenascer;
-			}
+			else if (!pl.Ficha.dead && cp.Morto) pl.Combate.Morrer();   // o prazo sai do gancho `AoMorrer`
 
 			// A VIDA VEM DEPOIS DO REVIVER, e a ordem e o conserto de um defeito de verdade: a
 			// primeira versao escrevia a vida de cada membro ANTES deste bloco, e o `Reviver()`
@@ -691,12 +692,18 @@ public partial class GameServer
 		// consegue descer obrigaria o jogador a usar DOIS controles diferentes pra mesma coisa.
 		if (n <= 0)
 		{
-			if (est.NaBase) { Avisar(pl, "você ja está na forma base."); return; }
+			// E O DESTINO E O **PISO**, e nao o `IdBase` cravado: quem descansa numa forma
+			// (`Catalogo.PisoDaEscada` -- hoje o Frost Demon, que tem sprite proprio no repouso e,
+			// se for Mutante, 0,25x de multiplicador) tem que voltar PRA ELA. Cravar a base aqui
+			// daria ao admin um caminho que o jogo nao tem: um Mutante em 1x sobre o BP
+			// quadruplicado, so por ter digitado `DirectSSJ:0`.
+			string piso = Catalogo.IdDoPiso(Perfil(pl));
+			if (est.Atual == piso) { Avisar(pl, "você ja está na forma base."); return; }
 			string deBase = est.Atual;
-			est.Entrar(Catalogo.IdBase);
+			est.Entrar(piso);
 			AplicarForma(pl);
 			Avisar(pl, "você volta ao normal.");
-			AnunciarForma(pl, deBase, Catalogo.IdBase, estreia: false);
+			AnunciarForma(pl, deBase, piso, estreia: false);
 			return;
 		}
 

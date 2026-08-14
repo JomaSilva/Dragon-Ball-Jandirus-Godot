@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.Json.Serialization;
 using Godot;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
@@ -12,7 +13,84 @@ public sealed class Obra
 {
 	public int Id;
 	public string Tipo = "";        // o id do catalogo ("Research_Station")
-	public string Zona = "";        // ZoneKey.Name
+
+	/// <summary>
+	/// ONDE ELA ESTA -- as TRES partes da <see cref="ZoneKey"/>, e nao o nome.
+	///
+	/// ============================ O NOME NAO E ENDERECO, E ISSO JA CUSTOU CARO ============================
+	/// Ate aqui este campo era uma STRING de nome e a carga o remontava com `ZoneKey.Premade(...)`.
+	/// Duas coisas quebravam, e as duas CORROMPEM DADO em vez de dar erro:
+	///
+	///   * uma construcao erguida num planeta GERADO voltava do disco numa zona PRE-FEITA que nao
+	///     existe -- ela sumia do mundo sem log, e continuava ocupando id e lista;
+	///   * dois planetas gerados HOMONIMOS dividiam as mesmas obras. Homonimo acontece: o padrao
+	///     `{bioma}-{|Sx|%1000}{|Sy|%1000}{k}` de `SistemaSolar.Planeta` PERDE O SINAL das DUAS
+	///     coordenadas, e a varredura do universo de producao acha "Deserto-120" **tres vezes** --
+	///     `[-1:-2]k0`, `[1:-2]k0` e `[1:2]k0`. O primeiro par e o que prova que nem o sinal de `Sx`
+	///     sobrevive. Isto nao e afirmacao de comentario: a secao 7 da `--obrateste` VARRE o universo,
+	///     acha o par sozinha e imprime as celulas -- no dia em que a seed do universo mudar, o log
+	///     dela diz qual par existe agora.
+	///
+	/// ============================ POR QUE A ZoneKey, E NAO O ENDERECO (Sx, Sy, K) ============================
+	/// A trinca (sistema, sistema, orbita) e a que o <see cref="Jandirus.Core.Races.Berco"/> e o
+	/// <see cref="Dominio"/> guardam -- e o cabecalho do `Dominio.Sx` diz com todas as letras o que ela
+	/// e: **POSICAO, nao identidade**. Ela responde "onde no ceu fica este corpo", e uma obra nao mora
+	/// num corpo celeste: mora numa ZONA. Ha zonas que nao sao corpo nenhum e que nao teriam endereco
+	/// (o interior de nave, a Sala do Tempo, o proprio espaco), e a `Obra` teria que inventar um valor
+	/// pra elas -- que e a terceira chave que ninguem quer.
+	///
+	/// A `ZoneKey` inteira e a mesma resposta que o `Berco` da quando o PERGUNTAM por zona
+	/// (`Berco.Zona`: `Premade(nome)` ou `Procedural(nome, seed)`), e ja foi escolhida DUAS vezes neste
+	/// repo pelo mesmo motivo: a `Nave` (`GameServer.Nave.cs:42-44`) e o save de personagem
+	/// (`CharacterStore.cs:170-180`) guardam exatamente estes tres campos. Nao ha chave nova aqui --
+	/// ha uma chave que faltava.
+	/// ======================================================================================================
+	/// </summary>
+	public byte ZonaTipo;
+	public string ZonaNome = "";
+	public ulong ZonaSeed;
+
+	/// <summary>
+	/// A ZONA, montada dos tres campos. `[JsonIgnore]` porque o disco guarda as PARTES: gravar a
+	/// montagem junto poria duas verdades no mesmo arquivo pra divergirem.
+	/// </summary>
+	[JsonIgnore] public ZoneKey Zona => new(ZonaTipo, ZonaNome, ZonaSeed);
+
+	public void PorZona(ZoneKey z) { ZonaTipo = z.Kind; ZonaNome = z.Name; ZonaSeed = z.Seed; }
+
+	/// <summary>
+	/// ============================ A MIGRACAO DO `mundo.json` ANTIGO -- ELA CONVERTE ============================
+	/// O disco de ontem tem `"Zona": "Earth"`, uma string. Sem esta porta ela seria IGNORADA na carga e
+	/// toda obra ja gravada voltaria com `ZonaNome` vazio -- de pe numa zona que nao existe, invisivel,
+	/// e sem ninguem por perto pra recolher. Isso e descartar calado, com outro nome.
+	///
+	/// Entao ela CONVERTE, e a conversao e exatamente o que o codigo antigo fazia ao ler: nome puro vira
+	/// `ZoneKey.Premade(nome)`. Nao ha perda nenhuma nisso -- a carga antiga ja tratava TODA obra como
+	/// pre-feita, entao a que estava num planeta gerado ja nao voltava pro lugar certo. O que se ganha e
+	/// que a bancada da Terra continua na Terra, e que a partir de agora a de um mundo sorteado tambem.
+	///
+	/// O <see cref="Migrada"/> nao vai pro disco: ele so existe pra a carga poder DIZER quantas converteu
+	/// (regra da casa: o que muda dado se anuncia). Na primeira gravacao o campo velho desaparece do
+	/// arquivo sozinho, e esta porta passa a nunca mais disparar.
+	/// ========================================================================================================
+	/// </summary>
+	[JsonInclude]
+	[JsonPropertyName("Zona")]
+	public string ZonaDoDiscoAntigo
+	{
+		set
+		{
+			if (string.IsNullOrEmpty(value)) return;
+			ZonaTipo = ZoneKey.KindPremade;
+			ZonaNome = value;
+			ZonaSeed = 0;
+			Migrada = true;
+		}
+	}
+
+	/// <summary>Esta obra veio do formato antigo? So a carga le, e so pra contar.</summary>
+	[JsonIgnore] public bool Migrada;
+
 	public float X, Y;
 	public string DonoConta = "";   // quem ergueu -- CONTA, nao nome (ver o comentario do trono)
 	public string DonoNome = "";
@@ -108,8 +186,14 @@ public partial class GameServer
 	private readonly List<Obra> _noChao = [];
 	private int _proximaObraId = 1;
 
-	/// <summary>O raio, em pixels, dentro do qual da pra usar uma construcao.</summary>
-	private const float AlcanceDeUso = 64f;
+	/// <summary>
+	/// O raio, em pixels, dentro do qual da pra usar uma construcao.
+	///
+	/// O NUMERO E DO CORE (<see cref="Interacoes.Alcance"/>) e nao daqui: o cliente desenha o menu
+	/// com ele e o servidor aceita o verbo com ele. Duas copias que combinavam por acaso ja
+	/// deixaram uma terceira (a do console da ponte) divergir em 16 px -- ver o comentario de la.
+	/// </summary>
+	private const float AlcanceDeUso = Interacoes.Alcance;
 
 	/// <summary>
 	/// TECH MINIMO PRO LABORATORIO DE DNA (`DNL_INT_REQ`). Setenta pontos: e o numero que faz um
@@ -165,34 +249,65 @@ public partial class GameServer
 			Jandirus.Core.Items.CatalogoDeItens.Obras = _obras;
 
 			GD.Print($"[server] construcoes: {_obras.Total} no catalogo");
+
+			// ============================ DENSA E SEM ARTE E UMA PAREDE INVISIVEL ============================
+			// O servidor bloqueia a celula pelo campo `Densa` (`AplicarColisaoDasObras`) e o cliente
+			// desenha pelo campo `Arte`. Quando o segundo esta vazio e o primeiro nao, o jogador ganha
+			// um obstaculo que nao existe na tela -- e ate hoje isso passava calado, porque cada lado
+			// so olha o campo dele.
+			//
+			// O CLIENTE JA TEM RESERVA (`ObraDesenhada._Draw` pinta um retangulo cinza quando o
+			// SpriteFrames nao carrega), entao o jogador vai VER alguma coisa. O que faltava era
+			// alguem DIZER que aquela coisa cinza e um buraco de asset, e nao arte de proposito.
+			// Ver tambem o relatorio de "PAREDE INVISIVEL" do `MapConverter`.
+			//
+			// A PERGUNTA E DO CORE (`CatalogoDeObras.SemDesenho`), e nao um `if` escrito aqui: a
+			// bancada `--cidadeteste` cobra a MESMA lista, e duas copias da regra divergiriam no
+			// primeiro campo que alguem acrescentasse. Ver o cabecalho daquele metodo.
+			AvisarDasMudas(_obras);
 		}
 		else GD.PushWarning("[server] sem construcoes.json -- rode o AssetPipeline (comando 'tech')");
 
-		try
-		{
-			if (System.IO.File.Exists(CaminhoDoMundo))
-			{
-				List<Obra>? l = JsonSerializer.Deserialize<List<Obra>>(
-					System.IO.File.ReadAllText(CaminhoDoMundo), new JsonSerializerOptions { IncludeFields = true });
-				if (l != null) _noChao.AddRange(l);
-				_proximaObraId = _noChao.Count > 0 ? _noChao.Max(o => o.Id) + 1 : 1;
-				GD.Print($"[server] mundo: {_noChao.Count} construcoes de pe");
-			}
-		}
-		catch (Exception e) { GD.PushWarning($"[server] mundo.json ilegivel: {e.Message}"); }
+		CarregarMundoDeDisco(CaminhoDoMundo);
 
 		// AS OBRAS DO DISCO TAMBEM BLOQUEIAM. Sem esta volta, uma bancada erguida ontem so viraria
 		// parede quando alguem construisse OUTRA coisa na mesma zona -- e o `MandarObras` fosse
 		// chamado por acaso. Bloquear na carga e o que faz o mundo salvo valer desde o boot.
 		int densas = 0;
-		foreach (string zona in _noChao.Select(o => o.Zona).Distinct())
+		foreach (ZoneKey zona in _noChao.Select(o => o.Zona).Distinct())
 		{
-			AplicarColisaoDasObras(ZoneKey.Premade(zona));
-			densas += _noChao.Count(o => o.Zona == zona && _obras?.Get(o.Tipo) is { Densa: true });
+			AplicarColisaoDasObras(zona);
+			densas += _noChao.Count(o => o.Zona.Equals(zona) && _obras?.Get(o.Tipo) is { Densa: true });
 		}
 		if (densas > 0) GD.Print($"[server] construcoes que bloqueiam: {densas}");
 
 		CarregarObjetosDoMapa();
+	}
+
+	/// <summary>
+	/// GRITA POR CADA CONSTRUCAO QUE BLOQUEIA SEM TER ARTE. Devolve quantas eram.
+	///
+	/// ============================ POR QUE ISTO E UM METODO, E COM RETORNO ============================
+	/// Porque um `foreach` com `PushError` dentro da carga nao pode ser PROVADO. A bancada
+	/// `--cidadeteste` precisa injetar uma construcao muda e conferir que o alarme disparou, e a
+	/// unica forma honesta de conferir isso e o alarme de PRODUCAO responder -- se a bancada tivesse
+	/// o proprio laco, ela mediria a si mesma, e o dia em que alguem apagasse este trecho da carga
+	/// ela continuaria verde. O numero devolvido e a resposta que a bancada le.
+	///
+	/// Foi assim que quatro paredes invisiveis nasceram neste port sem ninguem notar: nao faltou
+	/// codigo, faltou alguem PERGUNTAR em voz alta.
+	/// ==============================================================================================
+	/// </summary>
+	private int AvisarDasMudas(CatalogoDeObras cat)
+	{
+		int n = 0;
+		foreach (Construcao c in cat.SemDesenho())
+		{
+			n++;
+			GD.PushError($"[server] construcao '{c.Id}' BLOQUEIA e nao tem arte -- ela vira parede "
+						 + "invisivel. Converta o .dmi dela e rode o AssetPipeline ('tech').");
+		}
+		return n;
 	}
 
 	/// <summary>
@@ -231,18 +346,22 @@ public partial class GameServer
 				// deslocamento dos pes. Aqui a conta e a inversa, e tem que ser a mesma -- senao a
 				// maquina desenha uma celula acima de onde ela esta no mapa.
 				const int t = ZoneCollision.TileSize;
-				_noChao.Add(new Obra
+				var maquina = new Obra
 				{
 					Id = _proximaObraId++,
 					Tipo = o.Id,
-					Zona = e.Zona,
 					X = o.X * t + t / 2f,
 					Y = o.Y * t + t / 2f - MoveRules.FeetOffsetY,
 					DonoNome = "",
 					Aparafusada = true,
 					DoMapa = true,
 					ErguidaEm = 0,
-				});
+				};
+
+				// PRE-FEITA POR CONSTRUCAO: o `ZoneEntry` e uma zona de ARQUIVO (convertida de .dmm).
+				// Nao ha `.objetos` de mundo sorteado -- o gerador nao escreve maquina nenhuma.
+				maquina.PorZona(ZoneKey.Premade(e.Zona));
+				_noChao.Add(maquina);
 				n++;
 			}
 
@@ -255,13 +374,45 @@ public partial class GameServer
 						   + "rode o AssetPipeline ('tech' e depois 'maps')");
 	}
 
-	private void GravarMundo()
+	/// <summary>
+	/// LE O `mundo.json`. Separada do <see cref="CarregarTech"/> pelo caminho, e nao por gosto: a
+	/// bancada (`--obrateste`) precisa exercitar ESTA leitura -- com a migracao dentro -- contra um
+	/// arquivo proprio, sem tocar no mundo de verdade. Uma copia da leitura na bancada testaria a
+	/// copia.
+	/// </summary>
+	private void CarregarMundoDeDisco(string caminho)
+	{
+		try
+		{
+			if (!System.IO.File.Exists(caminho)) return;
+
+			List<Obra>? l = JsonSerializer.Deserialize<List<Obra>>(
+				System.IO.File.ReadAllText(caminho), new JsonSerializerOptions { IncludeFields = true });
+			if (l != null) _noChao.AddRange(l);
+			_proximaObraId = _noChao.Count > 0 ? _noChao.Max(o => o.Id) + 1 : 1;
+			GD.Print($"[server] mundo: {_noChao.Count} construcoes de pe");
+
+			// A MIGRACAO SE ANUNCIA (ver `Obra.ZonaDoDiscoAntigo`). Converter em silencio seria
+			// pedir pra alguem, daqui a um mes, descobrir pelo bug que o formato mudou.
+			int convertidas = _noChao.Count(o => o.Migrada);
+			if (convertidas > 0)
+				GD.Print($"[server] mundo: {convertidas} construcao(oes) convertida(s) do formato antigo "
+						 + "(zona por nome -> zona pre-feita). Elas voltam pro mesmo lugar de sempre; "
+						 + "a partir de agora as de planeta gerado tambem voltam pro delas.");
+		}
+		catch (Exception e) { GD.PushWarning($"[server] mundo.json ilegivel: {e.Message}"); }
+	}
+
+	private void GravarMundo() => GravarMundoEm(CaminhoDoMundo);
+
+	/// <summary>Ver <see cref="CarregarMundoDeDisco"/> -- a irma, e pelo mesmo motivo.</summary>
+	private void GravarMundoEm(string caminho)
 	{
 		try
 		{
 			// SO O QUE ALGUEM ERGUEU. A mobilia do mapa nasce do `.objetos` a cada boot; grava-la
 			// aqui duplicaria cada bancada a cada reinicio. Ver `Obra.DoMapa`.
-			System.IO.File.WriteAllText(CaminhoDoMundo,
+			System.IO.File.WriteAllText(caminho,
 				JsonSerializer.Serialize(_noChao.Where(o => !o.DoMapa).ToList(),
 										 new JsonSerializerOptions { IncludeFields = true, WriteIndented = true }));
 		}
@@ -340,25 +491,60 @@ public partial class GameServer
 		if (Math.Abs(x - pl.Pos.X) > AlcanceDePosicionar || Math.Abs(y - pl.Pos.Y) > AlcanceDePosicionar)
 		{ Avisar(pl, "longe demais -- chegue mais perto do lugar."); return; }
 
+		// ============================ NAO SE CONSTROI DENTRO DE UMA NAVE -- E O MOTIVO MUDOU ============================
+		// A recusa NASCEU de um defeito da chave: a `Obra` guardava a zona como nome puro, o interior de
+		// toda nave se chama "Nave", e uma bancada erguida na #7 apareceria dentro da #8 e de todas as
+		// outras. **Esse defeito acabou** -- o interior e `ZoneKey.Interior("Nave", id da nave)` e agora
+		// a obra guarda tipo, nome e seed, entao a #7 e a #8 sao zonas distintas.
+		//
+		// A RECUSA FICA POR OUTRA RAZAO, e ela e do CICLO DE VIDA e nao da chave: o interior existe
+		// enquanto a nave existe. Uma nave se recolhe pra mochila e se destroi (`GameServer.Estrago`),
+		// e o `mundo.json` nao sabe disso -- a bancada ficaria de pe pra sempre numa zona onde ninguem
+		// mais entra, ocupando id e lista, sem nenhum caminho pra recolhe-la. Guardar obra dentro de
+		// coisa que morre pede que a morte da nave leve as obras junto, e isso e trabalho da nave.
+		// =============================================================================================================
+		if (Jandirus.Core.Tech.NaveGrande.EhInterior(pl.Zone, out _))
+		{
+			Avisar(pl, "não dá pra construir dentro de uma nave: se ela for destruída, o que estiver "
+					   + "aqui dentro fica preso num lugar onde ninguém mais entra.");
+			return;
+		}
+
 		// NAO EMPILHA: duas construcoes no mesmo lugar viram uma so na tela e as duas respondem ao
 		// mesmo clique. Meio tile de folga e o bastante pra nao encavalar.
-		if (_noChao.Any(o => o.Zona == pl.Zone.Name
-							 && Math.Abs(o.X - x) < 24 && Math.Abs(o.Y - y) < 24))
+		//
+		// AS NAVES CONTAM NA MESMA CONFERENCIA. Elas moram noutra lista (ver `GameServer.Nave.cs`),
+		// mas ocupam o mesmo chao -- e "ja tem coisa demais neste ponto" e uma pergunta sobre o
+		// CHAO, nao sobre a lista em que a coisa esta guardada.
+		if (_noChao.Any(o => o.Zona.Equals(pl.Zone)
+							 && Math.Abs(o.X - x) < 24 && Math.Abs(o.Y - y) < 24)
+			|| NavesParadasEm(pl.Zone).Any(n => Math.Abs(n.X - x) < 24 && Math.Abs(n.Y - y) < 24))
 		{ Avisar(pl, "já tem coisa demais neste ponto."); return; }
 
 		// NEM DENTRO DE PAREDE. A construcao densa vira parede, e uma parede dentro de outra e um
 		// buraco no mapa que ninguem consegue desfazer sem admin.
-		if (_catalogo?.Get(pl.Zone)?.Mapa is { } mapa && MoveRules.Occupied(mapa, new Vec2(x, y)))
+		//
+		// `MapaDaZonaOuCatalogo` E NAO `_catalogo?.Get`: o catalogo so conhece mapa de ARQUIVO, e
+		// escrever a busca na mao aqui era um dos 18 lugares que o cabecalho daquele metodo cita --
+		// nenhum deles funciona em planeta gerado. Numa nave isso deixaria de ser detalhe: assentar
+		// uma no meio de uma montanha de mundo sorteado nao seria nem recusado.
+		if (MapaDaZonaOuCatalogo(pl.Zone) is { } mapa && MoveRules.Occupied(mapa, new Vec2(x, y)))
 		{ Avisar(pl, "não dá pra assentar dentro de uma parede."); return; }
 
 		pl.Mochila.Tirar(c.Id);
 		MandarMochila(pl);
 
+		// ============================ A NAVE SEGUE POR OUTRA PORTA ============================
+		// Ela passa pelas MESMAS guardas acima (alcance, nao-empilhar, nao dentro de parede) porque
+		// elas sao sobre o chao e valem pra qualquer coisa que se assente. O que muda e o RESTO da
+		// vida dela: ela se pilota, viaja entre mundos, tem casco, senha e piloto -- ver o cabecalho
+		// de `Nave`. A chave de zona deixou de ser o motivo da separacao: as duas guardam a mesma.
+		if (Naves.EhNave(c.Id)) { AssentarNave(pl, c, x, y); return; }
+
 		var obra = new Obra
 		{
 			Id = _proximaObraId++,
 			Tipo = c.Id,
-			Zona = pl.Zone.Name,
 			X = x,
 			Y = y,
 			DonoConta = pl.Conta,
@@ -374,6 +560,10 @@ public partial class GameServer
 			ArmaduraMax = Math.Max(Jandirus.Core.Combat.Armadura.Padrao, pl.Ficha.expressedBP),
 			Armadura = Math.Max(Jandirus.Core.Combat.Armadura.Padrao, pl.Ficha.expressedBP),
 		};
+
+		// A ZONA INTEIRA, e nao o nome dela: e o que faz esta bancada voltar do disco no MESMO mundo
+		// em que ela foi erguida, inclusive num sorteado homonimo de outro. Ver `Obra.ZonaTipo`.
+		obra.PorZona(pl.Zone);
 		_noChao.Add(obra);
 		GravarMundo();
 
@@ -440,11 +630,18 @@ public partial class GameServer
 	}
 
 	private Obra? ObraPerto(ServerPlayer pl) => _noChao
-		.Where(o => o.Zona == pl.Zone.Name)
+		.Where(o => o.Zona.Equals(pl.Zone))
 		.OrderBy(o => (o.X - pl.Pos.X) * (o.X - pl.Pos.X) + (o.Y - pl.Pos.Y) * (o.Y - pl.Pos.Y))
 		.FirstOrDefault(o => Math.Abs(o.X - pl.Pos.X) <= AlcanceDeUso && Math.Abs(o.Y - pl.Pos.Y) <= AlcanceDeUso);
 
-	private string NomeDaObra(Obra o) => _obras?.Get(o.Tipo)?.Nome ?? o.Tipo;
+	private string NomeDaObra(Obra o) => NomeDoTipo(o.Tipo);
+
+	/// <summary>
+	/// O NOME DE UM TIPO DO CATALOGO. Vale pra tudo que aparece no pacote de construcoes -- obra,
+	/// nave parada e mobilia do interior --, e por isso ele e por TIPO e nao por `Obra`: as outras
+	/// duas nao sao `Obra` nenhuma.
+	/// </summary>
+	private string NomeDoTipo(string tipo) => _obras?.Get(tipo)?.Nome ?? tipo;
 
 	// =====================================================================
 	// ESTUDAR -- o que faz o techskill subir
@@ -464,7 +661,7 @@ public partial class GameServer
 			if (!pl.Estudando || pl.Ficha.KO || pl.Ficha.dead) continue;
 
 			Obra? est = _noChao.FirstOrDefault(o => o.Tipo == "Research_Station" && o.Aparafusada
-				&& o.Zona == pl.Zone.Name
+				&& o.Zona.Equals(pl.Zone)
 				&& Math.Abs(o.X - pl.Pos.X) <= AlcanceDeUso && Math.Abs(o.Y - pl.Pos.Y) <= AlcanceDeUso);
 			if (est == null)
 			{
@@ -548,6 +745,17 @@ public partial class GameServer
 	///
 	/// So de nocauteado, e isso e a mecanica inteira: pra fazer um bio-androide e preciso DERRUBAR
 	/// gente forte primeiro. O cientista nao escapa de lutar -- ele escapa de lutar SOZINHO.
+	///
+	/// ============================ E "GENTE" AQUI E `EhJogador`, SENAO ELE ESCAPA ============================
+	/// A vitima era qualquer corpo caido, e com o povoamento ligado isso apagava a mecanica inteira:
+	///
+	///   * **cidadao e gratis e infinito** -- a `Manutencao` repoe a populacao ate a meta a cada 5 min,
+	///     e a raca sai do berco do planeta: o tanque de 6 amostras se enche visitando 6 planetas e
+	///     nocauteando um habitante em cada, sem tocar num jogador;
+	///   * **o `MaiorBp` pegava o numero do CHEFE** -- e o filtro aceita `KO`, nao exige matar: bastava
+	///     nocautear o Freeza de Vegeta (530 mil) ou um androide (100 milhoes), colher, e deixa-lo de
+	///     pe pra saga terminar normalmente.
+	/// ==================================================================================================
 	/// </summary>
 	private void ColherDna(ServerPlayer pl)
 	{
@@ -555,7 +763,7 @@ public partial class GameServer
 		if (lab == null) { Avisar(pl, "voce precisa de um Bio-Android Lab aparafusado por perto."); return; }
 
 		ServerPlayer? vitima = _players.Values
-			.Where(o => o != pl && o.Zone.Equals(pl.Zone) && (o.Ficha.KO || o.Ficha.dead))
+			.Where(o => o != pl && EhJogador(o) && o.Zone.Equals(pl.Zone) && (o.Ficha.KO || o.Ficha.dead))
 			.OrderBy(o => Vec2.Distance(o.Pos, pl.Pos))
 			.FirstOrDefault(o => Vec2.Distance(o.Pos, pl.Pos) <= AlcanceDeUso);
 
@@ -657,16 +865,20 @@ public partial class GameServer
 				// A CRIATURA MATA O CRIADOR. E o original inteiro, e e o que fecha o ciclo: quem
 				// faz um bio-androide esta assinando a propria sentenca, e sabe disso desde a
 				// primeira agulha. Sem isto o sistema vira "ganhe um pet muito forte".
-				criador.Ficha.dead = true;
-				criador.Ficha.KO = true;
-				criador.RenasceEm = NowMs() + MsAteRenascer;
+				//
+				// **PELA PORTA, E NAO NA MAO.** Isto escrevia `dead = true` direto na ficha e pulava o
+				// `CombatState.Morrer()` -- e com ele o gancho `AoMorrer`, que e quem arma o relogio da
+				// morte e manda pro Outro Mundo. O criador morria e ficava caido pra sempre, sem prazo.
+				// `ignorarSeguro: true` porque a criatura nao negocia com a Aura of Destruction: o
+				// original nao da escapatoria nenhuma a quem a gestou.
+				criador.Combate?.Morrer(ignorarSeguro: true);
 			}
 
 			lab.Fornada = null;
 			lab.Vida = 0;   // o tanque se rompe ao nascer
 			_noChao.Remove(lab);
 			GravarMundo();
-			MandarObras(ZoneKey.Premade(lab.Zona));
+			MandarObras(lab.Zona);
 		}
 	}
 
@@ -676,14 +888,83 @@ public partial class GameServer
 	/// <summary>Manda as construcoes de uma zona pra quem esta nela. So quando muda.</summary>
 	private void MandarObras(ZoneKey zona)
 	{
-		List<Obra> daZona = [.. _noChao.Where(o => o.Zona == zona.Name)];
+		List<Obra> daZona = [.. _noChao.Where(o => o.Zona.Equals(zona))];
+
+		// ============================ AS NAVES PARADAS VAO NESTE MESMO PACOTE ============================
+		// Nao por economia de opcode: porque uma nave POUSADA e, pro cliente, exatamente o que uma
+		// construcao e -- um objeto no chao, com sprite do catalogo, que entra no Y-sort, bloqueia
+		// passagem e responde a tecla E. Um opcode proprio duplicaria o desenho, a colisao e o menu
+		// pra dizer a mesma coisa.
+		//
+		// O QUE NAO E IGUAL FICA DE FORA DAQUI: a nave PILOTADA nao entra na lista (ela deixou de
+		// estar no chao), e quem a desenha e o corpo do piloto pelo bit `Pilotando` do snapshot.
+		// Mandar a lista inteira 30x/s pra acompanhar um veiculo seria o caminho errado -- este
+		// pacote e confiavel e so sai quando algo MUDA.
+		//
+		// O ID VAI NEGATIVO porque as duas listas tem numeracao propria: sem isso a nave #3 e a
+		// bancada #3 seriam o mesmo node no cliente (`Name = "Obra" + id`) e uma apagaria a outra.
+		// ============================================================================================
+		List<Nave> navesDaZona = NavesParadasEm(zona);
+
+		// ============================ E A MOBILIA DO INTERIOR DE NAVE VAI JUNTO ============================
+		// Pelo MESMO argumento das naves paradas, um degrau adiante: pro cliente, o console da ponte e
+		// a plataforma de saida sao construcoes -- sprite ancorado numa celula, Y-sort, densidade e
+		// menu da tecla E. Mandando-as por aqui elas ganham as quatro coisas sem uma linha nova no
+		// cliente, e o menu delas sai do mesmo `Interacoes` que o banco e a macieira usam.
+		//
+		// ELAS NAO SAO GUARDADAS EM LUGAR NENHUM: sao derivadas da planta na hora (ver
+		// `MobiliaDoInterior`). Nao ha lista pra sanear e nao ha como uma nave perder a ponte dela.
+		// ==============================================================================================
+		var mobilia = MobiliaDoInterior(zona).ToList();
+
 		var w = Protocol.Begin(Protocol.S2C.Construcoes);
-		w.Put((ushort)daZona.Count);
+		w.Put((ushort)(daZona.Count + navesDaZona.Count + mobilia.Count));
+		foreach ((int id, Jandirus.Core.Tech.PecaDoInterior p) in mobilia)
+		{
+			w.Put(id);
+			w.Put(p.Tipo);
+			// O NOME VIAJA JUNTO, como a arte -- e pelo mesmo motivo. O catalogo do cliente vem do
+			// `Ofertas`, que esconde mobilia de mapa (custo negativo): sem esta linha o menu da tecla
+			// E chamava o console da ponte de "Ship Control" e o banco de "Bank", em ingles.
+			w.Put(NomeDoTipo(p.Tipo));
+			Vec2 c = Jandirus.Core.Tech.NaveGrande.PixelDe(p.Cel);
+			w.Put(c.X);
+			w.Put(c.Y);
+			w.Put(true);          // "aparafusada": mobilia de nave nao pisca de solta
+			w.Put((byte)0);
+			w.Put("");            // sem dono: ela e da NAVE, e a nave ja tem dono
+			w.Put(p.Arte);
+			w.Put(p.Estado);
+			w.Put(0f);
+			w.Put(0f);
+			// A DENSIDADE VIAJA, mas quem BLOQUEIA de verdade e a planta: o `AplicarColisaoDasObras`
+			// limpa a camada de obras a cada pacote, e a planta e compartilhada por todas as naves --
+			// por isso a parede do console esta assada no bitset dela. Ver `NaveGrande.Montar`.
+			w.Put(p.Densa);
+		}
+		foreach (Nave n in navesDaZona)
+		{
+			Construcao? cn = _obras?.Get(n.Tipo);
+			w.Put(-n.Id);
+			w.Put(n.Tipo);
+			w.Put(cn?.Nome ?? n.Tipo);
+			w.Put(n.X);
+			w.Put(n.Y);
+			w.Put(true);          // "aparafusada": nave parada nao pisca de solta -- ela esta pousada
+			w.Put((byte)0);
+			w.Put(n.DonoNome);
+			w.Put(cn?.Arte ?? "");
+			w.Put(cn?.Estado ?? "");
+			w.Put((float)(cn?.PixelX ?? 0));
+			w.Put((float)(cn?.PixelY ?? 0));
+			w.Put(cn?.Densa ?? false);
+		}
 		foreach (Obra o in daZona)
 		{
 			Construcao? c = _obras?.Get(o.Tipo);
 			w.Put(o.Id);
 			w.Put(o.Tipo);
+			w.Put(c?.Nome ?? o.Tipo);
 			w.Put(o.X);
 			w.Put(o.Y);
 			w.Put(o.Aparafusada);
@@ -723,15 +1004,34 @@ public partial class GameServer
 	/// </summary>
 	private void AplicarColisaoDasObras(ZoneKey zona)
 	{
-		ZoneCollision? mapa = _catalogo?.Get(zona)?.Mapa;
+		// `MapaDaZonaOuCatalogo` E NAO `_catalogo?.Get`: o catalogo so conhece mapa de ARQUIVO, e
+		// esta era uma das 18 escritas na mao que o cabecalho daquele metodo denuncia -- o resultado
+		// medido era que uma construcao DENSA erguida num planeta gerado nunca virava parede no
+		// servidor, enquanto o cliente a desenhava densa (a densidade viaja em `MandarObras`).
+		// Cliente e servidor discordando sobre onde ha parede e exatamente o que o `MoveRules` foi
+		// escrito pra impedir.
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
 		if (mapa == null) return;
 
 		mapa.LimparObras();
 		foreach (Obra o in _noChao)
 		{
-			if (o.Zona != zona.Name) continue;
+			if (!o.Zona.Equals(zona)) continue;
 			if (_obras?.Get(o.Tipo) is not { Densa: true }) continue;
 			(int cx, int cy) = CatalogoDeObras.Celula(o.X, o.Y);
+			mapa.Bloquear(cx, cy);
+		}
+
+		// A NAVE PARADA TAMBEM E PAREDE -- `density=1` no `obj/Spacepod` (`PlanetTech.dm:43`). Ela
+		// entra na MESMA passada porque o `LimparObras` acima apaga a camada inteira: uma segunda
+		// funcao pra bloquear naves apagaria o trabalho desta, ou seria apagada por ela.
+		//
+		// A PILOTADA nao bloqueia nada, e e o `density = 0` do `verb/Use` (:137) -- sem isso o
+		// piloto ficaria preso dentro do proprio veiculo.
+		foreach (Nave n in NavesParadasEm(zona))
+		{
+			if (_obras?.Get(n.Tipo) is not { Densa: true }) continue;
+			(int cx, int cy) = CatalogoDeObras.Celula(n.X, n.Y);
 			mapa.Bloquear(cx, cy);
 		}
 	}

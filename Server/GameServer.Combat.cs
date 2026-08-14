@@ -23,8 +23,44 @@ namespace Jandirus.Server;
 /// </summary>
 public partial class GameServer
 {
-	/// <summary>Quanto tempo o corpo fica no chao antes de renascer, em milissegundos.</summary>
-	private const long MsAteRenascer = 15_000;
+	/// <summary>
+	/// **FULANO BATEU EM SICRANO.** O funil unico de "quem me agrediu, e quando".
+	///
+	/// ============================ ERAM OITO ATRIBUICOES SOLTAS, E ELE PRECISAVA DE DUAS ============================
+	/// `vitima.UltimoAgressor = a.Id` estava escrito em oito lugares (soco, contra-ataque, punho
+	/// espiritual, tecnicas G3, dano espalhado, Zanzo Clash), e o Zenkai era o unico leitor. Com o
+	/// cidadao pacifico entrou um SEGUNDO campo -- o prazo do rancor --, e "acrescentar a linha nova
+	/// em sete dos oito lugares" e literalmente o erro que este port ja registra como o mais
+	/// repetido dele.
+	///
+	/// Entao a atribuicao virou funcao. O que ela escreve continua sendo o que estava escrito; o que
+	/// mudou e que o proximo campo de agressao entra em UM lugar, e que um caminho de dano novo que
+	/// esqueca de chamar isto e visivel (o cidadao nao revida) em vez de silencioso.
+	/// ========================================================================================================
+	///
+	/// O prazo e o `combat_tag_duration` do original (90 s) -- ver <see cref="Povoamento.SegundosDeRancor"/>.
+	/// </summary>
+	private void MarcarAgressao(ServerPlayer vitima, ServerPlayer agressor)
+	{
+		if (agressor.Id == vitima.Id) return;   // ninguem guarda rancor de si mesmo
+		vitima.UltimoAgressor = agressor.Id;
+		vitima.RancorAte = NowMs() + (long)(Jandirus.Core.Npc.Povoamento.SegundosDeRancor * 1000);
+
+		// ============================ E BATERAM NUM CORPO LARGADO? ELE ACORDA ============================
+		// *"se elas TE BATEREM vc ACORDA da meditacao pro corpo real"* / *"caso alguem te bata vc volta
+		// pro corpo principal"* -- o pedido do dono, pros dois sistemas, numa linha so.
+		//
+		// AQUI E NAO NO DANO, e a escolha e do DM: la o gancho e o `refresh_combat_tag()` do
+		// `mind_dummy` (`MindMeditate.dm:147-149`), o mesmo proc que esta funcao porta, e o autor
+		// explicou por que -- *"so this fires no matter the outcome"*. Golpe APARADO ou ESQUIVADO
+		// tambem acorda: quem encostou no seu corpo te trouxe de volta, tenha ferido ou nao.
+		//
+		// E e por isso que o mecanismo pegou os dois sistemas de uma vez sem uma linha em cada: este
+		// e o funil unico de agressao do port, e o proprio cabecalho acima ja tinha previsto que "o
+		// proximo campo de agressao entra em UM lugar". Ver `GameServer.CorpoLargado.cs`.
+		// ==========================================================================================
+		AcordarNoCorpo(vitima);
+	}
 
 	/// <summary>
 	/// A skill que deixa imagem remanescente (`misc.dm:35`, a `Afterimage Technique`).
@@ -117,6 +153,10 @@ public partial class GameServer
 		// unica -- ver `CombatState.NegarMorte`. Hoje so a Aura of Destruction se pendura.
 		pl.Combate.NegarMorte = _ => TentarNegarMorte(pl);
 
+		// E QUEM OUVE A MORTE QUE ACONTECEU -- o outro lado da mesma porta. E ele que marca o prazo
+		// do cadaver e, no fim dele, a viagem pro Outro Mundo. Ver `GameServer.Alem.cs`.
+		pl.Combate.AoMorrer = _ => AMorteAconteceu(pl);
+
 		// A vida dos membros PERSISTE entre sessoes: deslogar com o braco quebrado nao cura.
 		// (Deslogar com o corpo DECEPADO tambem nao -- isso e coisa de regeneracao ou de morte.)
 		if (save?.Membros is { Count: > 0 })
@@ -129,7 +169,22 @@ public partial class GameServer
 
 		pl.Combate.SincronizarVida();
 		AjustarGanhoDoRabo(pl);
-		if (pl.Ficha.dead) { pl.RenasceEm = NowMs() + MsAteRenascer; return; }
+
+		// ============================ QUEM LOGA MORTO REARMA O RELOGIO ONDE PAROU ============================
+		// O gancho `AoMorrer` nao dispara aqui: esta pessoa nao morreu agora, ela ja estava morta
+		// quando o save foi gravado. O prazo tem que ser rearmado a mao, e **qual** prazo sai do
+		// LUGAR onde ela acordou -- que e a mesma pergunta que o `PassoDaMorte` faz.
+		//
+		// Deslogar no Outro Mundo e voltar la e o comportamento do DM (`SpawnPoints.dm:170-171`: quem
+		// entra morto cai no checkpoint do alem, nao no berco), e ele sai de graca porque o save
+		// guarda a zona. O que faltava era o cronometro: sem esta linha o morto logaria com relogio
+		// zerado e viajaria (ou renasceria) no primeiro tique.
+		// ================================================================================================
+		if (pl.Ficha.dead)
+		{
+			pl.RelogioDaMorte = NowMs() + (Alem.EhOAlem(pl.Zone) ? Alem.MsNoAlem : Alem.MsNoChao);
+			return;
+		}
 
 		// NOCAUTE NAO ATRAVESSA O LOGOUT DE GRACA. O `KO` mora na ficha (que e salva) mas o
 		// cronometro que faz levantar mora no estado de combate (que nao e) -- entrar com
@@ -264,14 +319,20 @@ public partial class GameServer
 		// O ESTILO ENTRA COMO DANO PLANO, nao como multiplicador -- e o `dmg += compareStyles(M)`
 		// do original. Teto de 10: estilo desempata luta parelha, nao vence luta perdida.
 		GolpeResultado r = MeleeResolver.Resolver(ca, cd, angulo, _rng, tipo, DanoDeEstilo(a, alvo));
-		alvo.UltimoAgressor = a.Id;
+		MarcarAgressao(alvo, a);
 		if (_diagGolpe) ExplicarGolpe(a, alvo, r, angulo, investiu);
 
 		// ============================ OS GANCHOS DAS DISCIPLINAS DIVINAS ============================
 		// O `ChanceEsquiva` que o resolvedor consultou foi escrito pelo Ultra Instinto, entao uma
 		// esquiva com a passiva ligada E uma esquiva do instinto -- e ela paga maestria e empilha o
 		// bonus. Sem esta linha a Autonomous Evasion funcionaria e nunca ensinaria nada.
-        if (r.Desfecho == Desfecho.Esquivou) AoEsquivarPorInstinto(alvo);
+		//
+		// LE `EsquivaAtiva`, E NAO O DESFECHO. Desde que a pontaria que falha voltou a ser
+		// `Desfecho.Esquivou` (que e o `hit = 0` do `CombatMovement.dm:192`, e sempre foi), o desfecho
+		// sozinho diria "instinto" toda vez que alguem rapido saisse da frente -- e o Ultra Instinto
+		// ganharia maestria de graca, sem estar ligado. O DM ja separa os dois: a esquiva por
+		// velocidade e `:192` e a do instinto e o `ui_try_evade` de `:212`.
+		if (r.EsquivaAtiva) AoEsquivarPorInstinto(alvo);
 
 		// E a AURA OF DESTRUCTION filtra o que passou: reduz o dano, devolve recuo em quem bateu e
 		// guarda o golpe pra Destruction Explosion. Fica DEPOIS do resolvedor porque o corpo ja foi
@@ -292,15 +353,26 @@ public partial class GameServer
 
 		// LUTAR ENSINA OS DOIS. Quem bate ganha pela troca, quem apanha ganha pelo gap de
 		// poder -- encarar alguem mais forte e o ganho mais rapido do jogo.
-		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(alvo.Ficha));
-		if (r.Encostou) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(a.Ficha));
+		//
+		// ============================ E TREINAR CONTRA O PROPRIO MESTRE PAGA MAIS ============================
+		// O segundo parametro do `FightGainMult` existe desde que a funcao foi portada e **nunca
+		// tinha sido passado**: sete chamadores, todos com um argumento so -- a API orfa do padrao
+		// "sigilo do BP", uma regra escrita e desligada. O `EhMeuMestre` (`GameServer.Mestre.cs`) e
+		// o `mst_is_my_master` do DM, lido a cada golpe como la (`combatgains.dm:88-100`).
+		//
+		// A PERGUNTA E FEITA NOS DOIS SENTIDOS E ELA NAO E SIMETRICA: quem tem mestre ganha ate 3x
+		// batendo nele; o mestre batendo no aluno cai no teto geral (2x, e na pratica 1x, porque ele
+		// e o mais forte). E o desenho do DM -- o bonus e de quem esta aprendendo.
+		// ==============================================================================================
+		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(a, alvo)));
+		if (r.Encostou) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(a.Ficha, EhMeuMestre(alvo, a)));
 
 		// O contra-ataque devolve o golpe: quem bloqueou na hora certa acerta de volta.
 		if (r.Desfecho == Desfecho.Contra)
 		{
 			GolpeResultado devolta = MeleeResolver.Resolver(
 				cd, ca, MeleeArea.AnguloDeChegada(a.Pos, a.Facing, alvo.Pos), _rng, tipo);
-			a.UltimoAgressor = alvo.Id;
+			MarcarAgressao(a, alvo);
 			ResolverDesfecho(alvo, a, devolta);
 			AnunciarGolpe(alvo, a, devolta, 2, zanzo: false);   // o contra nao investe
 		}
@@ -354,7 +426,8 @@ public partial class GameServer
 
 		if (!r.Morreu) return;
 
-		d.RenasceEm = NowMs() + MsAteRenascer;
+		// O PRAZO NAO E ESCRITO AQUI: `CombatState.Morrer()` ja avisou o `AMorteAconteceu`, que e o
+		// unico lugar que arma o relogio da morte. Ver `GameServer.Alem.cs`.
 		GD.Print($"[server] {a.Name} MATOU {d.Name} ({r.Membro})");
 
 		// ZENKAI: perder pra alguem mais forte arranca poder do corpo. E pago na hora, direto
@@ -427,8 +500,12 @@ public partial class GameServer
 			// Entao o corpo ANDA o resto. Nao e investida -- nao ha rasgo, som nem miragem, e a
 			// funcao devolve `false` --, e so o passo que faltava pra o punho chegar. A parede
 			// continua mandando: o mesmo teste de caminho de sempre.
+			// O `modo` VAI JUNTO: quem esta nadando fecha esse meio metro por cima da agua, como faz
+			// andando. Sem ele a agua viraria uma parede que so aparece na hora de socar -- a
+			// excecao esquecida que a `ClasseDeAgua` existe pra evitar.
 			if (dist > CombatKnobs.Alcance && mapaDoAtaque(a) is { } m
-				&& !MoveRules.PathOccupied(m, a.Pos, a.Pos + d.Normalized() * (dist - DistanciaDeParada)))
+				&& !MoveRules.PathOccupied(m, a.Pos, a.Pos + d.Normalized() * (dist - DistanciaDeParada),
+										   ModoDeTravessiaDe(a)))
 			{
 				a.Pos += d.Normalized() * (dist - DistanciaDeParada);
 				a.Facing = MoveRules.FacingFrom(d, a.Facing);
@@ -450,7 +527,7 @@ public partial class GameServer
 		// PAREDE MANDA MAIS QUE O ARRANQUE. Sem esta checagem, investir contra um muro com
 		// alguem do outro lado atravessaria a parede -- o unico jeito de andar por dentro dela.
 		ZoneCollision? mapa = _catalogo?.Get(a.Zone)?.Mapa;
-		if (mapa != null && MoveRules.PathOccupied(mapa, a.Pos, destino)) return false;
+		if (mapa != null && MoveRules.PathOccupied(mapa, a.Pos, destino, ModoDeTravessiaDe(a))) return false;
 
 		a.Ficha.Ki -= custo;
 		a.SaiuDe = a.Pos;   // pra miragem: e daqui que o vulto nasce, e nao de onde ele chegou
@@ -567,8 +644,38 @@ public partial class GameServer
 	/// ==============================================================================================
 	/// </summary>
 	private void Mirar(ServerPlayer quem, int alvo) =>
-		quem.AlvoId = alvo != 0 && _players.TryGetValue(alvo, out ServerPlayer? o)
-					  && o != quem && o.Zone.Hash == quem.Zone.Hash ? alvo : 0;
+		quem.AlvoId = CorpoNaMinhaZona(quem, alvo) != null ? alvo : 0;
+
+	/// <summary>
+	/// UM CORPO DA MINHA ZONA, POR ID -- a resolucao que <see cref="Mirar"/> e <see cref="Marcado"/>
+	/// dividem.
+	///
+	/// ============================ POR QUE NAO BASTA O `_players` ============================
+	/// Porque nem todo corpo que existe num lugar e um corpo SIMULADO. O corpo largado por quem esta
+	/// meditando (ou ao leme de uma nave) vive so na `ZoneList` -- ele fica fora do `_players` de
+	/// proposito, senao a ficha dele, que e a MESMA do dono, seria tiqueada duas vezes (ver
+	/// `GameServer.CorpoLargado.cs`).
+	///
+	/// Sem esta segunda perna, marcar alguem que esta meditando simplesmente nao funcionaria: o
+	/// pacote seria recusado como "cliente inventando" e o corpo parado seria o unico alvo do jogo
+	/// em que a mira nao pega. E marcar e justamente o que se faz antes de acertar alguem que nao se
+	/// mexe.
+	///
+	/// O DICIONARIO VEM PRIMEIRO porque ele responde por todo mundo menos esses; a varredura da zona
+	/// e a excecao, e ela custa uma volta so -- quem falha nas duas some da mira na mesma chamada
+	/// (ver o auto-limpar do `Marcado`), entao nao ha varredura repetida por tique.
+	/// ====================================================================================
+	/// </summary>
+	private ServerPlayer? CorpoNaMinhaZona(ServerPlayer quem, int id)
+	{
+		if (id == 0) return null;
+		if (_players.TryGetValue(id, out ServerPlayer? o))
+			return o != quem && o.Zone.Hash == quem.Zone.Hash ? o : null;
+
+		foreach (ServerPlayer b in ZoneList(quem.Zone.Hash))
+			if (b.Id == id && b != quem) return b;
+		return null;
+	}
 
 	/// <summary>
 	/// O ALVO MARCADO, se ainda valer a pena. Devolve nulo quando ninguem foi marcado ou
@@ -578,8 +685,7 @@ public partial class GameServer
 	private ServerPlayer? Marcado(ServerPlayer a)
 	{
 		if (a.AlvoId == 0) return null;
-		if (!_players.TryGetValue(a.AlvoId, out ServerPlayer? o)
-			|| o == a || o.Ficha.dead || o.Combate.Intocavel || o.Zone.Hash != a.Zone.Hash)
+		if (CorpoNaMinhaZona(a, a.AlvoId) is not { } o || o.Ficha.dead || o.Combate.Intocavel)
 		{
 			a.AlvoId = 0;   // limpa sozinho: alvo morto nao fica preso na mira pra sempre
 			return null;
@@ -635,8 +741,15 @@ public partial class GameServer
 			TemDano = true, Dano = (float)r.Dano, Membro = r.Membro,
 			Quebrou = r.Quebrou, Decepou = r.Decepou, Nocauteou = r.Nocauteou, Morreu = r.Morreu,
 			Rabo = r.RaboArrancado, Investiu = investiu,
-			// a esquiva e do OUTRO: quem se desviou e quem deixa o vulto
-			ZanzoEsquiva = r.Desfecho == Desfecho.Esquivou && d.Livro?.Sabe(PathDoZanzoken) == true,
+			// A ESQUIVA E DO OUTRO: quem se desviou e quem deixa o vulto.
+			//
+			// SO NA ESQUIVA ATIVA, e e onde o DM poe o gate: o `haszanzo` aparece UMA vez no ramo de
+			// esquiva, no combo dodge (`CombatMovement.dm:298`), e nao na esquiva por velocidade
+			// (`:286`, gated so por `!block_ok`). A esquiva por velocidade continua tendo a TROCA DE
+			// CORPO -- e o `flick('Zanzoken.dmi', M)`, que o cliente faz com `EsquivaZanzoken.Trocar`
+			// pra todo mundo. O que este campo liga e o VULTO DO CORPO (a foto das quatro camadas),
+			// caro demais pra nascer em cada soco desviado de uma troca inteira.
+			ZanzoEsquiva = r.EsquivaAtiva && d.Livro?.Sabe(PathDoZanzoken) == true,
 		};
 		Protocol.HitEvent magro = cheio;
 		magro.TemDano = false;
@@ -654,6 +767,48 @@ public partial class GameServer
 				o.Peer?.Send(wCheio, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 			else
 				o.Peer?.Send(wMagro, Protocol.ChannelState, DeliveryMethod.Unreliable);
+		}
+
+		// LOGO EM SEGUIDA, A PECA CAI. Depois do `S2C.Hit` porque a ordem e a do original: o
+		// `LopLimb` avisa, joga a peca no chao (`SpawnLop`, `mobparts_logic.dm:110`) e so entao
+		// solta o jato -- e aqui o jato nasce do proprio `Hit`, que ja saiu. Ver `SoltarPecas`.
+		SoltarPecas(d, r);
+	}
+
+	/// <summary>
+	/// AS PECAS DO CORPO CAINDO NO CHAO -- o `SpawnLop` do original (`mobparts_logic.dm:110,144-146`).
+	///
+	/// ============================ POR QUE ISTO NAO VEM COM O `Hit` ============================
+	/// O `S2C.Hit` ja diz que houve amputacao (o bit `Decepou`, que chega ate pra quem so assiste) e
+	/// e por ele que o jato de sangue dispara no cliente -- zero byte novo. O que ele NAO diz pra
+	/// plateia e QUAL membro: o campo `Membro` so e escrito quando `TemDano`, e quem assiste recebe
+	/// o pacote magro justamente pra nao ler ficha alheia. Alargar aquele pacote resolveria a peca e
+	/// de quebra vazaria o membro atingido em TODO soco -- caro por um evento raro.
+	///
+	/// Entao a peca vem pelo `S2C.Decalque`, que ja e confiavel e ja vai pra zona inteira. E o canal
+	/// certo tambem pelo prazo: uma marca de 60 s que se perde no fio nao volta, enquanto o jato de
+	/// meio segundo perdido nao faz falta a ninguem.
+	/// ==========================================================================================
+	/// </summary>
+	private void SoltarPecas(ServerPlayer d, GolpeResultado r)
+	{
+		if (r.PecasCaidas is not { Count: > 0 } pecas) return;
+
+		foreach (PecaDeCorpo peca in pecas)
+		{
+			// ESPALHA EM VOLTA, e o sorteio e do SERVIDOR. O original faz
+			// `pixel_x/pixel_y += rand(-32,32)` no `New()` de cada peca (`mobparts.dm:404-405`) --
+			// um tile em pixels, que e o mesmo `TileSize` daqui. Sorteado no cliente, cada tela
+			// veria o braco num lugar; e cenario, e cenario que discorda entre telas e a primeira
+			// coisa que alguem fotografa achando que e bug.
+			var onde = new Vec2(
+				d.Pos.X + _rng.Next(-ZoneCollision.TileSize, ZoneCollision.TileSize + 1),
+				d.Pos.Y + _rng.Next(-ZoneCollision.TileSize, ZoneCollision.TileSize + 1));
+
+			// A DIRECAO NAO DIZ NADA AQUI: a folha `Body Parts Bloody` tem um recorte por peca e
+			// nenhum sufixo de direcao, e o `Plantar` recebe a animacao por nome. Vai `South` pelo
+			// mesmo motivo que o chao danificado vai -- e o campo do pacote, nao uma escolha.
+			MandarDecalque(d.Zone, Protocol.Decal.Membro, onde, Facing.South, peca);
 		}
 	}
 
@@ -752,6 +907,15 @@ public partial class GameServer
 			CombatState c = pl.Combate;
 			if (c == null) continue;
 
+			// QUEM ESTA FORA DO CORPO ainda tem corpo pra onde voltar? Ver `BordasDeQuemEstaFora`:
+			// caiu, morreu, ou o corpo sumiu do mundo -- as tres respostas sao "acorda", nunca "fica
+			// preso". So enfileira; quem tira do mundo e o `TickDeQuemVolta`, la embaixo.
+			//
+			// O CORPO LARGADO NAO PASSA POR ESTE LACO -- ele nao esta no `_players`, e nem poderia:
+			// como ele aponta pra MESMA ficha do dono, ser tiqueado aqui regeneraria, alimentaria e
+			// cronometraria o mesmo corpo duas vezes. Ver `GameServer.CorpoLargado.cs`.
+			BordasDeQuemEstaFora(pl);
+
 			bool eraKO = pl.Ficha.KO;
 			c.Tick(dt);
 			if (eraKO && !pl.Ficha.KO)
@@ -762,15 +926,87 @@ public partial class GameServer
 
 			RegenerarPassivo(pl, dt);
 
-			if (pl.Ficha.dead && agora >= pl.RenasceEm) Renascer(pl);
+			// ============================ O NPC NAO RESSUSCITA -- ELE SAI DO MUNDO ============================
+			// Este `if` varria TODOS os `_players` sem olhar `Peer`, e `Renascer` manda pro
+			// `DestinoDoBerco`. Um corpo sem dono nao tem berco (`Berco.Planeta` vazio), e o funil
+			// responde `SpawnZone` -- **a Terra**. Ou seja, com o povoamento ligado e sem esta guarda:
+			// mate o cidadao de Namek e ele reaparece na Terra 15 s depois, vivo, pra sempre; o Freeza
+			// de uma saga voltaria sozinho depois de derrotado.
+			//
+			// Quem repoe habitante e a MANUTENCAO (`TickDoPovoamento`, a cada 5 min), como no original:
+			// `count_citizens` conta os vivos e `Populate_All_Planets` completa ate o alvo -- o morto
+			// simplesmente sai da conta e outro nasce noutro lugar. Renascer no mesmo corpo faria a
+			// populacao ser imortal, e ai matar um habitante nao significaria nada.
+			//
+			// A REMOCAO E ADIADA porque este laco esta percorrendo `_players.Values`: `RemoverNpc`
+			// mexe no dicionario e derrubaria o tique com "Collection was modified".
+			// ==========================================================================================
+			//
+			// ============================ E O `else` ERA LARGO DEMAIS ============================
+			// Ele dizia "quem nao e NPC do mundo renasce", e isso e FALSO: <see cref="Gente"/> tem
+			// TRES grupos, nao dois. O reflexo da mente e o chefe convocado nao tem `Peer` e podem
+			// nao ter `Papel` -- entao o `EhNpcDoMundo` os recusava e eles caiam no `Renascer`, que
+			// manda pro berco. Um reflexo sem berco renasceria **na Terra**, vivo, e ficaria la pra
+			// sempre como um corpo dirigido sem dono. Nao aparecia porque o `DirigirClone` costuma
+			// desfazer o transe no mesmo tique -- ou seja, dependia de uma corrida.
+			//
+			// Com a viagem pro Outro Mundo o `else` largo ficaria pior: o reflexo de alguem apareceria
+			// DE PE na mesa do Enma. Entao a pergunta passou a ser a do `Core/Npc/Gente.cs`, e o
+			// terceiro grupo tem resposta escrita: **quem ergueu o corpo cuida dele**, e nao este laco.
+			// ================================================================================
+			if (pl.Ficha.dead && agora >= pl.RelogioDaMorte)
+			{
+				if (EhNpcDoMundo(pl)) _npcsPraTirar.Add(pl);
+				else if (EhJogador(pl)) PassoDaMorte(pl);
+				else pl.RelogioDaMorte = long.MaxValue;   // clone/boneco/corpo forjado: nao e conta daqui
+			}
 
 			TickDoEstomago(pl, dt);
+
+			// ============================ ESTES TRES SO EXISTEM PRA QUEM TEM TELA ============================
+			// Eles "saem sozinhos quando nada mudou" -- mas so DEPOIS de montar a assinatura, e montar
+			// custa: `MandarCorpo` aloca uma `List<ParteState>` de 15 itens, um `StringBuilder` e uma
+			// string a cada tique; `MandarSkills` interpola outra. Pra um corpo sem `Peer` o
+			// `Send` no fim ja era no-op (`pl.Peer?.`), entao tudo isso era lixo puro.
+			//
+			// Com um clone na mente isso nao aparecia. Com 151 habitantes aparece: a bancada mediu
+			// **122 KB por tique** -- 3,7 MB/s pro coletor -- e o povoamento e quem passou a pagar.
+			// A regra 0.4 e sobre o tempo do tique, e esta e a outra metade dela: lixo constante numa
+			// sessao de horas vira pausa de coletor, e ninguem liga a pausa aos NPCs.
+			// ==========================================================================================
+			if (pl.Peer == null) continue;
 
 			MandarCorpo(pl);       // barato: sai sozinho quando nada mudou
 			MandarAtributos(pl);   // idem: atributo so muda quando se treina
 			MandarSkills(pl);
 		}
+
+		// QUEM VOLTA PRO PROPRIO CORPO VOLTA AQUI, e nao no meio do golpe que o acordou: `MoveToZone`
+		// mexe nas listas de duas zonas, e o `AlvoNaFrente`/`PresaDaFera` que levaram ate a agressao
+		// estao percorrendo uma delas. E o mesmo motivo do `_npcsPraTirar` logo abaixo -- e por isso
+		// fica ANTES do `return` dele, que so fala de NPC morto.
+		TickDeQuemVolta();
+
+		if (_npcsPraTirar.Count == 0) return;
+		foreach (ServerPlayer morto in _npcsPraTirar)
+		{
+			GD.Print($"[server] NPC '{morto.Name}' morreu em {morto.Zone.Name} e saiu do mundo");
+
+			// ANTES DE REMOVER, e nao depois: quem cobra a reputacao precisa do `UltimoAgressor` e do
+			// `RancorAte` deste corpo, e `RemoverNpc` o tira do `_players`. E este e o UNICO ponto por
+			// onde toda morte de corpo sem dono passa -- ver `MorreuUmCorpoSemDono`.
+			MorreuUmCorpoSemDono(morto);
+			RemoverNpc(morto);
+		}
+		_npcsPraTirar.Clear();
 	}
+
+	/// <summary>
+	/// Os NPCs mortos deste tique. Lista de INSTANCIA e reusada (o `Clear` nao devolve a
+	/// capacidade), pelo mesmo argumento do <see cref="_dirigidos"/>: alocar uma lista por tique
+	/// num laco de 30 Hz e lixo constante pro coletor mesmo quando ela sai sempre vazia.
+	/// </summary>
+	private readonly List<ServerPlayer> _npcsPraTirar = [];
 
 	/// <summary>
 	/// O ESTOMAGO, na cadencia dele -- ver <see cref="Jandirus.Core.Stats.Nutricao"/>.
@@ -856,13 +1092,45 @@ public partial class GameServer
 			DiscReal = (float)(pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Real : pl.PoderDaDestruicao.Real),
 			DiscAtual = (float)(pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Atual : pl.PoderDaDestruicao.Atual),
 			DiscLigada = pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Ligada : pl.PoderDaDestruicao.Ligada,
+
+			// ============================ O MULTIPLICADOR DE TREINO, CALCULADO AQUI ============================
+			// O numero sai do Core (`Fighter.MultiplicadorDeGanho`, o `bp_gain_mult()` do DM) e viaja
+			// PRONTO. Os quatro pedacos ao lado sao so pra a frase entre parenteses da tela; o
+			// `Esmagamento` e o aviso -- e tambem o campo pelo qual o cliente descobre que esta preso
+			// no chao, sem precisar de um bit novo num `Estado` que ja nao tem bit livre.
+			//
+			// ELES ENTRAM NA FICHA LENTA e nao na rapida porque e exatamente esse o perfil: gravidade
+			// so muda ao trocar de zona, peso so muda quando o jogador mexe nele, e a Sala so nas duas
+			// travessias da porta. A assinatura logo abaixo garante que o pacote so sai quando algum
+			// deles mexe de verdade.
+			// ================================================================================================
+			GanhoDeTreino = (float)f.MultiplicadorDeGanho(),
+			Gravidade = (float)Jandirus.Core.Stats.Esmagamento.Gravidade(f),
+			GravEfetiva = (float)f.GravidadeEfetiva(),
+			PesoMult = (float)Math.Max(f.weight, 1),
+			ZonaMult = (float)f.zoneGainMult,
+			Esmagamento = (float)Jandirus.Core.Stats.Esmagamento.Razao(f),
+
+			// A SESSAO DA SALA DO TEMPO, na mesma ficha lenta e pelo mesmo criterio: ela muda de
+			// fase tres vezes numa visita inteira, e os minutos so precisam de resolucao de MINUTO
+			// (a assinatura logo abaixo os arredonda, senao este pacote sairia 30x por segundo pra
+			// quem estivesse la dentro). Ver `GameServer.SalaSessao.cs`.
+			SalaFase = FaseDaSalaPraTela(pl),
+			SalaMinutos = (float)MinutosDaSalaPraTela(pl),
 		};
 
 		// assinatura grossa: 1% de resolucao por atributo. Sem isso o ruido de ponto flutuante
 		// remandaria o pacote a cada tick.
+		//
+		// O GANHO ENTRA NELA COM UMA CASA SO (`0.#`), e a grossura aqui e mais importante que nas
+		// outras linhas: ele carrega o `Egains` e o folego, que mudam por fracoes a cada tique. Com
+		// resolucao fina, este pacote -- que existe justamente pra NAO sair 30x por segundo --
+		// passaria a sair 30x por segundo pra qualquer um que estivesse treinando.
 		string sig = $"{a.PhysOff:0.##}|{a.PhysDef:0.##}|{a.KiOff:0.##}|{a.KiDef:0.##}|"
 				   + $"{a.Technique:0.##}|{a.KiSkill:0.##}|{a.Speed:0.##}|{a.Esoteric:0.##}|"
 				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.FormaAtual}|"
+				   + $"{a.GanhoDeTreino:0.#}|{a.Gravidade:0.#}|{a.GravEfetiva:0.#}|{a.PesoMult:0.##}|"
+				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|"
 				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"));
 		if (sig == pl.SigAtributos) return;
 		pl.SigAtributos = sig;
@@ -948,7 +1216,30 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// Morrer devolve o personagem inteiro no BERCO dele, com metade da vida.
+	/// ============================ A VOLTA DO OUTRO MUNDO -- o `ReviveMe()` do DM ============================
+	/// `mob/proc/ReviveMe()` (`Death.dm:143-161`). Ele **desfaz tudo o que a morte fez**, e a lista e
+	/// conferida item a item contra o `IrProAlem`:
+	///
+	///   | o que a morte fez                     | o que desfaz                                  |
+	///   |---------------------------------------|-----------------------------------------------|
+	///   | `dead = true`                         | `Reviver()`                                   |
+	///   | a AUREOLA (`overlayList += 'Halo'`)   | e `dead`: apaga junto, sem uma segunda linha  |
+	///   | levou o corpo pro alem                | `MandarProBerco`/`Correction` (o funil `DestinoDe`) |
+	///   | deitou o corpo (a pose de cadaver)    | `Reviver()` limpa `dead` e `KO`               |
+	///   | membros destrocados                   | `Corpo.Restaurar()` dentro do `Reviver`       |
+	///   | o rabo, e com ele o ritmo de treino   | `AjustarGanhoDoRabo`                          |
+	///   | tirou o preso da Sala do Tempo        | ja limpo no `IrProAlem` -- **nao volta**      |
+	///   | o relogio da morte                    | zerado aqui                                   |
+	///
+	/// O QUE O DM FAZ E ESTE PORT AINDA NAO: `kaiTrainingAllowed = 0` (a licenca do Enma pra cruzar
+	/// a barreira espiritual), `hakai_mark = 0`, `pk_karma_taken = 0` e `pk_rep_taken = 0`. Os quatro
+	/// campos **nao existem aqui** -- eles nascem com o Enma e com o karma por PK, que sao a etapa
+	/// seguinte. Ficam listados pra a ausencia ser uma pendencia e nao um esquecimento.
+	///
+	/// **VIDA PELA METADE, E NAO INTEIRA.** Divergencia do DM (`SpreadHeal(100,1,1)` la), e ela e do
+	/// port desde antes desta mudanca. Quem chega ao Outro Mundo chega curado -- isso E do DM, e
+	/// esta no `IrProAlem`; o que a volta a vida entrega e metade, que e o preco que este port cobra.
+	/// ====================================================================================================
 	///
 	/// ============================ ERA A TERRA CRAVADA, E ESSE E O BUG QUE NAO APARECE ============================
 	/// Este metodo mandava todo mundo pra `SpawnZone` -- a Terra. Ligar o berco so no NASCIMENTO
@@ -958,8 +1249,9 @@ public partial class GameServer
 	/// tinha num lugar so (`mob/proc/Locate()`).
 	/// ========================================================================================================
 	///
-	/// O JULGAMENTO DO ENMA (karma, o alem, o revive por Zeni) e outra etapa -- ate la, morrer
-	/// custa a luta, o tempo no chao e mais nada. Fica marcado aqui pra nao virar "esqueci".
+	/// O JULGAMENTO DO ENMA (o revive por Zeni com o debuff de uma hora, a reencarnacao a 10% do BP,
+	/// o Inferno por karma negativo) e a etapa seguinte -- e e ele que substitui o prazo automatico
+	/// de <see cref="Jandirus.Core.World.Alem.MsNoAlem"/>, nao que se soma a ele.
 	/// </summary>
 	private void Renascer(ServerPlayer pl)
 	{
@@ -969,9 +1261,22 @@ public partial class GameServer
 		pl.Combate.Reviver(0.5, SegundosDeCarencia);
 		AjustarGanhoDoRabo(pl);
 		pl.Ficha.Ki = pl.Ficha.MaxKi * 0.5;
-		pl.RenasceEm = 0;
+		pl.RelogioDaMorte = 0;
 
-		(ZoneKey destino, Vec2 onde) = DestinoDoBerco(pl.Berco);
+		// ============================ A SALA DO TEMPO JA FOI DESTRANCADA, LA ATRAS ============================
+		// **Decisao do dono, e nao um buraco**: depois de preso, *"so morrendo pra sair"*. A chamada de
+		// `AMorteSaiDaSala` MORAVA AQUI, e estava certa enquanto morrer e renascer eram o mesmo
+		// instante. Com a viagem no meio ela subiu pro `IrProAlem` (`GameServer.Alem.cs`), que e o
+		// primeiro passo que de fato tira o corpo da sala -- deixa-la aqui manteria o morto marcado
+		// como preso durante o minuto inteiro no Outro Mundo.
+		//
+		// NAO A REPONHA AQUI "por seguranca": ela seria a segunda copia, e a `SalaSessao` que ela
+		// esquece (`EsquecerSessaoDaSala`) ja teria sido apagada uma vez.
+		// ================================================================================================
+
+		// `DestinoDe` e o funil de cima -- ele olha o DOMINIO escolhido como renascimento antes de
+		// cair no berco. Ver `GameServer.Conquista.cs`.
+		(ZoneKey destino, Vec2 onde) = DestinoDe(pl);
 
 		if (pl.Zone.Hash != destino.Hash) MandarProBerco(pl);
 		else

@@ -41,18 +41,27 @@ namespace Jandirus.Client;
 /// deve mostrar o presente, nao o atraso acumulado).
 /// ======================================================================================
 ///
-/// Desenhado em `_Draw` como a <see cref="HealthBar"/>, e pelo mesmo motivo: um `Label` dentro
-/// do mundo 2D traria tema, layout e ancoragem pra resolver o que um retangulo e um `DrawString`
-/// resolvem -- e traria a fonte do TEMA, que e de UI e nao acompanha o zoom do mapa.
+/// Desenhado em `_Draw` e nao com nodes de UI: um `Label` dentro do mundo 2D traria tema, layout e
+/// ancoragem pra resolver o que um retangulo e um `DrawString` resolvem -- e traria a fonte do
+/// TEMA, que e de UI e nao acompanha o zoom do mapa.
 /// </summary>
-public partial class BalaoDeFala : Node2D, ISobeComOCorpo
+/// <remarks>
+/// <see cref="INaoSomeComOCorpo"/>: a fala e ROTULO SOBRE o dono, nao pixel do dono. Quando o
+/// corpo e trocado pelas listras do Zanzoken (<see cref="EsquivaZanzoken"/>) o balao continua --
+/// no original ele nem era do mob (a fala vai pro chat e as barras do HUD sao `/obj/screen`), e o
+/// `flick()` so mexia no `icon`. Uma frase cortada no ar por 0,30 s de esquiva seria o efeito
+/// comendo informacao que nao e dele.
+/// </remarks>
+public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 {
 	/// <summary>
 	/// A base do balao, em pixels acima da origem do corpo.
 	///
-	/// O sprite e 32x32 e `Centered`, entao o topo da cabeca esta em -16; a
-	/// <see cref="HealthBar"/> ocupa de -23 a -18. -26 poe o balao logo acima dela, e ele cresce
-	/// pra CIMA -- nunca pra baixo, pra nao cobrir o proprio dono.
+	/// O sprite e 32x32 e `Centered`, entao o topo da cabeca esta em -16. -26 deixa dez pixels de
+	/// folga sobre ela, e o balao cresce pra CIMA -- nunca pra baixo, pra nao cobrir o proprio dono.
+	/// (A folga era maior por causa da barra de vida, que ocupava de -23 a -18; ela foi deletada a
+	/// pedido do dono. O valor fica onde esta: mexer nele so pra fechar o vao moveria toda fala do
+	/// jogo pra ganhar cinco pixels.)
 	/// </summary>
 	internal const float AlturaBase = -26f;
 
@@ -107,8 +116,9 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo
 	///
 	/// PROPRIEDADE, e nao `Position` na mao: quem escrevia direto na posicao apagava a
 	/// <see cref="AlturaBase"/> junto, e o balao ia parar no umbigo assim que a pessoa subisse --
-	/// que e exatamente o defeito que a barra de vida tinha e que ninguem via porque no chao o
-	/// deslocamento e zero.
+	/// defeito que ninguem via porque no chao o deslocamento e zero e a conta da no mesmo por
+	/// acidente. Este e hoje o UNICO node com altura propria, entao a bancada `--diagbalao` e a
+	/// unica guarda que sobrou dessa regra.
 	/// </summary>
 	public Vector2 Deslocamento
 	{
@@ -137,8 +147,9 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo
 	public override void _Ready()
 	{
 		Position = new Vector2(0, AlturaBase);
-		// Acima da barra de vida (20) pra que um corpo passando na frente nao coma o texto, e
-		// MUITO abaixo da cinematica (90), que tem que continuar sendo o que domina a tela.
+		// Acima de tudo que desenha no corpo (a barra de vida ocupava o 20 antes de ser deletada)
+		// pra que alguem passando na frente nao coma o texto, e MUITO abaixo da cinematica (90), que
+		// tem que continuar sendo o que domina a tela.
 		ZIndex = 21;
 		Visible = false;
 		// Corpo calado nao gasta quadro. E o no mais instanciado do jogo depois do proprio corpo

@@ -1,4 +1,4 @@
-using Jandirus.Core.Forms;
+﻿using Jandirus.Core.Forms;
 using Jandirus.Core.World;
 
 namespace Jandirus.Core.Ai;
@@ -37,6 +37,24 @@ public enum Plano
 	/// <summary>Afastar ate <see cref="Cerebro.DistanciaSegura"/>, PARAR e carregar. O `rechargeState` (NPCAI.dm:666).</summary>
 	Recuperar,
 
+	/// <summary>
+	/// FUGIR -- e ele NAO e o <see cref="Recuar"/>. O `runawayState` (NPCAI.dm:646), que este
+	/// cerebro nunca teve.
+	///
+	/// ============================ A DIFERENCA ENTRE RECUAR E FUGIR E O QUE SE VE NA TELA ============================
+	/// `Recuar` e um passo atras COM A GUARDA ERGUIDA e o corpo encarando quem bate -- e uma jogada
+	/// dentro da luta, e no DM ele nem tem estado proprio (e o `step_away` do `attackState`, `:536`).
+	/// `Fugir` e o oposto em todos os campos: ele **corre** (a mesma tecla shift do jogador, cobrada
+	/// pelo `PodeCorrer`), **nao ataca**, **nao guarda** e **olha pra onde vai** -- que e a terceira
+	/// excecao do olhar que o `Montar` ja tinha o lugar reservado.
+	///
+	/// O portao e o do original e ele e DUPLO (`NPCAI.dm:510`): `HP <= 25` **E** coragem baixa. Um
+	/// bicho corajoso quase morto continua brigando -- e por isso a fera e a furia lendaria
+	/// (`VidaCautelosa = 0`, coragem no talo) nunca fogem, sem uma linha de excecao escrita pra elas.
+	/// ==========================================================================================================
+	/// </summary>
+	Fugir,
+
 	/// <summary>Subir um degrau da escada de formas. O `npc_try_transform` (NPCAI.dm:361).</summary>
 	Escalar,
 
@@ -44,13 +62,14 @@ public enum Plano
 	Alcancar,
 
 	/// <summary>
-	/// ABRIR DISTANCIA, PLANTAR O PE, CONJURAR E SOLTAR. **Nunca escolhido hoje** -- o arsenal de
-	/// todo corpo do jogo esta vazio porque nenhuma tecnica portada viaja (ver `TecnicasDeLonge`).
+	/// ABRIR DISTANCIA, PLANTAR O PE, CONJURAR E SOLTAR. Vale pra quem tem alguma das tres tecnicas
+	/// que voam (ver `TecnicasDeLonge`); quem nao tem cai fora na primeira linha do `EscolherTiro`.
 	///
-	/// Ele existe agora, e nao no dia do beam, porque o que e caro nao e o `case` do disparo: e o
-	/// LUGAR dele na ordem das perguntas, o compromisso, as interrupcoes e o preco. Escrever isso
-	/// junto com um projetil novo seria escrever duas coisas de uma vez e nao saber qual das duas
-	/// esta errada quando o NPC ficar parado olhando pro horizonte.
+	/// Ele foi escrito ANTES do projetil existir, e de proposito: o que e caro nao e o `case` do
+	/// disparo -- e o LUGAR dele na ordem das perguntas, o compromisso, as interrupcoes e o preco.
+	/// Escrever isso junto com um projetil novo seria escrever duas coisas de uma vez e nao saber
+	/// qual das duas esta errada quando o NPC ficasse parado olhando pro horizonte. Quando o tiro
+	/// chegou, este plano nao precisou de uma linha.
 	/// </summary>
 	Atirar,
 }
@@ -119,7 +138,12 @@ public sealed class Cerebro
 	/// <summary>Fracao de vida abaixo da qual ele passa a guardar e a recuar. Zero = nunca (a fera).</summary>
 	public double VidaCautelosa = 0.45;
 
-	/// <summary>Chance de escolher o golpe pesado quando pode. O resto sai leve.</summary>
+	/// <summary>
+	/// Chance de escolher o golpe pesado quando pode. O resto sai leve.
+	///
+	/// E a FURIA (`behavior_vals[2]`) em forma de peso de golpe -- e, desde as emocoes, ela e o
+	/// **piso** e nao o valor final: ver <see cref="FuriaExpressa"/>.
+	/// </summary>
 	public double ChanceDePesado = 0.35;
 
 	// =====================================================================
@@ -147,6 +171,22 @@ public sealed class Cerebro
 	/// reconhecivel ("aquele bicho nunca recua"); erro aleatorio e indistinguivel de bug.
 	/// </summary>
 	public double Inteligencia = 0.35;
+
+	/// <summary>
+	/// AGRESSIVIDADE (0..1): o `ai_aggression` (`NPC_AI_AGGR_DEFAULT 50`, `NPC_AI_AGGR_BOSS 75`).
+	///
+	/// ============================ ELA GATEIA UMA COISA SO, E E A QUE O DM DIZ ============================
+	/// *"agressividade (0-100): chance de entrar no modo finalizador"* (`NPCAI.dm:27`) -- e mais
+	/// nada. Ela nao deixa o NPC "bater mais": ela decide se, com o alvo quase caido, ele PARA de
+	/// medir a luta e vai fechar (ver <see cref="VidaDeFinalizar"/>).
+	///
+	/// O campo vem do MESMO `agressividade` do `npcs.json` que ja escolhia a cadencia da decisao --
+	/// e o `Temperamento` prometia isso por escrito: *"o `ai_aggression` do DM gateia o MODO
+	/// FINALIZADOR, que este cerebro ainda nao tem. No dia em que ele existir, e daqui que sai o
+	/// gate -- nao de um campo novo"*. E daqui que ele saiu.
+	/// ================================================================================================
+	/// </summary>
+	public double Agressividade = 0.50;
 
 	/// <summary>
 	/// TEMPO DE REACAO BASE, em segundos. Nao e o intervalo de decisao: e quanto ele demora pra
@@ -191,6 +231,49 @@ public sealed class Cerebro
 
 	/// <summary>Folego critico: `NPC_AI_STAM_CRIT 0.12` (`NPCAI.dm:12`).</summary>
 	public const double FolegoCritico = 0.12;
+
+	/// <summary>Ki BAIXO (nao critico): `NPC_AI_KI_LOW 0.30` (`NPCAI.dm:8`). Abaixo disto o esperto poupa.</summary>
+	public const double KiBaixo = 0.30;
+
+	/// <summary>Folego BAIXO: `NPC_AI_STAM_LOW 0.30` (`NPCAI.dm:10`). Abaixo disto o esperto joga defensivo.</summary>
+	public const double FolegoBaixo = 0.30;
+
+	/// <summary>
+	/// Chance de erguer a guarda no modo defensivo por CANSACO. `NPC_AI_DEF_BLOCK_PROB 55`
+	/// (`NPCAI.dm:25`, usado em `:526`). Convertida pra tique como a de soltar -- ver `Reflexos`.
+	/// </summary>
+	public const double ChanceDaGuardaPorCansaco = 0.55;
+
+	/// <summary>
+	/// VIDA DO ALVO que liga o MODO FINALIZADOR: `NPC_AI_FINISH_HP 25` (`NPCAI.dm:17`), lido em
+	/// `:388` como `target.HP <= 25 && !target.KO && prob(ai_aggression)`.
+	/// </summary>
+	public const double VidaDeFinalizar = 0.25;
+
+	/// <summary>Vida propria que faz FUGIR: `HP <= 25` (`NPCAI.dm:510`).</summary>
+	public const double VidaQueFazFugir = 0.25;
+
+	/// <summary>
+	/// A CAUTELA acima da qual ele foge de verdade -- o `e_behavior_vals[1] &lt; 35` (`NPCAI.dm:510`)
+	/// LIDO PELO AVESSO.
+	///
+	/// A coragem nao e um campo deste cerebro: ela ja mora aqui como <see cref="VidaCautelosa"/>,
+	/// pela conversao do `Temperamento` (`0,9 * (1 - coragem)`). Entao `coragem &lt; 0,35` e o mesmo
+	/// que `cautela &gt; 0,585`, e a conta e feita uma vez, aqui, com o nome do que ela significa.
+	/// Guardar a coragem num segundo campo seria a mesma verdade escrita duas vezes -- e a segunda
+	/// e a que envelhece quando alguem mexer na escala.
+	/// </summary>
+	public const double CautelaQueFazFugir = 0.585;
+
+	/// <summary>
+	/// A FURIA acima da qual ele solta RAJADA de socos, lida pelo avesso do peso do golpe:
+	/// `ChanceDePesado = 0,10 + 0,5*furia` (`Temperamento`), entao `furia &gt;= 45` (`NPCAI.dm:412`)
+	/// e o mesmo que `peso &gt;= 0,325`. Mesma disciplina da <see cref="CautelaQueFazFugir"/>.
+	/// </summary>
+	public const double PesoQueIndicaFuria = 0.325;
+
+	/// <summary>Chance de a rajada de socos sair: `prob(45)` (`NPCAI.dm:412`).</summary>
+	public const double ChanceDaBarragem = 0.45;
 
 	/// <summary>Carrega ate esta fracao antes de voltar a lutar: `NPC_AI_RECHARGE_TO 0.75` (`NPCAI.dm:19`).</summary>
 	public const double CarregarAte = 0.75;
@@ -238,6 +321,12 @@ public sealed class Cerebro
 
 	/// <summary>Inteligencia minima pra a receita de PAIRAR RASANTE existir. **DESENHO NOVO.**</summary>
 	public const double InteligenciaQuePairaRasante = 0.6;
+
+	/// <summary>
+	/// Quantos segundos de voo a decolagem precisa poder pagar pra valer a pena. **DESENHO NOVO**
+	/// (o DM nao voa) -- ver o uso, no ramo de alcancar.
+	/// </summary>
+	public const double SegundosDeVooQueValemADecolagem = 3;
 
 	/// <summary>Chance de simplesmente ERRAR um reflexo. E o que faz o jogador poder vencer no ritmo.</summary>
 	public const double ChanceDeErrar = 0.15;
@@ -313,7 +402,7 @@ public sealed class Cerebro
 	// --- escalar ---
 	private double _carenciaDeForma;
 
-	// --- o tiro de longe (inerte hoje: ver `Plano.Atirar`) ---
+	// --- o tiro de longe (ver `Plano.Atirar`) ---
 	private int _tiroEscolhido = -1;   // indice no `Poderes.DeLonge`; -1 = nenhum
 	private double _conjurandoHa;
 	private double _pausaDoTiro;
@@ -324,6 +413,15 @@ public sealed class Cerebro
 	private double _deriva;           // passeio lento do tempo de reacao (ver Reagir)
 	private double _ultimoPoderDoAlvo;
 	private double _voltaDoSoco;      // ritmo em RAJADA: ver EmRajada
+	private int _golpesQueFaltam;     // quantos socos ainda saem NESTA rajada (ver EmRajada)
+	private bool _finalizando;        // o modo FINALIZADOR desta decisao (ver Escolher)
+
+	// --- as emocoes, e elas ANDAM durante a luta (o `behavior_check`, NPCAI.dm:769) ---
+	private double _raiva;            // o `behavior_vals_t[2]`, 0..100
+	private double _animo;            // a metade POSITIVA do `behavior_vals_t[1]`, 0..100
+	private double _medo;             // a metade NEGATIVA dele -- ver `TicarEmocoes`
+	private double _vidaNaUltimaLeitura = -1;   // o `keep_track_dmg`
+	private double _relogioDasEmocoes;
 
 	/// <summary>
 	/// LIGA O RELATO. Desligado por padrao, e a razao e de ORCAMENTO e nao de gosto: montar a frase
@@ -355,6 +453,32 @@ public sealed class Cerebro
 		_relogioDasCapacidades = 1.0;
 		return true;
 	}
+
+	/// <summary>
+	/// ESPALHA A LEITURA CARA NO TEMPO. Chamado UMA vez, no nascimento do corpo.
+	///
+	/// ============================ 1 Hz POR CORPO NAO E 1 Hz POR TIQUE ============================
+	/// `_relogioDasCapacidades` nasce em zero, entao a primeira pergunta devolve verdadeiro e so
+	/// dai em diante o rodizio de 1 s comeca a valer. Enquanto os corpos dirigidos nasciam um a um
+	/// (o clone, a fera) isso nao tinha consequencia. Com POVOAMENTO tem: corpos nascidos no mesmo
+	/// tique ficam EM FASE pra sempre, e a leitura -- que varre o catalogo de formas e custa ~2,3 us
+	/// por corpo -- passa a acontecer toda inteira num tique so, uma vez por segundo.
+	///
+	/// Com 80 corpos numa zona sao 0,18 ms de pico contra 0,006 ms de media. A media esconde o pico,
+	/// e o pico e o que trava. E o defeito que a armadilha 2 da PARTE 3 descreve com outro nome:
+	/// **o custo estava fora da janela medida** -- so que aqui a janela e estatistica, nao temporal.
+	///
+	/// Uma fase inicial diferente por corpo transforma o pico numa rotacao plana. Nao ha estado novo:
+	/// e o mesmo campo, comecando em outro lugar.
+	/// ======================================================================================
+	/// </summary>
+	/// <param name="segundos">
+	/// Onde na roda de 1 s este corpo comeca. Fora de [0,1] e apertado pra dentro -- um valor maior
+	/// que o periodo atrasaria a PRIMEIRA leitura, e um corpo que age com as capacidades zeradas nao
+	/// sabe voar, nem aparar, nem transformar.
+	/// </param>
+	public void DesfasarCapacidades(double segundos) =>
+		_relogioDasCapacidades = Math.Clamp(segundos, 0, 1);
 
 	/// <summary>
 	/// EU VI UM GOLPE CHEGAR. Chamado pelo servidor quando este corpo e ALVO de um ataque --
@@ -401,6 +525,142 @@ public sealed class Cerebro
 		return media is > 0.15 and < 4.0 ? media : 0;
 	}
 
+	// =====================================================================
+	// AS EMOCOES -- o `behavior_check` (NPCAI.dm:769) e o `e_behavior_vals` (:818-824)
+	// =====================================================================
+
+	/// <summary>
+	/// De quanto em quanto tempo as emocoes andam. O `checkState` do DM dorme `sleep(5)` -- 0,5 s --
+	/// e chama o `behavior_check` com `prob(60)` (`NPCAI.dm:813`): uma leitura a cada ~0,83 s.
+	/// </summary>
+	public const double PeriodoDasEmocoes = 0.83;
+
+	/// <summary>
+	/// A FURIA DE AGORA. E o <see cref="ChanceDePesado"/> (a base, o `behavior_vals[2]`) MAIS o que
+	/// a luta acumulou (<see cref="_raiva"/>, o `behavior_vals_t[2]`) -- a soma que o DM chama de
+	/// `e_behavior_vals` (`NPCAI.dm:823`).
+	///
+	/// ============================ POR QUE A BASE CONTINUA SENDO UM CAMPO SEPARADO ============================
+	/// Porque a fera e a furia lendaria ESCREVEM a base na mao, e a bancada afirma o numero delas.
+	/// Se a emocao sobrescrevesse o campo, o primeiro soco levado apagaria o tempero do macaco e
+	/// ninguem ligaria uma coisa na outra. Base + acumulador = expresso e a forma do proprio DM, e
+	/// ela tem a propriedade que interessa aqui: **zero continua zero** (ver <see cref="CautelaExpressa"/>).
+	/// ====================================================================================================
+	/// </summary>
+	public double FuriaExpressa => Math.Clamp(ChanceDePesado + 0.5 * (PorDegraus(_raiva) / 100.0), 0, 1);
+
+	/// <summary>
+	/// A CAUTELA DE AGORA. Vencer da CORAGEM e apanhar da MEDO -- as duas metades do
+	/// `behavior_vals_t[1]`, e coragem e o avesso da cautela.
+	///
+	/// ============================ POR QUE MULTIPLICA EM VEZ DE SOMAR ============================
+	/// O DM soma (`base*mod + t`), e somar aqui teria um efeito que ninguem quer: a fera
+	/// (`VidaCautelosa = 0`) ganharia medo depois de apanhar um pouco, e o macaco sem controle
+	/// passaria a recuar. Multiplicando, **zero continua zero em qualquer emocao** -- quem nunca teve
+	/// medo nao aprende a ter, e quem nunca recuou nao comeca -- e quem TEM cautela a dobra quando a
+	/// luta desanda e a corta quando esta ganhando. A propriedade que a soma dava (a emocao move o
+	/// tempero) esta inteira; a que ela dava de brinde (a emocao INVENTA tempero) e que sai.
+	/// ======================================================================================
+	/// </summary>
+	public double CautelaExpressa =>
+		Math.Clamp(VidaCautelosa * (1 + (PorDegraus(_medo) - PorDegraus(_animo)) / 100.0), 0, 1);
+
+	/// <summary>
+	/// O DEGRAU DA EMOCAO -- *"logic rounds off the emotions: 100 logic will mean each emotion can
+	/// be 0, 50, or 100"* (`NPCAI.dm:822`), com o degrau `max(1, logic/2)`.
+	///
+	/// E o que faz o bicho ESPERTO ter humor grosso (ou esta calmo ou esta furioso) e o burro ter
+	/// humor fino. Vale so pro ACUMULADOR: a base vem do molde e nao pode ser arredondada, senao
+	/// ligar as emocoes teria mexido no tempero de todo corpo que ja existia.
+	/// </summary>
+	private double Degrau => Math.Max(1, Inteligencia * 100 / 2);
+
+	/// <summary>
+	/// O acumulador arredondado pro degrau -- e APERTADO em [0,100] DEPOIS do arredondamento, que e
+	/// a ordem que importa: arredondar 100 pra cima num degrau de 17,5 daria 105, e o teto de uma
+	/// emocao nao pode depender do tamanho do degrau de quem a sente.
+	/// </summary>
+	private double PorDegraus(double v) => Math.Clamp(Math.Round(v / Degrau) * Degrau, 0, 100);
+
+	/// <summary>
+	/// COMO ESTA INDO A LUTA -- e as emocoes andam com a resposta. O `behavior_check` (`NPCAI.dm:769`).
+	///
+	/// ============================ ISTO E "REAGIR AO ESTADO" NO SENTIDO LITERAL ============================
+	/// Ate aqui o tempero de um corpo era CONSTANTE: o mesmo peso de golpe no primeiro soco e no
+	/// ultimo, o mesmo limiar de recuo com a vida cheia e no fio. O DM nao e assim -- ele mede o
+	/// FLUXO da luta (quanto de vida foi embora desde a ultima leitura, e o quanto o outro e mais
+	/// forte) e move a raiva e o animo com ele. Perder deixa o bicho furioso; ganhar deixa ele
+	/// afoito. **E o mesmo corpo lutando diferente no minuto seis do que no minuto um.**
+	/// ================================================================================================
+	///
+	/// ============================ UMA CORRECAO DE SINAL, E ELA ESTA DECLARADA ============================
+	/// O original escreve `flow += keep_track_relation`, com `relation = alvo.expressedBP / meuBP`
+	/// (`:782`) -- ou seja **quanto mais forte o inimigo, mais o fluxo vai pro lado de "estou
+	/// ganhando"**. Isso contradiz o proprio comentario do autor no topo do arquivo (*"rage ... seeing
+	/// it's kin get killed, etc will cause strength increases"*) e o uso que ele faz do numero: um
+	/// NPC diante de alguem tres vezes mais forte ficaria CALMO.
+	///
+	/// Aqui o termo entra com o sinal que a frase pede (`- (razao - 1)`): parelho nao mexe em nada,
+	/// inimigo mais forte empurra pro medo e pra raiva, inimigo mais fraco empurra pro animo. A
+	/// forma da conta e a de la; o sinal e o que ela queria dizer.
+	/// ================================================================================================
+	/// </summary>
+	private void TicarEmocoes(in Percepcao p, double dt)
+	{
+		_relogioDasEmocoes -= dt;
+		if (_relogioDasEmocoes > 0) return;
+		_relogioDasEmocoes = PeriodoDasEmocoes;
+
+		// SEM ALVO, AS EMOCOES ZERAM. E o `resetState`, que limpa `behavior_vals_t` e
+		// `e_behavior_vals` inteiros ao desengajar (`PlanetPopulation.dm:174-176`). Sem isto um
+		// cidadao carregaria a raiva de uma briga de ontem pra o passeio de hoje.
+		if (!p.TemAlvo) { _raiva = 0; _animo = 0; _medo = 0; _vidaNaUltimaLeitura = -1; return; }
+
+		// A PRIMEIRA LEITURA SO ANCORA. `if(!keep_track_dmg) keep_track_dmg = HP` (`:784`): sem
+		// isto o primeiro fluxo seria a vida inteira de uma vez.
+		if (_vidaNaUltimaLeitura < 0) { _vidaNaUltimaLeitura = p.VidaFrac; return; }
+
+		double fluxo = (p.VidaFrac - _vidaNaUltimaLeitura) * 100;   // o DM conta HP de 0 a 100
+		_vidaNaUltimaLeitura = p.VidaFrac;
+		if (fluxo is > -1 and < 1) fluxo = 0;                       // `if(flow < 1 && flow > -1) flow = 0`
+		fluxo -= p.RazaoDePoder - 1;                                // ver a correcao de sinal, acima
+
+		if (fluxo < 0)
+		{
+			// `flow = min(flow,-1); behavior_vals_t[2] += 2*(-1/flow)` -- a raiva sobe RAPIDO quando
+			// se esta perdendo pouco e devagar quando se esta perdendo feio (*"rage is limited by
+			// the flow var"*, o comentario do autor em `:791`).
+			//
+			// ============================ E A OUTRA METADE, QUE NO DM E LETRA MORTA ============================
+			// A mesma linha do original tem `behavior_vals_t[1] += flow` -- **o MEDO** --, e o autor
+			// escreveu ao lado *"tick fear and rage"*. So que a parcela e negativa e o proprio
+			// `checkState` aperta o acumulador em [0,100] na volta seguinte (`:819`): o medo some
+			// antes de chegar a `e_behavior_vals`, e a coragem de um NPC do DM **so pode subir**.
+			// Metade do sistema de emocoes de la nunca roda.
+			//
+			// Aqui ele e guardado num acumulador PROPRIO (`_medo`) e entra na conta com o sinal que
+			// a frase do autor pede. E a mesma decisao (e a mesma justificativa) da correcao de
+			// sinal la em cima: a forma da conta e a de la, o que muda e o que ela queria dizer.
+			// Sem esta metade, "reagir ao estado" so vale pra o lado bom: o bicho ficaria mais afoito
+			// ganhando e nunca mais cauteloso apanhando -- que e o oposto do que se ve numa luta.
+			// =============================================================================================
+			fluxo = Math.Min(fluxo, -1);
+			_raiva += 2 * (-1 / fluxo);
+			_medo += -fluxo;
+		}
+		else
+		{
+			// `flow = max(flow,1); t[1] += flow; t[2] -= 2*(1/flow)` -- ganhar da coragem e esfria.
+			fluxo = Math.Max(fluxo, 1);
+			_animo += fluxo;
+			_raiva -= 2 * (1 / fluxo);
+		}
+
+		_raiva = Math.Clamp(_raiva, 0, 100);
+		_animo = Math.Clamp(_animo, 0, 100);
+		_medo = Math.Clamp(_medo, 0, 100);   // o mesmo teto do `clamp(...,0,100)` de `:819`
+	}
+
 	/// <summary>
 	/// PENSA E DEVOLVE O QUE APERTAR. Chamado a CADA tique -- os reflexos moram aqui dentro, e o
 	/// plano so e reconsiderado quando o relogio de decisao vira.
@@ -430,6 +690,11 @@ public sealed class Cerebro
 		// --- 1. REFLEXOS (30 Hz, por fora da decisao) -------------------------
 		bool susto = Sustos(p, rng);
 		Reflexos(p, rng);
+
+		// --- 1b. AS EMOCOES (o relogio mais lento dos tres, ~0,83 s) ----------
+		// Elas nao decidem nada: elas mexem no TEMPERO com que as outras duas camadas decidem. E
+		// por isso que este relogio pode ser o mais folgado -- humor nao muda de quadro em quadro.
+		TicarEmocoes(p, dt);
 
 		// --- 2. DECISAO (na cadencia do tempero) ------------------------------
 		if (_relogioDeDecisao <= 0 || susto)
@@ -480,6 +745,20 @@ public sealed class Cerebro
 		if (_reacaoDaGuarda > 0) return;
 		if (Disciplina <= 0) { _guardaAte = 0; return; }   // a fera nao apara: nao ha o que reagir
 		if (!Poderes.TemComQueAparar) { _guardaAte = 0; return; }
+
+		// ============================ GUARDA QUE O TANQUE NAO PAGA E GUARDA QUE CAI ============================
+		// O `MeleeResolver` derruba a guarda de quem nao tem Ki pro golpe aparado, na mesma linha em
+		// que derruba a de quem nao tem braco: `else if (d.F.Ki < custoKi) d.Guardar(false)`
+		// (`MeleeResolver.cs:139`). Insistir nela nao protege nada -- so mantem o corpo com o gesto
+		// erguido enquanto leva o soco inteiro.
+		//
+		// E o MESMO argumento (e o mesmo lugar) do `TemComQueAparar`, que ja estava escrito uma
+		// linha acima: *"ela existe aqui pra a IA nao INSISTIR numa guarda que o resolvedor vai
+		// derrubar"*. O numero vem das `Capacidades` -- `MaxKi * CombatKnobs.CustoKiDaGuarda`,
+		// perguntado ao jogo a 1 Hz --, e era o terceiro campo extraido sem consumidor.
+		// ==================================================================================================
+		if (p.Ki < Poderes.CustoDaGuarda) { _guardaAte = 0; return; }
+
 		if (!p.TemAlvo || p.AlvoCaido) return;
 
 		bool colado = p.Distancia <= DistanciaIdeal * 2f && p.EleMeAlcanca;
@@ -512,6 +791,16 @@ public sealed class Cerebro
 		bool pressionado = p.Atordoado || p.VidaFrac <= VidaPressionada;
 		bool porPressao = pressionado && Disciplina >= 0.35 && rng.NextDouble() < ChanceDeApararSobPressao;
 
+		// --- 1b. CANSACO: a POSTURA DEFENSIVA (`NPCAI.dm:525-527`) ----------
+		// `if(sr <= NPC_AI_STAM_LOW && prob(ai_intelligence))` e, dentro, `prob(NPC_AI_DEF_BLOCK_PROB)`
+		// com o alvo colado -- **dois** sorteios, e por isso o produto: quem esta sem folego nao
+		// consegue mais trocar soco, entao o esperto passa a APARAR em vez de continuar batendo.
+		//
+		// A conversao pra tique e a mesma da guarda que se solta (o `0,1` explicado logo acima): o
+		// 55 do DM e por volta do laco de 0,3 s, e este reflexo roda 9 vezes naquele mesmo tempo.
+		bool porCansaco = p.FolegoFrac <= FolegoBaixo
+						  && rng.NextDouble() < Inteligencia * ChanceDaGuardaPorCansaco * 0.1;
+
 		// --- 1. RITMO (o brace do `attack()`, NPCAI.dm:190) -----------------
 		bool porRitmo = false;
 		double cad = Cadencia();
@@ -525,7 +814,7 @@ public sealed class Cerebro
 				porRitmo = rng.NextDouble() < ChanceDeAntecipar + 0.40 * Disciplina;
 		}
 
-		if (!porPressao && !porRitmo) return;
+		if (!porPressao && !porRitmo && !porCansaco) return;
 
 		_reacaoDaGuarda = Reagir(rng);
 		_guardaAte = _reacaoDaGuarda + GuardaMin + rng.NextDouble() * (GuardaMax - GuardaMin);
@@ -617,6 +906,8 @@ public sealed class Cerebro
 	private bool Interrompe(in Percepcao p, Plano novo) =>
 		!p.TemAlvo || p.AlvoCaido                                        // o alvo saiu de cena
 		|| novo == Plano.Nada
+		|| novo == Plano.Fugir                                           // quase morto: nao se "termina o plano" primeiro
+		|| (Atual == Plano.Fugir && p.VidaFrac > VidaQueFazFugir)        // `if(src.HP > 25) chaseState` (NPCAI.dm:650)
 		|| (Atual == Plano.Recuperar && p.Distancia < DistanciaSegura * 0.6f)   // ele chegou perto
 		|| (Atual == Plano.Recuperar && p.VidaFrac < _vidaAoCarregar - DanoQueAbortaACarga)
 		|| (Atual == Plano.Recuperar && _carregandoHa > PrazoDaRecarga)
@@ -635,8 +926,39 @@ public sealed class Cerebro
 		// SEM ALVO, ANDA -- e a fera vagando. O ponto pra onde ela vai chega em `DoAlvo` mesmo com
 		// `TemAlvo` falso (ver `LerPercepcao`), e ele nunca e alcancado, porque e recalculado a
 		// partir da posicao ATUAL: e o que a faz ANDAR na direcao em vez de parar num destino.
-		if (!p.TemAlvo) { Porque = "vagar"; return Plano.Vagar; }
-		if (p.AlvoCaido) { Porque = "alvo no chao"; return Plano.Nada; }
+		if (!p.TemAlvo) { _finalizando = false; Porque = "vagar"; return Plano.Vagar; }
+		if (p.AlvoCaido) { _finalizando = false; Porque = "alvo no chao"; return Plano.Nada; }
+
+		// ============================ O MODO FINALIZADOR -- e ele e o CONSUMIDOR DA VIDA DO ALVO ============================
+		// `if(target.HP <= NPC_AI_FINISH_HP && !target.KO && prob(ai_aggression))` (`NPCAI.dm:388`),
+		// a PRIMEIRA pergunta do seletor de acao do DM: com o outro quase caido, o bicho para de
+		// medir a luta e vai fechar -- barragem maior, pausa curta entre as rajadas.
+		//
+		// `Percepcao.VidaDoAlvo` era o setimo caso deste port de DADO EXTRAIDO SEM CONSUMIDOR: o
+		// servidor escrevia o campo todo tique (`GameServer.Ia.cs:398`) e o repo inteiro nao o lia
+		// em lugar nenhum. Este e o consumidor, e ele e o do original.
+		//
+		// ELE E DECIDIDO AQUI, na cadencia da decisao, e nao no tique: `prob(ai_aggression)` no DM
+		// roda uma vez por ACAO, e sorteado a 30 Hz viraria um liga-desliga de 30 vezes por segundo
+		// -- o corpo tremeria entre duas cadencias de soco em vez de escolher uma.
+		//
+		// A MISERICORDIA (a outra leitura da vida do alvo, `:513`) **nao foi portada, e a falta e
+		// deliberada**: ela pede `e_behavior_vals[3] >= 75`, e nao ha no DM inteiro um molde com
+		// bondade acima de 25 (o Citizen tem 5, os chefes tem 0, o padrao e 50) -- nem existe algo
+		// que a AUMENTE, so o `behavior_check` que a diminui. Porta-la seria escrever uma regra que
+		// nao dispara e um campo de dado que ninguem preenche, que e o mesmo defeito que este bloco
+		// esta consertando, so que de cabeca pra baixo.
+		// ==============================================================================================================
+		_finalizando = p.VidaDoAlvo <= VidaDeFinalizar && rng.NextDouble() < Agressividade;
+
+		// --- FUGIR (o `runawayState`, NPCAI.dm:510) -----------------------
+		// A ORDEM E A DO `attackState`: fugir vem ANTES de escalar, de recarregar e de tudo o mais.
+		// Quem esta quase morto e nao tem coragem nao "considera as opcoes" -- ele sai correndo.
+		if (p.VidaFrac <= VidaQueFazFugir && CautelaExpressa > CautelaQueFazFugir)
+		{
+			if (Explicando) Porque = $"fugir: vida {p.VidaFrac:0.00}, cautela {CautelaExpressa:0.00}";
+			return Plano.Fugir;
+		}
 
 		// --- ESCALAR ------------------------------------------------------
 		// `if(HP <= 45 || target.expressedBP >= expressedBP * 1.5) npc_power_up()` (NPCAI.dm:517),
@@ -676,7 +998,7 @@ public sealed class Cerebro
 			return Plano.Recuperar;
 		}
 
-		// --- ATIRAR (O GANCHO: hoje ele SEMPRE sai na primeira linha) ------
+		// --- ATIRAR: quem nao tem arsenal sai na primeira linha do `EscolherTiro` ------
 		// ============================ POR QUE AQUI, E NAO DEPOIS DO VOO ============================
 		// A ordem das perguntas E a maior parte do comportamento, e esta posicao diz duas coisas:
 		//
@@ -688,7 +1010,7 @@ public sealed class Cerebro
 		//     mira. Deixar o voo primeiro produziria o NPC que gasta o tanque subindo pra socar quem
 		//     ele podia ter acertado do chao, e ninguem entenderia por que.
 		// ======================================================================================
-		if (EscolherTiro(p, out int qual))
+		if (EscolherTiro(p, rng, out int qual))
 		{
 			_tiroEscolhido = qual;
 			if (Explicando)
@@ -705,7 +1027,19 @@ public sealed class Cerebro
 		//   * ele esta num andar de onde eu nao encosto -- a briga simplesmente nao acontece;
 		//   * ele esta no chao e eu sou esperto o bastante pra explorar a assimetria do andar 1
 		//     (`Voo.PodeAcertar`): eu bato nele, ele nao bate em mim.
-		if (Poderes.PodeVoar && p.KiFrac >= KiParaDecolar)
+		// ============================ E O TANQUE TEM QUE PAGAR A SUBIDA, EM KI DE VERDADE ============================
+		// A fracao (`KiParaDecolar`) responde *"estou confortavel pra bancar o gesto?"*; ela nao
+		// responde *"da pra pagar?"*, porque o preco do voo e ABSOLUTO e sai da proficiencia deste
+		// corpo -- 25% de um tanque pequeno pode nao cobrir nem a decolagem.
+		//
+		// Os dois numeros ja estavam nas `Capacidades`, perguntados ao jogo a 1 Hz pelas MESMAS
+		// funcoes que cobram do jogador (`Voo.CustoParaLigar` e `Voo.CustoPorSegundo`), e eram o
+		// quarto e o quinto campo extraido sem consumidor. O prazo de tres segundos e a folga
+		// minima pra a subida valer: decolar pra cair no tique seguinte e pior do que nao ter subido
+		// -- e a mesma frase que ja justifica o `DeveDescerDoCeu`.
+		// =========================================================================================================
+		double precoDaSubida = Poderes.CustoDeDecolar + Poderes.CustoDoVooPorSegundo * SegundosDeVooQueValemADecolagem;
+		if (Poderes.PodeVoar && p.KiFrac >= KiParaDecolar && (p.EstouVoando || p.Ki >= precoDaSubida))
 		{
 			bool naoAlcanco = !p.AlcancoPelaAltura;
 			bool rasanteVale = Inteligencia >= InteligenciaQuePairaRasante
@@ -718,10 +1052,18 @@ public sealed class Cerebro
 		}
 
 		// --- RECUAR -------------------------------------------------------
-		// O "respirar" que este cerebro sempre teve. `VidaCautelosa = 0` (a fera) o desliga.
-		if (VidaCautelosa > 0 && p.VidaFrac < VidaCautelosa && rng.NextDouble() < 0.35)
+		// O "respirar" que este cerebro sempre teve. `VidaCautelosa = 0` (a fera) o desliga -- e
+		// continua desligando, porque a `CautelaExpressa` MULTIPLICA a base, e zero vezes qualquer
+		// emocao continua zero.
+		//
+		// O LIMIAR AGORA E O DE AGORA, e nao o do molde: quem esta GANHANDO fica afoito e recua mais
+		// tarde; quem esta apanhando de alguem mais forte fica com medo e recua mais cedo. E o mesmo
+		// corpo se comportando diferente conforme a luta anda -- e e o `behavior_check` do DM, com a
+		// metade do medo que o clamp de la apaga.
+		double cautela = CautelaExpressa;
+		if (cautela > 0 && p.VidaFrac < cautela && rng.NextDouble() < 0.35)
 		{
-			if (Explicando) Porque = $"recuar: vida {p.VidaFrac:0.00}";
+			if (Explicando) Porque = $"recuar: vida {p.VidaFrac:0.00}, cautela {cautela:0.00}";
 			return Plano.Recuar;
 		}
 
@@ -739,7 +1081,7 @@ public sealed class Cerebro
 	///   1. ALCANCE       -- `p.Distancia <= t.AlcanceMax`. Perto demais nao reprova aqui: a receita
 	///                       sabe abrir distancia, e e dai que sai o "kitar" sem codigo de kite.
 	///   2. LINHA DE VISAO-- `p.LinhaLivre`, tracada pelo servidor SO quando ha arsenal (e por isso
-	///                       custa zero hoje). Falso = nao sei = nao atira.
+	///                       custa zero pra quem nao tem arsenal). Falso = nao sei = nao atira.
 	///   3. CUSTO DE KI   -- o Ki tem que sobrar DEPOIS do golpe, e sobrar o bastante pra nao cair do
 	///                       ceu: a mesma reserva do `DeveDescerDoCeu`, porque largar um raio e
 	///                       despencar em seguida e pior do que nao ter atirado.
@@ -756,7 +1098,7 @@ public sealed class Cerebro
 	/// tabela -- dado --, e nao uma regra nova aqui.
 	/// ====================================================================================
 	/// </summary>
-	private bool EscolherTiro(in Percepcao p, out int qual)
+	private bool EscolherTiro(in Percepcao p, Random rng, out int qual)
 	{
 		qual = -1;
 
@@ -765,6 +1107,21 @@ public sealed class Cerebro
 		if (!Poderes.DeLonge.TemAlguma) return false;
 		if (!p.TemAlvo || p.AlvoCaido) return false;
 		if (_pausaDoTiro > 0) return false;
+
+		// ============================ ECONOMIA DE KI: COM O TANQUE BAIXO, ELE SOCA ============================
+		// **LITERAL**: `if(ki_ratio <= NPC_AI_KI_LOW && prob(ai_intelligence)) attack(); return`
+		// (`NPCAI.dm:404`) -- e o comentario do autor e a regra inteira: *"com ki baixo o NPC esperto
+		// troca pro corpo-a-corpo em vez de queimar ki"*.
+		//
+		// E ela NAO e redundante com o custo do golpe, logo abaixo: aquele pergunta *"da pra pagar
+		// ESTE tiro?"* e este pergunta *"vale a pena gastar o que sobrou?"*. Sem esta linha, um NPC
+		// com 12% de tanque larga o ultimo raio, fica sem Ki pra guarda, pra corrida e pra forma, e
+		// perde a luta tendo feito a jogada "certa" -- que e exatamente o erro que o DM evita aqui.
+		//
+		// E o gate e a INTELIGENCIA, como todo o resto: o burro queima o tanque no primeiro tiro que
+		// couber. Erro CARACTERISTICO.
+		// =================================================================================================
+		if (p.KiFrac <= KiBaixo && rng.NextDouble() < Inteligencia) return false;
 
 		// SO QUEM E ESPERTO ABRE DISTANCIA PRA ATIRAR. O burro usa o golpe se ele ja estiver na
 		// janela, e senao continua avancando pra socar -- o mesmo desenho do `prob(ai_intelligence)`
@@ -838,7 +1195,7 @@ public sealed class Cerebro
 	}
 
 	/// <summary>
-	/// ABRIR DISTANCIA, PLANTAR O PE, CONJURAR, SOLTAR. **Nunca executada hoje** -- ver <see cref="Plano.Atirar"/>.
+	/// ABRIR DISTANCIA, PLANTAR O PE, CONJURAR, SOLTAR. Ver <see cref="Plano.Atirar"/>.
 	///
 	/// As tres fases sao visiveis de fora, e isso e o ponto: o jogador ve o NPC recuar, ve ele parar
 	/// e ve o golpe sair. E na parada que mora a janela pra interromper -- um NPC que atira no mesmo
@@ -882,24 +1239,54 @@ public sealed class Cerebro
 	{
 		bool guarda = _guardaAte > 0 && _reacaoDaGuarda <= 0;
 
-		// HESITANDO: recua guardando e nao ataca. Curto -- ver `Sustos`.
-		if (_hesitaAte > 0)
-			return new Comando { Rumo = p.Direcao * -1f, Guardar = guarda, QuerDescer = false };
+		Comando gesto = _hesitaAte > 0
+			// HESITANDO: recua guardando e nao ataca. Curto -- ver `Sustos`.
+			? new Comando { Rumo = p.Direcao * -1f, Guardar = guarda, QuerDescer = false }
+			: Atual switch
+			{
+				Plano.Escalar => Escalada(guarda),
+				Plano.Atirar => Disparo(p, guarda),
+				Plano.Recuperar => Recuperacao(p, guarda),
+				Plano.Alcancar => Alcance(p, guarda, rng),
+				Plano.Recuar => new Comando { Rumo = p.Direcao * -1f, Guardar = guarda, QuerDescer = QuerDescerPara(p), QuerSubir = QuerSubirPara(p) },
+				Plano.Fugir => Fuga(p),
+				Plano.Pressionar => Pressao(p, guarda, rng),
 
-		return Atual switch
+				// VAGAR: so o rumo. Sem soco (o ponto nao e ninguem) e sem guarda (nao ha de quem se
+				// defender) -- e exatamente o que o cerebro antigo fazia quando `posAlvo` era um ponto.
+				Plano.Vagar => new Comando { Rumo = p.Direcao },
+
+				_ => new Comando { Guardar = guarda },
+			};
+
+		// ============================ O OLHAR, E ELE E DECIDIDO **UMA VEZ SO** ============================
+		// **Havendo com quem lutar, o corpo encara.** Uma linha, fora do `switch`, e de proposito: a
+		// alternativa obvia -- cada receita escrever o proprio `Olhar` -- e a forma exata do defeito
+		// que esta linha conserta. Bastaria uma receita esquecer (e as tres que dao um passo pra tras
+		// esqueceriam, porque nelas o "pra onde eu ando" ja parece a resposta) pra o corpo voltar a
+		// socar de costas, e o proximo plano nasceria com a mesma armadilha em branco.
+		//
+		// E o `dir = get_dir(src,target)` do `npc_combat_action` (`NPCAI.dm:386`): no DM ele tambem
+		// e UM lugar so, a primeira linha do seletor de acao, ANTES de escolher entre kiai, agarrao,
+		// raio, barragem ou soco -- e nao uma linha dentro de cada um dos cinco.
+		//
+		// ZERO QUANDO NAO HA COM QUEM LUTAR, e ai o servidor cai no rumo do passo:
+		//   * `Vagar` (`!TemAlvo`) -- quem passeia olha pra onde vai, e nao pra um ponto imaginario;
+		//   * alvo no chao (`AlvoCaido`) -- a briga acabou; o corpo nao fica encarando um caido;
+		//   * `Fugir` -- **a terceira excecao, e ela chegou**. Quem esta correndo pra salvar a pele
+		//     olha pra onde corre; encarar quem o persegue e o gesto de quem ainda esta lutando, e
+		//     `Fugir` e justamente o plano que declara que ele nao esta mais. A linha nao precisou de
+		//     um `if` no servidor: com `Olhar` zero, o atuador cai no rumo do passo sozinho -- que
+		//     era exatamente a saida prevista quando o campo nasceu.
+		//
+		// `Recuar` e `Recuperar` NAO sao fuga -- sao passo atras com a guarda erguida, e no DM eles
+		// tambem mantem o `dir` no alvo (`step_away` e logo em seguida `npc_combat_action`). Encarar
+		// quem bate tambem e o que faz o `AnguloDeChegada` do resolvedor tratar o golpe como frontal,
+		// e nao como pelas costas.
+		// =============================================================================================
+		return gesto with
 		{
-			Plano.Escalar => Escalada(guarda),
-			Plano.Atirar => Disparo(p, guarda),
-			Plano.Recuperar => Recuperacao(p, guarda),
-			Plano.Alcancar => Alcance(p, guarda, rng),
-			Plano.Recuar => new Comando { Rumo = p.Direcao * -1f, Guardar = guarda, QuerDescer = QuerDescerPara(p), QuerSubir = QuerSubirPara(p) },
-			Plano.Pressionar => Pressao(p, guarda, rng),
-
-			// VAGAR: so o rumo. Sem soco (o ponto nao e ninguem) e sem guarda (nao ha de quem se
-			// defender) -- e exatamente o que o cerebro antigo fazia quando `posAlvo` era um ponto.
-			Plano.Vagar => new Comando { Rumo = p.Direcao },
-
-			_ => new Comando { Guardar = guarda },
+			Olhar = p.TemAlvo && !p.AlvoCaido && Atual != Plano.Fugir ? p.Direcao : Vec2.Zero,
 		};
 	}
 
@@ -954,9 +1341,26 @@ public sealed class Cerebro
 			QuerSubir = QuerSubirPara(p),
 			QuerDescer = QuerDescerPara(p),
 			Guardar = guarda,
-			Leve = p.AlcancoPelaAltura && p.Distancia <= DistanciaIdeal * 1.6f && EmRajada(rng),
+			Leve = p.AlcancoPelaAltura && p.Distancia <= DistanciaIdeal * 1.6f && EmRajada(p, rng),
 		};
 	}
+
+	/// <summary>
+	/// FUGIR DE VERDADE -- o `runawayState` (`NPCAI.dm:646-664`) inteiro, e ele cabe em uma linha
+	/// porque tudo o que ele faz e o que ele NAO manda.
+	///
+	/// Sem `Guardar`, sem `Leve`, sem `Pesado`: o laco de la nao tem uma linha de ataque nem de
+	/// guarda, so `step_away` ate a vida voltar. E COM `Correndo`, que e a unica coisa daqui que nao
+	/// tem original -- no BYOND nao ha correr, e no port ha, cobrado pelo `PodeCorrer` (`MaxKi*0,02`
+	/// por segundo) exatamente como o do jogador. Fugir andando seria a mesma velocidade de quem
+	/// persegue, ou seja: nao seria fuga nenhuma.
+	///
+	/// A altura fica como esta de proposito -- nao ha `QuerSubir`/`QuerDescer`. Quem esta fugindo
+	/// nao tem tempo de escolher andar, e um pedido de descida no meio da fuga poria o corpo no chao
+	/// justamente na frente de quem vem atras.
+	/// </summary>
+	private static Comando Fuga(in Percepcao p) =>
+		new() { Rumo = p.Direcao * -1f, Correndo = true };
 
 	/// <summary>
 	/// O ESTADO NORMAL: manter a distancia de soco e bater. Com a altitude acompanhando, porque o
@@ -970,11 +1374,14 @@ public sealed class Cerebro
 
 		bool noAlcance = p.Distancia <= DistanciaIdeal * 1.6f && p.AlcancoPelaAltura;
 		bool temFolego = p.KiFrac > 0.15;
-		bool bate = noAlcance && !guarda && EmRajada(rng);
+		bool bate = noAlcance && !guarda && EmRajada(p, rng);
 
 		// UM SORTEIO SO decide leve/pesado. Dois sorteios independentes (um pra cada campo) davam
 		// um tique em que os dois saiam falsos -- a rajada engolia um golpe sem nada explicando.
-		bool pesado = bate && temFolego && rng.NextDouble() < ChanceDePesado;
+		//
+		// E O PESO E O DE AGORA (`FuriaExpressa`), e nao o do molde: o mesmo corpo bate mais pesado
+		// depois de ter apanhado um tempo. E o `rage` do `behavior_check`, que existe pra isso.
+		bool pesado = bate && temFolego && rng.NextDouble() < FuriaExpressa;
 
 		// DESCER DE PROPOSITO quando o folego acaba no ar. Ser derrubado e uma FALHA: o corpo cai a
 		// 16 tiles por segundo e chega no chao sem guarda, sem Ki e no meio do inimigo. Descer usa a
@@ -999,14 +1406,56 @@ public sealed class Cerebro
 	/// conta enquanto os golpes ficam dentro da <see cref="Jandirus.Core.Combat.CombatState.JanelaDeCombo"/>,
 	/// entao socar em rajada e o que faz o baque escalar de pequeno pra grande. E o NPC **nunca**
 	/// ataca no instante exato em que a recarga zera: essa precisao e a assinatura de um robo.
+	///
+	/// ============================ A RAJADA PASSOU A SER CONTADA, E E O `BarrageAttack` ============================
+	/// A versao anterior sorteava, a cada soco, se a pausa seria curta (72%) ou longa -- o que da um
+	/// ritmo variado mas SEM FORMA: o numero de golpes seguidos e uma geometrica, e todo NPC do
+	/// mundo tem a mesma. O DM nao faz assim: ele decide, ANTES, quantos golpes vao sair --
+	/// `BarrageAttack(,,,,rand(2,4),2)` no ataque normal (`NPCAI.dm:413`) e `rand(3,5)` no
+	/// finalizador (`:394`) --, e o gate de quem solta rajada e a FURIA com o FOLEGO
+	/// (`rage >= 45 && (sr > NPC_AI_STAM_LOW || !prob(ai_intelligence)) && prob(45)`, `:412`).
+	///
+	/// A diferenca aparece na tela: um bicho calmo e cansado da golpes AVULSOS com pausa entre eles;
+	/// um furioso com folego encaixa tres ou quatro seguidos e ai respira. Sao dois ritmos que se
+	/// reconhecem -- e, como a furia ANDA durante a luta (ver <see cref="FuriaExpressa"/>), o mesmo
+	/// corpo passa de um pro outro sem ninguem trocar o tempero dele.
+	/// ==========================================================================================================
 	/// </summary>
-	private bool EmRajada(Random rng)
+	private bool EmRajada(in Percepcao p, Random rng)
 	{
 		if (_voltaDoSoco > 0) return false;
-		// pausa curta entre golpes da mesma rajada, longa quando a rajada acaba
-		_voltaDoSoco = rng.NextDouble() < 0.72 ? 0.05 + rng.NextDouble() * 0.12
-											   : 0.45 + rng.NextDouble() * 0.75;
+
+		if (_golpesQueFaltam <= 0) _golpesQueFaltam = TamanhoDaRajada(p, rng);
+		_golpesQueFaltam--;
+
+		_voltaDoSoco = _golpesQueFaltam > 0
+			// DENTRO da rajada: o intervalo curto que mantem o combo de pe
+			? 0.05 + rng.NextDouble() * 0.12
+			// entre rajadas se RESPIRA -- menos quando esta fechando a luta (`:394`, sem a pausa)
+			: _finalizando ? 0.20 + rng.NextDouble() * 0.25
+						   : 0.45 + rng.NextDouble() * 0.75;
 		return true;
+	}
+
+	/// <summary>
+	/// QUANTOS GOLPES SAEM NESTA RAJADA. Um = golpe avulso (o `attack()` do DM); mais de um = o
+	/// `BarrageAttack`. Ver <see cref="EmRajada"/> pras linhas do original.
+	/// </summary>
+	private int TamanhoDaRajada(in Percepcao p, Random rng)
+	{
+		bool folego = p.FolegoFrac > FolegoBaixo;
+
+		// FINALIZADOR: `rand(3,5)`, e o gate de folego e o CRITICO e nao o baixo (`:395` cobra
+		// `sr > NPC_AI_STAM_CRIT`) -- quem esta fechando a luta gasta a ultima reserva.
+		if (_finalizando && p.FolegoFrac > FolegoCritico) return 3 + rng.Next(3);
+
+		// `sr > NPC_AI_STAM_LOW || !prob(ai_intelligence)`: sem folego so o BURRO insiste na rajada.
+		bool bancaOFolego = folego || rng.NextDouble() >= Inteligencia;
+
+		if (FuriaExpressa >= PesoQueIndicaFuria && bancaOFolego && rng.NextDouble() < ChanceDaBarragem)
+			return 2 + rng.Next(3);   // `rand(2,4)`
+
+		return 1;
 	}
 
 	/// <summary>

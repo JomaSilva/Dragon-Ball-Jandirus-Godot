@@ -75,10 +75,31 @@ public partial class ObraDesenhada : Node2D
 	/// O `pixel_y` inverte de sinal: no BYOND o Y cresce PRA CIMA e no Godot pra baixo. Copiar o
 	/// numero cru poria a bancada meio tile enterrada no chao em vez de meio tile acima dele.
 	/// </summary>
+	/// <summary>
+	/// Tipos que ja reclamaram nesta sessao. A construcao e redesenhada a cada entrada em zona, e
+	/// um erro por quadro afogaria o log que ele deveria destacar.
+	/// </summary>
+	private static readonly HashSet<string> _jaReclamou = [];
+
+	/// <summary>
+	/// A RESERVA CINZA NAO PODE SER MUDA. `_Draw` desenha um retangulo quando o sprite nao carrega,
+	/// entao a construcao nunca fica invisivel na tela -- mas ela fica invisivel no LOG, e e assim
+	/// que um buraco de asset vira "arte de proposito" e sobrevive meses. Ver a mesma regra do lado
+	/// do servidor (`GameServer.CarregarTech`) e do pipeline (`MapConverter`, "PAREDE INVISIVEL").
+	/// </summary>
+	private void Reclamar(string porque)
+	{
+		if (!_jaReclamou.Add(Tipo)) return;
+		GD.PushError($"[obra] '{Tipo}' sem desenho ({porque}, arte='{Arte}', estado='{Estado}') -- "
+					 + "vai aparecer como retangulo cinza. Rode o AssetPipeline ('tech').");
+	}
+
 	private void MontarSprite()
 	{
-		if (Arte.Length == 0 || !ResourceLoader.Exists(Arte)) return;
-		if (ResourceLoader.Load<SpriteFrames>(Arte) is not { } folha) return;
+		if (Arte.Length == 0) { Reclamar("o catalogo nao tem arte pra ela"); return; }
+		if (!ResourceLoader.Exists(Arte)) { Reclamar("o .tres nao existe no disco"); return; }
+		if (ResourceLoader.Load<SpriteFrames>(Arte) is not { } folha)
+		{ Reclamar("o .tres nao carregou como SpriteFrames"); return; }
 
 		string anim = Estado.Length > 0 ? Sanear(Estado) : "default";
 		if (!folha.HasAnimation(anim))
@@ -86,11 +107,12 @@ public partial class ObraDesenhada : Node2D
 			// o .dmi pode nomear o estado de um jeito que o conversor saneou diferente; sem o
 			// estado certo, o primeiro serve mais do que nada
 			string[] nomes = [.. folha.GetAnimationNames()];
-			if (nomes.Length == 0) return;
+			if (nomes.Length == 0) { Reclamar("o SpriteFrames nao tem animacao nenhuma"); return; }
 			anim = nomes[0];
 		}
 
-		if (folha.GetFrameTexture(anim, 0) is not { } quadro) return;
+		if (folha.GetFrameTexture(anim, 0) is not { } quadro)
+		{ Reclamar($"a animacao '{anim}' nao tem quadro 0"); return; }
 		Vector2 tam = quadro.GetSize();
 
 		_sprite = new AnimatedSprite2D

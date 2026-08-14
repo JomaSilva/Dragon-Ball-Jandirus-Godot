@@ -85,7 +85,9 @@ public partial class TelaDeInventario : CanvasLayer
 		_grade.AddThemeConstantOverride("v_separation", 6);
 		caixa.AddChild(_grade);
 
-		var fechar = new Button { Text = "Fechar (I ou Esc)" };
+		// O TEXTO LE O REGISTRO: quem religou a mochila pra outra tecla tem que ler a tecla DELE
+		// aqui, senao o botao ensina errado justamente quem mudou.
+		var fechar = new Button { Text = $"Fechar ({Teclas.NomeDaAcao("ui_mochila")} ou Esc)" };
 		fechar.Pressed += Fechar;
 		caixa.AddChild(fechar);
 	}
@@ -102,7 +104,8 @@ public partial class TelaDeInventario : CanvasLayer
 			return;
 		}
 
-		if (k.PhysicalKeycode != Key.I && k.Keycode != Key.I) return;
+		// PELO REGISTRO -- ver a mesma linha em `MenuDeInteracao` e o cabecalho do `Teclas`.
+		if (!Teclas.Bate("ui_mochila", k)) return;
 
 		if (_raiz.Visible) Fechar(); else Abrir();
 		GetViewport().SetInputAsHandled();

@@ -97,7 +97,20 @@ public partial class TelaDeConstrucao : CanvasLayer
 	{
 		// PEDE A LISTA AO ABRIR. O catalogo do cliente pode estar velho -- o zeni muda ao lutar e o
 		// nivel de tecnologia ao estudar, e as duas coisas mudam o que da pra comprar.
-		GameClient.Instance?.SendVerbo("tech_lista", "");
+		//
+		// ============================ PELO CANAL `Tech`, E NAO PELO DE VERBOS ============================
+		// As tres chamadas desta tela mandavam `SendVerbo("tech_lista")`, `SendVerbo("tech_construir")` e
+		// `SendVerbo("tech_posicionar")` -- e **nenhum desses tres nomes existe no servidor**. O canal de
+		// tecnologia e o `C2S.Tech`, onde os comandos se chamam "lista", "construir" e "posicionar" (ver
+		// `ComandoDeTech`); o `default` do canal de verbos ignora em silencio o que nao comeca com
+		// "admin_". Ou seja: a grade abria, o botao Fabricar acendia, o fantasma seguia o mouse -- e
+		// clicar no chao nao fazia nada, sem uma linha de erro em lugar nenhum.
+		//
+		// Achado pela bancada `--diagembarque`, que precisa fabricar e assentar uma nave PELO CAMINHO DO
+		// JOGADOR antes de poder apertar E nela. Nenhuma bancada pegava: as de servidor chamam
+		// `ComandoDeTech` direto (o outro lado do fio) e a `--socar` usa `SendTech`, que ja era o certo.
+		// =============================================================================================
+		GameClient.Instance?.SendTech("lista", "");
 		_raiz.Visible = true;
 		Redesenhar();
 	}
@@ -228,7 +241,7 @@ public partial class TelaDeConstrucao : CanvasLayer
 		var sim = new Button { Text = "Fabricar", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
 		sim.Pressed += () =>
 		{
-			GameClient.Instance?.SendVerbo("tech_construir", o.Id);
+			GameClient.Instance?.SendTech("construir", o.Id);
 			FecharConfirmacao();
 		};
 		linha.AddChild(sim);
@@ -361,7 +374,9 @@ public partial class TelaDeConstrucao : CanvasLayer
 
 		// O PONTO QUE VAI PRO SERVIDOR E O CENTRO DA CELULA, e nao o pixel do clique: e assim que o
 		// servidor guarda a obra, e mandar o pixel cru faria o desenho pular meio tile ao chegar.
-		GameClient.Instance?.SendVerbo("tech_posicionar",
+		// PELO CANAL `Tech` -- ver o comentario longo no `Abrir`: "tech_posicionar" nunca existiu do
+		// outro lado, e o clique no chao nao fazia nada.
+		GameClient.Instance?.SendTech("posicionar",
 			$"{_naMao}/{cx * t + t / 2f:0}/{cy * t + t / 2f:0}");
 
 		Largar();

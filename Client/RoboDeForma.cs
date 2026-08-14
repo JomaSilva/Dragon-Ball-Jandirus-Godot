@@ -451,11 +451,26 @@ public partial class RoboDeForma : Node
 		// foi nomeado pelo dono e entrou por `Mystic.dm:112` (o mesmo objeto de overlay, mantido no
 		// buff dele) -- ver `FormaDef.Raios`.
 		// ==================================================================================
+		//
+		// ============================ E ONZE DEPOIS DAS LINHAS RACIAIS -- A LISTA FICOU PRA TRAS ============================
+		// As quatro que entraram sao do porte das outras racas, e nenhuma delas e escolha de desenho:
+		// as quatro vestem folha de eletricidade no PROPRIO buff do DM, e a lista aqui e que nao tinha
+		// sido atualizada -- ou seja, a bancada ficou VERMELHA por um motivo velho enquanto o catalogo
+		// estava certo, que e o pior estado dos dois lados (a proxima falha de verdade entra no meio
+		// das ja aceitas). Cada uma com a folha que a acende:
+		//
+		//   * `snamek`  -- `snamek Elec.dmi` (`Super_Namek.dm`), UMA folha, volume 1;
+		//   * `heran2`  -- `Electric_Red.dmi` (`HeranBuff.dm:212`), UMA folha, volume 1. O `heran1`
+		//     fica de fora e a ausencia dele e a prova de que a linha nao entrou "por simetria": o
+		//     `Max_Power` nao veste folha nenhuma -- o raio dele e da transformacao, nao da aura;
+		//   * `alien1` e `alien2` -- a MESMA `spc` nos dois galhos (`Alien_Transformations.dm:60`,
+		//     `:66`), UMA folha cada.
+		// ============================================================================================================
 		string[] esperado =
 			["ssj2", "ssj3", "primal_legendary2", "primal_legendary3", "ssj4_limit_breaker",
-			 "mistico", "beast"];
+			 "mistico", "beast", "snamek", "heran2", "alien1", "alien2"];
 		Conferir(comRaio.Count == esperado.Length && esperado.All(comRaio.Contains),
-				 $"SO sete formas acendem raio, e sao estas ({string.Join(", ", comRaio)})");
+				 $"SO onze formas acendem raio, e sao estas ({string.Join(", ", comRaio)})");
 
 		// O VOLUME. O SSJ2 e o UNICO leve porque no DM o `if(2)` acende UMA folha; o SSJ3 e o
 		// `primal_legendary2` sao o CHEIO porque os dois caem no `if(3)`, que soma tres; o Limit
@@ -527,11 +542,29 @@ public partial class RoboDeForma : Node
 
 		// LITERAIS, como no resto das cores: escrever `== AzulDaFaisca` conferiria a constante com
 		// ela mesma e passaria com qualquer valor trocado por engano.
-		Conferir(tomDaFaisca.Count == 4,
-				 $"as sete faiscas saem em QUATRO tons ({tomDaFaisca.Count}: "
+		//
+		// ============================ E VIRARAM OITO TONS COM AS QUATRO RACIAIS ============================
+		// As quatro que entraram sao cada uma de um tom, e nenhuma delas sai desta lista escrita a mao:
+		// as linhas raciais caem no `_ => d.Aura` do `CorDosRaios` (o AZUL e das escadas de SANGUE
+		// Saiyajin), entao a faisca de cada uma **e a cor da chama dela**. Isso e deliberado e esta
+		// medido na bancada `formas` [19] ("a faisca e da cor da propria chama"); o que se conta aqui
+		// e o efeito na TELA: quatro tons novos, um por linha, e nenhum deles repetindo os quatro
+		// antigos -- se o `snamek` virasse azul, esta conta cairia pra sete sem que a cor dele
+		// parecesse errada em lugar nenhum.
+		// ============================================================================================
+		Conferir(tomDaFaisca.Count == 8,
+				 $"as onze faiscas saem em OITO tons ({tomDaFaisca.Count}: "
 			   + $"{string.Join(" / ", tomDaFaisca.Select(p => $"{p.Key}={p.Value.Count}"))})");
 		Conferir(tomDaFaisca.TryGetValue("8fe3ff", out List<string>? azuis) && azuis.Count == 4,
 				 $"QUATRO delas sao azuis #8fe3ff ({Quem("8fe3ff")})");
+		// E AS QUATRO RACIAIS SAO **UMA CADA**, e nao "quatro em algum lugar da conta": a verde do
+		// Super Namekuseijin (`snamek Elec.dmi`), a vermelha do True Max Power (`Electric_Red.dmi`) e
+		// as duas Alien, que sao a MESMA folha em tons diferentes porque a chama de cada degrau e que
+		// muda. Sem esta linha, duas racas trocando de cor entre si passariam pela conta de cima.
+		foreach ((string id, string tom) in new[]
+			{ ("snamek", "6fe36f"), ("heran2", "ff4a4a") })
+			Conferir(tomDaFaisca.TryGetValue(tom, out List<string>? so) && so.Count == 1 && so[0] == id,
+					 $"e a faisca de `{id}` e #{tom}, so dela ({Quem(tom)})");
 		Conferir(tomDaFaisca.TryGetValue("ff2d2f", out List<string>? vermelhas)
 			  && vermelhas.Count == 1 && vermelhas[0] == "ssj4_limit_breaker",
 				 $"e UMA e vermelha #ff2d2f, o Limit Breaker ({Quem("ff2d2f")})");
@@ -1605,6 +1638,27 @@ public partial class RoboDeForma : Node
 		("ssg",                         145, "GodRitual.dm:41 (`INITIALIZEGODPROTOCOL`)"),
 		("rose_ssg",                    145, "GodRitual.dm:41 (`INITIALIZEGODPROTOCOL`)"),
 		("mistico",                     145, "GodRitual.dm:41 (`INITIALIZEGODPROTOCOL`)"),
+
+		// ============================ O FROST DEMON TEM AS DUAS CENAS DO ORIGINAL ============================
+		// `Frost_Demon_Forms()` escolhe entre elas pelo ESTADO (Mutante entrando numa forma que nao
+		// segura, primeira vez naquela forma), e nao pelo degrau. Aqui a cena e da FORMA -- mas os
+		// PRAZOS sao os de la, os dois, e e isso que esta tabela cobra:
+		//
+		//   * `fd_burst_fx()` (`IcerTransform.dm:186`) -- `spawn(25)`, 2,5 s. E o surto das repeticoes,
+		//     e e o que as quatro supressoes e a forma base usam: recolher a casca (ou abri-la) nao e
+		//     virar nada, e no DM isso e literalmente mudo pro Frost Demon normal;
+		//   * `fd_grand_cinematic()` (`IcerTransform.dm:196`) -- 16 ciclos de `sleep(10)` mais 12, ou
+		//     seja 280 tiques. **E o mesmo numero do bloco Legendary logo acima, e nao por coincidencia**:
+		//     o proprio DM diz na linha que a proc e a *"receita da lssj_grand_cinematica, recolorida"*.
+		//     Por isso as duas evolucoes saem da MESMA fabrica (`LendaGrande`) e nao de uma copia.
+		// ================================================================================================
+		("frost1",                       25, "IcerTransform.dm:186 (`fd_burst_fx`, spawn(25))"),
+		("frost2",                       25, "IcerTransform.dm:186 (`fd_burst_fx`, spawn(25))"),
+		("frost3",                       25, "IcerTransform.dm:186 (`fd_burst_fx`, spawn(25))"),
+		("frost4",                       25, "IcerTransform.dm:186 (`fd_burst_fx`, spawn(25))"),
+		("frost5",                       25, "IcerTransform.dm:186 (`fd_burst_fx`, spawn(25))"),
+		("frost6",                      280, "IcerTransform.dm:196 (`fd_grand_cinematic`)"),
+		("frost7",                      280, "IcerTransform.dm:196 (`fd_grand_cinematic`)"),
 	];
 
 	/// <summary>
@@ -1630,6 +1684,50 @@ public partial class RoboDeForma : Node
 		// `UltraEgo.dm:530` diz, textual, que ela nao tem cinematica. A cena e desenho novo.
 		("destroyer",                       "o DM diz textualmente que a Destroyer nao tem cinematica"),
 		("oozaru",                          "o Oozaru nunca foi cinematica no DM -- desenho novo"),
+
+		// ============================ AS TRES QUE O ORIGINAL TROCA **NO MESMO TIQUE** ============================
+		// `snamek()` (`Super_Namek.dm:8-15`) e `Alien_Trans()` (`Alien_Transformations.dm:10-22`) nao tem
+		// UM `sleep`: som, `createDustshock`/`createShockwavemisc`, cratera, `startbuff`, e a forma esta
+		// posta. O unico relogio dos dois arquivos e o `animate(src, time=7)` do Namekuseijin -- 0,7 s de
+		// flash, que nao e cena.
+		//
+		// Elas ficam aqui e nao fora das duas tabelas porque a ausencia PRECISA estar escrita: as cinco
+		// formas raciais nasceram na camada 2 e ficaram sem classificacao nenhuma, e a bancada acusou
+		// isso por execucoes seguidas ("sem classificacao: snamek, heran1, heran2, alien1, alien2") sem
+		// que ninguem tivesse decidido nada. E a checagem [2] fazendo o trabalho dela.
+		// ====================================================================================================
+		("snamek",                          "`snamek()` nao tem um `sleep` -- a forma fica no mesmo tique"),
+		("alien1",                          "`Alien_Trans()` nao tem um `sleep`"),
+		("alien2",                          "`Alien_Trans()` nao tem um `sleep` (o mesmo proc)"),
+	];
+
+	/// <summary>
+	/// AS CENAS QUE O DM CRONOMETRA E QUE ESTE PORT ENCURTA **DE PROPOSITO**.
+	///
+	/// ============================ POR QUE UMA TERCEIRA TABELA, E NAO UMA DAS DUAS ============================
+	/// As duas de cima dividem o catalogo em "o DM cronometra, e nos copiamos o numero" e "o DM nao
+	/// cronometra, e nos inventamos". As duas formas do Heran nao sao nem uma nem outra: o
+	/// `Max_Power()` e o `True_Max_Power()` (`HeranBuff.dm:97` e `:193`) TEM prazo -- e a linha
+	/// principal deles soma 200 e 230 tiques -- e mesmo assim o port usa a espinha Saiyajin de 15,0 s.
+	///
+	/// Por-las na tabela do DM daria uma falha VERDADEIRA e ja decidida (a camada que as portou
+	/// escreveu a divergencia com o motivo, em `Cinematicas.cs`); por-las na tabela de invencoes seria
+	/// mentira -- ha proc. O que faltava era o terceiro nome.
+	///
+	/// A CAUDA E A DIVERGENCIA INTEIRA. Os dois procs terminam em `sleep(2000 * ssjdrain)`, e o
+	/// `ssjdrain` do Heran CAI com a maestria ate zero (`HeranBuff.dm:278`): no original a espera pela
+	/// forma encolhe sozinha conforme ele a domina. Este port modela isso pelos tres degraus de cena
+	/// (estreia / encurtada / instantanea), que e a MESMA ideia medida por outra variavel -- e por isso
+	/// o prazo fixo daqui e o do meio da faixa do DM, e nao o topo dela.
+	///
+	/// O QUE A BANCADA COBRA DELAS: que a divergencia seja **pra baixo**. Uma cena mais longa que a do
+	/// original prenderia o corpo mais tempo do que o jogo de onde ela veio -- o mesmo perigo que o teto
+	/// das invencoes existe pra impedir.
+	/// </summary>
+	private static readonly (string Cena, int TiquesDoDm, string PorQue)[] AsCenasQueEncurtamDeProposito =
+	[
+		("heran1", 200, "`Max_Power`: sleep(50) + sleep(100) + sleep(2000*ssjdrain=0,025)"),
+		("heran2", 230, "`True_Max_Power`: sleep(50) + sleep(100) + sleep(2000*ssj2drain=0,040)"),
 	];
 
 	/// <summary>
@@ -1718,17 +1816,39 @@ public partial class RoboDeForma : Node
 		// COMO REPROVA SE A REGRA SUMIR: escreva uma cena nova em `Cinematicas.Todas` e ela cai no mesmo
 		// instante, dizendo o nome da forma que ficou sem classificacao.
 		// ========================================================================================
+		var encurtadas = AsCenasQueEncurtamDeProposito.ToDictionary(e => e.Cena, e => e);
 		string semClassificacao = string.Join(", ",
-			medidas.Keys.Where(f => !porCena.ContainsKey(f) && !inventadas.Contains(f)));
+			medidas.Keys.Where(f => !porCena.ContainsKey(f) && !inventadas.Contains(f)
+									&& !encurtadas.ContainsKey(f)));
 		Conferir(semClassificacao.Length == 0,
-				 $"toda cena esta na tabela do DM ou declarada invencao ({medidas.Count} cenas) "
+				 $"toda cena esta na tabela do DM, declarada invencao ou declarada encurtada "
+			   + $"({medidas.Count} cenas) "
 			   + $"-- sem classificacao: {(semClassificacao.Length == 0 ? "nenhuma" : semClassificacao)}");
+
+		// ============================ 2b. E A DIVERGENCIA DECLARADA E **PRA BAIXO** ============================
+		// Ver `AsCenasQueEncurtamDeProposito`. Declarar uma divergencia nao e ficar livre dela: o que a
+		// declaracao compra e o direito de o numero ser outro, nao o de ser MAIOR -- uma cena mais longa
+		// que a do original prende o corpo mais tempo do que o jogo de onde ela veio, que e o unico
+		// defeito de cinematica que custa partida.
+		// ==================================================================================================
+		foreach ((string cena, int tiquesDoDm, string porQue) in AsCenasQueEncurtamDeProposito)
+		{
+			if (!medidas.TryGetValue(cena, out Jandirus.Core.Forms.Cinematica? c))
+			{
+				Conferir(false, $"a cena encurtada de '{cena}' chega pelo funil `NoDegrau`");
+				continue;
+			}
+			double doDm = tiquesDoDm / TiquesPorSegundoNoDm;
+			Conferir(c.SegundosPreso < doDm,
+					 $"'{cena}' encurta de proposito e encurta PRA BAIXO "
+				   + $"({c.SegundosPreso:0.##}s contra os {doDm:0.##}s do DM) -- {porQue}");
+		}
 
 		// E O AVESSO: uma entrada da tabela que nao existe mais no catalogo e uma cena renomeada ou
 		// apagada, e a linha dela viraria uma cobranca sem reu (o `foreach` de cima ja reprova, mas
 		// dizendo "nao chega pelo funil", que manda procurar no lugar errado).
 		string fantasmas = string.Join(", ",
-			porCena.Keys.Concat(inventadas).Where(f => !medidas.ContainsKey(f)));
+			porCena.Keys.Concat(inventadas).Concat(encurtadas.Keys).Where(f => !medidas.ContainsKey(f)));
 		Conferir(fantasmas.Length == 0,
 				 $"e nenhuma entrada da tabela ficou sem cena ({(fantasmas.Length == 0 ? "nenhuma" : fantasmas)})");
 
@@ -1745,9 +1865,26 @@ public partial class RoboDeForma : Node
 		foreach ((string cena, string porQue) in AsCenasSemProcNoDm)
 		{
 			if (!medidas.TryGetValue(cena, out Jandirus.Core.Forms.Cinematica? c)) continue;
-			Conferir(c.SegundosPreso < menorDoDm,
-					 $"'{cena}' e invencao ({porQue}) e cabe abaixo da menor cena do DM "
-				   + $"({c.SegundosPreso:0.##}s < {menorDoDm:0.##}s)");
+			// ============================ `&lt;=` E NAO `&lt;`, E O MOTIVO E QUE O PISO MUDOU DE DONO ============================
+			// Este teto era 14,5 s -- "o ritual divino, a menor cena que o DM realmente tem", como diz o
+			// comentario acima. A linha do Frost Demon trouxe o `fd_burst_fx` (`spawn(25)`) e o piso caiu
+			// pra 2,5 s **sem que ninguem tivesse decidido isso**: a menor cena do DM passou a ser um
+			// SURTO e nao uma cinematica.
+			//
+			// Com `&lt;` estrito a regra ficou contraditoria consigo mesma: as tres cenas raciais que este
+			// port inventou usam EXATAMENTE aquele numero do DM (2,5 s, o `SurtoInstantaneo` do
+			// `Cinematicas.cs`, cuja origem esta escrita la e e o proprio `fd_burst_fx`) -- ou seja, uma
+			// invencao cujo prazo E o da menor cena do original era acusada de passar dela.
+			//
+			// O `&lt;=` diz o que a regra sempre quis dizer: **nenhuma invencao dura MAIS que a menor cena
+			// que o DM realmente tem**. As que ainda estao acima continuam vermelhas, e devem continuar:
+			// elas foram escritas contra um piso de 14,5 s que nao existe mais, e reescolher o prazo
+			// delas (ou separar surto de cinematica na tabela) e decisao de quem desenhou as cenas, nao
+			// desta bancada.
+			// ==========================================================================================================
+			Conferir(c.SegundosPreso <= menorDoDm + ToleranciaDoDm,
+					 $"'{cena}' e invencao ({porQue}) e nao passa da menor cena do DM "
+				   + $"({c.SegundosPreso:0.##}s contra {menorDoDm:0.##}s)");
 		}
 
 		_passos.Add($"  --     {OsSleepsDoDm.Length} cenas cronometradas no DM + {AsCenasSemProcNoDm.Length} "
@@ -3519,6 +3656,18 @@ public partial class RoboDeForma : Node
 			"wrathful", "c_type", "legendary",
 			"primal_c_type", "primal_legendary", "primal_legendary2",
 			"beast",
+
+			// O HERAN. As duas formas dele nascem da furia do LUTO pelo mesmo motivo do tronco
+			// Saiyajin -- `heran.dm:20-52` roda o mesmo `switch(savant.Emotion)` nos dois degraus --,
+			// e por isso ganham a CRATERA GRANDE junto com o resto do tronco de sangue.
+			//
+			// **ELAS FORAM O CONSERTO DE UMA DERIVACAO, E NAO UM ACRESCIMO**: o `RaivaExigida` listava
+			// so `Saiyajin` e `Futuro`, com um comentario prometendo que uma linha de sangue nova
+			// entraria sozinha. Nao entraria -- caia no `_ => Nenhuma`, calada.
+			//
+			// O SUPER NAMEKUSEIJIN E AS DUAS FORMAS ALIEN NAO ESTAO AQUI, e a ausencia e medida pelo
+			// laco de baixo: elas se COMPRAM (`FormaDef.PedeFlag`), e o que se compra nao se desperta.
+			"heran1", "heran2",
 		];
 		var deuRaiva = new List<string>();
 		foreach (Jandirus.Core.Forms.FormaDef d in Jandirus.Core.Forms.Catalogo.Todas)
@@ -9037,6 +9186,42 @@ public partial class RoboDeForma : Node
 		// --- OOZARU: o macaco nem tem cabelo desenhado, e o pelo do rabo e o do corpo ---
 		("oozaru",                          ModoCabelo.Base,             null,     null),
 		("oozaru_dourado",                  ModoCabelo.Trocar,           null,     null),
+
+		// ============================ AS QUATRO LINHAS RACIAIS -- DOZE LINHAS DE **AUSENCIA** ============================
+		// Elas sao a metade menos glamourosa desta tabela e a que mais trabalha: `Base, null, null`
+		// doze vezes seguidas. A pergunta que a linha responde nao e "que cor?", e sim **"alguem olhou
+		// pra esta forma?"** -- e o proprio nome da checagem diz isso ("forma nova sem ninguem olhar").
+		//
+		// **AS SETE DO FROST DEMON ESTAVAM FALTANDO**, e a bancada as acusava desde que aquela linha
+		// entrou no catalogo. Entram agora junto com as cinco novas porque a resposta e a mesma e o
+		// motivo tambem: **nenhuma destas quatro racas tem penteado de Super Saiyajin, rabo, ou
+		// qualquer mexida no olho no original**.
+		//
+		//   * o Frost Demon troca o CORPO INTEIRO (`CorpoDeForma.FrostEscolhido`) -- e corpo nao passa
+		//     por nenhuma das tres colunas desta tabela;
+		//   * o Heran veste `/obj/overlay/hairs/superheran/sh1`, e o `EffectStart()` dele faz
+		//     `icon = container.truehair` -- o PROPRIO cabelo do jogador. Trocar o penteado por ele
+		//     mesmo e nao trocar penteado nenhum, e e por isso que a coluna diz `Base` e nao `Trocar`;
+		//   * o Namekuseijin e o Alien nao encostam em cabelo nem em olho: o que eles acendem e
+		//     overlay de ELETRICIDADE (`snamek Elec.dmi`, `.../spc`), que e o campo `Raios` e nao este.
+		//
+		// Nenhuma das tres racas tem rabo em lugar nenhum do jogo -- o `CorDoRabo` ja devolve `null`
+		// pra elas por derivacao (a guarda e "escada que escreve `ssj`/`lssj`"), e estas linhas sao o
+		// que cobra que essa derivacao continue valendo.
+		// ==========================================================================================================
+		("frost1",                          ModoCabelo.Base,             null,     null),
+		("frost2",                          ModoCabelo.Base,             null,     null),
+		("frost3",                          ModoCabelo.Base,             null,     null),
+		("frost4",                          ModoCabelo.Base,             null,     null),
+		("frost5",                          ModoCabelo.Base,             null,     null),
+		("frost6",                          ModoCabelo.Base,             null,     null),
+		("frost7",                          ModoCabelo.Base,             null,     null),
+
+		("snamek",                          ModoCabelo.Base,             null,     null),
+		("heran1",                          ModoCabelo.Base,             null,     null),
+		("heran2",                          ModoCabelo.Base,             null,     null),
+		("alien1",                          ModoCabelo.Base,             null,     null),
+		("alien2",                          ModoCabelo.Base,             null,     null),
 	];
 
 	/// <summary>
@@ -10856,7 +11041,6 @@ public partial class RoboDeForma : Node
 			{
 				Id = id,
 				Pos = new Jandirus.Core.World.Vec2(corpo.GlobalPosition.X + 64, corpo.GlobalPosition.Y),
-				Vida = 100,
 			}]);
 
 			foreach (Node n in atores.GetChildren())
@@ -10977,7 +11161,6 @@ public partial class RoboDeForma : Node
 		{
 			Id = fantasmaC,
 			Pos = new Jandirus.Core.World.Vec2(corpo.GlobalPosition.X + 64, corpo.GlobalPosition.Y),
-			Vida = 100,
 			Sobrecarregado = sobrecarga,
 		}]);
 
@@ -13254,11 +13437,25 @@ public partial class RoboDeForma : Node
 		//
 		// O BEAST FICA DE FORA COM RAZAO PROPRIA e por isso ele nao esta nesta lista: ele tem cor de
 		// chama declarada (`7d5af0`, o `rgb(125,90,240)` do `Mystic.dm:95`).
+		// ============================ E A LINHA DO FROST DEMON INTEIRA, QUE E O TERCEIRO MOTIVO ============================
+		// Os sete degraus dele entraram nesta lista de uma vez, e por porte: NENHUM deles acende aura
+		// no original. `Frost_Demon_Forms` (`IcerTransform.dm:83-114`) toca `1aura.wav`, troca o icone
+		// pelo corpo que o jogador escolheu e escreve uma linha no chat -- e mais nada. Quem veste
+		// overlay nele e o GOLDEN (`/obj/overlay/icergod`, skill separada, fora do catalogo) e o
+		// DESCONTROLE do Mutante (`fd_menacing_red`, que e estado e nao forma).
+		//
+		// OS IDS CONTINUAM LITERAIS, e agora a diferenca importa mais: escrever a esperada como "os da
+		// linha FrostDemon" repetiria a derivacao do Core e as duas errariam juntas -- que e a regra
+		// deste arquivo inteiro (ver o bloco 1 acima).
 		string[] doJogador = ComAChamaDoJogador();
-		Conferir(doJogador.SequenceEqual(new[] { Jandirus.Core.Forms.Catalogo.IdBase,
-												 Jandirus.Core.Forms.Catalogo.IdMistico }),
-				 "a chama do JOGADOR e de DUAS formas -- a `base` e o `mistico` "
-			   + $"([{string.Join(", ", doJogador)}])");
+		Conferir(doJogador.SequenceEqual(new[]
+				 {
+					 Jandirus.Core.Forms.Catalogo.IdBase,
+					 "frost1", "frost2", "frost3", "frost4", "frost5", "frost6", "frost7",
+					 Jandirus.Core.Forms.Catalogo.IdMistico,
+				 }),
+				 "a chama do JOGADOR e de NOVE formas -- a `base`, o `mistico` e os sete degraus do "
+			   + $"Frost Demon ([{string.Join(", ", doJogador)}])");
 
 		// ============================ 4. E A CHAMA DE TODAS AS OUTRAS E A COR QUE ELAS DECLARAM ============================
 		// Este e o "as 33 outras nao se moveram" desta passada. A afirmacao NAO e "a funcao concorda com
@@ -14300,7 +14497,11 @@ public partial class RoboDeForma : Node
 			// COMO REPROVA SE A REGRA SUMIR: ponha `if (_souEu)` antes do `AudioDirector.Musica(...)` do
 			// `Transformacao._Ready` (que e exatamente o que o comentario descrevia) e as duas linhas caem.
 			// ================================================================================================
-			audio.PararCamada(audio.CamadaDeTeste);   // do zero: o bloco E2 ja rodou cenas com musica
+			// DO ZERO DE VERDADE. Isto era `PararCamada(CamadaDeTeste)`, que apaga o pedido de UMA
+			// camada -- e o bloco E2 rodou cenas de RAIVA e de TRANSFORMACAO, fechadas na mao antes de
+			// a faixa acabar, entao havia pedido de pe em duas camadas. Apagar so a de cima descobria a
+			// outra, e a medicao seguinte media um combate que nunca entrou no ar.
+			audio.Silenciar();
 			Transformacao alheia = CenaAlheia(raioCheio * 8f);
 			Conferir(audio.CamadaDeTeste == AudioDirector.Camada.Transformacao,
 					 $"a cena de OUTRA pessoa poe musica na minha tela (camada `{audio.CamadaDeTeste}`) "
@@ -14314,7 +14515,7 @@ public partial class RoboDeForma : Node
 			// (`BattleMusic.dm:135-143`), que corta o canal de raiva e abafa a batalha pela duracao da faixa.
 			// Sao DOIS sentidos e os dois quebram sozinhos: a de cima tem que INTERROMPER, e a de baixo tem
 			// que NAO interromper (senao a primeira troca de musica de lugar cortaria o tema no meio).
-			audio.PararCamada(audio.CamadaDeTeste);
+			audio.Silenciar();
 			audio.Musica(Trilha.Combate(), AudioDirector.Camada.Combate);
 			bool combateEntrou = audio.CamadaDeTeste == AudioDirector.Camada.Combate;
 			Transformacao porCima = CenaAlheia(raioCheio * 0.5f);
@@ -14377,7 +14578,7 @@ public partial class RoboDeForma : Node
 			// COMO REPROVA SE A REGRA SUMIR: mova o `Transformacao.Rodar` do `AoMudarForma` pra ANTES do
 			// `if (corpo == null) return;` (usando o `_atores` como alvo, que compila) e as duas caem.
 			// ========================================================================================
-			audio.PararCamada(audio.CamadaDeTeste);
+			audio.Silenciar();
 			AudioDirector.Camada antesDoFantasma = audio.CamadaDeTeste;
 			int cenasAntes = corpo.GetParent().GetChildren().OfType<Transformacao>().Count();
 			mundo.AoMudarForma(eu + 80_001,
@@ -14432,7 +14633,40 @@ public partial class RoboDeForma : Node
 						 $"e de volta no planeta o eco volta ({PesoAte(raioCheio * 8f):0.##})");
 			}
 
-			audio.PararCamada(audio.CamadaDeTeste);   // nao deixa a trilha da bancada tocando
+			// --- 6. O RELATO DO DONO: A MUSICA DE MENU VAZANDO PRA DENTRO DA LUTA -----
+			// ============================ O CAMINHO EXATO DA QUEIXA, REFEITO AQUI ============================
+			// *"quando uma musica de TRANSFORMACAO ou COMBATE acaba, comeca a tocar umas MUSICAS DO MENU do
+			// jogo em LOOP"*. O caminho tinha QUATRO passos e nenhum deles era absurdo sozinho: brigar (poe
+			// `Combate` no ar), apertar ESC (o `Menu` perde do combate e fica GUARDADO), fechar o ESC (o
+			// `PararCamada(Menu)` desistia porque o menu nao era a camada que tocava) e a tag de combate cair
+			// -- e a maquina "voltava" pro tema de menu esquecido, em laco, no meio do jogo.
+			//
+			// MEDIDO SO COM API PUBLICA, nos mesmos quatro passos que o dono deu. As duas ultimas linhas sao
+			// as que respondem a queixa: a de menu nao pode estar no ar, e o SILENCIO tem que ser o estado
+			// final -- "a musica simplesmente E PARADA".
+			//
+			// COMO REPROVA SE A REGRA SUMIR: devolva o `_faixaDeBaixo` (uma string so, sem dono) no lugar do
+			// vetor de pedidos do `AudioDirector` e as duas ultimas caem juntas.
+			// ============================================================================================
+			audio.Silenciar();
+			string temaDeMenu = Trilha.Menu();
+			audio.Musica(Trilha.Combate(), AudioDirector.Camada.Combate);
+			audio.Musica(temaDeMenu, AudioDirector.Camada.Menu);          // ESC no meio da briga
+			Conferir(audio.CamadaDeTeste == AudioDirector.Camada.Combate,
+					 $"com o ESC aberto no meio da briga quem toca continua sendo o COMBATE "
+				   + $"(camada `{audio.CamadaDeTeste}`)");
+
+			audio.PararCamada(AudioDirector.Camada.Menu);                 // fechou o ESC
+			audio.PararCamada(AudioDirector.Camada.Combate);              // a tag de combate caiu
+			Conferir(audio.FaixaDeTeste != temaDeMenu,
+					 $"a tag de combate cai e a musica de MENU nao assume o jogo "
+				   + $"(`{(audio.FaixaDeTeste.Length == 0 ? "silencio" : audio.FaixaDeTeste.GetFile())}`) "
+				   + "-- \"comeca a tocar umas MUSICAS DO MENU do jogo em LOOP, oq n deveria acontecer\"");
+			Conferir(audio.FaixaDeTeste.Length == 0,
+					 $"...e o que fica e o SILENCIO, que e um estado e nao um buraco pra preencher "
+				   + "-- \"a musica simplesmente E PARADA\"");
+
+			audio.Silenciar();   // nao deixa a trilha da bancada tocando
 		}
 
 		mundo.TickDoTremorDeTeste(10.0);

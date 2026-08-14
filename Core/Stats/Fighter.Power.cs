@@ -79,6 +79,10 @@ public sealed partial class Fighter
 		if (AbsorbDeterminesBP && AbsorbBP != 0) tempBP = (tempBP + AbsorbBP) / 2;
 		else tempBP += AbsorbBP;
 
+		// A GRAVIDADE SAI DAQUI COMO DIVISOR DE CONDICAO. Ver o bloco que a calcula la embaixo --
+		// nasce em 1 porque o ramo do poder escondido nao passa pelas somas da familia 2.
+		gravDiv = 1;
+
 		if (isconcealed && expressedBP >= 5)
 		{
 			// poder escondido: trava em 5 e ATROPELA tudo acima. Uma UI que liste os fatores
@@ -99,6 +103,22 @@ public sealed partial class Fighter
 			tempBP += AdditiveBoost(aurasBuff);
 			tempBP += AdditiveBoost(KaioPcnt);
 			tempBP += AdditiveBoost(ParanormalBPMult);
+
+			// ============================ A GRAVIDADE VIRA DIVISOR DE CONDICAO ============================
+			// O `peakexBP` la embaixo divide o poder pelos fatores de CONDICAO pra responder "quanto do
+			// meu pico eu estou expressando". So que ele so sabia dividir por fator MULTIPLICATIVO, e a
+			// gravidade e familia 2 -- soma na base. Resultado medido: com gravidade 100 o poder cai pra
+			// 46% e a conta continuava dizendo "100% inteiro".
+			//
+			// O dono citou gravidade junto de peso e Ki ao definir a %, e ele esta certo. Aqui ela vira
+			// uma RAZAO entre a base real e a base que este mesmo corpo teria sem o peso do planeta --
+			// exata, porque tudo que vem depois (familia 1, `nnetBuff`, raiva, `powerMod`) e
+			// multiplicativo e se cancela na divisao.
+			//
+			// SO QUANDO ELA PESA (`gravBuff < 1`). Gravidade dominada e bonus de verdade e entra dos DOIS
+			// lados, deixando a razao onde estava: quem treinou pra aguentar 100g nao esta "machucado".
+			double baseSemGrav = tempBP - AdditiveBoost(gravBuff) + AdditiveBoost(Math.Max(gravBuff, 1));
+			gravDiv = baseSemGrav > 0 ? Math.Min(tempBP / baseSemGrav, 1) : 1;
 
 			// familia 1 -- multiplicam
 			tempBP *= BPBoost * formBuff;
@@ -129,12 +149,91 @@ public sealed partial class Fighter
 		relBPmax = BP * (1 + UPMod) * relcaprate * BPMod;
 		if (HVBPAddEnd) relBPmax = BP;
 
-		// o que o personagem seria sem idade, peso e ferimento -- serve pra "poder de pico"
-		peakexBP = Math.Max(expressedBP / Math.Max(AgeDiv * deBuff * statusBuff, 1e-9), expressedBP);
+		// O QUE O PERSONAGEM SERIA SEM IDADE, PESO, FERIMENTO E GRAVIDADE -- o "poder de pico".
+		//
+		// A DIVISAO E O QUE FAZ A FORMA SUMIR DA CONTA, e e essa a propriedade que interessa: SSJ,
+		// God Ki e raiva multiplicam os DOIS lados, entao a razao `expressedBP / peakexBP` nao se
+		// mexe ao transformar. So os fatores de condicao ficam de pe -- que e exatamente como o dono
+		// definiu a "% de BP efetivo".
+		//
+		// ============================ O PISO FICA, MAS A % NAO SAI MAIS DAQUI ============================
+		// O `Math.Max(..., expressedBP)` e HERANCA FIEL DO DM e tem consumidor la: `buudead` e
+		// `peakexBP/expressedBP` (`misc.dm:194/204/212`) -- um multiplicador de recuperacao de Buu que
+		// TEM que ser >= 1, e o zumbi nasce com este numero (`Death.dm:44/63`). Tirar o piso plantaria
+		// um `buudead < 1` pra quando essas duas vias forem portadas.
+		//
+		// SO QUE ELE ESTRANGULAVA A % DE BP EFETIVO, e o dono esta certo na queixa: a partir de
+		// `statusBuff > 1` (Ki acima de 100%) o `Math.Max` troca de ramo, o pico vira o proprio
+		// expresso e `expressedBP / peakexBP` sai 1,0000 EXATO -- por construcao, nao por
+		// arredondamento. Medido: 110%, 118%, 150% e 200% de Ki davam todos "100% efetivo".
+		//
+		// A % MUDOU DE CONTA em vez de o piso sair (ver `Inteireza`): o pico continua sendo o pico do
+		// DM, e a % passou a ser o produto dos fatores de condicao, que e o que ela sempre VALEU.
+		// ================================================================================================
+		peakexBP = Math.Max(expressedBP / Math.Max(AgeDiv * deBuff * statusBuff * gravDiv, 1e-9), expressedBP);
 
 		Egains = HBTCMod * Trainmult * bgains * tgains * tailgain;
 		if (isHV && BoostActive && BoostMult != 0) Egains *= BoostMult;
 	}
+
+	/// <summary>
+	/// QUAO INTEIRO ESTE CORPO ESTA. A "% de BP efetivo" que o dono pediu -- e ELA PASSA DE 100%.
+	///
+	/// ============================ POR QUE ELA DEIXOU DE SAIR DE `expressedBP / peakexBP` ============================
+	/// Era essa a conta, e ela batia num TETO DURO: o `peakexBP` tem um `Math.Max(..., expressedBP)`
+	/// que e do DM e que la tem consumidor (ver o comentario dele em `PowerLevel`). Com Ki acima de
+	/// 100% o `statusBuff` passa de 1, o `Math.Max` troca de ramo e a razao devolve 1,0000 exato --
+	/// medido em 110%, 118%, 150% e 200% de Ki, todos "100% efetivo".
+	///
+	/// O dono: *"o bp efetivo pode SUBIR caso eu tenha um ki acima de 100%"*. Entao a % passou a sair
+	/// do PRODUTO DOS FATORES DE CONDICAO -- que e literalmente o que a razao antiga VALIA quando o
+	/// piso nao mordia (o comentario antigo ja dizia isso: `min(..., 1)`). Tirou-se o `min`, e mais
+	/// nada mudou de significado. O `peakexBP` ficou intacto pro consumidor do DM.
+	///
+	/// DE QUEBRA A CONTA FICOU EXATA: a razao passava pelo `DmMath.Round` do `expressedBP`, e por
+	/// causa dele um corpo perfeitamente inteiro com Ki cheio media 98,0% em vez de 100%.
+	/// =============================================================================================================
+	///
+	/// Ki, vida, estamina, idade, peso/restricao e gravidade -- e mais nada. TRANSFORMAR NAO A MEXE,
+	/// porque nenhum fator de forma entra neste produto; e essa invariancia e a definicao que o dono
+	/// deu, de graca.
+	///
+	/// DUAS COISAS QUE ELA NAO ENXERGA, e e honesto dize-las:
+	///   - a perna da ESTAMINA esta morta na conta do jogo (`staminaratio` le `staminadeBuff`, que
+	///     nasce em 100 e nada abaixa hoje) -- quando alguem a acordar, ela entra aqui sozinha;
+	///   - o que multiplica o poder DEPOIS (nocaute, debuff do revive, vazamento do Frost) some na
+	///     divisao de proposito: aquilo nao e "estar inteiro", e estar cortado. O nocaute ja tem
+	///     linha propria na tela.
+	///
+	/// DIVULGAVEL SEM SCOUTER: e RAZAO, nao poder. Ver o cabecalho de `GameServer.Sigilo`.
+	///
+	/// O PISO EM ZERO FICA (nenhum fator e negativo, mas um `weight` absurdo levaria o `deBuff` a
+	/// zero e a % nao deve virar numero negativo). O TETO SAIU -- era ele a queixa.
+	/// </summary>
+	/// <remarks>
+	/// O `statusBuff > 0` E SENTINELA DE "JA RODOU", nao paranoia: ele e produto de tres razoes com
+	/// piso positivo (0,6 x 0,6 x 0,3), entao NUNCA vale zero depois de um `PowerLevel`. Zero so
+	/// existe num lutador recem-criado que nunca tiquou -- e pra esse a resposta honesta e 1
+	/// (corpo inteiro), que era o que a razao antiga tambem devolvia com `peakexBP` zerado.
+	/// </remarks>
+	public double Inteireza => statusBuff > 0 ? Math.Max(AgeDiv * deBuff * statusBuff * gravDiv, 0) : 1;
+
+	/// <summary>
+	/// O MULTIPLICADOR TOTAL sobre o BP base -- o que o treino virou depois de TUDO.
+	///
+	/// SAI DO RESULTADO (`expressedBP / BP`) E NAO DA SOMA DAS PARTES, e a diferenca nao e de
+	/// arredondamento: neste jogo os fatores tem tres FAMILIAS (ver o cabecalho desta classe), e
+	/// so a primeira multiplica. Medido: Kaio-ken 2x com Mistico 2x da 3x de verdade (os dois
+	/// SOMAM na base) e o produto ingenuo diria 4x -- 33% de erro; com forma, raiva e gravidade
+	/// juntos o erro medido passa de 126%; e o corte de 25% do revive por Zeni nao tem campo
+	/// nenhum onde caber num produto de fatores.
+	///
+	/// Uma quebra por fator na tela e ilustracao bem-vinda, mas o TOTAL sai daqui. Se as duas
+	/// discordarem, e a quebra que esta incompleta.
+	///
+	/// DIVULGAVEL SEM SCOUTER pelo mesmo motivo da <see cref="Inteireza"/>: e razao.
+	/// </summary>
+	public double MultiplicadorTotal => BP > 0 ? expressedBP / BP : 1;
 
 	/// <summary>
 	/// O fator de God Ki. Fica separado porque e o unico ponto da conta onde um

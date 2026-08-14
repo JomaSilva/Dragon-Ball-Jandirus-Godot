@@ -219,7 +219,7 @@ public sealed partial class GameServer
 			// `NenhumaFormaCaiEmFallback` na bancada do cliente.
 			// ======================================================================================
 			int chegou = 0, funil = 0, multiplicou = 0, estreou = 0, misturou = 0;
-			int kiCheio = 0, bpSubiu = 0, escadaN = 0;
+			int kiCheio = 0, bpSubiu = 0, escadaN = 0, escadaQueSobe = 0, bpDesceu = 0, repousoN = 0;
 			string exChegou = "", exFunil = "", exMult = "", exEstreia = "", exMistura = "", exKi = "", exBp = "";
 
 			foreach (FormaDef d in esperadas)
@@ -304,9 +304,32 @@ public sealed partial class GameServer
 
 				// E O PODER TEM QUE TER SUBIDO DE VERDADE. `ssjBuff` certo com `expressedBP` parado seria
 				// um campo escrito que o `powerlevel()` nao le -- a falha assinatura deste projeto.
-				if (adm.Ficha.expressedBP > bpPelado) bpSubiu++;
-				else if (exBp.Length == 0)
-					exBp = $"{d.Id}: {adm.Ficha.expressedBP:N0} contra {bpPelado:N0} na base";
+				// ============================ "SUBIR" NAO VALE PRA TODA FORMA -- E O FROST DEMON PROVA ============================
+				// Esta linha era `bpSubiu == escadaN` e reprovava em CINCO entradas: as quatro supressoes do
+				// Frost Demon (0,25x a 0,90x) e a forma base dele (1x). Nao era defeito do jogo -- era a
+				// checagem afirmando uma coisa que deixou de ser verdade no dia em que o catalogo ganhou
+				// degraus ABAIXO da base. Uma casca que APERTA o poder e o desenho do Mutante, e exigir que
+				// ela suba o `expressedBP` e exigir que ela nao funcione.
+				//
+				// O CORTE E A MESMA PERGUNTA DO CATALOGO (`PodeSerRepouso`: vale 1x ou menos e nao cobra
+				// nada), e nao uma lista de cinco ids -- pelo motivo de sempre: a proxima raca com casca
+				// nasce medida sozinha. E a metade de baixo NAO e uma isencao: ela cobra o CONTRARIO, que
+				// e o que faz a supressao valer alguma coisa como teste.
+				// ============================================================================================================
+				if (Catalogo.PodeSerRepouso(d))
+				{
+					repousoN++;
+					if (adm.Ficha.expressedBP <= bpPelado) bpDesceu++;
+					else if (exBp.Length == 0)
+						exBp = $"{d.Id} (casca): {adm.Ficha.expressedBP:N0} SUBIU contra {bpPelado:N0} na base";
+				}
+				else
+				{
+					escadaQueSobe++;
+					if (adm.Ficha.expressedBP > bpPelado) bpSubiu++;
+					else if (exBp.Length == 0)
+						exBp = $"{d.Id}: {adm.Ficha.expressedBP:N0} contra {bpPelado:N0} na base";
+				}
 
 				if (adm.Oozaru != FormaOozaru.Nao)
 				{
@@ -328,8 +351,10 @@ public sealed partial class GameServer
 				  estreou == esperadas.Count, $"{estreou}/{esperadas.Count} -- {exEstreia}");
 			Checa($"...e as {escadaN} formas da escada entram com o tanque de Ki CHEIO",
 				  kiCheio == escadaN, $"{kiCheio}/{escadaN} -- {exKi}");
-			Checa($"...e o `expressedBP` sobe nas {escadaN} (o `powerlevel()` LE o que foi escrito)",
-				  bpSubiu == escadaN, $"{bpSubiu}/{escadaN} -- {exBp}");
+			Checa($"...e o `expressedBP` sobe nas {escadaQueSobe} que multiplicam (o `powerlevel()` LE o que foi escrito)",
+				  bpSubiu == escadaQueSobe, $"{bpSubiu}/{escadaQueSobe} -- {exBp}");
+			Checa($"...e DESCE nas {repousoN} que sao CASCA (a supressao do Frost Demon aperta o poder)",
+				  repousoN > 0 && bpDesceu == repousoN, $"{bpDesceu}/{repousoN} -- {exBp}");
 
 			// ---------------------------------------------------------------- a SEGUNDA vez
 			// A estreia so vale uma vez, e isso e o que separa "a cena toca" de "a cena toca sempre".
@@ -778,5 +803,37 @@ public sealed partial class GameServer
 			EscutaDeAnuncios = null;
 			EscutaDeFeras = null;
 		}
+	}
+
+	/// <summary>
+	/// ============================ O ESTOMAGO, PRA BANCADA QUE FOTOGRAFA A BARRA (`--diagmostrador`) ============================
+	/// Esta e a UNICA escrita de bancada neste arquivo -- as duas janelas do `GameServer.FormasTeste.cs`
+	/// sao de leitura e dizem, com razao, que uma porta que devolvesse algo mutavel seria a porta dos
+	/// fundos. Entao vale explicar por que esta precisa escrever.
+	///
+	/// A BARRA DE NUTRICAO NOVA NASCE EM 100% E FICA LA. Um personagem novo comeca com o tanque cheio
+	/// (`Nutricao.TanqueInicial`), e a digestao natural queima MEDIDO ~0,08 de 50 a cada passada de 3 s
+	/// -- ou seja cerca de 0,2% do tanque por MINUTO. Nao ha, no caminho de producao, nada que mova
+	/// aquela barra dentro do tempo de uma bancada: comer pede um item que so nasce de colheita ou da
+	/// Sala do Tempo, e a fome pede uma tarde inteira.
+	///
+	/// E BARRA PARADA EM 100% E EXATAMENTE O DEFEITO QUE ESTA RODADA VEIO CACAR. Uma barra congelada e
+	/// uma barra correta desenham o MESMO pixel enquanto o valor for 1,0; foi assim que o corte de Ki
+	/// em 100% viveu quatro mil checagens verdes. Fotografar a nutricao cheia provaria que ela existe e
+	/// **nada** sobre ela estar ligada no dado. Por isso a bancada empurra o tanque e volta a olhar.
+	///
+	/// ESCREVE NO TANQUE E MAIS NADA, e manda a ficha pelo `MandarFicha` de producao -- o caminho que a
+	/// barra usa. Nao mexe em vigor, Ki nem BP: quem quiser ver esses tres se mexerem tem os caminhos
+	/// do jogo (a tecla C, o dreno da forma) e a bancada os usa.
+	/// ==========================================================================================================
+	/// </summary>
+	internal bool EstomagoDeTeste(int id, double nutricao)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+
+		pl.Ficha.CurrentNutrition = Math.Clamp(
+			nutricao, 0, Jandirus.Core.Stats.Nutricao.Tanque(pl.Ficha.Metabolism));
+		MandarFicha(pl);
+		return true;
 	}
 }

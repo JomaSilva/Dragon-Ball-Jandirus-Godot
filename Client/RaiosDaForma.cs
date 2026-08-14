@@ -44,7 +44,7 @@ public partial class RaiosDaForma : Node2D
 	/// sprite dele"), e e o certo: o raio corre POR FORA do corpo. Abaixo, o desenho o esconderia
 	/// justamente onde ele mais aparece.
 	///
-	/// Fica abaixo da barra de vida (que e HUD) e acima da aura, que e o fundo da cena do corpo.
+	/// Fica abaixo do balao de fala (21) e acima da aura, que e o fundo da cena do corpo.
 	/// </summary>
 	private const int Camada = 6;
 

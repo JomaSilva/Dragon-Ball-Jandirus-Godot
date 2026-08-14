@@ -382,6 +382,9 @@ public sealed partial class GameServer
 	{
 		var w = Protocol.Begin(Protocol.S2C.Clash);
 		w.Put((byte)Protocol.ClashSub.Comecou);
+		// QUE DISPUTA E ESTA. Ver `Protocol.TipoDeEmbate` -- o mesmo opcode serve o embate de ki, e o
+		// que separa os dois na tela e este byte.
+		w.Put((byte)Protocol.TipoDeEmbate.Velocidade);
 		w.Put(p.Id);
 		w.Put(outro.Id);
 		w.Put((int)(e.Acaba - agora));
@@ -395,15 +398,48 @@ public sealed partial class GameServer
 	// =====================================================================
 	private void NovaTecla(Embate e, ServerPlayer p)
 	{
-		char c = Letras[_rng.Next(Letras.Length)];
+		char c = SortearLetraDeEmbate();
 		long prazo = NowMs() + MsPorTecla;
 		if (p == e.A) { e.LetraA = c; e.PrazoA = prazo; }
 		else { e.LetraB = c; e.PrazoB = prazo; }
 
+		MandarTecla(p, c, MsPorTecla);
+	}
+
+	// =====================================================================
+	// AS PECAS QUE OS DOIS EMBATES DIVIDEM
+	// =====================================================================
+	/// <summary>
+	/// UMA LETRA DO MESMO ALFABETO. Compartilhada com a colisao de ki
+	/// (`GameServer.EmbateDeKi.cs`) -- ver <see cref="Letras"/> pra saber por que WASD esta de fora,
+	/// que e uma regra que vale igual nos dois: pedir "W" a quem esta empurrando um feixe e pedir que
+	/// ele tente andar.
+	/// </summary>
+	private char SortearLetraDeEmbate() => Letras[_rng.Next(Letras.Length)];
+
+	/// <summary>
+	/// "APERTE ESTA LETRA", com o prazo. O MESMO pacote dos dois embates -- ver
+	/// <see cref="Protocol.TipoDeEmbate"/> sobre por que ha um opcode so.
+	/// </summary>
+	private static void MandarTecla(ServerPlayer p, char c, long ms)
+	{
 		var w = Protocol.Begin(Protocol.S2C.Clash);
 		w.Put((byte)Protocol.ClashSub.Tecla);
 		w.Put((byte)c);
-		w.Put((int)MsPorTecla);
+		w.Put((int)ms);
+		p.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// O CABO DE GUERRA NA TELA DE UM DOS DOIS. No ZanzoClash sao pontos; no embate de ki e o
+	/// medidor contra o que falta dele. A barra do cliente desenha `meus / (meus + dele)` nos dois.
+	/// </summary>
+	private static void MandarPlacar(ServerPlayer p, double meus, double dele)
+	{
+		var w = Protocol.Begin(Protocol.S2C.Clash);
+		w.Put((byte)Protocol.ClashSub.Placar);
+		w.Put((float)meus);
+		w.Put((float)dele);
 		p.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -471,18 +507,10 @@ public sealed partial class GameServer
 		p.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
-	private void Placar(Embate e)
+	private static void Placar(Embate e)
 	{
-		void Mandar(ServerPlayer p, double meus, double dele)
-		{
-			var w = Protocol.Begin(Protocol.S2C.Clash);
-			w.Put((byte)Protocol.ClashSub.Placar);
-			w.Put((float)meus);
-			w.Put((float)dele);
-			p.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
-		}
-		Mandar(e.A, e.PtsA, e.PtsB);
-		Mandar(e.B, e.PtsB, e.PtsA);
+		MandarPlacar(e.A, e.PtsA, e.PtsB);
+		MandarPlacar(e.B, e.PtsB, e.PtsA);
 	}
 
 	// =====================================================================
@@ -821,7 +849,7 @@ public sealed partial class GameServer
 		const double tipo = 3;   // peso do golpe PESADO
 
 		GolpeResultado r = MeleeResolver.Resolver(cv, cp, angulo, _rng, tipo, DanoDeEstilo(venc, perd));
-		perd.UltimoAgressor = venc.Id;
+		MarcarAgressao(perd, venc);
 
 		ResolverDesfecho(venc, perd, r);
 		AnunciarGolpe(venc, perd, r, nivel: 3, zanzo: false);

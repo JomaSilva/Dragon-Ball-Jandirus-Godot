@@ -18,6 +18,19 @@ public partial class PauseMenu : CanvasLayer
     private Control _painel = null!;
     private Label _aviso = null!;
 
+    /// <summary>
+    /// Cancela a assinatura do `Teclas.Mudou` da secao de voz. Nulo antes de <see cref="Montar"/>.
+    ///
+    /// ============================ `Teclas.Mudou` E ESTATICO ============================
+    /// Uma assinatura nao cancelada nele nao vaza um objeto: ela vaza o painel de pausa INTEIRO, pra
+    /// sempre, porque o evento e de uma classe estatica e vive enquanto o processo viver. E a lição
+    /// que este port ja pagou (19 orfaos por ciclo de relog): metodo NOMEADO e `-=`, nunca lambda.
+    /// ==============================================================================
+    /// </summary>
+    private Action? _soltarRotulo;
+
+    public override void _ExitTree() => _soltarRotulo?.Invoke();
+
     /// <summary>Aberto = o jogador nao esta controlando o personagem.</summary>
     public bool Aberto { get; private set; }
 
@@ -26,7 +39,12 @@ public partial class PauseMenu : CanvasLayer
         Layer = 20;   // acima do HUD e de tudo
         _cfg = Boot.Config;
         Montar();
-        Fechar();
+        // O MOTIVO E O QUE O DIARIO DA TRILHA VAI LER. Este `Fechar` do nascimento e o que de fato
+        // tira o tema do menu do ar quando se entra no mundo -- ele roda ANTES do
+        // `PararCamada(Menu, "entrei no mundo")` do `Boot` --, e com o motivo padrao o log da a
+        // primeira troca do jogo como "ESC fechou" sem ninguem ter encostado no ESC. Um diario que
+        // mente numa linha nao serve pra julgar as outras.
+        Fechar("menu nasceu fechado (entrei no mundo)");
     }
 
     public override void _UnhandledInput(InputEvent e)
@@ -40,14 +58,15 @@ public partial class PauseMenu : CanvasLayer
     {
         Aberto = true;
         _painel.Visible = true;
-        AudioDirector.Instance?.Musica(Trilha.Menu(), AudioDirector.Camada.Menu);
+        AudioDirector.Instance?.Musica(Trilha.Menu(), AudioDirector.Camada.Menu, "ESC abriu");
     }
 
-    public void Fechar()
+    /// <inheritdoc cref="AudioDirector.Musica" path="/param[@name='motivo']"/>
+    public void Fechar(string motivo = "ESC fechou")
     {
         Aberto = false;
         _painel.Visible = false;
-        AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Menu);
+        AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Menu, motivo);
     }
 
     // =====================================================================
@@ -132,12 +151,81 @@ public partial class PauseMenu : CanvasLayer
         };
         caixa.AddChild(Linha("Grafico", grafico));
 
+        // --- teclas ---
+        //
+        // A TELA E OUTRA, e o botao daqui e a unica porta dela. Ela nao cabe nesta caixa: sao 27
+        // controles de jogo mais um por verb (um Saiyajin com muitas skills passa de cem) mais uma
+        // linha por forma despertada, com busca e rolagem. Mas ela PERTENCE aqui -- tecla e
+        // preferencia de maquina, igual a resolucao e ao volume que estao logo acima e logo abaixo.
+        caixa.AddChild(Secao("Teclas"));
+        var teclas = new Button { Text = "Configurar teclas e atalhos" };
+        teclas.Pressed += () => TelaDeTeclas.Instancia?.Abrir();
+        caixa.AddChild(teclas);
+
         // --- som ---
         caixa.AddChild(Secao("Som"));
         caixa.AddChild(Volume("Geral", () => _cfg.VolumeGeral, v => _cfg.VolumeGeral = v));
         caixa.AddChild(Volume("Musica", () => _cfg.VolumeMusica, v => _cfg.VolumeMusica = v));
         caixa.AddChild(Volume("Efeitos", () => _cfg.VolumeEfeitos, v => _cfg.VolumeEfeitos = v));
         caixa.AddChild(Volume("Ambiente", () => _cfg.VolumeAmbiente, v => _cfg.VolumeAmbiente = v));
+        caixa.AddChild(Volume("Voz", () => _cfg.VolumeVoz, v => _cfg.VolumeVoz = v));
+
+        // --- voz ---
+        //
+        // ============================ SECAO PROPRIA, E ELA COMECA DESLIGADA ============================
+        // Voz nao e "mais um volume": e a unica coisa deste jogo que capta o quarto de quem joga. O
+        // controle dela nao pode estar espremido entre "Efeitos" e "Ambiente" como se fosse mais uma
+        // fatia do misturador -- quem procura "como desligo o microfone" tem que achar em um olhar.
+        //
+        // O interruptor DE FATO desliga: com ele em falso o `Microfone` nao cria o tocador do
+        // dispositivo (ver `Settings.VozLigada`). Nao ha captura acontecendo "so que ignorada".
+        // ============================================================================================
+        caixa.AddChild(Secao("Voz local"));
+
+        var vozLiga = new CheckBox { Text = "usar o microfone", ButtonPressed = _cfg.VozLigada };
+        var vozModo = new CheckBox
+        {
+            Text = "apertar pra falar (senao: microfone aberto)",
+            ButtonPressed = _cfg.VozApertarParaFalar,
+            Disabled = !_cfg.VozLigada,
+        };
+
+        var vozDisp = new OptionButton { Disabled = !_cfg.VozLigada };
+        vozDisp.AddItem("(padrao do sistema)", 0);
+        string[] entradas = AudioServer.GetInputDeviceList();
+        for (int i = 0; i < entradas.Length; i++) vozDisp.AddItem(entradas[i], i + 1);
+        vozDisp.Selected = Math.Max(0, Array.IndexOf(entradas, _cfg.DispositivoDeVoz) + 1);
+        vozDisp.ItemSelected += i =>
+        {
+            // POR NOME E NAO POR INDICE: a lista muda de ordem quando alguem pluga um fone, e um
+            // indice gravado passaria a apontar pro microfone da webcam depois do proximo boot.
+            _cfg.DispositivoDeVoz = i <= 0 ? "" : entradas[i - 1];
+            AplicarEGravar();
+        };
+
+        var vozTecla = new Label();
+        void Rotular() => vozTecla.Text =
+            $"tecla: {Teclas.NomeDaAcao("falar_voz")}  (muda em \"Configurar teclas\")";
+        Rotular();
+        // A TELA DE TECLAS PODE MUDAR ISTO ENQUANTO ESTA CAIXA ESTA ABERTA (as duas convivem no
+        // painel de pausa). Metodo NOMEADO e `-=` no `_ExitTree`: lambda nao se cancela, e `Mudou` e
+        // um evento ESTATICO -- assinatura vazada aqui sobreviveria ao node inteiro.
+        Teclas.Mudou += Rotular;
+        _soltarRotulo = () => Teclas.Mudou -= Rotular;
+
+        vozLiga.Toggled += on =>
+        {
+            _cfg.VozLigada = on;
+            vozModo.Disabled = !on;
+            vozDisp.Disabled = !on;
+            AplicarEGravar();
+        };
+        vozModo.Toggled += on => { _cfg.VozApertarParaFalar = on; AplicarEGravar(); };
+
+        caixa.AddChild(vozLiga);
+        caixa.AddChild(vozModo);
+        caixa.AddChild(Linha("Microfone", vozDisp));
+        caixa.AddChild(vozTecla);
 
         // --- saida ---
         caixa.AddChild(new HSeparator());
@@ -146,7 +234,8 @@ public partial class PauseMenu : CanvasLayer
         caixa.AddChild(_aviso);
 
         var voltar = new Button { Text = "Voltar ao jogo" };
-        voltar.Pressed += Fechar;
+        // o botao e o ESC sao o mesmo gesto -- e o motivo padrao ja diz isso
+        voltar.Pressed += () => Fechar();
         caixa.AddChild(voltar);
 
         var sair = new Button { Text = "Desconectar" };

@@ -63,7 +63,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void VerboQuem(ServerPlayer pl)
 	{
-		var gente = Gente.ToList();
+		var gente = Jogadores.ToList();
 		Avisar(pl, $"-- {gente.Count} no mundo --");
 		foreach (ServerPlayer o in gente)
 			Avisar(pl, $"  {o.Name} ({o.Race}) em {o.Zone.Name}");
@@ -77,12 +77,35 @@ public sealed partial class GameServer
 		// O BANCO ANTES DO RESTO. Sao tres comandos com prefixo proprio e uma guarda so (estar
 		// perto de um caixa), entao eles moram num arquivo separado -- ver GameServer.Banco.cs.
 		if (ComandoDeBanco(pl, cmd, arg)) return;
+
+		// OS TRES VERBOS DE FIXTURE DA BANCADA DO EMBARQUE, e so com a flag: sem ela este `if` e
+		// falso antes de olhar o `cmd`, e um cliente mexido que os mande num servidor de verdade cai
+		// em "comando desconhecido" como qualquer outra palavra inventada. Ver
+		// GameServer.EmbarqueTeste.cs.
+		if (_embarqueDeTeste && ComandoDaBancadaDeEmbarque(pl, cmd, arg)) return;
+
 		if (ComandoDeInteracao(pl, cmd, arg)) return;
 		if (ComandoDeItem(pl, cmd, arg)) return;
 
 		// O CONVIVIO: conhecidos, amizade, rivais e relacoes. Arquivo proprio pelo mesmo motivo do
 		// banco -- e um sistema inteiro com regras proprias, e nao meia duzia de `case`.
 		if (ComandoDeConvivio(pl, cmd, arg)) return;
+
+		// A CRIACAO DE TECNICAS DE KI. Arquivo proprio, e prefixo `ca_` proprio, pela mesma razao do
+		// banco: sao dez comandos com um estado compartilhado (a mesa aberta) -- ver
+		// `GameServer.Customizadas.cs`.
+		if (ComandoDeTecnicaCustomizada(pl, cmd, arg)) return;
+
+		// A CONQUISTA DE PLANETAS: prefixo `conq_`, dois arquivos proprios (o livro dos dominios e a
+		// invasao). Mesma razao do banco e das tecnicas -- e um sistema com estado compartilhado
+		// (dominios vivos, invasoes em andamento, canais de arranque) e nao meia duzia de `case`.
+		if (ComandoDeConquista(pl, cmd, arg)) return;
+
+		// AS PORTAS DOS CARGOS: prefixo `cargo_`, arquivo proprio (`GameServer.CargoPortas.cs` e
+		// `GameServer.CargoDuelo.cs`) pela mesma razao do banco -- nomeacao, sucessao e duelo formal
+		// sao um sistema com estado compartilhado (tronos, convites, linha de sucessao, o relogio do
+		// titulo) e nao meia duzia de `case`.
+		if (ComandoDeCargo(pl, cmd, arg)) return;
 
 		switch (cmd)
 		{
@@ -103,6 +126,45 @@ public sealed partial class GameServer
 			// ranks so era alcancavel por quem soubesse que existia.
 			case "cargos": MandarCargos(pl); break;
 
+			// A ESCOLHA UNICA DE UMA SKILL -- `skill_escolha <typepath> <casa>`.
+			//
+			// ============================ POR QUE ISTO E UM VERBO E NAO UM OPCODE ============================
+			// O DM pergunta com um `input()` NA HORA de aprender (`meta.dm:105`) e guarda a resposta
+			// no datum. Aqui a pergunta nao pode viajar no `C2S.Aprender`: ele carrega um typepath e
+			// mais nada, e o jogador tem que poder responder DEPOIS -- inclusive num relog em que a
+			// skill ja esta no livro e a escolha ainda nao foi feita.
+			//
+			// O `C2S.Verbo` ja existe pra exatamente isto: comando + argumento, "verb novo e uma
+			// linha no switch e o contrato de rede nao muda". Uma skill no jogo inteiro usa este
+			// canal; abrir um opcode pra ela seria caro e nao ficaria mais claro.
+			// ==============================================================================================
+			case "skill_escolha": VerboEscolhaDeSkill(pl, arg); break;
+
+			// ============================ A TECLA DE UMA FORMA -- `forma <id>` ============================
+			// O jogador ligou uma tecla a uma transformacao (ver `Client/TelaDeTeclas.cs`). Ate aqui
+			// nao havia como PEDIR uma forma: o duplo toque no C manda uma direcao (`C2S.Transformar`
+			// carrega um bool) e o servidor escolhe o degrau mais forte que couber.
+			//
+			// **NAO ABRIU OPCODE**, e isso e a metade da decisao. `C2S.Verbo` ja e comando + argumento
+			// e ja atravessa o jogo inteiro; um opcode novo pra carregar um id de texto seria contrato
+			// de rede novo pra nao ganhar nada. A outra metade e onde ele cai: `TransformarPara` passa
+			// pelo `EstadoDeForma.Avaliar` como qualquer subida, com as recusas valendo e a frase que a
+			// tecla C diria -- ver o cabecalho dela.
+			//
+			// FORA DO PREFIXO `admin_` de proposito: e comando de JOGADOR. O `admin_forma` existe e faz
+			// outra coisa -- ele ignora os requisitos, porque serve pra testar as formas trancadas
+			// (`GameServer.Admin.cs`). Uma tecla que caisse nele seria um atalho que pula o portao.
+			// ==========================================================================================
+			case "forma": TransformarPara(pl, arg); break;
+
+			// OS GRAUS DO SSJ NO CAMINHO DA TECLA C -- liga, desliga e conta em que pe ficou. Mora
+			// junto do `knockback` la embaixo por parentesco: os dois sao preferencia de JOGADOR
+			// sobre uma mecanica que ja existe, e nenhum dos dois muda o que e permitido. A
+			// diferenca e que este PERSISTE (ver `VerboGrades`) -- o knockback nasce ligado a cada
+			// sessao porque atrapalhar o treino do parceiro e temporario; por onde a sua escada
+			// sobe, nao.
+			case "graus": VerboGrades(pl); break;
+
 			// A ASSINATURA DO UNIVERSO PELA PONTA DO SERVIDOR -- ver GameServer.Universo.cs.
 			//
 			// FORA DA FAIXA DE ADMIN de proposito: ela nao revela nada que o cliente ja nao tenha
@@ -118,16 +180,23 @@ public sealed partial class GameServer
 				Avisar(pl, pl.Knockback ? "seus golpes voltam a arremessar." : "seus golpes param de arremessar.");
 				break;
 
-			// VOLTAR PRO PONTO DE NASCIMENTO. O `Goto_Spawn` do original -- a saida pra quem ficou
-			// preso em geometria quebrada, e o motivo de ele existir la tambem.
+			// ============================ O `Goto Spawn` SAIU DAQUI -- DECISAO DO DONO ============================
+			// Ele era `case "spawn"` e mandava QUALQUER jogador pro proprio berco (`MandarProBerco`).
+			// O dono mandou tira-lo das maos do jogador e deixa-lo so pra admin, e o motivo e a Sala
+			// do Tempo: a regra 13.6c diz que a sala **prende** quem passa dos 50 minutos, e a porta
+			// e a passagem ja recusavam o preso -- mas este verb teleportava sem perguntar nada a
+			// ninguem. Enquanto ele existisse pro jogador, a tranca era decorativa: bastava apertar
+			// um botao do menu "Other" pra sair andando de dentro da prisao.
 			//
-			// PRO BERCO, e nao pra Terra: no DM este verb chama o MESMO `Locate()` do nascimento
-			// (`SpawnPoints.dm:37`), e mandar pra Terra quem nasceu noutro planeta transformaria a
-			// saida de emergencia num teleporte interplanetario de graca.
-			case "spawn":
-				MandarProBerco(pl);
-				Avisar(pl, "voce volta ao ponto de partida.");
-				break;
+			// **NAO HA `case "spawn"` NENHUM MAIS.** Ele nasceu de novo como `admin_spawn`
+			// (`GameServer.Admin.cs`), que cai no funil de admin logo abaixo -- e o funil e o unico
+			// lugar do jogo que confere `EhAdmin`. Um cliente mexido que mande "spawn" cai no
+			// `default`, nao comeca com `admin_`, e nao acontece nada.
+			//
+			// A SAIDA DE EMERGENCIA DO JOGADOR (o motivo de o `Goto_Spawn` existir no DM -- ficar
+			// preso em geometria quebrada) passou a ser pedir a um admin. E o preco de a prisao da
+			// Sala ser de verdade; ver `GameServer.SalaDoTempo.cs`.
+			// ==================================================================================================
 
 			// ---------------------------------------------------------- so admin
 			// A CONFERENCIA E AQUI, e num lugar so. O cliente esconde a aba de quem nao e admin,

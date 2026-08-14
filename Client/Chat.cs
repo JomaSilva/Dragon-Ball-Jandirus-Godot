@@ -267,6 +267,23 @@ public partial class Chat : CanvasLayer
 		{
 			int esp = texto.IndexOf(' ');
 			string cmd = (esp < 0 ? texto : texto[..esp]).ToLowerInvariant();
+
+			// ============================ O CANAL DOS CARGOS (`RankChat`) ============================
+			// Ele NAO e um `Protocol.Fala`: quem ouve nao e decidido por distancia nem por filtro, e
+			// sim por CARREGAR UM CARGO -- e isso e uma pergunta do servidor, que e quem tem a lista
+			// de tronos. Entao ele viaja pelo canal de verbs (`cargo_falar`), como o resto do sistema
+			// de cargos, e nao como uma fala.
+			//
+			// A porta e a barra e nao um botao porque falar exige TEXTO, e o painel de verbs so tem
+			// botoes -- a caixa de chat ja e o lugar onde se escreve. E o `RankChat` do DM
+			// (`RankTree.dm:14`), a unica skill que os trinta cargos concedem.
+			if (cmd is "/cargos" or "/rank")
+			{
+				string msg = esp < 0 ? "" : texto[(esp + 1)..].Trim();
+				if (msg.Length == 0) { Sistema("escreva a mensagem depois de /cargos."); return; }
+				GameClient.Instance?.SendVerbo("cargo_falar", msg);
+				return;
+			}
 			foreach ((string c, Protocol.Fala f) in Comandos)
 			{
 				if (c != cmd) continue;

@@ -1,4 +1,4 @@
-﻿using Godot;
+using Godot;
 using Jandirus.Core.Ranks;
 using Jandirus.Net;
 using LiteNetLib;
@@ -27,8 +27,22 @@ public partial class GameServer
 	/// Ao lado dos saves de conta. Um arquivo de texto de uma dezena de linhas -- cargo e
 	/// coisa RARA, e um formato que se le num editor vale mais aqui que economia de bytes.
 	/// </summary>
-	private static string ArquivoDeCargos =>
-		System.IO.Path.Combine(ProjectSettings.GlobalizePath("user://saves"), "cargos.txt");
+	// ============================ PELO `_store`, E NAO PELO CAMINHO CRAVADO ============================
+	// Este arquivo (e mais tres: `mestres.txt`, `herdeiros.txt`, `titulo.txt`) montava o caminho com
+	// `GlobalizePath("user://saves")` escrito na mao, enquanto os oito `.json` do mundo perguntam ao
+	// `_store.Pasta`. Sao a mesma pasta hoje -- e por isso a divergencia nunca deu sintoma.
+	//
+	// Ela vira defeito no dia em que a pasta se mover: uma bancada com pasta propria, ou o dono
+	// rodando dois servidores na mesma maquina. Ai estes quatro continuariam apontando pro lugar
+	// antigo enquanto todo o resto do mundo mudaria de casa -- e a LIMPEZA TOTAL, que apaga a pasta do
+	// `_store`, deixaria os tronos, o discipulado e a sucessao inteiros para tras. E exatamente o
+	// "apagou de menos" que este trabalho existe pra evitar, escrito em quatro linhas de infra.
+	//
+	// O `??` continua cravando o caminho pra o caso de nao haver `_store`: nao ha, hoje, mas devolver
+	// vazio faria o `Path.Combine` gravar na pasta de trabalho do processo.
+	// ==============================================================================================
+	private string ArquivoDeCargos =>
+		System.IO.Path.Combine(_store?.Pasta ?? ProjectSettings.GlobalizePath("user://saves"), "cargos.txt");
 
 	private void CarregarCargos()
 	{
@@ -71,6 +85,17 @@ public partial class GameServer
 		GodKiDesperto = pl.Ficha.godki?.awakened == true,
 		GodKiMaestria = pl.Ficha.godki?.mastery ?? 0,
 		Zeni = pl.Ficha.Zeni,
+
+		// ============================ OS DOIS CAMPOS QUE A CONQUISTA TROUXE ============================
+		// Quatro cargos carregavam a pendencia *"o port nao tem reputacao de planeta"* e ela caducou --
+		// o livro-caixa existe desde a cadeia de sagas e ganhou duas fontes novas (matar habitante,
+		// conquistar). O que faltava era CHEGAR aqui: regra escrita nao e regra ligada.
+		//
+		// O mapa e montado por planeta com povo, que sao os unicos que o DM cita nos requisitos. Nao ha
+		// atalho lendo "a reputacao do jogador": ela e por planeta, e um escalar responderia a pergunta
+		// errada com um numero plausivel.
+		ReputacaoDePlaneta = ReputacaoDe(pl.Conta),
+		PlanetasDominados = QuantosDomina(pl.Assinatura),
 	};
 
 	/// <summary>
@@ -98,6 +123,24 @@ public partial class GameServer
 		if (atual.Length > 0 && !subindo)
 		{
 			Avisar(pl, $"voce ja carrega {Cargos.Get(atual)?.Nome ?? atual}. Uma alma, um trono.");
+			return;
+		}
+
+		// ============================ O PEDAGIO DA ASCENSAO E O RENOME ============================
+		// `RQ_PROMO_QUESTS 3` (`RankQuests.dm:53`, cobrado em `:292`): so sobe quem SERVIU no cargo de
+		// agora. Enquanto o motor de tarefas nao existia, esta linha era uma pendencia escrita no
+		// Grand Kai e no Kaioshin (*"o port nao tem o motor de tarefas"*) e a escada dos Kaios subia so
+		// com o requisito -- mais barata que o original, e a divida mais cara do `Ranks.cs`.
+		//
+		// O RENOME E DE QUEM CARREGA O CARGO AGORA, e nao do trono: ver `RenomeDe`. Herdar o servico de
+		// quem veio antes seria comprar promocao com o trabalho alheio.
+		// ======================================================================================
+		if (subindo && !MissoesDeCargo.PodeAscender(RenomeDe(atual)))
+		{
+			int tem = RenomeDe(atual);
+			Avisar(pl, $"ainda falta RENOME para almejar algo maior: {tem}/{MissoesDeCargo.TarefasParaAscender} "
+					 + $"tarefas cumpridas como {Cargos.Get(atual)?.Nome ?? atual}. Sirva ao cargo primeiro "
+					 + "(verb Rank Duty).");
 			return;
 		}
 

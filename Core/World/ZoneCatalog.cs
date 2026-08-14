@@ -18,6 +18,17 @@ public sealed class ZoneEntry
 	/// </summary>
 	public string Pedacos = "";
 	public string Visao = "";     // res:// do bitset do que CEGA (parede e porta; ver Visao.cs)
+
+	/// <summary>
+	/// res:// do bitset da AGUA -- a terceira classe de celula (ver <see cref="ClasseDeAgua"/>).
+	///
+	/// TEM PADRAO DERIVADO DO <see cref="Colisao"/>, e isso e de proposito: o `.agua` pode ser
+	/// gerado pelo comando `agua` do pipeline, que NAO reescreve o manifesto (ele existe justamente
+	/// pra nao reconverter os sprites). Sem o padrao, gerar os arquivos e nao ver agua nenhuma em
+	/// jogo seria o desfecho silencioso -- e o pior tipo de defeito deste projeto e o calado.
+	/// Quando a conversao cheia rodar, o manifesto traz a chave e ela vence.
+	/// </summary>
+	public string Agua = "";
 	public string Luzes = "";     // res:// das fontes de luz do cenario (fogueira, tocha, lava)
 
 	/// <summary>res:// das PORTAS da zona -- elas nao sao tile, sao entidade (ver MapConverter.EhPorta).</summary>
@@ -42,8 +53,38 @@ public sealed class ZoneEntry
 	/// <summary>As passagens ja lidas. Carregadas junto com a colisao, no boot do servidor.</summary>
 	public List<Passagem> Passagens = [];
 
+	/// <summary>
+	/// O caminho do `.agua`: o que o manifesto disser, ou o `.col` com a extensao trocada.
+	/// Ver <see cref="Agua"/>.
+	/// </summary>
+	public string CaminhoDaAgua =>
+		Agua.Length > 0 ? Agua
+		: Colisao.EndsWith(".col", StringComparison.Ordinal) ? Colisao[..^4] + ".agua"
+		: "";
+
 	public int W, H;
 	public ZoneCollision? Mapa;   // carregado sob demanda
+
+	/// <summary>
+	/// O BITSET DO QUE **CEGA** desta zona, ja lido. Nulo = zona sem `.vis` (as geradas por semente,
+	/// os interiores de nave, a dimensao mental).
+	///
+	/// ============================ POR QUE O SERVIDOR PASSOU A CARREGAR ISTO ============================
+	/// Por anos so o cliente leu o `.vis` -- ele desenha a sombra, e o servidor nao desenha nada. O
+	/// campo <see cref="Visao"/> (o caminho `res://`) era parseado do manifesto e **nunca usado por
+	/// ninguem**: API orfa, o mesmo padrao do sigilo do BP.
+	///
+	/// A VOZ LOCAL o acordou. "Ha parede entre estas duas pessoas?" e uma pergunta de SERVIDOR (e ele
+	/// quem decide o que chega em quem), e a resposta certa tem que ser a MESMA que a vista da -- senao
+	/// a voz e o olho discordam sobre o que e parede, e o jogador ouve alguem que ele nao ve com uma
+	/// abafada que nao bate com nada na tela.
+	///
+	/// **E O `.vis` E NAO O `.col`, e a diferenca e o sistema inteiro**: porta CEGA e nao bloqueia;
+	/// a beirada do mapa BLOQUEIA e nao cega. Usar o `.col` aqui daria a resposta errada nos dois
+	/// casos que mais aparecem em jogo.
+	/// ================================================================================================
+	/// </summary>
+	public ZoneCollision? Vista;
 }
 
 /// <summary>
@@ -75,6 +116,7 @@ public sealed class ZoneCatalog
 				Pedacos = Str(bloco, "pedacos"),
 				Colisao = Str(bloco, "colisao"),
 				Visao = Str(bloco, "visao"),
+				Agua = Str(bloco, "agua"),
 				Luzes = Str(bloco, "luzes"),
 				Portas = Str(bloco, "portas"),
 				Objetos = Str(bloco, "objetos"),

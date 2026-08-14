@@ -12,7 +12,9 @@ namespace Jandirus.Client;
 /// esqueceu alguem QUATRO vezes seguidas, e o comentario que ela mesma carregava ja registrava
 /// tres:
 ///   1. a aura ficava no chao com o dono no alto;
-///   2. a barra de vida ficava plantada no chao, longe do dono;
+///   2. a barra de vida ficava plantada no chao, longe do dono (essa barra ja nao existe: foi
+///      deletada a pedido do dono -- ver `EntityState` --, mas o defeito dela e historia que
+///      explica esta regra);
 ///   3. a chama da carga desenhava no chao enquanto o corpo carregava Ki no ar;
 ///   4. a nebulosa do Ultra Instinto -- um quad MAIOR que o personagem -- ficava parada no chao,
 ///      e por ser grande nem parecia "efeito baixo": parecia um borrao branco solto no cenario.
@@ -58,11 +60,11 @@ public static class SubirComOVoo
 
 			switch (filho)
 			{
-				// O CANAL PROPRIO VEM PRIMEIRO. Node com altura propria sobre a cabeca (a barra de
-				// vida, o balao de fala) SOMA o deslocamento a ela; escrever `Position` cru apagava a
-				// `AlturaBase` e derrubava a barra da cabeca pro umbigo assim que a pessoa subia. Isso
-				// nunca aparecia parado no chao, onde o deslocamento e zero e a conta da no mesmo por
-				// acidente. Ver `ISobeComOCorpo`.
+				// O CANAL PROPRIO VEM PRIMEIRO. Node com altura propria sobre a cabeca (hoje so o
+				// balao de fala) SOMA o deslocamento a ela; escrever `Position` cru apagava a
+				// `AlturaBase` e derrubava o desenho da cabeca pro umbigo assim que a pessoa subia.
+				// Isso nunca aparecia parado no chao, onde o deslocamento e zero e a conta da no mesmo
+				// por acidente. Ver `ISobeComOCorpo`.
 				case ISobeComOCorpo proprio:
 					proprio.Deslocamento = deslocamento;
 					break;
@@ -114,8 +116,8 @@ public interface IFicaNoChao { }
 /// <summary>
 /// "EU SUBO, MAS QUEM ESCREVE A MINHA POSICAO SOU EU".
 ///
-/// Pra o node que ja tem uma altura propria em repouso (a barra de vida e o balao ficam sobre a
-/// CABECA, nao no centro do corpo). Receber `Position = deslocamento` cru apagaria essa altura.
+/// Pra o node que ja tem uma altura propria em repouso (o balao de fala fica sobre a CABECA, nao
+/// no centro do corpo). Receber `Position = deslocamento` cru apagaria essa altura.
 /// O node implementa o canal e faz a SOMA -- que e onde a informacao de quanto ele senta acima da
 /// cabeca ja mora.
 /// </summary>

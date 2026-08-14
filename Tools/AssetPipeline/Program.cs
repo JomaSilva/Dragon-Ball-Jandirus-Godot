@@ -114,6 +114,18 @@ if (args.Length >= 2 && args[0] == "mover")
     return 0;
 }
 
+if (args.Length >= 1 && args[0] == "agua-prova")
+{
+    // agua-prova [pastaMaps] [raizDoRepo] : a bancada da AGUA -- uma familia por negacao do pedido
+    // do dono, e cada familia obrigada a provar que sabe ficar VERMELHA (ver AguaBench.cs).
+    //
+    // O nome nao e "agua" porque esse ja e o CONVERSOR (ele escreve os `.agua` a partir do BYOND).
+    // Sao coisas opostas: um gera o dado, o outro julga o que o jogo faz com ele.
+    string maps = args.Length > 1 ? args[1] : Path.Combine("Assets", "Maps");
+    string raiz = args.Length > 2 ? args[2] : Directory.GetCurrentDirectory();
+    return AguaBench.Run(Path.GetFullPath(maps), raiz);
+}
+
 if (args.Length >= 2 && args[0] == "binario")
 {
     // binario <pastaMaps> [caminho do Godot] : .tscn (texto) -> .scn (binario)
@@ -131,6 +143,26 @@ if (args.Length >= 2 && args[0] == "colisao")
     // Rode depois de editar um mapa no Godot. Sem isto, o que voce apagar no editor continua
     // sendo parede pro servidor -- o jogador ve chao e leva correcao de movimento.
     SceneCollision.Regerar(Path.GetFullPath(args[1]));
+    return 0;
+}
+
+if (args.Length >= 4 && args[0] == "agua")
+{
+    // agua <pastaMaps.dmm> <pastaCode> <pastaDestino> : grava SO os `.agua` -- a terceira classe
+    // de celula (ver Core/World/Agua.cs).
+    //
+    // E um comando proprio, e nao um efeito da conversao cheia, PORQUE A CONVERSAO CHEIA REESCREVE
+    // TUDO: tileset, tiles.json, os 40 .tscn/.pedacos e o indice de sprites -- que resolve nome
+    // repetido por `TryAdd` e trocaria 21 artes sem ninguem ter pedido. O dado que falta aqui e
+    // NOVO (um bitset por andar) e nao toca em arquivo nenhum que ja existe.
+    //
+    //   dotnet run --project Tools/AssetPipeline -- agua <BYOND>/Maps <BYOND>/Code Assets/Maps
+    Dictionary<string, TurfDef> turfsAgua = DmTurfScanner.Scan(Path.GetFullPath(args[2]));
+    Console.WriteLine($"typepaths lidos: {turfsAgua.Count} | com Water=1: "
+                      + turfsAgua.Count(kv => kv.Value.Water)
+                      + " | dos quais CEU (nao e agua): "
+                      + turfsAgua.Count(kv => kv.Value.Water && Aguas.EhCeu(kv.Key)));
+    MapConverter.ConverterAguas(Path.GetFullPath(args[1]), Path.GetFullPath(args[3]), turfsAgua);
     return 0;
 }
 
@@ -160,6 +192,22 @@ if (args.Length >= 2 && args[0] == "portas")
     // portas <pastaMaps> : as portas de verdade -- bloqueiam fechadas, abrem, e voltam a fechar
     PortaBench.Run(Path.GetFullPath(args[1]));
     return 0;
+}
+
+if (args.Length >= 4 && args[0] == "cidade")
+{
+    // cidade <pastaMaps> <pastaCode> <pastaDmm> : a CIDADE DE VEGETA e as PAREDES INVISIVEIS.
+    //
+    // Ela julga o `Assets/Maps` PUBLICADO -- e nao a conversao de hoje --, porque a pergunta e "o
+    // que esta no disco tem parede invisivel?", e nao "o pipeline produziria uma?".
+    //
+    // OS TRES CAMINHOS, e cada um responde uma coisa que os outros dois nao sabem:
+    //   pastaMaps  o que o JOGO carrega (.col, .pedacos, .objetos, .portas);
+    //   pastaCode  a arvore de tipos do DM -- o icon/icon_state de cada typepath;
+    //   pastaDmm   os mapas de ORIGEM: a unica testemunha de quem TINHA desenho antes da conversao,
+    //              e sem ela nao da pra separar "o port perdeu a arte" de "o BYOND tambem nao
+    //              desenhava nada ali". Ver o cabecalho de `CidadeBench.Fonte`.
+    return CidadeBench.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]));
 }
 
 if (args.Length >= 1 && args[0] == "gravidade")
@@ -448,6 +496,21 @@ if (args.Length >= 1 && args[0] == "efeitos")
     if (!System.IO.File.Exists(cs)) { Console.Error.WriteLine($"faltou {cs} -- rode o comando 'skills'"); return 1; }
 
     var cat = Jandirus.Core.Skills.SkillCatalog.Parse(System.IO.File.ReadAllText(cs), System.IO.File.ReadAllText(ct));
+
+    // ============================ O CENSO PRIMEIRO, E ELE E O MESMO DA BANCADA ============================
+    // O relatorio abaixo (`CensoDeSkills`) e literalmente o que a `--censoteste` imprime no servidor:
+    // uma casa so pra conta, dois programas lendo. Antes daqui havia so a metade de cima -- quantas
+    // skills somam num campo --, e faltava a pergunta que interessa: dos verbos que o jogo CONCEDE,
+    // quantos fazem alguma coisa?
+    //
+    // O CONSOLE NAO CARREGA `niveis.json`, entao ele passa a lista de degraus VAZIA e conta so os
+    // verbos que uma skill concede direto. O numero sai menor que o do servidor de proposito, e a
+    // diferenca e exatamente o tanto de verb que so existe por DEGRAU -- ver `RegrasDoDisco`.
+    // =================================================================================================
+    var censo = Jandirus.Core.Skills.CensoDeSkills.Levantar(cat);
+    foreach (string linha in Jandirus.Core.Skills.CensoDeSkills.Texto(censo)) Console.WriteLine(linha);
+    Console.WriteLine();
+
     var folhas = cat.Todas.Where(s2 => !s2.Arvore).ToList();
     var comBuff = folhas.Where(s2 => s2.Buffs.Count > 0).ToList();
     var comVerb = folhas.Where(s2 => s2.Verbos.Length > 0).ToList();
@@ -653,6 +716,13 @@ if (args.Length >= 1 && args[0] == "estrelas")
     return EstrelasArte.Run(args.Length > 1 ? args[1] : Directory.GetCurrentDirectory());
 }
 
+if (args.Length >= 1 && args[0] == "nave")
+{
+    // nave : as contas da nave -- escada de preco, espera do lancamento, a viagem Terra->Namek com
+    // e sem nave, e o teto que a amostragem impoe. A CORRENTE e a bancada ao vivo `--naveteste`.
+    return NaveBench.Run();
+}
+
 if (args.Length >= 1 && args[0] == "sol")
 {
     // sol : as contas do sol que queima -- curva de poder, fator de dano, piso contra a cura, e a
@@ -677,6 +747,11 @@ if (args.Length >= 3 && args[0] == "skills")
     Console.WriteLine($"com pre-requisito: {folhas.Count(s => s.PreReqs.Count > 0)}");
     Console.WriteLine($"comuns (todos)   : {folhas.Count(s => s.Comum)}");
     Console.WriteLine($"so vilao         : {folhas.Count(s => s.SoVilao)}");
+    // ENSINAVEIS: quantas skills tem `teacher = TRUE` (as unicas que o `Teach_Skill` lista) e
+    // quantas trazem `teachCost` proprio. O numero e a medida do sistema de ensino inteiro: se
+    // ele cair pra zero num dia, o verbo continua existindo e nao ensina mais nada -- calado.
+    Console.WriteLine($"ensinaveis       : {folhas.Count(s => s.Ensinavel)}"
+                      + $"  ({folhas.Count(s => s.Ensinavel && s.CustoDeEnsino > 0)} com teachCost proprio)");
 
     // PRE-REQUISITO QUE NAO EXISTE e o erro que so aparece quando alguem tenta aprender:
     // a skill fica travada pra sempre porque espera um pai que ninguem consegue ter.
@@ -696,6 +771,27 @@ if (args.Length >= 3 && args[0] == "skills")
     foreach (SkillDef d in folhas.Where(s => s.Racas.Count > 0 || s.PreReqs.Count > 0).Take(6))
         Console.WriteLine($"   {d.Nome,-26} t{d.Tier} custo {d.Custo} racas[{string.Join(",", d.Racas)}] " +
                           $"pre[{d.PreReqs.Count}] {d.Tipo}");
+
+    // ============================ O DIARIO DE QUEM DECLARA EFEITO FORA DO after_learn ============================
+    // ESTE RELATORIO EXISTE POR UM PRECO JA PAGO. O extrator sempre leu UMA forma de declarar
+    // efeito, e as skills que usavam outra sumiam CALADAS -- da primeira vez foram 116 (o
+    // `after_learn` com o typepath na propria linha), desta vez foi o `Great_Robotic_Alliance`,
+    // cujos buffs moram num `proc/choose()`. Nos dois casos a skill aparecia no censo como "sem
+    // efeito", que e indistinguivel de "o DM tambem nao faz nada".
+    //
+    // Agora a lista sai impressa toda rodada. Se ela crescer, alguem viu; se ela encolher porque
+    // uma forma passou a ser lida, o numero mostra.
+    // ==============================================================================================
+    var fora = DmSkillScanner.ProcsForaDoLote.ToList();
+    Console.WriteLine($"\nprocs com efeito FORA do after_learn/effector/login/before_forget: {fora.Count}");
+    foreach (var g in fora.GroupBy(x => x.Proc).OrderByDescending(g2 => g2.Count()))
+        Console.WriteLine($"   {g.Key,-16} {g.Count(),3}   {string.Join(", ", g.Take(3).Select(x => x.Skill.Split('/')[^1]))}");
+
+    // A ESCOLHA UNICA: conjuntos exclusivos. Somar as tres casas daria os tres buffs de uma vez.
+    var comEscolha = sk.Values.Where(s3 => s3.Escolhas.Count > 0).ToList();
+    Console.WriteLine($"\nskills com ESCOLHA UNICA: {comEscolha.Count}");
+    foreach (SkillDef d3 in comEscolha)
+        Console.WriteLine($"   {d3.Nome,-26} {d3.Escolhas.Count} casas: {string.Join(" | ", d3.Escolhas.Select(e => e.Rotulo))}");
 
     DmSkillScanner.Escrever(Path.GetFullPath(args[2]), sk);
     Console.WriteLine($"\ngravado: {args[2]}");

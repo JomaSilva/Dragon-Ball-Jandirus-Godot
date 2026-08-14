@@ -4,7 +4,23 @@
 public enum RecusaForma
 {
 	Pode = 0,
-	NaoEhSaiyajin,
+
+	// ============================ `NaoEhSaiyajin` FOI DELETADA, E ELA ERA UMA CONFISSAO ============================
+	// Ela morava aqui desde o primeiro dia, com o nome exato da regra que faltava, e **nunca teve uma
+	// unica referencia** -- porque a regra nao existia: o `Catalogo.LinhasAbertas` entregava a escada
+	// Saiyajin a qualquer raca que nao fosse Primal, Legendary, Futuro ou Frost Demon. Um Namekuseijin
+	// com BP suficiente apertava C e virava Super Saiyajin.
+	//
+	// A porta foi fechada por raca nesta sessao (ver `LinhasAbertas`) e quem responde por ela e a
+	// `LinhaFechada`, que ja era a recusa das outras exclusoes de linha -- e e a recusa CERTA: o
+	// `PorQueNao` a filtra da mensagem de proposito ("aquela escada nao e desta pessoa"), e dizer a um
+	// Humano que ele "nao e Saiyajin" ensinaria que existe um jeito de ser.
+	//
+	// Foi deletada em vez de ficar como sinonimo porque a regra da casa e essa (codigo substituido se
+	// DELETA), e porque um valor de enum com o nome de uma regra e o jeito mais silencioso que este
+	// projeto ja achou de PARECER ter a regra. `RecusaForma` nao vai pra rede nem pra save -- o unico
+	// portador dela e o `Capacidades.RecusaDaForma`, em memoria --, entao renumerar nao quebra nada.
+	// =========================================================================================================
 	SemPoder,        // BP base insuficiente
 	SemMaestria,     // grade/degrau que ainda nao abriu
 	ForaDeOrdem,     // tentou pular degrau
@@ -20,6 +36,7 @@ public enum RecusaForma
 	SemEnergia,
 	FormaErrada,      // pede estar noutra forma AGORA (Blue = SSJ + ki divino)
 	SemFuria,         // o despertar pede RAIVA e a que este corpo tem nao chega la (ver NivelDeRaiva)
+	SemHabilidade,    // a forma se COMPRA antes de se ter (ver FormaDef.PedeFlag)
 }
 
 /// <summary>
@@ -79,12 +96,67 @@ public sealed class EstadoDeForma
 	public HashSet<int> EstreiaVista = [];
 
 	/// <summary>
+	/// AS PORTAS QUE UM MESTRE JA CORTOU PELA METADE, pelo <see cref="FormaDef.IdRede"/>.
+	///
+	/// ============================ O DM CORTA O LIMIAR; AQUI SE ANOTA O CORTE ============================
+	/// No original a transformacao assistida e PERMANENTE por um efeito colateral: as procs
+	/// canonicas fazem `ssjat /= 2` na primeira vez (`SSj()`: *"if(!hasssj) ssjat/=2"*), e o
+	/// `mst_form_seal` (`MasterStudent.dm:376`) completa o que elas esquecem (`ssj3at *= 0.5`,
+	/// `ssjat *= 0.5` do lssj1). Ou seja: la o numero sorteado no nascimento e REESCRITO.
+	///
+	/// Aqui ele nao pode ser: o <see cref="LimiaresPessoais"/> e sorteado uma vez e a promessa
+	/// dele -- "isto rola uma vez e nunca mais" -- e o que faz o SSJ de cada um custar diferente.
+	/// Entao o que se guarda e o FATO ("um mestre abriu esta porta pra mim"), e o
+	/// <see cref="Avaliar"/> aplica o corte toda vez que ela for consultada.
+	///
+	/// **E ISTO NAO E DETALHE DE GOSTO, E O CONSERTO DE UM BUG CONHECIDO DO DM.** O proprio
+	/// `mst_form_apply` (`:358-360`) explica por que nao seta as flags de posse antes de chamar a
+	/// proc canonica: cravar `hasssj` pulava o corte e o aluno ficava *"com uma forma na qual nao
+	/// conseguia reentrar"*. Aqui aconteceria o mesmo se o corte valesse so na tentativa: o passo 8
+	/// cobra a porta SEMPRE (inclusive de forma ja liberada), entao o aluno despertaria com o
+	/// mestre, voltaria pra base e nao subiria mais ate dobrar o BP.
+	/// ================================================================================================
+	/// </summary>
+	public HashSet<int> PortasCortadas = [];
+
+	/// <summary>
+	/// ANOTA QUE UM MESTRE ABRIU ESTA PORTA. Devolve TRUE se foi esta chamada que a abriu.
+	/// Chamado uma vez, no sucesso da transformacao assistida (`GameServer.Mestre.cs`).
+	/// </summary>
+	public bool CortarPorta(string id) => PortasCortadas.Add(Catalogo.Rede(id));
+
+	/// <summary>
 	/// HA QUANTO TEMPO EM COMBATE CONTINUO, em segundos. E o `combatTime` do DM.
 	///
 	/// Mora aqui e nao no combate porque so as formas o consomem: a rampa do Legendary e o bonus do
 	/// Legendary Primal. Quem zera e a tag de combate expirando.
 	/// </summary>
 	public double CombateSegundos;
+
+	/// <summary>
+	/// A TECLA C PASSA PELOS GRADES DO SSJ1? E preferencia do JOGADOR -- o verb `graus` (aba Other,
+	/// ver `GameServer.Formas.cs`) e o pedido do dono: *"com eles LIGADOS, no ssj1 (masterizado ou
+	/// nao) apertar C duas vezes passa pelos grades antes do ssj2; DESLIGADOS, pula direto pro
+	/// ssj2"*.
+	///
+	/// ============================ SAO TRES ESTADOS, E O NULO NAO E PREGUICA ============================
+	/// `null` = **ninguem opinou**, e e o que todo corpo SEM DONO carrega: o NPC sorteado
+	/// (`SorteioDeNpc.AbrirFormas`) e o cerebro da IA (`GameServer.Ia.cs`) sobem a escada por este
+	/// mesmo <see cref="Proxima"/>, e nenhum dos dois tem um jogador pra apertar botao. Com nulo eles
+	/// ficam com a regra de sempre -- o degrau MAIS FORTE alcancavel --, que e o que faziam ontem.
+	///
+	/// **E OS DOIS OUTROS VALORES MEXERIAM NO NPC, cada um pro seu lado.** Com `true`, um NPC de
+	/// maestria 100 (ha dois no `npcs.json`) desceria de 6x (SSJ1 dominado) pra 3x (Grade 2) NO MEIO
+	/// DA LUTA, porque a preferencia poe o ramo na frente do tronco. Com `false`, ele nunca abriria
+	/// os grades na biografia -- e o SSJ2 dele sairia mais fraco, porque o piso do SSJ2 conta o
+	/// MAIOR RAMO ABERTO (`Catalogo.MaiorRamoAberto`): apagar o Grade 3 da escada apaga 2x do degrau
+	/// seguinte. Um booleano nao tem onde por "corpo sem dono".
+	/// ================================================================================================
+	///
+	/// Quem preenche pro jogador e o login (`GameServer.RestaurarFormaEDisciplina`), com `true`
+	/// quando o disco nao diz nada: LIGADO e o lado que o jogo ja tinha.
+	/// </summary>
+	public bool? GradesLigados;
 
 	public FormaDef? Def => Catalogo.Def(Atual);
 
@@ -126,20 +198,53 @@ public sealed class EstadoDeForma
 	public double DrenoPorSegundo() => Catalogo.DrenoPorSegundo(Atual, Maestria);
 
 	/// <summary>
+	/// ESTE DEGRAU ESTA NO CAMINHO DA TECLA C DESTE PERSONAGEM? So diz NAO pro RAMO LATERAL de quem
+	/// desligou os grades (ver <see cref="GradesLigados"/>).
+	///
+	/// ============================ PUBLICO PORQUE E FUNIL, E O FUNIL E A MENSAGEM ============================
+	/// Quem pergunta sao dois: o <see cref="Proxima"/> (o seletor) e o `PorQueNao` (a frase que o
+	/// jogador ouve quando nao ha degrau). Sao exatamente os dois que este arquivo ja avisou que
+	/// divergem quando a regra e escrita duas vezes -- e aqui a divergencia teria voz: com os grades
+	/// desligados e o SSJ2 ainda trancado, um `PorQueNao` que continuasse enxergando o Grade 2
+	/// responderia *"voce precisa de 50% de maestria"* -- falando de um degrau que o jogador acabou de
+	/// tirar do caminho -- em vez da recusa do SSJ2, que e a que o dono pediu que ele ouvisse.
+	/// ======================================================================================================
+	///
+	/// **RAMO LATERAL E MAIS GERAL QUE "GRADE" DE PROPOSITO.** As supressoes do Frost Demon tambem sao
+	/// <see cref="FormaDef.ForaDoTronco"/> e nao mudam de comportamento nenhum: elas valem MENOS que a
+	/// forma em que se esta e o C so sobe, entao nunca foram oferecidas. Escrever "menos o grade2 e o
+	/// grade3" daria o mesmo resultado hoje e mentiria no dia do proximo ramo.
+	/// </summary>
+	public bool NoCaminhoDoC(FormaDef d) => !d.ForaDoTronco || GradesLigados != false;
+
+	/// <summary>
 	/// O PROXIMO DEGRAU a partir de onde se esta: o mais FORTE que estiver aberto agora.
 	///
 	/// Nao e "o de baixo mais um". Do SSJ1 saem tres caminhos (grade 2, grade 3 e o SSJ2), e quem
 	/// dominou o SSJ1 (6x) passa direto pelos grades -- eles ficam obsoletos de proposito. Escolher
 	/// pelo multiplicador e o que faz isso acontecer sozinho, sem lista de excecoes.
+	///
+	/// ============================ E A PREFERENCIA DO JOGADOR PASSA NA FRENTE DISSO ============================
+	/// O "mais forte vence" e uma boa regra e uma decisao TOMADA POR ALGUEM: com o SSJ1 dominado (6x)
+	/// ela apaga os grades (3x e 4x) da escada, e o dono pediu o contrario em voz alta -- *"no ssj1
+	/// (masterizado ou nao) apertar C duas vezes passa pelos grades antes do ssj2"*. Nao da pra
+	/// atender isso mexendo em multiplicador (o Grade 2 nao PODE valer mais que um SSJ1 dominado, ou
+	/// dominar a forma passaria a ser castigo): o que muda e a ORDEM da escolha, e so pra quem pediu.
+	/// ========================================================================================================
 	/// </summary>
 	public FormaDef? Proxima(double bpBase, PerfilDeFormas perfil)
 	{
+		// COM OS GRADES LIGADOS, O RAMO VEM ANTES DO TRONCO -- e o `== true` e literal: `null` e
+		// corpo sem dono (NPC, IA) e cai na regra de sempre. Ver `GradesLigados`.
+		if (GradesLigados == true && ProximoRamoLateral(bpBase, perfil) is { } ramo) return ramo;
+
 		FormaDef? melhor = null;
 		double melhorMult = Multiplicador(perfil);
 
 		foreach (FormaDef d in Catalogo.Todas)
 		{
 			if (d.Id == Atual || d.Id == Catalogo.IdBase) continue;
+			if (!NoCaminhoDoC(d)) continue;
 			if (Avaliar(d.Id, bpBase, kiFracao: 1, caido: false, perfil) != RecusaForma.Pode) continue;
 			double m = Catalogo.Multiplicador(d.Id, Maestria, perfil, CombateSegundos);
 			if (m <= melhorMult) continue;
@@ -147,6 +252,43 @@ public sealed class EstadoDeForma
 			melhor = d;
 		}
 		return melhor;
+	}
+
+	/// <summary>
+	/// O PROXIMO RAMO LATERAL DO MEU PROPRIO DEGRAU -- o MENOR que ainda esta acima de mim. Nulo
+	/// quando nao ha (ou quando ele esta trancado, que e a mesma coisa pra quem aperta o C).
+	///
+	/// ============================ POR QUE O TRONCO E CALCULADO, E NAO E "A FORMA ATUAL" ============================
+	/// Estando no Grade 2, a pergunta certa nao e "que ramo sai do Grade 2?" (nenhum -- os dois grades
+	/// saem do SSJ1) e sim "que outro ramo sai do MESMO degrau de onde eu sai?". Sem isso o Grade 3
+	/// ficaria inalcancavel pelo C: do Grade 2 a escolha pularia direto pro SSJ2, que e exatamente o
+	/// que o dono NAO quer com os grades ligados.
+	/// ===========================================================================================================
+	///
+	/// **E ELE SOBE, NUNCA DESCE**: `Ordem` maior que a minha. E o que impede o C de oferecer o Grade
+	/// 2 a quem ja esta no Grade 3 -- um vaivem infinito entre dois degraus, com a escada travada
+	/// embaixo pra sempre.
+	///
+	/// NADA AQUI AFROUXA GATE: o candidato passa pelo <see cref="Avaliar"/> inteiro, igual ao do
+	/// tronco. Um grade sem a maestria exigida simplesmente nao existe pra esta funcao, e a escolha
+	/// escorrega pro caminho normal.
+	/// </summary>
+	private FormaDef? ProximoRamoLateral(double bpBase, PerfilDeFormas perfil)
+	{
+		if (Def is not { } agora) return null;   // na base nao ha ramo nenhum pra oferecer
+
+		FormaDef tronco = agora.ForaDoTronco ? Catalogo.Anterior(agora) ?? agora : agora;
+
+		FormaDef? menor = null;
+		foreach (FormaDef d in Catalogo.Todas)
+		{
+			if (!d.ForaDoTronco || d.Linha != tronco.Linha) continue;
+			if (Catalogo.Anterior(d)?.Id != tronco.Id) continue;   // ramo de outro degrau
+			if (d.Ordem <= agora.Ordem) continue;                  // ja passei por ele
+			if (Avaliar(d.Id, bpBase, kiFracao: 1, caido: false, perfil) != RecusaForma.Pode) continue;
+			if (menor == null || d.Ordem < menor.Ordem) menor = d;
+		}
+		return menor;
 	}
 
 	/// <summary>
@@ -158,8 +300,20 @@ public sealed class EstadoDeForma
 	/// ouvir "falta BP" vai treinar, quando o que falta e ter virado Oozaru Dourado uma vez.
 	/// =========================================================================================
 	/// </summary>
+	/// <param name="fatorDaPorta">
+	/// QUANTO DA PORTA DE BP ESTA TENTATIVA PAGA. 1 = a porta inteira (todo mundo, sempre);
+	/// <see cref="Jandirus.Core.Skills.Discipulado.FatorAssistido"/> = metade, e e a transformacao
+	/// assistida por um mestre (`MST_HALF`).
+	///
+	/// ============================ ELE ENTRA NO FUNIL, E NAO DEPOIS ============================
+	/// A tentacao e cobrar a porta cheia aqui e dar o desconto no chamador ("se recusou por poder e
+	/// tem mestre, deixa passar"). Isso faz a MENSAGEM mentir: o `PorQueNao` continuaria dizendo
+	/// "ainda esta alem do seu alcance" pra uma forma que o mestre acabou de abrir, e a aba Formas
+	/// do cliente pintaria de cinza um degrau alcancavel. Uma casa so -- esta.
+	/// ====================================================================================
+	/// </param>
 	public RecusaForma Avaliar(string alvo, double bpBase, double kiFracao, bool caido,
-							   PerfilDeFormas perfil)
+							   PerfilDeFormas perfil, double fatorDaPorta = 1)
 	{
 		if (alvo == Atual) return RecusaForma.JaEsta;
 		if (alvo == Catalogo.IdBase) return RecusaForma.Pode;   // descer sempre pode
@@ -229,6 +383,20 @@ public sealed class EstadoDeForma
 		if (d.ProibidoParaClasse.Any(c => string.Equals(perfil.Classe, c, StringComparison.OrdinalIgnoreCase)))
 			return RecusaForma.SemClasse;
 
+		// ============================ 2b. A FORMA QUE SE COMPRA -- ver FormaDef.PedeFlag ============================
+		// LOGO DEPOIS DA CLASSE E BEM ANTES DA PORTA DE BP, e a ordem e a mensagem (cabecalho desta
+		// funcao). O Namekuseijin que nao comprou a `SuperNamek` esta a UM ponto de marco da forma; se a
+		// porta de BP falasse primeiro, ele ouviria "ainda esta alem do seu alcance" e iria TREINAR --
+		// exatamente o erro que o cabecalho descreve pro SSJ4, e aqui ele custaria mais caro, porque o
+		// Super Namekuseijin nem tem degrau anterior pra treinar.
+		//
+		// Depois da classe e nao antes: "esta escada nao e da sua raca" e uma verdade mais grave que
+		// "voce nao comprou", e dizer a segunda pra quem esbarra na primeira ensinaria que gastar um
+		// ponto resolveria.
+		// ==========================================================================================================
+		if (d.PedeFlag is { } flag && perfil.Flag(flag.Campo) < flag.Minimo)
+			return RecusaForma.SemHabilidade;
+
 		// 3. A FORMA DE OUTRA LINHA. E o pre-requisito do SSJ4 -- ver FormaDef.PedeFormaDespertada.
 		if (d.PedeFormaDespertada.Length > 0 && !Despertou(d.PedeFormaDespertada))
 			return RecusaForma.SemFormaAnterior;
@@ -277,7 +445,14 @@ public sealed class EstadoDeForma
 		if (d.PortaBp > 0)
 		{
 			double porta = Limiares?.Porta(d) is > 0 and var p ? p : d.PortaBp;
-			if (bpBase < porta) return RecusaForma.SemPoder;
+
+			// O MENOR CORTE MANDA, e nunca os dois. `fatorDaPorta` e a TENTATIVA de agora (o mestre
+			// esta ali, provocando) e `PortasCortadas` e o corte que UM mestre ja fez um dia -- as
+			// duas metades sao a MESMA metade, e multiplica-las daria um quarto da porta pra quem
+			// desperta assistido duas vezes. Ver `PortasCortadas` pra por que o corte persiste.
+			double fator = Math.Min(fatorDaPorta,
+				PortasCortadas.Contains(d.IdRede) ? Jandirus.Core.Skills.Discipulado.FatorAssistido : 1);
+			if (bpBase < porta * fator) return RecusaForma.SemPoder;
 		}
 
 		// entrar numa forma no fio do Ki e cair dela no segundo seguinte

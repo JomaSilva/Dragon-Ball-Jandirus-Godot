@@ -67,9 +67,26 @@ public partial class GameServer
 	/// deixa o jogador com 4x de velocidade pra sempre (Style.dm:117-126). Aqui a fonte da verdade
 	/// e o catalogo, e o catalogo e recalculado inteiro a cada troca.
 	/// </summary>
-	private static void AplicarEstilo(ServerPlayer pl)
+	private void AplicarEstilo(ServerPlayer pl)
 	{
 		Estilo? e = Estilos.Get(pl.Ficha.EstiloAtual);
+
+		// A POSTURA QUE ELE NAO SABE MAIS CAI SOZINHA -- e este e o unico funil por onde os dez
+		// multiplicadores sao escritos, entao e aqui que a pergunta tem que ser feita.
+		//
+		// SEIS DOS SETE ESTILOS DE LUTA DO JOGO VEM DE UM CARGO (`DadivaDeCargo`) e voltam com ele.
+		// O `TrocarEstilo` ja perguntava "voce aprendeu?" na hora de VESTIR, mas ninguem perguntava
+		// depois -- entao perder o cargo (ou o login, que reaplica o estilo lido do save) deixava a
+		// ficha com os numeros de um estilo que o livro nao tem mais.
+		//
+		// A GUARDA DO `_skills` NAO E ZELO: sem catalogo o `EstilosDe` devolve lista vazia, e sem
+		// ela um servidor que subiu sem `skills.json` despiria todo mundo em silencio.
+		if (e != null && _skills != null && !EstilosDe(pl).Contains(e))
+		{
+			pl.Ficha.EstiloAtual = "";
+			e = null;
+		}
+
 		var f = pl.Ficha;
 
 		f.physoffStyle = f.physdefStyle = f.techniqueStyle = 1;

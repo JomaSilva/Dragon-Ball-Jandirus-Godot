@@ -1,168 +1,997 @@
-[gd_resource type="TileSet" load_steps=321 format=3]
+[gd_resource type="TileSet" load_steps=325 format=3]
 
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Waters.png" id="0_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Grass.png" id="1_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Edges.png" id="2_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 57.png" id="3_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Ground.png" id="4_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigGrassandDirtTurf.png" id="5_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/turfs.png" id="6_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigDirtTurf2.png" id="7_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Pine.png" id="8_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Walls.png" id="9_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Oak.png" id="10_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf3.png" id="11_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/DecTrees.png" id="12_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigGrass.png" id="13_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 1.png" id="14_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/tech.png" id="15_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Surf.png" id="16_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Natural.png" id="17_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Spirit Energy.png" id="18_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/stairs.png" id="19_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Door4.png" id="20_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Palm.png" id="21_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs1.png" id="22_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Trees.png" id="23_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/CaveEntrances.png" id="24_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 50.png" id="25_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 2.png" id="26_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/carrot.png" id="27_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/Whirlpool.png" id="28_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf1.png" id="29_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Roofs.png" id="30_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Tiles.png" id="31_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/wheat.png" id="32_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Tree Good.png" id="33_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/TeleporterSparkle.png" id="34_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/arena.png" id="35_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 52.png" id="36_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/namekwater.png" id="37_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Materials/Ores/mining.png" id="38_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Namek Tree.png" id="39_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/New Island Edge.png" id="40_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Tree Teal.png" id="41_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Namek.png" id="42_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/!!!  house furniture.png" id="43_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/roomobj.png" id="44_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Misc.png" id="45_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/beetroot.png" id="46_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Trees Namek.png" id="47_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Foods.png" id="48_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Tornado.png" id="49_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 55.png" id="50_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Hell turf.png" id="51_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/castle_floor.png" id="52_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Materials/Ores/Shiny Rock.png" id="53_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigGrassTurf2.png" id="54_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/castle_wall.png" id="55_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/Lava2017.png" id="56_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Icons.png" id="57_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 5.png" id="58_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf2.png" id="59_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Door6.png" id="60_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigDirtTurfs.png" id="61_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/vegetawater.png" id="62_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Space.png" id="63_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Thrones.png" id="64_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/WaterBlue22017.png" id="65_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigIceTurf2.png" id="66_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigSnowandRockTurf.png" id="67_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigSnowTurf.png" id="68_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigIceTurf.png" id="69_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigIceTurf3.png" id="70_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Tree Snow.png" id="71_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Tiles 1.21.2011.png" id="72_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/reviveshards.png" id="73_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/yelsky.png" id="74_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/NamekTrees.png" id="75_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/HellGround2017.png" id="76_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/NamekTrees2.png" id="77_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigSandTurf.png" id="78_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/WaterBlue2017.png" id="79_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/RedTree.png" id="80_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/64x64tech.png" id="81_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs Temple.png" id="82_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/bigcomputer.png" id="83_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 58.png" id="84_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/dimensiontile3.png" id="85_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/dimensiontile4.png" id="86_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/dimensiontile2.png" id="87_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/Sign.png" id="88_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/props.png" id="89_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Snake Way.png" id="90_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/spacebck.png" id="91_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Tree Red.png" id="92_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/HellSpiral.png" id="93_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Materials/Ores/Red Rock.png" id="94_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/furnature.png" id="95_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Hell gate.png" id="96_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Pond Blood.png" id="97_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/Lab.png" id="98_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Boat.png" id="99_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/ResearchBench.png" id="100_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/refridgerator.png" id="101_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/White.png" id="102_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Door1.png" id="103_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/CartoonWater2017.png" id="104_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/hdsky3.png" id="105_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/lowrespinktree.png" id="106_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Trees2.png" id="107_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/Holy Fountain.png" id="108_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/craftingbench.png" id="109_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/Lab2.png" id="110_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Hell Statue.png" id="111_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Materials/Ores/White rock.png" id="112_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/deadtree2016.png" id="113_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/deadtreesnow.png" id="114_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/deadtree20162.png" id="115_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/metaltiles1.png" id="116_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/turf5.png" id="117_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/jungletree4.png" id="118_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/jungleplant32x32.png" id="119_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/jungletree.png" id="120_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/colorableport.png" id="121_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/dimensiontile.png" id="122_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/msword.png" id="123_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/voidturf.png" id="124_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Waters__anim.png" id="125_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/turfs__anim.png" id="126_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Walls__anim.png" id="127_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 1__anim.png" id="128_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/tech__anim.png" id="129_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Surf__anim.png" id="130_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Spirit Energy__anim.png" id="131_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 50__anim.png" id="132_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 2__anim.png" id="133_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Roofs__anim.png" id="134_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/TeleporterSparkle__anim.png" id="135_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Materials/Ores/mining__anim.png" id="136_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/New Island Edge__anim.png" id="137_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Namek__anim.png" id="138_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/!!!  house furniture__anim.png" id="139_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Misc__anim.png" id="140_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 55__anim.png" id="141_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Hell turf__anim.png" id="142_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/Lava2017__anim.png" id="143_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 5__anim.png" id="144_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Space__anim.png" id="145_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Thrones__anim.png" id="146_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Tiles 1.21.2011__anim.png" id="147_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/WaterBlue2017__anim.png" id="148_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 58__anim.png" id="149_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Snake Way__anim.png" id="150_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/spacebck__anim.png" id="151_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/HellSpiral__anim.png" id="152_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/Lab__anim.png" id="153_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Boat__anim.png" id="154_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/ResearchBench__anim.png" id="155_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Door1__anim.png" id="156_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/CartoonWater2017__anim.png" id="157_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/Lab2__anim.png" id="158_atlas"]
-[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/colorableport__anim.png" id="159_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/castle_floor.png" id="0_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Tiles.png" id="1_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Door2.png" id="2_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/castle_wall.png" id="3_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/ResearchBench.png" id="4_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/DU/Items/Lab.png" id="5_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/64x64tech.png" id="6_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/!!!  house furniture.png" id="7_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/regenerator.png" id="8_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Waters.png" id="9_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Grass.png" id="10_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Edges.png" id="11_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 57.png" id="12_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Ground.png" id="13_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigGrassandDirtTurf.png" id="14_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/turfs.png" id="15_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigDirtTurf2.png" id="16_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Pine.png" id="17_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Walls.png" id="18_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Oak.png" id="19_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf3.png" id="20_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/DecTrees.png" id="21_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigGrass.png" id="22_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 1.png" id="23_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/DU/Items/tech.png" id="24_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Surf.png" id="25_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Natural.png" id="26_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Spirit Energy.png" id="27_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/stairs.png" id="28_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/DU/Map/Door4.png" id="29_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Palm.png" id="30_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs1.png" id="31_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Trees.png" id="32_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/CaveEntrances.png" id="33_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 50.png" id="34_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 2.png" id="35_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/carrot.png" id="36_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/Whirlpool.png" id="37_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf1.png" id="38_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Roofs.png" id="39_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/wheat.png" id="40_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Tree Good.png" id="41_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/TeleporterSparkle.png" id="42_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/arena.png" id="43_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 52.png" id="44_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/namekwater.png" id="45_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Materials/Ores/mining.png" id="46_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Namek Tree.png" id="47_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/New Island Edge.png" id="48_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Tree Teal.png" id="49_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Namek.png" id="50_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/roomobj.png" id="51_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Misc.png" id="52_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/beetroot.png" id="53_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Trees Namek.png" id="54_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Foods.png" id="55_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Tornado.png" id="56_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 55.png" id="57_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Hell turf.png" id="58_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Materials/Ores/Shiny Rock.png" id="59_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigGrassTurf2.png" id="60_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/Lava2017.png" id="61_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Icons.png" id="62_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 5.png" id="63_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf2.png" id="64_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Door6.png" id="65_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigDirtTurfs.png" id="66_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/vegetawater.png" id="67_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Space.png" id="68_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Thrones.png" id="69_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/WaterBlue22017.png" id="70_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigIceTurf2.png" id="71_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigSnowandRockTurf.png" id="72_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigSnowTurf.png" id="73_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigIceTurf.png" id="74_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigIceTurf3.png" id="75_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Tree Snow.png" id="76_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Tiles 1.21.2011.png" id="77_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/reviveshards.png" id="78_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/yelsky.png" id="79_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/NamekTrees.png" id="80_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/HellGround2017.png" id="81_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/NamekTrees2.png" id="82_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/BigSandTurf.png" id="83_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/WaterBlue2017.png" id="84_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/RedTree.png" id="85_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs Temple.png" id="86_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/bigcomputer.png" id="87_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 58.png" id="88_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/dimensiontile3.png" id="89_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/dimensiontile4.png" id="90_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/dimensiontile2.png" id="91_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/Sign.png" id="92_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/props.png" id="93_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Snake Way.png" id="94_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/spacebck.png" id="95_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Tree Red.png" id="96_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/HellSpiral.png" id="97_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Materials/Ores/Red Rock.png" id="98_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/furnature.png" id="99_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Hell gate.png" id="100_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Pond Blood.png" id="101_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Boat.png" id="102_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/refridgerator.png" id="103_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/White.png" id="104_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Door1.png" id="105_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/CartoonWater2017.png" id="106_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/hdsky3.png" id="107_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/lowrespinktree.png" id="108_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/Trees2.png" id="109_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/Holy Fountain.png" id="110_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Decor/craftingbench.png" id="111_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/DU/Items/Lab2.png" id="112_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Hell Statue.png" id="113_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/DU/Map/white rock.png" id="114_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/deadtree2016.png" id="115_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/deadtreesnow.png" id="116_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/deadtree20162.png" id="117_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/metaltiles1.png" id="118_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/turf5.png" id="119_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/jungletree4.png" id="120_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/jungleplant32x32.png" id="121_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Trees/jungletree.png" id="122_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/colorableport.png" id="123_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/dimensiontile.png" id="124_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/msword.png" id="125_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/voidturf.png" id="126_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Door2__anim.png" id="127_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Technology/ResearchBench__anim.png" id="128_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/!!!  house furniture__anim.png" id="129_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Waters__anim.png" id="130_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/turfs__anim.png" id="131_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Walls__anim.png" id="132_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 1__anim.png" id="133_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/DU/Items/tech__anim.png" id="134_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Surf__anim.png" id="135_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Spirit Energy__anim.png" id="136_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 50__anim.png" id="137_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 2__anim.png" id="138_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Roofs__anim.png" id="139_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/TeleporterSparkle__anim.png" id="140_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Objects/Materials/Ores/mining__anim.png" id="141_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/New Island Edge__anim.png" id="142_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Namek__anim.png" id="143_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Misc__anim.png" id="144_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 55__anim.png" id="145_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Hell turf__anim.png" id="146_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/Lava2017__anim.png" id="147_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turfs 5__anim.png" id="148_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Space__anim.png" id="149_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Thrones__anim.png" id="150_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Tiles 1.21.2011__anim.png" id="151_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/WaterBlue2017__anim.png" id="152_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Turf 58__anim.png" id="153_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Snake Way__anim.png" id="154_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/spacebck__anim.png" id="155_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/HellSpiral__anim.png" id="156_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/Boat__anim.png" id="157_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/Objects/Door1__anim.png" id="158_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Turfs/BigTurfs/CartoonWater2017__anim.png" id="159_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/DU/Items/Lab2__anim.png" id="160_atlas"]
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Misc/colorableport__anim.png" id="161_atlas"]
 
 [sub_resource type="TileSetAtlasSource" id="Atlas_0"]
 texture = ExtResource("0_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_1"]
+texture = ExtResource("1_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+5:0/0 = 0
+6:0/0 = 0
+7:0/0 = 0
+8:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
+5:1/0 = 0
+6:1/0 = 0
+7:1/0 = 0
+8:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+5:2/0 = 0
+6:2/0 = 0
+7:2/0 = 0
+8:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+3:3/0 = 0
+4:3/0 = 0
+5:3/0 = 0
+6:3/0 = 0
+7:3/0 = 0
+8:3/0 = 0
+0:4/0 = 0
+1:4/0 = 0
+2:4/0 = 0
+3:4/0 = 0
+4:4/0 = 0
+5:4/0 = 0
+6:4/0 = 0
+7:4/0 = 0
+8:4/0 = 0
+0:5/0 = 0
+1:5/0 = 0
+2:5/0 = 0
+3:5/0 = 0
+4:5/0 = 0
+5:5/0 = 0
+6:5/0 = 0
+7:5/0 = 0
+8:5/0 = 0
+0:6/0 = 0
+1:6/0 = 0
+2:6/0 = 0
+3:6/0 = 0
+4:6/0 = 0
+5:6/0 = 0
+6:6/0 = 0
+7:6/0 = 0
+8:6/0 = 0
+0:7/0 = 0
+1:7/0 = 0
+2:7/0 = 0
+3:7/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_2"]
+texture = ExtResource("2_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+3:3/0 = 0
+4:3/0 = 0
+0:4/0 = 0
+1:4/0 = 0
+2:4/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_3"]
+texture = ExtResource("3_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+1:0/0 = 0
+1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+2:0/0 = 0
+2:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+3:0/0 = 0
+3:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+4:0/0 = 0
+4:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+5:0/0 = 0
+5:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+6:0/0 = 0
+6:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+7:0/0 = 0
+7:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+8:0/0 = 0
+8:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+0:1/0 = 0
+0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+1:1/0 = 0
+1:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+2:1/0 = 0
+2:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+3:1/0 = 0
+3:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+4:1/0 = 0
+4:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+5:1/0 = 0
+5:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+6:1/0 = 0
+6:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+7:1/0 = 0
+7:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+8:1/0 = 0
+8:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+5:2/0 = 0
+6:2/0 = 0
+7:2/0 = 0
+8:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+3:3/0 = 0
+4:3/0 = 0
+5:3/0 = 0
+6:3/0 = 0
+7:3/0 = 0
+8:3/0 = 0
+0:4/0 = 0
+1:4/0 = 0
+2:4/0 = 0
+3:4/0 = 0
+4:4/0 = 0
+5:4/0 = 0
+6:4/0 = 0
+7:4/0 = 0
+8:4/0 = 0
+0:5/0 = 0
+1:5/0 = 0
+2:5/0 = 0
+3:5/0 = 0
+4:5/0 = 0
+5:5/0 = 0
+6:5/0 = 0
+7:5/0 = 0
+8:5/0 = 0
+0:6/0 = 0
+1:6/0 = 0
+2:6/0 = 0
+3:6/0 = 0
+4:6/0 = 0
+5:6/0 = 0
+6:6/0 = 0
+7:6/0 = 0
+8:6/0 = 0
+0:7/0 = 0
+0:7/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+1:7/0 = 0
+1:7/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+2:7/0 = 0
+2:7/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+3:7/0 = 0
+4:7/0 = 0
+5:7/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_4"]
+texture = ExtResource("4_atlas")
+texture_region_size = Vector2i(96, 64)
+0:0/0 = 0
+0:0/0/texture_origin = Vector2i(0, 16)
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+1:0/0 = 0
+1:0/0/texture_origin = Vector2i(0, 16)
+1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+0:1/0 = 0
+0:1/0/texture_origin = Vector2i(0, 16)
+0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+1:1/0 = 0
+1:1/0/texture_origin = Vector2i(0, 16)
+1:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+0:2/0 = 0
+0:2/0/texture_origin = Vector2i(0, 16)
+0:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_5"]
+texture = ExtResource("5_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+5:0/0 = 0
+6:0/0 = 0
+7:0/0 = 0
+8:0/0 = 0
+8:0/animation_columns = 0
+8:0/animation_separation = Vector2i(3, 0)
+8:0/animation_speed = 1.0
+8:0/animation_frame_0/duration = 0.1
+8:0/animation_frame_1/duration = 0.1
+8:0/animation_frame_2/duration = 0.1
+8:0/animation_frame_3/duration = 0.1
+9:0/0 = 0
+9:0/animation_columns = 0
+9:0/animation_separation = Vector2i(3, 0)
+9:0/animation_speed = 1.0
+9:0/animation_frame_0/duration = 0.1
+9:0/animation_frame_1/duration = 0.1
+9:0/animation_frame_2/duration = 0.1
+9:0/animation_frame_3/duration = 0.1
+10:0/0 = 0
+10:0/animation_columns = 0
+10:0/animation_separation = Vector2i(3, 0)
+10:0/animation_speed = 1.0
+10:0/animation_frame_0/duration = 0.1
+10:0/animation_frame_1/duration = 0.1
+10:0/animation_frame_2/duration = 0.1
+10:0/animation_frame_3/duration = 0.1
+11:0/0 = 0
+11:0/animation_columns = 0
+11:0/animation_separation = Vector2i(3, 0)
+11:0/animation_speed = 1.0
+11:0/animation_frame_0/duration = 0.1
+11:0/animation_frame_1/duration = 0.1
+11:0/animation_frame_2/duration = 0.1
+11:0/animation_frame_3/duration = 0.1
+24:0/0 = 0
+24:0/animation_columns = 0
+24:0/animation_separation = Vector2i(3, 0)
+24:0/animation_speed = 1.0
+24:0/animation_frame_0/duration = 0.1
+24:0/animation_frame_1/duration = 0.1
+24:0/animation_frame_2/duration = 0.1
+24:0/animation_frame_3/duration = 0.1
+25:0/0 = 0
+25:0/animation_columns = 0
+25:0/animation_separation = Vector2i(3, 0)
+25:0/animation_speed = 1.0
+25:0/animation_frame_0/duration = 0.1
+25:0/animation_frame_1/duration = 0.1
+25:0/animation_frame_2/duration = 0.1
+25:0/animation_frame_3/duration = 0.1
+26:0/0 = 0
+26:0/animation_columns = 0
+26:0/animation_separation = Vector2i(3, 0)
+26:0/animation_speed = 1.0
+26:0/animation_frame_0/duration = 0.1
+26:0/animation_frame_1/duration = 0.1
+26:0/animation_frame_2/duration = 0.1
+26:0/animation_frame_3/duration = 0.1
+27:0/0 = 0
+27:0/animation_columns = 0
+27:0/animation_separation = Vector2i(3, 0)
+27:0/animation_speed = 1.0
+27:0/animation_frame_0/duration = 0.1
+27:0/animation_frame_1/duration = 0.1
+27:0/animation_frame_2/duration = 0.1
+27:0/animation_frame_3/duration = 0.1
+40:0/0 = 0
+41:0/0 = 0
+42:0/0 = 0
+43:0/0 = 0
+44:0/0 = 0
+45:0/0 = 0
+46:0/0 = 0
+46:0/animation_columns = 0
+46:0/animation_separation = Vector2i(3, 0)
+46:0/animation_speed = 1.0
+46:0/animation_frame_0/duration = 0.6
+46:0/animation_frame_1/duration = 0.6
+46:0/animation_frame_2/duration = 0.6
+46:0/animation_frame_3/duration = 0.6
+46:0/animation_frame_4/duration = 0.6
+46:0/animation_frame_5/duration = 0.6
+46:0/animation_frame_6/duration = 0.6
+46:0/animation_frame_7/duration = 0.6
+46:0/animation_frame_8/duration = 0.6
+46:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+47:0/0 = 0
+47:0/animation_columns = 0
+47:0/animation_separation = Vector2i(3, 0)
+47:0/animation_speed = 1.0
+47:0/animation_frame_0/duration = 0.6
+47:0/animation_frame_1/duration = 0.6
+47:0/animation_frame_2/duration = 0.6
+47:0/animation_frame_3/duration = 0.6
+47:0/animation_frame_4/duration = 0.6
+47:0/animation_frame_5/duration = 0.6
+47:0/animation_frame_6/duration = 0.6
+47:0/animation_frame_7/duration = 0.6
+47:0/animation_frame_8/duration = 0.6
+47:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+48:0/0 = 0
+48:0/animation_columns = 0
+48:0/animation_separation = Vector2i(3, 0)
+48:0/animation_speed = 1.0
+48:0/animation_frame_0/duration = 0.6
+48:0/animation_frame_1/duration = 0.6
+48:0/animation_frame_2/duration = 0.6
+48:0/animation_frame_3/duration = 0.6
+48:0/animation_frame_4/duration = 0.6
+48:0/animation_frame_5/duration = 0.6
+48:0/animation_frame_6/duration = 0.6
+48:0/animation_frame_7/duration = 0.6
+48:0/animation_frame_8/duration = 0.6
+48:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+49:0/0 = 0
+49:0/animation_columns = 0
+49:0/animation_separation = Vector2i(3, 0)
+49:0/animation_speed = 1.0
+49:0/animation_frame_0/duration = 0.6
+49:0/animation_frame_1/duration = 0.6
+49:0/animation_frame_2/duration = 0.6
+49:0/animation_frame_3/duration = 0.6
+49:0/animation_frame_4/duration = 0.6
+49:0/animation_frame_5/duration = 0.6
+49:0/animation_frame_6/duration = 0.6
+49:0/animation_frame_7/duration = 0.6
+49:0/animation_frame_8/duration = 0.6
+49:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+82:0/0 = 0
+82:0/animation_columns = 0
+82:0/animation_separation = Vector2i(3, 0)
+82:0/animation_speed = 1.0
+82:0/animation_frame_0/duration = 0.2
+82:0/animation_frame_1/duration = 0.2
+82:0/animation_frame_2/duration = 0.2
+83:0/0 = 0
+83:0/animation_columns = 0
+83:0/animation_separation = Vector2i(3, 0)
+83:0/animation_speed = 1.0
+83:0/animation_frame_0/duration = 0.2
+83:0/animation_frame_1/duration = 0.2
+83:0/animation_frame_2/duration = 0.2
+84:0/0 = 0
+84:0/animation_columns = 0
+84:0/animation_separation = Vector2i(3, 0)
+84:0/animation_speed = 1.0
+84:0/animation_frame_0/duration = 0.2
+84:0/animation_frame_1/duration = 0.2
+84:0/animation_frame_2/duration = 0.2
+85:0/0 = 0
+85:0/animation_columns = 0
+85:0/animation_separation = Vector2i(3, 0)
+85:0/animation_speed = 1.0
+85:0/animation_frame_0/duration = 0.2
+85:0/animation_frame_1/duration = 0.2
+85:0/animation_frame_2/duration = 0.2
+94:0/0 = 0
+95:0/0 = 0
+96:0/0 = 0
+97:0/0 = 0
+98:0/0 = 0
+99:0/0 = 0
+100:0/0 = 0
+101:0/0 = 0
+101:0/animation_columns = 0
+101:0/animation_separation = Vector2i(3, 0)
+101:0/animation_speed = 1.0
+101:0/animation_frame_0/duration = 0.1
+101:0/animation_frame_1/duration = 0.1
+101:0/animation_frame_2/duration = 0.1
+101:0/animation_frame_3/duration = 0.1
+102:0/0 = 0
+102:0/animation_columns = 0
+102:0/animation_separation = Vector2i(3, 0)
+102:0/animation_speed = 1.0
+102:0/animation_frame_0/duration = 0.1
+102:0/animation_frame_1/duration = 0.1
+102:0/animation_frame_2/duration = 0.1
+102:0/animation_frame_3/duration = 0.1
+103:0/0 = 0
+103:0/animation_columns = 0
+103:0/animation_separation = Vector2i(3, 0)
+103:0/animation_speed = 1.0
+103:0/animation_frame_0/duration = 0.1
+103:0/animation_frame_1/duration = 0.1
+103:0/animation_frame_2/duration = 0.1
+103:0/animation_frame_3/duration = 0.1
+104:0/0 = 0
+104:0/animation_columns = 0
+104:0/animation_separation = Vector2i(3, 0)
+104:0/animation_speed = 1.0
+104:0/animation_frame_0/duration = 0.1
+104:0/animation_frame_1/duration = 0.1
+104:0/animation_frame_2/duration = 0.1
+104:0/animation_frame_3/duration = 0.1
+117:0/0 = 0
+117:0/animation_columns = 0
+117:0/animation_speed = 1.0
+117:0/animation_frame_0/duration = 0.1
+117:0/animation_frame_1/duration = 0.1
+117:0/animation_frame_2/duration = 0.1
+117:0/animation_frame_3/duration = 0.1
+117:0/animation_frame_4/duration = 0.1
+117:0/animation_frame_5/duration = 0.1
+117:0/animation_frame_6/duration = 0.1
+117:0/animation_frame_7/duration = 0.1
+117:0/animation_frame_8/duration = 0.1
+117:0/animation_frame_9/duration = 0.1
+117:0/animation_frame_10/duration = 0.1
+117:0/animation_frame_11/duration = 0.1
+117:0/animation_frame_12/duration = 0.1
+117:0/animation_frame_13/duration = 0.1
+117:0/animation_frame_14/duration = 0.1
+117:0/animation_frame_15/duration = 0.1
+117:0/animation_frame_16/duration = 0.1
+117:0/animation_frame_17/duration = 0.1
+117:0/animation_frame_18/duration = 0.1
+117:0/animation_frame_19/duration = 0.1
+117:0/animation_frame_20/duration = 0.1
+117:0/animation_frame_21/duration = 0.1
+117:0/animation_frame_22/duration = 0.1
+117:0/animation_frame_23/duration = 0.1
+141:0/0 = 0
+141:0/animation_columns = 0
+141:0/animation_speed = 1.0
+141:0/animation_frame_0/duration = 0.5
+141:0/animation_frame_1/duration = 0.5
+141:0/animation_frame_2/duration = 0.5
+141:0/animation_frame_3/duration = 0.5
+141:0/animation_frame_4/duration = 0.5
+141:0/animation_frame_5/duration = 0.5
+141:0/animation_frame_6/duration = 0.5
+141:0/animation_frame_7/duration = 0.5
+141:0/animation_frame_8/duration = 0.5
+141:0/animation_frame_9/duration = 0.5
+141:0/animation_frame_10/duration = 0.5
+141:0/animation_frame_11/duration = 0.5
+141:0/animation_frame_12/duration = 0.5
+141:0/animation_frame_13/duration = 0.5
+141:0/animation_frame_14/duration = 0.5
+141:0/animation_frame_15/duration = 0.5
+141:0/animation_frame_16/duration = 0.5
+141:0/animation_frame_17/duration = 0.5
+141:0/animation_frame_18/duration = 0.5
+141:0/animation_frame_19/duration = 0.5
+161:0/0 = 0
+161:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+162:0/0 = 0
+163:0/0 = 0
+164:0/0 = 0
+165:0/0 = 0
+166:0/0 = 0
+167:0/0 = 0
+168:0/0 = 0
+169:0/0 = 0
+170:0/0 = 0
+171:0/0 = 0
+172:0/0 = 0
+173:0/0 = 0
+174:0/0 = 0
+175:0/0 = 0
+176:0/0 = 0
+177:0/0 = 0
+178:0/0 = 0
+179:0/0 = 0
+180:0/0 = 0
+181:0/0 = 0
+182:0/0 = 0
+182:0/animation_columns = 0
+182:0/animation_speed = 1.0
+182:0/animation_frame_0/duration = 1
+182:0/animation_frame_1/duration = 1
+184:0/0 = 0
+184:0/animation_columns = 0
+184:0/animation_speed = 1.0
+184:0/animation_frame_0/duration = 1
+184:0/animation_frame_1/duration = 1
+186:0/0 = 0
+186:0/animation_columns = 0
+186:0/animation_speed = 1.0
+186:0/animation_frame_0/duration = 1
+186:0/animation_frame_1/duration = 1
+188:0/0 = 0
+188:0/animation_columns = 0
+188:0/animation_speed = 1.0
+188:0/animation_frame_0/duration = 1
+188:0/animation_frame_1/duration = 1
+190:0/0 = 0
+191:0/0 = 0
+192:0/0 = 0
+193:0/0 = 0
+194:0/0 = 0
+195:0/0 = 0
+196:0/0 = 0
+196:0/animation_columns = 0
+196:0/animation_speed = 1.0
+196:0/animation_frame_0/duration = 0.2
+196:0/animation_frame_1/duration = 0.2
+196:0/animation_frame_2/duration = 0.2
+196:0/animation_frame_3/duration = 0.2
+196:0/animation_frame_4/duration = 0.2
+196:0/animation_frame_5/duration = 0.2
+196:0/animation_frame_6/duration = 0.2
+196:0/animation_frame_7/duration = 0.2
+204:0/0 = 0
+205:0/0 = 0
+206:0/0 = 0
+207:0/0 = 0
+208:0/0 = 0
+209:0/0 = 0
+210:0/0 = 0
+211:0/0 = 0
+212:0/0 = 0
+213:0/0 = 0
+214:0/0 = 0
+214:0/animation_columns = 0
+214:0/animation_speed = 1.0
+214:0/animation_frame_0/duration = 0.2
+214:0/animation_frame_1/duration = 0.2
+214:0/animation_frame_2/duration = 0.2
+214:0/animation_frame_3/duration = 0.2
+214:0/animation_frame_4/duration = 0.2
+214:0/animation_frame_5/duration = 0.2
+214:0/animation_frame_6/duration = 0.2
+214:0/animation_frame_7/duration = 0.2
+214:0/animation_frame_8/duration = 0.2
+214:0/animation_frame_9/duration = 0.2
+214:0/animation_frame_10/duration = 0.2
+214:0/animation_frame_11/duration = 0.2
+226:0/0 = 0
+226:0/animation_columns = 0
+226:0/animation_speed = 1.0
+226:0/animation_frame_0/duration = 3
+226:0/animation_frame_1/duration = 0.2
+226:0/animation_frame_2/duration = 0.2
+226:0/animation_frame_3/duration = 0.2
+230:0/0 = 0
+230:0/animation_columns = 0
+230:0/animation_speed = 1.0
+230:0/animation_frame_0/duration = 3
+230:0/animation_frame_1/duration = 0.1
+230:0/animation_frame_2/duration = 0.1
+230:0/animation_frame_3/duration = 0.1
+230:0/animation_frame_4/duration = 0.1
+230:0/animation_frame_5/duration = 0.1
+236:0/0 = 0
+236:0/animation_columns = 0
+236:0/animation_speed = 1.0
+236:0/animation_frame_0/duration = 0.1
+236:0/animation_frame_1/duration = 0.1
+236:0/animation_frame_2/duration = 0.1
+236:0/animation_frame_3/duration = 0.1
+240:0/0 = 0
+241:0/0 = 0
+242:0/0 = 0
+243:0/0 = 0
+244:0/0 = 0
+245:0/0 = 0
+246:0/0 = 0
+247:0/0 = 0
+248:0/0 = 0
+249:0/0 = 0
+250:0/0 = 0
+250:0/animation_columns = 0
+250:0/animation_speed = 1.0
+250:0/animation_frame_0/duration = 0.1
+250:0/animation_frame_1/duration = 0.1
+250:0/animation_frame_2/duration = 0.1
+250:0/animation_frame_3/duration = 0.1
+250:0/animation_frame_4/duration = 0.1
+250:0/animation_frame_5/duration = 0.1
+250:0/animation_frame_6/duration = 0.1
+250:0/animation_frame_7/duration = 0.1
+250:0/animation_frame_8/duration = 0.1
+250:0/animation_frame_9/duration = 0.1
+250:0/animation_frame_10/duration = 0.1
+250:0/animation_frame_11/duration = 0.1
+250:0/animation_frame_12/duration = 0.1
+263:0/0 = 0
+264:0/0 = 0
+265:0/0 = 0
+266:0/0 = 0
+266:0/animation_columns = 0
+266:0/animation_speed = 1.0
+266:0/animation_frame_0/duration = 0.1
+266:0/animation_frame_1/duration = 0.1
+266:0/animation_frame_2/duration = 0.1
+266:0/animation_frame_3/duration = 0.1
+270:0/0 = 0
+271:0/0 = 0
+272:0/0 = 0
+273:0/0 = 0
+274:0/0 = 0
+275:0/0 = 0
+275:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+276:0/0 = 0
+277:0/0 = 0
+278:0/0 = 0
+278:0/animation_columns = 0
+278:0/animation_speed = 1.0
+278:0/animation_frame_0/duration = 0.4
+278:0/animation_frame_1/duration = 0.4
+280:0/0 = 0
+281:0/0 = 0
+282:0/0 = 0
+283:0/0 = 0
+284:0/0 = 0
+284:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+285:0/0 = 0
+286:0/0 = 0
+287:0/0 = 0
+288:0/0 = 0
+289:0/0 = 0
+290:0/0 = 0
+291:0/0 = 0
+292:0/0 = 0
+293:0/0 = 0
+294:0/0 = 0
+295:0/0 = 0
+296:0/0 = 0
+297:0/0 = 0
+298:0/0 = 0
+299:0/0 = 0
+300:0/0 = 0
+301:0/0 = 0
+302:0/0 = 0
+303:0/0 = 0
+304:0/0 = 0
+305:0/0 = 0
+306:0/0 = 0
+307:0/0 = 0
+308:0/0 = 0
+309:0/0 = 0
+310:0/0 = 0
+311:0/0 = 0
+312:0/0 = 0
+313:0/0 = 0
+314:0/0 = 0
+315:0/0 = 0
+316:0/0 = 0
+317:0/0 = 0
+318:0/0 = 0
+319:0/0 = 0
+320:0/0 = 0
+321:0/0 = 0
+322:0/0 = 0
+323:0/0 = 0
+324:0/0 = 0
+325:0/0 = 0
+326:0/0 = 0
+327:0/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_6"]
+texture = ExtResource("6_atlas")
+texture_region_size = Vector2i(32, 64)
+0:0/0 = 0
+0:0/0/texture_origin = Vector2i(0, 16)
+1:0/0 = 0
+1:0/0/texture_origin = Vector2i(0, 16)
+2:0/0 = 0
+2:0/0/texture_origin = Vector2i(0, 16)
+3:0/0 = 0
+3:0/0/texture_origin = Vector2i(0, 16)
+0:1/0 = 0
+0:1/0/texture_origin = Vector2i(0, 16)
+1:1/0 = 0
+1:1/0/texture_origin = Vector2i(0, 16)
+1:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+2:1/0 = 0
+2:1/0/texture_origin = Vector2i(0, 16)
+3:1/0 = 0
+3:1/0/texture_origin = Vector2i(0, 16)
+0:2/0 = 0
+0:2/0/texture_origin = Vector2i(0, 16)
+1:2/0 = 0
+1:2/0/texture_origin = Vector2i(0, 16)
+2:2/0 = 0
+2:2/0/texture_origin = Vector2i(0, 16)
+2:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_7"]
+texture = ExtResource("7_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+5:0/0 = 0
+6:0/0 = 0
+7:0/0 = 0
+8:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
+5:1/0 = 0
+6:1/0 = 0
+7:1/0 = 0
+8:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+5:2/0 = 0
+5:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+6:2/0 = 0
+7:2/0 = 0
+8:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+3:3/0 = 0
+4:3/0 = 0
+5:3/0 = 0
+6:3/0 = 0
+7:3/0 = 0
+8:3/0 = 0
+0:4/0 = 0
+1:4/0 = 0
+2:4/0 = 0
+3:4/0 = 0
+4:4/0 = 0
+5:4/0 = 0
+6:4/0 = 0
+7:4/0 = 0
+8:4/0 = 0
+0:5/0 = 0
+1:5/0 = 0
+2:5/0 = 0
+3:5/0 = 0
+4:5/0 = 0
+5:5/0 = 0
+5:5/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+6:5/0 = 0
+7:5/0 = 0
+8:5/0 = 0
+0:6/0 = 0
+1:6/0 = 0
+2:6/0 = 0
+3:6/0 = 0
+4:6/0 = 0
+5:6/0 = 0
+6:6/0 = 0
+7:6/0 = 0
+7:6/animation_columns = 0
+7:6/animation_speed = 1.0
+7:6/animation_frame_0/duration = 0.3
+7:6/animation_frame_1/duration = 0.3
+0:7/0 = 0
+0:7/animation_columns = 0
+0:7/animation_speed = 1.0
+0:7/animation_frame_0/duration = 0.3
+0:7/animation_frame_1/duration = 0.3
+2:7/0 = 0
+3:7/0 = 0
+4:7/0 = 0
+5:7/0 = 0
+6:7/0 = 0
+7:7/0 = 0
+8:7/0 = 0
+0:8/0 = 0
+1:8/0 = 0
+1:8/animation_columns = 0
+1:8/animation_speed = 1.0
+1:8/animation_frame_0/duration = 0.1
+1:8/animation_frame_1/duration = 0.1
+3:8/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_8"]
+texture = ExtResource("8_atlas")
+texture_region_size = Vector2i(58, 131)
+0:0/0 = 0
+0:0/0/texture_origin = Vector2i(0, 49)
+1:0/0 = 0
+1:0/0/texture_origin = Vector2i(0, 49)
+2:0/0 = 0
+2:0/0/texture_origin = Vector2i(0, 49)
+3:0/0 = 0
+3:0/0/texture_origin = Vector2i(0, 49)
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_9"]
+texture = ExtResource("9_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -385,8 +1214,8 @@ texture_region_size = Vector2i(32, 32)
 7:13/animation_frame_2/duration = 0.1
 7:13/animation_frame_3/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_1"]
-texture = ExtResource("1_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_10"]
+texture = ExtResource("10_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -443,8 +1272,8 @@ texture_region_size = Vector2i(32, 32)
 4:6/0 = 0
 5:6/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_2"]
-texture = ExtResource("2_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_11"]
+texture = ExtResource("11_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -479,8 +1308,8 @@ texture_region_size = Vector2i(32, 32)
 3:4/0 = 0
 3:4/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_3"]
-texture = ExtResource("3_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_12"]
+texture = ExtResource("12_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -702,8 +1531,8 @@ texture_region_size = Vector2i(32, 32)
 6:13/0 = 0
 6:13/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_4"]
-texture = ExtResource("4_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_13"]
+texture = ExtResource("13_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -754,8 +1583,8 @@ texture_region_size = Vector2i(32, 32)
 4:6/0 = 0
 5:6/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_5"]
-texture = ExtResource("5_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_14"]
+texture = ExtResource("14_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -795,8 +1624,8 @@ texture_region_size = Vector2i(32, 32)
 0:5/0 = 0
 1:5/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_6"]
-texture = ExtResource("6_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_15"]
+texture = ExtResource("15_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -1093,8 +1922,8 @@ texture_region_size = Vector2i(32, 32)
 6:15/0 = 0
 7:15/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_7"]
-texture = ExtResource("7_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_16"]
+texture = ExtResource("16_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -1114,8 +1943,8 @@ texture_region_size = Vector2i(32, 32)
 0:3/0 = 0
 1:3/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_8"]
-texture = ExtResource("8_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_17"]
+texture = ExtResource("17_atlas")
 texture_region_size = Vector2i(91, 136)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 52)
@@ -1124,8 +1953,8 @@ texture_region_size = Vector2i(91, 136)
 1:0/0/texture_origin = Vector2i(0, 52)
 1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_9"]
-texture = ExtResource("9_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_18"]
+texture = ExtResource("18_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -1300,8 +2129,8 @@ texture_region_size = Vector2i(32, 32)
 2:10/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 3:10/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_10"]
-texture = ExtResource("10_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_19"]
+texture = ExtResource("19_atlas")
 texture_region_size = Vector2i(125, 145)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 56)
@@ -1313,8 +2142,8 @@ texture_region_size = Vector2i(125, 145)
 0:1/0/texture_origin = Vector2i(0, 56)
 0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_11"]
-texture = ExtResource("11_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_20"]
+texture = ExtResource("20_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -1502,8 +2331,8 @@ texture_region_size = Vector2i(32, 32)
 10:12/0 = 0
 11:12/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_12"]
-texture = ExtResource("12_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_21"]
+texture = ExtResource("21_atlas")
 texture_region_size = Vector2i(61, 93)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 30)
@@ -1514,8 +2343,8 @@ texture_region_size = Vector2i(61, 93)
 2:0/0 = 0
 2:0/0/texture_origin = Vector2i(0, 30)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_13"]
-texture = ExtResource("13_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_22"]
+texture = ExtResource("22_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -1535,8 +2364,8 @@ texture_region_size = Vector2i(32, 32)
 0:3/0 = 0
 1:3/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_14"]
-texture = ExtResource("14_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_23"]
+texture = ExtResource("23_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -1870,8 +2699,8 @@ texture_region_size = Vector2i(32, 32)
 3:15/0 = 0
 3:15/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_15"]
-texture = ExtResource("15_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_24"]
+texture = ExtResource("24_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -1938,8 +2767,8 @@ texture_region_size = Vector2i(32, 32)
 5:7/0 = 0
 6:7/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_16"]
-texture = ExtResource("16_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_25"]
+texture = ExtResource("25_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -2089,8 +2918,8 @@ texture_region_size = Vector2i(32, 32)
 10:9/0 = 0
 0:10/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_17"]
-texture = ExtResource("17_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_26"]
+texture = ExtResource("26_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -2128,16 +2957,16 @@ texture_region_size = Vector2i(32, 32)
 3:5/0 = 0
 4:5/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_18"]
-texture = ExtResource("18_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_27"]
+texture = ExtResource("27_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
 0:1/0 = 0
 1:1/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_19"]
-texture = ExtResource("19_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_28"]
+texture = ExtResource("28_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -2153,28 +2982,28 @@ texture_region_size = Vector2i(32, 32)
 3:2/0 = 0
 0:3/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_20"]
-texture = ExtResource("20_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_29"]
+texture = ExtResource("29_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 1:0/0 = 0
 2:0/0 = 0
-0:1/0 = 0
-0:1/animation_columns = 0
-0:1/animation_speed = 1.0
-0:1/animation_frame_0/duration = 0.5
-0:1/animation_frame_1/duration = 0.1
-0:1/animation_frame_2/duration = 0.1
-0:2/0 = 0
-0:2/animation_columns = 0
-0:2/animation_speed = 1.0
-0:2/animation_frame_0/duration = 0.5
-0:2/animation_frame_1/duration = 0.5
-0:2/animation_frame_2/duration = 0.5
+2:0/animation_columns = 0
+2:0/animation_speed = 1.0
+2:0/animation_frame_0/duration = 0.5
+2:0/animation_frame_1/duration = 0.1
+2:0/animation_frame_2/duration = 0.1
+5:0/0 = 0
+5:0/animation_columns = 0
+5:0/animation_speed = 1.0
+5:0/animation_frame_0/duration = 0.5
+5:0/animation_frame_1/duration = 0.5
+5:0/animation_frame_2/duration = 0.5
+8:0/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_21"]
-texture = ExtResource("21_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_30"]
+texture = ExtResource("30_atlas")
 texture_region_size = Vector2i(180, 180)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 74)
@@ -2189,8 +3018,8 @@ texture_region_size = Vector2i(180, 180)
 1:1/0/texture_origin = Vector2i(0, 74)
 1:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_22"]
-texture = ExtResource("22_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_31"]
+texture = ExtResource("31_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -2237,16 +3066,16 @@ texture_region_size = Vector2i(32, 32)
 4:5/0 = 0
 5:5/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_23"]
-texture = ExtResource("23_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_32"]
+texture = ExtResource("32_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 1:0/0 = 0
 1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_24"]
-texture = ExtResource("24_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_33"]
+texture = ExtResource("33_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -2262,8 +3091,8 @@ texture_region_size = Vector2i(32, 32)
 3:2/0 = 0
 0:3/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_25"]
-texture = ExtResource("25_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_34"]
+texture = ExtResource("34_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -2407,8 +3236,8 @@ texture_region_size = Vector2i(32, 32)
 1:11/0 = 0
 2:11/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_26"]
-texture = ExtResource("26_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_35"]
+texture = ExtResource("35_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -2506,16 +3335,16 @@ texture_region_size = Vector2i(32, 32)
 7:8/0 = 0
 8:8/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_27"]
-texture = ExtResource("27_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_36"]
+texture = ExtResource("36_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
 0:1/0 = 0
 1:1/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_28"]
-texture = ExtResource("28_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_37"]
+texture = ExtResource("37_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -2523,8 +3352,8 @@ texture_region_size = Vector2i(32, 32)
 0:0/animation_frame_0/duration = 0.3
 0:0/animation_frame_1/duration = 0.3
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_29"]
-texture = ExtResource("29_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_38"]
+texture = ExtResource("38_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -2578,8 +3407,8 @@ texture_region_size = Vector2i(32, 32)
 0:6/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 1:6/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_30"]
-texture = ExtResource("30_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_39"]
+texture = ExtResource("39_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -2843,79 +3672,8 @@ texture_region_size = Vector2i(32, 32)
 6:8/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 6:8/0/occlusion_layer_0/polygon = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_31"]
-texture = ExtResource("31_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-1:0/0 = 0
-2:0/0 = 0
-3:0/0 = 0
-4:0/0 = 0
-5:0/0 = 0
-6:0/0 = 0
-7:0/0 = 0
-8:0/0 = 0
-0:1/0 = 0
-1:1/0 = 0
-2:1/0 = 0
-3:1/0 = 0
-4:1/0 = 0
-5:1/0 = 0
-6:1/0 = 0
-7:1/0 = 0
-8:1/0 = 0
-0:2/0 = 0
-1:2/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-5:2/0 = 0
-6:2/0 = 0
-7:2/0 = 0
-8:2/0 = 0
-0:3/0 = 0
-1:3/0 = 0
-2:3/0 = 0
-3:3/0 = 0
-4:3/0 = 0
-5:3/0 = 0
-6:3/0 = 0
-7:3/0 = 0
-8:3/0 = 0
-0:4/0 = 0
-1:4/0 = 0
-2:4/0 = 0
-3:4/0 = 0
-4:4/0 = 0
-5:4/0 = 0
-6:4/0 = 0
-7:4/0 = 0
-8:4/0 = 0
-0:5/0 = 0
-1:5/0 = 0
-2:5/0 = 0
-3:5/0 = 0
-4:5/0 = 0
-5:5/0 = 0
-6:5/0 = 0
-7:5/0 = 0
-8:5/0 = 0
-0:6/0 = 0
-1:6/0 = 0
-2:6/0 = 0
-3:6/0 = 0
-4:6/0 = 0
-5:6/0 = 0
-6:6/0 = 0
-7:6/0 = 0
-8:6/0 = 0
-0:7/0 = 0
-1:7/0 = 0
-2:7/0 = 0
-3:7/0 = 0
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_32"]
-texture = ExtResource("32_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_40"]
+texture = ExtResource("40_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -2926,8 +3684,8 @@ texture_region_size = Vector2i(32, 32)
 0:2/0 = 0
 1:2/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_33"]
-texture = ExtResource("33_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_41"]
+texture = ExtResource("41_atlas")
 texture_region_size = Vector2i(64, 96)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 32)
@@ -2943,8 +3701,8 @@ texture_region_size = Vector2i(64, 96)
 2:1/0 = 0
 2:1/0/texture_origin = Vector2i(0, 32)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_34"]
-texture = ExtResource("34_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_42"]
+texture = ExtResource("42_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -2953,8 +3711,8 @@ texture_region_size = Vector2i(32, 32)
 0:1/0 = 0
 1:1/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_35"]
-texture = ExtResource("35_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_43"]
+texture = ExtResource("43_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -2998,8 +3756,8 @@ texture_region_size = Vector2i(32, 32)
 0:4/0 = 0
 1:4/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_36"]
-texture = ExtResource("36_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_44"]
+texture = ExtResource("44_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -3074,8 +3832,8 @@ texture_region_size = Vector2i(32, 32)
 6:6/animation_frame_1/duration = 0.3
 0:7/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_37"]
-texture = ExtResource("37_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_45"]
+texture = ExtResource("45_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -3382,8 +4140,8 @@ texture_region_size = Vector2i(32, 32)
 0:15/animation_frame_14/duration = 0.1
 0:15/animation_frame_15/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_38"]
-texture = ExtResource("38_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_46"]
+texture = ExtResource("46_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -3533,15 +4291,15 @@ texture_region_size = Vector2i(32, 32)
 6:11/0 = 0
 7:11/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_39"]
-texture = ExtResource("39_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_47"]
+texture = ExtResource("47_atlas")
 texture_region_size = Vector2i(32, 64)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 16)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_40"]
-texture = ExtResource("40_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_48"]
+texture = ExtResource("48_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -3610,15 +4368,15 @@ texture_region_size = Vector2i(32, 32)
 0:7/0 = 0
 0:7/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_41"]
-texture = ExtResource("41_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_49"]
+texture = ExtResource("49_atlas")
 texture_region_size = Vector2i(64, 96)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 32)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_42"]
-texture = ExtResource("42_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_50"]
+texture = ExtResource("50_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -3670,100 +4428,8 @@ texture_region_size = Vector2i(32, 32)
 2:6/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 2:6/0/occlusion_layer_0/polygon = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_43"]
-texture = ExtResource("43_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-1:0/0 = 0
-2:0/0 = 0
-3:0/0 = 0
-4:0/0 = 0
-5:0/0 = 0
-6:0/0 = 0
-7:0/0 = 0
-8:0/0 = 0
-0:1/0 = 0
-1:1/0 = 0
-2:1/0 = 0
-3:1/0 = 0
-4:1/0 = 0
-5:1/0 = 0
-6:1/0 = 0
-7:1/0 = 0
-8:1/0 = 0
-0:2/0 = 0
-1:2/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-5:2/0 = 0
-5:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-6:2/0 = 0
-7:2/0 = 0
-8:2/0 = 0
-0:3/0 = 0
-1:3/0 = 0
-2:3/0 = 0
-3:3/0 = 0
-4:3/0 = 0
-5:3/0 = 0
-6:3/0 = 0
-7:3/0 = 0
-8:3/0 = 0
-0:4/0 = 0
-1:4/0 = 0
-2:4/0 = 0
-3:4/0 = 0
-4:4/0 = 0
-5:4/0 = 0
-6:4/0 = 0
-7:4/0 = 0
-8:4/0 = 0
-0:5/0 = 0
-1:5/0 = 0
-2:5/0 = 0
-3:5/0 = 0
-4:5/0 = 0
-5:5/0 = 0
-5:5/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-6:5/0 = 0
-7:5/0 = 0
-8:5/0 = 0
-0:6/0 = 0
-1:6/0 = 0
-2:6/0 = 0
-3:6/0 = 0
-4:6/0 = 0
-5:6/0 = 0
-6:6/0 = 0
-7:6/0 = 0
-7:6/animation_columns = 0
-7:6/animation_speed = 1.0
-7:6/animation_frame_0/duration = 0.3
-7:6/animation_frame_1/duration = 0.3
-0:7/0 = 0
-0:7/animation_columns = 0
-0:7/animation_speed = 1.0
-0:7/animation_frame_0/duration = 0.3
-0:7/animation_frame_1/duration = 0.3
-2:7/0 = 0
-3:7/0 = 0
-4:7/0 = 0
-5:7/0 = 0
-6:7/0 = 0
-7:7/0 = 0
-8:7/0 = 0
-0:8/0 = 0
-1:8/0 = 0
-1:8/animation_columns = 0
-1:8/animation_speed = 1.0
-1:8/animation_frame_0/duration = 0.1
-1:8/animation_frame_1/duration = 0.1
-3:8/0 = 0
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_44"]
-texture = ExtResource("44_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_51"]
+texture = ExtResource("51_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -3775,8 +4441,8 @@ texture_region_size = Vector2i(32, 32)
 0:2/0 = 0
 1:2/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_45"]
-texture = ExtResource("45_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_52"]
+texture = ExtResource("52_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -4046,16 +4712,16 @@ texture_region_size = Vector2i(32, 32)
 1:12/animation_frame_2/duration = 0.2
 1:12/animation_frame_3/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_46"]
-texture = ExtResource("46_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_53"]
+texture = ExtResource("53_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
 0:1/0 = 0
 1:1/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_47"]
-texture = ExtResource("47_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_54"]
+texture = ExtResource("54_atlas")
 texture_region_size = Vector2i(64, 96)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 32)
@@ -4067,8 +4733,8 @@ texture_region_size = Vector2i(64, 96)
 2:0/0/texture_origin = Vector2i(0, 32)
 2:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_48"]
-texture = ExtResource("48_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_55"]
+texture = ExtResource("55_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -4174,8 +4840,8 @@ texture_region_size = Vector2i(32, 32)
 2:9/0 = 0
 3:9/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_49"]
-texture = ExtResource("49_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_56"]
+texture = ExtResource("56_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -4183,8 +4849,8 @@ texture_region_size = Vector2i(32, 32)
 0:0/animation_frame_0/duration = 0.1
 0:0/animation_frame_1/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_50"]
-texture = ExtResource("50_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_57"]
+texture = ExtResource("57_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -4256,8 +4922,8 @@ texture_region_size = Vector2i(32, 32)
 1:7/0 = 0
 2:7/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_51"]
-texture = ExtResource("51_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_58"]
+texture = ExtResource("58_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -4309,36 +4975,14 @@ texture_region_size = Vector2i(32, 32)
 4:5/animation_frame_0/duration = 0.1
 4:5/animation_frame_1/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_52"]
-texture = ExtResource("52_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-1:0/0 = 0
-2:0/0 = 0
-3:0/0 = 0
-4:0/0 = 0
-0:1/0 = 0
-1:1/0 = 0
-2:1/0 = 0
-3:1/0 = 0
-4:1/0 = 0
-0:2/0 = 0
-1:2/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-0:3/0 = 0
-1:3/0 = 0
-2:3/0 = 0
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_53"]
-texture = ExtResource("53_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_59"]
+texture = ExtResource("59_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_54"]
-texture = ExtResource("54_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_60"]
+texture = ExtResource("60_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -4351,102 +4995,8 @@ texture_region_size = Vector2i(32, 32)
 0:2/0 = 0
 1:2/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_55"]
-texture = ExtResource("55_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-1:0/0 = 0
-1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-2:0/0 = 0
-2:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-3:0/0 = 0
-3:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-4:0/0 = 0
-4:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-5:0/0 = 0
-5:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-6:0/0 = 0
-6:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-7:0/0 = 0
-7:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-8:0/0 = 0
-8:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-0:1/0 = 0
-0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-1:1/0 = 0
-1:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-2:1/0 = 0
-2:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-3:1/0 = 0
-3:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-4:1/0 = 0
-4:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-5:1/0 = 0
-5:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-6:1/0 = 0
-6:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-7:1/0 = 0
-7:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-8:1/0 = 0
-8:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-0:2/0 = 0
-1:2/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-5:2/0 = 0
-6:2/0 = 0
-7:2/0 = 0
-8:2/0 = 0
-0:3/0 = 0
-1:3/0 = 0
-2:3/0 = 0
-3:3/0 = 0
-4:3/0 = 0
-5:3/0 = 0
-6:3/0 = 0
-7:3/0 = 0
-8:3/0 = 0
-0:4/0 = 0
-1:4/0 = 0
-2:4/0 = 0
-3:4/0 = 0
-4:4/0 = 0
-5:4/0 = 0
-6:4/0 = 0
-7:4/0 = 0
-8:4/0 = 0
-0:5/0 = 0
-1:5/0 = 0
-2:5/0 = 0
-3:5/0 = 0
-4:5/0 = 0
-5:5/0 = 0
-6:5/0 = 0
-7:5/0 = 0
-8:5/0 = 0
-0:6/0 = 0
-1:6/0 = 0
-2:6/0 = 0
-3:6/0 = 0
-4:6/0 = 0
-5:6/0 = 0
-6:6/0 = 0
-7:6/0 = 0
-8:6/0 = 0
-0:7/0 = 0
-0:7/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-1:7/0 = 0
-1:7/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-2:7/0 = 0
-2:7/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-3:7/0 = 0
-4:7/0 = 0
-5:7/0 = 0
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_56"]
-texture = ExtResource("56_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_61"]
+texture = ExtResource("61_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -4624,16 +5174,16 @@ texture_region_size = Vector2i(32, 32)
 2:12/0 = 0
 3:12/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_57"]
-texture = ExtResource("57_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_62"]
+texture = ExtResource("62_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
 1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 0:1/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_58"]
-texture = ExtResource("58_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_63"]
+texture = ExtResource("63_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -5009,8 +5559,8 @@ texture_region_size = Vector2i(32, 32)
 2:17/0 = 0
 3:17/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_59"]
-texture = ExtResource("59_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_64"]
+texture = ExtResource("64_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -5235,8 +5785,8 @@ texture_region_size = Vector2i(32, 32)
 1:14/0 = 0
 2:14/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_60"]
-texture = ExtResource("60_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_65"]
+texture = ExtResource("65_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -5256,8 +5806,8 @@ texture_region_size = Vector2i(32, 32)
 0:2/animation_frame_1/duration = 0.5
 0:2/animation_frame_2/duration = 0.5
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_61"]
-texture = ExtResource("61_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_66"]
+texture = ExtResource("66_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -5277,8 +5827,8 @@ texture_region_size = Vector2i(32, 32)
 0:3/0 = 0
 1:3/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_62"]
-texture = ExtResource("62_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_67"]
+texture = ExtResource("67_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -5585,8 +6135,8 @@ texture_region_size = Vector2i(32, 32)
 0:15/animation_frame_14/duration = 0.1
 0:15/animation_frame_15/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_63"]
-texture = ExtResource("63_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_68"]
+texture = ExtResource("68_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -5647,8 +6197,8 @@ texture_region_size = Vector2i(32, 32)
 3:5/0 = 0
 3:5/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_64"]
-texture = ExtResource("64_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_69"]
+texture = ExtResource("69_atlas")
 texture_region_size = Vector2i(32, 64)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -5733,8 +6283,8 @@ texture_region_size = Vector2i(32, 64)
 4:4/0 = 0
 4:4/0/texture_origin = Vector2i(0, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_65"]
-texture = ExtResource("65_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_70"]
+texture = ExtResource("70_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -6041,193 +6591,193 @@ texture_region_size = Vector2i(32, 32)
 0:15/animation_frame_14/duration = 0.1
 0:15/animation_frame_15/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_66"]
-texture = ExtResource("66_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-1:0/0 = 0
-2:0/0 = 0
-3:0/0 = 0
-4:0/0 = 0
-5:0/0 = 0
-6:0/0 = 0
-0:1/0 = 0
-1:1/0 = 0
-2:1/0 = 0
-3:1/0 = 0
-4:1/0 = 0
-5:1/0 = 0
-6:1/0 = 0
-0:2/0 = 0
-1:2/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-5:2/0 = 0
-6:2/0 = 0
-0:3/0 = 0
-1:3/0 = 0
-2:3/0 = 0
-3:3/0 = 0
-4:3/0 = 0
-5:3/0 = 0
-6:3/0 = 0
-0:4/0 = 0
-1:4/0 = 0
-2:4/0 = 0
-3:4/0 = 0
-4:4/0 = 0
-5:4/0 = 0
-6:4/0 = 0
-0:5/0 = 0
-1:5/0 = 0
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_67"]
-texture = ExtResource("67_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-1:0/0 = 0
-2:0/0 = 0
-3:0/0 = 0
-4:0/0 = 0
-5:0/0 = 0
-6:0/0 = 0
-0:1/0 = 0
-1:1/0 = 0
-2:1/0 = 0
-3:1/0 = 0
-4:1/0 = 0
-5:1/0 = 0
-6:1/0 = 0
-0:2/0 = 0
-1:2/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-5:2/0 = 0
-6:2/0 = 0
-0:3/0 = 0
-1:3/0 = 0
-2:3/0 = 0
-3:3/0 = 0
-4:3/0 = 0
-5:3/0 = 0
-6:3/0 = 0
-0:4/0 = 0
-1:4/0 = 0
-2:4/0 = 0
-3:4/0 = 0
-4:4/0 = 0
-5:4/0 = 0
-6:4/0 = 0
-0:5/0 = 0
-1:5/0 = 0
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_68"]
-texture = ExtResource("68_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-1:0/0 = 0
-2:0/0 = 0
-3:0/0 = 0
-4:0/0 = 0
-5:0/0 = 0
-6:0/0 = 0
-0:1/0 = 0
-1:1/0 = 0
-2:1/0 = 0
-3:1/0 = 0
-4:1/0 = 0
-5:1/0 = 0
-6:1/0 = 0
-0:2/0 = 0
-1:2/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-5:2/0 = 0
-6:2/0 = 0
-0:3/0 = 0
-1:3/0 = 0
-2:3/0 = 0
-3:3/0 = 0
-4:3/0 = 0
-5:3/0 = 0
-6:3/0 = 0
-0:4/0 = 0
-1:4/0 = 0
-2:4/0 = 0
-3:4/0 = 0
-4:4/0 = 0
-5:4/0 = 0
-6:4/0 = 0
-0:5/0 = 0
-1:5/0 = 0
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_69"]
-texture = ExtResource("69_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-1:0/0 = 0
-2:0/0 = 0
-3:0/0 = 0
-4:0/0 = 0
-0:1/0 = 0
-1:1/0 = 0
-2:1/0 = 0
-3:1/0 = 0
-4:1/0 = 0
-0:2/0 = 0
-1:2/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-0:3/0 = 0
-1:3/0 = 0
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_70"]
-texture = ExtResource("70_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-1:0/0 = 0
-2:0/0 = 0
-3:0/0 = 0
-4:0/0 = 0
-5:0/0 = 0
-6:0/0 = 0
-0:1/0 = 0
-1:1/0 = 0
-2:1/0 = 0
-3:1/0 = 0
-4:1/0 = 0
-5:1/0 = 0
-6:1/0 = 0
-0:2/0 = 0
-1:2/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-5:2/0 = 0
-6:2/0 = 0
-0:3/0 = 0
-1:3/0 = 0
-2:3/0 = 0
-3:3/0 = 0
-4:3/0 = 0
-5:3/0 = 0
-6:3/0 = 0
-0:4/0 = 0
-1:4/0 = 0
-2:4/0 = 0
-3:4/0 = 0
-4:4/0 = 0
-5:4/0 = 0
-6:4/0 = 0
-0:5/0 = 0
-1:5/0 = 0
-
 [sub_resource type="TileSetAtlasSource" id="Atlas_71"]
 texture = ExtResource("71_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+5:0/0 = 0
+6:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
+5:1/0 = 0
+6:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+5:2/0 = 0
+6:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+3:3/0 = 0
+4:3/0 = 0
+5:3/0 = 0
+6:3/0 = 0
+0:4/0 = 0
+1:4/0 = 0
+2:4/0 = 0
+3:4/0 = 0
+4:4/0 = 0
+5:4/0 = 0
+6:4/0 = 0
+0:5/0 = 0
+1:5/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_72"]
+texture = ExtResource("72_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+5:0/0 = 0
+6:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
+5:1/0 = 0
+6:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+5:2/0 = 0
+6:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+3:3/0 = 0
+4:3/0 = 0
+5:3/0 = 0
+6:3/0 = 0
+0:4/0 = 0
+1:4/0 = 0
+2:4/0 = 0
+3:4/0 = 0
+4:4/0 = 0
+5:4/0 = 0
+6:4/0 = 0
+0:5/0 = 0
+1:5/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_73"]
+texture = ExtResource("73_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+5:0/0 = 0
+6:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
+5:1/0 = 0
+6:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+5:2/0 = 0
+6:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+3:3/0 = 0
+4:3/0 = 0
+5:3/0 = 0
+6:3/0 = 0
+0:4/0 = 0
+1:4/0 = 0
+2:4/0 = 0
+3:4/0 = 0
+4:4/0 = 0
+5:4/0 = 0
+6:4/0 = 0
+0:5/0 = 0
+1:5/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_74"]
+texture = ExtResource("74_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_75"]
+texture = ExtResource("75_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+5:0/0 = 0
+6:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
+5:1/0 = 0
+6:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+4:2/0 = 0
+5:2/0 = 0
+6:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+3:3/0 = 0
+4:3/0 = 0
+5:3/0 = 0
+6:3/0 = 0
+0:4/0 = 0
+1:4/0 = 0
+2:4/0 = 0
+3:4/0 = 0
+4:4/0 = 0
+5:4/0 = 0
+6:4/0 = 0
+0:5/0 = 0
+1:5/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_76"]
+texture = ExtResource("76_atlas")
 texture_region_size = Vector2i(64, 96)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 32)
@@ -6243,8 +6793,8 @@ texture_region_size = Vector2i(64, 96)
 2:1/0 = 0
 2:1/0/texture_origin = Vector2i(0, 32)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_72"]
-texture = ExtResource("72_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_77"]
+texture = ExtResource("77_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -6364,13 +6914,13 @@ texture_region_size = Vector2i(32, 32)
 2:9/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 2:9/0/occlusion_layer_0/polygon = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_73"]
-texture = ExtResource("73_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_78"]
+texture = ExtResource("78_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_74"]
-texture = ExtResource("74_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_79"]
+texture = ExtResource("79_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -6630,8 +7180,8 @@ texture_region_size = Vector2i(32, 32)
 0:15/0 = 0
 1:15/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_75"]
-texture = ExtResource("75_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_80"]
+texture = ExtResource("80_atlas")
 texture_region_size = Vector2i(64, 170)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 69)
@@ -6640,8 +7190,8 @@ texture_region_size = Vector2i(64, 170)
 1:0/0/texture_origin = Vector2i(0, 69)
 1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_76"]
-texture = ExtResource("76_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_81"]
+texture = ExtResource("81_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -6681,8 +7231,8 @@ texture_region_size = Vector2i(32, 32)
 0:5/0 = 0
 1:5/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_77"]
-texture = ExtResource("77_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_82"]
+texture = ExtResource("82_atlas")
 texture_region_size = Vector2i(96, 202)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 85)
@@ -6691,8 +7241,8 @@ texture_region_size = Vector2i(96, 202)
 1:0/0/texture_origin = Vector2i(0, 85)
 1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_78"]
-texture = ExtResource("78_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_83"]
+texture = ExtResource("83_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -6712,8 +7262,8 @@ texture_region_size = Vector2i(32, 32)
 0:3/0 = 0
 1:3/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_79"]
-texture = ExtResource("79_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_84"]
+texture = ExtResource("84_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -7778,43 +8328,15 @@ texture_region_size = Vector2i(32, 32)
 19:31/0 = 0
 20:31/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_80"]
-texture = ExtResource("80_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_85"]
+texture = ExtResource("85_atlas")
 texture_region_size = Vector2i(64, 64)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 16)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_81"]
-texture = ExtResource("81_atlas")
-texture_region_size = Vector2i(32, 64)
-0:0/0 = 0
-0:0/0/texture_origin = Vector2i(0, 16)
-1:0/0 = 0
-1:0/0/texture_origin = Vector2i(0, 16)
-2:0/0 = 0
-2:0/0/texture_origin = Vector2i(0, 16)
-3:0/0 = 0
-3:0/0/texture_origin = Vector2i(0, 16)
-0:1/0 = 0
-0:1/0/texture_origin = Vector2i(0, 16)
-1:1/0 = 0
-1:1/0/texture_origin = Vector2i(0, 16)
-1:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-2:1/0 = 0
-2:1/0/texture_origin = Vector2i(0, 16)
-3:1/0 = 0
-3:1/0/texture_origin = Vector2i(0, 16)
-0:2/0 = 0
-0:2/0/texture_origin = Vector2i(0, 16)
-1:2/0 = 0
-1:2/0/texture_origin = Vector2i(0, 16)
-2:2/0 = 0
-2:2/0/texture_origin = Vector2i(0, 16)
-2:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_82"]
-texture = ExtResource("82_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_86"]
+texture = ExtResource("86_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -7854,8 +8376,8 @@ texture_region_size = Vector2i(32, 32)
 1:4/0 = 0
 2:4/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_83"]
-texture = ExtResource("83_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_87"]
+texture = ExtResource("87_atlas")
 texture_region_size = Vector2i(64, 64)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -7865,8 +8387,8 @@ texture_region_size = Vector2i(64, 64)
 0:0/0/texture_origin = Vector2i(0, 16)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_84"]
-texture = ExtResource("84_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_88"]
+texture = ExtResource("88_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -7917,8 +8439,8 @@ texture_region_size = Vector2i(32, 32)
 0:5/animation_frame_4/duration = 0.1
 0:5/animation_frame_5/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_85"]
-texture = ExtResource("85_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_89"]
+texture = ExtResource("89_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -7986,8 +8508,8 @@ texture_region_size = Vector2i(32, 32)
 0:7/0 = 0
 1:7/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_86"]
-texture = ExtResource("86_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_90"]
+texture = ExtResource("90_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -8055,8 +8577,8 @@ texture_region_size = Vector2i(32, 32)
 0:7/0 = 0
 1:7/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_87"]
-texture = ExtResource("87_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_91"]
+texture = ExtResource("91_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -8124,14 +8646,14 @@ texture_region_size = Vector2i(32, 32)
 0:7/0 = 0
 1:7/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_88"]
-texture = ExtResource("88_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_92"]
+texture = ExtResource("92_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_89"]
-texture = ExtResource("89_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_93"]
+texture = ExtResource("93_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -8149,8 +8671,8 @@ texture_region_size = Vector2i(32, 32)
 3:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 0:3/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_90"]
-texture = ExtResource("90_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_94"]
+texture = ExtResource("94_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -8238,8 +8760,8 @@ texture_region_size = Vector2i(32, 32)
 6:6/0 = 0
 6:6/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_91"]
-texture = ExtResource("91_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_95"]
+texture = ExtResource("95_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -8891,8 +9413,8 @@ texture_region_size = Vector2i(32, 32)
 2:23/animation_frame_3/duration = 0.1
 2:23/animation_frame_4/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_92"]
-texture = ExtResource("92_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_96"]
+texture = ExtResource("96_atlas")
 texture_region_size = Vector2i(64, 96)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 32)
@@ -8908,8 +9430,8 @@ texture_region_size = Vector2i(64, 96)
 2:1/0 = 0
 2:1/0/texture_origin = Vector2i(0, 32)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_93"]
-texture = ExtResource("93_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_97"]
+texture = ExtResource("97_atlas")
 texture_region_size = Vector2i(100, 100)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 34)
@@ -8920,14 +9442,14 @@ texture_region_size = Vector2i(100, 100)
 1:1/0 = 0
 1:1/0/texture_origin = Vector2i(0, 34)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_94"]
-texture = ExtResource("94_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_98"]
+texture = ExtResource("98_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_95"]
-texture = ExtResource("95_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_99"]
+texture = ExtResource("99_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -9008,14 +9530,14 @@ texture_region_size = Vector2i(32, 32)
 3:8/0 = 0
 4:8/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_96"]
-texture = ExtResource("96_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_100"]
+texture = ExtResource("100_atlas")
 texture_region_size = Vector2i(227, 250)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 109)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_97"]
-texture = ExtResource("97_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_101"]
+texture = ExtResource("101_atlas")
 texture_region_size = Vector2i(145, 112)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -9025,460 +9547,8 @@ texture_region_size = Vector2i(145, 112)
 0:0/0/texture_origin = Vector2i(0, 40)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_98"]
-texture = ExtResource("98_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-1:0/0 = 0
-2:0/0 = 0
-3:0/0 = 0
-4:0/0 = 0
-5:0/0 = 0
-6:0/0 = 0
-7:0/0 = 0
-8:0/0 = 0
-9:0/0 = 0
-10:0/0 = 0
-11:0/0 = 0
-12:0/0 = 0
-13:0/0 = 0
-14:0/0 = 0
-15:0/0 = 0
-16:0/0 = 0
-17:0/0 = 0
-18:0/0 = 0
-0:1/0 = 0
-1:1/0 = 0
-2:1/0 = 0
-3:1/0 = 0
-4:1/0 = 0
-5:1/0 = 0
-5:1/animation_columns = 0
-5:1/animation_separation = Vector2i(3, 0)
-5:1/animation_speed = 1.0
-5:1/animation_frame_0/duration = 0.1
-5:1/animation_frame_1/duration = 0.1
-5:1/animation_frame_2/duration = 0.1
-5:1/animation_frame_3/duration = 0.1
-6:1/0 = 0
-6:1/animation_columns = 0
-6:1/animation_separation = Vector2i(3, 0)
-6:1/animation_speed = 1.0
-6:1/animation_frame_0/duration = 0.1
-6:1/animation_frame_1/duration = 0.1
-6:1/animation_frame_2/duration = 0.1
-6:1/animation_frame_3/duration = 0.1
-7:1/0 = 0
-8:1/0 = 0
-11:1/0 = 0
-12:1/0 = 0
-15:1/0 = 0
-16:1/0 = 0
-0:2/0 = 0
-1:2/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-5:2/0 = 0
-6:2/0 = 0
-7:2/0 = 0
-8:2/0 = 0
-8:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-9:2/0 = 0
-9:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-10:2/0 = 0
-10:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-11:2/0 = 0
-11:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-12:2/0 = 0
-12:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-13:2/0 = 0
-13:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-14:2/0 = 0
-14:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-15:2/0 = 0
-15:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-16:2/0 = 0
-16:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-17:2/0 = 0
-17:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-18:2/0 = 0
-18:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-0:3/0 = 0
-0:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-1:3/0 = 0
-1:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-2:3/0 = 0
-2:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-3:3/0 = 0
-3:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-4:3/0 = 0
-4:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-5:3/0 = 0
-5:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-6:3/0 = 0
-6:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-7:3/0 = 0
-7:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-8:3/0 = 0
-8:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-9:3/0 = 0
-9:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-10:3/0 = 0
-10:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-11:3/0 = 0
-11:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-12:3/0 = 0
-12:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-13:3/0 = 0
-13:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-14:3/0 = 0
-14:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-15:3/0 = 0
-15:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-16:3/0 = 0
-16:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-17:3/0 = 0
-17:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-18:3/0 = 0
-18:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-0:4/0 = 0
-0:4/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-1:4/0 = 0
-1:4/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-2:4/0 = 0
-2:4/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-3:4/0 = 0
-3:4/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-4:4/0 = 0
-4:4/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-5:4/0 = 0
-5:4/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-6:4/0 = 0
-6:4/animation_columns = 0
-6:4/animation_separation = Vector2i(3, 0)
-6:4/animation_speed = 1.0
-6:4/animation_frame_0/duration = 0.2
-6:4/animation_frame_1/duration = 0.2
-6:4/animation_frame_2/duration = 0.2
-7:4/0 = 0
-7:4/animation_columns = 0
-7:4/animation_separation = Vector2i(3, 0)
-7:4/animation_speed = 1.0
-7:4/animation_frame_0/duration = 0.2
-7:4/animation_frame_1/duration = 0.2
-7:4/animation_frame_2/duration = 0.2
-8:4/0 = 0
-8:4/animation_columns = 0
-8:4/animation_separation = Vector2i(3, 0)
-8:4/animation_speed = 1.0
-8:4/animation_frame_0/duration = 0.2
-8:4/animation_frame_1/duration = 0.2
-8:4/animation_frame_2/duration = 0.2
-9:4/0 = 0
-9:4/animation_columns = 0
-9:4/animation_separation = Vector2i(3, 0)
-9:4/animation_speed = 1.0
-9:4/animation_frame_0/duration = 0.2
-9:4/animation_frame_1/duration = 0.2
-9:4/animation_frame_2/duration = 0.2
-18:4/0 = 0
-0:5/0 = 0
-1:5/0 = 0
-2:5/0 = 0
-3:5/0 = 0
-4:5/0 = 0
-5:5/0 = 0
-6:5/0 = 0
-6:5/animation_columns = 0
-6:5/animation_separation = Vector2i(3, 0)
-6:5/animation_speed = 1.0
-6:5/animation_frame_0/duration = 0.1
-6:5/animation_frame_1/duration = 0.1
-6:5/animation_frame_2/duration = 0.1
-6:5/animation_frame_3/duration = 0.1
-7:5/0 = 0
-8:5/0 = 0
-9:5/0 = 0
-11:5/0 = 0
-12:5/0 = 0
-13:5/0 = 0
-15:5/0 = 0
-16:5/0 = 0
-17:5/0 = 0
-0:6/0 = 0
-1:6/0 = 0
-2:6/0 = 0
-3:6/0 = 0
-4:6/0 = 0
-5:6/0 = 0
-6:6/0 = 0
-7:6/0 = 0
-8:6/0 = 0
-9:6/0 = 0
-10:6/0 = 0
-11:6/0 = 0
-12:6/0 = 0
-13:6/0 = 0
-14:6/0 = 0
-15:6/0 = 0
-16:6/0 = 0
-17:6/0 = 0
-18:6/0 = 0
-0:7/0 = 0
-1:7/0 = 0
-2:7/0 = 0
-3:7/0 = 0
-4:7/0 = 0
-5:7/0 = 0
-6:7/0 = 0
-7:7/0 = 0
-8:7/0 = 0
-9:7/0 = 0
-10:7/0 = 0
-11:7/0 = 0
-12:7/0 = 0
-13:7/0 = 0
-14:7/0 = 0
-15:7/0 = 0
-16:7/0 = 0
-17:7/0 = 0
-18:7/0 = 0
-0:8/0 = 0
-1:8/0 = 0
-2:8/0 = 0
-3:8/0 = 0
-4:8/0 = 0
-5:8/0 = 0
-6:8/0 = 0
-7:8/0 = 0
-8:8/0 = 0
-9:8/0 = 0
-9:8/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-10:8/0 = 0
-11:8/0 = 0
-12:8/0 = 0
-13:8/0 = 0
-14:8/0 = 0
-15:8/0 = 0
-16:8/0 = 0
-17:8/0 = 0
-18:8/0 = 0
-0:9/0 = 0
-1:9/0 = 0
-2:9/0 = 0
-3:9/0 = 0
-4:9/0 = 0
-5:9/0 = 0
-6:9/0 = 0
-7:9/0 = 0
-8:9/0 = 0
-9:9/0 = 0
-10:9/0 = 0
-11:9/0 = 0
-11:9/animation_columns = 0
-11:9/animation_speed = 1.0
-11:9/animation_frame_0/duration = 1
-11:9/animation_frame_1/duration = 1
-13:9/0 = 0
-13:9/animation_columns = 0
-13:9/animation_speed = 1.0
-13:9/animation_frame_0/duration = 1
-13:9/animation_frame_1/duration = 1
-15:9/0 = 0
-15:9/animation_columns = 0
-15:9/animation_speed = 1.0
-15:9/animation_frame_0/duration = 1
-15:9/animation_frame_1/duration = 1
-17:9/0 = 0
-17:9/animation_columns = 0
-17:9/animation_speed = 1.0
-17:9/animation_frame_0/duration = 1
-17:9/animation_frame_1/duration = 1
-0:10/0 = 0
-1:10/0 = 0
-2:10/0 = 0
-3:10/0 = 0
-4:10/0 = 0
-5:10/0 = 0
-6:10/0 = 0
-6:10/animation_columns = 0
-6:10/animation_speed = 1.0
-6:10/animation_frame_0/duration = 0.2
-6:10/animation_frame_1/duration = 0.2
-6:10/animation_frame_2/duration = 0.2
-6:10/animation_frame_3/duration = 0.2
-6:10/animation_frame_4/duration = 0.2
-6:10/animation_frame_5/duration = 0.2
-6:10/animation_frame_6/duration = 0.2
-6:10/animation_frame_7/duration = 0.2
-14:10/0 = 0
-15:10/0 = 0
-16:10/0 = 0
-17:10/0 = 0
-18:10/0 = 0
-0:11/0 = 0
-1:11/0 = 0
-2:11/0 = 0
-3:11/0 = 0
-4:11/0 = 0
-5:11/0 = 0
-5:11/animation_columns = 0
-5:11/animation_speed = 1.0
-5:11/animation_frame_0/duration = 0.2
-5:11/animation_frame_1/duration = 0.2
-5:11/animation_frame_2/duration = 0.2
-5:11/animation_frame_3/duration = 0.2
-5:11/animation_frame_4/duration = 0.2
-5:11/animation_frame_5/duration = 0.2
-5:11/animation_frame_6/duration = 0.2
-5:11/animation_frame_7/duration = 0.2
-5:11/animation_frame_8/duration = 0.2
-5:11/animation_frame_9/duration = 0.2
-5:11/animation_frame_10/duration = 0.2
-5:11/animation_frame_11/duration = 0.2
-17:11/0 = 0
-18:11/0 = 0
-0:12/0 = 0
-1:12/0 = 0
-2:12/0 = 0
-2:12/animation_columns = 0
-2:12/animation_speed = 1.0
-2:12/animation_frame_0/duration = 3
-2:12/animation_frame_1/duration = 0.1
-2:12/animation_frame_2/duration = 0.1
-2:12/animation_frame_3/duration = 0.1
-2:12/animation_frame_4/duration = 0.1
-2:12/animation_frame_5/duration = 0.1
-8:12/0 = 0
-8:12/animation_columns = 0
-8:12/animation_speed = 1.0
-8:12/animation_frame_0/duration = 0.1
-8:12/animation_frame_1/duration = 0.1
-8:12/animation_frame_2/duration = 0.1
-8:12/animation_frame_3/duration = 0.1
-12:12/0 = 0
-13:12/0 = 0
-14:12/0 = 0
-15:12/0 = 0
-16:12/0 = 0
-17:12/0 = 0
-18:12/0 = 0
-0:13/0 = 0
-1:13/0 = 0
-2:13/0 = 0
-3:13/0 = 0
-3:13/animation_columns = 0
-3:13/animation_speed = 1.0
-3:13/animation_frame_0/duration = 0.1
-3:13/animation_frame_1/duration = 0.1
-3:13/animation_frame_2/duration = 0.1
-3:13/animation_frame_3/duration = 0.1
-3:13/animation_frame_4/duration = 0.1
-3:13/animation_frame_5/duration = 0.1
-3:13/animation_frame_6/duration = 0.1
-3:13/animation_frame_7/duration = 0.1
-3:13/animation_frame_8/duration = 0.1
-3:13/animation_frame_9/duration = 0.1
-3:13/animation_frame_10/duration = 0.1
-3:13/animation_frame_11/duration = 0.1
-3:13/animation_frame_12/duration = 0.1
-16:13/0 = 0
-17:13/0 = 0
-18:13/0 = 0
-0:14/0 = 0
-0:14/animation_columns = 0
-0:14/animation_speed = 1.0
-0:14/animation_frame_0/duration = 0.1
-0:14/animation_frame_1/duration = 0.1
-0:14/animation_frame_2/duration = 0.1
-0:14/animation_frame_3/duration = 0.1
-4:14/0 = 0
-5:14/0 = 0
-6:14/0 = 0
-7:14/0 = 0
-8:14/0 = 0
-9:14/0 = 0
-9:14/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-10:14/0 = 0
-11:14/0 = 0
-12:14/0 = 0
-12:14/animation_columns = 0
-12:14/animation_speed = 1.0
-12:14/animation_frame_0/duration = 0.4
-12:14/animation_frame_1/duration = 0.4
-14:14/0 = 0
-15:14/0 = 0
-16:14/0 = 0
-17:14/0 = 0
-18:14/0 = 0
-18:14/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-0:15/0 = 0
-1:15/0 = 0
-2:15/0 = 0
-3:15/0 = 0
-4:15/0 = 0
-5:15/0 = 0
-6:15/0 = 0
-7:15/0 = 0
-8:15/0 = 0
-9:15/0 = 0
-10:15/0 = 0
-11:15/0 = 0
-12:15/0 = 0
-13:15/0 = 0
-14:15/0 = 0
-15:15/0 = 0
-16:15/0 = 0
-17:15/0 = 0
-18:15/0 = 0
-0:16/0 = 0
-1:16/0 = 0
-2:16/0 = 0
-3:16/0 = 0
-4:16/0 = 0
-5:16/0 = 0
-6:16/0 = 0
-7:16/0 = 0
-8:16/0 = 0
-9:16/0 = 0
-10:16/0 = 0
-11:16/0 = 0
-12:16/0 = 0
-13:16/0 = 0
-14:16/0 = 0
-15:16/0 = 0
-16:16/0 = 0
-17:16/0 = 0
-18:16/0 = 0
-0:17/0 = 0
-1:17/0 = 0
-2:17/0 = 0
-3:17/0 = 0
-4:17/0 = 0
-5:17/0 = 0
-6:17/0 = 0
-7:17/0 = 0
-8:17/0 = 0
-9:17/0 = 0
-10:17/0 = 0
-11:17/0 = 0
-12:17/0 = 0
-13:17/0 = 0
-14:17/0 = 0
-15:17/0 = 0
-16:17/0 = 0
-17:17/0 = 0
-18:17/0 = 0
-0:18/0 = 0
-1:18/0 = 0
-2:18/0 = 0
-3:18/0 = 0
-4:18/0 = 0
-5:18/0 = 0
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_99"]
-texture = ExtResource("99_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_102"]
+texture = ExtResource("102_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -9505,40 +9575,21 @@ texture_region_size = Vector2i(32, 32)
 2:3/0 = 0
 3:3/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_100"]
-texture = ExtResource("100_atlas")
-texture_region_size = Vector2i(96, 64)
-0:0/0 = 0
-0:0/0/texture_origin = Vector2i(0, 16)
-0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-1:0/0 = 0
-1:0/0/texture_origin = Vector2i(0, 16)
-1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-0:1/0 = 0
-0:1/0/texture_origin = Vector2i(0, 16)
-0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-1:1/0 = 0
-1:1/0/texture_origin = Vector2i(0, 16)
-1:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-0:2/0 = 0
-0:2/0/texture_origin = Vector2i(0, 16)
-0:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_101"]
-texture = ExtResource("101_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_103"]
+texture = ExtResource("103_atlas")
 texture_region_size = Vector2i(32, 64)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 16)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_102"]
-texture = ExtResource("102_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_104"]
+texture = ExtResource("104_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_103"]
-texture = ExtResource("103_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_105"]
+texture = ExtResource("105_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -9575,8 +9626,8 @@ texture_region_size = Vector2i(32, 32)
 1:5/0 = 0
 2:5/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_104"]
-texture = ExtResource("104_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_106"]
+texture = ExtResource("106_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -10123,8 +10174,8 @@ texture_region_size = Vector2i(32, 32)
 14:22/0 = 0
 15:22/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_105"]
-texture = ExtResource("105_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_107"]
+texture = ExtResource("107_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -10132,15 +10183,15 @@ texture_region_size = Vector2i(32, 32)
 0:1/0 = 0
 1:1/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_106"]
-texture = ExtResource("106_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_108"]
+texture = ExtResource("108_atlas")
 texture_region_size = Vector2i(102, 97)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 32)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_107"]
-texture = ExtResource("107_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_109"]
+texture = ExtResource("109_atlas")
 texture_region_size = Vector2i(64, 128)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 48)
@@ -10160,8 +10211,8 @@ texture_region_size = Vector2i(64, 128)
 3:1/0 = 0
 3:1/0/texture_origin = Vector2i(0, 48)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_108"]
-texture = ExtResource("108_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_110"]
+texture = ExtResource("110_atlas")
 texture_region_size = Vector2i(64, 64)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 16)
@@ -10172,13 +10223,13 @@ texture_region_size = Vector2i(64, 64)
 1:1/0 = 0
 1:1/0/texture_origin = Vector2i(0, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_109"]
-texture = ExtResource("109_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_111"]
+texture = ExtResource("111_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_110"]
-texture = ExtResource("110_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_112"]
+texture = ExtResource("112_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -10281,8 +10332,8 @@ texture_region_size = Vector2i(32, 32)
 3:8/0 = 0
 4:8/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_111"]
-texture = ExtResource("111_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_113"]
+texture = ExtResource("113_atlas")
 texture_region_size = Vector2i(98, 164)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 66)
@@ -10291,35 +10342,36 @@ texture_region_size = Vector2i(98, 164)
 1:0/0/texture_origin = Vector2i(0, 66)
 1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_112"]
-texture = ExtResource("112_atlas")
-texture_region_size = Vector2i(32, 32)
+[sub_resource type="TileSetAtlasSource" id="Atlas_114"]
+texture = ExtResource("114_atlas")
+texture_region_size = Vector2i(250, 250)
 0:0/0 = 0
+0:0/0/texture_origin = Vector2i(0, 109)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_113"]
-texture = ExtResource("113_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_115"]
+texture = ExtResource("115_atlas")
 texture_region_size = Vector2i(85, 94)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 31)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_114"]
-texture = ExtResource("114_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_116"]
+texture = ExtResource("116_atlas")
 texture_region_size = Vector2i(85, 116)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 42)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_115"]
-texture = ExtResource("115_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_117"]
+texture = ExtResource("117_atlas")
 texture_region_size = Vector2i(91, 114)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 41)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_116"]
-texture = ExtResource("116_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_118"]
+texture = ExtResource("118_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -10340,8 +10392,8 @@ texture_region_size = Vector2i(32, 32)
 1:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 1:2/0/occlusion_layer_0/polygon = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_117"]
-texture = ExtResource("117_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_119"]
+texture = ExtResource("119_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
@@ -10350,28 +10402,28 @@ texture_region_size = Vector2i(32, 32)
 0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 0:1/0/occlusion_layer_0/polygon = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_118"]
-texture = ExtResource("118_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_120"]
+texture = ExtResource("120_atlas")
 texture_region_size = Vector2i(196, 168)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 68)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_119"]
-texture = ExtResource("119_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_121"]
+texture = ExtResource("121_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_120"]
-texture = ExtResource("120_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_122"]
+texture = ExtResource("122_atlas")
 texture_region_size = Vector2i(150, 131)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 49)
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_121"]
-texture = ExtResource("121_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_123"]
+texture = ExtResource("123_atlas")
 texture_region_size = Vector2i(100, 100)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 34)
@@ -10382,8 +10434,8 @@ texture_region_size = Vector2i(100, 100)
 1:1/0 = 0
 1:1/0/texture_origin = Vector2i(0, 34)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_122"]
-texture = ExtResource("122_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_124"]
+texture = ExtResource("124_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -10391,8 +10443,8 @@ texture_region_size = Vector2i(32, 32)
 0:1/0 = 0
 1:1/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_123"]
-texture = ExtResource("123_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_125"]
+texture = ExtResource("125_atlas")
 texture_region_size = Vector2i(144, 128)
 0:0/0 = 0
 0:0/0/texture_origin = Vector2i(0, 48)
@@ -10402,8 +10454,8 @@ texture_region_size = Vector2i(144, 128)
 0:1/0 = 0
 0:1/0/texture_origin = Vector2i(0, 48)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_124"]
-texture = ExtResource("124_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_126"]
+texture = ExtResource("126_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -11431,8 +11483,61 @@ texture_region_size = Vector2i(32, 32)
 0:31/0 = 0
 1:31/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_125"]
-texture = ExtResource("125_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_127"]
+texture = ExtResource("127_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+0:0/animation_columns = 0
+0:0/animation_speed = 1.0
+0:0/animation_frame_0/duration = 0.1
+0:0/animation_frame_1/duration = 0.1
+0:0/animation_frame_2/duration = 0.1
+0:0/animation_frame_3/duration = 0.1
+0:0/animation_frame_4/duration = 0.1
+0:0/animation_frame_5/duration = 0.1
+0:0/animation_frame_6/duration = 0.1
+0:0/animation_frame_7/duration = 0.1
+0:0/animation_frame_8/duration = 0.1
+0:0/animation_frame_9/duration = 0.1
+0:1/0 = 0
+0:1/animation_columns = 0
+0:1/animation_speed = 1.0
+0:1/animation_frame_0/duration = 0.1
+0:1/animation_frame_1/duration = 0.1
+0:1/animation_frame_2/duration = 0.1
+0:1/animation_frame_3/duration = 0.1
+0:1/animation_frame_4/duration = 0.1
+0:1/animation_frame_5/duration = 0.1
+0:1/animation_frame_6/duration = 0.1
+0:1/animation_frame_7/duration = 0.1
+0:1/animation_frame_8/duration = 0.1
+0:1/animation_frame_9/duration = 0.1
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_128"]
+texture = ExtResource("128_atlas")
+texture_region_size = Vector2i(96, 64)
+0:0/0 = 0
+0:0/animation_columns = 0
+0:0/animation_speed = 1.0
+0:0/animation_frame_0/duration = 0.1
+0:0/animation_frame_1/duration = 0.1
+0:0/animation_frame_2/duration = 0.1
+0:0/animation_frame_3/duration = 0.1
+0:0/animation_frame_4/duration = 0.1
+0:0/0/texture_origin = Vector2i(0, 16)
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_129"]
+texture = ExtResource("129_atlas")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+0:0/animation_columns = 0
+0:0/animation_speed = 1.0
+0:0/animation_frame_0/duration = 0.1
+0:0/animation_frame_1/duration = 0.1
+
+[sub_resource type="TileSetAtlasSource" id="Atlas_130"]
+texture = ExtResource("130_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -11609,8 +11714,8 @@ texture_region_size = Vector2i(32, 32)
 0:6/animation_frame_14/duration = 0.1
 0:6/animation_frame_15/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_126"]
-texture = ExtResource("126_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_131"]
+texture = ExtResource("131_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -11621,8 +11726,8 @@ texture_region_size = Vector2i(32, 32)
 0:0/animation_frame_3/duration = 0.4
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_127"]
-texture = ExtResource("127_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_132"]
+texture = ExtResource("132_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -11695,8 +11800,8 @@ texture_region_size = Vector2i(32, 32)
 0:4/animation_frame_9/duration = 0.1
 0:4/animation_frame_10/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_128"]
-texture = ExtResource("128_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_133"]
+texture = ExtResource("133_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -11927,8 +12032,8 @@ texture_region_size = Vector2i(32, 32)
 0:10/animation_frame_31/duration = 0.1
 0:10/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_129"]
-texture = ExtResource("129_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_134"]
+texture = ExtResource("134_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -11965,8 +12070,8 @@ texture_region_size = Vector2i(32, 32)
 0:0/animation_frame_29/duration = 0.1
 0:0/animation_frame_30/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_130"]
-texture = ExtResource("130_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_135"]
+texture = ExtResource("135_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12033,8 +12138,8 @@ texture_region_size = Vector2i(32, 32)
 0:5/animation_frame_2/duration = 0.5
 0:5/animation_frame_3/duration = 0.2
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_131"]
-texture = ExtResource("131_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_136"]
+texture = ExtResource("136_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12044,8 +12149,8 @@ texture_region_size = Vector2i(32, 32)
 0:0/animation_frame_2/duration = 0.1
 0:0/animation_frame_3/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_132"]
-texture = ExtResource("132_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_137"]
+texture = ExtResource("137_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12083,8 +12188,8 @@ texture_region_size = Vector2i(32, 32)
 0:0/animation_frame_30/duration = 0.3
 0:0/animation_frame_31/duration = 0.3
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_133"]
-texture = ExtResource("133_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_138"]
+texture = ExtResource("138_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12117,8 +12222,8 @@ texture_region_size = Vector2i(32, 32)
 0:1/animation_frame_6/duration = 0.9
 0:1/animation_frame_7/duration = 0.9
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_134"]
-texture = ExtResource("134_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_139"]
+texture = ExtResource("139_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12201,8 +12306,8 @@ texture_region_size = Vector2i(32, 32)
 0:4/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 0:4/0/occlusion_layer_0/polygon = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_135"]
-texture = ExtResource("135_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_140"]
+texture = ExtResource("140_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12214,8 +12319,8 @@ texture_region_size = Vector2i(32, 32)
 0:0/animation_frame_4/duration = 0.15
 0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_136"]
-texture = ExtResource("136_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_141"]
+texture = ExtResource("141_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12243,8 +12348,8 @@ texture_region_size = Vector2i(32, 32)
 0:2/animation_frame_3/duration = 0.1
 0:2/animation_frame_4/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_137"]
-texture = ExtResource("137_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_142"]
+texture = ExtResource("142_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12282,8 +12387,8 @@ texture_region_size = Vector2i(32, 32)
 0:0/animation_frame_30/duration = 0.1
 0:0/animation_frame_31/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_138"]
-texture = ExtResource("138_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_143"]
+texture = ExtResource("143_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12323,17 +12428,8 @@ texture_region_size = Vector2i(32, 32)
 0:1/animation_frame_14/duration = 0.05
 0:1/animation_frame_15/duration = 0.05
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_139"]
-texture = ExtResource("139_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-0:0/animation_columns = 0
-0:0/animation_speed = 1.0
-0:0/animation_frame_0/duration = 0.1
-0:0/animation_frame_1/duration = 0.1
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_140"]
-texture = ExtResource("140_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_144"]
+texture = ExtResource("144_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12485,8 +12581,8 @@ texture_region_size = Vector2i(32, 32)
 0:4/animation_frame_1/duration = 0.2
 0:4/animation_frame_2/duration = 0.2
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_141"]
-texture = ExtResource("141_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_145"]
+texture = ExtResource("145_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12514,8 +12610,8 @@ texture_region_size = Vector2i(32, 32)
 0:2/animation_frame_4/duration = 0.1
 0:2/animation_frame_5/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_142"]
-texture = ExtResource("142_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_146"]
+texture = ExtResource("146_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12569,8 +12665,8 @@ texture_region_size = Vector2i(32, 32)
 0:4/animation_frame_5/duration = 0.4
 0:4/animation_frame_6/duration = 0.4
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_143"]
-texture = ExtResource("143_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_147"]
+texture = ExtResource("147_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12716,8 +12812,8 @@ texture_region_size = Vector2i(32, 32)
 0:10/animation_frame_8/duration = 0.2
 0:10/animation_frame_9/duration = 0.2
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_144"]
-texture = ExtResource("144_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_148"]
+texture = ExtResource("148_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12827,8 +12923,8 @@ texture_region_size = Vector2i(32, 32)
 0:8/animation_frame_6/duration = 0.5
 0:8/animation_frame_7/duration = 0.5
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_145"]
-texture = ExtResource("145_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_149"]
+texture = ExtResource("149_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12853,8 +12949,8 @@ texture_region_size = Vector2i(32, 32)
 0:2/animation_frame_7/duration = 0.2
 0:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_146"]
-texture = ExtResource("146_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_150"]
+texture = ExtResource("150_atlas")
 texture_region_size = Vector2i(32, 64)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12881,8 +12977,8 @@ texture_region_size = Vector2i(32, 64)
 0:2/animation_frame_3/duration = 0.1
 0:2/0/texture_origin = Vector2i(0, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_147"]
-texture = ExtResource("147_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_151"]
+texture = ExtResource("151_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -12899,8 +12995,8 @@ texture_region_size = Vector2i(32, 32)
 0:1/animation_frame_2/duration = 0.1
 0:1/animation_frame_3/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_148"]
-texture = ExtResource("148_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_152"]
+texture = ExtResource("152_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -13863,8 +13959,8 @@ texture_region_size = Vector2i(32, 32)
 0:29/animation_frame_27/duration = 0.12
 0:29/animation_frame_28/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_149"]
-texture = ExtResource("149_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_153"]
+texture = ExtResource("153_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -13885,8 +13981,8 @@ texture_region_size = Vector2i(32, 32)
 0:1/animation_frame_4/duration = 0.1
 0:1/animation_frame_5/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_150"]
-texture = ExtResource("150_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_154"]
+texture = ExtResource("154_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -13932,8 +14028,8 @@ texture_region_size = Vector2i(32, 32)
 0:1/animation_frame_31/duration = 0.1
 0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_151"]
-texture = ExtResource("151_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_155"]
+texture = ExtResource("155_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -14307,8 +14403,8 @@ texture_region_size = Vector2i(32, 32)
 0:22/animation_frame_13/duration = 0.1
 0:22/animation_frame_14/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_152"]
-texture = ExtResource("152_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_156"]
+texture = ExtResource("156_atlas")
 texture_region_size = Vector2i(100, 100)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -14319,111 +14415,8 @@ texture_region_size = Vector2i(100, 100)
 0:0/animation_frame_3/duration = 0.1
 0:0/0/texture_origin = Vector2i(0, 34)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_153"]
-texture = ExtResource("153_atlas")
-texture_region_size = Vector2i(32, 32)
-0:0/0 = 0
-0:0/animation_columns = 0
-0:0/animation_speed = 1.0
-0:0/animation_frame_0/duration = 0.1
-0:0/animation_frame_1/duration = 0.1
-0:0/animation_frame_2/duration = 0.1
-0:0/animation_frame_3/duration = 0.1
-0:1/0 = 0
-0:1/animation_columns = 0
-0:1/animation_speed = 1.0
-0:1/animation_frame_0/duration = 0.6
-0:1/animation_frame_1/duration = 0.6
-0:1/animation_frame_2/duration = 0.6
-0:1/animation_frame_3/duration = 0.6
-0:1/animation_frame_4/duration = 0.6
-0:1/animation_frame_5/duration = 0.6
-0:1/animation_frame_6/duration = 0.6
-0:1/animation_frame_7/duration = 0.6
-0:1/animation_frame_8/duration = 0.6
-0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-0:2/0 = 0
-0:2/animation_columns = 0
-0:2/animation_speed = 1.0
-0:2/animation_frame_0/duration = 0.1
-0:2/animation_frame_1/duration = 0.1
-0:2/animation_frame_2/duration = 0.1
-0:2/animation_frame_3/duration = 0.1
-0:2/animation_frame_4/duration = 0.1
-0:2/animation_frame_5/duration = 0.1
-0:2/animation_frame_6/duration = 0.1
-0:2/animation_frame_7/duration = 0.1
-0:2/animation_frame_8/duration = 0.1
-0:2/animation_frame_9/duration = 0.1
-0:2/animation_frame_10/duration = 0.1
-0:2/animation_frame_11/duration = 0.1
-0:2/animation_frame_12/duration = 0.1
-0:2/animation_frame_13/duration = 0.1
-0:2/animation_frame_14/duration = 0.1
-0:2/animation_frame_15/duration = 0.1
-0:2/animation_frame_16/duration = 0.1
-0:2/animation_frame_17/duration = 0.1
-0:2/animation_frame_18/duration = 0.1
-0:2/animation_frame_19/duration = 0.1
-0:2/animation_frame_20/duration = 0.1
-0:2/animation_frame_21/duration = 0.1
-0:2/animation_frame_22/duration = 0.1
-0:2/animation_frame_23/duration = 0.1
-0:3/0 = 0
-0:3/animation_columns = 0
-0:3/animation_speed = 1.0
-0:3/animation_frame_0/duration = 0.5
-0:3/animation_frame_1/duration = 0.5
-0:3/animation_frame_2/duration = 0.5
-0:3/animation_frame_3/duration = 0.5
-0:3/animation_frame_4/duration = 0.5
-0:3/animation_frame_5/duration = 0.5
-0:3/animation_frame_6/duration = 0.5
-0:3/animation_frame_7/duration = 0.5
-0:3/animation_frame_8/duration = 0.5
-0:3/animation_frame_9/duration = 0.5
-0:3/animation_frame_10/duration = 0.5
-0:3/animation_frame_11/duration = 0.5
-0:3/animation_frame_12/duration = 0.5
-0:3/animation_frame_13/duration = 0.5
-0:3/animation_frame_14/duration = 0.5
-0:3/animation_frame_15/duration = 0.5
-0:3/animation_frame_16/duration = 0.5
-0:3/animation_frame_17/duration = 0.5
-0:3/animation_frame_18/duration = 0.5
-0:3/animation_frame_19/duration = 0.5
-0:4/0 = 0
-0:4/animation_columns = 0
-0:4/animation_speed = 1.0
-0:4/animation_frame_0/duration = 3
-0:4/animation_frame_1/duration = 0.2
-0:4/animation_frame_2/duration = 0.2
-0:4/animation_frame_3/duration = 0.2
-0:5/0 = 0
-0:5/animation_columns = 0
-0:5/animation_speed = 1.0
-0:5/animation_frame_0/duration = 0.1
-0:5/animation_frame_1/duration = 0.1
-0:5/animation_frame_2/duration = 0.1
-0:5/animation_frame_3/duration = 0.1
-0:5/animation_frame_4/duration = 0.1
-0:5/animation_frame_5/duration = 0.1
-0:5/animation_frame_6/duration = 0.5
-0:5/animation_frame_7/duration = 0.1
-0:5/animation_frame_8/duration = 0.1
-0:5/animation_frame_9/duration = 0.1
-0:5/animation_frame_10/duration = 0.1
-0:5/animation_frame_11/duration = 0.1
-0:5/animation_frame_12/duration = 0.1
-0:5/animation_frame_13/duration = 0.1
-0:5/animation_frame_14/duration = 0.1
-0:5/animation_frame_15/duration = 0.1
-0:5/animation_frame_16/duration = 0.1
-0:5/animation_frame_17/duration = 0.1
-0:5/animation_frame_18/duration = 0.1
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_154"]
-texture = ExtResource("154_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_157"]
+texture = ExtResource("157_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -14437,22 +14430,8 @@ texture_region_size = Vector2i(32, 32)
 0:1/animation_frame_1/duration = 0.2
 0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_155"]
-texture = ExtResource("155_atlas")
-texture_region_size = Vector2i(96, 64)
-0:0/0 = 0
-0:0/animation_columns = 0
-0:0/animation_speed = 1.0
-0:0/animation_frame_0/duration = 0.1
-0:0/animation_frame_1/duration = 0.1
-0:0/animation_frame_2/duration = 0.1
-0:0/animation_frame_3/duration = 0.1
-0:0/animation_frame_4/duration = 0.1
-0:0/0/texture_origin = Vector2i(0, 16)
-0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-
-[sub_resource type="TileSetAtlasSource" id="Atlas_156"]
-texture = ExtResource("156_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_158"]
+texture = ExtResource("158_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -14491,8 +14470,8 @@ texture_region_size = Vector2i(32, 32)
 0:1/animation_frame_13/duration = 0.1
 0:1/animation_frame_14/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_157"]
-texture = ExtResource("157_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_159"]
+texture = ExtResource("159_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -15090,8 +15069,8 @@ texture_region_size = Vector2i(32, 32)
 0:16/animation_frame_30/duration = 0.1
 0:16/animation_frame_31/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_158"]
-texture = ExtResource("158_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_160"]
+texture = ExtResource("160_atlas")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -15108,8 +15087,8 @@ texture_region_size = Vector2i(32, 32)
 0:1/animation_frame_2/duration = 0.1
 0:1/animation_frame_3/duration = 0.1
 
-[sub_resource type="TileSetAtlasSource" id="Atlas_159"]
-texture = ExtResource("159_atlas")
+[sub_resource type="TileSetAtlasSource" id="Atlas_161"]
+texture = ExtResource("161_atlas")
 texture_region_size = Vector2i(100, 100)
 0:0/0 = 0
 0:0/animation_columns = 0
@@ -15284,3 +15263,5 @@ sources/156 = SubResource("Atlas_156")
 sources/157 = SubResource("Atlas_157")
 sources/158 = SubResource("Atlas_158")
 sources/159 = SubResource("Atlas_159")
+sources/160 = SubResource("Atlas_160")
+sources/161 = SubResource("Atlas_161")

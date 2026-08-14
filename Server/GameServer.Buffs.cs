@@ -13,6 +13,9 @@ public sealed class BuffAtivo
 	/// <summary>Campo do lutador -> quanto foi SOMADO. Guardado pra desfazer exatamente isto.</summary>
 	public Dictionary<string, double> Somas = new(StringComparer.Ordinal);
 
+	/// <summary>Campo do lutador -> por quanto foi MULTIPLICADO. Desfaz dividindo, nunca subtraindo.</summary>
+	public Dictionary<string, double> Fatores = new(StringComparer.Ordinal);
+
 	/// <summary>Fator aplicado em `DrainMod` -- o preco de manter o buff de pe.</summary>
 	public double Dreno = 1;
 
@@ -56,8 +59,19 @@ public partial class GameServer
 	///
 	/// Devolve false se ja estava ligado -- quem chama decide se isso e erro ou toggle.
 	/// </summary>
+	/// <param name="fatores">
+	/// CAMPOS QUE O BUFF MULTIPLICA em vez de somar -- o `container.superkiarmorMod *= 1.2` do
+	/// Energy Shield (`Ki2.0/KiBuffs.dm:88`) e o primeiro deles.
+	///
+	/// Entrou como canal proprio, e nao como "soma equivalente", porque os dois desfazem de jeitos
+	/// DIFERENTES: soma se tira subtraindo, fator se tira dividindo, e um fator desfeito por
+	/// subtracao deixa o campo num numero que nao e o de antes nem o de depois. E exatamente a
+	/// separacao que o <see cref="Jandirus.Core.Skills.EfeitosDeSkill"/> ja tinha descoberto
+	/// precisar nos efeitos passivos (canal 1 contra canal 2); aqui ela chega nos temporarios.
+	/// </param>
 	private bool LigarBuff(ServerPlayer pl, string id, string nome,
-						   Dictionary<string, double> somas, double dreno = 1, long duracaoMs = 0)
+						   Dictionary<string, double> somas, double dreno = 1, long duracaoMs = 0,
+						   Dictionary<string, double>? fatores = null)
 	{
 		Dictionary<string, BuffAtivo> meus = BuffsDe(pl.Id);
 		if (meus.ContainsKey(id)) return false;
@@ -68,6 +82,12 @@ public partial class GameServer
 			if (!Somar(pl.Ficha, campo, v)) continue;   // campo que o port nao tem: nao finge
 			b.Somas[campo] = v;
 		}
+		if (fatores != null)
+			foreach ((string campo, double v) in fatores)
+			{
+				if (v == 0 || !Multiplicar(pl.Ficha, campo, v)) continue;
+				b.Fatores[campo] = v;
+			}
 		if (dreno != 1) pl.Ficha.DrainMod *= dreno;
 		if (duracaoMs > 0) b.ExpiraEm = NowMs() + duracaoMs;
 
@@ -85,6 +105,7 @@ public partial class GameServer
 		if (!meus.Remove(id, out BuffAtivo? b)) return false;
 
 		foreach ((string campo, double v) in b.Somas) Somar(pl.Ficha, campo, -v);
+		foreach ((string campo, double v) in b.Fatores) Multiplicar(pl.Ficha, campo, 1 / v);
 		if (b.Dreno != 0 && b.Dreno != 1) pl.Ficha.DrainMod /= b.Dreno;
 
 		pl.Ficha.Statify();
@@ -160,6 +181,19 @@ public partial class GameServer
 			return false;
 		}
 		fi.SetValue(f, (double)fi.GetValue(f)! + delta);
+		return true;
+	}
+
+	/// <summary>Multiplica um campo do lutador pelo nome. False se o port nao tem o campo.</summary>
+	private static bool Multiplicar(Fighter f, string campo, double razao)
+	{
+		FieldInfo? fi = typeof(Fighter).GetField(campo, BindingFlags.Public | BindingFlags.Instance);
+		if (fi == null || fi.FieldType != typeof(double))
+		{
+			GD.PushWarning($"[buff] campo desconhecido no Fighter: {campo}");
+			return false;
+		}
+		fi.SetValue(f, (double)fi.GetValue(f)! * razao);
 		return true;
 	}
 }

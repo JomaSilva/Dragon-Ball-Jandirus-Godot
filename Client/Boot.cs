@@ -52,9 +52,11 @@ public partial class Boot : Node2D
 		}
 		catch (Exception e) { GD.Print($"[build] nao deu pra ler a data do binario: {e.Message}"); }
 
-		RegistrarTeclas();
-
+		// O CONFIG VEM ANTES DAS TECLAS, e a ordem inverteu de proposito: as teclas agora saem do
+		// `Teclas`, que le a tabela de fabrica E o que o jogador religou -- e o que ele religou mora
+		// no config. Registrar antes de carregar daria o padrao a todo mundo, sempre.
 		Config = Settings.Carregar();
+		Teclas.Aplicar(Config);
 		Config.Aplicar();
 
 		// processo servidor nao abre janela de login
@@ -87,6 +89,37 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// O VAZIO DA SALA DO TEMPO (13.3): anda mil tiles pra fora do quarto desenhado e confere que
+		// o chao continua vindo, que a colisao nao barra, que a volta do planeta nao dispara e que o
+		// numero de pedacos vivos para de crescer. Vive aqui em cima com as outras bancadas sem
+		// mundo: ela monta a cena do z13 na mao e nao precisa de rede nem de personagem.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvazio") >= 0)
+		{
+			AddChild(new RoboDeVazio { Name = "RoboDeVazio" });
+			return;
+		}
+
+		// O INTERIOR DA CAPITAL SHIP: a metade que so o CLIENTE ve. As bancadas de servidor provam que
+		// a planta existe e que o casco segura; esta prova que a sala e DESENHADA -- um `SetCell` num
+		// tile que o tileset nao tem nao desenha e nao reclama. Vive aqui em cima com as outras
+		// bancadas sem mundo: ela monta a cena na mao e nao precisa de rede nem de personagem.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagnave") >= 0)
+		{
+			AddChild(new RoboDeNave { Name = "RoboDeNave" });
+			return;
+		}
+
+		// A VOZ, no lado que se OUVE: ida e volta pelo codec de producao, e a abafada da parede medida
+		// em AMOSTRAS (energia em 3 kHz contra energia em 300 Hz). Vive aqui em cima com as outras
+		// bancadas sem mundo -- ela nao precisa de rede, de personagem nem de microfone, e e por nao
+		// precisar de microfone que ela pode rodar na maquina de qualquer um. O corte de alcance e do
+		// servidor e se prova no `--vozteste`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvoz") >= 0)
+		{
+			AddChild(new RoboDeVoz { Name = "RoboDeVoz" });
+			return;
+		}
+
 		// ============================ ESTA BANCADA VIVE ANTES DO MUNDO ============================
 		// `--diagslot` dirige a TELA DE SELECAO -- criar, apagar, relogar. As outras bancadas sao
 		// registradas em `AoEntrarNoMundo`, e la ela nunca rodaria: quando aquele metodo e chamado, a
@@ -101,11 +134,23 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// `--diagki`: a METADE VIVA da bancada do sistema de ki -- conta nova pelo fio, tecnica
+		// montada por verbo de rede, o cliente MENTINDO e o relogin. Anda junto do `--kideponta` do
+		// servidor, que mede a outra metade e deixa o boneco de pe.
+		//
+		// AQUI EM CIMA, com a `--diagslot`, e pelo mesmo motivo dela mais um proprio: ela RELOGA, e
+		// entrar pelo caminho normal montaria um `World` novo a cada volta. Ver `RoboDeKi`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagki") >= 0)
+		{
+			AddChild(new RoboDeKi { Name = "RoboDeKi" });
+			return;
+		}
+
 		MontarLogin();
 
 		// MUSICA DESDE A PRIMEIRA TELA: no BYOND a criacao de personagem tinha trilha, e e
 		// ela que volta toda vez que o menu de pause abre.
-		AudioDirector.Instance?.Musica(Trilha.Menu(), AudioDirector.Camada.Menu);
+		AudioDirector.Instance?.Musica(Trilha.Menu(), AudioDirector.Camada.Menu, "tela de login montada");
 
 		if (GameClient.Instance is { } cli)
 		{
@@ -402,15 +447,27 @@ public partial class Boot : Node2D
 		AddChild(new TelaDeInventario { Name = "Inventario" });
 		// A GRADE DA BANCADA e o fantasma de assentar construcao.
 		AddChild(new TelaDeConstrucao { Name = "Construcao" });
+		// A MESA ONDE O JOGADOR DESENHA AS PROPRIAS TECNICAS. Sem tecla propria de proposito: ela
+		// abre pelo verb "Inventar tecnicas de ki", na aba Learning -- que e onde o
+		// `Create_Attack`/`Customize_Attack` do original moram (`set category = "Learning"`).
+		AddChild(new TelaDeTecnicas { Name = "Tecnicas" });
 		// A TELA DE TROCA DE MAPA. Ver `TelaDeCarregamento`: ela nao acelera nada, ela ANUNCIA.
 		AddChild(new TelaDeCarregamento { Name = "Carregando" });
+
+		// A TELA DE TECLAS. Montada ANTES da pausa porque e a pausa que a abre -- e o botao de la
+		// procura a `Instancia` daqui. Ela e uma CanvasLayer acima da pausa (21 contra 20): abre por
+		// cima dela e devolve a pausa ao fechar, em vez de trocar de tela e perder o lugar.
+		AddChild(new TelaDeTeclas { Name = "Teclas" });
+		// O DISPARO das teclas que o jogador ligou. Nao desenha nada: le a tecla e chama a MESMA
+		// acao que o botao do menu chamaria. Ver `Atalhos`.
+		AddChild(new Atalhos { Name = "Atalhos" });
 
 		_pause = new PauseMenu { Name = "Pause" };
 		_pause.Desconectar += VoltarAoLogin;
 		AddChild(_pause);
 
 		// a musica do lugar assume; o tema de menu sai de cena
-		AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Menu);
+		AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Menu, "entrei no mundo");
 
 		// --treinar: comeca treinando. So serve pra teste headless (sem janela ninguem
 		// aperta T) e pra medir o ritmo de ganho contra o banco de prova.
@@ -437,6 +494,14 @@ public partial class Boot : Node2D
 		// ao aproximar, quanto custa a varredura, e se clicar e viajar fazem o que prometem.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagnav") >= 0)
 			AddChild(new RoboDeNav { Name = "RoboDeNav" });
+
+		// --diagembarque: a bancada da TECLA E NAS NAVES. Irma da `--diagnav` e o oposto dela: aquela
+		// mede o que SOBROU na aba (a carta), esta mede o que SAIU dela (os oito botoes de nave) e o
+		// gesto que os substituiu -- chegar perto, apertar E, embarcar, achar a ponte, pilotar, voltar
+		// e sair. Anda junto do `--embarqueteste` do servidor, que so entrega as fixtures. Ver
+		// RoboDeEmbarque.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagembarque") >= 0)
+			AddChild(new RoboDeEmbarque { Name = "RoboDeEmbarque" });
 
 		// --diaguniverso: a IRMA da `--diagnav`. Aquela mede a carta (o widget); esta mede o
 		// UNIVERSO -- se as duas pontas enumeram o mesmo (assinatura pedida ao servidor PELO FIO),
@@ -501,12 +566,42 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagnebulosa") >= 0)
 			AddChild(new RoboDeNebulosa { Name = "RoboDeNebulosa" });
 
+		// --diagmostrador: a bancada que FOTOGRAFA a HUD. Os quatro pedidos desta rodada (a barra de
+		// Ki acima de 100%, a barra de nutricao, a % de BP efetivo e o multiplicador total) sao todos
+		// "o que aparece na tela que o dono olha o tempo todo", e o `--diagnebulosa` responde o
+		// primeiro em NUMERO. Numero certo com desenho errado ja aconteceu quatro vezes nesta casa:
+		// aqui cada afirmacao sai com a foto do quadro que a sustenta -- e a foto 2 pega HUD e menu P
+		// no MESMO quadro, que e literalmente a queixa ("as duas telas discordam"). Ver RoboDeMostrador.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmostrador") >= 0)
+			AddChild(new RoboDeMostrador { Name = "RoboDeMostrador" });
+
+		// --diagbancada: a BANCADA do mostrador. Onde a `--diagmostrador` FOTOGRAFA pra o olho julgar,
+		// esta MEDE -- e mede as duas telas uma contra a outra, pelo TEXTO que cada uma desenhou
+		// (`Barra.TextoDeTeste` e `MenuJogo.ValorDesenhado`), que e a unica leitura capaz de separar
+		// "as duas telas concordam" de "as duas telas leem o mesmo campo". A ficha entra como terceira
+		// opiniao, nunca como as duas.
+		//
+		// E ela prova que sabe reprovar: depois da rodada real, injeta 22 defeitos conhecidos nas
+		// amostras -- o corte em 100% num widget `Barra` de VERDADE, a aba congelada, a % que enxerga a
+		// forma, o multiplicador por produto ingenuo, o BP vazando sem scouter -- e exige que as regras
+		// nomeadas fiquem vermelhas. Ver RoboDeBancada.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbancada") >= 0)
+			AddChild(new RoboDeBancada { Name = "RoboDeBancada" });
+
 		// --diagbalao: bancada do BALAO DE FALA sobre a cabeca. Confere o portao de canal (OOC nao
 		// e voz de personagem), a busca do corpo pelo NOME que vem no pacote, a quebra de linha, a
 		// substituicao com piso de leitura, e as duas coisas que so aparecem com o corpo no ar ou
 		// em cena: a subida junto de quem voa e a fala de cinematica alheia. Ver RoboDeBalao.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbalao") >= 0)
 			AddChild(new RoboDeBalao { Name = "RoboDeBalao" });
+
+		// --diagtecla: bancada das TECLAS CONFIGURAVEIS. Ela mede uma afirmacao ("a tecla faz
+		// exatamente o que o botao faz") comparando os BYTES que chegaram no servidor pelos dois
+		// gestos, e um contra-exemplo (o C, o ALT e o E continuam funcionando depois de o registro
+		// unificar as teclas). Ver RoboDeTecla -- e leia o aviso sobre o `config.json` no cabecalho
+		// dela antes de rodar: e o arquivo desta MAQUINA que ela mexe, e devolve no fim.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtecla") >= 0)
+			AddChild(new RoboDeTecla { Name = "RoboDeTecla" });
 
 		// --porta: bancada AO VIVO das portas. Anda contra a porta mais proxima e narra o que
 		// mede -- fechada bloqueia e cega, abriu ao encostar, atravessou, fechou sozinha. Sobe
@@ -532,9 +627,26 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvoo") >= 0)
 			AddChild(new RoboDeVoo { Name = "RoboDeVoo" });
 
+		// --diagagua: bancada da AGUA, a que OLHA. Anda contra o lago a pe, nada por cima dele, voa
+		// por cima do MESMO ponto e fotografa os tres -- mais o soco na agua e o vizinho da outra
+		// margem. Vem com `--aguateste` no servidor (que poe o corpo na beira e o vizinho do outro
+		// lado) e precisa de JANELA: headless nao renderiza e as fotos saem vazias.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagagua") >= 0)
+			AddChild(new RoboDeAgua { Name = "RoboDeAgua" });
+
 		// --diagvolta: bancada da VOLTA DO PLANETA. Anda ate a beirada e confere que sai pela outra.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvolta") >= 0)
 			AddChild(new RoboDeVolta { Name = "RoboDeVolta" });
+
+		// --diagtrilha: bancada da TRILHA. Roda os roteiros do dono no jogo -- olhar o tema do lugar,
+		// bater, deixar a tag cair, transformar, transformar DENTRO da briga, deixar a tag cair com o
+		// ESC aberto -- e escreve o diario de trocas de faixa. E a unica que exercita o FIM NATURAL de
+		// uma faixa (o `Finished` do Godot), que e o caminho de onde a queixa da musica de menu em
+		// laco nasceu. Rode-a DUAS vezes, com `--raca Saiyan` e com `--raca Demon`: a segunda nasce no
+		// Inferno, a unica zona com tema de lugar, e e o par das duas que prova de quem e a camada de
+		// baixo. Ver RoboDeTrilha.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtrilha") >= 0)
+			AddChild(new RoboDeTrilha { Name = "RoboDeTrilha" });
 
 		// --diagceu: bancada do CEU E DA LUA. Confere que a hora vem do servidor, que cada planeta
 		// corre o proprio dia e que a fase da lua vira no ANOITECER (e nao no meio da noite). Anda
@@ -592,6 +704,71 @@ public partial class Boot : Node2D
 			AddChild(rd);
 		}
 
+		// --vida <a|b>: bancada do SIGILO DA VIDA ALHEIA, tambem de DOIS PROCESSOS. O `a` apanha, se
+		// cura no meio da rodada e mede a PROPRIA vida (o contra-exemplo); o `b` olha aquele mesmo
+		// corpo e prova que o NUMERO nao chegou nele -- so o GRAU de ferida. Nao cabe num processo
+		// so pela mesma razao do `--dois`: a pergunta e sobre o que UM cliente sabe do corpo do
+		// OUTRO, e com um processo os dois lados sao a mesma memoria.
+		//
+		// EXIGE `--feridateste` no servidor: a amputacao do nascimento e o caso pronto da familia do
+		// membro arrancado (decepar de verdade depende de golpe letal em membro ja zerado, e bancada
+		// que so as vezes arranca um braco nao mede nada nas outras vezes). Ver RoboDeSigiloDeVida.
+		if (Arg(OS.GetCmdlineArgs(), "--vida") is { } papelDaVida)
+		{
+			var rv = new RoboDeSigiloDeVida
+			{
+				Name = "RoboDeSigiloDeVida",
+				Papel = papelDaVida,
+				// O NOME DO OUTRO, e nao "o primeiro do snapshot": o berco tem NPC (ver
+				// `World.IdPeloNome`). Vai nos DOIS processos, com o nome trocado.
+				Alvo = Arg(OS.GetCmdlineArgs(), "--vidaalvo") ?? "",
+				Conta = Arg(OS.GetCmdlineArgs(), "--conta") ?? "",
+			};
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--vidafim"),
+								System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double segVida))
+				rv.Fim = segVida;
+			AddChild(rv);
+		}
+
+		// --vozviva <a|b|c|d>: a bancada da VOZ com clientes de VERDADE, em processos separados.
+		//
+		// Ela existe porque as outras duas dizem, cada uma no proprio cabecalho, que nao medem o fio: a
+		// `--diagvoz` mede o codec sem rede nenhuma, e a `--vozteste` mede o corte com corpos forjados
+		// -- que nao tem `Peer`, ou seja nunca executam a linha de ENTREGA que o sistema inteiro existe
+		// pra vigiar. Aqui o `a` injeta uma onda conhecida no lugar da captura e o `b`, noutro processo
+		// e com outra memoria, mede o que saiu do decodificador DELE. Sobe com `--vozviva` no servidor.
+		// Ver `Client/RoboDeVozViva.cs` e `testar-voz.bat`.
+		if (Arg(OS.GetCmdlineArgs(), "--vozviva") is { } papelDaVoz)
+			AddChild(new RoboDeVozViva { Name = "RoboDeVozViva", Papel = papelDaVoz });
+
+		// --vozdupla <a|b>: a bancada da voz que JULGA, com DOIS corpos.
+		//
+		// A `--vozviva` mede e imprime tabelas; esta da veredito por familia e, pra cada familia, poe o
+		// DEFEITO na frente da checagem e exige que a linha fique vermelha (inclusive o principal: o
+		// servidor mandando pra zona inteira). O `a` fala apertando a tecla DE VERDADE -- evento de
+		// teclado injetado no motor, porque duas das familias sao sobre a tecla e `Input.ActionPress`
+		// pularia exatamente a ligacao tecla->acao. O `b` ouve, conta BYTES e julga; e ele o anfitriao,
+		// porque quem cala tem que ser admin. Ver `Client/RoboDeVozDupla.cs` e `testar-voz-dupla.bat`.
+		if (Arg(OS.GetCmdlineArgs(), "--vozdupla") is { } papelDaDupla)
+			AddChild(new RoboDeVozDupla { Name = "RoboDeVozDupla", Papel = papelDaDupla });
+
+		// --diagdesvio: bancada do DESVIO (o pedido do dono -- "falta o SOM do dodge e o EFEITO DE
+		// DESVIO"). Precisa de DOIS corpos e de DESNIVEL DE PODER: entre iguais a pontaria acerta
+		// 100% das vezes e nao ha esquiva nenhuma pra ver. Sobe com `--host --esquivateste N` deste
+		// lado e um `--socar` do outro. Ver RoboDeDesvio e `testar-desvio.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdesvio") >= 0)
+			AddChild(new RoboDeDesvio { Name = "RoboDeDesvio" });
+
+		// --diagcorpo: a IRMA da `--diagdesvio`, e o oposto dela. Aquela poe dois lutadores brigando e
+		// FOTOGRAFA o que a tela mostra (a prova de cor e dela); esta DIRIGE o efeito e mede a maquina
+		// -- o corpo some, o corpo VOLTA, dez trocas sobrepostas, e as quatro formas de interromper
+		// uma no meio (nocaute, transformacao, troca de zona, remocao a forca). Sao coisas que uma
+		// briga de verdade nao sabe encomendar. Sozinha, sem adversario, e roda `--headless`.
+		// Ver RoboDoCorpoQueVolta e `testar-corpo.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcorpo") >= 0)
+			AddChild(new RoboDoCorpoQueVolta { Name = "RoboDoCorpoQueVolta" });
+
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagclash") >= 0)
 		{
 			AddChild(new RoboDeEmbate { Name = "RoboDeEmbate" });
@@ -612,6 +789,24 @@ public partial class Boot : Node2D
 			// `--tech`: o robo percorre a cadeia inteira de tecnologia (construir, aparafusar,
 			// estudar, instalar o laboratorio, virar androide). Vem junto do `--techteste` do
 			// servidor, que da o nivel e o dinheiro.
+			// `--socaralvo <nome>`: soca ESTE e mais ninguem. Num berco povoado a marcacao
+			// automatica ("o primeiro do snapshot") pega um NPC. Ver RoboDeSoco.AlvoPreferido.
+			robo.AlvoPreferido = Arg(OS.GetCmdlineArgs(), "--socaralvo") ?? "";
+			// `--socarperto <px>`: a que distancia o robo para de andar. Ver RoboDeSoco.PararA --
+			// no padrao (40) os dois corpos se empilham, e a foto de qualquer bancada visual sai
+			// com um sprite dentro do outro.
+			if (float.TryParse(Arg(OS.GetCmdlineArgs(), "--socarperto"),
+							   System.Globalization.NumberStyles.Float,
+							   System.Globalization.CultureInfo.InvariantCulture, out float px) && px > 0)
+				robo.PararA = px;
+			// `--socarvoando <seg>`: o socador sobe pro andar 1 depois de N segundos. A regra de
+			// alcance por altura e ASSIMETRICA (quem paira alcanca o chao, o chao nao alcanca de
+			// volta), entao uma bancada que queira ver qualquer coisa acontecer NO AR precisa dos
+			// dois corpos no mesmo andar. Ver RoboDeSoco.VoarEm -- exige `--vooteste` no servidor.
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--socarvoando"),
+							   System.Globalization.NumberStyles.Float,
+							   System.Globalization.CultureInfo.InvariantCulture, out double segV) && segV > 0)
+				robo.VoarEm = segV;
 			robo.TestarTech = Array.IndexOf(OS.GetCmdlineArgs(), "--tech") >= 0;
 			robo.Bio = Array.IndexOf(OS.GetCmdlineArgs(), "--bio") >= 0;
 			int ie = Array.IndexOf(OS.GetCmdlineArgs(), "--espaco");
@@ -631,7 +826,12 @@ public partial class Boot : Node2D
 		_selecao = null;
 		MontarLogin();
 		AudioDirector.Instance?.Ambiente(null);
-		AudioDirector.Instance?.Musica(Trilha.Menu(), AudioDirector.Camada.Menu);
+		// ZERA A MAQUINA ANTES DE PEDIR O TEMA. O `QueueFree` acima derruba o mundo e qualquer
+		// cinematica no ar, mas o PEDIDO de musica dela nao morre junto (ele so morre quando a faixa
+		// acaba) -- e um pedido de `Transformacao` de pe ganha do `Menu`, deixando a tela de login
+		// muda. Ver `AudioDirector.Silenciar`.
+		AudioDirector.Instance?.Silenciar("sai do mundo (volta ao login)");
+		AudioDirector.Instance?.Musica(Trilha.Menu(), AudioDirector.Camada.Menu, "tela de login de volta");
 	}
 
 	// =====================================================================
@@ -729,59 +929,14 @@ public partial class Boot : Node2D
 		GameClient.Instance?.CriarPersonagem(0, ficha, visual);
 	}
 
-	/// <summary>
-	/// As acoes ficam em codigo, nao no project.godot: o formato serializado de InputEvent
-	/// e verboso e facil de corromper na mao, e assim o mapeamento fica versionado junto
-	/// com a logica que o le.
-	/// </summary>
-	private static void RegistrarTeclas()
-	{
-		Registrar("move_left", Key.A, Key.Left);
-		Registrar("move_right", Key.D, Key.Right);
-		Registrar("move_up", Key.W, Key.Up);
-		Registrar("move_down", Key.S, Key.Down);
-
-		Registrar("train", Key.T);
-		Registrar("meditate", Key.M);
-
-		// COMBATE. ESPACO soca e ALT ergue a guarda -- as teclas do jogo original.
-		//
-		// SHIFT E CORRER, e correr E o golpe pesado: no original nao havia tecla de "soco
-		// forte", o ataque ficava pesado justamente quando saia em dash (`1 + dash_delay`).
-		// Manter uma tecla so pra isso seria inventar controle que o jogo nunca teve -- e
-		// justamente a tecla que o dono pediu pra correr.
-		Registrar("attack", Key.Space);
-		Registrar("run", Key.Shift);
-		Registrar("guard", Key.Alt);
-
-		// onde mirar: 0 solta a mira, 1-5 escolhem a regiao (o mesmo que clicar no boneco)
-		Registrar("aim_none", Key.Key0);
-		Registrar("aim_head", Key.Key1);
-		Registrar("aim_torso", Key.Key2);
-		Registrar("aim_abdomen", Key.Key3);
-		Registrar("aim_arms", Key.Key4);
-		Registrar("aim_legs", Key.Key5);
-		Registrar("lethal", Key.K);
-
-		// TRANSFORMAR. "C" e a tecla do original -- ela SOBE a escada sozinha, e quem decide
-		// qual degrau cabe e o servidor. "X" desce pra base de uma vez.
-		Registrar("transformar", Key.C);
-		Registrar("reverter", Key.X);
-
-		// VOO. "V" liga e desliga o pairar; R/F (ou PageUp/PageDown) sobem e descem.
-		//
-		// NAO REUSAM O ESPACO nem o SHIFT de proposito. Espaco e o soco e Shift e a corrida --
-		// as duas coisas que mais se faz no ar. Subir com a mesma tecla de socar deixaria voar e
-		// lutar mutuamente exclusivos, que e o oposto do que voar serve.
-		Registrar("voar", Key.V);
-		Registrar("subir", Key.R, Key.Pageup);
-		Registrar("descer", Key.F, Key.Pagedown);
-
-		static void Registrar(string acao, params Key[] teclas)
-		{
-			if (!InputMap.HasAction(acao)) InputMap.AddAction(acao, 0.2f);
-			foreach (Key k in teclas)
-				InputMap.ActionAddEvent(acao, new InputEventKey { PhysicalKeycode = k });
-		}
-	}
+	// ============================ AS TECLAS SAIRAM DAQUI ============================
+	// `RegistrarTeclas()` morava neste arquivo e escrevia as vinte acoes direto no `InputMap`. Ela
+	// virou a tabela do `Client/Teclas.cs` inteira -- inclusive as sete teclas de interface, que
+	// nunca passaram pelo `InputMap` e por isso eram invisiveis a qualquer pergunta de conflito.
+	//
+	// O motivo esta no cabecalho do `Teclas`: com tecla configuravel, "a tecla P esta livre?" tem
+	// que ser UMA pergunta numa tabela so, senao o jogo responde que sim e entrega o menu junto do
+	// golpe. A chamada mudou de lugar la em cima (depois do `Settings.Carregar`, porque agora ela
+	// precisa saber o que o jogador religou).
+	// ==============================================================================
 }

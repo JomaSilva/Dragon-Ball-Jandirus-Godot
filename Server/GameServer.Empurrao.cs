@@ -56,29 +56,7 @@ public sealed partial class GameServer
 		switch (efeito)
 		{
 			case EfeitoDeImpacto.Arremesso:
-				d.TiquesDeVoo = tiques;
-				d.TiquesIniciaisDoVoo = tiques;
-				d.RumoDoVoo = MeleeArea.Frente(a.Facing);
-				d.ForcaDoVoo = a.Ficha.expressedBP;
-				d.VooNoTique = 0;
-				d.UltimoSulco = default;
-				// A PONTA DE COMECO sai aqui, e nao no primeiro tique: no DU o "begin" e carimbado
-				// quando `knock_dist == original_distance-1`, ou seja no primeiro passo, com o corpo
-				// ainda na origem.
-				MarcarSulco(d, Protocol.Decal.SulcoPonta);
-
-				// A FICHA SAI AGORA, e nao no proximo tique de 5 Hz.
-				//
-				// O bit "estou voando" (e a direcao do corpo) so viaja no pacote de ficha, e ficha sai
-				// no `TickFichas`, que roda 1 vez a cada 6 tiques. O voo comeca no tique CHEIO e a
-				// primeira correcao sai ~33 ms depois -- ou seja, por ate 200 ms o cliente ainda nao
-				// sabia que estava voando: nao girava o corpo E teleportava 64 px por correcao em vez
-				// de deslizar. Como o voo mais curto tem 300 ms, ate dois tercos dele aconteciam em pe
-				// e aos saltos. Era esse o resto de "voa travado" e "rotacionado errado".
-				//
-				// O canal e ReliableOrdered, entao mandar aqui poe a ficha NA FRENTE da primeira
-				// correcao -- quando ela chega, o cliente ja esta no modo de voo.
-				MandarFicha(d);
+				Arremessar(d, MeleeArea.Frente(a.Facing), a.Ficha.expressedBP, tiques);
 				break;
 
 			// CAMBALEIA E LENTO ainda nao tem efeito proprio no port (nao ha `slowed`/`stagger` na
@@ -88,6 +66,55 @@ public sealed partial class GameServer
 				d.Combate.Stun = Math.Max(d.Combate.Stun, Empurrao.TiquesDeTropeco * Empurrao.SegundosPorTique);
 				break;
 		}
+	}
+
+	/// <summary>
+	/// PoE O CORPO NO AR -- o `AddEffect(/effect/knockback)` do original, e a UNICA porta pra isso.
+	///
+	/// ============================ POR QUE ISTO VIROU METODO ============================
+	/// Ate o lote G6 este bloco morava dentro do `case Arremesso` do <see cref="TentarEmpurrar"/>,
+	/// e era a unica coisa no jogo que arremessava alguem -- entao ele nao precisava de nome. O
+	/// sopro (`Kiai`, `Shockwave`, `Explosive_Roar`) arremessa SEM golpe nenhum: o `KiKnockback`
+	/// do DM (`KiStatsModule.dm:42`) escreve `kbpow`/`kbdur`/`kbdir` na mao e liga o mesmo efeito.
+	///
+	/// Copiar as sete linhas seria a segunda resposta pra "como um corpo comeca a voar", e as duas
+	/// divergiriam no primeiro dia em que alguem mexesse numa -- comecando pelo `MarcarSulco` e
+	/// pelo `MandarFicha`, que sao justamente os dois que ninguem lembra de repetir (e cuja falta
+	/// ja produziu o "voa travado e rotacionado errado" que este arquivo conta em detalhe).
+	/// ==================================================================================
+	/// </summary>
+	/// <param name="forca">
+	/// O `kbpow`: o `expressedBP` de QUEM empurrou. Nao e o dano -- e ele que decide se a parede no
+	/// caminho cai ou se o voo para nela.
+	/// </param>
+	/// <param name="tiques">O `kbdur`, em tiques de 0,1 s. O efeito ja aplica o teto de 10.</param>
+	private void Arremessar(ServerPlayer d, Vec2 rumo, double forca, int tiques)
+	{
+		tiques = Math.Clamp(tiques, 1, Empurrao.TiquesMax);
+
+		d.TiquesDeVoo = tiques;
+		d.TiquesIniciaisDoVoo = tiques;
+		d.RumoDoVoo = rumo;
+		d.ForcaDoVoo = forca;
+		d.VooNoTique = 0;
+		d.UltimoSulco = default;
+		// A PONTA DE COMECO sai aqui, e nao no primeiro tique: no DU o "begin" e carimbado
+		// quando `knock_dist == original_distance-1`, ou seja no primeiro passo, com o corpo
+		// ainda na origem.
+		MarcarSulco(d, Protocol.Decal.SulcoPonta);
+
+		// A FICHA SAI AGORA, e nao no proximo tique de 5 Hz.
+		//
+		// O bit "estou voando" (e a direcao do corpo) so viaja no pacote de ficha, e ficha sai
+		// no `TickFichas`, que roda 1 vez a cada 6 tiques. O voo comeca no tique CHEIO e a
+		// primeira correcao sai ~33 ms depois -- ou seja, por ate 200 ms o cliente ainda nao
+		// sabia que estava voando: nao girava o corpo E teleportava 64 px por correcao em vez
+		// de deslizar. Como o voo mais curto tem 300 ms, ate dois tercos dele aconteciam em pe
+		// e aos saltos. Era esse o resto de "voa travado" e "rotacionado errado".
+		//
+		// O canal e ReliableOrdered, entao mandar aqui poe a ficha NA FRENTE da primeira
+		// correcao -- quando ela chega, o cliente ja esta no modo de voo.
+		MandarFicha(d);
 	}
 
 	/// <summary>
@@ -166,7 +193,16 @@ public sealed partial class GameServer
 					// precisam BLOQUEAR pra serem arrancadas por alguem passando voando por cima.
 					EstragarObrasNoCaminho(pl, p);
 
-					if (!MoveRules.Occupied(mapa, p)) { andado = p; continue; }
+					// ============================ QUEM E ARREMESSADO ATRAVESSA A AGUA ============================
+					// E literal do original: o `testWaters()` deixa passar `M.KB`
+					// (`Swim.dm:31`) junto com quem voa e quem nada. Faz sentido em jogo -- o corpo
+					// esta no ar, nao esta pisando --, e sem o `modo` aqui um soco que jogasse
+					// alguem pro lago o pararia na beirada como se a agua fosse muro, cortando o
+					// arremesso no meio sem nada explicando por que.
+					//
+					// PAREDE CONTINUA PARANDO (e sendo derrubada logo abaixo): o modo muda a
+					// resposta da AGUA e so dela. Ver `ClasseDeAgua.Bloqueia`.
+					if (!MoveRules.Occupied(mapa, p, ModoDeTravessia.Arremessado)) { andado = p; continue; }
 
 					if (pl.ForcaDoVoo >= Empurrao.ResistenciaPadrao && DerrubarCenario(pl.Zone, p))
 					{

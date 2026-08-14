@@ -2220,6 +2220,193 @@ public static class Cinematicas
 		//   EXPLODE ao seu redor -- o BEAST desperta!*" (o DM ja escreveu esta em portugues)
 		"o cabelo se ergue num branco-gelo e uma aura entre o azul e o roxo explode: a FERA acordou.");
 
+	// ---------------------------------------------------------------------------
+	// O FROST DEMON -- `Frost_Demon_Forms()` / `fd_burst_fx()` / `fd_grand_cinematic()`
+	// ---------------------------------------------------------------------------
+	// ============================ O DM TEM DUAS CENAS, E ELAS NAO SAO POR FORMA ============================
+	// La a cena depende do ESTADO e nao do degrau: `Frost_Demon_Forms` (`IcerTransform.dm:98-107`) so
+	// chama a `fd_grand_cinematic()` quando quem transforma e um MUTANTE entrando numa forma que ele
+	// **nao segura** -- e so na primeira vez naquela forma (`fd_cine_flags`). Nas repeticoes vem a
+	// `fd_burst_fx()`, um surto de 2,5 s. Pra todo o resto -- o Frost Demon normal inteiro -- o DM
+	// e MUDO: troca o icone, toca `1aura.wav` e escreve uma linha no chat.
+	//
+	// Aqui a cena e da FORMA, e nao do estado. Mas o desenho sai no mesmo lugar, porque o port ja tem
+	// o eixo que o DM nao tinha: os TRES DEGRAUS DE CENA (`Cinematicas.Degrau`) -- estreia cheia,
+	// encurtada na repeticao, e instantanea a partir de 50% de maestria. Ou seja **a mesma progressao
+	// "grande da primeira vez, surto depois, nada quando ja e seu"**, so que medida por maestria em vez
+	// de por um bitmask de formas ja vistas.
+	//
+	// O QUE DIVERGE, DE OLHO ABERTO: o Frost Demon NORMAL passa a ver a cena das evolucoes, e no DM ele
+	// nao veria. E deliberado -- subir pra 10x e pra 20x calado le como bug, e a bancada deste projeto
+	// ja exige que toda forma tenha cena PROPRIA (o fallback por `Ordem` foi deletado justamente pra
+	// uma forma nova nao estrear com a cena de outra). As quatro supressoes e a base ficam curtas, que
+	// e o que elas sao: recolher a casca nao e virar nada.
+    //
+	// A MUSICA E A DO ORIGINAL, e ela e literal: `emit_TransformMusic(file("Sounds/Music/battle ost/
+	// DBZ- Battle Music 10.mp3"), 850)` -- a unica linha de tema do arquivo inteiro, e ela toca
+	// exatamente no ramo da transformacao instavel. Por isso ela esta nas duas EVOLUCOES e nao nas
+	// supressoes: e o tema de "o poder esta vindo a tona", nao o de "estou me guardando".
+	// =====================================================================================================
+	private const string TemaFrost = "battle ost/DBZ- Battle Music 10.mp3";
+
+	/// <summary>
+	/// QUANTO DURA O SURTO DO FROST DEMON: <b>2,5 s</b> -- o `spawn(25)` do `fd_burst_fx()`
+	/// (`IcerTransform.dm:186`), que e o tempo que a aura vermelha grande fica vestida.
+	///
+	/// E o numero do original e nao um ritmo escolhido: as cinco cenas curtas desta linha (as quatro
+	/// supressoes e a forma base) SAO aquele surto. Uma constante e nao cinco literais porque elas sao
+	/// o MESMO efeito cinco vezes -- se o surto mudar, muda inteiro.
+	/// </summary>
+	private const double SurtoDoFrost = 25 / TempoDoDm.TiquesPorSegundo;
+
+	/// <summary>1a FORMA (supressao 25%). O fundo do poco do Mutante -- ele acorda aqui.</summary>
+	public static readonly Cinematica Frost1 = SurtoCurto(
+		"frost1", "", SurtoDoFrost,
+		"Ainda não. Ainda não.",
+		"a casca se fecha até o osso: sobra um quarto do que ele é.");
+
+	/// <summary>2a FORMA (supressao 50%).</summary>
+	public static readonly Cinematica Frost2 = SurtoCurto(
+		"frost2", "", SurtoDoFrost,
+		"Um pouco. Só um pouco.",
+		"a carapaça cede um palmo, e metade do poder respira.");
+
+	/// <summary>3a FORMA (supressao 75%).</summary>
+	public static readonly Cinematica Frost3 = SurtoCurto(
+		"frost3", "", SurtoDoFrost,
+		"Chega de me segurar!",
+		"o corpo se alonga: três quartos do poder já estão do lado de fora.");
+
+	/// <summary>4a FORMA (supressao 90%). O ultimo degrau antes de o corpo ficar inteiro.</summary>
+	public static readonly Cinematica Frost4 = SurtoCurto(
+		"frost4", "", SurtoDoFrost,
+		"Quase. QUASE.",
+		"só um fio de casca continua no lugar -- e ele está tremendo.");
+
+	/// <summary>
+	/// FORMA BASE. Ela e a UNICA cena do jogo que nao celebra um degrau novo: pro Frost Demon normal
+	/// ela e onde ele ja vive, e pro Mutante ela e a primeira vez que o corpo dele fica inteiro.
+	/// Curta por isso.
+	/// </summary>
+	public static readonly Cinematica Frost5 = SurtoCurto(
+		"frost5", "", SurtoDoFrost,
+		"Este é o meu corpo. TODO ele.",
+		"a última casca se parte, e o poder para de ser podado.");
+
+	/// <summary>
+	/// 1a EVOLUCAO (10x). A `fd_grand_cinematic()` do original -- e o DM diz de onde ela veio na
+	/// propria linha: *"receita da lssj_grand_cinematica, recolorida"*. Por isso ela usa a MESMA
+	/// fabrica das tres cenas Legendary, e nao uma copia com outros numeros.
+	/// </summary>
+	public static readonly Cinematica Frost6 = LendaGrande(
+		"frost6", TemaFrost,
+		// "*Uma aura VERMELHA e violenta serpenteia em volta de [src] -- um poder incontrolavel
+		//   comeca a vir a tona...*" (IcerTransform.dm:200)
+		"uma aura violenta serpenteia em volta; alguma coisa embaixo da pele começa a vir à tona.",
+		// "[src]: RRRAAAAAAAAGH!!!" (IcerTransform.dm:243)
+		"RRRAAAAAAAAGH!!!",
+		"a carapaça se refaz do zero -- dez vezes o que ele era.");
+
+	/// <summary>
+	/// 2a EVOLUCAO (20x) -- a "Forma Black" do original. Mesma receita, mais alto.
+	///
+	/// O NOME NA TELA e "2ª Evolução" e nao "Forma Black" (ver `Races.FormasDeFrost.Nome`): o corpo
+	/// dela e o que o jogador escolheu, e "Black" e nome proprio de um sprite especifico.
+	/// </summary>
+	public static readonly Cinematica Frost7 = LendaGrande(
+		"frost7", TemaFrost,
+		"o ar em volta congela e racha ao mesmo tempo; o que vem agora não tem nome.",
+		"RRRAAAAAAAAAAAGH!!!",
+		"a evolução final se fecha em volta dele -- vinte vezes, e nenhuma casca sobrando.");
+
+	// ---------------------------------------------------------------------------
+	// AS TRES LINHAS RACIAIS -- Namekuseijin, Heran e Alien
+	// ---------------------------------------------------------------------------
+	// ============================ DUAS DELAS SAO **INSTANTANEAS** NO ORIGINAL ============================
+	// `snamek()` (`Super_Namek.dm:8-15`) e `Alien_Trans()` (`Alien_Transformations.dm:10-22`) nao tem UM
+	// `sleep`. Eles tocam o som, chamam `createDustshock`/`createShockwavemisc`, abrem a cratera e ligam
+	// o buff -- a forma fica no mesmo tique. O `animate(src, time=7)` do Namekuseijin e o unico relogio
+	// dos dois arquivos, e ele e um flash de 0,7 s, nao uma cena.
+	//
+	// **A ESCOLHA FOI DAR A ELAS O SURTO E NAO OS 0,7 s**, e a razao e o funil deste port: forma que
+	// aparece sem cena nenhuma le como bug (a bancada ja exige cena PROPRIA por forma justamente pra
+	// isso), e o beat de virada precisa de espaco antes dele pra existir. O numero NAO e invencao: e o
+	// mesmo `spawn(25)` do `fd_burst_fx()` -- ver <see cref="SurtoDoFrost"/> --, a cena mais curta que o
+	// DM escreveu. Ou seja: o piso vem do original, so que de outro arquivo dele.
+	//
+	// ============================ O HERAN E O CONTRARIO: ELE E LONGO E O RELOGIO ENCOLHE ============================
+	// `Max_Power()` (`HeranBuff.dm:97-190`) e `True_Max_Power()` (`:191-266`) sao a espinha Saiyajin
+	// inteira -- `sleep(50)` ate a aura grande, `sleep(100)` ate os `Quake()` e os feixes de chao --
+	// mais uma cauda propria: `sleep(2000 * ssjdrain)`.
+	//
+	// **ESSA CAUDA E A MESMA IDEIA DOS TRES DEGRAUS DE CENA DESTE PORT**, e vale registrar porque e uma
+	// coincidencia de desenho e nao de numero: o `ssjdrain` do Heran CAI com a maestria ate zero
+	// (`HeranBuff.dm:39`), entao no original a espera pela forma encurta sozinha conforme ele a domina,
+	// ate sumir. E exatamente o que `DegrauDeCena` faz aqui (estreia -> encurtada -> instantanea aos
+	// 50%), so que medido por maestria em vez de pelo dreno que a maestria move.
+	//
+	// ============================ POR QUE A LARGADA NAO E O `CabeloPiscando` ============================
+	// Ela DEVERIA ser: o `Max_Power()` e o unico proc fora do `SSJCinematic.dm` que pisca o cabelo
+	// (`updateOverlay/removeOverlay(sh1)` quatro vezes, `sleep(rand(3,10))` entre elas). Nao e porque o
+	// port nao tem o penteado: `/obj/overlay/hairs/superheran/sh1` veste `container.truehair` -- o
+	// PROPRIO cabelo do jogador -- e nao ha folha `SSjHeran` nenhuma pra o `CabelosDeForma` achar. Com
+	// `SufixoDoCabelo` vazio os dois lados da piscada seriam o MESMO arquivo, e a bancada do piscar
+	// (`RoboDeForma`) reprova isso na cara -- com razao: seria uma piscada que nao pisca.
+	//
+	// `TresTremores` e o que sobra e e literal do mesmo proc: `Quake()`, `spawn Quake()` no Max Power e
+	// tres `Quake()` seguidos no True Max Power (`:224-226`). Os 15,0 s sao os do `SSJ2Cinematic.dm`
+	// contra os ~20 s do DM do Heran -- a diferenca e a cauda que encolhe, e ela ja esta modelada acima.
+	// ==============================================================================================================
+	/// <summary>
+	/// O PISO DE CENA das formas que o DM troca sem cena nenhuma -- 2,5 s.
+	///
+	/// Mesmo numero do <see cref="SurtoDoFrost"/> e pela mesma origem (`fd_burst_fx`, `spawn(25)`), mas
+	/// constante PROPRIA: aquela e "quanto dura o surto do Frost Demon" e esta e "o minimo que uma
+	/// transformacao pode durar aqui". Fundi-las faria mexer no surto do Frost mover a cena do
+	/// Namekuseijin, o que ninguem espera.
+	/// </summary>
+	private const double SurtoInstantaneo = 25 / TempoDoDm.TiquesPorSegundo;
+
+	/// <summary>
+	/// SUPER NAMEKUSEIJIN. `emit_Sound('chargeaura.wav')`, o flash branco do `animate`, o
+	/// `createDustshock(loc,3)` e o `createCrater(loc,5)` -- tudo no mesmo instante no original.
+	/// </summary>
+	public static readonly Cinematica SuperNamek = SurtoCurto(
+		"snamek", "", SurtoInstantaneo,
+		// `to_chat`: "Power up past two million and let the sparks fly, baby!" (namekian.dm:39) e a
+		// promessa da skill; a fala da transformacao em si o DM nao escreve.
+		"Deixa as faíscas voarem!",
+		"o corpo cresce e endurece, e o poder verde que estava guardado sai inteiro de uma vez.");
+
+	/// <summary>MAX POWER (Heran). A espinha Saiyajin com a largada dos tremores -- ver o bloco acima.</summary>
+	public static readonly Cinematica Heran1 = EspinhaSaiyajin(
+		"heran1", "", Largada.TresTremores,
+		// "*A great wave of power emanates from [src] as they unleash their full power!*" (:171)
+		"uma onda de poder se espalha: ele está soltando tudo o que tem.",
+		// "*[src]'s hair stands on end and grows!*" (:180)
+		"o cabelo se ergue e cresce, e o corpo para de guardar qualquer coisa.");
+
+	/// <summary>TRUE MAX POWER (Heran). Mesma espinha, faisca VERMELHA -- `Electric_Red.dmi`.</summary>
+	public static readonly Cinematica Heran2 = EspinhaSaiyajin(
+		"heran2", "", Largada.TresTremores,
+		// "*A great wave of power emanates from [src] as they unleash their true power!!!*" (:257)
+		"uma onda de poder ainda maior se abre: isto não era o máximo dele.",
+		// "*Red sparks begin to burst around [src]!*" (:263)
+		"faíscas vermelhas começam a estourar em volta dele.");
+
+	/// <summary>FORMA ALIEN (2x). `createShockwavemisc(loc,1)` + `createCrater(loc,5)`.</summary>
+	public static readonly Cinematica Alien1 = SurtoCurto(
+		"alien1", "", SurtoInstantaneo,
+		// A skill so diz "Transform into the peak of your species!!" (alien.dm:27) -- e o que ele grita.
+		"O auge da minha espécie!",
+		"a forma se refaz em volta do corpo: é isto que a espécie dele guarda pro fim.");
+
+	/// <summary>FORMA ALIEN FINAL (4x). `createShockwavemisc(loc,2)` -- a onda e maior, e so.</summary>
+	public static readonly Cinematica Alien2 = SurtoCurto(
+		"alien2", "", SurtoInstantaneo,
+		"E ainda tem mais.",
+		"o segundo e último degrau se fecha -- dobro do que ele já era.");
+
 	// ==================================================================================
 	// A FURIA EXTREMA -- `mob/proc/AngerCinematic()`, `Code/Modules/CombatMechanics/Murder.dm:136-163`
 	// ==================================================================================
@@ -2389,6 +2576,12 @@ public static class Cinematicas
 		PrimalLegendary4, PrimalLegendary4FullPower, PrimalLegendary4LimitBreaker,
 		Ssg, BlueEvolution, RoseSsg, Rose, Rose2,
 		Mistico, Beast,
+
+		// a escada do Frost Demon -- as quatro supressoes, a base e as duas evolucoes
+		Frost1, Frost2, Frost3, Frost4, Frost5, Frost6, Frost7,
+
+		// as tres linhas raciais: uma entrada Namekuseijin, duas Heran, duas Alien
+		SuperNamek, Heran1, Heran2, Alien1, Alien2,
 	];
 
 	/// <summary>

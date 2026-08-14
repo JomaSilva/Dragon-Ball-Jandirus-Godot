@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Combat;
 using Jandirus.Core.World;
 using Jandirus.Net;
 
@@ -118,10 +119,36 @@ public partial class RoboDeDecalque : Node
 				foreach (Protocol.Decal t in Enum.GetValues<Protocol.Decal>())
 				{
 					int a = dec.GetChildCount();
-					dec.Plantar(t, new Vector2(9999, 9999), Facing.South);
+					// O MEMBRO PRECISA DE CARGA: sem peca ele nao tem recorte e nao planta nada (e
+					// e o certo -- ver `Plantar`). Aqui vai uma peca qualquer so pra provar que a
+					// folha `Body Parts Bloody` carrega; a TABELA e conferida logo abaixo.
+					dec.Plantar(t, new Vector2(9999, 9999), Facing.South,
+								t == Protocol.Decal.Membro ? PecaDeCorpo.Braco : PecaDeCorpo.Nenhuma);
 					Conferir(dec.GetChildCount() > a, $"a arte de {t} carregou e virou node");
 				}
-				Conferir(dec.GetChildCount() > antes, "os seis tipos plantaram");
+				Conferir(dec.GetChildCount() > antes, "todos os tipos de decalque plantaram");
+
+				// ---------- AS DEZ PECAS DO CORPO TEM RECORTE ----------
+				// UMA POR UMA e nao "a folha carregou": a armadilha desta tabela nao e a peca faltar,
+				// e o recorte se chamar outra coisa. `Perna` desenha "limb" e `Rabo` desenha "guts"
+				// -- dois nomes que ninguem adivinha e que um teste de "a folha existe" nao pega. Uma
+				// peca sem recorte nao vira node, e e exatamente isso que se mede aqui.
+				foreach (PecaDeCorpo p in Enum.GetValues<PecaDeCorpo>())
+				{
+					if (p == PecaDeCorpo.Nenhuma) continue;
+					int a = dec.GetChildCount();
+					dec.Plantar(Protocol.Decal.Membro, new Vector2(9999, 9999), Facing.South, p);
+					Conferir(dec.GetChildCount() > a && Decalques.UltimaPecaDeTeste == p,
+						$"a peca {p} achou o recorte dela na folha e caiu no chao");
+				}
+
+				// ---------- A TABELA DO BYOND, PELOS DOIS NOMES QUE ENGANAM ----------
+				// Do lado do Core, e por NOME de membro: e ali que o mapeamento espertinho por
+				// minusculas quebraria. Ver `Body.PecaDe`.
+				Conferir(Jandirus.Core.Combat.Body.PecaDe("Perna esquerda") == PecaDeCorpo.Perna,
+					"PERNA cai como `Limb` e nao como um recorte de perna que nao existe");
+				Conferir(Jandirus.Core.Combat.Body.PecaDe("Rabo") == PecaDeCorpo.Visceras,
+					"RABO cai como `Guts`, que e o que o `/obj/bodyparts/Tail` do BYOND desenha");
 				break;
 			}
 
@@ -161,6 +188,59 @@ public partial class RoboDeDecalque : Node
 				break;
 			}
 
+			// ---------- A ONDA DA AGUA GIRA COM O CORPO DO DONO ----------
+			// Este bloco existe por causa de um defeito que passou por toda a bancada acima: a onda
+			// nascia, virava node, carregava arte e caia no centro da celula -- e estava VIRADA PRA
+			// CIMA sempre, porque a direcao do corpo LOCAL nunca era lida. Tudo o que se media era
+			// "plantou?"; ninguem media "plantou o QUE".
+			//
+			// Por isso aqui a tecla e apertada DE VERDADE e o que se le no fim e o nome da animacao
+			// QUE O NODE RECEBEU -- a ponta mais perto do pixel que da pra ler sem foto. Medir
+			// `OlharDeTeste` sozinho ficaria verde com a folha escolhendo o recorte errado depois.
+			case 5:
+				Godot.Input.ActionPress("move_right");
+				break;
+
+			case 6:
+			{
+				Godot.Input.ActionRelease("move_right");
+				Facing d = mundo.DirecaoDoRastroDeTeste;
+				Conferir(d == Facing.East,
+					$"andando pra DIREITA, o rastro do corpo LOCAL le leste (leu {d})");
+				_ondaDeLado = AnimDaOnda(dec, d);
+				Conferir(_ondaDeLado == "ew",
+					$"e a onda que nasce dai e a do eixo leste-oeste (recorte \"{_ondaDeLado}\")");
+				Godot.Input.ActionPress("move_up");
+				break;
+			}
+
+			case 7:
+			{
+				Godot.Input.ActionRelease("move_up");
+				Facing d = mundo.DirecaoDoRastroDeTeste;
+				Conferir(d == Facing.North, $"andando pra CIMA, o mesmo rastro le norte (leu {d})");
+				string emPe = AnimDaOnda(dec, d);
+				Conferir(emPe == "ns",
+					$"e agora a onda e a do eixo norte-sul (recorte \"{emPe}\")");
+				// O QUE O DONO FOTOGRAFOU: os dois sentidos davam o MESMO desenho. Duas conferencias
+				// separadas passariam se a folha devolvesse "ns" nas duas -- esta e a que nao passa.
+				Conferir(emPe != _ondaDeLado,
+					$"e voar de lado NAO desenha a mesma onda de voar pra cima (\"{_ondaDeLado}\" x \"{emPe}\")");
+				break;
+			}
+
+			case 8:
+			{
+				// ---------- PARADO MANTEM O ULTIMO SENTIDO ----------
+				// Nenhuma tecla ha ~0,8 s. O rastro tem que continuar norte, e nao voltar pro sul
+				// que e o padrao do campo -- corpo pairando sobre a agua nao vira sozinho, e uma onda
+				// que gira quando o jogador solta a tecla e um efeito que se mexe sem motivo.
+				Facing d = mundo.DirecaoDoRastroDeTeste;
+				Conferir(d == Facing.North,
+					$"PARADO, o rastro mantem o ultimo sentido em vez de saltar pro padrao (leu {d})");
+				break;
+			}
+
 			default:
 				_acabou = true;
 				GD.Print("\n[decal] ===== BANCADA DOS DECALQUES =====");
@@ -174,6 +254,23 @@ public partial class RoboDeDecalque : Node
 
 	/// <summary>Quantos dos 8 vizinhos esta celula pintaria. Usa a MESMA conta do mundo.</summary>
 	private static int VizinhosDe(World mundo, int cx, int cy) => mundo.VizinhosPintadosDeTeste(cx, cy);
+
+	/// <summary>O recorte da onda de lado, guardado pra ser comparado com o da onda em pe.</summary>
+	private string _ondaDeLado = "";
+
+	/// <summary>
+	/// Planta a onda da agua com esta direcao e devolve a ANIMACAO QUE O NODE RECEBEU.
+	///
+	/// Le do node e nao do que se pediu de proposito: entre a direcao e o desenho ainda ha a escolha
+	/// de recorte (`Decalques.Escolher`), e ela ja errou antes. Um teste que so conferisse a direcao
+	/// mediria a INTENCAO e ficaria verde com a folha inteira caindo no recorte errado.
+	/// </summary>
+	private static string AnimDaOnda(Decalques dec, Facing dir)
+	{
+		dec.Plantar(Protocol.Decal.Agua, new Vector2(9999, 9999), dir);
+		int n = dec.GetChildCount();
+		return n > 0 && dec.GetChild(n - 1) is AnimatedSprite2D a ? a.Animation.ToString() : "";
+	}
 
 	private void Fotografar(string destino)
 	{

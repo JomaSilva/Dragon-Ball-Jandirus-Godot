@@ -19,6 +19,21 @@ public sealed class TurfDef
 	public bool OpacitySet;
 
 	/// <summary>
+	/// `Water = 1` -- A TERCEIRA CLASSE DE CELULA, e o dado que este scanner jogava fora.
+	///
+	/// A agua do original nao e `density` (ela e 0 em todo turf de agua de mapa): quem para o pe e
+	/// o `Enter()`, que chama o `testWaters()` (`Swim.dm:26-38`) e deixa passar quem voa, quem
+	/// nada, quem esta de barco e quem esta sendo arremessado. A UNICA marca que distingue esses
+	/// turfs no codigo e esta flag, declarada em `Turfs.dm:41` e ligada em 38 typepaths.
+	///
+	/// Sem ela o conversor nao tinha por onde reconhecer 1,36 milhao de celulas de agua nos 26
+	/// andares -- a informacao estava no `.dm`, era lida linha a linha, e era descartada aqui.
+	/// Quem interpreta a flag (e quem tira o CEU de dentro dela) e o <see cref="Aguas"/>.
+	/// </summary>
+	public bool Water;
+	public bool WaterSet;
+
+	/// <summary>
 	/// `pixel_x`/`pixel_y`: o desenho NAO mora no canto do tile.
 	///
 	/// A Research Bench e 96x64 com `pixel_x = -32` -- ela transborda um tile pra cada lado, e o
@@ -68,12 +83,12 @@ public sealed class TurfDef
 public static class DmTurfScanner
 {
 	private static readonly Regex RxProp = new(
-		@"^(icon|icon_state|density|opacity|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
+		@"^(icon|icon_state|density|opacity|Water|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
 		RegexOptions.Compiled);
 
 	/// <summary>`Nome propriedade = valor` numa linha so -- forma que o DM aceita e o jogo usa.</summary>
 	private static readonly Regex RxUmaLinha = new(
-		@"^([A-Za-z_][A-Za-z0-9_/]*)\s+(icon|icon_state|density|opacity|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
+		@"^([A-Za-z_][A-Za-z0-9_/]*)\s+(icon|icon_state|density|opacity|Water|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
 		RegexOptions.Compiled);
 
 	public static Dictionary<string, TurfDef> Scan(string codeRoot)
@@ -178,6 +193,7 @@ public static class DmTurfScanner
 			case "icon_state": d.IconState = Unquote(val); break;
 			case "density": d.Density = val.StartsWith('1'); d.DensitySet = true; break;
 			case "opacity": d.Opacity = val.StartsWith('1'); d.OpacitySet = true; break;
+			case "Water": d.Water = val.StartsWith('1'); d.WaterSet = true; break;
 			case "isHD": d.IsHD = val.StartsWith('1'); d.IsHDSet = true; break;
 			case "getWidth":
 				if (int.TryParse(val, out int gw)) { d.GetWidth = gw; d.TamanhoSet = true; }
@@ -209,7 +225,7 @@ public static class DmTurfScanner
 	{
 		foreach (TurfDef d in defs.Values)
 		{
-			if (d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet) continue;
+			if (d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet && d.WaterSet) continue;
 			string p = d.Path;
 			while (true)
 			{
@@ -221,6 +237,10 @@ public static class DmTurfScanner
 				d.IconState ??= pai.IconState;
 				if (!d.DensitySet && pai.DensitySet) { d.Density = pai.Density; d.DensitySet = true; }
 				if (!d.OpacitySet && pai.OpacitySet) { d.Opacity = pai.Opacity; d.OpacitySet = true; }
+				// A AGUA HERDA, e e por isso que ela precisa passar por aqui: `/turf/Water` liga a
+				// flag e os 15 filhos dele (Water1..13, WaterFall, WaterReal) so trocam o icone --
+				// exatamente a armadilha que o comentario do `DensitySet` la em cima descreve.
+				if (!d.WaterSet && pai.WaterSet) { d.Water = pai.Water; d.WaterSet = true; }
 				// `isHD` mora no PAI (`/turf/HDTurfs`) e o tamanho em cada filho -- sem herdar
 				// os dois, nenhum turf HD e reconhecido como tal
 				if (!d.IsHDSet && pai.IsHDSet) { d.IsHD = pai.IsHD; d.IsHDSet = true; }
@@ -230,7 +250,7 @@ public static class DmTurfScanner
 				}
 				d.Parent ??= p;
 				if (d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet
-					&& d.IsHDSet && d.TamanhoSet) break;
+					&& d.WaterSet && d.IsHDSet && d.TamanhoSet) break;
 			}
 		}
 	}

@@ -60,9 +60,24 @@ public partial class GameServer
 	/// `KiSwordDrain` e `KiBladeDrain`, ambos 1 por padrao (`Cultivation.dm:207` e `:88`).
 	///
 	/// No original esses dois CAEM (pra 0,5 e depois 0) conforme a skill de espada/lamina sobe de
-	/// nivel, o que barateia o custo do Sword Strike junto. O port nao tem nivel de skill ainda,
-	/// entao ficam no valor de estreia -- que e o mais caro. Quando o nivel existir, e so trocar
-	/// estas duas constantes por leitura da skill: a formula ja esta no lugar certo.
+	/// nivel, o que barateia o custo do Sword Strike junto. Aqui ficam no valor de estreia -- que e
+	/// o mais caro.
+	///
+	/// ============================ O MOTOR DE NIVEIS EXISTE; O DEGRAU DA LAMINA E QUE NAO DIZ NADA ============================
+	/// Este texto dizia *"o port nao tem nivel de skill ainda"*, e isso CADUCOU:
+	/// `Core/Skills/NiveisDeSkill.cs` e o `Assets/Data/niveis.json` (extraido do `effector()`) estao
+	/// no jogo e ja entregam buff, verbo e flag por degrau.
+	///
+	/// A ESCADA DA LAMINA ESTA LA -- `/datum/skill/Cultivation/Blade_Runner`, degraus 1 e 2, com as
+	/// duas frases certas ("drain has been halved" / "eliminated completely"). **So que o efeito
+	/// dela nao esta em `buffs` nem em `flags`: esta em `logica`** (`superdrain = 0.5`,
+	/// `superdrain = 0`), e `NiveisDeSkill.Aplicar` so consome os dois primeiros. Subir de nivel
+	/// hoje imprime a mensagem e nao muda numero nenhum.
+	///
+	/// ENTAO AS CONSTANTES ABAIXO ESTAO CERTAS PELO MOTIVO ERRADO: elas cravam o dreno de estreia, e
+	/// por acaso e isso que o jogo entrega. Fechar de verdade e mover o efeito do `logica` pro
+	/// `flags` no extrator (e dar campo ao lutador), nao trocar estas duas linhas.
+	/// ==================================================================================================================
 	/// </summary>
 	private const double DrenoDaEspadaG3 = 1, DrenoDaLaminaG3 = 1;
 
@@ -119,6 +134,57 @@ public partial class GameServer
 		public int Faltam;
 		public double AddDano;
 		public long ProximoMs;
+
+		/// <summary>
+		/// ============================ OS TRES CAMPOS DA PRESA DO LOBO (lote G6) ============================
+		/// Os dois verbos do lobo (`Martial Skill Attacks.dm:153` e `:212`) sao barragens de tres e
+		/// quatro golpes -- mesma agenda, mesmo funil, mesma parada por guarda. O que eles tem de
+		/// proprio sao tres coisas, e as tres estao ESCRITAS no original:
+		///
+		///   * o Furacao faz `knockbackon = 0` antes da sequencia e devolve no fim (`:219`, `:245`):
+		///     o alvo NAO pode sair voando no meio, porque a sequencia inteira depende de ele
+		///     continuar colado;
+		///   * o Furacao da um `step(src, get_dir(src,target))` entre os golpes (`:224`): quem bate
+		///     AVANCA junto;
+		///   * o Punho arremessa no ULTIMO golpe (`kbdur = 4`, `:184`).
+		///
+		/// Entraram como campos da barragem, e nao como uma segunda agenda, porque uma segunda
+		/// agenda seria a segunda resposta pra "como um golpe encadeado acontece" -- e as duas
+		/// divergiriam na primeira vez que alguem mexesse na parada por guarda.
+		/// ==============================================================================================
+		/// </summary>
+		public bool SemEmpurrao;
+
+		/// <summary>Quantos pixels avancar em direcao ao alvo antes de cada golpe. Zero = fica parado.</summary>
+		public float AvancaPx;
+
+		/// <summary>Tiques de arremesso no ULTIMO golpe da sequencia. Zero = nao arremessa.</summary>
+		public int ArremessoNoFim;
+
+		/// <summary>
+		/// ============================ A ESCADA DOS COMBOS DE BOXE (lote G7) ============================
+		/// As tres combinacoes de boxe (`Physical Skills.dm:66`, `:89`, `:120`) sao barragens tambem --
+		/// mesmo funil, mesma parada por guarda, mesma parada por distancia --, mas com DOIS numeros
+		/// proprios POR GOLPE, e nao um numero pra sequencia inteira:
+		///
+		///     One_Two        jab (+0)   sleep(2)   cross (+5)
+		///     One_Two_Five   jab (+0)   sleep(1)   cross (+4)   sleep(2)   uppercut (+6)
+		///     Two_One_Four   cross(+2)  sleep(2)   jab   (+5)   sleep(1)   uppercut (+7)
+		///
+		/// O soco cresce ao longo do combo e a cadencia MUDA no meio -- e essa aceleracao e a
+		/// assinatura de cada uma delas. Com um `AddDano` unico e um passo fixo as tres viravam a mesma
+		/// coisa com nomes diferentes.
+		///
+		/// Quando <see cref="Escada"/> e nula nada muda: a barragem do Multihit e a do lobo continuam
+		/// lendo <see cref="AddDano"/> e <see cref="BarragemPassoMs"/>, como sempre. Uma segunda agenda
+		/// so pra o boxe seria a segunda resposta pra "como um golpe encadeado acontece" -- e as duas
+		/// divergiriam na primeira vez que alguem mexesse na parada por guarda.
+		/// ==============================================================================================
+		/// </summary>
+		public (double Dano, long AtrasoMs)[]? Escada;
+
+		/// <summary>Em que degrau da <see cref="Escada"/> a sequencia esta.</summary>
+		public int EscadaIdx;
 	}
 
 	/// <summary>Uma carga de Final Explosion em andamento.</summary>
@@ -548,7 +614,6 @@ public partial class GameServer
 			&& !f.dead
 			&& pl.Combate.Morrer())
 		{
-			pl.RenasceEm = NowMs() + MsAteRenascer;
 			AvisarPertoG3(pl, 20 * ZoneCollision.TileSize, $"{pl.Name} morre na propria Final Explosion.");
 			GD.Print($"[server] {pl.Name} morreu na propria Final Explosion (carga {carga.Contador})");
 		}
@@ -557,10 +622,28 @@ public partial class GameServer
 				   + $"{(pegos == 1 ? "pessoa" : "pessoas")} num raio de {carga.Raio} tiles.");
 		GD.Print($"[server] Final Explosion de {pl.Name}: carga {carga.Contador}, raio {carga.Raio}, {pegos} atingidos");
 
-		// FICOU DE FORA: a destruicao do planeta (`misc.dm:324-335`, raio 25 com BP >= 10 milhoes).
-		// O port nao tem planeta destrutivel -- nao ha `planet_list`, `DestroyPlanet` nem area com
-		// estado de morte. Quando o sistema de planetas ganhar isso, o gancho e exatamente aqui.
+		// ============================ E A EXPLOSAO PODE LEVAR O PLANETA ============================
+		// `misc.dm:324-335`: `if(sdingrange >= 25 && expressedBP >= 10.000.000)` -> `isBeingDestroyed
+		// = 1` + `DestroyPlanet`. Este era o gancho que dizia *"o port nao tem planeta destrutivel...
+		// quando o sistema ganhar isso, o gancho e exatamente aqui"*. Ganhou.
+		//
+		// OS DOIS NUMEROS SAO DO ORIGINAL e nao inventados: o raio TEM que ser o maximo (25 tiles) e
+		// o BP expresso tem que passar de dez milhoes. E a unica porta pra destruicao de planeta que
+		// **nao pede ser vilao** -- e o preco dela e o de cima: quem carrega alem de 25 s tem 70% de
+		// morrer junto. O jogador que apaga um mundo com isto costuma apagar a si mesmo.
+		//
+		// O ALGOZ E ELE MESMO (`pl.Id`), e o `mexpressedBP` e o BP dele -- ou seja, quem for mais
+		// forte que o suicida sobrevive ao commit, exatamente como no Planet Destroy.
+		// ====================================================================================
+		if (carga.Raio >= RaioMaximoG3 && f.expressedBP >= BpQueLevaOPlanetaG3)
+			ComecarDestruicao(pl.Zone, f.expressedBP, $"Final Explosion de {pl.Name}", pl.Id);
 	}
+
+	/// <summary>
+	/// `if(usr.expressedBP >= 10000000)` (`misc.dm:324`) -- o BP expresso a partir do qual uma Final
+	/// Explosion de raio maximo nao para no chao: ela leva o planeta.
+	/// </summary>
+	private const double BpQueLevaOPlanetaG3 = 10_000_000;
 
 	// =====================================================================
 	// LIGHT BUSTER -- yardrat.dm:233
@@ -903,7 +986,22 @@ public partial class GameServer
 				continue;
 			}
 
-			GolpeG3(pl, alvo, addDano: b.AddDano, nivel: 2);
+			// AVANCA ANTES DE BATER (Furacao). O `AvancarG3` respeita parede, entao a sequencia nao
+			// empurra ninguem pra dentro do cenario -- ver o bloco de la.
+			if (b.AvancaPx > 0) AvancarG3(pl, alvo, b.AvancaPx);
+
+			// O KNOCKBACK DESLIGADO E DO ATACANTE, e ele volta LOGO DEPOIS do golpe: e literalmente o
+			// `saveknock` do original. Guardar e devolver (em vez de recalcular) e a mesma regra dos
+			// buffs -- quem liga desliga com o valor que achou.
+			bool guardado = pl.Knockback;
+			if (b.SemEmpurrao) pl.Knockback = false;
+			// A ESCADA MANDA QUANDO EXISTE (combos de boxe do lote G7); sem ela o dano da sequencia e
+			// o mesmo em todos os golpes, que e o Multihit e a Presa do Lobo.
+			double addDano = b.Escada != null && b.EscadaIdx < b.Escada.Length
+				? b.Escada[b.EscadaIdx].Dano
+				: b.AddDano;
+			GolpeG3(pl, alvo, addDano: addDano, nivel: 2);
+			pl.Knockback = guardado;
 
 			if (alvo.Combate.Bloqueando)
 			{
@@ -913,8 +1011,21 @@ public partial class GameServer
 			}
 
 			b.Faltam--;
-			b.ProximoMs = agora + BarragemPassoMs;
-			if (b.Faltam <= 0) _barragemG3.Remove(id);
+			b.EscadaIdx++;
+			// O ATRASO DO PROXIMO DEGRAU sai da propria escada (`sleep(1)`/`sleep(2)` do DM); sem
+			// escada continua sendo o `delay=2` de sempre.
+			b.ProximoMs = agora + (b.Escada != null && b.EscadaIdx < b.Escada.Length
+				? b.Escada[b.EscadaIdx].AtrasoMs
+				: BarragemPassoMs);
+			if (b.Faltam > 0) continue;
+
+			// O ARREMESSO DO FIM (Punho da Presa do Lobo): `kbdir = usr.dir`, `kbpow = expressedBP`,
+			// `kbdur = 4`. Ele sai DEPOIS do ultimo golpe e independe do sorteio do `TentarEmpurrar`
+			// -- e a promessa da tecnica, nao uma consequencia do dano.
+			if (b.ArremessoNoFim > 0 && !alvo.Ficha.dead)
+				Arremessar(alvo, MeleeArea.Frente(pl.Facing), pl.Ficha.expressedBP, b.ArremessoNoFim);
+
+			_barragemG3.Remove(id);
 		}
 	}
 
@@ -1036,10 +1147,11 @@ public partial class GameServer
 
 		// o dano de estilo entra somado, igual ao soco comum (`dmg += compareStyles(M)`)
 		GolpeResultado r = MeleeResolver.Resolver(ca, cd, angulo, _rng, 1, addDano + DanoDeEstilo(a, d));
-		d.UltimoAgressor = a.Id;
+		MarcarAgressao(d, a);
 
-		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(d.Ficha));
-		if (r.Encostou) d.Ficha.AttackGain(_rng, d.Ficha.FightGainMult(a.Ficha));
+		// O bit do mestre, igual ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
+		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(d.Ficha, EhMeuMestre(a, d)));
+		if (r.Encostou) d.Ficha.AttackGain(_rng, d.Ficha.FightGainMult(a.Ficha, EhMeuMestre(d, a)));
 
 		// o contra-ataque de guarda perfeita vale contra tecnica tambem: quem bloqueou na hora
 		// certa devolve, venha o golpe de um soco ou de uma espada de Ki
@@ -1047,7 +1159,7 @@ public partial class GameServer
 		{
 			GolpeResultado devolta = MeleeResolver.Resolver(
 				cd, ca, MeleeArea.AnguloDeChegada(a.Pos, a.Facing, d.Pos), _rng);
-			a.UltimoAgressor = d.Id;
+			MarcarAgressao(a, d);
 			ResolverDesfecho(d, a, devolta);
 			AnunciarGolpe(d, a, devolta, 2);
 		}
@@ -1081,7 +1193,7 @@ public partial class GameServer
 			c.Corpo.Ferir(p, dano, letal);
 		}
 		c.SincronizarVida();
-		if (autor != vitima) vitima.UltimoAgressor = autor.Id;
+		if (autor != vitima) MarcarAgressao(vitima, autor);
 
 		// PELO FUNIL DA DERROTA, e nao pelo Zenkai direto: uma explosao que mata na frente dos
 		// amigos da vitima e exatamente a cena que o `Death.dm` descreve. Ver `AoPerderALuta`.
@@ -1091,7 +1203,6 @@ public partial class GameServer
 		// inimigo": nao ha algoz, e o DM tambem so enfurece com `deathKiller` preenchido.
 		if (c.Corpo.DeveMorrer() && !c.Corpo.RegeneraDecepado && c.Morrer())
 		{
-			vitima.RenasceEm = NowMs() + MsAteRenascer;
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: true);
 			else ZenkaiPorDerrota(vitima, autor);
 			GD.Print($"[server] {autor.Name} MATOU {vitima.Name} com dano em area");

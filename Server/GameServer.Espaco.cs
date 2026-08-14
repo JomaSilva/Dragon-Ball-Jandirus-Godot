@@ -29,6 +29,9 @@ public partial class GameServer
 
 	public static ZoneKey ZonaDoEspaco => Espaco.Zona(SeedDoUniverso);
 
+	/// <summary>Quem ja ouviu "nao ha mais onde pousar". Mesma disciplina do `_avisadosDeEspera`.</summary>
+	private readonly HashSet<int> _avisadosDePlanetaMorto = [];
+
 	/// <summary>
 	/// DECOLAR. Sai da superficie do planeta em que se esta e aparece no espaco, logo acima
 	/// dele.
@@ -39,7 +42,9 @@ public partial class GameServer
 	private void Decolar(ServerPlayer pl)
 	{
 		if (Espaco.EhEspaco(pl.Zone)) { Avisar(pl, "voce ja esta no espaco."); return; }
-		if (pl.CloneId != 0) { Avisar(pl, "primeiro saia da sua mente."); return; }
+		// PELO LUGAR e nao pelo reflexo: o visitante da mente alheia nao tem clone nenhum, e sem esta
+		// troca ele decolaria de dentro da cabeca de outra pessoa. Ver `GameServer.Mente.NaMente`.
+		if (NaMente(pl)) { Avisar(pl, "primeiro saia do transe."); return; }
 
 		// MUNDO GERADO SOBE POR OUTRO CAMINHO -- e sem esta linha ele nao subia de jeito nenhum.
 		//
@@ -98,6 +103,21 @@ public partial class GameServer
 
 		if (Espaco.PlanetaSob(SeedDoUniverso, pl.Pos) is not { } destino) return;
 
+		// ============================ EM PLANETA MORTO NAO SE POUSA ============================
+		// E o `if(P.isDestroyed) return` do `testPlanetbump` (`Planets.dm:178`), e e ELE que faz a
+		// evacuacao valer alguma coisa: sem esta linha, quem foi jogado em orbita pelo fim do mundo
+		// simplesmente voaria de volta pra baixo, e a evacuacao seria um empurraozinho de 90 px.
+		//
+		// O AVISO SAI UMA VEZ POR ENCOSTADA e nao por tique -- este metodo roda 30 vezes por segundo
+		// enquanto o corpo estiver sobre o disco.
+		if (PlanetaMorto(destino))
+		{
+			if (_avisadosDePlanetaMorto.Add(pl.Id))
+				Avisar(pl, $"nao ha mais onde pousar: {destino.Nome} e um campo de destrocos.");
+			return;
+		}
+		_avisadosDePlanetaMorto.Remove(pl.Id);
+
 		// PROCEDURAL AGORA TEM CHAO. O servidor gera a MESMA superficie que o cliente, a partir
 		// da mesma seed -- e o motivo de o gerador morar no Core: uma funcao, duas pontas, zero
 		// byte de mapa na rede. Aqui ele so precisa da colisao (pra saber onde e parede) e do
@@ -147,6 +167,15 @@ public partial class GameServer
 			w.Put((ushort)vizinhos.Count);
 			// A MESMA FABRICA da zona normal. Esta copia tinha ficado pra tras -- ver `EstadoDe`.
 			foreach (ServerPlayer pl in vizinhos) EstadoDe(pl, agora).Write(w);
+
+			// O BLOCO DE PROJETEIS TEM QUE SAIR AQUI TAMBEM, mesmo sempre vazio: o leitor e UM so
+			// (`GameClient`, opcode `Snapshot`) e ele conta o segundo bloco sempre. Omitir aqui
+			// faria o snapshot do ESPACO ser lido errado -- e o erro apareceria como "o jogo
+			// desconecta quando entro em orbita", sem nada apontando pra esta linha.
+			//
+			// E ele e vazio de proposito: no espaco nao ha zona com colisao nem chao, e o recorte
+			// e por CHUNK e nao por zona -- os tiros ficam pro dia em que houver combate espacial.
+			EscreverProjeteis(w, 0);
 
 			eu.Peer.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
 		}

@@ -70,7 +70,22 @@ public partial class GameServer
 		// SEM BERCO = corpo sem dono. O `SpawnPos` continua sendo a resposta, mas passando pela
 		// colisao: mesmo na Terra uma construcao levantada em cima do ponto o bloqueia em runtime.
 		if (b.Planeta is not { Length: > 0 })
-			return (SpawnZone, PontoDeNascimento(SpawnZone));
+			return (ZonaDeRecuoViva(), PontoDeNascimento(ZonaDeRecuoViva()));
+
+		// ============================ NINGUEM NASCE NUM CADAVER ============================
+		// **A saga 1 destroi VEGETA, que e o berco dos Saiyajin.** Sem esta linha, todo Saiyajin
+		// criado depois dela -- e toda morte de Saiyajin, que passa por aqui -- mandaria um corpo
+		// pra uma zona que nao existe mais: sem colisao carregada, sem povo, e com o `TickDoEspaco`
+		// se recusando a pousar la. A pessoa nasceria presa.
+		//
+		// O recuo e a mesma <see cref="ZonaDeRecuoViva"/> do berco vazio, e nao "o planeta mais
+		// parecido": inventar um segundo lar por raca seria uma tabela nova pra envelhecer.
+		if (ZonaMorta(b.Zona))
+		{
+			ZoneKey recuo = ZonaDeRecuoViva();
+			GD.Print($"[server] berco: '{b.Planeta}' esta destruido -- o corpo vai pra {recuo.Name}");
+			return (recuo, PontoDeNascimento(recuo));
+		}
 
 		if (b.PreFeito)
 			return (b.Zona, PontoDeNascimento(b.Zona));
@@ -85,6 +100,36 @@ public partial class GameServer
 		// Nao ha como chegar aqui -- um berco gerado sempre fica no mapa do universo (`K >= 0`).
 		// O recuo existe pra que a resposta a um estado impossivel seja "a Terra" e nao um vazio.
 		return (SpawnZone, PontoDeNascimento(SpawnZone));
+	}
+
+	/// <summary>
+	/// ============================ A ZONA DE RECUO -- E ELA PODE MORRER ============================
+	/// O `SpawnZone` deste servidor e a Terra, cravado (`GameServer.cs`). Isso era seguro enquanto
+	/// nenhum planeta podia deixar de existir; agora nao e: a Terra morre por Final Explosion, e um
+	/// elo de saga novo apontado pra ela a mataria tambem. Um `SpawnZone` cravado num planeta morto
+	/// manda **todo mundo que renasce** pro cadaver.
+	///
+	/// Entao o recuo pergunta antes, e desce a lista dos pre-feitos ate achar um vivo. A ORDEM e a
+	/// da carta estelar (`Espaco.PreFeitos()`, a Terra primeiro) -- ela ja e a lista canonica de
+	/// "lugares onde se pousa", e uma segunda lista aqui envelheceria separada.
+	///
+	/// Se TODOS morrerem, a resposta continua sendo a Terra: um corpo sem lugar e um corpo no vazio,
+	/// que e pior. Nesse caso o servidor grita, porque e um mundo sem nenhum lugar pra nascer.
+	/// ======================================================================================
+	/// </summary>
+	private ZoneKey ZonaDeRecuoViva()
+	{
+		if (!ZonaMorta(SpawnZone)) return SpawnZone;
+
+		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
+		{
+			var z = ZoneKey.Premade(p.Nome);
+			if (!ZonaMorta(z) && _catalogo?.Get(z) != null) return z;
+		}
+
+		GD.PushError("[server] TODOS os planetas pre-feitos estao destruidos -- o recuo do berco "
+				   + "cai na Terra morta. Um admin precisa restaurar algum planeta.");
+		return SpawnZone;
 	}
 
 	/// <summary>
@@ -108,7 +153,11 @@ public partial class GameServer
 	/// </summary>
 	private void MandarProBerco(ServerPlayer pl)
 	{
-		(ZoneKey zona, Vec2 pos) = DestinoDoBerco(pl.Berco);
+		// `DestinoDe` E O FUNIL DE CIMA: ele pergunta primeiro se esta pessoa escolheu um DOMINIO
+		// conquistado como ponto de renascimento e, quando nao, cai no `DestinoDoBerco` de sempre.
+		// Ver `GameServer.Conquista.cs` -- o dominio nao e um caminho paralelo, e um berco montado do
+		// endereco dele.
+		(ZoneKey zona, Vec2 pos) = DestinoDe(pl);
 		MoveToZone(pl.Id, zona, pos);
 
 		if (!Espaco.EhEspaco(zona)) return;
@@ -127,7 +176,7 @@ public partial class GameServer
 	/// </summary>
 	private void PousarNoBercoSemPacote(ServerPlayer pl)
 	{
-		(ZoneKey zona, Vec2 pos) = DestinoDoBerco(pl.Berco);
+		(ZoneKey zona, Vec2 pos) = DestinoDe(pl);   // ver `MandarProBerco`: o dominio entra pelo funil
 		pl.Zone = zona;
 		pl.Pos = pos;
 	}

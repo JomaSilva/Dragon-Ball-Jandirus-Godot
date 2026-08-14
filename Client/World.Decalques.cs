@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Combat;
 using Jandirus.Core.World;
 using Jandirus.Net;
 
@@ -45,13 +46,25 @@ public partial class World : Node2D
 	/// <summary>Celulas de agua que ja estao com onda -- o `turf.ki_water` do DU, que evita empilhar.</summary>
 	private readonly Dictionary<Vector2I, double> _ondaAte = [];
 
-	/// <summary>A vida que cada corpo tinha na ultima olhada -- pro sangue saber que PIOROU.</summary>
-	private readonly Dictionary<int, byte> _vidaAnterior = [];
+	/// <summary>
+	/// O GRAU DE SANGUE que cada corpo tinha na ultima olhada -- pro respingo saber que PIOROU.
+	///
+	/// Guarda GRAU e nao vida porque vida alheia nao existe mais no cliente: ver o bloco em
+	/// <see cref="SangueDaMascara"/>.
+	/// </summary>
+	private readonly Dictionary<int, int> _sangueAnterior = [];
 
 	private double _relogioDecal;
 
-	/// <summary>Abaixo disto o corpo esta "se acabando" e comeca a respingar.</summary>
-	private const byte VidaQueSangra = 35;
+	/// <summary>
+	/// A PARTIR DESTE DEGRAU DE SANGUE o corpo esta "se acabando" e comeca a respingar.
+	///
+	/// DERIVADO do limiar antigo, pra o efeito nao mudar de lugar: ele disparava abaixo de 35% de
+	/// vida, ou seja 65% de dano, e a curva de <see cref="Feridas"/> poe 65% de dano no degrau
+	/// `round((0,65 - 0,55) / (0,90 - 0,55) * 15)` = 4. Mexer na curva la move este limiar junto, e
+	/// tem que mover mesmo -- os dois descrevem o MESMO estado do corpo.
+	/// </summary>
+	private const int SangueQueRespinga = 4;
 
 	/// <summary>Segundos entre um respingo e outro do MESMO corpo. Sem isto seria um por quadro.</summary>
 	private const double EsperaDoSangue = 0.8;
@@ -71,8 +84,8 @@ public partial class World : Node2D
 		if (GameClient.Instance is { } cli) cli.DecalqueCaiu -= AoCairDecalque;
 	}
 
-	private void AoCairDecalque(Protocol.Decal tipo, Vec2 onde, Facing dir)
-		=> _decalques?.Plantar(tipo, new Vector2(onde.X, onde.Y), dir);
+	private void AoCairDecalque(Protocol.Decal tipo, Vec2 onde, Facing dir, PecaDeCorpo peca)
+		=> _decalques?.Plantar(tipo, new Vector2(onde.X, onde.Y), dir, peca);
 
 	/// <summary>
 	/// TERRA REVIRADA EM VOLTA DO QUE CAIU -- em ALGUNS vizinhos, nao todos.
@@ -184,7 +197,7 @@ public partial class World : Node2D
 
 		int t = ZoneCollision.TileSize;
 
-		foreach ((int id, Node2D corpo, float altura, byte vida) in CorposParaDecalque())
+		foreach ((int id, Node2D corpo, float altura, MascaraDeFeridas ferida) in CorposParaDecalque())
 		{
 			var celula = new Vector2I(
 				(int)MathF.Floor(corpo.Position.X / t), (int)MathF.Floor(corpo.Position.Y / t));
@@ -207,14 +220,30 @@ public partial class World : Node2D
 			// Duas condicoes, as duas do dono: ferimento GRAVE e estar no chao ou voando baixo.
 			// A altura entra porque respingo de sangue e uma coisa que cai NO CHAO -- de vinte
 			// tiles ele nao chegaria la.
-			_vidaAnterior.TryGetValue(id, out byte antes);
-			_vidaAnterior[id] = vida;
+			//
+			// ============================ ISTO LIA A VIDA, E NAO LE MAIS ============================
+			// O gatilho era `vida < 35 && vida < a de antes`, com a vida do corpo alheio saindo do
+			// snapshot. Esse campo MORREU (ver `EntityState`): o dono tirou o hp alheio do jogo. O
+			// gatilho passou pro GRAU DE FERIDA, que ja viaja pra zona inteira e que e literalmente o
+			// que o jogador ve no sprite -- respingar exatamente quando o corpo fica mais sujo e mais
+			// honesto do que respingar num numero que ninguem mais enxerga.
+			//
+			// E ISSO CONSERTOU UMA SEGUNDA LEITURA: o corpo LOCAL media a propria ficha (`Sheet.HP`) e
+			// os remotos mediam o snapshot -- duas fontes pro mesmo efeito. Agora os dois saem da
+			// mesma mascara, entao duas telas olhando a mesma briga concordam.
+			// ===================================================================================
+			int sangue = SangueDaMascara(ferida);
 
-			if (vida >= VidaQueSangra || vida == 0) continue;
+			// PRIMEIRA OLHADA NAO SANGRA. Sem isto, quem entra no meu campo de visao ja destrocado
+			// respingaria na hora -- e nao aconteceu nada com ele, ele so apareceu.
+			if (!_sangueAnterior.TryGetValue(id, out int antes)) { _sangueAnterior[id] = sangue; continue; }
+			_sangueAnterior[id] = sangue;
+
+			if (sangue < SangueQueRespinga) continue;
 			if (Jandirus.Core.World.Voo.Andar(altura) > 1) continue;
-			// SO QUANDO PIOROU. Sem isto um corpo parado com 20% de vida sangraria pra sempre, sem
+			// SO QUANDO PIOROU. Sem isto um corpo parado e destrocado sangraria pra sempre, sem
 			// nada estar acontecendo com ele.
-			if (vida >= antes) continue;
+			if (sangue <= antes) continue;
 			if (_sangueAte.TryGetValue(id, out double espera) && _relogioDecal < espera) continue;
 			_sangueAte[id] = _relogioDecal + EsperaDoSangue;
 
@@ -230,16 +259,72 @@ public partial class World : Node2D
 		}
 	}
 
-	private static Facing DirecaoDe(Node2D corpo)
-		=> corpo is RemotePlayer r ? r.OlharDeTeste : Facing.South;
-
-	/// <summary>Todo corpo da zona com o que os decalques precisam: id, node, altura e vida.</summary>
-	private IEnumerable<(int Id, Node2D Corpo, float Altura, byte Vida)> CorposParaDecalque()
+	/// <summary>
+	/// PRA ONDE ESTE CORPO ESTA VIRADO -- a direcao que a onda da agua e o respingo de sangue usam.
+	///
+	/// ============================ ISTO RESPONDIA `SOUTH` PRO DONO ============================
+	/// Era `corpo is RemotePlayer r ? r.OlharDeTeste : Facing.South`. O corpo LOCAL nao e
+	/// `RemotePlayer`: ele caia no `else` e recebia sul FIXO, que o `Escolher` traduz pro eixo "ns".
+	/// Resultado fotografado pelo dono: voando da esquerda pra direita sobre a agua, a onda continuava
+	/// desenhada em pe. O defeito nao era a arte nem a regra de eixo -- as duas estavam certas; era o
+	/// proprio corpo do jogador ser o unico que ninguem sabia ler.
+	///
+	/// O rastro nao GUARDA rumo nenhum: ele le o que o corpo ja tem (ver `LocalPlayer.OlharDeTeste`,
+	/// que devolve o mesmo par de campos com que o `_Process` escolhe a folha do sprite). Dois rumos
+	/// divergem -- e o corpo sabe do dele antes de qualquer decalque.
+	/// ========================================================================================
+	/// </summary>
+	private static Facing DirecaoDe(Node2D corpo) => corpo switch
 	{
-		if (_local != null && GameClient.Instance is { } cli)
-			yield return (cli.LocalId, _local, _local.Altitude, (byte)Mathf.Clamp(cli.Sheet.HP, 0, 100));
+		LocalPlayer l => l.OlharDeTeste,
+		RemotePlayer r => r.OlharDeTeste,
+		_ => Facing.South,
+	};
+
+	/// <summary>
+	/// A direcao com que o rastro do corpo LOCAL sairia agora. So pra bancada -- e chama a MESMA
+	/// <see cref="DirecaoDe"/> do desenho, senao o teste mediria uma segunda implementacao (foi assim
+	/// que este projeto ja deixou quatro bugs visuais passarem por bancada verde).
+	/// </summary>
+	public Facing DirecaoDoRastroDeTeste => _local is { } l ? DirecaoDe(l) : Facing.South;
+
+	/// <summary>
+	/// O PIOR SANGUE DO CORPO, de 0 a <see cref="MascaraDeFeridas.Degraus"/>.
+	///
+	/// O PIOR e nao a media, pela mesma razao que a mascara ja usa o pior membro de cada zona: quem
+	/// esta com o abdomen aberto e as pernas inteiras esta se acabando, e uma media diria "meio bem".
+	///
+	/// MEMBRO ARRANCADO E O MAXIMO, sem olhar zona: a zona "bracos" de quem perdeu um braco fica com
+	/// o sangue do braco que SOBROU, que pode ser zero -- e um corpo com um braco a menos que nao
+	/// respinga seria exatamente o caso que o efeito existe pra cobrir.
+	/// </summary>
+	private static int SangueDaMascara(MascaraDeFeridas m)
+	{
+		if (m.Amputados != MascaraDeFeridas.Membro.Nenhum) return MascaraDeFeridas.Degraus;
+
+		int pior = 0;
+		for (int z = 0; z < MascaraDeFeridas.Zonas; z++) pior = Math.Max(pior, m.Bruto(z) & 0x0F);
+		return pior;
+	}
+
+	/// <summary>
+	/// Todo corpo da zona com o que os decalques precisam: id, node, altura e a MASCARA DE FERIDAS.
+	///
+	/// A mascara vem do mesmo dicionario que pinta o sprite (`GameClient.Feridas`) -- inclusive a
+	/// minha, porque o servidor manda as feridas de cada um pra zona inteira, o dono incluso. Corpo
+	/// de quem ainda nao teve ferida nenhuma nao esta no mapa: mascara limpa, e limpa nao respinga.
+	/// </summary>
+	private IEnumerable<(int Id, Node2D Corpo, float Altura, MascaraDeFeridas Ferida)> CorposParaDecalque()
+	{
+		if (GameClient.Instance is not { } cli) yield break;
+
+		MascaraDeFeridas Ferida(int id) =>
+			cli.Feridas.TryGetValue(id, out MascaraDeFeridas m) ? m : default;
+
+		if (_local != null)
+			yield return (cli.LocalId, _local, _local.Altitude, Ferida(cli.LocalId));
 
 		foreach ((int id, RemotePlayer r) in _remotos)
-			if (IsInstanceValid(r)) yield return (id, r, r.AlturaDeTeste, r.VidaDeTeste);
+			if (IsInstanceValid(r)) yield return (id, r, r.AlturaDeTeste, Ferida(id));
 	}
 }

@@ -69,9 +69,32 @@ public static class SorteioDeNpc
 										SkillCatalog? skills, string planeta, double mediaDoServidor)
 	{
 		// --- 1. QUEM ELE E -------------------------------------------------
-		// Pool vazia = as racas jogaveis DAQUELE planeta. Reusar a tabela da criacao de personagem
-		// (e nao escrever uma segunda) e o que garante que um NPC de Namek nunca seja um Icer.
-		string[] pool = molde.Racas.Length > 0 ? molde.Racas : CharacterDraft.RacasDoPlaneta(planeta);
+		// ============================ A POOL VAZIA SAI DO BERCO, E NAO DO MENU ============================
+		// Pool vazia = **as racas cujo BERCO e este planeta** -- a `PlanetaNatal` lida ao contrario,
+		// que e a MESMA regra que decide onde o jogador nasce.
+		//
+		// Isto era `CharacterDraft.RacasDoPlaneta(planeta)`, a tabela do MENU DE CRIACAO, e a troca
+		// conserta um defeito de verdade: aquela tabela **nao e** a inversa do berco (ela poe Icer em
+		// Vegeta e Arlian/Makyo em Namek, divergencias que o cabecalho da `PlanetaNatal` documenta),
+		// entao um cidadao de Vegeta podia nascer Frost Demon -- pela regra do menu -- enquanto o
+		// jogador Frost Demon nasce em Icer pela regra do berco. Duas respostas pra "onde esta raca
+		// mora", e o NPC usando a errada.
+		//
+		// Ela tambem devolvia `[]` pra qualquer planeta fora dos cinco do menu, e o `Escolher` caia no
+		// padrao "Human": um cidadao de Icer nasceria humano por acidente, calado.
+		// ============================================================================================
+		string[] pool = molde.Racas.Length > 0
+			? molde.Racas
+			: Bercos.RacasNascidasEm(planeta, racas.Protos.Keys);
+
+		// SEM NINGUEM PRA NASCER ALI, NAO SE INVENTA NINGUEM. `Escolher` cairia no "Human" e o
+		// planeta ganharia habitantes humanos sem que nada no dado dissesse isso -- a armadilha 5 da
+		// PARTE 3 ("silencio no lugar de erro") na forma mais cara: dado errado virando jogo plausivel.
+		if (pool.Length == 0)
+			throw new InvalidOperationException(
+				$"molde '{molde.Id}': nenhuma raca tem berco em '{planeta}' e o molde nao declara "
+				+ "'racas'. Ou o planeta esta errado no povoamento, ou o molde precisa da lista.");
+
 		string raca = Escolher(pool, semente, "raca", "Human");
 		string genero = Escolher(molde.Generos, semente, "genero", "Male");
 
@@ -84,8 +107,13 @@ public static class SorteioDeNpc
 		string linhagem = ehLinhagem ? molde.Classe : "";
 		string classeForcada = !ehLinhagem ? molde.Classe : "";
 
-		string nome = molde.Nomes.Length > 0
-			? Escolher(molde.Nomes, semente, "nome", molde.Nome)
+		// A POOL DA RACA VEM PRIMEIRO -- e o `npc_random_name(race)`. Ver `MoldeDeNpc.NomesPorRaca`
+		// pro motivo de o cidadao precisar disto e o inimigo nao.
+		string[] poolDeNomes = molde.NomesPorRaca.TryGetValue(raca, out string[]? pr) && pr.Length > 0
+			? pr : molde.Nomes;
+
+		string nome = poolDeNomes.Length > 0
+			? Escolher(poolDeNomes, semente, "nome", molde.Nome)
 			: molde.Nome.Length > 0 ? molde.Nome : raca;
 
 		Fighter f = Birth.Nascer(racas, raca, linhagem, Sorteador(semente, "classe"), nome,

@@ -119,7 +119,7 @@ public sealed partial class GameServer
 			foreach ((int X, int Y) celula in vencidas)
 			{
 				abertas.Remove(celula);
-				_catalogo?.Get(zona)?.Mapa?.Fechar(celula.X, celula.Y);
+				MexerNaPorta(zona, celula.X, celula.Y, abrir: false);
 				AnunciarPorta(zona, celula.X, celula.Y, aberta: false);
 			}
 		}
@@ -165,8 +165,30 @@ public sealed partial class GameServer
 
 		// O MAPA DA ZONA E UM SO. Abrir aqui abre pra todo mundo que estiver nela -- e e por isso
 		// que a alteracao vai numa camada por cima do bitset, e nao no bitset (ver ZoneCollision).
-		_catalogo?.Get(zona)?.Mapa?.Abrir(cx, cy);
+		MexerNaPorta(zona, cx, cy, abrir: true);
 		AnunciarPorta(zona, cx, cy, aberta: true);
+	}
+
+	/// <summary>
+	/// A PORTA MEXE NOS **DOIS** MAPAS DA ZONA -- o que barra o corpo e o que barra a vista.
+	///
+	/// ============================ O CLIENTE JA FAZIA ISSO E O SERVIDOR NAO PODIA ============================
+	/// O `World.AoMudarPortas` mexe nos dois desde sempre, com o comentario que explica por que: *"o
+	/// `.col` porque a porta deixa de barrar o corpo, e o `.vis` porque ela deixa de barrar a vista"*.
+	/// Aqui so havia UM mapa a mexer, porque o servidor nunca tinha lido o `.vis`.
+	///
+	/// Agora ele leu (a voz local pergunta a ele se ha parede entre duas pessoas), e essa e a linha que
+	/// a leitura obriga: sem ela, atravessar uma porta ABERTA deixaria a voz abafada dos dois lados --
+	/// o servidor continuaria vendo o muro que o jogo ja abriu, e a queixa que chegaria seria "a voz
+	/// abafa em porta aberta", com a porta visivelmente aberta na tela. E o defeito exato que o
+	/// comentario do cliente existe pra nao deixar acontecer.
+	/// ====================================================================================================
+	/// </summary>
+	private void MexerNaPorta(string zona, int cx, int cy, bool abrir)
+	{
+		if (_catalogo?.Get(zona) is not { } e) return;
+		if (abrir) { e.Mapa?.Abrir(cx, cy); e.Vista?.Abrir(cx, cy); }
+		else { e.Mapa?.Fechar(cx, cy); e.Vista?.Fechar(cx, cy); }
 	}
 
 	/// <summary>Uma porta mudou: quem estiver na zona precisa ver.</summary>

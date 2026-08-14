@@ -47,6 +47,31 @@ public static class Birth
 	};
 
 	/// <summary>
+	/// NINGUEM NASCE ESMAGADO -- o `race.dm:130-131` do original, que ate agora era so CITADO.
+	///
+	/// ============================ A REGRA ESTAVA ESCRITA E NAO LIGADA ============================
+	/// `GravMastered = max(GravMastered, PlanetGravity(spawnPlanet))`, com o comentario do autor do
+	/// DM: *"every race starts acclimated to its home/spawn planet's gravity so high-grav races
+	/// aren't crushed/frozen at spawn"*. O port cita essa linha em QUATRO comentarios (dois no
+	/// `Berco.cs`, um aqui, um no `CharacterDraft`) -- inclusive pra justificar o teto de 15g dos
+	/// bercos sorteados -- e nunca a executou: <see cref="GravidadeNatal"/> acostuma o corpo a
+	/// gravidade da RACA, e nao a do lugar onde ele efetivamente nasce.
+	///
+	/// Enquanto o esmagamento nao existia, isso nao tinha sintoma. Com ele ligado (camada 2 da Sala
+	/// do Tempo), a diferenca e a vida do personagem: um Frost Demon nasce em Icer Planet, que puxa
+	/// **15x**, com maestria 1 -- razao 15, muito acima das 4 que PRENDEM o corpo no chao. Ele
+	/// nasceria imovel, perdendo 3 de vida por segundo, sem ter dado um passo. O mesmo valia pro
+	/// Heran (Hera, 10x) e pra qualquer berco sorteado acima da maestria da raca.
+	/// ==========================================================================================
+	///
+	/// O `max` E A REGRA INTEIRA: quem ja domina mais que o berco (o Android, com 200) nao PERDE
+	/// maestria por nascer num lugar leve. E o piso de 1 existe porque o espaco tem gravidade 0 e
+	/// "acostumado a zero" nao quer dizer nada.
+	/// </summary>
+	public static void AclimatarAoBerco(Stats.Fighter f, double gravidadeDoBerco) =>
+		f.GravMastered = Math.Max(f.GravMastered, Math.Max(gravidadeDoBerco, 1));
+
+	/// <summary>
 	/// Sorteia a classe. `linhagem` e o que a tela de criacao coletou (vazio quando a raca
 	/// nao escolhe).
 	/// </summary>
