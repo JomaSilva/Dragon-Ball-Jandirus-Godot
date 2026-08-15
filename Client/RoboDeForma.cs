@@ -227,6 +227,11 @@ public partial class RoboDeForma : Node
 				// e ela devolve a ficha original no fim, justamente pra o `Posar` e as fotos la de baixo
 				// continuarem vendo o boneco de sempre.
 				ORaboEOOlhoSobrevivemAFicha();
+				// LOGO DEPOIS DELA E PELA MESMA REGRA DE ORDEM -- e por uma a mais: as duas mandam uma
+				// ficha adulterada pelo `AoReceberAparencia` e as duas devolvem a original no fim.
+				// Rodar esta antes daquela faria a sonda de genero desta encontrar a sonda vermelha
+				// daquela no `_looks`, e nenhuma das duas mediria o que diz medir.
+				AAparenciaEsperaAVirada();
 				// ULTIMA DAS TRES QUE DIRIGEM O CORPO LOCAL, e pela mesma regra de ordem: ela precisa
 				// achar o boneco na BASE e com a ficha ORIGINAL de volta (a irma de cima devolve as
 				// duas coisas no fim). Ela tambem termina na base -- o `Posar` la embaixo continua
@@ -466,11 +471,21 @@ public partial class RoboDeForma : Node
 		//   * `alien1` e `alien2` -- a MESMA `spc` nos dois galhos (`Alien_Transformations.dm:60`,
 		//     `:66`), UMA folha cada.
 		// ============================================================================================================
+		// ============================ E DOZE COM A SUPER PERFEITA -- A LISTA FICOU PRA TRAS DE NOVO ============================
+		// Exatamente o caso que o bloco acima descreve, uma linha depois: `super_perfect` declara
+		// `Raios = 2` no catalogo desde que a linha do bio entrou, e ele nao e escolha de desenho --
+		// o `Cell4()` veste `/obj/overlay/effects/electrictyeffects/spc` com `snamek Elec.dmi`
+		// (`CellFormBuff.dm:31-32, 66-72`), a MESMA folha do Namekuseijin, no proprio buff do DM.
+		//
+		// A bancada estava vermelha por lista velha enquanto o catalogo estava certo -- o pior dos dois
+		// lados, e a razao esta escrita ali em cima: a proxima falha de verdade entra no meio das ja
+		// aceitas e ninguem repara.
+		// ==================================================================================================================
 		string[] esperado =
 			["ssj2", "ssj3", "primal_legendary2", "primal_legendary3", "ssj4_limit_breaker",
-			 "mistico", "beast", "snamek", "heran2", "alien1", "alien2"];
+			 "mistico", "beast", "snamek", "heran2", "alien1", "alien2", "super_perfect"];
 		Conferir(comRaio.Count == esperado.Length && esperado.All(comRaio.Contains),
-				 $"SO onze formas acendem raio, e sao estas ({string.Join(", ", comRaio)})");
+				 $"SO doze formas acendem raio, e sao estas ({string.Join(", ", comRaio)})");
 
 		// O VOLUME. O SSJ2 e o UNICO leve porque no DM o `if(2)` acende UMA folha; o SSJ3 e o
 		// `primal_legendary2` sao o CHEIO porque os dois caem no `if(3)`, que soma tres; o Limit
@@ -552,8 +567,13 @@ public partial class RoboDeForma : Node
 		// antigos -- se o `snamek` virasse azul, esta conta cairia pra sete sem que a cor dele
 		// parecesse errada em lugar nenhum.
 		// ============================================================================================
-		Conferir(tomDaFaisca.Count == 8,
-				 $"as onze faiscas saem em OITO tons ({tomDaFaisca.Count}: "
+		// ============================ E NOVE COM A SUPER PERFEITA, PELA MESMA DERIVACAO ============================
+		// A linha do bio tambem cai no `_ => d.Aura` do `CorDosRaios` -- ela nao e escada de sangue
+		// Saiyajin --, entao a faisca dela sai no `9fe8a8` da propria chama, que e o verde-branco da
+		// carapaca. Tom novo, uma forma so, sem repetir nenhum dos oito.
+		// ======================================================================================================
+		Conferir(tomDaFaisca.Count == 9,
+				 $"as doze faiscas saem em NOVE tons ({tomDaFaisca.Count}: "
 			   + $"{string.Join(" / ", tomDaFaisca.Select(p => $"{p.Key}={p.Value.Count}"))})");
 		Conferir(tomDaFaisca.TryGetValue("8fe3ff", out List<string>? azuis) && azuis.Count == 4,
 				 $"QUATRO delas sao azuis #8fe3ff ({Quem("8fe3ff")})");
@@ -562,7 +582,7 @@ public partial class RoboDeForma : Node
 		// as duas Alien, que sao a MESMA folha em tons diferentes porque a chama de cada degrau e que
 		// muda. Sem esta linha, duas racas trocando de cor entre si passariam pela conta de cima.
 		foreach ((string id, string tom) in new[]
-			{ ("snamek", "6fe36f"), ("heran2", "ff4a4a") })
+			{ ("snamek", "6fe36f"), ("heran2", "ff4a4a"), ("super_perfect", "9fe8a8") })
 			Conferir(tomDaFaisca.TryGetValue(tom, out List<string>? so) && so.Count == 1 && so[0] == id,
 					 $"e a faisca de `{id}` e #{tom}, so dela ({Quem(tom)})");
 		Conferir(tomDaFaisca.TryGetValue("ff2d2f", out List<string>? vermelhas)
@@ -834,6 +854,40 @@ public partial class RoboDeForma : Node
 			int banhos = c.Beats.Count(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.BanhoDeCor));
 			Conferir(banhos <= 1, $"cena de '{rotulo}': no maximo UM banho de cor ({banhos})");
 
+			// ============================ A SILHUETA DE LUZ E UM INTERRUPTOR, E ELA TEM PAR ============================
+			// Mesma familia do piscar de cabelo: o beat ARMA e quem apaga e o `Assumir` (ver
+			// `Efeito.SilhuetaDoCorpo` no Core). Um segundo beat com a bandeira nao faz nada em jogo --
+			// a camada ja esta acesa com a mesma folha --, e por isso ele precisa reprovar aqui: em jogo
+			// ele se pareceria com um instante em que a cena para pra nada acontecer.
+			//
+			// E AS DUAS METADES TEM QUE EXISTIR JUNTAS, que e o que este bloco tranca de verdade:
+			//   * beat sem folha (`FolhaDeSilhueta.Nenhuma`) e um instante escrito que nao acende nada;
+			//   * folha sem beat e uma arte declarada que ninguem pede -- exatamente o estado em que
+			//     `bioto2`/`bioto3` viveram neste port (convertidos, importados, e sem um leitor).
+			//
+			// COMO REPROVA SE A REGRA SUMIR: apague o `Silhueta = folha` da fabrica `BioEvoluindo` e cai
+			// a primeira; apague o `Efeito.SilhuetaDoCorpo` do beat 0 dela e cai a segunda.
+			// =========================================================================================================
+			int silhuetas = c.Beats.Count(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.SilhuetaDoCorpo));
+			bool temFolha = c.Silhueta != Jandirus.Core.Forms.FolhaDeSilhueta.Nenhuma;
+			Conferir(silhuetas <= 1, $"cena de '{rotulo}': no maximo UM beat que ARMA a silhueta ({silhuetas})");
+
+			// AS DUAS METADES, NUMA AFIRMACAO SO -- e ela e dita no positivo de proposito: um `Conferir`
+			// cujo texto descreve o DEFEITO fica verde afirmando uma coisa falsa nas 39 cenas que nao
+			// acendem silhueta nenhuma, e uma bancada que le errado quando passa e uma bancada que
+			// ninguem confere.
+			Conferir(silhuetas == (temFolha ? 1 : 0),
+					 $"cena de '{rotulo}': o beat e a folha andam juntos "
+				   + $"(folha `{c.Silhueta}`, {silhuetas} beat(s) que a acendem)");
+
+			// E A ARTE TEM QUE ESTAR IMPORTADA, nao so "existir na pasta" -- ver `SilhuetasDeCena.Existe`,
+			// e os dois episodios deste projeto com arte convertida que o Godot nunca importou. So se
+			// pergunta quando ha folha: "a folha `Nenhuma` esta importada" nao quer dizer nada.
+			if (temFolha)
+				Conferir(SilhuetasDeCena.Existe(c.Silhueta),
+						 $"cena de '{rotulo}': a folha `{c.Silhueta}` esta importada "
+					   + $"({SilhuetasDeCena.CaminhoDa(c.Silhueta) ?? "sem caminho"})");
+
 			int claroes = c.Beats.Count(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.ClaraoDeTela));
 			Conferir(claroes <= 1, $"cena de '{rotulo}': no maximo UM clarao de tela ({claroes})");
 			Conferir(c.Beats.All(b => !b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.ClaraoDeTela)
@@ -996,6 +1050,30 @@ public partial class RoboDeForma : Node
 		// que o jogo nunca toca.
 		// ==============================================================================================
 		ConferirRoteiro(Jandirus.Core.Forms.Cinematicas.Furia, "furia", prendeOCorpo: false);
+
+		// ============================ E AS TRES CENAS AVULSAS DO BIO, PELA MESMA REGUA ============================
+		// Elas estao fora da `Todas` pelo mesmo motivo da furia (nao sao de forma: duas sobem um
+		// `bio_stage` e a terceira acontece na hora da morte -- ver o bloco delas no Core), e entram
+		// aqui pelo caminho que a furia abriu. O que isso compra e o de sempre: **a regra que alguem
+		// escrever amanha dentro do `ConferirRoteiro` passa a valer pra elas sozinha**.
+		//
+		// SEM A ENCURTADA, tambem como a furia: nao ha maestria em evoluir. Cada degrau acontece uma
+		// vez na vida do personagem, entao a cena dele nunca se repete pra encurtar.
+		//
+		// AS DUAS DE DEGRAU PRENDEM (o `BioLabEvolve` abre com `move = 0` e so devolve no fim) e a do
+		// SSJ2 NAO (o `bio_ssj2_awaken` escreve `canmove = 1` na primeira linha). O parametro carrega
+		// exatamente essa diferenca, e ela e a do DM.
+		// =====================================================================================================
+		ConferirRoteiro(Jandirus.Core.Forms.Cinematicas.BioSemiPerfeito, "bio semi-perfeito");
+		ConferirRoteiro(Jandirus.Core.Forms.Cinematicas.BioPerfeito, "bio perfeito");
+		ConferirRoteiro(Jandirus.Core.Forms.Cinematicas.BioSsj2, "bio ssj2 pela morte", prendeOCorpo: false);
+
+		// E A FOLHA DO ROMPIMENTO TAMBEM TEM QUE ESTAR IMPORTADA. Ela e a unica das tres que nao
+		// pertence a cena nenhuma (o `flick` de `dnl_larva_mature` nao e cinematica -- ver
+		// `Cinematicas.CenaBio.Rompimento`), entao ela escaparia do laco acima e a falta so apareceria
+		// como uma larva que amadurece sem nada na tela.
+		Conferir(SilhuetasDeCena.Existe(Jandirus.Core.Forms.FolhaDeSilhueta.Rompimento),
+				 "o clarao do rompimento da larva (`flashtrans`) esta importado");
 
 		AsTresDuracoes();
 
@@ -1699,6 +1777,18 @@ public partial class RoboDeForma : Node
 		("snamek",                          "`snamek()` nao tem um `sleep` -- a forma fica no mesmo tique"),
 		("alien1",                          "`Alien_Trans()` nao tem um `sleep`"),
 		("alien2",                          "`Alien_Trans()` nao tem um `sleep` (o mesmo proc)"),
+
+		// ============================ E A SUPER PERFEITA, PELO MESMO MOTIVO DAS TRES DE CIMA ============================
+		// `Cell4()` (`CellFormBuff.dm:73-82`) sao sete linhas sem espera nenhuma: `chargeaura.wav`, o
+		// `startbuff`, `animate(src, time=7, color=rgb(243,240,46))` -- que e flash e nao cena, como o
+		// `animate` do Namekuseijin logo acima --, `createShockwavemisc(loc,1)` e `createCrater(loc,5)`.
+		//
+		// ELA ENTRA AQUI E NAO FICA DE FORA porque a ausencia precisa estar ESCRITA: `super_perfect` era
+		// a unica forma do catalogo inteiro sem cena nenhuma, e a bancada acusava isso por duas linhas
+		// diferentes ao mesmo tempo ("toda forma tem cena -- 1 sem" e "sem classificacao"). Portar a cena
+		// sem classificar o prazo dela trocaria uma acusacao pela outra.
+		// ==========================================================================================================
+		("super_perfect",                   "`Cell4()` nao tem um `sleep` -- o `animate(time=7)` e flash"),
 	];
 
 	/// <summary>
@@ -2764,6 +2854,8 @@ public partial class RoboDeForma : Node
 		vis.CorpoDaForma(CorpoDeForma.Nenhum);
 		Conferir(!vis.EhCriatura && vis.TemCabeloVisivelDeTeste,
 				 "sair do macaco devolve o cabelo e a roupa (senao o jogador fica pelado pra sempre)");
+
+		AAureolaSobreACabeca(vis);
 
 		// ============================ O CABELO TROCA DE SPRITE, NAO SO DE COR ============================
 		// O BYOND troca o overlay INTEIRO (`removeOverlay(hair)` + `updateOverlay(ssj/ssj1)`). Eu
@@ -8203,6 +8295,14 @@ public partial class RoboDeForma : Node
 			|| corpo.GetNodeOrNull<CharacterVisual>("Visual") is not { } vis)
 		{ Conferir(false, "o corpo local tem Visual pra a ficha atrasada"); return; }
 
+		// AS CENAS QUE SOBRARAM DOS BLOCOS ANTERIORES SAEM ANTES -- ver `LimparCenasDoCorpo`. Este
+		// teste mede a ficha chegando num corpo TRANSFORMADO e SEM cinematica (por isso o `Mudar`
+		// usa `DegrauDeCena.Nenhuma` e mata a cena que nascer); uma cena viva herdada faria a ficha
+		// esperar a virada e as tres linhas de baixo dariam verde sem medir nada.
+		if (LimparCenasDoCorpo(corpo) is > 0 and var sobraram)
+			_passos.Add($"  --     {sobraram} cinematica(s) viva(s) herdada(s) do bloco anterior foram "
+					  + "encerradas: com uma delas de pe a ficha esperaria a virada");
+
 		// A FICHA DE VERDADE, e ela e a primeira afirmacao do bloco: se o jogador NAO tem look
 		// guardado, entao ele nunca recebeu o proprio `PeerLook` -- e ai o caminho que este teste
 		// existe pra medir nao existe em jogo, o que e um achado e nao um motivo pra sair calado.
@@ -8310,6 +8410,200 @@ public partial class RoboDeForma : Node
 	/// </summary>
 	private static Vector3 ComoAFichaPinta(Jandirus.Core.Appearance.Rgb? cor) => cor is { } c
 		? new Vector3(c.R / 255f, c.G / 255f, c.B / 255f) : Vector3.Zero;
+
+	/// <summary>
+	/// MATA AS CINEMATICAS QUE SOBRARAM NO CORPO LOCAL, e devolve quantas eram.
+	///
+	/// ============================ POR QUE ISTO PRECISOU EXISTIR ============================
+	/// Desde que a aparencia passou a ESPERAR a virada da cena (`World._pendentes`), uma cena viva no
+	/// corpo e um portao fechado pro `AoReceberAparencia` -- e esta bancada deixa cenas vivas atras de
+	/// si em varios blocos (as que ela mesma cria com `SetProcess(false)` pra bombear a mao, e a que o
+	/// `Posar` acende pra a foto). Elas eram invisiveis enquanto ficha e cena nao se falavam.
+	///
+	/// EM JOGO ISSO NAO ACONTECE: o teto (`Transformacao.FolgaDoTeto`) solta qualquer cena em
+	/// `Segundos + 5`, entao nao existe cena viva pra sempre. Quem produz esse estado e a bancada, ao
+	/// desligar o `_Process` -- e por isso o remedio mora aqui e nao na regra.
+	///
+	/// `Free()` E NAO `QueueFree()`: a liberacao adiada so acontece no fim do quadro, e os blocos que
+	/// chamam isto medem DENTRO do mesmo quadro. `Free` passa pelo `_ExitTree` -> `Soltar`, que devolve
+	/// a tranca, a pose, a silhueta e a virada -- ou seja nao ha atalho aqui, e o caminho e o mesmo da
+	/// cena que morre por troca de zona.
+	/// ==================================================================================
+	/// </summary>
+	private int LimparCenasDoCorpo(Node2D corpo)
+	{
+		int quantas = 0;
+		foreach (Transformacao t in corpo.GetParent().GetChildren().OfType<Transformacao>().ToArray())
+		{
+			if (!IsInstanceValid(t) || !t.Rodando || t.AlvoDaCena != corpo) continue;
+			t.Free();
+			quantas++;
+		}
+		return quantas;
+	}
+
+	// =====================================================================
+	// 3a-quinquies. A APARENCIA QUE CHEGA NO MEIO DA CENA ESPERA A VIRADA
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE O DONO FOTOGRAFOU ============================
+	/// *"o bio androide ta MUDANDO O CORPO ANTES DA CINEMATICA ACABAR ai ta ficando BUGADO como pode
+	/// ver"* -- o corpo meio trocado, pedacos sobrepostos. A silhueta de luz da cena e dimensionada pro
+	/// corpo VELHO; com o corpo novo ja na tela, ficavam 28 s de duas silhuetas de tamanhos diferentes
+	/// empilhadas. E a MESMA familia da queixa anterior (*"tem transformacao q estao criando a CRATERA
+	/// NO MEIO da cinematica (deveria ser sempre no FINAL)"*): efeito de FIM acontecendo no COMECO.
+	///
+	/// ============================ A BANCADA MEDE A **ENTRADA** NO ESTADO ============================
+	/// Este projeto ja pagou por bancada que nasce DENTRO do estado que deveria testar. Aqui o que se
+	/// mede e o instante da ENTRADA: o pacote de aparencia chegando com a cena JA rodando, que e
+	/// literalmente o que o servidor faz (`GameServer.SubirDegrauDoBio` manda a cena e o `PeerLook`
+	/// logo depois, no mesmo canal ordenado).
+	///
+	/// ============================ E O QUE ELA LE E O DESENHO, NAO O CAMPO ============================
+	/// A leitura e `CharacterVisual.QuadroDoCorpoDeTeste(primeiro: true)` -- os PIXELS do quadro zero da
+	/// camada do corpo. Um teste que perguntasse `World.LookDeTeste` mediria so o registro que eu mesmo
+	/// escrevo, e ficaria verde no dia em que o registro esperasse e o sprite nao. As duas leituras
+	/// estao aqui, e o pixel vem primeiro.
+	///
+	/// ============================ A SONDA E O GENERO, E ELA E CONFERIDA ANTES DE VALER ============================
+	/// Trocar o `Genero` troca a folha do corpo pelo MESMO caminho do degrau do bio
+	/// (`VisualCatalog.CorpoSprite`, que e quem le `Appearance.Corpo`). O bloco 1 daqui roda a sonda
+	/// SEM cena nenhuma e exige que o desenho mude: sem isso, um dia em que as duas folhas fossem
+	/// iguais deixaria os blocos 2 e 3 verdes medindo nada.
+	///
+	/// ============================ E A CENA INTERROMPIDA (o bloco 3) ============================
+	/// A regra tem duas metades e a segunda e a que impede o remedio de ser pior que a doenca: segurar
+	/// a aparencia so vale se ela SEMPRE for entregue. Uma cena morta no meio (nocaute, morte, troca de
+	/// zona, o teto) entrega a aparencia nova ANTECIPADA -- nunca "nunca". Ver `Transformacao.Virar`.
+	///
+	/// COMO REPROVA SE A REGRA SUMIR: tire o desvio do `World.AoReceberAparencia` (o ramo do
+	/// `CenaEmCurso`) -- o bloco 2 cai na primeira linha, porque o desenho troca no segundo 0. Tire o
+	/// `Virar()` do `Transformacao.Soltar` -- o bloco 3 cai, e ai o jogador fica com a aparencia velha
+	/// pra sempre, que e o defeito oposto e pior.
+	/// ==========================================================================================================
+	/// </summary>
+	private void AAparenciaEsperaAVirada()
+	{
+		if (GetTree().Root.FindChild("World", true, false) is not Jandirus.Client.World mundo)
+		{ Conferir(false, "achei o `World` pra a aparencia no meio da cena"); return; }
+		int meuId = GameClient.Instance?.LocalId ?? 0;
+		if (meuId == 0) { Conferir(false, "a bancada esta conectada pra a aparencia no meio da cena"); return; }
+		if (GetTree().Root.FindChild("LocalPlayer", true, false) is not Node2D corpo
+			|| corpo.GetNodeOrNull<CharacterVisual>("Visual") is not { } vis)
+		{ Conferir(false, "o corpo local tem Visual pra a aparencia no meio da cena"); return; }
+		if (mundo.LookDeTeste(meuId) is not { } ficha)
+		{ Conferir(false, "o jogador tem `PeerLook` guardado pra a aparencia no meio da cena"); return; }
+
+		// MESMA HIGIENE DA IRMA DE CIMA, e aqui ela e ainda mais necessaria: o bloco 1 mede a sonda
+		// SEM cena nenhuma, e uma cena herdada o faria concluir que a sonda nao vale.
+		if (LimparCenasDoCorpo(corpo) is > 0 and var herdadas)
+			_passos.Add($"  --     {herdadas} cinematica(s) viva(s) herdada(s) foram encerradas antes de "
+					  + "medir a sonda sem cena");
+
+		string nome = GameClient.Instance?.LocalName ?? "Eu";
+		// A SONDA: o MESMO `Appearance`, o OUTRO genero. Ela entra pelo mesmo canal do jogo
+		// (`AoReceberAparencia`) e sai pela folha do corpo (`VisualCatalog.CorpoSprite`) -- o mesmo
+		// caminho por onde o degrau do bio troca o corpo.
+		string outroGenero = ficha.Genero == "Female" ? "Male" : "Female";
+		void Ficha(string genero) => mundo.AoReceberAparencia(meuId, nome, ficha.Raca, genero, ficha.Ap);
+
+		// O DESENHO, E NAO O CAMPO. `null` e leitura falha e nao "igual": comparar dois nulos daria
+		// verde num corpo sem sprite nenhum.
+		byte[]? Desenho() => vis.QuadroDoCorpoDeTeste(primeiro: true)?.GetData();
+		static bool Mesmo(byte[]? a, byte[]? b) => a != null && b != null && a.AsSpan().SequenceEqual(b);
+
+		byte[]? original = Desenho();
+		if (original == null) { Conferir(false, "a camada do corpo tem quadro pra fotografar"); return; }
+
+		// --- 1. A SONDA VALE? (sem cena nenhuma) ---------------------------------
+		Ficha(outroGenero);
+		byte[]? sondado = Desenho();
+		bool sondaVale = !Mesmo(original, sondado) && sondado != null;
+		Conferir(sondaVale,
+				 $"a sonda de corpo e DISTINGUIVEL: trocar o genero ({ficha.Genero} -> {outroGenero}) "
+			   + "muda o desenho da camada do corpo sem cena nenhuma");
+		Ficha(ficha.Genero);
+		Conferir(Mesmo(original, Desenho()), "-- e devolver a ficha devolve o desenho de antes");
+		if (!sondaVale) return;
+
+		// --- 2. COM A CENA RODANDO, O DESENHO ESPERA ------------------------------
+		string Base = Jandirus.Core.Forms.Catalogo.IdBase;
+		Transformacao? Nascida(System.Collections.Generic.HashSet<Transformacao> antes) =>
+			corpo.GetParent().GetChildren().OfType<Transformacao>()
+				 .FirstOrDefault(t => IsInstanceValid(t) && !antes.Contains(t));
+
+		var havia = new System.Collections.Generic.HashSet<Transformacao>(
+			corpo.GetParent().GetChildren().OfType<Transformacao>().Where(IsInstanceValid));
+		mundo.AoMudarForma(meuId, Jandirus.Core.Forms.Catalogo.Rede(Base),
+						   Jandirus.Core.Forms.Catalogo.Rede("ssj1"),
+						   Jandirus.Core.Forms.DegrauDeCena.Estreia);
+		if (Nascida(havia) is not { } cena)
+		{
+			Conferir(false, "a estreia do `ssj1` acendeu uma cinematica no corpo local");
+			mundo.AoMudarForma(meuId, Jandirus.Core.Forms.Catalogo.Rede("ssj1"),
+							   Jandirus.Core.Forms.Catalogo.Rede(Base),
+							   Jandirus.Core.Forms.DegrauDeCena.Nenhuma);
+			Ficha(ficha.Genero);
+			return;
+		}
+		// O RELOGIO E BOMBEADO A MAO, como na `--diagcena`: `SetProcess(false)` + `_Process(passo)`
+		// num laco. Sem isso o teste dependeria de 11 s de quadros reais passarem.
+		cena.SetProcess(false);
+		double assume = cena.CenaDeTeste.SegundosPreso;
+
+		Ficha(outroGenero);
+		Conferir(Mesmo(original, Desenho()),
+				 $"o `PeerLook` que chega com a cinematica rodando NAO troca o desenho do corpo "
+			   + $"(t = {cena.TempoDeTeste:0.00}s de {assume:0.0}s ate a virada)");
+		Conferir(mundo.LookDeTeste(meuId) is { } meio && meio.Genero == ficha.Genero,
+				 "-- e nem o registro: `_looks` ainda tem a ficha VELHA, a nova esta em `_pendentes`");
+
+		// --- ... ate a virada, e nela o desenho troca -----------------------------
+		for (int i = 0; i < 2000 && IsInstanceValid(cena) && cena.TempoDeTeste < assume + 0.2; i++)
+			cena._Process(0.1);
+
+		Conferir(Mesmo(sondado, Desenho()),
+				 $"e na VIRADA da cena ({assume:0.0}s) o desenho do corpo troca -- a MESMA linha em que "
+			   + "a silhueta sai e a cratera nasce (`DNALabs.dm:611-617`)");
+		Conferir(mundo.LookDeTeste(meuId) is { } fim && fim.Genero == outroGenero,
+				 "-- e o registro vira junto, sem uma segunda verdade sobre o instante");
+
+		if (IsInstanceValid(cena)) cena.Free();
+		mundo.AoMudarForma(meuId, Jandirus.Core.Forms.Catalogo.Rede("ssj1"),
+						   Jandirus.Core.Forms.Catalogo.Rede(Base),
+						   Jandirus.Core.Forms.DegrauDeCena.Nenhuma);
+		Ficha(ficha.Genero);
+
+		// --- 3. CENA INTERROMPIDA ENTREGA A APARENCIA ASSIM MESMO -----------------
+		// **Ninguem pode ficar com a aparencia velha pra sempre.** Esta e a metade que impede o remedio
+		// de virar doenca: nocaute, morte e troca de zona matam a cena antes da virada.
+		havia = new System.Collections.Generic.HashSet<Transformacao>(
+			corpo.GetParent().GetChildren().OfType<Transformacao>().Where(IsInstanceValid));
+		mundo.AoMudarForma(meuId, Jandirus.Core.Forms.Catalogo.Rede(Base),
+						   Jandirus.Core.Forms.Catalogo.Rede("ssj1"),
+						   Jandirus.Core.Forms.DegrauDeCena.Estreia);
+		if (Nascida(havia) is { } cortada)
+		{
+			cortada.SetProcess(false);
+			Ficha(outroGenero);
+			Conferir(Mesmo(original, Desenho()), "com a cena viva de novo, o desenho volta a esperar");
+			// A MORTE DA CENA E O EVENTO: `Free()` passa pelo `_ExitTree` -> `Soltar` -> `Virar`, que e
+			// o mesmo caminho do nocaute, da morte e da troca de zona.
+			cortada.Free();
+			Conferir(Mesmo(sondado, Desenho()),
+					 "e a cena INTERROMPIDA entrega a aparencia assim mesmo -- adiantada, nunca 'nunca'");
+		}
+		else Conferir(false, "a segunda estreia do `ssj1` acendeu cinematica pra a metade interrompida");
+
+		mundo.AoMudarForma(meuId, Jandirus.Core.Forms.Catalogo.Rede("ssj1"),
+						   Jandirus.Core.Forms.Catalogo.Rede(Base),
+						   Jandirus.Core.Forms.DegrauDeCena.Nenhuma);
+		// E A FICHA ORIGINAL VOLTA PRO LUGAR, pela mesma razao do `ORaboEOOlhoSobrevivemAFicha`: as
+		// fotos que a bancada tira depois nao podem herdar a sonda.
+		Ficha(ficha.Genero);
+		Conferir(Mesmo(original, Desenho()),
+				 "e a ficha ORIGINAL volta pro corpo (as fotos daqui pra frente nao herdam a sonda)");
+	}
 
 	// =====================================================================
 	// 3a-PIXEL. O PAR (COR + MODO), E A COR QUE SAI NA TELA
@@ -8562,6 +8856,55 @@ public partial class RoboDeForma : Node
 	/// contagem, porque dois tons se fundem. Faca o `TingirCabelo` cair em matiz na base -- a contagem
 	/// despenca pra 1 e a linha do PAR cai junto, um quadro antes.
 	/// </summary>
+	/// <summary>
+	/// ============================ A AUREOLA SOBRE A CABECA -- O PEDIDO DO DONO, NO PIXEL ============================
+	/// *"falta fazer o personagem quando MORRER ir pro OUTRO MUNDO e a AUREOLA aparecer sobre a
+	/// cabeca"*. A metade de SERVIDOR (o bit, o canal, a viagem) tem bancada propria -- `--alemteste`.
+	/// O que **so** se mede deste lado e o desenho: a camada nasce, aparece, obedece as mesmas regras
+	/// dos outros overlays e SOME quando o morto volta a vida.
+	///
+	/// ============================ ELA NASCEU PRA UMA BANCADA QUE NAO EXISTIA ============================
+	/// `CharacterVisual.AureolaVisivelDeTeste` foi escrita junto com a auréola e ficou **orfa**: nenhum
+	/// chamador, em nenhum lugar do repo. Uma sonda de bancada sem bancada e pior que sonda nenhuma --
+	/// ela promete uma prova que ninguem cobra, e quem le o codigo acha que a auréola esta coberta.
+	/// ============================================================================================
+	///
+	/// COMO REPROVA: apague a chamada a `Reordenar()` no `MostrarAureola` e a camada nasce sem lugar na
+	/// pilha; devolva a folha de `Icons/Clothes` ao `SpriteDaAureola` e a primeira linha cai (5 estados
+	/// no lugar de 20); tire o `if (!_temAureola)` do `MontarAureola` e a ultima cai -- a auréola fica
+	/// acesa pra sempre depois da primeira morte, que e o defeito que o jogador levaria pra vida toda.
+	/// </summary>
+	private void AAureolaSobreACabeca(CharacterVisual vis)
+	{
+		Conferir(ResourceLoader.Exists(CharacterVisual.SpriteDaAureola),
+				 $"o sprite da auréola esta IMPORTADO ({CharacterVisual.SpriteDaAureola.GetFile()})");
+
+		Conferir(!vis.AureolaVisivelDeTeste, "VIVO o boneco nao tem auréola nenhuma");
+
+		vis.MostrarAureola(true);
+		Conferir(vis.AureolaVisivelDeTeste, "MORTO, a auréola aparece -- o pedido do dono, na tela");
+		Conferir(vis.TemCabeloVisivelDeTeste,
+				 "...e ela nao TROCA nada: o cabelo continua la embaixo (ela e camada, nao corpo)");
+
+		// ============================ ELA SOME COM O CORPO, E ISSO E A DECISAO ============================
+		// `MostrarAureola` recusa `INaoSomeComOCorpo` por escrito: no DM a auréola e `overlays` do mob
+		// (`OverlayMobHandlers.dm:17-18`), entao tudo que engole overlay engole a auréola junto. O
+		// Oozaru e o caso extremo e o mais barato de encenar (`Oozaru.dm:137-139` apaga todos), e ele
+		// prova a regra inteira num passo -- inclusive pro `flick('Zanzoken.dmi')`, que e o caso que
+		// motivou a decisao e que uma bancada nao consegue congelar.
+		// ==========================================================================================
+		vis.CorpoDaForma(CorpoDeForma.Oozaru);
+		Conferir(!vis.AureolaVisivelDeTeste,
+				 "de Oozaru a auréola some junto com os outros overlays (e nao paira sobre o macaco)");
+
+		vis.CorpoDaForma(CorpoDeForma.Nenhum);
+		Conferir(vis.AureolaVisivelDeTeste, "sair do macaco a devolve -- o morto continua morto");
+
+		vis.MostrarAureola(false);
+		Conferir(!vis.AureolaVisivelDeTeste,
+				 "REVIVER apaga a camada (senao ela ficaria acesa pelo resto da vida do personagem)");
+	}
+
 	private void OCabeloBaseMantemRelevo(CharacterVisual vis)
 	{
 		if (Camada(vis, "cabelo") is not { } cab)
@@ -9222,6 +9565,21 @@ public partial class RoboDeForma : Node
 		("heran2",                          ModoCabelo.Base,             null,     null),
 		("alien1",                          ModoCabelo.Base,             null,     null),
 		("alien2",                          ModoCabelo.Base,             null,     null),
+
+		// ============================ E O BIO-ANDROIDE, A DECIMA TERCEIRA AUSENCIA ============================
+		// `super_perfect` estava faltando aqui desde que a linha do bio entrou no catalogo, e a bancada
+		// a acusava pelo nome ("forma nova sem ninguem olhar"). A resposta e a mesma das doze acima, e
+		// nesta ela tem regra ESCRITA no original: **o bio-androide e careca em TODA forma**
+		// (`HairObject.dm:168` recusa cabelo pra a raca, e `dnl_bio_hatch` crava `hair = "Bald"` no
+		// nascimento). Rabo ele nao tem em lugar nenhum do jogo, e nenhuma forma dele encosta no olho.
+		//
+		// O QUE O DM ENCOSTA E OUTRO CANAL: `Cell4()` veste `/obj/overlay/hairs/SuperPerfect/sp1` com
+		// `icon = container.truehair` -- o PROPRIO cabelo do jogador, que num bio e o vazio -- e o
+		// `.../spc` com `snamek Elec.dmi`, que e ELETRICIDADE. Eletricidade e o campo `Raios` (que a
+		// entrada do catalogo declara como 2), e nao nenhuma das tres colunas desta tabela. E o mesmo
+		// caso do Heran e do Namekuseijin logo acima, palavra por palavra.
+		// ==================================================================================================
+		("super_perfect",                   ModoCabelo.Base,             null,     null),
 	];
 
 	/// <summary>

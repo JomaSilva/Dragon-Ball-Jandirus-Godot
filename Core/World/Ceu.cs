@@ -120,6 +120,29 @@ public readonly struct RelogioDoPlaneta
 	public bool TemDia { get; init; }
 	public bool TemNoite { get; init; }
 
+	/// <summary>
+	/// ESTE LUGAR TEM LUZ PRÓPRIA: nada de ambiente, nada de hora, nada de clima na cor da cena.
+	///
+	/// ============================ POR QUE UM CAMPO, E NÃO "MEIO-DIA PARADO" ============================
+	/// Porque meio-dia parado **não é branco**. O tom do meio-dia deste jogo é `dcdcd2` (ver
+	/// `Iluminacao.AmbienteDia`), um branco levemente quente que multiplica a cena inteira -- e ele é
+	/// a resposta certa pra um planeta ao meio-dia. A dimensão mental não é um planeta ao meio-dia:
+	/// no DM ela é um z-level construído em tempo de execução (`build_mind_z`), **sem sol, sem área
+	/// de clima e sem nada que module cor**. O `White.dmi` é desenhado como ele é.
+	///
+	/// ISTO FOI ACHADO POR UMA FOTO, e é o tipo de coisa que só a foto acha. A bancada de regras já
+	/// estava verde: a zona resolvia pra planta de 100x100, o nascimento caía na célula do DM, o
+	/// pincel do chão era o mesmo da parede. Só que interior neste port cai em <see cref="Ceu.SemCeu"/>
+	/// -- *"crepúsculo parado"* --, e crepúsculo sobre branco dá **malva**: a foto mediu `R0,38 G0,26
+	/// B0,30` e ZERO pixel quase-branco, com o HUD escrito "poente". O quarto estava certo e a luz
+	/// estava errada, e o dono continuaria vendo *"um lugar nada a ver"*.
+	///
+	/// O CAMPO É DO RELÓGIO e não do desenho porque quem responde "que céu tem aqui?" é o Core, e as
+	/// duas pontas leem a mesma resposta. Ver <see cref="Ceu.DimensaoBranca"/>.
+	/// ==============================================================================================
+	/// </summary>
+	public bool LuzPropria { get; init; }
+
 	public LuaDoPlaneta Lua { get; init; }
 
 	/// <summary>O relógio da Terra -- e o padrão de todo mundo que não disser o contrário.</summary>
@@ -353,6 +376,11 @@ public static class Ceu
 		// atmosfera não há céu que mude de cor, e o fundo de estrelas já é a imagem do lugar.
 		if (Espaco.EhEspaco(zona)) return SemCeu;
 
+		// A MENTE VEM ANTES DO INTERIOR GENÉRICO, e a ordem é o conserto: ela **é** um interior, então
+		// a linha de baixo já respondia por ela -- com crepúsculo parado, que sobre chão branco dá
+		// malva. Ver `RelogioDoPlaneta.LuzPropria`.
+		if (DimensaoMental.EhAMente(zona)) return DimensaoBranca;
+
 		// INTERIOR NÃO VÊ LUA -- é a regra que o DM escreve duas vezes: as áreas `Inside` nascem
 		// com `HasMoon = 0` (`Weather.dm:76-80`) e o gatilho do Oozaru ainda confere o nome da
 		// área antes de deixar o Saiyajin olhar pra cima (`Weather.dm:202`). Teto é teto.
@@ -370,6 +398,19 @@ public static class Ceu
 			Lua = LuaDoPlaneta.DoNome(zona.Name, f?.TemLua ?? true),
 		};
 	}
+
+	/// <summary>
+	/// A DIMENSÃO MENTAL: sem céu **e sem penumbra** -- ver <see cref="RelogioDoPlaneta.LuzPropria"/>,
+	/// que é onde a decisão inteira está escrita.
+	/// </summary>
+	public static RelogioDoPlaneta DimensaoBranca => new()
+	{
+		SegundosPorDia = SegundosPorDia,
+		TemDia = false,
+		TemNoite = false,
+		Lua = LuaDoPlaneta.Nenhuma,
+		LuzPropria = true,
+	};
 
 	/// <summary>Lugar sem céu: espaço e interiores. Crepúsculo parado e nenhuma lua.</summary>
 	public static RelogioDoPlaneta SemCeu => new()

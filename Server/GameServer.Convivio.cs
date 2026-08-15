@@ -352,6 +352,11 @@ public partial class GameServer
 		// do cargo (`Murder.dm:85-101`) -- e so a MORTE conta, nunca o nocaute, que e o que o DM faz
 		// ao pendurar a regra dentro do `killer_stuff`. Ver `GameServer.CargoPortas.cs`.
 		if (morreu) SucessaoPorMorte(vitima, algoz);
+
+		// A QUARTA, e ela vem do MESMO `killer_stuff` (`Murder.dm:83`): o KARMA. Matar um inocente
+		// suja a alma, matar um assassino a limpa -- e e este eixo que decide nove dos cargos
+		// reivindicaveis. So a MORTE conta, pelo mesmo motivo da sucessao. Ver `GameServer.Karma.cs`.
+		if (morreu) KarmaPorMatarJogador(vitima, algoz);
 	}
 
 	/// <summary>

@@ -1,9 +1,11 @@
 using Godot;
+using Jandirus.Core.Appearance;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Forms;
 using Jandirus.Core.Npc;
 using Jandirus.Core.Skills;
 using Jandirus.Core.World;
+using Jandirus.Net;
 
 namespace Jandirus.Server;
 
@@ -367,6 +369,202 @@ public partial class GameServer
 					  guardiao.Combate is { } c && c.Corpo.Partes.Count > 0);
 				Checa("...e nao tem dono na tela (`Peer == null` e a definicao de NPC deste servidor)",
 					  guardiao.Peer == null);
+			}
+
+			// =====================================================================
+			// 10. A ROUPA -- *"todo npc ta nascendo SEM ROUPAS"*
+			// =====================================================================
+			// ============================ POR QUE ESTA SECAO OLHA O CORPO, E NAO A TABELA ============================
+			// Porque a falha que o dono viu nao estava na tabela: ela nao existia. E a falha SEGUINTE,
+			// a que uma bancada distraida deixa passar, e a peca ser escolhida e depois DESCARTADA em
+			// silencio pelo `VisualCatalog.Sanear` -- que foi exatamente o que aconteceria com a
+			// armadura antes de ela entrar no catalogo. Conferir o que `RoupaDeNpc` devolve ficaria
+			// verde nos dois mundos.
+			//
+			// Entao o que se mede aqui e `npc.Visual.Roupa` DEPOIS do funil inteiro (tabela ->
+			// `Sanear` -> corpo no mundo), que e o mesmo objeto que o `Protocol.PutAppearance`
+			// escreve no fio. E o par do "uniform escrito != pixel desenhado".
+			// ==================================================================================================
+			Checa("o catalogo visual carregou (sem ele ninguem se veste)", _visual != null);
+			if (_visual != null)
+			{
+				// --- a) A ARTE EXISTE? E o "PARE e RELATE" do pedido, e ele e por RACA ---
+				// Varre TODA raca do races.json, nao so as tres do DM: a tabela tem linha pra cada uma
+				// e uma peca sem arte devolve nulo em vez de sumir. Quem faltar sai nomeado no detalhe.
+				var semArte = new List<string>();
+				foreach (string raca in _racas!.Protos.Keys)
+					foreach (string g in new[] { "Male", "Female" })
+						for (ulong s = 1; s <= 24; s++)
+						{
+							var falta = new List<string>();
+							RoupaDeNpc.Vestir(_visual, raca, g, s, null, falta);
+							foreach (string f in falta) if (!semArte.Contains($"{raca}: {f}")) semArte.Add($"{raca}: {f}");
+						}
+				Checa("nenhuma peca da tabela esta sem arte no port", semArte.Count == 0,
+					  string.Join(" | ", semArte));
+
+				// --- b) DETERMINISMO: a roupa sai da semente DELE, e nao de um `Random` solto ---
+				string Vestido(string raca, string gen, ulong s) => string.Join("+",
+					RoupaDeNpc.Vestir(_visual, raca, gen, s).Select(p => $"{p.Caminho}#{p.Cor}"));
+
+				Checa("mesma semente = MESMA roupa (caminho E cor)",
+					  Vestido("Saiyan", "Male", 777) == Vestido("Saiyan", "Male", 777),
+					  Vestido("Saiyan", "Male", 777));
+				// ...e ela VARIA, senao o determinismo estaria sendo cumprido por uma tabela de um item so
+				Checa("...e sementes diferentes nao dao todas a mesma roupa",
+					  Enumerable.Range(1, 40).Select(i => Vestido("Human", "Male", (ulong)i)).Distinct().Count() > 1);
+				Checa("...e a cor da 'Armor 8' tambem sai da semente (nao e sorteada de novo a cada leitura)",
+					  Enumerable.Range(1, 60).Select(i => Vestido("Saiyan", "Male", (ulong)i))
+							.Count(v => v.Contains("Armor 8", StringComparison.Ordinal)
+									 && !v.EndsWith('#')) > 0);
+
+				// --- c) A ROUPA E DA RACA CERTA -- o pedido inteiro do dono numa linha ---
+				bool SoDe(string raca, string gen, string[] permitidas) =>
+					Enumerable.Range(1, 60).All(i =>
+						RoupaDeNpc.Vestir(_visual, raca, gen, (ulong)i)
+							.All(p => permitidas.Any(q => p.Caminho.Contains(q, StringComparison.OrdinalIgnoreCase))));
+
+				Checa("SAIYAJIN so veste armadura de batalha (PlanetPopulation.dm:368)",
+					  SoDe("Saiyan", "Male", ["/Armor/Armor 8", "Armor Bardock", "Nappa Armor", "RaditzArmor"]));
+				Checa("NAMEKUSEIJIN so veste jaqueta/cachecol de Namek (PlanetPopulation.dm:413-414)",
+					  SoDe("Namekian", "Male", ["ClothesNamekJacket", "Clothes_NamekianScarf"]));
+				Checa("HUMANO so veste Gi ou roupa comum (PlanetPopulation.dm:396-402)",
+					  SoDe("Human", "Male", ["Clothes_GiTop", "Clothes_GiBottom", "Clothes_TankTop",
+											 "Clothes_ShortSleeveShirt", "Clothes_LongSleeveShirt"]));
+				Checa("...e a HUMANA de Gi veste o Gi FEMININO (PlanetPopulation.dm:397)",
+					  SoDe("Human", "Female", ["ClothesGiFemale", "Clothes_TankTop",
+											   "Clothes_ShortSleeveShirt", "Clothes_LongSleeveShirt"]));
+				Checa("o FROST DEMON nao ganha roupa nenhuma (o corpo dele E a forma)",
+					  Enumerable.Range(1, 40).All(i => RoupaDeNpc.Vestir(_visual, "Icer", "Male", (ulong)i).Count == 0));
+
+				// --- d) O CORPO NO MUNDO: a peca sobreviveu ao `Sanear` e chegou na aparencia ---
+				// Pela linha de POVOAMENTO, que e o caminho de producao do cidadao: planeta de
+				// verdade, raca vinda do berco, `NascerNpc` inteiro. So em planeta sem ninguem
+				// conectado, pelo mesmo motivo que a zona la de cima e vazia.
+				ulong lugar = 900;
+				int vestidos = 0, pelados = 0, porDesenho = 0;
+				var nus = new List<string>();
+				var foraDoCatalogo = new List<string>();
+				var racasVistas = new HashSet<string>(StringComparer.Ordinal);
+				foreach (LinhaDePovoamento linha in _moldes.Plano)
+				{
+					if (_players.Values.Any(p => p.Peer != null
+						&& string.Equals(p.Zone.Name, linha.Planeta, StringComparison.OrdinalIgnoreCase))) continue;
+
+					// SEIS POR PLANETA, E NAO UM. A raca do cidadao vem do BERCO e e sorteada da
+					// semente do lugar: com um corpo por planeta, quais racas a bancada exercita
+					// vira loteria -- a primeira rodada desta secao nasceu Meta, Kanassa, Icer,
+					// Arlian e Makyo e nao viu **nenhum** Saiyajin, Humano ou Namekuseijin, que sao
+					// justamente as tres racas do pedido do dono. Seis lugares diferentes cobrem o
+					// berco de cada planeta em vez de sortear uma raca dele.
+					for (int k = 0; k < 6; k++)
+					{
+						ServerPlayer? cid = NascerNpc(linha.Molde, ZoneKey.Premade(linha.Planeta),
+													  new Vec2(0, 0), ++lugar);
+						if (cid == null) continue;
+						nascidos.Add(cid);
+						racasVistas.Add(cid.Race);
+
+						// ============================ "PELADO" NAO E UMA COISA SO ============================
+						// Ha DUAS razoes pra um corpo sair sem peca, e confundi-las era o defeito da
+						// primeira versao desta linha: ela reprovava o cidadao de Icer, que esta CERTO
+						// -- o sprite do Frost Demon ja e o bio-traje. Uma bancada que exige o
+						// impossivel e tao inutil quanto uma que nao exige nada; a diferenca e que
+						// esta aqui reprovava a REGRA em vez do defeito.
+						//
+						// A pergunta com dente e a outra: alguem que DEVIA estar vestido saiu nu? A
+						// resposta de quem se veste sozinho vem do Core (`RoupaDeNpc.OCorpoJaVeste`)
+						// e nao de uma segunda lista aqui -- ver o bloco de la.
+						// ================================================================================
+						bool nu = cid.Visual.Roupa.Count == 0;
+						if (!nu) vestidos++;
+						else if (RoupaDeNpc.OCorpoJaVeste(cid.Race)) porDesenho++;
+						else { pelados++; nus.Add($"{cid.Name}/{cid.Race}@{linha.Planeta}"); }
+
+						// TODA peca que chegou aqui passou pelo catalogo -- se `Sanear` a tivesse
+						// descartado, ela nao estaria na lista. Isto confere o contrario: que nenhuma
+						// peca esta na lista SEM estar no catalogo (no dia em que alguem afrouxar o
+						// `Sanear`, esta linha avisa). Acumula em vez de checar por corpo: 36 linhas
+						// iguais no console escondem a que importa.
+						foreach (PecaDeRoupa p in cid.Visual.Roupa)
+							if (!_visual.Roupas.Contains(p.Caminho) && !_visual.Armaduras.Contains(p.Caminho))
+								foraDoCatalogo.Add($"{cid.Race}: {p.Caminho}");
+					}
+				}
+				Checa("os cidadaos do povoamento nascem VESTIDOS (era zero antes desta tarefa)",
+					  vestidos > 0 && pelados == 0,
+					  $"{vestidos} vestido(s), {pelados} pelado(s) SEM motivo: {string.Join(" | ", nus)}");
+				Checa("...e nenhuma peca deles esta fora do catalogo (nada inventado)",
+					  foraDoCatalogo.Count == 0, string.Join(" | ", foraDoCatalogo));
+				GD.Print($"       ({vestidos} vestidos, {porDesenho} sem peca por DESENHO -- sprite proprio) "
+					   + $"racas exercitadas pelo caminho de producao: {string.Join(", ", racasVistas.OrderBy(x => x, StringComparer.Ordinal))}");
+
+				// AS TRES DO PEDIDO, pelo caminho de producao e nao so pela tabela. Se o berco dos
+				// seis planetas nao produziu nenhuma delas nesta rodada, isto fica AMARELO no console
+				// em vez de verde calado: a secao (c) ja provou a tabela, mas quem prova o funil e
+				// um corpo de verdade.
+				foreach (string r in new[] { "Saiyan", "Human", "Namekian" })
+					if (!racasVistas.Contains(r))
+						GD.Print($"       (aviso: nenhum {r} nasceu nesta rodada -- a tabela dele so foi "
+							   + "exercitada pela secao (c), nao pelo corpo no mundo)");
+
+				// --- d.2) E ELA CHEGA NO FIO INTEIRA ---
+				// ============================ O TETO DE 120 CARACTERES POR CAMINHO ============================
+				// `GetAppearance` le cada caminho com `r.GetString(120)`, e o comentario de la avisa do
+				// que acontece acima do teto: o LiteNetLib **nao trunca -- ele consome os bytes e
+				// devolve string VAZIA**, e a peca e descartada. Ou seja: uma peca de caminho comprido
+				// sairia do servidor vestida e chegaria no cliente ausente, sem erro em lugar nenhum.
+				//
+				// Isso nunca foi problema enquanto a roupa vinha so da pasta `Clothes/`. A armadura
+				// mora um nivel mais fundo (`Clothes/Armor/`), e foi este passo que aproximou o teto.
+				// Medir a peca mais comprida do CATALOGO (e nao a da roupa que calhou de sair) e o que
+				// impede a bancada de ficar verde por sorte.
+				// ==========================================================================================
+				string maisComprido = _visual.Roupas.Concat(_visual.Armaduras)
+					.OrderByDescending(c => c.Length).First();
+				Checa("nenhum caminho do catalogo estoura o teto do fio (120)",
+					  maisComprido.Length <= 120, $"{maisComprido.Length} chars: {maisComprido}");
+
+				// e o par escrita/leitura de verdade, com uma peca TINGIDA -- a cor viaja separada do
+				// caminho, e perde-la calada foi um defeito real deste projeto (ver `PecaDeRoupaConverter`)
+				var noFio = new Appearance { Cabelo = "Bald" };
+				noFio.Roupa.AddRange(RoupaDeNpc.Vestir(_visual, "Saiyan", "Male", 777));
+				var escritor = new LiteNetLib.Utils.NetDataWriter();
+				escritor.PutAppearance(noFio);
+				Appearance devolta = new LiteNetLib.Utils.NetDataReader(escritor.CopyData()).GetAppearance();
+				Checa("a roupa do NPC sobrevive ao fio (caminho E cor, ida e volta)",
+					  string.Join("+", noFio.Roupa.Select(p => $"{p.Caminho}#{p.Cor}"))
+					  == string.Join("+", devolta.Roupa.Select(p => $"{p.Caminho}#{p.Cor}")),
+					  string.Join(",", devolta.Roupa.Select(p => p.Caminho)));
+
+				// --- e) O CHEFE NAO ENTRA NO SORTEIO ---
+				if (freeza2 != null)
+					Checa("o chefe cujo SPRITE ja o veste nao ganha roupa por sorteio (Freeza de moletom)",
+						  freeza2.Visual.Roupa.Count == 0,
+						  string.Join(",", freeza2.Visual.Roupa.Select(p => p.Caminho)));
+				if (guardiao != null)
+					Checa("...e o chefe com `roupa` cravada no molde veste EXATAMENTE aquilo",
+						  guardiao.Visual.Roupa.Count == 3
+						  && guardiao.Visual.Roupa.Any(p => p.Caminho.Contains("Armor_Elite", StringComparison.Ordinal)),
+						  string.Join(",", guardiao.Visual.Roupa.Select(p => p.Caminho)));
+
+				ServerPlayer? a17 = Spawnar("androide_17", 950);
+				if (a17 != null)
+					Checa("o Androide 17 veste a camisa CASUAL que o DM escreve a mao (BossEvents.dm:499)",
+						  a17.Visual.Roupa.Count == 1
+						  && a17.Visual.Roupa[0].Caminho.Contains("LongSleeveShirt", StringComparison.Ordinal),
+						  string.Join(",", a17.Visual.Roupa.Select(p => p.Caminho)));
+
+				// --- f) SOBREVIVE A REPOSICAO: o NPC nao tem save, entao a roupa e REDEDUZIDA ---
+				// A manutencao do povoamento repoe o cidadao a cada 5 min com o MESMO lugar. Se a
+				// roupa dependesse de qualquer coisa fora da semente, ele voltaria diferente -- ou
+				// pelado, que e onde esta tarefa comecou.
+				ServerPlayer? antes = Spawnar("androide_17", 951);
+				ServerPlayer? depois = Spawnar("androide_17", 951);
+				if (antes != null && depois != null)
+					Checa("renascer no MESMO lugar devolve a MESMA roupa (o NPC nao tem save: ela e rededuzida)",
+						  string.Join("+", antes.Visual.Roupa.Select(p => $"{p.Caminho}#{p.Cor}"))
+						  == string.Join("+", depois.Visual.Roupa.Select(p => $"{p.Caminho}#{p.Cor}")));
 			}
 		}
 		finally

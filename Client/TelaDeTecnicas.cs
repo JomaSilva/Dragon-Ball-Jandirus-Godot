@@ -284,6 +284,39 @@ public partial class TelaDeTecnicas : CanvasLayer
 										 Tema.TextoFraco, 12));
 		}
 
+		// ---------------------------------------------------------------- a arte
+		//
+		// ============================ ELA NAO CUSTA PONTO, E POR ISSO NAO E UM `Degrau` ============================
+		// O botao de icone do DM (`customattacks.dm:1142-1157`) fica fora do orcamento de cinco
+		// pontos: ele nao toca o `custompoints_spent`. Desenha-lo entre as compras diria ao jogador
+		// que ele esta gastando alguma coisa pra escolher uma cor de tiro.
+		//
+		// A LISTA VEM DO `Core` E E RECORTADA PELO TIPO -- `custom_icon_folders` (`:558-562`). E a
+		// MESMA funcao que o servidor usa pra recusar: aqui ela so evita oferecer o que seria
+		// negado. Ver `GameServer.ArteDaTecnica`.
+		// ====================================================================================================
+		_corpo.AddChild(new HSeparator());
+		_corpo.AddChild(Tema.Rotulo("Arte do tiro (não custa ponto)"));
+		var artes = new OptionButton();
+		artes.AddItem($"Padrão — {ArteDeKiNoCliente.Rotulo(ArteDeProjetil.PadraoDoCustom(m.Tipo))}", 0);
+		int escolhido = 0;
+		foreach (ArteDeKi a in ArteDeProjetil.PermitidasPara(m.Tipo))
+		{
+			artes.AddItem(ArteDeKiNoCliente.Rotulo(a), (int)a);
+			if (m.Arte == a) escolhido = (int)a;
+		}
+		artes.Select(artes.GetItemIndex(escolhido));
+		// `ItemSelected` da o INDICE da linha, e o que o servidor entende e o id da arte -- os dois
+		// so coincidem por acidente na primeira linha. Traduzir aqui e o que impede a lista de
+		// mandar "arte 3" quando o jogador clicou na terceira linha.
+		artes.ItemSelected += i =>
+			GameClient.Instance?.SendVerbo("ca_arte", artes.GetItemId((int)i).ToString());
+		_corpo.AddChild(artes);
+		_corpo.AddChild(Tema.Legenda(
+			"A folha é cinza e recebe a cor do SEU ki por cima, como no jogo original. "
+			+ "Raio enxerga as pastas Beams e Techniques; bola só Blasts; teleguiado só Techniques.",
+			Tema.TextoFraco, 11));
+
 		// ---------------------------------------------------------------- textos
 		_corpo.AddChild(new HSeparator());
 		Texto("Nome", m.Nome, "nome");

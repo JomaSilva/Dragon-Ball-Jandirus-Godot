@@ -315,8 +315,69 @@ public static class Interacoes
 			new Acao("Desembarcar", "nave_sair", "", "sai pra onde a nave estiver agora"),
 		],
 
+		// ============================ A LAPIDE ============================
+		// Ela nasce do `GenerateCross` (`Corpse.dm:50-73`), e o sorteio de la -- `gravecon =
+		// pick(1,2,3,4,5)` -- e o motivo de serem CINCO tipos e nao um: o estado do sprite, no port,
+		// vem do catalogo por TIPO. Cinco linhas no `construcoes.json` sao o `switch` do original
+		// escrito onde ele ja estaria; a alternativa era um campo `Estado` novo na `Obra`, que iria
+		// pro disco em cada uma das 105 construcoes pra ser usado por uma so.
+		//
+		// UMA ACAO SO, E ELA E DE LEITURA. No DM a lapide nao tem verb nenhum -- ela e cenario com
+		// `desc`, que se le por `Examine`. Aqui o `Examine` nao existe, e o epitafio ja esta no TITULO
+		// do menu (ele viaja como nome da obra); este botao e o que lhe da um lugar no CHAT, onde ele
+		// fica e onde quem passar depois pode rolar pra cima e ler.
+		//
+		// **NAO HA "Pegar"**, e a ausencia e regra: um tumulo que cabe na mochila e um tumulo que
+		// alguem leva embora. Ele cai como toda obra cai -- na porrada (`Armadura.Bater`).
+		"Grave_1" or "Grave_2" or "Grave_3" or "Grave_4" or "Grave_5" =>
+		[
+			new Acao("Ler a lápide", "lapide_ler", "", "o que ficou escrito de quem está enterrado aqui"),
+		],
+
 		_ => Nenhuma,
 	};
+
+	// =====================================================================
+	// O CORPO NO CHAO
+	// =====================================================================
+	/// <summary>
+	/// ============================ AS ACOES DE UM CADAVER -- a TERCEIRA fonte de alvo da tecla E ============================
+	/// *"basta apertar E perto do corpo pra enterrar"* -- o pedido do dono, e esta e a metade dele que
+	/// as duas pontas leem.
+	///
+	/// Ela e a irma do <see cref="DoVeiculo"/> e nasceu pelo mesmo buraco: **tudo neste catalogo e um
+	/// objeto NO CHAO**, e o cliente acha o alvo varrendo a lista de construcoes da zona. Um cadaver
+	/// nao esta nessa lista e nunca poderia estar -- ele e um CORPO, e corpo viaja pelo snapshot. Por
+	/// isso o servidor DIZ qual esta ao alcance (`Protocol.S2C.Cadaver`) e esta funcao diz o que fazer
+	/// com ele. **Nao ha menu novo** -- e a mesma tela, com outra pagina.
+	/// ========================================================================================================================
+	///
+	/// ============================ POR QUE E UMA ACAO SO ============================
+	/// O `obj/mobCorpse` do DM tem QUATRO verbs (`Corpse.dm:5-49`), e tres deles ficaram de fora com
+	/// motivo, nao por corte:
+	///
+	///   * `Eat()` -- comer o cadaver. Depende do `CanEat` racial e de `currentNutrition += 30`; o
+	///     estomago deste port existe, mas comer CORPO nao passa pela mochila nem pelo catalogo de
+	///     itens, e o DM tambem larga um `/obj/items/food/corpse` separado no `mobDeath` -- ou seja, la
+	///     sao duas coisas diferentes. Fica anotado como divida, e nao como esquecimento;
+	///   * `Skin_Corpse()` -- esfolar. Depende da maestria `Life/Skinning`, do `skinlist` de cada molde
+	///     e do `alchemyparts`: e o sistema de CRAFTING inteiro (`Skinning.dm`), que nao esta portado.
+	///     Um botao aqui seria a porta de um comodo que nao existe;
+	///   * `Destroy()` -- destruir. **Este esta portado, e nao por botao**: bater no corpo ate o fim o
+	///     desfaz (ver `GameServer.Cadaver.EstaDestrocado`). Como verbo de menu ele seria um "apagar" de
+	///     um clique ao lado de "enterrar", e a diferenca entre os dois -- que uma deixa lapide e a
+	///     outra nao -- ficaria a cargo do jogador ler duas dicas parecidas.
+	///
+	/// **O AGARRAR NAO ESTA AQUI, E ISSO E O DESENHO**: *"vc pode AGARRAR o corpo e levar pra outro
+	/// lugar"* ja funciona, pela TECLA DE AGARRAR, porque o agarrao foi escrito sobre CORPO e nao
+	/// pergunta se o alvo esta vivo. Um botao "agarrar" neste menu seria uma segunda porta pro mesmo
+	/// gesto -- e a que divergiria na primeira mudanca.
+	/// ==============================================================================
+	/// </summary>
+	public static Acao[] DoCadaver() =>
+	[
+		new Acao("Enterrar", "enterrar", "", "abre uma cova e ergue uma lápide -- o corpo descansa aqui"),
+	];
 
 	// =====================================================================
 	// O VEICULO EM QUE EU ESTOU

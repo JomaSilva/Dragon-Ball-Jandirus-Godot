@@ -69,6 +69,20 @@ public partial class GameServer
 		foreach (string p in Povoamento.Problemas(_moldes.Plano, _moldes))
 		{ GD.PushError($"[server] npcs.json: {p}"); ruins++; }
 
+		// ============================ E O POVO DOS TRES PLANETAS, ANTES DE QUALQUER CORPO ============================
+		// *"na TERRA deveria so spawnar HUMANO e em NAMEK so NAMEKUSEIJIN e no planeta VEGETA so
+		// SAIYAJIN"* -- e o recorte e uma INTERSECAO com o berco (`Bercos.RacasNascidasEm`), entao ele
+		// falha do jeito mais caro que existe: se as duas tabelas discordarem, o planeta nao nasce
+		// misto, ele nao nasce. Um planeta VAZIO nao grita sozinho -- a manutencao so pergunta "quantos
+		// faltam?" e o `Sortear` so grita quando o primeiro corpo tenta nascer, cinco segundos depois e
+		// uma vez por habitante. Aqui a pergunta e feita uma vez, no boot, com o motivo por extenso.
+		//
+		// `_racas` ja esta carregado nesta linha: `CarregarRacas()` roda em `Start` imediatamente antes
+		// do `CarregarVisual()`, que e quem chama esta funcao.
+		if (_racas != null)
+			foreach (string p in Jandirus.Core.Races.Bercos.ContradicoesDoPovo(_racas.Protos.Keys))
+			{ GD.PushError($"[server] povoamento: {p}"); ruins++; }
+
 		GD.Print($"[server] moldes de NPC: {_moldes.Total} "
 			   + $"({_moldes.Todos.Count(m => m.EhChefe)} com ficha pronta de chefe)"
 			   + (ruins > 0 ? $"  <<< {ruins} problema(s)" : ""));
@@ -78,6 +92,11 @@ public partial class GameServer
 		GD.Print($"[server] povoamento: {_moldes.Plano.Sum(l => l.Quantos)} cidadaos planejados em "
 			   + $"{_moldes.Plano.Length} planeta(s); chefes de saga LIGADOS; inimigo comum "
 			   + (Povoamento.InimigoComumLigado ? "ligado" : $"DESLIGADO ({Povoamento.MotivoDoInimigoDesligado})"));
+
+		// O RECORTE DO DONO SAI NO BOOT, com o povo de cada um. Os planetas que NAO estao nesta linha
+		// sao os que continuam saindo do berco puro ("no RESTO PODE MANTER").
+		GD.Print("[server] povoamento: planetas de povo unico -- "
+			   + string.Join(", ", Jandirus.Core.Races.Bercos.Povos.Select(x => $"{x.Planeta}={x.Raca}")));
 	}
 
 	/// <summary>
@@ -129,6 +148,22 @@ public partial class GameServer
 		AplicarGravidade(corpo, nascendo: true);
 		return corpo;
 	}
+
+	/// <summary>
+	/// ============================ A MENTE DESTE CORPO, MONTADA DO MOLDE + SEMENTE ============================
+	/// Era codigo INLINE do <see cref="NascerNpc"/>, e virou funcao quando ganhou um segundo chamador: a
+	/// devolucao das redeas (`MentePropriaDe`), que precisa por de volta no corpo a MESMA mente que ele
+	/// tinha antes de a fera assumir.
+	///
+	/// Ela nao guarda nada e nao le nada de fora: (molde, semente) -> cerebro. Duas chamadas com o mesmo
+	/// papel produzem cerebros identicos -- e e por isso que remontar substitui guardar. Ver o cabecalho
+	/// do `Temperamento.Montar` pro que cada numero significa, e o `Cerebro.DesfasarCapacidades` pro que
+	/// a fase resolve.
+	/// =====================================================================================================
+	/// </summary>
+	private static Jandirus.Core.Ai.Cerebro CerebroDeNascimento(PapelDeNpc papel) =>
+		Temperamento.Montar(papel.Molde,
+							SorteioDeNpc.Sorteador(papel.Semente, "fase").NextDouble(), papel.Semente);
 
 	/// <summary>
 	/// NASCE UM NPC. Devolve nulo quando o molde nao existe (e diz qual no console).
@@ -194,7 +229,7 @@ public partial class GameServer
 			Livro = s.Livro,
 			Niveis = s.Niveis,
 			Papel = s.Papel,
-			Visual = AparenciaDeNpc(s.Raca, s.Genero, semente),
+			Visual = AparenciaDeNpc(molde, s.Raca, s.Genero, semente),
 
 			// ============================ SEM CEREBRO ELE E UMA ESTATUA ============================
 			// `TickDosCorposSemDono` filtra por `Cerebro != null` -- essa e a definicao de "quem o
@@ -210,7 +245,9 @@ public partial class GameServer
 			// A SEMENTE VAI JUNTO porque o molde diz o que a especie e e o sorteio diz quem ESTE
 			// corpo e: e o `rand(8,13)/10` por traco do `bhv_set` (`NPCAI.dm:816`), sem o qual os
 			// quarenta cidadaos de um planeta recuam, socam e mudam de ideia todos no mesmo instante.
-			Cerebro = Temperamento.Montar(molde, SorteioDeNpc.Sorteador(semente, "fase").NextDouble(), semente),
+			// (a receita saiu daqui pro `CerebroDeNascimento` quando a POSSE passou a precisar remontar
+			// a mente deste corpo -- ver `MentePropriaDe`, `GameServer.Clone.cs`)
+			Cerebro = CerebroDeNascimento(s.Papel),
 
 			// ============================ O BERCO DELE E ONDE ELE NASCEU ============================
 			// Um NPC nao tem save, entao ele nao tinha berco -- e `Berco.Planeta` vazio faz o
@@ -239,7 +276,10 @@ public partial class GameServer
 		// (GameServer.Formas.cs:37). Montar um perfil dentro do sorteio seria a segunda copia dele,
 		// e "acrescentar a linha nova em dois dos tres lugares" e o erro que aquele comentario ja
 		// registra como o mais repetido deste port.
-		int formas = SorteioDeNpc.AbrirFormas(npc.Forma, molde, npc.Ficha.BP, Perfil(npc));
+		// A SEMENTE VAI JUNTO porque a maestria do OOZARU e sorteada aqui dentro -- ela nao e um degrau
+		// da escada, entao o `molde.Maestria` nunca a alcancava (ver `SortearAMaestriaDaFera`). E este
+		// e o caminho de PRODUCAO: as bancadas que passam semente 0 continuam medindo a receita crua.
+		int formas = SorteioDeNpc.AbrirFormas(npc.Forma, molde, npc.Ficha.BP, Perfil(npc), semente);
 
 		// E O CORPO COMECA NO **PISO** DELE, que nem sempre e a base -- o mesmo `Catalogo.IdDoPiso`
 		// que o login de um jogador usa. Hoje isso muda uma raca: um NPC de Frost Demon nasce na
@@ -276,6 +316,13 @@ public partial class GameServer
 		zona.Remove(npc);
 		_players.Remove(npc.Id);
 
+		// O TETO DE FALA E POR ID, E IDS DE NPC NAO VOLTAM. Enquanto so jogador falava, `_ultimaFala`
+		// tinha o tamanho da lista de online; com a IA falando (ver `GameServer.Ia.cs`) ele passou a
+		// receber uma entrada por corpo NASCIDO -- e o povoamento renasce o vilarejo a cada 5 min.
+		// Numa sessao de horas isso e um dicionario que so cresce, calado: o vazamento classico de
+		// "cache indexado por id de coisa que morre".
+		_ultimaFala.Remove(npc.Id);
+
 		var w = Protocol.Begin(Protocol.S2C.PeerLeft);
 		w.Put(npc.Id);
 		foreach (ServerPlayer o in zona)
@@ -287,11 +334,12 @@ public partial class GameServer
 	/// (<see cref="VisualCatalog"/>) e passada pelo MESMO <see cref="VisualCatalog.Sanear"/> que
 	/// confere a ficha que chega do cliente.
 	///
-	/// E o `npc_pick_body` + `npc_apply_hair` do original (PlanetPopulation.dm:301, :339-342), com
-	/// uma diferenca de desenho: la os pools de corpo e cabelo sao listas escritas a mao no proc; aqui
-	/// e o catalogo do jogo. Uma lista escrita a mao envelhece calada quando um sprite e renomeado.
+	/// E o `npc_pick_body` + `npc_apply_hair` + `npc_wear_simple`/`npc_wear_armor_icon` do original
+	/// (PlanetPopulation.dm:301, :339-342, :240-252), com uma diferenca de desenho: la os pools de
+	/// corpo e cabelo sao listas escritas a mao no proc; aqui e o catalogo do jogo. Uma lista escrita
+	/// a mao envelhece calada quando um sprite e renomeado.
 	/// </summary>
-	private Appearance AparenciaDeNpc(string raca, string genero, ulong semente)
+	private Appearance AparenciaDeNpc(MoldeDeNpc molde, string raca, string genero, ulong semente)
 	{
 		var ap = new Appearance();
 		if (_visual == null) return ap;
@@ -315,9 +363,51 @@ public partial class GameServer
 		// tem `CriadoEm` -- ele nao esta em save nenhum --, entao a derivacao por nome + nascimento
 		// nao serve aqui; a semente dele E o lugar, e ela ja e estavel.
 		//
+		// ============================ E A ROUPA, QUE ELE NUNCA TEVE ============================
+		// *"todo npc ta nascendo SEM ROUPAS"* -- o dono estava certo, e o defeito era literalmente a
+		// ausencia destas linhas: este metodo escrevia corpo, tom, cabelo, formas e aura, e **nunca
+		// tocava em `ap.Roupa`**. A lista vazia do construtor viajava no fio como zero pecas, e
+		// como este e o UNICO caminho de aparencia de NPC do jogo, nenhum NPC -- cidadao, defensor
+		// ou chefe -- tinha roupa nenhuma.
+		//
+		// A TABELA E DO DM e mora no Core (<see cref="RoupaDeNpc"/>), com o `arquivo:linha` de cada
+		// escolha. Aqui fica so o recorte de QUEM se veste por ela:
+		//
+		//   molde com `roupa` cravada  -- vence sempre (e como o chefe se veste: os Androides 17 e
+		//                                 18 sao vestidos a mao no DM tambem, BossEvents.dm:499,508)
+		//   chefe SEM `roupa` cravada  -- **nao entra no sorteio racial**. E o pedido literal: um
+		//                                 chefe cujo sprite ja o veste (Freeza, Cell, Boo) nao pode
+		//                                 ganhar um moletom por sorteio. O DM concorda por omissao:
+		//                                 as fabricas dos tres nao chamam `npc_wear_*` uma vez.
+		//   o resto                    -- a tabela da raca
+		//
+		// A COR NAO PERSISTE, E NAO PRECISA: um NPC nao tem save (ver o `Berco` la em cima). A roupa
+		// dele nao e guardada, e REDEDUZIDA da mesma semente a cada nascimento -- entao o cidadao
+		// reposto pela manutencao de 5 min volta com a MESMA roupa da mesma cor, e um servidor
+		// reiniciado tambem. Persistir seria mais fraco: um save so pode discordar da semente.
+		// ==================================================================================
+		var faltando = new List<string>();
+		if (molde.Roupa.Length > 0)
+			ap.Roupa.AddRange(RoupaDeNpc.Vestir(_visual, raca, genero, semente, molde.Roupa, faltando));
+		else if (!molde.EhChefe)
+			ap.Roupa.AddRange(RoupaDeNpc.Vestir(_visual, raca, genero, semente, null, faltando));
+
+		if (faltando.Count > 0)
+			GD.PushWarning($"[server] molde '{molde.Id}' ({raca}): peca(s) sem arte no port -- "
+						 + string.Join(", ", faltando));
+
 		// DEPOIS do `Sanear`, e nao antes: aquele metodo confere o que veio do catalogo (corpo,
 		// tom, cabelo, roupa) e nao tem o que dizer sobre uma cor sorteada aqui dentro.
-		_visual.Sanear(ap, raca, genero);
+		//
+		// E A ROUPA VEM ANTES DELE DE PROPOSITO. `Sanear` e o guarda do catalogo -- ele recusa peca
+		// que nao veio de la --, entao vestir DEPOIS seria a segunda forma de vestir, sem guarda
+		// nenhum, exatamente o que o pedido proibe. O preco e que uma peca fora do catalogo some em
+		// silencio, e por isso o motivo que ele devolve deixou de ser descartado aqui: era assim que
+		// "vesti o NPC e ele continua pelado" viraria um misterio de duas horas.
+		string queixa = _visual.Sanear(ap, raca, genero);
+		if (queixa.Length > 0)
+			GD.PushWarning($"[server] aparencia de NPC do molde '{molde.Id}' ({raca}): {queixa}");
+
 		ap.CorAura = Jandirus.Core.Appearance.CorDeAura.DeSemente(semente);
 		return ap;
 	}

@@ -26,15 +26,21 @@ namespace Jandirus.Client;
 /// ============================================================================================
 ///
 /// ============================ E O BERCO E METADE DA PERGUNTA ============================
-/// Ha TRES roteiros aqui, e quem escolhe e onde o servidor poe o corpo -- `--aguateste` (margem),
-/// `--aguadentro` (dentro) e `--aguanoar` (no ar). Eles nao sao variacoes de conforto:
+/// Ha QUATRO roteiros aqui, e quem escolhe e onde o servidor poe o corpo -- `--aguateste` (margem),
+/// `--aguadentro` (dentro), `--aguanoar` (no ar) e `--aguaparede` (colado num muro). Eles nao sao
+/// variacoes de conforto:
 ///
 ///   * o de DENTRO mede o MEIO da travessia (pose, altura zero, sombra que nao nasce). Ele nunca
 ///     teria pego os dois defeitos de ENTRADA, porque nasce com o problema ja resolvido -- e foi
 ///     exatamente isso que aconteceu: a bancada ficou verde com os dois caminhos do jogador
 ///     quebrados;
-///   * o da MARGEM mede o gesto de verdade: apertar N na beira e ENTRAR andando;
-///   * o do AR mede o POUSO em cima da agua, o unico que passa pelo `DescerAte`.
+///   * o da MARGEM mede o gesto de verdade: apertar N na beira e ENTRAR andando, atravessar o rio
+///     inteiro e sair do outro lado -- e, no seco, o verb ser RECUSADO;
+///   * o do AR mede o POUSO em cima da agua, o unico que passa pelo `DescerAte`;
+///   * o do MURO mede se a parede ainda para quem nada. Ele nao usa o lago dos outros tres, e isso
+///     foi MEDIDO: o muro mais proximo daquele lago esta a 15 tiles, o corpo anda ~35 px/s e o nado
+///     cobra Ki por segundo -- as duas tentativas de alcanca-lo (a nado e de voo) terminaram na
+///     EXAUSTAO antes de o muro caber na foto.
 ///
 /// Uma bancada que so nasce no lugar certo nao mede como se CHEGA nele.
 /// ====================================================================================
@@ -126,6 +132,81 @@ public partial class RoboDeAgua : Node
 
 	/// <summary>Onde o corpo estava no quadro anterior -- so serve pra somar <see cref="_pxNadandoNaAgua"/>.</summary>
 	private Vector2? _ondeEuEstavaNoQuadroAnterior;
+
+	/// <summary>
+	/// A TRAVESSIA DA MARGEM ESTA EM CURSO -- so entre o passo 12 e o 19.
+	///
+	/// As tres fotos abaixo sao POR QUADRO, e sem esta chave elas disparariam tambem no roteiro
+	/// molhado (que nasce em cima da agua e liga o nado no passo 30): o arquivo "os pes encostam na
+	/// agua" sairia de um corpo que ja estava dentro dela desde antes de existir bancada.
+	/// </summary>
+	private bool _olhandoATravessia;
+
+	/// <summary>Ja saiu a foto da ENTRADA, a do MEIO e a da SAIDA? Cada uma vale um quadro so.</summary>
+	private bool _fotoDaEntrada, _fotoDoMeio, _fotoDaSaida;
+
+	/// <summary>
+	/// UMA TRAVESSIA ESTA EM CURSO -- vale nos TRES roteiros (margem, molhado e do ar).
+	///
+	/// ============================ ELE EXISTE PORQUE A CHEGADA ERA LIDA UMA VEZ POR SEGUNDO ============================
+	/// "Saiu no seco do outro lado" era conferido nos passos de espera (um por segundo). Sair da agua
+	/// dura UM quadro, e a saida caiu na fresta entre o ultimo passo de espera e o veredito: a bancada
+	/// reprovou uma travessia que o proprio diario dela mostrava inteira ("12,1s LIGOU / 19,9s
+	/// APAGOU", com 208 px nadados e 230 px de avanco). Um instante nao se le por amostragem.
+	/// ==============================================================================================================
+	/// </summary>
+	private bool _medindoTravessia;
+
+	/// <summary>Quantos segundos a mais o veredito da travessia ja concedeu -- ver o uso.</summary>
+	private int _esperasDaTravessia;
+
+	// =====================================================================
+	// A PAREDE, NADANDO  (o buraco mais provavel do conserto do modo)
+	// =====================================================================
+	/// <summary>
+	/// ============================ POR QUE ISTO PRECISA SER MEDIDO, E NA AGUA ============================
+	/// O conserto que fez o jogador entrar no lago foi mandar o MODO junto do passo
+	/// (`GameServer.cs`, `ValidateStep(..., ModoDeTravessiaDe(pl))`). O `ZoneCollision.Bloqueia` diz
+	/// que parede para em todo modo -- mas nao e ai que mora o risco, e sim na SAIDA DE EMERGENCIA do
+	/// <c>MoveRules.Advance</c>: *"ja preso dentro de parede: deixa sair"* devolve o passo CHEIO, sem
+	/// conferir nada. Com o modo `APe` (o de antes), todo corpo em cima de agua caia nessa saida --
+	/// entao qualquer passo dele passava sem checagem, inclusive atraves de muro. Com `Nadando` a agua
+	/// deixa de o prender, a saida nao dispara mais e a checagem volta a ser de verdade.
+	///
+	/// A prova disso e um corpo NADANDO -- em cima da agua, com o bit aceso -- empurrando um muro de
+	/// verdade. Feita no seco ela nao provaria nada: no seco a saida de emergencia nunca disparava
+	/// nem antes.
+	/// ================================================================================================
+	/// </summary>
+	private bool _medindoParede;
+
+	/// <summary>Alguma vez, empurrando, os pes ficaram DENTRO da celula de parede? Tem que ser nunca.</summary>
+	private bool _entrouEmParede;
+
+	/// <summary>Houve quadro empurrando a parede com o bit de nado aceso E os pes na agua?</summary>
+	private bool _empurrouNadando;
+
+	/// <summary>A celula de parede escolhida, o ponto de encosto e o rumo do empurrao.</summary>
+	private Vector2I _celulaDaParede;
+	private Vector2 _encostoDaParede, _rumoDaParede;
+
+	/// <summary>Onde o corpo estava quando o empurrao comecou -- o avanco depois dele tem que ser ~zero.</summary>
+	private Vector2 _antesDoEmpurrao;
+
+	/// <summary>Onde ele estava quando a andada contra o muro comecou -- so pro diario do trajeto.</summary>
+	private Vector2 _antesDaViagem;
+
+	/// <summary>
+	/// Onde ele estava um segundo antes do veredito do muro.
+	///
+	/// O avanco TOTAL nao separa "o muro parou" de "a bancada soltou o piloto": o corpo nasce um tile
+	/// antes e esse tile e avanco legitimo. O que separa e o ULTIMO segundo, com a tecla ainda
+	/// apertada -- ali o numero honesto e zero.
+	/// </summary>
+	private Vector2 _ondeParouNoPenultimo;
+
+	/// <summary>Quantas vezes a fase do "longe da agua" ja pediu mais um segundo de caminhada.</summary>
+	private int _tentativasLonge;
 
 	private Image? _fotoNadando, _fotoVoando;
 	private Vector2 _naTelaNadando, _naTelaVoando;
@@ -272,18 +353,48 @@ public partial class RoboDeAgua : Node
 		int t = ZoneCollision.TileSize;
 		int cx = (int)MathF.Floor(p.X / t), cy = (int)MathF.Floor((p.Y + MoveRules.FeetOffsetY) / t);
 
+		// ============================ A TRAVESSIA TEM QUE TER OS TRES PEDACOS ============================
+		// A primeira versao aceitava a PRIMEIRA direcao com agua a ate 4 tiles, na ordem leste, oeste,
+		// sul, norte. Numa curva do rio isso escolheu OESTE (3 tiles de agua) enquanto o berco tinha
+		// posto o corpo pra atravessar ao NORTE -- e a oeste havia parede entre o corpo e a agua. O
+		// robo ligou o nado, andou 6 s contra o muro sem molhar o pe, e a bancada reprovou dez
+		// conferencias de uma vez com o jogo intacto. (O `_outraMargem` tambem saiu no eixo errado, e
+		// por isso o vizinho do item 5 "nao nasceu".)
+		//
+		// Entao aqui se exige a MESMA forma que o berco do servidor exige (`AcharTravessia`, no
+		// `GameServer.AguaTeste.cs`): chao livre ate a agua, agua por N tiles, e chao SECO E PISAVEL do
+		// outro lado. E entre as direcoes que servem, ganha a que comeca mais PERTO -- que e a que o
+		// corpo alcanca andando.
+		// ==============================================================================================
 		(int dx, int dy)[] rumos = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+		int melhorD = int.MaxValue;
+		bool achou = false;
+
 		foreach ((int dx, int dy) in rumos)
 			for (int d = 1; d <= 4; d++)
 			{
+				// PAREDE NO CAMINHO MATA ESTA DIRECAO: a agua atras dela nao e travessia nenhuma.
+				if (mapa.BlockedCell(cx + dx * d, cy + dy * d)) break;
 				if (!mapa.EhAgua(cx + dx * d, cy + dy * d)) continue;
+
 				int n = 0;
 				while (n < 60 && mapa.EhAgua(cx + dx * (d + n), cy + dy * (d + n))) n++;
-				rumo = new Vector2(dx, dy);
-				largura = n;
-				return true;
+
+				// ...E TEM QUE HAVER ONDE SAIR do outro lado: sem isto a "travessia" pode ser um braco
+				// de rio que so acaba fora do mapa, e o robo nadaria pro nada.
+				int fx = cx + dx * (d + n), fy = cy + dy * (d + n);
+				if (mapa.BlockedCell(fx, fy) || mapa.EhAgua(fx, fy)) break;
+
+				if (d < melhorD)
+				{
+					melhorD = d;
+					rumo = new Vector2(dx, dy);
+					largura = n;
+					achou = true;
+				}
+				break;   // esta direcao ja deu a sua resposta
 			}
-		return false;
+		return achou;
 	}
 
 	// =====================================================================
@@ -379,6 +490,49 @@ public partial class RoboDeAgua : Node
 			_ondeEuEstavaNoQuadroAnterior = agora2;
 		}
 
+		// A CHEGADA NO SECO, POR QUADRO -- ver `_medindoTravessia`.
+		if (_medindoTravessia && !SobreAgua() && mundo.AlturaDeTeste == 0f && _pxNadandoNaAgua > 8f)
+			_chegouNaOutraMargem = true;
+
+		// ============================ AS TRES FOTOS DA TRAVESSIA SAO POR QUADRO ============================
+		// O dono pediu tres instantes: o quadro em que os PES ENCOSTAM na agua, o MEIO e a SAIDA. Nenhum
+		// dos tres cai num passo desta bancada (que anda de segundo em segundo) -- a entrada dura um
+		// quadro, e a foto tirada um segundo depois mostra um corpo ja dentro do lago, que e outra
+		// pergunta ("ele esta nadando?") e nao a que se fez ("ele CONSEGUIU entrar?").
+		//
+		// A DA SAIDA E A MAIS SENSIVEL DAS TRES: o desligamento por chao seco chega no tique seguinte
+		// (ate 100 ms), entao o unico jeito de fotografar o corpo no ultimo quadro em que ainda nadava
+		// e olhar todo quadro. Um passo de bancada perderia a transicao inteira.
+		// ================================================================================================
+		if (_olhandoATravessia)
+		{
+			if (!_fotoDaEntrada && nadando && SobreAgua())
+			{
+				_fotoDaEntrada = true;
+				Fotografar("user://agua-11-entrada.png", "TRAVESSIA 1/3 -- OS PES ENCOSTAM NA AGUA", out _);
+			}
+			else if (!_fotoDoMeio && _fotoDaEntrada && nadando && SobreAgua()
+					 && _pxNadandoNaAgua > _larguraDoLago * ZoneCollision.TileSize * 0.5f)
+			{
+				_fotoDoMeio = true;
+				Fotografar("user://agua-12-meio.png", "TRAVESSIA 2/3 -- NO MEIO DO RIO", out _);
+			}
+			else if (!_fotoDaSaida && _fotoDaEntrada && !SobreAgua() && _pxNadandoNaAgua > 8f)
+			{
+				_fotoDaSaida = true;
+				Fotografar("user://agua-13-saida.png", "TRAVESSIA 3/3 -- OS PES SAEM NA OUTRA MARGEM", out _);
+			}
+		}
+
+		// ---------- E O EMPURRAO NA PAREDE, TAMBEM POR QUADRO ----------
+		// "Nunca entrou na parede" e afirmacao sobre TODO instante: lida um passo por segundo, ela
+		// passaria por cima de meio segundo dentro do muro -- que e o tamanho exato do defeito.
+		if (_medindoParede)
+		{
+			if (ParedeSobOsPes()) _entrouEmParede = true;
+			if (nadando && SobreAgua()) _empurrouNadando = true;
+		}
+
 		// O VIZINHO, TAMBEM POR QUADRO: o veu se recalcula a cada passo do olho, e "da pra ver" tem
 		// que valer sempre e nao num instante escolhido a dedo.
 		if (_idDoVizinho != 0 && mundo.CorpoDeTeste(_idDoVizinho) is { } corpoDele)
@@ -424,7 +578,15 @@ public partial class RoboDeAgua : Node
 				// POUSO, que e o unico caminho que passa pelo `DescerAte`.
 				// ================================================================================================
 				if (mundo.AlturaDeTeste > 0f) { _passo = 60; break; }
-				if (SobreAgua()) { _passo = 30; break; }
+				if (SobreAgua())
+				{
+					// ...E O QUARTO BERCO SE DENUNCIA PELO MAPA, e nao por flag: `--aguaparede` poe o
+					// corpo na agua com um MURO a dois tiles, e `--aguadentro` no meio de um lago cujo
+					// muro mais proximo esta a quinze. Quem responde e o `.col` que o cliente ja leu --
+					// uma segunda flag deste lado poderia discordar da do servidor.
+					_passo = AcharParedeNaAgua(out _, out _, out _, 2) ? 100 : 30;
+					break;
+				}
 
 				Conferir(!SobreAgua(), "a bancada comeca em chao SECO");
 
@@ -435,12 +597,28 @@ public partial class RoboDeAgua : Node
 				if (!achou) { _passo = 100; break; }
 
 				_saida = mundo.PosicaoLocal ?? Vector2.Zero;
-				_deOndeAndou = _saida;
-				mundo.AndarDeTeste(_rumo);
+
+				// ============================ UM SEGUNDO DE RECUO ANTES DE ANDAR CONTRA A AGUA ============================
+				// O berco poe o corpo um tile antes da margem, mas "um tile" varia com o lago sorteado:
+				// numa rodada ele nasceu a 7 px do ponto em que a agua barra, e a conferencia "...e ele
+				// ANDOU de verdade ate la" ficou vermelha com a agua se comportando perfeitamente --
+				// nao havia caminhada nenhuma a fazer.
+				//
+				// Recuar um segundo cria a pista, e ela nao contamina nada: o veredito do passo 4 mede
+				// a partir de ONDE A CAMINHADA COMECOU (`_deOndeAndou`, recarregado no passo 1), e as
+				// duas provas de "nunca" (`_pisouNaAguaAPe`, o veu do vizinho) valem por quadro do
+				// inicio ao fim.
+				// ======================================================================================================
+				mundo.AndarDeTeste(-_rumo);
 				break;
 			}
 
 			case 1:
+				mundo.PararDeTeste();
+				_deOndeAndou = mundo.PosicaoLocal ?? _saida;
+				mundo.AndarDeTeste(_rumo);
+				break;
+
 			case 2:
 			case 3:
 				break;   // andando contra a agua
@@ -572,6 +750,9 @@ public partial class RoboDeAgua : Node
 				_deOndeAndou = mundo.PosicaoLocal ?? Vector2.Zero;
 				_pxNadandoNaAgua = 0;
 				_chegouNaOutraMargem = false;
+				_olhandoATravessia = true;   // dai pra frente as tres fotos por quadro valem
+				_medindoTravessia = true;
+				_esperasDaTravessia = 0;
 				mundo.AndarDeTeste(_rumo);
 				break;
 
@@ -584,12 +765,24 @@ public partial class RoboDeAgua : Node
 				// SEIS SEGUNDOS DE FOLGA: nadando o passo e ate 36% mais lento que andar
 				// (`Nado.FatorDePasso`), e o lago escolhido pode ter 12 tiles. Quem chega antes so
 				// continua andando no seco -- o que a conferencia pede e o percorrido DENTRO da agua.
-				if (!SobreAgua() && mundo.AlturaDeTeste == 0f && _pxNadandoNaAgua > 8f) _chegouNaOutraMargem = true;
+				// (A CHEGADA em si e lida por QUADRO -- ver `_medindoTravessia`.)
 				break;
 
 			case 19:
 			{
+				// A FOLGA E ELASTICA, E NAO CRAVADA. Seis segundos era o que bastava pro lago de 5
+				// tiles medido na primeira rodada; com 6 tiles e as tres fotos custando quadro, a
+				// chegada passou a cair um segundo depois do veredito. Um teste que reprova por ter
+				// perguntado cedo demais mede a maquina, e nao o jogo.
+				if (!_chegouNaOutraMargem && _esperasDaTravessia++ < 5)
+				{
+					mundo.AndarDeTeste(_rumo);
+					_passo = 18;
+					break;
+				}
+
 				mundo.PararDeTeste();
+				_medindoTravessia = false;
 				Vector2 fim = mundo.PosicaoLocal ?? Vector2.Zero;
 				float avanco = (fim - _deOndeAndou).Dot(_rumo);
 
@@ -604,7 +797,74 @@ public partial class RoboDeAgua : Node
 				Conferir(!Disse("nao chegou a entrar"),
 					"...e o prazo de entrada NUNCA venceu (a carencia e pra entrar, nao pra nadar no seco)");
 
+				// AS TRES FOTOS DA TRAVESSIA, conferidas COMO FOTOS: um "ok" de numero com o arquivo
+				// faltando e a bancada dizendo que olhou sem ter olhado.
+				Conferir(_fotoDaEntrada, "saiu a foto do quadro em que os PES ENCOSTAM na agua");
+				Conferir(_fotoDoMeio, "saiu a foto do MEIO do rio");
+				Conferir(_fotoDaSaida, "saiu a foto da SAIDA na outra margem");
+
 				Fotografar("user://agua-7-entrou-da-beira.png", "DA BEIRA -- ENTROU NADANDO", out _);
+				_olhandoATravessia = false;
+				_passo = 70;   // ...e agora o contrario: longe da agua o verb tem que recusar
+				break;
+			}
+
+			// =============================================================
+			// O OPOSTO DO DEFEITO -- longe da agua o verb tem que RECUSAR
+			// =============================================================
+			// ============================ POR QUE ESTA FASE EXISTE ============================
+			// O conserto que fez o jogador entrar no lago foi deixar o modo `Nadando` valer ANTES de o
+			// corpo molhar. Isso abre uma pergunta que nao existia: e se der pra ligar o nado em
+			// qualquer lugar? Quem segura essa porta e a clausula "agua a um tile" do
+			// `PodeComecarANadar`, mais o prazo de entrada de `Nado.PrazoParaEntrar` segundos que nao
+			// rearma.
+			//
+			// Sem esta fase, os dois defeitos opostos ficariam verdes na mesma bancada: o de nao
+			// conseguir entrar (que era o de ontem) e o de virar um botao de andar por cima de todo
+			// lago do mapa a partir de qualquer lugar.
+			// =================================================================================
+			case 70:
+				_tentativasLonge = 0;
+				mundo.AndarDeTeste(_rumo);   // adiante, pro seco, de costas pro lago
+				break;
+
+			case 71:
+			case 72:
+			case 73:
+				break;   // andando pra longe da beira
+
+			case 74:
+			{
+				mundo.PararDeTeste();
+				int tiles = TilesAteAAguaMaisProxima();
+
+				// MAIS UM SEGUNDO, ATE TRES VEZES: a distancia que se quer e do MAPA, e nao do relogio.
+				// Cravar "quatro segundos de caminhada" faria a fase medir a velocidade do personagem.
+				if (tiles <= 2 && _tentativasLonge++ < 3)
+				{
+					mundo.AndarDeTeste(_rumo);
+					_passo = 73;
+					break;
+				}
+
+				Conferir(tiles > 2,
+					$"o corpo esta LONGE DA AGUA: a celula de agua mais proxima esta a {tiles} tiles");
+				_ditos.Clear();
+				cli.SendHabilidade("nadar");
+				break;
+			}
+
+			case 75:
+			{
+				Conferir(!cli.Sheet.Nadando,
+					"LONGE DA AGUA O VERB NAO LIGA NADA: o bit `Nadando` continua apagado");
+				Conferir(Disse("nao da pra nadar aqui"),
+					$"...e o servidor disse por que ('{_ditos.LastOrDefault() ?? ""}') -- e o "
+					+ "\"You can't swim there!\" do `Swim.dm:23`");
+				Conferir(mundo.AnimacaoLocalDeTeste.StartsWith("idle") || mundo.AlturaDeTeste == 0f,
+					$"...e o corpo continua a pe no chao (animacao \"{mundo.AnimacaoLocalDeTeste}\", "
+					+ $"altura {mundo.AlturaDeTeste:0} px)");
+				Fotografar("user://agua-14-longe-da-agua.png", "LONGE DA AGUA -- O VERB RECUSA", out _);
 				_passo = 200;   // o roteiro do seco acaba aqui
 				break;
 			}
@@ -613,15 +873,22 @@ public partial class RoboDeAgua : Node
 			// ROTEIRO MOLHADO (`--aguadentro`): itens 2 e 3
 			// =============================================================
 			// ============================ POR QUE ESTE ROTEIRO EXISTE ============================
-			// Os dois caminhos que um jogador tem pra COMECAR a nadar estao quebrados hoje (passos 12
-			// e 19), e sem comecar a nadar nao ha o que fotografar -- o item 2 e o item 3 do pedido
-			// ficariam sem resposta.
+			// Ele nasceu como MULETA: os dois caminhos que um jogador tem pra comecar a nadar (a
+			// margem, no passo 12, e o ar, no passo 19) estavam quebrados, e sem comecar a nadar nao
+			// havia o que fotografar -- os itens 2 e 3 do pedido ficariam sem resposta. Os dois ja
+			// foram consertados e os dois roteiros medem verde, entao esta muleta nao e mais a unica
+			// porta pro nado.
 			//
-			// Sobra o terceiro estado, e ele NAO e invencao da bancada: o proprio servidor diz que
-			// ele existe e o trata de proposito ("deslogar dentro do lago, ser jogado la por um
-			// arremesso, nascer perto demais da beira" -- `GameServer.Nado.PodeComecarANadar`). O
-			// `--aguadentro` poe o corpo exatamente nesse estado, e o resto e caminho de producao: o
-			// mesmo verb, o mesmo tique, o mesmo desenho.
+			// E MESMO ASSIM ELE FICA, por dois motivos. Primeiro, o estado que ele monta NAO e
+			// invencao da bancada: o proprio servidor diz que existe e o trata de proposito
+			// ("deslogar dentro do lago, ser jogado la por um arremesso, nascer perto demais da
+			// beira" -- `GameServer.Nado.PodeComecarANadar`). Segundo, ele e o unico que mede o MEIO
+			// da travessia sem gastar quadro chegando la, que e onde os itens 2 e 3 vivem.
+			//
+			// O QUE ELE NAO SABE MEDIR ESTA ESCRITO AQUI DE PROPOSITO: nascendo com o corpo ja
+			// molhado, ele ficou VERDE durante os dois defeitos de ENTRADA. Um roteiro que nasce
+			// dentro do estado nunca testa a porta de entrada dele -- e por isso os outros dois
+			// bercos existem.
 			// =================================================================================
 			case 30:
 				Conferir(SobreAgua(), "o corpo comeca DENTRO do lago (o estado que o servidor preve)");
@@ -680,18 +947,28 @@ public partial class RoboDeAgua : Node
 			case 33:
 				_deOndeAndou = mundo.PosicaoLocal ?? Vector2.Zero;
 				_pxNadandoNaAgua = 0;
+				_medindoTravessia = true;
+				_esperasDaTravessia = 0;
 				mundo.AndarDeTeste(_rumo);
 				break;
 
 			case 34:
 			case 35:
 			case 36:
-				if (!SobreAgua() && mundo.AlturaDeTeste == 0f && _pxNadandoNaAgua > 8f) _chegouNaOutraMargem = true;
-				break;
+				break;   // atravessando (a chegada e lida por QUADRO -- ver `_medindoTravessia`)
 
 			case 37:
 			{
+				// A MESMA FOLGA ELASTICA DO PASSO 19, e pelo mesmo motivo.
+				if (!_chegouNaOutraMargem && _esperasDaTravessia++ < 5)
+				{
+					mundo.AndarDeTeste(_rumo);
+					_passo = 36;
+					break;
+				}
+
 				mundo.PararDeTeste();
+				_medindoTravessia = false;
 				Vector2 fim = mundo.PosicaoLocal ?? Vector2.Zero;
 				float avanco = (fim - _deOndeAndou).Dot(_rumo);
 				Conferir(_pxNadandoNaAgua > ZoneCollision.TileSize,
@@ -768,6 +1045,118 @@ public partial class RoboDeAgua : Node
 			}
 
 			// =============================================================
+			// ROTEIRO DO MURO (`--aguaparede`): nadando, a parede ainda para?
+			// =============================================================
+			// ============================ POR QUE ELE E UM BERCO PROPRIO ============================
+			// O conserto que fez o jogador entrar no lago mandou o MODO junto do passo. O risco dele nao e
+			// o `ZoneCollision.Bloqueia` (parede para em todo modo, e isso e uma linha so): e a SAIDA DE
+			// EMERGENCIA do `MoveRules.Advance`, que ANTES devolvia o passo CHEIO sem conferir nada. Com o
+			// modo `APe`, todo corpo em cima de agua caia nela, e qualquer passo dele passava sem checagem,
+			// muro incluso. Com `Nadando` a agua nao o prende mais e a checagem volta a valer -- e e isso
+			// que uma foto de um nadador barrado por um muro prova.
+			//
+			// (A saida de emergencia deixou de aprovar tudo: hoje ela e `MoveRules.Escapar`, que nao
+			// existe pra quem esta parado pelo MODO e so libera o passo que APROXIMA de um lugar valido.
+			// Esta bancada continua valendo -- ela mede o nadador barrado pelo muro, que e outro eixo.)
+			//
+			// E ELE NAO CABIA NOS OUTROS TRES, o que foi medido e nao suposto: o muro mais proximo do lago
+			// daqueles bercos esta a 15 tiles, o corpo anda ~35 px/s e o nado cobra Ki por segundo. As duas
+			// tentativas de alcancar aquele muro (a nado e de voo) terminaram iguais, na EXAUSTAO, antes
+			// de o muro caber na foto.
+			// =======================================================================================
+			case 100:
+			{
+				Conferir(SobreAgua() && mundo.AlturaDeTeste == 0f,
+					"o corpo comeca DENTRO da agua, a um tile de um muro (berco `--aguaparede`)");
+				Conferir(!cli.Sheet.Nadando, "...e ainda nao esta nadando -- e o verb que vai ligar");
+
+				if (!AcharParedeNaAgua(out Vector2 encosto, out Vector2 rumo, out Vector2I parede, 2))
+				{
+					// HONESTO E DIZER QUE NAO MEDIU. Um "ok" aqui seria verde por ausencia -- a mesma
+					// doenca do berco que nasce dentro do estado que devia testar.
+					Nota("A PAREDE NAO FOI MEDIDA: o berco nao poe muro nenhum ao alcance");
+					_passo = 200;
+					break;
+				}
+
+				_encostoDaParede = encosto;
+				_rumoDaParede = rumo;
+				_celulaDaParede = parede;
+				_antesDaViagem = mundo.PosicaoLocal ?? Vector2.Zero;
+				Nota($"muro em ({parede.X},{parede.Y}), rumo do empurrao {rumo}; o corpo comeca em "
+					 + $"({_antesDaViagem.X:0},{_antesDaViagem.Y:0}), a {_antesDaViagem.DistanceTo(encosto):0} px "
+					 + "da ultima celula de agua");
+
+				_ditos.Clear();
+				cli.SendHabilidade("nadar");
+				break;
+			}
+
+			case 101:
+			{
+				Conferir(cli.Sheet.Nadando && SobreAgua(),
+					"NADANDO na agua colada no muro (bit `Nadando` na ficha)");
+				Conferir(Disse("comeca a nadar"), "...e o servidor avisou por chat");
+				Fotografar("user://agua-15-antes-do-muro.png", "O MURO 1/2 -- NADANDO, UM TILE ANTES", out _);
+
+				// ---------- E AGORA ANDA CONTRA ELE ----------
+				_antesDoEmpurrao = mundo.PosicaoLocal ?? Vector2.Zero;
+				_entrouEmParede = false;
+				_empurrouNadando = false;
+				_medindoParede = true;
+				mundo.AndarDeTeste(_rumoDaParede);
+				break;
+			}
+
+			case 102:
+				// O TILE DE ARRANQUE. Um tile a ~35 px/s custa um segundo -- e a primeira versao desta
+				// fase leu o "ultimo segundo" JA NESTE PONTO, com o corpo ainda chegando: ela mediu
+				// 12 px de avanco e reprovou o muro por ter perguntado cedo demais.
+				break;
+
+			case 103:
+				// AGORA ELE JA ESTA ENCOSTADO. Daqui pro veredito, com a tecla apertada o tempo todo, o
+				// numero honesto e zero.
+				_ondeParouNoPenultimo = mundo.PosicaoLocal ?? Vector2.Zero;
+				break;
+
+			case 104:
+			{
+				Vector2 fim = mundo.PosicaoLocal ?? Vector2.Zero;
+				float avanco = (fim - _antesDoEmpurrao).Dot(_rumoDaParede);
+				float noUltimoSegundo = (fim - _ondeParouNoPenultimo).Dot(_rumoDaParede);
+
+				// A FOTO SAI COM O CORPO AINDA EMPURRANDO, e nao depois de parar: e o encosto que se quer
+				// ver, e soltar o piloto antes tiraria o retrato de um corpo so parado perto de um muro.
+				Fotografar("user://agua-16-parado-no-muro.png", "O MURO 2/2 -- A PAREDE PARA QUEM NADA", out _);
+				mundo.PararDeTeste();
+				_medindoParede = false;
+
+				Conferir(_empurrouNadando,
+					"o empurrao foi dado NADANDO e em cima da agua -- e o unico estado em que a saida de "
+					+ "emergencia do `Advance` chegou a engolir a checagem");
+				Conferir(!_entrouEmParede,
+					"A PAREDE PARA QUEM NADA: em nenhum quadro os pes ficaram dentro da celula de muro");
+				// O AVANCO TOTAL TEM UM TILE DE FOLGA LEGITIMA: o corpo nasce um tile antes e ANDA contra o
+				// muro -- e esse passo que a bancada queria. O que nao pode e ele seguir depois de encostar.
+				Conferir(avanco < ZoneCollision.TileSize * 1.75f,
+					$"...e parou no muro: {avanco:0} px de avanco no total (o tile de arranque e ~40 px)");
+				Conferir(Math.Abs(noUltimoSegundo) < 4f,
+					$"...e no ULTIMO segundo, ainda com a tecla apertada, ele andou {noUltimoSegundo:0.0} px "
+					+ "-- e isto e o muro parando, e nao a bancada tendo soltado o piloto");
+				// O JUIZ AQUI E O `BlockedCell` E NAO O `DentroDeParedeDeTeste`: aquele pergunta pelo
+				// `MoveRules.Occupied` SEM modo, ou seja, A PE -- e a pe a agua conta como bloqueio. Ele
+				// responderia "esta dentro de parede" pra todo corpo em cima do lago, com o muro intacto a
+				// um tile de distancia.
+				Conferir(!ParedeSobOsPes(), "...e ele terminou FORA do muro");
+				Conferir(SobreAgua() && cli.Sheet.Nadando,
+					"...e continua NADANDO em cima da agua no fim (nao foi jogado pro seco)");
+
+				_passo = 200;
+				break;
+			}
+
+			// =============================================================
 			// ROTEIRO DO AR (`--aguanoar`): o POUSO em cima da agua
 			// =============================================================
 			// ============================ POR QUE ESTE ROTEIRO EXISTE ============================
@@ -836,6 +1225,8 @@ public partial class RoboDeAgua : Node
 				_deOndeAndou = mundo.PosicaoLocal ?? Vector2.Zero;
 				_pxNadandoNaAgua = 0;
 				_chegouNaOutraMargem = false;
+				_medindoTravessia = true;
+				_esperasDaTravessia = 0;
 				mundo.AndarDeTeste(_rumo);
 				break;
 			}
@@ -844,12 +1235,20 @@ public partial class RoboDeAgua : Node
 			case 65:
 			case 66:
 			case 67:
-				if (!SobreAgua() && mundo.AlturaDeTeste == 0f && _pxNadandoNaAgua > 8f) _chegouNaOutraMargem = true;
-				break;
+				break;   // saindo do pouso (a chegada e lida por QUADRO -- ver `_medindoTravessia`)
 
 			case 68:
 			{
+				// A MESMA FOLGA ELASTICA DO PASSO 19, e pelo mesmo motivo.
+				if (!_chegouNaOutraMargem && _esperasDaTravessia++ < 5)
+				{
+					mundo.AndarDeTeste(_rumo);
+					_passo = 67;
+					break;
+				}
+
 				mundo.PararDeTeste();
+				_medindoTravessia = false;
 				Conferir(_pxNadandoNaAgua > ZoneCollision.TileSize,
 					$"...e do pouso ele SEGUE nadando: {_pxNadandoNaAgua:0} px com o bit aceso e os pes "
 					+ "na agua");
@@ -893,6 +1292,118 @@ public partial class RoboDeAgua : Node
 				return i;
 		}
 		return float.MaxValue;
+	}
+
+	/// <summary>
+	/// OS PES ESTAO DENTRO DE UMA CELULA DE **MURO**? -- a caixa dos pes, os quatro cantos.
+	///
+	/// A pergunta e so pelo `BlockedCell`, e nao pelo `MoveRules.Occupied`: aquele responde "isto para
+	/// um corpo A PE", e a pe a agua tambem para -- ele diria "dentro de parede" pra todo nadador, com
+	/// o muro a dez tiles de distancia. Os quatro cantos e a MESMA caixa que o `Advance` consulta
+	/// (`BodyHalfW`/`BodyHalfH`, ja descontado o `FeetOffsetY`).
+	/// </summary>
+	private bool ParedeSobOsPes()
+	{
+		if (World.Instancia is not { Colisao: { } mapa } mundo || mundo.PosicaoLocal is not { } p) return false;
+		const int t = ZoneCollision.TileSize;
+		float y = p.Y + MoveRules.FeetOffsetY;
+		foreach ((float dx, float dy) in new[]
+				 {
+					 (-MoveRules.BodyHalfW, -MoveRules.BodyHalfH), (MoveRules.BodyHalfW, -MoveRules.BodyHalfH),
+					 (-MoveRules.BodyHalfW, MoveRules.BodyHalfH), (MoveRules.BodyHalfW, MoveRules.BodyHalfH),
+				 })
+			if (mapa.BlockedCell((int)MathF.Floor((p.X + dx) / t), (int)MathF.Floor((y + dy) / t)))
+				return true;
+		return false;
+	}
+
+	/// <summary>
+	/// A CELULA DE AGUA MAIS PROXIMA, EM TILES -- busca por aneis, ate 12 tiles.
+	///
+	/// Serve pra fase do "longe da agua": o que faz o verb recusar e a clausula "agua a um tile"
+	/// (`PodeComecarANadar`), entao a fase precisa PROVAR que o corpo esta longe em vez de supor que
+	/// andar quatro segundos basta. Devolve 99 quando nao ha agua nenhuma no raio.
+	/// </summary>
+	private int TilesAteAAguaMaisProxima(int raio = 12)
+	{
+		if (World.Instancia is not { Colisao: { } mapa } mundo || mundo.PosicaoLocal is not { } p) return 99;
+		const int t = ZoneCollision.TileSize;
+		int cx = (int)MathF.Floor(p.X / t), cy = (int)MathF.Floor((p.Y + MoveRules.FeetOffsetY) / t);
+		for (int r = 0; r <= raio; r++)
+			for (int dy = -r; dy <= r; dy++)
+				for (int dx = -r; dx <= r; dx++)
+				{
+					if (r > 0 && Math.Abs(dx) != r && Math.Abs(dy) != r) continue;   // so a casca
+					if (mapa.EhAgua(cx + dx, cy + dy)) return r;
+				}
+		return 99;
+	}
+
+	/// <summary>
+	/// ACHA UM MURO DE VERDADE QUE DE PRA ENCOSTAR **SEM SAIR DA AGUA**.
+	///
+	/// ============================ POR QUE O CAMINHO TEM QUE SER TODO MOLHADO ============================
+	/// O que se quer medir e a parede parando um corpo que esta NADANDO. Um caminho que passe por um
+	/// pedaco de chao seco desliga o nado no meio dele (`TickDoNado`, "ja molhou -> chao seco desliga
+	/// neste tique"), e o que chegaria no muro seria um pedestre -- medindo uma coisa que nunca esteve
+	/// em duvida.
+	///
+	/// Por isso a reta ate o encosto e amostrada de 4 em 4 px e TODA celula do caminho tem que ser
+	/// agua. O piloto automatico anda em linha reta (ver `AndarDeTeste`), entao a reta amostrada aqui
+	/// e o caminho de verdade, e nao uma aproximacao.
+	///
+	/// Devolve o PONTO DE ENCOSTO (a posicao do corpo que poe os pes no centro da ultima celula de
+	/// agua), o RUMO do empurrao (a cardinal que aponta pro muro) e a celula do muro.
+	/// ================================================================================================
+	/// </summary>
+	private bool AcharParedeNaAgua(out Vector2 encosto, out Vector2 rumo, out Vector2I parede, int raio = 24)
+	{
+		encosto = Vector2.Zero;
+		rumo = Vector2.Zero;
+		parede = Vector2I.Zero;
+		if (World.Instancia is not { Colisao: { } mapa } mundo || mundo.PosicaoLocal is not { } p) return false;
+
+		const int t = ZoneCollision.TileSize;
+		var pe = new Vector2(p.X, p.Y + MoveRules.FeetOffsetY);
+		int cx = (int)MathF.Floor(pe.X / t), cy = (int)MathF.Floor(pe.Y / t);
+		(int dx, int dy)[] cardeais = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+		// POR ANEIS: o muro escolhido e o MAIS PERTO, e nao o primeiro que a varredura encontrar. Um
+		// alvo do outro lado do lago custaria meio minuto de nado e sairia da tela na hora da foto.
+		for (int r = 1; r <= raio; r++)
+			for (int dy0 = -r; dy0 <= r; dy0++)
+				for (int dx0 = -r; dx0 <= r; dx0++)
+				{
+					if (Math.Abs(dx0) != r && Math.Abs(dy0) != r) continue;
+					int ax = cx + dx0, ay = cy + dy0;
+					if (!mapa.EhAgua(ax, ay)) continue;
+
+					foreach ((int dx, int dy) in cardeais)
+					{
+						if (!mapa.BlockedCell(ax + dx, ay + dy)) continue;
+						var centro = new Vector2(ax * t + t / 2f, ay * t + t / 2f);
+						if (!SoAguaNaReta(mapa, pe, centro)) continue;
+
+						encosto = new Vector2(centro.X, centro.Y - MoveRules.FeetOffsetY);
+						rumo = new Vector2(dx, dy);
+						parede = new Vector2I(ax + dx, ay + dy);
+						return true;
+					}
+				}
+		return false;
+	}
+
+	/// <summary>Toda celula tocada pela reta (de 4 em 4 px) e agua?</summary>
+	private static bool SoAguaNaReta(ZoneCollision mapa, Vector2 de, Vector2 ate)
+	{
+		const int t = ZoneCollision.TileSize;
+		int n = Math.Max(1, (int)(de.DistanceTo(ate) / 4f));
+		for (int i = 0; i <= n; i++)
+		{
+			Vector2 q = de.Lerp(ate, i / (float)n);
+			if (!mapa.EhAgua((int)MathF.Floor(q.X / t), (int)MathF.Floor(q.Y / t))) return false;
+		}
+		return true;
 	}
 
 	/// <summary>A celula que o punho alcanca continua sendo agua?</summary>

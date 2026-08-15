@@ -704,7 +704,7 @@ public partial class GameServer
 	{
 		_mortos.Limpar();
 
-		if (AcharPlanetaGerado() is not { } p)
+		if (AcharPlanetaGerado(SeedDoUniverso) is not { } p)
 		{
 			Checa("ha um planeta GERADO no mapa do universo pra medir", false,
 				  "nenhum procedural nas chunks varridas");
@@ -766,11 +766,16 @@ public partial class GameServer
 	/// A varredura e por CELULA de sistema e nao aleatoria: 37,6% das celulas nao tem estrela nenhuma
 	/// (<see cref="Sistemas.VaziosPor256"/>), entao olhar uma chunk so daria nulo com frequencia e a
 	/// familia inteira sumiria num "nao havia o que medir".
+	///
+	/// A SEMENTE ENTRA POR PARAMETRO desde que ela deixou de ser constante: quem chama passa a
+	/// `SeedDoUniverso` **deste** servidor, porque o corpo achado aqui vai ser destruido no mundo em
+	/// que o servidor esta de pe. Ler uma constante aqui dentro acharia planeta noutro universo -- e
+	/// a bancada mediria a morte de um planeta que nao existe.
 	/// </summary>
-	private static PlanetaNoEspaco? AcharPlanetaGerado()
+	private static PlanetaNoEspaco? AcharPlanetaGerado(ulong semente)
 	{
 		for (int i = 1; i <= 600; i++)
-			foreach (PlanetaNoEspaco p in Espaco.PorPerto(SeedDoUniverso, new ChunkId(i * 37, i * 53)))
+			foreach (PlanetaNoEspaco p in Espaco.PorPerto(semente, new ChunkId(i * 37, i * 53)))
 				if (!p.Premade) return p;
 		return null;
 	}

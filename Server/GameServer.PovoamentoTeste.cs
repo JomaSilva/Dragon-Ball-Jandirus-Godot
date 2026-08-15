@@ -100,6 +100,11 @@ public partial class GameServer
 				  && !Bercos.RacasNascidasEm("Earth", todasAsRacas).Contains("Android"));
 
 			// =====================================================================
+			// 2.b OS TRES PLANETAS DE POVO UNICO -- medido FORA do mundo
+			// =====================================================================
+			MedirOPovoDosTresPlanetas(Checa, todasAsRacas);
+
+			// =====================================================================
 			// 3. O RECORTE DO DONO -- inimigo comum NAO nasce
 			// =====================================================================
 			var zonaVazia = ZoneKey.Premade(
@@ -300,9 +305,24 @@ public partial class GameServer
 			// =====================================================================
 			// 9. DETERMINISMO -- a ficha continua sendo funcao pura de (universo, molde, lugar)
 			// =====================================================================
+			// ============================ A SEMENTE E ESCRITA AQUI, E NAO LIDA DO MUNDO ============================
+			// Esta familia afirma DETERMINISMO ("o mesmo lugar da o mesmo habitante"), e afirmacao de
+			// determinismo tem que trazer a propria semente. Ela lia a `SeedDoUniverso`, que era uma
+			// constante de compilacao; agora a semente e sorteada por mundo (ver `GameServer.Semente.cs`),
+			// e uma bancada de determinismo pendurada num numero que muda e uma bancada que compara duas
+			// coisas que ninguem escolheu -- ela ficaria verde por acidente, que e pior que vermelha.
+			//
+			// Entao as duas sementes sao literais deste arquivo. A TERCEIRA checagem e nova e e a que
+			// mede o pedido do dono (*"os NPCS estao sempre nascendo IGUAIS a cada WIPE"*): com OUTRO
+			// universo, o habitante do mesmo lugar do mesmo planeta tem que ser OUTRA PESSOA.
+			// ==================================================================================================
 			{
+				const ulong universoA = 0x5345_4D45_4E54_4541UL;   // "SEMENTEA"
+				const ulong universoB = 0x5345_4D45_4E54_4542UL;   // "SEMENTEB"
+
 				MoldeDeNpc cid = _moldes.Get("cidadao")!;
-				ulong sem = SorteioDeNpc.SementeDe(SeedDoUniverso, cid.Id, 4242);
+				ulong sem = SorteioDeNpc.SementeDe(universoA, cid.Id, 4242);
+				ulong outra = SorteioDeNpc.SementeDe(universoB, cid.Id, 4242);
 				string Assinar(FichaSorteada f) => $"{f.Raca}/{f.Classe}/{f.Genero}/{f.Nome}/{f.Ficha.BP:0.000}";
 				Checa("o mesmo lugar da o mesmo habitante",
 					  Assinar(SorteioDeNpc.Sortear(cid, sem, _racas, _skills, "Namek", 0))
@@ -310,6 +330,11 @@ public partial class GameServer
 				Checa("...e o mesmo lugar em OUTRO planeta da outro habitante (o planeta entra na raca)",
 					  Assinar(SorteioDeNpc.Sortear(cid, sem, _racas, _skills, "Namek", 0))
 					  != Assinar(SorteioDeNpc.Sortear(cid, sem, _racas, _skills, "Earth", 0)));
+				Checa("...e o mesmo lugar do mesmo planeta em OUTRO UNIVERSO da outro habitante",
+					  Assinar(SorteioDeNpc.Sortear(cid, sem, _racas, _skills, "Namek", 0))
+					  != Assinar(SorteioDeNpc.Sortear(cid, outra, _racas, _skills, "Namek", 0)),
+					  "era este o defeito: a semente do universo era `const`, entao todo mundo novo "
+					  + "nascia com os mesmos cidadaos");
 			}
 
 			// =====================================================================
@@ -341,6 +366,316 @@ public partial class GameServer
 			Avisar(pl, $"bancada de povoamento: {ok} ok, {falhou} falha(s) -- veja o console.");
 		}
 	}
+
+	/// <summary>
+	/// ============================ NA TERRA SO HUMANO, EM NAMEK SO NAMEKUSEIJIN, EM VEGETA SO SAIYAJIN ============================
+	/// Pedido do dono, literal: *"na TERRA deveria so spawnar HUMANO e em NAMEK so NAMEKUSEIJIN e no
+	/// planeta VEGETA so SAIYAJIN, no RESTO PODE MANTER"*.
+	///
+	/// ============================ POR QUE ELA NAO OLHA O MUNDO ============================
+	/// **Porque o mundo daria VERDE POR AUSENCIA nos dois planetas que o dono citou.** No save vivo,
+	/// `saves/planetas-mortos.json` tem *Vegeta E TERRA* condenados, e a `Manutencao` recusa repovoar
+	/// condenado (`'Earth' esta condenado -- ninguem nasce la`). A secao 4 desta mesma bancada mede o
+	/// mundo e imprime `Earth: ` e `Vegeta: ` VAZIOS -- e "nenhum corpo errado" num planeta sem corpo
+	/// nenhum passa em qualquer checagem escrita sobre o mundo.
+	///
+	/// Entao esta familia mede a FUNCAO DE PRODUCAO direto: `SorteioDeNpc.Sortear` com a MESMA semente
+	/// que o `NascerNpc` monta -- `SementeDe(SeedDoUniverso, molde, Misturar(zona.Hash, lugar, 0))` --,
+	/// um sorteio por vaga do plano. Nao ha atalho: e a funcao que o jogo chama, com o argumento que o
+	/// jogo passa. O que se perde e o corpo no mapa, e isso a segunda metade repoe nascendo TRES de
+	/// verdade pelo `NascerNpc` (que nao consulta condenacao -- quem consulta e a manutencao).
+	/// ==============================================================================
+	///
+	/// ============================ E A TERCEIRA CHECAGEM E A QUE TEM DENTES ============================
+	/// Um crivo que nunca corta e indistinguivel de crivo nenhum (regra 0.7). Entao a familia mede
+	/// tambem o que o berco responderia SEM o recorte: a Terra tem CINCO racas com berco nela (Alien,
+	/// Demigod, Human, Majin, Shapeshifter) e sai UMA. Se um dia as duas contas empatarem, o crivo
+	/// parou de cortar -- e as outras checagens continuariam verdes, porque "todo mundo e humano" e
+	/// verdade tambem num planeta que nunca teve outra opcao.
+	/// ==========================================================================================
+	/// </summary>
+	private void MedirOPovoDosTresPlanetas(Action<string, bool, string> Checa, string[] todasAsRacas)
+	{
+		GD.Print("\n  ### 2.b -- os tres planetas de povo unico ###");
+
+		Checa("as duas tabelas concordam (o povo de cada planeta TEM berco nele, e existe no races.json)",
+			  Bercos.ContradicoesDoPovo(todasAsRacas).Count == 0,
+			  string.Join(" | ", Bercos.ContradicoesDoPovo(todasAsRacas)));
+
+		MoldeDeNpc cidadao = _moldes!.Get("cidadao")!;
+
+		foreach ((string planeta, string povo) in Bercos.Povos)
+		{
+			// ---- A TABELA -------------------------------------------------------
+			string[] pool = Bercos.RacasNascidasEm(planeta, todasAsRacas);
+			Checa($"'{planeta}': o pool de habitantes e UMA raca so, e ela e '{povo}'",
+				  pool.Length == 1 && string.Equals(pool[0], povo, StringComparison.OrdinalIgnoreCase),
+				  $"[{string.Join(",", pool)}]");
+
+			// ---- OS DENTES: o berco SOZINHO responderia mais que isso ------------
+			// A conta e escrita aqui de proposito, e nao lida de uma funcao: depois do recorte NAO
+			// EXISTE mais funcao de producao que devolva o pool sem crivo, e pedir a resposta ao
+			// proprio `RacasNascidasEm` seria a bancada perguntando ao reu se ele fez. As duas pecas
+			// desta linha (`PovoaUmPlaneta`, `PlanetaNatal`) sao de producao; o que a bancada monta
+			// e so a pergunta "quantas racas moravam aqui ANTES do crivo".
+			int semRecorte = todasAsRacas.Count(
+				r => Bercos.PovoaUmPlaneta(r)
+				  && string.Equals(Bercos.PlanetaNatal(r), planeta, StringComparison.OrdinalIgnoreCase));
+
+			Checa($"...e o crivo CORTA de verdade: o berco sozinho poria {semRecorte} racas em "
+				+ $"'{planeta}' e o povoamento poe 1",
+				  semRecorte > 1 && pool.Length == 1,
+				  $"sem recorte {semRecorte}, com recorte {pool.Length}");
+
+			// ---- O CENSO, PELA FUNCAO DE PRODUCAO --------------------------------
+			// A formula da semente e a MESMA linha do `NascerNpc`, copiada, pra que os nomes que saem
+			// no console sejam os habitantes que o mundo teria. A AFIRMACAO, porem, nao depende dela:
+			// com o pool recortado, qualquer semente sorteia o povo -- e isso e proposital, porque
+			// significa que uma semente errada aqui nao tem como deixar esta checagem verde por
+			// acidente. O que a formula copiada nao cobre e a CADEIA (planeta certo chegando no
+			// `Sortear`, molde certo, roupa), e e pra isso que a segunda metade nasce corpo de verdade.
+			LinhaDePovoamento? linha = _moldes.Plano.FirstOrDefault(
+				l => string.Equals(l.Planeta, planeta, StringComparison.OrdinalIgnoreCase));
+			int quantos = linha?.Quantos ?? 40;
+			var zona = ZoneKey.Premade(planeta);
+
+			string[] nomesDoPovo = cidadao.NomesPorRaca.GetValueOrDefault(povo) ?? [];
+
+			// ============================ UMA PASSADA, TRES PERGUNTAS ============================
+			// O censo, a ASSINATURA (pro determinismo) e a ROUPA saem do MESMO laco, e o laco e uma
+			// FUNCAO DA SEMENTE DO UNIVERSO. E isso que permite roda-lo de novo com a mesma semente
+			// (tem que sair identico) e com outra (tem que sair diferente) -- sem o segundo, o
+			// primeiro ficaria verde ate se o sorteio ignorasse a semente por completo, porque duas
+			// passadas de uma funcao constante tambem sao iguais.
+			// ==================================================================================
+			(Dictionary<string, int> Censo, int Fora, int NomeFora, string Assinatura,
+			 SortedSet<string> Pecas) UmaPassada(ulong seedDoUniverso)
+			{
+				var c = new Dictionary<string, int>(StringComparer.Ordinal);
+				var pc = new SortedSet<string>(StringComparer.Ordinal);
+				var sb = new System.Text.StringBuilder();
+				int fora = 0, nomeFora = 0;
+
+				for (ulong vaga = 1; vaga <= (ulong)quantos; vaga++)
+				{
+					ulong semente = SorteioDeNpc.SementeDe(
+						seedDoUniverso, cidadao.Id, Espaco.Misturar(zona.Hash, vaga, 0));
+					FichaSorteada f = SorteioDeNpc.Sortear(
+						cidadao, semente, _racas!, _skills, zona.Name, MediaDoServidor());
+
+					c[f.Raca] = c.GetValueOrDefault(f.Raca) + 1;
+					if (!string.Equals(f.Raca, povo, StringComparison.OrdinalIgnoreCase)) fora++;
+					if (nomesDoPovo.Length > 0 && !nomesDoPovo.Contains(f.Nome, StringComparer.Ordinal))
+						nomeFora++;
+
+					sb.Append(f.Raca).Append('/').Append(f.Nome).Append('/').Append(f.Classe).Append(';');
+
+					// A ROUPA PELO FUNIL DE PRODUCAO. `AparenciaDeNpc` e a MESMA linha que o `NascerNpc`
+					// chama, e ela le a RACA -- entao a roupa acompanha o recorte sem uma linha escrita
+					// sobre planeta nenhum. Pedir a lista ao `RoupaDeNpc` direto pularia o `Sanear` e o
+					// caso "a arte nao existe no port", que e o unico jeito de a peca sumir calada.
+					foreach (var peca in AparenciaDeNpc(cidadao, f.Raca, f.Genero, semente).Roupa)
+						pc.Add(NomeDaPeca(peca.Caminho));
+				}
+				return (c, fora, nomeFora, sb.ToString(), pc);
+			}
+
+			(Dictionary<string, int> censo, int foraDaPool, int nomeForaDaPool,
+			 string assinatura, SortedSet<string> pecas) = UmaPassada(SeedDoUniverso);
+
+			GD.Print($"       {planeta} ({quantos} vagas do plano): "
+				   + string.Join(", ", censo.OrderBy(kv => kv.Key, StringComparer.Ordinal)
+									 .Select(kv => $"{kv.Key} {kv.Value}"))
+				   + (ZonaCondenada(zona) ? "   [a zona esta CONDENADA no save -- por isso o mundo nao mede]" : ""));
+
+			Checa($"'{planeta}': as {quantos} vagas do plano sortearam '{povo}' e mais NADA "
+				+ "(`SorteioDeNpc.Sortear`, a funcao de producao)",
+				  foraDaPool == 0, $"{foraDaPool} fora do povo: "
+				+ string.Join(",", censo.Keys.Where(r => !string.Equals(r, povo, StringComparison.OrdinalIgnoreCase))));
+
+			// ---- OS NOMES ACOMPANHAM (e acompanham DE GRACA: a pool e POR RACA) --
+			Checa($"...e todo nome saiu da pool de '{povo}' do npcs.json ({nomesDoPovo.Length} nomes) "
+				+ "-- nao sobrou nome de outro povo",
+				  nomesDoPovo.Length > 0 && nomeForaDaPool == 0, $"{nomeForaDaPool} fora da pool");
+
+			// ---- O DETERMINISMO: A MESMA SEMENTE DA O MESMO POVO -----------------
+			// Nao foi tocada nenhuma formula de semente -- so o POOL de onde a raca sai --, e e
+			// exatamente por isso que esta checagem precisa existir: uma mudanca que "nao mexe no
+			// sorteio" e a que ninguem vai medir. A assinatura e corpo a corpo (raca/nome/classe das
+			// N vagas), e nao um resumo: dois povos com o mesmo histograma e nomes trocados nao sao
+			// o mesmo povo.
+			Checa($"'{planeta}': a MESMA semente devolve o MESMO povo, corpo a corpo "
+				+ $"({quantos} vagas, {assinatura.Length} chars de assinatura)",
+				  string.Equals(UmaPassada(SeedDoUniverso).Assinatura, assinatura, StringComparison.Ordinal),
+				  "a segunda passada com a mesma semente devolveu outro povo");
+
+			// ...E OUTRO UNIVERSO DA OUTRA GENTE. Sem esta metade a de cima ficaria verde ate se o
+			// sorteio tivesse parado de ler a semente. A RACA continua sendo o povo (o pool tem uma
+			// so) e sao o nome e a classe que mudam -- que e precisamente o que o recorte prometeu:
+			// menos variedade de RACA, a mesma variedade de PESSOA.
+			(_, int foraNoutro, _, string outroUniverso, _) =
+				UmaPassada(SeedDoUniverso ^ 0x9E37_79B9_7F4A_7C15UL);
+			Checa($"...e OUTRO universo da outra gente no mesmo planeta -- e ainda assim 100% '{povo}'",
+				  !string.Equals(outroUniverso, assinatura, StringComparison.Ordinal) && foraNoutro == 0,
+				  foraNoutro > 0 ? $"{foraNoutro} fora do povo" : "a assinatura nao mudou");
+
+			// ---- A ROUPA ACOMPANHOU, e ela veio DE GRACA -------------------------
+			// `RoupaDeNpc` nao foi tocado: ele sempre leu a RACA. Restringir a raca restringiu a
+			// roupa junto, e e por isso que esta linha e uma CONFERENCIA e nao uma novidade -- o que
+			// ela guarda e o caso em que o recorte levasse o planeta pra um ramo que nao e o do DM
+			// (a Terra caindo no `default` da camisa comum, Vegeta perdendo a armadura).
+			//
+			// O oraculo e a lista ESCRITA A MAO do `PlanetPopulation.dm` (ver `EsperadoDoPovo`), e
+			// nao o proprio `RoupaDeNpc`: perguntar ao reu se ele fez foi como o `case "Halfbreed":`
+			// faltante sobreviveu meses com o comentario dele certo em cima (RoupaDeNpc.cs:179-189).
+			string[] esperadas = EsperadoDoPovo(povo);
+			GD.Print($"       {planeta} veste ({povo}): {string.Join(", ", pecas)}");
+			Checa($"'{planeta}': as pecas que sairam sao as de '{povo}' no PlanetPopulation.dm "
+				+ $"-- {string.Join(", ", pecas)}",
+				  pecas.Count > 0 && pecas.All(esperadas.Contains),
+				  pecas.Count == 0 ? "ninguem se vestiu"
+					: "forasteiras: " + string.Join(",", pecas.Where(n => !esperadas.Contains(n))));
+		}
+
+		MedirQueORestoFicouComoEstava(Checa, todasAsRacas);
+
+		// ---- E AGORA UM CORPO DE VERDADE EM CADA UM ------------------------------
+		// ============================ O SORTEIO NAO E O NASCIMENTO ============================
+		// As checagens de cima medem a funcao pura. Esta mede a CADEIA: `NascerNpc` monta a semente,
+		// chama o sorteio, poe no mundo e veste o corpo (`RoupaDeNpc` le a RACA). Sem ela, um defeito
+		// entre o sorteio e o mundo -- outro planeta passado pro `Sortear`, um molde trocado --
+		// passaria batido com todas as afirmacoes de cima verdes.
+		//
+		// `NascerNpc` NAO consulta a condenacao do planeta (quem consulta e a `Manutencao`), entao os
+		// tres nascem mesmo com a Terra e Vegeta destruidas no save. Eles saem do mundo aqui mesmo, e
+		// nao no `finally`: a secao 8 escolhe uma VITIMA entre os cidadaos fora da Terra, e uma cobaia
+		// desta familia ainda no mundo seria a vitima daquela -- medida de uma familia servindo de
+		// palco pra outra.
+		// ==============================================================================
+		ulong lugarDaCobaia = 960_001;
+		foreach ((string planeta, string povo) in Bercos.Povos)
+		{
+			var zona = ZoneKey.Premade(planeta);
+			if (_catalogo?.Get(zona) == null)
+			{
+				Checa($"'{planeta}' esta no manifesto de mapas (sem mapa nao ha nascimento)", false, "");
+				continue;
+			}
+
+			ServerPlayer? corpo = NascerNpc("cidadao", zona,
+											PontoDeHabitante(zona, lugarDaCobaia), lugarDaCobaia);
+			lugarDaCobaia++;
+
+			Checa($"'{planeta}': um corpo nascido pelo `NascerNpc` inteiro e '{povo}'",
+				  corpo != null && string.Equals(corpo.Race, povo, StringComparison.OrdinalIgnoreCase),
+				  corpo == null ? "nao nasceu" : $"{corpo.Name} ({corpo.Race})");
+
+			if (corpo != null) RemoverNpc(corpo);
+		}
+	}
+
+	/// <summary>
+	/// ============================ O CONTRA-EXEMPLO: *"no RESTO PODE MANTER"* ============================
+	/// Sem esta familia, um recorte que restringisse TODO planeta a uma raca ficaria **verde em tudo o
+	/// que esta acima** -- "a Terra e 100% humana" continua verdade quando o crivo e global -- e o dono
+	/// perderia calado a variedade que ele mandou manter na mesma frase em que pediu o recorte.
+	///
+	/// ============================ ELA NAO CONSEGUE MOSTRAR UM PLANETA MISTO, E ISSO E O DADO ============================
+	/// Medido sobre TODAS as racas do `races.json`: depois dos tres planetas do dono, **nenhum planeta
+	/// que sobra tem mais de uma raca com berco nele** -- Icer, Arlia, Makyo_Star, Heaven e Hell tem
+	/// exatamente uma cada (`Bercos.PlanetaNatal` so manda Icer pra Icer, Arlian pra Arlia, Makyo pra
+	/// Makyo_Star, Kai pro Paraiso e Demon pro Inferno). Entao *"os outros continuam mistos"* nao e uma
+	/// afirmacao que se possa fazer sem mentir: eles ja eram puros por DERIVACAO, antes deste recorte
+	/// existir, e e por isso que o `Bercos.OsPovos` deliberadamente nao tem linha pra eles.
+	///
+	/// O que E afirmavel, e o que aqui se afirma, e a coisa que de fato guarda o pedido do dono: **o
+	/// crivo NAO OS TOCA.** A lista deles sai identica, elemento a elemento, a que o berco sozinho
+	/// daria, e `PovoDoPlaneta` responde vazio pra cada um. No dia em que alguem puser uma raca nova
+	/// com berco em Icer -- ou tornar o crivo global "pra ficar consistente" --, e esta familia que
+	/// fica vermelha, e nao as de cima.
+	/// ==========================================================================================================
+	///
+	/// ============================ E O MODO DE FALHA DESTE RECORTE E O PLANETA VAZIO ============================
+	/// Ele nao produz planeta misto: produz planeta DESPOVOADO (a intersecao do
+	/// <see cref="Bercos.RacasNascidasEm"/> so consegue tirar). Por isso a ultima checagem pergunta ao
+	/// PLANO -- que e quem manda nascer -- se sobrou alguem pra nascer em cada linha dele.
+	/// ======================================================================================================
+	/// </summary>
+	private void MedirQueORestoFicouComoEstava(Action<string, bool, string> Checa, string[] todasAsRacas)
+	{
+		GD.Print("\n  ### 2.c -- \"no RESTO PODE MANTER\": o crivo nao encostou nos outros ###");
+
+		string[] doPlano = [.. _moldes!.Plano.Select(l => l.Planeta)
+			.Distinct(StringComparer.OrdinalIgnoreCase)];
+
+		// Paraiso e Inferno entram junto de proposito: eles NAO estao no plano (ninguem povoa o alem),
+		// e sao os dois planetas que um crivo global alcancaria sem ninguem perceber, porque nenhum
+		// censo os mede.
+		string[] outros = [.. doPlano.Concat(["Heaven", "Hell"])
+			.Where(p => Bercos.PovoDoPlaneta(p).Length == 0)];
+
+		Checa($"o crivo e SELETIVO: {Bercos.Povos.Count} planetas tem povo unico "
+			+ $"({string.Join(", ", Bercos.Povos.Select(x => x.Planeta))}) e os outros "
+			+ $"{outros.Length} ({string.Join(", ", outros)}) nao tem povo nenhum",
+			  Bercos.Povos.Count == 3 && outros.Length > 0,
+			  $"{Bercos.Povos.Count} povos, {outros.Length} livres");
+
+		int tocados = 0;
+		foreach (string p in outros)
+		{
+			string[] comCrivo = Bercos.RacasNascidasEm(p, todasAsRacas);
+
+			// A conta SEM crivo e escrita aqui pelo mesmo motivo da familia 2.b: depois do recorte nao
+			// existe mais funcao de producao que responda "quem moraria aqui sem ele". As duas pecas
+			// (`PovoaUmPlaneta`, `PlanetaNatal`) continuam sendo as de producao.
+			string[] semCrivo = [.. todasAsRacas
+				.Where(r => Bercos.PovoaUmPlaneta(r)
+						 && string.Equals(Bercos.PlanetaNatal(r), p, StringComparison.OrdinalIgnoreCase))
+				.OrderBy(r => r, StringComparer.Ordinal)];
+
+			if (!comCrivo.SequenceEqual(semCrivo, StringComparer.Ordinal)) tocados++;
+			GD.Print($"       {p}: [{string.Join(", ", comCrivo)}]"
+				   + $"   (o berco sozinho daria [{string.Join(", ", semCrivo)}])");
+		}
+
+		// `outros.Length > 0` NAO E REDUNDANCIA da checagem de cima: sem ele, um crivo que virasse
+		// GLOBAL esvaziaria a lista e este laco daria zero voltas -- `tocados == 0` ficaria VERDE por
+		// nao ter olhado nada, que e a forma de verde vazio mais barata que existe.
+		Checa($"...e os {outros.Length} de fora saem do berco INTACTOS, elemento a elemento "
+			+ "-- o recorte nao encostou neles",
+			  outros.Length > 0 && tocados == 0,
+			  outros.Length == 0 ? "NAO SOBROU planeta livre -- o crivo virou global"
+								 : $"{tocados} planeta(s) mudaram");
+
+		string[] vazios = [.. doPlano.Where(p => Bercos.RacasNascidasEm(p, todasAsRacas).Length == 0)];
+		Checa($"nenhum dos {doPlano.Length} planetas do plano ficou sem NINGUEM pra nascer nele "
+			+ "(o modo de falha do recorte e o planeta vazio, e ele nao grita sozinho)",
+			  vazios.Length == 0, string.Join(", ", vazios));
+	}
+
+	/// <summary>
+	/// AS PECAS QUE O `PlanetPopulation.dm` VESTE EM CADA UM DOS TRES POVOS -- **escritas a mao, do
+	/// DM**, e nao lidas do <see cref="RoupaDeNpc"/>.
+	///
+	/// Perguntar ao proprio `RoupaDeNpc` o que ele veste seria a bancada perguntando ao reu se ele fez
+	/// -- e foi exatamente assim que o `case "Halfbreed":` faltante sobreviveu com o comentario dele
+	/// certo uma linha acima (`RoupaDeNpc.cs:179-189`): quem pegou foi um oraculo escrito a parte.
+	/// </summary>
+	private static string[] EsperadoDoPovo(string povo) => povo switch
+	{
+		// make_saiyan_commoner :368 -- pick('Armor 8','Armor Bardock','Nappa Armor','RaditzArmorTobiUchiha')
+		"Saiyan" => ["Armor 8", "Armor Bardock", "Nappa Armor", "RaditzArmorTobiUchiha"],
+
+		// make_human :396-402 -- prob(50) Gi (Gifemale / Gi_Top + Gi_Bottom), senao a camisa comum
+		"Human" => ["Clothes_GiTop", "Clothes_GiBottom", "ClothesGiFemale",
+					"Clothes_TankTop", "Clothes_ShortSleeveShirt", "Clothes_LongSleeveShirt"],
+
+		// make_namekian :413-414 -- jaqueta prob(60) + cachecol prob(50). O Namekuseijin PODE sair sem
+		// nada (20% dos sorteios) e isso e o DM: por isso a checagem e sobre o CONJUNTO do planeta.
+		"Namekian" => ["ClothesNamekJacket", "Clothes_NamekianScarf"],
+
+		_ => [],
+	};
 
 	/// <summary>
 	/// O CIDADAO NAO FECHA A DISTANCIA; O CHEFE FECHA. **Medido em pixels, ao longo de 600 tiques.**

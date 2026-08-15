@@ -84,8 +84,14 @@ public partial class RemotePlayer : Node2D
 	/// agora corre no relogio do cliente, com atraso fixo, e o intervalo entre chegadas -- que era
 	/// o que fazia o corpo engasgar -- deixou de participar do desenho. Ver o cabecalho da classe.
 	/// </summary>
+	/// <param name="canalAtirando">
+	/// SO IMPORTA COM <see cref="Jandirus.Net.Protocol.Pose.Canalizando"/>: o raio ja saiu da mao
+	/// (pose `blast`) ou o corpo ainda esta reunindo energia (idle + o brilho da
+	/// <see cref="CargaDeRaioVisual"/>)? Vem do byte opcional do snapshot -- ver `EntityState.Canal`.
+	/// </param>
 	public void Receive(Vec2 pos, Facing facing, bool moving, bool deitado, Jandirus.Net.Protocol.Pose pose,
-						bool correndo = false, bool rabo = false, float altitude = 0f, bool voando = false)
+						bool correndo = false, bool rabo = false, float altitude = 0f, bool voando = false,
+						bool canalAtirando = false)
 	{
 		_visual.MostrarRabo(rabo);
 		_alturaDoPacote = altitude;
@@ -128,9 +134,15 @@ public partial class RemotePlayer : Node2D
 		// A animacao de soco e encaixada na duracao do golpe -- o mesmo que o LocalPlayer faz.
 		// Daqui nao da pra saber a cadencia do OUTRO (ela sai do Eactspeed dele, que e ficha
 		// privada), entao usa-se a de referencia; o que importa e nao ficar em camera lenta.
+		// ============================ E O RAIO NAO REINICIA, PORQUE ELE NAO E EVENTO ============================
+		// O soco reinicia (a linha acima) porque ele e um GOLPE: cada um e um evento e o corpo tem que
+		// mostrar a animacao de novo. O raio nao -- ele e um ESTADO que dura enquanto o canal viver, e
+		// reiniciar a pose a cada snapshot travaria o desenho no primeiro quadro por segundos a fio.
+		// Por isso ele cai no `SetPose`, que so trabalha quando o nome do estado muda.
+		// ====================================================================================================
 		if (pose == Jandirus.Net.Protocol.Pose.Atacando && _pose != pose)
 			_visual.RestartState("attack", Jandirus.Net.Protocol.AttackPoseMs / 1000.0);
-		else _visual.SetPose(pose);
+		else _visual.SetPose(pose, canalAtirando);
 
 		// O CORPO CAI (E VOA) PRO LADO CERTO, e AGORA os outros clientes tambem sabem disso.
 		//

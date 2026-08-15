@@ -268,7 +268,7 @@ public static class MapConverter
 
 		// ---- passada 2: uma cena por andar + o mapa de colisao que o SERVIDOR le ----
 		int cenas = 0, celulas = 0, bloqueadas = 0, totalPortas = 0, totalMaquinas = 0, totalPassagens = 0;
-		int totalAgua = 0;
+		int totalAgua = 0, totalDuro = 0;
 		var manifesto = new List<string>();
 		foreach ((string arquivo, DmmMap.Result dados, int off) in mapas)
 			foreach (DmmLevel nivel in dados.Levels)
@@ -304,6 +304,20 @@ public static class MapConverter
 					totalAgua += molhadas.Count;
 				}
 				else if (File.Exists(arqAgua)) File.Delete(arqAgua);
+
+				// ...e este e O QUE NAO SE QUEBRA: o `destroyable = 0` do original. Arquivo separado
+				// pelo mesmo motivo dos outros dois -- "para o corpo", "esconde", "e agua" e "cede a
+				// um soco" sao quatro perguntas que divergem entre si em quase toda celula que
+				// importa. Ver `ConverterDuros`, que e o caminho que roda sozinho.
+				List<(int X, int Y)> duras = CelulasDuras(nivel, dados, turfs);
+				string arqDuro = Path.Combine(outDir, nome + ".duro");
+				if (duras.Count > 0)
+				{
+					EscreverColisao(arqDuro, nivel.Width, nivel.Height, duras);
+					totalDuro += duras.Count;
+				}
+				else if (File.Exists(arqDuro)) File.Delete(arqDuro);
+
 				// AS PORTAS DA ZONA. Sai sempre, mesmo vazio: um arquivo que as vezes existe e as
 				// vezes nao vira um `if` no leitor, e um `if` a menos vale o punhado de bytes.
 				File.WriteAllText(Path.Combine(outDir, nome + ".portas"),
@@ -330,6 +344,7 @@ public static class MapConverter
 							  $"\"pedacos\": \"res://Assets/Maps/{nome}.pedacos\", " +
 							  $"\"colisao\": \"res://Assets/Maps/{nome}.col\", \"visao\": \"res://Assets/Maps/{nome}.vis\", " +
 							  $"\"agua\": \"res://Assets/Maps/{nome}.agua\", " +
+						  $"\"duro\": \"res://Assets/Maps/{nome}.duro\", " +
 							  $"\"luzes\": \"res://Assets/Maps/{nome}.luz\", " +
 							$"\"portas\": \"res://Assets/Maps/{nome}.portas\", " +
 							$"\"objetos\": \"res://Assets/Maps/{nome}.objetos\", " +
@@ -348,6 +363,7 @@ public static class MapConverter
 		Console.WriteLine($"maquinas       : {totalMaquinas} (saem do tilemap e viram construcao)");
 		Console.WriteLine($"passagens      : {totalPassagens} (celulas que levam a outro mapa)");
 		Console.WriteLine($"agua           : {totalAgua} celulas (terceira classe: para a pe, nao para nadando/voando)");
+		Console.WriteLine($"duro           : {totalDuro} celulas (destroyable=0: bloqueia e NAO cede a soco nenhum)");
 		Console.WriteLine($"celulas        : {celulas}");
 		Console.WriteLine($"fontes no tileset: {fontes.Count}");
 		if (semAtlas.Count > 0)
@@ -1859,6 +1875,149 @@ public static class MapConverter
 				if (Aguas.Eh(ultimoTurf, td)) molhadas.Add((x, y));
 			}
 		return molhadas;
+	}
+
+	// =====================================================================
+	// O QUE NAO SE QUEBRA -- o `destroyable` do original (ver Duros.cs)
+	// =====================================================================
+
+	/// <summary>
+	/// AS CELULAS INDESTRUTIVEIS DESTE ANDAR.
+	///
+	/// ============================ A REGRA NAO E A MESMA DA AGUA, E ISSO IMPORTA ============================
+	/// A agua pergunta pelo ULTIMO turf, porque no DM cada `new /turf/X(loc)` de um prefab SUBSTITUI o
+	/// anterior -- quem existe no fim e o unico que existe. Aqui vale o mesmo pros TURFS, e por isso
+	/// esta funcao tambem procura o ultimo.
+	///
+	/// So que `destroyable` nao e uma propriedade da CELULA, e da coisa que sobreviveria: uma
+	/// `/obj/barrier` coexiste com o turf, e derrubar o chao debaixo dela nao a apaga (no original
+	/// `Destroy()` troca o TURF por `/turf/Ground/Ground8` e a barreira continua bloqueando pelo
+	/// `selectivecollide`). Como no port a barreira nao e entidade -- ela virou celula solida do
+	/// `.col` --, abrir a celula a apagaria de vez. Entao a celula e dura se o ULTIMO TURF for duro
+	/// **ou** se houver QUALQUER obj indestrutivel nela. Ver <see cref="Duros"/>.
+	/// ======================================================================================================
+	///
+	/// Sai como funcao propria, e nao dentro do `EscreverCena`, pelo mesmo motivo da agua: ela
+	/// precisa rodar tambem no comando `duro`, que existe justamente pra NAO reconverter os sprites.
+	/// </summary>
+	internal static List<(int X, int Y)> CelulasDuras(DmmLevel nivel, DmmMap.Result dados,
+													  Dictionary<string, TurfDef> turfs)
+	{
+		var duras = new List<(int, int)>();
+		for (int y = 0; y < nivel.Height; y++)
+			for (int x = 0; x < nivel.Width; x++)
+			{
+				string? k = nivel.Cells[x, y];
+				if (k == null || !dados.Keys.TryGetValue(k, out string[]? tipos)) continue;
+
+				string? ultimoTurf = null;
+				bool objDuro = false;
+				foreach (string tp in tipos)
+				{
+					string bp = DmmMap.BasePath(tp);
+					if (bp.StartsWith("/turf", StringComparison.Ordinal)) ultimoTurf = bp;
+					else if (Duros.EhObjDuro(bp)) objDuro = true;
+				}
+
+				if (objDuro) { duras.Add((x, y)); continue; }
+				if (ultimoTurf != null && turfs.TryGetValue(ultimoTurf, out TurfDef? td) && Duros.Eh(td))
+					duras.Add((x, y));
+			}
+		return duras;
+	}
+
+	/// <summary>
+	/// Grava o `.duro` de todos os andares E MAIS NADA -- irmao do <see cref="ConverterAguas"/>, e
+	/// pelo mesmo motivo dele: a conversao cheia reescreve o tileset, o `tiles.json`, os 40
+	/// `.tscn`/`.pedacos` e o indice de sprites, e o indice resolve nome repetido por `TryAdd` --
+	/// rodar tudo pra buscar UM bit por celula reescreveria 21 artes (4 delas genuinamente
+	/// diferentes) sem ninguem ter pedido.
+	///
+	/// A ZONA SEM NADA DURO NAO GANHA ARQUIVO, e um `.duro` velho de uma zona que amoleceu e
+	/// APAGADO -- deixar o antigo seria pior que nao ter nenhum: o leitor confiaria nele e uma
+	/// parede que virou destrutivel continuaria eterna, calada.
+	/// </summary>
+	public static void ConverterDuros(string dmmDir, string outDir, Dictionary<string, TurfDef> turfs)
+	{
+		Directory.CreateDirectory(outDir);
+
+		var mapas = new List<(string Arquivo, DmmMap.Result Dados, int Offset)>();
+		int offset = 0;
+		foreach (string dmm in OrdemDoDme(dmmDir))
+		{
+			DmmMap.Result d = DmmMap.Read(dmm);
+			mapas.Add((dmm, d, offset));
+			offset += d.Levels.Count;
+		}
+
+		int andares = 0, comDuro = 0, total = 0, apagados = 0, alcancaveis = 0;
+		foreach ((string _, DmmMap.Result dados, int off) in mapas)
+			foreach (DmmLevel nivel in dados.Levels)
+			{
+				string nome = NomeDoAndar(dados, nivel, off);
+				string caminho = Path.Combine(outDir, nome + ".duro");
+				List<(int X, int Y)> duras = CelulasDuras(nivel, dados, turfs);
+				andares++;
+
+				if (duras.Count == 0)
+				{
+					if (File.Exists(caminho)) { File.Delete(caminho); apagados++; }
+					continue;
+				}
+
+				EscreverColisao(caminho, nivel.Width, nivel.Height, duras);
+				comDuro++;
+				total += duras.Count;
+
+				// ============================ RELER O QUE ACABOU DE SER ESCRITO ============================
+				// A mesma regra do `.agua`, e pelo mesmo motivo: o que interessa nao e "o conversor
+				// decidiu N celulas", e "o objeto que o JOGO consulta responde N". Sao coisas
+				// diferentes -- o `.duro` passa por um cabecalho, por um bitset e por um leitor que
+				// RECUSA CALADO quando o tamanho nao bate (`ZoneCollision.CarregarDuro`), e uma recusa
+				// calada aqui e exatamente o defeito que este projeto mais paga caro: verde na
+				// bancada, quebrando o vazio em jogo.
+				// ==========================================================================================
+				var lido = Jandirus.Core.World.ZoneCollision.Load(File.ReadAllBytes(
+					Path.Combine(outDir, nome + ".col")));
+				var relido = Jandirus.Core.World.ZoneCollision.Montar(
+					nivel.Width, nivel.Height, new byte[(nivel.Width * nivel.Height + 7) / 8]);
+				int conferidas = 0, semColisao = 0, tocaveis = 0;
+				if (!relido.CarregarDuro(File.ReadAllBytes(caminho)))
+					Console.WriteLine($"  {nome,-34} FALHOU: o .duro escrito nao volta pelo CarregarDuro");
+				else
+					for (int y = 0; y < nivel.Height; y++)
+						for (int x = 0; x < nivel.Width; x++)
+						{
+							if (!relido.Indestrutivel(x, y)) continue;
+							conferidas++;
+							if (lido == null) continue;
+							// DURO E NAO BLOQUEIA e legitimo: `turf/Other/Sky1` tem `density = 0` e
+							// `destroyable = 0`. So vale saber quantos sao -- pra esses o bit nao
+							// muda desfecho nenhum, ja que so quem bloqueia chega ao `DerrubarCelula`.
+							if (!lido.BlockedCell(x, y)) { semColisao++; continue; }
+							// O QUE ESTE PASSE CONSERTA, medido: celula dura, que bloqueia, e que
+							// ENCOSTA em chao livre -- ou seja, alcancavel por um punho, e portanto
+							// uma das que caiam.
+							for (int d = 0; d < 4 && conferidas > 0; d++)
+							{
+								int vx = x + (d == 0 ? 1 : d == 1 ? -1 : 0);
+								int vy = y + (d == 2 ? 1 : d == 3 ? -1 : 0);
+								if (vx < 0 || vy < 0 || vx >= nivel.Width || vy >= nivel.Height) continue;
+								if (!lido.BlockedCell(vx, vy)) { tocaveis++; break; }
+							}
+						}
+
+				alcancaveis += tocaveis;
+				string aviso = conferidas == duras.Count ? "" : $"  <-- RELEU {conferidas}, DIVERGE";
+				Console.WriteLine($"  {nome,-34} {duras.Count,8} celulas duras"
+								  + $" ({tocaveis} encostam em chao livre"
+								  + (semColisao > 0 ? $", {semColisao} nem bloqueiam" : "") + ")"
+								  + aviso);
+			}
+
+		Console.WriteLine($"andares: {andares} | com celula dura: {comDuro} | celulas: {total}"
+						  + $" | ALCANCAVEIS A SOCO: {alcancaveis}"
+						  + (apagados > 0 ? $" | .duro apagados: {apagados}" : ""));
 	}
 
 	/// <summary>

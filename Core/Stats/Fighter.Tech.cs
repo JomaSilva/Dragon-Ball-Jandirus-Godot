@@ -34,6 +34,20 @@ public partial class Fighter
 	/// </summary>
 	public bool AndroideAbsorcao, AndroideInfinito;
 
+	/// <summary>
+	/// A POSTURA DOS COLETORES ABERTOS (`ki_absorb_stance`) -- o verb `Absorb Ki`.
+	///
+	/// Enquanto ela esta de pe o corpo NAO ANDA (`canmove = 0` no laco do original) e todo ataque de
+	/// ki que chega e engolido em vez de doer. E o trato inteiro: um androide de absorcao parado e
+	/// imune a energia e indefeso contra punho.
+	///
+	/// **`tmp` NO DM, E ESTADO VIVO AQUI TAMBEM** -- ver o `mob/var/tmp/ki_absorb_stance`
+	/// (`DNALabs.dm:60`). Ela cai no logout de proposito: ninguem volta ao jogo com os pes fincados.
+	/// O que persiste e a CLASSE (<see cref="AndroideAbsorcao"/>), que e o que o login re-arma.
+	/// </summary>
+	[System.Text.Json.Serialization.JsonIgnore]
+	public bool ki_absorb_stance;
+
 	/// <summary>Dinheiro NO BOLSO. O laboratorio de androide custa 1.000.000 disto.</summary>
 	public double Zeni;
 

@@ -7,16 +7,16 @@ REM  A AGUA, OLHADA  (--diagagua)
 REM
 REM     testar-agua.bat
 REM
-REM  Ela roda QUATRO vezes. A primeira nao abre o Godot:
+REM  Ela roda CINCO vezes. A primeira nao abre o Godot:
 REM
 REM    0) agua-prova    a bancada de REGRAS, sem janela e em ~4 s: sete familias
 REM                     (uma por negacao do pedido) e 22 defeitos INJETADOS, cada
 REM                     um obrigado a deixar a sua familia vermelha. Se ela
 REM                     reprovar, as tres rodadas de foto nem chegam a subir.
 REM
-REM  As outras tres medem coisas OPOSTAS, e e por isso que sao tres bercos e nao
-REM  um: a de dentro nasce com o problema de ENTRADA ja resolvido, e ficou verde
-REM  durante os dois defeitos que so as outras duas pegam.
+REM  As outras QUATRO medem coisas OPOSTAS, e e por isso que sao quatro bercos e
+REM  nao um: a de dentro nasce com o problema de ENTRADA ja resolvido, e ficou
+REM  verde durante os dois defeitos que so as outras pegam.
 REM
 REM    1) --aguateste   nasce na BEIRA de um lago estreito, com um vizinho na
 REM                     outra margem. Responde os itens 1, 4 e 5 do pedido:
@@ -34,6 +34,17 @@ REM    3) --aguanoar    nasce NO AR, por cima do meio do lago. E o outro caminho
 REM                     que o jogador tem pra comecar a nadar, e o unico que
 REM                     passa pelo `DescerAte`: apertar N no ar, POUSAR em cima
 REM                     da agua sem ser desviado pra margem, e sair nadando.
+REM
+REM    4) --aguaparede  nasce NA AGUA, um tile antes de uma celula de agua colada
+REM                     num MURO, olhando pro muro. Responde a unica pergunta que
+REM                     o conserto do modo abriu: nadando, a parede ainda para?
+REM                     (o risco nao e o `Bloqueia` -- e a saida de emergencia do
+REM                     `Advance`, "ja preso dentro de parede: deixa sair", que
+REM                     com o modo `APe` engolia a checagem de TODO corpo em cima
+REM                     de agua.)  Ele NAO usa o lago dos outros tres: o muro mais
+REM                     proximo de la esta a 15 tiles, e as duas tentativas de
+REM                     alcanca-lo morreram de Ki no caminho ("voce e levado pra
+REM                     margem") antes de o muro caber na foto.
 REM
 REM  PRECISA DE JANELA. No headless o `GetImage` volta vazio e as fotos saem
 REM  em branco -- e aqui a foto E o teste.
@@ -102,7 +113,7 @@ REM  Ela sai com codigo 1 se alguma familia ficar vermelha OU se alguma ficar
 REM  CEGA (verde com o defeito injetado dentro) -- as duas coisas sao falha.
 REM ---------------------------------------------------------------------------
 echo.
-echo  ---- 0/3: as regras, sem janela (48 provas, 22 defeitos injetados) ----
+echo  ---- 0/4: as regras, sem janela (48 provas, 22 defeitos injetados) ----
 REM SEM `--no-build`: o `dotnet build` la em cima compila o projeto do JOGO, e a
 REM bancada e outro projeto (Tools/AssetPipeline). Com `--no-build` ela rodaria a
 REM versao de ontem -- exatamente o erro que o compile-antes-de-medir evita.
@@ -116,18 +127,23 @@ if errorlevel 1 (
 )
 
 echo.
-echo  ---- 1/3: na BEIRA do lago (itens 1, 4 e 5, e o gesto de ENTRAR) ----
+echo  ---- 1/4: na BEIRA do lago (itens 1, 4 e 5, e o gesto de ENTRAR) ----
 "%GODOT%" --path . --host --rede 7980 --aguateste --vooteste --bpteste 100000 --horateste 0.5 ^
           --diagagua --resolution 1920x1080 --raca Human --conta bancada_agua --nome Nadador
 
 echo.
-echo  ---- 2/3: DENTRO do lago (itens 2 e 3) ----
+echo  ---- 2/4: DENTRO do lago (itens 2 e 3) ----
 "%GODOT%" --path . --host --rede 7980 --aguadentro --vooteste --bpteste 100000 --horateste 0.5 ^
           --diagagua --resolution 1920x1080 --raca Human --conta bancada_agua --nome Nadador
 
 echo.
-echo  ---- 3/3: NO AR sobre o lago (o pouso em cima da agua) ----
+echo  ---- 3/4: NO AR sobre o lago (o pouso em cima da agua) ----
 "%GODOT%" --path . --host --rede 7980 --aguanoar --vooteste --bpteste 100000 --horateste 0.5 ^
+          --diagagua --resolution 1920x1080 --raca Human --conta bancada_agua --nome Nadador
+
+echo.
+echo  ---- 4/4: NA AGUA colado num MURO (nadando, a parede ainda para?) ----
+"%GODOT%" --path . --host --rede 7980 --aguaparede --vooteste --bpteste 100000 --horateste 0.5 ^
           --diagagua --resolution 1920x1080 --raca Human --conta bancada_agua --nome Nadador
 
 echo.

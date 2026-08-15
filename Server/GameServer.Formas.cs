@@ -76,7 +76,16 @@ public partial class GameServer
 		// -- `Aplicar` o TROCA por um novo a cada recalculo em vez de mutar o antigo (`EfeitosDeSkill`,
 		// ultima linha), entao o perfil nao guarda referencia pra nada que mude debaixo dele.
 		// ====================================================================================================
-		FlagsDeSkill: pl.Ficha.FlagsDeSkill);
+		FlagsDeSkill: pl.Ficha.FlagsDeSkill,
+
+		// O DEGRAU DO BIO-ANDROIDE -- a metade "forma perfeita" do gate da Super Perfeita. Zero pra
+		// todo mundo que nao saiu de um tanque, que e o lado seguro (ver `PerfilDeFormas.EstagioBio`).
+		EstagioBio: pl.Ficha.bio_stage,
+
+		// E O BYPASS DE SUPER SAIYAJIN. Ele nao e "tem sangue Saiyajin": e o `canSSJ` do DM, que hoje
+		// so o bio nascido de DNA Saiyajin recebe. Um Saiyajin de verdade continua entrando pela
+		// raca, duas linhas acima do consumidor disto.
+		CanSsj: pl.Ficha.canSSJ);
 
 	/// <summary>
 	/// EM QUE RAIVA ESTE CORPO ESTA -- a mais alta das duas janelas que ainda estiver aberta.
@@ -214,8 +223,30 @@ public partial class GameServer
 	/// chances de a proxima pessoa escrever "Half-Saiyan" num dos dois lugares e diluir metade das
 	/// contas de metade dos personagens.
 	/// </summary>
+	/// <remarks>
+	/// ============================ O `canSSJ` ENTRA AQUI, E ISTO E UMA DECISAO DECLARADA ============================
+	/// `nerfSSJ()` (`Transformation Controls.dm:108-117`) e o que o DM roda em TODA passada da escada
+	/// quando a via e `canSSJ`, e ele rebaixa os multiplicadores base: `ssjmult = 1.35`,
+	/// `ultrassjmult = 1.45`, `ssj2mult = 1.75`, `ssj3mult = 2`, `ssj4mult = 1.75`. O comentario da
+	/// linha 2 daquele arquivo diz o proposito numa frase: *"If this is ticked to 1, SSJ is weaker."*
+	///
+	/// **O PRIMEIRO NUMERO DELE E EXATAMENTE O `Ssj1BaseDiluido` QUE ESTE PORT JA TEM: 1,35.** Nao e
+	/// coincidencia -- o meio-Saiyajin do DM e nerfado pelo mesmo mecanismo (`stathalfbreed.dm`
+	/// reescreve os mesmos `mob/var`), e o `FormaDef.MultDiluido` do catalogo nasceu pra ele. Entao o
+	/// bio via `canSSJ` percorre a linha DILUIDA: o SSJ1 e os dois grades saem em 1,35 / 2,03 / 2,70
+	/// em vez de 2 / 3 / 4, com uma linha em vez de uma segunda tabela de nerf.
+	///
+	/// **O QUE ISSO CUSTA, DITO EM VOZ ALTA:** do SSJ2 pra cima o port nao tem multiplicador
+	/// diluido em entrada nenhuma -- os valores sao fixos pra todo mundo (SSJ2 4-10x, SSJ3 16x, SSJ4
+	/// 20-40x) porque foi assim que a escada foi portada, ANTES desta sessao e pra todas as racas.
+	/// Um `MultCanSsj` proprio so pro bio seria uma terceira tabela paralela a duas que ja divergem
+	/// do DM do mesmo jeito, e valeria pra uma forma (o SSJ2 do bio) que so se alcanca morrendo com
+	/// a forma perfeita e o SSJ1 100% dominado. Fica anotado como divida, e nao fingido como porte.
+	/// ==========================================================================================================
+	/// </remarks>
 	private static bool SangueDiluido(ServerPlayer pl) =>
-		string.Equals(pl.Race, Catalogo.RacaMeioSaiyajin, StringComparison.OrdinalIgnoreCase);
+		string.Equals(pl.Race, Catalogo.RacaMeioSaiyajin, StringComparison.OrdinalIgnoreCase)
+		|| pl.Ficha.canSSJ;
 
 	/// <summary>
 	/// CONCEDE O MISTICO. **E ESTE O GANCHO DO RITUAL DO KAIOSHIN** -- o ritual em si nao existe

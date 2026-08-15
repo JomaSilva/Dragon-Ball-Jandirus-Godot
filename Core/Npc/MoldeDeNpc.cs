@@ -180,6 +180,29 @@ public sealed class MoldeDeNpc
 	/// <summary>Generos possiveis. O `pick("male","male","male","female")` do DM e uma lista com repeticao.</summary>
 	public string[] Generos = ["Male"];
 
+	/// <summary>
+	/// ============================ A ROUPA CRAVADA -- E O JEITO DE UM CHEFE SE VESTIR ============================
+	/// Nomes de ARQUIVO de peca ('Clothes_LongSleeveShirt', 'Armor_Elite'), como o DM os escreve.
+	/// Vazio = o corpo se veste pela raca (<see cref="RoupaDeNpc"/>); preenchido, isto VENCE o
+	/// sorteio racial inteiro.
+	///
+	/// E ele existe porque o original faz exatamente isto e nao outra coisa: a roupa de chefe la e
+	/// escrita A MAO, boss por boss, dentro da fabrica de cada um --
+	///
+	///   Androide 17 -- `npc_wear_simple(M17, /obj/items/clothes/LongSleeveShirt)`   BossEvents.dm:499
+	///   Androide 18 -- `npc_wear_simple(M18, /obj/items/clothes/ShortSleeveShirt)`  BossEvents.dm:508
+	///
+	/// -- e o comentario da primeira diz por que a tabela racial nao serve pra eles: *"roupa casual
+	/// (nada de Namek/armadura Saiyajin)"*. Freeza, Cell e Boo nao aparecem nessa lista porque o DM
+	/// **nao os veste**: o corpo deles E o desenho.
+	///
+	/// ISTO E O QUE TIRA O CHEFE DO SORTEIO, e por construcao e nao por regra escrita: quem tem
+	/// roteiro nao chega ao `switch` da tabela racial (ver `GameServer.AparenciaDeNpc`). Um chefe sem
+	/// esta linha nasce com o corpo dele e mais nada -- que e o certo pra quem o sprite ja veste.
+	/// ========================================================================================================
+	/// </summary>
+	public string[] Roupa = [];
+
 	// =====================================================================
 	// PODER
 	// =====================================================================
@@ -404,6 +427,7 @@ public sealed class CatalogoDeMoldes
 				BpPiso = Num(e, "bpPiso", 1),
 				MarcosBase = (int)Num(e, "marcosBase", 3),
 				MarcosPorDecada = Num(e, "marcosPorDecada", 1.5),
+				Roupa = Lista(e, "roupa"),
 				Vocacao = Lista(e, "vocacao"),
 				Dadas = Lista(e, "dadas"),
 				NivelDasSkills = Num(e, "nivelDasSkills", 0),

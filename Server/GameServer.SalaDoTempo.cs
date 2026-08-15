@@ -77,9 +77,16 @@ namespace Jandirus.Server;
 /// por Zeni e idade. Um preso sem Guardiao online nao fica sem jogo -- fica com uma escolha cara.
 /// Um caminho de saida gratuito e uma tranca que nao tranca; um caminho de saida caro e uma regra.
 ///
-/// EM CODIGO: `Renascer` (`GameServer.Combat.cs`) chama <see cref="AMorteSaiDaSala"/>, que LIMPA o
+/// EM CODIGO: `IrProAlem` (`GameServer.Alem.cs`) chama <see cref="AMorteSaiDaSala"/>, que LIMPA o
 /// bit de prisao. Limpar e a metade que importa -- sem ela o corpo renasce do lado de fora e
 /// continua marcado como preso pra sempre, e a porta o recusaria na proxima vida inteira.
+///
+/// A CHAMADA MOROU NO `Renascer` ATE A MORTE VIRAR UM PERCURSO. Enquanto morrer e voltar a vida
+/// eram o mesmo instante, tanto fazia; com a viagem pro Outro Mundo no meio, deixa-la no fim
+/// manteria o preso MARCADO durante todo o tempo em que ele estivesse morto no alem, e a
+/// `SalaSessao` seguiria contando o tempo dele numa sala de outro planeta. Ela subiu pro PRIMEIRO
+/// passo que de fato tira o corpo da sala. **Nao a reponha no `Renascer` "por seguranca"**: seria a
+/// segunda copia, e ela chamaria `EsquecerSessaoDaSala` numa sessao ja esquecida.
 /// ======================================================================================================
 ///
 /// ============================ A SALA TEM CLIMA, E ISSO FOI ESCOLHIDO ============================
@@ -467,9 +474,10 @@ public sealed partial class GameServer
 	/// MORRER TIRA VOCE DA SALA -- **a saida cara, e ela e a decisao do dono** (ver o cabecalho).
 	///
 	/// ============================ O QUE ESTE METODO FAZ, E O QUE ELE NAO FAZ ============================
-	/// Ele NAO move ninguem: quem move e o `Renascer`, que ja mandava todo morto pro berco pelo funil
-	/// de sempre (`MandarProBerco`) e nunca perguntou nada a Sala. O caminho da morte atravessa a
-	/// tranca porque nao ha gate nele -- e a decisao e que continue assim.
+	/// Ele NAO move ninguem: quem move e o `IrProAlem` (que leva o morto pro Outro Mundo) e, um
+	/// minuto depois, o `Renascer` (que o poe no berco pelo funil de sempre). Nenhum dos dois
+	/// pergunta nada a Sala. O caminho da morte atravessa a tranca porque nao ha gate nele -- e a
+	/// decisao e que continue assim.
 	///
 	/// O QUE ELE FAZ E LIMPAR O ESTADO, que e a metade que faltava e que ninguem veria faltar: o
 	/// `SalaPreso` vai pro DISCO (`CharacterStore`). Sem esta limpeza o morto renasce na Terra

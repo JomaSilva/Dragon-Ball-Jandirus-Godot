@@ -118,8 +118,71 @@ public partial class MenuDeInteracao : CanvasLayer
 		}
 
 		GameClient.ObraInfo? perto = MaisPerto();
+
+		// O CORPO NO CHAO DISPUTA COM O QUE ESTA POR PERTO, e ganha pela REGRA QUE JA EXISTIA -- o mais
+		// perto. Ver `Abrir`.
+		if (CadaverGanha(perto))
+		{
+			_dica.Visible = true;
+			_dica.Text = $"[E] {NomeDoCadaver()}";
+			return;
+		}
+
 		_dica.Visible = perto != null;
 		if (perto is { } o) _dica.Text = $"[E] {NomeDe(o)}";
+	}
+
+	/// <summary>
+	/// ============================ O CORPO AOS MEUS PES -- o terceiro tipo de alvo da tecla E ============================
+	/// *"basta apertar E perto do corpo pra enterrar"*. Ele entra pela mesma porta do VEICULO e pelo
+	/// mesmo motivo, ja escrito no `VeiculoMontado`: **todo o resto deste menu procura alvo em
+	/// `cli.Obras`**, que e a lista de construcoes da zona, e um cadaver nao esta la -- ele e um CORPO,
+	/// e corpo viaja pelo snapshot, que nao diz qual deles esta morto.
+	///
+	/// Entao o servidor DIZ qual esta ao alcance (`Protocol.S2C.Cadaver`) e o menu o trata como alvo.
+	/// Zero = nenhum.
+	/// ================================================================================================================
+	/// </summary>
+	private static int Cadaver()
+	{
+		if (GameClient.Instance is not { } cli) return 0;
+		return cli.CadaverPerto;
+	}
+
+	/// <summary>O nome que vai na tela ("corpo de Fulano") -- vem NO PACOTE, como o do veiculo.</summary>
+	private static string NomeDoCadaver()
+	{
+		if (GameClient.Instance is not { } cli) return "corpo";
+		return cli.NomeDoCadaver.Length > 0 ? cli.NomeDoCadaver : "corpo";
+	}
+
+	/// <summary>
+	/// ============================ O CORPO GANHA DA MOBILIA? PELA DISTANCIA, COMO SEMPRE ============================
+	/// **Nao ha prioridade inventada aqui**, e nao pode haver: "o mais perto ganha" ja era a regra deste
+	/// menu (e o que faz o veiculo ganhar de tudo -- ele esta a distancia ZERO, embaixo de voce). Um
+	/// corpo caido ao lado de uma macieira precisa da mesma resposta.
+	///
+	/// A POSICAO DELE SAI DO MUNDO DESENHADO e nao do pacote: o pacote diz QUAL corpo, e o corpo ja
+	/// esta na tela (ele veio no snapshot como qualquer outro). Mandar a coordenada junto seria uma
+	/// segunda verdade sobre onde ele esta -- e ela ficaria velha no instante em que alguem o
+	/// arremessasse, que e uma coisa que se faz com cadaver o tempo todo neste jogo.
+	///
+	/// SEM O CORPO NA TELA (ele saiu de vista, o pacote chegou antes do snapshot), a resposta e NAO:
+	/// oferecer "enterrar" apontando pra nada seria o botao que existe e o comando que falha.
+	/// ==========================================================================================================
+	/// </summary>
+	private static bool CadaverGanha(GameClient.ObraInfo? obra)
+	{
+		if (Cadaver() == 0) return false;
+		if (GameClient.Instance is not { } cli) return false;
+		if (World.Instancia?.PosicaoDesenhadaDe(cli.LocalId) is not { } eu) return false;
+		if (World.Instancia?.PosicaoDesenhadaDe(Cadaver()) is not { } corpo) return false;
+
+		// O MESMO CORTE POR EIXO do `MaisPerto`, e pelo mesmo motivo escrito la: o servidor mede assim
+		// (`Math.Abs` em X e Y separados), e usar raio aqui abriria o menu em pontos que ele recusaria.
+		if (Math.Abs(corpo.X - eu.X) > Alcance || Math.Abs(corpo.Y - eu.Y) > Alcance) return false;
+
+		return obra is not { } o || eu.DistanceSquaredTo(corpo) < eu.DistanceSquaredTo(o.Pos);
 	}
 
 	/// <summary>
@@ -151,7 +214,8 @@ public partial class MenuDeInteracao : CanvasLayer
 
 	public override void _UnhandledInput(InputEvent evento)
 	{
-		if (Foco.Digitando) return;
+		// O "E" E UMA DAS LETRAS QUE O EMBATE SORTEIA -- ver `Foco.AtalhosMudos`.
+		if (Foco.AtalhosMudos) return;
 		if (evento is not InputEventKey { Pressed: true, Echo: false } k) return;
 
 		if (_raiz.Visible && k.Keycode == Key.Escape)
@@ -252,13 +316,33 @@ public partial class MenuDeInteracao : CanvasLayer
 			return;
 		}
 
-		if (MaisPerto() is not { } o) return;
+		GameClient.ObraInfo? perto = MaisPerto();
+
+		// ============================ O CORPO NO CHAO, PELA MESMA REGRA DE SEMPRE ============================
+		// Ele nao "tem prioridade": ele ganha quando esta MAIS PERTO, que e a unica regra que este menu
+		// sempre teve. Ver `CadaverGanha`.
+		if (CadaverGanha(perto))
+		{
+			_noVeiculo = false;
+			_noCadaver = true;
+			_tipoDoAlvo = "";
+			_nomeDoAlvo = NomeDoCadaver();
+			Desenhar("");
+			_raiz.Visible = true;
+			return;
+		}
+
+		if (perto is not { } o) return;
 		_noVeiculo = false;
+		_noCadaver = false;
 		_tipoDoAlvo = o.Tipo;
 		_nomeDoAlvo = NomeDe(o);
 		Desenhar(o.Tipo);
 		_raiz.Visible = true;
 	}
+
+	/// <summary>O menu aberto e o de um CORPO no chao, e nao o de um objeto nem o de um veiculo.</summary>
+	private bool _noCadaver;
 
 	/// <summary>
 	/// Desenha a pagina atual do objeto. A raiz e `tipo`; um submenu e `tipo/chave`.
@@ -285,7 +369,11 @@ public partial class MenuDeInteracao : CanvasLayer
 		//
 		// VEICULO NAO TEM SUBMENU hoje, e por isso ele le sempre a raiz: nenhuma das tres naves
 		// declara `Forma.Submenu`. Se um dia declarar, a chave composta ja esta montada acima.
-		foreach (Interacoes.Acao a in _noVeiculo ? Interacoes.DoVeiculo(tipo) : Interacoes.De(chave))
+		// O CADAVER E A TERCEIRA TABELA, e ele nao tem submenu nem tipo: as acoes de um corpo no chao
+		// sao as mesmas para todo corpo (ver `Interacoes.DoCadaver`, que explica por que e uma so).
+		foreach (Interacoes.Acao a in _noCadaver ? Interacoes.DoCadaver()
+											     : _noVeiculo ? Interacoes.DoVeiculo(tipo)
+														      : Interacoes.De(chave))
 		{
 			Interacoes.Acao acao = a;
 			var b = new Button { Text = a.Rotulo, TooltipText = a.Dica };
@@ -360,6 +448,7 @@ public partial class MenuDeInteracao : CanvasLayer
 		_tipoDoAlvo = "";
 		_nomeDoAlvo = "";
 		_noVeiculo = false;
+		_noCadaver = false;
 	}
 
 	// =====================================================================

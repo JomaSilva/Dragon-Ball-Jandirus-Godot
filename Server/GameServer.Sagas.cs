@@ -663,6 +663,19 @@ public partial class GameServer
 		}
 
 		SomarReputacao(elo.Planeta, matador, quanto, "chefe-de-saga-derrotado");
+
+		// ============================ E A ALMA DELE MUDA, NAO SO A FAMA ============================
+		// `gain_boss_kill_karma` (`SkyNPCs.dm:145-147`), que no original pendura no MESMO
+		// `bev_hero_credit` de onde sai a reputacao. **E ele e o unico caminho LIMPO de karma no
+		// jogo**: sem esta linha, subir karma exigiria assassinar gente de karma negativo -- ou seja,
+		// a porta do Eremita Tartaruga ("a escola que forma protetores", karma 25+) so abriria
+		// matando. Ver `GameServer.Karma.cs`.
+		//
+		// O VALOR NAO SEGUE O `quanto` da reputacao (que varia por chefe -- o androide vale metade):
+		// o DM paga karma por CHEFE DERRUBADO, um numero so (`KARMA_BOSS_GAIN`), e a distincao existe
+		// porque fama e sobre quem eram os mortos e alma e sobre o que voce fez.
+		KarmaPorDerrotarChefe(matador);
+
 		AnunciarNoMundo($"{matador.Name} é aclamado(a) como HERÓI pelo povo de {NomeDoPlaneta(elo.Planeta)}!");
 	}
 

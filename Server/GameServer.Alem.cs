@@ -28,8 +28,13 @@ namespace Jandirus.Server;
 ///     morre --[ Alem.MsNoChao ]--> Outro Mundo --[ Alem.MsNoAlem ]--> vivo, no berco
 ///       ^                             ^
 ///       |                             |
-///   corpo CAIDO, na pose de       de PE, com aureola, andando
-///   nocaute, com aureola          (`Un_KO()` do DM, `Death.dm:89`)
+///   corpo CAIDO, na pose de       de PE, com AUREOLA, andando
+///   nocaute e SEM aureola:        (`Un_KO()` do DM, `Death.dm:89`)
+///   e o cadaver, e o cadaver
+///   do DM (`GenerateCorpse`,
+///   `:64-67`) e fotografado
+///   ANTES do `+= 'Halo.dmi'`
+///   de `:106-108`
 ///
 /// A PRIMEIRA ETAPA E DO DM: `KO(-1)` + `sleep(20)` ANTES do `loc =` (`:71-110`). Ela existe pra
 /// quem viu a morte ver a morte -- sem ela, matar alguem seria "o inimigo piscou e nao estava mais
@@ -68,6 +73,24 @@ public partial class GameServer
 	{
 		pl.RelogioDaMorte = NowMs() + Alem.MsNoChao;
 
+		// ============================ E A VIAGEM COMECA DEVENDO -- ESTE CORPO E O CADAVER ============================
+		// A aureola nao acende aqui: acende na viagem (`Death.dm:64-67` fotografa o cadaver ANTES do
+		// `overlayList += 'Halo.dmi'` de `:106-108`). Ver `Alem.TemAureola`.
+		//
+		// ESTA LINHA NAO E "lembrar de apagar um bit": ela e o REARME da mesma etapa que a linha acima
+		// arma, no unico funil por onde toda morte passa. Sem ela, a segunda morte de alguem herdaria
+		// o `true` que a viagem da PRIMEIRA deixou, e o cadaver voltaria a nascer com aureola -- o bug
+		// do dono, ressuscitado so pra quem ja morreu uma vez, que e a pior forma dele.
+		// ========================================================================================================
+		pl.MorteJaViajou = false;
+
+		// E O MESMO REARME PRA TRAVA DO KARMA -- `pk_karma_taken`, zerado no `ReviveMe` do original
+		// (`SkyNPCs.dm:104`). Ela entra aqui e nao no revive pela razao que a linha de cima ja
+		// documenta: este e o unico funil por onde TODA morte passa, e o revive tem varios caminhos.
+		// Sem ela, a segunda morte de alguem herdaria o `true` da primeira e ninguem pagaria karma
+		// por assassina-lo nunca mais. Ver `GameServer.Karma.cs`.
+		pl.KarmaDaMorteContado = false;
+
 		// ============================ QUEM MORRE DENTRO DA MENTE NAO MORREU ============================
 		// **NAO HA CORTE ESCRITO AQUI, E ISSO E UMA DECISAO.** O mecanismo que desfaz esta morte ja
 		// existe e ja e chamado no MESMO tique: `BordasDeQuemEstaFora` (`GameServer.CorpoLargado.cs`)
@@ -86,11 +109,61 @@ public partial class GameServer
 
 		if (!EhJogador(pl)) return;   // corpo sem dono nao le mensagem nenhuma
 
-		Avisar(pl, "você morre. O seu corpo esfria no chão -- e uma auréola se acende sobre a sua cabeça.");
+		// A AUREOLA SAIU DESTA FRASE junto com o bit: ela nao se acende aqui. O que este instante tem
+		// e o cadaver, e o cadaver e o corpo exato de quem morreu -- ver `Alem.TemAureola`.
+		Avisar(pl, "você morre. O seu corpo esfria no chão, exatamente como você caiu.");
 	}
 
 	// =====================================================================
-	// 2. O PERCURSO -- chamado do TickCombate quando o prazo vence
+	// 2. A TRIAGEM -- de quem e este corpo que morreu?
+	// =====================================================================
+	/// <summary>
+	/// ============================ TRES GRUPOS DE CORPO, TRES DESTINOS ============================
+	/// Chamado uma vez por corpo, quando o relogio da morte vence. **Esta e a unica pergunta "quem
+	/// e voce?" do caminho da morte** -- ver <see cref="Jandirus.Core.Npc.Gente"/>, que existe
+	/// justamente porque regras de mundo confundiam corpo com pessoa.
+	///
+	///   * **NPC DO MUNDO** (cidadao, Rei, chefe de saga) -- SAI DO MUNDO, nao renasce e nao viaja.
+	///     Este `if` ja varreu todos os `_players` sem olhar `Peer`, e `Renascer` manda pro
+	///     `DestinoDoBerco`: um corpo sem dono nao tem berco (`Berco.Planeta` vazio) e o funil
+	///     responde `SpawnZone` -- **a Terra**. Com o povoamento ligado isso queria dizer: mate o
+	///     cidadao de Namek e ele reaparece na Terra 15 s depois, vivo, pra sempre; o Freeza de uma
+	///     saga voltaria sozinho depois de derrotado. Quem repoe habitante e a MANUTENCAO
+	///     (`TickDoPovoamento`), como no original -- o morto sai da conta e outro nasce noutro lugar.
+	///     A remocao e ADIADA (`_npcsPraTirar`) porque o chamador esta percorrendo `_players.Values`.
+	///
+	///   * **JOGADOR** -- percorre a morte: <see cref="PassoDaMorte"/>. E o unico grupo que ve o
+	///     Outro Mundo, porque e o unico que tem alguem lendo a tela.
+	///
+	///   * **O TERCEIRO GRUPO** (reflexo da mente, boneco do corpo largado, fera possuida, chefe
+	///     convocado sem papel, corpo forjado de bancada) -- **NADA**, so o relogio desarmado.
+	///     Aqui morava um `else` largo, "quem nao e NPC do mundo renasce", e ele e FALSO: sao TRES
+	///     grupos e nao dois. Um reflexo renasceria **na Terra**, vivo, e ficaria la pra sempre como
+	///     um corpo dirigido sem dono -- nao aparecia porque o `DirigirClone` costuma desfazer o
+	///     transe no mesmo tique, ou seja, dependia de uma corrida. Com a viagem pro Outro Mundo
+	///     ficaria pior: **o reflexo de alguem apareceria de pe na mesa do Enma**. Quem ergueu o
+	///     corpo cuida dele -- o `SairDaMente`, o `TickDeQuemVolta`, o dono do clone --, e nao este
+	///     funil.
+	/// ==========================================================================================
+	///
+	/// ============================ POR QUE ELA SAIU DE DENTRO DO `TickCombate` ============================
+	/// Eram quatro linhas no meio do laco, com o argumento acima escrito por cima delas -- e nenhuma
+	/// bancada conseguia alcanca-las sem rodar o tique inteiro do servidor. **A triagem e a metade da
+	/// morte que erra calado**: os tres destinos sao invisiveis em jogo (ninguem ve um reflexo NAO
+	/// aparecer no alem). Uma casa so, dois chamadores -- o tique e o `--alemteste`.
+	/// ================================================================================================
+	/// </summary>
+	private void VenceuOPrazoDaMorte(ServerPlayer pl)
+	{
+		if (EhNpcDoMundo(pl)) { _npcsPraTirar.Add(pl); return; }
+		if (EhJogador(pl)) { PassoDaMorte(pl); return; }
+
+		// clone/reflexo/boneco/fera/corpo forjado: nao e conta daqui, e o relogio nao volta a vencer
+		pl.RelogioDaMorte = long.MaxValue;
+	}
+
+	// =====================================================================
+	// 3. O PERCURSO -- chamado da triagem quando o prazo vence
 	// =====================================================================
 	/// <summary>
 	/// VENCEU O PRAZO: ou sobe pro Outro Mundo, ou volta a vida. Qual dos dois se responde pelo
@@ -139,15 +212,67 @@ public partial class GameServer
 		// ==========================================================================================================
 		AMorteSaiDaSala(pl);
 
+		// ============================ AGORA SIM A AUREOLA -- `overlayList += 'Halo.dmi'` (`Death.dm:106-108`) ============================
+		// **UMA LINHA ANTES DO `MoveToZone`, E A ORDEM E O CONSERTO INTEIRO.** Ela e o passo 10 do
+		// `Death()`, imediatamente antes do `loc =` do passo 11 -- e o cadaver que ficou pra tras foi
+		// fotografado la no passo 5 (`GenerateCorpse()`, `:64-67`), sem ela. Era esse o bug do dono:
+		// *"o corpo q fica no MAPA DOS VIVOS deveria ser o EXATO CORPO DELE QUANDO MORRE, sem a
+		// aureola"*.
+		//
+		// ANTES E NAO DEPOIS por causa do que o `MoveToZone` faz por dentro: e ele que chama o
+		// `TrocarAureolas` (via `TrocarAparencias`) e apresenta este corpo a zona de destino. Escrever
+		// o bit depois mandaria pro Outro Mundo a foto ERRADA (sem aureola) e so o tique de 5 Hz
+		// corrigiria, 0 a 200 ms depois -- um piscar na chegada, e a mesma familia de "o pacote existe,
+		// sai uma vez, e quem nao estava presente naquele instante nunca soube".
+		// ========================================================================================================
+		pl.MorteJaViajou = true;
+
+		// ============================ E O CORPO FICA -- `GenerateCorpse()` (`Death.dm:66`) ============================
+		// **A UNICA LINHA NOVA QUE O CADAVER CUSTOU AO CAMINHO DA MORTE.** O DM ergue o `/obj/mobCorpse`
+		// no passo 5 e viaja no 11, dentro do mesmo `Death()`: dois objetos, e quem viaja e o MOB. Aqui
+		// e igual, so que os dois passos estao a 15 s de distancia em vez de 2 -- por isso o corpo e
+		// deixado AGORA, no instante da partida, e nao no da morte: quinze segundos de dois corpos
+		// empilhados no mesmo ponto seriam duas caixas de colisao, dois alvos de soco e o nome do morto
+		// aparecendo duas vezes na zona. Ver o cabecalho de `GameServer.Cadaver.cs`.
+		//
+		// ANTES DO `MoveToZone`, e a ordem tem a mesma razao da linha acima: `DeixarOCadaver` manda a
+		// aparencia do corpo novo pelo canal confiavel, e `MoveToZone` manda o `PeerLeft` de quem
+		// partiu. Nesta ordem a troca nao pisca -- o cadaver ja esta desenhado quando o corpo some.
+		//
+		// E ELE NASCE SEM AUREOLA sem precisar de uma linha pra isso: a ficha dele e NOVA (`dead` sim,
+		// `MorteJaViajou` nao), entao `Alem.TemAureola` responde falso. E exatamente o que o DM faz por
+		// ordem -- o cadaver e fotografado antes de o `overlayList += 'Halo.dmi'` existir --, e e o bug
+		// que o dono relatou, agora fechado dos dois lados.
+		// ==========================================================================================================
+		DeixarOCadaver(pl);
+
 		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
 		MoveToZone(pl.Id, alem, MesaDoEnma(alem));
+
+		// ============================ E O RELOGIO REARMA AQUI -- A ETAPA SEGUINTE TEM PRAZO ============================
+		// **ESTA LINHA FALTAVA, E A AUSENCIA APAGAVA O PEDIDO DO DONO INTEIRO.** O `AMorteAconteceu`
+		// arma o relogio pros 15 s de cadaver; quando ele vence, a triagem chama esta viagem -- e o
+		// campo continuava com o vencimento **ja passado**. No tique seguinte (33 ms depois) a mesma
+		// pergunta dava verdadeiro de novo, o `PassoDaMorte` via `EhOAlem(pl.Zone)` e chamava
+		// `Renascer`. Ou seja: o jogador via o Outro Mundo por **um quadro**.
+		//
+		// Nada reclamava. `Alem.MsNoAlem` estava escrita, documentada em vinte linhas e lida por um
+		// unico consumidor -- a MENSAGEM logo abaixo, que anunciava "60 s ate voltar a vida" enquanto
+		// a volta acontecia no quadro seguinte. **Escrever a constante nao e aplicar a constante**, e
+		// e o mesmo defeito que este port ja registrou no corte de sigilo do BP.
+		//
+		// O CAMPO E UM SO PORQUE A ETAPA E DERIVADA DO LUGAR (ver `ServerPlayer.RelogioDaMorte`): quem
+		// esta no alem esta na segunda etapa, e por isso o mesmo `RelogioDaMorte` marca as duas.
+		// ========================================================================================================
+		pl.RelogioDaMorte = NowMs() + Alem.MsNoAlem;
 
 		// `SpreadHeal(100,1,1)` + `RegrowLimb` -- ver o cabecalho. NAO e `Reviver`: `dead` fica.
 		pl.Combate.Corpo.Restaurar();
 		pl.Combate.SincronizarVida();
 		AjustarGanhoDoRabo(pl);   // o rabo voltou: o ritmo de treino do Saiyajin volta com ele
 
-		Avisar(pl, "o chão some sob você. Você abre os olhos no Outro Mundo, inteiro -- e morto.");
+		Avisar(pl, "o chão some sob você. Você abre os olhos no Outro Mundo, inteiro -- e morto."
+				 + " Uma auréola se acende sobre a sua cabeça.");
 		GD.Print($"[server] {pl.Name} MORREU e foi pro Outro Mundo"
 				 + $" ({Alem.MsNoAlem / 1000:0}s ate voltar a vida)");
 	}
@@ -171,7 +296,7 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// 3. A AUREOLA NO FIO
+	// 4. A AUREOLA NO FIO
 	// =====================================================================
 	/// <summary>
 	/// ============================ POR QUE A AUREOLA NAO CABE NO SNAPSHOT ============================
@@ -198,7 +323,7 @@ public partial class GameServer
 	{
 		foreach (ServerPlayer pl in _players.Values)
 		{
-			bool agora = Alem.TemAureola(pl.Ficha.dead);
+			bool agora = Alem.TemAureola(pl.Ficha.dead, pl.MorteJaViajou);
 			if (agora == pl.EnvAureola) continue;
 			pl.EnvAureola = agora;
 			MandarAureola(pl);
@@ -217,7 +342,7 @@ public partial class GameServer
 	{
 		var w = Protocol.Begin(Protocol.S2C.Aureola);
 		w.Put(de.Id);
-		w.Put(Alem.TemAureola(de.Ficha.dead));
+		w.Put(Alem.TemAureola(de.Ficha.dead, de.MorteJaViajou));
 		return w;
 	}
 
@@ -231,7 +356,7 @@ public partial class GameServer
 	/// </summary>
 	private void TrocarAureolas(ServerPlayer novo)
 	{
-		novo.EnvAureola = Alem.TemAureola(novo.Ficha.dead);
+		novo.EnvAureola = Alem.TemAureola(novo.Ficha.dead, novo.MorteJaViajou);
 
 		List<ServerPlayer> zona = ZoneList(novo.Zone.Hash);
 		NetDataWriter minha = PacoteDeAureola(novo);

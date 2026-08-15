@@ -73,8 +73,60 @@ public sealed class FotoDaMente
 /// </summary>
 public partial class GameServer
 {
-	/// <summary>Onde o corpo nasce dentro da dimensao mental (centro do mapa Interdimension).</summary>
-	private static readonly Vec2 PosMental = new(250 * 32 + 16, 250 * 32 + 16);
+	/// <summary>
+	/// ONDE O CORPO NASCE DENTRO DA DIMENSAO MENTAL -- `locate(cx-3, cy, mz)`
+	/// (`MindMeditate.dm:196-198`), tres tiles a oeste do centro do quarto branco.
+	///
+	/// ELE ERA (250,250) EM PIXEL CRU, e isso era o defeito que o dono relatou: aquele numero era o
+	/// meio do **z24 do BYOND**, o mapa que o catalogo devolvia pelo nome "Interdimension" -- mosaico
+	/// azul e nebulosa roxa, *"um LUGAR NADA A VER"*. Agora a mente tem planta propria
+	/// (`DimensaoMental.Planta`) e a coordenada sai DELA, e nao de um numero escrito a mao: mudar o
+	/// tamanho do quarto move o nascimento junto.
+	/// </summary>
+	private static readonly Vec2 PosDaPlanta = DimensaoMental.PixelDe(DimensaoMental.CelDeQuemMedita);
+
+	/// <summary>
+	/// O MEIO DO z24 DO BYOND, em pixel cru -- o endereco que o dono viu. So vale com
+	/// <see cref="MenteAntiga"/>.
+	/// </summary>
+	private static readonly Vec2 PosDoZ24 = new(250 * 32 + 16, 250 * 32 + 16);
+
+	private static Vec2 PosMental => MenteAntiga ? PosDoZ24 : PosDaPlanta;
+
+	/// <summary>
+	/// `--menteantiga`: **O MUNDO DE ANTES DO CONSERTO, DE PROPOSITO.**
+	///
+	/// ============================ ISTO E O `--semduro`, E PELO MESMO ARGUMENTO ============================
+	/// A unica prova honesta de que este conserto conserta e mostrar o lugar SEM ele -- e a foto do
+	/// "antes" nao da pra tirar com a bancada: ela precisa de tela, e o que se compara sao dois
+	/// PIXELS, nao dois numeros. Fazer essa foto apagando o `z24_Interdimension.scn` do disco seria
+	/// destruir o dado pra medir.
+	///
+	/// A chave desliga as DUAS linhas do conserto de uma vez, que e como o defeito existia:
+	///   * a planta sai do funil (`MapaDaMente` devolve nulo), e o catalogo volta a casar
+	///     "Interdimension" com o z24 do BYOND, pelo NOME;
+	///   * o nascimento volta ao literal (250,250) em pixel cru -- o meio daquele mapa, bem na emenda
+	///     entre o mosaico azul-petroleo e a nebulosa roxa.
+	///
+	/// **O CLIENTE PRECISA DA MESMA CHAVE** (`Client/World.cs` tem o ramo gemeo): so no servidor, o
+	/// corpo andaria contra a colisao do z24 e a tela desenharia o quarto branco. A foto sairia
+	/// mentindo, que e pior que nao ter foto.
+	///
+	/// Ela e de BANCADA e GRITA: uma partida de verdade rodando assim tem que aparecer no log.
+	/// ================================================================================================
+	/// </summary>
+	public static bool MenteAntiga;
+
+	/// <summary>
+	/// A COLISAO DA MENTE -- a mesma pra toda mente, como a da nave.
+	///
+	/// Chamada pelo <see cref="MapaDaZonaOuCatalogo"/>, o funil unico de "onde ha parede nesta zona".
+	/// Sem esta linha a mente cairia no `_catalogo?.Get(zona)?.Mapa`, que resolve pelo NOME e
+	/// devolveria a colisao do z24 -- 500x500 de um mapa que ninguem mais desenha. O corpo esbarraria
+	/// em paredes invisiveis e passaria pelas de verdade.
+	/// </summary>
+	private static ZoneCollision? MapaDaMente(ZoneKey zona) =>
+		!MenteAntiga && DimensaoMental.EhAMente(zona) ? DimensaoMental.Planta().Colisao : null;
 
 	/// <summary>
 	/// A que distancia o OPONENTE aparece. Perto o bastante pra a luta comecar sozinha.
@@ -84,6 +136,45 @@ public partial class GameServer
 	/// <see cref="EntrarNaMente"/>).
 	/// </summary>
 	private const float DistanciaDoOponente = 96f;
+
+	/// <summary>De quanto em quanto tempo a coleira pode FALAR. Ver `ServerPlayer.ColeiraCaladaAte`.</summary>
+	private const long MsEntreAvisosDaColeira = 20_000;
+
+	/// <summary>
+	/// O REFLEXO REAPARECE NA FRENTE DE QUEM FUGIU -- o que substituiu a parede da mente.
+	///
+	/// ============================ ELE APARECE NA FRENTE, E NAO ATRAS ============================
+	/// A `Facing` do dono e o rumo da FUGA (ela e escrita pelo proprio movimento), entao por o corpo a
+	/// <see cref="DistanciaDoOponente"/> nessa direcao o poe **cortando o caminho** -- que e a unica
+	/// colocacao que fecha o combate. Reaparecer ATRAS seria a perseguicao recomecando do zero: o
+	/// jogador voltaria a abrir distancia no mesmo instante e a coleira dispararia de novo daqui a
+	/// quarenta tiles, pra sempre, com o reflexo virando um efeito sonoro nas costas dele.
+	///
+	/// E sao os MESMOS 96 px da entrada na mente (e da chegada do visitante, e da convocacao do
+	/// chefe): "o oponente esta a tres tiles" e uma frase so deste lugar, e reaparecer a uma distancia
+	/// PROPRIA seria a segunda regra sobre onde um oponente da mente fica.
+	///
+	/// ============================ NAO HA O QUE CONSULTAR ANTES DE POR ============================
+	/// Em toda outra zona por um corpo num ponto exige perguntar se ali cabe (`PontoLivrePerto`). Aqui
+	/// **nao ha uma celula densa em lugar nenhum** (ver `DimensaoMental.Planta`), e essa e a metade boa
+	/// de nao ter parede: qualquer coordenada serve.
+	/// ======================================================================================
+	/// </summary>
+	private void ReaparecerNaFrente(ServerPlayer npc, ServerPlayer dono)
+	{
+		npc.Pos = dono.Pos + MeleeArea.Frente(dono.Facing) * DistanciaDoOponente;
+		npc.Moving = false;   // o passo que ele estava dando era pra um lugar que nao existe mais
+
+		// O CLIENTE JA CRAVA ESTE SALTO sem interpolar (`RemotePlayer.LimiteDeSalto`, 3 tiles): a tela
+		// mostra um reflexo que APARECE, e nao um corpo atravessando a distancia deslizando.
+		long agora = NowMs();
+		if (agora < npc.ColeiraCaladaAte) return;
+		npc.ColeiraCaladaAte = agora + MsEntreAvisosDaColeira;
+
+		AvisarNaMente(npc.Zone, npc.Papel is { EhChefe: true }
+			? $"{npc.Name} ja esta a sua frente. Aqui dentro nao ha pra onde correr."
+			: "o seu reflexo ja esta a sua frente. Nao se corre mais rapido que a propria mente.");
+	}
 
 	/// <summary>
 	/// QUAO PERTO PRECISA ESTAR O CORPO DE QUEM JA ESTA EM TRANSE. E o `oview(1, src)` do
@@ -118,6 +209,42 @@ public partial class GameServer
 	// A PORTA
 	// =====================================================================
 	/// <summary>
+	/// POR QUE ESTA PESSOA NAO MERGULHA AGORA -- a frase pronta, ou "" quando pode. **UMA LISTA SO**,
+	/// e agora ela tem TRES leitores em vez de dois:
+	///
+	///   * a TELINHA do meditar, que apaga o botao antes do clique (pela metade que mora no Core);
+	///   * o comeco da onda (<see cref="ComecarOMergulho"/>), que recusa NA HORA -- ninguem deve
+	///     esperar 1,8 s de ondulacao pra ouvir "um morto nao mergulha";
+	///   * o fim da onda (<see cref="EntrarNaMente"/>), que e a autoridade de verdade.
+	///
+	/// E o terceiro leitor e o que faz o pedido *"interrompeu, a onda morre"* funcionar sem bit
+	/// nenhum: o <see cref="TickDaOndaDaMente"/> reavalia esta funcao TODO TIQUE enquanto a onda
+	/// corre. Quem e nocauteado, morre, para de meditar ou anda no meio da ondulacao ja e recusado
+	/// aqui -- nao ha estado "estou viajando" pra alguem lembrar de apagar em cinco lugares.
+	///
+	/// AS TRES PRIMEIRAS SAO DO CORE (`DimensaoMental.PorQueNaoMergulhar`) porque a telinha precisa
+	/// delas sem falar com o servidor; a quarta e so daqui, e a razao esta escrita nela.
+	/// </summary>
+	private string RecusaDoMergulho(ServerPlayer pl)
+	{
+		if (DimensaoMental.PorQueNaoMergulhar(NaMente(pl), pl.Ficha.KO, pl.Ficha.dead) is { Length: > 0 } m)
+			return m;
+
+		// ESTA NAO TEM PAR NO CLIENTE, e de proposito: ela nao e sobre o ESTADO do corpo, e sim sobre
+		// a ORDEM dos pacotes -- a telinha manda a atividade (`C2S.Activity`) e a habilidade
+		// (`C2S.Habilidade`) no MESMO canal confiavel e ordenado, entao quando o `case` roda o `med`
+		// ja esta escrito. Ela e a rede pra quem chegar por outro caminho (um verb velho, uma
+		// bancada, um cliente remendado).
+		//
+		// E ELA GANHOU UM SEGUNDO EMPREGO COM A ONDA: quem ANDA durante a ondulacao deixa de meditar
+		// (o cliente manda `Parado`, o servidor zera o `med`), e o mergulho se cancela sozinho. Nao
+		// foi preciso escrever "andar cancela": ja estava dito.
+		if (!pl.Ficha.med) return "e preciso estar MEDITANDO (tecla M) pra mergulhar na mente.";
+
+		return "";
+	}
+
+	/// <summary>
 	/// ENTRA NA MENTE -- na propria, ou na de quem esta meditando do seu lado.
 	///
 	/// So meditando: e a condicao do original, e ela faz sentido -- e um lugar pra onde se vai por
@@ -133,9 +260,9 @@ public partial class GameServer
 		// `if (SemAsRedeas(pl))` aqui seria a mesma verdade escrita duas vezes, e a segunda copia e
 		// sempre a que discorda um dia. (O `LargarOCorpo` recusa de novo, e ai por escrito.)
 
-		if (NaMente(pl)) { Avisar(pl, "voce ja esta em transe."); return; }
-		if (!pl.Ficha.med) { Avisar(pl, "e preciso estar MEDITANDO (tecla M) pra mergulhar na mente."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "agora nao."); return; }
+		// A LISTA INTEIRA DE RECUSAS ESTA NO <see cref="RecusaDoMergulho"/>, e ela e cobrada DUAS
+		// vezes: uma quando a onda comeca e outra aqui, quando ela acaba. Ver o cabecalho de la.
+		if (RecusaDoMergulho(pl) is { Length: > 0 } motivo) { Avisar(pl, motivo); return; }
 
 		// ============================ O VISITANTE: A MENTE E A DE QUEM ESTA AO LADO ============================
 		// *"se um player meditasse AO SEU LADO ele entraria na sua mente e poderia lutar com vc."*
@@ -285,6 +412,183 @@ public partial class GameServer
 		if (_players.TryGetValue(dono.CloneId, out ServerPlayer? corpo)) RemoverNpc(corpo);
 		dono.CloneId = 0;
 		if (aviso.Length > 0) Avisar(dono, aviso);
+	}
+
+	// =====================================================================
+	// A GOTA -- A TELA ONDULA, E SO ENTAO SE VIAJA
+	// =====================================================================
+	/// <summary>
+	/// UMA VIAGEM DA MENTE ESPERANDO A ONDA ACABAR.
+	///
+	/// **NAO E UM BIT DE "ESTOU EM TRANSICAO"**, e a diferenca e o pedido: *"Interrompeu, a onda
+	/// morre: nocaute, morte, logout, o outro sumindo. **Derive** de 'estou em transicao' em vez de
+	/// guardar um bit que alguem tenha que apagar."*
+	///
+	/// Estar aqui e a UNICA definicao de "estou viajando", e ninguem precisa apagar nada: o
+	/// <see cref="TickDaOndaDaMente"/> reavalia a validade de cada entrada todo tique e a joga fora
+	/// sozinho. Um `bool` no <c>ServerPlayer</c> exigiria uma linha nova no nocaute, na morte, no
+	/// logout, na saida voluntaria e no golpe que arranca do transe -- e o quinto lugar seria o que
+	/// esquecesse, deixando alguem preso numa ondulacao eterna.
+	/// </summary>
+	private readonly record struct OndaDaMente(int Id, long Quando, bool Entrando, string Motivo);
+
+	/// <summary>
+	/// Quem esta esperando a onda. Lista de INSTANCIA e ids (nao corpos), pelo mesmo argumento do
+	/// <c>_acordar</c>: entre o pedido e o fim da onda o jogador pode sair do mundo.
+	/// </summary>
+	private readonly List<OndaDaMente> _ondaDaMente = [];
+
+	/// <summary>Esta pessoa ja tem uma onda correndo? Derivado da fila -- nao ha campo.</summary>
+	private bool NaOnda(int id)
+	{
+		foreach (OndaDaMente o in _ondaDaMente) if (o.Id == id) return true;
+		return false;
+	}
+
+	/// <summary>
+	/// COMECA A ONDA: manda a tela ondular e marca a viagem pro fim dela.
+	///
+	/// A duracao viaja NO PACOTE (<see cref="DimensaoMental.MsDaOnda"/>) exatamente pra o cliente
+	/// nunca ter uma constante propria -- ver o comentario daquela constante. Aqui o mesmo numero
+	/// vira o prazo da viagem, e e isso que faz o *"a viagem so acontece no FIM da onda"* ser
+	/// verdade e nao coincidencia.
+	/// </summary>
+	private void ComecarAOnda(ServerPlayer pl, bool entrando, string motivo)
+	{
+		_ondaDaMente.Add(new OndaDaMente(pl.Id, NowMs() + DimensaoMental.MsDaOnda, entrando, motivo));
+		MandarEfeito(pl, "ondulacao", DimensaoMental.MsDaOnda);
+	}
+
+	/// <summary>CORTA A ONDA na tela de quem nao vai mais viajar. `ms = 0` = "passou".</summary>
+	private static void PararAOnda(ServerPlayer pl) => MandarEfeito(pl, "ondulacao", 0);
+
+	/// <summary>
+	/// ============================ A PORTA, COM A GOTA NA FRENTE ============================
+	/// *"ao clicar em meditar profundamente a tela vai ter esse efeito por uns segundos e ai o
+	/// jogador vai pra dimensao da mente dele"*.
+	///
+	/// Este e o unico chamador do <see cref="EntrarNaMente"/> em producao (o canal `mente`); as
+	/// bancadas continuam entrando pela porta direta, sem onda, porque o que elas medem e a porta e
+	/// nao a espera -- e uma bancada que precisasse tiquear 1,8 s pra ver um clone nascer estaria
+	/// medindo o relogio.
+	///
+	/// AS RECUSAS SAO COBRADAS AQUI TAMBEM, e nao so no fim: quem esta morto tem que ouvir "nao"
+	/// agora. A cobranca do fim continua existindo porque o mundo muda durante a onda.
+	/// ======================================================================================
+	/// </summary>
+	private void ComecarOMergulho(ServerPlayer pl)
+	{
+		if (pl.Peer == null) return;   // corpo sem dono nao medita
+
+		// PEDIR DE NOVO NAO EMPILHA ONDA. Sem isto, apertar o botao tres vezes marcaria tres viagens
+		// -- e as duas ultimas cairiam no `EntrarNaMente` ja em transe, gastando duas recusas na cara
+		// de quem so clicou depressa.
+		if (NaOnda(pl.Id)) return;
+
+		if (RecusaDoMergulho(pl) is { Length: > 0 } motivo) { Avisar(pl, motivo); return; }
+
+		ComecarAOnda(pl, entrando: true, "");
+	}
+
+	/// <summary>
+	/// ============================ A VOLTA POR VITORIA, COM A GOTA ============================
+	/// *"quando ele DERROTAR O CLONE dele tb faca isso mas pra VOLTAR pro mundo real, pq atualmente
+	/// a transicao ta MT RAPIDA E MT SECA sem efeito nenhum."*
+	///
+	/// Chamado de UM lugar: a morte do corpo que a mente ergueu (`GameServer.Clone.cs`). E a unica
+	/// saida por VITORIA, e por isso a unica saida com onda.
+	///
+	/// ============================ **A PORRADA NO CORPO REAL NAO PASSA POR AQUI** ============================
+	/// *"(SO N VAI TER EFEITO SE ALGUEM BATER NO CORPO REAL enquanto ta meditando)"* -- e nao passa
+	/// mesmo: aquele caminho e outro do primeiro metro ao ultimo. `MarcarAgressao` -> `AcordarNoCorpo`
+	/// -> `PorNaFilaDeVolta` -> `TickDeQuemVolta` -> `VoltarDeOndeEstiver` -> `SairDaMente`, tudo
+	/// dentro do mesmo tique e sem tocar nesta fila. Ser arrancado tem que ser SECO: e a diferenca
+	/// entre fechar os olhos e levar um soco na cara.
+	///
+	/// E o mesmo vale pras outras saidas seleorias, pelo mesmo motivo -- o nocaute e a morte do corpo
+	/// la fora (`BordasDeQuemEstaFora`), a saida voluntaria (`sairdamente`) e o logout.
+	/// ====================================================================================================
+	///
+	/// O CORPO DERROTADO SAI AGORA, e essa linha nao e enfeite: sem ela este mesmo ramo do
+	/// `TicarUmCorpo` reencontraria o reflexo morto no tique seguinte e pediria a onda de novo, uma
+	/// vez a cada 33 ms. E de quebra fica bonito -- o reflexo se desfaz, a tela ondula, o mundo volta.
+	/// </summary>
+	private void ComecarAVoltaDaMente(ServerPlayer dono, string motivo)
+	{
+		DesfazerOOponente(dono, "");
+		if (NaOnda(dono.Id)) return;
+		ComecarAOnda(dono, entrando: false, motivo);
+	}
+
+	/// <summary>
+	/// DRENA AS ONDAS -- uma vez por tique, do <see cref="TickCombate"/>, logo DEPOIS do
+	/// <see cref="TickDeQuemVolta"/> e pelas mesmas duas razoes: as listas de zona ja estao livres
+	/// (a viagem mexe em duas delas), e a saida SECA tem que ganhar da onda quando as duas caem no
+	/// mesmo tique -- quem levou o soco ja voltou, e o que sobra aqui e so apagar a ondulacao.
+	///
+	/// ============================ ELE OLHA TODA A FILA, E NAO SO O QUE VENCEU ============================
+	/// Esta e a linha que cumpre o *"interrompeu, a onda morre"*. Se so os prazos vencidos fossem
+	/// examinados, quem fosse nocauteado no primeiro decimo continuaria com a tela ondulando pelos
+	/// 1,7 s restantes -- e so entao descobriria que nao ia a lugar nenhum.
+	///
+	/// A validade e uma PERGUNTA ao mundo, nao um bit: indo, e o <see cref="RecusaDoMergulho"/>
+	/// (morto, caido, ja em transe, parou de meditar); voltando, e `NaMente` -- se ele ja saiu por
+	/// qualquer outra porta, nao ha o que fazer. **Logout nao precisa de linha**: o id some do
+	/// `_players` e a entrada e descartada.
+	/// ==================================================================================================
+	/// </summary>
+	private void TickDaOndaDaMente()
+	{
+		if (_ondaDaMente.Count == 0) return;
+
+		long agora = NowMs();
+		for (int i = _ondaDaMente.Count - 1; i >= 0; i--)
+		{
+			OndaDaMente o = _ondaDaMente[i];
+
+			if (!_players.TryGetValue(o.Id, out ServerPlayer? pl)) { _ondaDaMente.RemoveAt(i); continue; }
+
+			// DEIXOU DE FAZER SENTIDO: a onda morre AGORA, no meio.
+			string recusa = o.Entrando ? RecusaDoMergulho(pl) : (NaMente(pl) ? "" : "saiu");
+			if (recusa.Length > 0)
+			{
+				_ondaDaMente.RemoveAt(i);
+				PararAOnda(pl);
+				// SO A IDA EXPLICA. Na volta o jogador ja recebeu a frase de quem o arrancou ("algo
+				// atinge o seu corpo", o nocaute, a morte) -- um segundo aviso seria o servidor
+				// contando duas vezes a mesma coisa.
+				if (o.Entrando) Avisar(pl, recusa);
+				continue;
+			}
+
+			if (agora < o.Quando) continue;
+
+			_ondaDaMente.RemoveAt(i);
+			if (o.Entrando) EntrarNaMente(pl);
+			else SairDaMente(pl, o.Motivo);
+		}
+	}
+
+	/// <summary>
+	/// ADIANTA AS ONDAS PENDENTES -- **SO PRAS BANCADAS**, e ela nao pula caminho nenhum: ela vence o
+	/// PRAZO e chama o <see cref="TickDaOndaDaMente"/> de producao, que e quem revalida e viaja.
+	///
+	/// ============================ POR QUE ELA PRECISOU EXISTIR ============================
+	/// A `--menteviva` mede a PORTA pelo caminho de producao -- dezessete `UsarHabilidade(x, "mente")`
+	/// seguidos de "e agora ele esta na mente". Com a onda no meio, os dezessete passariam a olhar pra um
+	/// jogador que ainda esta em pe no planeta, e a bancada inteira ficaria vermelha por um motivo que
+	/// nao e defeito nenhum.
+	///
+	/// O CONSERTO NAO PODIA SER AFROUXAR A ONDA em modo de teste: a segunda copia do caminho e o que
+	/// este port ja registrou como o erro que mais se repete nele. Aqui a bancada atravessa a fila de
+	/// verdade -- ela so nao espera o relogio, porque o relogio ja tem bancada propria (`--diaggota`,
+	/// que fotografa a tela). Quem mede a mente mede a mente; quem mede a onda mede a onda.
+	/// ==================================================================================
+	/// </summary>
+	internal void AdiantarAOndaDaMenteNoTeste()
+	{
+		for (int i = 0; i < _ondaDaMente.Count; i++) _ondaDaMente[i] = _ondaDaMente[i] with { Quando = 0 };
+		TickDaOndaDaMente();
 	}
 
 	// =====================================================================

@@ -190,6 +190,34 @@ public static class Povoamento
 	/// <inheritdoc cref="TilesMinDoEmbaralho"/>
 	public const int TilesMaxDoEmbaralho = 10;
 
+	/// <summary>
+	/// QUANTOS PONTOS O EMBARALHO SORTEIA ANTES DE DESISTIR DE UM CORPO.
+	///
+	/// ============================ DESISTIR E UMA RESPOSTA, E E A CERTA ============================
+	/// **Palavra do dono**: *"Se o sorteio nao achar lugar livre em N tentativas, o NPC fica onde
+	/// estava -- e melhor nao ter andado que ter afundado."*
+	///
+	/// E ela nao e o mesmo que "empurra pro chao livre mais proximo", que e o que o
+	/// <see cref="World.ZoneCollision.PontoLivrePerto"/> faz e o que este embaralho fazia. Aquele
+	/// funil e o certo pra um NASCIMENTO (o corpo tem que aparecer em algum lugar, e a alternativa e
+	/// nao existir); aqui ele resolve o caso facil e ERRA o dificil de dois jeitos ao mesmo tempo:
+	///
+	///   * ele nunca desiste -- varre 64 aneis e, num corpo cercado de rocha, devolve um ponto a
+	///     TRINTA tiles. O dono pediu "perto de onde estavam" e ganharia um teleporte;
+	///   * a busca por aneis e DIRECIONAL: o primeiro chao livre em volta de um bolsao de pedra e
+	///     sempre pro mesmo lado, entao os habitantes daquele bolsao sairiam todos na mesma direcao.
+	///
+	/// Sortear N pontos e ficar com o primeiro que serve nao tem nenhum dos dois vicios: todo ponto
+	/// candidato ja nasce dentro do raio que o dono pediu, e a distribuicao e a do sorteio.
+	///
+	/// OITO, e o numero tem uma conta atras dele: o anel util (3..10 tiles nos dois eixos, com sinal)
+	/// tem 4x8x8 = 256 celulas. Com metade delas livres, oito tentativas erram todas com chance 1/256;
+	/// com so um QUARTO livre, 10%. Abaixo disso -- um corpo praticamente emparedado -- ficar onde
+	/// estava e o comportamento desejado e nao uma falha.
+	/// ========================================================================================
+	/// </summary>
+	public const int TentativasDoEmbaralho = 8;
+
 	// =====================================================================
 	// O PLANO, LIDO DO `npcs.json`
 	// =====================================================================

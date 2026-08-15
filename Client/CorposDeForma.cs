@@ -128,6 +128,13 @@ public static class CorposDeForma
 		CorpoDeForma.Oozaru => Oozaru,
 		CorpoDeForma.OozaruDourado => OozaruDourado,
 		CorpoDeForma.FrostEscolhido => Frost(corposDoFrost, degrau),
+
+		// A SUPER PERFEITA NAO PERGUNTA NADA -- ha uma folha so, e ela nao depende de pele nem de
+		// escolha na criacao. Ver `Races.BioAndroids.CorpoSuperPerfeito`, onde tambem esta escrito
+		// por que ela e uma constante do Core e nao um campo da ficha (no DM ela E um campo, e o
+		// `dnl_bio_hatch` esquece de preenche-lo).
+		CorpoDeForma.BioSuperPerfeito => Jandirus.Core.Races.BioAndroids.CorpoSuperPerfeito,
+
 		_ => null,
 	};
 

@@ -203,11 +203,49 @@ public static class Protocol
     /// soco -- no meio do lago. Quem carrega o modo pro dono do corpo e o bit de nado do
     /// <see cref="SheetState"/>, que e continuo. Ver `SheetState.Nadando`.
     /// =============================================================================================
+    ///
+    /// ============================ E COM O `Canalizando` O CAMPO FECHOU ============================
+    /// 3 bits sao 8 valores e o 7 era o ultimo. Quem precisar do NONO estado de corpo nao tem onde
+    /// entrar, e a saida honesta e a mesma que o `BitNaveGrande` ja escreveu no outro byte: **um
+    /// campo novo, opcional, pago so por quem o usa** -- exatamente como o <see cref="EntityState.Altitude"/>
+    /// (so vai no fio com `Voando` ligado) e como o <see cref="EntityState.Canal"/> que este valor
+    /// acabou de trazer (so vai no fio com esta pose de pe).
+    /// ==========================================================================================
     /// </summary>
     public enum Pose : byte
     {
         Normal = 0, Treinando = 1, Meditando = 2, Atacando = 3, Voando = 4, Nocauteado = 5,
         Nadando = 6,
+
+        /// <summary>
+        /// ESTE CORPO ESTA COM UM CANAL DE KI DE PE -- reunindo energia pra um raio, ou com o raio
+        /// saindo da mao.
+        ///
+        /// ============================ E POSE PORQUE E ESTADO, E NAO EVENTO ============================
+        /// O pedido do dono foi literal: *"ao SOLTAR o sprite ficava na ANIMACAO DE SOCO pra DIRECAO
+        /// q o beam esta sendo jogado, e ele so voltaria a posicao de IDLE quando ele PARASSE DE USAR
+        /// O BEAM"*. Um raio sustentado dura segundos; a `Atacando`, que e um PRAZO
+        /// (<see cref="AttackPoseMs"/>), acabaria sozinha e devolveria o corpo ao idle com o feixe
+        /// ainda saindo da mao.
+        ///
+        /// E o DM diz a mesma coisa pelo avesso: `usr.icon_state = "Blast"` e escrito UMA vez, no
+        /// instante do `beaming = 1` (`beams.dm:280` e as nove irmas), e a unica linha que o apaga e
+        /// o `icon_state = ""` que ABRE o `stopbeaming()` (`beams.dm:212-213`). Nao ha prazo nenhum
+        /// no meio -- a pose e a vida do canal.
+        /// ===========================================================================================
+        ///
+        /// ============================ UM VALOR PRAS DUAS FASES, E A FASE VEM DE FORA ============================
+        /// Carregar e atirar sao DESENHOS DIFERENTES no original -- carregando o corpo fica no idle e
+        /// ganha um overlay (`addchargeoverlay()`, `beams.dm:300`), e so ao soltar e que o corpo muda
+        /// de pose. Mas sao o MESMO ESTADO (o `CanalDeKi` do servidor, uma entrada so em `_canais`), e
+        /// gastar os dois ultimos valores do enum pra dizer "o mesmo estado em duas fases" teria
+        /// fechado o campo por uma diferenca que e de DESENHO.
+        ///
+        /// Entao a fase (e o desenho da carga) viajam no <see cref="EntityState.Canal"/>, que so
+        /// existe no fio enquanto esta pose esta de pe. Ver la.
+        /// ===================================================================================================
+        /// </summary>
+        Canalizando = 7,
     }
 
     /// <summary>
@@ -327,7 +365,17 @@ public static class Protocol
         Construcoes = 20,  // as construcoes de pe na minha zona
         Tech = 21,         // meu nivel de tecnologia, meu zeni e o catalogo com o motivo de cada nao
         Estilos = 22,      // meu estilo ativo, os que aprendi e a maestria de cada um
-        Zanzo = 23,        // fulano piscou: id + DE ONDE ele saiu (a miragem nasce la)
+        /// <summary>
+        /// FULANO SALTOU: id + DE ONDE ele saiu + um bool "deixa miragem?".
+        ///
+        /// SAO DUAS CAMADAS NO MESMO ANUNCIO, e elas tem donos diferentes:
+        ///   * o BORRAO do deslocamento sai SEMPRE -- ele nao e tecnica, e so o corpo ter passado ali;
+        ///   * a MIRAGEM (o vulto parado) so quando o bool vem ligado, porque ela e a Afterimage.
+        ///
+        /// O bool custa UM byte (13 -> 14) e existe pra que o borrao nao dependa de skill nenhuma --
+        /// era essa dependencia que deixava o NPC sem borrao. Ver `GameServer.AnunciarZanzo`.
+        /// </summary>
+        Zanzo = 23,
         Porta = 24,        // porta abriu ou fechou (ou: a lista inteira, ao entrar na zona)
         /// <summary>
         /// UMA CELULA DO CENARIO CAIU: virou chao (knockback contra parede, ou o chao rachando).
@@ -724,8 +772,9 @@ public static class Protocol
         ///     buraco: e o `seq` que diz ao decodificador que houve perda (o Opus preenche o vao) em
         ///     vez de ele emendar duas metades de silabas diferentes.
         ///   * `distancia` -- 0..255 sobre o alcance da fala. **Nao e redundante com a posicao do corpo**:
-        ///     quem voa alto some do snapshot de quem esta no chao (`Voo.Enxerga`), e ai o ouvinte tem a
-        ///     voz e nao tem o corpo. Ver `VozOuvida.Tocar`.
+        ///     quem voa alto some da TELA de quem esta no chao (`Voo.Enxerga`), e ai o ouvinte tem a
+        ///     voz e nao tem o corpo. (Do SNAPSHOT ele nao some: o corte da vista e do cliente, o
+        ///     buffer da zona vai igual pra todo mundo.) Ver `VozOuvida.Tocar`.
         ///   * `parede` -- 1 quando ha parede no meio. **Quem responde isso e o servidor**, consultando o
         ///     MESMO bitset que cega a vista (`.vis`). O cliente decide como aquilo SOA; ele nao decide
         ///     se ha parede, senao a voz e a vista discordariam sobre o que e parede.
@@ -749,20 +798,114 @@ public static class Protocol
         /// quem entra na zona. Custo por tique: zero.
         ///
         /// ============================ E A POSE NAO RESPONDE ISTO ============================
-        /// A tentacao seguinte era um valor novo no enum <see cref="Pose"/> (sobra o 7). Nao serve:
-        /// pose e o que o corpo ESTA FAZENDO, e o morto do Outro Mundo anda, voa e treina -- a
-        /// aureola sumiria a cada passo dele. Ver `Core/World/Alem.cs`.
+        /// A tentacao seguinte era um valor novo no enum <see cref="Pose"/> -- na epoca sobrava o 7.
+        /// Nao servia: pose e o que o corpo ESTA FAZENDO, e o morto do Outro Mundo anda, voa e treina
+        /// -- a aureola sumiria a cada passo dele. Ver `Core/World/Alem.cs`.
+        ///
+        /// (O 7 JA FOI GASTO, e foi gasto pela pergunta certa: <see cref="Pose.Canalizando"/>, que E
+        /// o que o corpo esta fazendo. Se a aureola tivesse ficado com ele, o raio e que teria virado
+        /// um bit espremido em outro lugar -- e o campo teria acabado do mesmo jeito, so que dizendo
+        /// a coisa errada.)
         /// ======================================================================================
         /// </summary>
         Aureola = 45,
+
+        /// <summary>
+        /// UMA CENA DO BIO-ANDROIDE COMECOU: um id e QUAL cena (um byte, <c>Core.Forms.CenaBio</c>).
+        ///
+        /// ============================ POR QUE NAO E O <see cref="Forma"/> ============================
+        /// Pelo mesmo argumento que ja tirou o <see cref="Oozaru"/> daquele canal, e ele e mais forte
+        /// aqui: DUAS das tres cenas nao sao de forma nenhuma. Elas sobem um `bio_stage` -- estado
+        /// PERMANENTE de corpo, que no port viaja como troca de APARENCIA (`Appearance.Corpo`, ver
+        /// `Core.Races.BioAndroids`) e nao como entrada do catalogo de formas. Nao ha `de`, nao ha
+        /// `para` e nao ha `DegrauDeCena` a mandar: elas acontecem uma vez na vida e nao tem versao
+        /// encurtada, porque nao ha maestria em evoluir.
+        ///
+        /// A terceira (o SSJ2 pela morte) E de forma -- e ela sai pelo <see cref="Forma"/> **tambem**,
+        /// com `semCena`, porque a forma tem que chegar a zona inteira do jeito normal. Este pacote
+        /// carrega so o que aquele nao sabe dizer: que a cinematica que acompanha aquela forma nao e a
+        /// do Super Saiyajin 2, e sim a curta do bio (o DM pula a saiyajin: `DNALabs.dm:697`).
+        ///
+        /// ============================ PRA ZONA INTEIRA, COMO A <see cref="Furia"/> ============================
+        /// No DM os `to_chat` vao pra `view(src)`, o tremor e `Quake()` em todo mundo do planeta e os
+        /// feixes de chao sao objetos que ANDAM pelo mapa. Ver alguem virar Cell e informacao que quem
+        /// esta em volta tem que ter.
+        ///
+        /// ============================ E O PACOTE NAO CARREGA PRAZO NEM ARTE ============================
+        /// Mesma regra da <see cref="Furia"/>: os relogios (28,0 s a evolucao, 8,0 s o SSJ2) e a folha
+        /// de silhueta (`bioto2`/`bioto3`) moram no Core, em `Cinematicas`, e as duas pontas leem o
+        /// mesmo arquivo. Mandar qualquer um dos dois criaria uma segunda verdade sobre eles.
+        /// ==========================================================================================
+        /// </summary>
+        CenaDoBio = 46,
+
+        /// <summary>
+        /// HA UM CADAVER AO ALCANCE DA MINHA MAO -- o alvo virtual da tecla E.
+        ///
+        /// ============================ ELE E O IRMAO EXATO DO <see cref="Veiculo"/> ============================
+        /// E pelo mesmo motivo, ja escrito la: o menu de interacao procura alvo na LISTA DE CONSTRUCOES
+        /// da zona, e um cadaver nao e uma construcao -- ele e um CORPO (ver `Core/World/Cadaver.cs`, e
+        /// o porque de ele ser corpo e nao objeto como no DM). Sem este pacote, enterrar seria a unica
+        /// acao do jogo sem porta, exatamente como o piloto era a unica pessoa sem acesso ao proprio
+        /// veiculo antes daquele.
+        ///
+        /// ============================ POR QUE O SNAPSHOT NAO RESPONDE ISTO ============================
+        /// Ele nem chega perto: o snapshot diz onde os corpos estao, e nao **qual deles e um cadaver**.
+        /// Um bit novo pagaria por corpo por tique pra zona inteira -- e "ha um corpo a dois tiles de
+        /// mim" muda uma vez por aproximacao e interessa a UMA pessoa. Nao ha bit sobrando de qualquer
+        /// forma: os dois bytes de flags do <see cref="EntityState"/> fecharam.
+        ///
+        /// Entao ele e pessoal e por MUDANCA (nao por tique): sai quando o cadaver mais proximo passa a
+        /// ser outro, e sai vazio quando deixa de haver um.
+        /// ==========================================================================================
+        ///
+        /// Formato: `int id` + `string nome`. O id volta ao servidor no verbo `enterrar` e e ele que
+        /// desempata dois corpos empilhados; o nome ("corpo de Fulano") e o que o menu ESCREVE, e vem
+        /// junto porque o cliente nao tem lista de cadaveres nenhuma -- mesmo argumento que fez o nome
+        /// do veiculo viajar junto do tipo dele.
+        ///
+        /// **ID ZERO QUER DIZER "NENHUM"**: e ele que APAGA a dica quando o jogador se afasta.
+        /// </summary>
+        Cadaver = 47,
     }
+
+    /// <summary>
+    /// A ESCALA DO SPRITE DE UM TIRO, em 1/20 -- o `A.transform *= wavemult` do DM (`beams.dm:149`).
+    ///
+    /// UM BYTE, e nao um float: o `wavemult` do jogo inteiro vive entre 1 e 4 (o maior e o Final
+    /// Flash), o passo de 0,05 e menor que um pixel num sprite de 32, e o teto de 12,75 e o triplo
+    /// do maior que existe. Quatro bytes de float seriam tres bytes pra descrever precisao que
+    /// nenhuma tela mostra.
+    ///
+    /// O CLAMP E DOS DOIS LADOS de proposito. Piso em 1/20 (e nao zero) porque escala zero e um tiro
+    /// INVISIVEL -- uma tecnica futura com `MultDeOnda` mal preenchido apagaria o proprio efeito, e
+    /// esse e o tipo de defeito que so aparece jogando. Ver <see cref="DeEscalaDeProjetil"/>.
+    /// </summary>
+    public static byte EscalaDeProjetilEmByte(double escala) =>
+        (byte)Math.Clamp(Math.Round(escala * 20), 1, 255);
+
+    /// <summary>O caminho de volta do <see cref="EscalaDeProjetilEmByte"/>.</summary>
+    public static float DeEscalaDeProjetil(byte b) => b / 20f;
 
     /// <summary>Os dois instantes de um ataque de ki. Ver <see cref="S2C.Projetil"/>.</summary>
     public enum ProjetilSub : byte
     {
         /// <summary>
-        /// Saiu da mao de alguem: id do tiro, id do dono, tipo, cor, e o rumo. O cliente ja pode
-        /// desenha-lo antes do primeiro snapshot chegar.
+        /// Saiu da mao de alguem: id do tiro, id do dono, tipo, a ARTE, a ESCALA e onde. O cliente ja
+        /// pode desenha-lo antes do primeiro snapshot chegar.
+        ///
+        /// ============================ POR QUE A ARTE VIAJA AQUI E NAO NO SNAPSHOT ============================
+        /// A pergunta *"que folha este tiro desenha"* nao muda depois do disparo -- e ela nao e
+        /// derivavel do que ja viaja: o <see cref="ProjetilState.Tipo"/> tem DOIS BITS e responde
+        /// como o tiro se COMPORTA (raio, bola, teleguiada), nao com que arte; e o id da tecnica nao
+        /// esta em pacote nenhum. Com vinte e quatro tecnicas atirando por tres tipos, derivar
+        /// significaria desenhar Kamehameha, Masenko e Galick Ho identicos.
+        ///
+        /// Entao ela entra AQUI: **3 bytes por disparo** (`ushort` da arte + `byte` da escala), no
+        /// canal confiavel, uma vez. Alargar o `Tipo` do <see cref="ProjetilState"/> teria custado o
+        /// mesmo dado por tiro POR TIQUE POR ZONA, a 30 Hz -- e o orcamento do snapshot e o que esse
+        /// struct inteiro existe pra defender.
+        /// ==============================================================================================
         /// </summary>
         Nasceu = 0,
 
@@ -1298,6 +1441,12 @@ public static class Protocol
         // jeito. O que isso EXIGE e que escrita e leitura andem no mesmo commit -- um dos dois
         // sozinho desalinha o pacote inteiro, e o `SlotList` manda tres aparencias em fila.
         w.PutRgb(a.CorAura);
+
+        // E A COR DO TIRO logo depois -- o SEGUNDO sorteio do original (`CharacterCreation.dm:28`),
+        // que este port tinha colapsado no primeiro. Mesmos quatro bytes, mesma disciplina de
+        // "escrita e leitura andam no mesmo commit" do bloco acima. Ver `Appearance.CorKi`, que
+        // explica por que a chama e o tiro nao podem compartilhar a cor.
+        w.PutRgb(a.CorKi);
     }
 
     public static Appearance GetAppearance(this NetDataReader r)
@@ -1341,6 +1490,7 @@ public static class Protocol
         // e nao e defeito: quem le DERIVA (ver `Appearance.CorAura`). No caminho de entrada
         // (`CreateChar`) ela e descartada de qualquer jeito, porque quem sorteia e o servidor.
         a.CorAura = r.GetRgb();
+        a.CorKi = r.GetRgb();   // na MESMA ordem do `PutAppearance`. Nulo aqui tambem deriva.
         return a;
     }
 
@@ -1813,6 +1963,63 @@ public struct EntityState
     /// <summary>A nave em cima dele e a Capital Ship. So faz sentido com <see cref="Pilotando"/>.</summary>
     public bool NaveGrande;
 
+    // =====================================================================
+    // O CANAL DE KI -- um byte OPCIONAL, e so pra quem esta com um raio na mao
+    // =====================================================================
+    /// <summary>
+    /// A FASE E O DESENHO DA CARGA DE QUEM ESTA CANALIZANDO KI. **So vai no fio quando
+    /// <see cref="Pose"/> e <see cref="Protocol.Pose.Canalizando"/>.**
+    ///
+    /// ============================ POR QUE UM BYTE, E POR QUE OPCIONAL ============================
+    /// Os dois bytes de flags acabaram (ver <see cref="BitNaveGrande"/> logo acima, que fechou o
+    /// segundo), e o <see cref="Protocol.Pose"/> fechou com o `Canalizando`. Este e o "terceiro
+    /// byte" que aquele comentario propoe -- e ele foi cobrado como aquele comentario manda: **pago
+    /// so por quem o usa**, exatamente como o <see cref="Altitude"/>, que so viaja com `Voando`
+    /// ligado.
+    ///
+    /// CUSTO REAL: 1 byte por corpo QUE ESTA CANALIZANDO por tique. Numa zona com 151 habitantes e
+    /// ninguem atirando, custa ZERO -- que e o caso normal. Um raio de pe custa 30 B/s.
+    ///
+    /// ============================ E POR QUE ELE NAO PODIA SER DERIVADO ============================
+    /// A tentacao foi deduzir a fase do que ja viaja. Nao da, e as duas tentativas falham por razoes
+    /// diferentes, entao ficam escritas:
+    ///
+    ///   * PELO PROJETIL: o <see cref="ProjetilState"/> do snapshot nao carrega DONO (so id, posicao,
+    ///     tipo e cauda), e o dono so vai no `NascimentoDeProjetil`, uma vez. Pior: as duas pontas da
+    ///     janela nao batem -- a CARGA acontece antes de o projetil existir, e fechar o canal **nao
+    ///     mata o raio** (`FecharCanal` so para de alimenta-lo). A pose ficaria pendurada depois de o
+    ///     jogador soltar, que e o defeito ao contrario.
+    ///
+    ///   * PELO `Moving`: quem canaliza tem `Moving` sempre falso (o `PodeMexerOCorpo` recusa o
+    ///     passo), entao o bit estaria "livre" enquanto esta pose vale. Isso e espremer: seria um
+    ///     segundo significado escondido num campo cujo nome diz outra coisa, e a primeira pessoa a
+    ///     deixar um corpo canalizar andando (uma investida? um arrasto?) quebraria o desenho sem
+    ///     nada apontando pra ca.
+    /// ==========================================================================================
+    /// </summary>
+    public byte Canal;
+
+    /// <summary>O raio JA ESTA SAINDO da mao (o `beaming` do DM). Falso = ainda reunindo (`charging`).</summary>
+    public bool CanalAtirando
+    {
+        get => (Canal & 0x01) != 0;
+        set => Canal = (byte)(value ? Canal | 0x01 : Canal & ~0x01);
+    }
+
+    /// <summary>
+    /// QUAL DOS NOVE DESENHOS DE `BlastCharges` este corpo acende -- o `ChargeState` do DM
+    /// (`mobhandler.dm:7`). De 1 a 9; zero quer dizer "nao mandado". Ver `ArteDeProjetil.CargaDeRaio`.
+    ///
+    /// Cabe nos 4 bits de cima porque 9 cabe em 4 bits. Ele viaja mesmo na fase de TIRO (em que
+    /// ninguem o desenha) porque tira-lo de la nao economizaria byte nenhum -- o byte ja esta no
+    /// pacote -- e custaria um caso especial em duas pontas.
+    /// </summary>
+    public int CargaDoCanal
+    {
+        get => (Canal >> 1) & 0x0F;
+        set => Canal = (byte)((Canal & 0x01) | ((value & 0x0F) << 1));
+    }
+
     public void Write(NetDataWriter w)
     {
         w.Put(Id);
@@ -1827,6 +2034,9 @@ public struct EntityState
                    | (Pilotando ? BitPilotando : 0)
                    | (NaveGrande ? BitNaveGrande : 0)));
         if (Voando) w.Put(Jandirus.Core.World.Voo.ParaByte(Altitude));
+        // O BYTE DO CANAL, e so pra quem esta canalizando -- ver `Canal`. A ORDEM importa e e a
+        // mesma na leitura: altitude primeiro (ela e a mais antiga), canal depois.
+        if (Pose == Protocol.Pose.Canalizando) w.Put(Canal);
     }
 
     public static EntityState Read(NetDataReader r)
@@ -1848,6 +2058,7 @@ public struct EntityState
         e.Pilotando = (flags2 & BitPilotando) != 0;
         e.NaveGrande = (flags2 & BitNaveGrande) != 0;
         if (e.Voando) e.Altitude = Jandirus.Core.World.Voo.DeByte(r.GetByte());
+        if (e.Pose == Protocol.Pose.Canalizando) e.Canal = r.GetByte();
         return e;
     }
 }
@@ -1907,6 +2118,40 @@ public struct ProjetilState
 }
 
 /// <summary>
+/// UM TIRO ACABOU DE NASCER -- tudo que so e dito UMA vez, no canal confiavel.
+///
+/// ============================ POR QUE UM TIPO E NAO SEIS PARAMETROS ============================
+/// O evento era `Action&lt;int, int, byte, Vec2&gt;` e crescer pra `&lt;int, int, byte, ushort, byte,
+/// Vec2&gt;` poria DOIS pares de tipos iguais lado a lado (`int,int` e `byte,...,byte`): trocar dois
+/// argumentos de posicao continuaria compilando e o defeito sairia como "o tiro do fulano tem a
+/// arte do sicrano". Nomeando os campos, o compilador volta a ser quem confere.
+///
+/// NAO E `ProjetilState`, e nao pode ser: aquele e o estado CONTINUO, 30 Hz, e o que ele nao carrega
+/// e exatamente o que este carrega -- ver o bloco de <see cref="Protocol.ProjetilSub.Nasceu"/>.
+/// =========================================================================================
+/// </summary>
+public readonly record struct NascimentoDeProjetil(
+    int Id,
+    /// <summary>Quem atirou. E dele que sai a COR -- ela nunca viaja no pacote.</summary>
+    int Dono,
+    /// <summary>`Core.Combat.TipoDeProjetil`: como o tiro se comporta.</summary>
+    byte Tipo,
+    /// <summary>`Core.Combat.ArteDeKi`: qual folha ele desenha. Zero = nenhuma, cai na primitiva.</summary>
+    ushort Arte,
+    /// <summary>A escala do sprite, ja em multiplicador. Ver `Protocol.DeEscalaDeProjetil`.</summary>
+    float Escala,
+    /// <summary>
+    /// A QUE ALTURA ELE VOA, em pixels de mundo -- a do dono no instante do disparo.
+    ///
+    /// Ela viaja AQUI e nao no <see cref="ProjetilState"/> porque nao muda depois do nascimento:
+    /// e um byte por disparo em vez de um byte por tiro por tique. Sem ela o cliente desenhava
+    /// todo tiro no plano do chao, e o feixe de quem estava voando alto nascia ate 160 px abaixo
+    /// do proprio corpo -- na sombra.
+    /// </summary>
+    float Altitude,
+    Vec2 Pos);
+
+/// <summary>
 /// A SERIALIZACAO DE UMA TECNICA INVENTADA -- as duas pontas, no MESMO arquivo.
 ///
 /// ============================ POR QUE AQUI E NAO EM CADA LADO ============================
@@ -1963,6 +2208,11 @@ public static class CustomWire
         // o `short` fica porque um pacote velho ou adulterado PODE trazer negativo, e um byte sem
         // sinal transformaria -5 em 251 caladamente. Ver o `RestaurarGasto` do lado da leitura.
         w.Put((short)t.Gasto);
+
+        // A ARTE ESCOLHIDA. Vai NO FIM, e nao junto do `Tipo` onde ficaria "organizada": o leitor e
+        // o escritor deste struct sao lidos lado a lado e crescer pelo fim e o que mantem os dois
+        // triviais de conferir. Ver `TecnicaCustomizada.Arte`.
+        w.Put((ushort)t.Arte);
     }
 
     public static TecnicaCustomizada Ler(NetDataReader r)
@@ -1995,6 +2245,7 @@ public static class CustomWire
         // save velho com saldo negativo -- legitimo antes do piso -- daria orcamento inflado se
         // entrasse cru.
         t.RestaurarGasto(r.GetShort());
+        t.Arte = (Jandirus.Core.Combat.ArteDeKi)r.GetUShort();
         return t;
     }
 }

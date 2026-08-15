@@ -47,6 +47,17 @@ public sealed partial class GameServer
 				ComandoDeTech(pl, cmd, arg);
 				return true;
 
+			// ============================ O CADAVER E A LAPIDE ============================
+			// `enterrar` NAO passa pelo `ObraQueAceita`, e nao poderia: o alvo dele nao e uma obra, e
+			// sim um CORPO na `ZoneList` (ver `GameServer.Cadaver.cs`). E a mesma excecao que os verbos
+			// `nave_*` ja fazem, com a mesma disciplina -- o alcance e conferido LA DENTRO, contra a
+			// posicao do corpo, e nao aqui.
+			//
+			// `lapide_ler` E do outro lado: a lapide E uma obra, entao ele entra pela porta normal e o
+			// `ObraQueAceita` cobra os 64 px e o `Interacoes.Aceita` cobra que o verbo pertenca ao tipo.
+			case "enterrar": Enterrar(pl); return true;
+			case "lapide_ler": LerALapide(pl); return true;
+
 			case "treinar_saco": TreinarNoSaco(pl); return true;
 			case "maq_info": InfoDaMaquina(pl); return true;
 

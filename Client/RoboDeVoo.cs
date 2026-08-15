@@ -72,9 +72,37 @@ public partial class RoboDeVoo : Node
 		Conferir(Voo.PodeAcertar(2, 2), "dois no MESMO andar se alcancam");
 		Conferir(!Voo.PodeAcertar(2, 3) && !Voo.PodeAcertar(3, 2), "dois voando em andares DIFERENTES nao");
 
-		Conferir(Voo.Enxerga(0, 1) && Voo.Enxerga(1, 0), "quem paira rasante ainda e VISTO de baixo");
+		// ============================ A VISTA E ASSIMETRICA, E A PROVA TEM QUE SER POR DIRECAO ============================
+		// A prova antiga era `Enxerga(0,1) && Enxerga(1,0)` numa linha so -- ela perguntava "nos nos
+		// vemos?", que e exatamente a pergunta que o dono mandou parar de fazer. Uma afirmacao que
+		// junta as duas direcoes num `&&` NAO CONSEGUE reprovar uma inversao: ela fica verde com as
+		// duas certas e vermelha sem dizer QUAL lado caiu. Desdobrada, uma por direcao.
+		// ==============================================================================================================
+		Conferir(Voo.Enxerga(0, 1), "de baixo, quem paira rasante ainda e VISTO (um andar de folga pra cima)");
+		Conferir(Voo.Enxerga(1, 0), "e de cima se ve o chao");
 		Conferir(!Voo.Enxerga(0, 2) && !Voo.Enxerga(0, 3), "quem voa alto SOME pra quem esta no chao");
-		Conferir(Voo.Enxerga(3, 3), "...e so quem sobe junto continua vendo");
+		Conferir(Voo.Enxerga(3, 3), "...e quem sobe junto continua vendo");
+
+		// ============================ O PEDIDO DO DONO, NOS DOIS SENTIDOS ============================
+		// *"pessoas mt abaixo da sua altura N CONSEGUIRIAM TE VER, mas pessoas em ALTURAS MAIORES q vc
+		// CONSEGUEM TE VER"*. As tres primeiras linhas sao o defeito que ele viu: elas eram FALSAS.
+		// ==========================================================================================
+		Conferir(Voo.Enxerga(2, 0), "DO ALTO SE VE O CHAO: andar 2 enxerga quem esta em terra");
+		Conferir(Voo.Enxerga(3, 0), "...e do teto tambem, por mais andares que sejam");
+		Conferir(Voo.Enxerga(3, 1), "...e o andar 3 enxerga o 1");
+		Conferir(!Voo.Enxerga(0, 3) && !Voo.Enxerga(1, 3), "e de baixo NAO se ve quem esta dois andares acima");
+
+		// ============================ O SOCADOR INVISIVEL NAO EXISTE ============================
+		// A folga de um andar pra cima existe pra isto: TUDO o que te acerta, voce ve. Varrida a
+		// tabela inteira de pares, porque a inclusao `PodeAcertar ⊆ Enxerga` e uma propriedade do
+		// par de funcoes e nao de um caso -- e ela e o que segura a mao de quem for mexer na folga.
+		// =====================================================================================
+		bool ninguemBateInvisivel = true;
+		for (int atacante = 0; atacante <= Voo.Andares; atacante++)
+			for (int alvo = 0; alvo <= Voo.Andares; alvo++)
+				if (Voo.PodeAcertar(atacante, alvo) && !Voo.Enxerga(andarDeQuemOlha: alvo, andarDeQuemEVisto: atacante))
+					ninguemBateInvisivel = false;
+		Conferir(ninguemBateInvisivel, "NINGUEM leva soco de quem nao enxerga (PodeAcertar cabe dentro de Enxerga)");
 	}
 
 	/// <summary>Quantos pixels separam o DESENHO do corpo da posicao do no.</summary>

@@ -48,6 +48,35 @@ namespace Jandirus.Server;
 /// como acelerar o relogio pra fugir de nada.
 /// ================================================================================================================
 ///
+/// ============================ O SAVE E O REINICIO -- A DECISAO, E POR QUE ELA E ESTA ============================
+/// Sao duas perguntas ("o embaralho sobrevive ao save?" e "a marca de JA embaralhou sobrevive?"), e
+/// as duas ja estao respondidas pelo desenho do port. Escritas aqui pra a resposta ser uma DECISAO e
+/// nao uma coincidencia que alguem desfaz sem perceber:
+///
+/// **1. O EMBARALHO SOBREVIVE AO SAVE -- porque o save nao tem opiniao sobre onde um NPC esta.**
+/// `Persistir` sai na primeira linha com `pl.Slot &lt; 0`/`Peer == null` (`GameServer.cs`), e o
+/// `mundo.json` guarda obra, tecnologia e gravidade: **posicao de NPC nao vai pro disco por nenhuma
+/// das duas portas**. Entao nao existe o defeito que a pergunta teme -- o embaralho acontecer e um
+/// save posterior desfaze-lo --, porque nao ha nada gravado pra sobrescrever a memoria. A posicao de
+/// um habitante vale o que vale a vida do processo, e o embaralho dura exatamente isso.
+///
+/// **2. E ELE NAO SE REPETE NO BOOT -- pela AUSENCIA de marca, que ja e uma resposta.** `_vazioDesde`
+/// nasce vazio, e zona sem marca nao embaralha (ver o campo). Ou seja: no primeiro login depois de um
+/// reinicio, NENHUM planeta embaralha, porque desde o boot ninguem saiu de lugar nenhum. A marca nao
+/// precisa ser persistida -- persistir ela e que seria o defeito, porque ela ficaria falando de um
+/// mundo que nao existe mais.
+///
+/// **3. REINICIAR ANTES OU DEPOIS DOS 5 MINUTOS DA NO MESMO, e de proposito.** Os corpos renascem em
+/// `PontoDeHabitante(zona, lugar)`, que e funcao pura de (semente do universo, zona, lugar): o
+/// vilarejo volta EXATAMENTE como no primeiro boot, tenha o prazo vencido ou nao. Isto e o oposto de
+/// um esquecimento -- e a mesma promessa que o port faz pro mundo inteiro (o planeta gerado, a lua, o
+/// ceu): **a mesma semente da o mesmo mundo**. Um embaralho persistido faria um servidor reiniciado
+/// divergir de um servidor virgem com a mesma semente, e trocaria uma promessa forte por um enfeite.
+///
+/// O que o jogador ve, entao: sem reinicio, "eles andaram enquanto eu nao estava"; com reinicio, "o
+/// mundo voltou ao comeco" -- que ja e o que ele ve em tudo o mais que reinicia junto.
+/// ==================================================================================================================
+///
 /// ============================ DUAS PORTAS DE SAIDA, DUAS DE ENTRADA -- E NENHUMA LINHA ESPALHADA ============================
 /// "Sair de um planeta" tem CINCO caminhos (nave, logout, entrar na mente, morrer, e o KO que NAO
 /// conta como sair), e escrever a marca nos cinco seria o defeito que mais se repete neste port. A
@@ -127,28 +156,34 @@ public partial class GameServer
 		if (!_vazioDesde.TryGetValue(zona.Hash, out long desde)) return;
 		if (NowMs() - desde < (long)(Povoamento.SegundosAteOEmbaralho * 1000)) return;
 
-		// CONSUMIDA ANTES DE QUALQUER TRABALHO: mesmo que nao haja um corpo pra mexer, o prazo foi
-		// cumprido e a proxima chegada nao tem o que embaralhar de novo.
-		_vazioDesde.Remove(zona.Hash);
-
+		// O MAPA PRIMEIRO, E A ORDEM AQUI E UM DEFEITO CONSERTADO. A marca era consumida ANTES desta
+		// pergunta, com a razao "mesmo que nao haja um corpo pra mexer, o prazo foi cumprido" -- e
+		// ela vale pra "nao havia corpo" (o embaralho ACONTECEU e nao mexeu em ninguem) e **nao vale
+		// pra "nao havia mapa"**, que e o embaralho nao ter acontecido. Do jeito antigo uma zona sem
+		// mapa residente queimava o prazo calada: a primeira chegada nao embaralhava por falta de
+		// mapa, apagava a marca, e a segunda nao tinha mais o que cumprir.
+		//
+		// Hoje isso e inerte (planeta gerado nao recebe povoamento, entao nao ha habitante nessas
+		// zonas) e e latente: no dia em que tiver, o sintoma seria "o embaralho as vezes nao
+		// acontece" -- do tipo que nao deixa rastro nenhum pra procurar.
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
 		if (mapa == null) return;   // zona sem mapa: nao ha como perguntar onde da pra pisar
+
+		// AGORA SIM. Consumida antes de mexer nos corpos: mesmo que nenhum deles sirva (todos
+		// nocauteados, ou nenhum e do mundo), o embaralho aconteceu e a proxima chegada nao repete.
+		_vazioDesde.Remove(zona.Hash);
 
 		ulong volta = _embaralhosDaZona.TryGetValue(zona.Hash, out ulong v) ? v + 1 : 1;
 		_embaralhosDaZona[zona.Hash] = volta;
 
-		int quantos = 0;
+		// A CAMPANHA DESTA SUPERFICIE, UMA VEZ SO -- e nao uma consulta por corpo. Ver
+		// <see cref="PasseiaSozinho"/>: ela e a unica pergunta do crivo que depende da zona.
+		Invasao? campanha = InvasaoAqui(zona);
+
+		int quantos = 0, desistiu = 0, parados = 0;
 		foreach (ServerPlayer npc in ZoneList(zona.Hash))
 		{
-			// SO CORPO DO MUNDO. O crivo e o de `Core/Npc/Gente.cs` e nao um `if` novo: o boneco do
-			// corpo largado e o reflexo da mente nao sao NPC do mundo, e teleportar o boneco de quem
-			// esta meditando moveria o CORPO DE UM JOGADOR pra longe de onde ele se deitou.
-			if (!EhNpcDoMundo(npc)) continue;
-
-			// QUEM ESTA NO CHAO NAO ANDOU. Nocauteado e morto ficam onde cairam -- um corpo caido que
-			// muda de lugar nao parece que passeou, parece que o jogo se enganou. (Morto tambem sai
-			// do mundo no proximo tique de combate; mexer nele seria trabalho pra um cadaver.)
-			if (npc.Ficha.dead || npc.Ficha.KO) continue;
+			if (!PasseiaSozinho(npc, campanha)) { parados++; continue; }
 
 			// A SEMENTE E (universo, zona, ESTE corpo, esta volta). O `Papel.Semente` e o que ja
 			// distingue um habitante do outro desde o nascimento -- reusar o id do corpo faria o
@@ -158,23 +193,47 @@ public partial class GameServer
 								Espaco.Misturar(npc.Papel!.Semente, volta, 0)), "embaralho");
 
 			const int t = ZoneCollision.TileSize;
-			int dx = r.Next(Povoamento.TilesMinDoEmbaralho, Povoamento.TilesMaxDoEmbaralho + 1)
-				   * (r.Next(2) == 0 ? -1 : 1);
-			int dy = r.Next(Povoamento.TilesMinDoEmbaralho, Povoamento.TilesMaxDoEmbaralho + 1)
-				   * (r.Next(2) == 0 ? -1 : 1);
+			int cx = (int)MathF.Floor(npc.Pos.X / t);
+			int cy = (int)MathF.Floor(npc.Pos.Y / t);
 
 			// ============================ "CUIDADO PRA N COLOCAR DENTRO DE PAREDES" ============================
-			// O dono pediu isso em letras maiusculas, e a resposta nao e uma checagem nova: e o MESMO
-			// funil que ja poe todo corpo no mundo (`PontoDeHabitante`, o berco, o pouso, o defensor
-			// da bandeira). `PontoLivrePerto` responde as tres recusas de uma vez, anel por anel --
-			// parede (inclusive construcao levantada e porta fechada, que entram no bitset em
-			// runtime), beirada do mapa (de onde nao se pode dar um passo) e AGUA (livre pela colisao,
-			// parada pela regra de personagem).
+			// a segunda com o que fazer quando
+			// nao da: *"Se o sorteio nao achar lugar livre em N tentativas, o NPC fica onde estava --
+			// e melhor nao ter andado que ter afundado."*
 			//
-			// Uma checagem propria aqui seria a quarta copia da pergunta, e seria a copia que nao
-			// soube da agua no dia em que a agua entrou.
+			// A PERGUNTA NAO E UMA CHECAGEM NOVA. `ServeDeChao` e literalmente a que o
+			// `PontoLivrePerto` faz anel por anel pra por todo corpo no mundo (o berco, o pouso, o
+			// habitante, o defensor da bandeira) -- ela so deixou de ser funcao local pra poder ter um
+			// segundo consumidor. Responde as tres recusas de uma vez: parede (inclusive obra
+			// levantada e porta fechada, que entram nas camadas de runtime), beirada do mapa (de onde
+			// nao se pode dar um passo) e AGUA (livre pela colisao, parada pela regra de personagem).
+			// Uma checagem escrita aqui seria a copia que nao soube da agua no dia em que a agua entrou.
+			//
+			// O QUE MUDOU FOI QUEM ESCOLHE O PONTO, e a razao inteira esta em `TentativasDoEmbaralho`:
+			// o `PontoLivrePerto` nunca desiste (varre 64 aneis e devolve um ponto a TRINTA tiles, que
+			// e o teleporte que o dono nao pediu) e a busca por aneis e DIRECIONAL (os habitantes de um
+			// bolsao de pedra sairiam todos pro mesmo lado). Aqui os N candidatos ja nascem dentro do
+			// raio, e quem nao acha lugar nenhum simplesmente nao andou.
 			// ==============================================================================================
-			npc.Pos = mapa.PontoLivrePerto(new Vec2(npc.Pos.X + dx * t, npc.Pos.Y + dy * t));
+			Vec2? achou = null;
+			for (int n = 0; n < Povoamento.TentativasDoEmbaralho && achou == null; n++)
+			{
+				int dx = r.Next(Povoamento.TilesMinDoEmbaralho, Povoamento.TilesMaxDoEmbaralho + 1)
+					   * (r.Next(2) == 0 ? -1 : 1);
+				int dy = r.Next(Povoamento.TilesMinDoEmbaralho, Povoamento.TilesMaxDoEmbaralho + 1)
+					   * (r.Next(2) == 0 ? -1 : 1);
+
+				// O CENTRO DA CELULA, e nao o ponto cru: um ponto na quina de uma celula livre
+				// encostada em parede ja nasce em violacao pro `MoveRules`. Mesma nota do funil.
+				if (mapa.ServeDeChao(cx + dx, cy + dy)) achou = mapa.CentroDaCelula(cx + dx, cy + dy);
+			}
+
+			// AS N TENTATIVAS ERRARAM: ELE FICA ONDE ESTAVA. Nao ha meio-termo a inventar aqui --
+			// afundar na pedra e pior do que nao ter andado, e "empurra pro chao livre mais proximo"
+			// (a tentacao) e o teleporte de volta.
+			if (achou == null) { desistiu++; continue; }
+
+			npc.Pos = achou.Value;
 
 			// O PASSO INTERROMPIDO NAO SOBREVIVE AO TELEPORTE: um corpo que congelou no meio de uma
 			// caminhada acordaria "andando" pra um destino que ficou pra tras.
@@ -182,8 +241,64 @@ public partial class GameServer
 			quantos++;
 		}
 
-		if (quantos > 0)
+		if (quantos > 0 || desistiu > 0)
 			GD.Print($"[povoamento] {zona.Name} ficou {(NowMs() - desde) / 60000} min sem ninguem: "
-				   + $"{quantos} habitantes mudaram de lugar (volta {volta})");
+				   + $"{quantos} habitantes mudaram de lugar (volta {volta}"
+				   + (desistiu > 0 ? $", {desistiu} sem lugar livre perto" : "")
+				   + (parados > 0 ? $", {parados} de posto ou fora do crivo" : "") + ")");
+	}
+
+	/// <summary>
+	/// ============================ QUEM ANDA SOZINHO -- E POR ISSO EMBARALHA ============================
+	/// O embaralho e **a simulacao do passeio que ninguem viu**. Entao o crivo nao e "quem e NPC": e
+	/// quem, com um jogador na zona, TERIA andado por conta propria naqueles cinco minutos. Quem nao
+	/// anda por conta propria nao tem passeio a simular, e move-lo nao e vida -- e o jogo se enganando.
+	///
+	/// O dono listou os casos e deu a razao numa frase so: *"qualquer um cujo lugar seja o papel dele.
+	/// Um NPC de conversa que sai andando quebra a missao de quem vai falar com ele."*
+	///
+	/// ============================ OS QUATRO QUE FICAM PARADOS ============================
+	///   1. **O QUE NAO E CORPO DO MUNDO** -- o crivo e o de `Core/Npc/Gente.cs` e nao um `if` novo. O
+	///      boneco do corpo largado e o reflexo da mente nao sao NPC do mundo, e teleportar o boneco de
+	///      quem esta meditando moveria o CORPO DE UM JOGADOR pra longe de onde ele se deitou. (O
+	///      proprio recem-chegado cai aqui tambem: ele e jogador.);
+	///
+	///   2. **O CAIDO** -- nocauteado e morto ficam onde cairam. Um corpo no chao que muda de lugar
+	///      nao parece que passeou, parece que o jogo se enganou. (O morto ainda sai do mundo no
+	///      proximo tique de combate; mexer nele seria trabalho pra um cadaver.);
+	///
+	///   3. **O CHEFE DE SAGA** (<see cref="TipoDeNpc.Chefe"/>) -- quem o move e o ROTEIRO
+	///      (`TickDoRoteiro`), nao a decisao dele. Ele e um DESTINO: a saga anuncia ao mundo que Freeza
+	///      chegou a Namek e manda gente ate ele; o BP dele e promessa e o lugar dele e parte do papel.
+	///      Repare que hoje ele CAI no `PasseioDeHabitante` quando esta sem presa -- o ramo do
+	///      habitante e compartilhado --, e mesmo assim nao entra aqui: o criterio e o PAPEL, e nao o
+	///      ramo de codigo que por acaso o dirige;
+	///
+	///   4. **O DEFENSOR DA BANDEIRA** -- ele nasce `cidadao` (`NascerNpc("cidadao", ...)`, na
+	///      `GameServer.Invasao.cs`), entao o TIPO nao o distingue: quem distingue e estar na lista de
+	///      <see cref="Invasao.Defensores"/>. O lugar dele e o `PontoPertoDaBandeira`, e o caso e real
+	///      e nao teorico -- um invasor pode largar a campanha no meio e deslogar, e a guarnicao fica
+	///      sozinha num planeta vazio ate o prazo vencer. Sem esta linha, quem voltasse encontraria a
+	///      defesa espalhada pelo mapa em vez de em volta da bandeira.
+	///
+	/// ============================ E OS QUE O DONO CITOU E ESTE PORT NAO TEM ============================
+	/// Ficam escritos pra a ausencia ser PENDENCIA e nao esquecimento -- no dia em que nascerem, o
+	/// lugar de ensina-los ao embaralho e este metodo, e nao um `if` no laco:
+	///
+	///   * **REI / PRINCIPE no trono** -- neste port sao CARGOS DE JOGADOR (`GameServer.CargoPortas.cs`),
+	///     nao corpos. Nao ha rei de NPC pra sentar em trono nenhum;
+	///   * **NPC DE CONVERSA (King Kai, Enma)** -- nao existem como corpo. A mesa do Enma e uma
+	///     COORDENADA pra onde o morto e mandado (`GameServer.Alem.cs`), sem ninguem sentado nela;
+	///   * **DONO DE LOJA** -- as lojas deste port sao verbo e aba de HTML, nao balconista.
+	/// ==============================================================================================
+	/// </summary>
+	/// <param name="campanha">A invasao desta superficie, resolvida UMA vez pelo chamador (ou nula).</param>
+	private bool PasseiaSozinho(ServerPlayer npc, Invasao? campanha)
+	{
+		if (!EhNpcDoMundo(npc)) return false;
+		if (npc.Ficha.dead || npc.Ficha.KO) return false;
+		if (npc.Papel!.Molde.Tipo == TipoDeNpc.Chefe) return false;
+		if (campanha != null && campanha.Defensores.ContainsKey(npc.Id)) return false;
+		return true;
 	}
 }

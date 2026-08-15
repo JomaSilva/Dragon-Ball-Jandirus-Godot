@@ -134,6 +134,23 @@ public partial class GameServer
 		// a receita de atirar nao soca). Um `else` aqui esconderia um defeito de decisao pra sempre.
 		if (c.Leve) Atacar(npc, Protocol.Golpe.Leve);
 		else if (c.Pesado) Atacar(npc, Protocol.Golpe.Pesado);
+
+		// --- 10. A FALA, DEPOIS DO GESTO -------------------------------------
+		// ============================ O FUNIL E O `C2S.Chat` DO JOGADOR ============================
+		// `Falar` e literalmente a funcao que o `case Protocol.C2S.Chat` chama, e por isso o NPC
+		// herda de graca tudo o que uma pessoa herda: o raio de vista (22 tiles), o "!" que vira
+		// grito e alarga o alcance pra 37, o corte de tamanho, o teto de uma fala a cada 400 ms e --
+		// o que mais importa -- a familiaridade que CONVERSAR faz crescer (o `Ouviu`). Quem ouve um
+		// NPC gritar passa a conhece-lo, exatamente como conhece uma pessoa.
+		//
+		// Um `Mandar(...)` direto daqui teria pulado os cinco. Ja aconteceu neste repo com outro
+		// canal, e o sintoma foi "o NPC fala e ninguem nunca fica conhecido dele".
+		//
+		// DEPOIS DO GESTO, e nao antes: a frase COMENTA o que acabou de acontecer ("Toma essa!" sai
+		// junto com o soco). Antes, ela sairia um tique adiantada -- e num jogo a 30 Hz isso e
+		// invisivel, mas a ordem certa e a que nao precisa ser explicada depois.
+		// ======================================================================================
+		if (c.Falar is { Length: > 0 } frase) Falar(npc, Protocol.Fala.Diz, frase);
 	}
 
 	/// <summary>
@@ -175,9 +192,21 @@ public partial class GameServer
 		bool andando = c.Rumo.LengthSquared > 1e-6f;
 		bool correndo = c.Correndo && andando && (npc.Voando || PodeCorrer(npc, (float)dt));
 
-		// ============================ O OLHAR VEM ANTES DO PASSO, E ELE E O CONSERTO DO SOCO DE COSTAS ============================
-		// **Esta e a UNICA linha do projeto que escreve a direcao de um corpo dirigido**, e ela agora
-		// roda mesmo com o corpo parado -- que e a mudanca.
+		// ============================ O OLHAR VEM ANTES DO PASSO -- E ELE E A POSTURA, NAO A REGRA DO GOLPE ============================
+		// **ATENCAO: esta linha NAO e mais o conserto do soco de costas.** Ela e a POSTURA do corpo
+		// dirigido -- pra onde ele esta voltado enquanto anda, circula, guarda ou recua --, e ela
+		// vale enquanto o corpo puder se mexer.
+		//
+		// QUEM GARANTE QUE NINGUEM SOCA DE COSTAS E O `Atacar` (`GameServer.Combat.cs`), que vira o
+		// corpo pro alvo MARCADO antes de arrancar -- o caminho do GOLPE, que nao tem recusa nenhuma,
+		// que e onde o DM poe a correcao (`commonAttackProcs`, `attack cmn.dm:158`) e que ja valia
+		// pro jogador. Esta linha aqui esta atras do `PodeMexerOCorpo`, e havia estados que recusam o
+		// passo e NAO recusam o soco (paralisado, enraizado por Ki, prensado pela gravidade): neles o
+		// olhar nao era escrito e o punho saia na direcao do ultimo passo. Por isso a regra desceu
+		// pro golpe e a IA passou a MARCAR quem enfrenta (`Cerebro.Montar`).
+		//
+		// As duas nao divergem: as duas leem o MESMO alvo do cerebro, e o `Atacar` roda depois do
+		// passo (ver a ordem do `AplicarComando`), entao no instante do soco ele e quem manda.
 		//
 		// Antes ela morava depois do `if (!andando) return` la embaixo, ou seja: **so quem andava
 		// virava**. Um corpo parado guardava a direcao do ULTIMO passo, e as receitas de combate dao
@@ -208,9 +237,10 @@ public partial class GameServer
 		//   * CORPO LARGADO (o boneco do transe) -- ele nasce com `Cerebro == null` e `Peer == null`
 		//     (`GameServer.CorpoLargado.cs:86`), entao nao entra no `TickDosCorposSemDono` e nunca
 		//     chega aqui. Continua parado, olhando pra onde parou.
-		//   * QUEM FOGE -- nao ha fuga neste cerebro ainda (o `runawayState` do DM, `:646`, nao foi
-		//     portado). Quando houver, ela desliga o olhar do lado do CEREBRO mandando `Olhar` zero,
-		//     e nao com um `if` novo aqui: com zero, a linha abaixo cai no rumo do passo sozinha.
+		//   * QUEM FOGE -- o `Plano.Fugir` (o `runawayState` do DM, `:646`) desliga o olhar do lado do
+		//     CEREBRO mandando `Olhar` zero, e nao com um `if` novo aqui: com zero, a linha abaixo cai
+		//     no rumo do passo e o corpo olha pra onde corre. E ele nao vira pelo golpe tambem, porque
+		//     `Fuga` nao manda `Leve` nem `Pesado` -- quem foge nao bate, entao o `Atacar` nem roda.
 		// ==================================================================================================================
 		Vec2 olhar = c.Olhar.LengthSquared > 1e-6f ? c.Olhar : c.Rumo;
 		if (olhar.LengthSquared > 1e-6f) npc.Facing = MoveRules.FacingFrom(olhar, npc.Facing);
@@ -237,8 +267,18 @@ public partial class GameServer
 		// nao contorna obstaculo (nao ha A* aqui), ela desliza no eixo livre e para. O lago se
 		// comporta exatamente como o muro que ja existia.
 		// =========================================================================================
+		// ============================ E O CORPO ALHEIO PARA O NPC PELA MESMA FUNCAO ============================
+		// O `Vizinhanca` sai do `VizinhancaDe`, o mesmo que o resto do servidor usa, e entra no MESMO
+		// `Advance` -- nao ha um "desvio de NPC" escrito aqui. E a regra deste arquivo desde o
+		// `PodeMexerOCorpo`: "as mesmas menos uma" e o jeito classico de o NPC ficar op sem ninguem
+		// notar, e atravessar gente e op de um jeito bem visivel (o habitante que passa por dentro do
+		// jogador, o chefe que ignora o corpo na frente dele).
+		//
+		// AQUI A PERGUNTA E GERADA E NAO CONFERIDA -- o servidor E quem move o NPC --, entao ela nao cai
+		// na ressalva do `MoveRules.ValidateStep` (que abstem-se dos corpos de proposito; ver la).
+		// ====================================================================================================
 		npc.Pos = MoveRules.Advance(npc.Pos, c.Rumo, (float)dt, npc.SpeedStat, mapa, out _, correndo,
-									ModoDeTravessiaDe(npc));
+									ModoDeTravessiaDe(npc), VizinhancaDe(npc));
 		npc.Moving = (npc.Pos - antes).LengthSquared > 0.01f;
 		npc.Correndo = correndo;
 		npc.Ficha.dashing = correndo;   // entra na conta de dano, igualzinho ao do jogador
@@ -289,9 +329,62 @@ public partial class GameServer
 	/// funcao pura da ficha (`Esmagamento.Prende`). Tirar o peso ou sair do planeta solta o corpo no
 	/// tique seguinte, sem ninguem precisar lembrar de apagar um bit.
 	/// </remarks>
+	/// <remarks>
+	/// A CINEMATICA DE TRANSFORMACAO e a entrada mais nova, e ela e da mesma familia de todas as
+	/// outras: no DM a cena abre com `move=0` e fecha com `move=1` (`SSJ2Cinematic.dm:4` e `:44`, e
+	/// igual nas outras), e quem le esse bit e o `movement handler.dm:131` -- `if(!move)mobTime=0`,
+	/// **a linha imediatamente abaixo** do `canmove` que ja trouxe pra ca o raio, a paralisia e o
+	/// androide. Ou seja: la tambem e gate de VETOR, e nao de input. Quem esta na cena continua
+	/// virando o corpo pelo golpe, continua sendo alvo e continua com os pacotes chegando.
+	///
+	/// ---- POR QUE AQUI, E NAO NUM `if` DENTRO DO `PassoDaIa` ----
+	/// O dono reclamou de NPC andando enquanto transforma. O portao do JOGADOR ja existia e mora no
+	/// cliente (`LocalPlayer.cs:525`, o vetor zerado por `Transformacao.PrendendoOCorpo`) -- ele
+	/// funciona, o dono conferiu, e ele NAO foi tocado. Mas ele e do dono da tela: o servidor nunca
+	/// soube dele, e por isso a IA passava direto. Escrever a recusa dentro do `PassoDaIa` daria
+	/// duas regras pra mesma frase ("quem esta em cinematica nao anda"), que e o defeito que este
+	/// arquivo inteiro existe pra evitar. Entao a pergunta desceu pro funil por onde os DOIS passam
+	/// -- o `Input` do jogador (`GameServer.cs`) e o atuador da IA --, e o jogador so ganha no
+	/// servidor a regra que o cliente dele ja obedecia (o cinto de seguranca contra cliente
+	/// modificado, exatamente como o "andar carregando" que ja mora nesta lista).
+	///
+	/// ---- E ELA SE SOLTA SOZINHA EM TODO JEITO DE A CENA ACABAR ----
+	/// Nao ha bit novo pra apagar: `EmCena` deriva do `CenaSegundos`, escrito SO pelo `MarcarCena`
+	/// (dentro do funil unico `AnunciarForma`) e abatido SO no topo do `TickDaForma` -- que roda pra
+	/// TODO corpo de `_players`, todo tique cheio, antes de qualquer `return` (o `NaBase` inclusive).
+	/// Prazo vencendo, nocaute, morte (os dois revertem a forma, e reverter remarca a cena da base em
+	/// ZERO), troca de zona ou logout: em nenhum deles o relogio para de escorrer. E a mesma razao
+	/// pela qual a imunidade da cinematica (`CombatState.EmCinematica`) pode ser derivada e nao
+	/// guardada.
+	/// </remarks>
 	private bool PodeMexerOCorpo(ServerPlayer pl) =>
 		!pl.Ficha.dead && !pl.Ficha.KO && !pl.Carregando && !_emEmbate.ContainsKey(pl.Id)
 		&& !_emEmbateDeKi.ContainsKey(pl.Id) && !EnraizadoPorKi(pl.Id) && !Paralisado(pl.Id)
+		&& !EmCena(pl)
+		// OS COLETORES ABERTOS DO ANDROIDE DE ABSORCAO (`canmove = 0`, `DNALabs.dm:227`). E o preco
+		// da imunidade a ki: fincado no chao ate desligar o verb. Entra AQUI e nao no `Input` porque
+		// este e o funil de vetor -- e assim ela vale pra IA tambem, de graca.
+		&& !pl.Ficha.ki_absorb_stance
+		// LEVADO POR UM FEIXE (`ArrastoRestante`). Quem esta sendo empurrado por um Kamehameha nao
+		// escolhe pra onde vai -- e a mesma frase que o arremesso ja diz, entao ela entra pelo MESMO
+		// funil de vetor e vale pro jogador e pra IA de uma vez. Sem ela o NPC continuaria caminhando
+		// contra o feixe enquanto o feixe o empurra, e o corpo ficaria decidido por quem escreveu
+		// `Pos` por ultimo no tique -- exatamente o defeito que ninguem reproduz.
+		//
+		// (O ARREMESSO nao esta nesta lista, e isso e de proposito e vem de antes: ele tem porta
+		// propria no `Input` -- `if (pl.TiquesDeVoo > 0)`, `GameServer.cs` -- porque durante o voo o
+		// cliente PRECISA continuar mandando a direcao do olhar. O arrasto nao precisa: o DU vira a
+		// vitima pra tras a forca (`P.dir=turn(dir,180)`, `Projectiles.dm:587`), e quem escolhe o
+		// angulo aqui e o `DirecaoDeitado` pelo rumo do feixe.)
+		&& pl.ArrastoRestante <= 0
+		// AGARRADO POR ALGUEM (`grabParalysis`, `Grabbing.dm:183`). Entra por este funil e nao por uma
+		// porta propria no `Input` pela razao que este bloco inteiro documenta: assim o NPC agarrado
+		// para de andar pela MESMA regra que trava o jogador, e nao por uma segunda escrita a mao no
+		// atuador da IA -- que e o defeito que fez esta funcao existir.
+		//
+		// O gesto de SE DEBATER nao morre com a recusa: ele e lido no `Input` **antes** desta porta e
+		// guardado em `DebatendoSe`. Ver la, e o `LutaPraEscapar`.
+		&& !Agarrado(pl)
 		&& !PrensadoPelaGravidade(pl);
 
 	/// <summary>
@@ -334,6 +427,13 @@ public partial class GameServer
 			TemComQueAparar = TemComQueAparar(pl),
 			CustoDaGuarda = pl.Ficha.MaxKi * CombatKnobs.CustoKiDaGuarda,
 			DeLonge = ArsenalDeLonge(pl),
+
+			// O SOPRO. A pergunta e a MESMA do jogador (`SabeTecnica`, quem responde "voce nao sabe
+			// isso" pro verb) e o preco e a MESMA expressao que o verb cobra (`CustoDoSopro`,
+			// `GameServer.Tecnicas.G6.cs`) -- nao ha aqui um `50` escrito, e e por isso que mexer no
+			// preco da tecnica muda a decisao da IA no mesmo commit.
+			SabeSopro = SabeTecnica(pl, "Kiai"),
+			CustoDoSopro = CustoDoSopro(pl, TipoDeSopro.Kiai),
 		};
 	}
 

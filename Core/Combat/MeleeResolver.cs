@@ -346,7 +346,10 @@ public static class MeleeResolver
 										ref GolpeResultado r)
 	{
 		bool eraQuebrado = membro.Quebrado;
-		d.Corpo.Ferir(membro, dano, letal);
+		// PELO FUNIL (`CombatState.Ferir`), e nao pelo corpo direto: as duas portas de melee ja
+		// recusam quem esta <see cref="CombatState.Intocavel"/> la em cima, mas o dia em que uma
+		// terceira porta chamar isto sem conferir, o crivo continua aqui.
+		d.Ferir(membro, dano, letal);
 
 		r.Membro = membro.Nome;
 		r.Quebrou = !eraQuebrado && membro.Quebrado;

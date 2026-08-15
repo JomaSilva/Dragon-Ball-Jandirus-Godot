@@ -69,6 +69,33 @@ public partial class GameServer
 	/// </summary>
 	private bool _aguaNoAr;
 
+	/// <summary>
+	/// `--aguaparede`: o corpo nasce NA AGUA, um tile antes de uma celula de agua colada num MURO,
+	/// olhando pro muro.
+	///
+	/// ============================ POR QUE O QUARTO BERCO, E POR QUE NAO E O MESMO LAGO ============================
+	/// O conserto que fez o jogador entrar no lago mandou o MODO junto do passo (`ValidateStep(...,
+	/// ModoDeTravessiaDe(pl))`). O `ZoneCollision.Bloqueia` garante que parede para em todo modo -- mas
+	/// nao e ai que mora o risco, e sim na SAIDA DE EMERGENCIA do `MoveRules.Advance`, que ANTES
+	/// devolvia o passo CHEIO sem conferir nada. Com o modo `APe`, todo corpo em cima de agua caia nela
+	/// -- e qualquer passo dele passava sem checagem, muro incluso. Com `Nadando` a agua deixa de o
+	/// prender e a checagem volta a valer. Isso precisa de UM corpo nadando contra UM muro, na tela.
+	///
+	/// (A saida de emergencia deixou de aprovar tudo: hoje ela e `MoveRules.Escapar` -- nao existe pra
+	/// quem esta parado pelo MODO, e so libera o passo que APROXIMA de um lugar valido. Foi ela que
+	/// fechou o buraco que esta bancada tinha chamado de "oco". O que se mede aqui continua sendo outro
+	/// eixo: parede parando quem nada.)
+	///
+	/// O LAGO DOS OUTROS TRES NAO SERVE, e isso foi medido: o muro mais proximo dele com agua encostada
+	/// esta a 15 tiles. O corpo da bancada anda ~35 px/s e o nado cobra Ki por segundo, entao as duas
+	/// tentativas de alcancar aquele muro terminaram na EXAUSTAO antes de o muro caber na foto.
+	///
+	/// UM TILE ANTES E NAO EM CIMA: o pedido e "ande CONTRA a parede", entao tem que haver passo. Quem
+	/// nasce ja encostado nao anda contra nada.
+	/// ============================================================================================================
+	/// </summary>
+	private bool _aguaParede;
+
 	/// <summary>So o primeiro que entra ganha o vizinho do outro lado -- ver <see cref="PorNaBeiraDoLago"/>.</summary>
 	private bool _vizinhoDoLagoNasceu;
 
@@ -142,6 +169,38 @@ public partial class GameServer
 	/// quem responde isso e o veu do cliente olhando um corpo que entrou no mundo pelo caminho de
 	/// producao. Um fantasma injetado no cliente passaria no teste sem provar nada sobre o `.vis`.
 	/// </summary>
+	/// <summary>
+	/// PROCURA AGUA COLADA NUM MURO: devolve a celula de agua VIZINHA do muro, o rumo que aponta pro
+	/// muro, e exige que atras dela haja outra celula de agua (o tile de arranque).
+	///
+	/// Busca por aneis a partir de onde o corpo esta, entao o muro escolhido e o MAIS PERTO -- e o mais
+	/// perto importa porque quem vai medir e uma foto: um muro a 40 tiles nao cabe no enquadramento.
+	/// </summary>
+	private static (int Ax, int Ay, int Dx, int Dy)? AcharAguaColadaEmMuro(ZoneCollision mapa, int cx0, int cy0, int raio = 120)
+	{
+		(int dx, int dy)[] rumos = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+		for (int r = 1; r <= raio; r++)
+			for (int dy0 = -r; dy0 <= r; dy0++)
+				for (int dx0 = -r; dx0 <= r; dx0++)
+				{
+					if (Math.Abs(dx0) != r && Math.Abs(dy0) != r) continue;   // so a casca do anel
+					int ax = cx0 + dx0, ay = cy0 + dy0;
+					if (!mapa.EhAgua(ax, ay) || mapa.NaBorda(ax, ay)) continue;
+
+					foreach ((int dx, int dy) in rumos)
+					{
+						// O MURO A FRENTE...
+						if (!mapa.BlockedCell(ax + dx, ay + dy)) continue;
+						// ...E AGUA ATRAS, que e de onde o corpo vai andar contra ele. Sem este tile o
+						// berco nasceria colado e nao haveria passo nenhum a medir.
+						if (!mapa.EhAgua(ax - dx, ay - dy)) continue;
+						return (ax, ay, dx, dy);
+					}
+				}
+		return null;
+	}
+
 	private void PorNaBeiraDoLago(ServerPlayer pl)
 	{
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
@@ -149,6 +208,31 @@ public partial class GameServer
 		if (!mapa.TemAgua) { GD.PushWarning($"[server] BANCADA DA AGUA: a zona '{pl.Zone.Name}' nao tem plano de agua"); return; }
 
 		(int cx0, int cy0) = CelulaDoPonto(pl.Pos);
+
+		// ---------- O QUARTO BERCO PROCURA OUTRA COISA E SAI POR AQUI ----------
+		// Ele nao quer travessia nenhuma: quer agua encostada em muro. Ver o campo `_aguaParede`.
+		if (_aguaParede)
+		{
+			if (AcharAguaColadaEmMuro(mapa, cx0, cy0) is not { } muro)
+			{
+				GD.PushWarning("[server] BANCADA DA AGUA: nenhuma agua colada em muro num raio de 120 tiles");
+				return;
+			}
+
+			// UM TILE ANTES, OLHANDO PRO MURO.
+			pl.Pos = NoCentroDe(muro.Ax - muro.Dx, muro.Ay - muro.Dy);
+			pl.Facing = (muro.Dx, muro.Dy) switch
+			{
+				(1, 0) => Facing.East,
+				(-1, 0) => Facing.West,
+				(0, 1) => Facing.South,
+				_ => Facing.North,
+			};
+			GD.Print($"[server] BANCADA DA AGUA: {pl.Name} na AGUA em ({muro.Ax - muro.Dx},{muro.Ay - muro.Dy}),"
+					 + $" rumo ({muro.Dx},{muro.Dy}), muro em ({muro.Ax + muro.Dx},{muro.Ay + muro.Dy}) em '{pl.Zone.Name}'");
+			return;
+		}
+
 		if (AcharTravessia(mapa, cx0, cy0) is not { } lago)
 		{
 			GD.PushWarning($"[server] BANCADA DA AGUA: nenhuma travessia de {LarguraMinima}..{LarguraMaxima} tiles em 120 tiles");

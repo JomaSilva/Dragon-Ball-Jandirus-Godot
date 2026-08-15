@@ -19,7 +19,8 @@ namespace Jandirus.Core.Combat;
 /// BLOQUEIA (o DM so disputa feixe contra feixe), o ponto de encontro que ANDA durante a disputa (la
 /// so o orbe se deslocava em pixel, e o avanco de verdade era depois) e a troca do martelar de
 /// ESPACO pelo quick time event de letras -- ver <see cref="ApertosPorLetra"/>, que e onde as duas
-/// escalas se encontram.
+/// escalas se encontram, e repare que ate o anti-macro e do original: la um teto de apertos por
+/// tique, aqui um piso de tempo entre letras.
 /// ================================================================================================
 ///
 /// ============================ O MEDIDOR E UM CABO DE GUERRA ============================
@@ -193,24 +194,31 @@ public static class EmbateDeKi
 	/// QUANTO VALE UMA LETRA ACERTADA, em "apertos" do DM. **A costura entre as duas escalas.**
 	///
 	/// ============================ POR QUE O ESPACO VIROU LETRA ============================
-	/// No DM a disputa e MARTELAR ESPACO, com um teto anti-macro de 5 apertos por ciclo (25/s). O
-	/// ZanzoClash deste port ja atravessou essa discussao e a resposta esta escrita no
-	/// `MsPorTecla`: *"um quick time event que premia velocidade de DIGITACAO mede a maquina do
-	/// jogador, e a um cliente automatico entrega a vitoria de graca"*. Martelar espaco e literalmente
-	/// isso -- e o dono pediu a colisao de ki *"seguindo a mesma ideia do zanzoclash"*.
+	/// No DM a disputa e MARTELAR ESPACO, com um teto anti-macro de 5 apertos por ciclo
+	/// (`BCL_PRESS_TICK_CAP`, 25/s). Aqui a ENTRADA e a do ZanzoClash -- uma letra sorteada por vez --
+	/// e a FISICA continua a do DM; esta funcao e o cambio entre as duas moedas.
 	///
-	/// Entao a ENTRADA e a do ZanzoClash (uma letra sorteada por janela fixa) e a FISICA continua a
-	/// do DM. O que costura as duas e esta funcao: uma letra certa vale o que o martelar de um
-	/// oponente MEDIANO (a `intel = 50` que o proprio DM usa pra quem tem cliente) renderia durante a
-	/// janela daquela letra. Consequencias:
-	///   * o ritmo da disputa nao muda -- 50 pontos de medidor continuam levando ~7 s de dominio;
-	///   * jogador perfeito e NPC mediano empatam, e a diferenca passa a ser o PODER e o erro;
-	///   * nenhum numero novo foi inventado: sao `BCL_PUSH_PER_PRESS`, `BCL_NPC_CPS` e a janela da
-	///     letra, que ja existia.
-	/// ======================================================================================
+	/// ============================ O ARGUMENTO E A CADENCIA, E NAO A JANELA ============================
+	/// Ele ja foi a JANELA da letra (o prazo pra responder), e mudou junto com o pedido do dono de que
+	/// **acertar adiante a proxima letra** -- *"quanto mais rapido vc for melhor vai ser"*. Com
+	/// adiantamento, a janela deixou de ser o ritmo: quem manda no ritmo e o PISO DE CADENCIA (o
+	/// `MsMinimoEntreLetras` do servidor), que e o `BCL_PRESS_TICK_CAP` na forma exata -- um teto de
+	/// vazao pra que a maquina nao ganhe da mao humana.
+	///
+	/// A PROMESSA E SOBRE VAZAO, e e por isso que o argumento tinha que mudar junto: uma letra certa
+	/// vale o que o martelar de um oponente MEDIANO (a `intel = 50` que o proprio DM usa pra quem tem
+	/// cliente) renderia num CICLO da cadencia. Assim:
+	///   * o ritmo da disputa nao muda -- quem joga no limite entrega os mesmos apertos por segundo de
+	///     antes, e 50 pontos de medidor continuam levando ~7 s de dominio;
+	///   * jogador perfeito e NPC mediano continuam lado a lado, e a escada de poder (a tabela
+	///     1x / 1,75x / 6x que a bancada imprime) fica de pe;
+	///   * **e ser rapido passa a valer**: quem responde em 600 ms recebe metade das letras de quem
+	///     responde em 300, e empurra metade. Antes os dois empurravam igual.
+	///   * nenhum numero novo foi inventado: sao `BCL_PUSH_PER_PRESS`, `BCL_NPC_CPS` e o piso.
+	/// ==============================================================================================
 	/// </summary>
-	public static double ApertosPorLetra(double segundosDaJanela)
-		=> ApertosPorSegundo(InteligenciaPadrao) * Math.Max(segundosDaJanela, 0);
+	public static double ApertosPorLetra(double segundosEntreLetras)
+		=> ApertosPorSegundo(InteligenciaPadrao) * Math.Max(segundosEntreLetras, 0);
 
 	// =====================================================================
 	// A FISICA DO MEDIDOR

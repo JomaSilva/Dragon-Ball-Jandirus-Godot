@@ -1361,32 +1361,79 @@ public partial class Transformacao : Node2D
 	private void Soltar()
 	{
 		Devolver();
-		if (!IsInstanceValid(_alvo)) return;
-		_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.TravarPose(false);
 
-		// ============================ O CABELO VOLTA PRO LADO CERTO DA PISCADA ============================
-		// A cena pode morrer no meio de um piscar (o teto, a troca de zona, a morte, o alvo sumindo) --
-		// e agora a janela e a cena INTEIRA, e nao o segundo e meio de antes. Metade dessas mortes
-		// pegaria o boneco com o cabelo da forma que ele NAO assumiu, e ele ficaria assim ate o proximo
-		// pacote de aparencia chegar.
+		// A SILHUETA DE LUZ E O TERCEIRO EMPRESTIMO DESTA CENA, e ela volta em TODO caminho de saida
+		// -- nao so no bom. Uma evolucao de bio interrompida (o teto, a troca de zona, a morte, o alvo
+		// sumindo) deixaria a folha `bioto3` grudada no corpo pra sempre, e a unica saida seria
+		// relogar. E, letra por letra, o defeito que o DM tem nas duas cinematicas nativas do bio.
 		//
-		// E a mesma regra do emprestimo da aura logo abaixo: quem acende, apaga -- em TODO caminho de
-		// saida, e nao so no bom. O `Assumir` nao passa por aqui piscando (ele desliga a bandeira antes
-		// de vestir), entao esta linha so roda quando a cena de fato foi interrompida.
-		// ============================================================================================
-		if (_piscaLigada)
+		// ELA SUBIU ACIMA DO CORTE DO ALVO INVALIDO porque ja pergunta sozinha se o alvo vive (ver la),
+		// e porque a ordem do clímax do DM e essa: o contorno sai (`overlayList -= MORPH`) antes de a
+		// aparencia nova entrar (`icon = ...`) -- `DNALabs.dm:614-617`. Quem entra depois e o `Virar`,
+		// no fim deste metodo.
+		ApagarSilhueta();
+
+		// ============================ O CORTE DO ALVO INVALIDO VIROU UM BLOCO ============================
+		// Era um `return` no meio, e ele passou a ser caro: o <see cref="Virar"/> la embaixo PRECISA
+		// rodar mesmo sem alvo -- e justamente quando o corpo sumiu (nocaute, morte, troca de zona) que
+		// a aparencia pendurada nao pode ficar pendurada pra sempre. Um `return` aqui seria o unico
+		// caminho de saida da cena que nao entrega o que ficou devendo.
+		// ==========================================================================================
+		if (IsInstanceValid(_alvo))
 		{
-			_piscaLigada = false;
-			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.VestirCabeloDaForma(_vestido);
+			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.TravarPose(false);
+
+			// ============================ O CABELO VOLTA PRO LADO CERTO DA PISCADA ============================
+			// A cena pode morrer no meio de um piscar (o teto, a troca de zona, a morte, o alvo sumindo) --
+			// e agora a janela e a cena INTEIRA, e nao o segundo e meio de antes. Metade dessas mortes
+			// pegaria o boneco com o cabelo da forma que ele NAO assumiu, e ele ficaria assim ate o proximo
+			// pacote de aparencia chegar.
+			//
+			// E a mesma regra do emprestimo da aura logo abaixo: quem acende, apaga -- em TODO caminho de
+			// saida, e nao so no bom. O `Assumir` nao passa por aqui piscando (ele desliga a bandeira antes
+			// de vestir), entao esta linha so roda quando a cena de fato foi interrompida.
+			// ============================================================================================
+			if (_piscaLigada)
+			{
+				_piscaLigada = false;
+				_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.VestirCabeloDaForma(_vestido);
+			}
+
+			// A AURA EMPRESTADA VOLTA TAMBEM. Sem isto, uma cena do Oozaru interrompida antes do
+			// `Assumir` (o teto, a troca de zona, a morte) deixaria o jogador brilhando PARA SEMPRE
+			// numa forma que ele nem chegou a assumir -- e a unica saida seria carregar e soltar o C.
+			// E a mesma logica da tranca: quem empresta devolve em TODO caminho de saida, nao so no bom.
+			if (_auraBaseAcesa)
+			{
+				_auraBaseAcesa = false;
+				_alvo.GetNodeOrNull<Aura>("Aura")?.Apagar();
+			}
 		}
 
-		// A AURA EMPRESTADA VOLTA TAMBEM. Sem isto, uma cena do Oozaru interrompida antes do
-		// `Assumir` (o teto, a troca de zona, a morte) deixaria o jogador brilhando PARA SEMPRE
-		// numa forma que ele nem chegou a assumir -- e a unica saida seria carregar e soltar o C.
-		// E a mesma logica da tranca: quem empresta devolve em TODO caminho de saida, nao so no bom.
-		if (!_auraBaseAcesa) return;
-		_auraBaseAcesa = false;
-		_alvo.GetNodeOrNull<Aura>("Aura")?.Apagar();
+		// ============================ A VIRADA POR ULTIMO, E A ORDEM E REGRA ============================
+		// Ela e a entrega do que estava pendurado (a aparencia nova), e no `Assumir` ela tambem e a
+		// ultima linha -- pelo mesmo motivo. Aqui ela precisa vir DEPOIS das tres devolucoes acima: a do
+		// piscar reescreve o CABELO, e a virada pode vestir o corpo inteiro (`World.VestirCorpoInteiro`,
+		// que remonta as camadas). Virando antes, uma cena interrompida no meio de um piscar deixaria o
+		// penteado intermediario da cena por cima da aparencia que acabou de chegar.
+		// ==========================================================================================
+		Virar();
+	}
+
+	/// <summary>
+	/// A CENA ACENDEU A SILHUETA DE LUZ? Guardado pelo mesmo motivo do <see cref="_auraBaseAcesa"/>:
+	/// so quem acendeu apaga. Sem o registro, o <see cref="Soltar"/> de uma cena QUALQUER (as 39 que
+	/// nao acendem nada) apagaria a silhueta de uma cena do bio que estivesse rodando no mesmo corpo.
+	/// </summary>
+	private bool _silhuetaAcesa;
+
+	/// <inheritdoc cref="_silhuetaAcesa"/>
+	private void ApagarSilhueta()
+	{
+		if (!_silhuetaAcesa) return;
+		_silhuetaAcesa = false;
+		if (IsInstanceValid(_alvo))
+			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.SilhuetaDeCena(null);
 	}
 
 	/// <summary>
@@ -1514,6 +1561,22 @@ public partial class Transformacao : Node2D
 		if (b.Faz.HasFlag(Efeito.AuraGrande)) _auraT = 0;
 
 		if (b.Faz.HasFlag(Efeito.AuraBase)) AcenderAuraBase();
+
+		// ============================ A SILHUETA DE LUZ -- O BEAT SO ACENDE ============================
+		// Irma do piscar e do emprestimo da aura base: quem apaga e o `Assumir` (e o `Soltar`, pra cena
+		// que morrer no meio). Ver `Efeito.SilhuetaDoCorpo`, que explica por que ela e ESTADO -- e por
+		// que o DM esquece de tira-la em duas das tres cinematicas do bio.
+		//
+		// A FOLHA E DA CENA e nao do beat (`Cinematica.Silhueta`): uma cena acende uma silhueta so.
+		// Caminho nulo = o simbolo e `Nenhuma`, ou a arte sumiu do disco -- e nos dois casos o certo e
+		// nao acender nada em vez de rabiscar um retangulo cor-de-rosa por cima do lutador.
+		if (b.Faz.HasFlag(Efeito.SilhuetaDoCorpo)
+			&& SilhuetasDeCena.CaminhoDa(_cena.Silhueta) is { } folhaDaSilhueta
+			&& _alvo.GetNodeOrNull<CharacterVisual>("Visual") is { } vs)
+		{
+			_silhuetaAcesa = true;
+			vs.SilhuetaDeCena(folhaDaSilhueta);
+		}
 
 		// AQUI HAVIA `Efeito.PedrasSubindo` -> `SoltarPedras()`. A pedra deixou de ser um beat: ela
 		// corre por baixo da cena inteira agora, no `TocarPedras`. Ver o bloco do CHAO SOLTO.
@@ -1745,6 +1808,14 @@ public partial class Transformacao : Node2D
 		// ====================================================================================================
 		_piscaLigada = false;
 
+		// ============================ E A SILHUETA DE LUZ SE APAGA AQUI, PELA MESMA REGRA DOS DOIS ACIMA ============================
+		// O `BioLabEvolve()` do DM tira os dois overlays no CLIMAX (`overlayList -= I`,
+		// `overlayList -= MORPH`, `DNALabs.dm:611-613`) -- e as outras duas cinematicas do bio
+		// simplesmente esquecem (`imperfecttrans.dm:7`, `perfecttrans.dm:7`: `+=` sem `-=` e sem
+		// `overlaychanged = 1`). Aqui quem apaga e a virada, entao nao ha versao que esqueca.
+		// ==========================================================================================================================
+		ApagarSilhueta();
+
 		// ============================ E QUANDO NAO HA FORMA, A VIRADA NAO VESTE NINGUEM ============================
 		// Este e o ponto em que o <see cref="Efeito.Assumir"/> deixa de ser "assumir a forma" e passa a
 		// ser o que ele sempre foi estruturalmente: a VIRADA da cena (ver o bit no Core). Na furia a
@@ -1759,7 +1830,82 @@ public partial class Transformacao : Node2D
 		// cena sem forma acender a aura base ou o piscar, quem os apaga continua sendo a virada.
 		// ======================================================================================================
 		if (_forma != null) Vestir(_forma);
+
+		// ============================ E QUEM ESPERAVA A CENA ACABAR ENTRA AQUI, POR ULTIMO ============================
+		// O <see cref="Virar"/> e o instante unico de "a cena acabou" (ver o campo `_naVirada`). Ele vem
+		// DEPOIS do `ApagarSilhueta` e do `Vestir` porque essa e a ordem literal do clímax do DM: o
+		// contorno SAI (`overlayList -= MORPH`, `DNALabs.dm:614`) e so entao a aparencia nova ENTRA
+		// (`icon = ...`, `DNALabs.dm:617`). Invertido, a silhueta de luz do bio ficaria um quadro por
+		// cima do corpo novo -- que e, em miniatura, o defeito que este bloco existe pra fechar.
+		// =========================================================================================================
+		Virar();
 	}
+
+	/// <summary>
+	/// ============================ O INSTANTE UNICO EM QUE "A CENA ACABOU" ============================
+	/// O dono, duas vezes, com o mesmo formato de queixa: *"tem transformacao q estao criando a CRATERA
+	/// NO MEIO da cinematica (deveria ser sempre no FINAL)"* e *"o bio androide ta MUDANDO O CORPO ANTES
+	/// DA CINEMATICA ACABAR"*. **Efeito que pertence ao FIM acontecendo no COMECO** -- e nas duas vezes a
+	/// causa foi a mesma: o efeito tinha relogio PROPRIO em vez de pendurar no da cena.
+	///
+	/// A cratera foi consertada virando efeito DERIVADO do beat <see cref="Efeito.Assumir"/> (ver
+	/// `Cinematica.Beats` no Core). Este metodo e a mesma resposta aberta pra quem esta FORA da cena: o
+	/// `World` pendura aqui a aparencia que chegou no meio, e qualquer efeito de fim que nasca amanha
+	/// pendura no mesmo lugar em vez de inventar o segundo relogio.
+	///
+	/// ============================ ELE DISPARA EM TODO CAMINHO DE SAIDA, E ISSO E A REGRA ============================
+	/// `Assumir` e o fim BOM. Mas cena tem quatro fins (ver <see cref="FimDaCena"/>), e os outros tres
+	/// -- o teto, o alvo sumindo (nocaute, morte, troca de zona, logout) e o `_ExitTree` -- tambem
+	/// passam pelo <see cref="Soltar"/>, que chama isto. **Ninguem pode ficar com a aparencia velha pra
+	/// sempre**: uma cena de 28 s interrompida aos 3 s entrega a aparencia nova aos 3 s, adiantada, e
+	/// nunca "nunca". E a mesma logica dos tres emprestimos que o `Soltar` ja devolve (a silhueta, o
+	/// piscar, a aura base): quem acende apaga em TODO caminho de saida, e nao so no bom.
+	///
+	/// UMA VEZ SO (`_virou`): o caminho normal passa pelo `Assumir` **e** pelo `_ExitTree` logo depois.
+	/// ==========================================================================================================
+	/// </summary>
+	private Action? _naVirada;
+
+	/// <inheritdoc cref="_naVirada"/>
+	private bool _virou;
+
+	/// <summary>
+	/// PENDURA UM EFEITO NA VIRADA DESTA CENA -- ver <see cref="_naVirada"/>.
+	///
+	/// CENA JA VIRADA EXECUTA NA HORA, e nao guarda pra nunca: entre o pacote chegar e este metodo ser
+	/// chamado pode ter passado o quadro em que a cena terminou (ou ela pode ter sido interrompida no
+	/// mesmo quadro). Guardar num objeto que ja virou seria exatamente o "ficar com a aparencia velha
+	/// pra sempre" que a regra proibe.
+	/// </summary>
+	public void NaVirada(Action oQue)
+	{
+		if (_virou) { oQue(); return; }
+		_naVirada += oQue;
+	}
+
+	/// <inheritdoc cref="_naVirada"/>
+	private void Virar()
+	{
+		if (_virou) return;
+		_virou = true;
+		// LIMPA ANTES DE CHAMAR: um efeito de fim pode pendurar outro (o `NaVirada` de cima ja
+		// executa na hora quando `_virou`), e sem isto a lista mudaria durante a propria chamada.
+		Action? oQue = _naVirada;
+		_naVirada = null;
+		oQue?.Invoke();
+	}
+
+	/// <summary>
+	/// O CORPO QUE ESTA CENA ESTA TOCANDO. E como o `World` acha "a cena de fulano" pra pendurar nela
+	/// -- ver <see cref="NaVirada"/>. Perguntar ao node em vez de manter um mapa `id -> cena` no
+	/// `World` e o que impede um segundo registro pra envelhecer sozinho: a cena morre e a resposta
+	/// morre junto, sem ninguem ter que lembrar de apagar linha.
+	/// </summary>
+	public Node2D AlvoDaCena => _alvo;
+
+	/// <summary>Esta cena ainda esta rodando? DERIVADO do <see cref="_fim"/>, pela mesma razao do
+	/// <see cref="AcabouDeTeste"/>.</summary>
+	public bool Rodando => _fim == FimDaCena.Rodando;
 
 	/// <summary>
 	/// VESTE O DEGRAU SEGUINTE DA ESCADA -- o <see cref="Efeito.VesteDegrau"/>.

@@ -42,6 +42,20 @@ public sealed partial class Fighter
 	public bool dead, KO, IsInFight, dashing, isconcealed;
 
 	/// <summary>
+	/// MORREU DE VELHICE -- `mob/var/aged_out` (`Aging.dm:177`, `Death.dm:144`).
+	///
+	/// Nao e "esta morto" (isso e o <see cref="dead"/>): e COMO se morreu, e serve a uma regra so,
+	/// que o proprio DM escreve em comentario na linha em que liga a marca -- "morte de VELHICE: sem
+	/// revive por NENHUM meio, so a reencarnacao do Enma". O `ReviveMe()` do original testa este
+	/// campo antes de qualquer coisa (`Death.dm:144`).
+	///
+	/// PERSISTE porque a ficha inteira vai pro disco (ver `CharacterSave.Ficha`), e tem que
+	/// persistir: se ele se perdesse no logout, deslogar e voltar seria o jeito barato de
+	/// transformar uma morte definitiva numa morte comum.
+	/// </summary>
+	public bool aged_out;
+
+	/// <summary>
 	/// `mob/var/isVillain` -- **designado por ADMIN**, e nao conquistado.
 	///
 	/// A skill que o le e uma so no catalogo inteiro (Planet Destroy, `vilao: 1` -- medido: 1 de 366
@@ -430,8 +444,70 @@ public sealed partial class Fighter
 	// =====================================================================
 	/// <summary>Revive por Zeni: BP em 25% ate este instante (em ms de relogio real).</summary>
 	public long zeni_revive_debuff_until;
+
+	// =====================================================================
+	// O BIO-ANDROIDE DE LABORATORIO -- `Code/Modules/Tech/DNALabs.dm`
+	// =====================================================================
+	/// <summary>
+	/// ESTE CORPO SAIU DE UM TANQUE (`bio_lab_born`). E o que separa o bio de LABORATORIO da raca
+	/// nativa: o primeiro tem escada por CONTAGEM DE ABSORCOES e SSJ2 pela morte, a segunda sobe
+	/// por limiar de BP. Ver o cabecalho de <see cref="bio_stage"/>.
+	/// </summary>
 	public bool bio_lab_born;
+
+	/// <summary>
+	/// ============================ O DEGRAU DO BIO E ESTADO PERMANENTE, E **NAO** UMA FORMA ============================
+	/// 1 larva, 2 imperfeito, 3 semi-perfeito, 4 perfeito. E a decisao de projeto mais importante
+	/// deste sistema, entao ela esta escrita aqui e nao no relatorio de uma sessao:
+	///
+	/// No DM os degraus 2/3/4 fazem **`BP *= 2`** e **`BP *= 4`** (`DNALabs.dm:620,628`) -- eles
+	/// mexem no BP BASE, de forma permanente, e trocam o `icon` E o `oicon` (o CORPO, nao um
+	/// overlay). Nada disso e um buff: nao ha `Loop`, nao ha dreno, nao ha como reverter.
+	///
+	/// Poe-los no <see cref="Jandirus.Core.Forms.Catalogo"/> como uma linha de forma teria mentido
+	/// em tres contas de uma vez -- o teto de treino (`relBPmax` le o BP base), o teto do Zenkai
+	/// (`ZenkaiCeiling`) e o `CapCheck` --, porque todas elas leem o BP e nao o `expressedBP`. Um
+	/// bio perfeito ficaria com 4x de poder na tela e o teto de treino de uma larva.
+	///
+	/// **O QUE E FORMA MESMO E SO A SUPER PERFEITA** (`Cell4()`, `CellFormBuff.dm:73`): 8x
+	/// temporario, com dreno, que cai sozinho quando o Ki acaba. Essa sim tem entrada no catalogo
+	/// (`super_perfect`), e e a unica.
+	/// ================================================================================================================
+	/// </summary>
 	public int bio_stage;
+
+	/// <summary>
+	/// HAVIA DNA SAIYAJIN NA FORNADA (`bio_saiyan_dna`). Abre o <see cref="canSSJ"/> e e requisito
+	/// do despertar do SSJ2 pela morte (`DNALabs.dm:650`).
+	///
+	/// **NAO E O QUE DA ZENKAI.** A mensagem do original promete isso (`:480`) mas o
+	/// `has_zenkai()` responde TRUE na primeira linha pra qualquer bio-androide
+	/// (`combatgains.dm:14`), com ou sem sangue Saiyajin. Ver <see cref="HasZenkai"/>.
+	/// </summary>
+	public bool bio_saiyan_dna;
+
+	/// <summary>Quantos JOGADORES absorvidos desde a ultima evolucao. NPC vale meio.</summary>
+	public double bio_abs_players;
+
+	/// <summary>Quantos ANDROIDES absorvidos desde a ultima evolucao. Um so ja evolui.</summary>
+	public double bio_abs_androids;
+
+	/// <summary>O SSJ2 ja foi despertado PELA MORTE. Uma vez na vida (`bio_ssj2_by_death`).</summary>
+	public bool bio_ssj2_by_death;
+
+	/// <summary>
+	/// QUANDO A CARAPACA LARVAL SE ROMPE, em ms de relogio REAL -- `bio_mature_realtime`.
+	///
+	/// Relogio real e nao in-game porque o original tambem usa (`world.realtime + DAY_REAL_MINUTES
+	/// * 600`): um dia in-game, que na escala deste port sao ~24 minutos de relogio.
+	/// </summary>
+	public long bio_mature_em;
+
+	/// <summary>
+	/// A FORMA PERFEITA E PERMANENTE (`form3cantrevert`). No lab-bio ela vem de graca no degrau 4;
+	/// na raca nativa ela vem de SOBREVIVER a propria morte. E requisito da Super Perfeita.
+	/// </summary>
+	public bool form3cantrevert;
 	/// <summary>Vazamento do Frost mutante: abaixo de 1 o poder escapa ate o piso.</summary>
 	public double fd_release = 1;
 

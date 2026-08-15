@@ -337,12 +337,17 @@ public sealed partial class GameServer
 	/// so aparece semanas depois.
 	/// ======================================================================
 	/// </summary>
-	private static void EnvelhecerNaSala(ServerPlayer pl)
+	private void EnvelhecerNaSala(ServerPlayer pl)
 	{
 		pl.Idade++;
 		pl.Ficha.Idade = pl.Idade;
 		pl.Ficha.Statify();
 		pl.SigAtributos = "";
+
+		// O ANO VIROU PRA ELE -- e no DM e exatamente isso que chama o `AgeCheck` (`WorldClock.dm:92`,
+		// o `proc/Years()`). A Sala do Tempo e o unico calendario que este port tem, entao ela e o
+		// lugar certo pra pergunta "o corpo aguentou mais um ano?". Ver `ConferirMorteDeVelhice`.
+		ConferirMorteDeVelhice(pl);
 	}
 
 	// =====================================================================

@@ -28,8 +28,9 @@ namespace Jandirus.Server;
 ///
 /// ============================ O QUE SE REUSOU DO ZANZO CLASH ============================
 /// O molde e ele, como a instrucao desta camada pediu, e o reuso e literal:
-///   * o ALFABETO e a CADENCIA da letra (`Letras`, `MsPorTecla`) -- e a licao que mora la: janela
-///     fixa, porque premiar velocidade de digitacao mede a maquina do jogador;
+///   * o ALFABETO, a JANELA e o PISO DE CADENCIA da letra (`Letras`, `MsPorTecla`,
+///     `MsMinimoEntreLetras`) -- e a licao que mora la: o acerto ADIANTA a proxima letra, e quem
+///     impede que isso vire concurso de digitacao e o piso, que e o `BCL_PRESS_TICK_CAP` do DM;
 ///   * o CANAL da tecla (`C2S.ClashTecla`), o OPCODE (`S2C.Clash`) e a TELA (`Client/ClashQte.cs`),
 ///     separados por um byte de <see cref="Protocol.TipoDeEmbate"/>;
 ///   * o FUNIL do corpo preso (`PodeMexerOCorpo`), o mesmo do nocaute, da tecla C e do raio;
@@ -338,7 +339,17 @@ public sealed partial class GameServer
 	/// </summary>
 	private void NovaLetra(DisputaDeKi d, LadoDeKi l)
 	{
-		l.Restante = MsPorTecla / 1000.0;
+		// ============================ O RESTO DO TIQUE NAO SE PERDE ============================
+		// Era `l.Restante = janela`, e o `=` jogava fora o quanto o contador passou de zero dentro do
+		// tique -- ate 1/30 s por letra. Com a janela em 0,9 s isso era 3%; com o PISO de 0,3 s (o
+		// adiantamento do acerto) vira 11%, e 11% e exatamente a fracao que separa o jogador perfeito
+		// do NPC mediano na calibragem do `ApertosPorLetra`. Ou seja: sem esta linha, adiantar a letra
+		// deixaria quem acerta TUDO perdendo pra taxa automatica de um NPC qualquer -- o oposto do
+		// pedido.
+		//
+		// O CARREGO E DE UM TIQUE SO. Uma travada do servidor nao pode virar credito acumulado de
+		// letras; o que se recupera aqui e o arredondamento, e nao o tempo perdido.
+		l.Restante = Math.Max(l.Restante, -Protocol.TickSeconds) + MsPorTecla / 1000.0;
 		if (!TemTeclado(l.Quem)) { l.Letra = '\0'; return; }
 
 		l.Letra = SortearLetraDeEmbate();
@@ -366,9 +377,27 @@ public sealed partial class GameServer
 		// letra fazia o tique achar que ela ainda valia, e um unico erro deixava o jogador sem nada na
 		// tela ate o fim.
 		meu.Letra = '\0';
-		meu.ApertosPendentes += acertou
-			? EmbateDeKi.ApertosPorLetra(MsPorTecla / 1000.0)
-			: -EmbateDeKi.ApertosPorLetra(MsPorTecla / 1000.0) / meu.Vantagem;
+
+		// ============================ ACERTOU: A PROXIMA JA VEM (O PEDIDO DO DONO) ============================
+		// O mesmo adiantamento do ZanzoClash, na moeda deste laco: `Restante` e um CONTADOR de segundos
+		// (ver o campo), entao encurtar o prazo ate o piso e tirar dele o que a janela tem alem do piso.
+		// O errado espera a janela CHEIA, como la.
+		//
+		// **E AQUI ELE PAGA DOBRADO**, porque este placar nao e "acertos sobre um numero fixo de
+		// letras": e um cabo de guerra continuo que acaba quando o medidor chega na ponta. Mais letras
+		// = mais empurrao = vitoria mais cedo, e o encontro pode nem chegar aos 22 s.
+		//
+		// E POR ISSO A LETRA VALE MENOS: o `ApertosPorLetra` era calibrado pela JANELA (0,9 s), e a
+		// promessa dele -- *"jogador perfeito e NPC mediano empatam"* -- e sobre VAZAO, nao sobre
+		// letras. Triplicando a vazao sem tocar no valor, quem acerta tudo passaria a ganhar ate de um
+		// rival 6x mais forte e a escada de poder inteira (a tabela 1x / 1,75x / 6x que a bancada
+		// imprime) iria pro lixo. Calibrado pelo PISO, a conta fecha igual: 1/0,3 letras por segundo
+		// vezes o que o NPC mediano rende em 0,3 s da os mesmos 3,2 apertos/s de antes -- so que agora
+		// quem responde em 600 ms recebe metade das letras, e ai ser rapido VALE.
+		// ====================================================================================================
+		double vale = EmbateDeKi.ApertosPorLetra(MsMinimoEntreLetras / 1000.0);
+		if (acertou) meu.Restante -= (MsPorTecla - MsMinimoEntreLetras) / 1000.0;
+		meu.ApertosPendentes += acertou ? vale : -vale / meu.Vantagem;
 
 		Julgou(p, acertou);
 		return true;
@@ -489,8 +518,9 @@ public sealed partial class GameServer
 	/// (`BCL_NPC_CPS * (0.5 + intel/100)`).
 	///
 	/// O JOGADOR NAO PASSA POR AQUI -- ele empurra por letra. E e por construcao que os dois se
-	/// medem: uma letra vale o que a taxa de um NPC MEDIANO renderia na janela dela
-	/// (`EmbateDeKi.ApertosPorLetra`).
+	/// medem: uma letra vale o que a taxa de um NPC MEDIANO renderia na CADENCIA MINIMA dela
+	/// (`EmbateDeKi.ApertosPorLetra`), que e o ritmo de quem esta jogando no limite. Quem responde
+	/// mais devagar recebe menos letras e empurra menos -- e essa e a diferenca inteira.
 	/// </summary>
 	private void ApertosDeQuemNaoTemTeclado(LadoDeKi l, double dt)
 	{
@@ -717,14 +747,18 @@ public sealed partial class GameServer
 		_disputas.Remove(d);
 	}
 
+	/// <summary>
+	/// O FIM, PRA OS DOIS -- e so pra eles. Era um anuncio de ZONA, e o motivo de ter deixado de ser
+	/// esta escrito no `Terminar` do ZanzoClash: com dois embates correndo na mesma zona, o fim de um
+	/// derrubava o `EmClash` (e o silencio dos atalhos) e fechava a tela do OUTRO.
+	///
+	/// Aqui doia mais que la: esta disputa dura ate 22 s, entao ela e justamente a que costuma estar
+	/// de pe quando um ZanzoClash de 3 s comeca e acaba ao lado.
+	/// </summary>
 	private void Anunciar(DisputaDeKi d, int venc, int perd)
 	{
-		var w = Protocol.Begin(Protocol.S2C.Clash);
-		w.Put((byte)Protocol.ClashSub.Acabou);
-		w.Put(venc);
-		w.Put(perd);
-		foreach (ServerPlayer o in ZoneList(d.Zona))
-			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		Acabou(d.A.Quem, venc, perd);
+		Acabou(d.B.Quem, venc, perd);
 	}
 
 	/// <summary>
@@ -827,6 +861,18 @@ public sealed partial class GameServer
 		// ENCARA O QUE VEM e responde pelo MESMO caminho do jogador -- `UsarTecnica`, nao um disparo
 		// paralelo. A carga, o custo, a trava do corpo e o teto de tiros valem igual.
 		npc.Facing = MoveRules.FacingFrom(dedonde - npc.Pos, npc.Facing);
+
+		// E ELE GRITA. `npc_combat_chat(pick("HAAAAAA!!","Tome ISTO!","Nao vai me vencer nisso!"))`
+		// LOGO ANTES do `npc_fire_beam` (`NPCAI.dm:378-379`) -- e no original ele e o UNICO ponto de
+		// fala sem `prob()` na frente, porque responder um raio com o proprio raio ja e raro por
+		// conta propria.
+		//
+		// A frase vem do `Falatorio` do cerebro (e nao de uma lista escrita aqui) porque e ELE que
+		// tem o relogio de combate: sem isso o contra-feixe poderia falar por cima de um grito de
+		// soco do mesmo segundo. Ver `Cerebro.FraseDoContraFeixe`.
+		if (npc.Cerebro?.FraseDoContraFeixe(_rng) is { Length: > 0 } grito)
+			Falar(npc, Protocol.Fala.Diz, grito);
+
 		UsarTecnica(npc, "Ki_Wave");
 	}
 

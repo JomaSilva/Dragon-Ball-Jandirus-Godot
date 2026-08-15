@@ -229,12 +229,67 @@ public partial class Iluminacao : Node2D
     /// <summary>Força a escuridao. SO PRA BANCADA -- em jogo quem manda e o relogio do planeta.</summary>
     public static void EscuridaoDeTeste(float v) => Escuridao = Mathf.Clamp(v, 0, 1);
 
+    /// <summary>
+    /// QUANTO A NOITE DEIXA UMA LUZ DE EFEITO BRILHAR: 0 de dia, 1 no breu.
+    ///
+    /// ============================ UMA CURVA SO PRA TODA LUZ DE EFEITO ============================
+    /// Pedido do dono, sobre a aura: *"que a aura de transformacao so brilhe ao anoitecer, porque de
+    /// dia fica muito saturado e muito claro"*. Vale igual pra luz de um ataque de ki
+    /// (<see cref="LuzDeKi"/>): ao meio-dia o <see cref="CanvasModulate"/> ja deixa a cena perto do
+    /// branco, entao somar luz por cima nao acrescenta brilho -- estoura, e o efeito some dentro do
+    /// proprio borrao.
+    ///
+    /// Ela morava escrita dentro da `Aura`. Virou funcao quando ganhou o segundo leitor, e nao por
+    /// arrumacao: duas copias do mesmo `SmoothStep` sao duas chances de alguem afinar o limiar numa
+    /// e deixar a outra acendendo de dia -- que e exatamente a queixa que a curva existe pra matar.
+    ///
+    /// ============================ E POR QUE E CURVA, E NAO RAMPA ============================
+    /// A primeira versao usava a escuridao crua, e deu duas coisas vistas em jogo:
+    ///
+    ///  * a luz brilhava FRAQUINHO o dia inteiro (a escuridao ao meio-dia ja e ~0,15) -- e "so
+    ///    brilha a noite" com um fiapo aceso o dia todo nao e "so a noite";
+    ///  * ANTES DE O SERVIDOR MANDAR A HORA esta classe usa <see cref="AmbienteDia"/>, que tambem da
+    ///    ~0,15: acendia por alguns quadros e apagava quando a hora real chegava.
+    ///
+    /// Abaixo de 0,35 de escuridao o resultado e ZERO, ponto. A luz so comeca a existir no
+    /// entardecer e chega inteira no breu.
+    /// =====================================================================================
+    /// </summary>
+    public static float ForcaDaNoite() => (float)Mathf.SmoothStep(0.35, 0.8, Escuridao);
+
     /// <summary>Guarda a escuridao a partir da cor do ambiente. Chamado sempre que ela muda.</summary>
     private static void AnotarEscuridao(Color ambiente) =>
         Escuridao = 1 - Mathf.Clamp(ambiente.Luminance, 0, 1);
 
+    /// <summary>
+    /// TRAVA A CENA AO MEIO-DIA. SO PRA BANCADA -- em jogo quem manda e o relogio do planeta.
+    ///
+    /// ============================ POR QUE UMA BANCADA DE FOTO PRECISA DISTO ============================
+    /// A hora do dia e do RELOGIO DO PLANETA, e ela nao pergunta se alguem esta fotografando. A
+    /// primeira rodada da `--diagmuda` caiu no Templo de madrugada: as tres fotos sairam tecnicamente
+    /// certas, com todas as checagens verdes, e **ilegiveis** -- um retangulo azul-escuro com um
+    /// boneco preto dentro. Uma foto que ninguem consegue ler nao prova nada, e este projeto ja tem a
+    /// licao escrita ("a bancada mede INTENCAO"): o quadro salvo nao e a mesma coisa que o quadro
+    /// legivel.
+    ///
+    /// Trava so o AMBIENTE (a cor do dia). Nada do que a foto julga -- colisao, desenho do tile,
+    /// posicao do corpo -- passa por aqui, entao nao ha o que forjar.
+    /// ================================================================================================
+    /// </summary>
+    public static bool MeioDiaDeTeste;
+
     private void Recalcular(double delta)
     {
+        // BANCADA: ver `MeioDiaDeTeste`. Vem antes de tudo, inclusive do `LuzPropria`, porque o que
+        // ela quer e uma unica coisa: o quadro sair legivel.
+        if (MeioDiaDeTeste)
+        {
+            _ambiente.Color = AmbienteDia;
+            AnotarEscuridao(AmbienteDia);
+            _clima.Aplicar(default, delta, AmbienteDia);
+            return;
+        }
+
         // ANTES DE SABER A HORA, o mundo fica em luz de dia e o ceu fica vazio -- ver `_temHora`.
         // Chutar um horario aqui seria pintar a cena errada pra corrigi-la na cara do jogador.
         if (!_temHora)
@@ -247,6 +302,21 @@ public partial class Iluminacao : Node2D
 
         Estado = Ceu.De(Relogio, Tempo);
         TempoQueFaz = Clima.De(ClimaDaqui, Tempo, SalDoClima, Forcado);
+
+        // ============================ LUZ PROPRIA: A CENA SAI COMO FOI DESENHADA ============================
+        // O `CanvasModulate` BRANCO e a ausencia de ambiente, e nao um ambiente claro: multiplicar por
+        // 1 devolve o pixel do atlas. E o unico jeito de a dimensao mental ser BRANCA -- ver
+        // `RelogioDoPlaneta.LuzPropria`, que conta a foto que achou isso.
+        //
+        // O CLIMA VAI ZERADO JUNTO (`default`), e nao com o `TempoQueFaz`: chuva na cor do ar
+        // escureceria a cena por outro caminho, e a mente nao tem tempo que faca.
+        if (Relogio.LuzPropria)
+        {
+            _ambiente.Color = Colors.White;
+            AnotarEscuridao(Colors.White);
+            _clima.Aplicar(default, delta, Colors.White);
+            return;
+        }
 
         Color cor = CorDoCeu(Estado, TempoQueFaz);
         _ambiente.Color = cor;

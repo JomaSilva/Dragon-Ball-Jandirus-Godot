@@ -1,5 +1,6 @@
 using Godot;
 using Jandirus.Core.Ranks;
+using Jandirus.Core.Skills;
 using Jandirus.Net;
 using LiteNetLib;
 using LiteNetLib.Utils;
@@ -227,8 +228,54 @@ public partial class GameServer
 			w.Put(NomeDoDono(dono));
 			// o que falta PRA MIM: e a unica parte que muda de jogador pra jogador
 			w.Put(Cargos.OqueFalta(r, f) ?? "");
+
+			// ============================ E O QUE O CARGO DA, QUE NUNCA SAIU DAQUI ============================
+			// O painel mandava chave, dono e o que falta -- e mais nada. **Ninguem no jogo conseguia
+			// descobrir o que um cargo entrega antes de toma-lo**, e a informacao existia em DOIS
+			// lugares: a `RankDef.Desc` (texto, escrita pra ser lida) e a `DadivaDeCargo` (a tabela de
+			// verdade, a que o `ReconciliarDadiva` executa).
+			//
+			// Sao os dois campos, e nao um: a `Desc` diz o que o cargo E ("a escola que forma
+			// protetores"), a dadiva diz o que ele DA. Um sem o outro deixa metade da escolha no escuro.
+			// ==========================================================================================
+			w.Put(r.Desc);
+			w.Put(OQueOCargoEntrega(r.Chave));
 		}
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// ============================ O QUE ESTE CARGO ENTREGA, EM UMA LINHA HONESTA ============================
+	/// A lista sai da <see cref="DadivaDeCargo"/> -- **a mesma tabela que o `ReconciliarDadiva`
+	/// executa de verdade** --, e nao da `RankDef.Concede`, que e texto escrito a mao descrevendo o
+	/// DM. A diferenca nao e estilo: `Concede` promete pelo original (o Guardiao "também cria
+	/// Esferas"), e a dadiva diz o que ESTE servidor poe no livro. Uma tela alimentada pela promessa
+	/// mentiria; alimentada pela tabela, ela acompanha sozinha o dia em que a tabela mudar.
+	///
+	/// **E ELA SEPARA O QUE FUNCIONA DO QUE E BOTAO MUDO**, pelo mesmo censo que o
+	/// <see cref="ContarOQueOCargoDeu"/> ja usa (`CensoDeSkills.SistemaQueFalta`). Esconder a metade
+	/// muda faria o painel prometer uma Genkidama que nao dispara -- e mostrar tudo junto, sem marcar,
+	/// faria o jogador chamar de defeito o que e divida declarada. No dia em que a Genkidama for
+	/// portada, ela troca de lado sozinha.
+	/// ====================================================================================================
+	/// </summary>
+	private string OQueOCargoEntrega(string chave)
+	{
+		string[] kit = DadivaDeCargo.De(chave);
+		if (_skills == null || kit.Length == 0) return "";
+
+		List<string> prontas = [], mudas = [];
+		foreach (string path in kit)
+		{
+			Skill? s = _skills.Get(path);
+			if (s == null || s.Nome.Length == 0) continue;
+			(CensoDeSkills.SistemaQueFalta(s) == null ? prontas : mudas).Add(s.Nome);
+		}
+
+		string texto = prontas.Count > 0 ? string.Join(", ", prontas) : "";
+		if (mudas.Count > 0)
+			texto += (texto.Length > 0 ? " | " : "") + "ainda mudo neste servidor: " + string.Join(", ", mudas);
+		return texto;
 	}
 
 	/// <summary>

@@ -489,6 +489,259 @@ public partial class GameServer
 				Checa("ACHADO: o funil `Transformar` NAO cobra o `SemKi` (o `Proxima` avalia com "
 					+ "`kiFracao: 1`) -- se esta linha reprovar, o buraco foi fechado e a checagem tem que virar",
 					  !seco.Forma.NaBase, seco.Forma.Atual);
+
+				// ============================ 7b. E ELA NAO ANDA ENQUANTO A CENA ROLA ============================
+				// O dono: *"npcs estao conseguindo SE MOVER ENQUANTO TRANSFORMAM (oq n deveria
+				// acontecer)"*. No DM a cena abre com `move=0` (`SSJ2Cinematic.dm:4`) e o
+				// `movement handler.dm:131` transforma isso em `mobTime=0`.
+				//
+				// ---- A BANCADA NASCE FORA DO ESTADO, DE PROPOSITO ----
+				// Um corpo forjado JA em cena, com `CenaSegundos` escrito na mao, nunca testaria a
+				// ENTRADA nele -- e foi exatamente esse cego que este projeto ja pagou ("48 provas
+				// verdes e o jogador nao conseguia molhar o pe"). Aqui o corpo comeca ANDANDO na base,
+				// entra em cena pelo funil de PRODUCAO (`Transformar`, o mesmo do passo 1 do
+				// `AplicarComando`) e sai dela pelo relogio de PRODUCAO (`TickDaForma`). Nenhum campo
+				// de estado e escrito por esta bancada.
+				//
+				// ---- E ELA MEDE A INTENCAO, E NAO A AUSENCIA ----
+				// "o corpo nao se moveu" e verde de graca num boneco que nunca quis andar. Por isso o
+				// comando de passo e o MESMO nos tres momentos (antes, durante, depois) e o "antes" e
+				// uma checagem de verdade: se o corpo ja estivesse parado por outro motivo, a primeira
+				// linha reprova e a do meio deixa de significar qualquer coisa.
+				// ==========================================================================================
+				{
+					// ============================ E O MOLDE E OUTRO, PORQUE A CENA DEPENDE DA MAESTRIA ============================
+					// **A PRIMEIRA RODADA DESTA BANCADA REPROVOU AQUI, e o achado e do jogo e nao do
+					// teste**: com o `moldeEscada` (que e `Maestria = 100`) o NPC transformou -- o log
+					// mostra `ia: cena: base -> ssj1` -- e `CenaSegundos` ficou em ZERO. Nao ha bug
+					// nenhum nisso: `Cinematicas.Degrau` DISPENSA a cena a partir de 50% de maestria, e
+					// e a mesma regra que vale pro jogador (quem domina a forma entra nela num piscar).
+					//
+					// Ou seja: **nem todo NPC tem cinematica**. Os moldes de verdade (`npcs.json`) vao de
+					// 0 a 100 -- ha molde com 10, com 25, com 60 e com 100, e o povoamento nasce com o
+					// `default` 0 --, entao quem anda enquanto transforma e a metade DE BAIXO da tabela.
+					// Um corpo de bancada com 100% de maestria nunca teria mostrado o defeito do dono.
+					// ========================================================================================================
+					var moldeCena = new Jandirus.Core.Npc.MoldeDeNpc
+					{
+						Id = "bancada_cena", Racas = ["Saiyan"], Classe = "Saiyan",
+						EscadaAutomatica = true, Maestria = 0,
+					};
+
+					ServerPlayer cena = Forjar("ia: cena", 5e9, new Vec2(0, 3400));
+					cena.Ficha.Class = "Saiyan";
+					cena.Ficha.Ki = cena.Ficha.MaxKi;
+					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
+						cena.Forma, moldeCena, cena.Ficha.BP, Perfil(cena));
+
+					// O MESMO COMANDO NOS TRES MOMENTOS -- e o WASD do jogador escrito no teclado da IA.
+					var andar = new Comando { Rumo = new Vec2(1, 0) };
+
+					Vec2 p0 = cena.Pos;
+					for (int i = 0; i < 10; i++) AplicarComando(cena, andar, Protocol.TickSeconds);
+					float antes = (cena.Pos - p0).Length;
+					Checa("na base, o corpo dirigido ANDA com o comando de passo",
+						  antes > 1f, $"{antes:0.0}px em 10 tiques");
+
+					// ENTRA EM CENA PELO FUNIL DE PRODUCAO -- `Transformar` -> `AnunciarForma` ->
+					// `MarcarCena`, a mesma cadeia que o log de jogo mostrou ("ia: forma: base -> ssj1").
+					Transformar(cena, subir: true);
+					Checa("...a transformacao pelo funil PRENDE o corpo (o `MarcarCena` do `AnunciarForma`)",
+						  cena.CenaSegundos > 0, $"{cena.CenaSegundos:0.#}s forma={cena.Forma.Atual}");
+
+					// E O PORTAO E O DO JOGADOR: `PodeMexerOCorpo` e a MESMA funcao que o `Input`
+					// (`GameServer.cs`) chama antes de aceitar o pacote de movimento. Nao ha um `if` de
+					// cinematica dentro do `PassoDaIa` -- se houvesse, esta linha daria verde com a
+					// regra existindo em dois lugares, que e o defeito que a paridade quer impedir.
+					Checa("...e quem recusa e o portao do JOGADOR (`PodeMexerOCorpo`), nao um `if` da IA",
+						  !PodeMexerOCorpo(cena));
+
+					Vec2 p1 = cena.Pos;
+					for (int i = 0; i < 30; i++) AplicarComando(cena, andar, Protocol.TickSeconds);
+					float durante = (cena.Pos - p1).Length;
+					Checa("...e com o MESMO comando de passo ele nao anda um pixel na cinematica",
+						  durante < 0.001f, $"{durante:0.000}px em 30 tiques");
+					Checa("...e a animacao tambem nao mente (`Moving` falso, sem corrida)",
+						  !cena.Moving && !cena.Correndo && !cena.Ficha.dashing);
+
+					// SAI DA CENA PELO RELOGIO DE PRODUCAO. `TickDaForma` e o unico lugar que abate o
+					// prazo, e ele roda pra TODO corpo de `_players` (ver `TickDosRelogiosDoCorpo`) --
+					// e por isso NPC, reflexo da mente e boneco de fera escorrem junto, sem linha nova.
+					for (int i = 0; i < 4000 && cena.CenaSegundos > 0; i++)
+					{
+						cena.Ficha.Ki = cena.Ficha.MaxKi;   // o dreno da forma nao e o assunto aqui
+						TickDaForma(cena, Protocol.TickSeconds);
+					}
+					Checa("...o prazo VENCE sozinho no relogio da forma", cena.CenaSegundos <= 0,
+						  $"{cena.CenaSegundos:0.#}s");
+
+					Vec2 p2 = cena.Pos;
+					for (int i = 0; i < 10; i++) AplicarComando(cena, andar, Protocol.TickSeconds);
+					float depois = (cena.Pos - p2).Length;
+					Checa("...e ACABADA a cena o corpo volta a andar com o mesmo comando",
+						  depois > 1f, $"{depois:0.0}px em 10 tiques");
+
+					// ============================ E A OUTRA METADE: QUEM DOMINA A FORMA NAO PARA ============================
+					// Sem esta checagem, a de cima poderia ficar verde com uma regra grosseira demais --
+					// "NPC nao anda quando troca de forma" --, e o veterano que ja domina o SSJ ficaria
+					// plantado 25 s de graca no meio da luta. A cena e que prende, e ela e a MESMA
+					// dispensa de maestria que o jogador tem (`Cinematicas.Degrau`, >= 50%).
+					// ========================================================================================
+					ServerPlayer veterano = Forjar("ia: forma dominada", 5e9, new Vec2(0, 3480));
+					veterano.Ficha.Class = "Saiyan";
+					veterano.Ficha.Ki = veterano.Ficha.MaxKi;
+					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
+						veterano.Forma, moldeEscada, veterano.Ficha.BP, Perfil(veterano));
+					Transformar(veterano, subir: true);
+					Checa("quem DOMINA a forma nao tem cena (a dispensa de 50% do `Cinematicas.Degrau`)",
+						  !veterano.Forma.NaBase && veterano.CenaSegundos <= 0,
+						  $"forma={veterano.Forma.Atual} cena={veterano.CenaSegundos:0.#}s");
+
+					Vec2 p4 = veterano.Pos;
+					for (int i = 0; i < 10; i++) AplicarComando(veterano, andar, Protocol.TickSeconds);
+					float veloz = (veterano.Pos - p4).Length;
+					Checa("...e por isso ele anda no MESMO tique em que sobe de forma",
+						  veloz > 1f, $"{veloz:0.0}px em 10 tiques");
+
+					// ============================ A CENA INTERROMPIDA NAO PRENDE NINGUEM ============================
+					// O item 4 do pedido: nocaute, morte ou troca de zona no meio da cinematica nao
+					// podem deixar um corpo congelado pra sempre. E nao ha bit pra limpar -- cair
+					// REVERTE a forma (`TickDaForma`), reverter passa pelo `AnunciarForma`, e o anuncio
+					// da BASE marca a cena em ZERO. O congelamento cai junto com a forma, no mesmo gesto.
+					// ========================================================================================
+					ServerPlayer caido = Forjar("ia: cena interrompida", 5e9, new Vec2(0, 3560));
+					caido.Ficha.Class = "Saiyan";
+					caido.Ficha.Ki = caido.Ficha.MaxKi;
+					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
+						caido.Forma, moldeCena, caido.Ficha.BP, Perfil(caido));
+					Transformar(caido, subir: true);
+					Checa("outro corpo entra em cena pelo mesmo funil", caido.CenaSegundos > 0,
+						  $"{caido.CenaSegundos:0.#}s");
+
+					caido.Ficha.KO = true;                       // o nocaute NO MEIO da cinematica
+					TickDaForma(caido, Protocol.TickSeconds);
+					Checa("...o nocaute no meio da cena desfaz a forma E solta o corpo no mesmo gesto",
+						  caido.Forma.NaBase && caido.CenaSegundos <= 0,
+						  $"forma={caido.Forma.Atual} cena={caido.CenaSegundos:0.#}s");
+
+					caido.Ficha.KO = false;                      // levantou: nada sobrou preso
+					Vec2 p3 = caido.Pos;
+					for (int i = 0; i < 10; i++) AplicarComando(caido, andar, Protocol.TickSeconds);
+					float voltou = (caido.Pos - p3).Length;
+					Checa("...e de pe ele anda de novo -- a cena interrompida nao deixou resto",
+						  voltou > 1f, $"{voltou:0.0}px em 10 tiques");
+
+					// ============================ 7c. A INJECAO: O ESTADO PRE-CORRECAO ============================
+					// As linhas de cima dizem "na cinematica ele nao anda". Falta a pergunta que uma
+					// rodada verde nunca responde: **ele nao anda POR CAUSA da cena?**
+					//
+					// Um corpo pode ficar parado por sete outros motivos nesta mesma funcao (nocaute,
+					// morte, carregar, embate, embate de ki, raiz de ki, paralisia), e pode ficar parado
+					// por nenhum -- comando mal montado, Ki no fim, forma que nao subiu. Qualquer um
+					// deles deixaria a linha "nao anda um pixel" VERDE com o conserto do dono desligado.
+					//
+					// Entao aqui se injeta exatamente o estado de ANTES: a forma montada, a cinematica
+					// rodando no cliente e **o servidor sem saber dela** (`CenaSegundos = 0`). Nada mais
+					// muda -- mesmo corpo, mesmo comando, mesmo Ki, mesma forma, mesmo tique. Se ele
+					// andar agora, a linha de cima e verde pelo motivo certo.
+					// =========================================================================================
+					ServerPlayer injetado = Forjar("ia: cena injetada", 5e9, new Vec2(0, 3640));
+					injetado.Ficha.Class = "Saiyan";
+					injetado.Ficha.Ki = injetado.Ficha.MaxKi;
+					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
+						injetado.Forma, moldeCena, injetado.Ficha.BP, Perfil(injetado));
+					Transformar(injetado, subir: true);
+
+					Checa("(controle da injecao) o corpo entrou em cena e esta preso",
+						  injetado.CenaSegundos > 0 && !PodeMexerOCorpo(injetado),
+						  $"{injetado.CenaSegundos:0.#}s");
+
+					double prazoGuardado = injetado.CenaSegundos;
+					injetado.CenaSegundos = 0;               // A INJECAO -- e so ela
+
+					Vec2 p5 = injetado.Pos;
+					for (int i = 0; i < 10; i++) AplicarComando(injetado, andar, Protocol.TickSeconds);
+					float comDefeito = (injetado.Pos - p5).Length;
+					Checa("[injecao] com o relogio da cena zerado -- e SO ele -- o mesmo corpo, com o "
+						+ "mesmo comando, VOLTA A ANDAR: a linha de cima e verde por causa do `EmCena`",
+						  comDefeito > 1f, $"{comDefeito:0.0}px em 10 tiques");
+
+					injetado.CenaSegundos = prazoGuardado;   // devolve o mundo como estava
+					Vec2 p6 = injetado.Pos;
+					for (int i = 0; i < 10; i++) AplicarComando(injetado, andar, Protocol.TickSeconds);
+					Checa("...e repondo o prazo ele para de novo -- a injecao foi retirada",
+						  (injetado.Pos - p6).Length < 0.001f, $"{(injetado.Pos - p6).Length:0.000}px");
+
+					// ============================ 7d. O JOGADOR CONTINUA ANDANDO COMO ANTES ============================
+					// **A REGRESSAO QUE O DONO JA COBROU UMA VEZ, EM MAIUSCULAS**: *"pedi pra tu consertar
+					// a aura PQ TU QUEBROU A MOVIMENTACAO, ERA SO CONSERTAR A AURA"*. O jeito de este
+					// conserto quebrar de novo nao e "o NPC anda na cena" -- e o oposto: o portao pegar
+					// mais gente do que devia, e alguem ficar plantado sem saber por que.
+					//
+					// O corpo aqui nasce **SEM CEREBRO** (`comCerebro: false`), que e a forma que um
+					// corpo de jogador tem no servidor: quem decide o passo dele e o pacote do dono e
+					// nao um plano. A pergunta e feita ao MESMO `PodeMexerOCorpo` que o `Input`
+					// (`GameServer.cs:3671`) chama antes de aceitar movimento.
+					//
+					// E ela e feita ESTADO POR ESTADO, e nao uma vez so: uma checagem generica ("ele anda")
+					// ficaria verde com o portao pegando o corpo em voo, ou ferido, ou transformado fora
+					// da cena -- que sao exatamente os estados em que o dono joga.
+					// ==============================================================================================
+					ServerPlayer jogador = Forjar("jogador: sem cerebro", 5e9, new Vec2(0, 3720), comCerebro: false);
+					jogador.Ficha.Class = "Saiyan";
+					jogador.Ficha.Ki = jogador.Ficha.MaxKi;
+					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
+						jogador.Forma, moldeEscada, jogador.Ficha.BP, Perfil(jogador));
+
+					Checa("(corpo de JOGADOR: sem cerebro, dirigido por pacote) na base ele anda",
+						  PodeMexerOCorpo(jogador));
+
+					jogador.Ficha.Ki = jogador.Ficha.MaxKi * 0.3;
+					Checa("...com o Ki pela metade, anda", PodeMexerOCorpo(jogador));
+					jogador.Ficha.Ki = jogador.Ficha.MaxKi;
+
+					jogador.Combate?.Ferir(jogador.Combate.Corpo.Achar("Torso")!, 30, letal: false);
+					Checa("...FERIDO, anda", PodeMexerOCorpo(jogador));
+
+					jogador.Voando = true;
+					jogador.Altitude = 64;
+					Checa("...VOANDO, anda", PodeMexerOCorpo(jogador));
+					jogador.Voando = false;
+					jogador.Altitude = 0;
+
+					// TRANSFORMADO E FORA DA CENA: o `moldeEscada` e `Maestria = 100`, entao a dispensa
+					// do `Cinematicas.Degrau` vale e nao ha cena nenhuma. E o estado em que o dono passa
+					// a maior parte da briga -- e o unico que o portao novo poderia ter engolido.
+					Transformar(jogador, subir: true);
+					Checa("...TRANSFORMADO e sem cena (maestria alta), anda -- o portao novo nao o pegou",
+						  !jogador.Forma.NaBase && jogador.CenaSegundos <= 0 && PodeMexerOCorpo(jogador),
+						  $"forma={jogador.Forma.Atual} cena={jogador.CenaSegundos:0.#}s");
+
+					// ---- E A RECUSA NOVA TEM EXATAMENTE UM BIT DE LARGURA ----
+					// O portao poderia ter sido escrito FINGINDO outro estado (marcar KO, marcar
+					// `Carregando`), e a linha "ele nao anda" ficaria igualmente verde -- com o corpo
+					// virando alvo de nocaute pro resto do jogo. Aqui se afirma o contrario: em cena,
+					// TODAS as outras recusas do funil continuam desligadas.
+					ServerPlayer emCena = Forjar("jogador: em cena", 5e9, new Vec2(0, 3800), comCerebro: false);
+					emCena.Ficha.Class = "Saiyan";
+					emCena.Ficha.Ki = emCena.Ficha.MaxKi;
+					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
+						emCena.Forma, moldeCena, emCena.Ficha.BP, Perfil(emCena));
+					Transformar(emCena, subir: true);
+
+					Checa("um corpo de JOGADOR em cinematica tambem e recusado pelo funil",
+						  emCena.CenaSegundos > 0 && !PodeMexerOCorpo(emCena),
+						  $"{emCena.CenaSegundos:0.#}s");
+					Checa("...e a recusa e SO a da cena: nem nocaute, nem morte, nem carregar, nem "
+						+ "embate, nem raiz de ki, nem paralisia foram acesos pra prender o corpo",
+						  !emCena.Ficha.KO && !emCena.Ficha.dead && !emCena.Carregando
+						  && !_emEmbate.ContainsKey(emCena.Id) && !_emEmbateDeKi.ContainsKey(emCena.Id)
+						  && !EnraizadoPorKi(emCena.Id) && !Paralisado(emCena.Id)
+						  && emCena.ArrastoRestante <= 0);
+					Checa("...e ele continua EXISTINDO pro mundo (na lista de corpos e na zona): o "
+						+ "portao e de VETOR, e nao um corpo tirado de jogo",
+						  _players.ContainsKey(emCena.Id) && ZoneList(emCena.Zone.Hash).Contains(emCena));
+				}
 			}
 
 			// =====================================================================
@@ -778,10 +1031,29 @@ public partial class GameServer
 
 				// E O CARO E AFIRMADO COMO ELE E, com a causa nomeada -- a checagem existe pra pegar
 				// REGRESSAO, e nao pra prometer um zero que o catalogo compartilhado nao permite.
+				//
+				// ============================ ESTE TETO SUBIU UMA VEZ, E O MOTIVO ESTA AQUI ============================
+				// Ele era 8.192 e a medida batia em 8.173 -- dezenove bytes de folga, ou seja: a
+				// proxima pergunta que entrasse na leitura de 1 Hz ia reprovar, qualquer que fosse.
+				// Foi o que aconteceu quando o sopro (`SabeSopro`) virou a **quinta** pergunta de
+				// `SabeTecnica` da leitura (as outras quatro sao as do `ArsenalDeLonge`): +131 B por
+				// tique com 20 corpos, e cada `SabeTecnica` custa um iterador -- o `VerbosAtivos()`,
+				// que e `yield return` e por isso aloca a maquina de estado por chamada.
+				//
+				// O teto foi remedido em vez de afrouxado no olho: 8.704 sao ~5% acima do que a
+				// leitura custa hoje. Continua sendo um detector de REGRESSAO -- um laco novo de
+				// verdade (uma varredura de zona, uma lista de skills montada por corpo) custa
+				// centenas de bytes a milhares, e nao dezenas.
+				//
+				// **Se esta linha reprovar de novo, a resposta certa nao e subir o numero**: e olhar
+				// se a pergunta nova precisava mesmo passar pelo funil caro, ou se ela cabia numa das
+				// que ja estao la.
+				// ================================================================================================
 				Checa("a leitura de capacidades (1 Hz) fica dentro do orcamento de lixo conhecido "
-					+ "-- a fonte e o `HashSet` que `Catalogo.LinhasAbertas` monta por `Avaliar`, "
-					+ "dentro do `Proxima`; se esta linha reprovar, alguem pos um laco novo no caminho",
-					  b20 < 8_192, $"{b20} B por tique (media) com 20 corpos");
+					+ "-- as fontes sao o `HashSet` do `Catalogo.LinhasAbertas` (dentro do `Proxima`) e "
+					+ "os cinco `SabeTecnica` do arsenal e do sopro; se esta linha reprovar, alguem pos "
+					+ "um laco novo no caminho",
+					  b20 < 8_704, $"{b20} B por tique (media) com 20 corpos");
 			}
 
 			// =====================================================================
@@ -809,8 +1081,18 @@ public partial class GameServer
 			// ==============================================================================================================
 			{
 				// ---------- (A) COM O JOGO COMO ELE E HOJE ----------
-				Checa("as tecnicas que VIAJAM estao na tabela de ataque de longe (uma por tipo)",
-					  TecnicasDeLonge.Alguma && TecnicasDeLonge.Quantas == 3,
+				// ============================ ESTE NUMERO JA FICOU VELHO UMA VEZ ============================
+				// Ele dizia TRES e o codigo tinha QUATRO desde que outra sessao registrou a Bala
+				// Dispersa (lote G7). Tres checagens desta familia ficaram vermelhas por semanas, e
+				// nenhuma delas era um defeito de producao: era a bancada afirmando o passado.
+				//
+				// A licao nao e "afrouxar o numero" -- um `>= 1` aqui nao pegaria a tabela sendo
+				// esvaziada por engano, que e justamente o que esta linha existe pra pegar. E que a
+				// expectativa exata tem que ser corrigida no MESMO commit em que a tabela cresce, como
+				// qualquer outra afirmacao de conjunto.
+				// ======================================================================================
+				Checa("as tecnicas que VIAJAM estao na tabela de ataque de longe",
+					  TecnicasDeLonge.Alguma && TecnicasDeLonge.Quantas == 4,
 					  $"{TecnicasDeLonge.Quantas} registradas");
 				Checa("...e as instantaneas continuam FORA (o `Light_Buster` e golpe de aproximacao)",
 					  TecnicasDeLonge.Get("Light_Buster") == null && TecnicasDeLonge.Get("Solar_Flare") == null);
@@ -841,9 +1123,9 @@ public partial class GameServer
 				// `NiveisDeSkill.VerbosAtivos()` respondia sem que ninguem perguntasse. Foi esta
 				// afirmacao que achou a funcao orfa: um corpo com o catalogo inteiro saia com UMA opcao.
 				// ========================================================================================
-				Checa($"o corpo que aprendeu o catalogo INTEIRO ({aprendidas} skills) sai com o RAIO -- "
-					+ "o unico que uma skill destrava",
-					  sabido.Cerebro.Poderes.DeLonge.Quantas == 1,
+				Checa($"o corpo que aprendeu o catalogo INTEIRO ({aprendidas} skills) sai com o RAIO e a "
+					+ "BALA DISPERSA -- os dois que uma skill destrava",
+					  sabido.Cerebro.Poderes.DeLonge.Quantas == 2,
 					  $"{sabido.Cerebro.Poderes.DeLonge.Quantas} opcoes");
 
 				// E AGORA OS DEGRAUS, pelo caminho de producao (o mesmo `DoSave` do login).
@@ -853,8 +1135,8 @@ public partial class GameServer
 				sabido.Niveis.DoSave(comNiveis);
 
 				sabido.Cerebro.Poderes = LerCapacidades(sabido);
-				Checa("...e subindo os degraus que concedem as outras duas, o arsenal sai com as TRES",
-					  sabido.Cerebro.Poderes.DeLonge.Quantas == 3,
+				Checa("...e subindo os degraus que concedem as outras duas, o arsenal sai com as QUATRO",
+					  sabido.Cerebro.Poderes.DeLonge.Quantas == 4,
 					  $"{sabido.Cerebro.Poderes.DeLonge.Quantas} opcoes");
 				Checa("...e o jogo passa a ACEITAR os verbs vindos de nivel (`SabeTecnica`, o mesmo gate)",
 					  SabeTecnica(sabido, "Basic_Blast") && SabeTecnica(sabido, "Guided_Ball"));
@@ -899,8 +1181,21 @@ public partial class GameServer
 					}
 					Checa("sem arsenal, 10.000 percepcoes nao produzem UM pedido de tecnica",
 						  pediu == 0 && planejou == 0, $"{pediu} pedidos, {planejou} tiques no plano de atirar");
-					Checa("...e ela tambem nao MIRA em ninguem (a mira nasceu pro tiro, e nao muda o soco)",
-						  mirou == 0, $"{mirou}");
+					// ============================ ESTA CHECAGEM DIZIA O CONTRARIO, E ELA ESTAVA ERRADA ============================
+					// Ela afirmava *"e ela tambem nao MIRA em ninguem (a mira nasceu pro tiro, e nao muda
+					// o soco)"* -- e era verdade sobre o codigo e MENTIRA sobre o jogo. Enquanto so a
+					// receita de atirar marcava, o `Atacar` -- que vira o corpo pro MARCADO antes de
+					// arrancar -- nao tinha pra quem virar no corpo-a-corpo, e o corpo que nao podia
+					// andar socava pras costas. A mira NAO nasceu pro tiro: ela e o `target` do
+					// `NPCAI.dm`, UMA variavel de alvo que serve o seletor de acao inteiro.
+					//
+					// Agora ela e escrita pra todo plano com alvo vivo, e por isso este corpo SEM
+					// ARSENAL -- que nunca vai atirar, como a linha de cima acabou de provar -- mira
+					// assim mesmo.
+					// =========================================================================================================
+					Checa("...mas ela MIRA em todas: a mira e o `target` do DM (quem eu enfrento) e nao "
+						+ "um acessorio do tiro -- e dela que sai a virada antes do soco",
+						  mirou == 10_000, $"{mirou} de 10.000");
 				}
 
 				// A MESMA VARREDURA, AGORA COM QUEM TEM OS TRES ATAQUES DE KI NA MAO.
@@ -1938,14 +2233,21 @@ public partial class GameServer
 				// Mais tiques: o compromisso solta, o plano vira `Pressionar` e a receita passa a mandar
 				// passo pra tras (colado demais) JUNTO com o golpe -- a combinacao que produzia o defeito.
 				//
-				// `cegarOOlhar` REPRODUZ O DEFEITO sem tocar em producao: com `Olhar` zerado o atuador cai
-				// no rumo do passo, que e exatamente o que ele fazia antes desta camada. E o que prova
-				// que a armadilha esta ARMADA -- uma checagem que nao sabe ficar vermelha nao mede nada,
-				// e este projeto ja viu 4000 verdes com quatro defeitos visuais atravessando.
-				(int noAr, int comAlvo, int deCostas) Medir(bool cegarOOlhar)
+				// `cegarADirecao` REPRODUZ O DEFEITO sem tocar em producao: e o que prova que a armadilha
+				// esta ARMADA -- uma checagem que nao sabe ficar vermelha nao mede nada, e este projeto
+				// ja viu 4000 verdes com quatro defeitos visuais atravessando.
+				//
+				// ELE CEGA AS DUAS PONTAS, e passou a precisar disso. Antes bastava zerar o `Olhar`:
+				// com ele zerado o atuador cai no rumo do passo, que e o que fazia antes daquela
+				// camada. Hoje isso NAO reproduz mais o defeito, e a bancada ficou vermelha ao dizer
+				// que reproduzia -- porque a virada mudou de lugar: quem garante a direcao do golpe e
+				// o `Atacar`, pelo alvo MARCADO. Sem zerar a marca junto (e a mira ja escrita), o
+				// corpo continuaria encarando e a "armadilha" mediria o conserto contra ele mesmo.
+				(int noAr, int comAlvo, int deCostas) Medir(bool cegarADirecao)
 				{
 					int socosNoAr = 0, socosComAlvo = 0, deCostas = 0;
 					soqueiro.Facing = Facing.East;
+					soqueiro.AlvoId = 0;
 					for (int i = 0; i < 240; i++)
 					{
 						// o alvo e RECOLADO todo tique: o que se mede e a direcao, e nao a briga de
@@ -1957,7 +2259,7 @@ public partial class GameServer
 						Comando c = soqueiro.Cerebro!.Pensar(
 							LerPercepcao(soqueiro, vitima, vitima.Pos, quemAtira: false),
 							Protocol.TickSeconds, _rng);
-						if (cegarOOlhar) c = c with { Olhar = Vec2.Zero };
+						if (cegarADirecao) { c = c with { Olhar = Vec2.Zero, Marcar = 0 }; soqueiro.AlvoId = 0; }
 						AplicarComando(soqueiro, c, Protocol.TickSeconds);
 
 						if (!c.Leve && !c.Pesado) continue;
@@ -1967,19 +2269,98 @@ public partial class GameServer
 					return (socosNoAr, socosComAlvo, deCostas);
 				}
 
-				(int noAr, int comAlvo, int deCostas) cego = Medir(cegarOOlhar: true);
-				Checa("A ARMADILHA ESTA ARMADA: com o `Olhar` zerado -- o comportamento de antes desta "
+				(int noAr, int comAlvo, int deCostas) cego = Medir(cegarADirecao: true);
+				Checa("A ARMADILHA ESTA ARMADA: sem olhar e sem marca -- o comportamento de antes desta "
 					+ "camada -- o corpo soca de costas e o golpe sai SEM ALVO",
 					  cego.deCostas > 0 && cego.noAr > 0,
 					  $"de costas={cego.deCostas} no ar={cego.noAr} com alvo={cego.comAlvo}");
 
-				(int noAr, int comAlvo, int deCostas) real = Medir(cegarOOlhar: false);
+				(int noAr, int comAlvo, int deCostas) real = Medir(cegarADirecao: false);
 				Checa("a receita REALMENTE soca nesta janela (senao o verde de baixo seria de graca)",
 					  real.comAlvo + real.noAr >= 5, $"{real.comAlvo + real.noAr} golpes em 240 tiques");
 				Checa("NENHUM golpe sai com o corpo virado pro lado errado",
 					  real.deCostas == 0, $"{real.deCostas} de {real.comAlvo + real.noAr}");
 				Checa("...e NENHUM golpe sai sem alvo, com o oponente colado atras -- eram 38% antes",
 					  real.noAr == 0, $"{real.noAr} no ar de {real.comAlvo + real.noAr}");
+
+				// ============================ E QUEM NAO PODE ANDAR TAMBEM NAO SOCA DE COSTAS ============================
+				// **A metade que o `Olhar` nao alcancava.** O olhar e aplicado dentro do `PassoDaIa`,
+				// ATRAS do `PodeMexerOCorpo` -- e ha estados que recusam o passo e NAO recusam o soco:
+				// paralisado, enraizado por Ki (o `canmove = 0` dos raios) e prensado pela gravidade
+				// (`Esmagamento.Prende`, o `gravParalysis` do DM). Neles o corpo continua mandando
+				// `Leve`/`Pesado` (`CombatState.PodeAtacar()` nao olha nada disso) e socava com a
+				// direcao do ULTIMO passo -- que, nas receitas que recuam, e a oposta ao inimigo.
+				//
+				// A PRENSA E A ESCOLHIDA porque e a unica das tres que e DETERMINISTICA: a paralisia
+				// tem a fresta de 1 em 12 do DM e o enraizamento pede um canal de raio de pe. Aqui so
+				// interessa fechar o portao do passo, e `weight_ratio >= 4` fecha sem sorteio.
+				//
+				// `semMarca` REPRODUZ O DEFEITO sem tocar em producao, como o `cegarOOlhar` acima: sem
+				// a marca, o `Atacar` nao tem pra quem virar e o corpo preso soca pras costas.
+				// =============================================================================================
+				soqueiro.Ficha.weight_ratio = 5;   // >= `Esmagamento.RazaoQuePrende`
+
+				// A RECARGA E ZERADA ANTES DE PERGUNTAR, e nao e detalhe de arrumacao: a medicao de
+				// cima termina num tique qualquer, e se o ultimo deles tiver socado o corpo ainda esta
+				// em recarga -- `PodeAtacar()` devolveria falso e este preparo ficaria vermelho POR
+				// SORTE, medindo o relogio do golpe anterior em vez da prensa. (Aconteceu.)
+				soqueiro.Combate.Recarga = 0;
+				soqueiro.Combate.Stun = 0;
+				Checa("(preparo) prensado pela gravidade, o corpo NAO pode andar -- mas PODE socar",
+					  !PodeMexerOCorpo(soqueiro) && soqueiro.Combate.PodeAtacar());
+
+				// ONDE ELE ESTA AGORA, e nao a `origem`: as duas medicoes de cima o deixaram andar
+				// (era o ponto delas), entao o corpo ja se deslocou centenas de pixels. Comparar com a
+				// `origem` faria este controle ficar vermelho por um motivo que nao e o dele.
+				Vec2 ondeFoiPreso = soqueiro.Pos;
+
+				(int noAr, int deCostas, int golpes) MedirPreso(bool semMarca)
+				{
+					int noAr = 0, deCostas = 0, golpes = 0;
+					soqueiro.Facing = Facing.East;
+					soqueiro.AlvoId = 0;
+					for (int i = 0; i < 240; i++)
+					{
+						vitima.Pos = soqueiro.Pos - new Vec2(18, 0);
+						vitima.Ficha.HP = 100; vitima.Ficha.KO = false;
+						soqueiro.Combate.Recarga = 0;
+
+						Comando c = soqueiro.Cerebro!.Pensar(
+							LerPercepcao(soqueiro, vitima, vitima.Pos, quemAtira: false),
+							Protocol.TickSeconds, _rng);
+						if (semMarca) { c = c with { Marcar = 0 }; soqueiro.AlvoId = 0; }
+						AplicarComando(soqueiro, c, Protocol.TickSeconds);
+
+						if (!c.Leve && !c.Pesado) continue;
+						golpes++;
+						if (soqueiro.Facing != Facing.West) deCostas++;
+						if (AlvoNaFrente(soqueiro) == null) noAr++;
+					}
+					return (noAr, deCostas, golpes);
+				}
+
+				(int noAr, int deCostas, int golpes) presoCego = MedirPreso(semMarca: true);
+				Checa("A ARMADILHA ESTA ARMADA: preso no chao e SEM MARCA -- o comportamento de antes "
+					+ "desta camada -- o corpo soca de costas e o golpe sai SEM ALVO",
+					  presoCego.deCostas > 0 && presoCego.noAr > 0,
+					  $"de costas={presoCego.deCostas} no ar={presoCego.noAr} de {presoCego.golpes}");
+
+				(int noAr, int deCostas, int golpes) preso = MedirPreso(semMarca: false);
+				Checa("preso no chao ele REALMENTE soca (senao o verde de baixo seria de graca)",
+					  preso.golpes >= 5, $"{preso.golpes} golpes em 240 tiques");
+				Checa("PRENSADO PELA GRAVIDADE ele ainda encara antes de bater -- a virada mora no "
+					+ "caminho do GOLPE, e nao no do passo",
+					  preso.deCostas == 0, $"{preso.deCostas} de {preso.golpes}");
+				Checa("...e nenhum golpe do corpo preso sai sem alvo",
+					  preso.noAr == 0, $"{preso.noAr} no ar de {preso.golpes}");
+
+				// E O CORPO CONTINUOU PRESO: se a prensa tivesse afrouxado no meio, os tres verdes
+				// acima seriam do caminho do passo e nao do caminho do golpe -- o verde vazio classico.
+				Checa("(controle) a prensa valeu ate o fim -- o corpo nunca andou",
+					  !PodeMexerOCorpo(soqueiro) && (soqueiro.Pos - ondeFoiPreso).LengthSquared < 1e-4f,
+					  $"andou {(soqueiro.Pos - ondeFoiPreso).Length:0} px");
+				soqueiro.Ficha.weight_ratio = 0;
+				soqueiro.AlvoId = 0;
 
 				// ---- QUEM VAGA OLHA PRA ONDE VAI, e nao pra um alvo que nao existe ----
 				// A outra metade da regra: `Olhar` zero cai no rumo do passo. Sem esta checagem, "encarar
@@ -2358,31 +2739,1397 @@ public partial class GameServer
 				// ---------- (j) A DISTANCIA DE AGRESSAO E O LEASH ----------
 				// Aqui o corpo forjado nao serve: `PresaDoHostil` so olha GENTE DE VERDADE
 				// (`EhJogador`), e quem tem `Peer` nesta bancada e o proprio robo que a disparou.
+				//
+				// ============================ ESTA SECAO NASCIA ANTES DO PROPRIO SUJEITO ============================
+				// **Duas destas checagens ficaram vermelhas por semanas e nao era producao.** A bancada
+				// e disparada no login (`GameServer.cs`, o `if (_iaDeTeste)`) e o robo so entra no
+				// `ZoneList` da zona dele NOVENTA E SETE LINHAS DEPOIS. `PresaDoHostil` varre `ZoneList`
+				// e mais nada -- entao, durante a bancada inteira, o robo era INVISIVEL pra funcao que
+				// esta secao existe pra medir.
+				//
+				// O sintoma e o pior que uma bancada pode ter: as duas checagens de "ele NAO ve" passavam
+				// VACUAMENTE (nulo a qualquer distancia, inclusive colado) e as duas de "ele VE" falhavam.
+				// Metade da secao estava verde sem medir nada.
+				//
+				// O conserto NAO e mover o disparo da bancada -- a ordem dele no login tem tres razoes
+				// escritas la (os moldes carregados, a bancada de ponta a ponta que vem depois). E POR O
+				// SUJEITO NA MESA: a secao poe o robo na lista, mede, e o tira. Ela devolve o mundo como
+				// achou, e o login continua fazendo o `Add` dele daqui a pouco -- por isso o `removeu`, e
+				// nao um `Add` cego que deixaria o robo DUAS vezes na zona.
+				//
+				// E o mesmo padrao que a memoria deste projeto ja registra por escrito ("bancada nasce no
+				// lugar errado"): nascer dentro do estado nunca testa a ENTRADA nele.
+				// ==============================================================================================
 				{
-					ServerPlayer cacador = Forjar("ia: hostil", 50_000, quem.Pos + new Vec2(40 * ZoneCollision.TileSize, 0), comCerebro: false);
-					ZoneList(cacador.Zone.Hash).Remove(cacador);
-					cacador.Zone = quem.Zone;
-					ZoneList(cacador.Zone.Hash).Add(cacador);
+					List<ServerPlayer> naZona = ZoneList(quem.Zone.Hash);
+					bool puseu = !naZona.Contains(quem);
+					if (puseu) naZona.Add(quem);
 
-					Checa("(preparo) o robo desta bancada conta como gente pra caca",
-						  EhJogador(quem) && !quem.Ficha.dead && !quem.Ficha.KO);
+					try
+					{
+						ServerPlayer cacador = Forjar("ia: hostil", 50_000, quem.Pos + new Vec2(40 * ZoneCollision.TileSize, 0), comCerebro: false);
+						ZoneList(cacador.Zone.Hash).Remove(cacador);
+						cacador.Zone = quem.Zone;
+						ZoneList(cacador.Zone.Hash).Add(cacador);
 
-					Checa("a 40 tiles, o hostil NAO ve ninguem -- ele cacava a zona inteira antes",
-						  PresaDoHostil(cacador) == null);
+						Checa("(preparo) o robo desta bancada conta como gente pra caca",
+							  EhJogador(quem) && !quem.Ficha.dead && !quem.Ficha.KO);
 
-					cacador.Pos = quem.Pos + new Vec2(10 * ZoneCollision.TileSize, 0);
-					Checa("...a 10 tiles ele NOTA (o `MAX_AGGRO_RANGE` de 20)",
-						  PresaDoHostil(cacador)?.Id == quem.Id);
+						// ============================ O CONTROLE QUE FALTAVA ============================
+						// Sem ele, "a 40 tiles ele NAO ve ninguem" fica verde tambem quando a lista da
+						// zona esta vazia -- que era exatamente o caso. Perguntar COLADO primeiro e o
+						// unico jeito de o vermelho de longe significar distancia e nao ausencia.
+						// ==========================================================================
+						cacador.Pos = quem.Pos + new Vec2(2 * ZoneCollision.TileSize, 0);
+						Checa("(controle) COLADO ele enxerga -- senao os 'nao ve' abaixo seriam de graca",
+							  PresaDoHostil(cacador)?.Id == quem.Id);
+						cacador.PresaEngajada = 0;
 
-					cacador.Pos = quem.Pos + new Vec2(40 * ZoneCollision.TileSize, 0);
-					Checa("...e depois de engajado ele SEGUE a 40 tiles -- o raio de largar e maior que "
-						+ "o de adotar, e a folga entre os dois e o que impede a briga de piscar",
-						  PresaDoHostil(cacador)?.Id == quem.Id);
+						cacador.Pos = quem.Pos + new Vec2(40 * ZoneCollision.TileSize, 0);
+						Checa("a 40 tiles, o hostil NAO ve ninguem -- ele cacava a zona inteira antes",
+							  PresaDoHostil(cacador) == null);
 
-					cacador.Pos = quem.Pos + new Vec2(70 * ZoneCollision.TileSize, 0);
-					Checa("...e alem de 60 tiles ele LARGA (o leash do `aggro_dist*2`)",
-						  PresaDoHostil(cacador) == null && cacador.PresaEngajada == 0);
+						cacador.Pos = quem.Pos + new Vec2(10 * ZoneCollision.TileSize, 0);
+						Checa("...a 10 tiles ele NOTA (o `MAX_AGGRO_RANGE` de 20)",
+							  PresaDoHostil(cacador)?.Id == quem.Id);
+
+						cacador.Pos = quem.Pos + new Vec2(40 * ZoneCollision.TileSize, 0);
+						Checa("...e depois de engajado ele SEGUE a 40 tiles -- o raio de largar e maior que "
+							+ "o de adotar, e a folga entre os dois e o que impede a briga de piscar",
+							  PresaDoHostil(cacador)?.Id == quem.Id);
+
+						cacador.Pos = quem.Pos + new Vec2(70 * ZoneCollision.TileSize, 0);
+						Checa("...e alem de 60 tiles ele LARGA (o leash do `aggro_dist*2`)",
+							  PresaDoHostil(cacador) == null && cacador.PresaEngajada == 0);
+					}
+					finally
+					{
+						// O MUNDO VOLTA COMO ESTAVA. O login vai fazer o `Add` dele daqui a pouco; deixar
+						// o robo aqui o poria DUAS vezes na lista da zona, e uma lista com o mesmo corpo
+						// duas vezes e um snapshot duplicado por tique pra todo mundo que olha pra ela.
+						if (puseu) naZona.Remove(quem);
+					}
 				}
+			}
+
+			// =====================================================================
+			// 22. A LINGUA, O SOPRO E O CIRCULO -- o que o `NPCAI.dm` tinha e o port nao
+			// =====================================================================
+			// ============================ O QUE ESTA SECAO PRECISA PROVAR ============================
+			// A medicao da fase 0 listou o que o DM tem e este port nao tinha, e o maior item -- por
+			// larga margem, contra o criterio do dono (*"players possam CONFUNDIR NPCS COM PLAYERS"*)
+			// -- era que **o NPC daqui era mudo**. Junto vieram dois gestos: o sopro que abre espaco
+			// (`npc_kiai`) e a orbita (`strafeState`).
+			//
+			// As checagens sao todas da mesma familia das da secao 21: **o mesmo corpo, em duas
+			// situacoes, se comporta diferente** -- e cada uma tem o CONTROLE que prova que o lado que
+			// dispara nao esta disparando sempre. Uma bancada que afirmasse "existe fala" ficaria verde
+			// com um corpo que fala trinta vezes por segundo, que e o unico jeito de esta camada
+			// estragar o jogo.
+			// ====================================================================================
+			{
+				/// a mesma cena de duelo da secao 21 -- decisao pura, sem corpo e sem mundo
+				static Percepcao Cena(double vida = 1, double ki = 1, double folego = 1,
+									  float px = 18, bool atordoado = false, bool alvoCaido = false) => new()
+				{
+					TemAlvo = true, IdDoAlvo = 91, Minha = Vec2.Zero, DoAlvo = new Vec2(px, 0),
+					VidaFrac = vida, VidaDoAlvo = 1, FolegoFrac = folego,
+					KiFrac = ki, Ki = 5000 * ki, Atordoado = atordoado, AlvoCaido = alvoCaido,
+					MeuPoder = 1000, PoderDoAlvo = 1000,
+				};
+
+				/// N tiques de decisao pura, devolvendo tudo o que ele disse
+				static List<(double t, string frase)> Ouvir(Cerebro c, int tiques, Random rng,
+														    Func<int, Percepcao> cena)
+				{
+					var ditas = new List<(double, string)>();
+					for (int i = 0; i < tiques; i++)
+					{
+						Comando cm = c.Pensar(cena(i), Protocol.TickSeconds, rng);
+						if (cm.Falar is { Length: > 0 } f) ditas.Add((i * Protocol.TickSeconds, f));
+					}
+					return ditas;
+				}
+
+				// ---------- (a) A BOCA NASCE MUDA, E SO O MOLDE A ACENDE ----------
+				// E a metade que protege o resto do jogo: a fera do Oozaru e a furia lendaria dirigem o
+				// corpo de um JOGADOR, e uma frase saindo dali sairia no chat com o nome dele.
+				{
+					Checa("um cerebro montado a mao (a fera, a furia, o reflexo) nasce MUDO",
+						  !new Cerebro().Boca.Ligado);
+
+					MoldeDeNpc? cidadao = _moldes?.Get("cidadao");
+					MoldeDeNpc? chefe = _moldes?.Get("freeza_vegeta");
+					Checa("(preparo) os dois moldes da fala existem no `npcs.json`",
+						  cidadao != null && chefe != null);
+
+					if (cidadao != null && chefe != null)
+					{
+						Checa("...e o corpo que saiu de um molde do `npcs.json` FALA",
+							  Temperamento.Montar(cidadao, 0, 7).Boca.Ligado);
+						Checa("...e o cidadao nao e chefe (a pausa dele e a de 5 s)",
+							  !Temperamento.Montar(cidadao, 0, 7).Boca.Chefe);
+						Checa("...e o CHEFE e marcado como tal (pausa de 3 s e chances maiores -- o "
+							+ "`isBoss` do `npc_combat_chat`)",
+							  Temperamento.Montar(chefe, 0, 7).Boca.Chefe);
+					}
+
+					// O CORPO MUDO CONTINUA LUTANDO. Sem esta linha, "a fera nao fala" ficaria verde
+					// tambem se o cerebro dela tivesse parado de funcionar.
+					var fera = new Cerebro { VidaCautelosa = 0, Disciplina = 0 };
+					var rngF = new Random(220);
+					List<(double t, string frase)> daFera = Ouvir(fera, 900, rngF, _ => Cena());
+					Checa("a FERA (cerebro a mao) atravessa 30 s de briga sem dizer uma palavra",
+						  daFera.Count == 0, $"{daFera.Count} frases");
+					Checa("(controle) ...e ela lutou de verdade nesses 30 s -- senao o silencio seria "
+						+ "de um cerebro parado",
+						  fera.Atual == Plano.Pressionar, $"plano {fera.Atual}");
+				}
+
+				// ---------- (b) ELE FALA SOCANDO, E **NAO** A 30 Hz ----------
+				// O defeito que esta camada podia ter tem nome e e um so: virar metralhadora. O
+				// relogio do `npc_combat_chat` (`isBoss ? 30 : 50` tiques, `NPCAI.dm:229`) e a unica
+				// coisa entre "o NPC comenta a luta" e "o chat vira ilegivel".
+				{
+					var falante = new Cerebro();
+					falante.Boca.Ligado = true;
+					var rng = new Random(221);
+
+					List<(double t, string frase)> ditas = Ouvir(falante, 3600, rng, _ => Cena());   // 2 min
+
+					Checa("um corpo com lingua COMENTA a troca de socos",
+						  ditas.Count >= 3, $"{ditas.Count} frases em 2 min");
+
+					double menorIntervalo = double.MaxValue;
+					for (int i = 1; i < ditas.Count; i++)
+						menorIntervalo = Math.Min(menorIntervalo, ditas[i].t - ditas[i - 1].t);
+
+					// A TOLERANCIA E DE UM TIQUE: o relogio anda em passos de 33 ms, entao duas falas
+					// separadas por exatamente a pausa podem medir 4,967 s.
+					Checa("...e NUNCA duas frases mais perto que a pausa do original (5,0 s pra quem "
+						+ "nao e chefe) -- e o relogio que impede a IA de virar metralhadora",
+						  ditas.Count < 2 || menorIntervalo >= Falatorio.PausaDeCombate - Protocol.TickSeconds * 1.5,
+						  $"menor intervalo {menorIntervalo:0.00} s");
+
+					// E O CHEFE FALA MAIS. Mesmo corpo, mesma cena, mesma semente: so o bit muda.
+					var chefao = new Cerebro();
+					chefao.Boca.Ligado = true;
+					chefao.Boca.Chefe = true;
+					List<(double t, string frase)> doChefe = Ouvir(chefao, 3600, new Random(221), _ => Cena());
+					Checa("...e o CHEFE fala mais que o cidadao na MESMA cena (pausa de 3 s contra 5 s, "
+						+ "e chance maior em quatro das oito ocasioes)",
+						  doChefe.Count > ditas.Count, $"chefe {doChefe.Count} x comum {ditas.Count}");
+				}
+
+				// ---------- (c) O AVISO DE RECURSO TEM HISTERESE ----------
+				// `npc_resource_warnings` (`NPCAI.dm:322`). A histerese (`NPC_AI_WARN_HYST`) e o que
+				// separa "ele avisou que estava sem ki" de "ele ficou repetindo isso": um corpo em luta
+				// oscila em volta do limiar o tempo todo.
+				{
+					// ============================ A CENA E LONGE DE PROPOSITO, E ISSO E O INSTRUMENTO ============================
+					// O alvo fica a 12 tiles: **fora do alcance do soco**, entao a receita persegue e
+					// nunca bate -- e sem golpe nao ha fala de combate. Assim, TODA frase que sair nesta
+					// cena e um aviso de recurso, e a contagem nao precisa adivinhar de que lista veio.
+					//
+					// A primeira versao desta checagem filtrava as frases por conterem "ki" e ficou
+					// vermelha com o sistema funcionando: das tres linhas do `npc_ki_warn_lines`, uma
+					// ("Nao posso desperdicar mais energia...") nao tem a palavra. **Era a bancada lendo
+					// errado**, e o defeito e classico -- medir por texto em vez de por CANAL.
+					// ======================================================================================================
+					const float Longe = 12 * ZoneCollision.TileSize;
+
+					var seco = new Cerebro();
+					seco.Boca.Ligado = true;
+					var rng = new Random(222);
+
+					// 60 s COLADO no limiar, oscilando de leve em volta dele -- o caso que produz o spam
+					List<(double t, string frase)> avisos = Ouvir(seco, 1800, rng,
+						i => Cena(ki: Falatorio.KiQuePreocupa - 0.02 + (i % 20) * 0.001, px: Longe));
+
+					Checa("com o tanque no limiar ele AVISA (`npc_ki_warn_lines`)",
+						  avisos.Count >= 1, $"{avisos.Count} avisos em 60 s");
+					Checa("...e oscilando em volta do limiar por 60 s ele avisa UMA vez -- a histerese "
+						+ "(`NPC_AI_WARN_HYST`) exige RECUPERAR de verdade antes de reavisar",
+						  avisos.Count == 1, $"{avisos.Count} avisos");
+
+					// E DEPOIS DE RECUPERAR DE VERDADE, ELE VOLTA A AVISAR. Sem esta metade, "avisa uma
+					// vez" ficaria verde tambem com um bit que nunca mais desliga -- e o corpo perderia
+					// o aviso da PROXIMA luta, calado.
+					var vaiEVolta = new Cerebro();
+					vaiEVolta.Boca.Ligado = true;
+					List<(double t, string frase)> ciclo = Ouvir(vaiEVolta, 3600, new Random(222),
+						// 40 s secos, 40 s cheios (bem acima do limiar + folga), 40 s secos de novo
+						i => Cena(ki: i < 1200 ? 0.20 : i < 2400 ? 0.90 : 0.20, px: Longe));
+					Checa("...e depois de encher o tanque e esvaziar de novo, ele avisa OUTRA vez",
+						  ciclo.Count >= 2, $"{ciclo.Count} avisos em dois ciclos");
+
+					// (controle) COM O TANQUE CHEIO O TEMPO TODO ele nao diz nada nesta cena -- senao os
+					// tres verdes acima poderiam ser de um corpo que fala por qualquer motivo.
+					var folgado = new Cerebro();
+					folgado.Boca.Ligado = true;
+					List<(double t, string frase)> mudo = Ouvir(folgado, 1800, new Random(222),
+						_ => Cena(px: Longe));
+					Checa("(controle) inteiro, com Ki e folego cheios, ele atravessa 60 s calado -- os "
+						+ "avisos sao dos LIMIARES, e nao do relogio",
+						  mudo.Count == 0, $"{mudo.Count} frases");
+				}
+
+				// ---------- (d) O SOPRO QUE ABRE ESPACO (`npc_kiai`, NPCAI.dm:399) ----------
+				// Tres condicoes juntas -- colado, sem ki, atordoado -- e ele empurra em vez de socar.
+				{
+					var comSopro = new Cerebro();
+					comSopro.Poderes = new Capacidades { SabeSopro = true, CustoDoSopro = 100 };
+					var rng = new Random(223);
+
+					// encurralado: colado (meio tile), Ki em 20%, atordoado
+					int soprou = 0, socou = 0;
+					for (int i = 0; i < 300; i++)
+					{
+						Comando c = comSopro.Pensar(Cena(ki: 0.20, px: 16, atordoado: true),
+													Protocol.TickSeconds, rng);
+						if (c.Habilidade == "Kiai") soprou++;
+						if (c.Leve || c.Pesado) socou++;
+					}
+					Checa("encurralado (colado + sem ki + atordoado) ele SOPRA pra abrir espaco",
+						  soprou >= 1, $"{soprou} sopros em 10 s");
+					Checa("...e o sopro tem PAUSA -- ele nao marreta a tecla 30 vezes por segundo",
+						  soprou <= 6, $"{soprou} sopros em 10 s (a pausa e de {Cerebro.PausaDepoisDoSopro} s)");
+
+					// ---- OS TRES CONTROLES, um por condicao do gate ----
+					// Sem eles, "ele sopra encurralado" ficaria verde com um corpo que sopra sempre.
+					static int Sopros(Cerebro c, Percepcao cena, Random rng)
+					{
+						int n = 0;
+						for (int i = 0; i < 300; i++)
+							if (c.Pensar(cena, Protocol.TickSeconds, rng).Habilidade == "Kiai") n++;
+						return n;
+					}
+
+					var semSaber = new Cerebro { Poderes = new Capacidades { SabeSopro = false, CustoDoSopro = 100 } };
+					Checa("(controle) quem NAO SABE o Kiai nunca sopra -- a poda e o `SabeTecnica` do jogador",
+						  Sopros(semSaber, Cena(ki: 0.20, px: 16, atordoado: true), new Random(223)) == 0);
+
+					var semKi = new Cerebro { Poderes = new Capacidades { SabeSopro = true, CustoDoSopro = 100 } };
+					Checa("(controle) sem Ki pro proprio sopro ele nao tenta -- o preco sai da funcao "
+						+ "que o VERB usa, e nao de um numero escrito no cerebro",
+						  Sopros(semKi, Cena(ki: 0.01, px: 16, atordoado: true), new Random(223)) == 0);
+
+					var calmo = new Cerebro { Poderes = new Capacidades { SabeSopro = true, CustoDoSopro = 100 } };
+					Checa("(controle) colado e sem ki mas NAO atordoado, ele soca em vez de soprar -- "
+						+ "o atordoamento e o que impede isto de virar rotina",
+						  Sopros(calmo, Cena(ki: 0.20, px: 16, atordoado: false), new Random(223)) == 0);
+
+					Checa("(controle) e o corpo encurralado socava sem o sopro -- o gesto SUBSTITUI o "
+						+ "golpe, e nao se soma a ele",
+						  socou < soprou * 3, $"{socou} socos contra {soprou} sopros");
+				}
+
+				// ---------- (e) O CIRCULO (`strafeState`, NPCAI.dm:551) ----------
+				// A resposta ao *"soca no mesmo ritmo pra sempre"*: ate aqui TODAS as receitas mexiam o
+				// corpo no mesmo eixo -- avanca na linha do alvo, recua pela mesma linha. Ninguem joga
+				// assim.
+				{
+					var tiro = new Tiro
+					{
+						Id = "Ki_Wave", AlcanceMin = 4 * ZoneCollision.TileSize,
+						AlcanceMax = 18 * ZoneCollision.TileSize, TempoDeConjuracao = 0.7,
+						CustoDeKi = 20, PrecisaDeLinhaLivre = false, Precisao = 0.78,
+					};
+					var blaster = new Cerebro { Poderes = new Capacidades { DeLonge = new Arsenal([tiro]) } };
+					var rng = new Random(224);
+
+					// ============================ A CENA E A DO INTERVALO ENTRE DOIS TIROS ============================
+					// A 5 tiles ela cai nas DUAS janelas: dentro do alcance do raio (4..18) e dentro do
+					// raio do circulo (ate 6). E e isso que o `strafeState` do DM e -- ele orbita E
+					// atira, `while(...) { step_away; if(world.time>=next_attack) blast() }` (`:564-575`).
+					//
+					// AQUI OS DOIS SAO PLANOS SEPARADOS e o tiro e perguntado ACIMA do circulo, entao o
+					// que sobra pra orbita e exatamente o intervalo: `Atirar` conjura e solta, cobra a
+					// `PausaDepoisDoTiro`, e durante ela `EscolherTiro` recusa -- e ai o `prob(4)` tem
+					// vez. **Se a checagem for feita numa cena onde o tiro esta sempre viavel, ela mede
+					// zero com o sistema certo**: a primeira versao desta secao pos o alvo a 3 tiles,
+					// dentro do alcance, e o corpo simplesmente atirou 3000 tiques seguidos.
+					// ============================================================================================
+					int circulou = 0, atirou = 0;
+					double maiorLado = 0;
+					for (int i = 0; i < 6000; i++)   // 200 s
+					{
+						Comando c = blaster.Pensar(Cena(px: 5 * ZoneCollision.TileSize),
+												   Protocol.TickSeconds, rng);
+						if (c.Habilidade is { Length: > 0 }) atirou++;
+						if (blaster.Atual != Plano.Circular) continue;
+						circulou++;
+
+						// O QUE FAZ DISSO UM CIRCULO: a componente do rumo PERPENDICULAR a linha que
+						// liga os dois. Num vaivem ela e ZERO em todo tique, sem excecao -- o alvo esta
+						// no eixo X da cena, entao qualquer `Y` diferente de zero e movimento lateral.
+						if (c.Rumo.LengthSquared > 1e-6f) maiorLado = Math.Max(maiorLado, Math.Abs(c.Rumo.Y));
+					}
+
+					Checa("(preparo) o blaster desta cena esta MESMO atirando -- e o intervalo entre os "
+						+ "tiros que a orbita preenche",
+						  atirou > 0, $"{atirou} tiros em 200 s");
+					Checa("um corpo com arsenal ORBITA entre um tiro e o proximo (o `isBlaster && prob(4)`)",
+						  circulou > 0, $"{circulou} tiques em orbita de 6000");
+
+					// O NUMERO E 0,65 E NAO 0,9 POR GEOMETRIA, e nao por folga: fora da distancia exata
+					// o rumo e radial + tangente, e as duas componentes empatam (0,707). Um vaivem da
+					// ZERO sempre, entao qualquer coisa acima de meio ja separa os dois casos -- o que
+					// esta linha nao pode e ficar verde com o movimento antigo.
+					Checa("...e o rumo da orbita e LATERAL, e nao mais um vaivem na linha do inimigo "
+						+ "(que daria ZERO em todo tique)",
+						  maiorLado > 0.65, $"maior componente perpendicular {maiorLado:0.00}");
+					Checa("...e ele nao passa a VIDA orbitando -- o `prob(10)` da saida existe",
+						  circulou < 6000 * 0.6, $"{circulou} de 6000 tiques");
+
+					// O CONTROLE: quem nao tem raio nao circula. E o que mantem a fera do Oozaru e a
+					// furia lendaria intocadas por esta camada, sem uma linha de excecao escrita.
+					var semArsenal = new Cerebro();
+					int semCirculo = 0;
+					var rng2 = new Random(224);
+					for (int i = 0; i < 6000; i++)
+					{
+						semArsenal.Pensar(Cena(px: 5 * ZoneCollision.TileSize), Protocol.TickSeconds, rng2);
+						if (semArsenal.Atual == Plano.Circular) semCirculo++;
+					}
+					Checa("(controle) quem NAO tem ataque de longe nunca orbita -- e o `isBlaster` do DM",
+						  semCirculo == 0, $"{semCirculo} tiques");
+				}
+
+				// ---------- (f) A FALA SAI PELO FUNIL DO JOGADOR, E O CADASTRO NAO VAZA ----------
+				// ============================ AS DUAS METADES QUE UM TESTE DE MESA NAO VE ============================
+				// `Comando.Falar` preenchido nao prova NADA sobre o chat: e o atuador que decide se
+				// aquilo vira uma chamada ao `Falar` (o mesmo do `C2S.Chat`) ou a um `Mandar` paralelo
+				// -- e o paralelo pula o raio de vista, o "!" que vira grito, o corte de tamanho e o
+				// teto de 400 ms. E o mesmo desenho de "uniform escrito != pixel desenhado".
+				//
+				// O `_ultimaFala` e a evidencia porque ele so e carimbado DENTRO do `Falar`, depois do
+				// `Limpar`. Ele nao e um efeito colateral escolhido pra medir: e o teto de trafego que
+				// ja existia, e ele ficar marcado quer dizer que a fala atravessou o funil inteiro.
+				//
+				// E a SEGUNDA metade e o vazamento que esta camada criou: aquele dicionario e indexado
+				// por id, e ids de NPC nao voltam. Enquanto so jogador falava ele tinha o tamanho da
+				// lista de online; com a IA falando ele passou a receber uma entrada por corpo NASCIDO
+				// -- e o povoamento renasce o vilarejo a cada 5 min.
+				// ================================================================================================
+				{
+					ServerPlayer boca = Forjar("ia: falante", 50_000, quem.Pos + new Vec2(64, 0), comCerebro: false);
+					ServerPlayer calado = Forjar("ia: calado", 50_000, quem.Pos + new Vec2(96, 0), comCerebro: false);
+
+					AplicarComando(boca, new Comando { Falar = "Toma essa!" }, Protocol.TickSeconds);
+					AplicarComando(calado, new Comando { Leve = true }, Protocol.TickSeconds);
+
+					Checa("a fala de um NPC atravessa o `Falar` do jogador -- o mesmo raio de vista, o "
+						+ "mesmo '!' que vira grito e o mesmo teto de 400 ms",
+						  _ultimaFala.ContainsKey(boca.Id), "o funil nao foi tocado");
+					Checa("(controle) e um comando SEM fala nao toca no funil",
+						  !_ultimaFala.ContainsKey(calado.Id));
+
+					RemoverNpc(boca);
+					Checa("...e o corpo removido sai do cadastro de falas -- senao o dicionario cresce "
+						+ "um registro por NPC nascido, e o povoamento renasce o vilarejo a cada 5 min",
+						  !_ultimaFala.ContainsKey(boca.Id), "o id ficou pendurado");
+				}
+
+				// ---------- (g) A CORRENTE INTEIRA: molde -> nascimento -> tique -> chat ----------
+				// ============================ AS SEIS ANTERIORES PODEM ESTAR TODAS CERTAS E O JOGO MUDO ============================
+				// (a) prova que o molde acende a lingua. (b) prova que um cerebro com lingua fala.
+				// (f) prova que o `Comando.Falar` atravessa o funil. **Nenhuma das tres prova que um
+				// NPC DE VERDADE, nascido pela producao e dirigido pelo laco de producao, diz alguma
+				// coisa** -- e "a regra escrita de um lado do fio e sem chamador do outro" e o modo de
+				// falha mais repetido deste port.
+				//
+				// Entao esta ultima nao monta nada: ela nasce um chefe pelo `NascerNpc` (o mesmo funil
+				// da saga, da invasao e da mente), poe um alvo na frente dele e roda o
+				// `TickDosCorposSemDono` -- o laco de producao, com o `try` por corpo e tudo.
+				// ============================================================================================================
+				{
+					ServerPlayer? chefao = NascerNpc("freeza_vegeta", quem.Zone, quem.Pos + new Vec2(48, 0), 991);
+					Checa("(preparo) o chefe nasceu pelo funil de producao, com cerebro",
+						  chefao is { Cerebro: not null }, chefao == null ? "nao nasceu" : "sem cerebro");
+
+					if (chefao != null)
+					{
+						nascidos.Add(chefao);
+						// ============================ A DISTANCIA DESTA CENA E O PROPRIO ACHADO ============================
+						// A primeira versao punha o saco a 24 px -- COLADO -- e a checagem ficou vermelha
+						// com o sistema certo. O motivo e bom: o `freeza_vegeta` tem raio, escolheu
+						// `Plano.Atirar`, e a receita de tiro **recua** quando o alvo esta dentro do
+						// alcance minimo (4 tiles pro `Ki_Wave`), zerando a conjuracao a cada tique. Como
+						// a bancada reescrevia a posicao do saco todo tique, ele nunca conseguia abrir
+						// espaco: 20 s de "quase atirando" e nenhum tiro.
+						//
+						// Seis tiles poem o alvo DENTRO da janela do raio (4..18). E a licao vale alem
+						// desta linha: uma cena de bancada tem que caber na receita que ela mede, senao o
+						// vermelho e da cena.
+						// ============================================================================================
+						ServerPlayer saco = Forjar("ia: saco de pancada", 10,
+												   chefao.Pos + new Vec2(6 * ZoneCollision.TileSize, 0),
+												   comCerebro: false);
+						ZoneList(saco.Zone.Hash).Remove(saco);
+						saco.Zone = chefao.Zone;
+						ZoneList(saco.Zone.Hash).Add(saco);
+
+						// A PRESA IMPOSTA PELO ROTEIRO (o `bev_prey`) e o canal que dispensa jogador --
+						// e o unico jeito de esta bancada por o chefe pra brigar sem um cliente na zona.
+						// Ver `PapelDeNpc.PresaDoRoteiro`.
+						chefao.Papel!.PresaDoRoteiro = saco.Id;
+
+						// 40 s de briga de verdade, pelo laco de producao
+						for (int i = 0; i < 1200; i++)
+						{
+							saco.Ficha.HP = 100; saco.Ficha.KO = false;
+							saco.Pos = chefao.Pos + new Vec2(6 * ZoneCollision.TileSize, 0);
+							TickDosCorposSemDono(Protocol.TickSeconds);
+						}
+
+						Checa("um CHEFE nascido pela producao, dirigido pelo laco de producao, FALA "
+							+ "durante a briga -- a corrente inteira, do `npcs.json` ate o chat",
+							  _ultimaFala.ContainsKey(chefao.Id),
+							  $"40 s de briga e nenhuma frase (plano {chefao.Cerebro!.Atual})");
+
+						// E ELE ESTAVA MESMO BRIGANDO. Sem isto, um chefe que ficasse parado por
+						// qualquer outro motivo deixaria o vermelho acima sem explicacao.
+						Checa("(controle) ...e ele estava mesmo engajado nesses 40 s",
+							  chefao.Cerebro!.Atual is Plano.Pressionar or Plano.Alcancar
+							  or Plano.Atirar or Plano.Circular or Plano.Escalar,
+							  $"plano {chefao.Cerebro.Atual}");
+					}
+				}
+			}
+
+			// =====================================================================
+			// 23. O GOLPE DE COSTAS NAO ACERTA -- a regra mora no RESOLVEDOR
+			// =====================================================================
+			// ============================ POR QUE ESTA SECAO NAO E A 20 OUTRA VEZ ============================
+			// A 20 mede a IA: ela afirma que o corpo dirigido ENCARA antes de bater, e usa
+			// `AlvoNaFrente(...) == null` como evidencia de que o golpe saiu vazio. Isso mede o
+			// SELETOR de alvo -- ou seja, mede a minha propria conta contra ela mesma.
+			//
+			// A pergunta que falta e a do JOGO, e ela e a que decide se "socar de costas" e um defeito
+			// cosmetico ou uma jogada sem efeito: **um golpe dado de costas tira vida de alguem?** Ela
+			// so tem uma resposta honesta -- a vida do outro corpo, DEPOIS do resolvedor inteiro
+			// (`MeleeResolver.Resolver`, o dano no membro, o desfecho). Se um dia alguem tirar o cone
+			// do `AlvoNaFrente` "pra o combate ficar mais fluido", a secao 20 continua verde (a IA
+			// continua encarando) e ESTA fica vermelha na hora, que e a ordem certa das duas.
+			//
+			// E ela e o registro do que o conserto valeu: o soco de costas nao era feio, era **zero**.
+			// ==========================================================================================
+			{
+				foreach (ServerPlayer velho in _players.Values) velho.Cerebro = null;
+
+				var praca = new Vec2(0, 17000);
+				ServerPlayer punho = Forjar("res: quem soca", 50_000, praca, comCerebro: false);
+				ServerPlayer couro = Forjar("res: quem leva", 50_000, praca - new Vec2(18, 0), comCerebro: false);
+				couro.Facing = Facing.East;
+
+				// ============================ A CENA E RECOLADA A CADA GOLPE, E ISSO E O INSTRUMENTO ============================
+				// O golpe que acerta ARREMESSA (`TentarEmpurrar`), fere membro e pode nocautear -- e
+				// qualquer um dos tres muda a cena do golpe seguinte. Sem recolar, a segunda rodada
+				// mediria um alvo caido a dez tiles, e o verde (ou o vermelho) seria da fisica.
+				//
+				// A RECARGA E O STUN VAO JUNTO pelo mesmo motivo da secao 20: `PodeAtacar()` recusa
+				// quem acabou de bater, e um "0 de dano" que na verdade e "0 golpes" e o verde vazio
+				// mais facil de escrever neste arquivo.
+				// ==========================================================================================================
+				(bool saiu, bool achou, double dano) Soco(Facing olhando, int marca)
+				{
+					punho.Pos = praca;
+					couro.Pos = praca - new Vec2(18, 0);
+					foreach (BodyPart parte in couro.Combate.Corpo.Partes) parte.Vida = parte.VidaMax;
+					couro.Ficha.KO = false;
+					couro.Combate.Stun = 0;
+					punho.Facing = olhando;
+					punho.Combate.Recarga = 0;
+					punho.Combate.Stun = 0;
+					Mirar(punho, marca);
+
+					double antes = couro.Combate.Corpo.Vida();
+					bool achou = AlvoNaFrente(punho) != null;
+					Atacar(punho, Protocol.Golpe.Leve);
+					return (punho.Combate.Recarga > 0, achou, antes - couro.Combate.Corpo.Vida());
+				}
+
+				// SAO 40 GOLPES E NAO UM, porque o resolvedor tem sorteio: esquiva por velocidade,
+				// aparo, contra. Um golpe so que nao doeu nao prova nada -- 40 sim.
+				(int saiu, int achou, int doeu) Rodada(Facing olhando, int marca)
+				{
+					int saiu = 0, achou = 0, doeu = 0;
+					for (int i = 0; i < 40; i++)
+					{
+						(bool s, bool a, double d) = Soco(olhando, marca);
+						if (s) saiu++;
+						if (a) achou++;
+						if (d > 0) doeu++;
+					}
+					return (saiu, achou, doeu);
+				}
+
+				Checa("(preparo) o saco esta no ALCANCE e FORA do cone de quem olha pro outro lado",
+					  (couro.Pos - punho.Pos).Length <= CombatKnobs.Alcance
+					  && !MeleeArea.NoAlcance(punho.Pos, Facing.East, couro.Pos),
+					  $"{(couro.Pos - punho.Pos).Length:0} px de {CombatKnobs.Alcance:0}");
+
+				// ---- (a) DE COSTAS E SEM MARCA: o comportamento da IA de ANTES do conserto ----
+				(int saiu, int achou, int doeu) costas = Rodada(Facing.East, marca: 0);
+				Checa("(controle) os 40 golpes de costas SAIRAM mesmo (senao o zero de baixo seria "
+					+ "de um corpo que nao bateu)",
+					  costas.saiu == 40, $"{costas.saiu} de 40");
+				Checa("DE COSTAS E SEM MARCA o golpe nao encontra ninguem -- 40 socos, ZERO de dano. "
+					+ "O soco de costas que o dono viu nao era feio: era sem efeito",
+					  costas.achou == 0 && costas.doeu == 0,
+					  $"achou {costas.achou}, doeu {costas.doeu}");
+
+				// ---- (b) DE FRENTE: o contra-exemplo, e sem ele o zero de cima nao vale nada ----
+				(int saiu, int achou, int doeu) frente = Rodada(Facing.West, marca: 0);
+				Checa("...e o MESMO corpo, na MESMA distancia, virado pro alvo, machuca -- era a "
+					+ "direcao e nao o alcance, a altura ou um saco intocavel",
+					  frente.achou == 40 && frente.doeu > 0,
+					  $"achou {frente.achou}, doeu {frente.doeu} de 40");
+
+				// ---- (c) DE COSTAS **COM MARCA**: o conserto, medido onde ele mora ----
+				// E o caminho do `Atacar` (`GameServer.Combat.cs`), o mesmo do jogador que clicou em
+				// alguem: `Marcado(a)` vira o corpo ANTES de arrancar. A IA nao ganhou um segundo
+				// caminho -- ela so passou a dizer em quem esta batendo (`Cerebro.Montar`).
+				(int saiu, int achou, int doeu) marcado = Rodada(Facing.East, marca: couro.Id);
+				Checa("DE COSTAS MAS MARCANDO O ALVO, o golpe acerta -- e o `Atacar` que vira o corpo, "
+					+ "e ele e o mesmo funil do jogador que clicou em alguem",
+					  marcado.achou == 40 && marcado.doeu > 0,
+					  $"achou {marcado.achou}, doeu {marcado.doeu} de 40");
+				Checa("...e quem virou o corpo foi a MARCA: ele terminou olhando pro alvo, tendo "
+					+ "comecado cada golpe virado pro lado oposto",
+					  punho.Facing == Facing.West, $"olhando {punho.Facing}");
+
+				Mirar(punho, 0);
+			}
+
+			// =====================================================================
+			// 24. QUATRO SITUACOES, QUATRO GESTOS -- a linha do "ta mt simples"
+			// =====================================================================
+			// ============================ O QUE ESTA SECAO PRECISA PROVAR, E POR QUE E UM CONJUNTO ============================
+			// A secao 21 mede PARES ("com o alvo quase caido ele soca mais que sem agressividade"), e
+			// cada par prova que UMA manivela funciona. Nenhum deles responde a frase do dono, que nao
+			// e sobre uma manivela: *"a IA ta mt simples"* quer dizer **o bicho faz sempre a mesma
+			// coisa**.
+			//
+			// Entao a afirmacao aqui e sobre CONJUNTO: o MESMO corpo, o MESMO tempero, a MESMA
+			// semente -- e quatro situacoes que um jogador reconheceria de olho. Se as quatro
+			// desembocarem no mesmo gesto, esta linha fica vermelha, por mais manivelas que existam.
+			//
+			// E O GESTO E MEDIDO PELAS TECLAS, e nao pelo `Plano`. O plano e um rotulo interno: da pra
+			// ter oito e todos apertarem "andar pra frente e socar", que e exatamente o defeito que a
+			// fase 0 mediu. O que o jogador ve e a tecla -- tecnica, correr fugindo, socar, perseguir.
+			// ==========================================================================================================
+			{
+				// A cena e pura (sem corpo e sem mundo), como nas secoes 21 e 22: o que se mede e a
+				// DECISAO. O tiro e sintetico pelo motivo ja escrito na secao 13 -- registrar uma
+				// tecnica de teste valeria pro processo inteiro.
+				var raio = new Tiro
+				{
+					Id = "bancada_quatro_cenas",
+					AlcanceMin = 4 * ZoneCollision.TileSize,
+					AlcanceMax = 12 * ZoneCollision.TileSize,
+					TempoDeConjuracao = 0.3, CustoDeKi = 100,
+					PrecisaDeLinhaLivre = false, Precisao = 0.95,
+				};
+
+				static Percepcao Cena(double vida, double kiFrac, double ki, float px) => new()
+				{
+					TemAlvo = true, IdDoAlvo = 77, Minha = Vec2.Zero, DoAlvo = new Vec2(px, 0),
+					VidaFrac = vida, VidaDoAlvo = 1, FolegoFrac = 1,
+					KiFrac = kiFrac, Ki = ki, MeuPoder = 1000, PoderDoAlvo = 1000,
+				};
+
+				// ============================ O CLASSIFICADOR, E A ORDEM DELE E A PRIORIDADE ============================
+				// Um tique nao tem "um gesto": um corpo anda e soca no mesmo tique. O que se pergunta
+				// aqui e *"o que ele FEZ nestes 20 segundos?"*, e a resposta e a tecla mais decisiva
+				// que apareceu -- tecnica acima de fuga, fuga acima de soco, soco acima de perseguir.
+				// Um "dominante por contagem" diria "parado" pro corpo que passa 90% do tempo
+				// conjurando um raio, que e o oposto do que aconteceu na cena.
+				// ==================================================================================================
+				static string GestoEm(Cerebro c, Percepcao p, int semente)
+				{
+					var rng = new Random(semente);
+					bool tecnica = false, fuga = false, soco = false, andou = false;
+					for (int i = 0; i < 600; i++)   // 20 s
+					{
+						Comando cm = c.Pensar(p, Protocol.TickSeconds, rng);
+						if (cm.Habilidade is { Length: > 0 }) tecnica = true;
+						if (cm.Correndo && cm.Rumo.X < -0.1f) fuga = true;
+						if (cm.Leve || cm.Pesado) soco = true;
+						if (cm.Rumo.X > 0.1f) andou = true;
+					}
+					return tecnica ? "tecnica" : fuga ? "fuga" : soco ? "soco"
+						 : andou ? "perseguir" : "parado";
+				}
+
+				/// o corpo desta secao: esperto (guarda o Ki), medroso (foge no fio) e com um raio
+				Cerebro Lutador() => new()
+				{
+					VidaCautelosa = 0.9, Inteligencia = 1.0, Disciplina = 0.9,
+					Poderes = new Capacidades
+					{
+						DeLonge = new Arsenal([raio]), SabeReunirKi = true,
+						TemComQueAparar = true, CustoDaGuarda = 1,
+					},
+				};
+
+				// AS QUATRO CENAS, e cada uma e uma frase que da pra dizer em voz alta:
+				//   1. inteiro, colado, com o tanque no fundo  -> ele SOCA   (a economia de Ki, `:404`)
+				//   2. inteiro, na janela do raio, tanque cheio -> ele ATIRA
+				//   3. no fio da vida, colado                   -> ele FOGE  (o `runawayState`, `:646`)
+				//   4. inteiro, longe demais pra qualquer coisa -> ele PERSEGUE
+				(string nome, Percepcao cena)[] cenas =
+				[
+					("inteiro e colado, sem Ki", Cena(1.00, 0.15, 750, 18)),
+					("inteiro, na janela do raio", Cena(1.00, 1.00, 5000, 8 * ZoneCollision.TileSize)),
+					("quase morto", Cena(0.15, 1.00, 5000, 18)),
+					("alvo longe demais", Cena(1.00, 1.00, 5000, 20 * ZoneCollision.TileSize)),
+				];
+
+				var gestos = new List<string>();
+				foreach ((string nome, Percepcao cena) c in cenas)
+					gestos.Add(GestoEm(Lutador(), c.cena, 2424));
+
+				GD.Print("  ---- o MESMO corpo, quatro situacoes ----");
+				for (int i = 0; i < cenas.Length; i++)
+					GD.Print($"       {cenas[i].nome,-28} -> {gestos[i]}");
+
+				Checa("o MESMO corpo, com a MESMA semente, responde as quatro situacoes com quatro "
+					+ "gestos DIFERENTES -- e a linha que reprova no dia em que alguem colapsar a "
+					+ "decisao de volta pra um so",
+					  gestos.Distinct().Count() == 4, string.Join(", ", gestos));
+
+				// E CADA UM E O ESPERADO, nomeadamente. Sem isto, quatro gestos distintos poderiam ser
+				// quatro gestos ERRADOS (fugir do alvo longe, atirar sem Ki) e a linha de cima ficaria
+				// verde do mesmo jeito.
+				Checa("...e sao os quatro que a situacao pede: soco / tecnica / fuga / perseguicao",
+					  gestos[0] == "soco" && gestos[1] == "tecnica"
+					  && gestos[2] == "fuga" && gestos[3] == "perseguir",
+					  string.Join(", ", gestos));
+
+				// O CONTROLE DO INSTRUMENTO: outra semente, os mesmos quatro. Se o gesto mudasse com o
+				// dado, a diferenca medida acima poderia ser sorte e nao situacao.
+				var outraVez = new List<string>();
+				foreach ((string nome, Percepcao cena) c in cenas)
+					outraVez.Add(GestoEm(Lutador(), c.cena, 9797));
+				Checa("(controle) com OUTRA semente os quatro gestos sao os mesmos -- o que separa as "
+					+ "cenas e a SITUACAO, e nao o dado",
+					  outraVez.SequenceEqual(gestos), string.Join(", ", outraVez));
+
+				// ============================ E A ARMADILHA, ARMADA COM UM CEREBRO DE VERDADE ============================
+				// O defeito que esta secao existe pra pegar tem nome e ja tem um exemplar no jogo: a
+				// FERA (`VidaCautelosa = 0`, `Inteligencia = 0`, sem arsenal) e simples DE PROPOSITO --
+				// ela nao foge, nao recarrega, nao atira e nao circula. Passada pelas MESMAS quatro
+				// cenas, ela responde com dois gestos, e so por causa da distancia.
+				//
+				// Ou seja: se alguem colapsar o cerebro de volta, a medicao de cima cai pra este
+				// numero. A armadilha nao e um `if` de bancada -- e um corpo de producao.
+				// ==================================================================================================
+				var daFera = new List<string>();
+				foreach ((string nome, Percepcao cena) c in cenas)
+					daFera.Add(GestoEm(new Cerebro { VidaCautelosa = 0, Inteligencia = 0, Disciplina = 0 },
+									   c.cena, 2424));
+				Checa("A ARMADILHA ESTA ARMADA: um cerebro COLAPSADO (a fera) atravessa as quatro "
+					+ "cenas com no maximo DOIS gestos -- e por isso a linha de cima tem dentes",
+					  daFera.Distinct().Count() <= 2, string.Join(", ", daFera));
+				Checa("(controle) ...e a fera esta viva: ela SOCA quando da pra socar (o silencio "
+					+ "dela nao e um cerebro parado)",
+					  daFera.Contains("soco"), string.Join(", ", daFera));
+			}
+
+			// =====================================================================
+			// 25. O ARSENAL SAI DA ESTANTE -- numa briga longa sai TECNICA **E** SOCO
+			// =====================================================================
+			// ============================ O QUE ESTA SECAO ACRESCENTA, E O QUE ELA NAO REPETE ============================
+			// A `--tiroiateste` (familia 6) ja conta os TIROS de um NPC de molde num minuto de luta, e
+			// a secao 13 daqui ja prova que o pedido sai pelo canal do jogador. Nenhuma das duas
+			// responde a outra metade da frase do dono -- *"numa briga longa o NPC usa tecnica, nao so
+			// soco"* --, que e sobre a MISTURA: um NPC que so atira e tao bonequinho quanto um que so
+			// soca, e os dois passam nas bancadas que contam uma coisa de cada vez.
+			//
+			// Entao aqui a medicao e UMA briga com DOIS contadores, e a afirmacao e a conjuncao. E ela
+			// tem uma armadilha embutida: os dois contadores caem do MESMO laco de producao, entao um
+			// deles em zero e a evidencia de qual metade morreu.
+			// ======================================================================================================
+			{
+				foreach (ServerPlayer velho in _players.Values) velho.Cerebro = null;
+
+				MoldeDeNpc moldeDeBriga = _moldes?.Get("rival_do_mundo") ?? new MoldeDeNpc();
+
+				// ============================ O CHAO DESTA CENA E PROCURADO, E NAO ADIVINHADO ============================
+				// A primeira versao desta secao cravou as coordenadas na mao e mediu **zero tiros com o
+				// sistema certo**: o `Ki_Wave` pede LINHA LIVRE (`PrecisaDeLinhaLivre`), e o par tinha
+				// nascido num pedaco de cenario com parede no meio. O corpo continuava socando -- o
+				// soco nao pergunta por linha --, entao o sintoma era exatamente "ele so soca", que e o
+				// defeito que esta secao existe pra pegar. **A cena estava errada, e nao o codigo.**
+				//
+				// E a mesma licao que a secao 22 ja tinha registrado com outra roupa ("uma cena de
+				// bancada tem que caber na receita que ela mede"), e a `--projetilteste` resolveu do
+				// mesmo jeito: varrer o mapa atras de uma faixa livre. Esta e a versao curta dela.
+				// ==================================================================================================
+				Vec2 FaixaLivre(int tiles, int aPartirDaLinha)
+				{
+					ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
+					if (mapa == null) return new Vec2(4 * ZoneCollision.TileSize, aPartirDaLinha * ZoneCollision.TileSize);
+					for (int y = aPartirDaLinha; y < 250; y++)
+						for (int x = 4; x + tiles < 250; x++)
+						{
+							bool livre = true;
+							for (int d = 0; d <= tiles && livre; d++) livre &= !mapa.BlockedCell(x + d, y);
+							if (livre)
+								return new Vec2(x * ZoneCollision.TileSize + 16, y * ZoneCollision.TileSize + 16);
+						}
+					return new Vec2(4 * ZoneCollision.TileSize, aPartirDaLinha * ZoneCollision.TileSize);
+				}
+
+				Vec2 ondeArmado = FaixaLivre(12, 8);
+				Vec2 ondeSemArma = FaixaLivre(12, 48);
+
+				/// um corpo dirigido por cerebro de PRODUCAO e um saco de pancada a 9 tiles
+				(ServerPlayer bicho, ServerPlayer saco) Duelo(string nome, Vec2 onde, bool armado)
+				{
+					ServerPlayer b = Forjar(nome, 50_000, onde, comCerebro: false);
+					ServerPlayer s = Forjar(nome + " (saco)", 50_000,
+											onde + new Vec2(9 * ZoneCollision.TileSize, 0), comCerebro: false);
+					b.Cerebro = Temperamento.Montar(moldeDeBriga, 0, 4242);
+					b.Combate.Letal = false;   // e um saco de pancada, e nao um velorio
+					// OS TRES DEGRAUS SAO O CAMINHO DE PRODUCAO (a skill no livro + o nivel cravado,
+					// que e o que o `SorteioDeNpc` faz com o `molde.NivelDasSkills`). Dar o verb na
+					// mao mediria o atalho -- ver `--tiroiateste`.
+					if (armado) DarOsTresDegraus(b);
+					b.Ficha.Ki = b.Ficha.MaxKi;
+					return (b, s);
+				}
+
+				(ServerPlayer bicho, ServerPlayer saco) comRaio = Duelo("briga: armado", ondeArmado, armado: true);
+				(ServerPlayer bicho, ServerPlayer saco) semRaio = Duelo("briga: so punho", ondeSemArma, armado: false);
+
+				Checa("(preparo) o corpo armado nasceu com arsenal pelo caminho de producao",
+					  ArsenalDeLonge(comRaio.bicho).TemAlguma,
+					  $"{ArsenalDeLonge(comRaio.bicho).Quantas} opcoes");
+				Checa("(preparo) ...e o outro, sem os degraus, nao tem NENHUM -- e o unico jeito de o "
+					+ "zero dele significar o arsenal, e nao a cena",
+					  !ArsenalDeLonge(semRaio.bicho).TemAlguma);
+
+				// O TERCEIRO PREPARO, e ele e o que faltava: SEM LINHA LIVRE o raio nao sai e o
+				// vermelho seria da parede. Ver o bloco do `FaixaLivre`.
+				Checa("(preparo) ...e ha LINHA LIVRE entre o armado e o saco dele (sem ela o `Ki_Wave` "
+					+ "recusa e a secao mediria um muro)",
+					  LinhaDeVisaoLivre(comRaio.bicho, comRaio.saco),
+					  $"parede entre {comRaio.bicho.Pos} e {comRaio.saco.Pos}");
+
+				// ============================ O SACO E RECOLADO E CURADO A CADA TIQUE ============================
+				// Uma luta que acaba aos 20 s mede 20 s. E o saco morrer nao e so o fim da conta: NPC
+				// morto sai do mundo (`TickCombate`), e ai o bicho fica sem presa e a briga acaba pra
+				// valer. Recolar tambem congela a distancia, que e o que separa "ele mistura" de "ele
+				// foi empurrado pra longe e passou a atirar".
+				// ==========================================================================================
+				var tirosDe = new Dictionary<int, HashSet<int>>
+					{ [comRaio.bicho.Id] = [], [semRaio.bicho.Id] = [] };
+				var socosDe = new Dictionary<int, int>
+					{ [comRaio.bicho.Id] = 0, [semRaio.bicho.Id] = 0 };
+				double danoNoSaco = 0;
+
+				long ultimoAtaqueA = comRaio.bicho.AtaqueAte, ultimoAtaqueB = semRaio.bicho.AtaqueAte;
+				int miraLivre = 0, planoDeTiro = 0;
+				double kiNoComeco = comRaio.bicho.Ficha.Ki, kiMinimo = comRaio.bicho.Ficha.Ki;
+
+				// O PRECO DO RAIO SAI DA PROPRIA TECNICA (o `CustoDeKi` que o `ArsenalDeLonge` resolveu
+				// pra esta ficha), e nao de um numero escrito aqui -- e ele e o piso que a primeira
+				// metade da briga precisa ficar ABAIXO. Ver o bloco das duas metades, logo adiante.
+				Arsenal dele = ArsenalDeLonge(comRaio.bicho);
+				double menorCustoDeTiro = double.MaxValue;
+				for (int t = 0; t < dele.Quantas; t++)
+					menorCustoDeTiro = Math.Min(menorCustoDeTiro, dele[t].CustoDeKi);
+
+				for (int i = 0; i < 1800; i++)   // 60 s
+				{
+					foreach ((ServerPlayer bicho, ServerPlayer saco) d in new[] { comRaio, semRaio })
+					{
+						// `Body.Vida()` e a MEDIA das partes em 0..100 -- entao o que falta pra 100 e
+						// o que este tique tirou dele (o saco e curado logo abaixo, toda volta).
+						danoNoSaco += 100 - d.saco.Combate.Corpo.Vida();
+						foreach (BodyPart parte in d.saco.Combate.Corpo.Partes) parte.Vida = parte.VidaMax;
+						d.saco.Ficha.KO = false;
+						d.saco.Ficha.dead = false;
+
+						// ============================ A BRIGA TEM DUAS METADES, E ISSO E A MEDICAO ============================
+						// **Este bloco ja teve duas versoes erradas, e as duas foram medidas.**
+						//
+						//   1. saco recolado a NOVE tiles todo tique -> o corpo atirava e NUNCA encostava:
+						//      o soco so alcanca 40 px e o alvo voltava pra 288 antes de cada tique.
+						//   2. saco solto -> a briga virava um empate de posicao: o armado se plantava na
+						//      janela do raio (372 px no fim) e o soco nao acontecia NUNCA.
+						//
+						// Nenhuma das duas media o que a secao afirma. O que qualquer briga de verdade
+						// faz -- e o que o dono ve na tela -- e a distancia MUDAR: o inimigo cola, o
+						// inimigo se afasta. Entao a cena faz isso de proposito: 30 s colado (dentro dos
+						// 40 px do soco) e 30 s a nove tiles (dentro da janela do raio). O que se mede e
+						// **a IA trocar de ferramenta conforme a distancia**, que e a frase do dono.
+						// ==============================================================================================
+						// ============================ A CENA E ANCORADA NA FAIXA LIVRE, E NAO NO CORPO ============================
+						// Colar o saco no corpo (`bicho.Pos + d`) deixava a briga PASSEAR: o corpo anda
+						// atras dele, o saco nasce de novo a frente, e em um minuto o par sai da faixa
+						// varrida e entra no cenario. Uma rodada mediu "linha livre em 21%" e zero tiros
+						// -- e o vermelho era a parede, de novo, so que andando.
+						//
+						// Ancorado, o par fica onde o `FaixaLivre` disse que ha chao e visada. E na
+						// virada o corpo tambem volta pra ancora: sem isso ele comeca a metade de longe
+						// de onde a briga o deixou, e a distancia medida nao seria a escolhida.
+						// ======================================================================================================
+						Vec2 ancora = d.bicho == comRaio.bicho ? ondeArmado : ondeSemArma;
+						d.saco.Pos = ancora + new Vec2(i < 900 ? 24f : 9 * ZoneCollision.TileSize, 0);
+						if (i == 900) d.bicho.Pos = ancora;
+
+						// ============================ AS DUAS METADES PRECISAM DE CONDICOES OPOSTAS, E ISSO E O DM ============================
+						// **Tres rodadas desta bancada deram (8 tiros, 7 socos), (1, 16) e (7, 0)** -- o
+						// mesmo corpo, a mesma cena, com o resultado passeando entre "so soca" e "so
+						// atira". Nao era sorte do dado: era a bancada deixando as duas metades
+						// disputarem o MESMO tanque, e o vencedor sendo o que comecasse.
+						//
+						// Colado e com Ki, um blaster nao soca: `EscolherTiro` aprova (ele "sabe recuar
+						// pra atirar") e a receita manda passo pra tras -- com o alvo colando de volta,
+						// ele recua a briga inteira. Quem escolhe o punho no DM e a ECONOMIA DE KI:
+						// *"com ki baixo o NPC esperto troca pro corpo-a-corpo em vez de queimar ki"*
+						// (`NPCAI.dm:404`). Entao a cena da cada metade a condicao dela:
+						//
+						//   30 s COLADO e com o tanque abaixo do preco do raio -> so resta o punho;
+						//   30 s A NOVE TILES com o tanque cheio               -> o raio vale.
+						//
+						// E o FOLEGO fica cheio na primeira metade pelo mesmo motivo: sem isso ela mede
+						// o cansaco (o corpo iria recarregar no meio) em vez da escolha.
+						// ==========================================================================================================
+						if (i < 900)
+						{
+							d.bicho.Ficha.Ki = Math.Min(d.bicho.Ficha.Ki, menorCustoDeTiro * 0.5);
+							d.bicho.Ficha.stamina = d.bicho.Ficha.maxstamina;
+						}
+						else if (i == 900) d.bicho.Ficha.Ki = d.bicho.Ficha.MaxKi;
+					}
+
+					// O RELATO QUE EXPLICA UM ZERO. Sem estes dois numeros, "0 tiros" nao diz se ele
+					// nao QUIS atirar (plano), se nao PODE (parede) ou se o canal quebrou.
+					if (LinhaDeVisaoLivre(comRaio.bicho, comRaio.saco)) miraLivre++;
+					if (comRaio.bicho.Cerebro?.Atual == Plano.Atirar) planoDeTiro++;
+
+					// O TANQUE E OLHADO SO NA METADE DE LONGE (depois do enchimento da virada): o que
+					// esta linha existe pra provar e que **o TIRO** foi pago, e nao o soco.
+					if (i > 900)
+					{
+						kiNoComeco = Math.Max(kiNoComeco, comRaio.bicho.Ficha.MaxKi);
+						kiMinimo = Math.Min(kiMinimo, comRaio.bicho.Ficha.Ki);
+					}
+
+					TickCombate(Protocol.TickSeconds);
+					TickDosCorposSemDono(Protocol.TickSeconds);
+					TickDosCanaisDeKi(Protocol.TickSeconds);
+					TickDosProjeteis(Protocol.TickSeconds);
+					TickDosEmbatesDeKi(Protocol.TickSeconds);
+					TickDoPrazoDeRaioDaIa(Protocol.TickSeconds);
+
+					// O SOCO SE MEDE PELO RELOGIO QUE O `Atacar` ESCREVE (`AtaqueAte`), e nao por
+					// dano: golpe aparado ou esquivado E um soco, e mede-se o GESTO.
+					if (comRaio.bicho.AtaqueAte != ultimoAtaqueA)
+					{ ultimoAtaqueA = comRaio.bicho.AtaqueAte; socosDe[comRaio.bicho.Id]++; }
+					if (semRaio.bicho.AtaqueAte != ultimoAtaqueB)
+					{ ultimoAtaqueB = semRaio.bicho.AtaqueAte; socosDe[semRaio.bicho.Id]++; }
+
+					// E O TIRO SE MEDE PELO PROJETIL NA ZONA -- a unica evidencia que nao da pra
+					// produzir sem atravessar `UsarHabilidade` e a tecnica inteira.
+					foreach (Projetil p in ProjeteisDaZona(comRaio.bicho.Zone.Hash))
+						if (tirosDe.TryGetValue(p.Dono, out HashSet<int>? meus)) meus.Add(p.Id);
+				}
+
+				int tirosA = tirosDe[comRaio.bicho.Id].Count, socosA = socosDe[comRaio.bicho.Id];
+				int tirosB = tirosDe[semRaio.bicho.Id].Count, socosB = socosDe[semRaio.bicho.Id];
+				GD.Print($"  ---- 60 s de briga (30 s colado, 30 s a 9 tiles) ----");
+				GD.Print($"       COM arsenal : {tirosA} tiros, {socosA} socos "
+					   + $"(plano=Atirar em {100.0 * planoDeTiro / 1800:0}% dos tiques, "
+					   + $"linha livre em {100.0 * miraLivre / 1800:0}%)");
+				GD.Print($"       sem arsenal : {tirosB} tiros, {socosB} socos");
+				// O DANO NO SACO NAO E UMA CHECAGEM, E SIM UM NUMERO NO CONSOLE -- ver o bloco do vao
+				// entre a janela de soco e o alcance, mais abaixo. Ele fica a vista de proposito: no
+				// dia em que a receita de distancia mudar, e por aqui que se ve se o punho encostou.
+				GD.Print($"       vida tirada dos sacos: {danoNoSaco:0.##} "
+					   + $"(o soco alcanca {CombatKnobs.Alcance:0} px e a IA soca ate "
+					   + $"{new Cerebro().DistanciaIdeal * 1.6f:0} px -- ver o vao, abaixo)");
+
+				Checa("numa briga de 60 s o NPC armado usa as DUAS ferramentas -- o punho colado e sem "
+					+ "Ki, o raio de longe e com tanque -- e nao so uma delas",
+					  tirosA > 0 && socosA > 0, $"{tirosA} tiros, {socosA} socos");
+
+				Checa("(controle) ...e a briga foi de verdade: os sacos levaram dano de gente "
+					+ "(sem isto, 'ele socou' seria so o relogio do golpe subindo)",
+					  danoNoSaco > 0, $"{danoNoSaco:0.##} de vida");
+
+				// A ARMADILHA: o MESMO cerebro, o MESMO molde, a MESMA cena -- so o arsenal muda.
+				// Sem esta linha, "ele atirou" poderia ser qualquer coisa contando projetil de
+				// qualquer um, e "ele socou" poderia ser um contador que sempre sobe.
+				Checa("A ARMADILHA ESTA ARMADA: o mesmo corpo SEM os degraus atravessa a mesma briga "
+					+ "sem UM tiro -- e continua socando",
+					  tirosB == 0 && socosB > 0, $"{tirosB} tiros, {socosB} socos");
+
+				// O CONTROLE DO TIRO E O TANQUE, e ele fecha a corrente: um contador de projetil
+				// prova que a entidade nasceu; o Ki DESCENDO prova que ela passou pelo funil que
+				// cobra -- que e a promessa desta camada inteira ("a IA paga o mesmo que o jogador").
+				Checa("(controle) ...e os tiros foram PAGOS: na metade de longe, com o tanque cheio na "
+					+ "virada, o Ki do armado desceu",
+					  kiMinimo < kiNoComeco * 0.95,
+					  $"cheio em {kiNoComeco:0}, o minimo foi {kiMinimo:0}");
+
+				// ============================ O VAO ENTRE A JANELA DA IA E O ALCANCE DO JOGO ============================
+				// **Esta linha nasceu de um vermelho.** O controle daqui era "os sacos levaram dano", e
+				// ele reprovou com 54 socos e ZERO de contato: o corpo se planta a ~42 px do alvo (a
+				// receita `Pressao` so avanca acima de `DistanciaIdeal * 1,4` = 48 px) e o soco do jogo
+				// alcanca 40 px. Quem tapa esse vao e o ARRANQUE (`Aproximar`, que anda o resto), e ele
+				// tem recarga propria (`DashLivreEm`) -- entao um corpo que soca a 2 Hz com o arranque
+				// frio bate no ar. E o proprio dono ja descreveu o sintoma pelo lado do jogador:
+				// *"as vezes vc n da tp pq ta perto mas n o suficiente pra bater ai vc soca o nada"*.
+				//
+				// O QUE ESTA CHECAGEM PROTEGE nao e o vao (ele e do jogo, e o conserto -- se houver --
+				// e da receita, nao da bancada): e o INVARIANTE que faz o arranque poder salvar. Se a
+				// janela de soco da IA passar do alcance do arranque, ela vai socar de um lugar de onde
+				// nao ha como chegar, e ai o vao deixa de ter conserto possivel.
+				// ==================================================================================================
+				Checa("a janela de soco da IA cabe dentro do alcance do ARRANQUE -- e o que permite ao "
+					+ "`Aproximar` tapar o vao entre a distancia que ela mantem e os 40 px do soco",
+					  new Cerebro().DistanciaIdeal * 1.6f <= AlcanceDoPasso,
+					  $"IA soca ate {new Cerebro().DistanciaIdeal * 1.6f:0} px, arranque busca ate {AlcanceDoPasso:0} px");
+
+				RemoverNpc(comRaio.bicho); RemoverNpc(comRaio.saco);
+				RemoverNpc(semRaio.bicho); RemoverNpc(semRaio.saco);
+			}
+
+			// =====================================================================
+			// 26. CADA GESTO LIGADO NESTA CAMADA, COM O ESTADO QUE O DISPARA
+			// =====================================================================
+			// ============================ POR QUE ESTA SECAO E UMA LISTA, E ISSO E DE PROPOSITO ============================
+			// A secao 22 cobre os tres gestos GRANDES da camada da lingua (o relogio da fala, a
+			// histerese do aviso, o sopro e a orbita). O que sobrou sao pontos de fala e podas que
+			// entraram junto e que compartilham exatamente o modo de falha deste port: **regra escrita
+			// de um lado do fio, sem chamador do outro**. Um deles ja nasceu assim nesta mesma camada
+			// (o `Momento.Disparar` foi escrito porque o chefe blaster atravessava a luta mudo).
+			//
+			// Cada linha aqui nomeia O ESTADO que dispara o gesto e traz o seu CONTROLE -- o mesmo
+			// corpo, na mesma cena, sem a condicao. Sem o controle, "ele fala ao atirar" fica verde
+			// com um corpo que fala por qualquer motivo.
+			// ==========================================================================================================
+			{
+				static Percepcao Luta(double vida = 1, double ki = 1, double kiAbs = 5000,
+									  double folego = 1, float px = 18, bool alvoCaido = false,
+									  bool temAlvo = true) => new()
+				{
+					TemAlvo = temAlvo, IdDoAlvo = 55, Minha = Vec2.Zero, DoAlvo = new Vec2(px, 0),
+					VidaFrac = vida, VidaDoAlvo = 1, FolegoFrac = folego,
+					KiFrac = ki, Ki = kiAbs, AlvoCaido = alvoCaido,
+					MeuPoder = 1000, PoderDoAlvo = 1000,
+				};
+
+				static Cerebro ComLingua(Capacidades poderes = default, double cautela = 0.2)
+				{
+					var c = new Cerebro { VidaCautelosa = cautela, Inteligencia = 1.0, Disciplina = 1.0, Poderes = poderes };
+					c.Boca.Ligado = true;
+					return c;
+				}
+
+				// ---------- (a) O ALVO CAIU: a fala da vitoria (`NPCAI.dm:548`) ----------
+				// O ESTADO: ele estava BRIGANDO e o outro foi ao chao. A condicao do `IsInFight` e a
+				// que impede um corpo que passa perto de um caido de comemorar a derrota alheia.
+				{
+					static int Vitorias(Cerebro c, bool brigando)
+					{
+						var rng = new Random(2601);
+						int ditas = 0;
+						for (int volta = 0; volta < 40; volta++)
+						{
+							// ou 10 s de briga (o plano vira `Pressionar`), ou 10 s de passeio
+							for (int i = 0; i < 300; i++)
+								c.Pensar(brigando ? Luta() : Luta(temAlvo: false), Protocol.TickSeconds, rng);
+							// e entao o alvo cai
+							for (int i = 0; i < 8; i++)
+								if (c.Pensar(Luta(alvoCaido: true), Protocol.TickSeconds, rng).Falar is { Length: > 0 })
+									ditas++;
+						}
+						return ditas;
+					}
+
+					Checa("QUANDO O ALVO CAI, quem estava brigando COMEMORA (o `npc_victory_lines`)",
+						  Vitorias(ComLingua(), brigando: true) > 0);
+					Checa("(controle) ...e quem estava so passeando nao diz nada ao passar por um "
+						+ "corpo no chao -- e o `IsInFight` do original",
+						  Vitorias(ComLingua(), brigando: false) == 0);
+				}
+
+				// ---------- (b) LEVAR UM GOLPE GRANDE: e a frase MUDA no fio da vida ----------
+				// O ESTADO: a vida caindo mais de 5 pontos entre duas leituras de emocao (0,83 s) --
+				// o golpe que doeu, e nao o desgaste (`NPCAI.dm:793-797`).
+				{
+					// ============================ A CENA E LONGE, E ISSO E O INSTRUMENTO ============================
+					// **Esta medicao ja ficou vermelha por causa disto.** Com o alvo colado, o corpo
+					// SOCA -- e socar tem ponto de fala proprio (`Momento.Socar`, 25%). O "controle do
+					// arranhao" media 4 frases em 30 s de desgaste e nenhuma delas era do desgaste: eram
+					// os socos. Pior: as duas listas comparadas abaixo tambem estariam contaminadas, e a
+					// disjuncao entre elas seria sorte.
+					//
+					// A 12 tiles nao ha soco nenhum, e o corpo (sem arsenal) so persegue. Assim TODA
+					// frase desta cena vem de apanhar ou de aviso -- e nao ha o que adivinhar. E a mesma
+					// receita da secao 22-c, e pelo mesmo motivo: medir por CANAL, e nao por texto.
+					// ==========================================================================================
+					const float Longe = 12 * ZoneCollision.TileSize;
+
+					/// N tiques apanhando rapido, comecando em `de` e descendo `porTique`
+					static List<string> Apanhando(Cerebro c, double de, double porTique, int tiques, int semente)
+					{
+						var rng = new Random(semente);
+						var ditas = new List<string>();
+						double vida = de;
+						for (int i = 0; i < tiques; i++)
+						{
+							vida = Math.Max(0.02, vida - porTique);
+							if (c.Pensar(Luta(vida: vida, px: 12 * ZoneCollision.TileSize),
+										 Protocol.TickSeconds, rng).Falar is { Length: > 0 } f)
+								ditas.Add(f);
+						}
+						return ditas;
+					}
+
+					// INTEIRO: cai de 1,00 a 0,50 -- longe do limiar do AVISO de vida (0,25), entao
+					// tudo o que sair aqui e a fala de apanhar.
+					List<string> forte = Apanhando(ComLingua(), 1.00, 0.003, 170, 2611);
+
+					// ============================ O AVISO DE VIDA E GASTO ANTES, E POR ISSO ============================
+					// Abaixo de 0,25 o `npc_hurt_lines` do AVISO tambem tem direito de falar, e ele tem
+					// PRECEDENCIA. Sem gastar a histerese antes, o conjunto "no fio" poderia ser so o
+					// aviso -- e a comparacao de baixo estaria comparando a lista errada.
+					// ==========================================================================================
+					var noFio = ComLingua();
+					var rngPre = new Random(2612);
+					var doAviso = new List<string>();
+					for (int i = 0; i < 120; i++)   // 4 s com a vida parada em 0,20: so o aviso sai
+						if (noFio.Pensar(Luta(vida: 0.20, px: Longe), Protocol.TickSeconds, rngPre).Falar is { Length: > 0 } f)
+							doAviso.Add(f);
+
+					List<string> fraco = Apanhando(noFio, 0.29, 0.003, 170, 2613);
+
+					Checa("(preparo) a histerese do aviso de vida foi gasta antes da medicao",
+						  doAviso.Count > 0, "o aviso nao saiu");
+					Checa("APANHANDO FEIO ele reclama, e as frases de quem esta INTEIRO nao sao as "
+						+ "mesmas de quem esta NO FIO (`npc_hurt_lines` x `npc_dying_lines`)",
+						  forte.Count > 0 && fraco.Count > 0 && !forte.Intersect(fraco).Any(),
+						  $"inteiro [{string.Join(" | ", forte.Distinct())}] "
+						+ $"no fio [{string.Join(" | ", fraco.Distinct())}]");
+					Checa("...e o que ele diz no fio nao e o aviso de vida reaproveitado",
+						  fraco.Except(doAviso).Any(), string.Join(" | ", fraco.Distinct()));
+
+					// O CONTROLE DO LIMIAR: um arranhao nao arranca frase nenhuma.
+					List<string> arranhao = Apanhando(ComLingua(), 1.00, 0.0002, 900, 2614);
+					Checa("(controle) o DESGASTE nao produz frase -- o limiar de -5 do original e o "
+						+ "que separa 'ele reclamou do golpe' de 'ele fala sozinho'",
+						  arranhao.Count == 0, $"{arranhao.Count} frases em 30 s de arranhao");
+				}
+
+				// ---------- (c) SOLTAR O RAIO: o `Momento.Disparar` ----------
+				// O ESTADO: o pulso do tiro. Este e o ponto de fala SEM original -- ele existe porque
+				// o compromisso deste port prende um blaster no plano de atirar, e sem ele um chefe de
+				// kit inteiro de raio atravessava a briga mudo (medido: 20 s, zero frases).
+				{
+					var raio = new Tiro
+					{
+						Id = "bancada_grito", AlcanceMin = 4 * ZoneCollision.TileSize,
+						AlcanceMax = 12 * ZoneCollision.TileSize, TempoDeConjuracao = 0.3,
+						CustoDeKi = 100, PrecisaDeLinhaLivre = false, Precisao = 0.95,
+					};
+					static (int tiros, int frases) Atirando(Cerebro c, int semente)
+					{
+						var rng = new Random(semente);
+						int tiros = 0, frases = 0;
+						for (int i = 0; i < 1800; i++)   // 60 s
+						{
+							Comando cm = c.Pensar(Luta(px: 8 * ZoneCollision.TileSize), Protocol.TickSeconds, rng);
+							if (cm.Habilidade is { Length: > 0 }) tiros++;
+							if (cm.Falar is { Length: > 0 }) frases++;
+						}
+						return (tiros, frases);
+					}
+
+					var armado = new Capacidades { DeLonge = new Arsenal([raio]) };
+					(int tiros, int frases) falante = Atirando(ComLingua(armado), 2621);
+					Checa("(preparo) o blaster desta cena esta MESMO atirando", falante.tiros > 0,
+						  $"{falante.tiros} tiros");
+					Checa("SOLTANDO O RAIO ele grita -- sem isto um chefe cujo kit inteiro e raio "
+						+ "atravessa a luta calado (era o caso, e foi medido)",
+						  falante.frases > 0, $"{falante.frases} frases em 60 s");
+
+					var mudo = new Cerebro { Inteligencia = 1.0, Poderes = armado };
+					(int tiros, int frases) semBoca = Atirando(mudo, 2621);
+					Checa("(controle) ...e o mesmo corpo com a boca desligada atira igual e nao diz "
+						+ "nada (a fera e a furia dirigem corpo de JOGADOR)",
+						  semBoca.tiros > 0 && semBoca.frases == 0,
+						  $"{semBoca.tiros} tiros, {semBoca.frases} frases");
+				}
+
+				// ---------- (d) RESPONDER UM RAIO COM O PROPRIO RAIO: o `Momento.ContraFeixe` ----------
+				// O ESTADO nao esta no cerebro: quem o dispara e o `TickDoContraFeixe`
+				// (`GameServer.EmbateDeKi.cs`), que pergunta a frase no instante em que o NPC devolve o
+				// feixe. E o unico `npc_combat_chat` do DM sem `prob()` na frente (`:378`).
+				{
+					var respondeu = ComLingua();
+					Checa("RESPONDENDO UM FEIXE, o corpo com lingua tem o que gritar (o consumidor e o "
+						+ "`TickDoContraFeixe`, e ele pergunta no instante do embate)",
+						  respondeu.FraseDoContraFeixe(new Random(2631)) is { Length: > 0 });
+					Checa("(controle) ...e um corpo mudo devolve NULO, e o embate sai calado",
+						  new Cerebro().FraseDoContraFeixe(new Random(2631)) == null);
+				}
+
+				// ---------- (e) ACABOU DE ASCENDER: o silencio de 2 s (`NPCAI.dm:255`) ----------
+				// O ESTADO: subir um degrau. E a unica pausa de fala do original que nao vem de ter
+				// falado -- quem acabou de explodir de poder nao emenda uma piadinha no tique seguinte.
+				{
+					static int FalouAntesDe(Cerebro c, double segundos, int semente)
+					{
+						var rng = new Random(semente);
+						int ditas = 0;
+						var tiques = (int)(segundos / Protocol.TickSeconds);
+						for (int i = 0; i < tiques; i++)
+							if (c.Pensar(Luta(vida: 0.40), Protocol.TickSeconds, rng).Falar is { Length: > 0 })
+								ditas++;
+						return ditas;
+					}
+
+					var podeSubir = new Capacidades
+					{
+						HaDegrauAcima = true, AscendePorDecisao = true,
+						RecusaDaForma = RecusaForma.Pode,
+					};
+
+					int depoisDeAscender = 0, semAscender = 0;
+					for (int s = 0; s < 20; s++)
+					{
+						depoisDeAscender += FalouAntesDe(ComLingua(podeSubir), Falatorio.PausaDepoisDeAscender, 2640 + s);
+						semAscender += FalouAntesDe(ComLingua(), Falatorio.PausaDepoisDeAscender, 2640 + s);
+					}
+					Checa("DEPOIS DE ASCENDER ele fica um instante calado -- 20 subidas, nenhuma frase "
+						+ "nos primeiros 2 s",
+						  depoisDeAscender == 0, $"{depoisDeAscender} frases");
+					Checa("(controle) ...e o MESMO corpo que NAO subiu fala nessa mesma janela (era a "
+						+ "ascensao, e nao o relogio normal da fala)",
+						  semAscender > 0, $"{semAscender} frases em 20 janelas");
+				}
+
+				// ---------- (f) ABRIR ESPACO NA MARRA ANTES DE RECUAR (`NPCAI.dm:678`) ----------
+				// O ESTADO: ele decidiu RECARREGAR e o inimigo esta colado. E diferente do sopro da
+				// briga (secao 22-d, que exige atordoamento): aqui o gate e outro -- `prob(60)` e a
+				// distancia --, e ele importa MAIS neste port do que no DM, porque carregar PRENDE o
+				// corpo: sem o sopro, o NPC recuaria pra sempre e nunca carregaria um ponto de Ki.
+				{
+					static (int sopros, int frases) NaRecarga(Cerebro c, float px, int semente)
+					{
+						var rng = new Random(semente);
+						int sopros = 0, frases = 0;
+						for (int i = 0; i < 600; i++)   // 20 s
+						{
+							Comando cm = c.Pensar(Luta(ki: 0.05, kiAbs: 500, folego: 0.05, px: px),
+												  Protocol.TickSeconds, rng);
+							if (cm.Habilidade == "Kiai") sopros++;
+							if (cm.Falar is { Length: > 0 }) frases++;
+						}
+						return (sopros, frases);
+					}
+
+					Cerebro Recarregador() => ComLingua(new Capacidades
+					{ SabeReunirKi = true, SabeSopro = true, CustoDoSopro = 100 });
+
+					(int sopros, int frases) colado = NaRecarga(Recarregador(), 16, 2651);
+					Checa("INDO RECARREGAR COM O INIMIGO COLADO, ele SOPRA pra abrir espaco -- sem "
+						+ "isto ele recuaria pra sempre, porque carregar prende o corpo",
+						  colado.sopros > 0, $"{colado.sopros} sopros em 20 s");
+					Checa("...e ele AVISA que vai recarregar (o `npc_recharge_lines`, a primeira linha "
+						+ "do `rechargeState`)",
+						  colado.frases > 0, $"{colado.frases} frases");
+
+					(int sopros, int frases) longe = NaRecarga(Recarregador(), 10 * ZoneCollision.TileSize, 2651);
+					Checa("(controle) ...e com o inimigo LONGE ele nao sopra -- o gesto e sobre "
+						+ "espaco, e nao sobre estar sem Ki",
+						  longe.sopros == 0, $"{longe.sopros} sopros");
+				}
+			}
+
+			// =====================================================================
+			// 27. O REFLEXO DA MENTE NAO REGREDIU -- mesmo motor, outro proposito
+			// =====================================================================
+			// ============================ POR QUE ELE PRECISA DE LINHA PROPRIA ============================
+			// A secao 19 cobre as duas posses (Oozaru e furia lendaria) porque as duas escrevem o
+			// tempero na mao, num arquivo cada. O REFLEXO e o terceiro fabricante de cerebro deste
+			// servidor (`CriarClone`) e nao estava coberto -- e ele e o mais exposto de todos as
+			// camadas novas por uma razao que nao aparece em teste de comportamento nenhum: **ele
+			// carrega o nome do dono**. Uma boca ligada ali sai no chat como `Fulano (mente)` dizendo
+			// o que o Fulano nao digitou.
+			//
+			// O tempero e literal do DM: `behavior_vals = list(90, 70, 0, 70)` (`MindMeditate.dm:319`),
+			// com o comentario do autor -- *"destemido, agressivo, SEM misericordia"*.
+			// ======================================================================================
+			{
+				ServerPlayer reflexo = CriarClone(quem, zona);
+				nascidos.Add(reflexo);
+
+				Checa("o reflexo nasce DIRIGIDO (o `CriarClone` e o terceiro fabricante de cerebro)",
+					  reflexo.Cerebro != null);
+
+				Cerebro sombra = reflexo.Cerebro!;
+				Checa("...com a coragem 90 do original (`VidaCautelosa` = 0,09): ele quase nao recua",
+					  Math.Abs(sombra.VidaCautelosa - 0.9 * (1 - 0.90)) < 1e-9, $"{sombra.VidaCautelosa}");
+				Checa("...a furia 70 (`ChanceDePesado` = 0,45)",
+					  Math.Abs(sombra.ChanceDePesado - (0.10 + 0.5 * 0.70)) < 1e-9, $"{sombra.ChanceDePesado}");
+				Checa("...e a logica 70 nas duas manivelas (ele apara e ele recarrega -- ao contrario "
+					+ "da fera)",
+					  Math.Abs(sombra.Inteligencia - 0.70) < 1e-9 && Math.Abs(sombra.Disciplina - 0.70) < 1e-9,
+					  $"intel {sombra.Inteligencia} disc {sombra.Disciplina}");
+
+				Checa("O REFLEXO E MUDO -- ele usa o NOME do dono, e uma frase saindo dali apareceria "
+					+ "no chat como se o jogador a tivesse digitado",
+					  !sombra.Boca.Ligado);
+
+				// ---- E ELE CONTINUA LUTANDO, com as camadas novas por cima ----
+				{
+					var rng = new Random(2701);
+					int socos = 0, circulos = 0, tecnicas = 0, marcou = 0, falou = 0;
+					for (int i = 0; i < 1800; i++)   // 60 s
+					{
+						var cena = new Percepcao
+						{
+							TemAlvo = true, IdDoAlvo = 8181, Minha = Vec2.Zero, DoAlvo = new Vec2(18, 0),
+							VidaFrac = 1, VidaDoAlvo = 1, KiFrac = 1, Ki = 5000, FolegoFrac = 1,
+							MeuPoder = 1000, PoderDoAlvo = 1000,
+						};
+						Comando c = sombra.Pensar(cena, Protocol.TickSeconds, rng);
+						if (c.Leve || c.Pesado) socos++;
+						if (sombra.Atual == Plano.Circular) circulos++;
+						if (c.Habilidade is { Length: > 0 }) tecnicas++;
+						if (c.Marcar == 8181) marcou++;
+						if (c.Falar is { Length: > 0 }) falou++;
+					}
+					Checa("...e ele LUTA: 60 s de treino e o reflexo troca socos (o parceiro infinito "
+						+ "continua sendo um parceiro)",
+						  socos > 0, $"{socos} socos");
+					Checa("...e ele MARCA quem enfrenta em todo tique de briga -- e por isso ele "
+						+ "tambem nao soca de costas (a virada mora no `Atacar`)",
+						  marcou == 1800, $"{marcou} de 1800");
+					Checa("...e ele nao ORBITA nem ATIRA: o livro dele nasce vazio, e o gate das duas "
+						+ "coisas e ter arsenal (o `isBlaster` do DM)",
+						  circulos == 0 && tecnicas == 0, $"{circulos} tiques em orbita, {tecnicas} tecnicas");
+					Checa("...e ele atravessa os 60 s sem dizer uma palavra",
+						  falou == 0, $"{falou} frases");
+				}
+
+				// ---- E ELE NAO FOGE, nem no fio da vida (coragem 90) ----
+				{
+					var rng = new Random(2702);
+					bool fugiu = false;
+					for (int i = 0; i < 1800 && !fugiu; i++)
+					{
+						sombra.Pensar(new Percepcao
+						{
+							TemAlvo = true, IdDoAlvo = 8181, Minha = Vec2.Zero, DoAlvo = new Vec2(18, 0),
+							VidaFrac = 0.05, VidaDoAlvo = 1, KiFrac = 1, Ki = 5000, FolegoFrac = 1,
+							MeuPoder = 1000, PoderDoAlvo = 1000,
+						}, Protocol.TickSeconds, rng);
+						fugiu = sombra.Atual == Plano.Fugir;
+					}
+					Checa("...e A SOMBRA DE ALGUEM NAO CORRE: 5% de vida e ele continua brigando -- e "
+						+ "o 90 de coragem do `MindMeditate.dm`, e nao um `if` de excecao",
+						  !fugiu, $"plano {sombra.Atual}");
+				}
+			}
+
+			// =====================================================================
+			// 28. O CUSTO DA IA **COMPLETA** -- lingua, arsenal e emocao no mundo cheio
+			// =====================================================================
+			// ============================ A SECAO 12 MEDE UM NPC MAIS POBRE DO QUE OS DE HOJE ============================
+			// Ela forja 20 corpos e mede o laco -- e os corpos dela tem o livro de skills VAZIO. Ou
+			// seja: a leitura de 1 Hz deles nao monta arsenal nenhum (o `ArsenalDeLonge` sai no
+			// primeiro `SabeTecnica`), e a boca deles nasce desligada. O numero que ela publica e o
+			// custo de um NPC que o `npcs.json` nao produz mais.
+			//
+			// Aqui os 20 sao a configuracao CARA: os tres degraus que dao os verbs que voam (entao a
+			// leitura de 1 Hz varre o livro E monta o array de `Tiro`), a boca ligada e as emocoes
+			// andando. E as duas medidas continuam separadas pelo mesmo motivo da 12 -- media com a
+			// leitura diluida esconde as duas.
+			// ======================================================================================================
+			{
+				foreach (ServerPlayer velho in _players.Values) velho.Cerebro = null;
+
+				var caros = new List<ServerPlayer>();
+				for (int i = 0; i < 20; i++)
+				{
+					// A 4000 px UNS DOS OUTROS, como na secao 12 e pelo mesmo motivo: sem alcance nao
+					// ha combate, e o que sobra na medida e o pedaco que esta camada e dona.
+					ServerPlayer c = Forjar($"ia: caro{i}", 50_000, new Vec2(i * 4000, 24000));
+					EnsinarAVoar(c);
+					DarOsTresDegraus(c);
+					c.Cerebro!.Boca.Ligado = true;
+					c.Cerebro.Poderes = LerCapacidades(c);
+					caros.Add(c);
+				}
+
+				Checa("(preparo) os 20 corpos caros tem MESMO arsenal (senao isto mediria a secao 12 "
+					+ "de novo, com outro nome)",
+					  caros.All(c => c.Cerebro!.Poderes.DeLonge.TemAlguma),
+					  $"{caros.Count(c => c.Cerebro!.Poderes.DeLonge.TemAlguma)} de 20");
+
+				double MedirCaro(bool comLeitura, out long bytes)
+				{
+					TickDosCorposSemDono(Protocol.TickSeconds);   // aquece (JIT)
+
+					// SINCRONIZA OS RELOGIOS DE 1 Hz -- a mesma armadilha da secao 12: relogios
+					// espalhados pelo segundo poem ~metade das leituras dentro da janela "barata".
+					if (!comLeitura)
+						foreach (ServerPlayer c in caros) c.Cerebro?.PrecisaLerCapacidades(1.0);
+
+					int voltas = comLeitura ? 300 : 25;
+					long b0 = GC.GetAllocatedBytesForCurrentThread();
+					ulong t0 = Time.GetTicksUsec();
+					for (int i = 0; i < voltas; i++) TickDosCorposSemDono(Protocol.TickSeconds);
+					ulong t1 = Time.GetTicksUsec();
+					bytes = (GC.GetAllocatedBytesForCurrentThread() - b0) / voltas;
+					return (t1 - t0) / (double)voltas;
+				}
+
+				double baratoCaro = MedirCaro(false, out long lixoBarato);
+				double comLeituraCaro = MedirCaro(true, out long lixoLeitura);
+
+				GD.Print("  ---- custo com 20 corpos ARMADOS e FALANTES ----");
+				GD.Print($"       tique BARATO (sem leitura): {baratoCaro:0.0} us, {lixoBarato} B");
+				GD.Print($"       media com a leitura de 1 Hz: {comLeituraCaro:0.0} us, {lixoLeitura} B");
+				GD.Print($"      (o tique inteiro tem {Protocol.TickSeconds * 1e6:0} us de orcamento)");
+
+				Checa("20 corpos ARMADOS e FALANTES cabem folgados no tique de 33 ms",
+					  comLeituraCaro < Protocol.TickSeconds * 1e6 * 0.25,
+					  $"{comLeituraCaro:0.0} us de {Protocol.TickSeconds * 1e6:0} us");
+
+				// O TIQUE DE 30 Hz CONTINUA EM ZERO, e isto e o que a camada da lingua tinha como
+				// arruinar: as frases sao `static readonly`, o `Falatorio` e um objeto por cerebro
+				// (nao por tique) e o `Circulo` so faz `Vec2`. Se alguem interpolar uma string num
+				// ponto de fala, esta linha fica vermelha antes de o chat encher.
+				Checa("...e o tique BARATO deles continua sem alocar nada -- lingua, emocao e orbita "
+					+ "no caminho de 30 Hz custam ZERO bytes",
+					  lixoBarato < 64, $"{lixoBarato} B por tique com 20 corpos");
+
+				// ============================ ESTE TETO E MAIOR QUE O DA SECAO 12, E ELE TEM DONO ============================
+				// A leitura de 1 Hz de um corpo ARMADO faz duas coisas que a de um corpo pobre nao faz:
+				// varre o livro pelas quatro tecnicas que voam (`SabeTecnica`, e cada uma aloca o
+				// iterador do `VerbosAtivos()`) e MONTA a lista + o array de `Tiro`. O teto abaixo foi
+				// medido com esta bancada e posto ~15% acima do medido -- e continua sendo detector de
+				// regressao, porque um laco novo de verdade custa milhares de bytes e nao dezenas.
+				//
+				// **Se esta linha reprovar, a resposta certa nao e subir o numero**: e olhar se a
+				// pergunta nova cabia numa das que ja passam por aqui.
+				// ======================================================================================================
+				Checa("...e a leitura de 1 Hz de um corpo ARMADO fica dentro do orcamento conhecido "
+					+ "(o `HashSet` do catalogo de formas + os cinco `SabeTecnica` + o array do arsenal)",
+					  lixoLeitura < 16_384, $"{lixoLeitura} B por tique (media) com 20 corpos");
+
+				foreach (ServerPlayer c in caros) c.Cerebro = null;
 			}
 		}
 		finally

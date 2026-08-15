@@ -85,6 +85,7 @@ public sealed partial class GameServer
 			case "ca_comprar": ComprarNaMesa(pl, arg); return true;
 			case "ca_texto": TextoDaMesa(pl, arg); return true;
 			case "ca_grito": AlternarGrito(pl, arg); return true;
+			case "ca_arte": ArteDaTecnica(pl, arg); return true;
 			case "ca_salvar": SalvarTecnica(pl); return true;
 			case "ca_cancelar": CancelarMesa(pl); return true;
 			case "ca_esquecer": EsquecerTecnica(pl, arg); return true;
@@ -199,6 +200,42 @@ public sealed partial class GameServer
 		}
 
 		m.PorTipo(t.Value);
+		MandarCustomizadas(pl);
+	}
+
+	/// <summary>
+	/// ESCOLHER A ARTE -- o `pick_game_icon` (`customattacks.dm:543-568`) e o unico lugar do jogo
+	/// original em que um JOGADOR escolhe como o proprio ki se parece.
+	///
+	/// ============================ NAO CUSTA PONTO, E ISSO E DO ORIGINAL ============================
+	/// O botao de icone do DM fica fora do orcamento de cinco pontos: ele nao passa pelo
+	/// `custompoints_spent` em lugar nenhum. Cobrar aqui seria vender aparencia por poder, e o
+	/// painel inteiro deste port existe pra nao ter uma segunda tabela de precos.
+	/// ==========================================================================================
+	///
+	/// ============================ E A LISTA E RECORTADA PELO TIPO ============================
+	/// `custom_icon_folders` (`:558-562`): raio ve `Beams`+`Techniques`, bola ve so `Blasts`,
+	/// teleguiada ve so `Techniques`. **O gate e conferido aqui e nao so na tela**: o comando chega
+	/// por texto no canal de verbos, e uma tela adulterada (ou de outra versao) poderia pedir uma
+	/// folha de raio pra uma bola -- que sairia desenhada com a cauda de um beam.
+	/// ===================================================================================
+	/// </summary>
+	private void ArteDaTecnica(ServerPlayer pl, string arg)
+	{
+		if (pl.Mesa is not { } m) { Avisar(pl, "abra uma tecnica antes."); return; }
+
+		// VAZIO OU ZERO = VOLTAR AO PADRAO. E o `if(!choice) return null` do `pick_game_icon`, que
+		// deixa `attackicon` nulo -- ou seja o jogador pode desfazer a escolha, e nao so trocar.
+		if (!ushort.TryParse(arg, out ushort n)) { Avisar(pl, "arte desconhecida."); return; }
+
+		var a = (ArteDeKi)n;
+		if (a != ArteDeKi.Nenhuma && !ArteDeProjetil.PermitidasPara(m.Tipo).Contains(a))
+		{
+			Avisar(pl, "essa arte nao serve pra este tipo de ataque.");
+			return;
+		}
+
+		m.Arte = a;
 		MandarCustomizadas(pl);
 	}
 

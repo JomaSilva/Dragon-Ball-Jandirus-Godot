@@ -250,6 +250,13 @@ public partial class GameServer
 			// clone da mente e o corpo de bancada, que tambem tem `Peer` nulo e nao moram aqui.
 			if (npc.Papel == null) continue;
 			if (npc.Ficha.dead || npc.Combate == null) continue;
+
+			// O HABITANTE INTOCAVEL NAO ENTRA NO SORTEIO. Terceira morte deste arquivo que nao passa
+			// por dano nenhum -- e a mais traicoeira das tres, porque e SORTEADA: um NPC transformando
+			// morreria aqui em 25% a 100% dos estagios, e o mesmo teste rodado de novo daria outro
+			// resultado. Ver o `protegido` do `ConcluirDestruicao`, mesma regra e mesma razao.
+			if (npc.Combate.Intocavel) continue;
+
 			if (_rng.NextDouble() * 100 >= chance) continue;
 
 			if (!npc.Combate.Morrer()) continue;
@@ -392,6 +399,23 @@ public partial class GameServer
 			if (!pl.Zone.Equals(zona)) continue;              // `:133` -- saiu antes do fim
 			if (pl.Combate == null) continue;
 
+			// ============================ O CORPO INTOCAVEL ATRAVESSA O FIM DO MUNDO ============================
+			// Aqui ha DUAS mortes que nao passam por dano nenhum -- o habitante que morre direto
+			// (`:134-136` do DM, sem checagem de BP) e o nocauteado que morre depois do estrago -- e por
+			// isso nem o funil do `CombatState.Ferir` nem o crivo do `EspalharDanoG3` as alcancam. Sem
+			// esta bandeira, a explosao do planeta seria o UNICO jeito de matar quem esta transformando,
+			// e o NPC morreria por ela sem sequer um teste de poder: o "as vezes" mais dificil de
+			// reproduzir do jogo, porque exige dois eventos raros no mesmo instante.
+			//
+			// Vale tambem pra carencia de renascimento, que e a outra metade do `Intocavel`: renascer no
+			// planeta no segundo em que ele estoura ja era uma morte que o escudo devia ter barrado.
+			//
+			// **BANDEIRA E NAO `continue`**: quem sobrevive ao fim do mundo ainda tem que SUBIR
+			// (`EvacuarParaOEspaco`, la embaixo). Pular a volta inteira deixaria o transformado de pe num
+			// planeta que nao existe mais -- trocar uma morte injusta por um corpo preso no nada.
+			// ==============================================================================================
+			bool protegido = pl.Combate.Intocavel;
+
 			// ============================ 2. O HABITANTE NAO SOBREVIVE ============================
 			// `if(M.isNPC) { M.buudead = "force"; M.Death() }` (`:134-136`) -- **sem checagem de BP**.
 			// O cidadao de Vegeta com BP de milhoes morre igual ao de BP 3.
@@ -402,7 +426,7 @@ public partial class GameServer
 			// ================================================================================
 			if (pl.Papel != null)
 			{
-				if (pl.Combate.Morrer()) npcsMortos++;
+				if (!protegido && pl.Combate.Morrer()) npcsMortos++;
 				continue;
 			}
 
@@ -410,7 +434,7 @@ public partial class GameServer
 			//
 			// QUEM ESTA ACIMA DO ALGOZ ATRAVESSA O FIM DO MUNDO ILESO, e isso e literal: e a regra
 			// que faz o Planet Destroy ser uma ameaca aos FRACOS e nao um botao que mata todo mundo.
-			if (pl.Ficha.expressedBP <= e.BpDoAlgoz)
+			if (!protegido && pl.Ficha.expressedBP <= e.BpDoAlgoz)
 			{
 				EspalharDanoG3(pl, algoz ?? pl, MortePlanetaria.DanoDoCommit, letal: true);
 				Avisar(pl, "a explosão do planeta rasga você inteiro.");

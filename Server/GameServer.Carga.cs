@@ -232,9 +232,15 @@ public sealed partial class GameServer
 	/// </summary>
 	private static void EspalharDanoDaCarga(ServerPlayer pl, double dano)
 	{
-		if (pl.Combate == null) return;
+		// CORPO INTOCAVEL NAO SE MACHUCA SEGURANDO A TECLA. Auto-infligido tambem entra no escudo da
+		// cinematica pelo mesmo motivo do Kaio-ken (ver `EspalharDanoG2`): em cena o corpo esta preso,
+		// o jogador nao consegue soltar nada, e um dano que ele nao pode evitar durante uma cena que
+		// ele nao pode interromper e o "morri transformando e nao entendi por que" em pessoa.
+		//
+		// Antes do laco, e nao so no `Ferir`: o `DeveNocautear` la embaixo le o ESTADO do corpo.
+		if (pl.Combate is not { Intocavel: false }) return;
 		foreach (Jandirus.Core.Combat.BodyPart p in pl.Combate.Corpo.Partes.ToList())
-			if (!p.Decepado && !p.Aninhado) pl.Combate.Corpo.Ferir(p, dano, letal: false);
+			if (!p.Decepado && !p.Aninhado) pl.Combate.Ferir(p, dano, letal: false);
 		pl.Combate.SincronizarVida();
 
 		if (!pl.Ficha.KO && !pl.Ficha.dead && pl.Combate.Corpo.DeveNocautear())

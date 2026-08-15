@@ -109,6 +109,25 @@ public partial class Decalques : Node2D
 	public const int MaxPecas = 32;
 
 	/// <summary>
+	/// TETO PROPRIO DA ONDA DA AGUA, pela razao INVERSA a da peca -- ver o bloco acima.
+	///
+	/// ============================ A PECA E PROTEGIDA; A AGUA E CONTIDA ============================
+	/// A cota da peca existe pra que a poeira nao a varra. Esta existe pro contrario: pra que a AGUA
+	/// nao varra o resto. Ate agora quem abria onda era um corpo voando -- ~10 celulas por segundo,
+	/// no maximo um punhado de gente. O ki que cruza a agua muda a escala: um raio atravessa um lago
+	/// inteiro em segundos e pode haver varios no ar, e como a onda vive 2 s, meia duzia de raios
+	/// sobre um lago encheria sozinha os 120 lugares -- e a cratera, a fumaca e o sulco da briga que
+	/// esta acontecendo ao lado sumiriam da tela.
+	///
+	/// A CONTA: 40 lugares sao 40 celulas ondulando ao mesmo tempo -- mais do que qualquer tela
+	/// mostra de uma vez --, e sobram 80 pro resto. Repare que ela NAO e protegida do despejo geral
+	/// (so a peca e): a onda dura 2 s e se renova sozinha, entao sacrifica-la numa briga pesada nao
+	/// custa nada, enquanto perder um braco no chao custaria.
+	/// ==============================================================================================
+	/// </summary>
+	public const int MaxAgua = 40;
+
+	/// <summary>
 	/// O RECORTE DA FOLHA `Body Parts Bloody` de cada peca. A TABELA em si e do Core
 	/// (<see cref="Jandirus.Core.Combat.Body.PecaDe"/>, com as linhas do BYOND) -- aqui so se
 	/// traduz simbolo em nome de animacao, que e arte e por isso mora do lado do cliente.
@@ -167,11 +186,14 @@ public partial class Decalques : Node2D
 	private readonly Dictionary<string, SpriteFrames?> _folhas = [];
 
 	/// <summary>
-	/// Os decalques com prazo. `Peca` marca o membro arrancado, que o despejo protege -- ver
-	/// <see cref="MaxPecas"/>. E um campo da FILA e nao do node porque quem precisa saber e o
-	/// despejo, e ele so olha esta lista.
+	/// Os decalques com prazo, com o TIPO de cada um junto.
+	///
+	/// O tipo mora na FILA e nao no node porque quem precisa dele e o despejo, e ele so olha esta
+	/// lista. Ele era um `bool Peca` -- "isto e um membro?" --, e virou o tipo inteiro quando a AGUA
+	/// tambem passou a ter cota (<see cref="MaxAgua"/>): duas perguntas sobre a mesma linha ja pediam
+	/// dois bools, e o terceiro dia disso seria uma linha de bandeiras.
 	/// </summary>
-	private readonly List<(Node2D No, double Morre, bool Peca)> _vivos = [];
+	private readonly List<(Node2D No, double Morre, Protocol.Decal Tipo)> _vivos = [];
 	private double _relogio;
 
 	/// <summary>Quantos foram PEDIDOS e quantos estao vivos. So pras bancadas -- ver o teto.</summary>
@@ -256,13 +278,41 @@ public partial class Decalques : Node2D
 		no.QueueFree();
 	}
 
-	/// <summary>Quantas pecas de corpo estao no chao agora. Ver <see cref="MaxPecas"/>.</summary>
-	private int ContarPecas()
+	/// <summary>
+	/// Quantas pecas de corpo estao no chao AGORA -- so pra bancada, e e a mesma contagem que o
+	/// despejo usa (<see cref="Contar"/>), nao uma segunda.
+	///
+	/// O <see cref="MembrosDeTeste"/> nao responde isto: ele conta PEDIDOS e nunca desce. A pergunta
+	/// da briga longa e sobre o que sobrou vivo, e um contador que so sobe ficaria verde com o teto
+	/// inteiro furado.
+	/// </summary>
+	public int PecasVivasDeTeste => Contar(Protocol.Decal.Membro);
+
+	/// <summary>Quantas ondas de agua estao no chao agora. So pra bancada -- ver <see cref="MaxAgua"/>.</summary>
+	public int AguasVivasDeTeste => Contar(Protocol.Decal.Agua);
+
+	/// <summary>Quantos decalques deste tipo estao no chao agora. Ver <see cref="Cota"/>.</summary>
+	private int Contar(Protocol.Decal tipo)
 	{
 		int n = 0;
-		foreach ((_, _, bool peca) in _vivos) if (peca) n++;
+		foreach ((_, _, Protocol.Decal t) in _vivos) if (t == tipo) n++;
 		return n;
 	}
+
+	/// <summary>
+	/// QUANTOS DESTE TIPO CABEM, dentro do teto geral. Zero = sem cota propria (o teto geral e o
+	/// unico limite).
+	///
+	/// As duas cotas existem por motivos OPOSTOS e estao explicadas em <see cref="MaxPecas"/> e
+	/// <see cref="MaxAgua"/>. Elas moram na mesma funcao pra que a terceira -- se houver -- entre
+	/// aqui, e nao como um terceiro `if` solto dentro do <see cref="Plantar"/>.
+	/// </summary>
+	private static int Cota(Protocol.Decal tipo) => tipo switch
+	{
+		Protocol.Decal.Membro => MaxPecas,
+		Protocol.Decal.Agua => MaxAgua,
+		_ => 0,
+	};
 
 	/// <summary>
 	/// Despeja o MAIS VELHO que atende o criterio. Devolve falso quando nao ha nenhum -- que e o
@@ -271,7 +321,7 @@ public partial class Decalques : Node2D
 	/// A varredura e linear numa lista de no maximo <see cref="MaxVivos"/> e so roda quando o teto
 	/// estoura, nao por quadro.
 	/// </summary>
-	private bool DespejarPrimeira(Func<(Node2D No, double Morre, bool Peca), bool> criterio)
+	private bool DespejarPrimeira(Func<(Node2D No, double Morre, Protocol.Decal Tipo), bool> criterio)
 	{
 		int i = _vivos.FindIndex(v => criterio(v));
 		if (i < 0) return false;
@@ -337,19 +387,22 @@ public partial class Decalques : Node2D
 		}
 		else
 		{
-			bool ehPeca = tipo == Protocol.Decal.Membro;
-
-			// A PECA TAMBEM TEM COTA -- ver `MaxPecas`. Sem esta linha, uma briga de dez pessoas se
-			// destrocando encheria os 120 lugares de bracos e a poeira sumiria do jogo.
-			if (ehPeca)
-				while (ContarPecas() >= MaxPecas) DespejarPrimeira(v => v.Peca);
+			// A COTA DO TIPO, quando ele tem uma -- ver `Cota`. Sem ela, uma briga de dez pessoas se
+			// destrocando encheria os 120 lugares de bracos (e meia duzia de raios sobre um lago
+			// encheria de agua), e o resto sumiria do jogo.
+			int cota = Cota(tipo);
+			if (cota > 0)
+				while (Contar(tipo) >= cota) DespejarPrimeira(v => v.Tipo == tipo);
 
 			// O DESPEJO SACRIFICA PRIMEIRO QUEM NAO E PECA. Nao e favoritismo: e que os dois nascem
 			// em ritmos incomparaveis. Cratera, fumaca e terra revirada saem aos montes de cada
 			// queda; o membro arrancado e o evento mais raro do combate. Na fila crua o mais VELHO
 			// sai, e o mais velho e sempre a peca -- ela duraria segundos em vez dos 60 s.
+			//
+			// A AGUA NAO ENTRA NESTA PROTECAO, so na cota: ela dura 2 s e se refaz sozinha a cada
+			// passagem, entao perde-la numa briga pesada nao custa nada -- ver `MaxAgua`.
 			while (_vivos.Count >= MaxVivos)
-				if (!DespejarPrimeira(v => !v.Peca)) DespejarPrimeira(_ => true);
+				if (!DespejarPrimeira(v => v.Tipo != Protocol.Decal.Membro)) DespejarPrimeira(_ => true);
 		}
 
 		// A CRATERA CRESCE, como no DU (`animate(transform = matrix()*craterMaxSize...)`); a fumaca
@@ -440,7 +493,7 @@ public partial class Decalques : Node2D
 			t.TweenProperty(s, "modulate:a", 0f, prazo * 0.3);
 		}
 
-		_vivos.Add((s, _relogio + prazo, tipo == Protocol.Decal.Membro));
+		_vivos.Add((s, _relogio + prazo, tipo));
 		VivosDeTeste = _vivos.Count;
 	}
 

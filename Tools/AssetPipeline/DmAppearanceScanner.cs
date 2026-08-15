@@ -112,16 +112,45 @@ public static class DmAppearanceScanner
     /// Roupa CURADA. A pasta de roupas do jogo tem 223 arquivos, mas ela e o deposito de tudo
     /// que vira overlay de corpo -- inclusive olho, halo, rabo, potara e a pasta de armadura.
     /// Varrer a pasta inteira poria "olhos" na lista de camisas. Aqui fica so o que veste.
+    ///
+    /// SO A RAIZ: a pasta `Armor` e outra lista -- ver <see cref="Armaduras"/>.
     /// </summary>
-    public static List<string> Roupas(string pastaSprites)
+    public static List<string> Roupas(string pastaSprites) =>
+        Varrer(Path.Combine(pastaSprites, "Clothes"));
+
+    /// <summary>
+    /// ============================ ARMADURA NAO E ROUPA DE GUARDA-ROUPA ============================
+    /// E uma lista SEPARADA porque no proprio jogo ela e outra coisa, e da pra apontar onde:
+    ///
+    ///   * o guarda-roupa do jogador e o `ClothingChoice()` (ClothesChoose.dm:32+), uma grade de
+    ///     `DummyClothes` com os `.dmi` escritos um a um -- e **nenhuma armadura esta la**;
+    ///   * a armadura e EQUIPAMENTO, com estilo proprio (`Armor.dm:100-123`, "Plating Style" ->
+    ///     'Armor 8.dmi', "Elite Armor" -> 'Armor_Elite.dmi'...);
+    ///   * e o NPC a veste por um caminho que nem passa pelo catalogo: `npc_wear_armor_icon`
+    ///     (PlanetPopulation.dm:246-252) cria um `obj/items/clothes` PELADO e escreve o `.icon` na mao.
+    ///
+    /// Juntar as duas listas poria armadura de batalha na grade da criacao de personagem -- uma
+    /// mudanca que o dono nao pediu. Separadas, o Saiyajin do mundo veste a dele
+    /// (<see cref="Jandirus.Core.Npc.RoupaDeNpc"/>) e a tela do jogador continua igual.
+    ///
+    /// E ELA PRECISA EXISTIR NO CATALOGO de qualquer jeito: `VisualCatalog.Sanear` recusa caminho
+    /// que nao esta no catalogo, e o servidor chama `Sanear` na aparencia do NPC. Sem esta lista,
+    /// vestir um Saiyajin de armadura seria DESCARTADO EM SILENCIO -- ele nasceria pelado do mesmo
+    /// jeito, so que agora com codigo que jura o contrario.
+    /// ==========================================================================================
+    /// </summary>
+    public static List<string> Armaduras(string pastaSprites) =>
+        Varrer(Path.Combine(pastaSprites, "Clothes", "Armor"));
+
+    /// <summary>O crivo comum das duas listas: so a raiz da pasta, e so o que sabe ficar de pe.</summary>
+    private static List<string> Varrer(string dir)
     {
-        string dir = Path.Combine(pastaSprites, "Clothes");
         if (!Directory.Exists(dir)) return [];
 
         var fora = new[] { "Eyes_", "Halo", "Tail", "Potara", "potara", "Aura", "Scouter" };
         var saida = new List<string>();
 
-        foreach (string f in Directory.GetFiles(dir, "*.tres"))   // so a raiz: a pasta Armor e equipamento
+        foreach (string f in Directory.GetFiles(dir, "*.tres"))
         {
             string nome = Path.GetFileNameWithoutExtension(f);
             if (fora.Any(p => nome.Contains(p, StringComparison.OrdinalIgnoreCase))) continue;
@@ -168,7 +197,7 @@ public static class DmAppearanceScanner
     }
 
     /// <summary>Escreve o catalogo que o jogo carrega em runtime.</summary>
-    public static (int cabelos, int roupas, List<string> faltando) Escrever(
+    public static (int cabelos, int roupas, int armaduras, List<string> faltando) Escrever(
         string arquivoHairChoose, string pastaSprites, string saidaJson)
     {
         Dictionary<string, string> idx = IndiceDeSprites(pastaSprites);
@@ -213,13 +242,21 @@ public static class DmAppearanceScanner
             sb.Append($"    {Txt(roupaPaths[i])}").Append(i < roupaPaths.Count - 1 ? ",\n" : "\n");
         sb.Append("  ],\n");
 
+        // --- armaduras: a pasta `Clothes/Armor`, que e EQUIPAMENTO e nao guarda-roupa (ver `Armaduras`) ---
+        List<string> armaduras = Armaduras(pastaSprites);
+        var armaduraPaths = armaduras.Select(a => Resolver(idx, a)).Where(x => x != null).ToList();
+        sb.Append("  \"armaduras\": [\n");
+        for (int i = 0; i < armaduraPaths.Count; i++)
+            sb.Append($"    {Txt(armaduraPaths[i])}").Append(i < armaduraPaths.Count - 1 ? ",\n" : "\n");
+        sb.Append("  ],\n");
+
         // --- olhos: UM arquivo so, tingido por cor (o jogo tem exatamente isto) ---
         sb.Append($"  \"olhos\": {Txt(Resolver(idx, "Eyes_Black"))}\n");
         sb.Append("}\n");
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(saidaJson))!);
         File.WriteAllText(saidaJson, sb.ToString(), new UTF8Encoding(false));
-        return (cabelos.Count, roupaPaths.Count, faltando);
+        return (cabelos.Count, roupaPaths.Count, armaduraPaths.Count, faltando);
     }
 
     private static string? Falta(List<string> lista, string raca, string arq)

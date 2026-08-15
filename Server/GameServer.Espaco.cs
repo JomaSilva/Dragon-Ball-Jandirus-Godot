@@ -23,11 +23,32 @@ public partial class GameServer
 {
 	/// <summary>
 	/// A SEED DO UNIVERSO. Um numero, e dele sai todo o resto -- posicao de planeta, bioma,
-	/// tamanho. Fixo por enquanto; quando virar por servidor, e so ler do disco aqui.
+	/// tamanho, quem nasce em cada cidade.
+	///
+	/// ============================ ELA DEIXOU DE SER CONSTANTE ============================
+	/// Era `public const ulong SeedDoUniverso = 20260802`, e o comentario daqui prometia *"quando
+	/// virar por servidor, e so ler do disco aqui"*. Virou: **ela e SORTEADA uma vez, quando o mundo
+	/// nasce, e mora no `universo.json`** (ver `GameServer.Semente.cs`, que e o unico lugar que
+	/// decide qual e a semente deste mundo).
+	///
+	/// O que NAO mudou -- e nao podia mudar -- e o determinismo: a mesma semente continua dando o
+	/// mesmo mundo, em qualquer maquina, a cada boot. O que mudou e **onde a semente nasce**. Com a
+	/// constante, todo mundo novo era o mesmo mundo; com o sorteio no disco, reiniciar devolve o
+	/// mesmo mundo (o arquivo esta la) e so o WIPE troca de mundo (o arquivo some junto).
+	///
+	/// PROPRIEDADE DE INSTANCIA e nao mais `const`: um `const` e lido em tempo de compilacao por
+	/// quem o cita, entao ele nunca poderia ser lido do disco. E de INSTANCIA porque quem sabe a
+	/// semente e este servidor -- nao ha semente "do processo".
+	/// ==================================================================================
 	/// </summary>
-	public const ulong SeedDoUniverso = 20260802;
+	public ulong SeedDoUniverso => _semente;
 
-	public static ZoneKey ZonaDoEspaco => Espaco.Zona(SeedDoUniverso);
+	/// <summary>
+	/// A zona unica do espaco DESTE mundo. Deixou de ser `static` junto com a semente: a chave dela
+	/// carrega a semente dentro (`Espaco.Zona`), entao uma zona de espaco estatica seria a zona do
+	/// espaco de OUTRO universo.
+	/// </summary>
+	public ZoneKey ZonaDoEspaco => Espaco.Zona(SeedDoUniverso);
 
 	/// <summary>Quem ja ouviu "nao ha mais onde pousar". Mesma disciplina do `_avisadosDeEspera`.</summary>
 	private readonly HashSet<int> _avisadosDePlanetaMorto = [];
@@ -193,7 +214,13 @@ public partial class GameServer
 	/// entao ele nunca teve efeito nenhum. Saiu junto com o carimbo de `ChunkAtual`, que e o que
 	/// resolvia o problema de verdade.
 	/// </remarks>
-	private static void MandarVizinhanca(ServerPlayer pl)
+	/// <remarks>
+	/// DEIXOU DE SER `static` quando a semente saiu da constante: a vizinhanca e "os planetas DESTE
+	/// universo perto de voce", e um metodo estatico nao tem universo nenhum pra perguntar. E e a
+	/// mesma linha que poe a semente no fio (`w.Put(SeedDoUniverso)`) -- e assim que o cliente
+	/// descobre em que mundo ele esta, sem nunca calcular semente nenhuma.
+	/// </remarks>
+	private void MandarVizinhanca(ServerPlayer pl)
 	{
 		if (pl.Peer == null) return;
 

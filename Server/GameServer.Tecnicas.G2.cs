@@ -146,6 +146,18 @@ public partial class GameServer
 	{
 		if (id.StartsWith("Kaioken", StringComparison.OrdinalIgnoreCase))
 		{
+			// ============================ O PORTAO VEM ANTES DO ATALHO ============================
+			// `Kaioken_Settings` respondia ANTES do `SabeG2`, e quem nunca aprendeu a tecnica recebia a
+			// explicacao dos sete botoes em vez da recusa. No DM os dois verbs sao concedidos pela MESMA
+			// skill (`kaioken.dm`), entao quem nao a tem nao tem nenhum dos dois.
+			//
+			// Nao era exploravel pelo menu (o cliente so desenha o botao de quem sabe), e e exatamente
+			// por isso que passou: **a validacao e toda do servidor**, e um id de texto chega pelo
+			// `C2S.Habilidade` venha ele do menu ou nao. Achado pela `--formasteste` [cargo], a primeira
+			// bancada que aperta a tecla com um corpo SEM o cargo.
+			// ==================================================================================
+			if (!SabeG2(pl, "Kaioken", "Kaio-ken")) return true;
+
 			// o menu de atalhos do DM (`Kaioken_Settings`) nao tem equivalente: era popup em cima
 			// de popup. Quem apertar recebe a explicacao em vez de um botao mudo.
 			if (id.Equals("Kaioken_Settings", StringComparison.OrdinalIgnoreCase))
@@ -153,7 +165,6 @@ public partial class GameServer
 				Avisar(pl, "os atalhos de Kaio-ken viraram botões próprios (x2, x3, x5, x10, x20, x50, x100).");
 				return true;
 			}
-			if (!SabeG2(pl, "Kaioken", "Kaio-ken")) return true;
 			Kaioken(pl, NumeroDoIdG2(id));
 			return true;
 		}
@@ -591,9 +602,15 @@ public partial class GameServer
 	private void EnvelhecerG2(ServerPlayer pl, double fracao)
 	{
 		double acc = _idadeFracaoG2.GetValueOrDefault(pl.Id) + fracao;
-		while (acc >= 1) { acc -= 1; pl.Idade++; }
+		bool virouAno = false;
+		while (acc >= 1) { acc -= 1; pl.Idade++; virouAno = true; }
 		_idadeFracaoG2[pl.Id] = acc;
 		pl.SigAtributos = "";   // a idade vai no pacote de atributos: forca o proximo a sair
+
+		// SO QUANDO O ANO FECHA, e nao a cada fracao: o `AgeCheck` do DM sai cedo se o ano nao mudou
+		// (`Aging.dm:113`, `if(LastYear == Year) return`), e a fracao acumulada aqui e justamente o
+		// que ainda nao virou ano. Ver `ConferirMorteDeVelhice`.
+		if (virouAno) ConferirMorteDeVelhice(pl);
 	}
 
 	// =====================================================================
@@ -958,9 +975,17 @@ public partial class GameServer
 	/// </summary>
 	private static void EspalharDanoG2(ServerPlayer pl, double dano)
 	{
-		if (dano <= 0 || pl.Combate == null) return;
+		// CORPO INTOCAVEL NAO PAGA O KAIO-KEN. O dano e AUTO-INFLIGIDO, e a decisao aqui e cobrir o
+		// proprio corpo tambem: o que o dono prometeu e "durante a cinematica ninguem morre
+		// transformando", e um Kaio-ken ligado que continua cozinhando o corpo pelos 140 s da estreia
+		// do SSJ3 mata exatamente o jogador que o escudo existe pra proteger -- e ele nao tinha como
+		// desligar nada, porque a cena prende o corpo. O dreno de Ki ja para em cena pelo mesmo motivo
+		// (`TickDaForma`); isto e a mesma regra, no mesmo prazo.
+		//
+		// Antes do laco, e nao so no `Ferir`: o `DeveNocautear` la embaixo le o ESTADO do corpo.
+		if (dano <= 0 || pl.Combate is not { Intocavel: false }) return;
 		foreach (BodyPart p in pl.Combate.Corpo.Partes.ToList())
-			if (!p.Decepado && !p.Aninhado) pl.Combate.Corpo.Ferir(p, dano, letal: false);
+			if (!p.Decepado && !p.Aninhado) pl.Combate.Ferir(p, dano, letal: false);
 		pl.Combate.SincronizarVida();
 
 		if (!pl.Ficha.KO && !pl.Ficha.dead && pl.Combate.Corpo.DeveNocautear())
@@ -977,11 +1002,15 @@ public partial class GameServer
 	/// </summary>
 	private void EstourarG2(ServerPlayer pl, string motivo)
 	{
-		if (pl.Combate == null) return;
+		// O CORPO NAO SE DESFAZ EM CENA -- mesma regra do `EspalharDanoG2` logo acima, e aqui ela e
+		// literalmente a diferenca entre morrer e nao morrer: este e o caminho que MATA no Kaio-ken.
+		// A cobranca nao some, so espera: assim que a cena acaba, o Ki abaixo do minimo estoura o
+		// corpo no proximo tique, como sempre estourou.
+		if (pl.Combate is not { Intocavel: false }) return;
 		Avisar(pl, motivo);
 
 		foreach (BodyPart p in pl.Combate.Corpo.Partes.ToList())
-			if (!p.Decepado) pl.Combate.Corpo.Ferir(p, p.VidaMax * 10, letal: true);
+			if (!p.Decepado) pl.Combate.Ferir(p, p.VidaMax * 10, letal: true);
 		pl.Combate.SincronizarVida();
 
 		if (pl.Combate.Corpo.DeveMorrer() && !pl.Combate.Corpo.RegeneraDecepado

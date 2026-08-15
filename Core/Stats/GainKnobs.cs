@@ -28,6 +28,15 @@ public static class GainKnobs
 	public static double GlobalSparGain = 1;
 	public static double GlobalGravGain = 1;
 
+	/// <summary>
+	/// A TAXA GLOBAL DO EXP DE SKILL DE KI -- `var/GlobalKiExpRate = 1` (`KiStatsModule.dm:3`).
+	///
+	/// Ela NAO e irma das quatro de cima: aquelas multiplicam ganho de BP, esta multiplica o exp das
+	/// arvores de Ki, dentro do `KiSkillGains` (`Mind.dm:859-871`). Ficam no mesmo lugar porque as
+	/// duas familias sao knobs de admin do mesmo painel (`BalanceSettings.dm:20-22`).
+	/// </summary>
+	public static double GlobalKiExpRate = 1;
+
 	/// <summary>Quanto MAIS lento e o ganho por gravidade. Ganho por tick = gravidade/isto.</summary>
 	public static double GravGainDiv = 1500;
 

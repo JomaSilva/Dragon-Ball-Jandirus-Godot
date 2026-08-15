@@ -32,26 +32,49 @@ public sealed partial class GameServer
 	/// <summary>
 	/// O GOLPE MEXEU COM O CORPO? Chamado depois de o dano ser resolvido, como no original
 	/// (`attack cmn.dm:110`, logo apos o `hitProc`).
+	///
+	/// ============================ HAVIA DOIS CAMINHOS AQUI, E UM DELES NAO SORTEAVA ============================
+	/// Ate aqui este metodo tinha um `if` pro leve (que passava pelo <c>SorteioDoSocoLeve</c> e podia
+	/// sair sem empurrar nada) e um `else` seco pro pesado, que caia direto no `ForcaDoPesado` -- ou
+	/// seja **todo pesado que encostava arremessava, 100% das vezes**. Era copia fiel do DM
+	/// (`attack cmn.dm:115`), e o dono reclamou do resultado em jogo: *"era UM JOGANDO O OUTRO PRA
+	/// LONGE e tava estranha a luta"*.
+	///
+	/// Agora quem decide e UM SO lugar -- <see cref="Empurrao.DoSoco"/>, no Core, ao lado da formula
+	/// --, e a diferenca entre os dois golpes virou o PESO (1 ou 3), que ja e um parametro que
+	/// existia. Dois ramos divergentes foi exatamente o que deixou o pesado sem sorteio por meses.
+	/// ==========================================================================================================
 	/// </summary>
-	private void TentarEmpurrar(ServerPlayer a, ServerPlayer d, double dmg, Protocol.Golpe golpe)
+	/// <param name="garantido">
+	/// Pula o sorteio: este golpe arremessa se encostou. So pra quem ja nasceu assim -- ver
+	/// `GolpeDeSaida` do Zanzo Clash.
+	/// </param>
+	private void TentarEmpurrar(ServerPlayer a, ServerPlayer d, double dmg, Protocol.Golpe golpe,
+								bool garantido = false)
 	{
 		if (!a.Knockback || d.TiquesDeVoo > 0 || d.Ficha.dead) return;
 
-		double check = Empurrao.Check(a.Ficha, d.Ficha);
-		double forca;
-		bool inevitavel = false;
+		// ============================ O INTERRUPTOR DO DEFEITO INJETADO ============================
+		// FALSO EM JOGO, SEMPRE -- so a `--kbteste` o liga, e o que ele reproduz e EXATAMENTE a linha
+		// que existia: `attack cmn.dm:115-116`, o `else` seco que mandava todo pesado pro `Impact` sem
+		// `prob()` nenhum. Com ele ligado o sorteio do pesado devolve sempre "sim", que e a copia
+		// verbatim daquele `else`; o LEVE nao e tocado, porque o leve nunca mudou.
+		//
+		// Ele mora AQUI e nao dentro do arquivo de bancada pela mesma razao escrita no
+		// `_borraoSoComSkill` (`GameServer.Combat.cs`) e no `_dcGradeCega` (`GameServer.Corpos.cs`): a
+		// medicao "antes x depois" exige que o MESMO objeto seja medido com e sem o defeito. Uma copia
+		// do funil escrita na bancada mediria a copia concordando consigo mesma -- e este projeto ja
+		// catalogou esse cego por escrito ("a bancada mede INTENCAO").
+		//
+		// E ele e o que torna a queixa do dono MENSURAVEL em vez de lembrada: as familias 8 e 9 brigam
+		// 60 segundos com ele ligado, 60 com ele desligado, e a diferenca entre as duas e a resposta.
+		// ==========================================================================================
+		Func<double, bool> sorteio = _kbPesadoSemSorteio && golpe == Protocol.Golpe.Pesado
+			? _ => true
+			: p => _rng.NextDouble() * 100 < p;
 
-		if (golpe == Protocol.Golpe.Leve)
-		{
-			// o sorteio do soco leve: ou arremessa de verdade, ou da um empurraozinho garantido
-			if (Empurrao.SorteioDoSocoLeve(dmg, check, p => _rng.NextDouble() * 100 < p) is not { } s) return;
-			forca = s.Dmg;
-			inevitavel = s.Inevitavel;
-		}
-		else forca = Empurrao.ForcaDoPesado(dmg, a.Ficha, check);
-
-		double limiar = Empurrao.Limiar(d.Ficha, a.Ficha.expressedBP);
-		(EfeitoDeImpacto efeito, int tiques) = Empurrao.Avaliar(forca, limiar, inevitavel);
+		(EfeitoDeImpacto efeito, int tiques) = Empurrao.DoSoco(
+			dmg, Protocol.PesoDoGolpe(golpe), a.Ficha, d.Ficha, sorteio, garantido);
 
 		switch (efeito)
 		{
@@ -67,6 +90,32 @@ public sealed partial class GameServer
 				break;
 		}
 	}
+
+	/// <summary>
+	/// O DEFEITO QUE A `--kbteste` INJETA: "todo pesado que encosta arremessa", o `else` de
+	/// `attack cmn.dm:115`. Ver o bloco no <see cref="TentarEmpurrar"/> -- e falso em jogo.
+	/// </summary>
+	private bool _kbPesadoSemSorteio;
+
+	/// <summary>
+	/// QUANTOS CORPOS ESTE SERVIDOR JA JOGOU PRO AR desde o boot -- um `++` por passagem pelo
+	/// <see cref="Arremessar"/>, que e a UNICA porta do arremesso (o comentario dele explica por que
+	/// ela e unica).
+	///
+	/// ============================ POR QUE UM CONTADOR, E NAO OLHAR O CORPO ============================
+	/// A `--kbteste` contava arremesso pela subida de `TiquesDeVoo` de zero pra positivo, e **perdia
+	/// silenciosamente uma classe inteira de arremesso**: o voo pode COMECAR E ACABAR no mesmo tique.
+	/// O `TickDoEmpurrao` roda logo depois da IA no mesmo tique de mundo, e se a primeira amostra do
+	/// caminho ja esbarra em parede ou noutro corpo ele escreve `TiquesDeVoo = 0` antes de qualquer
+	/// bancada olhar. Numa briga em corredor isso e a MAIORIA dos arremessos -- a medicao deu zero com
+	/// o defeito ligado, que e o oposto do que a queixa do dono descreve.
+	///
+	/// E o mesmo desenho (e o mesmo argumento) do <see cref="_decisoesDaMente"/>: quando a pergunta e
+	/// "quantas vezes isto ACONTECEU", quem responde e a passagem pela funcao, e nao um efeito colateral
+	/// dela que outra parte do tique ja pode ter desfeito. Custa um `long++` por arremesso.
+	/// ============================================================================================
+	/// </summary>
+	private long _arremessosFeitos;
 
 	/// <summary>
 	/// PoE O CORPO NO AR -- o `AddEffect(/effect/knockback)` do original, e a UNICA porta pra isso.
@@ -91,6 +140,38 @@ public sealed partial class GameServer
 	private void Arremessar(ServerPlayer d, Vec2 rumo, double forca, int tiques)
 	{
 		tiques = Math.Clamp(tiques, 1, Empurrao.TiquesMax);
+		_arremessosFeitos++;
+
+		// O ARREMESSO GANHA DO ARRASTO, e a precedencia e escrita e nao emergente.
+		//
+		// O caso: um feixe carrega alguem e um SEGUNDO golpe (outro raio, um soco, um sopro) o
+		// arremessa no mesmo instante. Sem esta linha o corpo ficaria com os dois estados de pe, e o
+		// laco abaixo -- que trata o arrasto primeiro e da `continue` -- seguraria o voo por ate um
+		// decimo de segundo antes de o prazo escorrer. Nada quebraria, e por isso mesmo ninguem
+		// descobriria: seria um arremesso que as vezes comeca tarde.
+		//
+		// O feixe se solta sozinho no tique seguinte -- `PodeSerLevadoPeloFeixe` recusa quem tem
+		// `TiquesDeVoo > 0` e o `ArrastarComOFeixe` zera o `Arrastando` dele ali mesmo. Ou seja a
+		// regra e dita UMA vez, aqui, e o outro lado so obedece.
+		d.ArrastoRestante = 0;
+
+		// ============================ E O RAIO NA MAO DELE CAI JUNTO ============================
+		// `while(beaming) { CHECK_TICK; if(KB) stopbeaming() }` -- o topo do laco do `ShootBeam`
+		// (`beams.dm:72-74`). O `KB` do original e escrito em dois lugares (`Throw.dm:84` e o
+		// `/effect/knockback` de `Movement Effects.dm`) e os dois viram ESTE metodo neste port, entao
+		// esta linha e o porte inteiro daquela regra.
+		//
+		// FICA AQUI PELA MESMA RAZAO QUE O `ArrastoRestante` de cima: o arremesso e o instante em que
+		// se decide o que este corpo deixa de estar fazendo, e a precedencia e escrita e nao
+		// emergente. Escrever isso dentro do `TickDosCanaisDeKi` ("o dono esta voando? entao cai")
+		// faria a pergunta 30 vezes por segundo pra responder nao, e deixaria o raio (e a pose) vivos
+		// pelo tique em que o golpe acerta -- que e justamente o quadro que o dono quer ver mudando.
+		//
+		// E ELA FECHA METADE DO PEDIDO: *"ele so voltaria a posicao de IDLE quando ele PARASSE DE USAR
+		// O BEAM (por vontade propria ou pq ALGUEM BATEU NELE e cancelou o beam)"*. Ate aqui o port
+		// nao tinha a segunda metade -- nao havia caminho nenhum pra bater e derrubar o raio.
+		// ====================================================================================
+		DerrubarRaioPorGolpe(d.Id);
 
 		d.TiquesDeVoo = tiques;
 		d.TiquesIniciaisDoVoo = tiques;
@@ -144,8 +225,66 @@ public sealed partial class GameServer
 		// Que fracao do tique do original cabe num tique do servidor. Com 30 Hz e 0,1 s, um terco.
 		double fatia = Protocol.TickSeconds / Empurrao.SegundosPorTique;
 
-		foreach (ServerPlayer pl in _players.Values)
+		// ============================ A FONTE E TODO CORPO DO MUNDO, E NAO O `_players` ============================
+		// **ISTO ERA UM DEFEITO ANTES DO CADAVER EXISTIR.** Este laco varria `_players.Values`, que quer
+		// dizer "corpo que o servidor SIMULA" -- e nem todo corpo que existe num lugar e simulado. O
+		// boneco do corpo largado (quem esta meditando ou ao leme) vive so na `ZoneList`, e o resultado
+		// medido era o oposto do que o `GameServer.CorpoLargado.cs` afirma por escrito (*"o boneco e um
+		// corpo comum, entao um soco o empurra"*): ele recebia `TiquesDeVoo` do `Arremessar` e ficava
+		// com eles PRA SEMPRE -- nunca andava, e ficava desenhado deitado (por `Deitado`) ate o dono
+		// voltar pro corpo.
+		//
+		// Com a fonte certa, o boneco voa, e o CADAVER voa junto -- sem uma linha que saiba o que um
+		// cadaver e. Ver `TodosOsCorpos` em `GameServer.Corpos.cs`, que e a mesma fonte da grade de
+		// colisao e pelo mesmo motivo.
+		// ========================================================================================================
+		foreach (ServerPlayer pl in TodosOsCorpos())
 		{
+			// ============================ O OUTRO JEITO DE O SERVIDOR DIRIGIR UM CORPO ============================
+			// O feixe que CARREGA a vitima (ver `GameServer.Projeteis.ArrastarComOFeixe`) escreve a
+			// posicao dela no tique dos projeteis, que roda DEPOIS deste. O que falta e o resto do
+			// pacote -- escorrer o prazo, mandar a correcao e devolver as redeas -- e ele e o MESMO de
+			// quem esta sendo arremessado, linha por linha. Por isso mora aqui e nao la: um segundo
+			// lugar mandando correcao de posicao seria a segunda resposta pra "o servidor esta me
+			// movendo", e este arquivo inteiro existe por causa da primeira vez que houve duas.
+			//
+			// O QUE NAO SE REUSOU e o deslocamento, e nao havia como: o arremesso anda `TilesPorTique`
+			// (dois tiles a cada 0,1 s = 20 tiles/s, o numero do `/effect/knockback`), e o arrasto tem
+			// que andar EXATAMENTE o que a cabeca do feixe andou -- que e 10 tiles/s num raio de
+			// `speed` 1 e 5 tiles/s num de 0,5. Empurrar a vitima pelo funil do arremesso a faria sair
+			// da frente do proprio feixe a duas a quatro vezes a velocidade dele, e o raio nunca mais a
+			// alcancaria: o pedido do dono (*"conforme o beam vai indo"*) e literalmente irrealizavel
+			// por esse caminho. Mexer no `TilesPorTique` pra encaixar mudaria TODO knockback do jogo.
+			//
+			// OS DOIS NUNCA VALEM JUNTOS: `PodeSerLevadoPeloFeixe` recusa quem esta com
+			// `TiquesDeVoo > 0`, e este `continue` garante o outro lado. Nao ha tique em que os dois
+			// escrevam `Pos`.
+			// ======================================================================================================
+			if (pl.ArrastoRestante > 0)
+			{
+				pl.ArrastoRestante -= Protocol.TickSeconds;
+				bool soltou = pl.ArrastoRestante <= 0;
+				if (soltou) pl.ArrastoRestante = 0;
+
+				// A MESMA COSTURA DA CORRECAO do arremesso, e pelas mesmas razoes -- o carimbo de
+				// sequencia e o que impede os pacotes de input ja no ar (com a posicao antiga) de serem
+				// lidos como cliente errado e puxarem o corpo de volta.
+				pl.LastInputMs = agora;
+				pl.CorrecaoEsperadaAte = agora + 500;
+				pl.SeqDoTeleporte = pl.SeqInput;
+				pl.OrcamentoPx = 0;
+
+				var cw = Protocol.Begin(Protocol.S2C.Correction);
+				cw.Put(pl.SeqInput);
+				cw.PutVec(pl.Pos);
+				pl.Peer?.Send(cw, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+
+				// SOLTOU: a ficha leva o bit `Empurrado` apagado -- sem ela o cliente continuaria
+				// deslizando pra a ultima correcao em vez de voltar a obedecer a tecla.
+				if (soltou) MandarFicha(pl);
+				continue;
+			}
+
 			if (pl.TiquesDeVoo <= 0) continue;
 
 			ZoneCollision? mapa = _catalogo?.Get(pl.Zone)?.Mapa;
@@ -155,16 +294,40 @@ public sealed partial class GameServer
 			// ---- o que tem no caminho ----
 			bool parou = false;
 
-			// OUTRO CORPO: os dois se machucam e o voo acaba. `SpreadDamage(duration)` no original.
-			foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-			{
-				if (o == pl || o.Ficha.dead) continue;
-				if ((o.Pos - destino).LengthSquared > 32 * 32) continue;
-				Espalhar(pl, pl.TiquesDeVoo);
-				Espalhar(o, pl.TiquesDeVoo);
-				parou = true;
-				break;
-			}
+			// ============================ O CORPO NO CAMINHO -- AGORA PELO MESMO FUNIL DA PAREDE ============================
+			// **O QUE ESTAVA AQUI ERA UMA SEGUNDA NOCAO DE COLISAO, E ELA ERRAVA DE TRES JEITOS.** Havia
+			// um `foreach` varrendo a `ZoneList` inteira -- O(n) por tique de arremesso -- que perguntava
+			// `(o.Pos - destino).LengthSquared > 32*32`, ou seja um CIRCULO DE 32 px em volta do ponto de
+			// CHEGADA. Os tres defeitos:
+			//
+			//   1. **CAIXA PROPRIA.** Um raio de 32 px nao e a caixa dos pes que o resto do jogo usa: havia
+			//      pontos em que a parede deixava caber um corpo e o arremesso dizia que nao (e vice-versa).
+			//   2. **SO O PONTO DE CHEGADA.** O passo do tique pode andar mais que a caixa, e quem estivesse
+			//      no MEIO do salto nao era encontrado -- o mesmo defeito que a parede ja teve ("algumas
+			//      paredes q ele passa n quebram") e que a varredura de meio tile consertou pra ela.
+			//   3. **`o.Ficha.dead` PULAVA O CADAVER.** Ou seja: um corpo jogado atravessava um corpo morto.
+			//      Isso contradiz literalmente o pedido 3 do dono (*"o corpo mesmo morto TEM TODAS AS
+			//      INTERACOES DE UM CORPO VIVO"*) e era o unico `if (dead)` que ainda restava neste caminho.
+			//
+			// Agora a pergunta e a MESMA do passo a pe: `Vizinhanca.Barra`, com a caixa dos pes, o andar e o
+			// `ModoDeTravessia.Arremessado` -- que **bloqueia**, porque o `mob/Cross` do DM so abre pra
+			// `flying` (ver `ClasseDeCorpo.Bloqueia`). E ela e feita AMOSTRA POR AMOSTRA junto com a parede,
+			// logo abaixo, e nao aqui em cima.
+			//
+			// O DANO CONTINUA SENDO DOS DOIS, e ele e literal (`Movement Effects.dm:77-81`):
+			//     for(var/mob/M in get_step(target,dir))
+			//         if(M&&M!=target)
+			//             M.SpreadDamage(duration,0)      // quem levou a topada
+			//             target.SpreadDamage(duration,0) // quem vinha voando
+			//             duration=0                      // ...e o voo ACABA aqui
+			// A dose e `duration` = **o que FALTAVA voar**, entao bater no comeco do arremesso doi mais que
+			// bater no fim -- o corpo ainda tinha inercia. Nao inventei numero nenhum: o `Espalhar` e o
+			// `SpreadDamage`, e o `duration` e o `TiquesDeVoo`.
+			//
+			// **E O ARREMESSO PARA** (o `duration=0`). Nao ricocheteia e nao continua: o corpo se arrebenta
+			// em quem acertou e cai ali. E o mesmo desfecho da parede que resiste, tres linhas abaixo, e o
+			// mesmo que faz nascer a cratera e a fumaca no fim do voo.
+			// ==========================================================================================================
 
 			// ============================ TODA PAREDE DO CAMINHO, NAO SO A DO FIM ============================
 			// Quando o passo andava dois tiles de uma vez, testar so a celula de DESTINO deixava a
@@ -178,15 +341,40 @@ public sealed partial class GameServer
 			// Cada parede encontrada e derrubada (se a forca vence) e o voo continua; a primeira que
 			// RESISTE para o corpo ali, no ultimo ponto livre -- a mesma regra do `Ticked` do original.
 			// ================================================================================================
-			if (!parou && mapa != null)
+			// A CONDICAO DEIXOU DE PEDIR MAPA. Este laco agora responde por DUAS coisas -- a parede e o
+			// corpo alheio -- e so a primeira precisa de `.col`. Sem esta mudanca, arremessar alguem numa
+			// zona sem colisao carregada (o espaco, um planeta ainda gerando) atravessaria gente.
 			{
 				const float Amostra = ZoneCollision.TileSize / 2f;
 				int passos = Math.Max(1, (int)MathF.Ceiling(passo.Length / Amostra));
 				Vec2 andado = pl.Pos;
+				Vizinhanca vizinhos = VizinhancaDe(pl);
 
 				for (int i = 1; i <= passos && !parou; i++)
 				{
 					Vec2 p = pl.Pos + passo * (i / (float)passos);
+
+					// ============================ O CORPO NO CAMINHO -- os dois se machucam, e o voo ACABA ============================
+					// A pergunta e a do passo a pe (ver o bloco grande la em cima): mesma caixa, mesmo
+					// andar, mesmo `Vizinhanca`. O `pl.Pos` como "ja sobrepondo" e o que impede o corpo de
+					// bater em quem ele JA estava tocando quando o arremesso comecou -- caso comum, porque o
+					// arremesso do agarrao nasce colado e o soco que arremessa nasce a 32-40 px.
+					// ==========================================================================================================
+					if (vizinhos.Barra(pl.Pos, p, ModoDeTravessia.Arremessado) is int quem and > 0)
+					{
+						// `CorpoNaMinhaZona` e nao `_players[...]`: o boneco do corpo largado esta na
+						// `ZoneList` (e por isso na grade) e NAO no `_players` -- ver o comentario da
+						// fonte em `GameServer.Corpos.MontarAsGrades`. Buscar pelo dicionario faria o
+						// corpo em transe parar o arremesso e nao levar dano nenhum.
+						if (CorpoNaMinhaZona(pl, quem) is { } batido)
+						{
+							Espalhar(batido, pl.TiquesDeVoo);
+							AvisarSePessoa(batido, $"{pl.Name} colide com você!");
+						}
+						Espalhar(pl, pl.TiquesDeVoo);
+						parou = true;
+						break;   // para no ultimo ponto livre, como na parede que resiste
+					}
 
 					// O QUE O CORPO ATRAVESSA TAMBEM SOFRE. E o `for(var/obj/O in get_step(...))
 					// if(O.fragile) O.takeDamage(pow)` do original: a arvore e a bancada nao
@@ -202,7 +390,8 @@ public sealed partial class GameServer
 					//
 					// PAREDE CONTINUA PARANDO (e sendo derrubada logo abaixo): o modo muda a
 					// resposta da AGUA e so dela. Ver `ClasseDeAgua.Bloqueia`.
-					if (!MoveRules.Occupied(mapa, p, ModoDeTravessia.Arremessado)) { andado = p; continue; }
+					if (mapa == null || !MoveRules.Occupied(mapa, p, ModoDeTravessia.Arremessado))
+					{ andado = p; continue; }
 
 					if (pl.ForcaDoVoo >= Empurrao.ResistenciaPadrao && DerrubarCenario(pl.Zone, p))
 					{
@@ -262,6 +451,23 @@ public sealed partial class GameServer
 			// ==========================================================================
 			if (pousou)
 			{
+				// ============================ UM CORPO SEM DONO NAO SABE NADAR ============================
+				// O arremesso atravessa agua (`ModoDeTravessia.Arremessado`, o `M.KB` do `testWaters`) e
+				// pode terminar EM CIMA dela. Um JOGADOR resolve isso sozinho -- liga o nado --, e desde
+				// que o `MoveRules.Escapar` deixou de aprovar todo passo de quem esta numa celula
+				// invalida, ficar ali ate recarregar o Ki e exatamente o que o dono pediu.
+				//
+				// UM CORPO DIRIGIDO (`Peer == null`: NPC, cidadao, chefe, clone) NAO TEM VERB NENHUM PRA
+				// CHAMAR. Sem esta guarda ele congelaria no meio do lago pra sempre -- e calado, que e o
+				// jeito que este projeto ja perdeu uma IA inteira antes.
+				//
+				// `PontoLivrePerto` e o funil que o resto do jogo usa pra "poe um corpo num lugar
+				// valido": ele recusa parede, beirada E agua (`ZoneCollision.ServeDeChao`). Fica ANTES
+				// da cratera pra a marca nascer onde o corpo de fato parou.
+				if (pl.Peer == null && MapaDaZonaOuCatalogo(pl.Zone) is { } chaoFinal
+					&& MoveRules.Occupied(chaoFinal, pl.Pos, ModoDeTravessiaDe(pl)))
+					pl.Pos = chaoFinal.PontoLivrePerto(pl.Pos);
+
 				MarcarSulco(pl, Protocol.Decal.SulcoPonta);
 				if (RastroVale(pl))
 				{
@@ -335,6 +541,7 @@ public sealed partial class GameServer
 		if (!RastroVale(pl)) return;
 
 		// ============================ A CELULA E A DOS PES, NAO A DO CENTRO ============================
+		// (a conta em si mora no <see cref="CarimbarSulco"/>, que o raio tambem usa -- ver la.)
 		// `pl.Pos` e o CENTRO do corpo; quem encosta no chao sao os pes, 8 px abaixo
 		// (`MoveRules.FeetOffsetY` -- a mesma ancora que a colisao e a sombra de voo ja usam).
 		//
@@ -346,10 +553,41 @@ public sealed partial class GameServer
 		// continua igual.
 		// ==============================================================================================
 		Vec2 pes = pl.Pos + new Vec2(0, MoveRules.FeetOffsetY);
-		var celula = new Vec2(MathF.Floor(pes.X / ZoneCollision.TileSize),
-							  MathF.Floor(pes.Y / ZoneCollision.TileSize));
-		if (celula.X == pl.UltimoSulco.X && celula.Y == pl.UltimoSulco.Y) return;
-		pl.UltimoSulco = celula;
+
+		// A DIRECAO E A DO ARREMESSO, e nao pra onde o corpo olha: o sulco e a marca do arrasto.
+		CarimbarSulco(pl.Zone, tipo, pes, MoveRules.FacingFrom(pl.RumoDoVoo, pl.Facing),
+					  ref pl.UltimoSulco);
+	}
+
+	/// <summary>
+	/// UMA MARCA DE ARRASTO NUMA CELULA -- a guarda de celula repetida, o alinhamento a grade e o
+	/// envio, num lugar so.
+	///
+	/// ============================ POR QUE ISTO VIROU METODO ============================
+	/// Ate aqui o unico que arava o chao era o CORPO arremessado. O raio passou a arar tambem (pedido
+	/// do dono: *"ataques de ki como BEAM deveriam criar um RASTRO NO CHAO igual o knock back por onde
+	/// passam"*), e ele NAO e um <see cref="ServerPlayer"/>: nao tem pes, nao tem `Facing`, nao tem
+	/// `RumoDoVoo`. Copiar as dez linhas pro lado dos projeteis criaria o SEGUNDO mecanismo de rastro,
+	/// e as duas copias divergiriam na primeira vez que alguem mexesse no alinhamento -- que e
+	/// justamente a linha que o dono ja mandou consertar duas vezes ("o rastro ta vindo picotado").
+	///
+	/// O que e de cada um fica com cada um: o corpo entra com a celula dos PES e a direcao do voo; o
+	/// raio entra com a cabeca dele e o proprio rumo. O que e comum -- uma marca por celula, no
+	/// CENTRO dela, pra zona inteira -- e isto aqui.
+	/// ==================================================================================
+	/// </summary>
+	/// <param name="ultima">
+	/// A ultima celula marcada por ESTE dono de rastro (`ServerPlayer.UltimoSulco` ou
+	/// `Projetil.UltimoSulco`). Passada por referencia porque a guarda so vale se ela for ATUALIZADA
+	/// -- um contador local aqui deixaria a marca sair a cada sub-passo.
+	/// </param>
+	private void CarimbarSulco(ZoneKey zona, Protocol.Decal tipo, Vec2 onde, Facing dir,
+							   ref Vec2 ultima)
+	{
+		var celula = new Vec2(MathF.Floor(onde.X / ZoneCollision.TileSize),
+							  MathF.Floor(onde.Y / ZoneCollision.TileSize));
+		if (celula.X == ultima.X && celula.Y == ultima.Y) return;
+		ultima = celula;
 
 		// ============================ O SULCO VAI NO CENTRO DA CELULA ============================
 		// Nao na posicao do corpo. O DU carimba no TURF (`var/turf/t=loc; TimedOverlay(t,600,i)` --
@@ -367,8 +605,7 @@ public sealed partial class GameServer
 		float t = ZoneCollision.TileSize;
 		var noCentro = new Vec2((celula.X + 0.5f) * t, (celula.Y + 0.5f) * t);
 
-		// A DIRECAO E A DO ARREMESSO, e nao pra onde o corpo olha: o sulco e a marca do arrasto.
-		MandarDecalque(pl.Zone, tipo, noCentro, MoveRules.FacingFrom(pl.RumoDoVoo, pl.Facing));
+		MandarDecalque(zona, tipo, noCentro, dir);
 	}
 
 	/// <summary>
@@ -451,15 +688,40 @@ public sealed partial class GameServer
 	/// <summary>
 	/// DERRUBA UMA CELULA JA ESCOLHIDA, sem perguntar de novo se ela podia cair.
 	///
-	/// Separado do <see cref="DerrubarCenario"/> porque agora ha dois caminhos ate aqui -- o corpo
-	/// que voa (que descobre a celula andando) e o SOCO (que ja sabe qual e a celula da frente). O
-	/// que os dois nao podem e ter cada um a sua copia da parte que muda o mundo: as guardas de
-	/// borda ficam com quem escolhe, a mudanca fica aqui.
+	/// Separado do <see cref="DerrubarCenario"/> porque ha quatro caminhos ate aqui -- o corpo que
+	/// voa (que descobre a celula andando), o SOCO (que ja sabe qual e a celula da frente), o
+	/// <see cref="RacharChao"/> e a morte do planeta. O que eles nao podem e ter cada um a sua copia
+	/// da parte que muda o mundo.
+	///
+	/// ============================ E POR ISSO O `destroyable` MORA AQUI ============================
+	/// No original a mesma coisa acontece, e literalmente: os quatro caminhos do DM (`attack_proc`,
+	/// `Movement Effects`, `attack cmn` e `Area_Death`) terminam todos em `T.Destroy()`, e e o
+	/// `Destroy()` -- e nao os chamadores -- que abre com `if(src.destroyable)`
+	/// (`Modules/Turfs/NewTurfs.dm:2-4`). Espalhar a pergunta pelos quatro seria pedir pra um deles
+	/// ficar de fora, e um so ja basta pra o dono voltar a socar o vazio e ver o vazio cair.
+	/// =============================================================================================
 	/// </summary>
 	private bool DerrubarCelula(ZoneKey zona, int cx, int cy)
 	{
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
 		if (mapa == null) return false;
+
+		// ============================ O QUE NAO SE QUEBRA, E ERA A QUEIXA ============================
+		// `destroyable = 0` (`Turfs.dm:72,81,89,102`, `NewTurfs.dm:24,29,36,193,202,254,261,268`,
+		// `ProceduralSpace.dm:543,567`, `MajinSaga.dm:54,62`, `MindMeditate.dm:29,37`). O grosso e o
+		// `/turf/Other/Blank`: denso, SEM `icon` nenhum -- invisivel no BYOND tambem, entao nao ha
+		// arte perdida -- e indestrutivel la.
+		//
+		// Aqui ele caia: 1.690 celulas alcancaveis a pe, quase todas costuras no MIOLO do Templo e de
+		// Arconia (x=274, x=434, y=326, y=54), longe demais pro anel de 2 celulas do `NaBorda` que
+		// aproximava esta regra. O jogador socava o nada, o nada levantava poeira, virava terra batida
+		// e ABRIA -- dava pra andar pra dentro do vazio. Ver `ZoneCollision.Indestrutivel`.
+		//
+		// A guarda vale pros teleportes tambem, e la ela impede uma perda de verdade: a entrada de
+		// caverna e um `turf/Teleporters` (`destroyable = 0` + `isSpecial = 1`), e o `RacharChao`
+		// transformava a entrada em terra batida -- a passagem sumia ate o proximo boot.
+		// ============================================================================================
+		if (mapa.Indestrutivel(cx, cy)) return false;
 
 		if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
 		{
@@ -503,12 +765,6 @@ public sealed partial class GameServer
 		const int T = ZoneCollision.TileSize;
 		int cx0 = (int)Math.Floor(centro.X / T), cy0 = (int)Math.Floor(centro.Y / T);
 
-		if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
-		{
-			caidas = [];
-			_cenarioCaido[zona.Name] = caidas;
-		}
-
 		// `view(1)` sao as nove celulas em volta -- a do impacto e as oito vizinhas.
 		for (int dy = -1; dy <= 1; dy++)
 			for (int dx = -1; dx <= 1; dx++)
@@ -517,12 +773,19 @@ public sealed partial class GameServer
 				if (cx < 0 || cy < 0 || cx >= mapa.Width || cy >= mapa.Height) continue;
 				if (_rng.NextDouble() >= 0.40) continue;            // o `prob(40)` do original
 				if (mapa.NaBorda(cx, cy)) continue;   // beirada do mapa nao racha (ver `DerrubarCenario`)
-				if (!caidas.Add((cx, cy))) continue;
 
-				// PAREDE QUE RACHA TAMBEM DEIXA DE BLOQUEAR -- ela caiu. Chao livre so muda de cara.
-				if (mapa.BlockedCell(cx, cy)) mapa.Abrir(cx, cy);
-
-				MandarCelulaCaida(zona, cx, cy);
+				// ============================ A MUDANCA E DO `DerrubarCelula`, E SO DELE ============================
+				// Isto aqui era uma SEGUNDA COPIA da parte que muda o mundo (o conjunto `_cenarioCaido`,
+				// o `Abrir` e o pacote), e o preco apareceu na hora de trazer o `destroyable`: a guarda
+				// nova entrava no `DerrubarCelula` e este caminho passava por baixo dela. O chao rachava
+				// em cima de entrada de caverna (`turf/Teleporters`, `destroyable = 0`) e a passagem
+				// sumia ate o proximo boot.
+				//
+				// No original os dois sao o MESMO proc: `attack cmn.dm:49-51` chama `T.Destroy()`,
+				// exatamente como o soco e o arremesso. A unica coisa que e do rachar e o sorteio e o
+				// `view(1)` -- e essas duas ficaram aqui.
+				// ==================================================================================================
+				DerrubarCelula(zona, cx, cy);
 			}
 	}
 

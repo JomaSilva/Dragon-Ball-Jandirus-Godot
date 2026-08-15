@@ -80,7 +80,8 @@ namespace Jandirus.Server;
 ///   `case "spawn"` de volta no despacho do jogador             | 3  (secoes 16 e 17)
 ///   o verb do cliente de volta em `Verbos.Outros`              | 3  (aba, 'Other' limpa e A BUSCA)
 ///   `case "admin_spawn"` removido (tirar de TODO mundo)        | 2
-///   `Renascer` sem o `AMorteSaiDaSala` (a morte nao limpa)     | 4
+///   `IrProAlem` sem o `AMorteSaiDaSala` (a morte nao limpa)    | 6  (era 4; a viagem trouxe 2)
+///   `AMorteSaiDaSala` de volta no `Renascer` (o lugar antigo)  | 1  (a prisao sobrevive a VIAGEM)
 ///   `Renascer` com `if (SalaPreso) return` (gate na morte)     | 6
 ///   `temclima: false` na ficha da Sala (`planetas.json`)       | 3
 ///   `Clima.DaZona` devolvendo `Nenhum` pra Sala                | 2
@@ -1711,11 +1712,33 @@ public sealed partial class GameServer
 					a.Zone.Hash == sala.Hash && a.SalaPreso, $"{a.Zone.Name} preso={a.SalaPreso}");
 
 		// --- 4) MORRER SAI ---
+		// ============================ A MORTE E UM PERCURSO, E NAO MAIS UM INSTANTE ============================
+		// Isto era `Morrer()` + `Renascer()` em duas linhas coladas, e essa encenacao passou a medir um
+		// jogo que nao existe: desde que a morte leva pro Outro Mundo (`GameServer.Alem.cs`), quem
+		// destranca a Sala e o PRIMEIRO passo -- o `IrProAlem` --, e nao a volta a vida. Pulando o passo,
+		// a bancada ficava VERDE na afirmacao forte ("saiu da sala", que o `Renascer` cumpre sozinho) e
+		// VERMELHA nas quatro consequencias -- o padrao "a bancada mede intencao" em estado puro.
+		//
+		// Entao ela morre pelo funil de producao: `Morrer()` arma o relogio (via o gancho `AoMorrer` ->
+		// `AMorteAconteceu`) e cada `PassoDaMorte` cumpre uma etapa. O que o tique faz em 75 s a bancada
+		// faz em duas chamadas -- **os prazos** sao o que ela pula, e nao o caminho.
+		//
+		// NAO VOLTE A CHAMAR `Renascer` DIRETO AQUI: seria pedir de novo a limpeza no lugar errado, que
+		// e exatamente o conserto que a `AMorteSaiDaSala` recusa por escrito.
+		// ==========================================================================================
 		EscutaDeAvisos?.Clear();
 		a.Combate.Morrer(ignorarSeguro: true);
-		Renascer(a);
+
+		PassoDaMorte(a);   // 1a etapa: sobe pro Outro Mundo -- e e ELA que abre a tranca
+		AfirmarSala("...e e a VIAGEM que o tira de la: o primeiro passo o poe no Outro Mundo",
+					Jandirus.Core.World.Alem.EhOAlem(a.Zone), a.Zone.Name);
+		AfirmarSala("...com a prisao ja limpa NO ALEM (e nao so depois de voltar a vida)",
+					!a.SalaPreso && a.SalaJanelaAte == 0,
+					$"preso={a.SalaPreso} janela={a.SalaJanelaAte}");
+
+		PassoDaMorte(a);   // 2a etapa: so agora ele volta a vida, no berco
 		AfirmarSala("MORRER TIRA O PRESO DA SALA (a saida cara -- decisao do dono)",
-					a.Zone.Hash != sala.Hash, a.Zone.Name);
+					a.Zone.Hash != sala.Hash && !a.Ficha.dead, $"{a.Zone.Name} morto={a.Ficha.dead}");
 		AfirmarSala("...e o ESTADO DE PRESO e limpo (ele nao renasce marcado)",
 					!a.SalaPreso && a.SalaJanelaAte == 0,
 					$"preso={a.SalaPreso} janela={a.SalaJanelaAte}");

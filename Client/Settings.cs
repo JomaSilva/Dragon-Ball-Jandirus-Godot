@@ -88,6 +88,45 @@ public sealed class Settings
     };
 
     /// <summary>
+    /// QUANTOS ATAQUES DE KI PODEM LANCAR LUZ AO MESMO TEMPO. Ver <see cref="LuzDeKi"/>.
+    ///
+    /// ============================ POR QUE ISTO PRECISA DE TETO E A FOGUEIRA NAO ============================
+    /// A luz do cenario e contada pelo MAPA: 125 fontes nos 40 mapas, 25 no pior deles (Vegeta), e
+    /// esse numero so muda quando alguem edita um `.luz`. A luz de ki e contada pela BRIGA -- o teto
+    /// de tiros de uma zona e 256 e o cliente desenha todos. Sem um teto aqui, uma troca de rajadas
+    /// entre seis lutadores decidiria o quadro na maquina do jogador.
+    ///
+    /// Ele e ESTATICO porque quem pergunta e um node de tiro que pode nascer aos montes: ler
+    /// `Boot.Config` seria a resposta certa pela porta cara. Quem escreve e o <see cref="Aplicar"/>,
+    /// uma vez, como o resto da configuracao.
+    ///
+    /// ============================ E O TETO ALTO NAO SAIU DO MILISSEGUNDO ============================
+    /// A bancada (`--diagluzdeki`, familia 4) mediu: 64 luzes de ki numa tela custam o MESMO que 8,
+    /// dentro do ruido. Luz 2D sem sombra e barata, e concluir dali que o teto podia ser alto seria o
+    /// erro -- porque a familia 6 fotografou o motivo do empate: **o renderizador de canvas do Godot
+    /// compoe ate ~16 luzes por PEDACO de cenario e descarta o resto calado**. Das 64 acesas sobre um
+    /// chao de um pedaco so, 15 chegaram ao chao e 49 sumiram sem erro, sem aviso, sem excecao.
+    ///
+    /// Ou seja: nao ha o que comprar acima disso. E o teto fica ABAIXO do muro de proposito, porque
+    /// o orcamento nao e so do ki -- a fogueira do cenario e a aura de cada corpo aceso disputam as
+    /// MESMAS vagas do mesmo pedaco. Um teto colado nos 16 faria a luz do tiro apagar a da fogueira
+    /// ao lado dela, que e o defeito que ninguem ia saber explicar.
+    /// ==========================================================================================
+    /// </summary>
+    public static int LuzesDeKi { get; private set; } = 12;
+
+    /// <summary>O orcamento de luz de ki que esta qualidade pede. O unico lugar que traduz o numero.</summary>
+    public int OrcamentoDeLuzDeKi => Grafico switch
+    {
+        GraficoBaixo => 4,
+        GraficoMedio => 8,
+        _ => 12,
+    };
+
+    /// <summary>Troca o orcamento. SO PRA BANCADA -- em jogo quem manda e a qualidade grafica.</summary>
+    public static void LuzesDeKiDeTeste(int n) => LuzesDeKi = Math.Max(0, n);
+
+    /// <summary>
     /// Teto do zoom-out. Diminuir o zoom mostra MAIS mundo, e enxergar mais longe que os
     /// outros e vantagem de verdade num jogo de luta -- por isso o minimo nao e livre.
     /// </summary>
@@ -178,6 +217,12 @@ public sealed class Settings
     public void Aplicar()
     {
         Zoom = Math.Clamp(Zoom, ZoomMin, ZoomMax);
+
+        // O ORCAMENTO DE LUZ DE KI. Aqui e nao na `AplicarQualidade` porque este e o caminho que o
+        // boot E o menu ja percorrem -- ver `PauseMenu`, que chama `AplicarEGravar` ao trocar a
+        // qualidade. Quem ja esta aceso mantem a vaga ate morrer, e e o certo: um tiro vive
+        // segundos, e apagar luz na cara de quem acabou de mexer no controle seria pior que esperar.
+        LuzesDeKi = OrcamentoDeLuzDeKi;
 
         DisplayServer.WindowSetMode(TelaCheia
             ? DisplayServer.WindowMode.Fullscreen

@@ -32,6 +32,14 @@ public partial class LocalPlayer : Node2D
 	/// <summary>A geometria da zona. Nulo = zona sem colisao carregada (anda livre).</summary>
 	public ZoneCollision? Mapa;
 
+	/// <summary>
+	/// OS OUTROS CORPOS -- o segundo plano da mesma pergunta que o <see cref="Mapa"/> responde.
+	///
+	/// O objeto e criado UMA vez e reenchido por quadro (ver `World.MontarGradeDeCorpos`): o
+	/// `Recomecar` e O(1) e a grade nao aloca por tique, entao isto nao entra na conta do quadro.
+	/// </summary>
+	private readonly Jandirus.Core.World.GradeDeCorpos _corpos = new();
+
 	private CharacterVisual _visual = null!;
 
 	/// <summary>
@@ -158,6 +166,32 @@ public partial class LocalPlayer : Node2D
 	/// <summary>O servidor mandou a minha altura. Ver o laco de snapshot em <c>World</c>.</summary>
 	public void ReceberAltura(bool voando, float altitude)
 		=> _altitude = voando ? altitude : 0f;
+
+	/// <summary>
+	/// O SERVIDOR MANDOU: EU ESTOU COM UM RAIO NA MAO (ou parei de estar).
+	///
+	/// Irmao exato do <see cref="ReceberAltura"/> logo acima, e chega pelo mesmo laco de snapshot no
+	/// `World`. Ver o comentario de la -- este estado e do servidor de ponta a ponta, e nao ha versao
+	/// local dele pra espelhar.
+	/// </summary>
+	public void ReceberCanalDeKi(bool canal, bool atirando)
+	{
+		_canalDeKi = canal;
+		_raioSaindo = canal && atirando;
+	}
+
+	/// <summary>Ha um canal de ki de pe neste corpo -- carregando OU atirando. Ver `Protocol.Pose.Canalizando`.</summary>
+	private bool _canalDeKi;
+
+	/// <summary>
+	/// O raio JA ESTA SAINDO da mao (o `beaming` do DM), e nao so sendo reunido.
+	///
+	/// SAO DOIS CAMPOS E NAO UM `enum` de tres estados de proposito: cada um responde a UMA pergunta
+	/// que ja tem consumidor -- `_canalDeKi` diz "o corpo esta preso" e `_raioSaindo` diz "a pose e a
+	/// do feixe". Um enum obrigaria os dois leitores a conhecer os tres valores pra responder a sua
+	/// metade.
+	/// </summary>
+	private bool _raioSaindo;
 
 	/// <summary>
 	/// ESTOU NADANDO. Vem da FICHA (`SheetState.Nadando`), e nao do snapshot nem de um palpite local.
@@ -291,6 +325,7 @@ public partial class LocalPlayer : Node2D
 		bool caiuAgora = ficha.Imobilizado && !_caido;
 		if (ficha.Empurrado && !_empurrado) _alvoDoVoo = _pos;   // comeca o voo de onde estou
 		_caido = ficha.Imobilizado;
+		_deitado = EstouDeitado(ficha);
 		// DEITA PRA ONDE ESTAVA OLHANDO. So no instante da queda: girar todo pacote de ficha
 		// deixaria o corpo caido acompanhando a direcao, que nao e o que um desmaio faz.
 		// O ANGULO DO CORPO DEITADO VEM DO SERVIDOR, e SO daqui -- 2 bits no Estado. Ter duas
@@ -301,7 +336,7 @@ public partial class LocalPlayer : Node2D
 		// diferentes -- ver `CharacterVisual.VoarPara`.
 		var dir = (Facing)((ficha.Estado >> 6) & 3);
 		_dirDoCorpo = dir;   // a folha do voo tambem sai daqui -- ver _Process
-		if (ficha.Imobilizado) _visual.DeitarPor(dir);
+		if (_deitado) _visual.DeitarPor(dir);
 		else if (ficha.Empurrado) _visual.VoarPara(dir);
 		else _visual.GirarPara(default);
 		_empurrado = ficha.Empurrado;   // o servidor esta dirigindo o corpo: ver _Process
@@ -321,6 +356,37 @@ public partial class LocalPlayer : Node2D
 
 	/// <summary>Nocauteado ou morto: o servidor recusa qualquer passo, entao aqui nem se tenta.</summary>
 	private bool _caido;
+
+	/// <summary>
+	/// ============================ "NAO POSSO AGIR" E "ESTOU NO CHAO" SAO DUAS COISAS ============================
+	/// Eram uma so -- <see cref="SheetState.Imobilizado"/> (`KO || Morto`) mandava nas duas -- e a
+	/// morte virou um PERCURSO no meio do caminho: hoje um morto pode estar **de pe**, andando no
+	/// Outro Mundo (`Alem.MortoDePe`, o `spawn Un_KO()` que o `Death.dm:89` faz ANTES de mover).
+	///
+	/// Com uma so, o dono da tela via a si mesmo DEITADO no Outro Mundo -- corpo girado 90 graus,
+	/// sprite `ko`, e a auréola desenhada AO LADO da cabeca (a folha tem um estado `ko` proprio, que
+	/// e o desenho pra um corpo caido) -- enquanto o servidor (`ServerPlayer.Pose`/`Deitado`) e TODAS
+	/// as outras telas o desenhavam de pe com a auréola sobre a cabeca. As duas telas discordando
+	/// sobre o mesmo corpo, que e a familia de defeito que este port ja pagou duas vezes (o corpo
+	/// girando no arremesso, a chama do vizinho).
+	///
+	/// A REGRA E A DO SERVIDOR, LIDA DA MESMA FUNCAO -- nao ha copia aqui: `Alem.MortoDePe` mora no
+	/// `Core` e e a mesma que o `ServerPlayer.Deitado` pergunta. O `Empurrado` (o arremesso) continua
+	/// tendo tabela propria, que e o `TiquesDeVoo` do outro lado.
+	///
+	/// **`_caido` NAO MUDOU**, e isso e deliberado: quem recusa o passo do morto e o servidor
+	/// (`PodeMexerOCorpo` tem `!dead`), e deixar o cliente tentar andar so produziria correcao de
+	/// posicao -- o elastico. Aqui mudou o DESENHO, que era o que estava mentindo.
+	/// ========================================================================================================
+	/// </summary>
+	private bool _deitado;
+
+	/// <summary>
+	/// O <see cref="ServerPlayer.Deitado"/> do lado de ca, menos o arremesso (que ja tem caminho
+	/// proprio logo acima). Ver <see cref="_deitado"/>.
+	/// </summary>
+	private static bool EstouDeitado(SheetState f) =>
+		f.KO || (f.Morto && !Jandirus.Core.World.Alem.MortoDePe(true, GameClient.Instance?.Zone.Name ?? ""));
 
 	/// <summary>
 	/// PRENSADO NO CHAO pela gravidade ou pelo peso -- a mesma regra que o servidor aplica em
@@ -490,7 +556,18 @@ public partial class LocalPlayer : Node2D
 		// O numero vem da ficha lenta (`AtributosState.Esmagamento`) porque `SheetState.Estado` nao
 		// tem mais bit livre -- os dois ultimos sao a direcao de quem esta caido.
 		// ============================================================================================
-		var input = _caido || _carregando || Foco.Digitando || GameClient.Instance?.EmClash == true
+		// ============================ E COM UM RAIO NA MAO O CORPO FICA PLANTADO ============================
+		// `canmove = 0` na carga (`beams.dm:294`) e ate o `stopbeaming()` (`beams.dm:221`), lido pelo
+		// `if(!canmove) mobTime = 0` do `movement handler.dm:88`. O servidor ja recusa o passo desde
+		// sempre -- o `EnraizadoPorKi` esta no `PodeMexerOCorpo` --, mas o CLIENTE nao sabia: ele
+		// continuava integrando as teclas e comendo uma correcao por pacote, que e o corpo TREMENDO no
+		// lugar durante o raio inteiro. E o mesmo modo de falha (e a mesma defesa) do bloco de cima.
+		//
+		// Este e o consumidor do `_canalDeKi`, e por isso ele existe separado do `_raioSaindo`: a pose
+		// so muda quando o feixe SAI, mas o corpo ja esta preso desde que a carga comeca.
+		// ================================================================================================
+		var input = _caido || _carregando || _canalDeKi || Foco.Digitando
+			|| GameClient.Instance?.EmClash == true
 			|| Transformacao.PrendendoOCorpo || Prensado
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			: new Vector2(
@@ -504,13 +581,18 @@ public partial class LocalPlayer : Node2D
 		// preenche a direcao que o jogador preencheria com as teclas, e o passo continua
 		// passando pelo MoveRules e sendo conferido pelo servidor. Uma viagem de sete dias tem
 		// que custar sete dias.
-		// CAIDO OU CARREGANDO, O PILOTO DESLIGA -- e nao "fica guiando um corpo que nao anda".
+		// CAIDO, CARREGANDO OU COM UM RAIO NA MAO, O PILOTO DESLIGA -- e nao "fica guiando um corpo
+		// que nao anda".
 		//
-		// As duas condicoes zeram o INPUT logo acima, mas o piloto rodava depois e reenchia `dir`.
+		// As tres condicoes zeram o INPUT logo acima, mas o piloto roda DEPOIS e reencheria `dir`.
 		// O cliente entao andava; o servidor, que recusa movimento de quem esta carregando ou no
 		// chao, devolvia uma Correction por PACOTE -- trinta por segundo, o corpo tremendo e o
 		// console cuspindo aviso. Segurar C no meio de uma viagem e o caso comum.
-		if ((_caido || _carregando) && Destino != null)
+		//
+		// O RAIO ENTROU AQUI JUNTO COM O `input` LA EM CIMA, e nao depois: as duas linhas dizem a
+		// MESMA frase ("este corpo nao anda") e uma sem a outra reproduz exatamente o defeito que
+		// este comentario ja conta -- foi assim que a carga de Ki o produziu da primeira vez.
+		if ((_caido || _carregando || _canalDeKi) && Destino != null)
 		{
 			Destino = null;
 			Chat.Sistema("piloto automatico desligado.");
@@ -593,8 +675,22 @@ public partial class LocalPlayer : Node2D
 		// que viraria correcao de posicao em jogo honesto -- o personagem tremendo na parede).
 		// ...E ABAIXO DELA, A AGUA: quem esta baixo consulta o mapa, e o `modo` diz se a agua o para.
 		// A funcao e a MESMA do servidor (ver `ModoDoCorpo`).
+		// ============================ ...E OS CORPOS, NO MESMO `Advance` ============================
+		// *"faca com q personagens N CONSIGAM PASSAR DENTRO DO OUTRO andando"*. A grade e reenchida
+		// aqui, por quadro, e entra pelo MESMO parametro que o mapa -- nao ha um segundo teste depois
+		// deste passo empurrando o corpo pra fora de alguem.
+		//
+		// **E ELE E PREVISAO, NAO PEDIDO**: o servidor NAO confere corpo no `ValidateStep` (ver la o
+		// porque -- corpo e dado dinamico que as duas pontas veem em instantes diferentes, e cobrar
+		// concordancia sobre ele so produziria correcao em jogo honesto). Ou seja: esbarrar em gente e
+		// resolvido aqui, e nada disto gera pacote nem tremor.
+		// ==========================================================================================
+		World.Instancia?.MontarGradeDeCorpos(_corpos);
+		var vizinhos = new Jandirus.Core.World.Vizinhanca(
+			_corpos, GameClient.Instance?.LocalId ?? 0, Jandirus.Core.World.Voo.Andar(_altitude));
+
 		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat,
-			AtravessandoCenario ? null : Mapa, out _, _correndo, ModoDoCorpo);
+			AtravessandoCenario ? null : Mapa, out _, _correndo, ModoDoCorpo, vizinhos);
 		Desenhar();
 
 		// ANDANDO = saiu do lugar, nao = apertou a tecla. Empurrando a parede o personagem
@@ -661,18 +757,43 @@ public partial class LocalPlayer : Node2D
 
 		// SUBIR E DESCER. Sao PEDIDOS continuos, como correr: o servidor so obedece a quem esta
 		// voando (`TickDoVoo`), entao apertar no chao nao faz nada. Escrevendo no chat ninguem sobe.
-		bool subir = !Foco.Digitando && Godot.Input.IsActionPressed("subir");
-		bool descer = !Foco.Digitando && Godot.Input.IsActionPressed("descer");
+		//
+		// ============================ DAQUI PRA BAIXO E TUDO SONDA, E SONDA NAO SE CALA SOZINHA ============================
+		// Estas leituras nao sao eventos: sao perguntas ao `InputMap` dentro do laco de fisica. O
+		// `SetInputAsHandled` do quick time event NAO as alcanca -- o unico lugar onde da pra barrar
+		// uma sonda e o ponto de LEITURA. Por isso todas elas trocaram `Foco.Digitando` por
+		// `Foco.AtalhosMudos`: o R (subir), o G (descer), o F (voar), o N (nadar), o Q (agarrar), o C
+		// (carga), o X (reverter), o T (treinar), o M (meditar) e o K (letal) **sao dez das 22 letras
+		// que o embate sorteia**, e sem isto responder a letra pedida ligava o voo, mandava meditar ou
+		// carregava Ki no meio do embate. Era a queixa do dono, medida.
+		//
+		// O QUE **NAO** ENTROU, e por que: o vetor de ANDAR (ele ja tem a sua propria trava, logo acima,
+		// e mexer nele foi o erro que o dono cobrou uma vez), a GUARDA (soltar o ALT ENCERRA o lado de
+		// quem segura um feixe com as maos -- calar a leitura seria PERDER a disputa de ki pelo portao)
+		// e o SOCO (o espaco nao e letra, e o corpo ja esta preso pelo `Stun`).
+		// ==================================================================================================================
+		bool subir = !Foco.AtalhosMudos && Godot.Input.IsActionPressed("subir");
+		bool descer = !Foco.AtalhosMudos && Godot.Input.IsActionPressed("descer");
 
 		// V ALTERNA O VOO. Vai pelo canal de habilidade -- e o MESMO caminho do verb do menu, pra
 		// que a tecla e o botao nao virem duas regras que precisam concordar.
-		if (!Foco.Digitando && Godot.Input.IsActionJustPressed("voar"))
+		if (!Foco.AtalhosMudos && Godot.Input.IsActionJustPressed("voar"))
 			GameClient.Instance?.SendHabilidade("voar");
 
 		// N ALTERNA O NADO, pelo MESMO canal do voo e do botao do menu. Quem decide se liga (tem agua
 		// aqui? esta de pe?) e o servidor -- o cliente so pede, e recebe a resposta na ficha.
-		if (!Foco.Digitando && Godot.Input.IsActionJustPressed("nadar"))
+		if (!Foco.AtalhosMudos && Godot.Input.IsActionJustPressed("nadar"))
 			GameClient.Instance?.SendHabilidade("nadar");
+
+		// Q CICLA O AGARRAO -- pegar, levantar no colo, soltar. Pelo MESMO canal do voo e do nado, e
+		// pela mesma razao: quem decide se ha alguem ao alcance, se o corpo pode agarrar e em que
+		// estado o aperto esta e o SERVIDOR. O cliente so pede.
+		//
+		// **NAO HA TECLA DE ARREMESSAR**: segurando alguem, o primeiro passo o joga (`Throw.dm:1-3`),
+		// e quem ve isso e o `TickDoAgarrao` do servidor lendo o `Moving` que este mesmo laco ja
+		// manda. Uma tecla a mais aqui seria um gesto que o original nao tem.
+		if (!Foco.AtalhosMudos && Godot.Input.IsActionJustPressed("agarrar"))
+			GameClient.Instance?.SendHabilidade("agarrar");
 
 		SeguirAltura(delta);
 		AplicarAltura();
@@ -790,7 +911,21 @@ public partial class LocalPlayer : Node2D
 		{
 			// caido: a guarda cai junto, e a pose vem do servidor como qualquer outra
 			if (_guarda) { _guarda = false; GameClient.Instance?.SendGuard(false); }
-			_visual.SetState("ko");
+			// O SPRITE DE NOCAUTE SO PRA QUEM ESTA MESMO NO CHAO -- ver `_deitado`.
+			//
+			// ============================ E O DE PE PRECISA SER ESCRITO, NAO BASTA NAO ESCREVER ============================
+			// `SetMotion` (que roda todo quadro, la em cima) so mexe em DIRECAO e "esta andando"; quem
+			// escolhe o ESTADO e o `SetState`, e ele e pegajoso -- uma vez em `ko`, fica em `ko`. Um
+			// morto que caiu na Terra e depois subiu pro Outro Mundo passaria a estadia inteira com o
+			// sprite de nocaute na PROPRIA tela (e girado 90 graus, e com a auréola desenhada AO LADO
+			// da cabeca, que e o que a folha desenha pro estado `ko`) enquanto todas as outras telas o
+			// mostravam de pe. Ver `_deitado`.
+			//
+			// `PorAPoseDoCorpo` e o MESMO chooser do corpo acordado: ele cobre o voo e o nado, que um
+			// `SetState("default")` cravado aqui perderia -- e no alem se anda voando.
+			// ========================================================================================================
+			if (_deitado) _visual.SetState("ko");
+			else PorAPoseDoCorpo();
 			return;
 		}
 
@@ -803,12 +938,12 @@ public partial class LocalPlayer : Node2D
 			GameClient.Instance?.SendGuard(_guarda);
 		}
 
-		if (!Foco.Digitando) LerMira();
+		if (!Foco.AtalhosMudos) LerMira();
 
-		if (!Foco.Digitando) LerTeclaC(delta);
+		if (!Foco.AtalhosMudos) LerTeclaC(delta);
 		else if (_carregando) { _carregando = false; GameClient.Instance?.SendCarregar(false); }
 
-		if (!Foco.Digitando && Godot.Input.IsActionJustPressed("reverter"))
+		if (!Foco.AtalhosMudos && Godot.Input.IsActionJustPressed("reverter"))
 			GameClient.Instance?.SendTransformar(false);
 
 		// UM soco por vez. Sem esta trava, martelar o espaco re-armava o cronometro a cada
@@ -870,6 +1005,25 @@ public partial class LocalPlayer : Node2D
 		// a pose de soco tem prioridade enquanto dura
 		if (_ataqueAte > 0) return;
 
+		PorAPoseDoCorpo();
+	}
+
+	/// <summary>
+	/// A POSE DO CORPO ACORDADO -- voo/nado, treino, meditacao ou parado.
+	///
+	/// ============================ POR QUE ELA VIROU FUNCAO ============================
+	/// Ela era o fim do <see cref="LerAcoes"/>, e o `if (_caido)` de la em cima RETORNA antes de
+	/// chegar aqui. Isso estava certo enquanto "caido" e "morto" eram a mesma coisa; hoje um morto
+	/// pode estar **de pe** no Outro Mundo (ver <see cref="_deitado"/>), e ele precisa da mesma pose
+	/// de sempre -- inclusive a de VOO, que e como se anda por la.
+	///
+	/// Sem esta chamada o `SetState` fica pegajoso: quem caiu na Terra em `ko` e depois subiu passa a
+	/// estadia inteira com o sprite de nocaute na propria tela. Copiar as tres linhas pra dentro do
+	/// `if` teria dado a segunda casa da mesma escolha -- e a primeira a envelhecer seria a de la.
+	/// ==============================================================================
+	/// </summary>
+	private void PorAPoseDoCorpo()
+	{
 		// ============================ O SPRITE DE VOO EXISTE, E NAO ERA USADO ============================
 		// A folha de cada personagem tem um estado `flight` desenhado -- o mesmo que o `icon_state =
 		// "Flight"` do original (`flying.dm:114`). O `CharacterVisual.SetPose(Voando)` ja mapeava
@@ -891,6 +1045,24 @@ public partial class LocalPlayer : Node2D
 		// sombra nao nasce (o node so e criado quando a altura sai de zero) e a nevoa de altitude
 		// tambem nao. "Entrar na animacao do fly sem sair do chao" e, aqui, exatamente esta linha.
 		// ================================================================================================
+		// ============================ O RAIO NA MAO VEM ANTES DO VOO, E ISSO E O DM ============================
+		// `usr.icon_state = "Blast"` (`beams.dm:280`) e escrito DEPOIS do `icon_state = "Flight"` de
+		// quem ja estava voando (`flying.dm:114`), e nada reescreve o Flight por tique -- so o NADO se
+		// reafirma assim (`Stats.dm:399`). Entao no original o raio ganha do voo, e o corpo continua no
+		// ar (a altura e outro campo) com a pose do feixe.
+		//
+		// A ORDEM E A MESMA DO SERVIDOR, e tem que ser: quem decide a pose dos OUTROS e o
+		// `ServerPlayer.Pose`, que poe o canal acima do `Voando` pelo mesmo argumento. Duas ordens
+		// diferentes dariam o defeito classico deste arquivo -- o dono se vendo pairar enquanto todo
+		// mundo o ve atirando.
+		//
+		// E SO A FASE DE TIRO MUDA A POSE: carregar nao escreve `icon_state` nenhum no original (o
+		// bloco de carga do verb so poe `forceicon`, som e o overlay -- `beams.dm:288-300`), entao quem
+		// esta reunindo energia cai na escada normal e fica no idle, com o brilho da
+		// `CargaDeRaioVisual` por cima. Ver `Protocol.Pose.Canalizando`.
+		// ===================================================================================================
+		if (_raioSaindo) { _visual.SetPose(Protocol.Pose.Canalizando, canalAtirando: true); return; }
+
 		if (_altitude > 0f || _nadando) { _visual.SetState("flight"); return; }
 
 		// NAO existe pose de guarda nos .dmi (o corpo tem meditate, train, attack, flight, ko e
@@ -922,11 +1094,45 @@ public partial class LocalPlayer : Node2D
 	private void LerAtividade(bool andando, bool soASaida = false)
 	{
 		Protocol.Activity nova = _atividade;
-		if (Foco.Digitando) { }   // "treinar" e "meditar" sao T e M: no meio de uma frase, nao
+		// "treinar" e "meditar" sao T e M -- no meio de uma frase, nao; e no meio de um embate tambem
+		// nao, que as duas estao entre as 22 letras sorteadas. Ver `Foco.AtalhosMudos`.
+		if (Foco.AtalhosMudos) { }
 		else if (!soASaida && Godot.Input.IsActionJustPressed("train"))
 			nova = _atividade == Protocol.Activity.Treinando ? Protocol.Activity.Parado : Protocol.Activity.Treinando;
 		else if (Godot.Input.IsActionJustPressed("meditate"))
-			nova = _atividade == Protocol.Activity.Meditando ? Protocol.Activity.Parado : Protocol.Activity.Meditando;
+		{
+			// ============================ O M PERGUNTA ANTES DE MEDITAR ============================
+			// *"faca q ao MEDITAR uma TELINHA vai abrir e perguntar se vc quer so MEDITAR NORMAL ou ir
+			// pra MEDITACAO PROFUNDA"*. A pergunta e a <see cref="TelaDeMeditacao"/>, e quem RESPONDE
+			// por ela e o `EscolheuMeditar` aqui embaixo -- a atividade e deste arquivo (ela e a pose
+			// do proprio corpo), e uma telinha que mandasse o pacote sozinha deixaria o `_atividade`
+			// mentindo: o M seguinte reabriria a pergunta em vez de parar a meditacao.
+			//
+			// SAIR NAO E ESCOLHA: quem ja esta meditando aperta M e para, como sempre. A pergunta e da
+			// ENTRADA, e um menu pra levantar seria um clique a mais em cima de um gesto que ja estava
+			// certo.
+			//
+			// ANDANDO NAO ABRE: o `if (andando)` logo abaixo derrubaria o pedido de qualquer jeito, e
+			// uma telinha que aparece pra ser ignorada e pior do que nao aparecer.
+			//
+			// POSSUIDO NAO ABRE, e esta e a linha que precisa de cuidado: com a fera no comando o M e a
+			// UNICA saida (`soASaida`), e a profunda nem existe la (o canal de habilidade recusa quem
+			// esta sem as redeas). Uma pergunta no meio da posse poria uma tela entre o jogador e a
+			// unica resposta que a paralisia tem.
+			//
+			// SEM A TELINHA MONTADA (mundo ainda subindo, bancada sem interface), o M volta a meditar
+			// direto. Uma tecla que nao responde porque um node nao nasceu seria a pior das falhas.
+			// ==================================================================================
+			if (_atividade == Protocol.Activity.Meditando) nova = Protocol.Activity.Parado;
+			else if (!andando && !soASaida && TelaDeMeditacao.Instancia is { } pergunta)
+			{
+				// O M FECHA O QUE O M ABRIU -- a mesma toc-toc do menu da tecla E.
+				if (pergunta.NaTela) pergunta.Fechar();
+				else pergunta.Abrir(EscolheuMeditar);
+				return;
+			}
+			else nova = Protocol.Activity.Meditando;
+		}
 
 		if (andando) nova = Protocol.Activity.Parado;   // nao se treina correndo
 
@@ -935,6 +1141,32 @@ public partial class LocalPlayer : Node2D
 			_atividade = nova;
 			GameClient.Instance?.SendActivity(nova);
 		}
+	}
+
+	/// <summary>
+	/// A RESPOSTA DA TELINHA (ver <see cref="TelaDeMeditacao"/>): `true` = profunda, `false` = normal.
+	///
+	/// **METODO NOMEADO, e nao lambda**, pelo motivo de sempre neste projeto: o que se entrega pra
+	/// outro node tem que ter nome pra poder ser lido (e, no dia em que virar assinatura, cancelado).
+	///
+	/// ============================ OS DOIS PACOTES, NESTA ORDEM ============================
+	/// A profunda manda DOIS: a atividade (`C2S.Activity`, que escreve o `Ficha.med` do servidor) e a
+	/// habilidade (`C2S.Habilidade`, que e a porta da mente). A ordem importa, porque o servidor
+	/// recusa quem nao esta meditando -- e ela esta GARANTIDA: os dois saem no mesmo canal confiavel
+	/// e ordenado (`Protocol.ChannelReliable`, `ReliableOrdered`), entao o `case "mente"` roda depois
+	/// do `case Activity` do mesmo jogador, sempre.
+	///
+	/// O `SendHabilidade` e o MESMO que o verb apagado do menu P mandava: a telinha trocou a porta,
+	/// nao o encanamento. Nada mudou no servidor por causa dela.
+	/// ================================================================================
+	/// </summary>
+	private void EscolheuMeditar(bool profunda)
+	{
+		// PELO CAMINHO DE SEMPRE: escrever o `_atividade` aqui e o que faz a pose de meditar aparecer
+		// no proprio corpo (`PorAPoseDoCorpo`) e o M seguinte PARAR a meditacao em vez de reperguntar.
+		_atividade = Protocol.Activity.Meditando;
+		GameClient.Instance?.SendActivity(Protocol.Activity.Meditando);
+		if (profunda) GameClient.Instance?.SendHabilidade("mente");
 	}
 
 	/// <summary>
@@ -1062,10 +1294,48 @@ public partial class LocalPlayer : Node2D
 	/// a piscada usar o mesmo caminho, nao inventar um terceiro.
 	/// ================================================================================================
 	/// </summary>
-	public void DeixarVulto()
+	public void DeixarVulto(Vector2 doServidor)
 	{
-		if (GetParent() is { } palco) Zanzoken.Deixar(palco, this, _deOndeSai);
+		if (GetParent() is { } palco) Zanzoken.Deixar(palco, this, OrigemDoSalto(doServidor));
 	}
+
+	/// <summary>
+	/// O BORRAO DO SALTO, no meu proprio corpo -- pela MESMA origem que o vulto usa.
+	///
+	/// Ele nao e a outra metade do <see cref="DeixarVulto"/>: o vulto e a Afterimage (skill), o borrao
+	/// e o deslocamento (qualquer corpo). Estao lado a lado porque compartilham a origem.
+	///
+	/// **NAO HA NADA AQUI QUE SEJA "DO JOGADOR"**: o `RastroDeCorrida.Arranque` e o mesmo node e o mesmo
+	/// metodo que o corpo remoto e o do NPC chamam. Este atalho existe so pra escolher a ORIGEM, que e a
+	/// unica coisa que o corpo local sabe melhor que o pacote -- e nem sempre (ver `OrigemDoSalto`).
+	/// </summary>
+	public void BorrarArranque(Vector2 doServidor)
+	{
+		if (GetNodeOrNull<RastroDeCorrida>("Rastro") is { } rastro) rastro.Arranque(OrigemDoSalto(doServidor));
+	}
+
+	/// <summary>
+	/// DE ONDE ESTE CORPO SALTOU -- e a resposta muda conforme quem esta dirigindo.
+	///
+	/// ============================ COM AS REDEAS: A MINHA, GUARDADA ============================
+	/// Quem apertou a tecla fui eu, e eu guardei a posicao no instante do gesto (`_deOndeSai`). As duas
+	/// razoes pra nao usar a do pacote estao inteiras no <see cref="DeixarVulto"/>: ela esta ATRASADA
+	/// (e a ultima que chegou ao servidor por input) e vem por um canal SEM ORDEM garantida com a
+	/// correcao que move o corpo.
+	///
+	/// ============================ SEM AS REDEAS: A DO SERVIDOR, SEMPRE ============================
+	/// **E aqui mora a fera do Oozaru e a furia lendaria.** Um corpo possuido tambem arranca -- so que
+	/// quem aperta a tecla e o cerebro, no servidor. O `_deOndeSai` so e escrito no `LerAcoes`, que a
+	/// posse nao roda: ele ficaria parado no ultimo soco que o DONO deu, possivelmente minutos e uma
+	/// zona atras. O borrao nasceria como uma faixa atravessando o mapa.
+	///
+	/// Nao e hipotese: e literalmente o defeito que o dono ja relatou uma vez neste mesmo campo --
+	/// *"o efeito do zanzoken acontece no ultimo local q usei o shift+espaco"*. Sem redeas, as duas
+	/// objecoes acima nem se aplicam: o corpo ja nao anda por input nenhum (ele PERSEGUE o ponto do
+	/// servidor, ver `ReceberPosse`), entao a posicao do pacote e a unica verdade que existe.
+	/// ==========================================================================================
+	/// </summary>
+	private Vector2 OrigemDoSalto(Vector2 doServidor) => _semRedeas ? doServidor : _deOndeSai;
 
 	/// <summary>
 	/// Onde mirar. A zona nao GARANTE o membro -- so pesa o sorteio a favor dele -- mas e o

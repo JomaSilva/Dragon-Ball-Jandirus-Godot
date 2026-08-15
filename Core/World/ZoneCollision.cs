@@ -91,6 +91,39 @@ public sealed class ZoneCollision
 	/// </summary>
 	private byte[]? _agua;
 
+	/// <summary>
+	/// O PLANO DO QUE NAO SE QUEBRA -- 1 bit por celula, ou nulo se esta zona nao tiver nada duro.
+	///
+	/// ============================ ELE E O `destroyable` DO ORIGINAL, E FALTAVA ============================
+	/// No DM `turf/proc/Destroy()` (`Modules/Turfs/NewTurfs.dm:2-4`) abre com `if(src.destroyable)` --
+	/// um funil unico por onde passa TODA destruicao de cenario. O padrao e 1 (`Turfs.dm:199`), e
+	/// quem desliga sao a borda do mundo (`/turf/Other/Blank`), os teleportes, a arena, o `Void_Wall`
+	/// e o espaco.
+	///
+	/// O port aproximava isso pelo anel de duas celulas do <see cref="NaBorda"/>. A aproximacao e
+	/// boa pra beirada de mapa e nao vale nada pro MIOLO: o Templo tem costuras de `Blank` em
+	/// x=274, x=434, y=326 e y=54 -- centenas de tiles longe de qualquer margem. 1.690 celulas que
+	/// no BYOND nao cedem nunca caiam aqui com poeira, som e a celula virando terra batida.
+	/// Era a queixa do dono: *"eu soco, ele QUEBRA e faz TODOS OS EFEITOS, mas nao tinha nada la"*.
+	/// ======================================================================================================
+	///
+	/// ============================ POR QUE UM PLANO, E NAO UM BIT DO `_bits` ============================
+	/// Pelo mesmo motivo da agua, e a nota dela vale palavra por palavra: `_bits` ja significa quatro
+	/// coisas ao mesmo tempo, e "e indestrutivel" nao muda NENHUMA delas. Uma parede dura continua
+	/// parando o corpo, continuando cegando e continuando sendo parede pro caminho -- a unica
+	/// pergunta que ela responde diferente e a do <see cref="Jandirus.Core.World.ZoneCollision"/>
+	/// que ninguem mais faz: "isto pode cair?".
+	///
+	/// MORA NO MESMO OBJETO pelo motivo de sempre neste sistema: "o que da pra fazer com esta celula"
+	/// tem um funil so, e espalhar a pergunta e pedir pra um chamador ficar de fora.
+	/// ==================================================================================================
+	///
+	/// DE ONDE VEM: do arquivo `.duro` gravado ao lado do `.col` -- arquivo SEPARADO pelo mesmo
+	/// motivo que o `.agua` (a cauda do `.col` ja tem dono: o plano de grupo da sombra), e ausente
+	/// significa "nada duro nesta zona", que e a verdade nas zonas geradas por semente.
+	/// </summary>
+	private byte[]? _duro;
+
 	private ZoneCollision(int w, int h, byte[] bits, byte[]? grupo)
 	{
 		Width = w; Height = h; _bits = bits; _grupo = grupo;
@@ -198,6 +231,63 @@ public sealed class ZoneCollision
 	/// <summary>A mesma pergunta, em pixels.</summary>
 	public bool EhAguaEm(Vec2 pos) =>
 		EhAgua((int)MathF.Floor(pos.X / TileSize), (int)MathF.Floor(pos.Y / TileSize));
+
+	// =====================================================================
+	// O QUE NAO SE QUEBRA -- o `destroyable` do original. Ver `_duro`.
+	// =====================================================================
+
+	/// <summary>
+	/// Le o `.duro` -- MESMO cabecalho do `.col` e do `.agua` ("JCOL" + largura + altura + bitset),
+	/// e pelo mesmo motivo: e o mesmo formato respondendo outra pergunta, e uma terceira
+	/// serializacao seria uma terceira coisa pra manter em dia.
+	///
+	/// Devolve false (e nao lanca) quando o arquivo nao existe, nao e JCOL, ou descreve um mapa de
+	/// outro tamanho -- os tres casos em que a resposta honesta e "esta zona nao tem nada marcado".
+	/// </summary>
+	public bool CarregarDuro(byte[]? data)
+	{
+		if (data == null || data.Length < 8) return false;
+		if (data[0] != 'J' || data[1] != 'C' || data[2] != 'O' || data[3] != 'L') return false;
+		int w = data[4] | (data[5] << 8);
+		int h = data[6] | (data[7] << 8);
+		if (w != Width || h != Height) return false;
+
+		int precisa = (w * h + 7) / 8;
+		if (data.Length < 8 + precisa) return false;
+
+		var bits = new byte[precisa];
+		Array.Copy(data, 8, bits, 0, precisa);
+		_duro = bits;
+		return true;
+	}
+
+	/// <summary>O bitset cru, pra quem monta em memoria (o planeta gerado). Ver <see cref="DefinirAgua"/>.</summary>
+	public bool DefinirDuro(byte[]? bits)
+	{
+		if (bits == null) { _duro = null; return true; }
+		if (bits.Length != (Width * Height + 7) / 8) return false;
+		_duro = bits;
+		return true;
+	}
+
+	/// <summary>Esta zona tem alguma celula marcada como indestrutivel?</summary>
+	public bool TemDuro => _duro != null;
+
+	/// <summary>
+	/// ESTA CELULA NAO PODE SER QUEBRADA?
+	///
+	/// FORA DO MAPA E DURO, e isso nao e detalhe: o lado de fora do bitset e a borda do mundo, e o
+	/// unico jeito de encostar nele e o `SemBorda` da Sala do Tempo -- onde fora do bitset e chao
+	/// livre e nao ha o que quebrar de qualquer forma. Responder "da pra quebrar" ali seria abrir
+	/// permissao pra derrubar o vazio.
+	/// </summary>
+	public bool Indestrutivel(int cx, int cy)
+	{
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return !SemBorda;
+		if (_duro == null) return false;
+		int i = cy * Width + cx;
+		return (_duro[i >> 3] & (1 << (i & 7))) != 0;
+	}
 
 	/// <summary>
 	/// ESTA CELULA PARA ESTE CORPO? -- parede E agua, na mesma pergunta.
@@ -402,7 +492,7 @@ public sealed class ZoneCollision
 		int cx = (int)MathF.Floor(desejado.X / TileSize);
 		int cy = (int)MathF.Floor(desejado.Y / TileSize);
 
-		if (Serve(cx, cy)) return desejado;
+		if (ServeDeChao(cx, cy)) return desejado;
 
 		for (int r = 1; r <= raioMax; r++)
 		{
@@ -411,25 +501,37 @@ public sealed class ZoneCollision
 				for (int dy = -r; dy <= r; dy++)
 				{
 					if (Math.Abs(dx) != r && Math.Abs(dy) != r) continue;
-					if (Serve(cx + dx, cy + dy))
-						return new Vec2((cx + dx) * TileSize + TileSize / 2f,
-										(cy + dy) * TileSize + TileSize / 2f);
+					if (ServeDeChao(cx + dx, cy + dy)) return CentroDaCelula(cx + dx, cy + dy);
 				}
 		}
 
 		return desejado;
-
-		// A BEIRADA NAO SERVE DE CHAO. `NaBorda` e o que impede sair do mapa (o `MoveRules` recusa
-		// o passo la), entao um corpo posto na beirada nasceria numa celula de onde ele nao pode se
-		// mover -- livre pela colisao e presa pela regra.
-		//
-		// E A AGUA TAMPOUCO, e pelo MESMO motivo -- e por isso ela entra aqui e nao num `if` de cada
-		// chamador. Agua nao esta no bitset (nao e parede), entao sem esta clausula um Namekuseijin
-		// podia nascer no meio do oceano de Namek e um piloto pousar dentro de um lago: livres pela
-		// colisao, parados pela regra de personagem. Ver `ClasseDeAgua.ServeDeChao`.
-		bool Serve(int x, int y) =>
-			!BlockedCell(x, y) && !NaBorda(x, y) && !(EhAgua(x, y) && !ClasseDeAgua.ServeDeChao);
 	}
+
+	/// <summary>
+	/// ============================ "DA PRA UM CORPO A PE FICAR NESTA CELULA?" ============================
+	/// A pergunta que o <see cref="PontoLivrePerto"/> faz anel por anel, e ela e **PUBLICA porque tem
+	/// um segundo consumidor**: quem nao quer o ponto mais proximo, e sim saber se um ponto QUE ELE JA
+	/// SORTEOU serve (o embaralho dos habitantes -- `GameServer.Embaralho.cs`). Sem ela, esse chamador
+	/// teria que recompor `!BlockedCell &amp;&amp; !NaBorda &amp;&amp; !agua` na mao, e seria a copia que nao soube
+	/// da agua no dia em que a agua entrou -- que e exatamente o que este metodo existe pra impedir.
+	///
+	/// AS TRES RECUSAS, e nenhuma delas e a mesma coisa que as outras:
+	///
+	///   * PAREDE   -- o bitset do arquivo mais as camadas de runtime (obra levantada, porta fechada);
+	///   * BEIRADA  -- livre pela colisao e presa pela regra: `NaBorda` e o que impede sair do mapa, e
+	///     um corpo posto la nasceria numa celula de onde ele nao pode dar um passo;
+	///   * AGUA     -- livre pela colisao tambem (agua nao e parede, nao esta no bitset) e parada pela
+	///     regra de personagem. Sem esta clausula um Namekuseijin nasce no meio do oceano de Namek e
+	///     um piloto pousa dentro de um lago. Ver <see cref="ClasseDeAgua.ServeDeChao"/>.
+	/// ================================================================================================
+	/// </summary>
+	public bool ServeDeChao(int cx, int cy) =>
+		!BlockedCell(cx, cy) && !NaBorda(cx, cy) && !(EhAgua(cx, cy) && !ClasseDeAgua.ServeDeChao);
+
+	/// <summary>O CENTRO da celula -- ver a nota de quina do <see cref="PontoLivrePerto"/>.</summary>
+	public Vec2 CentroDaCelula(int cx, int cy) =>
+		new(cx * TileSize + TileSize / 2f, cy * TileSize + TileSize / 2f);
 
 	/// <summary>
 	/// O caminho de <paramref name="from"/> ate <paramref name="to"/> passa por parede?

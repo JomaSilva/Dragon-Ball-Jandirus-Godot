@@ -1,4 +1,4 @@
-﻿using Godot;
+using Godot;
 using Jandirus.Core.Races;
 
 namespace Jandirus.Client;
@@ -38,12 +38,6 @@ public partial class Boot : Node2D
 
 	public override void _Ready()
 	{
-		// ============================ QUAL BUILD ESTA RODANDO ============================
-		// Existe porque nesta sessao a bancada rodou o binario ANTIGO depois de um erro de compile
-		// e deu "TUDO OK" -- e o dono e eu passamos uma rodada discutindo um conserto que nunca
-		// chegou na tela dele. A hora do .dll e a unica coisa que resolve isso sem adivinhacao:
-		// se a linha abaixo nao mudar depois de compilar, o jogo esta com a versao velha.
-		// ============================================================================
 		try
 		{
 			string dll = System.Reflection.Assembly.GetExecutingAssembly().Location;
@@ -79,6 +73,34 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtinta") >= 0)
 		{
 			AddChild(new RoboDeTinta { Name = "RoboDeTinta" });
+			return;
+		}
+
+		// A ARTE DOS ATAQUES DE KI. Mora aqui em cima, junto da `--diagtinta`, pela mesma razao:
+		// arte de tiro nao precisa de rede, de zona nem de login -- so de folha, shader e um quadro
+		// desenhado. As familias 1 e 2 (tabela e folhas do disco) rodam no HEADLESS; a familia 3
+		// mede o pixel e precisa de janela. Ver RoboDeArteDeKi.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagartedeki") >= 0)
+		{
+			AddChild(new RoboDeArteDeKi { Name = "RoboDeArteDeKi" });
+			return;
+		}
+
+		// A LUZ DOS ATAQUES DE KI -- irma da `--diagartedeki` e vizinha dela por isso: aquela mede o
+		// que o tiro DESENHA, esta mede o que ele ACENDE. Familias 1 a 3 (mecanismo, luz orfa, teto)
+		// rodam no headless; as 4 e 5 (custo por quadro e o pixel do chao) precisam de janela.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagluzdeki") >= 0)
+		{
+			AddChild(new RoboDeLuzDeKi { Name = "RoboDeLuzDeKi" });
+			return;
+		}
+
+		// A GOTA NA TELA -- a ondulacao da entrada e da saida do transe. Ela e IRMA da `--diagluzdeki`
+		// no argumento: as duas medem PIXEL porque as duas respondem perguntas que so o pixel
+		// responde. Precisa de janela; no headless ela diz que nao mediu em vez de passar de graca.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggota") >= 0)
+		{
+			AddChild(new RoboDaGota { Name = "RoboDaGota" });
 			return;
 		}
 
@@ -445,6 +467,9 @@ public partial class Boot : Node2D
 		AddChild(new MenuDeInteracao { Name = "Interacao" });
 		// A TECLA I: a mochila.
 		AddChild(new TelaDeInventario { Name = "Inventario" });
+		// A TECLA M: meditar normal ou mergulhar na propria mente. Ver `TelaDeMeditacao` -- ela vive
+		// montada e invisivel, e e o `LocalPlayer` que a abre (a atividade e dele).
+		AddChild(new TelaDeMeditacao { Name = "Meditacao" });
 		// A GRADE DA BANCADA e o fantasma de assentar construcao.
 		AddChild(new TelaDeConstrucao { Name = "Construcao" });
 		// A MESA ONDE O JOGADOR DESENHA AS PROPRIAS TECNICAS. Sem tecla propria de proposito: ela
@@ -482,6 +507,13 @@ public partial class Boot : Node2D
 		// depois do cache de paginas. Ver RoboDeMenu.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmenu") >= 0)
 			AddChild(new RoboDeMenu { Name = "RoboDeMenu" });
+
+		// --diagmuda: A PAREDE INVISIVEL, FOTOGRAFADA. O censo fecha em zero e a `--socoteste` mede a
+		// recusa em numero -- e as duas ficariam verdes num mundo em que nada disso chega a tela, que e
+		// justamente onde mora a queixa do dono. Roda duas vezes (com e sem `--semduro`) pra montar o
+		// ANTES e o DEPOIS no mesmo binario, sem apagar arquivo nenhum. Ver RoboDeParedeMuda.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmuda") >= 0)
+			AddChild(new RoboDeParedeMuda { Name = "RoboDeParedeMuda" });
 
 		// --diagadmin: bancada de ADMIN. Confere que o bit chegou ao cliente, que a aba existe, que
 		// os verbs respondem, que promover grava -- e, o principal, que APRENDER UMA SKILL nao apaga
@@ -552,6 +584,49 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagfera") >= 0)
 			AddChild(new RoboDeFera { Name = "RoboDeFera" });
 
+		// --diagmacaco: a foto de um NPC virando OOZARU -- antes, durante e depois. A bancada do
+		// servidor (`--luaferateste`) prova que o gatilho DECIDE certo e nao olha a tela nenhuma vez;
+		// esta responde a outra metade, que e a unica que o dono ve: o boneco alheio trocou de folha,
+		// ficou maior e perdeu o cabelo? Ela nao escolhe o corpo -- quem diz qual e o `S2C.Oozaru`.
+		// Sobe junto do `--macacovivo` do servidor. Ver RoboDeMacaco.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmacaco") >= 0)
+			AddChild(new RoboDeMacaco { Name = "RoboDeMacaco" });
+
+		// --diagbio: A ESCADA DO BIO-ANDROIDE EM RETRATO -- um por degrau, lado a lado. A bancada do
+		// servidor (`--bioteste`, 159 provas) mede a escada inteira e **passaria verde com os quatro
+		// degraus desenhando o mesmo boneco**: o caminho do desenho e outro, e a arte dos quatro
+		// passou meses importada sem um consumidor. Esta responde a metade que o dono ve.
+		// Sobe junto do `--biovivo` do servidor. Ver RoboDeBioRetrato.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbio") >= 0)
+			AddChild(new RoboDeBioRetrato { Name = "RoboDeBioRetrato" });
+
+		// --diagolhar: OS TRES PEDIDOS VISUAIS do bio-androide -- os olhos da larva, o overlay que faz
+		// o corpo brilhar na cinematica, e a morte que vira Super Saiyajin 2. O `--diagbio` fotografa
+		// um degrau por vez e **nao alcanca nenhum dos tres**: os olhos sao 4 px (abaixo do piso de 3%
+		// dele), a cinematica ele existe pra pular, e a morte precisa de dois corpos no mesmo quadro.
+		// Aqui a medida e outra -- injeta-se o defeito e fotografa-se de novo tres quadros depois.
+		// Sobe junto do `--bioolhar` do servidor. Ver RoboDeOlharDoBio.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagolhar") >= 0)
+			AddChild(new RoboDeOlharDoBio { Name = "RoboDeOlharDoBio" });
+
+		// --diagfilme: A CINEMATICA QUADRO A QUADRO. As tres bancadas de bio acima tiram UMA foto por
+		// estado, e o defeito que o dono fotografou (*"ta MUDANDO O CORPO ANTES DA CINEMATICA ACABAR"*)
+		// e uma afirmacao sobre ORDEM -- que nao cabe num quadro. Esta filma ~30 amostras por cena e
+		// procura o INSTANTE da troca do desenho do corpo. Roda em DUAS racas (o bio, que troca pela
+		// ficha na rede, e o Oozaru, que troca pelo catalogo no cliente) pra a regra nao ser um `if` de
+		// bio, e a quarta cena roda com o defeito INJETADO, que ela exige ver reprovar.
+		// Sobe junto do `--biofilme` do servidor. Ver RoboDeFilmeDoBio.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagfilme") >= 0)
+			AddChild(new RoboDeFilmeDoBio { Name = "RoboDeFilmeDoBio" });
+
+		// --diagvestido: a foto do POVO do planeta, vestido. A `--npcteste` ja tranca a regra (a
+		// tabela do DM, o funil do jogador, a roupa como funcao pura da semente) -- esta responde a
+		// outra metade, que e a unica que o dono ve: o vizinho aparece VESTIDO na tela, e da pra
+		// dizer a raca dele pela roupa? A raca do jogador escolhe o planeta pelo berco. Ver
+		// RoboDeVestido.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvestido") >= 0)
+			AddChild(new RoboDeVestido { Name = "RoboDeVestido" });
+
 		// --diagcena: a bancada que RODA a cinematica inteira, no relogio da engine, e fotografa ao
 		// longo dela. O `--diagforma` ja tranca o ROTEIRO (uma cratera, no beat que assume, sem poeira
 		// antes) -- esta responde a outra metade, que e a unica que o dono ve: o buraco APARECEU na
@@ -603,6 +678,14 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtecla") >= 0)
 			AddChild(new RoboDeTecla { Name = "RoboDeTecla" });
 
+		// --diagmudez: a bancada da MUDEZ DOS ATALHOS -- o pedido do dono de que nenhuma tecla de
+		// jogador dispare durante um embate. Ela aperta as DEZESSETE, uma linha cada, dentro dos DOIS
+		// embates e fora deles (o contra-exemplo), e confere que a letra do quick time event e o
+		// movimento continuam vivos. Sobe junto do `--mudezteste` do servidor, que e quem poe os
+		// embates de verdade de pe. Ver RoboDeMudez.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmudez") >= 0)
+			AddChild(new RoboDeMudez { Name = "RoboDeMudez" });
+
 		// --porta: bancada AO VIVO das portas. Anda contra a porta mais proxima e narra o que
 		// mede -- fechada bloqueia e cega, abriu ao encostar, atravessou, fechou sozinha. Sobe
 		// junto do `--portateste` no servidor, que faz nascer colado numa.
@@ -622,6 +705,101 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdecalque") >= 0)
 			AddChild(new RoboDeDecalque { Name = "RoboDeDecalque" });
 
+		// --diagmembroperdido: a bancada que FOTOGRAFA a amputacao em combate. A `--diagdecalque`
+		// acima prova a maquina (a folha carrega, as dez pecas acham o recorte); esta prova o
+		// PIXEL, e por isso ela precisa de JANELA, de golpe LETAL e de duas vitimas de verdade --
+		// ela nao chama efeito nenhum, ela espera o `HitEvent` de uma briga. Anda junto de um
+		// `--socar` no MESMO processo (ele bate; ela so escolhe alvo e mira). Ver
+		// RoboDeMembroPerdido e `testar-membro-perdido.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmembroperdido") >= 0)
+		{
+			// `--membrofase N`: comeca na fase N (0 = bracos, 1 = pernas). Ver
+			// RoboDeMembroPerdido.FaseInicial -- existe porque as duas vitimas podem nascer longe
+			// uma da outra, e a fase B sozinha ainda responde o roteiro do dono.
+			_ = int.TryParse(Arg(OS.GetCmdlineArgs(), "--membrofase"), out int faseM);
+			AddChild(new RoboDeMembroPerdido { Name = "RoboDeMembroPerdido", FaseInicial = faseM });
+		}
+
+		// --diagrastro: a bancada que FOTOGRAFA os quatro sentidos do rastro da agua. Vem com
+		// `--aguanoar` e `--vooteste` no servidor (o corpo nasce no ar sobre o meio do lago). A
+		// `--diagdecalque` ja le o RECORTE que a onda recebeu; so a foto responde se o recorte
+		// certo esta desenhado certo -- que e a queixa que o dono mandou EM FOTO. Ver
+		// RoboDeRastroDaAgua e `testar-rastro.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagrastro") >= 0)
+			AddChild(new RoboDeRastroDaAgua { Name = "RoboDeRastroDaAgua" });
+
+		// --diagraio: as TRES FOTOS dos tres pedidos desta rodada -- o NPC que nao anda na
+		// cinematica (com o rastro de posicao ao lado, nos tres momentos), o raio cruzando a margem
+		// de um lago (sulco no seco, onda no molhado) e o corpo LEVADO pelo feixe em tres quadros.
+		// Vem com `--aguateste` no servidor (o corpo nasce na beira do lago, no seco e virado pra
+		// agua) e PRECISA de janela: no headless o `GetImage` volta vazio. As bancadas sem foto
+		// (`--projetilteste` 8/9/10, `--iateste` 7b/7c/7d, `--diagdecalque`) ja medem estes mesmos
+		// tres pedidos em numero e em byte; esta responde so a metade que o dono ve. Ver
+		// RoboDeFotoDoRaio.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagraio") >= 0)
+			AddChild(new RoboDeFotoDoRaio { Name = "RoboDeFotoDoRaio" });
+
+		// --diagboca: DE ONDE O FEIXE SAI E EM QUE CAMADA ELE E DESENHADO, fotografado. E a resposta
+		// da queixa que o dono mandou EM FOTO ("os beams tao saindo DE CIMA do personagem, deveriam
+		// sair DA FRENTE dele, NA FRENTE DO SPRITE deles"), e ela mede as DUAS leituras da frase: o
+		// ponto de nascimento e a ordem de desenho. A familia 1-bis da `--projetilteste` ja mede a
+		// primeira em numero -- e le o `Pos` do SERVIDOR, entao nao ve camada, nao ve altura e nao ve
+		// a cauda do raio canalizado, que sao as tres coisas que aparecem so na tela. O par de fotos
+		// e tirado com a ARVORE PAUSADA (a tela com o tiro, e a mesma tela com o node do tiro
+		// escondido), entao a mascara e exatamente o que aquele tiro pintou -- e nao o boneco trocando
+		// de pose. Precisa de `--host`, de JANELA e de `--horateste 0.5` (de dia a `LuzDeKi` nao
+		// acende, e luz entraria na mascara como tinta). Ver RoboDeBocaDeCano e `testar-boca.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagboca") >= 0)
+			AddChild(new RoboDeBocaDeCano { Name = "RoboDeBocaDeCano" });
+
+		// --diagpose: A POSE DO CORPO COM O RAIO NA MAO, fotografada. Irma da `--diagraio` acima e a
+		// outra metade dela: aquela fotografa o que o TIRO faz (rastro, agua, quem ele leva) e o
+		// corpo dela nem entra no canal -- ela dispara pelo `Disparar` direto. Esta fotografa o
+		// ATIRADOR: os quadros de um tiro de verdade, a pose durando o canal inteiro, as tres saidas,
+		// a direcao, e o corpo de um NPC. A familia 4b da `--projetilteste` ja mede tudo isso em
+		// NUMERO e **passaria verde com a folha desenhando o mesmo boneco nas duas poses** -- entre a
+		// `Pose.Canalizando` e o pixel ha o fio, o `World`, o `LocalPlayer` e a escada do `Escolher`.
+		// Precisa de `--host` (quem tem canal e o servidor) e de JANELA (no headless o `GetImage`
+		// volta vazio). Ver RoboDeFotoDaPose e `testar-pose-do-raio.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpose") >= 0)
+			AddChild(new RoboDeFotoDaPose { Name = "RoboDeFotoDaPose" });
+
+		// --diagcorpos: OS TRES PEDIDOS DO DONO, FOTOGRAFADOS -- dois corpos colidindo, alguem
+		// sendo CARREGADO no ar, e o cadaver no chao antes e depois do enterro. A irma dela e a
+		// `--doiscorposteste` (servidor, headless, 103 provas com oito defeitos injetados), e esta
+		// e a metade que aquela nao pode ter: entre a caixa dos pes do servidor e o pixel ha o
+		// snapshot, o `World`, a interpolacao do corpo remoto e o Y-sort -- e aquela ficaria verde
+		// com o corpo desenhado atravessando o outro na tela. Precisa de `--host` (quem tem colisao
+		// e o servidor) e de JANELA (no headless o `GetImage` volta vazio). Ver RoboDeColisao e
+		// `ver-dois-corpos.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcorpos") >= 0)
+			AddChild(new RoboDeColisao { Name = "RoboDeColisao" });
+
+		// --diagborrao: O BORRAO DO DASH, FOTOGRAFADO -- os dois relatos do dono sobre o dash do NPC
+		// ("npcs quando usam DASH n ficam com o EFEITO DE BLUR igual os jogadores" e "o RANGE DO
+		// TELEPORTE DO DASH ta mt grande"), medidos em PIXEL. A irma dela e a `--borraoteste`
+		// (servidor, headless, 41 provas com sete defeitos injetados), e esta e a metade que aquela
+		// nao pode ter: tudo o que aquela ve e estado de servidor, e ela ficaria verde com o borrao
+		// nunca desenhado na tela -- entre o `S2C.Zanzo` e o pixel ha o fio, o `World.AoPiscar`, a
+		// escolha da origem no `LocalPlayer` e o `RastroDeCorrida` esperando a posicao de CHEGADA.
+		// Fotografa o NPC e o jogador arrancando NO MESMO QUADRO, com um terceiro corpo parado na
+		// faixa de baixo como contra-exemplo dentro da mesma foto. Precisa de `--host` (quem manda o
+		// NPC arrancar e o servidor) e de JANELA (no headless o `GetImage` volta vazio). Ver
+		// RoboDeBorrao e `ver-o-borrao.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagborrao") >= 0)
+			AddChild(new RoboDeBorrao { Name = "RoboDeBorrao" });
+
+		// --diagvariedade: a VARIEDADE dos ataques de ki, fotografada com o tiro SAINDO DA MAO. A
+		// `--diagartedeki` (la em cima, sem rede) monta os `ProjetilDesenhado` com a mao e ja prova a
+		// tabela, as folhas e o pixel; esta atravessa o caminho inteiro que aquela pula -- o verb, o
+		// gate da skill, o `Canalizar`/`Disparar`, o `ushort` do anuncio de nascimento e o
+		// `AoNascerTiro` -- disparando uma tecnica por folha do catalogo pelo MESMO `UsarHabilidade`
+		// do jogador, e comparando os recortes todos contra todos. Precisa de `--host` (quem tem
+		// projetil e o servidor) e de JANELA (no headless o `GetImage` volta vazio). Ver
+		// RoboDeVariedadeDeKi.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvariedade") >= 0)
+			AddChild(new RoboDeVariedadeDeKi { Name = "RoboDeVariedadeDeKi" });
+
 		// --diagvoo: bancada do VOO. Vem com `--vooteste` no servidor, que da a skill de voo (sem
 		// ela nao ha o que medir) e tira o freeflight do admin (sem isso o custo mediria zero).
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvoo") >= 0)
@@ -633,6 +811,33 @@ public partial class Boot : Node2D
 		// lado) e precisa de JANELA: headless nao renderiza e as fotos saem vazias.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagagua") >= 0)
 			AddChild(new RoboDeAgua { Name = "RoboDeAgua" });
+
+		// --fotodamente: a FOTO da dimensao mental (o relato A do dono). Medita, mergulha e salva o
+		// pixel -- com a cor media e a fracao de branco medidas no relatorio, pra a prova nao depender
+		// de alguem abrir a pasta. Precisa de JANELA (headless nao renderiza).
+		//
+		// RODE DUAS VEZES: a segunda com `--menteantiga` nas DUAS pontas, que devolve o jogo ao estado
+		// em que o dono o encontrou (o z24 do BYOND). Uma foto de um quarto branco nao prova que ele
+		// mudou; o par prova. Ver RoboDaMente.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--fotodamente") >= 0)
+			AddChild(new RoboDaMente { Name = "RoboDaMente" });
+
+		// --diagmergulho: O MERGULHO INTEIRO, PELO GESTO DO JOGADOR -- os quatro pedidos desta rodada
+		// (a telinha da tecla M, a gota na ida, a gota na volta por vitoria mas NAO no soco, e a mente
+		// sem borda por pedaco) num caminho so. Ela e o meio que faltava entre as quatro bancadas que
+		// ja existiam: a `--presoteste` mede a planta sem ninguem meditando, a `--menteviva` atravessa
+		// a onda de proposito, a `--diaggota` chama o shader na mao sem rede e a `--fotodamente` para
+		// na foto. Precisa de `--host` (as familias perguntam a AUTORIDADE) e de JANELA (as de pixel
+		// dizem que nao mediram no headless, em vez de passar de graca).
+		//
+		// `--mergulhofamilia N`: roda UMA familia so. Existe pras duas injecoes que sao de FONTE (a
+		// coleira e a folga de descarte do pintor) -- com ela, uma rodada de defeito custa meio minuto
+		// em vez de quatro. Ver RoboDoMergulho e `ver-o-mergulho.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmergulho") >= 0)
+		{
+			_ = int.TryParse(Arg(OS.GetCmdlineArgs(), "--mergulhofamilia"), out int familiaDoMergulho);
+			AddChild(new RoboDoMergulho { Name = "RoboDoMergulho", SoAFamilia = familiaDoMergulho });
+		}
 
 		// --diagvolta: bancada da VOLTA DO PLANETA. Anda ate a beirada e confere que sai pela outra.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvolta") >= 0)
@@ -731,6 +936,74 @@ public partial class Boot : Node2D
 			AddChild(rv);
 		}
 
+		// --vista <a|b>: a VISTA POR ALTURA, com DUAS TELAS. O pedido do dono -- *"pessoas mt abaixo
+		// da sua altura N CONSEGUIRIAM TE VER, mas pessoas em ALTURAS MAIORES q vc CONSEGUEM TE
+		// VER"* -- e uma regra ASSIMETRICA, e assimetria so se prova comparando duas telas no mesmo
+		// instante: numa o corpo esta, na outra nao. Num processo so os dois lados sao a mesma
+		// memoria, e o `--diagvoo` (que ja cobre a regra pura) ficaria verde mesmo se o `World`
+		// nunca chamasse `Voo.Enxerga` -- que foi exatamente o que aconteceu por meses.
+		//
+		// A tabela de expectativa dela e escrita A MAO e NAO chama `Voo.Enxerga`: comparar a tela
+		// com a funcao que se julga fica verde com as duas erradas igual. Ver RoboDeVista e
+		// `testar-vista.bat`.
+		//
+		// EXIGE `--vooteste` (a skill) e `--bpteste` (o tanque de Ki que segura o corpo no ar
+		// durante a rodada inteira) no servidor.
+		if (Arg(OS.GetCmdlineArgs(), "--vista") is { } papelDaVista)
+		{
+			var rvi = new RoboDeVista
+			{
+				Name = "RoboDeVista",
+				Papel = papelDaVista,
+				// O NOME DO OUTRO, e nao "o primeiro do snapshot" -- o berco tem NPC. Mesma
+				// armadilha do `--vida` e do `--morte`.
+				Alvo = Arg(OS.GetCmdlineArgs(), "--vistaalvo") ?? "",
+			};
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--vistafim"),
+								System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double segVista))
+				rvi.Fim = segVista;
+			AddChild(rvi);
+		}
+
+		// --morte <a|b>: a MORTE VISTA DE FORA, tambem de DOIS PROCESSOS. O `a` morre (de soco letal
+		// alheio, nao de bandeira) e conta pra que zona a morte o levou; o `b` hospeda, MATA no
+		// combate e FOTOGRAFA a cabeca do morto, do lado da cabeca de um vivo.
+		//
+		// Nao cabe num processo so, e pela razao mais simples que existe: a auréola e um sinal pros
+		// OUTROS. As duas bancadas que ela ja tinha nao a olham -- a `--alemteste` e headless (mede
+		// o byte, nunca desenha) e o bloco do `--diagforma` chama `MostrarAureola` na mao num boneco
+		// local, que prova a funcao e nao o percurso. Ver RoboDeMorteVista e `ver-a-morte.bat`.
+		//
+		// EXIGE `--vooteste` no servidor: a pergunta "a auréola acompanha um morto VOANDO?" depende
+		// de o morto poder decolar, e o voo e skill.
+		if (Arg(OS.GetCmdlineArgs(), "--morte") is { } papelDaMorte)
+		{
+			var rm = new RoboDeMorteVista
+			{
+				Name = "RoboDeMorteVista",
+				Papel = papelDaMorte,
+				// O NOME DO OUTRO, e nao "o primeiro do snapshot" -- mesma armadilha do `--vida`.
+				Alvo = Arg(OS.GetCmdlineArgs(), "--mortealvo") ?? "",
+				Conta = Arg(OS.GetCmdlineArgs(), "--conta") ?? "",
+			};
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--mortefim"),
+								System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double segMorte))
+				rm.Fim = segMorte;
+			AddChild(rm);
+		}
+
+		// --velorio: a bancada de DOIS CORPOS da morte, do Outro Mundo e da auréola -- num processo
+		// so, porque o `--host` e servidor e cliente ao mesmo tempo e o corpo de controle e um corpo
+		// forjado no servidor que nasce ao lado do meu.
+		//
+		// Ela e a que JULGA (as outras tres medem): cada familia dela tem escrito no comentario qual
+		// defeito a poe vermelha, e o par "morto tem / vivo NAO tem" e cobrado no mesmo quadro --
+		// senao `TemAureola => true` passaria verde. Ver `RoboDoVelorio` e `testar-velorio.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--velorio") >= 0)
+			AddChild(new RoboDoVelorio { Name = "RoboDoVelorio" });
+
 		// --vozviva <a|b|c|d>: a bancada da VOZ com clientes de VERDADE, em processos separados.
 		//
 		// Ela existe porque as outras duas dizem, cada uma no proprio cabecalho, que nao medem o fio: a
@@ -792,6 +1065,10 @@ public partial class Boot : Node2D
 			// `--socaralvo <nome>`: soca ESTE e mais ninguem. Num berco povoado a marcacao
 			// automatica ("o primeiro do snapshot") pega um NPC. Ver RoboDeSoco.AlvoPreferido.
 			robo.AlvoPreferido = Arg(OS.GetCmdlineArgs(), "--socaralvo") ?? "";
+				// `--socarpesado`: SHIFT+ESPACO em vez de so ESPACO. Sem ele o robo so manda golpe
+				// leve, cujo arranque busca 80 px -- ou seja, a INVESTIDA LONGA (a do relato do dono,
+				// a que a IA usa) nunca era exercitada por ele. Ver RoboDeSoco.Pesado.
+				robo.Pesado = Array.IndexOf(OS.GetCmdlineArgs(), "--socarpesado") >= 0;
 			// `--socarperto <px>`: a que distancia o robo para de andar. Ver RoboDeSoco.PararA --
 			// no padrao (40) os dois corpos se empilham, e a foto de qualquer bancada visual sai
 			// com um sprite dentro do outro.

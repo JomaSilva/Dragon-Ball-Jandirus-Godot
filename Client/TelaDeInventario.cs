@@ -94,7 +94,9 @@ public partial class TelaDeInventario : CanvasLayer
 
 	public override void _UnhandledInput(InputEvent evento)
 	{
-		if (Foco.Digitando) return;
+		// O "I" E UMA DAS LETRAS QUE O EMBATE SORTEIA -- ver `Foco.AtalhosMudos`. Sem esta troca,
+		// responder ao quick time event abria a mochila por cima dele.
+		if (Foco.AtalhosMudos) return;
 		if (evento is not InputEventKey { Pressed: true, Echo: false } k) return;
 
 		if (_raiz.Visible && k.Keycode == Key.Escape)

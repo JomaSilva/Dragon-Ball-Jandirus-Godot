@@ -609,9 +609,15 @@ public partial class GameServer
 
 		// misc.dm:319-323 -- a aposta. Carga acima de 10 (mais de 25s), 70% de morrer; ja
 		// machucado ou nocauteado, morte certa.
+		// O `Intocavel` ENTRA NO SORTEIO porque o `EspalharDanoG3` logo acima ja recusou o estrago: sem
+		// esta perna, o corpo protegido nao levaria dano nenhum e mesmo assim morreria pelo `f.HP <= 10`
+		// -- que e a vida que ele JA TINHA. E o mesmo erro de ler estado velho depois de um dano que nao
+		// aconteceu, e ele aparece em todo lugar onde a consequencia mora fora do laco (ver
+		// `GameServer.Sol.Queimar` e `EspalharDanoG2`).
 		if (carga.Contador > CargaLetalG3
 			&& (_rng.NextDouble() * 100 < CargaMortePct || f.HP <= 10 || f.KO)
 			&& !f.dead
+			&& !pl.Combate.Intocavel
 			&& pl.Combate.Morrer())
 		{
 			AvisarPertoG3(pl, 20 * ZoneCollision.TileSize, $"{pl.Name} morre na propria Final Explosion.");
@@ -735,6 +741,25 @@ public partial class GameServer
 			if (alvo.Ficha.dead || alvo.Combate.Intocavel) break;
 			GolpeG3(pl, alvo, addDano: 2, nivel: i == 3 ? 3 : 2);
 		}
+
+		// ============================ O EXP DA PROPRIA SKILL ============================
+		// `yardrat.dm:245`: `Skill_EXP_Add(/datum/skill/yardrat/Light_Buster, 1)`, LOGO DEPOIS dos
+		// quatro golpes e ainda dentro do `if(target in view(4))` -- ou seja, so paga quem de fato
+		// alcancou o alvo. Este ponto e exatamente esse: quem nao alcancou saiu la em cima, no
+		// desvio do "o alvo sumiu antes de voce chegar".
+		//
+		// SEM CONDICAO NENHUMA EM VOLTA, e isso e 1:1: o original credita mesmo se o alvo morreu no
+		// meio da emenda (o `Skill_EXP_Add` esta fora do laco de golpes, nao dentro).
+		//
+		// E A UNICA CHAMADA DE `Skill_EXP_Add` EM TODO O DM. Os 30 contadores das arvores de Ki NAO
+		// passam por aqui -- eles sobem por marca-d'agua dentro do proprio `effector()`
+		// (`Effusion.dm:74-77`), que neste port e o `NiveisDeSkill.Efetor`. Ver `CreditarPorContador`.
+		//
+		// A regra existe no disco: `niveis.json:689` (barreira 100, maxnivel 2), e o degrau de nivel 2
+		// e que traz o "Your skill at blitzing people got better...".
+		// O `Creditar` recusa quem nao aprendeu a skill, entao nao ha progresso fantasma a conferir aqui.
+		// ==============================================================================
+		pl.Niveis.Creditar("/datum/skill/yardrat/Light_Buster", 1);
 
 		Avisar(alvo, $"{pl.Name} some e reaparece em cima de você.");
 		Avisar(pl, $"você aparece nas costas de {alvo.Name} e emenda quatro golpes.");
@@ -1190,7 +1215,7 @@ public partial class GameServer
 		foreach (BodyPart p in c.Corpo.Partes.ToList())
 		{
 			if (p.Decepado || p.Aninhado) continue;
-			c.Corpo.Ferir(p, dano, letal);
+			c.Ferir(p, dano, letal);   // pelo funil -- o `c.Intocavel` la em cima ja recusou a chamada
 		}
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);

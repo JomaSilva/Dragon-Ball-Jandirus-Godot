@@ -288,9 +288,10 @@ public partial class GameServer
 	/// CRESCER DE NOVO -- entao a versao de skill parecer "mais pobre" e ilusao de leitura: os
 	/// dois caminhos devolvem o corpo inteiro, a de cargo so escreve de novo o que o proc ja fez.
 	///
-	/// FICOU DE FORA: o `aged_out` (Death.dm:144) -- quem morreu de VELHICE nao volta por meio
-	/// nenhum, so pela reencarnacao do Enma. O port ainda nao tem morte por idade; quando tiver,
-	/// o teste e a primeira linha daqui.
+	/// O `aged_out` (Death.dm:144) JA ENTROU: quem morreu de VELHICE nao volta por meio nenhum, so
+	/// pela reencarnacao do Enma. Este comentario dizia "quando tiver morte por idade, o teste e a
+	/// primeira linha daqui" -- a morte por idade agora existe (ver `ConferirMorteDeVelhice`), e o
+	/// teste esta onde ele foi encomendado: no alvo, antes de qualquer cura.
 	/// </summary>
 	private void RessuscitarG4(ServerPlayer pl)
 	{
@@ -303,6 +304,15 @@ public partial class GameServer
 			// as duas recusas do DM em uma: ou nao ha ninguem do lado, ou quem esta nao morreu
 			ServerPlayer? vivo = AlvoPertoG4(pl, RaioDeUmTileG4, _ => true);
 			Avisar(pl, vivo != null ? $"{vivo.Name} não está morto." : "não ha nenhum morto ao seu lado.");
+			return;
+		}
+
+		// `if(M.aged_out) return` (`Death.dm:144`) -- A VELHICE NAO TEM VOLTA. E a primeira coisa
+		// depois de achar o alvo e ANTES de qualquer cura, senao o corpo seria remontado e so entao
+		// recusado. So a reencarnacao do Enma desfaz isto.
+		if (alvo.Ficha.aged_out)
+		{
+			Avisar(pl, $"{alvo.Name} morreu de velhice -- nenhum poder traz de volta quem o tempo levou.");
 			return;
 		}
 

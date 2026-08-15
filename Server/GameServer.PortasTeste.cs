@@ -337,6 +337,37 @@ public partial class GameServer
 
 		_tronos.Remove("nkai");
 		ReconciliarDadiva(cobaia);
+
+		// ============================ E A MESMA VERDADE NO PAINEL, ANTES DE TOMAR O CARGO ============================
+		// O aviso acima chega a quem JA assumiu. O painel de cargos nao dizia nada a ninguem -- ele
+		// mandava chave, dono e o que falta, e trinta cargos eram trinta nomes sem conteudo. **A
+		// pergunta do dono (*"o Kaio aprende Kaioken e a Genkidama?"*) era literalmente irrespondivel
+		// de dentro do jogo.**
+		//
+		// A LINHA DO PAINEL SAI DA MESMA TABELA E DO MESMO CENSO do aviso, e por isso as duas nao
+		// podem divergir. Aqui a bancada afirma as duas metades no mesmo cargo: o Kaio-ken do lado
+		// PRONTO, a Genkidama do lado MUDO.
+		// ========================================================================================================
+		string vitrine = OQueOCargoEntrega("nkai");
+		AfirmarPrt("o painel diz o que o Kaio do Norte DA (antes era chave, dono e mais nada)",
+			vitrine.Length > 0, vitrine);
+		AfirmarPrt("...e o Kaio-ken aparece do lado PRONTO da linha",
+			vitrine.Contains("Kaio-ken", StringComparison.OrdinalIgnoreCase)
+			&& vitrine.IndexOf("Kaio-ken", StringComparison.OrdinalIgnoreCase)
+			   < (vitrine.IndexOf("ainda mudo", StringComparison.OrdinalIgnoreCase) is var m && m >= 0
+				  ? m : int.MaxValue),
+			vitrine);
+		AfirmarPrt("...e a Genkidama aparece marcada como AINDA MUDA, e nao prometida em silencio",
+			vitrine.Contains("ainda mudo", StringComparison.OrdinalIgnoreCase)
+			&& vitrine.IndexOf("Spirit Bomb", StringComparison.OrdinalIgnoreCase)
+			   > vitrine.IndexOf("ainda mudo", StringComparison.OrdinalIgnoreCase),
+			vitrine);
+
+		// O CARGO QUE O DM DEIXA DE MAOS VAZIAS continua de maos vazias na vitrine -- ele so tem o
+		// canal dos cargos. Sem esta checagem, um bug que enchesse a linha de todo mundo passaria.
+		string vazio = OQueOCargoEntrega("frostlord");
+		AfirmarPrt("e o Lorde do Gelo (que o DM deixa de maos vazias) so anuncia o canal dos cargos",
+			vazio.Contains("Rank", StringComparison.OrdinalIgnoreCase) || vazio.Length <= 40, vazio);
 	}
 
 	/// <summary>

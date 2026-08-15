@@ -123,6 +123,45 @@ public sealed class RegraDeNivel
 	/// <summary>Os ganhos por estado desta skill.</summary>
 	public List<GanhoPorEstado> PorEstado = [];
 
+	/// <summary>
+	/// EXP POR CONTADOR DE EVENTO: quanto esta skill ganha por unidade de contador.
+	///
+	/// ============================ ISTO ERA CONTADO E JOGADO FORA ============================
+	/// O `niveis.json` tem 30 blocos `exp` com `contador` preenchido -- as 10 familias de pericia de
+	/// Ki (beam, blast, buff, debuff, defense, guided, homing, kiai, targeted, volley) vezes os tres
+	/// degraus (Basic/Advanced/Perfect). O carregador reconhecia o bloco, INCREMENTAVA um contador de
+	/// diagnostico e dava `break` -- a regra nunca chegava a existir em memoria.
+	///
+	/// Resultado medido: essas 30 skills tem `prob: 0` e nenhuma regra por estado, entao o exp delas
+	/// era exatamente ZERO pra sempre e o nivel ficava travado em 0. Elas destravam 18 verbos, e 14
+	/// deles nao tem nenhuma outra rota -- Masenko, Kienzan, Hellzone Grenade, Scattershot,
+	/// Shockwave, Deflection e companhia estavam implementados em C# e inalcancaveis no jogo.
+	///
+	/// ============================ QUEM CREDITA: O EVENTO, NAO O RELOGIO ============================
+	/// No DM o `effector()` de cada uma faz MARCA-D'AGUA (`Mind.dm`, e o irmao `Effusion.dm:74-77`):
+	///
+	///     if(attackcounter &lt; savant.beamcounter)
+	///         exp += KiSkillGains(10*(savant.beamcounter-attackcounter))
+	///         attackcounter = savant.beamcounter
+	///
+	/// -- ou seja, o mob acumula `beamcounter` e a skill "consome" a diferenca no proximo tique.
+	/// Este port credita NO EVENTO (ver <see cref="NiveisDeSkill.CreditarPorContador"/>), que da o
+	/// mesmo total sem precisar guardar marca-d'agua nenhuma no save. A diferenca de comportamento
+	/// esta documentada la, e ela e deliberada.
+	/// =============================================================================================
+	/// </summary>
+	public sealed class GanhoPorContador
+	{
+		/// <summary>Nome do contador do DM (`beamcounter`, `blastcounter`, ...).</summary>
+		public string Contador = "";
+
+		/// <summary>O fator do `KiSkillGains(N*delta)` -- 10 pro beam, 80 pro debuff, 40 pro targeted.</summary>
+		public double Quanto;
+	}
+
+	/// <summary>Os ganhos por contador desta skill.</summary>
+	public List<GanhoPorContador> PorContador = [];
+
 	public Degrau[] Degraus = [];
 
 	/// <summary>Quanto exp falta pra sair de <paramref name="nivel"/> pro seguinte.</summary>
@@ -336,6 +375,75 @@ public sealed class NiveisDeSkill
 		pr.Exp += quanto;
 		_p[path] = pr;
 		return true;
+	}
+
+	/// <summary>
+	/// O `KiSkillGains(exp)` do original (`Mind.dm:859-871`) -- a conversao de "unidades de contador"
+	/// em exp de arvore de Ki.
+	///
+	///     if(savant.MaxKi &lt;= 300) exp *= savant.MaxKi/3000
+	///     gain = exp * 2 * savant.Ekiskill * GlobalKiExpRate
+	///
+	/// A PENALIDADE DE TANQUE PEQUENO E 1:1 e nao arredondamento: com `MaxKi` 300 o exp sai a um
+	/// decimo, e ela existe pra impedir que um personagem recem-criado suba as pericias de Ki na
+	/// mesma velocidade de quem ja abriu o tanque.
+	///
+	/// O `expbuffer` do DM NAO ENTRA. Ele e um banco de exp adiantado que este port nao tem em lugar
+	/// nenhum (nao ha campo nem quem o encha); implementar so a metade que GASTA daria taxa
+	/// diferente do original em silencio. Sem ele o ganho e a taxa nua -- mais previsivel, e
+    /// menos generoso no comeco, que e onde o buffer do DM ajudava.
+	/// </summary>
+	public static double KiSkillGains(double exp, Fighter f)
+	{
+		if (f.MaxKi <= 300) exp *= f.MaxKi / 3000.0;
+		return exp * 2 * f.Ekiskill * GainKnobs.GlobalKiExpRate;
+	}
+
+	/// <summary>
+	/// EXP DAS 10 FAMILIAS DE PERICIA DE KI -- a porta dos 30 contadores que estavam extraidos e
+	/// mortos. Credita todas as skills (Basic/Advanced/Perfect) que observam
+	/// <paramref name="contador"/>, e devolve quantas foram creditadas.
+	///
+	/// <paramref name="vezes"/> e o DELTA DO CONTADOR DO DM, nao o numero de golpes: um segmento de
+	/// raio e `beamcounter += 3`, entao vale 3; um blast solto e `blastcounter++`, entao vale 1.
+	///
+	/// ============ POR QUE ISTO CREDITA NO EVENTO E NAO POR MARCA-D'AGUA ============
+	/// No DM cada uma das 30 guarda o proprio `attackcounter` e, no `effector()` (5 Hz), consome a
+	/// diferenca pro contador do mob:
+	///
+	///     if(attackcounter &lt; savant.beamcounter)
+	///         exp += KiSkillGains(10*(savant.beamcounter-attackcounter))
+	///         attackcounter = savant.beamcounter
+	///
+	/// O TOTAL E O MESMO nos dois desenhos -- creditar 3 agora ou creditar 3 no proximo tique da o
+	/// mesmo exp. O que muda sao duas coisas, e as duas pesam a favor do evento:
+	///
+	///   1) A MARCA-D'AGUA PRECISARIA IR PRO SAVE. Sem isso, relogar zera o `attackcounter` da skill
+	///      enquanto o contador do mob volta cheio, e o primeiro tique depois do login credita a
+	///      vida inteira de golpes de uma vez. Creditar no evento nao tem estado nenhum pra salvar.
+	///   2) O DM CREDITA HISTORICO RETROATIVO. Quem compra `Basic_Beam_Mastery` hoje comeca com
+	///      `attackcounter = 0` e o `beamcounter` do mob ja grande, entao o primeiro tique entrega
+	///      todo o passado de uma vez. Este port ja decidiu contra isso: o `Creditar` recusa skill
+	///      nao aprendida justamente pra nao criar "progresso fantasma que aparece do nada no dia em
+	///      que ela comprar". Creditar no evento e a mesma decisao, aplicada.
+	///
+	/// DIVERGENCIA DECLARADA, entao: aqui so conta o que se dispara DEPOIS de ter a skill.
+	/// ==============================================================================
+	///
+	/// CUSTO: uma busca em dicionario por chamada, e no maximo 3 skills por contador (os tres
+	/// degraus da familia). Chamado por golpe, e nao por tique -- ver `GameServer.CreditarContador`.
+	/// </summary>
+	public int CreditarPorContador(string contador, double vezes, Fighter f)
+	{
+		if (vezes <= 0 || contador.Length == 0) return 0;
+
+		int n = 0;
+		foreach (RegrasDeNivel.CreditoDeContador c in RegrasDeNivel.DoContador(contador))
+		{
+			// o `10*(savant.beamcounter-attackcounter)` de dentro do `KiSkillGains`
+			if (Creditar(c.Path, KiSkillGains(c.Quanto * vezes, f))) n++;
+		}
+		return n;
 	}
 
 	/// <summary>
@@ -557,7 +665,46 @@ public static class RegrasDeNivel
 
 	public static void Registrar(RegraDeNivel r)
 	{
-		if (r.Path.Length > 0) Mapa[r.Path] = r;
+		if (r.Path.Length == 0) return;
+		Mapa[r.Path] = r;
+		// o indice por contador vira poeira: a carga do disco troca regras em lote (`RegrasDoDisco`)
+		// e uma delas pode ser a que observa um contador novo
+		_porContador = null;
+	}
+
+	/// <summary>Uma skill que observa um contador, e o fator dela. Ver <see cref="DoContador"/>.</summary>
+	public readonly record struct CreditoDeContador(string Path, double Quanto);
+
+	/// <summary>
+	/// QUEM OBSERVA ESTE CONTADOR -- o indice que faz o exp por evento custar uma busca em vez de
+	/// uma varredura das 101 regras a cada golpe disparado.
+	///
+	/// E MONTADO SOB DEMANDA e jogado fora a cada <see cref="Registrar"/>: a carga do `niveis.json`
+	/// registra em lote no boot, e reconstruir o indice 101 vezes durante ela seria trabalho jogado
+	/// fora. Depois do boot ninguem registra mais nada, entao na pratica ele e montado uma vez.
+	///
+	/// Devolve lista VAZIA pro contador que ninguem observa -- e o caso de todo contador enquanto o
+	/// `niveis.json` nao tiver sido carregado (bancada de unidade, por exemplo).
+	/// </summary>
+	public static IReadOnlyList<CreditoDeContador> DoContador(string contador)
+	{
+		_porContador ??= Indexar();
+		return _porContador.GetValueOrDefault(contador) ?? [];
+	}
+
+	private static Dictionary<string, List<CreditoDeContador>>? _porContador;
+
+	private static Dictionary<string, List<CreditoDeContador>> Indexar()
+	{
+		var ix = new Dictionary<string, List<CreditoDeContador>>(StringComparer.OrdinalIgnoreCase);
+		foreach (RegraDeNivel r in Mapa.Values)
+			foreach (RegraDeNivel.GanhoPorContador g in r.PorContador)
+			{
+				if (g.Contador.Length == 0 || g.Quanto <= 0) continue;
+				if (!ix.TryGetValue(g.Contador, out List<CreditoDeContador>? l)) ix[g.Contador] = l = [];
+				l.Add(new CreditoDeContador(r.Path, g.Quanto));
+			}
+		return ix;
 	}
 
 	/// <summary>Atalho do caso comum: sobe por tempo, barreira fixa, um verbo por degrau.</summary>

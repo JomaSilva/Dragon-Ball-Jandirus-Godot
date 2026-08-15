@@ -110,9 +110,23 @@ public partial class GameServer
 		// bater numa parede que aguenta -- silencio ali seria indistinguivel de socar o vazio.
 		Baque(a, nivel);
 
-		// A BORDA E O `destroyable = 0` DAQUI (ver `DerrubarCenario`): ela recusa antes de olhar
-		// forca, entao bater nela e sempre so barulho.
 		if (mapa.NaBorda(cx, cy)) { Avisar(a, "isto e o limite do mundo -- nao ha o que quebrar."); return true; }
+
+		// ============================ O `destroyable = 0`, AGORA DE VERDADE ============================
+		// A linha da borda logo acima ERA a aproximacao dele, e o comentario que estava aqui dizia
+		// isso com todas as letras. A aproximacao vale pra beirada e nao vale pro miolo: as costuras
+		// de `/turf/Other/Blank` do Templo estao a centenas de tiles de qualquer margem, e eram elas
+		// que o dono socava e via cair. Ver `ZoneCollision.Indestrutivel` e `DerrubarCelula`, que e
+		// quem recusa de fato -- esta linha existe pra AVISAR, e nao pra decidir.
+		//
+		// O `Baque` ja saiu acima, e continua saindo: no original os sons de soco vem antes do
+		// `T.Destroy()` (`attack_proc.dm:99-105`), entao bater no que nao cede sempre fez barulho.
+		// ==============================================================================================
+		if (mapa.Indestrutivel(cx, cy))
+		{
+			Avisar(a, "seu punho nao arranha isto -- e mais duro que o mundo.");
+			return true;
+		}
 
 		if (bp >= Empurrao.ResistenciaPadrao && _rng.NextDouble() < ChanceDoSocoDerrubar)
 		{
@@ -205,6 +219,38 @@ public partial class GameServer
 		}
 
 		// ---- CEDEU ----
+
+		// ============================ E SE ELE TINHA UMA FORNADA DENTRO, ELA MORRE COM ELE ============================
+		// `on_destroyed` (`DNALabs.dm:350-353`): destruir o Bio-Android Lab CANCELA a gestacao, e o
+		// anuncio vai pro servidor inteiro. Isso e metade da mecanica -- o preco de doze horas de
+		// gestacao e ter que DEFENDER o tanque, e um preco que ninguem sabe que esta pagando nao e
+		// preco nenhum.
+		//
+		// ATE AQUI O LAB CAIA CALADO: o dono nao era avisado, o mundo nao ficava sabendo, e a
+		// `Fornada` sumia junto com a obra na lista. Um jogador podia perder meio milhao de zeni,
+		// quatro amostras e meio dia de espera sem NUNCA descobrir o que aconteceu -- e ainda voltar
+		// pro lugar procurando o laboratorio.
+		//
+		// O AVISO E POR CONTA e nao por id de sessao: o dono pode ter deslogado e voltado no meio da
+		// gestacao, e e a conta que a `Gestacao` guarda.
+		// ==========================================================================================================
+		if (o.Fornada is { } fornada)
+		{
+			ServerPlayer? dono = _players.Values.FirstOrDefault(p => p.Conta == fornada.DonoConta);
+			if (dono != null)
+				Avisar(dono, fornada.PrometidaEm > 0
+					? $"seu Bio-Android Lab foi DESTRUIDO. A criatura morreu no tanque, e as "
+					  + $"{fornada.Amostras.Count} amostra(s) se perderam com ela."
+					: $"seu Bio-Android Lab foi DESTRUIDO -- as {fornada.Amostras.Count} amostra(s) "
+					  + "que estavam no tanque se perderam.");
+
+			if (fornada.PrometidaEm > 0)
+				AnunciarNoMundo($"o experimento do Bio-Android Lab de {o.DonoNome} foi INTERROMPIDO: "
+								+ "o tanque se rompeu e o que crescia la dentro morreu.");
+
+			o.Fornada = null;
+		}
+
 		_noChao.Remove(o);
 		if (!o.DoMapa) GravarMundo();
 
@@ -269,6 +315,13 @@ public partial class GameServer
 	private bool _nascerNaParede;
 
 	/// <summary>
+	/// `--semduro`: o boot NAO le o `.duro`, ou seja o mundo volta a ser o de ANTES deste conserto.
+	/// Existe pra a bancada poder fotografar o defeito do dono sem apagar arquivo nenhum do disco --
+	/// ver a nota junto do `CarregarDuro` em `GameServer.CarregarZonas`.
+	/// </summary>
+	private bool _semDuro;
+
+	/// <summary>
 	/// BANCADA: poe o corpo encostado no cenario mais proximo, olhando pra ele.
 	///
 	/// Existe porque o caso de teste e chato de montar a mao: o campo da Terra nao tem parede
@@ -277,8 +330,11 @@ public partial class GameServer
 	/// que socar cenario funciona depende de alguem andar ate achar um muro.
 	///
 	/// Anda em aneis a partir do corpo, igual a busca de clareira do gerador, e para no primeiro
-	/// tile que bloqueia e que NAO e borda do mundo (a borda recusa antes de olhar forca, entao
-	/// nascer de frente pra ela testaria a recusa e nao a quebra).
+	/// tile que bloqueia, que NAO e borda do mundo e que NAO e indestrutivel -- as duas recusas
+	/// respondem antes de olhar forca, entao nascer de frente pra uma delas testaria a recusa e nao
+	/// a quebra. A segunda entrou junto com o `.duro`: sem ela, um teste em Arconia ou no Templo
+	/// escolheria uma costura de `/turf/Other/Blank` e a bancada reprovaria com "40 socos e a parede
+	/// continua de pe" -- que ali e o comportamento CERTO, e nao uma falha.
 	/// </summary>
 	private void EncostarNaParede(ServerPlayer pl)
 	{
@@ -294,7 +350,8 @@ public partial class GameServer
 				{
 					if (Math.Abs(dx) != r && Math.Abs(dy) != r) continue;   // so a casca do anel
 					int cx = cx0 + dx, cy = cy0 + dy;
-					if (!mapa.BlockedCell(cx, cy) || mapa.NaBorda(cx, cy)) continue;
+					if (!mapa.BlockedCell(cx, cy) || mapa.NaBorda(cx, cy)
+						|| mapa.Indestrutivel(cx, cy)) continue;
 
 					// UM TILE AO SUL DELA, OLHANDO PRO NORTE: e a unica combinacao em que a celula
 					// da frente (`MeleeArea.Frente`) cai exatamente na parede.
@@ -302,11 +359,91 @@ public partial class GameServer
 					pl.Facing = Facing.North;
 					GD.Print($"[server] BANCADA: {pl.Name} nasce colado na parede em ({cx},{cy})");
 					MartelarComOSoco(pl, cx, cy);
+					MartelarNoDuro(pl, mapa);
 					MartelarNaObra(pl);
 					return;
 				}
 
 		GD.PushWarning("[server] BANCADA: nao achei parede em 60 tiles");
+	}
+
+	/// <summary>
+	/// BANCADA: O CONTRA-EXEMPLO -- socar o que NAO PODE cair, e cobrar que ele fique de pe.
+	///
+	/// ============================ POR QUE ELA E OBRIGATORIA, E NAO UM EXTRA ============================
+	/// Porque o defeito que ela guarda e o que o dono relatou, e ele e INVISIVEL numa bancada que so
+	/// mede quebra: "a parede caiu no 3o soco" fica verde tanto no mundo certo quanto no mundo em que
+	/// TUDO cai, inclusive o vazio. A unica prova de que o `destroyable = 0` chegou ao servidor e
+	/// bater numa celula dura e ela CONTINUAR la -- e a bancada tem que exigir isso, senao a proxima
+	/// vez que o `.duro` deixar de ser lido (manifesto reescrito sem a chave, pipeline nao rodado, o
+	/// `CarregarDuro` recusando calado por tamanho errado) tudo segue verde.
+	///
+	/// E a mesma licao ja escrita neste arquivo pro caso oposto: "ver FALHA no caso certo treina quem
+	/// le o log a ignorar o log". Aqui o caso certo e a parede AGUENTAR.
+	/// ==================================================================================================
+	///
+	/// A celula dura mais proxima pode estar longe (na Terra as costuras de vazio ficam nas beiradas
+	/// do desenho), entao o corpo e TELEPORTADO pra junto dela -- honesto pelo mesmo motivo do
+	/// <see cref="MartelarNaObra"/>: o que se mede e a RECUSA, e nao se da pra andar ate la.
+	///
+	/// NAO ACHAR NENHUMA NAO E FALHA: tres zonas do jogo (Makyo_Star, Inbetween_Realm, Void) nao tem
+	/// typepath indestrutivel nenhum, e uma zona gerada por semente nao tem `.duro`.
+	/// </summary>
+	private void MartelarNoDuro(ServerPlayer pl, ZoneCollision mapa)
+	{
+		if (!mapa.TemDuro)
+		{
+			GD.Print("[server] BANCADA: esta zona nao tem plano de indestrutivel -- nada a provar aqui");
+			return;
+		}
+
+		const int T = ZoneCollision.TileSize;
+		(int cx0, int cy0) = CelulaDoPonto(pl.Pos);
+
+		for (int r = 1; r < 200; r++)
+			for (int dy = -r; dy <= r; dy++)
+				for (int dx = -r; dx <= r; dx++)
+				{
+					if (Math.Abs(dx) != r && Math.Abs(dy) != r) continue;   // so a casca do anel
+					int cx = cx0 + dx, cy = cy0 + dy;
+
+					// DURA, QUE BLOQUEIA, E FORA DA BEIRADA: as tres condicoes juntas. A beirada sai
+					// porque ela ja tem a recusa DELA (`NaBorda`), e provar a guarda velha nao prova a
+					// nova -- era exatamente esse engano que deixava o miolo do Templo cair.
+					if (!mapa.BlockedCell(cx, cy) || mapa.NaBorda(cx, cy) || !mapa.Indestrutivel(cx, cy))
+						continue;
+					// E COM CHAO LIVRE AO SUL, senao nao ha de onde socar.
+					if (mapa.BlockedCell(cx, cy + 1)) continue;
+
+					pl.Pos = new Vec2(cx * T + T / 2f, (cy + 1) * T + T / 2f - MoveRules.FeetOffsetY);
+					pl.Facing = Facing.North;
+					GD.Print($"[server] BANCADA: socando o INDESTRUTIVEL em ({cx},{cy}) -- "
+							 + $"BP {pl.Ficha.expressedBP:0} (resistencia {Empurrao.ResistenciaPadrao})");
+
+					for (int i = 1; i <= 40; i++)
+					{
+						if (!SocarCenario(pl))
+						{
+							GD.PushWarning($"[server] BANCADA: FALHA -- o soco nao acha a celula dura "
+										   + $"em ({cx},{cy})");
+							return;
+						}
+						if (!mapa.BlockedCell(cx, cy))
+						{
+							GD.PushError($"[server] BANCADA: FALHA -- a celula INDESTRUTIVEL em "
+										 + $"({cx},{cy}) caiu no {i}o soco. O `destroyable = 0` do DM "
+										 + "nao chegou ao servidor: confira o `.duro` da zona e o "
+										 + "`CarregarDuro` do boot.");
+							return;
+						}
+					}
+
+					GD.Print($"[server] BANCADA: a celula INDESTRUTIVEL em ({cx},{cy}) aguentou 40 "
+							 + "socos, e devia mesmo -- e o `destroyable = 0` do original");
+					return;
+				}
+
+		GD.Print("[server] BANCADA: nao achei celula dura socavel em 200 tiles");
 	}
 
 	/// <summary>

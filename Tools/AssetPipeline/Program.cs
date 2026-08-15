@@ -92,11 +92,12 @@ if (args.Length >= 3 && args[0] == "sons")
 if (args.Length >= 4 && args[0] == "visual")
 {
     // visual <HairChoose.dm> <pastaSprites> <saida.json> : catalogo de aparencia
-    (int cab, int rou, List<string> faltando) =
+    (int cab, int rou, int arm, List<string> faltando) =
         DmAppearanceScanner.Escrever(args[1], Path.GetFullPath(args[2]), args[3]);
 
     Console.WriteLine($"cabelos : {cab}");
     Console.WriteLine($"roupas  : {rou}");
+    Console.WriteLine($"armaduras: {arm}   (equipamento -- fora do guarda-roupa; ver DmAppearanceScanner.Armaduras)");
     Console.WriteLine($"saida   : {args[3]}");
     if (faltando.Count > 0)
     {
@@ -166,6 +167,26 @@ if (args.Length >= 4 && args[0] == "agua")
     return 0;
 }
 
+if (args.Length >= 4 && args[0] == "duro")
+{
+    // duro <pastaMaps.dmm> <pastaCode> <pastaDestino> : grava SO os `.duro` -- o `destroyable = 0`
+    // do original (ver Tools/AssetPipeline/Duros.cs e Core/World/ZoneCollision.Indestrutivel).
+    //
+    // Comando proprio pelo MESMO motivo do `agua`, e o motivo vale a pena repetir: a conversao
+    // cheia reescreve tileset, tiles.json, os 40 .tscn/.pedacos e o indice de sprites -- que
+    // resolve nome repetido por `TryAdd` e trocaria 21 artes (4 genuinamente diferentes) sem
+    // ninguem ter pedido. O dado que falta aqui e NOVO e nao toca em arquivo nenhum que ja existe.
+    //
+    //   dotnet run --project Tools/AssetPipeline -- duro <BYOND>/Maps <BYOND>/Code Assets/Maps
+    Dictionary<string, TurfDef> turfsDuro = DmTurfScanner.Scan(Path.GetFullPath(args[2]));
+    Console.WriteLine($"typepaths lidos: {turfsDuro.Count} | com destroyable=0: "
+                      + turfsDuro.Count(kv => Duros.Eh(kv.Value))
+                      + " | dos quais DENSOS: "
+                      + turfsDuro.Count(kv => Duros.Eh(kv.Value) && kv.Value.Density));
+    MapConverter.ConverterDuros(Path.GetFullPath(args[1]), Path.GetFullPath(args[3]), turfsDuro);
+    return 0;
+}
+
 if (args.Length >= 1 && args[0] == "carga")
 {
     // carga [races.json] : a tecla C segurada -- as duas chaves, os tempos, o BP e o preco
@@ -210,6 +231,22 @@ if (args.Length >= 4 && args[0] == "cidade")
     return CidadeBench.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]));
 }
 
+if (args.Length >= 4 && args[0] == "censo")
+{
+    // censo <pastaMaps> <pastaCode> <pastaDmm> : O QUE BLOQUEIA E NAO APARECE, celula por celula.
+    //
+    // Mesmos tres caminhos da `cidade`, e de proposito: as duas leem o mesmo disco e fazem
+    // perguntas DIFERENTES. A `cidade` pergunta "esta celula tem desenho?"; esta aqui pergunta
+    // "o que BLOQUEIA nesta celula tem desenho?" -- e uma mesa muda sobre um piso pintado so
+    // reprova na segunda. Ver o cabecalho de `CensoMudoBench`.
+    //
+    // `--semduro` no fim e o CONTROLE NEGATIVO: manda ignorar o `.duro` e o censo TEM que reprovar.
+    // Ver a nota no `CensoMudoBench.Run` -- provar que uma guarda pega o defeito nao pode depender de
+    // alguem apagar arquivo do disco e lembrar de repor.
+    return CensoMudoBench.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]),
+                              Array.IndexOf(args, "--semduro") >= 0);
+}
+
 if (args.Length >= 1 && args[0] == "gravidade")
 {
     // gravidade : cruza toda zona do manifesto com a ficha de planeta que ela acha.
@@ -251,6 +288,14 @@ if (args.Length >= 1 && args[0] == "convivio")
     // convivio : o known-people portado (Contacts.dm + Friendship.dm) e as tres perguntas que
     // decidem se alguem entra em furia -- ou seja, o que destrava o SSJ1. Ver ConvivioBench.
     return ConvivioBench.Rodar();
+}
+
+if (args.Length >= 1 && args[0] == "corpo")
+{
+    // corpo : "ninguem atravessa ninguem" -- as regras de quem barra quem (o `mob/Cross` do DM),
+    // a prova de que dois corpos encostados nao ficam presos, e a MEDIDA do custo (grade espacial
+    // contra a varredura O(n²) que o arremesso fazia). Ver CorpoBench.
+    return CorpoBench.Rodar();
 }
 
 if (args.Length >= 1 && args[0] == "cor")
@@ -670,6 +715,12 @@ if (args.Length >= 1 && args[0] == "espaco")
 
     // DENSIDADE: o espaco tem que parecer vazio. Os planetas agora nascem em SISTEMAS, entao a
     // varredura e por celula (32x32 chunks) e nao por chunk.
+    //
+    // ESTA SEMENTE E UMA AMOSTRA ESCRITA AQUI, e nao "a semente do jogo". Desde que a semente passou
+    // a ser sorteada por mundo e guardada no `universo.json` (ver `Server/GameServer.Semente.cs`),
+    // nao existe mais uma semente de compilacao pra esta ferramenta consultar -- e nem faria sentido:
+    // o que ela mede e a DENSIDADE do gerador, que e uma propriedade do algoritmo e nao de um mundo.
+    // Uma medida de densidade tem que trazer a propria semente, exatamente como esta traz.
     const ulong seed = 20260802;
     long planetas = 0; int celulas = 0, anuladas = 0, vazias = 0;
     for (int y = -60; y <= 60; y++)

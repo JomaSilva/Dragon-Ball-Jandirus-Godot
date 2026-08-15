@@ -1,5 +1,4 @@
 using Jandirus.Core.World;
-using Jandirus.Net;
 
 namespace Jandirus.Server;
 
@@ -139,6 +138,25 @@ public partial class GameServer
 		// a chamar verb nenhum.
 		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "nao da pra nadar assim."); return; }
 
+		// ============================ SEM FOLEGO NAO SE COMECA -- E E UMA ARMADILHA FECHADA ============================
+		// O tique da exaustao faz DUAS coisas: para o nado e **zera o Ki** (`f.Ki = 0`, literal do
+		// `Stats.dm:405-410`). Sem esta guarda, quem esta boiando e aperta o nado com o tanque ainda no
+		// piso perde no tique seguinte o pouco que a regeneracao tinha devolvido -- e, martelando a
+		// tecla, nunca acumula o bastante pra nadar de volta. Ficaria preso de verdade, que e o oposto
+		// do que o dono pediu (*"recarregar o ki pra voltar a nadar E CONTINUAR"*).
+		//
+		// O NUMERO NAO E O CORTE DA PARADA, E A BANCADA MOSTROU POR QUE: com o corte cru, quem religa
+		// um fio acima dele exausta no MESMO decimo e perde o Ki de novo -- 0,3 tile por rodada, pra
+		// sempre. `Nado.KiParaComecar` pede o corte MAIS tres segundos de custo, que e o menor tanque
+		// que faz o ciclo espera->nada->espera ANDAR. Ver `Nado.SegundosMinimosDeNado`.
+		if (pl.Ficha.Ki < Nado.KiParaComecar(pl.Ficha.MaxKi, pl.Ficha.KiMod, pl.Ficha.swimmastery))
+		{
+			Avisar(pl, SobreAgua(pl)
+				? "sem fôlego pra nadar. Fique parado e espere o Ki subir -- então nade de novo."
+				: "você não tem fôlego pra nadar agora.");
+			return;
+		}
+
 		if (!PodeComecarANadar(pl))
 		{
 			// "You can't swim there!" (`Swim.dm:23`) -- a UNICA mensagem do sistema inteiro no DM.
@@ -219,7 +237,12 @@ public partial class GameServer
 
 		// NOCAUTE E MORTE TIRAM O NADO. No DM isso acontece por tabela (`KO.dm` zera os estados de
 		// movimento), e aqui pelo mesmo caminho de todos os outros: quem caiu nao esta mais fazendo
-		// nada. O corpo fica boiando onde estava -- e sai andando pelo escape do `MoveRules`.
+		// nada.
+		//
+		// O CORPO FICA BOIANDO ONDE ESTAVA -- e agora ele FICA MESMO. Esta linha dizia "e sai andando
+		// pelo escape do `MoveRules`", e era verdade ate o escape virar dirigido (`MoveRules.Escapar`).
+		// Nao ha o que consertar: quem esta nocauteado nao anda de qualquer jeito, e quem acorda liga o
+		// nado de novo -- a agua e um lugar que exige outro modo, nao um lugar que prende.
 		if (pl.Ficha.KO || pl.Ficha.dead) { PararDeNadar(pl, null); return; }
 
 		// ============================ A AGUA ACABOU EMBAIXO DELE ============================
@@ -282,12 +305,34 @@ public partial class GameServer
 		if (f.Ki <= Nado.KiQuePara(f.MaxKi))
 		{
 			f.Ki = 0;
-			PararDeNadar(pl, "voce para de nadar.");
-			// LEVADO PRA MARGEM. Nao esta no DM -- la o corpo fica na agua, a pe, e no meio do oceano
-			// isso e uma armadilha. Aqui e o MESMO gesto que o pouso dentro da pedra ja faz
-			// (`DescerAte` -> `ChaoLivrePerto`), pelo mesmo motivo e com o mesmo pacote de correcao:
-			// um corpo livre pela colisao e parado pela regra nao pode existir.
-			LevarProSeco(pl, "voce e levado pra margem.");
+			// ============================ ELE FICA ONDE ESTA, E ISSO E O DM ============================
+			// Aqui havia um `LevarProSeco(pl, "voce e levado pra margem.")` -- **invencao deste port**,
+			// justificada com "um corpo livre pela colisao e parado pela regra nao pode existir". O
+			// SINTOMA estava certo e o REMEDIO errado, e o dono provou os dois de uma vez:
+			//
+			//   *"ao acabar o ki nadando, eu sou JOGADO DE VOLTA PRA MARGEM mas da um bug q se eu
+			//    estiver SEGURANDO O BOTAO DE ANDAR eu consigo VOLTAR PRA AGUA ANDANDO POR CIMA DELA.
+			//    (...) entao TIRA ISSO DE TELEPORTAR PRA MARGEM, e faca o personagem FICAR PRESO LA
+			//    tendo q RECARREGAR O KI pra voltar a nadar e continuar"*
+			//
+			// O teleporte nao fechava o buraco -- ele so escondia: quem chegasse na margem com a tecla
+			// apertada voltava andando por cima do lago, porque a saida de emergencia do `MoveRules`
+			// aprovava TODO passo de quem ja estava numa celula invalida. Quem fechou foi o
+			// `MoveRules.Escapar`: hoje a agua e um lugar que exige OUTRO MODO, e o corpo a pe nela nao
+			// anda -- nem pra dentro, nem pra fora, nem atraves de parede.
+			//
+			// E O DM SEMPRE FEZ ASSIM: `Stats.dm:405-410` so desliga o nado onde o corpo esta (com o
+			// `Ki = 0` literal que a linha acima copia), e o `testWaters` (`Swim.dm:26-38`) recusa o
+			// `Enter()` de quem nao nada, nao voa e nao esta sendo arremessado.
+			//
+			// COMO ELE SAI: o Ki regenera parado, sem porta de agua nem de imobilidade
+			// (`Core/Stats/RegenDeKi.cs`) -- com jato de 3x abaixo de 10% do tanque. Medido com MaxKi
+			// 100: ~10 s compram 3,2 tiles de nado, ~60 s compram 16 tiles, e o tanque cheio compra 58.
+			// Cada ciclo GUARDA o terreno andado, entao a travessia sempre progride. Ver o aviso logo
+			// abaixo, que e o que conta isso pro jogador.
+			// ======================================================================================
+			PararDeNadar(pl, "o fôlego acaba: você para de nadar e fica boiando. "
+							 + "Espere o Ki voltar e nade de novo (tecla de nado) pra sair daqui.");
 			return;
 		}
 
@@ -308,31 +353,11 @@ public partial class GameServer
 		}
 	}
 
-	/// <summary>
-	/// PÕE O CORPO NO CHAO SECO MAIS PROXIMO -- o mesmo idioma do pouso dentro da pedra.
-	///
-	/// `ChaoLivrePerto` procura em espiral por uma celula que o `MoveRules.Occupied` aceite **a pe**,
-	/// e a pe a agua conta como bloqueio -- entao ele ja devolve chao seco sem precisar saber que
-	/// existe agua. Nulo (oceano largo demais, mais de 12 tiles ate a margem) deixa o corpo onde
-	/// esta, e ai quem resolve e a saida de emergencia do `Advance`: ele sai andando.
-	/// </summary>
-	private void LevarProSeco(ServerPlayer pl, string aviso)
-	{
-		if (MapaDaZonaOuCatalogo(pl.Zone) is not { } mapa) return;
-		if (!MoveRules.Occupied(mapa, pl.Pos)) return;
-		if (ChaoLivrePerto(mapa, pl.Pos) is not { } saida) return;
-
-		pl.Pos = saida;
-		// O IDIOMA DO DESLOCAMENTO PELO SERVIDOR, igual ao do pouso, do dash e do Zanzoken: carimba a
-		// sequencia, abre a janela de correcao esperada (senao isto conta como violacao) e manda a
-		// correcao com sequencia + posicao.
-		pl.LastInputMs = NowMs();
-		pl.CorrecaoEsperadaAte = NowMs() + 500;
-		pl.SeqDoTeleporte = pl.SeqInput;
-		var w = Protocol.Begin(Protocol.S2C.Correction);
-		w.Put(pl.SeqInput);
-		w.PutVec(pl.Pos);
-		pl.Peer?.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
-		Avisar(pl, aviso);
-	}
+	// O `LevarProSeco` MORREU AQUI, e vale dizer o que ele era: ele punha o corpo exausto na margem
+	// mais proxima (`ChaoLivrePerto`, 12 aneis) e mandava um pacote de correcao. Nao era do DM, nao
+	// tinha outro chamador, e o dono pediu a remocao com todas as letras -- ver o comentario do ramo
+	// da exaustao, no `TickDoNado`, que conta a historia inteira e o que ficou no lugar.
+	//
+	// (Regra da casa: codigo substituido se DELETA. As tres outras citacoes do nome no repositorio
+	// eram comentarios de bancada e cairam junto.)
 }

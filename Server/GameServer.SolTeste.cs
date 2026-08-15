@@ -41,8 +41,22 @@ public partial class GameServer
 	/// Ela existe pra uma pergunta que so se responde por AUSENCIA: o arremesso no vacuo carimbava
 	/// sulco de terra e cratera no nada, e mandava o pacote pro `ZoneList` do espaco -- que e o
 	/// universo inteiro. Um pacote que NAO devia sair nao deixa rastro em campo nenhum.
+	///
+	/// ============================ POR QUE ELA CARREGA O FIO INTEIRO ============================
+	/// Ela nasceu com zona e tipo, que e tudo que a pergunta do vacuo precisa. A bancada da peca
+	/// (`--pecateste`) pergunta outras tres coisas do MESMO pacote -- "caiu perto de quem perdeu?",
+	/// "caiu a peca do membro certo?" e "o que MAIS foi junto?" -- e as tres so se respondem
+	/// honestamente nos BYTES: guardar `Onde` e `Peca` como campos separados faria a escuta repetir
+	/// a decisao do escritor, e as duas concordariam por construcao mesmo com o pacote errado.
+	///
+	/// Com o fio cru, a bancada le com o MESMO leitor do cliente (`GameClient`, ramo
+	/// `S2C.Decalque`) e o tamanho do vetor responde sozinho a pergunta do vazamento.
+	///
+	/// UMA ESCUTA SO, E NAO DUAS: uma segunda lista seria a segunda resposta pra "o que saiu do
+	/// `MandarDecalque`", e no dia em que alguem mexer no envio uma delas ficaria pra tras verde.
+	/// ==========================================================================================
 	/// </summary>
-	internal static List<(ulong Zona, Protocol.Decal Tipo)>? EscutaDeDecalques;
+	internal static List<(ulong Zona, Protocol.Decal Tipo, byte[] Fio)>? EscutaDeDecalques;
 
 	/// <summary>Faixa de ids desta bancada -- longe do `_nextId` e da faixa do convivio (90.100).</summary>
 	private const int IdBaseDoSolDeTeste = 90_400;
@@ -420,7 +434,13 @@ public partial class GameServer
 
 			// A FUNCAO DE PRODUCAO, e nao um atalho: e a mesma que o `Atacar` chama depois de o dano
 			// ser resolvido (`GameServer.Combat.cs:319`).
-			TentarEmpurrar(bruto, alvo, dmg: 30, Protocol.Golpe.Pesado);
+			//
+			// O `garantido` E DO JOGO, e nao um atalho de bancada: e o mesmo parametro que o golpe de
+			// saida do Zanzo Clash usa. Ele entra aqui porque o pesado passou a SORTEAR o arremesso
+			// (33% em BP parelho), e o que esta secao mede e a GEOMETRIA do voo no vacuo -- a
+			// distancia, a direcao e o raio letal. Sem ele, dois tercos das rodadas reprovariam por
+			// "nao arremessou", que e uma pergunta de outra secao. Quem exerce o sorteio e a `--kbteste`.
+			TentarEmpurrar(bruto, alvo, dmg: 30, Protocol.Golpe.Pesado, garantido: true);
 			Checa("um golpe pesado de 1e12 de BP ARREMESSA no espaco",
 				  alvo.TiquesDeVoo > 0, $"{alvo.TiquesDeVoo} tiques");
 
@@ -448,7 +468,7 @@ public partial class GameServer
 			// sistema de planeta. Todo arremesso de 4 tiques ou mais carimbava sulco e cratera no
 			// nada, pro universo inteiro. Ver `RastroVale`.
 			// ==============================================================================
-			List<(ulong Zona, Protocol.Decal Tipo)> decalques = EscutaDeDecalques!;
+			List<(ulong Zona, Protocol.Decal Tipo, byte[] Fio)> decalques = EscutaDeDecalques!;
 			EscutaDeDecalques = null;
 			Checa("...e NAO carimbou sulco nem cratera no vacuo",
 				  decalques.Count == 0,

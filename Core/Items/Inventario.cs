@@ -53,6 +53,34 @@ public static class CatalogoDeItens
 	public const string Furadeira = "Hand_Drill";
 
 	/// <summary>
+	/// ============================ AS DUAS ROUPAS QUE JA EXISTIAM E VIRAVAM MOVEL ============================
+	/// Os dois ids sao os do `construcoes.json` (linhas 64 e 71), extraidos do DM com custo, tech e
+	/// arte: `Spacesuit` e a receita de `PlanetTech.dm:230-235` (75.000 / tech 25) e `Rebreather` e a
+	/// de `Tier2.dm:24-30` (100.000 / tech 30). **Da pra compra-las na bancada Tech desde sempre** --
+	/// e como nao estavam nesta tabela escrita a mao, o <see cref="Get"/> as tratava como CONSTRUCAO
+	/// e a unica acao delas era "posicionar": o jogador comprava uma roupa espacial e ela virava
+	/// movel no chao. As duas linhas abaixo sao o conserto disso, e sao o que faz o vacuo ter saida.
+	///
+	/// **NO DM SAO DUAS VARS DIFERENTES E AQUI E UMA SO.** La o Spacesuit faz `usr.spacesuit = 1`
+	/// (`PlanetTech.dm:386`) e o Rebreather faz `usr.spacesuit += 1` (`Tier2.dm:198`) -- soma, porque
+	/// nada impede de usar os dois. Aqui a pergunta e booleana (<see cref="Vacuo.RespiraNoVacuo"/>),
+	/// entao dois trajes nao valem mais que um; e o que o original tambem entrega, ja que o `if` de
+	/// `Stats.dm:218` so pergunta `!spacesuit`.
+	/// ==================================================================================================
+	/// </summary>
+	public const string Traje = "Spacesuit";
+	public const string Respirador = "Rebreather";
+
+	/// <summary>
+	/// ============================ ESTE ITEM PROTEGE DO VACUO? ============================
+	/// A pergunta que o servidor faz na mochila. Duas linhas e uma casa so -- ver
+	/// <see cref="Vacuo.RespiraNoVacuo"/>, que e quem decide o resto.
+	/// </summary>
+	public static bool ProtegeDoVacuo(string id) =>
+		string.Equals(id, Traje, StringComparison.OrdinalIgnoreCase)
+		|| string.Equals(id, Respirador, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
 	/// ============================ OS IDS SAO OS DO CATALOGO DE CONSTRUCOES ============================
 	/// "Scouter" aqui e o MESMO "Scouter" de `construcoes.json`, e nao por acaso: e essa igualdade
 	/// que faz `Construir` saber que o item vai pra mochila em vez de virar movel no chao. Um
@@ -101,6 +129,34 @@ public static class CatalogoDeItens
 			Furadeira, "Furadeira Manual", "Cava bem mais rápido que uma pá.",
 			"res://Assets/Sprites/Misc/Objects/Technology/tech.tres", "drill",
 			Empilhavel: false, Acoes: ["cavar"]),
+
+		// ============================ E ELAS NAO TEM ACAO, E ISSO E O CONSERTO ============================
+		// A tentacao obvia era `Acoes: ["equipar"]`, copiando o scouter. **Seria um bug que mata.** O
+		// scouter guarda o estado ligado/desligado em `ServerPlayer.PoderesConcedidos`, e esse campo
+		// **nao vai pro disco** -- ele nao aparece em nenhuma linha do `CharacterStore`. Quem desloga
+		// com o scouter ligado acorda com ele desligado, e hoje isso custa um "???" na tela ate
+		// reequipar. Com a roupa espacial custaria a VIDA: deslogar no vacuo e voltar seria morrer em
+		// 20 s sem ter feito nada, e o jogador nao teria como saber por que.
+		//
+		// Entao a protecao e ESTAR COM A ROUPA, e nao um bit ligado: a mochila **e** salva
+		// (`CharacterStore.cs:673` e `:769`), entao o abrigo sobrevive ao relog de graca, sem campo
+		// novo, sem bit novo no `Protocol.Poder` e sem uma unica linha de persistencia. E o desvio
+		// que isso cria em relacao ao DM e pequeno de proposito: la o `Equip()` existe porque a roupa
+		// tambem aparece no boneco e tem radio (`PlanetTech.dm:386`), duas coisas que este port ainda
+		// nao tem. No dia em que o guarda-roupa entrar, o vestir vira aparencia -- e esta regra do
+		// vacuo nao muda, porque ela pergunta a mochila e nao a fantasia.
+		// ==============================================================================================
+		[Traje] = new ItemDef(
+			Traje, "Roupa Espacial",
+			"Enquanto estiver com você, dá pra respirar no vácuo. Pesada e feia, mas ninguém sufoca com estilo.",
+			"res://Assets/Sprites/Clothes/spacesuit.tres", "",
+			Empilhavel: false, Acoes: []),
+
+		[Respirador] = new ItemDef(
+			Respirador, "Respirador",
+			"Enquanto estiver com você, dá pra respirar no vácuo. Cabe no rosto, custa mais e não constrange ninguém.",
+			"res://Assets/Sprites/Clothes/Clothes, Ninja Mask.tres", "",
+			Empilhavel: false, Acoes: []),
 	};
 
 	/// <summary>

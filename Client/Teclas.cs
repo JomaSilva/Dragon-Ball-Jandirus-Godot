@@ -108,6 +108,28 @@ public static class Teclas
 		new("aim_arms", "mirar os bracos", GrupoDeTecla.Combate, [Key.Key4]),
 		new("aim_legs", "mirar as pernas", GrupoDeTecla.Combate, [Key.Key5]),
 
+			// ============================ O AGARRAO E O **Q**, E O DM NAO PODIA EMPRESTAR A TECLA DELE ============================
+			// No original o `Grab()` e o **T** (`skin.dmf:191-192`). Aqui o T ja e "treinar" desde o
+			// primeiro dia, e treinar e a acao que mais se aperta no jogo -- mover o T seria trocar o
+			// habito de todo mundo por fidelidade a um mapeamento que o proprio dono ja nao usa.
+			//
+			// O **Q** e o que sobrou E o que casa: ele esta livre na tabela inteira (a varredura do
+			// `DonoDe` cobre acao de jogo, acao de interface, as tres fixas e os atalhos do jogador), e
+			// e a tecla que a mao esquerda alcanca sem largar o WASD -- que e a condicao do gesto, ja
+			// que **arremessar e andar segurando alguem**. Agarrar com a direita e correr com a
+			// esquerda pediria as duas maos no mesmo lugar.
+			//
+			// O F e o V estao tomados (voo e voz, os dois desta sessao), o G e o descer, o N e o nadar,
+			// o C e a carga de Ki, o X e o reverter, o K o letal, o M o meditar, o I a mochila e o P o
+			// menu.
+			//
+			// **UMA TECLA SO PARA TRES GESTOS**, e isso e do DM: toque = agarrar, segundo toque =
+			// levantar no colo, terceiro = soltar (`Grabbing.dm:48-95`). O arremesso nao tem tecla --
+			// ele e o primeiro PASSO dado segurando alguem (`Throw.dm:1-3`).
+			// ================================================================================================================
+			new("agarrar", "agarrar / carregar / soltar (ande segurando pra arremessar)",
+				GrupoDeTecla.Combate, [Key.Q]),
+
 		// ---------------------------------------------------------- voo
 		// NAO REUSAM O ESPACO nem o SHIFT de proposito -- sao as duas coisas que mais se faz no ar.
 		// O F E O VOO por ordem do dono ("troque o botao default do FLY pra F"). O F era do `descer`,
@@ -484,6 +506,7 @@ public static class Teclas
 			(U("attack"), "socar"),
 			($"{U("run")} + {U("attack")}", "investida + golpe pesado"),
 			(U("guard"), "guarda (na hora certa = contra-ataque)"),
+			(U("agarrar"), "agarrar · 2x = carregar · andar = arremessar"),
 			($"{U("aim_none")} - {U("aim_legs")}", "onde mirar (ou clique no boneco)"),
 			(U("lethal"), "alternar golpe letal"),
 			($"{U("train")} / {U("meditate")}", "treinar / meditar"),

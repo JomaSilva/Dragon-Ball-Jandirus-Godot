@@ -287,6 +287,35 @@ public static class Nado
 	public const double PrazoParaEntrar = 3.0;
 
 	/// <summary>
+	/// QUANTOS SEGUNDOS DE NADO O TANQUE PRECISA COMPORTAR PRA O VERB ACEITAR.
+	///
+	/// ============================ ISTO NAO E DO DM, E FECHA UMA ARMADILHA MEDIDA ============================
+	/// Nao ha equivalente la porque la o problema nao existe: no BYOND o corpo nunca fica em cima da
+	/// agua sem nadar (o `Enter()` recusa), entao "religar o nado dentro do lago" nao e uma situacao.
+	/// Aqui e -- e passou a ser A situacao no dia em que o dono pediu que a exaustao deixasse o corpo
+	/// onde esta: *"faca o personagem FICAR PRESO LA tendo q RECARREGAR O KI pra voltar a nadar"*.
+	///
+	/// O QUE ACONTECE SEM ELA, medido: a exaustao para o nado **e zera o Ki** (`f.Ki = 0`, literal do
+	/// `Stats.dm:405-410`). Quem religa com o tanque um fio acima do corte (<see cref="KiQuePara"/>)
+	/// exausta no MESMO decimo e perde de novo tudo o que a regeneracao tinha devolvido. A bancada
+	/// mediu o ciclo: **0,3 tile por rodada**, para sempre. Nao e "ficar preso ate recarregar" -- e
+	/// ficar preso, ponto, com uma tecla que so serve pra apagar o proprio progresso.
+	///
+	/// TRES SEGUNDOS e o menor numero que faz o ciclo ANDAR: o jogador espera, atravessa um pedaco
+	/// util, exausta, espera de novo -- e cada rodada GUARDA o terreno andado, entao a travessia
+	/// sempre progride. Ver a tabela no relatorio.
+	/// ====================================================================================================
+	/// </summary>
+	public const double SegundosMinimosDeNado = 3.0;
+
+	/// <summary>
+	/// O KI MINIMO PRA O VERB DE NADO ACEITAR: o corte da exaustao mais
+	/// <see cref="SegundosMinimosDeNado"/> segundos de custo. Ver o comentario de la.
+	/// </summary>
+	public static double KiParaComecar(double maxKi, double kiMod, double maestria)
+		=> KiQuePara(maxKi) + CustoPorSegundo(maxKi, kiMod, maestria) * SegundosMinimosDeNado;
+
+	/// <summary>
 	/// `mobTime -= 0.3` (`movement handler.dm:66`) -- o "Swim Delay".
 	///
 	/// NAO E UM NUMERO SOLTO: 0,3 e exatamente a parcela FIXA que todo corpo ganha por tique

@@ -122,6 +122,44 @@ public sealed class Appearance
     /// </summary>
     public Rgb? CorAura;
 
+    /// <summary>
+    /// ============================ A COR DOS ATAQUES DE KI DESTE PERSONAGEM ============================
+    /// **Nao e a mesma coisa que <see cref="CorAura"/>, e o original sorteia as DUAS, uma embaixo da
+    /// outra** (`CharacterCreation.dm:25-30`):
+    ///
+    ///     AuraR/G/B  = rand(0,255)      -- a chama que sai do corpo
+    ///     blastR/G/B = rand(0,255)      -- o que sai da MAO
+    ///
+    /// Este port tinha colapsado as duas numa so, e a decisao estava escrita e defendida em
+    /// `ReceitaDeProjetil.Nome`: *"cada personagem ja tem a cor do proprio ki (`Appearance.CorAura`)
+    /// (...) mandar a cor junto do tiro criaria a segunda resposta"*. Enquanto o tiro era um circulo
+    /// PINTADO com aquela cor, o atalho nao aparecia.
+    ///
+    /// ============================ E ELE APARECEU NO PRIMEIRO PIXEL DE ARTE DE VERDADE ============================
+    /// A folha de ki e cinza e o BYOND SOMA a cor por cima (`A.icon += rgb(blastR,blastG,blastB)`,
+    /// `beams.dm:132`). Somar so mostra cor onde a folha e ESCURA -- e a `CorAura` deste port nao e
+    /// o `rand(0,255)` do DM: ela e <c>min(255, 200 + rand(0,255))</c>, media ~247 (ver
+    /// <see cref="CorDeAura"/>, que explica por que o 200 e obrigatorio la -- o shader da aura
+    /// MULTIPLICA e precisa do valor ja somado).
+    ///
+    /// Medido nas folhas: `Beam3.dmi` tem tom dominante 192 e `BeamMasenko.dmi` 247. Com a cor da
+    /// aura (~247) **todo canal de todo tiro satura em 255**: o jogo inteiro atirando branco. Com o
+    /// sorteio cru do DM, ~25% dos canais ficam abaixo do teto num `Beam3` e a cor aparece -- que e
+    /// a variedade que o original tem.
+    ///
+    /// Ou seja: nao sao duas respostas pra a mesma pergunta, sao duas perguntas. A chama e a
+    /// aparencia do CORPO e passa por um shader que multiplica; o tiro e a aparencia do que sai da
+    /// MAO e passa por uma soma. O atalho de usar uma pela outra so era invisivel enquanto nao
+    /// havia arte.
+    /// ========================================================================================================
+    ///
+    /// NULO = DERIVAR, exatamente como a <see cref="CorAura"/>: <see cref="CorDoTiro.De"/> e funcao
+    /// pura de nome + instante de criacao, que todo save ja tem. Sem ramo de migracao, sem campo
+    /// obrigatorio, e estavel entre logins. O campo existe pelo mesmo motivo do outro -- ser o
+    /// OVERRIDE do dia em que houver uma tela pra escolher.
+    /// </summary>
+    public Rgb? CorKi;
+
     public Appearance Copiar() => new()
     {
         Corpo = Corpo, Tom = Tom, CorPele = CorPele,
@@ -133,7 +171,54 @@ public sealed class Appearance
         // aparece jogando -- este metodo lista campo a campo e e o unico lugar onde isso pode
         // acontecer.
         CorAura = CorAura,
+        // O CLONE HERDA TAMBEM A COR DO TIRO -- `A.blastR = blastR` (`CopyMaker.dm:101`), a linha
+        // seguinte a da aura no mesmo proc. Esquece-la faria o clone atirar de outra cor que o dono.
+        CorKi = CorKi,
     };
+}
+
+/// <summary>
+/// ============================ O SORTEIO DA COR DO TIRO ============================
+/// `blastR/G/B = rand(0,255)` (`CharacterCreation.dm:28-30`), somado na folha de ki
+/// (`A.icon += rgb(...)`, `beams.dm:132` e `blasts.dm:56`).
+///
+/// ============================ E AQUI O `rand(0,255)` PORTA CRU, AO CONTRARIO DA AURA ============================
+/// O vizinho <see cref="CorDeAura"/> tem um bloco inteiro explicando por que o numero do DM **nao**
+/// se porta pra ca -- e a razao e do SHADER, nao do sorteio: a aura deste port MULTIPLICA a folha
+/// pelo tom normalizado, entao a cor guardada tem que ser o RESULTADO da soma do BYOND, e nao a
+/// parcela dela. Por isso la mora um `200 +`.
+///
+/// O tiro nao tem esse problema: o `Ki.gdshader` faz a MESMA operacao que o BYOND (soma), sobre a
+/// MESMA folha cinza. A parcela porta como parcela, e somar o 200 aqui de novo seria aplicar duas
+/// vezes uma correcao que existe pra outra conta -- e o resultado medido disso e branco em tudo.
+/// =============================================================================================================
+/// </summary>
+public static class CorDoTiro
+{
+    /// <summary>O sorteio cru do DM: um `rand(0,255)` por canal, sem piso e sem teto artificial.</summary>
+    public static Rgb Sortear(ulong semente)
+    {
+        var r = new Random(unchecked((int)(semente ^ (semente >> 32))));
+        return new Rgb((byte)r.Next(0, 256), (byte)r.Next(0, 256), (byte)r.Next(0, 256));
+    }
+
+    /// <summary>
+    /// A COR A PARTIR DA SEMENTE DE UM CORPO. O `Hash64("tiro")` no meio e o "um gerador por campo"
+    /// dos vizinhos -- **e aqui ele e obrigatorio e nao higiene**: sem o sal, a cor do tiro seria
+    /// deduzida da cor da aura (mesma semente, mesmo gerador), e todo personagem de chama azul teria
+    /// tiro azul. O DM sorteia as duas separadamente e elas nao tem relacao nenhuma.
+    /// </summary>
+    public static Rgb DeSemente(ulong semente) =>
+        Sortear(Jandirus.Core.World.Espaco.Misturar(
+            semente, Jandirus.Core.World.Espaco.Hash64("tiro"), 0x3F1C_8A45_67D2_B90EUL));
+
+    /// <summary>
+    /// A COR DE UM PERSONAGEM, derivada do que ja o identifica no save -- ver
+    /// <see cref="CorDeAura.De"/>, que documenta por que nome + instante de criacao e a dupla certa
+    /// e por que a semente dos `Limiares` nao serve.
+    /// </summary>
+    public static Rgb De(string nome, long criadoEm) =>
+        DeSemente(Jandirus.Core.Forms.LimiaresPessoais.SementeDe(nome, criadoEm));
 }
 
 /// <summary>

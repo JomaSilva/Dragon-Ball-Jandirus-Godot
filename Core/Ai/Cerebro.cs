@@ -72,6 +72,29 @@ public enum Plano
 	/// chegou, este plano nao precisou de uma linha.
 	/// </summary>
 	Atirar,
+
+	/// <summary>
+	/// CIRCULAR -- o `strafeState` (`NPCAI.dm:551`), e ele e a resposta direta ao *"soca no mesmo
+	/// ritmo pra sempre"*.
+	///
+	/// ============================ O QUE UM JOGADOR FAZ E ESTE CEREBRO NAO FAZIA ============================
+	/// Todas as receitas anteriores mexem o corpo no MESMO EIXO: `Pressionar` avanca na direcao do
+	/// alvo, `Recuar` volta por ela, `Recuperar` volta por ela, `Fugir` volta por ela. Um corpo que so
+	/// anda pra frente e pra tras na linha que liga os dois e imediatamente reconhecivel como boneco --
+	/// nenhuma pessoa joga assim. Gente **contorna**: fica na distancia que quer e anda de lado.
+	///
+	/// No DM ele e o estado dos BLASTERS (`if(isBlaster && prob(4)) strafeState()`, `:507`), e a
+	/// razao la e tatica: quem tem tiro nao quer fechar a distancia, quer manter os tres tiles do
+	/// `strafe_Dist` (`:53`) e continuar atirando. Aqui vale o mesmo gate -- quem nao tem arsenal
+	/// (o `isBlaster` deste port) nao circula --, e o efeito colateral e o que interessa pro dono: o
+	/// bicho com raio deixa de ser um pendulo.
+	/// ==================================================================================================
+	///
+	/// A MAO (horario ou anti-horario) e sorteada UMA VEZ, ao entrar no plano, e nao por tique. Um
+	/// sorteio por tique seria o corpo tremendo no lugar -- exatamente o defeito que o compromisso
+	/// (<see cref="Cerebro.TempoMinimoNoPlano"/>) existe pra evitar, so que dentro de uma receita.
+	/// </summary>
+	Circular,
 }
 
 /// <summary>
@@ -134,6 +157,52 @@ public sealed class Cerebro
 
 	/// <summary>A que distancia ele tenta ficar. Um tile: dentro do alcance do soco.</summary>
 	public float DistanciaIdeal = 34f;
+
+	/// <summary>
+	/// ============================ ATE ONDE ELE INVESTE -- O DASH DA IA ============================
+	/// **O dono: *"os NPCs N USAM O DASH, eles so andam"*. Ele estava certo, e a causa nao era falta de
+	/// caminho: era falta de RECEITA.**
+	///
+	/// O arranque do port nao e verb nem corrida -- ele mora DENTRO do `Atacar` (o `Aproximar`), e a IA
+	/// ja passava pelo mesmo `Atacar` do jogador. O que faltava era o cerebro pedir um golpe estando
+	/// LONGE: o <see cref="Pressao"/> so mandava `Leve`/`Pesado` dentro de `DistanciaIdeal * 1.6` =
+	/// 54,4 px, e o `Aproximar` exige `dist - 32 >= 16`, ou seja **48 px**. A janela de investida era a
+	/// fresta de 48 a 54,4 px -- e o proprio cerebro para de se aproximar em `DistanciaIdeal * 1.4` =
+	/// 47,6 px, meio pixel ABAIXO dela. Assentado, ele nunca mais investia; fechando, quase nunca.
+	///
+	/// NO DM O NPC INVESTE, E DE PROPOSITO, em duas receitas:
+	///   * `NPCAI.dm:188-195` -- `if(get_dist(src,target) &lt; 2) ... else if(haszanzo) Attack()`. Com o
+	///     alvo a dois tiles ou mais, ele ataca **justamente pra fechar**;
+	///   * `NPCAI.dm:449-450` -- dentro do `chaseState`: `if(d &lt;= 10 &amp;&amp; d &gt;= 3 &amp;&amp; prob(10))
+	///     dashBreak = 1`, que quebra a perseguicao e cai no `attack()` (`:484-485`). Uma investida
+	///     explicita de **tres a dez tiles**.
+	///
+	/// DEZ TILES E O NUMERO DAQUELA LINHA (320 px), e ele cabe: com o alvo marcado -- e a IA marca
+	/// (`Montar` escreve `Comando.Marcar`) -- o arranque do port alcanca 480 px
+	/// (`GameServer.Combat.AlcanceDoDashMarcado`). Sem marca ele alcancaria so 160, e a investida
+	/// simplesmente nao sairia; nao ha aqui nenhuma checagem disso, pelo mesmo motivo de sempre: quem
+	/// responde "nao deu" e o `Aproximar`, e um segundo juiz aqui divergiria dele no primeiro dia.
+	/// ==============================================================================================
+	/// </summary>
+	public float AlcanceDaInvestida = 320f;
+
+	/// <summary>
+	/// A CHANCE DE UM GOLPE DE LONGE VIRAR INVESTIDA. O `prob(10)` do `NPCAI.dm:449`, reescalado.
+	///
+	/// La o dado e jogado a cada volta do `chaseState` (`sleep(chase_speed)`, e `chase_speed = 2` =
+	/// 0,2 s), ou seja ~0,5 investida por segundo enquanto persegue. Aqui o dado e jogado no MESMO
+	/// lugar em que o cerebro decide socar, e o freio de verdade e o <see cref="EmRajada"/> -- que ja
+	/// espaca as rajadas em 0,45 a 1,2 s. Um quarto nesse portao mede **1,7 investida por segundo** na
+	/// bancada (`--tresteste`) -- abaixo do teto de 2/s que a recarga do arranque permite, e sem virar
+	/// metronomo: as vezes ele arranca, as vezes ele fecha andando, e as duas coisas se veem.
+	///
+	/// **MEIO A MEIO ERA DEMAIS, E A BANCADA MOSTROU**: 2,3 pedidos por segundo, contra os 2 que a
+	/// recarga do arranque (500 ms) sequer consegue atender -- ou seja, um em cada seis viraria soco
+	/// no ar por recarga, que e exatamente o defeito que este lote esta consertando. E cada arranque
+	/// custa 5% do Ki maximo: nessa taxa o tanque de um NPC morre em dez segundos de perseguicao, e
+	/// ele para de investir pelo `temFolego` -- corrigido por exaustao, que e a pior forma de corrigir.
+	/// </summary>
+	public double ChanceDeInvestir = 0.25;
 
 	/// <summary>Fracao de vida abaixo da qual ele passa a guardar e a recuar. Zero = nunca (a fera).</summary>
 	public double VidaCautelosa = 0.45;
@@ -372,6 +441,66 @@ public sealed class Cerebro
 	public const double HesitacaoMin = 0.15, HesitacaoMax = 0.40;
 
 	// =====================================================================
+	// O SOPRO QUE ABRE ESPACO -- o `npc_kiai()` (NPCAI.dm:295), chamado em DOIS lugares
+	// =====================================================================
+
+	/// <summary>
+	/// KI ABAIXO DO QUAL ele prefere empurrar a continuar trocando soco: `ki_ratio &lt;= 0.3`
+	/// (`NPCAI.dm:399`). E o MESMO 0,30 do <see cref="KiBaixo"/> e nao um numero novo -- no original
+	/// os dois sao o `NPC_AI_KI_LOW`, e a coincidencia e de sentido: e o ponto em que gastar Ki deixa
+	/// de ser rotina e passa a ser decisao.
+	/// </summary>
+	public const double KiQuePedeSopro = KiBaixo;
+
+	/// <summary>
+	/// A que distancia o alvo conta como COLADO pro sopro: `d &lt;= 1` tile (`NPCAI.dm:399`).
+	///
+	/// E um tile, e nao a <see cref="DistanciaIdeal"/>: o sopro do port acerta o ARCO DA FRENTE a um
+	/// tile e meio (`GameServer.Tecnicas.G6.cs`, os tres tiles do `Ki2.0/Kiai.dm:17-25`), entao pedir
+	/// mais folga aqui seria gastar 50 de dreno num grito que nao encosta em ninguem.
+	/// </summary>
+	public const float DistanciaDoSopro = 1f * ZoneCollision.TileSize;
+
+	/// <summary>
+	/// Chance de soltar o sopro pra abrir espaco DURANTE a recarga: `prob(60)` (`NPCAI.dm:678`).
+	///
+	/// Ela e alta -- mais alta que qualquer coisa que ele faca em briga normal -- e o motivo esta na
+	/// situacao: quem esta carregando **nao pode andar** (o portao do `PodeMexerOCorpo`), entao o
+	/// unico jeito de tirar alguem de cima e empurrando.
+	/// </summary>
+	public const double ChanceDoSoproNaRecarga = 0.60;
+
+	/// <summary>
+	/// DEPOIS DE SOPRAR, ESPERA ISTO. **Nao e a recarga da tecnica** -- essa e o `kiaionCD` do DM
+	/// (`NPCAI.dm:298`) e, aqui, o `_soproPronto` do proprio verb, que ja recusa por conta propria.
+	///
+	/// Isto e a mesma coisa que a <see cref="PausaDepoisDoTiro"/> e a <see cref="CarenciaDeAscensao"/>
+	/// resolvem: impedir o cerebro de marretar uma porta fechada 30 vezes por segundo. Dois segundos
+	/// porque o gesto e curto e a situacao que o pede (encurralado) nao passa sozinha.
+	/// </summary>
+	public const double PausaDepoisDoSopro = 2.0;
+
+	// =====================================================================
+	// O CIRCULO -- o `strafeState` (NPCAI.dm:551)
+	// =====================================================================
+
+	/// <summary>A que distancia ele orbita: `strafe_Dist = 3` tiles (`NPCAI.dm:53`).</summary>
+	public const float DistanciaDeCircular = 3f * ZoneCollision.TileSize;
+
+	/// <summary>
+	/// Chance de ENTRAR no circulo, por decisao: `if(isBlaster && prob(4))` (`NPCAI.dm:507`).
+	///
+	/// A UNIDADE CONFERE, e neste projeto isso nunca e obvio: la o sorteio roda uma vez por volta do
+	/// `attackState`, que dorme `chase_speed` -- 3 tiques do DM = 0,3 s. Aqui a decisao roda a cada
+	/// <see cref="IntervaloDeDecisao"/> (0,20 a 0,30 s pelo tempero). Sao a mesma cadencia, entao o 4
+	/// entra CRU -- ao contrario da guarda, que roda a 30 Hz e precisou do fator de conversao.
+	/// </summary>
+	public const double ChanceDeCircular = 0.04;
+
+	/// <summary>Chance de LARGAR o circulo, por decisao: o `prob(10)` da saida (`NPCAI.dm:578`).</summary>
+	public const double ChanceDeSairDoCirculo = 0.10;
+
+	// =====================================================================
 	// ESTADO VIVO
 	// =====================================================================
 
@@ -408,6 +537,12 @@ public sealed class Cerebro
 	private double _pausaDoTiro;
 	private double _vidaAoConjurar;
 
+	// --- o sopro que abre espaco (ver `PausaDepoisDoSopro`) ---
+	private double _pausaDoSopro;
+
+	// --- o circulo: pra que lado ele orbita NESTE plano (+1 ou -1) ---
+	private float _maoDoCirculo = 1f;
+
 	// --- humanidade ---
 	private double _hesitaAte;
 	private double _deriva;           // passeio lento do tempo de reacao (ver Reagir)
@@ -422,6 +557,68 @@ public sealed class Cerebro
 	private double _medo;             // a metade NEGATIVA dele -- ver `TicarEmocoes`
 	private double _vidaNaUltimaLeitura = -1;   // o `keep_track_dmg`
 	private double _relogioDasEmocoes;
+
+	// =====================================================================
+	// A LINGUA -- ver `Falatorio`
+	// =====================================================================
+
+	/// <summary>
+	/// A BOCA DESTE CORPO. Nasce MUDA (`Ligado` falso) -- ver o campo la, e a razao e a mesma da
+	/// `Percepcao.LinhaLivre`: **a direcao do erro foi escolhida**.
+	///
+	/// Quem liga e o <see cref="Npc.Temperamento"/>, ou seja: **so corpo que saiu de um molde do
+	/// `npcs.json`**. Os tres cerebros montados a mao continuam calados de graca, e cada um por um
+	/// motivo proprio que nao e economia:
+	///
+	///   * a FERA do Oozaru e a FURIA LENDARIA sao corpos de JOGADOR possuidos. Uma frase saindo dali
+	///     apareceria no chat com o nome do jogador, dizendo o que ele nao digitou -- e o macaco sem
+	///     controle nao fala, ele ruge (o `legendary_berserk_loop` nao tem uma linha de `say`);
+	///   * o REFLEXO DA MENTE e a copia do proprio meditador: dois "Fulano" trocando farpas no chat
+	///     seria a cena mais estranha do jogo.
+	/// </summary>
+	public readonly Falatorio Boca = new();
+
+	/// <summary>
+	/// A FRASE DESTE TIQUE, montada pelos pontos de fala e consumida uma vez no <see cref="Montar"/>.
+	///
+	/// `??=` em todo ponto de fala: **a primeira ocasiao do tique vence**, e isso e o original --
+	/// cada ramo do `npc_combat_action` termina em `return` depois de falar (`NPCAI.dm:392, :402,
+	/// :416`), entao nunca sai mais de uma frase por acao. O que nao coube neste tique nao fica na
+	/// fila: ele simplesmente nao aconteceu, como no DM.
+	/// </summary>
+	private string? _fala;
+
+	/// <summary>
+	/// Quanto falta pra a proxima leitura dos AVISOS de recurso. O `npc_resource_warnings` e chamado
+	/// pelo `checkState`, que dorme `sleep(5)` -- 0,5 s (`NPCAI.dm:813`). Nao e o relogio da fala
+	/// (esse mora no <see cref="Falatorio"/>, e e de 30 s): e o de PERGUNTAR.
+	/// </summary>
+	private double _relogioDoAviso;
+
+	/// <summary>Ver <see cref="Falatorio.PeriodoDaLeituraDeAvisos"/>.</summary>
+	private const double PeriodoDoAviso = Falatorio.PeriodoDaLeituraDeAvisos;
+
+	/// <summary>
+	/// UMA FALA. Ponto unico: quem sabe da OCASIAO chama isto, e quem decide se sai som e a
+	/// <see cref="Boca"/> (o relogio, a chance e o sorteio da frase moram la).
+	/// </summary>
+	private void Dizer(Momento m, Random rng) => _fala ??= Boca.DeCombate(m, rng);
+
+	/// <summary>
+	/// UMA FALA DE FORA DO CEREBRO -- e ha exatamente UMA, o contra-feixe.
+	///
+	/// ============================ POR QUE ESTA E PUBLICA E AS OUTRAS NAO ============================
+	/// Porque o gesto que ela acompanha tambem mora fora: o contra-feixe e um REFLEXO do servidor
+	/// (`GameServer.TickDoContraFeixe`), decidido antes da arvore de decisao e com recarga propria --
+	/// exatamente como no DM, onde ele e a primeira coisa do `npc_combat_action`, antes de qualquer
+	/// leitura de recurso (`NPCAI.dm:374-380`).
+	///
+	/// Ela nao abre uma porta nova: o que o servidor recebe e a MESMA frase, cobrada pelo MESMO
+	/// relogio de combate. Se o contra-feixe disparar no mesmo segundo em que o corpo ia gritar
+	/// socando, sai um dos dois -- que e o comportamento de la e o de uma pessoa.
+	/// ==========================================================================================
+	/// </summary>
+	public string? FraseDoContraFeixe(Random rng) => Boca.DeCombate(Momento.ContraFeixe, rng);
 
 	/// <summary>
 	/// LIGA O RELATO. Desligado por padrao, e a razao e de ORCAMENTO e nao de gosto: montar a frase
@@ -605,7 +802,7 @@ public sealed class Cerebro
 	/// forma da conta e a de la; o sinal e o que ela queria dizer.
 	/// ================================================================================================
 	/// </summary>
-	private void TicarEmocoes(in Percepcao p, double dt)
+	private void TicarEmocoes(in Percepcao p, double dt, Random rng)
 	{
 		_relogioDasEmocoes -= dt;
 		if (_relogioDasEmocoes > 0) return;
@@ -647,6 +844,22 @@ public sealed class Cerebro
 			fluxo = Math.Min(fluxo, -1);
 			_raiva += 2 * (-1 / fluxo);
 			_medo += -fluxo;
+
+			// ============================ E AQUI ELE RECLAMA -- `NPCAI.dm:793-797` ============================
+			// `if(IsInFight && flow < -5 && prob(isBoss ? 50 : 25))`, e as DUAS frases: com a vida
+			// acima de 30 sai um "Tch!", abaixo sai um "Eu nao caio aqui!".
+			//
+			// O LIMIAR DE -5 E O QUE FAZ ISSO NAO SER RUIDO. Um arranhao nao arranca frase nenhuma:
+			// -5 e a vida caindo 5 pontos (de 100) desde a leitura anterior, ou seja **num intervalo
+			// de 0,83 s**. E o golpe que doeu, e nao o desgaste.
+			//
+			// E ela sai DAQUI, e nao de um gancho no resolvedor de dano, porque e aqui que o dado ja
+			// esta na mao: o fluxo ja foi calculado pra mover a raiva e o medo. Um ponto de fala no
+			// caminho do golpe precisaria de um canal novo do servidor pro cerebro -- e a `Percepcao`
+			// nao carrega "quanto doeu", ela carrega "quanta vida sobrou".
+			// ==============================================================================================
+			if (fluxo < -5)
+				Dizer(p.VidaFrac <= 0.30 ? Momento.NoFio : Momento.Apanhar, rng);
 		}
 		else
 		{
@@ -675,7 +888,14 @@ public sealed class Cerebro
 		if (_hesitaAte > 0) _hesitaAte -= dt;
 		if (_voltaDoSoco > 0) _voltaDoSoco -= dt;
 		if (_pausaDoTiro > 0) _pausaDoTiro -= dt;
+		if (_pausaDoSopro > 0) _pausaDoSopro -= dt;
 		if (Atual == Plano.Recuperar) _carregandoHa += dt;
+
+		// A FRASE E DESTE TIQUE E DE MAIS NENHUM. Zerada aqui, no topo, antes de qualquer ponto de
+		// fala poder escrever: sem isto uma frase recusada pelo `Comando` (um corpo caido, por
+		// exemplo) ficaria pendurada e sairia num tique qualquer, sem relacao com o que aconteceu.
+		_fala = null;
+		Boca.Tique(dt);
 
 		// A CONJURACAO ANDA SOZINHA enquanto o plano estiver de pe. Quem a ZERA e a receita, quando
 		// o corpo precisa se mexer (alvo colado demais) -- pelo mesmo motivo que a recarga de Ki nao
@@ -684,8 +904,28 @@ public sealed class Cerebro
 
 		// CAIDO NAO FAZ NADA. Nem aperta tecla, nem guarda -- o `Guardar` do Core ja recusa em
 		// corpo nocauteado, mas mandar o comando mesmo assim seria a IA apertando teclas que a
-		// tela do jogador nem aceita.
+		// tela do jogador nem aceita. **E nem fala**: quem esta no chao nao provoca ninguem.
 		if (p.Caido) { Atual = Plano.Nada; Porque = "caido"; return Comando.Nenhum; }
+
+		// ---- OS AVISOS DE RECURSO, no relogio proprio deles (0,5 s pra OLHAR, 30 s pra FALAR) ----
+		// Eles ficam ANTES da decisao de proposito: no DM quem os chama e o `checkState`, que roda em
+		// paralelo ao `attackState` e nao dentro dele. Aqui "em paralelo" quer dizer "num relogio
+		// proprio, sem depender de nenhum plano" -- e por isso um corpo que esta FUGINDO tambem
+		// reclama de estar sem folego, que e o momento em que a frase mais faz sentido.
+		_relogioDoAviso -= dt;
+		if (_relogioDoAviso <= 0)
+		{
+			_relogioDoAviso = PeriodoDoAviso;
+
+			// SEM ALVO, ESQUECE O QUE JA AVISOU -- o `resetState` (`NPCAI.dm:732-734`). E o mesmo
+			// gesto (e a mesma linha) do reset das emocoes: desengajar limpa o que a briga acumulou.
+			// O AVISO TEM PRECEDENCIA sobre a fala de combate deste tique (todos os pontos de fala
+			// abaixo usam `??=`), e a razao e a raridade: um aviso sai a cada 30 s no MELHOR caso e
+			// diz uma coisa que o jogador nao tinha como saber -- que o oponente esta no limite. Um
+			// "Toma essa!" a mais nao diz nada e sai a cada 5 s.
+			if (!p.TemAlvo) Boca.Esquecer();
+			else _fala ??= Boca.Aviso(p, rng);
+		}
 
 		// --- 1. REFLEXOS (30 Hz, por fora da decisao) -------------------------
 		bool susto = Sustos(p, rng);
@@ -694,7 +934,7 @@ public sealed class Cerebro
 		// --- 1b. AS EMOCOES (o relogio mais lento dos tres, ~0,83 s) ----------
 		// Elas nao decidem nada: elas mexem no TEMPERO com que as outras duas camadas decidem. E
 		// por isso que este relogio pode ser o mais folgado -- humor nao muda de quadro em quadro.
-		TicarEmocoes(p, dt);
+		TicarEmocoes(p, dt, rng);
 
 		// --- 2. DECISAO (na cadencia do tempero) ------------------------------
 		if (_relogioDeDecisao <= 0 || susto)
@@ -889,7 +1129,22 @@ public sealed class Cerebro
 
 		// o `startHP` do `rechargeState` (NPCAI.dm:671): a conta do "apanhei demais carregando" e
 		// contra a vida de QUANDO COMECOU, e nao contra um limiar absoluto.
-		if (novo == Plano.Recuperar) { _vidaAoCarregar = p.VidaFrac; _carregandoHa = 0; }
+		//
+		// E A FRASE DA RECARGA sai AQUI, na entrada do plano, porque e onde ela sai la: a PRIMEIRA
+		// linha do `rechargeState` e `npc_warn_say(pick(npc_recharge_lines))` (`:670`). Ela paga o
+		// relogio dos AVISOS (e nao o de combate), tambem como la -- e por isso ela nao rouba a vez
+		// do "Toma essa!" da troca de socos.
+		if (novo == Plano.Recuperar)
+		{
+			_vidaAoCarregar = p.VidaFrac;
+			_carregandoHa = 0;
+			_fala ??= Boca.DeRecarga(rng);
+		}
+
+		// A MAO DO CIRCULO, SORTEADA UMA VEZ. Ver `Plano.Circular`: por tique seria tremor, e o
+		// compromisso -- que e o que impede o tremor entre PLANOS -- nao alcanca o que acontece
+		// dentro de uma receita.
+		if (novo == Plano.Circular) _maoDoCirculo = rng.Next(2) == 0 ? 1f : -1f;
 
 		// MESMA CONTA PRA CONJURACAO, e pelo mesmo motivo: quem apanha no meio do gesto larga o
 		// gesto. Sem zerar o relogio aqui, um plano de atirar retomado herdaria a conjuracao do
@@ -927,7 +1182,22 @@ public sealed class Cerebro
 		// `TemAlvo` falso (ver `LerPercepcao`), e ele nunca e alcancado, porque e recalculado a
 		// partir da posicao ATUAL: e o que a faz ANDAR na direcao em vez de parar num destino.
 		if (!p.TemAlvo) { _finalizando = false; Porque = "vagar"; return Plano.Vagar; }
-		if (p.AlvoCaido) { _finalizando = false; Porque = "alvo no chao"; return Plano.Nada; }
+
+		// ---- O ALVO CAIU: a fala da vitoria, e ela sai UMA vez ----
+		// `if(target && (target.KO || target.HP <= 0) && IsInFight)` no fim do `attackState`
+		// (`NPCAI.dm:547-549`). O `IsInFight` de la e o `Atual` de briga daqui: sem essa condicao, um
+		// corpo que passa perto de alguem ja caido comentaria a derrota de que nao participou.
+		//
+		// E ela sai uma vez so por consequencia, e nao por um bit de "ja falei": na decisao seguinte
+		// o plano ja e `Nada`, e `Nada` nao esta nesta lista.
+		if (p.AlvoCaido)
+		{
+			if (Atual is Plano.Pressionar or Plano.Alcancar or Plano.Atirar or Plano.Circular)
+				Dizer(Momento.Vencer, rng);
+			_finalizando = false;
+			Porque = "alvo no chao";
+			return Plano.Nada;
+		}
 
 		// ============================ O MODO FINALIZADOR -- e ele e o CONSUMIDOR DA VIDA DO ALVO ============================
 		// `if(target.HP <= NPC_AI_FINISH_HP && !target.KO && prob(ai_aggression))` (`NPCAI.dm:388`),
@@ -1020,6 +1290,32 @@ public sealed class Cerebro
 					   + $"risco {Arsenal.RiscoDeErrar(t, p.Distancia, p.AlvoSeMovendo):0.00}";
 			}
 			return Plano.Atirar;
+		}
+
+		// --- CIRCULAR (o `strafeState`, NPCAI.dm:551) ---------------------
+		// ============================ ELE VEM DEPOIS DO TIRO, E ISSO E O DESENHO ============================
+		// No DM o `strafeState` E o estado que atira -- ele orbita e larga o `blast()` quando a recarga
+		// deixa (`:573-575`). Aqui as duas coisas ja estao separadas: `Atirar` e um plano com fases
+		// visiveis (abrir distancia, plantar o pe, conjurar, soltar) e ele e perguntado ACIMA. O que
+		// sobra pro circulo e exatamente o resto -- o tempo entre um tiro e o proximo --, que era
+		// justamente quando o corpo voltava a andar pra frente e pra tras na linha do inimigo.
+		//
+		// O GATE E O `isBlaster` DESTE PORT: ter arsenal. Quem nao tem raio nao orbita, aqui como la --
+		// e isso e o que mantem a fera e a furia lendaria intocadas, sem uma linha de excecao escrita.
+		// ==============================================================================================
+		if (Poderes.DeLonge.TemAlguma && p.Distancia <= DistanciaDeCircular * 2f)
+		{
+			// SAIR TAMBEM E SORTEIO (`prob(10)`, `:578`) -- e por isso o "continua" e perguntado
+			// separado do "comeca". Sem ele, o circulo duraria exatamente o compromisso e todo NPC
+			// blaster do mundo orbitaria pelo mesmo tempo.
+			bool continua = Atual == Plano.Circular && rng.NextDouble() >= ChanceDeSairDoCirculo;
+			bool comeca = Atual != Plano.Circular && rng.NextDouble() < ChanceDeCircular;
+			if (continua || comeca)
+			{
+				if (Explicando) Porque = $"circular: {p.Distancia:0} px, mao {_maoDoCirculo:+0;-0}";
+				else Porque = "circular";
+				return Plano.Circular;
+			}
 		}
 
 		// --- ALCANCAR (DESENHO NOVO: o DM nao voa) -------------------------
@@ -1201,34 +1497,48 @@ public sealed class Cerebro
 	/// e ve o golpe sair. E na parada que mora a janela pra interromper -- um NPC que atira no mesmo
 	/// tique em que decide nao da nada pro jogador fazer.
 	/// </summary>
-	private Comando Disparo(in Percepcao p, bool guarda)
+	private Comando Disparo(in Percepcao p, bool guarda, Random rng)
 	{
 		if (_tiroEscolhido < 0 || _tiroEscolhido >= Poderes.DeLonge.Quantas)
 			return new Comando { Guardar = guarda };
 
 		Tiro t = Poderes.DeLonge[_tiroEscolhido];
 
+		// A MIRA SAIU DAQUI. Estas quatro linhas escreviam `Marcar = p.IdDoAlvo` uma a uma, e era a
+		// forma exata do defeito que o `Montar` acabou de fechar: **so a receita de atirar marcava**,
+		// entao as duas receitas de corpo-a-corpo socavam sem dizer em quem, e o `Atacar` -- que vira
+		// o corpo pro marcado -- nao tinha pra quem virar. Agora a marca e escrita UMA vez, no
+		// `Montar`, pra todo plano com alvo vivo; repetir aqui seria a mesma armadilha em quatro
+		// copias esperando a quinta receita nascer em branco.
+		//
 		// acabou de atirar: espera a pausa de pe, mirado, sem recomecar a conjuracao
 		if (_pausaDoTiro > 0)
-			return new Comando { Guardar = guarda, Marcar = p.IdDoAlvo };
+			return new Comando { Guardar = guarda };
 
 		// COLADO DEMAIS: recua, e a conjuracao VOLTA A ZERO. Nao e punicao -- e a mesma regra do
 		// `rechargeState`: gesto que pede o pe plantado nao sobrevive a um passo.
 		if (p.Distancia < t.AlcanceMin)
 		{
 			_conjurandoHa = 0;
-			return new Comando { Rumo = p.Direcao * -1f, Guardar = guarda, Marcar = p.IdDoAlvo };
+			return new Comando { Rumo = p.Direcao * -1f, Guardar = guarda };
 		}
 
 		// NA JANELA: para e conjura. `Rumo` zero de proposito.
 		if (_conjurandoHa < t.TempoDeConjuracao)
-			return new Comando { Guardar = guarda, Marcar = p.IdDoAlvo };
+			return new Comando { Guardar = guarda };
 
 		// SOLTA -- um PULSO so, pelo mesmo canal do jogador. Quem cobra recarga, Ki e "voce nao sabe
 		// isso" e a tecnica, la no `UsarHabilidade`; aqui nao se confere nada.
+		//
+		// E ELE GRITA SOLTANDO, com as frases que o proprio DM usa pra isso (`NPCAI.dm:378`). O ponto
+		// de fala mora aqui e nao no `Montar` pelo mesmo motivo do soco: **este e o unico lugar do
+		// cerebro que solta um tiro**. Ver a justificativa do numero no `Falatorio.ChanceDe` -- ela
+		// existe porque o compromisso deste port deixa um blaster preso no plano de atirar, e sem esta
+		// linha um chefe cujo kit inteiro e raio atravessaria a luta mudo (medido: 20 s, zero frases).
 		_pausaDoTiro = PausaDepoisDoTiro;
 		_conjurandoHa = 0;
-		return new Comando { Habilidade = t.Id, Marcar = p.IdDoAlvo, Guardar = guarda };
+		Dizer(Momento.Disparar, rng);
+		return new Comando { Habilidade = t.Id, Guardar = guarda };
 	}
 
 	/// <summary>
@@ -1245,12 +1555,13 @@ public sealed class Cerebro
 			: Atual switch
 			{
 				Plano.Escalar => Escalada(guarda),
-				Plano.Atirar => Disparo(p, guarda),
-				Plano.Recuperar => Recuperacao(p, guarda),
+				Plano.Atirar => Disparo(p, guarda, rng),
+				Plano.Recuperar => Recuperacao(p, guarda, rng),
 				Plano.Alcancar => Alcance(p, guarda, rng),
 				Plano.Recuar => new Comando { Rumo = p.Direcao * -1f, Guardar = guarda, QuerDescer = QuerDescerPara(p), QuerSubir = QuerSubirPara(p) },
 				Plano.Fugir => Fuga(p),
 				Plano.Pressionar => Pressao(p, guarda, rng),
+				Plano.Circular => Circulo(p, guarda),
 
 				// VAGAR: so o rumo. Sem soco (o ponto nao e ninguem) e sem guarda (nao ha de quem se
 				// defender) -- e exatamente o que o cerebro antigo fazia quando `posAlvo` era um ponto.
@@ -1284,9 +1595,140 @@ public sealed class Cerebro
 		// quem bate tambem e o que faz o `AnguloDeChegada` do resolvedor tratar o golpe como frontal,
 		// e nao como pelas costas.
 		// =============================================================================================
+		//
+		// ============================ E A MARCA, QUE E O QUE FECHA O SOCO DE COSTAS ============================
+		// O `Olhar` acima conserta o corpo que ANDA. Ele nao conserta o corpo que **nao pode andar**:
+		// o atuador aplica o olhar dentro do `PassoDaIa`, atras do `PodeMexerOCorpo`, e ha estados em
+		// que o jogo recusa o passo mas NAO recusa o golpe -- paralisado, enraizado por Ki (o
+		// `canmove = 0` dos raios), prensado pela gravidade. Nesses, `PodeAtacar()` continua
+		// verdadeiro (`CombatState.cs`), o cerebro continua mandando `Leve`/`Pesado`, e o corpo
+		// socava com a direcao do ultimo passo -- que, nas tres receitas que recuam, e a direcao
+		// OPOSTA ao inimigo. Era o resto do soco de costas.
+		//
+		// A CORRECAO NAO PODE MORAR NO CAMINHO DO PASSO, e e por isso que ela mora aqui. No DM, a
+		// unica virada que roda de verdade dentro do combate esta DENTRO do ataque
+		// (`commonAttackProcs`, `attack cmn.dm:158`: `dir = get_dir(loc,M.loc)`) -- o caminho do
+		// golpe, que nao tem recusa nenhuma. O port ja tem esse mesmo lugar: o `Atacar`
+		// (`GameServer.Combat.cs`) vira o corpo pro **marcado** antes de arrancar. O que faltava era
+		// a IA dizer em quem esta batendo: `Comando.Marcar` so era preenchido na receita de atirar
+		// (`Disparo`), e nenhuma das duas receitas de corpo-a-corpo marcava ninguem.
+		//
+		// Com esta linha o `Atacar` passa a ser o UNICO lugar que decide a direcao do golpe -- o
+		// mesmo pro jogador e pro NPC --, e ele roda depois do passo (ver a ordem do
+		// `AplicarComando`), entao no instante do soco ele e quem manda. "Ninguem soca de costas"
+		// deixa de depender de o corpo ter conseguido andar.
+		//
+		// E o `target` do DM, e nao um campo novo: la o NPC tem UMA variavel de alvo, usada pelo
+		// seletor de acao e pelo ataque. Por isso a condicao aqui **nao** exclui `Fugir` como a de
+		// cima: marcar e "quem e meu oponente", nao "pra onde estou voltado", e o `runawayState`
+		// (`NPCAI.dm:646`) foge DO `target` -- ele nao o larga. Quem foge nao bate (o `Fuga` nao
+		// manda `Leve` nem `Pesado`), entao a marca nao vira ninguem.
+		//
+		// ZERO E "NAO MEXE" (ver o campo no `Comando`), entao sem alvo a mira antiga fica -- e ela
+		// se limpa sozinha quando o marcado morre, muda de zona ou fica intocavel (`Marcado`). Nao
+		// ha soco com marca velha: as duas unicas receitas que socam (`Pressao` e `Alcance`) so sao
+		// alcancadas com `TemAlvo && !AlvoCaido`, ou seja, no mesmo tique em que esta linha escreve.
+		// =================================================================================================
+		// ============================ E A FALA, QUE SEGUE A MESMA REGRA DAS DUAS DE CIMA ============================
+		// Uma linha, fora do `switch`, pelo mesmo motivo: os pontos de fala espalhados pelo cerebro
+		// dizem a OCASIAO e escrevem em `_fala` com `??=`; **este e o unico lugar que a poe no
+		// comando**. Uma receita que montasse o proprio `Falar` teria o direito de esquecer o relogio,
+		// e ai o corpo falaria a 30 Hz -- que e o defeito mais ruidoso que esta camada podia ter.
+		//
+		// Note que ela e escrita mesmo com o corpo hesitando ou fugindo, e isso e deliberado: no DM
+		// as falas de apanhar (`:797`) e os avisos de recurso (`:322`) saem do `behavior_check` e do
+		// `checkState`, que rodam EM PARALELO ao estado -- nao dentro dele. Quem esta correndo pra
+		// salvar a pele ainda diz que esta sem folego.
+		// ========================================================================================================
 		return gesto with
 		{
 			Olhar = p.TemAlvo && !p.AlvoCaido && Atual != Plano.Fugir ? p.Direcao : Vec2.Zero,
+			Marcar = p.TemAlvo && !p.AlvoCaido ? p.IdDoAlvo : 0,
+			Falar = _fala,
+		};
+	}
+
+	/// <summary>
+	/// O SOPRO QUE ABRE ESPACO -- o `npc_kiai()` (`NPCAI.dm:295`), acionado pelo `npc_combat_action`
+	/// (`:399`) e pelo `rechargeState` (`:678`).
+	///
+	/// ============================ ELE E UMA SAIDA, E NAO UM ATAQUE ============================
+	/// A situacao que ele resolve e exata e o original a escreve numa linha: **colado, sem Ki e
+	/// atordoado**. Nesse estado tudo o mais que o cerebro sabe fazer falha -- recuar nao adianta
+	/// (quem persegue anda igual), aparar drena o Ki que ja acabou, e trocar soco atordoado e perder.
+	/// O sopro nao machuca quase nada: ele ARREMESSA, e o que se ganha e o tempo.
+	///
+	/// **O CANAL E O DO JOGADOR**, como o do tiro: `Comando.Habilidade = "Kiai"`, e quem cobra os
+	/// 50 de dreno, a recarga (`_soproPronto`) e o "voce nao sabe isso" e o proprio verb. Nao ha aqui
+	/// nenhuma conferencia dessas tres -- so a PODA, que e o que impede o cerebro de marretar uma
+	/// porta fechada trinta vezes por segundo.
+	/// ====================================================================================
+	/// </summary>
+	/// <param name="colado">
+	/// A distancia que conta como "em cima de mim". `DistanciaDoSopro` na briga (o `d &lt;= 1` do
+	/// `:399`); na recarga o original usa o MESMO `d <= 1` (`:678`) -- e o mesmo numero nos dois.
+	/// </param>
+	private bool SoproAbreEspaco(in Percepcao p, float colado)
+	{
+		if (!Poderes.SabeSopro || _pausaDoSopro > 0) return false;
+		if (!p.TemAlvo || p.AlvoCaido) return false;
+		if (p.Distancia > colado) return false;
+
+		// O PRECO SAI DA TECNICA, e nao de um numero escrito aqui: o `CustoDoSopro` das
+		// `Capacidades` e a MESMA expressao que o verb cobra (`50 * BaseDrain`), perguntada a 1 Hz.
+		// Uma tabela de precos paralela envelheceria no dia em que o dono mexesse no verb.
+		return p.Ki >= Poderes.CustoDoSopro;
+	}
+
+	/// <summary>
+	/// ...e o gesto. Um PULSO so, e a pausa cobrada na hora -- ver <see cref="PausaDepoisDoSopro"/>.
+	/// </summary>
+	private Comando Soprar(bool guarda, Random rng)
+	{
+		_pausaDoSopro = PausaDepoisDoSopro;
+		Dizer(Momento.AbrirEspaco, rng);
+		return new Comando { Habilidade = "Kiai", Guardar = guarda };
+	}
+
+	/// <summary>
+	/// ORBITAR -- o `strafeState` (`NPCAI.dm:551-585`). Ver <see cref="Plano.Circular"/>.
+	///
+	/// ============================ A COMPONENTE LATERAL E A RECEITA INTEIRA ============================
+	/// O radial e literalmente o de la: perto demais, `step_away` (`:569`); longe demais, volta pro
+	/// `chaseState` (`:560`) -- que aqui e simplesmente andar na direcao do alvo, porque o plano ja
+	/// vai ser largado na proxima decisao. O que o DM ganha DE GRACA e este port nao ganhava e o
+	/// resto: no BYOND o `step_away` de um corpo que ja esta na distancia certa sai numa das oito
+	/// direcoes e o movimento fica torto sozinho. Aqui a posicao e livre e o rumo e um vetor exato --
+	/// entao "manter distancia" produzia um corpo PARADO, e parado a tres tiles e o retrato do boneco.
+	///
+	/// O vetor perpendicular (`-y, x`) resolve isso sem nenhuma maquina de estado: ele e sempre
+	/// unitario, sempre tangente, e somado ao radial da uma espiral que fecha na distancia desejada.
+	/// ============================================================================================
+	/// </summary>
+	private Comando Circulo(in Percepcao p, bool guarda)
+	{
+		Vec2 paraEle = p.Direcao;
+
+		// ALVO EM CIMA DE MIM: sem direcao nao ha tangente, e normalizar zero e ruido. Cai no radial
+		// puro do tique seguinte -- e "em cima de mim" ja e caso do sopro, nao do circulo.
+		if (paraEle.LengthSquared <= 1e-6f) return new Comando { Guardar = guarda };
+
+		float radial = p.Distancia < DistanciaDeCircular ? -1f
+					 : p.Distancia > DistanciaDeCircular * 1.5f ? 1f
+					 : 0f;
+
+		var tangente = new Vec2(-paraEle.Y, paraEle.X) * _maoDoCirculo;
+		Vec2 rumo = paraEle * radial + tangente;
+
+		return new Comando
+		{
+			Rumo = rumo.Normalized(),
+			Guardar = guarda,
+			// A ALTURA CONTINUA ACOMPANHANDO. Orbitar no chao enquanto o alvo sobe seria o mesmo
+			// buraco que o `Pressao` ja fecha: um plano que ignora o andar produz um corpo que se
+			// mexe muito e nunca alcanca.
+			QuerSubir = QuerSubirPara(p),
+			QuerDescer = QuerDescerPara(p),
 		};
 	}
 
@@ -1302,6 +1744,16 @@ public sealed class Cerebro
 	{
 		if (_carenciaDeForma > 0) return new Comando { Guardar = guarda };
 		_carenciaDeForma = CarenciaDeAscensao;
+
+		// E ELE FICA UM INSTANTE SEM DIZER NADA. `ai_next_chat = world.time + 20` na ULTIMA linha do
+		// `npc_power_up` (`NPCAI.dm:255`): quem acabou de explodir de poder nao emenda uma piadinha
+		// no tique seguinte. E a unica pausa de fala do original que nao vem de ter falado.
+		//
+		// Cobrada AQUI e nao no atuador porque e uma decisao do cerebro; se o `Transformar` recusar
+		// (o jogo tem a palavra final), o pior que acontece e um corpo dois segundos mais quieto --
+		// que e o mesmo lado seguro da `CarenciaDeAscensao` logo acima.
+		Boca.AcabouDeAscender();
+
 		return new Comando { SubirForma = true, Guardar = guarda };
 	}
 
@@ -1313,8 +1765,24 @@ public sealed class Cerebro
 	/// entao um comando com rumo E carga junto sairia como "parado, carregando" -- o NPC ficaria
 	/// plantado a um passo do inimigo achando que estava recuando.
 	/// </summary>
-	private Comando Recuperacao(in Percepcao p, bool guarda)
+	private Comando Recuperacao(in Percepcao p, bool guarda, Random rng)
 	{
+		// ---- ELE ABRE ESPACO NA MARRA ANTES DE RECUAR (`NPCAI.dm:678-679`) ----
+		// `if(d <= 1 && !kiaionCD && Ki >= 40*BaseDrain && prob(60)) npc_kiai()`, com o comentario do
+		// autor: *"abre espaco na marra antes de recuar"*. Aqui ele importa MAIS do que la, e por uma
+		// razao do port: carregar PRENDE o corpo (`PodeMexerOCorpo` recusa quem esta `Carregando`),
+		// entao um NPC que recua com alguem colado nunca chega na distancia segura -- ele ficaria
+		// recuando pra sempre, sem nunca carregar um ponto de Ki.
+		//
+		// Note que ele NAO cobra atordoamento nem Ki baixo, ao contrario do da briga: quem chegou no
+		// `rechargeState` ja esta sem Ki por definicao (foi o gate que o trouxe), e o que falta aqui
+		// e so espaco. E o sorteio de 60% que da a variedade -- as vezes ele grita, as vezes ele so
+		// recua, e as duas coisas se veem.
+		if (p.TemAlvo && p.Distancia < DistanciaSegura
+			&& rng.NextDouble() < ChanceDoSoproNaRecarga
+			&& SoproAbreEspaco(p, DistanciaDoSopro))
+			return Soprar(guarda, rng);
+
 		if (p.TemAlvo && p.Distancia < DistanciaSegura)
 			return new Comando { Rumo = p.Direcao * -1f, Guardar = guarda };
 
@@ -1368,20 +1836,57 @@ public sealed class Cerebro
 	/// </summary>
 	private Comando Pressao(in Percepcao p, bool guarda, Random rng)
 	{
+		// ---- ENCURRALADO: o sopro vem ANTES de tudo (`NPCAI.dm:399`) ----
+		// A ORDEM E A DO ORIGINAL e ela nao e arbitraria: no `npc_combat_action` este `if` esta acima
+		// da economia de Ki (`:404`) e acima do ramo de blaster (`:407`). Ou seja, quem esta colado,
+		// atordoado e sem Ki NAO passa pela pergunta "vale a pena gastar o que sobrou?" -- ele empurra
+		// e sai. E ele RETORNA sem socar, tambem como la.
+		//
+		// O gate e o triplo do DM: colado, Ki baixo e ATORDOADO. O atordoamento e o que impede isto de
+		// virar rotina -- sem ele, todo corpo com pouco Ki soltaria um sopro a cada dois segundos.
+		if (p.Atordoado && p.KiFrac <= KiQuePedeSopro && SoproAbreEspaco(p, DistanciaDoSopro))
+			return Soprar(guarda, rng);
+
 		Vec2 rumo = Vec2.Zero;
 		if (p.Distancia > DistanciaIdeal * 1.4f) rumo = p.Direcao;
 		else if (p.Distancia < DistanciaIdeal * 0.6f) rumo = p.Direcao * -1f;
 
 		bool noAlcance = p.Distancia <= DistanciaIdeal * 1.6f && p.AlcancoPelaAltura;
 		bool temFolego = p.KiFrac > 0.15;
-		bool bate = noAlcance && !guarda && EmRajada(p, rng);
+
+		// ============================ A INVESTIDA: SOCAR DE LONGE **PRA FECHAR** ============================
+		// O `dashBreak` do `chaseState` (`NPCAI.dm:449-450`) e o `else if(haszanzo) Attack()` do
+		// `attack()` (`:195`), na unica forma que o port precisa: pedir o golpe estando fora do alcance.
+		// Quem faz a investida acontecer e o `Aproximar`, dentro do `Atacar` -- o MESMO caminho do
+		// jogador, com o mesmo custo de Ki (5% do maximo) e a mesma recarga de 500 ms.
+		//
+		// A FAIXA COMECA ONDE O SOCO PARA DE ALCANCAR (`noAlcance`) e vai ate a
+		// <see cref="AlcanceDaInvestida"/>: exatamente o vao que o cerebro antes so sabia atravessar
+		// andando. Nao ha piso escrito aqui porque `noAlcance` ja e o piso, e ele (54,4 px) esta acima
+		// dos 48 px que o arranque exige de deslocamento -- os dois numeros nunca se cruzam.
+		//
+		// `temFolego` ENTRA porque a investida so vale PESADA (o arranque longo alcanca cinco tiles, o
+		// curto dois e meio), e o pesado abaixo daqui exige folego. Sem esta condicao, um NPC sem Ki
+		// pediria um golpe LEVE de 300 px de distancia -- que e um soco no ar com nome novo.
+		// =====================================================================================================
+		bool investida = !noAlcance && temFolego && p.AlcancoPelaAltura
+					  && p.Distancia <= AlcanceDaInvestida
+					  && rng.NextDouble() < ChanceDeInvestir;
+
+		// `EmRajada` FICA POR ULTIMO -- ele tem efeito colateral (consome a rajada e arma a pausa), e
+		// perguntar antes das condicoes de distancia gastaria golpe em tique que nao ia socar.
+		bool bate = (noAlcance || investida) && !guarda && EmRajada(p, rng);
 
 		// UM SORTEIO SO decide leve/pesado. Dois sorteios independentes (um pra cada campo) davam
 		// um tique em que os dois saiam falsos -- a rajada engolia um golpe sem nada explicando.
 		//
 		// E O PESO E O DE AGORA (`FuriaExpressa`), e nao o do molde: o mesmo corpo bate mais pesado
 		// depois de ter apanhado um tempo. E o `rage` do `behavior_check`, que existe pra isso.
-		bool pesado = bate && temFolego && rng.NextDouble() < FuriaExpressa;
+		//
+		// A INVESTIDA E SEMPRE PESADA, e nao por gosto: o arranque LONGO (cinco tiles de busca, e
+		// quinze com o alvo marcado) so existe no golpe pesado -- `Aproximar(a, longo: golpe ==
+		// Pesado)`. Um leve daqui buscaria alguem a 80 px e voltaria sem investir.
+		bool pesado = bate && temFolego && (investida || rng.NextDouble() < FuriaExpressa);
 
 		// DESCER DE PROPOSITO quando o folego acaba no ar. Ser derrubado e uma FALHA: o corpo cai a
 		// 16 tiles por segundo e chega no chao sem guarda, sem Ki e no meio do inimigo. Descer usa a
@@ -1425,7 +1930,27 @@ public sealed class Cerebro
 	{
 		if (_voltaDoSoco > 0) return false;
 
-		if (_golpesQueFaltam <= 0) _golpesQueFaltam = TamanhoDaRajada(p, rng);
+		// ============================ O PONTO DE FALA DO GOLPE MORA AQUI, E SO AQUI ============================
+		// Esta funcao e o UNICO lugar do cerebro que decide "sai um soco agora": as duas receitas que
+		// batem (`Pressao` e `Alcance`) ambas terminam nela. Por isso a fala do golpe fica aqui e nao
+		// numa das duas -- se ficasse nelas, a receita que voa esqueceria (era exatamente o defeito
+		// que o `Comando.Olhar` custou a este port) e a proxima receita que batesse nasceria muda.
+		//
+		// E ela sai no COMECO DA RAJADA, e nao a cada soco: `npc_combat_chat` no DM e chamado uma vez
+		// por ACAO, e uma acao e `BarrageAttack(,,,,rand(2,4),2)` inteiro (`NPCAI.dm:413-415`). Um
+		// grito por soco daria quatro frases em meio segundo -- e o relogio do `Falatorio` ate as
+		// engoliria, mas ai a fala sairia no golpe errado da sequencia.
+		//
+		// AS TRES OCASIOES SAO AS TRES DO ORIGINAL, na ordem em que ele as pergunta:
+		//   finalizador (`:389`) > rajada (`:415`) > golpe avulso (`:418`).
+		// ==================================================================================================
+		if (_golpesQueFaltam <= 0)
+		{
+			_golpesQueFaltam = TamanhoDaRajada(p, rng);
+			Dizer(_finalizando ? Momento.Finalizar
+				 : _golpesQueFaltam > 1 ? Momento.Rajada
+				 : Momento.Socar, rng);
+		}
 		_golpesQueFaltam--;
 
 		_voltaDoSoco = _golpesQueFaltam > 0

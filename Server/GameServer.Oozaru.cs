@@ -446,15 +446,24 @@ public partial class GameServer
 		// 5. O PRAZO DE CONTROLE. E o `ctrlParalysis` do DM virado numa rampa -- ver
 		//    `Oozaru.SegundosDeControle` pra curva e o porque dela.
 		//
-		//    A CONDICAO E `Cerebro == null`, e ela E o registro de "ainda nao perdi o controle":
-		//    perder e de mao unica DENTRO de uma transformacao, e possuir o corpo ja e o estado que
+		//    A CONDICAO E `CerebroDaPosse == null`, e ela E o registro de "ainda nao perdi o controle":
+		//    perder e de mao unica DENTRO de uma transformacao, e a posse do corpo ja e o estado que
 		//    diz isso. Um campo `bool JaPerdeu` seria a mesma verdade escrita duas vezes -- e a
 		//    segunda copia e sempre a que alguem esquece de limpar.
+		//
+		//    ============================ ELA ERA `Cerebro == null`, E ISSO CEGAVA O NPC ============================
+		//    `Cerebro` e a gaveta de QUEM DIRIGE, e um NPC nasce com ela cheia (`Temperamento.Montar`).
+		//    Com a condicao antiga, `pl.Cerebro == null` era FALSO desde o primeiro quadro pra todo NPC
+		//    -- a rampa inteira de maestria/controle nunca disparava nele, e o macaco de povoamento
+		//    ficava lutando com a personalidade de cidadao a forma toda. Verde por ausencia: nada
+		//    quebrava, a regra so nao existia. Ver `ServerPlayer.CerebroDaPosse`.
+		//    ==================================================================================================
 		//
 		//    Repare que a maestria sobe ACIMA desta linha: o tempo em que a fera te carrega tambem
 		//    ensina. Quem cruzar os 100% no meio da possessao nao recupera o corpo nesta noite (o
 		//    `Cerebro` ja esta la), mas na proxima ele nao a perde mais.
-		if (pl.Cerebro == null && SegundosNaForma(pl) >= Oozaru.SegundosDeControle(pl.MaestriaDaFera, pl.Oozaru))
+		if (pl.CerebroDaPosse == null
+			&& SegundosNaForma(pl) >= Oozaru.SegundosDeControle(pl.MaestriaDaFera, pl.Oozaru))
 			TomarAsRedeas(pl);
 	}
 
@@ -500,19 +509,26 @@ public partial class GameServer
 	/// </summary>
 	private void TomarAsRedeas(ServerPlayer pl)
 	{
-		pl.Cerebro = new Jandirus.Core.Ai.Cerebro
+		// O `AssumirOCorpo` (`GameServer.Clone.cs`) e o funil: ele pendura o cerebro, MARCA A POSSE
+		// (`CerebroDaPosse`, sem a qual a devolucao apagaria a mente de um NPC) e larga o input. As
+		// seis linhas de faxina que moravam aqui viraram o `LargarOInput` la dentro quando a furia
+		// lendaria virou a segunda possessao do jogo -- o porque de cada uma esta escrito la.
+		//
+		// ============================ E O CORPO POSSUIDO PODE SER DE UM NPC ============================
+		// O tempero abaixo nao muda por isso, e e o ponto: um Saiyajin de povoamento que perde o
+		// controle vira a MESMA fera que um jogador vira. O que o NPC perde e a mente dele -- a
+		// personalidade sorteada no nascimento --, e ela volta inteira quando a forma cai (ver
+		// `MentePropriaDe`). Sem esta troca o macaco lutaria com a cautela e a disciplina do cidadao
+		// que ele era, que e o oposto de ter perdido o controle.
+		// ==========================================================================================
+		AssumirOCorpo(pl, new Jandirus.Core.Ai.Cerebro
 		{
 			VidaCautelosa = 0,
 			ChanceDePesado = 0.85,
 			IntervaloDeDecisao = 0.5,
 			Disciplina = 0,
 			Inteligencia = 0,
-		};
-
-		// O CORPO PARA DE FAZER O QUE O DONO MANDOU antes de a fera assumir. As seis linhas que moravam
-		// aqui viraram o <see cref="LargarOInput"/> (`GameServer.Clone.cs`) quando a furia lendaria
-		// virou a segunda possessao do jogo -- o porque de cada uma esta escrito la.
-		LargarOInput(pl);
+		});
 
 		// ============================ A PUNICAO TEM QUE DIZER A SAIDA ============================
 		// "VOCE PERDE O CONTROLE" sozinho e a metade ruim do aviso: ele conta o que aconteceu e nao o

@@ -138,10 +138,41 @@ public sealed class SkillCatalog
 		void Por(string p) { if (_porPath.TryGetValue(p, out Skill? s) && !l.Contains(s)) l.Add(s); }
 
 		foreach (string p in ArvoresDeTodos) Por(p);
-		if (ArvorePorRaca.TryGetValue(raca, out List<string>? r)) foreach (string p in r) Por(p);
+		if (ArvorePorRaca.TryGetValue(NomeDoDm(raca), out List<string>? r)) foreach (string p in r) Por(p);
 		if (ArvorePorClasse.TryGetValue(classe, out List<string>? c)) foreach (string p in c) Por(p);
 		return l;
 	}
+
+	/// <summary>
+	/// ============================ A CHAVE DESTE ARQUIVO E A GRAFIA DO **DM**, E A DA FICHA NAO E ============================
+	/// `skilltrees.json` e GERADO pelo `AssetPipeline` a partir do `mobhandlers.dm`, entao as chaves
+	/// dele sao os nomes do original: `"Bio-Android"`, `"Frost Demon"`, `"Saibamen"`, `"Spirit Doll"`.
+	/// O `races.json` gravou a folha do typepath: `"BioAndroid"`, `"Icer"`, `"Saibaman"`,
+	/// `"SpiritDoll"`. O `Fighter.Race` fala a segunda lingua.
+	///
+	/// **QUATRO RACAS ESTAVAM SEM ARVORE RACIAL, EM SILENCIO.** O `TryGetValue` nao casava, o
+	/// `ArvoresDe` devolvia so as tres centrais (Body/Mind/Spirit) e a aba de aprendizado abria com o
+	/// ramo da raca simplesmente ausente -- nao vazio nem cinza: ausente. Nenhuma das duas pontas
+	/// tinha como notar, porque cada uma so conhece a propria grafia.
+	///
+	/// O BURACO APARECEU CACANDO O BIO-ANDROIDE (a arvore `bioandroid` traz a `Tail Absorb`, que e o
+	/// motor de evolucao dele), e o conserto e o mesmo para os quatro de proposito: consertar so um
+	/// deixaria tres bugs identicos vivos e um precedente dizendo que isso e normal.
+	///
+	/// A TRADUCAO MORA AQUI e nao numa copia por chamador porque quem le a chave e ESTE arquivo. O
+	/// `Permitida` logo abaixo continua comparando a grafia da ficha contra `Skill.Racas` -- e certo:
+	/// aquela lista sai do MESMO extrator, mas por outro campo, e mexer nela sem medir trocaria um
+	/// buraco por outro. Ela esta anotada no relatorio como divida separada.
+	/// ==========================================================================================================================
+	/// </summary>
+	private static string NomeDoDm(string raca) => raca switch
+	{
+		Races.BioAndroids.Raca => Races.BioAndroids.RacaDoDm,
+		Races.FormasDeFrost.Raca => Races.FormasDeFrost.ClasseNormal,   // "Icer" -> "Frost Demon"
+		"Saibaman" => "Saibamen",
+		"SpiritDoll" => "Spirit Doll",
+		_ => raca,
+	};
 
 	/// <summary>
 	/// Este personagem PODE, em principio, destravar esta skill?

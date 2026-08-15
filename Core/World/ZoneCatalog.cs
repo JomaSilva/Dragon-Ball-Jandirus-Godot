@@ -29,6 +29,19 @@ public sealed class ZoneEntry
 	/// Quando a conversao cheia rodar, o manifesto traz a chave e ela vence.
 	/// </summary>
 	public string Agua = "";
+
+	/// <summary>
+	/// res:// do bitset do que NAO SE QUEBRA -- o `destroyable = 0` do original
+	/// (ver <see cref="ZoneCollision.Indestrutivel"/>).
+	///
+	/// TEM PADRAO DERIVADO DO <see cref="Colisao"/> pelo mesmo motivo que o <see cref="Agua"/>: o
+	/// `.duro` sai do comando `duro` do pipeline, que NAO reescreve o manifesto -- ele existe
+	/// justamente pra nao reconverter os sprites (o indice resolve nome repetido por `TryAdd` e uma
+	/// conversao cheia reescreveria 21 artes, 4 delas genuinamente diferentes). Sem o padrao, gerar
+	/// os arquivos e continuar derrubando o vazio em jogo seria o desfecho CALADO, que e o pior tipo
+	/// de defeito deste projeto.
+	/// </summary>
+	public string Duro = "";
 	public string Luzes = "";     // res:// das fontes de luz do cenario (fogueira, tocha, lava)
 
 	/// <summary>res:// das PORTAS da zona -- elas nao sao tile, sao entidade (ver MapConverter.EhPorta).</summary>
@@ -60,6 +73,12 @@ public sealed class ZoneEntry
 	public string CaminhoDaAgua =>
 		Agua.Length > 0 ? Agua
 		: Colisao.EndsWith(".col", StringComparison.Ordinal) ? Colisao[..^4] + ".agua"
+		: "";
+
+	/// <summary>O caminho do `.duro`, pela mesma regra do <see cref="CaminhoDaAgua"/>. Ver <see cref="Duro"/>.</summary>
+	public string CaminhoDoDuro =>
+		Duro.Length > 0 ? Duro
+		: Colisao.EndsWith(".col", StringComparison.Ordinal) ? Colisao[..^4] + ".duro"
 		: "";
 
 	public int W, H;
@@ -97,8 +116,32 @@ public sealed class ZoneEntry
 public sealed class ZoneCatalog
 {
 	private readonly Dictionary<string, ZoneEntry> _porNome = new(StringComparer.OrdinalIgnoreCase);
+	private readonly List<ZoneEntry> _entradas = [];
 
+	/// <summary>
+	/// AS ZONAS QUE O JOGO ALCANCA -- uma por NOME. E o que o servidor carrega e o que
+	/// <see cref="Get(ZoneKey)"/> resolve, entao e a lista certa pra tudo que e jogavel.
+	/// </summary>
 	public IEnumerable<ZoneEntry> Todas => _porNome.Values;
+
+	/// <summary>
+	/// TODOS OS ANDARES DO MANIFESTO, inclusive os HOMONIMOS que o <see cref="Todas"/> descarta.
+	///
+	/// ============================ POR QUE ESTA LISTA PRECISOU EXISTIR ============================
+	/// O manifesto de hoje tem 40 blocos e o <see cref="_porNome"/> guarda 27: treze deles se chamam
+	/// "Outside", e a regra do "fica o de menor z" (logo abaixo) joga doze fora. Pra o JOGO isso esta
+	/// certo -- `ZoneKey` e por nome, entao so um Outside e alcancavel de qualquer jeito.
+	///
+	/// Pra uma AUDITORIA DE DISCO esta errado, e foi um buraco medido: o censo do cenario mudo dizia
+	/// "27 zonas" enquanto o pedido era "os 40 mapas", e os treze andares que ele nunca abriu tem
+	/// `.col` e `.duro` no disco como todo mundo. Uma varredura que se cala sobre um terco dos
+	/// arquivos nao pode fechar com "zero" -- e a licao ja escrita neste projeto de que a isencao
+	/// calada e o lugar onde o defeito mora.
+	///
+	/// Quem PERGUNTA PELO MUNDO usa o <see cref="Todas"/>; quem PERGUNTA PELO DISCO usa esta.
+	/// =============================================================================================
+	/// </summary>
+	public IReadOnlyList<ZoneEntry> Entradas => _entradas;
 
 	public ZoneEntry? Get(string zona) => _porNome.GetValueOrDefault(zona);
 	public ZoneEntry? Get(ZoneKey k) => Get(k.Name);
@@ -117,6 +160,7 @@ public sealed class ZoneCatalog
 				Colisao = Str(bloco, "colisao"),
 				Visao = Str(bloco, "visao"),
 				Agua = Str(bloco, "agua"),
+				Duro = Str(bloco, "duro"),
 				Luzes = Str(bloco, "luzes"),
 				Portas = Str(bloco, "portas"),
 				Objetos = Str(bloco, "objetos"),
@@ -124,6 +168,10 @@ public sealed class ZoneCatalog
 				W = (int)Num(bloco, "w"),
 				H = (int)Num(bloco, "h"),
 			};
+			// A LISTA DE DISCO fica com TODOS -- ver `Entradas`. Ela vem antes do descarte por nome
+			// de proposito: o andar que o jogo nao alcanca continua tendo arquivo pra auditar.
+			if (e.Zona.Length > 0) cat._entradas.Add(e);
+
 			// z01_Earth e z27_Earth podem coexistir: fica o de menor z (o canonico)
 			if (e.Zona.Length > 0 && (!cat._porNome.TryGetValue(e.Zona, out ZoneEntry? antigo) || e.Z < antigo.Z))
 				cat._porNome[e.Zona] = e;

@@ -72,7 +72,14 @@ public partial class GameServer
 		if (!FuriaLendaria.EhDescontrolavel(d) || FuriaLendaria.Dominou(maestria)
 			|| pl.Ficha.KO || pl.Ficha.dead || EmCena(pl))
 		{
-			if (pl.FuriaAte != 0 && SemAsRedeas(pl))
+			// ============================ A PERGUNTA E A POSSE, E NAO "TEM CEREBRO" ============================
+			// Eram dois `SemAsRedeas(pl)` (aqui e no passo 3), e `SemAsRedeas` e `Cerebro != null` -- o que
+			// era a mesma coisa enquanto SO JOGADOR podia ser possuido. Com NPC entrando neste laco (todo
+			// corpo de `_players` passa por aqui), a leitura antiga dizia *"a furia ja tomou este corpo"*
+			// pra qualquer NPC em forma lendaria, desde sempre: o passo 3 cairia eternamente no ramo de
+			// DEVOLVER um corpo que ninguem tomou, e a posse nunca aconteceria nele.
+			// ==============================================================================================
+			if (pl.FuriaAte != 0 && pl.CerebroDaPosse != null)
 			{
 				DevolverAsRedeas(pl);
 				Avisar(pl, "a furia se esvai, e o corpo volta a ser seu.");
@@ -88,7 +95,7 @@ public partial class GameServer
 		if (NowMs() < pl.FuriaAte) return;
 
 		// 3. O RELOGIO VIROU. Quem estava dirigindo diz o que acontece agora -- ver `FuriaAte`.
-		if (SemAsRedeas(pl)) ArmarOControle(pl, d, maestria, voltando: true);
+		if (pl.CerebroDaPosse != null) ArmarOControle(pl, d, maestria, voltando: true);
 		else TomarAsRedeasDaFuria(pl, d, maestria);
 	}
 
@@ -158,17 +165,17 @@ public partial class GameServer
 	/// </summary>
 	private void TomarAsRedeasDaFuria(ServerPlayer pl, FormaDef? d, double maestria)
 	{
-		pl.Cerebro = new Jandirus.Core.Ai.Cerebro
+		// Pelo funil `AssumirOCorpo` (`GameServer.Clone.cs`), que e o mesmo do Oozaru: alem de pendurar o
+		// cerebro ele MARCA A POSSE e larga o input do dono. O `LargarOInput` que morava nesta linha esta
+		// la dentro -- ver `AssumirOCorpo` pro porque de as tres coisas serem uma so.
+		AssumirOCorpo(pl, new Jandirus.Core.Ai.Cerebro
 		{
 			VidaCautelosa = 0,
 			ChanceDePesado = 0.6,
 			IntervaloDeDecisao = 0.2,
 			Disciplina = 0,
 			Inteligencia = 0,
-		};
-
-		// O rastro de input do dono morre aqui -- ver `LargarOInput` pro porque de cada campo.
-		LargarOInput(pl);
+		});
 
 		double posse = FuriaLendaria.SegundosDePosse(d, maestria);
 		pl.FuriaAte = NowMs() + (long)(posse * 1000);

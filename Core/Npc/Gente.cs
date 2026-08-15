@@ -53,6 +53,12 @@ public static class Gente
 	///     contar a mesma pessoa duas vezes.
 	///   * **corpo forjado de bancada** -- NAO, enquanto nao tiver dono na tela. Ele tem conta e
 	///     assinatura (por isso o `EhPessoa` do convivio diria que sim), e nao tem ninguem olhando.
+	///   * **CADAVER** (o corpo que fica no chao ate alguem enterrar, `Core/World/Cadaver.cs`) -- NAO, e
+	///     ele **nao precisou de um quarto marcador**: nao tem dono na tela e nao saiu de molde nenhum,
+	///     entao as duas primeiras pernas ja o cortam e ele cai no TERCEIRO grupo, junto do clone e do
+	///     boneco. E o lugar certo: um cadaver nao conta pra lotacao de planeta, nao entra na reposicao
+	///     de habitante e nao renasce. O `ServerPlayer.ECadaver` existe por OUTRA pergunta -- *"de onde
+	///     voce veio"*, que nunca e derivavel do estado (ver o campo).
 	///
 	/// A FERA E O CLONE **NAO SAO EXCECOES A ESCREVER**: nenhum dos dois tem dono na tela, entao a
 	/// primeira metade da conjuncao ja os corta. O que a segunda e a terceira cobrem e o dia em que

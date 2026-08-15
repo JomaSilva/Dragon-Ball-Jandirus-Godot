@@ -138,8 +138,34 @@ public readonly struct Comando
 	/// sabendo limpar; a IA e que nunca pede isso -- a mira ja se limpa sozinha quando o marcado
 	/// morre ou muda de zona, que e comportamento de producao.
 	/// ========================================================================================
-	/// </summary>
+	///
+	/// ============================ ELE NAO E SO PRO TIRO -- E O `target` DO DM ============================
+	/// Este campo nasceu pra receita de atirar, e por um tempo SO ela o preencheu. Foi por isso que
+	/// o corpo-a-corpo continuou socando de costas depois do `Olhar`: quem vira o corpo no instante
+	/// do golpe e o `Atacar`, e ele vira pro MARCADO -- entao um NPC que nunca marcava nao tinha
+	/// pra quem virar, e a unica virada que restava (a do `Olhar`) mora atras do portao do passo,
+	/// que estados como paralisia e enraizamento fecham sem fechar o soco.
+	///
+	/// Hoje o `Cerebro.Montar` escreve isto pra TODO plano com alvo vivo, uma vez so. E o `target`
+	/// do `NPCAI.dm`: la o NPC tem UMA variavel de alvo, e ela serve o seletor de acao e o ataque.
+	/// ================================================================================================
 	public int Marcar { get; init; }
+
+	/// <summary>
+	/// O QUE ELE DIZ NESTE TIQUE. Nulo = calado, e e o normal -- ver <see cref="Falatorio"/>.
+	///
+	/// ============================ E TECLA, E NAO EFEITO ============================
+	/// O nome do falante NAO vem aqui dentro, e o alcance nao e decidido aqui: quem monta a frase na
+	/// tela e o cliente, e quem decide quem ouve e o `GameServer.Falar` -- o MESMO funil do
+	/// `C2S.Chat` do jogador, com o mesmo raio de vista, a mesma regra de o "!" virar grito e o mesmo
+	/// teto de uma fala a cada 400 ms.
+	///
+	/// E por isso que este campo carrega o TEXTO CRU. Um `Comando.Gritar = true` ao lado teria sido a
+	/// segunda regra de alcance do jogo, e ela discordaria da primeira no dia em que alguem mexesse
+	/// numa das duas. O NPC "grita" do mesmo jeito que uma pessoa grita: escrevendo com "!".
+	/// ==========================================================================
+	/// </summary>
+	public string? Falar { get; init; }
 
 	/// <summary>O comando de quem nao vai fazer nada neste tique. Nao e "parar": e "nenhuma tecla".</summary>
 	public static readonly Comando Nenhum = new();

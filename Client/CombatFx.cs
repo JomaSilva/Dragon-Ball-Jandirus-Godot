@@ -111,6 +111,16 @@ public static class CombatFx
     private const string Jato = Arte + "Blood Spray.tres";
 
     /// <summary>
+    /// Quantos jatos NASCERAM. So pra bancada -- ver o incremento dentro de
+    /// <see cref="JatoDeSangue"/>, que so acontece depois de a folha carregar.
+    ///
+    /// Contar aqui, e nao contar `HitEvent.Decepou` do lado do cliente, e o que separa "o bit
+    /// chegou" de "o efeito apareceu". Sao perguntas diferentes e ja foram respostas diferentes
+    /// neste projeto: a `--pecateste` responde a primeira, no fio; esta responde a segunda.
+    /// </summary>
+    public static int JatosDeTeste;
+
+    /// <summary>
     /// Meio segundo, e o numero e do original: `EffectStart` carrega o icone e faz `sleep(5)` antes
     /// do `EffectEnd` (`EffectLayer.dm:110-116`), e `sleep(5)` no BYOND e 0,5 s. A folha confirma
     /// por outro caminho -- os tres quadros duram 1+2+2 = 5 tiques a 10 fps. A arte foi desenhada
@@ -141,6 +151,11 @@ public static class CombatFx
     {
         var f = ResourceLoader.Load<SpriteFrames>(Jato);
         if (f == null || !f.HasAnimation("default")) return;
+
+        // SO PRA BANCADA, e contado DEPOIS da arte carregar: o modo de falhar deste efeito e o
+        // silencio (folha que nao veio na conversao, animacao com outro nome), e um contador antes
+        // do `return` acima ficaria verde exatamente no caso em que nada aparece na tela.
+        JatosDeTeste++;
 
         var s = new AnimatedSprite2D
         {

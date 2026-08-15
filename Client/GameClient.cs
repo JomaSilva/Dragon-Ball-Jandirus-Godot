@@ -607,13 +607,36 @@ public partial class GameClient : Node
 	/// <summary>O nome da nave montada, pra o menu escrever. Vazio quando nao ha nenhuma.</summary>
 	public string NomeDoVeiculo { get; private set; } = "";
 
+	/// <summary>
+	/// O CADAVER QUE ESTA AO ALCANCE DA MINHA MAO (0 = nenhum) -- ver <see cref="Protocol.S2C.Cadaver"/>.
+	///
+	/// Ele e o irmao exato do <see cref="VeiculoMontado"/> e existe pelo mesmo buraco: a tecla E procura
+	/// alvo na lista de CONSTRUCOES da zona, e um cadaver nao e uma construcao -- ele e um corpo, e
+	/// corpo viaja pelo snapshot, que nao diz qual deles esta morto.
+	///
+	/// QUEM O ESCREVE E SO O SERVIDOR, nos dois sentidos: ele manda o id ao aproximar e manda ZERO ao
+	/// afastar. O cliente nao deduz nada daqui -- deduzir pela distancia exigiria que ele soubesse quais
+	/// corpos sao cadaveres, que e justamente o que ele nao sabe.
+	/// </summary>
+	public int CadaverPerto { get; private set; }
+
+	/// <summary>O nome do cadaver ao alcance ("corpo de Fulano"), pra o menu escrever no titulo.</summary>
+	public string NomeDoCadaver { get; private set; } = "";
+
 	/// <summary>Os planetas da minha vizinhanca no espaco. Chega quando a CHUNK muda.</summary>
 	public List<PlanetaInfo> Planetas { get; private set; } = [];
 	public ulong SeedDoUniverso { get; private set; }
 	public event Action? VizinhancaMudou;
 
-	/// <summary>Um cargo do mundo: chave, quem ocupa ("" = vago), e o que falta PRA MIM.</summary>
-	public readonly record struct CargoInfo(string Chave, string Dono, string Falta);
+	/// <summary>
+	/// Um cargo do mundo: chave, quem ocupa ("" = vago), o que falta PRA MIM, o que o cargo E
+	/// (<paramref name="Desc"/>) e o que ele DA (<paramref name="Da"/>).
+	///
+	/// OS DOIS ULTIMOS SAO NOVOS, e a ausencia deles era um sistema inteiro invisivel: o painel
+	/// listava trinta cargos e **nao dizia o que nenhum deles entrega**. Ver `OQueOCargoEntrega`, no
+	/// servidor -- a lista sai da tabela que a dadiva executa, com o que ainda e botao mudo marcado.
+	/// </summary>
+	public readonly record struct CargoInfo(string Chave, string Dono, string Falta, string Desc, string Da);
 
 	public List<CargoInfo> Cargos { get; private set; } = [];
 	public event Action? CargosMudaram;
@@ -733,6 +756,17 @@ public partial class GameClient : Node
 	public event Action<int>? FuriaIrrompeu;
 
 	/// <summary>
+	/// UMA CENA DO BIO-ANDROIDE COMECOU EM ALGUEM -- quem, e qual (ver
+	/// <see cref="Jandirus.Core.Forms.Cinematicas.CenaBio"/>).
+	///
+	/// IRMAO DO <see cref="FuriaIrrompeu"/> e pelo mesmo argumento: sao ACONTECIMENTOS de zona, sem
+	/// estado a sincronizar, e por isso nao viajam pelo canal de forma nem pelo de efeito. Duas das
+	/// tres nao mudam forma nenhuma -- elas sobem um `bio_stage`, que ja chegou como troca de
+	/// APARENCIA um instante antes.
+	/// </summary>
+	public event Action<int, Jandirus.Core.Forms.Cinematicas.CenaBio>? CenaDoBioComecou;
+
+	/// <summary>
 	/// EM QUE MACACO **EU** ESTOU. Espelho local do ultimo <see cref="Protocol.S2C.Oozaru"/> que veio
 	/// com o meu id -- o servidor continua sendo a autoridade, isto aqui e leitura pra a tela.
 	///
@@ -811,8 +845,14 @@ public partial class GameClient : Node
 		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
-	/// <summary>Alguem piscou: o id e DE ONDE ele saiu. A miragem nasce na origem.</summary>
-	public event Action<int, Vec2>? Piscou;
+	/// <summary>
+	/// UM CORPO SALTOU: o id, DE ONDE ele saiu, e se ele deixa MIRAGEM.
+	///
+	/// O terceiro campo separa as duas camadas do mesmo gesto: o BORRAO do deslocamento (que todo
+	/// corpo que salta ganha) e a miragem da Afterimage (que so quem tem a skill deixa). Ver
+	/// `Protocol.S2C.Zanzo` e `World.AoPiscar`.
+	/// </summary>
+	public event Action<int, Vec2, bool>? Piscou;
 
 	// =====================================================================
 	// OS ATAQUES DE KI
@@ -825,10 +865,11 @@ public partial class GameClient : Node
 	public event Action<IReadOnlyList<ProjetilState>>? TirosNoAr;
 
 	/// <summary>
-	/// UM TIRO NASCEU: id, dono, tipo e onde. Vem no canal confiavel porque e o instante em que ha
-	/// efeito pra tocar -- e porque e a unica hora em que o DONO e dito (e do dono que sai a cor).
+	/// UM TIRO NASCEU. Vem no canal confiavel porque e o instante em que ha efeito pra tocar -- e
+	/// porque e a unica hora em que o DONO (de quem sai a cor) e a ARTE sao ditos. Ver
+	/// <see cref="NascimentoDeProjetil"/>.
 	/// </summary>
-	public event Action<int, int, byte, Vec2>? TiroNasceu;
+	public event Action<NascimentoDeProjetil>? TiroNasceu;
 
 	/// <summary>UM TIRO ACABOU: id, o motivo (`Core.Combat.FimDeProjetil`) e onde.</summary>
 	public event Action<int, byte, Vec2>? TiroMorreu;
@@ -846,8 +887,31 @@ public partial class GameClient : Node
 	/// NAO E BIT DE FICHA de proposito: o byte de estado do <see cref="SheetState"/> esta CHEIO
 	/// (os dois ultimos bits sao a direcao da queda). O `Comecou`/`Acabou` chega por canal
 	/// confiavel e ordenado, que da a mesma garantia.
+	///
+	/// ============================ UM PRAZO, E NAO UM BIT ============================
+	/// Ele era `{ get; private set; }` -- ligado no `Comecou`, desligado no `Acabou`. Virou um PRAZO
+	/// porque agora ele **cala os atalhos do jogador** (ver `Foco.AtalhosMudos`), e um bit que alguem
+	/// tem que lembrar de apagar e exatamente como este projeto ja perdeu tres vezes esta semana (a
+	/// aureola presa no cadaver, o relogio da morte que nao rearmava, o pedido de musica eterno).
+	/// Aqui o preco seria o pior de todos: um `Acabou` que nao chegasse -- morte, nocaute, troca de
+	/// zona, logout do outro, um pacote perdido numa desconexao -- deixaria o teclado MUDO pra sempre.
+	///
+	/// O `Comecou` ja diz quanto o embate dura (e no de ki, o teto de 22 s), entao o fim tem hora
+	/// marcada: o silencio morre sozinho mesmo que ninguem o mate. O `Acabou` continua chegando e
+	/// continua mandando -- ele so deixou de ser a UNICA forma de sair daqui.
+	/// ===============================================================================
 	/// </summary>
-	public bool EmClash { get; private set; }
+	public bool EmClash => _clashAte > 0 && Time.GetTicksMsec() < _clashAte;
+
+	/// <summary>Ate quando o embate pode durar, no relogio local. 0 = nao ha embate.</summary>
+	private ulong _clashAte;
+
+	/// <summary>
+	/// A FOLGA DO PRAZO. O `ms` do `Comecou` e o relogio do SERVIDOR; daqui ate la ha a ida do
+	/// pacote, o tique de 30 Hz que fecha o embate e a volta do `Acabou`. Dois segundos cobrem isso
+	/// com sobra sem deixar o silencio arrastar depois da cena.
+	/// </summary>
+	private const ulong FolgaDoEmbate = 2_000;
 
 	/// <summary>
 	/// Comecou: QUE embate (ver <see cref="Protocol.TipoDeEmbate"/>), eu, o outro, quantos ms dura,
@@ -1070,7 +1134,12 @@ public partial class GameClient : Node
 			case Protocol.S2C.Zanzo:
 			{
 				int quem = reader.GetInt();
-				Piscou?.Invoke(quem, reader.GetVec());
+				Vec2 de = reader.GetVec();
+				// A ORDEM DE LEITURA E A DE ESCRITA: id, origem, e SO ENTAO o bool. Ler o bool
+				// dentro do `Invoke` junto com o `GetVec` deixaria a ordem dos argumentos decidir
+				// a ordem dos bytes -- que e o tipo de dependencia que so aparece quando alguem
+				// reordena os parametros do evento.
+				Piscou?.Invoke(quem, de, reader.GetBool());
 				break;
 			}
 
@@ -1083,7 +1152,12 @@ public partial class GameClient : Node
 				{
 					int dono = reader.GetInt();
 					byte tipo = reader.GetByte();
-					TiroNasceu?.Invoke(tiro, dono, tipo, reader.GetVec());
+					ushort arte = reader.GetUShort();
+					float escala = Protocol.DeEscalaDeProjetil(reader.GetByte());
+					// A ORDEM E A DO `AnunciarProjetil`: escala, altura, posicao.
+					float altura = Jandirus.Core.World.Voo.DeByte(reader.GetByte());
+					TiroNasceu?.Invoke(new NascimentoDeProjetil(
+						tiro, dono, tipo, arte, escala, altura, reader.GetVec()));
 				}
 				else
 				{
@@ -1104,7 +1178,9 @@ public partial class GameClient : Node
 						int a = reader.GetInt(), b = reader.GetInt(), ms = reader.GetInt();
 						float meu = reader.GetFloat(), dele = reader.GetFloat();
 						// SO CHEGA A QUEM ESTA NO EMBATE: e um pacote pessoal, e o `a` sou eu.
-						EmClash = true;
+						// O PRAZO NASCE AQUI. Ver `EmClash` -- e ele que garante que o silencio dos
+						// atalhos acaba mesmo que o `Acabou` nunca chegue.
+						_clashAte = Time.GetTicksMsec() + (ulong)Math.Max(ms, 0) + FolgaDoEmbate;
 						ClashComecou?.Invoke(tipo, a, b, ms, meu, dele);
 						break;
 					}
@@ -1134,7 +1210,10 @@ public partial class GameClient : Node
 					case Protocol.ClashSub.Acabou:
 					{
 						int venc = reader.GetInt(), perd = reader.GetInt();
-						EmClash = false;
+						// O EMBATE ACABOU ANTES DA HORA: o prazo cai agora. E o pacote e PESSOAL
+						// (`Terminar` e `Anunciar` mandam so aos dois), senao o fim do embate alheio na
+						// mesma zona destravaria o teclado de quem ainda esta preso no seu.
+						_clashAte = 0;
 						ClashAcabou?.Invoke(venc, perd);
 						break;
 					}
@@ -1320,7 +1399,8 @@ public partial class GameClient : Node
 				int n = reader.GetByte();
 				var lista = new List<CargoInfo>(n);
 				for (int i = 0; i < n; i++)
-					lista.Add(new CargoInfo(reader.GetString(32), reader.GetString(32), reader.GetString(160)));
+					lista.Add(new CargoInfo(reader.GetString(32), reader.GetString(32), reader.GetString(160),
+											reader.GetString(200), reader.GetString(400)));
 				Cargos = lista;
 				CargosMudaram?.Invoke();
 				break;
@@ -1439,6 +1519,19 @@ public partial class GameClient : Node
 				FuriaIrrompeu?.Invoke(reader.GetInt());
 				break;
 
+			// UMA CENA DO BIO-ANDROIDE COMECOU. Quem, e qual -- ver `Protocol.S2C.CenaDoBio`.
+			//
+			// O BYTE VIRA O ENUM AQUI E SEM CRIVO: o `Cinematicas.DoBio` ja trata o valor que ele nao
+			// conhece devolvendo nulo (silencio), que e a resposta certa pra um servidor mais novo que
+			// este cliente. Recusar aqui daria o mesmo resultado com um `if` a mais.
+			case Protocol.S2C.CenaDoBio:
+			{
+				int quemNoBio = reader.GetInt();
+				CenaDoBioComecou?.Invoke(
+					quemNoBio, (Jandirus.Core.Forms.Cinematicas.CenaBio)reader.GetByte());
+				break;
+			}
+
 			case Protocol.S2C.Skills:
 			{
 				MarcosTotais = reader.GetInt();
@@ -1518,6 +1611,12 @@ public partial class GameClient : Node
 			case Protocol.S2C.Veiculo:
 				VeiculoMontado = reader.GetString(48);
 				NomeDoVeiculo = reader.GetString(64);
+				break;
+
+			// QUAL CORPO ESTA AOS MEUS PES -- o alvo da tecla E pra enterrar. Zero = nenhum.
+			case Protocol.S2C.Cadaver:
+				CadaverPerto = reader.GetInt();
+				NomeDoCadaver = reader.GetString(64);
 				break;
 
 			case Protocol.S2C.ZoneChanged when LimparCenario():

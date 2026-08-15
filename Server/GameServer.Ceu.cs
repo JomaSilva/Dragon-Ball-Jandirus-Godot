@@ -242,6 +242,11 @@ public sealed partial class GameServer
 		TickDoClima();
 		TickDoRaio(agora);
 
+		// O PALCO DA FOTO (`--macacovivo`), e ele mora AQUI e não num relógio próprio: o que ele faz é
+		// abrir o corpo do Saiyajin de cena no segundo combinado, e o gatilho que vai lê-lo é o laço
+		// logo abaixo. Ver `GameServer.LuaFeraTeste.cs`, "o palco vivo". Fora da flag é um `if` de campo.
+		if (_macacoVivoFereEm != 0) FerirOPalcoDoMacaco();
+
 		if (agora - _ultimaSincronia >= SegundosEntreSincronias)
 		{
 			_ultimaSincronia = agora;
@@ -250,9 +255,128 @@ public sealed partial class GameServer
 
 		foreach (ServerPlayer pl in _players.Values)
 		{
-			if (pl.Peer == null) continue;   // corpo sem dono não recebe nada
+			// ============================ O CORPO SEM DONO NÃO RECEBE PACOTE -- MAS OLHA PRA CIMA ============================
+			// O `continue` daqui era a única linha entre o NPC e a lua cheia: `OlharProCeu` escreve
+			// `LuaVista`/`LuaEstavaNoCeu` e manda chat, e nada disso serve pra quem não tem tela. Só que a
+			// PERGUNTA -- *"há lua cheia no céu daqui?"* -- serve, e é dela que o Oozaru dos NPCs depende.
+			//
+			// Ver <see cref="ALuaPegaOSaiyajin"/>: ele não escreve os dois campos (um NPC não tem chat pra
+			// receber "a lua cheia se ergue", e guardar borda de evento por corpo custaria memória por 148
+			// corpos pra nada) e sai pelas guardas baratas antes de perguntar o céu.
+			// ==========================================================================================================
+			if (pl.Peer == null) { ALuaPegaOSaiyajin(pl, agora); continue; }
 			OlharProCeu(pl, Ceu.De(RelogioDaZona(pl.Zone), agora));
 		}
+	}
+
+	/// <summary>
+	/// ============================ A LUA CHEIA PEGA UM SAIYAJIN DE POVOAMENTO ============================
+	/// O pedido do dono, literal: *"npcs SAIYAJINS q estao LUTANDO e estao comecando a sofrer FERIMENTOS
+	/// GRAVES, se tiver LUA CHEIA eles vao OLHAR PRA LUA e se transformar em OOZARU assim como um
+	/// jogador"*.
+	///
+	/// ============================ ISTO É DIVERGÊNCIA DO BYOND, E AS DUAS METADES SÃO ============================
+	/// No DM o Oozaru tem UM gatilho automático (`Weather.dm:196-206`, dentro do `CheckTime()`), e ele
+	/// **começa** com `if(!client) return` (`:181`) -- ou seja, mob sem cliente nunca chega ao bloco da
+	/// lua. A única forma de um NPC Saiyajin virar macaco no original é um JOGADOR ligar uma lua
+	/// artificial em cima dele (o Emitter de Blutzwaves, `Tier3.dm:73-89`, ou o ritual
+	/// `Rituals_Manipulation.dm:280-288`).
+	///
+	/// E **não existe gatilho por ferimento em lugar nenhum do DM**: os chamadores de
+	/// `Apeshit()`/`GoldenApeshit()` no repositório inteiro são o clima, o Emitter, o ritual e o relog --
+	/// zero ligação com HP, membro quebrado ou `SpreadDamage`.
+	///
+	/// As duas coisas são regra NOVA, a pedido do dono, e estão marcadas aqui pra ninguém procurar em
+	/// `Oozaru.dm` a linha que justifica esta função. O que É fiel: a fase da lua ser a única que serve
+	/// (`currentMoonlight == 5`), o interior não valer (lá `current_area.name != "Inside"`, aqui zona de
+	/// interior devolve `SemCeu`), e o rabo mandar em tudo.
+	/// ======================================================================================================
+	///
+	/// ============================ A ORDEM DAS GUARDAS É O CUSTO ============================
+	/// Isto roda por corpo por segundo, e o mundo tem 148. As perguntas estão em ordem CRESCENTE de
+	/// preço, e as quatro primeiras são comparações de campo:
+	///
+	///   papel (referência) -> já é fera (enum) -> raça (duas strings) -> rancor (long) -> ferida (5
+	///   bytes já calculados) -> plateia (um hash) -> **só então** o céu (~0,08 us) e, dentro do
+	///   `Apeshit`, o rabo (`Body.Achar`, que ALOCA 128 bytes por chamada).
+	///
+	/// Medido na fase 0 desta tarefa: perguntar TUDO por corpo a 30 Hz custaria ~48 us/tique (0,14% do
+	/// orçamento) e 568 KB/s de lixo por causa do `Achar`. Pendurado aqui, no tique de 1 Hz que já é o
+	/// dono da lua, o mesmo custo cai 30x -- **0,0016% do orçamento** -- e num mundo sem lua cheia ou sem
+	/// Saiyajin apanhando ele é, de fato, quatro comparações e nada.
+	/// ==================================================================================
+	/// </summary>
+	private void ALuaPegaOSaiyajin(ServerPlayer npc, double agora)
+	{
+		// 1. É UM NPC DE POVOAMENTO? O crivo é o `Papel` e não o `Peer`: sem ele entrariam o clone da
+		//    Dimensão Mental, o chefe convocado e o boneco largado -- corpos que existem colados a um
+		//    jogador e cuja transformação não é deste sistema (o boneco largado, em particular, carrega
+		//    a Ficha do dono, e virar macaco enquanto o dono medita seria um Oozaru de ninguém).
+		if (npc.Papel == null) return;
+
+		// 2. JÁ É FERA. O `Apeshit` recusaria de novo (`RecusaOozaru.JaEsta`), mas isso seria pagar as
+		//    seis perguntas abaixo por segundo durante os 300 s inteiros da forma.
+		if (npc.Oozaru != Jandirus.Core.Forms.FormaOozaru.Nao) return;
+
+		// 3. É SAIYAJIN? A porta VERDADEIRA é o genoma (`Oozaru.PodeVirar`, >= 50%), e quem a aplica é o
+		//    `Apeshit`. Aqui é o corte BARATO que tira 99% do mundo em duas comparações de string -- o
+		//    mesmo crivo que decide quem nasce com rabo (`GameServer.Combat.TemRabo`), então ele não
+		//    inventa uma segunda resposta pra "quem é Saiyajin": ele só chega primeiro.
+		if (!TemRabo(npc.Race)) return;
+
+		// 4. ESTÁ LUTANDO? -- e a resposta é a tag que o jogo JÁ tem, e não um "em combate" novo.
+		//    `RancorAte` é o `combat_tag_duration` do original (90 s, `UpdateFightingList.dm:8`), escrito
+		//    pelo funil único de agressão (`MarcarAgressao`) em quem APANHOU. Isso é exatamente a
+		//    população que o dono descreveu -- "estão lutando E começando a sofrer ferimentos" --, e as
+		//    duas guardas se sustentam: quem tem ferida grave levou golpe, e quem levou golpe tem tag.
+		if (NowMs() >= npc.RancorAte) return;
+
+		// 5. FERIMENTO GRAVE? Derivado da máscara de feridas que o servidor já mantém e já manda pra
+		//    zona inteira (`GameServer.Feridas.cs`, 5 Hz), pelo degrau que o próprio limiar de quebra do
+		//    jogo define -- ver `Feridas.Grave` e `Feridas.DegrauGrave` pro porquê do número.
+		//
+		//    LER `EnvFeridas` E NÃO CHAMAR `Feridas.De(corpo)`: o `De` varre as ~14 partes do corpo, e
+		//    aqui isso seria uma varredura por Saiyajin por segundo pra recalcular o que já está pronto
+		//    no campo ao lado. O campo pode estar até 200 ms velho; uma ferida grave não sara em 200 ms.
+		if (!Jandirus.Core.Combat.Feridas.Grave(npc.EnvFeridas)) return;
+
+		// 6. ============================ HÁ ALGUÉM PRA VER? ============================
+		//    **DECISÃO: planeta sem jogador NÃO transforma.** É a mesma porta de plateia que congela a
+		//    mente dos NPCs (`MenteDormindo`, `GameServer.Clone.cs`), e ela vale aqui por três razões,
+		//    em ordem de peso:
+		//
+		//      * **a luta nem está acontecendo.** Sem jogador na zona a mente está congelada: ninguém
+		//        decide, ninguém persegue, ninguém bate. As guardas 4 e 5 só podem estar passando por
+		//        MEMÓRIA -- a tag de 90 s e as feridas de uma briga que parou quando o jogador saiu.
+		//        Transformar ali é transformar por causa de uma lembrança;
+		//      * **custa e não entrega.** Um Oozaru pago a 30 Hz (`TickDoOozaru`, que NÃO passa pelo
+		//        congelamento -- ele é relógio de mundo) num planeta vazio é espetáculo pra ninguém;
+		//      * **e não se perde nada.** A lua cheia dura uma noite inteira. No segundo em que um
+		//        jogador pousar, a zona entra no `_zonasComGente` e a próxima volta deste laço pega o
+		//        Saiyajin ferido exatamente como se ele tivesse acabado de olhar pra cima.
+		//
+		//    O QUE ISTO **NÃO** FAZ: derrubar um Oozaru que já existe quando o último jogador vai embora.
+		//    A guarda 2 já saiu antes daqui, e o prazo da forma continua correndo no `TickDoOozaru` --
+		//    então a fera termina sozinha, e um NPC não fica preso nela por falta de plateia.
+		if (!_zonasComGente.Contains(npc.Zone.Hash)) return;
+
+		// 7. E O CÉU -- **a mesma pergunta que o jogador faz** no botão vermelho (`OlharParaALua`):
+		//    `Cheia && LuaNoCeu`. Função pura de (relógio da zona, instante), então não há nada
+		//    pendurado no NPC pra ficar velho, e zona de interior/espaço devolve `SemCeu` -- que é o
+		//    `current_area.name != "Inside"` do DM saindo de graça.
+		EstadoDoCeu ceu = Ceu.De(RelogioDaZona(npc.Zone), agora);
+		if (!ceu.Cheia || !ceu.LuaNoCeu) return;
+
+		// ============================ E ENTRA PELO FUNIL DO JOGADOR ============================
+		// `Apeshit` é declarado funil único desde que foi escrito ("a lua artificial e as ondas de Blutz,
+		// quando vierem, entram por ele"), e nada dentro dele lê `Peer`: as recusas faladas terminam em
+		// `Peer?.Send`, que é no-op pra um NPC. É ele quem cobra o que falta e que o dono chamou de
+		// portão legítimo -- **o RABO**: um Saiyajin que cumpriu os quatro requisitos e teve o rabo
+		// arrancado na briga NÃO vira, e isso é o certo.
+		//
+		// Um segundo motor aqui daria duas escadas de Oozaru, e a que ninguém olha apodrece.
+		// ==================================================================================
+		Apeshit(npc);
 	}
 
 	/// <summary>

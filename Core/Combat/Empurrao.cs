@@ -91,7 +91,7 @@ public static class Empurrao
 	/// O QUE ESTE GOLPE FAZ COM O CORPO. Devolve o efeito e, no arremesso, quantos TIQUES ele voa.
 	///
 	/// <paramref name="inevitavel"/> e o `unavoidable` do original: alguns golpes arremessam sem
-	/// consultar o limiar (o soco leve sorteado, ver <see cref="SorteioDoSocoLeve"/>).
+	/// consultar o limiar (o segundo ramo do soco leve, ver <see cref="DoSoco"/>).
 	/// </summary>
 	public static (EfeitoDeImpacto Efeito, int Tiques) Avaliar(double dmg, double limiar, bool inevitavel)
 	{
@@ -111,7 +111,7 @@ public static class Empurrao
 	}
 
 	/// <summary>
-	/// O GATILHO, do lado de quem bate (`attack cmn.dm:110-118`):
+	/// O GATILHO, do lado de quem bate (`attack cmn.dm:110-116`):
 	///
 	///   check = (Ephysoff + Etechnique) / (M.Ephysdef + M.Etechnique) * BPModulus(meu, dele)
 	///
@@ -123,6 +123,9 @@ public static class Empurrao
 	///
 	/// O segundo ramo do leve e o que da PESO a troca de socos: mesmo sem forca pra arremessar,
 	/// um em cada tantos golpes tira o outro do lugar.
+	///
+	/// **O RAMO DO PESADO ACIMA E O DO DM, E NAO O DESTE PORT**: aqui ele tambem sorteia, a pedido do
+	/// dono. A divergencia esta escrita por extenso no <see cref="DoSoco"/>, que e quem decide.
 	/// </summary>
 	public static double Check(Fighter a, Fighter d) =>
 		(a.Ephysoff + a.Etechnique) / Math.Max(d.Ephysdef + d.Etechnique, 0.0001)
@@ -133,14 +136,73 @@ public static class Empurrao
 		(dmg + a.Ephysoff * 2 + 1) * check;
 
 	/// <summary>
-	/// O sorteio do golpe LEVE. Devolve o que mandar pro <see cref="Avaliar"/>, ou nulo se o soco
-	/// nao tirou ninguem do lugar.
+	/// A CHANCE DE ARREMESSAR, POR UNIDADE DE PESO DO GOLPE -- o `10` do `prob(check * 10)` do DM
+	/// (`attack cmn.dm:113`). O leve pesa 1 e o pesado pesa 3 (`Protocol.PesoDoGolpe`), entao a
+	/// mesma formula da `check*10` pro leve e `check*30` pro pesado.
 	/// </summary>
-	public static (double Dmg, bool Inevitavel)? SorteioDoSocoLeve(double dmg, double check, Func<double, bool> prob)
+	public const double ChancePorPesoDoGolpe = 10;
+
+	/// <summary>
+	/// `prob(check * 10 * peso)` -- a chance percentual de o golpe arremessar. Passa de 100 quando o
+	/// atacante e muito mais forte, e e isso mesmo: o `prob()` do DM tambem satura.
+	/// </summary>
+	public static double ChanceDeArremesso(double check, double peso) =>
+		check * ChancePorPesoDoGolpe * peso;
+
+	/// <summary>
+	/// O SOCO QUE ENCOSTOU MEXEU COM O CORPO? -- o UNICO lugar que decide isso, pros dois golpes.
+	///
+	/// ============================ A UNICA DIVERGENCIA DELIBERADA DO DM ============================
+	/// **O DM NAO SORTEIA O PESADO.** O `else` de `attack cmn.dm:115-116` cai direto no
+	/// `Impact((dmg + Ephysoff*2 + 1) * check)`, e o port copiava isso ao pe da letra. Medido: com
+	/// dois Saiyajins de BP 5.551, **100% dos pesados que encostam arremessam** em qualquer razao de
+	/// BP >= 1,0x, jogando o corpo 517 a 576 px em menos de um segundo. Contra a IA (que pede pesado
+	/// em 35% dos golpes, e ate 85% com raiva cheia) isso vira um corpo no ar a cada 1,6 s -- e mais
+	/// da metade da briga e o outro correndo atras. O dono viu e chamou pelo nome: *"era UM JOGANDO O
+	/// OUTRO PRA LONGE e tava estranha a luta"*.
+	///
+	/// **O PEDIDO DELE E DE FREQUENCIA, e o numero e a propria formula do DM**, so que aplicada ao
+	/// pesado: `prob(check * 10 * peso)`. Com `PesoDoGolpe(Pesado) = 3` isso da `prob(check*30)` --
+	/// 33% em BP parelho, contra os 21,7% do leve. E "uma chance UM POUCO MAIOR" que a do leve, que
+	/// foi o que ele pediu, sem constante inventada: o `10` ja existe em `attack cmn.dm:113` e o `3`
+	/// ja existe em `Protocol.PesoDoGolpe`.
+	///
+	/// **O SORTEIO VETA SO O ARREMESSO.** O `Cambaleia` e o `Lento` continuam saindo do `Avaliar`
+	/// exatamente como antes -- e de proposito: a faixa do meio e o unico efeito que o pesado tem
+	/// contra quem e mais forte que ele (0,5x -> 92,8% de cambaleio, medido), e derrubar isso junto
+	/// deixaria o pesado fraco tambem MUDO. Pelo mesmo motivo o ramo falho NAO cai no `Cambaleia`:
+	/// isso engordaria em 67% um caminho que hoje nao manda aviso nenhum pro cliente.
+	/// =============================================================================================
+	/// </summary>
+	/// <param name="peso">`Protocol.PesoDoGolpe`: 1 no leve, 3 no pesado. O Core nao conhece o `Net`.</param>
+	/// <param name="garantido">
+	/// PULA O SORTEIO -- o golpe arremessa se encostou. Nao e do DM: e pros golpes que ja nasceram
+	/// como "isto TEM que jogar o outro longe", hoje o golpe de saida do Zanzo Clash
+	/// (`GameServer.ZanzoClash.GolpeDeSaida`), que o dono pediu com arremesso certo pra fechar a cena.
+	/// </param>
+	public static (EfeitoDeImpacto Efeito, int Tiques) DoSoco(
+		double dmg, double peso, Fighter a, Fighter d, Func<double, bool> prob, bool garantido = false)
 	{
-		if (check > 3 && prob(check * 10)) return (dmg, false);
-		if (prob(check * 20)) return (1, true);
-		return null;
+		double check = Check(a, d);
+		double limiar = Limiar(d, a.expressedBP);
+		double chance = ChanceDeArremesso(check, peso);
+		bool pesado = peso > 1;
+
+		if (garantido)
+			return Avaliar(pesado ? ForcaDoPesado(dmg, a, check) : dmg, limiar, inevitavel: true);
+
+		// ---- LEVE: os DOIS sorteios do DM, sem uma virgula de diferenca ----
+		if (!pesado)
+		{
+			if (check > 3 && prob(chance)) return Avaliar(dmg, limiar, false);
+			if (prob(chance * 2)) return Avaliar(1, limiar, true);   // o `prob(check*20)`
+			return (EfeitoDeImpacto.Nada, 0);
+		}
+
+		// ---- PESADO: a forca e a mesma do DM; so o ARREMESSO passou a ser sorteado ----
+		(EfeitoDeImpacto efeito, int tiques) = Avaliar(ForcaDoPesado(dmg, a, check), limiar, false);
+		if (efeito != EfeitoDeImpacto.Arremesso) return (efeito, tiques);
+		return prob(chance) ? (efeito, tiques) : (EfeitoDeImpacto.Nada, 0);
 	}
 
 	/// <summary>

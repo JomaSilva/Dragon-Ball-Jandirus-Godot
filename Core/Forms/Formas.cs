@@ -110,6 +110,35 @@ public enum LinhaDeForma
 	Namekuseijin,
 
 	/// <summary>
+	/// ============================ O BIO-ANDROIDE -- `CellFormBuff.dm` ============================
+	/// UMA entrada, e ela e a linha inteira: a **SUPER PERFEITA**, 8x.
+	///
+	/// ============================ POR QUE OS OUTROS QUATRO DEGRAUS NAO ESTAO AQUI ============================
+	/// Larva, Imperfeito, Semi-Perfeito e Perfeito **nao sao formas** -- sao ESTADO PERMANENTE do
+	/// corpo (`Stats.Fighter.bio_stage`, onde a decisao esta escrita por extenso). No DM eles fazem
+	/// `BP *= 2` e `BP *= 4` no BP BASE e trocam o `oicon`; nao ha buff, nao ha dreno e nao ha volta.
+	/// Poe-los aqui teria mentido no teto de treino, no teto do Zenkai e no `CapCheck`, que leem o BP
+	/// base e nao o expresso.
+	///
+	/// A SUPER PERFEITA E O CONTRARIO DISSO em todos os pontos, e por isso ela E forma: `ssjBuff =
+	/// cell4mult` (familia 1), dreno de 1% ao segundo, e ela **cai sozinha quando o Ki acaba** (o
+	/// unico estado temporario que o bio-androide tem, `CellFormBuff.dm:13-19`).
+	///
+	/// ============================ E ELA **NAO** PEDE DNA SAIYAJIN ============================
+	/// Vale dizer em voz alta porque a expectativa comum e a oposta: `Cell4()` (`CellFormBuff.dm:74`)
+	/// nao olha raca, DNA, `canSSJ` nem `bio_saiyan_dna` -- uma unica vez. O que ela pede e o que
+	/// esta nos campos abaixo: forma PERFEITA permanente, BP base suficiente, e **nao estar em
+	/// nenhum degrau Super Saiyajin** (`!ssj`).
+	///
+	/// O SSJ2 do bio e OUTRA coisa, por outro caminho (a MORTE, `DNALabs.dm:649`), na linha Saiyajin
+	/// -- e as duas se excluem, exatamente como no original: la as duas escrevem na mesma `mob/var/
+	/// ssj`. Aqui a exclusao e o campo `ProibidoComFormaAtual` da entrada, que e a mesma frase dita
+	/// por dado em vez de por colisao de variavel.
+	/// =========================================================================================================
+	/// </summary>
+	BioAndroide,
+
+	/// <summary>
 	/// ============================ O HERAN -- `HeranBuff.dm` ============================
 	/// Max Power e True Max Power, os dois com maestria em DEGRAUS pela % (`heran_form_mult()`), os
 	/// dois nascendo da RAIVA (`heran.dm:20-52`, o mesmo `switch(Emotion)` do Super Saiyajin).
@@ -212,6 +241,22 @@ public enum CorpoDeForma
 	/// ==========================================================================================================
 	/// </summary>
 	FrostEscolhido,
+
+	/// <summary>
+	/// O CORPO DA SUPER PERFEITA -- `Bio Android 4.dmi` (`body_custom.dm:249`).
+	///
+	/// Valor FIXO e nao "escolhido", ao contrario dos dois vizinhos de cima: ha uma folha so, ela nao
+	/// depende da pele nem de escolha na criacao. Entra no enum mesmo assim porque o que o catalogo
+	/// diz e "esta forma troca o corpo", e a traducao pro `res://` e do cliente
+	/// (<see cref="Jandirus.Client.CorposDeForma"/>) -- o Core nao conhece o Godot.
+	///
+	/// **E ELE E O BURACO DO ORIGINAL FECHADO POR CONSTRUCAO.** No DM, `dnl_bio_hatch` escreve
+	/// `form2icon` e `form3icon` e **esquece o `form4icon`** (`DNALabs.dm:492-493`): um bio de
+	/// laboratorio que alcance a Super Perfeita faz `icon = null` e so nao vira quadrado quebrado
+	/// porque `Stats.dm:210` tem um fallback. Aqui a folha e do CATALOGO e nao da ficha, entao nao ha
+	/// campo pra alguem esquecer de preencher.
+	/// </summary>
+	BioSuperPerfeito,
 }
 
 /// <summary>Como a maestria vira multiplicador.</summary>
@@ -488,6 +533,60 @@ public sealed class FormaDef
 
 	/// <summary>Maestria de God Ki exigida (`GODKI_BLUE_PCT` 33, `GODKI_ROYALE_PCT` 50).</summary>
 	public double PedeGodKi = -1;
+
+	/// <summary>
+	/// DEGRAU MINIMO DE BIO-ANDROIDE (`bio_stage`). 0 = nao pede, que e o caso de 41 das 42 entradas.
+	///
+	/// Preenchido so pela Super Perfeita, e ele e a metade `cell3 == 1 &amp;&amp; form3cantrevert` do
+	/// gate do `Cell4()` (`CellFormBuff.dm:74`). Um campo e nao um `if` por id no `Avaliar` pelo
+	/// motivo de sempre neste arquivo: quem decide gate e o DADO, e o dia em que o Cell Jr. ou uma
+	/// segunda forma bio pedir outro degrau, e um numero e nao um ramo novo.
+	/// </summary>
+	public int PedeEstagioBio;
+
+	/// <summary>
+	/// ============================ O BIO DE LABORATORIO NAO CHEGA NESTA FORMA PELO CAMINHO NORMAL ============================
+	/// Uma unica entrada a preenche (`ssj2`), e ela e o porte de uma regra que o DM escreve em TRES
+	/// lugares porque la a variavel `hasssj2` pode ser escrita de fora:
+	///
+	///   * `SSj2()` (`supersaiyanbuff.dm:417-421`) **zera** um `hasssj2` concedido por engano e
+	///     recusa -- *"seu nucleo bio exige um gatilho mais extremo que a raiva"*;
+	///   * o ensino Mestre-Aluno recusa (`MasterStudent.dm:255, 338`);
+	///   * o login REVOGA retroativamente quem pegou pela raiva (`DNALabs.dm:714-717`), e reverte.
+	///
+	/// **SEM ISTO O SISTEMA INTEIRO DO SSJ2 DO BIO SERIA LETRA MORTA.** Ele nasce com `canSSJ`, e
+	/// `canSSJ` abre a escada Saiyajin: o SSJ2 esta no tronco dela, e tronco se abre com RAIVA. Um
+	/// bio veria um amigo morrer e pularia a forma perfeita, o SSJ1 dominado, o BP e a propria morte
+	/// -- todo o custo da unica transformacao que e SO dele.
+	///
+	/// A EXCECAO E "JA DESPERTOU": o unico lugar do jogo que libera `ssj2` pra um bio de laboratorio
+	/// e o despertar pela morte (`GameServer.DespertarSsj2DoBio`). Depois dele a forma e dele como e
+	/// de qualquer Saiyajin -- inclusive pra reentrar, que era o bug que o proprio DM documenta em
+	/// `mst_form_apply` ("ficava com uma forma na qual nao conseguia reentrar").
+	///
+	/// **E O SSJ3 SAI DE GRACA ATRAS DESTA MESMA PORTA**, sem campo nenhum: ele pede 50% de maestria
+	/// no SSJ2 (<see cref="PedeMaestriaDe"/>), e nao se treina uma forma que nao se tem.
+	/// ========================================================================================================================
+	/// </summary>
+	public bool NegadaAoBioDeLaboratorio;
+
+	/// <summary>
+	/// FORMAS QUE **BLOQUEIAM** esta -- o oposto do <see cref="PedeFormaAtual"/>. Vazio = nenhuma.
+	///
+	/// ============================ ELE EXISTE PORQUE NO DM ISTO E UMA COLISAO DE VARIAVEL ============================
+	/// `Cell4()` so roda `if(!ssj ...)` (`CellFormBuff.dm:74`): estar em qualquer degrau Super
+	/// Saiyajin fecha a Super Perfeita. E a reciproca acontece por acidente e nao por regra -- a
+	/// Super Perfeita FAZ `ssj = 1` (`:75`), entao o bloco do SSJ em `Transformation Controls.dm:51`
+	/// passa a valer e o SSJ2 SOBRESCREVE a Super Perfeita, trocando um 8x por um 1,75x, calado.
+	///
+	/// O port nao tem uma `ssj` compartilhada pra colidir (a forma atual e um id de texto), entao o
+	/// bloqueio precisa ser DITO. Dizer so o lado do DM (`!ssj`) deixaria o lado ruim vivo; por isso
+	/// este campo e conferido nos DOIS sentidos -- ver o passo 4b do `EstadoDeForma.Avaliar`, que
+	/// tambem recusa o SSJ2 de quem esta em Super Perfeita. **Isto e um conserto declarado, nao uma
+	/// copia**: o original perde a forma mais forte do bio pela ordem em que dois `if` rodam.
+	/// ==========================================================================================================
+	/// </summary>
+	public string[] ProibidoComFormaAtual = [];
 
 	/// <summary>
 	/// ESTA FORMA NAO SE CONQUISTA: ALGUEM A CONCEDE. Enquanto ninguem conceder, ela nao existe
@@ -863,6 +962,22 @@ public enum NivelDeRaiva
 /// lado seguro: quem esquecer de preencher RECUSA a forma em vez de concede-la. Foi por isso que
 /// o enum comeca na calma e sobe, e nao o contrario.
 /// </param>
+/// <param name="EstagioBio">
+/// O `bio_stage` deste corpo -- 0 pra quem nao e bio-androide de laboratorio. Le-se contra
+/// <see cref="FormaDef.PedeEstagioBio"/>, e e a metade "forma perfeita" do gate da Super Perfeita.
+///
+/// **ZERO E O LADO SEGURO**, como a raiva e como o God Ki negativo: quem esquecer de preencher
+/// recusa a forma em vez de conceder. E ele e o `default` da linguagem, entao nenhuma bancada,
+/// nenhum NPC e nenhum desenho de cliente precisa saber que este campo existe.
+/// </param>
+/// <param name="CanSsj">
+/// O `canSSJ` do original -- o BYPASS que abre a escada Super Saiyajin pra uma raca que nao a tem.
+///
+/// `Transformation Controls.dm:2` e literal sobre o que ele e: *"If this is ticked to 1, SSJ is
+/// weaker"*. Hoje quem o recebe e o bio-androide de laboratorio nascido com DNA Saiyajin
+/// (`DNALabs.dm:478`), e o "mais fraco" tem endereco -- ver <see cref="FormaDef.MultDiluido"/> e o
+/// <c>SangueDiluido</c> do servidor, onde a decisao de reusar a linha diluida esta declarada.
+/// </param>
 public readonly record struct PerfilDeFormas(
 	string Raca = "",
 	string Classe = "",
@@ -874,7 +989,9 @@ public readonly record struct PerfilDeFormas(
 	double EnergiaUe = 0,
 	double ProficienciaUi = 0,
 	NivelDeRaiva Raiva = NivelDeRaiva.Nenhuma,
-	IReadOnlyDictionary<string, double>? FlagsDeSkill = null)
+	IReadOnlyDictionary<string, double>? FlagsDeSkill = null,
+	int EstagioBio = 0,
+	bool CanSsj = false)
 {
 	/// <summary>
 	/// QUANTO VALE ESTA FLAG DE SKILL NESTE CORPO. Zero quando ele nao sabe a skill que a escreve --
@@ -2468,6 +2585,12 @@ public static class Catalogo
 			LinhaDeForma.Alien => f.ssjenergymod,
 			LinhaDeForma.Heran => d.Ordem < 20 ? f.ssjenergymod : f.ssj2energymod,
 
+			// A SUPER PERFEITA TAMBEM DIVIDE O TANQUE DO SAIYAJIN -- `trueKiMod = ssjenergymod`
+			// (`CellFormBuff.dm:7`), pelo mesmo motivo literal do Heran e do Alien: o DM reusa o
+			// campo. E ele PRECISA ser lido do `Fighter` e nao cravado, porque uma forma que drena
+			// 1% do Ki por segundo com o tanque errado dura o tempo errado.
+			LinhaDeForma.BioAndroide => f.ssjenergymod,
+
 			_ => 1,                                 // GodKi, Rose, Prodigial, UI, UE, Oozaru, Frost
 		};
 
@@ -2810,6 +2933,43 @@ public static class Catalogo
 	public static bool FolhaTrazORabo(CorpoDeForma c) =>
 		c is CorpoDeForma.Ssj4 or CorpoDeForma.Oozaru or CorpoDeForma.OozaruDourado;
 
+	/// <summary>
+	/// ESTA FOLHA DE CORPO DESENHA UMA **PESSOA**? -- ou seja, ha um rosto humanoide onde a camada de
+	/// olhos (e o resto do que se veste num rosto) cai.
+	///
+	/// ============================ O DEFEITO QUE ELA FECHA, E ELE E DO DM TAMBEM ============================
+	/// O dono, sobre a larva do bio-androide: *"os bio androides o OLHO FICA VOANDO na forma de BARATA,
+	/// faca com q os olhos SUMAM ao ficar nessa forma"*. Fui procurar o mecanismo no original pra copiar
+	/// e **nao ha nenhum**: la o olho e `/obj/overlay/eyes/default_eye`
+	/// (`OverlayMobHandlers.dm:251-256`), pendurado por `Eyes()` (`CharacterCreation.dm:23`) pra TODA
+	/// raca sem crivo nenhum, e recriado em todo login pelo `RefreshEyes()` (`Login.dm:349`). O
+	/// `dnl_bio_hatch` chega a tirar o CABELO da larva (`RemoveHair()` + `hair="Bald"`,
+	/// `DNALabs.dm:466-467`) e passa direto pelo olho -- o irmao do gate de careca do bio
+	/// (`HairObject.dm:168`) nunca foi escrito. No BYOND e ate pior: a `CellLarva.dmi` tem um estado so
+	/// (`""`) contra os oito da `Eyes_Black.dmi`, entao em voo ou no nocaute as pupilas ficariam
+	/// sozinhas na tela. **Isto e conserto de projeto, nao porte de linha.**
+	///
+	/// ============================ E POR QUE ELA PERGUNTA A FOLHA, E NAO "E A LARVA?" ============================
+	/// Porque a larva nao e o unico caso e nunca foi: o DM troca o corpo INTEIRO em oito sistemas, e
+	/// dois deles poem um corpo que nao e gente (a larva, `DNALabs.dm:491`, e o lobisomem quadrupede,
+	/// `Werewolves.dm:109`). O Oozaru so escapa por acidente -- ele esvazia o `overlayList`
+	/// (`Oozaru.dm:118-123`), que nem e onde o olho mora. Um `if (larva)` daria certo hoje e erraria no
+	/// dia em que o lobo (ou qualquer bicho novo) for portado, caladamente, com o mesmo sintoma.
+	///
+	/// Aqui a pergunta e do SIMBOLO, ao lado da <see cref="FolhaTrazORabo"/> e pela mesma razao: quem
+	/// sabe o que a arte desenha e o catalogo, nao o cliente. O corpo de repouso responde pela irma
+	/// dela em <see cref="Jandirus.Core.Appearance.VisualCatalog.CorpoTemRosto"/> -- sao os dois eixos
+	/// por onde uma folha pode chegar ao boneco, e nao ha um terceiro.
+	///
+	/// O MACACO ENTRA AQUI POR COMPLETUDE, e nao porque precise: o `CharacterVisual.Escondida` ja apaga
+	/// tudo nele por ser CRIATURA (quadro maior que o do corpo). Deixa-lo de fora seria escrever "esta
+	/// folha tem rosto" sobre um focinho de dez metros, contando com uma segunda regra pra corrigir --
+	/// e a `Escondida` existe justamente pra nao haver regra escrita duas vezes.
+	/// =========================================================================================================
+	/// </summary>
+	public static bool FolhaTemRosto(CorpoDeForma c) =>
+		c is not (CorpoDeForma.Oozaru or CorpoDeForma.OozaruDourado);
+
 	/// <summary>A forma base. Existe como entrada pra "voltar ao normal" nao ser um caso especial.</summary>
 	public const string IdBase = "base";
 
@@ -3029,6 +3189,26 @@ public static class Catalogo
 
 	/// <summary>`ayyform1drain` / `ayyform2drain` -- 1,0% e 1,5%. `Alien_Transformations.dm:7-8`.</summary>
 	public const double AlienDreno1 = 0.010, AlienDreno2 = 0.015;
+
+	// =====================================================================
+	// A SUPER PERFEITA -- `CellFormBuff.dm`
+	// =====================================================================
+	/// <summary>`cell4mult` -- 8x. `CellFormBuff.dm:56`.</summary>
+	public const double SuperPerfeitoMult = 8;
+
+	/// <summary>`cell4drain` -- 1,0% do Ki maximo por segundo. `CellFormBuff.dm:57`.</summary>
+	public const double SuperPerfeitoDreno = 0.010;
+
+	/// <summary>
+	/// A PORTA DA SUPER PERFEITA -- **750 milhoes**, e ela e uma CONTA como a da 2a forma Alien.
+	///
+	/// `Cell4()` cobra `BP >= cell4at / cell3mult` (`CellFormBuff.dm:74`): `cell4at` e 3 bilhoes e
+	/// `cell3mult` e 4 (o proprio multiplicador da forma perfeita). Escrever 750 milhoes direto
+	/// perderia a razao de ser do numero -- no original a porta anda junto se o degrau perfeito
+	/// mudar de peso, e e ESSE o desenho: a forma perfeita ja quadruplicou o BP base, entao cobrar o
+	/// `cell4at` cheio pediria o quadruplo de novo.
+	/// </summary>
+	public const double PortaSuperPerfeito = 3e9 / Races.BioAndroids.MultDoPerfeito;
 
 	/// <summary>
 	/// A CURVA DE MAESTRIA DO HERAN -- os fatores relativos de `heran_form_mult()`
@@ -3517,6 +3697,11 @@ public static class Catalogo
 				Nome = "Super Saiyajin 2", NumeroDm = 2, Intensidade = 2, Raios = 1,
 				Mult = [4, 6, 8, 10], Dreno = [0.045, 0.03, 0.015], PisoSobreAnterior = 2,
 				PortaBp = PortaSsj2, ChaveDoLimiar = "ssj2at",
+				// A UNICA ENTRADA DO CATALOGO COM ESTE CAMPO -- ver `FormaDef.NegadaAoBioDeLaboratorio`.
+				// O bio-androide de tanque tem `canSSJ`, e sem esta linha ele pegaria o SSJ2 pela
+				// RAIVA como qualquer Saiyajin -- pulando a forma perfeita, o SSJ1 dominado e a
+				// propria morte, que sao o preco inteiro da unica transformacao que e so dele.
+				NegadaAoBioDeLaboratorio = true,
 				Aura = "ffe36b", SufixoDoCabelo = "SSj2", Desc = "Faiscas percorrem a aura." },
 
 		// SSJ3 e multiplicador FIXO (`ssj3base = 16`): a maestria dele NAO sobe o poder, so alivia
@@ -4389,6 +4574,47 @@ public static class Catalogo
 				PedeFlag = new FlagDeSkill("hasayyform", 2),
 				Aura = "c8a0ff",
 				Desc = "4x. O segundo e ultimo degrau da especie -- dez milhoes de poder base." },
+
+		// ==================================================================================
+		// O BIO-ANDROIDE -- `CellFormBuff.dm`
+		// ==================================================================================
+		// UMA ENTRADA, E ELA E A LINHA INTEIRA -- ver o cabecalho de `LinhaDeForma.BioAndroide` pro
+		// porque de larva/imperfeito/semi/perfeito NAO estarem aqui (sao `bio_stage`, estado
+		// permanente que mexe no BP BASE, e nao buff).
+		//
+		// AS TRES PORTAS SAO AS TRES METADES DO `if` do DM, uma por campo:
+		//   `cell3 == 1 && form3cantrevert`  -> `PedeEstagioBio = Perfeito` (o degrau 4 ja e as duas)
+		//   `BP >= cell4at / cell3mult`      -> `PortaSuperPerfeito`
+		//   `!ssj`                           -> `ProibidoComFormaAtual`, a escada Saiyajin inteira
+		//
+		// A LISTA DE PROIBIDAS E ESCRITA E NAO DERIVADA DA LINHA, e vale saber por que: o `Avaliar`
+		// le este campo nos DOIS sentidos (ver o passo 4b), e derivar "toda a linha Saiyajin"
+		// incluiria a base -- ou seja, um bio na Super Perfeita nao poderia DESCER. A base tem saida
+		// propria e explicita no topo do `Avaliar` (`alvo == IdBase` sempre pode), mas contar com
+		// isso pra sempre seria contar com a ordem de duas guardas em arquivos diferentes.
+		//
+		// O DRENO E DE UM DEGRAU SO porque o bio nao tem maestria nesta forma: nada no original
+		// escreve maestria de `cell4`, entao nao ha o que aliviar -- ela custa 1% do Ki por segundo
+		// do primeiro ao ultimo dia. E o unico estado do bio que ACABA sozinho.
+		//
+		// A AURA E VERDE-BRANCA e ela e medida, nao escolhida: o buff nao troca folha de aura
+		// nenhuma; o que ele veste sao cabelo dourado e ELETRICIDADE (`CellFormBuff.dm:31-40`). O
+		// tom sai da carapaca do proprio corpo -- os quatro sprites do bio sao verdes --, e os raios
+		// caem no azul do `CorDosRaios` por nao serem de nenhuma linha nomeada la.
+		new() { Id = "super_perfect", IdRede = 850, Linha = LinhaDeForma.BioAndroide, Ordem = 10,
+				Nome = "Super Perfeito", NumeroDm = 1, Intensidade = 5, Raios = 2,
+				Mult = [SuperPerfeitoMult],
+				Dreno = [SuperPerfeitoDreno],
+				PortaBp = PortaSuperPerfeito,
+				PedeEstagioBio = Races.BioAndroids.Perfeito,
+				ProibidoComFormaAtual =
+					["ssj1", "grade2", "grade3", "ssj2", "ssj3", "ssj4",
+					 "ssj4_full_power", "ssj4_limit_breaker"],
+				Corpo = CorpoDeForma.BioSuperPerfeito,
+				Aura = "9fe8a8",
+				Desc = "8x, e o corpo se enche de eletricidade. Exige a FORMA PERFEITA e 750 milhoes "
+					 + "de poder base -- e nao entra por cima de nenhum Super Saiyajin. Drena 1% do "
+					 + "Ki por segundo e cai sozinha quando o folego acaba." },
 	];
 
 	// ==================================================================================
@@ -4720,6 +4946,16 @@ public static class Catalogo
 		else if (EhDaRaca(p.Raca, RacaHeran)) abertas.Add(LinhaDeForma.Heran);
 		else if (EhDaRaca(p.Raca, RacaAlien)) abertas.Add(LinhaDeForma.Alien);
 
+		// O BIO-ANDROIDE entra na MESMA cascata, e nao por simetria: a Super Perfeita e a escada
+		// Saiyajin brigam pela mesma vaga no original (as duas escrevem `mob/var/ssj`). Aqui elas
+		// nao brigam -- quem tem DNA Saiyajin ganha a Saiyajin ABAIXO, por `CanSsj`, e o bloqueio
+		// mutuo entre as duas formas e dito por dado (`ProibidoComFormaAtual`).
+		//
+		// `Races.BioAndroids.EhBio` E NAO `EhDaRaca` com um literal: a raca tem duas grafias vivas no
+		// projeto (`"BioAndroid"` no `races.json`, `"Bio-Android"` nos dados extraidos do DM), e foi
+		// exatamente essa dobra que deixou o ramo do Zenkai escrito e inalcancavel por meses.
+		else if (Races.BioAndroids.EhBio(p.Raca)) abertas.Add(LinhaDeForma.BioAndroide);
+
 		// ============================ O `else` DEIXOU DE ENTREGAR A ESCADA SAIYAJIN A QUALQUER UM ============================
 		// Ele era `else abertas.Add(Saiyajin)` -- sem olhar raca nenhuma. Quem nao fosse Primal,
 		// Legendary, Futuro nem Frost Demon recebia a escada inteira do Super Saiyajin: o Namekuseijin,
@@ -4747,6 +4983,18 @@ public static class Catalogo
 		// sangue Saiyajin?" e o jeito de um Saiyajin ganhar o macaco e perder o SSJ, ou o contrario.
 		// ============================================================================================================
 		else if (EhSaiyajin(p.Raca)) abertas.Add(LinhaDeForma.Saiyajin);
+
+		// ============================ O `canSSJ` E O BYPASS, E ELE E LITERAL DO DM ============================
+		// `Transformation Controls.dm:2` -- `if(usr.canSSJ)` roda a escada Super Saiyajin inteira pra
+		// quem quer que tenha a var ligada, sem olhar raca. Hoje quem a recebe e o bio-androide de
+		// laboratorio nascido com DNA Saiyajin (`DNALabs.dm:478`), e e por isso que ele SOMA a linha
+		// Saiyajin em vez de troca-la: ele tem a Super Perfeita (do corpo dele) **e** o Super
+		// Saiyajin (do DNA que o gerou), e as duas ao mesmo tempo e o desenho da criatura.
+		//
+		// FORA DA CASCATA, e nao dentro: um `else if` aqui apagaria a linha do proprio bio, que e
+		// justamente o que ele tem de seu. O Oozaru logo abaixo ja e paralelo pelo mesmo argumento.
+		// ====================================================================================================
+		if (p.CanSsj) abertas.Add(LinhaDeForma.Saiyajin);
 
 		// O OOZARU e paralelo: quem tem sangue Saiyajin o tem, independente da escada escolhida.
 		if (EhSaiyajin(p.Raca)) abertas.Add(LinhaDeForma.Oozaru);

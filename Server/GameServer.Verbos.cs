@@ -126,6 +126,13 @@ public sealed partial class GameServer
 			// ranks so era alcancavel por quem soubesse que existia.
 			case "cargos": MandarCargos(pl); break;
 
+			// A FICHA MORAL. Ela nasce junto com o karma ter finalmente PRODUTORES (ver
+			// `GameServer.Karma.cs`): um eixo que decide nove cargos, que nao aparece em barra
+			// nenhuma e que so se mexe em combate precisa de um lugar onde a pessoa possa olha-lo.
+			// No original nao ha este verb -- o numero so aparece nas falas do Enma e do Sr. Kaioh,
+			// e quem nunca morreu joga o jogo inteiro sem saber que o eixo existe.
+			case "karma": VerboVerKarma(pl); break;
+
 			// A ESCOLHA UNICA DE UMA SKILL -- `skill_escolha <typepath> <casa>`.
 			//
 			// ============================ POR QUE ISTO E UM VERBO E NAO UM OPCODE ============================

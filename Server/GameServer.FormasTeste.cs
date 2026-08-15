@@ -382,6 +382,18 @@ public partial class GameServer
 		// longe demais pra ver. Ver `GameServer.ConvivioTeste.cs`.
 		OConvivioAoVivo(Checa);
 
+		// E O KARMA, pela mesma porta e pelo mesmo motivo: ele so acontece pra quem `EhJogador` diz
+		// que e jogador, e esse predicado pede `Peer != null` -- ou seja, uma bancada de BOOT (sem
+		// cliente) mediria corpos que o jogo nao considera gente e passaria por ausencia. Aqui os
+		// corpos forjados emprestam o `Peer` do host. Ver `GameServer.KarmaTeste.cs`.
+		OKarmaAoVivo(pl, Checa);
+
+		// E AS SKILLS QUE OS CARGOS ENTREGAM, pela mesma porta e pelo mesmo motivo -- e por um terceiro
+		// que so daqui se ve: quem entrega o kit e o `TickDosCargos`, que so olha pra quem `EhJogador`
+		// aprova. A `--cargoportas` chama o `ReconciliarDadiva` a mao sobre corpos sem `Peer`; aqui o
+		// trono se ocupa e o TIQUE DE PRODUCAO tem que entregar sozinho. Ver `GameServer.CargoVivoTeste.cs`.
+		OsCargosAoVivo(pl, Checa);
+
 		// ============================ A ESCADA AGORA PEDE O SSJ2 DOMINADO PELA METADE ============================
 		// O SSJ3 deixou de ser um degrau que a raiva abre e passou a cobrar 50% de maestria no SSJ2
 		// (`Transformation Controls.dm:46`, regra confirmada pelo dono -- ver a entrada `ssj3` no
@@ -802,6 +814,26 @@ public partial class GameServer
 			pl.OozaruAte -= (long)(Oozaru.SegundosDeGraca * 1000) + 500;
 			TickDoOozaru(pl, 0.1);
 			Checa("(recomeco) o servidor volta a assumir o corpo", SemAsRedeas(pl));
+
+			// ============================ E O RELOGIO DA CENA TEM QUE ESCORRER JUNTO ============================
+			// Desde que a CINEMATICA entrou no `PodeMexerOCorpo` (o pedido do dono: *"npcs estao
+			// conseguindo SE MOVER ENQUANTO TRANSFORMAM"*), quem esta preso numa cena nao anda -- e o
+			// `Apeshit` acima marca os 4,0 s da cena do macaco (`Cinematicas.Oozaru`).
+			//
+			// **A BANCADA PULA O TEMPO PELO PRAZO, E NAO PELO RELOGIO.** Ela empurra o `OozaruAte` pra
+			// tras pra dizer "os seis segundos de graca passaram", mas nada aqui roda o `TickDaForma`,
+			// que e o UNICO lugar que abate `CenaSegundos`. Resultado: um macaco que, so pra esta
+			// bancada, ficava possuido E em cinematica ao mesmo tempo -- e travava.
+			//
+			// **EM JOGO ISSO NAO ACONTECE**, e por construcao: `Oozaru.SegundosDeControle` tem piso
+			// `SegundosDeGraca = 6` e a cena prende 4,0 s. Quando a fera assume o corpo, a cena dela ja
+			// acabou ha dois segundos. Entao esta linha nao afrouxa regra nenhuma: ela faz o tempo
+			// passar aqui do mesmo jeito que passa no mundo, onde os dez relogios do corpo correm
+			// juntos (ver `TickDosRelogiosDoCorpo`).
+			// ================================================================================================
+			for (int t = 0; t < 200 && pl.CenaSegundos > 0; t++) TickDaForma(pl, 0.1);
+			Checa("...e a cena da fera escorreu (o mundo anda os dez relogios juntos)",
+				  pl.CenaSegundos <= 0, $"{pl.CenaSegundos:0.#}s");
 
 			// ============================ O QUE MAIS E RECUSADO, ALEM DE ANDAR ============================
 			// A recusa vivia num lugar so -- o portao de MOVIMENTO -- e soco, guarda, carga de Ki,

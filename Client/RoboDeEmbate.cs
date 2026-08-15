@@ -287,10 +287,22 @@ public partial class RoboDeEmbate : Node
 		Conferir(_acertos < _letras && _acertos >= _letras - 2,
 			$"a letra ERRADA custou a vez: {_letras} pedidas, {_acertos} pontuadas");
 
-		// A CADENCIA. Com janela fixa o placar tem TETO -- e o teto e o que impede um cliente
-		// automatico de ganhar por velocidade de digitacao. Uma letra por 900 ms, com folga.
-		Conferir(_letras <= _duracaoMs / 900.0 + 2,
-			$"o quick time event tem CADENCIA: {_letras} letra(s) em {_duracaoMs} ms (uma por 900 ms)");
+		// ============================ A CADENCIA TEM PISO, E ELE E O TETO DA VAZAO ============================
+		// O acerto ADIANTA a proxima letra (pedido do dono: *"quanto mais rapido vc for melhor vai
+		// ser"*), e quem impede que isso vire concurso de digitacao e o piso de 300 ms entre duas
+		// letras -- o `MsMinimoEntreLetras` do servidor, que e o `BCL_PRESS_TICK_CAP` do `BeamClash.dm`
+		// na forma de tempo. Este robo responde em 80 ms, ou seja, ele bate no piso toda vez: e
+		// exatamente o "cliente automatico" contra o qual o piso existe.
+		//
+		// SAO DUAS AFIRMACOES E NAO UMA, porque sao dois defeitos opostos. O TETO pega o adiantamento
+		// sem piso (a versao que mediu 55 letras em 5,4 s). O PISO DE BAIXO pega o contrario: se
+		// alguem devolver o metronomo, o robo -- que responde 11 vezes mais rapido que a janela --
+		// receberia as mesmas 4 a 8 letras de antes, e o pedido do dono teria sido desfeito calado.
+		// ====================================================================================================
+		Conferir(_letras <= _duracaoMs / 300.0 + 2,
+			$"a cadencia tem TETO: {_letras} letra(s) em {_duracaoMs} ms (piso de 300 ms entre letras)");
+		Conferir(_letras > _duracaoMs / 900.0 + 2,
+			$"...e o acerto ADIANTOU a proxima: {_letras} letras, contra as {_duracaoMs / 900.0:0.#} do metronomo antigo");
 	}
 
 	// =====================================================================

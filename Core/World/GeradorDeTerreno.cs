@@ -252,7 +252,20 @@ public sealed class TerrenoGerado
 			grupo[i] = (byte)(Chao[i] + 1);
 		}
 
-		return ZoneCollision.Montar(Largura, Altura, bits, grupo);
+		ZoneCollision vista = ZoneCollision.Montar(Largura, Altura, bits, grupo);
+
+		// ============================ O QUE ESCONDE HERDA A BEIRADA (OU A FALTA DELA) ============================
+		// Fora do bitset, `BlockedCell` devolve `!SemBorda` -- e num mundo sem beirada (a dimensao
+		// mental) esquecer esta linha nao daria erro nenhum: daria **escuridao**. O olho e a voz usam
+		// este mapa pelo DDA, e todo raio que saisse da chapa bateria na "borda do mundo" na primeira
+		// celula de fora. O jogador andaria dez tiles pro norte e a tela fecharia, com o chao branco
+		// desenhado normalmente por baixo -- o defeito mais dificil de ler que este par produz.
+		//
+		// A `Colisao` e o `QueEsconde` sao dois mapas do MESMO mundo. Bloquear e cegar sao perguntas
+		// diferentes (e por isso sao dois objetos), mas "onde este mundo acaba" e a mesma resposta.
+		// ====================================================================================================
+		vista.SemBorda = Colisao.SemBorda;
+		return vista;
 	}
 
 	public required int SpawnCelX { get; init; }

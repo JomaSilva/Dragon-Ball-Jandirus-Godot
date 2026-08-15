@@ -97,6 +97,24 @@ public static class Temperamento
 			Agressividade = Fracao(molde.Agressividade),
 		};
 
+		// ============================ A LINGUA SE LIGA AQUI, E SO AQUI ============================
+		// O `Falatorio` nasce MUDO de proposito (ver o campo `Ligado`), e este e o unico lugar do
+		// projeto que o acende. A regra que isso torna mecanica: **fala quem saiu de um molde do
+		// `npcs.json`** -- cidadao, chefe de saga, defensor de invasao, chefe convocado pela mente.
+		//
+		// Os tres cerebros montados a mao (a fera do Oozaru, a furia lendaria, o reflexo da mente)
+		// nao passam por aqui e continuam calados sem uma linha de excecao escrita pra eles. Nao e
+		// economia: os dois primeiros dirigem o corpo de um JOGADOR, e uma frase saindo dali
+		// apareceria no chat com o nome dele dizendo o que ele nao digitou.
+		//
+		// O CHEFE FALA MAIS, e e o `isBoss` do original nos dois lugares em que ele aparece na fala:
+		// a pausa cai de 5,0 s pra 3,0 s (`NPCAI.dm:229`) e quatro das oito ocasioes tem chance maior
+		// (`:415, :418, :548, :793`). Mesma disciplina do `NPC_AI_INT_BOSS`: o chefe nao ganha uma
+		// regra nova, ele ganha outro numero na mesma regra.
+		// ======================================================================================
+		c.Boca.Ligado = true;
+		c.Boca.Chefe = molde.EhChefe;
+
 		c.DesfasarCapacidades(faseDasCapacidades);
 		return c;
 	}

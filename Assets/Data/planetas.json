@@ -6,7 +6,7 @@
   { "nome": "Earth", "gravidade": 1, "tipo": "Jardim", "rotacao": 1440, "dia": true, "noite": true, "lua": true, "temclima": true, "climas": ["Rain", "Snow", "Fog", "Storm", "Blizzard"] },
   { "nome": "Heaven", "gravidade": 1, "tipo": "Jardim", "rotacao": 1440, "dia": true, "noite": false, "lua": false, "temclima": false, "climas": ["Rain", "Snow", "Fog"] },
   { "nome": "Inbetween Realm", "gravidade": 1, "tipo": "Rochoso", "rotacao": 1440, "dia": true, "noite": false, "lua": false, "temclima": false, "climas": ["Rain", "Snow", "Fog"] },
-  { "nome": "Interdimension", "gravidade": 1, "tipo": "Rochoso", "rotacao": 1440, "dia": true, "noite": false, "lua": false, "temclima": true, "climas": ["Rain", "Snow", "Fog"] },
+  { "nome": "Interdimension", "gravidade": 1, "tipo": "Rochoso", "rotacao": 1440, "dia": true, "noite": false, "lua": false, "temclima": false, "climas": [] },
   { "nome": "Kanzabar", "gravidade": 1, "tipo": "Rochoso", "rotacao": 1620, "dia": true, "noite": true, "lua": true, "temclima": true, "climas": ["Rain", "Snow", "Fog", "Storm", "Blizzard"] },
   { "nome": "Large Space Station", "gravidade": 1, "tipo": "Rochoso", "rotacao": 1440, "dia": true, "noite": false, "lua": false, "temclima": false, "climas": ["Rain", "Snow", "Fog"] },
   { "nome": "Makyo Star", "gravidade": 1, "tipo": "Morto", "rotacao": 2880, "dia": true, "noite": false, "lua": false, "temclima": false, "climas": ["Rain", "Snow", "Fog"] },

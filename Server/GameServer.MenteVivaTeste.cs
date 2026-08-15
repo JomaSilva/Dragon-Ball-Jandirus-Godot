@@ -133,6 +133,30 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// A PORTA DA MENTE, PELO CAMINHO DE PRODUCAO INTEIRO -- o `case "mente"` do canal de habilidade
+	/// (o mesmo que a telinha do meditar dispara) **mais** a fila da onda que ele agora enfileira.
+	///
+	/// ============================ ERAM DEZESSETE `UsarHabilidade(x, "mente")` SOLTOS ============================
+	/// Todos seguidos de "e agora ele esta na mente". Quando a porta passou a ondular a tela por 1,8 s
+	/// antes de viajar (o pedido da GOTA), os dezessete passaram a olhar pra um jogador ainda em pe no
+	/// planeta. Um `sleep` na bancada seria mentira (ela nao tem relogio de parede) e uma segunda porta
+	/// "sem onda" seria a copia do caminho que este port recusa.
+	///
+	/// A resposta e esta linha: a bancada ATRAVESSA a fila -- `ComecarOMergulho` enfileira, a fila
+	/// revalida, `EntrarNaMente` viaja --, ela so nao espera o relogio. Cobertura MAIOR que a de antes,
+	/// nao menor: antes ela nao passava pela fila porque a fila nao existia.
+	///
+	/// A ONDA EM SI tem bancada propria e de outro tipo, porque e outra pergunta: `--diaggota`
+	/// fotografa a tela e mede a placa. Numero nao prova pixel.
+	/// ========================================================================================================
+	/// </summary>
+	private void PortaDaMenteNaBancada(ServerPlayer pl)
+	{
+		UsarHabilidade(pl, "mente");
+		AdiantarAOndaDaMenteNoTeste();
+	}
+
+	/// <summary>
 	/// O GANCHO, no fim do <see cref="Entrar"/>. Espera o SEGUNDO corpo com `Peer` -- e diz em voz
 	/// alta que esta esperando, porque uma bancada que nao roda tem que ser distinguivel de uma
 	/// bancada que passou.
@@ -299,7 +323,7 @@ public partial class GameServer
 		// botao do menu P dispara. Meditar primeiro, porque a porta exige (e porque e o `med` que vai
 		// desenhar o corpo que fica).
 		a.Ficha.med = true;
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 
 		AfirmarMvv("a porta levou A pra DENTRO da propria mente", NaMente(a), a.Zone.ToString());
 		AfirmarMvv("...e a mente e a DELE (o dono sai da chave da zona)",
@@ -349,7 +373,7 @@ public partial class GameServer
 
 		// E A PORTA RECUSA QUEM JA ESTA FORA DO CORPO: um segundo pedido nao ergue um segundo boneco.
 		int quantosAntes = ZoneList(fora.Hash).Count(p => p.DonoDoCorpoLargado == a.Id);
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		AfirmarMvv("pedir de novo nao ergue um segundo corpo",
 				   ZoneList(fora.Hash).Count(p => p.DonoDoCorpoLargado == a.Id) == quantosAntes,
 				   $"{quantosAntes}");
@@ -480,7 +504,7 @@ public partial class GameServer
 		GD.Print("[menteviva] -- 2c) golpe ERRADO e golpe ESQUIVADO tambem acordam");
 
 		a.Ficha.med = true;
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		if (a.BonecoLargado is not { } boneco) { AfirmarMvv("A largou o corpo pra a familia 2c", false); return; }
 
 		b.Pos = boneco.Pos + new Vec2(24, 0);
@@ -639,7 +663,7 @@ public partial class GameServer
 		// DENTRO, PELA PORTA DE PRODUCAO -- e o `AplicarGravidade` da troca de zona quem escreve o
 		// 0,25, e nao a bancada.
 		a.Ficha.med = true;
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		if (!NaMente(a)) { AfirmarMvv("A entrou na mente pra esta familia", false); return; }
 
 		AfirmarMvv("dentro da mente o funil de troca de zona escreveu o 0,25 sozinho",
@@ -723,7 +747,7 @@ public partial class GameServer
 		a.Combate.Letal = false;   // dentro da mente nao se decepa nem se mata: e treino
 		a.AlvoId = 0;
 
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		if (!NaMente(a) || !_players.TryGetValue(a.CloneId, out ServerPlayer? reflexo))
 		{ AfirmarMvv("A entrou na propria mente com o reflexo de pe", false, $"{a.Zone} / {a.CloneId}"); return; }
 		if (a.BonecoLargado is not { } corpoDeA)
@@ -905,7 +929,7 @@ public partial class GameServer
 		int semDonoAntes = _players.Values.Count(p => p.Peer == null);
 		double mediaAntes = MediaDoServidor();
 
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		if (a.BonecoLargado is not { } boneco) { AfirmarMvv("A largou o corpo pra a familia 11", false); return; }
 
 		// ============================ A CONTA DE CORPOS SEM DONO ============================
@@ -1031,7 +1055,7 @@ public partial class GameServer
 		Encostar(a, b, 32);
 
 		// A ENTRA NA PROPRIA MENTE; B FICA AO LADO DO CORPO DELE.
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		ServerPlayer? corpoDeA = a.BonecoLargado;
 		if (corpoDeA == null) { AfirmarMvv("o corpo de A ficou no chao pro visitante achar", false); return; }
 
@@ -1045,7 +1069,7 @@ public partial class GameServer
 		b.Pos = corpoDeA.Pos + new Vec2(32, 0);
 
 		int reflexoDeA = a.CloneId;
-		UsarHabilidade(b, "mente");
+		PortaDaMenteNaBancada(b);
 
 		AfirmarMvv("B entrou na MENTE DE A (e nao num bolso vazio proprio)",
 				   NaMente(b) && b.Zone.Hash == a.Zone.Hash, $"{b.Zone} vs {a.Zone}");
@@ -1086,7 +1110,7 @@ public partial class GameServer
 			AfirmarMvv("...e o corpo do VISITANTE tambem e uma porta (ele esta numa mente, e isso basta)",
 					   MenteAoLado(a) == b, MenteAoLado(a)?.Name ?? "ninguem");
 
-			UsarHabilidade(a, "mente");
+			PortaDaMenteNaBancada(a);
 			AfirmarMvv("voltando pela porta do visitante, o anfitriao cai ONDE ELE ESTA",
 					   NaMente(a) && a.Zone.Hash == b.Zone.Hash, $"{a.Zone} vs {b.Zone}");
 			AfirmarMvv("...e o bolso continua sendo o DELE, e nao o do visitante (que estaria vazio)",
@@ -1382,7 +1406,7 @@ public partial class GameServer
 
 		// --- a) O CORPO CAI (nocaute) ---------------------------------------------------
 		a.Ficha.med = true;
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		if (!NaMente(a)) { AfirmarMvv("A entrou na mente pra a familia das bordas", false); return; }
 
 		_acordar.Clear();
@@ -1404,7 +1428,7 @@ public partial class GameServer
 
 		// --- b) O CORPO MORRE -----------------------------------------------------------
 		a.Ficha.med = true;
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		_acordar.Clear();
 		a.Ficha.dead = true;
 		BordasDeQuemEstaFora(a);
@@ -1420,7 +1444,7 @@ public partial class GameServer
 		// A zona foi descarregada, a nave explodiu com ele dentro, um admin o apagou. Nao ha pra onde
 		// voltar -- e a resposta certa e o destino de emergencia, nunca "fica preso".
 		a.Ficha.med = true;
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		ServerPlayer? sumido = a.BonecoLargado;
 		if (sumido != null)
 		{
@@ -1490,7 +1514,7 @@ public partial class GameServer
 		if (SemAsRedeas(a))
 		{
 			a.Ficha.med = true;
-			UsarHabilidade(a, "mente");
+			PortaDaMenteNaBancada(a);
 			AfirmarMvv("POSSUIDO nao entra na mente (nem pelo canal de habilidade, nem pelo `LargarOCorpo`)",
 					   !NaMente(a) && a.BonecoLargado == null, a.Zone.ToString());
 			AfirmarMvv("...e o bit `SemRedeas` do corpo possuido esta LIGADO (o contraexemplo)",
@@ -1506,7 +1530,7 @@ public partial class GameServer
 
 		AfirmarMvv("devolvidas as redeas, o corpo volta a ser do dono", !SemAsRedeas(a));
 		a.Ficha.med = true;
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		AfirmarMvv("...e a porta da mente volta a abrir", NaMente(a) && a.BonecoLargado != null);
 
 		// O BONECO NAO E UM CORPO POSSUIDO, e as duas metades desta afirmacao sao o coracao da
@@ -1581,7 +1605,7 @@ public partial class GameServer
 			if (SemAsRedeas(a))
 			{
 				a.Ficha.med = true;
-				UsarHabilidade(a, "mente");
+				PortaDaMenteNaBancada(a);
 				AfirmarMvv("POSSUIDO PELA FURIA tambem nao larga o corpo -- a recusa e a MESMA linha",
 						   !NaMente(a) && a.BonecoLargado == null, a.Zone.ToString());
 				AfirmarMvv("...e o bit `SemRedeas` esta ligado nele (o olho que o corpo largado nunca acende)",
@@ -1600,7 +1624,7 @@ public partial class GameServer
 
 		AfirmarMvv("devolvidas as redeas, a porta da mente reabre pro mesmo corpo", !SemAsRedeas(a));
 		a.Ficha.med = true;
-		UsarHabilidade(a, "mente");
+		PortaDaMenteNaBancada(a);
 		AfirmarMvv("...e o corpo volta a ficar pra tras, como em qualquer meditacao",
 				   NaMente(a) && a.BonecoLargado != null, a.Zone.ToString());
 		UsarHabilidade(a, "sairdamente");
@@ -1632,7 +1656,7 @@ public partial class GameServer
 		{ AfirmarMvv("B tem peer e ha `AccountStore` pra ler o save", false); return; }
 
 		b.Ficha.med = true;
-		UsarHabilidade(b, "mente");
+		PortaDaMenteNaBancada(b);
 		if (!NaMente(b)) { AfirmarMvv("B entrou na mente pra o teste de logout", false); return; }
 
 		ZoneKey bolso = b.Zone;

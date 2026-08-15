@@ -21,6 +21,16 @@ namespace Jandirus.Server;
 public partial class GameServer
 {
 	/// <summary>
+	/// DE QUANTO EM QUANTO TEMPO VOAR PAGA BP -- 0,2 s, que e o `sleep_tiem = 2` do `mob/proc/Stats()`
+	/// (`Stats.dm:125`), o laco de onde o `Flight_Gain()` e chamado (`Stats.dm:414`).
+	///
+	/// E o MESMO 0,2 s do <c>TicksPorFicha</c> (6 tiques de 30 Hz). Nao virou uma referencia aquele
+	/// campo porque o voo mede tempo DECORRIDO (`dt`) e nao tiques contados: se um quadro vier longo,
+	/// o acumulador paga o que se passou, e o contador de tiques nao pagaria.
+	/// </summary>
+	private const float SegundosPorGanhoDeVoo = 0.2f;
+
+	/// <summary>
 	/// UM DECALQUE PRA ZONA INTEIRA -- o unico caminho de servidor pro <c>Client/Decalques.cs</c>.
 	///
 	/// Vai pra todo mundo da zona, e nao so pro dono: uma marca no chao e cenario, e cenario que so
@@ -40,13 +50,6 @@ public partial class GameServer
 	private void MandarDecalque(ZoneKey zona, Protocol.Decal tipo, Vec2 onde, Facing dir,
 								PecaDeCorpo peca = PecaDeCorpo.Nenhuma)
 	{
-		// A BANCADA ESCUTA AQUI, pela mesma razao das escutas de `GameServer.FormasTeste.cs`: um
-		// decalque termina num `Peer.Send` e pacote que saiu no fio nao volta. A pergunta que so
-		// daqui se responde e a do vacuo -- "o arremesso no espaco carimbou cratera no nada?" --, e
-		// ela e sobre um pacote que NAO devia sair. Ausencia nao deixa rastro em lugar nenhum.
-		// Nula em jogo: uma comparacao contra null por decalque.
-		EscutaDeDecalques?.Add((zona.Hash, tipo));
-
 		var w = Protocol.Begin(Protocol.S2C.Decalque);
 		w.Put((byte)tipo);
 		w.PutVec(onde);
@@ -54,6 +57,17 @@ public partial class GameServer
 		// O BYTE CONDICIONAL. Ver o parametro `peca`: o leitor do cliente le pela MESMA condicao
 		// (`GameClient`), entao as duas pontas concordam sem precisar de tamanho no pacote.
 		if (tipo == Protocol.Decal.Membro) w.Put((byte)peca);
+
+		// A BANCADA ESCUTA AQUI, pela mesma razao das escutas de `GameServer.FormasTeste.cs`: um
+		// decalque termina num `Peer.Send` e pacote que saiu no fio nao volta. A pergunta que so
+		// daqui se responde e a do vacuo -- "o arremesso no espaco carimbou cratera no nada?" --, e
+		// ela e sobre um pacote que NAO devia sair. Ausencia nao deixa rastro em lugar nenhum.
+		//
+		// DEPOIS DO PACOTE PRONTO E COM OS BYTES: e o fio que a bancada da peca le, e nao os
+		// argumentos -- ver `EscutaDeDecalques`. `CopyData` porque o writer e reusado no envio.
+		// Nula em jogo: uma comparacao contra null por decalque.
+		EscutaDeDecalques?.Add((zona.Hash, tipo, w.CopyData()));
+
 		foreach (ServerPlayer o in ZoneList(zona.Hash))
 			o.Peer?.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
 	}
@@ -238,6 +252,23 @@ public partial class GameServer
 	/// </summary>
 	private void TickDoVoo(ServerPlayer pl, float dt)
 	{
+		// ============================ QUEM ESTA NO COLO NAO TEM VOO PROPRIO ============================
+		// *"se vc apertar o botao de grab 2 vezes e VOAR, a pessoa agarrada vai ser considerada como
+		// VOANDO tb NA MESMA ALTITUDE q vc"* -- e a altura dela e escrita pelo `LevarNoColo`
+		// (`GameServer.Agarrao.cs`), copiada de quem carrega, trinta vezes por segundo.
+		//
+		// SEM ESTA LINHA OS DOIS BRIGAM PELO MESMO CAMPO. O carregado tem `Altitude > 0` e `Voando`
+		// FALSO (ele nao paga Ki de voo -- quem paga e quem carrega), e essa combinacao e exatamente
+		// a de quem PERDEU o voo no ar: o ramo de queda logo abaixo o puxaria pro chao a 16 tiles por
+		// segundo enquanto o agarrao o traz de volta pra cima, no mesmo tique. O corpo nao cairia (o
+		// agarrao escreve depois), mas a altura ficaria serrilhada e o Ki de ninguem explicaria por que.
+		//
+		// A ALTURA CONTINUA CUIDADA por quem a escreve, e ela volta a ser deste tique no instante em
+		// que o agarrao solta -- ai `Voando` falso com altura vira queda de novo, que e o certo: quem
+		// e largado a vinte tiles CAI.
+		// ==========================================================================================
+		if (SendoCarregado(pl)) return;
+
 		// QUEM CAIU, CAI. Nocaute e morte tiram o voo na hora (`KO.dm:71` faz `isflying=0`), mas a
 		// altura sobra -- e o corpo desce sozinho pelo trecho de queda logo abaixo.
 		//
@@ -280,6 +311,31 @@ public partial class GameServer
 			{
 				if (pl.Ficha.Ki > Voo.KiQueDerruba)
 				{
+					// ============================ VOAR TREINA O CORPO ============================
+					// `Stats.dm:414`: o `Flight_Gain()` e chamado AQUI DENTRO -- depois do `if(!freeflight)`
+					// (que e o `PagaPeloVoo`), depois do `if(Ki>5)` (que e o `KiQueDerruba`) e ANTES do
+					// desconto de Ki logo abaixo. As tres condicoes sao as de la, nesta ordem: admin com
+					// voo de graca nao treina, e quem esta prestes a cair tambem nao.
+					//
+					// A CADENCIA E O UNICO AJUSTE. Ver `ServerPlayer.SegundosDeVooSemGanho`: o tique daqui
+					// e 30 Hz e o do `Stats()` e 5 Hz, entao pagar direto renderia 6x o original.
+					//
+					// ============ O `lastloc` DO ORIGINAL E UM DEFEITO, E ELE FOI PORTADO ============
+					// `Movement.dm:6-11` declara `var/lastloc` LOCAL ao proc. Local nasce nulo em toda
+					// chamada, entao `lastloc != loc` e SEMPRE verdadeiro e a guarda "so quando sai do
+					// lugar" nunca funcionou no BYOND: la o voo paga todo tique do `Stats()`, parado ou
+					// nao. Portamos o COMPORTAMENTO observado (paga sempre) e nao a intencao do nome,
+					// porque a regra deste projeto e formula 1:1 com o que o original de fato faz.
+					// O irmao `Swim_Gain()` NAO tem esse defeito: o `lastdir` dele e var de mob
+					// (`Movement.dm:1-4`), e por isso o nado de verdade so paga na troca de direcao.
+					// =================================================================================
+					pl.SegundosDeVooSemGanho += dt;
+					if (pl.SegundosDeVooSemGanho >= SegundosPorGanhoDeVoo)
+					{
+						pl.SegundosDeVooSemGanho -= SegundosPorGanhoDeVoo;
+						pl.Ficha.FlightGain();
+					}
+
 					pl.Ficha.Ki -= Voo.CustoPorSegundo(HabilidadeDeVoo(pl), pl.VooRapido) * dt;
 				}
 				else
@@ -368,10 +424,13 @@ public partial class GameServer
 			w.Put(pl.SeqInput);
 			w.PutVec(pl.Pos);
 			pl.Peer?.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
-			// A MENSAGEM DEIXOU DE CITAR ROCHA porque o desvio deixou de ser so por rocha: agua
-			// tambem nao serve de chao (`ClasseDeAgua.ServeDeChao`), e o `MoveRules.Occupied` aqui
-			// pergunta A PE -- entao pousar em cima do lago cai neste mesmo desvio, de graca. Dizer
-			// "rocha" pra quem pousou num rio seria a tela contando outra historia.
+			// A MENSAGEM DEIXOU DE CITAR ROCHA porque o desvio deixou de ser so por rocha: quem
+			// larga o voo **a pe** em cima do lago cai neste mesmo desvio, porque o modo dele e
+			// `APe` e agua nao serve de chao (`ClasseDeAgua.ServeDeChao`). Dizer "rocha" pra quem
+			// pousou num rio seria a tela contando outra historia.
+			//
+			// (Quem esta NADANDO nao passa por aqui: o modo lido logo acima e `Nadando`, a agua nao
+			// o bloqueia e o pouso segue reto -- que e exatamente o ponto daquele bloco.)
 			Avisar(pl, "nao dava pra pousar ai -- voce desce ao lado.");
 		}
 

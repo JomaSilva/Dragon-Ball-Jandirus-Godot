@@ -349,6 +349,11 @@ public sealed partial class GameServer
 		for (int i = 0; i < 3; i++) pl.Ficha.BlastGain(_rng);
 		pl.Ficha.blastskill += 0.05;
 		pl.Ficha.chargedskill += 0.05;
+		// `usr.blastcounter += 5` (`blasts.dm:100`) -- CINCO, e nao um: o tiro carregado conta por
+		// cinco no contador de exp, ainda que a pericia daqui suba os mesmos 0,05 do tiro simples.
+		// O `chargedcounter += 5` da linha seguinte do DM NAO entra: nenhuma das 30 pericias observa
+		// `chargedcounter` (ele so alimenta o somatorio do `Ki_Effusion`, que nao e uma delas).
+		CreditarContador(pl, "blastcounter", 5);
 
 		Disparar(pl, new ReceitaDeProjetil
 		{
@@ -359,7 +364,7 @@ public sealed partial class GameServer
 			AlcanceTiles = AlcanceDeBolaG5,
 			MultDeOnda = 1.2,        // `passbp = expressedBP*1.2`
 			Nome = "Tiro Carregado",
-		});
+		}, verbo: "Charged_Shot");
 	}
 
 	/// <summary>
@@ -396,7 +401,7 @@ public sealed partial class GameServer
 			Deflectivel = false,     // `A.deflectable = 0`
 			Paralisia = true,        // `A.paralysis = 1`
 			Nome = "Kill Driver",
-		});
+		}, verbo: "KillDriver");
 		Falar(pl, Protocol.Fala.Diz, "Kill Driver!");
 	}
 
@@ -436,7 +441,7 @@ public sealed partial class GameServer
 				Velocidade = 2,
 				AlcanceTiles = AlcanceDeBolaG5,
 				Nome = "Buster Shell",
-			}, rumoDado: frente, deOnde: pl.Pos + lado * d);
+			}, rumoDado: frente, deOnde: pl.Pos + lado * d, verbo: "BusterShell");
 
 		Falar(pl, Protocol.Fala.Diz, "Buster Shell!");
 	}
@@ -491,6 +496,22 @@ public sealed partial class GameServer
 		pl.Ficha.blastskill += 0.05 * quantas;
 		pl.Ficha.volleyskill += 0.05 * quantas;
 
+		// ============ OS DOIS VERBS DO DM QUE ESTE METODO JUNTOU ============
+		// O `disperso` escolhe entre `Scattershot` (`blasts.dm:137`, QUATRO `Blast_Gain()`) e a
+		// barragem reta (`blasts.dm:~200`, TRES) -- e o numero de `Blast_Gain()` do laco acima e o
+		// que identifica cada um. Os contadores diferem entre eles:
+		//
+		//   Scattershot   `blastcounter+=amount; homingcounter+=amount; volleycounter+=amount` (:154-156)
+		//   barragem reta `blastcounter+=amount; volleycounter+=amount`                        (:218-219)
+		//
+		// O `homingcounter` SO EXISTE NO GALHO DISPERSO, e ele importa: era tido como um contador
+		// sem fonte nenhuma neste port -- as tres Homing Mastery ficariam no nivel 0 pra sempre.
+		// Esta linha e a unica fonte dele no jogo (a outra do DM, `Effusion.dm:444`, e o effector de
+		// uma skill e nao um golpe).
+		CreditarContador(pl, "blastcounter", quantas);
+		CreditarContador(pl, "volleycounter", quantas);
+		if (disperso) CreditarContador(pl, "homingcounter", quantas);
+
 		Vec2 frente = MeleeArea.Frente(pl.Facing);
 		var receita = new ReceitaDeProjetil
 		{
@@ -513,7 +534,8 @@ public sealed partial class GameServer
 				Vec2 desvio = DirecaoSorteadaG5();
 				berco += desvio * (3 * ZoneCollision.TileSize);
 			}
-			Disparar(pl, receita, rumoDado: frente, deOnde: berco);
+			Disparar(pl, receita, rumoDado: frente, deOnde: berco,
+					 verbo: disperso ? "Scattershot" : "Energy_Barrage");
 		}
 
 		Avisar(pl, $"voce despeja {quantas} esferas de energia.");
@@ -576,6 +598,14 @@ public sealed partial class GameServer
 		pl.Ficha.targetedskill += 0.15 * quantas;   // `targetedcounter += amount*3`
 		pl.Ficha.volleyskill += 0.05 * quantas;
 
+		// Mesma historia do metodo da barragem: `converge` escolhe entre os dois verbs mirados do DM
+		// (QUATRO `Blast_Gain()` em `blasts.dm:417-424`, CINCO em `:479-487`), e o de cinco acrescenta
+		// `homingcounter += amount` aos tres contadores comuns. O `*3` do targeted e literal (`:423`).
+		CreditarContador(pl, "blastcounter", quantas);
+		CreditarContador(pl, "targetedcounter", quantas * 3);
+		CreditarContador(pl, "volleycounter", quantas);
+		if (converge) CreditarContador(pl, "homingcounter", quantas);
+
 		var receita = new ReceitaDeProjetil
 		{
 			Tipo = converge ? TipoDeProjetil.Guided : TipoDeProjetil.Blast,
@@ -590,7 +620,8 @@ public sealed partial class GameServer
 		{
 			// RUMO NULO nos dois casos: a mina fica parada pra sempre, e a bola da Hellzone fica
 			// parada ate a espera de caca vencer. Ver `AndarProjetil` passo 5b.
-			Projetil p = Disparar(pl, receita, rumoDado: Vec2.Zero, deOnde: canto);
+			Projetil p = Disparar(pl, receita, rumoDado: Vec2.Zero, deOnde: canto,
+								  verbo: converge ? "Hellzone_Grenade" : "Ki_Bomb");
 			if (!p.Vivo) continue;
 
 			// `spawn A.Burnout(40)` -- QUATRO segundos, e nao os cinco de todo mundo. Sao eles que
@@ -654,6 +685,13 @@ public sealed partial class GameServer
 		for (int i = 0; i < 4; i++) pl.Ficha.BlastGain(_rng);
 		pl.Ficha.guidedskill += 0.1;
 
+		// `usr.guidedcounter += 2` (`discs.dm:93`). NO DM ISSO E POR PASSO DO DISCO, dentro do
+		// `while(A&&A.loc&&usr.Guiding)` que o empurra enquanto se guia; aqui o disco e um projetil
+		// que anda sozinho e nao ha laco de guia, entao o credito sai UMA vez, no disparo.
+		// PERDEU-SE: quem guiava um disco por muito tempo treinava mais. GANHOU-SE: nao ha como
+		// segurar um disco parado ao lado do corpo pra farmar `guidedcounter` sem lutar.
+		CreditarContador(pl, "guidedcounter", 2);
+
 		Projetil p = Disparar(pl, new ReceitaDeProjetil
 		{
 			// SEM ALVO ELE VOA RETO, como qualquer bola -- o `blasthoming` do DM tambem so entra
@@ -663,7 +701,7 @@ public sealed partial class GameServer
 			Velocidade = 1,
 			AlcanceTiles = 120,
 			Nome = "Kienzan",
-		});
+		}, verbo: "Kienzan");
 		if (p.Vivo)
 		{
 			p.Alvo = alvo?.Id ?? 0;
@@ -706,6 +744,7 @@ public sealed partial class GameServer
 		pl.Ficha.Ki -= custo;
 		for (int i = 0; i < 4; i++) pl.Ficha.BlastGain(_rng);
 		pl.Ficha.kidebuffskill += forte ? 0.5 : 0.2;   // `kidebuffcounter += 5` / `+= 2`
+		CreditarContador(pl, "kidebuffcounter", forte ? 5 : 2);   // `Debuffs.dm:8` / `meta.dm:64`
 
 		// `BP = expressedBP * log_base(max(kidebuffskill,10))` -- base 10 na Paralysis, 11 no Stunlock.
 		double baseLog = forte ? 10 : 11;
@@ -721,7 +760,7 @@ public sealed partial class GameServer
 			Paralisia = true,
 			MultDeOnda = mult,
 			Nome = forte ? "Paralisia" : "Stunlock",
-		});
+		}, verbo: forte ? "Paralysis" : "Stunlock");
 
 		Falar(pl, Protocol.Fala.Diz, forte ? "Paralysis!" : "Stunlock!");
 	}

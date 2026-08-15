@@ -876,7 +876,8 @@ public sealed partial class GameServer
 			Vec2 berco = pl.Pos + DirecaoSorteadaG5()
 						 * (float)(_rng.Next(1, (int)raioTiles + 1) * ZoneCollision.TileSize);
 
-			Projetil p = Disparar(pl, receita, rumoDado: Vec2.Zero, deOnde: berco);
+			Projetil p = Disparar(pl, receita, rumoDado: Vec2.Zero, deOnde: berco,
+								  verbo: "Scattering_Bullet");
 			if (!p.Vivo) continue;
 
 			p.Alvo = alvo.Id;
@@ -965,7 +966,7 @@ public sealed partial class GameServer
 			AlcanceTiles = AlcanceDeBolaG5,
 			MultDeOnda = pl.Ficha.SpiritBallDamage,   // `passbp = expressedBP * SpiritBallDamage`
 			Nome = "Spirit Gun",
-		});
+		}, verbo: "Spirit_Gun");
 
 		Falar(pl, Protocol.Fala.Diz, "SPIRIT GUN!");
 	}

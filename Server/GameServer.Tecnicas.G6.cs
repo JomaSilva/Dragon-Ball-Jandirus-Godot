@@ -453,7 +453,7 @@ public sealed partial class GameServer
 			AlcanceTiles = AlcanceDeBolaG5,
 			MultDeOnda = silaba,         // o `mods *= kikohoblasts` do DM, pela unica via que o port tem
 			Nome = "Kikoho",
-		});
+		}, verbo: "Kikoho");
 
 		// O SANGUE SAI DEPOIS DO TIRO, e a ordem importa: quem se derruba com a propria tecnica
 		// ainda ve a bola sair. No DM o `SpreadDamage` vem antes e o `spawn(10)` adia o nocaute --
@@ -602,12 +602,20 @@ public sealed partial class GameServer
 	/// e as tres dividem o MESMO contador: e o unico freio que a familia tem, porque nenhuma delas
 	/// da ao alvo um tiro pra desviar.
 	/// </summary>
+	/// <summary>
+	/// O QUE CADA SOPRO COBRA (`Ki2.0/Kiai.dm:11, :66, :74`). **UMA casa so**, e ela virou funcao
+	/// quando a IA passou a decidir se vale a pena soprar (`Capacidades.CustoDoSopro`): o cerebro
+	/// precisa do preco ANTES de apertar, e um `50` escrito la seria a segunda tabela de precos do
+	/// jogo -- a que discorda no dia em que o dono mexer no verb.
+	/// </summary>
+	private static double CustoDoSopro(ServerPlayer pl, TipoDeSopro qual) =>
+		(qual switch { TipoDeSopro.Kiai => 50, TipoDeSopro.Onda => 40, _ => 80 }) * pl.Ficha.BaseDrain();
+
 	private void SoproG6(ServerPlayer pl, TipoDeSopro qual)
 	{
 		if (EmEsperaG5(pl, _soproPronto, "seu Ki ainda nao se reagrupou")) return;
 
-		double custo = qual switch { TipoDeSopro.Kiai => 50, TipoDeSopro.Onda => 40, _ => 80 }
-					   * pl.Ficha.BaseDrain();
+		double custo = CustoDoSopro(pl, qual);
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
 		double numerador = qual switch { TipoDeSopro.Kiai => 1000, TipoDeSopro.Onda => 4000, _ => 8000 };
@@ -619,6 +627,9 @@ public sealed partial class GameServer
 		int gains = qual == TipoDeSopro.Kiai ? 1 : 2;
 		for (int i = 0; i < gains; i++) pl.Ficha.BlastGain(_rng);
 		pl.Ficha.kiaiskill += 0.1 * gains;   // `kiaicounter++` / `+= 2` -- usar treina
+		// `Kiai.dm:15,22,27,32` (`kiaicounter++`, o sopro simples) e `:70,76` (`+= 2`, a onda e o
+		// grito). O `gains` acima ja E esse delta -- ele vale 1 pro Kiai e 2 pros outros dois.
+		CreditarContador(pl, "kiaicounter", gains);
 
 		switch (qual)
 		{
@@ -797,6 +808,13 @@ public sealed partial class GameServer
 		}
 
 		pl.Ficha.kidefenseskill += 0.4 * devolvidos;   // `kiaicounter += 4` por tiro tocado
+
+		// O CONTADOR E `kiaicounter`, E NAO `kidefensecounter` -- `Kiai.dm:99,107,112,117` faz
+		// `usr.kiaicounter += 4` por tiro tocado. A linha de cima escreve a PERICIA de defesa de ki,
+		// que e outro sistema (pericia entra em dano; contador entra em exp de skill), e eu NAO a
+		// mexi: se ela e a escolha certa ou um engano do port, e pergunta pro dono, nao pra este
+		// lote. O exp segue o original.
+		CreditarContador(pl, "kiaicounter", 4 * devolvidos);
 		Avisar(pl, devolvidos > 0
 			? $"voce devolve {devolvidos} tiro(s) a quem os atirou."
 			: "voce varre a frente e nao havia nada pra devolver.");
@@ -846,6 +864,9 @@ public sealed partial class GameServer
 		float raio = Math.Max(util - 1, 1) * ZoneCollision.TileSize;
 		for (int i = 0; i < 2; i++) pl.Ficha.BlastGain(_rng);
 		pl.Ficha.kiaiskill += 0.1 * util;
+		// `usr.kiaicounter += charge` (`Kiai.dm:146,151`) -- o rugido paga pela CARGA que se segurou,
+		// e o `util` daqui e essa carga (ja cortada pelo teto do rugido).
+		CreditarContador(pl, "kiaicounter", util);
 
 		// COM "!" A FALA JA VIRA GRITO e o alcance cresce sozinho (`Protocol.Fala.Diz`): nao ha
 		// canal separado de grito, e inventar um so pra esta linha seria protocolo novo por enfeite.

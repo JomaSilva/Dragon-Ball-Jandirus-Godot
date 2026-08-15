@@ -34,6 +34,34 @@ public sealed class TurfDef
 	public bool WaterSet;
 
 	/// <summary>
+	/// `destroyable = 0` -- ESTA CELULA NAO SE QUEBRA, e o campo que o port inteiro nao extraia.
+	///
+	/// ============================ POR QUE ELE E O CAMPO QUE FALTAVA ============================
+	/// A resistencia padrao de todo turf e VINTE (`buildable.dm:353-360`), ou seja praticamente tudo
+	/// cede ao primeiro soco de qualquer um. Quem protege um pedaco do mapa no original NAO e a
+	/// resistencia: e este booleano, e ele e conferido num funil unico -- `turf/proc/Destroy()`
+	/// (`Modules/Turfs/NewTurfs.dm:2-4`), que abre com `if(src.destroyable)` e simplesmente NAO FAZ
+	/// NADA quando ele e zero.
+	///
+	/// E dai vem a queixa do dono, na letra: `/turf/Other/Blank` (`Turfs.dm:69-77`) e denso, nao tem
+	/// `icon` NENHUM -- invisivel no BYOND tambem -- e declara `destroyable = 0`. No original socar
+	/// esse vazio toca o som e levanta poeira (as duas coisas acontecem ANTES do `Destroy()`, em
+	/// `attack_proc.dm:99-105`) e a celula NAO cai. No port ela caia: viravam terra batida, a colisao
+	/// abria, e dava pra andar pra dentro do nada. "Soco, quebra, faz todos os efeitos, e nao tinha
+	/// nada la" e exatamente a diferenca entre ter e nao ter esta linha.
+	///
+	/// SAO 688.418 CELULAS nos 40 andares, 1.702 delas encostando em chao pisavel.
+	/// ==========================================================================================
+	///
+	/// HERDA, e sem isso ele nao serve pra nada: `turf/Teleporters` declara `destroyable = 0` uma
+	/// vez e os 20 e poucos filhos so trocam o icone -- a mesma armadilha que o `DensitySet` la em
+	/// cima descreve. O padrao e `turf/var/destroyable = 1` (`Turfs.dm:199`), entao "nao declarou"
+	/// significa DESTRUTIVEL, e por isso o par de campos existe.
+	/// </summary>
+	public bool Destroyable = true;
+	public bool DestroyableSet;
+
+	/// <summary>
 	/// `pixel_x`/`pixel_y`: o desenho NAO mora no canto do tile.
 	///
 	/// A Research Bench e 96x64 com `pixel_x = -32` -- ela transborda um tile pra cada lado, e o
@@ -83,12 +111,12 @@ public sealed class TurfDef
 public static class DmTurfScanner
 {
 	private static readonly Regex RxProp = new(
-		@"^(icon|icon_state|density|opacity|Water|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
+		@"^(icon|icon_state|density|opacity|Water|destroyable|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
 		RegexOptions.Compiled);
 
 	/// <summary>`Nome propriedade = valor` numa linha so -- forma que o DM aceita e o jogo usa.</summary>
 	private static readonly Regex RxUmaLinha = new(
-		@"^([A-Za-z_][A-Za-z0-9_/]*)\s+(icon|icon_state|density|opacity|Water|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
+		@"^([A-Za-z_][A-Za-z0-9_/]*)\s+(icon|icon_state|density|opacity|Water|destroyable|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
 		RegexOptions.Compiled);
 
 	public static Dictionary<string, TurfDef> Scan(string codeRoot)
@@ -194,6 +222,10 @@ public static class DmTurfScanner
 			case "density": d.Density = val.StartsWith('1'); d.DensitySet = true; break;
 			case "opacity": d.Opacity = val.StartsWith('1'); d.OpacitySet = true; break;
 			case "Water": d.Water = val.StartsWith('1'); d.WaterSet = true; break;
+			// `destroyable = 0` e a UNICA forma que aparece no jogo (o padrao ja e 1), mas o teste e
+			// pelo valor e nao pelo zero: `destroyable = 1` escrito num filho pra desfazer o `0` do
+			// pai e legitimo no DM, e ler so o zero deixaria esse filho indestrutivel de mentira.
+			case "destroyable": d.Destroyable = !val.StartsWith('0'); d.DestroyableSet = true; break;
 			case "isHD": d.IsHD = val.StartsWith('1'); d.IsHDSet = true; break;
 			case "getWidth":
 				if (int.TryParse(val, out int gw)) { d.GetWidth = gw; d.TamanhoSet = true; }
@@ -225,7 +257,8 @@ public static class DmTurfScanner
 	{
 		foreach (TurfDef d in defs.Values)
 		{
-			if (d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet && d.WaterSet) continue;
+			if (d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet && d.WaterSet
+				&& d.DestroyableSet) continue;
 			string p = d.Path;
 			while (true)
 			{
@@ -241,6 +274,13 @@ public static class DmTurfScanner
 				// flag e os 15 filhos dele (Water1..13, WaterFall, WaterReal) so trocam o icone --
 				// exatamente a armadilha que o comentario do `DensitySet` la em cima descreve.
 				if (!d.WaterSet && pai.WaterSet) { d.Water = pai.Water; d.WaterSet = true; }
+				// O `destroyable` HERDA pelo mesmo motivo, e e onde ele ganha alcance: `turf/Teleporters`
+				// e `turf/Arena` declaram uma vez e dezenas de filhos so trocam o icone. Sem esta linha
+				// so o pai (que nao aparece em mapa nenhum) ficaria protegido.
+				if (!d.DestroyableSet && pai.DestroyableSet)
+				{
+					d.Destroyable = pai.Destroyable; d.DestroyableSet = true;
+				}
 				// `isHD` mora no PAI (`/turf/HDTurfs`) e o tamanho em cada filho -- sem herdar
 				// os dois, nenhum turf HD e reconhecido como tal
 				if (!d.IsHDSet && pai.IsHDSet) { d.IsHD = pai.IsHD; d.IsHDSet = true; }
@@ -250,7 +290,7 @@ public static class DmTurfScanner
 				}
 				d.Parent ??= p;
 				if (d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet
-					&& d.WaterSet && d.IsHDSet && d.TamanhoSet) break;
+					&& d.WaterSet && d.DestroyableSet && d.IsHDSet && d.TamanhoSet) break;
 			}
 		}
 	}

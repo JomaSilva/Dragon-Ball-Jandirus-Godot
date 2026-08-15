@@ -200,7 +200,18 @@ public sealed partial class Fighter
         else if (BP < relBPmax && amount != 0) BP += CapCheck(amount);
     }
 
-    /// <summary>Voar treina o corpo devagar, e so quando se sai do lugar.</summary>
+    /// <summary>
+    /// Voar treina o corpo devagar -- o ganho mais fraco do jogo (`Movement.dm:6-11`).
+    ///
+    /// PAGA TODO TIQUE EM QUE SE VOA, parado ou nao, e isso NAO e descuido do port: o `lastloc` do
+    /// original e declarado LOCAL ao proc (`var/lastloc` dentro do `Flight_Gain()`), entao ele nasce
+    /// nulo em toda chamada e o `lastloc != loc` e sempre verdadeiro. A guarda "so quando sai do
+    /// lugar" que o nome promete nunca funcionou no BYOND. Quem chama e que da a cadencia de 5 Hz
+    /// do `Stats()` -- ver `GameServer.Voo.TickDoVoo`.
+    ///
+    /// A LINHA DO KI FICA FORA DO GATE DE PROPOSITO (e 1:1 com o DM): o `baseKi` sobe mesmo com o BP
+    /// no teto, entao voar continua rendendo pra quem ja esta capado.
+    /// </summary>
     public void FlightGain()
     {
         if (BP < relBPmax) BP += CapCheck(BpGainBase() * GainKnobs.BPTick * (1.0 / 24));
@@ -396,7 +407,21 @@ public sealed partial class Fighter
     /// </summary>
     public bool HasZenkai()
     {
-        if (Race == "Bio-Android" || ParentRace == "Bio-Android") return true;
+        // ============================ AS DUAS GRAFIAS, E ELA E O MOTIVO DE ESTE RAMO SER MUDO ============================
+        // O DM chama a raca de `"Bio-Android"` (`combatgains.dm:14`) e o `races.json` deste port a
+        // gravou como `"BioAndroid"`, sem hifen -- a mesma dobra que ja existe em Icer/Frost Demon,
+        // Kanassa/Kanassa-Jin e SpiritDoll/Spirit Doll. Esta linha testava SO a grafia do DM, entao
+        // ela nunca casou com ninguem: era um ramo escrito e inalcancavel.
+        //
+        // Hoje ele nao tem vitima (a raca nao existia em jogo). No dia em que o tanque abrir, o
+        // Zenkai simplesmente NAO viria e ninguem saberia por que -- que e exatamente como os outros
+        // seis dados extraidos-sem-consumidor deste port passaram meses sem serem notados.
+        //
+        // `BioAndroids.EhBio` E NAO DOIS LITERAIS: o predicado mora ao lado da lista de corpos, e
+        // `GameServer.Sigilo.cs` e o `skilltrees.json` ja fazem a mesma pergunta em outros dois
+        // lugares. Uma copia a mais e mais um lugar pra divergir.
+        // =============================================================================================================
+        if (Races.BioAndroids.EhBio(Race) || Races.BioAndroids.EhBio(ParentRace)) return true;
         if (Race == "Saiyan" || ParentRace == "Saiyan") return true;
         if (Race == "Halfbreed" || Race == "Half-Saiyan" || ParentRace == "Half-Saiyan") return true;
         if (canSSJ) return true;

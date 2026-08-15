@@ -117,6 +117,28 @@ public static class CensoDeSkills
 		// porque a escada o substituiu, e nao porque a forma falta.
 		["Mystic"] = "forma:mistico",
 		["Wrathful_State"] = "forma:wrathful",
+
+		// ============================ A ABSORCAO DO BIO-ANDROIDE SAIU DA LISTA DE ESPERA ============================
+		// `Bio_Absorb` (o verb do `obj/Bio_Absorb`, que a arvore racial concede) estava na tabela 3
+		// dizendo que esperava "o sistema de absorcao de corpo". Ele nao espera mais: o sistema E o
+		// `GameServer.Absorcao.cs`, e a vitima morre, o `AbsorbBP` cresce e a escada de degraus do bio
+		// anda por ele.
+		//
+		// ENTRA AQUI E NAO NA TABELA 1 porque no port ele nao e uma TECNICA (nao esta no `Tecnicas`,
+		// nao tem custo de Ki, nao tem projetil): e um verb do CORPO, pelo canal de habilidade -- a
+		// mesma prateleira do `oozaru` e do `regenerar` logo acima.
+		//
+		// **AS TRES IRMAS FICARAM NA ESPERA, E DE PROPOSITO**: `Absorb_Android` (o `Energy_Drain` do
+		// androide de raca nativa), `Buu_Absorb` (o selo do Majin, com dimensao interna e expel) e
+		// `Soul_Absorb` sao mecanicas DIFERENTES -- o bio CONSOME, o Majin SELA --, e dar baixa nelas
+		// aqui seria repetir o defeito que esta tabela existe pra impedir: dizer que um sistema
+		// chegou quando chegou outro.
+		["Bio_Absorb"] = "absorver",
+
+		// O `Absorb_Ki` do androide de absorcao (`DNALabs.dm:213`). Ele nao vem de skill nenhuma no
+		// DM (a CONVERSAO o concede com `assignverb`), entao ele so aparece neste censo se alguem o
+		// pendurar numa arvore -- e a linha esta aqui pra esse dia, com o canal ja apontado.
+		["Absorb_Ki"] = "absorver_ki",
 	};
 
 	// =====================================================================
@@ -151,7 +173,9 @@ public static class CensoDeSkills
 		["Sneak"] = SistCombo, ["Suplex"] = SistCombo, ["Trip"] = SistCombo,
 
 		// ---- 7 ----
-		["Absorb_Android"] = SistAbsorcao, ["Bio_Absorb"] = SistAbsorcao, ["Buu_Absorb"] = SistAbsorcao,
+		// O `Bio_Absorb` SAIU daqui pro `PorOutroCanal` -- ver a nota la. As tres irmas ficaram, e a
+		// razao esta escrita junto: o bio CONSOME e o Majin SELA; sao motores diferentes.
+		["Absorb_Android"] = SistAbsorcao, ["Buu_Absorb"] = SistAbsorcao,
 		["Soul_Absorb"] = SistAbsorcao, ["Imitation"] = SistAbsorcao, ["Permanent_Imitation"] = SistAbsorcao,
 		["BodyswapOBJ"] = SistAbsorcao,
 

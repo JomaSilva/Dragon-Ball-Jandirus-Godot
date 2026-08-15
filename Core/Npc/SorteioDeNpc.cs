@@ -302,9 +302,14 @@ public static class SorteioDeNpc
 	/// (`PedeMaestria`, EstadoDeForma.cs:262). Sem ela a escada para no SSJ1 pra sempre.
 	/// ============================================================================================
 	/// </summary>
-	public static int AbrirFormas(EstadoDeForma est, MoldeDeNpc molde, double bpBase, PerfilDeFormas perfil)
+	public static int AbrirFormas(EstadoDeForma est, MoldeDeNpc molde, double bpBase, PerfilDeFormas perfil,
+								  ulong semente = 0)
 	{
 		int abertas = 0;
+
+		// A FERA E SORTEADA ANTES DA ESCADA, porque o molde tem a palavra final: um chefe que liste
+		// `oozaru` em `formas` sobrescreve o sorteio com a `maestria` do arquivo, no laco logo abaixo.
+		SortearAMaestriaDaFera(est, perfil, semente);
 
 		// as cravadas primeiro: o chefe que precisa de uma forma que a escada nao daria
 		foreach (string id in molde.Formas)
@@ -331,6 +336,56 @@ public static class SorteioDeNpc
 		// que o dono pediu pro Freeza de Vegeta.
 		est.Entrar(Catalogo.IdBase);
 		return abertas;
+	}
+
+	/// <summary>
+	/// ============================ QUANTO ESTE NPC DOMA O MACACO -- SORTEADO NO NASCIMENTO ============================
+	/// Pedido do dono, literal: *"eles tem MAESTRIA ALEATORIA ao serem criados entao eles podem
+	/// CONTROLAR OU NAO direito o oozaru"*.
+	///
+	/// **POR QUE ELA NAO VINHA DE GRACA COM O RESTO.** O <see cref="AbrirFormas"/> escreve
+	/// `molde.Maestria` em cada degrau que ele ABRE, e o Oozaru nao e um degrau: ele e um estado
+	/// PARALELO, fora da escada (ver o cabecalho de `Core/Forms/Oozaru.cs`), e o `Catalogo` ainda o
+	/// marca como `NaoSeSobePraEla`. Resultado medido antes desta funcao existir: `Maestria.De("oozaru")`
+	/// valia **0 pra todo NPC do jogo** -- ou seja, todo Saiyajin do mundo perderia as redeas nos
+	/// primeiros seis segundos de macaco, sempre, e o pedido do dono ("controlar OU NAO") so teria
+	/// metade.
+	///
+	/// **POR SEMENTE E NAO POR `Random`**, como todo o resto deste arquivo: dois servidores com a mesma
+	/// semente produzem o mesmo NPC, e o mesmo Saiyajin renasce com o mesmo dominio sobre a propria
+	/// fera. Um `Random` global faria o mesmo corpo ser dono da fera num reinicio e refem dela no
+	/// seguinte, sem nada em jogo explicando.
+	///
+	/// **UNIFORME DE 0 A 100, E O 100 ESTA DENTRO.** A curva de controle e `duracao * f²`
+	/// (`Oozaru.SegundosDeControle`), entao um uniforme ja produz a paisagem que o dono descreveu: a
+	/// maioria segura a fera por uma fracao da forma e a perde, e ~1 em 100 nasce com ela DOMADA
+	/// (`DominouAFera`, prazo infinito) e luta como ele mesmo o macaco inteiro. Enviesar pra baixo
+	/// "pra ficar mais raro" seria inventar uma regra que o dono nao pediu sobre um sorteio que ele
+	/// pediu.
+	///
+	/// **SO DE QUEM PODE VIRAR.** Escrever maestria de macaco num Namekuseijin nao quebraria nada
+	/// (`MaestriaDaFera` so e lido dentro da forma), mas seria dado morto num livro que a aba Formas
+	/// LE -- e dado morto e o que este port mais pagou caro. O crivo e o mesmo do rabo
+	/// (`GameServer.Combat.TemRabo`): Saiyajin puro e mestico.
+	///
+	/// **O DOURADO FICA EM ZERO**, e de proposito: ele exige linhagem Primal, o SSJ1 DOMINADO e a porta
+	/// de BP pessoal (`Oozaru.PodeDourado`) -- e um NPC que cumpra os tres e um chefe, cuja ficha e
+	/// escrita a mao no `npcs.json`. Sortear dominio sobre uma fera que 99,9% dos corpos nunca vao ver
+	/// seria sortear no vazio.
+	/// ==========================================================================================================
+	/// </summary>
+	private static void SortearAMaestriaDaFera(EstadoDeForma est, PerfilDeFormas perfil, ulong semente)
+	{
+		// SEMENTE ZERO = SEM SORTEIO -- a mesma convencao do `Temperamento.Montar`, e as bancadas que
+		// medem a RECEITA (e nao o sorteio) contam com ela: molde cru, numeros do arquivo, sem tempero.
+		if (semente == 0) return;
+
+		if (!string.Equals(perfil.Raca, "Saiyan", StringComparison.OrdinalIgnoreCase)
+			&& !string.Equals(perfil.Raca, "Halfbreed", StringComparison.OrdinalIgnoreCase)) return;
+
+		// `Next(0, 101)` -- inteiro de 0 a 100 INCLUSIVE. Inteiro e nao fracao porque este numero
+		// aparece em log e em aba ("dominio 43% de 100%"), e um 43,271948% nao diz mais nada.
+		est.Maestria.Por(Forms.Oozaru.IdRegular, Sorteador(semente, "maestria_oozaru").Next(0, 101));
 	}
 
 	/// <summary>

@@ -29,27 +29,20 @@ public static class Habilidades
 		VerbosDoJogo.Limpar();
 		VerbosDoJogo.Registrar();
 
-		// ============================ A PORTA DA MEDITACAO PROFUNDA ============================
-		// A MENTE E DE TODO MUNDO: treinar contra si mesmo nao e dom de raca nenhuma. E ela nao pende
-		// de skill: no original o transe e uma OPCAO do proprio verb `Meditate` (`MindMeditate.dm`,
-		// cabecalho), e nao algo que se compra.
+		// ============================ A PORTA DA MEDITACAO PROFUNDA MUDOU DE LUGAR ============================
+		// Havia aqui um verb "Meditação profunda" nesta aba, apagado enquanto o jogador nao estivesse
+		// meditando -- ou seja, um botao que exigia que voce ja soubesse apertar M antes de vir aqui.
+		// **Ele foi DELETADO** (nao escondido) a pedido do dono: *"N faca a meditacao profunda ser um
+		// VERB DO MENU DO P. faca q ao MEDITAR uma TELINHA vai abrir e perguntar se vc quer so MEDITAR
+		// NORMAL ou ir pra MEDITACAO PROFUNDA"*.
 		//
-		// O `Disponivel` e o unico portao do cliente, e ele e o mesmo do servidor (`Ficha.med`): quem
-		// nao esta meditando ve o botao APAGADO, que e como se descobre que a tecla M vem antes.
-		// ==================================================================================
-		Verbos.Registrar(new Verbo(
-			"Meditação profunda",
-			Verbos.Aprendizado,
-			"Medite (M) e mergulhe na própria mente pra lutar contra uma cópia exata de você -- mesmo "
-			+ "poder, mesma velocidade: a luta mede a sua habilidade, não o seu BP.\n\n"
-			+ "Lá dentro nada é real: ferimentos NÃO voltam com você, não há Zenkai, e o treino rende "
-			+ "só um quarto do normal. Seu corpo fica meditando onde estava -- quem bater nele te "
-			+ "acorda na hora.\n\n"
-			+ "Se você meditar COLADO em alguém que já está em transe, você entra na mente DELE "
-			+ "(e o reflexo dele se desfaz: lá dentro ficam só vocês dois).",
-			() => GameClient.Instance?.SendHabilidade("mente"),
-			() => GameClient.Instance?.Atividade == Jandirus.Net.Protocol.Activity.Meditando)
-			{ Chave = "hab:mente" });
+		// Hoje a porta e o proprio gesto de meditar: a tecla M abre a <see cref="TelaDeMeditacao"/>, e
+		// e la que estao os dois caminhos, a explicacao do que ha na mente e a recusa com o motivo.
+		// O CANAL NAO MUDOU -- a telinha manda o mesmo `SendHabilidade("mente")` que este verb mandava.
+		//
+		// O "Sair da mente" FICA: ele nao e uma escolha de entrada, e a saida de quem ja esta la
+		// dentro -- e la dentro nao ha telinha nenhuma.
+		// ==============================================================================================
 
 		Verbos.Registrar(new Verbo(
 			"Sair da mente",
@@ -129,6 +122,50 @@ public static class Habilidades
 				() => GameClient.Instance?.SendHabilidade("oozaru"),
 				() => GameClient.Instance is { } c
 					  && c.MeuOozaru != Jandirus.Core.Forms.FormaOozaru.Nao) { Chave = "hab:oozaru" });
+
+		// ============================ OS COLETORES DO ANDROIDE DE ABSORCAO ============================
+		// PELA RACA e nao pela CLASSE de androide, e a razao e que a classe nao viaja: quem sabe se
+		// este corpo saiu do pod de absorcao ou do de energia infinita e o servidor
+		// (`Fighter.AndroideAbsorcao`), e a ficha lenta nao carrega esse bit. Por a classe no
+		// protocolo custaria um campo novo pra gatear UM botao.
+		//
+		// O CUSTO DISSO E UM BOTAO QUE RECUSA, e ele e o mesmo trato do "Nadar" logo acima: o
+		// androide de ENERGIA INFINITA aperta e ouve *"seu corpo nao tem coletores de energia --
+		// isso e do androide de ABSORCAO"*, que diz exatamente qual das duas conversoes ele fez. Um
+		// botao que explica vale mais que um botao ausente.
+		if (raca == "Android")
+			Verbos.Registrar(new Verbo(
+				"Abrir/fechar coletores",
+				Verbos.Skills,
+				"Só do androide de ABSORÇÃO. Finca os pés e abre os coletores: enquanto estiverem "
+				+ "abertos você NÃO ANDA, e todo ataque de ki que te acertar é engolido inteiro -- "
+				+ "sem dano, virando energia (6% do seu tanque por golpe, acumulando até o DOBRO da "
+				+ "sua capacidade).\n\nAperte de novo pra fechar e voltar a se mover. Cair "
+				+ "nocauteado fecha sozinho.",
+				() => GameClient.Instance?.SendHabilidade("absorver_ki")) { Chave = "hab:absorver_ki" });
+
+		// ============================ A ABSORCAO DO BIO-ANDROIDE ============================
+		// PELA RACA e nao pela skill, e a razao e a mesma do Oozaru logo acima: no DM ela e o verb de
+		// um OBJETO que a arvore racial concede (`obj/Bio_Absorb`), e a arvore racial e da raca. Um
+		// gate por skill aqui exigiria o cliente conhecer o typepath `bioandroid/bioabsorb` e a
+		// arvore inteira -- e o servidor recusa quem nao pode, que e onde a regra tem que morar.
+		//
+		// APARECE SEMPRE PRA ELE, INCLUSIVE LARVA. Uma larva que aperta ouve "sua carapaca ainda nao
+		// desenvolveu os orgaos de absorcao" -- que e a frase do original, e e ela que ENSINA que a
+		// evolucao existe e por onde ela vem. Um botao que some esconderia a escada inteira do
+		// jogador ate o dia em que ela ja estivesse disponivel.
+		if (Jandirus.Core.Races.BioAndroids.EhBio(raca))
+			Verbos.Registrar(new Verbo(
+				"Absorver",
+				Verbos.Skills,
+				"Consome por inteiro alguém NOCAUTEADO e vivo ao seu lado. A vítima MORRE -- nada "
+				+ "resta dela, e nada pode ser regurgitado depois.\n\n"
+				+ "Você cura por completo, enche o Ki e ganha o poder dela -- mas ele entra pela "
+				+ "MÉDIA com o seu, e não pela soma: absorver serve pra compensar, não pra treinar.\n\n"
+				+ "E é assim que você EVOLUI: 10 jogadores (NPC vale meio) OU 1 androide levam você "
+				+ "ao próximo degrau -- semi-perfeito, e depois a forma PERFEITA. A larva ainda não "
+				+ "tem os órgãos pra isso.",
+				() => GameClient.Instance?.SendHabilidade("absorver")) { Chave = "hab:absorver" });
 
 		if (raca is "Namekian" or "Majin" or "BioAndroid" or "Shapeshifter")
 			Verbos.Registrar(new Verbo(

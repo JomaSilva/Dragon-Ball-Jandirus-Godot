@@ -49,6 +49,10 @@ public static class AguaBench
 	private delegate Vec2 PassoDelegado(Vec2 pos, Vec2 dir, float dt, float vel,
 										ZoneCollision? mapa, ModoDeTravessia modo);
 
+	/// <summary>A saida de emergencia. E o `MoveRules.Escapar` de producao.</summary>
+	private delegate MoveRules.Escape EscapeDelegado(ZoneCollision mapa, Vec2 pos,
+													 ModoDeTravessia modo, out Vec2 refugio);
+
 	/// <summary>
 	/// AS PERGUNTAS QUE O JOGO FAZ -- por padrao, as funcoes DE PRODUCAO, ponto.
 	///
@@ -70,6 +74,17 @@ public static class AguaBench
 		/// <summary>`MoveRules.Advance` -- o passo com deslize.</summary>
 		public PassoDelegado Passo =
 			(p, d, dt, v, m, modo) => MoveRules.Advance(p, d, dt, v, m, out _, false, modo);
+
+		/// <summary>
+		/// `MoveRules.Escapar` -- **a saida de emergencia**, e ela e um campo proprio porque as
+		/// familias 8 a 10 perguntam a ela DIRETO, e nao so pelo passo.
+		///
+		/// A pergunta seca ("o que este corpo preso tem direito de fazer?") e o que separa "o corpo nao
+		/// andou" de "o corpo nao andou POR ESTE MOTIVO". Sem ela, um `Advance` que congelasse todo
+		/// mundo passaria verde na familia 8 inteira -- e congelar todo mundo e exatamente o defeito
+		/// que a familia 9 existe pra pegar.
+		/// </summary>
+		public EscapeDelegado Escape = MoveRules.Escapar;
 
 		/// <summary>`ClasseDeAgua.SocoAlcanca` -- o punho alcanca o cenario desta celula?</summary>
 		public Func<ZoneCollision, int, int, bool> SocoAlcanca = ClasseDeAgua.SocoAlcanca;
@@ -190,6 +205,213 @@ public static class AguaBench
 		for (int y = 0; y < c.Col.Height; y++)
 			for (int x = 0; x < c.Col.Width; x++)
 				if (c.Col.EhAgua(x, y)) c.Col.Bloquear(x, y);
+	}
+
+	// ==================================================================================
+	// OS ESCAPES MUTANTES -- cada um e o `MoveRules.Escapar` com **uma linha trocada**
+	//
+	// Eles existem porque o escape e o coracao do relato B do dono, e um teste que so o viu
+	// aprovando nao sabe se ele sabe negar. Nenhum deles e invencao: o primeiro e o codigo que
+	// ESTAVA escrito (a linha que o dono achou segurando a tecla), e os outros tres sao os quatro
+	// jeitos de errar que a propria funcao lista no cabecalho dela.
+	// ==================================================================================
+
+	/// <summary>
+	/// O ESCAPE COMO ELE ERA: <c>if (Occupied(mapa, pos, modo)) return alvo;</c> -- *"ja estava dentro
+	/// de parede: deixa sair"*.
+	///
+	/// Com o corpo a pe em cima da agua, TODO passo dele era aprovado sem checagem nenhuma, parede
+	/// inclusa. E o buraco literal do relato: *"se eu estiver SEGURANDO O BOTAO DE ANDAR eu consigo
+	/// VOLTAR PRA AGUA ANDANDO POR CIMA DELA"*.
+	/// </summary>
+	private static Vec2 PassoComEscapeQueAprovaTudo(Vec2 pos, Vec2 dir, float dt, float vel,
+													ZoneCollision? mapa, ModoDeTravessia modo)
+		=> mapa != null && MoveRules.Occupied(mapa, pos, modo)
+			? MoveRules.Integrate(pos, dir, dt, vel)
+			: MoveRules.Advance(pos, dir, dt, vel, mapa, out _, false, modo);
+
+	/// <summary>
+	/// O ESCAPE FECHADO SECO: `return pos`. E a correcao apressada -- "o dono pediu pra PRENDER, entao
+	/// prende" --, e ela troca um bug chato por um corpo perdido: quem nasce dentro da pedra (o berco
+	/// num mapa recarregado, uma obra erguida em cima) nunca mais anda.
+	/// </summary>
+	private static Vec2 PassoQueCongelaOPreso(Vec2 pos, Vec2 dir, float dt, float vel,
+											  ZoneCollision? mapa, ModoDeTravessia modo)
+		=> mapa != null && MoveRules.Occupied(mapa, pos, modo)
+			? pos
+			: MoveRules.Advance(pos, dir, dt, vel, mapa, out _, false, modo);
+
+	/// <summary>
+	/// O `Advance` COM OUTRO ESCAPE NO LUGAR DO DE PRODUCAO -- e so o escape muda.
+	///
+	/// Fora do estado "ja preso" ele DELEGA pro `Advance` de verdade, entao a caminhada comum
+	/// continua sendo a do jogo. O que esta reescrito aqui e exatamente o bloco que o `Advance` roda
+	/// quando `Occupied(pos, modo)` e verdadeiro, linha por linha -- inclusive o ramo `Nenhum`, que
+	/// **nao** e `return pos`: ele cai na regra normal (o passo que TERMINA valido), que e o que
+	/// destrava a beira do lago.
+	/// </summary>
+	private static Vec2 PassoComEscape(EscapeDelegado escape, Vec2 pos, Vec2 dir, float dt, float vel,
+									   ZoneCollision? mapa, ModoDeTravessia modo)
+	{
+		if (mapa == null || !MoveRules.Occupied(mapa, pos, modo))
+			return MoveRules.Advance(pos, dir, dt, vel, mapa, out _, false, modo);
+
+		Vec2 alvo = MoveRules.Integrate(pos, dir, dt, vel);
+		MoveRules.Escape e = escape(mapa, pos, modo, out Vec2 refugio);
+
+		if (e == MoveRules.Escape.SemRefugio) return alvo;
+
+		if (e == MoveRules.Escape.Dirigido)
+		{
+			if (MoveRules.Aproxima(pos, alvo, refugio)) return alvo;
+			var ex = new Vec2(alvo.X, pos.Y);
+			if (MoveRules.Aproxima(pos, ex, refugio)) return ex;
+			var ey = new Vec2(pos.X, alvo.Y);
+			if (MoveRules.Aproxima(pos, ey, refugio)) return ey;
+			return pos;
+		}
+
+		// NENHUM: a regra normal -- o passo que termina valido, com deslize de quina.
+		if (!MoveRules.Occupied(mapa, alvo, modo)) return alvo;
+		var sx = new Vec2(alvo.X, pos.Y);
+		if (!MoveRules.Occupied(mapa, sx, modo)) return sx;
+		var sy = new Vec2(pos.X, alvo.Y);
+		if (!MoveRules.Occupied(mapa, sy, modo)) return sy;
+		return pos;
+	}
+
+	/// <summary>
+	/// O `Escapar` COM A PERGUNTA 1 FEITA PELO MODO DO CORPO -- o erro sutil, e o mais provavel de
+	/// todos: `Occupied(pos, modo)` em vez de `Occupied(pos, Nadando)`.
+	///
+	/// Parece a correcao obvia ("pergunte com o modo que o corpo tem"), e ela desfaz a coisa inteira:
+	/// a pe a agua para, entao o corpo em cima do lago volta a ser "preso pela GEOMETRIA" e ganha
+	/// refugio -- ou seja, volta a **sair andando por cima da agua**, so que agora em linha reta pra
+	/// margem. E o relato do dono de novo, com outra roupa.
+	/// </summary>
+	private static MoveRules.Escape EscaparPeloModoDoCorpo(ZoneCollision m, Vec2 pos,
+														   ModoDeTravessia modo, out Vec2 refugio)
+	{
+		refugio = pos;
+		if (!MoveRules.Occupied(m, pos, modo)) return MoveRules.Escape.Nenhum;
+		if (MoveRules.RefugioPerto(m, pos, modo) is { } bom) { refugio = bom; return MoveRules.Escape.Dirigido; }
+		if (modo != ModoDeTravessia.Nadando
+			&& MoveRules.RefugioPerto(m, pos, ModoDeTravessia.Nadando) is { } q)
+		{ refugio = q; return MoveRules.Escape.Dirigido; }
+		return MoveRules.Escape.SemRefugio;
+	}
+
+	/// <summary>
+	/// O `Escapar` COM A BEIRA RESOLVIDA POR BUSCA EM ANEIS, e nao pelas quatro quinas que o corpo ja
+	/// toca. E a "generalizacao" natural do `QuinaValida` -- e ela transforma socorro em TRAVESSIA:
+	/// do meio do lago a busca acha a margem a dois tiles e o corpo caminha ate la por cima da agua.
+	/// </summary>
+	private static MoveRules.Escape EscaparComBuscaNaBeira(ZoneCollision m, Vec2 pos,
+														   ModoDeTravessia modo, out Vec2 refugio)
+	{
+		refugio = pos;
+		if (!MoveRules.Occupied(m, pos, ModoDeTravessia.Nadando))
+		{
+			if (MoveRules.RefugioPerto(m, pos, modo) is { } perto) { refugio = perto; return MoveRules.Escape.Dirigido; }
+			return MoveRules.Escape.Nenhum;
+		}
+		if (MoveRules.RefugioPerto(m, pos, modo) is { } bom) { refugio = bom; return MoveRules.Escape.Dirigido; }
+		if (modo != ModoDeTravessia.Nadando
+			&& MoveRules.RefugioPerto(m, pos, ModoDeTravessia.Nadando) is { } q)
+		{ refugio = q; return MoveRules.Escape.Dirigido; }
+		return MoveRules.Escape.SemRefugio;
+	}
+
+	/// <summary>
+	/// O `Escapar` PERGUNTANDO A QUINA PELO **CENTRO DO SPRITE**, e nao pela caixa dos pes.
+	///
+	/// E o descuido classico deste arquivo (o `NaAgua` ja carrega um cabecalho inteiro sobre ele): a
+	/// caixa tem 16x10 px e desce 8 do centro, entao ha uma faixa em que o centro esta molhado e uma
+	/// quina ja esta seca. Perguntando pelo centro, esse corpo nao tem refugio nenhum -- e ele congela
+	/// a dez pixels da praia, tendo que pagar tres segundos de Ki pra andar esses dez pixels.
+	/// </summary>
+	private static MoveRules.Escape EscaparComQuinaPeloCentro(ZoneCollision m, Vec2 pos,
+															  ModoDeTravessia modo, out Vec2 refugio)
+	{
+		refugio = pos;
+		if (!MoveRules.Occupied(m, pos, ModoDeTravessia.Nadando))
+		{
+			int cx = (int)MathF.Floor(pos.X / ZoneCollision.TileSize);
+			int cy = (int)MathF.Floor((pos.Y + MoveRules.FeetOffsetY) / ZoneCollision.TileSize);
+			if (m.NaBorda(cx, cy) || m.Bloqueia(cx, cy, modo)) return MoveRules.Escape.Nenhum;
+			Vec2 c = m.CentroDaCelula(cx, cy);
+			refugio = new Vec2(c.X, c.Y - MoveRules.FeetOffsetY);
+			return MoveRules.Escape.Dirigido;
+		}
+		if (MoveRules.RefugioPerto(m, pos, modo) is { } bom) { refugio = bom; return MoveRules.Escape.Dirigido; }
+		if (modo != ModoDeTravessia.Nadando
+			&& MoveRules.RefugioPerto(m, pos, ModoDeTravessia.Nadando) is { } q)
+		{ refugio = q; return MoveRules.Escape.Dirigido; }
+		return MoveRules.Escape.SemRefugio;
+	}
+
+	/// <summary>
+	/// O `Escapar` COM O RAIO DE BUSCA CURTO -- um anel em vez de <see cref="MoveRules.RaioDoEscape"/>.
+	///
+	/// Nao e um numero absurdo: um anel e o que resolve o caso comum (uma parede de um tile), e quem
+	/// "otimizasse" a busca por causa do custo por quadro chegaria exatamente nele. O que ele quebra e
+	/// o caso raro e grave: enterrado FUNDO, o corpo cai no <see cref="MoveRules.Escape.SemRefugio"/>
+	/// e ganha o passe livre de volta -- ou seja, o buraco do dono volta pela porta dos fundos.
+	/// </summary>
+	private static MoveRules.Escape EscaparComRaioDeUmAnel(ZoneCollision m, Vec2 pos,
+														   ModoDeTravessia modo, out Vec2 refugio)
+	{
+		refugio = pos;
+		if (!MoveRules.Occupied(m, pos, ModoDeTravessia.Nadando))
+		{
+			if (MoveRules.QuinaValida(m, pos, modo) is { } quina) { refugio = quina; return MoveRules.Escape.Dirigido; }
+			return MoveRules.Escape.Nenhum;
+		}
+		if (MoveRules.RefugioPerto(m, pos, modo, 1) is { } bom) { refugio = bom; return MoveRules.Escape.Dirigido; }
+		if (modo != ModoDeTravessia.Nadando
+			&& MoveRules.RefugioPerto(m, pos, ModoDeTravessia.Nadando, 1) is { } q)
+		{ refugio = q; return MoveRules.Escape.Dirigido; }
+		return MoveRules.Escape.SemRefugio;
+	}
+
+	// ==================================================================================
+	// O SERVIDOR CONFERINDO -- e as duas versoes erradas dele
+	// ==================================================================================
+
+	/// <summary>
+	/// A METADE SERVIDOR DO BURACO: <c>if (Occupied(mapa, from, modo)) return true;</c>.
+	///
+	/// Fechar so o `Advance` deixaria o cliente honesto parando e o servidor aceitando qualquer coisa
+	/// que um cliente MODIFICADO afirmasse -- e o lago inteiro atravessado a velocidade cheia.
+	/// </summary>
+	private static bool ValidarComEscapeQueAprovaTudo(Vec2 de, Vec2 ate, ZoneCollision m, ModoDeTravessia modo)
+	{
+		if (MoveRules.Occupied(m, de, modo)) return true;
+		float o = 0f;
+		return MoveRules.ValidateStep(de, ate, 1f / 30, 1f, m, ref o, out _, false, modo);
+	}
+
+	/// <summary>
+	/// A GUARDA ANTI-TREMOR ENGOLINDO A REGRA -- a folga do escape de volta aos
+	/// <see cref="MoveRules.MinCorrectionPx"/> (6 px).
+	///
+	/// **Foi a primeira versao do conserto, e a bancada pegou.** Um passo de UM QUADRO a 160 px/s tem
+	/// 2,7 px: com 6 px de folga tudo passa, inclusive o sentido CONTRARIO ao refugio, e a 30 pacotes
+	/// por segundo isso e 81 px/s de caminhada livre por cima do lago.
+	/// </summary>
+	private static bool ValidarComAFolgaAntiTremor(Vec2 de, Vec2 ate, ZoneCollision m, ModoDeTravessia modo)
+	{
+		if (MoveRules.Occupied(m, de, modo))
+		{
+			bool parado = (ate - de).Length <= MoveRules.MinCorrectionPx;   // <- a folga folgada
+			MoveRules.Escape e = MoveRules.Escapar(m, de, modo, out Vec2 refugio);
+			if (e == MoveRules.Escape.SemRefugio) return true;
+			if (e == MoveRules.Escape.Dirigido)
+				return parado || MoveRules.Aproxima(de, ate, refugio, MoveRules.MinCorrectionPx);
+			if (parado) return true;
+		}
+		float o = 0f;
+		return MoveRules.ValidateStep(de, ate, 1f / 30, 1f, m, ref o, out _, false, modo);
 	}
 
 	/// <summary>"A AGUA ENTROU NO `.vis`" -- o `Density = true` no `DmTurfScanner`.</summary>
@@ -365,6 +587,12 @@ public static class AguaBench
 			NadarNaoSobeNemFazSombra(),
 			MesmaSementeMesmoMundo(),
 			IaNaoTrava(),
+			// AS TRES DO RELATO B -- a saida de emergencia. Elas vem depois porque dependem das
+			// anteriores: "zero pixel" so significa alguma coisa se "nadando atravessa" (familia 2)
+			// estiver verde ao lado.
+			SemKiNaAguaNaoAnda(),
+			NascidoNaPedraSai(),
+			ABeiraNaoCongela(),
 		];
 
 		int provas = 0, falhas = 0, defeitos = 0, cegos = 0, semCobertura = 0;
@@ -1040,6 +1268,399 @@ public static class AguaBench
 			 r => r.MexerNoMapa = AguaViraParede),
 		],
 	};
+
+	// ==================================================================================
+	// FAMILIA 8 -- SEM KI, NA AGUA: ZERO PIXEL, E ELE NAO FOI TELEPORTADO
+	// ==================================================================================
+
+	/// <summary>
+	/// ============================ O RELATO B DO DONO, LITERAL ============================
+	/// *"ao acabar o ki nadando, eu sou JOGADO DE VOLTA PRA MARGEM mas da um bug q se eu estiver
+	/// SEGURANDO O BOTAO DE ANDAR eu consigo VOLTAR PRA AGUA ANDANDO POR CIMA DELA. (...) entao TIRA
+	/// ISSO DE TELEPORTAR PRA MARGEM, e faca o personagem FICAR PRESO LA tendo q RECARREGAR O KI pra
+	/// voltar a nadar e continuar"*.
+	///
+	/// Sao DUAS afirmacoes e elas se separam: **nao anda** e **nao foi movido**. A segunda parece
+	/// consequencia da primeira e nao e -- o `LevarProSeco` cumpria "o corpo nao esta mais na agua"
+	/// com nota cheia, e era exatamente o que o dono mandou tirar. Uma bancada que so medisse "ele nao
+	/// atravessou o lago" ficaria VERDE com o teleporte de volta.
+	///
+	/// ============================ POR QUE OS QUATRO RUMOS, E NAO UM ============================
+	/// Porque o escape que erra nao erra pra todo lado: ele aponta pra ALGUM lugar. Um `Escapar` que
+	/// concedesse refugio no meio do lago deixaria o corpo parado em tres rumos e andando no quarto --
+	/// e a prova de um rumo so tem 75% de chance de estar olhando pro lado errado.
+	///
+	/// A NAO-REGRESSAO ANDA JUNTO (o item 6 do pedido: *"nadando com Ki, atravessa normal"*). Ela ja
+	/// tem familia propria -- a FAMILIA 2, com quatro defeitos injetados --, e esta aqui de novo pelo
+	/// mesmo motivo que os contra-exemplos existem no resto do arquivo: **"zero pixel" e satisfeito
+	/// perfeitamente por um corpo que nao anda nunca**. As duas linhas juntas, no MESMO ponto do
+	/// MESMO lago, sao a unica prova de que o que parou foi o modo e nao o movimento.
+	/// ======================================================================================
+	/// </summary>
+	private static Familia SemKiNaAguaNaoAnda() => new()
+	{
+		Nome = "FAMILIA 8 -- SEM KI, NA AGUA: ZERO PIXEL (e ele NAO foi teleportado)",
+		Frase = "faca o personagem FICAR PRESO LA tendo q RECARREGAR O KI pra voltar a nadar",
+		Provas = (r, p) =>
+		{
+			Cenario c = Montar(r);
+			Vec2 meio = Cenario.Dentro;
+
+			// ---- A PERGUNTA SECA, ANTES DO PASSO: por que ele nao anda.
+			MoveRules.Escape esc = r.Escape(c.Col, meio, ModoDeTravessia.APe, out _);
+			p.Prova($"no meio do lago, a pe, o escape responde NENHUM (deu {esc}) -- "
+					+ "quem muda e o MODO, nao a posicao",
+					esc == MoveRules.Escape.Nenhum);
+
+			// ---- OS QUATRO RUMOS, 10 s cada.
+			(string Nome, Vec2 Rumo)[] rumos =
+				[("leste", new Vec2(1, 0)), ("oeste", new Vec2(-1, 0)),
+				 ("sul", new Vec2(0, 1)), ("norte", new Vec2(0, -1))];
+			float pior = 0f;
+			var andou = new List<string>();
+			foreach ((string nome, Vec2 rumo) in rumos)
+			{
+				Caminhada a = Andar(r, c.Col, meio, rumo, ModoDeTravessia.APe, 600);
+				float d = (a.Fim - meio).Length;
+				if (d > pior) pior = d;
+				if (d > 0.01f) andou.Add($"{nome} {d:0.0}px");
+			}
+			p.Prova($"a pe, no meio do lago, 10 s segurando a tecla nos QUATRO rumos: {pior:0.###} px"
+					+ (andou.Count > 0 ? $" (andou pra {string.Join(", ", andou)})" : ""),
+					pior <= 0.01f);
+
+			// ---- E ELE NAO FOI MOVIDO: a posicao final e a de partida, bit a bit.
+			Caminhada leste = Andar(r, c.Col, meio, new Vec2(1, 0), ModoDeTravessia.APe, 600);
+			p.Prova($"...e a posicao final e A MESMA da partida, bit a bit "
+					+ $"({leste.Fim.X:0.###},{leste.Fim.Y:0.###} = {meio.X:0.###},{meio.Y:0.###})",
+					leste.Fim.X == meio.X && leste.Fim.Y == meio.Y);
+
+			// ---- A NAO-REGRESSAO: o MESMO corpo, no MESMO ponto, NADANDO.
+			Caminhada nadando = Andar(r, c.Col, meio, new Vec2(1, 0), ModoDeTravessia.Nadando, 600);
+			p.Prova($"...mas NADANDO o mesmo corpo no mesmo ponto atravessa "
+					+ $"(andou {(nadando.Fim - meio).Length:0} px, {nadando.PxNaAgua:0} deles sobre agua)",
+					nadando.Fim.X > (Cenario.LagoX1 + 1) * 32 && nadando.PxNaAgua > ZoneCollision.TileSize);
+
+			// ---- O SERVIDOR: parado e legitimo, o passo afirmado nao e.
+			p.Prova("o servidor ACEITA \"nao me mexi\" (senao seria correcao por quadro em jogo honesto)",
+					r.Valida(meio, meio, c.Col, ModoDeTravessia.APe));
+			p.Prova("...e RECUSA o passo de um quadro (2,7 px) que um cliente afirmasse por cima da agua",
+					!r.Valida(meio, meio + new Vec2(2.7f, 0), c.Col, ModoDeTravessia.APe));
+			p.Prova("...e ACEITA o mesmo passo NADANDO (a recusa e do modo, nao do lugar)",
+					r.Valida(meio, meio + new Vec2(2.7f, 0), c.Col, ModoDeTravessia.Nadando));
+
+			// ---- E NO OCEANO DE VERDADE DA TERRA.
+			if (_terra == null) { p.NaoDeu("o mesmo, no oceano de verdade da Terra"); return; }
+			(ZoneCollision terra, _) = _terra.Abrir();
+			r.MexerNoMapa(new Cenario { Col = terra, Vis = terra, LagoComoParede = terra, Vazio = terra });
+			if (AguaFunda(terra) is not { } funda) { p.NaoDeu("achar agua funda na Terra"); return; }
+
+			Vec2 noMar = Cenario.NoTile(funda.X, funda.Y);
+			float piorReal = 0f;
+			foreach ((_, Vec2 rumo) in rumos)
+			{
+				Caminhada a = Andar(r, terra, noMar, rumo, ModoDeTravessia.APe, 600);
+				piorReal = MathF.Max(piorReal, (a.Fim - noMar).Length);
+			}
+			p.Prova($"no oceano de verdade da Terra (celula {funda.X},{funda.Y}), os quatro rumos: {piorReal:0.###} px",
+					piorReal <= 0.01f);
+			Caminhada real = Andar(r, terra, noMar, new Vec2(1, 0), ModoDeTravessia.Nadando, 600);
+			p.Prova($"...e NADANDO, do mesmo ponto, ele percorre {real.PxNaAgua:0} px de agua de verdade",
+					real.PxNaAgua > 8 * ZoneCollision.TileSize);
+		},
+		Defeitos = [
+			("o escape voltou a ser `return alvo` -- a linha literal que o dono achou segurando a tecla",
+			 r => r.Passo = PassoComEscapeQueAprovaTudo),
+
+			("o `Escapar` pergunta a geometria com o MODO DO CORPO (a agua volta a ser lugar de onde se SAI andando)",
+			 r => { r.Escape = EscaparPeloModoDoCorpo;
+					r.Passo = (pos, d, dt, v, m, modo) => PassoComEscape(EscaparPeloModoDoCorpo, pos, d, dt, v, m, modo); }),
+
+			("a folga do escape voltou aos 6 px do `MinCorrectionPx` (o cliente modificado atravessa a 2,7 px por pacote)",
+			 r => r.Valida = ValidarComAFolgaAntiTremor),
+
+			("so o CLIENTE foi consertado: o servidor manteve o `if (Occupied(from)) return true`",
+			 r => r.Valida = ValidarComEscapeQueAprovaTudo),
+		],
+	};
+
+	// ==================================================================================
+	// FAMILIA 9 -- QUEM NASCE DENTRO DA PEDRA AINDA SAI
+	// ==================================================================================
+
+	/// <summary>
+	/// ============================ O CONTRA-EXEMPLO DO PEDIDO, E O MAIS IMPORTANTE DAQUI ============================
+	/// O escape existe por um motivo, e o motivo nao sumiu porque o dono reclamou do efeito colateral:
+	/// corpo nasce dentro de pedra (o berco num mapa recarregado), uma obra sobe em cima dele, uma
+	/// porta fecha, um arremesso o enterra. **Fechar o escape sem esta familia troca um bug chato por
+	/// um corpo perdido** -- e um corpo perdido nao tem tecla nenhuma que o salve.
+	///
+	/// E O QUE ELE GANHA E MEDIDO NOS DOIS SENTIDOS: sai NA DIRECAO do refugio, e no sentido contrario
+	/// nao anda. Sem a segunda metade, "ele sai" e satisfeito pelo passe livre de volta -- que e
+	/// exatamente o que esta fase tirou.
+	/// ==========================================================================================================
+	/// </summary>
+	private static Familia NascidoNaPedraSai() => new()
+	{
+		Nome = "FAMILIA 9 -- QUEM NASCE DENTRO DA PEDRA AINDA SAI",
+		Frase = "o escape continua existindo pra quem foi POSTO num lugar impossivel",
+		Provas = (r, p) =>
+		{
+			Cenario c = Montar(r);
+
+			// ---- DENTRO DO MURO: um tile de espessura, o caso comum.
+			Vec2 naPedra = Cenario.NoTile(Cenario.MuroX, Cenario.Linha);
+			MoveRules.Escape esc = r.Escape(c.Col, naPedra, ModoDeTravessia.APe, out Vec2 refugio);
+			p.Prova($"dentro da pedra o escape e DIRIGIDO (deu {esc})", esc == MoveRules.Escape.Dirigido);
+			p.Prova("...e o refugio devolvido e um lugar onde o CORPO cabe (nao so a celula)",
+					!MoveRules.Occupied(c.Col, refugio, ModoDeTravessia.APe));
+
+			// O RUMO DA SAIDA sai do refugio e nao de um chute da bancada: o escape aponta pra oeste ou
+			// pra leste conforme a ordem dos aneis, e cravar um dos dois aqui seria a bancada testando
+			// a propria suposicao.
+			Vec2 praFora = new Vec2(MathF.Sign(refugio.X - naPedra.X), 0);
+			Vec2 praDentro = new Vec2(-praFora.X, 0);
+
+			Caminhada saida = Andar(r, c.Col, naPedra, praFora, ModoDeTravessia.APe, 60);
+			p.Prova($"andando NO RUMO do refugio ele sai da pedra em 1 s ({(saida.Fim - naPedra).Length:0} px)",
+					!MoveRules.Occupied(c.Col, saida.Fim, ModoDeTravessia.APe));
+
+			Caminhada oposto = Andar(r, c.Col, naPedra, praDentro, ModoDeTravessia.APe, 600);
+			p.Prova($"...e no sentido OPOSTO ele nao anda ({(oposto.Fim - naPedra).Length:0.###} px) -- "
+					+ "o escape e DIRIGIDO, nao passe livre",
+					(oposto.Fim - naPedra).Length <= 0.01f);
+
+			// ---- O SERVIDOR CONCORDA COM AS DUAS METADES.
+			p.Prova("o servidor aceita o passo rumo ao refugio",
+					r.Valida(naPedra, naPedra + praFora * 2.7f, c.Col, ModoDeTravessia.APe));
+			p.Prova("...e recusa o do sentido contrario",
+					!r.Valida(naPedra, naPedra + praDentro * 2.7f, c.Col, ModoDeTravessia.APe));
+
+			// ---- PEDRA CERCADA DE AGUA: o degrau 3 do `Escapar`.
+			//
+			// Sem ele, o corpo enterrado numa ilha de rocha no meio do oceano cairia no `SemRefugio`
+			// (nao ha chao seco em 8 aneis) e ganharia o passe livre -- exatamente o que esta fase
+			// tirou. Com ele, o corpo troca "preso pela GEOMETRIA" por "preso pelo MODO", que e um
+			// estado que ele mesmo desfaz nadando.
+			Cenario ilha = MontarPedraNoLago(r);
+			Vec2 naIlha = Cenario.NoTile(PedraX, PedraY);
+			MoveRules.Escape escIlha = r.Escape(ilha.Col, naIlha, ModoDeTravessia.APe, out Vec2 refIlha);
+			p.Prova($"enterrado numa rocha CERCADA DE AGUA o escape ainda e dirigido (deu {escIlha})",
+					escIlha == MoveRules.Escape.Dirigido);
+			p.Prova("...e o refugio e a agua ao lado (trocar geometria por modo e o certo: dali ele nada)",
+					ilha.Col.EhAguaEm(new Vec2(refIlha.X, refIlha.Y + MoveRules.FeetOffsetY)));
+
+			Vec2 rumoIlha = new Vec2(MathF.Sign(refIlha.X - naIlha.X), MathF.Sign(refIlha.Y - naIlha.Y));
+			Caminhada saiDaIlha = Andar(r, ilha.Col, naIlha, rumoIlha, ModoDeTravessia.APe, 600);
+			p.Prova($"...ele sai da ROCHA ({(saiDaIlha.Fim - naIlha).Length:0} px) e PARA na agua",
+					!ilha.Col.BlockedAt(new Vec2(saiDaIlha.Fim.X, saiDaIlha.Fim.Y + MoveRules.FeetOffsetY))
+					&& (saiDaIlha.Fim - naIlha).Length < 3 * ZoneCollision.TileSize);
+
+			// ---- ENTERRADO FUNDO: o bloco macico de 5x5.
+			Cenario fundo = MontarPedraFunda(r);
+			Vec2 noFundo = Cenario.NoTile(PedraX, PedraY);
+			MoveRules.Escape escFundo = r.Escape(fundo.Col, noFundo, ModoDeTravessia.APe, out _);
+			p.Prova($"enterrado no meio de um bloco macico de 5x5 ele ainda tem saida (deu {escFundo})",
+					escFundo == MoveRules.Escape.Dirigido);
+			Caminhada saiDoFundo = Andar(r, fundo.Col, noFundo, new Vec2(1, 0), ModoDeTravessia.APe, 600);
+			Caminhada opostoFundo = Andar(r, fundo.Col, noFundo, new Vec2(-1, 0), ModoDeTravessia.APe, 600);
+			p.Prova("...e SO um dos dois sentidos anda (fundo ou nao, o escape continua tendo rumo)",
+					((saiDoFundo.Fim - noFundo).Length > 1f) != ((opostoFundo.Fim - noFundo).Length > 1f));
+
+			// ---- MAPA QUEBRADO: nao ha lugar valido em 8 aneis.
+			//
+			// AQUI O PASSE LIVRE E A RESPOSTA CERTA, e e a unica vez em que ele e. O defeito ali e do
+			// MAPA, e prender o corpo nao o conserta -- prende so o jogador.
+			ZoneCollision tudoParede = TudoParede(24);
+			Vec2 nolugar = Cenario.NoTile(12, 12);
+			p.Prova("num mapa inteiramente parede o escape responde SEM REFUGIO",
+					r.Escape(tudoParede, nolugar, ModoDeTravessia.APe, out _) == MoveRules.Escape.SemRefugio);
+			Caminhada perdido = Andar(r, tudoParede, nolugar, new Vec2(1, 0), ModoDeTravessia.APe, 60);
+			p.Prova($"...e ai vale o passo cheio: o corpo nao fica perdido ({(perdido.Fim - nolugar).Length:0} px em 1 s)",
+					(perdido.Fim - nolugar).Length > 100f);
+		},
+		Defeitos = [
+			("o escape foi fechado seco (`return pos`) -- a correcao apressada: quem nasce na pedra nunca mais anda",
+			 r => r.Passo = PassoQueCongelaOPreso),
+
+			("o raio do escape caiu pra UM anel (enterrado fundo, o passe livre volta pela porta dos fundos)",
+			 r => { r.Escape = EscaparComRaioDeUmAnel;
+					r.Passo = (pos, d, dt, v, m, modo) => PassoComEscape(EscaparComRaioDeUmAnel, pos, d, dt, v, m, modo); }),
+
+			("o escape voltou a aprovar tudo (`return alvo`) -- e ai o rumo deixa de existir",
+			 r => { r.Passo = PassoComEscapeQueAprovaTudo; r.Valida = ValidarComEscapeQueAprovaTudo; }),
+
+			("a folga do escape voltou aos 6 px (o servidor aceita o sentido contrario ao refugio)",
+			 r => r.Valida = ValidarComAFolgaAntiTremor),
+		],
+	};
+
+	// ==================================================================================
+	// FAMILIA 10 -- A BEIRA DO LAGO NAO CONGELA
+	// ==================================================================================
+
+	/// <summary>
+	/// ============================ A ARMADILHA QUE SO A MEDICAO MOSTROU ============================
+	/// A caixa dos pes tem 16x10 px e encosta em ate QUATRO celulas. A exaustao pode entao largar o
+	/// corpo com **uma quina molhada e tres no seco** -- ele nao esta na agua em nenhum sentido util,
+	/// esta a dez pixels de estar completamente fora dela.
+	///
+	/// Com o `Nenhum` puro ele congelava ali (medido: `andando PRO SECO 1 s: 0 px`), e teria de pagar
+	/// tres segundos de Ki nadando pra andar dez pixels -- pra um novato, ~45 s parado olhando pra
+	/// praia. O conserto e o <see cref="MoveRules.QuinaValida"/>: se a caixa dos pes JA TOCA uma
+	/// celula valida, o corpo se puxa pra ela.
+	///
+	/// ============================ E ELE NAO PODE VIRAR TRAVESSIA ============================
+	/// Esta e a familia que segura a familia 8: um `QuinaValida` generoso (busca por aneis, quina sem
+	/// checar bloqueio) devolve o corpo a andar por cima do lago -- o buraco do dono de volta, so que
+	/// escrito por quem estava consertando a beira. Por isso a prova do MEIO DO LAGO mora aqui
+	/// tambem, e nao so na familia 8.
+	/// ====================================================================================
+	/// </summary>
+	private static Familia ABeiraNaoCongela() => new()
+	{
+		Nome = "FAMILIA 10 -- A BEIRA DO LAGO NAO CONGELA (a quina molhada)",
+		Frase = "uma quina na agua e tres no seco: ele sai andando, e nao paga Ki por dez pixels",
+		Provas = (r, p) =>
+		{
+			Cenario c = Montar(r);
+
+			// A BEIRA: o centro do sprite AINDA na celula de agua, as duas quinas da direita ja no seco.
+			// O numero nao e escolhido a dedo -- e a geometria da caixa (BodyHalfW = 8): a 26 px dentro
+			// do ultimo tile de agua, as quinas caem em 18 e 34, e 34 ja e o tile seguinte.
+			Vec2 beira = new((Cenario.LagoX1 * 32) + 26,
+							 Cenario.Linha * 32 + 16 - MoveRules.FeetOffsetY);
+
+			p.Prova("o corpo da beira esta MESMO com a caixa dos pes molhada (senao a prova nao mede nada)",
+					MoveRules.Occupied(c.Col, beira, ModoDeTravessia.APe));
+			p.Prova("...e com o CENTRO do sprite dentro da agua (e a faixa que a pergunta pelo centro perde)",
+					c.Col.EhAguaEm(new Vec2(beira.X, beira.Y + MoveRules.FeetOffsetY)));
+
+			MoveRules.Escape esc = r.Escape(c.Col, beira, ModoDeTravessia.APe, out Vec2 refugio);
+			p.Prova($"na beira o escape e DIRIGIDO pra quina seca (deu {esc})",
+					esc == MoveRules.Escape.Dirigido);
+			p.Prova($"...e o refugio esta a menos de um tile ({(refugio - beira).Length:0} px) -- "
+					+ "e uma celula que o corpo JA TOCA, entao isto nao vira travessia",
+					(refugio - beira).Length < ZoneCollision.TileSize);
+
+			Caminhada praOSeco = Andar(r, c.Col, beira, new Vec2(1, 0), ModoDeTravessia.APe, 60);
+			p.Prova($"andando PRO SECO ele sai em menos de 1 s ({(praOSeco.Fim - beira).Length:0} px)",
+					(praOSeco.Fim - beira).Length > 8f
+					&& !MoveRules.Occupied(c.Col, praOSeco.Fim, ModoDeTravessia.APe));
+
+			Caminhada praAgua = Andar(r, c.Col, beira, new Vec2(-1, 0), ModoDeTravessia.APe, 600);
+			p.Prova($"...e PRA DENTRO da agua, {(praAgua.Fim - beira).Length:0.###} px em 10 s",
+					(praAgua.Fim - beira).Length <= 0.01f);
+
+			// O CONTRA-EXEMPLO QUE SEGURA A FAMILIA 8: no meio do lago as quatro quinas sao agua.
+			p.Prova("no MEIO do lago as quatro quinas sao agua e a resposta volta a ser NENHUM",
+					r.Escape(c.Col, Cenario.Dentro, ModoDeTravessia.APe, out _) == MoveRules.Escape.Nenhum);
+			p.Prova("...e o `QuinaValida` de producao devolve NULO la (nao ha quina a que se puxar)",
+					MoveRules.QuinaValida(c.Col, Cenario.Dentro, ModoDeTravessia.APe) == null);
+
+			// E A BEIRA DE UMA PAREDE NAO GANHA NADA DISSO: a quina so vale onde a geometria nao para.
+			// Sem esta linha, "a beira destrava" viraria "toda quina destrava", e um corpo com a quina
+			// dentro do muro sairia andando pra dentro dele.
+			Vec2 naParede = new((Cenario.MuroX * 32) + 26,
+								Cenario.Linha * 32 + 16 - MoveRules.FeetOffsetY);
+			p.Prova("...e um corpo com a quina dentro do MURO nao cai na regra da beira (a geometria para)",
+					r.Escape(c.Col, naParede, ModoDeTravessia.APe, out _) == MoveRules.Escape.Dirigido
+					&& MoveRules.Occupied(c.Col, naParede, ModoDeTravessia.Nadando));
+		},
+		Defeitos = [
+			("o `QuinaValida` sumiu: o `Nenhum` puro congela quem tem uma quina molhada",
+			 r => { r.Escape = EscaparComQuinaPeloCentro;   // sem quina nenhuma na faixa medida
+					r.Passo = (pos, d, dt, v, m, modo) => PassoComEscape(EscaparComQuinaPeloCentro, pos, d, dt, v, m, modo); }),
+
+			("a beira ganhou BUSCA POR ANEIS em vez das quatro quinas (o socorro virou travessia)",
+			 r => { r.Escape = EscaparComBuscaNaBeira;
+					r.Passo = (pos, d, dt, v, m, modo) => PassoComEscape(EscaparComBuscaNaBeira, pos, d, dt, v, m, modo); }),
+
+			("o `Escapar` pergunta a geometria com o MODO DO CORPO (a beira e o meio do lago viram a mesma coisa)",
+			 r => { r.Escape = EscaparPeloModoDoCorpo;
+					r.Passo = (pos, d, dt, v, m, modo) => PassoComEscape(EscaparPeloModoDoCorpo, pos, d, dt, v, m, modo); }),
+		],
+	};
+
+	// ==================================================================================
+	// OS CENARIOS DAS FAMILIAS 9 E 10
+	// ==================================================================================
+
+	/// <summary>Onde a rocha das provas de "enterrado" fica, nos dois cenarios abaixo.</summary>
+	private const int PedraX = 24, PedraY = 24;
+
+	/// <summary>
+	/// UMA ROCHA DE UM TILE CERCADA DE AGUA ATE onde a busca alcanca -- o degrau 3 do `Escapar`.
+	///
+	/// A agua vai a 12 tiles de raio de proposito: <see cref="MoveRules.RaioDoEscape"/> e 8, entao
+	/// nao ha chao seco nenhum ao alcance e a primeira busca (a do modo do corpo) TEM que falhar. Um
+	/// lago menor deixaria a prova verde pelo motivo errado.
+	/// </summary>
+	private static Cenario MontarPedraNoLago(Regras r)
+	{
+		const int lado = 48;
+		int bytes = (lado * lado + 7) / 8;
+		var col = new byte[bytes];
+		var agua = new byte[bytes];
+
+		for (int y = PedraY - 12; y <= PedraY + 12; y++)
+			for (int x = PedraX - 12; x <= PedraX + 12; x++)
+				agua[(y * lado + x) >> 3] |= (byte)(1 << ((y * lado + x) & 7));
+
+		int i = PedraY * lado + PedraX;
+		col[i >> 3] |= (byte)(1 << (i & 7));
+
+		ZoneCollision mapa = ZoneCollision.Montar(lado, lado, col);
+		mapa.DefinirAgua(agua);
+		var c = new Cenario { Col = mapa, Vis = mapa, LagoComoParede = mapa, Vazio = mapa };
+		r.MexerNoMapa(c);
+		return c;
+	}
+
+	/// <summary>Um bloco macico de 5x5 -- o corpo no centro esta a tres aneis de qualquer saida.</summary>
+	private static Cenario MontarPedraFunda(Regras r)
+	{
+		const int lado = 48;
+		var col = new byte[(lado * lado + 7) / 8];
+		for (int y = PedraY - 2; y <= PedraY + 2; y++)
+			for (int x = PedraX - 2; x <= PedraX + 2; x++)
+				col[(y * lado + x) >> 3] |= (byte)(1 << ((y * lado + x) & 7));
+
+		ZoneCollision mapa = ZoneCollision.Montar(lado, lado, col);
+		var c = new Cenario { Col = mapa, Vis = mapa, LagoComoParede = mapa, Vazio = mapa };
+		r.MexerNoMapa(c);
+		return c;
+	}
+
+	/// <summary>Um mapa em que NAO HA lugar valido -- o `SemRefugio` da familia 9.</summary>
+	private static ZoneCollision TudoParede(int lado)
+	{
+		var col = new byte[(lado * lado + 7) / 8];
+		for (int i = 0; i < lado * lado; i++) col[i >> 3] |= (byte)(1 << (i & 7));
+		return ZoneCollision.Montar(lado, lado, col);
+	}
+
+	/// <summary>
+	/// UMA CELULA DE AGUA COM AS OITO VIZINHAS TAMBEM DE AGUA -- e o `AcharAgua` nao serve pra isto.
+	///
+	/// Aquele devolve a PRIMEIRA celula de agua do mapa, que costuma ser beira: o corpo posto la tem
+	/// quina seca e sai andando **com razao** (familia 10). Medir "zero pixel" ali reprovaria a regra
+	/// certa. O que a familia 8 precisa e de mar aberto.
+	/// </summary>
+	private static (int X, int Y)? AguaFunda(ZoneCollision m)
+	{
+		for (int y = 8; y < m.Height - 8; y++)
+			for (int x = 8; x < m.Width - 8; x++)
+			{
+				if (!m.EhAgua(x, y)) continue;
+				bool todas = true;
+				for (int dy = -1; dy <= 1 && todas; dy++)
+					for (int dx = -1; dx <= 1 && todas; dx++)
+						if (!m.EhAgua(x + dx, y + dy)) todas = false;
+				if (todas) return (x, y);
+			}
+		return null;
+	}
 
 	// ==================================================================================
 	// O ANDAR: um corpo caminhando de verdade, quadro a quadro

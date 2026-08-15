@@ -427,19 +427,12 @@ public partial class Aura : Node2D
         // valendo de dia: eles sao como se SABE que alguem esta transformado, e apagar isso ao
         // meio-dia tiraria a leitura da transformacao justamente no horario mais jogado.
         // ========================================================================
-        // ============================ CURVA, NAO RAMPA ============================
-        // A primeira versao usava a escuridao crua. Duas consequencias, as duas vistas em jogo:
-        //
-        //  * A luz brilhava FRAQUINHO o dia inteiro (escuridao ~0,15 ao meio-dia ja passava do
-        //    limiar) -- e "so brilha a noite" com um fiapo aceso o dia todo nao e "so a noite".
-        //  * ANTES DE O SERVIDOR MANDAR A HORA a `Iluminacao` usa `AmbienteDia`, que tambem da
-        //    ~0,15. Entao ao transformar de dia a luz acendia por alguns quadros e apagava quando a
-        //    hora real chegava -- o clarao que o dono viu.
-        //
-        // Com o `SmoothStep`, abaixo de 0,35 de escuridao a luz e ZERO, ponto. Ela so comeca a
-        // existir no entardecer e chega inteira no breu.
-        // =======================================================================
-        float noite = (float)Mathf.SmoothStep(0.35, 0.8, Iluminacao.Escuridao);
+        // A CURVA MORA NA `Iluminacao` (ver `ForcaDaNoite`), e o porque de ser curva e nao rampa
+        // esta escrito la junto com os dois defeitos que ela consertou. Ela saiu daqui quando ganhou
+        // o SEGUNDO leitor -- a luz do ataque de ki (`LuzDeKi`), que obedece ao mesmo pedido do dono
+        // pela mesma razao. Duas copias do mesmo limiar sao duas chances de afinar uma e esquecer a
+        // outra acendendo de dia.
+        float noite = Iluminacao.ForcaDaNoite();
 
         // ============================ A LUZ LAVAVA A CENA ============================
         // `Energy = forca` cru chegava a 2,3 numa forma alta, e o resultado nas fotos era um

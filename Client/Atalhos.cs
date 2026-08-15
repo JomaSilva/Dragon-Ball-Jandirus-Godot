@@ -34,17 +34,20 @@ public partial class Atalhos : Node
 	/// </summary>
 	public override void _UnhandledInput(InputEvent evento)
 	{
-		// ============================ OS TRES PORTOES ============================
-		// 1. DIGITANDO. A pergunta unica da casa (`Foco.Digitando`). Sem ela, escrever o nome de
-		//    quem vai ser banido dispararia uma tecnica por letra;
-		// 2. A TELA DE TECLAS CAPTURANDO -- ja esta dentro do `Foco`, e e o caso mais bobo e mais
-		//    certo de acontecer: ligar uma forma ao C transformaria voce durante a ligacao;
+		// ============================ UM PORTAO SO, COM TRES MOTIVOS DENTRO ============================
+		// 1. DIGITANDO. Sem ele, escrever o nome de quem vai ser banido dispararia uma tecnica por letra;
+		// 2. A TELA DE TECLAS CAPTURANDO -- e o caso mais bobo e mais certo de acontecer: ligar uma
+		//    forma ao C transformaria voce durante a ligacao;
 		// 3. O EMBATE. O `ClashQte` come QUALQUER letra de A a Z enquanto dura, e ele le em
 		//    `_UnhandledInput` como este aqui -- `SetInputAsHandled` de um nao impede o outro de ter
 		//    lido. Sem este portao, responder ao quick time event te transformaria.
-		// =========================================================================
-		if (Foco.Digitando) return;
-		if (GameClient.Instance?.EmClash == true) return;
+		//
+		// ERAM DUAS PERGUNTAS AQUI (`Foco.Digitando` e o `EmClash` na mao), e este era o UNICO dos seis
+		// caminhos de atalho do cliente que fazia a segunda -- os outros cinco vazavam. A do embate
+		// mudou-se pra dentro do `Foco` (ver `Foco.AtalhosMudos`) justamente por isso: enquanto ela
+		// morasse aqui, cada atalho novo teria que lembrar dela, e um ia esquecer. Um ja tinha.
+		// ==============================================================================================
+		if (Foco.AtalhosMudos) return;
 		if (evento is not InputEventKey { Pressed: true, Echo: false } k) return;
 
 		if (Teclas.AtalhoDe(Teclas.Fisica(k)) is not { } a) return;

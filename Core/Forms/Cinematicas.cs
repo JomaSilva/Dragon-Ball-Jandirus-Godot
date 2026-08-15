@@ -342,6 +342,39 @@ public enum Efeito
 	BanhoDeCor = 65536,
 
 	/// <summary>
+	/// A SILHUETA DE LUZ ACENDE POR CIMA DO CORPO -- e ela e o *"OVERLAY q fazia o CORPO BRILHAR"* que
+	/// o dono cobrou nas transformacoes do bio-androide.
+	///
+	/// ============================ E LITERAL, E TEM NOME DE ARQUIVO ============================
+	/// `bioto2.dmi` e `bioto3.dmi` (`Icons/Character Icons/Bioandroids/`): a silhueta branco-ciano do
+	/// corpo, 32x32, quatro direcoes. As tres cinematicas do bio a penduram do mesmo jeito, com
+	/// `plane = 7` -- ou seja ACIMA do corpo:
+	///
+	///   * `imperfecttranscinematic()` (`cinematics/imperfecttrans.dm:5-7`) -- `bioto2`;
+	///   * `perfecttranscinematic()` (`cinematics/perfecttrans.dm:5-7`) -- `bioto3`;
+	///   * `BioLabEvolve()` (`DNALabs.dm:563-566`) -- um ou outro, pelo degrau alvo, *"durante TODA a
+	///     cinematica"* (o comentario e do proprio DM).
+	///
+	/// ============================ ELE E UM ESTADO, COMO O PISCAR E A PEDRA ============================
+	/// Mesma licao que este arquivo ja pagou tres vezes (<see cref="PiscaCabelo"/>,
+	/// <see cref="Cinematica.OChaoSeSolta"/>): o overlay do DM fica pendurado da primeira linha ate o
+	/// climax, e escrever isso em beats seria uma fileira de instantes que o
+	/// <see cref="Cinematicas.Encurtar"/> comprimiria por `k`, mudando a cadencia sozinho.
+	///
+	/// Entao o beat **ARMA** e o tocador o mantem aceso ate o <see cref="Assumir"/>, exatamente como o
+	/// piscar de cabelo. Um beat por cena; QUAL folha e da cena e nao do beat (ver
+	/// <see cref="Cinematica.Silhueta"/>), porque uma cena so acende uma silhueta.
+	///
+	/// ============================ E O DM ESQUECE DE TIRA-LA EM DUAS DAS TRES ============================
+	/// `imperfecttrans.dm:7` e `perfecttrans.dm:7` fazem `overlayList += BD` e **nunca removem**, nem
+	/// setam `overlaychanged = 1` -- so o `BioLabEvolve` limpa (`DNALabs.dm:611-613`). Portar o
+	/// esquecimento deixaria a silhueta grudada no corpo pra sempre; aqui quem a apaga e o mesmo
+	/// instante que apaga o piscar, e nao ha bandeira pra esquecer.
+	/// =============================================================================================
+	/// </summary>
+	SilhuetaDoCorpo = 131072,
+
+	/// <summary>
 	/// A AURA BASE DO PROPRIO CORPO (`colorablebigaura`) ACENDE -- e fica acesa ate o
 	/// <see cref="Assumir"/>, que a apaga.
 	///
@@ -381,6 +414,30 @@ public enum Efeito
 /// <param name="Narra">Descricao em terceira pessoa (o `*[src] ...*` do DM). Vazio = nada.</param>
 /// <param name="Som">Efeito sonoro. Vazio = nenhum.</param>
 public readonly record struct Beat(double Em, Efeito Faz, string Fala = "", string Narra = "", string Som = "");
+
+/// <summary>
+/// QUAL FOLHA A <see cref="Efeito.SilhuetaDoCorpo"/> acende. Um SIMBOLO, e nao um `res://`, pelo
+/// mesmo motivo de <see cref="FolhaDeAura"/> e <see cref="FolhaColada"/>: o Core decide QUAL, o
+/// cliente sabe ONDE (ver `Jandirus.Client.SilhuetasDeCena`).
+/// </summary>
+public enum FolhaDeSilhueta
+{
+	/// <summary>Nenhuma. E o caso das 39 cenas que nao sao do bio-androide.</summary>
+	Nenhuma,
+
+	/// <summary>
+	/// `flashtrans.dmi` -- o clarao branco de UM golpe com que a carapaca larval se rompe.
+	/// `flick('flashtrans.dmi', src)` (`DNALabs.dm:509`). E o unico dos tres que nao e `bioto*`, e o
+	/// unico que nao dura a cena inteira: a cena dele mede 0,6 s no total.
+	/// </summary>
+	Rompimento,
+
+	/// <summary>`bioto2.dmi` -- a metamorfose PRA forma semi-perfeita (`imperfecttrans.dm:5`).</summary>
+	BioSemiPerfeito,
+
+	/// <summary>`bioto3.dmi` -- a metamorfose PRA forma perfeita (`perfecttrans.dm:5`).</summary>
+	BioPerfeito,
+}
 
 /// <summary>
 /// QUANTA CENA ESTA TRANSFORMACAO MERECE. Sao TRES degraus, e eles sao do dono:
@@ -452,6 +509,18 @@ public sealed class Cinematica
 	/// poder reagir num jogo com outras pessoas em volta.
 	/// </summary>
 	public double SegundosPreso;
+
+	/// <summary>
+	/// A FOLHA QUE O BEAT <see cref="Efeito.SilhuetaDoCorpo"/> acende nesta cena.
+	///
+	/// **DA CENA E NAO DO BEAT**, e a razao e a mesma que fez a <see cref="Musica"/> ser um campo:
+	/// uma cena acende UMA silhueta, do primeiro instante ao climax. Posto no beat, o `Efeito` teria
+	/// que carregar dado (e nao so acender), e uma cena poderia se contradizer entre dois instantes.
+	///
+	/// <see cref="FolhaDeSilhueta.Nenhuma"/> com um beat de silhueta escrito e uma cena defeituosa --
+	/// a bancada cobra o par (ver `RoboDeForma.ConferirRoteiro`).
+	/// </summary>
+	public FolhaDeSilhueta Silhueta = FolhaDeSilhueta.Nenhuma;
 
 	/// <summary>Duracao total da cena, em segundos.</summary>
 	public double Segundos => _beats.Length == 0 ? 0 : _beats[^1].Em + 1.0;
@@ -2561,6 +2630,302 @@ public static class Cinematicas
 	};
 
 	// ==================================================================================
+	// O BIO-ANDROIDE -- as quatro cenas que o dono cobrou
+	// ==================================================================================
+	// *"vc n colocou a CINEMATICA DE TRANSFORMACAO dos bio androides, olhe no byond como era, tinha
+	// um OVERLAY q fazia o CORPO BRILHAR etc."*
+	//
+	// ============================ O OVERLAY E O `bioto2`/`bioto3`, E ELE E O `Efeito.SilhuetaDoCorpo` ============================
+	// As tres cinematicas do bio no DM penduram a MESMA coisa com `plane = 7`: a silhueta de luz do
+	// corpo. Ver o comentario daquele bit, que tem os arquivos e as linhas.
+	//
+	// ============================ E A `Aurabigcombined` **NAO** ENTRA, POR ORDEM DO DONO ============================
+	// O `BioLabEvolve()` acende `image(icon='Aurabigcombined.dmi')` na fase 2 (`DNALabs.dm:578-581`), e
+	// portar aquela linha ao pe da letra seria desobedecer um pedido anterior e explicito: *"vamos
+	// trocar das cinematicas o Aurabigcombined pela propria aura da transformaçao q vc ta virando"*.
+	//
+	// So que aqui a substituta nao existe: um DEGRAU do bio (`bio_stage`) nao e uma entrada do
+	// <see cref="Catalogo"/> -- nao tem `FormaDef`, logo nao tem `Aura` de onde tirar cor. E
+	// <see cref="Efeito.AuraGrande"/> sem forma cai na cor da FURIA (ver `ChamaDoDegrau` no tocador),
+	// ou seja o casulo de luz do bio sairia VERMELHO SANGUE. Entao ele nao entra: quem carrega a fase
+	// 2 e o que o DM ja manda junto e o port ja sabe desenhar -- os oito feixes de chao
+	// (`Electricgroundbeam2.dmi` -> <see cref="Efeito.FeixesNoChao"/>), o anel e o tremor.
+	//
+	// A silhueta continua acesa por baixo de tudo isso, que e o que o dono descreveu.
+	// ==========================================================================================================================
+	//
+	// ============================ ELAS NAO SAO CENAS DE FORMA, E POR ISSO FICAM FORA DA `Todas` ============================
+	// Duas delas sobem um `bio_stage`, que e estado PERMANENTE de corpo e nao uma entrada do catalogo
+	// (ver `Races.BioAndroids`), e a terceira acontece na hora da MORTE. Nenhuma responde ao
+	// <see cref="Para"/>, nenhuma tem versao <see cref="Encurtada"/> (nao ha maestria em evoluir: cada
+	// degrau acontece uma vez na vida do personagem) e nenhuma veste cabelo. E exatamente o estatuto da
+	// <see cref="Furia"/>, e elas entram na bancada pelo mesmo caminho que ela -- `ConferirRoteiro`, com
+	// a unica regra de forma desligada onde o DM tambem a desliga.
+	//
+	// A QUARTA -- a Super Perfeita -- E FORMA DE VERDADE e esta na `Todas`, logo abaixo.
+	// ==================================================================================================================
+	//
+	// ============================ O CORPO TROCA NO CLIMAX, COMO NO DM -- A DIVERGENCIA FOI PAGA ============================
+	// Esta anotacao dizia o contrario: que o corpo ja estava trocado quando a cena comecava, e que a
+	// divergencia ficaria. O dono cobrou com foto (*"o bio androide ta MUDANDO O CORPO ANTES DA
+	// CINEMATICA ACABAR ai ta ficando BUGADO"*) -- e o sintoma era pior que "sprite adiantado": a
+	// silhueta de luz e dimensionada pro corpo VELHO, entao ela ficava 28 s pendurada sobre um corpo
+	// maior, duas silhuetas empilhadas.
+	//
+	// COMO FICOU, e sem mexer na ESCADA (que segue medida e verde): o SERVIDOR continua aplicando o
+	// degrau no instante em que a absorcao fecha -- `bio_stage`, BP, marco, Ki e `Appearance.Corpo`
+	// todos agora. O que mudou foi a ORDEM DOS PACOTES (a cena sai antes do `PeerLook`, ver
+	// `GameServer.SubirDegrauDoBio`) e QUEM ESPERA: o cliente guarda a aparencia que chega no meio de
+	// uma cinematica e so a veste na VIRADA (`World._pendentes` -> `Transformacao.NaVirada`), que e o
+	// mesmo instante em que a silhueta sai e a cratera nasce -- `overlayList -= MORPH` seguido de
+	// `icon = ...`, `DNALabs.dm:614-617`.
+	//
+	// E A REGRA NAO E DE BIO: vale pra qualquer aparencia que chegue durante qualquer cena. O bio e o
+	// unico que a exercita porque e o unico cujo corpo vem da FICHA e nao do `FormaDef.Corpo`.
+	// ==============================================================================================================
+
+	/// <summary>
+	/// A METAMORFOSE DE UM DEGRAU -- `BioLabEvolve()` (`DNALabs.dm:551-641`), o molde das duas.
+	///
+	/// ============================ 28,0 s, E O RELOGIO E CONTADO ============================
+	/// Fase 1: `for(cyc = 1 to 16)` com `sleep(10)` no fim de cada volta = **16,0 s**, com `Quake()`
+	/// nos ciclos multiplos de 4 (ou seja aos 3, 7, 11 e 15 s -- o efeito do ciclo N cai em N-1) e a
+	/// fala das placas rachando no ciclo 8 (7,0 s).
+	///
+	/// Fase 2, a partir dos 16,0 s: aura, `chargeaura.wav`, dois `Quake()` e os oito feixes andando nas
+	/// oito direcoes, seguidos de `for(cyc = 1 to 12)` com `sleep(10)` = **12,0 s**, com `Quake()` nos
+	/// multiplos de 3 (18, 21, 24 e 27 s).
+	///
+	/// Climax aos **28,0 s**: `createShockwavemisc(loc,3)`, `createCrater(loc,3)`, os overlays saem, o
+	/// corpo e o BP mudam, e `emit_Sound('powerup.wav')` fecha.
+	///
+	/// O CORPO FICA PRESO A CENA INTEIRA (`move = 0` na largada, `move = 1` so no fim), que e a regra
+	/// do dono e tambem a do DM aqui. Quem escreve o prazo no SERVIDOR e o `GameServer.CenaDoBio`.
+	/// ==================================================================================
+	/// </summary>
+	private static Cinematica BioEvoluindo(FolhaDeSilhueta folha, string musica,
+										   string abre, string racha, string casulo, string vira)
+		=> new()
+		{
+			// SEM FORMA, como a `Furia`, e pelo mesmo motivo escrito la: `Catalogo.Def("")` e nulo e as
+			// propriedades derivadas ja tratam o nulo. O degrau do bio nao e uma forma do catalogo.
+			Forma = "",
+			Musica = musica,
+			Silhueta = folha,
+			SegundosPreso = 28.0,
+			Beats =
+			[
+				new(0.0, Efeito.SilhuetaDoCorpo | Efeito.Tremor, Som: "rockmoving", Narra: abre),
+				new(3.0, Efeito.Tremor),
+				new(7.0, Efeito.Tremor, Narra: racha),
+				new(11.0, Efeito.Tremor),
+				new(15.0, Efeito.Tremor),
+
+				// A VIRADA DA FASE 2 -- os oito `Electricgroundbeam2` saindo nas oito direcoes, o
+				// `chargeaura.wav` e os dois `Quake()`. E o instante em que o DM tambem acende a aura,
+				// que aqui nao entra (ver o bloco de cabecalho).
+				new(16.0, Efeito.FeixesNoChao | Efeito.AnelDeChoque | Efeito.Tremor,
+					Som: "chargeaura", Narra: casulo),
+
+				new(18.0, Efeito.Tremor),
+				new(21.0, Efeito.Tremor),
+				new(24.0, Efeito.Tremor),
+				new(27.0, Efeito.Tremor),
+
+				// O CLIMAX. A cratera e a poeira NAO estao escritas aqui -- quem as poe e o funil da
+				// `Cinematica.Beats`, que e a regra da casa (ver `Efeito.Cratera`). O que sobra do
+				// `createShockwavemisc(loc,3)` e o anel.
+				new(28.0, Efeito.Assumir | Efeito.Tremor | Efeito.AnelDeChoque | Efeito.ClaraoDeTela,
+					Som: "powerup", Narra: vira),
+
+				// A CAUDA, e ela e a unica -- a poeira baixando depois do buraco no chao.
+				new(30.0, Efeito.Poeira),
+			],
+		};
+
+	/// <inheritdoc cref="BioEvoluindo"/>
+	public static readonly Cinematica BioSemiPerfeito = BioEvoluindo(
+		FolhaDeSilhueta.BioSemiPerfeito,
+		// O TEMA E POR DEGRAU, e os dois arquivos sao os do DM (`DNALabs.dm:558-559`), que os cita com
+		// caminho completo porque os nomes tem parenteses e apostrofo. Estao no disco deste port, em
+		// `Assets/Sounds/Music/bio forms/`.
+		"bio forms/Semi-Perfect Cell Theme(Shunsuke Kikuchi).mp3",
+		"o corpo INCHA e borbulha -- a biomassa absorvida está reescrevendo a forma!",
+		"placas de carapaça racham e se reformam maiores sobre o corpo...",
+		"a silhueta muda por completo dentro do casulo de luz!",
+		"a poeira baixa: a FORMA SEMI-PERFEITA está completa.");
+
+	/// <inheritdoc cref="BioEvoluindo"/>
+	public static readonly Cinematica BioPerfeito = BioEvoluindo(
+		FolhaDeSilhueta.BioPerfeito,
+		"bio forms/Perfect Cell's Theme (From  Dragon Ball Z ).mp3",
+		"o corpo INCHA e borbulha -- a biomassa absorvida está reescrevendo a forma!",
+		"placas de carapaça racham e se reformam maiores sobre o corpo...",
+		"a silhueta muda por completo dentro do casulo de luz!",
+		"uma figura esguia e serena emerge da luz: a FORMA PERFEITA.");
+
+	/// <summary>
+	/// O SUPER SAIYAJIN 2 QUE CANCELA A MORTE -- `bio_ssj2_awaken()` (`DNALabs.dm:663-703`).
+	///
+	/// ============================ 8,0 s, E ELA NAO PRENDE NINGUEM ============================
+	/// Quatro voltas de `sleep(20)` = **8,0 s**, com raios e poeira espalhados pelo `view(6)` em cada
+	/// uma e um `Quake()` por volta. O `chargeaura.wav` e a linha dos relampagos dourados caem na volta
+	/// 2 (2,0 s). No fim, `createShockwavemisc(loc, 4)` e `createCrater(loc, 3)`.
+	///
+	/// **NAO HA FOLHA DE TRANSFORMACAO NENHUMA AQUI** -- nem `bioto*`, nem aura: o proprio DM so manda
+	/// raio, poeira e tremor. E o comentario dele diz por que ela e assim: *"cinematica CURTA (~8s)
+	/// propria do bio"*, contra os 28 s da evolucao e os 25 do Super Saiyajin.
+	///
+	/// E O CORPO FICA SOLTO, que e o unico caso em que isto nao e um desvio da regra do dono: o proc
+	/// escreve `canmove = 1`, `move = 1`, `canfight = 1` na PRIMEIRA coisa que faz. Ele acabou de
+	/// morrer -- prende-lo por oito segundos seria dar ao matador uma segunda chance de graça.
+	/// ==================================================================================
+	/// </summary>
+	public static readonly Cinematica BioSsj2 = new()
+	{
+		Forma = "",
+
+		// SEM TEMA. O DM nao toca musica nenhuma neste proc -- so `rockmoving.wav` e `chargeaura.wav`.
+		// Ver o campo `Musica`: um arquivo escrito aqui seria invencao, e ela apareceria como trilha
+		// por cima de uma briga que continua acontecendo em volta.
+		Musica = "",
+		SegundosPreso = 0,
+		Beats =
+		[
+			new(0.0, Efeito.Tremor, Som: "rockmoving",
+				Narra: "o corpo destroçado está se RECOMPONDO -- o núcleo bio-androide se recusa a morrer!"),
+			new(2.0, Efeito.Tremor, Som: "chargeaura",
+				Narra: "relâmpagos DOURADOS rasgam a carapaça -- a MORTE acendeu o que faltava no DNA Saiyajin!"),
+			new(4.0, Efeito.Tremor),
+			new(6.0, Efeito.Tremor),
+			new(8.0, Efeito.Assumir | Efeito.Tremor | Efeito.AnelDeChoque | Efeito.ClaraoDeTela,
+				Som: "powerup", Narra: "e ele volta de pé."),
+			new(10.0, Efeito.Poeira),
+		],
+	};
+
+	/// <summary>
+	/// A SUPER PERFEITA -- `Cell4()` (`CellFormBuff.dm:73-82`).
+	///
+	/// ============================ ESTA E FORMA DE VERDADE, E ENTRA NA `Todas` ============================
+	/// `super_perfect` e uma entrada do <see cref="Catalogo"/> (8x temporario, com dreno) e ate hoje era
+	/// a UNICA forma do jogo sem cena -- `Cinematicas.De("super_perfect")` devolvia nulo, o que a
+	/// bancada ja acusa por escrito (*"toda forma tem cena"*, `RoboDeForma`). O `NoDegrau` transformava
+	/// isso em transformacao instantanea: o bio subia 8x num quadro, sem nada na tela.
+	///
+	/// ============================ O DM NAO TEM `sleep` AQUI, E O RELOGIO E DESENHO ============================
+	/// O proc inteiro sao sete linhas sem espera nenhuma: `chargeaura.wav`, o buff,
+	/// `animate(src, time=7, color=rgb(243,240,46))`, `createShockwavemisc(loc,1)`,
+	/// `createCrater(loc,5)`. E a mesma situacao das outras tres cenas sem `sleep` de origem, que este
+	/// arquivo ja marca uma a uma (<see cref="Destroyer"/>, <see cref="Oozaru"/>,
+	/// <see cref="SurtoCurto"/>) -- e os 2,5 s aqui saem da mesma regua do `SurtoCurto`, que e a
+	/// familia mais parecida: um corpo que ja e o da forma se enchendo de energia.
+	///
+	/// ============================ O BANHO DE COR E O `animate`, E A COR DIVERGE DE PROPOSITO ============================
+	/// O DM lava o corpo de `rgb(243,240,46)` -- AMARELO. O <see cref="Efeito.BanhoDeCor"/> deriva a cor
+	/// do <see cref="FormaDef.Aura"/> (`9fe8a8`, o verde-branco da carapaca), e essa derivacao e regra
+	/// da casa e nao descuido: um campo `CorDoBanho` cobraria uma quinta cor por forma e a primeira
+	/// forma nova nasceria com ele vazio e o banho invisivel. Ver o bloco do proprio bit.
+	///
+	/// E O `color = null` DA LINHA SEGUINTE E O DEFEITO DO ORIGINAL, nao o gesto: no BYOND ele mata o
+	/// tween no mesmo tique e nada aparece. Este arquivo ja julgou esse caso duas vezes (`LSSj()`,
+	/// `Ritual_God/Buff()`) e no mesmo sentido -- *"portar o silencio seria portar o defeito"*.
+	/// ============================================================================================================
+	/// </summary>
+	public static readonly Cinematica SuperPerfeito = new()
+	{
+		Forma = "super_perfect",
+
+		// SEM TEMA: `Cell4()` nao toca musica. Os dois temas do bio que existem no disco sao dos
+		// DEGRAUS (ver `BioSemiPerfeito`/`BioPerfeito`), e emprestar um deles aqui poria a trilha da
+		// forma perfeita numa transformacao que acontece muito depois dela.
+		Musica = "",
+		SegundosPreso = 2.5,
+		Beats =
+		[
+			// `emit_Sound('chargeaura.wav')` + o `animate` de 0,7 s, os dois na largada.
+			new(0.0, Efeito.Tremor | Efeito.BanhoDeCor, Som: "chargeaura",
+				Narra: "a carapaça se enrijece e o corpo inteiro se acende por dentro."),
+
+			// A FAISCA E DO CATALOGO (`Raios = 2` na entrada de `super_perfect`), e ela e o
+			// `snamek Elec.dmi` que o buff veste (`CellFormBuff.dm:31-32`) chegando um instante antes.
+			new(1.2, Efeito.Tremor | Efeito.Raios),
+
+			// `createShockwavemisc(loc,1)` + `createCrater(loc,5)`. A cratera sai do funil.
+			new(2.5, Efeito.Assumir | Efeito.Tremor | Efeito.AnelDeChoque | Efeito.ClaraoDeTela,
+				Narra: "eletricidade percorre a carapaça inteira: o SUPER PERFEITO."),
+
+			new(3.6, Efeito.Poeira | Efeito.Raios),
+		],
+	};
+
+	/// <summary>
+	/// QUAL CENA DO BIO -- o unico conteudo do `S2C.CenaDoBio`, e o vocabulario das duas pontas.
+	///
+	/// **UM BYTE E NAO O NOME DA CENA**: o pacote nomeia um ACONTECIMENTO ("a carapaca rompeu"), e o
+	/// roteiro dele mora no Core dos dois lados. Mandar o id de uma `Cinematica` obrigaria o cliente a
+	/// procurar por string uma cena que ele ja consegue derivar -- e um erro de digitacao viraria uma
+	/// evolucao silenciosa, que e o defeito mais dificil de perceber que existe.
+	/// </summary>
+	public enum CenaBio : byte
+	{
+		/// <summary>
+		/// A CARAPACA LARVAL SE ROMPE (larva -> imperfeito), `dnl_larva_mature()` (`DNALabs.dm:503-518`).
+		///
+		/// **ELA NAO E UMA <see cref="Cinematica"/>, E ISSO E FIEL.** O DM nao tem proc de cinematica
+		/// aqui: sao duas linhas -- `flick('flashtrans.dmi', src)` e `emit_Sound('powerup.wav')`. A
+		/// folha mede 6 quadros a 10 fps, ou seja **0,6 s**, e o proc nao prende o corpo, nao abre o
+		/// chao e nao tem climax a preparar.
+		///
+		/// Escrever uma `Cinematica` de 0,6 s pra ela seria inventar uma cena que o original nao tem --
+		/// e ela nem passaria pela bancada de roteiro (que cobra, com razao, que a virada de uma cena
+		/// caia depois do primeiro segundo). Entao o <see cref="DoBio"/> devolve nulo aqui, e quem
+		/// recebe acende a silhueta pelo prazo do flick. Ver `World.AoRomperACarapaca`.
+		/// </summary>
+		Rompimento = 0,
+
+		/// <summary>A metamorfose pra forma SEMI-PERFEITA -- <see cref="BioSemiPerfeito"/>.</summary>
+		SemiPerfeito = 1,
+
+		/// <summary>A metamorfose pra FORMA PERFEITA -- <see cref="BioPerfeito"/>.</summary>
+		Perfeito = 2,
+
+		/// <summary>O Super Saiyajin 2 que cancela a morte -- <see cref="BioSsj2"/>.</summary>
+		Ssj2PelaMorte = 3,
+	}
+
+	/// <summary>
+	/// A CENA DESTE ACONTECIMENTO. Nulo = ele nao tem cena (hoje so o
+	/// <see cref="CenaBio.Rompimento"/>, e a razao esta escrita nele).
+	///
+	/// O `_ =>` NAO devolve uma cena por omissao de proposito: um valor novo no enum que ninguem
+	/// tratar aqui vira "sem cena" -- silencio --, e nao a cena errada tocando com o nome de outra. E
+	/// a mesma escolha que o <see cref="Para"/> ja documenta pro fallback deletado.
+	/// </summary>
+	public static Cinematica? DoBio(CenaBio q) => q switch
+	{
+		CenaBio.SemiPerfeito => BioSemiPerfeito,
+		CenaBio.Perfeito => BioPerfeito,
+		CenaBio.Ssj2PelaMorte => BioSsj2,
+		_ => null,
+	};
+
+	/// <summary>
+	/// A CENA DO DEGRAU QUE O BIO ACABOU DE ALCANCAR -- 2 = larva rompida, 3 = semi, 4 = perfeita.
+	///
+	/// DERIVADA E NAO ESCRITA NO SERVIDOR: o `SubirDegrauDoBio` ja tem o degrau alvo na mao, e um
+	/// `switch` la seria a segunda tabela dizendo qual cena pertence a qual degrau. Os numeros sao os
+	/// de <see cref="Races.BioAndroids"/>, que e quem os define.
+	/// </summary>
+	public static CenaBio? CenaDoDegrau(int degrau) => degrau switch
+	{
+		Races.BioAndroids.Imperfeito => CenaBio.Rompimento,
+		Races.BioAndroids.SemiPerfeito => CenaBio.SemiPerfeito,
+		Races.BioAndroids.Perfeito => CenaBio.Perfeito,
+		_ => null,
+	};
+
+	// ==================================================================================
 	// AS CONSULTAS
 	// ==================================================================================
 
@@ -2582,6 +2947,11 @@ public static class Cinematicas
 
 		// as tres linhas raciais: uma entrada Namekuseijin, duas Heran, duas Alien
 		SuperNamek, Heran1, Heran2, Alien1, Alien2,
+
+		// e o BIO-ANDROIDE, a unica forma do catalogo que estava sem cena nenhuma -- as tres cenas
+		// avulsas dele (os dois degraus e o SSJ2 pela morte) NAO entram aqui, pelo motivo escrito
+		// junto delas.
+		SuperPerfeito,
 	];
 
 	/// <summary>
@@ -3028,6 +3398,12 @@ public static class Cinematicas
 			Forma = cheia.Forma,
 			Musica = "",
 			SegundosPreso = preso,
+
+			// A SILHUETA ATRAVESSA. Ela nao e da estreia (como a musica, que esta linha acima apaga):
+			// e o desenho do corpo se reescrevendo, que e o que a cena MOSTRA -- e o beat que a acende
+			// veio junto no `beats`. Sem esta linha a versao curta acenderia `FolhaDeSilhueta.Nenhuma`
+			// e o beat viraria um instante vazio, calado.
+			Silhueta = cheia.Silhueta,
 			Beats = [.. beats],
 		};
 	}

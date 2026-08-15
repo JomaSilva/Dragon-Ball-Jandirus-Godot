@@ -103,6 +103,14 @@ public static class VerbosDoJogo
 			"Os cargos do mundo: quem ocupa cada um e o que falta pra voce.",
 			() => C?.SendCargo("")));
 
+		// ============================ A FICHA MORAL ============================
+		// Ela entra na mesma leva que deu PRODUTORES ao karma (`GameServer.Karma.cs`). O eixo decide
+		// nove cargos, nao aparece em barra nenhuma e so se mexe matando (ou deixando de matar) --
+		// sem este botao, a primeira noticia que o jogador tem dele e um cargo o recusando.
+		Verbos.Registrar(new Verbo("Karma", Verbos.Outros,
+			"Sua ficha moral: o numero, a faixa, o que sobe, o que desce e que cargos ele abre ou fecha.",
+			() => C?.SendVerbo("karma")));
+
 		// ============================ AS PORTAS DOS CARGOS ============================
 		// Os 14 cargos que nao se reivindicam (nomeacao, sucessao e duelo) passaram a ter mecanismo
 		// -- ver `GameServer.CargoPortas.cs` e `GameServer.CargoDuelo.cs`. Sem estes botoes eles

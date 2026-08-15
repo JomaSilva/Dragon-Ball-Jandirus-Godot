@@ -274,7 +274,11 @@ public partial class MenuJogo : CanvasLayer
 		// ==============================================================================================
 		if (Teclas.Bate("ui_menu", k))
 		{
-			if (Foco.Digitando) return;
+			// `AtalhosMudos` e nao `Digitando`: o P e uma das 22 letras que o quick time event sorteia,
+			// e esta tela le em `_Input` -- ANTES do `ClashQte`. Ou seja, responder "P" ao embate abria
+			// o menu E comia a letra (o `SetInputAsHandled` logo abaixo). Sair aqui sem consumir deixa
+			// o evento seguir ate o embate, que e de quem a tecla e naquele momento.
+			if (Foco.AtalhosMudos) return;
 			Alternar();
 			GetViewport().SetInputAsHandled();
 			return;
@@ -1574,7 +1578,21 @@ public partial class MenuJogo : CanvasLayer
 			bool vago = c.Dono.Length == 0;
 			bool apto = c.Falta.Length == 0;
 
-			if (!vago) { Linha(NomeDoCargo(c.Chave), c.Dono, Tema.Texto); continue; }
+			// ============================ O QUE O CARGO E, E O QUE ELE DA ============================
+			// As duas linhas que faltavam. O painel mostrava trinta cargos e o jogador nao tinha como
+			// saber o que nenhum deles entrega -- nem antes de disputar, nem depois de perder. A
+			// descricao vem da `RankDef.Desc` e a dadiva da tabela que o servidor executa de verdade,
+			// **com o que ainda e botao mudo marcado** (ver `OQueOCargoEntrega`).
+			//
+			// ELAS SAIEM PRO CARGO OCUPADO TAMBEM, e nao so pro vago: metade do valor de um sistema de
+			// cargos e saber o que o dono atual ganhou com ele.
+			void Ficha()
+			{
+				if (c.Desc.Length > 0) Aviso("      " + c.Desc);
+				if (c.Da.Length > 0) Aviso("      dá: " + c.Da);
+			}
+
+			if (!vago) { Linha(NomeDoCargo(c.Chave), c.Dono, Tema.Texto); Ficha(); continue; }
 
 			var b = new Button
 			{
@@ -1586,6 +1604,7 @@ public partial class MenuJogo : CanvasLayer
 			string chave = c.Chave;
 			b.Pressed += () => cli.SendCargo(chave);
 			_conteudo.AddChild(b);
+			Ficha();
 			if (!apto) Aviso("      exige: " + c.Falta);
 		}
 

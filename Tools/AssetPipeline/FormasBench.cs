@@ -2335,7 +2335,20 @@ public static class FormasBench
 		// E NINGUEM ESCREVE `BPBoost` NO CODIGO DE PRODUCAO -- a varredura dos fontes, mesmo padrao da
 		// `raiva` [8]. Um dia isto vai ficar vermelho, e sera pelo motivo certo: alguem portou a
 		// Ascensao. A lista de permitidos e onde o campo pode aparecer sem ser um escritor.
-		string[] podemEscrever = ["Fighter.cs", "StatBench.cs", "FormasBench.cs"];
+		// ============================ A LISTA VIROU UMA REGRA, PORQUE ELA JA ESTAVA DESATUALIZADA ============================
+		// Ela nomeava TRES arquivos, e a afirmacao logo abaixo diz "nenhum arquivo de **producao**".
+		// Nao sao a mesma coisa: toda bancada que quer medir o efeito do `BPBoost` precisa escreve-lo
+		// (a `MenteTeste` poe 4 pra separar base de expresso; a `LigadosTeste` faz o mesmo), e cada
+		// bancada nova que nascesse teria que ser acrescentada a mao aqui -- ou deixaria esta linha
+		// vermelha por um motivo que nao e o defeito que ela procura. Quando esta sessao a rodou, ela
+		// JA estava vermelha por isso, com quatro entradas de bancada.
+		//
+		// `*Teste.cs` e `*Bench.cs` sao a convencao do projeto inteiro pra "isto nao e producao".
+		// ================================================================================================================
+		string[] podemEscrever = ["Fighter.cs"];
+		static bool EhBancada(string nome) =>
+			nome.EndsWith("Teste.cs", StringComparison.Ordinal)
+			|| nome.EndsWith("Bench.cs", StringComparison.Ordinal);
 		var escritores = new List<string>();
 		int leitores = 0;
 
@@ -2361,7 +2374,23 @@ public static class FormasBench
 
 					if (System.Text.RegularExpressions.Regex.IsMatch(l, @"\bBPBoost\s*=[^=]"))
 					{
-						if (Array.IndexOf(podemEscrever, nome) < 0) escritores.Add($"{nome}:{i + 1}");
+						// ============================ ZERAR **NAO** E LIGAR, E ESSA DISTINCAO E NOVA ============================
+						// Esta varredura pegava qualquer `BPBoost =` e chamava de "escritor". Ela ficou
+						// vermelha quando o BIO-ANDROIDE entrou -- e pelo motivo errado: as duas linhas
+						// dele escrevem `= 1`, que e o `NoAscension = 1` do original (`statbiodroid.dm:2`
+						// e o re-hook de login `DNALabs.dm:709-711`). Elas nao LIGAM a Ascensao; elas
+						// APAGAM o `BPBoost` que o humano tinha antes de virar bicho -- e sem elas o bio
+						// nasceria com ate ~317x de multiplicador herdado do criador.
+						//
+						// A afirmacao que interessa continua inteira: "ninguem MULTIPLICA nem ACUMULA
+						// `BPBoost`". Escrever o NEUTRO e a unica excecao, e ela e a mesma promessa dita
+						// de outro jeito -- no dia em que alguem escrever `= 5` ou `*=`, isto fica
+						// vermelho como sempre ficou.
+						// ==================================================================================================
+						bool zeraPraNeutro =
+							System.Text.RegularExpressions.Regex.IsMatch(l, @"\bBPBoost\s*=\s*1\s*[;,)]");
+						if (!zeraPraNeutro && !EhBancada(nome) && Array.IndexOf(podemEscrever, nome) < 0)
+							escritores.Add($"{nome}:{i + 1}");
 					}
 					else leitores++;
 				}

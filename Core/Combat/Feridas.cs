@@ -183,6 +183,59 @@ public static class Feridas
 		(int)Math.Round(Math.Clamp(t, 0, 1) * MascaraDeFeridas.Degraus);
 
 	/// <summary>
+	/// ============================ O DEGRAU EM QUE A FERIDA VIRA **GRAVE** ============================
+	/// **NAO E UM NUMERO SOLTO.** Ele e o limiar de QUEBRA do jogo (`Regras.LimiarQuebra`, 20% de vida
+	/// = 80% de dano) passado pela MESMA curva de sangue que pinta o sprite -- ou seja, e o degrau em
+	/// que o cabecalho desta classe ja dizia que o corpo esta: *"o limiar de QUEBRA do jogo e 20% de
+	/// vida, ou seja 80% de dano: nessa hora o sangue esta em ~71%"*. Hoje isso da **11 de 15**.
+	///
+	/// Por que derivar em vez de cravar 11: se alguem afinar a curva do sangue (`SangueComeca` /
+	/// `SangueCheio`) ou o limiar de quebra, um 11 cravado passaria a querer dizer outra coisa
+	/// caladamente -- e "grave" deixaria de ser "esse membro esta cedendo" pra virar "esse membro esta
+	/// um pouco roxo". Derivado, a frase continua sendo a mesma frase.
+	///
+	/// **E POR QUE O SANGUE E NAO O HEMATOMA**: o hematoma ENCHE aos 50% de dano (`HematomaCheio`), e
+	/// meio corpo de qualquer sessao de luta anda com ele cheio. Uma regra pendurada nele dispararia
+	/// em briga de rua. O sangue so comeca aos 55% e so enche aos 90% -- ele e a camada que separa
+	/// "apanhou" de "esta se desfazendo".
+	/// ============================================================================================
+	/// </summary>
+	public static readonly int DegrauGrave =
+		Passos((1.0 - Regras.LimiarQuebra - SangueComeca) / (SangueCheio - SangueComeca));
+
+	/// <summary>
+	/// ESTE CORPO ESTA COM FERIMENTO **GRAVE**? -- lido da mascara que ja existe, e de mais nada.
+	///
+	/// ============================ POR QUE A MASCARA E NAO A VIDA ============================
+	/// `Body.Vida()` e a MEDIA das partes, e o cabecalho do <see cref="MascaraDeFeridas"/> ja explica
+	/// o que a media apaga: *"um lutador com 70% de vida porque levou tudo na perna e um lutador com
+	/// 70% espalhado sao a mesma barra e dois desenhos completamente diferentes"*. Um Saiyajin com a
+	/// perna aberta e o abdomen rasgado pode ter 60% de media -- e quem olha pra ele ve um homem se
+	/// esvaindo. A media diria "esta bem".
+	///
+	/// A mascara ja e o PIOR dos membros de cada regiao (ver <see cref="De"/>), que e exatamente a
+	/// pergunta que "ferimento grave" faz.
+	///
+	/// **E ELA JA ESTA CALCULADA**: o servidor recalcula a mascara de todo corpo a 5 Hz e guarda em
+	/// `ServerPlayer.EnvFeridas` pra mandar pra zona (`GameServer.Feridas.cs`). Perguntar aqui custa
+	/// cinco leituras de byte -- nao ha um `Feridas.De` novo por corpo por tique.
+	/// ====================================================================================
+	///
+	/// MEMBRO ARRANCADO E GRAVE POR DEFINICAO, sem passar pela curva: o <see cref="De"/> ja poe as
+	/// duas camadas no maximo pra ele, mas um braco decepado que REGENEROU ate a vida cheia (Namek,
+	/// Majin) sairia da curva e continuaria faltando -- e faltar um braco nunca deixa de ser grave.
+	/// </summary>
+	public static bool Grave(MascaraDeFeridas m)
+	{
+		if (m.Amputados != MascaraDeFeridas.Membro.Nenhum) return true;
+
+		for (int z = 0; z < MascaraDeFeridas.Zonas; z++)
+			if ((m.Bruto(z) & 0x0F) >= DegrauGrave) return true;
+
+		return false;
+	}
+
+	/// <summary>
 	/// O texto do campo <see cref="BodyPart.Zona"/> virando enum.
 	///
 	/// Nulo pra zona que o sprite nao sabe desenhar. Hoje isso nao acontece -- as cinco cobrem

@@ -110,6 +110,24 @@ public sealed class ReceitaDeProjetil
 	/// a cor sai dele.
 	/// </summary>
 	public string Nome = "ataque de ki";
+
+	/// <summary>
+	/// A FOLHA DE ARTE, quando a tecnica JA sabe qual e -- e ela quase sempre nao sabe.
+	///
+	/// ============================ QUEM DECIDE E A TABELA, NAO O VERB ============================
+	/// <see cref="ArteDeKi.Nenhuma"/> (o padrao) quer dizer *"pergunte ao
+	/// <see cref="ArteDeProjetil"/>"*, e e assim que as vinte e quatro tecnicas portadas funcionam:
+	/// elas dizem QUAL VERB estao atirando e a arte sai da tabela, que e o unico lugar que decide.
+	/// Se cada receita escrevesse a propria folha, a tabela viraria enfeite e a pergunta "que arte
+	/// tem o Masenko?" teria duas respostas.
+	///
+	/// O CAMPO EXISTE PARA UMA COISA SO: a tecnica CUSTOMIZADA, onde a arte e escolha do jogador e
+	/// portanto nao pode sair de tabela nenhuma -- ela sai do save dele
+	/// (`TecnicaCustomizada.Arte`). E o mesmo desenho do `if (S.attackicon != null)` do DM
+	/// (`customattacks.dm:437-440`): o que a tecnica declarou vence; sem declaracao, cai no padrao.
+	/// =====================================================================================
+	/// </summary>
+	public ArteDeKi Arte = ArteDeKi.Nenhuma;
 }
 
 /// <summary>
@@ -215,6 +233,20 @@ public sealed class Projetil
 	public float Altitude;
 
 	/// <summary>
+	/// A ULTIMA CELULA EM QUE ELE JA ARANHOU O CHAO -- a guarda que faz o sulco sair UMA VEZ por
+	/// tile, e nao uma vez por sub-passo.
+	///
+	/// E o mesmo campo (e a mesma regra) que o corpo arremessado ja tem (`ServerPlayer.UltimoSulco`):
+	/// o avanco e fatiado em sub-passos de meio tile, entao sem isto tres fatias na mesma celula
+	/// dariam tres marcas sobrepostas -- que leem como mancha, nao como rastro. Ver
+	/// `GameServer.Empurrao.CarimbarSulco`, que e quem consome os dois.
+	///
+	/// MORA AQUI E NAO NUM DICIONARIO DO SERVIDOR porque a alternativa seria uma busca por tiro por
+	/// sub-passo no tique -- e o tique dos projeteis e o lugar onde este projeto mede custo.
+	/// </summary>
+	public Vec2 UltimoSulco;
+
+	/// <summary>
 	/// Quanto tempo, em segundos, pra andar UM tile.
 	///
 	/// No DM isto e o `lag` do `walk`, em tiques de 0,1 s, e ele e INVERSO da velocidade:
@@ -238,6 +270,58 @@ public sealed class Projetil
 
 	/// <summary>Ja acertou alguem e esta EMPURRANDO contra ele -- a cabeca para e continua moendo.</summary>
 	public bool Encostado;
+
+	/// <summary>
+	/// O CORPO QUE ESTA CABECA ESTA LEVANDO NA FRENTE. Zero = nao esta levando ninguem.
+	///
+	/// ============================ ISTO E PORTE, E A RECEITA E A DO DU ============================
+	/// Pedido do dono: *"ao ACERTAREM alguem eles deveriam EMPURRAR A PESSOA JUNTO conforme o beam vai
+	/// indo"*. Nao e desenho novo -- e a metade do `Bump` de beam que faltava, e as duas fontes do DM
+	/// escrevem METADES DIFERENTES da mesma cena:
+	///
+	///   * Finale (`objects.dm:449-457`) -- so o IMPULSO de perto: `maxdistance-distance <= 2` joga com
+	///     forca cheia, ate 4 tiles com metade, alem disso nada (*"harder to knock back at range"*).
+	///     Ver <see cref="FatorDeEmpurrao"/>, que ja estava portado.
+	///   * DU (`Projectile System/Projectiles.dm:573-591`) -- o mesmo corte em 4 tiles
+	///     (`beam_stun_start = 4`, `death.dm:727`) e, do outro lado dele, o ARRASTO:
+	///
+	///         else
+	///             if(getdist(Owner,P)&lt;10)
+	///                 P.has_delay=0
+	///                 step(P,dir,32)          // um tile, no rumo do raio, POR CICLO
+	///                 P.has_delay=1
+	///                 P.dir=turn(dir,180)
+	///                 if(getdist(Owner,P)==10) BigCrater(...)
+	///
+	/// OS DOIS CONCORDAM NO NUMERO 4, e e por isso que os dois cabem juntos sem escolha arbitraria:
+	/// perto o raio ARREMESSA (o funil do soco, <see cref="Empurrao"/>), longe ele CARREGA, e aos 10
+	/// tiles larga com uma cratera.
+	/// ============================================================================================
+	///
+	/// ============================ POR QUE `step(...,32)` VIROU "O MESMO DELTA DA CABECA" ============================
+	/// La o passo e de um TILE inteiro e ele nao dispara mais rapido que o feixe porque e o proprio
+	/// feixe que o dispara: o empurrao so acontece enquanto a vitima esta NA CELULA da cabeca, e um
+	/// `step` a tira de la. Ou seja o DM ja resolve, por ocupacao de tile, a pergunta "a que velocidade
+	/// ele e carregado" -- e a resposta e A DO FEIXE.
+	///
+	/// Aqui nao ha ocupacao de tile: a cabeca e um ponto e o avanco e fatiado em pixels. Copiar o
+	/// `step` literal daria um tile por sub-passo -- ate quatro tiles por tique, dez vezes o proprio
+	/// raio. Entao o que se porta e o EFEITO medido, que e o unico que o jogador ve: o corpo anda
+	/// exatamente o que a cabeca andou, no mesmo sub-passo. Fica anotado como traducao, nao como
+	/// mudanca de regra.
+	/// =============================================================================================================
+	/// </summary>
+	public int Arrastando;
+
+	/// <summary>
+	/// A DISTANCIA JA VIAJADA, EM TILES -- `maxdistance - distance` do DM.
+	///
+	/// Ela e a mesma pergunta que o DU faz por `getdist(Owner, P)`: a cabeca do feixe nasce na mao do
+	/// dono, entao "quanto ela andou" e "a que distancia do dono ela esta". Estava escrita a mao em
+	/// tres lugares (<see cref="ModsAgora"/>, <see cref="FatorDeEmpurrao"/> e o arrasto) e virou nome
+	/// quando o terceiro chegou.
+	/// </summary>
+	public double AndouTiles => MaxDistancia - Distancia;
 
 	/// <summary>
 	/// A CABECA JA PAROU E O RASTRO ESTA SENDO ENGOLIDO -- so o Beam passa por aqui.
@@ -288,6 +372,33 @@ public sealed class Projetil
 
 	/// <summary>Como ele se chama no relato. A COR sai do dono -- ver o mesmo campo na receita.</summary>
 	public string Nome = "ataque de ki";
+
+	/// <summary>
+	/// A FOLHA QUE O CLIENTE VAI DESENHAR. Resolvida UMA VEZ, no disparo, pelo
+	/// <see cref="ArteDeProjetil.De"/> -- e dali em diante ela e so um numero que viaja.
+	/// </summary>
+	public ArteDeKi Arte = ArteDeKi.Nenhuma;
+
+	/// <summary>
+	/// O TAMANHO DO SPRITE NA TELA -- e ele **nao** e poder, e por isso e um campo separado.
+	///
+	/// ============================ ISTO NAO CONTRADIZ O <see cref="Bp"/> ============================
+	/// O `wavemult` do DM faz DUAS coisas na mesma linha e o port ja separou uma delas: o
+	/// `A.BP = expressedBP * wavemult` (`beams.dm:139`) foi consumido dentro do <see cref="Bp"/> --
+	/// e o comentario de <see cref="Paralisia"/> explica por que guardar o multiplicador ao lado do
+	/// resultado criaria a segunda resposta pra "qual e o poder deste tiro".
+	///
+	/// A SEGUNDA coisa e `A.transform *= wavemult` (`beams.dm:149`): o sprite ENGORDA. E por isso
+	/// que o Final Flash e um muro de energia e o Ki Wave e um fio -- e a diferenca some quando o
+	/// desenho ignora a escala, que era o estado deste port (Final Flash e bola comum saiam com a
+	/// mesma grossura).
+	///
+	/// Sao duas perguntas diferentes -- *quanto ele machuca* e *quantos pixels ele ocupa* -- e por
+	/// isso sao dois campos. Ninguem le este pra calcular nada: ele sai do <c>MultDeOnda</c> da
+	/// receita no nascimento, viaja no anuncio e morre no `_Draw`.
+	/// ========================================================================================
+	/// </summary>
+	public double EscalaVisual = 1;
 
 	/// <summary>Morto: sai da lista no proximo tique. Ver o motivo em <see cref="Fim"/>.</summary>
 	public bool Vivo = true;
@@ -397,7 +508,7 @@ public sealed class Projetil
 	/// </summary>
 	public double ModsAgora()
 	{
-		double andou = MaxDistancia - Distancia;
+		double andou = AndouTiles;
 		if (Math.Abs(RangeMod - 1) < 1e-9 || andou <= 0) return ModsBase;
 
 		// MULTIPLICACAO REPETIDA e nao `Math.Pow`, pela mesma razao do `NiveisDeSkill.BarreiraEm`:
@@ -427,11 +538,34 @@ public sealed class Projetil
 	/// </summary>
 	public double FatorDeEmpurrao()
 	{
-		double andou = MaxDistancia - Distancia;
+		double andou = AndouTiles;
 		if (andou <= 2) return 1.0;
 		if (andou <= 4) return 0.5;
 		return 0;
 	}
+
+	/// <summary>
+	/// ESTE TIRO CARREGA QUEM ACERTOU? -- o `else` do DU (`Projectiles.dm:583-591`), que e o outro
+	/// lado do <see cref="FatorDeEmpurrao"/>.
+	///
+	/// Perto (ate 4 tiles) o feixe ARREMESSA e nao carrega: quem esta em cima do cano leva o impulso
+	/// inteiro e sai voando pelo funil de sempre. Passando disso, e ate <see cref="TilesDeArrasto"/>,
+	/// ele CARREGA. Nao ha faixa em que os dois valham -- e a mesma condicao com o sinal trocado, e e
+	/// assim no DU (um `if`/`else`, nao dois `if`).
+	///
+	/// SO O RAIO. `WaveAttack` no Finale, `Beam` no DU: uma bola nao tem em que empurrar: ela toca e
+	/// estoura. E a `Ki_Bomb`, que pare sete bolas PARADAS em volta do alvo, empurraria a vitima em
+	/// sete rumos ao mesmo tempo.
+	/// </summary>
+	public bool PodeArrastar()
+		=> Tipo == TipoDeProjetil.Beam && FatorDeEmpurrao() <= 0 && AndouTiles < TilesDeArrasto;
+
+	/// <summary>
+	/// ATE ONDE O FEIXE CARREGA, em tiles a partir da mao do dono: `if(getdist(Owner,P) &lt; 10)`
+	/// (`Projectiles.dm:584`). Chegando la, o DU larga o corpo e abre um `BigCrater` no chao
+	/// (`:589-591`) -- o fim do arrasto e um lugar, e nao um relogio.
+	/// </summary>
+	public const double TilesDeArrasto = 10;
 
 	/// <summary>O comprimento do rastro, em pixels. Zero pra bola -- ela nao tem rastro.</summary>
 	public float Comprimento => Tipo == TipoDeProjetil.Beam ? (Pos - Cauda).Length : 0;

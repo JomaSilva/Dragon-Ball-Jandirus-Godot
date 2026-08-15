@@ -326,7 +326,9 @@ public partial class Hud : CanvasLayer
 
 	public override void _Input(InputEvent e)
 	{
-		if (Foco.Digitando) return;   // TAB no meio de uma frase e navegacao de campo, nao atalho
+		// TAB no meio de uma frase e navegacao de campo, nao atalho -- e no meio de um embate ele e
+		// mais uma tela abrindo por cima do quick time event. Ver `Foco.AtalhosMudos`.
+		if (Foco.AtalhosMudos) return;
 		if (e is not InputEventKey { Pressed: true, Echo: false } k) return;
 		if (!Teclas.Bate("ui_ajuda", k)) return;
 

@@ -93,7 +93,36 @@ public partial class GameServer
 		// velocidade, corpo, entrar no `_players` e na lista da zona, gravidade do chao. Era escrita
 		// aqui e na bancada de convivio, e a fabrica de NPC seria a terceira copia.
 		PorNoMundo(clone);
+
+		// ============================ O QUE O REFLEXO HERDA DO LIVRO: **A IMAGEM REMANESCENTE, E SO ELA** ============================
+		// O dono: *"n tive um ZANZOCLASH com meu clone, acho q ele N PEGA MINHAS SKILLS (oq deveria
+		// acontecer)"*. Ele viu o sintoma certo -- o embate exige Afterimage nos DOIS
+		// (`GameServer.ZanzoClash.cs`: `a.Livro?.Sabe(...) != true || d.Livro?.Sabe(...) != true`) e o
+		// reflexo nascia com o livro VAZIO, entao a condicao nunca fechava.
+		//
+		// ---- MAS "HERDAR AS SKILLS" INTEIRAS NAO E O QUE O DM FAZ, E O LIVRO VAZIO TINHA RAZAO ESCRITA ----
+		// A razao esta duas funcoes abaixo, no <see cref="EspelharODono"/>: o BP do reflexo e o
+		// **expresso** do dono (`C.mind_seed_bp = max(round(M.expressedBP),1)`, `MindMeditate.dm:254`),
+		// ou seja **ja inclui a forma atual**. Isso so pode entrar como BP BASE dele porque ele nao tem
+		// forma nenhuma pra multiplicar por cima -- e quem destrava forma e a skill. Copiar o livro
+		// inteiro daria um reflexo que entra em SSJ3 sobre um BP que ja e o de SSJ3: a forma contada
+		// duas vezes, e o "treine contra voce mesmo" virando um oponente 20x mais forte que voce.
+		//
+		// ---- E O DM RESOLVE ISSO EXATAMENTE ASSIM: A MAO, UMA FLAG SO ----
+		// `MindMeditate.dm:276`: **`C.haszanzo = M.haszanzo`**. Ele nao copia a lista de skills; ele
+		// copia, na mao, o unico bit de skill que o ZanzoClash le -- junto com `C.kiskill = M.kiskill`
+		// (`:261`, que o `EspelharODono` ja porta) e `C.isBlaster = 1` (`:279`). O port so tinha deixado
+		// esse bit de fora, e ele e literalmente a linha que o dono sentiu falta.
+		//
+		// ---- O QUE SE PERDE, DE PROPOSITO ----
+		// O reflexo continua sem tecnica (o `UsarHabilidade` e barrado pelo livro), sem os buffs de
+		// `after_learn` -- que nem sao derivados do livro: quem os aplica e o `AplicarEfeitos`, e ele
+		// nao roda aqui -- e sem transformacao. Ele e voce em CONDICOES DE TREINO: mesmo poder, mesma
+		// cadencia, mesmo corpo, punhos e velocidade. O que ele ganha agora e a miragem do arranque
+		// (mesmo campo) e o direito de entrar no embate.
+		// ==============================================================================================================================
 		clone.Livro = new Jandirus.Core.Skills.SkillBook();
+		if (dono.Livro?.Sabe(PathDoZanzoken) == true) clone.Livro.Dar(PathDoZanzoken);
 		clone.Combate.Letal = false;   // a mente nao decepa membro nem mata: e treino
 
 		// a APARENCIA precisa ir pro dono, senao ele ve um boneco sem roupa nem cabelo
@@ -121,8 +150,10 @@ public partial class GameServer
 	/// Aqui isso era `BP = f.BP`, o poder BASE, e a diferenca aparecia na hora em que o sistema mais
 	/// importa: quem entrava na mente em SSJ3 encontrava um reflexo na forma base, com um vigesimo do
 	/// seu poder, e o "desafio e VOCE MESMO" virava um saco de pancada. O reflexo nao tem forma
-	/// nenhuma (nasce com <see cref="Jandirus.Core.Skills.SkillBook"/> vazio, entao `formBuff` e 1) --
-	/// e por isso o expresso do dono pode entrar como BASE dele sem contar a forma duas vezes.
+	/// nenhuma (o <see cref="Jandirus.Core.Skills.SkillBook"/> dele nasce com **uma unica entrada**, a
+	/// Imagem Remanescente -- ver o <see cref="CriarClone"/> --, e nenhuma forma sai dela, entao
+	/// `formBuff` e 1) -- e por isso o expresso do dono pode entrar como BASE dele sem contar a forma
+	/// duas vezes. **Esta e a linha que proibe copiar o livro inteiro**, e o motivo esta escrito la.
 	/// ================================================================================================
 	///
 	/// ============================ A RACA E A IDADE ENTRAM, E ELAS FALTAVAM ============================
@@ -339,9 +370,20 @@ public partial class GameServer
 	/// dentro do leash) antes de devolve-lo. Campo velho ali e indistinguivel de campo zerado.
 	/// ==========================================================================================
 	///
-	/// Nao vale pro corpo POSSUIDO (Oozaru selvagem, furia lendaria) nem pro que a mente ergueu: os
-	/// dois so existem ao lado de um jogador, entao a zona deles tem gente por definicao -- e testar
-	/// seria pagar pra confirmar o obvio no caso em que ha alguem vendo.
+	/// Nao vale pro corpo que a MENTE ergueu (`DonoDoClone != 0`): ele so existe ao lado de um jogador,
+	/// entao a zona dele tem gente por definicao -- e testar seria pagar pra confirmar o obvio no caso
+	/// em que ha alguem vendo.
+	///
+	/// ============================ E O NPC POSSUIDO **CONGELA**, DE PROPOSITO ============================
+	/// O corpo possuido de um JOGADOR nunca chega aqui (`Papel == null`, primeira linha). O de um NPC
+	/// chega -- desde que a lua cheia passou a pegar Saiyajin de povoamento --, e ele obedece a mesma
+	/// porta de plateia: **um Oozaru num planeta de onde o ultimo jogador acabou de sair para de agir**.
+	///
+	/// Isso e coerente com a decisao que deixou a lua nao TRANSFORMAR em zona vazia (ver
+	/// `ALuaPegaOSaiyajin`, guarda 6), e nao prende ninguem: o `TickDoOozaru` e relogio de MUNDO e nao
+	/// passa por aqui, entao o prazo da forma continua correndo e a fera cai sozinha. O que congela e a
+	/// DECISAO (pra quem?), nao o relogio.
+	/// ================================================================================================
 	/// </summary>
 	private bool MenteDormindo(ServerPlayer npc)
 	{
@@ -352,6 +394,26 @@ public partial class GameServer
 		npc.Moving = false;
 		return true;
 	}
+
+	/// <summary>
+	/// ============================ QUANTAS VEZES UM CORPO PENSOU DESDE O BOOT ============================
+	/// Um `++` por corpo que ATRAVESSOU o <see cref="MenteDormindo"/>, e ele existe porque a pergunta
+	/// do dono -- *"a mente so funciona quando tem jogador no planeta"* -- **nao e uma pergunta de
+	/// tempo**. Medir microssegundos responde "quanto custa"; nao responde "rodou ou nao rodou".
+	///
+	/// E a diferenca nao e retorica, e o modo de falhar mais provavel deste sistema: uma mente que
+	/// pensa **de vez em quando** (o "grande intervalo" que o dono deixou em aberto) mede quase o
+	/// mesmo tempo de uma mente DESLIGADA, e mede exatamente o mesmo deslocamento -- um corpo que
+	/// decide 1 vez em 900 tiques anda menos de um pixel, e a bancada que olha posicao diz "nao
+	/// andou". Com o contador, "zero decisoes em 900 tiques" e uma afirmacao que **900 vezes zero**
+	/// nao consegue imitar.
+	///
+	/// **CUSTO**: um incremento de campo por corpo ACORDADO por tique -- os congelados nem chegam
+	/// aqui. Nao ha alocacao, nao ha consulta e o numero nao e lido em jogo; e o unico instrumento
+	/// que responde a pergunta do dono na moeda em que ela foi feita.
+	/// ================================================================================================
+	/// </summary>
+	private long _decisoesDaMente;
 
 	/// <summary>UM corpo dirigido, um tique. Separado pra o `try` poder ser POR CORPO.</summary>
 	private void TicarUmCorpo(ServerPlayer npc, double dt)
@@ -370,6 +432,11 @@ public partial class GameServer
 		// Sem esta guarda o reflexo era um absurdo escrito: um feixe so nasce de quem age, e numa
 		// zona congelada NINGUEM age -- procurar raio inimigo ali e procurar o que nao pode existir.
 		if (MenteDormindo(npc)) return;
+
+		// DAQUI PRA BAIXO E DECISAO, e o contador marca a fronteira. Ver <see cref="_decisoesDaMente"/>:
+		// ele e o unico instrumento que separa "desligada" de "chamada de vez em quando", que sao as
+		// duas opcoes que o dono deixou em aberto e que o relogio NAO distingue.
+		_decisoesDaMente++;
 
 		// --- 0,5. O REFLEXO: TEM RAIO VINDO? -------------------------------------
 		// Antes de qualquer decisao, e de proposito. Um feixe chegando nao e uma opcao tatica -- e
@@ -420,7 +487,11 @@ public partial class GameServer
 				// o NOME pra quem tem ficha pronta de chefe. Guardar o tipo seria a segunda verdade
 				// sobre uma coisa que o corpo ja diz.
 				// ================================================================================================
-				SairDaMente(dono, npc.Papel is { EhChefe: true }
+				// A GOTA NA VOLTA: a tela ondula 1,8 s e SO ENTAO o mundo real volta -- *"atualmente a
+				// transicao ta MT RAPIDA E MT SECA sem efeito nenhum"*. Quem segura a viagem e o
+				// `ComecarAVoltaDaMente`, que ja desfaz o corpo derrotado nesta linha (senao este
+				// mesmo ramo o reencontraria morto no tique seguinte).
+				ComecarAVoltaDaMente(dono, npc.Papel is { EhChefe: true }
 					? $"{npc.Name} se desfaz em nada. Voce abre os olhos."
 					: "o seu reflexo se desfaz. Voce abre os olhos.");
 				return;
@@ -460,12 +531,37 @@ public partial class GameServer
 				npc.SigAtributos = "";
 			}
 
+			// ============================ SEM PAREDE, A COLEIRA ============================
+			// A mente perdeu a borda a pedido do dono, e a parede fazia uma coisa que ninguem tinha
+			// escrito: ela devolvia quem fugia. Este ramo persegue sem raio e sem desistencia (duas
+			// linhas abaixo), mas o reflexo copia a SUA ficha e portanto a sua velocidade -- ele nunca
+			// alcanca quem foge em linha reta. Num quarto isso nao aparecia; num plano sem fim, o
+			// combate mental deixaria de fechar por vitoria. Ver `DimensaoMental.RaioDaColeira` pro
+			// argumento inteiro (e pro porque de reaparecer em vez de acelerar).
+			//
+			// VALE PRO CHEFE CONVOCADO TAMBEM, e de proposito: ele divide este ramo justamente porque
+			// as duas coisas que a mente ergue tem o mesmo desenho -- vem atras de voce e somem com
+			// voce. Fugir de um Freeza de lembranca ate a linha do horizonte nao e menos quebrado.
+			// ============================================================================
+			if (DimensaoMental.FugiuDoDono(npc.Pos, dono.Pos)) ReaparecerNaFrente(npc, dono);
+
 			presa = dono;
 			destino = dono.Pos;
 		}
-		else if (npc.Papel != null)
+		else if (npc.Papel != null && npc.CerebroDaPosse == null)
 		{
 			// ============================ O HABITANTE. ELE NAO E A FERA. ============================
+			//
+			// ============================ E O `CerebroDaPosse == null` E O QUE O MANTEM SENDO HABITANTE ============================
+			// Sem ele, um NPC possuido (o Saiyajin que a lua cheia pegou) cairia AQUI e cacaria com as
+			// regras do molde dele: um cidadao Saiyajin virado macaco de dez metros ficaria *"peaceful
+			// until hit"*, passeando um tile a cada 20 segundos. O pedido do dono e o oposto -- a fera
+			// *"sai batendo em qualquer coisa"* --, e quem faz isso e o ramo de baixo.
+			//
+			// Repare que a pergunta e a POSSE e nao o Oozaru: quem decide que este corpo virou fera e o
+			// `TickDoOozaru`, e um segundo `if (Oozaru != Nao)` aqui seria a mesma regra escrita num
+			// lugar que nao a conhece -- e o que ficaria velho no dia da terceira possessao.
+			// ==============================================================================================================
 			// Este ramo nasceu com o povoamento e ele existe por uma razao so: `PresaDaFera` devolve
 			// *o corpo em pe mais proximo, seja quem for*. Um cidadao com esse alvo sai socando o
 			// primeiro jogador que pousar no planeta -- e o `mob/npc/Citizen` do DM e o oposto disso
@@ -527,8 +623,15 @@ public partial class GameServer
 			// (player OU NPC)" (a furia): QUALQUER corpo da zona, sem dono, sem faccao, sem alvo
 			// marcado. Inclusive outro possuido.
 			// `soJogadores: false` -- e o unico lugar do port em que "seja quem for" e a regra, e ela e
-			// literal: *"o corpo ataca TUDO que ve (player OU NPC)"* (`lssjbuff.dm:563`). O corpo aqui
-			// e de um JOGADOR possuido, e nao um NPC: o crivo do `NPCAI.dm:439` nao vale pra ele.
+			// literal: *"o corpo ataca TUDO que ve (player OU NPC)"* (`lssjbuff.dm:563`).
+			//
+			// O CRIVO DO `NPCAI.dm:439` ("AI nao ataca AI") NAO VALE AQUI, e agora isso vale pros dois
+			// tipos de corpo que caem neste ramo. Antes a frase era "o corpo aqui e de um JOGADOR
+			// possuido"; com o Oozaru dos NPCs ele tambem recebe um Saiyajin de povoamento -- e a
+			// dispensa continua certa **pelo motivo e nao pela excecao**: aquele crivo existe pra
+			// vilarejo nao se auto-exterminar, e um macaco de dez metros que perdeu a razao nao esta
+			// escolhendo alvo por faccao. Se ele respeitasse o crivo, um Oozaru solto num planeta de
+			// NPCs nao encostaria em ninguem ate um jogador pousar.
 			presa = PresaDaFera(npc, soJogadores: false);
 			destino = presa?.Pos ?? RumoDaFera(npc);
 		}
@@ -1056,13 +1159,64 @@ public partial class GameServer
 	/// </summary>
 	private void DevolverAsRedeas(ServerPlayer pl)
 	{
-		if (pl.Cerebro == null || pl.DonoDoClone != 0) return;
-		pl.Cerebro = null;
+		// A GUARDA E A **POSSE**, e nao mais "tem cerebro". Ver <see cref="ServerPlayer.CerebroDaPosse"/>:
+		// com NPC virando Oozaru, `Cerebro != null` deixou de querer dizer "alguem tomou este corpo" --
+		// e com a guarda antiga esta funcao apagava a MENTE de um NPC que so estava saindo da forma.
+		if (pl.CerebroDaPosse == null || pl.DonoDoClone != 0) return;
+		pl.CerebroDaPosse = null;
+
+		// E O CORPO VOLTA PRO QUE ELE TINHA ANTES: nulo pro jogador (o dono na tela volta a mandar),
+		// a mente propria pro NPC. Ver <see cref="MentePropriaDe"/>.
+		pl.Cerebro = MentePropriaDe(pl);
 		pl.Moving = false;
 		pl.LastInputMs = NowMs();   // senao o primeiro input do dono valeria pelo tempo todo da possessao
 		// nao avisa: quem chama ja esta dizendo POR QUE a posse acabou -- e "o corpo volta a ser seu"
 		// colado em "a fera se cansa" e a mesma frase duas vezes.
 	}
+
+	/// <summary>
+	/// ============================ O SERVIDOR ASSUME ESTE CORPO -- O FUNIL UNICO DA POSSE ============================
+	/// As duas possessoes do jogo (a fera do Oozaru, a furia lendaria) montam temperos DIFERENTES e
+	/// entram pela MESMA porta -- e ela existe porque a posse deixou de ser uma atribuicao: alem de
+	/// pendurar o cerebro, ela marca a <see cref="ServerPlayer.CerebroDaPosse"/> (sem a qual a
+	/// devolucao nao sabe o que devolver) e larga o input do dono.
+	///
+	/// Tres linhas em dois lugares e exatamente o defeito que este arquivo ja registra ter consertado
+	/// duas vezes (`LargarOInput`, `DevolverAsRedeas`): a copia que esquece uma delas nao quebra nada
+	/// no dia em que e escrita.
+	/// ==========================================================================================================
+	/// </summary>
+	private void AssumirOCorpo(ServerPlayer pl, Cerebro cerebro)
+	{
+		pl.CerebroDaPosse = cerebro;
+		pl.Cerebro = cerebro;
+
+		// O CORPO PARA DE FAZER O QUE O DONO MANDOU antes de quem assumiu comecar a agir. Pro NPC isto
+		// e quase todo no-op (ele nao tem input pendurado), menos a CARGA DE KI -- um NPC que estivesse
+		// carregando quando a lua o pegou ficaria plantado com aura acesa pela forma inteira.
+		LargarOInput(pl);
+	}
+
+	/// <summary>
+	/// ============================ O CEREBRO QUE ESTE CORPO TEM QUANDO NINGUEM O POSSUI ============================
+	/// Nulo pro jogador: o corpo dele nao pensa sozinho, quem o dirige e a tela.
+	///
+	/// Pro NPC e a mente que ele NASCEU tendo, remontada pelo mesmo `Temperamento.Montar` do
+	/// nascimento (<see cref="CerebroDeNascimento"/>) -- mesmo molde, mesma semente, mesmos numeros.
+	///
+	/// **REMONTAR E NAO GUARDAR, e a escolha e de desenho e nao de economia.** Guardar o objeto antigo
+	/// numa segunda gaveta devolveria junto o ESTADO vivo dele: o plano em curso, o relogio de decisao,
+	/// a leitura de capacidades. Um NPC que passou trezentos segundos sendo um macaco de dez metros nao
+	/// tem por que voltar retomando a ideia que teve antes de a lua nascer -- e o proprio `Cerebro`
+	/// desfasa a leitura cara por semente, entao remontar poe o corpo de volta na fase certa em vez de
+	/// numa fase de cinco minutos atras.
+	///
+	/// E remontar tambem e o lado seguro do OUTRO risco: uma gaveta a mais e uma gaveta que alguem
+	/// esquece de limpar, e um cerebro velho pendurado num corpo que trocou de molde e um bug mudo.
+	/// ==========================================================================================================
+	/// </summary>
+	private static Cerebro? MentePropriaDe(ServerPlayer pl) =>
+		pl.Papel == null ? null : CerebroDeNascimento(pl.Papel);
 
 	/// <summary>
 	/// ============================ O QUE OS DEDOS DO DONO NAO PODEM MAIS FAZER ============================

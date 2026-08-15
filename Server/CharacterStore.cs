@@ -193,6 +193,24 @@ public sealed class CharacterSave
     public int Disciplina;
     public double DiscReal, DiscAtual;
 
+    /// <summary>
+    /// ============================ O ALINHAMENTO MORAL -- e a metade do buraco que era o DISCO ============================
+    /// **ESTE CAMPO FALTAVA, E A FALTA ERA INVISIVEL.** `ServerPlayer.Karma` existia, tinha tres
+    /// leitores (os requisitos de nove cargos, a escolha de alvo das tarefas e o duelo de titulo) e
+    /// nunca foi escrito aqui -- ou seja, o pouco que se ganhava em jogo morria no logout, calado.
+    /// Ninguem ia ligar "o Guardiao me recusa" a "o save nao tem o campo".
+    ///
+    /// **NO ORIGINAL A PERSISTENCIA E DITA EM VOZ ALTA**, e o comentario existe porque ao lado dele
+    /// ha tres campos que sao `tmp`: `karma = 0 //alinhamento moral (PERSISTENTE: sem tmp)`
+    /// (`SkyNPCs.dm:100`). Os `tmp` vizinhos -- `pk_karma_taken`, `lastGateMsg` -- continuam fora
+    /// daqui de proposito: eles descrevem UMA morte, e uma morte nao atravessa reinicio.
+    ///
+    /// `int` e nao `double`: a escala e de -100 a +100 em passos inteiros (5, 20, 30), e o DM nunca
+    /// escreve fracao nela. Ver `Core/Social/Karma.cs`.
+    /// ==================================================================================================================
+    /// </summary>
+    public int Karma;
+
     // onde estava quando saiu
     public string Zona = "Earth";
 
@@ -665,6 +683,10 @@ public sealed class AccountStore(string pasta)
         Disciplina = pl.UltraInstinct.Aprendida ? 1 : pl.PoderDaDestruicao.Aprendida ? 2 : 0,
         DiscReal = pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Real : pl.PoderDaDestruicao.Real,
         DiscAtual = pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Atual : pl.PoderDaDestruicao.Atual,
+
+        // O ALINHAMENTO MORAL. Ver o campo -- ele e `PERSISTENTE: sem tmp` no original e nunca
+        // tinha chegado ao disco aqui.
+        Karma = pl.Karma,
         FormasDespertadas = pl.Forma != null ? [.. pl.Forma.Liberadas] : [],
         FormasEstreadas = pl.Forma != null ? [.. pl.Forma.EstreiaVista] : [],
 
@@ -750,6 +772,19 @@ public sealed class AccountStore(string pasta)
         // SAVE ANTIGO NAO TEM CONVIVIO: o `?? new()` e o que separa "nunca conheceu ninguem" de
         // uma referencia nula que estouraria no primeiro tique de proximidade.
         pl.Social = s.Social ?? new();
+
+        // ============================ O KARMA VOLTA DO DISCO, APARADO ============================
+        // SAVE ANTIGO NAO TEM O CAMPO e cai em zero -- que e o NEUTRO com que toda alma nasce
+        // (`Karma.Neutro`), entao a migracao e "nao fazer nada" e ninguem e punido por ter jogado
+        // antes de o eixo existir.
+        //
+        // O `Somar(0, ...)` NAO E ZELO INUTIL: ele apara contra o piso e o teto de HOJE. Um save
+        // gravado com um numero fora da escala -- por um admin, por uma bancada, por uma versao que
+        // um dia mexa nos limites -- entraria em jogo como um karma impossivel, e o unico sintoma
+        // seria um cargo abrindo (ou fechando) sem motivo aparente.
+        // ====================================================================================
+        pl.Karma = Jandirus.Core.Social.Karma.Somar(Jandirus.Core.Social.Karma.Neutro, s.Karma);
+
         pl.Visual = s.Visual;
 
         // ============================ A COR DA AURA: SAVE ANTIGO NAO TEM, E NAO PRECISA TER ============================
@@ -769,6 +804,12 @@ public sealed class AccountStore(string pasta)
         // que e como esta migracao foi provada.
         // ==========================================================================================
         pl.Visual.CorAura ??= Jandirus.Core.Appearance.CorDeAura.De(s.Nome, s.CriadoEm);
+
+        // A COR DO TIRO, o SEGUNDO sorteio do original (`CharacterCreation.dm:28-30`), pela MESMA
+        // migracao de uma linha e pelas mesmas razoes -- e ela vale pra todo personagem que ja
+        // existe, que e o ponto: eles nunca tiveram uma cor de tiro propria (o port usava a da
+        // chama), e ganham a que teriam tido, igual em todo login. Ver `Appearance.CorKi`.
+        pl.Visual.CorKi ??= Jandirus.Core.Appearance.CorDoTiro.De(s.Nome, s.CriadoEm);
 
         // ============================ O BERCO: MESMA MIGRACAO, MESMO MOTIVO ============================
         // Zero = save de antes do berco (ou save de um personagem que nasceu na Terra cravada). A

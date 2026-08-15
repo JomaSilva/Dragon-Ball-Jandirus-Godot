@@ -725,5 +725,11 @@ public partial class GameServer
 
 		string planeta = morto.Berco.Natal.Length > 0 ? morto.Berco.Natal : morto.Zone.Name;
 		SomarReputacao(planeta, matador, Conquista.RepPorMatarHabitante, "matou-habitante");
+
+		// E A ALMA PAGA JUNTO. No original as duas contas saem da MESMA linha
+		// (`lose_npc_kill_karma`, pendurado no `PlanetReputation.dm:113`) e sao coisas diferentes: a
+		// reputacao e o que ESTE planeta pensa de voce e some quando voce muda de mundo; o karma e o
+		// que a sua alma virou e te segue ate a mesa do Enma. Ver `GameServer.Karma.cs`.
+		KarmaPorMatarHabitante(matador);
 	}
 }

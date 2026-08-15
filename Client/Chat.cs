@@ -220,6 +220,17 @@ public partial class Chat : CanvasLayer
 			return;   // o resto e do campo de texto
 		}
 
+		// ============================ O CHAT TAMBEM E UM ATALHO ============================
+		// Este era o unico dos seis caminhos que nao perguntava NADA: com um embate correndo, ENTER
+		// abria a caixa de texto por cima do quick time event -- e a partir dali o `Foco.Digitando`
+		// calava o proprio embate, entao a caixa aberta por acidente custava o resto das letras.
+		//
+		// O PORTAO FICA AQUI E NAO NO TOPO de proposito: acima dele esta o ramo de quem JA esta
+		// escrevendo, e la o ESC precisa continuar fechando a caixa. Barrar tudo no topo trancaria o
+		// jogador dentro do campo que ele quis fechar -- o mesmo erro que o `MenuJogo` ja documenta.
+		// ==================================================================================
+		if (Foco.AtalhosMudos) return;
+
 		switch (k.Keycode)
 		{
 			case Key.Enter or Key.KpEnter:

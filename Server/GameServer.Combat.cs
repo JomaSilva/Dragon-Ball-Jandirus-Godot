@@ -83,6 +83,39 @@ public partial class GameServer
 	private const float AlcanceDoDash = 160f;
 
 	/// <summary>
+	/// ALCANCE DO ARRANQUE **QUANDO HA ALVO MARCADO**, em pixels. QUINZE tiles -- o numero do original.
+	///
+	/// ============================ O CORTE DE CINCO TILES ERA PELA BUSCA, NAO PELO GESTO ============================
+	/// A justificativa escrita no <see cref="AlcanceDoDash"/> logo acima diz por que ele foi cortado:
+	/// *"O original aceitava ate 15 tiles, mas la o alvo era ESCOLHIDO (`get_me_a_target`) antes"* --
+	/// o medo e o personagem *"se jogar em cima de quem passou no canto"*. Esse medo e real e continua
+	/// valendo pra busca por CONE, que adivinha em quem voce quis bater.
+	///
+	/// Mas o port TEM o alvo escolhido: e o <see cref="Marcado"/>. Quem marcou alguem ja disse "vou
+	/// naquele ali", e nao ha canto nenhum de onde alguem possa passar. Entao a condicao do DM se porta
+	/// inteira, com o numero dele: `get_dist(src.loc,target.loc) < 15` (`attack_bck.dm:78`).
+	///
+	/// ============================ E E ISTO QUE FECHA O RELATO DO SOCO FORTE ============================
+	/// **Todo golpe pesado que encosta chama o Impact sem sorteio** (`attack cmn.dm:110-118`: o leve
+	/// depende de `prob`, o pesado cai direto no `else`), e a bancada mediu o resultado: com BP parelho
+	/// o corpo voa **512 px em 0,8 s**, e mais ainda contra quem e mais forte. Depois do voo o inimigo
+	/// esta a DEZESSEIS tiles -- fora dos cinco do arranque, fora dos 40 px do soco. Sobrava andar de
+	/// volta enquanto o outro recarregava.
+	///
+	/// O DM nao tinha esse buraco por duas razoes, e esta e a primeira: la o arranque alcanca 15 tiles.
+	/// A segunda e o **reencaixe** (`attack cmn.dm:219-222`: depois do teleporte de zanzo, `if(M.target
+	/// == src) M.Move(get_step(src,src.dir))` -- ele cola o alvo de volta ao lado dele), e essa NAO foi
+	/// portada de proposito: mover o corpo de quem apanhou pra perto de quem bate e o oposto do que o
+	/// arremesso acabou de fazer, e daria dois sistemas empurrando o mesmo corpo em sentidos opostos.
+	///
+	/// SO NO ARRANQUE LONGO (SHIFT + ESPACO). O passo curto continua sendo passo curto: o dono ja
+	/// reclamou uma vez de investida grande demais ("achei a distancia minima pro tp pro soco mt
+	/// grande"), e um soco leve que atravessa quinze tiles seria exatamente isso de volta.
+	/// ================================================================================================
+	/// </summary>
+	private const float AlcanceDoDashMarcado = 480f;
+
+	/// <summary>
 	/// ALCANCE DO ARRANQUE SEM CORRIDA (so ESPACO), em pixels. Dois tiles e meio.
 	///
 	/// Socar alguem que esta a um passo nao deveria ser um soco no ar: o personagem da o passo
@@ -150,12 +183,46 @@ public partial class GameServer
 		pl.Combate = new CombatState(pl.Ficha, TemRabo(pl.Race), Regenera(pl.Race));
 
 		// QUEM PODE BARRAR A MORTE DESTE CORPO. Instalado UMA vez, aqui, porque `Morrer()` e a porta
-		// unica -- ver `CombatState.NegarMorte`. Hoje so a Aura of Destruction se pendura.
-		pl.Combate.NegarMorte = _ => TentarNegarMorte(pl);
+		// unica -- ver `CombatState.NegarMorte`. Sao DOIS agora, e a ORDEM E A DO DM:
+		//
+		//   1. o BIO-ANDROIDE despertando o SSJ2 -- `Death.dm:10-12`, o **primeiro** `if` do `Death()`,
+		//      antes de tudo. Ele nao e um seguro: e a unica forma de aquela transformacao existir,
+		//      acontece **uma vez na vida** e exige a forma perfeita + SSJ1 dominado + poder. Perder
+		//      essa chance porque uma aura negou o golpe antes seria perde-la pra sempre;
+		//   2. a AURA OF DESTRUCTION (`ue_deathsave_try`), que e o seguro de verdade e se gasta.
+		//
+		// `||` E CURTO-CIRCUITO, e e por isso que a ordem basta: quem despertou o SSJ2 nao chega a
+		// gastar a aura, e quem nao e bio cai direto no segundo como sempre caiu.
+		pl.Combate.NegarMorte = _ => DespertarSsj2DoBio(pl) || TentarNegarMorte(pl);
 
 		// E QUEM OUVE A MORTE QUE ACONTECEU -- o outro lado da mesma porta. E ele que marca o prazo
 		// do cadaver e, no fim dele, a viagem pro Outro Mundo. Ver `GameServer.Alem.cs`.
 		pl.Combate.AoMorrer = _ => AMorteAconteceu(pl);
+
+		// E QUEM RESPONDE "ESTE CORPO ESTA EM CINEMATICA AGORA?" -- o escudo da transformacao.
+		//
+		// **A RESPOSTA JA EXISTIA E E ESTA.** `EmCena` (`GameServer.Formas.cs`) le o `CenaSegundos`,
+		// que o `MarcarCena` escreve dentro do `AnunciarForma` -- o funil unico de toda troca de forma
+		// -- e que o `TickDaForma` abate. Escrever um segundo "estou transformando" aqui seria criar
+		// duas verdades que divergem no dia em que alguem mexer numa: o portao de MOVIMENTO da cena ja
+		// pergunta a esta, e o dreno de Ki, a regeneracao e o custo do voo tambem.
+		//
+		// **DERIVADO, NAO GUARDADO**, e e o item que o dono cobrou: a imunidade morre junto com a
+		// cinematica em TODO jeito de ela acabar -- o prazo vencendo, o nocaute no meio dela (que
+		// reverte a forma e remarca a cena da base em ZERO), a morte, ou a volta pra base. Nao ha bit
+		// pra apagar, entao nao ha bit pra esquecer.
+		//
+		// **INSTALADO AQUI VALE PRO NPC IGUAL**: `PorNoMundo` monta corpo sem dono por este mesmo
+		// `PrepararCombate`. Nao ha crivo por tipo de corpo em lugar nenhum desta regra.
+		pl.Combate.EmCinematica = () => EmCena(pl);
+
+		// E QUEM RESPONDE "ESTE CORPO ESTA SENDO ARREMESSADO AGORA?" -- o `canfight -= 1` do efeito de
+		// knockback do DM (`Movement Effects.dm:40`), lido pelo `testAttack()` (`attack_bck.dm:175`).
+		//
+		// A RESPOSTA JA EXISTIA E E ESTA: `TiquesDeVoo` e escrito so pelo `Arremessar` e abatido so pelo
+		// `TickDoEmpurrao` -- o mesmo campo que ja deita o corpo (`ServerPlayer.Deitado`) e que ja faz o
+		// cliente parar de integrar input. Ver `CombatState.SendoArremessado`.
+		pl.Combate.SendoArremessado = () => pl.TiquesDeVoo > 0;
 
 		// A vida dos membros PERSISTE entre sessoes: deslogar com o braco quebrado nao cura.
 		// (Deslogar com o corpo DECEPADO tambem nao -- isso e coisa de regeneracao ou de morte.)
@@ -182,7 +249,20 @@ public partial class GameServer
 		// ================================================================================================
 		if (pl.Ficha.dead)
 		{
-			pl.RelogioDaMorte = NowMs() + (Alem.EhOAlem(pl.Zone) ? Alem.MsNoAlem : Alem.MsNoChao);
+			// ============================ UM PALPITE SO, ALIMENTANDO AS DUAS COISAS ============================
+			// O prazo e a AUREOLA respondem a mesma pergunta ("em que etapa da morte esta este corpo?"),
+			// e aqui -- e SO aqui -- ela e respondida pelo lugar onde a pessoa acordou, porque nao ha
+			// viagem em curso pra observar: o save guarda a zona e nao a etapa.
+			//
+			// **A AUREOLA NAO PODE SER UM SEGUNDO PALPITE.** Ela sai do MESMO ternario: quem deslogou no
+			// alem ja tinha viajado e volta com aureola; quem deslogou caido no mundo dos vivos ainda e
+			// o cadaver, e volta sem. No dia em que o `KeepsBody` for portado (o morto que ANDA no mundo
+			// dos vivos, `OtherworldRankSkills.dm:195-202`), e esta linha que fica errada -- e ela erra
+			// as duas coisas juntas, entao conserta-la conserta as duas. Ver `Alem.TemAureola`.
+			// ==============================================================================================
+			bool jaViajou = Alem.EhOAlem(pl.Zone);
+			pl.MorteJaViajou = jaViajou;
+			pl.RelogioDaMorte = NowMs() + (jaViajou ? Alem.MsNoAlem : Alem.MsNoChao);
 			return;
 		}
 
@@ -223,12 +303,65 @@ public partial class GameServer
 	private void Atacar(ServerPlayer a, Protocol.Golpe golpe)
 	{
 		CombatState ca = a.Combate;
-		if (!ca.PodeAtacar()) return;   // morto, caido, atordoado ou ainda em recarga
+		if (!ca.PodeAtacar()) { ExplicarPorQueNaoSai(a); return; }   // morto, caido, atordoado, arremessado ou em recarga
 
-		// ALVO MARCADO MANDA VIRAR. E o que faz "seus ataques serem focados nele" valer mesmo
-		// com o alvo pelas costas: o personagem se volta pra ele ANTES de arrancar. Sem isso,
-		// marcar alguem atras de voce e apertar espaco daria um soco no ar na direcao errada.
-		if (Marcado(a) is { } mira)
+		// ============================ COM ALGUEM NA MAO, O SOCO VIRA ESTRANGULAMENTO ============================
+		// `attack_bck.dm:43-57`: no original o `Attack()` com um `grabbee` de pe **nao soca** -- ele
+		// alterna o afogamento. E o que da conteudo ao "segurar": sem isso, o modo 1 do agarrao seria
+		// so uma sala de espera ate arremessar.
+		//
+		// AQUI NO TOPO porque e onde ele esta la, e porque tudo o que vem abaixo (a virada pro alvo
+		// marcado, a investida, a recarga, o consumo do combo) e do SOCO, e este gesto nao e um soco.
+		// Ver `GameServer.Agarrao.cs`.
+		// ====================================================================================================
+		if (EstrangularEmVezDeSocar(a)) return;
+
+		// ============================ ALVO MARCADO MANDA VIRAR -- E ESTE E O UNICO LUGAR ============================
+		// E o que faz "seus ataques serem focados nele" valer mesmo com o alvo pelas costas: o
+		// personagem se volta pra ele ANTES de arrancar. Sem isso, marcar alguem atras de voce e
+		// apertar espaco daria um soco no ar na direcao errada.
+		//
+		// **ESTA LINHA E A REGRA DO "NINGUEM SOCA DE COSTAS", E ELA VALE PROS DOIS LADOS.** O DM nao
+		// EXIGE encarar pra bater -- ele CORRIGE, e a correcao mora DENTRO do ataque
+		// (`commonAttackProcs`, `attack cmn.dm:158`: `dir = get_dir(loc,M.loc)`). O caminho do GOLPE
+		// nao tem recusa nenhuma; o caminho do PASSO tem sete (`PodeMexerOCorpo`). Pendurar a virada
+		// no passo -- que foi o que o port fez primeiro, com o `Comando.Olhar` -- deixa de fora
+		// justamente quem esta paralisado, enraizado por Ki ou prensado pela gravidade: estados que
+		// recusam o passo e NAO recusam o soco (`CombatState.PodeAtacar()`).
+		//
+		// A IA nao tinha um segundo caminho: ela passou a MARCAR quem esta enfrentando (o `target`
+		// do DM), no `Cerebro.Montar`, e cai nesta mesma linha. Nao ha `if` de NPC aqui e nao ha
+		// virada escrita no atuador da IA -- se um dia esta regra mudar, muda pros dois de uma vez.
+		//
+		// O JOGADOR NAO GANHOU NEM PERDEU NADA: quem nao marca ninguem continua socando pra onde
+		// esta olhando, e continua podendo socar o ar de costas pro inimigo -- que e o comportamento
+		// do DM (o `turn_towards` do `compileRangeMobList`, `CombatMovement.dm:3`, esta morto no
+		// original: `!target in L` e lido como `(!target) in L`, que e sempre falso).
+		// =========================================================================================================
+		// ============================ MENOS COM UM RAIO NA MAO -- O `turnlock` DO ORIGINAL ============================
+		// Nao e uma segunda regra de virar: e a UNICA regra de virar, com a unica recusa que ela ainda
+		// nao tinha. Todas as outras ja moram no `PodeMexerOCorpo`, e por ele o corpo enraizado por Ki
+		// ja nao gira pelo teclado nem pelo atuador da IA -- o `Input` e o `PassoDaIa` recusam o pacote
+		// INTEIRO (olhar junto com passo) antes de escrever `Facing`. O caminho do GOLPE e o unico que
+		// passa por fora, porque ele "nao tem recusa nenhuma" (o paragrafo acima explica por que).
+		//
+		// O DM tem a trava com todas as letras -- `turnlock = 1` durante o `beamturndelay`
+		// (`beams.dm:75-78`), lido pelas oito linhas `if(!turnlock) src.dir = ...` do
+		// `keybind enabler.dm:15-43`, com o comentario do proprio jogo: *"keeps you from spinning in
+		// circles with a beam going"*.
+		//
+		// ---- E AQUI ELA E MAIS DURA QUE LA, POR UMA DIFERENCA REAL DO PORTE ----
+		// No original o raio SE REAPONTA: `A.dir = src.dir` e reescrito a cada ciclo do `ShootBeam`
+		// (`beams.dm:136`), entao virar o corpo vira o feixe junto e os dois nunca discordam -- a trava
+		// de la so encarece o giro (`round(Eactspeed,1)/2` tiques), nao o proibe. Neste port o `Rumo`
+		// do projetil e cravado UMA vez no `Disparar` e nunca reescrito: um giro no meio do raio poria
+		// a pose apontando pra um lado e o feixe saindo pro outro.
+		//
+		// Ou seja a trava e o que faz "a pose vira pra direcao do tiro" ser verdade **de graca**: com
+		// ela, `Facing` continua sendo a direcao com que o `Disparar` mirou, e a maquina de direcao que
+		// ja existe desenha o `blast_<dir>` certo sem nenhum campo de direcao no fio.
+		// ==========================================================================================================
+		if (!EnraizadoPorKi(a.Id) && Marcado(a) is { } mira)
 			a.Facing = MoveRules.FacingFrom(mira.Pos - a.Pos, a.Facing);
 
 		// APROXIMAR VEM ANTES DE SOCAR, e e assim no original: o `Attack()` fecha a distancia e
@@ -255,7 +388,33 @@ public partial class GameServer
 		//
 		// O `S2C.Zanzo` do teleporte ja resolve isso -- ele leva o ponto de PARTIDA. Usar o mesmo
 		// canal aqui deixa UM caminho pra miragem em vez de dois que precisam concordar.
-		if (zanzo) AnunciarZanzo(a, a.SaiuDe);
+		//
+		// ============================ E AGORA O ANUNCIO E DA INVESTIDA, NAO DA SKILL ============================
+		// O portao era `if (zanzo)` -- ou seja, quem nao sabia a Afterimage arrancava e a zona INTEIRA
+		// nao ficava sabendo de nada. Isso estava certo enquanto o unico desenho deste pacote era a
+		// miragem (que e da skill); parou de estar quando o BORRAO do deslocamento passou a sair daqui.
+		//
+		// Borrao nao e tecnica: e o corpo ter passado por ali. Quem responde "houve deslocamento?" e o
+		// `Aproximar`, e a resposta dele e o `investiu` -- entao e ele que abre o portao, e a skill vira
+		// so o parametro que decide se a MIRAGEM nasce por cima. Um funil, duas camadas.
+		//
+		// **E POR ISSO QUE NAO HA `if` DE NPC EM LUGAR NENHUM DESTE CONSERTO**: NPC, jogador e corpo
+		// possuido (a fera do Oozaru, a furia lendaria) chegam aqui pela mesma linha 366, e saem daqui
+		// com o mesmo pacote. Ver `AnunciarZanzo` pro custo em bytes.
+		// ======================================================================================================
+		// ============================ O INTERRUPTOR DO DEFEITO INJETADO ============================
+		// FALSO EM JOGO, SEMPRE -- so a bancada `--borraoteste` o liga, e o que ele reproduz e
+		// EXATAMENTE o portao antigo: `if (zanzo)`, ou seja, so quem sabia a Afterimage anunciava. Era
+		// esse `if` o defeito inteiro do relato 1 do dono, e um `if` que ninguem consegue por de volta
+		// numa bancada e um `if` que a bancada nao sabe estar consertado.
+		//
+		// Ele mora AQUI e nao dentro do arquivo de teste pela mesma razao escrita no `_dcGradeCega`
+		// (`GameServer.Corpos.cs`): o `Mutacao` exige que o criterio seja o MESMO objeto com e sem o
+		// defeito. Uma copia da regra escrita na bancada mediria a copia concordando consigo mesma --
+		// e este projeto ja catalogou esse cego ("a bancada mede INTENCAO"). Custa uma comparacao de
+		// bool por golpe que investiu.
+		// ==========================================================================================
+		if (_borraoSoComSkill ? zanzo : investiu) AnunciarZanzo(a, a.SaiuDe, vulto: zanzo);
 
 		double tipo = Protocol.PesoDoGolpe(golpe);
 		double espera = CombatMath.Cadencia(a.Ficha, tipo);
@@ -279,6 +438,11 @@ public partial class GameServer
 			a.Ficha.AttackGain(_rng);
 			ca.ZerarCombo();
 			if (_diagGolpe) ExplicarSocoNoAr(a, investiu);
+
+			// E SE O "AR" FOR ALGUEM TRANSFORMANDO, QUEM SOCOU FICA SABENDO. Ver
+			// `AvisarQueOAlvoEstaEmCena`: sem isto o escudo da cinematica se parece com deteccao de
+			// acerto quebrada, e o jogador reporta como bug em vez de entender a regra.
+			AvisarQueOAlvoEstaEmCena(a);
 
 			// MAS NEM SEMPRE E AR. Antes daqui o golpe sem alvo simplesmente acabava, e socar uma
 			// parede de proposito nao fazia nada -- so o corpo ARREMESSADO derrubava cenario. No
@@ -467,7 +631,8 @@ public partial class GameServer
 		if (a.Combate == null || agora < a.DashLivreEm) return false;
 
 		float alcance = longo ? AlcanceDoDash : AlcanceDoPasso;
-		ServerPlayer? alvo = AlvoParaArranque(a, alcance);
+		// O MARCADO ESTICA O ARRANQUE LONGO ATE OS 15 TILES DO DM. Ver `AlcanceDoDashMarcado`.
+		ServerPlayer? alvo = AlvoParaArranque(a, alcance, longo ? AlcanceDoDashMarcado : alcance);
 		if (alvo == null) return false;
 
 		double custo = a.Ficha.MaxKi * CustoDashKi * (longo ? 1 : 0.5);
@@ -559,7 +724,12 @@ public partial class GameServer
 	/// <summary>O mapa da zona de quem ataca. Atalho -- o `Aproximar` consulta duas vezes.</summary>
 	private ZoneCollision? mapaDoAtaque(ServerPlayer a) => _catalogo?.Get(a.Zone)?.Mapa;
 
-	private ServerPlayer? AlvoParaArranque(ServerPlayer a, float alcance)
+	/// <param name="alcanceMarcado">
+	/// O alcance de quem foi MARCADO, que e maior (ver <see cref="AlcanceDoDashMarcado"/>). Separado do
+	/// <paramref name="alcance"/> porque as duas buscas respondem perguntas diferentes: o cone ADIVINHA
+	/// em quem voce quis bater (e por isso e curto), e a marca voce DECLAROU.
+	/// </param>
+	private ServerPlayer? AlvoParaArranque(ServerPlayer a, float alcance, float alcanceMarcado)
 	{
 		// MARCADO PRIMEIRO. So precisa estar no ALCANCE -- o cone nao entra: quem marcou ja
 		// disse em quem quer bater, e obrigar a mirar de novo com o mouse seria pedir a mesma
@@ -567,7 +737,7 @@ public partial class GameServer
 		if (Marcado(a) is { } mira)
 		{
 			float d2 = (mira.Pos - a.Pos).LengthSquared;
-			if (d2 <= alcance * alcance && d2 > DistanciaDeParada * DistanciaDeParada) return mira;
+			if (d2 <= alcanceMarcado * alcanceMarcado && d2 > DistanciaDeParada * DistanciaDeParada) return mira;
 			return null;   // marcou alguem longe demais: nao arranca atras de outro sem querer
 		}
 
@@ -627,6 +797,99 @@ public partial class GameServer
 			melhor = o;
 		}
 		return melhor;
+	}
+
+	/// <summary>
+	/// ============================ "NAO ADIANTOU": O RETORNO PRA QUEM SOCOU UM CORPO EM CINEMATICA ============================
+	/// O escudo da transformacao entra pelo `CombatState.Intocavel`, e `Intocavel` tira o corpo da
+	/// BUSCA -- o <see cref="AlvoNaFrente"/> pula, o <see cref="AlvoParaArranque"/> pula, o
+	/// <see cref="Marcado"/> pula. Sem alvo, o golpe cai no ramo do vazio e quem socou recebe o corte
+	/// do punho no ar e **mensagem nenhuma**.
+	///
+	/// Isso e aceitavel nos poucos segundos da carencia de renascimento, e e inaceitavel nos 140 s da
+	/// cena do SSJ3: um jogador socando um corpo parado na frente dele e atravessando por dois minutos
+	/// nao le "ele esta protegido", le "a deteccao de acerto quebrou" -- e reporta como bug. O escudo
+	/// que ninguem entende e metade do trabalho.
+	///
+	/// **O MAIS DISCRETO QUE O JOGO JA TEM**: uma linha de texto pra quem socou, e so pra ele. O port
+	/// nao tem desfecho de "dano zero" pra reusar -- `Esquivou` e `Aparou` sao gestos do DEFENSOR
+	/// (vulto, anel de choque, membro que apara) e um corpo preso na propria cinematica nao esta
+	/// desviando nem aparando nada; anunciar um deles seria contar uma historia falsa pra zona inteira.
+	/// Nao nasceu pacote novo, nao nasceu efeito novo, e ninguem alem de quem socou ve a linha.
+	///
+	/// A VARREDURA SO ACONTECE NO SOCO QUE JA SAIU VAZIO -- e ela custa uma volta na zona, com o mesmo
+	/// crivo de alcance e de ALTURA do <see cref="AlvoNaFrente"/> que acabou de recusar o corpo. Somar
+	/// um crivo diferente aqui faria a mensagem aparecer pra quem nem estava com ele na frente.
+	/// =========================================================================================================================
+	/// </summary>
+	private void AvisarQueOAlvoEstaEmCena(ServerPlayer a)
+	{
+		long agora = NowMs();
+		if (agora < a.AvisoDeCenaMs) return;
+
+		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
+		{
+			if (o == a || o.Ficha.dead || o.Combate == null || !EmCena(o)) continue;
+			if (!AlcancaPelaAltura(a, o)) continue;
+			if (!MeleeArea.NoAlcance(a.Pos, a.Facing, o.Pos)) continue;
+
+			a.AvisoDeCenaMs = agora + MsEntreAvisosDeCena;
+			Avisar(a, $"seu golpe atravessa {o.Name}: a transformação o envolve, e nada o alcança.");
+			return;
+		}
+	}
+
+	/// <summary>
+	/// Quanto tempo entre duas dessas mensagens pro mesmo atacante. Tres segundos: longo o bastante
+	/// pra nao virar enxurrada num soco de 3 Hz, curto o bastante pra quem chegou no meio da cena
+	/// ainda receber a explicacao antes de desistir.
+	/// </summary>
+	private const long MsEntreAvisosDeCena = 3000;
+
+	/// <summary>
+	/// ============================ "APERTEI E NAO SAIU NADA" -- O OUTRO SILENCIO DO SOCO ============================
+	/// O `Atacar` recusava o golpe na PRIMEIRA linha e voltava sem uma palavra. Enquanto as recusas eram
+	/// "morto", "nocauteado" e "recarga", isso estava certo: as tres o jogador ve na tela (o corpo esta
+	/// no chao) ou sente no ritmo (a cadencia e a mesma sempre).
+	///
+	/// As outras duas nao aparecem em lugar nenhum, e sao justamente as que o dono descreveu:
+	///
+	///   * ARREMESSADO -- o corpo esta voando pelo golpe pesado do outro. O cliente ja o desenha
+	///     deitado, mas ate agora ele TAMBEM aceitava o soco: saia animacao e assobio de punho no ar,
+	///     e nenhuma mensagem. Le como "meus socos nao acertam ele";
+	///   * ATORDOADO -- a faixa `Cambaleia` do <see cref="Empurrao"/> (forca entre metade do limiar e
+	///     o limiar) vira 1,0 s de `Stun`, e `Stun` **nao viaja pro cliente**: nao ha campo de
+	///     atordoamento no `Protocol`. Um segundo inteiro em que apertar a tecla nao produz nem o som
+	///     do soco no ar. Era o unico estado 100% mudo do combate.
+	///
+	/// UMA LINHA DE TEXTO, SO PRA QUEM APERTOU, com o mesmo freio de tres segundos do aviso de
+	/// cinematica -- e pelo mesmo motivo: a tecla sai a 3 Hz. Nao nasceu pacote nem efeito novo.
+	///
+	/// SO PRA GENTE (`EhPessoa`): o `Atacar` da IA passa por aqui a 30 Hz, e explicar a um NPC por que
+	/// ele nao socou seria varrer a zona pra escrever num `Peer` nulo.
+	/// ==============================================================================================================
+	/// </summary>
+	private void ExplicarPorQueNaoSai(ServerPlayer a)
+	{
+		if (a.Peer == null) return;
+
+		// NO EMBATE NAO SE EXPLICA NADA. O `Comecar` do Zanzo Clash trava o corpo com um `Stun` do
+		// tamanho da cena inteira (e de proposito: la quem manda no lugar dele e o servidor), entao sem
+		// esta linha o jogador que apertasse espaco no meio do embate leria "seu corpo ainda nao se
+		// recompos do ultimo golpe" -- uma explicacao verdadeira sobre o campo e falsa sobre o mundo.
+		if (_emEmbate.ContainsKey(a.Id)) return;
+
+		string? razao =
+			a.TiquesDeVoo > 0 ? "o golpe te jogou longe: seu corpo ainda está no ar."
+			: a.Combate.Stun > 0 ? "seu corpo ainda não se recompôs do último golpe."
+			: null;   // morto, nocauteado ou em recarga: isso a tela e o ritmo ja contam
+
+		if (razao == null) return;
+
+		long agora = NowMs();
+		if (agora < a.AvisoDoCorpoMs) return;
+		a.AvisoDoCorpoMs = agora + MsEntreAvisosDeCena;
+		Avisar(a, razao);
 	}
 
 	/// <summary>
@@ -756,6 +1019,12 @@ public partial class GameServer
 
 		var wCheio = Protocol.Begin(Protocol.S2C.Hit); cheio.Write(wCheio);
 		var wMagro = Protocol.Begin(Protocol.S2C.Hit); magro.Write(wMagro);
+
+		// A BANCADA ESCUTA OS DOIS FIOS, e nao a struct. Ver `EscutaDeGolpes`: a pergunta da
+		// `--pecateste` e sobre o que a PLATEIA recebe, e ler `cheio.Decepou` responderia sobre a
+		// variavel do servidor -- que e verdadeira mesmo se o `Write` deixar o bit pra tras.
+		EscutaDeGolpes?.Add((true, wCheio.CopyData()));
+		EscutaDeGolpes?.Add((false, wMagro.CopyData()));
 
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
@@ -926,40 +1195,9 @@ public partial class GameServer
 
 			RegenerarPassivo(pl, dt);
 
-			// ============================ O NPC NAO RESSUSCITA -- ELE SAI DO MUNDO ============================
-			// Este `if` varria TODOS os `_players` sem olhar `Peer`, e `Renascer` manda pro
-			// `DestinoDoBerco`. Um corpo sem dono nao tem berco (`Berco.Planeta` vazio), e o funil
-			// responde `SpawnZone` -- **a Terra**. Ou seja, com o povoamento ligado e sem esta guarda:
-			// mate o cidadao de Namek e ele reaparece na Terra 15 s depois, vivo, pra sempre; o Freeza
-			// de uma saga voltaria sozinho depois de derrotado.
-			//
-			// Quem repoe habitante e a MANUTENCAO (`TickDoPovoamento`, a cada 5 min), como no original:
-			// `count_citizens` conta os vivos e `Populate_All_Planets` completa ate o alvo -- o morto
-			// simplesmente sai da conta e outro nasce noutro lugar. Renascer no mesmo corpo faria a
-			// populacao ser imortal, e ai matar um habitante nao significaria nada.
-			//
-			// A REMOCAO E ADIADA porque este laco esta percorrendo `_players.Values`: `RemoverNpc`
-			// mexe no dicionario e derrubaria o tique com "Collection was modified".
-			// ==========================================================================================
-			//
-			// ============================ E O `else` ERA LARGO DEMAIS ============================
-			// Ele dizia "quem nao e NPC do mundo renasce", e isso e FALSO: <see cref="Gente"/> tem
-			// TRES grupos, nao dois. O reflexo da mente e o chefe convocado nao tem `Peer` e podem
-			// nao ter `Papel` -- entao o `EhNpcDoMundo` os recusava e eles caiam no `Renascer`, que
-			// manda pro berco. Um reflexo sem berco renasceria **na Terra**, vivo, e ficaria la pra
-			// sempre como um corpo dirigido sem dono. Nao aparecia porque o `DirigirClone` costuma
-			// desfazer o transe no mesmo tique -- ou seja, dependia de uma corrida.
-			//
-			// Com a viagem pro Outro Mundo o `else` largo ficaria pior: o reflexo de alguem apareceria
-			// DE PE na mesa do Enma. Entao a pergunta passou a ser a do `Core/Npc/Gente.cs`, e o
-			// terceiro grupo tem resposta escrita: **quem ergueu o corpo cuida dele**, e nao este laco.
-			// ================================================================================
-			if (pl.Ficha.dead && agora >= pl.RelogioDaMorte)
-			{
-				if (EhNpcDoMundo(pl)) _npcsPraTirar.Add(pl);
-				else if (EhJogador(pl)) PassoDaMorte(pl);
-				else pl.RelogioDaMorte = long.MaxValue;   // clone/boneco/corpo forjado: nao e conta daqui
-			}
+			// VENCEU O PRAZO DA MORTE? A triagem inteira mora em <see cref="VenceuOPrazoDaMorte"/> --
+			// tres grupos de corpo, tres destinos diferentes, e o argumento de cada um esta la.
+			if (pl.Ficha.dead && agora >= pl.RelogioDaMorte) VenceuOPrazoDaMorte(pl);
 
 			TickDoEstomago(pl, dt);
 
@@ -987,6 +1225,13 @@ public partial class GameServer
 		// fica ANTES do `return` dele, que so fala de NPC morto.
 		TickDeQuemVolta();
 
+		// E DEPOIS DELE, NUNCA ANTES. As duas filas podem vencer no mesmo tique, e a ordem e a regra:
+		// a volta SECA (o soco no corpo real, o nocaute, a morte) ganha da onda -- quando isso
+		// acontece, o que sobra aqui e so apagar a ondulacao da tela de quem ja voltou. Ver
+		// `TickDaOndaDaMente`, que tambem esta aqui em cima do `return` de baixo pelo mesmo motivo
+		// que o vizinho: ele mexe nas listas de duas zonas.
+		TickDaOndaDaMente();
+
 		if (_npcsPraTirar.Count == 0) return;
 		foreach (ServerPlayer morto in _npcsPraTirar)
 		{
@@ -996,6 +1241,24 @@ public partial class GameServer
 			// `RancorAte` deste corpo, e `RemoverNpc` o tira do `_players`. E este e o UNICO ponto por
 			// onde toda morte de corpo sem dono passa -- ver `MorreuUmCorpoSemDono`.
 			MorreuUmCorpoSemDono(morto);
+
+			// ============================ O NPC TAMBEM DEIXA CORPO -- `mobDeath.dm:15` ============================
+			// **O ORIGINAL CHAMA O MESMO `GenerateCorpse()`** que o jogador chama; a diferenca la e que o
+			// mob do NPC nao viaja pro Enma, ele e deletado (`deleteMe()`). Aqui e igual, e por isso a
+			// chamada fica NESTE laco: e ele o instante em que o corpo sem dono sai do mundo, exatamente
+			// como o `IrProAlem` e o instante em que o do jogador sai.
+			//
+			// ANTES DO `RemoverNpc`, e a ordem importa pelo mesmo motivo do `MorreuUmCorpoSemDono` acima:
+			// o cadaver copia POSICAO e APARENCIA deste corpo, e `RemoverNpc` o tira da `ZoneList` (a
+			// posicao ainda estaria la, mas a apresentacao do corpo novo sairia depois do `PeerLeft` do
+			// velho -- a mesma piscada que a ordem no `IrProAlem` evita).
+			//
+			// **E ELE ENTRA NO MESMO TETO POR ZONA** (`Cadaver.TetoPorZona`), que e onde este caminho
+			// paga a propria conta: uma invasao de ondas mata dezenas de corpos, e sem o teto uma cidade
+			// sitiada acumularia habitante morto ate o fim da sessao.
+			// ==================================================================================================
+			DeixarOCadaver(morto);
+
 			RemoverNpc(morto);
 		}
 		_npcsPraTirar.Clear();

@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
+using Jandirus.Core.Stats;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -132,7 +133,35 @@ public sealed class Obra
 	/// separa quem quis virar maquina de quem quis FAZER uma.
 	/// </summary>
 	public int Lab;
-	public double Vida = 8;         // `DNL_LAB_HEALTH`: 8 golpes derrubam
+
+	/// <summary>
+	/// O QUE ESTA ESCRITO NESTA LAPIDE -- o `A.desc = "[text]"` do `GenerateCross` (`Corpse.dm:53`).
+	/// Vazio em todo o resto.
+	///
+	/// ============================ POR QUE ELE MORA NA OBRA, E NAO NUM DICIONARIO ============================
+	/// Exatamente o argumento que o <see cref="Gravidade"/> quatro campos acima ja escreveu: duas
+	/// lapides sao duas lapides, e um dicionario paralelo (id -> texto) funcionaria ate uma delas ser
+	/// destruida sem ninguem limpar o dicionario -- e a proxima obra a receber aquele id herdaria o
+	/// epitafio de um morto que nao e ela.
+	///
+	/// Dentro da obra, ele nasce e morre com ela, e vai pro `mundo.json` de graca -- que e o que faz um
+	/// tumulo sobreviver ao reinicio do servidor. Ver `GameServer.Cadaver.ErguerALapide`.
+	/// ====================================================================================================
+	/// </summary>
+	public string Epitafio = "";
+
+	// ============================ AQUI MORAVA UM `Vida = 8` (`DNL_LAB_HEALTH`), E ELE FOI DELETADO ============================
+	// O campo era escrito no nascimento, escrito de novo ao nascer o bio-androide e **nunca
+	// decrementado por ninguem**: nao havia um unico `Vida--` no repo. O laboratorio deste port
+	// sempre caiu pela ARMADURA generica (`Armadura.Bater`, ver o campo logo abaixo), que e o
+	// sistema que este projeto escolheu pra obra erguida por jogador -- e ter os dois numeros
+	// convivendo era prometer uma contagem de golpes que nao existia.
+	//
+	// O ORIGINAL TEM MESMO OS OITO GOLPES (`Attack_Lab`, um verb publico), e a divergencia fica
+	// declarada em vez de fingida: aqui quem derruba um laboratorio e quem bate FORTE, e nao quem
+	// bate oito vezes. O que importava do original -- que destruir o lab CANCELA a fornada e o
+	// mundo inteiro fica sabendo -- esta ligado, e mora no `Estragar`.
+	// ========================================================================================================================
 	public long ErguidaEm;
 
 	/// <summary>
@@ -162,10 +191,74 @@ public sealed class Obra
 /// </summary>
 public sealed class Gestacao
 {
-	public List<string> Dna = [];        // as racas colhidas
-	public double MaiorBp;               // BP do doador mais forte: o bio nasce com metade
+	/// <summary>
+	/// AS AMOSTRAS. Ate quatro (`DNL_BIO_MAX_DNA`), e cada uma e um REGISTRO e nao uma string.
+	///
+	/// ============================ ELA ERA `List&lt;string&gt;` E VIRAVA LOG ============================
+	/// A lista guardava so o nome da raca, e as duas unicas linhas do port que a liam eram
+	/// `GD.Print`. Ou seja: derrubar um jogador, enfiar uma agulha nele e esperar meio dia produzia
+	/// **uma linha de console**. Era o sexto caso de dado extraido sem consumidor deste porte, e o
+	/// mais caro deles em tempo de jogo.
+	///
+	/// O registro tem os mesmos cinco campos do `obj/items/DNA_Sample` do original
+	/// (`DNALabs.dm:258-266`) porque cada um deles tem consumidor de verdade do outro lado:
+	/// a RACA vira `brew_has_saiyan`, o BP vira `brew_strongest_bp`, a ASSINATURA reencontra o
+	/// doador online pra ler o BP ATUAL dele, e as SKILLS viram as tecnicas que o bio ja nasce
+	/// sabendo.
+	/// ==========================================================================================
+	/// </summary>
+	public List<Amostra> Amostras = [];
+
 	public long PrometidaEm;             // ms reais em que a gestacao termina
 	public string DonoConta = "";
+
+	// =====================================================================
+	// O QUE A FORNADA CONSOLIDOU (so depois de `GestarBio`)
+	// =====================================================================
+	/// <summary>`brew_strongest_bp` -- o bio nasce com METADE disto.</summary>
+	public double MaiorBp;
+
+	/// <summary>`brew_has_saiyan` -- havia sangue Saiyajin entre os doadores.</summary>
+	public bool TemSaiyajin;
+
+	/// <summary>`brew_verbs` -- a uniao SEM DUPLICATAS das tecnicas dos doadores.</summary>
+	public List<string> Tecnicas = [];
+}
+
+/// <summary>
+/// UMA AMOSTRA DE DNA -- o `obj/items/DNA_Sample` do original (`DNALabs.dm:258-266`).
+///
+/// ============================ POR QUE ELA GUARDA A ASSINATURA ============================
+/// Porque o BP que vale nao e o da coleta. `DNALabs.dm:430-434`: na hora de FECHAR a fornada, o
+/// original procura cada doador entre os jogadores online e usa o BP ATUAL dele; so quem estiver
+/// offline entra com o numero congelado da agulha.
+///
+/// A regra tem consequencia de jogo, e ela e boa: colher DNA de alguem cedo e esperar ele treinar
+/// PAGA. O laboratorio nao rouba uma foto -- ele rouba a pessoa.
+/// ==========================================================================================
+/// </summary>
+public sealed class Amostra
+{
+	public string Raca = "";
+	public string Doador = "";
+	public string Assinatura = "";
+	public double Bp;
+
+	/// <summary>
+	/// AS TECNICAS DO DOADOR -- o `donor_verbs = M.Keyableverbs.Copy()` do original.
+	///
+	/// ============================ NO PORT "VERB" E O CAMINHO DA SKILL ============================
+	/// O DM guarda caminhos de `verb` porque la um verb existe solto no mob. Aqui nao ha verb pra
+	/// copiar: quem responde "voce sabe essa tecnica?" e o LIVRO (`SabeTecnica` varre
+	/// `Livro.Aprendidas` procurando a skill que declara aquele verb). Entao o equivalente exato de
+	/// uma `Keyableverb` e o typepath da skill que a concede.
+	///
+	/// **SO SKILL QUE TEM VERB ENTRA**, e essa e a fidelidade que importa: `Keyableverbs` e uma
+	/// lista de BOTOES. Uma skill de buff passivo nao esta la, entao o bio nao herda buff passivo --
+	/// ele herda o que o doador sabia FAZER. Ver `TecnicasHerdaveis`.
+	/// =========================================================================================
+	/// </summary>
+	public List<string> Skills = [];
 }
 
 /// <summary>
@@ -232,7 +325,20 @@ public partial class GameServer
 	private const double BioFracaoDoDoador = 0.5;
 
 	/// <summary>`DNL_BIO_MAX_DNA`.</summary>
-	private const int BioMaxDna = 4;
+	private const int BioMaxDna = Jandirus.Core.Races.BioAndroids.MaxDna;
+
+	/// <summary>
+	/// QUANTO A LARVA FICA LARVA -- `bio_mature_realtime = world.realtime + DAY_REAL_MINUTES * 600`,
+	/// ou seja **um dia in-game** contado em relogio REAL.
+	///
+	/// Na escala deste port o dia in-game tem <see cref="Espaco.SegundosPorDiaInGame"/> de relogio.
+	/// Sai daquela constante e nao de um numero digitado pelo mesmo motivo que a gestacao: os dois
+	/// prazos deste sistema sao "um dia" e "um mes" do MESMO calendario, e um deles escrito a mao
+	/// deixaria de acompanhar o outro no dia em que o dia in-game mudar de tamanho.
+	/// </summary>
+	private double MaturacaoDaLarvaSegundos => _gestacaoDeTeste > 0
+		? _gestacaoDeTeste
+		: Espaco.SegundosPorDiaInGame;
 
 	private string CaminhoDoMundo => System.IO.Path.Combine(_store?.Pasta ?? ".", "mundo.json");
 
@@ -282,6 +388,18 @@ public partial class GameServer
 		if (densas > 0) GD.Print($"[server] construcoes que bloqueiam: {densas}");
 
 		CarregarObjetosDoMapa();
+
+		// ============================ E ENTAO A GUARDA, EM VOZ ALTA ============================
+		// DEPOIS do `CarregarObjetosDoMapa` e nao antes: ela cruza o catalogo com o que esta
+		// REALMENTE de pe neste mundo, e as duas metades so existem juntas nesta linha.
+		//
+		// Ela e a irma de boot do `AvisarDasMudas` acima, e cobre o que ele nao alcanca: ele
+		// pergunta do CATALOGO ("alguma construcao densa esta sem arte?"), ela pergunta do MAPA
+		// ("alguma coisa que este mundo poe de pe nao vai aparecer?") -- e foi a segunda pergunta
+		// que faltou, porque "maquina" era um dono ACEITO da parede na varredura antiga.
+		// Ver `GameServer.CenarioMudo.cs`.
+		// =======================================================================================
+		ConferirCenarioMudo();
 	}
 
 	/// <summary>
@@ -771,15 +889,51 @@ public partial class GameServer
 
 		lab.Fornada ??= new Gestacao { DonoConta = pl.Conta };
 		if (lab.Fornada.PrometidaEm > 0) { Avisar(pl, "a gestacao ja comecou -- nao da pra acrescentar DNA."); return; }
-		if (lab.Fornada.Dna.Count >= BioMaxDna) { Avisar(pl, $"o tanque so comporta {BioMaxDna} amostras."); return; }
+		if (lab.Fornada.Amostras.Count >= BioMaxDna) { Avisar(pl, $"o tanque so comporta {BioMaxDna} amostras."); return; }
 
-		lab.Fornada.Dna.Add(vitima.Race);
-		lab.Fornada.MaiorBp = Math.Max(lab.Fornada.MaiorBp, vitima.Ficha.BP);
+		// UMA AMOSTRA POR PESSOA. `DNL_BIO_MAX_DNA` e quatro, e sem esta linha o tanque enchia com
+		// quatro agulhadas no MESMO nocauteado -- que anula a mecanica inteira (o preco do sistema e
+		// derrubar gente forte, no plural).
+		if (lab.Fornada.Amostras.Any(a => a.Assinatura == vitima.Assinatura))
+		{ Avisar(pl, $"o tanque ja tem uma amostra de {vitima.Name}."); return; }
+
+		var amostra = new Amostra
+		{
+			Raca = vitima.Race,
+			Doador = vitima.Name,
+			Assinatura = vitima.Assinatura,
+			Bp = vitima.Ficha.BP,
+			Skills = [.. TecnicasHerdaveis(vitima)],
+		};
+		lab.Fornada.Amostras.Add(amostra);
 		GravarMundo();
 
-		Avisar(pl, $"voce colhe DNA de {vitima.Name} ({vitima.Race}). "
-				   + $"Amostras: {lab.Fornada.Dna.Count}/{BioMaxDna}.");
+		Avisar(pl, $"voce colhe DNA de {vitima.Name} ({vitima.Race}) -- {amostra.Skills.Count} tecnica(s) "
+				   + $"gravada(s) no tecido. Amostras: {lab.Fornada.Amostras.Count}/{BioMaxDna}.");
 		Avisar(vitima, "alguem enfia uma agulha em voce enquanto voce esta caido.");
+	}
+
+	/// <summary>
+	/// AS SKILLS DESTE CORPO QUE ATRAVESSAM UMA AGULHA -- o `Keyableverbs` do original.
+	///
+	/// ============================ SO O QUE TEM BOTAO, E ISSO E A REGRA DO DM ============================
+	/// `donor_verbs = M.Keyableverbs.Copy()` (`DNALabs.dm:312`): uma lista de VERBS. Skill de buff
+	/// passivo nao esta nela -- o `after_learn` dela escreve um numero na ficha e nao cria verb
+	/// nenhum --, entao ela nao viaja. O bio herda o que o doador sabia FAZER, nao o que o doador
+	/// ERA. E o mesmo criterio que ja separa "vem da pessoa" de "vem da raca" no relatorio deste
+	/// sistema: os stats do doador nao entram, e um buff passivo e um stat com outro nome.
+	///
+	/// **A ARVORE NAO ATRAVESSA, SO A FOLHA.** No DM o bio nao ganha entrada em arvore nenhuma
+	/// (`generatetrees` despacha por `Parent_Race`, que agora e Bio-Android); ele ganha os verbs
+	/// soltos. Aqui o equivalente e por o typepath no livro sem tocar em `Destravadas` -- ele SABE a
+	/// tecnica, e continua sem o ramo de onde ela veio.
+	/// =================================================================================================
+	/// </summary>
+	private IEnumerable<string> TecnicasHerdaveis(ServerPlayer doador)
+	{
+		if (_skills == null || doador.Livro == null) yield break;
+		foreach (string path in doador.Livro.Aprendidas)
+			if (_skills.Get(path) is { Verbos.Length: > 0 }) yield return path;
 	}
 
 	/// <summary>
@@ -788,7 +942,7 @@ public partial class GameServer
 	private void GestarBio(ServerPlayer pl)
 	{
 		Obra? lab = LabDeBio(pl);
-		if (lab?.Fornada == null || lab.Fornada.Dna.Count == 0)
+		if (lab?.Fornada == null || lab.Fornada.Amostras.Count == 0)
 		{ Avisar(pl, "o tanque esta vazio -- colha DNA primeiro."); return; }
 		if (lab.Fornada.PrometidaEm > 0)
 		{
@@ -797,11 +951,45 @@ public partial class GameServer
 			return;
 		}
 
-		lab.Fornada.PrometidaEm = NowMs() + (long)(GestacaoSegundosReais * 1000);
+		// ============================ A FORNADA SE CONSOLIDA AQUI, E NAO NA AGULHA ============================
+		// `Topic()` do original (`DNALabs.dm:422-444`) faz exatamente estas tres contas no instante em
+		// que a gestacao COMECA, e depois **destroi as amostras**. Faze-las na coleta seria outra
+		// mecanica: o BP do doador mais forte tem que ser o de HOJE, e nao o do dia da agulhada.
+		// ==================================================================================================
+		Gestacao g = lab.Fornada;
+
+		// 1) `brew_strongest_bp` -- e o BP ATUAL de quem estiver online (`:430-434`). Colher DNA de
+		//    alguem cedo e esperar essa pessoa treinar PAGA: o laboratorio nao rouba uma foto.
+		g.MaiorBp = 0;
+		foreach (Amostra a in g.Amostras)
+		{
+			ServerPlayer? vivo = _players.Values.FirstOrDefault(
+				o => o.Assinatura.Length > 0 && o.Assinatura == a.Assinatura);
+			g.MaiorBp = Math.Max(g.MaiorBp, vivo?.Ficha.BP ?? a.Bp);
+		}
+
+		// 2) `brew_has_saiyan` -- QUALQUER doador de sangue Saiyajin serve, puro ou meio (`:435`
+		//    testa `"Saiyan"` e `"Half-Saiyan"`). `Catalogo.EhSaiyajin` cobre os dois mais o
+		//    `"Halfbreed"` do `races.json`, e e o MESMO predicado que decide quem tem a escada --
+		//    duas respostas pra "tem sangue Saiyajin?" e como um bio nasce com `canSSJ` e sem escada.
+		g.TemSaiyajin = g.Amostras.Any(a => Jandirus.Core.Forms.Catalogo.EhSaiyajin(a.Raca));
+
+		// 3) `brew_verbs` -- a UNIAO SEM DUPLICATAS (`:436-437`). Quatro doadores que sabem a mesma
+		//    tecnica dao uma tecnica, nao quatro.
+		g.Tecnicas = [.. g.Amostras.SelectMany(a => a.Skills).Distinct(StringComparer.OrdinalIgnoreCase)];
+
+		g.PrometidaEm = NowMs() + (long)(GestacaoSegundosReais * 1000);
 		GravarMundo();
-		GD.Print($"[server] {pl.Name} iniciou gestacao de bio-androide ({string.Join("+", lab.Fornada.Dna)})");
+
+		GD.Print($"[server] {pl.Name} iniciou gestacao de bio-androide "
+				 + $"({string.Join("+", g.Amostras.Select(a => a.Raca))}) -- BP alvo {g.MaiorBp * BioFracaoDoDoador:N0}, "
+				 + $"saiyajin={g.TemSaiyajin}, tecnicas={g.Tecnicas.Count}");
+
 		Avisar(pl, $"o tanque se fecha. A criatura leva um mes pra ficar pronta "
 				   + $"({GestacaoSegundosReais / 60:0} minutos reais). Nao deixe destruirem o laboratorio.");
+		Avisar(pl, g.TemSaiyajin
+			? "no meio da sopa de celulas ha DNA SAIYAJIN -- o que sair dali vai poder ir alem."
+			: "nenhuma das amostras tem sangue Saiyajin. O que sair dali sera forte, mas nao vai passar da perfeicao.");
 	}
 
 	private Obra? LabDeBio(ServerPlayer pl)
@@ -839,13 +1027,23 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// A GESTACAO TERMINOU. No original a criatura MATA o criador e o jogador passa a jogar com
-	/// ela -- e essa e a parte que da peso ao sistema inteiro: nao e um pet, e uma sucessao.
+	/// A GESTACAO TERMINOU.
 	///
-	/// O PORT AINDA NAO TROCA O PERSONAGEM DA CONTA (a criacao de personagem passa pela tela de
-	/// slots, e forcar um slot por fora dela abriria um segundo caminho de criacao que ninguem
-	/// mais valida). Entao aqui a criatura NASCE, mata o criador e fica anotada; a troca de corpo
-	/// e o passo que falta, e esta escrito em vez de fingido.
+	/// ============================ "A CRIATURA MATA O CRIADOR" E UMA FRASE, NAO DUAS PESSOAS ============================
+	/// Este metodo dizia por escrito que a troca de corpo era o passo que faltava, porque "a criacao
+	/// de personagem passa pela tela de slots". **A leitura estava errada, e o original resolve isso
+	/// sem criar personagem nenhum:** `dnl_bio_hatch` (`DNALabs.dm:449-500`) opera sobre o
+	/// **MESMO mob** -- `creator.Race = "Bio-Android"`, `creator.genome = null`, `creator.BP = ...`.
+	/// A morte e da PERSONA: o jogador nao perde o slot, ele perde quem ele era.
+	///
+	/// Por isso nao ha slot novo aqui, nao ha segundo caminho de criacao e nao ha nada pra validar:
+	/// e o mesmo save, o mesmo peer e o mesmo corpo, reescritos. O que morre e o nome, a raca, o
+	/// genoma, a classe, o cabelo e as arvores de skill.
+	/// ================================================================================================================
+	///
+	/// O CRIADOR OFFLINE ADIA O PARTO, e isso e literal (`:355-367` espera `creator.client`). Sem
+	/// isso havia uma saida: deslogar antes da hora e voltar depois com o laboratorio sumido e o
+	/// personagem intacto -- pagar meio milhao pra escapar da propria sentenca.
 	/// </summary>
 	private void TickDaGestacao()
 	{
@@ -854,32 +1052,410 @@ public partial class GameServer
 		{
 			if (lab.Fornada is not { PrometidaEm: > 0 } g || agora < g.PrometidaEm) continue;
 
-			double bp = g.MaiorBp * BioFracaoDoDoador;
-			ServerPlayer? criador = _players.Values.FirstOrDefault(p => p.Conta == g.DonoConta);
+			ServerPlayer? criador = _players.Values.FirstOrDefault(
+				p => p.Conta == g.DonoConta && p.Peer != null);
 
-			GD.Print($"[server] bio-androide pronto no lab #{lab.Id}: DNA {string.Join("+", g.Dna)}, BP {bp:N0}");
-			if (criador != null)
+			// ELE PRECISA ESTAR ONLINE **E VIVO**. Morto tambem espera: no original o nascimento e o
+			// instante em que a criatura o mata, e nao da pra matar quem ja esta morto -- o parto
+			// fica aguardando o corpo se levantar. O tanque nao estraga.
+			if (criador == null || criador.Ficha.dead) continue;
+
+			NascerBioAndroide(criador, lab, g);
+		}
+	}
+
+	/// <summary>
+	/// O NASCIMENTO. Porte de `dnl_bio_hatch` (`DNALabs.dm:449-500`), passo a passo e na mesma ordem.
+	///
+	/// ============================ O QUE VEM DA **PESSOA** E O QUE VEM DA **RACA** ============================
+	/// A decisao esta escrita aqui porque foi ela que o dono pediu por extenso ("pegar as SKILLS,
+	/// HABILIDADES RACIAIS etc das PESSOAS e RACA q ele tem o dna"), e porque o original entrega
+	/// **muito menos** do que a frase sugere. O que o DM faz, medido linha a linha:
+	///
+	/// DA PESSOA (do doador individual), duas coisas e so duas:
+	///   * **o BP** -- metade do BP do doador mais FORTE (`:471`), o atual se ele estiver online;
+	///   * **as tecnicas** -- a uniao dos `Keyableverbs` dos ate quatro doadores (`:483-489`).
+	///
+	/// DA RACA, **uma** coisa: o teste de string `"Saiyan"`/`"Half-Saiyan"` (`:435`), que vira
+	/// `canSSJ` + o SSJ1 ja possuido + o Zenkai anunciado.
+	///
+	/// O QUE **NAO** ATRAVESSA, e o DM e explicito nos quatro: os STATS (o genoma e destruido e
+	/// reconstruido como Bio-Android puro, `:460`), as ARVORES RACIAIS (`generatetrees` despacha por
+	/// `Parent_Race`, que agora e Bio-Android -- um bio feito de DNA Namekuseijin NAO regenera como
+	/// Namekuseijin), as HABILIDADES RACIAIS ativas de outras racas, e a CLASSE (`:463` forca
+	/// "None", o tipo Cell).
+	///
+	/// **ONDE EU ESCOLHI, E O QUE ESCOLHI:** o DM copia VERBS soltos; o port nao tem verb solto, o
+	/// que ele tem e skill no livro. Copiei o typepath das skills que DECLARAM verb (ver
+	/// `TecnicasHerdaveis`) e marquei todas como ENSINADAS -- ou seja, o bio sabe usa-las e **nao
+	/// pode repassa-las**. Isso nao esta no DM. Esta aqui porque a alternativa transforma o
+	/// laboratorio numa lavanderia de skill: derrube quatro especialistas, gere um bio e ele
+	/// distribui o repertorio inteiro do servidor. Memoria muscular vinda de DNA nao e entendimento.
+	/// =========================================================================================================
+	/// </summary>
+	private void NascerBioAndroide(ServerPlayer pl, Obra lab, Gestacao g)
+	{
+		string antes = pl.Name;
+		double bp = Math.Max(Math.Round(g.MaiorBp * BioFracaoDoDoador), 1);
+
+		// --- o tanque se rompe ANTES do resto -------------------------------
+		// Primeiro porque o original abre com isso, e segundo por seguranca: tudo abaixo mexe no
+		// jogador, e um `return` no meio deixaria uma fornada pronta pra nascer de novo no proximo
+		// segundo -- um bio novo por tique.
+		lab.Fornada = null;
+		_noChao.Remove(lab);
+		GravarMundo();
+		AplicarColisaoDasObras(lab.Zona);
+		MandarObras(lab.Zona);
+
+		AnunciarNoMundo($"O tanque do Bio-Android Lab de {antes} se rompe. A CRIATURA DESPERTOU -- "
+						+ "e a primeira coisa que ela fez foi matar o proprio criador.");
+
+		// --- a persona morre -------------------------------------------------
+		pl.Forma.Entrar(Jandirus.Core.Forms.Catalogo.IdBase);   // `Revert()`
+		DerrubarBuffs(pl);                                      // `clearbuffs()`
+
+		pl.Name = $"Bio-Androide de {antes}";
+		pl.Race = Jandirus.Core.Races.BioAndroids.Raca;
+		pl.Class = "";                      // `Class = "None"` -- o tipo Cell
+		pl.Ficha.Race = pl.Race;
+		pl.Ficha.ParentRace = pl.Race;
+		pl.Ficha.Class = "";
+		pl.Ficha.SaiyanLineage = "";
+		pl.Ficha.Genoma = null;             // `genome = null`: nenhum stat de doador atravessa
+
+		// AS ARVORES SAO REFEITAS DO ZERO -- `generatetrees(1)` + `generatetrees(0)`. O livro e um
+		// objeto novo e nao um `Clear()`: marcos, escolhas e skills ensinadas do humano que ele era
+		// morrem junto com ele, e um `Clear()` esqueceria algum desses tres.
+		pl.Livro = new Jandirus.Core.Skills.SkillBook();
+		pl.Livro.Conceder(MarcosIniciais);
+
+		// --- e o que sobrou dos doadores ------------------------------------
+		int herdadas = 0;
+		if (_skills != null)
+			foreach (string path in g.Tecnicas)
+				if (_skills.Get(path) != null && !pl.Livro.Sabe(path))
+				{ pl.Livro.DarComoEnsinada(path); herdadas++; }
+
+		// --- o corpo ---------------------------------------------------------
+		pl.Ficha.BP = bp;
+		pl.Ficha.bio_lab_born = true;
+		pl.Ficha.bio_stage = Jandirus.Core.Races.BioAndroids.Larva;
+		pl.Ficha.bio_abs_players = 0;
+		pl.Ficha.bio_abs_androids = 0;
+		pl.Ficha.bio_saiyan_dna = g.TemSaiyajin;
+		pl.Ficha.form3cantrevert = false;
+		pl.Ficha.bio_ssj2_by_death = false;
+		pl.Ficha.bio_mature_em = NowMs() + (long)(MaturacaoDaLarvaSegundos * 1000);
+
+		// A ASCENSAO MORRE COM ELE. `NoAscension = 1` (`statbiodroid.dm:2`) e o `BPBoost = 1` do
+		// re-hook de login (`DNALabs.dm:709-711`): o bio e raca de FORMAS, entao ele nao acumula o
+		// multiplicador de Ascensao (~317x) que um humano velho pode ter no save. Sem esta linha, o
+		// bio nasceria com o boost do criador por cima do BP do doador mais forte.
+		pl.Ficha.BPBoost = 1;
+
+		// --- o DNA Saiyajin ---------------------------------------------------
+		if (g.TemSaiyajin)
+		{
+			// `canSSJ = 1` -- o bypass que abre a escada Saiyajin inteira, na versao nerfada
+			// (ver `SangueDiluido`). `hasssj = 1` -- ele ja NASCE com o SSJ1 possuido, sem despertar
+			// por raiva: transforma assim que o BP alcancar a porta. Maestria em zero.
+			pl.Ficha.canSSJ = true;
+			pl.Forma.Liberar("ssj1");
+		}
+
+		// --- a aparencia ------------------------------------------------------
+		// CARECA, sempre (`RemoveHair()` + `hair = "Bald"`, e `HairObject.dm:168` bloqueia cabelo
+		// pro bio em TODA forma -- nem o Super Saiyajin poe cabelo nele, so aura e raios).
+		pl.Visual.Cabelo = "Bald";
+		pl.Visual.CorCabelo = null;
+		pl.Visual.Corpo = Jandirus.Core.Races.BioAndroids.IndiceDoCorpo(pl.Ficha.bio_stage);
+		pl.Visual.FormasDeFrost.Clear();
+		pl.Visual.Roupa.Clear();            // a carapaca E a roupa dele
+		_visual?.Sanear(pl.Visual, pl.Race, pl.Genero);
+
+		// --- e o corpo passa a ser outro corpo --------------------------------
+		pl.Ficha.Statify();
+		AplicarForma(pl);                   // reescreve ssjBuff/trueKiMod e chama `RepercutirPoder`
+		pl.Ficha.Ki = pl.Ficha.MaxKi;        // `Ki = MaxKi`: virar bio poe o Ki em 100% EXATOS
+		pl.Combate?.Corpo.Restaurar();
+		pl.Combate?.SincronizarVida();
+		pl.SigAtributos = "";
+		TrocarAparencias(pl);
+		MandarSkills(pl);
+		Persistir(pl);
+
+		GD.Print($"[server] BIO-ANDROIDE nasceu: {antes} -> {pl.Name} | BP {bp:N0} | "
+				 + $"saiyajin={g.TemSaiyajin} | {herdadas} tecnica(s) herdada(s)");
+
+		Avisar(pl, "a criatura atravessa o seu peito com a cauda. Voce morre... e seus olhos "
+				   + "continuam abertos, agora DENTRO dela.");
+		Avisar(pl, $"Voce abre os olhos pela primeira vez. Fraco. Uma LARVA -- voce expressa 1% do "
+				   + $"proprio poder ({bp:N0} de base). Em cerca de {MaturacaoDaLarvaSegundos / 60:0} "
+				   + "minutos sua carapaca vai se romper.");
+		if (herdadas > 0)
+			Avisar(pl, $"memorias musculares fluem do DNA: voce nasce dominando {herdadas} tecnica(s) "
+					   + "dos seus doadores -- e nao sabe ENSINAR nenhuma delas.");
+		if (g.TemSaiyajin)
+			Avisar(pl, "celulas SAIYAJIN pulsam no seu nucleo: o Super Saiyajin ja corre no seu DNA "
+					   + "(maestria zero -- treine a forma).");
+		Avisar(pl, "e ha algo mais: seu corpo aprende com a derrota. Zenkai.");
+	}
+
+	/// <summary>
+	/// A LARVA AMADURECE -- `dnl_larva_mature()` (`DNALabs.dm:503-518`).
+	///
+	/// UM DIA IN-GAME (`world.realtime + DAY_REAL_MINUTES * 600`), que na escala deste port sao os
+	/// minutos reais de um dia -- ver <see cref="MaturacaoDaLarvaSegundos"/>.
+	///
+	/// ============================ O ORIGINAL TEM DUAS VIAS PORQUE A DELE MORRE ============================
+	/// La ha um `spawn dnl_larva_watch()` (um laco que dorme) **e** um fallback dentro do
+	/// `powerlevel()`, e o comentario diz por que: *"o watcher morre com uma morte/runtime e so
+	/// re-armava no login"*. Aqui nao ha laco pra morrer -- quem pergunta e o
+	/// <see cref="TickDaGestacao"/>, que e um tique de servidor e nao um `spawn` por jogador. Uma
+	/// via so, e ela nao tem como parar.
+	/// ==================================================================================================
+	/// </summary>
+	private void TickDaLarva()
+	{
+		long agora = NowMs();
+		foreach (ServerPlayer pl in _players.Values)
+		{
+			Fighter f = pl.Ficha;
+
+			// ============================ AS REGRAS RETROATIVAS -- `dnl_login_check` (`DNALabs.dm:705-728`) ============================
+			// Elas moram no TIQUE e nao num gancho de login, e a diferenca e a que o proprio original
+			// paga: la o `dnl_login_check` existe porque os lacos morrem, e ele so roda na entrada --
+			// entao um bio que ja estava online quando a regra mudou fica de fora ate deslogar. Aqui
+			// a pergunta e feita todo segundo e nao tem como alguem escapar dela.
+			//
+			// A ASCENSAO E A PRIMEIRA porque e a que estraga o balanceamento inteiro: o bio e raca de
+			// FORMAS (`NoAscension = 1`, `statbiodroid.dm:2`), e o `BPBoost` que o humano acumulou
+			// antes de virar bio chega a ~317x. Zerado no nascimento e re-zerado aqui, porque o
+			// ganho passivo pode reescreve-lo enquanto ele joga.
+			// ==========================================================================================================================
+			if (f.bio_lab_born || Jandirus.Core.Races.BioAndroids.EhBio(pl.Race))
 			{
-				Avisar(criador, "o tanque se abre. A coisa la dentro olha pra voce -- e ela sabe exatamente "
-								+ "de quem ela veio.");
-				// A CRIATURA MATA O CRIADOR. E o original inteiro, e e o que fecha o ciclo: quem
-				// faz um bio-androide esta assinando a propria sentenca, e sabe disso desde a
-				// primeira agulha. Sem isto o sistema vira "ganhe um pet muito forte".
-				//
-				// **PELA PORTA, E NAO NA MAO.** Isto escrevia `dead = true` direto na ficha e pulava o
-				// `CombatState.Morrer()` -- e com ele o gancho `AoMorrer`, que e quem arma o relogio da
-				// morte e manda pro Outro Mundo. O criador morria e ficava caido pra sempre, sem prazo.
-				// `ignorarSeguro: true` porque a criatura nao negocia com a Aura of Destruction: o
-				// original nao da escapatoria nenhuma a quem a gestou.
-				criador.Combate?.Morrer(ignorarSeguro: true);
+				if (f.BPBoost != 1) { f.BPBoost = 1; f.Statify(); }
 			}
 
-			lab.Fornada = null;
-			lab.Vida = 0;   // o tanque se rompe ao nascer
-			_noChao.Remove(lab);
-			GravarMundo();
-			MandarObras(lab.Zona);
+			// ============================ E O SSJ1 TAMBEM E RETROATIVO -- `DNALabs.dm:712-713` ============================
+			// `if(bio_lab_born && bio_saiyan_dna) if(!hasssj) hasssj = 1`. O nascimento ja o concede
+			// (ver `NascerBioAndroide`), entao isto so alcanca quem escapou: o save gravado antes de a
+			// regra existir, e o bio cujo `EstadoDeForma` foi refeito por qualquer caminho.
+			//
+			// **NAO E COSMETICO NESTE SISTEMA**, e e por isso que ele entra: o SSJ2 que cancela a morte
+			// exige `canSSJ` **e** 100% de maestria no SSJ1 (`DespertarSsj2DoBio`), ou seja exige que o
+			// bio tenha o SSJ1 pra treinar. Um bio com o DNA e sem a forma liberada nunca alcanca o
+			// despertar mais caro da raca -- e falharia calado, porque a porta que ele nao passa e uma
+			// leitura de maestria e nao um aviso.
+			//
+			// A CONDICAO E A DO DM E CONTINUA SENDO O DNA (`bio_saiyan_dna`). O dono pediu *"bio
+			// androide JA COMECA PODENDO VIRAR SSJ1"*; no original isso e verdade **para a fornada com
+			// DNA saiyajin** e nao pra toda -- e o mesmo campo e pre-requisito do pedido seguinte dele.
+			// Ver o relatorio desta tarefa.
+			if (f.bio_lab_born && f.bio_saiyan_dna && !f.canSSJ) f.canSSJ = true;
+			if (f.bio_lab_born && f.bio_saiyan_dna && pl.Forma.Liberar("ssj1"))
+				Avisar(pl, "celulas SAIYAJIN pulsam no seu nucleo: o Super Saiyajin ja corre no seu DNA.");
+
+			if (!f.bio_lab_born || f.bio_stage != Jandirus.Core.Races.BioAndroids.Larva) continue;
+			if (f.dead) continue;
+
+			// SAVE SEM O RELOGIO ARMA AGORA -- o `if(!bio_mature_realtime)` do original. Cobre a
+			// larva que nasceu antes deste campo existir e, principalmente, a que ficou meses
+			// offline: o prazo e de relogio real, e comeca a contar de quando o corpo esta em jogo.
+			if (f.bio_mature_em == 0)
+			{
+				f.bio_mature_em = agora + (long)(MaturacaoDaLarvaSegundos * 1000);
+				continue;
+			}
+			if (agora < f.bio_mature_em) continue;
+
+			SubirDegrauDoBio(pl, Jandirus.Core.Races.BioAndroids.Imperfeito);
 		}
+	}
+
+	/// <summary>
+	/// ABSORVEU ALGUEM: CONTA, E EVOLUI QUANDO FECHA. Porte de `bio_note_absorb`
+	/// (`DNALabs.dm:534-546`).
+	///
+	/// UM ANDROIDE VALE UMA EVOLUCAO INTEIRA e dez jogadores valem o mesmo -- e o atalho classico do
+	/// Cell, e ele e literal. O NPC vale METADE de um jogador (vinte NPCs), que e o freio contra
+	/// evoluir varrendo a populacao de um planeta: a `Manutencao` repoe cidadao de graca a cada 5
+	/// minutos, entao sem o peso o degrau sairia sem ninguem apanhar.
+	///
+	/// SO ENTRE O IMPERFEITO E O PERFEITO. Larva nao absorve (`Absorption.dm:111-113`: "os orgaos de
+	/// absorcao so se formam ao amadurecer") e a forma perfeita e o teto -- dali pra cima o que ha e
+	/// a Super Perfeita, que e forma e nao degrau.
+	/// </summary>
+	private void ContarAbsorcaoDoBio(ServerPlayer pl, ServerPlayer vitima)
+	{
+		Fighter f = pl.Ficha;
+		if (!f.bio_lab_born) return;
+		if (f.bio_stage < Jandirus.Core.Races.BioAndroids.Imperfeito
+			|| f.bio_stage >= Jandirus.Core.Races.BioAndroids.Perfeito) return;
+
+		bool androide = vitima.Race == "Android" || vitima.Ficha.AndroideAbsorcao || vitima.Ficha.AndroideInfinito;
+		if (androide) f.bio_abs_androids++;
+		else if (!EhJogador(vitima)) f.bio_abs_players += Jandirus.Core.Races.BioAndroids.PesoDoNpc;
+		else f.bio_abs_players++;
+
+		if (!Jandirus.Core.Races.BioAndroids.EvoluiAgora(f.bio_abs_players, f.bio_abs_androids))
+		{
+			double faltam = Jandirus.Core.Races.BioAndroids.FaltamJogadores(f.bio_abs_players);
+			Avisar(pl, $"seu nucleo processa a nova biomassa... (faltam {faltam:0.#} jogadores -- "
+					   + $"NPC vale {Jandirus.Core.Races.BioAndroids.PesoDoNpc:0.#} -- OU 1 androide "
+					   + "para a evolucao)");
+			return;
+		}
+
+		f.bio_abs_players = 0;
+		f.bio_abs_androids = 0;
+		SubirDegrauDoBio(pl, f.bio_stage + 1);
+	}
+
+	/// <summary>
+	/// O BIO SOBE UM DEGRAU. E o `dnl_larva_mature()` e o `BioLabEvolve()` na mesma funcao, porque
+	/// no original eles fazem a MESMA lista de coisas -- o que muda entre os dois e o tamanho da
+	/// cena, e cena e do cliente.
+	///
+	/// ============================ O QUE UM DEGRAU FAZ, NA ORDEM DO DM ============================
+	///   1. o BP BASE e multiplicado (`BP *= 2`, `BP *= 4`) -- **permanente**, e por isso o Zenkai,
+	///      o `CapCheck` e o teto de treino acompanham. A larva nao multiplica nada: o que ela ganha
+	///      e a carapaca SAINDO (`BPrestriction = 1`), que aqui e o proprio `bio_stage` deixar de
+	///      ser 1 e o teto duro do `Fighter.PowerLevel` parar de valer;
+	///   2. a forma perfeita marca `form3cantrevert` -- ela e PERMANENTE, e e o pre-requisito da
+	///      Super Perfeita e (no original) da via de sobreviver a propria morte;
+	///   3. `Ki = MaxKi` EXATOS -- "nova forma = folego cheio", e sem isso a barra estoura junto
+	///      com o salto de BP;
+	///   4. o MARCO de ganho sobe (`bp_milestone_reach`): 1,5x / 2x / 3x no multiplicador global de
+	///      treino. **Este era o quarto orfao deste sistema** -- a tabela `Milestones` tinha as
+	///      quatro linhas do bio e `ReachMilestone` tinha um unico chamador em todo o repo (a
+	///      Ascensao). Nenhum marco de FORMA era concedido por ninguem;
+	///   5. o CORPO muda (`icon` **e** `oicon`) -- aqui e o indice de `Appearance.Corpo` + o
+	///      `TrocarAparencias`, que ja e como a zona inteira ve alguem mudar. **O ESTADO muda agora; o
+	///      PIXEL muda na virada da cena** -- ver o bloco da ordem dos dois pacotes la embaixo.
+	/// =============================================================================================
+	/// </summary>
+	private void SubirDegrauDoBio(ServerPlayer pl, int alvo)
+	{
+		alvo = Math.Clamp(alvo, Jandirus.Core.Races.BioAndroids.Imperfeito,
+						  Jandirus.Core.Races.BioAndroids.Perfeito);
+		if (pl.Ficha.bio_stage >= alvo) return;
+
+		Fighter f = pl.Ficha;
+		f.bio_stage = alvo;
+		f.bio_mature_em = 0;
+
+		double mult = Jandirus.Core.Races.BioAndroids.MultDoDegrau(alvo);
+		if (mult > 1) f.BP *= mult;
+
+		if (alvo == Jandirus.Core.Races.BioAndroids.Perfeito) f.form3cantrevert = true;
+
+		// O MARCO -- e ele e concedido pela porta de producao (`ReachMilestone`), nao escrito na mao.
+		string marco = Jandirus.Core.Races.BioAndroids.MarcoDoDegrau(alvo);
+		double novo = marco.Length > 0 ? f.ReachMilestone(marco) : 0;
+
+		pl.Visual.Corpo = Jandirus.Core.Races.BioAndroids.IndiceDoCorpo(alvo);
+		f.Statify();
+		AplicarForma(pl);
+		f.Ki = f.MaxKi;                      // nova forma = Ki em 100% EXATOS
+		pl.Combate?.Corpo.Restaurar();
+		pl.Combate?.SincronizarVida();
+		pl.SigAtributos = "";
+
+		// ============================ A CENA SAI **ANTES** DA APARENCIA, E A ORDEM E O CONSERTO ============================
+		// O dono, com foto: *"o bio androide ta MUDANDO O CORPO ANTES DA CINEMATICA ACABAR ai ta ficando
+		// BUGADO"* -- o corpo meio trocado, duas silhuetas de tamanhos diferentes empilhadas. Este bloco
+		// rodava DEPOIS do `TrocarAparencias`, e a divergencia contra o DM estava anotada como divida
+		// aceita aqui e no cabecalho das cenas do bio. Era a divida que o dono cobrou.
+		//
+		// NO DM O CORPO ENTRA NO CLIMAX: `BioLabEvolve()` pendura o contorno sobre o corpo VELHO na
+		// largada (`image(...)` + `overlayList += MORPH`, `DNALabs.dm:563-565`) e so aos 28 s tira o
+		// contorno e escreve o icone novo, nesta ordem literal (`overlayList -= MORPH` :614, `icon =`
+		// :617). Aqui a cena tem 28,0 s e o corpo trocava no segundo 0,0.
+		//
+		// ============================ O QUE MUDA E O QUE **NAO** MUDA ============================
+		// A ESCADA NAO E ADIADA -- ela esta medida e verde e continua acontecendo agora: o `bio_stage`,
+		// o BP, o marco, o Ki cheio e o proprio `Visual.Corpo` ja foram escritos acima. O servidor e
+		// AUTORIDADE e nao espera cena nenhuma.
+		//
+		// O QUE MUDA E A ORDEM DOS DOIS PACOTES. Os dois vao no mesmo canal confiavel e ORDENADO
+		// (`ChannelReliable`/`ReliableOrdered`, ver `CenaDoBio` e `TrocarAparencias`), entao "cena antes
+		// de aparencia" e uma garantia e nao uma corrida. E com ela na ordem certa, quem espera passa a
+		// ser o CLIENTE: o `PeerLook` chega no meio da cena, o `World` o guarda em `_pendentes` e o
+		// pixel so muda na VIRADA (`Transformacao.NaVirada`). O comentario antigo aqui temia justamente
+		// isto -- "a silhueta por cima do corpo velho" --, e e exatamente o que o DM faz e o que o dono
+		// esta pedindo.
+		//
+		// QUAL cena sai do proprio degrau (`Cinematicas.CenaDoDegrau`), e nao de um `switch` aqui.
+		// ==========================================================================================================
+		if (Jandirus.Core.Forms.Cinematicas.CenaDoDegrau(alvo) is { } cena) CenaDoBio(pl, cena);
+
+		TrocarAparencias(pl);
+
+		Persistir(pl);
+
+		string nome = Jandirus.Core.Races.BioAndroids.NomeDoDegrau(alvo);
+		GD.Print($"[server] {pl.Name} evoluiu pro degrau {alvo} ({nome}): BP {f.BP:N0}"
+				 + (novo > 0 ? $", marco {marco} = {novo:0.#}x" : ""));
+
+		Avisar(pl, alvo switch
+		{
+			Jandirus.Core.Races.BioAndroids.Imperfeito =>
+				"sua carapaca larval se rompe e voce emerge INTEIRO. 100% do seu poder foi liberado.",
+			Jandirus.Core.Races.BioAndroids.SemiPerfeito =>
+				"o poder deles agora e SEU. Seu poder base DOBROU -- mas voce sente que ainda nao e a forma final.",
+			_ =>
+				"PERFEICAO. Seu poder base QUADRUPLICOU, e esta forma e sua para sempre.",
+		});
+		if (novo > 0) Avisar(pl, $"voce rompeu um patamar: daqui pra frente treinar rende {novo:0.#}x.");
+
+		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
+			if (o != pl) Avisar(o, $"o corpo de {pl.Name} INCHA e borbulha -- a biomassa absorvida "
+								   + $"esta reescrevendo a forma dele. {pl.Name} atingiu a {nome}!");
+	}
+
+	/// <summary>
+	/// ============================ A CINEMATICA DO BIO-ANDROIDE SAI DAQUI, E SO DAQUI ============================
+	/// O dono: *"vc n colocou a CINEMATICA DE TRANSFORMACAO dos bio androides, olhe no byond como era,
+	/// tinha um OVERLAY q fazia o CORPO BRILHAR etc."*. O motor de cena ja existia inteiro
+	/// (`Core.Forms.Cinematicas` + `Client.Transformacao`); o que faltava era o bio ter **entrada**
+	/// nele -- as quatro cenas do original (`imperfecttranscinematic`, `perfecttranscinematic`,
+	/// `BioLabEvolve`, `bio_ssj2_awaken`) nao tinham nenhuma linha portada, e a Super Perfeita era a
+	/// unica forma do catalogo inteiro sem cena.
+	///
+	/// ============================ POR QUE UM FUNIL, E NAO UM `Send` EM CADA CHAMADOR ============================
+	/// Sao TRES chamadores hoje (o degrau da larva, o degrau da absorcao e o SSJ2 pela morte) e os
+	/// tres precisam fazer a MESMA dupla de coisas: mandar o pacote pra zona e ANOTAR o prazo em que o
+	/// corpo fica preso. Escrever as duas nos tres e o modo de falha que este projeto ja documenta em
+	/// meia duzia de lugares -- alguem acrescenta a quarta cena, lembra do pacote e esquece do prazo, e
+	/// o sintoma e um jogador andando por dentro da propria metamorfose.
+	///
+	/// ============================ O PRAZO SAI DA CENA, PELA MESMA CONTA DO `MarcarCena` ============================
+	/// `CenaSegundos` e o campo que o `EmCena` le -- ele desliga o dreno da forma, a regeneracao, a
+	/// carga e o custo do voo, e e o que segura o corpo. O numero e o `SegundosPreso` da propria cena,
+	/// que e o mesmo que o `Transformacao` do cliente usa pra soltar o boneco: uma segunda verdade
+	/// aqui apareceria como "as vezes o Ki some" (o comentario e do `MarcarCena`, e vale igual).
+	///
+	/// ZERO NAS CENAS QUE NAO PRENDEM, e isso e do DM: o `bio_ssj2_awaken` escreve `canmove = 1`,
+	/// `move = 1`, `canfight = 1` na primeira coisa que faz -- quem acabou de cancelar a propria morte
+	/// nao pode ficar oito segundos parado na frente de quem o matou.
+	/// =========================================================================================================
+	/// </summary>
+	private void CenaDoBio(ServerPlayer pl, Jandirus.Core.Forms.Cinematicas.CenaBio qual)
+	{
+		// O PRAZO PRIMEIRO: quem receber o pacote comeca a contar no quadro seguinte, e o portao do
+		// servidor tem que ja estar fechado quando isso acontecer.
+		pl.CenaSegundos = Jandirus.Core.Forms.Cinematicas.DoBio(qual)?.SegundosPreso ?? 0;
+
+		var w = Protocol.Begin(Protocol.S2C.CenaDoBio);
+		w.Put(pl.Id);
+		w.Put((byte)qual);
+		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
+			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+
+		GD.Print($"[server] {pl.Name}: CENA DO BIO '{qual}' ({pl.CenaSegundos:0.#}s preso)");
 	}
 
 	// =====================================================================
@@ -964,7 +1540,11 @@ public partial class GameServer
 			Construcao? c = _obras?.Get(o.Tipo);
 			w.Put(o.Id);
 			w.Put(o.Tipo);
-			w.Put(c?.Nome ?? o.Tipo);
+			// O NOME E POR INSTANCIA QUANDO A OBRA TEM UM. Hoje ha um caso: a LAPIDE, cujo nome e o
+			// EPITAFIO (`A.desc`, `Corpse.dm:53`) -- assim o menu da tecla E escreve "Aqui jaz Fulano"
+			// no titulo em vez de "Grave". E o mesmo canal que ja fez o console da ponte deixar de se
+			// chamar "Ship Control": o nome sempre viajou por obra, so nunca tinha VARIADO por obra.
+			w.Put(o.Epitafio.Length > 0 ? o.Epitafio : c?.Nome ?? o.Tipo);
 			w.Put(o.X);
 			w.Put(o.Y);
 			w.Put(o.Aparafusada);

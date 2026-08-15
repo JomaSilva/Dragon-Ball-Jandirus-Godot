@@ -62,6 +62,7 @@ public partial class GameServer
 		pl.Ficha.Ki -= custo;
 		_solarPronto[pl.Id] = agora + Tecnicas.SolarRecargaMs(pl.Ficha);
 		pl.Ficha.kidebuffskill += 0.4;   // `usr.kidebuffcounter += 4` -- usar treina
+		CreditarContador(pl, "kidebuffcounter", 4);   // `misc.dm:14`
 
 		double alcance = Tecnicas.SolarAlcanceTiles(pl.Ficha) * ZoneCollision.TileSize;
 		long dura = Tecnicas.SolarCegueiraMs(pl.Ficha);

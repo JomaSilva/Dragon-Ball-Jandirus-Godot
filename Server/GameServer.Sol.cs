@@ -135,12 +135,25 @@ public sealed partial class GameServer
 	private void Queimar(ServerPlayer pl, Estrela e, double dt)
 	{
 		CombatState c = pl.Combate!;
+
+		// ============================ O CORPO INTOCAVEL NAO QUEIMA ============================
+		// Este era o unico furo de dano de TERCEIRO no port -- e o que matava. O calor nunca passou
+		// pelo funil do soco nem pelo do dano em area, entao a imunidade da cinematica de
+		// transformacao (e a carencia de renascimento) simplesmente nao existiam aqui: o jogador
+		// morreria dentro da estrela no meio da propria estreia do SSJ3, sem nada pra fazer.
+		//
+		// A SAIDA E ANTES DO LACO, e nao so no `Ferir`: o `DeveMorrer`/`DeveNocautear` la embaixo le o
+		// ESTADO do corpo, nao o dano deste tique. Quem entrasse na cena ja no limiar seria morto por
+		// um dano que nao aconteceu -- o escudo derrubando quem ele protege.
+		// ==================================================================================
+		if (c.Intocavel) return;
+
 		double dano = CalorDaEstrela.DanoPorSegundo(e, pl.Ficha.expressedBP) * dt;
 		if (dano <= 0) return;
 
 		double antes = c.Corpo.Vida();
 		foreach (BodyPart p in c.Corpo.Partes.ToList())
-			if (!p.Decepado && !p.Aninhado) c.Corpo.Ferir(p, dano, letal: true);
+			if (!p.Decepado && !p.Aninhado) c.Ferir(p, dano, letal: true);
 		c.SincronizarVida();
 		pl.VidaQueimada += Math.Max(0, antes - c.Corpo.Vida());
 

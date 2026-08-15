@@ -161,6 +161,25 @@ public sealed partial class GameServer
 			Zerar = () => { _calados.Clear(); _contasLocais.Clear(); },
 		});
 
+		// ---------------------------------------------------------- a semente do universo
+		// ============================ SEM ESTA INSCRICAO, O WIPE NAO TROCA O MUNDO ============================
+		// E o pedido do dono: *"os NPCS estao sempre nascendo IGUAIS a cada WIPE e o UNIVERSO tb"*. A
+		// semente virou um arquivo (`universo.json`, ver `GameServer.Semente.cs`), e um arquivo de
+		// mundo que nao se inscreve aqui e um arquivo que a bancada `--wipeteste` reprova como orfao --
+		// e, pior, que sobreviveria ao wipe deixando o mundo "novo" no universo velho.
+		//
+		// A CONTAGEM E BINARIA e ela responde "o wipe alcancou a semente?": 1 enquanto a semente da
+		// memoria for a que esta gravada nesta pasta, 0 depois do `Zerar` (que ja sorteia o proximo
+		// universo). Quem grava o novo e o `AdminLimparServidor`, DEPOIS da vassoura -- ver la.
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "a semente deste universo (planetas, biomas, quem nasce em cada cidade)",
+			Arquivos = ["universo.json"],
+			Unidade = "universo com endereco",
+			Contar = () => _sementeNoDisco ? 1 : 0,
+			Zerar = ZerarSemente,
+		});
+
 		// ---------------------------------------------------------- construcoes
 		_sistemasDoMundo.Add(new SistemaDoMundo
 		{
@@ -622,6 +641,22 @@ public sealed partial class GameServer
 		_limpezaVenceEm = 0;
 
 		ResultadoDaLimpeza r = ExecutarLimpeza(adm);
+
+		// ---------------------------------------------------------- o endereco do mundo novo
+		// ============================ AQUI, E NAO NO `Zerar` ============================
+		// O `ZerarSemente` (passo 3) ja sorteou o universo novo NA MEMORIA; gravar la seria escrever
+		// um arquivo que a vassoura do passo 4 apagaria em seguida. Entao a gravacao e esta linha, com
+		// a pasta ja limpa e ja recriada.
+		//
+		// E ela nao pode faltar: sem arquivo, o proximo boot leria "pasta vazia = mundo novo" e
+		// sortearia uma TERCEIRA semente -- e as contas criadas entre o wipe e o reinicio apontariam
+		// pra zonas de um universo que deixou de existir. E o mesmo motivo pelo qual a semente mora no
+		// disco em primeiro lugar.
+		//
+		// A BANCADA NAO PASSA POR AQUI de proposito: ela chama o `ExecutarLimpeza` direto, e afirma
+		// que a pasta fica so com o `admin.log` depois dele. Esta linha e do caminho de producao.
+		SalvarSemente();
+		GD.Print($"[limpeza] o mundo novo tem endereco proprio: semente {SeedDoUniverso}");
 
 		// A ULTIMA LINHA DO LOG e a que fecha a historia -- e ela cabe porque o `admin.log`
 		// sobrevive. Escrita pelo mesmo funil das outras, com a pasta ja recriada.

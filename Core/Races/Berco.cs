@@ -1,4 +1,4 @@
-using Jandirus.Core.World;
+﻿using Jandirus.Core.World;
 
 namespace Jandirus.Core.Races;
 
@@ -267,8 +267,127 @@ public static class Bercos
 	public static bool PovoaUmPlaneta(string raca) =>
 		raca is not ("Android" or "BioAndroid" or "SpiritDoll" or "Halfbreed" or "Dog");
 
+	// =====================================================================
+	// 1.c O POVO DE UM PLANETA -- os tres mundos que o DM povoa A MAO
+	// =====================================================================
 	/// <summary>
-	/// QUEM NASCE NESTE PLANETA -- a <see cref="PlanetaNatal"/> lida ao contrario.
+	/// OS TRES PLANETAS QUE TEM UM POVO SO, e qual e ele.
+	///
+	/// ============================ ISTO E PORTE, E NAO REGRA NOVA ============================
+	/// **Pedido do dono, literal**: *"na TERRA deveria so spawnar HUMANO e em NAMEK so NAMEKUSEIJIN e
+	/// no planeta VEGETA so SAIYAJIN, no RESTO PODE MANTER"*.
+	///
+	/// E ele e o `PlanetPopulation.dm` inteiro: la a raca do habitante e LITERAL, uma proc por planeta,
+	/// e nao ha sorteio nenhum --
+	///
+	///     :363  make_saiyan_commoner   init_citizen(..., "Saiyan",   ..., "Vegeta", ...)
+	///     :391  make_human             init_citizen(..., "Human",    ..., "Earth",  ...)
+	///     :408  make_namekian          init_citizen(..., "Namekian", ..., "Namek",  ...)
+	///     :462  Populate_All_Planets    populate_vegeta() + populate_earth() + populate_namek()
+	///     :76   pop_planet = ""         // "Vegeta" / "Earth" / "Namek"
+	///
+	/// No original a Terra e 100% Human, Vegeta 100% Saiyan e Namek 100% Namekian -- nao por uma regra
+	/// escrita, mas porque nao existe outro caminho. **A MISTURA e que era invencao deste port**, e o
+	/// proprio `RoupaDeNpc` ja a declarava ("o original povoa Terra, Vegeta e Namek; este port povoa
+	/// seis planetas e a raca sai do berco").
+	/// ==================================================================================
+	///
+	/// ============================ POR QUE OS OUTROS TRES NAO ESTAO AQUI ============================
+	/// Icer, Arlia e Makyo_Star **ja saem puros** da tabela do berco -- uma raca cada, medido (o berco
+	/// do Icer e Icer, o do Arlian e Arlia, o do Makyo e Makyo_Star, e ninguem mais mora nesses tres).
+	/// O dono disse *"no RESTO PODE MANTER"*, e escrever uma linha pra eles seria escrever uma regra
+	/// que ja e verdade: uma segunda afirmacao sobre a mesma coisa e exatamente o que diverge no dia em
+	/// que alguem mexer numa das duas. Eles tambem sao invencao deste port -- o DM nunca povoou nenhum
+	/// dos tres, entao nao ha regra de origem pra portar.
+	/// ========================================================================================
+	///
+	/// ============================ ELA NAO SUBSTITUI O BERCO -- ELA O RECORTA ============================
+	/// <see cref="RacasNascidasEm"/> INTERSECTA as duas: primeiro a <see cref="PlanetaNatal"/> lida ao
+	/// contrario, depois este crivo. Assim esta tabela nao consegue inventar um habitante que o berco
+	/// nao poria ali, nem uma raca que o `races.json` nao tem -- **ela so consegue TIRAR**. Se as duas
+	/// discordarem, o resultado e VAZIO e o jogo grita (o `SorteioDeNpc` recusa pool vazia com o motivo
+	/// escrito) em vez de a Terra voltar a ser mista em silencio. Ver <see cref="ContradicoesDoPovo"/>,
+	/// que e a mesma pergunta feita no BOOT, antes de existir corpo nenhum.
+	/// ==============================================================================================
+	///
+	/// **NADA DISTO TOCA A <see cref="PlanetaNatal"/>**, e nao podia tocar: ela e o berco do JOGADOR, e
+	/// Alien, Majin, Demigod e Shapeshifter nao tem outro lar mapeado -- mexer nela deixaria essas
+	/// quatro racas de jogador sem planeta. Um jogador Majin continua nascendo na Terra; o que muda e
+	/// que a Terra nao PRODUZ mais habitante Majin. A assimetria e consciente e e a do DM: la o menu de
+	/// criacao tambem oferecia a Terra a quem o `populate_earth` nunca criaria.
+	/// </summary>
+	private static readonly (string Planeta, string Raca)[] OsPovos =
+	[
+		("Earth", "Human"),        // make_human           (PlanetPopulation.dm:391)
+		("Vegeta", "Saiyan"),      // make_saiyan_commoner (PlanetPopulation.dm:363)
+		("Namek", "Namekian"),     // make_namekian        (PlanetPopulation.dm:408)
+	];
+
+	/// <summary>
+	/// A LISTA, pra quem precisa percorre-la (o boot e a bancada). E a MESMA <see cref="OsPovos"/> que
+	/// a <see cref="PovoDoPlaneta"/> le -- um array e duas leituras, e nao duas listas de nomes.
+	/// </summary>
+	public static IReadOnlyList<(string Planeta, string Raca)> Povos => OsPovos;
+
+	/// <summary>
+	/// O POVO DESTE PLANETA, ou vazio quando ele nao tem um -- e vazio quer dizer **"mantem como
+	/// esta"**, e nao "nao sei". Ver <see cref="OsPovos"/>.
+	/// </summary>
+	public static string PovoDoPlaneta(string planeta)
+	{
+		foreach ((string p, string r) in OsPovos)
+			if (string.Equals(p, planeta, StringComparison.OrdinalIgnoreCase)) return r;
+		return "";
+	}
+
+	/// <summary>
+	/// AS DUAS TABELAS DISCORDAM? Vazio = nao. **Roda no BOOT** (`GameServer.CarregarMoldes`) e na
+	/// bancada, pelo mesmo motivo do <see cref="Npc.Povoamento.Problemas"/>: uma contradicao entre
+	/// <see cref="OsPovos"/> e <see cref="PlanetaNatal"/> nao produz corpo errado -- ela produz um
+	/// planeta **VAZIO**, e planeta vazio falha calado.
+	///
+	/// Sao tres jeitos de discordar, e os tres viram um planeta despovoado:
+	///   * o povo nao existe no `races.json` (raca renomeada, arquivo cortado);
+	///   * o povo e uma raca que <see cref="PovoaUmPlaneta"/> exclui (androide, mestico, o `Dog`);
+	///   * o berco do povo nao e este planeta -- alguem mexeu na <see cref="PlanetaNatal"/>.
+	///
+	/// O terceiro e o unico que da pra causar sem querer, e e o mais caro: `PlanetaNatal("Human")`
+	/// virar outra coisa deixaria a Terra sem UM habitante, e o sintoma seria "o povoamento parou de
+	/// funcionar" a quatro arquivos de distancia da linha mudada.
+	/// </summary>
+	public static List<string> ContradicoesDoPovo(IEnumerable<string> todasAsRacas)
+	{
+		string[] todas = [.. todasAsRacas];
+		var p = new List<string>();
+
+		foreach ((string planeta, string povo) in OsPovos)
+		{
+			if (!Array.Exists(todas, r => string.Equals(r, povo, StringComparison.OrdinalIgnoreCase)))
+			{
+				p.Add($"o povo de '{planeta}' e '{povo}', e essa raca nao existe no races.json "
+					+ $"-- '{planeta}' nasceria VAZIO");
+				continue;
+			}
+
+			if (!PovoaUmPlaneta(povo))
+			{
+				p.Add($"o povo de '{planeta}' e '{povo}', que o crivo `PovoaUmPlaneta` exclui "
+					+ $"-- '{planeta}' nasceria VAZIO");
+				continue;
+			}
+
+			string berco = PlanetaNatal(povo);
+			if (!string.Equals(berco, planeta, StringComparison.OrdinalIgnoreCase))
+				p.Add($"o povo de '{planeta}' e '{povo}', mas o berco de '{povo}' e '{berco}' "
+					+ $"-- as duas tabelas discordam e '{planeta}' nasceria VAZIO");
+		}
+
+		return p;
+	}
+
+	/// <summary>
+	/// QUEM NASCE NESTE PLANETA -- a <see cref="PlanetaNatal"/> lida ao contrario, **recortada pelo
+	/// povo** quando o planeta tem um (<see cref="OsPovos"/>).
 	///
 	/// ============================ POR QUE ISTO E DERIVADO, E NAO UMA SEGUNDA TABELA ============================
 	/// O port ja tem uma tabela planeta->racas: <see cref="CharacterDraft.RacasDoPlaneta"/>, que
@@ -294,12 +413,35 @@ public static class Bercos
 	/// a mesma semente sortearia racas diferentes depois de um reinicio, e a promessa de determinismo
 	/// do <see cref="Npc.SorteioDeNpc"/> viraria mentira de um jeito quase impossivel de reproduzir.
 	/// ==================================================================================
+	///
+	/// ============================ E O RECORTE MORA AQUI, E NAO NO POVOAMENTO ============================
+	/// O crivo do <see cref="OsPovos"/> ("na Terra so Humano...") e aplicado DENTRO desta funcao, e nao
+	/// num filtro paralelo no <see cref="Npc.SorteioDeNpc"/>, por uma razao medida: as bancadas
+	/// `--povoteste` e `--provateste` afirmam o mundo CONTRA esta funcao (*"todas as N racas do berco
+	/// apareceram nos N corpos"*). Um filtro paralelo deixaria esta funcao respondendo 5 racas pra
+	/// Terra enquanto o mundo produzia 1, e a bancada ficaria **VERMELHA afirmando exatamente o que o
+	/// dono pediu** -- o jeito mais rapido de alguem "consertar" o pedido de volta.
+	///
+	/// Com o recorte aqui ha uma resposta so pra "quem mora neste planeta", e todo mundo a le: o
+	/// sorteio de producao, o boot e as duas bancadas.
+	/// ================================================================================================
 	/// </summary>
-	public static string[] RacasNascidasEm(string planeta, IEnumerable<string> todasAsRacas) =>
-		[.. todasAsRacas
+	public static string[] RacasNascidasEm(string planeta, IEnumerable<string> todasAsRacas)
+	{
+		string[] doBerco = [.. todasAsRacas
 			.Where(r => PovoaUmPlaneta(r)
 					 && string.Equals(PlanetaNatal(r), planeta, StringComparison.OrdinalIgnoreCase))
 			.OrderBy(r => r, StringComparer.Ordinal)];
+
+		string povo = PovoDoPlaneta(planeta);
+		if (povo.Length == 0) return doBerco;      // "no RESTO PODE MANTER"
+
+		// INTERSECAO, e nao substituicao: o povo so TIRA. Ver <see cref="OsPovos"/> -- assim esta
+		// tabela nao consegue por num planeta uma raca que o berco nao poria, nem uma que o
+		// `races.json` nao tem, e a discordancia entre as duas vira VAZIO (que grita) em vez de
+		// virar um habitante inventado (que nao grita).
+		return [.. doBerco.Where(r => string.Equals(r, povo, StringComparison.OrdinalIgnoreCase))];
+	}
 
 	// =====================================================================
 	// 2. O CRIVO: O PLANETA TEM QUE EXISTIR E TEM QUE DAR PRA VIVER NELE

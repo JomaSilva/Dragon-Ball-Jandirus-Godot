@@ -376,9 +376,25 @@ public partial class GameServer
 			double recuo = dano * Disciplinas.Recuo(energia) / 100.0;
 			// O RECUO BATE NO TORSO, nao no "primeiro membro da lista" -- a lista comeca por onde o
 			// corpo foi montado, e um aninhado (cerebro, orgao) levaria um dano que nao e dele.
-			if (recuo > 0 && atacante.Combate?.Corpo.Achar("torso") is { } torso)
+			//
+			// ============================ "torso" MINUSCULO NUNCA ACHOU NADA ============================
+			// O membro se chama **"Torso"** (`Body.Novo`), e `Achar` compara com `==`. Ou seja: desde que
+			// esta linha existe, `Achar("torso")` devolvia nulo SEMPRE e o recuo da Aura of Destruction
+			// **nunca aconteceu uma vez neste port**. Nao ha sintoma: o `if` simplesmente nao entra, e
+			// uma passiva que ninguem sabe que tem e indistinguivel de uma passiva que nao funciona.
+			//
+			// Quem achou foi a `--escudoteste`, e nao pela linha do escudo: foi a linha do
+			// CONTRA-EXEMPLO ("fora da cena esta fonte MACHUCA") que ficou vermelha. Uma bancada que so
+			// afirmasse "em cena nao machuca" teria passado verde em cima de um dano que nao existe.
+			// (Todos os outros `Achar(...)` do port usam o nome capitalizado -- este era o unico.)
+			// ======================================================================================
+			if (recuo > 0 && atacante.Combate?.Corpo.Achar("Torso") is { } torso)
 			{
-				atacante.Combate.Corpo.Ferir(torso, recuo, letal: false);
+				// PELO FUNIL (`CombatState.Ferir`): o recuo e dano de terceiro visto do lado de quem
+				// bateu, e um corpo intocavel nao perde vida nem por este caminho. Na pratica quem
+				// esta em cinematica nao esta socando ninguem -- e a linha existe pra que a regra
+				// continue sendo UMA no dia em que ele estiver.
+				atacante.Combate.Ferir(torso, recuo, letal: false);
 				atacante.Combate.SincronizarVida();
 			}
 			SubirReal(alvo, Disciplinas.PoderDaDestruicao, alvo.PoderDaDestruicao,

@@ -152,14 +152,35 @@ public partial class GameServer
 		switch (id)
 		{
 			case "regenerar": Regenerar(pl); break;
-			case "mente": EntrarNaMente(pl); break;
+			// A TELA ONDULA PRIMEIRO, e so entao se viaja -- ver `ComecarOMergulho`. A entrada em si
+			// (`EntrarNaMente`) roda 1,8 s depois, no fim da onda.
+			case "mente": ComecarOMergulho(pl); break;
+
+			// A SAIDA VOLUNTARIA E SECA, e nao por esquecimento: o pedido pede a gota na IDA e na
+			// volta por VITORIA. Abrir os olhos por vontade propria e sair da nave -- nao e um
+			// acontecimento, e um gesto.
 			case "sairdamente": SairDaMente(pl, "voce abre os olhos."); break;
 			case "decolar": Decolar(pl); break;
 			case "voar": AlternarVoo(pl); break;
 			// O `Swim` do DM (`Swim.dm:5`). Entra pelo MESMO cano do voo -- uma linha aqui e uma no
 			// registro de verbs do cliente, que e o preco que este canal cobra por acao nova.
 			case "nadar": AlternarNado(pl); break;
+			// O `Grab` do DM (`Grabbing.dm:48`). Mesmo cano do voo e do nado, e pela mesma razao: e um
+			// verb do CORPO e nao uma tecnica do livro, entao o `UsarTecnica` nunca o acharia. Uma
+			// tecla so cicla os tres estados (pegar / levantar no colo / soltar) -- ver
+			// `GameServer.Agarrao.cs`.
+			case "agarrar": AlternarAgarrao(pl); break;
 			case "oozaru": ReverterOozaru(pl); break;
+			// A ABSORCAO DO BIO-ANDROIDE. Entra por aqui e nao pelo `UsarTecnica` por uma razao
+			// concreta: no DM ela nao e um verb do livro, e um verb de um OBJETO que a skill
+			// `bioabsorb` concede (`obj/Bio_Absorb`, `Race Trees/bioandroid.dm:21-23`) -- o mesmo
+			// desenho do Oozaru duas linhas acima, que tambem e do corpo e nao do livro. O gate de
+			// quem PODE fica no proprio `AbsorverBio` e no registro de verb do cliente.
+			case "absorver": AbsorverBio(pl); break;
+			// A POSTURA DO ANDROIDE DE ABSORCAO. Mesmo cano, mesma razao: no DM ela e um
+			// `mob/keyable/verb` concedido pela CONVERSAO (`assignverb`, `DNALabs.dm:220`) e nao uma
+			// skill do livro -- entao o `UsarTecnica` nunca a acharia.
+			case "absorver_ki": AlternarPosturaDeKi(pl); break;
 			case "oozaru_olhar": OlharParaALua(pl); break;
 			// AS TECNICAS DE SKILL entram pelo mesmo cano, pelo nome do verb do DM
 			// ("Solar_Flare"). Ver GameServer.Tecnicas.cs.

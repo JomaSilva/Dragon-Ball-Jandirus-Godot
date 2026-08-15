@@ -292,12 +292,36 @@ public static class Voo
 	}
 
 	/// <summary>
-	/// UM ENXERGA O OUTRO? Um andar de diferenca, no maximo.
+	/// <paramref name="andarDeQuemOlha"/> ENXERGA <paramref name="andarDeQuemEVisto"/>?
 	///
-	/// "Se a pessoa estiver voando muito alto, quem esta no chao nem consegue ver ela -- so se voar
-	/// alto tambem." Um andar de folga e o que mantem coerente o soco de cima pra baixo: quem paira
-	/// rasante PODE bater em quem esta no chao, e bater em alguem invisivel seria pior que injusto,
-	/// seria incompreensivel.
+	/// ============================ A VISTA TEM UM OBSERVADOR (E NAO TINHA) ============================
+	/// *"voar mt alto faz vc N CONSEGUIR VER jogadores e npcs mt abaixo de vc e isso NAO DEVERIA
+	/// ACONTECER. somente o oposto: pessoas mt abaixo da sua altura N CONSEGUIRIAM TE VER, mas pessoas
+	/// em ALTURAS MAIORES q vc CONSEGUEM TE VER"* -- o dono, literal.
+	///
+	/// Isto era `Math.Abs(andarA - andarB) <= 1`: uma pergunta sobre o PAR, simetrica por construcao,
+	/// sem lugar pra "quem esta em cima". Dai o defeito exato que ele descreve: quem subia pro andar 2
+	/// perdia de vista o chao inteiro -- olhar pra baixo do alto e justamente o que voar deveria dar.
+	///
+	/// AS REGRAS, agora:
+	///   * PRA BAIXO (ou no meu andar): SEMPRE vejo. De cima se enxerga tudo o que esta abaixo, sem
+	///     limite de quantos andares -- e o pedido inteiro.
+	///   * PRA CIMA: UM andar de folga. Quem esta no chao ainda ve quem paira rasante, e perde quem
+	///     estiver dois ou mais andares acima.
+	/// =============================================================================================
+	///
+	/// **A FOLGA DE UM ANDAR PRA CIMA NAO E SOBRA, E O QUE IMPEDE O SOCADOR INVISIVEL.** O alcance
+	/// (<see cref="PodeAcertar"/>) so e verdadeiro em |diferenca| &lt;= 1, e o unico caso dele entre
+	/// andares diferentes e `andar 1 -> chao`. Com a folga, `Enxerga(0, 1)` continua verdadeiro e vale
+	/// a inclusao `PodeAcertar ⊆ Enxerga`: **tudo o que te acerta, voce ve**. Zerar a folga faria quem
+	/// paira rasante bater em quem esta no chao sem ser desenhado -- e isso o dono nao pediu.
+	///
+	/// Assimetrica como a irma <see cref="PodeAcertar"/>, e pelo mesmo aviso: nao se pode escrever
+	/// `Enxerga(a,b) == Enxerga(b,a)` em lugar nenhum. Quem pergunta vem PRIMEIRO.
 	/// </summary>
-	public static bool Enxerga(int andarA, int andarB) => Math.Abs(andarA - andarB) <= 1;
+	public static bool Enxerga(int andarDeQuemOlha, int andarDeQuemEVisto)
+	{
+		if (andarDeQuemEVisto <= andarDeQuemOlha) return true;
+		return andarDeQuemEVisto - andarDeQuemOlha <= 1;
+	}
 }

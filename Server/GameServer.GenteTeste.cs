@@ -835,7 +835,7 @@ public partial class GameServer
 		{
 			lab.Fornada = null;
 			ColherDna(pl);
-			return lab.Fornada == null || lab.Fornada.Dna.Count == 0;
+			return lab.Fornada == null || lab.Fornada.Amostras.Count == 0;
 		}
 
 		Mutacao(Checa,

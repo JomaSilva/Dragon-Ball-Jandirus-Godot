@@ -412,6 +412,41 @@ public sealed class EstadoDeForma
 			&& !Bate(d.PedeFormaAtual, Atual) && Atual != Catalogo.IdAnterior(d))
 			return RecusaForma.FormaErrada;
 
+		// ============================ 4b. A FORMA QUE A ATUAL **PROIBE** -- ver FormaDef.ProibidoComFormaAtual ============================
+		// O `!ssj` do `Cell4()` (`CellFormBuff.dm:74`), e o lado que o DM NAO tem. La as duas escadas
+		// dividem a `mob/var/ssj`, entao a Super Perfeita fecha a porta do SSJ por acidente feliz e o
+		// SSJ2 ATROPELA a Super Perfeita por acidente infeliz -- 8x virando 1,75x na segunda vez que
+		// o jogador aperta Transform, sem uma mensagem.
+		//
+		// Aqui a proibicao e simetrica de proposito: a entrada nomeia as formas que a bloqueiam, e o
+		// mesmo campo e lido nos dois sentidos. Quem esta em Super Perfeita ouve "essa forma nao
+		// entra por cima da que voce esta" em vez de perder oito vezes o proprio poder calado.
+		//
+		// `FormaErrada` E A RECUSA CERTA e nao uma nova: ela ja quer dizer "o corpo nao esta no
+		// estado que essa forma pede", e o `PorQueNao` ja a traduz. Uma recusa propria diria a mesma
+		// coisa com outro nome.
+		// ==========================================================================================================================
+		if (d.ProibidoComFormaAtual.Length > 0 && Bate(d.ProibidoComFormaAtual, Atual))
+			return RecusaForma.FormaErrada;
+		if (Catalogo.Def(Atual) is { ProibidoComFormaAtual.Length: > 0 } agora
+			&& Bate(agora.ProibidoComFormaAtual, alvo))
+			return RecusaForma.FormaErrada;
+
+		// 4c. O DEGRAU DE BIO-ANDROIDE. Ver FormaDef.PedeEstagioBio -- e o `cell3 == 1 &&
+		//     form3cantrevert` do `Cell4()`, que aqui e um numero porque o degrau perfeito ja e o 4.
+		if (d.PedeEstagioBio > 0 && perfil.EstagioBio < d.PedeEstagioBio)
+			return RecusaForma.SemFormaAnterior;
+
+		// 4d. A FORMA QUE O BIO DE LABORATORIO NAO ALCANCA PELO CAMINHO NORMAL -- so o `ssj2`, e o
+		//     porque esta inteiro em `FormaDef.NegadaAoBioDeLaboratorio`. `EstagioBio > 0` E o "saiu
+		//     de um tanque": nenhum outro corpo do jogo tem degrau de bio.
+		//
+		//     `NaoConcedida` e a recusa CERTA e nao um atalho: ela ja quer dizer "esta forma nao se
+		//     conquista, alguem (ou alguma coisa) tem que abri-la", e o `PorQueNao` ja a traduz. Pro
+		//     bio quem abre e a propria morte.
+		if (d.NegadaAoBioDeLaboratorio && perfil.EstagioBio > 0 && !Despertou(d.Id))
+			return RecusaForma.NaoConcedida;
+
 		// 5. O DEGRAU ANTERIOR DA PROPRIA LINHA. Nao da pra pular.
 		//
 		// QUANDO A FORMA E UMA CAMADA (PedeFormaAtual preenchido), o anterior e cobrado por ter

@@ -138,15 +138,20 @@ public partial class Microfone : Node
 	/// A PERGUNTA INTEIRA: a opcao esta ligada, estou no mundo, nao estou escrevendo, e o gesto
 	/// (segurar a tecla, ou o modo aberto) esta valendo?
 	///
-	/// `Foco.Digitando` NAO E DETALHE. Sem ele, escrever "voce" no chat abriria o microfone no "v" --
+	/// `Foco.AtalhosMudos` NAO E DETALHE. Sem ele, escrever "voce" no chat abriria o microfone no "v" --
 	/// e o unico jeito de a pessoa descobrir isso seria alguem contando pra ela. E a mesma guarda que
 	/// as outras vinte teclas do jogo ja passam, pelo mesmo funil.
+	///
+	/// E O "V" E UMA DAS 22 LETRAS DO EMBATE: com so o `Digitando` aqui, responder ao quick time event
+	/// com a letra V abria o microfone do jogador no meio da briga. Ver `Foco.AtalhosMudos` -- e repare
+	/// que este e um ponto de SONDA (`IsActionPressed`), o tipo que `SetInputAsHandled` nao alcanca:
+	/// aqui o bloqueio so pode ser no ponto de LEITURA.
 	/// </summary>
 	private static bool QuerFalar()
 	{
 		if (!Boot.Config.VozLigada) return false;
 		if (GameClient.Instance is not { Connected: true, LocalId: not 0 }) return false;
-		if (Foco.Digitando) return false;
+		if (Foco.AtalhosMudos) return false;
 		return !Boot.Config.VozApertarParaFalar || Godot.Input.IsActionPressed("falar_voz");
 	}
 

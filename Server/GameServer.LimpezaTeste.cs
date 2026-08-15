@@ -608,6 +608,12 @@ public partial class GameServer
 	/// </summary>
 	private void RecarregarMundoDoDisco()
 	{
+		// A SEMENTE NA FRENTE, e ela e a razao de esta lista ter treze linhas e nao doze: sem ela, a
+		// devolucao do `finally` traria de volta as obras e os dominios do mundo do dono **dentro do
+		// universo que o `ZerarSemente` acabou de sortear** -- o servidor seguiria a sessao inteira
+		// achando que a Terra fica noutro lugar. Ela le o `universo.json` da pasta pra onde o `_store`
+		// esta apontando AGORA, que e como a devolucao recupera a semente de verdade.
+		CarregarSemente();
 		CarregarMundoDeDisco(CaminhoDoMundo);
 		CarregarNaves();
 		RefazerColisaoDeTudo();
@@ -709,6 +715,11 @@ public partial class GameServer
 	/// </summary>
 	private void ForcarGravacaoDeTudo()
 	{
+		// A SEMENTE PRIMEIRO, porque ela e o endereco de tudo o que vem depois. E ela e o unico
+		// escritor desta lista que a bancada exercita em TRES momentos diferentes de proposito
+		// (primeiro boot, mundo jogado, mundo limpo) -- ver a nota de largura fixa na
+		// `FichaDoUniverso`, que e o que faz os tres retratos serem comparaveis.
+		SalvarSemente();
 		GravarMundo();
 		GravarNaves();
 		SalvarSagas();

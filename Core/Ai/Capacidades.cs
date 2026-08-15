@@ -114,6 +114,33 @@ public readonly struct Capacidades
 	public Arsenal DeLonge { get; init; }
 
 	/// <summary>
+	/// ELE SABE O SOPRO? (`Kiai`) -- a resposta do MESMO `SabeTecnica` que responde ao verb do
+	/// jogador, perguntada no relogio de 1 Hz junto com o resto.
+	///
+	/// ============================ POR QUE UM BOOL, E NAO UMA LINHA NO <see cref="Arsenal"/> ============================
+	/// Porque o sopro **nao e um tiro**, e por na tabela de longe seria a IA escolhendo entre ele e um
+	/// raio pela mesma nota. O `Kiai` nao viaja, nao tem alcance, nao tem risco de errar e nao tem
+	/// linha de visao: ele ARREMESSA quem esta colado (`Ki2.0/Kiai.dm:15`) e existe pra UMA situacao
+	/// -- estar encurralado. No DM ele tambem esta fora da rotacao normal: e um `if` proprio, ANTES da
+	/// economia de Ki e antes do ramo de blaster (`NPCAI.dm:399`).
+	///
+	/// Um `Tiro` de alcance zero na tabela teria feito o `EscolherTiro` compara-lo com o raio por
+	/// `(1 - risco) * CustoDeKi` -- e como ele e o mais caro dos quatro, ele venceria quase sempre.
+	/// ================================================================================================================
+	/// </summary>
+	public bool SabeSopro { get; init; }
+
+	/// <summary>
+	/// O QUE O SOPRO COBRA, em Ki ABSOLUTO pra este corpo (`50 * BaseDrain`). Mesma disciplina do
+	/// <see cref="Tiro.CustoDeKi"/>: o numero sai da funcao que o VERB usa, e nunca de uma copia.
+	///
+	/// O DM confere `40 * BaseDrain` no `npc_kiai()` (`NPCAI.dm:296`) e o verb do jogador cobra 50 --
+	/// ou seja, la a IA tem um preco proprio e mais barato que o das pessoas. Aqui ela paga o do
+	/// jogador, que e a regra deste port inteiro.
+	/// </summary>
+	public double CustoDoSopro { get; init; }
+
+	/// <summary>
 	/// DA PRA SUBIR UM DEGRAU AGORA, sem nenhuma pendencia? Derivado -- um campo ao lado seria a
 	/// mesma verdade duas vezes.
 	/// </summary>

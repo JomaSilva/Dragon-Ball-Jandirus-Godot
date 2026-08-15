@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://cuw1nbasj6bh1"
+path="res://.godot/imported/Abertura DRAGON BALL KAI DUBLADO (COMPLETA)!!.mp3-a75aeba10eb4ebc2828f5bb5f1dfe428.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Menu ost/Abertura DRAGON BALL KAI DUBLADO (COMPLETA)!!.mp3"
+dest_files=["res://.godot/imported/Abertura DRAGON BALL KAI DUBLADO (COMPLETA)!!.mp3-a75aeba10eb4ebc2828f5bb5f1dfe428.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

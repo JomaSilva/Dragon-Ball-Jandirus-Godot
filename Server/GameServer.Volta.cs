@@ -183,7 +183,10 @@ public sealed partial class GameServer
 		zona.Kind switch
 		{
 			ZoneKey.KindProcedural => MapaDaZona(zona),
-			ZoneKey.KindInterior => MapaDoInterior(zona) ?? _catalogo?.Get(zona)?.Mapa,
+			// DUAS PLANTAS ANTES DO CATALOGO, e a ordem e o que importa: o catalogo resolve zona pelo
+			// NOME, entao `Interior("Interdimension", id)` casaria com o z24 do BYOND e a mente andaria
+			// contra a parede de um mapa que ela nao desenha mais. Ver `DimensaoMental.Planta`.
+			ZoneKey.KindInterior => MapaDaMente(zona) ?? MapaDoInterior(zona) ?? _catalogo?.Get(zona)?.Mapa,
 			_ => _catalogo?.Get(zona)?.Mapa,
 		};
 }

@@ -404,16 +404,81 @@ public partial class PlanetaProcedural : Planeta
 	/// TODO PEDACO TEM CELULA: o gerador pinta chao em toda coordenada do mundo (agua e uma classe
 	/// de terreno, nao um buraco). Entao a conta de celulas e a area do pedaco cortada pela borda
 	/// do mundo, sem precisar varrer nada pra descobrir.
+	///
+	/// ============================ E HA UM SEGUNDO MODO: O MUNDO SEM BEIRADA ============================
+	/// A dimensao mental deixou de ser um quarto -- *"faca tb o MAPA DA MENTE ser INFINITO SEM BORDAS e
+	/// CARREGAR POR CHUNK, tb o FUNDO BRANCO"*. Dali pra fora do retangulo da planta nao ha DADO
+	/// nenhum: ha um pincel repetido, pra sempre.
+	///
+	/// **QUEM DIZ QUE ESTE MUNDO E ASSIM E A PROPRIA COLISAO** (`t.Colisao.SemBorda`), e nao um campo
+	/// novo. E o mesmo bit que ja faz "fora do bitset e chao e nao parede" nas duas pontas, e usa-lo
+	/// aqui e o que garante que o pintor e a colisao nunca discordem sobre onde o mundo acaba -- se
+	/// houvesse dois interruptores, o dia em que um ficasse pra tras daria chao branco onde nao da pra
+	/// andar, ou parede onde nao ha desenho.
+	///
+	/// O MOLDE E O DO `PlanetaPreFeito.FonteComVazio`, que ja faz isto pro vazio em volta da Sala do
+	/// Tempo -- **e nao da pra reusar aquela classe**: ela compoe um `.pedacos` LIDO DE ARQUIVO com o
+	/// vazio, e aqui a metade de dentro sai de dois vetores de bytes. O que se reusa e o que importa: o
+	/// `PintorDePedacos` inteiro, com o orcamento por quadro e o descarte por distancia. **Nao nasceu
+	/// carregador nenhum novo.**
+	///
+	/// AQUI A GEOMETRIA E MAIS SIMPLES QUE A DA `FonteComVazio`, e vale dizer por que: la o pedaco
+	/// mistura arquivo e vazio e a contagem tem de saber qual indice e de quem (a aritmetica por linha
+	/// do `Vazia`). Aqui as duas metades sao o MESMO laco -- **todo pedaco tem `Lado x Lado` celulas**,
+	/// e a unica pergunta por celula e "esta coordenada cai dentro da chapa?".
+	/// ================================================================================================
 	/// </summary>
 	private sealed class FonteDoTerreno(TerrenoGerado t, Pincel[] chao, Pincel[] cobertura)
 		: PintorDePedacos.IFonte
 	{
+		/// <summary>Este mundo continua pra sempre? Ver o cabecalho -- quem responde e a colisao.</summary>
+		private readonly bool _semBeirada = t.Colisao.SemBorda;
+
+		/// <summary>
+		/// COM QUE CLASSE DE CHAO O INFINITO E PINTADO -- a MODA do chao da chapa.
+		///
+		/// ============================ POR QUE NAO `ClasseDeTerreno.Planicie` CRAVADO ============================
+		/// Porque seria uma segunda declaracao do que a mente e, escrita no cliente. Hoje a planta e
+		/// 100% `Planicie` e o numero acertaria; no dia em que alguem desse a ela um chao proprio, o
+		/// vazio em volta continuaria pintando o antigo e o sintoma seria uma **mancha quadrada de 100
+		/// tiles** no meio do plano, sem erro nenhum no console. E a mesma licao (e a mesma correcao) do
+		/// `PlanetaPreFeito.FonteComVazio.Montar`, que descobre o tile do vazio pela moda em vez de
+		/// cravar o indice 102 do tileset.
+		///
+		/// A VARREDURA SO ACONTECE EM MUNDO SEM BEIRADA, e ela e de 10.000 bytes uma vez por entrada na
+		/// mente. Num planeta gerado de 1000x1000 isto seria um milhao de passadas por nada -- por isso
+		/// o `if` esta na primeira linha, e nao um filtro depois.
+		/// ====================================================================================================
+		/// </summary>
+		private readonly byte _doVazio = ModaDoChao(t);
+
+		private static byte ModaDoChao(TerrenoGerado t)
+		{
+			if (!t.Colisao.SemBorda) return 0;
+
+			Span<int> conta = stackalloc int[5];   // as cinco `ClasseDeTerreno`
+			foreach (byte c in t.Chao)
+				if (c < 5) conta[c]++;
+
+			byte melhor = 0;
+			for (byte c = 1; c < 5; c++)
+				if (conta[c] > conta[melhor]) melhor = c;
+			return melhor;
+		}
+
 		public int Lado => Jandirus.Core.World.PedacosDoMapa.LadoPadrao;
 
-		/// <summary>O mundo gerado TEM fim (o lado do planeta), entao a faixa nunca e nula.</summary>
-		public Rect2I? Faixa => new Rect2I(0, 0,
-										   (t.Largura + Lado - 1) / Lado,
-										   (t.Altura + Lado - 1) / Lado);
+		/// <summary>
+		/// O mundo gerado TEM fim (o lado do planeta) -- **menos o sem beirada, onde ela e NULA**.
+		///
+		/// Nulo quer dizer "sem limite" pro pintor, e ele entao recorta so pelo que a camera alcanca
+		/// (ver `PintorDePedacos.IFonte.Faixa`, inclusive a armadilha de por um retangulo enorme no
+		/// lugar). Devolver o retangulo da chapa aqui faria o codigo do vazio existir e nunca rodar:
+		/// o pintor nunca pediria um pedaco de fora dela.
+		/// </summary>
+		public Rect2I? Faixa => _semBeirada
+			? null
+			: new Rect2I(0, 0, (t.Largura + Lado - 1) / Lado, (t.Altura + Lado - 1) / Lado);
 
 		public int Celulas(int cx, int cy)
 		{
@@ -436,9 +501,19 @@ public partial class PlanetaProcedural : Planeta
 			{
 				int x = x0 + n % largura;
 				int y = y0 + n / largura;
-				int i = y * t.Largura + x;
 				var celula = new Vector2I(x, y);
 
+				// FORA DA CHAPA: um pincel so e cobertura nenhuma -- nao ha vetor pra consultar aqui,
+				// so o infinito. O `_semBeirada` na frente e o que mantem o caminho comum (todo planeta
+				// do jogo) pagando um teste de bool por celula em vez de quatro comparacoes.
+				if (_semBeirada && Fora(x, y))
+				{
+					ref Pincel vazio = ref chao[_doVazio];
+					if (vazio.Vale) vazio.Camada!.SetCell(celula, vazio.Fonte, vazio.Quadro);
+					continue;
+				}
+
+				int i = y * t.Largura + x;
 				ref Pincel piso = ref chao[t.Chao[i]];
 				if (piso.Vale) piso.Camada!.SetCell(celula, piso.Fonte, piso.Quadro);
 
@@ -457,9 +532,19 @@ public partial class PlanetaProcedural : Planeta
 			for (int y = y0; y <= y1; y++)
 				for (int x = x0; x <= x1; x++)
 				{
-					int i = y * t.Largura + x;
 					var celula = new Vector2I(x, y);
 
+					// O ESPELHO EXATO DO `Pintar`, e ele PRECISA ser exato: apagar pela camada errada
+					// deixaria a celula desenhada pra sempre num pedaco que o pintor ja considera
+					// descartado -- o vazamento que o `PedacosVivos` conta e nao veria.
+					if (_semBeirada && Fora(x, y))
+					{
+						ref Pincel vazio = ref chao[_doVazio];
+						if (vazio.Vale) vazio.Camada!.EraseCell(celula);
+						continue;
+					}
+
+					int i = y * t.Largura + x;
 					ref Pincel piso = ref chao[t.Chao[i]];
 					if (piso.Vale) piso.Camada!.EraseCell(celula);
 
@@ -470,13 +555,26 @@ public partial class PlanetaProcedural : Planeta
 				}
 		}
 
-		/// <summary>O pedaco cortado pela borda do mundo -- os das beiradas sao menores.</summary>
+		/// <summary>Esta celula cai fora da chapa? So faz sentido em mundo sem beirada.</summary>
+		private bool Fora(int x, int y) => x < 0 || y < 0 || x >= t.Largura || y >= t.Altura;
+
+		/// <summary>
+		/// O pedaco cortado pela borda do mundo -- os das beiradas sao menores.
+		///
+		/// **SEM BEIRADA NAO HA CORTE**: o pedaco e sempre inteiro, inclusive a mil tiles da chapa, e e
+		/// isso que faz a conta de celulas do pintor bater com o que o `Pintar` desenha. Cortar aqui e
+		/// pintar o vazio la seria o pintor achando que terminou o pedaco na metade dele.
+		/// </summary>
 		private void Recorte(int cx, int cy, out int x0, out int y0, out int x1, out int y1)
 		{
 			x0 = cx * Lado;
 			y0 = cy * Lado;
-			x1 = Math.Min(x0 + Lado - 1, t.Largura - 1);
-			y1 = Math.Min(y0 + Lado - 1, t.Altura - 1);
+			x1 = x0 + Lado - 1;
+			y1 = y0 + Lado - 1;
+			if (_semBeirada) return;
+
+			x1 = Math.Min(x1, t.Largura - 1);
+			y1 = Math.Min(y1, t.Altura - 1);
 			if (x0 < 0) x0 = 0;
 			if (y0 < 0) y0 = 0;
 		}

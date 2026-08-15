@@ -147,6 +147,35 @@ public sealed class TecnicaCustomizada
 	public bool Instantaneo;                     // `instantattack = 0`
 
 	/// <summary>
+	/// A ARTE QUE O JOGADOR ESCOLHEU PRA ESTA TECNICA -- `attackicon` (`customattacks.dm:67`).
+	///
+	/// ============================ E A UNICA ESCOLHA DE ARTE QUE O JOGO OFERECE ============================
+	/// O DM tem TRES jeitos de trocar a arte de um ataque de ki e dois deles sao de admin: os verbs
+	/// `Change_Beam_Icon` e `Change_Blast_Icon` pedem UPLOAD de arquivo e passam por
+	/// `if(!usr.can_upload_icon()) return` (`Character Customization/changeicon.dm:210,222`).
+	///
+	/// O terceiro e este, e ele e do jogador: `pick_game_icon` (`customattacks.dm:543-568`) lista os
+	/// `.dmi` das pastas do jogo -- **quais** pastas depende do tipo do ataque
+	/// (`custom_icon_folders`, `:558-562`) -- e grava a escolha em `S.attackicon`. Ver
+	/// <see cref="Combat.ArteDeProjetil.PermitidasPara"/>.
+	///
+	/// ============================ E POR ISSO ELE PERSISTE, E JA PERSISTIA ============================
+	/// No DM o `attackicon` e var do DATUM da skill, e o savefile do mob leva os datums junto. Aqui
+	/// a tecnica inteira ja e salva em `CharacterSave.Customizadas` (`CharacterStore.DoJogador`), e
+	/// **e por isso que este campo entra AQUI e nao numa tabela nova**: um campo dentro de um objeto
+	/// que ja e serializado inteiro nao pode ser esquecido na lista manual do `DoJogador` -- que e
+	/// como os `Limiares` sumiram do disco por meses.
+	///
+	/// CAMPO NOVO E ADITIVO E ISSO FOI CONFERIDO: `System.Text.Json` grava a propriedade nova e
+	/// IGNORA a desconhecida na leitura, entao save antigo volta com <see cref="ArteDeKi.Nenhuma"/>
+	/// -- que e a resposta certa (*"nao escolhi arte"*, o `S.attackicon == null` do DM) e cai no
+	/// padrao do tipo. O que derruba conta neste projeto e mudar o TIPO de algo ja gravado, nao
+	/// acrescentar; ver o cabecalho do `PecaDeRoupaConverter`.
+	/// ==========================================================================================
+	/// </summary>
+	public Combat.ArteDeKi Arte;
+
+	/// <summary>
 	/// `custompoints_spent`, PRESO ENTRE 0 E <see cref="PontosTotais"/> -- e este piso e a UNICA
 	/// divergencia de REGRA em relacao ao original (as outras tres sao guardas que o DM esqueceu de
 	/// fechar, nao mudancas de economia).
@@ -240,6 +269,14 @@ public sealed class TecnicaCustomizada
 		CargaMinima = CargaMinima,
 		Instantaneo = Instantaneo,
 		Nome = Nome,
+		// A ESCOLHA DO JOGADOR, OU O PADRAO DO TIPO -- os dois ramos do `if (S.attackicon != null)`
+		// do DM (`customattacks.dm:437-440` pro raio, `:497-501` pra bola). A receita sai daqui
+		// SEMPRE com arte, e por isso o `Disparar` nunca precisa perguntar a tabela por um verbo
+		// `Custom_AttackN` que ela nao conhece -- e nem deveria conhecer: a arte de uma tecnica
+		// inventada nao e regra do jogo, e dado do jogador.
+		Arte = Arte != Combat.ArteDeKi.Nenhuma
+			? Arte
+			: Combat.ArteDeProjetil.PadraoDoCustom(Tipo),
 	};
 
 	// =====================================================================
@@ -257,6 +294,11 @@ public sealed class TecnicaCustomizada
 		CustoKi = m.CustoKi; CustoStamina = m.CustoStamina; UsaStamina = m.UsaStamina;
 		Carregavel = m.Carregavel; Velocidade = m.Velocidade;
 		Alcance = m.Alcance; DistanciaMod = m.DistanciaMod; Instantaneo = m.Instantaneo;
+		// `S.attackicon = S.customattack_attackicon` (`customattacks.dm:1225`): a sombra so vira arte
+		// de verdade no "Done", como todo o resto. Sem esta linha a escolha do jogador seria perdida
+		// exatamente no ato de salvar -- que e a familia de defeito que o proprio DM tem aqui
+		// (`S.desc`, `attackcounter` e `expbuffer` nunca sao copiados de volta).
+		Arte = m.Arte;
 		RestaurarGasto(m.Gasto);
 	}
 
@@ -273,6 +315,14 @@ public sealed class TecnicaCustomizada
 	{
 		Tipo = t;
 		Carregavel = t == TipoDeProjetil.Beam;
+
+		// A ARTE CAI FORA QUANDO O TIPO MUDA, e isto e obrigatorio: o catalogo de arte e RECORTADO
+		// pelo tipo (`custom_icon_folders`, `customattacks.dm:558-562`), entao uma folha de raio
+		// escolhida antes de virar bola seria uma escolha que o proprio menu nao ofereceria mais --
+		// e o tiro sairia desenhado com a cauda de um beam. O DM nao precisa desta linha porque la o
+		// botao de icone e RECRIADO a cada `PickAttackType` (`:795-810`); aqui o dado sobrevive a
+		// tela, entao quem limpa e o dado.
+		if (!Combat.ArteDeProjetil.PermitidasPara(t).Contains(Arte)) Arte = Combat.ArteDeKi.Nenhuma;
 	}
 
 	/// <summary>Modificadores de raio (`AddModifiers`, `:1306`) so existem no Beam.</summary>

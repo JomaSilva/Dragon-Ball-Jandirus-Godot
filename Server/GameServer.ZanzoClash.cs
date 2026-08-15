@@ -125,20 +125,63 @@ public sealed partial class GameServer
 	private const long MsDeVislumbre = 220;
 
 	/// <summary>
-	/// A JANELA DE CADA LETRA. (Novo: nao ha quick time event no DM.)
+	/// A JANELA DE CADA LETRA -- quanto tempo voce tem pra responder. (Novo: nao ha quick time event
+	/// no DM.)
 	///
-	/// ============================ ELA E CADENCIA, NAO CRONOMETRO ============================
-	/// A letra seguinte so nasce quando esta janela FECHA -- acertar depressa nao adianta a
-	/// proxima. Na primeira versao a letra certa pedia outra na hora, e a bancada mostrou o que
-	/// isso vale: 55 letras em 5,4 segundos e 424 pontos num embate so. Um quick time event que
-	/// premia velocidade de DIGITACAO mede a maquina do jogador, e a um cliente automatico entrega
-	/// a vitoria de graca.
+	/// ============================ ELA E PRAZO; A CADENCIA E O PISO ============================
+	/// **Ela ja foi as duas coisas, e era esse o defeito.** A letra seguinte so nascia quando esta
+	/// janela fechava, entao acertar em 100 ms e acertar em 890 ms davam o mesmo ponto no mesmo
+	/// instante: com ~350 ms de reacao, o jogador passava 61% do embate olhando um anel vazio. O dono
+	/// pediu o contrario com todas as letras -- *"faca com q caso vc ACERTE o quick time event, ele JA
+	/// VAI PRO PROXIMO BOTAO pra apertar, entao realmente QUANTO MAIS RAPIDO VC FOR MELHOR VAI SER"*.
 	///
-	/// Com janela fixa o placar maximo e conhecido (duracao / janela, umas 6 a 9 letras) e o que se
-	/// disputa e ACERTAR SOB PRESSAO -- que e o que um embate de velocidade deveria pedir.
-	/// =======================================================================================
+	/// A RAZAO DE A JANELA SER CADENCIA CONTINUA VALENDO, e esta escrita: na primeira versao a letra
+	/// certa pedia outra NA HORA, e a bancada mediu 55 letras em 5,4 segundos e 424 pontos num embate
+	/// so -- *"um quick time event que premia velocidade de DIGITACAO mede a maquina do jogador, e a um
+	/// cliente automatico entrega a vitoria de graca"*.
+	///
+	/// A RESPOSTA NAO E O METRONOMO: e um PISO (ver <see cref="MsMinimoEntreLetras"/>), e ela e do
+	/// original. O `BeamClash.dm:24` resolve o mesmo abuso com um teto de cadencia
+	/// (`#define BCL_PRESS_TICK_CAP 5 // apertos aceitos por tick (anti-macro: 5/0.2s = 25/s)`) e nao
+	/// travando o jogador num compasso. Com piso, ser rapido paga de verdade ate o limite da mao
+	/// humana, e alem dele nao paga mais nada -- que e exatamente onde a maquina deixaria de competir
+	/// com a pessoa.
+	///
+	/// NAO E `const` PELO MESMO MOTIVO DO PISO -- ver <see cref="MsMinimoEntreLetras"/>: o defeito
+	/// injetado e "piso = janela", e ele precisa que as duas sejam legiveis e devolviveis.
+	/// ==========================================================================================
 	/// </summary>
-	private const long MsPorTecla = 900;
+	private static long MsPorTecla = 900;
+
+	/// <summary>
+	/// O PISO DA CADENCIA: o minimo entre o NASCIMENTO de uma letra e o da proxima. **Vale nos dois
+	/// embates** (o de velocidade e o de ki), como o alfabeto e a janela.
+	///
+	/// ============================ POR QUE MEDIDO DO NASCIMENTO, E NAO DO ACERTO ============================
+	/// Do ACERTO, a cadencia seria "reacao + piso": um cliente automatico (reacao zero) receberia
+	/// letra a cada 300 ms e uma pessoa de 250 ms a cada 550 -- quase o dobro de letras pra maquina, e
+	/// o abuso voltava pela porta dos fundos. Do NASCIMENTO, a cadencia e `max(piso, a sua reacao)`:
+	/// acima do piso cada milissegundo economizado vira letra, e abaixo dele **todo mundo empata**.
+	/// E o `BCL_PRESS_TICK_CAP` na forma exata: um TETO de vazao, e nao um compasso.
+	///
+	/// 300 ms e o limite de quem esta LENDO uma letra e achando a tecla (o reflexo puro fica em ~250).
+	/// A conta do embate de velocidade: 3,0 a 6,3 s de duracao viram 10 a 21 letras pra quem joga no
+	/// limite, contra as 4 a 8 do metronomo -- e contra as 55 do abuso que a bancada mediu.
+	/// ====================================================================================================
+	///
+	/// ============================ POR QUE ELE (E A JANELA) NAO SAO `const` ============================
+	/// Porque o defeito que estas duas linhas existem pra impedir tem NOME e tem FORMA: e o metronomo
+	/// de antes, e ele se escreve **piso = janela** -- com os dois iguais, o `-=` do
+	/// <see cref="TeclaDoEmbate"/> subtrai zero e o adiantamento deixa de existir, exatamente como
+	/// era. Sendo campo, a bancada (`--pressateste`) poe o jogo de antes na frente de cada afirmacao
+	/// e exige que ela fique VERMELHA; sendo `const`, o pedido do dono ficaria com quatro checagens
+	/// verdes que nao sabem ficar vermelhas.
+	///
+	/// **Ninguem alem da bancada escreve aqui**, e ela devolve no `finally` -- a mesma disciplina do
+	/// `_clashSempre` e do `_comTecladoDeTeste`.
+	/// ============================================================================================
+	/// </summary>
+	private static long MsMinimoEntreLetras = 300;
 
 	/// <summary>
 	/// A JANELA DO "AO MESMO TEMPO": `zanzoClashWindow = 7` decimos. Dois socos dentro dela contam
@@ -198,6 +241,12 @@ public sealed partial class GameServer
 		/// <summary>A letra que cada um tem que apertar agora, e ate quando.</summary>
 		public char LetraA, LetraB;
 		public long PrazoA, PrazoB;
+
+		/// <summary>
+		/// QUANDO O CORPO SEM DONO VAI "APERTAR" A LETRA. Zero = nao ha ninguem pra responder por ele
+		/// (o lado e de gente). Ver <see cref="GameServer.ResponderPelaMaquina"/>.
+		/// </summary>
+		public long RespondeA, RespondeB;
 
 		public Vec2 Meio;
 
@@ -399,11 +448,78 @@ public sealed partial class GameServer
 	private void NovaTecla(Embate e, ServerPlayer p)
 	{
 		char c = SortearLetraDeEmbate();
-		long prazo = NowMs() + MsPorTecla;
+		long agora = NowMs();
+		long prazo = agora + MsPorTecla;
 		if (p == e.A) { e.LetraA = c; e.PrazoA = prazo; }
 		else { e.LetraB = c; e.PrazoB = prazo; }
 
+		// ============================ E SE DESTE LADO NAO HOUVER NINGUEM PRA APERTAR? ============================
+		// O embate nasceu entre dois jogadores e nunca tinha encontrado um corpo sem dono -- porque
+		// corpo sem dono nunca tinha Imagem Remanescente. Com o reflexo da mente herdando a skill (ver
+		// `GameServer.Clone.cs`), o dono finalmente TEM com quem ter um Zanzo Clash, e sem esta agenda o
+		// oponente dele seria uma estatua: nove cruzamentos, nove letras ignoradas, vitoria de graca e
+		// um soco pesado com arremesso garantido de brinde. Um QTE contra ninguem nao e um QTE.
+		//
+		// A REACAO SAI DO CEREBRO (`TempoDeReacao`, 0,25 s), que e o mesmo relogio com que ele apara e
+		// desvia -- e nao um numero novo. O sorteio de 0,7 a 1,6 do tempo dele e o que impede a maquina
+		// de responder num metronomo, do mesmo jeito que a `EmRajada` impede o soco.
+		//
+		// **E QUEM DEMORAR DEMAIS PERDE A VEZ SOZINHO**: nao ha teto nenhum escrito aqui. Se o atraso
+		// passar dos 900 ms da letra, o tique vence o prazo antes e pede outra -- exatamente o que
+		// acontece com uma pessoa lenta. A regra e uma so pros dois lados.
+		// =========================================================================================================
+		// A PERGUNTA E A MESMA DOS DOIS EMBATES, e por isso ela e a MESMA FUNCAO: `TemTeclado` (ver
+		// `GameServer.EmbateDeKi.cs`) e o `if(M.client)` do `side_presses`. Era `p.Peer == null` escrito
+		// aqui, e a divergencia ja tinha consequencia: um corpo de bancada com teclado emprestado
+		// recebia letra E ganhava um agendamento de maquina por cima -- dois lados respondendo pelo
+		// mesmo lado. Uma pergunta, um lugar.
+		if (!TemTeclado(p))
+		{
+			double reacao = p.Cerebro?.TempoDeReacao ?? 0.3;
+			long quando = agora + (long)(reacao * 1000 * (0.7 + _rng.NextDouble() * 0.9));
+			if (p == e.A) e.RespondeA = quando; else e.RespondeB = quando;
+		}
+
 		MandarTecla(p, c, MsPorTecla);
+	}
+
+	/// <summary>
+	/// PISO DE ACERTO da maquina no quick time event: o quanto ela acerta com inteligencia ZERO.
+	///
+	/// A conta e `Piso + (1 - Piso) * Inteligencia`, o mesmo formato dos outros gates do cerebro. Com
+	/// o tempero de fabrica (0,35) da ~58%, com o do reflexo da mente (0,70) da ~77% e com o de chefe
+	/// (0,85) da ~90%. Ou seja: o reflexo e rapido, e ainda da pra vence-lo lendo as letras -- que e
+	/// exatamente o que o embate existe pra premiar.
+	/// </summary>
+	private const double PisoDeAcertoDaMaquina = 0.35;
+
+	/// <summary>
+	/// O CORPO SEM DONO APERTA A LETRA -- **pelo mesmo funil do jogador**.
+	///
+	/// Ele chama o <see cref="TeclaDoEmbate"/>, e nao escreve ponto nenhum: quem julga a letra, cobra o
+	/// ponto do erro, apaga a vez e manda o placar continua sendo uma funcao so. Uma segunda contagem
+	/// aqui seria a segunda verdade do placar, e ela divergiria da primeira no dia em que o castigo do
+	/// erro mudasse -- que ja mudou uma vez ("errando vc perde 1 ponto do clash").
+	///
+	/// ERRAR E MANDAR UMA LETRA QUALQUER, e nao um caminho de erro proprio: assim o erro da maquina
+	/// paga o MESMO preco que o do jogador, e (uma em vinte e duas vezes) o chute ate acerta -- que e
+	/// literalmente o que acontece com quem chuta.
+	/// </summary>
+	private void ResponderPelaMaquina(Embate e, ServerPlayer p, long agora)
+	{
+		// A MESMA PERGUNTA DO `NovaTecla`, e pela mesma razao: quem tem teclado responde por si.
+		if (TemTeclado(p)) return;
+
+		bool ehA = p == e.A;
+		char esperada = ehA ? e.LetraA : e.LetraB;
+		long quando = ehA ? e.RespondeA : e.RespondeB;
+		if (esperada == '\0' || quando == 0 || agora < quando) return;
+
+		if (ehA) e.RespondeA = 0; else e.RespondeB = 0;
+
+		double tino = p.Cerebro?.Inteligencia ?? PisoDeAcertoDaMaquina;
+		bool acerta = _rng.NextDouble() < PisoDeAcertoDaMaquina + (1 - PisoDeAcertoDaMaquina) * tino;
+		TeclaDoEmbate(p, acerta ? esperada : SortearLetraDeEmbate());
 	}
 
 	// =====================================================================
@@ -480,10 +596,25 @@ public sealed partial class GameServer
 			return;
 		}
 
-		// ACERTOU: pontua e ENCERRA a vez. A letra some (nao da pra pontuar duas vezes na mesma),
-		// mas o PRAZO fica de pe -- a proxima nasce quando a janela fechar, no tique.
-		if (ehA) { e.PtsA += e.MultA; e.LetraA = '\0'; }
-		else { e.PtsB += e.MultB; e.LetraB = '\0'; }
+		// ============================ ACERTOU: PONTUA E A PROXIMA JA VEM ============================
+		// A letra some (nao da pra pontuar duas vezes na mesma) e o PRAZO ENCOLHE ate o piso da
+		// cadencia -- o tique pede outra assim que ele vencer (`TickDosEmbates`). Antes o prazo ficava
+		// de pe e a proxima so nascia com a janela inteira fechada, que era o metronomo que o dono
+		// mandou tirar.
+		//
+		// A CONTA E O PISO MEDIDO DO NASCIMENTO DA LETRA, sem campo novo pra isso: o prazo NASCE em
+		// `nasceu + MsPorTecla`, entao tirar `MsPorTecla - MsMinimoEntreLetras` dele da exatamente
+		// `nasceu + MsMinimoEntreLetras`. Quem respondeu mais devagar que o piso ja tem o prazo no
+		// passado e recebe a proxima no tique seguinte -- que e o "quanto mais rapido melhor" inteiro,
+		// num `-=`. Ver <see cref="MsMinimoEntreLetras"/>.
+		//
+		// O ERRO NAO ADIANTA NADA, de proposito: quem chuta espera a janela CHEIA fechar. Isso nao e
+		// castigo novo (o ponto a menos continua sendo o unico) -- e o mesmo castigo ficando mais caro
+		// porque o acerto ficou mais barato, e e o que impede o adiantamento de virar premio pra quem
+		// martela o teclado.
+		// ==========================================================================================
+		if (ehA) { e.PtsA += e.MultA; e.LetraA = '\0'; e.PrazoA -= MsPorTecla - MsMinimoEntreLetras; }
+		else { e.PtsB += e.MultB; e.LetraB = '\0'; e.PrazoB -= MsPorTecla - MsMinimoEntreLetras; }
 
 		Julgou(p, true);
 		Placar(e);
@@ -504,6 +635,19 @@ public sealed partial class GameServer
 		var w = Protocol.Begin(Protocol.S2C.Clash);
 		w.Put((byte)Protocol.ClashSub.Julgou);
 		w.Put(acertou);
+		p.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// "O EMBATE ACABOU", pra UM dos dois. O MESMO pacote dos dois embates -- ver
+	/// <see cref="Protocol.ClashSub.Acabou"/>; os dois zerados sao o empate da colisao de ki.
+	/// </summary>
+	private static void Acabou(ServerPlayer p, int venc, int perd)
+	{
+		var w = Protocol.Begin(Protocol.S2C.Clash);
+		w.Put((byte)Protocol.ClashSub.Acabou);
+		w.Put(venc);
+		w.Put(perd);
 		p.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -534,6 +678,12 @@ public sealed partial class GameServer
 
 			// ---- o vislumbre fecha: os dois somem de novo ----
 			if (e.VislumbreAte > 0 && agora >= e.VislumbreAte) Esconder(e);
+
+			// ---- o lado que nao tem dono aperta a letra dele (ver `ResponderPelaMaquina`) ----
+			// ANTES do prazo, de proposito: o corpo sem dono tem que poder responder DENTRO da janela,
+			// como qualquer um. Depois seria "ele so responde a letra que ja venceu".
+			ResponderPelaMaquina(e, e.A, agora);
+			ResponderPelaMaquina(e, e.B, agora);
 
 			// ---- a letra venceu o prazo (ou foi perdida por erro): manda outra, sem ponto ----
 			if (agora > e.PrazoA) NovaTecla(e, e.A);
@@ -811,7 +961,23 @@ public sealed partial class GameServer
 		ServerPlayer venc = ganhouA ? e.A : e.B;
 		ServerPlayer perd = ganhouA ? e.B : e.A;
 
-		AvisarZona(e, w => { w.Put((byte)Protocol.ClashSub.Acabou); w.Put(venc.Id); w.Put(perd.Id); });
+		// ============================ O FIM E PESSOAL, COMO O COMECO ============================
+		// Isto era `AvisarZona`, e o defeito so aparecia com DOIS embates na mesma zona -- trivial numa
+		// briga de quatro, e mais ainda porque a disputa de ki dura ate 22 s contra os 3 a 6,3 s daqui.
+		// O cliente nao tinha como saber que aquele fim era de outros: ele derrubava o `EmClash` (e com
+		// ele o silencio dos atalhos), fechava a tela do quick time event e escrevia na cara do jogador
+		// o desfecho da briga alheia -- no meio da dele.
+		//
+		// Nao ha plateia a avisar: o `Acabou` so tem tres consumidores no cliente (a tela do embate, o
+		// `EmClash` e o corpo local que volta a aparecer), e os tres sao dos DOIS. Quem assiste ve o
+		// baque, que continua sendo de zona.
+		//
+		// E PESSOAL TAMBEM ALCANCA MAIS: `AvisarZona` varre a zona do embate, entao quem tivesse
+		// trocado de planeta no meio nunca receberia o fim -- e ficaria com o teclado mudo ate o prazo
+		// do cliente vencer. Peer a peer, chega enquanto houver conexao.
+		// =======================================================================================
+		Acabou(e.A, venc.Id, perd.Id);
+		Acabou(e.B, venc.Id, perd.Id);
 
 		if (!vivo) return;
 
@@ -856,8 +1022,15 @@ public sealed partial class GameServer
 
 		if (r.Encostou)
 		{
-			// ARREMESSO GARANTIDO: o `TentarEmpurrar` sorteia, e aqui nao ha sorteio a fazer.
-			TentarEmpurrar(venc, perd, r.Dano * 2, Protocol.Golpe.Pesado);
+			// ARREMESSO GARANTIDO, E AGORA ESTA ESCRITO: o `garantido` pula o sorteio.
+			//
+			// Esta linha SOBREVIVIA POR ACIDENTE. O pesado nao tinha sorteio nenhum -- arremessava
+			// 100% das vezes --, entao "garantido" era o comportamento de fabrica e o comentario
+			// descrevia uma regra que ninguem tinha escrito. Com o sorteio ligado (o pedido do dono:
+			// o pesado jogava longe demais e cedo demais), esta cena terminaria com o perdedor de pe
+			// em dois de cada tres embates. O golpe de saida e o unico caso do combate corpo a corpo
+			// em que o arremesso E o desfecho, e nao uma consequencia dele.
+			TentarEmpurrar(venc, perd, r.Dano * 2, Protocol.Golpe.Pesado, garantido: true);
 			RacharChao(venc.Zone, perd.Pos, Math.Max(venc.Ficha.expressedBP, perd.Ficha.expressedBP));
 		}
 	}

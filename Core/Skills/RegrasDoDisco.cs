@@ -71,10 +71,23 @@ public static class RegrasDoDisco
 						break;
 					}
 
-					// GANHO POR ESTADO DO CORPO. Ate aqui este bloco era ABERTO E DESCARTADO --
-					// ver `RegraDeNivel.PorEstado`. As condicoes que este port sabe avaliar viram
-					// regra; as outras sao CONTADAS e aparecem no log, em vez de sumirem.
-					if (porContador) { _porContador++; break; }
+					// GANHO POR CONTADOR DE EVENTO. Ate aqui este `if` fazia `_porContador++; break;`
+					// -- contava a regra pro log e a DESCARTAVA, entao as 30 pericias de Ki nunca
+					// tinham como creditar exp nenhum, mesmo que alguem chamasse o `Creditar`.
+					// Ver `RegraDeNivel.PorContador`. O contador de diagnostico continua subindo:
+					// ele agora conta quantas ENTRARAM, e nao quantas se perderam.
+					if (porContador)
+					{
+						double porEvento = Num(bloco, "quanto", 0);
+						if (porEvento <= 0) break;
+						r.PorContador.Add(new RegraDeNivel.GanhoPorContador
+						{
+							Contador = Str(bloco, "contador"),
+							Quanto = porEvento,
+						});
+						_porContador++;
+						break;
+					}
 
 					string cond = Str(bloco, "cond").Replace(" ", "");
 					RegraDeNivel.Estado? quando = cond switch

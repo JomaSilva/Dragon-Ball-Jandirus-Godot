@@ -75,6 +75,20 @@ public partial class RoboDeSoco : Node
     /// </summary>
     public string AlvoPreferido = "";
 
+    /// <summary>
+    /// `--socarpesado`: manda SHIFT+ESPACO em vez de so ESPACO.
+    ///
+    /// ============================ SEM ISTO O ROBO NUNCA INVESTE DE VERDADE ============================
+    /// O `SendAction()` sem argumento e `Golpe.Leve`, e o leve so busca alvo a 80 px
+    /// (`AlcanceDoPasso`) -- ou seja, este robo passou a vida inteira dando saltinhos de ate 48 px e o
+    /// arranque LONGO, que e o do relato do dono e o que a IA usa, nunca foi exercitado por ele.
+    ///
+    /// Quem precisou disso foi a `--diagborrao`: a cena do "outro jogador" pede um segundo PROCESSO
+    /// arrancando de verdade, porque num processo so as duas pontas do fio sao a mesma memoria.
+    /// ==============================================================================================
+    /// </summary>
+    public bool Pesado;
+
     private void Avistou(List<Jandirus.Net.EntityState> estados)
     {
         if (GameClient.Instance is not { } cli) return;
@@ -342,7 +356,7 @@ public partial class RoboDeSoco : Node
         {
             _proximo = _cadencia;
             _golpes++;
-            cli.SendAction();
+            cli.SendAction(Pesado ? Protocol.Golpe.Pesado : Protocol.Golpe.Leve);
         }
 
         _proximaFrase -= delta;

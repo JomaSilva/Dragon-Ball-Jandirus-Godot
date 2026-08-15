@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("AssetPipeline")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e8c0ffd5c6bf8693397f0d3d4c1c78d0cf5567d1")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2449619de751a60bc15722ab644b73e5a5e313d3")]
 [assembly: System.Reflection.AssemblyProductAttribute("AssetPipeline")]
 [assembly: System.Reflection.AssemblyTitleAttribute("AssetPipeline")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

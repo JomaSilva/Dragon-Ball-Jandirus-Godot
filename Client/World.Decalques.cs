@@ -206,15 +206,7 @@ public partial class World : Node2D
 			// O DU dispara isto pra quem PASSA por cima da agua (mob andando, `Map 2022.dm:269`) e
 			// pra tiro de ki cruzando (`Projectiles.dm:280`). Aqui: quem esta VOANDO por cima --
 			// que e o pedido do dono -- e a trava de celula e a mesma (`turf.ki_water`).
-			if (altura > 0f && EhAgua(celula))
-			{
-				if (!_ondaAte.TryGetValue(celula, out double ate) || _relogioDecal >= ate)
-				{
-					_ondaAte[celula] = _relogioDecal + 2.0;   // `sleep(20)` do DU
-					_decalques.Plantar(Protocol.Decal.Agua,
-						new Vector2((celula.X + 0.5f) * t, (celula.Y + 0.5f) * t), DirecaoDe(corpo));
-				}
-			}
+			if (altura > 0f && EhAgua(celula)) AbrirOnda(celula, corpo);
 
 			// ---------- O SANGUE ----------
 			// Duas condicoes, as duas do dono: ferimento GRAVE e estar no chao ou voando baixo.
@@ -257,7 +249,125 @@ public partial class World : Node2D
 			_decalques.Plantar(Protocol.Decal.Sangue,
 				new Vector2((vx + 0.5f) * t, (vy + 0.5f) * t), DirecaoDe(corpo));
 		}
+
+		TickDaAguaDosTiros(t);
+		PodarAsPocas();
 	}
+
+	/// <summary>
+	/// O KI QUE CRUZA A AGUA ABRE A MESMA ONDA -- e este e o pedaco que era PORTE e faltava.
+	///
+	/// ============================ AS DUAS FONTES DO ORIGINAL CONCORDAM ============================
+	/// No DM quem molha o lago nao e so o corpo: e o TIRO, e ele dispara o efeito com a PROPRIA
+	/// direcao.
+	///
+	///   * Finale-master, `Turfs.dm:58-61`: `KiWater()` varre `for(var/obj/attack/blast/M in
+	///     view(1,src))` e monta `image(icon='KiWater.dmi', dir=M.dir)` -- o `dir` e o do BLAST.
+	///   * DU-SOURCE, `Projectiles.dm:279-280`, dentro do `Move()` do tiro: `if(isturf(t) &&
+	///     IsWater(t)) t.ki_water(dir)`.
+	///
+	/// O port tinha portado so a metade do CORPO (`Map 2022.dm:265`, o `Water_Ripple` de quem voa).
+	/// Esta e a outra metade.
+	/// ==============================================================================================
+	///
+	/// ============================ E A ALTURA NAO ENTRA AQUI ============================
+	/// O corpo so molha VOANDO (`altura > 0`), porque quem esta a pe dentro do lago nada e nao
+	/// sobrevoa. O tiro nao tem essa condicao em nenhuma das duas fontes -- e nem teria como: o DM
+	/// nao tem altitude, o `Move()` do blast chama `ki_water` sempre. Alem disso a altitude do tiro
+	/// NAO VIAJA no `ProjetilState`, entao exigi-la aqui custaria um bit no snapshot pra impor uma
+	/// regra que o original nao tem. Fica como esta, e anotado.
+	/// ==================================================================================
+	/// </summary>
+	private void TickDaAguaDosTiros(int t)
+	{
+		// A PODA MAIS BARATA QUE EXISTE: uma zona sem tiro nenhum nao paga nada. E o caso comum --
+		// ki no ar e evento de briga, e briga e minoria do tempo de jogo.
+		if (_tiros.Count == 0) return;
+
+		foreach (ProjetilDesenhado tiro in _tiros.Values)
+		{
+			if (!IsInstanceValid(tiro)) continue;
+
+			var celula = new Vector2I(
+				(int)MathF.Floor(tiro.Position.X / t), (int)MathF.Floor(tiro.Position.Y / t));
+
+			// A CELULA NOVA E A COTA DESTE EFEITO -- ver `ProjetilDesenhado.EntrouNaCelula`. Ela vem
+			// ANTES do `EhAgua` de proposito: e a pergunta cara (varre as camadas do tilemap) que ela
+			// existe pra evitar, e nao a plantacao.
+			if (!tiro.EntrouNaCelula(celula)) continue;
+			if (!EhAgua(celula)) continue;
+
+			AbrirOnda(celula, tiro);
+		}
+	}
+
+	/// <summary>
+	/// A ONDA DE UMA CELULA, com a trava do DU -- e ela e UMA SO pro corpo e pro tiro.
+	///
+	/// ============================ A TRAVA E DA CELULA, E NAO DE QUEM PASSOU ============================
+	/// No DU a trava mora no proprio turf: `turf/proc/ki_water(d)` faz `if(ki_water) return;
+	/// ki_water=1; ...; sleep(20); ki_water=0` (`Unsorted 2.dm:378-388`). Ou seja: enquanto uma
+	/// celula esta ondulando, NINGUEM abre onda nova nela -- nem outro tiro, nem um corpo voando por
+	/// cima. Este dicionario e o mesmo `turf.ki_water`, e por isso o tiro e o corpo o dividem.
+	///
+	/// O QUE ISSO CUSTA, E A ESCOLHA: um corpo que acabou de sobrevoar uma celula ENGOLE a onda que o
+	/// raio abriria ali 1 s depois, e um raio que fosse rapido o bastante pra cruzar a mesma celula
+	/// duas vezes (ida e volta) so desenha uma. E fiel, e e o que se escolhe: a alternativa (uma
+	/// trava por projetil) faria dois raios paralelos empilharem duas ondas no mesmo tile, que e
+	/// exatamente o que o `sleep(20)` do original existe pra impedir.
+	///
+	/// E A CADENCIA NAO APERTA O RAIO: ele anda 3,3 tiles/s (`Projetil.SegundosPorTile`, 0,3 s por
+	/// tile) contra os 2 s da trava -- cada celula do caminho dele e virgem, entao o rastro sai
+	/// inteiro. So a cabeca PARADA (o raio encostado em alguem) deixa de repintar, que e o certo.
+	/// ====================================================================================================
+	/// </summary>
+	private void AbrirOnda(Vector2I celula, Node2D quem)
+	{
+		if (_decalques == null) return;
+		if (_ondaAte.TryGetValue(celula, out double ate) && _relogioDecal < ate) return;
+
+		_ondaAte[celula] = _relogioDecal + SegundosDeOnda;
+		float t = ZoneCollision.TileSize;
+		_decalques.Plantar(Protocol.Decal.Agua,
+			new Vector2((celula.X + 0.5f) * t, (celula.Y + 0.5f) * t), DirecaoDe(quem));
+	}
+
+	/// <summary>`sleep(20)` do DU com `tick_lag` de 0,1 s. O mesmo numero que o prazo do desenho.</summary>
+	private const double SegundosDeOnda = 2.0;
+
+	/// <summary>
+	/// JOGA FORA AS TRAVAS JA VENCIDAS.
+	///
+	/// ============================ POR QUE ISTO PASSOU A SER PRECISO ============================
+	/// O `_ondaAte` guarda uma entrada por celula ja molhada e NUNCA tirava nenhuma. Com so o corpo
+	/// abrindo onda isso crescia devagar (um jogador voando pinta ~10 celulas/s e cansa). O raio muda
+	/// a escala: ele cruza um lago inteiro em segundos, e varios podem estar no ar.
+	///
+	/// A PODA E POR TETO E NAO POR RELOGIO: varrer o dicionario todo quadro seria o "pesado no tique"
+	/// que a casa proibe. Aqui ela so acontece quando o dicionario passa do teto, e como toda entrada
+	/// vence em 2 s, uma passada limpa quase tudo -- na pratica, uma varredura a cada muitos segundos
+	/// de briga sobre agua.
+	/// ==========================================================================================
+	/// </summary>
+	private void PodarAsPocas()
+	{
+		if (_ondaAte.Count < TetoDePocas) return;
+
+		_pocasVencidas.Clear();
+		foreach ((Vector2I celula, double ate) in _ondaAte)
+			if (_relogioDecal >= ate) _pocasVencidas.Add(celula);
+		foreach (Vector2I celula in _pocasVencidas) _ondaAte.Remove(celula);
+		_pocasVencidas.Clear();
+	}
+
+	/// <summary>
+	/// A partir de quantas celulas travadas a poda roda. Generoso: um lago da Terra tem algumas
+	/// centenas de celulas, e o custo de uma entrada e um `Vector2I` + um `double`.
+	/// </summary>
+	private const int TetoDePocas = 1024;
+
+	/// <summary>Reusada entre as podas -- alocar uma lista por passada seria lixo por quadro.</summary>
+	private readonly List<Vector2I> _pocasVencidas = [];
 
 	/// <summary>
 	/// PRA ONDE ESTE CORPO ESTA VIRADO -- a direcao que a onda da agua e o respingo de sangue usam.
@@ -274,10 +384,17 @@ public partial class World : Node2D
 	/// divergem -- e o corpo sabe do dele antes de qualquer decalque.
 	/// ========================================================================================
 	/// </summary>
+	/// <remarks>
+	/// A TERCEIRA RESPOSTA E O TIRO, e ela precisou existir pelo mesmo motivo que a primeira: um raio
+	/// NAO E CORPO -- ele caia no `_ => South` e abria onda em pe atravessando o lago de lado. O rumo
+	/// dele nao vem do pacote; sai da cabeca e da cauda que ja viajam (ver
+	/// <see cref="ProjetilDesenhado.Mirar"/>).
+	/// </remarks>
 	private static Facing DirecaoDe(Node2D corpo) => corpo switch
 	{
 		LocalPlayer l => l.OlharDeTeste,
 		RemotePlayer r => r.OlharDeTeste,
+		ProjetilDesenhado t => t.OlharDeTeste,
 		_ => Facing.South,
 	};
 
@@ -287,6 +404,14 @@ public partial class World : Node2D
 	/// que este projeto ja deixou quatro bugs visuais passarem por bancada verde).
 	/// </summary>
 	public Facing DirecaoDoRastroDeTeste => _local is { } l ? DirecaoDe(l) : Facing.South;
+
+	/// <summary>
+	/// A direcao com que a onda de um TIRO sairia. So pra bancada, e chama a MESMA
+	/// <see cref="DirecaoDe"/> -- o `switch` e o unico lugar onde um raio deixa de ser "corpo
+	/// desconhecido", e ler o `OlharDeTeste` do node direto pularia justamente ele.
+	/// </summary>
+	public Facing DirecaoDoTiroDeTeste(int id) =>
+		_tiros.TryGetValue(id, out ProjetilDesenhado? no) ? DirecaoDe(no) : Facing.South;
 
 	/// <summary>
 	/// O PIOR SANGUE DO CORPO, de 0 a <see cref="MascaraDeFeridas.Degraus"/>.

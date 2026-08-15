@@ -182,13 +182,25 @@ public partial class GameServer
 				  EmbateDeKi.Decidir(50 + EmbateDeKi.MargemDoEmpate + 1, EmbateDeKi.SegundosMaximos)
 					  == FimDeEmbateDeKi.VenceuA);
 
-		// UMA LETRA VALE O QUE O MARTELAR DE UM NPC MEDIANO RENDE NA JANELA DELA -- a costura entre
-		// o quick time event do ZanzoClash e o `side_presses` do DM.
-		double porLetra = EmbateDeKi.ApertosPorLetra(MsPorTecla / 1000.0);
+		// UMA LETRA VALE O QUE O MARTELAR DE UM NPC MEDIANO RENDE NUM CICLO DA CADENCIA -- a costura
+		// entre o quick time event do ZanzoClash e o `side_presses` do DM.
+		//
+		// A CONTA E PELO PISO (`MsMinimoEntreLetras`) E NAO PELA JANELA, desde que o acerto passou a
+		// ADIANTAR a proxima letra: o ritmo de quem joga no limite e o piso, e e o ritmo que a
+		// promessa "jogador perfeito = NPC mediano" fala. Com a janela, quem acertasse tudo empurraria
+		// tres vezes mais que a taxa do DM.
+		double porLetra = EmbateDeKi.ApertosPorLetra(MsMinimoEntreLetras / 1000.0);
 		double porSegundoMediano = EmbateDeKi.ApertosPorSegundo(EmbateDeKi.InteligenciaPadrao);
-		AfirmarEk("uma letra vale o martelar de um NPC mediano durante a janela dela",
-				  Math.Abs(porLetra - porSegundoMediano * (MsPorTecla / 1000.0)) < 1e-9,
+		AfirmarEk("uma letra vale o martelar de um NPC mediano durante um ciclo da cadencia minima",
+				  Math.Abs(porLetra - porSegundoMediano * (MsMinimoEntreLetras / 1000.0)) < 1e-9,
 				  $"{porLetra:0.###} apertos");
+
+		// ...E A VAZAO DE QUEM JOGA NO LIMITE E A MESMA DA TAXA AUTOMATICA DO NPC MEDIANO. Esta e a
+		// afirmacao que o adiantamento poderia ter quebrado calada: o valor da letra caiu pra um terco
+		// E a cadencia triplicou, e o que tem que continuar de pe e o PRODUTO dos dois.
+		AfirmarEk("quem acerta no limite da cadencia empurra o mesmo que o NPC mediano",
+				  Math.Abs(porLetra / (MsMinimoEntreLetras / 1000.0) - porSegundoMediano) < 1e-9,
+				  $"{porLetra / (MsMinimoEntreLetras / 1000.0):0.###} vs {porSegundoMediano:0.###} apertos/s");
 		AfirmarEk("...e o NPC burro empurra menos que o esperto",
 				  EmbateDeKi.ApertosPorSegundo(0) < EmbateDeKi.ApertosPorSegundo(100));
 
@@ -234,10 +246,10 @@ public partial class GameServer
 				  DisputarComLetras(poderDoOutro: 1.0, euApertando: false, oOutroEBot: true) == DesfechoDeTeste.Perdi);
 
 		// ...E O JOGADOR PERFEITO FICA LADO A LADO COM O NPC MEDIANO, que e o que `ApertosPorLetra`
-		// promete: uma letra vale o que a taxa dele rende na janela.
+		// promete: uma letra vale o que a taxa dele rende num ciclo da cadencia minima.
 		//
 		// A AFIRMACAO NAO E "EMPATA", e a diferenca importa. As duas escalas sao proximas mas nao
-		// identicas por construcao (a letra e um degrau de 0,9 s; a taxa do NPC e continua), entao
+		// identicas por construcao (a letra e um degrau de 0,3 s; a taxa do NPC e continua), entao
 		// exigir empate exato seria exigir que dois relogios diferentes marcassem o mesmo instante --
 		// um teste que falha por arredondamento e nao por defeito. O que se afirma e que o medidor
 		// NUNCA SAI DE PERTO DO MEIO: se uma das escalas estivesse errada por pouco que fosse, 22
@@ -268,6 +280,43 @@ public partial class GameServer
 		AfirmarEk("em forcas parelhas o teclado decide", DisputarComLetras(1.0) == DesfechoDeTeste.Venci);
 		AfirmarEk("...e no TETO da vantagem (6x) o poder decide, por mais rapido que voce seja",
 				  DisputarComLetras(6.0) != DesfechoDeTeste.Venci);
+
+		SerRapidoPaga();
+	}
+
+	/// <summary>
+	/// ============================ SER RAPIDO PAGA? A MEDICAO DO PEDIDO DO DONO ============================
+	/// *"faca com q caso vc ACERTE o quick time event, ele JA VAI PRO PROXIMO BOTAO pra apertar, entao
+	/// realmente QUANTO MAIS RAPIDO VC FOR MELHOR VAI SER"*.
+	///
+	/// Antes do adiantamento esta familia inteira daria a MESMA linha seis vezes: a proxima letra so
+	/// nascia quando a janela de 0,9 s fechava, entao responder em 50 ms e responder em 850 ms rendia o
+	/// mesmo empurrao no mesmo instante. **Um teste que so passa depois da mudanca e que so falha se
+	/// alguem a desfizer** -- e por isso ele mede a REACAO e nao a mecanica.
+	///
+	/// O RIVAL E O NPC MEDIANO de mesmo poder, de proposito: ele e a REGUA da calibragem
+	/// (`ApertosPorLetra`), entao a coluna do desfecho le direto -- em cima da regua, empata; abaixo
+	/// dela, perde. Contra um alvo parado qualquer velocidade venceria e a tabela nao diria nada.
+	/// ==================================================================================================
+	/// </summary>
+	private void SerRapidoPaga()
+	{
+		GD.Print("[embateki]       reacao do jogador | desfecho contra um NPC mediano de MESMO poder:");
+		foreach (double ms in new[] { 0, 150.0, 300, 450, 600, 900 })
+		{
+			DesfechoDeTeste fim = DisputarComLetras(1.0, true, true, out double desvio, out _, ms / 1000.0);
+			GD.Print($"[embateki]        {ms,10:0} ms | {fim} (o medidor se afastou {desvio:0.#} do meio)");
+		}
+
+		// AS DUAS PONTAS, que sao promessas de desenho e nao numeros escolhidos: quem joga NO LIMITE da
+		// cadencia sustenta o empate (a calibragem), e quem responde ao DOBRO dela recebe metade das
+		// letras e perde. O meio da tabela e o que se le, e ele nao precisa de afirmacao.
+		AfirmarEk("quem responde no limite da cadencia sustenta o empate contra o NPC mediano",
+				  DisputarComLetras(1.0, true, true, out _, out _, MsMinimoEntreLetras / 1000.0)
+					  != DesfechoDeTeste.Perdi);
+		AfirmarEk("...e quem responde ao DOBRO da cadencia PERDE -- ser rapido paga, e paga em vitoria",
+				  DisputarComLetras(1.0, true, true, out _, out _, 2.0 * MsMinimoEntreLetras / 1000.0)
+					  == DesfechoDeTeste.Perdi);
 	}
 
 	/// <summary>Como um encontro da bancada terminou. Ver <see cref="DisputarComLetras"/>.</summary>
@@ -288,8 +337,13 @@ public partial class GameServer
 	/// A mesma coisa, dizendo tambem O QUANTO o medidor se afastou do meio -- o que separa "empatou"
 	/// de "empatou por sorte, depois de quase acabar".
 	/// </summary>
+	/// <param name="segundosDeReacao">
+	/// Quanto tempo a letra fica na tela antes de eu apertar. ZERO e o jogador impossivel (responde no
+	/// mesmo tique em que a letra nasce); e o que esta bancada sempre mediu. Ver <see cref="SerRapidoPaga"/>.
+	/// </param>
 	private DesfechoDeTeste DisputarComLetras(double poderDoOutro, bool euApertando,
-											  bool oOutroEBot, out double desvio, out double vantagemDele)
+											  bool oOutroEBot, out double desvio, out double vantagemDele,
+											  double segundosDeReacao = 0)
 	{
 		desvio = 0;
 		vantagemDele = 1;
@@ -305,10 +359,17 @@ public partial class GameServer
 		bool acabou = false;
 
 		// O LACO E O DO JOGO: tique de projetil + tique de embate. A unica coisa que a bancada faz e
-		// apertar a letra certa assim que ela chega -- que e o que um jogador perfeito faria.
+		// apertar a letra certa depois de olhar pra ela pelo tempo de reacao pedido -- com reacao zero,
+		// que e o padrao, isso e o jogador perfeito de sempre.
+		//
+		// O RELOGIO ZERA QUANDO NAO HA LETRA (`Letra == '\0'`), e nao na troca de caractere: duas letras
+		// seguidas podem sair iguais, e comparar o caractere faria a segunda herdar o tempo da primeira.
+		double naTela = 0;
 		for (int i = 0; i < 30 * 40 && !acabou; i++)
 		{
-			if (euApertando && meuLado.Letra != '\0') TeclaDeQualquerEmbate(eu, meuLado.Letra);
+			if (meuLado.Letra == '\0') naTela = 0;
+			else if (euApertando && naTela >= segundosDeReacao) TeclaDeQualquerEmbate(eu, meuLado.Letra);
+			else naTela += Protocol.TickSeconds;
 
 			TickDosCanaisDeKi(Protocol.TickSeconds);
 			TickDosProjeteis(Protocol.TickSeconds);
@@ -757,7 +818,7 @@ public partial class GameServer
 
 		// ============================ OS DOIS SAO JOGADORES, POR PADRAO ============================
 		// A primeira versao dava teclado so a um deles, e o outro caia na taxa automatica da IA. Como
-		// uma letra vale EXATAMENTE o que aquela taxa rende na janela dela (`ApertosPorLetra`, e e de
+		// uma letra vale EXATAMENTE o que aquela taxa rende num ciclo da cadencia (`ApertosPorLetra`, e e de
 		// proposito), o resultado era um empate perfeito toda vez -- e a bancada reprovava "quem
 		// acerta as letras vence" medindo dois lados que empurravam igual.
 		//

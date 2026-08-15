@@ -85,7 +85,35 @@ public sealed partial class GameServer
 		// lista da zona), e iterar uma colecao que muda no meio estoura.
 		foreach (ServerPlayer pl in _players.Values.ToList())
 		{
-			if (pl.Ficha.dead || pl.Ficha.KO) continue;
+			if (pl.Ficha.KO) continue;
+
+			// ============================ O MORTO ATRAVESSA, MAS SO DENTRO DO ALEM ============================
+			// Esta linha era `if (pl.Ficha.dead || pl.Ficha.KO) continue`, e ela **apagava um lugar
+			// inteiro do jogo sem que nada reclamasse**: com ela, o morto que chega ao Outro Mundo nunca
+			// alcanca o Ceu nem o Inferno, porque as tres unicas passagens do z6 sao justamente essas
+			// duas (`z06_Afterlife.passagens`) -- e do outro lado, a volta.
+			//
+			// O ORIGINAL CONTA COM A TRAVESSIA: os cacos de revivencia so funcionam em
+			// `Afterlife/Heaven/Hell` (`RevivalShards.dm:109`), o Kai ganha 1,25x **no Ceu** e o Demonio
+			// **no Inferno** (`Gravity.dm:131-132`), e a gravidade do Inferno e 10x contra 1x do Ceu
+			// (`:107-111`). Tres regras que so existem pra quem PODE ir aos tres lugares.
+			//
+			// E ISTO JA ESTAVA PREVISTO DO OUTRO LADO: o `Alem.MortoDePe` diz, por escrito, que ele
+			// responde as tres zonas juntas "senao o morto que atravessa a passagem pro Inferno deitaria
+			// no chao de novo do outro lado". Aquele caso nao podia acontecer -- a guarda daqui o
+			// impedia. O comentario descrevia a intencao; esta linha e o que faltava pra ela ser
+			// verdade.
+			//
+			// O `KO` FICA SOZINHO na linha de cima: caido e caido, e um corpo desmaiado empurrado pra
+			// cima de uma boca de caverna nao "atravessa" nada.
+			//
+			// FORA DO ALEM O MORTO CONTINUA PARADO, e nao por esta regra: la ele esta `Deitado` (o
+			// cadaver dos 15 s, `ServerPlayer.Deitado`) e nao anda ate onde ha passagem. A guarda esta
+			// escrita mesmo assim porque ela e a metade barata do `Aging.dm:123` -- ver
+			// <see cref="OAlemNaoDeixaSair"/> pra a outra metade, a que importa.
+			// ==========================================================================================
+			if (pl.Ficha.dead && !Alem.EhOAlem(pl.Zone)) continue;
+
 			if (_acabouDeAtravessar.TryGetValue(pl.Id, out long livre) && agora < livre) continue;
 			if (!_passagens.TryGetValue(pl.Zone.Name, out List<Passagem>? lista)) continue;
 
@@ -105,6 +133,10 @@ public sealed partial class GameServer
 				// nao saiu. Ver `GameServer.SalaSessao.cs`.
 				if (APrisaoRecusaASaida(pl, p)) break;
 
+				// E O ALEM NAO DEIXA SAIR -- pelo mesmo motivo e no mesmo lugar que a prisao da Sala:
+				// a recusa responde ao GESTO, antes de a carencia ser armada.
+				if (OAlemNaoDeixaSair(pl, p)) break;
+
 				Atravessar(pl, p);
 				break;
 			}
@@ -122,6 +154,37 @@ public sealed partial class GameServer
 		GD.Print($"[server] {pl.Name}: {pl.Zone.Name} -> {p.Zona} ({destino})");
 
 		MoveToZone(pl.Id, ZoneKey.Premade(p.Zona), new Vec2(p.Dx, p.Dy));
+	}
+
+	/// <summary>
+	/// ============================ DO ALEM NAO SE SAI ANDANDO ============================
+	/// O `AgeCheck` do original resolve isto DEPOIS do fato: *"if(dead && !Planet in list("Heaven",
+	/// "Hell","Afterlife")) returning = 1"* (`Aging.dm:123`) -- ele acha o morto fora de lugar e o
+	/// reboca de volta pro checkpoint. Aqui a mesma regra e escrita como RECUSA, na porta, e o motivo
+	/// e que rebocar depois e o pior dos dois: o jogador chega em Namek, ve o cenario carregar, e e
+	/// puxado de volta -- que le como bug, e nao como regra.
+	///
+	/// ============================ ELA E DEFENSIVA HOJE, E DE PROPOSITO ============================
+	/// **Nenhuma passagem existente sai do alem**: as tres do z6 vao pro Ceu e pro Inferno, e as
+	/// desses dois voltam pro z6 (conferido nos `.passagens` convertidos). Ou seja este metodo nunca
+	/// recusa nada com os mapas de hoje -- e e exatamente por isso que ele precisa estar escrito.
+	///
+	/// A Serpentina (`Snake Way`) e um mapa do original, e o dia em que ela virar uma passagem do
+	/// Outro Mundo esta regra decide sozinha se o morto pode andar ate a Terra. No DM ela nem e
+	/// aberta a qualquer um: ha uma BARREIRA ESPIRITUAL na entrada (`barrier.dm:61-76`) que so cede a
+	/// quem tem `kaiTrainingAllowed` -- a licenca que o Enma da. Sem o Enma portado, "ninguem passa" e
+	/// a resposta certa, e nao a ausencia de resposta.
+	///
+	/// SE ELA VIRAR "SE O ENMA DEIXOU", e AQUI que a licenca entra.
+	/// ==========================================================================================
+	/// </summary>
+	private bool OAlemNaoDeixaSair(ServerPlayer pl, Passagem p)
+	{
+		if (!pl.Ficha.dead || !Alem.EhOAlem(pl.Zone) || Alem.EhOAlem(p.Zona)) return false;
+
+		Avisar(pl, "os seus pés não passam daqui. Quem está morto não volta ao mundo dos vivos "
+				   + "andando -- há um preço, e não é este.");
+		return true;
 	}
 
 	/// <summary>Esquece a carencia de quem saiu -- senao o dicionario cresce a sessao inteira.</summary>

@@ -1017,6 +1017,99 @@ public partial class CharacterVisual : Node2D
 	public bool AureolaVisivelDeTeste =>
 		_aureola != null && IsInstanceValid(_aureola) && _aureola.Visible;
 
+	/// <summary>
+	/// ============================ A CAIXA DE PIXEL ACESO DA AUREOLA -- SO PRA BANCADA ============================
+	/// Em coordenadas DESTE node (o `Visual`), que e irmao do <see cref="BalaoDeFala"/>: e nessa
+	/// regua que as duas coisas sobre a cabeca podem ser comparadas.
+	///
+	/// ============================ POR QUE O ALFA, E NAO O TILE ============================
+	/// O tile e 32x32 e responderia "a auréola ocupa o boneco inteiro" -- o que e falso e inutil: o
+	/// desenho mora nas quatro primeiras linhas (ver <see cref="SpriteDaAureola"/>), e e por isso que
+	/// o "sobre a cabeca" nao precisa de offset nenhum. A unica medida que responde a pergunta que
+	/// interessa -- *"o desenho da auréola invade o balao de fala?"* -- e o retangulo de pixel ACESO
+	/// do quadro que esta na tela agora.
+	///
+	/// A conta que isto substitui estava certa e era FEITA A MAO na entrega anterior ("o topo do tile
+	/// e -16, o balao senta em -26, sobram 10 px"). Conta na mao envelhece calada: quem mexer no
+	/// `BalaoDeFala.AlturaBase` ou trocar a folha por uma com o desenho mais alto nao tem como saber
+	/// que quebrou alguma coisa. Ver `RoboDoVelorio.ACaixaDosDois`.
+	///
+	/// Nulo quando nao ha auréola na tela -- e isso e uma resposta, nao um erro.
+	/// ========================================================================================================
+	/// </summary>
+	public Rect2? CaixaDaAureolaDeTeste => CaixaAcesaDe(_aureola);
+
+	/// <summary>
+	/// ============================ ONDE ESTA CAMADA ACENDE PIXEL, EM COORDENADAS DO `Visual` ============================
+	/// Era o corpo da <see cref="CaixaDaAureolaDeTeste"/> e virou funcao no dia em que uma segunda
+	/// bancada precisou da MESMA pergunta pra outra camada (<see cref="CaixaDosOlhosDeTeste"/>).
+	/// Copia-la teria sido a segunda conta de ancora do arquivo, e ancora errada por sinal trocado e
+	/// exatamente o defeito que o comentario la embaixo existe pra impedir.
+	///
+	/// **O ALFA E NAO O TILE**: o quadro e 32x32 e responderia "esta camada ocupa o boneco inteiro", o
+	/// que e falso pra todas elas -- o olho mora em quatro linhas de pixel, a auréola em outras quatro.
+	/// A unica medida util e o retangulo de pixel ACESO do quadro que esta na tela AGORA.
+	///
+	/// Nulo quando a camada nao existe, nao tem quadro ou tem o quadro todo transparente -- e isso e uma
+	/// resposta e nao um erro.
+	/// ==========================================================================================================
+	/// </summary>
+	private static Rect2? CaixaAcesaDe(AnimatedSprite2D? camada)
+	{
+		if (camada == null || !IsInstanceValid(camada) || camada.SpriteFrames is not { } f)
+			return null;
+
+		string anim = camada.Animation;
+		if (!f.HasAnimation(anim) || f.GetFrameCount(anim) == 0) return null;
+		if (f.GetFrameTexture(anim, Math.Clamp(camada.Frame, 0, f.GetFrameCount(anim) - 1))
+			is not { } tex) return null;
+		if (tex.GetImage() is not { } img) return null;
+
+		int x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1;
+		for (int y = 0; y < img.GetHeight(); y++)
+			for (int x = 0; x < img.GetWidth(); x++)
+			{
+				if (img.GetPixel(x, y).A <= 0.02f) continue;
+				if (x < x0) x0 = x;
+				if (y < y0) y0 = y;
+				if (x > x1) x1 = x;
+				if (y > y1) y1 = y;
+			}
+		if (x1 < 0) return null;   // quadro inteiramente transparente
+
+		// A MESMA ANCORA DO `Ancorar`: a camada e `Centered`, entao o canto do QUADRO fica em
+		// `Position + Offset - tamanho/2`. Refazer a conta aqui com outro sinal poria a caixa no
+		// lugar errado e a bancada mediria uma folga que nao existe.
+		Vector2 t = tex.GetSize();
+		Vector2 canto = camada.Position + camada.Offset - t * 0.5f;
+		return new Rect2(canto + new Vector2(x0, y0), new Vector2(x1 - x0 + 1, y1 - y0 + 1));
+	}
+
+	/// <summary>
+	/// ============================ ONDE OS OLHOS DESENHAM -- E ELA E O QUE TORNA O PEDIDO MEDIVEL ============================
+	/// Os olhos sao ~16 px de tela. Um recorte de 64x80 em volta do boneco tem 5120, e o que se mexe
+	/// sozinho la dentro (um dos cento e quarenta e oito cidadaos atravessando, a grama animada, a luz
+	/// do dia) ja mediu **300 px numa rodada** -- vinte vezes a coisa medida. Nenhuma quantidade de
+	/// repeticao conserta isso: o ruido nao era um pico, era um vizinho parado no quadro.
+	///
+	/// O conserto e ESPACIAL. Esta caixa diz onde a camada de olhos acende pixel, e a bancada compara
+	/// **so ali dentro** -- um transeunte a quarenta pixels de distancia deixa de existir pra medida.
+	///
+	/// Ela responde MESMO COM A CAMADA APAGADA (le a folha e o quadro, nao o `Visible`), e e isso que a
+	/// faz servir: e justamente sobre a larva -- onde os olhos NAO estao na tela -- que se precisa saber
+	/// onde eles CAIRIAM.
+	/// ====================================================================================================================
+	/// </summary>
+	public Rect2? CaixaDosOlhosDeTeste => CaixaAcesaDe(_olhos);
+
+	/// <summary>
+	/// Onde o CORPO desenha. Irma da <see cref="CaixaDosOlhosDeTeste"/>, e ela existe pela silhueta de
+	/// cinematica: a folha de luz e a silhueta do corpo, entao ela cai exatamente aqui -- e este e o
+	/// unico recorte que serve pros DOIS lados do contra-exemplo, porque quem nao tem silhueta nenhuma
+	/// (toda cena que nao e do bio) nao tem caixa de silhueta pra oferecer.
+	/// </summary>
+	public Rect2? CaixaDoCorpoDeTeste => CaixaAcesaDe(_corpo);
+
 	private static void Trocar(AnimatedSprite2D alvo, string caminho)
 	{
 		if (alvo.GetMeta("src", "").AsString() == caminho) return;   // ja e esse: nao reinicia a animacao
@@ -1063,7 +1156,17 @@ public partial class CharacterVisual : Node2D
 	// ANIMACAO
 	// =====================================================================
 	/// <summary>Traduz a pose que veio do servidor no nome do estado de animacao.</summary>
-	public void SetPose(Protocol.Pose pose) => SetState(pose switch
+	/// <param name="canalAtirando">
+	/// SO IMPORTA COM <see cref="Protocol.Pose.Canalizando"/>: o raio JA saiu da mao (`beaming`) ou o
+	/// corpo ainda esta reunindo energia (`charging`)? Ver o bloco do `blast` la embaixo.
+	///
+	/// TEM PADRAO `false` porque a esmagadora maioria dos chamadores sao bancadas que nunca mandam
+	/// esta pose (elas varrem `Normal`/`Atacando`/`Voando`), e o padrao delas e o certo: sem fase
+	/// declarada, um canal e um canal CARREGANDO -- que e o estado em que o corpo fica no idle, ou
+	/// seja o menos surpreendente dos dois. Os dois chamadores de PRODUCAO (`RemotePlayer.Receive` e
+	/// `LocalPlayer.PorAPoseDoCorpo`) passam a fase de verdade.
+	/// </param>
+	public void SetPose(Protocol.Pose pose, bool canalAtirando = false) => SetState(pose switch
 	{
 		Protocol.Pose.Treinando => "train",
 		Protocol.Pose.Meditando => "meditate",
@@ -1075,6 +1178,24 @@ public partial class CharacterVisual : Node2D
 		// tela e nao ganha sombra. Ver `Protocol.Pose`.
 		Protocol.Pose.Nadando => "flight",
 		Protocol.Pose.Nocauteado => "ko",
+		// ============================ O RAIO NA MAO DESENHA `blast`, E A FOLHA JA TINHA ============================
+		// `usr.icon_state = "Blast"` (`beams.dm:280` e as nove irmas), e as folhas convertidas trazem
+		// `blast_north/south/east/west` em 218 das 300 -- **importadas e nunca referenciadas por uma
+		// linha de C# ate aqui**.
+		//
+		// O dono chamou isso de "animacao de soco", e ele esta certo: nas folhas que tem os dois,
+		// `blast_*` e `attack_*` sao pixel a pixel iguais na grande maioria. Mas nao em todas -- Avatar,
+		// Custom_Icon, BaseAndroid1, os Demon e mais duas duzias tem desenho PROPRIO de raio. Por isso
+		// e `blast` e nao `attack`: reaproveitar o soco teria apagado a arte propria de quem a tem.
+		//
+		// A PARTE QUE ESTA POSE **NAO** RESOLVE E A CARGA. No original, carregar nao escreve
+		// `icon_state` nenhum (o bloco de carga do verb so poe `forceicon`, som e o overlay --
+		// `beams.dm:288-300`), e ha ate a prova de que foi tentado e desistido: no Boom Wave a linha
+		// esta la, comentada -- `//usr.icon_state="Blast"` (`beams.dm:485`). Quem desenha a carga e um
+		// OVERLAY por cima do corpo parado (`CargaDeRaioVisual`), e por isso a fase vem separada da
+		// pose. Ver `EntityState.Canal`.
+		// ======================================================================================================
+		Protocol.Pose.Canalizando => canalAtirando ? "blast" : "default",
 		_ => "default",
 	});
 
@@ -1218,6 +1339,51 @@ public partial class CharacterVisual : Node2D
 
 	/// <summary>A animacao que o CORPO esta tocando agora. Pra bancada -- ver `--diagforma`.</summary>
 	public string PoseDeTeste => _corpo?.Animation.ToString() ?? "";
+
+	/// <summary>
+	/// O QUADRO QUE O CORPO ESTA DESENHANDO AGORA, em pixels. Pra bancada -- ver `--diagpose`.
+	///
+	/// ============================ POR QUE O NOME DA ANIMACAO NAO BASTAVA ============================
+	/// O <see cref="PoseDeTeste"/> ali em cima responde "qual estado", e uma bancada que so o lesse
+	/// ficaria verde com a folha inteira desenhando o mesmo boneco em `default_east` e `blast_east` --
+	/// que e literalmente o defeito que a `--diagbio` existe pra pegar noutro sistema (quatro degraus,
+	/// quatro nomes, um sprite so).
+	///
+	/// Aqui sai o PIXEL, e ele e o pixel que esta na tela: a textura do quadro corrente
+	/// (`Animation` + `Frame`), e nao o quadro 0 nem a folha. Comparar dois destes responde "o corpo
+	/// mudou de desenho" sem passar pela camera, pelo cenario, pelo brilho da carga nem pelo proprio
+	/// feixe -- que sao justamente as quatro coisas que fariam uma foto de tela mudar sozinha.
+	/// ============================================================================================
+	///
+	/// DUPLICA ANTES DE CONVERTER de proposito: num `ImageTexture` o `GetImage` devolve a imagem
+	/// INTERNA da textura, e um `Convert` nela reescreveria o que o jogo esta desenhando. (Num
+	/// `AtlasTexture` -- o caso das folhas do BYOND -- ele ja devolve um recorte novo, mas a bancada
+	/// nao pode depender de qual dos dois a folha virou na importacao.)
+	/// </summary>
+	/// <param name="primeiro">
+	/// PEGAR O QUADRO ZERO em vez do que esta na tela -- e a distincao existe por uma medida.
+	///
+	/// O idle destas folhas ANIMA (respiracao), entao duas fotos do mesmo `default_south` caem em
+	/// quadros diferentes do ciclo: a primeira rodada da `--diagpose` mediu 8 px de diferenca entre
+	/// dois quadros da MESMA pose. Isso e ruido pra quem pergunta "e o mesmo desenho?" e nao e ruido
+	/// nenhum pra quem pergunta "mudou?" -- fase so ADICIONA diferenca, nunca esconde.
+	///
+	/// Por isso as duas leituras existem e cada pergunta usa a sua: "mudou" olha a tela (padrao),
+	/// "e o mesmo" olha o quadro zero.
+	/// </param>
+	public Image? QuadroDoCorpoDeTeste(bool primeiro = false)
+	{
+		if (_corpo is not { } s || !IsInstanceValid(s) || s.SpriteFrames is not { } f) return null;
+		string anim = s.Animation.ToString();
+		if (anim.Length == 0 || !f.HasAnimation(anim) || f.GetFrameCount(anim) == 0) return null;
+
+		int quadro = primeiro ? 0 : Math.Clamp(s.Frame, 0, f.GetFrameCount(anim) - 1);
+		if (f.GetFrameTexture(anim, quadro)?.GetImage() is not { } img || img.IsEmpty()) return null;
+
+		var copia = (Image)img.Duplicate();
+		copia.Convert(Image.Format.Rgba8);
+		return copia;
+	}
 
 	/// <summary>Se a pose esta trancada pela cinematica. Pra bancada.</summary>
 	public bool PoseTravadaDeTeste => _travado;
@@ -1627,7 +1793,11 @@ public partial class CharacterVisual : Node2D
 	/// deveria estar apagando essa borda.
 	/// ==================================================================================================
 	/// </summary>
-	private bool EhSilhueta(AnimatedSprite2D s) => !ReferenceEquals(s, _olhos) && !EhColada(s);
+	// E A SILHUETA DE CENA SAI PELO MESMO ARGUMENTO, so que mais forte: ela E o traco de fora do
+	// lutador, desenhado em luz por cima dele (ver `SilhuetaDeCena`). Contorna-la seria pintar a
+	// mesma borda duas vezes, no mesmo pixel, com o segundo tracado por cima do primeiro.
+	private bool EhSilhueta(AnimatedSprite2D s) =>
+		!ReferenceEquals(s, _olhos) && !ReferenceEquals(s, _silhuetaDeCena) && !EhColada(s);
 
 	/// <summary>As duas pontas do contorno. <see cref="_outraCorDoContorno"/> nulo = nao oscila.</summary>
 	private Color _corDoContorno = Colors.White;
@@ -2042,7 +2212,80 @@ public partial class CharacterVisual : Node2D
 	/// boneco, e solta-lo faria o macaco andar fora de compasso com as pernas que ele mesmo desenha.
 	/// ==================================================================================================
 	/// </summary>
-	private bool EhEfeito(AnimatedSprite2D s) => EhColada(s);
+	// A SILHUETA DE CENA E EFEITO PELA MESMA DEFINICAO: ela casa a POSE e a DIRECAO do corpo (e por
+	// isso e camada e nao node solto), mas o QUADRO e da folha dela -- a `bioto2` cicla os 8 quadros
+	// dela no proprio ritmo enquanto o corpo anda no dele. Travada na fase do corpo, ela ficaria presa
+	// no quadro 0 durante os 28 s da cena, que e o slideshow que este bloco existe pra explicar.
+	private bool EhEfeito(AnimatedSprite2D s) => EhColada(s) || ReferenceEquals(s, _silhuetaDeCena);
+
+	// =====================================================================
+	// A SILHUETA DE LUZ DA CINEMATICA -- `Efeito.SilhuetaDoCorpo`
+	// =====================================================================
+	/// <summary>
+	/// ACIMA DE TUDO, inclusive das coladas (12).
+	///
+	/// No DM ela e `plane = 7` nas tres cinematicas do bio (`imperfecttrans.dm:6`,
+	/// `perfecttrans.dm:6`, `DNALabs.dm:564`) -- o plano mais alto que aquele codigo usa pra alguma
+	/// coisa desenhada em cima do corpo. E o que 13 faz aqui: ela e a SILHUETA DELE se reescrevendo,
+	/// entao nao pode ficar debaixo de roupa, de cabelo, nem do brilho de ki.
+	/// </summary>
+	private const int OrdemDaSilhuetaDeCena = 13;
+
+	private AnimatedSprite2D? _silhuetaDeCena;
+
+	/// <summary>
+	/// ACENDE (ou apaga) A SILHUETA DE LUZ QUE A CINEMATICA VESTE POR CIMA DO CORPO.
+	///
+	/// `null` apaga -- e apagar e o gesto do fim da cena. Ver <see cref="Jandirus.Core.Forms.Efeito.SilhuetaDoCorpo"/>
+	/// sobre por que ela e um ESTADO com dois donos (o beat acende, o `Assumir` apaga) e nao um pulso.
+	///
+	/// ============================ ELA E CAMADA, E NAO UM NODE SOLTO ============================
+	/// A alternativa era um `AnimatedSprite2D` filho do ator, como a chama da cena (`_auraGrande` da
+	/// <see cref="Transformacao"/>). Nao serve: a folha e 32x32 com uma animacao POR DIRECAO
+	/// (`bioto2` traz `default_*`, `bioto3` traz `walk_*`), ou seja ela e desenhada pra vestir o
+	/// corpo pose por pose -- exatamente como as coladas. Fora da pilha ela nao passaria pelo
+	/// `Aplicar`, e o `Escolher` (com a cadeia de substitutas que ja resolve `default_<dir>` e
+	/// `walk_<dir>`) teria que ser reescrito aqui.
+	///
+	/// Como camada, ela ganha de graca: a direcao certa, o `sync` do relogio solto (ela e EFEITO, ver
+	/// <see cref="EhEfeito"/>) e o sumico dentro do Oozaru pela <see cref="Escondida"/>.
+	///
+	/// ============================ E ELA NAO ENTRA NO CONTORNO ============================
+	/// Pelo mesmo motivo das coladas (ver <see cref="EhSilhueta"/>): contorno e o traco de fora do
+	/// LUTADOR, e isto e luz por cima dele. Pior aqui do que la, alias -- esta folha e literalmente a
+	/// silhueta do corpo, entao contorna-la desenharia a borda duas vezes no mesmo pixel.
+	/// </summary>
+	public void SilhuetaDeCena(string? caminho)
+	{
+		if (string.IsNullOrEmpty(caminho))
+		{
+			if (_silhuetaDeCena == null) return;
+			if (IsInstanceValid(_silhuetaDeCena)) Descartar(_silhuetaDeCena);
+			_silhuetaDeCena = null;
+			Reordenar();
+			return;
+		}
+
+		if (_silhuetaDeCena != null && !IsInstanceValid(_silhuetaDeCena)) _silhuetaDeCena = null;
+		_silhuetaDeCena ??= NovaCamada(OrdemDaSilhuetaDeCena);
+		Trocar(_silhuetaDeCena, caminho);
+
+		// SEM TINTA: a folha ja e branco-ciano desenhado. `Tinta.Nenhuma` e SOMA com zero -- ver o
+		// bloco do tipo `Tinta`. A camada e reciclada entre cenas, e o material (com a tinta gravada
+		// nele) sobrevive; sem esta linha uma silhueta herdaria a cor da anterior.
+		Tingir(_silhuetaDeCena, Tinta.Nenhuma);
+
+		// CAMADA NOVA NASCE VISIVEL E SEM POSE. Quem escolhe a animacao e escreve o `sync` e o
+		// `Aplicar` -- e sem ele a folha ficaria presa no quadro 0 de nada, exatamente o tombo que o
+		// `CorpoDaForma` ja documenta logo acima.
+		Aplicar(force: true);
+		Reordenar();
+	}
+
+	/// <summary>A silhueta de cena acesa agora, ou nulo. Pra bancada.</summary>
+	public string? SilhuetaDeCenaDeTeste =>
+		_silhuetaDeCena != null && IsInstanceValid(_silhuetaDeCena)
+			? _silhuetaDeCena.GetMeta("src", "").AsString() : null;
 
 	/// <summary>Quantas camadas coladas estao instaladas agora. Pra bancada.</summary>
 	public int ColadasDeTeste => _coladas.Count;
@@ -2234,9 +2477,84 @@ public partial class CharacterVisual : Node2D
 	{
 		if (ReferenceEquals(s, _corpoDaForma)) return false;
 		if (_criatura) return true;
+		if (ReferenceEquals(s, _olhos)) return !CorpoComRosto;
 		return ReferenceEquals(s, _rabo)
 			&& Jandirus.Core.Forms.Catalogo.FolhaTrazORabo(_simboloDoCorpo);
 	}
+
+	/// <summary>
+	/// O CORPO QUE ESTE BONECO VESTE AGORA DESENHA UM ROSTO? -- e a pergunta que apaga os olhos da
+	/// larva do bio-androide, e de qualquer corpo que nao seja de uma pessoa.
+	///
+	/// ============================ QUEM RESPONDE E O CORE, E SAO DUAS PERGUNTAS PORQUE HA DUAS FOLHAS ============================
+	/// A camada de olhos e INCONDICIONAL (`Vestir` a cria sempre que o catalogo tem a folha, e o
+	/// `visual.json` tem uma so, global -- nao ha tabela por raca como o `SemCabelo`), e a unica
+	/// autoridade que apagava camada era a `_criatura`, derivada da ALTURA do quadro. A larva e 32x32
+	/// como todo mundo, entao passava por baixo dela e as pupilas ficavam flutuando sobre a barata --
+	/// que e literalmente a foto que o dono mandou.
+	///
+	/// O CORPO DE FORMA MANDA QUANDO EXISTE, porque e ele que esta na tela: um bio na Super Perfeita
+	/// veste a `Bio Android 4`, que tem rosto, por cima de um corpo perfeito que tambem tem. Sem
+	/// camada de forma quem responde e a ficha (o degrau do bio mora em `Appearance.Corpo`, como o
+	/// corpo de qualquer raca -- ver `Races.BioAndroids.Corpos`).
+	///
+	/// FICHA NULA = TEM ROSTO. E o boneco que ainda nao se vestiu (a previa da criacao monta um antes
+	/// de haver aparencia), e o lado certo do erro: uma camada a mais some no quadro seguinte, uma
+	/// camada apagada por engano some pra sempre.
+	/// ======================================================================================================================
+	/// </summary>
+	private bool CorpoComRosto =>
+		_olhosForcados ?? (_corpoDaForma != null && IsInstanceValid(_corpoDaForma)
+			? Jandirus.Core.Forms.Catalogo.FolhaTemRosto(_simboloDoCorpo)
+			: _ficha == null || VisualCatalog.CorpoTemRosto(_ficha, _racaDaFicha));
+
+	private bool? _olhosForcados;
+
+	/// <summary>
+	/// ============================ O DEFEITO DA CAMADA DE OLHOS, INJETAVEL ============================
+	/// **NULO EM JOGO, SEMPRE** -- ninguem alem da bancada escreve aqui, e com nulo o `??` acima
+	/// devolve a regra do Core sem mudar um bit do que a producao faz.
+	///
+	/// Ele existe porque a pergunta do dono e de PIXEL e nao de bandeira: *"os bio androides o OLHO
+	/// FICA VOANDO na forma de BARATA"*. A bancada que ja media isto perguntava ao node
+	/// (<see cref="OlhosVisiveisDeTeste"/>) se a camada estava ligada -- que e a licao que esta casa
+	/// tem escrita como *"uniform escrito nao e pixel desenhado"*. Duas fotos do MESMO quadro, uma com
+	/// a regra e outra sem, medem a outra metade: **quantos pixels da tela sao o olho**. Zero delas
+	/// prova que a barata esta limpa; um numero maior que zero na foto forcada prova que o desenho
+	/// REALMENTE chegaria ali -- ou seja, que o conserto esta fazendo trabalho e nao decorando.
+	///
+	///   `true`  -- forca os olhos ACESOS: e literalmente o defeito que o dono fotografou;
+	///   `false` -- forca APAGADOS: o defeito OPOSTO, um port que perdeu a camada de olhos inteira;
+	///   `null`  -- producao.
+	///
+	/// ============================ E ELE **NAO** PASSA PELO `Aplicar`, E ISSO CUSTOU UMA RODADA ============================
+	/// A primeira versao chamava `Aplicar(force: true)` -- que e o que o resto da classe faz pra
+	/// reavaliar camada. So que ele nao reavalia: ele REINICIA. `_relogio = 0`, `Stop()` e `Frame = 0`
+	/// em TODAS as camadas, o que joga o corpo inteiro pro primeiro quadro do ciclo de animacao.
+	///
+	/// Numa bancada que compara dois quadros consecutivos isso e catastrofico e **silencioso**: a
+	/// rodada saiu com "forcando ACESO muda 56 px" num corpo humano cuja producao JA desenha os olhos
+	/// -- e os 56 px eram o corpo inteiro voltando ao quadro 0, nao olho nenhum. A medida ficou
+	/// vermelha dizendo a coisa errada, que e melhor que ficar verde dizendo a coisa errada, mas so.
+	///
+	/// Aqui so a camada de olhos e tocada, e so o `Visible` dela.
+	/// ==================================================================================================================
+	/// </summary>
+	public bool? OlhosForcadosDeTeste
+	{
+		get => _olhosForcados;
+		set
+		{
+			if (_olhosForcados == value) return;
+			_olhosForcados = value;
+			if (_olhos != null && IsInstanceValid(_olhos) && _olhos.SpriteFrames != null)
+				_olhos.Visible = !Escondida(_olhos);
+		}
+	}
+
+	/// <summary>Os olhos estao desenhados neste instante? Pra bancada -- ver <see cref="CorpoComRosto"/>.</summary>
+	public bool OlhosVisiveisDeTeste =>
+		_olhos != null && IsInstanceValid(_olhos) && _olhos.Visible;
 
 	/// <summary>
 	/// O MACACO CRESCE, E ISSO E DO DM. `Oozaru.dm:141-149`:
@@ -2531,6 +2849,37 @@ public partial class CharacterVisual : Node2D
 		_corpoDaForma != null && IsInstanceValid(_corpoDaForma)
 			? _corpoDaForma.SpriteFrames?.ResourcePath ?? "" : "";
 
+	/// <summary>
+	/// ============================ O PIXEL DA CAMADA DE FORMA -- IRMA DO <see cref="QuadroDoCorpoDeTeste"/> ============================
+	/// Aquele le so o corpo BASE (`_corpo`), e por isso ele e cego pra metade das trocas de corpo deste
+	/// jogo: o bio troca a folha da base, mas o Oozaru **nao troca folha nenhuma la** -- ele APAGA a base
+	/// (`CorpoBaseVisivelDeTeste` vira falso) e desenha `_corpoDaForma` por cima.
+	///
+	/// A cegueira foi medida e nao suposta: a primeira rodada do `--diagfilme` reprovou a linha do sprite
+	/// do Oozaru com o filme inteiro CERTO em todas as outras cinco. O `QuadroDoCorpoDeTeste` devolvia o
+	/// mesmo `NewPaleMale` do primeiro ao ultimo quadro -- verdade, e irrelevante: aquele sprite nao
+	/// estava mais na tela.
+	///
+	/// Quem pergunta "o desenho do corpo mudou?" tem que ler a camada que esta DESENHANDO, e sao duas.
+	/// O `primeiro` tem o mesmo sentido exato da irma -- ver a documentacao do parametro la.
+	/// ==============================================================================================================================
+	/// </summary>
+	public Image? QuadroDoCorpoDaFormaDeTeste(bool primeiro = false)
+	{
+		if (_corpoDaForma is not { } s || !IsInstanceValid(s) || s.SpriteFrames is not { } f) return null;
+		string anim = s.Animation.ToString();
+		if (anim.Length == 0 || !f.HasAnimation(anim) || f.GetFrameCount(anim) == 0) return null;
+
+		int quadro = primeiro ? 0 : Math.Clamp(s.Frame, 0, f.GetFrameCount(anim) - 1);
+		if (f.GetFrameTexture(anim, quadro)?.GetImage() is not { } img || img.IsEmpty()) return null;
+
+		// DUPLICA ANTES DE CONVERTER, pelo mesmo motivo escrito na irma: num `ImageTexture` o `GetImage`
+		// devolve a imagem INTERNA e um `Convert` nela reescreveria o que o jogo esta desenhando.
+		var copia = (Image)img.Duplicate();
+		copia.Convert(Image.Format.Rgba8);
+		return copia;
+	}
+
 	/// <summary>Que animacao a camada de forma esta tocando. Vazio = nenhuma. Pra bancada.</summary>
 	public string PoseDoCorpoDaFormaDeTeste =>
 		_corpoDaForma != null && IsInstanceValid(_corpoDaForma) ? _corpoDaForma.Animation.ToString() : "";
@@ -2540,6 +2889,25 @@ public partial class CharacterVisual : Node2D
 	/// (`Oozaru.dm:123-125`: o macaco nao veste nada, ele SUBSTITUI o mob).
 	/// </summary>
 	public bool CorpoBaseVisivelDeTeste => _corpo != null && IsInstanceValid(_corpo) && _corpo.Visible;
+
+	/// <summary>
+	/// QUAL folha o corpo BASE esta vestindo. Vazio = nenhuma. Pra bancada.
+	///
+	/// ============================ IRMA DA <see cref="FolhaDoCorpoDaFormaDeTeste"/>, E ELA FALTAVA ============================
+	/// A da FORMA existia porque o corpo musculoso precisava dela; a do corpo base nao, porque ate
+	/// agora nenhuma raca trocava o proprio corpo em jogo. O **bio-androide troca quatro vezes** (a
+	/// larva, o imperfeito, o semi e o perfeito sao quatro `.dmi` diferentes -- `DNALabs.dm` troca
+	/// `icon` **e** `oicon` a cada evolucao), e sem esta linha uma escada em que os quatro degraus
+	/// desenhassem o MESMO sprite passaria por qualquer bancada de numero: o degrau esta certo na
+	/// ficha, o pacote chega, o node existe, e a criatura nao muda de cara.
+	///
+	/// SAI DO `Meta("src")` E NAO DO `SpriteFrames.ResourcePath` porque o segundo devolve vazio pra
+	/// recurso que veio de cache -- e ai a bancada leria "sem folha" nos dois degraus e chamaria de
+	/// diferenca. O `src` e escrito pelo `Trocar`, que e o unico caminho que veste corpo.
+	/// ==========================================================================================================================
+	/// </summary>
+	public string FolhaDoCorpoDeTeste =>
+		_corpo != null && IsInstanceValid(_corpo) ? _corpo.GetMeta("src", "").AsString() : "";
 
 	/// <summary>
 	/// A forca PEDIDA do contorno -- o TOPO do pulso, e nao o que esta desenhado neste quadro. Pra
@@ -2919,7 +3287,25 @@ public partial class CharacterVisual : Node2D
 
 		// peca sem POSE PARADA propria usa o primeiro quadro da caminhada, e vice-versa --
 		// varias roupas so trazem uma das duas
-		string outra = fam == "walk" ? "default" : fam == "default" ? "walk" : "";
+		//
+		// ============================ E O RAIO CAI NO SOCO, E NAO NA CAMINHADA ============================
+		// 218 das 300 folhas de personagem trazem `blast_*`; 41 tem `attack_*` e NAO tem `blast_*`
+		// (Big Broly, Hatchiyack, Demon - Form 1/4, os dragoes e varios NPCs). Sem este degrau elas
+		// desciam a escada inteira sem casar e paravam no `walk_<dir>` la embaixo: quem atira um raio
+		// com uma dessas folhas apareceria em POSE DE ANDAR com o feixe saindo da mao -- e no jogo isso
+		// nao seria lido como "falta arte", seria lido como "a pose do raio nao funciona".
+		//
+		// O soco e o parente certo e nao um chute: nas 177 folhas que tem os DOIS estados, `blast_*` e
+		// `attack_*` sao pixel a pixel identicos na esmagadora maioria -- o `blast` proprio e a excecao
+		// (e quem o tem nem chega aqui, casa no primeiro degrau). Ou seja este degrau devolve
+		// exatamente o que a folha teria desenhado se tivesse o estado.
+		//
+		// A SETA E DE MAO UNICA de proposito: `blast` cai em `attack`, e `attack` **nao** cai em
+		// `blast`. Socar e comum e vale pra toda folha; deixar o soco pegar arte de raio poria feixe na
+		// mao de quem so deu um cruzado, nas 41 folhas ao contrario.
+		// =============================================================================================
+		string outra = fam == "walk" ? "default" : fam == "default" ? "walk"
+					 : fam == "blast" ? "attack" : "";
 		if (outra.Length > 0)
 		{
 			if (f.HasAnimation($"{outra}_{dir}")) return $"{outra}_{dir}";

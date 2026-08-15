@@ -460,7 +460,7 @@ public partial class GameServer
 	/// </summary>
 	private void OMundoSorteadoDeVerdade(ServerPlayer pl, string arq)
 	{
-		if (AcharPlanetaGerado() is not { } p)
+		if (AcharPlanetaGerado(SeedDoUniverso) is not { } p)
 		{
 			AfirmarObra("ha um mundo SORTEADO no universo de producao pra erguer uma bancada", false,
 						"nenhum procedural nas chunks varridas");
@@ -593,17 +593,21 @@ public partial class GameServer
 		// A ULTIMA E A QUE FECHA O CIRCUITO: a chave que voltou do disco tem que bater com a que o
 		// UNIVERSO calcula hoje pra aquele corpo celeste, re-enumerado da celula, sem nada guardado.
 		AfirmarObra("...e a chave de cada uma bate com a que o universo reenumera da celula",
-					_noChao.Exists(o => o.Zona.Equals(ChaveReenumerada(par.CelA, par.A.Seed)))
-					&& _noChao.Exists(o => o.Zona.Equals(ChaveReenumerada(par.CelB, par.B.Seed))));
+					_noChao.Exists(o => o.Zona.Equals(ChaveReenumerada(SeedDoUniverso, par.CelA, par.A.Seed)))
+					&& _noChao.Exists(o => o.Zona.Equals(ChaveReenumerada(SeedDoUniverso, par.CelB, par.B.Seed))));
 	}
 
 	/// <summary>
 	/// A chave de um corpo celeste, calculada DE NOVO a partir da celula -- e o que o cliente e o
 	/// pouso fazem depois de um boot, quando nao ha nada carregado alem da seed do universo.
+	///
+	/// A SEMENTE VEM POR PARAMETRO, e e a que o servidor esta rodando: a afirmacao e "a chave que
+	/// voltou do disco bate com a que ESTE universo reenumera", e ela so vale se as duas pontas
+	/// olharem o mesmo universo.
 	/// </summary>
-	private static ZoneKey ChaveReenumerada(SistemaId cel, ulong seedDoCorpo)
+	private static ZoneKey ChaveReenumerada(ulong semente, SistemaId cel, ulong seedDoCorpo)
 	{
-		if (Sistemas.Do(SeedDoUniverso, cel.Sx, cel.Sy) is { } s)
+		if (Sistemas.Do(semente, cel.Sx, cel.Sy) is { } s)
 			foreach (PlanetaNoEspaco q in s.Planetas())
 				if (q.Seed == seedDoCorpo) return ZoneKey.Procedural(q.Nome, q.Seed);
 

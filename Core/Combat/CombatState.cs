@@ -127,8 +127,74 @@ public sealed class CombatState
 	/// </summary>
 	public double Carencia;
 
-	/// <summary>Nao pode ser atingido agora.</summary>
-	public bool Intocavel => Carencia > 0;
+	/// <summary>
+	/// ============================ ESTE CORPO ESTA PRESO NUMA CINEMATICA AGORA? ============================
+	/// O dono: *"durante cinematicas de transformacao, o personagem ficaria IMUNE A DANOS pra ninguem
+	/// poder MATAR o player ou NPCs enquanto ele transforma"*.
+	///
+	/// **E PORTE, NAO DESENHO NOVO.** No DM a flag existe e se chama `attackable`, e ela nao mora na
+	/// proc da cena -- mora nas procs que a CHAMAM, envolvendo a chamada: `supersaiyanbuff.dm:314`
+	/// zera, `:320` roda o `SSJCinematic()`, `:350` devolve o um; o mesmo par cerca o USSJ (`:387`/
+	/// `:410`), o SSJ2 (`:435`/`:467`), o SSJ3 (`:480`/`:530`) e mais quatro degraus, e se repete em
+	/// `lssjbuff.dm`, `IcerTransform.dm:102-104`, `HeranBuff.dm:99`, `perfecttrans.dm:3` e
+	/// `imperfecttrans.dm:3`. O `move = 0` das procs de cena NAO e a imunidade: em `attack cmn.dm:98`
+	/// o `move` e do ATACANTE e o `attackable` e do ALVO -- portar so o `move` seria portar metade.
+	///
+	/// **GANCHO E NAO CAMPO**, pelo mesmo motivo do <see cref="NegarMorte"/> la embaixo: quem sabe da
+	/// cena e o servidor (`ServerPlayer.CenaSegundos`, escrito so pelo `MarcarCena` e abatido so pelo
+	/// `TickDaForma`), e o Core nao conhece forma, cliente nem cinematica. **Ele PERGUNTA, ele nao
+	/// guarda.** Um segundo bit aqui precisaria ser apagado em todo jeito de a cena acabar -- o prazo
+	/// vencendo, o nocaute no meio dela, a morte, a reversao pra base -- e este port ja perdeu duas
+	/// vezes exatamente assim (`Alem.MsNoAlem` e a aureola). Derivado, o escudo cai no MESMO gesto em
+	/// que a cena cai, e nao ha linha pra ninguem esquecer.
+	///
+	/// Instalado uma vez por corpo, no `GameServer.PrepararCombate` -- que e por onde passam o jogador
+	/// (`Entrar`) e o corpo sem dono (`PorNoMundo`), entao **NPC tem o mesmo escudo que o jogador**,
+	/// sem crivo por tipo de corpo.
+	/// ==================================================================================================
+	/// </summary>
+	public Func<bool>? EmCinematica;
+
+	/// <summary>
+	/// NAO PODE SER ATINGIDO AGORA -- e as duas razoes moram na MESMA pergunta de proposito.
+	///
+	/// Sao dezoito leitores espalhados pelo servidor (a busca do soco, o arranque, a mira, o varredor
+	/// do projetil, o cone das tecnicas, o embate de ki, o dano em area). Uma segunda propriedade pra
+	/// a imunidade de cinematica significaria visitar os dezoito e acertar todos -- e o que sobrasse
+	/// seria o "as vezes" que ninguem consegue reproduzir.
+	/// </summary>
+	public bool Intocavel => Carencia > 0 || EmCinematica?.Invoke() == true;
+
+	/// <summary>
+	/// ============================ ESTE CORPO ESTA SENDO ARREMESSADO AGORA? ============================
+	/// **PORTE QUE FALTAVA, E ELE E LITERAL.** O efeito de knockback do DM escreve DUAS linhas ao entrar
+	/// (`Movement Effects.dm:39-40`):
+	///
+	///     target.KB += 1
+	///     target.canfight -= 1        &lt;-- esta
+	///
+	/// e as devolve ao sair (`:52-53`). E `canfight` e a **primeira** recusa do `testAttack()`
+	/// (`attack_bck.dm:175`: `if(attacking || ... || !canfight || KO ...) return FALSE`), que e o portao
+	/// de todo `Attack()` do jogo. Ou seja: **no original, quem esta voando pelo golpe do outro NAO SOCA.**
+	///
+	/// O port tinha portado o `KB` (o <see cref="ServerPlayer.TiquesDeVoo"/>, que ja deita o corpo e
+	/// recusa o passo) e **nao** o `canfight`. O resultado media exatamente o relato do dono: o corpo
+	/// arremessado continuava aceitando `Atacar` durante os 0,8-0,9 s de voo, e cada um daqueles socos
+	/// saia do ramo do vazio (`AlvoNaFrente` devolve nulo porque o inimigo ficou 512 px pra tras) --
+	/// **animacao e assobio de soco no ar, sem dodge, sem mensagem e sem acerto**. *"por uns segundos
+	/// (1 ou 2) MEUS SOCOS N ACERTAM ELE"*: um ou dois segundos e a duracao do voo.
+	///
+	/// **GANCHO E NAO CAMPO**, pelo mesmo motivo do <see cref="EmCinematica"/> logo acima: quem sabe do
+	/// voo e o servidor (`ServerPlayer.TiquesDeVoo`, escrito so pelo `Arremessar` e abatido so pelo
+	/// `TickDoEmpurrao`), e o Core nao conhece tique de voo nem correcao de posicao. Derivado, a recusa
+	/// morre no MESMO instante em que o voo morre -- inclusive quando ele acaba na parede, no outro
+	/// corpo ou porque o `Arremessar` foi chamado de novo. Nao ha bit pra ninguem esquecer de apagar.
+	///
+	/// Instalado uma vez por corpo, no `GameServer.PrepararCombate` -- entao **NPC e clone tem a mesma
+	/// recusa que o jogador**, sem crivo por tipo de corpo.
+	/// ==================================================================================================
+	/// </summary>
+	public Func<bool>? SendoArremessado;
 
 	/// <summary>
 	/// Composicao do golpe por tipo, e o que o corpo resiste. Os defaults sao os do jogo:
@@ -150,6 +216,34 @@ public sealed class CombatState
 	/// criaria duas verdades, e a que o jogador ve (a barra) e sempre a do corpo.
 	/// </summary>
 	public void SincronizarVida() => F.HP = Corpo.Vida();
+
+	/// <summary>
+	/// ============================ O FUNIL UNICO DO DANO NUM MEMBRO ============================
+	/// Todo dano que ENCOSTA neste corpo entra por aqui: o soco (<see cref="MeleeResolver"/>), o raio
+	/// de ki, a explosao e o dano em area (`EspalharDanoG3`), o esmagamento por gravidade, o calor da
+	/// estrela, a sobrecarga da carga de Ki, o Kaio-ken que cobra o proprio corpo e o recuo da Aura of
+	/// Destruction.
+	///
+	/// **ELE NASCEU MEDIDO, E O NUMERO E O ARGUMENTO**: havia SETE chamadas de `Corpo.Ferir` fora de
+	/// bancada e QUATRO delas nao passavam por crivo nenhum -- o calor da estrela (`GameServer.Sol`), o
+	/// recuo da aura, a sobrecarga de Ki e o Kaio-ken. Uma imunidade escrita so no caminho do soco e
+	/// uma imunidade que o RAIO ignora, e quem morre transformando reporta "as vezes", que e o defeito
+	/// que nao se acha. Com o funil, o crivo e um so e uma fonte nova de dano ja nasce coberta.
+	///
+	/// **DEVOLVE SE O CORPO REALMENTE PERDEU VIDA.** Quem conta nocaute e morte DEPOIS do laco precisa
+	/// saber disso: um corpo que ja estava no limiar do nocaute quando a cena comecou cairia por um
+	/// dano que nao aconteceu, e o escudo teria derrubado quem ele protegia.
+	///
+	/// `Corpo.Ferir` continua publico e sem crivo -- as bancadas machucam corpo de proposito, e uma
+	/// bancada que nao consegue mais quebrar um membro nao mede nada.
+	/// ========================================================================================
+	/// </summary>
+	public bool Ferir(BodyPart membro, double dano, bool letal)
+	{
+		if (Intocavel || dano <= 0) return false;
+		Corpo.Ferir(membro, dano, letal);
+		return true;
+	}
 
 	/// <summary>Passagem de tempo: cronometros, guarda, saida do nocaute.</summary>
 	public void Tick(double dt)
@@ -173,8 +267,16 @@ public sealed class CombatState
 		}
 	}
 
-	/// <summary>Pode golpear agora? Nocauteado, morto ou atordoado, nao.</summary>
-	public bool PodeAtacar() => !F.dead && !F.KO && Stun <= 0 && Recarga <= 0;
+	/// <summary>
+	/// Pode golpear agora? Nocauteado, morto, atordoado, ARREMESSADO, ou ainda em recarga: nao.
+	///
+	/// A ordem e a do `testAttack()` do DM (`attack_bck.dm:175`), e as quatro primeiras recusas dele
+	/// estao todas aqui: `attacking` (a <see cref="Recarga"/>), `!canfight` (o <see cref="Stun"/> **e**
+	/// o <see cref="SendoArremessado"/> -- os dois escrevem `canfight -= 1` la, `Movement Effects.dm:40`
+	/// e `:93`), `KO` e a morte.
+	/// </summary>
+	public bool PodeAtacar() =>
+		!F.dead && !F.KO && Stun <= 0 && Recarga <= 0 && SendoArremessado?.Invoke() != true;
 
 	/// <summary>
 	/// Ergue ou baixa a guarda. Subir REARMA o cronometro (e ele que decide o contra-ataque)
