@@ -684,7 +684,7 @@ public partial class GameServer
 	/// derrotado se reerguer (15s)"*. O `sleep(150)` do BYOND e 150/10 s.
 	///
 	/// ============================ ELE **SUBSTITUI** O NOCAUTE COMUM, e nao se soma a ele ============================
-	/// `MeleeResolver.SegundosDeNocaute` e 12, e e ele que estaria valendo: o reflexo levantaria
+	/// `MeleeResolver.TetoDoNocaute` e 12, e e ele que estaria valendo: o reflexo levantaria
 	/// sozinho tres segundos antes -- com os nucleos no piso do `Levantar()` (1,5x o limiar de quebra),
 	/// ou seja de pe e quase caindo de novo. O que este numero faz e REESCREVER aquele relogio no
 	/// instante da queda, pra a contagem ser uma so.
@@ -711,6 +711,13 @@ public partial class GameServer
 		// O RELOGIO E O DO NOCAUTE, reescrito -- ver `SegundosAteOReflexoSeReerguer`. Nao ha um segundo
 		// cronometro neste sistema, e e por isso que nao ha como as duas contagens discordarem.
 		npc.Combate.NocauteRestante = SegundosAteOReflexoSeReerguer;
+
+		// E ELE DEIXA DE SER UM COMA POR NUCLEO. Sem esta linha o reflexo passaria a responder a
+		// `CombatState.NocautePorVital`, ou seja a CURA decidiria a hora de levantar -- e um reflexo
+		// de raca que regenera em combate (Majin, Bio) se ergueria antes dos 15 s do original,
+		// enquanto um de raca comum ficaria esperando os 225 s do teto. O `clone_watch` do DM e um
+		// `sleep(150)` e mais nada: aqui a contagem continua sendo uma so, e e esta.
+		npc.Combate.NocautePorVital = false;
 
 		AvisarNaMente(npc.Zone, npc.Papel is { EhChefe: true }
 			? $"{npc.Name} cai... mas a mente nunca descansa."

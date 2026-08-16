@@ -101,6 +101,14 @@ public sealed partial class GameServer
 		// (dominios vivos, invasoes em andamento, canais de arranque) e nao meia duzia de `case`.
 		if (ComandoDeConquista(pl, cmd, arg)) return;
 
+		// AS ESFERAS DO DRAGAO: prefixo `db_`, e as SUPER com prefixo `sdb_`. Dois arquivos proprios
+		// pela mesma razao do banco e da conquista -- sao dois sistemas com estado compartilhado
+		// (sets, esferas espalhadas, invocacoes de um lado; claims e canais de disputa do outro) e
+		// nao meia duzia de `case`. Sao DOIS e nao um porque no original tambem sao: a esfera comum
+		// se carrega na mao, a Super tem o tamanho de um planetoide e se reivindica parado.
+		if (ComandoDeEsferas(pl, cmd, arg)) return;
+		if (ComandoDeSuperEsferas(pl, cmd, arg)) return;
+
 		// AS PORTAS DOS CARGOS: prefixo `cargo_`, arquivo proprio (`GameServer.CargoPortas.cs` e
 		// `GameServer.CargoDuelo.cs`) pela mesma razao do banco -- nomeacao, sucessao e duelo formal
 		// sao um sistema com estado compartilhado (tronos, convites, linha de sucessao, o relogio do

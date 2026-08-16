@@ -158,6 +158,23 @@ public partial class GameServer
 		GD.Print($"[server] {pl.Name} ({pl.Conta}) assumiu o cargo '{r.Nome}'"
 				 + (subindo ? $" (largou {atual})" : ""));
 
+		// ============================ O KIT CHEGA AGORA, E NAO NO TIQUE SEGUINTE ============================
+		// **ESTA LINHA FALTAVA, e quem a encomendou foi a bancada de producao** (`--cargovivo`,
+		// `GameServer.CargoVivoTeste.cs:21`): *"`ReivindicarCargo` e `Outorgar` NAO chamam
+		// `ReconciliarDadiva`"*. As duas escreviam o trono e paravam -- quem reivindicava um cargo
+		// recebia o kit **de zero a um segundo depois**, quando o `TickDosCargos` passasse.
+		//
+		// A reconciliacao ja era idempotente e o tique ja a chamava, entao a janela nunca virou bug de
+		// jogo permanente -- ela virava a pior forma de latencia que existe: o mundo anunciava
+		// "VOCE E O NOVO EREMITA TARTARUGA", o jogador abria a aba de skills e o Kamehameha nao estava
+		// la. Um segundo depois estava. Nao ha como distinguir isso de "o jogo esta quebrado".
+		//
+		// **ANTES do `AnunciarCargo`**, e a ordem e o ponto: o anuncio manda `MandarCargos` pra todo
+		// mundo, e a reconciliacao manda `MandarSkills` pro dono. Nesta ordem, o pacote de skills chega
+		// ANTES do "voce e o novo X" -- o jogador le o titulo com o kit ja na mao.
+		// =================================================================================================
+		ReconciliarDadiva(pl);
+
 		AnunciarCargo(r, pl, subindo ? atual : "");
 	}
 
@@ -177,9 +194,13 @@ public partial class GameServer
 		string largou = CargoDe(pl.Conta);
 		if (largou.Length > 0) _tronos.Remove(largou);
 
+		// O EX-DONO E GUARDADO PRA DEPOIS DO `_tronos[...] =`: a reconciliacao dele so responde certo
+		// com o trono JA trocado, senao ela leria o cargo velho e devolveria o mesmo kit.
+		string perdeu = "";
 		if (_tronos.TryGetValue(r.Chave, out string? antigo) && antigo.Length > 0
 			&& !string.Equals(antigo, pl.Conta, StringComparison.OrdinalIgnoreCase))
 		{
+			perdeu = antigo;
 			foreach (ServerPlayer o in _players.Values)
 				if (string.Equals(o.Conta, antigo, StringComparison.OrdinalIgnoreCase))
 					Avisar(o, $"voce nao e mais {r.Nome}.");
@@ -188,6 +209,15 @@ public partial class GameServer
 		_tronos[r.Chave] = pl.Conta;
 		SalvarCargos();
 		GD.Print($"[server] {pl.Name} ({pl.Conta}) recebeu o cargo '{r.Nome}' por outorga de admin");
+
+		// A MESMA JANELA DE 1 s DO `ReivindicarCargo`, fechada dos DOIS lados -- ver o bloco de la. O
+		// `Entronizar` (`GameServer.CargoPortas.cs:59-66`) ja fazia exatamente isto para as portas
+		// novas, com o argumento escrito: *"sem esta linha ele so o perderia no proximo tique de
+		// reconciliacao -- e num duelo pelo titulo isso e uma janela em que dois 'Deuses' existem"*. A
+		// outorga de admin tinha a mesma janela e nao tinha a linha.
+		if (perdeu.Length > 0 && OnlinePorConta(perdeu) is { } velho) ReconciliarDadiva(velho);
+		ReconciliarDadiva(pl);
+
 		AnunciarCargo(r, pl, largou);
 	}
 
@@ -241,6 +271,12 @@ public partial class GameServer
 			w.Put(r.Desc);
 			w.Put(OQueOCargoEntrega(r.Chave));
 		}
+
+		// A BANCADA ESCUTA AQUI, e o lugar e o ponto todo: e ESTE writer que vira os bytes do fio.
+		// Uma bancada que chamasse `OQueOCargoEntrega` direto leria a TABELA -- e a pergunta do dono
+		// ("o painel ainda anuncia o Mafuba?") e sobre o que CHEGA no cliente, que passa por um
+		// `Put`/`GetString` com limite de tamanho no meio. Nulo em jogo. Ver `GameServer.SeloTeste.cs`.
+		EscutaDeCargos?.Add((pl.Id, w));
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 

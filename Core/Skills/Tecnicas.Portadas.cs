@@ -187,5 +187,27 @@ public static partial class Tecnicas
 		// ---- as duas bolas (`blasts.dm:530`, `Core Trees/Spirit.dm:344`) ----
 		Por("Scattering_Bullet", "Bala Dispersa", Modo.Instantanea, "Uma nuvem de esferas que nasce ESPALHADA em volta de voce, fica um instante no ar e entao converge toda no alvo marcado, de qualquer angulo. Quantas saem depende da sua pericia de Ki e da sua forca. Precisa de alvo a ate trinta tiles.");
 		Por("Spirit_Gun", "Spirit Gun", Modo.Instantanea, "Uma bala de espirito disparada do dedo. Ela NAO gasta energia: gasta FOLEGO -- e por isso sai quando o Ki ja acabou. Treinar a arvore do Espirito a deixa mais barata e mais forte ao mesmo tempo.");
+
+		// ---- lote G8: OS VERBOS MUDOS DOS CARGOS ----
+		// Seis verbos que um kit de cargo ja entregava e que nao faziam nada, e TRES deles estavam
+		// catalogados como dependentes de sistema que eles nao usam (ver o cabecalho do
+		// `Server/GameServer.Tecnicas.G8.cs`). Nenhum inventa entidade nem sistema novo.
+		Por("Dead", "Ver os Mortos", Modo.Instantanea, "Lista quem, no mundo agora, esta morto. E o servico de quem cuida do Outro Mundo -- e, como o proprio jogo antigo brinca, tambem da pra so olhar a aureola.", aba: "Outros");
+		Por("Go_To_Heaven_Or_Hell", "Ir ao Ceu ou ao Inferno", Modo.Instantanea, "O caminho do juiz do Outro Mundo: leva VOCE ao Ceu ou ao Inferno, na hora. Mande sem destino pra ver os dois.", aba: "Outros");
+		Por("Holy_Shortcut", "Atalho Sagrado", Modo.Instantanea, "O atalho secreto entre o Reino Divino e Arconia. Cobra METADE da sua energia e leva junto quem estiver colado em voce. So sai com o corpo parado e inteiro.", aba: "Outros");
+		Por("Detect_Shard", "Detectar a Esmeralda", Modo.Instantanea, "Tenta sentir a energia da Esmeralda Mestra. Ela nao existe mais -- e no jogo antigo o poder tambem nao fazia nada alem de dizer isso.", aba: "Outros");
+		Por("Keep_Body", "Manter o Corpo", Modo.Instantanea, "Liga (e desliga) em quem voce marcou o direito de ficar com o proprio corpo depois de morto: em vez de sumir pro Outro Mundo, o corpo fica onde caiu enquanto houver energia -- com a aureola acesa, e ao alcance de quem quiser ressuscita-lo.", aba: "Outros");
+		Por("Restore_Youth", "Restaurar a Juventude", Modo.Instantanea, "Oferece a quem voce marcou a idade que voce escolher, de 0 a 25 anos. E uma OFERTA: so vale se a pessoa aceitar. Use Restore_Youth:<idade>.", aba: "Outros");
+
+		// ---- lote G9: O SELO, E O SIGILO PELO LADO DE QUEM ESCONDE ----
+		// As duas primeiras SO PASSARAM A SER EXIGIVEIS quando o extrator parou de perder o
+		// `after_learn` delas (ver `DmSkillScanner.CorposDeAprendizado`): ate entao saiam do
+		// `skills.json` com `verbos: []` e o painel do cargo as anunciava como entregues.
+		// As duas ultimas fecham o `SistSigilo`, que era o unico sistema do censo em que o port
+		// tinha o lado de quem LE e nao o de quem ESCREVE.
+		Por("Mafuba", "Mafuba", Modo.Instantanea, "A Onda Selante. Precisa de um Pote Selante assentado por perto: a fita sai atras do alvo e o prende no pote pra sempre. Custa 90 de dano em CADA membro seu -- pode te matar. Quem quiser o preso de volta tem que quebrar o pote.", aba: "Outros");
+		Por("Open_Dead_Zone", "Abrir a Dead Zone", Modo.Instantanea, "Rasga a realidade cinco tiles ao norte e abre a Dead Zone por dez segundos. Ela puxa quem estiver por perto e sela quem cair dentro -- sem pote, sem quebrar: so sai quem ficar 25% mais forte do que voce era na hora. Custa quase toda a sua energia.", aba: "Outros");
+		Por("Conceal_Power", "Ocultar o Poder", Modo.Sustentada, "Esconde o seu poder de quem olha: o scouter dos outros passa a ler quase nada. Liga e desliga, com cinco segundos de espera entre um e outro.");
+		Por("Power_Control", "Controle de Poder", Modo.Sustentada, "Segura o seu proprio poder numa porcentagem, de 1 a 100. So serve pra BAIXAR -- pra voltar a subir e carregando (tecla C). Use Power_Control:<1 a 100>.");
 	}
 }

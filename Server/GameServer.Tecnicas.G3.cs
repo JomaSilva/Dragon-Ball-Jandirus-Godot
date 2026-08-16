@@ -1234,7 +1234,7 @@ public partial class GameServer
 		}
 		else if (!vitima.Ficha.KO && c.Corpo.DeveNocautear())
 		{
-			c.Nocautear(MeleeResolver.SegundosDeNocaute);
+			c.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: false);
 			else ZenkaiPorDerrota(vitima, autor);
 		}

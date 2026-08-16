@@ -50,6 +50,18 @@ public sealed class BodyPart
 	public double Chance = 100;
 
 	/// <summary>
+	/// O `regenerationrate` do `/datum/Body` (`mobparts.dm`): quanto ESTE membro se costura sozinho.
+	///
+	/// **NAO E COSMETICO, E A ESCALA DA ESPERA.** Torso, braco, perna, mao e pe tem 2; abdomen 1,5;
+	/// cabeca e orgaos 1; cerebro e reprodutor 0,5; **rabo 0,125**. Ou seja: um rabo quebrado leva
+	/// dezesseis vezes o tempo de um braco quebrado. O port curava os onze com o mesmo numero.
+	///
+	/// Quem transforma isto em vida por segundo e <see cref="Regeneracao.TaxaDoMembro"/> -- aqui so
+	/// mora o dado.
+	/// </summary>
+	public double TaxaDeRegen = 1;
+
+	/// <summary>
 	/// Membro ANINHADO: nunca sai no sorteio de um soco. Cerebro, orgaos, mao e pe so se
 	/// ferem por propagacao ou por serem levados junto com o membro que os contem.
 	/// </summary>
@@ -101,41 +113,62 @@ public sealed class Body
 {
 	public List<BodyPart> Partes = [];
 
-	/// <summary>Raca que regenera membro perdido (Namekuseijin, Majin, Bio): entra em coma em vez de morrer.</summary>
-	public bool RegeneraDecepado;
+	/// <summary>
+	/// O EIXO DA CURA DESTE CORPO -- ver <see cref="PerfilDeRegen"/>. Nasce no comum (Humano) e e
+	/// escrito UMA vez, pelo <see cref="CombatState"/>, a partir do genoma da raca.
+	/// </summary>
+	public PerfilDeRegen Regen = PerfilDeRegen.Comum;
+
+	/// <summary>
+	/// Raca que regenera membro perdido: entra em coma em vez de morrer. E o `canheallopped`, e ele
+	/// e DERIVADO do genoma -- ver <see cref="PerfilDeRegen.MembroVolta"/>.
+	///
+	/// Era um `bool` escrito a mao pelo servidor com uma lista de quatro racas cravada
+	/// (`"Namekian" or "Majin" or "BioAndroid" or "Shapeshifter"`), e a lista estava errada nos DOIS
+	/// sentidos: o DM da `canheallopped = 0` ao Namekuseijin (o `return` proprio do rework) e ao
+	/// Shapeshifter (`Regeneration = 2` -> `DeathRegen = 0`), e da `1` a Kai, Meta, Tsujin e Yardrat
+	/// (`Regeneration = 10`), que estavam de fora.
+	/// </summary>
+	public bool RegeneraDecepado => Regen.MembroVolta;
 
 	public static Body Novo(bool comRabo = false)
 	{
 		var b = new Body();
-		void P(string nome, Vitalidade papel, string zona, double chance, bool aninhado = false, string? dono = null)
+		void P(string nome, Vitalidade papel, string zona, double chance, double regen,
+			   bool aninhado = false, string? dono = null)
 			=> b.Partes.Add(new BodyPart
 			{
-				Nome = nome, Papel = papel, Zona = zona, Chance = chance, Aninhado = aninhado, Dono = dono,
+				Nome = nome, Papel = papel, Zona = zona, Chance = chance, TaxaDeRegen = regen,
+				Aninhado = aninhado, Dono = dono,
 			});
 
-		P("Cabeca", Vitalidade.Nucleo, "cabeca", 40);
-		P("Cerebro", Vitalidade.Interno, "cabeca", 0, aninhado: true, dono: "Cabeca");
-		P("Torso", Vitalidade.Nucleo, "torso", 100);
+		// O ULTIMO NUMERO E O `regenerationrate` do `/datum/Body` correspondente (`mobparts.dm`):
+		// Head 1 (:124), Brain 0,5 (:151), Torso 2 (:163), Abdomen 1,5 (:191), Organs 1 (:208),
+		// Reproductive_Organs 0,5 (:229), Arm 2 (:240), Hand 2 (:252), Leg 2 (:266), Foot 2 (:275),
+		// Tail 0,125 (:289). Ver <see cref="BodyPart.TaxaDeRegen"/>.
+		P("Cabeca", Vitalidade.Nucleo, "cabeca", 40, 1);
+		P("Cerebro", Vitalidade.Interno, "cabeca", 0, 0.5, aninhado: true, dono: "Cabeca");
+		P("Torso", Vitalidade.Nucleo, "torso", 100, 2);
 		// ABDOMEN e uma zona PROPRIA, nao parte do torso. E assim no original: a "virilha" e
 		// um alvo separado no seletor, e e por ela que se acerta o rabo e o reprodutor.
-		P("Abdomen", Vitalidade.Nucleo, "abdomen", 70);
-		P("Orgaos", Vitalidade.Interno, "torso", 0, aninhado: true, dono: "Torso");
+		P("Abdomen", Vitalidade.Nucleo, "abdomen", 70, 1.5);
+		P("Orgaos", Vitalidade.Interno, "torso", 0, 1, aninhado: true, dono: "Torso");
 		// O reprodutor NAO e aninhado no original (`isnested = 0`, `targetchance = 55`): ele
 		// sai no sorteio como qualquer outro membro. Aninhado aqui o tornaria inalcancavel, e
 		// a celula de virilha do seletor de zona nao teria pra onde mandar o golpe.
-		P("Reprodutor", Vitalidade.Membro, "abdomen", 20, dono: "Abdomen");
+		P("Reprodutor", Vitalidade.Membro, "abdomen", 20, 0.5, dono: "Abdomen");
 
-		P("Braco esquerdo", Vitalidade.Membro, "bracos", 60);
-		P("Mao esquerda", Vitalidade.Membro, "bracos", 0, aninhado: true, dono: "Braco esquerdo");
-		P("Braco direito", Vitalidade.Membro, "bracos", 60);
-		P("Mao direita", Vitalidade.Membro, "bracos", 0, aninhado: true, dono: "Braco direito");
+		P("Braco esquerdo", Vitalidade.Membro, "bracos", 60, 2);
+		P("Mao esquerda", Vitalidade.Membro, "bracos", 0, 2, aninhado: true, dono: "Braco esquerdo");
+		P("Braco direito", Vitalidade.Membro, "bracos", 60, 2);
+		P("Mao direita", Vitalidade.Membro, "bracos", 0, 2, aninhado: true, dono: "Braco direito");
 
-		P("Perna esquerda", Vitalidade.Membro, "pernas", 50);
-		P("Pe esquerdo", Vitalidade.Membro, "pernas", 0, aninhado: true, dono: "Perna esquerda");
-		P("Perna direita", Vitalidade.Membro, "pernas", 50);
-		P("Pe direito", Vitalidade.Membro, "pernas", 0, aninhado: true, dono: "Perna direita");
+		P("Perna esquerda", Vitalidade.Membro, "pernas", 50, 2);
+		P("Pe esquerdo", Vitalidade.Membro, "pernas", 0, 2, aninhado: true, dono: "Perna esquerda");
+		P("Perna direita", Vitalidade.Membro, "pernas", 50, 2);
+		P("Pe direito", Vitalidade.Membro, "pernas", 0, 2, aninhado: true, dono: "Perna direita");
 
-		if (comRabo) P("Rabo", Vitalidade.Membro, "abdomen", 15);
+		if (comRabo) P("Rabo", Vitalidade.Membro, "abdomen", 15, 0.125);
 
 		return b;
 	}
@@ -311,12 +344,62 @@ public sealed class Body
 		}
 	}
 
-	/// <summary>Devolve um membro perdido, com parte da vida -- e o que a regeneracao faz.</summary>
+	/// <summary>
+	/// O `SpreadHeal(quanto, FocusVitals = 1)` do DM (`Injuries.dm:89-100`): cura **so os VITAIS, e
+	/// so os que estao abaixo de 70%**.
+	///
+	/// ============================ O PORQUE DE ELE EXISTIR SEPARADO DO <see cref="Curar"/> ============================
+	/// E o que `Un_KO()` chama pra por o corpo de pe (`KO.dm:133`, `SpreadHeal(25,1,1)`), e a
+	/// diferenca entre ele e uma cura geral e o pedido do dono inteiro: **um braco quebrado NAO
+	/// desquebra por levantar do nocaute**. O braco nao e vital, entao ele nao esta nesta lista; o
+	/// corte de 70% ainda por cima recusa quem ja estava razoavelmente inteiro.
+	///
+	/// O port fazia o oposto -- ver `CombatState.Levantar` --, empurrando TODA parte pra 30% de
+	/// graca ao fim do nocaute. Nocaute virava botao de cura.
+	/// ============================================================================================================
+	/// </summary>
+	public void CurarVitais(double quanto, double limiar = 0.70)
+	{
+		foreach (BodyPart p in Partes)
+		{
+			if (p.Decepado || p.Papel == Vitalidade.Membro) continue;
+			if (p.Vida > p.VidaMax * limiar) continue;
+			p.Vida = Math.Min(p.Vida + quanto, p.VidaMax);
+		}
+	}
+
+	/// <summary>
+	/// Devolve um membro perdido, com parte da vida -- e o que a regeneracao faz.
+	///
+	/// ============================ A CASCATA E O IRMAO DA DO <see cref="Decepar"/> ============================
+	/// `RegrowLimb()` (`mobparts_logic.dm:128-136`) faz DUAS coisas que este metodo nao fazia, e as
+	/// duas sao o espelho da amputacao:
+	///
+	///   * **RECUSA o aninhado enquanto a raiz esta caida** (`:130-131`). Devolver a mao com o braco
+	///     ainda no chao daria uma mao flutuando -- e, pior, gastaria a vez de quem so tem uma;
+	///   * **LEVA JUNTO o que estava dentro** (`:132-133`). Perder o braco leva a mao (o `Decepar` ja
+	///     fazia isso); devolver o braco tem que devolver a mao, senao a amputacao e permanente pela
+	///     metade e ninguem descobre por que a mao nunca volta.
+	///
+	/// A bancada `cura` foi quem mostrou: o Bio-Androide levava 138 s pra refazer um braco onde o DM
+	/// leva 46 -- as tentativas estavam sendo desperdicadas numa mao que voltava sozinha e continuava
+	/// contando como membro incompleto pra sempre.
+	///
+	/// (No DM as duas linhas dependem do `parentlimb`, que a propria base nunca atribui -- o defeito 2
+	/// do <see cref="MeleeResolver"/>. Aqui, como o `Dono` existe de verdade, elas rodam.)
+	/// ====================================================================================================
+	/// </summary>
 	public bool Regenerar(BodyPart alvo)
 	{
 		if (!alvo.Decepado) return false;
+		if (alvo.Dono != null && Achar(alvo.Dono) is { Decepado: true }) return false;
+
 		alvo.Decepado = false;
 		alvo.Vida = alvo.VidaMax * Regras.VidaAoRegenerar;
+
+		foreach (BodyPart dentro in Partes.Where(p => p.Dono == alvo.Nome && p.Decepado).ToList())
+			Regenerar(dentro);
+
 		return true;
 	}
 
@@ -332,7 +415,7 @@ public sealed class Body
 
 	public Body Copiar()
 	{
-		var b = new Body { RegeneraDecepado = RegeneraDecepado };
+		var b = new Body { Regen = Regen };
 		foreach (BodyPart p in Partes) b.Partes.Add(p.Copiar());
 		return b;
 	}

@@ -90,6 +90,14 @@ public sealed partial class GameServer
 			case "usar": UsarRemedio(pl, def); break;
 			case "cavar": Cavar(pl, def); break;
 
+			// OS BRINCOS POTARA: o clique NAO funde -- ele OFERECE. Ver `OferecerOsBrincos`, e la
+			// esta escrito por que o `checkEarringDist()` do DM (que funde a forca, sem perguntar)
+			// nao foi portado.
+			case "jogar":
+				if (def.Id == CatalogoDeItens.BrincosPotara) OferecerOsBrincos(pl);
+				else Avisar(pl, $"não dá pra jogar {def.Nome} em ninguém.");
+				break;
+
 			// LARGAR APAGA, por enquanto. O item cair no chao pede um sistema inteiro (objeto no
 			// mundo, quem ve, quem pega, o que acontece no reinicio) que ainda nao existe -- e
 			// prometer que a maca fica no chao e pior que dizer que ela se perde.
@@ -260,6 +268,17 @@ public sealed partial class GameServer
 	/// </summary>
 	private void UsarRemedio(ServerPlayer pl, ItemDef def)
 	{
+		// ============================ O RADAR ENTRA PELA MESMA PORTA "usar", E SAI ANTES ============================
+		// Ele nao e remedio, e por isso o desvio e a primeira linha: as tres guardas abaixo (estar em
+		// combate, ter o que tratar, ter um `Combate`) recusariam o radar por motivos que nao tem nada
+		// a ver com ele -- e a recusa que o jogador leria seria "voce nao tem o que tratar".
+		//
+		// A alternativa era um `case "localizar"` proprio no `ComandoDeItem`. Nao vale: "usar" e o
+		// verbo que o menu do inventario ja oferece, e um verbo novo pra um item so seria um botao a
+		// mais numa tela que ja tem os botoes certos. Ver `GameServer.Esferas.UsarORadar`.
+		// ======================================================================================================
+		if (def.Id == CatalogoDeItens.Radar) { UsarORadar(pl); return; }
+
 		if (pl.Combate is not { } c) return;
 		if (c.EmCombate > 0) { Avisar(pl, "não dá pra se tratar no meio de uma briga."); return; }
 		if (pl.Ficha.HP >= 99.99) { Avisar(pl, "você não tem o que tratar."); return; }

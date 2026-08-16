@@ -8,15 +8,18 @@ namespace Jandirus.Tools;
 /// `Friendship.dm`, e as tres perguntas que decidem se alguem entra em furia.
 ///
 /// ============================ O QUE ELA COBRE ============================
-///   [1] OS NUMEROS DO DM, um a um -- e sobretudo o `49 &lt; 50`, que e a regra inteira: conviver
-///       faz CONHECIDO, e so um pedido aceito faz AMIGO.
-///   [2] A PROXIMIDADE, iterada: 600 passos param no teto, e depois de amigo ela volta a subir.
+///   [1] OS NUMEROS DO DM, um a um -- e, ao lado deles, os que **nao** sao do DM: o limiar em
+///       minutos, o piso negativo e o preco de matar (a divergencia pedida pelo dono).
+///   [2] A PROXIMIDADE, iterada: o passo 499 ainda nao e amizade e o 500 e -- **conviver faz amigo
+///       sozinho aqui**, ao contrario do original, e o degrau exato e medido dos dois lados.
 ///   [3] AS TRES PERGUNTAS DA RAIVA, contra as NOVE relacoes, uma por uma. Sao as listas de
 ///       `Death.dm:79`, `KO.dm:36` e `Death.dm:75` -- e a tabela e escrita a mao aqui de proposito:
 ///       ela e a copia independente contra a qual o codigo e conferido. Um `if` a mais no Core
 ///       aparece como divergencia em vez de virar a nova verdade.
 ///   [4] OS ROTULOS e os precos das declaracoes -- os numeros que o proprio verb do DM lista.
 ///   [5] O ODIO: so contra rival declarado, com teto.
+///   [5b] A QUEDA PRO NEGATIVO: matar tira pontos, o zero vira inimizade declarada, e o inimigo
+///       nao se perdoa por convivencia -- so por um pedido aceito. Nada disto tem original.
 ///   [6] O ESTADO SOBREVIVE A UM SERIALIZADOR DE CAMPOS -- por reflexao. Este projeto ja perdeu as
 ///       cores de roupa por um `readonly` que o `System.Text.Json` ignorava CALADO; a lista de
 ///       amigos sumindo do mesmo jeito apareceria como "o SSJ1 as vezes nao vem".
@@ -43,6 +46,7 @@ public static class ConvivioBench
 		AsTresPerguntas();
 		OsRotulosEOsPrecos();
 		OOdio();
+		AQuedaParaONegativo();
 		OEstadoAtravessaOSerializador();
 
 		Console.WriteLine($"\n=== {_ok} OK, {_falhou} FALHA ===");
@@ -59,15 +63,7 @@ public static class ConvivioBench
 		Checa("FRIEND_RANGE = 6 tiles", Convivio.AlcanceDeConvivioTiles == 6);
 		Checa("FRIEND_RATE = 0,1", Math.Abs(Convivio.TaxaDeAmizade - 0.1) < 1e-9);
 		Checa("FRIEND_REQ = 50", Convivio.ExigenciaDeAmigo == 50);
-		Checa("ACQUAINTANCE_CAP = 49", Convivio.TetoDeConhecido == 49);
 		Checa("o teto de tudo e 200 (o degrau `Bonded`)", Convivio.TetoDeAmizade == 200);
-
-		// A REGRA INTEIRA NUMA LINHA. Se um dia alguem "arredondar" o 49 pra 50, conviver passaria
-		// a fazer amigo sozinho -- e o pedido de amizade, que e o unico gesto social do jogo,
-		// viraria enfeite. E ninguem notaria: o sintoma seria "o SSJ1 vem mais facil agora".
-		Checa("**o teto da proximidade fica UM PONTO ABAIXO da exigencia de amigo**",
-			  Convivio.TetoDeConhecido == Convivio.ExigenciaDeAmigo - 1,
-			  $"{Convivio.TetoDeConhecido} vs {Convivio.ExigenciaDeAmigo}");
 
 		Checa("os 10 ciclos de 0,3 s do `GlobalStats` viraram 3 segundos",
 			  Math.Abs(Convivio.SegundosEntreAproximacoes - 3) < 1e-9);
@@ -76,6 +72,30 @@ public static class ConvivioBench
 		Checa("ENMITY_FRIEND_KO = 25", Convivio.InimizadePorAmigoCaido == 25);
 		Checa("ENMITY_FRIEND_KILL = 60", Convivio.InimizadePorAmigoMorto == 60);
 		Checa("ENMITY_MAX = 200", Convivio.TetoDeInimizade == 200);
+
+		// ============================ E OS NUMEROS QUE **NAO** SAO DO DM ============================
+		// O `ACQUAINTANCE_CAP = 49` NAO foi portado (a pedido do dono: aqui amizade e convivio, nao
+		// convite), entao a checagem que estava aqui virou o avesso dela mesma -- ela agora prende a
+		// DIVERGENCIA. Sem esta linha, alguem "restaurando a fidelidade ao DM" poria o teto de volta e
+		// o sintoma seria o dono dizendo *"eu fico horas com o cara e ele nunca vira amigo"*.
+		Checa("**o limiar de amigo e alcancavel so por convivencia** (o 49 do DM ficou pra tras)",
+			  Convivio.ExigenciaDeAmigo <= Convivio.TetoDeAmizade
+			  && Convivio.ExigenciaDeAmigo > 0);
+
+		// A CONTA QUE O DONO PEDIU EM MINUTOS, e ela e derivada -- se alguem mexer na taxa ou na
+		// cadencia, e este numero que muda, nao um comentario.
+		Checa("virar amigo custa 25 minutos de convivio",
+			  Math.Abs(Convivio.MinutosParaVirarAmigo - 25) < 1e-9,
+			  $"{Convivio.MinutosParaVirarAmigo:0.##} min");
+
+		Checa("o piso e o espelho do teto (-200)", Convivio.PisoDeAmizade == -Convivio.TetoDeAmizade);
+		Checa("**matar custa o mesmo que o odio ganha** (60 na morte, 25 no nocaute)",
+			  Convivio.PerdaPorMorte == Convivio.InimizadePorAmigoMorto
+			  && Convivio.PerdaPorNocaute == Convivio.InimizadePorAmigoCaido,
+			  $"{Convivio.PerdaPorMorte} / {Convivio.PerdaPorNocaute}");
+		Checa("...e uma morte derruba do limiar de amigo direto pro NEGATIVO",
+			  Convivio.ExigenciaDeAmigo - Convivio.PerdaPorMorte < 0,
+			  $"{Convivio.ExigenciaDeAmigo - Convivio.PerdaPorMorte}");
 		Console.WriteLine();
 	}
 
@@ -84,26 +104,34 @@ public static class ConvivioBench
 	// =====================================================================
 	private static void AProximidade()
 	{
-		Console.WriteLine("[2] CONVIVER FAZ CONHECIDO, NAO AMIGO");
+		Console.WriteLine("[2] CONVIVER FAZ AMIGO (a divergencia do dono), E O PASSO EXATO APARECE");
 
 		var eu = new Convivio();
 		const string ele = "conta#0";
 
-		// 490 passos de 0,1 dariam exatamente 49; 600 sao seis dezenas a mais, pra o vazamento (se
-		// houvesse) aparecer.
-		for (int i = 0; i < 600; i++) eu.Aproximar(ele);
+		// 499 PASSOS E NAO 500: o que esta secao mede e o DEGRAU, e um degrau so existe se houver o
+		// lado de ca. "Depois de muito tempo ele e amigo" passaria igual num sistema que faz amigo no
+		// primeiro segundo -- que e exatamente o modo de falha desta mudanca.
+		for (int i = 0; i < 499; i++) eu.Aproximar(ele);
+		Checa("um passo antes do limiar ele AINDA nao e amigo", !eu.EhAmigo(ele),
+			  $"{eu.PontosDeAmizade(ele):0.###} -> {Convivio.RotuloDeProximidade(eu.PontosDeAmizade(ele))}");
 
-		Checa("600 passos param no teto de conhecido",
-			  Math.Abs(eu.PontosDeAmizade(ele) - Convivio.TetoDeConhecido) < 1e-6,
-			  $"{eu.PontosDeAmizade(ele):0.###}");
-		Checa("...e ele NAO e amigo", !eu.EhAmigo(ele), Convivio.RotuloDeProximidade(eu.PontosDeAmizade(ele)));
-		Checa("...e o rotulo dele e `Familiar` (nao `Amigo`)",
-			  Convivio.RotuloDeProximidade(eu.PontosDeAmizade(ele)) == "Familiar");
+		// E O PASSO 500 DEVOLVE TRUE **UMA VEZ**: e nesse TRUE que o servidor pendura o aviso, entao
+		// um `>=` trocado por `>` aqui apareceria como "o jogo nunca me disse que viramos amigos".
+		Checa("**o passo 500 atravessa o limiar e AVISA (devolve TRUE)**", eu.Aproximar(ele));
+		Checa("...e agora ele e amigo, com 50 cravados (sem deriva de ponto flutuante)",
+			  eu.EhAmigo(ele) && eu.PontosDeAmizade(ele) == Convivio.ExigenciaDeAmigo,
+			  $"{eu.PontosDeAmizade(ele):0.#################}");
+		Checa("...e o passo seguinte NAO avisa de novo", !eu.Aproximar(ele));
+		Checa("...e 500 passos de 3 s sao os 25 minutos que o `MinutosParaVirarAmigo` promete",
+			  Math.Abs(500 * Convivio.SegundosEntreAproximacoes / 60.0
+					   - Convivio.MinutosParaVirarAmigo) < 1e-9);
 
-		// O PEDIDO ACEITO E O QUE ATRAVESSA
-		eu.AceitarAmizade(ele);
-		Checa("o pedido aceito atravessa o teto e faz amigo", eu.EhAmigo(ele),
-			  $"{eu.PontosDeAmizade(ele):0.###}");
+		// ACEITAR UM PEDIDO CONTINUA FUNCIONANDO -- ele virou ATALHO, e nao porta unica
+		var atalho = new Convivio();
+		atalho.AceitarAmizade("x");
+		Checa("o pedido aceito continua fazendo amigo na hora (o atalho)", atalho.EhAmigo("x"),
+			  $"{atalho.PontosDeAmizade("x"):0.###}");
 
 		// E DEPOIS DE AMIGO A CONVIVENCIA VOLTA A SUBIR, ate 200
 		for (int i = 0; i < 3000; i++) eu.Aproximar(ele);
@@ -226,6 +254,14 @@ public static class ConvivioBench
 		Checa("50 -> Amigo", Convivio.RotuloDeProximidade(50) == "Amigo");
 		Checa("200 -> Ligado", Convivio.RotuloDeProximidade(200) == "Ligado");
 
+		// A FAIXA NEGATIVA, que no DM nao existe -- e o -1 e o degrau que importa: e onde o jogador
+		// le, na aba, que aquela pessoa deixou de ser neutra.
+		Checa("-1 -> Desafeto", Convivio.RotuloDeProximidade(-1) == "Desafeto");
+		Checa("-49 -> Desafeto", Convivio.RotuloDeProximidade(-49) == "Desafeto");
+		Checa("-50 -> Inimigo (o espelho exato do +50)", Convivio.RotuloDeProximidade(-50) == "Inimigo");
+		Checa("-200 -> Inimigo mortal (o espelho do `Ligado`)",
+			  Convivio.RotuloDeProximidade(-200) == "Inimigo mortal");
+
 		Checa("0 de odio -> nenhum rotulo", Convivio.RotuloDeInimizade(0) == "");
 		Checa("5 -> Antipatizado", Convivio.RotuloDeInimizade(5) == "Antipatizado");
 		Checa("25 -> Rival", Convivio.RotuloDeInimizade(25) == "Rival");
@@ -292,6 +328,115 @@ public static class ConvivioBench
 		// aconteceu. E o DM tambem nao apaga (`Declare_Rival` so mexe em `rivals`).
 		Checa("mas o odio ja acumulado continua la", c.PontosDeInimizade(foe) == 200,
 			  $"{c.PontosDeInimizade(foe):0}");
+		Console.WriteLine();
+	}
+
+	// =====================================================================
+	// 5b. A QUEDA PRO NEGATIVO -- **A PARTE QUE NAO E PORTE**
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE ESTA SECAO PRENDE ============================
+	/// Tudo aqui e invencao do dono (no DM a amizade NUNCA diminui), entao nao ha original pra
+	/// conferir -- o que faz da bancada a unica definicao escrita da regra. Ela mede as tres coisas
+	/// que o pedido dele pede, e a quarta que ele nao pediu mas que decide se o sistema e jogavel:
+	///
+	///   1. matar TIRA pontos, e o numero e o do odio;
+	///   2. cruzar o zero DECLARA a rivalidade sozinho -- e e por isso que "ser inimigo" faz algo;
+	///   3. inimigo NAO volta a ser amigo so por ficar por perto;
+	///   4. **e ele nao fica condenado pra sempre**: um pedido aceito (os dois lados) desfaz.
+	/// ==================================================================================
+	/// </summary>
+	private static void AQuedaParaONegativo()
+	{
+		Console.WriteLine("[5b] MATAR CUSTA O LACO, E O NEGATIVO E INIMIZADE (pedido do dono)");
+
+		// O CASO COMUM: um estranho te mata. Zero pontos, e o golpe leva pro negativo de uma vez.
+		var eu = new Convivio();
+		const string assassino = "conta#7";
+		Checa("**um estranho que te mata vira INIMIGO no mesmo golpe (devolve TRUE)**",
+			  eu.Afastar(assassino, Convivio.PerdaPorMorte));
+		Checa("...e os pontos sao -60", eu.PontosDeAmizade(assassino) == -Convivio.PerdaPorMorte,
+			  $"{eu.PontosDeAmizade(assassino):0.###}");
+		Checa("...e `EhInimigo` diz sim", eu.EhInimigo(assassino), "");
+		Checa("...e ele entrou na lista de RIVAIS sozinho (e o que liga tudo o mais)",
+			  eu.EhRival(assassino), "");
+		Checa("...e o odio subiu na mesma medida (o mesmo evento no outro livro)",
+			  eu.PontosDeInimizade(assassino) == Convivio.PerdaPorMorte,
+			  $"{eu.PontosDeInimizade(assassino):0}");
+		Checa("...e ele NAO avisa de novo no segundo golpe (so a travessia)",
+			  !eu.Afastar(assassino, Convivio.PerdaPorMorte));
+		Checa("...mas o odio continua somando depois de declarado",
+			  eu.PontosDeInimizade(assassino) == 2 * Convivio.PerdaPorMorte,
+			  $"{eu.PontosDeInimizade(assassino):0}");
+
+		// E FICAR PERTO DELE NAO PERDOA: rival declarado nao rende amizade (`Friendship.dm:36`), e e
+		// essa linha velha que sustenta a regra nova.
+		double antes = eu.PontosDeAmizade(assassino);
+		for (int i = 0; i < 1000; i++) eu.Aproximar(assassino);
+		Checa("**conviver com o inimigo nao o perdoa** (mil passos, nem um ponto)",
+			  eu.PontosDeAmizade(assassino) == antes, $"{eu.PontosDeAmizade(assassino):0.###}");
+
+		// O PISO SEGURA: sem ele, morrer em serie levaria a amizade a -infinito e o rotulo a mentir.
+		for (int i = 0; i < 100; i++) eu.Afastar(assassino, Convivio.PerdaPorMorte);
+		Checa("o piso de -200 segura a queda", eu.PontosDeAmizade(assassino) == Convivio.PisoDeAmizade,
+			  $"{eu.PontosDeAmizade(assassino):0.###}");
+
+		// A RECONCILIACAO: o pedido aceito atravessa o negativo E desfaz a rivalidade -- senao o
+		// `Aproximar` recusaria crescer a amizade que acabou de nascer.
+		eu.AceitarAmizade(assassino);
+		Checa("um pedido aceito reconcilia (de -200 pra amigo)", eu.EhAmigo(assassino),
+			  $"{eu.PontosDeAmizade(assassino):0.###}");
+		Checa("...e tira a marca de rival, senao a amizade nova nao cresceria",
+			  !eu.EhRival(assassino), "");
+		Checa("...e o convivio volta a render", eu.Aproximar(assassino) == false
+			  && eu.PontosDeAmizade(assassino) > Convivio.ExigenciaDeAmigo,
+			  $"{eu.PontosDeAmizade(assassino):0.###}");
+		Checa("...mas o ODIO acumulado nao se apaga (fazer as pazes nao apaga o que houve)",
+			  eu.PontosDeInimizade(assassino) == Convivio.TetoDeInimizade,
+			  $"{eu.PontosDeInimizade(assassino):0}");
+
+		// O AMIGO DE LONGA DATA TEM CREDITO: 200 - 60 ainda e amizade. E o que o numero quer dizer.
+		var laco = new Convivio();
+		laco.Amizade["s"] = Convivio.TetoDeAmizade;
+		Checa("um vinculo `Ligado` (200) sobrevive a UMA morte", !laco.Afastar("s", Convivio.PerdaPorMorte)
+			  && laco.EhAmigo("s"), $"{laco.PontosDeAmizade("s"):0.###}");
+		laco.Afastar("s", Convivio.PerdaPorMorte);
+		laco.Afastar("s", Convivio.PerdaPorMorte);
+		Checa("...e cai pro negativo na quarta", laco.Afastar("s", Convivio.PerdaPorMorte)
+			  && laco.EhInimigo("s"), $"{laco.PontosDeAmizade("s"):0.###}");
+
+		// ============================ A DECLARACAO DE AFETO CAI COM O AFETO ============================
+		// Achado pela bancada AO VIVO, e o defeito era mecanico: a relacao declarada e a SEGUNDA porta
+		// da raiva (`is_friend() || check_relation(...)`), entao um "muito bom" sobrevivendo ao proprio
+		// assassinato deixava a vitima entrando em furia pela morte de quem a matou -- e, no outro
+		// sentido, mantinha o assassino fora da lista de inimigos, calando a plateia na proxima vez.
+		var declarou = new Convivio();
+		declarou.Fotografar("m", "O assassino", "?", "?", "?", 0, 0);
+		declarou.Ficha("m")!.Relacao = Relacao.MuitoBom;
+		Checa("(antes) uma declaracao de afeto ja enfurece por morte", declarou.LutoPorMorte("m"));
+
+		declarou.Afastar("m", Convivio.PerdaPorMorte);
+		Checa("**cair pro negativo derruba a declaracao de AFETO**",
+			  declarou.RelacaoCom("m") == Relacao.Nenhuma, declarou.RelacaoCom("m").ToString());
+		Checa("...e por isso ele nao enfurece mais ninguem por voce", !declarou.LutoPorMorte("m"));
+		Checa("...e passa a contar como INIMIGO na pergunta que acende a furia da plateia",
+			  declarou.AlgozEhInimigo("m"));
+
+		// MAS A DECLARACAO DE DESAFETO FICA: apaga-la seria apagar o que a pessoa disse justamente
+		// quando ela se provou certa.
+		var jaDizia = new Convivio();
+		jaDizia.Fotografar("n", "O sujeito", "?", "?", "?", 0, 0);
+		jaDizia.Ficha("n")!.Relacao = Relacao.Odio;
+		jaDizia.Afastar("n", Convivio.PerdaPorMorte);
+		Checa("...mas um `odio` declarado NAO e apagado pela queda",
+			  jaDizia.RelacaoCom("n") == Relacao.Odio, jaDizia.RelacaoCom("n").ToString());
+
+		// QUEM JA ERA RIVAL DECLARADO NAO E "DES-DECLARADO" PELA QUEDA -- o bug que o `TornarRival`
+		// existe pra impedir (o `AlternarRival` teria tirado a rivalidade justo de quem mais merece).
+		var jaOdiava = new Convivio();
+		jaOdiava.AlternarRival("z");
+		jaOdiava.Afastar("z", Convivio.PerdaPorMorte);
+		Checa("**cair pro negativo NAO desfaz uma rivalidade ja declarada**", jaOdiava.EhRival("z"), "");
 		Console.WriteLine();
 	}
 

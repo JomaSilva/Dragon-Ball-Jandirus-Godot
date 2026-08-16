@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Combat;
 using Jandirus.Core.World;
 
@@ -179,7 +179,7 @@ public sealed partial class GameServer
 
 		if (!pl.Ficha.KO && c.Corpo.DeveNocautear())
 		{
-			c.Nocautear(MeleeResolver.SegundosDeNocaute);
+			c.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
 			Avisar(pl, "o calor te apaga. Você para de nadar.");
 			GD.Print($"[server] {pl.Name} NOCAUTEADO dentro de {NomeDaEstrela(e)}");
 		}

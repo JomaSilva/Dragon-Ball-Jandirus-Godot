@@ -53,6 +53,23 @@ public static class CatalogoDeItens
 	public const string Furadeira = "Hand_Drill";
 
 	/// <summary>
+	/// OS BRINCOS POTARA -- insignia do cargo de Kaioshin, e a porta da fusao Potara.
+	///
+	/// ============================ UM ITEM, E NAO DOIS BRINCOS PAREADOS ============================
+	/// No DM sao dois objetos (`potaraleft.dmi` / `potararight.dmi`) que precisam ser PAREADOS num
+	/// verb (`Pair_Earring`, `Fusion.dm:580`), equipados nos dois, e ai a fusao acontece sozinha por
+	/// proximidade. Esse minigame inteiro existe porque la nao ha convite: o pareamento E o convite,
+	/// feito com antecedencia.
+	///
+	/// O dono trocou isso por um pedido e um aceite (*"clicar neles da a opcao de jogar pro alvo
+	/// atual; o alvo recebe um pedido que pode aceitar"*), e com o convite explicito o par perde a
+	/// funcao -- sobrariam dois itens e tres verbs pra fazer o que uma linha de aceite ja faz. Entao
+	/// e UM item: o par, como o jogador fala dele ("os brincos").
+	/// ==========================================================================================
+	/// </summary>
+	public const string BrincosPotara = "Potara_Earrings";
+
+	/// <summary>
 	/// ============================ AS DUAS ROUPAS QUE JA EXISTIAM E VIRAVAM MOVEL ============================
 	/// Os dois ids sao os do `construcoes.json` (linhas 64 e 71), extraidos do DM com custo, tech e
 	/// arte: `Spacesuit` e a receita de `PlanetTech.dm:230-235` (75.000 / tech 25) e `Rebreather` e a
@@ -70,6 +87,29 @@ public static class CatalogoDeItens
 	/// </summary>
 	public const string Traje = "Spacesuit";
 	public const string Respirador = "Rebreather";
+
+	/// <summary>
+	/// O DRAGON RADAR -- `obj/items/Radar` (`Tier 1.5.dm:228`), fabricado na bancada
+	/// (`obj/Creatables/Dragon_Radar`, `Tier2.dm:9-15`: 150.000 zeni, tech 40).
+	///
+	/// ============================ ELE JA ERA COMPRAVEL, E VIRAVA MOVEL ============================
+	/// `Dragon_Radar` esta no `construcoes.json` (linha 78) desde que o extrator rodou, entao **da pra
+	/// compra-lo na aba Tech desde sempre**. Como ele nao estava nesta tabela escrita a mao, o
+	/// <see cref="Get"/> caia no ramo de CONSTRUCAO e a unica acao dele era "posicionar": o jogador
+	/// gastava cento e cinquenta mil zeni e ganhava um enfeite pra pousar no chao.
+	///
+	/// E o mesmo defeito -- e o mesmo conserto -- da Roupa Espacial e do Respirador logo abaixo. O
+	/// criterio pra estar aqui e o que o cabecalho do <see cref="Get"/> ja diz: **acao propria**. A
+	/// dele e "usar", e ela varre as esferas ACORDADAS deste mundo.
+	///
+	/// O `Set_Type` DO ORIGINAL NAO FOI PORTADO, e e uma decisao. La o radar sintoniza um tipo
+	/// qualquer de objeto (`radarType = O.type`, :244-249) e so acha o que ja se VIU -- um
+	/// galinha-e-ovo real, medido na Fase 0: pra o radar achar uma esfera, era preciso enxergar uma
+	/// esfera antes. Aqui ele nasce sintonizado nas Esferas do Dragao, que e a unica coisa que
+	/// alguem jamais quis achar com ele.
+	/// ==========================================================================================
+	/// </summary>
+	public const string Radar = "Dragon_Radar";
 
 	/// <summary>
 	/// ============================ ESTE ITEM PROTEGE DO VACUO? ============================
@@ -130,6 +170,17 @@ public static class CatalogoDeItens
 			"res://Assets/Sprites/Misc/Objects/Technology/tech.tres", "drill",
 			Empilhavel: false, Acoes: ["cavar"]),
 
+		// O ESTADO E "radar" EM MINUSCULA, e o `construcoes.json` diz "Radar" com maiuscula. Os dois
+		// funcionam -- o `Sanear` do desenho baixa a caixa antes de procurar a animacao --, mas o que
+		// esta no `.tres` e o minusculo, e escrever o nome real e uma reclamacao a menos no log no dia
+		// em que alguem mexer no saneamento.
+		[Radar] = new ItemDef(
+			Radar, "Dragon Radar",
+			"Sente as Esferas do Dragão ACORDADAS do mundo em que você está -- e só desse mundo. "
+			+ "Esfera que ainda se refaz não aparece.",
+			"res://Assets/Sprites/Misc/Misc2.tres", "radar",
+			Empilhavel: false, Acoes: ["usar"]),
+
 		// ============================ E ELAS NAO TEM ACAO, E ISSO E O CONSERTO ============================
 		// A tentacao obvia era `Acoes: ["equipar"]`, copiando o scouter. **Seria um bug que mata.** O
 		// scouter guarda o estado ligado/desligado em `ServerPlayer.PoderesConcedidos`, e esse campo
@@ -151,6 +202,17 @@ public static class CatalogoDeItens
 			"Enquanto estiver com você, dá pra respirar no vácuo. Pesada e feia, mas ninguém sufoca com estilo.",
 			"res://Assets/Sprites/Clothes/spacesuit.tres", "",
 			Empilhavel: false, Acoes: []),
+
+		// A ARTE E `Assets/Sprites/Clothes/potara.png`, versionada e ja importada (`.ctex` + `.tres`
+		// conferidos). **Nao e a `Potara-Equipped.png`**, que esta sendo MOVIDA de pasta por outra
+		// sessao neste exato momento: apontar pra um alvo em movimento seria escrever um caminho que
+		// quebra na proxima sincronia.
+		[BrincosPotara] = new ItemDef(
+			BrincosPotara, "Brincos Potara",
+			"O par de brincos dos Kaioshin. Mire alguém e jogue um deles: se a pessoa aceitar, vocês "
+			+ "se fundem na hora -- de qualquer raça, sem dança, e por meia hora inteira.",
+			"res://Assets/Sprites/Clothes/potara.tres", "",
+			Empilhavel: false, Acoes: ["jogar"]),
 
 		[Respirador] = new ItemDef(
 			Respirador, "Respirador",

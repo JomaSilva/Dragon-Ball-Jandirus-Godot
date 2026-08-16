@@ -175,6 +175,36 @@ public partial class GameServer
 
 		if (chegaram != null) ContarOQueOCargoDeu(pl, chegaram);
 
+		// ============================ E O MISTICO, QUE ERA UM VERBO ESCRITO E ORFAO ============================
+		// A `--cargovivo` deixou a acusacao por escrito: *"o painel do cargo anuncia o Mistico como
+		// PRONTO"* e a forma continua trancada, porque `ConcederMistico`
+		// (`GameServer.Formas.cs:273`) -- o gancho, documentado em vinte linhas -- **nao tinha um
+		// unico chamador de producao**. E a mesma familia de defeito que o sigilo de BP e a
+		// `RankDef.Concede` ja custaram a este projeto: API escrita e 100% orfa.
+		//
+		// AQUI E A PORTA, e ela nao e "um evento de virou Kaioshin" pelo argumento do cabecalho
+		// desta funcao. Ver <see cref="ReconciliarODomDoMistico"/>.
+		ReconciliarODomDoMistico(pl);
+
+		// 3. AS INSIGNIAS -- o que o cargo entrega que nao e skill. Hoje sao os brincos Potara do
+		//    Kaioshin, e eles entram AQUI (e nao num evento de "virou Kaioshin") exatamente pelo
+		//    argumento do cabecalho desta funcao: seis caminhos trocam um cargo de dono, e um deles
+		//    -- perder o cargo OFFLINE -- nao e evento nenhum. Ver `ReconciliarOsBrincos`.
+		ReconciliarOsBrincos(pl);
+
+		// ============================ 4. A LINGUA DOS DEUSES -- `RankAssign.dm:144` ============================
+		// O DM chama `godtongue_check()` no fim do `Rank_Verb_Assign`, ou seja no instante em que se
+		// GANHA um cargo. Ela entra AQUI pelo mesmo argumento do cabecalho desta funcao (seis caminhos
+		// trocam um trono de dono, e ligar a regra em um e esquece-la nos outros e o modo de falha mais
+		// repetido deste port) -- e porque ela e IDEMPOTENTE por construcao: `LinguaDosDeuses.Reavaliar`
+		// so sabe LIGAR, entao passar por aqui mil vezes tem o mesmo efeito de passar uma.
+		//
+		// **E ELA FICA FORA DO `if (!mudou)` de proposito**: a lingua nao e um item do kit. Um Kaio
+		// coroado cujo livro ja tivesse todas as skills do cargo sairia por aquele `return` e nunca
+		// aprenderia a falar -- e o defeito seria invisivel, porque o cargo dele estaria perfeito.
+		// =================================================================================================
+		ConferirALingua(pl);
+
 		if (!mudou) return;
 		AplicarPoderes(pl);
 		AplicarEfeitos(pl);
@@ -191,10 +221,75 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// A SKILL QUE, NO DM, **E** A FORMA. `/datum/skill/kai/Mystic` (`Race Trees/kai.dm:12-32`).
+	///
+	/// La ela nao "permite aprender o Mistico": o `after_learn()` dela faz UMA coisa --
+	/// `assignverb(/mob/keyable/verb/Mystic)` --, e esse verb (`Magic/Mystic.dm:9-18`) e o proprio
+	/// liga/desliga do buff da forma. Ter a skill e ter a forma; o `before_forget()` tira o verb e
+	/// leva a forma junto.
+	/// </summary>
+	private const string SkillDoMistico = "/datum/skill/kai/Mystic";
+
+	/// <summary>
+	/// O DOM DO MISTICO SEGUE O LIVRO -- **o chamador de producao que faltava**.
+	///
+	/// ============================ POR QUE ELE E DERIVADO, E NAO UM EVENTO ============================
+	/// Neste port a forma do Mistico e `SoPorConcessao` (ver `FormaDef`), e quem a abre e
+	/// <see cref="ConcederMistico"/>. O gancho existia desde a sessao das formas, documentado,
+	/// testado pela `--formasteste` -- e sem um unico chamador fora de bancada. O resultado era o
+	/// pior formato de divida que este projeto acumula: o Kaioshin recebia a skill, o painel do cargo
+	/// anunciava *"o cargo te entrega: Mystic"*, e apertar C nao levava a lugar nenhum.
+	///
+	/// A pergunta certa nao e "virou Kaioshin?" e sim **"o livro tem a skill?"**, e sao coisas
+	/// diferentes em dois casos que existem: (1) `/datum/skill/kai/Mystic` tem `teacher = TRUE` no DM,
+	/// entao um Kaioshin pode ENSINAR o Mistico a alguem sem cargo nenhum -- e quem foi ensinado nao
+	/// perde (o <see cref="DadivaDeCargo.Revogavel"/> ja poupa o `wastaught`); (2) quem perde o cargo
+	/// **offline** nunca dispara evento algum, e volta com a skill ja revogada pelo passo 1 desta
+	/// mesma funcao.
+	///
+	/// Derivar do livro faz os dois cairem no lugar sem uma linha pra cada, e e a mesma escolha (pelo
+	/// mesmo argumento) que o cabecalho da <see cref="ReconciliarDadiva"/> defende.
+	///
+	/// ============================ O RECUO E OBRIGATORIO, E NAO CORTESIA ============================
+	/// Quem perde a skill ESTANDO no Mistico tem que sair dele. Sem isso o ex-Kaioshin fica com o
+	/// multiplicador de uma forma que ele nao pode mais assumir, e nada o tira de la -- exatamente o
+	/// defeito que a <see cref="ReconciliarDadiva"/> ja evitou uma vez ao chamar `AplicarEstilo`
+	/// ("escrever o corte nao e aplicar o corte").
+	/// ============================================================================================
+	/// </summary>
+	private void ReconciliarODomDoMistico(ServerPlayer pl)
+	{
+		if (pl.Livro == null) return;
+
+		bool sabe = pl.Livro.Sabe(SkillDoMistico);
+		bool tem = pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico);
+
+		if (sabe && !tem) { ConcederMistico(pl, "o cargo de Kaioshin"); return; }
+		if (!sabe && !tem) return;
+		if (sabe) return;
+
+		// PERDEU A SKILL E AINDA TEM O DOM: tira os dois, nesta ordem -- primeiro o corpo sai da
+		// forma (senao `AplicarForma` recalcularia com um id que o `Avaliar` ja recusa), depois o
+		// dom sai da lista.
+		if (string.Equals(pl.Forma.Atual, Jandirus.Core.Forms.Catalogo.IdMistico,
+						  StringComparison.OrdinalIgnoreCase))
+		{
+			pl.Forma.Entrar(Jandirus.Core.Forms.Catalogo.IdBase);
+			AplicarForma(pl);
+		}
+		pl.Forma.Liberadas.Remove(Jandirus.Core.Forms.Catalogo.Rede(Jandirus.Core.Forms.Catalogo.IdMistico));
+		Avisar(pl, "o potencial que o cargo abriu em voce se fecha: o Mistico nao e mais seu.");
+		GD.Print($"[server] {pl.Name} PERDEU o MISTICO (a skill do cargo saiu do livro)");
+	}
+
+	/// <summary>
 	/// O CARGO DIZ O QUE DEU -- E DIZ O QUE ELE AINDA NAO FAZ.
 	///
 	/// ============================ POR QUE ISTO NAO E ENFEITE ============================
-	/// Das 51 skills que os cargos entregam, **31 nao tem corpo neste port** -- e o menu do cliente
+	/// Das 51 skills que os cargos entregam, **21 ainda nao tem corpo neste port** (eram 31 quando
+	/// este bloco foi escrito; o lote G6 fechou quatro e o G8 fechou seis -- o numero e do
+	/// `--censoteste`, que o mede toda rodada: *"dos que algum CARGO entrega (51 skills): 47 verbos,
+	/// 26 com efeito"*) -- e o menu do cliente
 	/// e desenhado a partir do `Tecnicas`, onde verbo mudo nao entra. O resultado, ate aqui, era o
 	/// pior formato possivel de divida: o mundo anunciava o novo Kaio do Norte, o livro recebia a
 	/// Genkidama, e no lado do jogador **nao acontecia nada**. Nenhum botao, nenhuma recusa, nenhuma
@@ -515,6 +610,13 @@ public partial class GameServer
 			case "cargo_herdeiros": VerboVerHerdeiros(pl); return true;
 
 			case "cargo_falar": VerboFalarAosCargos(pl, arg); return true;
+
+			// A RESPOSTA A OFERTA DE JUVENTUDE (`Restore_Youth`, lote G8). Ela mora no roteador dos
+			// cargos e nao no despacho de tecnicas porque quem responde NAO tem a skill -- e o alvo da
+			// oferta, nao o dono do dom. Mandar isto pelo funil de tecnica faria o `SabeTecnica`
+			// recusar todo mundo que a tecnica existe pra atender.
+			case "juventude_aceitar": ResponderJuventudeG8(pl, aceitou: true); return true;
+			case "juventude_recusar": ResponderJuventudeG8(pl, aceitou: false); return true;
 
 			// os deveres moram no `GameServer.CargoMissoes.cs` -- o roteador continua sendo um so
 			case "cargo_deveres": VerboMeusDeveres(pl); return true;

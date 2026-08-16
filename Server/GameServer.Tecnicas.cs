@@ -213,6 +213,15 @@ public partial class GameServer
 		if (UsarTecnicasG3(pl, id)) return true;
 		if (UsarTecnicasG4(pl, id)) return true;
 
+		// O LOTE G8 entra AQUI, com os quatro de cima e nao com os tres de baixo, por um motivo so: o
+		// `Restore_Youth` aceita id com ARGUMENTO (`Restore_Youth:14`). Ver o cabecalho do
+		// `GameServer.Tecnicas.G8.cs`.
+		if (UsarTecnicasG8(pl, id)) return true;
+
+		// E O LOTE G9 pelo mesmo motivo do G8: o `Power_Control` aceita id com ARGUMENTO
+		// (`Power_Control:40`). Ver o cabecalho do `GameServer.Tecnicas.G9.cs`.
+		if (UsarTecnicasG9(pl, id)) return true;
+
 		// AS TECNICAS QUE O JOGADOR INVENTOU entram AQUI, antes do gate generico, e pelo mesmo
 		// motivo dos lotes acima: `SabeTecnica` pergunta se alguma SKILL destrava este verbo, e
 		// nenhuma skill destrava `Custom_Attack7` -- no DM os verbos custom sao concedidos pelo

@@ -67,6 +67,28 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// QUEM A FUSAO E: nome, roupa, cabelo e o vermelho do SSJ4. Mora aqui em cima com as bancadas
+		// sem mundo porque ela nao precisa de rede, de zona nem de login -- so do catalogo, das folhas
+		// e do `CharacterVisual`. E ela NAO precisa de janela: o que ela le sao caminhos de arte e o
+		// que o caminho de producao escreveu no material. Ver `RoboDeFusaoLook` pro que ela NAO prova.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagfusaolook") >= 0)
+		{
+			AddChild(new RoboDeFusaoLook { Name = "RoboDeFusaoLook" });
+			return;
+		}
+
+		// A CINEMATICA DA FUSAO: a luz sobre os dois, as ondas, a pedra e o branco que escoa. Mora
+		// aqui em cima ao lado da `--diagfusaolook` e pela mesma razao -- ela nao precisa de rede, de
+		// zona nem de login, so do Core, das folhas e de dois `CharacterVisual`. E ela roda a cena no
+		// PROPRIO relogio (`SetProcess(false)` + `_Process` a mao), entao tambem nao precisa de
+		// janela. A metade do SERVIDOR (o `Fundir` que so roda na virada) e a `--cenafusaoteste`.
+		// Ver `RoboDeCenaDeFusao`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcenafusao") >= 0)
+		{
+			AddChild(new RoboDeCenaDeFusao { Name = "RoboDeCenaDeFusao" });
+			return;
+		}
+
 		// A TINTA DO CABELO E DO RABO, medida na TELA. Vive aqui em cima com as outras bancadas sem
 		// mundo porque ela nao precisa de rede nem de zona -- so da folha, do shader e de um quadro
 		// desenhado. E ela PRECISA de janela: e a foto que responde.
@@ -153,6 +175,15 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagslot") >= 0)
 		{
 			AddChild(new RoboDeSlot { Name = "RoboDeSlot" });
+			return;
+		}
+
+		// `--diagapagar` mede a TELA de apagar (a caixa de confirmacao): onde ela para na tela, o que
+		// ela desenha por cima do que, e se a trava do nome e trava ou enfeite. Vive aqui pelo mesmo
+		// motivo da `--diagslot` -- a tela que ela dirige some quando o mundo comeca.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagapagar") >= 0)
+		{
+			AddChild(new RoboDaTelaDeApagar { Name = "RoboDaTelaDeApagar" });
 			return;
 		}
 
@@ -560,6 +591,21 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagforma") >= 0)
 			AddChild(new RoboDeForma { Name = "RoboDeForma" });
 
+		// --diagchama: a FOTO da chama, que e a metade que a `--diagforma` nao alcanca. Aquela mede
+		// o arquivo e o uniform (folha, quadro, RGB chapado, alfa identico ao do SSJ); esta segura a
+		// tecla C no corpo de verdade e FOTOGRAFA -- a aura da base, a carga, o Ki acima de 100%, uma
+		// forma que herda a base e o contra-exemplo de quem nao herda. Ela mede a foto contra um piso
+		// de RUIDO tirado na hora, e nao no olho. Ver RoboDaChama.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagchama") >= 0)
+			AddChild(new RoboDaChama { Name = "RoboDaChama" });
+
+		// --diagsilencio: o SILENCIO DO ESPACO, ANDADO. A `--diagtrilha` liga e desliga o vacuo na
+		// mao (responde "o corte funciona?"); esta faz o SERVIDOR mudar o corpo de zona -- planeta,
+		// espaco, dentro da nave-capital, planeta de novo -- e pergunta ao `AudioServer` em cada
+		// parada (responde "ao ENTRAR no espaco, o corte e pedido?"). Ver RoboDoSilencio.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsilencio") >= 0)
+			AddChild(new RoboDoSilencio { Name = "RoboDoSilencio" });
+
 		// --diagcolada: bancada da COLADA DE FORMA, e ela so tira FOTO. As checagens de colada do
 		// `--diagforma` (folha, tinta, pose, quadro) passaram verdes enquanto o dono via na tela um
 		// brilho cinza em camera lenta -- entao esta monta uma TIRA de quadros consecutivos e deixa o
@@ -739,6 +785,17 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagraio") >= 0)
 			AddChild(new RoboDeFotoDoRaio { Name = "RoboDeFotoDoRaio" });
 
+		// --diagembateki: AS FOTOS DA COLISAO DE KI -- os dois feixes se empurrando (o feixe de quem
+		// acerta ESTICA, o do outro ENCOLHE) e a explosao do empate de 15 s, com os dois corpos sendo
+		// jogados pra tras. Irma da `--embatekiteste` (87 afirmacoes, sem janela) e a metade que aquela
+		// nao pode ter: entre o `Feixe.Pos` do servidor e o feixe desenhado ha o snapshot, o
+		// `ProjetilDesenhado` e a interpolacao, e a bancada de numero ficaria verde com os dois feixes
+		// desenhados do mesmo tamanho. Precisa de `--host` (quem tem projetil e disputa e o servidor) e
+		// de JANELA (no headless o `GetImage` volta vazio). Ver RoboDeFotoDoEmbateDeKi e
+		// `testar-colisao-de-ki.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagembateki") >= 0)
+			AddChild(new RoboDeFotoDoEmbateDeKi { Name = "RoboDeFotoDoEmbateDeKi" });
+
 		// --diagboca: DE ONDE O FEIXE SAI E EM QUE CAMADA ELE E DESENHADO, fotografado. E a resposta
 		// da queixa que o dono mandou EM FOTO ("os beams tao saindo DE CIMA do personagem, deveriam
 		// sair DA FRENTE dele, NA FRENTE DO SPRITE deles"), e ela mede as DUAS leituras da frase: o
@@ -774,6 +831,19 @@ public partial class Boot : Node2D
 		// `ver-dois-corpos.bat`.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcorpos") >= 0)
 			AddChild(new RoboDeColisao { Name = "RoboDeColisao" });
+
+		// --diagfotofusao: A FUSAO, FOTOGRAFADA -- a UNICA `FusionLight` no meio dos dois corpos (e a
+		// janela LIMPA entre dois estouros dela), o corpo completamente branco no climax, a METAMORO e a
+		// POTARA lado a lado (roupa e cabelo diferem) e o SSJ4 de cabelo vermelho. A irma dela e a
+		// `--fusaoduplateste` (servidor, headless, 157 provas com defeitos injetados), e esta e a metade
+		// que aquela nao pode ter: aquela ficaria
+		// verde com a fusao desenhada careca e de calcao -- entre o `LookDeFusao` do servidor e o pixel
+		// ha o `PeerLook`, o `_fusaoDaZona` do `World`, a pilha de camadas do `CharacterVisual`, o
+		// `CabelosDeForma` e o shader do corpo. Precisa de `--host` (quem funde e o servidor) e de
+		// JANELA (no headless o `GetImage` volta vazio). Ver RoboDeFotoDeFusao,
+		// `GameServer.FotoDaFusao.cs` e `ver-a-fusao.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagfotofusao") >= 0)
+			AddChild(new RoboDeFotoDeFusao { Name = "RoboDeFotoDeFusao" });
 
 		// --diagborrao: O BORRAO DO DASH, FOTOGRAFADO -- os dois relatos do dono sobre o dash do NPC
 		// ("npcs quando usam DASH n ficam com o EFEITO DE BLUR igual os jogadores" e "o RANGE DO

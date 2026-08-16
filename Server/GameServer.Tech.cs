@@ -703,6 +703,17 @@ public partial class GameServer
 		if (o == null) { Avisar(pl, "não há nada por perto pra pegar."); return; }
 
 		if (o.DoMapa) { Avisar(pl, "isto faz parte do lugar -- não é seu pra levar."); return; }
+
+		// ============================ POTE COM GENTE DENTRO NAO SE CARREGA ============================
+		// Desvio DECLARADO do original, e a razao e de identidade: no DM da pra por o pote selado na
+		// mochila e o `checkdur` reescreve o ponto de volta do preso pro lugar do pote (`Sealing.dm:122`).
+		// Aqui um pote no chao e uma `Obra` COM ID (gravada no `mundo.json`) e um pote na mochila e um
+		// item de pilha, sem identidade nenhuma -- recolher apagaria o vinculo `Selo.PoteId` e deixaria
+		// um preso sem carcere, com o selo corroendo por horas ate soltar sozinho.
+		//
+		// O que se perde e poder ANDAR com o prisioneiro; o que se mantem e a interacao que importa,
+		// que e quebrar o pote pra solta-lo. Ver `GameServer.Selo.cs`.
+		if (PoteEstaSelado(o)) { Avisar(pl, "há alguém selado aí dentro -- isso não sai do lugar."); return; }
 		if (o.DonoConta.Length > 0 && !string.Equals(o.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase))
 		{ Avisar(pl, $"{NomeDaObra(o)} é de {o.DonoNome}."); return; }
 		if (pl.Mochila.Cheio) { Avisar(pl, "sua mochila está cheia."); return; }

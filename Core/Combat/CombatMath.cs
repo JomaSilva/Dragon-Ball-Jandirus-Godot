@@ -56,20 +56,23 @@ public static class CombatKnobs
 	public static double TagDeCombate = 90;
 
 	/// <summary>
-	/// VIDA POR SEGUNDO que o corpo recupera FORA DE COMBATE. Um corpo inteiro leva ~1 minuto pra
-	/// sair de zero -- lento o bastante pra derrota doer, rapido o bastante pra nao obrigar ninguem
-	/// a ficar sentado esperando.
+	/// ============================ O TETO DA CURA PASSIVA -- e ele nao E mais a cura ============================
+	/// **ISTO ERA A REGRA E VIROU UM LIMITE SUPERIOR.** Era a taxa de cura de todo mundo: 1,667 de
+	/// vida por segundo em CADA membro, plana, sem raca, sem membro, sem fome, sem vigor. A regra
+	/// mudou de casa pro <see cref="Regeneracao"/>, que e o `assign_regen()` + os quatro canais de
+	/// `Injuries.dm`/`master.dm` do original -- ver o cabecalho de la.
 	///
-	/// ============================ ELA MUDOU DE CASA, E POR UM MOTIVO ============================
-	/// Era `GameServer.RegenPorSegundo`, um `private const` do servidor. Veio pra ca quando a
-	/// estrela passou a queimar (`Core.World.CalorDaEstrela`), porque este numero deixou de decidir
-	/// UMA coisa e passou a decidir DUAS: **o piso do dano do sol e calibrado pra ficar acima dela**.
-	/// Um piso abaixo de 1,67 nao mataria ninguem -- curaria --, e o sol viraria um teto que nunca
-	/// dispara (regra 0.7 da spec).
+	/// **ELE CONTINUA AQUI PORQUE TEM UM SEGUNDO DONO**: o piso do dano da estrela e calibrado pra
+	/// ficar ACIMA da cura (`Core.World.CalorDaEstrela.FatorMinimo`), senao o sol curaria em vez de
+	/// matar (regra 0.7 da spec). Uma desigualdade dessas nao pode ser afirmada contra "a cura da
+	/// raca que estiver la dentro" -- ela precisa do pior caso, e o pior caso e este numero.
 	///
-	/// Com a constante no Core, a bancada `sol` do AssetPipeline afirma a desigualdade sem subir o
-	/// Godot, e nao existe uma segunda copia do 1,67 pra envelhecer sozinha.
-	/// =======================================================================================
+	/// **E ELE AINDA E UM TETO DE VERDADE**, com folga, e a conta cabe numa linha: o corpo que mais
+	/// se cura no jogo e o Majin (`Regeneration = 100` -> `passiveRegen = 2,20`) num membro de
+	/// `regenerationrate = 2`, com `Ephysdef` saturado. Somando os quatro canais da
+	/// <see cref="Regeneracao"/> isso da **~1,07 de vida por segundo** -- abaixo de 1,667, e muito
+	/// abaixo do piso de 3,0 do sol. Uma raca comum fica em ~0,26.
+	/// ======================================================================================================
 	/// </summary>
 	public static double RegenPorSegundo = 100.0 / 60.0;
 

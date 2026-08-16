@@ -47,10 +47,55 @@ public partial class PauseMenu : CanvasLayer
         Fechar("menu nasceu fechado (entrei no mundo)");
     }
 
+    /// <summary>
+    /// O ESC. **ABRIR passa pelo mesmo portao das outras sete telas; FECHAR nao passa por portao
+    /// nenhum.**
+    ///
+    /// ============================ POR QUE O ESC TAMBEM CALA NO EMBATE ============================
+    /// O pedido do dono foi literal e amplo -- *"enquanto ta tendo QUALQUER CLASH (ki ou zanzoclash) as
+    /// HOTKEYS SAO DESATIVADAS"* -- e este era o UNICO caminho de tecla do cliente que nao perguntava
+    /// ao <see cref="Foco"/>. Ele nem passa pelo `Atalhos`: o ESC e registrado como `fixa_sair` com
+    /// `Fixa: true` (`Teclas.cs`), entao `Teclas.AtalhoDe(ESC)` e nulo por construcao e o portao que
+    /// existe em oito arquivos nao existia neste.
+    ///
+    /// **E MEDIDO, nao suposto -- sao tres coisas que a fase de medicao achou:**
+    ///
+    ///   1. **NAO HA PAUSA A PERDER.** Este menu nunca tocou em `GetTree().Paused` (o cabecalho acima
+    ///      ja diz por que), entao "o ESC e a saida de emergencia" era falso: o embate corre por baixo
+    ///      inteiro -- o anel do `ClashQte` continua fechando, as letras continuam saindo e o prazo
+    ///      continua andando nas duas pontas. O que o menu fazia era **CEGAR**: um `ColorRect` preto de
+    ///      alpha 0,72 na camada 20 por cima do quick time event, que mora na 5. A letra caia pra 28%
+    ///      de brilho com o VBox de opcoes em cima dela.
+    ///   2. **E ATRAS DELE HA UM EXPLOIT DE VERDADE**: o botao "Desconectar" daqui. `Drop` chama
+    ///      `SoltarDoEmbate` -> `Terminar`, e o `Terminar` desiste em `if (!vivo) return;` ANTES do
+    ///      `GolpeDeSaida` -- ou seja, deslogar no meio de um ZanzoClash CANCELA a pancada que fecha o
+    ///      embate. Este menu era a unica porta de jogo pra chegar nesse botao.
+    ///   3. **O CUSTO TEM NUMERO E E PEQUENO.** O silencio se vence sozinho (ver
+    ///      `Foco.AtalhosMudos`): ZanzoClash dura 3,0 a 6,3 s e a colisao de ki 15 s, mais 2 s de folga
+    ///      -- o PIOR caso de tela de opcoes adiada e 17 s, e so na colisao de ki. Alt+F4 e fechar a
+    ///      janela sao do sistema operacional e nenhum portao nosso os alcanca.
+    /// ==========================================================================================
+    ///
+    /// ============================ FECHAR NUNCA E BLOQUEADO ============================
+    /// A metade que importa. O silencio olha o embate, e o embate pode COMECAR com este menu ja aberto
+    /// -- e um portao simetrico prenderia o jogador atras da tela preta ate 17 s, sem enxergar a briga
+    /// que ele esta perdendo. Ou seja: o remedio viraria a doenca da medicao 1 acima, so que pior.
+    ///
+    /// Fechar tambem nao e o que o dono pediu calar: o pedido e *"pra n ficar abrindo varios menus"*.
+    /// =============================================================================
+    ///
+    /// E ELE CALA SO A SI MESMO. Nao ha `SetInputAsHandled` no caminho recusado, de proposito: recusar
+    /// e nao agir, e nao engolir a tecla de quem vier depois. Isto e um portao de HOTKEY e nao um
+    /// portao global de entrada -- a regra da casa desde que um portao global quebrou o andar do dono.
+    /// </summary>
     public override void _UnhandledInput(InputEvent e)
     {
         if (e is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape }) return;
-        if (Aberto) Fechar(); else Abrir();
+
+        if (Aberto) { Fechar(); GetViewport().SetInputAsHandled(); return; }
+
+        if (Foco.AtalhosMudos) return;
+        Abrir();
         GetViewport().SetInputAsHandled();
     }
 

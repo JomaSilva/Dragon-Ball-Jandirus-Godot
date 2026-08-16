@@ -18,9 +18,12 @@ namespace Jandirus.Server;
 ///      <see cref="EhJogador"/> aprova -- e esse predicado pede `Peer != null`. Um corpo de bancada de
 ///      boot **nao e gente pro proprio jogo**: as 108 checagens de la passam por um cano que o tique
 ///      nunca percorreria;
-///   2. **`ReivindicarCargo` e `Outorgar` NAO chamam `ReconciliarDadiva`.** Quem reivindica um cargo
-///      recebe o anuncio e mais nada; o kit so chega no proximo tique. Uma bancada que chama a
-///      reconciliacao a mao nunca poderia descobrir isso -- ela ja comeca do outro lado da porta.
+///   2. **`ReivindicarCargo` e `Outorgar` NAO chamavam `ReconciliarDadiva`** -- achado desta bancada,
+///      e ja consertado (as duas chamam agora, ver `GameServer.Ranks.cs`). Quem reivindicava um cargo
+///      recebia o anuncio e mais nada; o kit so chegava no proximo tique, ate 1 s depois. Uma bancada
+///      que chama a reconciliacao a mao nunca poderia descobrir isso -- ela ja comeca do outro lado
+///      da porta. **A secao que mede continua valendo**: ela ocupa o trono POR FORA das portas, e o
+///      que ela afirma e que o tique entrega SOZINHO -- a garantia que cobre perder o cargo offline.
 ///
 /// Aqui os corpos EMPRESTAM o `Peer` do host (a mesma saida da `--karmateste`), o trono se ocupa e o
 /// **tique de producao** e quem tem que entregar. Nenhuma linha desta bancada chama a reconciliacao.
@@ -126,12 +129,23 @@ public partial class GameServer
 
 		// O `Peer` EMPRESTADO E O PONTO DA BANCADA -- ver o cabecalho. Sem ele `EhJogador` devolve
 		// falso, o `TickDosCargos` pula o corpo e TUDO aqui embaixo passaria por ausencia.
-		ServerPlayer Forjar(int i, string nome, string raca = "Saiyan", double bp = 5_000_000)
+		//
+		// ============================ E O `comPeer: false`, QUE E O OUTRO LADO DA MESMA PRECAUCAO ============================
+		// Tres verbos do lote de cargo terminam em `Persistir` (`Keep_Body`, o aceite do `Restore_Youth`
+		// e o `Revive`), e um corpo com o `Peer` do host que chegue la grava por cima do personagem
+		// dele no disco. Quem for ALVO desses verbos nasce com `Peer` nulo -- o `Persistir` sai na
+		// primeira linha --, e isso **nao** o tira do jogo: `EhPessoa` continua verdadeiro (a
+		// `Assinatura` sai de `Conta`+`Slot`), que e exatamente o crivo que os verbos com alvo usam.
+		// O que ele deixa de ser e `EhJogador`, e por isso ele nao serve pro `Dead` nem pra telepatia.
+		// Ver o cabecalho de `GameServer.CargoEfeitoTeste.cs`.
+		// ================================================================================================================
+		ServerPlayer Forjar(int i, string nome, string raca = "Saiyan", double bp = 5_000_000,
+							bool comPeer = true)
 		{
 			var novo = new ServerPlayer
 			{
 				Id = IdBaseDoCargoVivo + i,
-				Peer = host.Peer,
+				Peer = comPeer ? host.Peer : null,
 				Name = nome,
 				Race = raca,
 				Genero = "Male",
@@ -153,16 +167,55 @@ public partial class GameServer
 		ServerPlayer controle = Forjar(2, "bancada cargo: o sem-cargo");
 		ServerPlayer namek = Forjar(3, "bancada cargo: o namekuseijin", "Namekian");
 
+		// OS DOIS CORPOS DAS FAMILIAS 5 A 7 (ver `GameServer.CargoEfeitoTeste.cs`): o ALVO sem `Peer`
+		// (pode receber os verbos que persistem) e o DEFUNTO com `Peer` (e o unico que o `Dead` e a
+		// telepatia enxergam, porque os dois filtram por `EhJogador`).
+		//
+		// E OS NOMES DESTES DOIS NAO TEM DOIS-PONTOS, ao contrario dos tres de cima. Nao e estilo: a
+		// telepatia recebe o alvo e a frase num argumento so, separados por `:`
+		// (`Telepathy:<nome>:<mensagem>`, `GameServer.Tecnicas.G4.cs:209`), e um nome com dois-pontos
+		// e cortado ao meio pelo proprio parser. A bancada gastou uma rodada inteira acusando a
+		// telepatia de nao achar ninguem por causa disso.
+		ServerPlayer alvo = Forjar(4, "bancada cargo do alvo", comPeer: false);
+		ServerPlayer defunto = Forjar(5, "bancada cargo do defunto");
+
+		// O PONTO DA CENA E LIVRE POR CONSTRUCAO. Os corpos nascem na borda do mapa (`Pos.Y = 0`), e
+		// os verbos das familias 5 a 7 andam, atiram e voltam de outra zona -- um ponto dentro de
+		// parede prenderia corpo e faria a bancada acusar o verbo pelo mapa.
+		ZoneCollision? mapaDaCena = MapaDaZonaOuCatalogo(zona);
+		var meio = new Vec2(
+			(mapaDaCena?.Width ?? 100) * ZoneCollision.TileSize / 2f,
+			(mapaDaCena?.Height ?? 100) * ZoneCollision.TileSize / 2f);
+		var cena = new CenaDeCargo
+		{
+			Dono = dono,
+			Alvo = alvo,
+			Defunto = defunto,
+			Zona = zona,
+			Onde = mapaDaCena?.PontoLivrePerto(meio) ?? meio,
+		};
+
 		try
 		{
 			C("o corpo forjado E JOGADOR pro proprio jogo (`EhJogador`, com `Peer`)",
 			  EhJogador(dono) && EhJogador(controle), "sem isto o tique de cargos nunca olharia pra ele");
+
+			C("...e o corpo-ALVO e PESSOA sem ser JOGADOR (e o que o poe fora do alcance do `Persistir`)",
+			  EhPessoa(alvo) && !EhJogador(alvo),
+			  $"EhPessoa={EhPessoa(alvo)} EhJogador={EhJogador(alvo)}");
 
 			OTiqueEQuemEntrega(dono, C);
 			UmaLinhaPorSkill(dono, controle, C);
 			ACondicaoExtraEhCobrada(dono, controle, C);
 			AsPortasQueNaoSaoOCanalDeTecnica(dono, controle, namek, C);
 			OKaiokenAcendeDeVerdade(dono, controle, C);
+
+			// AS TRES FAMILIAS NOVAS, e elas vem POR ULTIMO de proposito: a 5 mata o defunto, enche a
+			// zona de raio e leva corpos pra Arconia e pro Ceu. Rodando antes, as quatro de cima
+			// mediriam uma cena que outra bancada arrumou.
+			OEfeitoNomeadoDeCadaVerbo(cena, C);
+			OKitChegaNaHoraDeReivindicar(cena, controle, C);
+			OVerboNaoSomeNoTiqueSeguinte(cena, controle, C);
 		}
 		catch (Exception e)
 		{
@@ -172,11 +225,23 @@ public partial class GameServer
 		{
 			// OS CORPOS SAEM PRIMEIRO. Ver a armadilha do `Peer` emprestado no cabecalho: corpo
 			// emprestado esquecido no `_players` nao e lixo, e save corrompido no proximo autosave.
-			foreach (ServerPlayer p in new[] { dono, controle, namek })
+			foreach (ServerPlayer p in new[] { dono, controle, namek, alvo, defunto })
 			{
 				_players.Remove(p.Id);
 				ZoneList(p.Zone.Hash).Remove(p);
+
+				// E O QUE A FAMILIA 5 PENDUROU NELES SAI JUNTO. Canal, recarga, cura e oferta sao
+				// dicionarios por ID e por CONTA: um corpo removido do `_players` com entrada viva
+				// neles vira lixo que o tique seguinte visita -- e o `_curando` chega a procurar o
+				// alvo todo tique.
+				_canais.Remove(p.Id);
+				_blastPronto.Remove(p.Id);
+				_kikoho.Remove(p.Id);
+				_curando.Remove(p.Id);
+				_prontoTelepatiaG4.Remove(p.Id);
+				_ofertasDeJuventudeG8.Remove(p.Conta);
 			}
+			LimparOsTirosDaCena(zona.Hash);
 
 			_tronos.Clear();
 			foreach ((string k, string v) in tronosReais) _tronos[k] = v;
@@ -206,13 +271,26 @@ public partial class GameServer
 	// 0. QUEM ENTREGA E O TIQUE -- e nao a porta por onde o cargo entrou
 	// =====================================================================
 	/// <summary>
-	/// O DEFEITO INJETADO DESTA FAMILIA, e ele nao precisou ser inventado: **ocupar o trono nao
-	/// entrega nada**. `ReivindicarCargo` (`GameServer.Ranks.cs:154`) e `Outorgar` (`:188`) escrevem
-	/// no `_tronos`, gravam e anunciam -- nenhum dos dois chama a reconciliacao. Quem entrega e o
-	/// tique de 1 Hz, e so ele.
+	/// O DEFEITO INJETADO DESTA FAMILIA: **escrever no `_tronos` na mao nao entrega nada**. Quem
+	/// entrega sem ninguem pedir e o tique de 1 Hz, e essa e a garantia que importa -- ela cobre o
+	/// caminho que evento nenhum cobre (perder o cargo OFFLINE) e cobre a setima porta de cargo que
+	/// alguem escrever amanha sem lembrar de reconciliar.
 	///
-	/// Esta secao prova as duas metades na ordem em que o jogo as vive: com o trono ocupado e ANTES
-	/// do tique o livro esta vazio; um tique depois, o kit chegou. Uma bancada que chamasse
+	/// ============================ O QUE ESTA SECAO ACHOU, E QUE JA FOI CONSERTADO ============================
+	/// O texto que estava aqui dizia mais do que a injecao mede, e era uma acusacao de verdade:
+	/// *"`ReivindicarCargo` e `Outorgar` escrevem no `_tronos`, gravam e anunciam -- **nenhum dos dois
+	/// chama a reconciliacao**"*. Era o defeito, e ele custava uma janela de ate 1 segundo entre "VOCE
+	/// E O NOVO EREMITA TARTARUGA" e o Kamehameha aparecer na aba de skills -- que o jogador nao tem
+	/// como distinguir de jogo quebrado.
+	///
+	/// **As duas portas reconciliam agora** (`GameServer.Ranks.cs`), e o `Entronizar` das portas novas
+	/// ja fazia. A injecao continua valida e continua sendo a mesma, porque ela nunca dependeu disso:
+	/// ela escreve o `_tronos` DIRETO, que nao e porta de producao nenhuma -- e e exatamente por isso
+	/// que ela consegue medir o tique sozinho.
+	/// ========================================================================================================
+	///
+	/// Esta secao prova as duas metades na ordem em que o jogo as vive: com o trono ocupado por fora e
+	/// ANTES do tique o livro esta vazio; um tique depois, o kit chegou. Uma bancada que chamasse
 	/// `ReconciliarDadiva` a mao (como a `--cargoportas` faz) nao consegue enxergar esta janela --
 	/// ela comeca do outro lado dela.
 	/// </summary>
@@ -221,7 +299,7 @@ public partial class GameServer
 		const string estilo = "/datum/skill/style/KameStyle";
 
 		_tronos["turtle"] = dono.Conta;
-		C("INJECAO: ocupar o trono, sozinho, NAO entrega nada (nem `Reivindicar` nem `Outorgar` reconciliam)",
+		C("INJECAO: ocupar o trono POR FORA das portas nao entrega nada (so o tique entrega sozinho)",
 		  !dono.Livro.Sabe(estilo), "o kit chegou sem tique -- entao ha um segundo entregador nao declarado");
 
 		TickDosCargos();
@@ -577,31 +655,41 @@ public partial class GameServer
 		  && dono.Livro.Sabe("/datum/skill/rank/Appoint_Elder"), "");
 		_convitesDeAnciao.Clear();
 
-		// ============================ O MISTICO DO KAIOSHIN -- DIVIDA ACHADA AQUI ============================
-		// O censo aponta o verb `Mystic` do DM pro canal `forma:mistico`, e a forma existe. O que nao
-		// existe e o elo: a unica coisa que libera o Mistico e o `ConcederMistico`
-		// (`GameServer.Formas.cs:273`), e ele **nao tem um unico chamador de producao** -- so bancada.
-		// Ou seja: o Kaioshin recebe a skill `kai/Mystic` no livro e continua sem conseguir entrar na
-		// forma, e o painel do cargo a anuncia como PRONTA.
+		// ============================ O MISTICO DO KAIOSHIN -- A DIVIDA QUE ESTA BANCADA ACHOU, E FECHOU ============================
+		// **O QUE ESTAVA ESCRITO AQUI ERA UMA ACUSACAO**, e ela valia: o censo apontava o verb `Mystic`
+		// do DM pro canal `forma:mistico`, a forma existia, e o elo nao -- `ConcederMistico`
+		// (`GameServer.Formas.cs:273`) nao tinha **um unico chamador de producao**. O Kaioshin recebia a
+		// skill `kai/Mystic` no livro, o painel do cargo anunciava o Mistico como PRONTO e apertar C nao
+		// levava a lugar nenhum. A linha afirmava so que a skill chegava, e a divida ia num `GD.Print`.
 		//
-		// A linha abaixo afirma so o que e verdade hoje (a skill chega); a divida vai no console toda
-		// rodada, porque uma checagem que so ficasse verde no dia do conserto seria uma bancada que
-		// reprova quando o bug e corrigido.
-		// ================================================================================================
+		// O elo entrou (`ReconciliarODomDoMistico`, `GameServer.CargoPortas.cs`), e a acusacao virou
+		// AFIRMACAO -- **nas duas direcoes**, que e o que a torna dificil de satisfazer por acidente:
+		//
+		//   1. com o cargo, a skill chega **e a forma abre**. Sem a segunda metade, um `Dar()` que
+		//      escrevesse a skill e nao abrisse nada continuaria verde -- foi exatamente esse o buraco;
+		//   2. largando o cargo, a skill sai **e a forma fecha junto**. Sem esta, reivindicar Kaioshin,
+		//      ganhar o Mistico e largar o cargo seria um multiplicador de ficha de graca pra sempre --
+		//      o mesmo buraco que o `DadivaDeCargo.LevantarRevogaveis` ja fechou pros sete estilos.
+		//
+		// No DM as duas metades sao o par `after_learn`/`before_forget` de `/datum/skill/kai/Mystic`
+		// (`Race Trees/kai.dm:24-29`): a skill DA o verb da forma e esquece-la TIRA o verb.
+		// ==========================================================================================================================
 		_tronos.Clear();
 		_tronos["kaioshin"] = dono.Conta;
 		TickDosCargos();
-		bool temSkill = dono.Livro.Sabe("/datum/skill/kai/Mystic");
-		bool formaAberta = dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico);
-		C("o Kaioshin recebe a skill do Mistico",
-		  temSkill, "");
-		if (temSkill && !formaAberta)
-			GD.Print("[cargo] DIVIDA: o Kaioshin tem a skill `kai/Mystic` no livro e a FORMA continua "
-				   + "trancada -- `ConcederMistico` (GameServer.Formas.cs:273) nao tem chamador de "
-				   + "producao, e o painel do cargo anuncia o Mistico como PRONTO.");
+		C("o Kaioshin recebe a skill do Mistico -- E A FORMA ABRE JUNTO",
+		  dono.Livro.Sabe("/datum/skill/kai/Mystic")
+		  && dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico),
+		  $"skill={dono.Livro.Sabe("/datum/skill/kai/Mystic")} "
+		  + $"forma={dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)}");
 
 		_tronos.Clear();
 		TickDosCargos();
+		C("...e largando o cargo a skill sai E a forma se fecha junto",
+		  !dono.Livro.Sabe("/datum/skill/kai/Mystic")
+		  && !dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico),
+		  $"skill={dono.Livro.Sabe("/datum/skill/kai/Mystic")} "
+		  + $"forma={dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)}");
 	}
 
 	// =====================================================================

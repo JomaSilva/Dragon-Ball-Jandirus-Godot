@@ -94,6 +94,31 @@ public partial class GameServer
 		return pl.SpeedStat;
 	}
 
+	/// <summary>
+	/// PoE O CORPO DE PE E INTEIRO -- membros devolvidos, nocaute limpo, Ki cheio.
+	///
+	/// ============================ ELE EXISTE PORQUE UMA CAMINHADA ANDOU DOIS TILES ============================
+	/// A familia da borda anda 500 tiles depois de as familias 4 e 5 terem matado reflexo e apanhado no
+	/// corpo largado. Na rodada inteira ela andou **2 tiles**: o corpo entrou na caminhada NOCAUTEADO, e
+	/// `LocalPlayer` desliga o piloto automatico de quem esta caido (*"este corpo nao anda"*) -- a
+	/// bancada mediu um nocaute e chamou de borda.
+	///
+	/// O `CurarDeTeste` que ela usava nao resolve: ele devolve VIDA e nao levanta ninguem (`Ficha.KO` e
+	/// `Combate.NocauteRestante` continuam de pe). Quem levanta e o `CurarPorInteiro`, que ja existia
+	/// na `--menteviva` -- e reusa-lo e o certo: uma segunda copia dele seria a duplicata que este port
+	/// recusa por regra.
+	/// =====================================================================================================
+	/// </summary>
+	internal bool DePeNoTeste(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+		CurarPorInteiro(pl);
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		pl.Ficha.Tick(agoraMs: NowMs());
+		MandarFicha(pl);
+		return true;
+	}
+
 	// =====================================================================
 	// OS ACONTECIMENTOS -- o que o jogador sozinho nao encomenda
 	// =====================================================================
@@ -139,6 +164,30 @@ public partial class GameServer
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl) || pl.CloneId == 0) return false;
 		DesfazerOOponente(pl, "o seu reflexo se desfaz -- a mente fica vazia.");
+		return true;
+	}
+
+	/// <summary>
+	/// EMPURRA O REFLEXO PRA TRAS DO DONO, <paramref name="tiles"/> tiles -- o gatilho da COLEIRA.
+	///
+	/// ============================ POR QUE A FUGA NAO SERVIA COMO GATILHO ============================
+	/// A primeira versao da familia 7 fugia a pe e esperava o reflexo ficar pra tras. Ela e verdadeira e
+	/// e FLAKY, e o motivo e a propria premissa do sistema: os dois correm na MESMA velocidade, entao a
+	/// vantagem so nasce quando o reflexo para pra bater -- e quando ele bate, o knockback tira a
+	/// vantagem de volta. Duas rodadas iguais deram 40 tiles de folga e 16 tiles de folga; a segunda
+	/// nunca chegou perto do raio e a familia ficou vermelha sem defeito nenhum.
+	///
+	/// Empurrar o reflexo poe a bancada NO GATILHO em vez de torcer por ele: 60 tiles passam dos 40 da
+	/// coleira, e o que se mede depois disso e produção pura -- `TicarUmCorpo` pergunta `FugiuDoDono` e
+	/// chama `ReaparecerNaFrente`. **Nada aqui imita a regra**: a bancada so cria a distancia.
+	/// ============================================================================================
+	/// </summary>
+	internal bool AfastarOReflexoNoTeste(int donoId, float tiles)
+	{
+		if (!_players.TryGetValue(donoId, out ServerPlayer? dono) || dono.CloneId == 0) return false;
+		if (!_players.TryGetValue(dono.CloneId, out ServerPlayer? reflexo)) return false;
+
+		reflexo.Pos = dono.Pos - new Vec2(tiles * ZoneCollision.TileSize, 0);
 		return true;
 	}
 

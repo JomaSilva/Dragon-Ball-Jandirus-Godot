@@ -337,9 +337,14 @@ public partial class LocalPlayer : Node2D
 		var dir = (Facing)((ficha.Estado >> 6) & 3);
 		_dirDoCorpo = dir;   // a folha do voo tambem sai daqui -- ver _Process
 		if (_deitado) _visual.DeitarPor(dir);
-		else if (ficha.Empurrado) _visual.VoarPara(dir);
+		// O PUXAO DA FUSAO NAO GIRA O CORPO. Ele e dirigido pelo servidor como o arremesso (mesmo bit
+		// `Empurrado`, mesma correcao, mesmo deslize), mas quem esta sendo puxado pro outro esta DE PE
+		// -- com a rotacao do arremesso, dois lutadores atraidos no eixo vertical apareceriam de cabeca
+		// pra baixo deslizando um pro outro. Ver `SheetState.PuxadoNaFusao`.
+		else if (ficha.Empurrado && !ficha.PuxadoNaFusao) _visual.VoarPara(dir);
 		else _visual.GirarPara(default);
 		_empurrado = ficha.Empurrado;   // o servidor esta dirigindo o corpo: ver _Process
+		_puxadoNaFusao = ficha.PuxadoNaFusao;   // ...e este diz que ele NAO esta sendo arremessado
 		_nadando = ficha.Nadando;       // ...e este diz por ONDE ele passa: ver _nadando
 		_visual.MostrarRabo(ficha.Rabo);
 		// 3% de folga sobre o custo de um segundo de corrida: no fio do Ki, correr e desistir
@@ -402,6 +407,44 @@ public partial class LocalPlayer : Node2D
 
 	/// <summary>Estou sendo ARREMESSADO -- quem move o corpo agora e o servidor.</summary>
 	private bool _empurrado;
+
+	/// <summary>
+	/// ...E O QUE ME MOVE E O PUXAO DA FUSAO, e nao um golpe. Ver <see cref="SheetState.PuxadoNaFusao"/>:
+	/// o <see cref="_empurrado"/> continua ligado (ele e o que faz este cliente parar de integrar tecla),
+	/// e este bit tira as duas coisas que sao do ARREMESSO e nao do puxao -- a rotacao de 90 graus do
+	/// corpo e a direcao "de onde veio a pancada".
+	/// </summary>
+	private bool _puxadoNaFusao;
+
+	/// <summary>
+	/// ============================ POR QUE O CORPO NAO ANDA AGORA -- UM LUGAR SO ============================
+	/// Vazio = ele anda. E esta propriedade **e a propria condicao** que zera o vetor de andar la no
+	/// `_Process` (o `input = ... ? Vector2.Zero : ...`), e nao uma copia dela: ter a lista escrita
+	/// duas vezes seria garantir que um dia elas discordem, e a que mente e sempre a que ninguem le.
+	///
+	/// ELA EXISTE PORQUE "O CORPO NAO SAIU DO LUGAR" NAO E UM DIAGNOSTICO. Sao NOVE estados diferentes
+	/// que prendem o corpo, cada um por um motivo legitimo, e de fora eles sao todos identicos: zero
+	/// pixel. A bancada da mudez perdeu duas rodadas inteiras adivinhando qual deles era (primeiro
+	/// parede, depois o arremesso do golpe de saida do embate -- e nao era nenhum dos dois todas as
+	/// vezes), e o unico jeito de isso nao se repetir e o proprio corpo dizer o nome.
+	///
+	/// OS DOIS PRIMEIROS SAO INALCANCAVEIS DAQUI de proposito: o `_semRedeas` e o `_empurrado` fazem o
+	/// `_Process` RETORNAR antes desta linha (por isso incluí-los nao muda o jogo em nada). Eles estao
+	/// aqui porque de FORA eles sao a mesma coisa que os outros sete -- um corpo que nao anda --, e
+	/// quem le esta propriedade esta perguntando exatamente isso.
+	/// ==================================================================================================
+	/// </summary>
+	public string PorQueNaoAnda =>
+		  _semRedeas                             ? "sem as redeas (o servidor dirige)"
+		: _empurrado                             ? "arremessado"
+		: _caido                                 ? "caido (nocaute ou morte)"
+		: _carregando                            ? "carregando Ki (C)"
+		: _canalDeKi                             ? "com um canal de Ki de pe"
+		: Foco.Digitando                         ? "campo de texto em foco"
+		: GameClient.Instance?.EmClash == true    ? "num embate"
+		: Transformacao.PrendendoOCorpo           ? "preso pela cinematica de transformacao"
+		: Prensado                                ? "prensado pela gravidade (ou pelo peso)"
+		: "";
 
 	/// <summary>
 	/// A DIRECAO DO CORPO DEITADO/VOANDO, ditada pelo servidor.
@@ -566,9 +609,10 @@ public partial class LocalPlayer : Node2D
 		// Este e o consumidor do `_canalDeKi`, e por isso ele existe separado do `_raioSaindo`: a pose
 		// so muda quando o feixe SAI, mas o corpo ja esta preso desde que a carga comeca.
 		// ================================================================================================
-		var input = _caido || _carregando || _canalDeKi || Foco.Digitando
-			|| GameClient.Instance?.EmClash == true
-			|| Transformacao.PrendendoOCorpo || Prensado
+		// A LISTA MORA NO `PorQueNaoAnda`, E SO LA. Ela estava escrita aqui como um `||` de sete
+		// termos; virou propriedade quando ficou claro que "o corpo nao saiu do lugar" precisa dizer
+		// QUAL dos sete foi -- e duas listas iguais em dois lugares e uma promessa de divergirem.
+		var input = PorQueNaoAnda.Length > 0
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			: new Vector2(
 				Godot.Input.GetActionStrength("move_right") - Godot.Input.GetActionStrength("move_left"),
@@ -664,7 +708,14 @@ public partial class LocalPlayer : Node2D
 			float passo = (float)(delta * VelocidadeDoVoo);
 			_pos = falta.LengthSquared <= passo * passo ? _alvoDoVoo : _pos + falta.Normalized() * passo;
 			Desenhar();
-			_visual.SetMotion(_dirDoCorpo, false);   // a MESMA folha que os outros veem
+			// A MESMA FOLHA QUE OS OUTROS VEEM -- menos no puxao da fusao.
+			//
+			// `_dirDoCorpo` e o `DirecaoDeitado` do servidor, e ele responde *"de onde veio a pancada"*
+			// (`RumoDoGolpe`). E a pergunta certa pro arremesso e **nao tem resposta nenhuma** num puxao:
+			// o valor que estaria la e o do ultimo golpe que este corpo levou, que pode ser de minutos
+			// atras. Durante o puxao o corpo fica com a direcao que ele proprio tinha -- de pe, parado,
+			// deslizando pro outro --, que e o que o jogador ve como "estou sendo atraido".
+			_visual.SetMotion(_puxadoNaFusao ? _facing : _dirDoCorpo, false);
 			return;   // QUEM GIRA E O `OnSheet`: o angulo vem do servidor, e so ele.
 		}
 

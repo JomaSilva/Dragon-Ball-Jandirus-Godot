@@ -213,6 +213,100 @@ public sealed class ZoneCollision
 	/// <summary>Esta zona tem agua marcada?</summary>
 	public bool TemAgua => _agua != null;
 
+	// =====================================================================
+	// A NUVEM -- a quarta classe de celula (ver Core/World/Ceu.cs)
+	// =====================================================================
+
+	/// <summary>
+	/// O PLANO DA NUVEM -- 1 bit por celula, ou nulo se esta zona nao tiver ceu.
+	///
+	/// Arquivo SEPARADO (`.ceu`) pelo mesmo motivo do `.agua` e do `.duro`, e a nota deles vale
+	/// palavra por palavra: a cauda do `.col` ja tem dono (o plano de grupo da sombra), e "isto e
+	/// nuvem" nao muda nenhuma das quatro perguntas que o `_bits` ja responde.
+	/// </summary>
+	private byte[]? _nuvem;
+
+	/// <summary>
+	/// O CEU DESTA ZONA DERRUBA, OU SO BARRA? -- ver <see cref="ClasseDeNuvem.DestinoDaQueda"/>.
+	///
+	/// ============================ POR QUE ELE MORA AQUI, JUNTO DO PLANO ============================
+	/// A resposta e da ZONA e o <see cref="ZoneCollision"/> **e** a zona -- ele ja guarda o plano, a
+	/// borda e as portas abertas dela. A alternativa era cada chamador de <see cref="Bloqueia"/>
+	/// carregar o nome da zona ate la dentro pra perguntar ao Core; sao quatro chamadores em arquivos
+	/// diferentes (o passo do cliente, a validacao do servidor, a IA e o arremesso -- a mesma lista do
+	/// `ClasseDeAgua.ModoDe`), e o sintoma de UM ficar pra tras e o pior deste projeto: o cliente e o
+	/// servidor discordando sobre onde da pra andar. Aqui a zona responde por si.
+	///
+	/// **QUEM O ESCREVE E O PROPRIO `CarregarNuvem`, a partir do NOME** -- e nao um `bool` que o
+	/// chamador passa. Ver o cabecalho de la: e o que impede os dois carregadores (cliente e
+	/// servidor) de responderem diferente pra mesma zona.
+	/// </summary>
+	private bool _nuvemDerruba;
+
+	/// <summary>
+	/// Le o `.ceu` -- MESMO cabecalho do `.col`, do `.agua` e do `.duro` ("JCOL" + largura + altura +
+	/// bitset), e pelo mesmo motivo: e o mesmo formato respondendo outra pergunta.
+	///
+	/// ============================ O NOME DA ZONA E PARAMETRO, E ISSO E DELIBERADO ============================
+	/// A assinatura obvia era `CarregarNuvem(byte[] data, bool derruba)` -- e ela poe a mesma decisao em
+	/// dois lugares. Sao DOIS carregadores (`Client/World.cs` e `Server/GameServer.cs`, os mesmos que
+	/// chamam o <see cref="CarregarAgua"/>), e no dia em que uma zona nova ganhasse destino, um dos
+	/// dois ficaria pra tras. O sintoma seria calado e feio: uma nuvem que deixa entrar num lado e
+	/// barra no outro, ou seja o jogador ANDANDO NO CEU com o servidor puxando ele de volta.
+	///
+	/// Pedindo o NOME, os dois chamadores passam o que ja tem na mao e a derivacao acontece uma vez
+	/// so, aqui, pelo <see cref="ClasseDeNuvem.Derruba"/>. Nao ha o que sincronizar.
+	/// ======================================================================================================
+	///
+	/// Devolve false (e nao lanca) quando o arquivo nao existe, nao e JCOL, ou descreve um mapa de
+	/// outro tamanho -- os tres casos em que a resposta honesta e "esta zona nao tem ceu marcado".
+	/// </summary>
+	public bool CarregarNuvem(byte[]? data, string nomeDaZona)
+	{
+		if (data == null || data.Length < 8) return false;
+		if (data[0] != 'J' || data[1] != 'C' || data[2] != 'O' || data[3] != 'L') return false;
+		int w = data[4] | (data[5] << 8);
+		int h = data[6] | (data[7] << 8);
+		if (w != Width || h != Height) return false;
+
+		int precisa = (w * h + 7) / 8;
+		if (data.Length < 8 + precisa) return false;
+
+		var bits = new byte[precisa];
+		Array.Copy(data, 8, bits, 0, precisa);
+		_nuvem = bits;
+		_nuvemDerruba = ClasseDeNuvem.Derruba(nomeDaZona);
+		return true;
+	}
+
+	/// <summary>Esta zona tem nuvem marcada?</summary>
+	public bool TemNuvem => _nuvem != null;
+
+	/// <summary>
+	/// O CEU DESTA ZONA DERRUBA? Publico pra bancada e pro servidor, que precisa saber se ha queda
+	/// pra despachar antes de ir procurar destino.
+	/// </summary>
+	public bool NuvemDerruba => _nuvemDerruba;
+
+	/// <summary>
+	/// ESTA CELULA E NUVEM?
+	///
+	/// FORA DO MAPA NAO E NUVEM, pelo mesmo motivo do <see cref="EhAgua"/>: quem responde pelo vazio
+	/// e o <see cref="BlockedCell"/>, e devolver "ceu" aqui faria a borda do mundo derrubar todo mundo
+	/// que a encostasse no Alem.
+	/// </summary>
+	public bool EhNuvem(int cx, int cy)
+	{
+		if (_nuvem == null) return false;
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return false;
+		int i = cy * Width + cx;
+		return (_nuvem[i >> 3] & (1 << (i & 7))) != 0;
+	}
+
+	/// <summary>A mesma pergunta, em pixels.</summary>
+	public bool EhNuvemEm(Vec2 pos) =>
+		EhNuvem((int)MathF.Floor(pos.X / TileSize), (int)MathF.Floor(pos.Y / TileSize));
+
 	/// <summary>
 	/// ESTA CELULA E AGUA?
 	///
@@ -298,9 +392,22 @@ public sealed class ZoneCollision
 	///
 	/// O CAMINHO COMUM CONTINUA BARATO: numa zona sem agua o `_agua` e nulo e isto e um teste de
 	/// referencia a mais por celula.
+	///
+	/// ============================ E A NUVEM ENTROU AQUI, MAS SO A QUE **BARRA** ============================
+	/// A nuvem que DERRUBA nao bloqueia nada, e isso nao e esquecimento -- e a regra. Ver
+	/// <see cref="ClasseDeNuvem.Bloqueia"/>: quem cai precisa ENTRAR na celula, porque e a entrada que
+	/// dispara a queda (no DM, literalmente o corpo do `Enter()`). Uma nuvem que barrasse E derrubasse
+	/// nunca derrubaria ninguem -- o corpo pararia na beirada e o servidor jamais veria o pe dele em
+	/// cima do ceu.
+	///
+	/// Entao o Ceu e o Reino dos Deuses ganham parede de nuvem (que e o `Enter()` deles) e o Caminho
+	/// da Serpente e o Templo ficam abertos (que e o `Enter()` deles). Uma linha, os dois desfechos.
+	/// ======================================================================================================
 	/// </summary>
 	public bool Bloqueia(int cx, int cy, ModoDeTravessia modo) =>
-		BlockedCell(cx, cy) || (ClasseDeAgua.Bloqueia(modo) && EhAgua(cx, cy));
+		BlockedCell(cx, cy)
+		|| (ClasseDeAgua.Bloqueia(modo) && EhAgua(cx, cy))
+		|| (ClasseDeNuvem.Bloqueia(modo, _nuvemDerruba) && EhNuvem(cx, cy));
 
 	/// <summary>A mesma pergunta, em pixels.</summary>
 	public bool BloqueiaEm(Vec2 pos, ModoDeTravessia modo) =>
@@ -524,10 +631,21 @@ public sealed class ZoneCollision
 	///   * AGUA     -- livre pela colisao tambem (agua nao e parede, nao esta no bitset) e parada pela
 	///     regra de personagem. Sem esta clausula um Namekuseijin nasce no meio do oceano de Namek e
 	///     um piloto pousa dentro de um lago. Ver <see cref="ClasseDeAgua.ServeDeChao"/>.
+	///   * NUVEM    -- a quarta, e ela e a que o pedido do dono cobra por escrito (*"quem cai pela
+	///     nuvem nao pode ficar preso"*). Vale pros DOIS ceus e nao so pro que barra: pousar numa
+	///     nuvem que derruba nao prende o corpo, cospe ele pro Inferno no tique seguinte sem que ele
+	///     tenha feito nada. Ver <see cref="ClasseDeNuvem.ServeDeChao"/>.
+	///
+	/// **E E POR ISTO QUE A QUEDA NAO PRECISA DE CUIDADO PROPRIO**: quem cai chega pelo
+	/// `MoveToZone`, que passa pelo <see cref="PontoLivrePerto"/> da zona de destino -- e o destino
+	/// do Templo e a Terra, que nao tem nuvem nenhuma. A clausula esta escrita pro dia em que alguem
+	/// puser um destino DENTRO de uma zona com ceu, que e o unico jeito de isto morder.
 	/// ================================================================================================
 	/// </summary>
 	public bool ServeDeChao(int cx, int cy) =>
-		!BlockedCell(cx, cy) && !NaBorda(cx, cy) && !(EhAgua(cx, cy) && !ClasseDeAgua.ServeDeChao);
+		!BlockedCell(cx, cy) && !NaBorda(cx, cy)
+		&& !(EhAgua(cx, cy) && !ClasseDeAgua.ServeDeChao)
+		&& !(EhNuvem(cx, cy) && !ClasseDeNuvem.ServeDeChao);
 
 	/// <summary>O CENTRO da celula -- ver a nota de quina do <see cref="PontoLivrePerto"/>.</summary>
 	public Vec2 CentroDaCelula(int cx, int cy) =>

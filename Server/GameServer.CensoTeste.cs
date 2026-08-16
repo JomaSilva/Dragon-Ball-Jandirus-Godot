@@ -23,6 +23,10 @@ namespace Jandirus.Server;
 ///     verb inventado e exige que ele saia como `SemCobertura`.
 ///  2. CANAL     -- dizer "o `Fly` e atendido pelo `voar`" so vale enquanto o `voar` existir. Cada
 ///     canal declarado e procurado no ROTEADOR DE VERBOS de verdade, lendo o fonte.
+///  2b. AS DUAS DIRECOES -- a boca que fala com o jogador (`SistemaQueFalta`) tem que separar a folha
+///     que so SOMA NUMERO (pronta) da folha cujo verbo NAO TEM CORPO (muda, com o sistema nomeado).
+///     Afirmar so um dos lados fica verde numa funcao que responda sempre a mesma coisa -- e as duas
+///     respostas erradas ja custaram caro: `null` de mais foi o Mafuba anunciado sem botao.
 ///  3. GATE      -- quem nao comprou a skill nao usa, e a recusa nao cobra Ki.
 ///  4. RAIOS     -- o degrau `beamskill >= 100` (o defeito do `== 100`, que aqui aparece TRES
 ///     vezes), a escada de custo de 30x, e o Boom Wave, cujo aluguel CAI com a pericia.
@@ -91,6 +95,7 @@ public partial class GameServer
 		{
 			ORelatorioDoCatalogo();
 			ACoberturaNaoTemBuraco();
+			OCensoRespondeNasDuasDirecoes();
 			OsCanaisDeclaradosExistem();
 			OCatalogoConheceOsDezenove();
 			OsSeisRaiosNomeados();
@@ -190,6 +195,143 @@ public partial class GameServer
 		AfirmarCen("os kits de cargo entregam mais verbos VIVOS que os 8 da camada anterior",
 				   _relatorio.VerbosDeCargoVivos > 8,
 				   $"{_relatorio.VerbosDeCargoVivos} de {_relatorio.VerbosDeCargo}");
+	}
+
+	// =====================================================================
+	// 2b) O CENSO RESPONDE NAS DUAS DIRECOES
+	// =====================================================================
+	/// <summary>
+	/// ============================ UMA DIRECAO SO FICA VERDE NUM SISTEMA MORTO ============================
+	/// O `CensoDeSkills.SistemaQueFalta` e a boca que fala com o JOGADOR: e ela que decide se o painel
+	/// do cargo lista uma skill entre as ENTREGUES ou entre as *"ainda mudas neste servidor"*, e e ela
+	/// que escreve o recado de posse. Duas respostas, e cada uma tem um jeito proprio de estar errada:
+	///
+	///   * **responder `null` de mais** -- e o defeito de ontem, o que fez o painel anunciar o Mafuba
+	///     enquanto nao havia botao nenhum. Uma funcao que devolvesse `null` sempre passaria em todas
+	///     as afirmacoes de "esta pronta" que ja existem nesta bancada e na `--cargoportas`;
+	///   * **responder um sistema de mais** -- o espelho: as 200 e tantas folhas que so somam numero
+	///     (`physoffBuff += 0.1`) viveriam marcadas como quebradas, e o painel pediria desculpa por
+	///     uma skill que funciona. Uma funcao que devolvesse sempre um sistema passaria em todas as
+	///     afirmacoes de "esta muda".
+	///
+	/// Por isso esta familia afirma as DUAS pontas, e afirma nas duas escalas: uma TABELA VERDADE com
+	/// folhas sinteticas (o classificador reage ao que recebe, e nao a nomes que ele conheca) e a
+	/// varredura do CATALOGO INTEIRO, onde as duas populacoes tem que existir e nenhuma pode cair no
+	/// lado errado. Cada metade e o defeito injetado da outra.
+	/// ==================================================================================================
+	/// </summary>
+	private void OCensoRespondeNasDuasDirecoes()
+	{
+		GD.Print("[censo] -- 2b) O CENSO NAS DUAS DIRECOES: passiva continua passiva, muda continua muda");
+
+		if (_skills == null) { AfirmarCen("o catalogo de skills esta carregado", false); return; }
+
+		// ---- A TABELA VERDADE, com folhas que so existem aqui ----
+		//
+		// SINTETICAS DE PROPOSITO: com skills de verdade, uma resposta certa pode vir do nome, do
+		// caminho ou de qualquer coisa que o classificador conheca por acaso. Estas seis nao existem
+		// no DM, entao a unica coisa que o censo tem pra olhar e o CONTEUDO delas.
+		var soBuff = new Skill { Path = "/datum/skill/bancada/SoBuff", Nome = "So Buff" };
+		soBuff.Buffs["physoffBuff"] = 0.1;
+
+		var comVerboPortado = new Skill
+		{
+			Path = "/datum/skill/bancada/ComCorpo", Nome = "Com Corpo", Verbos = ["Mafuba"],
+		};
+		var comVerboCatalogado = new Skill
+		{
+			Path = "/datum/skill/bancada/Catalogada", Nome = "Catalogada", Verbos = ["Buu_Absorb"],
+		};
+		var comVerboDesconhecido = new Skill
+		{
+			Path = "/datum/skill/bancada/Desconhecida", Nome = "Desconhecida",
+			Verbos = ["Verbo_Que_Nunca_Existiu"],
+		};
+		var galho = new Skill { Path = "/datum/skill/tree/bancada", Nome = "Galho", Arvore = true, Verbos = ["Verbo_Que_Nunca_Existiu"] };
+		var mudaDeNascenca = new Skill { Path = "/datum/skill/bancada/Muda", Nome = "Muda" };
+
+		AfirmarCen("DIRECAO 1: folha que so SOMA NUMERO e anunciada como PRONTA (ela faz o que o DM manda)",
+				   CensoDeSkills.SistemaQueFalta(soBuff) == null, CensoDeSkills.SistemaQueFalta(soBuff) ?? "");
+		AfirmarCen("...e folha cujo verbo TEM CORPO tambem",
+				   CensoDeSkills.SistemaQueFalta(comVerboPortado) == null,
+				   CensoDeSkills.SistemaQueFalta(comVerboPortado) ?? "");
+
+		AfirmarCen("DIRECAO 2: folha com verbo SEM CORPO e anunciada como muda, com o sistema NOMEADO",
+				   CensoDeSkills.SistemaQueFalta(comVerboCatalogado) is { } falta1
+				   && falta1.Contains("absorcao", StringComparison.OrdinalIgnoreCase),
+				   CensoDeSkills.SistemaQueFalta(comVerboCatalogado) ?? "(null -- ela mentiu)");
+		AfirmarCen("...e verbo que nem catalogado esta cai no generico, e nao em `null`",
+				   CensoDeSkills.SistemaQueFalta(comVerboDesconhecido) == "um sistema que este port ainda nao tem",
+				   CensoDeSkills.SistemaQueFalta(comVerboDesconhecido) ?? "(null -- ela mentiu)");
+
+		AfirmarCen("ARVORE nao e folha: galho nao promete botao nenhum",
+				   CensoDeSkills.SistemaQueFalta(galho) == null);
+		AfirmarCen("folha MUDA DE NASCENCA (o DM tambem nao faz nada) nao acusa sistema faltando -- "
+				   + "nao ha promessa a quebrar",
+				   CensoDeSkills.SistemaQueFalta(mudaDeNascenca) == null,
+				   CensoDeSkills.SistemaQueFalta(mudaDeNascenca) ?? "");
+
+		// ---- E AS DUAS DIRECOES NO CATALOGO INTEIRO ----
+		//
+		// A tabela verdade prova o classificador; esta varredura prova que ele esta CERTO nas 300 e
+		// tantas folhas de verdade -- e, principalmente, que as duas populacoes EXISTEM. Uma afirmacao
+		// sobre um conjunto vazio e verde por vacuidade, que e o modo preferido deste projeto de
+		// enganar a si mesmo.
+		var passivas = new List<Skill>();
+		var comVerboMudo = new List<Skill>();
+		foreach (Skill s in _skills.Todas)
+		{
+			if (s.Arvore) continue;
+			bool temPassivo = s.Buffs.Count > 0 || s.Mults.Count > 0 || s.Genes.Count > 0
+							  || s.Flags.Count > 0 || s.Estilo.Length > 0 || s.Escolhas.Length > 0;
+			if (temPassivo) { passivas.Add(s); continue; }
+			if (s.Verbos.Length == 0) continue;   // muda de nascenca: nao e nem uma coisa nem outra
+
+			bool algumVivo = s.Verbos.Any(
+				v => Tecnicas.Get(v) is { Modo: not Modo.NaoPortada }
+					 || CensoDeSkills.PorOutroCanal.ContainsKey(v));
+			if (!algumVivo) comVerboMudo.Add(s);
+		}
+
+		AfirmarCen($"o catalogo tem as DUAS populacoes ({passivas.Count} folhas passivas, "
+				   + $"{comVerboMudo.Count} com verbo sem corpo) -- nenhuma afirmacao abaixo e vazia",
+				   passivas.Count > 100 && comVerboMudo.Count > 10);
+
+		var passivasChamadasDeMudas = passivas
+			.Where(s => CensoDeSkills.SistemaQueFalta(s) != null).Select(s => s.Nome).ToList();
+		AfirmarCen("NENHUMA folha passiva e anunciada como quebrada (o painel nao pede desculpa por "
+				   + "skill que funciona)",
+				   passivasChamadasDeMudas.Count == 0,
+				   string.Join(", ", passivasChamadasDeMudas.Take(8)));
+
+		var mudasChamadasDeProntas = comVerboMudo
+			.Where(s => CensoDeSkills.SistemaQueFalta(s) == null).Select(s => s.Nome).ToList();
+		AfirmarCen("NENHUMA folha de verbo mudo e anunciada como pronta (era este o defeito do Mafuba)",
+				   mudasChamadasDeProntas.Count == 0,
+				   string.Join(", ", mudasChamadasDeProntas.Take(8)));
+
+		// ---- E AS DUAS PONTAS EM SKILLS DE VERDADE, uma de cada lado, com o MOTIVO conferido ----
+		//
+		// A resposta certa pelo motivo errado e o que a tabela verdade nao pega: uma skill pode sair
+		// como pronta porque o censo achou um verbo com corpo QUANDO ela nem verbo tem.
+		Skill? ritual = _skills.Get("/datum/skill/rank/Ritual_of_Might");
+		Skill? superior = _skills.Get("/datum/skill/rank/SuperiorSeal");
+		AfirmarCen("as duas testemunhas de verdade existem no catalogo", ritual != null && superior != null);
+		if (ritual == null || superior == null) return;
+
+		AfirmarCen("`Ritual of Might` e passiva DE VERDADE (soma numero e nao da verbo nenhum)",
+				   ritual.Buffs.Count > 0 && ritual.Verbos.Length == 0,
+				   $"buffs={ritual.Buffs.Count} verbos={ritual.Verbos.Length}");
+		AfirmarCen("...e por isso o censo a da como PRONTA", CensoDeSkills.SistemaQueFalta(ritual) == null,
+				   CensoDeSkills.SistemaQueFalta(ritual) ?? "");
+
+		AfirmarCen("`Superior Seal` da verbo E nao soma numero nenhum",
+				   superior.Verbos.Length > 0 && superior.Buffs.Count == 0,
+				   $"buffs={superior.Buffs.Count} verbos={string.Join(",", superior.Verbos)}");
+		AfirmarCen("...e por isso o censo a da como MUDA, nomeando a magia",
+				   CensoDeSkills.SistemaQueFalta(superior) is { } f2
+				   && f2.Contains("magia", StringComparison.OrdinalIgnoreCase),
+				   CensoDeSkills.SistemaQueFalta(superior) ?? "(null -- ela voltou a mentir)");
 	}
 
 	// =====================================================================

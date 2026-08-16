@@ -510,6 +510,16 @@ public sealed class ServerPlayer
 	public bool SalaPreso;
 
 	/// <summary>
+	/// ELE ESTA SELADO -- as seis `mob/var` de `Sealing.dm:22-28` num objeto. RECONSTRUIDO do save.
+	///
+	/// NASCE PREENCHIDO (e nao `null`) porque a pergunta "esta selado?" e feita no tique, por corpo,
+	/// e um `?.` por consulta multiplicaria a chance de alguem esquecer o `?`. O objeto vazio pesa
+	/// seis campos e responde `Preso == false`, que e a resposta certa pra 99,9% dos corpos.
+	/// Ver `Core/Combat/Selo.cs` e `GameServer.Selo.cs`.
+	/// </summary>
+	public Jandirus.Core.Combat.Selo Selo = new();
+
+	/// <summary>
 	/// QUANTOS DIAS DE SALA ESTA SESSAO JA CONSUMIU. RECONSTRUIDO; tipo pinado pelo save (`double`).
 	/// </summary>
 	public double SalaDiasDaSessao;
@@ -526,6 +536,16 @@ public sealed class ServerPlayer
 
 	/// <summary>Quando a regeneracao volta a ficar disponivel (relogio real, ms).</summary>
 	public long RegenLivreEm;
+
+	/// <summary>
+	/// SEGUNDOS SEGUIDOS deitado no tanque de regeneracao com um membro faltando -- ver
+	/// `SegundosDoRegeneradorPorMembro`. Zera ao sair de cima da maquina, de proposito: no DM o
+	/// sorteio e uma volta do `Ticker()` e nao um deposito, entao entrar e sair nao acumula.
+	///
+	/// **NAO VAI PRO SAVE.** Cinco minutos deitado e uma sessao, nao patrimonio; e o membro que
+	/// voltou (esse sim) ja e gravado pelo `save.Membros`.
+	/// </summary>
+	public double TanqueDeMembro;
 
 	/// <summary>
 	/// A FASE DA LUA QUE ESTE JOGADOR JA VIU ANUNCIADA neste ceu, e se ela estava no alto.
@@ -746,15 +766,28 @@ public sealed class ServerPlayer
 	public double ArrastoRestante;
 
 	/// <summary>
-	/// O SERVIDOR ESTA DIRIGINDO ESTE CORPO? -- as duas maneiras, num nome so.
+	/// QUANTOS SEGUNDOS AINDA VALE "ESTOU SENDO PUXADO PRA UMA FUSAO" -- o `step_to` do
+	/// `Potara_Fusion.dm:124-129`, e ele e um PRAZO pela mesma razao inteira do
+	/// <see cref="ArrastoRestante"/> logo acima: quem apaga um bit e alguem que tem que LEMBRAR de
+	/// apagar, e o puxao morre por seis caminhos (encostaram, empacaram, nocaute, morte, troca de zona,
+	/// logout). Com prazo nao ha nada a apagar -- o `TickDoPuxaoDeFusao` REGA o campo a cada tique em
+	/// que de fato empurra, e o `TickDoEmpurrao` o escorre.
 	///
-	/// Arremessado (<see cref="TiquesDeVoo"/>) ou levado por um feixe (<see cref="ArrastoRestante"/>).
-	/// Sao dois calculos de deslocamento diferentes e EXCLUSIVOS (ver <c>ArrastarComOFeixe</c>), mas
-	/// pra o resto do jogo -- o bit que manda o cliente parar de integrar tecla, o funil de vetor, a
-	/// correcao de posicao -- eles sao a mesma frase, e ter duas perguntas pra ela seria a porta de
-	/// entrada do "depende de qual tique acordou primeiro".
+	/// **SO O `GameServer.Fusao.cs` ESCREVE AQUI** (e so o `TickDoEmpurrao` desconta).
 	/// </summary>
-	public bool DirigidoPeloServidor => TiquesDeVoo > 0 || ArrastoRestante > 0;
+	public double PuxaoDeFusaoRestante;
+
+	/// <summary>
+	/// O SERVIDOR ESTA DIRIGINDO ESTE CORPO? -- as TRES maneiras, num nome so.
+	///
+	/// Arremessado (<see cref="TiquesDeVoo"/>), levado por um feixe (<see cref="ArrastoRestante"/>) ou
+	/// puxado pra uma fusao (<see cref="PuxaoDeFusaoRestante"/>). Sao tres calculos de deslocamento
+	/// diferentes e EXCLUSIVOS, mas pra o resto do jogo -- o bit que manda o cliente parar de integrar
+	/// tecla, o funil de vetor, a correcao de posicao -- eles sao a mesma frase, e ter tres perguntas
+	/// pra ela seria a porta de entrada do "depende de qual tique acordou primeiro".
+	/// </summary>
+	public bool DirigidoPeloServidor =>
+		TiquesDeVoo > 0 || ArrastoRestante > 0 || PuxaoDeFusaoRestante > 0;
 
 	// ============================== AGARRAO (ver GameServer.Agarrao.cs) ==============================
 
@@ -1158,6 +1191,49 @@ public sealed class ServerPlayer
 	/// <summary>O porte do corpo (Small/Medium/Large). Mexe em stat, e e permanente.</summary>
 	public string Porte = "Medium";
 
+	/// <summary>
+	/// O NOME DA FUSAO QUE ESTE CORPO ESTA VESTINDO agora (vazio = nenhuma).
+	///
+	/// ============================ POR QUE ELE NAO ESCREVE NO `Name` ============================
+	/// O DM faz `Keeper.name = FuseName` (`Fusion.dm:185`) e guarda o antigo pra devolver. **Aqui
+	/// isso seria destrutivo.** O `Name` deste port nao e so um rotulo: o save grava `Nome = pl.Name`
+	/// (`CharacterStore.cs:665`) e o salvamento periodico roda a cada 2 minutos -- entao uma fusao de
+	/// 15 minutos gravaria "Goeta" como o nome do personagem. E pior: a COR DA AURA e a COR DO KI sao
+	/// derivadas do nome no save (`CharacterStore.cs:806` e `:812`), e a semente do berco tambem
+	/// (`:826`). Renomear o corpo trocaria a aura, o tiro e o lugar de nascimento do jogador -- pra
+	/// sempre, e calado.
+	///
+	/// Entao o nome fundido e um campo A PARTE, VIVO, e quem o mostra e o <see cref="NomeVisivel"/>.
+	/// O nome de verdade nunca e tocado, e a fusao nao tem como vazar pro disco.
+	/// ======================================================================================
+	/// </summary>
+	public string NomeDeFusao = "";
+
+	/// <summary>
+	/// A APARENCIA QUE ESTE CORPO ESTA VESTINDO POR ESTAR FUNDIDO (nula = nenhuma).
+	///
+	/// ============================ IRMAO DO <see cref="NomeDeFusao"/>, E PELO MESMO MOTIVO EXATO ============================
+	/// O bloco de cima ja fez este raciocinio inteiro pro nome, e ele vale letra por letra pra roupa e
+	/// pro cabelo: o save grava `Visual = pl.Visual` (`CharacterStore.cs:674`) e o **salvamento periodico
+	/// roda a cada 2 minutos** (`GameServer.cs`, `_tickCount % TicksPorSave`). Uma Metamoro dura 15
+	/// minutos e uma Potara 30 -- ou seja qualquer fusao atravessa sete a quinze gravacoes.
+	///
+	/// Escrever a fusao em `pl.Visual` gravaria no disco, pra sempre: o guarda-roupa do jogador
+	/// SUBSTITUIDO pelo colete metamoriano (a Danca nao herda roupa nenhuma -- ver
+	/// `Fusao.RoupaDaFusao`) e o penteado dele trocado pelo do Vegito. Uma queda do servidor no meio de
+	/// uma fusao apagaria a roupa que a pessoa escolheu na criacao, e nada no jogo diria por que.
+	///
+	/// **E HA UM SEGUNDO MOTIVO, QUE O NOME NAO TEM:** o `VisualCatalog.Sanear` recusa peca fora do
+	/// catalogo, e o brinco `potara` esta fora dele DE PROPOSITO (ver `Fusao.PecaDosBrincosPotara`).
+	/// Uma aparencia de fusao que passasse pelo saneamento -- e `pl.Visual` passa, no login e a cada
+	/// troca de guarda-roupa -- perderia o brinco em silencio.
+	///
+	/// Entao a aparencia fundida e um campo A PARTE, VIVO, e quem a mostra e o
+	/// <see cref="GameServer.VisualVisivel"/>. A aparencia de verdade nunca e tocada.
+	/// ================================================================================================================
+	/// </summary>
+	public Jandirus.Core.Appearance.Appearance? LookDeFusao;
+
 	/// <summary>A conta a que este personagem pertence, e em qual dos tres slots ele mora.</summary>
 	public string Conta = "";
 	public int Slot = -1;
@@ -1359,12 +1435,17 @@ public sealed class ServerPlayer
 					// todo mundo (inclusive quem caiu) desenha por ela.
 					| ((byte)DirecaoDeitado << 6)),
 
-		// O SEGUNDO BYTE DE ESTADO -- hoje ele carrega UMA coisa: o nado.
+		// O SEGUNDO BYTE DE ESTADO -- hoje ele carrega DUAS coisas: o nado e o puxao da fusao.
 		//
-		// Ela vem pela FICHA e nao pelo snapshot porque quem precisa dela e o DONO do corpo, pra
+		// A primeira vem pela FICHA e nao pelo snapshot porque quem precisa dela e o DONO do corpo, pra
 		// prever o passo pela mesma regra que o servidor vai conferir (ver `SheetState.Nadando` e
 		// `LocalPlayer._nadando`). Quem olha de fora recebe a `Pose.Nadando`, que basta pra desenhar.
-		Estado2 = (byte)(Nadando ? 1 : 0),
+		//
+		// A SEGUNDA e pelo mesmo motivo, e ela QUALIFICA o bit 32 do primeiro byte: durante o puxao o
+		// corpo esta sendo dirigido pelo servidor (`Empurrado` ligado, e tem que estar), mas ele nao
+		// esta sendo ARREMESSADO -- e o desenho do arremesso deita o corpo 90 graus. Ver
+		// `SheetState.PuxadoNaFusao`.
+		Estado2 = (byte)((Nadando ? 1 : 0) | (PuxaoDeFusaoRestante > 0 ? 2 : 0)),
 	};
 }
 
@@ -1881,6 +1962,16 @@ public partial class GameServer : Node
 		_vacuoDeTeste = Array.IndexOf(args, "--vacuoteste") >= 0;
 		if (_vacuoDeTeste) GD.Print("[server] BANCADA: o vacuo sera exercitado no 1o login");
 
+		// `--nuvemviva`: a NUVEM com um corpo em cima dela -- as duas metades (cai a pe, NAO cai
+		// voando) no Caminho da Serpente e no Templo, o pouso em chao livre e o contra-exemplo das
+		// nuvens que so barram. Onze defeitos injetados pelas `SondasDaNuvem`.
+		//
+		// Ela forja corpos sem dono e roda o `TickDasNuvens` DE PRODUCAO, que varre `_players`
+		// inteiro -- por isso e flag e por isso ela recusa rodar com o host em cima de nuvem que
+		// derruba. Ver `GameServer.NuvemVivaTeste.cs`.
+		_nuvemVivaDeTeste = Array.IndexOf(args, "--nuvemviva") >= 0;
+		if (_nuvemVivaDeTeste) GD.Print("[server] BANCADA: a nuvem sera exercitada no 1o login");
+
 		// `--naveteste`: fabrica, assenta, embarca, melhora ate o teto, lanca, viaja e pousa.
 		//
 		// Ela MEXE no personagem vivo (zeni, tecnologia, zona) e o devolve no fim -- por isso a
@@ -2182,6 +2273,40 @@ public partial class GameServer : Node
 		_conquistaDeTeste = Array.IndexOf(args, "--conquistateste") >= 0;
 		if (_conquistaDeTeste) GD.Print("[server] BANCADA: conquista de planetas no 1o login");
 
+		// `--esferateste`: AS ESFERAS DO DRAGAO -- o espalhamento deterministico, a espera de
+		// nascimento, a policia de planeta, a invocacao, e as Super Esferas com o claim e a disputa.
+		//
+		// Ela ergue estatuas de verdade, nocauteia o proprio corpo do testador, adianta o relogio do
+		// ceu e escreve no `esferas.json` e no `superesferas.json`. Tudo o que ela mexe e devolvido no
+		// fim. So com a flag, e de preferencia em conta e porta proprias.
+		_esferaDeTeste = Array.IndexOf(args, "--esferateste") >= 0;
+		if (_esferaDeTeste) GD.Print("[server] BANCADA: esferas do dragao no 1o login");
+
+		// `--desejoteste`: A TABELA DE DESEJOS, A LINGUA DOS DEUSES E O PROCURADOR -- a Fase 2.
+		//
+		// Separada da `--esferateste` de proposito: aquela mede o CORPO do sistema (onde as esferas
+		// caem, quem as pega, quando acordam) e esta mede o que ele FAZ. Juntas seriam duzentas
+		// checagens num console so, e a primeira coisa a acontecer com um relatorio assim e ninguem
+		// ler o meio dele.
+		//
+		// Ela mata e ressuscita gente, forja corpos, troca a raca do testador, mexe nos tronos e
+		// escreve nos dois arquivos. Tudo o que ela mexe e devolvido no fim.
+		_desejoDeTeste = Array.IndexOf(args, "--desejoteste") >= 0;
+		if (_desejoDeTeste) GD.Print("[server] BANCADA: desejos + lingua dos deuses + procurador no 1o login");
+
+		// `--avessoteste`: A CORRENTE INTEIRA E O PROCURADOR SOB ATAQUE -- a Fase 3.
+		//
+		// Ela existe porque as duas de cima tem o MESMO cego: **nascem dentro do estado**. A da Fase 2
+		// forja um jogador ja com as sete Super Esferas na mao e teleporta as sete comuns pro colo de
+		// quem vai pedir -- entao nenhuma das duas jamais testou ACHAR, PEGAR nem REIVINDICAR.
+		//
+		// Esta atravessa tudo so por verbo de producao (erguer -> radar -> viajar -> pegar -> invocar ->
+		// pedir -> as sete sumirem; e depois achar -> reivindicar -> disputar -> a lingua recusar ->
+		// emprestar a voz -> o desejo cair em quem PEDIU), e e o alvo das cinco injecoes de
+		// CODIGO-FONTE da Fase 3. Ver `GameServer.AvessoTeste.cs`.
+		_avessoDeTeste = Array.IndexOf(args, "--avessoteste") >= 0;
+		if (_avessoDeTeste) GD.Print("[server] BANCADA: a corrente inteira + o procurador sob ataque no 1o login");
+
 		// A DO EMBARALHO mede as DUAS metades do "sem plateia, sem mente": que a mente para num
 		// planeta sem ninguem (com o controle ao lado, que e o mesmo laco com o host na zona) e que
 		// os habitantes mudam de lugar quando o planeta esfria. Ver `GameServer.EmbaralhoTeste.cs`.
@@ -2375,6 +2500,27 @@ public partial class GameServer : Node
 			// devolve os vinculos de verdade no `finally`. Ver `GameServer.MestreTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--mestreteste") >= 0) RodarBancadaDoMestre();
 
+			// `--cenafusaoteste`: A VIRADA DA FUSAO -- *"a fusao so EXISTE no fim da cena"*, e a cena
+			// interrompida que nao pode deixar meio-corpo. No boot pelos mesmos motivos da de cima:
+			// ela forja dois corpos e precisa das zonas pre-feitas pra por os dois num planeta onde
+			// nao ha ninguem conectado (a cena manda pacote pra `ZoneList` inteira, e bancada nao
+			// dispara cinematica na tela de quem esta jogando).
+			//
+			// A metade do DESENHO -- a luz sobre os dois, as ondas, a pedra, o branco que escoa -- e
+			// do cliente e tem bancada propria: `--diagcenafusao`. Ver `GameServer.CenaDeFusaoTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--cenafusaoteste") >= 0) RodarBancadaDaCenaDeFusao();
+
+			// `--fusaoduplateste`: A FUSAO ENTRE **DOIS JOGADORES**, de ponta a ponta -- o convite, o
+			// aceite, as letras da danca, a cena, a virada, a heranca, os nomes, a energia e as
+			// bordas. As outras tres bancadas da fusao medem pedaco: a `--diagfusaolook` mede funcoes
+			// puras, a `--diagcenafusao` mede o desenho, e a `--cenafusaoteste` chama o
+			// `ComecarACenaDaFusao` na mao (ou seja, pula justamente o convite e o quick time event).
+			//
+			// No boot pelos mesmos motivos da de cima: ela forja SEIS pares de corpos e precisa das
+			// zonas pre-feitas pra por todos num planeta onde nao ha ninguem conectado -- a cena manda
+			// pacote pra `ZoneList` inteira. Ver `GameServer.FusaoDuplaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--fusaoduplateste") >= 0) RodarBancadaDaFusaoDupla();
+
 			// `--ensinoteste`: O ENSINO DE SKILL -- o OUTRO sistema de mestre e aluno
 			// (`teachable.dm`), que no DM nao toca no discipulado em linha nenhuma.
 			//
@@ -2470,6 +2616,16 @@ public partial class GameServer : Node
 			// vizinhas, e a divida que uma media a outra fecha. Ver `GameServer.EscolhaTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--escolhateste") >= 0) RodarBancadaDaEscolha();
 
+			// `--seloteste`: O SELO, O POTE, A DEAD ZONE E O SIGILO DE PODER (lote G9).
+			//
+			// VIZINHA DAS DUAS DE CIMA PELO MESMO MOTIVO QUE ELAS SAO VIZINHAS: as tres medem o que
+			// o EXTRATOR entrega. O censo diz quantas skills continuam mudas, a escolha unica prova
+			// que uma delas nao estava, e esta prova que outras TRES nao estavam -- e que duas ja
+			// tem efeito. Ela le `DadivaDeCargo` na ultima familia (a frase que o painel do Eremita
+			// Tartaruga mostra), entao precisa do catalogo de cargos carregado, como o censo.
+			// Ver `GameServer.SeloTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--seloteste") >= 0) RodarBancadaDoSelo();
+
 			// `--cidadeteste`: A CIDADE E O BANCO, com o servidor DE PE.
 			//
 			// MAIS NOVA QUE A COPIA DE 23:07, entao o lugar dela foi deduzido do proprio cabecalho da
@@ -2479,6 +2635,17 @@ public partial class GameServer : Node
 			// nenhuma delas precisa de cliente. AQUI e nao no login pelo mesmo argumento da
 			// `--obrateste`, que e a irma de disco dela. Ver `GameServer.CidadeTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--cidadeteste") >= 0) RodarBancadaDaCidade();
+
+			// `--curaviva`: A ATIVA DO NAMEKUSEIJIN e a passiva PELO FUNIL DO SERVIDOR.
+			//
+			// COLADA NA `--cidadeteste` porque as duas sao as duas metades da mesma frase do dono: a
+			// familia 5 daquela mede a MAQUINA de regeneracao (a saida de quem nao tem raca pra isso)
+			// e esta mede a HABILIDADE (a saida de quem tem). E aqui e nao no login pelo mesmo motivo
+			// que a vizinha: ela forja corpos sem `Peer`, e o que ela precisa -- catalogo de skills
+			// (pro gate de quem COMPROU `Regenerate`), `races.json` (pro eixo do genoma) e as zonas
+			// pre-feitas (pro `PorNoMundo`) -- ja carregou tudo nesta sequencia.
+			// Ver `GameServer.CuraVivaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--curaviva") >= 0) RodarBancadaDaCuraViva();
 
 			// `--vozteste`: O CORTE DA VOZ -- quem recebe e quem NAO recebe.
 			//
@@ -2590,7 +2757,7 @@ public partial class GameServer : Node
 		}
 
 		_catalogo = ZoneCatalog.Parse(Godot.FileAccess.GetFileAsString(manifesto));
-		int ok = 0, comVista = 0, comAgua = 0, comDuro = 0;
+		int ok = 0, comVista = 0, comAgua = 0, comDuro = 0, comNuvem = 0;
 		foreach (ZoneEntry e in _catalogo.Todas)
 		{
 			if (!Godot.FileAccess.FileExists(e.Colisao)) continue;
@@ -2610,6 +2777,17 @@ public partial class GameServer : Node
 			// `World.MapaCacheado`, e as duas pontas TEM que ler o mesmo arquivo.
 			if (Godot.FileAccess.FileExists(e.CaminhoDaAgua)
 				&& e.Mapa.CarregarAgua(Godot.FileAccess.GetFileAsBytes(e.CaminhoDaAgua))) comAgua++;
+
+			// A NUVEM E O QUARTO PLANO, e ela entra pelo mesmo caminho e com o mesmo cuidado da agua.
+			// Sem esta linha as 499 mil celulas de nuvem continuam sendo chao comum -- que e
+			// literalmente o bug que o dono relatou (andar por cima do ceu do Templo).
+			//
+			// O NOME DA ZONA VAI JUNTO, e nao um `bool`: e ele que decide se esta nuvem DERRUBA ou so
+			// BARRA, e a derivacao mora num lugar so (`ClasseDeNuvem.Derruba`). Ver o cabecalho do
+			// `CarregarNuvem` -- e a mesma razao pela qual o cliente passa o nome dele em
+			// `World.MapaCacheado`, e nao uma segunda opiniao.
+			if (Godot.FileAccess.FileExists(e.CaminhoDaNuvem)
+				&& e.Mapa.CarregarNuvem(Godot.FileAccess.GetFileAsBytes(e.CaminhoDaNuvem), e.Zona)) comNuvem++;
 
 			// O QUE NAO SE QUEBRA -- outro plano pendurado no mesmo mapa, pelo mesmo motivo que a
 			// agua, e SO O SERVIDOR precisa dele: quem derruba cenario e ele (`DerrubarCelula`), e o
@@ -2640,7 +2818,8 @@ public partial class GameServer : Node
 			}
 		}
 		GD.Print($"[server] zonas: {_catalogo.Todas.Count()} | com colisao: {ok} | com vista: {comVista}"
-				 + $" | com agua: {comAgua} | com celula indestrutivel: {comDuro}");
+				 + $" | com agua: {comAgua} | com nuvem: {comNuvem}"
+				 + $" | com celula indestrutivel: {comDuro}");
 
 		// ============================ ZONA PRE-FEITA SEM `.duro` E SUSPEITA ============================
 		// Todo `.dmm` feito a mao cerca o retangulo com `/turf/Other/Blank` -- e o jeito do BYOND de
@@ -2765,6 +2944,19 @@ public partial class GameServer : Node
 		// habitado de mundo vazio -- a divisao que substituiu o `conq_premade` do original.
 		CarregarConquista();
 
+		// ============================ AS ESFERAS VEM DEPOIS DA CONQUISTA, E A ORDEM E CADEIA ============================
+		// `ErguerEstatua` pergunta ao livro dos DOMINIOS quem manda no planeta (e o `conq_owner_sig`
+		// do original), e o set ETERNO precisa do `_catalogo` pra saber se Namek existe neste
+		// manifesto de mapas. Carregar antes de um dos dois faria o set eterno nascer sem checar o
+		// mapa -- que e a unica coisa que aquele bloco do DM existe pra garantir ("NUNCA no planeta
+		// errado").
+		//
+		// AS SUPER SAO INDEPENDENTES do resto do mundo (a posicao delas so precisa da SEMENTE, que
+		// nasce no `CarregarSemente`), mas ficam ao lado por serem o mesmo sistema pro jogador.
+		// ==========================================================================================================
+		CarregarEsferas();
+		CarregarSupers();
+
 		// OS QUATRO LOTES SE ANUNCIAM. Cada um vive no proprio arquivo e registra as tecnicas dele
 		// -- portar o proximo lote nao mexe nesta lista, so acrescenta uma linha.
 		RegistrarTecnicasG1();
@@ -2792,6 +2984,18 @@ public partial class GameServer : Node
 		// Spirit Gun). Depende do lote G3 (o funil `GolpeG3` e a agenda de barragem) e do lote dos
 		// projeteis. Ver `GameServer.Tecnicas.G7.cs`.
 		RegistrarTecnicasG7();
+
+		// O LOTE DOS VERBOS MUDOS DOS CARGOS: Ver os Mortos, o teleporte do juiz do Outro Mundo, o
+		// Atalho Sagrado do Guardiao Arconiano, a piada da Esmeralda, o Manter o Corpo e a oferta de
+		// juventude. Nenhum depende de sistema que este port nao tenha -- e tres deles estavam
+		// etiquetados como se dependessem. Ver `GameServer.Tecnicas.G8.cs`.
+		RegistrarTecnicasG8();
+
+		// O LOTE DO SELO E DO SIGILO: Mafuba, Abrir a Dead Zone, Ocultar o Poder e Controle de
+		// Poder. Os dois primeiros so passaram a ser exigiveis quando o extrator parou de perder o
+		// `after_learn` deles; os dois ultimos fecham o lado de quem ESCONDE do sigilo de poder, que
+		// o port so tinha do lado de quem le. Ver `GameServer.Tecnicas.G9.cs`.
+		RegistrarTecnicasG9();
 
 		// O `Planet_Destroy` -- a unica tecnica so-de-vilao do catalogo. Ver `GameServer.Destruicao.cs`.
 		RegistrarTecnicasDaDestruicao();
@@ -3457,7 +3661,21 @@ public partial class GameServer : Node
 		// DEPOIS do `PrepararCombate` e do `AplicarPoderes`, e nao antes: `Morrer()` precisa do
 		// `pl.Combate`, e a primeira versao de checagens assim neste arquivo saiu calada por rodar
 		// cedo demais (ver o comentario do `--feridateste` logo abaixo).
+		// ============================ A DIVIDA DO DESEJO VEM ANTES DA VELHICE ============================
+		// `Aging.dm:114-122` roda **antes** de qualquer guarda de nao-envelhecer, e a ordem e do DM: o
+		// preco do "Mais Forte do Universo" passa por cima de imortal, vampiro e Deus da Destruicao.
+		// Aqui ele vem antes do `ConferirMorteDeVelhice` pelo mesmo motivo -- e porque as duas mortes
+		// marcam `aged_out`, e a que cobra a divida tem que ser a que anuncia o porque.
+		// ============================================================================================
+		ConferirDividaDoSupremo(pl);
+
 		ConferirMorteDeVelhice(pl);
+
+		// A LINGUA DOS DEUSES no login -- a cadeia de `sdb_login_check()` do DM
+		// (`ProceduralSpace.dm:1464`, chamada de `Login.dm:327`). E uma das DUAS bocas obrigatorias:
+		// sem ela, ninguem de sangue Kai ou Demigod aprenderia nunca (eles nao passam por cargo).
+		// Ver `ConferirALingua`.
+		ConferirALingua(pl);
 
 		// Positiva, e nao so o alarme -- ver `ConferirKiLiberado`.
 		if (_kiDeTeste) ConferirKiLiberado(pl, "--kiteste");
@@ -3656,6 +3874,31 @@ public partial class GameServer : Node
 		// engaja quem esta no mundo e o tributo cai num bolso que persiste.
 		if (_conquistaDeTeste) { _conquistaDeTeste = false; RodarBancadaDaConquista(pl); }
 
+		// A DAS ESFERAS DEPOIS DA CONQUISTA, e a ordem e cadeia: `ErguerEstatua` pergunta ao livro dos
+		// DOMINIOS quem manda no planeta (e o `conq_owner_sig` do original), e a bancada da conquista
+		// mexe nesse livro inteiro. Rodando antes, esta aqui mediria dominios que aquela ainda vai
+		// escrever e apagar.
+		//
+		// E ela precisa de alguem com `Peer` por tres razoes proprias: o set e de uma ASSINATURA (que
+		// so existe com conta e slot), o `MoveToZone` so mexe em quem esta no `_players`, e o claim da
+		// Super Esfera cai quando o disputante "saiu do mundo" -- que e literalmente `Peer == null`.
+		if (_esferaDeTeste) { _esferaDeTeste = false; RodarBancadaDasEsferas(pl); }
+
+		// A DOS DESEJOS pelas MESMAS tres razoes da de cima, mais uma sua: o bloqueio do criador
+		// compara ASSINATURA (`CreatorSig` contra a de quem pede) e a procuracao guarda a assinatura do
+		// pedinte. Rodada sem conta e sem slot, ela compararia vazio com vazio e ficaria verde.
+		if (_desejoDeTeste) { _desejoDeTeste = false; RodarBancadaDosDesejos(pl); }
+
+		// A DO AVESSO DEPOIS DAS DUAS, e a ordem tambem e cadeia: ela ergue a propria estatua e por isso
+		// precisa que nao haja outra na Terra -- e as duas de cima erguem e derrubam a delas. Rodando
+		// antes, ela cairia no "ja existe uma Estatua do Dragao aqui" da bancada vizinha.
+		//
+		// E ela precisa de `Peer` mais do que qualquer uma: o canal de claim da Super Esfera cai na
+		// PRIMEIRA condicao de aborto quando o disputante "saiu do mundo", e isso e literalmente
+		// `Peer == null`. Um corpo forjado nunca fecha um claim -- entao quem atravessa a corrente aqui
+		// tem que ser o testador de verdade.
+		if (_avessoDeTeste) { _avessoDeTeste = false; RodarBancadaDoAvesso(pl); }
+
 		// A DA PROVA POR ULTIMO ENTRE AS DE NPC, e pela soma dos motivos das outras: ela povoa o mundo
 		// inteiro (precisa de alguem com `Peer` na zona, senao os cidadaos congelam pelo anti-lag),
 		// dispara sagas (o marco de BP so olha jogador de verdade) e paga reputacao (que e de uma
@@ -3673,6 +3916,12 @@ public partial class GameServer : Node
 		// sufoca"), e a unica zona de chao garantidamente carregada e a do host que acabou de entrar.
 		// Rodada no boot, ela mediria o vacuo contra um planeta que ninguem abriu.
 		if (_vacuoDeTeste) { _vacuoDeTeste = false; RodarBancadaDoVacuo(pl); }
+
+		// A DA NUVEM pelo mesmo motivo das duas de cima, e mais um: ela precisa do CATALOGO com os
+		// mapas carregados (os planos `.nuvem` do Caminho da Serpente e do Templo), e no boot o
+		// catalogo ainda pode nao ter passado. Ela tambem le a zona do host pra RECUSAR rodar se ele
+		// estiver em cima de nuvem que derruba -- e no boot nao ha host pra perguntar.
+		if (_nuvemVivaDeTeste) { _nuvemVivaDeTeste = false; RodarBancadaDaNuvemViva(pl); }
 
 		// A DO EMBARALHO depois das outras: ela precisa dos moldes carregados (nasce vilarejo) e
 		// mede TEMPO -- rodar no meio de outra bancada mediria o custo dos corpos que a outra forjou.
@@ -3712,6 +3961,12 @@ public partial class GameServer : Node
 		// SO AGORA da pra mandar as construcoes: `MandarObras` varre `_players` procurando quem
 		// esta na zona, e quem acabou de entrar so esta la depois desta linha.
 		MandarObras(pl.Zone);
+		// AS ESFERAS SEGUEM AS CONSTRUCOES, e pelo mesmo motivo escrito acima: `MandarEsferas` varre
+		// `_players` procurando quem esta na zona. E as SUPER vao junto porque o placar e o radar
+		// dourado sao coisa que o jogador precisa ter na tela desde o primeiro quadro -- ver
+		// `GameServer.SuperEsferas.cs`.
+		MandarEsferas(pl.Zone);
+		MandarSupers(pl);
 		MandarPortas(pl);
 		MandarCenario(pl);
 		MandarCatalogoDeObras(pl);
@@ -3792,6 +4047,11 @@ public partial class GameServer : Node
 		// duas pessoas viraria uma sugestao. Ver `GameServer.SalaDoTempo.cs`.
 		SalaDoTempoNoLogin(pl);
 
+		// E QUEM VOLTA SELADO CONTINUA SELADO -- o `if(isSealed) spawn TestEscape()` do
+		// `Login.dm:258`, pelo mesmo motivo da linha de cima: sem esta chamada, deslogar seria a
+		// chave mestra de toda prisao do jogo. Ver `GameServer.Selo.cs`.
+		SeloNoLogin(pl);
+
 		// ============================ O QUE O SAVE PERDEU, DITO EM VOZ ALTA ============================
 		// As quatro formas divinas deixaram de ter maestria propria (ver `Maestrias.Por`). Quem ja
 		// tinha registro no disco perde esse numero -- e perder calado e indistinguivel de um defeito:
@@ -3856,10 +4116,32 @@ public partial class GameServer : Node
 		{
 			var w = Protocol.Begin(Protocol.S2C.PeerLook);
 			w.Put(p.Id);
-			w.Put(p.Name);
+			// O NOME QUE O MUNDO LE, e nao o do save. Ver `ServerPlayer.NomeDeFusao` -- este e o
+			// unico pacote que carrega nome depois do login, entao ele e o unico lugar onde a fusao
+			// precisa aparecer. (O `JoinAccepted` fica com o `Name` cru de proposito: ninguem entra
+			// no mundo ja fundido -- a fusao e desfeita antes do save.)
+			w.Put(NomeVisivel(p));
 			w.Put(p.Race);
 			w.Put(p.Genero);
-			w.PutAppearance(p.Visual);
+			// A APARENCIA QUE O MUNDO VE, e nao a do save -- gemea da linha do nome logo acima, e pelo
+			// mesmo motivo. Ver `ServerPlayer.LookDeFusao`: a roupa e o cabelo da fusao NAO podem
+			// encostar em `pl.Visual`, que vai pro disco a cada 2 minutos.
+			w.PutAppearance(VisualVisivel(p));
+
+			// ============================ E O BIT DE "ESTE CORPO E UMA FUSAO" ============================
+			// Um bit, ao lado da aparencia, porque ele e um fato do CORPO e nao da forma -- exatamente
+			// como o `dominada` do `PacoteDeForma`. Ele existe por UMA regra do dono, e ela nao cabe em
+			// nenhum dos campos acima: *"no SSJ4, TODA fusao usa `Hair SSJ4 Gogeta` pintado de vermelho,
+			// tendo ou nao o cabelo do Vegito"*.
+			//
+			// NAO DA PRA DEDUZIR DO CABELO, e essa e a razao de ele existir: a fusao que nao virou Vegito
+			// veste o penteado de quem convidou (`Fusao.CabeloDaFusao`), entao o cliente olhando so a
+			// aparencia veria um Goku comum. E nao da pra deduzir do NOME: nome e texto livre.
+			//
+			// **E NAO ENTROU EM `Appearance`**, que seria o lugar obvio: aquele objeto vai pro disco, e um
+			// campo "sou uma fusao" gravado num save e um estado que sobrevive ao que o produziu.
+			// ========================================================================================
+			w.Put(p.LookDeFusao != null);
 			return w;
 		}
 
@@ -3916,10 +4198,42 @@ public partial class GameServer : Node
 	/// na mao. O padrao nulo mantem todos os chamadores de producao como estavam.
 	/// ================================================================================
 	/// </summary>
+	/// <remarks>
+	/// ============================ 3. CORPO FUNDIDO NAO SE GRAVA ============================
+	/// **Achado medindo esta etapa, e ele e da familia do `_limpezaEmCurso` logo acima: um estado que o
+	/// save nao sabe descrever, entao a porta fecha enquanto ele dura.**
+	///
+	/// A fusao muda TRES coisas que este metodo grava, e nenhuma delas tem campo no save que diga "isto
+	/// e emprestado":
+	///
+	///   1. **a ZONA do passageiro** (`CharacterStore.cs:734`). Ele esta num bolso `Interior("Selado")`
+	///      de uma pessoa so, sem porta e sem ninguem. Gravado la dentro, ele **reloga preso num quarto
+	///      branco pra sempre** -- a unica saida (a fusao) morreu com o processo. E exatamente o defeito
+	///      que o `GameServer.Fusao.SoltarDaFusao` ja evita no LOGOUT, e o salvamento periodico o
+	///      alcancava por baixo, a cada 2 minutos, sem ninguem deslogar;
+	///   2. **os STATS do dono** (`Ficha = pl.Ficha`), que estao no "maior de cada" dos dois -- e o
+	///      `Fighter` inteiro vai serializado, mods e tudo;
+	///   3. **as SKILLS emprestadas** (`Skills = [.. pl.Livro.Aprendidas]`) e o `FuseBuff`, que carrega
+	///      o `(A+B)*2`.
+	///
+	/// Ou seja: uma Metamoro de 15 min atravessa ~7 gravacoes e uma Potara de 30 min ~15. Uma queda do
+	/// servidor no meio de qualquer uma delas deixava os dois jogadores **permanentemente** fundidos por
+	/// dentro -- um com o BP e os stats do outro somados e um trancado no selo --, e nada no jogo diria
+	/// por que. O rework portado ja tinha visto metade disto (ver `ServerPlayer.NomeDeFusao`, que existe
+	/// so por causa deste mesmo salvamento periodico); faltava a outra metade.
+	///
+	/// **O CUSTO E CONHECIDO E E O LADO CERTO DA TROCA:** o que se perde numa queda e o treino feito
+	/// DURANTE a fusao (no maximo 30 min, e o teto e a propria energia). O que se ganha e que nenhuma
+	/// fusao pode virar permanente por acidente. E o caminho normal nao perde nada: sair do jogo chama
+	/// `SoltarDaFusao` **antes** do `Persistir` (ver `Drop`), entao o corpo ja esta desfundido quando
+	/// esta linha roda, e o que vai pro disco e a pessoa.
+	/// ================================================================================
+	/// </remarks>
 	private void Persistir(ServerPlayer pl, AccountSave? conta = null)
 	{
 		if (_store == null || pl.Slot < 0) return;
 		if (_limpezaEmCurso) return;
+		if (EstaFundido(pl.Id)) return;   // ver o item 3 do <remarks>
 
 		AccountSave? acc = conta;
 		if (acc == null && (pl.Peer == null || !_contas.TryGetValue(pl.Peer, out acc))) return;
@@ -4221,6 +4535,13 @@ public partial class GameServer : Node
 		// =====================================================================================================
 		if (pl.BonecoLargado != null) VoltarDeOndeEstiver(pl, "");
 
+		// A FUSAO SE DESFAZ ANTES DO SAVE, E PELA MESMA RAZAO DA LINHA ACIMA -- so que aqui o preso
+		// nao e quem deslogou: e o OUTRO. O passageiro de uma fusao esta num bolso `Interior`
+		// ("Selado") de uma pessoa so, sem porta e sem ninguem, e o save grava a zona. Persistido la
+		// dentro ele relogaria trancado num quarto branco pra sempre, porque a unica saida (a fusao)
+		// morreu com a sessao de quem caiu. Ver `SoltarDaFusao`.
+		SoltarDaFusao(pl.Id);
+
 		Persistir(pl);
 		// SOLTA DO EMBATE ANTES de sumir da lista: o `Terminar` precisa do corpo pra devolver a
 		// visibilidade e o controle ao OUTRO, que continua jogando.
@@ -4336,6 +4657,12 @@ public partial class GameServer : Node
 		// e uma reacao a 5 Hz deixaria o corpo atravessar a celula sem que ninguem percebesse.
 		TickDasPassagens();
 
+		// A QUEDA PELA NUVEM VEM LOGO DEPOIS DAS PASSAGENS, e a ordem importa: a volta do Ceu chega
+		// no z6, que e todo nuvem. Vindo antes, a queda leria a posicao ANTIGA do corpo e o
+		// despacharia do lugar errado; vindo depois, ela ve a chegada -- e a carencia compartilhada
+		// (`_acabouDeAtravessar`) impede que os dois disparem no mesmo tique. Ver `GameServer.Nuvem.cs`.
+		TickDasNuvens();
+
 		// A LOTACAO DA SALA DO TEMPO, logo depois das passagens e nao por acaso: e a passagem
 		// `fromhbtc` que tira gente de la, e quem acabou de sair tem que largar a vaga no MESMO
 		// quadro -- senao a sala fica "cheia" com uma pessoa dentro por um tique inteiro, e um
@@ -4347,6 +4674,13 @@ public partial class GameServer : Node
 		// comida, que e do lugar, some no mesmo quadro em que a sala esvazia. Ver
 		// `GameServer.SalaSessao.cs`.
 		TickDaSessaoDaSala(Protocol.TickSeconds);
+
+		// O SELO -- os QUATRO relogios dele (fuga a 0,3 s, pote a 5 s, fita do Mafuba a 0,2 s,
+		// portal da Dead Zone a 0,1 s), cada um com a cadencia que tem no DM. Anda no tique cheio
+		// porque o mais rapido dos quatro e o portal, que arrasta corpo a 10 Hz -- num relogio de
+		// 5 Hz ele puxaria de dois em dois tiles e o que se veria seria teleporte.
+		// Ver `GameServer.Selo.cs`.
+		TickDoSelo(Protocol.TickSeconds);
 
 		// O ARREMESSO ANDA NO TICK CHEIO: o tique dele e 0,1 s e cada um vale dois tiles. A 5 Hz
 		// o corpo daria saltos de quatro tiles, e o que se veria seria teleporte, nao voo.
@@ -4436,6 +4770,31 @@ public partial class GameServer : Node
 		// entre acertar e nao.
 		TickDosEmbates();
 
+		// AS LETRAS DA DANCA DA FUSAO ANDAM AQUI, ao lado das do embate, e pela mesma razao escrita
+		// duas linhas acima: o prazo de uma letra e de 900 ms e o piso de cadencia e de 300 ms. A 5 Hz
+		// o adiantamento do acerto -- que e o "quanto mais rapido melhor" do dono -- deixaria de
+		// existir. Ver `GameServer.Fusao.cs`.
+		TickDasLetrasDaDanca();
+
+		// O PUXAO DA POTARA ANDA AQUI PELO MOTIVO DO ARREMESSO, e nao pelo das letras: ele move CORPO,
+		// a 1280 px/s cada um (os 32 px do `step_to` a cada `world.tick_lag` de um mundo a 40 fps -- ver
+		// `Fusao.VelocidadeDoPuxao`). A 1 Hz cada passada andaria quarenta tiles de uma vez, e o que se
+		// veria seria teleporte -- exatamente o que este bloco ja diz do arremesso e do selo.
+		//
+		// ANTES DA CENA, e a ordem importa: e este laco que decide que os dois ENCOSTARAM, e e o
+		// encostar que faz a cinematica comecar (pedido do dono). Rodando depois, a cena que nascesse
+		// neste tique so seria vista no proximo.
+		TickDoPuxaoDeFusao();
+
+		// A CINEMATICA DA FUSAO ANDA AQUI, ao lado das letras, e o argumento e o mesmo das duas linhas
+		// acima levado ao extremo: o instante em que os dois viram um e um PONTO (o fim da animacao da
+		// luz, `Cinematicas.SegundosDaLuzDaFusao` = 0,7 s de cena), e a 1 Hz ele erraria por ate um
+		// segundo -- ou seja por MAIS que a cena inteira ate a virada. A fusao aconteceria antes ou
+		// depois do clarao que existe pra anuncia-la, que e a queixa que o dono ja fez duas vezes sobre
+		// efeito de fim caindo fora do fim. Custo fora de uma fusao: uma comparacao de inteiro (ver a
+		// primeira linha de la).
+		TickDaCenaDeFusao();
+
 		// O CONVIVIO ENTRA NESTE MESMO BLOCO DE 1 Hz e cobra 3 segundos POR PESSOA la dentro (ver
 		// `TickDoConvivio`): quem manda no passo e o prazo de cada jogador, e este laco so pergunta
 		// se ja chegou a hora. Rodar mais rapido nao mudaria nada -- no relogio do DM a amizade
@@ -4454,7 +4813,7 @@ public partial class GameServer : Node
 		// Hz, ao lado do calor da estrela) de proposito: a estrela e um lugar por onde se ATRAVESSA e
 		// 200 ms la tem que custar 200 ms de dano; ninguem "roça" o vacuo. Ver `GameServer.Vacuo.cs`.
 		if (_tickCount % TicksPorSegundo == 0)
-			{ TickDasTecnicas(); TickDasTecnicasG6(); TickDoEstudo(); TickDaGestacao(); TickDaLarva(); TickDoPalcoDoBio(); TickDoOlharDoBio(); TickDoFilmeDoBio(); TickDoNucleoInfinito(); TickDaPostura(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); TickDasSagas(); TickDaDestruicao(1); TickDasInvasoes(); TickDaConquista(); TickDosCargos(); TickDoEsmagamento(); TickDoVacuo(); }
+			{ TickDasTecnicas(); TickDasTecnicasG6(); TickDoEstudo(); TickDaGestacao(); TickDaLarva(); TickDoPalcoDoBio(); TickDoOlharDoBio(); TickDoFilmeDoBio(); TickDoNucleoInfinito(); TickDaPostura(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); TickDasSagas(); TickDaDestruicao(1); TickDasInvasoes(); TickDaConquista(); TickDasEsferas(); TickDasSuperEsferas(); TickDosCargos(); TickDoEsmagamento(); TickDoVacuo(); TickDaFusao(); }
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
 		// Dois minutos e o maximo de treino que alguem pode perder.
@@ -4698,6 +5057,10 @@ public partial class GameServer : Node
 		// AS CONSTRUCOES SAO POR ZONA: sem reenviar, quem muda de planeta continua vendo as
 		// construcoes do planeta anterior desenhadas no chao do novo.
 		MandarObras(destino);
+		// AS ESFERAS SAO POR ZONA IGUAL. Sem esta linha, quem sai de Namek com o Porunga na tela
+		// continuaria vendo as sete desenhadas no chao da Terra -- e o inverso: quem chega em Namek
+		// nao veria nenhuma ate a proxima vez que alguem mexesse numa delas.
+		MandarEsferas(destino);
 		// ...e as PORTAS pelo mesmo motivo: quem chega tem que ver as que estao abertas agora, e o
 		// `.col` do cliente tem que casar com o do servidor (ver MandarPortas).
 		MandarPortas(pl);
@@ -4828,4 +5191,23 @@ public partial class GameServer : Node
 	}
 
 	private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+	/// <summary>
+	/// O NOME QUE O MUNDO LE: o da fusao enquanto ela dura, o do personagem no resto do tempo.
+	/// Ver <see cref="ServerPlayer.NomeDeFusao"/> pra saber por que os dois nao sao o mesmo campo.
+	/// </summary>
+	private static string NomeVisivel(ServerPlayer p) =>
+		p.NomeDeFusao.Length > 0 ? p.NomeDeFusao : p.Name;
+
+	/// <summary>
+	/// A APARENCIA QUE O MUNDO VE: a da fusao enquanto ela dura, a do personagem no resto do tempo.
+	/// Gemeo do <see cref="NomeVisivel"/> logo acima, e ver <see cref="ServerPlayer.LookDeFusao"/> pros
+	/// DOIS motivos de os campos serem separados (o disco e o saneamento).
+	///
+	/// **UM FUNIL SO, e nao um `??` em cada chamador**: quem monta pacote de aparencia pergunta a este
+	/// metodo, e no dia em que houver um terceiro caminho ele herda a regra de graca. O `JoinAccepted`
+	/// e a UNICA excecao de propósito e ela esta comentada la -- ninguem entra no mundo ja fundido.
+	/// </summary>
+	private static Jandirus.Core.Appearance.Appearance VisualVisivel(ServerPlayer p) =>
+		p.LookDeFusao ?? p.Visual;
 }

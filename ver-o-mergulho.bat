@@ -124,15 +124,16 @@ echo  sem a onda. A foto sozinha nao decide nada -- o log traz a fracao de
 echo  pixels que mudou nos dois casos (26%% contra 0%%).
 echo.
 echo  ============================ AS DUAS INJECOES DE FONTE ============================
-echo  Familia 7 (a coleira):
+echo  Familia 7 (a coleira) -- meio minuto:
 echo     em Server\GameServer.Clone.cs, comente a linha
 echo        if (DimensaoMental.FugiuDoDono(npc.Pos, dono.Pos)) ReaparecerNaFrente(npc, dono);
-echo     e rode:  ...--diagmergulho --mergulhofamilia 6
-echo     (a familia 6 e a mesma caminhada; as tres provas do reflexo ficam vermelhas)
+echo     e rode:  ...--diagmergulho --mergulhofamilia 7
+echo     MEDIDO: 2,5 s depois do empurrao ele continua a 69 tiles; as 3 provas ficam vermelhas.
 echo.
-echo  Familia 8 (o descarte de pedaco):
+echo  Familia 8 (o descarte de pedaco) -- dois minutos (ela anda os 500 tiles):
 echo     em Client\PintorDePedacos.cs, troque FolgaDeDescarte de 64 pra 4000
-echo     e rode:  ...--diagmergulho --mergulhofamilia 6
+echo     e rode:  ...--diagmergulho --mergulhofamilia 8
+echo     MEDIDO: 20 pedacos vivos no fim contra 6, e zero "[pedacos] soltei" no log.
 echo.
 echo  DESFACA AS DUAS DEPOIS. Uma bancada que fica verde com o defeito dentro e
 echo  pior que bancada nenhuma.

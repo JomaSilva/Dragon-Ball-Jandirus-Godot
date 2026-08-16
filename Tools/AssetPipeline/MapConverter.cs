@@ -268,7 +268,7 @@ public static class MapConverter
 
 		// ---- passada 2: uma cena por andar + o mapa de colisao que o SERVIDOR le ----
 		int cenas = 0, celulas = 0, bloqueadas = 0, totalPortas = 0, totalMaquinas = 0, totalPassagens = 0;
-		int totalAgua = 0, totalDuro = 0;
+		int totalAgua = 0, totalDuro = 0, totalNuvem = 0;
 		var manifesto = new List<string>();
 		foreach ((string arquivo, DmmMap.Result dados, int off) in mapas)
 			foreach (DmmLevel nivel in dados.Levels)
@@ -304,6 +304,19 @@ public static class MapConverter
 					totalAgua += molhadas.Count;
 				}
 				else if (File.Exists(arqAgua)) File.Delete(arqAgua);
+
+				// ...e esta e a QUARTA CLASSE: a nuvem. Mesmo formato de novo, e arquivo separado pelo
+				// mesmo motivo dos outros -- "para o corpo", "esconde", "e agua", "cede a um soco" e
+				// "e ceu" sao cinco perguntas que divergem entre si em quase toda celula que importa.
+				// Zona sem ceu nao ganha arquivo. Ver `ConverterNuvens` e `Core/World/Ceu.cs`.
+				List<(int X, int Y)> nuvens = CelulasDeNuvem(nivel, dados, turfs);
+				string arqNuvem = Path.Combine(outDir, nome + ".nuvem");
+				if (nuvens.Count > 0)
+				{
+					EscreverColisao(arqNuvem, nivel.Width, nivel.Height, nuvens);
+					totalNuvem += nuvens.Count;
+				}
+				else if (File.Exists(arqNuvem)) File.Delete(arqNuvem);
 
 				// ...e este e O QUE NAO SE QUEBRA: o `destroyable = 0` do original. Arquivo separado
 				// pelo mesmo motivo dos outros dois -- "para o corpo", "esconde", "e agua" e "cede a
@@ -344,6 +357,7 @@ public static class MapConverter
 							  $"\"pedacos\": \"res://Assets/Maps/{nome}.pedacos\", " +
 							  $"\"colisao\": \"res://Assets/Maps/{nome}.col\", \"visao\": \"res://Assets/Maps/{nome}.vis\", " +
 							  $"\"agua\": \"res://Assets/Maps/{nome}.agua\", " +
+						  $"\"nuvem\": \"res://Assets/Maps/{nome}.nuvem\", " +
 						  $"\"duro\": \"res://Assets/Maps/{nome}.duro\", " +
 							  $"\"luzes\": \"res://Assets/Maps/{nome}.luz\", " +
 							$"\"portas\": \"res://Assets/Maps/{nome}.portas\", " +
@@ -363,6 +377,7 @@ public static class MapConverter
 		Console.WriteLine($"maquinas       : {totalMaquinas} (saem do tilemap e viram construcao)");
 		Console.WriteLine($"passagens      : {totalPassagens} (celulas que levam a outro mapa)");
 		Console.WriteLine($"agua           : {totalAgua} celulas (terceira classe: para a pe, nao para nadando/voando)");
+		Console.WriteLine($"ceu            : {totalNuvem} celulas (quarta classe: SO quem voa passa; z6/z12 derrubam)");
 		Console.WriteLine($"duro           : {totalDuro} celulas (destroyable=0: bloqueia e NAO cede a soco nenhum)");
 		Console.WriteLine($"celulas        : {celulas}");
 		Console.WriteLine($"fontes no tileset: {fontes.Count}");
@@ -1875,6 +1890,120 @@ public static class MapConverter
 				if (Aguas.Eh(ultimoTurf, td)) molhadas.Add((x, y));
 			}
 		return molhadas;
+	}
+
+	// =====================================================================
+	// A NUVEM -- a quarta classe de celula (ver Core/World/Ceu.cs)
+	// =====================================================================
+
+	/// <summary>
+	/// AS CELULAS DE NUVEM DESTE ANDAR.
+	///
+	/// **A MESMA REGRA DE DESEMPATE DA AGUA**, e por isso ela e uma copia da forma e nao da decisao:
+	/// vale o ULTIMO turf da celula, porque no DM cada `new /turf/X(loc)` de um prefab SUBSTITUI o
+	/// anterior. Quem existe no fim e o unico que existe. Perguntar pelo primeiro daria nuvem onde o
+	/// mapeador pos uma plataforma por cima dela -- e no Templo, que e quase todo ceu com ilhas de
+	/// piso, isso seria a diferenca entre um mapa jogavel e um buraco.
+	///
+	/// QUEM DECIDE E o <see cref="Ceus.Eh"/>, que por sua vez delega pro `Aguas.EhCeu` -- a MESMA
+	/// leitura que exclui o ceu da agua vinte linhas acima. Ver o cabecalho de `Ceus`.
+	/// </summary>
+	internal static List<(int X, int Y)> CelulasDeNuvem(DmmLevel nivel, DmmMap.Result dados,
+													  Dictionary<string, TurfDef> turfs)
+	{
+		var nuvens = new List<(int, int)>();
+		for (int y = 0; y < nivel.Height; y++)
+			for (int x = 0; x < nivel.Width; x++)
+			{
+				string? k = nivel.Cells[x, y];
+				if (k == null || !dados.Keys.TryGetValue(k, out string[]? tipos)) continue;
+
+				string? ultimoTurf = null;
+				foreach (string tp in tipos)
+				{
+					string bp = DmmMap.BasePath(tp);
+					if (bp.StartsWith("/turf", StringComparison.Ordinal)) ultimoTurf = bp;
+				}
+
+				if (ultimoTurf == null || !turfs.TryGetValue(ultimoTurf, out TurfDef? td)) continue;
+				if (Nuvens.Eh(ultimoTurf, td)) nuvens.Add((x, y));
+			}
+		return nuvens;
+	}
+
+	/// <summary>
+	/// Grava o `.nuvem` de todos os andares E MAIS NADA -- o irmao do <see cref="ConverterAguas"/>, e a
+	/// justificativa dele vale palavra por palavra: a conversao cheia reescreveria o tileset, os 40
+	/// `.tscn`/`.pedacos` e o indice de sprites pra buscar UM bit por celula.
+	///
+	/// ZONA SEM NUVEM NAO GANHA ARQUIVO, e um `.nuvem` velho de uma zona que perdeu a nuvem e APAGADO --
+	/// mesma regra do `.agua`, e pelo mesmo motivo: um arquivo antigo em que o leitor confia e pior
+	/// que arquivo nenhum. Aqui ele seria especialmente feio, porque nuvem que sobrou de um mapa
+	/// antigo **derruba gente** em vez de so parar.
+	/// </summary>
+	public static void ConverterNuvens(string dmmDir, string outDir, Dictionary<string, TurfDef> turfs)
+	{
+		Directory.CreateDirectory(outDir);
+
+		var mapas = new List<(string Arquivo, DmmMap.Result Dados, int Offset)>();
+		int offset = 0;
+		foreach (string dmm in OrdemDoDme(dmmDir))
+		{
+			DmmMap.Result d = DmmMap.Read(dmm);
+			mapas.Add((dmm, d, offset));
+			offset += d.Levels.Count;
+		}
+
+		int andares = 0, comCeu = 0, total = 0, apagados = 0, derrubam = 0;
+		foreach ((string _, DmmMap.Result dados, int off) in mapas)
+			foreach (DmmLevel nivel in dados.Levels)
+			{
+				string nome = NomeDoAndar(dados, nivel, off);
+				string caminho = Path.Combine(outDir, nome + ".nuvem");
+				List<(int X, int Y)> nuvens = CelulasDeNuvem(nivel, dados, turfs);
+				andares++;
+
+				if (nuvens.Count == 0)
+				{
+					if (File.Exists(caminho)) { File.Delete(caminho); apagados++; }
+					continue;
+				}
+
+				EscreverColisao(caminho, nivel.Width, nivel.Height, nuvens);
+				comCeu++;
+				total += nuvens.Count;
+
+				// RELER O QUE ACABOU DE SER ESCRITO, pelo mesmo motivo do `.agua`: o que interessa nao
+				// e "o conversor decidiu N celulas", e "o objeto que o JOGO consulta responde ceu em N
+				// celulas". O `CarregarNuvem` RECUSA CALADO quando o tamanho nao bate, e uma recusa
+				// calada aqui seria verde na bancada e chao comum em jogo -- que e literalmente o bug
+				// que esta tarefa conserta.
+				//
+				// E O NOME DA ZONA ENTRA NA RELEITURA, e nao um `true` de conveniencia: e ele que
+				// decide se esta nuvem derruba, e conferir o plano sem conferir o desfecho deixaria
+				// passar o caso em que o mapa tem ceu e o Core nao sabe pra onde manda-lo.
+				string zona = nome[(nome.IndexOf('_') + 1)..];
+				var relido = Jandirus.Core.World.ZoneCollision.Montar(
+					nivel.Width, nivel.Height, new byte[(nivel.Width * nivel.Height + 7) / 8]);
+				int conferidas = 0;
+				if (!relido.CarregarNuvem(File.ReadAllBytes(caminho), zona))
+					Console.WriteLine($"  {nome,-34} FALHOU: o .nuvem escrito nao volta pelo CarregarNuvem");
+				else
+					for (int y = 0; y < nivel.Height; y++)
+						for (int x = 0; x < nivel.Width; x++)
+							if (relido.EhNuvem(x, y)) conferidas++;
+
+				var destino = Jandirus.Core.World.ClasseDeNuvem.DestinoDaQueda(zona);
+				if (destino != null) derrubam++;
+
+				string aviso = conferidas == nuvens.Count ? "" : $"  <-- RELEU {conferidas}, DIVERGE";
+				Console.WriteLine($"  {nome,-34} {nuvens.Count,8} celulas de ceu  "
+								  + (destino is { } d2 ? $"DERRUBA -> {d2.Zona} ({d2.Bx},{d2.By})" : "so barra")
+								  + aviso);
+			}
+
+		Console.WriteLine($"andares: {andares} | com ceu: {comCeu} ({derrubam} derrubam) | celulas: {total}"
+						  + (apagados > 0 ? $" | .nuvem apagados: {apagados}" : ""));
 	}
 
 	// =====================================================================

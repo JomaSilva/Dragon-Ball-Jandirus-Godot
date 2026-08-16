@@ -259,9 +259,93 @@ public partial class AudioDirector : Node
     {
         Volume("Master", s.VolumeGeral);
         Volume(BusMusica, s.VolumeMusica);
-        Volume(BusEfeitos, s.VolumeEfeitos);
+        // O VOLUME DE EFEITOS PASSA PELO VACUO, e nao direto pro barramento -- ver `Vacuo`. Chamar
+        // `Volume(BusEfeitos, ...)` aqui era o defeito obvio: mexer no controle deslizante DENTRO do
+        // espaco devolveria o som do soco no vacuo, e ninguem ligaria uma coisa a outra.
+        _volEfeitos = s.VolumeEfeitos;
+        AplicarEfeitos();
         Volume(BusAmbiente, s.VolumeAmbiente);
         Volume(BusVoz, s.VolumeVoz);
+    }
+
+    // =====================================================================
+    // O SILENCIO DO ESPACO
+    // =====================================================================
+
+    /// <summary>
+    /// ============================ NO VACUO NAO HA MEIO PRA O SOM ANDAR ============================
+    /// Pedido do dono: *"no espaco o jogo n tem som, SOMENTE A MUSICA de combate. efeitos sonoros de
+    /// ki, soco etc N EXISTEM, a nao ser q estejam DENTRO DE UMA NAVE como a capital ship. mas no
+    /// espaco em si, usando roupa espacial ou sem ela, N TEM SOM, somente a OST"*.
+    ///
+    /// ============================ POR QUE NO BARRAMENTO, E NAO SOM A SOM ============================
+    /// Porque calar chamada a chamada **deixaria buracos que ninguem veria**, e ha um medido: a
+    /// `CargaVisual.LigarLaco` monta o `AudioStreamPlayer2D` do zumbido de carga NA MAO, com
+    /// `Bus = BusEfeitos`, sem passar pelo <see cref="Efeito"/> nem pelo <see cref="EfeitoNoLugar"/>
+    /// -- os dois funis por onde passam as outras 23 chamadas do mundo. Uma varredura por "onde toca
+    /// som" acharia os dois funis e perderia esse terceiro, e o sintoma seria o zumbido do C tocando
+    /// sozinho no vacuo, calado, sem nada que ligasse a causa ao efeito.
+    ///
+    /// No barramento sao TODOS de uma vez, inclusive o quarto que alguem escrever amanha sem ler isto.
+    ///
+    /// ============================ O QUE **NAO** E CALADO, E CADA UM TEM RAZAO PROPRIA ============================
+    ///   * A MUSICA -- e o pedido literal (*"somente a OST"*). Ela vive no <see cref="BusMusica"/>,
+    ///     entao ela sobrevive de graca: nao ha uma linha nova pra mante-la tocando. Calar o `Master`
+    ///     a mataria junto, e e por isso que o corte e no barramento CERTO e nao no de cima.
+    ///   * O AMBIENTE -- ja estava resolvido antes desta tarefa: o ramo do espaco em
+    ///     `World.CarregarZona` pede `Ambiente("")` e sai antes da linha do vento.
+    ///   * A VOZ -- barramento SEPARADO (<see cref="BusVoz"/>), e ela **continua tocando**. Ver a
+    ///     nota de ressalva logo abaixo: e a unica escolha desta tarefa que nao e obviamente a que o
+    ///     dono pediu, e por isso ela esta escrita e nao decidida no escuro.
+    ///
+    /// ============================ A NAVE-CAPITAL ESCAPA DE GRACA, E ISSO FOI CONFERIDO ============================
+    /// *"a nao ser q estejam DENTRO DE UMA NAVE como a capital ship"* -- e **nenhuma linha foi escrita
+    /// pra isso**. O interior e `ZoneKey.Interior("Nave", id)` (`Core/Tech/NaveGrande.cs`), ou seja
+    /// `Kind == KindInterior` e nome `"Nave"`; o <see cref="Jandirus.Core.World.Espaco.EhEspaco"/>
+    /// compara o nome com `"Espaco"` e devolve FALSO. Zona diferente, ramo diferente no
+    /// `CarregarZona`, e o vacuo desliga sozinho ao entrar. Escrever uma excecao pra nave seria
+    /// escrever um `if` que nunca e verdadeiro.
+    ///
+    /// ============================ E A ROUPA ESPACIAL NAO DEVOLVE O SOM ============================
+    /// *"usando roupa espacial ou sem ela, N TEM SOM"*. Ela nao aparece nesta conta em lugar nenhum,
+    /// e essa AUSENCIA e a regra -- o vacuo pergunta pela ZONA e mais nada. Fica escrito porque
+    /// "quem tem traje ouve" e a suposicao natural de quem vier depois.
+    /// ==========================================================================================================
+    /// </summary>
+    /// <param name="noVacuo">Estou no espaco aberto agora? Ver `Espaco.EhEspaco`.</param>
+    public void Vacuo(bool noVacuo)
+    {
+        if (_vacuo == noVacuo) return;
+        _vacuo = noVacuo;
+        AplicarEfeitos();
+    }
+
+    /// <summary>Estou no vacuo agora? Pra bancada -- e a unica medida do estado deste corte.</summary>
+    public bool NoVacuoDeTeste => _vacuo;
+
+    /// <summary>
+    /// O BARRAMENTO DE EFEITOS ESTA MUDO AGORA? Lido do `AudioServer` e nao do campo, de proposito:
+    /// o campo diz o que a ultima chamada PEDIU e isto diz o que o mixer REALMENTE ficou. E a mesma
+    /// distincao do `SpriteDeAura.CorNoMaterialDeTeste`, e ela existe pelo mesmo motivo -- uma
+    /// bancada que le a propria intencao fica verde para sempre.
+    /// </summary>
+    public static bool EfeitosMudosDeTeste =>
+        AudioServer.GetBusIndex(BusEfeitos) is var i && i >= 0 && AudioServer.IsBusMute(i);
+
+    private bool _vacuo;
+    private float _volEfeitos = 1f;
+
+    /// <summary>
+    /// AS DUAS RAZOES PRA O EFEITO CALAR, NUMA CONTA SO: o jogador zerou o controle, ou ele esta no
+    /// vacuo. Um lugar decide -- e por isso mexer no volume dentro do espaco nao ressuscita o som, e
+    /// sair do espaco nao devolve som pra quem tinha zerado o controle.
+    /// </summary>
+    private void AplicarEfeitos()
+    {
+        int i = AudioServer.GetBusIndex(BusEfeitos);
+        if (i < 0) return;
+        AudioServer.SetBusMute(i, _vacuo || _volEfeitos <= 0.001f);
+        AudioServer.SetBusVolumeDb(i, Mathf.LinearToDb(Mathf.Clamp(_volEfeitos, 0.0001f, 1f)));
     }
 
     /// <summary>

@@ -42,6 +42,18 @@ public sealed class ZoneEntry
 	/// de defeito deste projeto.
 	/// </summary>
 	public string Duro = "";
+
+	/// <summary>
+	/// res:// do bitset da NUVEM -- a QUARTA classe de celula (ver <see cref="ClasseDeNuvem"/>).
+	///
+	/// TEM PADRAO DERIVADO DO <see cref="Colisao"/> pelo mesmo motivo que o <see cref="Agua"/> e o
+	/// <see cref="Duro"/>: o `.nuvem` sai do comando `nuvem` do pipeline, que NAO reescreve o
+	/// manifesto. **E aqui o desfecho calado seria o pior dos tres**: sem o padrao, gerar os arquivos
+	/// e continuar andando por cima das nuvens do Templo nao mostraria erro nenhum -- so continuaria
+	/// sendo o bug que esta tarefa conserta.
+	/// </summary>
+	public string Nuvem = "";
+
 	public string Luzes = "";     // res:// das fontes de luz do cenario (fogueira, tocha, lava)
 
 	/// <summary>res:// das PORTAS da zona -- elas nao sao tile, sao entidade (ver MapConverter.EhPorta).</summary>
@@ -79,6 +91,12 @@ public sealed class ZoneEntry
 	public string CaminhoDoDuro =>
 		Duro.Length > 0 ? Duro
 		: Colisao.EndsWith(".col", StringComparison.Ordinal) ? Colisao[..^4] + ".duro"
+		: "";
+
+	/// <summary>O caminho do `.nuvem`, pela mesma regra do <see cref="CaminhoDaAgua"/>. Ver <see cref="Nuvem"/>.</summary>
+	public string CaminhoDaNuvem =>
+		Nuvem.Length > 0 ? Nuvem
+		: Colisao.EndsWith(".col", StringComparison.Ordinal) ? Colisao[..^4] + ".nuvem"
 		: "";
 
 	public int W, H;
@@ -161,6 +179,7 @@ public sealed class ZoneCatalog
 				Visao = Str(bloco, "visao"),
 				Agua = Str(bloco, "agua"),
 				Duro = Str(bloco, "duro"),
+				Nuvem = Str(bloco, "nuvem"),
 				Luzes = Str(bloco, "luzes"),
 				Portas = Str(bloco, "portas"),
 				Objetos = Str(bloco, "objetos"),

@@ -155,6 +155,13 @@ public sealed partial class GameServer
 		// regra e dita UMA vez, aqui, e o outro lado so obedece.
 		d.ArrastoRestante = 0;
 
+		// E O ARREMESSO GANHA DO PUXAO DA FUSAO PELA MESMA RAZAO, e com a mesma precedencia ESCRITA:
+		// quem levou um golpe forte no meio de uma Potara esta voando, e nao sendo atraido. O
+		// `TickDoPuxaoDeFusao` nao o move enquanto ele estiver no ar (ver `AndarNoPuxao`) e o detector
+		// de "pararam de se aproximar" desfaz a fusao sozinho se ele nao voltar -- que e o *"se um dos
+		// dois nao chegar, a fusao NAO comeca"* do pedido, sem uma segunda regra sobre arremesso.
+		d.PuxaoDeFusaoRestante = 0;
+
 		// ============================ E O RAIO NA MAO DELE CAI JUNTO ============================
 		// `while(beaming) { CHECK_TICK; if(KB) stopbeaming() }` -- o topo do laco do `ShootBeam`
 		// (`beams.dm:72-74`). O `KB` do original e escrito em dois lugares (`Throw.dm:84` e o
@@ -260,11 +267,25 @@ public sealed partial class GameServer
 			// `TiquesDeVoo > 0`, e este `continue` garante o outro lado. Nao ha tique em que os dois
 			// escrevam `Pos`.
 			// ======================================================================================================
-			if (pl.ArrastoRestante > 0)
+			// ============================ E O PUXAO DA FUSAO ENTRA POR ESTA MESMA PORTA ============================
+			// O `Potara_Fusion.dm:124-129` anda com os DOIS corpos um pro outro antes de fundir, e quem
+			// escreve o `Pos` deles e o `GameServer.TickDoPuxaoDeFusao`. O que falta -- escorrer o prazo,
+			// mandar a correcao e devolver as redeas -- e literalmente o mesmo pacote do feixe, linha por
+			// linha, e por isso ele NAO foi copiado pra la: este arquivo inteiro existe por causa da
+			// primeira vez que houve dois lugares mandando correcao de posicao.
+			//
+			// OS DOIS PRAZOS ESCORREM SEPARADOS e a soltura e a CONJUNCAO: os dois nunca valem juntos em
+			// jogo (quem esta sendo puxado esta preso pela fusao, e o `Arremessar` zera o arrasto), mas
+			// zerar um por causa do outro seria a precedencia emergente que o `Arremessar` documenta.
+			// ==================================================================================================
+			if (pl.ArrastoRestante > 0 || pl.PuxaoDeFusaoRestante > 0)
 			{
-				pl.ArrastoRestante -= Protocol.TickSeconds;
-				bool soltou = pl.ArrastoRestante <= 0;
-				if (soltou) pl.ArrastoRestante = 0;
+				if (pl.ArrastoRestante > 0)
+					pl.ArrastoRestante = Math.Max(0, pl.ArrastoRestante - Protocol.TickSeconds);
+				if (pl.PuxaoDeFusaoRestante > 0)
+					pl.PuxaoDeFusaoRestante = Math.Max(0, pl.PuxaoDeFusaoRestante - Protocol.TickSeconds);
+
+				bool soltou = pl.ArrastoRestante <= 0 && pl.PuxaoDeFusaoRestante <= 0;
 
 				// A MESMA COSTURA DA CORRECAO do arremesso, e pelas mesmas razoes -- o carimbo de
 				// sequencia e o que impede os pacotes de input ja no ar (com a posicao antiga) de serem

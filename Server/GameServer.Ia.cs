@@ -377,6 +377,12 @@ public partial class GameServer
 		// vitima pra tras a forca (`P.dir=turn(dir,180)`, `Projectiles.dm:587`), e quem escolhe o
 		// angulo aqui e o `DirecaoDeitado` pelo rumo do feixe.)
 		&& pl.ArrastoRestante <= 0
+		// PUXADO PRA UMA FUSAO (`PuxaoDeFusaoRestante`). O DU desliga o input dos DOIS enquanto o laco
+		// de aproximacao roda -- `AlterInputDisabled(1)` antes e `(-1)` depois
+		// (`Potara_Fusion.dm:122-123` e `:131-132`) --, e este e o funil por onde "input desligado" se
+		// diz neste port. Sem ele os dois continuariam andando contra o puxao e o corpo ficaria decidido
+		// por quem escreveu `Pos` por ultimo no tique, que e o defeito que este bloco inteiro documenta.
+		&& pl.PuxaoDeFusaoRestante <= 0
 		// AGARRADO POR ALGUEM (`grabParalysis`, `Grabbing.dm:183`). Entra por este funil e nao por uma
 		// porta propria no `Input` pela razao que este bloco inteiro documenta: assim o NPC agarrado
 		// para de andar pela MESMA regra que trava o jogador, e nao por uma segunda escrita a mao no
@@ -423,7 +429,9 @@ public partial class GameServer
 			SabeReunirKi = CargaDeKi.SabeReunir(pl.Ficha),
 			HaDegrauAcima = proxima != null,
 			RecusaDaForma = recusa,
-			AscendePorDecisao = AscendePorDecisao(pl),
+			// SEM AVISAR: isto e o retrato do corpo pro cerebro, e nao um gesto de ninguem. Ver o
+			// parametro em `AscendePorDecisao`.
+			AscendePorDecisao = AscendePorDecisao(pl, avisar: false),
 			TemComQueAparar = TemComQueAparar(pl),
 			CustoDaGuarda = pl.Ficha.MaxKi * CombatKnobs.CustoKiDaGuarda,
 			DeLonge = ArsenalDeLonge(pl),

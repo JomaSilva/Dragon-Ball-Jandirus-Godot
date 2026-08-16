@@ -223,6 +223,26 @@ public partial class GameServer
 		// ficha inteira) antes de apertar os outros noventa verbos -- a varredura passaria a medir um
 		// Super Saiyajin. Quem prova o atalho e a `--formasteste`.
 		["DirectSSJ"] = "so abre depois de a forma ter sido despertada uma vez pela escada",
+
+		// ---- lote G8: dois em que a FRASE e o efeito, e um que espera a resposta de outra pessoa ----
+		["Dead"] =
+			"leitura: lista quem esta morto no mundo, e na cena da bancada nao ha nenhum. Matar o "
+			+ "boneco pra ter o que listar e o mesmo problema do `Revive` acima",
+		["Detect_Shard"] =
+			"o verb INTEIRO do DM e uma frase (`SpaceRanks.dm:110-112`): a Esmeralda Mestra nao existe "
+			+ "mais e nao ha nada a detectar. Mexer no mundo seria o defeito, nao a prova",
+		["Restore_Youth"] =
+			"o primeiro aperto PERGUNTA a idade e o efeito depende de o ALVO aceitar, por verb proprio "
+			+ "(`juventude_aceitar`) -- um corpo forjado nao aperta botao. Ver `OferecerJuventudeG8`",
+
+		// ---- lote G9: o unico que precisa de uma COISA no chao, e nao de uma condicao no corpo ----
+		["Mafuba"] =
+			"precisa de um POTE SELANTE assentado a vista, e a cena da varredura e so dois corpos. Nao "
+			+ "e limitacao da bancada: no DM o verb abre um `input()` com a lista dos `SealingItem` em "
+			+ "`view()` e um `isnull(choice)` cancela (`Sealing.dm:158-164`) -- **Mafuba sem pote nao "
+			+ "existe no jogo original**. Assentar um pote so pra este verb mudaria a cena dos outros "
+			+ "noventa (o pote e denso e entra na colisao). Quem o prova de ponta a ponta, com pote, "
+			+ "fita e preso, e a `--seloteste`",
 	};
 
 	/// <summary>
@@ -245,6 +265,22 @@ public partial class GameServer
 		["Final_Explosion"] = "Final_Explosion_3",          // o menor dos tres raios (3 tiles)
 		["Rock_Paper_Scissors"] = "Rock_Paper_Scissors_1",  // pedra
 		["RiftTeleport"] = "RiftTeleport:Namek",            // o rasgo leva pra outra zona pre-feita
+
+		// ---- lote G8: os dois teleportes de cargo, pelo mesmo desenho do `RiftTeleport` ----
+		// TELEPORTAR O CORPO DA VARREDURA E SEGURO, e vale registrar por que: `ApertarUmVerbo` FORJA
+		// uma cena nova (`CenaDoCatalogo`) a cada aperto e limpa tudo no fim, entao nenhum verb herda
+		// o lugar (nem o Ki) do anterior. Sem isso, o `Holy_Shortcut` -- que cobra METADE do Ki --
+		// deixaria os verbos seguintes recusando por falta de energia, e a varredura acusaria o
+		// vizinho pelo que este fez.
+		["Go_To_Heaven_Or_Hell"] = "Go_To_Heaven_Or_Hell:ceu",
+		["Holy_Shortcut"] = "Holy_Shortcut:arconia",
+
+		// ---- lote G9: a caixa de porcentagem do Controle de Poder ----
+		// `Power_Control` abre um `input(...) as num` no DM (`Power Control.dm:178`) e vale pela MESMA
+		// regra dos de cima: sem argumento ele RELATA a porcentagem atual, com argumento ele baixa o
+		// `powerMod`. Entra aqui e nao no `RecusamPorCondicao` de proposito -- declarar como recusa
+		// daria a ele um passe livre, e o segundo aperto (que e o que faz o efeito) nunca seria medido.
+		["Power_Control"] = "Power_Control:40",
 	};
 
 	/// <summary>

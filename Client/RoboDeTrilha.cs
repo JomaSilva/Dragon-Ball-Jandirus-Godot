@@ -172,6 +172,95 @@ public partial class RoboDeTrilha : Node
 		}
 		Nota("de pe. Os roteiros do dono, no jogo, com o relogio de verdade.");
 		OSorteioNaoMisturaAsPastas();
+		OSilencioDoEspaco();
+	}
+
+	// =====================================================================
+	// ROTEIRO 0b -- O SILENCIO DO ESPACO (sem relogio: e estado de barramento)
+	// =====================================================================
+	/// <summary>
+	/// ============================ NO VACUO SO SOBRA A OST ============================
+	/// Pedido do dono: *"no espaco o jogo n tem som, SOMENTE A MUSICA de combate. efeitos sonoros de
+	/// ki, soco etc N EXISTEM, a nao ser q estejam DENTRO DE UMA NAVE como a capital ship. mas no
+	/// espaco em si, usando roupa espacial ou sem ela, N TEM SOM, somente a OST"*.
+	///
+	/// ============================ O QUE ESTA BANCADA MEDE, E O QUE ELA SE RECUSA A MEDIR ============================
+	/// Ela **nao** confere que o `AudioDirector.Vacuo(true)` guardou `_vacuo = true`. Isso seria ler a
+	/// propria intencao -- a mesma armadilha que este projeto ja pagou tres vezes na aura ("uniform
+	/// escrito nao e pixel desenhado"). A pergunta certa e sobre o MIXER: o barramento de Efeitos
+	/// ficou mudo de verdade?
+	///
+	/// Por isso toda leitura aqui sai do <see cref="AudioDirector.EfeitosMudosDeTeste"/>, que consulta
+	/// o `AudioServer` e nao o campo.
+	///
+	/// ============================ AS TRES ARMADILHAS QUE ELA EXISTE PRA PEGAR ============================
+	///   1. A MUSICA MORRER JUNTO -- o conserto preguicoso e mutar o `Master`, e ele calaria a OST de
+	///      combate, que e a UNICA coisa que o dono quer ouvir la. Um teste que so olhasse "o soco
+	///      calou?" ficaria verde com o jogo inteiro mudo.
+	///   2. O CONTROLE DESLIZANTE RESSUSCITAR O SOM -- `AplicarVolumes` escrevia direto no barramento;
+	///      mexer no volume dentro do espaco devolveria o soco no vacuo, e ninguem ligaria as duas
+	///      coisas. A prova mexe no volume DE DENTRO do vacuo, de proposito.
+	///   3. O VACUO NAO DESLIGAR -- e esta e a pior, porque o sintoma aparece longe da causa: sair do
+	///      espaco e continuar sem efeito nenhum, num planeta, para sempre.
+	/// ==============================================================================================================
+	/// </summary>
+	private void OSilencioDoEspaco()
+	{
+		Nota("");
+		Nota("===== ROTEIRO 0b -- o silencio do espaco =====");
+
+		AudioDirector? a = AudioDirector.Instance;
+		if (a == null) { Conferir(false, "o AudioDirector existe pra medir o vacuo"); return; }
+
+		// O ESTADO DE PARTIDA IMPORTA: se os efeitos ja estivessem mudos por volume zero, todas as
+		// linhas abaixo passariam sem que o vacuo fizesse nada. Entao o volume vai pro maximo antes.
+		var cheio = new Settings { VolumeGeral = 1f, VolumeMusica = 1f, VolumeEfeitos = 1f,
+								   VolumeAmbiente = 1f, VolumeVoz = 1f };
+		a.AplicarVolumes(cheio);
+		a.Vacuo(false);
+		Conferir(!AudioDirector.EfeitosMudosDeTeste, "em terra firme os EFEITOS tocam");
+
+		// ARMADILHA 3, a metade de ida.
+		a.Vacuo(true);
+		Conferir(AudioDirector.EfeitosMudosDeTeste, "no vacuo os EFEITOS calam (o soco, o ki, a carga)");
+
+		// ARMADILHA 1. A musica e o barramento que TEM que sobreviver -- e o unico som que o dono
+		// pediu pra continuar. Se alguem "resolver" isto no `Master`, esta linha fica vermelha.
+		int iMus = AudioServer.GetBusIndex(AudioDirector.BusMusica);
+		int iMaster = AudioServer.GetBusIndex("Master");
+		Conferir(iMus >= 0 && !AudioServer.IsBusMute(iMus),
+				 "e a MUSICA continua tocando no vacuo (a OST de combate e o pedido)");
+		Conferir(iMaster >= 0 && !AudioServer.IsBusMute(iMaster),
+				 "o corte NAO foi no `Master` (que levaria a OST junto)");
+
+		// ARMADILHA 2. Mexer no volume DENTRO do vacuo nao pode devolver o som.
+		a.AplicarVolumes(new Settings { VolumeGeral = 1f, VolumeMusica = 1f, VolumeEfeitos = 0.8f,
+										VolumeAmbiente = 1f, VolumeVoz = 1f });
+		Conferir(AudioDirector.EfeitosMudosDeTeste,
+				 "mexer no controle de EFEITOS dentro do vacuo NAO ressuscita o som");
+
+		// ARMADILHA 3, a metade da volta -- a que deixaria o jogador mudo para sempre num planeta.
+		a.Vacuo(false);
+		Conferir(!AudioDirector.EfeitosMudosDeTeste, "saindo do espaco os efeitos VOLTAM");
+
+		// E O CONTRARIO TAMBEM: sair do vacuo nao pode devolver som pra quem zerou o proprio controle.
+		// Sem esta linha, `AplicarEfeitos` poderia ignorar o volume e so olhar o vacuo.
+		a.AplicarVolumes(new Settings { VolumeGeral = 1f, VolumeMusica = 1f, VolumeEfeitos = 0f,
+										VolumeAmbiente = 1f, VolumeVoz = 1f });
+		Conferir(AudioDirector.EfeitosMudosDeTeste,
+				 "e quem ZEROU o controle continua mudo fora do vacuo (as duas razoes, uma conta)");
+		a.AplicarVolumes(cheio);
+
+		// ============================ A NAVE ESCAPA SEM UMA LINHA DE EXCECAO ============================
+		// *"a nao ser q estejam DENTRO DE UMA NAVE como a capital ship"*. A prova e sobre o Core e nao
+		// sobre o audio: se `EhEspaco` respondesse verdadeiro pro interior da nave, o `CarregarZona`
+		// ligaria o vacuo la dentro -- e a excecao teria que ser escrita. Ela nao e porque isto e
+		// falso, e esta linha e o que garante que continue sendo.
+		var interior = Jandirus.Core.World.ZoneKey.Interior("Nave", 1);
+		Conferir(!Jandirus.Core.World.Espaco.EhEspaco(interior),
+				 "o INTERIOR da nave nao e espaco -- o som dela nao precisa de excecao");
+		Conferir(Jandirus.Core.World.Espaco.EhEspaco(Jandirus.Core.World.ZoneKey.Premade("Espaco")),
+				 "e o espaco aberto E espaco (senao a prova de cima passaria por acidente)");
 	}
 
 	// =====================================================================

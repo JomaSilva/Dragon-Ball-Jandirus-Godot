@@ -60,23 +60,48 @@ public partial class GameServer
 		: "um formigamento fraco: seu corpo aprendeu alguma coisa com a surra.";
 
 	// =====================================================================
-	// REGENERACAO -- a habilidade ativa do Namekuseijin (e do Majin)
+	// REGENERACAO -- a habilidade ATIVA do Namekuseijin
+	//
+	// E SO DELE (e de quem COMPRAR a skill `Regenerate` nas arvores de Alien/Android/Demonio). O
+	// Majin nao esta aqui e nao precisa estar: a regeneracao dele e PASSIVA e roda ate no meio da
+	// briga -- ver `Regeneracao` e `RegenerarPassivo`. As duas nao se somam em ninguem.
 	// =====================================================================
-	/// <summary>70% do Ki maximo (`NAMEK_REGEN_KI_COST`). Regenerar nao e cura de bolso.</summary>
+	/// <summary>
+	/// ============================ 70% DO KI **MAXIMO**, e o "maximo" e o preco ============================
+	/// `#define NAMEK_REGEN_KI_COST 0.7` (`namekian.dm:155`), cobrado como
+	/// `var/cost = usr.MaxKi * 0.7` (`:170`). **Do MAXIMO e nao do atual**, e essa e a diferenca
+	/// entre uma habilidade cara e uma habilidade que fica barata justo quando voce esta acabado:
+	/// com o tanque na reserva o custo continua sendo 70% do tanque cheio, ou seja **nao da**.
+	///
+	/// Foi este numero que aposentou a regeneracao passiva do Namekuseijin no proprio DM -- o
+	/// comentario do rework em `Genetic_Datum.dm:249-252` diz isso. Ele nao cura em combate porque a
+	/// cura dele custa uma barra de Ki inteira, e nao porque esqueceram de lhe dar.
+	/// ==================================================================================================
+	/// </summary>
 	private const double RegenCustoKi = 0.7;
+
+	/// <summary>`#define NAMEK_REGEN_CD 100` (`namekian.dm:156`) -- 100 decisegundos = 10 s.</summary>
 	private const long RegenRecargaMs = 10_000;
 
 	/// <summary>
-	/// Quem regenera membro: pela RAÇA (o `canheallopped`, que e o mesmo conjunto que o combate
-	/// usa pra por em coma em vez de matar) **OU** por ter APRENDIDO a skill de regeneracao.
+	/// ============================ QUEM TEM A ATIVA -- e NAO e quem regenera membro ============================
+	/// Isto perguntava `Regenera(pl.Race)`, ou seja **reusava o `canheallopped`**. Eram duas perguntas
+	/// diferentes coladas numa: `canheallopped` diz se o membro perdido volta SOZINHO; este verb diz
+	/// quem sabe faze-lo voltar DE PROPOSITO. O DM as separa e o gate dele e explicito --
+	/// `namekian.dm:163`: `if(!(usr.Race == "Namekian" || usr.Parent_Race == "Namekian")) return`.
 	///
-	/// A SEGUNDA METADE FALTAVA, e so apareceu quando as skills passaram a destravar tecnica: a
-	/// skill `Regenerate` pende das arvores raciais de Alien, Android e Demon, entao um Alien
-	/// COMPRAVA a habilidade, via o botao na tela, apertava, e ouvia "seu corpo nao regenera
-	/// assim". Estavam sendo tratados como a mesma pergunta dois gates que sao diferentes: o de
-	/// RACA decide se perder um membro vital mata; o de SKILL decide se voce sabe faze-lo voltar.
+	/// A consequencia do atalho era concreta: **Majin, Bio-Androide e Shapeshifter ganhavam de graca
+	/// a habilidade racial do Namekuseijin**. O Majin nao precisa dela (ele refaz membro sozinho em
+	/// ~19 s), e o Shapeshifter nao deveria ter nem uma coisa nem a outra.
+	///
+	/// A SEGUNDA METADE CONTINUA: a skill `Regenerate` pende das arvores de Alien, Android e Demonio
+	/// (`Race Trees/alien.dm:75-99`) -- quem a COMPRA sabe regenerar mesmo sem ser de Namek. La ela e
+	/// canalizada e so devolve membro decepado `if(canheallopped)` (`:90`); aqui ela entra pelo mesmo
+	/// verb, que e o desvio consciente que o port ja fazia.
+	/// ====================================================================================================
 	/// </summary>
-	private bool PodeRegenerar(ServerPlayer pl) => Regenera(pl.Race) || SabeTecnica(pl, "Regenerate");
+	private bool PodeRegenerar(ServerPlayer pl) =>
+		pl.Race is "Namekian" || SabeTecnica(pl, "Regenerate");
 
 	/// <summary>
 	/// REGENERA. Prefere devolver um membro DECEPADO; sem nenhum, cura o mais ferido ao cheio.
@@ -203,6 +228,11 @@ public partial class GameServer
 				// que a skill destrava. Ver `GameServer.Ensino.cs` -- e o cabecalho de la explica
 				// por que ele nao pergunta nada ao discipulado da linha acima.
 				if (UsarVerboDeEnsino(pl, id)) break;
+				// A FUSAO entra aqui pelo mesmo motivo das tres linhas acima: ela nao E skill. A
+				// `Fusion_Dance` do livro so serve de PORTAO (quem nao a tem ouve a recusa); o gesto
+				// de convidar, aceitar e passar o controle nao esta no livro que o `UsarTecnica`
+				// varre. Ver `GameServer.Fusao.cs`.
+				if (UsarVerboDeFusao(pl, id)) break;
 				if (!UsarTecnica(pl, id)) Avisar(pl, $"habilidade desconhecida: {id}");
 				break;
 		}

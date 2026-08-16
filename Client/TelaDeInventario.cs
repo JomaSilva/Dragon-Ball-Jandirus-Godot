@@ -305,6 +305,7 @@ public partial class TelaDeInventario : CanvasLayer
 		"tirar" => "Tirar os pesos",
 		"usar" => "Usar",
 		"cavar" => "Cavar aqui",
+		"jogar" => "Jogar no alvo marcado",
 		"posicionar" => "Assentar no chão",
 		"largar" => "Jogar fora",
 		_ => char.ToUpperInvariant(acao[0]) + acao[1..],

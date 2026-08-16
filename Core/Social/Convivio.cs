@@ -85,13 +85,34 @@ public sealed class Conhecido
 ///     que eu declarei. Entra-se nela por proximidade, por conversa ou pelo verb `Set_Contact`.
 ///   * `Friendship.dm` -- `friendship`: quantos pontos de amizade eu tenho com cada um.
 ///
-/// **CONHECIDO NAO E AMIGO, E ISSO ESTA CRAVADO NUM NUMERO.** O teto da proximidade e
-/// <see cref="TetoDeConhecido"/> = 49 (`Friendship.dm:23`) e a exigencia de amigo e
+/// No DM **CONHECIDO NAO E AMIGO, E ISSO ESTA CRAVADO NUM NUMERO**: o teto da proximidade e o
+/// `ACQUAINTANCE_CAP = 49` (`Friendship.dm:23`) e a exigencia de amigo e
 /// <see cref="ExigenciaDeAmigo"/> = 50 (`:21`) -- **um ponto acima**. Conviver ao lado de alguem a
-/// vida inteira te deixa `Familiar` e nunca `Friend`: amizade exige um PEDIDO ACEITO
-/// (`friend_request_resolve`, `:122-124`, que faz `max(..., FRIEND_REQ)` nas duas pontas). Trocar
-/// esse 49 por 50 apagaria o unico gesto social do jogo.
+/// vida inteira te deixava `Familiar` e nunca `Friend`: la amizade exige um PEDIDO ACEITO
+/// (`friend_request_resolve`, `:122-124`, que faz `max(..., FRIEND_REQ)` nas duas pontas).
 /// ==========================================================================================
+///
+/// ============================ A DIVERGENCIA DECLARADA: AQUI E CONVIVIO, NAO CONVITE ============================
+/// **A PEDIDO DO DONO**, e com as palavras dele: *"no byond tinha q CONVIDAR alguem pra ser seu
+/// amigo. AQUI PODERIA SER SOMENTE alguem q ficou BASTANTE TEMPO COM VC ate virar amigo"*.
+///
+/// Entao o `ACQUAINTANCE_CAP` **nao foi portado**: a proximidade atravessa o 50 sozinha e vai ate o
+/// teto de 200. Amizade aqui e um RELOGIO -- <see cref="MinutosParaVirarAmigo"/> minutos ao lado da
+/// mesma pessoa. O pedido continua existindo, e ganhou um segundo emprego (ver
+/// <see cref="AceitarAmizade"/>): ele agora e o ATALHO e a RECONCILIACAO, nao mais a unica porta.
+///
+///   * O QUE SE GANHA: o vinculo passa a existir sem que ninguem precise saber que ha um verb pra
+///     isso -- e como todo o resto do jogo (Zenkai, maestria, gravidade) ja mede tempo e nao gesto,
+///     a amizade deixa de ser o unico sistema que exige um clique. E, sobretudo, ela ganha PESO PRA
+///     PERDER: so faz sentido cobrar de quem mata (ver <see cref="Afastar"/>) se o laco tiver custado
+///     tempo. Um laco de um clique nao doi quando quebra.
+///   * O QUE SE PERDE: a amizade deixa de ser uma ESCOLHA. Quem treina 25 minutos ao lado de alguem
+///     que despreza vira amigo dele do mesmo jeito, e -- o que custa caro -- **passa a poder entrar
+///     em furia por ele** (o `LutoPorMorte` le exatamente este numero, e ele e a porta do SSJ1). No
+///     DM isso era impossivel de proposito. As duas defesas que sobraram sao: rival declarado nao
+///     rende amizade nenhuma (<see cref="Aproximar"/>), e quem te mata desce pro NEGATIVO e vira
+///     inimigo sozinho, sem volta por convivencia.
+/// ================================================================================================================
 ///
 /// ============================ POR QUE ISTO IMPORTA PRO SSJ1 ============================
 /// A porta do tronco Saiyajin nao e amizade: e RAIVA. Mas quem decide se a raiva acende sao estas
@@ -136,14 +157,33 @@ public sealed class Convivio
 	/// <summary>`FRIEND_REQ = 50`: a partir daqui a pessoa E amiga, e e isso que a raiva le.</summary>
 	public const double ExigenciaDeAmigo = 50;
 
-	/// <summary>
-	/// `ACQUAINTANCE_CAP = 49`: o teto da PROXIMIDADE sozinha, um ponto abaixo de
-	/// <see cref="ExigenciaDeAmigo"/>. E o numero que faz amizade ser um gesto e nao um relogio.
-	/// </summary>
-	public const double TetoDeConhecido = 49;
-
 	/// <summary>O teto de tudo (`min(cur + FRIEND_RATE, 200)`, `:39`) -- e o degrau `Bonded`.</summary>
 	public const double TetoDeAmizade = 200;
+
+	/// <summary>
+	/// ============================ O PISO, QUE NO DM NAO EXISTE ============================
+	/// *"podendo ficar NO NEGATIVO e se tornando INIMIGOS"*. E o espelho exato do
+	/// <see cref="TetoDeAmizade"/> e do <see cref="TetoDeInimizade"/>: a escala vai de -200 a +200 e
+	/// o zero e o ponto em que o afeto vira o contrario dele.
+	///
+	/// **NO DM A AMIZADE NUNCA DIMINUI** -- a varredura por decremento de `friendship[...]` em
+	/// `Code/` volta vazia. La, matar um amigo de alguem custa ODIO (`friend_harmed_by`), e so contra
+	/// quem ja tinha sido declarado rival. Perda, negativo e inimizade automatica sao invencao do
+	/// dono, nao porte.
+	/// =====================================================================================
+	/// </summary>
+	public const double PisoDeAmizade = -TetoDeAmizade;
+
+	/// <summary>
+	/// QUANTO TEMPO JUNTO CUSTA VIRAR AMIGO -- a resposta em minutos, derivada e nunca digitada.
+	///
+	/// 50 pontos / 0,1 por passo = 500 passos de 3 s = 1500 s = **25 minutos** de convivio a menos de
+	/// 6 tiles. E ela e uma CONTA e nao um numero escrito: quem mexer na taxa, no limiar ou na
+	/// cadencia ve o minuto mudar junto, em vez de deixar um comentario mentindo no arquivo.
+	/// (Ate o teto de 200 -- o degrau `Ligado` -- sao 100 minutos.)
+	/// </summary>
+	public static double MinutosParaVirarAmigo =>
+		ExigenciaDeAmigo / TaxaDeAmizade * SegundosEntreAproximacoes / 60.0;
 
 	/// <summary>
 	/// `FRIEND_THROTTLE = 10` voltas do `GlobalStats`, que dorme `sleep(3)` = 0,3 s
@@ -164,6 +204,26 @@ public sealed class Convivio
 
 	/// <summary>`ENMITY_MAX = 200`: o teto, espelhando o `Bonded` da amizade.</summary>
 	public const double TetoDeInimizade = 200;
+
+	/// <summary>
+	/// ============================ O PRECO DE MATAR -- **PEDIDO DO DONO, NAO PORTE** ============================
+	/// *"pessoas q MATAM SEU AMIGO ou TE MATAM PERDEM PONTOS de amizade"*.
+	///
+	/// OS DOIS NUMEROS SAO OS MESMOS DO ODIO, e sao os mesmos DE PROPOSITO: matar o amigo de alguem ja
+	/// vale `ENMITY_FRIEND_KILL = 60` de odio no DM, e derruba-lo vale `ENMITY_FRIEND_KO = 25`. E o
+	/// MESMO evento, contado nos dois livros -- o quanto ele soma de odio e o quanto ele tira de
+	/// afeto. Um par proprio aqui seria uma segunda tabela pra manter, que um dia discorda desta.
+	///
+	/// A CONTA QUE ELES DESENHAM: quem nunca te viu na vida (0 pontos) e te mata cai pra **-60** e
+	/// vira inimigo no mesmo golpe; um amigo recem-feito (50, os 25 minutos) que te mata cai pra -10 e
+	/// **tambem** vira inimigo; e quem construiu um vinculo `Ligado` (200, uma hora e quarenta) pode
+	/// errar tres vezes antes de virar. E o que o numero quer dizer: tempo junto e credito de perdao.
+	/// ==========================================================================================================
+	/// </summary>
+	public const double PerdaPorMorte = InimizadePorAmigoMorto;
+
+	/// <inheritdoc cref="PerdaPorMorte"/>
+	public const double PerdaPorNocaute = InimizadePorAmigoCaido;
 
 	/// <summary>
 	/// De quanto em quanto tempo a fotografia da ficha de alguem e refeita.
@@ -207,6 +267,17 @@ public sealed class Convivio
 
 	/// <summary>`is_friend()` (`Friendship.dm:46-48`).</summary>
 	public bool EhAmigo(string sig) => PontosDeAmizade(sig) >= ExigenciaDeAmigo;
+
+	/// <summary>
+	/// A OUTRA PONTA, QUE NO DM NAO EXISTE: amizade abaixo de zero. Nao ha limiar nenhum aqui de
+	/// proposito -- **o zero E o limiar**, e e o mesmo zero do "nunca te vi": quem nunca te viu esta
+	/// exatamente na fronteira, e um unico golpe mortal decide de que lado ele fica.
+	///
+	/// Ela e o gatilho de tudo que "ser inimigo" faz: quem cruza pra ca vira RIVAL DECLARADO sozinho
+	/// (ver <see cref="Afastar"/>), e a partir dai o eixo que ja existia -- <see cref="Rivais"/> e
+	/// <see cref="Inimizade"/> -- passa a valer sem uma linha nova.
+	/// </summary>
+	public bool EhInimigo(string sig) => PontosDeAmizade(sig) < 0;
 
 	public bool EhRival(string sig) => sig.Length > 0 && Rivais.Contains(sig);
 
@@ -284,14 +355,24 @@ public sealed class Convivio
 	// =====================================================================
 	// ROTULOS
 	// =====================================================================
-	/// <summary>`acquaintance_label()` (`Friendship.dm:51-57`). E o que a aba People escreve.</summary>
+	/// <summary>
+	/// `acquaintance_label()` (`Friendship.dm:51-57`). E o que a aba People escreve.
+	///
+	/// OS TRES DEGRAUS DE BAIXO SAO NOVOS -- no DM nao ha faixa negativa porque nao ha como descer.
+	/// Eles espelham os de cima na mesma escala (5 / 50 / 200), pra que o jogador leia a queda com a
+	/// mesma regua com que leu a subida: `Desafeto` e o espelho de `Conhecido`, `Inimigo` e o espelho
+	/// exato de `Amigo` (e o -50 e o mesmo modulo do +50), e `Inimigo mortal` o de `Ligado`.
+	/// </summary>
 	public static string RotuloDeProximidade(double pts) => pts switch
 	{
 		>= TetoDeAmizade => "Ligado",              // "Bonded"
 		>= ExigenciaDeAmigo => "Amigo",            // "Friend"
 		>= 20 => "Familiar",                       // "Familiar"
 		>= 5 => "Conhecido",                       // "Acquaintance"
-		_ => "Mal conhecido",                      // "Barely Known"
+		>= 0 => "Mal conhecido",                   // "Barely Known"
+		> -ExigenciaDeAmigo => "Desafeto",
+		> PisoDeAmizade => "Inimigo",
+		_ => "Inimigo mortal",
 	};
 
 	/// <summary>`enmity_label()` (`Friendship.dm:64-70`). Vazio quando nao ha odio nenhum.</summary>
@@ -401,21 +482,90 @@ public sealed class Convivio
 	}
 
 	/// <summary>
-	/// UM PASSO DE PROXIMIDADE -- o corpo do `accrue_friendship()` (`Friendship.dm:37-41`).
+	/// UM PASSO DE PROXIMIDADE -- o corpo do `accrue_friendship()` (`Friendship.dm:37-41`), **sem o
+	/// teto de 49**: aqui a convivencia sobe direto de 0 a 200 e cruza o 50 sozinha, que e o pedido do
+	/// dono (ver o cabecalho da classe). Devolve TRUE **no passo exato em que a pessoa virou amiga**,
+	/// pra que o servidor possa dizer isso uma unica vez.
 	///
-	/// O TETO DEPENDE DE JA SER AMIGO, e e ai que mora a regra inteira:
-	///   * ja amigo (>= 50): a convivencia continua subindo ate 200 (`Bonded`);
-	///   * ainda nao: para em 49 e NAO passa. So um pedido aceito atravessa essa linha.
+	/// ============================ DUAS PORTAS FECHADAS, E AS DUAS IMPORTAM ============================
+	///   * RIVAL DECLARADO nao rende amizade nenhuma (`:36`, e agora e a defesa principal: sem o teto
+	///     de 49, ela e o unico jeito de nao virar amigo de quem voce nao quer);
+	///   * QUEM ESTA NO NEGATIVO tambem nao sobe -- e isso e consequencia da linha acima e nao uma
+	///     segunda regra: cair abaixo de zero DECLARA a rivalidade (<see cref="Afastar"/>). Ficar perto
+	///     de quem te matou nao te faz perdoa-lo; **desfazer a rivalidade e um gesto** (o verb `rival`,
+	///     ou um pedido de amizade aceito), e so depois dele o tempo volta a contar.
+	/// ==================================================================================================
 	///
-	/// Rival declarado nao rende amizade nenhuma (`:36`) -- so odio, e por outro caminho.
+	/// ============================ POR QUE O `Math.Round` ============================
+	/// 0,1 nao existe em binario: somar 0,1 quinhentas vezes da 49,99999999999995, e o limiar de 50
+	/// cairia **um passo depois** do que este arquivo promete -- calado, e com a bancada reprovando por
+	/// um erro que ninguem consegue ver lendo o codigo. Arredondar a cada passo prende o valor na
+	/// grade de decimos em que ele foi escrito.
+	/// ==============================================================================
 	/// </summary>
-	public void Aproximar(string sig)
+	public bool Aproximar(string sig)
 	{
-		if (sig.Length == 0 || EhRival(sig)) return;
+		if (sig.Length == 0 || EhRival(sig)) return false;
 
-		double atual = PontosDeAmizade(sig);
-		double teto = atual >= ExigenciaDeAmigo ? TetoDeAmizade : TetoDeConhecido;
-		Amizade[sig] = Math.Min(atual + TaxaDeAmizade, teto);
+		double antes = PontosDeAmizade(sig);
+		if (antes >= TetoDeAmizade) return false;
+
+		double depois = Math.Min(Math.Round(antes + TaxaDeAmizade, 3), TetoDeAmizade);
+		Amizade[sig] = depois;
+		return antes < ExigenciaDeAmigo && depois >= ExigenciaDeAmigo;
+	}
+
+	/// <summary>
+	/// ============================ A VIOLENCIA COBRA O LACO -- **PEDIDO DO DONO** ============================
+	/// *"pessoas q MATAM SEU AMIGO ou TE MATAM PERDEM PONTOS de amizade, podendo ficar NO NEGATIVO e se
+	/// tornando INIMIGOS"*. Nao ha nada disto no DM (ver <see cref="PerdaPorMorte"/>).
+	///
+	/// **QUEM CRUZA O ZERO PRA BAIXO VIRA RIVAL DECLARADO NA HORA**, e essa unica linha e o que faz
+	/// "ser inimigo" significar alguma coisa sem inventar sistema nenhum: a partir dela valem, de
+	/// graca, o `Rivais` (que ja bloqueia a amizade por proximidade), o <see cref="Inimizade"/> (que so
+	/// cresce contra rival declarado e agora tem uma fonte automatica), o `+1` por golpe dele, o
+	/// `+25/+60` quando ele derruba ou mata um amigo seu, e o rotulo RIVAL da aba People.
+	///
+	/// O ODIO SOBE NA MESMA MEDIDA em que o afeto desce -- e o mesmo evento nos dois livros. Como o
+	/// `SomarInimizade` exige rival declarado, a ordem aqui e obrigatoria: declara primeiro, soma
+	/// depois. Invertida, o primeiro (e maior) golpe de odio seria descartado calado.
+	///
+	/// Devolve TRUE **so no golpe que atravessou o zero** -- o resto e afundar mais, e o servidor nao
+	/// anuncia duas vezes que alguem virou seu inimigo.
+	/// ==========================================================================================================
+	/// </summary>
+	public bool Afastar(string sig, double quanto)
+	{
+		if (sig.Length == 0 || quanto <= 0) return false;
+
+		double antes = PontosDeAmizade(sig);
+		double depois = Math.Max(Math.Round(antes - quanto, 3), PisoDeAmizade);
+		Amizade[sig] = depois;
+
+		if (depois >= 0) return false;
+
+		TornarRival(sig);
+		SomarInimizade(sig, quanto);
+
+		// ============================ E A DECLARACAO DE AFETO CAI JUNTO ============================
+		// **ESTA LINHA FOI ACHADA PELA BANCADA AO VIVO, e ela nao e cosmetica.** A relacao declarada
+		// (`Relation()`) e o OUTRO eixo que responde as tres perguntas da raiva -- `LutoPorMorte` e
+		// `AlgozEhInimigo` leem `is_friend() || check_relation(...)`. Sem derrubar a declaracao, quem
+		// tivesse dito "muito bom" pro proprio assassino ficaria com a amizade em -60 e a relacao
+		// intacta, e o resultado seria absurdo nos dois sentidos: **ele entraria em furia pela morte do
+		// homem que o matou**, e -- pior -- o `AlgozEhInimigo` continuaria respondendo "nao e inimigo",
+		// entao da PROXIMA vez que esse sujeito o matasse, ninguem na plateia se enfureceria.
+		//
+		// SO AS DECLARACOES DE AFETO CAEM. `Ruim`, `MuitoRuim`, `Odio` e `RivalRuim` concordam com o
+		// estado novo -- apaga-las seria apagar o que a pessoa disse justamente quando ela se provou
+		// certa. E a queda e pra `Nenhuma` (o "nao declarei") e nao pra `Neutro`: o jogo nao pode
+		// declarar coisas na boca do jogador; o que ele perde e o afeto, nao o direito de falar.
+		// ==========================================================================================
+		if (Ficha(sig) is { } c
+			&& TemRelacao(sig, Relacao.Bom, Relacao.MuitoBom, Relacao.Amor, Relacao.RivalBom))
+			c.Relacao = Relacao.Nenhuma;
+
+		return antes >= 0;
 	}
 
 	/// <summary>
@@ -435,11 +585,27 @@ public sealed class Convivio
 	///
 	/// `Math.Max` e nao `=`: quem ja era `Bonded` (200) nao pode ser rebaixado pra 50 por aceitar
 	/// um pedido -- e o mesmo `max(...)` do original.
+	///
+	/// ============================ O SEGUNDO EMPREGO DELE: A RECONCILIACAO ============================
+	/// Com a convivencia atravessando o 50 sozinha (ver o cabecalho da classe), o pedido deixou de ser
+	/// a UNICA porta da amizade -- e passou a ser a unica porta de VOLTA. Quem esta no negativo e rival
+	/// declarado, e rival declarado nao rende amizade por proximidade: **sem isto, um inimigo seria
+	/// inimigo pra sempre**, e o dono nao pediu uma condenacao perpetua, pediu uma consequencia.
+	///
+	/// Por isso o `max` atravessa o negativo (de -60 pra 50 num gesto) e a rivalidade cai junto: ser
+	/// amigo e rival ao mesmo tempo e um estado que nenhuma pergunta deste arquivo sabe responder --
+	/// `Aproximar` recusaria crescer a amizade que acabou de nascer. O ODIO ACUMULADO FICA, como no
+	/// `Declare_Rival` do DM: fazer as pazes nao apaga o que aconteceu.
+	///
+	/// E ELE E CARO DE PROPOSITO NO OUTRO SENTIDO: precisa dos DOIS lados (um pede, o outro aceita), e
+	/// e por isso que um gesto pode desfazer 25 minutos de nada. Perdoar sozinho nao existe.
+	/// ==================================================================================================
 	/// </summary>
 	public void AceitarAmizade(string sig)
 	{
 		if (sig.Length == 0) return;
 		Amizade[sig] = Math.Max(PontosDeAmizade(sig), ExigenciaDeAmigo);
+		Rivais.Remove(sig);
 	}
 
 	/// <summary>
@@ -450,6 +616,21 @@ public sealed class Convivio
 	{
 		if (sig.Length == 0) return false;
 		if (Rivais.Remove(sig)) return false;
+		return TornarRival(sig);
+	}
+
+	/// <summary>
+	/// DECLARA UM RIVAL SEM ALTERNAR -- e a metade do <see cref="AlternarRival"/> que o
+	/// <see cref="Afastar"/> precisa.
+	///
+	/// **ELA EXISTE POR CAUSA DE UM BUG QUE O ALTERNAR TERIA CAUSADO**: cair pro negativo chamando o
+	/// verb de alternancia TIRARIA a rivalidade de quem ja tinha declarado o sujeito rival antes --
+	/// ou seja, matar o cara que voce ja odiava o promoveria de volta a nao-rival, e o odio pararia de
+	/// crescer exatamente contra quem mais merece. Idempotente por isso.
+	/// </summary>
+	public bool TornarRival(string sig)
+	{
+		if (sig.Length == 0 || Rivais.Contains(sig)) return false;
 		Rivais.Add(sig);
 		return true;
 	}

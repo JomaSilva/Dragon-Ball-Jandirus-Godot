@@ -139,6 +139,22 @@ public static class CensoDeSkills
 		// DM (a CONVERSAO o concede com `assignverb`), entao ele so aparece neste censo se alguem o
 		// pendurar numa arvore -- e a linha esta aqui pra esse dia, com o canal ja apontado.
 		["Absorb_Ki"] = "absorver_ki",
+
+		// ============================ A ESTATUA DO DRAGAO SAIU DA LISTA DE ESPERA ============================
+		// `Create_Dragon_Statue` (namekian.dm:75-109) estava na tabela 3 dizendo que esperava
+		// *"esferas do dragao: fragmento, radar e estatua"*. **Ele nao espera mais**: o motor e o
+		// `GameServer.Esferas.cs` -- a estatua se ergue, as sete nascem, se espalham por semente, se
+		// pegam do chao e o dragao sobe.
+		//
+		// ENTRA AQUI E NAO NA TABELA 1 pelo mesmo argumento do `Bio_Absorb` logo acima: no port ele nao
+		// e uma TECNICA (nao esta no `Tecnicas`, nao custa Ki, nao tem projetil) -- e um verb do canal
+		// de verbos, `db_estatua`.
+		//
+		// **O QUE FALTA NAO E ESTE VERB**: a skill `/datum/skill/rank/MakeDragonballs` da arvore racial
+		// Namek ainda nao existe neste port, entao o portao hoje e RACA + CLASSE + territorio (as tres
+		// perguntas que o proprio verb do DM faz). No dia em que a arvore fechar, o `effector()` dela
+		// gateia pela MESMA `conq_owns_any` que o verb ja consulta -- nada aqui muda.
+		["Create_Dragon_Statue"] = "db_estatua",
 	};
 
 	// =====================================================================
@@ -179,15 +195,51 @@ public static class CensoDeSkills
 		["Soul_Absorb"] = SistAbsorcao, ["Imitation"] = SistAbsorcao, ["Permanent_Imitation"] = SistAbsorcao,
 		["BodyswapOBJ"] = SistAbsorcao,
 
-		// ---- 7 ----
-		["Dead"] = SistAlem, ["Keep_Body"] = SistAlem, ["Go_To_Heaven_Or_Hell"] = SistAlem,
-		["Reincarnate_Mob"] = SistAlem, ["Restore_Youth"] = SistAlem, ["Holy_Shortcut"] = SistAlem,
-		["KaiPermission"] = SistAlem,
+		// ============================ ERAM 7, VIRARAM 2 -- E CINCO DELES NUNCA PRECISARAM DESTE SISTEMA ============================
+		// O lote G8 portou `Dead`, `Keep_Body`, `Go_To_Heaven_Or_Hell`, `Restore_Youth` e
+		// `Holy_Shortcut`, e a descoberta que os destravou foi ler o corpo dos verbs no DM em vez de
+		// confiar nesta tabela: **nenhum dos cinco depende de "burocracia do alem"**.
+		//
+		//   * `Go_To_Heaven_Or_Hell` e um `switch` de dois destinos e as duas zonas ja existiam
+		//     (`OtherworldRankSkills.dm:188-193`). A `desc` da skill `Judge` promete julgar alguem; o
+		//     verb so teleporta o proprio Yemma;
+		//   * `Holy_Shortcut` e um teleporte de ida e volta que cobra metade do Ki (`SpaceRanks.dm:59`);
+		//   * `Dead` e um `for` que imprime quem esta morto (`:212-215`);
+		//   * `Restore_Youth` escreve dois campos de idade depois de um "Sim" (`:163-174`);
+		//   * `Keep_Body` liga um bit que este port ja citava em tres comentarios esperando o dia.
+		//
+		// **UMA ETIQUETA ERRADA E MAIS CARA QUE UMA PENDENCIA**, e este bloco e a prova: enquanto ela
+		// dizia "falta o sistema X", ninguem tinha motivo pra abrir o arquivo do DM -- e os cinco
+		// ficaram mudos por lotes inteiros ao lado de tecnicas muito mais caras que foram portadas.
+		// Ver o cabecalho de `Server/GameServer.Tecnicas.G8.cs`.
+		//
+		// OS DOIS QUE FICAM PRECISAM MESMO: `Reincarnate_Mob` chama o `Reincarnate()` do original
+		// (apaga a ficha e devolve a pessoa ao mundo dos vivos como outra pessoa) e `KaiPermission`
+		// depende do Kai Loft / Hallowed Realm, que sao permissao de LUGAR e nao existem aqui.
+		// ==========================================================================================================================
+		["Reincarnate_Mob"] = SistAlem, ["KaiPermission"] = SistAlem,
 
 		// ---- 7 ----
 		["Word_Power"] = SistMagia, ["Watagashi"] = SistMagia, ["Void_Shout"] = SistMagia,
 		["Psycho_Thread"] = SistMagia, ["Purification"] = SistMagia, ["Erasure"] = SistMagia,
 		["Shackle"] = SistMagia,
+
+		// ============================ ERAM 7 E VIRARAM 8, E O OITAVO E UMA DIVIDA QUE ATE ONTEM NAO EXISTIA ============================
+		// O `Seal_Mob` (skill `Superior Seal`, do Guardiao da Terra, do Assistente e do Guardiao
+		// Arconiano) NUNCA ESTEVE NESTA TABELA -- nao porque alguem o esqueceu, mas porque o extrator
+		// perdia o `after_learn()` dele: a skill saia do `skills.json` com `verbos: []` e o censo a
+		// classificava como "folha muda de nascenca". Ou seja, ela nao era divida NAO CATALOGADA, era
+		// divida INVISIVEL, que e pior: o painel do cargo a anunciava como ENTREGUE.
+		//
+		// **E ele e o unico dos tres selos que NAO da pra portar hoje**, e a razao e concreta: os
+		// outros dois chamam `SealMob()` direto, e este monta um `/obj/Ritual`, zera o `Magic` e o
+		// `Ki` do lancador convertendo os dois em potencia de ritual, e delega a
+		// `do_tietary("e_seal_s")`. A forca do selo la e `((Magic - alvo.Magic) * magnitude) + log(...)`
+		// (`Rituals_Manipulation.dm:327-343`) -- uma disputa de MANA, nao de BP. Deste port o sistema
+		// de magia tem so o TETO (`Fighter.MagicCap`): nao ha pool corrente, nao ha ritual, nao ha
+		// palavra de poder. Ver o cabecalho de `Server/GameServer.Selo.cs`.
+		// ==========================================================================================================================
+		["Seal_Mob"] = SistMagia,
 
 		// ---- 6 ----
 		["Afterimage_Toggle"] = SistZanzo, ["Zanzoken_Afterimage"] = SistZanzo,
@@ -218,9 +270,37 @@ public static class CensoDeSkills
 		// porta-lo assim seria entregar uma tecnica que nao e ela.
 		["Energy_Wave_Volley"] = SistTrem,
 		["Namekian_Fusion"] = SistFusao, ["Fusion_dance"] = SistFusao,
-		["Conceal_Power"] = SistSigilo, ["Power_Control"] = SistSigilo,
+
+		// ============================ O `SistSigilo` FECHOU INTEIRO, E ERAM SO ESTES DOIS ============================
+		// `Conceal_Power` e `Power_Control` MORAVAM AQUI, com a etiqueta *"sigilo de poder pelo lado
+		// de quem ESCONDE (o port so tem o de quem LE)"* -- e ela estava certa, o que nesta tabela e
+		// raro o bastante pra merecer nota. O lado de quem le ja existia inteiro (`isconcealed` trava
+		// o BP expresso em 5, `powerMod` entra na conta do BP); faltavam os dois BOTOES que escrevem
+		// esses campos, e eles sao um alterna-estado com trava de 5 s e uma atribuicao.
+		//
+		// O `Power_Control` ainda destravou um estagio INTEIRO da tecla C que era inalcancavel:
+		// `EstagioDaCarga.Retomando` existe pra trazer o `powerMod` de volta a 1, e nada no port
+		// jamais o baixava. Ver `Server/GameServer.Tecnicas.G9.cs`.
+		//
+		// A CONSTANTE `SistSigilo` FOI DELETADA junto, e nao esquecida aqui "por via das duvidas": um
+		// grupo sem nenhum verb dentro sai do relatorio como uma linha de zero, que e ruido.
+		// ==========================================================================================================
 		["Nomear_Aprendiz"] = SistPatronato, ["Dispensar_Aprendiz"] = SistPatronato,
-		["Create_Dragon_Statue"] = SistEsferas, ["Detect_Shard"] = SistEsferas,
+		// O `Detect_Shard` SAIU daqui pelo lote G8, e este e o caso mais gritante da tabela inteira:
+		// ele estava marcado como dependente do sistema das esferas do dragao, e o corpo do verb no DM
+		// e **uma linha de texto** -- *"The Master Emerald is no more; there is nothing to detect."*
+		// (`ordered/SpaceRanks.dm:110-112`). Nao ha radar nenhum; a `desc` descreve um que o autor
+		// nunca escreveu, e a piada e essa.
+		// ============================ O `SistEsferas` FICOU SEM NINGUEM, E ISSO E O PONTO ============================
+		// `Create_Dragon_Statue` era o UNICO verb desta linha, e ele mudou de tabela: o motor das
+		// esferas existe (`GameServer.Esferas.cs`) e ele e atendido por `db_estatua`. Ver a entrada
+		// nova no <see cref="PorOutroCanal"/>.
+		//
+		// A CONSTANTE FOI DELETADA JUNTO, e nao deixada "pro caso de". Uma etiqueta de sistema sem
+		// nenhum verb dentro sai do relatorio como uma linha de zero -- que e o ruido que o comentario
+		// vinte linhas acima ja proibe -- e, pior, faria o proximo leitor achar que ainda ha verb
+		// esperando esferas. Regra da casa: codigo substituido se DELETA.
+		// =========================================================================================================
 
 		// ---- e os que sao um sistema cada, com o nome do sistema no lugar do grupo ----
 		["Death_Ball"] = "carga de BOLA segurada (o `Canalizar` so carrega RAIO)",
@@ -251,9 +331,7 @@ public static class CensoDeSkills
 	private const string SistTrem = "raio em TREM DE SEGMENTOS (o port colapsou o raio num objeto so)";
 	private const string SistTeleporte = "teleporte por assinatura de Ki";
 	private const string SistFusao = "fusao de dois corpos num so";
-	private const string SistSigilo = "sigilo de poder pelo lado de quem ESCONDE (o port so tem o de quem LE)";
 	private const string SistPatronato = "patronato de Kaishin (aprendiz com varios donos)";
-	private const string SistEsferas = "esferas do dragao: fragmento, radar e estatua";
 
 	// =====================================================================
 	// AS TRES LISTAS NAO PODEM SE CONTRADIZER

@@ -48,6 +48,58 @@ namespace Jandirus.Core.Ranks;
 /// sete ESTILOS, pra `Heal`, `kikoho`, `Mystic`, `Majin` e `kaioken`, que so pendem de arvore de
 /// cargo. Reivindicar um cargo, receber o estilo e largar o cargo era acumulacao de graca.
 /// ========================================================================================
+///
+/// ============================ AS 24 CONCESSOES MORTAS DO DM -- DIVERGENCIA DELIBERADA ============================
+/// **LEIA ISTO ANTES DE "CONSERTAR" ALGUMA LINHA DESTA TABELA DE VOLTA.** Este port entrega ONZE
+/// skills que o original tambem manda entregar e **nao entrega**, em 24 linhas `enableskill(...)`
+/// que sao no-op silencioso no BYOND. A generosidade e de PROPOSITO e o motivo esta escrito abaixo,
+/// para que quem ler o DM lado a lado nao ache que o port inventou kit.
+///
+/// O MECANISMO DA MORTE, no proprio codigo do original (`Skills/trees.dm:172-176`):
+///
+///     datum/skill/tree/proc/enableskill(var/skilltype)
+///         for(var/datum/skill/S in constituentskills)   // <- SO a lista da PROPRIA arvore
+///             if(S.type == skilltype) S.enabled = 1
+///
+/// `enableskill` casa contra a `constituentskills` **daquela arvore**. Skill que nao esta na lista
+/// nao e ligada, nao e recusada e nao avisa ninguem: o laco varre, nao acha, e volta. Nove das onze
+/// nao sao constituintes de arvore NENHUMA do jogo inteiro -- ou seja, **nenhum jogador do BYOND
+/// jamais pode ter possuido essas nove por meio algum**.
+///
+///     skill                    linhas  cargos afetados                            situacao no DM
+///     -----------------------  ------  -----------------------------------------  --------------------
+///     rank/Revive                   9  Demon Lord, King_Of_Hell, Grand Kai,       arvore nenhuma
+///                                      Supreme Kai, W/E/N/S Kai, King Yemma       (`OtherworldRanks.dm:61,71,81,90,102,110,118,125,129`)
+///     rank/Ritual_of_Might          3  Demon Lord, Grand Kai, Supreme Kai         arvore nenhuma (`:64,83,93`)
+///     rank/Makkankosappo            2  Guardiao da Terra, Anciao de Namek         arvore nenhuma (`EarthRanks.dm:25`, `NamekRanks.dm:19`)
+///     Enkumei                       2  Anciao e Grande Anciao de Namek            arvore nenhuma (`NamekRanks.dm:20,25`)
+///     rank/DeathBall                2  Capitao dos Piratas, Geti Star King        arvore nenhuma (`SpaceRanks.dm:18,21`)
+///     rank/BusterShell              1  Kaio do Leste                              arvore nenhuma (`OtherworldRanks.dm:109`)
+///     rank/Judge                    1  King Yemma                                 arvore nenhuma (`OtherworldRanks.dm:127`)
+///     rank/Paralysis                1  Geti Star King                             arvore nenhuma (`SpaceRanks.dm:22`)
+///     rank/FinalFlash               1  Rei de Vegeta                              arvore nenhuma (`SpaceRanks.dm:27`)
+///     style/GodStyle                1  Guardiao da Terra                          consta na arvore do Outro Mundo, nao na da Terra (`EarthRanks.dm:21`)
+///     general/observe               1  Guardiao da Terra                          idem (`EarthRanks.dm:28`)
+///
+/// As duas ultimas sao de uma familia diferente e por isso estao separadas: a skill EXISTE noutra
+/// arvore, entao um Kaio consegue `GodStyle` e `observe` normalmente -- **so o Guardiao da Terra**
+/// e prejudicado, porque a arvore da Terra nao os lista.
+///
+/// POR QUE O PORT DIVERGE:
+///   1. **e esquecimento, e da pra provar.** Ninguem escreve nove vezes `enableskill(Revive)` --
+///      em nove cargos diferentes, dois deles em arquivos diferentes -- querendo que nao aconteca
+///      nada. O `Revive` de cargo tem ate `skillcost = 2`, o mais caro de todos os kits
+///      (`OtherworldRankSkills.dm:130`): alguem precificou uma skill que o jogo nunca entregou;
+///   2. **portar o silencio de um `switch` incompleto nao e fidelidade.** E o mesmo argumento que o
+///      bloco do Makyo King logo abaixo ja usa, e ele foi aceito naquele caso;
+///   3. **o port nao tem como reproduzir o defeito de graca.** Aqui a dadiva e uma tabela de
+///      typepaths e nao um `enableskill` contra uma lista de constituintes -- reproduzir a morte
+///      exigiria escrever, a mao, uma lista de excecoes cujo unico proposito seria nao funcionar.
+///
+/// SE UM DIA O DONO QUISER FIDELIDADE AO BUG, o lugar e aqui e a mudanca e tirar os typepaths acima
+/// dos kits em que a tabela do DM os mata -- **e nao** consertar `LevantarRevogaveis` nem o censo.
+/// Verificado nesta sessao contra `Code/Modules/Ranks/ordered/*.dm` linha a linha.
+/// ==================================================================================================================
 /// </summary>
 public static class DadivaDeCargo
 {
@@ -227,6 +279,39 @@ public static class DadivaDeCargo
 
 	/// <summary>Os cargos que esta tabela conhece -- a bancada confere contra <see cref="Cargos.Todos"/>.</summary>
 	public static IEnumerable<string> Cobertos => Kits.Keys;
+
+	// =====================================================================
+	// AS INSIGNIAS -- o que um cargo entrega que NAO e skill
+	// =====================================================================
+	/// <summary>
+	/// OS ITENS QUE UM CARGO ENTREGA. Tabela SEPARADA do <see cref="Kits"/>, e a separacao e a
+	/// regra: o kit e uma lista de TYPEPATHS de skill, e a bancada `--portasteste` afirma que os 51
+	/// existem no catalogo de skills (`GameServer.PortasTeste.cs:173-174`). Um id de item enfiado la
+	/// deixaria essa afirmacao vermelha por um motivo que nao tem nada a ver com o que ela mede.
+	///
+	/// ============================ POR QUE A POTARA E A PRIMEIRA (E POR ORA A UNICA) ============================
+	/// Porque ela e o unico caso em que o DM PROMETE um item de cargo e nao entrega: o proprio brinco
+	/// diz *"Kaioshins start with two"* (`Fusion.dm:608`) e o unico codigo que instanciaria um esta
+	/// **comentado** na criacao de personagem (`CharacterCreation.dm:81-87`) -- e mesmo descomentado
+	/// era por RACA (`if(Race=="Kai")`), nao por cargo. Ou seja: a fusao Potara e inalcancavel no
+	/// BYOND. O dono disse como quer (*"Kaioshins ganham ao virar do rank Kaioshin"*), e entregar por
+	/// aqui faz a insignia herdar de graca as duas propriedades do kit de skills: ela e IDEMPOTENTE e
+	/// ela VOLTA quando o cargo vai embora.
+	/// ======================================================================================================
+	/// </summary>
+	private static readonly Dictionary<string, string[]> Insignias =
+		new(StringComparer.OrdinalIgnoreCase)
+		{
+			["kaioshin"] = [Jandirus.Core.Items.CatalogoDeItens.BrincosPotara],
+		};
+
+	/// <summary>Os itens deste cargo. Cargo vazio ou sem insignia = nada.</summary>
+	public static string[] ItensDe(string cargo) =>
+		cargo.Length == 0 ? [] : Insignias.GetValueOrDefault(cargo, []);
+
+	/// <summary>Tudo o que alguma insignia entrega -- o universo que a reconciliacao pode TIRAR.</summary>
+	public static IReadOnlyCollection<string> TodasAsInsignias { get; } =
+		Insignias.Values.SelectMany(v => v).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// TUDO O QUE ALGUM CARGO CONCEDE, sem repetir. E o universo de onde o

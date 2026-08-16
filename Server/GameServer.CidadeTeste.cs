@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
 
@@ -77,6 +77,7 @@ public sealed partial class GameServer
 		CidDePe();
 		CidReciproca();
 		CidBanco();
+		CidRegenerador();
 
 		GD.Print($"\n[cidade] ===== {_cidOk} OK, {_cidFalhou} FALHA(S) =====\n");
 	}
@@ -391,6 +392,110 @@ public sealed partial class GameServer
 		finally
 		{
 			EscutaDeAvisos = escutaAntes;
+			_players.Remove(corpo.Id);
+			ZoneList(corpo.Zone.Hash).Remove(corpo);
+		}
+		GD.Print("");
+	}
+
+	// =====================================================================
+	// 5. O REGENERADOR E A SAIDA DE QUEM NAO TEM RACA PRA ISSO
+	// =====================================================================
+	/// <summary>
+	/// ============================ O TANQUE DEVOLVE MEMBRO -- E ELE E A UNICA SAIDA DO HUMANO ============================
+	/// O dono: *"um MEMBRO QUEBRADO deveria DEMORAR BASTANTE pra regenerar sozinho, **sem ajuda como
+	/// uma MAQUINA DE REGENERACAO** ou algo do tipo"*. A frase tem duas metades, e a segunda e um
+	/// sistema que precisava existir: com a cura passiva virando privilegio de raca, um Humano ou um
+	/// Saiyajin que perdesse um braco **nao tinha caminho de volta nenhum** -- `Body.Curar` pula
+	/// membro decepado, a passiva nao devolve membro sem `canheallopped`, e a ativa e do Namekuseijin.
+	/// Era morrer ou ficar manco pra sempre.
+	///
+	/// **ESTA FAMILIA MORA NA CIDADE POR UM MOTIVO CONCRETO**: o regenerador de Vegeta ja esta de pe
+	/// e APARAFUSADO, posto la pelo construtor de mapa -- e a familia 2 acima ja afirma que ele
+	/// existe. Montar um `new Obra` aqui mediria o meu proprio objeto; assim se mede a maquina que o
+	/// jogador encontra.
+	///
+	/// **E O TIQUE E O DE PRODUCAO** (`TickDasMaquinasDeCura`), varrendo `_players` inteiro: chamar a
+	/// conta na mao provaria que a formula existe, e nao que o laco alcanca o corpo deitado no tanque.
+	/// O `dt` e grande de proposito -- e argumento, nao relogio de parede.
+	/// ==============================================================================================================
+	/// </summary>
+	private void CidRegenerador()
+	{
+		GD.Print("--- 5. O REGENERADOR devolve o membro perdido (a saida de quem nao regenera) ---");
+
+		Obra? tanque = _noChao.FirstOrDefault(o => o.Zona.Equals(ZonaDaCidade) && o.Tipo == "Regenerator");
+		if (tanque == null) { AfirmarCidade("ha um regenerador de pe em Vegeta", false); return; }
+
+		var corpo = new ServerPlayer
+		{
+			Id = 990002,
+			Peer = null,
+			Name = "bancada_tanque",
+			Race = "Human",           // sem `fastRegen` e sem `canheallopped`: o caso do pedido
+			Genero = "Male",
+			Idade = 25,
+			Zone = ZonaDaCidade,
+			Pos = new Vec2(tanque.X, tanque.Y),
+			Conta = "bancada_tanque",
+			Slot = 0,
+			Ficha = new Jandirus.Core.Stats.Fighter { Race = "Human", BP = 100 },
+			Livro = new Jandirus.Core.Skills.SkillBook(),
+		};
+		corpo.Ficha.Class = "Normal";
+		PorNoMundo(corpo);
+
+		try
+		{
+			// O BRACO SAI PELO FUNIL (`Decepar`), que leva a mao junto -- e nao escrevendo `Decepado`.
+			Jandirus.Core.Combat.BodyPart braco = corpo.Combate.Corpo.Achar("Braco esquerdo")!;
+			corpo.Combate.Corpo.Decepar(braco);
+			corpo.Combate.SincronizarVida();
+
+			AfirmarCidade("PRECONDICAO: o corpo esta sem o braco (e a mao foi junto)",
+						  braco.Decepado && corpo.Combate.Corpo.Achar("Mao esquerda")!.Decepado);
+
+			// --- LONGE DO TANQUE: dez tiles. Nao pode acontecer nada, nem depois de meia hora. ---
+			corpo.Pos = new Vec2(tanque.X, tanque.Y + 10 * ZoneCollision.TileSize);
+			for (int i = 0; i < 60; i++) TickDasMaquinasDeCura(30);   // 30 min
+			AfirmarCidade("longe do tanque o braco NAO volta, nem em meia hora", braco.Decepado);
+
+			// --- EM CIMA DELE ---
+			corpo.Pos = new Vec2(tanque.X, tanque.Y);
+
+			// ANTES DA HORA: 4 minutos nao bastam. Sem esta metade, um tanque instantaneo passaria.
+			for (int i = 0; i < 24; i++) TickDasMaquinasDeCura(10);   // 240 s
+			AfirmarCidade($"em cima do tanque, 240 s AINDA nao bastam (o preco e {SegundosDoRegeneradorPorMembro:0} s)",
+						  braco.Decepado, $"voltou cedo demais");
+
+			// E AGORA SIM: passa dos 300 s seguidos.
+			for (int i = 0; i < 12; i++) TickDasMaquinasDeCura(10);   // +120 s
+			AfirmarCidade("passados os 300 s deitado, o TANQUE devolve o braco",
+						  !braco.Decepado, $"ainda decepado apos 360 s");
+			AfirmarCidade("...e a MAO volta junto com ele (a cascata do `RegrowLimb`)",
+						  !corpo.Combate.Corpo.Achar("Mao esquerda")!.Decepado);
+
+			// ============================ E A CONTA NAO E UM DEPOSITO ============================
+			// O defeito que esta linha existe pra pegar ja aconteceu neste arquivo: o relogio do
+			// tanque era zerado num `else` que ficava DEPOIS de tres `continue`, entao sair de cima
+			// nao zerava nada -- 299 s hoje mais 1 s amanha davam um membro. Aqui o corpo acumula
+			// quase tudo, SAI, e volta: se o relogio fosse deposito, o membro voltaria na hora.
+			// =================================================================================
+			Jandirus.Core.Combat.BodyPart perna = corpo.Combate.Corpo.Achar("Perna direita")!;
+			corpo.Combate.Corpo.Decepar(perna);
+			corpo.Combate.SincronizarVida();
+
+			for (int i = 0; i < 29; i++) TickDasMaquinasDeCura(10);   // 290 s em cima
+			corpo.Pos = new Vec2(tanque.X, tanque.Y + 10 * ZoneCollision.TileSize);
+			TickDasMaquinasDeCura(1);                                 // levantou e saiu
+			corpo.Pos = new Vec2(tanque.X, tanque.Y);
+			for (int i = 0; i < 3; i++) TickDasMaquinasDeCura(10);    // 30 s de volta
+
+			AfirmarCidade("sair do tanque ZERA a conta -- 290 s + saida + 30 s NAO devolvem a perna",
+						  perna.Decepado, "a espera virou deposito");
+		}
+		finally
+		{
 			_players.Remove(corpo.Id);
 			ZoneList(corpo.Zone.Hash).Remove(corpo);
 		}

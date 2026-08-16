@@ -545,6 +545,7 @@ public sealed partial class GameServer
 			Piercer = r.Piercer,
 			Fisico = r.Fisico,
 			Paralisia = r.Paralisia,
+			Empurra = r.Empurra,
 			Altitude = pl.Altitude,
 			Nome = r.Nome,
 			Arte = arte,
@@ -1221,8 +1222,13 @@ public sealed partial class GameServer
 		//
 		//    PERTO: ARREMESSA -- forca cheia ate 2 tiles, metade ate 4 (*"harder to knock back at
 		//    range"*). Impulso unico, pelo funil do soco, e o corpo sai voando pra longe do feixe.
+		// `p.Empurra` E A PRIMEIRA PERGUNTA, e ela e nova: no DM o empurrao mora dentro de
+		// `if(WaveAttack)` / `else if(kiforceful)` (`objects.dm:450-460`), e uma bola que nao e nenhum
+		// dos dois **nao arremessa ninguem**. A Paralysis e exatamente esse caso, e o empurrao dela
+		// estava desmentindo a propria tecnica -- quem levava o tiro ficava sem andar E sem bater, que
+		// e o stun que ela existe pra nao ser. Ver `ReceitaDeProjetil.Empurra`.
 		double fator = p.FatorDeEmpurrao();
-		if (fator > 0 && r.Dano > 0.25 && alvo.TiquesDeVoo <= 0 && !alvo.Ficha.dead)
+		if (p.Empurra && fator > 0 && r.Dano > 0.25 && alvo.TiquesDeVoo <= 0 && !alvo.Ficha.dead)
 			Arremessar(alvo, p, r.Dano * fator);
 
 		// 5b) LONGE: CARREGA. `step(P,dir,32)` a cada ciclo, ate 10 tiles da mao do dono -- o pedido

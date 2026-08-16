@@ -63,8 +63,31 @@ public partial class GameServer
 	/// Com o teste amarrado nele, o luto -- que e o que destrava o SSJ1 -- seria justamente a parte
 	/// do sistema que nenhuma bancada consegue exercitar.
 	/// ==============================================================================================
+	///
+	/// ============================ E O CIDADAO? **NAO, E A DECISAO E ESCRITA AQUI** ============================
+	/// O dono perguntou se NPC entra nisso. Nao entra, e por tres razoes que se somam:
+	///
+	///   * ele nao TEM identidade: `Assinatura` sai de conta+slot (`GameServer.cs:1223`), e cidadao,
+	///     Rei, chefe de saga e clone nascem sem conta -- a primeira metade ja os corta;
+	///   * ele nao SOBREVIVE: o povoamento repoe habitante (`Povoamento`), entao a lista de amigos de
+	///     um jogador viraria um cemiterio de gente que o mundo reciclou;
+	///   * e -- o que decide -- **amizade com NPC seria uma fabrica de Super Saiyajin**. O luto e a
+	///     porta do SSJ1, e ha cidadao infinito e barato de matar. Um jogador com dois amigos NPC no
+	///     quintal acenderia furia sempre que quisesse.
+	///
+	/// A SEGUNDA DEFESA E O <see cref="Jandirus.Core.Npc.Gente.EhNpcDoMundo"/>, e ela e a mesma que o
+	/// DM tem: la as varreduras sociais correm sobre `player_list` (so jogador) E ainda levam um
+	/// `!M.client` por cima (`BossEvents.dm:373-374`) -- **duas** defesas. Aqui a assinatura era a
+	/// unica, e "corpo do mundo com conta" e exatamente o tipo de corpo que uma bancada ou um verb de
+	/// admin cria sem querer. Ver o cabecalho de `Core/Npc/Gente.cs`.
+	///
+	/// (O `EhJogador` do mesmo arquivo **nao serve aqui**, e por escrito: ele exige dono na tela, e
+	/// amizade nao acaba quando a pessoa desloga -- ver o bloco acima.)
+	/// ==========================================================================================================
 	/// </summary>
-	private static bool EhPessoa(ServerPlayer pl) => pl.Assinatura.Length > 0;
+	private static bool EhPessoa(ServerPlayer pl) =>
+		pl.Assinatura.Length > 0
+		&& !Jandirus.Core.Npc.Gente.EhNpcDoMundo(pl.Peer != null, pl.Papel);
 
 	/// <summary>
 	/// UM PASSO DE APROXIMACAO POR JOGADOR, a cada 3 segundos.
@@ -105,7 +128,18 @@ public partial class GameServer
 				// que a amizade e a familiaridade indexam. Invertido, o primeiro passo de amizade
 				// de cada dupla ficaria pendurado num nome que ainda nao existe na aba.
 				Fotografar(pl, o, agora);
-				pl.Social.Aproximar(o.Assinatura);
+
+				// ============================ **O PASSO QUE ATRAVESSA O 50** ============================
+				// E o pedido do dono: 25 minutos a menos de 6 tiles da mesma pessoa e voces sao amigos,
+				// sem verb nenhum. O `Aproximar` devolve TRUE **so no passo exato da travessia**, e e por
+				// isso que da pra anunciar aqui dentro de um laco que roda a cada 3 segundos.
+				//
+				// CADA LADO ATRAVESSA O SEU: o prazo (`ProximaAproximacao`) e por pessoa, entao os dois
+				// cruzam o limiar com segundos de diferenca e cada um le a propria frase. Anunciar pros
+				// dois aqui contaria a mesma noticia duas vezes pra quem ainda nao chegou la.
+				if (!pl.Social.Aproximar(o.Assinatura)) continue;
+				Avisar(pl, $"depois de tanto tempo ao lado de {o.Name}, você o considera um amigo.");
+				MandarConhecidos(pl);
 			}
 		}
 	}
@@ -339,13 +373,32 @@ public partial class GameServer
 		// ============================================================================================
 		if (NaMente(vitima)) return;
 
+		// ============================ A SEXTA CONSEQUENCIA: CAIR SEPARA A FUSAO ============================
+		// `defuse_on_downed()` (`Fusion.dm:75`), chamado do `KO()` do original. Ela entra AQUI e nao
+		// num `if` no `ResolverDesfecho` pelo mesmo argumento que criou este funil -- e com um agravante
+		// proprio: nocaute e morte sao DOIS caminhos, e a fusao tem que se desfazer nos dois. Escrita
+		// em um so, morrer fundido deixaria a fusao de pe sobre um cadaver.
+		//
+		// VEM ANTES DO ZENKAI de proposito. O Zenkai le o poder da vitima pra decidir quanto dar, e
+		// **o corpo fundido nao e a vitima**: sem separar primeiro, quem apanhou de uma fusao levaria
+		// o `(A+B)*2` como "o poder do inimigo" e o corpo que caiu ganharia Zenkai sobre um numero que
+		// deixou de existir no instante seguinte.
+		// ==============================================================================================
+		FusaoAoCair(vitima, morreu ? "o corpo fundido tombou" : "o corpo fundido foi derrubado");
+
 		ZenkaiPorDerrota(vitima, algoz);
 		LutoNaVizinhanca(vitima, algoz, morreu);
 
+		// A SETIMA CONSEQUENCIA, e ela entrou exatamente onde este bloco previu que entraria: **O
+		// PRECO DO LACO** (`AmizadeQuebrada`), o pedido do dono. Ela e a razao pela qual este funil
+		// existe: "quem te mata perde pontos" e a MESMA pergunta que o Zenkai e o luto ja faziam nos
+		// mesmos quatro pontos, e escreve-la num quinto lugar era pedir pra um deles ficar de fora.
+		AmizadeQuebrada(vitima, algoz, morreu);
+
 		// O ODIO DOS AMIGOS DA VITIMA -- `friend_harmed_by` (`KO.dm:42` e `Murder.dm:82`), com os
-		// dois valores do DM. Ja e travado por rival declarado la dentro.
-		AmigoFoiFerido(vitima, algoz,
-			morreu ? Convivio.InimizadePorAmigoMorto : Convivio.InimizadePorAmigoCaido);
+		// dois valores do DM. Ja e travado por rival declarado la dentro. **E o mesmo laco cobra a
+		// amizade das testemunhas**, com a condicao dele (ver `AmigoFoiFerido`).
+		AmigoFoiFerido(vitima, algoz, morreu);
 
 		// A TERCEIRA CONSEQUENCIA, e ela entrou exatamente onde este bloco previu que entraria: a
 		// SUCESSAO. Matar quem carrega o trono de Vegeta ou o titulo de Lorde do Gelo troca o dono
@@ -361,15 +414,32 @@ public partial class GameServer
 
 	/// <summary>
 	/// `friend_harmed_by()` (`Friendship.dm:78-84`): quem estava vendo, e AMIGO da vitima, e tinha
-	/// declarado o agressor como rival, ganha odio.
+	/// declarado o agressor como rival, ganha odio. **E, novo, quem estava vendo e era amigo da
+	/// vitima PERDE AMIZADE com o agressor** -- *"pessoas q MATAM SEU AMIGO ... perdem pontos"*.
 	///
-	/// AS DUAS CONDICOES SAO NECESSARIAS, e e isso que separa odio de amizade: amizade cresce
-	/// sozinha por convivencia, odio so cresce contra quem voce ESCOLHEU odiar. Sem a segunda
-	/// condicao, todo servidor viraria uma teia de inimizades automaticas.
+	/// ============================ UM LACO SO, DUAS CONDICOES DIFERENTES ============================
+	/// A pergunta "quem viu o amigo de quem apanhar" e uma so, e responde-la duas vezes seria o
+	/// defeito favorito deste port: dois lacos que um dia discordam sobre quem estava presente. Mas as
+	/// consequencias NAO tem a mesma condicao, e a diferenca e o pedido do dono:
+	///
+	///   * ODIO: exige que a testemunha ja tivesse DECLARADO o agressor rival (`Friendship.dm:81`).
+	///     Amizade cresce sozinha, odio so cresce contra quem voce escolheu odiar -- sem isso, todo
+	///     servidor viraria uma teia de inimizades automaticas;
+	///   * PERDA DE AMIZADE: **nao exige declaracao nenhuma**. O dono foi literal ("pessoas que matam
+	///     seu amigo perdem pontos"), e a assimetria e proposital: voce nao precisa ter escolhido
+	///     odiar alguem pra deixar de gostar dele depois que ele matou seu amigo na sua frente.
+	/// ================================================================================================
 	/// </summary>
-	private void AmigoFoiFerido(ServerPlayer vitima, ServerPlayer agressor, double quanto)
+	private void AmigoFoiFerido(ServerPlayer vitima, ServerPlayer agressor, bool morreu)
 	{
 		if (!EhPessoa(vitima) || !EhPessoa(agressor)) return;
+		double quanto = morreu ? Convivio.InimizadePorAmigoMorto : Convivio.InimizadePorAmigoCaido;
+
+		// A MESMA PERGUNTA DO PAR, DA MESMA FUNCAO (ver <see cref="ViolenciaCobraOLaco"/>): se o
+		// nocaute foi um treino entre amigos, a plateia tambem nao cobra nada. Sem isto o problema so
+		// mudaria de lugar -- em vez de dois amigos se afastarem treinando, seriam os AMIGOS DELES se
+		// afastando de quem treina.
+		bool cobra = ViolenciaCobraOLaco(vitima, agressor, morreu);
 		float raio2 = RaioDeTestemunha * RaioDeTestemunha;
 
 		foreach (ServerPlayer o in ZoneList(vitima.Zone.Hash).ToList())
@@ -377,11 +447,90 @@ public partial class GameServer
 			if (o == vitima || o == agressor) continue;
 			Jandirus.Core.World.Vec2 d = o.Pos - vitima.Pos;
 			if (d.X * d.X + d.Y * d.Y > raio2) continue;
-			if (!o.Social.EhAmigo(vitima.Assinatura) || !o.Social.EhRival(agressor.Assinatura)) continue;
+			if (!o.Social.EhAmigo(vitima.Assinatura)) continue;
 
-			o.Social.SomarInimizade(agressor.Assinatura, quanto);
-			Avisar(o, $"ver {vitima.Name} sofrer nas mãos de {agressor.Name} alimenta o seu ódio.");
+			if (o.Social.EhRival(agressor.Assinatura))
+			{
+				o.Social.SomarInimizade(agressor.Assinatura, quanto);
+				Avisar(o, $"ver {vitima.Name} sofrer nas mãos de {agressor.Name} alimenta o seu ódio.");
+			}
+
+			// O MESMO NUMERO NO OUTRO LIVRO -- e `quanto` e literalmente o mesmo valor (ver
+			// `Convivio.PerdaPorMorte`), porque e o mesmo evento contado de dois jeitos.
+			if (!cobra) continue;
+			AfastarNosDoisLados(o, agressor, quanto,
+				morreu ? $"{agressor.Name} matou {vitima.Name} na sua frente"
+					   : $"{agressor.Name} derrubou {vitima.Name} na sua frente");
 		}
+	}
+
+	/// <summary>
+	/// ============================ ISTO FOI VIOLENCIA OU FOI TREINO? -- UMA PERGUNTA, UM LUGAR ============================
+	/// As duas metades da perda (o par vitima-algoz e as testemunhas) precisam da MESMA resposta, e ela
+	/// nao pode ser escrita duas vezes: no dia em que uma das duas mudar, treinar com o melhor amigo
+	/// voltaria a apagar amizade -- so que a dos vizinhos, e ninguem ligaria uma coisa a outra.
+	///
+	/// A resposta em si e emprestada do DM: `Convivio.AlgozEhInimigo` e a pergunta de `Death.dm:75`
+	/// (*"no rage for friendly duels"*), feita a lista da VITIMA -- **quem apanhou e quem sabe se
+	/// aquilo era um treino**. A MORTE nao pergunta (ver `AmizadeQuebrada`).
+	/// ====================================================================================================================
+	/// </summary>
+	private static bool ViolenciaCobraOLaco(ServerPlayer vitima, ServerPlayer algoz, bool morreu) =>
+		morreu || vitima.Social.AlgozEhInimigo(algoz.Assinatura);
+
+	/// <summary>
+	/// ============================ O QUE PERDER A LUTA CUSTA AO LACO -- **PEDIDO DO DONO** ============================
+	/// *"pessoas q MATAM SEU AMIGO ou TE MATAM PERDEM PONTOS de amizade"*. Esta metade e o "TE MATAM":
+	/// o par vitima-algoz. A outra (as testemunhas) mora no <see cref="AmigoFoiFerido"/>, junto do laco
+	/// que ja varria a zona pra distribuir odio.
+	///
+	/// ============================ POR QUE O NOCAUTE SO COBRA DE INIMIGO, E A MORTE COBRA SEMPRE ============================
+	/// **Sem esta distincao, treinar com o melhor amigo apagaria a amizade.** Um spar honesto termina em
+	/// nocaute varias vezes por hora; a 25 pontos cada, duas horas de treino levariam dois `Ligados`
+	/// (200) ao negativo -- e eles viveriam brigando por um sistema que era pra premiar convivencia.
+	///
+	/// A pergunta "isto foi um duelo entre amigos?" **ja existe e ja tem uma resposta so**:
+	/// `Convivio.AlgozEhInimigo` (`Death.dm:75`), a mesma que impede o treino de virar fabrica de Super
+	/// Saiyajin. Reaproveita-la aqui garante que as duas consequencias da derrota concordem pra sempre
+	/// sobre o que foi um treino -- escrever um segundo criterio seria pedir pro luto e pela amizade
+	/// discordarem no dia em que alguem mexer num dos dois.
+	///
+	/// **A MORTE NAO PERGUNTA NADA**, e essa e a regra: matar de verdade nao e treino, e amigo que mata
+	/// e o unico que consegue trair. E o caso que o dono nomeou primeiro.
+	/// ==============================================================================================================================
+	/// </summary>
+	private void AmizadeQuebrada(ServerPlayer vitima, ServerPlayer algoz, bool morreu)
+	{
+		if (!EhPessoa(vitima) || !EhPessoa(algoz) || vitima == algoz) return;
+		if (!ViolenciaCobraOLaco(vitima, algoz, morreu)) return;
+
+		AfastarNosDoisLados(vitima, algoz,
+			morreu ? Convivio.PerdaPorMorte : Convivio.PerdaPorNocaute,
+			morreu ? $"{algoz.Name} te matou" : $"{algoz.Name} te derrubou");
+	}
+
+	/// <summary>
+	/// ============================ A PERDA E MUTUA, PORQUE AMIZADE E UMA RELACAO ============================
+	/// Cada personagem guarda o proprio dicionario (`Convivio.Amizade`), entao "a amizade entre A e B"
+	/// sao na verdade DOIS numeros, um em cada save. Cobrar so o lado de quem sofreu deixaria o assassino
+	/// com o morto ainda listado como `Ligado` na aba dele -- e, pior que feio, isso e MECANICO: o
+	/// `AlgozEhInimigo` le a lista da VITIMA e o luto le a de quem ASSISTE, entao um lado desatualizado
+	/// muda quem entra em furia na proxima morte.
+	///
+	/// Nao ha "aplicar dos dois lados" em lugar nenhum do Core de proposito: o `Convivio` nao conhece o
+	/// outro `Convivio`, e e isso que o mantem serializavel e testavel com dicionarios na mao. Quem tem
+	/// os dois objetos e o servidor -- entao a simetria e daqui, e de UM lugar so.
+	/// ==========================================================================================================
+	/// </summary>
+	private void AfastarNosDoisLados(ServerPlayer a, ServerPlayer b, double quanto, string porque)
+	{
+		bool aVirou = a.Social.Afastar(b.Assinatura, quanto);
+		bool bVirou = b.Social.Afastar(a.Assinatura, quanto);
+
+		if (aVirou) Avisar(a, $"{porque}: {b.Name} agora é seu INIMIGO.");
+		if (bVirou) Avisar(b, $"{a.Name} agora é seu INIMIGO.");
+		MandarConhecidos(a);
+		MandarConhecidos(b);
 	}
 
 	/// <summary>

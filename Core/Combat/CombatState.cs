@@ -114,8 +114,41 @@ public sealed class CombatState
 	/// </summary>
 	public double LutandoDeVerdade;
 
-	/// <summary>Ate quando o corpo fica desligado depois de um nocaute, em segundos.</summary>
+	/// <summary>
+	/// ============================ O NOCAUTE E UM COMA COM TETO, E NAO UM CRONOMETRO ============================
+	/// **O DM NAO DA PRAZO AO NOCAUTE DE LUTA.** Ele nasce em `Injuries.dm:283` como `KO(-1)`, e em
+	/// `KO.dm:112-117` os dois ramos que agendariam o despertar sao `if(KOtimer>0)` e
+	/// `else if(!KOtimer)` -- **`-1` nao e nenhum dos dois**, entao nenhum `spawn` casa e ninguem
+	/// agenda o `Un_KO`. Quem acorda o corpo e `Injuries.dm:286-289`: o nucleo ferido subir de volta
+	/// acima da linha de 20%. **A CURA E QUE DECIDE A HORA DE LEVANTAR** -- ver
+	/// <see cref="NocautePorVital"/>.
+	///
+	/// Este campo continua existindo como **TETO** (ver `MeleeResolver.TetoDoNocaute`) e como o
+	/// relogio dos nocautes que o DM realmente cronometra: o de HP zerado (`KO.dm:116`), o do
+	/// `Death.dm:117` (`KO(20)`) e o do reflexo da mente.
+	/// =====================================================================================================
+	/// </summary>
 	public double NocauteRestante;
+
+	/// <summary>
+	/// O `vitalKOd` do DM (`Injuries.dm:280-289`). LIGADO: este corpo caiu porque um NUCLEO cedeu, e
+	/// entao ele levanta quando o nucleo voltar acima da linha -- e nao quando um relogio vencer.
+	/// DESLIGADO: e um nocaute cronometrado (o verb de admin, o reflexo da mente), e so o relogio o
+	/// levanta.
+	///
+	/// **A DISTINCAO E DO ORIGINAL E NAO E DETALHE**: sem ela, o `else if(vitalKOd)` de
+	/// `Injuries.dm:287` acordaria de imediato todo mundo que foi nocauteado por outra razao, porque
+	/// o nucleo desses corpos nunca esteve abaixo da linha.
+	/// </summary>
+	public bool NocautePorVital;
+
+	/// <summary>
+	/// O `limbregenbuffer` (`Injuries.dm:296-300`): pontos juntados rumo a devolver UM membro
+	/// perdido. So o Majin, o Bio e as racas de `canheallopped` juntam -- ver
+	/// <see cref="Regeneracao.PontosPorSegundo"/>. Nao vai pro savefile: um membro pela metade nao e
+	/// patrimonio, e o DM tambem o perde no relog.
+	/// </summary>
+	public double BufferDeMembro;
 
 	/// <summary>
 	/// CARENCIA DE RENASCIMENTO, em segundos. Quem acabou de voltar nao pode ser atingido.
@@ -203,11 +236,13 @@ public sealed class CombatState
 	public Dictionary<string, double> TiposDeDano = new() { ["Physical"] = 2, ["Energy"] = 1 };
 	public Dictionary<string, double> Resistencias = new() { ["Physical"] = 1, ["Energy"] = 1 };
 
-	public CombatState(Fighter f, bool comRabo = false, bool regenera = false)
+	public CombatState(Fighter f, bool comRabo = false, PerfilDeRegen? regen = null)
 	{
 		F = f;
 		Corpo = Body.Novo(comRabo);
-		Corpo.RegeneraDecepado = regenera;
+		// O EIXO DA CURA ENTRA AQUI E SO AQUI. Era um `bool regenera` com uma lista de racas cravada
+		// no servidor; agora e o genoma (`misc_stats["Regeneration"]`) -- ver `PerfilDeRegen`.
+		Corpo.Regen = regen ?? PerfilDeRegen.Comum;
 		SincronizarVida();
 	}
 
@@ -260,11 +295,24 @@ public sealed class CombatState
 
 		F.IsInFight = LutandoDeVerdade > 0;   // o CURTO, nao a tag -- ver CombatKnobs.LutaDeVerdade
 
-		if (NocauteRestante > 0)
-		{
-			NocauteRestante = Math.Max(0, NocauteRestante - dt);
-			if (NocauteRestante == 0) Levantar();
-		}
+		if (!F.KO) return;
+
+		// O RELOGIO SO ANDA SE ALGUEM O ARMOU. `Nocautear()` e a porta unica que arma; uma bancada
+		// que escreve `Ficha.KO = true` na mao continua com o corpo caido ate mandar levanta-lo, que
+		// e o que ela quis dizer.
+		bool armado = NocauteRestante > 0;
+		if (armado) NocauteRestante = Math.Max(0, NocauteRestante - dt);
+
+		// ============================ QUEM ACORDA O CORPO E A CURA, E DEPOIS O TETO ============================
+		// A ordem e a de `Injuries.dm:277-289`, e ela e ESTA e nao a inversa: o coma por nucleo acaba
+		// quando o nucleo volta acima da linha, e o relogio e so a rede de seguranca de quem nao
+		// consegue subir (ninguem regenera dentro de uma estrela em chamas, por exemplo).
+		//
+		// `DeveMorrer()` entra junto porque um nucleo DECEPADO nao satisfaz `DeveNocautear()` -- ele
+		// nao esta "abaixo do limiar", ele nao esta. E o coma do Majin sem cabeca, e ele nao pode
+		// terminar pela primeira pergunta.
+		if (NocautePorVital && !Corpo.DeveNocautear() && !Corpo.DeveMorrer()) Levantar();
+		else if (armado && NocauteRestante == 0) Levantar();
 	}
 
 	/// <summary>
@@ -304,32 +352,70 @@ public sealed class CombatState
 	/// Cai. A guarda cai junto -- quem esta desmaiado nao bloqueia -- e o corpo fica um tempo
 	/// desligado antes de responder de novo.
 	/// </summary>
-	public void Nocautear(double segundos)
+	/// <param name="porVital">
+	/// Este nocaute veio de um NUCLEO que cedeu? Ver <see cref="NocautePorVital"/>.
+	///
+	/// **O PADRAO E `false`, e a escolha do lado importa.** Com `true` no padrao, qualquer chamada
+	/// sobre um corpo INTEIRO vira no-op: o `Tick` pergunta ao corpo, o corpo responde "estou bem", e
+	/// o nocaute se desfaz no quadro seguinte. Foi o que a bancada da mente mostrou -- tres provas
+	/// vermelhas, todas em pontos que derrubam um corpo saudavel de proposito (o palco do filme do
+	/// Bio, o verb de admin, a segunda queda do reflexo, o velorio). Com `false` no padrao a falha e
+	/// pro lado seguro: o corpo fica no chao o tempo pedido, que e sempre o que quem chamou quis.
+	///
+	/// Passa `true` **so quem acabou de consultar <see cref="Body.DeveNocautear"/>** -- o soco, o
+	/// raio, o dano em area, o sol e a sobrecarga de Ki. Esses sao os unicos lugares do port onde
+	/// existe um nucleo abaixo da linha pra subir de volta.
+	/// </param>
+	public void Nocautear(double segundos, bool porVital = false)
 	{
 		F.KO = true;
 		Bloqueando = false;
 		ContraPronto = false;
 		TempoDeGuarda = 0;
 		NocauteRestante = segundos;
+		NocautePorVital = porVital;
 	}
 
 	/// <summary>
-	/// Levanta do nocaute. Os nucleos voltam pra um pouco ACIMA do limiar -- senao o
-	/// personagem se levanta ja abaixo dele e cai no proximo tick, pra sempre.
+	/// ============================ LEVANTAR NAO E CURAR -- `Un_KO()` (`KO.dm:126-134`) ============================
+	/// O DM da **`SpreadHeal(25, 1, 1)`**: vinte e cinco pontos, **so nos VITAIS**, e so nos que
+	/// estao abaixo de 70%. Braco, perna e rabo nao estao nessa lista -- **quem levanta do nocaute
+	/// levanta com o braco quebrado do jeito que ele estava**, e e essa a metade do pedido do dono
+	/// que o port desfazia sozinho.
+	///
+	/// Porque o port empurrava **toda** parte pra 1,5x o limiar (30% da vida) de graca ao fim dos
+	/// 12 s. Somado ao prazo curto, o nocaute nao era so barato: era o jeito MAIS RAPIDO de curar um
+	/// membro quebrado -- 12 s contra os 598 s que o original cobra por um braco inteiro.
+	///
+	/// O PISO SOBROU, mas so como rede e so nos NUCLEOS: se o TETO do nocaute vencer com um nucleo
+	/// ainda abaixo da linha (o corpo dentro de uma estrela, que queima mais rapido do que sara), o
+	/// `Tick` o derrubaria no quadro seguinte, pra sempre. Com os 25 pontos do `Un_KO` na frente
+	/// isso quase nunca dispara -- um nucleo em 5% sai em 30%.
+	/// =========================================================================================================
 	/// </summary>
 	public void Levantar()
 	{
 		F.KO = false;
 		NocauteRestante = 0;
-		double piso = Regras.LimiarQuebra * 1.5;
-		foreach (BodyPart p in Corpo.Partes)
-		{
-			if (p.Decepado) continue;
-			double min = p.VidaMax * piso;
-			if (p.Vida < min) p.Vida = min;
-		}
+		NocautePorVital = false;
+
+		Corpo.CurarVitais(CuraDeAcordar);
+
+		// A REDE, e so ela: sem isto o teto vencido devolveria um corpo que cai de novo no proximo
+		// tique. Nucleo, e nao "toda parte" -- e o nucleo que decide o nocaute.
+		if (Corpo.DeveNocautear())
+			foreach (BodyPart p in Corpo.Partes)
+			{
+				if (p.Decepado || p.Papel != Vitalidade.Nucleo) continue;
+				double min = p.VidaMax * Regras.LimiarQuebra * 1.05;
+				if (p.Vida < min) p.Vida = min;
+			}
+
 		SincronizarVida();
 	}
+
+	/// <summary>O `SpreadHeal(25,1,1)` de `Un_KO` (`KO.dm:133`). Vinte e cinco, e so nos vitais.</summary>
+	public const double CuraDeAcordar = 25;
 
 	/// <summary>
 	/// ALGUEM PODE NEGAR ESTA MORTE. Devolve true quando negou -- e ai o corpo NAO morre.

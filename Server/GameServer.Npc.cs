@@ -427,5 +427,34 @@ public partial class GameServer
 	/// a API de sigilo de BP ficou 100% orfa -- e o preco e uma regra que so existe no comentario.
 	/// =====================================================================================================
 	/// </summary>
-	private static bool AscendePorDecisao(ServerPlayer pl) => pl.Papel?.AscendePorDecisao ?? true;
+	/// <remarks>
+	/// ============================ A FUSAO ESTRAGADA TAMBEM ENTRA AQUI ============================
+	/// *"Falhando -> a fusao ACONTECE mas fica EXTREMAMENTE FRACA -- mais fraca que os personagens
+	/// separados, e ela NEM SE TRANSFORMA"* (pedido do dono, literal).
+	///
+	/// O CORTE MORA NESTE FUNIL, e o cabecalho acima ja diz por que: aqui passam a tecla C, o
+	/// `TransformarPara` (o botao de forma escolhida) e o admin. Escrito so no `Transformar`, o
+	/// jogador com o menu de formas na tela contornaria a regra clicando no degrau direto -- e
+	/// *"escrever o corte e nao aplica-lo"* e o defeito que este mesmo comentario ja nomeia.
+	///
+	/// **DESCER CONTINUA LIVRE**: quem funde ja transformado (o pedido do dono diz que a fusao comeca
+	/// na forma de quem convidou) tem que poder voltar ao normal. Quem barra e o `subir`, e o ramo de
+	/// descida do `Transformar` nunca chega nesta funcao.
+	/// ========================================================================================
+	/// </remarks>
+	/// <param name="avisar">
+	/// Falso quando quem pergunta e o RETRATO da IA (`GameServer.Ia.cs`) e nao um gesto: la a
+	/// pergunta e feita a cada decisao do cerebro, e uma recusa falante viraria a mesma frase trinta
+	/// vezes por segundo. A regra e a mesma nos dois casos -- o que muda e se ha alguem esperando
+	/// resposta.
+	/// </param>
+	private bool AscendePorDecisao(ServerPlayer pl, bool avisar = true)
+	{
+		if (EmFusaoEstragada(pl))
+		{
+			if (avisar) Avisar(pl, "este corpo mal se sustenta de pe -- nao ha como se transformar assim.");
+			return false;
+		}
+		return pl.Papel?.AscendePorDecisao ?? true;
+	}
 }

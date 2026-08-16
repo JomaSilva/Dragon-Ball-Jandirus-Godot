@@ -867,6 +867,92 @@ public static class Protocol
         /// **ID ZERO QUER DIZER "NENHUM"**: e ele que APAGA a dica quando o jogador se afasta.
         /// </summary>
         Cadaver = 47,
+
+        /// <summary>
+        /// A CINEMATICA DA FUSAO COMECOU: **dois ids** -- quem convidou e quem aceitou, nessa ordem.
+        ///
+        /// Formato: `int dono` + `int passageiro`. Oito bytes, uma vez por fusao.
+        ///
+        /// ============================ ELE E O IRMAO EXATO DO <see cref="CenaDoBio"/> ============================
+        /// Mesmo papel, mesma justificativa: o <see cref="Forma"/> nao serve porque **fundir nao e uma
+        /// forma** -- nao ha `de`, nao ha `para`, nao ha <c>DegrauDeCena</c> (nao ha maestria em
+        /// fundir) e nao ha versao encurtada. E, como la, o pacote **nao carrega prazo nem arte**: o
+        /// relogio da cena, o instante da virada (que e o FIM da animacao da luz --
+        /// `Cinematicas.SegundosDaLuzDaFusao`) e a folha (`FusionLight.tres`) moram no Core, em
+        /// `Cinematicas.Fusao`, e as duas pontas leem o mesmo arquivo.
+        ///
+        /// ============================ E POR QUE ELE CARREGA DOIS IDS ============================
+        /// Porque esta e **a unica cena do jogo com dois corpos em quadro**. O pedido do dono e literal
+        /// sobre isso -- *"UM efeito em cima dos dois personagens"* --, e o segundo id e a unica coisa
+        /// que o cliente nao teria como deduzir: no instante em que a cena comeca os dois ainda sao
+        /// duas pessoas comuns, sem nada no snapshot que os ligue.
+        ///
+        /// A ORDEM IMPORTA e ela e a do dono do jogo: quem CONVIDOU e quem controla, e e no corpo dele
+        /// que a fusao nasce. O cliente roda a cena naquele corpo e usa o segundo para uma coisa so:
+        /// achar o **ponto medio** onde a unica luz da fusao fica (ver `Transformacao._alvoIrmao` e
+        /// `Transformacao.PontoMedioDaLuz`).
+        ///
+        /// ============================ PRA ZONA INTEIRA, COMO A <see cref="CenaDoBio"/> ============================
+        /// Dois lutadores virando um, com o chao se soltando e o clarao de tela, e informacao de quem
+        /// esta em volta -- e no DM o anuncio da fusao ja sai pra `view(9)` (`Fusion.dm:727`).
+        /// ============================================================================================
+        /// </summary>
+        CenaDeFusao = 48,
+
+        /// <summary>
+        /// AS ESFERAS DO DRAGAO DESTA ZONA -- as estatuas, as sete no chao, e o dragao quando esta de pe.
+        ///
+        /// ============================ TRES COISAS NUM PACOTE, PELO ARGUMENTO DAS OBRAS ============================
+        /// A <see cref="Construcoes"/> ja leva construcao, nave parada e mobilia de interior no mesmo
+        /// pacote, e o cabecalho do `MandarObras` explica: *"nao por economia de opcode, porque pro
+        /// cliente uma nave POUSADA e exatamente o que uma construcao e"*. Vale igual aqui -- estatua,
+        /// esfera e dragao sao a mesma coisa pro cliente: um sprite ancorado num ponto da zona, no
+        /// Y-sort, com um nome. O <see cref="CoisaDeEsfera"/> na frente diz qual e.
+        ///
+        /// ============================ E A FOLHA VIAJA COMO SIMBOLO, NAO COMO `res://` ============================
+        /// Aqui esta a diferenca em relacao a <see cref="Construcoes"/>, e ela e de PROCEDENCIA: la o
+        /// caminho vem do `construcoes.json`, que e dado extraido; aqui nao ha catalogo, e cravar
+        /// `res://` no servidor seria o servidor conhecendo a arvore de assets do Godot -- exatamente o
+        /// que a regra 0.1 da casa proibe. Entao viaja "comum"/"namek"/"estatua"/"shenron"/"porunga", e
+        /// quem traduz e o `EsferaDesenhada.FolhaDe` do cliente.
+        /// =====================================================================================================
+        ///
+        /// So quando MUDA -- nunca por tique. Nascer, espalhar, pegar, largar e invocar sao eventos.
+        /// </summary>
+        Esferas = 49,
+
+        /// <summary>
+        /// AS SUPER ESFERAS QUE EU ALCANCO, o meu placar, e o sinal do radar dourado.
+        ///
+        /// ============================ ELE NAO MANDA O CICLO, E ISSO E O SIGILO ============================
+        /// A posicao das sete e funcao pura de (semente do universo, numero, ciclo) e o cliente ja tem a
+        /// semente -- ou seja, o unico dado que falta pra montar o mapa do tesouro inteiro e o CICLO, e
+        /// ele nao viaja. O que viaja e o que se ve daqui (recorte por CHUNK, o mesmo do resto do
+        /// espaco) e uma FRASE de radar que o servidor ja resolveu.
+        ///
+        /// E o `SaveItem = 0` do original dito de outro jeito: *"o obj so existe enquanto o setor esta
+        /// carregado"* (`ProceduralSpace.dm:1503`).
+        /// ==========================================================================================
+        /// </summary>
+        SuperEsferas = 50,
+    }
+
+    /// <summary>
+    /// O QUE E ESTA COISA no pacote <see cref="S2C.Esferas"/>.
+    ///
+    /// Byte explicito em vez de numero magico (a alternativa era "numero 0 = estatua, 8 = dragao"):
+    /// um discriminador que se le e um discriminador que ninguem quebra por engano seis meses depois.
+    /// </summary>
+    public enum CoisaDeEsfera : byte
+    {
+        /// <summary>A `obj/DragonStatue` -- o set inteiro pendurado nela.</summary>
+        Estatua = 0,
+
+        /// <summary>Uma das sete `obj/DB`, com o numero de estrelas em `numero`.</summary>
+        Esfera = 1,
+
+        /// <summary>O `obj/DragonObject` -- 256x353 px, de pe por pouco tempo.</summary>
+        Dragao = 2,
     }
 
     /// <summary>
@@ -941,6 +1027,19 @@ public static class Protocol
 
         /// <summary>Um feixe contra as MAOS de quem aguenta. Ver `EmbateDeKi.PoderDeSegurar`.</summary>
         FeixeContraGuarda = 2,
+
+        /// <summary>
+        /// A DANCA DA FUSAO. Ver `GameServer.Fusao.cs`.
+        ///
+        /// ============================ ELA E A UNICA QUE NAO E CABO DE GUERRA ============================
+        /// Nos outros tres, o placar de um e o buraco do outro e alguem sai perdendo. Aqui **os dois
+        /// ganham juntos ou os dois saem estragados**: o placar sao os passos acertados de cada um, e
+        /// o desfecho e o mesmo pros dois lados. O byte entra nesta enum mesmo assim porque a CONVERSA
+        /// e identica (comecou, letra, placar, veredito, acabou) -- o que ele muda e so o vocabulario
+        /// da tela, que e exatamente pra isso que este byte existe.
+        /// ==========================================================================================
+        /// </summary>
+        Fusao = 3,
     }
 
     /// <summary>Os momentos de um embate -- ZanzoClash e colisao de ki. Ver <see cref="S2C.Clash"/>.</summary>
@@ -1666,6 +1765,26 @@ public struct SheetState
     /// ================================================================================
     /// </summary>
     public bool Nadando => (Estado2 & 1) != 0;
+
+    /// <summary>
+    /// ESTOU SENDO PUXADO PRA UMA FUSAO -- o `step_to` do `Potara_Fusion.dm:124-129`.
+    ///
+    /// ============================ ELE NAO SUBSTITUI O <see cref="Empurrado"/>: ELE O QUALIFICA ============================
+    /// Durante o puxao o <see cref="Empurrado"/> tambem esta ligado, e tem que estar -- ele e o bit que
+    /// faz o cliente parar de integrar tecla e so deslizar ate a ultima correcao, que e a UNICA coisa
+    /// que impede as duas pontas de brigarem pelo mesmo corpo (o tremor que este projeto ja pagou duas
+    /// vezes). O que este bit acrescenta e uma coisa so: **o corpo nao gira**.
+    ///
+    /// O arremesso desenha o corpo DEITADO na direcao do voo (`CharacterVisual.VoarPara`, uma rotacao
+    /// de 90 graus por eixo) porque quem foi arremessado esta sendo jogado. Quem esta sendo puxado pra
+    /// uma fusao esta de pe e caminhando pro outro -- com a rotacao do arremesso, dois lutadores
+    /// atraidos no eixo vertical apareceriam de CABECA PRA BAIXO deslizando um pro outro.
+    ///
+    /// Um bit e nao um `if` no cliente porque quem sabe por que o corpo esta sendo dirigido e o
+    /// SERVIDOR: o cliente nao tem como distinguir um arremesso de um puxao olhando a posicao.
+    /// ==========================================================================================================
+    /// </summary>
+    public bool PuxadoNaFusao => (Estado2 & 2) != 0;
 
     /// <summary>Nem anda nem golpeia: caido ou morto.</summary>
     public bool Imobilizado => KO || Morto;

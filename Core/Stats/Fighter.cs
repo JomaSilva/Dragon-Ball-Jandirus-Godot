@@ -56,6 +56,101 @@ public sealed partial class Fighter
 	public bool aged_out;
 
 	/// <summary>
+	/// QUANTAS VEZES ESTA ALMA JA VOLTOU DOS MORTOS -- `mob/var/ResurrectedCount`
+	/// (`Ranks/rankSkills/OtherworldRankSkills.dm:269-270`).
+	///
+	/// ============================ ELE E O PRECO INTEIRO DO `Revive` DE CARGO ============================
+	/// O verb de cargo (`OtherworldRankSkills.dm:217-267`) nao cobra Ki nenhum. O unico preco esta em
+	/// duas linhas (`:237` e `:241-245`): ele soma 1 aqui e, **se o numero passar de 1**, quem
+	/// ressuscitou cai morto no lugar -- *"[usr] trades [usr]'s life for the resurrection!"*.
+	///
+	/// A contagem e do RESSUSCITADO e nao de quem ressuscita, e essa e a regra: a primeira volta de
+	/// uma alma e de graca pra qualquer Kaio; a segunda custa uma vida, seja qual for o Kaio. O DM
+	/// tambem nunca zera este campo -- nem no `ReviveMe()`, nem na reencarnacao --, entao ele e a
+	/// memoria permanente de quantas vezes o mundo ja abriu excecao pra esta pessoa.
+	///
+	/// PERSISTE de graca (a ficha inteira vai pro disco, ver `CharacterSave.Ficha`), e tem que
+	/// persistir pelo mesmo motivo do <see cref="aged_out"/>: se morresse no logout, deslogar seria o
+	/// jeito barato de comprar mais uma ressurreicao gratuita.
+	/// ================================================================================================
+	/// </summary>
+	public int ResurrectedCount;
+
+	// ============================ AS TRES MARCAS QUE AS ESFERAS DEIXAM NA ALMA ============================
+	// Elas moram aqui, ao lado do `aged_out`, porque sao a mesma classe de coisa: fatos PERMANENTES de
+	// um personagem, que persistem de graca (a ficha inteira vai pro disco) e que **tem que**
+	// persistir -- se qualquer uma se perdesse no logout, deslogar seria o jeito barato de burlar a
+	// regra que ela existe pra impor. O DM as declara juntas, num bloco `mob/var` so
+	// (`WishTable.dm:22-25`), e pelo mesmo motivo.
+	// ==================================================================================================
+
+	/// <summary>
+	/// **FALA A LINGUA DOS DEUSES** -- `mob/var/godtongue` (`WishTable.dm:23`).
+	///
+	/// Booleano cru, e nao skill nem no de arvore nem campo de raca: e assim no original, e copiar a
+	/// FORMA dele e o que a tarefa pediu. Ver <see cref="Magic.LinguaDosDeuses"/> pros dois eixos que o
+	/// ligam (cargo divino e sangue Kai/Demigod).
+	///
+	/// **ELE NUNCA VOLTA A ZERO.** `if(godtongue) return 1` e a primeira linha do `godtongue_check`
+	/// (:38): perder o cargo nao tira a lingua. Nao ha, em lugar nenhum deste port, uma linha que
+	/// escreva `false` aqui -- e essa ausencia e a regra, nao um esquecimento.
+	/// </summary>
+	public bool godtongue;
+
+	/// <summary>
+	/// **A DIVIDA DO "MAIS FORTE DO UNIVERSO"** -- `mob/var/sw_doom_year` (`WishTable.dm:25`), em
+	/// segundos do relogio do mundo. Zero = sem divida.
+	///
+	/// ============================ O DESEJO NAO E UM BUFF: E UMA SENTENCA ============================
+	/// `sw_strongest_wish` (:102-113) poe o BP no DOBRO do maior do jogo **e** marca o vencimento um ano
+	/// depois. Quando ele chega (`Aging.dm:114-122`), o personagem recebe `aged_out = 1` e morre -- a
+	/// unica morte que **nem as Super Esferas desfazem** (seis guardas no DM, ver `aged_out`).
+	///
+	/// Portar o multiplicador sem portar este campo transformaria o desejo mais caro do jogo num buff
+	/// gratuito. E o bloco do DM roda **antes** de qualquer guarda de nao-envelhecer (o comentario da
+	/// :114 diz isso com todas as letras): imortal, vampiro e Deus da Destruicao morrem igual no
+	/// vencimento.
+	///
+	/// EM SEGUNDOS E NAO EM `Year`: este port nao tem calendario (ver `GameServer.cs`,
+	/// `ConferirMorteDeVelhice`), e o unico relogio que anda sozinho e o do ceu. Guardar `Year` exigiria
+	/// um calendario so pra ler este campo; guardar o INSTANTE deixa a cobranca ser uma comparacao. A
+	/// conversao usa `Esferas.SegundosDe`, que ja deriva o ano do DM do dia deste jogo.
+	/// ==========================================================================================
+	/// </summary>
+	public double sw_doom_year;
+
+	/// <summary>
+	/// **JA PEDIU MARCOS AO DRAGAO** -- `mob/var/wishedpoints` (`WishTable.dm:361`).
+	///
+	/// O desejo "Milestones" da 2 Marcos e so pode ser pedido UMA VEZ por personagem, pra sempre --
+	/// `if(originator.wishedpoints)` recusa e ainda cancela a invocacao. Sem este campo o desejo seria
+	/// uma torneira de pericia aberta, e Marcos sao a moeda de skill inteira deste jogo.
+	/// </summary>
+	public int wishedpoints;
+
+	/// <summary>
+	/// ESTA PESSOA FICA COM O CORPO QUANDO MORRE -- `mob/var/KeepsBody` (`Death.dm:3`).
+	///
+	/// ============================ O QUE ELE MUDA, LIDO NAS TRES BOCAS DO DM ============================
+	///   1. `Stats.dm:275-292` -- o morto comum e ARRANCADO do mundo dos vivos ("cannot exist outside
+	///      of the Afterlife"); com `KeepsBody` ele FICA, e so e chamado de volta quando o Ki dele cai
+	///      abaixo de `MaxKi/6`. E a coisa toda: o morto continua andando entre os vivos enquanto
+	///      tiver energia pra se sustentar;
+	///   2. `Gravity.dm:47` -- `if(r > 1 && (!dead || KeepsBody))`: e a UNICA excecao a regra de que
+	///      cadaver nao e esmagado. Quem tem corpo tem peso;
+	///   3. `OtherworldRankSkills.dm:195-202` -- o verb `Keep_Body` do cargo, que liga e desliga isto
+	///      em outra pessoa. **Nao ha nenhum outro produtor** alem do ritual de manipulacao
+	///      (`Rituals_Manipulation.dm:387`).
+	///
+	/// A AUREOLA CONTINUA ACESA, e o proprio DM faz piada com isso na descricao da skill vizinha:
+	/// *"Or, you could, y'know, look at their goddamn Halo."* (`OtherworldRankSkills.dm:45`). E por
+	/// isso que `Alem.TemAureola` pergunta QUANDO (ja viajou?) e nao ONDE -- o comentario de la ja
+	/// tinha previsto este dia por escrito.
+	/// ================================================================================================
+	/// </summary>
+	public bool KeepsBody;
+
+	/// <summary>
 	/// `mob/var/isVillain` -- **designado por ADMIN**, e nao conquistado.
 	///
 	/// A skill que o le e uma so no catalogo inteiro (Planet Destroy, `vilao: 1` -- medido: 1 de 366
@@ -444,6 +539,31 @@ public sealed partial class Fighter
 	// =====================================================================
 	/// <summary>Revive por Zeni: BP em 25% ate este instante (em ms de relogio real).</summary>
 	public long zeni_revive_debuff_until;
+
+	/// <summary>
+	/// ATE QUANDO ESTE CORPO NAO PODE FUNDIR DE NOVO -- o `fusion_cooldown_until` do DM
+	/// (`Fusion.dm:28`), em ms de relogio real (a mesma unidade do
+	/// <see cref="zeni_revive_debuff_until"/> logo acima).
+	///
+	/// ============================ ELE MORA AQUI PORQUE PRECISA ATRAVESSAR O LOGOUT ============================
+	/// No original a declaracao esta dentro do bloco `mob/var` e **sem `tmp/`** -- as tres linhas
+	/// vizinhas (`:26-27` e `:29`) sao `tmp/` e esta nao e. E essa ausencia que faz a recarga de 1 h
+	/// viajar no savefile.
+	///
+	/// O port guardava isto num dicionario do servidor com o ID DE SESSAO como chave, e o apagava no
+	/// logout de proposito (id se reusa). O efeito era que **Alt+F4 zerava a espera dos dois**, e a
+	/// recarga -- o unico freio do sistema inteiro -- virava opcional: funde, separa, relog, funde de
+	/// novo, e o `FuseBuff` de `(A+B)*2` sai de graca.
+	///
+	/// Aqui ele persiste sem uma linha de encanamento: o `CharacterSave.Ficha` serializa este objeto
+	/// INTEIRO (ver `Server/CharacterStore.cs:37-43`), que e a mesma razao pela qual o DM o guarda no
+	/// mob e nao num datum a parte.
+	///
+	/// **ZERO = pode fundir.** Nao ha valor "nao inicializado" a distinguir: save antigo carrega 0 e
+	/// 0 e o passado, entao quem ja existia continua podendo fundir -- que e o lado certo do erro.
+	/// ======================================================================================================
+	/// </summary>
+	public long fusion_cooldown_until;
 
 	// =====================================================================
 	// O BIO-ANDROIDE DE LABORATORIO -- `Code/Modules/Tech/DNALabs.dm`

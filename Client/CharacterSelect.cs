@@ -23,6 +23,9 @@ public partial class CharacterSelect : CanvasLayer
     private VisualCatalog? _cat;
     private List<SlotInfo> _slots = [];
 
+    /// <summary>A confirmacao de apagar, enquanto estiver na tela. Nulo = nenhuma aberta.</summary>
+    private Control? _pergunta;
+
     public void Mostrar(List<SlotInfo> slots)
     {
         _slots = slots;
@@ -41,6 +44,9 @@ public partial class CharacterSelect : CanvasLayer
     private void Remontar()
     {
         foreach (Node n in GetChildren()) n.QueueFree();
+        // A CONFIRMACAO E FILHA DESTA CAMADA, entao o laco acima ja a apagou -- soltar a referencia
+        // aqui evita ficar apontando pra um node liberado (e o ESC tentar fechar o que nao existe).
+        _pergunta = null;
 
         AddChild(new ColorRect { Color = Tema.Fundo, AnchorRight = 1, AnchorBottom = 1 });
 
@@ -198,34 +204,169 @@ public partial class CharacterSelect : CanvasLayer
     ///
     /// O servidor confere de novo (`GameServer.DeleteChar`) -- esta tela e conveniencia, nao trava.
     /// ==================================================================================
+    ///
+    /// ==================== POR QUE ELA NAO E MAIS UM `ConfirmationDialog` ====================
+    /// O dono: *"a tela de DELETAR PERSONAGEM ta TODA TORTA, e se eu coloco em FULL SCREEN o jogo e
+    /// dps em JANELA, ela MUDA DE POSICAO e fica todo torto"*. Eram DOIS defeitos, e os dois vinham
+    /// do TIPO DO NODE, nao de uma conta de posicao errada:
+    ///
+    /// 1. SOBREPOSICAO. Um `AcceptDialog` da a TODO filho Control o retangulo INTEIRO da area de
+    ///    conteudo -- o mesmo retangulo onde o Label do `DialogText` ja esta. Medido: aviso e campo
+    ///    ocupavam o mesmo `[P: (8,8), S: (538,101)]`, 100% de sobreposicao. Por isso o nome digitado
+    ///    saia por cima do texto de aviso na foto dele.
+    /// 2. DESLOCAMENTO. `PopupCentered()` centra UMA VEZ, na hora de abrir, e a subjanela embutida
+    ///    guarda a posicao em pixels absolutos: trocar de tela cheia pra janela nao re-centra nada.
+    ///    Medido: abrir em 1920x1080 e voltar pra 1280x720 deixava o dialogo 320 x 180 px fora do
+    ///    centro (a regra e `(viewport_da_abertura - viewport_atual) / 2`).
+    ///
+    /// O CONSERTO E USAR O MOLDE QUE O RESTO DO JOGO JA USA e que se centra sozinho de graça:
+    /// `Control` ancorado (0..1) -> `CenterContainer` -> `Tema.Painel1` -> `VBoxContainer`. E o mesmo
+    /// do `PauseMenu`, do `TelaDeInventario`, da criacao -- e o da propria fileira de slots, tres
+    /// linhas acima. Ancora nao tem "hora de centrar": ela e recalculada a cada resize.
+    /// =======================================================================================
     /// </summary>
     private void PerguntarSeApaga(int slot, string nome)
     {
-        var caixa = new ConfirmationDialog
+        FecharPergunta();   // nunca duas na tela ao mesmo tempo
+
+        // O FUNDO ESCURO NAO E ENFEITE: ele e o que faz a caixa ser MODAL sem uma subjanela --
+        // um Control com `MouseFilter` de parar come o clique, entao nao da pra apertar "Jogar"
+        // num slot atras da pergunta de apagar outro.
+        var fundo = new ColorRect
         {
-            Title = "Excluir personagem",
-            DialogText = $"\"{nome}\" vai ser apagado PARA SEMPRE — o BP, as skills e os cargos\n"
-                       + "deste personagem nao voltam.\n\nDigite o nome dele para confirmar:",
-            OkButtonText = "Excluir",
-            Exclusive = true,
+            Color = new Color(0, 0, 0, 0.72f),
+            AnchorRight = 1, AnchorBottom = 1,
+            GrowHorizontal = Control.GrowDirection.Both,
+            GrowVertical = Control.GrowDirection.Both,
         };
-        caixa.GetOkButton().Disabled = true;
+        Tema.Aplicar(fundo);   // o dialogo do Godot nascia CINZA, fora da paleta do jogo
+        AddChild(fundo);
+        _pergunta = fundo;
 
-        var campo = new LineEdit { PlaceholderText = nome, MaxLength = 32 };
-        campo.TextChanged += t =>
-            caixa.GetOkButton().Disabled = !string.Equals(t.Trim(), nome, StringComparison.OrdinalIgnoreCase);
-        caixa.AddChild(campo);
+        var centro = new CenterContainer
+        {
+            AnchorRight = 1, AnchorBottom = 1,
+            GrowHorizontal = Control.GrowDirection.Both,
+            GrowVertical = Control.GrowDirection.Both,
+        };
+        fundo.AddChild(centro);
 
-        caixa.Confirmed += () => GameClient.Instance?.SendDeleteChar(slot, campo.Text.Trim());
-        // O DIALOGO MORRE COM A RESPOSTA. Sem isto cada clique em "Excluir" deixaria um node
-        // escondido na arvore -- e o proximo `Remontar` nao os apaga, porque eles nao sao filhos
-        // da fileira de slots.
-        caixa.Canceled += caixa.QueueFree;
-        caixa.Confirmed += caixa.QueueFree;
+        PanelContainer painel = Tema.Painel1(20);
+        centro.AddChild(painel);
 
-        AddChild(caixa);
-        caixa.PopupCentered();
+        // UMA COLUNA SO, e tudo empilhado nela. A largura fixa e o que segura o aviso: sem ela o
+        // VBox cresce ate o tamanho da linha mais longa e o texto vira uma tira.
+        var col = new VBoxContainer { CustomMinimumSize = new Vector2(420, 0) };
+        col.AddThemeConstantOverride("separation", 12);
+        painel.AddChild(col);
+
+        var titulo = new Label { Text = "EXCLUIR PERSONAGEM", HorizontalAlignment = HorizontalAlignment.Center };
+        titulo.AddThemeFontSizeOverride("font_size", 22);
+        titulo.AddThemeColorOverride("font_color", Tema.Perigo);
+        col.AddChild(titulo);
+        col.AddChild(new HSeparator());
+
+        // O NOME EM DESTAQUE E SOZINHO: e a informacao que falta em um clique errado -- QUAL dos
+        // tres vai morrer. Ele estava afogado no meio do paragrafo de aviso.
+        var alvo = new Label { Text = nome, HorizontalAlignment = HorizontalAlignment.Center };
+        alvo.AddThemeFontSizeOverride("font_size", 26);
+        alvo.AddThemeColorOverride("font_color", Tema.Destaque);
+        col.AddChild(alvo);
+
+        var aviso = new Label
+        {
+            Text = "vai ser apagado PARA SEMPRE — o BP, as skills, os itens e os cargos "
+                 + "deste personagem nao voltam.",
+            AutowrapMode = TextServer.AutowrapMode.Word,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        aviso.AddThemeColorOverride("font_color", Tema.TextoFraco);
+        col.AddChild(aviso);
+
+        col.AddChild(new HSeparator());
+
+        // O CAMPO GANHOU ROTULO PROPRIO. Antes a instrucao era a ultima linha do paragrafo de aviso,
+        // e o campo desenhava POR CIMA dela.
+        col.AddChild(Tema.Rotulo("digite o nome do personagem para confirmar"));
+
+        var campo = new LineEdit
+        {
+            PlaceholderText = nome,
+            MaxLength = 32,
+            CustomMinimumSize = new Vector2(0, 34),
+        };
+        col.AddChild(campo);
+
+        // OS DOIS BOTOES LADO A LADO, do mesmo tamanho e no fim da coluna. O de apagar nasce
+        // APAGADO e so acende quando o texto BATE -- a regra nao mudou, so mudou onde ela mora
+        // (era `caixa.GetOkButton()`, do Godot; agora e um botao nosso).
+        var linha = new HBoxContainer();
+        linha.AddThemeConstantOverride("separation", 10);
+        col.AddChild(linha);
+
+        var cancelar = new Button
+        {
+            Text = "Cancelar",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        cancelar.Pressed += FecharPergunta;
+        linha.AddChild(cancelar);
+
+        var excluir = new Button
+        {
+            Text = "Excluir",
+            Disabled = true,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        excluir.AddThemeColorOverride("font_color", Tema.Perigo);
+        linha.AddChild(excluir);
+
+        bool Bate(string t) => string.Equals(t.Trim(), nome, StringComparison.OrdinalIgnoreCase);
+
+        void Apagar()
+        {
+            if (!Bate(campo.Text)) return;
+            GameClient.Instance?.SendDeleteChar(slot, campo.Text.Trim());
+            // A PERGUNTA MORRE COM A RESPOSTA -- sem isto cada clique deixaria um node na arvore.
+            FecharPergunta();
+        }
+
+        campo.TextChanged += t => excluir.Disabled = !Bate(t);
+        campo.TextSubmitted += _ => Apagar();   // Enter faz o mesmo que o botao, e so se bater
+        excluir.Pressed += Apagar;
+
         campo.GrabFocus();
+    }
+
+    /// <summary>
+    /// ESC DESISTE DE APAGAR -- e o que o dialogo do Godot fazia de graça e agora e nosso.
+    ///
+    /// ============================ POR QUE `_Input` E NAO `_UnhandledKeyInput` ============================
+    /// **MEDIDO** (`--diagapagar`): com o `_UnhandledKeyInput`, o ESC fechava a caixa **sem o campo em
+    /// foco e nao fechava com ele** -- `[com o campo em foco=False, sem foco=True]`. E a caixa abre
+    /// SEMPRE com o campo em foco (`campo.GrabFocus()`, no fim do `PerguntarSeApaga`), entao a unica
+    /// saida de teclado da tela mais destrutiva do jogo nunca funcionou no estado em que ela existe.
+    ///
+    /// A causa e a ordem do motor: um `LineEdit` COM FOCO recebe a tecla pelo `gui_input` e o evento
+    /// nao chega ao `_unhandled_*` de ninguem. Por isso as outras telas com campo de texto deste
+    /// projeto ja liam pelo `_Input` -- ver `Chat._Input:207`, com o comentario que diz a mesma coisa.
+    ///
+    /// CONSUMIR AQUI E OBRIGATORIO (`SetInputAsHandled`): o menu de pause escuta a MESMA tecla no
+    /// `_UnhandledInput`, e desistir de apagar nao pode abrir o menu junto.
+    /// ===================================================================================================
+    /// </summary>
+    public override void _Input(InputEvent evento)
+    {
+        if (_pergunta == null) return;
+        if (evento is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape }) return;
+        FecharPergunta();
+        GetViewport().SetInputAsHandled();
+    }
+
+    private void FecharPergunta()
+    {
+        _pergunta?.QueueFree();
+        _pergunta = null;
     }
 
     private static Label Info(string t)

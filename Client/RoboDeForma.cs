@@ -3397,6 +3397,111 @@ public partial class RoboDeForma : Node
 				   + $"({quadros} quadro(s), {semTextura} sem textura -- {caminho.GetFile()})");
 		}
 
+		// ============================ E AGORA A PERGUNTA QUE O UNIFORM NAO RESPONDE ============================
+		// Esta e a checagem que a Fase 0 desta tarefa disse que NAO EXISTIA -- e ela estava certa. Todas
+		// as de cima ficariam VERDES com a aura da base saindo PRETA em jogo: elas conferem que o `.tres`
+		// existe, que ele carrega, que tem quadro e que o uniform certo foi escrito. Nenhuma olha o PIXEL.
+		//
+		// A memoria deste projeto ja tem o nome disso ("a bancada mede INTENCAO"): uniform escrito nao e
+		// pixel desenhado, e o caso concreto e este -- `Aura, Big.png` e `rgb(0,0,0)` nos 27.248 pixels
+		// opacos dela, entao o `i = max(r,g,b)` do shader daria 0 e `cor * 0` e preto. Quatro mil
+		// checagens verdes e uma silhueta preta em volta de 19 formas.
+		//
+		// ============================ O QUE ELA AFIRMA, E POR QUE NAO PODE FICAR VERDE ERRADA ============================
+		// A regra e sobre a ARTE, medida do `.png` no disco, e nao sobre o que alguem escreveu no C#:
+		//
+		//   marcada `FormaNoAlfa`  ->  o RGB dela tem que ser CHAPADO (uma cor so nos pixels opacos),
+		//                              porque o desenho esta no alfa e o RGB nao carrega forma nenhuma;
+		//   nao marcada            ->  o RGB tem que VARIAR, porque e dele que o `i` tira a forma.
+		//
+		// Inverter a marca de qualquer folha reprova aqui. Trocar a folha base por outra arte preta sem
+		// marcar reprova aqui. E marcar a `colorablebigaura` por engano (que apagaria o desenho cinza
+		// dela, deixando a chama chapada) tambem reprova aqui -- os dois sentidos, e nao so um.
+		//
+		// A leitura e do `.png` via `Image`, e nao do `.tres`: e o unico jeito de a medida ser da ARTE.
+		// ==============================================================================================================
+		{
+			int chapadas = 0, variadas = 0;
+			foreach (Jandirus.Core.Forms.FolhaDeAura fl in Enum.GetValues<Jandirus.Core.Forms.FolhaDeAura>())
+			{
+				if (SpriteDeAura.CaminhoDa(fl) is not { } caminho) continue;
+
+				// O `.tres` aponta pro `.png`; a `AtlasTexture` do primeiro quadro leva ao atlas inteiro,
+				// que e a folha de verdade. Ler o atlas (e nao o recorte) e o que faz a conta cobrir a
+				// arte toda com uma leitura so.
+				var folha = ResourceLoader.Load<SpriteFrames>(caminho);
+				Texture2D? prim = folha?.GetAnimationNames() is { Length: > 0 } ns
+					? folha!.GetFrameTexture(ns[0], 0) : null;
+				Texture2D? cheia = prim is AtlasTexture at ? at.Atlas : prim;
+				Image? img = cheia?.GetImage();
+				if (img == null) { Conferir(false, $"a folha {fl} nao devolveu imagem pra medir"); continue; }
+
+				// UMA COR SO NOS PIXELS OPACOS = o RGB nao desenha nada. Contar as cores distintas em vez
+				// de olhar so o maximo pega os DOIS casos de uma vez: o preto puro da `Aura, Big` e o
+				// chapado colorido da `AuraSSjBig`/`AuraLSSjBig`, que sao a mesma natureza.
+				var cores = new HashSet<uint>();
+				int opacos = 0;
+				for (int y = 0; y < img.GetHeight(); y++)
+					for (int x = 0; x < img.GetWidth(); x++)
+					{
+						Color p = img.GetPixel(x, y);
+						if (p.A <= 0f) continue;
+						opacos++;
+						cores.Add(((uint)Mathf.RoundToInt(p.R * 255f) << 16)
+								| ((uint)Mathf.RoundToInt(p.G * 255f) << 8)
+								|  (uint)Mathf.RoundToInt(p.B * 255f));
+						if (cores.Count > 1 && opacos > 4096) { y = img.GetHeight(); break; }
+					}
+
+				bool chapada = cores.Count == 1;
+				bool marcada = SpriteDeAura.FormaNoAlfa(fl);
+				Conferir(chapada == marcada,
+						 $"a folha {fl} tem RGB {(chapada ? "CHAPADO" : "variado")} e esta marcada "
+					   + $"`FormaNoAlfa={marcada}` ({cores.Count} cor(es) em {opacos} pixel(s) opaco(s) "
+					   + $"-- {caminho.GetFile()})");
+				if (chapada) chapadas++; else variadas++;
+			}
+
+			// AS DUAS CLASSES TEM QUE EXISTIR. Sem esta linha, marcar TODAS (ou NENHUMA) passaria em
+			// todas as de cima se a arte tambem fosse toda igual -- e a folha base indo pra chapada e
+			// justamente a mudanca desta tarefa, entao o numero nao pode ser zero de nenhum lado.
+			Conferir(chapadas >= 3 && variadas >= 3,
+					 $"as duas classes de folha existem ({chapadas} com o desenho no ALFA, "
+				   + $"{variadas} com o desenho no RGB)");
+			_passos.Add($"  --     folhas: {chapadas} com desenho no alfa, {variadas} no RGB");
+		}
+
+		// ============================ E A BASE E O MESMO DESENHO DA `AuraSSjBig` ============================
+		// Medido: o canal alfa das duas e IDENTICO nos 82.944 pixels, zero diferenca -- a `AuraSSjBig` e
+		// a `Aura, Big` com um `ffff80` chapado por cima. E o que sustenta esta troca sem foto: a chama
+		// da base passa a renderizar pelo MESMO caminho que a do Super Saiyajin, que o dono ja aprovou.
+		//
+		// Esta linha e a que impede a afirmacao de virar folclore: se alguem trocar uma das duas artes,
+		// o argumento acima deixa de valer e isto reprova junto -- em vez de continuar escrito num
+		// comentario que ninguem mede.
+		// ====================================================================================================
+		{
+			static Image? Arte(string caminho)
+			{
+				var f = ResourceLoader.Load<SpriteFrames>(caminho);
+				Texture2D? p = f?.GetAnimationNames() is { Length: > 0 } n ? f!.GetFrameTexture(n[0], 0) : null;
+				return (p is AtlasTexture a ? a.Atlas : p)?.GetImage();
+			}
+
+			Image? bs = Arte(SpriteDeAura.FolhaBase);
+			Image? sj = Arte(SpriteDeAura.FolhaSsj);
+			int difere = -1;
+			if (bs != null && sj != null && bs.GetSize() == sj.GetSize())
+			{
+				difere = 0;
+				for (int y = 0; y < bs.GetHeight(); y++)
+					for (int x = 0; x < bs.GetWidth(); x++)
+						if (!Mathf.IsEqualApprox(bs.GetPixel(x, y).A, sj.GetPixel(x, y).A)) difere++;
+			}
+			Conferir(difere == 0,
+					 $"a folha base e a do SSJ sao o MESMO desenho no alfa ({difere} pixel(s) diferente(s))");
+		}
+
 		// ============================ NENHUMA REDE PODE SER MENOR QUE A CENA ============================
 		// As redes de seguranca existem pra "preso pra sempre" nao ser alcancavel -- mas uma rede
 		// mais CURTA que a cena solta o jogador no meio da cinematica, que e o defeito que ela
@@ -12893,8 +12998,12 @@ public partial class RoboDeForma : Node
 		// A FOLHA, medida no quadro em que a cena estava acesa.
 		Conferir(folhaNaCena == SpriteDeAura.FolhaBase,
 				 $"a cena acende na folha COLORIVEL e nao na dourada envenenada ({folhaNaCena.GetFile()})");
-		Conferir(SpriteDeAura.FolhaBase.Contains("colorablebigaura"),
-				 $"e a folha base continua sendo a `colorablebigaura` ({SpriteDeAura.FolhaBase.GetFile()})");
+		// A FOLHA BASE TROCOU: era a `colorablebigaura`, virou a `Aura, Big` por ordem do dono
+		// (*"mudar o sprite da CARGA/AURA ... para o sprite `Aura, Big.png`"*). Esta linha continua
+		// existindo pelo motivo de sempre -- ela e a unica que amarra o SIMBOLO ao ARQUIVO, e sem ela
+		// a de cima passaria verde com a base apontando pra qualquer coisa.
+		Conferir(SpriteDeAura.FolhaBase.Contains("Aura, Big"),
+				 $"e a folha base e a `Aura, Big` que o dono pediu ({SpriteDeAura.FolhaBase.GetFile()})");
 		// ============================ AS DUAS LINHAS DA `Aurabigcombined` SAIRAM ============================
 		// Havia aqui um `!folhaNaCena.Contains("Aurabigcombined")` (o pedido textual do dono, *"NAO E O
 		// AURA BIG COMBINED"*) e, embaixo dele, um `ResourceLoader.Exists` provando que a primeira nao

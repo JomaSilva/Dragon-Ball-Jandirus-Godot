@@ -467,6 +467,31 @@ public static class MoveRules
 	}
 
 	/// <summary>
+	/// ESTE CORPO ESTA EM CIMA DE NUVEM? -- a MESMA caixa dos pes do <see cref="Occupied"/> e do
+	/// <see cref="NaAgua"/>, e pelo mesmo motivo escrito la em cima.
+	///
+	/// ============================ MAS AQUI ELA E **QUALQUER QUINA**, E ISSO PRECISA SER DITO ============================
+	/// A caixa devolve verdadeiro se UMA das quatro quinas esta na nuvem, e pra a agua isso e
+	/// generoso do lado seguro (o nado continua ligado mais um pouco). Pra a nuvem que DERRUBA e o
+	/// contrario: encostar uma quina ja faz cair.
+	///
+	/// E e o desfecho certo, porque ele e o do original. No BYOND o corpo ocupa UM tile e o `Enter()`
+	/// dispara quando ele entra nele -- nao ha meio-tile, nao ha "encostou de raspao". A quina e o
+	/// analogo mais proximo disso num jogo que anda em pixel: o instante em que qualquer parte do
+	/// corpo pisou na nuvem. Perguntar pelo CENTRO deixaria o jogador andar meia caixa por cima do
+	/// ceu antes de cair -- visivelmente flutuando sobre o vazio, que e a queixa a consertar.
+	/// ==============================================================================================================
+	/// </summary>
+	public static bool NaNuvem(ZoneCollision mapa, Vec2 centro)
+	{
+		float y = centro.Y + FeetOffsetY;
+		return mapa.EhNuvemEm(new Vec2(centro.X - BodyHalfW, y - BodyHalfH))
+			|| mapa.EhNuvemEm(new Vec2(centro.X + BodyHalfW, y - BodyHalfH))
+			|| mapa.EhNuvemEm(new Vec2(centro.X - BodyHalfW, y + BodyHalfH))
+			|| mapa.EhNuvemEm(new Vec2(centro.X + BodyHalfW, y + BodyHalfH));
+	}
+
+	/// <summary>
 	/// O servidor confere o passo que o cliente afirma ter dado.
 	/// Devolve true se aceitou; se recusou, <paramref name="corrected"/> traz a posicao
 	/// mais longe que o cliente PODERIA ter alcancado na direcao que ele tentou.

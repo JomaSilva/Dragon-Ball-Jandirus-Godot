@@ -16,9 +16,20 @@ namespace Jandirus.Tools;
 /// com `Water=1`" transformaria o ceu inteiro num oceano onde da pra nadar, e o Alem e um lugar
 /// por onde os mortos ANDAM.
 ///
-/// O CEU NAO GANHA CLASSE NESTE PASSE. Ele e uma QUARTA classe ("so quem voa") e o dono nao pediu
-/// isso -- ele falou de agua. As celulas de ceu continuam exatamente como estao hoje: chao comum,
-/// que se atravessa a pe. Fica anotado como divida, nao como bug novo.
+/// ============================ A DIVIDA DO CEU FOI PAGA -- VER `Ceus.cs` ============================
+/// O texto que estava aqui dizia: *"O CEU NAO GANHA CLASSE NESTE PASSE. Ele e uma QUARTA classe ('so
+/// quem voa') e o dono nao pediu isso -- ele falou de agua. (...) Fica anotado como divida"*.
+///
+/// O dono pediu, e o ceu virou a quarta classe: <see cref="Ceus"/> aqui e `Core/World/Ceu.cs` do
+/// outro lado. **O <see cref="EhCeu"/> abaixo nao mudou uma linha** -- ele so ganhou um segundo
+/// consumidor: onde antes ele servia so pra EXCLUIR o ceu da agua, agora ele tambem o INCLUI no
+/// `.ceu`. Uma leitura, dois usos, sem uma segunda lista de typepaths pra envelhecer.
+///
+/// E A CONTA DAQUI ESTAVA CURTA: os "295.251" abaixo sao os dois `SkyHD*`, que sao os que tem a flag
+/// `Water`. O `Sky1` do Templo (207.915 celulas) **nao tem a flag** e nunca apareceu nesta varredura
+/// -- ela pergunta *"quem tem `Water=1` e nao e agua?"*, e ele nao entra na pergunta. O total de ceu
+/// e **499.041**, e quem o conta e o `Ceus`, pelo nome do tipo. Ver o quadro em `Core/World/Ceu.cs`.
+/// ======================================================================================================
 ///
 /// A LAVA E AGUA, e isso nao e engano: `LavaHD` (`NewTurfs.dm:108-123`) e `/turf/Other/Lava`
 /// chamam o `testWaters()` como qualquer lago -- nao se anda por cima, voa-se e nada-se por cima.

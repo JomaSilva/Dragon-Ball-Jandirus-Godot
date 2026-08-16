@@ -251,6 +251,13 @@ public partial class GameServer
 			o.Fornada = null;
 		}
 
+		// ============================ E SE ELE TINHA ALGUEM DENTRO, ESSE ALGUEM SAI ============================
+		// `SealingItem/Del()` (`Sealing.dm:140-144`): quebrar o pote SOLTA o selado. E o irmao exato
+		// do bloco de cima -- destruir a construcao tem que desfazer o que ela segurava --, e e a
+		// interacao principal do Mafuba no jogo original: quem quer o preso de volta nao precisa
+		// bater no preso, precisa achar o pote. Ver `GameServer.Selo.cs`.
+		PoteFoiAoChao(o);
+
 		_noChao.Remove(o);
 		if (!o.DoMapa) GravarMundo();
 

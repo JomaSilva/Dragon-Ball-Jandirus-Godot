@@ -173,6 +173,71 @@ public partial class GameServer
 	private void PassoDaMorte(ServerPlayer pl)
 	{
 		if (Alem.EhOAlem(pl.Zone)) { Renascer(pl); return; }
+
+		// ============================ QUEM FICA COM O CORPO NAO E ARRANCADO -- `Stats.dm:275-292` ============================
+		// `Keep_Body` de cargo (`OtherworldRankSkills.dm:195-202`) liga o `KeepsBody` em alguem, e o
+		// laco de estado do DM trata os dois casos LADO A LADO:
+		//
+		//     if(dead) if(Planet && Planet!="Afterlife" && ...)
+		//         if(KeepsBody)
+		//             if(Ki <= (MaxKi/6))                       // so ai comeca a puxada
+		//                 if(!returning) ... "Your spirit is waving..."
+		//                 if(prob(5)) ... loc=locate(187,104,6)
+		//         else if(!KeepsBody)
+		//             ... "[src] cannot exist outside of the Afterlife."   // arranca na hora
+		//
+		// Ou seja: o morto comum e puxado, o morto com corpo FICA -- e so e chamado de volta quando a
+		// energia dele cai a um sexto do maximo. E o poder inteiro do verb; sem esta metade o
+		// `Keep_Body` seria um bit que ninguem nunca sentiria.
+		//
+		// O RELOGIO E REARMADO E NAO DESLIGADO, e a diferenca importa: `RelogioDaMorte = long.MaxValue`
+		// (o que a triagem faz com corpo sem dono) mataria a pergunta pra sempre, e a condicao do DM e
+		// **continua** -- ela precisa ser refeita enquanto o Ki cai. Rearmando pelo mesmo
+		// `Alem.MsNoChao`, a triagem volta aqui a cada 15 s e reavalia, sem laco proprio e sem campo
+		// novo. O `prob(5)` por tique do original vira "vence o prazo com o Ki ja embaixo", que e a
+		// mesma coisa vista de longe: uma demora curta e aleatoria depois de o gatilho armar.
+		//
+		// ---- A DIVERGENCIA, E ELA E DO MODELO DE MORTE DESTE PORT E NAO DESTE VERB ----
+		// **NO DM O MORTO COM CORPO ANDA. AQUI ELE NAO ANDA** -- e nao anda porque NENHUM morto anda
+		// neste port: `PodeMexerOCorpo` (`GameServer.Ia.cs:360`) recusa por `Ficha.dead`, o que vale
+		// inclusive pro morto que esta no Outro Mundo. `Alem.MortoDePe` decide so a POSE.
+		//
+		// Nao mexi nisso aqui de proposito: soltar o passo do morto e uma mudanca no funil de vetor
+		// (jogador e IA de uma vez, cinco recusas compartilhadas) e ela nao pertence a um verb de
+		// cargo -- e o tipo de coisa que se faz sozinha, com bancada propria, e nao de carona.
+		//
+		// O QUE O VERB ENTREGA MESMO ASSIM, e nao e pouco: o corpo **fica onde caiu**, no mundo dos
+		// vivos, em vez de sumir pro Outro Mundo em 15 s. E isso muda uma coisa concreta e ligada
+		// nesta mesma sessao: o `Revive` (racial e de cargo) so alcanca um morto ADJACENTE, e um morto
+		// que ja viajou esta fora do alcance de qualquer um. `Keep_Body` e o que da aos amigos a
+		// janela pra trazer a pessoa de volta.
+		//
+		// `MorteJaViajou` NAO e a viagem, e por isso ele PODE ser escrito aqui: ele significa "esta
+		// morte ja passou da etapa de cadaver", que e o que a aureola pergunta. E exatamente o caso
+		// que o `Alem.TemAureola` previu por escrito ao escolher o crivo temporal em vez do por lugar.
+		// =================================================================================================================
+		if (pl.Ficha.KeepsBody && pl.Ficha.Ki > pl.Ficha.MaxKi / 6)
+		{
+			// A AUREOLA ACENDE AQUI, e este e o unico lugar do jogo em que ela acende sem viagem: o
+			// morto que anda entre os vivos e denunciado por ela, e o proprio DM faz piada com isso na
+			// descricao da skill vizinha (*"Or, you could, y'know, look at their goddamn Halo."*,
+			// `OtherworldRankSkills.dm:45`). Sem esta linha o `Keep_Body` seria invisibilidade de morto.
+			if (!pl.MorteJaViajou)
+			{
+				pl.MorteJaViajou = true;
+				Avisar(pl, "o chão não te leva: o seu corpo continua seu, e fica onde caiu. Uma auréola "
+						 + "se acende sobre a sua cabeça. Enquanto houver energia, o Outro Mundo espera "
+						 + "-- e quem chegar até você ainda pode te trazer de volta.");
+				GD.Print($"[server] {pl.Name} morreu e FICOU (KeepsBody)");
+			}
+			pl.RelogioDaMorte = NowMs() + Alem.MsNoChao;
+			return;
+		}
+
+		// O Ki caiu abaixo de um sexto (ou nunca houve `KeepsBody`): a viagem acontece.
+		if (pl.Ficha.KeepsBody)
+			Avisar(pl, "seu espírito treme -- o seu tempo no Mundo Material chegou ao fim.");
+
 		IrProAlem(pl);
 	}
 

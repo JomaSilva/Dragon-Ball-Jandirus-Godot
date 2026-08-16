@@ -212,8 +212,9 @@ public partial class RoboDeKi : Node
 	/// O nome vem no `S2C.PeerLook`, que o cliente ja recebe de todo corpo da zona.
 	/// ===========================================================================
 	/// </summary>
+	/// <param name="fusao">O bit de fusao do `PeerLook`. Este robo nao funde ninguem -- ver `GameClient.PeerLooked`.</param>
 	private void AoVerAFicha(int quem, string nome, string raca, string genero,
-							 Jandirus.Core.Appearance.Appearance visual)
+							 Jandirus.Core.Appearance.Appearance visual, bool fusao)
 	{
 		if (quem != _meuId && nome.Contains("Boneco", StringComparison.OrdinalIgnoreCase))
 			_idDoBoneco = quem;

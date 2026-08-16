@@ -129,6 +129,22 @@ public static class VerbosDoJogo
 			"Recusa o assento de Anciao.",
 			() => C?.SendVerbo("cargo_nomear_recusar")));
 
+		// ============================ A RESPOSTA A OFERTA DE JUVENTUDE ============================
+		// O `Restore_Youth` do Grand Kai e do Demon Lord (lote G8) abre uma OFERTA, porque no DM o
+		// verb abre um `input()` **no alvo** e so escreve a idade se ele disser "Yes"
+		// (`OtherworldRankSkills.dm:170-174`). O consentimento e parte da tecnica e nao cortesia:
+		// idade mexe em BP neste port, entao rejuvenescer um desafeto seria um debuff.
+		//
+		// OS DOIS BOTOES SAO DE QUEM RECEBE, e nao de quem tem a skill -- por isso eles moram aqui,
+		// na aba de todo mundo, e nao no painel de habilidades.
+		Verbos.Registrar(new Verbo("Accept Youth", Verbos.Outros,
+			"Aceita a oferta de voltar a ser jovem que te fizeram.",
+			() => C?.SendVerbo("juventude_aceitar")));
+
+		Verbos.Registrar(new Verbo("Decline Youth", Verbos.Outros,
+			"Recusa a oferta de voltar a ser jovem.",
+			() => C?.SendVerbo("juventude_recusar")));
+
 		Verbos.Registrar(new Verbo("Name Heir", Verbos.Outros,
 			"So o Rei de Vegeta: poe quem esta marcado na linha de sucessao do trono.",
 			() => NoAlvo("cargo_herdeiro")));
@@ -439,9 +455,12 @@ public static class VerbosDoJogo
 
 		// ============================ A DESTRUICAO DE PLANETA, PELO LADO DO ADMIN ============================
 		// Os quatro que faltavam pro sistema fechar. O `Restore Planet` e o `Restaurar_Planeta` do
-		// original (`Planets.dm:254-280`) e e a **unica volta que existe** neste port: o desejo
-		// "Heal Planet" depende do sistema de Esferas do Dragao, que nao foi portado. Ver a decisao
-		// escrita em `GameServer.RessuscitarPlaneta`.
+		// original (`Planets.dm:254-280`) e continua sendo a **unica volta que existe** neste port.
+		//
+		// O MOTIVO MUDOU DE METADE: as Esferas do Dragao existem agora (`GameServer.Esferas.cs`), e o
+		// que ainda falta e a TABELA DE DESEJOS -- a Fase 2. Quando ela chegar, "Heal Planet" tem que
+		// entrar pelo `RessuscitarPlaneta` do servidor e nao por um caminho proprio; a decisao esta
+		// escrita la, com o defeito do original anotado.
 		// ==============================================================================================
 		Verbos.Registrar(new Verbo("Villain (target)", Verbos.Admin,
 			"Liga/desliga o bit de VILAO do alvo marcado. E o unico jeito de alguem aprender "

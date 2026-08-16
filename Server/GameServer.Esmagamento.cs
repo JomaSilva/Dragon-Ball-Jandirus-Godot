@@ -56,9 +56,16 @@ public sealed partial class GameServer
 	///
 	/// MORTO NAO E PRENSADO: o `if(r > 1 && (!dead || KeepsBody))` do DM. Um cadaver ja nao anda por
 	/// outra regra, e deixar a prisao valer sobre ele so faria a checagem mentir na ficha.
+	///
+	/// **A EXCECAO ENTROU** (`Gravity.dm:47`): quem tem <see cref="Jandirus.Core.Stats.Fighter.KeepsBody"/>
+	/// ficou com o corpo, e o corpo tem peso. Ate esta sessao o `|| KeepsBody` estava so no comentario,
+	/// porque o campo nao existia -- e o comentario do DM diz exatamente por que ele existe:
+	/// *"dead people can no longer abuse not dying for grav gains without an actual body"*. Sem esta
+	/// metade, o `Keep_Body` do cargo seria a melhor sala de treino do jogo: morra, fique, treine em
+	/// gravidade alta sem levar dano nenhum. Ver `GameServer.Tecnicas.G8.ManterOCorpoG8`.
 	/// </summary>
 	private static bool PrensadoPelaGravidade(ServerPlayer pl) =>
-		!pl.Ficha.dead && Esmagamento.Prende(pl.Ficha);
+		(!pl.Ficha.dead || pl.Ficha.KeepsBody) && Esmagamento.Prende(pl.Ficha);
 
 	/// <summary>
 	/// UMA VEZ POR SEGUNDO -- chamado do bloco de 1 Hz do <see cref="Tick"/>.
@@ -74,10 +81,16 @@ public sealed partial class GameServer
 		{
 			Fighter f = pl.Ficha;
 
-			// MORTO NAO E ESMAGADO (`!dead || KeepsBody`). Nem quem esta com a razao dentro do
-			// limite -- que e a esmagadora maioria dos corpos do servidor, e por isso o teste barato
-			// vem primeiro.
-			if (f.dead || !Esmagamento.Esmaga(f)) { _avisoDeEsmagamento.Remove(pl.Id); continue; }
+			// MORTO NAO E ESMAGADO (`!dead || KeepsBody`) -- e a segunda metade do `||` deixou de ser
+			// so um comentario nesta sessao: quem recebeu o `Keep_Body` de um cargo ficou com o corpo,
+			// e o corpo e esmagado. Ver `PrensadoPelaGravidade` logo acima, que faz a mesma pergunta
+			// pro andar. Nem quem esta com a razao dentro do limite -- que e a esmagadora maioria dos
+			// corpos do servidor, e por isso o teste barato vem primeiro.
+			if ((f.dead && !f.KeepsBody) || !Esmagamento.Esmaga(f))
+			{
+				_avisoDeEsmagamento.Remove(pl.Id);
+				continue;
+			}
 
 			double r = Esmagamento.Razao(f);
 

@@ -300,6 +300,18 @@ public sealed class CharacterSave
     public bool SalaPreso;
 
     /// <summary>
+    /// SELADO -- e ele vai pro DISCO porque no DM tambem vai.
+    ///
+    /// As seis variaveis do selo (`Sealing.dm:22-28`) **nao sao `tmp`**, e o `Login.dm:258` re-dispara
+    /// o teste de fuga quando a pessoa entra. Deixar o selo so na memoria faria do logout a chave
+    /// mestra de qualquer prisao do jogo -- e prisao com porta giratoria nao e prisao.
+    ///
+    /// NULO NUM SAVE ANTIGO E A RESPOSTA CERTA e nao precisa de migracao: quem nunca foi selado nao
+    /// esta selado. O `Entrar` troca nulo por um selo vazio, que responde `Preso == false`.
+    /// </summary>
+    public Jandirus.Core.Combat.Selo? Selo;
+
+    /// <summary>
     /// `htc_session_years`: quantos DIAS IN-GAME esta sessao ja gastou. O DM guarda isto no save
     /// pelo mesmo motivo, e escreve o motivo do lado ("relogar la dentro NAO zera a conta e
     /// re-ganha 2 anos"). Zero num save antigo = "sessao nenhuma", que e a resposta certa.
@@ -715,6 +727,11 @@ public sealed class AccountStore(string pasta)
         SalaPreso = pl.SalaPreso,
         SalaDiasDaSessao = pl.SalaDiasDaSessao,
 
+        // O SELO. Escrito aqui pelo mesmo motivo das tres de cima: este metodo monta o save do ZERO,
+        // e campo nao escrito e campo apagado. So vai ao disco quando ha selo -- gravar um objeto
+        // vazio em cada um dos saves do servidor seria seis campos por personagem pra dizer "nao".
+        Selo = pl.Selo.Preso ? pl.Selo : null,
+
         // ============================ ESTA LINHA FALTAVA, E ELA APAGAVA OS LIMIARES ============================
         // Achado escrevendo o berco, e nao e do berco: `Limiares` esta em `CharacterSave` e em
         // `ParaJogador` (o `Entrar` le `c.Limiares`), mas NUNCA foi escrito de volta aqui. Como este
@@ -852,5 +869,10 @@ public sealed class AccountStore(string pasta)
         pl.SalaAutorizada = s.SalaAutorizada;
         pl.SalaPreso = s.SalaPreso;
         pl.SalaDiasDaSessao = s.SalaDiasDaSessao;
+
+        // O SELO, com o mesmo padrao de migracao das tres de cima: ausente = solto. O objeto vazio
+        // (e nao `null`) porque o tique pergunta `pl.Selo.Preso` por corpo, sem `?.` -- ver o campo
+        // `ServerPlayer.Selo`.
+        pl.Selo = s.Selo ?? new Jandirus.Core.Combat.Selo();
     }
 }

@@ -847,11 +847,19 @@ public partial class GameServer
 	/// (`WishTable.dm:327-343`), o verb de admin `Restaurar_Planeta` (`Planets.dm:254-280`) e o
 	/// `Planet_Options` (`:282-311`).
 	///
-	/// **O desejo nao existe neste port** -- nao ha Esferas do Dragao, nem coleta, nem invocacao, nem
-	/// tabela de desejos; portar o desejo seria portar um sistema do tamanho de uma saga. E o desejo
-	/// do original e defeituoso de qualquer jeito: ele zera `isDestroyed` e **nao tira da
-	/// `PlanetDisableList`**, entao o planeta volta a morrer no boot seguinte -- foi justamente isso
-	/// que o verb de admin, escrito depois com `Save_Settings()`, veio consertar.
+	/// ============================ ISTO DIZIA "NAO HA ESFERAS DO DRAGAO", E ISSO CADUCOU ============================
+	/// A frase antiga era *"o desejo nao existe neste port -- nao ha Esferas do Dragao, nem coleta,
+	/// nem invocacao, nem tabela de desejos"*. **As tres primeiras existem agora**
+	/// (`GameServer.Esferas.cs`): a estatua se ergue, as sete nascem, se espalham por semente, se
+	/// pegam do chao e o dragao sobe. O que falta e so a TABELA -- a Fase 2 --, e ela ja tem ponto de
+	/// plugue nomeado (`AbrirOsDesejos` / `ContarUmDesejo`).
+	///
+	/// **A DECISAO ABAIXO NAO MUDOU**, e e importante que nao mude por engano no dia em que a Fase 2
+	/// chegar: o desejo do original e defeituoso -- ele zera `isDestroyed` e **nao tira da
+	/// `PlanetDisableList`**, entao o planeta volta a morrer no boot seguinte, e foi justamente isso
+	/// que o verb de admin (escrito depois, com `Save_Settings()`) veio consertar. Se a Fase 2 portar
+	/// "Heal Planet", ela tem que passar pelo `RessuscitarPlaneta` daqui e nao por um caminho proprio.
+	/// ==========================================================================================================
 	///
 	/// Entao a escolha aqui e a **(A)**: destruicao PERMANENTE, com valvula de admin. E a unica das
 	/// tres que fecha o sistema sem inventar escopo. A consequencia esta anotada e e real: a saga 1

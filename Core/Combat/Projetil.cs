@@ -101,6 +101,41 @@ public sealed class ReceitaDeProjetil
 	public bool Paralisia;
 
 	/// <summary>
+	/// ESTE TIRO ARREMESSA QUEM ACERTA? -- e a resposta do DM e "quase sempre, MENOS a paralisia".
+	///
+	/// ============================ O DM SO EMPURRA POR DOIS CAMINHOS, E ELES SE EXCLUEM ============================
+	/// `objects.dm:450-460`, o `Bump` de um blast, inteiro:
+	///
+	///     if(WaveAttack)                                    // 1) e um RAIO
+	///         if(maxdistance-distance&lt;=2 &amp;&amp; dmg*BPModulus&gt;0.25 &amp;&amp; !M.KB) Knockback(M, ...)
+	///         else if(maxdistance-distance&lt;=4 &amp;&amp; dmg*BPModulus&gt;0.5 &amp;&amp; !M.KB) Knockback(M, 0.5*...)
+	///         spawn(1) MiniStun(M)
+	///     else if(kiforceful &amp;&amp; dmg*BPModulus&gt;0.5 &amp;&amp; ...) // 2) e uma BOLA marcada `kiforceful`
+	///         Knockback(M, 0.75*...)
+	///
+	/// Ou seja: uma bola que **nao** e `kiforceful` NAO empurra ninguem, nunca. E a Paralysis
+	/// (`Ki2.0/Debuffs.dm:3-40`) e exatamente isso -- ela nao e `WaveAttack` e **nao escreve
+	/// `kiforceful`**, ao contrario da irma Stunlock (`meta.dm:59`), que escreve.
+	///
+	/// ============================ QUEM ACHOU FOI A `--arsenalteste`, E ELA ESTAVA CERTA ============================
+	/// A bancada afirma *"quem esta paralisado CONTINUA podendo atacar (nao virou stun)"* -- que e o
+	/// ponto inteiro da tecnica -- e reprovava. A causa nao era a paralisia: era o ARREMESSO. O tiro
+	/// batia, `Arremessar` escrevia `TiquesDeVoo`, e `CombatState.PodeAtacar()` recusa quem esta sendo
+	/// arremessado. A tecnica que existe pra tirar as pernas do inimigo estava tirando os bracos junto,
+	/// por dois segundos, atraves de um empurrao que o original nao da.
+	///
+	/// ============================ E POR QUE O PADRAO E `true` ============================
+	/// Porque o port nao tem o campo `kiforceful`, e trocar o padrao aqui apagaria o empurrao de TODA
+	/// bola do jogo (bola basica, tiro carregado, barragens, Kienzan) numa passada de madrugada, sem o
+	/// dono ter pedido. **Isso e uma divergencia conhecida e ela fica anotada aqui**: hoje este port
+	/// empurra com bola onde o DM so empurra com raio ou com bola `kiforceful`. Auditar as ~20 receitas
+	/// contra o `kiforceful` do DM e uma passada propria, com bancada propria -- e quando ela vier, o
+	/// lugar de mexer e este campo, uma receita por vez.
+	/// ==========================================================================================================
+	/// </summary>
+	public bool Empurra = true;
+
+	/// <summary>
 	/// O nome que aparece no relato. Pra tecnica customizada e o nome que o jogador deu.
 	///
 	/// A COR NAO ESTA AQUI, e isso e decisao: cada personagem ja tem a cor do proprio ki
@@ -220,6 +255,9 @@ public sealed class Projetil
 	/// separados criaria a segunda resposta pra "qual e o poder deste tiro".
 	/// </summary>
 	public bool Paralisia;
+
+	/// <summary>`kiforceful`/`WaveAttack` -- ver o mesmo campo na receita, onde a regra do DM esta escrita.</summary>
+	public bool Empurra = true;
 
 	/// <summary>
 	/// A QUE ALTURA ELE VOA, em pixels -- a do atirador no instante do tiro, e ela nao muda.

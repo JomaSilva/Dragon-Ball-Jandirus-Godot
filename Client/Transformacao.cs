@@ -41,6 +41,33 @@ public partial class Transformacao : Node2D
 	private Cinematica _cena = null!;
 
 	/// <summary>
+	/// O **SEGUNDO** CORPO EM QUADRO -- e ele so existe na cena da fusao.
+	///
+	/// ============================ POR QUE UM CAMPO, E NAO UMA SEGUNDA CENA ============================
+	/// A saida obvia era rodar duas `Transformacao`, uma em cada corpo. Ela nao serve, e nao por
+	/// elegancia: **os efeitos de chao sao por CENA e nao por corpo**. Duas cenas dariam duas
+	/// crateras, dois clarões de tela no mesmo quadro (que e o estrobo que o `Efeito.ClaraoDeTela`
+	/// proibe em texto), dois campos de pedra a se somarem e dois tremores empilhados -- e nada disso
+	/// e conserto, e dois roteiros iguais tocando juntos.
+	///
+	/// **A cena e uma so; o que ela tem e um segundo corpo.** E a UNICA coisa que este campo governa e
+	/// **onde a luz da fusao fica** (<see cref="Efeito.LuzDaFusao"/>): ela e UMA so e mora no ponto
+	/// medio dos dois -- ver <see cref="PontoMedioDaLuz"/>. Tudo o mais (tremor, anel, pedra, cratera,
+	/// branco) continua acontecendo uma vez, no <see cref="_alvo"/>, que e onde a fusao vai nascer.
+	///
+	/// ============================ ELE PODE SUMIR NO MEIO, E ISSO E O NORMAL ============================
+	/// Na virada o servidor manda o passageiro pro selo e o corpo dele **deixa a zona** -- ou seja este
+	/// node fica invalido POR CONSTRUCAO, no caminho bom, e nao so no de erro. Todo leitor pergunta
+	/// `IsInstanceValid` antes; o ponto medio passa a ser o corpo do dono sozinho, que e onde a fusao
+	/// acabou de nascer.
+	///
+	/// NULO EM 39 DAS 40 CENAS, e o padrao de `Rodar` e nulo justamente pra que ninguem precise pensar
+	/// nele pra escrever uma cena de transformacao.
+	/// ============================================================================================
+	/// </summary>
+	private Node2D? _alvoIrmao;
+
+	/// <summary>
 	/// QUE FORMA ESTA CENA ESTA CONTANDO -- e **nulo quando ela nao conta forma nenhuma**.
 	///
 	/// ============================ O NULO E A FURIA, E ELE E UM ESTADO E NAO UM ERRO ============================
@@ -524,13 +551,18 @@ public partial class Transformacao : Node2D
 	/// A forma que esta cena conta -- **nulo quando ela nao conta forma nenhuma** (a cena da furia).
 	/// Ver o campo <see cref="_forma"/>: o nulo e um estado, e nao um esquecimento.
 	/// </param>
+	/// <param name="irmao">
+	/// O SEGUNDO CORPO EM QUADRO -- so a cena da fusao tem um. Ver o campo <see cref="_alvoIrmao"/>:
+	/// ele governa **uma** coisa (o ponto medio onde a unica luz da fusao fica) e nada mais.
+	/// </param>
 	public static Transformacao Rodar(Node pai, Node2D alvo, FormaDef? forma, Cinematica cena,
-									  bool souEu, string nome = "")
+									  bool souEu, string nome = "", Node2D? irmao = null)
 	{
 		var t = new Transformacao
 		{
 			Name = "Cinematica",
 			_alvo = alvo,
+			_alvoIrmao = irmao,
 			_cena = cena,
 			_forma = forma,
 			// SEM FORMA A CENA E VERMELHA, e as duas cores caem no mesmo lugar: o vermelho da furia
@@ -1248,6 +1280,11 @@ public partial class Transformacao : Node2D
 		// aparecer seria um quadro de nada no comeco do efeito.
 		TocarPedras();
 
+		// A LUZ DA FUSAO, DEPOIS DOS BEATS PELO MESMO MOTIVO: o beat que a ACENDE tem que poder
+		// pinta-la no proprio quadro em que ele vence. Ela sai de graca nas 39 cenas que nao a acendem
+		// -- a primeira linha do metodo e um `if` contra nulo, e nada mais.
+		TocarALuzDaFusao(delta);
+
 		// DEPOIS DOS BEATS TAMBEM, e o motivo aqui e o inverso do das pedras: o beat que ASSUME acende
 		// o `ClaraoDeTela`, e um raio caindo no MESMO quadro tem que somar clarao POR CIMA dele em vez
 		// de ser lavado por ele. Rodando antes, o unico instante da cena que o dono chama de climax
@@ -1373,6 +1410,12 @@ public partial class Transformacao : Node2D
 		// no fim deste metodo.
 		ApagarSilhueta();
 
+		// E A LUZ DA FUSAO E O QUARTO EMPRESTIMO, pela mesma regra dos tres. Ver `ApagarALuzDaFusao`:
+		// no fim BOM o ultimo estouro ja se apagou sozinho e tirar o node e formalidade; nos outros
+		// tres fins (o teto, o alvo sumindo, o `_ExitTree`) a cena pode morrer NO MEIO de um estouro,
+		// e sem esta linha o clarão sobreviveria a cena que o acendeu.
+		ApagarALuzDaFusao();
+
 		// ============================ O CORTE DO ALVO INVALIDO VIROU UM BLOCO ============================
 		// Era um `return` no meio, e ele passou a ser caro: o <see cref="Virar"/> la embaixo PRECISA
 		// rodar mesmo sem alvo -- e justamente quando o corpo sumiu (nocaute, morte, troca de zona) que
@@ -1434,6 +1477,437 @@ public partial class Transformacao : Node2D
 		_silhuetaAcesa = false;
 		if (IsInstanceValid(_alvo))
 			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.SilhuetaDeCena(null);
+	}
+
+	// ======================================================================================
+	//  A LUZ DA FUSAO -- `FusionLight.png`, **UMA SO**, no ponto medio entre os dois corpos
+	// ======================================================================================
+	/// <summary>
+	/// A FOLHA. `FusionLight.tres`: 128x128, **uma** animacao (`flick`, 7 quadros a 10 fps).
+	///
+	/// ============================ ERAM DUAS, E O DONO ESTAVA CERTO ============================
+	/// *"na fusao o `FusionLight.png` n e um em cada personagem, e so UM efeito em cima dos dois
+	/// personagens, atualmente sao 2 e fica estranho"*. Ele nao estava so descrevendo o gosto dele:
+	/// estava descrevendo **o original**, e as duas linhas que decidem isso sao do DU
+	/// (`Code/Combat/Skills/Ki/Fusion/_Fusion.dm:117` e `:119-127`):
+	///
+	///     spawn(1) FusionVFX(A)
+	///     ...
+	///     FusionVFX(mob/M)
+	///         var/obj/vfx/fusion/O = new(M.loc)   //create a vfx obj
+	///         O.transform *= 2                    //double its size
+	///         CenterIcon(O)                       //Center the icon
+	///         O.Play()
+	///
+	/// UM `new`, uma vez, com UM mob. Nao ha laco, nao ha `FusionVFX(B)`. O port nascia com o dobro
+	/// da contagem e a METADE do tamanho -- os dois erros no mesmo efeito.
+	///
+	/// ============================ E LA NEM HA DOIS CORPOS NA HORA ============================
+	/// No DU a luz acende DEPOIS de os dois entrarem no corpo fundido (`MoveFusees`,
+	/// `_Fusion.dm:244-250`, faz `M.loc = src`): ela cobre UM corpo, no lugar onde estavam os dois.
+	/// Aqui a cena roda ANTES da virada, com os dois ainda no mapa -- entao a unica luz vai pro
+	/// **ponto medio** deles (ver <see cref="PontoMedioDaLuz"/>). Isso e desenho novo, e e a leitura
+	/// menos errada do original: um clarao so, no lugar onde a fusao vai nascer.
+	/// </summary>
+	internal const string CaminhoDaLuzDaFusao = "res://Assets/Sprites/DU/VFX/FusionLight.tres";
+
+	/// <summary>
+	/// ACIMA DE TUDO. A cena ja e `ZIndex = 90` ABSOLUTO, e a luz precisa ficar por cima dos corpos.
+	/// E o `layer = FLY_LAYER` do `obj/vfx` do DU (`Code/Misc/_vfx.dm:2`): FLY_LAYER e 5, acima do
+	/// MOB_LAYER que e 4.
+	///
+	/// **ABSOLUTO tambem**: a luz e `TopLevel` (ela mora no ponto medio, e nao no corpo da cena), e
+	/// node `TopLevel` nao herda transformacao -- com z relativo ela desenharia noutro balde.
+	/// </summary>
+	private const int ZDaLuzDaFusao = 95;
+
+	/// <summary>
+	/// ============================ A ESCALA E **2**, E ELA E DO DM ============================
+	/// `O.transform *= 2` (`_Fusion.dm:121`). Nao e um numero escolhido pra caber: e o que o original
+	/// faz, e o port simplesmente nunca escreveu `Scale` nenhum.
+	///
+	/// ============================ E COM O PUXAO ELA PASSOU A SOBRAR, MEDIDO NA FOLHA ============================
+	/// A cena so comeca com os dois COLADOS -- <see cref="Jandirus.Core.Social.Fusao.TilesColados"/>,
+	/// um tile: a Danca e a Namekuseijin ja exigem isso no convite e no aceite, e a Potara **anda com
+	/// os dois ate isso valer** (`Fusao.PuxaOsCorpos`). O pior caso deixou de ser o portao do convite e
+	/// passou a ser o vizinho de DIAGONAL: 45,25 px entre centros.
+	///
+	/// Com a luz no MEIO, cobrir os dois pede um nucleo opaco de raio `d/2 + 16` (16 = meio boneco) --
+	/// ou seja **38,6 px**. Medidos os 7 quadros da folha, o nucleo 100% solido vai de 37 a 51 px na
+	/// escala 1 (o pico e o quadro 3), e portanto de **74 a 102 px na escala 2**:
+	///
+	///     escala 1 -> cobre os dois colados em todos os quadros do meio, com pouca folga no q1
+	///     escala 2 -> cobre com quase TRES vezes o raio necessario
+	///
+	/// Ou seja o `transform *= 2` deixou de ser a coisa que faz o efeito funcionar e voltou a ser o
+	/// que ele e no original: o tamanho do clarao. **A folga e proposital** -- o dono pediu o clarao
+	/// *"cobrindo ambos"*, e cobrir com sobra e o que faz a leitura "dois corpos -> clarao -> um corpo
+	/// branco" existir.
+	///
+	/// ============================ E ESTICAR NAO BORRA, PORQUE ELA E INTEIRA ============================
+	/// 2 e escala INTEIRA com <see cref="CanvasItem.TextureFilterEnum.Nearest"/>: cada pixel da arte
+	/// vira um bloco 2x2 exato, sem interpolar. Uma escala quebrada (1,23 / 1,64 / 2,05) daria linhas
+	/// de larguras diferentes num disco que PULSA de tamanho 10 vezes por segundo -- cintilacao de
+	/// borda -- e com filtro Linear seria pior: o alfa desta folha e **binario** (medidos os 147.456
+	/// pixels: so existem 0 e 255), entao interpolar inventaria um halo cinza em volta de um desenho
+	/// que nao tem uma linha de anti-alias.
+	///
+	/// E a camera do jogo ja e de zoom INTEIRO (`World.PisoDoZoom = 2`), entao 2x fica alinhado na
+	/// grade de pixel da tela.
+	/// </summary>
+	internal const float EscalaDaLuzDaFusao = 2f;
+
+	/// <summary>A UNICA luz da cena. Nula ate o primeiro beat <see cref="Efeito.LuzDaFusao"/>.</summary>
+	private AnimatedSprite2D? _luzDaFusao;
+
+	/// <summary>
+	/// QUANTO FALTA DO ESTOURO EM CURSO, em segundos -- **negativo = a luz esta apagada**.
+	///
+	/// Mesmo sentinela do <see cref="_auraT"/>: um `bool` ao lado seria um segundo lugar dizendo a
+	/// mesma coisa. Quem o arma e cada beat <see cref="Efeito.LuzDaFusao"/>.
+	/// </summary>
+	private double _estouroDaLuz = -1;
+
+	/// <summary>
+	/// QUANTO DURA UM ESTOURO -- **derivado da folha** (soma das duracoes dos quadros / velocidade da
+	/// animacao), e nao um `0.7` escrito aqui.
+	///
+	/// Com a `.tres` de hoje da 7 quadros x 1,0 / 10,0 fps = 0,7 s, que e o `delay = 1,1,1,1,1,1,1` do
+	/// `.dmi` original (delay 1 = 1 decissegundo por quadro). Reconverter o `.dmi` com outra cadencia
+	/// acerta este numero sozinho.
+	/// </summary>
+	private double _duracaoDoEstouro;
+
+	/// <summary>
+	/// Quantos ESTOUROS esta cena ja disparou. Pra bancada -- e hoje o roteiro tem **um**, que e o
+	/// pedido do dono (*"essa animacao do fusion light so toca uma vez"*).
+	/// </summary>
+	public int EstourosDaLuzDeTeste { get; private set; }
+
+	/// <summary>Quantas luzes da fusao esta cena acendeu -- hoje 0 ou **1**. Pra bancada.</summary>
+	public int LuzesDaFusaoDeTeste => _luzDaFusao != null && IsInstanceValid(_luzDaFusao) ? 1 : 0;
+
+	/// <summary>
+	/// A LUZ ESTA DESENHANDO NESTE INSTANTE? -- lido do NODE (`Visible`) e nao do campo, pela mesma
+	/// razao do `CharacterVisual.LavagemDeTeste`: um campo diz o que foi PEDIDO.
+	///
+	/// **E ela e a prova de que a cena nao fica tapada**: entre um estouro e o seguinte isto e falso,
+	/// e e nesses segundos que o jogador ve os dois corpos.
+	/// </summary>
+	public bool LuzDaFusaoAcesaDeTeste =>
+		_luzDaFusao != null && IsInstanceValid(_luzDaFusao) && _luzDaFusao.Visible;
+
+	/// <summary>
+	/// ONDE A LUZ ESTA DESENHADA. Nula quando nao ha luz.
+	///
+	/// Pra bancada, e ela mede a unica coisa que o `TopLevel` existe pra garantir: **a luz fica no
+	/// PONTO MEDIO dos dois**, e nao em cima do corpo em que a cena nasceu.
+	/// </summary>
+	public Vector2? PosDaLuzDaFusaoDeTeste =>
+		_luzDaFusao != null && IsInstanceValid(_luzDaFusao) ? _luzDaFusao.GlobalPosition : null;
+
+	/// <summary>
+	/// O TAMANHO COM QUE A LUZ ESTA DESENHADA, em pixels de mundo. Nulo quando nao ha luz.
+	///
+	/// **Quadro da folha x escala do NODE**, e nao a constante <see cref="EscalaDaLuzDaFusao"/>
+	/// relida: a memoria deste projeto e explicita em que *"uniform escrito nao e pixel desenhado"* --
+	/// uma prova que le a constante ficaria verde no dia em que alguem esquecesse de aplica-la.
+	/// </summary>
+	public Vector2? TamanhoDaLuzDeTeste
+	{
+		get
+		{
+			if (_luzDaFusao is not { } l || !IsInstanceValid(l)) return null;
+			Vector2 quadro = l.SpriteFrames?.GetFrameTexture(l.Animation, 0)?.GetSize() ?? Vector2.Zero;
+			return quadro * l.Scale;
+		}
+	}
+
+	/// <summary>
+	/// QUE QUADRO DA FOLHA ESTA NA TELA AGORA -- **-1 quando nao ha luz**.
+	///
+	/// Pra bancada, e ela existe por um motivo medido: a `--diagfotofusao` disparava o obturador pelo
+	/// RELOGIO DELA (`beat + 0,30 s`) e a primeira rodada com janela mostrou que o clique caia no
+	/// quadro 4 do estouro do MEIO, e nao no quadro 3 do ULTIMO. Entre o `ComecarACenaDaFusao` do
+	/// servidor e o `_Ready` desta cena passam ~0,35 s de rede, e nenhum relogio de bancada adivinha
+	/// isso. Com o numero do quadro na mao o obturador dispara por FATO -- que e a mesma licao que
+	/// aquela bancada ja tinha aprendido no SSJ4 e nao tinha aplicado aqui.
+	/// </summary>
+	public int QuadroDaLuzDeTeste =>
+		_luzDaFusao != null && IsInstanceValid(_luzDaFusao) ? _luzDaFusao.Frame : -1;
+
+	/// <summary>
+	/// O TAMANHO E A AREA DE **UMA** COPIA DA FOLHA, do jeito que ela esta desenhada NESTE quadro, em
+	/// pixels de mundo. Nulo quando nao ha luz.
+	///
+	/// ============================ ELA E A REGUA DA CONTAGEM DE DISCOS ============================
+	/// A prova central que o dono pediu -- *"UM efeito em cima dos dois"* -- e medida NO PIXEL da
+	/// foto: a mancha luminosa da cena tem que ter o tamanho, a area e o centro de UMA copia desta
+	/// folha. Sem esta propriedade a bancada teria que CRAVAR "224 px de largura", e no dia em que o
+	/// `.dmi` fosse reconvertido com outra arte a prova ficaria vermelha sem ninguem ter errado --
+	/// ou, pior, ficaria verde medindo um numero que nao existe mais.
+	///
+	/// **E ela le o QUADRO QUE ESTA NA TELA, e nao o quadro 0.** Os sete quadros do `flick` tem
+	/// tamanhos muito diferentes (26 px no primeiro, 112 no quarto, 6 no ultimo -- e a `.tres` recorta
+	/// os sete de um atlas 128x128, entao `GetSize()` responde 128 pros sete). Comparar a mancha da
+	/// foto com o quadro errado era o jeito mais facil de a prova mentir nas duas direcoes.
+	///
+	/// O `Scale` sai do NODE e nao da constante <see cref="EscalaDaLuzDaFusao"/>, pela regra que a
+	/// memoria deste projeto ja pagou caro ("uniform escrito nao e pixel desenhado").
+	/// </summary>
+	public (Vector2 Tamanho, double Area)? CaixaDoDiscoDesenhadoDeTeste
+	{
+		get
+		{
+			if (_luzDaFusao is not { } l || !IsInstanceValid(l)) return null;
+			if (l.SpriteFrames?.GetFrameTexture(l.Animation, l.Frame) is not { } tex) return null;
+			if (tex.GetImage() is not { } img || img.IsEmpty()) return null;
+
+			int x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1, opacos = 0;
+			for (int y = 0; y < img.GetHeight(); y++)
+				for (int x = 0; x < img.GetWidth(); x++)
+				{
+					if (img.GetPixel(x, y).A <= 0.5f) continue;
+					opacos++;
+					if (x < x0) x0 = x;
+					if (x > x1) x1 = x;
+					if (y < y0) y0 = y;
+					if (y > y1) y1 = y;
+				}
+			if (opacos == 0) return null;
+
+			Vector2 e = l.Scale.Abs();
+			return (new Vector2((x1 - x0 + 1) * e.X, (y1 - y0 + 1) * e.Y), opacos * (double)e.X * e.Y);
+		}
+	}
+
+	/// <summary>
+	/// O PONTO MEDIO ENTRE OS DOIS CORPOS -- e o corpo da cena quando nao ha segundo.
+	///
+	/// **Nao existia linha nenhuma disto no port**: as duas luzes antigas eram centradas cada uma no
+	/// seu boneco. Com uma luz so, centra-la num deles poria o outro na beirada do clarao -- que era,
+	/// palavra por palavra, o argumento com que as duas luzes tinham sido justificadas. O ponto medio
+	/// e o que torna "uma luz" e "sobre os dois" a mesma coisa.
+	///
+	/// DESENHO NOVO: o DU nao precisa dele porque la os dois ja entraram no corpo fundido antes de a
+	/// luz acender (`MoveFusees`, `_Fusion.dm:244-250`). Aqui a cena roda ANTES da virada, com os dois
+	/// ainda no mapa -- mas **colados**, porque o convite exige (Danca e Namekuseijin) ou porque o
+	/// puxao fechou a distancia (Potara). Ver <see cref="TocarALuzDaFusao"/>.
+	/// </summary>
+	private Vector2 PontoMedioDaLuz()
+	{
+		Vector2 meu = IsInstanceValid(_alvo) ? _alvo.GlobalPosition : GlobalPosition;
+		return _alvoIrmao is { } irmao && IsInstanceValid(irmao)
+			? (meu + irmao.GlobalPosition) * 0.5f
+			: meu;
+	}
+
+	/// <summary>
+	/// DISPARA UM ESTOURO DE LUZ -- o beat <see cref="Efeito.LuzDaFusao"/>, e a cena da fusao tem UM.
+	///
+	/// ============================ E `flick`, E `flick` TOCA UMA VEZ ============================
+	/// O `obj/vfx/fusion` do DU nasce com `icon_state = ""` (nada desenhado) e o `Play()` dele e:
+	/// `flick("flick",src)` / `sleep(20)` / `flick(...)` / `sleep(5)` / `flick(...)` / `sleep(50)` /
+	/// `del src` (`Code/Misc/_vfx.dm:8-16`). No BYOND `flick` toca o state UMA vez e volta ao
+	/// `icon_state` base -- que aqui e o NADA. O port tocava a mesma animacao EM LACO os 7 segundos
+	/// inteiros, o que da dez piscadas por segundo de estrobo; isso, somado as duas copias, era o
+	/// *"fica estranho"*.
+	///
+	/// **DOS TRES `flick` DO DU SOBROU UM**, e a ordem e do dono: *"essa animacao do fusion light so
+	/// toca uma vez, e quando ela acabar a fusao ja vai estar pronta"*. A razao da divergencia esta
+	/// escrita em `Efeito.LuzDaFusao` -- no DU a luz acende DEPOIS de a fusao existir e por isso pode
+	/// piscar; aqui ela e a transicao por baixo da qual os dois viram um.
+	///
+	/// ============================ E ISTO E O QUE RESPONDE "A ARTE E OPACA" ============================
+	/// Medida: a folha so tem alfa 0 e 255 (transparencia de 1 bit, como todo `.dmi` antigo). **Onde
+	/// ela desenha, ela TAPA** -- e a escala 2 tapa os dois corpos inteiros.
+	///
+	/// **E tapar e o pedido**: *"a `FusionLight.png` aparece entre eles COBRINDO AMBOS"*. O que nao
+	/// pode e a cortina -- 7 segundos de disco por cima da unica cena do jogo que existe pra mostrar
+	/// dois lutadores virando um. Por isso o estouro dura o que a folha dura (0,7 s) e **acaba no
+	/// mesmo instante em que o corpo branco nasce** (ver o bloco do `Efeito.Assumir` no `Disparar`):
+	/// dois corpos -> clarao cobrindo -> um corpo branco -> o branco escoa.
+	///
+	/// (Baixar o alfa nao era saida: a folha nao tem anti-alias, entao um alfa global mostraria a
+	/// borda dura de 1 bit como um vulto e o clarao viraria gelatina.)
+	///
+	/// ============================ REPETIVEL MESMO ASSIM, E DE PROPOSITO ============================
+	/// O metodo era IDEMPOTENTE (`if (_luzDaFusao != null) return`) porque a luz era estado. Ele
+	/// continua repetivel embora o roteiro so o chame uma vez: quem decide quantos estouros ha e o
+	/// ROTEIRO (um beat = um `flick`), e um tocador que so soubesse acender uma vez transformaria uma
+	/// decisao de dado num limite de codigo -- e o dia em que o dono pedir os tres do DU de volta seria
+	/// um beat a mais, e nao um conserto aqui.
+	///
+	/// ============================ ARTE QUE NAO RESOLVE NAO DERRUBA A CENA ============================
+	/// `ResourceLoader.Exists` responde a pergunta certa -- o Godot RESOLVE este caminho? --, que e
+	/// diferente de "o arquivo esta na pasta": um `.tres` sem o `.png` importado carrega nulo e o
+	/// efeito some CALADO. Aqui isso vira aviso no console e cena sem luz (a fusao acontece do mesmo
+	/// jeito, porque quem funde e o servidor), e vira REPROVA na bancada.
+	/// ============================================================================================
+	/// </summary>
+	private void AcenderALuzDaFusao()
+	{
+		if (_luzDaFusao == null) NascerALuzDaFusao();
+		if (_luzDaFusao is not { } luz || !IsInstanceValid(luz)) return;
+
+		EstourosDaLuzDeTeste++;
+		_estouroDaLuz = _duracaoDoEstouro;
+
+		// DO PRIMEIRO QUADRO, SEMPRE. `Play()` num sprite que ja tocou continuaria de onde parou --
+		// e o segundo estouro comecaria no meio do desenho, sem o ponto que abre o rebentamento.
+		luz.Visible = true;
+		luz.SetFrameAndProgress(0, 0);
+		luz.Play();
+	}
+
+	/// <summary>
+	/// CRIA O NODE DA LUZ -- uma vez por cena. Ver <see cref="AcenderALuzDaFusao"/>, que e quem chama.
+	/// </summary>
+	private void NascerALuzDaFusao()
+	{
+		if (!ResourceLoader.Exists(CaminhoDaLuzDaFusao))
+		{
+			GD.PushWarning($"[cena] `{CaminhoDaLuzDaFusao}` nao resolve -- o Godot nao importou a "
+						 + "folha. A cena da fusao vai rodar sem a luz.");
+			return;
+		}
+
+		var frames = ResourceLoader.Load<SpriteFrames>(CaminhoDaLuzDaFusao);
+		if (frames == null || frames.GetAnimationNames().Length == 0)
+		{
+			GD.PushWarning($"[cena] `{CaminhoDaLuzDaFusao}` carregou sem animacao nenhuma.");
+			return;
+		}
+
+		// O NOME DA ANIMACAO SAI DA FOLHA, e nao um `"flick"` escrito aqui -- mesma regra do
+		// `RomperACarapaca` e do `NascerPedra`: reconverter o `.dmi` com outro nome deixaria a luz
+		// muda e nada no codigo diria por que.
+		string anim = frames.GetAnimationNames()[0];
+
+		_duracaoDoEstouro = DuracaoDaAnimacao(frames, anim);
+		if (_duracaoDoEstouro <= 0)
+		{
+			// SEM DURACAO NAO HA ESTOURO: velocidade zero na folha faria o `flick` nunca terminar, e a
+			// luz ficaria acesa a cena inteira -- que e justamente o defeito que este passe corrigiu.
+			GD.PushWarning($"[cena] `{CaminhoDaLuzDaFusao}` tem duracao ZERO (velocidade da animacao "
+						 + $"`{anim}` e {frames.GetAnimationSpeed(anim)}). A cena vai rodar sem a luz.");
+			return;
+		}
+
+		_luzDaFusao = new AnimatedSprite2D
+		{
+			Name = "LuzDaFusao",
+			SpriteFrames = frames,
+			Animation = anim,
+			// CENTRADA NO PONTO MEDIO, sem deslocamento -- e e o `CenterIcon(O)` do DU
+			// (`Skills.dm:1778-1784` -> `pixel_x = -((128-32)*0,5) = -48` nos dois eixos). Qualquer
+			// ancoragem "pelos pes" jogaria tres quartos da luz pra debaixo do chao: ela nao veste
+			// corpo nenhum (isso e a silhueta do bio) -- ela ENVOLVE os dois.
+			Centered = true,
+			Scale = new Vector2(EscalaDaLuzDaFusao, EscalaDaLuzDaFusao),
+			ZIndex = ZDaLuzDaFusao,
+			ZAsRelative = false,
+			// `TopLevel` porque ela NAO mora no corpo da cena: ela mora no ponto medio dos dois, e
+			// este node persegue o `_alvo` todo quadro. Pendurada nele sem `TopLevel`, a luz seria
+			// arrastada pelo corpo do dono.
+			TopLevel = true,
+			TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+			// NASCE APAGADA: quem a acende e o estouro, e nao o nascimento. Sem isto o primeiro quadro
+			// da cena teria o disco parado no ar antes de o `flick` comecar.
+			Visible = false,
+		};
+		AddChild(_luzDaFusao);
+		_luzDaFusao.GlobalPosition = PontoMedioDaLuz();
+	}
+
+	/// <summary>
+	/// QUANTO TEMPO UM CICLO DESTA ANIMACAO LEVA, em segundos -- soma das duracoes dos quadros
+	/// dividida pela velocidade. Zero quando a folha nao tem como avancar (velocidade &lt;= 0).
+	/// </summary>
+	private static double DuracaoDaAnimacao(SpriteFrames f, string anim)
+	{
+		double vel = f.GetAnimationSpeed(anim);
+		if (vel <= 0) return 0;
+
+		double soma = 0;
+		int n = f.GetFrameCount(anim);
+		for (int i = 0; i < n; i++) soma += f.GetFrameDuration(anim, i);
+		return soma / vel;
+	}
+
+	/// <summary>
+	/// A LUZ FICA NO PONTO MEDIO E O ESTOURO ACABA -- chamado do <see cref="_Process"/>.
+	///
+	/// ============================ O PONTO MEDIO E RECALCULADO TODO QUADRO ============================
+	/// Os dois corpos estao presos pela cena (`CenaSegundos` + `Stun`), mas "preso" nao e "cravado":
+	/// empurrao, agarrao e a propria virada mexem posicao. E na VIRADA o passageiro deixa a zona (o
+	/// servidor o manda pro selo) -- dali em diante o ponto medio vira o corpo do dono sozinho, que e
+	/// exatamente onde a fusao acabou de nascer. Nao ha caso especial: o `IsInstanceValid` do
+	/// <see cref="PontoMedioDaLuz"/> e a mesma pergunta que ja governa o `_alvoIrmao` inteiro.
+	///
+	/// ============================ E OS DOIS **JA CHEGARAM COLADOS**, POR FORA DESTA CENA ============================
+	/// Aqui morava a divida de que o port *"nao aproxima ninguem"*. **Ela foi paga, e do lado certo**:
+	/// aproximar e trabalho de SERVIDOR (quem escreve `Pos`), e nao de cinematica. O
+	/// `GameServer.TickDoPuxaoDeFusao` porta o `step_to` do `Potara_Fusion.dm:124-129` pelo mesmo cano
+	/// que o arremesso e o feixe ja usam (o bit "o servidor esta dirigindo este corpo" + a correcao de
+	/// posicao), e a cena **so comeca quando eles se encostam** -- que e o pedido do dono.
+	///
+	/// Entao quando este metodo roda os dois estao a no maximo um tile
+	/// (<see cref="Jandirus.Core.Social.Fusao.TilesColados"/>), e o ponto medio esta em cima dos dois
+	/// de qualquer jeito. Ele continua sendo recalculado por quadro pela razao do paragrafo acima (a
+	/// virada tira o passageiro da zona), e nao por causa de distancia.
+	/// ==========================================================================================================
+	/// </summary>
+	private void TocarALuzDaFusao(double delta)
+	{
+		if (_luzDaFusao is not { } luz || !IsInstanceValid(luz)) return;
+
+		luz.GlobalPosition = PontoMedioDaLuz();
+
+		if (_estouroDaLuz < 0) return;
+
+		_estouroDaLuz -= delta;
+		if (_estouroDaLuz > 0) return;
+
+		TerminarOEstouroDaLuz();
+	}
+
+	/// <summary>
+	/// APAGA O ESTOURO EM CURSO -- o `flick` do BYOND voltando ao `icon_state` base, que neste objeto
+	/// e `""` (nada).
+	///
+	/// DOIS CHAMADORES, E ELES SAO AS DUAS METADES DA MESMA REGRA: o <see cref="TocarALuzDaFusao"/>
+	/// chama quando o PRAZO da folha escoa, e o beat <see cref="Efeito.Assumir"/> chama porque o fim da
+	/// animacao **e** o instante da virada (ver o bloco la). Um metodo e nao duas copias porque as duas
+	/// tem que apagar exatamente as mesmas tres coisas -- e a que ficasse pra tras deixaria a animacao
+	/// correndo por baixo de um node invisivel.
+	///
+	/// O `Stop` existe pra o proximo estouro nao achar a animacao correndo; o
+	/// `SetFrameAndProgress(0,0)` do <see cref="AcenderALuzDaFusao"/> cuida do resto.
+	/// </summary>
+	private void TerminarOEstouroDaLuz()
+	{
+		if (_estouroDaLuz < 0) return;
+		_estouroDaLuz = -1;
+		if (_luzDaFusao is not { } luz || !IsInstanceValid(luz)) return;
+		luz.Stop();
+		luz.Visible = false;
+	}
+
+	/// <summary>
+	/// APAGA A LUZ NA MARRA -- o quarto emprestimo que o <see cref="Soltar"/> devolve, e pelo mesmo
+	/// motivo dos tres primeiros: **em TODO caminho de saida, e nao so no bom**.
+	///
+	/// Sem ele, uma cena de fusao interrompida (o teto, a morte, a troca de zona, o logout) deixaria o
+	/// clarao pendurado no mapa. No caso normal o `QueueFree` do node levaria a luz junto -- mas ela e
+	/// `TopLevel`, e o gesto explicito e o que garante que ela nao sobreviva a cena em nenhum dos
+	/// quatro fins.
+	/// </summary>
+	private void ApagarALuzDaFusao()
+	{
+		if (_luzDaFusao != null && IsInstanceValid(_luzDaFusao)) _luzDaFusao.QueueFree();
+		_luzDaFusao = null;
+		_estouroDaLuz = -1;
 	}
 
 	/// <summary>
@@ -1562,6 +2036,13 @@ public partial class Transformacao : Node2D
 
 		if (b.Faz.HasFlag(Efeito.AuraBase)) AcenderAuraBase();
 
+		// A LUZ DA FUSAO -- e ela e a EXCECAO da familia: o piscar, a silhueta e a aura base sao ESTADO
+		// (o beat arma uma vez e o tocador segura). Esta e PULSO: o beat e um `flick`
+		// (`obj/vfx/fusion.Play()`, `_vfx.dm:8-16`), e a cena da fusao tem UM -- ver `Efeito.LuzDaFusao`
+		// sobre por que dos tres do DU sobrou um. Quem apaga o estouro no prazo e o `TocarALuzDaFusao`;
+		// quem tira o node em todo caminho de saida e o `Soltar`.
+		if (b.Faz.HasFlag(Efeito.LuzDaFusao)) AcenderALuzDaFusao();
+
 		// ============================ A SILHUETA DE LUZ -- O BEAT SO ACENDE ============================
 		// Irma do piscar e do emprestimo da aura base: quem apaga e o `Assumir` (e o `Soltar`, pra cena
 		// que morrer no meio). Ver `Efeito.SilhuetaDoCorpo`, que explica por que ela e ESTADO -- e por
@@ -1665,6 +2146,43 @@ public partial class Transformacao : Node2D
 			&& _alvo.GetNodeOrNull<CharacterVisual>("Visual") is { } vb)
 			vb.Banhar(Aura.CorDaChamaDe(_forma, CorPessoalDoAlvo), Cinematicas.SegundosDoBanho);
 
+		// ============================ A SILHUETA BRANCA -- O MESMO CANAL, CHEIO E DEVAGAR ============================
+		// *"o personagem da fusao brilhando, corpo completamente BRANCO, so a silhueta"*. E o `Banhar`
+		// do banho de cor com os tres numeros trocados, e cada troca e um pedaco do pedido: a cor e
+		// BRANCA (e nao derivada de forma, que esta cena nao tem), a lavagem e CHEIA (1,0 -- "so a
+		// silhueta" e literalmente o boneco chapado) e o prazo e **o que sobra da cena**.
+		//
+		// ============================ O PRAZO NAO E UM NUMERO ESCRITO ============================
+		// `_cena.Segundos - _t` e a cauda que este beat tem pela frente. Cravar "3,0 s" aqui seria uma
+		// segunda verdade sobre o fim da cena: mudar o ultimo beat do roteiro deixaria o branco sumindo
+		// antes da cena acabar (um corpo normal parado por um segundo) ou sobrando depois dela (o
+		// boneco branco andando). Derivado, ele acompanha -- e a promessa *"a cena acaba com a fusao
+		// feita"* passa a ser verdade por construcao.
+		//
+		// O PISO DE 0,1 s existe pra um beat de `SilhuetaBranca` escrito no ULTIMO instante de uma cena
+		// (que a bancada reprova por outro caminho): sem ele o `Banhar` receberia zero, e zero num
+		// relogio de escoamento e o branco desenhado por um quadro e apagado no seguinte -- um estalo,
+		// que e o oposto de *"somem lentamente"*.
+		// ====================================================================================================
+		if (b.Faz.HasFlag(Efeito.SilhuetaBranca)
+			&& _alvo.GetNodeOrNull<CharacterVisual>("Visual") is { } vbr)
+		{
+			double escoa = Math.Max(0.1, _cena.Segundos - _t);
+			vbr.Banhar(Colors.White, escoa, lavagem: 1f);
+
+			// AQUI HAVIA O ESCOAMENTO DA LUZ DA FUSAO (`_luzEscoando = escoa`), e ele foi DELETADO com
+			// o resto do desenho antigo. A luz deixou de ser uma cortina acesa a cena inteira e virou
+			// UM estouro de 0,7 s (o `flick` -- ver `AcenderALuzDaFusao`) que **acaba exatamente neste
+			// beat** (o `TerminarOEstouroDaLuz`, logo acima, o apaga por construcao): quando o branco
+			// acende, ja nao ha nada aceso pra desbotar neste instante. Um alfa
+			// escoando num sprite ja invisivel seria codigo que nao faz nada -- e "codigo substituido
+			// se DELETA" e regra da casa.
+			//
+			// *"o branco E A CLARIDADE somem lentamente"* continua sendo verdade e continua sendo
+			// medido: quem escoa e este `Banhar` (o corpo branco) junto com o `Efeito.ClaraoDeTela`
+			// deste mesmo beat.
+		}
+
 		// ============================ O PISCAR DE CABELO: O BEAT SO ARMA ============================
 		// Era `_piscando = !_piscando` aqui -- uma troca por beat. Virou um interruptor porque a cena
 		// que ele serve tem 25,0 s e os beats acabavam aos 2,9 (ver `Efeito.PiscaCabelo` no Core, que e
@@ -1688,7 +2206,27 @@ public partial class Transformacao : Node2D
 		}
 
 		// O INSTANTE EM QUE A FORMA FICA. Ver o cabecalho da classe.
-		if (b.Faz.HasFlag(Efeito.Assumir)) Assumir();
+		if (b.Faz.HasFlag(Efeito.Assumir))
+		{
+			// ============================ O ESTOURO DA FUSAO ACABA **AQUI**, POR CONSTRUCAO ============================
+			// O pedido do dono amarra as duas coisas num instante so: *"essa animacao do fusion light so
+			// toca uma vez, e QUANDO ELA ACABAR a fusao ja vai estar pronta com a fusao brilhando
+			// branca"*. O roteiro ja poe a virada em `Cinematicas.SegundosDaLuzDaFusao` -- a duracao da
+			// folha --, entao no papel os dois instantes coincidem.
+			//
+			// **No papel nao basta**, e o motivo e de QUADRO: o estouro comeca no primeiro `_Process` em
+			// que o beat zero vence, ou seja alguns milissegundos DEPOIS de 0,0 -- e ele acaba com esse
+			// mesmo atraso, um quadro depois da virada. Um quadro em que o disco OPACO fica por cima do
+			// corpo branco que acabou de nascer e exatamente o que a cena existe pra nao fazer, e ele
+			// nao aparece em bancada que amostre pelo relogio.
+			//
+			// Zerar aqui e o mesmo gesto do `flick` do BYOND, que devolve o `icon_state` base (`""` =
+			// nada) -- so que ancorado no FATO em vez de no prazo. Nas 39 cenas que nao acendem a luz
+			// isto e um `if` contra nulo e mais nada.
+			// ======================================================================================================
+			TerminarOEstouroDaLuz();
+			Assumir();
+		}
 
 		if (b.Som.Length > 0) Som(b.Som);
 
@@ -2467,6 +3005,24 @@ public partial class Transformacao : Node2D
 			.SetTrans(Tween.TransitionType.Expo).SetEase(Tween.EaseType.Out);
 	}
 
+	/// <summary>
+	/// QUANTO DO CLARAO DE TELA AINDA ESTA PINTADO -- o alfa do `ColorRect`, 0 quando ja escoou.
+	///
+	/// ============================ ELE E LIDO DO NODE, E ISSO E O PONTO ============================
+	/// O <see cref="ClaroesDeTeste"/> conta quantos clarões DISPARARAM; esta diz quanto de tela ainda
+	/// esta coberto NESTE quadro. Sao perguntas diferentes e a segunda so passou a existir quando a
+	/// bancada de FOTO precisou dela: o clarao e um `ColorRect` de tela cheia na cor da AURA
+	/// (`_corAura.Lerp(White, 0,7)`) e a fusao nao tem forma, entao ele sai na cor da
+	/// <see cref="Cinematicas.CorDaFuria"/> -- **vermelho**. Medir "o corpo esta branco" com meia tela
+	/// de vermelho por cima mede o clarao, e nao a lavagem: a `--diagfotofusao` leu 0,0% de branco num
+	/// quadro em que o boneco estava com a lavagem em 0,99.
+	///
+	/// Com isto o obturador espera por FATO (o clarao escoou) em vez de por prazo, que e a mesma
+	/// disciplina do resto daquela bancada.
+	/// </summary>
+	public float ClaraoNaTelaDeTeste =>
+		_telaDoClarao != null && IsInstanceValid(_telaDoClarao) ? _telaDoClarao.Color.A : 0f;
+
 	/// <summary>Quantas vezes cada efeito novo disparou nesta cena. Pra bancada.</summary>
 	public int AneisDeTeste { get; private set; }
 
@@ -2532,6 +3088,10 @@ public partial class Transformacao : Node2D
 		// ======================================================================================================
 		"ssg" => Trilha.KiDivino,
 		"ssb" => Trilha.KiDivinoAzul,
+
+		// O SOM DA FUSAO, e ele e o unico que o `Fusion.dm` toca -- ver `Trilha.Fusao`. Terceiro do
+		// mesmo tipo: estava importado e sem um leitor no repositorio inteiro.
+		"fusao" => Trilha.Fusao,
 
 		_ => null,
 	};

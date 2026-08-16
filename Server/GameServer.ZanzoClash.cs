@@ -322,6 +322,10 @@ public sealed partial class GameServer
 		if (a.Livro?.Sabe(PathDoZanzoken) != true || d.Livro?.Sabe(PathDoZanzoken) != true) return false;
 
 		if (_emEmbate.ContainsKey(a.Id) || _emEmbate.ContainsKey(d.Id)) return false;
+		// NEM QUEM ESTA DANCANDO: o quick time event da fusao usa o MESMO canal de letra, e dois
+		// donos pra mesma tecla fariam a letra da danca pontuar no embate (ou o contrario). Ver
+		// `TeclaDeQualquerEmbate`.
+		if (EstaDancando(a.Id) || EstaDancando(d.Id)) return false;
 		if (a.Zone.Hash != d.Zone.Hash) return false;
 
 		// `!KO && !M.KO && !dead && !M.dead && move && M.move` -- `Deitado` e o `!move` daqui:

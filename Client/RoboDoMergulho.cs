@@ -36,8 +36,8 @@ namespace Jandirus.Client;
 ///   5  o soco no corpo real NAO ondula, e e SECO            | `DefeitoSocoQueOndula`: 187 quadros de onda e a
 ///                                                           | volta atrasada pra 1845 ms
 ///   6  a mente nao tem borda: 500 tiles sem esbarrar        | `Colisao.SemBorda = false`: para na celula 99
-///   7  o reflexo nao some pra sempre (a coleira)            | a linha da coleira comentada: ele fica a 70 tiles
-///                                                           | e nao volta (as TRES provas vermelhas)
+///   7  o reflexo nao some pra sempre (a coleira)            | a linha da coleira comentada: 2,5 s depois ele
+///                                                           | continua a 69 tiles (as TRES provas vermelhas)
 ///   8  o pedaco descarrega e a conta nao cresce             | `FolgaDeDescarte` 64 -> 4000: 20 pedacos vivos
 ///                                                           | no fim contra 6, e zero "soltei" no log
 ///
@@ -50,9 +50,10 @@ namespace Jandirus.Client;
 /// As duas ficaram VERDES na primeira tentativa, com o defeito dentro, e as duas por medir a coisa
 /// errada -- que e o cego registrado desta casa:
 ///
-///   * a 7 contava "o reflexo se moveu mais de 3 tiles entre duas amostras", e um corpo correndo a 7
-///     tiles/s faz isso sozinho. So a TRANSICAO (longe numa amostra, colado na seguinte) e coisa que
-///     unicamente a coleira produz;
+///   * a 7 media uma CORRIDA -- fugir a pe ate o reflexo ficar pra tras. Ela e flaky pelo motivo que o
+///     sistema existe (os dois tem a mesma velocidade) e contava qualquer deslocamento de 3 tiles como
+///     reaparecimento, o que um corpo correndo faz sozinho. Hoje a bancada CRIA a distancia e mede o
+///     que a producao faz com ela;
 ///   * a 8 lia `GetNodeOrNull("DimensaoMental")` e caia num node CONGELADO do cache de zona (ver
 ///     `World.PedacosVivosDeTeste`). Ela devolvia 6 com o descarte desligado e 6 com ele ligado.
 ///
@@ -98,12 +99,6 @@ public partial class RoboDoMergulho : Node2D
 	/// </summary>
 	private const int TilesDeFuga = 500;
 
-	/// <summary>
-	/// Quantos tiles a familia 7 corre COM o reflexo atras. Ver a familia: a coleira dispara a cada 40
-	/// tiles de vantagem, entao 150 ja produzem varias disparadas -- e cada tile aqui e disputado a
-	/// soco, entao alongar isto so soma minutos de briga a uma medida que ja fechou.
-	/// </summary>
-	private const int TilesDaCorridaComOReflexo = 150;
 
 	/// <summary>
 	/// O BP que a bancada empurra, e ele e sobre TEMPO e nao sobre poder: velocidade sai do `Espeed`
@@ -229,7 +224,8 @@ public partial class RoboDoMergulho : Node2D
 			if (Roda(3)) await AIdaOndula();
 			if (Roda(4)) await AVoltaPorVitoriaOndula();
 			if (Roda(5)) await OSocoNoCorpoRealESeco();
-			if (Roda(6) || Roda(7) || Roda(8)) await AFugaDeQuinhentosTiles();
+			if (Roda(6) || Roda(8)) await AFugaDeQuinhentosTiles();
+			if (Roda(7)) await AColeira();
 		}
 		catch (Exception e)
 		{
@@ -454,13 +450,25 @@ public partial class RoboDoMergulho : Node2D
 				!OndulouNoDefeito() && seca.MsAteViajar >= 0 && seca.MsAteViajar < DimensaoMental.MsDaOnda * 0.7,
 				seca.Contar("defeito"));
 
-		if (seca.Diferenca >= 0 && ida.Diferenca >= 0)
+		// ============================ O DEFEITO TEM DOIS DESFECHOS, E OS DOIS SAO A MESMA FRASE ============================
+		// Ou sobrou algum quadro na zona de origem (e ele esta PARADO, contra os ~30% da onda), ou nao
+		// sobrou nenhum -- a viagem foi tao rapida que nao houve o que fotografar. O segundo caso e o
+		// mais comum (17 ms medidos) e ele nao e "nao mediu": e a forma mais forte da mesma afirmacao,
+		// e por isso ele passa. Dizer "sem medida" aqui seria a bancada se calando bem no ponto em que
+		// o defeito e mais obvio.
+		// ==============================================================================================================
+		if (ida.Diferenca < 0)
+			NaoMediu("[defeito] a tela de origem fica parada ate a viagem", "sem quadro -- rode com janela");
+		else if (seca.Diferenca >= 0)
 			Afirmar("[defeito] ...e a TELA DE ORIGEM fica parada ate a viagem "
 					+ $"({seca.Diferenca * 100:0.0}% dos pixels contra {ida.Diferenca * 100:0.0}% com a onda) "
 					+ "-- e por isso a familia do pixel nao passa verde com o shader morto",
 					seca.Diferenca < ida.Diferenca / 3, $"{seca.Diferenca:0.000} vs {ida.Diferenca:0.000}");
 		else
-			NaoMediu("[defeito] a tela de origem fica parada ate a viagem", "sem quadro -- rode com janela");
+			Afirmar("[defeito] ...e nao sobrou UM QUADRO SEQUER na zona de origem pra ondular "
+					+ $"(a viagem levou {seca.MsAteViajar:0} ms, contra {ida.Diferenca * 100:0.0}% da tela "
+					+ "se movendo por 1,5 s com a onda)",
+					seca.MsAteViajar >= 0 && seca.MsAteViajar < 200, $"{seca.MsAteViajar:0} ms");
 	}
 
 	// =====================================================================
@@ -560,28 +568,28 @@ public partial class RoboDoMergulho : Node2D
 	}
 
 	// =====================================================================
-	// 6, 7 e 8. A FUGA DE QUINHENTOS TILES
+	// 6 e 8. A FUGA DE QUINHENTOS TILES
 	// =====================================================================
 	/// <summary>
 	/// *"faca tb o MAPA DA MENTE ser INFINITO SEM BORDAS e CARREGAR POR CHUNK [...] as vezes o NPC VOA
 	/// PRA FORA e ele TELEPORTA DE VOLTA e fica mt estranho e perde a imersao"*.
 	///
-	/// ============================ UMA CAMINHADA, TRES FAMILIAS -- E ELAS PRECISAM ESTAR JUNTAS ============================
-	/// Nao e economia de tempo: e a unica forma de a familia 7 significar alguma coisa. A coleira so
-	/// tem assunto porque a parede saiu, e o reflexo so fica pra tras porque ha pra onde fugir. Medir
-	/// "o reflexo volta" num quarto fechado seria medir a parede.
+	/// ============================ A MENTE FICA VAZIA, E ISSO E O QUE FAZ A MEDIDA VALER ============================
+	/// A primeira versao andava com o reflexo atras e contava os recuos como "teleporte". Foram 62 num
+	/// unico percurso, e nenhum deles era teleporte nenhum: era o reflexo alcancando o fugitivo e
+	/// batendo. Recuar levando um golpe e o `Empurrao` FUNCIONANDO -- uma bancada que chama isso de
+	/// teleporte reprova o sistema certo, e ainda por cima com uma foto convincente.
+	///
+	/// A borda e do MAPA. Entao aqui a mente fica vazia (`DesfazerOReflexoNoTeste`, o mesmo caminho de
+	/// quando um visitante chega) e a coleira ganhou familia propria (<see cref="AColeira"/>).
+	/// ==============================================================================================================
 	///
 	/// A caminhada anota, a cada amostra: onde o corpo esta (progresso e SALTO PRA TRAS, que e o
-	/// "teleporta de volta" do dono), onde o reflexo esta (a coleira), e quantos pedacos estao vivos.
-	///
-	/// **A BANCADA CURA QUEM FOGE, e nao desliga o reflexo.** O que estas familias medem e a borda, a
-	/// coleira e o pedaco; um nocaute no meio da fuga mediria a briga -- e o reflexo copia a ficha do
-	/// dono, entao ele bate igual. Curar e o minimo que mantem a cena de pe sem apagar nada dela.
-	/// ==============================================================================================================
+	/// "teleporta de volta" do dono) e quantos pedacos estao vivos na zona ATUAL.
 	/// </summary>
 	private async Task AFugaDeQuinhentosTiles()
 	{
-		GD.Print("[mergulho] --- 6/7/8. quinhentos tiles pra fora: sem borda, com coleira, por pedaco ---");
+		GD.Print("[mergulho] --- 6/8. quinhentos tiles pra fora: sem borda, por pedaco ---");
 
 		int eu = C?.LocalId ?? 0;
 		if (!await EntrarNaMentePeloGesto()) return;
@@ -627,32 +635,7 @@ public partial class RoboDoMergulho : Node2D
 		Nota($"memoria estatica: {real.MemoriaInicial / 1024 / 1024:0} MB no inicio, "
 			 + $"{real.MemoriaFinal / 1024 / 1024:0} MB no fim da fuga");
 
-		// ---- 7. O REFLEXO NAO SOME PRA SEMPRE -- outra entrada, com ele vivo.
-		//
-		// A CAMINHADA AQUI E CURTA de proposito: a coleira dispara a cada 40 tiles de vantagem, e o que
-		// se quer sao varias disparadas -- nao distancia. Andar 500 aqui so somaria minutos de briga a
-		// uma medida que ja fechou no primeiro terco.
 		await SairDaMenteSeEstiver();
-		if (!await EntrarNaMentePeloGesto()) return;
-
-		Caminhada fuga = await Caminhar("a coleira, com o reflexo vivo", TilesDaCorridaComOReflexo);
-
-		if (fuga.AmostrasComReflexo == 0)
-			NaoMediu("7. a coleira devolve o reflexo", "nao havia reflexo vivo durante a fuga");
-		else
-		{
-			float raio = DimensaoMental.RaioDaColeira / ZoneCollision.TileSize;
-			Afirmar($"o reflexo REAPAREU na frente ao ficar pra tras ({fuga.SaltosDoReflexo} vez(es) ele "
-					+ $"estava perto do raio numa amostra e a menos de {DistanciaDeReaparecer:0} tiles na "
-					+ "seguinte -- nenhuma corrida faz isso)", fuga.SaltosDoReflexo > 0, fuga.Contar());
-			Afirmar($"...e ele nunca virou um ponto no horizonte: a maior distancia foi "
-					+ $"{fuga.MaiorDistanciaDoReflexo:0} tiles, contra a coleira de {raio:0}",
-					fuga.MaiorDistanciaDoReflexo < raio * 1.6, fuga.Contar());
-			Afirmar("...e no fim da fuga ele estava perto de novo (o combate mental ainda pode fechar)",
-					fuga.DistanciaFinalDoReflexo < raio, fuga.Contar());
-			Nota("os saltos PRA TRAS desta caminhada sao knockback do reflexo, e nao teleporte -- "
-				 + $"({fuga.SaltosPraTras} deles). Quem mede teleporte e a familia 6, com a mente vazia.");
-		}
 
 		// ---- DEFEITO da familia 6: o quarto fechado de volta.
 		//
@@ -683,6 +666,95 @@ public partial class RoboDoMergulho : Node2D
 	}
 
 	// =====================================================================
+	// 7. A COLEIRA -- O QUE SUBSTITUIU A PAREDE
+	// =====================================================================
+	/// <summary>
+	/// *"o reflexo nao some pra sempre"*.
+	///
+	/// ============================ A PAREDE SEGURAVA VOCE; NADA SEGURAVA ELE ============================
+	/// O reflexo copia a sua ficha (`EspelharODono`) e portanto a sua velocidade: **perseguidor com a
+	/// mesma velocidade nunca alcanca quem foge**. No quarto de 100 tiles isso nunca importou -- a
+	/// parede devolvia voce. Num plano sem fim, quem nao quiser lutar foge pra sempre e a sessao mental
+	/// deixa de ter saida por VITORIA. A coleira (`DimensaoMental.RaioDaColeira`, 40 tiles) e a resposta.
+	///
+	/// ============================ POR QUE ELA NAO MEDE UMA CORRIDA ============================
+	/// Porque a corrida e FLAKY pelo mesmo motivo que o sistema existe. Duas rodadas identicas desta
+	/// bancada deram 40 tiles de vantagem (a coleira disparou seis vezes) e 16 tiles (ela nunca
+	/// disparou, e a familia ficou vermelha sem defeito nenhum): a vantagem so nasce quando o reflexo
+	/// para pra bater, e o knockback do golpe a devolve.
+	///
+	/// Entao a bancada CRIA a distancia (`AfastarOReflexoNoTeste`, 60 tiles atras) e mede o que a
+	/// producao faz com ela -- `TicarUmCorpo` pergunta `FugiuDoDono` e chama `ReaparecerNaFrente`. A
+	/// janela de 2 s separa as duas explicacoes possiveis sem ambiguidade: a coleira devolve em um
+	/// tique; um perseguidor comum levaria uns nove segundos pra cobrir 60 tiles -- e nunca cobriria,
+	/// porque o dono continua correndo durante a medida.
+	/// ======================================================================================
+	/// </summary>
+	private async Task AColeira()
+	{
+		GD.Print("[mergulho] --- 7. a coleira: o reflexo que ficou pra tras reaparece na frente ---");
+
+		int eu = C?.LocalId ?? 0;
+		if (!await EntrarNaMentePeloGesto()) return;
+		if (S?.PosDoReflexoNoTeste(eu) == null) { Afirmar("ha um reflexo vivo pra medir", false); return; }
+
+		// O DONO CORRE DURANTE A MEDIDA -- e o que garante que quem voltar voltou pela coleira e nao
+		// pela perseguicao (um perseguidor de mesma velocidade nao encosta em quem esta correndo).
+		S?.DePeNoTeste(eu);
+		if (World.Instancia?.PosicaoLocal is not { } daqui) { Afirmar("ha posicao local", false); return; }
+		Input.ActionPress("run");
+		World.Instancia.IrAteDeTeste(new Vec2(daqui.X + 200 * ZoneCollision.TileSize, daqui.Y));
+		await Esperar(2.0);
+
+		float raio = DimensaoMental.RaioDaColeira / ZoneCollision.TileSize;
+		Afirmar($"o reflexo empurrado pra {TilesDoEmpurrao} tiles atras (a coleira e {raio:0})",
+				S?.AfastarOReflexoNoTeste(eu, TilesDoEmpurrao) ?? false);
+
+		double t0 = _relogio;
+		double msAteVoltar = -1;
+		float longeQuandoVoltou = 0, distAgora = TilesDoEmpurrao;
+		bool naFrente = false;
+
+		while (_relogio - t0 < 2.5 && !_fechou)
+		{
+			await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+			if (S?.PosDoReflexoNoTeste(eu) is not { } r) break;
+			if (World.Instancia?.PosicaoLocal is not { } euAgora) break;
+
+			distAgora = (float)Math.Sqrt(Math.Pow(r.X - euAgora.X, 2) + Math.Pow(r.Y - euAgora.Y, 2))
+						/ ZoneCollision.TileSize;
+			if (msAteVoltar < 0 && distAgora < DistanciaDeReaparecer)
+			{
+				msAteVoltar = (_relogio - t0) * 1000;
+				longeQuandoVoltou = distAgora;
+				// NA FRENTE, e nao nas costas: o dono corre pro LESTE, e reaparecer atras seria a
+				// perseguicao recomecando do zero -- a coleira dispararia de novo pra sempre.
+				naFrente = r.X > euAgora.X;
+			}
+		}
+
+		Input.ActionRelease("run");
+		World.Instancia?.PararDeTeste();
+
+		Afirmar($"o reflexo VOLTOU sozinho em {msAteVoltar:0} ms (a {longeQuandoVoltou:0.0} tiles) -- "
+				+ "e a producao que o traz, nao a bancada",
+				msAteVoltar >= 0, $"depois de 2,5 s ele ainda estava a {distAgora:0} tiles");
+		Afirmar("...e VOLTOU NA FRENTE de quem corre (cortando o caminho, nao nas costas)",
+				naFrente, $"distancia final {distAgora:0.0} tiles");
+		Afirmar($"...e a volta foi rapida demais pra ser perseguicao: {TilesDoEmpurrao} tiles na "
+				+ "velocidade dele levariam uns 9 s, e ele nem estaria correndo atras de um corpo parado",
+				msAteVoltar >= 0 && msAteVoltar < 1000, $"{msAteVoltar:0} ms");
+
+		await SairDaMenteSeEstiver();
+	}
+
+	/// <summary>
+	/// Quantos tiles atras a bancada joga o reflexo. Sessenta passa dos 40 da coleira com folga -- e a
+	/// folga importa: a 41 um passo do dono ja poderia desarmar o gatilho antes do tique.
+	/// </summary>
+	private const float TilesDoEmpurrao = 60f;
+
+	// =====================================================================
 	// A CAMINHADA, MEDIDA
 	// =====================================================================
 	private sealed class Caminhada
@@ -691,10 +763,6 @@ public partial class RoboDoMergulho : Node2D
 		public int CelulaFinal;
 		public int AmostrasParado;
 		public int SaltosPraTras;
-		public int AmostrasComReflexo;
-		public int SaltosDoReflexo;
-		public float MaiorDistanciaDoReflexo;
-		public float DistanciaFinalDoReflexo;
 		public int PicoDePedacos, PedacosNoFim;
 		public ulong MemoriaInicial, MemoriaFinal;
 		public bool Nocauteado;
@@ -703,9 +771,7 @@ public partial class RoboDoMergulho : Node2D
 		public string Contar() =>
 			$"andou {TilesAndados:0} tiles em {Segundos:0} s ({TilesAndados / Math.Max(Segundos, 0.001):0.0} "
 			+ $"tiles/s) (celula {CelulaFinal}); parado em {AmostrasParado} amostra(s); "
-			+ $"{SaltosPraTras} salto(s) pra tras; reflexo: {SaltosDoReflexo} reaparecimento(s), "
-			+ $"maior {MaiorDistanciaDoReflexo:0} tiles, fim {DistanciaFinalDoReflexo:0}; "
-			+ $"pedacos pico {PicoDePedacos} fim {PedacosNoFim}"
+			+ $"{SaltosPraTras} salto(s) pra tras; pedacos pico {PicoDePedacos} fim {PedacosNoFim}"
 			+ (Nocauteado ? "; O CORPO CAIU no meio" : "");
 	}
 
@@ -749,6 +815,12 @@ public partial class RoboDoMergulho : Node2D
 		var c = new Caminhada { MemoriaInicial = OS.GetStaticMemoryUsage() };
 		int eu = C?.LocalId ?? 0;
 
+		// DE PE ANTES DE COMECAR -- ver `DePeNoTeste`: as familias anteriores derrubaram este corpo, e
+		// caido ele nao anda (o `LocalPlayer` desliga o piloto automatico de quem esta no chao). Sem
+		// esta linha a caminhada da borda andou 2 tiles e a bancada chamou isso de parede.
+		S?.DePeNoTeste(eu);
+		await Quadros(3);
+
 		if (World.Instancia?.PosicaoLocal is not { } inicio) { Nota($"{rotulo}: sem posicao local"); return c; }
 
 		float alvoX = inicio.X + tiles * ZoneCollision.TileSize;
@@ -756,7 +828,6 @@ public partial class RoboDoMergulho : Node2D
 		Nota($"caminhada ({rotulo}): de x={inicio.X:0} ate x={alvoX:0} ({tiles} tiles a leste)");
 
 		Vector2 anterior = inicio;
-		Vec2? reflexoAntes = S?.PosDoReflexoNoTeste(eu);
 		double comecou = _relogio;
 		double prazo = _relogio + PrazoDaCaminhada;
 		double proximaCura = _relogio;
@@ -780,32 +851,6 @@ public partial class RoboDoMergulho : Node2D
 			if (Math.Abs(d) < 1f && !chegou) c.AmostrasParado++;
 			anterior = agora;
 
-			// O REFLEXO -- lido no SERVIDOR: o corpo desenhado interpola, e o que se quer ver e o salto.
-			if (S?.PosDoReflexoNoTeste(eu) is { } r)
-			{
-				c.AmostrasComReflexo++;
-				float dist = (float)Math.Sqrt(Math.Pow(r.X - agora.X, 2) + Math.Pow(r.Y - agora.Y, 2))
-							 / ZoneCollision.TileSize;
-				c.MaiorDistanciaDoReflexo = Math.Max(c.MaiorDistanciaDoReflexo, dist);
-
-				// ============================ O QUE CONTA COMO "REAPARECEU" ============================
-				// A primeira versao contava qualquer deslocamento do reflexo acima de 3 tiles entre duas
-				// amostras -- e com o defeito da coleira INJETADO ela continuou verde: um corpo correndo
-				// a 7 tiles/s cobre isso sozinho de vez em quando, e a bancada leu perseguicao normal
-				// como reaparecimento.
-				//
-				// O que so a coleira produz e a TRANSICAO: estar longe (perto do raio) numa amostra e
-				// colado na seguinte. Nenhuma corrida faz isso, porque perseguidor e fugitivo tem a
-				// MESMA velocidade -- e essa e a premissa da familia inteira.
-				// ==================================================================================
-				float raioEmTiles = DimensaoMental.RaioDaColeira / ZoneCollision.TileSize;
-				if (c.DistanciaFinalDoReflexo > raioEmTiles * 0.9f && dist < DistanciaDeReaparecer)
-					c.SaltosDoReflexo++;
-
-				c.DistanciaFinalDoReflexo = dist;
-				reflexoAntes = r;
-			}
-
 			// PELA ZONA ATUAL, e nao pelo NOME do node -- ver `World.PedacosVivosDeTeste`: a leitura por
 			// nome devolvia um pintor CONGELADO do cache de zona, e ficava em 6 ate com o descarte
 			// desligado no fonte. Foi o defeito injetado que descobriu isso, e nao a rodada boa.
@@ -818,19 +863,15 @@ public partial class RoboDoMergulho : Node2D
 			// A CURA E O FOLEGO -- ver o cabecalho da familia. De dois em dois segundos, pelos funis de
 			// bancada que ja existem, sem apagar o reflexo nem a briga. A ESTAMINA entra junto porque
 			// correr a gasta: sem ela a corrida morre no meio e a caminhada mede fadiga.
-			if (_relogio >= proximaCura)
-			{
-				S?.CurarDeTeste(eu);
-				S?.EstaminaDeTeste(eu, 100);
-				S?.KiDeTeste(eu, 1.0);
-				proximaCura = _relogio + 2.0;
-			}
+			if (_relogio >= proximaCura) { S?.DePeNoTeste(eu); proximaCura = _relogio + 2.0; }
 
 			if (chegou) break;
 
-			// PARADO DE VERDADE: se ele nao anda ha oito amostras seguidas, ele bateu em alguma coisa --
-			// nao ha o que esperar (e o caso do defeito, que tem que terminar depressa).
-			if (c.AmostrasParado >= 8) break;
+			// PARADO DE VERDADE: se ele nao anda ha vinte amostras (cinco segundos), ele bateu em alguma
+			// coisa -- nao ha o que esperar (e o caso do defeito, que tem que terminar depressa). Cinco
+			// segundos e nao dois porque a cura de bancada corre de dois em dois: um nocaute no meio da
+			// corrida tem que caber dentro da janela, senao a bancada desiste antes de o corpo levantar.
+			if (c.AmostrasParado >= 20) break;
 		}
 
 		Input.ActionRelease("run");

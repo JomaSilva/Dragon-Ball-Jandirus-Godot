@@ -534,7 +534,13 @@ public partial class MenuJogo : CanvasLayer
 			//
 			// O que a aba mostra que muda de verdade: a zona (espaco ou nao, que liga o botao de
 			// viajar), a seed do universo, e a busca -- que troca o conteudo da pagina inteira.
-			"Nav" => $"{_busca.Text.Trim()}|{c?.Zone.Hash}|{c?.SeedDoUniverso}",
+			// AS DUAS LINHAS DAS ESFERAS ENTRAM AQUI, e sao os UNICOS numeros vivos desta aba: o placar
+			// das Super e a frase do radar dourado. Sem elas, quem cruzasse uma celula com sinal com o
+			// menu aberto veria a linha do ontem -- e o radar so serve se ele muda quando se anda. Os
+			// dois sao discretos (um contador e uma frase pronta do servidor), entao nao trazem de
+			// volta o problema que este comentario descreve: eles nao mudam por quadro.
+			"Nav" => $"{_busca.Text.Trim()}|{c?.Zone.Hash}|{c?.SeedDoUniverso}"
+				   + $"|{c?.MinhasSupers}|{c?.SinalDourado}",
 			// O CLIMA ENTRA AQUI SO PELO QUE E DISCRETO -- o tipo e "e forcado?". A FORCA fica de
 			// fora de proposito: ela sobe e desce continuamente durante os 45 s de transicao, e
 			// remontar a pagina a cada quadro do fade recriaria as caixas de texto vazias na mao
@@ -1193,6 +1199,7 @@ public partial class MenuJogo : CanvasLayer
 		bool noEspaco = Jandirus.Core.World.Espaco.EhEspaco(cli.Zone);
 
 		BlocoDeDominio(cli);
+		BlocoDasEsferas(cli);
 
 		// O MAPA APARECE EM TERRA FIRME TAMBEM -- so o botao de viajar e que nao.
 		//
@@ -1373,6 +1380,206 @@ public partial class MenuJogo : CanvasLayer
 		_conteudo.AddChild(linha2);
 		Aviso("Domínio sem soberano por perto se perde: o tributo mingua, a guarnição afrouxa e o povo "
 			+ "acaba derrubando a bandeira. Apareça.");
+	}
+
+	/// <summary>
+	/// ============================ AS ESFERAS MORAM NA ABA NAV, AO LADO DO DOMINIO ============================
+	/// Pelo mesmo argumento que trouxe a conquista pra ca: elas sao sobre PLANETAS (a esfera comum
+	/// pertence a um mundo e nunca sai dele) e sobre a GALAXIA (as Super se espalham por celulas de
+	/// sistema, e o radar dourado e um instrumento de navegacao). Uma aba propria custaria uma entrada
+	/// permanente na barra pra uma coisa que so faz sentido em dois lugares -- e os dois ja estao aqui.
+	///
+	/// ============================ E SAO BOTOES, NAO UM PAINEL ============================
+	/// Nenhum destes botoes desenha estado: eles mandam VERBO e o servidor responde no chat. Mesma
+	/// escolha (e mesma razao) do `BlocoDeDominio` -- no original a coisa toda e `alert()`, `input()` e
+	/// `to_chat()`. As DUAS excecoes sao dados que o servidor ja empurra por conta propria e que
+	/// mentiriam se fossem calculados aqui: o **placar das Super** e a **frase do radar dourado**.
+	///
+	/// QUEM AUTORIZA E O SERVIDOR: esconder botao nunca foi permissao neste projeto. "Erguer estátua"
+	/// aparece pra todo mundo, e a recusa ("apenas Namekuseijins do Clã do Dragão...") e a resposta do
+	/// verbo, com o motivo.
+	/// ====================================================================================================
+	/// </summary>
+	private void BlocoDasEsferas(GameClient cli)
+	{
+		bool noEspaco = Jandirus.Core.World.Espaco.EhEspaco(cli.Zone);
+		bool emPlaneta = Jandirus.Core.World.Espaco.EhPlaneta(cli.Zone);
+		if (!noEspaco && !emPlaneta) return;
+
+		Secao("Esferas do Dragão");
+
+		// O SINAL DOURADO VEM PRONTO DO SERVIDOR (ver `Protocol.S2C.SuperEsferas`): o cliente nao
+		// sabe onde as sete estao, e e assim que o mapa do tesouro nao viaja.
+		if (cli.SinalDourado.Length > 0)
+		{
+			var l = new Label { Text = cli.SinalDourado, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+			l.AddThemeColorOverride("font_color", new Color(1f, 0.82f, 0.25f));
+			l.AddThemeFontSizeOverride("font_size", 13);
+			_conteudo.AddChild(l);
+		}
+
+		Linha("Super Esferas suas", $"{cli.MinhasSupers}/{Jandirus.Core.Magic.SuperEsferas.Total}");
+
+		var linha1 = new HBoxContainer();
+		var linha2 = new HBoxContainer();
+
+		foreach ((string rotulo, string cmd, string arg, string dica, bool espaco, bool segunda) in
+			new (string, string, string, string, bool, bool)[]
+			{
+				("Ver as esferas daqui", "db_ver", "",
+					"que estátua manda neste mundo, quantos pedidos ela dá e se as sete estão acordadas",
+					false, false),
+				("Radar", "db_radar", "",
+					"precisa do Dragon Radar na mochila. Só acha esfera ACORDADA, e só deste mundo",
+					false, false),
+				("Pegar esfera", "db_pegar", "", "a que estiver ao seu alcance", false, false),
+				("Largar tudo", "db_largar", "", "põe no chão as que você carrega", false, false),
+				("INVOCAR", "db_invocar", "",
+					"com as sete reunidas: no chão ao seu redor ou com você", false, true),
+
+				("Erguer Estátua do Dragão", "db_estatua", "",
+					"só Namekuseijin do Clã do Dragão, e só num mundo que ele domine (ou na Terra, se "
+					+ "for o Guardião)", false, true),
+
+				// ============================ ELE E A UNICA PORTA DO DESEJO SUPREMO ============================
+				// `namekian.dm:101-109`: o "Strongest in the Universe" nao sai da escada de poder -- ele e
+				// COMPRADO por 2.000.000 de zeni **na hora de erguer a estatua**, e nunca depois. No
+				// original isso e um `alert()` que aparece sozinho; aqui virou argumento, e um argumento
+				// sem botao seria um desejo que so existe pra quem digita verbo. Segundo botao, e nao um
+				// campo de texto, porque a escolha e binaria.
+				// ========================================================================================
+				("Erguer + gravar o SUPREMO (2.000.000 zeni)", "db_estatua", "supremo",
+					"grava nestas esferas o desejo O MAIS FORTE DO UNIVERSO -- a única forma de ele "
+					+ "existir num set de jogador. Cobra na hora", false, true),
+				("Despertar as esferas", "db_reviver", "",
+					"só quem ergueu a estátua, e só vivo -- é a única volta de um set inerte", false, true),
+
+				("Super Esferas: placar", "sdb_status", "",
+					"quem tem quantas, e quantas ainda estão livres (sem dizer ONDE)", true, false),
+				("Reivindicar Super Esfera", "sdb_reivindicar", "",
+					"chegue perto dela no espaço. 10s se estiver livre, 5 MINUTOS se for de alguém -- "
+					+ "e o dono é avisado", true, false),
+				("Chamar o Super Shenron", "sdb_invocar", "",
+					"com as sete Super Esferas. A Língua dos Deuses é a Fase 2", true, false),
+			})
+		{
+			// O RECORTE E POR LUGAR e nao por permissao: reivindicar uma Super so acontece no espaco,
+			// e erguer estatua so em terra. Botao que nunca poderia funcionar dali e ruido.
+			if (espaco != noEspaco) continue;
+
+			string c = cmd, a = arg;
+			var b = new Button { Text = rotulo, TooltipText = dica };
+			b.AddThemeFontSizeOverride("font_size", 12);
+			b.Pressed += () => cli.SendVerbo(c, a);
+			(segunda ? linha2 : linha1).AddChild(b);
+		}
+
+		_conteudo.AddChild(linha1);
+		if (linha2.GetChildCount() > 0) _conteudo.AddChild(linha2);
+
+		BlocoDoPedido(cli, noEspaco);
+
+		Aviso(noEspaco
+			? "As Super Esferas têm o tamanho de um planetoide: não se carregam. Quem defende não "
+			+ "precisa vencer o ladrão -- basta derrubá-lo ou afastá-lo da esfera."
+			: "As sete esferas de um mundo nunca saem dele: largue uma em outro planeta e ela volta "
+			+ "sozinha. Depois de um pedido, elas apagam e se espalham de novo.");
+	}
+
+	/// <summary>O que o jogador escreveu na linha do desejo: o id, e o alvo quando o desejo pede um.</summary>
+	private string _textoDoDesejo = "";
+
+	/// <summary>
+	/// **O PEDIDO** -- a linha de texto do desejo e os botoes que a usam.
+	///
+	/// ============================ POR QUE UMA CAIXA DE TEXTO, E NAO UMA LISTA DE BOTOES ============================
+	/// A lista de desejos **nao e fixa**: ela depende do poder do set, de quantos pedidos ele da, de o
+	/// criador ter comprado o supremo, do genoma Saiyajin de quem pede e do cargo dele. Desenhar isso
+	/// aqui exigiria que o cliente refizesse a escada inteira do `WishTable.dm` -- uma SEGUNDA casa pra
+	/// a mesma formula, que e o defeito que a regra da casa proibe por nome.
+	///
+	/// Entao quem manda a lista e o servidor, no chat, quando o verbo chega sem argumento -- e a caixa
+	/// serve pra devolver a escolha. E o mesmo desenho do painel de admin ("escreva a skill ao lado") e
+	/// pelo mesmo motivo: o conteudo e do servidor, o teclado e do jogador.
+	/// ========================================================================================================
+	/// </summary>
+	private void BlocoDoPedido(GameClient cli, bool noEspaco)
+	{
+		Secao(noEspaco ? "O pedido ao Super Shenron" : "O pedido ao dragão");
+
+		var campo = new LineEdit
+		{
+			PlaceholderText = noEspaco ? "id do desejo (e o alvo, se pedir)" : "id do desejo (e o alvo, se pedir)",
+			Text = _textoDoDesejo,
+			MaxLength = Jandirus.Net.Protocol.MaxArgDeVerbo - 4,
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		campo.TextChanged += t => _textoDoDesejo = t;
+		_conteudo.AddChild(campo);
+
+		var linha = new HBoxContainer();
+		foreach ((string rotulo, string cmd, string dica, bool precisaTexto) in noEspaco
+			? new (string, string, string, bool)[]
+			{
+				("Ver os desejos", "sdb_invocar", "com as sete, lista o que o Super Shenron atende", false),
+				("PRONUNCIAR", "sdb_invocar",
+					"pede o desejo escrito ao lado. Se você carrega uma PROCURAÇÃO, o que vale é o "
+					+ "pedido de quem emprestou -- você não pode trocá-lo", true),
+				("Emprestar as sete", "sdb_transferir",
+					"escreva ao lado o nome de quem vai falar por você. Ele precisa estar do seu lado, "
+					+ "e precisa aceitar. O desejo continua sendo SEU", true),
+				("Meu pedido", "sdb_pedido",
+					"só quem emprestou escreve aqui: é o desejo que o porta-voz vai pronunciar", false),
+				("Retomar a guarda", "sdb_revogar",
+					"toma de volta as sete que você emprestou -- a qualquer momento", false),
+				("Aceitar a guarda", "sdb_guarda_aceitar", "aceita falar em nome de quem te ofereceu", false),
+				("Recusar", "sdb_guarda_recusar", "recusa a guarda das sete", false),
+				("ACEITO O PREÇO", "sdb_aceito",
+					"só para o desejo que cobra a VIDA: escreva ACEITO O PREÇO ao lado", true),
+			}
+			: new (string, string, string, bool)[]
+			{
+				("Ver os desejos", "db_desejar", "com o dragão de pé, lista o que ele atende", false),
+				("PEDIR", "db_desejar", "pede o desejo escrito ao lado", true),
+
+				// ============================ ESTES DOIS SO PASSARAM A IMPORTAR AGORA ============================
+				// `db_refazer` e `db_derrubar` existem desde a Fase 1 e **nunca tiveram botao**. Enquanto o
+				// dragao nao concedia nada, "quantos pedidos por invocacao" era um numero sem consequencia
+				// e ninguem sentia falta. Com a tabela ligada ele e a diferenca entre um pedido e tres --
+				// e e o gate que faz "Ressuscitar TODOS" e "Matar" existirem ou nao no set.
+				//
+				// Sem este botao, um Namekuseijin do Cla do Dragao ficaria preso em UM pedido pra sempre:
+				// a estatua nasce com `Desejos = 1` e so o `Redo` do original a muda.
+				// ============================================================================================
+				("Pedidos por invocação", "db_refazer",
+					"escreva 1, 2 ou 3 ao lado. MAIS pedidos deixa cada um mais fraco -- e com 3 o set "
+					+ "perde \"Ressuscitar TODOS\" e \"Matar\", que é o que separa Shenron de Porunga", true),
+				("Derrubar a estátua", "db_derrubar",
+					"apaga as sete deste mundo, para sempre. Escreva 'sim' ao lado pra confirmar", true),
+			})
+		{
+			string c = cmd;
+			bool pede = precisaTexto;
+			var b = new Button { Text = rotulo, TooltipText = dica };
+			b.AddThemeFontSizeOverride("font_size", 12);
+			b.Pressed += () =>
+			{
+				if (pede && _textoDoDesejo.Trim().Length == 0)
+				{ Chat.Sistema("escreva o pedido (ou o nome) ao lado antes."); return; }
+				cli.SendVerbo(c, pede ? _textoDoDesejo.Trim() : "");
+			};
+			linha.AddChild(b);
+		}
+		_conteudo.AddChild(linha);
+
+		Aviso(noEspaco
+			? "Só quem fala a LÍNGUA DOS DEUSES desperta o Super Shenron -- cargos divinos (atuais ou "
+			+ "passados) a conhecem, e o sangue Kai ou Demigod nasce com ela. Quem não fala empresta "
+			+ "as sete a quem fale: o desejo continua sendo de quem emprestou, e o porta-voz não "
+			+ "escolhe qual é."
+			: "Aperte \"Ver os desejos\" com o dragão de pé: a lista depende do poder do set e de "
+			+ "quantos pedidos ele dá. Desejo que ainda não foi portado aparece dizendo isso, e não "
+			+ "gasta pedido nenhum.");
 	}
 
 	/// <summary>O mapa da aba Nav. Guardado pra os botoes da barra alcancarem a camera dele.</summary>

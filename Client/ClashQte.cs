@@ -319,8 +319,31 @@ public partial class ClashQte : CanvasLayer
 		{
 			Protocol.TipoDeEmbate.FeixeContraFeixe => "DISPUTA DE KI",
 			Protocol.TipoDeEmbate.FeixeContraGuarda => "SEGURANDO O ATAQUE",
+			Protocol.TipoDeEmbate.Fusao => "DANÇA DA FUSÃO",
 			_ => "ZANZO CLASH",
 		};
+
+		// ============================ A DANCA NAO E UM CABO DE GUERRA ============================
+		// Nos outros tres, a frase da vantagem responde "estou ganhando ou perdendo?". Aqui a
+		// pergunta nem existe: os dois acertam juntos ou os dois saem estragados. Repetir a frase de
+		// vantagem faria o jogador procurar um adversario que nao ha -- e a barra do meio, que nos
+		// outros mede quem esta na frente, aqui so mostra que os dois estao no mesmo passo.
+		if (tipo == Protocol.TipoDeEmbate.Fusao)
+		{
+			_dica.Text = "os dois têm que acertar TODOS os passos -- um erro de qualquer um estraga a fusão";
+			_ligado = true;
+			_raiz.Visible = true;
+			_desfecho.Visible = false;
+			_desfechoResta = 0;
+			_letra.Text = "";
+			_prazoResta = _prazoTotal = 0;
+			_meus.Text = "0";
+			_dele.Text = "0";
+			_cabo.Value = 0.5;
+			_prazo.MaxValue = Math.Max(ms / 1000.0, 0.1);
+			_prazo.Value = _prazo.MaxValue;
+			return;
+		}
 
 		// A VANTAGEM, dita em uma linha: o jogador tem que saber se esta correndo atras ou na
 		// frente ANTES de apertar a primeira letra.
@@ -378,13 +401,25 @@ public partial class ClashQte : CanvasLayer
 		// ZanzoClash o desempate por poder garante um vencedor.
 		bool empate = venc == 0 && perd == 0;
 		bool ganhei = GameClient.Instance?.LocalId == venc;
-		_desfecho.Text = empate
-			? "OS DOIS EXPLODEM"
-			: _tipo == Protocol.TipoDeEmbate.Velocidade
-				? ganhei ? "VOCE FOI MAIS RAPIDO" : "ELE FOI MAIS RAPIDO"
-				: ganhei ? "VOCE ENGOLIU O ATAQUE DELE" : "O ATAQUE DELE TE ENGOLIU";
+
+		// ============================ A DANCA LE OS DOIS CAMPOS DE OUTRO JEITO ============================
+		// Ela nao tem vencedor, entao o servidor reusa o par pra dizer o DESFECHO da coreografia: os
+		// dois campos com o meu id = saiu perfeita; os dois zerados (a mesma convencao do empate) =
+		// saiu estragada. Sem este ramo, uma danca perfeita cairia no texto do embate de ki e diria
+		// "voce engoliu o ataque dele" no fim de uma fusao.
+		bool danca = _tipo == Protocol.TipoDeEmbate.Fusao;
+		bool fusaoBoa = danca && !empate;
+
+		_desfecho.Text = danca
+			? fusaoBoa ? "A FUSÃO SAI PERFEITA" : "A COREOGRAFIA FALHOU"
+			: empate
+				? "OS DOIS EXPLODEM"
+				: _tipo == Protocol.TipoDeEmbate.Velocidade
+					? ganhei ? "VOCE FOI MAIS RAPIDO" : "ELE FOI MAIS RAPIDO"
+					: ganhei ? "VOCE ENGOLIU O ATAQUE DELE" : "O ATAQUE DELE TE ENGOLIU";
 		_desfecho.AddThemeColorOverride("font_color",
-			empate ? Tema.Destaque : ganhei ? Tema.Destaque : Tema.Vida);
+			danca ? (fusaoBoa ? Tema.Destaque : Tema.Vida)
+				  : empate ? Tema.Destaque : ganhei ? Tema.Destaque : Tema.Vida);
 		_desfecho.Visible = true;
 		_desfechoResta = SegundosDeDesfecho;
 	}

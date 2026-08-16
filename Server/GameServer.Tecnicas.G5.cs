@@ -758,6 +758,24 @@ public sealed partial class GameServer
 			AlcanceTiles = AlcanceDeBolaG5,
 			Deflectivel = false,
 			Paralisia = true,
+
+			// ============================ A PARALYSIS NAO EMPURRA, E ISSO E A TECNICA ============================
+			// No DM um blast so arremessa se for `WaveAttack` (raio) ou se escrever `kiforceful`
+			// (`objects.dm:450-460`). A Paralysis (`Ki2.0/Debuffs.dm:3-40`) **nao e nenhum dos dois** --
+			// e a irma Stunlock (`meta.dm:59`) escreve `kiforceful = 1`, o que prova que a ausencia na
+			// Paralysis e escolha e nao esquecimento do autor.
+			//
+			// SEM ESTA LINHA A TECNICA SE DESMENTIA: o arremesso escreve `TiquesDeVoo`, e
+			// `CombatState.PodeAtacar()` recusa quem esta sendo arremessado. Ou seja, a tecnica que a
+			// propria descricao promete ser *"o alvo continua batendo e se defendendo -- so nao consegue
+			// mais fugir"* tirava os bracos junto com as pernas. A `--arsenalteste` reprovava nisso, com
+			// a frase exata, e a acusacao dela estava certa.
+			//
+			// O STUNLOCK CONTINUA EMPURRANDO (padrao `true`), o que e o `kiforceful` dele -- e o unico
+			// jeito de as duas paralisias serem diferentes sem mudar formula, que e como o DM as separa.
+			// ================================================================================================
+			Empurra = !forte,
+
 			MultDeOnda = mult,
 			Nome = forte ? "Paralisia" : "Stunlock",
 		}, verbo: forte ? "Paralysis" : "Stunlock");

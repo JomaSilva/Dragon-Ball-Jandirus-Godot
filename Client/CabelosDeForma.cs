@@ -55,15 +55,22 @@ public static class CabelosDeForma
 	/// <see cref="VisualCatalog"/> devolve). <paramref name="sufixo"/> vem do
 	/// <see cref="Jandirus.Core.Forms.FormaDef.SufixoDoCabelo"/>.
 	/// </summary>
-	public static string? De(string? baseDoCabelo, string sufixo, bool feminino = false)
+	/// <param name="fusao">
+	/// ESTE CORPO E UMA FUSAO. Muda UMA resposta -- a do SSJ4 -- e e regra do dono; ver
+	/// <see cref="Universal"/>. Padrao falso pra as chamadas de bancada continuarem como estavam.
+	/// </param>
+	public static string? De(string? baseDoCabelo, string sufixo, bool feminino = false, bool fusao = false)
 	{
 		if (string.IsNullOrEmpty(baseDoCabelo) || string.IsNullOrEmpty(sufixo)) return null;
 
-		string chave = $"{baseDoCabelo}|{sufixo}|{(feminino ? "f" : "m")}";
+		// A FUSAO ENTRA NA CHAVE DO CACHE. Sem esta letra, o primeiro SSJ4 a ser resolvido decidiria a
+		// folha de todo mundo depois dele -- um lutador comum lembraria a do Gogeta, ou a fusao
+		// receberia a folha comum, dependendo de quem se transformou primeiro na sessao.
+		string chave = $"{baseDoCabelo}|{sufixo}|{(feminino ? "f" : "m")}|{(fusao ? "F" : "-")}";
 		if (_cache.TryGetValue(chave, out string? achado)) return achado;
 
 		string nome = baseDoCabelo.GetFile().GetBaseName();   // "Hair_Goku"
-		achado = Universal(nome, sufixo, feminino) ?? Procurar(nome, sufixo) ?? Herdar(nome, sufixo);
+		achado = Universal(nome, sufixo, feminino, fusao) ?? Procurar(nome, sufixo) ?? Herdar(nome, sufixo);
 		_cache[chave] = achado;
 		return achado;
 	}
@@ -81,8 +88,32 @@ public static class CabelosDeForma
 	/// dele sobrevive a transformacao.
 	/// ================================================================================
 	/// </summary>
-	private static string? Universal(string nome, string sufixo, bool feminino)
+	/// <summary>
+	/// A FOLHA DE SSJ4 DA FUSAO -- `Hair_SSJ4Gogeta.tres`, e ela vale pra QUALQUER fusao.
+	///
+	/// Palavra do dono: *"a fusao usa `Hair SSJ4 Gogeta.png` PINTADO DE VERMELHO -- e **toda** fusao tem
+	/// cabelo vermelho no SSJ4, tendo ou nao o cabelo do Vegito"*. Ou seja este e o TERCEIRO caso de
+	/// "cabelo unico da forma" deste arquivo, ao lado do SSJ4 comum e do Ultra Instinct -- e o mais
+	/// estrito dos tres, porque ele nem olha o penteado.
+	///
+	/// **A FOLHA ESTA NA PASTA DE SUPER SAIYAJIN, e ha uma segunda copia dela fora**: existe tambem uma
+	/// `Assets/Sprites/DU/Overlays/Hair SSJ4 Gogeta.png` (256x256, com espacos no nome) e uma
+	/// `... GREYSCALE.png` ao lado. A escolhida e a de `SSJ Hairs/` porque e a pasta que este resolvedor
+	/// varre e a que o resto da escada usa; a `GREYSCALE` foi medida e NAO serve aqui, porque a tinta
+	/// desta regra e SOMA e nao matiz (ver `Fusao.VermelhoDoCabeloDaFusao`, que traz as duas medidas).
+	/// </summary>
+	public const string FolhaDoSsj4DaFusao = Pasta + "Hair_SSJ4Gogeta.tres";
+
+	private static string? Universal(string nome, string sufixo, bool feminino, bool fusao)
 	{
+		// ============================ A FUSAO VEM ANTES DE TUDO, INCLUSIVE DO FEMININO ============================
+		// Nao ha `Hair_SSJ4GogetaFemale`, e nao deve haver: a fusao ja e um corpo terceiro, e o dono
+		// disse "TODA fusao". Uma fusao com corpo feminino continua sendo a mesma cabeca -- e cair no
+		// `Hair_SSJ4Female` aqui seria justamente o "tendo ou nao" que ele veio corrigir.
+		// ====================================================================================================
+		if (fusao && sufixo.Equals(Jandirus.Core.Social.Fusao.SufixoDoSsj4, StringComparison.OrdinalIgnoreCase))
+			return ResourceLoader.Exists(FolhaDoSsj4DaFusao) ? FolhaDoSsj4DaFusao : null;
+
 		// ============================ O ULTRA INSTINCT E O SEGUNDO CASO, E E MAIS ESTRITO ============================
 		// O SSJ4 tem arte pra todo mundo (uma folha masculina, uma feminina e a do Vegeta). O Ultra
 		// Instinct tem arte pra UMA pessoa: `ui_apply_hair()` (`UltraInstinct.dm:296-303`) so troca o
@@ -148,6 +179,25 @@ public static class CabelosDeForma
 		// ======================================================================================================
 		string semHair = curto.EndsWith(" Hair", StringComparison.Ordinal) ? curto[..^5] : curto;
 
+		// ============================ E HA UM PENTEADO COM "Hair" NO MEIO: O DO VEGITO ============================
+		// Achado portando a fusao, e ele e da MESMA familia dos tres de cima -- so que pior escondido: o
+		// penteado se chama `VegitoHairPVP`, com o "Hair" no MEIO, e o artista desenhou as variantes com
+		// DOIS nomes diferentes:
+		//
+		//     VegitoHairPVPSSj2     VegitoHairPVPSSjFP      <- pelo nome do penteado
+		//     Hair_VegitoSSj                                 <- pelo padrao normal, base "Vegito"
+		//
+		// Ou seja o SSJ2 e o Full Power ja casavam pelo primeiro padrao (`{nome}{s}`) e o **SSJ1 nao
+		// casava com nada**: `Herdar("SSj")` devolve nulo, entao um Vegito virando Super Saiyajin ficava
+		// com o penteado preto da base -- um passo ATRAS no meio da escada, com a folha certa parada na
+		// pasta. Isto deixou de ser um caso de canto quando a fusao passou a existir: **`Vegito` e o
+		// cabelo que toda fusao de Goku com Vegeta veste** (`Fusao.CabeloDaFusao`).
+		//
+		// NAO HA COMO CASAR ERRADO, pelo mesmo argumento do bloco de cima: o padrao so entra na lista de
+		// tentativas e cada uma e conferida contra o DISCO com o nome inteiro do arquivo.
+		// ======================================================================================================
+		string semPvp = curto.EndsWith("HairPVP", StringComparison.OrdinalIgnoreCase) ? curto[..^7] : curto;
+
 		// AS VARIACOES DE CAIXA sao necessarias: a pasta tem `SSj`, `SSJ` e `Ssj` no mesmo lugar.
 		string[] casos = [sufixo, sufixo.ToUpperInvariant(), sufixo.ToLowerInvariant()];
 
@@ -162,6 +212,7 @@ public static class CabelosDeForma
 				$"Hair_{curto}{s}",        // Hair_VegetaSSj (quando o base e "Vegeta")
 				$"Hair {curto}{s}",        // Hair VegetaSSJ4
 				$"{semHair} {s}",          // Inferno SSJ, Inferno SSJFP (base "Inferno Hair")
+				$"Hair_{semPvp}{s}",       // Hair_VegitoSSj (base "VegitoHairPVP")
 			];
 			foreach (string? t in tentativas)
 			{

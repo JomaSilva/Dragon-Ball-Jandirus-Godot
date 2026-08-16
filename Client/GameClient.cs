@@ -75,8 +75,15 @@ public partial class GameClient : Node
 	/// </summary>
 	public Protocol.AtributosState Atributos { get; private set; }
 	public event Action<Protocol.AtributosState>? AtributosRecebidos;
-	/// <summary>A aparencia de alguem da zona: id, nome, raca, genero, ficha visual.</summary>
-	public event Action<int, string, string, string, Jandirus.Core.Appearance.Appearance>? PeerLooked;
+	/// <summary>
+	/// A aparencia de alguem da zona: id, nome, raca, genero, ficha visual -- e **se este corpo e uma
+	/// FUSAO** (o ultimo `bool`).
+	///
+	/// O bit anda junto da aparencia e nao dentro dela porque `Appearance` e o objeto que vai pro DISCO;
+	/// ver `GameServer.TrocarAparencias`, que o escreve, e `ServerPlayer.LookDeFusao`. Quem o consome e
+	/// uma regra so: no SSJ4, toda fusao usa a folha do Gogeta pintada de vermelho.
+	/// </summary>
+	public event Action<int, string, string, string, Jandirus.Core.Appearance.Appearance, bool>? PeerLooked;
 
 	private readonly NetManager _net;
 	private readonly EventBasedNetListener _listener = new();
@@ -433,6 +440,31 @@ public partial class GameClient : Node
 	public Jandirus.Core.Items.Inventario Mochila { get; private set; } = new();
 	public event Action? MochilaMudou;
 
+	/// <summary>
+	/// UMA COISA DE ESFERA NO CHAO DESTA ZONA: a estatua, uma das sete, ou o dragao de pe.
+	///
+	/// A FOLHA E UM SIMBOLO ("comum", "namek", "estatua", "shenron", "porunga") e nao um `res://` --
+	/// ver `Protocol.S2C.Esferas`, que explica por que aqui e diferente da <see cref="ObraInfo"/>.
+	/// Quem traduz e o `EsferaDesenhada.FolhaDe`.
+	/// </summary>
+	public readonly record struct EsferaInfo(int Id, Protocol.CoisaDeEsfera Tipo, int Numero,
+											 Vector2 Pos, bool Inerte, string Folha);
+
+	public List<EsferaInfo> Esferas { get; private set; } = [];
+	public event Action? EsferasMudaram;
+
+	/// <summary>Uma Super Esfera ao meu alcance, no espaco. Dono vazio = livre.</summary>
+	public readonly record struct SuperInfo(int Numero, Vector2 Pos, string Dono, bool Minha);
+
+	public List<SuperInfo> Supers { get; private set; } = [];
+
+	/// <summary>Quantas das sete Super Esferas sao minhas. E o placar da aba Nav.</summary>
+	public int MinhasSupers { get; private set; }
+
+	/// <summary>A frase do radar dourado, ja resolvida pelo servidor. Vazia = sem sinal.</summary>
+	public string SinalDourado { get; private set; } = "";
+	public event Action? SupersMudaram;
+
 	public List<ObraInfo> Obras { get; private set; } = [];
 	public List<OfertaDeObra> Catalogo { get; private set; } = [];
 	public double TechNivel { get; private set; }
@@ -767,6 +799,16 @@ public partial class GameClient : Node
 	public event Action<int, Jandirus.Core.Forms.Cinematicas.CenaBio>? CenaDoBioComecou;
 
 	/// <summary>
+	/// A CINEMATICA DA FUSAO COMECOU -- e ela e a UNICA deste jogo com **dois** corpos: quem convidou
+	/// (onde a fusao vai nascer) e quem aceitou.
+	///
+	/// Irmao do <see cref="CenaDoBioComecou"/> e pelo mesmo argumento escrito la: e ACONTECIMENTO de
+	/// zona, sem estado a sincronizar. Ver `Protocol.S2C.CenaDeFusao` sobre por que ele nao cabe no
+	/// canal de forma.
+	/// </summary>
+	public event Action<int, int>? CenaDeFusaoComecou;
+
+	/// <summary>
 	/// EM QUE MACACO **EU** ESTOU. Espelho local do ultimo <see cref="Protocol.S2C.Oozaru"/> que veio
 	/// com o meu id -- o servidor continua sendo a autoridade, isto aqui e leitura pra a tela.
 	///
@@ -896,7 +938,7 @@ public partial class GameClient : Node
 	/// Aqui o preco seria o pior de todos: um `Acabou` que nao chegasse -- morte, nocaute, troca de
 	/// zona, logout do outro, um pacote perdido numa desconexao -- deixaria o teclado MUDO pra sempre.
 	///
-	/// O `Comecou` ja diz quanto o embate dura (e no de ki, o teto de 22 s), entao o fim tem hora
+	/// O `Comecou` ja diz quanto o embate dura (e no de ki, o teto de 15 s), entao o fim tem hora
 	/// marcada: o silencio morre sozinho mesmo que ninguem o mate. O `Acabou` continua chegando e
 	/// continua mandando -- ele so deixou de ser a UNICA forma de sair daqui.
 	/// ===============================================================================
@@ -1056,7 +1098,10 @@ public partial class GameClient : Node
 				string nome = reader.GetString(24);
 				string raca = reader.GetString(24);
 				string genero = reader.GetString(8);
-				PeerLooked?.Invoke(quem, nome, raca, genero, reader.GetAppearance());
+				// A ORDEM DE LEITURA E A DE ESCRITA, e o bit da fusao e o ULTIMO -- ver
+				// `GameServer.TrocarAparencias`. Ler antes da aparencia embaralharia o pacote inteiro.
+				Jandirus.Core.Appearance.Appearance ap = reader.GetAppearance();
+				PeerLooked?.Invoke(quem, nome, raca, genero, ap, reader.GetBool());
 				break;
 			}
 
@@ -1283,6 +1328,34 @@ public partial class GameClient : Node
 						new Vector2(reader.GetFloat(), reader.GetFloat()), reader.GetBool()));
 				Obras = l;
 				ObrasMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Esferas:
+			{
+				int n = reader.GetUShort();
+				var l = new List<EsferaInfo>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new EsferaInfo(reader.GetInt(), (Protocol.CoisaDeEsfera)reader.GetByte(),
+						reader.GetByte(), new Vector2(reader.GetFloat(), reader.GetFloat()),
+						reader.GetBool(), reader.GetString(16)));
+				Esferas = l;
+				EsferasMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.SuperEsferas:
+			{
+				int n = reader.GetByte();
+				var l = new List<SuperInfo>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new SuperInfo(reader.GetByte(),
+						new Vector2(reader.GetFloat(), reader.GetFloat()),
+						reader.GetString(24), reader.GetBool()));
+				Supers = l;
+				MinhasSupers = reader.GetByte();
+				SinalDourado = reader.GetString(120);
+				SupersMudaram?.Invoke();
 				break;
 			}
 
@@ -1529,6 +1602,21 @@ public partial class GameClient : Node
 				int quemNoBio = reader.GetInt();
 				CenaDoBioComecou?.Invoke(
 					quemNoBio, (Jandirus.Core.Forms.Cinematicas.CenaBio)reader.GetByte());
+				break;
+			}
+
+			// A CINEMATICA DA FUSAO COMECOU. Dois ids, na ordem do dono do jogo: quem convidou e quem
+			// aceitou -- ver `Protocol.S2C.CenaDeFusao`.
+			//
+			// AS DUAS LEITURAS SAO INCONDICIONAIS e vem antes de qualquer decisao: o `reader` e
+			// sequencial, e sair no meio deixaria quatro bytes no buffer pro proximo pacote ler como
+			// se fossem dele. E a mesma razao pela qual o caso do bio le os dois campos antes de
+			// perguntar qualquer coisa.
+			case Protocol.S2C.CenaDeFusao:
+			{
+				int donoDaFusao = reader.GetInt();
+				int passageiroDaFusao = reader.GetInt();
+				CenaDeFusaoComecou?.Invoke(donoDaFusao, passageiroDaFusao);
 				break;
 			}
 

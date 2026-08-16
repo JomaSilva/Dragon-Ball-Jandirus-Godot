@@ -114,6 +114,7 @@ public partial class GameServer
 			OQueSePodeFazerMorto(pl);
 			DoAlemNaoSeSaiAndando(pl);
 			AVoltaDesfazAMorte(pl);
+			OCorpoQueFicaEOPrecoDoRevive(pl, forjados);
 
 			AfirmarAlem("a bancada chegou ao fim (sem esta linha, abortar no meio reportaria '0 falhas')",
 						true);
@@ -694,5 +695,134 @@ public partial class GameServer
 		TickDasAureolas();
 		AfirmarAlem("E A AUREOLA SOME SOZINHA -- ela nao tem linha propria no revive",
 					!pl.EnvAureola);
+	}
+
+	// =====================================================================
+	// 9) O CORPO QUE FICA, E O PRECO DA SEGUNDA RESSURREICAO
+	// =====================================================================
+	/// <summary>
+	/// AS DUAS COISAS QUE O LOTE DOS VERBOS DE CARGO PENDUROU NA MORTE.
+	///
+	/// ============================ POR QUE ELAS MEDEM AQUI E NAO NA `--cargovivo` ============================
+	/// As duas mexem no PERCURSO DA MORTE, que e o que esta bancada monta: ela e a unica que mata um
+	/// jogador de verdade (com `Peer`, que e o que a triagem exige) e devolve tudo no `finally`. E a
+	/// `--cargovivo` declara, no proprio cabecalho, que **nao dispara o `Revive`** -- porque
+	/// `RessuscitarG4` termina em `Persistir(alvo)` e la os corpos usam o `Peer` EMPRESTADO do host,
+	/// o que sobrescreveria o personagem dele no disco.
+	///
+	/// AQUI O ALVO NASCE COM `Peer` NULO, e por isso o `Persistir` sai na primeira linha
+	/// (`GameServer.cs:4087`). E a mesma precaucao, pelo outro lado.
+	/// ====================================================================================================
+	///
+	/// ============================ AS DUAS METADES DE CADA UMA ============================
+	///   KEEP_BODY: com o bit ligado o corpo FICA no mundo dos vivos quando o prazo vence -- **e**,
+	///   quando o Ki cai abaixo de `MaxKi/6`, o mesmo prazo o leva. Sem a segunda metade, "ficar" seria
+	///   "nunca mais viajar", e o verb viraria imortalidade de cadaver.
+	///
+	///   REVIVE: a PRIMEIRA volta de uma alma e de graca e a SEGUNDA mata quem ressuscita
+	///   (`OtherworldRankSkills.dm:241-245`). As duas sao afirmadas porque a regra e um limiar, e um
+	///   limiar so existe se os dois lados dele forem medidos -- o corolario da casa.
+	/// ====================================================================================
+	/// </summary>
+	private void OCorpoQueFicaEOPrecoDoRevive(ServerPlayer pl, List<ServerPlayer> forjados)
+	{
+		GD.Print("[alem] -- 9) o corpo que fica (Keep_Body) e o preco do Revive de cargo --");
+
+		ServerPlayer ForjarMorto(int i, string nome)
+		{
+			var novo = new ServerPlayer
+			{
+				Id = IdBaseDoAlemDeTeste + i,
+				Peer = null,                       // <- e o que impede o `Persistir` de tocar o disco
+				Name = nome,
+				Race = "Human",
+				Genero = "Male",
+				Idade = 25,
+				Zone = pl.Zone,
+				Pos = pl.Pos,
+				Conta = $"bancada_alem_{i}",
+				Slot = 0,
+				Ficha = new Fighter { Race = "Human", BP = 1000 },
+				Livro = new Jandirus.Core.Skills.SkillBook(),
+			};
+			novo.Ficha.Class = "Normal";
+			PorNoMundo(novo);
+			forjados.Add(novo);
+			return novo;
+		}
+
+		// ---- KEEP_BODY: o corpo fica ----------------------------------------
+		ZoneKey vivos = pl.Zone;
+		pl.Ficha.KeepsBody = true;
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		pl.MorteJaViajou = false;
+		pl.Combate.Morrer(ignorarSeguro: true);
+
+		VenceuOPrazoDaMorte(pl);
+		AfirmarAlem("KEEP_BODY: vencido o prazo, o corpo NAO viaja -- ele fica no mundo dos vivos",
+					pl.Zone.Equals(vivos) && pl.Ficha.dead, pl.Zone.Name);
+
+		TickDasAureolas();
+		AfirmarAlem("...e a auréola acende MESMO SEM VIAGEM (e ela que denuncia o morto entre os vivos)",
+					pl.EnvAureola);
+		AfirmarAlem("...e o relogio foi REARMADO, e nao desligado (a condicao do DM e continua)",
+					pl.RelogioDaMorte > NowMs());
+
+		// ---- ...e o Ki abaixo de um sexto o leva ----------------------------
+		pl.Ficha.Ki = pl.Ficha.MaxKi / 6 - 1;
+		VenceuOPrazoDaMorte(pl);
+		AfirmarAlem("...MAS com o Ki abaixo de um sexto o mesmo prazo o leva pro Outro Mundo",
+					Alem.EhOAlem(pl.Zone), pl.Zone.Name);
+
+		// O HOST VOLTA VIVO PRA SEGUNDA METADE. O `finally` da bancada tambem devolveria, mas o
+		// `Revive` precisa de um VIVO pra usar a tecnica -- e um morto nao ressuscita ninguem.
+		pl.Ficha.KeepsBody = false;
+		pl.Combate.Reviver();
+		pl.RelogioDaMorte = 0;
+		MoveToZone(pl.Id, vivos, pl.Pos);
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+
+		// ---- O REVIVE DE CARGO: a primeira volta e de graca ----------------
+		pl.Livro?.DarComoEnsinada("/datum/skill/rank/Revive");
+
+		ServerPlayer alma = ForjarMorto(7, "bancada: alma");
+		alma.Pos = pl.Pos;
+		alma.Combate.Morrer(ignorarSeguro: true);
+		AfirmarAlem("PRECONDICAO: ha um morto colado no host, e ele nunca voltou",
+					alma.Ficha.dead && alma.Ficha.ResurrectedCount == 0);
+
+		RessuscitarG4(pl);
+		AfirmarAlem("REVIVE DE CARGO: a alma volta a vida", !alma.Ficha.dead);
+		AfirmarAlem("...e a volta e CONTADA (`M.ResurrectedCount += 1`)",
+					alma.Ficha.ResurrectedCount == 1, $"{alma.Ficha.ResurrectedCount}");
+		AfirmarAlem("...e a PRIMEIRA volta nao cobra nada de quem ressuscitou", !pl.Ficha.dead);
+
+		// ---- ...e a segunda cobra uma vida ---------------------------------
+		alma.Combate.Morrer(ignorarSeguro: true);
+		alma.Zone = pl.Zone;
+		alma.Pos = pl.Pos;
+		RessuscitarG4(pl);
+		AfirmarAlem("...a SEGUNDA volta da mesma alma tambem acontece",
+					!alma.Ficha.dead && alma.Ficha.ResurrectedCount == 2,
+					$"{alma.Ficha.ResurrectedCount}");
+		AfirmarAlem("...MAS quem ressuscitou MORRE no lugar (`usr.dead=1`, `OtherworldRankSkills.dm:243`)",
+					pl.Ficha.dead);
+
+		// ---- E A SKILL RACIAL NAO COBRA, que e a metade que prova a separacao ----
+		// Sem esta linha, "o Revive cobra" ficaria verde com as DUAS skills cobrando -- e o DM as
+		// separa de proposito: `kai.dm:65` nao conta e nao mata ninguem.
+		pl.Combate.Reviver();
+		pl.RelogioDaMorte = 0;
+		pl.Livro?.Esquecer("/datum/skill/rank/Revive");
+		alma.Combate.Morrer(ignorarSeguro: true);
+		alma.Zone = pl.Zone;
+		alma.Pos = pl.Pos;
+		int antes = alma.Ficha.ResurrectedCount;
+		RessuscitarG4(pl);
+		AfirmarAlem("SEM a skill de CARGO no livro, a mesma tecla ressuscita e NAO conta a volta",
+					!alma.Ficha.dead && alma.Ficha.ResurrectedCount == antes,
+					$"{antes} -> {alma.Ficha.ResurrectedCount}");
+		AfirmarAlem("...e nao cobra vida nenhuma, mesmo a alma ja tendo voltado duas vezes",
+					!pl.Ficha.dead);
 	}
 }

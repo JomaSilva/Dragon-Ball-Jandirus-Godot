@@ -667,7 +667,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private void Nocautear(ServerPlayer p)
 	{
-		p.Combate.Nocautear(Jandirus.Core.Combat.MeleeResolver.SegundosDeNocaute);
+		// `porVital: false` -- ESTE nocaute nao veio de um nucleo que cedeu, entao quem o desfaz e o
+		// relogio e nao a cura. Com `true`, o corpo de quem esta inteiro levantaria no tique seguinte
+		// (`CombatState.Tick` pergunta ao CORPO), e o verb nao faria nada visivel.
+		p.Combate.Nocautear(Jandirus.Core.Combat.MeleeResolver.TetoDoNocaute, porVital: false);
 		MandarFicha(p);
 	}
 

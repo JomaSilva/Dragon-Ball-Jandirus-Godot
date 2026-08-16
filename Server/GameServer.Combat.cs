@@ -159,11 +159,35 @@ public partial class GameServer
 	private const long RecargaDashMs = 500;
 
 	/// <summary>
-	/// Racas que REGENERAM membro perdido. Nelas, perder um nucleo poe em coma em vez de
-	/// matar -- e o `canheallopped` do original.
+	/// ============================ O EIXO DA CURA DESTA RACA, TIRADO DO GENOMA ============================
+	/// Isto era uma lista de quatro nomes cravada no codigo
+	/// (`raca is "Namekian" or "Majin" or "BioAndroid" or "Shapeshifter"`), e ela **errava nos dois
+	/// sentidos** contra o `assign_regen()` do DM:
+	///
+	///   * **Namekuseijin** estava DENTRO -- mas o rework do original lhe da `DeathRegen = 0` num
+	///     `return` proprio (`Genetic_Datum.dm:253-258`), ou seja perder um nucleo o MATA. Quem
+	///     devolve membro pra ele e a skill ATIVA, e o comentario do DM diz isso com todas as letras;
+	///   * **Shapeshifter** estava DENTRO -- `Regeneration = 2` -> `DeathRegen = 0`;
+	///   * **Kai, Meta, Tsujin e Yardrat** estavam FORA -- os quatro tem `Regeneration = 10` ->
+	///     `DeathRegen = 1` -> `canheallopped`.
+	///
+	/// E a lista nao dizia nada sobre a pergunta que o dono fez, que e OUTRA: quem cura EM COMBATE.
+	/// Essa e o `fastRegen`, e ela tem um corte proprio (`Regeneration >= 5`). Com o perfil saindo do
+	/// `races.json` -- que e o `misc_stats["Regeneration"]` extraido do DM -- as duas perguntas param
+	/// de ser uma lista pra manter e passam a ser o dado.
+	///
+	/// **RACA SEM PROTO CAI NO COMUM** (Humano, `Regeneration = 1`): sem cura em combate, sem membro
+	/// de volta. E o default certo -- errar pro lado do privilegio daria regeneracao de Majin a
+	/// qualquer corpo que o `races.json` nao conheca.
+	/// ================================================================================================
 	/// </summary>
-	private static bool Regenera(string raca) =>
-		raca is "Namekian" or "Majin" or "BioAndroid" or "Shapeshifter";
+	private PerfilDeRegen EixoDeRegen(string raca)
+	{
+		// Half-Saiyan nao tem proto proprio -- o corpo vem do Saiyajin. Mesma ponte do `Birth.Nascer`.
+		string proto = raca == "Halfbreed" ? "Saiyan" : raca;
+		double reg = _racas?.Get(proto)?.MiscStat("Regeneration") ?? 1;
+		return PerfilDeRegen.De(raca, reg);
+	}
 
 	/// <summary>
 	/// Quem nasce com rabo. Saiyajin puro e mesticos.
@@ -180,7 +204,7 @@ public partial class GameServer
 	// (a explosao varre a zona e manda efeito). Ver `CombatState.NegarMorte`.
 	private void PrepararCombate(ServerPlayer pl, CharacterSave? save)
 	{
-		pl.Combate = new CombatState(pl.Ficha, TemRabo(pl.Race), Regenera(pl.Race));
+		pl.Combate = new CombatState(pl.Ficha, TemRabo(pl.Race), EixoDeRegen(pl.Race));
 
 		// QUEM PODE BARRAR A MORTE DESTE CORPO. Instalado UMA vez, aqui, porque `Morrer()` e a porta
 		// unica -- ver `CombatState.NegarMorte`. Sao DOIS agora, e a ORDEM E A DO DM:
@@ -270,8 +294,13 @@ public partial class GameServer
 		// cronometro que faz levantar mora no estado de combate (que nao e) -- entrar com
 		// KO=true e cronometro zerado deixaria o personagem no chao PARA SEMPRE. Quem volta
 		// caido recomeca a contagem; quem volta com um nucleo abaixo do limiar cai de novo.
+		//
+		// E O TIPO DO NOCAUTE SAI DO CORPO, e nao de um palpite: quem volta com um nucleo abaixo da
+		// linha esta no COMA de `Injuries.dm:283` e levanta quando o nucleo subir; quem volta so com
+		// a bandeira `KO` ligada (o nucleo ja sarou offline) tem um nocaute cronometrado comum. Ver
+		// `CombatState.NocautePorVital`.
 		if (pl.Ficha.KO || pl.Combate.Corpo.DeveNocautear())
-			pl.Combate.Nocautear(MeleeResolver.SegundosDeNocaute);
+			pl.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: pl.Combate.Corpo.DeveNocautear());
 	}
 
 	/// <summary>
@@ -1469,13 +1498,39 @@ public partial class GameServer
 	/// bancada continuaria verde medindo a cura antiga. Uma casa so, dois chamadores.
 	/// ==============================================================================
 	/// </summary>
-	private static void RegenerarPassivo(ServerPlayer pl, double dt)
+	private void RegenerarPassivo(ServerPlayer pl, double dt)
 	{
 		CombatState? c = pl.Combate;
-		if (c == null || pl.Ficha.dead || pl.Ficha.KO || c.EmCombate > 0 || pl.Ficha.HP >= 99.99) return;
+		if (c == null || pl.Ficha.dead) return;
 
-		c.Corpo.Curar(CombatKnobs.RegenPorSegundo * dt);
+		// ============================ AS TRES GUARDAS QUE SAIRAM DAQUI, E PRA ONDE FORAM ============================
+		//   * `pl.Ficha.KO` -- SAIU. Com o nocaute virando o coma do DM, e a cura que decide a hora de
+		//     levantar; um corpo que nao regenera caido nao acorda nunca. Ver `CombatState.Tick`.
+		//   * `c.EmCombate > 0` -- foi pra dentro do `Regeneracao.PodeCurar`, porque **ela nao vale pra
+		//     todo mundo**: o `fastRegen` do genoma a dispensa (`(!combatTag || fastRegen)`,
+		//     `Injuries.dm:251/290/293`). E literalmente o pedido do dono -- so quem tem o eixo cura no
+		//     meio da briga -- e escrito no unico lugar do port que decide isso.
+		//   * `HP >= 99.99` -- foi pra dentro do canal 2 (`Regeneracao.TaxaEspalhada`), que e o unico
+		//     que a tem no original. Aqui em cima ela apagava o canal do MEMBRO: um corpo com media 100
+		//     e um dedo quebrado nao costurava o dedo.
+		// E entrou uma que nao existia: `has_regen_energy()` (fome + vigor), tambem dentro do `PodeCurar`.
+		// ======================================================================================================
+		Regeneracao.Resultado r = Regeneracao.Tique(
+			c.Corpo, c.Corpo.Regen, pl.Ficha, c.EmCombate > 0, ref c.BufferDeMembro, dt, _rng);
+
+		if (!r.Curou && r.MembroDeVolta == null) return;
 		c.SincronizarVida();
+
+		if (r.MembroDeVolta == null) return;
+
+		// O MEMBRO QUE VOLTOU SOZINHO -- so racas de `canheallopped` chegam aqui (Majin, Bio, Kai,
+		// Meta, Tsujin, Yardrat). Mexe no rabo, entao o ritmo de treino do Saiyajin tem que ser
+		// reavaliado pelo mesmo funil que a skill ativa usa.
+		AjustarGanhoDoRabo(pl);
+		pl.CorpoEnviado = "";   // forca o proximo `MandarCorpo`: um membro que volta nao pode esperar ruido
+		Avisar(pl, $"seu {r.MembroDeVolta.Nome} volta a crescer.");
+		GD.Print($"[server] {pl.Name} regenerou {r.MembroDeVolta.Nome} SOZINHO "
+				 + $"(Regeneration {c.Corpo.Regen.Regeneration:0})");
 	}
 
 	/// <summary>

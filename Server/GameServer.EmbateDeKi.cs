@@ -209,6 +209,8 @@ public sealed partial class GameServer
 		if (!_players.TryGetValue(p.Dono, out ServerPlayer? d)) return false;
 		if (d.Ficha.dead || d.Ficha.KO) return false;
 		if (_emEmbateDeKi.ContainsKey(d.Id) || _emEmbate.ContainsKey(d.Id)) return false;
+		// NEM DANCANDO -- ver a mesma guarda no `TentarEmbate` do ZanzoClash: o canal de letra e um so.
+		if (EstaDancando(d.Id)) return false;
 		if (_canais.GetValueOrDefault(d.Id)?.Raio != p) return false;
 
 		dono = d;
@@ -241,6 +243,7 @@ public sealed partial class GameServer
 		if (alvo.Combate is not { Bloqueando: true }) return false;
 		if (alvo.Ficha.dead || alvo.Ficha.KO || alvo.Combate.Stun > 0) return false;
 		if (_emEmbateDeKi.ContainsKey(alvo.Id) || _emEmbate.ContainsKey(alvo.Id)) return false;
+		if (EstaDancando(alvo.Id)) return false;
 
 		Comecar(new LadoDeKi { Quem = dono, Feixe = p },
 				new LadoDeKi { Quem = alvo, Feixe = null },
@@ -266,16 +269,38 @@ public sealed partial class GameServer
 		Vec2 eixo = b.Quem.Pos - a.Quem.Pos;
 		eixo = eixo.LengthSquared > 1e-4f ? eixo.Normalized() : a.Feixe!.Rumo;
 
-		// QUANTO O ENCONTRO PODE CAMINHAR pra cada lado. Um tile de folga: o feixe so ENCOSTA em
-		// alguem quando a disputa acabou -- enquanto ela corre, chegar perto e a ameaca, nao o dano.
-		const float folga = ZoneCollision.TileSize;
+		// ============================ QUANTO O ENCONTRO PODE CAMINHAR: ATE O CORPO ============================
+		// Aqui havia UM TILE DE FOLGA, e o comentario dela dizia *"o feixe so ENCOSTA em alguem quando
+		// a disputa acabou -- enquanto ela corre, chegar perto e a ameaca, nao o dano"*. O dono inverteu
+		// exatamente essa regra: *"CADA ACERTO EMPURRA O BEAM DO INIMIGO PRA TRAS, ate o SEU BEAM
+		// ENCOSTAR NO INIMIGO, ai vc VENCE"*. Encostar deixou de ser a consequencia da vitoria e passou
+		// a ser a DEFINICAO dela -- entao a folga nao tem mais o que proteger.
+		//
+		// E E ELA QUE AMARRA O MEDIDOR NA GEOMETRIA. Sem folga, `Deslocamento` = +-1 (o medidor em 100
+		// ou em 0) poe o ponto EXATAMENTE em cima do corpo: "o medidor encheu" e "o feixe encostou"
+		// viram o mesmo instante, medido no mesmo lugar, e o `Decidir` continua sendo o unico juiz. Com
+		// a folga eram dois eventos parecidos e separados por um tile, e era essa fresta que fazia a
+		// vitoria ser do MEDIDOR e nao do contato.
+		//
+		// ============================ E A FOLGA ERA UM DEFEITO GEOMETRICO ============================
+		// Um tile e a MEDIDA DA BOCA DO CANO (`BocaDeCano.De` anda um tile a frente do centro do corpo).
+		// Entao, quando as MAOS venciam, o ponto de encontro parava a um tile do atirador -- ou seja
+		// exatamente EM CIMA da propria cauda do feixe, que enquanto a disputa corre e reescrita como
+		// `BocaDeCano.De(dono.Pos, Rumo)`. Cabeca e cauda coincidiam, o feixe ficava com comprimento
+		// zero, e no primeiro tique apos a devolucao o ramo "solto e voando" do rastro o matava por
+		// `(Pos - Cauda).Length <= passo`. O ataque devolvido morria a 32 px do rosto de quem o disparou,
+		// e a bancada acusava isso ha tempos ("o ataque DEVOLVIDO acertou quem o disparou").
+		//
+		// Tirar a folga tira a coincidencia, mas NAO basta sozinho -- ver `ReassentarCauda`, que e a
+		// outra metade do conserto e a que garante que o feixe sempre tenha corpo atras da cabeca.
+		// ======================================================================================================
 		var d = new DisputaDeKi
 		{
 			A = a, B = b,
 			PontoInicial = ponto, Ponto = ponto,
 			Eixo = eixo,
-			ParaB = Math.Max((b.Quem.Pos - ponto).Length - folga, 0),
-			ParaA = Math.Max((a.Quem.Pos - ponto).Length - folga, 0),
+			ParaB = Math.Max((b.Quem.Pos - ponto).Length, 0),
+			ParaA = Math.Max((a.Quem.Pos - ponto).Length, 0),
 			Zona = a.Quem.Zone.Hash,
 			Tipo = tipo,
 		};
@@ -385,7 +410,8 @@ public sealed partial class GameServer
 		//
 		// **E AQUI ELE PAGA DOBRADO**, porque este placar nao e "acertos sobre um numero fixo de
 		// letras": e um cabo de guerra continuo que acaba quando o medidor chega na ponta. Mais letras
-		// = mais empurrao = vitoria mais cedo, e o encontro pode nem chegar aos 22 s.
+		// = mais empurrao = vitoria mais cedo, e o encontro pode nem chegar ao prazo
+		// (`EmbateDeKi.SegundosMaximos`, hoje 15 s).
 		//
 		// E POR ISSO A LETRA VALE MENOS: o `ApertosPorLetra` era calibrado pela JANELA (0,9 s), e a
 		// promessa dele -- *"jogador perfeito e NPC mediano empatam"* -- e sobre VAZAO, nao sobre
@@ -409,6 +435,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private void TeclaDeQualquerEmbate(ServerPlayer p, char c)
 	{
+		// A DANCA DA FUSAO E O TERCEIRO CONSUMIDOR DESTE CANAL. Ela vem primeiro porque e a unica
+		// que TRAVA o corpo por conta propria (o `Stun` da coreografia): ninguem esta dancando e
+		// trocando socos ao mesmo tempo, entao a primeira pergunta e a mais barata de descartar.
+		if (TeclaDaDanca(p, c)) return;
 		if (!TeclaDoEmbateDeKi(p, c)) TeclaDoEmbate(p, c);
 	}
 
@@ -468,7 +498,7 @@ public sealed partial class GameServer
 				MandarPlacar(d.B.Quem, 100 - d.Medidor, d.Medidor);
 
 				// A DISPUTA E COMBATE: `refresh_combat_tag()` dos dois, pra a tag e a musica de
-				// batalha nao cairem no meio de um encontro que pode durar 22 s.
+				// batalha nao cairem no meio de um encontro que pode durar 15 s.
 				d.A.Quem.Combate?.EntrarEmCombate();
 				d.B.Quem.Combate?.EntrarEmCombate();
 
@@ -679,6 +709,18 @@ public sealed partial class GameServer
 		p.Letal = novoDono.Combate?.Letal ?? p.Letal;
 		p.Nome = $"{p.Nome} (devolvido)";
 
+		// ============================ O RUMO NAO PODE DEPENDER DA DISTANCIA ============================
+		// Era so `ate = alvo.Pos - p.Pos; if (longo o bastante) Rumo = ate.Normalized()`, e isso morria
+		// justamente no caso que importa: quem venceu de maos limpas empurrou o encontro ate o CORPO do
+		// atirador (sem a `folga`, ate exatamente em cima dele), entao `ate` e o vetor NULO e o `if`
+		// falhava -- deixando o feixe apontado pro lado de onde ele veio. Um ataque "devolvido" que sai
+		// voando pra longe do alvo.
+		//
+		// O VETOR NULO E A RESPOSTA CERTA, e nao um caso degenerado: se a cabeca ja esta em cima do
+		// corpo dele, o rumo pra ele e simplesmente o INVERSO do rumo com que o tiro chegou. Por isso a
+		// inversao e a base e a mira so corrige quando ha o que corrigir -- e nao o contrario.
+		// ==============================================================================================
+		p.Rumo = p.Rumo * -1f;   // `Vec2` nao tem menos unario
 		Vec2 ate = alvo.Pos - p.Pos;
 		if (ate.LengthSquared > 1e-4f) p.Rumo = ate.Normalized();
 
@@ -709,17 +751,54 @@ public sealed partial class GameServer
 		p.Distancia = Math.Max(p.Distancia, EmbateDeKi.TilesDoEmpurrao);
 		p.MaxDistancia = Math.Max(p.MaxDistancia, p.Distancia);
 		p.VidaRestante = Math.Max(p.VidaRestante, Projetil.SegundosDeBurnout);
+		ReassentarCauda(p);
+	}
+
+	/// <summary>
+	/// O FEIXE PRECISA DE CORPO ATRAS DA CABECA -- e a segunda metade do conserto da `folga` (ver o
+	/// bloco no <see cref="Comecar"/>).
+	///
+	/// ============================ O RASTRO TEM DOIS DONOS, E SO UM DELES E O TIQUE ============================
+	/// Enquanto alguem ALIMENTA o feixe, a cauda dele nao e um estado: e uma leitura da mao do dono,
+	/// reescrita todo quadro como `BocaDeCano.De(dono.Pos, Rumo)` (`GameServer.Projeteis.cs:885`).
+	/// Nada aqui deve tocar nela nesse caso -- por isso o `Canalizando` na porta.
+	///
+	/// Quando o canal CAI, a cauda deixa de ter quem a escreva e vira estado de verdade: o ramo "solto
+	/// e voando" do rastro passa a arrasta-la atras da cabeca, e o primeiro que ele faz e perguntar se
+	/// ela ja alcancou (`(Pos - Cauda).Length <= passo` -> `Matar(Cessou)`). Um feixe que troca de dono
+	/// no exato ponto onde a cauda dele estava chega nessa pergunta com comprimento ZERO e morre no
+	/// primeiro quadro, sem tocar em ninguem -- que era o defeito medido do ataque devolvido.
+	///
+	/// Entao ao soltar o feixe a gente ASSENTA a cauda atras dele, no rumo novo. O comprimento minimo e
+	/// um tile: um feixe empurrado ate o corpo do inimigo esta COMPRIMIDO a quase nada (e por isso que
+	/// a conta degenerava), e um tile e o menor pedaco que ainda se desenha e ainda sobrevive a
+	/// pergunta acima. Quem ja tinha corpo maior que isso o mantem.
+	/// =========================================================================================================
+	/// </summary>
+	private static void ReassentarCauda(Projetil p)
+	{
+		if (p.Canalizando) return;   // a cauda e a mao do dono; quem manda nela e o tique do rastro
+
+		float tinha = (p.Pos - p.Cauda).Length;
+		p.Cauda = p.Pos - p.Rumo * Math.Max(tinha, ZoneCollision.TileSize);
 	}
 
 	/// <summary>
 	/// EMPATE NO PRAZO: `draw()` -- os dois feixes explodem no meio e os dois perdem o canal.
 	///
-	/// Ele existe pra que 22 segundos de disputa parelha nao terminem com um vencedor sorteado. A
+	/// Ele existe pra que 15 segundos de disputa parelha nao terminem com um vencedor sorteado. A
 	/// faixa e estreita de proposito (5 pontos de 100): fora dela, quem estava na frente leva.
 	/// </summary>
 	private void Empatar(DisputaDeKi d)
 	{
 		Fechar(d);
+
+		// AS CABECAS, GUARDADAS ANTES DE MORREREM: e delas que sai o `strength` de cada estouro. No
+		// embate de guarda ha uma so, e o `draw()` do DM concorda -- ele chama `explode()` em cada
+		// cabeca QUE EXISTE, e as maos nao sao uma cabeca.
+		var cabecas = new List<Projetil>();
+		if (d.A.Feixe != null) cabecas.Add(d.A.Feixe);
+		if (d.B.Feixe != null) cabecas.Add(d.B.Feixe);
 
 		foreach (LadoDeKi l in new[] { d.A, d.B })
 		{
@@ -735,8 +814,133 @@ public sealed partial class GameServer
 		}
 
 		Estourar(d, forte: true);
+		OndaDeChoqueDoEmpate(d, cabecas);
 		Anunciar(d, 0, 0);   // os dois zerados = empate. Ver `Protocol.ClashSub.Acabou`.
 		GD.Print($"[server] EMBATE DE KI: EMPATE em {d.Corridos:0.#}s (medidor {d.Medidor:0.#})");
+	}
+
+	/// <summary>
+	/// A ONDA DE CHOQUE DO EMPATE: os dois levam DANO e sao JOGADOS PRA TRAS.
+	///
+	/// ============================ ISTO E PORTE, E FALTAVA METADE DELE ============================
+	/// O `draw()` do DM (`BeamClash.dm:355-379`) faz tres coisas: `createShockwavemisc`,
+	/// `createDustmisc` e **`spawn headA.explode()` / `spawn headB.explode()`**. O port tinha as duas
+	/// primeiras (e o <see cref="Estourar"/> ate as melhora, rachando o chao e derrubando cenario) e
+	/// nao tinha a terceira -- entao 15 segundos de disputa parelha terminavam com um efeito bonito e
+	/// **nenhuma consequencia**: ninguem perdia um ponto de vida, ninguem saia do lugar.
+	///
+	/// A terceira e uma cadeia inteira, e ela ja estava toda escrita no original:
+	/// `explode()` (`misc.dm:1-11`) -> `spawnExplosion(loc, null, BP, max(1,round(log(8,BP)/2)))` ->
+	/// `/obj/explosions` (`explosions.dm:4-46`, **`harmful = 1` por padrao**) -> `Ticker()` ->
+	/// `explosion()` -> `explosion_M_throw` (`explosions.dm:154-177`), que faz `M.SpreadDamage(dmg)` e
+	/// escreve `kbpow`/`kbdir`/`kbdur` + `AddEffect(/effect/knockback)` em todo mob no raio.
+	///
+	/// Ou seja o pedido do dono -- *"acontece uma EXPLOSAO, e AMBOS os jogadores sofrem um DANO e sao
+	/// JOGADOS PRA TRAS pela ONDA DE CHOQUE"* -- nao e desenho novo em nada exceto no piso do arremesso
+	/// (ver <see cref="EmbateDeKi.TiquesDeArremessoDoEstouro"/>) e no dano deixar de ser zero (ver
+	/// <see cref="EmbateDeKi.DanoDoEstouro"/>, que conta o bug do `DamageCalc` sem `basedamage`).
+	/// =============================================================================================
+	///
+	/// ============================ NADA AQUI E FORMULA NOVA ============================
+	/// O dano cheio e a cadeia de ki de sempre (<see cref="DanoDeKi.Final"/>), a mesma que o
+	/// `Acertar` cobra quando o feixe encosta em alguem -- a explosao so a ATENUA. Ele entra pelo
+	/// <see cref="EspalharDanoG3"/>, que e o `SpreadDamage` do DM: o MESMO valor em cada membro, em vez
+	/// do membro sorteado do soco. E o arremesso e o <see cref="Arremessar"/>, a porta unica do
+	/// `AddEffect(/effect/knockback)`. Escrever qualquer um dos tres de novo aqui seria a segunda
+	/// resposta pra uma pergunta que ja tem dona.
+	/// =================================================================================
+	/// </summary>
+	private void OndaDeChoqueDoEmpate(DisputaDeKi d, List<Projetil> cabecas)
+	{
+		if (cabecas.Count == 0) return;
+
+		// ---- QUEM A ONDA PEGA ----
+		// OS DOIS DUELISTAS SEMPRE, e este e o unico ponto em que me afasto do raio do original. La o
+		// `explosion_M_throw` so alcanca quem esta dentro de `log(8,BP)/2` tiles do centro, e num
+		// empate o centro fica entre os dois corpos -- entao com feixes de BP baixo a explosao podia
+		// nao alcancar NENHUM dos dois, e o desfecho que o dono descreveu ("ambos sofrem dano e sao
+		// jogados pra tras") simplesmente nao aconteceria. Eles nao sao transeuntes: sao as duas
+		// pessoas segurando o que explodiu.
+		var vitimas = new List<ServerPlayer>();
+		void Juntar(ServerPlayer p)
+		{
+			if (p.Ficha.dead || p.Combate is not { Intocavel: false }) return;
+			if (!vitimas.Contains(p)) vitimas.Add(p);
+		}
+		Juntar(d.A.Quem);
+		Juntar(d.B.Quem);
+
+		// ---- E QUEM ESTAVA POR PERTO, esse sim pelo raio do original ----
+		double maiorRaio = 0;
+		foreach (Projetil h in cabecas) maiorRaio = Math.Max(maiorRaio, EmbateDeKi.TilesDoEstouro(h.Bp));
+		foreach (ServerPlayer o in ZoneList(d.Zona))
+		{
+			if (o == d.A.Quem || o == d.B.Quem) continue;
+			if (Vec2.Distance(o.Pos, d.Ponto) / ZoneCollision.TileSize > maiorRaio) continue;
+			Juntar(o);
+		}
+
+		// ---- O DANO, uma explosao de cada vez (e o `spawn headA.explode()` + `spawn headB.explode()`) ----
+		foreach (Projetil h in cabecas)
+		{
+			double raio = EmbateDeKi.TilesDoEstouro(h.Bp);
+
+			ServerPlayer dono = h == d.A.Feixe ? d.A.Quem : d.B.Quem;
+
+			foreach (ServerPlayer v in vitimas)
+			{
+				CombatState? cv = v.Combate;
+				if (cv == null) continue;
+
+				bool duelista = v == d.A.Quem || v == d.B.Quem;
+				double dist = Math.Max(Vec2.Distance(v.Pos, d.Ponto) / ZoneCollision.TileSize, 1);
+				if (!duelista && dist > raio) continue;
+
+				// ============================ CADA CABECA PEGA TODO MUNDO, INCLUSIVE O PROPRIO DONO ============================
+				// A tentacao era pular o dono ("ninguem se machuca com o proprio ataque"), e ela quebra
+				// justamente o caso do dono do JOGO: no embate contra a GUARDA existe UMA cabeca so,
+				// entao pular o dono dela deixaria o atirador sem arranhao e o pedido diz *"AMBOS os
+				// jogadores sofrem um DANO"*. O DM tambem nao pula: `spawnExplosion` recebe `null` como
+				// dono e o `explosion_M_throw` varre o bloco inteiro.
+				//
+				// O ALGOZ, PORE'M, E SEMPRE O OUTRO DUELISTA -- e aqui sim me afasto do original, de
+				// proposito. O funil de derrota (`EspalharDanoG3` -> Zenkai, luto, raiva) precisa de um
+				// nome, e "morreu da propria explosao" seria uma leitura errada do que aconteceu: a
+				// explosao e o produto dos DOIS feixes se anulando. Quem nao e duelista fica com o dono
+				// da cabeca que o pegou, que e o unico responsavel plausivel por um transeunte.
+				// ==========================================================================================================
+				ServerPlayer autor = v == d.A.Quem ? d.B.Quem
+								   : v == d.B.Quem ? d.A.Quem
+								   : dono;
+
+				double cheio = DanoDeKi.Final(h.ModsAgora(), h.BaseDano, h.MaxDano, h.Bp,
+											  cv, cv.Bloqueando, h.Fisico);
+				EspalharDanoG3(v, autor, EmbateDeKi.DanoDoEstouro(cheio, dist), letal: h.Letal);
+			}
+		}
+
+		// ---- O ARREMESSO, UMA VEZ POR CORPO ----
+		// Duas explosoes no mesmo instante nao jogam ninguem duas vezes: no DM a segunda so
+		// sobrescreveria `kbpow`/`kbdur` da primeira, entao o que vale e a MAIS FORTE. O rumo e pra
+		// LONGE do ponto de encontro (o `throw_dir` de la), que e literalmente "jogados pra tras".
+		double forca = 0;
+		foreach (Projetil h in cabecas) forca = Math.Max(forca, h.Bp);
+
+		foreach (ServerPlayer v in vitimas)
+		{
+			if (v.Ficha.dead) continue;   // quem a onda ja matou nao voa: o corpo fica
+
+			Vec2 fora = v.Pos - d.Ponto;
+			fora = fora.LengthSquared > 1e-4f ? fora.Normalized() : d.Eixo;
+
+			int tiques = EmbateDeKi.TiquesDeArremessoDoEstouro(
+				forca, v.Ficha, teto => 1 + _rng.NextDouble() * Math.Max(teto - 1, 0));
+			Arremessar(v, fora, forca, tiques);
+			Avisar(v, "a ONDA DE CHOQUE te joga pra tras!");
+		}
+
+		GD.Print($"[server] EMBATE DE KI: a onda de choque do empate pegou {vitimas.Count} "
+				 + $"{(vitimas.Count == 1 ? "corpo" : "corpos")} (forca {forca:0.###e0})");
 	}
 
 	/// <summary>Tira a disputa das duas listas. So isso -- o que acontece com os feixes e de quem chamou.</summary>
@@ -752,7 +956,7 @@ public sealed partial class GameServer
 	/// esta escrito no `Terminar` do ZanzoClash: com dois embates correndo na mesma zona, o fim de um
 	/// derrubava o `EmClash` (e o silencio dos atalhos) e fechava a tela do OUTRO.
 	///
-	/// Aqui doia mais que la: esta disputa dura ate 22 s, entao ela e justamente a que costuma estar
+	/// Aqui doia mais que la: esta disputa dura ate 15 s, entao ela e justamente a que costuma estar
 	/// de pe quando um ZanzoClash de 3 s comeca e acaba ao lado.
 	/// </summary>
 	private void Anunciar(DisputaDeKi d, int venc, int perd)

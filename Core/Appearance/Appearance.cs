@@ -231,9 +231,20 @@ public static class CorDoTiro
 ///
 /// ============================ MAS O NUMERO DO DM NAO SE PORTA, O RESULTADO SIM ============================
 /// Portar `rand(0,255)` cru pra ca daria chamas quase PRETAS. O DM SOMA e este port MULTIPLICA:
-/// `Assets/Shaders/Aura.gdshader:46` faz `cor * i`, com `i` normalizado por `PicoDaFolha = 0.784`
-/// -- que e 200/255, o mesmo `c8` da folha. Ou seja no pixel dominante o shader devolve `cor` puro,
-/// e `cor` tem que ser o RESULTADO da soma do DM, nao a parcela dela.
+/// `Assets/Shaders/Aura.gdshader` faz `cor * i`, e `cor` tem que ser o RESULTADO da soma do DM, nao
+/// a parcela dela.
+///
+/// ============================ E O `i` HOJE VALE 1: A CONCLUSAO SO FICOU MAIS FORTE ============================
+/// Este bloco foi escrito quando a folha base era a `colorablebigaura`, cinza com pico em 200/255 --
+/// dai o `PicoDaFolha = 0.784` do shader, que normalizava o pixel dominante pra `cor` puro. **A folha
+/// base virou a `Aura, Big` por ordem do dono**, e ela e preta com o desenho todo no alfa: o shader
+/// entra pelo ramo `forma_no_alfa` e `i` vale 1,0 em TODO pixel, nao so no dominante.
+///
+/// Ou seja o argumento nao caiu, ele deixou de precisar de aproximacao: onde antes se dizia "no pixel
+/// dominante o shader devolve `cor` puro", agora se diz "o shader devolve `cor` puro, ponto" -- que e
+/// literalmente o que o `ICON_ADD` saturado do DM produzia. A distribuicao abaixo continua sendo a
+/// medida do original e nao mudou uma linha.
+/// ==============================================================================================================
 ///
 /// A conta e <c>min(255, 200 + rand(0,255))</c> por canal, e o `200` nao e chute: e a mesma
 /// constante que o shader ja nomeia. Media ~247 por canal, ~79% de chance de um canal estourar em
@@ -244,10 +255,21 @@ public static class CorDoTiro
 public static class CorDeAura
 {
     /// <summary>
-    /// O TOM DOMINANTE DA FOLHA, em 8 bits. E o `c8` de `c8c8c8` -- e o mesmo numero que o
-    /// `Aura.gdshader` guarda normalizado (`PicoDaFolha = 0.784 = 200/255`). Escrito nos dois
-    /// lugares porque um e GLSL e o outro e C#; se um dia a folha for retrabalhada, os dois mudam
-    /// juntos ou a cor sorteada deixa de bater com o pixel desenhado.
+    /// O TOM DOMINANTE DA FOLHA **DO DM**, em 8 bits: o `c8` de `c8c8c8` da `colorablebigaura`. Ele
+    /// existe pra uma coisa so -- reproduzir a DISTRIBUICAO do sorteio original, que satura pro
+    /// branco porque o `ICON_ADD` somava em cima de um pixel que ja estava a 200.
+    ///
+    /// ============================ ELE DEIXOU DE SER "O MESMO NUMERO DO SHADER" ============================
+    /// Este comentario dizia que o `Aura.gdshader` guardava este valor normalizado (`0.784`) e que os
+    /// dois tinham que mudar juntos. Isso valia enquanto a folha base do PORT era a mesma do DM; ela
+    /// virou a `Aura, Big` (ordem do dono), que e preta com o desenho no alfa e nao passa mais pela
+    /// normalizacao -- o shader entra pelo ramo `forma_no_alfa` e nem le o `PicoDaFolha` dele.
+    ///
+    /// Os dois numeros ficaram INDEPENDENTES, entao a regra antiga ("mudam juntos") virou o risco: o
+    /// `0.784` do shader agora acompanha a `colorablebigaura` (que so a bancada ainda carrega) e este
+    /// 200 acompanha o SORTEIO DO DM, que nao muda porque nenhuma arte do port mudou. Retrabalhar a
+    /// folha base daqui pra frente NAO e motivo pra mexer neste valor.
+    /// ======================================================================================================
     /// </summary>
     public const int PicoDaFolha = 200;
 

@@ -167,12 +167,20 @@ public static class Habilidades
 				+ "tem os órgãos pra isso.",
 				() => GameClient.Instance?.SendHabilidade("absorver")) { Chave = "hab:absorver" });
 
-		if (raca is "Namekian" or "Majin" or "BioAndroid" or "Shapeshifter")
+		// SO O NAMEKUSEIJIN. Era `"Namekian" or "Majin" or "BioAndroid" or "Shapeshifter"`, e as tres
+		// racas a mais nao vinham de desenho: vinham de reusar a lista do `canheallopped`, que responde
+		// outra pergunta (ver `GameServer.Raciais.PodeRegenerar`). O servidor deixou de aceitar delas, e
+		// um botao que existe pra ouvir "seu corpo nao regenera assim" e pior que botao nenhum.
+		//
+		// Quem COMPRA a skill `Regenerate` (arvores de Alien/Android/Demonio) continua com o botao pelo
+		// outro caminho: o registro por skill do `DasSkills()`, que le o livro e nao a raca.
+		if (raca is "Namekian")
 			Verbos.Registrar(new Verbo(
 				"Regenerar",
 				Verbos.Skills,
 				"Faz um membro decepado voltar a crescer, ou cura por inteiro o mais ferido. "
-				+ "Custa 70% do Ki maximo e tem 10s de espera.",
+				+ "Custa 70% do Ki MAXIMO e tem 10s de espera -- e a unica cura que voce tem no "
+				+ "meio de uma luta: seu corpo nao se refaz sozinho enquanto a briga estiver de pe.",
 				() => GameClient.Instance?.SendHabilidade("regenerar"),
 				// APAGA quando falta Ki, mas continua na lista: saber que a tecnica existe e que
 				// falta Ki e informacao util; sumir com ela e esconder o jogo.
@@ -180,6 +188,7 @@ public static class Habilidades
 				{ Chave = "hab:regenerar" });
 
 		DoDiscipulado();
+		DaFusao();
 		DoEnsinoDeSkill();
 		DasDisciplinas();
 		DasSkills();
@@ -279,6 +288,84 @@ public static class Habilidades
 			Verbos.Aprendizado,
 			"Segue o proprio caminho. O ganho extra de treinar contra ele acaba junto.",
 			() => GameClient.Instance?.SendHabilidade("mst_largar")) { Chave = "hab:mst_largar" });
+	}
+
+	/// <summary>
+	/// A FUSAO -- os verbos que o DM poe em `set category = "Skills"` (`Fusion.dm:712`) e em
+	/// `"Other"` (o Pass Fusion Control, `:514`).
+	///
+	/// ============================ ELES FICAM NA MESMA ABA DO CONVITE DE MESTRE ============================
+	/// "Aceitar" e "Recusar" da fusao dividem a aba com os do discipulado e os do ensino de skill, e
+	/// e proposital: sao TRES pendentes diferentes que chegam pelo mesmo tipo de aviso, e o jogador
+	/// que recebe um convite tem um lugar so pra procurar. Os ids sao distintos (`fus_sim` /
+	/// `mst_aceitar` / `ens_licao_sim`) porque os tres pendentes coexistem -- alguem pode estar sendo
+	/// convidado pra fundir enquanto um terceiro lhe oferece um Kamehameha.
+	///
+	/// **NENHUM E CONDICIONADO**, e vale a mesma regra da casa do discipulado: o estado que decidiria
+	/// ("eu sei dancar?", "ha convite na mesa?") e do servidor e nao viaja. Um verb que aparece e
+	/// recusa com uma frase ensina o jogo -- e aqui as frases sao a UNICA maneira de o jogador
+	/// descobrir os dois portoes novos (mesma raca, poder proximo). Ver `GameServer.Fusao.PorQueNaoFunde`.
+	///
+	/// **A POTARA NAO TEM VERB**: ela e o ITEM. Clicar nos brincos na mochila e o gesto, e o menu de
+	/// acoes do inventario ja monta o botao sozinho a partir do `ItemDef.AcoesDoItem`.
+	///
+	/// **A NAMEKUSEIJIN TEM**, e ela e a terceira: no DM ela e um verb tambem
+	/// (`obj/Namekian_Fusion/verb/Namekian_Fusion` e `mob/keyable/verb`, `Fusion.dm:549-550`), sem
+	/// item e sem skill.
+	/// =================================================================================================
+	/// </summary>
+	private static void DaFusao()
+	{
+		Verbos.Registrar(new Verbo(
+			"Dança da Fusão",
+			Verbos.Aprendizado,
+			"Convida quem está na sua frente pra Dança da Fusão. Vocês DOIS precisam saber a dança, "
+			+ "ser da mesma raça (meio-Saiyajin conta como Saiyajin) e ter poder aparente parecido -- "
+			+ $"o mais fraco tem que expressar pelo menos {Jandirus.Core.Social.Fusao.LimiarDeProximidade * 100:0}% "
+			+ "do mais forte.\n\nSe ele aceitar, os dois fazem a coreografia: "
+			+ $"{Jandirus.Core.Social.Fusao.LetrasDaDanca} letras cada um. Acertando tudo, a fusão sai "
+			+ "inteira. Errando qualquer passo, ela sai fraca demais até pra se transformar.\n\n"
+			+ "Quem convida CONTROLA o corpo, e a fusão dura "
+			+ $"{Jandirus.Core.Social.Fusao.EnergiaDaDanca / 60:0} minutos parado -- menos quanto mais "
+			+ "alta a transformação.",
+			() => GameClient.Instance?.SendHabilidade("fus_danca")) { Chave = "hab:fus_danca" });
+
+		// ============================ A FUSAO NAMEKUSEIJIN -- `Namekian_Fusion` (`Fusion.dm:549-569`) ============================
+		// Ela existia no motor inteira (energia zero, o nocaute que nao separa, o dreno que a pula) e
+		// **nao tinha porta**: nenhum caminho de producao chamava `Convidar` com ela. Este botao e a
+		// porta, e ele segue a regra da casa deste arquivo -- **nao e condicionado**. Um verb que
+		// aparece e recusa com uma frase ("os DOIS precisam ser Namekuseijin") ensina o jogo; um verb
+		// escondido faz o jogador nunca descobrir que a fusao permanente existe.
+		// ==================================================================================================================
+		Verbos.Registrar(new Verbo(
+			"Fusão Namekuseijin",
+			Verbos.Aprendizado,
+			"Oferece a quem está na sua frente a fusão dos Namekuseijin. Os DOIS precisam ser "
+			+ "Namekuseijin -- não há skill a aprender e não importa o poder de cada um.\n\n"
+			+ "Ela é PERMANENTE: não acaba com o tempo, não se desfaz no nocaute e não tem volta. "
+			+ "Quem convida controla o corpo; o controle pode ser passado depois.",
+			() => GameClient.Instance?.SendHabilidade("fus_namek")) { Chave = "hab:fus_namek" });
+
+		Verbos.Registrar(new Verbo(
+			"Aceitar a fusão",
+			Verbos.Aprendizado,
+			"Aceita o convite de fusão que está na sua mesa. Você vira o passageiro: quem convidou "
+			+ "dirige o corpo, e você volta quando a fusão acabar.",
+			() => GameClient.Instance?.SendHabilidade("fus_sim")) { Chave = "hab:fus_sim" });
+
+		Verbos.Registrar(new Verbo(
+			"Recusar a fusão",
+			Verbos.Aprendizado,
+			"Recusa o convite de fusão pendente. (Ignorar também funciona: todo convite expira em "
+			+ $"{Jandirus.Core.Social.Fusao.PrazoDoConviteSegundos:0} segundos.)",
+			() => GameClient.Instance?.SendHabilidade("fus_nao")) { Chave = "hab:fus_nao" });
+
+		Verbos.Registrar(new Verbo(
+			"Passar o controle",
+			Verbos.Aprendizado,
+			"Entrega o volante do corpo fundido ao seu outro lado. O poder da fusão não muda -- só "
+			+ "muda quem está dirigindo. Só quem está no controle pode usar.",
+			() => GameClient.Instance?.SendHabilidade("fus_passar")) { Chave = "hab:fus_passar" });
 	}
 
 	/// <summary>

@@ -60,8 +60,40 @@ public static class EmbateDeKi
 	/// </summary>
 	public const double DerivaPorCiclo = 0.45;
 
-	/// <summary>`BCL_MAX_SECONDS 22` -- alem disto a disputa expira e se decide no medidor.</summary>
-	public const double SegundosMaximos = 22;
+	/// <summary>
+	/// O PRAZO DA DISPUTA. **15 s, E ESTE E O UNICO NUMERO DAQUI QUE NAO E DO DM.**
+	///
+	/// ============================ O ORIGINAL DIZ 22, E O DONO DISSE 15 ============================
+	/// `BCL_MAX_SECONDS 22` (`BeamClash.dm:22`) era o valor portado, e ele esteve aqui ate o pedido
+	/// do dono sobre a colisao de feixe: *"o timer e bem maior, uns 15 SEGUNDOS. se NINGUEM VENCER em
+	/// 15 segundos, acontece uma EXPLOSAO"*. Ou seja o corte nao e balanceamento fino, e a duracao da
+	/// CENA -- e ele vem junto com a explosao do empate ganhar dano e arremesso (ver
+	/// <see cref="TilesDoEstouro"/>), que e o que torna vencer o relogio uma coisa que se sente.
+	///
+	/// ============================ A ESCADA DE PODER SOBREVIVEU, E NAO PELO MOTIVO ESPERADO ============================
+	/// A previsao antes de medir era que o corte quebraria o balanceamento: a calibragem inteira foi
+	/// feita contra 22 s, e com 22 s a disputa contra um rival de 1,5x resolvia em 17,4 s e a de 1,75x
+	/// so terminava no prazo. Cortar pra 15 s, dizia a previsao, jogaria esses dois casos no EMPATE e o
+	/// jogador perfeito deixaria de ganhar deles.
+	///
+	/// **A previsao estava errada, e o que a desmente e o <see cref="Decidir"/>.** Vencer o prazo nao e
+	/// empatar: dentro da <see cref="MargemDoEmpate"/> (5 pontos de 100) os dois estouram, mas FORA
+	/// dela quem estava na frente leva. E quem ia ganhar aos 17,4 s ja estava MUITO na frente aos 15 --
+	/// medido nesta rodada, os dois casos terminam em `15s` com o medidor em 70,6 e em 88, ou seja
+	/// vitorias limpas pela margem. A tabela saiu identica a de 22 s: **ganha de 1x, 1,5x e 1,75x,
+	/// empata em 2x, perde de 3x e 6x**.
+	///
+	/// O que o corte muda de verdade e o TEMPO DE DERIVA de quem joga mal: na tabela de reacao, quem
+	/// responde a 450 ms via o medidor se afastar 36,4 do meio com 22 s e agora se afasta 25,3. Ele
+	/// continua perdendo -- so perde com menos tempo pra afundar.
+	///
+	/// E A `folga` NAO ENTRA NESTA CONTA. Tira-la (ver o `Comecar` do servidor) muda a GEOMETRIA -- o
+	/// ponto de encontro passa a chegar ao corpo em vez de parar um tile antes --, e nao o relogio:
+	/// quem decide a disputa continua sendo o medidor, e o medidor nao sabe quantos pixels o ponto
+	/// andou. As duas mudancas sao independentes, e quem for mexer numa nao ganha nada olhando a outra.
+	/// ================================================================================================================
+	/// </summary>
+	public const double SegundosMaximos = 15;
 
 	/// <summary>`BCL_KI_PER_TICK 0.004` -- a fracao do Ki maximo que CADA lado queima por ciclo.</summary>
 	public const double KiPorCiclo = 0.004;
@@ -281,6 +313,80 @@ public static class EmbateDeKi
 	/// </summary>
 	public static double Deslocamento(double medidor)
 		=> Math.Clamp((medidor - MedidorInicial) / MedidorInicial, -1, 1);
+
+	// =====================================================================
+	// O ESTOURO DO EMPATE (`draw()`, `BeamClash.dm:355-379`)
+	// =====================================================================
+	/// <summary>
+	/// O RAIO DO ESTOURO, em tiles: `max(1, round(log(8, max(BP,1))/2))` (`misc.dm:3`).
+	///
+	/// E o raio que o `obj/attack/proc/explode()` passa pro `spawnExplosion`, e o `draw()` do
+	/// BeamClash chama exatamente esse `explode()` nas DUAS cabecas. O logaritmo e o que faz a
+	/// explosao de um lutador de milhoes de BP cobrir um quarteirao e a de um novato cobrir um tile.
+	/// </summary>
+	public static double TilesDoEstouro(double bp)
+		=> Math.Max(1, Math.Round(Math.Log(Math.Max(bp, 1), 8) / 2, MidpointRounding.AwayFromZero));
+
+	/// <summary>
+	/// A ATENUACAO DO ESTOURO sobre o dano cheio do feixe: `/1.5` e `/distancia`.
+	///
+	/// ============================ O ORIGINAL FAZ ZERO DE DANO, E ISSO E UM BUG DELE ============================
+	/// O `explosion_M_throw` (`explosions.dm:162-170`) escreve:
+	/// <code>
+	/// var/dmg = DamageCalc(BPModulus(strength, M.expressedBP), ((M.Ephysoff+M.Etechnique) * dist))
+	/// if(harmful) { dmg = (dmg/1.5); M.SpreadDamage(dmg) }
+	/// </code>
+	/// So que `DamageCalc(upscalar, downscalar, basedamage, maxdamage)` (`calcs.dm:1-7`) calcula
+	/// `(upscalar/downscalar)*basedamage` -- e a chamada acima passa DOIS argumentos. O terceiro fica
+	/// nulo, no BYOND nulo vale zero em conta, e o produto inteiro zera: **no DM a explosao arremessa
+	/// mas nao machuca ninguem**. O `testback` (o arremesso) nao depende do `dmg`, e e por isso que o
+	/// defeito nunca apareceu em jogo -- a explosao *parece* funcionar.
+	///
+	/// O dono pediu o contrario com todas as letras: *"AMBOS os jogadores sofrem um DANO e sao
+	/// JOGADOS PRA TRAS pela ONDA DE CHOQUE"*. Entao o `basedamage` que faltou e o do PROPRIO FEIXE
+	/// que estourou, e quem monta o numero cheio e a cadeia de ki de sempre
+	/// (<see cref="DanoDeKi.Final"/>) -- e nao uma terceira formula de dano escrita aqui. O que esta
+	/// funcao guarda e so o que a explosao TIRA daquele numero, que sao as duas divisoes que o
+	/// original de fato escreveu: a onda de choque vale menos que o tiro na cara (`/1.5`) e cai com
+	/// a distancia (o `* dist` que mora no DENOMINADOR do `DamageCalc` de la).
+	///
+	/// PISO DE UM TILE na distancia, pelo mesmo motivo anotado no `DetonarG3`: `get_dist` devolve 0
+	/// pra quem esta no mesmo tile, e dividir por ele faria justamente quem esta ABRACADO com a
+	/// explosao sair ileso.
+	/// ==========================================================================================================
+	/// </summary>
+	public static double DanoDoEstouro(double danoCheioDoFeixe, double distanciaEmTiles)
+		=> danoCheioDoFeixe / 1.5 / Math.Max(distanciaEmTiles, 1);
+
+	/// <summary>
+	/// POR QUANTOS TIQUES A ONDA DE CHOQUE JOGA UM CORPO -- o `testback` do
+	/// `explosion_M_throw` (`explosions.dm:159-167`):
+	/// <code>
+	/// testback = rand(1, 2*BPModulus(strength, M.expressedBP)) / M.Ephysdef
+	/// testback = min(round(testback, 1), 15)
+	/// if(testback > 1 &amp;&amp; strength) -> kbpow = strength, kbdir = throw_dir, kbdur = testback
+	/// </code>
+	///
+	/// ============================ O PISO DE 1 TIQUE E DESENHO DO DONO ============================
+	/// O `testback > 1` do original e um portao: contra um corpo de defesa fisica alta, uma explosao
+	/// fraca nao arremessa NADA. Isso vale pra uma bomba qualquer no meio do mapa -- mas aqui a
+	/// explosao e o desfecho de um duelo de 15 segundos, e o dono descreveu o resultado dele sem
+	/// condicional: *"sao JOGADOS PRA TRAS pela ONDA DE CHOQUE e o duelo acaba ai em EMPATE"*.
+	///
+	/// Entao o sorteio do DM continua decidindo QUANTO (e e ele que faz o gigante voar mais longe
+	/// que o anao), e o unico acrescimo e o piso de um tique: os dois SEMPRE saem do lugar. Sem ele,
+	/// o empate contra alguem muito resistente terminaria com os dois parados se olhando -- que e
+	/// exatamente a cena que o pedido existe pra evitar.
+	/// ============================================================================================
+	/// </summary>
+	/// <param name="sorteio">O `rand(1, n)` do DM, injetavel pra a bancada poder afirmar a faixa.</param>
+	public static int TiquesDeArremessoDoEstouro(double forca, Fighter alvo, Func<double, double> sorteio)
+	{
+		double teto = 2 * CombatMath.BpModulus(forca, Math.Max(alvo.expressedBP, 1));
+		double testback = sorteio(Math.Max(teto, 1)) / Math.Max(alvo.Ephysdef, 1e-6);
+		testback = Math.Round(testback, MidpointRounding.AwayFromZero);
+		return (int)Math.Clamp(testback, 1, 15);
+	}
 }
 
 /// <summary>Como a disputa terminou. Ver <see cref="EmbateDeKi.Decidir"/>.</summary>

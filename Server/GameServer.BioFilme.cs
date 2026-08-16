@@ -272,7 +272,10 @@ public partial class GameServer
 			// ==================================================================================
 			case 5:
 				k.Facing = Facing.East; k.FacingDaQueda = Facing.East;
-				k.Combate?.Nocautear(MeleeResolver.SegundosDeNocaute);
+				// `porVital: false`: o corpo do palco esta INTEIRO -- este nocaute e encenacao, e nao um
+				// nucleo cedendo. Com `true` o `CombatState.Tick` o levantaria no quadro seguinte, porque
+				// ele pergunta ao corpo e o corpo esta bem.
+				k.Combate?.Nocautear(MeleeResolver.TetoDoNocaute, porVital: false);
 				k.SigAtributos = "";
 				GD.Print($"[biofilme] passo 5: O NOCAUTE -- K KO={k.Ficha.KO} no meio da propria cena "
 					   + $"(faltam ~14 s pra virada), corpo da ficha = {k.Visual.Corpo}");

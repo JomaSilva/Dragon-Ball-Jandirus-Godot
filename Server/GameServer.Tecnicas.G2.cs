@@ -989,7 +989,7 @@ public partial class GameServer
 		pl.Combate.SincronizarVida();
 
 		if (!pl.Ficha.KO && !pl.Ficha.dead && pl.Combate.Corpo.DeveNocautear())
-			pl.Combate.Nocautear(MeleeResolver.SegundosDeNocaute);
+			pl.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
 	}
 
 	/// <summary>
@@ -1020,7 +1020,7 @@ public partial class GameServer
 		}
 		else if (!pl.Ficha.KO && pl.Combate.Corpo.DeveNocautear())
 		{
-			pl.Combate.Nocautear(MeleeResolver.SegundosDeNocaute);
+			pl.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
 			GD.Print($"[server] {pl.Name} se despedacou com o Kaio-ken (regenera: entrou em coma)");
 		}
 	}

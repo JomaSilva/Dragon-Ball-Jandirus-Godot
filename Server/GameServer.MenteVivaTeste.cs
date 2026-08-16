@@ -792,9 +792,15 @@ public partial class GameServer
 		UmTique();
 		AfirmarMvv("no primeiro tique caido o mecanismo assume a queda (o `clone_watch`)",
 				   reflexo.CaiuNaMente, "o bit nao foi escrito");
+		// A DESIGUALDADE INVERTEU -- ver a mesma afirmacao em `GameServer.MenteTeste.cs`: o nocaute comum
+		// deixou de ser 12 s e virou o coma do DM com teto de 225, entao o prazo do reflexo agora e o
+		// MENOR dos dois. A pergunta continua sendo "e o relogio dele?", so que medida contra o numero
+		// dele.
 		AfirmarMvv($"...e o relogio do nocaute foi REESCRITO pro prazo do DM ({SegundosAteOReflexoSeReerguer:0}s)",
-				   reflexo.Combate.NocauteRestante > MeleeResolver.SegundosDeNocaute,
-				   $"{reflexo.Combate.NocauteRestante:0.00} <= {MeleeResolver.SegundosDeNocaute}");
+				   reflexo.Combate.NocauteRestante <= SegundosAteOReflexoSeReerguer
+				   && reflexo.Combate.NocauteRestante > SegundosAteOReflexoSeReerguer - 1
+				   && !reflexo.Combate.NocautePorVital,
+				   $"{reflexo.Combate.NocauteRestante:0.00} (teto comum {MeleeResolver.TetoDoNocaute})");
 		AfirmarMvv("...e a QUEDA nao encerrou o transe (era o comportamento antigo)",
 				   NaMente(a) && a.CloneId == reflexo.Id, $"{a.Zone} / {a.CloneId}");
 
@@ -862,7 +868,9 @@ public partial class GameServer
 
 		UmTique();
 		AfirmarMvv("...e a segunda queda reabre o ciclo, com o prazo do DM outra vez",
-				   reflexo.CaiuNaMente && reflexo.Combate.NocauteRestante > MeleeResolver.SegundosDeNocaute,
+				   reflexo.CaiuNaMente
+				   && reflexo.Combate.NocauteRestante <= SegundosAteOReflexoSeReerguer
+				   && reflexo.Combate.NocauteRestante > SegundosAteOReflexoSeReerguer - 1,
 				   $"{reflexo.CaiuNaMente} / {reflexo.Combate.NocauteRestante:0.00}");
 		AfirmarMvv("...e o transe continua aberto (parceiro de treino infinito)",
 				   NaMente(a) && a.BonecoLargado != null, a.Zone.ToString());

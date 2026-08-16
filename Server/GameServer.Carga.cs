@@ -244,6 +244,6 @@ public sealed partial class GameServer
 		pl.Combate.SincronizarVida();
 
 		if (!pl.Ficha.KO && !pl.Ficha.dead && pl.Combate.Corpo.DeveNocautear())
-			pl.Combate.Nocautear(MeleeResolver.SegundosDeNocaute);
+			pl.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
 	}
 }

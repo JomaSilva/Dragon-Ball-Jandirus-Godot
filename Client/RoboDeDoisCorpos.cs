@@ -172,8 +172,9 @@ public partial class RoboDeDoisCorpos : Node
 	/// viesse depois dela cairia numa chave ja julgada e seria descartado em silencio.
 	/// ============================================================================================
 	/// </summary>
+	/// <param name="fusao">O bit de fusao do `PeerLook`. Este robo nao funde ninguem -- ver `GameClient.PeerLooked`.</param>
 	private void AoReceberFicha(int quem, string nome, string raca, string genero,
-								Jandirus.Core.Appearance.Appearance ap)
+								Jandirus.Core.Appearance.Appearance ap, bool fusao)
 	{
 		bool meu = GameClient.Instance is { } c && c.LocalId == quem;
 		Anotar($"servidor: PeerLook de {quem}{(meu ? " (EU)" : " (OUTRO)")} ({nome}, {raca}) -- "

@@ -114,6 +114,22 @@ public partial class World : Node2D
 	private readonly HashSet<int> _dominouDaZona = [];
 
 	/// <summary>
+	/// QUEM DA ZONA E UMA FUSAO agora. Gemeo do <see cref="_dominouDaZona"/> logo acima e guardado
+	/// pelas MESMAS tres razoes: o pacote (`S2C.PeerLook`) pode chegar antes de o boneco existir,
+	/// aplica-se quando ele existir, e o nascimento do boneco consulta o que ficou guardado
+	/// (`VestirAFormaSemCena`).
+	///
+	/// SO O CABELO DE SSJ4 USA ISTO, e por uma regra do dono que nao se deduz de mais nada: *"no SSJ4,
+	/// TODA fusao usa `Hair SSJ4 Gogeta` pintado de vermelho, tendo ou nao o cabelo do Vegito"*. A fusao
+	/// que nao virou Vegito veste o penteado de quem convidou, entao a aparencia sozinha nao responde --
+	/// e o nome nao serve pra pergunta nenhuma, porque nome e texto livre.
+	///
+	/// **UM CONJUNTO E NAO UM `bool` POR CORPO** pelo mesmo motivo do vizinho: quem deixa de ser fusao
+	/// sai do conjunto no mesmo pacote que o desfundiu.
+	/// </summary>
+	private readonly HashSet<int> _fusaoDaZona = [];
+
+	/// <summary>
 	/// QUEM DA ZONA ESTA SENDO DIRIGIDO PELO SERVIDOR agora (a furia lendaria, o Oozaru sem controle).
 	/// Gemeo do <see cref="_dominouDaZona"/> logo acima e guardado pelas MESMAS tres razoes -- o fato
 	/// pode chegar antes do boneco existir, aplica-se quando ele existir, e o nascimento do boneco
@@ -277,8 +293,11 @@ public partial class World : Node2D
 			// METODO NOMEADO, como os vizinhos: ver a nota logo abaixo sobre as lambdas orfas.
 			cli.FuriaIrrompeu += AoIrromperFuria;
 			cli.CenaDoBioComecou += AoComecarCenaDoBio;
+			cli.CenaDeFusaoComecou += AoComecarCenaDeFusao;
 			cli.VizinhancaMudou += DesenharPlanetas;
 			cli.ObrasMudaram += DesenharObras;
+			// AS ESFERAS SEGUEM AS CONSTRUCOES: mesmo evento, mesma camada, mesmo Y-sort.
+			cli.EsferasMudaram += DesenharEsferas;
 			cli.EfeitoCaiu += AoCairEfeito;
 			cli.Piscou += AoPiscar;
 			cli.ClashBaque += AoBaqueDeEmbate;
@@ -356,8 +375,10 @@ public partial class World : Node2D
 			cli.OozaruMudou -= AoVirarOozaru;
 			cli.FuriaIrrompeu -= AoIrromperFuria;
 			cli.CenaDoBioComecou -= AoComecarCenaDoBio;
+			cli.CenaDeFusaoComecou -= AoComecarCenaDeFusao;
 			cli.VizinhancaMudou -= DesenharPlanetas;
 			cli.ObrasMudaram -= DesenharObras;
+			cli.EsferasMudaram -= DesenharEsferas;
 			cli.EfeitoCaiu -= AoCairEfeito;
 			cli.Piscou -= AoPiscar;
 			cli.TiroNasceu -= AoNascerTiro;
@@ -1129,6 +1150,19 @@ public partial class World : Node2D
 		// CeuDoEspaco) e os planetas chegam do servidor. Sem colisao e sem veu, tambem -- no
 		// vazio nao ha parede pra bater nem pra esconder nada.
 		bool espaco = Jandirus.Core.World.Espaco.EhEspaco(zona);
+
+		// ============================ O SILENCIO DO VACUO, ANTES DE QUALQUER SAIDA ============================
+		// Mesma razao -- escrita com todas as letras -- do bloco do ceu la em cima: esta funcao tem
+		// CINCO caminhos que terminam em `return`, e o ramo do espaco e justamente um deles. Pendurar
+		// isto la dentro deixaria o vacuo LIGADO ao sair pra qualquer outro lugar, porque nenhum dos
+		// outros quatro caminhos passaria por uma linha que o desligasse: o jogador pousaria num
+		// planeta e continuaria sem ouvir soco nenhum, para sempre, e nada apontaria pro espaco.
+		//
+		// A pergunta e do Core (`Espaco.EhEspaco`) e e a MESMA que decide o ramo logo abaixo -- uma
+		// resposta so pra "estou no vacuo?", que e o que impede o som e o cenario de discordarem.
+		// Ver `AudioDirector.Vacuo`, onde o desenho inteiro esta explicado.
+		AudioDirector.Instance?.Vacuo(espaco);
+
 		_ceu.Visible = espaco;
 		_ceu.Seed = GameClient.Instance?.SeedDoUniverso ?? 0;
 		if (espaco)
@@ -1185,6 +1219,7 @@ public partial class World : Node2D
 			_veu.Camadas = CamadasDoCenario(interior);
 			if (_local != null) _local.Mapa = _colisao;
 			DesenharObras();
+			DesenharEsferas();
 			ReaplicarEstrago();
 			AudioDirector.Instance?.Ambiente("");
 			GD.Print($"[world] zona: INTERIOR da nave #{idDaNave} "
@@ -1231,6 +1266,7 @@ public partial class World : Node2D
 			_veu.Camadas = CamadasDoCenario(mente);
 			if (_local != null) _local.Mapa = _colisao;
 			DesenharObras();
+			DesenharEsferas();
 			ReaplicarEstrago();
 			AudioDirector.Instance?.Ambiente("");
 			// A CHAPA E SO A ORIGEM: dali pra fora o branco continua pra sempre, pintado por pedaco
@@ -1270,6 +1306,7 @@ public partial class World : Node2D
 			_veu.Camadas = CamadasDoCenario(gerado);
 			if (_local != null) _local.Mapa = _colisao;
 			DesenharObras();
+			DesenharEsferas();
 			ReaplicarEstrago();
 			AudioDirector.Instance?.Ambiente("");
 			GD.Print($"[world] zona GERADA: {gerado.Ficha()}");
@@ -1362,7 +1399,7 @@ public partial class World : Node2D
 
 		// A MESMA colisao que o servidor usa. Sem ela o cliente atravessa parede, o servidor
 		// recusa e devolve correcao -- e e ESSA briga que faz o personagem tremer no muro.
-		_colisao = MapaCacheado(e.Colisao, e.Zona, e.CaminhoDaAgua);
+		_colisao = MapaCacheado(e.Colisao, e.Zona, e.CaminhoDaAgua, e.CaminhoDaNuvem);
 		if (_colisao == null) GD.PushWarning($"[world] zona '{zona}' sem colisao: da pra atravessar parede");
 		if (_local != null) _local.Mapa = _colisao;
 
@@ -1381,6 +1418,13 @@ public partial class World : Node2D
 		// outra. Passou despercebido enquanto elas eram so desenho; agora que elas viram parede,
 		// seria o cliente atravessando o que o servidor barra.
 		DesenharObras();
+
+		// ...E AS ESFERAS, PELO MESMO MOTIVO ESCRITO ACIMA: o pacote delas tambem chega antes de o
+		// `World` existir, entao sem esta linha quem entra num planeta com as sete espalhadas nao ve
+		// nenhuma ate alguem pegar ou largar uma. Vale nos QUATRO ramos de zona, e por isso ela esta
+		// nos quatro -- foi exatamente um ramo esquecido que gerou o defeito do `ReaplicarEstrago`
+		// descrito logo abaixo.
+		DesenharEsferas();
 
 		// E O ESTRAGO QUE JA ESTAVA FEITO. Este ramo -- o do planeta PRE-FEITO, que e onde se joga
 		// -- era o unico dos quatro que NAO reaplicava. O metodo existe justamente porque a versao
@@ -1506,7 +1550,8 @@ public partial class World : Node2D
 	/// por sessao, e um caminho que carregasse sem a agua deixaria a copia seca guardada pra
 	/// sempre -- com o cliente deixando andar sobre o lago e o servidor puxando de volta.
 	/// </param>
-	private ZoneCollision? MapaCacheado(string caminho, string zona = "", string agua = "")
+	private ZoneCollision? MapaCacheado(string caminho, string zona = "", string agua = "",
+										string nuvem = "")
 	{
 		if (_mapas.TryGetValue(caminho, out ZoneCollision? m)) return m;
 		m = Godot.FileAccess.FileExists(caminho)
@@ -1516,6 +1561,19 @@ public partial class World : Node2D
 		// zona sem `.agua` e zona SECA -- e isso e a verdade em boa parte dos andares
 		if (m != null && agua.Length > 0 && Godot.FileAccess.FileExists(agua))
 			m.CarregarAgua(Godot.FileAccess.GetFileAsBytes(agua));
+
+		// ZONA SEM `.nuvem` E ZONA SEM CEU -- e isso e a verdade em 35 dos 40 andares.
+		//
+		// ENTRA AQUI PELO MESMO MOTIVO QUE A AGUA E O `SemBorda`: o mapa e cacheado por sessao, e um
+		// caminho que carregasse sem a nuvem deixaria a copia errada guardada pra sempre. O sintoma
+		// seria o classico -- o cliente deixando andar por cima do ceu do Templo e o servidor
+		// puxando de volta, o corpo tremendo na costura.
+		//
+		// O NOME DA ZONA VAI JUNTO e nao um `bool`: quem decide se esta nuvem derruba ou barra e o
+		// `ClasseDeNuvem`, num lugar so. O servidor faz a MESMA chamada em `CarregarZonas` -- as duas
+		// pontas leem o mesmo arquivo e derivam a mesma regra, que e a unica forma de nao discordarem.
+		if (m != null && nuvem.Length > 0 && Godot.FileAccess.FileExists(nuvem))
+			m.CarregarNuvem(Godot.FileAccess.GetFileAsBytes(nuvem), zona);
 
 		// ZONA SEM BEIRADA: fora do bitset e chao, e nao o fim do mundo (ver `ZoneCollision.SemBorda`).
 		// O bit e ligado AQUI, junto da leitura, e nao no chamador -- o mapa e cacheado por sessao,
@@ -2226,6 +2284,15 @@ public partial class World : Node2D
 		// E as duas tabelas que DERIVAM delas -- ver o irmao deste bloco no `EsvaziarRemotos`.
 		_contornoDaForma.Remove(id);
 		_sobrecarregados.Remove(id);
+
+		// A FUSAO SAI JUNTO COM A FORMA, e nao junto com o `_looks`. Ela e do lado VOLATIL da divisa que
+		// o bloco acima descreve: a aparencia de ficha e permanente, mas uma fusao dura 15 ou 30 minutos
+		// e pode acabar longe dos meus olhos. Guardar o bit faria o boneco renascer com cabelo vermelho
+		// de SSJ4 depois de a fusao ter se desfeito -- um estado que o servidor nao afirma mais.
+		//
+		// E ele afirma de novo na entrada, pelo mesmo caminho da forma: `TrocarAparencias` reapresenta
+		// TODO mundo da zona a quem chega (e quem chega a todo mundo), e o bit vem no pacote.
+		_fusaoDaZona.Remove(id);
 
 		// O ALVO SAIU DE CENA. A marca morre junto com o corpo dela (e filha), mas a referencia
 		// ficaria pendurada -- e o servidor tambem solta o alvo do lado dele (ver Marcado()).
@@ -3117,9 +3184,22 @@ public partial class World : Node2D
 	/// balao de quem esta jogando e deixaria sem teste o dos OUTROS, que e onde o balao serve pra
 	/// alguma coisa.
 	/// </remarks>
+	/// <param name="fusao">
+	/// ESTE CORPO E UMA FUSAO. Ver <see cref="_fusaoDaZona"/> pra o que ele decide e por que ele nao
+	/// mora dentro da <paramref name="ap"/>.
+	///
+	/// PADRAO FALSO porque as nove chamadas de bancada montam aparencia na mao e nenhuma delas funde --
+	/// dar o valor aqui e o que deixa aquelas nove como estavam, e nao um `false` copiado nove vezes.
+	/// </param>
 	internal void AoReceberAparencia(int id, string nome, string raca, string genero,
-									Jandirus.Core.Appearance.Appearance ap)
+									Jandirus.Core.Appearance.Appearance ap, bool fusao = false)
 	{
+		// ANTES DE QUALQUER `return` DESTE METODO, inclusive o da cinematica: o bit e um fato do corpo e
+		// nao um pixel dele, e segura-lo ate a virada da cena faria a fusao que se transforma DURANTE a
+		// propria cinematica de fusao aparecer com o cabelo errado exatamente no quadro em que o
+		// jogador esta olhando pra ela.
+		if (fusao) _fusaoDaZona.Add(id); else _fusaoDaZona.Remove(id);
+
 		// O NOME NAO ESPERA CENA NENHUMA: ele nao e pixel do corpo (quem o usa e a busca reversa do
 		// balao de fala, `IdPeloNome`), e segura-lo por 28 s faria as falas de quem esta virando
 		// sumirem no meio da propria cena.
@@ -3152,10 +3232,15 @@ public partial class World : Node2D
 	/// A CINEMATICA QUE ESTA RODANDO NO CORPO DE <paramref name="id"/>, ou nulo.
 	///
 	/// ============================ PERGUNTA AOS NODES EM VEZ DE MANTER UM MAPA ============================
-	/// A alternativa era um `Dictionary&lt;int, Transformacao&gt;` escrito nos quatro pontos que chamam
-	/// `Transformacao.Rodar` (a forma, a furia, o Oozaru e o bio) -- quatro lugares pra lembrar de
-	/// escrever e quatro pra lembrar de apagar. Um mapa desses envelhece calado no dia em que nascer a
-	/// quinta cena, e o sintoma seria o defeito de volta: a aparencia trocando no meio.
+	/// A alternativa era um `Dictionary&lt;int, Transformacao&gt;` escrito nos pontos que chamam
+	/// `Transformacao.Rodar` (a forma, a furia, o Oozaru, o bio e -- desde a cinematica de fusao -- a
+	/// FUSAO) -- um lugar pra lembrar de escrever e outro pra lembrar de apagar, por cena. Um mapa
+	/// desses envelhece calado no dia em que nascer a proxima, e o sintoma seria o defeito de volta:
+	/// a aparencia trocando no meio.
+	///
+	/// **E a quinta ja nasceu, e ela e a prova de que a escolha se pagou**: a cena da fusao entrou sem
+	/// que este metodo mudasse uma letra -- e e por ele que a roupa e o cabelo da fusao esperam a
+	/// virada em vez de aparecerem no instante zero.
 	///
 	/// As cenas sao filhas de `_atores` e sao poucas (uma por corpo virando); o `PeerLook` e um pacote
 	/// RARO -- ele so sai quando a ficha de alguem muda. Nao ha varredura por quadro aqui.
@@ -3491,6 +3576,11 @@ public partial class World : Node2D
 			// lendaria tem que me mostrar o olho apagado dele no primeiro quadro, e nao so na proxima
 			// vez que a posse virar. Ver `CharacterVisual.MarcarSemRedeas`.
 			vis.MarcarSemRedeas(_semRedeasDaZona.Contains(id));
+
+			// E SE ESTE CORPO E UMA FUSAO, NO MESMO GESTO E PELO MESMO MOTIVO DOS DOIS DE CIMA: e um fato
+			// do CORPO, ele decide o cabelo, e este e o funil por onde passam os tres caminhos que vestem
+			// sem cena. Ver `CharacterVisual.MarcarFusao` -- a regra que ele serve e a do SSJ4 vermelho.
+			vis.MarcarFusao(_fusaoDaZona.Contains(id));
 
 			// UMA CHAMADA PRA TRES DECISOES -- qual sprite, se pinta, e o que o rabo faz. Eram duas
 			// linhas aqui e duas iguais no `Transformacao.Vestir`, com um comentario em cada uma
@@ -3911,6 +4001,40 @@ public partial class World : Node2D
 	}
 
 	/// <summary>
+	/// A CINEMATICA DA FUSAO -- **uma cena, dois corpos**. Ver `Protocol.S2C.CenaDeFusao`.
+	///
+	/// ============================ A CENA NASCE NO CORPO DE QUEM CONVIDOU ============================
+	/// E nao no do passageiro, e nao "no meio dos dois": e ali que a fusao vai nascer (quem convidou e
+	/// quem controla -- regra do dono), e e o corpo que continua na tela depois da virada. Tudo o que a
+	/// cena faz uma vez -- o tremor, o anel, a cratera, o clarao, o branco -- acontece nele.
+	///
+	/// O SEGUNDO CORPO ENTRA POR UM CAMINHO SO: a luz que o pedido manda por cima dos dois. Ver
+	/// `Transformacao._alvoIrmao`, que explica por que nao sao duas cenas.
+	///
+	/// ============================ E O PASSAGEIRO PODE NAO ESTAR NA TELA ============================
+	/// `Corpo(passageiro)` nulo nao cancela nada -- e o caso de quem esta com o boneco ainda por nascer
+	/// (o snapshot chega por outro canal) ou fora da vista. A cena roda com UMA luz em vez de duas, que
+	/// e degradacao e nao defeito. Cancelar a cena por causa da segunda luz seria deixar a fusao
+	/// acontecer sem cinematica nenhuma -- e o servidor vai fundir de todo jeito, porque quem funde
+	/// e ele.
+	///
+	/// **O `souEu` E DOS DOIS**, e essa e a unica coisa deste metodo que nao e obvia: a cena escreve
+	/// "Você: ..." no chat de quem ela e, e ela e dos dois. Sem isto, o passageiro -- que esta
+	/// igualmente preso, olhando pra propria fusao acontecer -- leria a narracao em terceira pessoa
+	/// sobre um corpo que tambem e o dele.
+	/// ==========================================================================================
+	/// </summary>
+	private void AoComecarCenaDeFusao(int dono, int passageiro)
+	{
+		if (Corpo(dono) is not { } corpo) return;
+
+		int eu = GameClient.Instance?.LocalId ?? 0;
+		Transformacao.Rodar(_atores, corpo, forma: null, Jandirus.Core.Forms.Cinematicas.Fusao,
+							souEu: eu == dono || eu == passageiro, NomeDe(dono),
+							irmao: Corpo(passageiro));
+	}
+
+	/// <summary>
 	/// O CLARAO COM QUE A CARAPACA LARVAL SE ROMPE -- `flick('flashtrans.dmi', src)` +
 	/// `emit_Sound('powerup.wav')` (`dnl_larva_mature()`, `DNALabs.dm:509-510`).
 	///
@@ -4015,6 +4139,39 @@ public partial class World : Node2D
 			// catalogo local: aquele so tem o que ELE pode comprar, e a bancada de outra pessoa tem
 			// que barrar do mesmo jeito.
 			if (o.Densa) _colisao?.Bloquear(cx, cy);
+		}
+	}
+
+	/// <summary>
+	/// PLANTA AS ESFERAS DO DRAGAO da zona -- as estatuas, as sete no chao e o dragao invocado.
+	///
+	/// Mesmo desenho da <see cref="DesenharObras"/>: refaz a lista inteira, ancora na BASE da celula,
+	/// e entra em `_atores` pra o Y-sort intercalar corpo e esfera. O que ela **nao** faz e bloquear:
+	/// esfera nao e parede (`density = 0` no `obj/DB`, `Dragonballs.dm:158`) -- passa-se por cima
+	/// dela, que e como se cata uma do chao.
+	/// </summary>
+	private void DesenharEsferas()
+	{
+		foreach (Node n in _atores.GetChildren())
+			if (n is EsferaDesenhada) n.QueueFree();
+		if (GameClient.Instance is not { } cli) return;
+
+		foreach (GameClient.EsferaInfo o in cli.Esferas)
+		{
+			(int cx, int cy) = Jandirus.Core.Tech.CatalogoDeObras.Celula(o.Pos.X, o.Pos.Y);
+			const int t = ZoneCollision.TileSize;
+
+			_atores.AddChild(new EsferaDesenhada
+			{
+				// O ID JA VEM UNICO DO SERVIDOR (`set*10 + n`): estatua, esferas e dragao de um mesmo
+				// set nao colidem, e dois sets nao colidem entre si. Ver `GameServer.MandarEsferas`.
+				Name = "Esfera" + o.Id,
+				Position = new Vector2(cx * t, (cy + 1) * t),
+				Tipo = o.Tipo,
+				Numero = o.Numero,
+				Folha = o.Folha,
+				Inerte = o.Inerte,
+			});
 		}
 	}
 
@@ -4136,6 +4293,39 @@ public partial class World : Node2D
 
 	/// <summary>Onde EU estou, em coordenada de mundo. Nulo antes de entrar.</summary>
 	public Vector2? PosicaoLocal => _local != null && IsInstanceValid(_local) ? _local.GlobalPosition : null;
+
+	/// <summary>
+	/// POR QUE O CORPO LOCAL NAO ANDA AGORA -- vazio quando ele anda. So repassa o
+	/// <see cref="LocalPlayer.PorQueNaoAnda"/>, que e onde a lista mora; existe aqui porque o corpo
+	/// local nao e alcancavel de fora do `World` (o `_local` e privado, e e assim que deve ser).
+	/// </summary>
+	public string PorQueOCorpoNaoAnda =>
+		_local != null && IsInstanceValid(_local) ? _local.PorQueNaoAnda : "sem corpo local";
+
+	/// <summary>
+	/// DISTANCIA ATE O CORPO ALHEIO MAIS PERTO, em pixels (`float.MaxValue` se nao ha nenhum). So
+	/// bancada.
+	///
+	/// CORPO E COLISAO (o pedido do dono: *"faca com q personagens N CONSIGAM PASSAR DENTRO DO OUTRO
+	/// andando"*), e o passo do cliente e recusado por gente do mesmo jeito que por parede -- mas sem
+	/// nenhum empurrao de desencaixe depois (ver `LocalPlayer._Process`). Ou seja, "o corpo nao andou
+	/// pra lado nenhum" e "ha alguem em cima de mim" sao a mesma frase vista de dois lados, e nao havia
+	/// como distinguir uma da outra de fora.
+	/// </summary>
+	public float DistanciaDoCorpoMaisPertoDeTeste
+	{
+		get
+		{
+			if (_local == null || !IsInstanceValid(_local)) return float.MaxValue;
+			float perto = float.MaxValue;
+			foreach ((int _, RemotePlayer r) in _remotos)
+			{
+				if (!IsInstanceValid(r) || !r.Visible) continue;
+				perto = Math.Min(perto, _local.GlobalPosition.DistanceTo(r.GlobalPosition));
+			}
+			return perto;
+		}
+	}
 
 	/// <summary>
 	/// Onde esta quem eu MARQUEI. Nulo se nao ha alvo, ou se ele nao esta na minha zona.
@@ -4300,6 +4490,20 @@ public partial class World : Node2D
 		if (v == null) return;
 
 		if (_visual != null && _looks.TryGetValue(id, out var l)) v.Vestir(_visual, l.Ap, l.Raca, l.Genero);
+
+		// ============================ O BIT DA FUSAO E MARCADO NOS DOIS FUNIS, E ELE PRECISA DOS DOIS ============================
+		// O `VestirAFormaSemCena` tambem o marca, e isso NAO e duplicata: aquele funil so roda quando ha
+		// FORMA, e uma fusao passa a maior parte da vida na base. Sem esta linha, um corpo fundido que
+		// nasce (ou reveste a ficha) sem forma nenhuma ficaria sem o bit -- e a proxima transformacao
+		// dele por CINEMATICA nao passa pelo outro funil (quem veste o cabelo la e o beat da
+		// `Transformacao`), entao a fusao estrearia o SSJ4 com o cabelo errado exatamente na cena em que
+		// o jogador esta olhando.
+		//
+		// A FONTE E A MESMA nos dois (`_fusaoDaZona`), entao marcar duas vezes escreve o mesmo valor. Ver
+		// `CharacterVisual.MarcarFusao`, e ver `_dominouAForma` la pra o porque de isto ser CAMPO do
+		// corpo e nao parametro da chamada.
+		// ==================================================================================================================
+		v.MarcarFusao(_fusaoDaZona.Contains(id));
 
 		// ============================ A COR DA CHAMA DESTE CORPO, ANTES DA FORMA ============================
 		// A ficha traz a cor sorteada no nascimento (`Appearance.CorAura`) e o node `Aura` e quem a

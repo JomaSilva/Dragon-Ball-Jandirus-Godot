@@ -403,6 +403,111 @@ public enum Efeito
 	/// =============================================================================================
 	/// </summary>
 	AuraBase = 1024,
+
+	/// <summary>
+	/// UM ESTOURO DA LUZ DA FUSAO -- `FusionLight.png`, **uma copia so**, no ponto medio entre os dois
+	/// corpos. Ela e a unica coisa desta cena que o motor nao sabia desenhar antes.
+	///
+	/// ============================ ERAM DUAS COPIAS E UM LACO. AS DUAS COISAS ESTAVAM ERRADAS ============================
+	/// O dono: *"na fusao o `FusionLight.png` n e um em cada personagem, e so UM efeito em cima dos
+	/// dois personagens, atualmente sao 2 e fica estranho"*. O DU concorda com ele nas duas contas, e
+	/// as linhas sao estas (`Code/Combat/Skills/Ki/Fusion/_Fusion.dm:119-127` e `Code/Misc/_vfx.dm:8-16`):
+	///
+	///     var/obj/vfx/fusion/O = new(M.loc)   //UM objeto, um `new`, um mob
+	///     O.transform *= 2                    //e ele e o DOBRO do tamanho
+	///     ...
+	///     Play()
+	///         flick("flick",src)   sleep(20)
+	///         flick("flick",src)   sleep(5)
+	///         flick("flick",src)   sleep(50)
+	///         del src
+	///
+	/// **TRES `flick`, e `flick` toca UMA vez** e volta ao `icon_state` base -- que neste objeto e
+	/// `""`, ou seja NADA. O original mostra a luz em ~1,9 s dos 7,5 e fica invisivel o resto; o port
+	/// tocava a mesma animacao em LACO CONTINUO os 7 segundos, dez piscadas por segundo.
+	///
+	/// ============================ E DOS TRES `flick` DO DU SOBROU **UM**, POR ORDEM DO DONO ============================
+	/// A segunda fala dele e a especificacao, e ela e literal: *"essa animacao do fusion light so toca
+	/// UMA VEZ, e quando ela acabar a fusao ja vai estar pronta com a fusao brilhando branca"*.
+	///
+	/// Isso **diverge do DU de olho aberto**, e a divergencia tem causa: la a luz acende DEPOIS de a
+	/// fusao existir (`_Fusion.dm:117`, `spawn(1) FusionVFX(A)`, com os dois fusees ja dentro do corpo
+	/// fundido) -- ela e a comemoracao, e pode piscar tres vezes sem esconder nada. Aqui ela e a
+	/// TRANSICAO: os dois corpos ainda estao no mapa, e e por baixo dela que eles viram um. Uma
+	/// transicao que pisca tres vezes com dois corpos aparecendo no meio nao e uma transicao.
+	///
+	/// ============================ ENTAO ELA E PULSO, E NAO ESTADO ============================
+	/// E a excecao da familia -- o <see cref="PiscaCabelo"/>, a <see cref="Cinematica.OChaoSeSolta"/> e
+	/// a <see cref="SilhuetaDoCorpo"/> viraram estado porque o pedido delas e *"do inicio ao fim"*.
+	/// Aqui o pedido e um INSTANTE: **cada beat com esta bandeira e um `flick`**, e a cena da fusao tem
+	/// exatamente um, no instante zero.
+	///
+	/// (O risco que fez as outras tres virarem estado -- o <see cref="Cinematicas.Encurtar"/>
+	/// comprimindo uma fileira de beats por `k` -- nao alcanca esta cena: fundir nao e uma forma, ela
+	/// fica fora da <see cref="Cinematicas.Todas"/> e **nao tem versao encurtada**.)
+	///
+	/// ============================ E E O PULSO QUE RESPONDE "A ARTE E OPACA" ============================
+	/// Medidos os 147.456 pixels da folha: existem exatamente DOIS valores de alfa, 0 e 255 -- e
+	/// transparencia de 1 bit, como todo `.dmi` antigo. **Onde ela desenha, ela TAPA.** Em laco
+	/// continuo, e no dobro do tamanho que o DM manda, isso e uma cortina de 7 segundos por cima da
+	/// unica cena do jogo que existe pra mostrar dois lutadores virando um.
+	///
+	/// **E tapar aqui e o PEDIDO, e nao o defeito** -- *"a `FusionLight.png` aparece entre eles COBRINDO
+	/// AMBOS"*. O que o dono nao quer e a cortina: por isso o estouro e UM, dura o que a folha dura
+	/// (<see cref="Cinematicas.SegundosDaLuzDaFusao"/>) e se apaga no MESMO instante em que o corpo
+	/// branco nasce. A leitura fica: dois corpos (o puxao) -> clarao cobrindo -> um corpo branco ->
+	/// o branco escoa.
+	///
+	/// ============================ POR QUE ELA NAO E UMA <see cref="FolhaDeSilhueta"/> ============================
+	/// Foi a primeira tentativa e ela nao cabe, e a medida e do disco: a silhueta do bio e uma camada
+	/// DO CORPO -- 32x32, com uma animacao POR DIRECAO (`default_<dir>`/`walk_<dir>`), vestida pose a
+	/// pose pelo `CharacterVisual.SilhuetaDeCena`. A `FusionLight.tres` e 128x128 (256 na escala 2 do
+	/// DM) com **uma** animacao (`flick`, 7 quadros a 10 fps) e nao veste corpo nenhum: ela e um clarao
+	/// que COBRE os dois. Enfia-la na pilha de camadas do boneco a esticaria pra 32 px, ancorada nos
+	/// pes de um dos dois -- ou seja, o oposto do pedido.
+	///
+	/// ============================ E POR QUE ELA NAO E A <see cref="AuraGrande"/> ============================
+	/// Aquela e a chama da FORMA (`Aura.CorDaChamaDe`), e esta cena nao tem forma: sem `FormaDef` a
+	/// chama cai na cor da furia e a fusao sairia envolta em VERMELHO SANGUE -- o mesmo motivo pelo
+	/// qual as cinematicas do bio-androide tambem nao a acendem (ver o bloco delas).
+	/// ==========================================================================================================
+	/// </summary>
+	LuzDaFusao = 262144,
+
+	/// <summary>
+	/// O CORPO VIRA UMA SILHUETA BRANCA QUE ESCOA DEVAGAR -- *"o personagem da fusao brilhando, corpo
+	/// completamente BRANCO, so a silhueta; o branco e a claridade somem lentamente e a cena acaba com
+	/// a fusao feita"*.
+	///
+	/// ============================ E O MESMO CANAL DO <see cref="BanhoDeCor"/>, E ISSO E DE PROPOSITO ============================
+	/// O `Personagem.gdshader` ja MISTURA todas as camadas do boneco em direcao a uma cor (`flash` /
+	/// `flash_cor`), e ja e por ali que o soco lava o corpo e que o banho da transformacao o pinta.
+	/// **Nao ha desenho novo aqui** -- ha o de sempre com outro numero e outro relogio.
+	///
+	/// ============================ E MESMO ASSIM NAO E O <see cref="BanhoDeCor"/> ============================
+	/// Sao tres diferencas e cada uma sozinha ja quebraria aquele bit:
+	///
+	///   1. **A COR.** O banho tira a cor da FORMA (`Aura.CorDaChamaDe`) e esta cena nao tem forma --
+	///      o proprio comentario daquele bit fecha a porta com todas as letras (*"SEM FORMA NAO HA
+	///      BANHO"*). Aqui a cor e branca por pedido, e nao derivada de nada.
+	///   2. **A FORCA.** O banho para em 0,92 de proposito, *"porque a silhueta tem que continuar
+	///      legivel"* (ver `CharacterVisual.Banhar`). O pedido aqui e o CONTRARIO: **so a silhueta**,
+	///      ou seja a lavagem cheia, o boneco chapado de branco.
+	///   3. **O PRAZO.** O banho escoa nos 1,2 s do `spawn(12)` do DM. Este escoa **ate a cena
+	///      acabar** -- e o prazo nao e um numero escrito, e a cauda que sobra depois do
+	///      <see cref="Assumir"/> (ver <see cref="Cinematica.SegundosAteAVirada"/>). Cravar um
+	///      segundo numero aqui deixaria o branco sumindo antes do fim, ou sobrando depois dele, no
+	///      dia em que alguem mexesse na cauda da cena.
+	///
+	/// ============================ E ELE MORA NO BEAT DA VIRADA, POR ORDEM DO DONO ============================
+	/// *"perto do fim"*. Duas vezes o dono ja cobrou efeito de FIM acontecendo no COMECO -- a cratera
+	/// no meio da cinematica e o corpo do bio trocando antes da hora --, e as duas vezes a causa foi a
+	/// mesma: relogio PROPRIO em vez do relogio da cena. Este bit so tem sentido no beat que
+	/// <see cref="Assumir"/>, porque o corpo que ele pinta de branco **so existe ali** (e a fusao, e
+	/// ela nasce na virada). A bancada cobra os dois juntos.
+	/// =====================================================================================================
+	/// </summary>
+	SilhuetaBranca = 524288,
 }
 
 /// <summary>
@@ -526,6 +631,35 @@ public sealed class Cinematica
 	public double Segundos => _beats.Length == 0 ? 0 : _beats[^1].Em + 1.0;
 
 	/// <summary>
+	/// EM QUE SEGUNDO ESTA CENA VIRA -- o `Em` do PRIMEIRO beat que <see cref="Efeito.Assumir"/>, ou
+	/// **-1** quando a cena nao tem virada (o que e defeito, e a bancada ja o reprova por outro
+	/// caminho).
+	///
+	/// ============================ ELE JA ERA CALCULADO EM DOIS LUGARES ============================
+	/// O <see cref="Cinematicas.Encurtar"/> varria os beats atras dele pra achar o `k`, e o funil da
+	/// <see cref="Beats"/> faz a mesma pergunta pra por a cratera. Agora ha um TERCEIRO consumidor, e
+	/// ele e de fora da classe: o servidor precisa saber **em que instante da cena a fusao acontece**
+	/// (ver `GameServer.ComecarACenaDaFusao`), porque o dono pediu que ela so exista no fim da cena.
+	///
+	/// Uma quarta varredura escrita a mao no servidor seria a segunda verdade sobre o mesmo numero --
+	/// e a divergencia apareceria como o pior sintoma possivel: a fusao acontecendo antes ou depois do
+	/// clarao que existe pra anuncia-la.
+	///
+	/// O PRIMEIRO e nao qualquer um, pela mesma razao escrita no funil da <see cref="Beats"/>: uma
+	/// cena com dois `Assumir` (que a bancada reprova) responderia coisas diferentes pra cada leitor.
+	/// ==========================================================================================
+	/// </summary>
+	public double SegundosAteAVirada
+	{
+		get
+		{
+			foreach (Beat b in _beats)
+				if (b.Faz.HasFlag(Efeito.Assumir)) return b.Em;
+			return -1;
+		}
+	}
+
+	/// <summary>
 	/// O CHAO FICA SOLTO DURANTE ESTA CENA? -- a pedra do `Rising Rocks.dmi`, do primeiro segundo ao
 	/// ultimo.
 	///
@@ -598,10 +732,66 @@ public sealed class Cinematica
 	private Beat[] _beats = [];
 
 	/// <summary>
+	/// ============================ ESTA CENA QUEBRA O CHAO? -- **SIM, MENOS UMA** ============================
+	/// O funil abaixo poe cratera e poeira no beat que assume, em toda cena, por construcao. Isso e a
+	/// regra e continua sendo: uma transformacao abre o chao, e o dono cobrou o instante disso duas
+	/// vezes. Esta propriedade nasce `true` justamente pra que **uma cena nova nasca quebrando o chao
+	/// sem que ninguem leia isto** -- ela nao e um campo a preencher, e uma isencao a justificar.
+	///
+	/// ============================ E A ISENCAO E UMA SO: A FUSAO ============================
+	/// **O original nao abre chao nenhum ao fundir.** Medido: `grep createCrater|createDustmisc` nos
+	/// tres arquivos da fusao do DU (`_Fusion.dm`, `Metamoran Fusion.dm`, `Potara_Fusion.dm`) nao
+	/// devolve uma linha. O `FusionVFX` (`_Fusion.dm:120-125`) cria UM `obj/vfx/fusion`, dobra e toca.
+	/// Mais nada. A cratera da fusao era invencao do funil deste port, aplicada a uma cena que o funil
+	/// nunca teve em vista.
+	///
+	/// ============================ E ELA ESTAVA TAPANDO EXATAMENTE O QUE A CENA EXISTE PRA MOSTRAR ============================
+	/// A fumaca desenha em `ZIndex = 100` **acima do corpo** (`Decalques.cs:433`, e isso e pedido do
+	/// dono pras cenas de forma). Na fusao ela cai no MESMO beat em que o corpo branco nasce -- uma do
+	/// `Efeito.Cratera` e tres do `Efeito.Poeira` --, e o resultado medido no pixel pela
+	/// `--diagfotofusao` era **0,0% de branco** na caixa do boneco: a silhueta que o dono pediu
+	/// (*"a fusao brilhando branca"*) sai da cinematica INVISIVEL, atras de uma nuvem marrom.
+	///
+	/// O proprio roteiro da fusao ja tinha escrito a regra que isso viola, no beat da cauda: *"o anel e
+	/// procedural e nao um sprite por cima de ninguem: tapar o corpo branco justamente enquanto ele e o
+	/// que a cena existe pra mostrar seria o defeito que aposentou o `Efeito.Onda`"*. A regra estava
+	/// escrita; quem a violava era o funil, calado.
+	///
+	/// **O CHAO CONTINUA REAGINDO**: a pedra levitando e a <see cref="OChaoSeSolta"/> (estado, cena
+	/// inteira), o tremor e o `rockmoving` seguem no beat zero e os aneis de choque seguem na cauda. O
+	/// que saiu foi a NUVEM, que o original nao tem.
+	/// ==========================================================================================================
+	/// </summary>
+	public bool OChaoAbre { get; init; } = true;
+
+	/// <summary>
 	/// O ROTEIRO -- e ele passa pelo funil da cratera antes de virar cena. Ver
 	/// <see cref="ACrateraECoisaDoInstanteDaTroca"/>.
+	///
+	/// ============================ A ORDEM DOS `init` IMPORTA, E POR ISSO ELA NAO IMPORTA ============================
+	/// C# roda os inicializadores de objeto na ordem em que estao ESCRITOS, e este funil le
+	/// <see cref="OChaoAbre"/>. Uma cena que escrevesse `Beats` antes de `OChaoAbre = false` seria
+	/// funilada com o valor errado -- o classico defeito calado de funil em `init`. A saida nao e uma
+	/// convencao de escrita (que a proxima cena esqueceria): o funil **nao apaga o chao aqui**, ele so
+	/// o poe no lugar certo; quem o apaga e o <see cref="Beats"/> na LEITURA, ver o `get`.
+	/// ============================================================================================================
 	/// </summary>
-	public Beat[] Beats { get => _beats; init => _beats = ACrateraECoisaDoInstanteDaTroca(value); }
+	public Beat[] Beats
+	{
+		get => OChaoAbre ? _beats : SemChao(_beats);
+		init => _beats = ACrateraECoisaDoInstanteDaTroca(value);
+	}
+
+	/// <summary>
+	/// TIRA A CRATERA E A POEIRA DE TODOS OS BEATS. Ver <see cref="OChaoAbre"/> sobre a unica cena que
+	/// passa por aqui e por que.
+	/// </summary>
+	private static Beat[] SemChao(Beat[] roteiro)
+	{
+		var saida = new Beat[roteiro.Length];
+		for (int i = 0; i < roteiro.Length; i++) saida[i] = roteiro[i] with { Faz = roteiro[i].Faz & ~Chao };
+		return saida;
+	}
 
 	/// <summary>Os dois efeitos de chao que NENHUM roteiro decide. Ver o funil logo abaixo.</summary>
 	private const Efeito Chao = Efeito.Cratera | Efeito.Poeira;
@@ -2630,6 +2820,209 @@ public static class Cinematicas
 	};
 
 	// ==================================================================================
+	// A FUSAO -- `Fusion.dm`, a segunda cena deste arquivo que nao pertence a forma nenhuma
+	// ==================================================================================
+	/// <summary>
+	/// A CINEMATICA DA FUSAO -- **a unica cena do jogo com DOIS corpos em quadro**, e a mesma pras
+	/// duas fusoes temporarias (Metamoro e Potara).
+	///
+	/// ============================ O PEDIDO DO DONO, EM QUATRO LINHAS ============================
+	///   * *"`FusionLight.png` durante a cena inteira, POR CIMA dos dois jogadores"* -- e depois,
+	///     vendo rodar: *"n e um em cada personagem, e so UM efeito em cima dos dois personagens,
+	///     atualmente sao 2 e fica estranho"* -- e, na terceira passada, a especificacao final:
+	///     *"ja q eles estao pertos um do outro a `FusionLight.png` aparece entre eles cobrindo ambos,
+	///     essa animacao do fusion light so toca UMA VEZ, e quando ela acabar a fusao ja vai estar
+	///     pronta"*. **Uma copia so, no ponto medio, em UM estouro** -- ver <see cref="Efeito.LuzDaFusao"/>;
+	///   * *"ondas de choque e pedras levitando durante, pra deixar mais epico"*;
+	///   * *"perto do fim: aparece o personagem da fusao brilhando, corpo completamente BRANCO, so a
+	///     silhueta"*;
+	///   * *"o branco e a claridade somem lentamente e a cena acaba com a fusao feita"*.
+	///
+	/// Os quatro cairam em coisas que ja existiam, e so a primeira precisou de bit novo:
+	/// <see cref="Efeito.LuzDaFusao"/> (arte `FusionLight.tres`, importada), o
+	/// <see cref="Efeito.AnelDeChoque"/> do combate (`CombatFx.Onda` -- e e por ele que **nao ha um
+	/// quarto mecanismo de estouro neste port**), a <see cref="Cinematica.OChaoSeSolta"/> que ja
+	/// levanta pedra por baixo de toda cena, e o <see cref="Efeito.SilhuetaBranca"/>, que e o canal
+	/// `flash` do shader com a lavagem cheia.
+	///
+	/// ============================ O RELOGIO DEIXOU DE SER PRAZO E PASSOU A SER FATO ============================
+	/// **A virada cai no FIM DA ANIMACAO DA LUZ**, e nao num numero escrito a mao. O dono:
+	/// *"essa animacao do fusion light so toca uma vez, e quando ela acabar a fusao ja vai estar
+	/// pronta"* -- ou seja o marco temporal da cena e o ultimo quadro da folha, e nao um relogio.
+	///
+	/// Aqui isso e <see cref="SegundosDaLuzDaFusao"/>, que e a duracao MEDIDA do `flick`
+	/// (7 quadros / 10 fps do `.dmi`) e nao um `4.0` digitado -- e a `--diagcenafusao` compara a
+	/// constante com a folha importada, entao reconverter o `.dmi` com outra cadencia deixa a bancada
+	/// vermelha apontando o numero em vez de dessincronizar a cena calada.
+	///
+	/// ============================ O QUE ISSO SUBSTITUIU, E POR QUE ============================
+	/// A virada morava nos **4,0 s** do `sleep(40)` do `Fusion.dm:678` -- o intervalo entre o `walk_to`
+	/// e o `Fuse()` do Finale. Aquele numero continua sendo do DM e continua descrevendo o original;
+	/// o que ele NAO faz e o que o dono pediu, porque naquele desenho os quatro segundos eram tempo
+	/// morto com dois corpos parados. **A espera do DM virou o PUXAO** (`Fusao.PuxaOsCorpos`), que e a
+	/// outra coisa que aquele trecho do original faz e que este port nao tinha: os dois andam um pro
+	/// outro, e a cena so comeca quando encostam.
+	///
+	/// E o `Fuse()` ainda segura **`sleep(5)`** = 0,5 s **antes** de mandar o passageiro pro selo
+	/// (`:288-290`): ou seja, no proprio original a fusao nao e instantanea -- ha uma janela em que os
+	/// dois corpos ainda estao no mapa e o `Defuse` do nocaute ainda pode cancelar tudo (o comentario
+	/// do DM naquela linha diz isso com todas as letras: *"defused (e.g. KO) during the brief setup
+	/// window"*). Esta cena e aquela janela, desenhada -- e agora ela tem o tamanho do clarao que a
+	/// cobre, que e a mesma ordem de grandeza daquele `sleep(5)`.
+	///
+	/// O `fusion.wav` cai na virada como no DM. Depois vem a CAUDA -- e ela nao e enfeite: e onde o
+	/// branco escoa. Ver <see cref="Efeito.SilhuetaBranca"/>.
+	///
+	/// ============================ A FUSAO SO EXISTE NA VIRADA, E ISSO E DO SERVIDOR ============================
+	/// O dono ja cobriu duas vezes efeito de fim caindo no comeco (a cratera, o corpo do bio). Aqui o
+	/// "efeito de fim" e a propria fusao: os stats somados, o nome novo, a roupa, o cabelo e o
+	/// passageiro sumindo do mapa. **Nada disso acontece no instante 0** -- quem segura e o
+	/// `GameServer.TickDaCenaDeFusao`, que so chama o `Fundir` quando o relogio chega em
+	/// <see cref="Cinematica.SegundosAteAVirada"/>. Do lado do cliente, a aparencia que chega no meio
+	/// da cena e guardada e vestida na virada pelo caminho que o bio-androide ja abriu
+	/// (`World._pendentes` -> `Transformacao.NaVirada`).
+	///
+	/// ============================ FORA DA <see cref="Todas"/>, COMO A <see cref="Furia"/> ============================
+	/// Pelo motivo escrito la: aquela lista responde *"que cena cada FORMA tem"* e alimenta o
+	/// <see cref="Curtas"/> e a bancada que cobra "toda forma tem cena propria". Fundir nao e uma
+	/// forma, nao tem maestria (nao ha como fundir "melhor" com a pratica) e nao tem versao encurtada
+	/// -- ela toca inteira ou nao toca.
+	///
+	/// ============================ E NAO HA MUSICA, DE PROPOSITO ============================
+	/// O `FUSION.MID` existe no disco do original e **nao e tocado por linha nenhuma** do `Fusion.dm`
+	/// (o unico som daquele arquivo e o `fusion.wav`). Alem disso o campo <see cref="Cinematica.Musica"/>
+	/// e o marcador de ESTREIA neste port (ver la), e uma fusao pode acontecer todo dia -- pendurar
+	/// tema nela seria transformar em acontecimento unico uma coisa que se repete, que e exatamente o
+	/// que o dono cortou quando mandou o tema tocar *"uma vez na vida do personagem"*.
+	/// ================================================================================================
+	/// </summary>
+	/// <summary>
+	/// QUANTO DURA **UM** `flick` DA `FusionLight` -- 0,7 s, e este numero e a batuta da cena inteira.
+	///
+	/// ============================ ELE E MEDIDO NA ARTE, E NAO ESCOLHIDO ============================
+	/// O `.dmi` original (`Icons/VFX/FusionLight.dmi`, o mesmo arquivo byte a byte do
+	/// `Assets/Sprites/DU/VFX/FusionLight.png`) declara nos metadados: `state = "flick"`, `frames = 7`,
+	/// `delay = 1,1,1,1,1,1,1`. No BYOND `delay` conta DECISSEGUNDOS, entao sao 7 quadros a 10 fps:
+	///
+	///     7 / 10 = **0,7 s**
+	///
+	/// ============================ E POR QUE ELE MORA NO CORE ============================
+	/// Porque as DUAS pontas precisam dele e elas nao podem discordar: o cliente toca a folha, o
+	/// SERVIDOR funde no instante <see cref="Cinematica.SegundosAteAVirada"/>, e o pedido do dono
+	/// amarra as duas coisas (*"quando ela acabar a fusao ja vai estar pronta"*). O Core nao conhece
+	/// Godot e nao tem como ler o `.tres`; entao o numero e declarado aqui, o beat da virada e escrito
+	/// COM ele (nao com um `0.7` repetido), e quem confere que a folha continua concordando e a
+	/// bancada -- `--diagcenafusao`, bloco B, que carrega a `SpriteFrames` de verdade e compara.
+	///
+	/// E a mesma disciplina do <see cref="Fusao"/>: numero do DM declarado uma vez, conferido contra a
+	/// fonte por uma prova que fica VERMELHA quando a fonte muda.
+	/// </summary>
+	public const double SegundosDaLuzDaFusao = 7 / 10.0;
+
+	public static readonly Cinematica Fusao = new()
+	{
+		// SEM FORMA, como a `Furia` e como as tres do bio, e a string vazia e o jeito de dizer isso
+		// sem inventar id: `Catalogo.Def("")` e nulo e as duas propriedades derivadas ja tratam nulo.
+		//
+		// E E POR ELA QUE A PEDRA VEM DE GRACA: `OChaoSeSolta` pergunta ao catalogo se "nao se sobe
+		// pra esta forma", e sem forma a resposta e falso -- o chao se solta do primeiro segundo ao
+		// ultimo, que e literalmente o *"pedras levitando durante"* do pedido. Nao houve o que
+		// escrever, e e o lado certo do erro descrito naquele campo.
+		Forma = "",
+
+		Musica = "",
+
+		// ============================ ESTA CENA NAO ABRE O CHAO -- ver `Cinematica.OChaoAbre` ============================
+		// Os tres arquivos da fusao do DU nao tem uma linha de `createCrater` nem de `createDustmisc`, e
+		// a nuvem que o funil deste port punha aqui desenha ACIMA do corpo (`Decalques.cs:433`) no
+		// MESMO beat em que o corpo branco nasce: a `--diagfotofusao` mediu **0,0% de branco** na caixa
+		// do boneco -- a silhueta que esta cena inteira existe pra mostrar saia invisivel.
+		// ============================================================================================================
+		OChaoAbre = false,
+
+		// A CENA INTEIRA, e nao so ate a virada: o corpo que acabou de nascer fica de pe enquanto o
+		// branco escoa. Soltar na virada deixaria a fusao correndo pelo mapa como um vulto branco.
+		//
+		// ============================ 3,7 s, E OS DOIS PEDACOS SAO DERIVADOS ============================
+		// `SegundosDaLuzDaFusao` (0,7) ate a virada + `SegundosDoEscoamentoDaFusao` (3,0) de cauda. Nao
+		// ha um `7.0` escrito aqui: encurtar o `flick` ou o escoamento acerta este numero sozinho, e a
+		// bancada cobra `SegundosPreso == Segundos` (a cena inteira prende o corpo).
+		SegundosPreso = SegundosDaLuzDaFusao + SegundosDoEscoamentoDaFusao,
+
+		Beats =
+		[
+			// ============================ O ESTOURO DE LUZ -- **UM SO**, NO INSTANTE ZERO ============================
+			// `flick("flick",src)` (`Code/Misc/_vfx.dm:8`). O DU chama tres, e o dono pediu um -- a razao
+			// da divergencia esta escrita por extenso em `Efeito.LuzDaFusao`: la a luz e comemoracao
+			// (acende DEPOIS de a fusao existir), aqui ela e a TRANSICAO por baixo da qual os dois viram
+			// um, e transicao que pisca tres vezes nao e transicao.
+			//
+			// ELE COBRE OS DOIS, E ISSO E O PEDIDO. *"a `FusionLight.png` aparece entre eles cobrindo
+			// ambos"*. A folha e OPACA (alfa binario, medido nos 147.456 pixels) e na escala 2 do DM o
+			// nucleo solido vai de 74 a 102 px de raio nos quadros do meio -- contra os 38,6 px que
+			// bastam pra tapar dois corpos de 32 px em tiles vizinhos na diagonal. Ou seja: com o puxao
+			// garantindo que estao colados, o clarao cobre os dois com folga de mais de duas vezes.
+			//
+			// O `rockmoving` e o mesmo som com que a estreia do SSJ1 abre: e o chao se soltando, e o
+			// chao se solta aqui tambem.
+			// ======================================================================================================
+			new(0.0, Efeito.LuzDaFusao | Efeito.Tremor, Som: "rockmoving",
+				Narra: "uma luz estoura entre os dois, e o chão em volta se solta!"),
+
+			// ============================ A VIRADA -- AQUI A FUSAO EXISTE, E ELA E O FIM DA ANIMACAO ============================
+			// O instante NAO e escolhido: e `SegundosDaLuzDaFusao`, a duracao da folha. *"quando ela
+			// acabar a fusao ja vai estar pronta com a fusao brilhando branca"* -- entao o ultimo quadro
+			// do `flick` e o primeiro do corpo branco, sem vao e sem sobreposicao (o tocador apaga o
+			// estouro NESTE beat, por construcao -- ver `Transformacao.Disparar`).
+			//
+			// `emit_Sound('fusion.wav')` seguido de `Fuse()` (`Fusion.dm:679-683`). A cratera e a
+			// poeira NAO estao escritas aqui: quem as poe e o funil da `Cinematica.Beats`, que e a
+			// regra da casa.
+			//
+			// O CLARAO E O UNICO DA CENA e ele so pode morar neste beat (ver `Efeito.ClaraoDeTela`) --
+			// e ele e a "claridade" do pedido, a mesma que some junto com o branco.
+			// ==========================================================================================================
+			new(SegundosDaLuzDaFusao, Efeito.Assumir | Efeito.SilhuetaBranca | Efeito.ClaraoDeTela
+									| Efeito.AnelDeChoque | Efeito.Tremor,
+				Som: "fusao",
+				Narra: "os dois se tornam UM -- e o que se ergue dali brilha branco."),
+
+			// A CAUDA -- e ela e onde vive o *"ondas de choque e pedras levitando durante, pra deixar
+			// mais epico"*. O anel e o `CombatFx.Onda` (procedural, uma linha fina correndo pelo chao) e
+			// nao um sprite por cima de ninguem: tapar o corpo branco justamente enquanto ele e o que a
+			// cena existe pra mostrar seria o defeito que aposentou o `Efeito.Onda` (ver la). A pedra
+			// nao precisa de beat -- ela e a `OChaoSeSolta`, que corre por baixo da cena inteira.
+			new(SegundosDaLuzDaFusao + 1.0, Efeito.AnelDeChoque | Efeito.Tremor),
+
+			// O ULTIMO BEAT, e ele e o PRAZO DO BRANCO. O `Efeito.SilhuetaBranca` escoa da virada ate
+			// `Segundos` (que e "ultimo beat + 1,0"), e por isso ele esta a
+			// `SegundosDoEscoamentoDaFusao - 1,0` da virada: mexer no escoamento mexe nos dois, junto,
+			// sem segunda conta.
+			//
+			// AQUI HAVIA UM `| Efeito.Poeira` -- a poeira baixando, "de carona como em toda cena deste
+			// arquivo". Ela saiu junto com a cratera (`OChaoAbre = false`): poeira assentando de um
+			// buraco que nao se abriu e desenho sem causa, e ela cairia em cima do branco na metade do
+			// escoamento, que e justamente o instante em que a silhueta fica legivel.
+			new(SegundosDaLuzDaFusao + SegundosDoEscoamentoDaFusao - 1.0, Efeito.AnelDeChoque),
+		],
+	};
+
+	/// <summary>
+	/// QUANTO TEMPO O BRANCO LEVA PRA ESCOAR depois que a fusao existe -- **3,0 s**.
+	///
+	/// ============================ ELE E O UNICO NUMERO ESCOLHIDO DESTA CENA, E O DONO O APROVOU ============================
+	/// *"a fusao brilhando branca **como ja acontece** e o branco e o brilho sumindo aos poucos"* -- o
+	/// "como ja acontece" e aprovacao do que estava rodando, e o que estava rodando eram estes mesmos
+	/// 3,0 s (a cena antiga virava aos 4,0 e acabava aos 7,0). Encurtar isso seria mexer na unica parte
+	/// da cena que ele disse estar boa.
+	///
+	/// E ele tem um piso medido: a `--diagcenafusao` cobra que a cauda dure MAIS que o
+	/// <see cref="SegundosDoBanho"/> (os 1,2 s do `spawn(12)` do DM), que e o outro gesto do jogo no
+	/// mesmo canal -- e o que da sentido a palavra *"lentamente"*.
+	/// </summary>
+	public const double SegundosDoEscoamentoDaFusao = 3.0;
+
+	// ==================================================================================
 	// O BIO-ANDROIDE -- as quatro cenas que o dono cobrou
 	// ==================================================================================
 	// *"vc n colocou a CINEMATICA DE TRANSFORMACAO dos bio androides, olhe no byond como era, tinha
@@ -3361,9 +3754,9 @@ public static class Cinematicas
 
 	private static Cinematica Encurtar(Cinematica cheia)
 	{
-		double assume = -1;
-		foreach (Beat b in cheia.Beats)
-			if (b.Faz.HasFlag(Efeito.Assumir)) { assume = b.Em; break; }
+		// O INSTANTE DA VIRADA VEM DA PROPRIA CENA (`SegundosAteAVirada`) e nao de uma varredura
+		// escrita aqui -- ver la por que ele virou propriedade quando ganhou o terceiro leitor.
+		double assume = cheia.SegundosAteAVirada;
 
 		// SEM O BEAT QUE ASSUME nao ha o que reescalar -- e a cena ja e defeito (a bancada reprova
 		// isso desde antes, porque quem a rodasse faria a cena inteira e voltaria ao normal).

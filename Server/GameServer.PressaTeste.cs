@@ -61,12 +61,18 @@ public partial class GameServer
 		GD.PrintErr($"[pressa]   FALHA {oque}   {detalhe}");
 	}
 
-	/// <summary>Uma regra posta na frente do metronomo: ela TEM que ficar vermelha.</summary>
-	private void Injetar(string oque, bool ficouVermelha, string detalhe = "")
+	/// <summary>
+	/// Uma regra posta na frente de um defeito injetado: ela TEM que ficar vermelha.
+	///
+	/// O NOME DO DEFEITO SAI NA LINHA porque sao DOIS, e opostos: o `metronomo` (piso = janela, o jogo
+	/// de antes do pedido do dono) e o `piso zero` (adiantamento sem freio, a versao que este projeto ja
+	/// reverteu). Uma linha que so dissesse "pegou" nao diria de qual dos dois ela sabe se defender.
+	/// </summary>
+	private void Injetar(string oque, bool ficouVermelha, string detalhe = "", string defeito = "metronomo")
 	{
-		if (ficouVermelha) { _prPegou++; GD.Print($"[pressa]   pegou   (metronomo) {oque}   {detalhe}"); return; }
+		if (ficouVermelha) { _prPegou++; GD.Print($"[pressa]   pegou   ({defeito}) {oque}   {detalhe}"); return; }
 		_prPassouBatido++;
-		GD.PrintErr($"[pressa]   PASSOU BATIDO (metronomo) {oque}   {detalhe}");
+		GD.PrintErr($"[pressa]   PASSOU BATIDO ({defeito}) {oque}   {detalhe}");
 	}
 
 	/// <summary>
@@ -101,6 +107,7 @@ public partial class GameServer
 			KiAcertarAdianta();
 			KiRapidoVenceDevagar();
 			OErroNaoAdianta();
+			OPisoSeguraOMartelo();
 		}
 		finally { _clashSempre = sorteioGuardado; LimparAPressa(); }
 
@@ -343,6 +350,93 @@ public partial class GameServer
 				  $"{errando.CadenciaMinha:0} ms contra os {MsPorTecla} ms da janela");
 		AfirmarPr("...e martelar sai NEGATIVO no placar (o ponto por erro continua cobrado)",
 				  errando.PtsMeus < 0, $"{errando.PtsMeus:0.#} ponto(s)");
+	}
+
+	// =====================================================================
+	// 6) O PISO SEGURA O MARTELO
+	// =====================================================================
+	/// <summary>
+	/// ============================ A LINHA QUE IMPEDE O ABUSO QUE JA FEZ REVERTEREM ============================
+	/// O adiantamento ja existiu neste projeto e foi **desfeito de proposito**: a versao sem piso media
+	/// *55 letras em 5,4 s e 424 pontos*, e o embate deixou de medir leitura pra medir dedo. O piso e a
+	/// resposta a isso, e as familias 1 e 3 o mostram por cima -- elas medem a cadencia de quem responde
+	/// em 40 ms, que ja bate nele.
+	///
+	/// **Esta familia e a que fecha a porta**, e ela e outra pergunta: nao "o rapido ganha mais letras"
+	/// (ganha) e sim *"existe algum jeito de ganhar MAIS que o piso?"*. Por isso o cliente aqui responde
+	/// em **1 ms** -- mais rapido que qualquer nervo humano, e mais rapido que o tique do laco. Se a vazao
+	/// dele for igual a de quem responde em 40 ms, o teto e um teto de verdade; se ela subir, existe um
+	/// regime em que martelar paga, e e so questao de alguem escrever um macro.
+	///
+	/// ============================ E O DEFEITO INJETADO AQUI E OUTRO ============================
+	/// O metronomo das outras familias (piso = janela) **desfaz o pedido do dono**, e por isso ele deixa
+	/// a cadencia MAIOR -- ele nunca poderia reprovar um teto. O defeito desta familia e o oposto exato:
+	/// **piso = 0**, ou seja o adiantamento sem freio, que e a versao revertida. Com ele a letra seguinte
+	/// nasce no tique seguinte ao acerto, a cadencia despenca pra a taxa do laco e a vazao multiplica.
+	///
+	/// Sao os dois lados da mesma regra, e cada um pega o que o outro nao pode pegar: sem o metronomo,
+	/// "a cadencia e 300" ficaria verde num jogo que nunca adianta; sem o piso-zero, ficaria verde num
+	/// jogo que adianta sem limite. Nenhum dos dois sozinho prova `cadencia = max(piso, reacao)`.
+	/// ======================================================================================================
+	/// </summary>
+	private void OPisoSeguraOMartelo()
+	{
+		GD.Print("[pressa] -- 6) O PISO SEGURA O MARTELO (um cliente que responde em 1 ms)");
+
+		Pressa martelo = UmZanzoDeTeste(0.001, 0.84);
+		Pressa mao = UmZanzoDeTeste(0.04, 0.84);
+		(int letrasMartelo, double cadMartelo, DesfechoDeTeste _) = UmaDisputaDeKiDeTeste(0.0);
+
+		double tetoPorSegundo = 1000.0 / MsMinimoEntreLetras;
+		GD.Print($"[pressa]        MEDIDO: 1 ms -> {martelo.LetrasMinhas} letras, cadencia "
+				 + $"{martelo.CadenciaMinha:0} ms ({martelo.LetrasPorSegundo:0.##}/s) | 40 ms -> "
+				 + $"{mao.LetrasPorSegundo:0.##}/s | teto do piso {tetoPorSegundo:0.##}/s");
+
+		// UM TIQUE DE FOLGA, como nas familias 1 e 3: o contador vence DENTRO de um tique e a letra
+		// nasce no seguinte, entao a cadencia real e "piso + ate um tique".
+		const double Folga = 1000.0 / 30 + 12;
+
+		AfirmarPr("quem responde em 1 ms NAO recebe letra mais rapido que o piso (a vazao para nele)",
+				  martelo.Comecou && martelo.CadenciaMinha >= MsMinimoEntreLetras - 1
+				  && martelo.CadenciaMinha < MsMinimoEntreLetras + Folga,
+				  $"{martelo.CadenciaMinha:0} ms contra o piso de {MsMinimoEntreLetras} ms");
+		AfirmarPr("...e por isso o martelo de 1 ms nao entrega mais que a mao de 40 ms (nao ha o que "
+				  + "ganhar apertando mais rapido que o piso)",
+				  martelo.LetrasPorSegundo < mao.LetrasPorSegundo * 1.25 + 0.2
+				  && martelo.LetrasPorSegundo <= tetoPorSegundo * 1.2,
+				  $"{martelo.LetrasPorSegundo:0.##}/s contra {mao.LetrasPorSegundo:0.##}/s "
+				  + $"(teto {tetoPorSegundo:0.##}/s)");
+		AfirmarPr("...e na colisao de ki vale o mesmo teto, medido no outro relogio",
+				  cadMartelo >= MsMinimoEntreLetras / 1000.0 - Protocol.TickSeconds
+				  && letrasMartelo <= EmbateDeKi.SegundosMaximos * tetoPorSegundo + 2,
+				  $"{letrasMartelo} letras, cadencia {cadMartelo * 1000:0} ms");
+
+		// ============================ O DEFEITO: O ADIANTAMENTO SEM FREIO (piso = 0) ============================
+		(Pressa semPiso, (int letras, double cad, DesfechoDeTeste _) kiSemPiso) =
+			SemOPiso(() => (UmZanzoDeTeste(0.001, 0.84), UmaDisputaDeKiDeTeste(0.0)));
+
+		Injetar("sem o piso, o martelo de 1 ms recebe letra na taxa do LACO (a cadencia despenca)",
+				!(semPiso.CadenciaMinha >= MsMinimoEntreLetras - 1),
+				$"cadencia {semPiso.CadenciaMinha:0} ms com o piso em zero", "piso zero");
+		Injetar("...e a vazao dele multiplica (e a versao que mediu 55 letras em 5,4 s)",
+				!(semPiso.LetrasPorSegundo <= tetoPorSegundo * 1.2),
+				$"{semPiso.LetrasPorSegundo:0.##}/s contra o teto de {tetoPorSegundo:0.##}/s", "piso zero");
+		Injetar("...e na colisao de ki a mesma porta se abre",
+				!(kiSemPiso.letras <= EmbateDeKi.SegundosMaximos * tetoPorSegundo + 2),
+				$"{kiSemPiso.letras} letras, cadencia {kiSemPiso.cad * 1000:0} ms", "piso zero");
+	}
+
+	/// <summary>
+	/// RODA UM CRITERIO COM O PISO EM ZERO -- o adiantamento sem freio, que e a versao que este projeto
+	/// ja reverteu uma vez. Irmao do <see cref="ComOMetronomo"/> e o oposto exato dele; o `finally`
+	/// devolve pelo mesmo motivo.
+	/// </summary>
+	private T SemOPiso<T>(Func<T> criterio)
+	{
+		long pisoGuardado = MsMinimoEntreLetras;
+		MsMinimoEntreLetras = 0;
+		try { return criterio(); }
+		finally { MsMinimoEntreLetras = pisoGuardado; }
 	}
 
 	// =====================================================================

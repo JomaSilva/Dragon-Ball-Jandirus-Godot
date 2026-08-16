@@ -115,6 +115,11 @@ public partial class GameServer
 		{
 			pl.ChunkAtual = agora;
 			MandarVizinhanca(pl);
+
+			// AS SUPER ESFERAS ANDAM COM A VIZINHANCA, e nao com o tique: elas sao recortadas pela
+			// MESMA chunk (`Espaco.PertoDeMim`) e o sinal do radar so muda quando se anda de verdade.
+			// Mandar por tique seria trinta pacotes por segundo pra dizer a mesma coisa.
+			MandarSupers(pl);
 		}
 
 		// O SOL VEM ANTES DO POUSO, e as duas perguntas sao IRMAS e nao uma dentro da outra: a

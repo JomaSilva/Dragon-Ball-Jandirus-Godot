@@ -270,19 +270,54 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// REVIVE -- kai.dm:65 (versao de SKILL)
+	// REVIVE -- kai.dm:65 (racial) **e** OtherworldRankSkills.dm:217 (cargo)
 	// =====================================================================
+	/// <summary>
+	/// A SKILL DE CARGO QUE COBRA O PRECO. `/datum/skill/rank/Revive`
+	/// (`OtherworldRankSkills.dm:123-140`), concedida por NOVE cargos.
+	///
+	/// Ela e a IRMA CARA da racial `/datum/skill/kai/Revive` (`kai.dm:48-63`): os dois `after_learn`
+	/// dao um verb chamado `Revive`, e os dois verbs sao codigo DIFERENTE. Quem tem esta paga; quem
+	/// so tem a racial, nao. Ver <see cref="RessuscitarG4"/>.
+	/// </summary>
+	private const string SkillDeCargoDoRevive = "/datum/skill/rank/Revive";
+
 	/// <summary>
 	/// TRAZ UM MORTO DE VOLTA e o puxa pra onde voce esta.
 	///
-	/// PORTADA A VERSAO DE SKILL (kai.dm:65). A versao de CARGO
-	/// (`OtherworldRankSkills.dm:217`) e outra coisa e faz quatro coisas a mais que esta nao faz:
-	/// (1) cura o corpo inteiro e enche o folego explicitamente, (2) tira o nocaute, (3) CONTA
-	/// quantas vezes cada alma ja voltou, e (4) a partir da SEGUNDA volta da mesma alma, QUEM
-	/// REVIVE MORRE NO LUGAR ("trades his life for the resurrection"). Esse preco progressivo e o
-	/// que faz a versao de cargo ser um poder de mundo e nao um botao -- e ele depende de um
-	/// contador de ressurreicoes por personagem que o port ainda nao guarda. Quando guardar, e
-	/// aqui que a versao de cargo entra, ao lado desta e nao no lugar dela.
+	/// ============================ SAO DUAS TECNICAS COM O MESMO NOME, E AGORA AS DUAS ESTAO AQUI ============================
+	/// O DM tem **dois** verbs `Revive`, dados por skills diferentes, com corpos diferentes:
+	///
+	///   * `mob/keyable/verb/Revive` (`kai.dm:65-90`) -- da skill RACIAL `/datum/skill/kai/Revive`.
+	///     Ressuscita e acabou;
+	///   * `mob/Rank/verb/Revive` (`OtherworldRankSkills.dm:217-267`) -- da skill de CARGO
+	///     `/datum/skill/rank/Revive`, que os nove cargos do Outro Mundo concedem. Alem de
+	///     ressuscitar, ela CONTA (`M.ResurrectedCount += 1`, `:237`) e, **a partir da segunda volta
+	///     daquela alma**, mata quem ressuscitou (`:241-245`):
+	///
+	///         if(M.ResurrectedCount>1)
+	///             to_chat(view(usr), "[usr] trades [usr]'s life for the resurrection!")
+	///             usr.dead=1
+	///
+	/// Ate esta sessao so a racial estava portada, e o comentario que ficava aqui dizia por que: *"ele
+	/// depende de um contador de ressurreicoes por personagem que o port ainda nao guarda"*. O contador
+	/// agora existe (`Fighter.ResurrectedCount`) e a versao de cargo entrou -- **ao lado
+	/// desta e nao no lugar dela**, como o comentario antigo pediu.
+	///
+	/// QUEM DECIDE QUAL DAS DUAS RODA E O LIVRO, e nao o cargo: ter a skill de cargo e o que importa.
+	/// A diferenca aparece no caso que existe -- um ex-Kaio que foi ENSINADO (`teacher`, o `wastaught`
+	/// que a `DadivaDeCargo.Revogavel` poupa) continua com a versao cara depois de largar o trono, que
+	/// e o que o `treeshrink` do original tambem faria.
+	///
+	/// O ALCANCE NAO E O DO DM, E A DIVERGENCIA E ANTIGA: la a versao de cargo varre `get_step(usr,
+	/// usr.dir)` -- **so o tile pra onde voce esta virado** -- e a racial varre `view(1)`. Aqui as duas
+	/// usam o mesmo <see cref="AlvoPertoG4"/> de um tile de raio, que e a adjacencia deste port (o
+	/// movimento e continuo, nao ha "o tile da frente"). Separa-las agora inventaria uma regra de mira
+	/// que nenhuma outra tecnica corpo-a-corpo deste port tem.
+	///
+	/// O `input()` de escolha entre varios mortos no mesmo tile (`:246-248`) tambem nao veio: o
+	/// `AlvoPertoG4` pega o mais proximo, que e a convencao de todo alvo adjacente deste port.
+	/// ==========================================================================================================
 	///
 	/// O `ReviveMe()` do DM (Death.dm:143) ja cura tudo, enche Ki e folego e faz membro decepado
 	/// CRESCER DE NOVO -- entao a versao de skill parecer "mais pobre" e ilusao de leitura: os
@@ -327,11 +362,41 @@ public partial class GameServer
 		// --- `M.loc = locate(usr.x, usr.y, usr.z)` -------------------------
 		PuxarParaG4(alvo, pl.Zone, pl.Pos);
 
+		// ============================ E AQUI A VERSAO DE CARGO COBRA ============================
+		// `M.ResurrectedCount += 1` (`OtherworldRankSkills.dm:237`) -- e ele so e escrito pela versao
+		// de CARGO. A racial nao conta, entao ressuscitar de graca com a skill de raca nao encarece a
+		// proxima volta daquela alma. E o DM que separa assim, e a separacao e o balanceamento: o
+		// contador so cresce quando um dos nove cargos usa o poder.
+		bool deCargo = pl.Livro?.Sabe(SkillDeCargoDoRevive) == true;
+		if (deCargo) alvo.Ficha.ResurrectedCount++;
+
 		Persistir(alvo);
 
 		Avisar(pl, $"você traz {alvo.Name} de volta, e o corpo se refaz aos seus pes.");
 		Avisar(alvo, $"{pl.Name} trouxe você de volta ao mundo dos vivos!");
-		GD.Print($"[server] {pl.Name} RESSUSCITOU {alvo.Name}");
+		GD.Print($"[server] {pl.Name} RESSUSCITOU {alvo.Name}"
+				 + (deCargo ? $" (volta n.{alvo.Ficha.ResurrectedCount}, pelo cargo)" : " (skill racial)"));
+
+		// ============================ A SEGUNDA VOLTA CUSTA UMA VIDA ============================
+		// `if(M.ResurrectedCount>1)` (`:241-245` e `:262-266`, o mesmo bloco duas vezes). O teste e
+		// DEPOIS do incremento, entao a primeira volta de uma alma sai de graca e a segunda ja cobra.
+		//
+		// A MORTE VAI PELA PORTA (`Combate.Morrer`), e nao escrevendo `Ficha.dead = true` como o DM
+		// faz: e ela que arma o relogio da morte, marca a aureola pra viagem, deixa o cadaver e roda o
+		// funil de derrota. Escrever o campo na mao deixaria um morto sem relogio -- o defeito que o
+		// cabecalho do `GameServer.Sol.cs` ja documenta ("a morte tem UMA porta").
+		//
+		// `ignorarSeguro: true`: este preco nao e uma luta, e a Aura of Destruction do Deus da
+		// Destruicao (o unico seguro do jogo) nao deve poder segurar um pagamento que o proprio
+		// portador escolheu fazer. E a mesma escolha que a absorcao e o verb de admin ja fazem.
+		// ======================================================================================
+		if (deCargo && alvo.Ficha.ResurrectedCount > 1)
+		{
+			foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
+				Avisar(o, $"{pl.Name} troca a própria vida pela ressurreição de {alvo.Name}!");
+			pl.Combate?.Morrer(ignorarSeguro: true);
+			GD.Print($"[server] {pl.Name} MORREU pagando a {alvo.Ficha.ResurrectedCount}a volta de {alvo.Name}");
+		}
 	}
 
 	// =====================================================================

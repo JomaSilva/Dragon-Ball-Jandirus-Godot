@@ -1,4 +1,4 @@
-using Jandirus.Core.Stats;
+﻿using Jandirus.Core.Stats;
 
 namespace Jandirus.Core.Combat;
 
@@ -91,8 +91,27 @@ public static class MeleeResolver
 	/// <summary>Janela, em segundos, pra um bloqueio virar contra-ataque.</summary>
 	public const double JanelaContra = 0.25;
 
-	/// <summary>Quanto tempo o corpo fica desligado depois de um nocaute.</summary>
-	public const double SegundosDeNocaute = 12;
+	/// <summary>
+	/// ============================ O TETO DO NOCAUTE, e ele nao e o prazo dele ============================
+	/// **ERA 12 SEGUNDOS CRAVADOS PRA TODO MUNDO, E ISSO NAO E DO DM.** O nocaute de luta do original
+	/// nao tem prazo nenhum: `Injuries.dm:283` chama `KO(-1)`, e `-1` nao casa com `if(KOtimer>0)`
+	/// nem com `else if(!KOtimer)` (`KO.dm:112-116`) -- nenhum `spawn` e agendado. O corpo acorda
+	/// quando o nucleo ferido volta acima da linha (`Injuries.dm:286-289`), ou seja **pela CURA**.
+	/// Medido contra o laco do DM, uma raca comum leva **~142 s** (90 s de tag de combate parada mais
+	/// ~52 s subindo) e o Majin **~20 s**, porque ele cura em combate. O port dava 12 s aos dois.
+	///
+	/// O que sobra aqui e o TETO -- a rede pra quem nao consegue subir (o corpo dentro de uma
+	/// estrela, o esmagado por gravidade) --, e **o numero e do original**: `KO.dm:116` agenda
+	/// `rand(2000,2500)` decisegundos pro nocaute cronometrado de jogador, ou seja 200 a 250 s.
+	/// 225 e o meio dessa faixa. (O NPC tem faixa propria e mais longa la, `rand(3000,5000)` =
+	/// 300-500 s; **nao foi portada de proposito** -- com 151 habitantes no mundo, um corpo parado
+	/// por sete minutos e uma decisao nova, e nao uma heranca.)
+	///
+	/// Quem consulta este numero esta pedindo o TETO, e nao "quanto dura um nocaute": a resposta
+	/// disso mora em <see cref="CombatState.NocautePorVital"/>.
+	/// ================================================================================================
+	/// </summary>
+	public const double TetoDoNocaute = 225;
 
 	/// <summary>
 	/// Resolve um golpe de <paramref name="a"/> em <paramref name="d"/>.
@@ -377,7 +396,7 @@ public static class MeleeResolver
 		else if (!d.F.KO && d.Corpo.DeveNocautear())
 		{
 			r.Nocauteou = true;
-			d.Nocautear(SegundosDeNocaute);
+			d.Nocautear(TetoDoNocaute, porVital: true);
 		}
 	}
 

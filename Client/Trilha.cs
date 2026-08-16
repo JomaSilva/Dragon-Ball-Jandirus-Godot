@@ -176,6 +176,27 @@ public static class Trilha
     public const string PowerUp = E + "powerup.wav";
 
     /// <summary>
+    /// OS DOIS VIRAM UM -- o `emit_Sound('fusion.wav')` do original, e ele e o UNICO som que o
+    /// `Fusion.dm` inteiro toca.
+    ///
+    /// Ele cai no mesmo instante nos dois caminhos do DM: logo depois do `sleep(40)` da Potara e
+    /// antes do `Fuse()` (`Fusion.dm:679`), e junto do anuncio da Danca (`:728`). Por isso ele e o
+    /// `Som` do beat que ASSUME em `Cinematicas.Fusao` -- e nao de um beat qualquer da subida.
+    ///
+    /// ============================ ESTAVA NO DISCO E SEM LEITOR ============================
+    /// `fusion.wav` esta convertido e com `.import` desde o pipeline e nao tinha uma linha de `.cs`
+    /// que o pedisse -- o mesmo modo de falha do `rockmoving`, do `ssg.wav` e do `ssb.wav`, que este
+    /// arquivo ja documenta tres vezes: arte pronta que ninguem pede nao da erro, so nao soa.
+    ///
+    /// O IRMAO DELE FICA DE FORA: `Effects/voiced/fusionvoiced.wav` e a versao com o grito
+    /// ("FU-SION-HA!"), e ela nao e pedida por linha nenhuma do DM tambem. Trazer os dois faria a
+    /// cena tocar duas vozes por cima uma da outra; trazer so o com voz poria uma fala em ingles no
+    /// unico som de um jogo que fala portugues.
+    /// ==================================================================================
+    /// </summary>
+    public const string Fusao = E + "fusion.wav";
+
+    /// <summary>
     /// O ESTALO DE COMECAR a reunir energia -- um toque so, no instante em que a tecla desce.
     /// E o `emit_Sound('chargeaura.wav')` do `Draw_Energy` (Meditate.dm:181).
     /// </summary>

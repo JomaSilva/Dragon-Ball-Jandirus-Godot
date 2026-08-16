@@ -2224,6 +2224,17 @@ public partial class GameServer
 		string formaAntes = pl.Forma.Atual;
 		FormaOozaru feraAntes = pl.Oozaru;
 
+		// ============================ DECLARADO AQUI FORA PRA PODER SER TIRADO LA EMBAIXO ============================
+		// O corpo forjado do passo 5 e criado dentro do `try`, mas quem o tira da zona TEM que ser o
+		// `finally`. Ele ja morou dentro do `try` e foi assim que o aborto virou desastre: um estouro
+		// no meio saltava a linha que o removia, o forjado ficava na `ZoneList` PRA SEMPRE e o laco de
+		// snapshot do tique passava a estourar em todo quadro, em TODAS as zonas.
+		//
+		// Deixar de fora tambem seria errado: um jogador duas vezes na mesma zona recebe tudo em dobro
+		// pra sempre -- e a mesma razao pela qual o `pl` entra e sai (ver o cabecalho deste metodo).
+		// ======================================================================================================
+		ServerPlayer? jaEstavaLa = null;
+
 		try
 		{
 			// ============================ A PORTA E O `TrocarAparencias`, E NAO O `SincronizarFormas` ============================
@@ -2353,13 +2364,36 @@ public partial class GameServer
 			// COMO REPROVA SE A REGRA SUMIR: apague qualquer uma das duas linhas do laco de
 			// `SincronizarFormas` e uma das duas checagens abaixo cai.
 			// ============================================================================
-			var jaEstavaLa = new ServerPlayer
+			// ============================ E ELE NASCE COM FICHA ============================
+			// **UM CORPO SEM `Ficha` NA `ZoneList` NAO E UM CORPO INCOMPLETO: E UMA MINA.**
+			//
+			// `ServerPlayer.Ficha` e `public Fighter Ficha = null!;` (GameServer.cs:38) -- nulo de
+			// verdade, com o compilador calado. Sem esta linha o `TrocarAparencias(pl)` logo abaixo
+			// estourava NRE ainda DENTRO da bancada: ele termina em `TrocarAureolas`
+			// (GameServer.cs:4031), que pra cada OUTRO da zona monta `PacoteDeAureola(outro)` e le
+			// `de.Ficha.dead` (GameServer.Alem.cs:410).
+			//
+			// E o estrago nao parava na prova perdida. O estouro subia ate o tratador de pacote do
+			// login, matava o resto da bancada (as 318 provas seguintes nunca rodavam) e deixava o
+			// forjado NA ZONA -- porque a linha que o tirava vinha DEPOIS do ponto de estouro. Dali em
+			// diante o tique do servidor lia `ServerPlayer.Deitado` (`Ficha.KO`, GameServer.cs:651)
+			// nesse orfao a cada quadro, DENTRO do laco que escreve os snapshots
+			// (GameServer.cs:4664-4685): nenhuma zona recebia snapshot nem projetil de novo. O
+			// servidor ficava de pe, com a porta aberta, e MUDO -- morto parecendo vivo.
+			//
+			// O `Fighter` e o minimo que o caminho lido pede (o `dead` da aureola); o resto do corpo
+			// forjado (`Combate`, `Livro`) continua fora porque nada neste bloco encosta nele -- e
+			// forjar o que ninguem le e o jeito de a bancada parar de descrever o produto.
+			// ==========================================================================
+			jaEstavaLa = new ServerPlayer
 			{
 				Id = pl.Id + 90_000,
 				Peer = pl.Peer,
 				Name = "bancada: quem ja estava aqui",
+				Race = pl.Race,
 				Zone = pl.Zone,
 				Pos = pl.Pos,
+				Ficha = new Jandirus.Core.Stats.Fighter { Race = pl.Race, BP = 1000 },
 			};
 			jaEstavaLa.Forma.Atual = "ssj2";
 			zona.Add(jaEstavaLa);
@@ -2368,7 +2402,6 @@ public partial class GameServer
 			TrocarAparencias(pl);
 			var trocados = EscutaDeSincronia ?? [];
 			EscutaDeSincronia = null;
-			zona.Remove(jaEstavaLa);
 
 			Checa("quem chega recebe a forma de quem JA ESTAVA na zona",
 				  trocados.Any(t => t.Quem == jaEstavaLa.Id && t.Para == pl.Id
@@ -2385,6 +2418,7 @@ public partial class GameServer
 			EscutaDeSincronia = null;
 			EscutaDeAnuncios = null;
 			EscutaDeFeras = null;
+			if (jaEstavaLa != null) zona.Remove(jaEstavaLa);
 			if (!jaEstava) zona.Remove(pl);
 		}
 	}

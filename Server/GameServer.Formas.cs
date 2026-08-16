@@ -318,8 +318,11 @@ public partial class GameServer
 	/// dimensional nem verb de absorver. E chamada sem chamador, e o dia em que a saga vier ela
 	/// chama isto com `Extrema` e acabou.
 	///
-	/// Quem responde "e amigo?" e o `Core.Social.Convivio` (`is_friend()`, `FRIEND_REQ = 50`, e os
-	/// pontos so passam de `ACQUAINTANCE_CAP = 49` com um pedido ACEITO -- tudo portado).
+	/// Quem responde "e amigo?" e o `Core.Social.Convivio` (`is_friend()`, `FRIEND_REQ = 50`). **E a
+	/// PORTA DESTE GANCHO MUDOU DE PRECO a pedido do dono**: o `ACQUAINTANCE_CAP = 49` do DM nao foi
+	/// portado, entao hoje a convivencia sozinha atravessa o 50 -- **25 minutos ao lado de alguem
+	/// bastam pra que a morte dele possa acender o SSJ1**, sem pedido nenhum. Ver o cabecalho do
+	/// `Convivio`, onde a divergencia esta escrita com o que se ganha e o que se perde.
 	///
 	/// ============================ E O QUE **NAO** DISPARA ISTO ============================
 	/// Morte sem algoz. O DM so enfurece com um `deathKiller` de combate na mao (`Death.dm:75`,

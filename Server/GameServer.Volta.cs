@@ -186,7 +186,14 @@ public sealed partial class GameServer
 			// DUAS PLANTAS ANTES DO CATALOGO, e a ordem e o que importa: o catalogo resolve zona pelo
 			// NOME, entao `Interior("Interdimension", id)` casaria com o z24 do BYOND e a mente andaria
 			// contra a parede de um mapa que ela nao desenha mais. Ver `DimensaoMental.Planta`.
-			ZoneKey.KindInterior => MapaDaMente(zona) ?? MapaDoInterior(zona) ?? _catalogo?.Get(zona)?.Mapa,
+			// O SELO DA FUSAO ENTRA JUNTO DA MENTE, e nao por acaso: ele **e** o mesmo quarto branco
+			// vazio, e por isso empresta a mesma planta. Ver `GameServer.Fusao.ZonaDoSelo` -- e ele vem
+			// antes do catalogo pelo mesmo motivo que a mente vem: o catalogo resolve pelo NOME, e
+			// "Selado" nao tem entrada nenhuma la, entao sem esta linha o passageiro cairia num bolso
+			// sem colisao (chao infinito, sem parede) em vez de num quarto.
+			ZoneKey.KindInterior => MapaDaMente(zona)
+									?? (EhOSelo(zona) ? DimensaoMental.Planta().Colisao : null)
+									?? MapaDoInterior(zona) ?? _catalogo?.Get(zona)?.Mapa,
 			_ => _catalogo?.Get(zona)?.Mapa,
 		};
 }

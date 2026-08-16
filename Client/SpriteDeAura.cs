@@ -37,10 +37,36 @@ namespace Jandirus.Client;
 public partial class SpriteDeAura : Node2D
 {
 	/// <summary>
-	/// A FOLHA DE TODO MUNDO: 4 quadros de 96x96, desenhados em cinza pra serem coloridos por cima
-	/// (ver o `tingir` do `Aura.gdshader`). E a `colorablebigaura` do original.
+	/// A FOLHA DE TODO MUNDO: 8 quadros de 96x96, coloridos por fora (ver o `tingir` do
+	/// `Aura.gdshader`).
+	///
+	/// ============================ ERA A `colorablebigaura`, E O DONO TROCOU ============================
+	/// Pedido dele, marcado como extrema importancia: *"mudar o sprite da CARGA/AURA DE CARREGAMENTO
+	/// DE KI e de KI ACIMA DE 100% da FORMA BASE (e das formas q usam o mesmo sprite da base, como o
+	/// MISTICO etc) para o sprite `Aura, Big.png`"*.
+	///
+	/// **E UMA CONSTANTE SO, e e de proposito que seja**: as tres coisas que ele nomeou -- a aura da
+	/// base, a carga do C e o Ki acima de 100% -- sao o MESMO desenho lendo o MESMO campo. A carga e
+	/// o excesso ja se distinguiam por `forca` e cadencia, nunca por folha (ver `CargaVisual.Definir`).
+	/// E o "etc" tem 18 nomes: tudo que cai no `_ => FolhaDeAura.Base` do `Catalogo.Folha` -- Mistico
+	/// e Beast, a linha inteira do Frost Demon, Oozaru, Namekiano, Heran, Alien, Bio perfeito e a
+	/// `destroyer`. Dezenove formas trocaram de chama nesta linha.
+	///
+	/// ============================ ELA ESTAVA NO DISCO E MORTA -- A QUARTA VEZ ============================
+	/// O `.png`, o `.import` e o `.tres` ja existiam e o Godot ja os tinha importado; nenhum `.cs`
+	/// citava o nome. Depois dos 35 atlas, da `FieryGod` e da `Supa Saiyan Rose Aura-1`, e a quarta
+	/// vez que este projeto acha arte convertida e nunca ligada.
+	///
+	/// HA TRES ARQUIVOS COM ESTE DESENHO e dois deles sao a mesma fita: `AuraBig.png` e
+	/// `Assets/Sprites/DU/VFX/Aura, Big.png` sao IDENTICOS byte a byte (768x96, 8 quadros em fita).
+	/// Este e o terceiro -- 288x288, grade 3x3 com 8 quadros usados --, e e o que o dono nomeou.
+	///
+	/// ============================ E O DESENHO DELA MORA NO ALFA ============================
+	/// `rgb(0,0,0)` nos 27.248 pixels opacos, 100% deles. Ver <see cref="FormaNoAlfa"/> e o
+	/// `forma_no_alfa` do shader -- sem aquele ramo, esta linha sozinha pinta uma silhueta PRETA.
+	/// ==================================================================================================
 	/// </summary>
-	public const string FolhaBase = "res://Assets/Sprites/Auras/colorablebigaura.tres";
+	public const string FolhaBase = "res://Assets/Sprites/Auras/Aura, Big.tres";
 
 	/// <summary>A unica excecao: as linhas Legendary. Ver `Core/Forms/Formas.cs`, `FolhaDeAura`.</summary>
 	public const string FolhaLssj = "res://Assets/Sprites/Auras/AuraLSSjBig.tres";
@@ -119,6 +145,58 @@ public partial class SpriteDeAura : Node2D
 		  or Jandirus.Core.Forms.FolhaDeAura.DeusQuente
 		  or Jandirus.Core.Forms.FolhaDeAura.DeusFrio
 		  or Jandirus.Core.Forms.FolhaDeAura.DeusRosa;
+
+	/// <summary>
+	/// ============================ EM QUE CANAL MORA O DESENHO DESTA FOLHA? ============================
+	/// A <see cref="PreColorida"/> responde *"a cor vem de dentro do arquivo?"*. Esta responde outra
+	/// pergunta, e as duas sao INDEPENDENTES -- confundi-las e o que faz uma folha sair preta ou
+	/// chapada. Medido pixel a pixel nas seis folhas:
+	///
+	/// <code>
+	///   folha                       RGB                        alfa            desenho mora em
+	///   colorablebigaura            cinza, pico 200/255        255 niveis      RGB   (falso)
+	///   Aura, Big                   PRETO PURO (0,0,0) 100%    250 niveis      ALFA  (verdadeiro)
+	///   AuraSSjBig                  `ffff80` CHAPADO 100%      250 niveis      ALFA  (verdadeiro)
+	///   AuraLSSjBig                 `d9ff00` CHAPADO 100%      250 niveis      ALFA  (verdadeiro)
+	///   FieryGod                    variado                    CONSTANTE 160   RGB   (falso)
+	///   FieryGodBlue                1.422 cores                variado         RGB   (falso)
+	///   Supa Saiyan Rose Aura-1     5 cores                    variado         RGB   (falso)
+	/// </code>
+	///
+	/// ============================ A `Aura, Big` E A `AuraSSjBig` SAO O MESMO DESENHO ============================
+	/// Conferido canal a canal: o alfa das duas e IDENTICO nos 82.944 pixels (288x288), zero
+	/// diferenca. A `AuraSSjBig` e literalmente esta folha com um `ffff80` chapado por cima. Isso e o
+	/// que da confianca nesta troca sem precisar de foto: a chama da base vai renderizar pelo MESMO
+	/// caminho que a do Super Saiyajin ja usa e que o dono ja aprovou -- mesma arte, mesma conta,
+	/// mudando so de onde vem a cor.
+	///
+	/// ============================ E POR QUE A LSSj ENTRA NA LISTA ============================
+	/// Porque ela satisfaz a regra, e nao pra "consertar" nada: ela e chapada em `d9ff00`, entao o
+	/// `i` do shader ja vale exatamente 1,0 em todo pixel dela (`255/255 / 0,784 = 1,276`, cortado
+	/// pelo `clamp`). Marca-la aqui e um NAO-OPERACAO comprovavel -- nenhum pixel muda. Deixa-la de
+	/// fora e que seria a armadilha: duas folhas iguais em natureza respondendo diferente faria a
+	/// proxima pessoa acreditar que ha duas classes onde ha uma.
+	///
+	/// ============================ AS PRE-COLORIDAS NAO PRECISAM DISTO ============================
+	/// A `AuraSSjBig` esta aqui por HONESTIDADE, nao por necessidade: sendo pre-colorida ela sai pelo
+	/// ramo `!tingir`, que copia `c.rgb` e nunca calcula `i`. Ou seja este valor e lido e descartado
+	/// pra ela. Escreve-lo mesmo assim e o que impede a lista de virar "as folhas que precisam" --
+	/// uma lista que muda de conteudo quando alguem mexe na <see cref="PreColorida"/>, e nao quando a
+	/// ARTE muda, que e a unica coisa que esta funcao deveria acompanhar.
+	/// ==============================================================================================
+	/// </summary>
+	public static bool FormaNoAlfa(Jandirus.Core.Forms.FolhaDeAura f) =>
+		f is Jandirus.Core.Forms.FolhaDeAura.Base
+		  or Jandirus.Core.Forms.FolhaDeAura.Ssj
+		  or Jandirus.Core.Forms.FolhaDeAura.Lssj;
+
+	/// <summary>
+	/// O DESENHO DESTE SPRITE ESTA NO ALFA? Ver <see cref="FormaNoAlfa"/>. Sem simbolo (so a
+	/// bancada entra por caminho cru) responde pelo arquivo, como o <see cref="SemTinta"/> faz.
+	/// </summary>
+	public bool DesenhoNoAlfa => _simbolo is { } s
+		? FormaNoAlfa(s)
+		: _folha == FolhaBase || _folha == FolhaSsj || _folha == FolhaLssj;
 
 	/// <summary>Qual folha esta carregada agora. Pra bancada.</summary>
 	public string FolhaDeTeste => _folha;
@@ -414,6 +492,50 @@ public partial class SpriteDeAura : Node2D
 	public float LarguraDeTeste => Quadro() is { } q ? q.GetWidth() : float.NaN;
 
 	/// <summary>
+	/// EM QUE QUADRO DA FITA ESTA A CHAMA AGORA -- e ele existe pra a FOTO, nao pra a logica.
+	///
+	/// ============================ SEM ISTO, DUAS FOTOS NAO SE COMPARAM ============================
+	/// A prova de que a folha base mudou e um PAR de fotos (a de hoje contra a da folha antiga) medido
+	/// em pixel. Mas a chama anda sozinha -- 8 quadros em <see cref="Ciclo"/> segundos, um quadro a
+	/// cada 40 ms --, entao duas fotos tiradas em instantes diferentes ja diferem por ANIMACAO. A
+	/// medida ficaria alta com a folha trocada E com a folha igual, ou seja diria nada.
+	///
+	/// A bancada espera este numero bater no valor combinado antes de cada disparo. E ele e SO leitura:
+	/// nao ha como escrever o quadro daqui, porque congelar a animacao pra fotografar seria fotografar
+	/// um estado que o jogo nao tem.
+	/// ================================================================================================
+	/// </summary>
+	public int QuadroDeTeste => _s?.Frame ?? -1;
+
+	/// <summary>
+	/// Quantos quadros a folha carregada REALMENTE toca. Zero enquanto a chama nunca acendeu.
+	///
+	/// **Nao e o numero de recortes do `.tres`** -- e o da animacao escolhida pelo <see cref="Montar"/>.
+	/// A distincao virou medida quando a bancada da foto mostrou 4 onde o comentario prometia 8: a
+	/// `Aura, Big.tres` (e a `AuraSSjBig.tres`) trazem os 8 quadros divididos em DUAS animacoes de 4
+	/// (`default` e `2`), e so a primeira toca.
+	/// </summary>
+	public int QuantosQuadrosDeTeste => _s == null ? 0 : _quadros;
+
+	/// <summary>
+	/// SO BANCADA -- escreve o `forma_no_alfa` do material por fora, contra o que a folha manda.
+	///
+	/// ============================ ELE EXISTE PRA A MEDIDA PODER FICAR VERMELHA ============================
+	/// O desastre concreto que esta troca de folha podia produzir e UM: `Aura, Big.png` e preto puro
+	/// nos 27.248 pixels opacos, entao sem o ramo `forma_no_alfa` do shader ela sai como uma SILHUETA
+	/// PRETA em volta de 19 formas. Nao ha estado de jogo que encene isso -- o valor certo e escrito
+	/// pelo `Pintar` a cada pintura --, e uma prova que nunca ficou vermelha e uma frase.
+	///
+	/// Com esta porta a bancada renderiza a MESMA folha com o uniform errado e mede: se o preto nao
+	/// aparecer ali, a medicao nao enxerga o desastre e nao vale nada -- e ai e a BANCADA que reprova.
+	///
+	/// Ele nao muda nada em jogo: ninguem o chama fora da `--diagchama`, e a proxima
+	/// <see cref="Pintar"/> reescreve o valor certo por cima.
+	/// ======================================================================================================
+	/// </summary>
+	public void ForcarDesenhoNoAlfaDeTeste(bool v) => _mat?.SetShaderParameter("forma_no_alfa", v);
+
+	/// <summary>
 	/// ============================ A COR COMO O SHADER A VE ============================
 	/// Lida do MATERIAL e nao do campo `_cor`, pelo mesmo motivo do
 	/// `CharacterVisual.ContornoNoMaterialDeTeste`: o campo diz o que o ultimo `Definir` PEDIU, e
@@ -454,5 +576,9 @@ public partial class SpriteDeAura : Node2D
 		_mat.SetShaderParameter("forca", _forca);
 		// Ver o cabecalho de `Aura.gdshader`: mandar branco NAO e o mesmo que nao tingir.
 		_mat.SetShaderParameter("tingir", !SemTinta);
+		// A SEGUNDA PERGUNTA SOBRE A MESMA FOLHA, e ela vai pelo mesmo lugar de proposito: as duas
+		// saem daqui ou nenhuma sai. Escrever `tingir` num lugar e `forma_no_alfa` noutro e como as
+		// tres chamas deste projeto ja divergiram antes. Ver `SpriteDeAura.FormaNoAlfa`.
+		_mat.SetShaderParameter("forma_no_alfa", DesenhoNoAlfa);
 	}
 }

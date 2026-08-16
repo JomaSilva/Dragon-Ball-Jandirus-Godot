@@ -127,6 +127,16 @@ if (args.Length >= 1 && args[0] == "agua-prova")
     return AguaBench.Run(Path.GetFullPath(maps), raiz);
 }
 
+if (args.Length >= 1 && args[0] == "nuvem-prova")
+{
+    // nuvem-prova [pastaMaps] : a bancada da NUVEM -- a quarta classe de celula.
+    //
+    // O nome segue o `agua-prova` pelo mesmo motivo: `nuvem` e o CONVERSOR (gera os `.nuvem` a
+    // partir do BYOND) e isto e o JUIZ (abre os arquivos e cobra o que o jogo faz com eles).
+    string mapsN = args.Length > 1 ? args[1] : Path.Combine("Assets", "Maps");
+    return NuvemBench.Run(Path.GetFullPath(mapsN));
+}
+
 if (args.Length >= 2 && args[0] == "binario")
 {
     // binario <pastaMaps> [caminho do Godot] : .tscn (texto) -> .scn (binario)
@@ -164,6 +174,29 @@ if (args.Length >= 4 && args[0] == "agua")
                       + " | dos quais CEU (nao e agua): "
                       + turfsAgua.Count(kv => kv.Value.Water && Aguas.EhCeu(kv.Key)));
     MapConverter.ConverterAguas(Path.GetFullPath(args[1]), Path.GetFullPath(args[3]), turfsAgua);
+    return 0;
+}
+
+if (args.Length >= 4 && args[0] == "nuvem")
+{
+    // nuvem <pastaMaps.dmm> <pastaCode> <pastaDestino> : grava SO os `.ceu` -- a QUARTA classe de
+    // celula (ver Core/World/Ceu.cs e Tools/AssetPipeline/Ceus.cs).
+    //
+    // Comando proprio pelo mesmo motivo do `agua` e do `duro`, e o motivo esta escrito por extenso
+    // la em cima. O dado e novo e independente: um bitset por andar, derivado do `.dmm` e da arvore
+    // de tipos, que nao toca em nenhum arquivo que ja existe.
+    //
+    //   dotnet run --project Tools/AssetPipeline -- nuvem <BYOND>/Maps <BYOND>/Code Assets/Maps
+    Dictionary<string, TurfDef> turfsNuvem = DmTurfScanner.Scan(Path.GetFullPath(args[2]));
+
+    // O CONTRASTE ENTRE AS DUAS CONTAS E O ACHADO DESTA TAREFA, e por isso ele e impresso: a
+    // varredura por `Water=1` (a que o comando `agua` faz) enxerga SO os `SkyHD*`. O `Sky1` do
+    // Templo -- 207.915 celulas, o ceu que o dono citou pelo nome -- nao tem a flag e escapa dela.
+    Console.WriteLine($"typepaths lidos: {turfsNuvem.Count} | CEU (pelo nome): "
+                      + turfsNuvem.Count(kv => Aguas.EhCeu(kv.Key))
+                      + " | dos quais com Water=1: "
+                      + turfsNuvem.Count(kv => Aguas.EhCeu(kv.Key) && kv.Value.Water));
+    MapConverter.ConverterNuvens(Path.GetFullPath(args[1]), Path.GetFullPath(args[3]), turfsNuvem);
     return 0;
 }
 
@@ -303,6 +336,16 @@ if (args.Length >= 1 && args[0] == "cor")
     // cor : bancada da COR DE ROUPA no que toca o DISCO -- ida e volta do JSON, o save do
     // formato antigo, e a copia de aparencia. Ver RoupaBench.
     return RoupaBench.Rodar();
+}
+
+if (args.Length >= 1 && args[0] == "cura")
+{
+    // cura <races.json> : bancada da REGENERACAO -- quanto tempo cada raca leva pra sarar, quem
+    // cura em combate, quem refaz membro perdido, e quanto tempo o corpo fica no chao. Ver CuraBench.
+    Jandirus.Core.Races.RaceCatalog? cr = args.Length > 1 && File.Exists(args[1])
+        ? Jandirus.Core.Races.RaceCatalog.Parse(File.ReadAllText(args[1]))
+        : null;
+    return CuraBench.Rodar(cr);
 }
 
 if (args.Length >= 1 && args[0] == "luta")
@@ -782,6 +825,20 @@ if (args.Length >= 1 && args[0] == "sol")
     return 0;
 }
 
+if (args.Length >= 2 && args[0] == "extrator")
+{
+    // extrator <pastaCode> [skills.json] : a bancada do EXTRATOR DE SKILLS.
+    //
+    // IRMA DO COMANDO `skills` LOGO ABAIXO, e a diferenca e a que importa: aquele EXTRAI (e o alarme
+    // dele so fala do estado de hoje); este monta uma arvore DM sintetica com o defeito dentro, liga
+    // o extrator de ANTES do conserto e exige que as mesmas linhas fiquem vermelhas. Ver o cabecalho
+    // do `ExtratorBench` -- o buraco que ele guarda ja custou 116 skills uma vez e 3 na outra.
+    //
+    // DEVOLVE O NUMERO DE FALHAS como codigo de saida, pelo mesmo motivo da `carga`.
+    return ExtratorBench.Run(Path.GetFullPath(args[1]),
+                             args.Length > 2 ? Path.GetFullPath(args[2]) : null);
+}
+
 if (args.Length >= 3 && args[0] == "skills")
 {
     // skills <pastaCode> <saida.json> : extrai o catalogo de skills da arvore de tipos DM
@@ -881,6 +938,29 @@ if (args.Length >= 3 && args[0] == "skills")
             .Where(o => o.Estado == Jandirus.Core.Skills.Recusa.Pode)
             .Take(3).Select(o => o.Skill.Nome));
         Console.WriteLine($"{raca,-14} {quantasArvores,8} {ofertas.Count,8}  {amostra}");
+    }
+
+    // ============================ O ALARME DO `after_learn` SEM DONO ============================
+    // ESTA MEIA DUZIA DE LINHAS E O CONSERTO QUE DURA, e ela existe por um preco pago DUAS vezes.
+    //
+    // O `after_learn()` pode vir com o typepath na propria linha, e nesse caso o dono pode estar
+    // declarado em OUTRO arquivo -- 175 arquivos adiante, no caso do selo. Quando isso acontecia,
+    // o extrator jogava o corpo inteiro fora CALADO e a skill saia sem verb nenhum. O adiamento
+    // em `DmSkillScanner.CorposDeAprendizado` fecha o buraco; o que impede a TERCEIRA vez e este
+    // relatorio, porque o defeito nunca foi "faltou ler" -- foi que ninguem SABIA que faltava.
+    //
+    // Da primeira vez custou 116 skills, desta vez 3 (Mafuba, Open Dead Zone, Superior Seal), e
+    // nas duas o remedio foi ler mais uma forma sem armar o alarme. Sai NAO-ZERO de proposito: um
+    // catalogo com efeito perdido nao pode ser gravado em silencio por um pipeline que "passou".
+    // ===========================================================================================
+    var semDono = DmSkillScanner.AprendizadosSemDono;
+    Console.WriteLine($"\nafter_learn de caminho absoluto SEM DONO: {semDono.Count}");
+    foreach ((string quem, string onde) in semDono) Console.WriteLine($"   {quem,-46} {onde}");
+    if (semDono.Count > 0)
+    {
+        Console.WriteLine("   ^ o corpo destes after_learn foi LIDO e nao coube em skill nenhuma:");
+        Console.WriteLine("     ou o typepath nao existe no DM, ou o extrator nao o reconhece.");
+        return 1;
     }
     return 0;
 }

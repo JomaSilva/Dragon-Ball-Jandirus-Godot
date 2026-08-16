@@ -233,8 +233,8 @@ public partial class CharacterVisual : Node2D
 		// maestria pede `SSjFP` em vez de `SSj` (ver `Catalogo.SufixoDoCabeloDe`). Ler `d.SufixoDoCabelo`
 		// aqui era o ultimo dos dois lugares onde o pedido do `fp` morria -- o outro era o catalogo,
 		// que nunca escreveu esse sufixo em entrada nenhuma.
-		bool trocou = CabeloDaForma(troca
-			? Jandirus.Core.Forms.Catalogo.SufixoDoCabeloDe(d, _dominouAForma) : "");
+		string sufixo = troca ? Jandirus.Core.Forms.Catalogo.SufixoDoCabeloDe(d, _dominouAForma) : "";
+		bool trocou = CabeloDaForma(sufixo);
 
 		// A TINTA. No `TrocarOuTingir` ela e ALTERNATIVA e nao acumulo -- ver o enum: quem ganhou a
 		// arte propria do Ultra Instinct nao recebe prata por cima dela.
@@ -269,6 +269,29 @@ public partial class CharacterVisual : Node2D
 		// Ver o `<remarks>` de `AzulDoCabeloDivino` pra o porque de portar aquele passo tambem nao
 		// resolver -- ele troca branco por ciano.)
 		// ==========================================================================================================
+		// ============================ A FUSAO PINTA O SSJ4 DE VERMELHO, E ELA VEM ANTES DE TUDO ============================
+		// Pedido do dono: *"no SSJ4, TODA fusao usa `Hair SSJ4 Gogeta` pintado de VERMELHO -- tendo ou nao
+		// o cabelo do Vegito"*. A folha ja foi trocada la em cima (`CabelosDeForma` recebe o `_ehFusao` e
+		// devolve a do Gogeta); o que falta e a tinta.
+		//
+		// ELA NAO PASSA PELO `ModoDoCabelo`, e nao e atalho: aquele enum e derivado da FORMA
+		// (`Catalogo.CorDoCabelo(d)`), e a forma aqui e o SSJ4 -- que **nao tinge cabelo de ninguem**
+		// ("nenhum Super Saiyajin do jogo ganha tinta", e o `CorDoCabelo` devolve nulo pros seis SSJ4).
+		// Quem pinta e o CORPO, e essa e exatamente a diferenca que o `_ehFusao` carrega.
+		//
+		// **E ELA SOMA, EM VEZ DE MATIZAR** -- a regra derivada do bloco acima (`matiz: trocou`) estaria
+		// ERRADA aqui, e o porque esta medido em `Fusao.VermelhoDoCabeloDaFusao`: aquela regra parte de
+		// que todo sprite trazido por forma e a arte DOURADA de Super Saiyajin, e a folha do SSJ4 e
+		// ESCURA (piso `#080808` em 47% dos pixels). Em matiz o piso sairia a 6,3% da tinta -- preto.
+		// ==========================================================================================================
+		if (_ehFusao && Jandirus.Core.Social.Fusao.TintaDoCabeloDaFusao(sufixo) is { } cf)
+		{
+			TingirCabelo(new Color(cf), matiz: false);
+			PintarRabo(null);   // o rabo do SSJ4 mora na folha do CORPO -- ver `PintarRabo`
+			TingirOlhos(Jandirus.Core.Forms.Catalogo.CorDoOlho(d, _semRedeas) is { } cof ? new Color(cof) : null);
+			return;
+		}
+
 		TingirCabelo(pinta && Jandirus.Core.Forms.Catalogo.CorDoCabelo(d) is { } ch ? new Color(ch) : null,
 					 matiz: trocou);
 
@@ -573,6 +596,22 @@ public partial class CharacterVisual : Node2D
 		foreach (AnimatedSprite2D r in _roupa)
 			if (IsInstanceValid(r) && r.Material is ShaderMaterial m)
 				fora.Add((m.GetShaderParameter("tinta").AsVector3(), (int)m.GetShaderParameter("tinta_modo")));
+		return fora;
+	}
+
+	/// <summary>
+	/// AS FOLHAS DE ROUPA QUE ESTE CORPO ESTA VESTINDO, na ordem das camadas. SO PRA BANCADA.
+	///
+	/// A <see cref="TintaDaRoupaDeTeste"/> ja diz de que cor cada camada esta; esta diz QUAL peca cada
+	/// uma e -- que e a pergunta da fusao ("a Metamoro veste so o colete; a Potara veste o brinco MAIS a
+	/// roupa de quem convidou"). Sem ela, uma bancada de roupa so poderia contar camadas.
+	/// </summary>
+	public List<string> RoupasNoCorpoDeTeste()
+	{
+		var fora = new List<string>();
+		foreach (AnimatedSprite2D r in _roupa)
+			if (IsInstanceValid(r) && r.SpriteFrames?.ResourcePath is { Length: > 0 } p)
+				fora.Add(p);
 		return fora;
 	}
 
@@ -1630,13 +1669,8 @@ public partial class CharacterVisual : Node2D
 		// no lado que ele considera "o normal".
 		_achatamento = 0.18f;
 		_lavagem = 0.85f;
-
-		foreach (AnimatedSprite2D s in _camadas)
-		{
-			if (s.Material is not ShaderMaterial m) continue;
-			m.SetShaderParameter("flash_cor", cor);
-			m.SetShaderParameter("contorno_cor", contorno);
-		}
+		_corDaLavagem = cor;
+		_corDoContornoDoSoco = contorno;
 		AplicarImpacto(1);
 	}
 
@@ -2642,8 +2676,11 @@ public partial class CharacterVisual : Node2D
 		if (_cabelo == null || !IsInstanceValid(_cabelo)) return false;
 		_cabeloBase ??= _cabeloAtual;
 
+		// O `_ehFusao` ENTRA AQUI e nao num ramo proprio: a pergunta continua sendo "qual sprite esta
+		// forma usa neste corpo", e a fusao e um fato DO CORPO -- do mesmo tipo que o `_feminina`, que ja
+		// escolhe entre `Hair_SSj4` e `Hair_SSJ4Female` na mesma linha. Ver `CabelosDeForma.Universal`.
 		string? variante = string.IsNullOrEmpty(sufixo)
-			? null : CabelosDeForma.De(_cabeloBase, sufixo, _feminina);
+			? null : CabelosDeForma.De(_cabeloBase, sufixo, _feminina, _ehFusao);
 		string? alvo = variante ?? _cabeloBase;
 		if (alvo == null || alvo == _cabeloAtual) return variante != null;
 
@@ -2685,6 +2722,30 @@ public partial class CharacterVisual : Node2D
 	/// <see cref="VestirCabeloDaForma"/> -- ver <see cref="_dominouAForma"/>.
 	/// </summary>
 	public void MarcarFormaDominada(bool sim) => _dominouAForma = sim;
+
+	/// <summary>
+	/// ESTE CORPO E UMA FUSAO. So o cabelo usa isto, e por uma regra do dono: *"no SSJ4, TODA fusao usa
+	/// `Hair SSJ4 Gogeta` pintado de vermelho -- tendo ou nao o cabelo do Vegito"*.
+	///
+	/// ============================ POR QUE CAMPO, E NAO PARAMETRO ============================
+	/// Irmao do <see cref="_dominouAForma"/> e do <see cref="_feminina"/>, e pelo motivo escrito la: e um
+	/// fato do CORPO e nao da chamada. Quem sabe da fusao e o `World` (o bit chega no `S2C.PeerLook`),
+	/// mas quem veste o cabelo tambem e a <see cref="Transformacao"/> -- o beat que PISCA o cabelo
+	/// durante a cinematica chama o <see cref="VestirCabeloDaForma"/> varias vezes, de dentro do tocador,
+	/// sem nenhum caminho ate o pacote. Um parametro obrigaria a cena inteira a carregar o fato so pra
+	/// devolve-lo intacto no fim.
+	/// ===================================================================================
+	/// </summary>
+	private bool _ehFusao;
+
+	/// <summary>
+	/// Diz a este corpo que ele e (ou deixou de ser) uma fusao. Chamar ANTES do
+	/// <see cref="VestirCabeloDaForma"/> -- ver <see cref="_ehFusao"/>.
+	/// </summary>
+	public void MarcarFusao(bool sim) => _ehFusao = sim;
+
+	/// <summary>Este corpo esta marcado como fusao? Pra bancada -- ver `--diagforma`.</summary>
+	public bool EhFusaoDeTeste => _ehFusao;
 
 	/// <summary>
 	/// O SERVIDOR ESTA DIRIGINDO ESTE CORPO? (a furia lendaria, o Oozaru sem controle, ou o que vier
@@ -2998,6 +3059,24 @@ public partial class CharacterVisual : Node2D
 		foreach (AnimatedSprite2D s in _camadas)
 		{
 			if (s.Material is not ShaderMaterial m) continue;
+			// ============================ AS DUAS CORES VAO JUNTO, TODO QUADRO ============================
+			// Elas eram escritas UMA VEZ, la no `Impacto`/`Banhar`, e o `AplicarImpacto` so escrevia a
+			// mistura. Isso valia enquanto a pilha de camadas nao mudasse no meio do gesto -- e a cena
+			// da FUSAO quebra exatamente essa premissa: a lavagem branca comeca no beat que ASSUME, e o
+			// `Virar()` do mesmo instante veste a aparencia da fusao, o que **REMONTA as camadas**
+			// (`World.VestirCorpoInteiro`). As camadas novas nasciam com o `flash` sendo reescrito por
+			// este laco e com o `flash_cor` no PADRAO do shader (1,00 / 0,95 / 0,90 -- um branco morno).
+			//
+			// O sintoma seria da pior especie: o corpo da fusao lavando quase da cor certa, num gesto
+			// que dura tres segundos, sem nada errado aparente. E ele nao e so da fusao -- levar um
+			// soco no quadro em que a roupa muda tinha o mesmo defeito, com 0,15 s pra ninguem ver.
+			//
+			// Guardar as duas em campo e reescreve-las aqui custa dois `SetShaderParameter` por camada
+			// enquanto o gesto dura (0,15 s num soco), e faz o estado do canal ser um so: quem entrar
+			// na pilha no meio ja entra pintado.
+			// ==========================================================================================
+			m.SetShaderParameter("flash_cor", _corDaLavagem);
+			m.SetShaderParameter("contorno_cor", _corDoContornoDoSoco);
 			m.SetShaderParameter("flash", f * _lavagem);
 			// ============================ O ACHATAMENTO E DO GOLPE, NAO DO CANAL ============================
 			// Isto era `f * 0.18f` cravado, e ficou errado no dia em que um SEGUNDO gesto passou a usar o
@@ -3018,6 +3097,20 @@ public partial class CharacterVisual : Node2D
 	/// <see cref="Banhar"/>. Nascem com os valores do IMPACTO, que e quem usava o canal sozinho.
 	/// </summary>
 	private float _achatamento = 0.18f, _lavagem = 0.85f;
+
+	/// <summary>
+	/// PRA ONDE O CORPO LAVA e de que cor sai a borda do lampejo -- o par que o
+	/// <see cref="AplicarImpacto"/> reescreve todo quadro. Ver o bloco de comentario la sobre por que
+	/// eles deixaram de ser escritos uma vez so.
+	///
+	/// Nascem com o PADRAO DO SHADER (`Personagem.gdshader:12,14`), e nao com `Colors.White`: enquanto
+	/// ninguem chamou `Impacto` nem `Banhar`, o valor do campo tem que ser o que os materiais ja tem
+	/// -- senao o primeiro quadro de qualquer gesto reescreveria a cor que o shader declarou.
+	/// </summary>
+	private Color _corDaLavagem = new(1.0f, 0.95f, 0.9f);
+
+	/// <inheritdoc cref="_corDaLavagem"/>
+	private Color _corDoContornoDoSoco = new(1.0f, 0.85f, 0.35f);
 
 	/// <summary>
 	/// BANHA O CORPO INTEIRO NUMA COR -- o `animate(src, time=6, color=rgb(...))` do DM.
@@ -3043,22 +3136,32 @@ public partial class CharacterVisual : Node2D
 	/// TOMADO pela cor, nao como um retoque. Ele nao vai a 1,0 porque a silhueta tem que continuar
 	/// legivel -- em 1,0 o boneco vira uma mancha chapada e o penteado que a cena acabou de trocar some.
 	/// ======================================================================================
+	///
+	/// ============================ E HA UM CHAMADOR QUE QUER EXATAMENTE A MANCHA CHAPADA ============================
+	/// O paragrafo acima descreve o 1,0 como defeito, e ele e -- **pra uma transformacao**. A cena da
+	/// FUSAO pede o contrario com todas as letras: *"corpo completamente BRANCO, so a silhueta"* (ver
+	/// `Core.Forms.Efeito.SilhuetaBranca`). O mesmo numero que apaga o penteado do Super Saiyajin e o
+	/// que desenha a silhueta que o dono descreveu.
+	///
+	/// Entao a forca virou PARAMETRO com o valor de sempre no padrao -- e nao um segundo metodo ao
+	/// lado deste, que seria a copia do corpo inteiro pra trocar uma constante, nem um segundo canal
+	/// no shader, que e o que o cabecalho deste metodo ja recusou uma vez.
+	/// ========================================================================================================
 	/// </summary>
 	/// <param name="cor">A cor da forma -- ver `Aura.CorDaChamaDe`, que e quem a deriva.</param>
 	/// <param name="segundos">Quanto o banho leva pra escoar. O DM usa `time=6` + `spawn(12)`.</param>
-	public void Banhar(Color cor, double segundos)
+	/// <param name="lavagem">
+	/// QUANTO O CORPO SE MISTURA NA COR no pico, de 0 a 1. O padrao e o banho da transformacao (ver o
+	/// bloco acima); 1,0 chapa o boneco e e o que a cena da fusao pede.
+	/// </param>
+	public void Banhar(Color cor, double segundos, float lavagem = 0.92f)
 	{
 		_flash = _flashTotal = segundos;
 		_empurrao = Vector2.Zero;
 		_achatamento = 0f;
-		_lavagem = 0.92f;
-
-		foreach (AnimatedSprite2D s in _camadas)
-		{
-			if (s.Material is not ShaderMaterial m) continue;
-			m.SetShaderParameter("flash_cor", cor);
-			m.SetShaderParameter("contorno_cor", cor);
-		}
+		_lavagem = Math.Clamp(lavagem, 0f, 1f);
+		_corDaLavagem = cor;
+		_corDoContornoDoSoco = cor;
 		AplicarImpacto(1);
 	}
 
@@ -3075,6 +3178,40 @@ public partial class CharacterVisual : Node2D
 	/// achatamento do golpe (o boneco espremido por um segundo ao virar), e so o `achatar` desenhado
 	/// separa um do outro.
 	/// </summary>
+	/// <summary>
+	/// A LAVAGEM VISTA NA PILHA INTEIRA: quantas camadas com shader, quantas CORES DIFERENTES elas
+	/// declaram, e a MENOR mistura entre elas.
+	///
+	/// ============================ POR QUE ELE EXISTE, E ELE E O AVESSO DO <see cref="LavagemDeTeste"/> ============================
+	/// Aquele le o CORPO -- uma camada que existe desde o `Garantir()` e que sobrevive a qualquer
+	/// `Vestir`. Ele nunca poderia acusar o defeito que este par de campos consertou, porque o defeito
+	/// e das camadas que **nascem no meio do gesto**: a peca de roupa da fusao (`Metamoran Vest` /
+	/// `potara`) entra por `_roupa.Add(NovaCamada(...))` no mesmo instante em que o branco comeca a
+	/// escoar, e uma camada nova nasce com o `flash_cor` do PADRAO DO SHADER.
+	///
+	/// Com uma cor so na pilha, `CoresDistintas == 1` -- e essa e a pergunta certa: nao "de que cor
+	/// esta o corpo", e sim **"o boneco inteiro esta lavando da MESMA cor"**. Um brinco branco-morno
+	/// no meio de um corpo branco e exatamente o defeito que ninguem repara.
+	/// ==========================================================================================================
+	/// </summary>
+	public (int Camadas, int CoresDistintas, float MenorMistura) LavagemDaPilhaDeTeste
+	{
+		get
+		{
+			var cores = new HashSet<Color>();
+			float menor = float.MaxValue;
+			int n = 0;
+			foreach (AnimatedSprite2D s in _camadas)
+			{
+				if (!IsInstanceValid(s) || s.Material is not ShaderMaterial m) continue;
+				n++;
+				cores.Add(m.GetShaderParameter("flash_cor").AsColor());
+				menor = Math.Min(menor, m.GetShaderParameter("flash").AsSingle());
+			}
+			return (n, cores.Count, n == 0 ? 0f : menor);
+		}
+	}
+
 	public (float Mistura, Color Cor, float Achatar)? LavagemDeTeste =>
 		_corpo is { } cb && IsInstanceValid(cb) && cb.Material is ShaderMaterial mb
 			? (mb.GetShaderParameter("flash").AsSingle(),

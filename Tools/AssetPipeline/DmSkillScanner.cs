@@ -222,6 +222,51 @@ public static class DmSkillScanner
 	private static readonly HashSet<(string, string)> Chamados = [];
 
 	/// <summary>
+	/// CORPO DO `after_learn()` QUE CHEGOU ANTES DO DONO: caminho da skill -> linhas cruas.
+	///
+	/// ============================ O BURACO QUE ISTO FECHA ============================
+	/// So a forma ABSOLUTA (`/datum/skill/rank/Mafuba/after_learn()`, <see cref="RxLearnSolto"/>)
+	/// tem como cair aqui. Na forma ANINHADA o dono vem de `pilha[ind-1]` -- ele acabou de ser
+	/// registrado no mesmo arquivo, linhas acima, e por construcao nunca falta. Na absoluta o
+	/// typepath pode estar declarado em OUTRO arquivo, e o `Directory.GetFiles` entrega os
+	/// arquivos em ordem de CAMINHO, nao em ordem de dependencia.
+	///
+	/// Foi exatamente o que aconteceu com o selo: `Modules\Magic\Sealing.dm` e o arquivo 140 e o
+	/// `Modules\Ranks\ordered\EarthRanks.dm` -- onde os tres typepaths moram -- e o 315, de 502.
+	/// Cento e setenta e cinco arquivos de distancia: nao e uma corrida apertada, e uma certeza.
+	/// Quando o corpo era lido a skill ainda nao existia, o `TryGetValue` falhava e o `continue`
+	/// engolia o `after_learn` INTEIRO sem uma palavra. TRES skills (Mafuba, Open Dead Zone,
+	/// Superior Seal) perdiam o verb, e o censo as dava como "folha muda de nascenca" -- que e o
+	/// mesmo carimbo de quem o DM tambem nao faz nada. O jogador cumpria karma 25 e 1M de BP, o
+	/// painel do Eremita Tartaruga anunciava o Mafuba como entregue, e nao havia botao nenhum.
+	///
+	/// A SAIDA E A QUE A CASA JA USA pros procs proprios (<see cref="Corpos"/> +
+	/// <see cref="Chamados"/>): nao se le o disco duas vezes -- GUARDA-SE o que nao deu pra
+	/// resolver e resolve-se no fim, quando o catalogo inteiro esta na mao.
+	/// ================================================================================
+	/// </summary>
+	private static readonly Dictionary<string, List<string>> CorposDeAprendizado =
+		new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>Onde (arquivo:linha) cada `after_learn` adiado foi visto -- so pro diario.</summary>
+	private static readonly Dictionary<string, string> OndeAdiou = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// OS `after_learn()` QUE NEM COM TUDO LIDO ACHARAM DONO -- (skill, arquivo:linha).
+	///
+	/// ESTE E O ALARME, e ele e o conserto que dura. O adiamento acima fecha o buraco de HOJE; o
+	/// que impede a TERCEIRA vez e esta lista sair impressa toda rodada. A mesma dobra ja custou
+	/// 116 skills uma vez (o `after_learn` com typepath na propria linha) e 3 agora, e nas duas o
+	/// remedio foi ler mais uma forma -- ninguem pos o alarme, e por isso houve a segunda vez.
+	///
+	/// O sinal e EXATO, e essa e a graca: ele nao pergunta "a skill tem `after_learn` no DM?"
+	/// (pergunta que da 56 acertos, 53 deles legitimos -- as maestrias de Ki, cujo efeito real
+	/// mora no `effector()`), pergunta "o extrator VIU a linha e nao conseguiu atribuir a
+	/// ninguem?". Zero falso positivo por construcao.
+	/// </summary>
+	public static readonly List<(string Skill, string Onde)> AprendizadosSemDono = [];
+
+	/// <summary>
 	/// TODO PROC QUE MEXE NO `savant` E NAO E O `after_learn`: (skill, proc) -> arquivo:linha.
 	///
 	/// ESTE DIARIO E O CONSERTO DE VERDADE. O buraco que motivou esta rodada nao foi "faltou ler
@@ -251,15 +296,65 @@ public static class DmSkillScanner
 					  .Select(kv => (kv.Key.Skill, kv.Key.Proc, kv.Value))
 					  .OrderBy(x => x.Skill, StringComparer.Ordinal);
 
+	/// <summary>
+	/// ============================ O MUNDO DE ANTES DO CONSERTO, NUMA CHAVE ============================
+	/// Ligado, o adiamento de <see cref="CorposDeAprendizado"/> NAO acontece: o corpo do `after_learn`
+	/// cujo dono ainda nao foi lido e jogado fora **e o alarme fica mudo** -- que e literalmente o que
+	/// o extrator fazia antes desta rodada (o `continue` que engolia o corpo inteiro sem uma palavra).
+	///
+	/// POR QUE UMA CHAVE E NAO UM RITUAL. A guarda so vale alguma coisa se alguem ja tiver VISTO ela
+	/// reprovar, e a primeira conferencia disso foi feita reinjetando o defeito no fonte e desfazendo
+	/// depois -- o que prova a mesma coisa e **nao fica**: no mes que vem ninguem sabe se a linha ainda
+	/// pega, e "esta verde" fica indistinguivel de "nao esta olhando". E a mesma decisao, com o mesmo
+	/// argumento, que o <see cref="CensoMudoBench"/> tomou com o `semDuro` e o servidor com o
+	/// `--semduro`: controle negativo e um COMANDO, nao um ritual.
+	///
+	/// Ninguem em producao liga isto -- o comando `skills` nao toca nela e o padrao e `false`. Quem
+	/// ligar leva um berro no stderr, pelo mesmo motivo que o `--semduro` berra no log.
+	/// ============================================================================================
+	/// </summary>
+	public static bool ComoAntesDoConserto;
+
 	public static Dictionary<string, SkillDef> Scan(string pastaCode)
 	{
 		var defs = new Dictionary<string, SkillDef>(StringComparer.OrdinalIgnoreCase);
 		Corpos.Clear();
 		Chamados.Clear();
 		ProcsComEfeito.Clear();
+		CorposDeAprendizado.Clear();
+		OndeAdiou.Clear();
+		AprendizadosSemDono.Clear();
 
 		foreach (string arq in Directory.GetFiles(pastaCode, "*.dm", SearchOption.AllDirectories))
 			Ler(arq, defs);
+
+		// BANCADA: o mundo de ANTES do conserto -- o corpo adiado vai pro lixo e o alarme nao fala.
+		// Ver <see cref="ComoAntesDoConserto"/>. Uma linha guardada, e ela e o controle negativo da
+		// `dotnet run -- extrator`.
+		if (ComoAntesDoConserto)
+		{
+			Console.Error.WriteLine(
+				"[extrator] `ComoAntesDoConserto` LIGADO: o after_learn de dono nao-lido sera JOGADO "
+				+ "FORA e o alarme ficara MUDO. Este e o extrator de antes do conserto -- se voce nao "
+				+ "esta rodando uma bancada, desligue isto.");
+			CorposDeAprendizado.Clear();
+			OndeAdiou.Clear();
+		}
+
+		// O `after_learn()` DE CAMINHO ABSOLUTO CUJO DONO SO APARECEU NOUTRO ARQUIVO. Ver
+		// <see cref="CorposDeAprendizado"/> pra historia; aqui so importa a ORDEM: este laco vem
+		// ANTES do dos `Chamados` de proposito, porque um corpo adiado tambem pode DELEGAR
+		// (`choose()`), e a delegacao so e resolvida se ja estiver anotada quando o de baixo rodar.
+		foreach ((string skill, List<string> corpo) in CorposDeAprendizado)
+		{
+			if (!defs.TryGetValue(skill, out SkillDef? adiada))
+			{
+				AprendizadosSemDono.Add((skill, OndeAdiou.GetValueOrDefault(skill, "?")));
+				continue;
+			}
+			foreach (string linha in corpo) AplicarAprendizado(adiada, skill, linha);
+		}
+		AprendizadosSemDono.Sort((a, b) => string.CompareOrdinal(a.Skill, b.Skill));
 
 		// OS PROCS PROPRIOS QUE O `after_learn` CHAMOU viram efeito da skill agora que os dois
 		// lados estao lidos -- o proc pode ter sido declarado antes do `after_learn` no arquivo.
@@ -327,6 +422,32 @@ public static class DmSkillScanner
 			}
 			if (indSwitch < 0) Colher(txt, d.Buffs, d.Mults, d.Genes, d.Flags, d.Verbos, e => d.Estilo = e);
 		}
+	}
+
+	/// <summary>
+	/// UMA LINHA DE CORPO DE `after_learn()`: os canais de efeito mais a delegacao.
+	///
+	/// E funcao pelo mesmo motivo que o <see cref="Colher"/> virou uma: agora ha DOIS chamadores
+	/// -- o direto (dono ja lido) e o ADIADO (dono so apareceu noutro arquivo, ver
+	/// <see cref="CorposDeAprendizado"/>). Duas copias divergiriam, e divergir AQUI seria a skill
+	/// valer coisas diferentes conforme a ordem alfabetica do disco -- que e exatamente o defeito
+	/// que este conserto existe pra matar, e nao pra mudar de lugar.
+	///
+	/// Nao se usa o <see cref="Absorver"/> aqui de proposito: ele le `switch(input(...))` e o
+	/// caminho direto do `after_learn` nao le. Reaproveita-lo faria o corpo adiado ser lido com
+	/// regra diferente da do corpo normal -- a mesma divergencia, so que escondida.
+	/// </summary>
+	private static void AplicarAprendizado(SkillDef alvo, string skill, string corpo)
+	{
+		Colher(corpo, alvo.Buffs, alvo.Mults, alvo.Genes, alvo.Flags, alvo.Verbos, e => alvo.Estilo = e);
+
+		// O `after_learn()` QUE SO DELEGA. `Great_Robotic_Alliance` (meta.dm:127) tem corpo de duas
+		// linhas: `choose()` e um `to_chat`. Todo o efeito da skill mora no proc PROPRIO que ela
+		// chama, e por isso ela saia do extrator como muda. Aqui so se anota a chamada; o corpo do
+		// proc e resolvido no fim da varredura, porque ele pode ter sido declarado ANTES do
+		// `after_learn` no arquivo.
+		if (RxChamadaSimples.Match(corpo) is { Success: true } mc)
+			Chamados.Add((skill, mc.Groups["n"].Value));
 	}
 
 	/// <summary>
@@ -528,18 +649,22 @@ public static class DmSkillScanner
 			// depois da primeira linha de logica. Quem fecha o bloco e a indentacao, so ela.
 			if (indLearn >= 0)
 			{
-				if (donoLearn != null && defs.TryGetValue(donoLearn, out SkillDef? alvo))
+				if (donoLearn != null)
 				{
-					Colher(corpo, alvo.Buffs, alvo.Mults, alvo.Genes, alvo.Flags, alvo.Verbos,
-						   e => alvo.Estilo = e);
-
-					// O `after_learn()` QUE SO DELEGA. `Great_Robotic_Alliance` (meta.dm:127) tem
-					// corpo de duas linhas: `choose()` e um `to_chat`. Todo o efeito da skill mora
-					// no proc PROPRIO que ela chama, e por isso ela saia do extrator como muda.
-					// Aqui so se anota a chamada; o corpo do proc e resolvido no fim da varredura,
-					// porque ele pode ter sido declarado ANTES do `after_learn` no arquivo.
-					if (RxChamadaSimples.Match(corpo) is { Success: true } mc)
-						Chamados.Add((donoLearn, mc.Groups["n"].Value));
+					// DONO JA LIDO -> aplica agora. DONO AINDA NAO LIDO -> GUARDA a linha crua e
+					// resolve no fim da varredura, quando o catalogo inteiro esta na mao. Antes
+					// deste `else` o corpo era jogado fora em silencio -- ver
+					// <see cref="CorposDeAprendizado"/>.
+					if (defs.TryGetValue(donoLearn, out SkillDef? alvo))
+					{
+						AplicarAprendizado(alvo, donoLearn, corpo);
+					}
+					else
+					{
+						if (!CorposDeAprendizado.TryGetValue(donoLearn, out List<string>? adiado))
+							CorposDeAprendizado[donoLearn] = adiado = [];
+						adiado.Add(corpo);
+					}
 				}
 				continue;
 			}
@@ -593,6 +718,20 @@ public static class DmSkillScanner
 				{
 					indLearn = ind;
 					donoLearn = Normalizar(ml.Groups["p"].Value);
+
+					// `/datum/skill/proc/after_learn()` (`Skills Master/skill.dm:97`, corpo `return`)
+					// e a DECLARACAO BASE do proc no motor do DM, nao uma skill chamada "proc". A
+					// `RxLearnSolto` casa com ela porque `proc` parece um segmento de typepath. O
+					// MESMO filtro do registro de typepath vale aqui -- sem ele o diario dos orfaos
+					// nasceria com um falso alarme dentro, e diario com falso positivo e diario que
+					// ninguem le.
+					if (donoLearn.Contains("/proc/", StringComparison.Ordinal)
+						|| donoLearn.EndsWith("/proc", StringComparison.Ordinal)
+						|| donoLearn.Contains("/verb/", StringComparison.Ordinal)
+						|| donoLearn.EndsWith("/verb", StringComparison.Ordinal))
+						donoLearn = null;
+					else if (!defs.ContainsKey(donoLearn))
+						OndeAdiou.TryAdd(donoLearn, $"{Path.GetFileName(arq)}:{i + 1}");
 				}
 				else if (corpo.StartsWith("after_learn(", StringComparison.Ordinal) && ind > 0)
 				{
