@@ -185,6 +185,23 @@ public partial class GameServer
 				Afirmar($"{raca}: o corpo pisou em chao de verdade ({porque})", chao && tiques > 0,
 						tiques < 0 ? "NUNCA POUSOU" : porque);
 
+				// ============================ E ACORDOU NA ZONA DO BERCO -- A LINHA QUE FALTAVA ============================
+				// Esta familia ficou **TODA VERDE (72 provas) com 13 das 24 racas acordando em Namek**. O
+				// motivo esta na linha de cima e na de baixo: ela afirmava `b.Planeta` -- o resultado da
+				// funcao PURA `Bercos.Onde`, que continuava certissima ("Earth" pra quem e da Terra) -- e a
+				// zona em que o corpo de fato acordou era so IMPRESSA no console. Com a Terra marcada como
+				// destruida no save, o funil desviava o corpo pro primeiro pre-feito vivo e nenhuma linha
+				// ficava vermelha: a bancada media a INTENCAO, e o jogador vive o EFEITO.
+				//
+				// A comparacao e pelo NOME e nao pela `ZoneKey` inteira de proposito: o berco gerado (o
+				// exilio do Lendario, o vizinho) chega pelo espaco e o pouso monta a zona dele; o que se
+				// afirma aqui e "acordou no planeta que o berco prometeu", que e a frase do dono.
+				// ======================================================================================================
+				Afirmar($"{raca}: o corpo acordou NA ZONA do berco ({b.Planeta})",
+						pl.Zone.Name == b.Planeta,
+						$"o berco prometeu {b.Planeta} e o corpo acordou em {pl.Zone.Name}"
+						+ (ZonaMorta(b.Zona) ? $" -- '{b.Planeta}' esta DESTRUIDO no save deste servidor" : ""));
+
 				GD.Print($"[bercovivo]      {raca,-14} {c.Ficha.Class,-24} -> {b.Planeta,-18}"
 					+ $" {(b.PreFeito ? "pre-feito" : "gerado   ")} | {pl.Zone.Name} @ "
 					+ $"({pl.Pos.X / ZoneCollision.TileSize:0},{pl.Pos.Y / ZoneCollision.TileSize:0}) | {tiques} tique(s)");

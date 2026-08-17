@@ -100,6 +100,16 @@ public partial class GameServer
 		// devolveria o ultimo -- o primeiro ficaria morto no disco depois da bancada.
 		var mundosMortos = new List<ZoneKey>();
 
+		// ============================ E O LIVRO DOS MORTOS NAO CHEGA AO DISCO ============================
+		// A lista acima devolve os mundos que ESTA bancada sabe que matou, e ela continua sendo a
+		// afirmacao do escopo dela ("eu limpo o que eu sujo"). O que ela nao cobre e a JANELA: entre o
+		// `ComecarDestruicao` e o `finally` o `planetas-mortos.json` do dono ja tem o mundo morto
+		// gravado, e um Ctrl+C no meio o deixa assim -- pra sempre, porque mundo gerado e chaveado por
+		// SEMENTE e volta identico todo boot. O palco fecha a janela: nada e escrito enquanto a bancada
+		// roda. Ele nasceu da mesma janela deixada aberta na `--escudoteste`, que custou a Terra do dono.
+		// ==========================================================================================
+		using PalcoDeMortes palcoDeMortes = PalcoDeMortesDeBancada();
+
 		try
 		{
 			// =====================================================================

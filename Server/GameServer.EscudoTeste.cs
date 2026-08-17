@@ -160,6 +160,21 @@ public partial class GameServer
 		EscudoCheca("a zona de chao da bancada tem colisao carregada (o tiro precisa de chao livre)",
 					_pjMapa != null);
 
+		// ============================ O PALCO: ESTA BANCADA MATA UM PLANETA DE VERDADE ============================
+		// A fonte 12 (`DispararFinalExplosionDeTerceiro`) forja um corpo de BP 1e12 e detona uma Final
+		// Explosion de RAIO MAXIMO na Terra -- e raio maximo + BP acima de dez milhoes leva o planeta
+		// (`misc.dm:324-335`, portado em `GameServer.Tecnicas.G3.cs:644`). Isto **e o certo**: a bancada
+		// tem que exercitar a fonte inteira, pelo funil de producao.
+		//
+		// O que estava errado era o resto: a destruicao seguia ate o disco e a Terra ficava morta no
+		// mundo do dono -- e o berco, corretamente, passava a fazer 13 racas nascerem em Namek. O
+		// cabecalho deste arquivo ja PROMETIA "sem escrever uma linha no registro de planetas mortos"
+		// (`GameServer.cs`, na chamada desta bancada); agora quem cumpre a promessa e o mecanismo, e nao
+		// a memoria de quem escreve a proxima fonte. Ver `PalcoDeMortes`.
+		// ======================================================================================================
+		string discoAntes = TextoDoLivroDosMortos();
+		PalcoDeMortes palco = PalcoDeMortesDeBancada();
+
 		try
 		{
 			OEstadoEUmSO();
@@ -175,9 +190,59 @@ public partial class GameServer
 		finally
 		{
 			RecolherOsCorpos();
+			palco.Dispose();   // fecha ANTES das duas linhas abaixo: e o fechamento que devolve o mundo
 		}
 
+		OPalcoDevolveuOMundo(palco, discoAntes);
+
 		GD.Print($"[escudo] ============ {_escudoOk} passaram, {_escudoFalhou} falharam ============");
+	}
+
+	/// <summary>
+	/// 9) A BANCADA DEVOLVEU O MUNDO? -- as duas metades, e nenhuma delas sozinha vale nada.
+	///
+	/// ============================ A LICAO QUE ESTAS TRES LINHAS CARREGAM ============================
+	/// A `--bercovivo` tinha 72 provas VERDES enquanto 13 racas acordavam no planeta errado, porque ela
+	/// afirmava a REGRA (a funcao pura `Bercos.Onde`, que continuava certa) e so IMPRIMIA o EFEITO (a
+	/// zona em que o corpo acordou). Entao aqui a pergunta e feita ao DISCO, que e o efeito: o texto do
+	/// `planetas-mortos.json` antes e depois, byte a byte. Perguntar ao registro em memoria seria
+	/// perguntar de novo pela intencao -- ele acabou de ser reposto pelo proprio escopo que se quer
+	/// medir, e ficaria verde ate com a gravacao ligada.
+	///
+	/// E a primeira linha e a que da dentes as outras: se a Final Explosion parar de matar planeta (um
+	/// numero que mude, um gate novo), a segunda linha continuaria verde para sempre medindo o nada.
+	/// ==========================================================================================
+	/// </summary>
+	private void OPalcoDevolveuOMundo(PalcoDeMortes palco, string discoAntes)
+	{
+		GD.Print("[escudo] -- 9) O PALCO DEVOLVEU O MUNDO (a bancada nao pode custar um planeta) --");
+
+		EscudoCheca("(contraprova) a Final Explosion de raio maximo MATOU um planeta de verdade aqui dentro",
+					palco.MatouAqui > 0,
+					"nenhum planeta morreu -- ou a fonte parou de exercitar o gancho de destruicao");
+
+		EscudoCheca($"...e o planeta VOLTOU a existir no fim ({palco.NomesQueMorreram})",
+					!ZonaMorta(ZonaDoEscudo) && !ZonaCondenada(ZonaDoEscudo),
+					$"{ZonaDoEscudo.Name} continua condenado depois da bancada");
+
+		EscudoCheca("...e o `planetas-mortos.json` do dono nao mudou um byte (medido no DISCO)",
+					TextoDoLivroDosMortos() == discoAntes,
+					$"antes [{discoAntes}] depois [{TextoDoLivroDosMortos()}]");
+	}
+
+	/// <summary>
+	/// O TEXTO CRU DO ARQUIVO DE PLANETAS MORTOS -- e "(nao existe)" quando ele nao existe, que e um
+	/// estado legitimo (servidor novo) e tem que ser comparavel como qualquer outro.
+	/// </summary>
+	private string TextoDoLivroDosMortos()
+	{
+		try
+		{
+			return System.IO.File.Exists(CaminhoDosMortos)
+				? System.IO.File.ReadAllText(CaminhoDosMortos)
+				: "(nao existe)";
+		}
+		catch (Exception e) { return $"(ilegivel: {e.Message})"; }
 	}
 
 	// =====================================================================

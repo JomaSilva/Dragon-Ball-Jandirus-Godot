@@ -36,6 +36,11 @@
       O Godot.NET.Sdk varre **/*.cs a partir da raiz do projeto. Sem estas exclusoes ele
       engole os fontes do Core (compilando tudo DUAS vezes: CS0436) e os obj/ dos projetos
       vizinhos (AssemblyInfo duplicado: CS0579). Core entra por ProjectReference, nao por glob.
+
+      ATENCAO: o menu "Criar solucao C#" do editor do Godot SOBRESCREVE este arquivo com o
+      modelo dele (sem ProjectReference, sem PackageReference e sem estas exclusoes). Se o build
+      voltar a acusar "LiteNetLib nao encontrado" e centenas de "Duplicar atributo", foi isso -
+      confira o `git diff` deste csproj antes de procurar em qualquer outro lugar.
     -->
     <Compile Remove="Core\**" />
     <None Remove="Core\**" />

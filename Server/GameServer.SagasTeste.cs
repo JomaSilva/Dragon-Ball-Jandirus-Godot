@@ -64,11 +64,20 @@ public partial class GameServer
 		double repVegetaGuardada = ReputacaoDe("Vegeta", pl.Conta);
 		double relativoGuardado = _moldes?.Get("freeza_vegeta")?.BpRelativo ?? 0;
 
-		// O LIVRO DOS PLANETAS MORTOS TAMBEM. A familia do gancho leva a saga ate o COMMIT, e o commit
-		// escreve num arquivo que nao e o `sagas.json`: `planetas-mortos.json`. Sem esta fotografia,
-		// rodar esta bancada uma vez deixaria Namek destruido pra sempre no save do dono -- e a
-		// devolucao do estado das sagas nao tocaria nisso, porque a destruicao tem livro PROPRIO.
-		var mortosGuardados = _mortos.Todos.ToList();
+		// ============================ O LIVRO DOS PLANETAS MORTOS TEM ESCOPO PROPRIO ============================
+		// A familia do gancho leva a saga ate o COMMIT, e o commit escreve num arquivo que nao e o
+		// `sagas.json`: o `planetas-mortos.json`. Sem isto, rodar esta bancada uma vez deixaria **Namek
+		// destruido pra sempre no save do dono** -- e a devolucao do estado das sagas nao tocaria nisso,
+		// porque a destruicao tem livro PROPRIO.
+		//
+		// Aqui havia uma fotografia a mao (`_mortos.Todos.ToList()` + devolucao no `finally`), e ela
+		// estava certa. O que ela nao cobria e a janela: entre o commit e o `finally` o Namek do dono
+		// ficava DESTRUIDO NO DISCO, e um Ctrl+C ali dentro o deixava assim. Foi por uma janela dessas
+		// -- a mesma cena com a Terra, na `--escudoteste`, que nem fotografia tinha -- que 13 racas
+		// passaram a nascer em Namek. O `PalcoDeMortes` fecha as duas pontas: nada e escrito enquanto a
+		// bancada roda, e o livro volta como estava mesmo se ela estourar.
+		// ====================================================================================================
+		using PalcoDeMortes palcoDeMortes = PalcoDeMortesDeBancada();
 
 		try
 		{
@@ -333,13 +342,9 @@ public partial class GameServer
 			_sagasPorRetomar = false;
 			SalvarSagas();
 
-			// E O LIVRO DOS MORTOS TAMBEM -- ele e OUTRO arquivo, e a linha acima nao o alcança. A
-			// familia do gancho leva a saga ao commit, e sem isto Namek ficaria destruido no save.
-			_mortos.Limpar();
-			foreach (EstadoDaMorte e in mortosGuardados) _mortos.Por(e);
-			_proximoTremor.Clear();
-			SalvarPlanetasMortos();
-			MandarMortosPraTodos();
+			// O LIVRO DOS MORTOS NAO E DEVOLVIDO AQUI: quem devolve e o `PalcoDeMortes` la de cima, que
+			// fecha DEPOIS deste bloco (o `using` do metodo) -- e devolve tambem os tremores e o ceu de
+			// destruicao do planeta que a saga levou. Ver a nota do palco.
 
 			GD.Print($"===== FIM: {ok} ok, {falhou} falha(s) =====\n");
 			if (falhou > 0) GD.PushError($"[server] bancada de sagas: {falhou} falha(s)");

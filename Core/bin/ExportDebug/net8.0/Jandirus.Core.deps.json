@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "Jandirus.Core/1.0.0": {
+        "runtime": {
+          "Jandirus.Core.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Jandirus.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

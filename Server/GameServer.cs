@@ -2398,6 +2398,19 @@ public partial class GameServer : Node
 			// e do servidor sozinho -- e ninguem roda uma bancada que precisa de duas janelas.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--bercovivo") >= 0) RodarBancadaDoBercoVivo();
 
+			// `--bercoprova`: a TERCEIRA irma -- a que poe o mundo em cada estado que ja quebrou o
+			// jogo e exige o placar certo em cada um (a Terra morta, Namek morta, uma zona nova na
+			// frente da carta), inclusive no povoamento e no renascimento.
+			//
+			// DEPOIS da `--bercovivo` de proposito: as duas compartilham o forjador de corpos
+			// (`SaveDeBancada`/`CorpoDoSave`) e a `--bercoprova` mata planetas dentro do palco de
+			// bancada. Rodar a que ESTRAGA o mundo antes da que so o observa deixaria a segunda
+			// medindo um estado que a primeira montou, mesmo com o palco desfazendo tudo.
+			//
+			// Ela mata planetas -- SEMPRE dentro do `PalcoDeMortesDeBancada`, entao o
+			// `planetas-mortos.json` do dono nao e tocado. Ver `GameServer.BercoProva.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--bercoprova") >= 0) RodarBancadaDaProvaDoBerco();
+
 			// `--obrateste`: A CHAVE DE ZONA DAS CONSTRUCOES -- o disco, e nao a memoria.
 			//
 			// No boot, e num momento MUITO especifico: depois do `CarregarTech`, porque ela fotografa
@@ -2457,9 +2470,12 @@ public partial class GameServer : Node
 			// `npcs.json` pro corpo com `Papel`, catalogo de formas pra cena mais longa) e sem precisar
 			// de ninguem logado: o escudo nao olha `Peer` em linha nenhuma.
 			//
-			// Ela DESTROI Arlia tres vezes e cozinha corpos dentro de uma estrela -- tudo com corpos
-			// forjados que entram e saem dentro do mesmo bloco sincrono, e sem escrever uma linha no
-			// registro de planetas mortos. Ver `GameServer.EscudoTeste.cs`.
+			// Ela DESTROI Arlia tres vezes, leva a TERRA numa Final Explosion de raio maximo e cozinha
+			// corpos dentro de uma estrela -- tudo com corpos forjados que entram e saem dentro do mesmo
+			// bloco sincrono, e **sem escrever uma linha no registro de planetas mortos**: quem garante
+			// isso e o `PalcoDeMortes` (`GameServer.Destruicao.cs`), um escopo, e nao o cuidado de quem
+			// escreveu a fonte. Foi essa promessa quebrada -- a Terra ficando morta no save do dono --
+			// que fez 13 racas nascerem em Namek. Ver `GameServer.EscudoTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--escudoteste") >= 0) RodarBancadaDoEscudo();
 
 			// `--tresteste`: OS TRES RELATOS DO DONO (soco no vazio depois do soco forte, NPC que so

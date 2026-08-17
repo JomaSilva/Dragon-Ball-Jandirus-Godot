@@ -121,7 +121,7 @@ public partial class GameServer
 	{
 		if (!ZonaMorta(SpawnZone)) return SpawnZone;
 
-		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
+		foreach (PlanetaNoEspaco p in _cartaDeRecuo ?? Espaco.PreFeitos())
 		{
 			var z = ZoneKey.Premade(p.Nome);
 			if (!ZonaMorta(z) && _catalogo?.Get(z) != null) return z;
@@ -130,6 +130,52 @@ public partial class GameServer
 		GD.PushError("[server] TODOS os planetas pre-feitos estao destruidos -- o recuo do berco "
 				   + "cai na Terra morta. Um admin precisa restaurar algum planeta.");
 		return SpawnZone;
+	}
+
+	// =====================================================================
+	// A CARTA QUE O RECUO LE -- e por que ela e trocavel
+	// =====================================================================
+	/// <summary>
+	/// A CARTA ESTELAR QUE O <see cref="ZonaDeRecuoViva"/> DESCE. **Nula em jogo**, sempre: quem
+	/// responde e <see cref="Espaco.PreFeitos"/>.
+	///
+	/// ============================ POR QUE ISTO EXISTE ============================
+	/// O recuo escolhe "o primeiro pre-feito VIVO da carta", e esse *primeiro* e uma propriedade da
+	/// ORDEM de um `yield return` (`Core/World/Espaco.cs:115-121`) -- ou seja, o destino de quem perde
+	/// o berco e decidido por uma posicao numa lista, e nao por uma regra. Foi assim que a Terra morta
+	/// virou **Namek** e nao qualquer outro planeta: Namek e a segunda linha daquele metodo.
+	///
+	/// Uma bancada que afirmasse "com a Terra morta o corpo vai parar em Namek" estaria gravando o
+	/// ACIDENTE. O `Bercos.PlanetaNatal` ja avisa, com todas as letras, que um dia alguem vai
+	/// acrescentar Hera e a Big Gete Star aquela lista ("E uma LINHA em `Espaco.PreFeitos()` pra
+	/// cada") -- e no dia em que a linha nova entrar ANTES das outras, o destino do defeito muda de
+	/// planeta e a bancada que cravou "Namek" fica verde em cima do mesmo estrago.
+	///
+	/// Entao a `--bercoprova` TROCA a carta e mede de novo, contra o mesmo codigo de producao: e o
+	/// mesmo motivo do `teto` do <see cref="Bercos.ServeDeBerco"/> e do `tetoZona` da
+	/// <see cref="Manutencao"/> -- apertar o parametro contra o jogo em vez de escrever um caminho
+	/// paralelo que testaria o atalho. Em jogo ninguem escreve neste campo.
+	/// ==========================================================================
+	/// </summary>
+	private IReadOnlyList<PlanetaNoEspaco>? _cartaDeRecuo;
+
+	/// <summary>O escopo: `using (OutraCartaDeRecuo([...])) { ... }`. Ver <see cref="_cartaDeRecuo"/>.</summary>
+	private CartaDeRecuoTrocada OutraCartaDeRecuo(IReadOnlyList<PlanetaNoEspaco> carta) => new(this, carta);
+
+	/// <summary>Devolve a carta de verdade no fim, mesmo se a bancada estourar no meio.</summary>
+	internal sealed class CartaDeRecuoTrocada : IDisposable
+	{
+		private readonly GameServer _s;
+		private readonly IReadOnlyList<PlanetaNoEspaco>? _antes;
+
+		internal CartaDeRecuoTrocada(GameServer s, IReadOnlyList<PlanetaNoEspaco> carta)
+		{
+			_s = s;
+			_antes = s._cartaDeRecuo;
+			s._cartaDeRecuo = carta;
+		}
+
+		public void Dispose() => _s._cartaDeRecuo = _antes;
 	}
 
 	/// <summary>

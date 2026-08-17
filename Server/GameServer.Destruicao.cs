@@ -122,6 +122,27 @@ public partial class GameServer
 
 			GD.Print($"[server] planetas mortos: {destruidos} destruido(s), {morrendo} em curso "
 				   + $"({string.Join(", ", _mortos.Todos.Select(e => $"{e.Nome}={e.Fase}"))})");
+
+			// ============================ O PLANETA DE RECUO MORTO E UM ANUNCIO, NAO UMA NOTA DE RODAPE ============================
+			// Esta linha existe por medicao e nao por precaucao: a Terra passou dias marcada como
+			// destruida neste arquivo e o unico aviso era a linha acima -- seca, no meio de trinta linhas
+			// de boot -- mais uma linha por CORPO la no berco ("'Earth' esta destruido -- o corpo vai pra
+			// Namek"), que so aparece depois de alguem nascer. O dono viu o SINTOMA ("todo mundo nasce em
+			// Namek") sem nunca ver a CAUSA, e uma bancada chegou a escrever no proprio comentario que "no
+			// save vivo a Terra esta condenada" como se fosse paisagem (`GameServer.PovoamentoTeste.cs`).
+			//
+			// A `SpawnZone` nao e um planeta qualquer: e o RECUO de todo berco (ver `ZonaDeRecuoViva`) e o
+			// lar de **10 das 24 racas** (contado pela `--bercoprova`: Alien, Android, BioAndroid,
+			// Demigod, Dog, Halfbreed, Human, Majin, Shapeshifter, SpiritDoll, mais todo Saiyajin de
+			// classe baixa). O "13" que esta nota trazia era a contagem de LINHAS VERMELHAS da
+			// `--bercovivo` (10 racas + o classe-baixa + os dois perfis Human da familia 5), e nao de
+			// racas. Com ela morta o jogo continua rodando e mentindo baixinho.
+			// ==================================================================================================================
+			if (ZonaMorta(SpawnZone))
+				GD.PushWarning($"[server] O PLANETA DE RECUO ('{SpawnZone.Name}') ESTA DESTRUIDO: quem tem "
+							 + "berco nele nasce e RENASCE no primeiro pre-feito vivo da carta, ninguem "
+							 + "pousa la vindo de orbita e o povoamento nao repovoa. Se isto nao foi de "
+							 + "proposito, use o verb de admin 'Restore Planet' em orbita dele.");
 		}
 		catch (Exception e) { GD.PushWarning($"[server] planetas-mortos.json ilegivel: {e.Message}"); }
 	}
@@ -135,6 +156,12 @@ public partial class GameServer
 	/// </summary>
 	private void SalvarPlanetasMortos()
 	{
+		// O PALCO DE BANCADA (ver <see cref="PalcoDeMortes"/>): enquanto uma medicao esta em curso, a
+		// morte de planeta acontece so na MEMORIA e e desfeita no fim. Esta e a linha que impede que
+		// ela chegue ao mundo do dono -- e ela vem ANTES do `_store`, porque o que se recusa aqui e a
+		// gravacao inteira e nao o caminho dela.
+		if (_mortesDeBancada) return;
+
 		if (_store == null) return;
 		try
 		{
@@ -148,6 +175,123 @@ public partial class GameServer
 		{
 			GD.PushWarning($"[server] nao deu pra salvar planetas-mortos.json: {e.Message}");
 		}
+	}
+
+	// =====================================================================
+	// O PALCO DE BANCADA -- o mundo do dono nao paga o preco da medicao
+	// =====================================================================
+	/// <summary>
+	/// LIGADO, A MORTE DE PLANETA ACONTECE SO NA MEMORIA. Ver <see cref="PalcoDeMortes"/>.
+	/// </summary>
+	private bool _mortesDeBancada;
+
+	/// <summary>
+	/// ============================ O QUE ISTO CUSTOU PRA EXISTIR ============================
+	/// A `--escudoteste` monta o palco dela na TERRA de verdade (ela precisa de colisao carregada pro
+	/// tiro que voa) e uma das dezesseis fontes de dano dela e uma **Final Explosion de raio maximo
+	/// com BP de 1e12**. O gancho de producao (`GameServer.Tecnicas.G3.cs:644`, o `misc.dm:324-335`)
+	/// fez exatamente o que ele deve fazer -- raio 25 + BP acima de dez milhoes leva o planeta -- e o
+	/// `SalvarPlanetasMortos` gravou a Terra como destruida **na pasta de saves do dono**, porque
+	/// bancada nao tem pasta propria.
+	///
+	/// A consequencia nao apareceu na destruicao, e sim no BERCO, dias depois: `DestinoDoBerco` recusa
+	/// por um corpo pra nascer num cadaver (linha 83, comportamento CERTO e escrito pensando na saga
+	/// que destroi Vegeta), o recuo desce a lista de pre-feitos e a **segunda entrada dela e Namek**
+	/// (`Core/World/Espaco.cs:116`). Resultado medido: **13 das 24 racas do jogo nascendo e renascendo
+	/// em Namek**, os 42 cidadaos humanos da Terra deixando de nascer, e ninguem conseguindo pousar na
+	/// Terra vindo de orbita. Nao havia uma linha errada no berco.
+	///
+	/// ============================ POR QUE UM ESCOPO, E NAO CUIDADO ============================
+	/// A propria `--escudoteste` **ja tinha o cuidado** na outra fonte que mata planeta: o
+	/// `DispararDestruicaoDoPlaneta` monta um `EstadoDaMorte` local com o comentario *"o estado e
+	/// proprio da bancada e nao entra no registro"*. Ou seja, o autor conhecia o risco e protegeu um
+	/// caminho -- e o outro escapou, porque a protecao dependia de LEMBRAR. Tres outras bancadas
+	/// (`--planetateste`, `--sagateste`, `--wipeteste`) fotografam o registro a mao pelo mesmo motivo.
+	///
+	/// Aqui a protecao e MECANICA e vale pra qualquer fonte, inclusive as que ainda nao existem: quem
+	/// abre o palco nao precisa saber por quais funis o dano dele passa. E o escopo devolve o mundo
+	/// inteiro -- registro, tremores, cargas de `Planet_Destroy` e o ceu de destruicao dos planetas
+	/// que morreram dentro dele.
+	/// ==================================================================================
+	/// </summary>
+	private PalcoDeMortes PalcoDeMortesDeBancada() => new(this);
+
+	/// <summary>
+	/// O ESCOPO: `using (PalcoDeMortesDeBancada()) { ... }`. Ver <see cref="PalcoDeMortesDeBancada"/>.
+	///
+	/// **Ele e MEDIVEL de proposito** (<see cref="MatouAqui"/>): uma bancada que se protege sem provar
+	/// que a arma disparou fica verde para sempre no dia em que a fonte parar de matar planeta --
+	/// "um crivo que nunca corta e indistinguivel de crivo nenhum".
+	/// </summary>
+	internal sealed class PalcoDeMortes : IDisposable
+	{
+		private readonly GameServer _s;
+		private readonly List<EstadoDaMorte> _foto;
+		private readonly Dictionary<string, double> _tremores;
+		private readonly Dictionary<int, (double Faltam, ZoneKey Zona, double Bp)> _cargas;
+		private readonly bool _antes;
+		private bool _fechado;
+
+		/// <summary>Quantos planetas MORRERAM dentro do palco. Zero = a bancada nao exercitou nada.</summary>
+		public int MatouAqui { get; private set; }
+
+		/// <summary>Os nomes deles, pro detalhe da linha da bancada.</summary>
+		public string NomesQueMorreram { get; private set; } = "";
+
+		internal PalcoDeMortes(GameServer s)
+		{
+			_s = s;
+			_antes = s._mortesDeBancada;
+
+			// CÓPIA DE VALOR, e nao de referencia: `EstadoDaMorte` e classe MUTAVEL e o
+			// `ComecarDestruicao` escreve por cima do registro que ja existe quando o planeta ja estava
+			// morrendo (`e ??= new`). Guardar a referencia devolveria o objeto que a bancada estragou.
+			_foto = [.. s._mortos.Todos.Select(Copiar)];
+			_tremores = new Dictionary<string, double>(s._proximoTremor);
+			_cargas = new Dictionary<int, (double, ZoneKey, double)>(s._cargaDoPlanetDestroy);
+
+			s._mortesDeBancada = true;
+		}
+
+		public void Dispose()
+		{
+			if (_fechado) return;
+			_fechado = true;
+
+			// QUEM MORREU AQUI DENTRO: o que esta no registro agora e nao estava na foto. E por eles que
+			// o ceu de destruicao (`ForcarClima`) precisa ser desfeito -- ele nao esta no registro, mora
+			// no clima, e sem esta volta a Terra ficaria com ceu de fim de mundo depois da bancada.
+			var mortasAqui = _s._mortos.Todos
+				.Where(e => !_foto.Any(f => f.Chave == e.Chave))
+				.Select(e => (e.Nome, Zona: e.Zona()))
+				.ToList();
+
+			MatouAqui = mortasAqui.Count;
+			NomesQueMorreram = string.Join(", ", mortasAqui.Select(m => m.Nome));
+
+			_s._mortos.Substituir(_foto);
+			_s._proximoTremor.Clear();
+			foreach ((string k, double v) in _tremores) _s._proximoTremor[k] = v;
+			_s._cargaDoPlanetDestroy.Clear();
+			foreach ((int k, (double, ZoneKey, double) v) in _cargas) _s._cargaDoPlanetDestroy[k] = v;
+
+			_s._mortesDeBancada = _antes;
+
+			foreach ((string nome, ZoneKey zona) in mortasAqui)
+			{
+				_s.ForcarClima(zona, TipoDeClima.Limpo, 0);
+				GD.Print($"[bancada] '{nome}' morreu DENTRO de uma bancada: o planeta volta a existir e "
+					   + "o `planetas-mortos.json` do dono nunca foi tocado.");
+			}
+
+			_s.MandarMortosPraTodos();
+		}
+
+		private static EstadoDaMorte Copiar(EstadoDaMorte e) => new()
+		{
+			Chave = e.Chave, Nome = e.Nome, Fase = e.Fase, Estagio = e.Estagio,
+			Faltam = e.Faltam, BpDoAlgoz = e.BpDoAlgoz, IdDoAlgoz = e.IdDoAlgoz, Motivo = e.Motivo,
+		};
 	}
 
 	// =====================================================================
