@@ -331,27 +331,60 @@ public static class Habilidades
 			() => GameClient.Instance?.SendHabilidade("fus_danca")) { Chave = "hab:fus_danca" });
 
 		// ============================ A FUSAO NAMEKUSEIJIN -- `Namekian_Fusion` (`Fusion.dm:549-569`) ============================
-		// Ela existia no motor inteira (energia zero, o nocaute que nao separa, o dreno que a pula) e
-		// **nao tinha porta**: nenhum caminho de producao chamava `Convidar` com ela. Este botao e a
-		// porta, e ele segue a regra da casa deste arquivo -- **nao e condicionado**. Um verb que
-		// aparece e recusa com uma frase ("os DOIS precisam ser Namekuseijin") ensina o jogo; um verb
-		// escondido faz o jogador nunca descobrir que a fusao permanente existe.
+		// Ela existia no motor inteira e **nao tinha porta**: nenhum caminho de producao chamava
+		// `Convidar` com ela. Este botao e a porta, e ele segue a regra da casa deste arquivo -- **nao e
+		// condicionado**. Um verb que aparece e recusa com uma frase ("os DOIS precisam ser
+		// Namekuseijin") ensina o jogo; um verb escondido faz o jogador nunca descobrir que ela existe.
+		//
+		// **O TEXTO MUDOU COM O PEDIDO DO DONO**, e a mudanca e a coisa mais importante deste bloco: ela
+		// deixou de ser uma fusao e virou uma ABSORCAO -- *"o outro namek se for jogador, perde o
+		// personagem pra sempre"*. Um botao que ainda dissesse "o controle pode ser passado depois"
+		// estaria descrevendo um sistema que nao existe mais, e do lado errado da unica consequencia
+		// deste jogo que nao tem desfazer.
 		// ==================================================================================================================
 		Verbos.Registrar(new Verbo(
-			"Fusão Namekuseijin",
+			"Fusão Namekuseijin (absorver)",
 			Verbos.Aprendizado,
-			"Oferece a quem está na sua frente a fusão dos Namekuseijin. Os DOIS precisam ser "
-			+ "Namekuseijin -- não há skill a aprender e não importa o poder de cada um.\n\n"
-			+ "Ela é PERMANENTE: não acaba com o tempo, não se desfaz no nocaute e não tem volta. "
-			+ "Quem convida controla o corpo; o controle pode ser passado depois.",
+			"Absorve quem está na sua frente. Os DOIS precisam ser Namekuseijin -- não há skill a "
+			+ "aprender e não importa o poder de cada um.\n\n"
+			+ "O poder dele vira SEU, de vez: você fica com o BP dos dois somado e dobrado, com os "
+			+ "melhores atributos dos dois, com as habilidades dele -- e o SUPER NAMEKUSEIJIN desperta "
+			+ "em você.\n\n"
+			+ "E O PERSONAGEM DELE DEIXA DE EXISTIR, para sempre. Não há separação, não há volta e "
+			+ "nem um administrador desfaz. Ele precisa aceitar, e vai ter que confirmar duas vezes."
+			+ "\n\nAbsorver um Namekuseijin do MUNDO (um NPC) também funciona, mas rende quase "
+			+ "nada: sem atributos, sem habilidades e sem a transformação.",
 			() => GameClient.Instance?.SendHabilidade("fus_namek")) { Chave = "hab:fus_namek" });
 
 		Verbos.Registrar(new Verbo(
 			"Aceitar a fusão",
 			Verbos.Aprendizado,
 			"Aceita o convite de fusão que está na sua mesa. Você vira o passageiro: quem convidou "
-			+ "dirige o corpo, e você volta quando a fusão acabar.",
+			+ "dirige o corpo, e você volta quando a fusão acabar.\n\n"
+			+ "NÃO serve pra fusão Namekuseijin -- aquela tem botão próprio, porque ela custa o seu "
+			+ "personagem.",
 			() => GameClient.Instance?.SendHabilidade("fus_sim")) { Chave = "hab:fus_sim" });
+
+		// ============================ O SIM DA ABSORCAO E UM BOTAO SEPARADO, E O NOME DIZ O PRECO ============================
+		// Regra N3 do dono. O botao de cima promete *"voce volta quando a fusao acabar"* -- e numa
+		// Namekuseijin nao ha volta. Reusa-lo seria colher consentimento sobre a consequencia errada, e
+		// a memoria muscular de quem ja aceitou uma Danca apertaria o mesmo lugar sem ler nada.
+		//
+		// O SERVIDOR PEDE DUAS VEZES (ver `GameServer.ResponderAoConviteDeAbsorcao`): a primeira imprime
+		// o nome, a raca, a idade e o poder do personagem que morre; a segunda so vale alguns segundos
+		// depois. O NOME deste verb ja carrega o preco porque a lista do menu P e o que muita gente le
+		// em vez da descricao.
+		// ============================================================================================================
+		Verbos.Registrar(new Verbo(
+			"Aceitar a ABSORÇÃO (perco o personagem)",
+			Verbos.Aprendizado,
+			"Aceita o convite de fusão NAMEKUSEIJIN. Isto não é a fusão comum: o seu personagem é "
+			+ "APAGADO para sempre, e o poder dele passa pra quem convidou.\n\n"
+			+ "Você não vira passageiro, não volta depois e não pode ser revivido. Nem um "
+			+ "administrador desfaz.\n\n"
+			+ "A sua CONTA continua sua: você poderá criar outro personagem no lugar deste.\n\n"
+			+ "O servidor vai pedir confirmação DUAS vezes, com alguns segundos entre elas.",
+			() => GameClient.Instance?.SendHabilidade("fus_namek_sim")) { Chave = "hab:fus_namek_sim" });
 
 		Verbos.Registrar(new Verbo(
 			"Recusar a fusão",
@@ -360,11 +393,14 @@ public static class Habilidades
 			+ $"{Jandirus.Core.Social.Fusao.PrazoDoConviteSegundos:0} segundos.)",
 			() => GameClient.Instance?.SendHabilidade("fus_nao")) { Chave = "hab:fus_nao" });
 
+		// A FUSAO NAMEKUSEIJIN NAO TEM CONTROLE A PASSAR, e o texto diz isso: nela nao ha dois lados --
+		// ha um que absorveu e um que deixou de existir.
 		Verbos.Registrar(new Verbo(
 			"Passar o controle",
 			Verbos.Aprendizado,
 			"Entrega o volante do corpo fundido ao seu outro lado. O poder da fusão não muda -- só "
-			+ "muda quem está dirigindo. Só quem está no controle pode usar.",
+			+ "muda quem está dirigindo. Só quem está no controle pode usar.\n\n"
+			+ "(Na fusão Namekuseijin não existe: lá não sobrou ninguém pra receber o volante.)",
 			() => GameClient.Instance?.SendHabilidade("fus_passar")) { Chave = "hab:fus_passar" });
 	}
 

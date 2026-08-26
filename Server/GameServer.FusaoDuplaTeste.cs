@@ -267,6 +267,10 @@ public partial class GameServer
 			foreach (ServerPlayer p in _fdForjados)
 			{
 				_pedidosDeFusao.Remove(p.Id);
+				// E A CONFIRMACAO PELA METADE DA ABSORCAO: ela e um carimbo por id, e id se reusa. Um
+				// carimbo deixado pra tras poria quem entrasse depois a UM clique de perder o
+				// personagem -- ver `_confirmacoesDeAbsorcao`.
+				_confirmacoesDeAbsorcao.Remove(p.Id);
 				// O CANAL DE "O SERVIDOR ESTA ME DIRIGINDO" TAMBEM E LIMPO: ele e um PRAZO regado por
 				// tique, e um corpo de bancada sai do mundo sem ninguem pra escorre-lo.
 				p.PuxaoDeFusaoRestante = 0;
@@ -1034,21 +1038,39 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// J. A FUSAO NAMEKUSEIJIN -- a PERMANENTE, e ela nao tinha porta
+	// J. A FUSAO NAMEKUSEIJIN -- a ABSORCAO, e ela custa um personagem
 	// =====================================================================
 	/// <summary>
-	/// `Namekian_Fusion` (`Fusion.dm:549-569`) -- o verb que faltava.
+	/// `Namekian_Fusion` (`Fusion.dm:549-569`) + as cinco regras que o dono ditou (N1 a N5).
 	///
 	/// ============================ O QUE ESTA SECAO EXISTE PRA PROVAR ============================
-	/// <see cref="TipoDeFusao.Namek"/> governava QUATRO coisas neste servidor (energia zero, roupa
-	/// nenhuma, o `return` do nocaute, o pulo do dreno) e **nenhum caminho de producao a alcancava**:
-	/// os unicos chamadores de `Convidar` eram a Danca e a Potara. Aqui ela entra pelo verb, pelo
-	/// mesmo funil, e cada uma das quatro consequencias e cobrada.
-	/// ======================================================================================
+	/// Ela mudou de assunto neste passe. Antes media *"a fusao Namekuseijin existe, e permanente e o
+	/// nocaute nao a separa"*; hoje mede uma coisa mais grave: **ela APAGA UM PERSONAGEM**, e o pedido
+	/// do dono foi literal -- *"o outro namek se for jogador, perde o personagem pra sempre (a fusao e
+	/// eterna)"*.
+	///
+	/// As quatro perguntas, na ordem em que uma sustenta a outra:
+	///
+	///   1. **quem pode** -- o portao racial dos DOIS lados (`Fusion.dm:556-557`), e nada mais;
+	///   2. **o consentimento** -- o botao comum de aceitar fusao **recusa**, o botao proprio pede DUAS
+	///      vezes, e a segunda so vale depois do intervalo. E a metade do sistema que, errada, custa o
+	///      personagem de alguem por um clique;
+	///   3. **o bonus** -- BP `(A+B)*2`, o maior stat de cada, as skills dele e o Super Namekuseijin;
+	///      e o NPC dando quase nada disso (N4);
+	///   4. **o apagamento** -- o slot vazio, o corpo que nao pode mais ser gravado, **e a conta que
+	///      continua viva** (o dono nunca pediu que a pessoa perdesse a conta).
+	///
+	/// ============================ E ELA NAO ENCOSTA NA PASTA DE SAVES DO DONO ============================
+	/// Todo apagamento roda dentro de um `using PalcoDeApagamentos` -- irmao do `PalcoDeMortes`, e
+	/// existe pela mesma cicatriz (uma bancada ja gravou a morte da Terra no save real). O palco
+	/// empresta uma `AccountSave` que so existe em memoria e desvia a UNICA escrita em disco; o
+	/// `Slots[slot] = null`, o `PersonagemConsumido`, o `PurgarAssinatura` e o log continuam sendo o
+	/// codigo de producao, rodando de verdade sobre um objeto de verdade.
+	/// ================================================================================================
 	/// </summary>
 	private void AFusaoNamekuseijin()
 	{
-		GD.Print("[fusao2] -- J) a fusao Namekuseijin: o verb, o portao racial e a permanencia --");
+		GD.Print("[fusao2] -- J) a fusao Namekuseijin: o portao, o consentimento e a absorcao --");
 
 		ServerPlayer piccolo = ForjarNaFusaoDupla("Piccolo2", "Namekian", 2_000_000, sabeDancar: false, 0);
 		ServerPlayer nail = ForjarNaFusaoDupla("Nail2", "Namekian", 400_000, sabeDancar: false, 1);
@@ -1078,100 +1100,1127 @@ public partial class GameServer
 
 		// ---- J2: E O PORTAO VALE PRO CONVIDADOR TAMBEM ----
 		// `if(usr.Race!="Namekian") return` e uma linha SEPARADA no DM (`:557`), e uma checagem so
-		// (a do alvo) passaria verde na J1 e deixaria um Saiyajin fundir permanentemente com um Namek.
+		// (a do alvo) passaria verde na J1 e deixaria um Saiyajin absorver um Namek.
 		AfirmarFd("J2 Saiyajin convidando Namekuseijin: NAO entra (o portao vale pros dois lados)",
 				  !Convite(goku, piccolo));
 
-		// ---- J3: A FUSAO ACONTECE, E E PERMANENTE ----
-		FusaoAtiva? f = FundirDeVerdade(piccolo, nail, TipoDeFusao.Namek);
-		AfirmarFd("J3 a fusao Namekuseijin acontece pelo funil de producao",
-				  f != null && EstaFundido(piccolo.Id));
-		if (f == null) return;
+		OConsentimentoDaAbsorcao();
+		AAbsorcaoDeJogador();
+		AAbsorcaoDeNpc();
+		OAlvoQueCaiAntesDaConsumacao();
+		ODespertarPeloProprioPoder();
 
-		AfirmarFd("J4 ela nasce PERMANENTE -- energia maxima ZERO (`Fusion.dm:271`)",
-				  Math.Abs(f.EnergiaMax) < 1e-9, $"{f.EnergiaMax}");
+		// ============================ AS TRES FILHAS DA FASE 2 ============================
+		// As cinco de cima medem o gesto FUNCIONANDO e as travas do botao. Estas tres medem o que
+		// sobrou, e as tres nasceram de um pedido explicito:
+		//
+		//   * <see cref="OsCaminhosQueNaoConsentem"/> -- **todo** caminho que poderia chegar na
+		//     absorcao sem passar pelo aceite (admin, IA, pacote forjado, offline, KO, ja fundido, e
+		//     o que desconecta no meio), cada um com o positivo ao lado;
+		//   * <see cref="OPersonagemPerdidoAtravessaODisco"/> -- "pra sempre" mora no ARQUIVO, e nao
+		//     no objeto: gravar, reabrir, e perguntar a tela de selecao de verdade;
+		//   * <see cref="JogadorContraNpcLadoALado"/> -- os dois numeros da regra N4 na mesma linha,
+		//     pelo mesmo alvo e por dois absorvedores identicos.
+		// ==============================================================================
+		OsCaminhosQueNaoConsentem();
+		OPersonagemPerdidoAtravessaODisco();
+		JogadorContraNpcLadoALado();
+	}
 
-		// O DRENO NAO A TOCA: `if (f.EnergiaMax <= 0) { f.UltimoDreno = agora; continue; }`. Empurrar
-		// o relogio dez minutos pra tras e o mesmo gesto da secao H, e aqui ele nao pode fazer efeito.
-		f.UltimoDreno = NowMs() - 600_000;
-		TickDaFusao();
-		AfirmarFd("J5 ...e o dreno de energia NAO a desfaz (dez minutos de relogio nao a tocam)",
-				  EstaFundido(piccolo.Id));
+	// =====================================================================
+	// J'. O CONSENTIMENTO -- a metade que, errada, custa o personagem de alguem
+	// =====================================================================
+	/// <summary>
+	/// ============================ POR QUE ISTO E UMA SECAO INTEIRA ============================
+	/// Porque a consequencia e a mais grave do jogo e o gesto e o mais barato: um clique. O portao
+	/// equivalente do port -- o `DeleteChar` -- exige DIGITAR o nome do personagem, e em jogo nao ha
+	/// campo de texto. O que substitui a digitacao sao tres travas, e cada uma tem prova propria aqui:
+	/// o botao comum **recusa**, o botao proprio **nao aceita na primeira**, e a segunda **nao vale
+	/// antes do intervalo**.
+	///
+	/// Uma prova so ("a absorcao acontece quando eu confirmo duas vezes") ficaria VERDE num mundo em
+	/// que qualquer clique aceitasse -- por isso as tres primeiras afirmam o que **nao** acontece.
+	/// ==================================================================================
+	/// </summary>
+	private void OConsentimentoDaAbsorcao()
+	{
+		GD.Print("[fusao2] -- J') o consentimento da absorcao: tres travas, tres provas --");
 
-		// ---- J6: O NOCAUTE NAO SEPARA (`Fusion.dm:79`) ----
-		FusaoAoCair(piccolo, "nocaute");
-		AfirmarFd("J6 ...e o NOCAUTE nao a separa (`Fusion.dm:79`) -- o que nem o tempo desfaz, "
-				+ "um golpe nao desfaz", EstaFundido(piccolo.Id));
+		ServerPlayer a = ForjarNaFusaoDupla("Kami2", "Namekian", 1_000_000, sabeDancar: false, 0);
+		ServerPlayer b = ForjarNaFusaoDupla("Nail3", "Namekian", 500_000, sabeDancar: false, 1);
 
-		// ---- J7-J9: A HERANCA FICA DE FORA, E E PERGUNTA ABERTA DO DONO ----
-		// Ver `Fusao.HerancaNaFusaoNamekuseijin`. As duas primeiras provas leem a CONSTANTE em vez de
-		// cravar "zero": no dia em que o dono responder e ela virar `true`, esta secao acompanha em vez
-		// de ficar vermelha por estar desatualizada.
-		AfirmarFd("J7 sem heranca: nenhuma skill do passageiro foi emprestada (o DM nao herda skill)",
-				  Fusao.HerancaNaFusaoNamekuseijin || f.SkillsEmprestadas.Count == 0,
-				  $"{f.SkillsEmprestadas.Count} skills");
+		Convidar(a, b, TipoDeFusao.Namek);
+		AfirmarFd("J3 o convite da absorcao fica na mesa do outro", _pedidosDeFusao.ContainsKey(b.Id));
 
-		AfirmarFd("J8 ...e nenhum stat do passageiro foi copiado",
-				  Fusao.HerancaNaFusaoNamekuseijin
-				  || StatsDe(piccolo.Ficha).SequenceEqual(f.StatsDoDono),
-				  "os oito stats do dono continuam os dele");
+		// ---- J4: O BOTAO COMUM RECUSA, E O CONVITE **CONTINUA** NA MESA ----
+		// A trava mais importante das tres: o `fus_sim` e o mesmo botao da Danca e da Potara, e o texto
+		// dele promete "voce volta quando a fusao acabar". Se ele aceitasse aqui, a memoria muscular de
+		// quem ja aceitou uma Danca custaria um personagem.
+		ResponderAoConvite(b, aceitou: true);
+		AfirmarFd("J4 o botao COMUM de aceitar fusao NAO aceita uma absorcao",
+				  !_emCenaDeFusao.ContainsKey(a.Id) && !EstaFundido(a.Id));
+		AfirmarFd("J5 ...e o convite CONTINUA na mesa (ele foi encaminhado, nao respondido)",
+				  _pedidosDeFusao.ContainsKey(b.Id));
 
-		// O PODER, ESSE SIM, E O DA FUSAO -- `(A+B)*2` vale pros TRES tipos (`Fusion.dm:264` nao
-		// pergunta o `FType`). Sem esta linha, "sem heranca" poderia ser lido como "sem nada".
-		AfirmarFd("J9 ...mas o PODER e o da fusao, como nos outros dois tipos ((A+B)*2)",
-				  Math.Abs(piccolo.Ficha.BP + f.DeltaDeBp
-						   - Fusao.BpDaFusao(2_000_000, 400_000)) < 1.0,
-				  $"{piccolo.Ficha.BP + f.DeltaDeBp:N0}");
+		// ---- J6: UMA CONFIRMACAO SO NAO ACEITA ----
+		ResponderAoConviteDeAbsorcao(b);
+		AfirmarFd("J6 a PRIMEIRA confirmacao no botao proprio nao aceita nada",
+				  !_emCenaDeFusao.ContainsKey(a.Id));
+		AfirmarFd("J7 ...mas ela fica anotada (o relogio das duas confirmacoes armou)",
+				  _confirmacoesDeAbsorcao.ContainsKey(b.Id));
 
-		// FORCADA: e o `Defuse(Forced)` do admin (`Fusion.dm:299`) -- a unica saida de uma permanente.
-		Separar(f, "fim da secao J");
+		// ---- J8: A SEGUNDA CEDO DEMAIS TAMBEM NAO ----
+		// Esta e a que pega o clique duplo, o macro e a rajada de pacote de um cliente modificado.
+		ResponderAoConviteDeAbsorcao(b);
+		AfirmarFd("J8 a SEGUNDA confirmacao antes do intervalo nao aceita "
+				+ $"({AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes:0} s)",
+				  !_emCenaDeFusao.ContainsKey(a.Id));
 
-		OContraExemploDaPermanente();
+		// ---- J9: PASSADO O INTERVALO, ELA ACEITA ----
+		// O RELOGIO E EMPURRADO PRA TRAS, e nao esperado -- a mesma disciplina do resto desta bancada.
+		// O que roda e o metodo de producao, com o carimbo dele antigo.
+		_confirmacoesDeAbsorcao[b.Id] =
+			NowMs() - (long)(AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes * 1000) - 1;
+		ResponderAoConviteDeAbsorcao(b);
+		AfirmarFd("J9 ...e passado o intervalo ela ACEITA (a cena comeca)",
+				  _emCenaDeFusao.ContainsKey(a.Id));
+
+		// LIMPEZA: esta secao nao consuma a absorcao (quem faz isso e a J''), entao a cena sai daqui.
+		if (_emCenaDeFusao.GetValueOrDefault(a.Id) is { } c) AbortarACenaDeFusao(c, "fim da secao J'");
+		_pedidosDeFusao.Remove(b.Id);
+		_confirmacoesDeAbsorcao.Remove(b.Id);
+		a.Ficha.fusion_cooldown_until = 0;
+		b.Ficha.fusion_cooldown_until = 0;
+	}
+
+	// =====================================================================
+	// J''. A ABSORCAO DE UM JOGADOR -- o bonus E o personagem que se perde
+	// =====================================================================
+	private void AAbsorcaoDeJogador()
+	{
+		GD.Print("[fusao2] -- J'') absorver um JOGADOR: o bonus, a forma e o personagem apagado --");
+
+		// ============================ O PALCO PROTEGE A PASTA DE SAVES DO DONO ============================
+		// Ver `GameServer.PalcoDeApagamentos`. Sem ele, esta secao APAGARIA um personagem de verdade no
+		// disco do dono -- e nao ha desfazer pra isso.
+		// ============================================================================================
+		using PalcoDeApagamentos palco = PalcoDeApagamentosDeBancada();
+
+		// ============================ E O PALCO E MEDIDO, NAO SUPOSTO ============================
+		// Mesmo argumento do `PalcoDeMortes.MatouAqui`: um crivo que nunca corta e indistinguivel de
+		// crivo nenhum. Esta linha existe porque a PRIMEIRA versao do palco vazou -- ela desviava um
+		// metodo, e o `Persistir` grava pelo `_store` direto; a rodada deixou um
+		// `bancada_fusao2_93043.json` na pasta do dono. Hoje o palco troca o DESTINO, e isto e a prova.
+		// ====================================================================================
+		AfirmarFd("J9b o palco desviou o armazenamento pra uma pasta temporaria "
+				+ "(a pasta de saves do dono nao e tocada por esta secao)",
+				  _store != null && _store.Pasta == palco.PastaDeTeste,
+				  _store?.Pasta ?? "sem store");
+
+		ServerPlayer dono = ForjarNaFusaoDupla("Piccolo3", "Namekian", 2_000_000, sabeDancar: false, 0);
+		ServerPlayer comido = ForjarNaFusaoDupla("Nail4", "Namekian", 400_000, sabeDancar: false, 1);
+
+		// O ABSORVIDO E MELHOR EM UM STAT E TEM UMA SKILL QUE O OUTRO NAO TEM: sem isso, "herdou o maior
+		// de cada" e "herdou as skills dele" ficariam verdes sem nada ter atravessado.
+		// NOS STATS **CRUS** e nao nos efetivos, porque e o que o `StatsDe`/`PorStats` leem -- e a razao
+		// esta escrita no `Fundir`: os efetivos ja carregam estilo, forma e buffs temporarios, e o
+		// `Statify` os reescreve todo tique. Medir `Ephysoff` aqui mediria o motor de stats, nao a
+		// heranca (foi o que esta linha fez na primeira rodada: 40 virou 2 no tique seguinte).
+		dono.Ficha.physoff = 30;
+		comido.Ficha.physoff = 40;
+		dono.Ficha.GravMastered = 10;
+		comido.Ficha.GravMastered = 25;
+		const string SkillDele = "/datum/skill/namek/regeneration";
+		comido.Livro.Dar(SkillDele);
+
+		// A CONTA DE MENTIRA, com o personagem no slot 0 -- e o que o `PodeApagarOPersonagem` vai achar.
+		AccountSave acc = palco.Emprestar(comido.Conta, comido.Slot,
+										  AccountStore.DeJogador(comido, NowMs()));
+		AfirmarFd("J10 o personagem do absorvido esta no slot antes de tudo",
+				  acc.Slots[comido.Slot] != null);
+
+		double bpDono = dono.Ficha.BP, bpDele = comido.Ficha.BP;
+
+		AbsorverDeVerdade(dono, comido);
+
+		// ---- O QUE **NAO** ACONTECEU: nao ha fusao viva ----
+		// A regra estrutural inteira depende disto. Se a absorcao produzisse uma `FusaoAtiva`, o
+		// `Persistir` recusaria gravar o corpo do absorvedor PARA SEMPRE (ele nunca separa) -- ver o
+		// cabecalho de `AbsorcaoNamekuseijin`.
+		AfirmarFd("J11 a absorcao NAO produz fusao nenhuma (nem o corpo do absorvedor esta fundido)",
+				  !EstaFundido(dono.Id) && !EstaFundido(comido.Id) && _fusoes.Count == 0);
+
+		// ---- N2: O PODER, E ELE E A CONTA DO DM ----
+		AfirmarFd("J12 o BP vira `(A+B)*2` -- `Fusion.dm:264` + `:308`, o estado terminal do original",
+				  Math.Abs(dono.Ficha.BP - Fusao.BpDaFusao(bpDono, bpDele)) < 1.0,
+				  $"{dono.Ficha.BP:N0} (esperado {Fusao.BpDaFusao(bpDono, bpDele):N0})");
+
+		// ---- N2: OS OUTROS BONUS ----
+		AfirmarFd("J13 o maior stat de cada atravessa (30 x 40 -> 40)",
+				  Math.Abs(dono.Ficha.physoff - 40) < 1e-6, $"{dono.Ficha.physoff}");
+		AfirmarFd("J14 ...e a gravidade dominada tambem (10 x 25 -> 25)",
+				  Math.Abs(dono.Ficha.GravMastered - 25) < 1e-6, $"{dono.Ficha.GravMastered}");
+		AfirmarFd("J15 ...e as skills dele entram no livro DE VEZ (nao emprestadas)",
+				  dono.Livro.Sabe(SkillDele));
+
+		// ---- N1: O SUPER NAMEKUSEIJIN ----
+		AfirmarFd("J16 o Super Namekuseijin foi destravado (a skill que escreve a flag entrou no livro)",
+				  dono.Livro.Sabe(AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin));
+
+		// **E A PORTA DE VERDADE ABRE.** A prova de cima mede a skill; esta mede a FORMA, pelo `Avaliar`
+		// que a tecla C e a aba Formas usam. Sem ela, "destravou" seria uma afirmacao sobre um texto no
+		// livro -- e a memoria deste projeto chama isso de medir INTENCAO.
+		Jandirus.Core.Forms.RecusaForma r = dono.Forma.Avaliar(IdDoSuperNamekuseijin, dono.Ficha.BP,
+										   kiFracao: 1, caido: false, Perfil(dono));
+		AfirmarFd("J17 ...e o portao da FORMA abre de verdade (`EstadoDeForma.Avaliar`)",
+				  r == Jandirus.Core.Forms.RecusaForma.Pode, $"{r}");
+
+		// ---- N3: O PERSONAGEM SE PERDE ----
+		AfirmarFd("J18 o personagem do absorvido foi APAGADO (o slot esta vazio)",
+				  acc.Slots[comido.Slot] == null);
+		AfirmarFd("J19 ...e o corpo dele nao pode mais ser gravado (`PersonagemConsumido`)",
+				  comido.PersonagemConsumido);
+
+		// **E A CONTA CONTINUA VIVA.** O dono pediu que a pessoa perdesse o PERSONAGEM, e nao a conta --
+		// ela entra de novo e cria outro no slot que vagou. Sem esta prova, um apagamento que zerasse a
+		// conta inteira passaria despercebido.
+		AfirmarFd("J20 ...mas a CONTA continua de pe e nao foi banida (da pra criar outro personagem)",
+				  !acc.Banida && acc.Conta == comido.Conta && acc.Slots.Length == AccountStore.Slots);
+
+		// ---- E O SALVAMENTO PERIODICO NAO O RESSUSCITA ----
+		// A metade que so o `Persistir` responde. Sem o `PersonagemConsumido`, a gravacao de 2 em 2
+		// minutos (ou a do `Drop`) recriaria o personagem do `ServerPlayer` que ainda esta de pe --
+		// e "o personagem voltou depois de ser apagado" e um defeito que ninguem consegue explicar.
+		Persistir(comido, acc);
+		AfirmarFd("J21 ...e o `Persistir` NAO o traz de volta (o slot continua vazio)",
+				  acc.Slots[comido.Slot] == null);
+
+		// ---- E O ABSORVEDOR CONTINUA GRAVAVEL, que e o outro lado da mesma moeda ----
+		AccountSave accDono = palco.Emprestar(dono.Conta, dono.Slot, AccountStore.DeJogador(dono, NowMs()));
+		accDono.Slots[dono.Slot] = null;
+		Persistir(dono, accDono);
+		AfirmarFd("J22 ...e quem absorveu CONTINUA sendo gravado (a fusao eterna nao trava o save dele)",
+				  accDono.Slots[dono.Slot] != null
+				  && Math.Abs((accDono.Slots[dono.Slot]?.Ficha.BP ?? 0) - dono.Ficha.BP) < 1.0);
+
+		// ---- A RECARGA DE 1 h FOI COBRADA DE QUEM ABSORVEU (`Fusion.dm:320`) ----
+		AfirmarFd("J23 quem absorveu leva a recarga de 1 h (nao da pra comer o servidor inteiro seguido)",
+				  dono.Ficha.fusion_cooldown_until > NowMs());
+
+		dono.Ficha.fusion_cooldown_until = 0;
+	}
+
+	// =====================================================================
+	// J'''. O NPC -- regra N4: BEM MENOS, e sem a forma
+	// =====================================================================
+	/// <summary>
+	/// *"fundir com npc namek ganha BEM menos bp e outros bonus e nao ganha o super namek"*.
+	///
+	/// ============================ AS DUAS METADES, E A SEGUNDA E A QUE IMPORTA ============================
+	/// "Ganha menos" so quer dizer alguma coisa ao lado de um "ganha muito": as provas daqui comparam
+	/// com o que a **mesma dupla** renderia se o alvo fosse jogador, e nao com um numero escrito a mao.
+	/// E a metade que a memoria deste projeto manda nunca esquecer -- uma bancada que so mede o caso
+	/// pequeno fica verde num mundo em que os dois casos sao pequenos.
+	/// ==================================================================================================
+	/// </summary>
+	private void AAbsorcaoDeNpc()
+	{
+		GD.Print("[fusao2] -- J''') absorver um NPC: BEM menos, e sem a forma (regra N4) --");
+
+		ServerPlayer dono = ForjarNaFusaoDupla("Piccolo4", "Namekian", 2_000_000, sabeDancar: false, 0);
+		ServerPlayer npc = ForjarNaFusaoDupla("AldeaoNamek", "Namekian", 400_000, sabeDancar: false, 1);
+
+		// O CORPO VIRA NPC DO MUNDO: sem `Peer` (ele ja nasce assim aqui) e COM papel -- as duas pernas
+		// do `Gente.EhNpcDoMundo`. E o mesmo gesto que a `--convivioteste` usa pra provar o corte do
+		// `EhPessoa`, e nao uma segunda definicao de NPC.
+		npc.Papel = new Jandirus.Core.Npc.PapelDeNpc(
+			new Jandirus.Core.Npc.MoldeDeNpc { Id = "bancada", Nome = "aldeao" }, 0);
+		npc.Ficha.physoff = 40;
+		const string SkillDele = "/datum/skill/namek/regeneration";
+		npc.Livro.Dar(SkillDele);
+
+		dono.Ficha.physoff = 30;
+		double bpDono = dono.Ficha.BP, bpNpc = npc.Ficha.BP;
+
+		// ---- O CAMINHO DO NPC NAO PASSA POR CONVITE ----
+		// E isso FECHA um buraco em vez de abrir um: um pendente na mesa de um corpo dirigido por IA
+		// seria um caminho novo pra fundir sem consentimento. Ver `ConvidarParaAFusaoNamekuseijin`.
+		//
+		// ============================ O VERB ENTRA PELO CONE DO SOCO, E ELE PRECISA DE MIRA ============================
+		// Esta e a UNICA secao desta bancada que chama o verb de verdade em vez do `Convidar` -- porque
+		// aqui a escolha do alvo E parte da regra (o NPC nao e convidado, ele e agarrado). E o
+		// `AlvoNaFrente` e o cone do soco: sem virar o corpo, ele nao acha ninguem e a secao mediria
+		// "verb sem alvo" achando que mediu "NPC recusado". Na primeira rodada foi exatamente isso.
+		// ==========================================================================================================
+		// ============================ E OS DOIS SAEM DE PERTO DA MULTIDAO ============================
+		// O `AlvoNaFrente` pega o corpo MAIS PROXIMO no cone, e a esta altura da bancada ha uma duzia de
+		// corpos forjados empilhados nos tiles 0 e 1 da mesma zona (cada secao poe os seus e nao os
+		// tira). Sem esta mudanca o verb agarrava um Saiyajin de uma secao anterior e a recusa vinha do
+		// portao RACIAL -- a bancada anunciaria "NPC nao entra" tendo medido outra coisa.
+		//
+		// **E ela nao afrouxa nada**: os dois continuam no tile ao lado um do outro, que e o que o
+		// `TilesColados` cobra. O que mudou foi o bairro, nao a distancia entre eles.
+		// ========================================================================================
+		var canto = new Vec2(0, 40 * ZoneCollision.TileSize);
+		dono.Pos = canto;
+		npc.Pos = canto + new Vec2(ZoneCollision.TileSize, 0);
+
+		dono.Facing = Jandirus.Core.World.Facing.East;
+		ConvidarParaAFusaoNamekuseijin(dono);
+		AfirmarFd("J24 absorver NPC nao poe convite nenhum na mesa dele (NPC nao consente)",
+				  !_pedidosDeFusao.ContainsKey(npc.Id));
+		AfirmarFd("J25 ...e vai direto pra cena (o gesto de quem absorve basta)",
+				  _emCenaDeFusao.ContainsKey(dono.Id));
+
+		if (_emCenaDeFusao.GetValueOrDefault(dono.Id) is { } c)
+		{
+			c.Funde = NowMs() - 1;
+			TickDaCenaDeFusao();
+			c.Acaba = NowMs() - 1;
+			TickDaCenaDeFusao();
+		}
+
+		// ---- N4: BEM MENOS BP ----
+		double ganho = dono.Ficha.BP - bpDono;
+		double ganhoSeFosseJogador = Fusao.BpDaFusao(bpDono, bpNpc) - bpDono;
+		AfirmarFd("J26 o NPC rende o previsto pela conta do Core (fracao do BP dele, com teto no meu)",
+				  Math.Abs(dono.Ficha.BP - AbsorcaoNamekuseijin.BpDepoisDeAbsorverNpc(bpDono, bpNpc)) < 1.0,
+				  $"{dono.Ficha.BP:N0}");
+		AfirmarFd("J27 ...e isso e BEM menos que o mesmo alvo renderia como JOGADOR "
+				+ $"({ganho:N0} contra {ganhoSeFosseJogador:N0})",
+				  ganho < ganhoSeFosseJogador / 10);
+
+		// ---- N4: E MENOS BONUS ----
+		AfirmarFd("J28 o NPC NAO passa stat nenhum (30 continua 30)",
+				  Math.Abs(dono.Ficha.physoff - 30) < 1e-6, $"{dono.Ficha.physoff}");
+		AfirmarFd("J29 ...nem skill", !dono.Livro.Sabe(SkillDele));
+		AfirmarFd("J30 ...e NAO da o Super Namekuseijin (o dono foi literal nisto)",
+				  !dono.Livro.Sabe(AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin));
+
+		// ---- E O CORPO DO NPC SAIU DO MUNDO ----
+		AfirmarFd("J31 o NPC absorvido sai do mundo (`RemoverNpc`, o avesso do `PorNoMundo`)",
+				  !_players.ContainsKey(npc.Id));
+
+		// ---- O CONTRA-EXEMPLO DO PORTAO: clone e boneco NAO sao absorviveis ----
+		// `EhNamekNpcAbsorvivel` e estreito de proposito: o terceiro grupo do `Gente` (clone da mente,
+		// boneco do corpo largado) carrega a Ficha de uma pessoa VIVA, e absorve-lo seria absorver o
+		// dono dela por uma porta lateral. Sem esta prova, "aceita NPC" poderia ter virado "aceita
+		// qualquer corpo sem dono".
+		ServerPlayer clone = ForjarNaFusaoDupla("CloneNamek", "Namekian", 400_000, sabeDancar: false, 1);
+		clone.Papel = null;
+		clone.Conta = "";
+		clone.Slot = -1;
+		AfirmarFd("J32 um corpo sem dono e SEM papel (clone/boneco) NAO e absorvivel",
+				  !EhNamekNpcAbsorvivel(clone));
+
+		dono.Ficha.fusion_cooldown_until = 0;
+	}
+
+	// =====================================================================
+	// J''''. O ALVO QUE CAI ENTRE O ACEITE E A CONSUMACAO
+	// =====================================================================
+	/// <summary>
+	/// A regra que o dono exigiu junto com N3: *"se o alvo cair/desconectar/morrer entre o aceite e a
+	/// consumacao, a fusao NAO acontece"* -- e ela ja era a regra da Danca (`AbortarACenaDeFusao`, que
+	/// nao produz fusao nenhuma, nem estragada).
+	///
+	/// **AQUI ELA VALE MAIS CARO**, e por isso tem prova propria: numa Danca abortada os dois so
+	/// continuam dois; numa absorcao abortada o que NAO pode acontecer e um personagem ser apagado.
+	/// </summary>
+	private void OAlvoQueCaiAntesDaConsumacao()
+	{
+		GD.Print("[fusao2] -- J'''') o alvo que cai entre o aceite e a consumacao --");
+
+		using PalcoDeApagamentos palco = PalcoDeApagamentosDeBancada();
+
+		ServerPlayer dono = ForjarNaFusaoDupla("Piccolo5", "Namekian", 2_000_000, sabeDancar: false, 0);
+		ServerPlayer alvo = ForjarNaFusaoDupla("Nail5", "Namekian", 900_000, sabeDancar: false, 1);
+
+		AccountSave acc = palco.Emprestar(alvo.Conta, alvo.Slot, AccountStore.DeJogador(alvo, NowMs()));
+		double bpAntes = dono.Ficha.BP;
+
+		Convidar(dono, alvo, TipoDeFusao.Namek);
+		_confirmacoesDeAbsorcao[alvo.Id] =
+			NowMs() - (long)(AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes * 1000) - 1;
+		ResponderAoConviteDeAbsorcao(alvo);
+		AfirmarFd("J33 aceita, a cena comeca", _emCenaDeFusao.ContainsKey(dono.Id));
+
+		// O NOCAUTE NO MEIO DA CENA -- a guarda do `TickDaCenaDeFusao`.
+		alvo.Ficha.KO = true;
+		TickDaCenaDeFusao();
+
+		AfirmarFd("J34 o alvo cai no meio: a cena aborta e NAO ha absorcao",
+				  !_emCenaDeFusao.ContainsKey(dono.Id) && !_emCenaDeFusao.ContainsKey(alvo.Id));
+		AfirmarFd("J35 ...o personagem dele CONTINUA existindo (a prova que mais importa)",
+				  acc.Slots[alvo.Slot] != null && !alvo.PersonagemConsumido);
+		AfirmarFd("J36 ...e ninguem ganhou poder nenhum", Math.Abs(dono.Ficha.BP - bpAntes) < 1.0);
+
+		// E NEM A RECARGA E COBRADA: ela e o preco de uma absorcao que ACONTECEU. Punir os dois por um
+		// terceiro ter passado por perto e o argumento que o `AbortarACenaDeFusao` ja escreve.
+		AfirmarFd("J37 ...e nem a recarga de 1 h foi cobrada (nao aconteceu nada pra cobrar)",
+				  dono.Ficha.fusion_cooldown_until <= NowMs());
+
+		alvo.Ficha.KO = false;
+	}
+
+	// =====================================================================
+	// J'''''. N5 -- O SUPER NAMEKUSEIJIN PELO PROPRIO PODER
+	// =====================================================================
+	/// <summary>
+	/// *"namekuseijins ganham super namek aprox no mesmo requisito do SSJ (mantendo a ideia de cada um
+	/// ter um requisito pessoal, mas em torno de um valor)"*.
+	///
+	/// ============================ UMA PORTA, DOIS CAMINHOS -- E OS DOIS SAO PROVADOS ============================
+	/// A secao J'' ja provou o caminho da ABSORCAO. Esta prova o caminho do PODER, e a coisa que as
+	/// duas juntas afirmam e que **nao ha duas formas**: os dois caminhos escrevem a mesma skill, que
+	/// e o unico escritor da flag que o unico portao da unica entrada de catalogo consulta.
+	///
+	/// O numero nao esta aqui: ele e o `snamekat` pessoal (`LimiaresPessoais.RolarNamek`), e quem o
+	/// mede e a `--formasbench`. Aqui o que se mede e o GESTO -- abaixo da porta nao desperta, acima
+	/// desperta, e uma vez so.
+	/// ========================================================================================================
+	/// </summary>
+	private void ODespertarPeloProprioPoder()
+	{
+		GD.Print("[fusao2] -- J''''') N5: o Super Namekuseijin desperta pelo proprio poder --");
+
+		Jandirus.Core.Forms.FormaDef? d = Jandirus.Core.Forms.Catalogo.Def(IdDoSuperNamekuseijin);
+		if (d == null) { AfirmarFd("J38 o catalogo tem a forma `snamek`", false); return; }
+
+		ServerPlayer fraco = ForjarNaFusaoDupla("Dende2", "Namekian", 1, sabeDancar: false, 0);
+		double porta = fraco.Forma.PortaDeBp(d);
+		AfirmarFd($"J38 a porta pessoal existe e e positiva ({porta:N0})", porta > 0);
+
+		// ---- ABAIXO DA PORTA: NADA ----
+		fraco.Ficha.BP = porta * 0.9;
+		ConferirODespertarDoSuperNamekuseijin(fraco);
+		AfirmarFd("J39 abaixo da porta pessoal, o Super Namekuseijin NAO desperta",
+				  !fraco.Livro.Sabe(AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin));
+
+		// ---- ACIMA: DESPERTA, E A FORMA ABRE ----
+		fraco.Ficha.BP = porta * 1.01;
+		ConferirODespertarDoSuperNamekuseijin(fraco);
+		AfirmarFd("J40 cruzada a porta pessoal, ele desperta sozinho (como o SSJ de um Saiyajin)",
+				  fraco.Livro.Sabe(AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin));
+
+		Jandirus.Core.Forms.RecusaForma r = fraco.Forma.Avaliar(IdDoSuperNamekuseijin, fraco.Ficha.BP,
+											kiFracao: 1, caido: false, Perfil(fraco));
+		AfirmarFd("J41 ...e a FORMA passa a abrir de verdade (`EstadoDeForma.Avaliar`)",
+				  r == Jandirus.Core.Forms.RecusaForma.Pode, $"{r}");
+
+        // ---- E SO NAMEKUSEIJIN ----
+		// O contra-exemplo do portao racial: sem ele, o despertar por BP seria dado a qualquer raca que
+		// passasse pelo tique -- e o `snamek()` do DM abre com `if(Race=="Namekian")` (`Super_Namek.dm:9`).
+		ServerPlayer saiyajin = ForjarNaFusaoDupla("Nappa2", "Saiyan", porta * 5, sabeDancar: false, 1);
+		ConferirODespertarDoSuperNamekuseijin(saiyajin);
+		AfirmarFd("J42 um Saiyajin com poder de sobra NAO ganha o Super Namekuseijin",
+				  !saiyajin.Livro.Sabe(AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin));
+
+		// =================================================================
+		// N1 x N5: OS DOIS CAMINHOS DESEMBOCAM NA **MESMA** PORTA
+		// =================================================================
+		// ============================ POR QUE ISTO PRECISA DE VARREDURA DE FONTE ============================
+		// A J16/J17 provam o caminho da ABSORCAO e a J40/J41 o do PODER, e as duas usam o mesmo
+		// `IdDoSuperNamekuseijin`. **Isso nao prova que a forma e uma so**: dois caminhos com duas
+		// implementacoes -- um dando a skill, o outro escrevendo um bit novo -- passariam nas quatro,
+		// porque cada um abriria a sua metade, e a divergencia so apareceria no dia em que uma delas
+		// mudasse. O que amarra e a contagem de ESCRITORES: se ha um so, nao ha o que divergir.
+		//
+		// (A outra metade -- "nao ha uma segunda ENTRADA de catalogo com a mesma flag" -- e da
+		// `formas` bench, secao 20, que conta as entradas do `Catalogo.Todas`.)
+		// ================================================================================================
+		string[] fonte = Fonte("Server/GameServer.Namekuseijin.cs");
+		AfirmarFd("J78 o fonte da absorcao foi lido", fonte.Length > 100, $"{fonte.Length} linhas");
+
+		int escritores = fonte.Count(l => !l.TrimStart().StartsWith("///", StringComparison.Ordinal)
+										  && l.Contains(".Dar(AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin)",
+														StringComparison.Ordinal));
+		AfirmarFd("J78b ...e ha **UM** unico lugar que poe a skill do Super Namekuseijin no livro "
+				+ "(o `DarOSuperNamekuseijin`) -- os dois caminhos passam por ele",
+				  escritores == 1, $"{escritores} escritor(es)");
+
+		string[] absorve = CorpoDoMetodo(fonte, "private void AbsorverNamekuseijin(ServerPlayer dono");
+		string[] desperta = CorpoDoMetodo(fonte, "private void ConferirODespertarDoSuperNamekuseijin(");
+		AfirmarFd("J79 o caminho da ABSORCAO chama aquela porta, e nao uma copia dela",
+				  absorve.Any(l => l.Contains("DarOSuperNamekuseijin", StringComparison.Ordinal)),
+				  $"{absorve.Length} linhas");
+		AfirmarFd("J79b ...e o caminho do PODER chama a MESMA porta",
+				  desperta.Any(l => l.Contains("DarOSuperNamekuseijin", StringComparison.Ordinal)),
+				  $"{desperta.Length} linhas");
+
+		// A ENTRADA DE CATALOGO, e o portao dela -- a ponta que o livro nao ve.
+		Jandirus.Core.Forms.FormaDef? snamek = Jandirus.Core.Forms.Catalogo.Def(IdDoSuperNamekuseijin);
+		AfirmarFd("J80 e a forma que os dois abrem e a UNICA entrada `snamek` do catalogo, gateada "
+				+ "pela flag que aquela skill escreve",
+				  snamek?.PedeFlag?.Campo == "snamek" && snamek?.ChaveDoLimiar == "snamekat",
+				  $"{snamek?.PedeFlag?.Campo ?? "sem flag"} / {snamek?.ChaveDoLimiar ?? "sem limiar"}");
+	}
+
+
+	// =====================================================================
+	// J^. OS CAMINHOS QUE CHEGAM **SEM** O ACEITE -- um por um, com o positivo ao lado
+	// =====================================================================
+	/// <summary>
+	/// ============================ ESTA E A SECAO QUE, ERRADA, CUSTA O PERSONAGEM DE UM JOGADOR ============================
+	/// A J' ja prova as tres travas do BOTAO (o comum recusa, o proprio pede duas vezes, a segunda so
+	/// vale depois do intervalo). Esta pergunta a coisa oposta e maior: **existe algum OUTRO caminho que
+	/// chegue na absorcao sem passar por aquele botao?**
+	///
+	/// A lista nao foi inventada aqui -- ela e o levantamento de fase 0, caminho por caminho: verb de
+	/// admin, IA dirigindo um corpo, pacote forjado, alvo desligado, alvo caido, alvo ja fundido, e o
+	/// alvo que desconecta ENTRE o aceite e a consumacao. Cada um tem prova propria, **e cada um tem o
+	/// contra-exemplo ao lado**: se so houvesse a metade que recusa, um mundo em que NADA funde ficaria
+	/// verde inteiro.
+	///
+	/// ============================ E A REGUA E A MESMA PRA TODOS ============================
+	/// <see cref="OQueMudouNaAbsorcao"/>: nao ficou convite na mesa, nao comecou cena, ninguem fundiu,
+	/// **o personagem continua no slot**, o BP nao andou e a recarga nao foi cobrada. Sete perguntas
+	/// numa linha, e o detalhe da falha diz QUAL delas caiu -- uma afirmacao composta que so sabe dizer
+	/// "false" e uma afirmacao que ninguem consegue consertar.
+	/// ==============================================================================================================
+	/// </summary>
+	private void OsCaminhosQueNaoConsentem()
+	{
+		GD.Print("[fusao2] -- J^) os caminhos SEM aceite: admin, IA, pacote forjado, offline, KO, "
+			   + "ja fundido, e o que cai no meio --");
+
+		// O PALCO PROTEGE A PASTA DO DONO: esta secao chama verb de ADMIN (que grava `admin.log`) e
+		// deixa o apagamento a um passo de acontecer em varios pontos. Ver `PalcoDeApagamentos`.
+		using PalcoDeApagamentos palco = PalcoDeApagamentosDeBancada();
+
+		int serie = 0;
+		(ServerPlayer Dono, ServerPlayer Alvo, AccountSave Acc, double Bp) Dupla()
+		{
+			serie++;
+			ServerPlayer d = ForjarNaFusaoDupla($"Piccolo7{serie}", "Namekian", 2_000_000, false, 0);
+			ServerPlayer a = ForjarNaFusaoDupla($"Nail7{serie}", "Namekian", 500_000, false, 1);
+			AccountSave acc = palco.Emprestar(a.Conta, a.Slot, AccountStore.DeJogador(a, NowMs()));
+			return (d, a, acc, d.Ficha.BP);
+		}
+
+		// `conviteDePe` = este caso e um em que o pendente **deve** continuar na mesa (o forjado de um
+		// terceiro nao pode nem aceitar nem DERRUBAR o convite alheio). Sem este parametro a regua
+		// cobraria a mesa vazia e reprovaria por acertar.
+		void NadaAconteceu(string id, ServerPlayer dono, ServerPlayer alvo, AccountSave acc, double bp,
+						   bool conviteDePe = false)
+		{
+			string mudou = OQueMudouNaAbsorcao(dono, alvo, acc, bp, conviteDePe);
+			AfirmarFd($"{id}: **nada acontece** -- o personagem de {alvo.Name} continua existindo",
+					  mudou.Length == 0, mudou);
+		}
+
+		// =================================================================
+		// J43-J44: O CONTROLE POSITIVO. Ele vem PRIMEIRO de proposito.
+		// =================================================================
+		// Sem ele, esta secao inteira ficaria verde num mundo em que a absorcao simplesmente nao
+		// funciona -- e "nada acontece" seria verdade por um motivo que nao tem nada a ver com
+		// consentimento. Este bloco e o unico da secao em que um personagem morre de verdade.
+		{
+			(ServerPlayer dono, ServerPlayer alvo, AccountSave acc, double bp) = Dupla();
+
+			AbsorverDeVerdade(dono, alvo);
+
+			AfirmarFd($"J43 **COM o aceite** (convite + as DUAS confirmacoes): a absorcao acontece "
+					+ $"(BP {bp:N0} -> {dono.Ficha.BP:N0})",
+					  dono.Ficha.BP > bp + 1.0, $"{dono.Ficha.BP:N0}");
+			AfirmarFd("J44 ...e o personagem do absorvido se perde (o slot vazio e o corpo consumido)",
+					  acc.Slots[alvo.Slot] == null && alvo.PersonagemConsumido);
+
+			dono.Ficha.fusion_cooldown_until = 0;
+		}
+
+		// =================================================================
+		// J45-J47: O VERB DE ADMIN
+		// =================================================================
+		// ============================ DUAS PROVAS, PORQUE UMA SO NAO FECHA ============================
+		// A runtime (J45) prova que os nomes plausiveis nao existem HOJE. Ela nao prova nada sobre os
+		// ~40 verbs que existem: um `admin_fundir` escrito amanha passaria por ela sem tocar em nada.
+		// Por isso a J46 varre o CORPO INTEIRO do `VerboDeAdmin` no fonte e cobra que nenhuma linha dele
+		// chame o encanamento da absorcao -- e a J47 roda a MESMA varredura sobre uma copia adulterada
+		// pra provar que ela sabe ficar vermelha. Sem a J47, a J46 seria um comentario bonito.
+		// ==========================================================================================
+		{
+			(ServerPlayer dono, ServerPlayer alvo, AccountSave acc, double bp) = Dupla();
+			dono.Poderes |= Jandirus.Net.Protocol.Poder.Admin;
+
+			EscutaDeAvisos?.Clear();
+			string[] tentados =
+				["admin_fundir", "admin_fusao", "admin_absorver", "admin_namek", "admin_fusao_namek"];
+			foreach (string cmd in tentados) Verbo(dono, cmd, alvo.Name);
+
+			int recusados = EscutaDeAvisos?.Count(a => a.Contains("nao existe")) ?? 0;
+			AfirmarFd($"J45 o admin manda os {tentados.Length} nomes plausiveis e o funil responde "
+					+ "\"esse comando de administrador nao existe\" em todos",
+					  recusados == tentados.Length, $"{recusados} de {tentados.Length}");
+			NadaAconteceu("J45b (verb de admin)", dono, alvo, acc, bp);
+
+			// A VARREDURA DO FONTE -- exaustiva sobre a tabela inteira, e nao sobre cinco palpites.
+			string[] admin = CorpoDoMetodo(Fonte("Server/GameServer.Admin.cs"),
+										   "private bool VerboDeAdmin(ServerPlayer pl, string cmd, string arg)");
+			AfirmarFd("J46 o corpo do `VerboDeAdmin` foi extraido do fonte (a assinatura ainda bate)",
+					  admin.Length > 20, $"{admin.Length} linhas");
+			AfirmarFd("J46b ...e NENHUM dos verbs de admin chama o encanamento da absorcao",
+					  SemAbsorcaoNestasLinhas(admin), PrimeiraLinhaComAbsorcao(admin));
+
+			// O MUTANTE: a mesma varredura sobre uma copia com o verb que nao existe.
+			string[] adulterado = [.. admin, "case \"admin_absorver\": AbsorverNamekuseijin(pl, alvo); break;"];
+			AfirmarFd("   DEFEITO INJETADO (um `admin_absorver` no fonte adulterado): a MESMA varredura REPROVA",
+					  !SemAbsorcaoNestasLinhas(adulterado),
+					  "a J46b e decoracao -- ela nao sabe ficar vermelha");
+
+			dono.Poderes &= ~Jandirus.Net.Protocol.Poder.Admin;
+		}
+
+		// =================================================================
+		// J48-J50: A IA / O NPC DIRIGINDO O GESTO
+		// =================================================================
+		{
+			(ServerPlayer dono, ServerPlayer alvo, AccountSave acc, double bp) = Dupla();
+
+			// O CORPO DE IA: sem `Peer` e COM papel -- as duas pernas do `Gente.EhNpcDoMundo`.
+			ServerPlayer ia = ForjarNaFusaoDupla("NamekDaIa", "Namekian", 900_000, false, 1);
+			ia.Papel = new Jandirus.Core.Npc.PapelDeNpc(
+				new Jandirus.Core.Npc.MoldeDeNpc { Id = "bancada", Nome = "aldeao" }, 0);
+
+			// ============================ O CANTO LIVRE E OBRIGATORIO AQUI ============================
+			// O verb entra pelo `AlvoNaFrente`, que e o cone do soco -- e a esta altura da bancada ha
+			// uma duzia de corpos empilhados nos tiles 0 e 1. Sem mudar de bairro, o verb agarraria um
+			// Saiyajin de outra secao e a recusa viria do portao RACIAL: a bancada anunciaria "a IA nao
+			// funde" tendo medido outra coisa. E a mesma armadilha que a secao J''' documenta.
+			// ======================================================================================
+			var canto = new Vec2(0, 60 * ZoneCollision.TileSize);
+			ia.Pos = canto;
+			alvo.Pos = canto + new Vec2(ZoneCollision.TileSize, 0);
+			ia.Facing = Jandirus.Core.World.Facing.East;
+
+			// O CORPO DE IA MANDA OS DOIS IDS PELO CANAL DE PRODUCAO (`C2S.Habilidade` ->
+			// `UsarHabilidade`). E o que aconteceria se o cerebro um dia escrevesse `fus_namek` no
+			// `Comando.Habilidade`.
+			UsarHabilidade(ia, "fus_namek");
+			UsarHabilidade(ia, "fus_namek_sim");
+			AfirmarFd("J48 um corpo de IA mandando `fus_namek`/`fus_namek_sim` nao poe convite nem cena "
+					+ "(o `EhPessoa` corta antes -- assinatura vazia)",
+					  !_pedidosDeFusao.ContainsKey(alvo.Id) && !_emCenaDeFusao.ContainsKey(ia.Id)
+					  && !_confirmacoesDeAbsorcao.ContainsKey(ia.Id));
+			NadaAconteceu("J48b (IA como autor)", dono, alvo, acc, bp);
+
+			// E O CEREBRO NUNCA ESCREVE ESSES IDS -- varredura do fonte, com o mutante ao lado.
+			string[] cerebro = Fonte("Core/Ai/Cerebro.cs");
+			AfirmarFd("J49 o fonte do cerebro foi lido", cerebro.Length > 100, $"{cerebro.Length} linhas");
+			AfirmarFd("J49b ...e a palavra `fus_` nao aparece nele em lugar nenhum "
+					+ "(a IA nao tem como pedir uma fusao)",
+					  !cerebro.Any(l => l.Contains("fus_", StringComparison.Ordinal)));
+			AfirmarFd("   DEFEITO INJETADO (uma linha `Habilidade = \"fus_namek\"` no fonte adulterado): "
+					+ "a MESMA varredura REPROVA",
+					  new[] { "cmd.Habilidade = \"fus_namek\";" }
+						.Concat(cerebro).Any(l => l.Contains("fus_", StringComparison.Ordinal)));
+
+			// ---- J50: E O ALVO DE NPC NAO PODE SER GENTE ----
+			// Abrir o portao pro NPC (regra N4) e a linha que MAIS podia abrir demais: ela e a mesma
+			// que protege contra pacote de IA. Se o `EhNamekNpcAbsorvivel` aceitasse um jogador, a
+			// absorcao teria um caminho sem convite NENHUM -- e o dono perderia o personagem sem
+			// nunca ter visto uma caixa.
+			AfirmarFd("J50 o portao de NPC NAO aceita gente (abrir a porta do NPC nao abriu a das pessoas)",
+					  !EhNamekNpcAbsorvivel(alvo) && EhNamekNpcAbsorvivel(ia));
+
+			_pedidosDeFusao.Remove(alvo.Id);
+			_players.Remove(ia.Id);
+			ZoneList(_fdZona.Hash).Remove(ia);
+		}
+
+		// =================================================================
+		// J51-J54: O PACOTE FORJADO
+		// =================================================================
+		// O `case Protocol.C2S.Habilidade` le uma STRING e despacha: nao ha nonce, nao ha id de
+		// convite, nao ha nada que so o cliente de verdade saiba mandar. Entao a pergunta nao e "da
+		// pra forjar o pacote?" (da), e sim **"o que o pacote forjado consegue?"**.
+		{
+			(ServerPlayer dono, ServerPlayer alvo, AccountSave acc, double bp) = Dupla();
+
+			// ---- J51: SEM CONVITE NENHUM, EM RAJADA ----
+			for (int i = 0; i < 3; i++) UsarHabilidade(alvo, "fus_namek_sim");
+			AfirmarFd("J51 `fus_namek_sim` em rajada SEM convite nenhum nao arma nem o relogio "
+					+ "das confirmacoes",
+					  !_confirmacoesDeAbsorcao.ContainsKey(alvo.Id));
+			NadaAconteceu("J51b (pacote forjado sem convite)", dono, alvo, acc, bp);
+
+			// ---- J52: COM CONVITE, PELO BOTAO COMUM, ATRAVES DO DESPACHANTE DE VERDADE ----
+			// A J4 mede isto chamando o `ResponderAoConvite` na mao. Aqui a mesma regra e cobrada
+			// pelo caminho que um cliente modificado usaria: a string crua no canal de habilidade.
+			Convidar(dono, alvo, TipoDeFusao.Namek);
+			AfirmarFd("J52 o convite entrou (pra o forjado ter o que atacar)",
+					  _pedidosDeFusao.ContainsKey(alvo.Id));
+			UsarHabilidade(alvo, "fus_sim");
+			AfirmarFd("J52b o `fus_sim` cru no canal de habilidade NAO aceita a absorcao "
+					+ "(e o convite fica na mesa)",
+					  !_emCenaDeFusao.ContainsKey(dono.Id) && _pedidosDeFusao.ContainsKey(alvo.Id));
+
+			// ---- J53: O TERCEIRO QUE FORJA O SIM DE OUTRO ----
+			// O pacote carrega a identidade de quem o mandou (o `Peer`), entao "forjar o sim de
+			// outra pessoa" so seria possivel se o servidor guardasse a confirmacao por outra chave
+			// que nao o id de quem confirma. Esta prova e o que amarra isso.
+			ServerPlayer terceiro = ForjarNaFusaoDupla("NamekIntruso", "Namekian", 700_000, false, 1);
+			UsarHabilidade(terceiro, "fus_namek_sim");
+			_confirmacoesDeAbsorcao[terceiro.Id] =
+				NowMs() - (long)(AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes * 1000) - 1;
+			UsarHabilidade(terceiro, "fus_namek_sim");
+			AfirmarFd("J53 um TERCEIRO confirmando duas vezes nao aceita o convite que e de outro "
+					+ "(a confirmacao e por id de quem confirma)",
+					  !_emCenaDeFusao.ContainsKey(dono.Id) && _pedidosDeFusao.ContainsKey(alvo.Id));
+			NadaAconteceu("J53b (o sim de um terceiro)", dono, alvo, acc, bp, conviteDePe: true);
+
+			// ---- J54: E O DONO DO CONVITE, ESSE, ACEITA -- o contra-exemplo dos tres de cima ----
+			UsarHabilidade(alvo, "fus_namek_sim");
+			_confirmacoesDeAbsorcao[alvo.Id] =
+				NowMs() - (long)(AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes * 1000) - 1;
+			UsarHabilidade(alvo, "fus_namek_sim");
+			AfirmarFd("J54 **e o dono do convite, pelo mesmo canal cru, ACEITA** -- era o "
+					+ "consentimento barrando, e nao o canal",
+					  _emCenaDeFusao.ContainsKey(dono.Id));
+
+			if (_emCenaDeFusao.GetValueOrDefault(dono.Id) is { } c) AbortarACenaDeFusao(c, "fim da J54");
+			_confirmacoesDeAbsorcao.Remove(terceiro.Id);
+			_pedidosDeFusao.Remove(alvo.Id);
+			_players.Remove(terceiro.Id);
+			ZoneList(_fdZona.Hash).Remove(terceiro);
+			dono.Ficha.fusion_cooldown_until = 0;
+		}
+
+		// =================================================================
+		// J55-J56: O ALVO DESLIGADO
+		// =================================================================
+		{
+			(ServerPlayer dono, ServerPlayer alvo, AccountSave acc, double bp) = Dupla();
+
+			Convidar(dono, alvo, TipoDeFusao.Namek);
+			AfirmarFd("J55 o convite estava na mesa antes de ele sair", _pedidosDeFusao.ContainsKey(alvo.Id));
+
+			// O QUE O `Drop` CHAMA, e nao uma limpeza inventada aqui.
+			SoltarDaFusao(alvo.Id);
+			AfirmarFd("J55b sair do jogo LIMPA o convite pendente "
+					+ "(id de rede se reusa: quem entrasse depois herdaria o \"sim\")",
+					  !_pedidosDeFusao.ContainsKey(alvo.Id));
+
+			// E O FORJADO DEPOIS DE OFFLINE TAMBEM NAO PEGA NADA.
+			UsarHabilidade(alvo, "fus_namek_sim");
+			_confirmacoesDeAbsorcao[alvo.Id] =
+				NowMs() - (long)(AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes * 1000) - 1;
+			UsarHabilidade(alvo, "fus_namek_sim");
+			NadaAconteceu("J56 (alvo desligado, e o sim chegando depois)", dono, alvo, acc, bp);
+
+			_confirmacoesDeAbsorcao.Remove(alvo.Id);
+			dono.Ficha.fusion_cooldown_until = 0;
+		}
+
+		// =================================================================
+		// J57-J58: O ALVO CAIDO (nocaute e morte)
+		// =================================================================
+		{
+			(ServerPlayer dono, ServerPlayer alvo, AccountSave acc, double bp) = Dupla();
+
+			alvo.Ficha.KO = true;
+			bool comKo = ConviteDeAbsorcaoEntra(dono, alvo);
+			alvo.Ficha.KO = false;
+			bool semKo = ConviteDeAbsorcaoEntra(dono, alvo);
+			AfirmarFd("J57 alvo NOCAUTEADO: o convite nao entra -- **e de pe entra** "
+					+ "(era o nocaute barrando, e nao a raca, a distancia ou a recarga)",
+					  !comKo && semKo, $"com KO {comKo}, de pe {semKo}");
+
+			alvo.Ficha.dead = true;
+			bool morto = ConviteDeAbsorcaoEntra(dono, alvo);
+			alvo.Ficha.dead = false;
+			AfirmarFd("J58 alvo MORTO: idem -- nao se absorve quem ja se foi",
+					  !morto && ConviteDeAbsorcaoEntra(dono, alvo));
+			NadaAconteceu("J58b (alvo caido)", dono, alvo, acc, bp);
+		}
+
+		// =================================================================
+		// J59: O ALVO JA EM OUTRA FUSAO
+		// =================================================================
+		{
+			(ServerPlayer dono, ServerPlayer alvo, AccountSave acc, double bp) = Dupla();
+
+			// UMA DANCA DE VERDADE com um terceiro -- pela corrente inteira, como a secao D faz.
+			ServerPlayer par = ForjarNaFusaoDupla("NamekDoPar", "Namekian", 480_000, true, 1);
+			alvo.Livro.Dar(PathDaDanca);
+			FusaoAtiva? danca = FundirDeVerdade(alvo, par, TipoDeFusao.Danca);
+			AfirmarFd("J59 o alvo esta MESMO fundido noutra fusao", danca != null && EstaFundido(alvo.Id));
+
+			bool fundido = ConviteDeAbsorcaoEntra(dono, alvo);
+			if (danca != null) Separar(danca, "fim da J59");
+			alvo.Ficha.fusion_cooldown_until = 0;
+			dono.Ficha.fusion_cooldown_until = 0;
+			bool solto = ConviteDeAbsorcaoEntra(dono, alvo);
+
+			AfirmarFd("J59b alvo JA FUNDIDO: o convite nao entra -- **e separado entra** "
+					+ "(o `OcupadoPorFusao` cobre as quatro fases numa pergunta so)",
+					  !fundido && solto, $"fundido {fundido}, solto {solto}");
+			NadaAconteceu("J59c (alvo ja fundido)", dono, alvo, acc, bp);
+
+			par.Ficha.fusion_cooldown_until = 0;
+			_players.Remove(par.Id);
+			ZoneList(_fdZona.Hash).Remove(par);
+		}
+
+		// =================================================================
+		// J60-J61: O ALVO QUE DESCONECTA **ENTRE O ACEITE E A CONSUMACAO**
+		// =================================================================
+		// A J'''' ja mede o NOCAUTE no meio da cena. Este e o outro corte, e ele e o mais assustador
+		// dos dois: a pessoa aceitou, a cinematica esta rodando, e ela fecha o jogo. Se o tique
+		// consumasse assim mesmo, o personagem morreria com o dono dele offline.
+		{
+			(ServerPlayer dono, ServerPlayer alvo, AccountSave acc, double bp) = Dupla();
+
+			AbsorverAteACena(dono, alvo);
+			AfirmarFd("J60 aceita, a cena esta rodando", _emCenaDeFusao.ContainsKey(dono.Id));
+
+			SoltarDaFusao(alvo.Id);          // o que o `Drop` chama
+			TickDaCenaDeFusao();             // e o tique de producao passa por cima
+
+			AfirmarFd("J60b ele fecha o jogo no meio: a cena cai e NAO ha consumacao",
+					  !_emCenaDeFusao.ContainsKey(dono.Id) && !_emCenaDeFusao.ContainsKey(alvo.Id));
+			NadaAconteceu("J61 (desconectou entre o aceite e a consumacao)", dono, alvo, acc, bp);
+		}
 	}
 
 	/// <summary>
-	/// ============================ O CONTRA-EXEMPLO DA PERMANENTE, LADO A LADO ============================
-	/// As provas J4, J5 e J6 dizem "a Namekuseijin nasce com energia zero, o dreno nao a desfaz e o
-	/// nocaute nao a separa". **As tres passariam num mundo em que o dreno e o nocaute simplesmente nao
-	/// funcionassem pra fusao nenhuma** -- e sao exatamente as duas coisas que este passe mexeu
-	/// (`Fusao.Avaliar` e o `FusaoAoCair` ganharam um tipo novo pra pensar). Uma afirmacao de "NAO
-	/// acontece" so vale ao lado de um "acontece".
+	/// A REGUA DE "NADA ACONTECEU" -- e ela devolve O QUE mudou, e nao um `bool`.
 	///
-	/// Entao aqui roda a MESMA sequencia -- mesmo `TickDaFusao`, mesmo `FusaoAoCair`, mesmos dez minutos
-	/// de relogio empurrado --, so que numa Danca. Ela tem que se desfazer nas duas.
-	/// ====================================================================================================
+	/// Sete perguntas: convite na mesa, cena aberta, alguem fundido, o personagem apagado, o corpo
+	/// marcado como consumido, o BP andado e a recarga cobrada. Uma afirmacao composta que so sabe
+	/// dizer "false" e uma afirmacao que ninguem consegue consertar as duas da manha.
 	/// </summary>
-	private void OContraExemploDaPermanente()
+	private string OQueMudouNaAbsorcao(ServerPlayer dono, ServerPlayer alvo, AccountSave acc,
+									   double bpAntes, bool conviteDePe = false)
 	{
-		GD.Print("[fusao2] -- J') o contra-exemplo: a MESMA sequencia numa fusao TEMPORARIA --");
+		var m = new List<string>();
+		if (!conviteDePe && _pedidosDeFusao.ContainsKey(alvo.Id)) m.Add("ficou convite na mesa");
+		if (conviteDePe && !_pedidosDeFusao.ContainsKey(alvo.Id)) m.Add("**DERRUBOU o convite alheio**");
+		if (_emCenaDeFusao.ContainsKey(dono.Id) || _emCenaDeFusao.ContainsKey(alvo.Id)) m.Add("abriu cena");
+		if (EstaFundido(dono.Id) || EstaFundido(alvo.Id)) m.Add("fundiu");
+		if (alvo.Slot >= 0 && alvo.Slot < acc.Slots.Length && acc.Slots[alvo.Slot] == null)
+			m.Add("**APAGOU O PERSONAGEM**");
+		if (alvo.PersonagemConsumido) m.Add("marcou o corpo como consumido");
+		if (Math.Abs(dono.Ficha.BP - bpAntes) >= 1.0) m.Add($"o BP andou ({bpAntes:N0} -> {dono.Ficha.BP:N0})");
+		if (dono.Ficha.fusion_cooldown_until > NowMs()) m.Add("cobrou a recarga de 1 h");
+		return string.Join("; ", m);
+	}
 
-		ServerPlayer a = ForjarNaFusaoDupla("Krillin2", "Human", 1_000_000, sabeDancar: true, 0);
-		ServerPlayer b = ForjarNaFusaoDupla("Yajirobe2", "Human", 900_000, sabeDancar: true, 1);
+	/// <summary>Um convite de ABSORCAO que nao deixa pendente na mesa. So pra ler o sim/nao.</summary>
+	private bool ConviteDeAbsorcaoEntra(ServerPlayer a, ServerPlayer b)
+	{
+		_pedidosDeFusao.Remove(b.Id);
+		Convidar(a, b, TipoDeFusao.Namek);
+		bool entrou = _pedidosDeFusao.ContainsKey(b.Id);
+		_pedidosDeFusao.Remove(b.Id);
+		return entrou;
+	}
 
-		FusaoAtiva? d = FundirDeVerdade(a, b, TipoDeFusao.Danca);
-		AfirmarFd("J10 a Danca dos mesmos moldes acontece", d != null && EstaFundido(a.Id));
-		if (d == null) return;
+	/// <summary>O encanamento que SO a absorcao usa -- ver a J46 e a J47.</summary>
+	private static readonly string[] OEncanamentoDaAbsorcao =
+		["AbsorverNamekuseijin", "ApagarOPersonagemParaSempre", "ResponderAoConviteDeAbsorcao",
+		 "ConvidarParaAFusaoNamekuseijin", "fus_namek"];
 
-		AfirmarFd("J11 ...e ela nasce com energia MAXIMA maior que zero (o contrario da J4)",
-				  d.EnergiaMax > 0, $"{d.EnergiaMax:0.#}");
+	private static bool SemAbsorcaoNestasLinhas(IEnumerable<string> linhas) =>
+		!linhas.Any(l => OEncanamentoDaAbsorcao.Any(p => l.Contains(p, StringComparison.Ordinal)));
 
-		// O MESMO GESTO DA J5, e aqui ele TEM que funcionar.
-		d.UltimoDreno = NowMs() - 600_000;
-		d.Energia = 0.0001;
-		TickDaFusao();
-		AfirmarFd("J12 ...e o dreno DESFAZ esta (o contrario da J5) -- era o dreno funcionando, e nao "
-				+ "a permanencia sendo ignorada", !EstaFundido(a.Id));
+	private static string PrimeiraLinhaComAbsorcao(IEnumerable<string> linhas) =>
+		linhas.FirstOrDefault(l => OEncanamentoDaAbsorcao.Any(p => l.Contains(p, StringComparison.Ordinal)))
+			?.Trim() ?? "";
 
-		// E O NOCAUTE, o mesmo gesto da J6.
-		a.Ficha.fusion_cooldown_until = 0;
-		b.Ficha.fusion_cooldown_until = 0;
-		FusaoAtiva? d2 = FundirDeVerdade(a, b, TipoDeFusao.Danca);
-		AfirmarFd("J13 a dupla fundiu de novo (pra o nocaute ter o que separar)", d2 != null);
-		if (d2 == null) return;
+	/// <summary>Convida e ACEITA (as duas confirmacoes), e para NA CENA -- sem virar.</summary>
+	private void AbsorverAteACena(ServerPlayer dono, ServerPlayer alvo)
+	{
+		Convidar(dono, alvo, TipoDeFusao.Namek);
+		if (!_pedidosDeFusao.ContainsKey(alvo.Id)) return;
+		ResponderAoConviteDeAbsorcao(alvo);
+		_confirmacoesDeAbsorcao[alvo.Id] =
+			NowMs() - (long)(AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes * 1000) - 1;
+		ResponderAoConviteDeAbsorcao(alvo);
+	}
 
-		FusaoAoCair(a, "nocaute");
-		AfirmarFd("J14 ...e o NOCAUTE separa esta (o contrario da J6, `Fusion.dm:79`)",
-				  !EstaFundido(a.Id));
+	// =====================================================================
+	// J^^. O PERSONAGEM PERDIDO **ATRAVESSA O DISCO** -- gravar, reabrir, conferir
+	// =====================================================================
+	/// <summary>
+	/// ============================ "O SLOT FICOU NULO" E MEMORIA RAM ============================
+	/// A secao J'' prova que o objeto `AccountSave` na mao do servidor perdeu o personagem. Isso nao e
+	/// o que o dono pediu: ele pediu *"perde o personagem pra sempre"*, e "pra sempre" mora no DISCO.
+	/// Entre o objeto e o arquivo ha o `_store.Gravar`, e entre o arquivo e a proxima sessao ha o
+	/// `_store.Carregar`, o `SlotsVisiveisDe` da tela de selecao e o `PickSlot`.
+	///
+	/// Esta secao faz a volta inteira **pelo codigo de producao**: grava de verdade, reabre de verdade,
+	/// e pergunta a tela de selecao de verdade. O precedente e a secao L' logo abaixo (a recarga que
+	/// atravessa o disco), que existe pelo mesmo argumento.
+	///
+	/// ============================ E ELA COBRA AS TRES METADES DO PEDIDO ============================
+	///   1. **nao volta** -- o slot esta vazio no ARQUIVO, e some da tela de selecao;
+	///   2. **a conta continua** -- o arquivo existe, nao esta banida, e o OUTRO personagem dela nao
+	///      foi tocado (o dono nunca pediu que a pessoa perdesse a conta);
+	///   3. **ela cria outro** -- um personagem novo entra no slot que vagou, atravessa o disco, e o
+	///      corpo consumido que ainda esta de pe **nao o sobrescreve** no salvamento seguinte.
+	///
+	/// A terceira e a que mais tinha como dar errado: o `ServerPlayer` do absorvido continua no mundo
+	/// ate o `Disconnect` chegar, e o salvamento periodico roda a cada 2 minutos.
+	/// ==========================================================================================
+	/// </summary>
+	private void OPersonagemPerdidoAtravessaODisco()
+	{
+		GD.Print("[fusao2] -- J^^) o personagem perdido atravessa o DISCO: gravar, reabrir, conferir --");
+
+		using PalcoDeApagamentos palco = PalcoDeApagamentosDeBancada();
+
+		if (_store == null) { AfirmarFd("J62 ha armazenamento pra gravar", false); return; }
+
+		// ESTA SECAO PRECISA DE DOIS SLOTS na mesma conta (o comido e o irmao que sobrevive), e
+		// `AccountStore.Slots` e uma CONSTANTE de compilacao -- conferi-la em tempo de execucao seria
+		// codigo que o compilador ja sabe que nunca roda (e ele avisa). Se um dia a constante cair pra
+		// 1, o `slotDoIrmao` abaixo estoura na cara de quem mudou, que e o aviso certo.
+		ServerPlayer dono = ForjarNaFusaoDupla("Piccolo8", "Namekian", 2_000_000, false, 0);
+		ServerPlayer comido = ForjarNaFusaoDupla("Nail8", "Namekian", 600_000, false, 1);
+		ServerPlayer irmao = ForjarNaFusaoDupla("IrmaoDeNail8", "Namekian", 111_111, false, 1);
+
+		// A CONTA COM **DOIS** PERSONAGENS: o que vai ser comido no slot dele e um irmao no outro.
+		// Sem o irmao, "a conta continua de pe" seria uma frase sobre um objeto vazio.
+		AccountSave acc = palco.Emprestar(comido.Conta, comido.Slot, AccountStore.DeJogador(comido, NowMs()));
+		int slotDoIrmao = comido.Slot == 0 ? 1 : 0;
+		acc.Slots[slotDoIrmao] = AccountStore.DeJogador(irmao, NowMs());
+
+		// O DISCIPULADO DELE, pra a reciclagem da assinatura ter o que limpar.
+		string sig = ServerPlayer.AssinaturaDe(comido.Conta, comido.Slot);
+		_mestreDe[sig] = "9999999999";
+
+		// ---- O ANTES, NO ARQUIVO ----
+		_store.Gravar(acc);
+		string arquivo = System.IO.Path.Combine(_store.Pasta, comido.Conta + ".json");
+		AfirmarFd("J62 o personagem foi pro disco antes de tudo (a conta existe como ARQUIVO)",
+				  System.IO.File.Exists(arquivo)
+				  && _store.Carregar(comido.Conta)?.Slots[comido.Slot] != null, arquivo);
+
+		Jandirus.Net.SlotInfo[] antes = SlotsVisiveisDe(_store.Carregar(comido.Conta)!);
+		AfirmarFd("J63 ...e a TELA DE SELECAO o mostra (o mesmo `SlotsVisiveisDe` que o cliente recebe)",
+				  antes[comido.Slot].Ocupado
+				  && string.Equals(antes[comido.Slot].Nome, comido.Name, StringComparison.OrdinalIgnoreCase),
+				  antes[comido.Slot].Nome);
+
+		AbsorverDeVerdade(dono, comido);
+
+		// ---- O DEPOIS, NO MESMO ARQUIVO ----
+		AccountSave? doDisco = _store.Carregar(comido.Conta);
+		AfirmarFd("J64 a CONTA continua no disco depois da absorcao (nao e ela que se perde)",
+				  doDisco != null && !doDisco.Banida, doDisco == null ? "sumiu" : "de pe");
+		if (doDisco == null) return;
+
+		AfirmarFd("J65 **o personagem NAO esta mais no arquivo** -- e o que o `PickSlot` le pra recusar "
+				+ "com \"esse slot esta vazio\"",
+				  doDisco.Slots[comido.Slot] == null);
+
+		Jandirus.Net.SlotInfo[] depois = SlotsVisiveisDe(doDisco);
+		AfirmarFd("J66 ...e ele sumiu da TELA DE SELECAO (slot vazio, sem nome)",
+				  !depois[comido.Slot].Ocupado && depois[comido.Slot].Nome.Length == 0,
+				  $"ocupado={depois[comido.Slot].Ocupado} nome='{depois[comido.Slot].Nome}'");
+
+		AfirmarFd("J67 ...e o OUTRO personagem da mesma conta continua intacto no disco e na tela "
+				+ "(morre o personagem, nao a conta)",
+				  doDisco.Slots[slotDoIrmao] != null && depois[slotDoIrmao].Ocupado
+				  && string.Equals(depois[slotDoIrmao].Nome, irmao.Name, StringComparison.OrdinalIgnoreCase),
+				  depois[slotDoIrmao].Nome);
+
+		AfirmarFd("J68 ...e a ASSINATURA foi reciclada (o `mst_purge_sig`: o proximo personagem deste "
+				+ "slot nao herda o mestre do absorvido)",
+				  MestreDe(sig).Length == 0, MestreDe(sig));
+
+		// ---- A CONTA CRIA OUTRO, E ELE ATRAVESSA O DISCO ----
+		ServerPlayer novo = ForjarNaFusaoDupla("GenteNova", "Saiyan", 5_000, false, 1);
+		doDisco.Slots[comido.Slot] = AccountStore.DeJogador(novo, NowMs());
+		_store.Gravar(doDisco);
+
+		AccountSave? comONovo = _store.Carregar(comido.Conta);
+		AfirmarFd("J69 **a conta cria outro personagem no slot que vagou**, e ele atravessa o disco",
+				  comONovo?.Slots[comido.Slot] != null
+				  && string.Equals(comONovo!.Slots[comido.Slot]!.Nome, novo.Name, StringComparison.OrdinalIgnoreCase),
+				  comONovo?.Slots[comido.Slot]?.Nome ?? "vazio");
+		AfirmarFd("J70 ...e ele e OUTRA pessoa, e nao o absorvido de volta (nome, raca e poder)",
+				  comONovo?.Slots[comido.Slot] is { } n
+				  && !string.Equals(n.Nome, comido.Name, StringComparison.OrdinalIgnoreCase)
+				  && n.Raca != comido.Race && Math.Abs(n.Ficha.BP - 600_000) > 1.0);
+
+		// ============================ E O CORPO CONSUMIDO NAO SOBRESCREVE O NOVO ============================
+		// O `ServerPlayer` do absorvido continua de pe ate o `Disconnect` chegar, e o salvamento
+		// periodico roda a cada 2 minutos. Sem o `PersonagemConsumido`, esta gravacao poria o MORTO por
+		// cima do personagem novo -- ou seja, apagaria o personagem de quem nao fez nada.
+		// ==================================================================================================
+		Persistir(comido, comONovo!);
+		AccountSave? depoisDoTique = _store.Carregar(comido.Conta);
+		AfirmarFd("J71 ...e o salvamento periodico do corpo consumido NAO o sobrescreve "
+				+ "(o `PersonagemConsumido` fecha a porta do save)",
+				  depoisDoTique?.Slots[comido.Slot] is { } d
+				  && string.Equals(d.Nome, novo.Name, StringComparison.OrdinalIgnoreCase),
+				  depoisDoTique?.Slots[comido.Slot]?.Nome ?? "vazio");
+
+		// ---- O CONTRA-EXEMPLO, PELO MESMO CAMINHO ----
+		// Sem a marca, a MESMA gravacao ressuscita o absorvido por cima do personagem novo. E o
+		// defeito exato que a marca existe pra impedir, e ele e reproduzido no unico lugar que
+		// importa -- o campo -- com a rodada refeita pelo mesmo `Persistir`/`Carregar`.
+		comido.PersonagemConsumido = false;
+		Persistir(comido, depoisDoTique!);
+		CharacterSave? ressuscitado = _store.Carregar(comido.Conta)?.Slots[comido.Slot];
+		AfirmarFd("   DEFEITO INJETADO (a marca `PersonagemConsumido` apagada): o MESMO criterio da J71 "
+				+ "REPROVA -- o absorvido volta POR CIMA do personagem novo",
+				  ressuscitado != null
+				  && string.Equals(ressuscitado.Nome, comido.Name, StringComparison.OrdinalIgnoreCase),
+				  ressuscitado?.Nome ?? "vazio");
+
+		comido.PersonagemConsumido = true;
+		_mestreDe.Remove(sig);
+		dono.Ficha.fusion_cooldown_until = 0;
+	}
+
+	// =====================================================================
+	// J^^^. JOGADOR **CONTRA** NPC, LADO A LADO -- as duas metades da regra N4
+	// =====================================================================
+	/// <summary>
+	/// ============================ "GANHA BEM MENOS" SO QUER DIZER ALGO AO LADO DE UM "GANHA MUITO" ============================
+	/// A J''' mede o NPC contra a conta do Core. Esta mede o NPC contra **o mesmo alvo absorvido como
+	/// JOGADOR, na mesma rodada, por um absorvedor identico** -- e imprime os dois numeros na mesma
+	/// linha. E a diferenca entre "o NPC rende 40.000" (que nao diz nada) e "o NPC rende 40.000 onde o
+	/// jogador renderia 2.800.000", que e a frase do dono em numero.
+	///
+	/// As duas metades sao cobradas juntas por um motivo que a memoria deste projeto ja catalogou: uma
+	/// bancada que so mede o caso pequeno fica verde num mundo em que **os dois** casos sao pequenos.
+	/// ================================================================================================================
+	/// </summary>
+	private void JogadorContraNpcLadoALado()
+	{
+		GD.Print("[fusao2] -- J^^^) jogador x NPC, os dois numeros na mesma linha --");
+
+		using PalcoDeApagamentos palco = PalcoDeApagamentosDeBancada();
+
+		const double BpDoAbsorvedor = 2_000_000, BpDoAlvo = 400_000;
+		const string SkillDele = "/datum/skill/namek/regeneration";
+
+		// DOIS ABSORVEDORES IDENTICOS: mesmo BP, mesmo stat, mesma gravidade dominada, livro vazio.
+		// Se eles nao fossem iguais, a comparacao mediria a diferenca entre eles.
+		ServerPlayer comeGente = ForjarNaFusaoDupla("PiccoloG", "Namekian", BpDoAbsorvedor, false, 0);
+		ServerPlayer comeNpc = ForjarNaFusaoDupla("PiccoloN", "Namekian", BpDoAbsorvedor, false, 0);
+		foreach (ServerPlayer p in new[] { comeGente, comeNpc })
+		{
+			p.Ficha.physoff = 30;
+			p.Ficha.GravMastered = 10;
+		}
+
+		// E DOIS ALVOS IDENTICOS -- so que um e gente e o outro nao.
+		ServerPlayer gente = ForjarNaFusaoDupla("NailG", "Namekian", BpDoAlvo, false, 1);
+		ServerPlayer npc = ForjarNaFusaoDupla("NailN", "Namekian", BpDoAlvo, false, 1);
+		foreach (ServerPlayer p in new[] { gente, npc })
+		{
+			p.Ficha.physoff = 40;
+			p.Ficha.GravMastered = 25;
+			p.Livro.Dar(SkillDele);
+		}
+		npc.Papel = new Jandirus.Core.Npc.PapelDeNpc(
+			new Jandirus.Core.Npc.MoldeDeNpc { Id = "bancada", Nome = "aldeao" }, 0);
+
+		AfirmarFd("J72 os dois alvos sao gemeos, e so um deles e gente "
+				+ "(senao a comparacao mediria a diferenca entre eles)",
+				  Math.Abs(gente.Ficha.BP - npc.Ficha.BP) < 1.0 && EhPessoa(gente) && !EhPessoa(npc)
+				  && EhNamekNpcAbsorvivel(npc));
+
+		// ---- O JOGADOR, PELA CORRENTE INTEIRA ----
+		palco.Emprestar(gente.Conta, gente.Slot, AccountStore.DeJogador(gente, NowMs()));
+		AbsorverDeVerdade(comeGente, gente);
+		double ganhoDeGente = comeGente.Ficha.BP - BpDoAbsorvedor;
+
+		// ---- O NPC, PELO VERB (que e o caminho dele: sem convite, o gesto de quem absorve basta) ----
+		var canto = new Vec2(0, 80 * ZoneCollision.TileSize);
+		comeNpc.Pos = canto;
+		npc.Pos = canto + new Vec2(ZoneCollision.TileSize, 0);
+		comeNpc.Facing = Jandirus.Core.World.Facing.East;
+		ConvidarParaAFusaoNamekuseijin(comeNpc);
+		if (_emCenaDeFusao.GetValueOrDefault(comeNpc.Id) is { } c)
+		{
+			c.Funde = NowMs() - 1;
+			TickDaCenaDeFusao();
+			c.Acaba = NowMs() - 1;
+			TickDaCenaDeFusao();
+		}
+		double ganhoDeNpc = comeNpc.Ficha.BP - BpDoAbsorvedor;
+
+		// ---- OS DOIS NUMEROS, NA MESMA LINHA ----
+		GD.Print($"[fusao2]   N2 x N4, o MESMO alvo de {BpDoAlvo:N0} de BP absorvido por dois "
+			   + $"Namekuseijin identicos de {BpDoAbsorvedor:N0}:");
+		GD.Print($"[fusao2]     como JOGADOR : +{ganhoDeGente:N0}  (BP final {comeGente.Ficha.BP:N0})  "
+			   + $"stats SIM, skills SIM, Super Namekuseijin SIM");
+		GD.Print($"[fusao2]     como NPC     : +{ganhoDeNpc:N0}  (BP final {comeNpc.Ficha.BP:N0})  "
+			   + $"stats nao, skills nao, Super Namekuseijin NAO");
+		GD.Print($"[fusao2]     o jogador rende {(ganhoDeNpc > 0 ? ganhoDeGente / ganhoDeNpc : 0):N0}x "
+			   + "o que o NPC rende.");
+
+		AfirmarFd($"J73 **o jogador rende MUITO mais que o NPC** -- +{ganhoDeGente:N0} contra "
+				+ $"+{ganhoDeNpc:N0} pelo MESMO alvo (razao {(ganhoDeNpc > 0 ? ganhoDeGente / ganhoDeNpc : 0):N0}x)",
+				  ganhoDeNpc > 0 && ganhoDeGente > ganhoDeNpc * 20);
+
+		AfirmarFd("J74 ...e o NPC rende alguma coisa (o \"bem menos\" nao virou \"nada\", que seria "
+				+ "outra regra)",
+				  ganhoDeNpc > 0, $"+{ganhoDeNpc:N0}");
+
+		// ---- E AS **DUAS METADES** DO SUPER NAMEKUSEIJIN, MEDIDAS JUNTAS ----
+		bool formaPeloJogador = comeGente.Livro.Sabe(AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin);
+		bool formaPeloNpc = comeNpc.Livro.Sabe(AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin);
+		AfirmarFd("J75 **o jogador DA o Super Namekuseijin e o NPC NAO** -- as duas metades da frase "
+				+ "do dono, no mesmo mundo e na mesma rodada",
+				  formaPeloJogador && !formaPeloNpc,
+				  $"jogador {formaPeloJogador}, NPC {formaPeloNpc}");
+
+		// E A FORMA ABRE MESMO PRA UM E NAO PRA O OUTRO -- o `Avaliar` de producao, e nao o livro.
+		Jandirus.Core.Forms.RecusaForma rG = comeGente.Forma.Avaliar(
+			IdDoSuperNamekuseijin, comeGente.Ficha.BP, 1, false, Perfil(comeGente));
+		Jandirus.Core.Forms.RecusaForma rN = comeNpc.Forma.Avaliar(
+			IdDoSuperNamekuseijin, comeNpc.Ficha.BP, 1, false, Perfil(comeNpc));
+		AfirmarFd("J76 ...e o portao da FORMA concorda: abre pra quem comeu gente, recusa por SEM "
+				+ "HABILIDADE pra quem comeu NPC",
+				  rG == Jandirus.Core.Forms.RecusaForma.Pode
+				  && rN == Jandirus.Core.Forms.RecusaForma.SemHabilidade, $"{rG} x {rN}");
+
+		AfirmarFd("J77 os OUTROS bonus seguem a mesma divisao: stat e skill atravessam do jogador "
+				+ "(30 -> 40, gravidade 10 -> 25) e NADA atravessa do NPC",
+				  Math.Abs(comeGente.Ficha.physoff - 40) < 1e-6
+				  && Math.Abs(comeGente.Ficha.GravMastered - 25) < 1e-6
+				  && comeGente.Livro.Sabe(SkillDele)
+				  && Math.Abs(comeNpc.Ficha.physoff - 30) < 1e-6
+				  && Math.Abs(comeNpc.Ficha.GravMastered - 10) < 1e-6
+				  && !comeNpc.Livro.Sabe(SkillDele),
+				  $"gente {comeGente.Ficha.physoff}/{comeGente.Ficha.GravMastered}, "
+				+ $"npc {comeNpc.Ficha.physoff}/{comeNpc.Ficha.GravMastered}");
+
+		comeGente.Ficha.fusion_cooldown_until = 0;
+		comeNpc.Ficha.fusion_cooldown_until = 0;
+	}
+
+	/// <summary>
+	/// A ABSORCAO PELA CORRENTE INTEIRA DE PRODUCAO -- convite, duas confirmacoes, cena e virada.
+	///
+	/// O unico atalho e o RELOGIO (o carimbo da primeira confirmacao e o instante da virada), que e a
+	/// mesma disciplina do <see cref="FundirDeVerdade"/> logo acima: nada aqui chama
+	/// `AbsorverNamekuseijin` na mao.
+	/// </summary>
+	private void AbsorverDeVerdade(ServerPlayer dono, ServerPlayer alvo)
+	{
+		Convidar(dono, alvo, TipoDeFusao.Namek);
+		if (!_pedidosDeFusao.ContainsKey(alvo.Id)) return;
+
+		ResponderAoConviteDeAbsorcao(alvo);
+		_confirmacoesDeAbsorcao[alvo.Id] =
+			NowMs() - (long)(AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes * 1000) - 1;
+		ResponderAoConviteDeAbsorcao(alvo);
+
+		if (_emCenaDeFusao.GetValueOrDefault(dono.Id) is { } c)
+		{
+			c.Funde = NowMs() - 1;
+			TickDaCenaDeFusao();
+			c.Acaba = NowMs() - 1;
+			TickDaCenaDeFusao();
+		}
 	}
 
 	// =====================================================================

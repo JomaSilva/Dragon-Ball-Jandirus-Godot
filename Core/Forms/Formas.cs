@@ -4500,8 +4500,18 @@ public static class Catalogo
 				PortaBp = LimiaresPessoais.SNamekatInicial, ChaveDoLimiar = "snamekat",
 				PedeFlag = new FlagDeSkill("snamek"),
 				Aura = "6fe36f",
-				Desc = "5x, e o tanque de Ki DOBRA. Pede a skill Super Namekuseijin e uns dois "
-					 + "milhoes de poder base." },
+				// ============================ A DESCRICAO SEGUE A PORTA, E A PORTA MUDOU ============================
+				// Dizia "uns dois milhoes", que era o `Super_Namek.dm:4`. O dono pediu *"namekuseijins
+				// ganham super namek aprox no mesmo requisito do SSJ"* e o limiar passou a sair da base do
+				// SSJ, por CLA -- ver `LimiaresPessoais.RolarNamek`. E o texto NAO crava numero de novo:
+				// o requisito e PESSOAL, e um numero escrito aqui mentiria pra dois tercos dos jogadores.
+				//
+				// A FRASE NAO DIZ MAIS "pede a skill" pelo mesmo motivo: a skill continua sendo UM dos
+				// caminhos, mas ha outros dois (o despertar pelo proprio poder e a fusao Namekuseijin).
+				// Ver `AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin`, que e a porta unica dos tres.
+				// ==============================================================================================
+				Desc = "5x, e o tanque de Ki DOBRA. Desperta perto do mesmo poder em que um Saiyajin "
+					 + "vira Super Saiyajin -- e o ponto exato e SEU, nao do jogo." },
 
 		// ==================================================================================
 		// O HERAN -- `HeranBuff.dm` + `heran.dm`

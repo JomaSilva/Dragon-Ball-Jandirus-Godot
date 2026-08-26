@@ -39,9 +39,29 @@ REM                         da tecla do jogador, a cena, a virada e o `Separar`.
 REM                         Os portoes (raca, poder proximo, skill nos DOIS), as
 REM                         DUAS metades da coreografia errada, a heranca, os
 REM                         nomes, a energia drenada num corpo de verdade e as
-REM                         bordas -- mais a fusao NAMEKUSEIJIN (secao J), o corpo
-REM                         inteiro ao fundir (K), a recarga de 1 h que atravessa
-REM                         o logout (L) e **o PUXAO da Potara** (M) -- os dois
+REM                         bordas -- mais **a fusao NAMEKUSEIJIN, que virou uma
+REM                         ABSORCAO** (secao J e as cinco filhas dela): o portao
+REM                         racial dos dois lados, o CONSENTIMENTO (o botao comum
+REM                         recusa; o proprio pede DUAS vezes, com intervalo), o
+REM                         bonus (BP (A+B)*2, o maior stat de cada, as skills
+REM                         dele e o Super Namekuseijin), o NPC rendendo quase
+REM                         nada, **o personagem do absorvido sendo APAGADO** com
+REM                         a conta sobrevivendo, o alvo que cai no meio e nao
+REM                         perde nada, e o Super Namekuseijin despertando pelo
+REM                         proprio poder. Mais as TRES filhas da fase 2: todo
+REM                         caminho que poderia chegar na absorcao SEM o aceite
+REM                         (verb de admin, IA dirigindo um corpo, pacote
+REM                         forjado, alvo desligado, alvo caido, alvo ja fundido
+REM                         e o que desconecta entre o aceite e a consumacao),
+REM                         cada um com o positivo ao lado; o personagem perdido
+REM                         ATRAVESSANDO O DISCO (gravar, reabrir, e perguntar a
+REM                         tela de selecao de verdade -- e a conta criando
+REM                         outro no slot que vagou); e o jogador CONTRA o NPC
+REM                         com os dois numeros na mesma linha. Todo apagamento
+REM                         roda dentro do `PalcoDeApagamentos`: a pasta de
+REM                         saves do dono NAO e tocada. Mais o corpo inteiro ao fundir (K), a recarga
+REM                         de 1 h que atravessa o logout (L) e o PUXAO da
+REM                         Potara (M) -- os dois
 REM                         andando um pro outro a 1280 px/s, o input desligado
 REM                         nos dois, a cena comecando quando ENCOSTAM, e quem
 REM                         nao se alcanca nao fundindo. TREZE defeitos injetados
@@ -100,6 +120,25 @@ if %errorlevel%==0 (
     )
 )
 
+REM ===========================================================================
+REM  ============ AS BANCADAS DE SERVIDOR NAO ESCREVEM NA PASTA DO DONO ============
+REM  MEDIDO, e o estrago era real: uma rodada destas deixou na pasta de saves do
+REM  dono um `bancada_fusao2_93043.json`, um `diagapagar.json`, um
+REM  `bancada_mudez.json` e mais quatro arquivos de mundo (conquista, esferas,
+REM  superesferas, titulo) -- e AVANCOU o `sagas.json` dele, que nao volta.
+REM
+REM  O motivo: `--server` sobe o mundo INTEIRO, e o mundo grava. A pasta sai de
+REM  `user://saves`, que o Godot resolve por `%%APPDATA%%\Godot\app_userdata\...`
+REM  -- ou seja, trocar `APPDATA` desvia a pasta de usuario inteira, sem tocar
+REM  numa linha de codigo. Conferido: com a troca, os arquivos aparecem SO na
+REM  pasta temporaria e a do dono fica com a data intacta.
+REM
+REM  O `setlocal` do topo garante que isto morre com o script -- nenhum outro
+REM  programa da maquina ve o `APPDATA` trocado.
+REM ===========================================================================
+set "APPDATA=%TEMP%\jandirus-bancada-fusao"
+if not exist "%APPDATA%" mkdir "%APPDATA%" >nul 2>nul
+
 echo.
 echo  ---- 1/3: QUEM A FUSAO E (nome, roupa, cabelo, o vermelho do SSJ4) ----
 "%GODOT%" --headless --path . --diagfusaolook
@@ -139,7 +178,7 @@ timeout /t 25 /nobreak >nul
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*--cenafusaoteste*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>nul
 
 echo.
-echo  ---- 4/4: A FUSAO ENTRE DOIS JOGADORES, DE PONTA A PONTA (157 provas) ----
+echo  ---- 4/4: A FUSAO ENTRE DOIS JOGADORES, DE PONTA A PONTA (278 provas) ----
 start "" /b "%GODOT%" --headless --path . --server --rede 7967 --fusaoduplateste
 timeout /t 25 /nobreak >nul
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*--fusaoduplateste*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>nul

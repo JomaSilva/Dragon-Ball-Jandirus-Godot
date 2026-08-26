@@ -568,6 +568,7 @@ public partial class RoboDeMudez : Node
 		foreach (double d in F4_OsFinsAnormais()) yield return d;
 		foreach (double d in F5_OEmbateDosOutros()) yield return d;
 		foreach (double d in F6_OQueOEscNaoQuebrou()) yield return d;
+		foreach (double d in F7_ATelaDePausaDentroDoJogo()) yield return d;
 		foreach (double d in Fechamento()) yield return d;
 	}
 
@@ -1255,5 +1256,58 @@ public partial class RoboDeMudez : Node
 		// A QUEIXA EM MAIUSCULAS DO DONO, MEDIDA NO CHAO -- e no chao mesmo, pelos pixels e pelo eixo
 		// da tecla. Ver `OCorpoAndaDeNovo` pro que o embate faz com a posicao e por que sao dois rumos.
 		foreach (double d in OCorpoAndaDeNovo("...e depois do ESC no meio do embate")) yield return d;
+	}
+
+	// =====================================================================
+	// F7 -- A TELA DE PAUSA **DENTRO DO JOGO** CONTINUA SENDO A DE PAUSA
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE ESTA FAMILIA GUARDA ============================
+	/// A `PauseMenu` deixou de ser so a tela de pausa: ela agora atende TAMBEM o lobby, e um unico
+	/// metodo (`AjustarAoContexto`) decide qual das duas ela e, olhando pro `World.Instancia`. Isso e
+	/// bom -- uma tela so, um lugar so que decide --, mas poe as duas telas na mesma linha de codigo:
+	/// **quem mexer no lado do lobby pode trocar o lado do jogo sem ver.**
+	///
+	/// Uma bancada de lobby nao pega isso por construcao: la nao ha mundo, e o `NoMundo` responde
+	/// `false` sempre. Esta bancada e a unica do projeto que tem um mundo de verdade na tela com um
+	/// `PauseMenu` de producao em cima -- entao a metade "dentro do jogo" do contrato mora aqui.
+	///
+	/// As quatro afirmacoes sao as quatro que o `AjustarAoContexto` troca, e nada mais:
+	/// o titulo, o rotulo do botao de voltar, o `Desconectar` VISIVEL e o botao de teclas VIVO.
+	/// ==================================================================================
+	/// </summary>
+	private IEnumerable<double> F7_ATelaDePausaDentroDoJogo()
+	{
+		Nota("--- F7: dentro do jogo, a tela de pausa continua sendo a de PAUSA ---");
+
+		if (PauseMenu.Instancia is not { } menu)
+		{
+			Checa("ha uma tela de pausa de producao na arvore", false);
+			yield break;
+		}
+
+		Checa("ha MUNDO na tela (senao esta familia mediria o lobby por engano)", World.Instancia != null);
+
+		// PELA TECLA, e nao pelo `Abrir()`: e o gesto do jogador, e ele passa pelo portao do embate.
+		Toque(Key.Escape);
+		yield return 0.4;
+		Checa("o ESC fora do embate ABRE a tela de pausa", menu.Aberto && TelaAberta("Pause"));
+
+		Node raiz = menu;
+		Checa("o titulo diz PAUSA (e nao OPÇÕES, que e o rotulo do lobby)",
+			  Todos<Label>(raiz).Any(l => l.Text == "PAUSA"),
+			  Todos<Label>(raiz).FirstOrDefault(l => l.Text is "PAUSA" or "OPÇÕES")?.Text ?? "(nenhum)");
+		Checa("o botao de voltar diz 'Voltar ao jogo' (no lobby ele vira 'Fechar')",
+			  Todos<Button>(raiz).Any(b => b.IsVisibleInTree() && b.Text == "Voltar ao jogo"));
+		Checa("'Desconectar' esta VISIVEL dentro do jogo (no lobby ele some)",
+			  Todos<Button>(raiz).Any(b => b.IsVisibleInTree() && b.Text.StartsWith("Desconectar")));
+		Checa("'Configurar teclas' continua vivo",
+			  Todos<Button>(raiz).Any(b => b.IsVisibleInTree()
+										   && b.Text.StartsWith("Configurar teclas") && !b.Disabled));
+
+		// ---- E O ESC FECHA, que e a metade que nunca pode ser bloqueada ----
+		Toque(Key.Escape);
+		yield return 0.4;
+		Checa("o ESC fecha a tela de pausa de volta", !menu.Aberto);
 	}
 }

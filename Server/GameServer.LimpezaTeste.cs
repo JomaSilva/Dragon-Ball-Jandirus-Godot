@@ -45,6 +45,10 @@ namespace Jandirus.Server;
 ///     inscrita tenta gravar a conta DENTRO da limpeza.
 ///  8. O SERVIDOR FUNCIONA DEPOIS -- conta nova, corpo que nasce, anda e transforma no mundo limpo.
 ///  9. O CONTEUDO SOBREVIVEU -- o contra-exemplo. Sem ele, "apagar mais" deixaria tudo verde.
+/// 10. AS ESFERAS DO DRAGAO, JOGADAS DE VERDADE -- um jogador ERGUE a estatua, PEGA as sete,
+///     INVOCA, REIVINDICA as Super Esferas e deixa uma PROCURACAO de pe, tudo pelos verbos de
+///     producao; e so entao a limpeza. E a unica secao que mede este sistema pelo gesto, e nao pelo
+///     campo escrito a mao. **10b** e ela provada disparando, com o `Zerar` das esferas mudo.
 ///
 /// ============================ AS SECOES 5 A 8 NAO SAO ENFEITE DA 4 ============================
 /// A secao 4 pergunta "a memoria zerou e a pasta esvaziou?", e as duas respostas sao SIM num
@@ -104,6 +108,8 @@ public partial class GameServer
 		SecaoDaInjecaoDoDefeito();
 		SecaoDoJogadorOnline();
 		SecaoDoServidorDepois();
+		SecaoDasEsferasJogadas();
+		SecaoDoZerarMudoDasEsferas();
 		SecaoDoConteudoDoJogo(conteudoAntes);
 
 		GD.Print($"[wipe] ================ {_wtOk} OK, {_wtFalhou} FALHA(S) ================");
@@ -597,11 +603,19 @@ public partial class GameServer
 	/// `.objetos`. A mobilia nunca foi apagada (ela e conteudo -- ver `ZerarConstrucoes`), entao
 	/// chamar o carregador inteiro a DUPLICARIA: dois bancos por cima um do outro, para sempre.
 	///
-	/// Os outros onze podem ser chamados de novo tal como estao: cinco ja dao `Clear()` antes de ler,
+	/// Os outros treze podem ser chamados de novo tal como estao: sete ja dao `Clear()` antes de ler,
 	/// e os quatro que enchem sem limpar (`mundo`, `naves`, `conquista`, `reputacao`) so sao seguros
 	/// aqui porque o `Zerar()` acabou de esvazia-los -- e essa dependencia e justamente o que a
 	/// contagem final da secao 4 vigia.
 	/// ==========================================================================================
+	///
+	/// ============================ AS DUAS DAS ESFERAS TIVERAM QUE APRENDER A LIMPAR ============================
+	/// `CarregarEsferas` e `CarregarSupers` estariam na terceira familia -- a dos que enchem sem limpar
+	/// -- e nela **nao dava** pra deixa-los, porque o `Zerar` deles nao termina vazio de proposito: as
+	/// sete Super voltam livres e o Porunga de Namek volta de pe. Uma recarga por cima disso duplicaria o
+	/// set eterno (dois `Id = 0`) e daria catorze Super Esferas. Os dois agora esvaziam antes de ler, e o
+	/// porque esta escrito neles.
+	/// ========================================================================================================
 	///
 	/// SO A BANCADA CHAMA. O jogo nunca recarrega o mundo com o servidor de pe -- e essa e a razao
 	/// de o `Zerar()` existir em vez de "apagar o disco e reler tudo".
@@ -621,6 +635,13 @@ public partial class GameServer
 		CarregarReputacao();
 		CarregarPlanetasMortos();
 		CarregarConquista();
+
+		// AS ESFERAS DEPOIS DA CONQUISTA, como no boot (`CarregarVisual`): `ErguerEstatua` pergunta ao
+		// livro dos dominios quem manda no planeta, e o set eterno precisa do catalogo pra saber que
+		// Namek existe. As Super vao junto por serem o mesmo sistema pro jogador.
+		CarregarEsferas();
+		CarregarSupers();
+
 		CarregarCargos();
 		CarregarMestres();
 		CarregarHerdeiros();
@@ -693,7 +714,7 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// O SERVIDOR ESCREVE TUDO O QUE ELE LEMBRA -- os doze escritores DE PRODUCAO.
+	/// O SERVIDOR ESCREVE TUDO O QUE ELE LEMBRA -- os catorze escritores DE PRODUCAO.
 	///
 	/// ============================ ESTA LISTA E A MAO, E E DE PROPOSITO ============================
 	/// Ela e a UNICA lista escrita a mao neste trabalho, e ela tem que ser, porque e a
@@ -726,6 +747,8 @@ public partial class GameServer
 		SalvarReputacao();
 		SalvarConquista();
 		SalvarPlanetasMortos();
+		SalvarEsferas();
+		SalvarSupers();
 		SalvarMissoes();
 		SalvarCargos();
 		SalvarMestres();
@@ -735,15 +758,39 @@ public partial class GameServer
 		// e o `Persistir` esta medido na secao 3. Quem semeia conta aqui grava na hora.
 	}
 
-	/// <summary>Zera a memoria de todos os inscritos SEM tocar no disco -- o avesso do `Carregar*`.</summary>
+	/// <summary>
+	/// Zera a memoria de todos os inscritos SEM tocar no disco -- o avesso do `Carregar*`.
+	///
+	/// ============================ "SEM TOCAR NO DISCO" PRECISOU DE UMA LINHA PRA CONTINUAR VERDADE ============================
+	/// Ela era verdade por acaso: nenhum `Zerar` gravava nada. O `Zerar` das esferas quebrou isso, porque
+	/// ele nao termina vazio -- a passada de baixo re-ergue o Porunga de Namek, e erguer passa por
+	/// `SalvarEsferas()`.
+	///
+	/// E o instante em que isso aconteceria e o pior possivel: o `finally` do <see cref="NaCaixa"/>
+	/// devolve o `_store` pra pasta DE VERDADE do dono **antes** de chamar esta funcao. Sem o portao, uma
+	/// bancada de leitura gravaria um `esferas.json` de mundo recem-nascido por cima das estatuas do dono
+	/// -- e a `--wipeteste` apagaria justamente o mundo que veio medir. Este projeto ja pagou esse preco
+	/// uma vez, com o `planetas-mortos.json`.
+	///
+	/// O portao e o MESMO de producao (`_limpezaEmCurso`), e nao um segundo eixo: e ele que `SalvarEsferas`
+	/// e `SalvarSupers` consultam, e esta funcao e literalmente o passo 3 da limpeza rodando sozinho.
+	/// Guardado e devolvido, porque o `ExecutarLimpeza` pode estar por fora.
+	/// ====================================================================================================================
+	/// </summary>
 	private void ZerarSoAMemoria()
 	{
-		foreach (SistemaDoMundo s in _sistemasDoMundo)
+		bool portaoAntes = _limpezaEmCurso;
+		_limpezaEmCurso = true;
+		try
 		{
-			if (s.Preservar) continue;
-			try { s.Zerar(); } catch (Exception e) { GD.PushWarning($"[wipe] Zerar de '{s.Nome}': {e.Message}"); }
+			foreach (SistemaDoMundo s in _sistemasDoMundo)
+			{
+				if (s.Preservar) continue;
+				try { s.Zerar(); } catch (Exception e) { GD.PushWarning($"[wipe] Zerar de '{s.Nome}': {e.Message}"); }
+			}
+			RemontarOMundoNovo();
 		}
-		RefazerColisaoDeTudo();
+		finally { _limpezaEmCurso = portaoAntes; }
 	}
 
 	/// <summary>
@@ -800,8 +847,12 @@ public partial class GameServer
 	/// ============================ POR QUE TODOS, E NAO "UM EXEMPLO" ============================
 	/// A comparacao "primeiro boot == depois da limpeza" so vale pro que MUDOU no meio. Um sistema
 	/// que a bancada nunca acendeu tem o mesmo valor nos tres retratos por nao ter sido tocado --
-	/// e passaria verde com o `Zerar` dele quebrado, apagado, ou nunca escrito. Semear os catorze e
-	/// o que faz o retrato C ser uma afirmacao sobre os catorze.
+	/// e passaria verde com o `Zerar` dele quebrado, apagado, ou nunca escrito. Semear os dezesseis e
+	/// o que faz o retrato C ser uma afirmacao sobre os dezesseis.
+	///
+	/// E ISSO NAO E TEORIA: as esferas do dragao e as Super Esferas passaram semanas inteiramente fora
+	/// desta lista, e a secao 5 ficou VERDE o tempo todo comparando um vazio com outro vazio. Os itens
+	/// 15 e 16 sao o conserto desse cego, e nao enfeite.
 	///
 	/// E o dono pediu nominalmente sete destes: conta, construcao, conquista, saga, reputacao,
 	/// tecnica customizada (ela mora DENTRO do save da conta -- ver `CharacterSave.Customizadas`) e
@@ -888,6 +939,72 @@ public partial class GameServer
 		_adiantoDoCeu = 9_999;
 		var chave = new Jandirus.Core.World.ChaveDePlaneta(true, zona.Name, 0);
 		_invasoes[chave] = new Invasao { Chave = chave, Zona = zona, Planeta = zona.Name };
+
+		// ---------------------------------------------------------- 15. um SET DE ESFERAS de jogador
+		// ============================ AS QUATRO COISAS QUE O DONO NOMEOU, NUMA SEMEADURA SO ============================
+		// A estatua (com o vinculo pro criador e o desejo supremo COMPRADO), as sete espalhadas, uma
+		// esfera NA MAO de alguem, e o dragao de pe. Sem elas aqui, este sistema teria o mesmo valor nos
+		// tres retratos por nunca ter sido tocado -- e a secao 5 passaria verde com o `Zerar` dele
+		// quebrado, apagado ou nunca escrito. E exatamente o cego que deixou este sistema inteiro fora da
+		// medicao ate agora.
+		//
+		// O `Ciclo`, o `Pedidos` e o `AtivoEm` sao postos na mao de proposito: sao eles que fazem o
+		// arquivo do retrato B ter conteudo diferente do de um mundo recem-nascido.
+		// ==========================================================================================================
+		var setDoWipe = new SetDeEsferas
+		{
+			Id = 903,
+			Ex = 640, Ey = 640,
+			CriadorSig = "assinatura_do_wipe",
+			CriadorConta = "jogador_do_wipe",
+			CriadorNome = "JogadorDoWipe",
+			Poder = 1_000_000, Desejos = 2, Pedidos = 1, Ciclo = 5,
+			AtivoEm = 1_700_000_000, TemSupremo = true,
+		};
+		setDoWipe.PorZona(zona);
+		_sets.Add(setDoWipe);
+
+		for (int n = 1; n <= Jandirus.Core.Magic.Esferas.Total; n++)
+		{
+			var esfera = new Esfera { Set = setDoWipe.Id, Numero = n, X = 640 + n * 8, Y = 640 };
+			esfera.PorZona(zona);
+			_esferas.Add(esfera);
+		}
+
+		// A ESFERA CARREGADA. `Portador` e `[JsonIgnore]` -- ele nao vai pro disco --, entao ele so
+		// aparece na medicao porque o objeto inteiro tem que sumir da MEMORIA junto com o resto.
+		_esferas[^1].Portador = -910_009;
+		_invocacoes[setDoWipe.Id] = new Invocacao
+		{
+			Set = setDoWipe.Id, Invocador = -910_009,
+			Onde = new Vec2(640, 620), ExpiraEm = 1_700_000_060,
+		};
+
+		// ---------------------------------------------------------- 16. as SUPER ESFERAS presas
+		// Uma reivindicada, um canal de disputa em pe, o ciclo andado, e a PROCURACAO da lingua dos
+		// deuses com o pedido ja registrado -- que e o fantasma que trancava o Super Shenron pra sempre.
+		// As duas ultimas linhas nao vao pro disco: elas so existem na metade da MEMORIA do retrato, e e
+		// por isso que a contagem deste inscrito as soma.
+		_cicloDasSupers = 3;
+		if (_supers.Find(s => s.Numero == 1) is { } super1)
+		{
+			super1.Dono = "assinatura_do_wipe";
+			super1.DonoNome = "JogadorDoWipe";
+		}
+		_disputasDeSuper[-910_009] = new DisputaDeSuper
+		{
+			Numero = 2, Quem = -910_009, Faltam = 42, Tomada = false, ProximoAviso = 0,
+		};
+		_benefSig = "assinatura_do_wipe";
+		_benefNome = "JogadorDoWipe";
+		_pedidoDoBenef = "riqueza";
+		_alvoDoPedido = "JogadorDoWipe";
+		_ofertasDeGuarda["jogador_do_wipe"] = new OfertaDeGuarda
+		{
+			DeConta = "jogador_do_wipe", DeNome = "JogadorDoWipe",
+			DeAssinatura = "assinatura_do_wipe", Ate = NowMs() + 60_000,
+		};
+		_precoPendente = ("jogador_do_wipe", -910_009, NowMs() + 60_000);
 
 		ForcarGravacaoDeTudo();
 	}
@@ -1353,6 +1470,517 @@ public partial class GameServer
 	}
 
 	// =====================================================================
+	// 10. AS ESFERAS DO DRAGAO, JOGADAS DE VERDADE
+	// =====================================================================
+	/// <summary>
+	/// **UM JOGADOR JOGA O SISTEMA INTEIRO, E SO ENTAO A LIMPEZA VEM.**
+	///
+	/// ============================ POR QUE ESTA SECAO EXISTE, TENDO A 5 ============================
+	/// A secao 5 semeia estes dois sistemas ESCREVENDO NOS CAMPOS (`_sets.Add(new SetDeEsferas{...})`).
+	/// Isso basta pra ela -- o que ela compara e o retrato --, e **nao basta pra responder ao pedido do
+	/// dono**, que foi sobre *"as esferas criadas por jogadores"*. Um estado montado a mao prova que o
+	/// `Zerar` esvazia uma lista; ele nao prova que o que o JOGO cria cabe naquela lista.
+	///
+	/// A diferenca nao e filosofica, e ela ja mordeu neste projeto: o `Portador` (a esfera na mao) e
+	/// `[JsonIgnore]`, o `_invocacoes` e um dicionario por id de SESSAO, a procuracao mora em quatro
+	/// campos soltos de OUTRO arquivo, e o `Ciclo` -- que e o endereco das sete -- so anda quando alguem
+	/// espalha. Nada disso aparece se a semeadura for `= 1` num campo escolhido a dedo: aparece quando
+	/// `ErguerEstatua`, `PegarEsfera`, `InvocarODragao`, `ReivindicarSuper` e `TransferirAGuarda` rodam
+	/// de verdade, um depois do outro, com um corpo no mundo.
+	/// ==========================================================================================
+	///
+	/// ============================ E A PROVA NAO E "O ARQUIVO SUMIU" ============================
+	/// O arquivo some pela VASSOURA (a limpeza varre a pasta inteira), com ou sem `Zerar`. Entao esta
+	/// secao mede as DUAS metades em cada passo:
+	///
+	///   * ANTES da limpeza o estado EXISTE -- no disco (o `esferas.json` cru carrega a conta e o nome
+	///     de quem ergueu) e na memoria. Sem esta metade, "sumiu" fica verde num sistema onde nunca
+	///     houve nada -- que e literalmente como estes dois passaram semanas fora da medicao.
+	///   * DEPOIS, o disco esta limpo **e o servidor volta a gravar**. E a segunda parte que importa:
+	///     um `Zerar` que falte deixa o cache sujo, e o arquivo RESSUSCITA com o conteudo velho na
+	///     primeira gravacao -- o autosave de dois minutos, ou o proximo gesto de qualquer jogador.
+	///
+	/// A secao <see cref="SecaoDoZerarMudoDasEsferas"/> (10b) prova exatamente isso, disparando.
+	/// ======================================================================================
+	///
+	/// O LIMITE HONESTO, escrito porque ele e real: a CONTAGEM REGRESSIVA da disputa
+	/// (<see cref="TickDasSuperEsferas"/>) exige `Peer != null`, e um `NetPeer` nao se fabrica sem
+	/// conexao de verdade -- a secao 7 ja documenta a mesma parede. Entao o canal e ABERTO pelo verb de
+	/// producao (<see cref="ReivindicarSuper"/>) e FECHADO pelo funil de producao
+	/// (<see cref="FecharADisputa"/>, o mesmo que o tique chama); o que fica de fora e so o relogio
+	/// entre os dois.
+	/// </summary>
+	private void SecaoDasEsferasJogadas()
+	{
+		GD.Print("[wipe] -- 10. as esferas do dragao: jogar de verdade, e SO ENTAO limpar --");
+
+		var forjados = new List<ServerPlayer>();
+		NaCaixa("esferasjogadas", _ =>
+		{
+			try
+			{
+				// ------------------------------------------------------ o primeiro boot, e a referencia
+				SemearPrimeiroBoot();
+
+				SetDeEsferas? eternoAntes = _sets.Find(s => s.Eterno);
+				AfirmarWt("no primeiro boot Namek ja tem o set ETERNO", eternoAntes != null,
+						  "sem ele as duas direcoes da prova do eterno nao tem referencia");
+				double esperaNoBoot = eternoAntes != null ? eternoAntes.AtivoEm - TempoDoMundo : -1;
+
+				// O CONTRA-EXEMPLO, na frente de tudo: num mundo onde nunca houve set de jogador,
+				// "sumiu" e verdade de graca.
+				AfirmarWt("...e NAO ha set de jogador nenhum, nem vinculo com as Super",
+						  _sets.Count(s => !s.Eterno) == 0 && QuantoAsSupersPrendem() == 0,
+						  $"{_sets.Count(s => !s.Eterno)} set(s), {QuantoAsSupersPrendem()} vinculo(s)");
+
+				// ------------------------------------------------------ 1. ERGUER (verb de producao)
+				ServerPlayer? heroi = ErguerUmaEstatuaDeJogador("guardiao_do_wipe", "Kami do Wipe", forjados);
+				AfirmarWt("um JOGADOR ergue a Estatua do Dragao pelo verb de producao", heroi != null,
+						  "o verb recusou -- raca, classe, trono ou a Terra fora do catalogo");
+				if (heroi == null) return;
+
+				SetDeEsferas? set = _sets.Find(s => !s.Eterno);
+				if (set == null) { AfirmarWt("a estatua erguida esta no registro", false); return; }
+
+				AfirmarWt("...e a estatua guarda QUEM a ergueu (conta, nome e assinatura)",
+						  string.Equals(set.CriadorConta, heroi.Conta, StringComparison.Ordinal)
+						  && string.Equals(set.CriadorNome, heroi.Name, StringComparison.Ordinal)
+						  && string.Equals(set.CriadorSig, heroi.Assinatura, StringComparison.Ordinal));
+
+				// O DESEJO SUPREMO E COMPRADO NO CAMINHO, e nao escrito: dois milhoes de zeni saem do
+				// bolso dentro do proprio `ErguerEstatua`.
+				AfirmarWt("...e O MAIS FORTE DO UNIVERSO foi COMPRADO (2.000.000 de zeni sairam do bolso)",
+						  set.TemSupremo && heroi.Ficha.Zeni < 1, $"supremo={set.TemSupremo}, zeni={heroi.Ficha.Zeni:N0}");
+
+				AfirmarWt("...e as SETE nasceram espalhadas pelo mundo",
+						  _esferas.Count(e => e.Set == set.Id) == Jandirus.Core.Magic.Esferas.Total,
+						  $"{_esferas.Count(e => e.Set == set.Id)}");
+
+				// ------------------------------------------------------ 2. PEGAR (a esfera na mao)
+				// A "mochila" nao existe: carregar e o campo `Portador` DENTRO da propria esfera. Ele e
+				// `[JsonIgnore]` -- nao vai pro disco --, entao ele so pode ser medido na memoria, e e
+				// exatamente o tipo de estado que um `Zerar` esquece.
+				foreach (Esfera e in _esferas.Where(x => x.Set == set.Id).ToList())
+				{
+					heroi.Pos = new Vec2(e.X, e.Y);
+					PegarEsfera(heroi);
+				}
+				AfirmarWt("...e o jogador PEGA as sete do chao (o verb `db_pegar` de producao)",
+						  QuantasCarrega(heroi.Id) == Jandirus.Core.Magic.Esferas.Total,
+						  $"{QuantasCarrega(heroi.Id)} na mao");
+
+				// ------------------------------------------------------ 3. INVOCAR
+				// A ESPERA DE NASCIMENTO E DE VERDADE (0,4 ano do DM), entao o relogio do mundo anda --
+				// pela mesma manivela do admin. E ela e ESTADO DE OUTRO INSCRITO: e por isso que a
+				// direcao 2 da prova do eterno, la embaixo, tem com o que medir.
+				double adiantoUsado = Jandirus.Core.Magic.Esferas.SegundosDe(
+					Jandirus.Core.Magic.Esferas.EsperaDeNascimento) + 10;
+				_adiantoDoCeu += adiantoUsado;
+				AfirmarWt("o set ACORDA quando o relogio passa da espera de nascimento", SetAtivo(set));
+
+				InvocarODragao(heroi);
+				AfirmarWt("...e o DRAGAO fica de pe (contador de sessao: nao existe no disco)",
+						  _invocacoes.ContainsKey(set.Id));
+
+				// ------------------------------------------------------ 4. O CICLO DAS SUPER, ANDADO
+				// ============================ ELE PRECISA ANDAR, SENAO A AFIRMACAO E VAZIA ============================
+				// `_cicloDasSupers` nasce zero, e a limpeza o poe em zero. Medido sem ninguem tendo pedido
+				// nada, o "voltou a zero" do fim seria verde por nunca ter saido de la -- vacuidade, que e
+				// o cego que esta secao inteira existe pra nao ter.
+				//
+				// E ele so anda por UM caminho: um desejo ao SUPER SHENRON o consome
+				// (`ConsumirAsSupers`, o `pspace_sdb_scatter()` do DM). Entao um Kai que fala a lingua dos
+				// deuses junta as sete, pede, e as sete reaparecem NOUTRO ENDERECO -- que e literalmente o
+				// que o ciclo significa (ele e metade da entrada de `SuperEsferas.PosicaoDa`).
+				// ================================================================================================
+				ZoneKey espaco = Espaco.Zona(SeedDoUniverso);
+
+				ServerPlayer falante = Forjar("Kaio do Wipe", OndeEstaASuper(1), espaco, "falante_do_wipe");
+				forjados.Add(falante);
+				falante.Race = "Kai";
+				falante.Ficha.Race = "Kai";
+				ConferirALingua(falante);
+
+				for (int n = 1; n <= Jandirus.Core.Magic.SuperEsferas.Total; n++)
+				{
+					falante.Pos = OndeEstaASuper(n);
+					ReivindicarSuper(falante);
+					FecharOCanalDaBancada(falante);
+				}
+				AfirmarWt("um Kai junta as SETE Super Esferas pelos verbos de producao",
+						  QuantasSupersTem(falante.Assinatura) == Jandirus.Core.Magic.SuperEsferas.Total,
+						  $"{QuantasSupersTem(falante.Assinatura)}");
+
+				ChamarOSuperShenron(falante, "sdb_riqueza");
+				AfirmarWt("...e o desejo dele ANDA o ciclo (o endereco das sete muda)",
+						  _cicloDasSupers == 1 && !_supers.Any(s => s.Dono.Length > 0),
+						  $"ciclo {_cicloDasSupers}, {_supers.Count(s => s.Dono.Length > 0)} ainda com dono");
+
+				// ------------------------------------------------------ 5. REIVINDICAR uma Super Esfera
+				MoveToZone(heroi.Id, espaco, OndeEstaASuper(1));
+
+				ReivindicarSuper(heroi);
+				AfirmarWt("no espaco, o jogador ABRE o canal de disputa pela Super Esfera #1",
+						  _disputasDeSuper.ContainsKey(heroi.Id),
+						  "o verb recusou -- ver o alcance e a zona");
+				FecharOCanalDaBancada(heroi);
+				AfirmarWt("...e o canal fechado lhe da a POSSE da #1",
+						  QuantasSupersTem(heroi.Assinatura) == 1, $"{QuantasSupersTem(heroi.Assinatura)}");
+
+				// AS OUTRAS SEIS, pelo mesmo par de verbos: a procuracao exige as SETE, e ela e a coisa
+				// que o dono nomeou. Nao ha atalho aqui de proposito.
+				for (int n = 2; n <= Jandirus.Core.Magic.SuperEsferas.Total; n++)
+				{
+					heroi.Pos = OndeEstaASuper(n);
+					ReivindicarSuper(heroi);
+					FecharOCanalDaBancada(heroi);
+				}
+				AfirmarWt("...e as SETE Super Esferas ficam com ele",
+						  QuantasSupersTem(heroi.Assinatura) == Jandirus.Core.Magic.SuperEsferas.Total,
+						  $"{QuantasSupersTem(heroi.Assinatura)}");
+
+				// ------------------------------------------------------ 6. a PROCURACAO de pe
+				ServerPlayer voz = Forjar("Kaioshin do Wipe", heroi.Pos, espaco, "portavoz_do_wipe");
+				forjados.Add(voz);
+
+				TransferirAGuarda(heroi, voz.Name);
+				AfirmarWt("a oferta de guarda fica de pe esperando o SIM",
+						  _ofertasDeGuarda.ContainsKey(voz.Conta));
+
+				ResponderAGuarda(voz, aceitou: true);
+				AfirmarWt("aceita, a PROCURACAO fica de pe: as sete com o porta-voz, o desejo do pedinte",
+						  HaProcuracao
+						  && string.Equals(_benefSig, heroi.Assinatura, StringComparison.Ordinal)
+						  && QuantasSupersTem(voz.Assinatura) == Jandirus.Core.Magic.SuperEsferas.Total);
+
+				RegistrarPedido(heroi, "sdb_riqueza");
+				AfirmarWt("...e o PEDIDO do beneficiario fica registrado",
+						  _pedidoDoBenef.Length > 0,
+						  "e este o fantasma que trancava o Super Shenron pra sempre num mundo herdado");
+
+				// UM CANAL DE TOMADA ABERTO NO INSTANTE DA LIMPEZA. Ele existe pra medir a contaminacao
+				// cruzada que a inscricao documenta: o tique seguinte derrubaria esta disputa e chamaria
+				// `RecadoAoDono`, que grava o `conquista.json` de OUTRO inscrito.
+				ServerPlayer ladrao = Forjar("Ladrao do Wipe", OndeEstaASuper(3), espaco, "ladrao_do_wipe");
+				forjados.Add(ladrao);
+				ReivindicarSuper(ladrao);
+				AfirmarWt("um canal de TOMADA fica aberto no instante da limpeza",
+						  _disputasDeSuper.ContainsKey(ladrao.Id));
+
+				// ------------------------------------------------------ A FOTOGRAFIA DO ANTES
+				// O DISCO CRU, e nao a memoria: os verbos ja gravaram sozinhos (cada um chama o
+				// `Salvar*` dele), e a passada abaixo e o autosave por cima -- os dois caminhos.
+				ForcarGravacaoDeTudo();
+
+				string contaHeroi = heroi.Conta, nomeHeroi = heroi.Name;
+				string sigHeroi = heroi.Assinatura, sigVoz = voz.Assinatura;
+				int idDoSet = set.Id;
+
+				string esferasAntes = LerOuVazio(CaminhoDasEsferas);
+				string supersAntes = LerOuVazio(CaminhoDasSupers);
+
+				AfirmarWt("ANTES: o esferas.json do DISCO carrega a conta e o nome de quem ergueu",
+						  esferasAntes.Contains(contaHeroi, StringComparison.Ordinal)
+						  && esferasAntes.Contains(nomeHeroi, StringComparison.Ordinal),
+						  $"{esferasAntes.Length} b");
+				AfirmarWt("ANTES: o superesferas.json carrega o dono das sete E a procuracao",
+						  supersAntes.Contains(sigVoz, StringComparison.Ordinal)
+						  && supersAntes.Contains(sigHeroi, StringComparison.Ordinal),
+						  $"{supersAntes.Length} b");
+				AfirmarWt("ANTES: a MEMORIA tem estatua, esferas na mao, dragao de pe, disputa e procuracao",
+						  _sets.Count(s => !s.Eterno) == 1
+						  && _esferas.Count(e => e.Portador != 0) > 0
+						  && _invocacoes.Count > 0
+						  && _disputasDeSuper.Count > 0
+						  && HaProcuracao,
+						  $"sets={_sets.Count(s => !s.Eterno)}, mao={_esferas.Count(e => e.Portador != 0)}, "
+						+ $"dragoes={_invocacoes.Count}, disputas={_disputasDeSuper.Count}, proc={HaProcuracao}");
+				AfirmarWt("ANTES: os dois inscritos contam o que ha pra apagar",
+						  _sets.Count(s => !s.Eterno) == 1 && QuantoAsSupersPrendem() > 0,
+						  $"{QuantoAsSupersPrendem()} vinculo(s)");
+				// E O CICLO ESTA FORA DE ZERO. Sem esta linha, o "voltou a zero" do fim seria verde por
+				// nunca ter saido -- a metade que falta em toda afirmacao de ausencia.
+				AfirmarWt("ANTES: o ciclo das Super esta FORA de zero (senao o 'voltou a zero' e vazio)",
+						  _cicloDasSupers > 0, $"{_cicloDasSupers}");
+
+				// A MARCA NO ETERNO. Ela nao muda nada no jogo -- ela existe pra a direcao 2 poder
+				// distinguir "o set eterno voltou" de "o set eterno nunca saiu".
+				if (eternoAntes != null) eternoAntes.Ciclo = 4242;
+
+				// ------------------------------------------------------ **A LIMPEZA**
+				ResultadoDaLimpeza r = ExecutarLimpeza(null);
+				AfirmarWt("a limpeza nao deu erro de disco", r.Erros.Count == 0,
+						  string.Join("; ", r.Erros));
+
+				// ------------------------------------------------------ DEPOIS: o disco
+				AfirmarWt("DISCO: nao ha esferas.json depois da limpeza",
+						  !System.IO.File.Exists(CaminhoDasEsferas));
+				AfirmarWt("DISCO: nao ha superesferas.json depois da limpeza",
+						  !System.IO.File.Exists(CaminhoDasSupers));
+
+				// ------------------------------------------------------ DEPOIS: a MEMORIA
+				// E ESTA E A METADE QUE O DISCO ESCONDE. As duas linhas de cima ficariam verdes com o
+				// `Zerar` arrancado (a vassoura varre a pasta inteira); estas nao.
+				AfirmarWt("MEMORIA: a estatua do jogador sumiu", !_sets.Any(s => !s.Eterno),
+						  $"{_sets.Count(s => !s.Eterno)} set(s) de jogador de pe");
+				AfirmarWt("MEMORIA: as sete daquele set sumiram", !_esferas.Any(e => e.Set == idDoSet));
+				AfirmarWt("MEMORIA: nenhuma esfera na mao de ninguem (o `Portador`, que nao vai pro disco)",
+						  !_esferas.Any(e => e.Portador != 0),
+						  $"{_esferas.Count(e => e.Portador != 0)} carregada(s)");
+				AfirmarWt("MEMORIA: nenhum dragao de pe (o `_invocacoes`, indexado por id de sessao)",
+						  _invocacoes.Count == 0, $"{_invocacoes.Count}");
+				AfirmarWt("MEMORIA: nenhuma Super Esfera tem dono",
+						  !_supers.Any(s => s.Dono.Length > 0)
+						  && QuantasSupersTem(sigHeroi) == 0 && QuantasSupersTem(sigVoz) == 0);
+				AfirmarWt("MEMORIA: a PROCURACAO caiu, com o pedido dela",
+						  !HaProcuracao && _pedidoDoBenef.Length == 0 && _alvoDoPedido.Length == 0);
+				AfirmarWt("MEMORIA: nenhum canal de disputa e nenhuma oferta de guarda de pe",
+						  _disputasDeSuper.Count == 0 && _ofertasDeGuarda.Count == 0);
+				AfirmarWt("MEMORIA: o ciclo das Super voltou a zero (ele e metade do endereco delas)",
+						  _cicloDasSupers == 0, $"{_cicloDasSupers}");
+				AfirmarWt("MEMORIA: os dois inscritos contam ZERO",
+						  _sets.Count(s => !s.Eterno) == 0 && QuantoAsSupersPrendem() == 0,
+						  $"{_sets.Count(s => !s.Eterno)} set(s), {QuantoAsSupersPrendem()} vinculo(s)");
+
+				// ------------------------------------------------------ O CONJUNTO ETERNO, as duas direcoes
+				SetDeEsferas? eternoDepois = _sets.Find(s => s.Eterno);
+
+				// DIRECAO 1 -- ELE VOLTA DE PE, e sem reiniciar o servidor. Um `Zerar` que so esvaziasse
+				// as listas deixaria Namek SEM Esferas do Dragao ate o proximo boot: `ErguerOSetEterno`
+				// so tinha o boot como chamador, e a limpeza roda com o servidor no ar.
+				AfirmarWt("ETERNO (1): Namek continua com as Esferas do Dragao depois da limpeza",
+						  eternoDepois != null,
+						  "sem a remontagem, o unico set que existe sem jogador nenhum some ate o reinicio");
+				AfirmarWt("ETERNO (1): ...com as sete penduradas nela",
+						  _esferas.Count(e => e.Set == Jandirus.Core.Magic.Esferas.IdDoSetEterno)
+						  == Jandirus.Core.Magic.Esferas.Total);
+				AfirmarWt("ETERNO (1): ...e ha UM SO (dois com o mesmo Id = 0 e o defeito da recarga)",
+						  _sets.Count(s => s.Eterno) == 1, $"{_sets.Count(s => s.Eterno)}");
+
+				// DIRECAO 2 -- ELE NAO SOBREVIVEU: ele foi RECRIADO. E a diferenca importa, porque um
+				// eterno POUPADO traria junto tudo o que estivesse escrito nele.
+				// O `!= null` NAO E REDUNDANTE com a direcao 1: sem ele, um eterno AUSENTE satisfaz esta
+				// linha de graca (`null` nunca e o objeto de antes) -- e a injecao que arranca o
+				// `ErguerOSetEterno` do <see cref="RemontarOMundoNovo"/> deixava exatamente ESTA verde
+				// enquanto as tres da direcao 1 ficavam vermelhas. Verde por ausencia e o cego que este
+				// projeto ja registrou; a afirmacao passa a exigir um eterno de pe E diferente.
+				AfirmarWt("ETERNO (2): o eterno de agora e outro OBJETO (recriado, e nao poupado)",
+						  eternoDepois != null && !ReferenceEquals(eternoAntes, eternoDepois));
+				AfirmarWt("ETERNO (2): ...e a marca posta no eterno do mundo velho nao veio junto",
+						  eternoDepois != null && eternoDepois.Ciclo != 4242,
+						  $"Ciclo {eternoDepois?.Ciclo}");
+
+				// E ELE NASCEU SOB O RELOGIO DO MUNDO NOVO. `AtivoEm` e carimbo ABSOLUTO do
+				// `TempoDoMundo`, e o adianto do ceu -- que esta secao empurrou pra frente pra poder
+				// invocar -- e zerado por OUTRO inscrito. Erguido antes dele (dentro do `ZerarEsferas`,
+				// que era a forma obvia), o Porunga do mundo novo nasceria apagado por todo o tamanho do
+				// adianto, e nada no jogo diria por que. E o motivo inteiro de o `RemontarOMundoNovo`
+				// existir como passada separada.
+				AfirmarWt("ETERNO (2): o relogio do mundo voltou ao lugar", Math.Abs(_adiantoDoCeu) < 1,
+						  $"adianto {_adiantoDoCeu:0}");
+				double esperaDepois = eternoDepois != null ? eternoDepois.AtivoEm - TempoDoMundo : -1;
+				AfirmarWt("ETERNO (2): e a espera dele e a do PRIMEIRO BOOT, nao a do mundo adiantado",
+						  Math.Abs(esperaDepois - esperaNoBoot) <= 60,
+						  $"primeiro boot {esperaNoBoot:0} s, depois da limpeza {esperaDepois:0} s -- "
+						+ $"o adianto que a bancada usou foi {adiantoUsado:0} s");
+
+				// ------------------------------------------------------ **O ARQUIVO NAO RESSUSCITA**
+				// ============================ A METADE QUE O DISCO ESCONDE, MEDIDA ============================
+				// "o arquivo sumiu" nao e a pergunta: ele some pela vassoura de qualquer jeito. A
+				// pergunta e o que o servidor escreve na PROXIMA gravacao -- em producao, o autosave de
+				// dois minutos, ou o primeiro gesto de qualquer jogador.
+				// ==========================================================================================
+				ForcarGravacaoDeTudo();
+				AfirmarWt("o esferas.json VOLTA na primeira gravacao (senao a leitura de baixo nao diz nada)",
+						  System.IO.File.Exists(CaminhoDasEsferas));
+				AfirmarWt("...e o superesferas.json tambem", System.IO.File.Exists(CaminhoDasSupers));
+
+				string esferasDepois = LerOuVazio(CaminhoDasEsferas);
+				string supersDepois = LerOuVazio(CaminhoDasSupers);
+
+				AfirmarWt("o arquivo que voltou NAO lembra da conta de quem ergueu a estatua",
+						  !esferasDepois.Contains(contaHeroi, StringComparison.Ordinal),
+						  $"{esferasDepois.Length} b (era {esferasAntes.Length} b)");
+				AfirmarWt("...nem do nome dele, nem da assinatura",
+						  !esferasDepois.Contains(nomeHeroi, StringComparison.Ordinal)
+						  && !esferasDepois.Contains(sigHeroi, StringComparison.Ordinal));
+				AfirmarWt("...e o superesferas.json que voltou nao lembra do dono nem do procurador",
+						  !supersDepois.Contains(sigHeroi, StringComparison.Ordinal)
+						  && !supersDepois.Contains(sigVoz, StringComparison.Ordinal),
+						  $"{supersDepois.Length} b (era {supersAntes.Length} b)");
+
+				// ------------------------------------------------------ E O SISTEMA CONTINUA VIVO
+				// Um gesto de jogo DE VERDADE no mundo limpo -- e nao so o autosave. Ele responde a
+				// outra metade do pedido ("limpar e deixar o jogo quebrado nao e limpar") e prova de
+				// graca o contador de id, que cai sem precisar de linha nenhuma: `ProximoIdDeSet` varre
+				// `_sets` atras do primeiro livre, entao a lista vazia devolve o 1.
+				ServerPlayer? novo = ErguerUmaEstatuaDeJogador("novo_kami_do_wipe", "Novo Kami do Wipe", forjados);
+				AfirmarWt("o mundo limpo aceita uma estatua NOVA (o sistema continua vivo)", novo != null);
+
+				SetDeEsferas? setNovo = _sets.Find(s => !s.Eterno);
+				AfirmarWt("...e o id de set volta pro comeco -- nada foi herdado do mundo velho",
+						  setNovo != null && setNovo.Id == 1, $"id {setNovo?.Id}");
+				AfirmarWt("...e o esferas.json gravado por esse gesto continua sem o jogador antigo",
+						  !LerOuVazio(CaminhoDasEsferas).Contains(contaHeroi, StringComparison.Ordinal));
+			}
+			finally { SoltarOsForjados(forjados); }
+		});
+	}
+
+	// =====================================================================
+	// 10b. O DEFEITO INJETADO -- o `Zerar` das esferas mudo
+	// =====================================================================
+	/// <summary>
+	/// **A SECAO 10 PROVADA DISPARANDO -- E DISPARANDO NA METADE CERTA.**
+	///
+	/// ============================ ELA E A UNICA QUE MOSTRA POR QUE O DISCO NAO BASTA ============================
+	/// Com o `Zerar` das esferas arrancado (a inscricao ficando so com a linha de `Arquivos`), o
+	/// `esferas.json` **some do disco do mesmo jeito** -- a vassoura varre a pasta inteira, sem olhar
+	/// quem declarou o que. Uma bancada que so inspecionasse a pasta depois da limpeza daria 100% verde
+	/// em cima do defeito.
+	///
+	/// O que muda esta tudo na MEMORIA, e as tres afirmacoes abaixo sao a historia inteira do modo de
+	/// falha que o cabecalho da limpeza descreve:
+	///
+	///   1. o disco fica limpo (a injecao nao mediu errado);
+	///   2. a memoria NAO fica (o defeito e real e visivel);
+	///   3. e na primeira gravacao o arquivo **RESSUSCITA com o jogador dentro** -- que e o mundo
+	///      "novo" voltando a ficar sujo sozinho, dias depois, sem ninguem entender por que.
+	/// ========================================================================================================
+	///
+	/// O DEFEITO E INJETADO NO PROPRIO INSCRITO (`s.Zerar = () => { }`), como a secao 6b faz com as
+	/// naves: e a forma que sobrevive a qualquer reescrita do `ZerarEsferas`.
+	/// </summary>
+	private void SecaoDoZerarMudoDasEsferas()
+	{
+		GD.Print("[wipe] -- 10b. o defeito injetado: o `Zerar` das esferas mudo --");
+
+		SistemaDoMundo? inscrito = _sistemasDoMundo.Find(s => s.Arquivos.Contains("esferas.json"));
+		if (inscrito == null)
+		{
+			AfirmarWt("achei o inscrito das esferas pra injetar o defeito", false,
+					  "o sistema saiu do registro -- e isso e a secao 2 quem reprova");
+			return;
+		}
+
+		var forjados = new List<ServerPlayer>();
+		NaCaixa("esferasmudo", _ =>
+		{
+			try
+			{
+				SemearPrimeiroBoot();
+
+				ServerPlayer? heroi = ErguerUmaEstatuaDeJogador("mudo_do_wipe", "Kami Mudo", forjados);
+				if (heroi == null) { AfirmarWt("a estatua da injecao subiu", false); return; }
+				string conta = heroi.Conta;
+
+				ForcarGravacaoDeTudo();
+				AfirmarWt("a estatua da injecao esta no disco ANTES (senao nao ha defeito a injetar)",
+						  LerOuVazio(CaminhoDasEsferas).Contains(conta, StringComparison.Ordinal));
+
+				Action zerarDeVerdade = inscrito.Zerar;
+				inscrito.Zerar = () => { };   // inscrito, contado, e mudo
+				try
+				{
+					ExecutarLimpeza(null);
+
+					AfirmarWt("COM O `Zerar` MUDO, o DISCO fica limpo DO MESMO JEITO",
+							  !System.IO.File.Exists(CaminhoDasEsferas),
+							  "a vassoura varre a pasta inteira -- se ate isto falhar, a injecao nao "
+							+ "esta medindo o que devia");
+
+					AfirmarWt("...mas a MEMORIA acusa: a estatua do jogador continua de pe",
+							  _sets.Any(s => !s.Eterno && string.Equals(s.CriadorConta, conta, StringComparison.Ordinal)),
+							  "com o `Zerar` mudo e o estado sumindo assim mesmo, esta injecao nao "
+							+ "prova nada -- e a secao 10 tambem nao");
+
+					// E ESTE E O DEFEITO INTEIRO, NUMA LINHA: o disco volta a sujar sozinho.
+					ForcarGravacaoDeTudo();
+					AfirmarWt("...e o esferas.json RESSUSCITA com o jogador dentro na primeira gravacao",
+							  LerOuVazio(CaminhoDasEsferas).Contains(conta, StringComparison.Ordinal),
+							  "e o 'disco limpo com cache sujo' que a limpeza inteira existe pra evitar");
+				}
+				finally { inscrito.Zerar = zerarDeVerdade; }
+			}
+			finally { SoltarOsForjados(forjados); }
+		});
+	}
+
+	// =====================================================================
+	// AS FERRAMENTAS DA SECAO 10
+	// =====================================================================
+	/// <summary>
+	/// UMA ESTATUA DO DRAGAO ERGUIDA POR UM JOGADOR, pelo verb de producao -- devolve quem a ergueu.
+	///
+	/// ============================ OS PORTOES SAO LIGADOS, E NAO CONTORNADOS ============================
+	/// `ErguerEstatua` pergunta tres coisas (raca, classe, e territorio: Guardiao na Terra ou dono da
+	/// bandeira fora dela). A bancada responde as tres NO CORPO E NO LIVRO DE TRONOS, e chama o verb --
+	/// que e a diferenca entre medir o sistema e medir um atalho. Se um dia o portao mudar, esta funcao
+	/// para de devolver set e a secao 10 fica vermelha na primeira linha, com o motivo no console.
+	/// ==============================================================================================
+	///
+	/// O ZENI ENTRA CHEIO de proposito: o desejo supremo custa 2.000.000 e e comprado DENTRO do verb,
+	/// entao pagar por ele e a unica forma de o `TemSupremo` do arquivo ser verdade de jogo.
+	/// </summary>
+	private ServerPlayer? ErguerUmaEstatuaDeJogador(string conta, string nome, List<ServerPlayer> forjados)
+	{
+		ZoneKey terra = ZoneKey.Premade("Earth");
+		if (CorpoDaZona(terra) == null)
+		{
+			AfirmarWt("a Terra e um mundo do catalogo (o verb da estatua ancora nela)", false,
+					  "sem corpo celeste nao ha onde erguer set nenhum");
+			return null;
+		}
+
+		ServerPlayer pl = Forjar(nome, PontoDeNascimento(terra), terra, conta);
+		forjados.Add(pl);
+
+		pl.Race = "Namekian";
+		pl.Class = "Dragon clan";
+		pl.Ficha.Zeni = Jandirus.Core.Magic.Desejos.PrecoDoSupremo;
+		_tronos["guardian"] = pl.Conta;
+
+		ErguerEstatua(pl, "supremo");
+		return _sets.Any(s => string.Equals(s.CriadorConta, conta, StringComparison.Ordinal)) ? pl : null;
+	}
+
+	/// <summary>
+	/// FECHA O CANAL DE DISPUTA ABERTO POR `quem`, pelo funil de producao.
+	///
+	/// ============================ O QUE FICA DE FORA, E POR QUE ============================
+	/// So a CONTAGEM REGRESSIVA. `TickDasSuperEsferas` derruba qualquer disputa cujo dono nao tenha
+	/// `Peer` -- *"o disputante saiu do mundo"* --, e um `NetPeer` nao se fabrica sem uma conexao de
+	/// verdade (a secao 7 documenta a mesma parede). Entao o canal e ABERTO pelo verb
+	/// (<see cref="ReivindicarSuper"/>) e FECHADO por <see cref="FecharADisputa"/>, que e literalmente
+	/// a linha seguinte do tique -- a posse, o anuncio, o recado ao ex-dono e a quebra da procuracao
+	/// por tomada passam todos por la.
+	/// ====================================================================================
+	/// </summary>
+	private void FecharOCanalDaBancada(ServerPlayer quem)
+	{
+		if (!_disputasDeSuper.Remove(quem.Id, out DisputaDeSuper? d)) return;
+		if (_supers.Find(s => s.Numero == d.Numero) is { } alvo) FecharADisputa(quem, alvo, d);
+	}
+
+	/// <summary>Tira os corpos forjados do mundo. A limpeza ja esvazia `_players`; isto cobre o resto.</summary>
+	private void SoltarOsForjados(List<ServerPlayer> forjados)
+	{
+		foreach (ServerPlayer f in forjados)
+		{
+			_players.Remove(f.Id);
+			ZoneList(f.Zone.Hash).Remove(f);
+		}
+		forjados.Clear();
+	}
+
+	/// <summary>O arquivo cru, ou vazio. Ler o CONTEUDO e o que separa "sumiu" de "nao lembra".</summary>
+	private static string LerOuVazio(string caminho)
+	{
+		try { return System.IO.File.Exists(caminho) ? System.IO.File.ReadAllText(caminho) : ""; }
+		catch { return ""; }
+	}
+
+	// =====================================================================
 	// 9. O CONTEUDO DO JOGO SOBREVIVEU -- o contra-exemplo
 	// =====================================================================
 	/// <summary>
@@ -1366,7 +1994,8 @@ public partial class GameServer
 	/// o outro lado.
 	///
 	/// O retrato do conteudo e tirado ANTES de qualquer limpeza (ver `RodarBancadaDaLimpeza`) e
-	/// conferido no fim de todas elas: cinco secoes rodaram o `ExecutarLimpeza` de producao no meio.
+	/// conferido no fim de todas elas: OITO chamadas do `ExecutarLimpeza` de producao rodaram no meio
+	/// (secoes 4, 5, 6, 6b, 7, 8, 10 e 10b).
 	/// </summary>
 	private void SecaoDoConteudoDoJogo(List<string> antes)
 	{
@@ -1382,7 +2011,7 @@ public partial class GameServer
 		List<string> depois = RetratoDoConteudo();
 		List<string> d = Diferenca(antes, depois);
 		foreach (string l in d.Take(20)) GD.PrintErr($"[wipe]         {l}");
-		AfirmarWt("o conteudo do jogo esta intacto depois de cinco limpezas", d.Count == 0,
+		AfirmarWt("o conteudo do jogo esta intacto depois de OITO limpezas", d.Count == 0,
 				  $"{d.Count} diferenca(s)");
 	}
 

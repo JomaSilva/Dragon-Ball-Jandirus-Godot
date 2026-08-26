@@ -52,8 +52,35 @@ public sealed class LimiaresPessoais
 	/// <summary>`lssjat` -- Legendary Super Saiyajin. lssjbuff.dm:141.</summary>
 	public const double LssjatInicial = 50_000_000;
 
-	/// <summary>`snamekat` -- Super Namekuseijin. Super_Namek.dm:4.</summary>
-	public const double SNamekatInicial = 2_000_000;
+	/// <summary>
+	/// `snamekat` DE FABRICA NO DM -- `Super_Namek.dm:4`, dois milhoes.
+	///
+	/// **ELE DEIXOU DE SER A PORTA, e continua aqui como MEDIDA.** Ver
+	/// <see cref="SNamekatInicial"/> logo abaixo pro numero que vale hoje e pelo pedido do dono que o
+	/// trocou. Guardar o valor do original nao e nostalgia: e o que deixa a divergencia CONFERIVEL --
+	/// a bancada compara os dois e a distancia entre eles e a propria decisao, escrita em numero.
+	/// </summary>
+	public const double SNamekatDoDm = 2_000_000;
+
+	/// <summary>
+	/// ============================ A PORTA DO SUPER NAMEKUSEIJIN HOJE: A MESMA DO SSJ ============================
+	/// Pedido do dono, literal: *"namekuseijins ganham super namek aprox no mesmo requisito do SSJ
+	/// (mantendo a ideia de cada um ter um requisito pessoal, mas em torno de um valor)"*.
+	///
+	/// "Aprox no mesmo requisito do SSJ" **tem um numero**, e ele nao e uma escolha minha: e o
+	/// <see cref="Catalogo.SsjatInicial"/>, o 1.500.000 do `supersaiyanbuff.dm:6`. Escrever
+	/// `1_500_000` aqui seria a segunda copia do mesmo numero -- a que fica pra tras no dia em que o
+	/// dono reequilibrar o SSJ. Entao a base do Namekuseijin **e** a do Saiyajin, por referencia.
+	///
+	/// ============================ ISTO E DIVERGENCIA DECLARADA, E ELA CUSTA 25% ============================
+	/// O DM cobra 2.000.000 (<see cref="SNamekatDoDm"/>). Baixar pra 1,5 M e mexer no original de olho
+	/// aberto, e o motivo e a frase do dono acima -- a regra da casa e que quando ele pede uma coisa
+	/// que o original nao faz, a palavra dele vence o DM.
+	///
+	/// **E o que muda de verdade nao e a base: e a DISPERSAO.** Ver <see cref="RolarNamek"/>.
+	/// ====================================================================================================
+	/// </summary>
+	public const double SNamekatInicial = Catalogo.SsjatInicial;
 
 	// =====================================================================
 	// A SEMENTE
@@ -189,7 +216,9 @@ public sealed class LimiaresPessoais
 		// "Halfbreed" -> proto "Saiyan"). O Quarter Saiyan do DM nao existe no port.
 		if (raca is "Saiyan" or "Halfbreed") l.RolarSaiyajin(classe);
 		else if (raca == "Heran") l.RolarHeran(classe);
-		else if (raca == "Namekian") l.RolarNamek();
+		// O CLA ENTRA AQUI, e ele nao entrava: `RolarNamek()` nao recebia argumento nenhum enquanto a
+		// margem era um +-5% plano. Ver `RolarNamek(classe)`.
+		else if (raca == "Namekian") l.RolarNamek(classe);
 
 		return l;
 	}
@@ -277,11 +306,50 @@ public sealed class LimiaresPessoais
 	}
 
 	/// <summary>
-	/// statnamek.dm:13-14: `snamekat/=100` e `snamekat*=rand(95,105)` -- ou seja 0,95x a 1,05x.
-	/// A faixa mais estreita do jogo (+-5%): o Super Namekuseijin nao e um marco de vida como o
-	/// SSJ, e um degrau, e o original nao quis espalhar ele.
+	/// ============================ O REQUISITO PESSOAL DO SUPER NAMEKUSEIJIN ============================
+	/// Pedido do dono: *"namekuseijins ganham super namek aprox no mesmo requisito do SSJ (mantendo a
+	/// ideia de cada um ter um requisito pessoal, mas em torno de um valor)"*.
+	///
+	/// ============================ O QUE O DM FAZ, E POR QUE NAO BASTAVA ============================
+	/// `statnamek.dm:13-14` -- `snamekat/=100` seguido de `snamekat*=rand(95,105)`, que e uma forma
+	/// torta de escrever "x0,95 a x1,05". Ou seja o original JA da um limiar pessoal, e este port ja o
+	/// portava: era esta funcao, com <see cref="SNamekatDoDm"/> de base.
+	///
+	/// So que a faixa que sai dali e **1.900.000 a 2.100.000** -- onze valores discretos, +-5%, a mais
+	/// estreita do jogo. Comparada com a do SSJ (`statsaiyan.dm:57-77`), que espalha de **1.350.000 a
+	/// 2.100.000** conforme a CLASSE, ela e outra coisa: os Namekuseijin sao praticamente todos iguais
+	/// entre si, e o centro deles fica 33% acima do centro dos Saiyajin. "Aprox no mesmo requisito" e
+	/// "cada um tem o seu" nao se sustentam nessa faixa.
+	/// ==========================================================================================
+	///
+	/// ============================ O QUE VALE HOJE, E OS DOIS INGREDIENTES SAO DO DM ============================
+	/// A base e a do SSJ (<see cref="SNamekatInicial"/>) e a dispersao e **por CLA**, com o idioma que
+	/// o proprio original usa pras formas altas do Saiyajin (`initial(X) * rand(9,13)/10`,
+	/// `statsaiyan.dm:52-56`) e com o mesmo DESENHO do `switch` por classe do SSJ1
+	/// (`statsaiyan.dm:57-77`): **quem nasce forte transforma mais TARDE**.
+	///
+	/// A ordem dos tres clas nao e opiniao, ela sai do `class_stats` do `statnamek.dm`:
+	///
+	///   * **Warrior clan** -- `Starting BP` 50, `Battle Power` 1,6. E o Elite de Namek, e leva a faixa
+	///     do Elite: **1,1x a 1,4x**. Nasce o mais forte e paga isso na porta;
+	///   * **Demon clan** -- `Starting BP` 35, `Battle Power` 1,4. O meio, e leva o `else` do DM:
+	///     **1,0x a 1,2x**;
+	///   * **Dragon clan** -- `Starting BP` 25, `Battle Power` 1,2. E o Low-Class de Namek (o cla de
+	///     suporte, o mais fraco de briga) e leva a faixa dele: **0,9x a 1,2x**. Transforma cedo,
+	///     porque e o unico consolo que ele tem.
+	///
+	/// A FAIXA RESULTANTE E **1.350.000 a 2.100.000** -- a mesma do SSJ, numero por numero. Que e o
+	/// pedido do dono lido ao pe da letra.
+	/// ======================================================================================================
 	/// </summary>
-	private void RolarNamek() => snamekat = SNamekatInicial * (Sorteador("snamekat").Next(95, 106) / 100.0);
+	/// <param name="cla">O `Class` do Namekuseijin: "Warrior clan", "Demon clan" ou "Dragon clan".</param>
+	private void RolarNamek(string cla) =>
+		snamekat = SNamekatInicial * (cla switch
+		{
+			"Warrior clan" => Faixa("snamekat", 11, 14),
+			"Dragon clan" => Faixa("snamekat", 9, 12),
+			_ => Faixa("snamekat", 10, 12),
+		});
 
 	// =====================================================================
 	// O GERADOR

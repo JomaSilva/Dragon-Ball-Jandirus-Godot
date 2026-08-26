@@ -16,14 +16,21 @@ public enum TipoDeFusao
 	Potara = 2,
 
 	/// <summary>
-	/// A Namekuseijin. `FType == 3`. PERMANENTE (energia 0), e nao se separa nem no nocaute
-	/// (`Fusion.dm:79`).
+	/// A Namekuseijin. `FType == 3` (`Fusion.dm:549-569`).
 	///
-	/// **E ela tem verb desde este passe** (`fus_namek` -> `Namekian_Fusion`, `Fusion.dm:549-569`).
-	/// Antes o motor a conhecia inteira -- energia, roupa, o corte do nocaute, o pulo do dreno -- e
-	/// **nenhum caminho de producao a alcancava**: quatro pontos de codigo que so a bancada
-	/// exercitava, que e a definicao de ramo orfao. Ver <see cref="Fusao.HerancaNaFusaoNamekuseijin"/>
-	/// pra unica coisa que ficou em aberto nela.
+	/// ============================ ELA E O UNICO TIPO QUE NAO PRODUZ UMA FUSAO ============================
+	/// Os outros dois criam um corpo compartilhado que acaba. Esta **absorve**: o poder e assado no
+	/// personagem de quem convidou, o outro perde o dele PARA SEMPRE, e nao ha objeto de fusao nenhum
+	/// pra separar, drenar ou gravar. E o pedido do dono (*"o outro namek se for jogador, perde o
+	/// personagem pra sempre (a fusao e eterna)"*) e tambem o estado terminal que o proprio DM alcanca
+	/// em `Fusion.dm:301-310`.
+	///
+	/// **O tipo continua existindo, e continua sendo este**, porque tudo o que vem ANTES da consumacao
+	/// e o mesmo dos outros dois: o verb, o convite, o aceite revalidado, a distancia de um tile, a
+	/// recarga de 1 h e a cinematica. A divergencia mora num `if` so, na virada da cena
+	/// (`GameServer.TickDaCenaDeFusao`). Ver `Core/Social/AbsorcaoNamekuseijin.cs`, onde a regra e os
+	/// numeros dela moram.
+	/// ================================================================================================
 	/// </summary>
 	Namek = 3,
 }
@@ -113,7 +120,13 @@ public static class Fusao
 
 	/// <summary>
 	/// A ENERGIA COM QUE ESTE TIPO NASCE. **Zero = permanente** -- e o `else FusionEnergyMax = 0`
-	/// do `switch` do DM (`Fusion.dm:271`), que e a Namekuseijin.
+	/// do `switch` do DM (`Fusion.dm:271`), que la e a Namekuseijin.
+	///
+	/// **AQUI NINGUEM MAIS CAI NO ZERO**, e o `_` sobrou como o `default` que a linguagem exige: a
+	/// Namekuseijin nao produz `FusaoAtiva` nenhuma desde que virou ABSORCAO (ver
+	/// `Core/Social/AbsorcaoNamekuseijin.cs`), entao so a Danca e a Potara chegam a este metodo. O zero
+	/// fica como a resposta certa pra um tipo que um dia nasca sem energia -- e nao como a descricao de
+	/// um caso que existe.
 	/// </summary>
 	public static double EnergiaMaxima(TipoDeFusao t) => t switch
 	{
@@ -436,9 +449,28 @@ public static class Fusao
 		bool euSeiDancar, bool eleSabeDancar,
 		string racaA, string racaB,
 		double expressoA, double expressoB,
-		bool eleJaTemPedido)
+		bool eleJaTemPedido,
+		bool convidadoEhNpcAbsorvivel = false)
 	{
-		if (!convidaTemAssinatura || !convidadoTemAssinatura) return RecusaDeFusao.SemAssinatura;
+		// ============================ QUEM CONVIDA E SEMPRE PESSOA. O ALVO, NA NAMEKUSEIJIN, PODE NAO SER ============================
+		// O portao de assinatura e o mesmo de sempre pro CONVIDADOR, e ele nao se abre: e a linha que
+		// impede um corpo sem dono (NPC, clone, boneco) de iniciar uma fusao -- e, junto com o
+		// `Gente.EhNpcDoMundo` do servidor, a que impede um pacote forjado de IA de faze-lo.
+		//
+		// O ALVO ganhou uma excecao, e ela e a regra N4 do dono: *"fundir com npc namek ganha BEM menos
+		// bp e outros bonus e nao ganha o super namek"*. Pra "fundir com NPC" existir, o NPC precisa
+		// poder ser alvo -- e ate aqui ele levava `SemAssinatura` sempre. Quem decide o que conta como
+		// NPC absorvivel e o servidor (`GameServer.EhNamekNpcAbsorvivel`), porque a pergunta e sobre o
+		// CORPO e nao sobre a regra: o Core nao sabe o que e um clone.
+		//
+		// **E ela e so pra Namekuseijin.** A Danca e a Potara continuam recusando corpo sem dono, e o
+		// caminho do NPC nem passa por convite (ninguem pede permissao a um NPC) -- ver
+		// `GameServer.ConvidarParaAFusaoNamekuseijin`.
+		// ==========================================================================================================================
+		if (!convidaTemAssinatura) return RecusaDeFusao.SemAssinatura;
+		if (!convidadoTemAssinatura
+			&& !(tipo == TipoDeFusao.Namek && convidadoEhNpcAbsorvivel))
+			return RecusaDeFusao.SemAssinatura;
 		if (mesmaPessoa) return RecusaDeFusao.EleMesmo;
 		if (algumJaFundido) return RecusaDeFusao.JaFundido;
 		if (algumNaRecarga) return RecusaDeFusao.NaRecarga;
@@ -495,24 +527,23 @@ public static class Fusao
 	// =====================================================================
 	// A FUSAO NAMEKUSEIJIN -- a PERMANENTE
 	// =====================================================================
-	/// <summary>
-	/// ============================ PERGUNTA ABERTA DO DONO -- NAO INVENTE A RESPOSTA ============================
-	/// A Metamoro e a Potara deste port herdam **as skills dos dois** e **o maior stat de cada**
-	/// (`GameServer.Fundir`, passos 2 e 3). As duas coisas sao PEDIDO NOVO do dono -- *"se jogador 1
-	/// tem 30 de physical e o 2 tem 40, a fusao tem 40"* --, e o DM nao faz nem uma nem outra.
+	/// ============================ A PERGUNTA ABERTA FOI RESPONDIDA, E A CONSTANTE MORREU ============================
+	/// Morava aqui uma `HerancaNaFusaoNamekuseijin = false`, escrita como pergunta em aberto: *"a
+	/// Metamoro e a Potara herdam as skills dos dois e o maior stat de cada; o dono nunca disse se isso
+	/// vale pra fusao PERMANENTE"*. Ela tinha dois consumidores de producao (o `Fundir` e o
+	/// `PassarOControle`) e dois de bancada, e todos liam a CONSTANTE em vez de cravar zero, de
+	/// proposito, esperando a resposta.
 	///
-	/// **O dono nunca disse se elas valem pra Namekuseijin.** E a Namekuseijin nao e uma temporaria a
-	/// mais: ela e PERMANENTE (energia 0) e, quando o passageiro reencarna, o DM assa o poder no BP
-	/// REAL do dono (`Fusion.dm:301-308`, `Keeper.BP = FusedBaseBP`). Herdar skills e stats numa fusao
-	/// que nunca se desfaz e um ganho definitivo -- e adivinhar isso seria escolher por ele.
+	/// **A resposta veio por outro caminho, e ela apagou a pergunta.** O dono pediu a fusao
+	/// Namekuseijin inteira -- e nela o outro **perde o personagem**, o que faz da fusao uma ABSORCAO e
+	/// nao uma fusao viva (ver `Core/Social/AbsorcaoNamekuseijin.cs`). Com a Namekuseijin nao produzindo
+	/// mais uma `FusaoAtiva`, o `Fundir` so recebe Danca e Potara: os dois `if` que liam a constante
+	/// viraram sempre-verdadeiros e sairam, e ela ficou orfa. A regra da casa manda DELETAR ramo morto,
+	/// e e o que esta linha registra pra quem vier procurar a constante pelo nome.
 	///
-	/// Entao ela entra **como o DM a escreve**: poder, nome, roupa e corpo novo; sem skills e sem
-	/// stats emprestados. Esta constante e o interruptor, e ela existe pra que a resposta do dono seja
-	/// uma linha e nao uma arqueologia -- ligue-a e o `Fundir` passa a tratar a Namekuseijin como as
-	/// outras duas, pelo mesmo codigo.
-	/// ======================================================================================================
-	/// </summary>
-	public const bool HerancaNaFusaoNamekuseijin = false;
+	/// O que herda hoje, e de quem, esta em `AbsorcaoNamekuseijin.HerdaOsStats` / `HerdaAsSkills` -- e
+	/// a resposta la e "so quando o absorvido e JOGADOR", que e a regra N4 do dono.
+	/// ==========================================================================================================
 
 	// =====================================================================
 	// O NOME
@@ -598,7 +629,9 @@ public static class Fusao
 
 	/// <summary>
 	/// A PECA QUE ESTE TIPO DE FUSAO VESTE POR CIMA, pelo NOME do arquivo.
-	/// Vazio = nenhuma (a Namekuseijin nao veste nada -- `Fusion.dm:271` nao tem ramo de roupa).
+	/// Vazio = nenhuma. (A Namekuseijin tambem nao vestia nada -- `Fusion.dm:271` nao tem ramo de roupa
+	/// pra ela --, mas hoje ela nem chega aqui: ela ABSORVE, e quem absorve continua com a propria
+	/// roupa. Ver `Core/Social/AbsorcaoNamekuseijin.cs`.)
 	/// </summary>
 	public static string PecaDe(TipoDeFusao t) => t switch
 	{
@@ -702,9 +735,32 @@ public static class Fusao
 	public const string SufixoDoSsj4 = "SSJ4";
 
 	/// <summary>
-	/// ============================ O VERMELHO DO SSJ4 DE TODA FUSAO ============================
-	/// Pedido do dono, e ele foi taxativo: *"a fusao usa `Hair SSJ4 Gogeta.png` PINTADO DE VERMELHO -- e
-	/// **toda** fusao tem cabelo vermelho no SSJ4, tendo ou nao o cabelo do Vegito"*.
+	/// ============================ O VERMELHO DO SSJ4 -- E SO NA DANCA ============================
+	/// Pedido do dono, em duas voltas. Na primeira ele disse *"a fusao usa `Hair SSJ4 Gogeta.png` PINTADO
+	/// DE VERMELHO -- e **toda** fusao tem cabelo vermelho no SSJ4, tendo ou nao o cabelo do Vegito"*, e
+	/// era isso que estava escrito aqui. Na segunda ele CORRIGIU, e a correcao e a regra de hoje:
+	///
+	///   *"o ssj4 (e suas variantes) quando esta na fusao potara, o cabelo nao fica vermelho e sim na cor
+	///   normal de cabelo q seria se n fosse uma fusao, so a fusao metamoro/danca q muda a cor do cabelo
+	///   no ssj4"*
+	///
+	/// Ou seja o vermelho continua existindo, com o mesmo hexa e a mesma operacao -- ele so deixou de
+	/// valer pra fusao inteira e passou a valer pra <see cref="TipoDeFusao.Danca"/>. A Potara volta ao
+	/// cabelo normal, e a Namekuseijin cai naturalmente no mesmo lado (o dono nem precisou dize-lo: ela e
+	/// de Namekuseijin, que nao tem SSJ4 nenhum).
+	///
+	/// ============================ ISTO NAO TEM UMA LINHA DE BYOND ATRAS ============================
+	/// **Nem a regra velha, nem a correcao.** O `Fusion.dm` nao pinta cabelo de fusao em lugar nenhum: o
+	/// unico cabelo colorido de fusao que o original tem e MANUAL (`Customize()`, `Fusion.dm:127-172`, um
+	/// `input(... ) as color` que o proprio jogador escolhe), e ele nao olha forma nem `FType`. E o
+	/// `Hair_SSJ4Gogeta.dmi` aparece uma vez so no DM inteiro (`HairChoose.dm:441`), como um dos tres
+	/// cabelos de SSJ4 sorteados no NASCIMENTO de qualquer homem -- nada a ver com fundir.
+	///
+	/// Quem vier procurar a linha do DM que justifica isto **nao vai achar, e nao e por falta de olhar**:
+	/// a fonte e o pedido do dono, transcrito acima. O que o DM da e o PRECEDENTE ESTRUTURAL de "efeito
+	/// visual diferente por `FType`" -- `Fusion.dm:217-218` veste o colete so na Danca e o brinco so na
+	/// Potara, e desfaz os dois em `:242-243`. E exatamente a forma desta funcao.
+	/// ==============================================================================================
 	///
 	/// ============================ O HEXA E O DO PROPRIO JOGO, E NAO UM VERMELHO MEU ============================
 	/// `e2331c` e `rgb(226,51,28)` -- o vermelho que o DM ja usa pra pintar cabelo, no `gdki_me()` do
@@ -742,13 +798,29 @@ public static class Fusao
 	public const string VermelhoDoCabeloDaFusao = "e2331c";
 
 	/// <summary>
-	/// A TINTA QUE A FUSAO POE NO CABELO DESTA FORMA, ou nulo (a esmagadora maioria).
+	/// A TINTA QUE **ESTE TIPO DE** FUSAO POE NO CABELO DESTA FORMA, ou nulo (a esmagadora maioria).
 	///
 	/// UMA FUNCAO E NAO UM `if` NO CLIENTE: e o Core quem decide, e e aqui que entra a segunda forma no
 	/// dia em que o dono pedir uma. O cliente so pergunta.
+	///
+	/// ============================ O TIPO E PARAMETRO, E ELE CUSTOU O PROTOCOLO ============================
+	/// Ate a correcao do dono este metodo recebia so o sufixo, porque a resposta nao dependia do tipo --
+	/// e por isso o tipo nem chegava aqui: o `S2C.PeerLook` carregava um BOOL ("este corpo e uma fusao"),
+	/// o `World` guardava um `HashSet<int>` e o `CharacterVisual` um `bool _ehFusao`. Pra Potara e Danca
+	/// darem respostas diferentes, o dado teve que ser levado ate o pixel -- o bool virou o TIPO nas
+	/// quatro camadas. Ver `GameServer.TrocarAparencias`, `GameClient.PeerLooked`, `World._fusaoDaZona` e
+	/// `CharacterVisual.MarcarFusao`.
+	///
+	/// **A FOLHA NAO MUDA JUNTO, E ISSO E DELIBERADO.** A fusao troca DUAS coisas no SSJ4: o penteado
+	/// (todo mundo vira `Hair_SSJ4Gogeta`, ver `CabelosDeForma.FolhaDoSsj4DaFusao`) e a tinta. O dono
+	/// falou de COR nas duas metades da frase -- *"o cabelo nao fica vermelho e sim na cor normal de
+	/// cabelo"* e *"so a fusao metamoro/danca q muda a COR do cabelo"* --, entao so a tinta e condicional.
+	/// A Potara em SSJ4 continua com a cabeca da fusao, na cor natural que a folha ja tem.
+	/// =================================================================================================
 	/// </summary>
-	public static string? TintaDoCabeloDaFusao(string sufixoDaForma) =>
-		string.Equals(sufixoDaForma, SufixoDoSsj4, StringComparison.OrdinalIgnoreCase)
+	public static string? TintaDoCabeloDaFusao(TipoDeFusao tipo, string sufixoDaForma) =>
+		tipo == TipoDeFusao.Danca
+		&& string.Equals(sufixoDaForma, SufixoDoSsj4, StringComparison.OrdinalIgnoreCase)
 			? VermelhoDoCabeloDaFusao
 			: null;
 }

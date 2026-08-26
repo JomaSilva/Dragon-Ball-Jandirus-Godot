@@ -215,9 +215,9 @@ public partial class RoboDeBioRetrato : Node
 		GD.Print($"[bio-foto] no ar -- procurando o corpo '{Jandirus.Server.GameServer.NomeDoPalcoDoBio}'");
 	}
 
-	/// <param name="fusao">O bit de fusao do `PeerLook`. Este robo nao funde ninguem -- ver `GameClient.PeerLooked`.</param>
+	/// <param name="fusao">O tipo de fusao do `PeerLook`. Este robo nao funde ninguem -- ver `GameClient.PeerLooked`.</param>
 	private void AoReceberFicha(int quem, string nome, string raca, string genero,
-								Jandirus.Core.Appearance.Appearance ap, bool fusao)
+								Jandirus.Core.Appearance.Appearance ap, Jandirus.Core.Social.TipoDeFusao? fusao)
 	{
 		// O NOME MUDA NO NASCIMENTO -- a criatura passa a se chamar "Bio-Androide de ...". Por isso o
 		// crivo do nome so vale ate achar o corpo; dali em diante quem manda e o ID. Sem isto o

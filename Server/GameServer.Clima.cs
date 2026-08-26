@@ -66,7 +66,20 @@ public sealed partial class GameServer
 	public void ForcarClima(ZoneKey zona, TipoDeClima tipo, double segundos, double forca = 1,
 							string motivo = "")
 	{
-		if (segundos <= 0 || tipo == TipoDeClima.Limpo)
+		// ============================ `segundos <= 0` CANCELA; `Limpo` COM PRAZO **FORCA CEU ABERTO** ============================
+		// Antes as duas coisas eram a mesma linha (`segundos <= 0 || tipo == Limpo` cancelava), e com
+		// isso **nao havia como pedir ceu aberto**: a unica saida era devolver a zona ao ciclo natural
+		// e torcer. Isso e um buraco de verdade e nao um capricho de bancada -- o ritual
+		// `e_change_weather` do DM escreve `currentWeather` com qualquer valor, inclusive nenhum, e a
+		// bancada de FOTO precisa de um palco sem chuva de sangue passando na frente do assunto (as
+		// primeiras fotos do cabelo sairam ilegiveis por isso).
+		//
+		// Os dois caminhos continuam distintos e nenhum chamador mudou: todos os que passam `Limpo`
+		// passam `0` junto (conferido: `AdminClimaNatural`, e os tres da morte de planeta).
+		// `Clima.De` ja sabia tratar um forcado `Limpo` -- ele devolve `Tipo = Limpo`, que nao desenha
+		// nada; era so aqui que ele nunca chegava a ser gravado.
+		// ==================================================================================================================
+		if (segundos <= 0)
 		{
 			if (!_climaForcado.Remove(zona.Hash)) return;
 			AnunciarClima(zona, default);

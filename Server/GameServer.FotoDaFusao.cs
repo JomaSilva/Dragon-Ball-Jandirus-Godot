@@ -1,4 +1,4 @@
-using Jandirus.Core.Appearance;
+﻿using Jandirus.Core.Appearance;
 using Jandirus.Core.Social;
 using Jandirus.Core.World;
 
@@ -446,5 +446,60 @@ public sealed partial class GameServer
 
 		// O CEU VOLTA AO QUE ERA -- ver `SolAPinoNaFotoDeFusao`.
 		if (_ffMexeuNoCeu) { _adiantoDoCeu = _ffCeuAntes; _ffMexeuNoCeu = false; }
+
+		// E O CLIMA TAMBEM -- ver `CeuLimpoNaFotoDeFusao`. Se havia um forcado antes, ele volta
+		// inteiro; se nao havia, a zona volta ao ciclo natural.
+		if (_ffMexeuNoClima)
+		{
+			if (_ffClimaAntes is { } antes)
+			{
+				_climaForcado[_ffZonaDoClima.Hash] = antes;
+				AnunciarClima(_ffZonaDoClima, antes);
+			}
+			else ForcarClima(_ffZonaDoClima, TipoDeClima.Limpo, 0);
+			_ffMexeuNoClima = false;
+			_ffClimaAntes = null;
+		}
+	}
+
+	/// <summary>O clima forcado que havia antes da bancada, se havia. Ver <see cref="CeuLimpoNaFotoDeFusao"/>.</summary>
+	private ClimaForcado? _ffClimaAntes;
+	private bool _ffMexeuNoClima;
+	private ZoneKey _ffZonaDoClima;
+
+	/// <summary>
+	/// ============================ CEU ABERTO NO PALCO DA FOTO -- E ISTO E UM ACHADO DA FASE 2 ============================
+	/// Irmao do <see cref="SolAPinoNaFotoDeFusao"/>, e nasceu da mesma forma: **olhando a foto**.
+	///
+	/// As primeiras fotos do cabelo do SSJ4 sairam ilegiveis, e nao por falta de luz -- a hora ja
+	/// estava cravada no meio-dia. O que atravessava a tela era **chuva de sangue**, o clima natural de
+	/// Vegeta, que e onde a conta de teste nasce: 1150 riscos VERMELHOS por cima de tudo, mais um veu
+	/// avermelhado na tela inteira.
+	///
+	/// Numa bancada que existe pra afirmar *"o cabelo desta fusao esta VERMELHO e o daquela nao"*, um
+	/// clima que pinta a tela de vermelho nao e ruido: e um confundidor que pode deixar a prova VERDE
+	/// pelo motivo errado. E a mesma familia do sol -- "esta de dia" era uma teoria e a foto preta era
+	/// o fato --, so que agora o confundidor tem cor.
+	///
+	/// **E o clima e devolvido na limpeza**, inclusive um forcado que ja estivesse de pe. Este processo
+	/// e um `--host` no mundo de verdade; deixar Vegeta de ceu aberto por causa de uma foto seria mexer
+	/// no jogo do dono.
+	/// ================================================================================================================
+	/// </summary>
+	internal void CeuLimpoNaFotoDeFusao(int idDoJogador)
+	{
+		if (_ffMexeuNoClima) return;
+		if (!_players.TryGetValue(idDoJogador, out ServerPlayer? pl)) return;
+
+		_ffZonaDoClima = pl.Zone;
+		_ffClimaAntes = _climaForcado.TryGetValue(pl.Zone.Hash, out ClimaForcado f) ? f : null;
+		_ffMexeuNoClima = true;
+
+		// PRAZO LONGO DE PROPOSITO: a bancada leva ~60 s e passa por tres cinematicas. Um prazo curto
+		// deixaria a chuva voltar no meio e so a ULTIMA foto sairia errada -- o pior dos casos, porque
+		// e o que ninguem compara.
+		ForcarClima(pl.Zone, TipoDeClima.Limpo, 600, 1, "bancada da foto de fusao");
+		Godot.GD.Print($"[fotofusao] ceu aberto em {pl.Zone.Name} pela duracao da bancada "
+					 + $"(era {(_ffClimaAntes is { } a ? Clima.Nome(a.Tipo) : "o ciclo natural")})");
 	}
 }

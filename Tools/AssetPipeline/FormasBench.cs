@@ -62,6 +62,7 @@ public static class FormasBench
 		AsLinhasRaciais();
 		UmDegrauNovoEmCadaLinha();
 		OsGanchosQueFicaram();
+		ORequisitoPessoalDoSuperNamekuseijin();
 
 		Console.WriteLine($"\n=== {_ok} OK, {_falhou} FALHA ===");
 		return _falhou == 0 ? 0 : 1;
@@ -2086,11 +2087,43 @@ public static class FormasBench
 			  porClasse.Length == 2);
 
 		// --- 4. AS PORTAS: o limiar PESSOAL do Namekuseijin, e o divisor 50 do Heran --------
+		// ============================ A FAIXA MUDOU, E ELA E A DO SSJ AGORA ============================
+		// Era `+-5% da fabrica` (o `rand(95,105)` do `statnamek.dm:13-14`, base 2 M). O dono pediu
+		// *"namekuseijins ganham super namek aprox no mesmo requisito do SSJ (mantendo a ideia de cada um
+		// ter um requisito pessoal, mas em torno de um valor)"*, e o sorteio virou POR CLA sobre a base
+		// do SSJ -- ver `LimiaresPessoais.RolarNamek`. As tres provas abaixo cobram as tres metades:
+		// a faixa certa, o cla importando, e a porta saindo do SORTEIO e nao da constante.
+		// ==========================================================================================
 		LimiaresPessoais lim = LimiaresPessoais.Rolar(Catalogo.RacaNamekuseijin, "Warrior clan",
 													  LimiaresPessoais.SementeDe("Piccolo", 1));
-		Checa($"o `snamekat` sorteado ({lim.snamekat:N0}) fica a +-5% da fabrica",
-			  Math.Abs(lim.snamekat / LimiaresPessoais.SNamekatInicial - 1) <= 0.05 + 1e-9,
+		Checa($"o `snamekat` do Warrior clan ({lim.snamekat:N0}) cai na faixa do Elite (1,1x-1,4x do SSJ)",
+			  lim.snamekat >= Catalogo.SsjatInicial * 1.1 - 1e-6
+			  && lim.snamekat <= Catalogo.SsjatInicial * 1.4 + 1e-6,
 			  $"{lim.snamekat:N0}");
+
+		// O CLA TEM QUE IMPORTAR -- controle negativo. Sem esta linha, um `RolarNamek` que ignorasse a
+		// classe passaria na prova de cima sempre que a faixa unica calhasse de conter o valor. E as
+		// faixas do Warrior (1,1-1,4) e do Dragon (0,9-1,2) so se encostam em 1,1 e 1,2: com a MESMA
+		// semente, um sorteador que ignore o cla devolve o mesmo numero pros dois.
+		LimiaresPessoais dragao = LimiaresPessoais.Rolar(Catalogo.RacaNamekuseijin, "Dragon clan",
+														 LimiaresPessoais.SementeDe("Piccolo", 1));
+		Checa($"o CLA muda a porta (Warrior {lim.snamekat:N0} x Dragon {dragao.snamekat:N0}) -- "
+			+ "quem nasce forte transforma mais tarde",
+			  lim.snamekat > dragao.snamekat, $"{lim.snamekat:N0} x {dragao.snamekat:N0}");
+
+		// E A FAIXA INTEIRA E A DO SSJ, medida nos tres clas -- que e a frase do dono em numero.
+		bool naFaixaDoSsj = true;
+		foreach (string c in new[] { "Warrior clan", "Demon clan", "Dragon clan" })
+			for (int s = 1; s <= 40; s++)
+			{
+				double v = LimiaresPessoais.Rolar(Catalogo.RacaNamekuseijin, c,
+												  LimiaresPessoais.SementeDe("Namek", s)).snamekat;
+				if (v < Catalogo.SsjatInicial * 0.9 - 1e-6 || v > Catalogo.SsjatInicial * 1.4 + 1e-6)
+					naFaixaDoSsj = false;
+			}
+		Checa("...e os tres clas cabem na faixa do SSJ (0,9x-1,4x de 1.500.000) em 120 sorteios",
+			  naFaixaDoSsj);
+
 		Perto("...e a porta do `snamek` SAI do sorteio (nao da constante)",
 			  lim.Porta(Catalogo.Def("snamek")!), lim.snamekat, 1e-6);
 
@@ -2465,4 +2498,173 @@ public static class FormasBench
 
 		Console.WriteLine();
 	}
+
+	// =====================================================================
+	// 20. N5 -- O REQUISITO **PESSOAL** DO SUPER NAMEKUSEIJIN, MEDIDO POR DISPERSAO
+	// =====================================================================
+	/// <summary>
+	/// Pedido do dono: *"namekuseijins ganham super namek aprox no mesmo requisito do SSJ (mantendo a
+	/// ideia de cada um ter um requisito pessoal, mas em torno de um valor)"*.
+	///
+	/// ============================ POR QUE MEDIR DISPERSAO, E NAO A MEDIA ============================
+	/// A secao 19 ja cobra a FAIXA (o Warrior no intervalo do Elite, o cla importando, os 120 sorteios
+	/// dentro de 0,9x-1,4x). **Nada disso distingue um limiar pessoal de um numero cravado.** Uma
+	/// implementacao que devolvesse `1.500.000` pra todo mundo passaria em cada uma daquelas provas: o
+	/// valor esta na faixa, esta perto da media, e sai do sorteio (que sempre devolve o mesmo).
+	///
+	/// O que separa as duas coisas e a DISPERSAO -- quantos valores diferentes existem na populacao e
+	/// quanto ela se espalha em volta do centro. Por isso o criterio aqui e uma FUNCAO
+	/// (<see cref="EhUmLimiarPessoal"/>) e ela e aplicada duas vezes: na populacao de verdade, que
+	/// passa, e numa populacao CRAVADA, que tem que reprovar. Sem a segunda, a primeira seria
+	/// decoracao.
+	/// ============================================================================================
+	///
+	/// ============================ E A COMPARACAO COM O SSJ E DE POPULACAO CONTRA POPULACAO ============================
+	/// *"aprox no mesmo requisito do SSJ"* nao e uma frase sobre um personagem: e sobre as duas
+	/// distribuicoes. Entao as duas sao sorteadas do mesmo jeito (mesmo `Rolar` de producao, sementes
+	/// diferentes, classes/clas rodando) e comparadas nos quatro numeros que descrevem uma nuvem: a
+	/// borda de baixo, a de cima, o centro e o espalhamento.
+	/// ============================================================================================================
+	/// </summary>
+	private static void ORequisitoPessoalDoSuperNamekuseijin()
+	{
+		Console.WriteLine("\n[20] N5: O REQUISITO PESSOAL DO SUPER NAMEKUSEIJIN (dispersao, nao media)");
+
+		const int Quantos = 300;
+
+		// AS TRES CLASSES DE NAMEKUSEIJIN e as QUATRO de Saiyajin que mexem no `ssjat`. O "Legendary"
+		// fica de fora porque ele NAO toca o `ssjat` (`statsaiyan.dm:65-70`, a escada dele e outra) --
+		// incluí-lo poria 1.500.000 de fabrica na amostra e inflaria a dispersao com um valor que
+		// ninguem usa.
+		string[] clas = ["Warrior clan", "Demon clan", "Dragon clan"];
+		string[] classes = ["Elite", "Low-Class", "Normal", "Legendary Primal Saiyan"];
+
+		double[] namek = new double[Quantos], saiya = new double[Quantos];
+		for (int i = 0; i < Quantos; i++)
+		{
+			ulong semente = LimiaresPessoais.SementeDe($"corpo{i}", 1_700_000_000_000 + i);
+			namek[i] = LimiaresPessoais.Rolar(Catalogo.RacaNamekuseijin, clas[i % clas.Length], semente)
+									   .Porta(Catalogo.Def("snamek")!);
+			saiya[i] = LimiaresPessoais.Rolar("Saiyan", classes[i % classes.Length], semente)
+									   .Porta(Catalogo.Def("ssj1")!);
+		}
+
+		(int Distintos, double Min, double Max, double Media, double Desvio) N = Nuvem(namek);
+		(int Distintos, double Min, double Max, double Media, double Desvio) S = Nuvem(saiya);
+
+		Console.WriteLine($"       Super Namekuseijin ({Quantos} nascimentos, 3 clas): "
+						+ $"{N.Distintos} valores distintos, {N.Min:N0} .. {N.Max:N0}, "
+						+ $"media {N.Media:N0}, desvio {N.Desvio:N0} ({N.Desvio / N.Media:P1})");
+		Console.WriteLine($"       Super Saiyajin     ({Quantos} nascimentos, 4 classes): "
+						+ $"{S.Distintos} valores distintos, {S.Min:N0} .. {S.Max:N0}, "
+						+ $"media {S.Media:N0}, desvio {S.Desvio:N0} ({S.Desvio / S.Media:P1})");
+
+		// ---- 1. ELE E PESSOAL -- e o criterio e uma funcao, aplicada duas vezes ----
+		Checa($"o `snamekat` e PESSOAL: {N.Distintos} valores diferentes em {Quantos} nascimentos, "
+			+ $"espalhados {N.Desvio / N.Media:P1} em volta do centro",
+			  EhUmLimiarPessoal(namek), $"{N.Distintos} distintos, cv {N.Desvio / N.Media:P2}");
+
+		double[] cravado = new double[Quantos];
+		Array.Fill(cravado, Catalogo.SsjatInicial);
+		Checa("   DEFEITO INJETADO (uma populacao com o limiar CRAVADO em 1.500.000 pra todo mundo): "
+			+ "o MESMO criterio REPROVA",
+			  !EhUmLimiarPessoal(cravado),
+			  "o criterio de \"e pessoal\" nao sabe distinguir sorteio de constante");
+
+		// O MESMO CRITERIO NO SSJ -- controle positivo. Se ele reprovasse aqui, o criterio estaria
+		// exigindo mais do que o proprio jogo entrega, e a prova de cima nao valeria nada.
+		Checa($"...e o mesmo criterio aprova o SSJ, que e o molde ({S.Distintos} valores distintos)",
+			  EhUmLimiarPessoal(saiya), $"{S.Distintos} distintos");
+
+		// ---- 2. E ELE FICA NO MESMO PATAMAR DO SSJ ----
+		// AS BORDAS: as duas nuvens tem que comecar e terminar no mesmo lugar. Elas comecam, e nao por
+		// coincidencia -- a base virou a mesma (`LimiaresPessoais.SNamekatInicial`) e as faixas por
+		// cla copiam as faixas por classe do `statsaiyan.dm:57-77`.
+		Checa($"a BORDA DE BAIXO e a mesma nas duas nuvens ({N.Min:N0} contra {S.Min:N0})",
+			  Math.Abs(N.Min - S.Min) < 1.0, $"{N.Min:N0} x {S.Min:N0}");
+		Checa($"a BORDA DE CIMA tambem ({N.Max:N0} contra {S.Max:N0})",
+			  Math.Abs(N.Max - S.Max) < 1.0, $"{N.Max:N0} x {S.Max:N0}");
+
+		// O CENTRO: 5% de folga porque as duas amostras tem numero DIFERENTE de faixas (3 clas contra
+		// 4 classes), entao as medias nao tem como bater no centavo -- e nem deveriam.
+		Checa($"o CENTRO das duas fica a menos de 5% um do outro ({N.Media:N0} contra {S.Media:N0}, "
+			+ $"{Math.Abs(N.Media - S.Media) / S.Media:P1})",
+			  Math.Abs(N.Media - S.Media) / S.Media < 0.05,
+			  $"{Math.Abs(N.Media - S.Media) / S.Media:P2}");
+
+		// O ESPALHAMENTO: e aqui que a versao anterior deste sistema morria. Portado literal do
+		// `statnamek.dm:13-14`, o Namekuseijin tinha +-5% (a faixa mais estreita do jogo) contra os
+		// -10%..+40% do SSJ -- ou seja, "cada um tem o seu" era quase falso pra Namekuseijin. A prova
+		// cobra que as duas nuvens se espalhem na MESMA ordem de grandeza.
+		double razao = (N.Desvio / N.Media) / (S.Desvio / S.Media);
+		Checa($"e o ESPALHAMENTO e da mesma ordem do SSJ (razao {razao:0.00}x entre os coeficientes "
+			+ "de variacao) -- era 0,3x quando a faixa era o +-5% do `statnamek.dm`",
+			  razao is > 0.6 and < 1.7, $"{razao:0.000}x");
+
+		// ---- 3. E O CENTRO NAO E O DO DM -- divergencia declarada, e ela fica MEDIDA ----
+		// O `Super_Namek.dm:4` diz 2.000.000. Este port usa 1.500.000 (a base do SSJ) a pedido do dono.
+		// A constante velha continua no Core so pra esta comparacao continuar conferivel -- e esta
+		// linha e o que impede que ela vire lixo silencioso.
+		Checa($"a divergencia do DM continua declarada e MEDIDA: o original pede "
+			+ $"{LimiaresPessoais.SNamekatDoDm:N0} e este port pede {LimiaresPessoais.SNamekatInicial:N0} "
+			+ "(a base do SSJ), a pedido do dono",
+			  Math.Abs(LimiaresPessoais.SNamekatDoDm - 2_000_000) < 1.0
+			  && Math.Abs(LimiaresPessoais.SNamekatInicial - Catalogo.SsjatInicial) < 1.0,
+			  $"{LimiaresPessoais.SNamekatDoDm:N0} x {LimiaresPessoais.SNamekatInicial:N0}");
+
+		// ---- 4. N1 x N5: OS DOIS CAMINHOS DESEMBOCAM NA **MESMA** FORMA ----
+		// ============================ E ESTA E A PROVA DE QUE NAO HA DUAS FORMAS ============================
+		// A `--fusaoduplateste` prova os dois CAMINHOS (absorver e cruzar o limiar) e que os dois abrem
+		// o portao. Ela nao consegue provar que nao ha uma segunda entrada de catalogo escondida --
+		// duas formas `snamek` com ids diferentes passariam nas duas, porque cada caminho abriria a
+		// sua. Quem responde isso e o catalogo, e a resposta e uma contagem.
+		// ================================================================================================
+		FormaDef[] pelaFlag = [.. Catalogo.Todas.Where(d => d.PedeFlag?.Campo == "snamek")];
+		Checa($"o catalogo tem **UMA** forma gateada pela flag `snamek` "
+			+ $"({string.Join(", ", pelaFlag.Select(d => d.Id))})",
+			  pelaFlag.Length == 1, $"{pelaFlag.Length}");
+
+		FormaDef[] naLinha = [.. Catalogo.Todas.Where(d => d.Linha == LinhaDeForma.Namekuseijin)];
+		Checa($"...e **UMA** na linha Namekuseijin inteira ({string.Join(", ", naLinha.Select(d => d.Id))})",
+			  naLinha.Length == 1, $"{naLinha.Length}");
+
+		Checa("...e as duas contagens acham a MESMA entrada (a flag e a linha nao apontam pra formas "
+			+ "diferentes)",
+			  pelaFlag.Length == 1 && naLinha.Length == 1 && pelaFlag[0].Id == naLinha[0].Id);
+
+		Checa("...e ela e a que o limiar pessoal gateia (`ChaveDoLimiar` = `snamekat`) -- **uma porta, "
+			+ "tres caminhos** (comprar, cruzar o limiar, absorver)",
+			  pelaFlag.Length == 1 && pelaFlag[0].ChaveDoLimiar == "snamekat",
+			  pelaFlag.Length == 1 ? pelaFlag[0].ChaveDoLimiar : "");
+	}
+
+	/// <summary>
+	/// **E ISTO UM LIMIAR PESSOAL, OU UM NUMERO CRAVADO?** -- o criterio da secao 20, como funcao.
+	///
+	/// Ele e uma funcao e nao uma linha de `if` por um motivo so: assim a MESMA pergunta pode ser
+	/// feita a populacao de verdade e a uma populacao cravada, e a segunda tem que reprovar. Uma
+	/// checagem que so foi vista passando e indistinguivel de `Checa("...", true)`.
+	///
+	/// Duas exigencias, e as duas sao necessarias:
+	///
+	///   * **pelo menos cinco valores diferentes** -- e o que separa sorteio de constante, e o numero
+	///     nao e arbitrario: o idioma do DM (`rand(9,13)/10`) rende no maximo cinco degraus por faixa;
+	///   * **espalhamento de pelo menos 5%** em volta do centro -- e o que separa sorteio de "sorteio
+	///     que quase nao varia". Sem ele, um `rand(99,101)` passaria por pessoal.
+	/// </summary>
+	private static bool EhUmLimiarPessoal(double[] valores)
+	{
+		(int Distintos, double _, double __, double Media, double Desvio) n = Nuvem(valores);
+		return n.Distintos >= 5 && n.Media > 0 && n.Desvio / n.Media >= 0.05;
+	}
+
+	/// <summary>Os quatro numeros que descrevem uma nuvem de limiares: quantos distintos, as bordas, o centro e o desvio.</summary>
+	private static (int Distintos, double Min, double Max, double Media, double Desvio) Nuvem(double[] v)
+	{
+		if (v.Length == 0) return (0, 0, 0, 0, 0);
+		double media = v.Average();
+		double desvio = Math.Sqrt(v.Sum(x => (x - media) * (x - media)) / v.Length);
+		return (v.Distinct().Count(), v.Min(), v.Max(), media, desvio);
+	}
+
 }

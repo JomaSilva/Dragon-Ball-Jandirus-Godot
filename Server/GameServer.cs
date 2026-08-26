@@ -1239,6 +1239,28 @@ public sealed class ServerPlayer
 	public int Slot = -1;
 
 	/// <summary>
+	/// ============================ O PERSONAGEM DESTE CORPO FOI APAGADO PARA SEMPRE ============================
+	/// **Um so escritor no jogo inteiro**: `GameServer.ApagarOPersonagemParaSempre`, o gesto da fusao
+	/// Namekuseijin (a regra N3 do dono -- *"o outro namek se for jogador, perde o personagem pra
+	/// sempre"*). E **um so leitor**: o <see cref="GameServer.Persistir"/>.
+	///
+	/// ============================ ELE EXISTE CONTRA O SALVAMENTO PERIODICO ============================
+	/// O `Persistir` roda a cada 2 minutos e roda outra vez no `Drop`. Entre o instante em que o save do
+	/// absorvido e apagado e o instante em que o `Disconnect()` de fato tira o corpo do mundo passa pelo
+	/// menos um `PollEvents` -- e qualquer `Persistir` nessa janela **recriaria o personagem do nada**,
+	/// montado do `ServerPlayer` que ainda esta de pe. O jogador veria o personagem "voltar", e o log
+	/// diria que ele foi apagado.
+	///
+	/// Ou seja: nao e zelo, e a outra metade do apagamento. O arquivo morre e a porta que o reescreve
+	/// fecha, **no mesmo gesto** -- ver a ordem escrita em `ApagarOPersonagemParaSempre`.
+	///
+	/// **NAO VAI PRO DISCO**, e nao faz sentido que va: ele descreve um corpo que esta caindo do mundo
+	/// agora, e o save que ele protege ja nao existe.
+	/// ======================================================================================================
+	/// </summary>
+	public bool PersonagemConsumido;
+
+	/// <summary>
 	/// A ASSINATURA -- a identidade PERMANENTE deste personagem. E o `mob/var/signature` do DM, e e
 	/// a chave de tudo que e social (conhecidos, amizade, inimizade, rivais).
 	///
@@ -2743,6 +2765,41 @@ public partial class GameServer : Node
 	}
 
 	/// <summary>
+	/// FECHAR O JOGO COM O SERVIDOR NO AR: **grava tudo e so depois desliga**.
+	///
+	/// ============================ O `Stop` SOZINHO PERDIA ATE DOIS MINUTOS, DE TODO MUNDO ============================
+	/// Ele faz `_players.Clear()` sem passar por `Persistir`. Os dois caminhos de save do servidor
+	/// sao o periodico (`_tickCount % TicksPorSave`, cujo proprio comentario diz que "dois minutos e
+	/// o maximo de treino que alguem pode perder") e o da DESCONEXAO -- e quem fecha o processo nao
+	/// atravessa nenhum dos dois. Ou seja: quem HOSPEDA e fecha o jogo levava junto ate dois minutos
+	/// de progresso de **todos os conectados**, calado.
+	///
+	/// Grava as mesmas tres coisas que o `AdminSalvarTudo` grava, e pela mesma razao: personagem sem
+	/// o mundo deixa construcao que sumiu, e sem os cargos deixa rank que voltou pro anterior.
+	/// ==========================================================================================
+	/// </summary>
+	public void SalvarEParar()
+	{
+		if (!Running) return;
+
+		int n = 0;
+		try
+		{
+			foreach (ServerPlayer p in Jogadores.ToList()) { Persistir(p); n++; }
+			GravarMundo();
+			SalvarCargos();
+			GD.Print($"[server] fechando: {n} personagem(ns), o mundo e os cargos gravados");
+		}
+		catch (Exception e)
+		{
+			// SAIR MESMO ASSIM. Um erro de disco nao pode deixar o processo (e a porta) de pe.
+			GD.PushError($"[server] falhei ao gravar no fechamento: {e.Message}");
+		}
+
+		Stop();
+	}
+
+	/// <summary>
 	/// Le o manifesto das zonas e a colisao de cada uma. Sao ~31 KB por andar, entao carregar
 	/// TUDO no boot custa pouco e evita hitch quando alguem troca de planeta.
 	/// </summary>
@@ -3383,24 +3440,44 @@ public partial class GameServer : Node
 		GD.Print($"[server] conta '{conta}' entrou | slots ocupados: {acc.Slots.Count(x => x != null)}/{AccountStore.Slots}");
 	}
 
-	/// <summary>A tela de selecao inteira num pacote: os tres slots com o que ela mostra.</summary>
-	private static void MandarSlots(NetPeer peer, AccountSave acc)
+	/// <summary>
+	/// ============================ O QUE A TELA DE SELECAO MOSTRA, COMO LISTA ============================
+	/// Os tres slots ja censurados, na ordem em que o cliente os desenha. Ele existe SEPARADO do
+	/// <see cref="MandarSlots"/> por uma razao de prova e nao de estilo: a pergunta *"o personagem
+	/// apagado ainda aparece na selecao?"* so vale a pena se quem responde for **o mesmo codigo que
+	/// responde ao jogador**. Uma bancada que relesse `acc.Slots` na mao estaria afirmando uma coisa
+	/// sobre um array e nao sobre a tela -- e este projeto ja pagou por essa diferenca (a memoria do
+	/// sigilo do BP: escrever o corte nao e aplicar o corte).
+	///
+	/// `MandarSlots` embrulha isto num pacote e mais nada. Quem quiser saber o que o jogador VE
+	/// pergunta aqui.
+	/// ================================================================================================
+	/// </summary>
+	internal static SlotInfo[] SlotsVisiveisDe(AccountSave acc)
 	{
-		var w = Protocol.Begin(Protocol.S2C.SlotList);
-		w.Put((byte)AccountStore.Slots);
+		var slots = new SlotInfo[AccountStore.Slots];
 		for (int i = 0; i < AccountStore.Slots; i++)
 		{
 			CharacterSave? c = acc.Slots[i];
 			// CENSURADO ANTES DE SAIR. Na tela de selecao nao existe personagem em jogo, logo nao
 			// existe scouter -- e classe nunca aparece, em situacao nenhuma.
-			SlotVisivel(new SlotInfo
+			slots[i] = SlotVisivel(new SlotInfo
 			{
 				Ocupado = c != null,
 				Nome = c?.Nome ?? "", Raca = c?.Raca ?? "", Classe = c?.Ficha.Class ?? "",
 				Genero = c?.Genero ?? "Male", Idade = c?.Idade ?? 0, BP = c?.Ficha.BP ?? 0,
 				Visual = c?.Visual ?? new Jandirus.Core.Appearance.Appearance(),
-			}).Write(w);
+			});
 		}
+		return slots;
+	}
+
+	/// <summary>A tela de selecao inteira num pacote: os tres slots com o que ela mostra.</summary>
+	private static void MandarSlots(NetPeer peer, AccountSave acc)
+	{
+		var w = Protocol.Begin(Protocol.S2C.SlotList);
+		w.Put((byte)AccountStore.Slots);
+		foreach (SlotInfo s in SlotsVisiveisDe(acc)) s.Write(w);
 		peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -4144,11 +4221,18 @@ public partial class GameServer : Node
 			// encostar em `pl.Visual`, que vai pro disco a cada 2 minutos.
 			w.PutAppearance(VisualVisivel(p));
 
-			// ============================ E O BIT DE "ESTE CORPO E UMA FUSAO" ============================
-			// Um bit, ao lado da aparencia, porque ele e um fato do CORPO e nao da forma -- exatamente
-			// como o `dominada` do `PacoteDeForma`. Ele existe por UMA regra do dono, e ela nao cabe em
-			// nenhum dos campos acima: *"no SSJ4, TODA fusao usa `Hair SSJ4 Gogeta` pintado de vermelho,
-			// tendo ou nao o cabelo do Vegito"*.
+			// ============================ E O TIPO DE FUSAO DESTE CORPO (0 = nenhuma) ============================
+			// Um byte, ao lado da aparencia, porque ele e um fato do CORPO e nao da forma -- exatamente
+			// como o `dominada` do `PacoteDeForma`. Ele existe por UMA regra do dono, hoje na segunda
+			// versao dela: *"o ssj4 (e suas variantes) quando esta na fusao potara, o cabelo nao fica
+			// vermelho e sim na cor normal de cabelo q seria se n fosse uma fusao, so a fusao
+			// metamoro/danca q muda a cor do cabelo no ssj4"*.
+			//
+			// **ERA UM BOOL, E O BOOL NAO BASTA MAIS.** Enquanto a regra era "TODA fusao pinta", saber
+			// que o corpo era fusao respondia tudo. Com Danca e Potara divergindo, o pixel precisa do
+			// TIPO -- e ele so existia no servidor (`FusaoAtiva.Tipo`). Este byte e o dado atravessando.
+			// Os valores sao os `FType` do DM (`Fusion.dm:268-271`), que e o que o `TipoDeFusao` ja usa:
+			// 1 Danca, 2 Potara, 3 Namekuseijin. Zero nao e tipo nenhum -- e "este corpo nao e fusao".
 			//
 			// NAO DA PRA DEDUZIR DO CABELO, e essa e a razao de ele existir: a fusao que nao virou Vegito
 			// veste o penteado de quem convidou (`Fusao.CabeloDaFusao`), entao o cliente olhando so a
@@ -4156,8 +4240,14 @@ public partial class GameServer : Node
 			//
 			// **E NAO ENTROU EM `Appearance`**, que seria o lugar obvio: aquele objeto vai pro disco, e um
 			// campo "sou uma fusao" gravado num save e um estado que sobrevive ao que o produziu.
+			//
+			// O `LookDeFusao != null` CONTINUA SENDO O PORTAO, e nao o `_fundidos`: os dois corpos da
+			// fusao estao em `_fundidos` (dono e passageiro), e so um deles esta VESTINDO a fusao. Quem
+			// desenha a fusao e quem tem a aparencia dela -- e e ele quem o `PassarOControle` troca.
 			// ========================================================================================
-			w.Put(p.LookDeFusao != null);
+			w.Put((byte)(p.LookDeFusao != null && FusaoDe(p.Id) is { } fus
+				? (byte)fus.Tipo
+				: 0));
 			return w;
 		}
 
@@ -4250,6 +4340,15 @@ public partial class GameServer : Node
 		if (_store == null || pl.Slot < 0) return;
 		if (_limpezaEmCurso) return;
 		if (EstaFundido(pl.Id)) return;   // ver o item 3 do <remarks>
+
+		// ============================ 4. PERSONAGEM CONSUMIDO NAO SE GRAVA -- ELE NAO EXISTE MAIS ============================
+		// Da familia das duas linhas acima, e a mais grave das tres: aqui o save **ja foi apagado do
+		// disco** (a fusao Namekuseijin, regra N3 do dono). Gravar este corpo o RECRIARIA do nada, montado
+		// de um `ServerPlayer` que ainda esta de pe esperando o `Disconnect` chegar -- e "o personagem
+		// voltou depois de ser apagado" e um defeito que ninguem consegue explicar depois.
+		// Ver `ServerPlayer.PersonagemConsumido` e `ApagarOPersonagemParaSempre`.
+		// ================================================================================================================
+		if (pl.PersonagemConsumido) return;
 
 		AccountSave? acc = conta;
 		if (acc == null && (pl.Peer == null || !_contas.TryGetValue(pl.Peer, out acc))) return;
@@ -4992,6 +5091,17 @@ public partial class GameServer : Node
 		// =========================================================================================
 		if (f.CheckAscensionMilestone() is var marco && marco > 0)
 			Avisar(pl, $"MARCO DE PODER! seu corpo rompeu um novo patamar: todo ganho agora e x{marco:0.##}.");
+
+		// ============================ O SUPER NAMEKUSEIJIN DESPERTA AQUI (regra N5 do dono) ============================
+		// Ao lado do marco, e pelo MESMO argumento escrito no bloco acima: e o ponto do laco por jogador
+		// que roda todo tique, fora do galho de treino/meditacao, e quem cruza um patamar precisa ser
+		// AVISADO na hora. Um Namekuseijin que so descobrisse a forma na proxima vez que apertasse alguma
+		// coisa nao teria "ganhado a transformacao ao chegar no requisito" -- teria ganhado ao clicar.
+		//
+		// Ver `GameServer.ConferirODespertarDoSuperNamekuseijin`: ele sai nas tres primeiras linhas pra
+		// quem nao e Namekuseijin, entao o custo pro resto do servidor e uma comparacao de string.
+		// =========================================================================================================
+		ConferirODespertarDoSuperNamekuseijin(pl);
 
 		// O SACO DE PANCADA DOBRA O TREINO, e o bonus vem da PRESENCA e nao de um estado guardado:
 		// se ha um saco aparafusado por perto, treinar rende mais. Um campo "estou no saco" ficaria

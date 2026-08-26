@@ -24,7 +24,11 @@ namespace Jandirus.Client;
 ///      nunca importou.
 ///   F. **O SSJ4 DE TODA FUSAO** -- a folha do Gogeta pra QUALQUER penteado, homem e mulher, e ela tem
 ///      que ser DIFERENTE da que o mesmo corpo receberia sem estar fundido.
-///   G. **O VERMELHO QUE CHEGA AO DESENHO** -- e este e o unico bloco que precisa de explicacao.
+///   G. **O VERMELHO QUE CHEGA AO DESENHO, E SO NA DANCA** -- e este e o unico bloco que precisa de
+///      explicacao. Depois da primeira versao desta bancada o dono corrigiu a regra: *"o ssj4 (e suas
+///      variantes) quando esta na fusao potara, o cabelo nao fica vermelho e sim na cor normal de cabelo
+///      q seria se n fosse uma fusao, so a fusao metamoro/danca q muda a cor do cabelo no ssj4"*. Por
+///      isso todo par deste bloco e MEDIDO NOS DOIS TIPOS, no mesmo corpo -- ver a G17.
 ///
 /// ============================ POR QUE O BLOCO G EXISTE, E O QUE ELE NAO PROVA ============================
 /// A memoria deste projeto tem uma entrada inteira chamada *"a bancada mede INTENCAO"*: quatro mil
@@ -425,11 +429,26 @@ public partial class RoboDeFusaoLook : Node
 				 "G0 as duas formulas transcritas aqui ainda sao as do `Personagem.gdshader` "
 			   + "(com esta vermelha, o resto do bloco G nao quer dizer nada)");
 
-		// ---- G1: o Core devolve tinta so no SSJ4 ----
-		Conferir(Fusao.TintaDoCabeloDaFusao(Fusao.SufixoDoSsj4) == Fusao.VermelhoDoCabeloDaFusao,
-				 "G1 a fusao pinta o SSJ4");
-		foreach (string s in new[] { "SSj", "SSj2", "SSj3", "USSj", "LSSj", "SSjFP", "" })
-			Conferir(Fusao.TintaDoCabeloDaFusao(s) == null, $"G2 a fusao NAO pinta o `{s}`");
+		// ---- G1: o Core devolve tinta so no SSJ4, e so na DANCA ----
+		// ============================ A CORRECAO DO DONO MORA AQUI, E ELA E UM PAR ============================
+		// *"o ssj4 (e suas variantes) quando esta na fusao potara, o cabelo nao fica vermelho e sim na cor
+		// normal de cabelo q seria se n fosse uma fusao, so a fusao metamoro/danca q muda a cor do cabelo
+		// no ssj4"*.
+		//
+		// UMA PROVA SO NAO SERVE. "A Danca pinta" fica VERDE numa implementacao que pinte as tres -- que
+		// e exatamente a regra velha, a que este passe veio corrigir. A prova e o PAR: uma afirma a cor,
+		// a outra afirma a ausencia dela, e nenhuma das duas sozinha distingue as duas regras.
+		// ==================================================================================================
+		Conferir(Fusao.TintaDoCabeloDaFusao(TipoDeFusao.Danca, Fusao.SufixoDoSsj4) == Fusao.VermelhoDoCabeloDaFusao,
+				 "G1 a DANCA (Metamoro) pinta o SSJ4 de vermelho");
+		Conferir(Fusao.TintaDoCabeloDaFusao(TipoDeFusao.Potara, Fusao.SufixoDoSsj4) == null,
+				 "G1b a POTARA NAO pinta o SSJ4 -- cor normal de cabelo (correcao do dono)");
+		Conferir(Fusao.TintaDoCabeloDaFusao(TipoDeFusao.Namek, Fusao.SufixoDoSsj4) == null,
+				 "G1c e a NAMEKUSEIJIN tambem nao (os dois lados dela sao Namekuseijin -- nao ha SSJ4 la)");
+
+		foreach (TipoDeFusao t in new[] { TipoDeFusao.Danca, TipoDeFusao.Potara, TipoDeFusao.Namek })
+			foreach (string s in new[] { "SSj", "SSj2", "SSj3", "USSj", "LSSj", "SSjFP", "" })
+				Conferir(Fusao.TintaDoCabeloDaFusao(t, s) == null, $"G2 a fusao {t} NAO pinta o `{s}`");
 
 		// ---- G3: o que as duas operacoes desenham na folha REAL ----
 		var folha = new Image();
@@ -518,15 +537,15 @@ public partial class RoboDeFusaoLook : Node
 		vis.Vestir(cat, new Appearance { Cabelo = Fusao.EstiloDoVegito }, "Saiyan", "Male");
 
 		// ---- sem fusao: o SSJ4 nao pinta cabelo de ninguem ----
-		vis.MarcarFusao(false);
+		vis.MarcarFusao(null);
 		vis.VestirCabeloDaForma(ssj4);
 		(Vector3 Tinta, int Modo)? solto = vis.TintaDoCabeloDeTeste;
 		Conferir(solto is { } s && s.Tinta.LengthSquared() < 1e-6f,
 				 $"G9 SEM fusao o SSJ4 nao poe tinta nenhuma no cabelo (deu {solto?.Tinta.ToString() ?? "nada"})");
 		string folhaSolto = vis.CabeloDeTeste;
 
-		// ---- com fusao: a cor certa, no modo certo, na folha certa ----
-		vis.MarcarFusao(true);
+		// ---- na DANCA: a cor certa, no modo certo, na folha certa ----
+		vis.MarcarFusao(TipoDeFusao.Danca);
 		vis.VestirCabeloDaForma(ssj4);
 		(Vector3 Tinta, int Modo)? fundido = vis.TintaDoCabeloDeTeste;
 
@@ -535,7 +554,7 @@ public partial class RoboDeFusaoLook : Node
 					&& Math.Abs(f.Tinta.X - esperada.R) < 0.01f
 					&& Math.Abs(f.Tinta.Y - esperada.G) < 0.01f
 					&& Math.Abs(f.Tinta.Z - esperada.B) < 0.01f;
-		Conferir(corBate, $"G10 COM fusao o material recebe o vermelho `{Fusao.VermelhoDoCabeloDaFusao}` "
+		Conferir(corBate, $"G10 na DANCA o material recebe o vermelho `{Fusao.VermelhoDoCabeloDaFusao}` "
 						+ $"(deu {fundido?.Tinta.ToString() ?? "nada"})");
 
 		// ============================ O MODO E METADE DA RESPOSTA ============================
@@ -549,10 +568,33 @@ public partial class RoboDeFusaoLook : Node
 				 $"G12 e a folha na cabeca e a do Gogeta (deu {vis.CabeloDeTeste})");
 		Conferir(vis.CabeloDeTeste != folhaSolto, "G13 e ela e outra folha que a de quem nao esta fundido");
 
+		// ============================ E AGORA A POTARA, NO MESMO CORPO -- A CORRECAO DO DONO NO PIXEL ============================
+		// **AS DUAS TELAS TEM QUE DISCORDAR.** A memoria deste projeto guarda a licao ao pe da letra:
+		// *"as duas telas concordam" fica verde com as duas erradas igual*. Medir so a Danca deixaria
+		// passar uma implementacao que ignorasse o tipo e pintasse tudo de vermelho -- que e a regra
+		// VELHA. Entao o MESMO corpo veste a Potara e as tres perguntas se repetem, com a resposta
+		// invertida em UMA delas (a tinta) e IGUAL na outra (a folha).
+		//
+		// A G16 e a que registra a leitura que eu fiz do pedido: o dono falou de COR nas duas metades da
+		// frase (*"nao fica vermelho e sim na COR normal"*, *"so a danca q muda a COR"*), entao a CABECA
+		// da fusao continua sendo a do Gogeta na Potara. Se ele quiser que a folha volte tambem, e esta
+		// linha que muda -- e nao um `if` novo escondido no cliente.
+		// =============================================================================================================
+		vis.MarcarFusao(TipoDeFusao.Potara);
+		vis.VestirCabeloDaForma(ssj4);
+		(Vector3 Tinta, int Modo)? potara = vis.TintaDoCabeloDeTeste;
+		Conferir(potara is { } pt && pt.Tinta.LengthSquared() < 1e-6f,
+				 $"G15 na POTARA o SSJ4 fica SEM tinta -- a cor normal do cabelo "
+			   + $"(deu {potara?.Tinta.ToString() ?? "nada"})");
+		Conferir(vis.CabeloDeTeste == CabelosDeForma.FolhaDoSsj4DaFusao,
+				 $"G16 ...mas a CABECA continua a do Gogeta -- o dono falou de COR (deu {vis.CabeloDeTeste})");
+		Conferir(potara?.Tinta != fundido?.Tinta,
+				 "G17 e as duas fusoes DISCORDAM no mesmo corpo (Danca pinta, Potara nao)");
+
 		// ---- e SAIR da fusao devolve o cabelo ----
 		// Nada aqui e permanente: a fusao acaba, e o corpo tem que voltar. O tombo do `ussj_saved_icon`
 		// do DM foi exatamente este, com o corpo do USSJ.
-		vis.MarcarFusao(false);
+		vis.MarcarFusao(null);
 		vis.VestirCabeloDaForma(null);
 		(Vector3 Tinta, int Modo)? voltou = vis.TintaDoCabeloDeTeste;
 		Conferir(voltou is { } v && v.Tinta.LengthSquared() < 1e-6f,
@@ -615,6 +657,14 @@ public partial class RoboDeFusaoLook : Node
 		// 7. O BRINCO NO GUARDA-ROUPA, que quebraria a razao de a aparencia da fusao ser transiente.
 		Injetar(!cat.Roupas.Any(r => r.Contains("potara", StringComparison.OrdinalIgnoreCase)),
 				"E6 pega o dia em que o brinco entrar no guarda-roupa da criacao");
+
+		// 8. A REGRA VELHA DE VOLTA -- *"TODA fusao tem cabelo vermelho no SSJ4"*, que era o que estava
+		//    escrito aqui ate o dono corrigir. Ela deixaria a G1, a G10, a G11 e a G12 VERDES: e o unico
+		//    defeito deste arquivo que so o PAR (G1/G1b, G10/G15) pega. Esta injecao e o que prova que o
+		//    par existe -- se alguem apagar a metade negativa, esta linha cai junto.
+		Injetar(Fusao.TintaDoCabeloDaFusao(TipoDeFusao.Danca, Fusao.SufixoDoSsj4)
+			 != Fusao.TintaDoCabeloDaFusao(TipoDeFusao.Potara, Fusao.SufixoDoSsj4),
+				"G1b pega o dia em que a Potara voltar a pintar junto com a Danca");
 	}
 
 	private void Injetar(bool ficouVermelha, string oque) =>

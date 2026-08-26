@@ -250,6 +250,21 @@ public sealed partial class GameServer
 
 	private void CarregarEsferas()
 	{
+		// ============================ ESVAZIA ANTES DE LER, E ISSO NAO E ZELO -- E OBRIGACAO ============================
+		// Ele nasceu enchendo (`AddRange`) porque so rodava uma vez, no boot, com as listas vazias. Isso
+		// deixou de ser verdade quando este sistema se inscreveu na LIMPEZA TOTAL: o `Zerar` das esferas
+		// re-ergue o Porunga de Namek NA MEMORIA, e a bancada `--wipeteste` recarrega o mundo do disco
+		// logo depois. Sem estas duas linhas, o eterno da memoria e o eterno do arquivo virariam DOIS
+		// sets com o mesmo `Id = 0` -- e `RefazerAsEsferas` apagaria as sete de um pelo id do outro.
+		//
+		// E a mesma familia que o cabecalho da bancada ja nomeia (`mundo`, `naves`, `conquista`,
+		// `reputacao`): carregadores que *"so sao reexecutaveis porque o `Zerar()` acabou de esvaziar
+		// tudo"*. A diferenca e que aqui o `Zerar` **nao** deixa vazio de proposito -- ele deixa o set
+		// eterno de pe --, entao a dependencia nao daria pra honrar de fora. Ela se resolve aqui.
+		// ==========================================================================================================
+		_sets.Clear();
+		_esferas.Clear();
+
 		try
 		{
 			if (System.IO.File.Exists(CaminhoDasEsferas))
@@ -290,9 +305,28 @@ public sealed partial class GameServer
 		SalvarEsferas();
 	}
 
+	/// <summary>
+	/// ============================ O PORTAO DA LIMPEZA VALE AQUI TAMBEM, E ELE E O QUE IMPEDE UM ACIDENTE ============================
+	/// `_limpezaEmCurso` nao e enfeite de `Persistir`: o `Zerar` deste sistema **re-ergue o set eterno**,
+	/// e erguer passa por `EspalharOSet`, que chama este metodo. Sem o portao, o passo 3 da limpeza
+	/// gravaria um `esferas.json` com SO o Porunga dentro -- e o passo 4 o apagaria em seguida, que ainda
+	/// seria inofensivo.
+	///
+	/// O que **nao** e inofensivo e a outra passagem: a `--wipeteste` chama o `Zerar` de todos os
+	/// inscritos com o `_store` ja apontando pra pasta DE VERDADE do dono (o `finally` do `NaCaixa`, que
+	/// devolve a pasta ANTES de zerar a memoria). Sem esta linha, essa passada grava o arquivo de um
+	/// mundo recem-nascido por cima das estatuas do dono -- a bancada apagaria justamente o mundo que
+	/// veio medir. E o mesmo acidente que custou o `saves/planetas-mortos.json` uma vez neste projeto.
+	///
+	/// E nao ha nada a recuperar depois: com a memoria de fato zerada, o arquivo volta certo na proxima
+	/// gravacao -- e um servidor que reinicie antes disso le a pasta sem `esferas.json` e ergue o mesmo
+	/// Porunga do zero. E exatamente o argumento que o `AdminLimparServidor` ja escreveu pro
+	/// `ZerarSemente`.
+	/// ================================================================================================================================
+	/// </summary>
 	private void SalvarEsferas()
 	{
-		if (_store == null) return;
+		if (_store == null || _limpezaEmCurso) return;
 		try
 		{
 			var l = new LivroDasEsferas { Sets = _sets, Esferas = _esferas };
@@ -302,6 +336,57 @@ public sealed partial class GameServer
 			System.IO.File.Move(tmp, CaminhoDasEsferas, overwrite: true);
 		}
 		catch (Exception e) { GD.PushWarning($"[server] nao deu pra salvar esferas.json: {e.Message}"); }
+	}
+
+	// =====================================================================
+	// A LIMPEZA TOTAL
+	// =====================================================================
+	/// <summary>
+	/// **AS ESFERAS DE JOGADOR SOMEM.** O `Zerar` deste sistema na LIMPEZA TOTAL -- ver o cabecalho de
+	/// `GameServer.Limpeza.cs`.
+	///
+	/// ============================ AS TRES LISTAS SAO O SISTEMA INTEIRO, E ELAS CAEM JUNTAS ============================
+	/// O pedido do dono foi literal -- *"inscreve as esferas pra o wipe limpar elas tb, principalmente as
+	/// esferas criadas por jogadores"* --, e "as esferas criadas por jogadores" nao e uma coisa so. Sao
+	/// tres, e as tres estao aqui porque as tres moram neste arquivo:
+	///
+	///   * <see cref="_sets"/> -- A ESTATUA. Ela carrega o vinculo com o dono (`CriadorSig`,
+	///     `CriadorConta`, `CriadorNome`), o `TemSupremo` que custou 2.000.000 de zeni, o `Ciclo` (que e
+	///     o ENDERECO das sete), o `Pedidos`, o `Inerte` e o `Poder` do criador. Some o objeto, some tudo
+	///     isso junto -- nao ha uma segunda copia em lugar nenhum.
+	///   * <see cref="_esferas"/> -- AS SETE. As do chao e **as que estao na mao de alguem**: nao ha
+	///     mochila nenhuma no caminho, o "carregar" e o campo <see cref="Esfera.Portador"/> DENTRO deste
+	///     mesmo objeto (ver o cabecalho dele). Limpar a lista tira as duas de uma vez.
+	///   * <see cref="_invocacoes"/> -- O DRAGAO DE PE. Dicionario indexado por id de SESSAO: sobrevivendo,
+	///     ele tranca o set (`_invocacoes.ContainsKey`) e entrega o dragao de um estranho ao proximo
+	///     jogador que receber aquele id.
+	///
+	/// E O CONTADOR DE ID CAI JUNTO SEM PRECISAR DE LINHA, porque nunca houve contador: `ProximoIdDeSet`
+	/// varre `_sets` atras do primeiro livre. Com a lista vazia, o mundo novo volta a ter os 999 `BallID`
+	/// -- e nenhum id de tela (`set*10 + n`) herdado.
+	/// ============================================================================================================
+	///
+	/// ============================ O QUE E DAS ESFERAS E **NAO** MORA AQUI (e quem leva) ============================
+	/// Nada disto fica orfao, e nenhum destes sistemas precisou de linha nova -- so de conferencia:
+	///
+	///   * A ESTATUA **NAO** E UMA <see cref="Obra"/>. Ela nunca entra em `_noChao`, entao a limpeza das
+	///     construcoes nao a via -- e era exatamente por isso que ela sobrevivia inteira.
+	///   * O DRAGON RADAR e um item de mochila, e a mochila mora dentro do save do personagem
+	///     (`CharacterSave`). Ele morre com a conta, que e o primeiro inscrito da lista.
+	///   * A DIVIDA DO DESEJO SUPREMO (`Ficha.sw_doom_year`) e a LINGUA DOS DEUSES (`Ficha.godtongue`)
+	///     tambem sao campos da Ficha -- mesmo caminho, mesma conta, mesma morte.
+	///   * O DINHEIRO do supremo ja foi gasto; o que a limpeza apaga e a estatua que ficou com ele.
+	/// ==========================================================================================================
+	///
+	/// **O SET ETERNO NAO E APAGADO AQUI, E ELE TAMBEM NAO SOBREVIVE**: ele e RECRIADO, e a recriacao e
+	/// uma passada DEPOIS de todos os `Zerar` (ver <see cref="RemontarOMundoNovo"/>). O porque, e por que
+	/// ela nao pode acontecer dentro desta funcao, esta escrito la.
+	/// </summary>
+	private void ZerarEsferas()
+	{
+		_sets.Clear();
+		_esferas.Clear();
+		_invocacoes.Clear();
 	}
 
 	// =====================================================================
@@ -373,7 +458,7 @@ public sealed partial class GameServer
 			s.Desejos = Esferas.DesejosDoEterno;
 			s.OffTime = Esferas.OffTimeEterno;
 
-			double teto = TempoDoMundo + Esferas.SegundosDe(Esferas.TetoDeEsperaEterna);
+			double teto = PrazoEmSegundos(Esferas.SegundosDe(Esferas.TetoDeEsperaEterna));
 			if (s.AtivoEm > teto) s.AtivoEm = teto;
 
 			if (_esferas.Count(e => e.Set == s.Id) < Esferas.Total) RefazerAsEsferas(s);
@@ -383,6 +468,25 @@ public sealed partial class GameServer
 	// =====================================================================
 	// NASCER E ESPALHAR
 	// =====================================================================
+	/// <summary>
+	/// UM PRAZO DE SET, em segundos INTEIROS do <see cref="TempoDoMundo"/>.
+	///
+	/// ============================ POR QUE O PRAZO NAO CARREGA O MILISSEGUNDO ============================
+	/// `TempoDoMundo` e o relogio de parede com precisao de milissegundo (`GameServer.Ceu.cs:51`), e um
+	/// prazo medido em MESES in-game nao tem o que fazer com a fracao de segundo em que ele nasceu. No DM
+	/// isso nem podia acontecer: `ActiveYear = Year + 0.4` soma numa contagem de ANOS.
+	///
+	/// E ha uma segunda razao, medida: o `esferas.json` do set eterno e o unico arquivo do mundo cujo
+	/// conteudo carrega o INSTANTE em que ele nasceu. Com o milissegundo dentro, o MESMO estado gravado
+	/// duas vezes rende arquivos de tamanhos diferentes (`...123.456` contra `...123.4`), e o retrato de
+	/// conjunto da `--wipeteste` -- que compara "primeiro boot" com "depois de limpar" pelo tamanho do
+	/// arquivo -- ficaria vermelho por SORTEIO, umas vezes sim e outras nao. Prazo inteiro faz os dois
+	/// estados serem o mesmo byte a byte, que e o que eles de fato sao.
+	/// ================================================================================================
+	/// </summary>
+	private double PrazoEmSegundos(double daquiAQuantosSegundos) =>
+		Math.Floor(TempoDoMundo + daquiAQuantosSegundos);
+
 	/// <summary>
 	/// `RecreateBalls()` (:103-129) -- apaga as que existirem e cria as sete de novo, ja espalhadas.
 	///
@@ -395,7 +499,7 @@ public sealed partial class GameServer
 		_esferas.RemoveAll(e => e.Set == s.Id);
 
 		if (TempoDoMundo >= s.AtivoEm)
-			s.AtivoEm = TempoDoMundo + Esferas.SegundosDe(Esferas.EsperaDeNascimento);
+			s.AtivoEm = PrazoEmSegundos(Esferas.SegundosDe(Esferas.EsperaDeNascimento));
 		s.Pedidos = 0;
 
 		for (int n = 1; n <= Esferas.Total; n++)
@@ -782,8 +886,8 @@ public sealed partial class GameServer
 		s.Pedidos++;
 		if (s.Pedidos < s.Desejos) { SalvarEsferas(); return; }
 
-		s.AtivoEm = TempoDoMundo
-				  + Esferas.SegundosDe(Esferas.EsperaDepoisDoDesejo(s.OffTime, s.Pedidos, s.Desejos));
+		s.AtivoEm = PrazoEmSegundos(
+			Esferas.SegundosDe(Esferas.EsperaDepoisDoDesejo(s.OffTime, s.Pedidos, s.Desejos)));
 
 		FecharAInvocacao(s.Id, $"{s.NomeDoDragao} some no céu, e as esferas se espalham pelo mundo.");
 		EspalharOSet(s);

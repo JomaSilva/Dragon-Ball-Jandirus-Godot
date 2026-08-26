@@ -384,11 +384,31 @@ public partial class RoboDaTelaDeApagar : Node
 	// =====================================================================
 	// TROCAR DE RESOLUCAO -- o caminho que o dono descreveu
 	// =====================================================================
+	/// <summary>
+	/// ============================ "TROCAR DE RESOLUCAO" MUDOU DE SIGNIFICADO NO MEIO DO CAMINHO ============================
+	/// Esta bancada mexia so no tamanho da JANELA. Isso bastava enquanto o `stretch/mode` do projeto
+	/// era `disabled`: o retangulo visivel do canvas acompanhava a janela 1:1, e encolher a janela
+	/// encolhia o canvas junto.
+	///
+	/// Desde que o jogo passou a esticar o canvas (`canvas_items` + `expand`, pra que tela cheia com
+	/// resolucao menor PREENCHA a tela), quem manda no tamanho do canvas e o `ContentScaleSize` -- e
+	/// o `Settings.Aplicar` o reescreve a cada troca de resolucao. Sem a linha abaixo o canvas desta
+	/// bancada tinha SEMPRE o mesmo tamanho, e a injecao 1 do F4 (a caixa desancorada) ficava VERDE
+	/// com o defeito de origem na frente.
+	///
+	/// **MEDIDO, e por isso esta linha existe**: com o `project.godot` velho a injecao acusava
+	/// 367,2 px de desvio do centro; com o novo, 0,5 px -- a medida tinha ficado cega, nao a tela.
+	/// A propria tela de apagar continuou centrada nos dois mundos (36 OK, 0 FALHA em ambos).
+	/// ==========================================================================================
+	/// </summary>
 	private IEnumerable<double> Janela(int l, int a)
 	{
 		DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
 		DisplayServer.WindowSetSize(new Vector2I(l, a));
 		GetTree().Root.Size = new Vector2I(l, a);
+		// A BASE DE DESENHO ANDA JUNTO DA JANELA, que e exatamente o que o `Settings.Aplicar` faz em
+		// modo janela (os dois numeros iguais, escala 1,00). Ver o bloco acima.
+		GetTree().Root.ContentScaleSize = new Vector2I(l, a);
 		yield return 0.6;
 	}
 

@@ -114,20 +114,29 @@ public partial class World : Node2D
 	private readonly HashSet<int> _dominouDaZona = [];
 
 	/// <summary>
-	/// QUEM DA ZONA E UMA FUSAO agora. Gemeo do <see cref="_dominouDaZona"/> logo acima e guardado
-	/// pelas MESMAS tres razoes: o pacote (`S2C.PeerLook`) pode chegar antes de o boneco existir,
-	/// aplica-se quando ele existir, e o nascimento do boneco consulta o que ficou guardado
-	/// (`VestirAFormaSemCena`).
+	/// QUEM DA ZONA E UMA FUSAO agora, **e de que tipo**. Gemeo do <see cref="_dominouDaZona"/> logo
+	/// acima e guardado pelas MESMAS tres razoes: o pacote (`S2C.PeerLook`) pode chegar antes de o
+	/// boneco existir, aplica-se quando ele existir, e o nascimento do boneco consulta o que ficou
+	/// guardado (`VestirAFormaSemCena`).
 	///
-	/// SO O CABELO DE SSJ4 USA ISTO, e por uma regra do dono que nao se deduz de mais nada: *"no SSJ4,
-	/// TODA fusao usa `Hair SSJ4 Gogeta` pintado de vermelho, tendo ou nao o cabelo do Vegito"*. A fusao
-	/// que nao virou Vegito veste o penteado de quem convidou, entao a aparencia sozinha nao responde --
-	/// e o nome nao serve pra pergunta nenhuma, porque nome e texto livre.
+	/// SO O CABELO DE SSJ4 USA ISTO, e por uma regra do dono que nao se deduz de mais nada: *"o ssj4 (e
+	/// suas variantes) quando esta na fusao potara, o cabelo nao fica vermelho e sim na cor normal de
+	/// cabelo q seria se n fosse uma fusao, so a fusao metamoro/danca q muda a cor do cabelo no ssj4"*. A
+	/// fusao que nao virou Vegito veste o penteado de quem convidou, entao a aparencia sozinha nao
+	/// responde -- e o nome nao serve pra pergunta nenhuma, porque nome e texto livre.
 	///
-	/// **UM CONJUNTO E NAO UM `bool` POR CORPO** pelo mesmo motivo do vizinho: quem deixa de ser fusao
-	/// sai do conjunto no mesmo pacote que o desfundiu.
+	/// **ERA UM `HashSet<int>`**, quando a regra era "TODA fusao pinta" e bastava saber se o corpo era
+	/// fusao. Virou mapa quando Danca e Potara passaram a divergir: a pergunta deixou de ser "e fusao?" e
+	/// virou "e QUAL fusao?".
+	///
+	/// **UM MAPA E NAO UM CAMPO POR CORPO** pelo mesmo motivo do vizinho: quem deixa de ser fusao sai do
+	/// mapa no mesmo pacote que o desfundiu.
 	/// </summary>
-	private readonly HashSet<int> _fusaoDaZona = [];
+	private readonly Dictionary<int, Jandirus.Core.Social.TipoDeFusao> _fusaoDaZona = [];
+
+	/// <summary>De que tipo de fusao este corpo da zona e, ou nulo se ele nao e fusao nenhuma.</summary>
+	private Jandirus.Core.Social.TipoDeFusao? FusaoDaZona(int id) =>
+		_fusaoDaZona.TryGetValue(id, out Jandirus.Core.Social.TipoDeFusao t) ? t : null;
 
 	/// <summary>
 	/// QUEM DA ZONA ESTA SENDO DIRIGIDO PELO SERVIDOR agora (a furia lendaria, o Oozaru sem controle).
@@ -3185,20 +3194,21 @@ public partial class World : Node2D
 	/// alguma coisa.
 	/// </remarks>
 	/// <param name="fusao">
-	/// ESTE CORPO E UMA FUSAO. Ver <see cref="_fusaoDaZona"/> pra o que ele decide e por que ele nao
-	/// mora dentro da <paramref name="ap"/>.
+	/// DE QUE TIPO DE FUSAO ESTE CORPO E (nulo = nao e fusao). Ver <see cref="_fusaoDaZona"/> pra o que
+	/// ele decide e por que ele nao mora dentro da <paramref name="ap"/>.
 	///
-	/// PADRAO FALSO porque as nove chamadas de bancada montam aparencia na mao e nenhuma delas funde --
-	/// dar o valor aqui e o que deixa aquelas nove como estavam, e nao um `false` copiado nove vezes.
+	/// PADRAO NULO porque as nove chamadas de bancada montam aparencia na mao e nenhuma delas funde --
+	/// dar o valor aqui e o que deixa aquelas nove como estavam, e nao um `null` copiado nove vezes.
 	/// </param>
 	internal void AoReceberAparencia(int id, string nome, string raca, string genero,
-									Jandirus.Core.Appearance.Appearance ap, bool fusao = false)
+									Jandirus.Core.Appearance.Appearance ap,
+									Jandirus.Core.Social.TipoDeFusao? fusao = null)
 	{
-		// ANTES DE QUALQUER `return` DESTE METODO, inclusive o da cinematica: o bit e um fato do corpo e
+		// ANTES DE QUALQUER `return` DESTE METODO, inclusive o da cinematica: o tipo e um fato do corpo e
 		// nao um pixel dele, e segura-lo ate a virada da cena faria a fusao que se transforma DURANTE a
 		// propria cinematica de fusao aparecer com o cabelo errado exatamente no quadro em que o
 		// jogador esta olhando pra ela.
-		if (fusao) _fusaoDaZona.Add(id); else _fusaoDaZona.Remove(id);
+		if (fusao is { } tf) _fusaoDaZona[id] = tf; else _fusaoDaZona.Remove(id);
 
 		// O NOME NAO ESPERA CENA NENHUMA: ele nao e pixel do corpo (quem o usa e a busca reversa do
 		// balao de fala, `IdPeloNome`), e segura-lo por 28 s faria as falas de quem esta virando
@@ -3577,10 +3587,11 @@ public partial class World : Node2D
 			// vez que a posse virar. Ver `CharacterVisual.MarcarSemRedeas`.
 			vis.MarcarSemRedeas(_semRedeasDaZona.Contains(id));
 
-			// E SE ESTE CORPO E UMA FUSAO, NO MESMO GESTO E PELO MESMO MOTIVO DOS DOIS DE CIMA: e um fato
+			// E DE QUE FUSAO ESTE CORPO E, NO MESMO GESTO E PELO MESMO MOTIVO DOS DOIS DE CIMA: e um fato
 			// do CORPO, ele decide o cabelo, e este e o funil por onde passam os tres caminhos que vestem
-			// sem cena. Ver `CharacterVisual.MarcarFusao` -- a regra que ele serve e a do SSJ4 vermelho.
-			vis.MarcarFusao(_fusaoDaZona.Contains(id));
+			// sem cena. Ver `CharacterVisual.MarcarFusao` -- a regra que ele serve e a do SSJ4 vermelho,
+			// que desde a correcao do dono vale so pra DANCA (`Fusao.TintaDoCabeloDaFusao`).
+			vis.MarcarFusao(FusaoDaZona(id));
 
 			// UMA CHAMADA PRA TRES DECISOES -- qual sprite, se pinta, e o que o rabo faz. Eram duas
 			// linhas aqui e duas iguais no `Transformacao.Vestir`, com um comentario em cada uma
@@ -4503,7 +4514,7 @@ public partial class World : Node2D
 		// `CharacterVisual.MarcarFusao`, e ver `_dominouAForma` la pra o porque de isto ser CAMPO do
 		// corpo e nao parametro da chamada.
 		// ==================================================================================================================
-		v.MarcarFusao(_fusaoDaZona.Contains(id));
+		v.MarcarFusao(FusaoDaZona(id));
 
 		// ============================ A COR DA CHAMA DESTE CORPO, ANTES DA FORMA ============================
 		// A ficha traz a cor sorteada no nascimento (`Appearance.CorAura`) e o node `Aura` e quem a

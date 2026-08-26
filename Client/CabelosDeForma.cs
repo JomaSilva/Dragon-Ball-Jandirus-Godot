@@ -96,6 +96,18 @@ public static class CabelosDeForma
 	/// "cabelo unico da forma" deste arquivo, ao lado do SSJ4 comum e do Ultra Instinct -- e o mais
 	/// estrito dos tres, porque ele nem olha o penteado.
 	///
+	/// ============================ A CORRECAO DO DONO NAO ENCOSTOU NESTA FOLHA ============================
+	/// Depois ele voltou atras numa metade da regra: *"o ssj4 (e suas variantes) quando esta na fusao
+	/// potara, o cabelo nao fica vermelho e sim na cor normal de cabelo q seria se n fosse uma fusao, so a
+	/// fusao metamoro/danca q muda a COR do cabelo no ssj4"*.
+	///
+	/// **Ele falou de COR, nas duas metades da frase**, e por isso este resolvedor continua sem parametro
+	/// de tipo: a CABECA da fusao continua sendo a do Gogeta em Danca, Potara e Namekuseijin -- o que a
+	/// Potara perdeu foi o vermelho. Quem separa os tipos e `Fusao.TintaDoCabeloDaFusao`, e o `bool` que
+	/// chega aqui e so "este corpo e fusao". Levar o tipo ate aqui sugeriria uma escolha de folha que o
+	/// dono nao pediu.
+	/// =================================================================================================
+	///
 	/// **A FOLHA ESTA NA PASTA DE SUPER SAIYAJIN, e ha uma segunda copia dela fora**: existe tambem uma
 	/// `Assets/Sprites/DU/Overlays/Hair SSJ4 Gogeta.png` (256x256, com espacos no nome) e uma
 	/// `... GREYSCALE.png` ao lado. A escolhida e a de `SSJ Hairs/` porque e a pasta que este resolvedor

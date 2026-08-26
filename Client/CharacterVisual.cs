@@ -269,10 +269,20 @@ public partial class CharacterVisual : Node2D
 		// Ver o `<remarks>` de `AzulDoCabeloDivino` pra o porque de portar aquele passo tambem nao
 		// resolver -- ele troca branco por ciano.)
 		// ==========================================================================================================
-		// ============================ A FUSAO PINTA O SSJ4 DE VERMELHO, E ELA VEM ANTES DE TUDO ============================
-		// Pedido do dono: *"no SSJ4, TODA fusao usa `Hair SSJ4 Gogeta` pintado de VERMELHO -- tendo ou nao
-		// o cabelo do Vegito"*. A folha ja foi trocada la em cima (`CabelosDeForma` recebe o `_ehFusao` e
-		// devolve a do Gogeta); o que falta e a tinta.
+		// ============================ A DANCA PINTA O SSJ4 DE VERMELHO, E ELA VEM ANTES DE TUDO ============================
+		// Pedido do dono, na segunda versao dele: *"o ssj4 (e suas variantes) quando esta na fusao potara,
+		// o cabelo nao fica vermelho e sim na cor normal de cabelo q seria se n fosse uma fusao, so a
+		// fusao metamoro/danca q muda a cor do cabelo no ssj4"*. A folha ja foi trocada la em cima
+		// (`CabelosDeForma` recebe o tipo da fusao e devolve a do Gogeta pra TODAS elas -- o dono falou de
+		// COR, e a cabeca da fusao continua sendo a mesma); o que muda por tipo e a tinta.
+		//
+		// QUEM DECIDE E O CORE (`Fusao.TintaDoCabeloDaFusao`), e por isso este `if` nao pergunta pelo
+		// tipo: ele so entrega o tipo e a forma. Uma Potara em SSJ4 recebe nulo aqui, CAI FORA deste ramo
+		// e desce pro caminho comum -- que pra o SSJ4 e exatamente "nenhuma tinta" (o `CorDoCabelo`
+		// devolve nulo pros seis SSJ4) e "nenhuma tinta de rabo" (o `CorDoRabo` sai pelo `FolhaTrazORabo`,
+		// porque a folha do corpo do SSJ4 ja desenha a cauda). Ou seja o caminho comum ja e, linha por
+		// linha, a "cor normal de cabelo que seria se nao fosse uma fusao" que ele pediu -- nao precisou
+		// de um segundo ramo pra Potara, e um segundo ramo e que teria como divergir.
 		//
 		// ELA NAO PASSA PELO `ModoDoCabelo`, e nao e atalho: aquele enum e derivado da FORMA
 		// (`Catalogo.CorDoCabelo(d)`), e a forma aqui e o SSJ4 -- que **nao tinge cabelo de ninguem**
@@ -284,7 +294,8 @@ public partial class CharacterVisual : Node2D
 		// que todo sprite trazido por forma e a arte DOURADA de Super Saiyajin, e a folha do SSJ4 e
 		// ESCURA (piso `#080808` em 47% dos pixels). Em matiz o piso sairia a 6,3% da tinta -- preto.
 		// ==========================================================================================================
-		if (_ehFusao && Jandirus.Core.Social.Fusao.TintaDoCabeloDaFusao(sufixo) is { } cf)
+		if (_fusao is { } tipoDaFusao
+			&& Jandirus.Core.Social.Fusao.TintaDoCabeloDaFusao(tipoDaFusao, sufixo) is { } cf)
 		{
 			TingirCabelo(new Color(cf), matiz: false);
 			PintarRabo(null);   // o rabo do SSJ4 mora na folha do CORPO -- ver `PintarRabo`
@@ -2676,11 +2687,15 @@ public partial class CharacterVisual : Node2D
 		if (_cabelo == null || !IsInstanceValid(_cabelo)) return false;
 		_cabeloBase ??= _cabeloAtual;
 
-		// O `_ehFusao` ENTRA AQUI e nao num ramo proprio: a pergunta continua sendo "qual sprite esta
+		// O `_fusao` ENTRA AQUI e nao num ramo proprio: a pergunta continua sendo "qual sprite esta
 		// forma usa neste corpo", e a fusao e um fato DO CORPO -- do mesmo tipo que o `_feminina`, que ja
 		// escolhe entre `Hair_SSj4` e `Hair_SSJ4Female` na mesma linha. Ver `CabelosDeForma.Universal`.
+		//
+		// E ELE ENTRA COMO `bool` DE PROPOSITO, mesmo tendo virado tipo: a FOLHA nao depende do tipo de
+		// fusao -- toda fusao em SSJ4 usa a cabeca do Gogeta. O que a correcao do dono separou foi a COR
+		// (ver `Fusao.TintaDoCabeloDaFusao`), e passar o tipo aqui sugeriria uma escolha que nao existe.
 		string? variante = string.IsNullOrEmpty(sufixo)
-			? null : CabelosDeForma.De(_cabeloBase, sufixo, _feminina, _ehFusao);
+			? null : CabelosDeForma.De(_cabeloBase, sufixo, _feminina, _fusao != null);
 		string? alvo = variante ?? _cabeloBase;
 		if (alvo == null || alvo == _cabeloAtual) return variante != null;
 
@@ -2724,8 +2739,14 @@ public partial class CharacterVisual : Node2D
 	public void MarcarFormaDominada(bool sim) => _dominouAForma = sim;
 
 	/// <summary>
-	/// ESTE CORPO E UMA FUSAO. So o cabelo usa isto, e por uma regra do dono: *"no SSJ4, TODA fusao usa
-	/// `Hair SSJ4 Gogeta` pintado de vermelho -- tendo ou nao o cabelo do Vegito"*.
+	/// DE QUE FUSAO ESTE CORPO E (nulo = nao e fusao). So o cabelo usa isto, e por uma regra do dono:
+	/// *"o ssj4 (e suas variantes) quando esta na fusao potara, o cabelo nao fica vermelho e sim na cor
+	/// normal de cabelo q seria se n fosse uma fusao, so a fusao metamoro/danca q muda a cor do cabelo no
+	/// ssj4"*.
+	///
+	/// **ERA UM `bool`.** Enquanto a regra era "TODA fusao pinta", saber que o corpo era fusao respondia
+	/// tudo; com Danca e Potara divergindo, o que o desenho precisa e o TIPO. Ele vem do servidor no
+	/// `S2C.PeerLook` (ver `GameServer.TrocarAparencias`) e chega aqui pelo `World._fusaoDaZona`.
 	///
 	/// ============================ POR QUE CAMPO, E NAO PARAMETRO ============================
 	/// Irmao do <see cref="_dominouAForma"/> e do <see cref="_feminina"/>, e pelo motivo escrito la: e um
@@ -2736,16 +2757,19 @@ public partial class CharacterVisual : Node2D
 	/// devolve-lo intacto no fim.
 	/// ===================================================================================
 	/// </summary>
-	private bool _ehFusao;
+	private Jandirus.Core.Social.TipoDeFusao? _fusao;
 
 	/// <summary>
-	/// Diz a este corpo que ele e (ou deixou de ser) uma fusao. Chamar ANTES do
-	/// <see cref="VestirCabeloDaForma"/> -- ver <see cref="_ehFusao"/>.
+	/// Diz a este corpo de que fusao ele e (ou que deixou de ser uma). Chamar ANTES do
+	/// <see cref="VestirCabeloDaForma"/> -- ver <see cref="_fusao"/>.
 	/// </summary>
-	public void MarcarFusao(bool sim) => _ehFusao = sim;
+	public void MarcarFusao(Jandirus.Core.Social.TipoDeFusao? tipo) => _fusao = tipo;
 
 	/// <summary>Este corpo esta marcado como fusao? Pra bancada -- ver `--diagforma`.</summary>
-	public bool EhFusaoDeTeste => _ehFusao;
+	public bool EhFusaoDeTeste => _fusao != null;
+
+	/// <summary>De que fusao este corpo esta marcado, ou nulo. Pra bancada -- ver `--diagfusaolook`.</summary>
+	public Jandirus.Core.Social.TipoDeFusao? TipoDeFusaoDeTeste => _fusao;
 
 	/// <summary>
 	/// O SERVIDOR ESTA DIRIGINDO ESTE CORPO? (a furia lendaria, o Oozaru sem controle, ou o que vier

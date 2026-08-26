@@ -247,6 +247,53 @@ public sealed partial class GameServer
 			Zerar = () => { _mortos.Limpar(); _proximoTremor.Clear(); _cargaDoPlanetDestroy.Clear(); },
 		});
 
+		// ---------------------------------------------------------- esferas do dragao
+		// ============================ A CONTAGEM E DE SET DE JOGADOR, E O ETERNO FICA DE FORA ============================
+		// Mesma disciplina (e mesmo motivo) da contagem das sagas: o Porunga de Namek e CONTEUDO -- ele
+		// nasce do manifesto de mapas mais as constantes de `Core/Magic/Esferas.cs`, existe num servidor
+		// que ninguem jogou, e a limpeza o RECRIA em vez de apaga-lo (ver `RemontarOMundoNovo`). Conta-lo
+		// aqui faria a previa prometer apagar uma coisa que nao vai sumir, e a bancada -- que cobra zero
+		// depois do wipe -- ficaria vermelha em cima de um servidor perfeito.
+		//
+		// O QUE ESTA LINHA CONTA E EXATAMENTE O QUE O DONO PEDIU: *"principalmente as esferas criadas por
+		// jogadores"*. Cada set e uma estatua com as sete penduradas nela e um dono escrito dentro; some
+		// o set, somem as tres coisas juntas. O inventario do `ZerarEsferas` diz o que vai junto e o que
+		// mora noutro sistema.
+		// ============================================================================================================
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "estatuas do dragao erguidas por jogador (com as sete esferas de cada)",
+			Arquivos = ["esferas.json"],
+			Unidade = "set(s) de esferas de jogador",
+			Contar = () => _sets.Count(s => !s.Eterno),
+			Zerar = ZerarEsferas,
+		});
+
+		// ---------------------------------------------------------- super esferas
+		// ============================ SEM ESTA INSCRICAO, O SUPER SHENRON FICA TRANCADO PRA SEMPRE ============================
+		// E o achado mais duro da medicao, e ele nao e "um fantasma a mais": a PROCURACAO da lingua dos
+		// deuses (`_benefSig`) persiste no `superesferas.json`, e as tres portas que a desfazem exigem uma
+		// pessoa que a limpeza acabou de apagar -- `ChamarOSuperShenron` quer o pedinte ONLINE,
+		// `TransferirAGuarda` recusa quem carrega procuracao alheia, e `RevogarAGuarda` so aceita o
+		// proprio beneficiario. Um mundo "novo" herdando essa linha nasce com o Super Shenron inalcancavel
+		// e as sete impossiveis de trocar de mao, e a unica saida seria um SEGUNDO comando de admin
+		// (`sdb_reset`) pra desfazer o que a limpeza deveria ter desfeito.
+		//
+		// E HAVIA CONTAMINACAO CRUZADA, medida: no primeiro tique depois do wipe, `TickDasSuperEsferas`
+		// derrubava as disputas herdadas e chamava `RecadoAoDono` antes de morrer -- que enfileira em
+		// `_recadosDeConquista` e chama `SalvarConquista()`. Ou seja, um sistema NAO inscrito ressuscitava
+		// o `conquista.json` de um sistema inscrito, com um recado pra uma assinatura que nao existe mais.
+		// Com `_disputasDeSuper` vazio, nao ha o que derrubar e nao ha recado.
+		// ================================================================================================================
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "Super Esferas: posse, disputa e a procuracao do Super Shenron",
+			Arquivos = ["superesferas.json"],
+			Unidade = "vinculo(s) com as Super Esferas",
+			Contar = QuantoAsSupersPrendem,
+			Zerar = ZerarSuperEsferas,
+		});
+
 		// ---------------------------------------------------------- deveres de cargo
 		_sistemasDoMundo.Add(new SistemaDoMundo
 		{
@@ -445,6 +492,41 @@ public sealed partial class GameServer
 		foreach (Jandirus.Core.Npc.EloDaSaga e in _cadeia)
 			_sagas.Elos.Add(new Jandirus.Core.Npc.EstadoDoElo { Id = e.Id });
 		_sagasPorRetomar = true;
+	}
+
+	/// <summary>
+	/// **O QUE O MUNDO NOVO PRECISA TER** -- a passada que roda DEPOIS de todos os `Zerar`.
+	///
+	/// ============================ POR QUE ISTO NAO CABE DENTRO DE UM `Zerar` ============================
+	/// Os `Zerar` respondem "o que este sistema precisa ESQUECER", e cada um responde sozinho. Estas duas
+	/// linhas respondem a outra pergunta -- "o que o mundo limpo precisa TER" --, e nenhuma das duas tem
+	/// resposta antes de todos os outros terem falado:
+	///
+	///   * A COLISAO so pode ser refeita depois de `_naves` esvaziar, senao ela reblocqueia as celulas de
+	///     naves que estao prestes a sumir (o motivo inteiro esta no `_zonasPorRecolidir`).
+	///   * O SET ETERNO DE NAMEK so pode ser erguido depois de o RELOGIO voltar ao lugar. `AtivoEm` e um
+	///     carimbo absoluto do <see cref="TempoDoMundo"/>, e o `_adiantoDoCeu` (a manivela de
+	///     admin/bancada) e zerado por OUTRO inscrito. Erguido antes dele, o Porunga do mundo novo
+	///     nasceria apagado por todo o tamanho do adianto -- e nada no jogo diria por que.
+	///
+	/// Resolver isso pela ORDEM da tabela funcionaria hoje e quebraria no dia em que alguem a
+	/// reordenasse. Uma passada depois de todos vale independente de ordem, que e a unica forma que
+	/// continua valendo depois.
+	/// ================================================================================================
+	///
+	/// ============================ E O ETERNO VOLTA **SEM REINICIAR**, que era o buraco ============================
+	/// `ErguerOSetEterno` so tinha um chamador: o boot (`CarregarEsferas`). Um `Zerar` que so esvaziasse
+	/// as listas deixaria Namek SEM Esferas do Dragao ate o proximo reinicio do servidor -- e a limpeza
+	/// roda com o servidor no ar. E palavra por palavra o modo de falha que o `ZerarSagas` documenta
+	/// ("senao a primeira saga do mundo novo nunca comeca").
+	///
+	/// Chamar de novo e barato e idempotente: com um eterno de pe ele sai na primeira linha pro zelador.
+	/// ========================================================================================================
+	/// </summary>
+	private void RemontarOMundoNovo()
+	{
+		RefazerColisaoDeTudo();
+		ErguerOSetEterno();
 	}
 
 	/// <summary>
@@ -701,9 +783,10 @@ public sealed partial class GameServer
 					GD.PushError($"[limpeza] o Zerar de '{s.Nome}' quebrou: {e}");
 				}
 			}
-			// A COLISAO POR ULTIMO: `ZerarConstrucoes` roda antes de `_naves.Clear()` na ordem dos
-			// inscritos, entao as celulas das naves so somem nesta passada final.
-			RefazerColisaoDeTudo();
+			// O QUE O MUNDO NOVO PRECISA TER, e nao o que ele precisa esquecer: a colisao refeita e o
+			// Porunga de Namek de volta. As duas coisas dependem de TODOS os `Zerar` ja terem rodado --
+			// ver o porque de cada uma la.
+			RemontarOMundoNovo();
 
 			// ------------------------------------------------------ 4. o disco
 			(int apagados, int poupados, List<string> erros) = ApagarAPasta();

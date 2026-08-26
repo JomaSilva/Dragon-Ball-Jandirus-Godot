@@ -83,10 +83,16 @@ public partial class CharacterSelect : CanvasLayer
         for (int i = 0; i < _slots.Count; i++) fileira.AddChild(MontarSlot(i, _slots[i]));
 
         var rodape = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        rodape.AddThemeConstantOverride("separation", 6);
         col.AddChild(rodape);
         var voltar = new Button { Text = "Trocar de servidor" };
         voltar.Pressed += () => Sair?.Invoke();
         rodape.AddChild(voltar);
+
+        // OPCOES E SAIR, a segunda das tres telas do lobby. Elas nao herdam nada da tela de login --
+        // aquela fica INVISIVEL enquanto esta esta no ar (`Boot.AoReceberSlots`), entao um botao
+        // posto so la nao existiria aqui. Ver `BotoesDoLobby`.
+        rodape.AddChild(BotoesDoLobby.Montar(this));
     }
 
     private Control MontarSlot(int indice, SlotInfo s)

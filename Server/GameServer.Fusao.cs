@@ -306,6 +306,22 @@ public sealed partial class GameServer
 			case "fus_namek": ConvidarParaAFusaoNamekuseijin(pl); return true;
 			case "fus_sim": ResponderAoConvite(pl, aceitou: true); return true;
 			case "fus_nao": ResponderAoConvite(pl, aceitou: false); return true;
+
+			// ============================ O SIM DA NAMEKUSEIJIN E UM BOTAO **DIFERENTE** ============================
+			// Ele nao existe por gosto: o `fus_sim` aceita Danca e Potara, e nas duas o pior que pode
+			// acontecer com quem aperta e ficar 15 ou 30 minutos como passageiro. Na Namekuseijin o mesmo
+			// gesto custa **o personagem, para sempre** (regra N3 do dono).
+			//
+			// Reusar o botao generico seria consentimento sobre a coisa errada, por tres motivos que se
+			// somam: o texto dele promete literalmente *"voce volta quando a fusao acabar"*; a memoria
+			// muscular de quem ja aceitou uma Danca aperta o mesmo lugar; e um macro ou cliente
+			// modificado manda `fus_sim` sem nunca ter visto caixa nenhuma. O portao mais forte que este
+			// jogo tem pra uma consequencia parecida e o `DeleteChar`, que exige DIGITAR o nome do
+			// personagem -- aqui nao ha campo de texto, entao o que substitui a digitacao e a
+			// combinacao "botao proprio + DUAS confirmacoes separadas por um intervalo". Ver
+			// `ResponderAoConviteDeAbsorcao`.
+			// ==================================================================================================
+			case "fus_namek_sim": ResponderAoConviteDeAbsorcao(pl); return true;
 			case "fus_passar": PassarOControle(pl); return true;
 			default: return false;
 		}
@@ -330,14 +346,19 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// `Namekian_Fusion` (`Fusion.dm:549-569`): a fusao PERMANENTE dos Namekuseijin, e ela e a unica
-	/// que nunca se desfaz.
+	/// `Namekian_Fusion` (`Fusion.dm:549-569`): a fusao dos Namekuseijin, que **nao e uma fusao: e uma
+	/// ABSORCAO**. Ver `GameServer.Namekuseijin.cs` e `Core/Social/AbsorcaoNamekuseijin.cs`.
 	///
-	/// ============================ ELA EXISTIA NO MOTOR E NAO TINHA PORTA ============================
-	/// <see cref="TipoDeFusao.Namek"/> ja governava quatro coisas neste arquivo -- energia zero
-	/// (permanente), roupa nenhuma, o `return` do <see cref="FusaoAoCair"/> e o pulo do dreno --, e
-	/// **nenhuma linha de producao chamava `Convidar` com ela**. Os unicos chamadores eram a Danca e a
-	/// Potara; o resto era ramo morto que so a bancada tocava. Este metodo e a porta que faltava.
+	/// ============================ ELA TEM DOIS CAMINHOS, E SO UM PASSA POR CONVITE ============================
+	/// **JOGADOR** -- convite normal, e ele fecha no <see cref="Convidar"/> como os outros dois tipos.
+	/// O aceite e que e outro: o botao comum RECUSA e o proprio pede duas confirmacoes, porque o que o
+	/// convidado perde e o personagem dele (ver <see cref="ResponderAoConviteDeAbsorcao"/>).
+	///
+	/// **NPC DO MUNDO** -- vai direto pra cena, sem convite nenhum: nao ha a quem perguntar. Regra N4
+	/// do dono (*"fundir com npc namek ganha BEM menos bp e outros bonus"*), e ela fecha um buraco em
+	/// vez de abrir um -- um pendente na mesa de um corpo dirigido por IA seria um caminho novo pra
+	/// fundir sem consentimento.
+	/// ======================================================================================================
 	///
 	/// ============================ ELA NAO PEDE SKILL, E ISSO E DO DM ============================
 	/// O verb do original nao consulta livro nenhum: ele mora num `obj/Namekian_Fusion` e num
@@ -352,6 +373,33 @@ public sealed partial class GameServer
 	{
 		ServerPlayer? outro = AlvoNaFrente(pl);
 		if (outro == null) { Avisar(pl, "nao ha ninguem na sua frente."); return; }
+
+		// ============================ NPC NAO E CONVIDADO: NPC E ABSORVIDO (regra N4) ============================
+		// *"fundir com npc namek ganha BEM menos bp e outros bonus"*. Um NPC nao tem a quem perguntar --
+		// nao ha ninguem pra ler a caixa nem pra apertar o botao --, entao o caminho dele **nao passa
+		// pelo convite**: ele vai direto pra cinematica, que e onde a absorcao acontece.
+		//
+		// **E ISSO FECHA UM BURACO EM VEZ DE ABRIR UM.** Se o NPC entrasse no fluxo de convite, existiria
+		// um pendente na mesa de um corpo dirigido por IA -- e "IA respondendo `fus_sim`" viraria um
+		// caminho novo pra fundir sem consentimento. Do jeito que esta, o unico gesto humano necessario
+		// e o de quem absorve, que e o dono do proprio gesto.
+		//
+		// O `Avaliar` continua sendo consultado (raca dos dois, distancia, recarga, caido, mesma zona):
+		// o que muda e que o portao de assinatura do ALVO aceita NPC do mundo nesta fusao -- ver
+		// `Fusao.Avaliar` e `EhNamekNpcAbsorvivel`.
+		// =====================================================================================================
+		if (EhNamekNpcAbsorvivel(outro))
+		{
+			long agora = NowMs();
+			RecusaDeFusao r = AvaliarOConvite(pl, outro, TipoDeFusao.Namek, agora);
+			if (r != RecusaDeFusao.Pode)
+			{ Avisar(pl, PorQueNaoFunde(r, TipoDeFusao.Namek, pl, outro, agora)); return; }
+
+			Avisar(pl, $"voce agarra {outro.Name} -- ele nem entende o que esta acontecendo.");
+			ComecarACenaDaFusao(pl, outro, TipoDeFusao.Namek, estragada: false);
+			return;
+		}
+
 		Convidar(pl, outro, TipoDeFusao.Namek);
 	}
 
@@ -420,7 +468,11 @@ public sealed partial class GameServer
 			euSeiDancar: SabeDancar(pl), eleSabeDancar: SabeDancar(outro),
 			racaA: pl.Race, racaB: outro.Race,
 			expressoA: PoderPraComparar(pl), expressoB: PoderPraComparar(outro),
-			eleJaTemPedido: _pedidosDeFusao.ContainsKey(outro.Id));
+			eleJaTemPedido: _pedidosDeFusao.ContainsKey(outro.Id),
+			// O ALVO PODE SER UM NPC, e **so na Namekuseijin** -- ver `Fusao.Avaliar`, que so olha este
+			// bit quando o tipo e Namek. Quem responde o que conta como NPC absorvivel e o servidor,
+			// porque a pergunta e sobre o CORPO (clone e boneco ficam de fora) e o Core nao os conhece.
+			convidadoEhNpcAbsorvivel: EhNamekNpcAbsorvivel(outro));
 	}
 
 	/// <summary>A metade do <see cref="Convidar"/> que AVISA os dois -- separada so pra o metodo caber.</summary>
@@ -491,7 +543,14 @@ public sealed partial class GameServer
 	private string PorQueNaoFunde(RecusaDeFusao r, TipoDeFusao tipo,
 								  ServerPlayer eu, ServerPlayer outro, long agora) => r switch
 	{
-		RecusaDeFusao.SemAssinatura => "essa criatura nao tem identidade propria.",
+		// A FRASE DIZ O TIPO, e nao um "nao da" mudo: desde que a Namekuseijin passou a aceitar NPC do
+		// mundo como ALVO (regra N4), "corpo sem dono" deixou de ser sempre a recusa certa -- ela agora
+		// so vale pro corpo sem dono que **nao** e NPC do mundo (o clone da mente, o boneco do corpo
+		// largado) ou pro NPC que nao e Namekuseijin. Quem esbarrar nisto precisa saber qual das duas.
+		RecusaDeFusao.SemAssinatura => tipo == TipoDeFusao.Namek
+			? $"nao da pra absorver {outro.Name}: so gente de verdade, ou um Namekuseijin do MUNDO -- "
+			  + "e um reflexo, um clone ou um corpo largado nao sao nem uma coisa nem outra."
+			: "essa criatura nao tem identidade propria.",
 		RecusaDeFusao.EleMesmo => "ninguem funde consigo mesmo.",
 		RecusaDeFusao.JaFundido => "um de voces ja esta fundido (ou no meio da danca).",
 		RecusaDeFusao.NaRecarga => EmQuantoTempo(eu, outro, agora),
@@ -540,7 +599,11 @@ public sealed partial class GameServer
 	/// **E este e o caminho que responde "e se um sair de perto?"**: nao ha fusao a distancia; o
 	/// convite simplesmente nao fecha, e os dois ouvem por que.
 	/// </summary>
-	private void ResponderAoConvite(ServerPlayer pl, bool aceitou)
+	/// <param name="confirmouAAbsorcao">
+	/// SO O <see cref="ResponderAoConviteDeAbsorcao"/> PASSA `true` AQUI. Sem ele, um "sim" numa fusao
+	/// Namekuseijin e RECUSADO -- ver o bloco logo abaixo.
+	/// </param>
+	private void ResponderAoConvite(ServerPlayer pl, bool aceitou, bool confirmouAAbsorcao = false)
 	{
 		if (!_pedidosDeFusao.TryGetValue(pl.Id, out PedidoDeFusao? p))
 		{
@@ -552,7 +615,27 @@ public sealed partial class GameServer
 		if (agora > p.Ate)
 		{
 			_pedidosDeFusao.Remove(pl.Id);
+			_confirmacoesDeAbsorcao.Remove(pl.Id);
 			Avisar(pl, $"o convite de {p.Nome} ja tinha passado.");
+			return;
+		}
+
+		// ============================ O BOTAO COMUM **NAO** ACEITA UMA ABSORCAO ============================
+		// E ele nao pode aceitar: o texto dele diz *"voce volta quando a fusao acabar"*, e numa
+		// Namekuseijin nao ha volta -- o personagem de quem aceita deixa de existir (regra N3 do dono).
+		// Consentimento dado sobre a consequencia errada nao e consentimento.
+		//
+		// **O PENDENTE CONTINUA NA MESA**, e por isso este `return` vem ANTES do `Remove` logo abaixo:
+		// o convite nao foi respondido, foi encaminhado. Quem quiser aceitar tem o verb proprio; quem
+		// nao quiser tem o `fus_nao`, que continua funcionando normalmente (recusar nunca precisa de
+		// cerimonia).
+		// ==============================================================================================
+		if (aceitou && p.Tipo == TipoDeFusao.Namek && !confirmouAAbsorcao)
+		{
+			Avisar(pl, $"{p.Nome} nao esta te chamando pra uma fusao comum: se voce aceitar, o SEU "
+					 + "personagem deixa de existir para sempre. O botao de aceitar fusao NAO serve "
+					 + "aqui -- use 'Aceitar a ABSORCAO (perco o personagem)' na aba Learning, e ele "
+					 + "vai pedir duas vezes.");
 			return;
 		}
 
@@ -572,6 +655,7 @@ public sealed partial class GameServer
 
 		if (!aceitou)
 		{
+			_confirmacoesDeAbsorcao.Remove(pl.Id);
 			Avisar(pl, $"voce recusa a fusao com {quem.Name}.");
 			Avisar(quem, $"{pl.Name} recusou a fusao.");
 			return;
@@ -616,6 +700,90 @@ public sealed partial class GameServer
 		if (p.Tipo != TipoDeFusao.Danca) { ComecarOPuxaoDeFusao(quem, pl, p.Tipo); return; }
 
 		ComecarADanca(quem, pl);
+	}
+
+	// =====================================================================
+	// 2b. O SIM DA ABSORCAO -- o unico gesto do jogo que custa um personagem
+	// =====================================================================
+	/// <summary>
+	/// QUANDO CADA UM APERTOU A **PRIMEIRA** CONFIRMACAO DA ABSORCAO, por id. Ausente = ainda nao
+	/// apertou nenhuma.
+	///
+	/// VIVO E NAO PERSISTIDO: ele so tem sentido enquanto o convite estiver na mesa (60 s), e um
+	/// carimbo que sobrevivesse ao logout deixaria a segunda confirmacao valer horas depois -- que e
+	/// justamente o que o par de confirmacoes existe pra impedir. Limpo em toda saida: recusa, prazo
+	/// vencido, resposta consumada e <see cref="SoltarDaFusao"/>.
+	/// </summary>
+	private readonly Dictionary<int, long> _confirmacoesDeAbsorcao = [];
+
+	/// <summary>
+	/// ============================ O ACEITE DA FUSAO NAMEKUSEIJIN, EM DOIS TEMPOS ============================
+	/// Regra N3 do dono: *"o outro namek se for jogador, perde o personagem pra sempre (a fusao e
+	/// eterna)"*. Este e o unico caminho por onde esse "sim" pode entrar.
+	///
+	/// **PRIMEIRA CONFIRMACAO**: nao aceita nada. Ela imprime o que exatamente se perde -- o nome, a
+	/// raca, a idade e o poder DAQUELE personagem -- e arma o relogio. E o mais perto que da pra chegar
+	/// do "digite o nome do personagem" do `DeleteChar` sem um campo de texto: em vez de o jogador
+	/// escrever quem morre, o servidor escreve, e ele confirma.
+	///
+	/// **SEGUNDA CONFIRMACAO**: so vale depois de <see cref="AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes"/>.
+	/// E ai ela cai no <see cref="ResponderAoConvite"/> normal -- **a revalidacao inteira roda de novo**
+	/// (distancia, recarga, caido, mesma zona, raca dos dois), porque entre a primeira confirmacao e
+	/// esta passaram alguns segundos em que tudo pode ter mudado.
+	///
+	/// ============================ O QUE ELE FECHA, E NAO E POUCO ============================
+	///   * **o clique duplo e o macro** -- o intervalo minimo nao cabe neles;
+	///   * **o pacote forjado** -- um cliente modificado mandando `fus_namek_sim` em rajada tambem nao
+	///     passa pelo intervalo, e mandando uma vez so nao aceita nada;
+	///   * **a memoria muscular** -- o botao nao e o mesmo que aceita Danca e Potara, e o `fus_sim` que
+	///     ela aperta por reflexo RECUSA e explica (ver `ResponderAoConvite`);
+	///   * **o convite que nao existe** -- sem pendente Namekuseijin na mesa, isto nao faz nada.
+	/// ==================================================================================
+	/// </summary>
+	private void ResponderAoConviteDeAbsorcao(ServerPlayer pl)
+	{
+		if (!_pedidosDeFusao.TryGetValue(pl.Id, out PedidoDeFusao? p) || p.Tipo != TipoDeFusao.Namek)
+		{
+			_confirmacoesDeAbsorcao.Remove(pl.Id);
+			Avisar(pl, "ninguem te ofereceu a fusao Namekuseijin.");
+			return;
+		}
+
+		long agora = NowMs();
+		if (agora > p.Ate)
+		{
+			_pedidosDeFusao.Remove(pl.Id);
+			_confirmacoesDeAbsorcao.Remove(pl.Id);
+			Avisar(pl, $"o convite de {p.Nome} ja tinha passado.");
+			return;
+		}
+
+		long espera = (long)(AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes * 1000);
+
+		if (!_confirmacoesDeAbsorcao.TryGetValue(pl.Id, out long primeira))
+		{
+			_confirmacoesDeAbsorcao[pl.Id] = agora;
+
+			// O QUE SE PERDE, POR EXTENSO. E a metade do `DeleteChar` que da pra ter aqui: la o jogador
+			// digita o nome e o servidor confere; aqui o servidor diz o nome e o jogador confirma.
+			Avisar(pl, $"PARE E LEIA. Aceitar isto APAGA {pl.Name} -- {pl.Race}, {pl.Idade} anos, "
+					 + $"poder {pl.Ficha.BP:N0} -- para sempre. Ele nao vira passageiro, nao volta "
+					 + $"depois e nao pode ser revivido: ele deixa de existir, e {p.Nome} fica com o "
+					 + "poder dele. A sua CONTA continua sua, e voce podera criar outro personagem no "
+					 + $"lugar. Se e isso mesmo que voce quer, confirme DE NOVO em "
+					 + $"{AbsorcaoNamekuseijin.SegundosEntreAsConfirmacoes:0} segundos.");
+			return;
+		}
+
+		if (agora - primeira < espera)
+		{
+			Avisar(pl, $"espere mais {(espera - (agora - primeira)) / 1000.0:0.#} s e confirme de novo. "
+					 + "Este e o unico gesto do jogo que nao tem desfazer -- ele nao aceita pressa.");
+			return;
+		}
+
+		_confirmacoesDeAbsorcao.Remove(pl.Id);
+		ResponderAoConvite(pl, aceitou: true, confirmouAAbsorcao: true);
 	}
 
 	// =====================================================================
@@ -1260,7 +1428,22 @@ public sealed partial class GameServer
 				if (agora >= c.Funde)
 				{
 					c.Fundiu = true;
-					Fundir(c.Dono, c.Passageiro, c.Tipo, c.Estragada);
+
+					// ============================ A NAMEKUSEIJIN SAI POR OUTRA PORTA, E SO AQUI ============================
+					// Ela nao produz uma `FusaoAtiva`: ela ABSORVE -- o poder e assado no personagem, o
+					// absorvido perde o dele, e nao ha nada pra desfazer depois. O porque inteiro esta no
+					// cabecalho de `GameServer.Namekuseijin.cs` e no de `AbsorcaoNamekuseijin`; o resumo e
+					// que uma fusao ETERNA nao cabe num motor cujo `Persistir` se recusa a gravar corpo
+					// fundido, e que o proprio DM ja resolve assim (`Fusion.dm:301-310`).
+					//
+					// **ESTE E O UNICO PONTO DE DIVERGENCIA da corrente inteira.** Tudo o que vem antes --
+					// o convite, o aceite revalidado, a distancia de um tile, as quatro guardas de aborto
+					// logo acima -- e o mesmo caminho dos outros dois tipos, e e de proposito: a regra do
+					// dono ("se o alvo cair entre o aceite e a consumacao, a fusao NAO acontece") ja mora
+					// naquelas guardas, provada pela Danca.
+					// ==================================================================================================
+					if (c.Tipo == TipoDeFusao.Namek) AbsorverNamekuseijin(c.Dono, c.Passageiro);
+					else Fundir(c.Dono, c.Passageiro, c.Tipo, c.Estragada);
 				}
 			}
 
@@ -1540,19 +1723,21 @@ public sealed partial class GameServer
 		// nao se multiplica com forma nem com raiva -- que e o certo, e o que o DM tambem faz.
 		// =========================================================================================================
 
-		// ============================ A NAMEKUSEIJIN NAO HERDA, E A DECISAO NAO E MINHA ============================
-		// Os passos 2 e 3 (o maior stat de cada, as skills dos dois) sao PEDIDO NOVO do dono e nao
-		// existem no DM. Ele nunca disse se valem pra fusao PERMANENTE -- ver
-		// `Fusao.HerancaNaFusaoNamekuseijin`, que e o interruptor e a explicacao. Enquanto ele nao
-		// responde, a Namekuseijin sai como o original a escreve.
-		// ======================================================================================================
-		bool herda = tipo != TipoDeFusao.Namek || Fusao.HerancaNaFusaoNamekuseijin;
+		// ============================ A PERGUNTA EM ABERTO SUMIU DAQUI, E ELA FOI RESPONDIDA ============================
+		// Morava aqui um `bool herda = tipo != Namek || Fusao.HerancaNaFusaoNamekuseijin`, com um gemeo
+		// no `PassarOControle`. Os dois existiam porque o dono nunca tinha dito se a heranca (o maior
+		// stat de cada, as skills dos dois -- pedido dele, nao do DM) valia pra fusao PERMANENTE.
+		//
+		// **Os dois sairam.** A fusao Namekuseijin deixou de produzir uma `FusaoAtiva`: ela ABSORVE, e o
+		// que ela herda (e de quem) mora em `AbsorcaoNamekuseijin.HerdaOsStats` / `HerdaAsSkills` -- a
+		// resposta la e "so quando o absorvido e JOGADOR", que e a regra N4. Este metodo so recebe Danca
+		// e Potara agora, entao a condicao era sempre verdadeira e virou ramo morto.
+		// =========================================================================================================
 
 		// ---- 2. OS STATS: O MAIOR DE CADA (pedido do dono; nao existe no DM) ----
 		// *"se jogador 1 tem 30 de physical e o 2 tem 40, a fusao tem 40"*. Nos stats CRUS e nao nos
 		// efetivos: os efetivos ja carregam estilo, forma e buffs temporarios, e copiar um numero ja
 		// temperado deixaria o tempero preso no corpo depois que a fonte dele acabasse.
-		if (herda)
 		{
 			double[] meus = StatsDe(dono.Ficha), dele = StatsDe(passageiro.Ficha);
 			for (int i = 0; i < meus.Length; i++) meus[i] = Math.Max(meus[i], dele[i]);
@@ -1562,7 +1747,7 @@ public sealed partial class GameServer
 		// ---- 3. AS SKILLS DOS DOIS (pedido do dono; nao existe no DM) ----
 		// So o que ele NAO tinha entra na lista de emprestimo -- assim o `Separar` devolve exatamente
 		// o que pegou e nunca apaga uma skill que o dono ja tinha comprado.
-		if (herda && dono.Livro != null && passageiro.Livro != null)
+		if (dono.Livro != null && passageiro.Livro != null)
 			foreach (string path in passageiro.Livro.Aprendidas)
 			{
 				if (dono.Livro.Sabe(path)) continue;
@@ -1628,15 +1813,16 @@ public sealed partial class GameServer
 			+ "dois sozinho, e nao consegue se transformar. Aguente ate a energia acabar."
 			: $"voce e {f.NomeDaFusao}! Voce controla o corpo -- use 'Passar o controle' pra entregar "
 			+ "o volante ao seu outro lado.");
-		// A FUSAO PERMANENTE NAO PROMETE VOLTA. `EnergiaMax == 0` e o que o DM chama de permanente
-		// (`Fusion.dm:271`), e e o mesmo numero que faz o dreno pular esta fusao e o nocaute nao a
-		// separar. Dizer "voce volta quando a fusao acabar" pra quem entrou numa Namekuseijin seria a
-		// unica frase mentirosa do sistema -- e a que o jogador so descobriria falsa horas depois.
-		Avisar(passageiro, f.EnergiaMax > 0
-			? $"voce se dissolve em {f.NomeDaFusao}. Quem dirige e {dono.Name}; "
-			+ "voce volta quando a fusao acabar."
-			: $"voce se dissolve em {f.NomeDaFusao}, e e PRA SEMPRE. Quem dirige e {dono.Name} -- "
-			+ "peca o controle a ele se quiser dirigir a sua vez.");
+		// ============================ A METADE "PRA SEMPRE" DESTA FRASE SAIU ============================
+		// Havia aqui um ternario sobre `f.EnergiaMax > 0`: a metade `false` avisava *"e e PRA SEMPRE"* e
+		// era a unica fala escrita pra a fusao Namekuseijin. Ela nao chega mais neste metodo -- a
+		// Namekuseijin ABSORVE e nao produz `FusaoAtiva` (ver `GameServer.Namekuseijin.cs`), e quem e
+		// absorvido nao vira passageiro nem recebe aviso de fusao: ele recebe o aviso de que o
+		// personagem acabou. Ramo morto se deleta.
+		//
+		// O que sobra e verdade pros dois tipos que passam por aqui: a Danca e a Potara acabam.
+		Avisar(passageiro, $"voce se dissolve em {f.NomeDaFusao}. Quem dirige e {dono.Name}; "
+						 + "voce volta quando a fusao acabar.");
 
 		GD.Print($"[server] FUSAO {tipo}{(estragada ? " ESTRAGADA" : "")}: {dono.Name} + {passageiro.Name} "
 			   + $"= {f.NomeDaFusao} | BP base {baseDaFusao:N0} | energia {f.EnergiaMax:0}");
@@ -1664,9 +1850,13 @@ public sealed partial class GameServer
 	/// Concedido no `Fuse()` (`:282-283`), retirado no `Defuse()` (`:324-329`) e trocado de mao no
 	/// `PassControl` (`:380-381`, `:390-391`). Com ele, quem entrega o corpo **assiste a luta pelos
 	/// olhos da propria fusao**. Sem ele -- que e o estado de hoje -- metade dos jogadores de toda
-	/// fusao fica olhando um quarto branco e vazio por ate 30 minutos (Potara) ou 15 (Danca), e
-	/// PARA SEMPRE na Namekuseijin. Combinado com *"quem convida controla"*, o convidado hoje so perde:
-	/// entrega o corpo e nao ganha nem o espetaculo.
+	/// fusao fica olhando um quarto branco e vazio por ate 30 minutos (Potara) ou 15 (Danca). Combinado
+	/// com *"quem convida controla"*, o convidado hoje so perde: entrega o corpo e nao ganha nem o
+	/// espetaculo.
+	///
+	/// (**A Namekuseijin saiu desta divida**, e nao por ter sido paga: ela nao sela ninguem mais. Quem e
+	/// absorvido nao vira passageiro de um quarto branco -- o personagem dele acaba. Ver
+	/// `GameServer.Namekuseijin.cs`.)
 	///
 	/// ============================ POR QUE NAO CABE EM UMA LINHA AQUI ============================
 	/// No BYOND `client.eye` e uma atribuicao porque o servidor DESENHA. Aqui o cliente desenha, e ele
@@ -1808,13 +1998,21 @@ public sealed partial class GameServer
 	/// <summary>
 	/// `defuse_on_downed()` (`Fusion.dm:75`): **cair separa a fusao**. Chamado do nocaute e da morte.
 	///
-	/// A Namekuseijin e a excecao no DM (`:79`) e continua sendo aqui: ela e permanente, e um
-	/// nocaute nao desfaz o que nem o tempo desfaz.
+	/// A Namekuseijin era a excecao (`Fusion.dm:79`) e deixou de precisar de excecao -- ver o bloco
+	/// dentro do metodo.
 	/// </summary>
 	private void FusaoAoCair(ServerPlayer pl, string motivo)
 	{
+		// ============================ A EXCECAO DA NAMEKUSEIJIN SAIU DAQUI, E ELA NAO E MAIS PRECISA ============================
+		// Havia um `if (f.Tipo == Namek) return;` nesta linha -- o `Fusion.dm:79` (*"Namekian fusion is
+		// permanent - a KO does not split it"*). Ele deixou de ter o que guardar: a fusao Namekuseijin
+		// nao produz `FusaoAtiva` nenhuma desde que virou ABSORCAO (ver `GameServer.Namekuseijin.cs`),
+		// entao um `f` que chega aqui so pode ser Danca ou Potara.
+		//
+		// **A regra do DM continua valendo, e mais forte**: o nocaute nao desfaz a Namekuseijin porque
+		// nao ha o que desfazer. O poder ja e do personagem.
+		// ==============================================================================================================
 		if (FusaoDe(pl.Id) is not { } f) return;
-		if (f.Tipo == TipoDeFusao.Namek) return;
 		Separar(f, motivo);
 	}
 
@@ -1879,21 +2077,19 @@ public sealed partial class GameServer
 		f.DeltaDeBp = baseDaFusao - novo.Ficha.BP;
 		novo.Ficha.FuseBuff += f.DeltaDeBp;
 
-		// A MESMA PERGUNTA DO `Fundir`, e ela tem que ser a mesma: a heranca de stats e skills e pedido
-		// novo do dono e ele nao a respondeu pra fusao PERMANENTE. Ver `Fusao.HerancaNaFusaoNamekuseijin`.
-		// Se este funil divergisse do outro, passar o controle numa Namekuseijin CONCEDERIA o que fundir
-		// nao concedeu.
-		bool herda = f.Tipo != TipoDeFusao.Namek || Fusao.HerancaNaFusaoNamekuseijin;
-
-		if (herda)
-		{
-			double[] meus = StatsDe(novo.Ficha), dele = StatsDe(antigo.Ficha);
-			for (int i = 0; i < meus.Length; i++) meus[i] = Math.Max(meus[i], dele[i]);
-			PorStats(novo.Ficha, meus);
-		}
+		// ============================ A HERANCA E DE TODA FUSAO VIVA, PORQUE SO HA DUAS ============================
+		// Havia aqui um `bool herda = f.Tipo != Namek || Fusao.HerancaNaFusaoNamekuseijin`, gemeo de um
+		// igual no `Fundir`, e os dois existiam pela mesma pergunta em aberto do dono. **Os dois sairam
+		// juntos**: a fusao Namekuseijin deixou de produzir uma `FusaoAtiva` (ela ABSORVE -- ver
+		// `GameServer.Namekuseijin.cs`), entao um `f` que chega aqui so pode ser Danca ou Potara e a
+		// condicao era sempre verdadeira. Ramo morto se deleta.
+		// =====================================================================================================
+		double[] meus = StatsDe(novo.Ficha), dele = StatsDe(antigo.Ficha);
+		for (int i = 0; i < meus.Length; i++) meus[i] = Math.Max(meus[i], dele[i]);
+		PorStats(novo.Ficha, meus);
 
 		f.SkillsEmprestadas.Clear();
-		if (herda && novo.Livro != null && antigo.Livro != null)
+		if (novo.Livro != null && antigo.Livro != null)
 			foreach (string path in antigo.Livro.Aprendidas)
 			{
 				if (novo.Livro.Sabe(path)) continue;
@@ -2089,7 +2285,18 @@ public sealed partial class GameServer
 			{ Separar(f, "um dos dois deixou o mundo"); continue; }
 
 			if (f.Dono.Ficha.dead) { Separar(f, "o corpo fundido caiu de vez"); continue; }
-			if (f.EnergiaMax <= 0) { f.UltimoDreno = agora; continue; }   // permanente (Namek)
+
+			// ============================ E O PULO DA PERMANENTE TAMBEM SAIU ============================
+			// Havia um `if (f.EnergiaMax <= 0) { f.UltimoDreno = agora; continue; }` aqui, com o
+			// comentario "permanente (Namek)". Ele era o unico leitor do zero que a
+			// `Fusao.EnergiaMaxima` devolvia pra Namekuseijin -- e a Namekuseijin nao chega mais neste
+			// laco, porque ela nao vira `FusaoAtiva` (ver `GameServer.Namekuseijin.cs`).
+			//
+			// **E ele escondia um defeito que este passe nao precisou consertar porque o apagou:** a
+			// linha do `dead` logo acima roda ANTES dele, entao a morte do corpo fundido separava a
+			// permanente por um caminho lateral. Uma fusao eterna que a morte desfazia -- exatamente o
+			// que o aviso do convite prometia que nao aconteceria.
+			// ======================================================================================
 
 			double dt = (agora - f.UltimoDreno) / 1000.0;
 			f.UltimoDreno = agora;
@@ -2198,6 +2405,11 @@ public sealed partial class GameServer
 		if (_dancando.TryGetValue(id, out DancaDeFusao? d)) AbortarADanca(d, "um dos dois saiu do jogo.");
 
 		// O PUXAO CAI JUNTO, e ele entra ANTES da cena porque e a fase anterior: quem esta sendo puxado
+		// A CONFIRMACAO PELA METADE MORRE JUNTO: quem apertou a primeira e saiu nao pode voltar horas
+		// depois e apertar a segunda -- e id de rede SE REUSA, entao o carimbo herdado por quem entrasse
+		// no lugar dele o deixaria a UM clique de perder o proprio personagem.
+		_confirmacoesDeAbsorcao.Remove(id);
+
 		// nao esta em `_emCenaDeFusao` nem em `_fundidos`, e sem esta linha o OUTRO ficaria deslizando
 		// pra um corpo que nao existe mais -- com o input desligado, ate o prazo do
 		// `PuxaoDeFusaoRestante` escorrer. Mesma razao da linha da danca e da linha da cena: o `Drop`

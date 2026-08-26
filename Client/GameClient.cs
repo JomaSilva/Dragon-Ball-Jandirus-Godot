@@ -76,14 +76,19 @@ public partial class GameClient : Node
 	public Protocol.AtributosState Atributos { get; private set; }
 	public event Action<Protocol.AtributosState>? AtributosRecebidos;
 	/// <summary>
-	/// A aparencia de alguem da zona: id, nome, raca, genero, ficha visual -- e **se este corpo e uma
-	/// FUSAO** (o ultimo `bool`).
+	/// A aparencia de alguem da zona: id, nome, raca, genero, ficha visual -- e **de que TIPO de fusao
+	/// este corpo e** (o ultimo campo; nulo = nao e fusao).
 	///
-	/// O bit anda junto da aparencia e nao dentro dela porque `Appearance` e o objeto que vai pro DISCO;
+	/// O dado anda junto da aparencia e nao dentro dela porque `Appearance` e o objeto que vai pro DISCO;
 	/// ver `GameServer.TrocarAparencias`, que o escreve, e `ServerPlayer.LookDeFusao`. Quem o consome e
-	/// uma regra so: no SSJ4, toda fusao usa a folha do Gogeta pintada de vermelho.
+	/// uma regra so: no SSJ4, **a fusao da DANCA** usa a folha do Gogeta pintada de vermelho -- a Potara
+	/// usa a mesma folha na cor normal. Ver `Fusao.TintaDoCabeloDaFusao`.
+	///
+	/// **ERA UM `bool`** ("este corpo e uma fusao") ate o dono corrigir a regra do cabelo. Com Danca e
+	/// Potara divergindo o bit deixou de responder a pergunta, e o tipo passou a viajar no lugar dele.
 	/// </summary>
-	public event Action<int, string, string, string, Jandirus.Core.Appearance.Appearance, bool>? PeerLooked;
+	public event Action<int, string, string, string, Jandirus.Core.Appearance.Appearance,
+					   Jandirus.Core.Social.TipoDeFusao?>? PeerLooked;
 
 	private readonly NetManager _net;
 	private readonly EventBasedNetListener _listener = new();
@@ -1098,10 +1103,14 @@ public partial class GameClient : Node
 				string nome = reader.GetString(24);
 				string raca = reader.GetString(24);
 				string genero = reader.GetString(8);
-				// A ORDEM DE LEITURA E A DE ESCRITA, e o bit da fusao e o ULTIMO -- ver
+				// A ORDEM DE LEITURA E A DE ESCRITA, e o tipo da fusao e o ULTIMO -- ver
 				// `GameServer.TrocarAparencias`. Ler antes da aparencia embaralharia o pacote inteiro.
 				Jandirus.Core.Appearance.Appearance ap = reader.GetAppearance();
-				PeerLooked?.Invoke(quem, nome, raca, genero, ap, reader.GetBool());
+				// ZERO NAO E UM TIPO, e virar nulo AQUI e o que impede o resto do cliente de carregar um
+				// `TipoDeFusao` invalido: os valores sao os `FType` do DM (1, 2, 3) e nao ha o 0.
+				byte tipoFus = reader.GetByte();
+				PeerLooked?.Invoke(quem, nome, raca, genero, ap,
+					tipoFus == 0 ? null : (Jandirus.Core.Social.TipoDeFusao)tipoFus);
 				break;
 			}
 

@@ -34,10 +34,30 @@ public partial class Boot : Node2D
 	/// <summary>As preferencias desta maquina. Uma so, lida por quem precisar.</summary>
 	public static Settings Config { get; private set; } = new();
 
+	// ============================ ESTAS DUAS TELAS VIVEM NO LOBBY **E** NO MUNDO ============================
+	// Elas nasciam no `AoEntrarNoMundo` e por isso nao existiam antes de entrar -- o que deixava o
+	// lobby sem tela de opcoes nenhuma (*"as vezes quero mudar o volume no lobby e n da"*). Agora
+	// nascem aqui, atravessam a entrada no mundo e SOBREVIVEM a volta ao login (ver
+	// `VoltarAoLogin`, que as poupa do `QueueFree`).
+	//
+	// Nao ha custo de mundo nelas: a `TelaDeTeclas` le duas fontes que ja saem vazias sem cliente
+	// (`FormasDespertas.Minhas()` e `Verbos.Da`), e a `PauseMenu` se ajusta sozinha ao contexto.
+	// ==========================================================================================
 	private PauseMenu? _pause;
+	private TelaDeTeclas? _teclas;
 
 	public override void _Ready()
 	{
+		// ============================ O X DA JANELA PASSA A SER UMA PORTA NOSSA ============================
+		// Com o `auto_accept_quit` ligado (o padrao) o fechamento da janela mata o processo sem
+		// passar por nada: nao gravava o servidor local, nao avisava o servidor remoto. Desligado,
+		// ele vira uma notificacao que o `_Notification` daqui atende. Ver `Saida.Encerrar`.
+		//
+		// **A CONTRAPARTIDA E SERIA E ESTA TRATADA LA**: enquanto isto for falso, uma excecao no
+		// caminho de saida deixaria a janela sem X que funcione -- por isso o `Saida.Encerrar`
+		// engole erro e sai de qualquer jeito.
+		if (GetTree() is { } arv) arv.AutoAcceptQuit = false;
+
 		try
 		{
 			string dll = System.Reflection.Assembly.GetExecutingAssembly().Location;
@@ -199,6 +219,14 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// AS OPCOES ANTES DA PRIMEIRA TELA. A ordem importa em duas pontas: os botoes do lobby
+		// procuram a `PauseMenu.Instancia` na hora de montar, e a `PauseMenu` pergunta pela
+		// `TelaDeTeclas.Instancia` pra decidir se o botao de teclas fica vivo.
+		AddChild(_teclas = new TelaDeTeclas { Name = "Teclas" });
+		_pause = new PauseMenu { Name = "Pause" };
+		_pause.Desconectar += VoltarAoLogin;
+		AddChild(_pause);
+
 		MontarLogin();
 
 		// MUSICA DESDE A PRIMEIRA TELA: no BYOND a criacao de personagem tinha trilha, e e
@@ -213,13 +241,57 @@ public partial class Boot : Node2D
 		}
 
 		AutoConectar();
+
+		// ============================ `--diagopcoes`: A BANCADA QUE NASCE **DEPOIS** DO LOBBY ============================
+		// Ela e a unica que entra aqui embaixo, e nao la em cima com as outras, e o motivo e o
+		// pedido dela: as outras bancadas SUBSTITUEM a tela de login (`return` antes do
+		// `MontarLogin`), e esta precisa medir a tela de login DE VERDADE -- os botoes que o `Boot`
+		// acabou de pendurar, a `PauseMenu` que ele acabou de criar, a trilha que ele acabou de
+		// pedir. Nascer no lugar do lobby seria testar um lobby que nao e o do jogador.
+		// ==========================================================================================
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagopcoes") >= 0)
+			AddChild(new RoboDeOpcoes { Name = "RoboDeOpcoes" });
+	}
+
+	/// <summary>
+	/// O X DA JANELA (e o Alt+F4) SAO O MESMO GESTO QUE "Sair do jogo".
+	///
+	/// Nao havia handler nenhum de fechar janela no projeto: os dois so matavam o processo, sem
+	/// gravar o servidor local e sem avisar o servidor remoto. Aqui eles entram no MESMO caminho do
+	/// botao -- ver `Saida.Encerrar`, que termina em `Quit()` de qualquer jeito.
+	/// </summary>
+	public override void _Notification(int what)
+	{
+		if (what == NotificationWMCloseRequest) Saida.Encerrar(GetTree(), "o X da janela");
 	}
 
 	// =====================================================================
 	// TELA 1 -- LOGIN
 	// =====================================================================
+	/// <summary>
+	/// ESTE PROCESSO E UMA SESSAO DE JOGADOR? Verdadeiro a partir do instante em que a tela de login
+	/// e montada.
+	///
+	/// ============================ ELA EXISTE POR CAUSA DO X DA JANELA ============================
+	/// O fechamento da janela passou a GRAVAR o servidor local antes de sair (ver `Saida.Encerrar`),
+	/// e isso e certo pro jogo e **errado pras bancadas**: quase toda bancada deste projeto `return`
+	/// antes desta funcao e mexe no mundo em memoria de proposito (corpos forjados, planetas mortos,
+	/// cargos de mentira). Um X apertado no meio de uma delas gravaria esse estado por cima do mundo
+	/// do dono.
+	///
+	/// A pergunta certa nao e "sou uma bancada?" -- isso seria adivinhar por prefixo de argumento --,
+	/// e sim **"alguem chegou a jogar aqui?"**. Se a tela de login nunca apareceu, nao ha jogador, e
+	/// nao ha nada de jogador pra salvar. A `--diagopcoes` e a unica bancada que nasce DEPOIS do
+	/// login, e por isso ela atravessa o caminho de producao inteiro -- que e o que uma bancada de
+	/// saida limpa tem que fazer.
+	/// ==========================================================================================
+	/// </summary>
+	public static bool SessaoDeJogador { get; private set; }
+
 	private void MontarLogin()
 	{
+		SessaoDeJogador = true;
+
 		var camada = new CanvasLayer { Name = "LoginUI" };
 		AddChild(camada);
 
@@ -291,6 +363,10 @@ public partial class Boot : Node2D
 		var hospedar = new Button { Text = "Hospedar partida (servidor local)" };
 		hospedar.Pressed += Hospedar;
 		caixa.AddChild(hospedar);
+
+		// OPCOES E SAIR, a primeira das tres telas do lobby a receber a dupla. Ver `BotoesDoLobby`
+		// pra por que ela e uma peca compartilhada e nao um botao aqui.
+		caixa.AddChild(BotoesDoLobby.Montar(this));
 
 		_status = new Label { Text = "", HorizontalAlignment = HorizontalAlignment.Center };
 		caixa.AddChild(_status);
@@ -510,17 +586,20 @@ public partial class Boot : Node2D
 		// A TELA DE TROCA DE MAPA. Ver `TelaDeCarregamento`: ela nao acelera nada, ela ANUNCIA.
 		AddChild(new TelaDeCarregamento { Name = "Carregando" });
 
-		// A TELA DE TECLAS. Montada ANTES da pausa porque e a pausa que a abre -- e o botao de la
-		// procura a `Instancia` daqui. Ela e uma CanvasLayer acima da pausa (21 contra 20): abre por
-		// cima dela e devolve a pausa ao fechar, em vez de trocar de tela e perder o lugar.
-		AddChild(new TelaDeTeclas { Name = "Teclas" });
+		// ============================ A TELA DE TECLAS E A DE PAUSA JA EXISTEM -- ELAS SO VAO PRO FIM DA FILA ============================
+		// As duas nascem no `_Ready`, no lobby (ver o campo `_pause`). O que se faz aqui e devolver a
+		// ORDEM DE ENTRADA que elas tinham quando eram criadas neste ponto: `_UnhandledInput` corre
+		// a arvore de tras pra frente, entao quem esta no fim da lista ouve a tecla primeiro.
+		//
+		// **ISTO NAO E ENFEITE.** Sem os dois `MoveChild` o menu de pausa passaria a ouvir o ESC
+		// DEPOIS do `MenuDeInteracao` (que tambem le em `_UnhandledInput`), invertendo quem fecha o
+		// que -- e a bancada `--diagmudez` cobra justamente que o ESC abra a pausa. A regra da casa
+		// e nao mexer no que nao foi pedido; a ordem de entrada e exatamente isso.
+		if (_teclas is { } tt) MoveChild(tt, -1);
 		// O DISPARO das teclas que o jogador ligou. Nao desenha nada: le a tecla e chama a MESMA
 		// acao que o botao do menu chamaria. Ver `Atalhos`.
 		AddChild(new Atalhos { Name = "Atalhos" });
-
-		_pause = new PauseMenu { Name = "Pause" };
-		_pause.Desconectar += VoltarAoLogin;
-		AddChild(_pause);
+		if (_pause is { } pm) MoveChild(pm, -1);
 
 		// a musica do lugar assume; o tema de menu sai de cena
 		AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Menu, "entrei no mundo");
@@ -1168,8 +1247,15 @@ public partial class Boot : Node2D
 	/// <summary>Saiu do servidor: derruba o mundo e reconstroi a tela de login do zero.</summary>
 	private void VoltarAoLogin()
 	{
-		foreach (Node n in GetChildren()) n.QueueFree();
-		_pause = null;
+		// AS DUAS TELAS DE MAQUINA NAO SAO DO MUNDO E NAO MORREM COM ELE. Elas nasceram antes do
+		// login (`_Ready`) e continuam valendo depois dele -- derruba-las aqui deixaria o lobby de
+		// volta sem opcoes e sem tela de teclas, que e exatamente o defeito que esta tarefa
+		// conserta, so que reintroduzido pela porta dos fundos.
+		foreach (Node n in GetChildren())
+		{
+			if (n == _pause || n == _teclas) continue;
+			n.QueueFree();
+		}
 		_selecao = null;
 		MontarLogin();
 		AudioDirector.Instance?.Ambiente(null);

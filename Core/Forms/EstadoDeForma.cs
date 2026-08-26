@@ -126,6 +126,41 @@ public sealed class EstadoDeForma
 	public bool CortarPorta(string id) => PortasCortadas.Add(Catalogo.Rede(id));
 
 	/// <summary>
+	/// ============================ A PORTA DE BP DESTA FORMA **PRA ESTE PERSONAGEM** ============================
+	/// O limiar PESSOAL (sorteado no nascimento, <see cref="LimiaresPessoais"/>) com o corte de mestre
+	/// ja aplicado. Zero = a forma nao tem porta de BP.
+	///
+	/// **ELE ERA UM BLOCO DENTRO DO <see cref="Avaliar"/>, e virou metodo porque ganhou um segundo
+	/// leitor**: o despertar do Super Namekuseijin pelo proprio poder
+	/// (`GameServer.ConferirODespertarDoSuperNamekuseijin`, o pedido N5 do dono) precisa fazer
+	/// exatamente esta pergunta fora de uma tentativa de transformacao. Reescrever as tres linhas la
+	/// seria a copia que envelhece calada -- a que nao saberia do corte de mestre, ou nao saberia do
+	/// limiar pessoal, ou nao saberia da regra do "menor corte manda" logo abaixo.
+	///
+	/// A PORTA E DESTE PERSONAGEM: no original cada um sorteia o proprio limiar ao nascer
+	/// (`statsaiyan.dm:50-56`), e por isso um Saiyajin vira SSJ antes do irmao com o mesmo poder. Sem
+	/// <see cref="Limiares"/> (save antigo, NPC) vale a constante do catalogo -- o mesmo numero de antes.
+	/// ======================================================================================================
+	/// </summary>
+	/// <param name="fatorDaPorta">
+	/// O corte que um mestre esta oferecendo AGORA. 1 = ninguem cortando. Ver o `Math.Min` la dentro.
+	/// </param>
+	public double PortaDeBp(FormaDef d, double fatorDaPorta = 1)
+	{
+		if (d.PortaBp <= 0) return 0;
+
+		double porta = Limiares?.Porta(d) is > 0 and var p ? p : d.PortaBp;
+
+		// O MENOR CORTE MANDA, e nunca os dois. `fatorDaPorta` e a TENTATIVA de agora (o mestre
+		// esta ali, provocando) e `PortasCortadas` e o corte que UM mestre ja fez um dia -- as
+		// duas metades sao a MESMA metade, e multiplica-las daria um quarto da porta pra quem
+		// desperta assistido duas vezes. Ver `PortasCortadas` pra por que o corte persiste.
+		double fator = Math.Min(fatorDaPorta,
+			PortasCortadas.Contains(d.IdRede) ? Jandirus.Core.Skills.Discipulado.FatorAssistido : 1);
+		return porta * fator;
+	}
+
+	/// <summary>
 	/// HA QUANTO TEMPO EM COMBATE CONTINUO, em segundos. E o `combatTime` do DM.
 	///
 	/// Mora aqui e nao no combate porque so as formas o consomem: a rampa do Legendary e o bonus do
@@ -477,18 +512,7 @@ public sealed class EstadoDeForma
 		//    E A PORTA E DESTE PERSONAGEM: no original cada um sorteia o proprio limiar ao nascer
 		//    (`statsaiyan.dm:50-56`), e por isso um Saiyajin vira SSJ antes do irmao com o mesmo
 		//    poder. Sem `Limiares` (save antigo, NPC) vale a constante -- o mesmo numero de antes.
-		if (d.PortaBp > 0)
-		{
-			double porta = Limiares?.Porta(d) is > 0 and var p ? p : d.PortaBp;
-
-			// O MENOR CORTE MANDA, e nunca os dois. `fatorDaPorta` e a TENTATIVA de agora (o mestre
-			// esta ali, provocando) e `PortasCortadas` e o corte que UM mestre ja fez um dia -- as
-			// duas metades sao a MESMA metade, e multiplica-las daria um quarto da porta pra quem
-			// desperta assistido duas vezes. Ver `PortasCortadas` pra por que o corte persiste.
-			double fator = Math.Min(fatorDaPorta,
-				PortasCortadas.Contains(d.IdRede) ? Jandirus.Core.Skills.Discipulado.FatorAssistido : 1);
-			if (bpBase < porta * fator) return RecusaForma.SemPoder;
-		}
+		if (d.PortaBp > 0 && bpBase < PortaDeBp(d, fatorDaPorta)) return RecusaForma.SemPoder;
 
 		// entrar numa forma no fio do Ki e cair dela no segundo seguinte
 		if (kiFracao < 0.1) return RecusaForma.SemKi;

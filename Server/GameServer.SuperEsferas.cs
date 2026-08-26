@@ -134,6 +134,22 @@ public sealed partial class GameServer
 
 	private void CarregarSupers()
 	{
+		// ============================ O ESTADO VOLTA A ZERO ANTES DA LEITURA ============================
+		// Mesmo motivo (e mesmo defeito evitado) do `CarregarEsferas`: ele nasceu enchendo com `AddRange`
+		// porque so rodava no boot, e a inscricao na LIMPEZA TOTAL o pos a rodar de novo com o mundo ja
+		// carregado. Sem esta limpeza, as sete da memoria mais as sete do arquivo dariam CATORZE -- e o
+		// saneador de baixo (`for n = 1..7`) nao pega isso: ele so acrescenta o que falta, nunca tira o
+		// que sobrou de repetido.
+		//
+		// E OS QUATRO CAMPOS DA PROCURACAO ENTRAM AQUI, e nao so a lista: um arquivo AUSENTE tem que
+		// significar "nao ha procuracao", e nao "fica o que estava na memoria". Ler um mundo sem
+		// `superesferas.json` deixando a guarda de um estranho de pe seria a pior forma de heranca --
+		// a que o `ChamarOSuperShenron` recusa pra sempre, porque o pedinte nao existe pra ficar online.
+		// ==========================================================================================
+		_supers.Clear();
+		_cicloDasSupers = 0;
+		_benefSig = _benefNome = _pedidoDoBenef = _alvoDoPedido = "";
+
 		try
 		{
 			if (System.IO.File.Exists(CaminhoDasSupers))
@@ -191,9 +207,15 @@ public sealed partial class GameServer
 		SalvarSupers();
 	}
 
+	/// <summary>
+	/// O PORTAO DA LIMPEZA VALE AQUI TAMBEM -- o argumento inteiro esta no `SalvarEsferas`, e ele e o
+	/// mesmo: uma gravacao disparada de DENTRO do passo 3 (ou da passada equivalente da bancada, que roda
+	/// com o `_store` ja de volta na pasta do dono) escreveria o mundo recem-nascido por cima do mundo
+	/// que ainda esta la.
+	/// </summary>
 	private void SalvarSupers()
 	{
-		if (_store == null) return;
+		if (_store == null || _limpezaEmCurso) return;
 		try
 		{
 			var l = new LivroDasSupers
@@ -429,24 +451,98 @@ public sealed partial class GameServer
 	private void ConsumirAsSupers()
 	{
 		_cicloDasSupers++;
+		SoltarAsSupers();
+		SalvarSupers();
+
+		AnunciarSupers("As sete Super Esferas se separam e voam para os confins da galáxia.");
+		foreach (ServerPlayer p in Jogadores) MandarSupers(p);
+	}
+
+	/// <summary>
+	/// **SOLTA TUDO O QUE AS SETE PRENDEM** -- a posse, os canais de disputa, a procuracao, o pedido
+	/// registrado, as ofertas de guarda em aberto e a confirmacao de preco.
+	///
+	/// ============================ UM LUGAR SO, E ISSO FOI MEDIDO ============================
+	/// Duas coisas diferentes precisam derrubar EXATAMENTE esta lista: o desejo do Super Shenron
+	/// (<see cref="ConsumirAsSupers"/>, o `pspace_sdb_scatter()` do DM) e o `Zerar` da LIMPEZA TOTAL
+	/// (<see cref="ZerarSuperEsferas"/>). Escritas em dois lugares, sao duas listas que so continuam
+	/// iguais enquanto alguem lembrar de mexer nas duas -- e este projeto ja pagou caro por regra ligada
+	/// num chamador e esquecida no outro (o funil das tres quedas de esfera diz isso por escrito).
+	///
+	/// O QUE MUDA ENTRE OS DOIS NAO E O QUE CAI; e o que acontece DEPOIS: o desejo ANDA o ciclo (as sete
+	/// reaparecem noutro lugar) e anuncia no mundo, a limpeza volta o ciclo a ZERO e cala.
+	/// ====================================================================================
+	///
+	/// A PROCURACAO CAI EM AMBOS pelo motivo do DM (`:1642`): as esferas que ela descrevia deixaram de
+	/// ser de alguem. Deixa-la de pe faria o proximo dono das sete invocar em nome de um estranho.
+	/// </summary>
+	private void SoltarAsSupers()
+	{
 		foreach (SuperEsfera s in _supers) { s.Dono = ""; s.DonoNome = ""; }
 		_disputasDeSuper.Clear();
 
-		// A PROCURACAO CAI JUNTO -- `pspace_sdb_scatter()` zera `sdb_benef_sig` porque as esferas que ela
-		// descrevia deixaram de ser de alguem. Deixa-la de pe faria o proximo dono das sete invocar em
-		// nome de um estranho que emprestou esferas OUTRAS, num ciclo anterior.
 		_benefSig = "";
 		_benefNome = "";
 		_pedidoDoBenef = "";
 		_alvoDoPedido = "";
 		_precoPendente = default;
 		_ofertasDeGuarda.Clear();
-
-		SalvarSupers();
-
-		AnunciarSupers("As sete Super Esferas se separam e voam para os confins da galáxia.");
-		foreach (ServerPlayer p in Jogadores) MandarSupers(p);
 	}
+
+	// =====================================================================
+	// A LIMPEZA TOTAL
+	// =====================================================================
+	/// <summary>
+	/// **AS SETE VOLTAM LIVRES** -- o `Zerar` deste sistema. Ver o cabecalho de `GameServer.Limpeza.cs`.
+	///
+	/// ============================ ELAS NAO SOMEM: ELAS RENASCEM SEM DONO ============================
+	/// `_supers.Clear()` seco deixaria o universo com ZERO Super Esferas ate o proximo reinicio --
+	/// `CarregarSupers` e o unico lugar que popula a lista, e a limpeza roda com o servidor no ar. O
+	/// sintoma seria mudo e completo: o radar dourado nao acha nada, `ReivindicarSuper` nunca acha esfera
+	/// perto, e o Super Shenron fica inalcancavel pra sempre. Um servidor de primeiro boot **tem** as
+	/// sete; um servidor limpo sem elas nao e um primeiro boot, e um servidor mutilado.
+	///
+	/// E o precedente e o das sagas (`ZerarSagas`), que e a mesma forma: limpar o ESTADO e remontar o
+	/// esqueleto de conteudo. Aqui o esqueleto sao as sete linhas 1..7 -- que o `CarregarSupers` ja
+	/// garante no boot pelo mesmo argumento (`for(n=1 to 7)`, `ProceduralSpace.dm:1426`).
+	/// ==========================================================================================
+	///
+	/// **O CICLO VOLTA A ZERO, e ele nao e detalhe**: ele e METADE do endereco das sete
+	/// (<see cref="SuperEsferas.PosicaoDa"/> = seed do universo + ciclo). A outra metade -- a semente --
+	/// ja e re-sorteada por outro inscrito, entao as posicoes mudariam de qualquer jeito; o que o zero
+	/// conserta e o retrato: um universo recem-nascido tem `Ciclo: 0` no arquivo, e um herdado nao teria.
+	/// </summary>
+	private void ZerarSuperEsferas()
+	{
+		_supers.Clear();
+		for (int n = 1; n <= SuperEsferas.Total; n++) _supers.Add(new SuperEsfera { Numero = n });
+
+		_cicloDasSupers = 0;
+		SoltarAsSupers();
+	}
+
+	/// <summary>
+	/// QUANTO AS SUPER ESFERAS AINDA PRENDEM -- a contagem que a previa mostra e que a `--wipeteste`
+	/// exige em zero depois da limpeza.
+	///
+	/// ============================ NAO E `_supers.Count`, E O MOTIVO E O MESMO DAS SAGAS ============================
+	/// As sete existem SEMPRE. Contar a lista daria 7 num universo recem-nascido, e a bancada -- que
+	/// cobra `== 0` depois do wipe -- ficaria vermelha em cima de um servidor perfeito. O que a limpeza
+	/// apaga nao e a existencia delas: e o que esta PRESO a elas.
+	/// ==========================================================================================================
+	///
+	/// AS OFERTAS E O PRECO PENDENTE ENTRAM NA SOMA mesmo tendo prazo de um minuto, e por uma razao
+	/// estrutural: eles **nao vao pro disco**. Fora desta contagem nao haveria segunda testemunha nenhuma
+	/// -- o retrato de conjunto so enxerga o que o arquivo mostra, entao um `Zerar` que os esquecesse
+	/// ficaria verde nas duas metades.
+	/// </summary>
+	private int QuantoAsSupersPrendem() =>
+		  _supers.Count(s => s.Dono.Length > 0)
+		+ _disputasDeSuper.Count
+		+ _ofertasDeGuarda.Count
+		+ (HaProcuracao ? 1 : 0)
+		+ (string.IsNullOrEmpty(_precoPendente.Conta) ? 0 : 1)
+		+ (_cicloDasSupers > 0 ? 1 : 0);
 
 	// =====================================================================
 	// REDE -- o radar dourado

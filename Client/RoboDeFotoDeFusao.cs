@@ -20,7 +20,8 @@ namespace Jandirus.Client;
 ///     fusao-b1-metamoro.png    a METAMORO pronta -- colete metamoriano, cabelo do Vegito
 ///     fusao-b2-potara.png      a POTARA pronta -- brinco SOMADO a roupa de quem convidou
 ///     fusao-B-lado-a-lado.png  as duas coladas, que e como o dono pediu ("roupa e cabelo diferem")
-///     fusao-c1-ssj4.png        a fusao em SSJ4, de cabelo VERMELHO
+///     fusao-c1-ssj4-danca.png  a DANCA em SSJ4, de cabelo VERMELHO
+///     fusao-c2-ssj4-potara.png a POTARA em SSJ4, cabelo na COR NORMAL (a correcao do dono)
 ///
 /// ============================ E A PROVA CENTRAL E CONTADA NO PIXEL ============================
 /// *"n e um em cada personagem, e so UM efeito em cima dos dois personagens, atualmente sao 2 e fica
@@ -96,9 +97,9 @@ public partial class RoboDeFotoDeFusao : Node
 	// =====================================================================
 	private const int PAssentar = 0, PMontar = 1,
 					  PPortaoLonge = 2, PPortaoPerto = 3, PPuxao = 4, PBorda = 5, PVoltarAoPalco = 6,
-					  PMetaCena = 7, PMetaFim = 8,
-					  PPotCena = 9, PPotFim = 10,
-					  PSsj4 = 11, PFim = 12;
+					  PMetaCena = 7, PMetaSsj4 = 8, PMetaFim = 9,
+					  PPotCena = 10, PPotSsj4 = 11, PPotFim = 12,
+					  PFim = 13;
 
 	/// <summary>
 	/// QUANTOS ESTOUROS O ROTEIRO TEM -- lido dos BEATS, e nao um `3` escrito aqui.
@@ -198,6 +199,12 @@ public partial class RoboDeFotoDeFusao : Node
 		// estava de noite e as checagens de campo leem o `LookDeFusao` e nao o pixel.
 		(_hora, _noite) = srv.SolAPinoNaFotoDeFusao(cli.LocalId);
 
+		// E O CEU ABERTO, uma vez so. Ver `GameServer.CeuLimpoNaFotoDeFusao`: as primeiras fotos do
+		// cabelo sairam ilegiveis com a hora JA cravada no meio-dia -- o que atravessava a tela era a
+		// chuva de sangue de Vegeta, 1150 riscos vermelhos por cima do assunto. Numa bancada que afirma
+		// "este cabelo esta VERMELHO e aquele nao", um clima vermelho nao e ruido: e um confundidor.
+		srv.CeuLimpoNaFotoDeFusao(cli.LocalId);
+
 		switch (_passo)
 		{
 			case PAssentar: Assentar(cli, mundo); break;
@@ -208,10 +215,14 @@ public partial class RoboDeFotoDeFusao : Node
 			case PBorda: ABordaDoPuxao(srv, cli, mundo); break;
 			case PVoltarAoPalco: VoltarAoPalco(srv, cli, mundo); break;
 			case PMetaCena: ACena(srv, cli, mundo, TipoDeFusao.Danca); break;
+			// O SSJ4 SAI **ANTES** DE DESFAZER CADA FUSAO, e por isso ele aparece duas vezes: a
+			// correcao do dono separou Danca de Potara na cor do cabelo, e a foto de um tipo so nao
+			// mostraria a diferenca. Ver `OSsj4`.
+			case PMetaSsj4: OSsj4(srv, cli, mundo, TipoDeFusao.Danca); break;
 			case PMetaFim: OFimDaMetamoro(srv, cli); break;
 			case PPotCena: ACena(srv, cli, mundo, TipoDeFusao.Potara); break;
+			case PPotSsj4: OSsj4(srv, cli, mundo, TipoDeFusao.Potara); break;
 			case PPotFim: OFimDaPotara(srv, cli); break;
-			case PSsj4: OSsj4(srv, cli, mundo); break;
 			default: Fechar(); break;
 		}
 	}
@@ -340,6 +351,14 @@ public partial class RoboDeFotoDeFusao : Node
 	/// </summary>
 	private static int TilesDoPuxao => Fusao.TilesDaPotara;
 
+	/// <summary>
+	/// QUANTO DA LARGURA DA JANELA OS DOIS CORPOS PODEM OCUPAR pra "caberem na foto".
+	///
+	/// Uma escrita so pra as duas pontas: e ela que decide o gatilho da primeira foto do puxao
+	/// (<see cref="CabemOsDoisNaFoto"/>). Ja foi um `0.45f` solto la dentro.
+	/// </summary>
+	private const float FracaoQueCabeNaFoto = 0.45f;
+
 	/// <summary>Quanto a bancada espera o cliente assentar depois de plantar um palco novo.</summary>
 	private const double EsperaDeAssentar = 1.2;
 
@@ -384,7 +403,8 @@ public partial class RoboDeFotoDeFusao : Node
 	/// </summary>
 	private bool CabemOsDoisNaFoto(float distanciaDeMundo) =>
 		distanciaDeMundo > 0
-		&& distanciaDeMundo * Zoom() <= (GetViewport()?.GetVisibleRect().Size.X ?? 1920) * 0.45f;
+		&& distanciaDeMundo * Zoom()
+		   <= (GetViewport()?.GetVisibleRect().Size.X ?? 1920) * FracaoQueCabeNaFoto;
 
 	/// <summary>
 	/// R1 (primeira metade) + o CONTRA-EXEMPLO da R2 -- **a mesma foto responde as duas**.
@@ -552,8 +572,15 @@ public partial class RoboDeFotoDeFusao : Node
 					TomarDaCoreografia(mundo, cli, "fusao-r2-puxao-longe",
 						"R2 o puxao: os dois ainda longe, ja andando um pro outro");
 				}
+				// ============================ E A SEGUNDA DISPARA NA METADE, E NAO EM 30% ============================
+				// Era `< 30% da distancia inicial`, e essa janela **nao cabia num quadro**: os dois andam
+				// a 1.280 px/s CADA, ou seja fecham 2.560 px/s, e num palco de seis tiles os 30% duram
+				// tres quadros. Bastava a maquina engasgar num deles pra a foto nao sair -- e ela nao
+				// saiu em quatro de cinco rodadas. Na metade a janela dobra, e "quase fechado" continua
+				// sendo verdade: os dois ja estao a menos de tres tiles um do outro.
+				// ================================================================================================
 				else if (_tireiPuxaoA && !_tireiPuxaoB && desenhado > 0 && _distanciaInicialDoPuxao > 0
-						 && e.DistanciaPx < _distanciaInicialDoPuxao * 0.30)
+						 && e.DistanciaPx < _distanciaInicialDoPuxao * 0.50)
 				{
 					_tireiPuxaoB = true;
 					TomarDaCoreografia(mundo, cli, "fusao-r2-puxao-perto",
@@ -562,6 +589,19 @@ public partial class RoboDeFotoDeFusao : Node
 
 				if (e.EmCena)
 				{
+					// A REDE DE SEGURANCA: se a janela de cima escapou mesmo assim, a foto sai AQUI, no
+					// primeiro quadro da cena -- que e o instante em que eles estao mais perto que nunca.
+					// **E ela sai com o motivo escrito**, porque uma rede que salva em silencio esconde
+					// justamente a informacao de que a janela esta apertada demais.
+					if (!_tireiPuxaoB)
+					{
+						_tireiPuxaoB = true;
+						Nota($"R2 a foto do puxao fechado saiu na REDE DE SEGURANCA (o quadro em que a "
+						   + $"cena comecou) -- a janela dos 50% escapou; ultima distancia {e.DistanciaPx:0} px");
+						TomarDaCoreografia(mundo, cli, "fusao-r2-puxao-perto",
+							"R2 ...e o mesmo puxao ja quase fechado");
+					}
+
 					Conferir(_houvePuxaoSemCena,
 							 "R3 houve pelo menos um quadro com o PUXAO correndo e a cinematica ainda "
 						   + $"NAO ({_rampaDoPuxao.Count} quadros de rampa gravados)");
@@ -846,7 +886,7 @@ public partial class RoboDeFotoDeFusao : Node
 			_anterior = null;
 			if (_tireiNasce) { if (!_tireiPronta) AFusaoPronta(srv, cli, mundo, metamoro); return; }
 			if (_t > TempoDeSobra)
-			{ Conferir(false, "a cena da fusao chegou ao cliente"); Virar(metamoro ? PMetaFim : PPotFim); }
+			{ Conferir(false, "a cena da fusao chegou ao cliente"); Virar(metamoro ? PMetaSsj4 : PPotSsj4); }
 			return;
 		}
 
@@ -1159,7 +1199,7 @@ public partial class RoboDeFotoDeFusao : Node
 			Retrato("fusao-b2-potara", "B2 a POTARA pronta", onde);
 		}
 
-		Virar(metamoro ? PMetaFim : PPotFim);
+		Virar(metamoro ? PMetaSsj4 : PPotSsj4);
 	}
 
 	// =====================================================================
@@ -1288,6 +1328,7 @@ public partial class RoboDeFotoDeFusao : Node
 		}
 
 		OBrancoNoPixel();
+		OCabeloDoSsj4NoPixel();
 		OsDoisSaoLegiveis();
 	}
 
@@ -1396,6 +1437,287 @@ public partial class RoboDeFotoDeFusao : Node
 				   + $"chao contra {tipico:P1} numa mancha qualquer (chao {chao.ToHtml(false)})");
 		}
 	}
+
+
+	// =====================================================================
+	// C3) O CABELO DO SSJ4 **NO PIXEL** -- a metade que o uniform nao fecha
+	// =====================================================================
+	/// <summary>
+	/// ============================ AS PROVAS DE CIMA LEEM O MATERIAL; ESTA LE A FOTO ============================
+	/// O <see cref="OSsj4"/> confere `CharacterVisual.TintaDoCabeloDeTeste` -- o parametro que foi
+	/// ESCRITO no shader. A memoria deste projeto tem um verbete inteiro pra esse cego (*"a bancada
+	/// mede INTENCAO: uniform escrito nao e pixel desenhado"*), e ele ja custou caro aqui: uma sessao
+	/// assinou *"o corpo branco"* lendo um uniform e a foto mostrou 0,0% de branco.
+	///
+	/// Entao esta secao pergunta a coisa que so a foto responde: **na imagem gravada, de que cor esta o
+	/// cabelo?** Ela nao confia em nenhum campo do cliente -- so na caixa do boneco e nos pixels.
+	/// ========================================================================================================
+	///
+	/// ============================ E A FOLHA E GREYSCALE, O QUE TORNA A MEDIDA AFIADA ============================
+	/// Medido no arquivo: `Hair_SSJ4Gogeta.png` tem QUATRO cores e as quatro sao cinza puro -- `#080808`
+	/// (47% dos pixels), `#4a4a4a`, `#363636`, `#505050`. Ou seja:
+	///
+	///   * **sem tinta** (a Potara, a correcao do dono) o cabelo sai ACROMATICO na foto: os tres canais
+	///     praticamente iguais, so inclinados pelo `CanvasModulate` da hora;
+	///   * **com a tinta somada** (a Danca, `e2331c` em `tinta_modo = 0`) o vermelho vai pro teto e os
+	///     outros dois sobem pouco: `#4a4a4a` + `e2331c` da `(1,00; 0,49; 0,40)`.
+	///
+	/// A separacao entre os dois casos e enorme e nao depende de calibrar nada. Por isso o criterio de
+	/// "esta vermelho" e uma RAZAO entre canais (R maior que 1,4x os outros dois) e nao uma comparacao
+	/// com um hexadecimal de catalogo: a tela chega multiplicada pela luz do mundo, e comparar com
+	/// `e2331c` cru mediria a hora do dia.
+	/// ========================================================================================================
+	///
+	/// ============================ E O TRONCO E O CONTROLE ============================
+	/// A mesma medida na altura do PEITO, nas duas fotos. Sem ela, um por-do-sol vermelho, um filtro de
+	/// tela ou uma caixa deslocada dariam "vermelho" nas duas bandas e a prova ficaria verde afirmando
+	/// a coisa errada. Com ela, o que fica provado e que **o vermelho esta no cabelo e so nele**.
+	/// ==============================================================================
+	/// </summary>
+	private void OCabeloDoSsj4NoPixel()
+	{
+		const string Danca = "fusao-c1-ssj4-danca", Potara = "fusao-c2-ssj4-potara";
+
+		if (Achar(Danca) is not { Quadro: { } telaD, Mira: { } mD }
+			|| Achar(Potara) is not { Quadro: { } telaP, Mira: { } mP })
+		{
+			Conferir(false, "C3 as duas fotos do SSJ4 existem pra ter pixel medido "
+						  + $"(danca {(Achar(Danca)?.Quadro == null ? "faltou" : "ok")}, "
+						  + $"potara {(Achar(Potara)?.Quadro == null ? "faltou" : "ok")})");
+			return;
+		}
+
+		// ============================ ACHAR O CABELO, EM VEZ DE ADIVINHAR ONDE ELE ESTA ============================
+		// A primeira versao desta prova CRAVOU "o cabelo fica entre 5% e 28% da caixa do boneco" -- e a
+		// caixa caiu no CEU: zero pixel de corpo nas duas fotos, e duas provas verdes por AUSENCIA de
+		// medida. E a mesma armadilha que esta bancada ja catalogou tres vezes, so que do lado de ca da
+		// regua.
+		//
+		// A segunda versao pegou "todas as linhas com vermelho" -- e pegou o BONECO INTEIRO, porque o
+		// Super Saiyajin 4 tem PELO VERMELHO no corpo (medido: a mancha ia de 57% a 100% da caixa, ou
+		// seja da cabeca aos pes). Com o corpo dentro da amostra, a mediana virou uma mistura de cabelo,
+		// pele, roupa e pelo, e nao dizia nada sobre cabelo nenhum.
+		//
+		// **A terceira acha o BLOCO MAIS DENSO, e o mais alto deles.** O cabelo do SSJ4 e a maior massa
+		// solida de vermelho do sprite e fica no topo; o pelo do corpo e esparso (medido: 48-54 colunas
+		// de 73 no cabelo contra 24-30 no tronco). Entao a faixa e o primeiro bloco CONTIGUO de linhas
+		// cuja densidade passa de 60% do pico -- e a prova C3a cobra que ele comece no ALTO do boneco.
+		// ======================================================================================================
+		Rect2I caixaD = CaixaDoBoneco(mD, telaD);
+		int cx0 = caixaD.Position.X + (int)(caixaD.Size.X * 0.25f);
+		int cx1 = caixaD.Position.X + (int)(caixaD.Size.X * 0.75f);
+
+		int alt = caixaD.Size.Y;
+		int[] densidade = new int[alt];
+		int pico = 0, primeiraComVermelho = -1;
+		for (int i = 0; i < alt; i++)
+		{
+			int y = caixaD.Position.Y + i;
+			if (y < 0 || y >= telaD.GetHeight()) continue;
+			for (int x = Math.Max(0, cx0); x < Math.Min(telaD.GetWidth(), cx1); x++)
+				if (EstaVermelho(telaD.GetPixel(x, y))) densidade[i]++;
+			if (densidade[i] > 0 && primeiraComVermelho < 0) primeiraComVermelho = i;
+			pico = Math.Max(pico, densidade[i]);
+		}
+
+		int corte = (int)(pico * 0.6f);
+		int ia = -1, ib = -1;
+		for (int i = 0; i < alt; i++)
+		{
+			if (densidade[i] < corte) { if (ia >= 0) break; continue; }
+			if (ia < 0) ia = i;
+			ib = i + 1;
+		}
+
+		Conferir(ia >= 0 && ib - ia >= 4,
+				 $"C3 ha um BLOCO DENSO de vermelho na foto da Danca pra servir de faixa do cabelo "
+			   + $"(pico {pico} colunas; bloco {(ia < 0 ? "nenhum" : $"{ib - ia} px")})");
+		if (ia < 0 || ib - ia < 4) return;
+
+		// ---- ELE COMECA NO ALTO DO BONECO, que e onde mora cabelo ----
+		// O pelo vermelho do SSJ4 tambem faz bloco, so que MAIS ABAIXO. Se um dia o bloco mais denso
+		// deixar de ser o de cima, esta linha e quem avisa -- e a medida inteira estaria falando de
+		// outra parte do corpo.
+		Conferir(ia - primeiraComVermelho <= 12,
+				 $"C3a ...e ele comeca no ALTO do boneco ({ia - primeiraComVermelho} px abaixo do "
+			   + "primeiro pixel vermelho do corpo) -- e cabelo, e nao o pelo do peito");
+
+		float fa = ia / (float)alt, fb = ib / (float)alt;
+
+		(float Vermelhos, Color Cor, Color Fundo, int Amostras) cd = MedirAFaixa(telaD, mD, fa, fb);
+		(float Vermelhos, Color Cor, Color Fundo, int Amostras) cp = MedirAFaixa(telaP, mP, fa, fb);
+
+		Nota($"C3 **A COR AMOSTRADA DO PIXEL** -- faixa do cabelo achada sozinha na foto da Danca "
+		   + $"({fa:P0}-{fb:P0} da caixa do boneco, {ib - ia} px): "
+		   + $"DANCA `{cd.Cor.ToHtml(false)}` ({cd.Vermelhos:P0} de {cd.Amostras} pixels de corpo "
+		   + $"vermelho-dominantes, vermelhidao {Vermelhidao(cd.Cor):0.00})  |  "
+		   + $"POTARA `{cp.Cor.ToHtml(false)}` ({cp.Vermelhos:P0} de {cp.Amostras}, "
+		   + $"vermelhidao {Vermelhidao(cp.Cor):0.00})");
+		Nota($"C3 ...e o CENARIO ao lado da cabeca, que e o CONTROLE (a tinta de uma fusao nao pinta "
+		   + $"grama): DANCA `{cd.Fundo.ToHtml(false)}` (vermelhidao {Vermelhidao(cd.Fundo):0.00})  |  "
+		   + $"POTARA `{cp.Fundo.ToHtml(false)}` (vermelhidao {Vermelhidao(cp.Fundo):0.00})");
+
+		// ---- A FAIXA CAIU SOBRE O BONECO NAS DUAS ----
+		// Sem isto, uma foto em que o corpo nao esta onde a mira diz devolveria "0% de vermelho" e a
+		// C3c passaria pelo motivo errado: a foto de um pedaco de grama nao tem cabelo vermelho nenhum.
+		Conferir(cd.Amostras > 40 && cp.Amostras > 40,
+				 $"C3 a faixa caiu sobre o BONECO nas DUAS fotos ({cd.Amostras} e {cp.Amostras} pixels "
+			   + "fora da cor do fundo ao lado da cabeca)");
+
+		// ---- AS DUAS METADES DA REGRA, NO PIXEL ----
+		Conferir(cd.Vermelhos > 0.50f,
+				 $"C3b **na METAMORO/DANCA o cabelo esta VERMELHO na foto** -- {cd.Vermelhos:P0} dos "
+			   + $"pixels de corpo daquela faixa sao vermelho-dominantes, mediana `{cd.Cor.ToHtml(false)}`");
+
+		Conferir(cp.Vermelhos < 0.10f,
+				 $"C3c **na POTARA o MESMO cabelo NAO esta vermelho** -- {cp.Vermelhos:P0} na mesma "
+			   + $"faixa, mediana `{cp.Cor.ToHtml(false)}` (a correcao que o dono pediu)");
+
+		// ---- E AS DUAS CORES AMOSTRADAS DISCORDAM PELO MESMO CRITERIO ----
+		// Aqui quem e julgado sao os DOIS hexadecimais que a nota acima imprime -- os numeros que
+		// aparecem no relatorio. Uma coisa e dizer "65% dos pixels"; outra e dizer "a cor que eu
+		// escrevi aqui e vermelha, e a que eu escrevi ali nao e".
+		Conferir(EstaVermelho(cd.Cor) && !EstaVermelho(cp.Cor),
+				 $"C3d ...e as duas cores AMOSTRADAS discordam pelo mesmo criterio: "
+			   + $"`{cd.Cor.ToHtml(false)}` e vermelha, `{cp.Cor.ToHtml(false)}` nao e");
+
+		// ============================ C3e: **O CABELO MUDOU E O CORPO NAO** ============================
+		// Esta e a prova que fecha a regra do dono, e ela e uma razao e nao uma diferenca de canal:
+		// a `Vermelhidao` (R sobre o maior dos outros dois) NAO muda quando a cena inteira fica mais
+		// clara ou mais escura, porque a luz MULTIPLICA os tres canais juntos. Uma diferenca de brilho
+		// -- outra hora, outra sombra, outro planeta -- passaria por "ficou vermelho" numa conta por
+		// subtracao, e e exatamente isso que esta forma exclui.
+		//
+		// E ela tem DUAS metades, que e o que a torna um controle de verdade:
+		//   * o CABELO das duas fotos tem que discordar (a tinta so entra na Danca);
+		//   * o CENARIO ao lado da cabeca tem que CONCORDAR -- e e essa metade que pega ceu vermelho,
+		//     filtro de tela, hora do dia e clima, porque qualquer um deles mexe na grama tambem.
+		//
+		// **O CONTROLE E A GRAMA, E NAO O TRONCO** -- e isso foi medido, nao escolhido. A primeira
+		// versao comparou a faixa logo abaixo do cabelo, e ela reprovou com razao: o cabelo do SSJ4 e
+		// ESPETADO e desce pelos lados da cabeca, entao a faixa "do tronco" ainda tinha cabelo dentro
+		// (1,60 contra 1,28, uma diferenca do tamanho da do proprio cabelo). A grama nao tem esse
+		// problema: nenhuma tinta de fusao pinta chao, entao ela e o unico pedaco da foto que TEM que
+		// ser igual nas duas.
+		// ==========================================================================================
+		float rcD = Vermelhidao(cd.Cor), rcP = Vermelhidao(cp.Cor);
+		float rfD = Vermelhidao(cd.Fundo), rfP = Vermelhidao(cp.Fundo);
+
+		Conferir(rcD > rcP * 1.20f,
+				 $"C3e **o CABELO discorda entre as duas fotos** -- vermelhidao {rcD:0.00} na Danca "
+			   + $"contra {rcP:0.00} na Potara ({rcD / Math.Max(0.01f, rcP):0.00}x), e a conta e uma "
+			   + "RAZAO entre canais: brilho de cena nao a move");
+
+		// E A COMPARACAO E RELATIVA, e nao uma janela cravada: o que se afirma e que o cenario mudou
+		// MUITO MENOS que o cabelo. Uma janela absoluta ("a grama tem que bater a 15%") mediria de
+		// quebra o ruido da amostragem; a comparacao entre as duas mudancas nao depende disso -- e
+		// continua pegando o confundidor que ela veio pegar, porque um ceu vermelho move as duas.
+		float mudouOCabelo = Math.Abs(rcD - rcP), mudouOCenario = Math.Abs(rfD - rfP);
+		Conferir(mudouOCenario < mudouOCabelo * 0.5f,
+				 $"C3f ...**e o CENARIO das duas fotos CONCORDA** ({rfD:0.00} contra {rfP:0.00}, uma "
+			   + $"diferenca de {mudouOCenario:0.00} contra {mudouOCabelo:0.00} do cabelo) -- as duas "
+			   + "fotos estao na mesma luz, entao o que mudou foi o CABELO e nao a cena");
+	}
+
+	/// <summary>
+	/// A VERMELHIDAO DE UMA COR: o R dividido pelo maior dos outros dois canais.
+	///
+	/// **E uma RAZAO de proposito.** A tela chega multiplicada pela luz do mundo (`CanvasModulate`), e
+	/// multiplicacao nao muda razao entre canais -- entao esta conta responde *"esta vermelho?"* sem
+	/// responder *"que horas sao?"*. Uma diferenca de canal (`R depois - R antes`) responderia as duas
+	/// misturadas, e foi assim que a segunda versao desta prova reprovou sem nada estar errado.
+	/// </summary>
+	private static float Vermelhidao(Color c) => c.R / Math.Max(0.01f, Math.Max(c.G, c.B));
+
+	/// <summary>
+	/// MEDE UMA FAIXA HORIZONTAL DA CAIXA DO BONECO: que fracao dela e vermelha, e de que cor ela e.
+	///
+	/// ============================ O FUNDO E MEDIDO AO LADO DA CABECA, E NAO NA CENA INTEIRA ============================
+	/// A primeira versao usou a mediana de uma janela grande em volta do corpo. Isso funciona pra achar
+	/// "o chao", mas nao pra separar CABELO de cenario: o cabelo desta folha e cinza, e um chao
+	/// cinzento o comeria inteiro -- que foi o que aconteceu (a foto da Potara devolveu ZERO pixel de
+	/// corpo).
+	///
+	/// Aqui o fundo sai das COLUNAS DE FORA da propria faixa (os 20% de cada lado da caixa, que ficam
+	/// fora do sprite por construcao: a caixa tem 1,5 tile de largura pra um boneco de 1). E o cenario
+	/// que esta encostado na cabeca, na mesma luz e na mesma hora -- e o que sobra no meio e o boneco.
+	/// ============================================================================================================
+	/// </summary>
+	/// <summary>
+	/// A TOLERANCIA FINA -- **e ela e menor que a `ToleranciaDoChao` de proposito, e o porque foi medido**.
+	///
+	/// A `ToleranciaDoChao` (0,18) responde *"ha um corpo desenhado aqui?"*, e pra isso ela e boa: um
+	/// boneco qualquer se afasta bastante da grama. Esta responde outra coisa -- *"quais pixels sao do
+	/// boneco?"* -- e o caso dificil e o da POTARA: cabelo CINZA ESCURO por baixo do decalque marrom da
+	/// cratera que a propria transformacao abriu.
+	///
+	/// Medido na foto: naquelas linhas o boneco fica a ~0,12 do fundo. Com 0,18 o filtro devolvia **zero
+	/// pixel de corpo** -- e a prova de que "o cabelo da Potara nao esta vermelho" ficava VERDE por
+	/// ausencia de medida, que e o pior jeito de ficar verde. Com 0,10 ela mede 12 a 35 pixels por
+	/// linha, que e o cabelo.
+	/// </summary>
+	private const float ToleranciaDoCorpoNaFaixa = 0.10f;
+
+	private static (float Vermelhos, Color Cor, Color Fundo, int Amostras) MedirAFaixa(Image tela, Mira m,
+																					   float y0, float y1)
+	{
+		Rect2I caixa = CaixaDoBoneco(m, tela);
+		int ya = caixa.Position.Y + (int)(caixa.Size.Y * y0);
+		int yb = caixa.Position.Y + (int)(caixa.Size.Y * y1);
+		int cx0 = caixa.Position.X + (int)(caixa.Size.X * 0.25f);
+		int cx1 = caixa.Position.X + (int)(caixa.Size.X * 0.75f);
+		int ex = (int)(caixa.Size.X * 0.20f);
+
+		// O FUNDO: as colunas de fora, nas MESMAS linhas.
+		var fr = new List<float>();
+		var fg = new List<float>();
+		var fb2 = new List<float>();
+		for (int y = Math.Max(0, ya); y < Math.Min(tela.GetHeight(), yb); y++)
+			for (int x = caixa.Position.X; x < caixa.Position.X + caixa.Size.X; x++)
+			{
+				if (x < 0 || x >= tela.GetWidth()) continue;
+				if (x >= caixa.Position.X + ex && x < caixa.Position.X + caixa.Size.X - ex) continue;
+				Color c = tela.GetPixel(x, y);
+				fr.Add(c.R); fg.Add(c.G); fb2.Add(c.B);
+			}
+		if (fr.Count == 0) return (0, new Color(0, 0, 0), new Color(0, 0, 0), 0);
+		fr.Sort(); fg.Sort(); fb2.Sort();
+		var fundo = new Color(fr[fr.Count / 2], fg[fg.Count / 2], fb2[fb2.Count / 2]);
+
+		var rs = new List<float>();
+		var gs = new List<float>();
+		var bs = new List<float>();
+		int vermelhos = 0;
+		for (int y = Math.Max(0, ya); y < Math.Min(tela.GetHeight(), yb); y++)
+			for (int x = Math.Max(0, cx0); x < Math.Min(tela.GetWidth(), cx1); x++)
+			{
+				Color c = tela.GetPixel(x, y);
+				// A MESMA CONTA DO `ContagemDeDiscos.ConteudoDe` (distancia euclidiana ao quadrado),
+				// e nao uma segunda definicao de "isto e cenario" -- so que com a tolerancia FINA.
+				float dr = c.R - fundo.R, dg = c.G - fundo.G, db = c.B - fundo.B;
+				if (dr * dr + dg * dg + db * db <= ToleranciaDoCorpoNaFaixa * ToleranciaDoCorpoNaFaixa) continue;
+				rs.Add(c.R); gs.Add(c.G); bs.Add(c.B);
+				if (EstaVermelho(c)) vermelhos++;
+			}
+
+		if (rs.Count == 0) return (0, new Color(0, 0, 0), fundo, 0);
+		rs.Sort(); gs.Sort(); bs.Sort();
+		return ((float)vermelhos / rs.Count,
+				new Color(rs[rs.Count / 2], gs[gs.Count / 2], bs[bs.Count / 2]), fundo, rs.Count);
+	}
+
+	/// <summary>
+	/// **ESTE PIXEL ESTA VERMELHO?** -- por razao entre canais, e nao por distancia ate um hexadecimal.
+	///
+	/// A tela chega multiplicada pelo `CanvasModulate` da hora (medido nesta mesma bancada: um
+	/// `f8f8f8` de folha vira `d6d6cc` ao meio-dia). Comparar com `e2331c` cru mediria a hora do dia;
+	/// a RAZAO entre os canais sobrevive a multiplicacao, que e o que a luz faz.
+	///
+	/// O piso de 0,25 no vermelho corta o preto do contorno: `(0,02; 0,01; 0,01)` tambem tem R maior
+	/// que 1,4x os outros e nao e vermelho nenhum -- e a folha do Gogeta e 47% `#080808`.
+	/// </summary>
+	private static bool EstaVermelho(Color c) =>
+		c.R > 0.25f && c.R > c.G * 1.4f && c.R > c.B * 1.4f;
 
 	/// <summary>
 	/// A CAIXA DO BONECO NESTA FOTO -- e ela e um retangulo em pe, e nao um quadrado.
@@ -1814,27 +2136,61 @@ public partial class RoboDeFotoDeFusao : Node
 		Virar(PPotCena);
 	}
 
+	/// <summary>
+	/// O FIM DA POTARA -- e o fim do roteiro. Ela e a ULTIMA fusao e ja foi fotografada em SSJ4
+	/// (<see cref="OSsj4"/> roda antes deste passo), entao aqui so resta desfaze-la: a bancada nao pode
+	/// terminar com o corpo do jogador fundido e o passageiro trancado no selo.
+	/// </summary>
 	private void OFimDaPotara(Jandirus.Server.GameServer srv, GameClient cli)
 	{
 		if (_t < 0.5) return;
-		Virar(PSsj4);
+
+		srv.SepararNaFotoDeFusao(cli.LocalId, "a bancada acabou");
+
+		var e = srv.EstadoNaFotoDeFusao(cli.LocalId);
+		Conferir(!e.Fundido, "desfeita a potara, o corpo volta a ser o do jogador");
+		Conferir(e.Roupa.All(r => !r.Contains("potara", StringComparison.OrdinalIgnoreCase)),
+				 "...e o brinco SAI junto (nada fica vestido pra sempre)");
+
+		Virar(PFim);
 	}
 
 	// =====================================================================
-	// 5) O SSJ4 DE CABELO VERMELHO
+	// 5) O SSJ4 -- VERMELHO NA DANCA, COR NORMAL NA POTARA
 	// =====================================================================
 	/// <summary>
-	/// *"toda fusao tem cabelo vermelho no SSJ4, tendo ou nao o cabelo do Vegito"*.
+	/// ============================ ELE RODA DUAS VEZES, E ESSE E O PONTO ============================
+	/// A regra era *"toda fusao tem cabelo vermelho no SSJ4, tendo ou nao o cabelo do Vegito"*, e o dono
+	/// a CORRIGIU: *"o ssj4 (e suas variantes) quando esta na fusao potara, o cabelo nao fica vermelho e
+	/// sim na cor normal de cabelo q seria se n fosse uma fusao, so a fusao metamoro/danca q muda a cor
+	/// do cabelo no ssj4"*.
+	///
+	/// Com uma foto so -- que era o estado desta bancada -- a metade errada nunca apareceria: a tomada
+	/// saia da POTARA (a fusao que sobrava de pe no fim do roteiro) e afirmava o VERMELHO, ou seja
+	/// exatamente o caso que agora tem que sair sem tinta. Uma bancada de um caso so nao distingue "a
+	/// regra olha o tipo" de "a regra pinta tudo": e a mesma armadilha que a memoria deste projeto
+	/// registra como *"as duas telas concordam" fica verde com as duas erradas igual*.
+	///
+	/// Entao o SSJ4 e fotografado **duas vezes, com a fusao ainda de pe**, uma em cada tipo, e as duas
+	/// fotos ficam lado a lado na tira `fusao-tira-ssj4-danca-e-potara.png`.
+	/// ==========================================================================================
 	///
 	/// A forca vem do `admin_forma` porque o degrau de verdade pede maestria, Oozaru Dourado despertado
 	/// e BP de porta -- forjar a escada inteira pra tirar uma foto seria escrever um segundo motor de
 	/// progressao. O que a foto mede e o CABELO, e ele nao sabe por onde a forma chegou.
 	///
-	/// **A fusao continua de pe aqui** (a Potara nao foi desfeita), que e o ponto: sem ela na tela, o
-	/// SSJ4 sairia com a folha dourada de sempre.
+	/// **A fusao tem que estar de pe aqui**, que e o ponto: sem ela na tela, o SSJ4 sairia com a folha
+	/// dourada de sempre e nenhum dos dois casos seria o que esta sendo medido. Por isso este passo vem
+	/// ANTES do `OFimDaMetamoro` (que desfaz) e antes do fim da Potara.
 	/// </summary>
-	private void OSsj4(Jandirus.Server.GameServer srv, GameClient cli, World mundo)
+	/// <param name="tipo">
+	/// De que fusao este corpo e AGORA. Nao e adivinhado: ele e o mesmo valor com que o roteiro fundiu,
+	/// e a prova C2 compara com o que o CLIENTE recebeu pelo `PeerLook`.
+	/// </param>
+	private void OSsj4(Jandirus.Server.GameServer srv, GameClient cli, World mundo, TipoDeFusao tipo)
 	{
+		bool danca = tipo == TipoDeFusao.Danca;
+
 		if (!_pediuSsj4)
 		{
 			_pediuSsj4 = true;
@@ -1870,40 +2226,110 @@ public partial class RoboDeFotoDeFusao : Node
 		// Entao a espera e por FATO e nao por prazo: **nenhuma cinematica rodando** e a folha do cabelo
 		// ja trocada. O prazo continua existindo, mas como PACIENCIA (a bancada tem que morrer falando).
 		// ========================================================================================================
+		// ============================ E A POEIRA TAMBEM TEM QUE TER BAIXADO ============================
+		// Achado da fase 2, e de novo OLHANDO A FOTO: a primeira rodada com a medida de pixel devolveu
+		// ZERO pixel de corpo na tomada da Potara. O motivo estava na imagem -- a cratera da cinematica
+		// do SSJ4 solta `PoeiraDeEstrago`, que desenha POR CIMA do boneco (`ZIndex = 100`, pedido do
+		// dono) e e MARROM: com ela no ar, o cabelo e o cenario ficam a mesma cor e nao ha o que medir.
+		//
+		// A espera e por FATO, como as outras desta bancada: `VivosDeTeste == 0` e o contador da propria
+		// `PoeiraDeEstrago`. Um prazo escrito a mao nunca acertaria -- a poeira dura o que a cratera
+		// mandar, e a cratera cresce com o poder de quem transformou.
+		// ==========================================================================================
 		bool cenaRodando = AchaCena() != null;
 		bool vestiu = mundo.VisualLocalDeTeste?.CabeloDeTeste == CabelosDeForma.FolhaDoSsj4DaFusao;
-		if ((!chegou || cenaRodando || !vestiu) && _t < 40) return;
+		bool poeira = PoeiraDeEstrago.VivosDeTeste > 0;
+		if ((!chegou || cenaRodando || !vestiu || poeira) && _t < 40) return;
 
 		// MEIO SEGUNDO DEPOIS DE TUDO ASSENTAR: a foto e do quadro, e o quadro precisa ter sido
 		// desenhado com a folha nova.
 		if (_esperandoAssentar < 0) { _esperandoAssentar = _t; return; }
 		if (_t - _esperandoAssentar < 0.5) return;
 
-		Nota($"SSJ4: cena rodando = {cenaRodando}, folha ja trocada = {vestiu}, esperei {_t:0.#} s, "
-		   + $"{_ssj4Pedidos} pedido(s) de forma");
+		Nota($"SSJ4 na {tipo}: cena rodando = {cenaRodando}, folha ja trocada = {vestiu}, "
+		   + $"poeira no ar = {PoeiraDeEstrago.VivosDeTeste}, "
+		   + $"esperei {_t:0.#} s, {_ssj4Pedidos} pedido(s) de forma");
 
-		Conferir(chegou, $"a fusao chegou ao SSJ4 (forma '{e.Forma}')");
+		// A PACIENCIA ACABOU COM ALGUMA COISA AINDA DE PE? Entao a foto sai, mas com o motivo escrito
+		// -- e o que separa "a foto saiu ruim" de "a foto saiu ruim e ninguem sabe por que".
+		if (cenaRodando || !vestiu || poeira)
+			Nota($"SSJ4 na {tipo}: ATENCAO -- a paciencia de {_t:0.#} s acabou antes de tudo assentar; "
+			   + "a medida de pixel abaixo pode estar suja");
+
+		Conferir(chegou, $"a {tipo} chegou ao SSJ4 (forma '{e.Forma}')");
 
 		CharacterVisual? vis = mundo.VisualLocalDeTeste;
 		Conferir(vis is { EhFusaoDeTeste: true },
-				 "o cliente sabe que este corpo e uma FUSAO (o bit que decide o vermelho)");
+				 $"o cliente sabe que este corpo e uma FUSAO ({tipo})");
+
+		// ============================ O TIPO TEM QUE TER ATRAVESSADO O FIO ============================
+		// Esta linha nao e zelo: ate a correcao do dono o `PeerLook` carregava um BOOL, e o tipo morria
+		// no servidor. A tinta certa com o tipo ERRADO no cliente e possivel (bastaria o servidor mandar
+		// sempre `Danca`), e ela ficaria verde nas duas provas de cor. Ver `GameServer.TrocarAparencias`.
+		// ==========================================================================================
+		Conferir(vis?.TipoDeFusaoDeTeste == tipo,
+				 $"...e sabe que ela e a {tipo} -- o dado que decide a tinta chegou pelo `PeerLook` "
+			   + $"(deu {vis?.TipoDeFusaoDeTeste?.ToString() ?? "nada"})");
+
+		// A FOLHA E A MESMA NOS DOIS TIPOS, e isso e afirmado nos dois: o dono corrigiu a COR, nao a
+		// cabeca. Ver `CabelosDeForma.FolhaDoSsj4DaFusao`.
 		Conferir(vis?.CabeloDeTeste == CabelosDeForma.FolhaDoSsj4DaFusao,
 				 $"...e a folha na cabeca e a do Gogeta (deu {NomeCurto(vis?.CabeloDeTeste ?? "")})");
 
 		(Vector3 Tinta, int Modo)? tinta = vis?.TintaDoCabeloDeTeste;
 		var esperada = new Color(Fusao.VermelhoDoCabeloDaFusao);
-		Conferir(tinta is { } t
-				 && Math.Abs(t.Tinta.X - esperada.R) < 0.02f
-				 && Math.Abs(t.Tinta.Y - esperada.G) < 0.02f
-				 && Math.Abs(t.Tinta.Z - esperada.B) < 0.02f,
-				 $"...e a tinta e o vermelho `{Fusao.VermelhoDoCabeloDaFusao}` (deu {tinta?.Tinta.ToString() ?? "nada"})");
-		Conferir(tinta is { Modo: 0 },
-				 $"...e ela SOMA e nao matiza (tinta_modo = {tinta?.Modo.ToString() ?? "?"})");
+		if (danca)
+		{
+			Conferir(tinta is { } t
+					 && Math.Abs(t.Tinta.X - esperada.R) < 0.02f
+					 && Math.Abs(t.Tinta.Y - esperada.G) < 0.02f
+					 && Math.Abs(t.Tinta.Z - esperada.B) < 0.02f,
+					 $"...e na DANCA a tinta e o vermelho `{Fusao.VermelhoDoCabeloDaFusao}` "
+				   + $"(deu {tinta?.Tinta.ToString() ?? "nada"})");
+			Conferir(tinta is { Modo: 0 },
+					 $"...e ela SOMA e nao matiza (tinta_modo = {tinta?.Modo.ToString() ?? "?"})");
+			_tintaDaDanca = tinta?.Tinta;
+		}
+		else
+		{
+			// ============================ A METADE QUE O DONO VEIO CORRIGIR ============================
+			// *"na fusao potara o cabelo nao fica vermelho e sim na cor normal de cabelo q seria se n
+			// fosse uma fusao"*. "Cor normal" no desenho e TINTA NENHUMA: o material volta ao que a ficha
+			// pediu, e a folha do SSJ4 desenha os proprios tons. Zero aqui e a frase dele no pixel.
+			// ======================================================================================
+			Conferir(tinta is { } t && t.Tinta.LengthSquared() < 1e-4f,
+					 $"...e na POTARA o cabelo fica SEM tinta -- a cor normal "
+				   + $"(deu {tinta?.Tinta.ToString() ?? "nada"})");
+			Conferir(_tintaDaDanca is { } dtd && tinta?.Tinta != dtd,
+					 $"...e as DUAS fusoes discordam no mesmo roteiro (Danca {_tintaDaDanca?.ToString() ?? "?"} "
+				   + $"!= Potara {tinta?.Tinta.ToString() ?? "?"})");
+		}
 
 		Vector2 onde = mundo.PosicaoDesenhadaDe(cli.LocalId) is { } p ? ParaTela(p) : Meio();
-		Retrato("fusao-c1-ssj4", "C1 a fusao em SSJ4, de cabelo vermelho", onde);
-		Virar(PFim);
+		Retrato(danca ? "fusao-c1-ssj4-danca" : "fusao-c2-ssj4-potara",
+				danca ? "C1 a DANCA em SSJ4, de cabelo VERMELHO"
+					  : "C2 a POTARA em SSJ4, cabelo na COR NORMAL",
+				onde);
+
+		// ============================ VOLTA A BASE ANTES DE SEGUIR ============================
+		// O passo seguinte desfaz a fusao (ou fecha a bancada), e sair de uma fusao em SSJ4 mistura duas
+		// coisas na mesma medida. E os campos de espera sao ZERADOS aqui porque este metodo roda DUAS
+		// vezes -- sem isso a segunda passagem acharia que ja tinha pedido a forma e fotografaria a base.
+		// ==================================================================================
+		srv.FormaNaFotoDeFusao(cli.LocalId, Jandirus.Core.Forms.Catalogo.IdBase);
+		_pediuSsj4 = false;
+		_ssj4Pedidos = 0;
+		_esperandoAssentar = -1;
+
+		Virar(danca ? PMetaFim : PPotFim);
 	}
+
+	/// <summary>
+	/// A TINTA QUE A DANCA ESCREVEU, guardada pra a Potara poder DISCORDAR dela. Ver o bloco da C2 --
+	/// sem a comparacao entre as duas, uma implementacao que ignorasse o tipo passaria numa e falharia
+	/// na outra sem dizer que sao a mesma pergunta.
+	/// </summary>
+	private Vector3? _tintaDaDanca;
 
 	private bool _pediuSsj4;
 
@@ -2191,7 +2617,9 @@ public partial class RoboDeFotoDeFusao : Node
 		"fusao-r3-borda-nao-funde",
 		"fusao-a0-nasce", "fusao-a0b-janela-limpa", "fusao-a1-cena",
 		"fusao-a2-branco", "fusao-a2b-branco-meio", "fusao-a3-branco-escoando",
-		"fusao-b1-metamoro", "fusao-b2-potara", "fusao-c1-ssj4",
+		"fusao-b1-metamoro", "fusao-b2-potara",
+		// AS DUAS DO SSJ4, e o par e a prova: ver `OSsj4`.
+		"fusao-c1-ssj4-danca", "fusao-c2-ssj4-potara",
 	];
 
 	private void Fechar()
@@ -2211,6 +2639,12 @@ public partial class RoboDeFotoDeFusao : Node
 		// diante toda tira comeca por `fusao-tira-`, que nenhuma tomada usa.
 		// =================================================================================================
 		Montar("fusao-tira-metamoro-e-potara.png", ["fusao-b1-metamoro", "fusao-b2-potara"]);
+
+		// ============================ A TIRA QUE MOSTRA A CORRECAO DO DONO ============================
+		// As duas fotos do SSJ4 coladas, que e o unico jeito de o OLHO ver a regra: vermelho de um lado,
+		// cabelo normal do outro, o mesmo corpo e a mesma folha. Separadas, cada uma parece certa.
+		// ==========================================================================================
+		Montar("fusao-tira-ssj4-danca-e-potara.png", ["fusao-c1-ssj4-danca", "fusao-c2-ssj4-potara"]);
 		Montar("fusao-tira-clarao.png", ["fusao-a0-nasce", "fusao-a1-cena", "fusao-a0b-janela-limpa"]);
 		Montar("fusao-tira-escoamento.png",
 			   ["fusao-a2-branco", "fusao-a2b-branco-meio", "fusao-a3-branco-escoando"]);

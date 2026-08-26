@@ -249,6 +249,12 @@ public partial class CreationScreen : CanvasLayer
 		botoes.AddChild(_btAvancar);
 		caixa.AddChild(botoes);
 
+		// OPCOES E SAIR, a terceira das tres telas do lobby -- e a que mais precisa: e aqui que o
+		// jogador passa mais tempo antes de entrar no mundo, com a trilha do menu tocando. Fica numa
+		// linha ABAIXO do par Voltar/Avancar de proposito: sao botoes de outro assunto, e mistura-los
+		// na mesma fileira do assistente faria "Sair do jogo" parecer "sair da criacao".
+		caixa.AddChild(BotoesDoLobby.Montar(this));
+
 		return painel;
 	}
 
