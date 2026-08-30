@@ -151,21 +151,53 @@ public sealed partial class GameServer
 		};
 
 		// MORTO ANTES DE ENTRAR NO MUNDO. A ordem importa: `PorNoMundo` chama `PrepararCombate`, e ele
-		// tem um ramo proprio pra corpo que ja chega morto (o de quem loga morto) -- ele arma o relogio
-		// da morte, que a triagem desarma no primeiro tique (o cadaver cai no TERCEIRO grupo do
-		// `VenceuOPrazoDaMorte`: nao e jogador e nao e NPC do mundo). Escrever `dead` depois faria o
-		// corpo passar um quadro de pe.
+		// tem um ramo proprio pra corpo que ja chega morto (o de quem loga morto). Escrever `dead`
+		// depois faria o corpo passar um quadro de pe.
+		//
+		// O RELOGIO DA MORTE QUE ELE ARMA NUNCA VENCE, e nao e a triagem quem o desarma: quem so vive
+		// na `ZoneList` nao passa pelo laco do `TickCombate`, entao o `VenceuOPrazoDaMorte` nem e
+		// perguntado sobre este corpo. Quem tira cadaver do mundo e o `TickDosCadaveres` -- ver
+		// `DesfazerOCadaver`.
 		corpo.Ficha.dead = true;
 
 		// A SEQUENCIA UNICA DE NASCIMENTO DE CORPO SEM DONO (`Statify` -> `PrepararCombate` -> listas),
 		// e nao uma montagem a mao: e ela que cria o `CombatState` com os MEMBROS, sem o qual o cadaver
 		// derruba o servidor com nulo no primeiro `Espalhar` de um arremesso.
-		PorNoMundo(corpo);
-
-		// ...E SAI DO `_players` NA LINHA SEGUINTE -- ver o cabecalho. `PorNoMundo` e o unico caminho
-		// que monta o corpo direito, e reescreve-lo aqui so pra pular uma linha seria a segunda copia
-		// da sequencia de nascimento, que e o defeito que aquele metodo existe pra nao ter.
-		_players.Remove(corpo.Id);
+		//
+		// ============================ `noDicionario: false` -- ELE NUNCA ENTRA NO `_players` ============================
+		// Ver o cabecalho desta funcao (*"E ELE NAO ENTRA NO `_players`"*), que ja dizia isto, e o
+		// `<param name="noDicionario">` do <see cref="PorNoMundo"/>, que conta o resto da historia.
+		//
+		// Aqui moravam DUAS linhas -- `PorNoMundo(corpo);` e `_players.Remove(corpo.Id);` -- e elas
+		// pareciam se anular. Nao se anulavam: a INSERCAO de chave nova e o que invalida um `foreach`
+		// sobre `_players.Values` (o `Remove` nao invalida nada desde o .NET Core 3.0), e o cadaver do
+		// JOGADOR nasce de dentro do laco do `TickCombate` -- `IrProAlem` -> `DeixarOCadaver`. Resultado:
+		// **toda morte de jogador matava o tique inteiro do servidor** com
+		// `InvalidOperationException: Collection was modified` em `GameServer.Combat.cs:1203`, e os ~60
+		// subsistemas que rodam depois do combate perdiam o quadro. O cadaver do NPC nunca deu problema
+		// porque ele nasce no dreno do `_npcsPraTirar`, que e FORA do laco.
+		//
+		// O conserto e nao inserir, e nao "inserir com cuidado": nada entre a insercao e a remocao lia o
+		// `_players` (o resto do `PorNoMundo` e `ZoneList().Add` e `AplicarGravidade`, que so olham
+		// `_zones` e a ficha), entao o par era um no-op com uma mina embaixo.
+		// ============================================================================================================
+		//
+		// ============================ E O INTERRUPTOR DO DEFEITO INJETADO, LETRA POR LETRA ============================
+		// `_cadaverNoPlayersDeTeste` e FALSO em jogo, sempre -- so a bancada `--tiquedamorte` o liga, e
+		// o que ele reproduz e EXATAMENTE o par que morava aqui: `PorNoMundo(corpo)` (que inseria) mais
+		// o `_players.Remove(corpo.Id)` da linha seguinte.
+		//
+		// Ele mora AQUI e nao dentro do arquivo de teste pela mesma razao escrita no `_borraoSoComSkill`
+		// (`GameServer.Combat.cs`) e no `_dcGradeCega` (`GameServer.Corpos.cs`): o criterio tem que ser
+		// o MESMO objeto com e sem o defeito. Uma copia do caminho da morte escrita na bancada mediria
+		// a copia concordando consigo mesma -- e este projeto ja catalogou esse cego ("a bancada mede
+		// INTENCAO"). Custa uma comparacao de bool por cadaver, e cadaver e coisa rara.
+		//
+		// **SEM ELE, PROVAR QUE A BANCADA SABE FICAR VERMELHA EXIGE EDITAR DOIS ARQUIVOS A MAO** -- e uma
+		// afirmacao que so foi vista passando nao se distingue de uma constante.
+		// ==========================================================================================================
+		PorNoMundo(corpo, noDicionario: _cadaverNoPlayersDeTeste);
+		if (_cadaverNoPlayersDeTeste) _players.Remove(corpo.Id);
 
 		// QUEM ESTA NA ZONA PRECISA VER O CORPO -- mesmo funil do NPC e do boneco. Sai ANTES do
 		// `MoveToZone` de quem viaja (ver a ordem no `IrProAlem`): assim a aparencia do cadaver chega

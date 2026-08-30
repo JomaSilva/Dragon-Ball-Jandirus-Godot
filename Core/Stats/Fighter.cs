@@ -606,6 +606,40 @@ public sealed partial class Fighter
 	/// </summary>
 	public bool bio_saiyan_dna;
 
+	/// <summary>
+	/// HAVIA, NA FORNADA, DNA DE UMA RACA QUE RESPIRA NO VACUO -- e por isso ESTE corpo respira.
+	///
+	/// ============================ POR QUE E UM CAMPO GRAVADO, E NAO UMA PERGUNTA ============================
+	/// Porque **a fornada morre no parto**: `NascerBioAndroide` zera `lab.Fornada` na primeira linha,
+	/// poe `Genoma = null` e reescreve a `ParentRace` pra "BioAndroid". Passado o nascimento nao
+	/// sobrou ninguem no mundo que saiba quem foram os doadores -- ou este bit e escrito na hora e vai
+	/// pro disco, ou a informacao deixa de existir. E exatamente o motivo do
+	/// <see cref="bio_saiyan_dna"/>, que e o vizinho de cima justamente por isso.
+	///
+	/// **QUEM DECIDE O VALOR CONTINUA SENDO O <see cref="Jandirus.Core.World.Vacuo"/>.** O parto
+	/// pergunta `Vacuo.RespiraNoVacuo(amostra.Raca, amostra.RacaDoPai)` a cada doador -- nao ha uma
+	/// segunda lista de raca aqui, e nao pode haver: foi assim que a regeneracao por raca errou nos
+	/// DOIS sentidos (deu habilidade a quem nao devia e tirou de quem devia). Mudar a lista do dono em
+	/// `Vacuo.RacasQueRespiram` muda o bio junto, no mesmo dia, sem tocar neste arquivo.
+	///
+	/// E ele entra no funil pelo `folegoConcedido` (`GameServer.Vacuo.SufocaAgora`), no mesmo `||` do
+	/// cargo e do traje: um bio que herdou o folego E veste a roupa nao respira duas vezes, e um que
+	/// nao herdou continua salvo pela roupa.
+	/// =====================================================================================================
+	///
+	/// ============================ E ISTO DIVERGE DO DM, DE PROPOSITO ============================
+	/// No original o Bio-Androide respira SEMPRE, sem olhar doador nenhum: `statbiodroid.dm:51` poe
+	/// `"Space Breath" = 1` no proto da raca, e o parto (`DNALabs.dm:460-465`) semeia o genoma **so**
+	/// do proto Bio-Android -- quatro doadores humanos dao um bio que respira igualzinho.
+	///
+	/// O dono pediu outra coisa, literal: *"bio androides pegam a capacidade de respirar no espaco
+	/// caso uma das racas q esta em seu dna consiga"*. Isso e MAIS RESTRITIVO que o original, e esta
+	/// escrito aqui pra que ninguem "conserte" o port pro lado do DM sem perceber que estaria
+	/// desfazendo um pedido.
+	/// ======================================================================================
+	/// </summary>
+	public bool bio_dna_respira;
+
 	/// <summary>Quantos JOGADORES absorvidos desde a ultima evolucao. NPC vale meio.</summary>
 	public double bio_abs_players;
 

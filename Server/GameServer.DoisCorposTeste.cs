@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Ai;
 using Jandirus.Core.Combat;
 using Jandirus.Core.World;
@@ -30,6 +30,13 @@ namespace Jandirus.Server;
 ///   3. CARREGAR      -> o carregado sobe na MESMA altitude / e ele **nao** paga Ki de voo
 ///   4. AS SOLTURAS   -> nocaute, zona e logout SOLTAM / o aperto sadio **nao** se desfaz sozinho
 ///   5. COLISAO       -> a pe, arremessado e por knockback ESBARRA / em andares diferentes ATRAVESSA
+///   9. O OCUPADO     -> NO AR, **os DEZ estados do `Ocupacao`, um por linha e com o nome do estado na
+///                       linha**, param quem voa contra eles e nao deslizam / e com o mesmo corpo
+///                       LIVRE, quem voa atravessa (o `mob/Cross`), e em andar diferente tambem --
+///                       ocupado nao vira poste. Cada estado ainda mede que o ARREMESSO continua
+///                       empurrando aquele mesmo corpo (senao "ele nao andou" seria verdade de graca)
+///                       e que dois corpos nascidos SOBREPOSTOS nao ficam presos. (Roda logo depois da
+///                       5: e a mesma pergunta no lugar onde ela faltava.)
 ///   6. O BAQUE       -> os DOIS se machucam / sem encontro, NENHUM dos dois se machuca
 ///   7. O CADAVER     -> fica, apanha, e agarrado e levado voando / e some quando enterrado
 ///   8. A VIAGEM      -> nao regrediu (a regressao mais provavel de todas)
@@ -263,7 +270,22 @@ public sealed partial class GameServer
 	///
 	/// A AMOSTRAGEM E DE MEIO TILE, como a do arremesso: de tile em tile pula o canto de um lago em que a
 	/// caixa dos pes encosta.
-	/// ================================================================================================
+	///
+	/// ============================ E A RETA TEM DE ESTAR VAZIA DE **GENTE**, E NAO SO DE PAREDE ============================
+	/// A versao anterior so afastava o HOST, e por isso ela dependia da sorte: o planeta tem CIDADAOS
+	/// (`GameServer.Populacao.cs` povoa cada mundo), e um cidadao parado na reta e um corpo na grade
+	/// **que esta bancada nao dirige**. Ele estraga as duas metades de uma vez -- "Alfa parou" vira
+	/// "parou em quem?", e a tecla de agarrar pega ELE em vez de nao pegar ninguem.
+	///
+	/// ISSO FICOU VERMELHO DE VERDADE, e por isso esta escrito aqui: ao esticar a reta de 16 pra 21
+	/// tiles o candidato escolhido mudou, caiu ao lado de um cidadao, e a familia 1 reprovou em
+	/// *"...e a tecla nao pega ninguem"* -- arrastando 24 linhas depois dela, todas por um aperto que a
+	/// bancada nunca pediu. Nenhuma delas tinha nada a ver com o codigo medido.
+	///
+	/// A CONTA E POR CORPO E NAO POR AMOSTRA (distancia ponto-segmento, uma vez por candidato): a zona
+	/// tem dezenas de corpos e o laco de fora tem milhares de candidatos, entao perguntar dentro do laco
+	/// das 42 amostras custaria 42x mais pelo mesmo veredito.
+	/// ================================================================================================================
 	/// </summary>
 	private (Vec2 Origem, Facing Rumo)? AcharPalco(ServerPlayer pl, int tiles, Facing[]? ordem = null)
 	{
@@ -272,6 +294,22 @@ public sealed partial class GameServer
 
 		const float T = ZoneCollision.TileSize;
 		ordem ??= [Facing.South, Facing.East, Facing.North, Facing.West];
+
+		// TODO CORPO DA ZONA, O HOST INCLUSIVE. A `ZoneList` e a mesma fonte da grade de colisao (ver
+		// `MontarAsGrades`) -- se um corpo barra, ele esta aqui. Fotografada UMA vez: nada nasce nem
+		// morre durante a varredura.
+		Vec2[] corpos = [.. ZoneList(pl.Zone.Hash).Select(c => c.Pos)];
+
+		// A distancia de um corpo ao SEGMENTO do palco -- o `t` preso em [0,1] porque o corpo pode estar
+		// atras da origem ou depois da ponta, e ali a distancia certa e a da extremidade.
+		static float ateOSegmento(Vec2 p, Vec2 a, Vec2 b)
+		{
+			Vec2 ab = b - a;
+			float len2 = ab.LengthSquared;
+			if (len2 < 1e-6f) return (p - a).Length;
+			float t = Math.Clamp(((p - a).X * ab.X + (p - a).Y * ab.Y) / len2, 0f, 1f);
+			return (p - (a + ab * t)).Length;
+		}
 
 		foreach (Facing f in ordem)
 		{
@@ -285,14 +323,20 @@ public sealed partial class GameServer
 						var origem = new Vec2(pl.Pos.X + ax * T, pl.Pos.Y + ay * T);
 						if (MoveRules.Occupied(mapa, origem, ModoDeTravessia.APe)) continue;
 
+						// NENHUM CORPO A MENOS DE 2 TILES DA RETA -- o host e os cidadaos pela MESMA
+						// linha. Ver o bloco no cabecalho: o corpo que a bancada nao dirige e obstaculo
+						// e alvo de tecla ao mesmo tempo.
+						Vec2 ponta = origem + dir * (tiles * T);
+						bool alguem = false;
+						foreach (Vec2 c in corpos)
+							if (ateOSegmento(c, origem, ponta) < 2 * T) { alguem = true; break; }
+						if (alguem) continue;
+
 						bool livre = true;
 						for (int k = 1; k <= tiles * 2 && livre; k++)
 						{
 							Vec2 p = origem + dir * (k * T * 0.5f);
 							if (MoveRules.Occupied(mapa, p, ModoDeTravessia.APe)) livre = false;
-							// E O HOST NAO PODE ESTAR NA RETA -- ele e um corpo na grade, e um obstaculo
-							// que a bancada nao dirige transformaria "Alfa parou" em "parou em quem?".
-							else if ((p - pl.Pos).Length < 2 * T) livre = false;
 						}
 						if (livre) return (origem, f);
 					}
@@ -322,17 +366,29 @@ public sealed partial class GameServer
 			// ---- O PALCO: uma linha reta e livre, medida no mapa de verdade ----
 			// Sem isto a bancada montaria os dois corpos contra uma parede e mediria a PAREDE parando
 			// quem anda -- verde pelo motivo errado, que e o pior verde que existe.
-			// A RETA PRECISA DE 16 TILES porque o passeio da familia 5 anda uns 12 (ver
-			// `TiquesDoPasseio`) e o corpo tem que ter espaco pra PASSAR de Beta quando a grade estiver
-			// cega -- sem folga, "nao atravessou" e "nao teve pra onde ir" dariam a mesma resposta.
-			if (AcharPalco(pl, 16) is not { } palco)
+			// A RETA PRECISA DE 21 TILES, e o numero e o do PIOR percurso que esta bancada encomenda --
+			// nao um chute. Sao dois, e o maior manda:
+			//   * o passeio da familia 5 anda uns 12 (ver `TiquesDoPasseio`), e o corpo tem que ter
+			//     espaco pra PASSAR de Beta quando a grade estiver cega -- sem folga, "nao atravessou" e
+			//     "nao teve pra onde ir" dariam a mesma resposta;
+			//   * o CONTRA-EXEMPLO da familia 6 arremessa Alfa por 10 tiques, e o arremesso anda
+			//     `Empurrao.TilesPorTique` = 2 tiles por tique: **20 tiles**, porque ali Beta paira no
+			//     andar 3 e o corpo passa por baixo dele sem parar em nada.
+			//
+			// COM 16 A BANCADA MEDIA A PAREDE, E ISSO JA FICOU VERMELHO: num mundo em que o mapa fechava
+			// logo depois do 16o tile, Alfa terminava o voo NA PEDRA, levava o `Espalhar` da parede que
+			// resiste (`GameServer.Empurrao.cs`) e a linha "passando por baixo de Beta o jogado NAO se
+			// machuca" reprovava -- por um dano que nao tinha nada a ver com Beta. Verde ou vermelho
+			// conforme o spawn do host e o pior tipo de bancada que existe: a que muda de veredito sem o
+			// codigo mudar.
+			if (AcharPalco(pl, 21) is not { } palco)
 			{
-				AfirmarDc("PRECONDICAO: ha uma reta de 16 tiles CAMINHAVEL pra montar o palco", false,
+				AfirmarDc("PRECONDICAO: ha uma reta de 21 tiles CAMINHAVEL pra montar o palco", false,
 						  "nenhum ponto num anel de 60 tiles em volta do host");
 				return;
 			}
 			AfirmarDc($"PRECONDICAO: o palco cabe a {(palco.Origem - pl.Pos).Length / ZoneCollision.TileSize:0} "
-					+ $"tiles do host, rumo {palco.Rumo} (16 tiles caminhaveis, agua inclusive)", true);
+					+ $"tiles do host, rumo {palco.Rumo} (21 tiles caminhaveis, agua inclusive)", true);
 
 			Facing rumo = palco.Rumo;
 			Vec2 d = MeleeArea.Frente(rumo);
@@ -355,6 +411,10 @@ public sealed partial class GameServer
 			OColoLevaAAltitude(_alfa, _beta, d, rumo);
 			AsSoltutasQueLibertam(_alfa, _beta, d, rumo);
 			NinguemAtravessaNinguem(_alfa, _beta, d, origem);
+			// A 9 VEM AQUI, COLADA NA 5, porque ela e a continuacao dela: a 5 mede "ninguem atravessa
+			// ninguem" no CHAO e a 9 mede o mesmo NO AR, que e onde o pedido novo do dono se passa.
+			// Ela deixa os dois no chao no fim, que e como a 6 os encontra.
+			OCorpoOcupadoNaoEEmpurrado(_alfa, _beta, d, origem);
 			OBaqueDoiNosDois(_alfa, _beta, d, origem);
 			OCadaverEntreDoisCorpos(pl, _alfa, d);
 
@@ -1059,6 +1119,529 @@ public sealed partial class GameServer
 		bool andou = (a.Pos - antes).Length > ZoneCollision.TileSize;
 		if (_beta != null) _beta.Altitude = alturaB;
 		return andou;
+	}
+
+	// =====================================================================
+	// 9) O CORPO **OCUPADO** NAO E EMPURRADO POR QUEM ANDA
+	// =====================================================================
+	/// <summary>
+	/// ============================ O PEDIDO, LITERAL ============================
+	/// *"atualmente ao estar lutando e andando, vc consgue empurrar o inimigo e vise e versa, faca com
+	/// q n de pra empurar npcs ou outros players ao andar contra eles enquando eles batem ou fazem
+	/// outra coisa."*
+	///
+	/// ============================ E O PALCO E **NO AR**, QUE E ONDE ELE ACONTECE ============================
+	/// A familia 5 ja media "ninguem atravessa ninguem" -- e media **no chao**, onde a regra sempre
+	/// valeu. O buraco estava exatamente onde a briga acontece: `ClasseDeCorpo.Bloqueia` abria pra
+	/// quem VOA, e numa luta de DBZ os dois estao voando. Entao a regra inteira valia em todo lugar
+	/// menos dentro do combate, que e o unico lugar em que o dono a pediu.
+	///
+	/// Por isso esta familia monta os dois NO AR, no MESMO andar, e a linha que abre e o
+	/// contra-exemplo: com Beta LIVRE, Alfa **atravessa** -- e e assim mesmo, e o `mob/Cross` do DM.
+	/// O que muda a resposta e uma coisa so: **o que Beta esta fazendo**.
+	/// ====================================================================================================
+	///
+	/// ============================ E ELA MEDE AS DUAS METADES ============================
+	/// *"o andador para"* e metade. A outra e *"o ocupado nao desliza"*, e ela precisa de numero
+	/// proprio: uma colisao que EMPURRASSE Beta deixaria a primeira linha verde do mesmo jeito (Alfa
+	/// teria "parado"... cinco tiles adiante, com Beta na frente dele o caminho todo). Aqui o `b.Pos`
+	/// e do mundo, e a bancada le o que sobrou dele.
+	///
+	/// **E "Beta andou 0,0 px" AINDA NAO E PROVA**, porque ela fica verde de graca num mundo em que
+	/// NADA move corpo nenhum -- e ai a familia inteira estaria medindo um jogo morto. Por isso cada
+	/// estado tem, logo depois, a linha do ARREMESSO: o MESMO corpo, no MESMO estado, no MESMO ponto,
+	/// levando um pesado pelo funil de producao (`TentarEmpurrar` -> `Empurrao.DoSoco` ->
+	/// `Arremessar`) e VOANDO 576 px. O pedido do dono e sobre ANDAR; o knockback e outra coisa e
+	/// continua empurrando -- e as duas frases so valem juntas.
+	/// ==================================================================================
+	///
+	/// ============================ UMA LINHA POR ESTADO, E O NOME DO ESTADO NA LINHA ============================
+	/// A primeira versao desta familia media DOIS estados (socar e guardar) -- os dois que o dono
+	/// nomeou. Os outros oito do <see cref="Ocupacao"/> estavam na condicao que este repo ja catalogou
+	/// por escrito: **dado extraido sem consumidor medido**. Eles existem no `enum`, sao calculados
+	/// pelo `OcupacaoDe`, viajam no snapshot -- e ninguem nunca tinha medido se algum deles de fato
+	/// para alguem.
+	///
+	/// Agora a tabela e a lista INTEIRA, e cada linha:
+	///   1. LIGA o estado pelo caminho de producao (e a frase impressa cita a FUNCAO, nao o campo);
+	///   2. cobra que a producao (`OcupacaoDe`) responda aquele estado -- e nos N tiques do passeio;
+	///   3. mede que o andador PARA e nao atravessa, e que parou ENCOSTADO;
+	///   4. mede que o corpo ocupado NAO saiu do lugar;
+	///   5. mede que o MESMO corpo, no MESMO estado, VOA quando o knockback o pega;
+	///   6. mede que dois corpos nascidos SOBREPOSTOS nao ficam presos;
+	///   7. e cobra a DESMONTAGEM, pra o estado nao vazar pro proximo da tabela.
+	///
+	/// A cobertura da tabela e cobrada por uma linha propria: `tabela.Length` contra o ultimo valor do
+	/// `enum`. Um estado novo no <see cref="Ocupacao"/> sem linha aqui reprova ali.
+	/// ========================================================================================================
+	/// </summary>
+	private void OCorpoOcupadoNaoEEmpurrado(ServerPlayer a, ServerPlayer b, Vec2 d, Vec2 origem)
+	{
+		GD.Print("[dois] -- 9) o corpo OCUPADO nao e empurrado por quem anda --");
+
+		const float T = ZoneCollision.TileSize;
+		Vec2 lado = new(-d.Y, d.X);   // o eixo PERPENDICULAR ao palco -- ver o estado `Agarrando`
+
+		// ============================ A TECLA C PRECISA DA SKILL, COMO O VOO ============================
+		// Mesma concessao (e mesma razao) do <see cref="DarOVoo"/>: o que esta familia tem que
+		// atravessar e o `Carregar` e a colisao, e nao a COMPRA do Ki Unlocked. `MeditateGivesKiRegen`
+		// e literalmente o campo que aquela skill escreve (`Fighter.cs:337`) e o unico que o
+		// `CargaDeKi.SabeReunir` le -- sem ele a tecla C nao faz nada e o estado `ReunindoKi` nao
+		// existiria pra ser medido.
+		// ============================================================================================
+		b.Ficha.MeditateGivesKiRegen = 1;
+
+		// ============================ O PALCO SOBE ATE O TETO, E QUEM PEDIU FOI O NOCAUTE ============================
+		// `Voo.AlturaMaxima` sao 20 tiles e o andar 3 comeca em 13,3 -- ou seja, do teto sobram
+		// 6,7 tiles de andar 3. Isso NAO e capricho de altura: um corpo nocauteado **perde o voo na
+		// hora** (`TickDoVoo`, o `KO.dm:71` do DM) e desce a 16 tiles por segundo, entao a janela em
+		// que existe "um corpo caido NO AR" e a propria queda. Do teto ela dura ~0,42 s (12,5 tiques);
+		// dos 18 tiles em que o `LevantarVoo` padrao para, dura 8,7 -- menos do que Alfa leva pra
+		// cruzar os 3 tiles do palco antigo. A primeira versao desta familia mediu exatamente isso e o
+		// nocaute reprovou com "andares diferentes": Beta ja tinha saido do andar 3 no meio da medida.
+		// ========================================================================================================
+		void PorNoTeto(ServerPlayer c)
+		{
+			c.Ficha.Ki = c.Ficha.MaxKi;
+			c.Ficha.stamina = c.Ficha.maxstamina;
+			// SOBE PELA TECLA, e nao escrevendo `Altitude` -- ver `LevantarVoo`. 130 tiques a 6 tiles/s
+			// dao 26 tiles; o teto e do `TickDoVoo` e o resto e recusado por ele.
+			LevantarVoo(c, 130);
+			c.Ficha.Ki = c.Ficha.MaxKi;
+			c.Ficha.stamina = c.Ficha.maxstamina;
+		}
+
+		bool NoTeto(ServerPlayer c) => c.Voando && c.Altitude >= Voo.AlturaMaxima - 1f;
+
+		PorNoTeto(a);
+		PorNoTeto(b);
+
+		AfirmarDc($"PRECONDICAO: os dois estao MESMO no ar e no MESMO andar "
+				+ $"(Alfa {a.Altitude:0} px / andar {Voo.Andar(a.Altitude)}, "
+				+ $"Beta {b.Altitude:0} px / andar {Voo.Andar(b.Altitude)})",
+				  a.Voando && b.Voando && Voo.Andar(a.Altitude) == Voo.Andar(b.Altitude)
+				  && Voo.Andar(a.Altitude) > 0);
+		AfirmarDc("PRECONDICAO: e voando o modo de travessia dos dois e `Voando` "
+				+ "(e o modo que atravessava corpo -- se nao for este, a familia mede outra coisa)",
+				  ModoDeTravessiaDe(a) == ModoDeTravessia.Voando);
+		AfirmarDc($"PRECONDICAO: os dois estao no TETO do ceu ({Voo.AlturaMaxima:0} px), que e o que da "
+				+ "a janela de andar 3 mais longa possivel -- e o nocaute precisa dela",
+				  NoTeto(a) && NoTeto(b), $"Alfa {a.Altitude:0} px, Beta {b.Altitude:0} px");
+
+		// ============================ O TERCEIRO CORPO FICA FORA DO CAMINHO ============================
+		// Gama existe desde a familia 5 e ele e um corpo na grade como qualquer outro: deixado na reta
+		// do palco, ele seria um obstaculo que esta familia nao dirige -- e "Alfa parou" viraria "parou
+		// em quem?". Ele so volta pra perto no estado `Agarrando`, que e o unico que precisa dele.
+		// ==========================================================================================
+		_gama ??= ForjarDois("Gama (o terceiro)", a.Zone, origem);
+		ServerPlayer gama = _gama;
+		DarOVoo(gama);
+		void GuardarGama() { gama.Pos = origem - d * (10 * T); }
+
+		// ============================ LIVRAR: TODO ESTADO QUE ESTA FAMILIA SABE LIGAR, DESLIGADO ============================
+		// A limpeza e do TAMANHO da tabela, e nao do estado que acabou de ser medido, e isso ja custou
+		// uma rodada: a pose de soco do passeio anterior sobrevivia a cadencia inteira e a medida da
+		// GUARDA comecava com Beta ainda respondendo "no meio de um golpe". Com dez estados a chance de
+		// um vazar pro seguinte e dez vezes maior, entao aqui nao se limpa "o ultimo" -- limpa-se tudo.
+		//
+		// **PELO CAMINHO DE PRODUCAO SEMPRE QUE ELE EXISTE**: `Guardar(false)`, `PararCarga`, `Soltar`,
+		// `FecharCanal`, `Reviver`, `Transformar(subir:false)`. Tres sao escritos a mao, e cada um por
+		// um motivo dito em voz alta: `train`/`med` porque o "caminho de producao" deles E uma
+		// atribuicao (`case Protocol.C2S.Activity` faz `a.Ficha.train = ...` em duas linhas), o prazo da
+		// cena pelo mesmo motivo, e o embate pelo motivo do <see cref="TirarDoEmbateSemDesfecho"/>.
+		// ==============================================================================================================
+		void Livrar(ServerPlayer c)
+		{
+			c.AtaqueAte = 0;
+			c.Combate.Recarga = 0;
+			c.Combate.Guardar(false);
+			TirarDoEmbateSemDesfecho(c);
+			if (_canais.TryGetValue(c.Id, out CanalDeKi? canal)) FecharCanal(c.Id, canal, null);
+			if (c.Carregando) PararCarga(c);
+			if (c.AgarrandoId != 0) Soltar(c, MotivoDaSoltura.Tecla);
+			if (c.AgarradoPorId != 0) LimparPreso(c);
+			c.Ficha.train = c.Ficha.med = false;
+			c.CenaSegundos = 0;
+			c.FuriaExtremaAte = 0;
+			c.RaivaLendariaAte = 0;
+			c.Ficha.Anger = 100;
+			// A FORMA VOLTA PRA BASE PELO `Transformar`, um degrau por vez -- e com a cena zerada antes,
+			// senao o proprio congelamento recusaria a descida. Seis voltas cobrem a escada inteira.
+			for (int i = 0; i < 6 && !c.Forma.NaBase; i++) { c.CenaSegundos = 0; Transformar(c, subir: false); }
+			c.TiquesDeVoo = 0;
+			c.Combate.Stun = 0;
+			if (c.Ficha.KO || c.Ficha.dead) c.Combate.Reviver();
+			c.Ficha.Statify();
+			c.Ficha.PowerLevel();
+			c.Combate.SincronizarVida();
+		}
+
+		// ============================ O PALCO, REMONTADO ANTES DE CADA MEDIDA ============================
+		// O combustivel e da MEDIDA e nao da regra: voar cobra Ki por tique e socar cobra folego, e um
+		// corpo que cai (ou que para de socar por exaustao) no meio do passeio mediria a queda em vez da
+		// colisao. Encher o tanque antes de cada medida deixa a unica variavel sendo a que a familia
+		// manipula -- o que Beta esta fazendo.
+		// ==============================================================================================
+		Vec2 posDeBeta = origem + d * (3 * T);
+		void Montar(float tiles)
+		{
+			Livrar(a); Livrar(b); Livrar(gama);
+			GuardarGama();
+			if (!NoTeto(a)) PorNoTeto(a);
+			if (!NoTeto(b)) PorNoTeto(b);
+			a.Ficha.Ki = a.Ficha.MaxKi; b.Ficha.Ki = b.Ficha.MaxKi;
+			a.Ficha.stamina = a.Ficha.maxstamina; b.Ficha.stamina = b.Ficha.maxstamina;
+			posDeBeta = origem + d * (tiles * T);
+			a.Pos = origem;
+			b.Pos = posDeBeta;
+			a.Facing = MoveRules.FacingFrom(d, a.Facing);
+			b.Facing = MoveRules.FacingFrom(d, b.Facing);
+		}
+
+		// ============================ O PASSEIO: ALFA VOA CONTRA BETA, BETA FAZ **X** ============================
+		// **BETA OLHA PRA `d`, OU SEJA DE COSTAS PRA ALFA**, e isso e obrigatorio: olhando pra Alfa, o
+		// soco dispararia o `Aproximar` e Beta ARRANCARIA dois tiles pra frente -- a bancada mediria o
+		// dash e chamaria de empurrao. De costas, `AlvoParaArranque` nao acha ninguem no cone e o golpe
+		// sai no vazio, que continua sendo "ele esta batendo".
+		//
+		// A CONTAGEM DE TIQUES NO ESTADO substituiu o "primeiro nao-livre" da primeira versao. Guardar
+		// so o primeiro deixaria verde um passeio em que Beta ficou ocupado UM tique e livre os outros
+		// trinta e nove -- e Alfa teria atravessado um corpo livre com a familia dizendo o nome do
+		// estado na linha. Aqui a afirmacao e "ele esteve nesse estado nos N tiques", e o denominador
+		// aparece impresso pra ninguem ter que acreditar.
+		// ====================================================================================================
+		(bool atravessou, float betaAndou, float alfaParouA, int noEstado, bool mesmoAndar, Ocupacao vista)
+			Passeio(Ocupacao qual, Action? oQueBetaFaz, int tiques)
+		{
+			Vec2 betaAntes = b.Pos;
+			Vec2 alvo = b.Pos;
+			int noEstado = 0;
+			bool mesmoAndar = true;
+			var vista = Ocupacao.Livre;
+			Tiques(tiques, () =>
+			{
+				oQueBetaFaz?.Invoke();
+				// LIDO DA PRODUCAO, e no meio do passeio: e o MESMO `OcupacaoDe` que a grade consulta.
+				Ocupacao agora = OcupacaoDe(b);
+				if (agora == qual) noEstado++;
+				if (vista == Ocupacao.Livre) vista = agora;
+				if (!ClasseDeCorpo.MesmoAndar(Voo.Andar(a.Altitude), Voo.Andar(b.Altitude))) mesmoAndar = false;
+				AplicarComando(a, new Comando { Rumo = d }, Protocol.TickSeconds);
+			});
+			return (NoEixo(a.Pos - alvo, d) > 0, (b.Pos - betaAntes).Length,
+					NoEixo(b.Pos - a.Pos, d), noEstado, mesmoAndar, vista);
+		}
+
+		// ---------------- O CONTRA-EXEMPLO, E ELE VEM PRIMEIRO ----------------
+		// Sem ele "Alfa parou" ficaria verde com um mundo em que voar deixou de funcionar. E ele e o
+		// buraco de ontem, em numero: dois corpos no ar, um andando contra o outro, e ele passa.
+		Montar(3f);
+		var livre = Passeio(Ocupacao.Livre, () => AplicarComando(b, new Comando { Olhar = d }, Protocol.TickSeconds),
+							TiquesDoPasseio);
+		GD.Print($"[dois]   (Beta LIVRE no ar: Alfa parou {NoEixo(a.Pos - posDeBeta, d):0.0} px alem dele)");
+		AfirmarDc("CONTRA-EXEMPLO: com Beta LIVRE, quem voa ATRAVESSA -- e o `mob/Cross` do DM, "
+				+ "e era por aqui que o pedido do dono escapava",
+				  livre.atravessou, $"ocupacao vista: '{CorpoOcupado.Nome(livre.vista)}'");
+		AfirmarDc("...e no contra-exemplo Beta estava mesmo LIVRE os 40 tiques (senao ele mediria outra coisa)",
+				  livre.noEstado == TiquesDoPasseio, $"{livre.noEstado}/{TiquesDoPasseio}");
+
+		// =====================================================================
+		// A TABELA: **UMA LINHA POR ESTADO**, e o nome do estado na linha
+		// =====================================================================
+		// A lista e a do `CorpoOcupado` inteira, na ordem dela. Medir so os dois que o dono nomeou
+		// ("batem", "guardam") deixaria os outros oito na condicao que este projeto ja catalogou por
+		// escrito -- dado extraido sem consumidor: eles estao no `enum`, sao calculados pelo
+		// `OcupacaoDe`, viajam no snapshot... e ninguem nunca mediu se algum deles de fato para alguem.
+		//
+		// CADA LINHA LIGA O ESTADO **PELO CAMINHO DE PRODUCAO**, e o caminho esta escrito no texto que
+		// vai pro console: se um dia alguem trocar `Nocautear` por `Ficha.KO = true`, a linha continua
+		// verde e a frase passa a mentir -- por isso a frase cita a funcao, e nao o campo.
+		(Ocupacao Qual, string Como, Action Ligar, Action? PorTique, float Tiles, int Tiques)[] tabela =
+		[
+			// ---- NOCAUTEADO: o unico da lista que TIRA o voo, e por isso o palco dele e curto ----
+			// `Nocautear` (o verb de admin) chama `CombatState.Nocautear`, que e o MESMO que o
+			// `MeleeResolver` chama quando um soco derruba alguem -- e nao `Ficha.KO = true`, que
+			// deixaria o corpo sem prazo pra levantar.
+			(Ocupacao.Nocauteado,
+			 "levou um nocaute de verdade (`Nocautear` -> `CombatState.Nocautear`), e por isso esta CAINDO",
+			 () => Nocautear(b), null, 1.5f, 12),
+
+			// ---- NO EMBATE: o Zanzo Clash, com GAMA do outro lado ----
+			// `Comecar` e o unico lugar do jogo que escreve `_emEmbate`. O par e Gama e nao Alfa de
+			// proposito: um embate com Alfa dentro travaria justamente o corpo que tem que andar.
+			(Ocupacao.NoEmbate,
+			 "entrou num Zanzo Clash com Gama (`Comecar`, o unico que escreve `_emEmbate`)",
+			 () => Comecar(b, gama, NowMs()), null, 3f, TiquesDoPasseio),
+
+			// ---- EM CENA: a cinematica da transformacao, pela transformacao de verdade ----
+			// O caminho e o da `--escudoteste`: o luto acende a raiva (o tronco Saiyajin cobra isso pra
+			// sair da base) e o `Transformar` de producao passa pelo `AnunciarForma`, que e o UNICO
+			// lugar do jogo que anota o prazo da cena. Escrever `CenaSegundos` a mao aqui testaria a
+			// bancada, e nao o jogo.
+			(Ocupacao.EmCena,
+			 "se transformou de verdade (`Transformar` -> `AnunciarForma` -> `MarcarCena`)",
+			 () =>
+			 {
+				 AmigoAbatido(b, "um amigo de bancada", Jandirus.Core.Forms.NivelDeRaiva.Extrema);
+				 b.Ficha.Statify();
+				 b.Ficha.Ki = b.Ficha.MaxKi;
+				 Transformar(b, subir: true);
+			 }, null, 3f, TiquesDoPasseio),
+
+			// ---- CANALIZANDO KI: um raio na mao ----
+			// `Canalizar` e a porta de todo raio do jogo (o `case C2S.Habilidade` desemboca nela).
+			(Ocupacao.CanalizandoKi,
+			 "esta com um raio na mao (`Canalizar`, a porta unica do beam)",
+			 () => Canalizar(b, "Ki_Wave", 10 * b.Ficha.BaseDrain(), new ReceitaDeProjetil
+			 {
+				 Tipo = TipoDeProjetil.Beam, BaseDano = 1, Velocidade = 1, AlcanceTiles = 30,
+				 CargaMinima = 1, Nome = "Onda de Ki",
+			 }), null, 3f, TiquesDoPasseio),
+
+			// ---- REUNINDO KI: a tecla C, pelo `AplicarComando` ----
+			// O Ki cai pra metade antes: carregar com o tanque cheio mediria uma tecla que nao tem o
+			// que fazer. Quem liga e o `Carregar` de producao, na transicao, exatamente como o teclado.
+			(Ocupacao.ReunindoKi,
+			 "esta segurando a tecla C (`Comando.Carregar` -> `Carregar`)",
+			 () => { b.Ficha.Ki = b.Ficha.MaxKi * 0.5; },
+			 () => AplicarComando(b, new Comando { Carregar = true, Olhar = d }, Protocol.TickSeconds),
+			 3f, TiquesDoPasseio),
+
+			// ---- ATACANDO: **o caso que o dono nomeou** ----
+			(Ocupacao.Atacando,
+			 "esta socando (`Comando.Leve` -> `Atacar`) -- *\"enquando eles batem\"*",
+			 () => { },
+			 () => AplicarComando(b, new Comando { Leve = true, Olhar = d }, Protocol.TickSeconds),
+			 3f, TiquesDoPasseio),
+
+			// ---- GUARDANDO: a decisao escrita desta rodada ----
+			(Ocupacao.Guardando,
+			 "esta de guarda erguida (`Comando.Guardar` -> `CombatState.Guardar`, o ALT)",
+			 () => { },
+			 () => AplicarComando(b, new Comando { Guardar = true, Olhar = d }, Protocol.TickSeconds),
+			 3f, TiquesDoPasseio),
+
+			// ---- AGARRANDO: Beta segura GAMA, e Gama fica DE LADO ----
+			// Gama entra pelo eixo PERPENDICULAR ao palco, e nao na frente nem atras: na frente ele
+			// pararia o arremesso de Beta a 0,75 tile (e a metade do "o arremesso continua empurrando"
+			// mediria um corpo que bateu em Gama), e atras ele seria o corpo em que Alfa esbarraria
+			// primeiro. De lado, os 24 px de afastamento sao maiores que a caixa dos pes nos DOIS eixos
+			// (16 x 10 px), entao ele nao toca ninguem -- e continua ao alcance do braco de Beta.
+			(Ocupacao.Agarrando,
+			 "esta segurando Gama (`AlternarAgarrao` -> `Prender`)",
+			 () =>
+			 {
+				 if (!NoTeto(gama)) PorNoTeto(gama);
+				 gama.Pos = b.Pos + lado * (0.75f * T);
+				 gama.Altitude = b.Altitude;
+				 b.Facing = MoveRules.FacingFrom(lado, b.Facing);
+				 AlternarAgarrao(b);
+			 }, null, 3f, TiquesDoPasseio),
+
+			// ---- TREINANDO e MEDITANDO: as duas atividades ----
+			// O "caminho de producao" delas E uma atribuicao: o `case Protocol.C2S.Activity` do
+			// `Handle` faz `a.Ficha.train = q == Activity.Treinando` e a linha seguinte pro `med`. Nao
+			// ha funcao pra chamar, e inventar uma pra a bancada seria criar producao pra testar.
+			(Ocupacao.Treinando,
+			 "esta treinando (`C2S.Activity` -> `Ficha.train`)",
+			 () => { b.Ficha.train = true; }, null, 3f, TiquesDoPasseio),
+
+			(Ocupacao.Meditando,
+			 "esta meditando (`C2S.Activity` -> `Ficha.med`)",
+			 () => { b.Ficha.med = true; }, null, 3f, TiquesDoPasseio),
+		];
+
+		AfirmarDc($"PRECONDICAO: a tabela cobre a lista INTEIRA do `CorpoOcupado` "
+				+ $"({tabela.Length} estados, e o `enum` tem {(int)Ocupacao.Meditando}) -- um estado novo "
+				+ "no `enum` sem linha aqui reprova nesta mesma checagem",
+				  tabela.Length == (int)Ocupacao.Meditando
+				  && tabela.Select(t => t.Qual).Distinct().Count() == tabela.Length);
+
+		foreach ((Ocupacao qual, string como, Action ligar, Action? porTique, float tiles, int tiques) in tabela)
+		{
+			string nome = CorpoOcupado.Nome(qual);
+
+			// ---------------- 1. O ANDADOR PARA, E O OCUPADO NAO SAI DO LUGAR ----------------
+			// **O `Ligar` E O `PorTique` SAO OS DOIS MEIOS DE ENTRAR NUM ESTADO, E OS DOIS RODAM
+			// ANTES DA AFIRMACAO.** Tres estados desta tabela (socar, guardar, a tecla C) nao sao um
+			// gesto e sim uma tecla MANTIDA: eles nao existem ate o `AplicarComando` do primeiro
+			// tique. A primeira rodada desta tabela reprovou exatamente esses tres, os tres com "a
+			// producao respondeu ''" -- a bancada perguntava antes de a tecla ter sido apertada.
+			Montar(tiles);
+			ligar();
+			porTique?.Invoke();
+			AfirmarDc($"[{qual}] PRECONDICAO: Beta {como}",
+					  OcupacaoDe(b) == qual,
+					  $"a producao respondeu '{CorpoOcupado.Nome(OcupacaoDe(b))}'");
+
+			var p = Passeio(qual, porTique, tiques);
+			GD.Print($"[dois]   ({qual}: Alfa parou a {p.alfaParouA:0.0} px de Beta, Beta andou "
+				   + $"{p.betaAndou:0.0} px, {p.noEstado}/{tiques} tiques '{nome}')");
+
+			AfirmarDc($"[{qual}] PRECONDICAO: Beta ficou '{nome}' nos {tiques} tiques do passeio",
+					  p.noEstado == tiques, $"{p.noEstado}/{tiques}");
+			AfirmarDc($"[{qual}] PRECONDICAO: os dois no MESMO andar o passeio inteiro "
+					+ "(em andares diferentes o corpo nao barra ninguem, ocupado ou nao)",
+					  p.mesmoAndar,
+					  $"Alfa andar {Voo.Andar(a.Altitude)} / Beta andar {Voo.Andar(b.Altitude)}");
+			AfirmarDc($"[{qual}] **O ANDADOR PARA**: Alfa voa contra um corpo '{nome}' e NAO passa por dentro",
+					  !p.atravessou, $"parou {NoEixo(a.Pos - posDeBeta, d):0.0} px ALEM de Beta");
+			AfirmarDc($"[{qual}] ...e parou ENCOSTADO, e nao a meio mapa (a caixa dos pes tem "
+					+ $"{2 * MoveRules.BodyHalfW:0} px)",
+					  Math.Abs(p.alfaParouA) < 2.5f * T, $"{p.alfaParouA:0.0} px");
+			AfirmarDc($"[{qual}] **A OUTRA METADE**: o corpo '{nome}' NAO saiu do lugar",
+					  p.betaAndou < 1f, $"{p.betaAndou:0.00} px");
+
+			// ---------------- 2. E O ARREMESSO CONTINUA EMPURRANDO O MESMO CORPO ----------------
+			// *"O arremesso (knockback) e outra coisa e continua empurrando: o pedido e sobre ANDAR."*
+			//
+			// **E ESTA E A METADE QUE IMPEDE A DE CIMA DE SER VERDADE DE GRACA.** "Beta andou 0,0 px"
+			// ficaria verde num mundo em que NADA move corpo nenhum, e a familia inteira estaria
+			// medindo um jogo morto. Aqui o MESMO corpo, no MESMO estado, no MESMO ponto, e empurrado
+			// pelo funil do soco (`TentarEmpurrar` -> `Empurrao.DoSoco` -> `Arremessar`) e VOA.
+			Montar(tiles);
+			ligar();
+			porTique?.Invoke();
+			Vec2 antesDoBaque = b.Pos;
+			a.Knockback = true;
+			// A OCUPACAO E CONFERIDA **NO INSTANTE DO GOLPE**, e nao antes de montar: sem esta linha o
+			// "o arremesso continua empurrando" poderia estar medindo um corpo que ja tinha saido do
+			// estado -- e ai ele seria uma frase sobre corpo LIVRE, que ninguem duvidava.
+			Ocupacao noBaque = OcupacaoDe(b);
+			TentarEmpurrar(a, b, 200, Protocol.Golpe.Pesado, garantido: true);
+			bool armou = b.TiquesDeVoo > 0;
+			Tiques(40);
+			float voou = (b.Pos - antesDoBaque).Length;
+			AfirmarDc($"[{qual}] PRECONDICAO: o soco caiu num corpo que ESTAVA '{nome}' naquele instante",
+					  noBaque == qual, $"a producao respondeu '{CorpoOcupado.Nome(noBaque)}'");
+			AfirmarDc($"[{qual}] PRECONDICAO: o soco pesado de Alfa armou o arremesso de um corpo '{nome}'",
+					  armou, $"TiquesDeVoo={b.TiquesDeVoo}");
+			AfirmarDc($"[{qual}] **O ARREMESSO CONTINUA EMPURRANDO**: o mesmo corpo '{nome}' que o ombro "
+					+ $"nao move VOA {voou:0} px pelo knockback",
+					  voou > 2 * T, $"andou {voou:0.0} px");
+
+			// ---------------- 3. E SOBREPOSTOS NINGUEM FICA PRESO ----------------
+			// A regra nova e do tipo que reabre travamento: se ela desligasse o escape do
+			// `jaSobrepondo`, bastaria alguem fazer QUALQUER uma destas dez coisas em cima de voce pra
+			// voce nao andar mais -- e sobrepor acontece o tempo todo (solta-se do colo na posicao
+			// EXATA de quem carrega, cai-se nocauteado em cima de quem estava colado, o arremesso para
+			// dentro do alcance).
+			Montar(tiles);
+			ligar();
+			porTique?.Invoke();
+			Ocupacao noAperto = OcupacaoDe(b);
+			a.Pos = b.Pos;   // o pior caso: o MESMO ponto
+			Vec2 juntos = b.Pos;
+			Tiques(TiquesDoPasseio, () =>
+			{
+				porTique?.Invoke();
+				AplicarComando(a, new Comando { Rumo = d * -1 }, Protocol.TickSeconds);
+			});
+			AfirmarDc($"[{qual}] PRECONDICAO: o corpo em cima do qual Alfa nasceu ESTAVA '{nome}'",
+					  noAperto == qual, $"a producao respondeu '{CorpoOcupado.Nome(noAperto)}'");
+			AfirmarDc($"[{qual}] NAO PRENDE: nascido SOBREPOSTO a um corpo '{nome}', Alfa sai andando "
+					+ $"({(a.Pos - juntos).Length:0} px)",
+					  (a.Pos - juntos).Length > 2 * T, $"{(a.Pos - juntos).Length:0.0} px");
+
+			// ---------------- 4. E A DESMONTAGEM E COBRADA ----------------
+			// Sem esta linha um estado que nao soubesse se desligar contaminaria o proximo, e a familia
+			// mediria a guarda achando que mede o treino -- que foi exatamente o defeito da primeira
+			// rodada com dois estados, e agora sao dez.
+			Livrar(b);
+			AfirmarDc($"[{qual}] (desmontagem) Beta voltou a ser LIVRE -- o estado nao vaza pro proximo",
+					  OcupacaoDe(b) == Ocupacao.Livre,
+					  $"ficou '{CorpoOcupado.Nome(OcupacaoDe(b))}'");
+		}
+
+		// ---------------- O DEFEITO INJETADO ----------------
+		// A MESMA grade cega da familia 5 -- a fonte errada / a ordem errada. Com ela a consulta
+		// responde "nao ha ninguem aqui", e a ocupacao de Beta deixa de chegar a quem anda.
+		Montar(3f);
+		Mutacao(AfirmarDc,
+				"o MESMO passeio com Beta socando continua barrado",
+				"a grade de corpos esvaziada depois de montada -- a ocupacao nao chega a quem anda",
+				() =>
+				{
+					Montar(3f);
+					return !Passeio(Ocupacao.Atacando,
+									() => AplicarComando(b, new Comando { Leve = true, Olhar = d }, Protocol.TickSeconds),
+									TiquesDoPasseio).atravessou;
+				},
+				() => _dcGradeCega = true,
+				() => _dcGradeCega = false);
+
+		// ---------------- OCUPADO NAO E POSTE ----------------
+		// Sem esta linha, "ocupado barra" ficaria verde com um mundo em que socar ergue uma coluna de
+		// tres andares -- e o jogador chamaria isso de travamento sem nunca ver uma linha vermelha.
+		Montar(3f);
+		Pousar(a);
+		a.Pos = origem;
+		AfirmarDc($"PRECONDICAO do contra-exemplo: Alfa desceu pro chao (andar {Voo.Andar(a.Altitude)}) "
+				+ $"e Beta continua no {Voo.Andar(b.Altitude)}",
+				  Voo.Andar(a.Altitude) != Voo.Andar(b.Altitude));
+		Tiques(TiquesDoPasseio, () =>
+		{
+			AplicarComando(b, new Comando { Leve = true, Olhar = d }, Protocol.TickSeconds);
+			AplicarComando(a, new Comando { Rumo = d }, Protocol.TickSeconds);
+		});
+		AfirmarDc("CONTRA-EXEMPLO: em ANDAR DIFERENTE, o corpo ocupado continua sendo atravessado "
+				+ "-- ocupado nao vira poste invisivel",
+				  NoEixo(a.Pos - posDeBeta, d) > 0,
+				  $"parou {NoEixo(a.Pos - posDeBeta, d):0.0} px");
+
+		// ---- devolve o palco pra as familias seguintes ----
+		// A POSE DE SOCO TAMBEM E PALCO: o ultimo passeio termina com Beta no meio de um golpe e a
+		// cadencia dele passa da ultima linha desta familia -- a 6 comecaria medindo um corpo ocupado
+		// sem saber. Mesmo motivo do `Montar`.
+		Livrar(a); Livrar(b); Livrar(gama);
+		Pousar(b);
+		Pousar(gama);
+		GuardarGama();
+		a.Pos = origem;
+		b.Pos = origem + d * (3 * T);
+		a.Ficha.Ki = a.Ficha.MaxKi; b.Ficha.Ki = b.Ficha.MaxKi;
+		a.Ficha.stamina = a.Ficha.maxstamina; b.Ficha.stamina = b.Ficha.maxstamina;
+		AfirmarDc("no fim da familia, os dois estao no chao, livres e podem andar",
+				  !a.Voando && !b.Voando && OcupacaoDe(b) == Ocupacao.Livre
+				  && PodeMexerOCorpo(a) && PodeMexerOCorpo(b),
+				  $"Alfa voando={a.Voando} pode={PodeMexerOCorpo(a)} KO={a.Ficha.KO} morto={a.Ficha.dead} "
+				+ $"| Beta voando={b.Voando} pode={PodeMexerOCorpo(b)} KO={b.Ficha.KO} morto={b.Ficha.dead} "
+				+ $"ocupacao='{CorpoOcupado.Nome(OcupacaoDe(b))}'");
+	}
+
+	/// <summary>
+	/// TIRA UM CORPO DO ZANZO CLASH **SEM ENCENAR O DESFECHO** -- e a unica concessao de bancada da
+	/// familia 9, e ela esta escrita aqui pra nao parecer descuido.
+	///
+	/// ============================ POR QUE NAO SOLTAR PELO CAMINHO NORMAL ============================
+	/// O caminho normal e o `SoltarDoEmbate`, e ele chama o `Terminar` -- que nao "solta": ele **fecha a
+	/// cena**. Ele teleporta o vencedor pras costas do perdedor (`Recolocar`) e dispara o
+	/// `GolpeDeSaida`, que e um pesado com ARREMESSO GARANTIDO e que ainda `RacharChao` no lugar. Ou
+	/// seja: desmontar o estado pelo caminho de producao jogaria um dos dois corpos pra longe, poderia
+	/// nocautea-lo e deixaria o CENARIO estragado -- e as familias seguintes mediriam um destroco que a
+	/// propria desmontagem produziu.
+	///
+	/// Entao a divisao e esta, e ela e a de sempre nesta bancada: **o LIGAR e de producao** (o `Comecar`
+	/// e o unico lugar do jogo que escreve `_emEmbate`, e e ele que a tabela chama) e so o DESLIGAR e
+	/// daqui. O que este metodo faz e exatamente o pedaco de ESTADO do `Terminar` -- as duas listas, o
+	/// atordoamento e a invisibilidade --, sem uma linha de desfecho.
+	/// ============================================================================================
+	/// </summary>
+	private void TirarDoEmbateSemDesfecho(ServerPlayer x)
+	{
+		if (!_emEmbate.TryGetValue(x.Id, out Embate? e)) return;
+		_emEmbate.Remove(e.A.Id);
+		_emEmbate.Remove(e.B.Id);
+		_embates.Remove(e);
+		foreach (ServerPlayer p in new[] { e.A, e.B })
+		{
+			p.Combate.Stun = 0;
+			// SO DESFAZ O QUE O EMBATE FEZ, como o `Terminar`: quem chegou ja invisivel continua assim.
+			if (p == e.A ? e.SumidoAntesA : e.SumidoAntesB) continue;
+			_invisiveis.Remove(p.Id);
+			p.Ficha.isconcealed = false;
+			MandarEfeito(p, "invisivel", 0);
+		}
 	}
 
 	// =====================================================================

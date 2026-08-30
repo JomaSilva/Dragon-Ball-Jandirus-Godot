@@ -585,8 +585,29 @@ public partial class GameClient : Node
 		_peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
+	/// <summary>
+	/// O ESPIAO DO CANAL DE TECNOLOGIA -- nulo em jogo. SO PRA BANCADA (`--diaginstalar`).
+	///
+	/// ============================ POR QUE A REGRA 3 PRECISA DELE ============================
+	/// *"a previa e LOCAL: nenhum outro jogador ve"*. A leitura barata disso e "a lista de obras nao
+	/// mudou enquanto o fantasma andava" -- e ela e **fraca**, porque um pacote que sai e o servidor
+	/// recusa tambem nao muda lista nenhuma. Ficaria verde num cliente que tagarela.
+	///
+	/// A pergunta forte e a outra ponta: **nenhum byte saiu**. Este e o funil unico do canal onde
+	/// "posicionar" e "construir" viajam (ver <see cref="SendTech"/>), entao o que nao passa por aqui
+	/// nao chegou ao servidor por ele.
+	///
+	/// Ele DEVOLVE se deixa passar, como o <see cref="EspiaoDeVerbos"/>: `false` engole. E o que
+	/// permite a uma bancada exercitar a LIGACAO de um botao sem disparar a acao.
+	/// =====================================================================================
+	/// </summary>
+	public static Func<string, string, bool>? EspiaoDeTech;
+
 	public void SendTech(string cmd, string arg = "")
 	{
+		// ANTES do `Connected`, pelo mesmo motivo do canal de verbos: o que esta sob varredura e o
+		// que a TELA tentou mandar.
+		if (EspiaoDeTech is { } olho && !olho(cmd, arg)) return;
 		if (!Connected) return;
 		var w = Protocol.Begin(Protocol.C2S.Tech);
 		w.Put(cmd);

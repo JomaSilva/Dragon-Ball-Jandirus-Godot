@@ -10,7 +10,7 @@ REM
 REM  Ela responde, em execucao e sem ninguem por perto, a pergunta que o dono
 REM  fez: "a criacao de androide e bio-androide ja esta 100%?".
 REM
-REM  Sao 159 provas em ~40 segundos, em QUINZE secoes, e cada uma dirige os
+REM  Sao 183 provas em ~45 segundos, em DEZESSEIS secoes, e cada uma dirige os
 REM  VERBOS que o cliente usa (a tecla E da tecnologia e o canal de habilidade)
 REM  -- nunca as funcoes por dentro. A diferenca nao e estilo: chamar a funcao
 REM  prova que o metodo existe; apertar o verbo prova que um JOGADOR chega nele.
@@ -53,10 +53,21 @@ REM                       sem DNA tambem tem (vem da RACA); o humano nao tem.
 REM   13) O SUPER SAIYAJIN  com DNA sobe, sem DNA a linha nem abre. E o SSJ2 (o
 REM                       que o dono chama de "super perfeito"): a MESMA morte,
 REM                       mudando UM campo, mata ou desperta.
-REM   14) OS NUMEROS     um por um contra o DM (0,5 / 4 / 10 / 0,5 / 1 / 2x /
+REM   14) O FOLEGO NO VACUO  TRES bios nascidos no mesmo minuto, pela mesma
+REM                       porta, diferindo so no sangue do doador: um por raca
+REM                       que o dono nomeou -- o de DNA meio-Majin (que chega
+REM                       pelo PAI do doador) e o de DNA Frost Demon (que chega
+REM                       pela RACA dele) nao sufocam no espaco; o de DNA humano
+REM                       sufoca ao lado dos dois. As duas racas entram por
+REM                       METADES DIFERENTES do `Race == X || Parent_Race == X`,
+REM                       e uma familia com so uma delas ficaria verde com a
+REM                       outra metade apagada. E o traje continua salvando o
+REM                       terceiro -- o folego novo entrou num `||`, nao no
+REM                       lugar dos outros abrigos.
+REM   15) OS NUMEROS     um por um contra o DM (0,5 / 4 / 10 / 0,5 / 1 / 2x /
 REM                       4x / 8x / 1,35x / 1,5-2-3-4x / 6%% / 2x / 4%% / 70 /
 REM                       1M / 2M / 30 dias / 1%% da larva).
-REM   15) A INJECAO      a bancada se cobra: nove defeitos postos a mao, e cada
+REM   16) A INJECAO      a bancada se cobra: nove defeitos postos a mao, e cada
 REM                       afirmacao TEM que virar vermelha.
 REM
 REM  A IRMA DELA E A `ver-a-escada-do-bio.bat`, e as duas se precisam: esta MEDE

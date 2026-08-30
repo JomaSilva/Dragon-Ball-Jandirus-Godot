@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.World;
 
 namespace Jandirus.Client;
@@ -81,6 +81,7 @@ public partial class RoboDeColisao : Node
 	// O ROTEIRO
 	// =====================================================================
 	private const int PAssentar = 0, PMontar = 1, PA_Antes = 2, PA_Colidir = 3,
+					  PA_Ocupado = 11, PA_Livre = 12,
 					  PB_Pegar = 4, PB_Subir = 5,
 					  PC_Matar = 6, PC_Cadaver = 7, PC_Enterrar = 8, PC_Depois = 9,
 					  PFim = 10;
@@ -101,6 +102,8 @@ public partial class RoboDeColisao : Node
 			case PMontar: Montar(srv, cli, mundo); break;
 			case PA_Antes: A_Antes(mundo); break;
 			case PA_Colidir: A_Colidir(srv, mundo, delta); break;
+			case PA_Ocupado: A_Ocupado(srv, cli, mundo); break;
+			case PA_Livre: A_Livre(srv, cli, mundo); break;
 			case PB_Pegar: B_Pegar(srv, mundo); break;
 			case PB_Subir: B_Subir(srv, mundo); break;
 			case PC_Matar: C_Matar(srv, cli); break;
@@ -220,6 +223,105 @@ public partial class RoboDeColisao : Node
 			+ $"{2 * Jandirus.Core.World.MoveRules.BodyHalfW:0} px de largura)");
 
 		Montar("corpos-A-colisao.png", ["corpos-a1-antes", "corpos-a2-colidindo"]);
+
+		// A GUARDA SOBE AGORA, e o proximo passo espera o SNAPSHOT dela chegar. Ver `A_Ocupado`.
+		srv.GuardarNaFotoDeCorpos(_beta, true);
+		Virar(PA_Ocupado);
+	}
+
+	// =====================================================================
+	// A3) O CORPO **OCUPADO**, VISTO DO LADO DO CLIENTE
+	// =====================================================================
+	/// <summary>
+	/// ============================ A METADE QUE SO ESTE PROCESSO ENXERGA ============================
+	/// A `--doiscorposteste` mede o pedido do dono -- *"n de pra empurar npcs ou outros players ao andar
+	/// contra eles enquando eles batem ou fazem outra coisa"* -- com dois corpos do SERVIDOR, e fecha.
+	/// **E ela ficaria verde com o byte de ocupacao nunca saindo do servidor**: quem para o corpo do
+	/// JOGADOR e a previsao do cliente (o servidor abstem-se de conferir corpo no `ValidateStep`, e a
+	/// razao esta escrita la), entao se `EntityState.Ocupacao` nao chegasse aqui, o jogador continuaria
+	/// atravessando quem esta batendo -- e nenhuma linha da outra bancada ficaria vermelha.
+	///
+	/// Este passo le a resposta pelo caminho do jogador, inteiro e sem atalho:
+	///
+	///     servidor -> `EstadoDe` -> `EntityState.Write` -> rede -> `Read` -> `World.AoReceberSnapshot`
+	///              -> `RemotePlayer.Receive` -> `RemotePlayer.Ocupacao` -> `MontarGradeDeCorpos`
+	///              -> `GradeDeCorpos.Quem`
+	///
+	/// ============================ E COM O CONTRA-EXEMPLO NA MESMA POSICAO ============================
+	/// A pergunta e feita DUAS vezes no mesmo ponto e com o mesmo modo (`Voando`), mudando so uma
+	/// coisa: a guarda de Beta. Com ela erguida ele barra; abaixada, ele deixa passar -- que e o
+	/// `mob/Cross` do DM e o comportamento de sempre. Uma medida so, do lado positivo, ficaria verde
+	/// com um cliente que barrasse TODO mundo (e ai voar viraria impossivel e ninguem saberia por que).
+	/// ============================================================================================
+	/// </summary>
+	private void A_Ocupado(Jandirus.Server.GameServer srv, GameClient cli, World mundo)
+	{
+		// MEIO SEGUNDO: o snapshot sai a 30 Hz, mas o corpo remoto e desenhado com atraso fixo e a
+		// `MontarGradeDeCorpos` usa a posicao DESENHADA. Perguntar no mesmo quadro em que a guarda subiu
+		// mediria o pacote anterior.
+		if (_t < 0.5) return;
+
+		if (mundo.CorpoDeTeste(_beta) is not { } corpoDeBeta)
+		{
+			Conferir(false, "A3: Beta tem corpo desenhado neste cliente (sem ele nao ha grade a medir)");
+			Virar(PB_Pegar);
+			return;
+		}
+
+		// A POSICAO E O ANDAR SAO OS DO **DESENHO**, que e o que a grade do cliente usa.
+		Vec2 pesDeBeta = ClasseDeCorpo.Pes(new Vec2(corpoDeBeta.Position.X, corpoDeBeta.Position.Y));
+		int andarDeBeta = Voo.Andar((corpoDeBeta as RemotePlayer)?.AlturaDeTeste ?? 0f);
+
+		// DE LONGE, pra o `jaSobrepondo` nao ser quem responde: a pergunta e "ele me barra ao chegar",
+		// e nao "eu ja estava dentro dele".
+		Vec2 deLonge = pesDeBeta - _rumo * (4 * ZoneCollision.TileSize);
+
+		int BarrouVoando(out Ocupacao oc)
+		{
+			var grade = new GradeDeCorpos();
+			mundo.MontarGradeDeCorpos(grade);
+			return grade.Quem(pesDeBeta, andarDeBeta, cli.LocalId, deLonge, ModoDeTravessia.Voando, out oc);
+		}
+
+		int comGuarda = BarrouVoando(out Ocupacao ocupacaoNaTela);
+		Nota($"A3: a grade DESTE CLIENTE responde id {comGuarda} pra quem chega VOANDO, "
+		   + $"e diz que ele esta '{CorpoOcupado.Nome(ocupacaoNaTela)}'");
+
+		Conferir(ocupacaoNaTela == Ocupacao.Guardando,
+			"A3: a OCUPACAO de Beta ATRAVESSOU O FIO e chegou na grade deste cliente "
+			+ $"(o servidor diz guarda erguida; a tela diz '{CorpoOcupado.Nome(ocupacaoNaTela)}')");
+		Conferir(comGuarda == _beta,
+			"A3: ...e por causa dela ele BARRA quem chega VOANDO -- o pedido do dono, "
+			+ "medido no cliente que preve o passo do jogador");
+
+		// ---- O CONTRA-EXEMPLO: a MESMA pergunta com a guarda abaixada ----
+		srv.GuardarNaFotoDeCorpos(_beta, false);
+		_t = 0;
+		Virar(PA_Livre);
+	}
+
+	private void A_Livre(Jandirus.Server.GameServer srv, GameClient cli, World mundo)
+	{
+		if (_t < 0.5) return;
+
+		if (mundo.CorpoDeTeste(_beta) is not { } corpoDeBeta) { Virar(PB_Pegar); return; }
+		Vec2 pesDeBeta = ClasseDeCorpo.Pes(new Vec2(corpoDeBeta.Position.X, corpoDeBeta.Position.Y));
+		int andarDeBeta = Voo.Andar((corpoDeBeta as RemotePlayer)?.AlturaDeTeste ?? 0f);
+		Vec2 deLonge = pesDeBeta - _rumo * (4 * ZoneCollision.TileSize);
+
+		var grade = new GradeDeCorpos();
+		mundo.MontarGradeDeCorpos(grade);
+		int semGuarda = grade.Quem(pesDeBeta, andarDeBeta, cli.LocalId, deLonge,
+								   ModoDeTravessia.Voando, out Ocupacao ocupacao);
+		int aPe = grade.Quem(pesDeBeta, andarDeBeta, cli.LocalId, deLonge, ModoDeTravessia.APe);
+
+		Conferir(ocupacao == Ocupacao.Livre && semGuarda == 0,
+			"A3: CONTRA-EXEMPLO -- com a guarda ABAIXADA o MESMO corpo, no MESMO ponto, deixa passar "
+			+ $"quem voa (id {semGuarda}, '{CorpoOcupado.Nome(ocupacao)}') -- e o `mob/Cross` do DM");
+		Conferir(aPe == _beta,
+			"A3: ...e A PE ele continua barrando, ocupado ou nao (a regra antiga nao foi trocada, "
+			+ "so ganhou um segundo termo)");
+
 		Virar(PB_Pegar);
 	}
 

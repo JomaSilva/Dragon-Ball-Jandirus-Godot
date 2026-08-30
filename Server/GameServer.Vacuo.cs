@@ -1,6 +1,7 @@
 using Godot;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Items;
+using Jandirus.Core.Stats;
 using Jandirus.Core.World;
 
 namespace Jandirus.Server;
@@ -110,6 +111,17 @@ public sealed partial class GameServer
 
 		/// <summary>O cargo dele da folego? `GodOfDestruction.dm:121`.</summary>
 		public Func<string, bool> CargoRespira = Vacuo.CargoRespira;
+
+		/// <summary>
+		/// O DNA DA FORNADA DELE RESPIRAVA? -- a leitura de <see cref="Fighter.bio_dna_respira"/>,
+		/// escrita uma vez no parto (`NascerBioAndroide`).
+		///
+		/// Ela e sonda e nao leitura direta pelo motivo de sempre: os DOIS defeitos possiveis aqui
+		/// sao mudos. *"o bio parou de herdar"* devolve o port ao estado anterior a este trabalho, e
+		/// *"todo bio respira"* e o DM 1:1 (`statbiodroid.dm:51`) -- que **nao** e o que o dono
+		/// pediu. Sem poder injetar os dois, a familia 11 nao teria como provar que sabe reprovar.
+		/// </summary>
+		public Func<Fighter, bool> FolegoDoDna = f => f.bio_dna_respira;
 
 		/// <summary>A regra racial inteira -- o `spacebreather` do DM.</summary>
 		public Func<string?, string?, bool, bool, bool> Respira = Vacuo.RespiraNoVacuo;
@@ -230,15 +242,32 @@ public sealed partial class GameServer
 		// ABRIGO 2, o unico que precisou de linha: dentro da pod, a zona e a do espaco.
 		if (s.Pilotando(pl.Id)) return false;
 
-		// ABRIGO 1 + a raca + o CARGO, numa pergunta so.
+		// ABRIGO 1 + a raca + o CARGO + o DNA DO BIO, numa pergunta so.
 		//
 		// O `folegoConcedido` deixou de ser `false` cravado: o Deus da Destruicao respira enquanto
 		// portar o titulo (`GodOfDestruction.dm:118-121`) e devolve o folego junto com o trono
 		// (`:143`) -- e como o cargo mora na CONTA (`CargoDe`), largar o trono ja tira o folego sem
-		// uma segunda linha em lugar nenhum. Os outros tres portadores do DM (androide de
-		// laboratorio, Rebreather_Module, fusao) plugam no mesmo parametro quando existirem.
+		// uma segunda linha em lugar nenhum.
+		//
+		// ============================ E O BIO-ANDROIDE ENTROU PELO MESMO PARAMETRO ============================
+		// *"bio androides pegam a capacidade de respirar no espaco caso uma das racas q esta em seu
+		// dna consiga"*. A raca dele **nao** esta na lista do Core, e nao pode estar: o folego nao e
+		// do cracha "BioAndroid", e sim dos doadores da fornada -- dois bios da mesma especie, um de
+		// doador Majin e outro de quatro humanos, tem respostas diferentes.
+		//
+		// Por isso ele chega aqui como <see cref="Fighter.bio_dna_respira"/>, um bit escrito UMA vez
+		// no parto (`GameServer.Tech.NascerBioAndroide`) a partir da MESMA `Vacuo.RespiraNoVacuo` que
+		// esta linha usa -- e nao como uma raca a mais numa lista. E um `||` puro, entao ele compoe
+		// sem ordem: quem herdou o folego e ainda veste o traje nao respira duas vezes, e quem nao
+		// herdou continua salvo pela roupa, pela pod e pelo cargo.
+		//
+		// Sobram do DM dois portadores que este port ainda nao tem, e eles plugam AQUI sem tocar no
+		// dano: o androide de laboratorio (`DNALabs.dm:185` -- a CONVERSAO em Android, Lab=1, que e
+		// outro sistema) e o `Rebreather_Module` de ciborgue (`Cyborgs.dm:751-770`).
+		// ===================================================================================================
 		return !s.Respira(pl.Ficha.Race, pl.Ficha.ParentRace,
-						  s.CargoRespira(CargoDe(pl.Conta)), s.TemTraje(pl));
+						  s.CargoRespira(CargoDe(pl.Conta)) || s.FolegoDoDna(pl.Ficha),
+						  s.TemTraje(pl));
 	}
 
 	/// <summary>

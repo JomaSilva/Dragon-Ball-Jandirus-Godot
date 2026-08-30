@@ -89,10 +89,18 @@ public partial class RemotePlayer : Node2D
 	/// (pose `blast`) ou o corpo ainda esta reunindo energia (idle + o brilho da
 	/// <see cref="CargaDeRaioVisual"/>)? Vem do byte opcional do snapshot -- ver `EntityState.Canal`.
 	/// </param>
+	/// <param name="ocupacao">
+	/// O QUE ESTE CORPO ESTA FAZENDO, calculado pelo SERVIDOR e lido daqui sem refazer conta nenhuma.
+	/// Ele nao desenha nada: ele existe pro passo do corpo local saber em quem nao pode entrar --
+	/// `World.MontarGradeDeCorpos` o carrega pra dentro da grade de colisao. Ver
+	/// `Core/World/Ocupacao.cs`.
+	/// </param>
 	public void Receive(Vec2 pos, Facing facing, bool moving, bool deitado, Jandirus.Net.Protocol.Pose pose,
 						bool correndo = false, bool rabo = false, float altitude = 0f, bool voando = false,
-						bool canalAtirando = false)
+						bool canalAtirando = false,
+						Jandirus.Core.World.Ocupacao ocupacao = Jandirus.Core.World.Ocupacao.Livre)
 	{
+		_ocupacao = ocupacao;
 		_visual.MostrarRabo(rabo);
 		_alturaDoPacote = altitude;
 		OuvirODecolar(voando);
@@ -246,6 +254,24 @@ public partial class RemotePlayer : Node2D
 	/// </summary>
 	public float AlturaDeTeste => _altitude;
 	public Facing OlharDeTeste => _facing;
+
+	/// <summary>
+	/// O QUE ESTE CORPO ESTA FAZENDO -- a resposta do servidor, crua. Ver <see cref="_ocupacao"/>.
+	/// </summary>
+	public Jandirus.Core.World.Ocupacao Ocupacao => _ocupacao;
+
+	/// <summary>
+	/// ============================ ELE NAO E DESENHO: E COLISAO ============================
+	/// O ultimo valor que o snapshot trouxe. Ele nao muda um pixel deste boneco -- quem lê e a GRADE
+	/// (`World.MontarGradeDeCorpos`), pra que o passo do corpo local pare neste corpo quando ele esta
+	/// ocupado, inclusive voando (ver `ClasseDeCorpo.Bloqueia`).
+	///
+	/// **NAO E DEDUZIDO DA POSE.** A pose responde SEIS dos dez estados e nao tem como responder os
+	/// outros quatro (guarda, agarrao, embate, cinematica). Deduzir aqui seria a lista escrita duas
+	/// vezes, uma em cada ponta -- ver `EntityState.Ocupacao`.
+	/// ==================================================================================
+	/// </summary>
+	private Jandirus.Core.World.Ocupacao _ocupacao;
 
 	/// <summary>A mesma taxa do corpo local -- ver `LocalPlayer.PerseguicaoDaAltura`.</summary>
 	private const float PerseguicaoDaAltura = 25f;

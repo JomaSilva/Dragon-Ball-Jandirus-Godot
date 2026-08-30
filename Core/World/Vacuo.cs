@@ -44,6 +44,14 @@ namespace Jandirus.Core.World;
 ///     ao perde-lo (`:143`). **Este ja esta ligado** -- ver <see cref="CargosQueRespiram"/>, que a
 ///     bancada `--vacuoteste` cobra nominalmente (a promessa estava escrita em `Ranks.cs:556` e nao
 ///     era cumprida por linha nenhuma);
+///   * o **BIO-ANDROIDE** entra pelo mesmo `folegoConcedido`, e **ele nao e uma raca desta lista de
+///     proposito**: no DM o folego dele e da RACA (`statbiodroid.dm:51`, `"Space Breath" = 1`, e o
+///     parto semeia o genoma so do proto -- quatro doadores humanos dao um bio que respira igual),
+///     mas o dono pediu por DNA: *"bio androides pegam a capacidade de respirar no espaco caso uma
+///     das racas q esta em seu dna consiga"*. Entao dois bios da mesma especie tem respostas
+///     diferentes, e uma linha "BioAndroid" aqui daria folego aos dois. O parto pergunta a ESTA
+///     funcao, doador por doador, e guarda a resposta em `Fighter.bio_dna_respira` -- porque a
+///     fornada e destruida no nascimento e depois nao sobra quem saiba os doadores;
 ///   * o **androide de laboratorio** ganha ao ser convertido (`DNALabs.dm:185`) -- maquina nao respira;
 ///   * o **Rebreather_Module**, implante de torax de ciborgue (`Cyborgs.dm:751-770`), que mexe em
 ///     `spacebreather` e nao em `spacesuit`, ou seja e permanente enquanto instalado.

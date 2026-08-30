@@ -12,11 +12,11 @@ REM     "faca todas as racas MENOS a FROST DEMON, ALIEN e MAJIN sofrerem DANO
 REM      POR SEGUNDO NO ESPACO pois elas n conseguem respirar la, precisando da
 REM      ROUPA ESPACIAL ou estar dentro de uma POD ou NAVE CAPITAL SHIP"
 REM
-REM  Sao 63 provas e 30 defeitos INJETADOS em ~20 segundos, SEM JANELA. Ela roda
+REM  Sao 79 provas e 36 defeitos INJETADOS em ~20 segundos, SEM JANELA. Ela roda
 REM  no 1o login e o servidor CONTINUA DE PE depois -- leia o placar
 REM  "[vacuo] ==== PLACAR ====" e feche com Ctrl+C.
 REM
-REM  AS DEZ FAMILIAS (uma por negacao do pedido, e cada uma com o PAR que a segura)
+REM  AS ONZE FAMILIAS (uma por negacao do pedido, e cada uma com o PAR que a segura)
 REM     1) A TAXA          5,00 de vida por nucleo por segundo (= vida cheia / 20 s,
 REM                        o prazo do `spacetime = 100` do `Stats.dm:120`). Medida,
 REM                        nao estimada. E o par: em TERRA FIRME o mesmo corpo nao
@@ -52,8 +52,15 @@ REM                        Mais o ALIVIO de quem vestiu a roupa a tempo.
 REM    10) A CORRENTE      quem CHAMA o `TickDoVacuo`, e em que cadencia. Todas as
 REM                        nove familias acima chamam o tique na mao -- ou seja,
 REM                        continuariam verdes com o sistema ORFAO.
+REM    11) O BIO PELO DNA  bio-androide de doador Majin ou Frost Demon (nas DUAS
+REM                        grafias, e inclusive MEIO-Majin) nao perde vida; o de quatro doadores
+REM                        humanos PERDE, no mesmo segundo, ao lado dele. E a
+REM                        unica familia em que a RACA nao responde: os dois
+REM                        corpos sao "BioAndroid" e a diferenca esta no tanque
+REM                        de onde sairam. No DM os dois respirariam de graca
+REM                        (`statbiodroid.dm:51`) -- a divergencia e o pedido.
 REM
-REM  E CADA FAMILIA TEM QUE SABER REPROVAR: a bancada injeta 30 defeitos (trocando
+REM  E CADA FAMILIA TEM QUE SABER REPROVAR: a bancada injeta 36 defeitos (trocando
 REM  as sondas do vacuo por baixo das mesmas provas) e exige que a familia fique
 REM  VERMELHA. Familia que continua verde com o defeito dentro sai como [CEGA].
 REM
@@ -109,11 +116,11 @@ if %errorlevel%==0 (
 )
 
 echo.
-echo  ---- o vacuo cobra (63 provas, 30 defeitos injetados) ----
+echo  ---- o vacuo cobra (79 provas, 36 defeitos injetados) ----
 echo.
 echo   A bancada roda no 1o login e leva uns 20 s. Procure o placar:
-echo      [vacuo]   provas             : 63   (63 verdes, 0 vermelhas)
-echo      [vacuo]   defeitos injetados : 30   (30 pegos, 0 passaram batido)
+echo      [vacuo]   provas             : 79   (79 verdes, 0 vermelhas)
+echo      [vacuo]   defeitos injetados : 36   (36 pegos, 0 passaram batido)
 echo.
 "%GODOT%" --headless --path . --host --rede 7920 --vacuoteste ^
           --raca Saiyan --conta bancada_vacuo --nome Asfixiado

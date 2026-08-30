@@ -2083,6 +2083,48 @@ public struct EntityState
     public bool NaveGrande;
 
     // =====================================================================
+    // O TERCEIRO BYTE -- o que este corpo esta FAZENDO, pra quem esbarra nele
+    // =====================================================================
+    /// <summary>
+    /// ============================ ESTE CORPO ESTA OCUPADO? -- E COM O QUE? ============================
+    /// A resposta do <see cref="Jandirus.Core.World.CorpoOcupado"/>, ja calculada pelo servidor. Ela e o
+    /// que faz um corpo que esta BATENDO (ou guardando, carregando, canalizando, agarrando...) parar
+    /// tambem quem voa -- ver `ClasseDeCorpo.Bloqueia`. E o pedido do dono: *"faca com q n de pra
+    /// empurar npcs ou outros players ao andar contra eles enquando eles batem ou fazem outra coisa"*.
+    ///
+    /// ============================ POR QUE VIAJA A RESPOSTA, E NAO OS SINAIS ============================
+    /// A tentacao era deduzir no cliente: <see cref="Pose"/> ja diz Atacando/Canalizando/Treinando/
+    /// Meditando/Nocauteado e o bit <see cref="Carregando"/> diz a tecla C. Sao SEIS dos dez estados --
+    /// e os quatro que faltam (guarda, agarrao, embate, cinematica) nao tem bit nenhum no fio.
+    ///
+    /// Deduzir os seis e mandar os quatro seria escrever a lista DUAS vezes, uma em cada ponta, e o
+    /// dia em que um estado novo entrasse so numa delas o sintoma seria "so acontece com os outros".
+    /// Aqui a lista existe num lugar so (o `CorpoOcupado`), o servidor a resolve uma vez por corpo por
+    /// tique e o cliente **le a resposta**.
+    ///
+    /// ============================ E POR QUE UM BYTE INTEIRO, TODO TIQUE ============================
+    /// Os dois bytes de flags acabaram, e o comentario do <see cref="BitNaveGrande"/> ja tinha escrito
+    /// o que fazer quando isso acontecesse: *"a saida honesta nao e espremer -- e um terceiro byte,
+    /// pago so por quem o usa"*. **Este e aquele terceiro byte, e ele NAO consegue ser opcional**, e a
+    /// razao merece estar escrita: os dois opcionais que existem (<see cref="Altitude"/> e
+    /// <see cref="Canal"/>) sao portados por um bit que ja viajava. Aqui nao sobrou bit nenhum pra
+    /// servir de porta -- e uma porta que dissesse "estou ocupado" ja seria a informacao inteira.
+    ///
+    /// Custo: 1 byte por corpo por tique, ~7% do <see cref="EntityState"/>, e ele carrega 10 estados
+    /// nos 4 bits de baixo com 4 bits e seis valores livres pro proximo. A alternativa -- perguntar ao
+    /// servidor a cada esbarrao -- nao existe: o andador precisa PARAR no quadro, e nao um `ping`
+    /// depois (parar so no servidor seria correcao em jogo honesto, o corpo tremendo).
+    /// ==============================================================================================
+    /// </summary>
+    public Jandirus.Core.World.Ocupacao Ocupacao;
+
+    /// <summary>
+    /// Os 4 bits de baixo do terceiro byte. Os 4 de cima ficam livres -- e e onde o proximo estado de
+    /// mundo entra, em vez de espremer os dois primeiros bytes (ver <see cref="Ocupacao"/>).
+    /// </summary>
+    private const byte MascaraDaOcupacao = 0x0F;
+
+    // =====================================================================
     // O CANAL DE KI -- um byte OPCIONAL, e so pra quem esta com um raio na mao
     // =====================================================================
     /// <summary>
@@ -2152,6 +2194,9 @@ public struct EntityState
                    | (Voando ? BitVoando : 0) | (SemRedeas ? BitSemRedeas : 0)
                    | (Pilotando ? BitPilotando : 0)
                    | (NaveGrande ? BitNaveGrande : 0)));
+        // O TERCEIRO BYTE: o que este corpo esta FAZENDO. Ver `Ocupacao` -- ele e o unico do pacote
+        // que nao e opcional porque nao sobrou bit nenhum pra servir de porta.
+        w.Put((byte)((byte)Ocupacao & MascaraDaOcupacao));
         if (Voando) w.Put(Jandirus.Core.World.Voo.ParaByte(Altitude));
         // O BYTE DO CANAL, e so pra quem esta canalizando -- ver `Canal`. A ORDEM importa e e a
         // mesma na leitura: altitude primeiro (ela e a mais antiga), canal depois.
@@ -2176,6 +2221,9 @@ public struct EntityState
         e.SemRedeas = (flags2 & BitSemRedeas) != 0;
         e.Pilotando = (flags2 & BitPilotando) != 0;
         e.NaveGrande = (flags2 & BitNaveGrande) != 0;
+        // A ORDEM E A MESMA DA ESCRITA: ocupacao, altitude, canal. Um valor que este binario nao
+        // conhece vira `Livre` em vez de virar estado inventado -- ver `CorpoOcupado.DeByte`.
+        e.Ocupacao = Jandirus.Core.World.CorpoOcupado.DeByte((byte)(r.GetByte() & MascaraDaOcupacao));
         if (e.Voando) e.Altitude = Jandirus.Core.World.Voo.DeByte(r.GetByte());
         if (e.Pose == Protocol.Pose.Canalizando) e.Canal = r.GetByte();
         return e;

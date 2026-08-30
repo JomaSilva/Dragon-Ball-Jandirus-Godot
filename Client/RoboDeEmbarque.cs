@@ -431,7 +431,18 @@ public partial class RoboDeEmbarque : Node
 		// dizia "ja tem coisa demais neste ponto" na linha de cima.
 		//
 		// Por isso: guarda os ids de ANTES e exige um id que nao estava la. E, como o entulho tambem ocupa
-		// o ponto, tenta os quatro lados -- tres tiles e o teto do `AlcanceDePosicionar` (96 px).
+		// o ponto, tenta os quatro lados.
+		//
+		// ============================ DOIS TILES, E O PONTO VAI SNAPADO NA CELULA ============================
+		// Eram tres tiles (96 px) e o ponto ia CRU, e as duas coisas viraram problema quando o alcance
+		// passou a ser medido ate o CENTRO DA CELULA -- que e onde a obra realmente cai, e por isso e a
+		// medida certa (ver `Assentamento.Alcance`). O centro pode estar ate 16 px alem do ponto pedido,
+		// entao 96 px crus viravam 112 e o servidor recusava os quatro lados.
+		//
+		// A correcao e fazer o que a TELA DO JOGADOR faz: mandar o centro da celula (ver
+		// `TelaDeConstrucao._Input`). Com dois tiles + meia celula da 80 px, dentro do teto com folga --
+		// e a bancada passa a exercitar o mesmo ponto que um clique de verdade produz.
+		// ================================================================================================
 		// =============================================================================================
 		var idsAntes = new HashSet<int>(cli.Obras.Where(o => o.Tipo == NaveGrande.Tipo).Select(o => o.Id));
 		Vector2 ondeNasci = Eu();
@@ -439,11 +450,14 @@ public partial class RoboDeEmbarque : Node
 		cli.SendTech("construir", NaveGrande.Tipo);
 		yield return 0.8;
 
-		foreach (Vector2 lado in new[] { new Vector2(96, 0), new Vector2(0, 96),
-										 new Vector2(-96, 0), new Vector2(0, -96) })
+		foreach (Vector2 lado in new[] { new Vector2(64, 0), new Vector2(0, 64),
+										 new Vector2(-64, 0), new Vector2(0, -64) })
 		{
 			Vector2 ponto = ondeNasci + lado;
-			cli.SendTech("posicionar", $"{NaveGrande.Tipo}/{ponto.X:0}/{ponto.Y:0}");
+			(int pcx, int pcy) = CatalogoDeObras.Celula(ponto.X, ponto.Y);
+			const int tile = Jandirus.Core.World.ZoneCollision.TileSize;
+			cli.SendTech("posicionar",
+				$"{NaveGrande.Tipo}/{pcx * tile + tile / 2f:0}/{pcy * tile + tile / 2f:0}");
 			foreach (object _ in Ate(() => AchaNave(cli, idsAntes) != null, 3)) yield return 0.0;
 			if (AchaNave(cli, idsAntes) != null) break;
 			Nota($"o ponto {lado} nao serviu -- tentando o proximo lado");
@@ -794,6 +808,18 @@ public partial class RoboDeEmbarque : Node
 			yield break;
 		}
 
+		// ============================ A ABA NAV AGORA EXIGE O ITEM ============================
+		// A `Nav` deixou de existir pra quem nao tem o Nav System na mochila (pedido do dono, ver
+		// `GameServer.Sigilo.PoderesVisiveis`). Sem esta linha esta familia inteira ficaria VERDE de
+		// mentira: "nenhum botao de nave sobrou na Nav" e trivialmente verdadeiro numa aba que nao
+		// existe -- e e justamente esse tipo de verde que a F4.1 foi escrita pra impedir.
+		//
+		// O item entra pela MOCHILA, que e onde o portao pergunta (a janela nao acende bit nenhum).
+		// Quem PROVA o portao e a `--diagnav`; aqui ele so precisa estar aberto.
+		// =====================================================================================
+		Jandirus.Server.GameServer.Instance?.NavSystemNaMochilaDeTeste(cli.LocalId, true);
+		yield return 0.3;
+
 		m.Abrir();
 		yield return 0.3;
 
@@ -888,11 +914,20 @@ public partial class RoboDeEmbarque : Node
 			  textos.Contains("Namek", StringComparison.OrdinalIgnoreCase)
 			  && textos.Contains("min", StringComparison.OrdinalIgnoreCase),
 			  textos.Length > 160 ? textos[..160] + "..." : textos);
-		List<string> rotulosNav = m.PaginaDeTeste("Nav") is { } p2 ? Rotulos(p2) : [];
-		Checa("F5.7 e os botoes de dominio planetario continuam la (fora do pedido, e nao sumiram junto)",
-			  rotulosNav.Any(r => r.Contains("planeta", StringComparison.OrdinalIgnoreCase)
-							   || r.Contains("domínios", StringComparison.OrdinalIgnoreCase)),
-			  string.Join(" | ", rotulosNav));
+		// ============================ O DOMINIO PLANETARIO MUDOU DE ABA ============================
+		// Ele morava na Nav. A Nav passou a depender do item Nav System (pedido do dono), e deixar o
+		// dominio e as esferas la dentro trancaria fincar bandeira e invocar Shenron atras de um aparelho
+		// de 550.000 zeni -- coisa que ninguem pediu. Os dois blocos foram pra aba World, que esta em
+		// `Fixas` e por isso sempre existe. A PERGUNTA desta checagem nao mudou ("nao sumiram junto"):
+		// mudou a aba em que ela e feita.
+		// =========================================================================================
+		m.IrPara("World");
+		yield return 0.3;
+		List<string> rotulosMundo = m.PaginaDeTeste("World") is { } pgMundo ? Rotulos(pgMundo) : [];
+		Checa("F5.7 e os botoes de dominio planetario continuam la -- na aba World (nao sumiram junto)",
+			  rotulosMundo.Any(r => r.Contains("planeta", StringComparison.OrdinalIgnoreCase)
+								 || r.Contains("domínios", StringComparison.OrdinalIgnoreCase)),
+			  string.Join(" | ", rotulosMundo));
 
 		m.Fechar();
 		yield return 0.2;

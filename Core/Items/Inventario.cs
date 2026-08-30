@@ -112,6 +112,32 @@ public static class CatalogoDeItens
 	public const string Radar = "Dragon_Radar";
 
 	/// <summary>
+	/// O NAV SYSTEM -- `obj/items/Nav_System` (`PlanetTech.dm:2-21`), fabricado na bancada
+	/// (`obj/Creatables/Nav_System`, `Tier3.dm:30-36`: 550.000 zeni, tech 55).
+	///
+	/// ============================ ELE JA ERA COMPRAVEL, E VIRAVA ENFEITE DE CHAO ============================
+	/// Mesma historia -- e mesmo conserto -- do Dragon Radar aqui em cima e das duas roupas: `Nav_System`
+	/// esta no `construcoes.json` (linha 89) desde que o extrator rodou, entao **da pra compra-lo na aba
+	/// Tech desde sempre**. Como ele nao estava nesta tabela escrita a mao, o <see cref="Get"/> caia no
+	/// ramo de CONSTRUCAO e a unica acao dele era "posicionar" -- que TIRA da mochila (`Posicionar`, em
+	/// `GameServer.Tech.cs`). O jogador gastava meio milhao e ganhava um movel. No original ele e
+	/// `/obj/items/`, ou seja coisa que se CARREGA, e nunca foi mobilia.
+	///
+	/// ============================ E ELE NAO TEM ACAO, E ISSO E DE PROPOSITO ============================
+	/// O DM tem um `Power_Switch()` que liga e desliga (`PlanetTech.dm:9-19`, escrevendo `usr.hasnav`).
+	/// Aqui a resposta e ESTAR COM ELE, pela mesma razao ja escrita na Roupa Espacial: o liga/desliga
+	/// moraria em `ServerPlayer.PoderesConcedidos`, que **nao vai pro disco** -- quem deslogasse com o
+	/// nav ligado acordaria com a aba sumida sem entender por que. A mochila e salva (`CharacterStore`),
+	/// entao a presenca sobrevive ao relog de graca. E o que se perde e pequeno: no original, desligar
+	/// so servia pra trocar qual aba do statpanel abria.
+	///
+	/// QUEM PERGUNTA E O SERVIDOR, em `GameServer.Sigilo.PoderesVisiveis` -- e o bit `Poder.Nav` que sai
+	/// de la e o que faz a aba existir (`MenuJogo.Abas`), como `HtmlUI.dm:138` faz com `hasnav`.
+	/// ==================================================================================================
+	/// </summary>
+	public const string NavSystem = "Nav_System";
+
+	/// <summary>
 	/// ============================ ESTE ITEM PROTEGE DO VACUO? ============================
 	/// A pergunta que o servidor faz na mochila. Duas linhas e uma casa so -- ver
 	/// <see cref="Vacuo.RespiraNoVacuo"/>, que e quem decide o resto.
@@ -119,6 +145,17 @@ public static class CatalogoDeItens
 	public static bool ProtegeDoVacuo(string id) =>
 		string.Equals(id, Traje, StringComparison.OrdinalIgnoreCase)
 		|| string.Equals(id, Respirador, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// ============================ ESTE ITEM E O NAV SYSTEM? ============================
+	/// A pergunta que o servidor faz na mochila (`GameServer.Sigilo.PoderesVisiveis`). Mora aqui pelo
+	/// mesmo motivo da do vacuo logo acima: quem sabe QUAIS ids valem e o catalogo, e nao quem pergunta.
+	/// No dia em que um segundo aparelho de navegacao existir, ele entra nesta linha e o servidor nao
+	/// precisa ficar sabendo.
+	/// ==================================================================================================
+	/// </summary>
+	public static bool EhNavSystem(string id) =>
+		string.Equals(id, NavSystem, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// ============================ OS IDS SAO OS DO CATALOGO DE CONSTRUCOES ============================
@@ -180,6 +217,16 @@ public static class CatalogoDeItens
 			+ "Esfera que ainda se refaz não aparece.",
 			"res://Assets/Sprites/Misc/Misc2.tres", "radar",
 			Empilhavel: false, Acoes: ["usar"]),
+
+		// A ARTE E A MESMA DO RADAR (`Misc2.tres`, estado "Radar"): e o que o `construcoes.json` traz, e
+		// e o que o DM usa (`icon='Misc2.dmi'`, `icon_state="Radar"`, `PlanetTech.dm:4-5`). O estado vai
+		// com R maiusculo porque e assim que ele se chama no `.tres`.
+		[NavSystem] = new ItemDef(
+			NavSystem, "Nav System",
+			"Enquanto estiver com você, a aba Nav existe: a carta estelar da galáxia e o piloto automático. "
+			+ "Sem ele, o menu não tem para onde olhar.",
+			"res://Assets/Sprites/Misc/Misc2.tres", "Radar",
+			Empilhavel: false, Acoes: []),
 
 		// ============================ E ELAS NAO TEM ACAO, E ISSO E O CONSERTO ============================
 		// A tentacao obvia era `Acoes: ["equipar"]`, copiando o scouter. **Seria um bug que mata.** O
@@ -245,6 +292,20 @@ public static class CatalogoDeItens
 	/// AS SETE ESCRITAS A MAO CONTINUAM VALENDO porque elas tem algo que a construcao nao tem:
 	/// nutricao, empilhamento, e acoes proprias (comer, equipar, cavar).
 	/// ===================================================================================
+	///
+	/// ============================ E AQUI MORA A REGRA 2 DO DONO, NUMA LINHA SO ============================
+	/// *"item que se poe no chao ganha a acao INSTALAR; item de uso pessoal (scouter, armaduras,
+	/// pesos) NAO ganha -- ele e equipavel."*
+	///
+	/// ANTES A REGRA ERA "NAO ESTA NA MINHA TABELA DE NOVE LINHAS", e ela dava "Assentar no chao"
+	/// pra **vinte e oito** itens de uso pessoal: a Armadura (que o dono citou pelo nome), as nove
+	/// armas de fogo, o Nav System, os Pesos, as luvas de dreno, a bomba de fumaca. Comprar uma
+	/// armadura na bancada deixava o jogador com um movel pra pousar no chao.
+	///
+	/// AGORA QUEM RESPONDE E O CATALOGO -- <see cref="Tech.Construcao.Pessoal"/>, extraido do escopo
+	/// dos verbs do DM. A diferenca nao e de estilo: uma tabela a mao envelhece no primeiro item
+	/// novo que alguem cadastrar so num lado, e neste projeto isso ja aconteceu tres vezes.
+	/// ==================================================================================================
 	/// </summary>
 	public static ItemDef? Get(string id)
 	{
@@ -255,20 +316,40 @@ public static class CatalogoDeItens
 
 		// UMA CONSTRUCAO NA MOCHILA SO SABE FAZER UMA COISA: virar construcao de novo. "posicionar"
 		// e a acao, e ela abre o fantasma no mouse -- ver `TelaDeInventario`.
+		//
+		// O ITEM PESSOAL FICA SEM ACAO NENHUMA, e isso e honesto: o port ainda nao tem o que a
+		// armadura ou a espingarda FAZEM, e um botao "Assentar no chao" nelas nao seria uma acao a
+		// mais -- seria a acao ERRADA. Quem ja tem mecanica portada esta na tabela la em cima com o
+		// verbo dela (equipar, ajustar, usar, cavar), e e por ali que as proximas entram.
 		return new ItemDef(c.Id, c.Nome, c.Desc, c.Arte, c.Estado,
-						   Empilhavel: false, Acoes: ["posicionar"]);
+						   Empilhavel: false, Acoes: c.Pessoal ? [] : [AcaoPosicionar]);
 	}
 
 	public static IEnumerable<ItemDef> Todos => Tudo.Values;
 
 	/// <summary>
-	/// ESTE ITEM E UMA CONSTRUCAO -- ou seja, da pra assentar no chao?
-	///
-	/// A pergunta separa uma pa (que se usa na mao) de uma bancada (que se pousa). O que decide e
-	/// a AUSENCIA na tabela escrita a mao: pa, scouter e bandagem estao la porque tem acao propria;
-	/// tudo o mais que existe como construcao e coisa de por no chao.
+	/// O NOME DA ACAO DE ASSENTAR NO CHAO. Escrito uma vez porque ele e um contrato entre tres
+	/// lugares que nao se falam: o catalogo que a produz, o menu do inventario que a desenha, e o
+	/// servidor que a cobra antes de plantar qualquer coisa.
 	/// </summary>
-	public static bool EhConstrucao(string id) => !Tudo.ContainsKey(id) && Obras?.Get(id) != null;
+	public const string AcaoPosicionar = "posicionar";
+
+	/// <summary>
+	/// DA PRA ASSENTAR ISTO NO CHAO?
+	///
+	/// ============================ ELA PERGUNTA A LISTA DE ACOES, E NAO A REGRA ============================
+	/// A tentacao era repetir aqui o teste do <see cref="Get"/> (`!Tudo.ContainsKey && !c.Pessoal`).
+	/// Seria a MESMA regra escrita em dois lugares -- e a versao antiga disto (`EhConstrucao`) era
+	/// exatamente isso: uma pergunta com nome bonito que **nao decidia nada**, porque quem decidia a
+	/// acao era o ramo do `Get`, e o unico chamador dela so escolhia a frase do chat. Duas verdades,
+	/// e a que tinha nome era a que ninguem consultava.
+	///
+	/// Perguntando a `AcoesDoItem`, o servidor cobra LITERALMENTE o mesmo botao que o menu desenhou.
+	/// Se um dia a acao mudar de nome ou de criterio, as duas pontas mudam juntas ou nenhuma muda.
+	/// ==================================================================================================
+	/// </summary>
+	public static bool PodeAssentarNoChao(string id) =>
+		Get(id) is { } def && Array.IndexOf(def.AcoesDoItem, AcaoPosicionar) >= 0;
 }
 
 /// <summary>

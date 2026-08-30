@@ -16,7 +16,7 @@ REM      KNOCK BACK ou por ser JOGADO pelo grab. ao COLIDIR (...) a pessoa JOGAD
 REM      sofre dano E a pessoa q COLIDIU com o corpo voando TB toma dano"
 REM     "o corpo mesmo morto TEM TODAS AS INTERACOES DE UM CORPO VIVO"
 REM
-REM  Sao 103 provas em ~40 segundos, SEM JANELA.
+REM  Sao 236 provas em ~2 min, SEM JANELA.
 REM
 REM  AS OITO FAMILIAS, CADA UMA NOS DOIS SENTIDOS
 REM     1) AGARRAR      agarra quem pode / NAO agarra quem ja esta preso por
@@ -30,6 +30,13 @@ REM                     desfaz sozinho em trinta tiques
 REM     5) COLISAO      a pe, arremessado e por knockback ESBARRA / em andares
 REM                     de voo diferentes ATRAVESSA (o contra-exemplo, senao o
 REM                     mundo trava e nenhuma linha fica vermelha)
+REM     9) O OCUPADO    NO AR: os DEZ estados do `Ocupacao`, um por linha e com o
+REM                     nome do estado na linha -- quem soca, guarda, agarra,
+REM                     canaliza, carrega Ki, treina, medita, esta em cena, num
+REM                     embate ou nocauteado PARA quem voa contra ele e NAO sai
+REM                     do lugar / com o mesmo corpo LIVRE quem voa ATRAVESSA
+REM                     (o `mob/Cross`), e o ARREMESSO continua empurrando cada
+REM                     um desses dez -- o pedido do dono e sobre ANDAR
 REM     6) O BAQUE      os DOIS se machucam, uma linha por lado / sem encontro,
 REM                     NENHUM dos dois se machuca
 REM     7) O CADAVER    fica, apanha, e agarrado e levado VOANDO por outra
@@ -103,7 +110,7 @@ if %errorlevel%==0 (
 )
 
 echo.
-echo  ---- dois corpos: agarrao, colisao e o cadaver (103 provas) ----
+echo  ---- dois corpos: agarrao, colisao e o cadaver (236 provas) ----
 echo.
 echo   A bancada roda no 1o login e leva uns 40 s. O SERVIDOR CONTINUA DE PE
 echo   depois dela. Leia o placar "[dois] ==== N passaram, M falharam ===="

@@ -576,11 +576,47 @@ public partial class MenuJogo : CanvasLayer
 			// As abas fixas sem dado proprio (Equip, Other) sao texto parado: uma assinatura
 			// so ja basta pra elas nunca mais serem remontadas.
 			"Equip" or Verbos.Outros => comum,
-			// AS QUE DEPENDEM DE QUEM ESTA NA TELA refazem sempre: People e World listam corpos que
-			// entram e saem a cada snapshot, e uma assinatura que os cobrisse custaria o mesmo que
-			// remontar. Devolver vazio e dizer "nao ha cache pra esta".
+			// WORLD PASSOU A TER BOTOES (dominio e esferas vieram da Nav), e por isso ela precisou de
+			// assinatura. Ela caia no `_ => ""` -- remonta a cada pacote de ficha --, e isso era inofensivo
+			// enquanto a aba era so texto: com botao, uma pagina refeita cinco vezes por segundo destroi o
+			// botao debaixo do dedo de quem clica. E a MESMA armadilha que os blocos do Admin e do People
+			// descrevem aqui em cima, e ela ja mordeu este projeto uma vez.
+			//
+			// ENTRA O QUE A ABA DESENHA, nos mesmos arredondamentos em que ela desenha -- assinar o TEXTO e
+			// nao o double faz a remontagem acontecer exatamente quando a tela muda, e nao a cada oscilacao
+			// invisivel. A zona cobre os dois blocos novos de uma vez (os dois so mudam de forma ao trocar
+			// de lugar); as duas linhas vivas das esferas entram pelo mesmo motivo que entravam na Nav.
+			"World" => $"{comum}|{c?.Zone.Hash}|{c?.MinhasSupers}|{c?.SinalDourado}|{AssinaturaDoCeu()}",
+			// AS QUE DEPENDEM DE QUEM ESTA NA TELA refazem sempre: People lista corpos que entram e saem a
+			// cada snapshot, e uma assinatura que os cobrisse custaria o mesmo que remontar. Devolver vazio
+			// e dizer "nao ha cache pra esta".
 			_ => "",
 		};
+	}
+
+	/// <summary>
+	/// O CEU E O CLIMA DA ABA WORLD, resumidos -- a parte VIVA da assinatura dela.
+	///
+	/// Mora num metodo separado porque repete os arredondamentos que o <see cref="Mundo"/> usa pra
+	/// DESENHAR, e os dois tem que continuar iguais: e a igualdade que garante que a pagina se refaz
+	/// quando (e so quando) o texto na tela muda.
+	///
+	/// A FORCA DO CLIMA ENTRA COMO PORCENTAGEM INTEIRA e o relogio como decimo de hora, que e como
+	/// aparecem; o "quanto falta pra cheia" entra em segundos inteiros. O pior caso e uma remontagem
+	/// por segundo no ultimo minuto antes da lua cheia -- contra as cinco por segundo de antes.
+	/// </summary>
+	private static string AssinaturaDoCeu()
+	{
+		Jandirus.Core.World.RelogioDoPlaneta r = World.Instancia?.RelogioDoLugar
+											 ?? Jandirus.Core.World.RelogioDoPlaneta.Padrao;
+		string ceu = World.Instancia?.Ceu is { } c
+			? $"{c.Hora * 24:00.0}|{c.Fase}|{c.LuaNoCeu}|"
+			  + $"{Jandirus.Core.World.Ceu.SegundosAteACheia(r, World.Instancia.TempoDoMundo):0}"
+			: "-";
+		string clima = World.Instancia?.TempoQueFaz is { } tq
+			? $"{tq.Ativo}|{tq.Tipo}|{tq.Forca:P0}|{tq.Forcado}"
+			: "-";
+		return $"{Jandirus.Core.World.Ceu.NomeDoCiclo(r)}|{ceu}|{clima}";
 	}
 
 	/// <summary>
@@ -786,6 +822,22 @@ public partial class MenuJogo : CanvasLayer
 	/// </summary>
 	public Control? PaginaDeTeste(string aba) =>
 		_paginas.TryGetValue(aba, out VBoxContainer? p) && IsInstanceValid(p) ? p : null;
+
+	/// <summary>
+	/// A ABA QUE O JOGADOR ESTA OLHANDO AGORA. SO PRA BANCADA.
+	///
+	/// ============================ ELA RESPONDE A OUTRA METADE DE "SUMIU" ============================
+	/// `PaginaDeTeste("Nav") is not { Visible: true }` diz que a pagina da Nav saiu da tela. Isso e meia
+	/// resposta: sair e nao ser substituida por NADA e uma tela morta -- o menu abre e nao ha nada
+	/// escrito nele. A outra metade e "e ficou o que no lugar?", e ela mora no `_aba` depois do desvio
+	/// do <see cref="Redesenhar"/> ("a aba aberta pode ter DEIXADO de existir"), que e o mesmo desvio
+	/// que o original faz ao tirar o scouter com a aba Scan aberta.
+	///
+	/// PERGUNTAR A LISTA DE PAGINAS NAO SERVE: todas continuam vivas na arvore -- e o cache que existe
+	/// pra nao remontar --, e a que o jogador ve e uma so.
+	/// ============================================================================================
+	/// </summary>
+	public string AbaDeTeste => _aba;
 
 	/// <summary>
 	/// FORCA A ABA DA VEZ A SE REDESENHAR AGORA, ignorando a assinatura de reaproveitamento.
@@ -1167,7 +1219,27 @@ public partial class MenuJogo : CanvasLayer
 		}
 
 		Aviso("\nCada planeta corre o proprio dia e o proprio tempo: a hora e o ceu daqui");
-		Aviso("nao sao os da Terra. A conquista do planeta entra aqui com o sistema dela.");
+		Aviso("nao sao os da Terra.");
+
+		// ============================ A CONQUISTA E AS ESFERAS MORAM AQUI, E NAO NA NAV ============================
+		// Elas estavam na aba Nav -- e o comentario que terminava a linha acima ("a conquista do planeta
+		// entra aqui com o sistema dela") ja dizia onde era a casa delas.
+		//
+		// A MUDANCA E CONSEQUENCIA DO PORTAO, e nao gosto: a aba Nav passou a depender do item Nav System
+		// (pedido do dono). Deixar dominio e esferas la dentro trancaria fincar bandeira, cobrar tributo,
+		// invocar Shenron e erguer estatua atras de um aparelho de 550.000 zeni -- nada disso tem a ver com
+		// navegar, e o Namekuseijin do Cla do Dragao ficaria sem caminho nenhum pras esferas dele. Este e o
+		// UNICO lugar do cliente por onde esses verbos saem (nao ha segundo caminho), entao esconder a aba
+		// sem move-los seria apagar duas features que ninguem pediu pra apagar.
+		//
+		// A ABA WORLD SEMPRE EXISTE (esta em `Fixas`) e e sobre o LUGAR -- e as duas sao sobre o lugar. O
+		// preco e que World precisou de assinatura: ver `Assinatura`, que explica por que.
+		// ==========================================================================================================
+		if (GameClient.Instance is { } cli)
+		{
+			BlocoDeDominio(cli);
+			BlocoDasEsferas(cli);
+		}
 	}
 
 	// =====================================================================
@@ -1196,10 +1268,28 @@ public partial class MenuJogo : CanvasLayer
 	{
 		if (GameClient.Instance is not { } cli) return;
 
-		bool noEspaco = Jandirus.Core.World.Espaco.EhEspaco(cli.Zone);
+		// ============================ A SEGUNDA METADE DO PORTAO ============================
+		// A aba so entra na barra com o bit `Poder.Nav` (ver `Abas()`), e o bit so acende com o item na
+		// mochila (`GameServer.Sigilo.PoderesVisiveis`). Entao esta recusa e, em jogo normal, inalcancavel
+		// -- e ela existe pelo mesmo motivo que existe no original: `ui_tab_nav` (`HtmlUI.dm:336-344`)
+		// tambem imprime "O sistema de navegacao esta desligado" mesmo com a barra ja tendo escondido a
+		// aba em `HtmlUI.dm:138`. Duas metades, e nenhuma confiando na outra.
+		//
+		// SEJAMOS HONESTOS SOBRE O QUE ELA VALE: nao e permissao. A carta estelar nao vem por rede
+		// nenhuma (`MapaEstelar` e funcao pura da seed do mundo) e o piloto e do cliente
+		// (`World.Pilotar` so escreve `LocalPlayer.Destino`, e andar ate la o servidor ja valida como
+		// andar). Um cliente mexido continua enxergando a galaxia e continua conseguindo pilotar. O que
+		// esta linha entrega e o que ela promete: a aba nao monta sem o item.
+		// ==================================================================================================
+		if (!_atributos.Tem(Protocol.Poder.Nav))
+		{
+			Secao("NAV SYSTEM");
+			Aviso("O sistema de navegação está desligado: você não tem um Nav System na mochila. "
+				+ "Ele se fabrica na bancada de pesquisa (aba Tech).");
+			return;
+		}
 
-		BlocoDeDominio(cli);
-		BlocoDasEsferas(cli);
+		bool noEspaco = Jandirus.Core.World.Espaco.EhEspaco(cli.Zone);
 
 		// O MAPA APARECE EM TERRA FIRME TAMBEM -- so o botao de viajar e que nao.
 		//

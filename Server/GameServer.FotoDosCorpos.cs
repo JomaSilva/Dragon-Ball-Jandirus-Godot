@@ -117,6 +117,18 @@ public sealed partial class GameServer
 		if (_players.TryGetValue(id, out ServerPlayer? pl)) AlternarAgarrao(pl);
 	}
 
+	/// <summary>
+	/// A GUARDA (o ALT) -- <see cref="Jandirus.Core.Combat.CombatState.Guardar"/>, a mesma funcao que o
+	/// `AplicarComando` chama na transicao da tecla. Ela existe pra a fase A3 desta foto: a guarda e o
+	/// estado OCUPADO mais estavel do jogo (nao vence por prazo, ao contrario da pose de soco), e por
+	/// isso e o unico que da pra manter de pe enquanto o cliente espera um snapshot chegar.
+	/// </summary>
+	internal void GuardarNaFotoDeCorpos(int id, bool erguer)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl) && pl.Combate.Bloqueando != erguer)
+			pl.Combate.Guardar(erguer);
+	}
+
 	/// <summary>PRA ONDE ESTE CORPO OLHA. E o que o `CorpoNaFrente` usa pra achar quem esta na frente.</summary>
 	internal void ApontarNaFotoDeCorpos(int id, Facing olhar)
 	{

@@ -30,8 +30,14 @@ namespace Jandirus.Core.World;
 ///     ..()                                  // o resto esbarra (mob e denso por padrao)
 /// </code>
 /// Ou seja: **corpo e denso pra corpo, e a unica excecao e quem esta voando** -- e quem decide e o
-/// modo de QUEM ENTRA, nao de quem esta parado. E a mesma forma da agua (`testWaters()`), e por isso a
-/// resposta cabe numa funcao de um argumento: <see cref="Bloqueia"/>.
+/// modo de QUEM ENTRA, nao de quem esta parado. E a mesma forma da agua (`testWaters()`).
+///
+/// **A EXCECAO DO VOO GANHOU UMA EXCECAO**, e ela e a unica coisa deste arquivo que nao esta no DM:
+/// o corpo OCUPADO para tambem quem voa. O motivo esta inteiro no <see cref="Bloqueia"/> -- em
+/// resumo: la voar e um booleano no mesmo `z`, aqui e o jeito normal de se mover numa luta, e sem
+/// esta segunda excecao o pedido do dono (*"n de pra empurar... enquando eles batem"*) valia em todo
+/// lugar menos dentro da briga. Por isso <see cref="Bloqueia"/> tem DOIS argumentos: o modo de quem
+/// entra e a <see cref="Ocupacao"/> de quem esta la.
 ///
 /// **O DM NAO TEM EXCECAO PRA NOCAUTE NEM PRA MORTE.** `density` nunca e desligado por KO nem por
 /// morrer -- as unicas coisas que desligam sao o `effect/undense` (uma skill de espada,
@@ -55,17 +61,42 @@ public static class ClasseDeCorpo
 	///     e o `Cross` so abre pra `flying`. Dois nadadores esbarram; e como nao ha agua e chao no mesmo
 	///     ponto, um nadador e alguem a pe so se encontram na beira -- onde esbarrar e o certo.
 	///
-	/// ============================ E QUEM VOA ATRAVESSA **TUDO**, NAO SO CORPO ============================
-	/// Isto nao e uma cortesia dada ao voo: e a unica resposta coerente com o que o port ja faz. Acima de
-	/// <see cref="Voo.AlturaQueAtravessa"/> o chamador manda `mapa = null` (o `isflying` do original), ou
-	/// seja quem voa **ja atravessa parede e agua**. Fazer o corpo alheio ser a unica coisa que para
-	/// quem voa seria a excecao -- e uma excecao que o DM nao tem.
+	/// ============================ E QUEM VOA ATRAVESSA O QUE ESTA **LIVRE**, E SO ISSO ============================
+	/// Quem voa atravessar parede e agua e coerente com o que o port ja faz: acima de
+	/// <see cref="Voo.AlturaQueAtravessa"/> o chamador manda `mapa = null` (o `isflying` do original).
+	/// Atravessar GENTE era a mesma linha, e ela virou o buraco por onde o pedido novo do dono escapava:
 	///
-	/// (Consequencia dita em voz alta: dois voando no mesmo andar se atravessam. O dono pediu tres
-	/// casos -- andando, knockback e arremesso do grab -- e voo nao e nenhum deles.)
-	/// ====================================================================================================
+	///   *"ao estar lutando e andando, vc consgue empurrar o inimigo... faca com q n de pra empurar npcs
+	///    ou outros players ao andar contra eles enquando eles batem ou fazem outra coisa."*
+	///
+	/// **Numa luta de DBZ todo mundo voa.** Com a linha antiga, a regra de "ninguem atravessa ninguem"
+	/// valia em todo lugar MENOS no unico lugar em que o dono a estava pedindo -- os dois no ar, um
+	/// socando e o outro andando por dentro dele. Nao era uma excecao rara: era a luta inteira.
+	///
+	/// Entao a resposta agora tem dois termos, e o novo e o do OUTRO corpo:
+	///
+	///   * o corpo <see cref="Ocupacao.Livre"/> segue a regra literal do `mob/Cross` -- so quem voa passa;
+	///   * o corpo OCUPADO (batendo, guardando, carregando, canalizando, agarrando, caido, em cena,
+	///     treinando, meditando -- ver <see cref="Ocupacao"/>) **para todo mundo, voando inclusive**.
+	///
+	/// O ANDAR CONTINUA MANDANDO ANTES DISTO (<see cref="MesmoAndar"/>): quem paira dois tiles acima nao
+	/// vira poste invisivel pra ninguem, ocupado ou nao. O que muda e so o encontro no MESMO andar.
+	///
+	/// ============================ E ISSO E **ASSIMETRICO**, DE PROPOSITO ============================
+	/// Quem decide continua sendo o modo de QUEM ENTRA -- e o `mob/Cross` literal --, agora cruzado com o
+	/// estado de QUEM ESTA LA. Consequencia dita em voz alta: dois voando no mesmo andar, um ocupado e o
+	/// outro livre, e o LIVRE que para. O ocupado, se andar, passa por dentro do livre.
+	///
+	/// Nao e descuido, e nao prende ninguem: os dois terminariam sobrepostos, e sobreposto **ninguem se
+	/// barra** (o `jaSobrepondo` do <see cref="GradeDeCorpos.Quem"/>). E na pratica quase todo estado
+	/// desta lista ja finca o corpo pelo outro lado (`PodeMexerOCorpo`), entao o "ocupado que anda" e
+	/// so o que soca, guarda ou agarra -- que sao justamente os tres que o dono NAO pediu pra parar.
+	/// ==========================================================================================
 	/// </summary>
-	public static bool Bloqueia(ModoDeTravessia modo) => modo != ModoDeTravessia.Voando;
+	/// <param name="modo">Como QUEM ANDA esta atravessando o mundo.</param>
+	/// <param name="ocupacao">O que O OUTRO CORPO esta fazendo. Ver <see cref="Ocupacao"/>.</param>
+	public static bool Bloqueia(ModoDeTravessia modo, Ocupacao ocupacao)
+		=> CorpoOcupado.Ocupado(ocupacao) || modo != ModoDeTravessia.Voando;
 
 	/// <summary>
 	/// ============================ ANDARES DIFERENTES NAO SE ESBARRAM ============================
@@ -81,6 +112,13 @@ public static class ClasseDeCorpo
 	/// nao e "vantagem de quem paira": e A empurrando B pra dentro de si mesmo, e os dois terminando
 	/// sobrepostos -- que e o estado que o pedido 6 do dono (*"nao pode prender"*) proibe. Soco pode ser
 	/// assimetrico porque ele nao move ninguem; obstaculo nao pode.
+	///
+	/// **O ANDAR e simetrico; o <see cref="Bloqueia"/> nao**, e as duas frases convivem: aqui se
+	/// responde *"nos estamos no mesmo pedaco de ceu?"* -- uma pergunta sobre o par, que nao teria
+	/// sentido ter duas respostas. La se responde *"este corpo, do jeito que ele esta, me para?"* --
+	/// uma pergunta sobre UM lado, que e o `mob/Cross` do DM e sempre foi assimetrica (quem voa passa
+	/// por quem esta parado, e nao o contrario). Ver la o que a assimetria custa, e por que ela nao
+	/// prende ninguem.
 	/// ==========================================================================================
 	/// </summary>
 	public static bool MesmoAndar(int andarA, int andarB) => andarA == andarB;
@@ -174,6 +212,16 @@ public sealed class GradeDeCorpos
 	private float[] _x = new float[64];
 	private float[] _y = new float[64];
 	private int[] _andar = new int[64];
+
+	/// <summary>
+	/// O QUE CADA CORPO ESTA FAZENDO. Um byte por corpo por tique, no MESMO array paralelo dos
+	/// outros campos -- e nao um `Dictionary` consultado na hora da colisao, que alocaria e faria
+	/// duas buscas por candidato no caminho mais quente do jogo.
+	///
+	/// Ele entra na grade porque e AQUI que a pergunta e feita: quem consulta e o passo de quem
+	/// anda, e ele nao tem (nem deve ter) acesso a ficha alheia. Ver <see cref="Ocupacao"/>.
+	/// </summary>
+	private Ocupacao[] _ocupacao = new Ocupacao[64];
 	private int _n;
 
 	/// <summary>Quantos corpos esta grade descreve. So pra bancada e diagnostico.</summary>
@@ -197,7 +245,16 @@ public sealed class GradeDeCorpos
 	/// PoE UM CORPO NA GRADE. <paramref name="pes"/> e a ancora dos pes
 	/// (<see cref="ClasseDeCorpo.Pes"/>), nao o centro do sprite.
 	/// </summary>
-	public void Por(int id, Vec2 pes, int andar)
+	/// <param name="ocupacao">
+	/// O QUE ESTE CORPO ESTA FAZENDO -- e o que decide se ele para tambem quem voa (ver
+	/// <see cref="ClasseDeCorpo.Bloqueia"/>).
+	///
+	/// **O PADRAO E `Livre`**, e ele existe pra quem monta grade de corpo FORJADO -- as bancadas de
+	/// geometria pura, que nao tem ficha nem servidor. Quem tem corpo de verdade (o
+	/// `GameServer.MontarAsGrades` e o `World.MontarGradeDeCorpos`) passa o valor de verdade, e nos
+	/// dois casos ele sai do MESMO lugar: o servidor calcula, o fio carrega.
+	/// </param>
+	public void Por(int id, Vec2 pes, int andar, Ocupacao ocupacao = Ocupacao.Livre)
 	{
 		if (_n == _id.Length) Crescer();
 
@@ -206,6 +263,7 @@ public sealed class GradeDeCorpos
 		int cabeca = _selo[b] == _geracao ? _cabeca[b] : -1;
 
 		_id[_n] = id; _x[_n] = pes.X; _y[_n] = pes.Y; _andar[_n] = andar;
+		_ocupacao[_n] = ocupacao;
 		_prox[_n] = cabeca;
 		_cabeca[b] = _n;
 		_selo[b] = _geracao;
@@ -245,8 +303,27 @@ public sealed class GradeDeCorpos
 	/// corpos continuam valendo, e assim que os dois se separam eles voltam a se barrar.
 	/// ==========================================================================================================
 	/// </param>
-	public int Quem(Vec2 pes, int andar, int ignorarId, Vec2 jaSobrepondo)
+	/// <param name="modo">
+	/// COMO QUEM PERGUNTA ESTA ATRAVESSANDO O MUNDO. Ele entrou nesta funcao (antes era decidido
+	/// UMA vez, la fora, no <see cref="Vizinhanca.Barra"/>) porque a resposta deixou de ser do
+	/// perguntador sozinho: quem voa atravessa quem esta LIVRE e para em quem esta OCUPADO, e isso
+	/// so da pra decidir **por candidato** -- ver <see cref="ClasseDeCorpo.Bloqueia"/>.
+	///
+	/// O CUSTO ESTA MEDIDO E E ESTE: quem voa passou a andar os 9 baldes em vez de sair na primeira
+	/// linha. Continua O(k) com k = corpos nos baldes (0 no caso comum), e o `_n == 0` logo abaixo
+	/// continua cobrando zero na maior parte do mundo.
+	/// </param>
+	/// <param name="ocupacaoDele">
+	/// O QUE O CORPO QUE ME PAROU ESTAVA FAZENDO -- <see cref="Ocupacao.Livre"/> quando ninguem
+	/// parou. Existe pra a resposta ter NOME: "o corpo nao andou" nao e diagnostico, e a bancada
+	/// (e um dia o log de quem estiver caçando um travamento) precisa poder dizer *"parou porque o
+	/// outro estava de guarda"*. Ver <see cref="CorpoOcupado.Nome"/>.
+	/// </param>
+	public int Quem(Vec2 pes, int andar, int ignorarId, Vec2 jaSobrepondo, ModoDeTravessia modo,
+					out Ocupacao ocupacaoDele)
 	{
+		ocupacaoDele = Ocupacao.Livre;
+
 		// ZONA VAZIA (ou com so quem pergunta) NAO CUSTA NADA. E o caso comum -- na maior parte do
 		// mundo nao ha ninguem por perto --, e sem esta linha ele pagaria os 9 baldes por consulta,
 		// tres vezes por passo, por corpo. Medido na bancada: e o que faz a grade deixar de ser mais
@@ -265,17 +342,31 @@ public sealed class GradeDeCorpos
 				{
 					if (_id[i] == ignorarId) continue;
 					if (!ClasseDeCorpo.MesmoAndar(andar, _andar[i])) continue;
+					// ESTE corpo, do jeito que ele esta, me para? Ver `ClasseDeCorpo.Bloqueia`: o
+					// livre segue o `mob/Cross` (so quem voa passa) e o ocupado para todo mundo.
+					if (!ClasseDeCorpo.Bloqueia(modo, _ocupacao[i])) continue;
 
 					var dele = new Vec2(_x[i], _y[i]);
 					if (!ClasseDeCorpo.CaixasSeTocam(pes, dele)) continue;
 					// ...e nao me para se eu JA estava por cima dele. Ver o parametro.
+					//
+					// **ESTA LINHA VALE PRO OCUPADO TAMBEM, E E DE PROPOSITO.** Ela e a unica coisa
+					// que impede dois corpos no mesmo ponto de ficarem travados sem nada na tela
+					// dizendo por que -- e o ponto comum acontece o tempo todo (colo solto, pouso de
+					// arremesso, respawn, `LevarNoColo`). Se guardar ou socar desligasse o escape,
+					// bastaria alguem erguer a guarda em cima de voce pra voce nao andar mais.
 					if (ClasseDeCorpo.CaixasSeTocam(jaSobrepondo, dele)) continue;
 
+					ocupacaoDele = _ocupacao[i];
 					return _id[i];
 				}
 			}
 		return 0;
 	}
+
+	/// <summary>O mesmo, pra quem so quer saber SE parou. Ver a versao com `out`.</summary>
+	public int Quem(Vec2 pes, int andar, int ignorarId, Vec2 jaSobrepondo, ModoDeTravessia modo)
+		=> Quem(pes, andar, ignorarId, jaSobrepondo, modo, out _);
 
 	private static int Celula(float v) => (int)MathF.Floor(v / LadoDoBalde);
 
@@ -294,7 +385,7 @@ public sealed class GradeDeCorpos
 		int novo = _id.Length * 2;
 		Array.Resize(ref _prox, novo); Array.Resize(ref _id, novo);
 		Array.Resize(ref _x, novo); Array.Resize(ref _y, novo);
-		Array.Resize(ref _andar, novo);
+		Array.Resize(ref _andar, novo); Array.Resize(ref _ocupacao, novo);
 	}
 }
 
@@ -332,10 +423,26 @@ public readonly struct Vizinhanca
 	///
 	/// Os dois pontos sao CENTROS de sprite (e nao pes): a conversao mora num lugar so
 	/// (<see cref="ClasseDeCorpo.Pes"/>), do mesmo jeito que o `MoveRules.Occupied` faz a dele.
+	///
+	/// ============================ O ATALHO DO VOO SAIU DAQUI ============================
+	/// Havia aqui um `|| !ClasseDeCorpo.Bloqueia(modo)` que devolvia zero **sem olhar corpo nenhum**
+	/// quando quem andava estava voando. Ele era barato e estava errado desde que o corpo OCUPADO
+	/// passou a barrar todo mundo: com ele, o voo continuava atravessando quem esta socando -- que e
+	/// exatamente o caso do pedido do dono, e o mais comum de todos numa luta.
+	///
+	/// A pergunta desceu pra dentro do <see cref="GradeDeCorpos.Quem"/>, que a faz POR CANDIDATO. O
+	/// atalho barato que sobrou e o certo: `_n == 0` (zona sem ninguem), que continua saindo na
+	/// primeira linha e cobre a maior parte do mundo.
+	/// ==================================================================================
 	/// </summary>
 	public int Barra(Vec2 de, Vec2 para, ModoDeTravessia modo)
+		=> Barra(de, para, modo, out _);
+
+	/// <summary>O mesmo, e diz O QUE o corpo que parou estava fazendo. Ver <see cref="GradeDeCorpos.Quem"/>.</summary>
+	public int Barra(Vec2 de, Vec2 para, ModoDeTravessia modo, out Ocupacao ocupacaoDele)
 	{
-		if (Grade == null || !ClasseDeCorpo.Bloqueia(modo)) return 0;
-		return Grade.Quem(ClasseDeCorpo.Pes(para), Andar, Id, ClasseDeCorpo.Pes(de));
+		ocupacaoDele = Ocupacao.Livre;
+		if (Grade == null) return 0;
+		return Grade.Quem(ClasseDeCorpo.Pes(para), Andar, Id, ClasseDeCorpo.Pes(de), modo, out ocupacaoDele);
 	}
 }

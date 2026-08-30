@@ -200,6 +200,18 @@ public partial class RoboDoUniverso : Node
 			case 0:
 				Titulo("1) AS DUAS PONTAS");
 				Conferir(cli.SeedDoUniverso != 0, $"a seed do universo chegou no login ({cli.SeedDoUniverso})");
+
+				// ============================ A ABA NAV AGORA EXIGE O ITEM ============================
+				// A familia 5 abre a carta pela aba Nav, e ela deixou de existir pra quem nao tem o Nav
+				// System na mochila (pedido do dono, ver `GameServer.Sigilo.PoderesVisiveis`). O item entra
+				// AQUI, no primeiro passo, porque o bit so volta no proximo pacote de atributos -- pedi-lo no
+				// mesmo passo em que se abre a aba mediria o instante anterior.
+				//
+				// Esta bancada NAO prova o portao (quem prova e a `--diagnav`): aqui ele so precisa estar
+				// aberto, senao a familia 5 mediria uma aba inexistente.
+				// =====================================================================================
+				Jandirus.Server.GameServer.Instance?.NavSystemNaMochilaDeTeste(cli.LocalId, true);
+
 				Perguntar(Regioes[0].Sx, Regioes[0].Sy, Regioes[0].Lado);
 				break;
 
@@ -557,6 +569,8 @@ public partial class RoboDoUniverso : Node
 			case 7:
 				Titulo("5) O DUPLO CLIQUE ABRE A TELA DO SISTEMA");
 				menu.Abrir();
+				Conferir(Array.IndexOf(menu.AbasDeTeste, "Nav") >= 0,
+					"a aba Nav existe (o Nav System foi posto na mochila no passo 0)");
 				menu.IrPara("Nav");
 				_mapa = menu.MapaDeTeste;
 				Conferir(_mapa != null, "a aba Nav monta o mapa");

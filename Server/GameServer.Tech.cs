@@ -240,6 +240,22 @@ public sealed class Gestacao
 public sealed class Amostra
 {
 	public string Raca = "";
+
+	/// <summary>
+	/// A RACA DO PAI DO DOADOR -- e ela nao e enfeite: sem esta linha o meio-sangue entra no tanque
+	/// cego.
+	///
+	/// A regra que decide quem respira no vacuo e `Race == X || Parent_Race == X`
+	/// (<see cref="Jandirus.Core.World.Vacuo.RespiraNoVacuo"/>, a mesma que todo requisito racial
+	/// deste port segue). Um filho de Majin com humana tem `Race = "Human"` e **respira**; uma
+	/// amostra que so guardasse `Race` diria "Human", e o bio nasceria sufocando com DNA de Majin
+	/// dentro dele -- que e precisamente o caso que aquela regra existe pra cobrir.
+	///
+	/// Campo novo em classe ja gravada no `mundo.json`: fornada antiga volta do disco com `""`, que
+	/// e o mesmo que "sem pai conhecido", e a pergunta continua respondendo pela `Raca`.
+	/// </summary>
+	public string RacaDoPai = "";
+
 	public string Doador = "";
 	public string Assinatura = "";
 	public double Bp;
@@ -541,11 +557,13 @@ public partial class GameServer
 	// CONSTRUIR
 	// =====================================================================
 	/// <summary>
-	/// ERGUE UMA CONSTRUCAO onde a pessoa esta.
+	/// FABRICA UMA COISA NA BANCADA. Ela vai pra MOCHILA -- nunca pro chao.
 	///
-	/// A POSICAO E A DO SERVIDOR, nao a que o cliente mandou. Deixar o cliente escolher onde
-	/// construir seria deixar ele construir do outro lado do mapa, dentro de parede, ou dentro da
-	/// casa de outro. Constroi-se onde se esta -- e onde se esta o servidor ja sabe.
+	/// ============================ A REGRA 1 DO DONO ============================
+	/// *"faca q todo item q vc produzir na research table, va parar no inventario do personagem"*.
+	/// E o que este metodo faz, e a guarda de mochila cheia vem ANTES da cobranca: tirar o zeni pra
+	/// descobrir depois que nao coube seria vender um item que nao foi entregue.
+	/// ===========================================================================
 	/// </summary>
 	private void Construir(ServerPlayer pl, string tipo)
 	{
@@ -556,14 +574,17 @@ public partial class GameServer
 		RecusaObra r = CatalogoDeObras.Permitida(c, pl.Ficha, pl.Race);
 		if (r != RecusaObra.Pode) { Avisar(pl, MotivoObra(r, c, pl)); return; }
 
-		// ============================ FABRICAR NAO E ERGUER ============================
+		// ============================ FABRICAR NAO E ERGUER -- E AQUI O PORT DIVERGE DO DM DE PROPOSITO ============================
 		// Ate aqui, comprar uma maquina de gravidade a plantava NA HORA, embaixo dos pes de quem
 		// comprou. Nao havia como escolher onde -- e "onde" e metade da decisao quando a coisa
 		// bloqueia passagem e custa meio milhao.
 		//
-		// Agora a bancada FABRICA e a mochila carrega; assentar e um segundo gesto, com o fantasma
-		// no mouse (ver `Posicionar`). E tambem o que o original faz: o `Click()` do creatable cria
-		// um `/obj/items/...` que vai pro `contents` do jogador.
+		// **NO ORIGINAL E O CONTRARIO, E ISTO PRECISA ESTAR ESCRITO CERTO.** O comentario que estava
+		// aqui dizia que o `Click()` do Creatable manda o objeto pro `contents` do jogador -- e
+		// FALSO. `TechSupport.dm:50` faz `new create_type(locate(usr.x,usr.y,usr.z))`, e
+		// `locate(x,y,z)` e um TURF: no DM a coisa nasce no chao, aos pes de quem comprou, sem
+		// escolha de lugar. O desvio e o pedido do dono, e ele fica melhor documentado como desvio
+		// do que disfarcado de fidelidade.
 		//
 		// A COBRANCA SO ACONTECE SE COUBER. Tirar o zeni antes de descobrir que a mochila esta
 		// cheia seria vender um item que nao foi entregue.
@@ -576,8 +597,12 @@ public partial class GameServer
 		pl.Ficha.Zeni -= c.Custo;
 		Guardar(pl, c.Id);
 		GD.Print($"[server] {pl.Name} fabricou {c.Nome} ({c.Custo:N0}z)");
-		Avisar(pl, Jandirus.Core.Items.CatalogoDeItens.EhConstrucao(c.Id)
-			? $"você fabrica {c.Nome}. Está na mochila -- use \"posicionar\" pra assentar no chão."
+		// A FRASE PERGUNTA A MESMA COISA QUE O MENU E O `Posicionar` -- ver
+		// `CatalogoDeItens.PodeAssentarNoChao`. Prometer "assente no chao" pra uma armadura era o
+		// sintoma visivel de a classificacao estar errada, e agora a promessa e a acao sao a mesma
+		// pergunta.
+		Avisar(pl, Jandirus.Core.Items.CatalogoDeItens.PodeAssentarNoChao(c.Id)
+			? $"você fabrica {c.Nome}. Está na mochila -- use \"Instalar no chão\" pra escolher o lugar."
 			: $"você fabrica {c.Nome}. Está na sua mochila.");
 		MandarCatalogoDeObras(pl);
 	}
@@ -590,9 +615,26 @@ public partial class GameServer
 	/// com o mouse, e um ponto que vem do cliente e um ponto que um cliente mexido escolhe: dentro
 	/// de parede, dentro da casa de outro, do outro lado do mapa.
 	///
-	/// As tres guardas sao as mesmas que o construir de antes ja tinha, mais uma nova (o ALCANCE),
-	/// que so faz sentido agora que o ponto deixou de ser os proprios pes.
+	/// As guardas sao as mesmas que o construir de antes ja tinha, mais o ALCANCE (que so faz sentido
+	/// agora que o ponto deixou de ser os proprios pes) e mais a pergunta da REGRA 2.
 	/// =======================================================================================================
+	///
+	/// ============================ E O CLIENTE FAZ AS MESMAS PERGUNTAS ANTES DE MANDAR ============================
+	/// Nao pra o servidor confiar nele -- ele nao confia --, mas pra o jogador ver o "nao cabe" antes
+	/// do clique. As perguntas de MAPA e de ALCANCE moram no Core (<see cref="Assentamento.DoLugar"/>)
+	/// justamente pra as duas pontas nao poderem discordar por escrito.
+	///
+	/// **QUANDO ELAS DISCORDAM MESMO ASSIM** -- e discordam, porque o cliente mede da posicao
+	/// interpolada e o servidor da ultima confirmada, e porque a lista de obras dele pode estar um
+	/// pacote atrasada -- o desfecho e este, e ele e deliberado:
+	///
+	///   1. **O ITEM NAO SAIU DA MOCHILA.** O `Tirar` acontece depois de TODAS as guardas, la
+	///      embaixo. Uma recusa nao custa nada ao jogador: nada e gasto, nada some.
+	///   2. **A RECUSA DIZ O MOTIVO**, com a frase do Core -- a mesma que o cliente teria dito.
+	///   3. **O FANTASMA VOLTA PRA MAO.** O cliente segura a previa ate a resposta chegar e, se o
+	///      item continuar na mochila, rearma o fantasma pra tentar um tile ao lado sem ter que
+	///      reabrir a bolsa. Ver `TelaDeConstrucao`.
+	/// ========================================================================================================
 	/// </summary>
 	private void Posicionar(ServerPlayer pl, string arg)
 	{
@@ -605,9 +647,35 @@ public partial class GameServer
 		if (c == null) { Avisar(pl, "isso não existe."); return; }
 		if (pl.Mochila.Quantos(c.Id) <= 0) { Avisar(pl, $"você não tem {c.Nome}."); return; }
 
-		// PERTO DE MIM. Sem isto da pra plantar uma bancada do outro lado do planeta.
-		if (Math.Abs(x - pl.Pos.X) > AlcanceDePosicionar || Math.Abs(y - pl.Pos.Y) > AlcanceDePosicionar)
-		{ Avisar(pl, "longe demais -- chegue mais perto do lugar."); return; }
+		// ============================ A REGRA 2, DO LADO DO SERVIDOR ============================
+		// *"item de uso pessoal (scouter, armaduras, pesos) NAO ganha [instalar] -- ele e equipavel."*
+		//
+		// ESTA GUARDA FALTAVA INTEIRA, e sem ela a regra so existia na tela. Como Scouter, Armadura e
+		// Pesos ESTAO no `construcoes.json`, bastava um `posicionar Scouter/x/y` -- de um cliente
+		// mexido, ou do proprio menu enquanto a classificacao estava errada -- pra o servidor plantar
+		// um scouter no chao como obra gravada no `mundo.json`. Regra ligada num chamador e esquecida
+		// no outro e a armadilha que este projeto ja pagou mais vezes; aqui as duas pontas fazem a
+		// MESMA pergunta (`CatalogoDeItens.PodeAssentarNoChao`), que le a MESMA lista de acoes.
+		// =====================================================================================
+		if (!Jandirus.Core.Items.CatalogoDeItens.PodeAssentarNoChao(c.Id))
+		{
+			Avisar(pl, Assentamento.Motivo(RecusaDeAssento.NaoEDoChao, c.Nome));
+			return;
+		}
+
+		// ============================ O LUGAR: ALCANCE, PAREDE, AGUA, NUVEM E BEIRADA ============================
+		// As cinco de uma vez, pela funcao do Core que o fantasma do cliente tambem chama. Antes daqui
+		// eram duas e meia: alcance e parede, mais a agua **por acidente** (o `MoveRules.Occupied`
+		// passava `ModoDeTravessia.APe`, e agua bloqueia quem anda). O acidente dava a frase errada --
+		// "dentro de uma parede", em cima de um lago -- e a nuvem que DERRUBA passava batido: dava pra
+		// assentar uma maquina de gravidade em cima do Caminho da Serpente.
+		//
+		// A CELULA E A DA CONSTRUCAO, e nao o pixel cru: e ela que o `Obra` ocupa e que o fantasma
+		// desenha. Ver `CatalogoDeObras.Celula`.
+		// ======================================================================================================
+		(int cx, int cy) = CatalogoDeObras.Celula(x, y);
+		RecusaDeAssento rl = Assentamento.DoLugar(MapaDaZonaOuCatalogo(pl.Zone), pl.Pos, cx, cy);
+		if (rl != RecusaDeAssento.Pode) { Avisar(pl, Assentamento.Motivo(rl, c.Nome)); return; }
 
 		// ============================ NAO SE CONSTROI DENTRO DE UMA NAVE -- E O MOTIVO MUDOU ============================
 		// A recusa NASCEU de um defeito da chave: a `Obra` guardava a zona como nome puro, o interior de
@@ -634,20 +702,15 @@ public partial class GameServer
 		// AS NAVES CONTAM NA MESMA CONFERENCIA. Elas moram noutra lista (ver `GameServer.Nave.cs`),
 		// mas ocupam o mesmo chao -- e "ja tem coisa demais neste ponto" e uma pergunta sobre o
 		// CHAO, nao sobre a lista em que a coisa esta guardada.
-		if (_noChao.Any(o => o.Zona.Equals(pl.Zone)
-							 && Math.Abs(o.X - x) < 24 && Math.Abs(o.Y - y) < 24)
-			|| NavesParadasEm(pl.Zone).Any(n => Math.Abs(n.X - x) < 24 && Math.Abs(n.Y - y) < 24))
-		{ Avisar(pl, "já tem coisa demais neste ponto."); return; }
-
-		// NEM DENTRO DE PAREDE. A construcao densa vira parede, e uma parede dentro de outra e um
-		// buraco no mapa que ninguem consegue desfazer sem admin.
 		//
-		// `MapaDaZonaOuCatalogo` E NAO `_catalogo?.Get`: o catalogo so conhece mapa de ARQUIVO, e
-		// escrever a busca na mao aqui era um dos 18 lugares que o cabecalho daquele metodo cita --
-		// nenhum deles funciona em planeta gerado. Numa nave isso deixaria de ser detalhe: assentar
-		// uma no meio de uma montanha de mundo sorteado nao seria nem recusado.
-		if (MapaDaZonaOuCatalogo(pl.Zone) is { } mapa && MoveRules.Occupied(mapa, new Vec2(x, y)))
-		{ Avisar(pl, "não dá pra assentar dentro de uma parede."); return; }
+		// A FOLGA E A DO CORE (`Assentamento.FolgaEntreObras`) porque o fantasma do cliente faz esta
+		// mesma conferencia com a lista que ele recebeu -- e duas copias do numero 24 eram uma
+		// chance de o fantasma ficar branco onde o servidor recusa.
+		if (Assentamento.TemCoisaEm(
+				_noChao.Where(o => o.Zona.Equals(pl.Zone)).Select(o => new Vec2((float)o.X, (float)o.Y))
+					   .Concat(NavesParadasEm(pl.Zone).Select(n => new Vec2(n.X, n.Y))),
+				new Vec2(x, y)))
+		{ Avisar(pl, Assentamento.Motivo(RecusaDeAssento.LugarOcupado, c.Nome)); return; }
 
 		pl.Mochila.Tirar(c.Id);
 		MandarMochila(pl);
@@ -729,8 +792,6 @@ public partial class GameServer
 		MandarObras(pl.Zone);
 	}
 
-	/// <summary>A que distancia da pra assentar uma construcao. Tres tiles -- o braco, e nao a vista.</summary>
-	private const float AlcanceDePosicionar = 96f;
 
 	private static string MotivoObra(RecusaObra r, Construcao c, ServerPlayer pl) => r switch
 	{
@@ -911,6 +972,7 @@ public partial class GameServer
 		var amostra = new Amostra
 		{
 			Raca = vitima.Race,
+			RacaDoPai = vitima.Ficha.ParentRace,   // ver `Amostra.RacaDoPai`: meio-sangue vale pelos dois
 			Doador = vitima.Name,
 			Assinatura = vitima.Assinatura,
 			Bp = vitima.Ficha.BP,
@@ -1001,6 +1063,16 @@ public partial class GameServer
 		Avisar(pl, g.TemSaiyajin
 			? "no meio da sopa de celulas ha DNA SAIYAJIN -- o que sair dali vai poder ir alem."
 			: "nenhuma das amostras tem sangue Saiyajin. O que sair dali sera forte, mas nao vai passar da perfeicao.");
+
+		// O FOLEGO NO VACUO, dito na hora de fechar o tanque pelo mesmo motivo do sangue Saiyajin: e
+		// AQUI que o jogador ainda poderia ter escolhido outro doador. A frase nomeia o doador em vez
+		// de nomear as racas -- lista de raca escrita em texto e a lista escrita pela segunda vez, e
+		// ela mentiria calada no dia em que o dono mudasse a dele (ver `PulmaoDaFornada`).
+		Amostra? pulmao = PulmaoDaFornada(g);
+		Avisar(pl, pulmao != null
+			? $"e ha um pulmao de vacuo na sopa: o DNA de {pulmao.Doador} ({SangueDe(pulmao)}) aguenta o "
+			  + "espaco, e o que sair dali vai aguentar tambem."
+			: "e nenhuma das amostras aguenta o vacuo -- o que sair dali sufoca no espaco como qualquer um.");
 	}
 
 	private Obra? LabDeBio(ServerPlayer pl)
@@ -1008,6 +1080,41 @@ public partial class GameServer
 		Obra? o = ObraPerto(pl);
 		return o is { Aparafusada: true, Lab: 2 } ? o : null;
 	}
+
+	/// <summary>
+	/// ============================ O PULMAO DA FORNADA -- QUAL DOADOR RESPIRA NO VACUO ============================
+	/// Devolve a PRIMEIRA amostra cujo sangue aguenta o espaco, ou `null` se nenhuma aguenta. Pedido
+	/// do dono, literal: *"bio androides pegam a capacidade de respirar no espaco caso uma das racas
+	/// q esta em seu dna consiga"*. **Uma basta** -- quatro doadores e a resposta e um OU, do mesmo
+	/// jeito que o `brew_has_saiyan` acende com um Saiyajin so (`DNALabs.dm:435`).
+	///
+	/// **A PERGUNTA NAO E UMA LISTA, E ELA E A DO CORE.** Quem responde "esta raca respira" e
+	/// <see cref="Vacuo.RespiraNoVacuo"/> -- a MESMA funcao que decide, uma vez por segundo, se o
+	/// corpo perde vida no vacuo. Escrever aqui um `a.Raca == "Majin" || a.Raca == "Icer"` seria a
+	/// segunda lista de raca deste port, e a primeira a envelhecer no dia em que o dono mudar a dele:
+	/// e exatamente o erro que a regeneracao por raca cometeu nos dois sentidos.
+	///
+	/// Os dois ultimos parametros ficam nos padroes (`false`) de proposito: **cargo e traje nao estao
+	/// no DNA**. Um Deus da Destruicao colhido nao passa o folego do trono pro filho de tanque, e uma
+	/// roupa espacial na mochila do doador nao vira pulmao -- so o SANGUE atravessa a agulha.
+	///
+	/// E devolve a amostra e nao um `bool` porque quem chama diz o NOME do doador ao jogador: "o DNA
+	/// de Fulano (Majin) respira no espaco" e uma frase que se le sem o codigo do lado; "true" nao.
+	/// =========================================================================================================
+	/// </summary>
+	private static Amostra? PulmaoDaFornada(Gestacao g) =>
+		g.Amostras.FirstOrDefault(a => Vacuo.RespiraNoVacuo(a.Raca, a.RacaDoPai));
+
+	/// <summary>
+	/// O SANGUE DE UMA AMOSTRA, EM UMA PALAVRA -- "Majin", ou "Human/Majin" no meio-sangue.
+	///
+	/// Existe porque a linha que o jogador le mentia por omissao: um doador meio-Majin tem
+	/// `Raca = "Human"`, e "o DNA de Fulano (Human) aguenta o espaco" e uma frase que so confunde --
+	/// quem lesse aquilo concluiria que humano respira. Quando o pai e que responde, ele aparece.
+	/// </summary>
+	private static string SangueDe(Amostra a) =>
+		a.RacaDoPai.Length > 0 && !string.Equals(a.RacaDoPai, a.Raca, StringComparison.OrdinalIgnoreCase)
+			? $"{a.Raca}/{a.RacaDoPai}" : a.Raca;
 
 	/// <summary>
 	/// INSTALA UM LABORATORIO no mainframe aparafusado. E o passo do meio que o original tem e
@@ -1155,6 +1262,19 @@ public partial class GameServer
 		pl.Ficha.bio_abs_players = 0;
 		pl.Ficha.bio_abs_androids = 0;
 		pl.Ficha.bio_saiyan_dna = g.TemSaiyajin;
+
+		// ============================ O FOLEGO NO VACUO VEM DO DNA -- E TEM QUE SER GRAVADO AQUI ============================
+		// *"bio androides pegam a capacidade de respirar no espaco caso uma das racas q esta em seu
+		// dna consiga"*. Esta e a UNICA janela em que a pergunta tem resposta: a fornada acabou de ser
+		// destruida (`lab.Fornada = null`, la em cima), o `Genoma` vira nulo e a `ParentRace` vira
+		// "BioAndroid" -- daqui a duas linhas nao existe mais no mundo quem soubesse os doadores.
+		//
+		// Quem responde continua sendo o Core (`Vacuo.RespiraNoVacuo`, via `PulmaoDaFornada`): este
+		// campo e uma MEMORIA da pergunta, e nao uma segunda regra.
+		// ==============================================================================================================
+		Amostra? pulmao = PulmaoDaFornada(g);
+		pl.Ficha.bio_dna_respira = pulmao != null;
+
 		pl.Ficha.form3cantrevert = false;
 		pl.Ficha.bio_ssj2_by_death = false;
 		pl.Ficha.bio_mature_em = NowMs() + (long)(MaturacaoDaLarvaSegundos * 1000);
@@ -1197,7 +1317,9 @@ public partial class GameServer
 		Persistir(pl);
 
 		GD.Print($"[server] BIO-ANDROIDE nasceu: {antes} -> {pl.Name} | BP {bp:N0} | "
-				 + $"saiyajin={g.TemSaiyajin} | {herdadas} tecnica(s) herdada(s)");
+				 + $"saiyajin={g.TemSaiyajin} | vacuo={pl.Ficha.bio_dna_respira}"
+				 + $"{(pulmao != null ? $" (por {pulmao.Doador}/{SangueDe(pulmao)})" : "")} | "
+				 + $"{herdadas} tecnica(s) herdada(s)");
 
 		Avisar(pl, "a criatura atravessa o seu peito com a cauda. Voce morre... e seus olhos "
 				   + "continuam abertos, agora DENTRO dela.");
@@ -1210,6 +1332,9 @@ public partial class GameServer
 		if (g.TemSaiyajin)
 			Avisar(pl, "celulas SAIYAJIN pulsam no seu nucleo: o Super Saiyajin ja corre no seu DNA "
 					   + "(maestria zero -- treine a forma).");
+		if (pulmao != null)
+			Avisar(pl, $"e voce nao precisa de ar: o sangue de {pulmao.Doador} ({SangueDe(pulmao)}) "
+					   + "atravessa o vacuo, e agora e o seu.");
 		Avisar(pl, "e ha algo mais: seu corpo aprende com a derrota. Zenkai.");
 	}
 

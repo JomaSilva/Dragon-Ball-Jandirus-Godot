@@ -157,6 +157,10 @@ public partial class GameServer
 	/// **vence o prazo empurrando o relogio pro passado**, deixando a triagem do servidor decidir. Uma
 	/// bancada que chamasse `IrProAlem` na mao provaria que a funcao funciona e nao provaria que alguem
 	/// a chama -- que e a regra que o `--velorio` ja escreveu.
+	///
+	/// **E A TRIAGEM E CHAMADA DE DENTRO DA VARREDURA DE `_players.Values`**, que e de onde o
+	/// `TickCombate` a chama. Essa linha nao e enfeite: enquanto ela nao existia, esta bancada fechava
+	/// com 54 verdes com o tique do servidor CAINDO a cada morte de jogador. Ver o comentario no lugar.
 	/// ====================================================================================
 	/// </summary>
 	private ServerPlayer? AViagemDeixaOCorpo(ServerPlayer pl)
@@ -179,7 +183,48 @@ public partial class GameServer
 				   $"{ZoneList(ondeMorreu.Hash).Count} x {corposAntes}");
 
 		pl.RelogioDaMorte = NowMs() - 1;
-		VenceuOPrazoDaMorte(pl);   // o caminho de producao: triagem -> PassoDaMorte -> IrProAlem
+
+		// ============================ E A TRIAGEM E CHAMADA **DE DENTRO DA VARREDURA** ============================
+		// Aqui morava um `VenceuOPrazoDaMorte(pl);` seco, e ele deixou passar o pior defeito que este
+		// caminho ja teve. A chamada na mao exercitava a triagem, a viagem e o cadaver -- tudo menos o
+		// LUGAR de onde o servidor a chama. E o lugar era o defeito: o `TickCombate` roda essa mesma
+		// linha de DENTRO de um `foreach (ServerPlayer pl in _players.Values)`, e o cadaver nascia com
+		// `_players[id] = corpo`, o que invalida o enumerador (insercao de chave nova e a UNICA operacao
+		// de `Dictionary` que invalida -- `Remove` nao). Toda morte de jogador matava o tique inteiro:
+		//
+		//     InvalidOperationException: Collection was modified; enumeration operation may not execute.
+		//        at Dictionary`2.ValueCollection.Enumerator.MoveNext()
+		//        at GameServer.TickCombate(Double dt) in Server\GameServer.Combat.cs:line 1203
+		//
+		// E esta bancada dava 54 verdes por cima disso. E o cego que o `dbclimax-port-bancada-nasce-no-
+		// lugar-errado` ja registra: **chamar o passo direto nunca testa a ENTRADA nele.**
+		//
+		// Entao a chamada passou a sair de onde ela sai em jogo -- as duas linhas de dentro sao copia
+		// literal do `TickCombate`. E a prova nao e "nao estourou": e a CONTAGEM. Um laco que morre no
+		// meio some com os corpos que viriam depois do morto, e sem contar, um `catch` calado deixaria
+		// verde de novo.
+		// ======================================================================================================
+		int varridos = 0, haviam = _players.Count;
+		bool varreuInteiro = false;
+		try
+		{
+			long agora = NowMs();
+			foreach (ServerPlayer corpo in _players.Values)
+			{
+				varridos++;
+				if (corpo.Ficha.dead && agora >= corpo.RelogioDaMorte) VenceuOPrazoDaMorte(corpo);
+			}
+			varreuInteiro = true;
+		}
+		catch (InvalidOperationException e)
+		{
+			AfirmarCad("a varredura de `_players.Values` nao pode ser invalidada pela morte", false,
+					   e.Message);
+		}
+
+		AfirmarCad("A MORTE ACONTECEU DE DENTRO DO `foreach (... in _players.Values)`, e a varredura "
+				 + "CHEGOU AO FIM (o cadaver nao entra no `_players`)",
+				   varreuInteiro && varridos == haviam, $"{varridos} de {haviam} corpos varridos");
 
 		AfirmarCad("A VIAGEM ACONTECEU: o host esta no Outro Mundo", Alem.EhOAlem(pl.Zone),
 				   pl.Zone.Name);

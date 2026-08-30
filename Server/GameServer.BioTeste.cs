@@ -1,5 +1,6 @@
 ﻿using Godot;
 using Jandirus.Core.Forms;
+using Jandirus.Core.Items;
 using Jandirus.Core.Races;
 using Jandirus.Core.Stats;
 using Jandirus.Core.World;
@@ -49,6 +50,14 @@ public partial class GameServer
 	private static readonly Vec2 PalcoDoCrivo = new(320, 0);
 	private static readonly Vec2 PalcoDoSemDna = new(640, 0);
 	private static readonly Vec2 PalcoDaInjecao = new(960, 0);
+
+	/// <summary>
+	/// Os TRES cantos da familia 14 -- um bio por raca que o dono nomeou (Majin, pelo PAI do doador,
+	/// e Frost Demon, pela raca do doador), mais o que nao herda nada.
+	/// </summary>
+	private static readonly Vec2 PalcoDoFolego = new(1280, 0);
+	private static readonly Vec2 PalcoDoSufoco = new(1600, 0);
+	private static readonly Vec2 PalcoDoFrio = new(1920, 0);
 
 	// =====================================================================
 	// AS TRES SKILLS COM NOME -- ver o bloco do segundo doador em `MedirONascimento`
@@ -122,6 +131,7 @@ public partial class GameServer
 			MedirAHeranca(Checa, bio, semDna);
 			MedirOZenkai(Checa, host, bio, semDna, forjados);
 			MedirOSuperSaiyajinPeloDna(Checa, bio, semDna);
+			MedirOFolegoNoVacuoPeloDna(Checa, host, forjados, obras);
 			MedirOsNumerosContraODm(Checa);
 			MedirAsInjecoesDeDefeito(Checa, host, bio, semDna, forjados, obras);
 
@@ -1347,6 +1357,168 @@ public partial class GameServer
 	// =====================================================================
 	// 14. OS NUMEROS, CONTRA O DM
 	// =====================================================================
+	// =====================================================================
+	// 14. O FOLEGO NO VACUO VEM DO DNA -- AS DUAS METADES, DOIS PARTOS
+	// =====================================================================
+	/// <summary>
+	/// *"bio androides pegam a capacidade de respirar no espaco caso uma das racas q esta em seu dna
+	/// consiga (lembrando q as racas q podem respirar no espaco sao majin e frost demon)"*.
+	///
+	/// ============================ ELA NASCE DOIS BIOS, E NAO REAPROVEITA OS DE CIMA ============================
+	/// Os dois bios das familias 2 e 10 chegariam aqui depois de morrer, ressuscitar, absorver dez
+	/// cidadaos e trocar de forma quatro vezes -- e uma familia que medisse "o primeiro bio sufoca"
+	/// em cima daquele estado responderia por acidente no dia em que alguem mexesse na familia 6.
+	/// Aqui os dois nascem do zero, no mesmo minuto, pela mesma porta, e diferem em UMA coisa: o
+	/// sangue do doador. E isso e a frase inteira do pedido.
+	/// =======================================================================================================
+	///
+	/// ============================ O DOADOR QUE RESPIRA E UM MEIO-SANGUE, DE PROPOSITO ============================
+	/// Ele tem `Race = "Human"` e `Parent_Race = "Majin"`, e e o caso DIFICIL: um doador Majin puro
+	/// passaria mesmo se a agulha jogasse fora a raca do pai (foi o que ela fazia antes deste
+	/// trabalho -- `ColherDna` so gravava `vitima.Race`). O meio-Majin so respira se a cadeia inteira
+	/// estiver honesta: a agulha guardando o pai, a derivacao perguntando pelos dois e a regra do Core
+	/// respondendo `Race == X || Parent_Race == X`.
+	/// =========================================================================================================
+	///
+	/// ============================ E A ULTIMA PERGUNTA E A DO TIQUE, NAO A DO CAMPO ============================
+	/// `bio_dna_respira == true` e INTENCAO. O que o jogador vive e `SufocaAgora`, a pergunta que o
+	/// `TickDoVacuo` faz uma vez por segundo -- e e ela que esta familia chama, com o corpo posto no
+	/// vacuo. Quanta vida isso custa e medido na outra bancada (`--vacuoteste`, familia 11), que tem a
+	/// maquina de fotografar o mundo antes de bater nele.
+	/// ======================================================================================================
+	/// </summary>
+	private void MedirOFolegoNoVacuoPeloDna(Checagem Checa, ServerPlayer host,
+											List<ServerPlayer> forjados, List<Obra> obras)
+	{
+		GD.Print("--- 14. O FOLEGO NO VACUO VEM DO DNA ---");
+
+		// AS PRECONDICOES SAO A METADE QUE IMPEDE A FAMILIA DE SER VACUA: se um dia "Majin" sair da
+		// lista do dono, tudo abaixo continuaria "funcionando" e medindo nada.
+		Checa("PRECONDICAO: a regra do Core diz que MAJIN respira no vacuo",
+			  Vacuo.RacaRespira("Majin"), string.Join(", ", Vacuo.RacasQueRespiram));
+		Checa("PRECONDICAO: ...e que FROST DEMON respira -- a SEGUNDA raca que o dono nomeou, na "
+			  + "grafia do proto ('Icer'), que e a que um doador de verdade carrega no `Race`",
+			  Vacuo.RacaRespira(FormasDeFrost.Raca));
+		Checa("PRECONDICAO: ...e que HUMANO nao respira (a outra metade)", !Vacuo.RacaRespira("Human"));
+		Checa("PRECONDICAO: e a raca 'BioAndroid' NAO esta nessa lista -- o folego tem que vir do DNA "
+			  + "e nao do cracha, senao os dois bios abaixo respirariam pelo mesmo motivo",
+			  !Vacuo.RacaRespira(BioAndroids.Raca) && !Vacuo.RacaRespira(BioAndroids.RacaDoDm));
+
+		// UM BIO POR RACA QUE O DONO NOMEOU, e os dois entram por PORTAS DIFERENTES da mesma regra:
+		// o Majin chega pelo PAI do doador (`Parent_Race`, o meio-sangue) e o Frost Demon chega pela
+		// RACA do doador. Uma familia com so um deles ficaria verde com metade do `Race == X ||
+		// Parent_Race == X` apagada -- e cada metade e a que cobre uma das duas racas do pedido.
+		ServerPlayer? comAr = UmBioDeUmDoadorSo(Checa, host, "com DNA que respira", PalcoDoFolego,
+												984_012, forjados, obras, "Human", "Majin");
+		ServerPlayer? doFrio = UmBioDeUmDoadorSo(Checa, host, "de doador Frost Demon", PalcoDoFrio,
+												 984_014, forjados, obras, FormasDeFrost.Raca, "");
+		ServerPlayer? semAr = UmBioDeUmDoadorSo(Checa, host, "de doador que nao respira", PalcoDoSufoco,
+												984_013, forjados, obras, "Human", "");
+		if (comAr == null || semAr == null || doFrio == null) return;
+
+		Checa("o bio de DNA que respira nasce com o folego herdado (`bio_dna_respira`)",
+			  comAr.Ficha.bio_dna_respira);
+		Checa("...e o de doador FROST DEMON tambem -- a outra raca do pedido, e pela outra metade da "
+			  + "regra (a `Race` do doador, e nao a `Parent_Race`)",
+			  doFrio.Ficha.bio_dna_respira);
+		Checa("...e o de DNA humano nasce SEM ele -- no DM os DOIS respirariam, porque la o folego e "
+			  + "da raca e vem de graca (`statbiodroid.dm:51`, `\"Space Breath\" = 1` no proto)",
+			  !semAr.Ficha.bio_dna_respira);
+
+		Checa("...e no corpo de nenhum dos dois sobrou vestigio do doador: raca e raca-do-pai viraram "
+			  + "'BioAndroid' e o genoma foi destruido. Ou o bit e gravado no parto, ou a informacao "
+			  + "deixa de existir -- e e por isso que ele e um campo e nao uma pergunta",
+			  comAr.Ficha.Race == BioAndroids.Raca && comAr.Ficha.ParentRace == BioAndroids.Raca
+			  && comAr.Ficha.Genoma == null
+			  && semAr.Ficha.Race == semAr.Ficha.ParentRace,
+			  $"{comAr.Ficha.Race}/{comAr.Ficha.ParentRace}");
+
+		// ---- E AGORA O QUE O JOGADOR VIVE ----------------------------------
+		void NoVacuo(string oQue, ServerPlayer pl, bool esperaSufocar)
+		{
+			if (pl.Combate == null || pl.Ficha.dead)
+			{ Checa($"{oQue} [PRECONDICAO: o corpo esta vivo e montado]", false); return; }
+
+			ZoneKey guardada = pl.Zone;
+			try
+			{
+				pl.Zone = ZonaDoEspaco;
+				bool sufoca = SufocaAgora(pl);
+				Checa(oQue, sufoca == esperaSufocar, $"SufocaAgora={sufoca}");
+			}
+			finally { pl.Zone = guardada; }
+		}
+
+		NoVacuo("NO VACUO, o servidor decide que o bio de DNA que respira **nao** sufoca "
+				+ "(`SufocaAgora`, a pergunta que o tique faz uma vez por segundo)", comAr, false);
+		NoVacuo("...e que o de DNA FROST DEMON tambem **nao** sufoca -- as duas racas que o dono "
+				+ "nomeou, medidas no mesmo lugar e pela mesma pergunta", doFrio, false);
+		NoVacuo("...e que o de DNA humano SUFOCA, ali do lado -- mesma raca, mesma ParentRace, mesmo "
+				+ "estagio, mesma zona: a unica diferenca entre os dois esta no tanque de onde sairam",
+				semAr, true);
+
+		// ---- E O TRAJE CONTINUA VALENDO PRO QUE NAO HERDOU -----------------
+		// O folego novo entra por um `||`, entao ele nao pode ter FECHADO nenhuma das outras portas.
+		// Sem esta linha, um `if/else` escrito no lugar do `||` passaria em tudo acima.
+		if (semAr.Mochila.Quantos(CatalogoDeItens.Traje) == 0)
+		{
+			semAr.Mochila.Guardar(CatalogoDeItens.Traje, 1);
+			NoVacuo("...e o que nao herdou continua salvo pela ROUPA ESPACIAL (o folego do DNA entrou "
+					+ "num `||`, e nao no lugar dos outros abrigos)", semAr, false);
+			semAr.Mochila.Tirar(CatalogoDeItens.Traje, 1);
+			NoVacuo("...e volta a sufocar quando a roupa sai da mochila", semAr, true);
+		}
+		else Checa("PRECONDICAO: o bio nasceu sem roupa espacial na mochila", false);
+	}
+
+	/// <summary>
+	/// UM BIO-ANDROIDE INTEIRO PELA CADEIA DE PRODUCAO, num canto do mapa so dele: cientista forjado,
+	/// laboratorio, UM doador com a raca pedida, `colher_dna`, `gestar` e o parto pelo `TickDaGestacao`.
+	///
+	/// **UM DOADOR SO**, e isso e o que torna a resposta legivel: com dois no tanque, um
+	/// `bio_dna_respira` aceso nao diz de quem veio. E o canto proprio nao e capricho -- `LabDeBio`
+	/// pergunta ao `ObraPerto`, e dois laboratorios colados fazem o novo achar o vizinho velho (ver a
+	/// nota do `palco` em <see cref="ForjarCorpo"/>).
+	/// </summary>
+	private ServerPlayer? UmBioDeUmDoadorSo(Checagem Checa, ServerPlayer host, string rotulo,
+											Vec2 palco, int idObra, List<ServerPlayer> forjados,
+											List<Obra> obras, string racaDoDoador, string paiDoDoador)
+	{
+		ServerPlayer? cientista = ForjarCorpo(host, "Human", $"Dr. {rotulo}", forjados, palco);
+		if (cientista == null) { Checa($"PRECONDICAO: o cientista ({rotulo}) nasceu", false); return null; }
+		cientista.Ficha.techskill = 99;
+		Obra lab = PorUmLabDeBio(cientista, idObra, obras);
+
+		ServerPlayer? doador = ForjarCorpo(host, racaDoDoador, $"Doador {rotulo}", forjados, palco);
+		if (doador == null) { Checa($"PRECONDICAO: o doador ({rotulo}) nasceu", false); return null; }
+		doador.Ficha.ParentRace = paiDoDoador;          // `ForjarCorpo` iguala os dois; aqui ele e meio-sangue
+		doador.Livro = new Jandirus.Core.Skills.SkillBook();
+		doador.Ficha.BP = 6_000_000;
+		doador.Ficha.KO = true;
+
+		ComandoDeTech(cientista, "colher_dna", "");
+		Amostra? a = lab.Fornada?.Amostras.FirstOrDefault();
+		Checa($"({rotulo}) a agulha pegou o doador", a != null);
+		if (a == null) return null;
+
+		Checa($"({rotulo}) a amostra guarda a raca do doador E a do PAI dele -- sem a segunda, um "
+			  + "meio-Majin entraria no tanque rotulado 'Human' e o DNA se perderia na agulha",
+			  a.Raca == racaDoDoador && a.RacaDoPai == paiDoDoador, $"{a.Raca}/{a.RacaDoPai}");
+
+		ComandoDeTech(cientista, "gestar", "");
+		doador.Ficha.KO = false;
+		if (lab.Fornada == null) { Checa($"({rotulo}) a gestacao comecou", false); return null; }
+
+		lab.Fornada.PrometidaEm = NowMs() - 1;
+		TickDaGestacao();
+
+		if (!BioAndroids.EhBio(cientista.Race))
+		{ Checa($"({rotulo}) o bio-androide nasceu", false, cientista.Race); return null; }
+		Checa($"({rotulo}) o bio-androide nasceu, pela mesma porta e do mesmo tanque",
+			  BioAndroids.EhBio(cientista.Race));
+		return cientista;
+	}
+
 	/// <summary>
 	/// Uma linha por numero que o original crava. Elas nao dirigem nada -- sao a tabela de conversao
 	/// do sistema, e existem porque um multiplicador trocado nao quebra bancada nenhuma das de cima:
@@ -1355,7 +1527,7 @@ public partial class GameServer
 	/// </summary>
 	private void MedirOsNumerosContraODm(Checagem Checa)
 	{
-		GD.Print("--- 14. OS NUMEROS CONTRA O DM ---");
+		GD.Print("--- 15. OS NUMEROS CONTRA O DM ---");
 
 		void Numero(string oque, double achado, double esperado) =>
 			Checa($"{oque} = {esperado:0.####}", Math.Abs(achado - esperado) < 1e-9,
@@ -1423,7 +1595,7 @@ public partial class GameServer
 										  ServerPlayer? semDna, List<ServerPlayer> forjados,
 										  List<Obra> obras)
 	{
-		GD.Print("--- 15. A BANCADA SE COBRA (injecao de defeito) ---");
+		GD.Print("--- 16. A BANCADA SE COBRA (injecao de defeito) ---");
 
 		// A afirmacao INVERTIDA: `prova()` e o predicado da familia la de cima; com o defeito posto,
 		// ele TEM que devolver falso.

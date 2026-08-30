@@ -1202,6 +1202,51 @@ public partial class GameServer
 		long agora = NowMs();
 		foreach (ServerPlayer pl in _players.Values)
 		{
+			// ============================ NINGUEM PODE NASCER DENTRO DESTE LACO ============================
+			// **A REGRA, PRA QUEM ESCREVER UM CAMINHO NOVO AQUI DENTRO:** nada chamado de dentro deste
+			// `foreach` pode PÔR UM CORPO NOVO no `_players` -- nem direto, nem cinco chamadas abaixo. Quem
+			// nasce, nasce depois do laco. (Este comentario mora DENTRO do corpo de proposito: assim o
+			// `foreach` acima continua na linha 1203, que e a que o rastro abaixo aponta.)
+			//
+			// E O PERIGO E O CONTRARIO DO QUE PARECE. Desde o .NET Core 3.0 o `Dictionary.Remove` **nao**
+			// incrementa a versao da colecao: TIRAR alguem daqui no meio da varredura e legal. Quem
+			// invalida o enumerador e a INSERCAO DE CHAVE NOVA -- e ela estoura no `MoveNext` seguinte,
+			// mesmo quando o corpo inserido nasceu do ULTIMO da enumeracao. Ou seja: e deterministico,
+			// nao e corrida, e nao adianta "testar com um jogador so".
+			//
+			// JA ACONTECEU, E CUSTOU O SERVIDOR INTEIRO. O caminho era
+			// `VenceuOPrazoDaMorte` -> `PassoDaMorte` -> `IrProAlem` -> `DeixarOCadaver` -> `PorNoMundo`,
+			// que punha o CADAVER no `_players` (e o tirava na linha seguinte, o que enganava a leitura:
+			// "insere e remove" parece um no-op e nao e). Toda morte de jogador derrubava o tique com:
+			//
+			//     System.InvalidOperationException: Collection was modified; enumeration operation may not execute.
+			//        at System.Collections.Generic.Dictionary`2.ValueCollection.Enumerator.MoveNext()
+			//        at Jandirus.Server.GameServer.TickCombate(Double dt) in Server\GameServer.Combat.cs:line 1203
+			//        at Jandirus.Server.GameServer.Tick() in Server\GameServer.cs:line 4742
+			//        at Jandirus.Server.GameServer._Process(Double delta) in Server\GameServer.cs:line 3118
+			//
+			// (O RASTRO E O DO RELATO, LETRA POR LETRA, E POR ISSO NAO FOI CORRIGIDO. As duas ultimas
+			// linhas ja envelheceram -- o `GameServer.cs` cresceu e hoje as mesmas chamadas sao a 4763 e
+			// a 3131. So a PRIMEIRA e mantida viva de proposito: o `foreach` acima **continua** na 1203,
+			// e e por isso que este comentario mora dentro do corpo do laco. Reproduzido nesta forma
+			// pela `--tiquedamorte` com o defeito injetado de volta.)
+			//
+			// E o estrago nao era "um jogador perde um tique": o `TickCombate` e a PRIMEIRA chamada do
+			// `Tick()`, entao os ~60 subsistemas depois dele (fichas, projeteis, feridas, buffs, cadaveres,
+			// vacuo, gravidade, esferas, sagas, conquista, ceu, curandeiros...) **e o snapshot por zona**
+			// deixavam de rodar naquele quadro -- a zona inteira congelava no instante exato da morte, que
+			// e justamente quando todo mundo esta olhando.
+			//
+			// POR QUE NAO HA UM `ToArray()` AQUI: copiar mascararia o defeito em vez de fecha-lo (o corpo
+			// do laco continuaria podendo nascer gente no meio, so que calado) e pagaria uma matriz por
+			// tique a 30 Hz sobre TODOS os corpos do mundo -- a mesma conta de lixo que o comentario de
+			// `MandarCorpo`, mais abaixo, ja explica por que este laco nao paga.
+			//
+			// E A SAIDA CERTA JA E O IDIOMA DA CASA, em duas filas que vivem logo abaixo: `_npcsPraTirar`
+			// (corpo sem dono que SAI) e `_acordar`/`TickDeQuemVolta` (quem estava fora do corpo e VOLTA).
+			// Um caminho novo que precise mexer no `_players` copia o padrao delas: **so enfileira aqui, e
+			// aplica depois do `foreach`**.
+			// ==========================================================================================
 			CombatState c = pl.Combate;
 			if (c == null) continue;
 

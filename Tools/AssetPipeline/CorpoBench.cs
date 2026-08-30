@@ -56,16 +56,59 @@ public static class CorpoBench
 	{
 		Console.WriteLine("== 1. quem bloqueia, e quem NAO ==\n");
 
-		// ---- o modo: literal do `mob/Cross` (CombatMovement.dm:52-57) ----
+		// ---- o modo: literal do `mob/Cross` (CombatMovement.dm:52-57), contra um corpo LIVRE ----
 		Prova("a pe ESBARRA em corpo (o caso do pedido: \"andando\")",
-			  ClasseDeCorpo.Bloqueia(ModoDeTravessia.APe));
+			  ClasseDeCorpo.Bloqueia(ModoDeTravessia.APe, Ocupacao.Livre));
 		Prova("arremessado ESBARRA (\"por KNOCK BACK ou por ser JOGADO pelo grab\")",
-			  ClasseDeCorpo.Bloqueia(ModoDeTravessia.Arremessado));
+			  ClasseDeCorpo.Bloqueia(ModoDeTravessia.Arremessado, Ocupacao.Livre));
 		Prova("nadando ESBARRA (`Swim.dm:16` restaura density=1; o Cross so abre pra flying)",
-			  ClasseDeCorpo.Bloqueia(ModoDeTravessia.Nadando));
-		Prova("VOANDO ATRAVESSA -- a unica excecao do `mob/Cross`, e a mesma que ja "
+			  ClasseDeCorpo.Bloqueia(ModoDeTravessia.Nadando, Ocupacao.Livre));
+		Prova("VOANDO ATRAVESSA quem esta LIVRE -- a excecao do `mob/Cross`, a mesma que ja "
 			  + "atravessa parede e agua",
-			  !ClasseDeCorpo.Bloqueia(ModoDeTravessia.Voando));
+			  !ClasseDeCorpo.Bloqueia(ModoDeTravessia.Voando, Ocupacao.Livre));
+
+		// ---- a OCUPACAO: o pedido novo do dono, e as duas metades dele ----
+		// *"faca com q n de pra empurar npcs ou outros players ao andar contra eles enquando eles
+		//  batem ou fazem outra coisa"*. A metade que importa e a de cima: numa luta de DBZ todo mundo
+		// voa, e sem esta linha a regra valia em todo lugar menos dentro da briga.
+		Prova("VOANDO **PARA** em quem esta batendo -- o pedido do dono (\"enquando eles batem\")",
+			  ClasseDeCorpo.Bloqueia(ModoDeTravessia.Voando, Ocupacao.Atacando));
+		Prova("...e em quem esta de GUARDA (a decisao escrita: guardar ocupa)",
+			  ClasseDeCorpo.Bloqueia(ModoDeTravessia.Voando, Ocupacao.Guardando));
+
+		// E A METADE DE BAIXO, sem a qual a de cima ficaria verde com "tudo barra tudo": TODO estado
+		// da lista barra, e o estado LIVRE (o unico que sobra) continua deixando passar quem voa.
+		int barram = 0, valores = 0;
+		foreach (Ocupacao o in Enum.GetValues<Ocupacao>())
+		{
+			valores++;
+			if (ClasseDeCorpo.Bloqueia(ModoDeTravessia.Voando, o)) barram++;
+		}
+		Prova($"TODOS os {valores - 1} estados ocupados barram quem voa, e **so** o `Livre` nao "
+			  + $"({barram} de {valores})",
+			  barram == valores - 1 && !ClasseDeCorpo.Bloqueia(ModoDeTravessia.Voando, Ocupacao.Livre));
+
+		Prova("a pe, a ocupacao nao muda nada (quem anda ja esbarrava em todo mundo)",
+			  ClasseDeCorpo.Bloqueia(ModoDeTravessia.APe, Ocupacao.Livre)
+			  && ClasseDeCorpo.Bloqueia(ModoDeTravessia.APe, Ocupacao.Atacando));
+
+		// ---- e o NOME: "o corpo nao andou" nao e diagnostico ----
+		Prova("livre nao tem nome (vazio = livre, o molde do `PorQueNaoAnda`)",
+			  CorpoOcupado.Nome(Ocupacao.Livre).Length == 0 && !CorpoOcupado.Ocupado(Ocupacao.Livre));
+		int semNome = Enum.GetValues<Ocupacao>().Count(
+			o => o != Ocupacao.Livre && CorpoOcupado.Nome(o).Length == 0);
+		Prova($"e todo estado ocupado TEM nome ({semNome} sem nome)", semNome == 0);
+
+		// A ORDEM DE PRIORIDADE: dois sinais ligados, ganha o primeiro da lista. Sem esta linha um
+		// corpo nocauteado que tinha `train` ligado seria relatado como "treinando".
+		Prova("com nocaute E treino ligados ao mesmo tempo, o nome que sai e o NOCAUTE",
+			  CorpoOcupado.De(new CorpoOcupado.Sinais { Nocauteado = true, Treinando = true })
+			  == Ocupacao.Nocauteado);
+		Prova("nenhum sinal ligado = `Livre` (senao todo mundo viraria poste)",
+			  CorpoOcupado.De(new CorpoOcupado.Sinais()) == Ocupacao.Livre);
+		Prova("byte desconhecido no fio vira `Livre`, e nao estado inventado",
+			  CorpoOcupado.DeByte(200) == Ocupacao.Livre
+			  && CorpoOcupado.DeByte((byte)Ocupacao.Guardando) == Ocupacao.Guardando);
 
 		// ---- o andar: a regra que o DM nao tem, porque o DM nao tem altura ----
 		Prova("dois no CHAO estao no mesmo andar",
@@ -96,9 +139,9 @@ public static class CorpoBench
 	/// <summary>A regra que NAO queremos. Se ela passasse pelas provas, as provas nao serviriam.</summary>
 	private static bool Errado_VoandoEsbarra()
 	{
-		// simula a versao defeituosa: bloqueia em TODO modo
-		static bool bloqueiaSempre(ModoDeTravessia _) => true;
-		return !bloqueiaSempre(ModoDeTravessia.Voando);
+		// simula a versao defeituosa: bloqueia em TODO modo, ocupado ou nao
+		static bool bloqueiaSempre(ModoDeTravessia _, Ocupacao __) => true;
+		return !bloqueiaSempre(ModoDeTravessia.Voando, Ocupacao.Livre);
 	}
 
 	// =====================================================================
@@ -161,8 +204,56 @@ public static class CorpoBench
 		for (int i = 0; i < 600; i++)
 			voando = MoveRules.Advance(voando, new Vec2(1, 0), 1f / 60, 1f, null, out _,
 									   false, ModoDeTravessia.Voando, vAlto);
-		Prova("quem VOA atravessa o mesmo corpo, no mesmo andar -- quem decide e o modo",
+		Prova("quem VOA atravessa o mesmo corpo LIVRE, no mesmo andar -- quem decide e o modo",
 			  voando.X > vizinho.X + 32);
+
+		// ============================ ...E **PARA** SE O VIZINHO ESTIVER OCUPADO ============================
+		// *"faca com q n de pra empurar npcs ou outros players ao andar contra eles enquando eles batem
+		// ou fazem outra coisa"*. Este e o par que fecha a linha de cima: MESMO ponto de partida, MESMO
+		// modo (voando), MESMO andar -- muda so o que o vizinho esta fazendo.
+		//
+		// E e o caso do dono e nao um canto raro: numa luta de DBZ os dois estao no ar, e a linha de
+		// cima sozinha fazia a regra inteira valer em todo lugar menos dentro da briga.
+		// ================================================================================================
+		grade.Recomecar();
+		grade.Por(2, ClasseDeCorpo.Pes(vizinho), 0, Ocupacao.Atacando);
+		var vOcupado = new Vizinhanca(grade, 1, 0);
+		Vec2 contraOcupado = vizinho - new Vec2(5 * 32, 0);
+		int quadrosBarrado = 0;
+		for (int i = 0; i < 600; i++)
+		{
+			contraOcupado = MoveRules.Advance(contraOcupado, new Vec2(1, 0), 1f / 60, 1f, null,
+											  out bool bar, false, ModoDeTravessia.Voando, vOcupado);
+			if (bar) quadrosBarrado++;
+		}
+		Console.WriteLine($"  voando contra quem esta ATACANDO: parou a "
+						  + $"{(vizinho - contraOcupado).Length:0.0} px, {quadrosBarrado} quadros barrados");
+		Prova("voando contra quem esta ATACANDO ele PARA -- o pedido do dono",
+			  contraOcupado.X < vizinho.X && quadrosBarrado > 0);
+
+		// ============================ "O OCUPADO NAO DESLIZA" NAO SE MEDE AQUI, E ISSO PRECISA SER DITO ============================
+		// A outra metade do pedido e *"o ocupado nao desliza"*, e escrever aqui uma linha do tipo
+		// `Prova("o vizinho nao saiu do lugar", vizinho == vizinho)` seria o pior tipo de verde: a
+		// bancada medindo a propria variavel local, que ninguem tem como mexer.
+		//
+		// Nesta bancada o vizinho e um `Vec2` que ELA guarda -- `MoveRules.Advance` devolve UM ponto, o
+		// de quem anda, e nao ha `out` nem `ref` por onde um segundo corpo pudesse sair mexido. A
+		// medida de verdade precisa de dois corpos que o SERVIDOR possua, e ela esta na
+		// `--doiscorposteste`, familia 9: la o `b.Pos` e do mundo e a bancada le o que sobrou dele.
+		// =========================================================================================================================
+
+		// A ANTI-PROVA DO ANDAR: ocupado NAO vira poste pra quem passa por cima. Sem esta linha,
+		// "ocupado barra todo mundo" ficaria verde com um mundo em que socar cria uma coluna de 3
+		// andares de altura.
+		grade.Recomecar();
+		grade.Por(2, ClasseDeCorpo.Pes(vizinho), 0, Ocupacao.Atacando);
+		var vPorCima = new Vizinhanca(grade, 1, 1);   // eu no andar 1, ele ocupado no chao
+		Vec2 porCima = vizinho - new Vec2(5 * 32, 0);
+		for (int i = 0; i < 600; i++)
+			porCima = MoveRules.Advance(porCima, new Vec2(1, 0), 1f / 60, 1f, null, out _,
+										false, ModoDeTravessia.Voando, vPorCima);
+		Prova("mas em ANDAR DIFERENTE ele continua atravessando o ocupado -- ocupado nao e poste",
+			  porCima.X > vizinho.X + 32);
 
 		// ANDAR DIFERENTE atravessa -- mesmo modo, so o andar muda.
 		grade.Recomecar();
@@ -206,6 +297,56 @@ public static class CorpoBench
 		}
 		Prova($"sobreposto EXATAMENTE, sai andando em todas as 8 direcoes ({saiu}/8)", saiu == 8);
 
+		// ============================ ...E ISSO VALE COM O OUTRO **OCUPADO** ============================
+		// A regra nova (corpo ocupado para ate quem voa) e exatamente do tipo que reabre travamento: se
+		// ela desligasse o escape do `jaSobrepondo`, bastaria alguem erguer a guarda em cima de voce --
+		// ou cair nocauteado no seu ponto de spawn, ou soltar voce do colo e socar -- pra voce nao andar
+		// mais, sem nada na tela dizendo por que.
+		//
+		// Cada estado da lista e testado, e nao so um: e a lista inteira que precisa nao prender.
+		// ============================================================================================
+		foreach (Ocupacao o in Enum.GetValues<Ocupacao>())
+		{
+			if (o == Ocupacao.Livre) continue;
+			grade.Recomecar();
+			grade.Por(2, ClasseDeCorpo.Pes(onde), 0, o);
+			var vOc = new Vizinhanca(grade, 1, 0);
+
+			int saiuOc = 0;
+			foreach (Vec2 rumo in rumos)
+			{
+				Vec2 p = onde;
+				for (int i = 0; i < 120; i++)
+					p = MoveRules.Advance(p, rumo, 1f / 60, 1f, campo, out _, false,
+										  ModoDeTravessia.APe, vOc);
+				if (!ClasseDeCorpo.CaixasSeTocam(ClasseDeCorpo.Pes(p), ClasseDeCorpo.Pes(onde))) saiuOc++;
+			}
+			Prova($"sobreposto a quem esta {CorpoOcupado.Nome(o)}, ainda sai nas 8 direcoes ({saiuOc}/8)",
+				  saiuOc == 8);
+		}
+
+		// ...E VOANDO TAMBEM. O caso e real: dois corpos no ar no mesmo ponto (o carregado solto no ar,
+		// o pouso de um arremesso) com um deles socando. Antes desta rodada o voo nem consultava a
+		// grade, entao este caminho e novo e precisa da sua propria linha.
+		grade.Recomecar();
+		grade.Por(2, ClasseDeCorpo.Pes(onde), 1, Ocupacao.Atacando);
+		var vAr = new Vizinhanca(grade, 1, 1);
+		int saiuNoAr = 0;
+		foreach (Vec2 rumo in rumos)
+		{
+			Vec2 p = onde;
+			for (int i = 0; i < 120; i++)
+				p = MoveRules.Advance(p, rumo, 1f / 60, 1f, null, out _, false,
+									  ModoDeTravessia.Voando, vAr);
+			if (!ClasseDeCorpo.CaixasSeTocam(ClasseDeCorpo.Pes(p), ClasseDeCorpo.Pes(onde))) saiuNoAr++;
+		}
+		Prova($"no AR, sobreposto a quem esta atacando, tambem sai nas 8 direcoes ({saiuNoAr}/8)",
+			  saiuNoAr == 8);
+
+		// e volta o vizinho LIVRE pra as provas seguintes desta familia
+		grade.Recomecar();
+		grade.Por(2, ClasseDeCorpo.Pes(onde), 0);
+
 		// ...E DEPOIS DE SAIR, ELE VOLTA A BARRAR. Sem isto o remedio viraria um passe livre.
 		Vec2 fora = onde + new Vec2(3 * 32, 0);
 		Vec2 voltando = fora;
@@ -220,10 +361,26 @@ public static class CorpoBench
 		// "estar dentro de um corpo" caisse naquele ramo, quem estivesse por cima de alguem
 		// atravessaria muro por alguns quadros.
 		ZoneCollision muro = MuroVertical(40, 40, 21);
-		Vec2 colado = new(20 * 32 + 24, 20 * 32 + 16);   // encostado no muro da coluna 21
+
+		// ============================ O PALCO ESTAVA ERRADO, E A LINHA ERA VERMELHA ANTES DESTA RODADA ============================
+		// O ponto era `20*32+24` = 664, e a caixa dos pes dele vai de 656 a **672** -- 672 e a primeira
+		// coluna do muro. Ou seja: o corpo ja nascia DENTRO da parede, caia no ramo `Escape.Dirigido` e
+		// o escape apontava pra OESTE; andando pro leste todo passo era (corretamente) recusado, ele
+		// nunca saia do lugar, e a linha cobrava `!Occupied` de um corpo que comecou dentro do muro.
+		//
+		// Medido: com a grade e SEM a grade o corpo termina no mesmo 664 -- ou seja o defeito nao era da
+		// colisao de corpos, era do palco. **E o erro classico desta casa: a bancada que NASCE DENTRO do
+		// estado.** Aqui ela nascia dentro da PAREDE e por isso nunca mediu a parede.
+		//
+		// 20*32+16 = 656 poe a caixa em [648, 664]: fora do muro, e a 8 px dele -- perto o bastante pra
+		// que o primeiro passo ja o teste, longe o bastante pra que a regra medida seja a normal.
+		// ========================================================================================================================
+		Vec2 colado = new(20 * 32 + 16, 20 * 32 + 16);   // encostado no muro da coluna 21, e FORA dele
 		grade.Recomecar();
 		grade.Por(2, ClasseDeCorpo.Pes(colado), 0);
 		var vMuro = new Vizinhanca(grade, 1, 0);
+		Prova("PRECONDICAO: ele comeca FORA da parede (senao a medida vira sobre o escape, e nao sobre o muro)",
+			  !MoveRules.Occupied(muro, colado));
 		Vec2 dentro = colado;
 		for (int i = 0; i < 300; i++)
 			dentro = MoveRules.Advance(dentro, new Vec2(1, 0), 1f / 60, 1f, muro, out _,
@@ -231,6 +388,64 @@ public static class CorpoBench
 		Prova("saindo de cima de alguem, a PAREDE continua valendo "
 			  + "(nao caiu na saida de emergencia do `Advance`)",
 			  !MoveRules.Occupied(muro, dentro));
+
+		// ============================ ...E SAIR DA PAREDE NAO E LICENCA PRA ATRAVESSAR GENTE ============================
+		// A porta ao contrario da de cima, e ela estava ABERTA -- medido na Fase 0: um corpo com o pe
+		// numa celula de parede andava **157 px por dentro de outro corpo, 0 quadros barrados**, porque
+		// o ramo `Escape.Dirigido` do `Advance` so perguntava "este passo aproxima do refugio?".
+		//
+		// O palco: o corpo ENTERRADO na coluna 21 (a caixa inteira dentro da parede) e a vitima parada
+		// na celula pra onde o escape aponta. Ele tem que sair da parede, sim -- mas parando nela.
+		// ==============================================================================================================
+		var vitima = new Vec2(20 * 32 + 16, 20 * 32 + 8);      // na celula do refugio
+		Vec2 enterrado = new(21 * 32 + 8, 20 * 32 + 8);        // caixa dos pes inteira dentro do muro
+		grade.Recomecar();
+		grade.Por(2, ClasseDeCorpo.Pes(vitima), 0);
+		var vEnterrado = new Vizinhanca(grade, 1, 0);
+
+		Prova("PRECONDICAO: ele comeca DENTRO da parede (senao a medida cai na regra normal)",
+			  MoveRules.Occupied(muro, enterrado));
+		Prova("PRECONDICAO: e comeca FORA da vitima (senao quem o solta e o `jaSobrepondo`)",
+			  !ClasseDeCorpo.CaixasSeTocam(ClasseDeCorpo.Pes(enterrado), ClasseDeCorpo.Pes(vitima)));
+
+		Vec2 fugindo = enterrado;
+		for (int i = 0; i < 300; i++)
+			fugindo = MoveRules.Advance(fugindo, new Vec2(-1, 0), 1f / 60, 1f, muro, out _,
+										false, ModoDeTravessia.APe, vEnterrado);
+		Console.WriteLine($"  enterrado, fugindo PRA CIMA da vitima: andou "
+						  + $"{(enterrado - fugindo).Length:0.0} px e parou a "
+						  + $"{Math.Abs(fugindo.X - vitima.X):0.0} px dela");
+
+		// O CRITERIO E "NAO PASSOU DO OUTRO LADO", e nao "nao esta encostado no fim".
+		// **Essa diferenca custou uma medicao**: com o defeito o corpo atravessa a vitima e segue por
+		// 669 px ate a beirada do mapa -- e la ele TAMBEM nao esta encostado nela. Um criterio de
+		// "caixas nao se tocam" ficaria verde justamente no caso que ele existe pra pegar.
+		Prova("enterrado na parede, o escape NAO o deixa passar por dentro da vitima "
+			  + "(ele para do lado de ca)",
+			  fugindo.X > vitima.X);
+
+		// ---- DEFEITO INJETADO: o ramo do escape SEM consultar corpo (o que havia antes) ----
+		// `Vizinhanca` vazia e literalmente o codigo de ontem neste ramo -- e nao uma copia dele
+		// escrita aqui: a mesma funcao, o mesmo mapa, o mesmo palco, so sem o plano dos corpos.
+		Vec2 comDefeito = enterrado;
+		for (int i = 0; i < 300; i++)
+			comDefeito = MoveRules.Advance(comDefeito, new Vec2(-1, 0), 1f / 60, 1f, muro, out _);
+		Console.WriteLine($"  (com o defeito -- escape sem consultar corpo -- ele iria pra "
+						  + $"{comDefeito.X:0.0}, {enterrado.X - comDefeito.X:0.0} px de travessia)");
+		Prova("...e a prova acima SABE reprovar: sem consultar corpo ele passa do outro lado",
+			  comDefeito.X < vitima.X);
+
+		// ...E ELE NAO FICOU PRESO. A regra nova e do tipo que cria travamento: barrado pela vitima E
+		// pela parede, ele ainda precisa ter pra onde ir. O deslize de quina e quem responde -- em
+		// diagonal o eixo livre continua andando, que e a mesma coisa que o muro ja fazia.
+		Vec2 preso = fugindo;
+		Vec2 antesDoDesvio = preso;
+		for (int i = 0; i < 120; i++)
+			preso = MoveRules.Advance(preso, new Vec2(-1, -1), 1f / 60, 1f, muro, out _,
+									  false, ModoDeTravessia.APe, vEnterrado);
+		Prova($"...e ele NAO ficou preso: em diagonal ele desliza pelo eixo livre "
+			  + $"({Math.Abs(preso.Y - antesDoDesvio.Y):0} px em Y)",
+			  Math.Abs(preso.Y - antesDoDesvio.Y) > 16);
 	}
 
 	// =====================================================================
@@ -363,6 +578,12 @@ public static class CorpoBench
 					{
 						Id = i + 1,
 						Pos = new Vec2(rng.Next(0, lado * 32), rng.Next(0, lado * 32)),
+						// TODO MUNDO NO CHAO, E ISSO E O PIOR CASO -- nao esquecimento. As duas
+						// medidas pulam candidato de outro andar (`MesmoAndar`), entao espalhar os
+						// corpos por andares DIMINUIRIA o trabalho das duas e mediria uma zona mais
+						// facil que a real. Escrito e nao deixado no padrao pra ninguem ler "campo
+						// morto" onde ha decisao -- o compilador ja avisou uma vez neste projeto.
+						Altitude = 0f,
 					});
 
 				var grade = new GradeDeCorpos();
@@ -406,7 +627,8 @@ public static class CorpoBench
 			var rng = new Random(99);
 			var zona = new List<CorpoFalso>(n);
 			for (int i = 0; i < n; i++)
-				zona.Add(new CorpoFalso { Id = i + 1, Pos = new Vec2(rng.Next(0, 40 * 32), rng.Next(0, 40 * 32)) });
+				zona.Add(new CorpoFalso { Id = i + 1, Altitude = 0f,   // no chao: o pior caso, ver acima
+										  Pos = new Vec2(rng.Next(0, 40 * 32), rng.Next(0, 40 * 32)) });
 
 			var grade = new GradeDeCorpos();
 			ComGrade(zona, grade, 30, out _);                       // aquecimento

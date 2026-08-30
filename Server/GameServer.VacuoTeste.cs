@@ -157,6 +157,7 @@ public partial class GameServer
 			OFolegoDoCargo(),
 			DaPraMorrerDisso(),
 			ACorrenteEstaLigada(),
+			OFolegoDoDnaDoBio(),
 		];
 
 		int provas = 0, falhas = 0, defeitos = 0, cegos = 0, semCobertura = 0;
@@ -1041,6 +1042,155 @@ public partial class GameServer
 	};
 
 	// =====================================================================
+	// FAMILIA 11 -- O BIO-ANDROIDE HERDA O FOLEGO PELO DNA
+	// =====================================================================
+	/// <summary>
+	/// *"bio androides pegam a capacidade de respirar no espaco caso uma das racas q esta em seu dna
+	/// consiga (lembrando q as racas q podem respirar no espaco sao majin e frost demon)"*.
+	///
+	/// ============================ ESTA E A UNICA FAMILIA EM QUE A RACA NAO RESPONDE ============================
+	/// Todas as outras perguntam algo do corpo: a raca dele, o cargo dele, a mochila dele, a zona
+	/// dele. Esta pergunta o que ele FOI FEITO DE -- e por isso dois corpos identicos, mesma raca,
+	/// mesma ParentRace, mesmo BP, mesma zona, tem respostas OPOSTAS. Uma bancada que so soubesse
+	/// dizer "bio-androide nao perde vida" ficaria verde com a raca "BioAndroid" cravada na lista do
+	/// Core -- que e o conserto errado, e o que o DM faz (`statbiodroid.dm:51`).
+	///
+	/// Por isso as duas metades andam SEMPRE juntas aqui, e elas sao o mesmo tique:
+	///   * o bio de doador que respira **nao perde vida**;
+	///   * o bio de quatro doadores humanos **perde**, ao lado dele, no mesmo segundo.
+	/// ========================================================================================================
+	///
+	/// ============================ E A DIVERGENCIA COM O DM E O CENTRO DISTO ============================
+	/// No original o folego do bio e da RACA e vem de graca: `statbiodroid.dm:51` poe
+	/// `"Space Breath" = 1` no proto, e `dnl_bio_hatch` (`DNALabs.dm:460-465`) semeia o genoma so do
+	/// proto -- quatro doadores humanos dao um bio que respira igualzinho. O dono pediu o contrario
+	/// disso, e a prova do humano acima e o que impede alguem de "consertar" o port pro lado do DM
+	/// sem saber que esta desfazendo um pedido.
+	/// ==============================================================================================
+	///
+	/// ============================ E O PARTO E MEDIDO NA OUTRA BANCADA ============================
+	/// Aqui os corpos recebem o bit pela FUNCAO DE PRODUCAO que o parto usa (`PulmaoDaFornada`, sobre
+	/// fornadas forjadas) -- e isso mede a derivacao e o castigo, nao a ENTRADA. Quem dirige a cadeia
+	/// de verdade (construir -> `colher_dna` -> `gestar` -> nascer, pelos verbos) e a `--bioteste`, e
+	/// e la que se prova que o parto escreve o campo. As tres provas estruturais do fim desta familia
+	/// existem so pra que as duas bancadas nao possam divergir caladas.
+	/// =========================================================================================
+	/// </summary>
+	private FamiliaDoVacuo OFolegoDoDnaDoBio() => new()
+	{
+		Nome = "FAMILIA 11 -- O BIO-ANDROIDE RESPIRA SE O DNA DELE RESPIRAR",
+		Frase = "bio androides pegam a capacidade de respirar no espaco caso uma das racas q esta em seu dna consiga",
+		Provas = p =>
+		{
+			// ---- 1. A DERIVACAO, sobre fornadas forjadas -----------------------
+			// Cada fornada responde uma pergunta diferente, e as duas ultimas sao as negativas.
+			Gestacao soMajin = FornadaDeVacuo(("Majin", ""));
+			Gestacao soIcer = FornadaDeVacuo((Jandirus.Core.Races.FormasDeFrost.Raca, ""));
+			Gestacao soFrost = FornadaDeVacuo((Jandirus.Core.Races.FormasDeFrost.ClasseNormal, ""));
+			Gestacao meioMajin = FornadaDeVacuo(("Human", "Majin"));
+			Gestacao umEmQuatro = FornadaDeVacuo(("Human", ""), ("Saiyan", ""), ("Majin", ""), ("Namekian", ""));
+			Gestacao ninguem = FornadaDeVacuo(("Human", ""), ("Saiyan", ""), ("Namekian", ""), ("Human", ""));
+
+			void Deriva(string oQue, Gestacao g, bool esperado)
+			{
+				Amostra? pulmao = PulmaoDaFornada(g);
+				p.Prova(oQue, (pulmao != null) == esperado,
+						pulmao == null ? "nenhum doador respira"
+									   : $"pelo DNA de {pulmao.Doador} ({SangueDe(pulmao)})");
+			}
+
+			Deriva("uma fornada com um MAJIN respira", soMajin, true);
+			Deriva("...com um Frost Demon na grafia do PROTO ('Icer') tambem", soIcer, true);
+			Deriva("...e na grafia que circula ('Frost Demon') tambem -- as duas, senao metade dos "
+				   + "doadores Frost entra cega", soFrost, true);
+			Deriva("...com um doador MEIO-MAJIN (Race 'Human', pai Majin) tambem -- e por isso a "
+				   + "agulha guarda a raca do PAI", meioMajin, true);
+			Deriva("...e UM doador em quatro ja basta (o pedido e um OU, como o `brew_has_saiyan`)",
+				   umEmQuatro, true);
+			Deriva("quatro doadores que NAO respiram nao dao folego nenhum (a metade que segura "
+				   + "todas as linhas de cima)", ninguem, false);
+
+			p.Prova("a raca 'BioAndroid' NAO esta na lista do Core -- o folego e do DNA e nao do cracha "
+					+ "(cravar a raca la seria o conserto errado, e e o que o DM faz)",
+					!Vacuo.RacaRespira(Jandirus.Core.Races.BioAndroids.Raca)
+					&& !Vacuo.RacaRespira(Jandirus.Core.Races.BioAndroids.RacaDoDm),
+					string.Join(", ", Vacuo.RacasQueRespiram));
+
+			// ---- 2. E O CASTIGO, pelo tique de producao ------------------------
+			ServerPlayer bioMajin = BioDeVacuo("bio de doador MAJIN", soMajin);
+			ServerPlayer bioFrost = BioDeVacuo("bio de doador Frost Demon", soFrost);
+			// A GRAFIA DO PROTO ('Icer') TEM QUE PERDER VIDA-NENHUMA TAMBEM, e nao so derivar: e ELA
+			// que um doador de verdade carrega no `Ficha.Race` (`FormasDeFrost.Raca`), porque
+			// "Frost Demon" e o nome da CLASSE. Sem esta linha, a metade das duas racas que o dono
+			// nomeou que mais aparece em jogo so tinha prova de INTENCAO (o `PulmaoDaFornada` viu),
+			// e nenhuma de RESULTADO (o corpo nao sangrou).
+			ServerPlayer bioIcer = BioDeVacuo("bio de doador Frost Demon na grafia do proto ('Icer')", soIcer);
+			ServerPlayer bioMeio = BioDeVacuo("bio de doador meio-Majin", meioMajin);
+			ServerPlayer bioMisto = BioDeVacuo("bio de 4 doadores, UM deles Majin", umEmQuatro);
+			ServerPlayer bioHumano = BioDeVacuo("bio de 4 doadores que nao respiram", ninguem);
+
+			var antes = new Dictionary<int, double>();
+			foreach (ServerPlayer pl in _corposDoVacuo) antes[pl.Id] = MenorNucleo(pl);
+
+			UmSegundoDeMundo();
+
+			void NaoPerdeu(ServerPlayer pl) =>
+				p.Prova($"{pl.Name} NAO perde vida no vacuo",
+						Igual(MenorNucleo(pl), antes[pl.Id]), $"{antes[pl.Id]:0.##} -> {MenorNucleo(pl):0.##}");
+
+			NaoPerdeu(bioMajin);
+			NaoPerdeu(bioFrost);
+			NaoPerdeu(bioIcer);
+			NaoPerdeu(bioMeio);
+			NaoPerdeu(bioMisto);
+
+			p.Prova("...e o bio de doadores que nao respiram PERDE, no mesmo segundo, ao lado deles -- "
+					+ "mesma raca, mesma ParentRace, mesma zona, DNA diferente (no DM este respiraria: "
+					+ "`statbiodroid.dm:51`)",
+					MenorNucleo(bioHumano) < antes[bioHumano.Id] - 0.001,
+					$"{antes[bioHumano.Id]:0.##} -> {MenorNucleo(bioHumano):0.##}");
+
+			// ---- 3. E O PARTO ESCREVE ISSO? (o cruzamento com a `--bioteste`) --
+			string caminho = ProjectSettings.GlobalizePath("res://Server/GameServer.Tech.cs");
+			if (!File.Exists(caminho)) { p.NaoDeu($"o fonte da tecnologia nao esta no disco ({caminho})"); return; }
+			string fonte = (_vacFonteMutante ?? File.ReadAllText)(caminho);
+
+			p.Prova("o PARTO grava o folego herdado na ficha (`bio_dna_respira`) -- a fornada e "
+					+ "destruida no nascimento, entao ou e agora ou a informacao some",
+					fonte.Contains("pl.Ficha.bio_dna_respira = pulmao != null;"), "");
+			p.Prova("...e a derivacao pergunta ao CORE, doador por doador (`Vacuo.RespiraNoVacuo`), em "
+					+ "vez de escrever a lista de racas pela segunda vez",
+					fonte.Contains("Vacuo.RespiraNoVacuo(a.Raca, a.RacaDoPai)"), "");
+			p.Prova("...e a agulha guarda a raca do PAI do doador (senao o meio-sangue entraria cego "
+					+ "no tanque, e a prova do meio-Majin la em cima seria vacua)",
+					fonte.Contains("RacaDoPai = vitima.Ficha.ParentRace"), "");
+		},
+		Defeitos =
+		[
+			("o bio parou de herdar o folego (o estado ANTERIOR a este trabalho: todo bio sufocava)",
+			 s => s.FolegoDoDna = _ => false),
+
+			("todo bio-androide passou a respirar, com ou sem DNA (o DM 1:1 -- que NAO e o pedido)",
+			 s => s.FolegoDoDna = _ => true),
+
+			("o folego concedido parou de chegar ao funil (a linha do `||` em `SufocaAgora`)",
+			 s => s.Respira = (raca, pai, _, traje) => Vacuo.RespiraNoVacuo(raca, pai, false, traje)),
+
+			("o parto parou de gravar o campo (o bit escrito em lugar nenhum)",
+			 _ => _vacFonteMutante = c => File.ReadAllText(c)
+					.Replace("pl.Ficha.bio_dna_respira = pulmao != null;", "")),
+
+			("a derivacao virou uma SEGUNDA lista de raca, cravada no parto",
+			 _ => _vacFonteMutante = c => File.ReadAllText(c)
+					.Replace("Vacuo.RespiraNoVacuo(a.Raca, a.RacaDoPai)", "a.Raca == \"Majin\"")),
+
+			("a agulha parou de guardar a raca do pai (meio-sangue entra cego no tanque)",
+			 _ => _vacFonteMutante = c => File.ReadAllText(c)
+					.Replace("RacaDoPai = vitima.Ficha.ParentRace", "RacaDoPai = \"\"")),
+		],
+	};
+
+	// =====================================================================
 	// AS FERRAMENTAS
 	// =====================================================================
 	/// <summary>
@@ -1132,6 +1282,53 @@ public partial class GameServer
 
 		_corposDoVacuo.Add(novo);
 		return novo;
+	}
+
+	/// <summary>
+	/// UMA FORNADA DE PAPEL -- so os doadores, que e a unica coisa que a familia 11 pergunta.
+	///
+	/// Ela nao passa pelo `colher_dna` de proposito, e pelo mesmo motivo da <see cref="PodDeBancada"/>:
+	/// o que esta familia mede e o FOLEGO, e quem dirige a agulha de verdade e a `--bioteste`. Uma
+	/// fornada que dependesse do preco de um laboratorio faria esta bancada reprovar quando quem
+	/// quebrasse fosse a aba Tech.
+	/// </summary>
+	private static Gestacao FornadaDeVacuo(params (string Raca, string Pai)[] doadores)
+	{
+		var g = new Gestacao();
+		int n = 0;
+		foreach ((string raca, string pai) in doadores)
+			g.Amostras.Add(new Amostra
+			{
+				Raca = raca,
+				RacaDoPai = pai,
+				Doador = $"doador {++n}",
+				Assinatura = $"bancada-vacuo-{n}",
+				Bp = 1000,
+			});
+		return g;
+	}
+
+	/// <summary>
+	/// UM BIO-ANDROIDE DE BANCADA, no vacuo, com o folego que ESTA fornada lhe daria.
+	///
+	/// ============================ O CORPO E O QUE O PARTO DEIXA, E ISSO IMPORTA ============================
+	/// `Race` E `ParentRace` valem as duas "BioAndroid" porque e isso que `NascerBioAndroide` escreve
+	/// -- e e justamente por isso que o bio nao tinha como respirar por raca nenhuma antes deste
+	/// trabalho: nao ha mais nenhum vestigio do doador no corpo, so o bit.
+	///
+	/// **O BIT SAI DA FUNCAO DE PRODUCAO** (`PulmaoDaFornada`, a mesma que o parto chama) e nao de um
+	/// `true` escrito a mao: um `bio.Ficha.bio_dna_respira = true` aqui mediria o castigo e nao a
+	/// heranca, e ficaria verde com a derivacao inteira quebrada.
+	/// ===================================================================================================
+	/// </summary>
+	private ServerPlayer BioDeVacuo(string rotulo, Gestacao g)
+	{
+		ServerPlayer bio = CorpoDeVacuo(rotulo, Jandirus.Core.Races.BioAndroids.Raca, ZonaDoEspaco,
+										racaDoPai: Jandirus.Core.Races.BioAndroids.Raca);
+		bio.Ficha.bio_lab_born = true;
+		bio.Ficha.bio_stage = Jandirus.Core.Races.BioAndroids.Larva;
+		bio.Ficha.bio_dna_respira = PulmaoDaFornada(g) != null;
+		return bio;
 	}
 
 	/// <summary>

@@ -79,24 +79,52 @@ public partial class GameServer
 	/// O QUE O CLIENTE PODE SABER QUE SABE FAZER. Uma porta so pros bits de
 	/// <see cref="Protocol.Poder"/> que saem no pacote de atributos.
 	///
-	/// O Nav entra aqui porque so existe NO ESPACO: em terra firme um mapa estelar nao serve
-	/// pra nada e a aba apareceria vazia. O scouter ja vem de <c>pl.Poderes</c>; esta funcao
-	/// existe pra que exista UM lugar onde se decide o que a interface do outro lado tem
-	/// direito de montar -- e o mesmo bit que faz a aba Sense virar Scan (HtmlUI.dm:402-404).
+	/// O Nav entra aqui porque depende do ITEM Nav System estar na mochila -- ver
+	/// <see cref="TemNavSystem"/>. O scouter ja vem de <c>pl.Poderes</c>; esta funcao existe pra
+	/// que exista UM lugar onde se decide o que a interface do outro lado tem direito de montar --
+	/// e o mesmo bit que faz a aba Sense virar Scan (HtmlUI.dm:402-404).
 	/// </summary>
 	public static Protocol.Poder PoderesVisiveis(ServerPlayer pl)
 	{
-		// O NAV VALE EM TERRA TAMBEM, desde que ele virou CARTA ESTELAR.
+		// ============================ O NAV E DO ITEM, E NAO DE TODO MUNDO ============================
+		// Pedido do dono, literal: *"a aba de nav system no menu 'P' so deve aparecer caso o jogador
+		// tenha o item nav system em seu inventario."* E o que o original faz: `HtmlUI.dm:138` so poe a
+		// aba na barra `if(hasnav)`, e `hasnav` e o `Power_Switch()` do `/obj/items/Nav_System`
+		// (`PlanetTech.dm:9-19`) -- ou seja, sempre houve item no caminho.
 		//
-		// A regra anterior era "so no espaco, porque em terra firme um mapa estelar nao serve pra
-		// nada e a aba apareceria vazia -- e aba vazia ensina que o sistema nao funciona". O
-		// raciocinio estava certo pro que a aba ERA: uma lista dos corpos celestes das tres chunks
-		// em volta, que em terra e sempre vazia.
+		// Ate aqui esta linha era `pl.Poderes | Protocol.Poder.Nav`: o bit era CONCEDIDO a todo mundo,
+		// incondicionalmente. Isso nao foi descuido -- foi o resto de uma regra que morreu. A regra
+		// antiga era "so no espaco, porque em terra firme a aba apareceria vazia", e ela deixou de valer
+		// quando a aba virou CARTA ESTELAR (que se consulta ANTES de decolar). Tirou-se a condicao velha
+		// e nao se pos nenhuma no lugar. Esta e a que faltava.
 		//
-		// Agora ela desenha a galaxia inteira, e consultar a carta ANTES de decolar e metade do uso
-		// de uma carta. O que continua valendo so no espaco e VIAJAR -- e disso quem cuida e o
-		// botao, que aparece apagado com o motivo escrito nele.
-		return pl.Poderes | Protocol.Poder.Nav;
+		// O QUE CONTINUA VALENDO SO NO ESPACO E VIAJAR, e disso quem cuida e o botao, que aparece
+		// apagado com o motivo escrito nele. Sao dois portoes diferentes e nenhum substitui o outro.
+		//
+		// O `& ~` NAO E DECORACAO: se um dia uma skill, um cargo ou um androide de nav embutido acender
+		// `Poder.Nav` em `pl.Poderes`, esta funcao TEM que ser a unica palavra final -- do contrario a
+		// aba voltaria a aparecer sem item por um caminho que ninguem lembraria de conferir.
+		// ==============================================================================================
+		Protocol.Poder p = pl.Poderes & ~Protocol.Poder.Nav;
+		if (TemNavSystem(pl)) p |= Protocol.Poder.Nav;
+		return p;
+	}
+
+	/// <summary>
+	/// O NAV SYSTEM ESTA COM ELE?
+	///
+	/// **E a MOCHILA e nao um bit**, e a razao esta escrita por inteiro em
+	/// <see cref="Jandirus.Core.Items.CatalogoDeItens.NavSystem"/>: a mochila vai pro disco e
+	/// `PoderesConcedidos` nao iria. E a mesma escolha (e o mesmo formato) do
+	/// <c>TemTrajeEspacial</c> de `GameServer.Vacuo.cs` -- quem sabe quais ids valem e o catalogo.
+	///
+	/// Um NPC do mundo simplesmente nao tem o item, e por isso a mesma linha serve pra ele.
+	/// </summary>
+	public static bool TemNavSystem(ServerPlayer pl)
+	{
+		foreach (Jandirus.Core.Items.Pilha pi in pl.Mochila.Pilhas)
+			if (pi.Quantidade > 0 && Jandirus.Core.Items.CatalogoDeItens.EhNavSystem(pi.Id)) return true;
+		return false;
 	}
 
 	/// <summary>

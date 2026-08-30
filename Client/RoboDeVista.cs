@@ -483,8 +483,12 @@ public partial class RoboDeVista : Node
 		Vector2 minha = mundo.PosicaoLocal ?? Vector2.Zero;
 		Vec2 pesMeus = ClasseDeCorpo.Pes(new Vec2(minha.X, minha.Y));
 
-		int noAndarDele = grade.Quem(pesDele, andarDele, cli.LocalId, pesMeus);
-		int noMeuAndar = grade.Quem(pesDele, meuAndar, cli.LocalId, pesMeus);
+		// O MODO E `APe` PORQUE A PERGUNTA AQUI E DE ANDAR, E NAO DE OCUPACAO: o que esta bancada mede e
+		// se o corpo apagado sumiu da grade e se andares diferentes deixam de colidir. Perguntar voando
+		// misturaria a regra nova (`ClasseDeCorpo.Bloqueia` com a `Ocupacao`) numa medida que e sobre
+		// visibilidade.
+		int noAndarDele = grade.Quem(pesDele, andarDele, cli.LocalId, pesMeus, ModoDeTravessia.APe);
+		int noMeuAndar = grade.Quem(pesDele, meuAndar, cli.LocalId, pesMeus, ModoDeTravessia.APe);
 
 		Conferir(esperado ? noAndarDele == _idDoOutro : noAndarDele == 0,
 			esperado

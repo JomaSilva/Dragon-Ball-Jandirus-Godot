@@ -1771,10 +1771,16 @@ public sealed partial class GameServer
 		// ============================ E O QUE **NAO** ATRAVESSA JUNTO: a Respiracao no Vacuo ============================
 		// O DM tem uma quarta linha nesse mesmo bloco (`Fusion.dm:278-279`): `if(Loser.spacebreather)
 		// Keeper.spacebreather = 1`, desfeita em `:317`. Ela nao entra aqui, e a razao e de MODELO e nao
-		// esquecimento: no port o folego no vacuo nao e um campo do corpo, e uma funcao PURA da raca,
-		// do cargo e do traje (`Core/World/Vacuo.RespiraNoVacuo`). Nao ha bit pra copiar nem pra
-		// devolver -- conceder isso pediria um "folego emprestado" novo no `ServerPlayer`, com o
-		// `GameServer.Vacuo` aprendendo a le-lo. E divida anotada, e nao um `if` a mais neste metodo.
+		// esquecimento: no port o folego no vacuo e quase todo uma funcao PURA da raca, do cargo e do
+		// traje (`Core/World/Vacuo.RespiraNoVacuo`) -- nao ha, pra esses tres, bit pra copiar nem pra
+		// devolver, e conceder isso pediria um "folego emprestado" novo no `ServerPlayer`.
+		//
+		// **ATUALIZACAO (o folego do Bio-Androide pelo DNA):** desde entao existe UM bit de folego no
+		// corpo, o `Fighter.bio_dna_respira`, escrito no parto do bio. Ele continua NAO atravessando a
+		// fusao, e a divida continua sendo a mesma: quem funde e o `dono`, entao a fusao respira se o
+		// DONO herdou o folego e sufoca se so o PASSAGEIRO herdou -- que e exatamente a linha
+		// `Fusion.dm:278-279` que este bloco declara nao ter portado. Anotado, nao consertado: mexer
+		// nisso e mexer no `Separar` junto (`:317,371`), e nao foi o que se pediu.
 		// ==========================================================================================================
 
 		// ---- 4. O NOME ----

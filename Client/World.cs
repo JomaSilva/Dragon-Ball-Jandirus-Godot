@@ -2125,8 +2125,11 @@ public partial class World : Node2D
 			// consumia: a ALTURA vinha (a sombra e o deslocamento do desenho dependem dela), o ESTADO
 			// de voo nao -- e por isso decolar e pousar eram mudos pra quem estava do lado. Ver
 			// `RemotePlayer.OuvirODecolar`.
+			// `e.Ocupacao` ENTRA AGORA, e ele nao e desenho: e o que este corpo esta FAZENDO, pra que o
+			// passo do corpo local pare nele quando ele esta batendo (ou guardando, carregando...) em
+			// vez de atravessa-lo voando. Ver `RemotePlayer.Ocupacao` e `MontarGradeDeCorpos`.
 			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, e.Correndo, e.Rabo, e.Altitude,
-					  e.Voando, e.CanalAtirando);
+					  e.Voando, e.CanalAtirando, e.Ocupacao);
 
 			// ============================ QUEM VOA ALTO SOME DE VISTA -- SO PRA BAIXO ============================
 			// "Se a pessoa estiver voando muito alto, as pessoas que estao no chao nem conseguem ver
@@ -2957,9 +2960,13 @@ public partial class World : Node2D
 		foreach ((int id, RemotePlayer r) in _remotos)
 		{
 			if (!IsInstanceValid(r) || !r.Visible) continue;
+			// A OCUPACAO VEM DO FIO, JA RESOLVIDA pelo servidor (`GameServer.OcupacaoDe`) -- nao ha uma
+			// segunda lista aqui deduzindo "ocupado" da pose. E o que faz o corpo do jogador PARAR em
+			// quem esta batendo em vez de atravessa-lo voando; ver `ClasseDeCorpo.Bloqueia`.
 			grade.Por(id,
 					  Jandirus.Core.World.ClasseDeCorpo.Pes(new Jandirus.Core.World.Vec2(r.Position.X, r.Position.Y)),
-					  Jandirus.Core.World.Voo.Andar(r.AlturaDeTeste));
+					  Jandirus.Core.World.Voo.Andar(r.AlturaDeTeste),
+					  r.Ocupacao);
 		}
 	}
 

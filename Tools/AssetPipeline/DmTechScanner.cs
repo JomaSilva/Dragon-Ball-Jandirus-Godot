@@ -33,6 +33,37 @@ public sealed class ConstrucaoDef
 
 	/// <summary>res:// do SpriteFrames convertido. Vazio = o .dmi nao existe no port.</summary>
 	public string Arte = "";
+
+	/// <summary>
+	/// O TYPEPATH QUE O `Click()` CRIA, quando a entrada NAO tem `create_type`.
+	///
+	/// ============================ SETE ENTRADAS ESCREVEM ISSO DE OUTRO JEITO ============================
+	/// As sete armas de `Modules/Tech/Weapons.dm` (Axe, Staff, Spear, Club, Hammer, Cross) e o
+	/// `Central_Computer` de `Tierless.dm` nao declaram `create_type`: elas cobram o zeni no proprio
+	/// `Click()` e fazem `new/obj/items/Weapons/Axe(locate(...))`. A informacao e a MESMA -- "o que
+	/// aparece quando isto e comprado" --, so esta escrita noutra forma, e o extrator so via uma.
+	///
+	/// ELE NAO VAI PRO JSON, de proposito. O campo `tipo` do catalogo tem um segundo consumidor -- o
+	/// conversor de mapa, que casa `create_type` com as celulas dos `.dmm` (ver
+	/// `CatalogoDeObras.PorTypepath`) -- e escrever um typepath deduzido ali mudaria o CENARIO por
+	/// causa de uma pergunta de inventario. Aqui ele serve pra uma coisa so: dizer se o objeto e de
+	/// uso pessoal (ver <see cref="Pessoal"/>).
+	/// ================================================================================================
+	/// </summary>
+	public string TipoDoClick = "";
+
+	/// <summary>
+	/// ISTO E DE USO PESSOAL (se carrega/veste) em vez de coisa que se assenta no chao?
+	///
+	/// A REGRA 2 DO PEDIDO DO DONO, extraida e nao digitada -- ver <see cref="DmVerbScanner"/> pro
+	/// porque, e <see cref="Classificar"/> pro como. Vira o campo `pessoal` do `construcoes.json`,
+	/// e o unico consumidor dele e o `CatalogoDeItens.Get`, que decide dali se o item ganha ou nao
+	/// a acao "posicionar".
+	/// </summary>
+	public bool Pessoal;
+
+	/// <summary>Qual dos quatro criterios decidiu -- so pro relatorio do pipeline.</summary>
+	public string PorQue = "";
 }
 
 /// <summary>
@@ -207,6 +238,17 @@ public static class DmTechScanner
 			int comentario = valor.IndexOf("//", StringComparison.Ordinal);
 			if (comentario >= 0) valor = valor[..comentario].Trim();
 
+			// `var/obj/A = new/obj/items/Weapons/Axe(locate(...))` -- a outra forma de dizer
+			// `create_type`. So a PRIMEIRA vale: um `Click()` pode criar mais de um objeto (efeito,
+			// som), e o que interessa e a coisa comprada. Ver `ConstrucaoDef.TipoDoClick`.
+			if (atual.TipoDoClick.Length == 0
+				&& valor.StartsWith("new/obj/", StringComparison.Ordinal))
+			{
+				// TIRA SO O `new` -- a barra faz parte do typepath (`new/obj/x` -> `/obj/x`).
+				int fim = valor.IndexOf('(');
+				atual.TipoDoClick = (fim > 3 ? valor[3..fim] : valor[3..]).Trim();
+			}
+
 			switch (chave)
 			{
 				case "cost" when RxNum.IsMatch(valor):
@@ -243,8 +285,66 @@ public static class DmTechScanner
 	/// Devolve quantas ficaram sem arte -- e o numero que diz se o pipeline de sprites cobriu o
 	/// que a tecnologia precisa.
 	/// </summary>
+	/// <summary>
+	/// ============================ A REGRA 2, INTEIRA, NUM LUGAR SO ============================
+	/// *"item que se poe no chao ganha a acao INSTALAR; item de uso pessoal (scouter, armaduras,
+	/// pesos) NAO ganha -- ele e equipavel."*
+	///
+	/// Quatro criterios, nesta ordem, e a ordem E a regra:
+	///
+	///   1. **TEM `Bolt`** -> CHAO. `Bolt` e o verb do original pra fixar a coisa no chao (o port ja
+	///      o chama de `Aparafusar`). Ele vem PRIMEIRO porque desempata os dois casos que o escopo
+	///      sozinho erra: o Telepad tem `Name()` em `usr` e mesmo assim e instalacao; as armas de
+	///      fogo tem `Info()` em `oview` e mesmo assim sao pessoais. So o Telepad tem Bolt.
+	///
+	///   2. **ALGUM VERB EM `set src in usr`** -> PESSOAL. So aparece com o objeto DENTRO de voce.
+	///
+	///   3. **ALGUM VERB EM `set src in oview`** -> CHAO. `oview` exclui o proprio: so aparece com o
+	///      objeto no mundo, do seu lado.
+	///
+	///   4. **NENHUM DOS DOIS** -> decide a ARVORE: `/obj/items/*` e o que a mochila do original
+	///      carrega (`Inventory.dm:165` conta `for(var/obj/items/o in src)`), entao dentro dela e
+	///      pessoal e fora dela e chao. E o que separa a Munição e o Livro (que ninguem instala) do
+	///      Barco, da Furadeira e do Pad de Nave (que ninguem veste).
+	///
+	/// A subida da arvore PARA ANTES DE `/obj/items` -- ver a armadilha 3 do <see cref="DmVerbScanner"/>.
+	/// =========================================================================================
+	/// </summary>
+	public static (bool Pessoal, string PorQue) Classificar(
+		string typepath, Dictionary<string, VerbosDoTipo> verbos)
+	{
+		if (typepath.Length == 0) return (true, "sem typepath: nao ha prova de que va no chao");
+
+		bool bolt = false, usr = false, chao = false;
+		string p = typepath;
+		while (true)
+		{
+			// A BASE NAO VOTA: os verbs de `/obj/items` sao o encanamento do inventario (Get, Drop,
+			// Drop_All, Destroy), herdados por todo item do jogo.
+			if (!string.Equals(p, DmVerbScanner.BaseDosItens, StringComparison.Ordinal)
+				&& verbos.TryGetValue(p, out VerbosDoTipo? v))
+			{
+				bolt |= v.TemBolt;
+				usr |= v.EmUsr;
+				chao |= v.NoChao;
+			}
+			int barra = p.LastIndexOf('/');
+			if (barra <= 0) break;
+			p = p[..barra];
+		}
+
+		if (bolt) return (false, "tem o verb Bolt");
+		if (usr) return (true, "verb em `set src in usr`");
+		if (chao) return (false, "verb em `set src in oview`");
+
+		return typepath.StartsWith(DmVerbScanner.BaseDosItens + "/", StringComparison.Ordinal)
+			? (true, "sem verb proprio, mas mora em /obj/items")
+			: (false, "sem verb proprio e fora de /obj/items");
+	}
+
 	public static (int comArte, List<string> semArte) Resolver(
-		IEnumerable<ConstrucaoDef> defs, Dictionary<string, TurfDef> arvore, Dictionary<string, string> sprites)
+		IEnumerable<ConstrucaoDef> defs, Dictionary<string, TurfDef> arvore,
+		Dictionary<string, string> sprites, Dictionary<string, VerbosDoTipo> verbos)
 	{
 		int ok = 0;
 		var faltando = new List<string>();
@@ -269,6 +369,11 @@ public static class DmTechScanner
 				d.PixelX = proprio.PixelX;
 				d.PixelY = proprio.PixelY;
 			}
+
+			// O `create_type` MANDA; o typepath deduzido do `Click()` so entra quando ele falta.
+			// Ver `ConstrucaoDef.TipoDoClick`.
+			(d.Pessoal, d.PorQue) = Classificar(
+				d.CreateType.Length > 0 ? d.CreateType : d.TipoDoClick, verbos);
 
 			d.Arte = DmAppearanceScanner.Resolver(sprites, d.Icone) ?? "";
 			if (d.Arte.Length > 0) ok++;
@@ -296,7 +401,9 @@ public static class DmTechScanner
 			sb.Append($"\"py\": {d.PixelY.ToString("0.##", CultureInfo.InvariantCulture)}, ");
 			// O TYPEPATH DO QUE VAI PRO CHAO. E a chave que o conversor de mapa usa pra reconhecer
 			// a mesma maquina dentro de um `.dmm` -- ver `CatalogoDeObras.PorTypepath`.
-			sb.Append($"\"tipo\": {J(d.CreateType)}");
+			sb.Append($"\"tipo\": {J(d.CreateType)}, ");
+			// DE USO PESSOAL? -- a regra 2 do pedido do dono, extraida do DM. Ver `Classificar`.
+			sb.Append($"\"pessoal\": {(d.Pessoal ? 1 : 0)}");
 			sb.Append(" }");
 		}
 		return sb.Append("\n]\n").ToString();

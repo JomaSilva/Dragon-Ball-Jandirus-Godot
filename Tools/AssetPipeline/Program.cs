@@ -528,6 +528,120 @@ if (args.Length >= 2 && args[0] == "estilos")
     return 0;
 }
 
+if (args.Length >= 1 && args[0] == "instalar-prova")
+{
+    // instalar-prova [pastaAssets] : a metade SEM JOGO da bancada do instalar -- quem ganha
+    // "Instalar no chão" (regra 2) e onde da pra assentar (regra 4). Ver `InstalarBench`.
+    return Jandirus.Tools.InstalarBench.Run(args.Length >= 2 ? args[1] : "Assets");
+}
+
+if (args.Length >= 2 && args[0] == "pessoal")
+{
+    // ============================ POR QUE ISTO NAO E O COMANDO `tech` ============================
+    // A resposta obvia era regenerar o `construcoes.json` com o `tech`, que ja escreve o campo
+    // `pessoal`. **Regenerar APAGA sete entradas.**
+    //
+    // O arquivo do repo tem 110 linhas; o extrator produz 103. As sete que sobram -- `Ship_Control`,
+    // `Ship_Pad` e as cinco `Grave_*` -- nao saem de `obj/Creatables` nenhum e nao estao na
+    // `MobiliaDeMapa()`: alguem as acrescentou ao arquivo depois. Rodar `tech` por cima levaria junto
+    // o console da nave-capital, o pad de pouso e as cinco campas.
+    //
+    // Entao este comando ANOTA em vez de reescrever: le o arquivo linha a linha, acrescenta (ou
+    // corrige) so o campo `pessoal`, e deixa todo o resto onde estava. As sete orfas ganham a
+    // classificacao pelo `tipo` que ja esta escrito nelas -- que e o mesmo criterio das outras.
+    //
+    // A DIVERGENCIA EM SI FICA ANOTADA E NAO CONSERTADA: consertar era mexer no extrator de mapa,
+    // que nao e o assunto desta tarefa.
+    // =========================================================================================
+    string pastaP = args[1];
+    string arqP = args.Length >= 3 ? args[2] : System.IO.Path.Combine("Assets", "Data", "construcoes.json");
+    if (!System.IO.File.Exists(arqP)) { Console.WriteLine($"nao achei {arqP}"); return 1; }
+
+    var verbosP = Jandirus.Tools.DmVerbScanner.Scan(pastaP);
+    var defsP = Jandirus.Tools.DmTechScanner.Scan(pastaP);
+
+    // O `Resolver` e quem preenche `Pessoal`, e ele precisa da arvore -- mas so pra icone e
+    // densidade, que aqui nao vao ser escritos.
+    var arvoreP = Jandirus.Tools.DmTurfScanner.Scan(pastaP);
+    Jandirus.Tools.DmTechScanner.Resolver(defsP, arvoreP, [], verbosP);
+
+    var porId = new Dictionary<string, (bool Pessoal, string PorQue)>(StringComparer.OrdinalIgnoreCase);
+    foreach (var d in defsP) porId[d.Id] = (d.Pessoal, d.PorQue);
+
+    string[] linhasP = System.IO.File.ReadAllLines(arqP);
+    int anotadas = 0, orfas = 0, mudaram = 0;
+    var rxTipo = new System.Text.RegularExpressions.Regex("\"tipo\"\\s*:\\s*\"([^\"]*)\"");
+    var rxId = new System.Text.RegularExpressions.Regex("\"id\"\\s*:\\s*\"([^\"]*)\"");
+    var rxPessoal = new System.Text.RegularExpressions.Regex(",?\\s*\"pessoal\"\\s*:\\s*[01]");
+
+    for (int i = 0; i < linhasP.Length; i++)
+    {
+        var mid = rxId.Match(linhasP[i]);
+        if (!mid.Success) continue;
+        string id = mid.Groups[1].Value;
+
+        bool pessoal;
+        string porque;
+        if (porId.TryGetValue(id, out var achado)) (pessoal, porque) = achado;
+        else
+        {
+            orfas++;
+            string tipo = rxTipo.Match(linhasP[i]) is { Success: true } mt ? mt.Groups[1].Value : "";
+            (pessoal, porque) = Jandirus.Tools.DmTechScanner.Classificar(tipo, verbosP);
+            Console.WriteLine($"  orfa (nao sai do extrator): {id,-18} -> {(pessoal ? "PESSOAL" : "CHAO")}  ({porque})");
+        }
+
+        string antes = linhasP[i];
+        string limpa = rxPessoal.Replace(antes, "");
+        int fecha = limpa.LastIndexOf('}');
+        if (fecha < 0) continue;
+        linhasP[i] = limpa[..fecha].TrimEnd() + $", \"pessoal\": {(pessoal ? 1 : 0)} " + limpa[fecha..];
+        anotadas++;
+        if (linhasP[i] != antes) mudaram++;
+    }
+
+    System.IO.File.WriteAllLines(arqP, linhasP);
+    Console.WriteLine($"\n{anotadas} entrada(s) anotada(s) em {arqP} ({mudaram} linha(s) mudaram, {orfas} orfa(s))");
+    return 0;
+}
+
+if (args.Length >= 2 && args[0] == "motivos")
+{
+    // ============================ POR QUE A CLASSIFICACAO PRECISA SE EXPLICAR ============================
+    // O `construcoes.json` guarda o RESULTADO (`"pessoal": 0|1`) e joga fora a RAZAO. Quem for auditar
+    // a regra 2 daqui a um ano le "Camera: pessoal" e nao tem como saber se isso saiu de um verb do DM
+    // ou do criterio de reserva -- e a diferenca entre os dois e a diferenca entre um fato e um
+    // palpite. Os quatro criterios do <see cref="Jandirus.Tools.DmTechScanner.Classificar"/> nao tem o
+    // mesmo peso:
+    //
+    //   1. tem o verb `Bolt`            -> CHAO      (aparafusar so faz sentido em coisa assentada)
+    //   2. verb em `set src in usr`     -> PESSOAL   (so alcanca de dentro da mochila)
+    //   3. verb em `set src in oview`   -> CHAO      (`oview` exclui o proprio: so alcanca no chao)
+    //   4. sem verb proprio             -> herda o lugar na arvore, e e um PALPITE
+    //
+    // Este comando NAO ESCREVE NADA: ele so lista quem caiu em qual criterio, e conta. O numero do
+    // criterio 4 e o tamanho honesto da duvida que a regra 2 ainda tem, e ele merece estar num lugar
+    // onde da pra ler sem recompilar.
+    // ================================================================================================
+    string pastaM = args[1];
+    var verbosM = Jandirus.Tools.DmVerbScanner.Scan(pastaM);
+    var defsM = Jandirus.Tools.DmTechScanner.Scan(pastaM);
+    var arvoreM = Jandirus.Tools.DmTurfScanner.Scan(pastaM);
+    Jandirus.Tools.DmTechScanner.Resolver(defsM, arvoreM, [], verbosM);
+
+    var tally = new Dictionary<string, int>(StringComparer.Ordinal);
+    foreach (var d in defsM.OrderBy(x => x.PorQue, StringComparer.Ordinal).ThenBy(x => x.Id, StringComparer.Ordinal))
+    {
+        Console.WriteLine($"  {d.Id,-30} {(d.Pessoal ? "PESSOAL" : "CHAO   ")}  {d.PorQue}");
+        tally[d.PorQue] = tally.GetValueOrDefault(d.PorQue) + 1;
+    }
+    Console.WriteLine();
+    foreach (var (porque, n) in tally.OrderByDescending(kv => kv.Value))
+        Console.WriteLine($"  {n,4}  {porque}");
+    Console.WriteLine($"\n  {defsM.Count} entrada(s) do extrator (o arquivo do repo tem mais -- ver o comando `pessoal`)");
+    return 0;
+}
+
 if (args.Length >= 2 && args[0] == "tech")
 {
     // tech <pastaCode> [saida.json] : extrai as construcoes (obj/Creatables) da arvore do DM
@@ -542,16 +656,29 @@ if (args.Length >= 2 && args[0] == "tech")
     // erguida por um jogador era um retangulo desenhado por codigo, atravessavel -- ao lado da
     // mesma maquina, vinda do .dmm, que bloqueia normalmente.
     var arvore = Jandirus.Tools.DmTurfScanner.Scan(pasta);
+
+    // O ESCOPO DOS VERBS -- de onde sai a resposta pra "isto se instala ou se veste?". Ver
+    // `DmVerbScanner`, e `DmTechScanner.Classificar` pra regra.
+    var verbos = Jandirus.Tools.DmVerbScanner.Scan(pasta);
+
     var idxSprites = System.IO.Directory.Exists(pastaSprites)
         ? Jandirus.Tools.DmAppearanceScanner.IndiceDeSprites(pastaSprites)
         : [];
-    (int comArte, List<string> semArte) = Jandirus.Tools.DmTechScanner.Resolver(defs, arvore, idxSprites);
+    (int comArte, List<string> semArte) = Jandirus.Tools.DmTechScanner.Resolver(defs, arvore, idxSprites, verbos);
 
     Console.WriteLine($"construcoes com preco ou requisito: {defs.Count}");
     Console.WriteLine($"  so pra certas racas : {defs.Count(d => d.Racas.Count > 0)}");
     Console.WriteLine($"  tech necessario 0   : {defs.Count(d => d.TechNecessario <= 0)}");
     Console.WriteLine($"  com sprite          : {comArte}");
     Console.WriteLine($"  DENSAS (bloqueiam)  : {defs.Count(d => d.Densa)}");
+    Console.WriteLine($"  DE USO PESSOAL      : {defs.Count(d => d.Pessoal)}"
+                      + $"   (as outras {defs.Count(d => !d.Pessoal)} ganham \"Assentar no chão\")");
+
+    // O PORQUE DE CADA UMA, agrupado. Uma contagem sozinha ficaria verde com a regra caindo
+    // sempre no mesmo criterio -- que foi exatamente o defeito que ela veio consertar (o port
+    // classificava por AUSENCIA numa tabela de nove linhas).
+    foreach (var g in defs.GroupBy(d => d.PorQue).OrderByDescending(g2 => g2.Count()))
+        Console.WriteLine($"     {g.Count(),3}  {g.Key}");
     if (semArte.Count > 0)
     {
         Console.WriteLine($"  sem sprite ({semArte.Count}):");

@@ -40,6 +40,27 @@ public sealed class Construcao
 	public string Tipo = "";
 
 	/// <summary>
+	/// ISTO E DE USO PESSOAL (se carrega, se veste) em vez de coisa que se assenta no chao?
+	///
+	/// ============================ A REGRA 2 DO DONO, E ELA E UM DADO ============================
+	/// *"item que se poe no chao ganha a acao INSTALAR. Item de uso pessoal (scouter, armaduras,
+	/// pesos) NAO ganha -- ele e equipavel."*
+	///
+	/// O campo vem do `construcoes.json`, extraido do escopo dos verbs do original (`set src in usr`
+	/// x `set src in oview`, mais o verb `Bolt`) -- ver `DmVerbScanner` e `DmTechScanner.Classificar`
+	/// no pipeline. Ele NAO e uma lista de nomes escrita aqui, e essa e a diferenca que importa: o
+	/// port ja teve uma, e ela classificava por AUSENCIA numa tabela de nove linhas -- o que dava
+	/// "assentar no chao" pra vinte e oito itens pessoais, a **Armadura** e as nove armas de fogo
+	/// entre eles. A Armadura e um dos tres exemplos que o dono citou pelo nome.
+	///
+	/// O UNICO LEITOR E O `CatalogoDeItens.Get`, que traduz isto na acao "posicionar" -- e dai o
+	/// menu do inventario e o servidor leem a MESMA lista de acoes. Ver
+	/// `CatalogoDeItens.PodeAssentarNoChao`.
+	/// ==========================================================================================
+	/// </summary>
+	public bool Pessoal;
+
+	/// <summary>
 	/// DA PRA CONSTRUIR ISTO, ou e so mobilia do mapa?
 	///
 	/// O banco e a unica coisa deste catalogo que ninguem ergue: ele nao e um `Creatable` do DM,
@@ -192,6 +213,11 @@ public sealed class CatalogoDeObras
 				PixelX = Num(bloco, "px"),
 				PixelY = Num(bloco, "py"),
 				Tipo = Str(bloco, "tipo"),
+
+				// SEM O CAMPO, A CONSTRUCAO E DE CHAO -- e o padrao certo pra um catalogo antigo:
+				// o que este arquivo sempre teve foi maquina, e uma maquina que nao se instala e
+				// uma linha morta na mochila. Ver `Construcao.Pessoal`.
+				Pessoal = Num(bloco, "pessoal") > 0,
 			};
 			if (c.Id.Length == 0) continue;
 			cat._porId[c.Id] = c;

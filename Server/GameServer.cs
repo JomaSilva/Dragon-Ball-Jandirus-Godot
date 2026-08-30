@@ -2270,6 +2270,19 @@ public partial class GameServer : Node
 		_doisCorposDeTeste = Array.IndexOf(args, "--doiscorposteste") >= 0;
 		if (_doisCorposDeTeste) GD.Print("[server] BANCADA: dois corpos (agarrao, colisao, cadaver), no 1o login");
 
+		// `--tiquedamorte`: O QUADRO INTEIRO NO INSTANTE DA MORTE -- e a bancada que faltava embaixo
+		// das outras tres.
+		//
+		// A `--alemteste`, a `--cadaverteste` e a `--velorio` medem O QUE a morte produz (a viagem, a
+		// aureola, o corpo que fica) chamando **um subsistema por vez**, na mao. Nenhuma delas roda o
+		// `Tick()` -- e por isso as tres ficaram verdes durante todo o tempo em que **cada morte de
+		// jogador derrubava o tique inteiro do servidor** (`Collection was modified`, ver o comentario
+		// grande do `TickCombate`). Esta aqui mata alguem a soco e pergunta o que aconteceu com o
+		// QUADRO: o corpo no ar caiu, o tiro andou, a ferida sincronizou, e a ultima linha do tique
+		// rodou. Ver GameServer.TiqueDaMorteTeste.cs.
+		_tiqueDaMorteDeTeste = Array.IndexOf(args, "--tiquedamorte") >= 0;
+		if (_tiqueDaMorteDeTeste) GD.Print("[server] BANCADA: o quadro inteiro no instante da morte, no 1o login");
+
 		_planetaDeTeste = Array.IndexOf(args, "--planetateste") >= 0;
 		if (_planetaDeTeste) GD.Print("[server] BANCADA: destruicao de planeta no 1o login");
 
@@ -3948,6 +3961,14 @@ public partial class GameServer : Node
 		// bancadas de cima contam corpos.
 		if (_doisCorposDeTeste) { _doisCorposDeTeste = false; RodarBancadaDosDoisCorpos(pl); }
 
+		// A DO QUADRO DA MORTE logo depois das tres da morte, e a ordem tem razao: ela e a unica que
+		// roda o `Tick()` INTEIRO -- varias centenas de vezes --, entao o mundo em que ela mede ja
+		// passou por tudo o que as outras poem e tiram. Ela nao mata o host (forja o proprio algoz e
+		// as proprias vitimas, com `Peer` emprestado), mas precisa que ele exista: sem um `Peer` pra
+		// emprestar, `Gente.EhJogador` responde NAO e a triagem nunca chega na viagem -- que e o
+		// caminho que derrubava o tique.
+		if (_tiqueDaMorteDeTeste) { _tiqueDaMorteDeTeste = false; RodarBancadaDoTiqueDaMorte(pl); }
+
 		// A DA DESTRUICAO DE PLANETA depois da das sagas, e a ordem tem razao: a bancada das sagas
 		// leva um elo ate o ultimato e AGORA isso destroi um planeta de verdade. Rodando antes, a
 		// bancada da destruicao mexeria num registro que a das sagas ainda vai escrever -- e as
@@ -4958,7 +4979,40 @@ public partial class GameServer : Node
 			foreach (ServerPlayer pl in zona)
 				pl.Peer?.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
 		}
+
+		// ============================ A ULTIMA LINHA DO QUADRO -- E ELA E MENSURAVEL DE PROPOSITO ============================
+		// **UM INCREMENTO, E ELE E A UNICA FORMA DE UMA BANCADA AFIRMAR "O TIQUE CHEGOU AO FIM".**
+		//
+		// Nao ha nada aqui embaixo pra observar: o ultimo passo do tique e o snapshot por zona, que
+		// SO manda bytes (`EstadoDe` monta uma struct e o `Send` sai pelo `Peer`) -- num servidor sem
+		// plateia ele nao deixa marca nenhuma no mundo. Ou seja, um quadro que morre no meio e um
+		// quadro inteiro terminavam **iguais** pra quem olha de fora.
+		//
+		// E era exatamente esse o buraco: `TickCombate` e a PRIMEIRA chamada deste metodo, e enquanto
+		// o cadaver do jogador nascia dentro do laco dele (`InvalidOperationException: Collection was
+		// modified`, `GameServer.Combat.cs:1203`), os ~60 subsistemas daqui de cima **nao rodavam** a
+		// cada morte -- e nenhuma das bancadas conseguia dizer isso em voz alta. Elas mediam pedaco:
+		// chamavam `TickDoAgarrao`, `TickDosCadaveres`, `TickDosRelogiosDoCorpo` na mao, um por vez,
+		// e todas ficavam verdes com o servidor caindo inteiro em jogo.
+		//
+		// **NAO E UM CONTADOR DE TEMPO E NAO SUBSTITUI O `_tickCount`**: aquele e incrementado NO MEIO
+		// (ele decide as cadencias de 5 Hz e 1 Hz), entao ele nao sabe distinguir "morreu depois do
+		// combate" de "chegou ao fim". Este so e escrito depois da ultima linha util, e por isso
+		// "subiu 1 neste quadro" quer dizer o percurso inteiro.
+		//
+		// Custo: um `long++` a 30 Hz. Ver a bancada `--tiquedamorte`, que e quem o le.
+		// ==============================================================================================================
+		_quadrosInteiros++;
 	}
+
+	/// <summary>
+	/// QUANTOS QUADROS CHEGARAM AO FIM desde que o servidor subiu -- escrito na ULTIMA linha do
+	/// <see cref="Tick"/> e em nenhum outro lugar. Ver o bloco que o escreve pro argumento inteiro.
+	///
+	/// Um quadro que estoura no meio (foi o que toda morte de jogador fazia) nao incrementa isto,
+	/// enquanto o `_tickCount` -- que e mexido no meio do tique -- fica igual nos dois casos.
+	/// </summary>
+	private long _quadrosInteiros;
 
 	/// <summary>
 	/// Recalcula a ficha de cada jogador e manda de volta o que MUDOU. O pacote so sai quando
@@ -5285,6 +5339,14 @@ public partial class GameServer : Node
 			// ...E QUAL DELAS. Um segundo bit porque os dois sprites nao sao parecidos -- ver
 			// `EntityState.NaveGrande`.
 			NaveGrande = PilotaNaveGrande(pl.Id),
+			// O QUE ESTE CORPO ESTA FAZENDO -- e o que faz quem esta batendo (ou guardando, ou
+			// carregando...) parar tambem quem VOA contra ele. O calculo e o MESMO `OcupacaoDe` que
+			// alimenta a grade de colisao do servidor; o cliente le esta resposta em vez de refazer a
+			// lista do outro lado. Ver `EntityState.Ocupacao` e `Core/World/Ocupacao.cs`.
+			//
+			// O `canal` VAI JUNTO em vez de ser perguntado de novo, pelo mesmo motivo da pose logo
+			// acima: duas leituras do `_canais` no mesmo pacote podem discordar entre si.
+			Ocupacao = OcupacaoDe(pl, agora, canal),
 		};
 
 		// ============================ O BYTE DO CANAL SO E PREENCHIDO SE HOUVER CANAL ============================
@@ -5306,6 +5368,22 @@ public partial class GameServer : Node
 		return e;
 	}
 
+	/// <summary>
+	/// A lista de corpos de uma zona.
+	///
+	/// ============================ ELE PARECE LEITURA, MAS **ESCREVE** ============================
+	/// Zona que nunca foi vista NASCE aqui: a linha `_zones[hash] = l` e uma INSERCAO DE CHAVE NOVA,
+	/// e insercao e a unica operacao que invalida um `foreach` de `Dictionary` em andamento (o
+	/// `Remove`, desde o .NET Core 3.0, nao invalida). Ou seja: chamar `ZoneList(...)` de dentro de um
+	/// `foreach (... in _zones.Values)` -- e o maior deles e o do SNAPSHOT, no `Tick()` -- derruba o
+	/// tique inteiro com `InvalidOperationException: Collection was modified`, exatamente como o
+	/// cadaver derrubava o laco do `TickCombate` (ver o comentario grande la).
+	///
+	/// Hoje nenhum dos dois lacos de `_zones.Values` alcanca esta funcao, e por isso nao ha copia
+	/// defensiva paga por tique. Quem escrever o proximo: **consultar a lista de OUTRA zona de dentro
+	/// de um deles precisa da chave ja existente, ou da chamada fora do laco.**
+	/// ========================================================================================
+	/// </summary>
 	private List<ServerPlayer> ZoneList(ulong hash)
 	{
 		if (!_zones.TryGetValue(hash, out List<ServerPlayer>? l))

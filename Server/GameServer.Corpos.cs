@@ -1,4 +1,4 @@
-using Jandirus.Core.World;
+﻿using Jandirus.Core.World;
 
 namespace Jandirus.Server;
 
@@ -85,10 +85,58 @@ public sealed partial class GameServer
 			foreach (ServerPlayer pl in zona)
 			{
 				if (!EntraNaGrade(pl)) continue;
-				grade.Por(pl.Id, ClasseDeCorpo.Pes(pl.Pos), Voo.Andar(pl.Altitude));
+				// A OCUPACAO ENTRA NA GRADE PELO MESMO `OcupacaoDe` QUE O SNAPSHOT USA -- ver la. E
+				// isso importa: se a grade do servidor e o fio dessem respostas diferentes, o NPC
+				// pararia num corpo que o cliente do jogador deixa atravessar (ou o contrario), e o
+				// sintoma seria "so acontece contra NPC" / "so acontece contra gente".
+				grade.Por(pl.Id, ClasseDeCorpo.Pes(pl.Pos), Voo.Andar(pl.Altitude), OcupacaoDe(pl));
 			}
 		}
 	}
+
+	/// <summary>
+	/// ============================ O QUE ESTE CORPO ESTA FAZENDO -- **O UNICO FILLER** ============================
+	/// A LISTA nao esta aqui: ela mora no <see cref="CorpoOcupado"/> (Core), com a ordem de prioridade e
+	/// o nome de cada estado. Aqui esta so a TRADUCAO -- de onde, na ficha e nos dicionarios deste
+	/// servidor, sai cada sinal.
+	///
+	/// **E ele e chamado de dois lugares, e os dois sao o mesmo lado do jogo**: a grade de colisao
+	/// (<see cref="MontarAsGrades"/>, que serve o passo do NPC) e o snapshot (<see cref="EstadoDe"/>,
+	/// que serve a previsao do cliente). O cliente NAO recalcula nada -- ele le o byte. Por isso nao
+	/// existe a segunda lista que um dia divergiria da primeira.
+	///
+	/// ============================ POR QUE NAO SAI DO `PodeMexerOCorpo` ============================
+	/// Porque as perguntas sao diferentes e a diferenca tem caso real. `PodeMexerOCorpo` responde *"este
+	/// corpo pode ANDAR"*, e dentro dele estao o arrasto do feixe e o puxao da fusao -- corpos que
+	/// **estao sendo movidos**, o oposto de "nao pode ser deslocado". E faltam nele os tres estados que
+	/// o dono nomeou primeiro: socar, guardar e agarrar nao impedem ninguem de andar.
+	/// ==========================================================================================
+	/// </summary>
+	private Ocupacao OcupacaoDe(ServerPlayer pl) => OcupacaoDe(pl, NowMs(), CanalDeKiDe(pl.Id).canal);
+
+	/// <summary>
+	/// O mesmo, pra quem JA tem o relogio e a resposta do canal na mao (<see cref="EstadoDe"/> tem as
+	/// duas). Perguntar o canal duas vezes no mesmo pacote e o que o comentario de la manda evitar.
+	/// </summary>
+	private Ocupacao OcupacaoDe(ServerPlayer pl, long agora, bool canalDeKi) =>
+		CorpoOcupado.De(new CorpoOcupado.Sinais
+		{
+			// A MESMA CONTA DO `Pose()`: morto DE PE (no Outro Mundo) volta a ter poses e volta a
+			// andar, entao ele nao e um corpo caido -- e nao pode ser tratado como um.
+			Nocauteado = pl.Ficha.KO || (pl.Ficha.dead && !pl.MortoDePe),
+			NoEmbate = _emEmbate.ContainsKey(pl.Id) || _emEmbateDeKi.ContainsKey(pl.Id),
+			EmCena = EmCena(pl),
+			CanalizandoKi = canalDeKi,
+			// O ESTADO, e nao a aura. O snapshot manda `pl.AuraDaCarga` no bit `Carregando` porque la a
+			// pergunta e de DESENHO; aqui a pergunta e "o corpo esta preso em pe reunindo energia", e
+			// quem responde isso e o mesmo campo que o `PodeMexerOCorpo` le.
+			ReunindoKi = pl.Carregando,
+			Atacando = agora < pl.AtaqueAte,
+			Guardando = pl.Combate?.Bloqueando == true,
+			Agarrando = pl.AgarrandoId != 0,
+			Treinando = pl.Ficha.train,
+			Meditando = pl.Ficha.med,
+		});
 
 	/// <summary>
 	/// ============================ QUEM NAO ENTRA NA GRADE -- **um caso so, e ele nao e sobre identidade** ============================

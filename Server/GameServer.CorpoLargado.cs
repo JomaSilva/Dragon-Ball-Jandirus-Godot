@@ -264,12 +264,31 @@ public partial class GameServer
 	/// <summary>
 	/// DRENA A FILA -- chamado uma vez por tique, do <see cref="TickCombate"/>, com as listas de zona
 	/// ja livres.
+	///
+	/// ============================ POR INDICE E NAO `foreach`, E O MOTIVO E O MESMO DO TIQUE ============================
+	/// Numa `List&lt;T&gt;` **o `Add` invalida o enumerador** (ao contrario do `Dictionary.Remove`, que
+	/// nao invalida nada) -- e o corpo deste laco alcanca o `_acordar.Add` da <see cref="PorNaFilaDeVolta"/>
+	/// cinco chamadas abaixo:
+	///
+	///     VoltarDeOndeEstiver -> VoltarProCorpo/SairDaMente/PararDePilotar -> MoveToZone
+	///       -> SoltarDoEmbateDeKi -> Resolver -> Devolver -> MarcarAgressao -> AcordarNoCorpo -> PorNaFilaDeVolta
+	///
+	/// Conferi elo por elo e HOJE ele nao estoura, mas por coincidencia e nao por desenho: o unico alvo
+	/// possivel de um `Devolver` disparado daqui e o proprio corpo que esta voltando (ou o boneco dele),
+	/// entao o id enfileirado e sempre o que ja esta na lista -- e o `if (!_acordar.Contains(...))` da
+	/// `PorNaFilaDeVolta` engole o `Add`. Basta um caminho novo alcancar um boneco de OUTRO dono pra que
+	/// a fila que existe justamente pra evitar "Collection was modified" passe a lanca-lo.
+	///
+	/// O indice fecha isso de graca e sem copia: quem for enfileirado no meio da drenagem e atendido
+	/// NESTE mesmo tique (que e o que a fila promete -- *"na hora"* = 33 ms), e a `Contains` la garante
+	/// que ninguem entra duas vezes, entao o laco termina. Ver o comentario grande do `TickCombate`.
+	/// ==============================================================================================================
 	/// </summary>
 	private void TickDeQuemVolta()
 	{
 		if (_acordar.Count == 0) return;
-		foreach (int id in _acordar)
-			if (_players.TryGetValue(id, out ServerPlayer? pl) && pl.BonecoLargado != null)
+		for (int i = 0; i < _acordar.Count; i++)
+			if (_players.TryGetValue(_acordar[i], out ServerPlayer? pl) && pl.BonecoLargado != null)
 				VoltarDeOndeEstiver(pl, "algo atinge o seu corpo -- voce volta pra ele na hora.");
 		_acordar.Clear();
 	}

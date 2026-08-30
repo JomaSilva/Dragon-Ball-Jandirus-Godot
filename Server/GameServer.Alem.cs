@@ -155,7 +155,24 @@ public partial class GameServer
 	/// </summary>
 	private void VenceuOPrazoDaMorte(ServerPlayer pl)
 	{
-		if (EhNpcDoMundo(pl)) { _npcsPraTirar.Add(pl); return; }
+		// ============================ SEM DUPLICATA NA FILA, COMO NA `PorNaFilaDeVolta` ============================
+		// Este ramo NAO rearma o `RelogioDaMorte` -- de proposito: o corpo sem dono sai do mundo no dreno
+		// do fim deste mesmo tique, entao nao ha prazo pra remarcar. So que, se o dreno nao chegar a rodar
+		// (o `_npcsPraTirar.Clear()` e a ULTIMA linha do `TickCombate`, e qualquer excecao no meio do
+		// tique o pula), o mesmo corpo continua morto e vencido e cai aqui de novo no tique seguinte --
+		// agora com DUAS entradas na fila. Quando um tique enfim completa, o dreno passa duas vezes pelo
+		// mesmo NPC: `MorreuUmCorpoSemDono` cobrado em dobro (reputacao, rancor) e `DeixarOCadaver`
+		// chamado duas vezes -- **dois cadaveres empilhados pra um NPC so**, e isso o jogador ve.
+		//
+		// Foi exatamente o que aconteceu enquanto o cadaver do jogador derrubava o tique (ver o
+		// comentario grande no `TickCombate`). Aquele defeito esta fechado; esta guarda fecha a familia
+		// dele, e e a mesma linha que a `PorNaFilaDeVolta` ja usa na fila vizinha.
+		// ======================================================================================================
+		if (EhNpcDoMundo(pl))
+		{
+			if (!_npcsPraTirar.Contains(pl)) _npcsPraTirar.Add(pl);
+			return;
+		}
 		if (EhJogador(pl)) { PassoDaMorte(pl); return; }
 
 		// clone/reflexo/boneco/fera/corpo forjado: nao e conta daqui, e o relogio nao volta a vencer

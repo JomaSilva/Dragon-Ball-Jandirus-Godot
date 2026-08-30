@@ -645,6 +645,38 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagembarque") >= 0)
 			AddChild(new RoboDeEmbarque { Name = "RoboDeEmbarque" });
 
+		// --diaginstalar: o CICLO fabricar -> mochila -> instalar, andado inteiro. Vizinha da
+		// `--diagembarque` porque as duas medem um GESTO e nao um numero, e porque as duas passam
+		// pelo mesmo `posicionar` do servidor. Pede o `--techteste` (nivel e dinheiro pra comprar).
+		// Ver RoboDeInstalar -- e rode pelo `testar-instalar.bat`, que desvia a pasta de saves.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaginstalar") >= 0)
+		{
+			var ri = new RoboDeInstalar { Name = "RoboDeInstalar" };
+			// --instalaratraso <seg>: segura o comeco do roteiro pra o SEGUNDO CORPO
+			// (`--olhoinstalar`, noutro processo) ter tempo de conectar e entrar na zona. Sem isso
+			// ele perderia os primeiros marcos e a metade "os outros nao viram" ficaria verde por
+			// ausencia. Ver `testar-instalar-dois.bat`.
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--instalaratraso"),
+								System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double segI))
+				ri.Atraso = segI;
+			AddChild(ri);
+		}
+
+		// --olhoinstalar: O SEGUNDO CORPO. Ele nao fabrica e nao clica -- ele OLHA, de outro
+		// processo, com soquete e conta proprios. E a unica maneira de afirmar as duas metades que a
+		// `--diaginstalar` so pode inferir de dentro: que ninguem mais ve a previa, e que depois do
+		// clique todo mundo ve a obra. Ver RoboDeOlhoNoInstalar.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--olhoinstalar") >= 0)
+			AddChild(new RoboDeOlhoNoInstalar { Name = "RoboDeOlhoNoInstalar" });
+
+		// --fotoinstalar: A PREVIA FOTOGRAFADA. Precisa de JANELA (no headless o `GetImage` volta
+		// vazio) e mede no PIXEL o que as outras medem em campo: que o fantasma e translucido de
+		// verdade (a mistura com o chao de baixo, e nao um `Modulate` escrito) e que ele acompanha o
+		// cursor. Ver RoboDeFotoDoInstalar.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--fotoinstalar") >= 0)
+			AddChild(new RoboDeFotoDoInstalar { Name = "RoboDeFotoDoInstalar" });
+
 		// --diaguniverso: a IRMA da `--diagnav`. Aquela mede a carta (o widget); esta mede o
 		// UNIVERSO -- se as duas pontas enumeram o mesmo (assinatura pedida ao servidor PELO FIO),
 		// se os sete pre-feitos continuam bit a bit onde estavam, se a faixa de 1 a 10 mundos e
@@ -902,7 +934,7 @@ public partial class Boot : Node2D
 
 		// --diagcorpos: OS TRES PEDIDOS DO DONO, FOTOGRAFADOS -- dois corpos colidindo, alguem
 		// sendo CARREGADO no ar, e o cadaver no chao antes e depois do enterro. A irma dela e a
-		// `--doiscorposteste` (servidor, headless, 103 provas com oito defeitos injetados), e esta
+		// `--doiscorposteste` (servidor, headless, 236 provas com oito defeitos injetados), e esta
 		// e a metade que aquela nao pode ter: entre a caixa dos pes do servidor e o pixel ha o
 		// snapshot, o `World`, a interpolacao do corpo remoto e o Y-sort -- e aquela ficaria verde
 		// com o corpo desenhado atravessando o outro na tela. Precisa de `--host` (quem tem colisao

@@ -140,4 +140,100 @@ public sealed partial class GameServer
 		if (pl.Mochila.Quantos(CatalogoDeItens.Scouter) > 0) return true;
 		return Guardar(pl, CatalogoDeItens.Scouter);
 	}
+
+	/// <summary>
+	/// POE OU TIRA O NAV SYSTEM DA MOCHILA. Devolve se ele ficou la de verdade.
+	///
+	/// ============================ POR QUE ELA POE **E** TIRA ============================
+	/// A janela do scouter so sabe Por, porque o que a bancada dele exercita e o verbo `item_equipar`.
+	/// Aqui o portao E a mochila (`GameServer.Sigilo.TemNavSystem`), entao as duas metades da regra sao
+	/// duas mochilas diferentes -- e uma bancada que so soubesse por o item nasceria DENTRO do estado
+	/// "tem nav" e nunca mediria a ENTRADA nele nem a SAIDA dele. As duas metades ou nao ha regra.
+	///
+	/// ELA NAO ESCREVE O BIT, de proposito, exatamente como a do scouter: quem acende `Poder.Nav` e o
+	/// `PoderesVisiveis` do tique olhando a mochila. Acender o bit daqui provaria a barra de abas e nao
+	/// provaria o portao -- que e o defeito que esta tarefa veio consertar.
+	///
+	/// O `MandarAtributos` NAO PRECISA SER CHAMADO AQUI: o tique manda atributos pra todo jogador com
+	/// `Peer` (`GameServer.Combat.cs`), e a assinatura de deduplicacao inclui `a.Poderes` -- entao mexer
+	/// na mochila ja forca o reenvio dentro de um tique (1/30 s). A bancada espera um passo e mede.
+	/// ==================================================================================================
+	/// </summary>
+	internal bool NavSystemNaMochilaDeTeste(int id, bool ter)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+
+		if (!ter)
+		{
+			pl.Mochila.Tirar(CatalogoDeItens.NavSystem, int.MaxValue);
+			MandarMochila(pl);
+			return false;
+		}
+
+		if (pl.Mochila.Quantos(CatalogoDeItens.NavSystem) <= 0) Guardar(pl, CatalogoDeItens.NavSystem);
+		return pl.Mochila.Quantos(CatalogoDeItens.NavSystem) > 0;
+	}
+
+	/// <summary>
+	/// CONCEDE `Poder.Nav` AO JOGADOR SEM ITEM NENHUM. Devolve se o bit ficou aceso em `pl.Poderes`.
+	///
+	/// ============================ ESTA JANELA EXISTE PRA UM CONTRA-EXEMPLO ============================
+	/// Todas as outras janelas deste arquivo posam o estado que a bancada quer MEDIR. Esta posa o estado
+	/// que a regra tem que RECUSAR -- e ela existe porque o portao do Nav tem uma linha que, sem ela,
+	/// seria indistinguivel de codigo morto:
+	///
+	///     Protocol.Poder p = pl.Poderes &amp; ~Protocol.Poder.Nav;   // GameServer.Sigilo.cs
+	///
+	/// Com `pl.Poderes` nunca contendo o bit, esse `&amp; ~` nao apaga nada nunca, e trocar a linha inteira
+	/// por `pl.Poderes` daria exatamente o mesmo placar. Uma bancada que so soubesse por e tirar o ITEM
+	/// ficaria 100% verde com a garantia mais forte da funcao apagada -- que e a armadilha de sempre:
+	/// afirmacao de um lado so fica verde num sistema morto.
+	///
+	/// PELO CAMINHO DE PRODUCAO, e nao por `pl.Poderes |= ...`: o campo `Poderes` e REFEITO do zero toda
+	/// vez que a lista de skills muda (`AplicarPoderes`), entao escrever nele direto seria posar um
+	/// estado que o jogo apaga sozinho na proxima skill. `PoderesConcedidos` e o campo que sobrevive ao
+	/// recalculo, e e por ele que o admin, o cargo e o host acendem bit -- exatamente os caminhos por
+	/// onde um dia alguem pode acender o Nav sem lembrar deste portao. Ver `ServerPlayer.PoderesConcedidos`.
+	///
+	/// O `AplicarPoderes` tambem zera `SigAtributos`, entao o pacote de atributos sai no proximo tique
+	/// com o valor novo -- a bancada espera um passo e mede, como faz com a mochila.
+	/// ==================================================================================================
+	/// </summary>
+	internal bool PoderNavConcedidoDeTeste(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+
+		pl.PoderesConcedidos |= Jandirus.Net.Protocol.Poder.Nav;
+		AplicarPoderes(pl);
+		return (pl.Poderes & Jandirus.Net.Protocol.Poder.Nav) != 0;
+	}
+
+	/// <summary>
+	/// GRAVA O PERSONAGEM E LE DE VOLTA DO DISCO. Devolve se o Nav System sobreviveu a viagem.
+	///
+	/// ============================ ELA MEDE A UNICA RAZAO DE O ITEM NAO TER LIGA/DESLIGA ============================
+	/// O DM tem um `Power_Switch()` que acende `usr.hasnav` (`PlanetTech.dm:9-19`), e a decisao aqui foi
+	/// NAO porta-lo: o liga/desliga moraria em <c>ServerPlayer.PoderesConcedidos</c>, que nao vai pro
+	/// disco, e quem deslogasse ligado acordaria com a aba sumida. Por isso quem responde e a MOCHILA.
+	///
+	/// So que "a mochila vai pro disco" era, ate esta linha existir, uma AFIRMACAO MINHA. E e o tipo de
+	/// afirmacao que este projeto ja viu ficar errada em silencio: as cores de roupa estavam no objeto,
+	/// pareciam salvas, e nunca persistiram -- `System.Text.Json` pulava o campo. Um item que sumisse da
+	/// mochila no relog faria a aba sumir sozinha, e o jogador leria isso como "perdi meus 550.000".
+	///
+	/// PELO CAMINHO DE PRODUCAO INTEIRO, de proposito: `Persistir` e o mesmo metodo do logout (serializa
+	/// com as opcoes do `AccountStore` e grava por arquivo temporario + rename), e a leitura e o mesmo
+	/// `Carregar` do login. Um round-trip so na memoria nao provaria nada -- o defeito das cores estava
+	/// exatamente entre o objeto e o JSON.
+	/// ==========================================================================================================
+	/// </summary>
+	internal bool NavSobreviveAoRelogDeTeste(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || _store == null) return false;
+		if (pl.Conta.Length == 0 || pl.Slot < 0) return false;
+
+		Persistir(pl);
+		CharacterSave? lida = _store.Carregar(pl.Conta)?.Slots[pl.Slot];
+		return lida?.Mochila?.Quantos(CatalogoDeItens.NavSystem) > 0;
+	}
 }

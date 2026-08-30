@@ -139,9 +139,19 @@ public static class MoveRules
 		// JA PRESO NUMA CELULA QUE PARA ESTE CORPO -- ver <see cref="Escapar"/>, que e onde a regra
 		// inteira mora e onde esta escrito por que ela deixou de ser "aprova tudo".
 		//
-		// ELA CONTINUA SENDO SO SOBRE **GEOMETRIA**, e isso e deliberado: estar dentro de um CORPO nao
-		// entra aqui. Quem esta em cima de alguem nao precisa de socorro nenhum -- precisa so que
-		// AQUELE corpo pare de contar, que e o `jaSobrepondo` do `GradeDeCorpos.Quem`.
+		// QUEM CONCEDE O ESCAPE CONTINUA SENDO SO A **GEOMETRIA**, e isso e deliberado: estar dentro de
+		// um CORPO nao pede socorro nenhum -- pede so que AQUELE corpo pare de contar, que e o
+		// `jaSobrepondo` do `GradeDeCorpos.Quem`.
+		//
+		// **MAS O ESCAPE CONCEDIDO NAO E LICENCA PRA ATRAVESSAR GENTE**, e essa parte estava faltando:
+		// medido na Fase 0, um corpo com o pe numa celula de parede andava 157 px POR DENTRO de outro
+		// corpo, 0 quadros barrados, porque este ramo devolvia o passo sem consultar a vizinhanca. Era o
+		// mesmo buraco de sempre -- a regra ligada num chamador e esquecida no outro --, e ele valia
+		// justamente pra quem esta na quina de um muro, que e onde as brigas encostam.
+		//
+		// Agora o passo do preso tem que cumprir as DUAS coisas: aproximar do refugio E nao entrar em
+		// ninguem. Isso nao prende quem esta em cima de alguem (o `jaSobrepondo` continua valendo) e
+		// nao prende quem esta enterrado sem saida nenhuma (o `SemRefugio` logo acima nem chega aqui).
 		if (Occupied(mapa, pos, modo))
 		{
 			Escape esc = Escapar(mapa, pos, modo, out Vec2 refugio);
@@ -149,24 +159,32 @@ public static class MoveRules
 			// MAPA QUEBRADO: nao ha lugar valido em `RaioDoEscape` tiles. Vale o comportamento antigo
 			// -- passo cheio, sem consultar nada --, porque o defeito ali e do mapa e prender o corpo
 			// nao o conserta.
+			//
+			// **E ELE CONTINUA SEM CONSULTAR CORPO, DE PROPOSITO.** Este ramo e o unico jeito de sair de
+			// um mapa que nao tem saida; somar uma segunda condicao a ele criaria o travamento que ele
+			// existe pra evitar -- enterrado num mapa quebrado E com alguem de guarda ao lado, e o mapa
+			// nao se conserta sozinho. O preco esta dito em voz alta: um corpo enterrado sem refugio em
+			// 8 aneis atravessa gente por alguns quadros. Nao e o caso do pedido do dono (que se passa
+			// em chao aberto) e nao ha mapa do jogo em que ele aconteca -- o pior medido, o pouso em
+			// Icer, para no anel 8.
 			if (esc == Escape.SemRefugio) return alvo;
 
-			// PRESO PELA GEOMETRIA, COM SAIDA: so vale o passo que APROXIMA. O deslize de quina
-			// continua existindo, pelo mesmo motivo de sempre (nao travar de frente), so que agora ele
-			// tambem tem que aproximar.
+			// PRESO PELA GEOMETRIA, COM SAIDA: so vale o passo que APROXIMA **e que nao entra em
+			// ninguem**. O deslize de quina continua existindo, pelo mesmo motivo de sempre (nao travar
+			// de frente), so que agora ele tambem tem que aproximar e tambem tem que caber.
 			if (esc == Escape.Dirigido)
 			{
-				if (Aproxima(pos, alvo, refugio)) return alvo;
+				if (Aproxima(pos, alvo, refugio) && vizinhos.Barra(pos, alvo, modo) == 0) return alvo;
 				blocked = true;
 				if (step.X != 0)
 				{
 					var ex = new Vec2(alvo.X, pos.Y);
-					if (Aproxima(pos, ex, refugio)) return ex;
+					if (Aproxima(pos, ex, refugio) && vizinhos.Barra(pos, ex, modo) == 0) return ex;
 				}
 				if (step.Y != 0)
 				{
 					var ey = new Vec2(pos.X, alvo.Y);
-					if (Aproxima(pos, ey, refugio)) return ey;
+					if (Aproxima(pos, ey, refugio) && vizinhos.Barra(pos, ey, modo) == 0) return ey;
 				}
 				return pos;
 			}

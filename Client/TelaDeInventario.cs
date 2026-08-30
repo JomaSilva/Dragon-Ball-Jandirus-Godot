@@ -250,7 +250,7 @@ public partial class TelaDeInventario : CanvasLayer
 
 				// POSICIONAR NAO MANDA VERBO: ela poe a construcao na MAO e fecha o inventario. O
 				// verbo sai depois, quando o jogador clicar no chao -- ver `TelaDeConstrucao`.
-				if (a == "posicionar")
+				if (a == Jandirus.Core.Items.CatalogoDeItens.AcaoPosicionar)
 				{
 					Fechar();
 					TelaDeConstrucao.Instancia?.Segurar(def.Id);
@@ -306,7 +306,10 @@ public partial class TelaDeInventario : CanvasLayer
 		"usar" => "Usar",
 		"cavar" => "Cavar aqui",
 		"jogar" => "Jogar no alvo marcado",
-		"posicionar" => "Assentar no chão",
+		// A PALAVRA E A DO DONO ("clicar em instalar"), e ela e a MESMA na frase que o servidor manda
+		// depois de fabricar -- ver `GameServer.Construir`. Duas palavras pro mesmo botao fariam o
+		// jogador procurar um segundo botao que nao existe.
+		Jandirus.Core.Items.CatalogoDeItens.AcaoPosicionar => "Instalar no chão",
 		"largar" => "Jogar fora",
 		_ => char.ToUpperInvariant(acao[0]) + acao[1..],
 	};

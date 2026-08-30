@@ -18,8 +18,14 @@ namespace Jandirus.Client;
 ///   * clicar seleciona? viajar liga o piloto?
 /// ====================================================================================
 ///
-/// COMO RODAR:
-///     Godot --headless --path . --host --diagnav --nome Piloto --conta piloto
+/// COMO RODAR -- pelo `testar-nav.bat`, e nao pela linha crua:
+///     testar-nav.bat            sem janela
+///     testar-nav.bat janela     com janela, no SEGUNDO monitor
+///
+/// O `.bat` desvia o `APPDATA` antes de subir o Godot. Isso nao e conforto: esta bancada cria
+/// personagem, poe e tira item, decola, morre no vacuo e GRAVA no disco -- a linha crua
+/// (`Godot --headless --path . --host --diagnav --conta piloto --nome Piloto`) faz tudo isso dentro
+/// da pasta de saves de quem estiver na maquina, e neste projeto isso ja custou o mundo real do dono.
 /// </summary>
 public partial class RoboDeNav : Node
 {
@@ -316,7 +322,21 @@ public partial class RoboDeNav : Node
 	///
 	/// Vai o aperto E a soltura porque o Godot mantem a mascara de botao apertado entre os dois: so o
 	/// aperto deixaria a roda "presa" pro proximo passo da bancada.
-	/// ==========================================================================================
+	///
+	/// ============================ `inLocalCoords: true`, E ELE NAO E DETALHE ============================
+	/// O ponto vem de `Control.GetGlobalRect()`, que ja e coordenada do VIEWPORT. Sem esta flag o
+	/// `PushInput` roda o `_make_input_local` e converte de novo, pelo inverso do `final_transform` --
+	/// e este projeto tem `stretch/mode = "canvas_items"` (`project.godot`), entao esse transform e uma
+	/// ESCALA sempre que a janela nao mede exatamente os 1280x720 de base. A conta era aplicada uma vez
+	/// a mais e a roda chegava noutro pixel.
+	///
+	/// ISSO FICOU INVISIVEL POR DUAS RAZOES, e as duas sao armadilha de bancada. No `--headless` a
+	/// janela mede (0,0): a aba inteira nasce sem tamanho, nada responde a roda e as familias que
+	/// medem DIFERENCA (o ponto sob o cursor, a pagina que rola) ficam verdes com zero de um lado e
+	/// zero do outro. E com janela, a familia da tela do sistema roda ANTES do `JanelaGrande()`, com a
+	/// escala ainda em 1,0 -- so a da carta, que roda depois de maximizar, e que via o desvio. Mesmo
+	/// achado (e mesma linha) do `ClicarNoMundo` da `--diaginstalar`.
+	/// ==============================================================================================
 	/// </summary>
 	private void RodaEm(Vector2 global, bool paraCima)
 	{
@@ -327,7 +347,7 @@ public partial class RoboDeNav : Node
 				Pressed = apertado,
 				Position = global,
 				GlobalPosition = global,
-			});
+			}, true);
 	}
 
 	/// <summary>
@@ -335,9 +355,14 @@ public partial class RoboDeNav : Node
 	///
 	/// O conserto da roda e o tipo de coisa que passa a valer pra tela inteira sem ninguem perceber, e
 	/// a metade cara do pedido e justamente a que NAO se ve: fora do mapa a pagina rola como sempre
-	/// rolou. Este ponto e o topo da area visivel da rolagem (o bloco de dominio, acima da carta), e a
-	/// bancada afirma que ele esta fora dos dois mapas antes de usa-lo -- um ponto que por acaso caisse
-	/// dentro da carta deixaria o teste verde sem testar nada.
+	/// rolou. A bancada afirma que o ponto esta fora dos dois mapas antes de usa-lo -- um ponto que por
+	/// acaso caisse dentro da carta deixaria o teste verde sem testar nada.
+	///
+	/// O ponto e o topo da area visivel da rolagem. Ele era o bloco de dominio, que MUDOU DE ABA (foi
+	/// pra World junto com as esferas, quando a aba Nav passou a exigir o item Nav System); hoje e a
+	/// etiqueta "CARTA ESTELAR", que e `Label` como aquela era e deixa a roda passar do mesmo jeito
+	/// (`MouseFilter.Ignore`). Quando esta familia reprova, o relatorio diz QUEM estava debaixo do
+	/// ponto -- ver <see cref="QuemEsta"/>.
 	/// </summary>
 	private Vector2? PontoForaDoMapa()
 	{
@@ -346,6 +371,25 @@ public partial class RoboDeNav : Node
 		if (_mapa != null && _mapa.Visible && _mapa.GetGlobalRect().HasPoint(p)) return null;
 		if (_tela != null && _tela.Visible && _tela.GetGlobalRect().HasPoint(p)) return null;
 		return p;
+	}
+
+	/// <summary>
+	/// QUEM ESTA DEBAIXO DESTE PIXEL -- o Control visivel mais fundo cujo retangulo o contem, com o
+	/// `MouseFilter` dele. So entra no relatorio quando a familia C reprova, e existe porque "a pagina
+	/// nao rolou" nao diz POR QUE: um `Button` (filtro `Stop`) come a roda em qualquer aba deste menu,
+	/// e sem esta linha a diferenca entre "o freio vazou" e "o ponto caiu num botao" fica invisivel.
+	/// </summary>
+	private static string QuemEsta(Node raiz, Vector2 p)
+	{
+		string achado = "(nada)";
+		void Descer(Node n)
+		{
+			if (n is Control c && c.IsVisibleInTree() && c.GetGlobalRect().HasPoint(p))
+				achado = $"{c.GetType().Name}('{(c is Label lb ? lb.Text : c is Button bt ? bt.Text : c.Name)}') filtro={c.MouseFilter}";
+			foreach (Node f in n.GetChildren()) Descer(f);
+		}
+		Descer(raiz);
+		return achado;
 	}
 
 	/// <summary>
@@ -446,12 +490,28 @@ public partial class RoboDeNav : Node
 		// ======================================================================================================
 		if (PontoForaDoMapa() is { } fora)
 		{
+			// ============================ A SOBRA E CONDICAO, E POR ISSO ELA E AFIRMADA ============================
+			// "A pagina desceu" so quer dizer alguma coisa se houver pagina pra descer: numa aba que cabe
+			// inteira na area visivel o `ScrollVertical` fica em 0 com o freio funcionando E com o freio
+			// vazando, e a familia inteira vira enfeite. O `MaxValue` sozinho NAO responde isso -- ele e a
+			// altura do CONTEUDO --; quem responde e `MaxValue - Page`, que e o quanto ainda da pra rolar.
+			//
+			// ELA E AFIRMADA E NAO CONTORNADA de proposito. A aba Nav encolheu nesta tarefa (dominio e
+			// esferas mudaram pra World), e se um dia ela couber na tela o certo e esta linha ficar
+			// VERMELHA avisando que a familia perdeu o alcance -- e nao passar calada por falta de pagina,
+			// que e a armadilha que a familia B, logo acima, ja documenta com estas mesmas palavras.
+			// ====================================================================================================
+			double sobra = sc.GetVScrollBar().MaxValue - sc.GetVScrollBar().Page;
+			Conferir(sobra >= 1,
+				$"{quem}: a aba tem pagina pra rolar ({sobra:0} px de sobra -- conteudo "
+			  + $"{sc.GetVScrollBar().MaxValue:0}, visivel {sc.GetVScrollBar().Page:0}); sem sobra a familia C fica cega");
+
 			int rf = sc.ScrollVertical;
 			float ef = escala();
 			RodaEm(fora, false);
 			Conferir(sc.ScrollVertical > rf,
 				$"{quem}: FORA do mapa a pagina rola como sempre rolou ({rf} -> {sc.ScrollVertical}, "
-			  + $"teto {sc.GetVScrollBar().MaxValue:0})");
+			  + $"sobra {sobra:0} de {sc.GetVScrollBar().MaxValue:0}) [ponto {fora}, debaixo: {QuemEsta(sc, fora)}]");
 			Conferir(escala() == ef,
 				$"{quem}: e a roda fora do mapa nao mexe no zoom dele ({ef:0.00000000})");
 			sc.ScrollVertical = rf;
@@ -547,6 +607,248 @@ public partial class RoboDeNav : Node
 	{
 		_passos.Add((ok ? "  ok   " : "  FALHA") + "  " + oque);
 		if (!ok) _falhas.Add(oque);
+	}
+
+	// =====================================================================
+	// O PORTAO DO ITEM (pedido do dono: a aba so existe com o Nav System na mochila)
+	// =====================================================================
+	/// <summary>O item entrou na mochila no passo 0? Ver o passo 1.</summary>
+	private bool _ganhou;
+
+	/// <summary>Em que ponto da medicao de saida estamos. Ver <see cref="MedirASaida"/>.</summary>
+	private int _saida;
+
+	/// <summary>O servidor conseguiu acender `Poder.Nav` por dentro? Ver o passo 2 da saida.</summary>
+	private bool _bitCru;
+
+	/// <summary>
+	/// PERDER O ITEM: a aba tem que SUMIR. Devolve `true` quando acabou (cinco passos de meio segundo).
+	///
+	/// ============================ POR QUE MEDIR A BARRA, E NAO O NO ============================
+	/// A pagina da aba nao e liberada quando a aba some (`PaginaDe` guarda a `VBoxContainer` e o
+	/// `Redesenhar` so troca `Visible`), entao o `MapaEstelar` continua VIVO na arvore depois de perder o
+	/// item. Medir "o mapa morreu" seria cobrar uma coisa que nao acontece; medir "o no existe" seria
+	/// medir INTENCAO. O que o jogador ve e a BARRA -- e e ela que responde aqui, junto do `Visible` da
+	/// pagina, que e o que a tela de fato desenha.
+	///
+	/// ============================ E AS ESFERAS TEM QUE SOBREVIVER ============================
+	/// A ultima checagem nao e sobre navegacao: dominio planetario e Esferas do Dragao moravam DENTRO da
+	/// aba Nav, e trancar a aba as trancaria junto -- fincar bandeira e invocar Shenron atras de um
+	/// aparelho de 550.000 zeni, que ninguem pediu. Elas mudaram pra aba World (ver `MenuJogo.Mundo`), e
+	/// esta linha e o que impede alguem de desfazer isso sem perceber: com o item PERDIDO, o botao ainda
+	/// tem que estar la, numa pagina REMONTADA (por isso o `ForcarRedesenho`).
+	///
+	/// AQUI SO CABEM AS ESFERAS porque neste ponto a bancada ja DECOLOU. O bloco de dominio so se desenha
+	/// em planeta, e quem o cobra e o passo 0 -- em terra firme e tambem sem o item, que e a situacao do
+	/// jogador que esta mudanca protege.
+	///
+	/// ============================ E DEPOIS O CONTRA-EXEMPLO (passos 2 a 4) ============================
+	/// Tudo o que vem antes mexe no ITEM. Isso deixa a garantia mais forte do portao sem testemunha: o
+	/// `& ~Protocol.Poder.Nav` de `PoderesVisiveis`, que so tem o que apagar quando alguem acende o bit
+	/// POR DENTRO. Enquanto ninguem acende, trocar a funcao inteira por `return pl.Poderes;` daria o
+	/// mesmo placar -- e a garantia seria decoracao com nota cheia.
+	///
+	/// Entao os tres ultimos passos ligam o bit pelo caminho de producao (`PoderesConcedidos` +
+	/// `AplicarPoderes`, por onde admin, cargo e host acendem bit -- ver
+	/// `GameServer.PoderNavConcedidoDeTeste`) e mandam o ITEM entrar e sair COM ele aceso. As duas
+	/// direcoes: sem item o bit nao passa nem concedido, com item passa, e tirando o item ele apaga de
+	/// novo com a concessao intacta -- que e o que prova que quem manda e o item, e nao a concessao.
+	/// ==========================================================================================
+	/// </summary>
+	private bool MedirASaida(MenuJogo menu)
+	{
+		if (C is not { } cli) return true;
+
+		switch (_saida++)
+		{
+			case 0:
+				// ESTOU NA ABA NAV NA HORA DE PERDER O ITEM -- que e o caso ruim, e o gemeo do que o
+				// original ja trata (tirar o scouter com a aba Scan aberta, `HtmlUI.dm:143-145`).
+				menu.Abrir();
+				menu.IrPara("Nav");
+				Conferir(Array.IndexOf(menu.AbasDeTeste, "Nav") >= 0
+						 && menu.PaginaDeTeste("Nav") is { Visible: true },
+					"antes de perder: estou COM o item e olhando a aba Nav");
+				Jandirus.Server.GameServer.Instance?.NavSystemNaMochilaDeTeste(cli.LocalId, false);
+				return false;
+
+			case 1:
+				Conferir(cli.Mochila.Quantos(Jandirus.Core.Items.CatalogoDeItens.NavSystem) == 0,
+					"perdi o item: ele saiu da mochila do cliente");
+				Conferir(!cli.Atributos.Tem(Jandirus.Net.Protocol.Poder.Nav),
+					"perdi o item: o bit Nav APAGA no fio");
+				Conferir(Array.IndexOf(menu.AbasDeTeste, "Nav") < 0,
+					"perdi o item: a aba Nav SAI da barra do menu P");
+				Conferir(menu.PaginaDeTeste("Nav") is not { Visible: true },
+					"perdi o item olhando a Nav: a pagina dela nao continua na tela");
+
+				// ============================ E NAO VIROU TELA MORTA ============================
+				// As quatro linhas acima provam que a Nav SUMIU, e sumir e so metade da pergunta. A outra
+				// metade e a que o dono faria olhando pro menu: *"e ficou o que no lugar?"*. Um menu cuja
+				// aba da vez deixou de existir pode perfeitamente ficar com a barra desenhada e o corpo em
+				// BRANCO -- nenhuma pagina visivel, nenhum texto --, e todas as checagens de "sumiu"
+				// continuariam verdes. E o desvio que o `Redesenhar` faz ("a aba aberta pode ter DEIXADO de
+				// existir") que impede isso, e ate agora ninguem cobrava esse desvio.
+				//
+				// AS TRES SAO O QUE O JOGADOR VE, em ordem: a aba da vez trocou sozinha, a aba nova
+				// EXISTE na barra (cair numa aba fantasma seria o mesmo branco por outro caminho), e a
+				// pagina dela esta na tela COM COISA ESCRITA -- por isso `ContarTexto` e nao
+				// `GetChildCount`: uma pagina com filhos vazios continua sendo tela morta.
+				// ==============================================================================
+				string agora = menu.AbaDeTeste;
+				Conferir(agora != "Nav", $"perdi o item olhando a Nav: o menu trocou de aba sozinho (fui pra '{agora}')");
+				Conferir(Array.IndexOf(menu.AbasDeTeste, agora) >= 0,
+					$"a aba pra onde cai ('{agora}') EXISTE na barra");
+				int escrito = menu.PaginaDeTeste(agora) is { Visible: true } pn ? ContarTexto(pn) : 0;
+				Conferir(escrito > 0,
+					$"perdi o item olhando a Nav: o menu NAO virou tela morta ('{agora}' com {escrito} linhas escritas)");
+
+				// A ABA WORLD REMONTADA (o `ForcarRedesenho` ignora a assinatura) DEPOIS de perder o item:
+				// e a prova de que a aba que herdou dominio e esferas nao depende do Nav System.
+				//
+				// AQUI SO CABEM AS ESFERAS: a bancada ja decolou, e no espaco `Espaco.EhPlaneta` e falso e o
+				// bloco de dominio nao se desenha -- por design, e nao por causa desta mudanca. Quem cobra o
+				// dominio e o passo 0, em terra firme e tambem sem o item.
+				menu.IrPara("World");
+				menu.ForcarRedesenho();
+				Conferir(Espaco.EhEspaco(cli.Zone), "estou no ESPACO (foi ate onde a bancada me trouxe)");
+				Conferir(menu.PaginaDeTeste("World") is { } pw && TemBotao(pw, "Ver os desejos"),
+					"SEM o Nav System, as Super Esferas continuam alcancaveis (aba World)");
+
+				// ============================ O QUE O PORTAO **NAO** FECHA, MEDIDO ============================
+				// A `AbaNav` diz por escrito que esconder a aba NAO E PERMISSAO, e ate agora isso era
+				// afirmacao minha -- do tipo que este projeto ja pagou caro pra descobrir que estava errada.
+				// Entao as duas linhas abaixo MEDEM o buraco, no unico instante em que ele da pra medir: o
+				// item acabou de sair da mochila, o bit apagou no fio, a aba sumiu da barra -- e mesmo assim:
+				//
+				//   1. a galaxia continua enumeravel, porque ela e funcao PURA da seed e mora no cliente
+				//      (`Sistemas.Em`, `MapaEstelar`); nenhum byte de rede foi pedido pra saber onde ficam
+				//      os mundos, entao nao ha o que o servidor possa recusar;
+				//   2. o piloto automatico continua ligando, porque `World.Pilotar` so escreve
+				//      `LocalPlayer.Destino` -- e andar ate la o servidor valida como ANDAR, e nao como usar
+				//      um aparelho.
+				//
+				// ISTO NAO E UM DEFEITO A CONSERTAR AQUI, e sim o TAMANHO da promessa registrado em numero:
+				// o que o portao entrega e "a aba nao monta sem o item", e nada alem disso. Se um dia alguem
+				// tratar a aba escondida como cadeado, estas duas linhas VIRAM VERMELHAS na cara dele -- e o
+				// conserto de verdade (enumerar planetas e pilotar do lado do servidor) e outra ordem de
+				// grandeza, que ninguem pediu.
+				// ==========================================================================================
+				bool galaxiaAberta = Sistemas.Em(cli.SeedDoUniverso, new Vec2(0, 0)) is { Orbitas: > 0 };
+				Conferir(galaxiaAberta,
+					"SEM o item, a galaxia continua enumeravel no cliente -- esconder a aba NAO e permissao");
+
+				World.Instancia?.Pilotar(new Vector2(3000, 3000));
+				Conferir(World.Instancia?.DestinoDoPiloto != null,
+					"SEM o item, o piloto automatico ainda liga -- o portao e da ABA, e nao da viagem");
+				World.Instancia?.SoltarPiloto();
+
+				// ============================ O CONTRA-EXEMPLO COMECA AQUI ============================
+				// O servidor CONCEDE `Poder.Nav` pelo caminho de producao (`PoderesConcedidos` +
+				// `AplicarPoderes`, que e por onde o admin, o cargo e o host acendem bit), e o item
+				// continua FORA da mochila. Ver `GameServer.PoderNavConcedidoDeTeste` -- e as tres
+				// medicoes que vem a seguir.
+				// =====================================================================================
+				_bitCru = Jandirus.Server.GameServer.Instance?.PoderNavConcedidoDeTeste(cli.LocalId) ?? false;
+				return false;
+
+			case 2:
+			{
+				// ============================ SEM O ITEM, NEM O BIT CONCEDIDO PASSA ============================
+				// A linha que esta a julgamento e uma so, em `GameServer.Sigilo.PoderesVisiveis`:
+				//
+				//     Protocol.Poder p = pl.Poderes & ~Protocol.Poder.Nav;
+				//
+				// Enquanto ninguem acender `Poder.Nav` do lado de dentro, esse `& ~` nao apaga nada nunca --
+				// e trocar a funcao inteira por `return pl.Poderes;` daria o MESMO placar. Este passo e o
+				// unico ponto da bancada que sabe a diferenca entre a garantia estar viva e ela ser
+				// decoracao: o servidor tem o bit aceso em `pl.Poderes` e mesmo assim NAO o manda pelo fio.
+				//
+				// E E O MAIS PERTO DE "PEDIR O DADO E SER RECUSADO" QUE ESTE SISTEMA TEM. Nao ha pergunta de
+				// carta estelar pra recusar: o mapa e funcao pura da seed e mora no cliente (`MapaEstelar`).
+				// O que o servidor entrega e o BIT, e e ele que ele recusa a entregar sem o item.
+				// =========================================================================================
+				Conferir(_bitCru, "o servidor CONCEDEU Poder.Nav por dentro (o contra-exemplo esta armado)");
+				Conferir(cli.Mochila.Quantos(Jandirus.Core.Items.CatalogoDeItens.NavSystem) == 0,
+					"e o item continua FORA da mochila");
+				Conferir(!cli.Atributos.Tem(Jandirus.Net.Protocol.Poder.Nav),
+					"com o bit CONCEDIDO por dentro e sem o item, o servidor ainda assim NAO manda Nav pelo fio");
+				Conferir(Array.IndexOf(menu.AbasDeTeste, "Nav") < 0,
+					"com o bit CONCEDIDO por dentro e sem o item, a aba Nav continua fora da barra");
+
+				// O ITEM VOLTA, e a concessao continua de pe: as duas coisas juntas TEM que abrir a aba.
+				// Sem este passo o anterior ficaria verde tambem num portao emperrado em "nao" -- que e a
+				// mesma armadilha do "afirmacao de um lado so", agora do outro lado.
+				Jandirus.Server.GameServer.Instance?.NavSystemNaMochilaDeTeste(cli.LocalId, true);
+				return false;
+			}
+
+			case 3:
+				Conferir(cli.Atributos.Tem(Jandirus.Net.Protocol.Poder.Nav),
+					"item de volta (com a concessao de pe): o bit Nav volta a chegar");
+				Conferir(Array.IndexOf(menu.AbasDeTeste, "Nav") >= 0,
+					"item de volta (com a concessao de pe): a aba Nav volta a barra");
+
+				// E SAI DE NOVO, com a concessao INTACTA: o que apaga o bit e a falta do ITEM, e nao a
+				// falta da concessao. Sem esta ida e volta, "o bit apagou" teria duas explicacoes possiveis.
+				Jandirus.Server.GameServer.Instance?.NavSystemNaMochilaDeTeste(cli.LocalId, false);
+				return false;
+
+			case 4:
+			{
+				Conferir(!cli.Atributos.Tem(Jandirus.Net.Protocol.Poder.Nav),
+					"item embora e concessao INTACTA: o bit apaga de novo -- quem manda e o item");
+				Conferir(Array.IndexOf(menu.AbasDeTeste, "Nav") < 0,
+					"item embora e concessao INTACTA: a aba Nav sai da barra de novo");
+
+				// ============================ NEM PELA PORTA DOS FUNDOS ============================
+				// `IrPara` e o MESMO caminho que o botao da barra usa -- e aqui ele e chamado com um nome
+				// de aba que nao esta mais na barra, que e o mais perto que um teste chega de um jogador
+				// tentando voltar pra aba que ele acabou de perder.
+				//
+				// ISTO TAMBEM E O QUE DIZ QUE A RECUSA ESCRITA DENTRO DA `AbaNav` E INALCANCAVEL: o
+				// `Redesenhar` desvia a aba que deixou de existir ANTES de montar a pagina, entao o texto
+				// "o sistema de navegacao esta desligado" nunca chega a ser desenhado por caminho nenhum
+				// do cliente. Ela fica como a do original (`HtmlUI.dm:336-344`, que tambem imprime a recusa
+				// com a barra ja escondendo a aba), e esta linha e o que registra que a barra vem primeiro
+				// -- em vez de eu afirmar isso de cabeca.
+				// ==================================================================================
+				menu.IrPara("Nav");
+				Conferir(menu.AbaDeTeste != "Nav" && menu.PaginaDeTeste("Nav") is not { Visible: true },
+					$"sem o item, pedir a aba Nav pelo caminho do botao nao entra nela (fiquei em '{menu.AbaDeTeste}')");
+				return true;
+			}
+
+			default: return true;
+		}
+	}
+
+	/// <summary>
+	/// QUANTAS LINHAS DE TEXTO NAO-VAZIO ESTA PAGINA DESENHA.
+	///
+	/// E o crivo de TELA MORTA, e por isso conta `Label` com texto e nao filhos: uma pagina pode ter
+	/// dez containers vazios dentro e continuar sendo um retangulo em branco pra quem olha. Vizinha do
+	/// <see cref="TemBotao"/> pelo mesmo motivo -- as duas medem o que esta na tela, e nao um campo.
+	/// </summary>
+	private static int ContarTexto(Node n)
+	{
+		int total = n is Label l && l.Text.Trim().Length > 0 ? 1 : 0;
+		foreach (Node f in n.GetChildren()) total += ContarTexto(f);
+		return total;
+	}
+
+	/// <summary>
+	/// Varre a arvore de uma pagina atras de um botao com este rotulo.
+	///
+	/// E o CAMINHO PRO VERBO que se quer provar, e nao um texto na tela -- por isso um `Button` e nao
+	/// um `Label` qualquer. Mesma ideia da familia 4 da `--diagembarque`.
+	/// </summary>
+	private static bool TemBotao(Node n, string rotulo)
+	{
+		if (n is Button b && b.Text == rotulo) return true;
+		foreach (Node f in n.GetChildren())
+			if (TemBotao(f, rotulo)) return true;
+		return false;
 	}
 
 	// =====================================================================
@@ -844,12 +1146,73 @@ public partial class RoboDeNav : Node
 				// terra firme. Se voltar a chegar so no espaco, este passo cai.
 				Conferir(cli.SeedDoUniverso != 0, $"a seed do universo chega no login ({cli.SeedDoUniverso})");
 				Conferir(!Espaco.EhEspaco(cli.Zone), "estou em TERRA FIRME (e onde a aba nao existia antes)");
+
+				// ============================ A BANCADA NASCE **FORA** DO ESTADO ============================
+				// O personagem da bancada e novo: mochila vazia, zero zeni, tech zero. Entao este passo mede a
+				// metade que o dono reclamou -- SEM o item a aba nao pode existir -- e so DEPOIS ganha o item.
+				//
+				// Nascer ja com o Nav System seria a armadilha classica deste projeto: uma bancada que nasce
+				// DENTRO do estado nunca testa a ENTRADA nele, e ficaria verde mesmo sem portao nenhum. Ate
+				// esta tarefa era exatamente isso que acontecia aqui: a linha "a aba Nav existe fora do espaco"
+				// passava com a mochila vazia -- ela PROVAVA o bug em vez de pega-lo.
+				//
+				// AS TRES LINHAS SAO TRES CAMADAS e nenhuma cobre a outra: a mochila (o que o servidor guarda),
+				// o bit no fio (o que o servidor CONTA) e a barra de abas (o que o jogador VE). Afirmar so uma
+				// delas ficaria verde num sistema morto.
+				// ==========================================================================================
+				Conferir(cli.Mochila.Quantos(Jandirus.Core.Items.CatalogoDeItens.NavSystem) == 0,
+					"nasco SEM Nav System na mochila");
+				Conferir(!cli.Atributos.Tem(Jandirus.Net.Protocol.Poder.Nav),
+					"sem o item, o servidor NAO manda o bit Nav no pacote de atributos");
+				Conferir(Array.IndexOf(menu.AbasDeTeste, "Nav") < 0,
+					"sem o item, a aba Nav NAO esta na barra do menu P");
+
+				// ============================ E O QUE NAO PODE TER IDO JUNTO ============================
+				// Dominio planetario e Esferas do Dragao moravam DENTRO da aba Nav. Trancar a aba as trancaria
+				// junto -- fincar bandeira e invocar Shenron atras de um aparelho de 550.000 zeni, que ninguem
+				// pediu --, entao os dois blocos mudaram pra aba World (ver `MenuJogo.Mundo`).
+				//
+				// A HORA CERTA DE COBRAR ISSO E AGORA: aqui o personagem esta em TERRA FIRME e SEM o item, que
+				// e exatamente a situacao do jogador que a mudanca protege. Mais pra frente a bancada decola, e
+				// no espaco o bloco de dominio nem se desenha (`Espaco.EhPlaneta` e falso) -- cobrar la seria
+				// cobrar a coisa errada no lugar errado, que foi o que esta linha fez na primeira rodada.
+				// ===================================================================================
+				menu.Abrir();
+				menu.IrPara("World");
+				Conferir(Espaco.EhPlaneta(cli.Zone), "estou num PLANETA (senao o dominio nem se desenha)");
+				Conferir(menu.PaginaDeTeste("World") is { } pw && TemBotao(pw, "Conquistar planeta"),
+					"SEM o Nav System, a conquista de planeta continua alcancavel (aba World)");
+				Conferir(menu.PaginaDeTeste("World") is { } pw2 && TemBotao(pw2, "Ver os desejos"),
+					"SEM o Nav System, as Esferas do Dragao continuam alcancaveis (aba World)");
+
+				// GANHA O ITEM -- pela mochila, que e onde o portao pergunta. A janela nao acende bit nenhum.
+				_ganhou = Jandirus.Server.GameServer.Instance?.NavSystemNaMochilaDeTeste(cli.LocalId, true) ?? false;
 				break;
 
 			case 1:
 			{
+				// A ENTRADA NO ESTADO, medida do outro lado. O tique manda atributos e a assinatura de
+				// deduplicacao inclui `a.Poderes`, entao meio segundo e muito mais do que o 1/30 s que custa.
+				Conferir(_ganhou, "o Nav System entrou na mochila do servidor");
+				Conferir(cli.Mochila.Quantos(Jandirus.Core.Items.CatalogoDeItens.NavSystem) > 0,
+					"o CLIENTE ve o item na mochila dele (o pacote de inventario chegou)");
+				Conferir(cli.Atributos.Tem(Jandirus.Net.Protocol.Poder.Nav),
+					"com o item, o bit Nav chega pelo fio");
 				Conferir(Array.IndexOf(menu.AbasDeTeste, "Nav") >= 0,
-					"a aba Nav existe fora do espaco (a carta se consulta antes de decolar)");
+					"com o item, a aba Nav aparece -- e em TERRA FIRME (a carta se consulta antes de decolar)");
+
+				// ============================ E ELE TEM QUE ESTAR LA AMANHA ============================
+				// A aba inteira pende de um item na mochila, e essa escolha so se sustenta se a mochila
+				// chegar ao disco: o liga/desliga do original (`hasnav`, `PlanetTech.dm:9-19`) foi deixado
+				// de fora justamente porque moraria num campo que NAO e salvo. Se o item nao sobrevivesse ao
+				// relog, a aba sumiria sozinha e o jogador leria isso como "perdi meus 550.000 zeni".
+				//
+				// GRAVA E LE DO DISCO, pelo caminho do logout e do login (ver
+				// `GameServer.NavSobreviveAoRelogDeTeste`): as cores de roupa deste projeto ja estavam no
+				// objeto, pareciam salvas, e nunca persistiram -- o `System.Text.Json` pulava o campo.
+				// ==================================================================================
+				Conferir(Jandirus.Server.GameServer.Instance?.NavSobreviveAoRelogDeTeste(cli.LocalId) ?? false,
+					"o Nav System sobrevive ao relog: gravado e lido de volta do disco, continua na mochila");
 
 				// EM TERRA, A POSICAO DE GALAXIA E A DO PLANETA -- e nao a do corpo. O spawn da
 				// Terra e (7984, 8016): usar isso no mapa punha o jogador a 11 mil px da origem,
@@ -1248,6 +1611,9 @@ public partial class RoboDeNav : Node
 			}
 
 			default:
+				// A SAIDA DO ESTADO vem por ultimo pra nao tirar o mapa debaixo dos passos que o medem.
+				if (!MedirASaida(menu)) break;
+
 				_acabou = true;
 				menu.Fechar();
 				GD.Print("\n[nav] ===== BANCADA DA CARTA ESTELAR =====");

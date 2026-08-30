@@ -133,12 +133,38 @@ public partial class GameServer
 	///      ninguem, e um teste daria verde por ausencia;
 	///   5. a gravidade do chao, que e por zona.
 	/// </summary>
-	private ServerPlayer PorNoMundo(ServerPlayer corpo)
+	/// <param name="noDicionario">
+	/// Este corpo e SIMULADO pelo servidor (entra no <c>_players</c>) ou so EXISTE no lugar (fica so
+	/// na <c>ZoneList</c>)?
+	///
+	/// ============================ POR QUE ISTO VIROU PARAMETRO ============================
+	/// O cadaver e o unico chamador que responde NAO, e ate aqui ele resolvia isso entrando e saindo
+	/// na linha seguinte (`_players[id] = corpo;` aqui, `_players.Remove(id);` no
+	/// <see cref="DeixarOCadaver"/>). O par parecia inofensivo -- um no-op -- e nao era: **a
+	/// INSERCAO de chave nova e a unica operacao de `Dictionary` que invalida um `foreach` em
+	/// andamento** (desde o .NET Core 3.0 o `Remove` NAO incrementa a versao). Como o cadaver do
+	/// jogador nasce de dentro do laco `foreach (ServerPlayer pl in _players.Values)` do
+	/// <see cref="TickCombate"/>, esse par derrubava o tique inteiro toda vez que alguem morria:
+	///
+	///     System.InvalidOperationException: Collection was modified; enumeration operation may not execute.
+	///        at Dictionary`2.ValueCollection.Enumerator.MoveNext()
+	///        at GameServer.TickCombate(Double dt) in Server\GameServer.Combat.cs:line 1203
+	///        at GameServer.Tick() in Server\GameServer.cs:line 4742
+	///
+	/// (Rastro do relato. A linha do `Tick()` ja envelheceu -- o arquivo cresceu e hoje a chamada e a
+	/// 4763 --, mas a do `foreach` continua sendo a 1203. Ver o comentario grande do `TickCombate`.)
+	///
+	/// O cabecalho do `DeixarOCadaver` ja dizia, em caixa alta, *"E ELE NAO ENTRA NO `_players`"* --
+	/// a regra estava escrita e o codigo a furava por uma instrucao. Agora ela e cumprida na origem:
+	/// quem nao e simulado nunca entra, e nao ha o que tirar depois.
+	/// ==================================================================================
+	/// </param>
+	private ServerPlayer PorNoMundo(ServerPlayer corpo, bool noDicionario = true)
 	{
 		corpo.Ficha.Statify();
 		corpo.SpeedStat = MoveRules.SpeedStatFrom(corpo.Ficha.Espeed);
 		PrepararCombate(corpo, null);
-		_players[corpo.Id] = corpo;
+		if (noDicionario) _players[corpo.Id] = corpo;
 		ZoneList(corpo.Zone.Hash).Add(corpo);
 
 		// `nascendo: true` -- um corpo sem dono nao tem berco no save, e a zona em que ele e posto no
