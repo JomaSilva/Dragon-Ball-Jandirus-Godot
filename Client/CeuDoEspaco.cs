@@ -182,21 +182,27 @@ public partial class PlanetaDesenhado : Node2D
 	public string Tipo = "";
 
 	private Label _rotulo = null!;
+	private Sprite2D _icone = null!;
 
 	public override void _Ready()
 	{
 		ZIndex = -60;   // atras dos corpos, na frente do ceu
 
-		AddChild(new Sprite2D
+		Texture2D? quadro = Quadro(EstadoDoIcone());
+
+		_icone = new Sprite2D
 		{
 			Name = "Icone",
-			Texture = Quadro(EstadoDoIcone()),
+			Texture = quadro,
 			// ESCALA PELO DIAMETRO. O raio vem do servidor em pixels de mundo e e ele que decide a
 			// que distancia o pouso acontece; se o desenho nao casar com esse raio, o jogador
 			// pousa "no vazio" ao lado de um planeta que parecia estar longe.
 			Scale = Vector2.One * (Raio * 2f / LadoDoIcone),
 			TextureFilter = TextureFilterEnum.Nearest,
-		});
+		};
+		AddChild(_icone);
+
+		MontarAgonia(quadro);
 
 		_rotulo = Tema.Legenda(Nome, Premade ? Tema.Destaque : Tema.TextoFraco, 13);
 		_rotulo.Position = new Vector2(-90, -Raio - 34);
@@ -204,6 +210,208 @@ public partial class PlanetaDesenhado : Node2D
 		_rotulo.HorizontalAlignment = HorizontalAlignment.Center;
 		AddChild(_rotulo);
 	}
+
+	// =====================================================================
+	// A AGONIA -- a crosta de magma, as rachaduras e o estouro
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE O DONO PEDIU, E ONDE ELE MORA ============================
+	/// *"quem ta vendo do espaco o planeta deveria ficar com uns efeitos... um efeito meio
+	/// avermelhado a lembra magma, e rachaduras no planeta, q vai se intensificando durante esses 5
+	/// minutos, ate acontecer uma mega explosao... e assim o planeta some"*.
+	///
+	/// O DESENHO NAO MUDOU: continua **um** `Sprite2D` com um quadro de `Planets.tres`. O que entrou
+	/// foi um `ShaderMaterial` nele -- e era literalmente uma linha, porque este node nunca teve
+	/// material nenhum. Ver `Assets/Shaders/PlanetaMorrendo.gdshader`, onde as cinco regras copiadas
+	/// dos ferimentos procedurais estao escritas uma a uma.
+	///
+	/// ============================ O RECORTE DO QUADRO E OBRIGATORIO ============================
+	/// `Planets.tres` e uma folha de 640x512 com 20 quadros de 128x128, e o `Sprite2D` recebe um
+	/// `AtlasTexture`. Amostrar UV fora do retangulo devolve **o quadro vizinho**, nao transparente.
+	/// A caixa sai de `BorraoDirecional.Caixa`, que ja existe e ja faz o recuo de meio texel -- o
+	/// mesmo helper que o borrao de corrida e a miragem do Zanzoken usam depois de o projeto ter
+	/// levado esse tombo duas vezes.
+	/// ========================================================================================
+	/// </summary>
+	private void MontarAgonia(Texture2D? quadro)
+	{
+		var mat = new ShaderMaterial { Shader = ShaderDaAgonia };
+		(Vector2 min, Vector2 max) = BorraoDirecional.Caixa(quadro);
+		mat.SetShaderParameter("quadro_min", min);
+		mat.SetShaderParameter("quadro_max", max);
+
+		// A SEMENTE E A DO PROPRIO PLANETA -- pre-feito tem seed derivada do nome (`Espaco.Fixo`),
+		// gerado tem a dele. O `% 997` e o mesmo empacotamento da semente das feridas: um `ulong`
+		// grande vira `float` com perda, e o que se quer aqui e so um numero pequeno e estavel.
+		mat.SetShaderParameter("semente", (Seed % 997) * 0.37f);
+		mat.SetShaderParameter("agonia", 0f);
+
+		_icone.Material = mat;
+		_agonia = mat;
+	}
+
+	private static Shader? _shAgonia;
+	private static Shader ShaderDaAgonia =>
+		_shAgonia ??= ResourceLoader.Load<Shader>("res://Assets/Shaders/PlanetaMorrendo.gdshader");
+
+	private static Shader? _shEstouro;
+	private static Shader ShaderDoEstouro =>
+		_shEstouro ??= ResourceLoader.Load<Shader>("res://Assets/Shaders/EstouroDePlaneta.gdshader");
+
+	private ShaderMaterial? _agonia;
+
+	/// <summary>O ultimo valor ESCRITO no uniform. Ver a guarda no <see cref="_Process"/>.</summary>
+	private float _agoniaEscrita = -1f;
+
+	private bool _estourou;
+
+	/// <summary>
+	/// ============================ A RAMPA E LIDA POR QUADRO, E ESSA E A EXCECAO ============================
+	/// A disciplina do projeto (e a dos ferimentos, que este efeito copia) e traduzir estado em
+	/// uniform **uma vez por mudanca**, nunca por quadro. Aqui a "mudanca" e continua: a agonia e uma
+	/// funcao do relogio que anda sozinho, e nao ha evento nenhum pra assinar -- o `S2C.Mortos` so
+	/// chega quando algo muda de FASE, e os cinco minutos sao uma fase so.
+	///
+	/// O que sobrou da disciplina e a GUARDA DE IDEMPOTENCIA: o uniform so e escrito quando o valor
+	/// se move mais de 0,002 (uns 150 degraus na agonia inteira). Num quadro em que nada muda -- que e
+	/// a esmagadora maioria, inclusive todos os quadros de todo planeta VIVO -- este metodo e uma
+	/// comparacao de `float` e nada mais.
+	/// ====================================================================================================
+	/// </summary>
+	public override void _Process(double delta)
+	{
+		if (GameClient.Instance is not { } cli) return;
+
+		var chave = ChaveDePlaneta.De(new PlanetaNoEspaco
+		{
+			Nome = Nome, Seed = Seed, Premade = Premade,
+		});
+
+		AplicarAgonia(cli.IntensidadeDaAgonia(chave), cli.SegundosAteOEstouro(chave));
+	}
+
+	/// <summary>
+	/// ESTADO -> UNIFORM -> PIXEL, num metodo so.
+	///
+	/// Separado do <see cref="_Process"/> pelo mesmo motivo do `GameClient.AplicarMortos`: e o unico
+	/// jeito de uma bancada exercitar a traducao de verdade -- o material, o shader e o quadro
+	/// desenhado -- sem precisar de servidor, de rede e de cinco minutos de relogio. O `_Process`
+	/// pergunta ao cliente e chama isto; a bancada roteiriza a rampa e chama isto. **A escrita do
+	/// uniform e o disparo do estouro acontecem aqui, e so aqui.**
+	/// </summary>
+	/// <param name="faltaParaOEstouro">
+	/// Segundos ate o planeta estourar, ou nulo quando ele nao esta em contagem. **NEGATIVO e a
+	/// janela do efeito**, e nao um erro: conta o tempo DESDE o estouro.
+	/// </param>
+	internal void AplicarAgonia(double agonia, double? faltaParaOEstouro)
+	{
+		var a = (float)agonia;
+		if (_agonia != null && Mathf.Abs(a - _agoniaEscrita) > 0.002f)
+		{
+			_agonia.SetShaderParameter("agonia", a);
+			_agoniaEscrita = a;
+		}
+
+		// ============================ O ESTOURO, E POR QUE ELE NAO VEM POR PACOTE ============================
+		// O cliente ja tem o prazo (`S2C.Mortos` carrega o `faltam`), entao "quando o planeta estoura"
+		// e **funcao pura do relogio** -- a mesma disciplina do ceu, da lua, do terreno e das estrelas.
+		// Um pacote de "estourou agora" seria uma segunda fonte pra um instante que as duas pontas ja
+		// derivam, e a primeira a divergir seria a de la, calada.
+		// ==================================================================================================
+		if (faltaParaOEstouro is not { } falta) return;
+
+		if (!_estourou && falta <= 0)
+		{
+			_estourou = true;
+			Estourar();
+		}
+
+		// O MUNDO SOME. Nao ha `QueueFree` do disco antes disto: quem fizesse o planeta sumir no
+		// instante do prazo apagaria justamente o quadro em que a explosao comeca. O
+		// `DesenharPlanetas` usa o MESMO prazo pra nao redesenhar o cadaver -- as duas metades.
+		if (falta < -MortePlanetaria.SegundosDoEstouro) QueueFree();
+	}
+
+	/// <summary>
+	/// A MEGA EXPLOSAO, ancorada NO LUGAR e nao na tela.
+	///
+	/// Um `Clarao` de tela cheia (o da cinematica de transformacao) seria errado aqui pelo motivo que
+	/// o proprio `Transformacao.Clarao` documenta: *"o modo de falha seria a tela de alguem no espaco
+	/// ficando branca por causa de um SSJ3 num planeta qualquer"*. Quem esta em orbita vendo um mundo
+	/// morrer a 400 px de distancia precisa do efeito NO PONTO -- assim ele fica pequeno se voce
+	/// estiver longe e toma a tela se voce estiver em cima, sem nenhuma regra de distancia escrita.
+	///
+	/// O QUAD E 2,6x O DIAMETRO porque a frente da onda sai do raio do planeta (`alcance = 1.25` no
+	/// shader, e ela ainda precisa de folga pra o anel afinar em vez de ser cortado na quina).
+	/// </summary>
+	private void Estourar()
+	{
+		float lado = Raio * 5.2f;
+
+		var mat = new ShaderMaterial { Shader = ShaderDoEstouro };
+		mat.SetShaderParameter("t", 0f);
+		mat.SetShaderParameter("semente", (Seed % 997) * 0.37f);
+
+		var quad = new ColorRect
+		{
+			Name = "Estouro",
+			Size = new Vector2(lado, lado),
+			Position = new Vector2(-lado / 2, -lado / 2),
+			Color = Colors.White,
+			Material = mat,
+			// ============================ O `ZIndex` AQUI E **RELATIVO**, E ISSO CUSTOU UMA FOTO ============================
+			// `ZAsRelative` nasce VERDADEIRO no Godot, entao este numero soma ao do pai -- e o pai
+			// (`PlanetaDesenhado`) e `ZIndex = -60`. A primeira versao escreveu -55 aqui querendo dizer
+			// "logo acima do disco", e o que saiu foi **-115**: abaixo do proprio planeta e abaixo do
+			// fundo. A bancada ficou verde nas tres checagens de codigo (o node existe, o material
+			// existe, o `t` do tween anda) e a FOTO mostrou um planeta apagando sozinho, sem explosao
+			// nenhuma. E o cego que este projeto chama de "uniform escrito nao e pixel desenhado".
+			//
+			// +5 RELATIVO diz o que se quis dizer: cinco degraus acima do disco, e o conjunto inteiro
+			// continua atras dos corpos e na frente do ceu de estrelas.
+			// ==========================================================================================================
+			ZIndex = 5,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+		};
+		AddChild(quad);
+
+		// O DISCO SOME POR BAIXO DO CLARAO: ele desaparece durante o estouro, e nao depois dele.
+		// `Tween` no proprio node e nao lambda solta -- ele morre junto com o node (ver a nota das 19
+		// assinaturas orfas em `Transformacao.TocarPedras`).
+		Tween t = CreateTween();
+		t.SetParallel();
+		t.TweenMethod(Callable.From<float>(v => mat.SetShaderParameter("t", v)), 0f, 1f,
+					  MortePlanetaria.SegundosDoEstouro);
+		t.TweenProperty(_icone, "modulate:a", 0f, MortePlanetaria.SegundosDoEstouro * 0.55);
+		t.TweenProperty(_rotulo, "modulate:a", 0f, MortePlanetaria.SegundosDoEstouro * 0.35);
+
+		// O ALCANCE E DERIVADO DO PLANETA e nao o padrao de 480 px: um mundo estourando se ouve de
+		// muito mais longe que um soco, e o raio dele e a unica medida de "muito mais longe" que o
+		// espaco tem.
+		AudioDirector.EfeitoNoLugar(this, Trilha.Explosao, 1f, Raio * 8f);
+	}
+
+	/// <summary>A agonia que o material do planeta esta desenhando AGORA. Pra bancada -- ver o robo.</summary>
+	public float AgoniaNoMaterialDeTeste =>
+		_icone?.Material is ShaderMaterial m && m.GetShaderParameter("agonia").VariantType != Variant.Type.Nil
+			? (float)m.GetShaderParameter("agonia")
+			: -1f;
+
+	/// <summary>Ja estourou? Pra bancada.</summary>
+	public bool EstourouDeTeste => _estourou;
+
+	/// <summary>
+	/// EM QUE PONTO DA EXPLOSAO O MATERIAL ESTA (0 a 1), lido do proprio `ShaderMaterial`.
+	///
+	/// Existe pra a bancada fotografar o AUGE do efeito em vez de contar quadros: "dois quadros" nao
+	/// quer dizer a mesma coisa a 60 e a 144 Hz, e a primeira foto de estouro saiu em `t = 0,03` --
+	/// o instante em que ainda nao ha o que ver. Devolve -1 quando nao ha estouro em curso.
+	/// </summary>
+	public float TDoEstouroDeTeste =>
+		GetNodeOrNull<ColorRect>("Estouro")?.Material is ShaderMaterial m
+		&& m.GetShaderParameter("t").VariantType != Variant.Type.Nil
+			? (float)m.GetShaderParameter("t")
+			: -1f;
 
 	/// <summary>
 	/// O estado da folha pra este planeta.

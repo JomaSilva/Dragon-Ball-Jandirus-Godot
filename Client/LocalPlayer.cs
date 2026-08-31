@@ -16,14 +16,36 @@ namespace Jandirus.Client;
 /// POSICAO EXATA x POSICAO DESENHADA. Sao duas, de proposito:
 ///
 ///   _pos      -- float cru, e a VERDADE da simulacao. Vai pro servidor e pro MoveRules.
-///   Position  -- o mesmo valor CHAO, e so isso o motor desenha.
+///   Position  -- o mesmo valor NUM PONTO DA GRADE, e so isso o motor desenha.
 ///
 /// A razao e o `snap_2d_transforms_to_pixel`: ele arredonda a transformacao de cada objeto
 /// na hora de desenhar, mas NAO arredonda a transformacao de canvas que a camera gera. Como
-/// a camera e FILHA deste no e le a posicao fracionaria, o corpo pulava de pixel inteiro em
-/// pixel inteiro enquanto o mundo rolava em subpixel: o boneco oscilava ate 1 px de mundo
-/// (3 px de tela no zoom 3) a cada quadro. Escrevendo ja inteiro no no, a camera herda o
-/// MESMO inteiro e nada mais se desloca em relacao a nada.
+/// a camera e FILHA deste no e le a posicao fracionaria, o corpo pulava de ponto em ponto da
+/// grade enquanto o mundo rolava em subpixel: o boneco oscilava a cada quadro. Escrevendo ja
+/// na grade, a camera herda o MESMO ponto e nada mais se desloca em relacao a nada.
+///
+/// ============================ QUAL GRADE -- E POR QUE ESSA E A QUEIXA DO DONO ============================
+/// A grade era **pixel de MUNDO** (`Floor(_pos)`), e ai esta o defeito que o dono relatou como
+/// *"andando pros lados o personagem fica borrado/tremendo"*. Com a camera em zoom 2, um pixel de
+/// mundo sao DOIS pixels de tela: o cenario inteiro so podia rolar de 2 em 2 px de tela, nunca 1,
+/// nunca 3. E o passo real de caminhada e 2,3 px de tela por quadro. O desenho saia 2,2,2,4 --
+/// nenhum quadro certo, 15% deles com o passo DOBRADO. Isso e o tremor, e ele e SIMETRICO.
+///
+/// A grade agora e **pixel de TELA** (`Floor(_pos * zoom) / zoom`), que e a menor grade que ainda
+/// deixa a arte de pixel nitida -- um pixel de tela e o menor deslocamento que um monitor sabe
+/// mostrar. O erro maximo de quantizacao cai de `zoom` px de tela pra 1 px, e a sequencia vira
+/// 2,3,2,2,3 (media 2,3, a certa). Em zoom 3 a melhora e de tres pra um.
+///
+/// O QUE ELA **NAO** FAZ, DE PROPOSITO: sair da grade de pixel de tela. Deslizar em subpixel
+/// mataria o tremor de vez, mas ai o motor reamostra a arte e a imagem CINTILA andando -- o remedio
+/// pior que a doenca, e o mesmo motivo pelo qual o `Settings.Zoom` e inteiro por construcao. A
+/// bancada `--diagrolagem` cobra as duas coisas ao mesmo tempo: erro abaixo de 1 px de tela E o
+/// cenario sempre assentando na MESMA fracao de pixel.
+///
+/// E o que o dono ve como assimetria nao esta neste arquivo: o sprite de perfil tem ~10 px de
+/// largura contra ~26 px de altura, entao o mesmo erro vale 10% do corpo indo de lado e 3,8% indo
+/// pra cima. O tremor sempre foi igual nos dois eixos; so a fracao visivel dele e que muda.
+/// ==========================================================================================================
 /// </summary>
 public partial class LocalPlayer : Node2D
 {
@@ -484,6 +506,16 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	public Facing OlharDeTeste => _empurrado ? _dirDoCorpo : _facing;
 
+	/// <summary>
+	/// A POSICAO EXATA, o float cru antes de qualquer arredondamento. So pras bancadas.
+	///
+	/// O <c>World.PosicaoLocal</c> devolve o <c>GlobalPosition</c>, que e a posicao **DESENHADA** --
+	/// ja passada pelo <see cref="Desenhar"/>. Medir o tremor com ela seria comparar o resultado do
+	/// arredondamento consigo mesmo: o erro daria zero sempre. Quem mede quantizacao precisa das
+	/// DUAS pontas, e esta e a de cima.
+	/// </summary>
+	public Vec2 PosicaoExataDeTeste => _pos;
+
 	/// <summary>Ainda ha Ki pro servidor conceder a corrida.</summary>
 	private bool _temKiPraCorrer = true;
 
@@ -913,8 +945,28 @@ public partial class LocalPlayer : Node2D
 		if (_sombra != null) _sombra.Altura = _altitudeNaTela;
 	}
 
-	/// <summary>O no fica sempre em pixel inteiro -- ver o cabecalho da classe.</summary>
-	private void Desenhar() => Position = new Vector2(MathF.Floor(_pos.X), MathF.Floor(_pos.Y));
+	/// <summary>O no fica sempre num ponto da grade de PIXEL DE TELA -- ver o cabecalho da classe.</summary>
+	private void Desenhar() => Position = NoPontoDaGrade(new Vector2(_pos.X, _pos.Y), World.GradeDeDesenho);
+
+	/// <summary>
+	/// O PONTO DA GRADE mais proximo (por baixo) de uma posicao de mundo.
+	///
+	/// Publica e estatica por dois motivos. O primeiro e que ela nao e so do corpo local: o
+	/// <see cref="RemotePlayer"/> desenha na MESMA grade, e dois bonecos lado a lado que
+	/// arredondassem de jeitos diferentes andariam com passos diferentes. O segundo e a bancada
+	/// `--diagrolagem`, que precisa medir ESTA conta -- uma bancada que reescreve a formula que
+	/// julga nao julga nada: ela ficaria verde com o jogo errado desde que os dois erros combinassem.
+	///
+	/// `pontos` e quantos pontos da grade cabem num pixel de mundo, e quem responde e
+	/// <see cref="World.GradeDeDesenho"/>. Com `pontos = 1` a conta e identica ao `Floor` que estava
+	/// aqui antes.
+	/// </summary>
+	public static Vector2 NoPontoDaGrade(Vector2 exata, float pontos)
+	{
+		if (!(pontos > 1f)) return new Vector2(MathF.Floor(exata.X), MathF.Floor(exata.Y));
+		return new Vector2(MathF.Floor(exata.X * pontos) / pontos,
+						   MathF.Floor(exata.Y * pontos) / pontos);
+	}
 
 	/// <summary>
 	/// PÕE O CORPO NA POSE DE GOLPE por um tempo, sem que o golpe tenha vindo do teclado.

@@ -632,4 +632,24 @@ public enum FimDeProjetil : byte
 
 	/// <summary>O dono soltou (ou nao aguentou) o raio, e o rastro terminou de se esvaziar.</summary>
 	Cessou = 5,
+
+	/// <summary>
+	/// ============================ ENCOSTOU NUM PLANETA, VISTO DO ESPACO ============================
+	/// O cenario do espaco -- ver `GameServer.Projeteis`, passo 6a-quater, e
+	/// `GameServer.Destruicao.AtingirMundoComKi`.
+	///
+	/// **Ele existe por causa da ESCALA, e nao da regra.** A regra e a mesma do
+	/// <see cref="Cenario"/> (o tiro acaba ali, e o servidor decide o que aquilo custou), e a primeira
+	/// versao reusava aquele valor -- o que estava certo do lado do servidor e errado na tela: o
+	/// desenho do `Cenario` e um estouro de 0,9 de escala, dimensionado pra a quina de um muro de
+	/// 32 px. Um disco de planeta tem **220 a 440 px de diametro**, e o mesmo efeito em cima dele nao
+	/// se ve: o jogador atira num mundo e a tela nao responde.
+	///
+	/// Um byte no enum (que ja viaja no pacote de morte) e um `case` no cliente compram um estouro na
+	/// escala do alvo, pelas mesmas pecas que o resto do jogo usa (`CombatFx.Impacto` + `Onda`, que
+	/// escala de 32 a 512 px sem serrilhar). Sem ele, K1 ficava certo no mundo e mudo na tela -- que e
+	/// a familia de defeito que este projeto passa o tempo todo tentando nao repetir.
+	/// ==========================================================================================
+	/// </summary>
+	Mundo = 6,
 }

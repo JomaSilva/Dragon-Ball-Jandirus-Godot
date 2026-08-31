@@ -97,7 +97,13 @@ public static class Esferas
 
 	/// <summary>
 	/// O TETO DE ESPERA DO SET ETERNO -- `eternal_maintain` corta qualquer `ActiveYear` acima de
-	/// `Year + 0.1` (:414-418). O Porunga de Namek nunca espera mais que um mes, nunca morre de vez.
+	/// `Year + 0.1` (:414-418). O Porunga de Namek nunca espera mais que um mes.
+	///
+	/// **E ELE NAO E IMORTAL, ainda que o `eternal_maintain` diga que sim.** O que este teto garante e
+	/// que ele nao morre de DESGASTE -- prazo, inercia, esfera perdida. Morrer, ele morre de uma coisa
+	/// so: <see cref="PlanetaEterno"/> deixar de existir. E o pedido do dono, e a regra mora no
+	/// servidor (`GameServer.Esferas.EnterrarSetsDeMundosMortos`), porque o Core nao sabe o que e um
+	/// planeta destruido -- ele nem sabe o que e um planeta.
 	/// </summary>
 	public const double TetoDeEsperaEterna = OffTimeEterno;
 

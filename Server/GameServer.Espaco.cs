@@ -194,14 +194,25 @@ public partial class GameServer
 			// A MESMA FABRICA da zona normal. Esta copia tinha ficado pra tras -- ver `EstadoDe`.
 			foreach (ServerPlayer pl in vizinhos) EstadoDe(pl, agora).Write(w);
 
-			// O BLOCO DE PROJETEIS TEM QUE SAIR AQUI TAMBEM, mesmo sempre vazio: o leitor e UM so
-			// (`GameClient`, opcode `Snapshot`) e ele conta o segundo bloco sempre. Omitir aqui
-			// faria o snapshot do ESPACO ser lido errado -- e o erro apareceria como "o jogo
-			// desconecta quando entro em orbita", sem nada apontando pra esta linha.
+			// ============================ O BLOCO DE PROJETEIS -- E ELE DEIXOU DE SER VAZIO ============================
+			// Ele sempre teve que SAIR (o leitor e um so, `GameClient` no opcode `Snapshot`, e ele
+			// conta o segundo bloco sempre; omitir aqui faria o snapshot do espaco ser lido errado, e
+			// o sintoma seria "o jogo desconecta quando entro em orbita"). O que ele nao tinha era
+			// CONTEUDO: escrevia `hash 0`, que nao e a zona de ninguem, com a nota *"os tiros ficam
+			// pro dia em que houver combate espacial"*.
 			//
-			// E ele e vazio de proposito: no espaco nao ha zona com colisao nem chao, e o recorte
-			// e por CHUNK e nao por zona -- os tiros ficam pro dia em que houver combate espacial.
-			EscreverProjeteis(w, 0);
+			// **Esse dia chegou**: da pra derrubar um planeta com ki de orbita (ver
+			// `GameServer.Destruicao.AtingirMundoComKi`). Sem esta linha o `Nasceu` e o `Morreu`
+			// chegariam -- eles vao pela zona inteira, no canal confiavel -- e as POSICOES no meio
+			// nao: a bola apareceria colada na mao de quem atirou, ficaria parada la, e o estouro
+			// surgiria do nada em cima do planeta. O servidor mediria tudo certo (a bancada
+			// `--planetateste` fica 100% verde sem esta linha) e o jogador nao veria o tiro voar.
+			//
+			// O RECORTE E POR CHUNK, o mesmo do bloco de corpos tres linhas acima: a zona do espaco e
+			// UMA pro universo inteiro, e "todos os tiros da zona" seria todo tiro dado em qualquer
+			// canto da galaxia.
+			// ======================================================================================================
+			EscreverProjeteis(w, ZonaDoEspaco.Hash, eu.Pos);
 
 			eu.Peer.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
 		}

@@ -56,20 +56,44 @@ public static class DanoDeKi
 	public static double Bruto(double mods, double baseDano, double maxDano, Fighter alvo,
 							   bool fisico = false)
 	{
-		double cima = fisico
-			? mods * 6 * CombatKnobs.DanoGlobal
-			: mods * 6 * DanoGlobalDeKi;
-
 		// `Ekidef**2 * max(Etechnique, Ekiskill)` -- o quadrado e a espinha da defesa de ki.
 		double baixo = fisico
 			? alvo.Ephysdef * alvo.Ephysdef * Math.Max(alvo.Etechnique, alvo.Ekiskill)
 			: alvo.Ekidef * alvo.Ekidef * Math.Max(alvo.Etechnique, alvo.Ekiskill);
 
+		return BrutoContra(mods, baseDano, maxDano, baixo, fisico);
+	}
+
+	/// <summary>
+	/// ============================ O MESMO DANO CRU, CONTRA UM DIVISOR QUALQUER ============================
+	/// O <see cref="Bruto"/> acima e este metodo com o divisor tirado de um <see cref="Fighter"/>. Ele
+	/// foi separado porque **existe um alvo de ki que nao e um corpo**: o PLANETA visto do espaco
+	/// (ver `MortePlanetaria.DanoNoMundo`). Um mundo nao tem `Ekidef`, nao tem tecnica e nao tem
+	/// pericia de ki -- ele nao se defende, ele apenas esta ali.
+	///
+	/// **E o divisor 1 nao e uma invencao pro planeta**: e exatamente o que a linha logo abaixo ja
+	/// fazia quando o corpo nao tinha defesa nenhuma (`if(!downscalar) downscalar=1`, o remendo que o
+	/// proprio `calcs.dm` traz com comentario mal-humorado). Passar `defesa: 0` daqui e dizer "nao ha
+	/// divisor" pela MESMA porta, e nao escrever uma segunda formula com o numerador copiado -- que e
+	/// a forma conhecida de as duas divergirem no primeiro ajuste do `DanoGlobalDeKi`.
+	/// ==================================================================================================
+	/// </summary>
+	/// <param name="defesa">
+	/// O denominador do DM (`Ekidef**2 * max(Etechnique,Ekiskill)`). Zero ou negativo = "nao ha
+	/// defesa", e cai no piso 1.
+	/// </param>
+	public static double BrutoContra(double mods, double baseDano, double maxDano, double defesa,
+									 bool fisico = false)
+	{
+		double cima = fisico
+			? mods * 6 * CombatKnobs.DanoGlobal
+			: mods * 6 * DanoGlobalDeKi;
+
 		// `if(!downscalar) downscalar=1` -- o proprio DM tapou a divisao por zero aqui, com
 		// direito a comentario mal-humorado no `calcs.dm`.
-		if (baixo <= 0) baixo = 1;
+		if (defesa <= 0) defesa = 1;
 
-		double dmg = cima / baixo * baseDano;
+		double dmg = cima / defesa * baseDano;
 		if (maxDano > 0) dmg = Math.Min(dmg, maxDano);
 		if (dmg == 0) dmg = baseDano * FracaoDoPiso;
 		return dmg;

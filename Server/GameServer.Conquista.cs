@@ -558,7 +558,20 @@ public partial class GameServer
 		Dominio? d = _dominios.Find(x => x.EhOSpawn
 			&& string.Equals(x.Assinatura, pl.Assinatura, StringComparison.Ordinal));
 
-		if (d == null || CorpoDoDominio(d) is not { } p) return DestinoDoBerco(pl.Berco);
+		// ============================ O DOMINIO MORTO CAI NO REFUGIO, E NAO NO DOMINIO MORTO ============================
+		// O `PlanetaDoDominioMorreu` normalmente ja tirou este dominio do livro (o `TickDaConquista`
+		// passa por todos de segundo em segundo), mas ha uma JANELA REAL: entre a morte e o
+		// renascimento correm 75 s (`Alem.MsNoChao` + `Alem.MsNoAlem`), e o planeta pode acabar dentro
+		// dela. Sem esta pergunta, o funil montaria um berco sintetico num cadaver e o
+		// `DestinoDoBerco` teria que descobrir isso -- **com a ancora errada**: ele mediria "perto de
+		// casa" a partir do dominio, e nao do planeta natal, que e o que o dono pediu.
+		//
+		// `pl` e a `SeedDoBerco` vao pro funil porque e la que a escolha do dono acontece: o dominio
+		// que ESTE personagem conquistou, ou o mundo vivo mais perto do natal DELE. Ver
+		// `GameServer.Refugio.cs`.
+		// ==========================================================================================================
+		if (d == null || CorpoDoDominio(d) is not { } p || PlanetaDoDominioMorreu(d))
+			return DestinoDoBerco(pl.Berco, pl, pl.SeedDoBerco);
 
 		(ZoneKey zona, Vec2 pos) = DestinoDoBerco(new Jandirus.Core.Races.Berco
 		{
@@ -576,8 +589,28 @@ public partial class GameServer
 		// CHEGAR NA PROPRIA BANDEIRA quando a zona esta carregada e ha celula livre perto dela. O
 		// funil ja devolveu um ponto BOM; isto so o aproxima do trono. Zona nao carregada (ou destino
 		// desviado por planeta morto) cai fora deste `if` e fica o do funil.
+		//
+		// ============================ E O PONTO DA BANDEIRA E CONFERIDO, PORQUE ELE PODE NAO SERVIR ============================
+		// `PontoLivrePerto` **nao devolve nulo**: quando nao acha celula livre em 64 tiles, ele devolve
+		// o ponto PEDIDO, do jeito que veio (`ZoneCollision.cs`, a ultima linha do metodo). Como o
+		// `is { }` de um `Vec2` casa sempre, o ponto BOM do funil estava sendo trocado por um ponto que
+		// ninguem tinha conferido -- e ai a conferencia do funil (`PontoDeNascimento` pergunta a
+		// colisao justamente pra ninguem nascer na rocha de Icer) era desfeita na linha seguinte.
+		//
+		// `d.Fx/d.Fy` vem do DISCO (`conquista.json`) e sobrevive a tudo: a um mapa que mudou, a uma
+		// obra levantada em cima da bandeira e ao caso que o proprio `Dominio` documenta -- *"save de
+		// outro universo"*. Um numero desses cai fora do mapa e volta inteiro, e o soberano renasce
+		// dentro de parede no proprio territorio.
+		//
+		// A bancada achou isto: a familia 8 pousa o corpo no dominio de verdade e exige `PisouEmChao`,
+		// e 22 das 24 racas chegaram DENTRO DE PAREDE. A familia 7 nao pegava porque afirmava so o nome
+		// da zona -- que estava certo.
+		// ==================================================================================================================
 		if (zona.Hash == d.Zona.Hash && (d.Fx != 0 || d.Fy != 0)
-			&& MapaDaZonaOuCatalogo(zona)?.PontoLivrePerto(new Vec2(d.Fx, d.Fy)) is { } naBandeira)
+			&& MapaDaZonaOuCatalogo(zona) is { } mapa
+			&& mapa.PontoLivrePerto(new Vec2(d.Fx, d.Fy)) is { } naBandeira
+			&& mapa.ServeDeChao((int)MathF.Floor(naBandeira.X / ZoneCollision.TileSize),
+								(int)MathF.Floor(naBandeira.Y / ZoneCollision.TileSize)))
 			pos = naBandeira;
 
 		return (zona, pos);

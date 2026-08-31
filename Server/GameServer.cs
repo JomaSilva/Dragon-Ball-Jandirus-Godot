@@ -1,4 +1,4 @@
-﻿using Godot;
+using Godot;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Races;
 using Jandirus.Core.Stats;
@@ -1179,6 +1179,19 @@ public sealed class ServerPlayer
 	/// <summary>O pedido de "nascer perto de casa" que este personagem fez na criacao.</summary>
 	public bool PertoDeCasa;
 
+	/// <summary>
+	/// A TELA DO REFUGIO JA FOI EMPURRADA NESTA SESSAO?
+	///
+	/// **De sessao e nao do disco, de proposito.** O que ela anuncia e uma catastrofe -- o planeta
+	/// natal deixou de existir --, e nao uma morte: empurrar a tela a cada morte transformaria a
+	/// informacao em barulho, e barulho e o jeito mais rapido de ela deixar de ser lida. Uma vez por
+	/// login basta, e um campo novo no save de todo personagem seria caro demais pra isso.
+	///
+	/// Depois da primeira, a porta continua aberta pelo botao do menu (aba Nav) -- ver
+	/// `GameServer.Refugio.OferecerORefugio`.
+	/// </summary>
+	public bool RefugioJaOferecido;
+
 	/// <summary>O que este personagem carrega. Ver `Core.Items.Inventario`.</summary>
 	public Jandirus.Core.Items.Inventario Mochila = new();
 
@@ -2329,6 +2342,21 @@ public partial class GameServer : Node
 		_desejoDeTeste = Array.IndexOf(args, "--desejoteste") >= 0;
 		if (_desejoDeTeste) GD.Print("[server] BANCADA: desejos + lingua dos deuses + procurador no 1o login");
 
+		// `--porungateste`: O SET DE ESFERAS QUE MORRE COM O PLANETA -- o pedido do dono ("porunga
+		// morre em namek quando namek explode, so voltando quando o planeta e restaurado pelas esferas
+		// de outro lugar").
+		//
+		// Ela e a TERCEIRA do sistema e nao cabe em nenhuma das duas anteriores: a `--esferateste` mede
+		// o corpo do sistema e a `--desejoteste` mede o que ele faz -- esta mede o que a MORTE DE UM
+		// MUNDO faz com ele, e por isso ela e a unica que destroi planetas de verdade pelo commit de
+		// producao e recarrega o `esferas.json` do disco no meio da medicao.
+		//
+		// Ela destroi Namek e Arlia (dentro de um `PalcoDeMortes`), desvia o disco inteiro pra uma pasta
+		// temporaria (`PalcoDeApagamentos`), finca um dominio, troca raca/classe/BP do testador e toma
+		// o trono de Guardiao emprestado. Tudo volta no fim.
+		_porungaDeTeste = Array.IndexOf(args, "--porungateste") >= 0;
+		if (_porungaDeTeste) GD.Print("[server] BANCADA: o set de esferas que morre com o planeta, no 1o login");
+
 		// `--avessoteste`: A CORRENTE INTEIRA E O PROCURADOR SOB ATAQUE -- a Fase 3.
 		//
 		// Ela existe porque as duas de cima tem o MESMO cego: **nascem dentro do estado**. A da Fase 2
@@ -2360,6 +2388,14 @@ public partial class GameServer : Node
 		// So faz sentido com janela e com o `--diagmacaco` do outro lado. Ver `GameServer.LuaFeraTeste.cs`.
 		_macacoVivo = Array.IndexOf(args, "--macacovivo") >= 0;
 		if (_macacoVivo) GD.Print("[server] PALCO: um Saiyajin vira Oozaru ao lado de quem entrar (pra foto)");
+
+		// `--agoniaviva`: o PALCO DA MORTE DE UM PLANETA. Mata o mundo em que a pessoa entrou, pela
+		// porta de producao, e segura a agonia em cinco patamares pra o `--diagchao` do outro lado
+		// fotografar cinco instantes dos cinco minutos e medir o custo no pico. Morte so na memoria
+		// (`PalcoDeMortes`). Ver `GameServer.AgoniaViva.cs`.
+		_agoniaViva = Array.IndexOf(args, "--agoniaviva") >= 0;
+		if (_agoniaViva) GD.Print("[server] PALCO: o planeta de quem entrar vai MORRER (pra foto); "
+								+ "a morte acontece so na memoria");
 
 		// `--diagia`: por que a IA decidiu o que decidiu. Uma linha por TROCA de plano.
 		_diagIa = Array.IndexOf(args, "--diagia") >= 0;
@@ -3704,17 +3740,7 @@ public partial class GameServer : Node
 		// ===========================================================================================
 		pl.Berco = c == null ? default : BercoDe(c);
 
-		// ...E UMA ZONA QUE NAO EXISTE MAIS DEVOLVE PRO BERCO. Um planeta gerado some quando o
-		// universo e regerado com outra seed, e uma zona pre-feita some se o mapa for reconvertido
-		// sem ela. Nascer num lugar que nao carrega e ficar preso no vazio.
-		//
-		// PRO BERCO E NAO PRA TERRA: era `SpawnZone` cravada, e com berco de verdade isso mandaria
-		// pra Terra justamente quem nao nasceu nela. `PousarNoBercoSemPacote` escreve zona E posicao
-		// de uma vez -- as duas tem que andar juntas, senao o corpo chega no mapa novo com a
-		// coordenada do antigo (que e como se atravessa montanha num mundo que nunca se viu).
-		if (pl.Zone.Kind == ZoneKey.KindPremade && _catalogo?.Get(pl.Zone) == null
-			&& !Espaco.EhEspaco(pl.Zone))
-			PousarNoBercoSemPacote(pl);
+		OndeEsteCorpoPodeAcordar(pl);
 
 		// ...E QUEM DESLOGOU DENTRO DE UMA NAVE QUE FOI DESTRUIDA no meio-tempo tambem. A guarda
 		// acima so olha `KindPremade`, entao o interior de nave (que e `KindInterior`) passava
@@ -4003,6 +4029,15 @@ public partial class GameServer : Node
 		// pedinte. Rodada sem conta e sem slot, ela compararia vazio com vazio e ficaria verde.
 		if (_desejoDeTeste) { _desejoDeTeste = false; RodarBancadaDosDesejos(pl); }
 
+		// A DO PORUNGA DEPOIS DAS DUAS, e a ordem e cadeia: ela ergue a propria estatua na TERRA e
+		// precisa que nao haja outra la -- e as duas de cima erguem e derrubam as delas. Rodando antes,
+		// ela cairia no "ja existe uma Estatua do Dragao aqui" da bancada vizinha.
+		//
+		// E ela precisa de alguem com `Peer` por duas razoes proprias: o set de jogador que faz o
+		// desejo e de uma ASSINATURA (que so existe com conta e slot), e a checagem "quem carregava a
+		// esfera foi AVISADO" le o que o jogador OUVE -- num corpo sem dono nao ha o que ouvir.
+		if (_porungaDeTeste) { _porungaDeTeste = false; RodarBancadaDoPorunga(pl); }
+
 		// A DO AVESSO DEPOIS DAS DUAS, e a ordem tambem e cadeia: ela ergue a propria estatua e por isso
 		// precisa que nao haja outra na Terra -- e as duas de cima erguem e derrubam a delas. Rodando
 		// antes, ela cairia no "ja existe uma Estatua do Dragao aqui" da bancada vizinha.
@@ -4155,6 +4190,12 @@ public partial class GameServer : Node
 		// original (PlanetConquest.dm:208), e ele existe porque quase tudo o que acontece com um
 		// dominio -- invasao, perda, revolta do povo -- acontece com o dono offline.
 		EntregarRecadosDeConquista(pl);
+
+		// E SE O PLANETA NATAL DESTE PERSONAGEM DEIXOU DE EXISTIR, ele tem que descobrir isso ao
+		// entrar -- e nao ao morrer. Quem estava offline quando o mundo acabou nao viu a explosao,
+		// nao leu o anuncio e nao tem como saber que o proximo renascimento vai para outro lugar.
+		// Com o berco de pe esta linha nao faz nada. Ver `GameServer.Refugio.cs`.
+		OferecerORefugio(pl, podeAbrir: true);
 
 		// QUEM VOLTA JA DENTRO DA SALA DO TEMPO REOCUPA A VAGA -- o `htc_login_check()` do DM.
 		// Sem isto, relogar seria o jeito de liberar a vaga sem sair pela porta, e a lotacao de
@@ -4949,7 +4990,7 @@ public partial class GameServer : Node
 		// Hz, ao lado do calor da estrela) de proposito: a estrela e um lugar por onde se ATRAVESSA e
 		// 200 ms la tem que custar 200 ms de dano; ninguem "roça" o vacuo. Ver `GameServer.Vacuo.cs`.
 		if (_tickCount % TicksPorSegundo == 0)
-			{ TickDasTecnicas(); TickDasTecnicasG6(); TickDoEstudo(); TickDaGestacao(); TickDaLarva(); TickDoPalcoDoBio(); TickDoOlharDoBio(); TickDoFilmeDoBio(); TickDoNucleoInfinito(); TickDaPostura(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); TickDasSagas(); TickDaDestruicao(1); TickDasInvasoes(); TickDaConquista(); TickDasEsferas(); TickDasSuperEsferas(); TickDosCargos(); TickDoEsmagamento(); TickDoVacuo(); TickDaFusao(); }
+			{ TickDasTecnicas(); TickDasTecnicasG6(); TickDoEstudo(); TickDaGestacao(); TickDaLarva(); TickDoPalcoDoBio(); TickDoOlharDoBio(); TickDoFilmeDoBio(); TickDoNucleoInfinito(); TickDaPostura(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); TickDasSagas(); TickDoPalcoDaAgonia(1); TickDaDestruicao(1); TickDasInvasoes(); TickDaConquista(); TickDasEsferas(); TickDasSuperEsferas(); TickDosCargos(); TickDoEsmagamento(); TickDoVacuo(); TickDaFusao(); }
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
 		// Dois minutos e o maximo de treino que alguem pode perder.

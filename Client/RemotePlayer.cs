@@ -72,7 +72,7 @@ public partial class RemotePlayer : Node2D
 	/// </summary>
 	public void Cravar(Vector2 onde)
 	{
-		Position = onde;
+		Desenhar(onde);
 		// A LINHA DO TEMPO INTEIRA MORRE. Deixar amostras velhas faria o corpo deslizar de volta
 		// pro caminho de onde ele acabou de ser arrancado, no quadro seguinte.
 		_linha.Clear();
@@ -306,7 +306,7 @@ public partial class RemotePlayer : Node2D
 
 		// AINDA NAO HA PASSADO SUFICIENTE (o corpo acabou de entrar em campo): fica na primeira
 		// amostra em vez de deslizar de um lugar onde nunca esteve.
-		if (quando <= _linha[0].T) { Position = _linha[0].Pos; return; }
+		if (quando <= _linha[0].T) { Desenhar(_linha[0].Pos); return; }
 
 		// O PAR QUE CERCA O INSTANTE. Varre de tras pra frente porque o que se procura esta quase
 		// sempre no fim -- o buffer inteiro tem 8 amostras, mas o caso comum e a ultima ou a penultima.
@@ -317,7 +317,7 @@ public partial class RemotePlayer : Node2D
 			(double t0, Vector2 p0) = _linha[i - 1];
 			(double t1, Vector2 p1) = _linha[i];
 			double vao = t1 - t0;
-			Position = vao > 0.0001 ? p0.Lerp(p1, (float)Math.Clamp((quando - t0) / vao, 0, 1)) : p1;
+			Desenhar(vao > 0.0001 ? p0.Lerp(p1, (float)Math.Clamp((quando - t0) / vao, 0, 1)) : p1);
 			return;
 		}
 
@@ -325,6 +325,23 @@ public partial class RemotePlayer : Node2D
 		// inventar posicao futura poe o corpo onde ele talvez nao va, e o preco do erro e um
 		// puxao pra tras quando o pacote chega. Segurar no ultimo ponto conhecido custa alguns
 		// milissegundos de corpo parado -- e a mentira menor das duas.
-		Position = _linha[^1].Pos;
+		Desenhar(_linha[^1].Pos);
 	}
+
+	/// <summary>
+	/// PÕE O NO NA GRADE DE DESENHO -- a MESMA do corpo local (ver `LocalPlayer.NoPontoDaGrade`).
+	///
+	/// ============================ POR QUE ISTO NAO ERA PRECISO ANTES ============================
+	/// O projeto ligava `snap_2d_transforms_to_pixel`, e o motor arredondava a posicao de todo
+	/// objeto 2D na hora de desenhar. So que ele arredonda em pixel de MUNDO, e essa grade e
+	/// `zoom` vezes mais grossa que a da TELA -- era ela que obrigava o cenario a rolar de 2 em 2
+	/// px de tela no zoom 2 e produzia o tremor que o dono relatou. Com o arredondamento do motor
+	/// desligado, quem nao se colocar na grade fica em subpixel, e arte de pixel em subpixel com
+	/// filtro `Nearest` tem texel de largura irregular.
+	///
+	/// A posicao CRUA continua sendo a da interpolacao -- ela e recalculada do zero a cada quadro a
+	/// partir da linha do tempo, entao arredondar aqui nao acumula erro nenhum.
+	/// ==========================================================================================
+	/// </summary>
+	private void Desenhar(Vector2 onde) => Position = LocalPlayer.NoPontoDaGrade(onde, World.GradeDeDesenho);
 }

@@ -110,6 +110,53 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// ============================ O MESMO CÉU, MAIS FORTE ============================
+	/// Sobe a FORÇA de um clima já forçado sem tocar em tipo, prazo nem duração. É o que uma RAMPA
+	/// precisa -- a agonia de um planeta que vai explodir em cinco minutos tem que escurecer o céu
+	/// progressivamente, e não escurecê-lo de uma vez no segundo zero.
+	///
+	/// ============================ POR QUE NÃO DÁ PRA REEMITIR O `ForcarClima` ============================
+	/// Porque `Clima.De` deriva a entrada suave de `decorrido = Duracao - (Ate - agora)`, e o
+	/// `ForcarClima` reescreve os dois: logo depois de reemitir, `decorrido` volta a ZERO e a
+	/// `entradaRapida` de 1,2 s puxa a força a zero junto. O céu do fim do mundo **piscaria pra limpo**
+	/// a cada reemissão -- e uma rampa por reemissão são dezenas delas.
+	///
+	/// Preservando `Ate` e `Duracao`, `decorrido` continua crescendo e a curva de entrada/saída fica
+	/// exatamente como estava. O que muda é só o teto que ela multiplica.
+	/// ================================================================================================
+	///
+	/// ============================ E ELA SÓ SOBE ============================
+	/// Mesma disciplina do "o MAIS FORTE VENCE" do <see cref="ForcarClima"/>: um pedido mais fraco não
+	/// alivia o que já está no céu. Aqui isso também protege a rampa de si mesma -- o tique roda a
+	/// 1 Hz e um único segundo com a conta errada não pode desfazer cinco minutos de agonia.
+	///
+	/// O PASSO DE 0,05 NÃO É MICROTUNING: sem ele isto viraria **um pacote confiável por pessoa da
+	/// zona por segundo**, durante 310 s, pra mexer no terceiro decimal de uma força. Com ele são ~11
+	/// pacotes na agonia inteira, e cada um deles é um degrau que o jogador de fato enxerga.
+	/// ======================================================================
+	/// </summary>
+	/// <returns>Verdadeiro quando a força de fato subiu (e o pacote saiu).</returns>
+	public bool ApertarClima(ZoneKey zona, double forca, string motivo = "")
+	{
+		if (!_climaForcado.TryGetValue(zona.Hash, out ClimaForcado atual)) return false;
+		if (!atual.Vivo(TempoDoMundo)) return false;
+
+		double alvo = Math.Clamp(forca, 0, 1);
+		if (alvo <= atual.Forca + 0.049) return false;
+
+		// `with` E NAO ESCRITA DIRETA: `ClimaForcado` e `readonly struct` de proposito (ele viaja no
+		// fio e e copiado pelo palco de bancada), entao a copia com um campo trocado e o unico jeito
+		// -- e ela mantem `Ate` e `Duracao` intactos, que e o ponto inteiro deste metodo.
+		atual = atual with { Forca = alvo };
+		_climaForcado[zona.Hash] = atual;
+		AnunciarClima(zona, atual);
+
+		GD.Print($"[clima] {zona.Name}: o ceu aperta pra {alvo:0.00}"
+				 + (motivo.Length > 0 ? " -- " + motivo : ""));
+		return true;
+	}
+
+	/// <summary>
 	/// ============================ O GANCHO DAS TRANSFORMAÇÕES ============================
 	/// UMA FORMA MUDOU, E O CÉU PODE RESPONDER. Chamado do funil único de troca de forma
 	/// (`GameServer.Formas.AnunciarForma`), então já vale pra subir, pra descer e pra queda por

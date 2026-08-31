@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
@@ -717,6 +717,11 @@ public partial class RoboDeBioRetrato : Node
 	/// com os `bio-retrato-N.png` individuais perfeitos ao lado. E o mesmo modo de falha que esta
 	/// bancada existe pra pegar, so que dentro dela: o numero (a matriz de diferenca) estava certo, o
 	/// arquivo que o dono ia abrir estava vazio, e o placar fechava limpo. Achado OLHANDO a imagem.
+	///
+	/// **A MONTAGEM MUDOU DE ENDERECO**: ela mora em <see cref="TiraDeFotos"/>, porque a bancada da
+	/// agonia de um planeta precisou da mesma tira e uma segunda copia deste codigo seria uma segunda
+	/// chance de reaprender o tombo de cima. O que ficou aqui e o que e desta bancada: quais retratos
+	/// entram e o que o placar afirma sobre eles.
 	/// ====================================================================================================================
 	/// </summary>
 	private void ATira()
@@ -724,85 +729,17 @@ public partial class RoboDeBioRetrato : Node
 		var comFoto = _retratos.Where(r => r.Corte != null).ToList();
 		if (comFoto.Count == 0) { Anotar("sem tira: nenhuma foto saiu"); return; }
 
-		const int Vao = 10, AlturaDoRotulo = 28;
-		int larg = comFoto.Sum(r => r.Corte!.GetWidth()) + Vao * (comFoto.Count + 1);
-		int alt = comFoto.Max(r => r.Corte!.GetHeight()) + Vao * 2 + AlturaDoRotulo;
-
-		Image tira = Image.CreateEmpty(larg, alt, false, Image.Format.Rgba8);
-		tira.Fill(new Color(0.06f, 0.06f, 0.08f));
-
-		int x = Vao;
-		foreach (Retrato r in comFoto)
-		{
-			Image c = (Image)r.Corte!.Duplicate();
-			c.Convert(Image.Format.Rgba8);      // ver o cabecalho: sem isto a tira sai PRETA
-			tira.BlitRect(c, new Rect2I(0, 0, c.GetWidth(), c.GetHeight()), new Vector2I(x, Vao));
-			Numerar(tira, r.Pose, x + c.GetWidth() / 2, alt - AlturaDoRotulo + 4);
-			x += c.GetWidth() + Vao;
-		}
-
 		string caminho = ProjectSettings.GlobalizePath($"{Pasta}bio-escada.png");
-		tira.SavePng(caminho);
+		double pintada = TiraDeFotos.Montar(
+			[.. comFoto.Select(r => new TiraDeFotos.Quadro(r.Corte!, r.Pose))], caminho);
 
 		// ============================ E A TIRA E MEDIDA, COMO QUALQUER OUTRA COISA ============================
 		// Ela ja saiu PRETA uma vez com as sete fotos boas no disco e o placar limpo (ver o cabecalho).
 		// Um arquivo chamado "a escada do bio" sem escada nenhuma vira, meses depois, uma prova que
 		// ninguem deu -- e este projeto ja tem seis casos assim.
 		// ===================================================================================================
-		var fundo = new Color(0.06f, 0.06f, 0.08f);
-		int pintados = 0, total = 0;
-		for (int y = Vao; y < alt - AlturaDoRotulo; y += 3)
-			for (int px = 0; px < larg; px += 3)
-			{
-				total++;
-				Color c2 = tira.GetPixel(px, y);
-				if (Math.Abs(c2.R - fundo.R) + Math.Abs(c2.G - fundo.G) + Math.Abs(c2.B - fundo.B) > 0.05f)
-					pintados++;
-			}
-
-		Conferir(total > 0 && (double)pintados / total > 0.5,
+		Conferir(pintada > 0.5,
 				 $"A TIRA saiu com {comFoto.Count} retrato(s) lado a lado, NUMERADOS, e ela NAO esta "
-			   + $"vazia ({(total > 0 ? 100.0 * pintados / total : 0):0}% dos pixels sao imagem e nao "
-			   + $"fundo) -> {caminho}");
-	}
-
-	/// <summary>
-	/// O NUMERO DA POSE, desenhado a mao em 3x5. Sem rotulo, a tira e sete bonecos verdes e quem olha
-	/// tem que contar da esquerda pra direita adivinhando onde a escada comeca -- que e exatamente o
-	/// tipo de prova que, meses depois, nao prova nada.
-	/// </summary>
-	private static readonly string[] Digitos =
-	[
-		"###" + "#.#" + "#.#" + "#.#" + "###",   // 0
-		".#." + "##." + ".#." + ".#." + "###",   // 1
-		"###" + "..#" + "###" + "#.." + "###",   // 2
-		"###" + "..#" + "###" + "..#" + "###",   // 3
-		"#.#" + "#.#" + "###" + "..#" + "..#",   // 4
-		"###" + "#.." + "###" + "..#" + "###",   // 5
-		"###" + "#.." + "###" + "#.#" + "###",   // 6
-		"###" + "..#" + "..#" + "..#" + "..#",   // 7
-		"###" + "#.#" + "###" + "#.#" + "###",   // 8
-		"###" + "#.#" + "###" + "..#" + "###",   // 9
-	];
-
-	private static void Numerar(Image tira, int numero, int centroX, int topoY)
-	{
-		const int Escala = 4;
-		string d = Digitos[Math.Clamp(numero, 0, 9)];
-		int x0 = centroX - 3 * Escala / 2;
-		var branco = new Color(0.85f, 0.9f, 0.85f);
-
-		for (int linha = 0; linha < 5; linha++)
-			for (int coluna = 0; coluna < 3; coluna++)
-			{
-				if (d[linha * 3 + coluna] != '#') continue;
-				for (int y = 0; y < Escala; y++)
-					for (int x = 0; x < Escala; x++)
-					{
-						int px = x0 + coluna * Escala + x, py = topoY + linha * Escala + y;
-						if (px >= 0 && py >= 0 && px < tira.GetWidth() && py < tira.GetHeight())
-							tira.SetPixel(px, py, branco);
-					}
-			}
+			   + $"vazia ({pintada * 100:0}% dos pixels sao imagem e nao fundo) -> {caminho}");
 	}
 }

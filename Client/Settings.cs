@@ -444,9 +444,15 @@ public sealed class Settings
     /// avisa quando a esticada nao e inteira.
     ///
     /// ============================ O CUSTO QUE E DESTE JOGO E NAO DO MOTOR ============================
-    /// A arte e de PIXEL e o projeto liga `snap_2d_transforms_to_pixel`. Numa esticada de 1,5x um
-    /// texel vira ora 1 ora 2 pixels de tela, e o padrao troca conforme a camera anda: a imagem
-    /// CINTILA. E o mesmo motivo pelo qual o <see cref="Zoom"/> e inteiro por construcao.
+    /// A arte e de PIXEL, e o jogo poe cada coisa num ponto da grade de pixel de TELA (ver
+    /// `LocalPlayer.NoPontoDaGrade`; o `snap_2d_transforms_to_pixel` do motor esta DESLIGADO
+    /// justamente porque ele arredondava em espaco de mundo, que e a grade errada com zoom). Numa
+    /// esticada de 1,5x um texel vira ora 1 ora 2 pixels de MONITOR, e o padrao troca conforme a
+    /// camera anda: a imagem CINTILA. E o mesmo motivo pelo qual o <see cref="Zoom"/> e inteiro.
+    ///
+    /// E O PRECO ESTA MEDIDO, e nao so suposto: a bancada da rolagem (`--diagrolagem`, linha "NO
+    /// VIDRO") mediu a hesitacao da rolagem em pixel de monitor a 1x e a 1,5x -- 0,45 contra 0,60.
+    /// A resolucao menor nao acrescenta desordem nova a rolagem: ela AMPLIA a que ja existe.
     ///
     /// A saida NAO foi tirar essas resolucoes da lista: o pedido do dono e literalmente poder jogar
     /// em tela cheia com resolucao menor. Entao elas ficam, e a lista DIZ o preco -- quem quiser

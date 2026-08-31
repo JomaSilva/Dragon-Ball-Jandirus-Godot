@@ -156,8 +156,11 @@ public sealed partial class GameServer
 
 		preso.Selo.Soltar();
 
-		if (temVolta) MoveToZone(preso.Id, volta, pos);
-		else MandarProBerco(preso);
+		// O MUNDO DE VOLTA PODE TER ACABADO ENQUANTO ELE ESTAVA SELADO. Mesma porta do Templo e das
+		// cavernas -- ver `SaidaParaUmMundoMorto`. O selo e o caso mais provavel dos tres, porque ele
+		// dura o tempo que o selador quiser: e a unica prisao do jogo em que dias podem passar.
+		if (!temVolta) MandarProBerco(preso);
+		else if (!SaidaParaUmMundoMorto(preso, volta)) MoveToZone(preso.Id, volta, pos);
 
 		Avisar(preso, $"o selo se rompe: {motivo}");
 		GD.Print($"[server] SELO: {preso.Name} saiu ({motivo})");

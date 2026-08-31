@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 
 namespace Jandirus.Client;
 
@@ -49,9 +49,23 @@ public static class SubirComOVoo
 	///
 	/// Por isso o deslocamento vai nos FILHOS, um por um, e nunca no pai.
 	/// ====================================================================================
+	///
+	/// ============================ E ELE VAI NA GRADE DE DESENHO ============================
+	/// `altitude * Voo.EscalaNaTela` (0,25) da um numero quebrado -- 137 px de altitude viram 34,25.
+	/// Enquanto o motor arredondava sozinho (`snap_2d_transforms_to_pixel`) isso nao aparecia; com o
+	/// arredondamento agora sendo nosso (ver `LocalPlayer.NoPontoDaGrade` e o porque no
+	/// `project.godot`), um deslocamento quebrado poria o boneco -- e, subindo, o MUNDO INTEIRO --
+	/// em subpixel.
+	///
+	/// O "mundo inteiro" nao e exagero: a `Camera2D` do corpo local e um destes filhos e sobe junto
+	/// (ver o caso normal la embaixo). Sem esta linha, decolar deixaria o cenario deslizando em
+	/// meio pixel enquanto a altura muda -- exatamente o defeito que este trabalho veio consertar,
+	/// so que so no ar.
+	/// ====================================================================================
 	/// </summary>
 	public static void Aplicar(Node2D corpo, Vector2 deslocamento)
 	{
+		deslocamento = LocalPlayer.NoPontoDaGrade(deslocamento, World.GradeDeDesenho);
 		foreach (Node filho in corpo.GetChildren())
 		{
 			// QUEM DECLAROU QUE FICA, FICA. Ver `IFicaNoChao` pra a lista dos dois casos legitimos

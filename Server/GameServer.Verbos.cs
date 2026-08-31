@@ -101,6 +101,11 @@ public sealed partial class GameServer
 		// (dominios vivos, invasoes em andamento, canais de arranque) e nao meia duzia de `case`.
 		if (ComandoDeConquista(pl, cmd, arg)) return;
 
+		// O REFUGIO: para onde vai quem ficou sem planeta natal, e a escolha entre o dominio
+		// conquistado e a vizinhanca de casa. Vem LOGO DEPOIS da conquista porque escreve no mesmo
+		// campo que ela (`Dominio.EhOSpawn`) -- ver `GameServer.Refugio.cs`.
+		if (ComandoDeRefugio(pl, cmd, arg)) return;
+
 		// AS ESFERAS DO DRAGAO: prefixo `db_`, e as SUPER com prefixo `sdb_`. Dois arquivos proprios
 		// pela mesma razao do banco e da conquista -- sao dois sistemas com estado compartilhado
 		// (sets, esferas espalhadas, invocacoes de um lado; claims e canais de disputa do outro) e

@@ -757,6 +757,11 @@ public sealed partial class GameServer
 	{
 		if (_projeteisVivos == 0) return;
 
+		// A MEMORIA DO CEU VALE UM TIQUE E NAO MAIS. Ver `_mundosPerto`: ela existe pra o mesmo
+		// `PorPerto` nao ser refeito quatro vezes por tiro, e nao pra guardar o universo -- limpar
+		// aqui e o que a mantem memoria de tique em vez de cache com dono nenhum.
+		_mundosPerto.Clear();
+
 		foreach ((ulong zona, List<Projetil> lista) in _projeteis)
 		{
 			if (lista.Count == 0) continue;
@@ -765,6 +770,7 @@ public sealed partial class GameServer
 			ZoneCollision? mapa = null;
 			ZoneKey chave = default;
 			bool temChao = false;
+			bool noEspaco = false;
 			bool mapaLido = false;
 
 			for (int i = lista.Count - 1; i >= 0; i--)
@@ -790,6 +796,12 @@ public sealed partial class GameServer
 						// sub-passo de cada raio, ela sozinha viraria milhares de alocacoes por
 						// tique. A resposta nao muda dentro do tique: uma vez por zona.
 						temChao = Espaco.EhPlaneta(chave);
+
+						// "E O ESPACO?" TAMBEM POR ZONA, e pelo mesmo motivo elevado ao quadrado: e
+						// ela que liga o unico alvo do jogo que nao e corpo nem parede -- o PLANETA
+						// visto de fora (ver `MundoNoCaminho`). Ela nao e o inverso de `temChao`: um
+						// interior de nave nao tem chao de planeta e tambem nao e o espaco.
+						noEspaco = Espaco.EhEspaco(chave);
 						mapaLido = true;
 					}
 
@@ -806,7 +818,7 @@ public sealed partial class GameServer
 					if (p.Tipo == TipoDeProjetil.Beam && p.Canalizando && !p.EmEmbate && !p.JaDisputou)
 						TentarEmbateDeFeixes(p, lista);
 
-					AndarProjetil(p, dt, corpos, mapa, chave, temChao);
+					AndarProjetil(p, dt, corpos, mapa, chave, temChao, noEspaco);
 				}
 
 				if (p.Vivo) continue;
@@ -827,8 +839,12 @@ public sealed partial class GameServer
 	/// A zona e um PLANETA (tem chao pra arar)? Tambem vem pronta de fora, e pelo mesmo motivo elevado
 	/// ao quadrado: a resposta custa uma varredura com alocacao e nao muda dentro do tique.
 	/// </param>
+	/// <param name="noEspaco">
+	/// A zona e o ESPACO? Liga o unico alvo do jogo que nao e corpo nem parede -- o disco de um
+	/// planeta visto de fora. Ver o passo 6a-quater e <see cref="MundoNoCaminho"/>.
+	/// </param>
 	private void AndarProjetil(Projetil p, double dt, List<ServerPlayer> corpos, ZoneCollision? mapa,
-							   ZoneKey zona, bool temChao)
+							   ZoneKey zona, bool temChao, bool noEspaco)
 	{
 		ServerPlayer? dono = _players.GetValueOrDefault(p.Dono);
 
@@ -998,6 +1014,48 @@ public sealed partial class GameServer
 			{
 				p.Pos = nova;
 				Matar(p, FimDeProjetil.Cenario);
+				return;
+			}
+
+			// ============================ 6a-quater) O PLANETA. **E ele e o cenario do espaco.** ============================
+			// K1 do pedido do dono: *"pessoas q estao no espaco poderiam jogar ataques de KI no planeta
+			// pra comecar a causar dano nele"*.
+			//
+			// ---- POR QUE AQUI, E NAO UM ALVO NOVO ----
+			// A medicao da fase 0 foi clara: hoje um projetil so encontra DUAS coisas -- um corpo
+			// (`Colidiu`) e uma parede (o passo 6a logo acima). No espaco ele nao encontra nem uma nem
+			// outra: `mapa` e nulo (a zona do espaco nao tem arquivo de mapa), entao o passo 6a **nunca
+			// roda** e o disco do planeta na tela era atravessado sem nada acontecer.
+			//
+			// Fazer do planeta um `ServerPlayer` de mentira, ou uma entidade nova com vida propria,
+			// seria uma terceira classe de alvo -- com colisao propria, snapshot proprio e um segundo
+			// jeito de "acertar". O que ele e, de verdade, e a PAREDE do espaco: uma coisa solida que
+			// nao se mexe e onde o tiro acaba. Entao ele entra ao lado da parede, no mesmo laco de
+			// sub-passos e com o mesmo desfecho (`FimDeProjetil.Cenario`, que o cliente ja desenha).
+			//
+			// ---- E O TESTE E O MESMO DO POUSO ----
+			// `Espaco.PlanetaSob` (via `MundoNoCaminho`), a mesma pergunta que decide se um CORPO
+			// encostou no planeta. Assim "encostar nele" quer dizer a mesma coisa pro tiro e pra
+			// pessoa, e nao ha duas nocoes de acertar um mundo.
+			//
+			// ---- DENTRO DO LACO, E NAO NO FIM DO TIQUE ----
+			// Pela mesma razao que o 6a e o sulco do chao estao aqui: um tiro rapido anda ate 53 px por
+			// tique e um disco de planeta tem 220 a 440 px de diametro -- testar so no fim deixaria o
+			// tiro entrar e sair pela borda de um mundo pequeno sem tocar nele.
+			//
+			// ---- ALTITUDE NAO CONTA AQUI ----
+			// De proposito, e e a diferenca em relacao ao 6a: `AtravessaCenario` existe pra deixar um
+			// raio passar POR CIMA de um muro de dois metros. Nao ha "por cima" de um planeta.
+			// ==========================================================================================================
+			if (noEspaco && MundoNoCaminho(nova) is { } mundo)
+			{
+				p.Pos = nova;
+				AtingirMundoComKi(mundo, p, dono);
+
+				// `Mundo` E NAO `Cenario`, e a diferenca e so de ESCALA -- ver o enum. A regra dos dois
+				// e a mesma (o tiro acaba aqui); o que muda e que o desenho do `Cenario` foi
+				// dimensionado pra a quina de um muro de 32 px e some em cima de um disco de 440.
+				Matar(p, FimDeProjetil.Mundo);
 				return;
 			}
 
@@ -1552,7 +1610,22 @@ public sealed partial class GameServer
 	/// nao veio, e um pacote de tamanho variavel sem marcador e o jeito classico de dessincronizar
 	/// um protocolo binario em silencio. Zero tiro custa DOIS bytes.
 	/// </summary>
-	private void EscreverProjeteis(NetDataWriter w, ulong hash)
+	/// <param name="perto">
+	/// ============================ O RECORTE DO ESPACO ============================
+	/// Nulo nas zonas normais: quem esta na zona ve a zona inteira, e o bloco sai igual pra todo
+	/// mundo (um buffer, uma escrita).
+	///
+	/// No ESPACO nao da: a zona e UMA pro universo inteiro, entao "todos os tiros da zona" seria
+	/// todo tiro dado em qualquer canto da galaxia. Com a posicao na mao, o corte e o MESMO que o
+	/// bloco de corpos logo acima ja usa (<see cref="Espaco.PertoDeMim"/>, chunks vizinhas) -- e nao
+	/// uma segunda nocao de "perto".
+	///
+	/// O `Nasceu`/`Morreu` continua indo pra zona inteira de proposito: e por ele que o cliente
+	/// CRIA o desenho (tipo, arte, escala, altura), e um tiro que nascesse longe e voasse pra ca
+	/// chegaria sem nunca ter sido criado. Este bloco so MOVE o que ja existe.
+	/// ==========================================================================
+	/// </param>
+	private void EscreverProjeteis(NetDataWriter w, ulong hash, Vec2? perto = null)
 	{
 		if (!_projeteis.TryGetValue(hash, out List<Projetil>? l) || l.Count == 0)
 		{
@@ -1560,12 +1633,31 @@ public sealed partial class GameServer
 			return;
 		}
 
-		w.Put((ushort)l.Count);
+		if (perto is not { } onde)
+		{
+			w.Put((ushort)l.Count);
+			foreach (Projetil p in l)
+				new ProjetilState
+				{
+					Id = p.Id, Pos = p.Pos, Tipo = (byte)p.Tipo, Cauda = p.Cauda,
+				}.Write(w);
+			return;
+		}
+
+		// DUAS VOLTAS, e nao uma lista temporaria: o contador vem ANTES dos itens no fio, e alocar
+		// uma lista por jogador por tique num snapshot de 30 Hz seria lixo por quadro por pessoa.
+		ushort quantos = 0;
+		foreach (Projetil p in l) if (Espaco.PertoDeMim(onde, p.Pos)) quantos++;
+
+		w.Put(quantos);
 		foreach (Projetil p in l)
+		{
+			if (!Espaco.PertoDeMim(onde, p.Pos)) continue;
 			new ProjetilState
 			{
 				Id = p.Id, Pos = p.Pos, Tipo = (byte)p.Tipo, Cauda = p.Cauda,
 			}.Write(w);
+		}
 	}
 
 	/// <summary>
@@ -1672,5 +1764,53 @@ public sealed partial class GameServer
 		List<ServerPlayer> l = ZoneList(hash);
 		chave = l.Count == 0 ? default : l[0].Zone;
 		return l.Count == 0 ? null : MapaDaZonaOuCatalogo(chave);
+	}
+
+	// =====================================================================
+	// O CENARIO DO ESPACO -- os discos que um tiro pode encontrar la fora
+	// =====================================================================
+	/// <summary>
+	/// O QUE HA NO CEU PERTO DE CADA CHUNK, memorizado por TIQUE.
+	///
+	/// ============================ POR QUE ISTO PRECISA DE MEMORIA ============================
+	/// `Espaco.PorPerto` nao e uma consulta: ela varre um 3x3 de CELULAS de sistema, hasheia cada
+	/// uma, monta os planetas de cada orbita que alcanca e **devolve uma lista nova**. Chamar isso
+	/// por sub-passo de cada tiro seria a mesma armadilha que o proprio `TickDosProjeteis` ja
+	/// documenta pro `Espaco.EhPlaneta` ("milhares de alocacoes por tique"), so que pior: um tiro
+	/// rapido tem quatro sub-passos, e o teto da zona sao 256 tiros.
+	///
+	/// A resposta nao muda dentro de um tique (o universo e funcao pura da seed) e os tiros do espaco
+	/// se amontoam em volta de quem atirou -- entao a memoria e tipicamente **uma entrada**, e ela e
+	/// jogada fora no comeco de cada tique pra nunca virar cache.
+	/// ====================================================================================
+	/// </summary>
+	private readonly Dictionary<ChunkId, List<PlanetaNoEspaco>> _mundosPerto = [];
+
+	/// <summary>
+	/// O MUNDO QUE ESTE PONTO ESTA TOCANDO -- nulo em ceu aberto. Ver <see cref="_mundosPerto"/>.
+	///
+	/// ============================ PLANETA DESTRUIDO E CEU ABERTO ============================
+	/// `Espaco.PorPerto` nao filtra morto (ela e do Core e nao conhece o registro), entao o filtro e
+	/// aqui -- e ele e obrigatorio pela mesma razao que o cliente parou de desenhar o disco de um
+	/// mundo destruido: **o planeta some**. Um tiro estourando no nada, no lugar onde a Terra ficava,
+	/// seria o mesmo defeito de familia visto do outro lado.
+	/// ==================================================================================
+	/// </summary>
+	private PlanetaNoEspaco? MundoNoCaminho(Vec2 pos)
+	{
+		ChunkId c = ChunkId.De(pos);
+		if (!_mundosPerto.TryGetValue(c, out List<PlanetaNoEspaco>? perto))
+			_mundosPerto[c] = perto = Espaco.PorPerto(SeedDoUniverso, c);
+
+		foreach (PlanetaNoEspaco p in perto)
+		{
+			// O MESMO TESTE DO POUSO (`Espaco.PlanetaSob`): distancia ao centro contra o raio do
+			// disco. Escrito aqui em vez de chamado porque `PlanetaSob` refaz o `PorPerto` por
+			// chamada -- e e justamente esse `PorPerto` que a memoria acima existe pra evitar.
+			if ((pos - p.Pos).LengthSquared > p.Raio * p.Raio) continue;
+			if (PlanetaMorto(p)) continue;
+			return p;
+		}
+		return null;
 	}
 }

@@ -288,6 +288,16 @@ public partial class World : Node2D
 		_orbes = new Node2D { Name = "Planetas" };
 		AddChild(_orbes);
 
+		// AS PEDRAS DA AGONIA. Nascem com o mundo e ficam QUIETAS enquanto nenhum planeta estiver
+		// morrendo (o `_Process` de la sai na primeira linha com uma comparacao de `double`).
+		//
+		// **DONO PROPRIO, E NAO A CINEMATICA**: o chao solto do `Transformacao` mora num node que vive
+		// de 4,6 a 143 s e morre; pendurar um efeito de 310 s ali dentro faria ele herdar o prazo da
+		// cena, que solta o jogador na marra ao vencer. Ver o cabecalho de `PedrasDaAgonia`, onde a
+		// diferenca de SORTEIO (que e a razao de fundo) esta escrita.
+		_pedras = new PedrasDaAgonia { Name = "PedrasDaAgonia" };
+		AddChild(_pedras);
+
 		if (GameClient.Instance is { } cli)
 		{
 			cli.Joined += AoEntrar;
@@ -618,7 +628,86 @@ public partial class World : Node2D
 				if (ligado) _gota?.Cair(Math.Max(0.1, ms / 1000.0));
 				else _gota?.Parar();
 				break;
+
+			// ============================ A EXPLOSAO QUE NINGUEM DESENHAVA ============================
+			// Este `case` e o conserto de um canal ORFAO -- exatamente a familia que o cabecalho deste
+			// metodo nomeia, e que ele mesmo ja tinha consertado pra quatro outros nomes.
+			// `MandarEfeito(pl, "explosao_final", ms)` era mandado de QUATRO lugares do servidor:
+			//
+			//   * `GameServer.Destruicao` -- no tremor dos cinco minutos E no commit (a mega explosao);
+			//   * `GameServer.Disciplinas` (duas vezes) -- a Aura da Destruicao;
+			//   * `GameServer.Tecnicas.G3` -- a **Final Explosion**, o suicidio do jogo.
+			//
+			// Nenhum deles desenhava nada. O `switch` nao tem `default`, entao os quatro chegavam pela
+			// rede e caiam no chao em silencio perfeito -- inclusive a tecnica que MATA UM PLANETA.
+			// Ligar o desenho aqui conserta os quatro de uma vez, que e a razao de ser um `case` deste
+			// canal e nao um efeito proprio da destruicao.
+			//
+			// ============================ E O DESENHO E O MESMO DO ESPACO ============================
+			// O quad usa `EstouroDePlaneta.gdshader`, o MESMO que o planeta visto de orbita usa quando
+			// morre. Um efeito escrito so pro chao seria um segundo jeito de dizer "estourou", e as
+			// duas versoes divergiriam na primeira vez que alguem afinasse uma delas.
+			//
+			// A ESCALA SAI DO `ms`, e e ele que separa os quatro emissores: 300-800 ms viram um estouro
+			// de 225-400 px (uma explosao PERTO, que e o `spawnExplosion(..., raio 5)` do tremor), e os
+			// 2200 ms do commit viram 890 px -- o mundo inteiro se abrindo debaixo dos pes. Nenhum
+			// numero novo por emissor: quem decide o tamanho e quem ja decidia a duracao.
+			// =====================================================================================
+			case "explosao_final":
+				if (ligado && _local != null) EstouroNoMundo(_local.GlobalPosition, Math.Abs(ms));
+				break;
 		}
+	}
+
+	/// <summary>
+	/// UM ESTOURO ANCORADO NO MUNDO -- o quad do <c>EstouroDePlaneta.gdshader</c>, mais o tremor e o som.
+	///
+	/// ANCORADO NO LUGAR E NAO NA TELA, pela regra que o `Transformacao.Clarao` ja documentou: um
+	/// clarao de tela cheia teria como modo de falha *"a tela de alguem no espaco ficando branca por
+	/// causa de um SSJ3 num planeta qualquer"*. No mundo, quem esta longe ve pequeno e quem esta em
+	/// cima toma a tela -- sem uma regra de distancia escrita em lugar nenhum.
+	///
+	/// A SEMENTE SAI DO LUGAR e do relogio: dois estouros seguidos no mesmo ponto com os mesmos raios
+	/// e os mesmos estilhacos denunciariam o efeito como desenho gerado. Mesma regra da semente por
+	/// corpo dos ferimentos procedurais.
+	/// </summary>
+	private void EstouroNoMundo(Vector2 onde, long ms)
+	{
+		double dura = Mathf.Clamp((float)ms / 1000f, 0.25f, 3f);
+		float raio = Mathf.Clamp(120f + (float)ms * 0.35f, 150f, 1100f);
+
+		var mat = new ShaderMaterial
+		{
+			Shader = ResourceLoader.Load<Shader>("res://Assets/Shaders/EstouroDePlaneta.gdshader"),
+		};
+		mat.SetShaderParameter("t", 0f);
+		mat.SetShaderParameter("semente", Mathf.Abs(onde.X * 0.017f + onde.Y * 0.031f) % 997f * 0.37f);
+
+		float lado = raio * 2f;
+		var quad = new ColorRect
+		{
+			Name = "Estouro",
+			Size = new Vector2(lado, lado),
+			Position = onde - new Vector2(raio, raio),
+			Color = Colors.White,
+			Material = mat,
+			// NA FRENTE DOS CORPOS: e uma explosao, ela tapa quem esta dentro dela.
+			ZIndex = 40,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+		};
+		_atores.AddChild(quad);
+
+		Tween t = quad.CreateTween();
+		t.TweenMethod(Callable.From<float>(v => mat.SetShaderParameter("t", v)), 0f, 1f, dura);
+		t.TweenCallback(Callable.From(quad.QueueFree));
+
+		// O TREMOR PELA PORTA DE SEMPRE (a `Sacudir` da cinematica), e nao por uma curva propria --
+		// mesma razao do `case "terremoto"` logo acima.
+		Sacudir((float)dura * Jandirus.Core.Forms.Cinematicas.QuedaDoTremor, 1f,
+				Jandirus.Core.Forms.Cinematicas.QuedaDoTremor,
+				Jandirus.Core.Forms.Cinematicas.CadenciaDoTremor);
+
+		if (_local != null) AudioDirector.EfeitoNoLugar(_local, Trilha.Explosao, 0.9f, raio * 2f);
 	}
 
 	/// <summary>
@@ -775,6 +864,27 @@ public partial class World : Node2D
 			case Jandirus.Core.Combat.FimDeProjetil.Cenario:
 				CombatFx.Impacto(_atores, p, 0.9f, cor);
 				PoeiraDeEstrago.Soltar(_atores, p);
+				break;
+
+			// ============================ O TIRO QUE ENCOSTOU NUM PLANETA ============================
+			// Mesma regra do `Cenario` (o tiro acabou ali), OUTRA escala. Um disco de planeta tem 220
+			// a 440 px de diametro; o estouro de 0,9 do muro se perde em cima dele e o jogador que
+			// bombardeia um mundo nao ve a tela responder.
+			//
+			// AS PECAS SAO AS QUE JA EXISTEM, e nao um efeito proprio: o `Impacto` do golpe e a `Onda`
+			// do anel de choque, que e procedural justamente pra escalar de 32 a 512 px sem serrilhar
+			// (`CombatFx`). Duas ondas em cadencia diferente pra o clarao ter frente e cauda -- e a
+			// mesma receita do estouro do embate de feixes.
+			//
+			// **SEM POEIRA**: `PoeiraDeEstrago` desenha cascalho e nuvem de chao quebrado, e o dono ja
+			// reprovou por escrito esse efeito quando ele aparecia onde nao havia chao ("uns quadrados
+			// marrons caindo ... TIRE esse efeito"). No vacuo, sobre um planeta a milhares de
+			// quilometros, ele seria exatamente aquilo.
+			// ====================================================================================
+			case Jandirus.Core.Combat.FimDeProjetil.Mundo:
+				CombatFx.Impacto(_atores, p, 2.4f, cor);
+				CombatFx.Onda(_atores, p, 150, cor, 0.34);
+				CombatFx.Onda(_atores, p, 260, cor, 0.55);
 				break;
 
 			case Jandirus.Core.Combat.FimDeProjetil.Defletido:
@@ -1974,6 +2084,54 @@ public partial class World : Node2D
 		if (_camera != null) _camera.Zoom = new Vector2(z, z);
 	}
 
+	/// <summary>
+	/// A GRADE EM QUE TODA ARTE DE PIXEL E DESENHADA -- quantos pontos por pixel de MUNDO.
+	///
+	/// ============================ POR QUE ELA E O ZOOM, E POR QUE MORA AQUI ============================
+	/// A camera magnifica o mundo pelo zoom, entao um pixel de mundo vale `zoom` pixels de TELA. O
+	/// pixel de tela e o menor deslocamento que um monitor sabe mostrar -- desenhar numa grade mais
+	/// GROSSA que ele (que e o que o `Floor` em pixel de mundo fazia) obriga o cenario a rolar de
+	/// `zoom` em `zoom` px de tela quando o passo real e 2,3, e isso e o tremor que o dono relatou.
+	/// Desenhar mais FINO que ele nao mostra nada de novo e so borra a arte.
+	///
+	/// **E ELA E UMA SO PRA TODO MUNDO.** Corpo local, corpos remotos e NPCs tem que assentar na
+	/// MESMA grade: se cada um arredondasse do seu jeito, dois bonecos lado a lado andariam com
+	/// passos diferentes. Por isso a resposta mora no `World` (que e quem tem a camera) e nao em
+	/// cada no.
+	///
+	/// SEM CAMERA VALE 1 -- o corpo existe por alguns quadros antes de a camera ser pendurada nele,
+	/// e nesses quadros a resposta certa e a antiga: pixel de mundo inteiro.
+	/// ==========================================================================================
+	/// </summary>
+	public static float GradeDeDesenho
+	{
+		get
+		{
+			Camera2D? c = Instancia?._camera;
+			if (c == null || !IsInstanceValid(c)) return 1f;
+			float z = c.Zoom.X;
+			return z > 1f ? MathF.Round(z) : 1f;
+		}
+	}
+
+	/// <summary>
+	/// A CAMERA DO JOGADOR, num lugar so.
+	///
+	/// Ela e fabricada aqui, e nao escrita na mao onde e usada, porque a bancada da rolagem
+	/// (`--diagrolagem`) precisa medir ESTA camera. Uma camera de laboratorio montada a mao mediria
+	/// as escolhas do teste -- e o defeito que o dono relatou vive exatamente nas tres propriedades
+	/// abaixo, que sao as que o teste tem que exercitar.
+	///
+	/// ZOOM INTEIRO e SEM suavizacao. Em arte de pixel um zoom quebrado (2,5x) mapeia texel em pixel
+	/// de tela de forma irregular e a imagem CINTILA andando; e a suavizacao deixa a camera atrasada
+	/// em relacao ao corpo, o que faz o cenario inteiro parecer tremer em volta do personagem.
+	///
+	/// E ELA E FILHA DO CORPO (ver quem chama): e por isso que a grade em que o corpo e desenhado
+	/// vira a grade em que o MUNDO INTEIRO rola -- ver `LocalPlayer.NoPontoDaGrade`.
+	/// </summary>
+	public static Camera2D NovaCamera(int zoom)
+		=> new() { Enabled = true, PositionSmoothingEnabled = false, Zoom = new Vector2(zoom, zoom) };
+
 	private void AoEntrar(int id, ZoneKey zona, Vec2 spawn, string nome)
 	{
 		CarregarZona(zona, new Vector2(spawn.X, spawn.Y));
@@ -2004,12 +2162,8 @@ public partial class World : Node2D
 		// veem. Por isso o veu mora no mundo e apenas SEGUE o corpo.
 		_veu.Alvo = corpo;
 
-		// ZOOM INTEIRO e SEM suavizacao. Em arte de pixel um zoom quebrado (2,5x) mapeia
-		// texel em pixel de tela de forma irregular e a imagem CINTILA andando; e a suavizacao
-		// deixa a camera atrasada em relacao ao corpo, o que faz o cenario inteiro parecer
-		// tremer em volta do personagem. As duas coisas juntas eram o "tremendo".
-		int z = Boot.Config.Zoom;
-		var cam = new Camera2D { Enabled = true, PositionSmoothingEnabled = false, Zoom = new Vector2(z, z) };
+		// A CAMERA E FILHA DO CORPO, e o porque das tres propriedades dela mora na `NovaCamera`.
+		var cam = NovaCamera(Boot.Config.Zoom);
 		corpo.AddChild(cam);
 		_camera = cam;
 
@@ -2622,10 +2776,17 @@ public partial class World : Node2D
 		{
 			double ms = (Time.GetTicksUsec() - _fimDaCarga) / 1000.0;
 			_fimDaCarga = 0;
-			if (ms > 5) GD.Print($"[perf] {_zonaMedida}: PRIMEIRO QUADRO {ms:0.0} ms (montagem do tilemap)");
+			// O NOME DESTE CONTADOR ESTAVA VELHO, e nome errado num contador e como uma sessao
+			// inteira olha pro lugar errado. Quando o formato `.pedacos` entrou, a montagem do
+			// tilemap deixou de dominar este quadro (o log diz "4 pedaco(s) montado(s) na chegada",
+			// nao 266 mil celulas). O que sobrou aqui, medido com `--verbose`, sao 135 recursos e 5
+			// compilacoes de shader: corpo, aura, HUD com as chapas do boneco, as telas do jogo e a
+			// rajada de aparencias dos NPCs do primeiro snapshot.
+			if (ms > 5) GD.Print($"[perf] {_zonaMedida}: PRIMEIRO QUADRO {ms:0.0} ms (sprite + shader + telas)");
 		}
 
 		TickDoTremor(delta);
+		TickDaAgonia();
 
 		EfeitosDaAltura();
 		TickDosDecalques(delta);
@@ -2633,6 +2794,42 @@ public partial class World : Node2D
 		if (_lutaAte <= 0) return;
 		_lutaAte -= delta;
 		if (_lutaAte <= 0) AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Combate, "a tag de combate CAIU");
+	}
+
+	/// <summary>As pedras que sobem de um planeta morrendo. Ver <see cref="PedrasDaAgonia"/>.</summary>
+	private PedrasDaAgonia? _pedras;
+
+	/// <summary>
+	/// Quantas pedras estao levitando AGORA. Pra bancada -- ver `RoboDoChaoQueMorre`.
+	///
+	/// Ela existe porque o custo do A4 e a unica coisa deste efeito que precisa ser dita em NUMERO
+	/// antes do beta (*"pedras levitando pelo mapa TODO"* interpretado ao pe da letra sao ~40 mil
+	/// sprites na Terra), e o robo que mede quadros por segundo precisa dizer com quantas pedras na
+	/// tela ele mediu -- senao o numero dele nao e comparavel com nada.
+	/// </summary>
+	public int PedrasVivasDeTeste => _pedras?.PedrasVivasDeTeste ?? 0;
+
+	/// <summary>
+	/// ============================ A AGONIA DO CHAO EM QUE EU ESTOU ============================
+	/// Uma leitura por quadro do MESMO numero que o servidor usa (`MortePlanetaria.Intensidade`, no
+	/// Core) -- e ela e entregue pras pedras e mais nada. O tremor, o ceu e o chao caindo ja chegam
+	/// prontos do servidor pelos canais deles; o que o cliente precisa decidir sozinho e a densidade
+	/// do que ele DESENHA, porque isso depende da camera dele.
+	///
+	/// **VALE SO PRA PLANETA**, e o crivo e o unico do jogo (`ChaveDePlaneta.Da`, que delega ao
+	/// `Espaco.EhPlaneta`): a Sala do Tempo, o Inferno e o interior de uma nave nao agonizam, mesmo
+	/// que o mundo la fora esteja acabando.
+	/// ========================================================================================
+	/// </summary>
+	private void TickDaAgonia()
+	{
+		if (_pedras == null) return;
+		if (GameClient.Instance is not { } cli) { _pedras.Agonia = 0; return; }
+
+		_pedras.Seed = cli.SeedDoUniverso ^ cli.Zone.Hash;
+		_pedras.Agonia = Jandirus.Core.World.ChaveDePlaneta.Da(cli.Zone) is { } chave
+			? cli.IntensidadeDaAgonia(chave)
+			: 0;
 	}
 
 	/// <summary>A nevoa de altitude. Nasce junto com o mundo e fica quieta enquanto ninguem sobe.</summary>
@@ -2729,6 +2926,33 @@ public partial class World : Node2D
 			if (_colisao == null || PosicaoLocal is not { } p) return false;
 			return Jandirus.Core.World.MoveRules.Occupied(_colisao, new Jandirus.Core.World.Vec2(p.X, p.Y));
 		}
+	}
+
+	/// <summary>
+	/// ONDE CADA CORPO REMOTO ESTA, ja em PONTOS DA GRADE DE DESENHO. So pras bancadas.
+	///
+	/// ============================ POR QUE ISTO SUBSTITUIU UMA CONTAGEM QUE NAO SABIA FICAR VERMELHA ============================
+	/// Aqui havia um `RemotosForaDaGradeDeTeste`, que contava quantos remotos NAO caiam num ponto da
+	/// grade. Ele perguntava "a posicao vezes a grade da um inteiro?" -- e essa pergunta so sabe pegar
+	/// UM dos dois defeitos possiveis. Um corpo desenhado em pixel de MUNDO (a grade grossa, o defeito
+	/// que o dono relatou) tem posicao inteira, e inteiro vezes 2 continua inteiro: ele passava.
+	///
+	/// Medido: a bancada da rolagem imprimiu "corpos remotos na grade: 36800/36800" na build
+	/// CONSERTADA e os MESMOS 36800/36800 na build com o defeito injetado de proposito. Um numero que
+	/// nao muda entre o certo e o errado nao e uma prova, e ocupava o lugar de uma.
+	///
+	/// Devolvendo a posicao em PONTOS DA GRADE, quem pergunta pode responder as duas coisas com a
+	/// mesma conta que ja usa pro corpo local: se os valores nao forem inteiros, ha subpixel; se o
+	/// divisor comum deles for 2, a grade e a grossa. Ver `RoboDeRolagem.Quantum`.
+	/// ==========================================================================================
+	/// </summary>
+	public List<(int Id, Vector2 NaGrade)> RemotosNaGradeDeTeste()
+	{
+		float g = GradeDeDesenho;
+		var saida = new List<(int, Vector2)>();
+		foreach ((int id, RemotePlayer r) in _remotos)
+			if (IsInstanceValid(r)) saida.Add((id, r.Position * g));
+		return saida;
 	}
 
 	/// <summary>Que animacao o MEU corpo esta tocando. So pras bancadas.</summary>
@@ -4201,6 +4425,32 @@ public partial class World : Node2D
 
 		_ceu.Seed = cli.SeedDoUniverso;
 		foreach (GameClient.PlanetaInfo p in cli.Planetas)
+		{
+			// ============================ "O PLANETA SOME" ERA FALSO, E ESTA E A METADE QUE FALTAVA ============================
+			// O dono pediu *"e assim o planeta some"*, e ate aqui ele NAO sumia: `MandarVizinhanca`
+			// serializa `Espaco.PorPerto` sem nenhum filtro de morto e este laco desenhava tudo o que
+			// chegava, entao o disco de um mundo destruido continuava no ceu -- com rotulo, com nome, e
+			// so recusando pouso. `PlanetaMorto` existia no servidor havia meses e o desenho nunca o
+			// consultou: a regra ligada num chamador e esquecida no outro.
+			//
+			// **O FILTRO MORA AQUI E NAO NO PACOTE**, e de proposito: o `S2C.Vizinhanca` responde "que
+			// corpos existem perto de voce", que continua sendo verdade -- o cadaver de um planeta e
+			// onde o admin vai pra restaura-lo (`AdminRestaurarPlaneta` usa `Espaco.PlanetaSob`), e
+			// tirar o corpo do pacote quebraria isso pra consertar um desenho.
+			//
+			// A JANELA DO ESTOURO E A EXCECAO: um planeta que acabou de morrer continua desenhado por
+			// `SegundosDoEstouro`, porque e o `PlanetaDesenhado` que toca a mega explosao e ele precisa
+			// existir pra isso. Ele se mata sozinho quando acaba (ver o `_Process` de la).
+			// =============================================================================================================
+			var chave = Jandirus.Core.World.ChaveDePlaneta.De(new Jandirus.Core.World.PlanetaNoEspaco
+			{
+				Nome = p.Nome, Seed = p.Seed, Premade = p.Premade,
+			});
+			if (cli.Mortos.Morto(chave)
+				&& (cli.SegundosAteOEstouro(chave) is not { } falta
+					|| falta < -Jandirus.Core.World.MortePlanetaria.SegundosDoEstouro))
+				continue;
+
 			_orbes.AddChild(new PlanetaDesenhado
 			{
 				Name = "P_" + p.Nome,
@@ -4215,6 +4465,7 @@ public partial class World : Node2D
 				Tipo = p.Premade ? ""
 					 : Jandirus.Core.World.MundoProcedural.DaSeed(p.Seed, p.Nome).Bioma.ToString(),
 			});
+		}
 
 		DesenharEstrelas(cli);
 	}
@@ -4311,6 +4562,27 @@ public partial class World : Node2D
 
 	/// <summary>Onde EU estou, em coordenada de mundo. Nulo antes de entrar.</summary>
 	public Vector2? PosicaoLocal => _local != null && IsInstanceValid(_local) ? _local.GlobalPosition : null;
+
+	/// <summary>
+	/// A minha posicao EXATA (float cru) e a DESENHADA (a do no), no mesmo instante. So pras bancadas.
+	///
+	/// As duas juntas porque a pergunta e a DIFERENCA entre elas -- ver
+	/// <see cref="LocalPlayer.PosicaoExataDeTeste"/>. Pedir uma num quadro e a outra no seguinte
+	/// mediria o passo do corpo junto com o erro de arredondamento.
+	/// </summary>
+	public (Vector2 Exata, Vector2 Desenhada)? PassoLocalDeTeste
+		=> _local != null && IsInstanceValid(_local)
+		   ? (new Vector2(_local.PosicaoExataDeTeste.X, _local.PosicaoExataDeTeste.Y), _local.Position)
+		   : null;
+
+	/// <summary>
+	/// O zoom que a CAMERA esta usando agora. So pras bancadas.
+	///
+	/// Nao e o <see cref="ZoomDeTeste"/>: aquele devolve o campo `_zoomAgora`, que so e escrito pelo
+	/// degrau do voo alto e vale 0 antes da primeira decolagem. Este pergunta ao node -- e quem
+	/// converte pixel de mundo em pixel de tela e o node, nao o campo.
+	/// </summary>
+	public float ZoomDaCameraDeTeste => _camera?.Zoom.X ?? 0f;
 
 	/// <summary>
 	/// POR QUE O CORPO LOCAL NAO ANDA AGORA -- vazio quando ele anda. So repassa o

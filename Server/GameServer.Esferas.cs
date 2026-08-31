@@ -190,6 +190,18 @@ public sealed class Esfera
 ///   3. **`Ballplanet` nulo fazia `Scatter()` a cada 10 s pra sempre** (:323-329, `"Earth" != null`).
 ///      Aqui a policia compara ZONA com ZONA e um set sem zona nao existe -- ele nao chega a nascer.
 ///
+/// ============================ E UMA REGRA QUE O DM NAO TEM: O MUNDO ACABA, O SET ACABA ============================
+/// No original um planeta destruido nao mexe uma linha nas esferas -- e neste port isso durou ate a
+/// medicao mostrar o que significava: o Porunga ancorado em Namek continuava **vivo** dentro de um
+/// planeta que recusa pouso, com o zelador recriando as sete de segundo em segundo, pra sempre.
+///
+/// O dono decidiu: *"sim porunga morre em namek quando namek explode, so voltando quando o planeta e
+/// restaurado pelas esferas de outro lugar"*. A regra inteira mora em
+/// <see cref="EnterrarSetsDeMundosMortos"/>, e a volta em <see cref="ErguerOSetEterno"/> -- e nada
+/// novo foi para o disco por causa dela: "o Porunga esta morto" e `planetas-mortos.json` mais a
+/// ausencia dele em `_sets`.
+/// ================================================================================================================
+///
 /// O que NAO foi "consertado" de proposito: `Destroy_Statue` e `Destroy_Ball` continuam abertos a
 /// QUALQUER UM (o proprio `desc` da estatua promete isso, :30), e o dragao continua matavel por quem
 /// tiver `expressedBP >= WishPower`. Sao decisoes do original, e ruidosas -- mudar era design novo.
@@ -301,6 +313,21 @@ public sealed partial class GameServer
 		GD.Print($"[server] esferas: faltam {Esferas.OqueFalta.Length} -- "
 			   + string.Join("; ", Esferas.OqueFalta));
 
+		// ============================ E SET DE MUNDO MORTO NAO VOLTA DO DISCO ============================
+		// A TERCEIRA porta do mesmo funil (as outras duas: o commit da destruicao e o tique). Ela vem
+		// **antes** do `ErguerOSetEterno` porque um set eterno lido do arquivo faria aquele metodo sair
+		// na primeira linha dele (`_sets.Any(s => s.Eterno)`) -- ou seja, o portao de planeta morto que
+		// ele carrega nem seria consultado, e o Porunga voltaria a existir num cadaver **so por reiniciar
+		// o servidor**.
+		//
+		// Um arquivo assim nao nasce sozinho num servidor que rodou com esta regra (a morte grava a
+		// ausencia na hora), e e por isso mesmo que ele PRECISA ser tratado aqui: quando ele aparecer vai
+		// ser por um backup restaurado, uma gravacao perdida ou um `planetas-mortos.json` mexido a mao --
+		// e nenhuma das tres avisa. A ordem do boot ja garante a resposta: `CarregarPlanetasMortos` roda
+		// bem antes daqui (ver `GameServer.cs`).
+		// ============================================================================================
+		EnterrarSetsDeMundosMortos();
+
 		ErguerOSetEterno();
 		SalvarEsferas();
 	}
@@ -406,6 +433,25 @@ public sealed partial class GameServer
 	/// "Namek"`, e remarcar pra 600 s se nao houver) vira uma pergunta ao catalogo: a zona existe? Se
 	/// nao existir -- um manifesto de mapas mutilado --, o set nao nasce e o log diz por que. **Nunca
 	/// no planeta errado**, que era a regra inteira daquele bloco.
+	///
+	/// ============================ E **NUNCA NUM PLANETA QUE NAO EXISTE MAIS** ============================
+	/// Esta e a metade que faltava pro pedido do dono (*"porunga morre em namek quando namek explode,
+	/// so voltando quando o planeta e restaurado"*), e ela mora AQUI porque este e o unico lugar do jogo
+	/// que faz um set eterno nascer -- boot (`CarregarEsferas`), limpeza total (`RemontarOMundoNovo`) e
+	/// a restauracao do planeta (`RessuscitarPlaneta`). Sem esta pergunta, o
+	/// <see cref="EnterrarSetsDeMundosMortos"/> enterraria o Porunga na explosao e o **reinicio seguinte
+	/// o desenterraria** -- que e exatamente a armadilha que este repo ja nomeou: *"regra num chamador e
+	/// esquecida no outro"*.
+	///
+	/// A pergunta e `ZonaMorta` e nao `ZonaCondenada` de proposito, e e a MESMA que enterra: durante os
+	/// cinco minutos de agonia o planeta ainda existe e o Porunga ainda esta la. Duas perguntas
+	/// diferentes pra mesma coisa seriam duas respostas pra mesma coisa.
+	///
+	/// **NADA NOVO E GRAVADO POR CAUSA DISTO.** "O Porunga esta morto" nao e um campo: e a ausencia dele
+	/// em `_sets` mais o `planetas-mortos.json`, que ja existe e ja e persistido. Um `bool MorreuComO
+	/// Planeta` no `SetDeEsferas` seria um segundo lugar pra guardar a mesma verdade -- e o primeiro dia
+	/// em que os dois discordassem seria um Porunga vivo num cadaver, de novo.
+	/// ================================================================================================
 	/// </summary>
 	private void ErguerOSetEterno()
 	{
@@ -416,6 +462,14 @@ public sealed partial class GameServer
 		{
 			GD.PushWarning($"[server] esferas: {Esferas.PlanetaEterno} nao esta no manifesto de mapas -- "
 						 + "o set eterno NAO nasce (a lore nao admite ele fora de Namek)");
+			return;
+		}
+
+		if (ZonaMorta(zona))
+		{
+			GD.Print($"[server] esferas: {Esferas.PlanetaEterno} esta DESTRUIDO -- o set eterno NAO nasce. "
+				   + "Ele volta no instante em que o planeta for restaurado (o desejo 'curar_planeta' "
+				   + "pedido a um set de OUTRO mundo, ou o verb de admin 'Restore Planet' em orbita).");
 			return;
 		}
 
@@ -447,7 +501,19 @@ public sealed partial class GameServer
 	///
 	/// Cura save antigo (poder e numero de desejos de volta aos defines), levanta o set que alguem
 	/// inertou, recria as sete se alguma sumiu, e corta a espera no teto de um mes. E o que faz o
-	/// Porunga de Namek **nunca morrer de vez** -- o unico set do jogo com essa garantia.
+	/// Porunga de Namek **nao morrer por desgaste** -- nem inercia, nem prazo, nem esfera perdida o
+	/// tiram do jogo.
+	///
+	/// ============================ HA UMA COISA QUE ELE NAO CURA, E ELA E NOVA ============================
+	/// Este zelador dizia *"nunca morrer de vez -- o unico set do jogo com essa garantia"*, e isso
+	/// deixou de ser verdade: **o planeta acabar leva o set junto** (ver
+	/// <see cref="EnterrarSetsDeMundosMortos"/>), e ele volta pela restauracao e so por ela.
+	///
+	/// O zelador **nao precisou de uma linha** por causa disso, e isso e o desenho e nao sorte: ele
+	/// itera `_sets`, e um set enterrado nao esta mais la. Quem garante a ordem e o
+	/// <see cref="TickDasEsferas"/>, que enterra ANTES de manter -- ao contrario, este laco recriaria
+	/// as sete de um Porunga ancorado num cadaver, uma vez por segundo.
+	/// ================================================================================================
 	/// </summary>
 	private void ManterOSetEterno()
 	{
@@ -463,6 +529,111 @@ public sealed partial class GameServer
 
 			if (_esferas.Count(e => e.Set == s.Id) < Esferas.Total) RefazerAsEsferas(s);
 		}
+	}
+
+	// =====================================================================
+	// A MORTE DO PLANETA LEVA O SET INTEIRO
+	// =====================================================================
+	/// <summary>
+	/// **O MUNDO ACABOU: A ESTATUA E AS SETE VIRAM PO.** O pedido do dono, literal -- *"sim porunga
+	/// morre em namek quando namek explode, so voltando quando o planeta e restaurado pelas esferas de
+	/// outro lugar"*.
+	///
+	/// ============================ APAGAR, E NAO INERTAR ============================
+	/// O gesto ja existia inteiro (<see cref="DerrubarAEstatua"/>: tira as sete de `_esferas`, tira o
+	/// set de `_sets`, fecha o dragao de pe) e ele e o unico que casa com o pedido. Inertar deixaria
+	/// **lixo consultavel** -- um set que o `db_ver` ainda descreve, que o radar ainda pode indexar, e
+	/// que ocupa a zona pro `_sets.Any(s => s.Zona.Hash == ...)` do <see cref="ErguerEstatua"/> pra
+	/// sempre. Era esse o estado de hoje medido na Fase 0, e ele era PIOR que a morte: um set inerte,
+	/// inalcancavel (o pouso e recusado, `z02_Namek.passagens` esta vazio) e insalvavel (o
+	/// `ReviverOSet` exige o criador **em pe no planeta**).
+	/// ==========================================================================
+	///
+	/// ============================ E VALE PRO SET DE JOGADOR TAMBEM -- COM UMA DIFERENCA QUE E O SISTEMA INTEIRO ============================
+	/// A regra e uma so: **set ancorado em mundo morto nao existe**. O que muda e a VOLTA, e ela nao e
+	/// uma excecao escrita em lugar nenhum -- ela cai fora sozinha do que cada set E:
+	///
+	///   * o ETERNO e uma LEI (`ETERNAL_DB_*`, `Dragonballs.dm:369-372`): poder, pedidos, prazo, nome e
+	///     planeta sao `#define`. Ele se reconstroi inteiro de constantes, e por isso
+	///     <see cref="ErguerOSetEterno"/> o traz de volta na restauracao **sem que nada precise ter sido
+	///     guardado**;
+	///   * o DE JOGADOR e uma OBRA: `CriadorSig`, o `TemSupremo` que custou 2.000.000 de zeni, o `Ciclo`
+	///     que e o endereco das sete. Nada disso e derivavel de constante nenhuma, entao ele **nao
+	///     volta**. Isso nao e um castigo inventado: o `Destroy_Statue` do proprio DM ja apaga as sete
+	///     *"para sempre"* por um soco de qualquer um, e um planeta explodindo e maior que um soco.
+	///
+	/// **E ele NAO fica preso**: o bloqueio de erguer e por ZONA e nao por pessoa (ver
+	/// <see cref="ErguerEstatua"/>), entao restaurado o planeta a zona esta livre e o mesmo Namekuseijin
+	/// ergue outra. Era justamente esta saida que o set inerte trancava.
+	/// ==========================================================================================================================================
+	///
+	/// **QUEM ESTAVA COM UMA ESFERA NA MAO PERDE A ESFERA, E E AVISADO.** A Fase 0 rastreou o que
+	/// acontecia sem isto e o resultado era pior que perder: o corpo era evacuado pro espaco, o item 3
+	/// do <see cref="TickDasEsferas"/> largava a esfera no vacuo e a policia de planeta (item 4) a
+	/// **teleportava de volta pro cadaver** um segundo depois -- a esfera some da mao sem uma linha de
+	/// texto e reaparece num lugar onde ninguem pode pisar. Perda calada e o pior dos dois mundos.
+	///
+	/// O crivo e o SET e nao a posicao da esfera, e a diferenca importa: quem estava em Namek carregando
+	/// uma esfera de um set da Terra continua com ela (o set dele esta vivo, e a policia a manda pra
+	/// casa) -- morre o set de quem morreu o planeta, e so.
+	///
+	/// ============================ UM FUNIL PRAS TRES PORTAS ============================
+	/// Mesmo desenho (e mesmo motivo) do funil das tres quedas de esfera logo abaixo, no
+	/// <see cref="TickDasEsferas"/>. Ha tres jeitos de um set acabar ancorado num mundo que nao existe,
+	/// e nenhum deles pode depender de alguem LEMBRAR da regra:
+	///
+	///   1. **o commit** (`ConsumarDestruicao`) -- o mundo acaba com o set em pe. E o instante, e e de
+	///      la que sai o anuncio na hora certa;
+	///   2. **a carga do disco** (`CarregarEsferas`) -- o arquivo traz o set e o livro dos mortos traz o
+	///      cadaver. Sem esta, reiniciar o servidor desenterraria o Porunga;
+	///   3. **o tique** (`TickDasEsferas`) -- a rede pras portas que escrevem o registro dos mortos sem
+	///      passar pelo commit (o verb de admin, a bancada, e o chamador que ainda nao existe).
+	///
+	/// As tres chamam ESTE metodo. Nenhuma delas repete uma linha da regra.
+	/// ==============================================================================
+	///
+	/// <returns>Quantos sets foram enterrados. E o que a bancada le -- e o que o log do commit soma.</returns>
+	/// </summary>
+	private int EnterrarSetsDeMundosMortos()
+	{
+		List<SetDeEsferas> caidos = [.. _sets.Where(s => ZonaMorta(s.Zona))];
+		if (caidos.Count == 0) return 0;
+
+		foreach (SetDeEsferas s in caidos)
+		{
+			ZoneKey zona = s.Zona;
+
+			// O AVISO SAI ANTES DA LISTA SER MEXIDA: depois do `RemoveAll` nao ha mais de quem falar.
+			foreach (Esfera e in _esferas.Where(x => x.Set == s.Id && x.Portador != 0))
+				if (_players.TryGetValue(e.Portador, out ServerPlayer? quem))
+					Avisar(quem, $"a {Esferas.NomeDaEsfera(e.Numero)} vira pó na sua mão -- "
+							   + $"{NomeDoPlaneta(zona.Name)} não existe mais.");
+
+			_esferas.RemoveAll(x => x.Set == s.Id);
+			_sets.Remove(s);
+
+			// O DRAGAO DE PE CAI JUNTO. Sem isto o `_invocacoes` guarda um set que nao existe: o
+			// `MandarEsferas` desenharia um dragao orfao e o `db_desejar` acharia a invocacao pra um
+			// `SetPorId` nulo. E o mesmo fecho que o `DerrubarAEstatua` faz, pela mesma razao.
+			FecharAInvocacao(s.Id, "");
+
+			// A ZONA FICA SABENDO. Normalmente ela esta vazia (o commit ja evacuou todo mundo antes de
+			// chamar isto), e o custo e um laco sobre `_players` -- mas este funil tambem roda pelo
+			// tique, onde a zona nao tem essa garantia, e o `DerrubarAEstatua` avisa pelo mesmo motivo.
+			MandarEsferas(zona);
+
+			AnunciarEsferas(s.Eterno
+				? $"As Esferas do Dragão de {NomeDoPlaneta(zona.Name)} se apagam junto com o mundo que as "
+				  + $"guardava. {s.NomeDoDragao} não atende mais a ninguém."
+				: $"A Estátua do Dragão de {NomeDoPlaneta(zona.Name)} vira pó com o planeta, e as sete "
+				  + "esferas com ela.");
+
+			GD.Print($"[esferas] set {s.Etiqueta} ENTERRADO: o planeta foi destruido"
+				   + (s.Eterno ? " -- o set ETERNO so volta se o planeta for restaurado" : ""));
+		}
+
+		SalvarEsferas();
+		return caidos.Count;
 	}
 
 	// =====================================================================
@@ -587,7 +758,10 @@ public sealed partial class GameServer
 	// O TIQUE -- a policia de planeta, a reativacao e a queda
 	// =====================================================================
 	/// <summary>
-	/// UMA VEZ POR SEGUNDO. Quatro coisas, todas baratas -- a lista tem sete itens por set.
+	/// UMA VEZ POR SEGUNDO. Cinco coisas, todas baratas -- a lista tem sete itens por set.
+	///
+	/// A PRIMEIRA E O ENTERRO (`-1`) e ela vem antes do zelador do eterno, e nao por gosto de ordem:
+	/// ver o bloco la embaixo e o cabecalho do <see cref="EnterrarSetsDeMundosMortos"/>.
 	///
 	/// O DM roda isto num `spawn(100)` por ESFERA, ou seja sete corrotinas por set. Aqui e um laco no
 	/// tique de segundo, junto da conquista e das sagas, pela mesma razao que o cabecalho da invasao
@@ -598,6 +772,21 @@ public sealed partial class GameServer
 		double agora = TempoDoMundo;
 		bool mexeu = false;
 		var zonasPraAvisar = new HashSet<ulong>();
+
+		// ---------------------------------------------------------- -1. o mundo do set acabou?
+		// ============================ A REDE, E ELA VEM **ANTES** DO ZELADOR ============================
+		// O funil da morte e chamado no instante do commit (`ConsumarDestruicao`), que e a unica porta de
+		// PRODUCAO que mata um planeta. Esta segunda chamada existe porque o registro dos mortos tem
+		// outras portas -- a carga do disco no boot, o verb de admin, a bancada -- e a regra so tem valor
+		// se ela nao depender de alguem LEMBRAR de chama-la. Custa uma comparacao por set por segundo, e
+		// `_sets` tem uma mao cheia de itens.
+		//
+		// A ORDEM E O QUE IMPEDE UM ABSURDO: o `ManterOSetEterno` **recria as sete** quando faltam
+		// (`:464`). Rodando ele antes, um Porunga ancorado num cadaver teria as sete refeitas neste
+		// segundo e enterradas no proximo, pra sempre -- um set piscando dentro de um planeta que nao
+		// existe. Enterrar primeiro tira o set da lista, e o zelador nao encontra o que manter.
+		// ==========================================================================================
+		EnterrarSetsDeMundosMortos();
 
 		ManterOSetEterno();
 
@@ -992,6 +1181,27 @@ public sealed partial class GameServer
 		if (CorpoDaZona(pl.Zone) is not { } corpo)
 		{ Avisar(pl, "não há um mundo aqui para ancorar um set de esferas."); return; }
 
+		// ============================ NAO SE ANCORA UM SET NUM MUNDO QUE ESTA ACABANDO ============================
+		// A ENTRADA do estado, e nao so o estado. O <see cref="EnterrarSetsDeMundosMortos"/> ja garante
+		// que nao sobra set em cadaver -- mas garantir a saida sem guardar a entrada e o cego que este
+		// repo nomeou: *"nascer DENTRO do estado nunca testa a ENTRADA nele"*.
+		//
+		// E o caminho e alcancavel, com prejuizo real: durante os cinco minutos de agonia (ou os vinte
+		// do pavio lento) o planeta ainda esta de pe e o Namekuseijin ainda esta nele. Erguer ali gasta
+		// o gesto e, com o argumento `supremo`, **2.000.000 de zeni** -- que o funil apagaria minutos
+		// depois, corretamente e sem devolver nada.
+		//
+		// A pergunta e `ZonaCondenada` e nao `ZonaMorta` porque a pergunta aqui e OUTRA: o funil pergunta
+		// *"este mundo acabou?"* e este portao pergunta *"este mundo esta acabando?"*. E a mesma que o
+		// `ComecarDestruicao` e o tiro de ki ja fazem pra recusar quem mira num mundo ja condenado.
+		// ======================================================================================================
+		if (ZonaCondenada(pl.Zone))
+		{
+			Avisar(pl, $"o céu de {NomeDoPlaneta(corpo.Nome)} está se rasgando. Nenhuma estátua se ergue "
+					 + "num mundo que está acabando.");
+			return;
+		}
+
 		if (string.Equals(corpo.Nome, "Earth", StringComparison.OrdinalIgnoreCase))
 		{
 			// O GUARDIAO DA TERRA. O livro de tronos e por CONTA (ver `GameServer.Ranks.cs`), e por
@@ -1308,8 +1518,12 @@ public sealed partial class GameServer
 		}
 
 		Avisar(pl, $"-- {s.NomeDoDragao}, {s.TituloDoDragao} --");
+		// A FRASE DO ETERNO DIZIA "e nunca morre de vez", E ISSO VIROU MENTIRA no dia em que o planeta
+		// passou a levar o set junto. Texto de jogador que promete o que o codigo nao cumpre e a pior
+		// especie de dado sem consumidor: o jogador CONSOME, e planeja em cima.
 		Avisar(pl, s.Eterno
-			? "  a estátua ancestral de Namek: não se destrói, não se reconfigura, e nunca morre de vez."
+			? "  a estátua ancestral de Namek: não se destrói e não se reconfigura -- mas ela acaba "
+			  + "com o mundo que a guarda, e só volta se ele voltar."
 			: $"  erguida por {s.CriadorNome}.");
 		Avisar(pl, $"  pedidos por invocação: {s.Desejos} (já usados nesta ativação: {s.Pedidos})");
 		Avisar(pl, $"  poder do set: {s.Poder:N0}");

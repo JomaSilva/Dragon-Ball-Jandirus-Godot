@@ -1237,6 +1237,10 @@ public partial class MenuJogo : CanvasLayer
 		// ==========================================================================================================
 		if (GameClient.Instance is { } cli)
 		{
+			// O REFUGIO VEM PRIMEIRO, e sem crivo de zona: ver `BlocoDoRefugio`. Ele so aparece quando
+			// o planeta natal desta pessoa deixou de existir, e nesse dia e a coisa mais urgente desta
+			// aba -- o dominio e as esferas continuam podendo esperar.
+			BlocoDoRefugio(cli);
 			BlocoDeDominio(cli);
 			BlocoDasEsferas(cli);
 		}
@@ -1470,6 +1474,40 @@ public partial class MenuJogo : CanvasLayer
 		_conteudo.AddChild(linha2);
 		Aviso("Domínio sem soberano por perto se perde: o tributo mingua, a guarnição afrouxa e o povo "
 			+ "acaba derrubando a bandeira. Apareça.");
+	}
+
+	/// <summary>
+	/// **A PORTA PERMANENTE DO REFUGIO** -- pra onde voce volta quando o seu planeta natal acabou.
+	///
+	/// ============================ POR QUE ELE NAO MORA DENTRO DO BLOCO DE DOMINIO ============================
+	/// O <see cref="BlocoDeDominio"/> desiste na primeira linha quando o jogador nao esta na
+	/// superficie de um planeta -- e o refugio e exatamente a tela de quem **nao esta**: quem precisa
+	/// dela costuma estar morto no Outro Mundo (que nao e um planeta da carta) ou em orbita de um
+	/// mundo que acabou de nascer sob ele. Dentro daquele bloco, o botao ficaria escondido justamente
+	/// de quem precisa dele.
+	/// ====================================================================================================
+	///
+	/// A tela e EMPURRADA uma vez por sessao (na chegada ao Outro Mundo, ver `GameServer.Refugio.cs`),
+	/// e uma tela que so aparece sozinha e uma tela que se perde: quem a fechar sem ler nunca mais
+	/// acha o caminho de volta. **Ele so existe com o berco destruido**, e a condicao e a do SERVIDOR
+	/// (`RefugioPrecisa` vem de la, e nao de uma conta feita aqui).
+	/// </summary>
+	private void BlocoDoRefugio(GameClient cli)
+	{
+		if (!cli.RefugioPrecisa) return;
+
+		Secao("Refúgio");
+		Aviso($"{cli.RefugioNatal} foi destruída. Da próxima vez que você morrer, o seu corpo "
+			+ "precisa de outro lugar para voltar.");
+
+		var refugio = new Button
+		{
+			Text = "Escolher para onde eu volto",
+			TooltipText = "um planeta que você conquistou, ou o mundo vivo mais perto de onde era casa",
+		};
+		refugio.AddThemeColorOverride("font_color", Tema.Destaque);
+		refugio.Pressed += () => TelaDeRefugio.Instancia?.Abrir();
+		_conteudo.AddChild(refugio);
 	}
 
 	/// <summary>

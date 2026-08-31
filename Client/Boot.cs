@@ -28,6 +28,15 @@ public partial class Boot : Node2D
 	private CreationScreen? _criacao;
 	private int _slotAlvo = -1;
 
+	/// <summary>
+	/// A ULTIMA LISTA DE SLOTS que o servidor mandou. Ela existe pra a tela de carregamento saber
+	/// QUE NOME escrever no clique em "Jogar" -- o evento `Jogar` traz o indice, e nao o
+	/// personagem. Guardar em campo e nao capturar na lambda porque o `AoReceberSlots` roda de
+	/// novo a cada volta pro lobby, e a lambda so e criada na primeira vez: uma lista capturada
+	/// ficaria congelada na do primeiro login.
+	/// </summary>
+	private List<Jandirus.Net.SlotInfo> _slotsAtuais = [];
+
 	private bool _auto;
 	private string _autoNome = "Guerreiro", _autoRaca = "Human";
 
@@ -45,6 +54,18 @@ public partial class Boot : Node2D
 	// ==========================================================================================
 	private PauseMenu? _pause;
 	private TelaDeTeclas? _teclas;
+
+	// ============================ E A TELA DE CARREGAMENTO VIVE NO LOBBY TAMBEM ============================
+	// Ela nascia no `AoEntrarNoMundo`, 32 linhas DEPOIS do `new World` -- e por isso a coisa mais
+	// cara do jogo (montar o mundo pela primeira vez) era a unica que ela nao cobria. Pior: quando
+	// o `World.AoEntrar` rodava, `TelaDeCarregamento.Instancia` ainda era nulo.
+	//
+	// Aqui em cima ela existe desde antes do primeiro clique, atravessa a entrada no mundo e
+	// sobrevive a volta ao login (ver `VoltarAoLogin`), exatamente como a pausa e a tela de teclas.
+	// A `Instancia` estatica continua servindo a troca de mapa sem mudar uma linha la.
+	// =======================================================================================================
+	private TelaDeCarregamento? _carga;
+	private Aquecimento? _aquece;
 
 	public override void _Ready()
 	{
@@ -111,6 +132,20 @@ public partial class Boot : Node2D
 
 		// A TINTA DO CABELO E DO RABO, medida na TELA. Vive aqui em cima com as outras bancadas sem
 		// mundo porque ela nao precisa de rede nem de zona -- so da folha, do shader e de um quadro
+		// --diagrolagemlab: a ROLAGEM DO CENARIO medida NO LABORATORIO. Irma da `--diagrolagem` (que
+		// nasce dentro do mundo) e vizinha da `--diagtinta` pelo mesmo motivo das outras daqui: a
+		// pergunta e de DESENHO -- de quanto em quanto o cenario pode rolar --, e ela nao precisa de
+		// rede, de zona nem de login. So de uma camera, de um corpo e de um chao com textura.
+		//
+		// ELA E O JUIZ MAIS FRACO DAS DUAS, e o relatorio dela diz isso: nao atravessa o
+		// `LocalPlayer._Process`, entao nao prova que o jogo CHAMA a grade certa. Existe porque uma
+		// medicao que so roda com o mundo de pe morre junto com ele. Ver RoboDeRolagem.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagrolagemlab") >= 0)
+		{
+			AddChild(new RoboDeRolagem { Name = "RoboDeRolagem", Laboratorio = true });
+			return;
+		}
+
 		// desenhado. E ela PRECISA de janela: e a foto que responde.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtinta") >= 0)
 		{
@@ -143,6 +178,15 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggota") >= 0)
 		{
 			AddChild(new RoboDaGota { Name = "RoboDaGota" });
+			return;
+		}
+
+		// A AGONIA DE UM PLANETA -- a crosta de magma, as rachaduras e a mega explosao vistas do
+		// espaco. Vizinha da `--diaggota` pela mesma razao das outras daqui: todas as perguntas dela
+		// sao sobre PIXEL, entao ela precisa de janela e nao precisa de rede nenhuma.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagagonia") >= 0)
+		{
+			AddChild(new RoboDaAgonia { Name = "RoboDaAgonia" });
 			return;
 		}
 
@@ -227,7 +271,28 @@ public partial class Boot : Node2D
 		_pause.Desconectar += VoltarAoLogin;
 		AddChild(_pause);
 
+		// A TELA DE CARREGAMENTO ANTES DA PRIMEIRA TELA -- ver o campo `_carga`. Ela precisa existir
+		// antes do clique que fecha a criacao, e nao depois do mundo que ela deveria cobrir.
+		AddChild(_carga = new TelaDeCarregamento { Name = "Carregando" });
+
 		MontarLogin();
+
+		// ============================ O AQUECIMENTO COMECA COM O LOBBY ============================
+		// Daqui pra frente o jogador digita conta, senha e passa por oito paginas de criacao -- sao
+		// segundos em que a maquina nao esta fazendo nada. Ver `Aquecimento`: o tileset (~630 ms), os
+		// shaders do mundo e as chapas do HUD sao carregados numa thread de fundo AGORA, pra que o
+		// `World._Ready` os encontre prontos em vez de paga-los na cara do jogador.
+		//
+		// Depois do `MontarLogin` de proposito: a tela do jogador aparece primeiro, e so entao a
+		// maquina vai trabalhar por baixo dela.
+		// ==========================================================================================
+		//
+		// `--semaquecimento` e o irmao do `--semcobertura`: ele desliga o pre-carregamento pra que a
+		// bancada possa medir o ANTES e o DEPOIS no mesmo binario, sem apagar arquivo nenhum. Ver
+		// `RoboDeCarga` -- e ele que responde quantos dos ~1,4 s o aquecimento tirou da frente.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semaquecimento") < 0)
+			AddChild(_aquece = new Aquecimento { Name = "Aquecimento" });
+		else GD.Print("[aquece] DESLIGADO por --semaquecimento (medindo o processo frio)");
 
 		// MUSICA DESDE A PRIMEIRA TELA: no BYOND a criacao de personagem tinha trilha, e e
 		// ela que volta toda vez que o menu de pause abre.
@@ -237,7 +302,45 @@ public partial class Boot : Node2D
 		{
 			cli.SlotsRecebidos += AoReceberSlots;
 			cli.Joined += (_, _, _, _) => AoEntrarNoMundo();
-			cli.Rejected += motivo => _status.Text = $"recusado: {motivo}";
+			cli.Rejected += motivo =>
+			{
+				// ============================ A COBERTURA TEM QUE CAIR NA RECUSA ============================
+				// Ela sobe no clique e so desce quando o mundo foi desenhado (ver `CobrirEntrada`). Se o
+				// servidor RECUSA -- nome invalido, banimento, slot ocupado --, esse mundo nunca vem, e sem
+				// esta linha o jogador ficaria olhando "carregando..." pra sempre com o motivo da recusa
+				// escrito atras da cobertura, onde ninguem le.
+				//
+				// Continua sendo saida por FATO e nao por relogio: o fato aqui e a resposta do servidor
+				// dizendo que nao vai haver entrada. (Pra queda de conexao no meio da espera nao ha evento
+				// pra ouvir; o ESC continua alcancando o menu de pausa, que vive ACIMA desta camada.)
+				// =========================================================================================
+				_carga?.Soltar();
+				_status.Text = $"recusado: {motivo}";
+			};
+
+			cli.Caiu += motivo =>
+			{
+				// ============================ A COBERTURA TAMBEM TEM QUE CAIR NA QUEDA ============================
+				// Irma da linha do `Rejected` acima e pela mesma razao, com uma diferenca que e justamente
+				// a pior: ali o servidor RESPONDEU que nao vai haver entrada; aqui ele simplesmente sumiu.
+				// A espera da cobertura nao tem fim proprio -- ela so acaba quando um quadro com o mundo e
+				// desenhado --, entao sem esta linha o jogador ficava trancado em "carregando...", sem ver
+				// o mundo, sem ver a lista e sem ver erro nenhum. Preso numa tela de carregamento e pior
+				// que os 1-2 s de tela vazia que a cobertura veio consertar.
+				//
+				// SO SE A COBERTURA ESTIVER NO AR, e isso e deliberado. Uma queda com o jogador ja DENTRO
+				// do mundo e outro assunto (hoje o mundo congela no lugar, e mexer nisso e outra tarefa);
+				// esta linha resolve exatamente o caso em que a tela de carregamento vira prisao.
+				//
+				// A ORDEM IMPORTA: `Soltar` antes de `VoltarAoLogin`. O `Soltar` espera um quadro
+				// desenhado antes de esconder, entao o lobby remontado aparece POR BAIXO da cobertura e
+				// so depois ela sai -- nao ha um quadro de nada no meio, que e a doenca original.
+				// ==================================================================================
+				if (_carga is not { NoAr: true }) return;
+				_carga.Soltar();
+				VoltarAoLogin();
+				_status.Text = $"a conexao caiu: {motivo}";
+			};
 		}
 
 		AutoConectar();
@@ -251,6 +354,22 @@ public partial class Boot : Node2D
 		// ==========================================================================================
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagopcoes") >= 0)
 			AddChild(new RoboDeOpcoes { Name = "RoboDeOpcoes" });
+
+		// `--diagmarcavel`: O PIXEL ATRAS DO TEXTO DOS CONTROLES MARCAVEIS -- o defeito que o dono
+		// relatou como *"todos os botoes de checkmark ... ao selecionar e por o mouse em cima, o
+		// texto fica bugado"*. Vizinha da `--diagopcoes` e pela MESMA razao dela, que aqui e ainda
+		// mais forte: a caixa da foto do dono ("usar o microfone") mora na `PauseMenu` que o `Boot`
+		// acabou de pendurar. Uma bancada que montasse a propria tela concordaria consigo mesma.
+		// Ver RoboDoMarcavel.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmarcavel") >= 0)
+			AddChild(new RoboDoMarcavel { Name = "RoboDoMarcavel" });
+
+		// `--diagcarga`: A ENTRADA NO MUNDO, CRONOMETRADA NA TELA. Vizinha da `--diagopcoes` e pelo
+		// mesmo motivo dela: ela mede o lobby DE VERDADE -- o botao "Hospedar", o "Criar personagem"
+		// do slot vazio, as oito paginas do assistente e o "Entrar no mundo" que zera o cronometro.
+		// Nascer no lugar do lobby seria medir um lobby que nao e o do jogador. Ver RoboDeCarga.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcarga") >= 0)
+			AddChild(new RoboDeCarga { Name = "RoboDeCarga" });
 	}
 
 	/// <summary>
@@ -448,9 +567,9 @@ public partial class Boot : Node2D
 		// conexao pelo ENDERECO (ver `GameServer.EhHost`). Antes havia uma marca aqui, e ela
 		// tornava o admin dependente de o jogo ter subido o servidor -- quem usava o `servidor.bat`
 		// e entrava pelo IP da propria rede nunca era reconhecido, sendo a mesma maquina.
-		if (!srv.Running && !srv.Start())
+		if (!srv.Running && !srv.Start(PortaDaRede()))
 		{
-			_status.Text = $"nao consegui abrir a porta {Jandirus.Net.Protocol.DefaultPort}";
+			_status.Text = $"nao consegui abrir a porta {PortaDaRede()}";
 			return;
 		}
 
@@ -475,7 +594,28 @@ public partial class Boot : Node2D
 		RedesenharPerfis();
 		_hospedando = false;
 
-		GameClient.Instance?.Conectar(_host.Text.Trim(), Jandirus.Net.Protocol.DefaultPort, conta, senha);
+		GameClient.Instance?.Conectar(_host.Text.Trim(), PortaDaRede(), conta, senha);
+	}
+
+	/// <summary>
+	/// A PORTA DE REDE DESTE PROCESSO -- `--rede &lt;n&gt;`, e a constante quando ele nao vem.
+	///
+	/// ============================ ELA VALIA SO PRA METADE DO PROGRAMA ============================
+	/// O `--rede` ja existia, mas so dentro do `AutoConectar` -- ou seja, so pras bancadas que entram
+	/// sozinhas. Quem apertava "Entrar" na tela discava a constante na marra, e a promessa escrita la
+	/// embaixo ("um so numero pro servidor e pro cliente") nao valia pro caminho que o jogador usa.
+	///
+	/// Isso doia justamente onde nao da pra ver: duas bancadas na mesma maquina -- ou uma bancada ao
+	/// lado do servidor de outra pessoa -- esbarravam uma na outra em silencio. A segunda nao dava
+	/// erro nenhum; ela entrava calada no mundo da primeira, e media o mundo errado.
+	/// ==============================================================================================
+	/// </summary>
+	private static int PortaDaRede()
+	{
+		string[] args = OS.GetCmdlineArgs();
+		int i = Array.IndexOf(args, "--rede");
+		return i >= 0 && i + 1 < args.Length && int.TryParse(args[i + 1], out int p) && p > 0
+			 ? p : Jandirus.Net.Protocol.DefaultPort;
 	}
 
 	// =====================================================================
@@ -483,14 +623,39 @@ public partial class Boot : Node2D
 	// =====================================================================
 	private void AoReceberSlots(List<Jandirus.Net.SlotInfo> slots)
 	{
+		// ============================ O AQUECIMENTO FECHA AQUI, E NAO PODE FECHAR DEPOIS ============================
+		// Daqui pra frente TUDO que a tela mostra come dos arquivos que o `Aquecimento` esta puxando:
+		// a lista de slots desenha um `CharacterVisual` por personagem (corpo, cabelo, roupa, o shader
+		// `Personagem`), e o `AutoEscolher` logo abaixo vai direto pro mundo.
+        //
+		// Enquanto houver carga em thread NO AR, um `ResourceLoader.Load` do mesmo arquivo TRAVA a
+		// thread principal -- medido, 240 s de log mudo. Ver `Aquecimento.Concluir`: ele espera o que
+		// faltar (nada, no caso normal) e deixa o campo limpo pra todo mundo.
+		// =============================================================================================================
+		Aquecimento.Concluir();
+
 		if (_auto) { AutoEscolher(slots); return; }
 
 		_painel.Visible = false;
+		_slotsAtuais = slots;
 
 		if (_selecao == null)
 		{
 			_selecao = new CharacterSelect { Name = "Selecao" };
-			_selecao.Jogar += slot => GameClient.Instance?.PedirSlot(slot);
+			_selecao.Jogar += slot =>
+			{
+				// ============================ O LOGIN TEM A MESMA DOENCA DA CRIACAO ============================
+				// O dono falou da criacao, mas medimos as duas: entrar com personagem que JA EXISTE custa
+				// ~1,1 s, o mesmo tanto. A diferenca era so o que ficava congelado na tela -- a criacao se
+				// esconde sozinha (`CreationScreen.Confirmar`) e deixava o fundo chapado; a selecao NAO se
+				// esconde, e o jogador ficava olhando a propria lista de personagens travada, clicavel.
+				//
+				// A cobertura resolve os dois casos pelo mesmo caminho, e o `Levantar` ainda bloqueia o
+				// clique repetido: a lista congelada aceitava outro "Jogar" em cima do primeiro.
+				// ==============================================================================================
+				CobrirEntrada(slot >= 0 && slot < _slotsAtuais.Count ? _slotsAtuais[slot].Nome : "");
+				GameClient.Instance?.PedirSlot(slot);
+			};
 			_selecao.Criar += AbrirCriacao;
 			_selecao.Sair += () =>
 			{
@@ -520,10 +685,42 @@ public partial class Boot : Node2D
 		_criacao.Pronto += (ficha, visual) =>
 		{
 			_status.Text = "criando personagem...";
+			// O PEDIDO DO DONO, NA LINHA EXATA. A `CreationScreen.Confirmar` acabou de fazer
+			// `Visible = false` e o que sobrava por baixo era o `ColorRect` de `Tema.Fundo` do
+			// lobby -- a "tela azul do byond". A cobertura sobe no mesmo quadro do clique.
+			CobrirEntrada(ficha.Name);
 			GameClient.Instance?.CriarPersonagem(_slotAlvo, ficha, visual);
 		};
 		_criacao.Cancelado += () => { if (_selecao != null) _selecao.Visible = true; };
 		AddChild(_criacao);
+	}
+
+	/// <summary>
+	/// SOBE A COBERTURA no clique que manda o personagem pro mundo -- criacao ou login, os dois.
+	///
+	/// Uma porta so pros dois caminhos porque eles sao o MESMO caminho a partir do pacote: criar e
+	/// entrar terminam no mesmo `JoinAccepted`, no mesmo `AoEntrarNoMundo` e no mesmo quadro caro.
+	/// Cobrir so um deles seria consertar metade da mesma espera.
+	///
+	/// O NOME DO PERSONAGEM COMO TITULO, e nao o do planeta: neste instante ninguem sabe pra onde
+	/// ele vai (a zona chega no `JoinAccepted`, que e o fim da espera), e escrever um destino
+	/// adivinhado seria mentir na unica linha que o jogador tem pra ler. Na troca de mapa, onde o
+	/// destino E sabido, a `Cobrir` continua escrevendo a zona.
+	/// </summary>
+	private void CobrirEntrada(string quem)
+	{
+		// ============================ `--semcobertura`: O DEFEITO DE ORIGEM, DE VOLTA ============================
+		// Nao e uma opcao de jogo, e o interruptor de INJECAO da `--diagcarga` -- o mesmo arranjo do
+		// `--semduro` na bancada da parede muda. Com ele, a entrada volta a ser exatamente o que o
+		// dono descreveu, no MESMO binario: sem cobertura, o fundo chapado do lobby aparece sozinho.
+		//
+		// Ele existe porque uma bancada que so sabe ficar verde nao prova nada. Rodada com o defeito
+		// na frente, ela TEM que ficar vermelha na conta "nenhum quadro de fundo chapado" -- senao
+		// as contas da rodada boa sao decoracao.
+		// ==========================================================================================
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semcobertura") >= 0) return;
+
+		_carga?.Levantar(quem.Trim().Length > 0 ? quem.Trim() : "entrando no mundo", "preparando o mundo...");
 	}
 
 	/// <summary>Slot vazio: a criacao roda JA CONECTADO, e sabe em qual slot vai cair.</summary>
@@ -540,7 +737,33 @@ public partial class Boot : Node2D
 	// =====================================================================
 	// TELA 3 -- MUNDO
 	// =====================================================================
+	/// <summary>
+	/// O MUNDO CHEGOU -- e a tela de carregamento so sai depois que ele foi DESENHADO.
+	///
+	/// ============================ POR QUE HA UM ENVOLUCRO AQUI ============================
+	/// O `MontarMundo` abaixo roda INTEIRO dentro do quadro em que o `JoinAccepted` chegou (ele e
+	/// chamado de dentro do `GameClient._Process`), e o custo que o jogador enxerga nao esta nele --
+	/// esta no DESENHO daquele quadro: montagem do cenario, compilacao de shader e as chapas do HUD.
+	/// Medido: 480 ms num unico quadro. Por isso o `Soltar` espera o `frame_post_draw` em vez de
+	/// devolver o controle aqui (ver `TelaDeCarregamento.Soltar`).
+	///
+	/// E o `finally` nao e enfeite: se a montagem estourar no meio, a cobertura TEM que cair. Uma
+	/// excecao com a tela presa no ar deixaria o jogador olhando "carregando..." pra sempre, sem nem
+	/// saber que algo quebrou -- e o `Joined` chega por callback de rede, onde ninguem ve o erro.
+	/// ======================================================================================
+	/// </summary>
 	private void AoEntrarNoMundo()
+	{
+		// DE NOVO O FECHO, e nao e redundancia inutil: o `AoReceberSlots` cobre o caminho do lobby, e
+		// esta linha cobre qualquer entrada que nao passe por ele (uma reconexao, um caminho novo).
+		// No caso normal ela custa zero -- a fila ja esta vazia e o `Concluir` volta na hora.
+		Aquecimento.Concluir();
+
+		try { MontarMundo(); }
+		finally { _carga?.Soltar(); }
+	}
+
+	private void MontarMundo()
 	{
 		_selecao?.QueueFree();
 		_selecao = null;
@@ -583,8 +806,13 @@ public partial class Boot : Node2D
 		// abre pelo verb "Inventar tecnicas de ki", na aba Learning -- que e onde o
 		// `Create_Attack`/`Customize_Attack` do original moram (`set category = "Learning"`).
 		AddChild(new TelaDeTecnicas { Name = "Tecnicas" });
-		// A TELA DE TROCA DE MAPA. Ver `TelaDeCarregamento`: ela nao acelera nada, ela ANUNCIA.
-		AddChild(new TelaDeCarregamento { Name = "Carregando" });
+		// (a TELA DE CARREGAMENTO nao nasce mais aqui: ela existe desde o lobby -- ver o campo
+		// `_carga`. Cria-la neste ponto era o que a impedia de cobrir a propria entrada no mundo,
+		// e uma segunda instancia roubaria a `TelaDeCarregamento.Instancia` da que ja esta no ar.)
+		// O REFUGIO: pra onde voce volta quando o seu planeta natal deixou de existir. Vive montada e
+		// invisivel, como o QTE do embate e pelo mesmo motivo -- ela nasce de um pacote que chega no
+		// pior momento possivel (voce acabou de morrer), e montar tela nessa hora e perder o prazo.
+		AddChild(new TelaDeRefugio { Name = "Refugio" });
 
 		// ============================ A TELA DE TECLAS E A DE PAUSA JA EXISTEM -- ELAS SO VAO PRO FIM DA FILA ============================
 		// As duas nascem no `_Ready`, no lobby (ver o campo `_pause`). O que se faz aqui e devolver a
@@ -689,6 +917,15 @@ public partial class Boot : Node2D
 		// que faz o corpo nascer com uma escada de estrago.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagferida") >= 0)
 			AddChild(new RoboDeFerida { Name = "RoboDeFerida" });
+
+		// --diagchao: A AGONIA DE UM PLANETA VISTA DE DENTRO -- a irma da `--diagagonia`, que ve o
+		// mesmo mundo morrer do espaco. Aquela roda num laboratorio sem rede (o efeito la e do
+		// cliente); esta PRECISA de servidor, porque quatro dos cinco efeitos do chao chegam por
+		// pacote (ceu, tremor, cratera, chao caindo) e um laboratorio provaria o desenho deixando o
+		// encanamento sem medida. Ela tambem e a unica que responde quanto isso CUSTA em quadros por
+		// segundo. Sobe junto do `--agoniaviva` do servidor. Ver RoboDoChaoQueMorre.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagchao") >= 0)
+			AddChild(new RoboDoChaoQueMorre { Name = "RoboDoChaoQueMorre" });
 
 		// --diagtintamundo: a irma da `--diagtinta` que roda DENTRO do jogo. A outra mede o cabelo e o
 		// rabo numa cena de laboratorio; esta mede o boneco de verdade, com o ceu do planeta mandando na
@@ -985,6 +1222,17 @@ public partial class Boot : Node2D
 		// ela nao ha o que medir) e tira o freeflight do admin (sem isso o custo mediria zero).
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvoo") >= 0)
 			AddChild(new RoboDeVoo { Name = "RoboDeVoo" });
+
+		// --diagrolagem: a ROLAGEM DO CENARIO -- o relato *"andando pros lados o personagem fica
+		// borrado/tremendo, pra cima e pra baixo fica liso"*. Anda nos quatro rumos e mede, quadro a
+		// quadro, de quanto em quanto o cenario PODE se mover (o erro de quantizacao entre `_pos` e o
+		// no desenhado, em pixel de tela), fechando na FOTO: correlaciona quadros consecutivos e cobra
+		// que o pixel tenha andado o que a transformacao de canvas prometeu.
+		//
+		// Precisa de `--host` (sem mundo nao ha cenario pra rolar) e de JANELA -- no headless a fase da
+		// foto se declara nao-medida em vez de passar de graca. Ver RoboDeRolagem.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagrolagem") >= 0)
+			AddChild(new RoboDeRolagem { Name = "RoboDeRolagem" });
 
 		// --diagagua: bancada da AGUA, a que OLHA. Anda contra o lago a pe, nada por cima dele, voa
 		// por cima do MESMO ponto e fotografa os tres -- mais o soco na agua e o vizinho da outra
@@ -1283,12 +1531,22 @@ public partial class Boot : Node2D
 		// login (`_Ready`) e continuam valendo depois dele -- derruba-las aqui deixaria o lobby de
 		// volta sem opcoes e sem tela de teclas, que e exatamente o defeito que esta tarefa
 		// conserta, so que reintroduzido pela porta dos fundos.
+		//
+		// A TELA DE CARREGAMENTO E O AQUECIMENTO ENTRAM NA MESMA LISTA, e pelo mesmo motivo: os dois
+		// tambem nascem no `_Ready` e o `MontarLogin` daqui NAO os recria. A `_carga` precisa estar
+		// de pe pra cobrir a proxima entrada -- que e justamente a que o jogador vai pedir agora --,
+		// e derruba-la deixaria o campo apontando pra um node morto.
+		//
+		// (O `_aquece` nao perde o que ja carregou de qualquer jeito: as referencias que mantem o
+		// tileset e os shaders quentes moram numa lista ESTATICA, pela mesma razao do
+		// `World._tilesetVivo`. Ele fica aqui pra nao deixar campo pendurado em node liberado.)
 		foreach (Node n in GetChildren())
 		{
-			if (n == _pause || n == _teclas) continue;
+			if (n == _pause || n == _teclas || n == _carga || n == _aquece) continue;
 			n.QueueFree();
 		}
 		_selecao = null;
+		_slotsAtuais = [];
 		MontarLogin();
 		AudioDirector.Instance?.Ambiente(null);
 		// ZERA A MAQUINA ANTES DE PEDIR O TEMA. O `QueueFree` acima derruba o mundo e qualquer
@@ -1322,8 +1580,7 @@ public partial class Boot : Node2D
 		// UM SO NUMERO PRO SERVIDOR E PRO CLIENTE de proposito: quem hospeda disca em si mesmo, e dois
 		// campos separados so poderiam divergir.
 		// ==========================================================================================
-		int porta = Jandirus.Net.Protocol.DefaultPort;
-		if (int.TryParse(Arg(args, "--rede"), out int pRede) && pRede > 0) porta = pRede;
+		int porta = PortaDaRede();   // o mesmo numero do "Entrar" da tela -- ver `PortaDaRede`
 
 		// `--host` sobe o servidor e conecta em 127.0.0.1 logo abaixo -- e o endereco que faz o
 		// servidor reconhecer o dono como admin, sem marca nenhuma daqui.

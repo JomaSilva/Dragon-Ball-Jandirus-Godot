@@ -649,8 +649,15 @@ public static class Protocol
         /// economizar bytes que nao existem.
         ///
         /// Formato: `byte n`, e por entrada `string chave` + `string nome` + `byte fase` +
-        /// `byte estagio`. A CHAVE e a identidade (nome de pre-feito, ou "#seed" de procedural) --
-        /// ver `Core.World.ChaveDePlaneta`, e por que o nome sozinho nao serve.
+        /// `byte estagio` + `double faltam`. A CHAVE e a identidade (nome de pre-feito, ou "#seed" de
+        /// procedural) -- ver `Core.World.ChaveDePlaneta`, e por que o nome sozinho nao serve.
+        ///
+        /// ============================ O `faltam` E O QUE DESENHA A AGONIA ============================
+        /// Sao os segundos que restam do passo atual. Sem ele o cliente sabia que um planeta esta
+        /// explodindo e nao sabia HA QUANTO TEMPO -- e a crosta de magma, as rachaduras e a explosao
+        /// final que o dono pediu sao todas funcao desse numero. Ele nao dava pra integrar do lado de
+        /// la: este pacote so sai quando algo MUDA DE ESTAGIO, e os cinco minutos da explosao sao um
+        /// estagio so. Ver `GameServer.MandarMortos`.
         /// ================================================================================
         /// </summary>
         Mortos = 39,
@@ -935,6 +942,29 @@ public static class Protocol
         /// ==========================================================================================
         /// </summary>
         SuperEsferas = 50,
+
+        /// <summary>
+        /// **O REFUGIO**: o planeta natal desta pessoa foi destruido, e estas sao as saidas.
+        ///
+        /// ============================ POR QUE UM PACOTE, E NAO CHAT ============================
+        /// A conquista inteira responde em texto de proposito (ver `MenuJogo.BlocoDeDominio`), e
+        /// isso continua certo la: sao verbos que o servidor responde com uma frase. **Aqui nao**:
+        /// o jogador precisa ESCOLHER entre duas coisas que so o servidor conhece -- quais dominios
+        /// dele ainda estao de pe (livro de dominios) e quais mundos vivos sobraram perto de casa
+        /// (a vizinhanca depende de quais planetas morreram, que e estado de servidor).
+        ///
+        /// O cliente calcula a vizinhanca sozinho na CRIACAO (`Bercos.IrmasDoNatal`, funcao pura) e
+        /// nao consegue calcular esta: la nenhum planeta tinha morrido ainda.
+        /// ===================================================================================
+        ///
+        /// `precisa = false` quer dizer "o seu berco esta de pe" -- e como a tela some quando o
+        /// planeta volta (um desejo das Esferas ressuscita mundo). Sem esse caso, a escolha de uma
+        /// catastrofe que ja passou ficaria na tela pra sempre.
+        ///
+        /// `abrir` e o servidor PEDINDO pra tela aparecer agora (a chegada ao Outro Mundo, uma vez
+        /// por sessao). Sem ele, o mesmo pacote e so uma atualizacao de quem ja esta olhando.
+        /// </summary>
+        Refugio = 51,
     }
 
     /// <summary>

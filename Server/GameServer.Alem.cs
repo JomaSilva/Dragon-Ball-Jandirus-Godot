@@ -355,6 +355,18 @@ public partial class GameServer
 
 		Avisar(pl, "o chão some sob você. Você abre os olhos no Outro Mundo, inteiro -- e morto."
 				 + " Uma auréola se acende sobre a sua cabeça.");
+
+		// ============================ E SE O SEU MUNDO ACABOU, A ESCOLHA CABE NESTES 60 SEGUNDOS ============================
+		// **Este e o unico instante em que a pergunta do refugio vale pra ESTA morte.** O `Renascer`
+		// roda quando o prazo vence e nao pode esperar por clique nenhum (a decisao de arquitetura
+		// esta escrita em `GameServer.Conquista.cs`: nada bloqueia o tique); a chegada aqui abre uma
+		// janela de `Alem.MsNoAlem` = 60 s em que o jogador ainda pode dizer para onde quer voltar.
+		//
+		// Quem nao responde volta pelo padrao -- a vizinhanca de casa --, e continua podendo escolher
+		// depois: a resposta e uma preferencia (`Dominio.EhOSpawn`), e nao um voto de uma vez so.
+		// Ver `GameServer.Refugio.OferecerORefugio`; com o berco de pe, ela nao faz nada.
+		// ============================================================================================================
+		OferecerORefugio(pl, podeAbrir: true);
 		GD.Print($"[server] {pl.Name} MORREU e foi pro Outro Mundo"
 				 + $" ({Alem.MsNoAlem / 1000:0}s ate voltar a vida)");
 	}

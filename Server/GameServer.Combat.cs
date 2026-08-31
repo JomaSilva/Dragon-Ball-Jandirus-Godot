@@ -1641,7 +1641,10 @@ public partial class GameServer
 		// cair no berco. Ver `GameServer.Conquista.cs`.
 		(ZoneKey destino, Vec2 onde) = DestinoDe(pl);
 
-		if (pl.Zone.Hash != destino.Hash) MandarProBerco(pl);
+		// O DESTINO VAI JUNTO, e nao e economia: `DestinoDe` conta ao jogador quando o berco dele nao
+		// existe mais (o REFUGIO, ver `GameServer.Refugio.cs`), e perguntar duas vezes na mesma morte
+		// mandava a mesma frase duas vezes pro chat. Ver a sobrecarga do `MandarProBerco`.
+		if (pl.Zone.Hash != destino.Hash) MandarProBerco(pl, (destino, onde));
 		else
 		{
 			// MESMA ZONA: nao ha o que recarregar, so um teleporte dentro dela. O ponto vem do

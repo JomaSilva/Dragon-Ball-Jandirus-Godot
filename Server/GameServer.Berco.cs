@@ -39,8 +39,21 @@ public partial class GameServer
 		c.Raca,
 		c.Ficha?.Class ?? "",
 		c.Linhagem,
-		c.SeedDoBerco != 0 ? c.SeedDoBerco : Bercos.SementeDoBerco(c.Nome, c.CriadoEm),
+		SementeDoBercoDe(c),
 		c.PertoDeCasa);
+
+	/// <summary>
+	/// A SEMENTE DE BERCO DE UM SAVE -- do disco, ou derivada de nome + instante de criacao.
+	///
+	/// Existe como funcao porque DOIS lugares precisam do mesmo numero: o <see cref="BercoDe"/>, que
+	/// escolhe o planeta, e o <see cref="AplicarBercoNoSave"/>, que precisa dele pro sorteio do
+	/// REFUGIO quando o planeta ja nao existe. Escrever a expressao duas vezes seria duas fontes pro
+	/// mesmo acaso, e a segunda a mudar mandaria a pessoa pra outro mundo calada.
+	///
+	/// Ver <see cref="Bercos.SementeDoBerco"/> pro porque de o save antigo tambem ter uma.
+	/// </summary>
+	public static ulong SementeDoBercoDe(CharacterSave c) =>
+		c.SeedDoBerco != 0 ? c.SeedDoBerco : Bercos.SementeDoBerco(c.Nome, c.CriadoEm);
 
 	/// <summary>
 	/// **O FUNIL.** Um berco vira uma zona e um ponto -- e so isto decide onde alguem aparece.
@@ -65,28 +78,45 @@ public partial class GameServer
 	/// existe e nao ha o que esperar.
 	/// ==========================================================================================
 	/// </summary>
-	public (ZoneKey Zona, Vec2 Pos) DestinoDoBerco(Berco b)
+	public (ZoneKey Zona, Vec2 Pos) DestinoDoBerco(Berco b, ServerPlayer? dono = null, ulong semente = 0)
 	{
-		// SEM BERCO = corpo sem dono. O `SpawnPos` continua sendo a resposta, mas passando pela
-		// colisao: mesmo na Terra uma construcao levantada em cima do ponto o bloqueia em runtime.
-		if (b.Planeta is not { Length: > 0 })
-			return (ZonaDeRecuoViva(), PontoDeNascimento(ZonaDeRecuoViva()));
-
 		// ============================ NINGUEM NASCE NUM CADAVER ============================
 		// **A saga 1 destroi VEGETA, que e o berco dos Saiyajin.** Sem esta linha, todo Saiyajin
 		// criado depois dela -- e toda morte de Saiyajin, que passa por aqui -- mandaria um corpo
 		// pra uma zona que nao existe mais: sem colisao carregada, sem povo, e com o `TickDoEspaco`
 		// se recusando a pousar la. A pessoa nasceria presa.
 		//
-		// O recuo e a mesma <see cref="ZonaDeRecuoViva"/> do berco vazio, e nao "o planeta mais
-		// parecido": inventar um segundo lar por raca seria uma tabela nova pra envelhecer.
-		if (ZonaMorta(b.Zona))
-		{
-			ZoneKey recuo = ZonaDeRecuoViva();
-			GD.Print($"[server] berco: '{b.Planeta}' esta destruido -- o corpo vai pra {recuo.Name}");
-			return (recuo, PontoDeNascimento(recuo));
-		}
+		// ============================ E O DESTINO DEIXOU DE SER UMA LISTA ============================
+		// Aqui havia um `ZonaDeRecuoViva`: descia `Espaco.PreFeitos()` e devolvia o primeiro planeta
+		// VIVO. **Ele foi DELETADO** -- com a carta trocavel junto --, e nao ha `if` guardando os dois
+		// comportamentos. O motivo esta escrito em `GameServer.Refugio.cs`: aquele destino era uma
+		// POSICAO NUMA LISTA (Namek so recebia os desabrigados da Terra por ser a segunda linha de um
+		// `yield return`), e hoje e uma REGRA -- o dominio que o jogador conquistou, ou o mundo vivo
+		// mais perto de casa.
+		//
+		// O CORPO SEM BERCO (clone, NPC, corpo de bancada) entra pelo mesmo lugar: sem natal, a ancora
+		// do refugio e a origem da carta, que e onde a Terra fica.
+		// ========================================================================================
+		if (b.Planeta is not { Length: > 0 } || ZonaMorta(b.Zona))
+			return RefugioDoBerco(b, dono, semente != 0 ? semente : b.Seed);
 
+		return PousarNo(b);
+	}
+
+	/// <summary>
+	/// **UM CORPO CELESTE CONCRETO VIRA UMA ZONA E UM PONTO.** A ponta do funil -- e ela nao decide
+	/// nada: quem chega aqui ja sabe em que mundo vai pousar.
+	///
+	/// Dois donos, e e por isso que ela e uma funcao e nao o final do <see cref="DestinoDoBerco"/>: o
+	/// berco de sempre e o REFUGIO. Se o refugio repetisse estas quatro linhas, o dia em que o pouso
+	/// mudasse seria o dia em que quem perdeu o planeta natal pousaria pela regra velha -- e esse e
+	/// justamente o caminho que ninguem exercita a mao.
+	///
+	/// (E ela nao pode voltar a chamar o refugio: o mundo que chega aqui ja foi conferido vivo. Sem
+	/// essa separacao, um refugio que caisse num mundo morto chamaria o refugio de novo, pra sempre.)
+	/// </summary>
+	private (ZoneKey Zona, Vec2 Pos) PousarNo(Berco b)
+	{
 		if (b.PreFeito)
 			return (b.Zona, PontoDeNascimento(b.Zona));
 
@@ -97,85 +127,13 @@ public partial class GameServer
 		if (b.NoEspaco() is { } corpo)
 			return (ZonaDoEspaco, corpo.Pos);
 
-		// Nao ha como chegar aqui -- um berco gerado sempre fica no mapa do universo (`K >= 0`).
-		// O recuo existe pra que a resposta a um estado impossivel seja "a Terra" e nao um vazio.
-		return (SpawnZone, PontoDeNascimento(SpawnZone));
-	}
-
-	/// <summary>
-	/// ============================ A ZONA DE RECUO -- E ELA PODE MORRER ============================
-	/// O `SpawnZone` deste servidor e a Terra, cravado (`GameServer.cs`). Isso era seguro enquanto
-	/// nenhum planeta podia deixar de existir; agora nao e: a Terra morre por Final Explosion, e um
-	/// elo de saga novo apontado pra ela a mataria tambem. Um `SpawnZone` cravado num planeta morto
-	/// manda **todo mundo que renasce** pro cadaver.
-	///
-	/// Entao o recuo pergunta antes, e desce a lista dos pre-feitos ate achar um vivo. A ORDEM e a
-	/// da carta estelar (`Espaco.PreFeitos()`, a Terra primeiro) -- ela ja e a lista canonica de
-	/// "lugares onde se pousa", e uma segunda lista aqui envelheceria separada.
-	///
-	/// Se TODOS morrerem, a resposta continua sendo a Terra: um corpo sem lugar e um corpo no vazio,
-	/// que e pior. Nesse caso o servidor grita, porque e um mundo sem nenhum lugar pra nascer.
-	/// ======================================================================================
-	/// </summary>
-	private ZoneKey ZonaDeRecuoViva()
-	{
-		if (!ZonaMorta(SpawnZone)) return SpawnZone;
-
-		foreach (PlanetaNoEspaco p in _cartaDeRecuo ?? Espaco.PreFeitos())
-		{
-			var z = ZoneKey.Premade(p.Nome);
-			if (!ZonaMorta(z) && _catalogo?.Get(z) != null) return z;
-		}
-
-		GD.PushError("[server] TODOS os planetas pre-feitos estao destruidos -- o recuo do berco "
-				   + "cai na Terra morta. Um admin precisa restaurar algum planeta.");
-		return SpawnZone;
-	}
-
-	// =====================================================================
-	// A CARTA QUE O RECUO LE -- e por que ela e trocavel
-	// =====================================================================
-	/// <summary>
-	/// A CARTA ESTELAR QUE O <see cref="ZonaDeRecuoViva"/> DESCE. **Nula em jogo**, sempre: quem
-	/// responde e <see cref="Espaco.PreFeitos"/>.
-	///
-	/// ============================ POR QUE ISTO EXISTE ============================
-	/// O recuo escolhe "o primeiro pre-feito VIVO da carta", e esse *primeiro* e uma propriedade da
-	/// ORDEM de um `yield return` (`Core/World/Espaco.cs:115-121`) -- ou seja, o destino de quem perde
-	/// o berco e decidido por uma posicao numa lista, e nao por uma regra. Foi assim que a Terra morta
-	/// virou **Namek** e nao qualquer outro planeta: Namek e a segunda linha daquele metodo.
-	///
-	/// Uma bancada que afirmasse "com a Terra morta o corpo vai parar em Namek" estaria gravando o
-	/// ACIDENTE. O `Bercos.PlanetaNatal` ja avisa, com todas as letras, que um dia alguem vai
-	/// acrescentar Hera e a Big Gete Star aquela lista ("E uma LINHA em `Espaco.PreFeitos()` pra
-	/// cada") -- e no dia em que a linha nova entrar ANTES das outras, o destino do defeito muda de
-	/// planeta e a bancada que cravou "Namek" fica verde em cima do mesmo estrago.
-	///
-	/// Entao a `--bercoprova` TROCA a carta e mede de novo, contra o mesmo codigo de producao: e o
-	/// mesmo motivo do `teto` do <see cref="Bercos.ServeDeBerco"/> e do `tetoZona` da
-	/// <see cref="Manutencao"/> -- apertar o parametro contra o jogo em vez de escrever um caminho
-	/// paralelo que testaria o atalho. Em jogo ninguem escreve neste campo.
-	/// ==========================================================================
-	/// </summary>
-	private IReadOnlyList<PlanetaNoEspaco>? _cartaDeRecuo;
-
-	/// <summary>O escopo: `using (OutraCartaDeRecuo([...])) { ... }`. Ver <see cref="_cartaDeRecuo"/>.</summary>
-	private CartaDeRecuoTrocada OutraCartaDeRecuo(IReadOnlyList<PlanetaNoEspaco> carta) => new(this, carta);
-
-	/// <summary>Devolve a carta de verdade no fim, mesmo se a bancada estourar no meio.</summary>
-	internal sealed class CartaDeRecuoTrocada : IDisposable
-	{
-		private readonly GameServer _s;
-		private readonly IReadOnlyList<PlanetaNoEspaco>? _antes;
-
-		internal CartaDeRecuoTrocada(GameServer s, IReadOnlyList<PlanetaNoEspaco> carta)
-		{
-			_s = s;
-			_antes = s._cartaDeRecuo;
-			s._cartaDeRecuo = carta;
-		}
-
-		public void Dispose() => _s._cartaDeRecuo = _antes;
+		// Nao ha como chegar aqui -- um berco gerado sempre fica no mapa do universo (`K >= 0`), e o
+		// refugio so monta berco com endereco. Se acontecer, a resposta e o ESPACO e nao "a Terra":
+		// um planeta cravado aqui e exatamente o que voltaria a prender alguem num cadaver no dia em
+		// que aquele planeta morresse. Ver o ultimo recurso em `GameServer.Refugio.cs`.
+		GD.PushError($"[server] berco '{b.Planeta}' sem endereco no mapa do universo (K={b.K}) -- "
+				   + "o corpo vai pro espaco aberto");
+		return (ZonaDoEspaco, b.Pos);
 	}
 
 	/// <summary>
@@ -197,20 +155,64 @@ public partial class GameServer
 	/// chega sem nenhum planeta desenhado, inclusive sem o que esta bem debaixo dele. E o mesmo
 	/// par de linhas que o `DecolarDeProcedural` ja precisou escrever.
 	/// </summary>
-	private void MandarProBerco(ServerPlayer pl)
+	/// <remarks>
+	/// `DestinoDe` E O FUNIL DE CIMA: ele pergunta primeiro se esta pessoa escolheu um DOMINIO
+	/// conquistado como ponto de renascimento e, quando nao, cai no `DestinoDoBerco` de sempre. Ver
+	/// `GameServer.Conquista.cs` -- o dominio nao e um caminho paralelo, e um berco montado do
+	/// endereco dele.
+	/// </remarks>
+	private void MandarProBerco(ServerPlayer pl) => MandarProBerco(pl, DestinoDe(pl));
+
+	/// <summary>
+	/// O MESMO, com o destino JA CALCULADO.
+	///
+	/// ============================ PORQUE PERGUNTAR DUAS VEZES DEIXOU DE SER DE GRACA ============================
+	/// O `Renascer` chamava `DestinoDe` pra decidir se a zona mudava e, quando mudava, chamava
+	/// `MandarProBerco`, que perguntava **de novo**. Isso era inofensivo enquanto a resposta fosse uma
+	/// leitura de tabela; com o REFUGIO deixou de ser: cada chamada varre a vizinhanca do natal e,
+	/// principalmente, **conta ao jogador o que aconteceu** (`ContarORefugio`). Duas chamadas viravam a
+	/// mesma frase duas vezes no chat, na mesma morte -- e a frase e a unica coisa que explica pra
+	/// pessoa por que ela nao acordou em casa.
+	/// ========================================================================================================
+	/// </summary>
+	private void MandarProBerco(ServerPlayer pl, (ZoneKey Zona, Vec2 Pos) destino)
 	{
-		// `DestinoDe` E O FUNIL DE CIMA: ele pergunta primeiro se esta pessoa escolheu um DOMINIO
-		// conquistado como ponto de renascimento e, quando nao, cai no `DestinoDoBerco` de sempre.
-		// Ver `GameServer.Conquista.cs` -- o dominio nao e um caminho paralelo, e um berco montado do
-		// endereco dele.
-		(ZoneKey zona, Vec2 pos) = DestinoDe(pl);
+		(ZoneKey zona, Vec2 pos) = destino;
 		MoveToZone(pl.Id, zona, pos);
 
 		if (!Espaco.EhEspaco(zona)) return;
 
 		pl.ChunkAtual = ChunkId.De(pl.Pos);
 		MandarVizinhanca(pl);
-		Avisar(pl, $"a orbita de {pl.Berco.Planeta} te recebe. O chao vem em seguida.");
+
+		// ============================ A FRASE SAI DO CEU, E NAO DO BERCO ============================
+		// Ela dizia `pl.Berco.Planeta` -- o planeta do berco --, e isso passou a ser mentira em dois
+		// casos: o dominio (o corpo vai pro territorio conquistado) e o ULTIMO RECURSO do refugio (o
+		// corpo fica no vacuo, onde o mundo dele ficava, e nao ha chao nenhum vindo em seguida).
+		//
+		// Perguntar ao ESPACO o que ha sob o corpo responde certo nos tres casos com uma linha, e usa
+		// a mesma funcao que o pouso ja consulta. Ver `Espaco.PlanetaSob`.
+		// ========================================================================================
+		//
+		// ============================ E "HA UM DISCO SOB VOCE" NAO E A MESMA COISA QUE "VEM CHAO" ============================
+		// **A explosao nao apaga o disco do ceu.** Quem cai no ultimo recurso do refugio abre os olhos
+		// na coordenada exata de onde o mundo dele ficava, ou seja, EM CIMA do cadaver -- e o
+		// `PlanetaSob` responde o nome dele, alegremente. A frase saia assim:
+		//
+		//     "Terra nao existe mais... Voce abre os olhos no vacuo... NAO HA CHAO -- ha a carta estelar."
+		//     "a orbita de Earth te recebe. O CHAO VEM EM SEGUIDA."
+		//
+		// As duas na mesma morte, e a segunda prometendo um chao que o `TickDoEspaco` se recusa a
+		// entregar (`if (PlanetaMorto(destino)) return` -- `GameServer.Espaco.cs`). A pessoa ficaria
+		// parada esperando pousar num planeta que acabou de explodir debaixo dela.
+		//
+		// **E o modo de falha que este port ja catalogou: a regra existia num chamador e faltava no
+		// outro.** O tique sabia que em cadaver nao se pousa; a chegada nao sabia. Agora a pergunta e
+		// a mesma nos dois lugares. A borda 9(c) da `--bercoprova` guarda isto pelo nome.
+		// ==============================================================================================================
+		Avisar(pl, Espaco.PlanetaSob(SeedDoUniverso, pl.Pos) is { } sob && !PlanetaMorto(sob)
+			? $"a orbita de {sob.Nome} te recebe. O chao vem em seguida."
+			: "voce abre os olhos no vacuo, sem chao nenhum sob voce. A carta estelar e a sua saida.");
 	}
 
 	/// <summary>
@@ -237,7 +239,11 @@ public partial class GameServer
 	/// </summary>
 	private void AplicarBercoNoSave(CharacterSave c, Berco b)
 	{
-		(ZoneKey zona, Vec2 pos) = DestinoDoBerco(b);
+		// A SEMENTE VAI JUNTO, e ela nao e detalhe: e o que decide QUAL mundo vizinho recebe este
+		// corpo quando o planeta natal ja esta destruido. Sem ela as dez racas que nascem na Terra
+		// acordariam todas no mesmo pedregulho -- e `dono` e nulo aqui de proposito: um personagem em
+		// criacao nao tem dominio nenhum pra escolher (ver `DominiosDeRefugio`).
+		(ZoneKey zona, Vec2 pos) = DestinoDoBerco(b, null, SementeDoBercoDe(c));
 		c.Zona = zona.Name;
 		c.ZonaTipo = zona.Kind;
 		c.ZonaSeed = zona.Seed;

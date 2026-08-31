@@ -235,6 +235,23 @@ public static class Espaco
 	}
 
 	/// <summary>
+	/// ============================ A ZONA DE UM CORPO DA CARTA ============================
+	/// Do disco que se ve do espaco pra a SUPERFICIE em que se anda. Duas linhas, e as duas erram
+	/// caladas se a gente escrever a de baixo pra um pre-feito:
+	///   * pre-feito -- <see cref="ZoneKey.Premade"/>, seed ZERO. O `PlanetaNoEspaco.Seed` dele e
+	///     `Hash64(nome)`, que serve pra sortear a arte e **nao e a seed da zona**;
+	///   * gerado -- <see cref="ZoneKey.Procedural"/> com a seed da orbita, que e a identidade dele.
+	///
+	/// Isto e um metodo porque a conversao ja estava copiada em uma duzia de lugares (o admin
+	/// `Restore Planet`, os desejos, o pouso, a carta, quatro bancadas), e a chave de um planeta e
+	/// justamente a coisa deste sistema que ja custou caro por ser copiada -- ver
+	/// <see cref="PlanetasMortos"/>. Quem escrever um consumidor novo entra por aqui.
+	/// ================================================================================
+	/// </summary>
+	public static ZoneKey ZonaDe(PlanetaNoEspaco p) =>
+		p.Premade ? ZoneKey.Premade(p.Nome) : ZoneKey.Procedural(p.Nome, p.Seed);
+
+	/// <summary>
 	/// Onde o corpo aparece ao DECOLAR de um planeta: logo acima da superficie dele.
 	///
 	/// Fora do raio de proposito -- nascer DENTRO do planeta faria o teste de pouso disparar no

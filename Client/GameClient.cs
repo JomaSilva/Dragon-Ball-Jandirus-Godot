@@ -58,6 +58,27 @@ public partial class GameClient : Node
 	public event Action<int>? PeerLeft;
 	public event Action<ZoneKey, Vec2>? ZoneChanged;
 	public event Action<string>? Rejected;
+
+	/// <summary>
+	/// A CONEXAO CAIU -- queda do servidor ou estouro do prazo de silencio, os dois.
+	///
+	/// ============================ POR QUE ELE PRECISOU EXISTIR ============================
+	/// A queda ja era conhecida aqui dentro (o `PeerDisconnectedEvent` abaixo), mas morria num
+	/// `GD.Print`: ninguem de fora ficava sabendo. Isso bastava enquanto nada da interface dependia
+	/// da resposta do servidor pra sair do lugar.
+	///
+	/// A cobertura da entrada no mundo depende: ela sobe no clique e so cai quando o mundo foi
+	/// DESENHADO (ver `TelaDeCarregamento.Soltar` -- saida por FATO, nunca por relogio). Com o
+	/// servidor morto no meio dessa espera o mundo nunca vem, e sem este evento o jogador ficava
+	/// olhando "carregando..." **pra sempre**. Um jogador preso numa tela de carregamento e pior
+	/// que os 1-2 s de tela vazia que a cobertura veio consertar.
+	///
+	/// Ele continua sendo um FATO e nao um relogio: quem decide que a conexao acabou e o
+	/// LiteNetLib, que dispara tanto na queda anunciada quanto no fim do prazo de silencio.
+	/// ======================================================================================
+	/// </summary>
+	public event Action<string>? Caiu;
+
 	/// <summary>Os tres slots da conta -- e a tela de selecao.</summary>
 	public event Action<List<SlotInfo>>? SlotsRecebidos;
 	/// <summary>Um golpe foi resolvido pelo servidor. Vale pra som, piscada e musica de luta.</summary>
@@ -132,11 +153,30 @@ public partial class GameClient : Node
 		{
 			GD.Print($"[client] desconectado: {info.Reason}");
 			_peer = null;
+			Caiu?.Invoke(info.Reason.ToString());   // ver o comentario do evento: a cobertura depende disto
 		};
 		_net.Start();
 	}
 
-	public override void _Process(double delta) => _net.PollEvents();
+	public override void _Process(double delta)
+	{
+		_net.PollEvents();
+
+		// ============================ O RELOGIO DO MUNDO ANDA AQUI ============================
+		// O comentario de <see cref="TempoDoMundo"/> ja PROMETIA isto ("entre um pacote e outro isto
+		// anda sozinho"), e nao era verdade: quem andava era uma COPIA dentro do `Iluminacao`, e o
+		// campo daqui ficava parado entre duas sincronias -- ou seja **pulava de 15 em 15 segundos**
+		// pra todo mundo que lesse este campo em vez daquela copia (o menu, a carta, a lua).
+		//
+		// Passou a doer de verdade com a agonia de planeta: a rampa dos cinco minutos e funcao do
+		// relogio, e um relogio que salta 15 s faz a crosta de magma engrossar aos degraus em vez de
+		// crescer. Ver `IntensidadeDaAgonia`.
+		//
+		// SO DEPOIS DO PRIMEIRO PACOTE (`TempoChegou`): somar delta a partir de zero seria inventar
+		// uma hora, que e exatamente o que a guarda do `Iluminacao` existe pra impedir.
+		// ===================================================================================
+		if (TempoChegou) TempoDoMundo += delta;
+	}
 
 	public override void _ExitTree()
 	{
@@ -362,6 +402,89 @@ public partial class GameClient : Node
 	/// </summary>
 	public readonly Jandirus.Core.World.RegistroDeMortos Mortos = new();
 
+	/// <summary>
+	/// QUANDO A AGONIA DE CADA PLANETA VENCE, em tempo de MUNDO. Chave = <see cref="Jandirus.Core.World.ChaveDePlaneta.Texto"/>.
+	///
+	/// Existe so no cliente e nao persiste: e a traducao de "segundos que faltam" (o que o servidor
+	/// guarda e manda) pra "que horas isso acaba" (o que o desenho precisa). Ver o handler de
+	/// <see cref="Protocol.S2C.Mortos"/>.
+	/// </summary>
+	private readonly Dictionary<string, double> _agoniaAte = [];
+
+	/// <summary>
+	/// ============================ A LISTA DE MORTOS CHEGOU -- E O QUE ISSO VIRA AQUI DENTRO ============================
+	/// Separado do `case` do pacote por um motivo so: e o unico jeito de uma bancada exercitar a
+	/// CONVERSAO de verdade (segundos que faltam -> prazo absoluto -> intensidade) em vez de escrever
+	/// o resultado dela na mao. O `case` le os bytes e chama isto; a bancada monta a lista e chama
+	/// isto. Um caminho, dois chamadores -- e nenhum atalho que pule o que se quer medir.
+	///
+	/// SUBSTITUI, NAO ACRESCENTA: o pacote e a lista INTEIRA (ver `S2C.Mortos`), e e exatamente isso
+	/// que faz um planeta RESTAURADO por admin voltar a aparecer na carta sem precisar de um segundo
+	/// pacote dizendo "esqueca aquele".
+	///
+	/// ============================ E O PRAZO DE QUEM JA MORREU NAO E APAGADO ============================
+	/// O pacote do COMMIT chega com `faltam = 0` -- e e nesse instante que a explosao tem que ser
+	/// desenhada. Limpar o dicionario inteiro e refaze-lo apagaria o prazo do unico planeta que
+	/// precisa dele, e o mundo sumiria entre dois quadros em vez de estourar (que e literalmente o
+	/// defeito que este trabalho veio consertar).
+	///
+	/// Entao so sai daqui a chave que **desapareceu da lista** -- ou seja, planeta RESSUSCITADO. Quem
+	/// continua morto continua com o prazo vencido, e o `PlanetaDesenhado` usa esse numero NEGATIVO
+	/// pra saber que esta no meio do proprio estouro.
+	/// ==============================================================================================
+	///
+	/// ============================ "FALTAM" VIRA "ATE QUANDO", AQUI E SO AQUI ============================
+	/// O servidor guarda e manda SEGUNDOS QUE RESTAM (ver `EstadoDaMorte.Faltam`: o relogio do mundo
+	/// anda com o servidor desligado, e um prazo absoluto no disco faria uma noite fora consumir o
+	/// pavio). O CLIENTE precisa do contrario: um prazo absoluto, pra desenhar a rampa como funcao
+	/// pura do relogio, sem um pacote por quadro e sem um segundo contador andando por conta propria.
+	/// Mesmo desenho do `ClimaForcado.Ate`, que ja faz isto do lado de la.
+	/// ================================================================================================
+	/// </summary>
+	internal void AplicarMortos(List<Jandirus.Core.World.EstadoDaMorte> lista)
+	{
+		var vistos = new HashSet<string>(lista.Count);
+
+		foreach (Jandirus.Core.World.EstadoDaMorte e in lista)
+		{
+			vistos.Add(e.Chave);
+			if (e.Faltam > 0) _agoniaAte[e.Chave] = TempoDoMundo + e.Faltam;
+		}
+
+		foreach (string k in _agoniaAte.Keys.ToList())
+			if (!vistos.Contains(k)) _agoniaAte.Remove(k);
+
+		Mortos.Substituir(lista);
+		MortosMudaram?.Invoke();
+	}
+
+	/// <summary>
+	/// ============================ A AGONIA DESTE PLANETA, DE 0 A 1 ============================
+	/// A MESMA fracao que o servidor usa pra apertar o ceu, encurtar o tremor e derrubar mais chao --
+	/// <see cref="Jandirus.Core.World.MortePlanetaria.Intensidade"/>, no Core, chamada pelos dois
+	/// lados. Uma segunda conta aqui seria uma segunda rampa: a crosta de magma no espaco divergiria
+	/// do chao tremendo no primeiro ajuste, e nada apontaria pra isso.
+	///
+	/// Devolve 0 pra planeta vivo ou ja destruido -- ausencia e a resposta, como no registro.
+	/// =====================================================================================
+	/// </summary>
+	public double IntensidadeDaAgonia(Jandirus.Core.World.ChaveDePlaneta chave)
+	{
+		if (Mortos.De(chave) is not { } e) return 0;
+		return Jandirus.Core.World.MortePlanetaria.Intensidade(
+			e.Fase, e.Estagio, SegundosAteOEstouro(chave) ?? e.Faltam);
+	}
+
+	/// <summary>
+	/// Quantos segundos faltam pra este planeta estourar (nulo = nao esta em contagem).
+	///
+	/// **Pode ficar NEGATIVO por um instante**, e isso e de proposito: e a janela entre o relogio
+	/// local cruzar o prazo e o `S2C.Mortos` do commit chegar. E nela que a explosao e desenhada --
+	/// ver `Client/CeuDoEspaco.PlanetaDesenhado`. Cortar em zero apagaria o unico momento do efeito.
+	/// </summary>
+	public double? SegundosAteOEstouro(Jandirus.Core.World.ChaveDePlaneta chave) =>
+		_agoniaAte.TryGetValue(chave.Texto, out double ate) ? ate - TempoDoMundo : null;
+
 	/// <summary>A lista de mortos mudou -- a carta estelar se redesenha.</summary>
 	public event Action? MortosMudaram;
 	public event Action? SkillsMudaram;
@@ -469,6 +592,36 @@ public partial class GameClient : Node
 	/// <summary>A frase do radar dourado, ja resolvida pelo servidor. Vazia = sem sinal.</summary>
 	public string SinalDourado { get; private set; } = "";
 	public event Action? SupersMudaram;
+
+	/// <summary>Um dominio meu que ainda esta de pe -- uma das saidas do refugio (a opcao B1).</summary>
+	public readonly record struct RefugioDominio(string Chave, string Nome, bool Escolhido, float Minutos);
+
+	/// <summary>Um mundo vivo perto de onde era casa -- a outra saida (a opcao B2).</summary>
+	public readonly record struct RefugioVizinho(string Nome, float Minutos, float Gravidade, bool Serve);
+
+	/// <summary>
+	/// O PLANETA NATAL DESTE PERSONAGEM FOI DESTRUIDO? Enquanto for falso, nada do refugio existe --
+	/// e a tela e o botao do menu somem. Ver <see cref="Protocol.S2C.Refugio"/>.
+	/// </summary>
+	public bool RefugioPrecisa { get; private set; }
+
+	/// <summary>O nome que o jogador le do planeta que acabou ("Terra", e nao "Earth").</summary>
+	public string RefugioNatal { get; private set; } = "";
+
+	public List<RefugioDominio> RefugioDominios { get; private set; } = [];
+	public List<RefugioVizinho> RefugioVizinhos { get; private set; } = [];
+
+	/// <summary>Perto de casa so sobrou mundo pesado demais -- ver `MotivoDoRefugio.MundoPesado`.</summary>
+	public bool RefugioReserva { get; private set; }
+
+	public event Action? RefugioMudou;
+
+	/// <summary>
+	/// O SERVIDOR PEDIU PRA TELA APARECER AGORA. Evento separado do <see cref="RefugioMudou"/> de
+	/// proposito: a atualizacao redesenha quem ja esta olhando, e este ABRE -- juntar os dois faria
+	/// cada resposta de escolha reabrir a tela que o jogador acabou de fechar.
+	/// </summary>
+	public event Action? RefugioPediuAbrir;
 
 	public List<ObraInfo> Obras { get; private set; } = [];
 	public List<OfertaDeObra> Catalogo { get; private set; } = [];
@@ -1389,6 +1542,34 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// O REFUGIO: o planeta natal acabou, e estas sao as duas saidas. Ver `S2C.Refugio`.
+			case Protocol.S2C.Refugio:
+			{
+				RefugioPrecisa = reader.GetBool();
+				bool abrir = reader.GetBool();
+				RefugioNatal = reader.GetString(32);
+
+				int nd = reader.GetByte();
+				var dominios = new List<RefugioDominio>(nd);
+				for (int i = 0; i < nd; i++)
+					dominios.Add(new RefugioDominio(reader.GetString(48), reader.GetString(32),
+													reader.GetBool(), reader.GetFloat()));
+				RefugioDominios = dominios;
+
+				int nv = reader.GetByte();
+				var vizinhos = new List<RefugioVizinho>(nv);
+				for (int i = 0; i < nv; i++)
+					vizinhos.Add(new RefugioVizinho(reader.GetString(32), reader.GetFloat(),
+													reader.GetFloat(), reader.GetBool()));
+				RefugioVizinhos = vizinhos;
+
+				RefugioReserva = reader.GetBool();
+
+				RefugioMudou?.Invoke();
+				if (abrir) RefugioPediuAbrir?.Invoke();
+				break;
+			}
+
 			// AS PORTAS mudaram de estado -- ou, com `completo`, esta e a lista inteira da zona.
 			// Nao vai por evento agregado como as obras: o `World` e o unico interessado e ele
 			// precisa saber SE foi a lista completa (pra fechar tudo antes de aplicar).
@@ -1675,13 +1856,10 @@ public partial class GameClient : Node
 						Nome = reader.GetString(64),
 						Fase = (Jandirus.Core.World.FaseDaMorte)reader.GetByte(),
 						Estagio = reader.GetByte(),
+						Faltam = reader.GetDouble(),
 					});
 
-				// SUBSTITUI, nao acrescenta: o pacote e a lista INTEIRA (ver `S2C.Mortos`), e e
-				// exatamente isso que faz um planeta RESTAURADO por admin voltar a aparecer na carta
-				// sem precisar de um segundo pacote pra dizer "esqueca aquele".
-				Mortos.Substituir(lista);
-				MortosMudaram?.Invoke();
+				AplicarMortos(lista);
 				break;
 			}
 

@@ -104,18 +104,47 @@ public static class Tema
         t.SetConstant("outline_size", "Label", 0);   // contorno so onde e preciso: ver Legenda()
 
         // ---- botao ----
+        // AS CHAPAS EM VARIAVEL DE COR, e nao direto no `Caixa()`: o estado "marcado + mouse em
+        // cima" nao tem cor propria no jogo -- ele e DERIVADO destas duas logo abaixo.
+        var cHover = new Color("2f3549");   // o mouse CLAREIA a chapa normal (252a38 -> 2f3549)
+        var cPress = new Color("1a1e29");   // apertado/marcado AFUNDA: e a normal escurecida ~29%
+
         var bNormal = Caixa(PainelClaro, Borda, 10);
-        var bHover = Caixa(new Color("2f3549"), BordaViva, 10);
-        var bPress = Caixa(new Color("1a1e29"), BordaViva, 10);
+        var bHover = Caixa(cHover, BordaViva, 10);
+        var bPress = Caixa(cPress, BordaViva, 10);
         var bDesab = Caixa(new Color("1b1f2a"), new Color("2a2f3f"), 10);
         t.SetStylebox("normal", "Button", bNormal);
         t.SetStylebox("hover", "Button", bHover);
         t.SetStylebox("pressed", "Button", bPress);
         t.SetStylebox("disabled", "Button", bDesab);
         t.SetStylebox("focus", "Button", Caixa(new Color(0, 0, 0, 0), BordaViva, 10));
+
+        // MARCADO **E** COM O MOUSE EM CIMA (`hover_pressed`). Estado real e obrigatorio: uma
+        // caixa de marcar ligada esta em PRESSED, e o Godot pede este stylebox quando o mouse
+        // passa por ela. Faltando aqui, o motor caia no tema DE FABRICA -- que para CheckBox e
+        // CheckButton entrega um StyleBoxEmpty. Tres coisas quebravam de uma vez: sumia a chapa,
+        // sumia a borda, e (o que o dono viu) a margem de conteudo caia de 10 pra 4 -- o tique e
+        // ancorado na margem do stylebox `normal` e o TEXTO usa a margem do stylebox DO ESTADO,
+        // entao a palavra andava 6 px pra esquerda e encostava no quadradinho.
+        // NAO E COR NOVA, E CRUZAMENTO: `pressed` e a chapa normal escurecida em ~29%
+        // (252a38 -> 1a1e29); logo, marcado-com-mouse e a chapa de HOVER escurecida na MESMA
+        // proporcao. Fica acesa como hover e afundada como pressed, que e exatamente o que ela e.
+        // Registrado em "Button" (e nao em CheckBox) porque a familia inteira herda por cadeia:
+        // CheckBox, CheckButton, OptionButton, MenuButton e os Button de `ToggleMode` -- inclusive
+        // os que ainda nao existem. Nos toggles isso troca um fallback silencioso pra `pressed`
+        // (aba ligada nao reagia ao mouse) por um realce de verdade.
+        t.SetStylebox("hover_pressed", "Button", Caixa(cHover.Darkened(0.29f), BordaViva, 10));
+
         t.SetColor("font_color", "Button", Texto);
         t.SetColor("font_hover_color", "Button", Destaque);
         t.SetColor("font_pressed_color", "Button", Destaque);
+        // A LETRA DO MESMO ESTADO: hover pinta de laranja, pressed pinta de laranja -- o
+        // cruzamento dos dois so pode ser laranja. Sem esta linha o Godot devolvia #ffffff.
+        t.SetColor("font_hover_pressed_color", "Button", Destaque);
+        // COM O FOCO DO TECLADO a moldura de foco so ACRESCENTA a borda laranja por cima; a chapa
+        // e a letra continuam as do estado normal. Sem esta linha o Godot devolvia #f2f2f2, um
+        // quase-branco que ja estava na tela de todo mundo -- so nao doia porque e parecido.
+        t.SetColor("font_focus_color", "Button", Texto);
         t.SetColor("font_disabled_color", "Button", TextoFraco);
 
         // ---- campo de texto ----
@@ -123,7 +152,12 @@ public static class Tema
         var eFoco = Caixa(new Color("0e1017"), BordaViva, 8);
         t.SetStylebox("normal", "LineEdit", eNormal);
         t.SetStylebox("focus", "LineEdit", eFoco);
+        // CAMPO TRAVADO (`Editable = false`). Mesma cova escura do campo normal, com a borda
+        // apagada do botao desabilitado -- e a mesma frase visual: "existe, mas nao e com voce
+        // agora". Sem consumidor hoje; e a mesma lacuna do hover_pressed, esperando o proximo.
+        t.SetStylebox("read_only", "LineEdit", Caixa(new Color("0e1017"), new Color("2a2f3f"), 8));
         t.SetColor("font_color", "LineEdit", Texto);
+        t.SetColor("font_uneditable_color", "LineEdit", TextoFraco);
         t.SetColor("font_placeholder_color", "LineEdit", new Color(TextoFraco, 0.7f));
         t.SetColor("caret_color", "LineEdit", Destaque);
         t.SetColor("selection_color", "LineEdit", new Color(Destaque, 0.35f));
@@ -147,6 +181,12 @@ public static class Tema
         t.SetColor("font_color", "OptionButton", Texto);
 
         t.SetStylebox("panel", "PopupMenu", Caixa(new Color("161a24"), Borda, 6));
+        // A FAIXA QUE ACENDE na linha sob o mouse. O tema ja pintava a LETRA dela de laranja
+        // (`font_hover_color`) e deixava a faixa embaixo pro cinza de fabrica -- meio par, e
+        // aparece em todo menu suspenso que o jogador abre. E a MESMA chapa de realce do botao,
+        // sem borda e sem margem, porque aqui ela e um risco de destaque dentro de uma lista e
+        // nao um controle solto. Chapa() nao tem margem de conteudo: a linha nao se mexe.
+        t.SetStylebox("hover", "PopupMenu", Chapa(cHover, 4));
         t.SetColor("font_color", "PopupMenu", Texto);
         t.SetColor("font_hover_color", "PopupMenu", Destaque);
 

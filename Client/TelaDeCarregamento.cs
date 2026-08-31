@@ -3,7 +3,22 @@ using Godot;
 namespace Jandirus.Client;
 
 /// <summary>
-/// A TELA DE CARREGAMENTO da troca de mapa.
+/// A TELA DE CARREGAMENTO -- da troca de mapa **e da entrada no mundo**.
+///
+/// ============================ AS DUAS PORTAS SAO DIFERENTES, E POR ISSO SAO DOIS METODOS ============================
+/// <see cref="Cobrir"/> serve a TROCA DE MAPA: ali o trabalho e uma chamada sincrona que da pra
+/// embrulhar -- mostra, deixa dois quadros passarem, roda, some.
+///
+/// <see cref="Levantar"/> + <see cref="Soltar"/> servem a ENTRADA NO MUNDO, que nao cabe naquele
+/// molde: entre o clique em "Entrar no mundo" e o corpo desenhado ha uma IDA E VOLTA DE REDE. Nao
+/// existe um `Action` pra embrulhar; existe um clique aqui e um `JoinAccepted` chegando depois.
+/// Entao a tela sobe no clique (`Levantar`) e cai quando o mundo foi DESENHADO (`Soltar`).
+///
+/// O pedido do dono foi literalmente este caminho: *"quando terminar de criar o personagem aparecer
+/// uma tela de loading ate o personagem spawnar etc, pq fica uns 1 a 2 segundos na tela azul do
+/// byond ate carregar pela primeira vez"*. A "tela azul" era o `ColorRect` de `Tema.Fundo` que o
+/// `Boot.MontarLogin` deixa vivo por baixo de tudo -- medido: 1462 ms olhando um retangulo liso.
+/// ====================================================================================================================
 ///
 /// ============================ O QUE ELA RESOLVE, E O QUE NAO ============================
 /// Ela NAO deixa a troca mais rapida, e e importante dizer isso em vez de fingir. O custo de
@@ -81,7 +96,7 @@ public partial class TelaDeCarregamento : CanvasLayer
 	/// </summary>
 	public async void Cobrir(string destino, Action trabalho)
 	{
-		_titulo.Text = destino;
+		Escrever(destino, "carregando...");
 		_raiz.Visible = true;
 
 		await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -100,4 +115,66 @@ public partial class TelaDeCarregamento : CanvasLayer
 			_raiz.Visible = false;
 		}
 	}
+
+	private void Escrever(string titulo, string dica)
+	{
+		_titulo.Text = titulo;
+		_dica.Text = dica;
+	}
+
+	/// <summary>A tela esta no ar AGORA? Pra bancada e pra nao levantar duas vezes.</summary>
+	public bool NoAr => _raiz.Visible;
+
+	/// <summary>
+	/// SOBE A TELA E FICA -- a metade de ENTRADA NO MUNDO. Ver o cabecalho da classe.
+	///
+	/// Sincrona e sem `await` nenhum de proposito: quem chama e o manipulador do clique, e o clique
+	/// acontece no processamento de ENTRADA do quadro, antes do desenho dele. Ou seja, a tela ja
+	/// esta no ar no MESMO quadro em que o botao foi apertado -- nao ha um so quadro entre o clique
+	/// e a cobertura, que e exatamente onde o fundo chapado aparecia.
+	///
+	/// Quem a derruba e o <see cref="Soltar"/>, e so ele.
+	/// </summary>
+	public void Levantar(string titulo, string dica)
+	{
+		Escrever(titulo, dica);
+		_raiz.Visible = true;
+	}
+
+	/// <summary>
+	/// DERRUBA A TELA -- mas so DEPOIS DE UM QUADRO DESENHADO. Ver o cabecalho da classe.
+	///
+	/// ============================ SAIR POR FATO, NUNCA POR RELOGIO ============================
+	/// A tentacao aqui e um temporizador ("some depois de 1,5 s"), e ele erraria dos dois lados: o
+	/// jogador de maquina lenta veria a tela sair antes do mundo, e o de maquina rapida ficaria
+	/// olhando carregamento com o jogo pronto atras. Pior: neste projeto ja se mediu a APARENCIA do
+	/// servidor chegando ate 6 s antes do pixel -- "o servidor disse que existe" tambem nao serve.
+	///
+	/// O fato certo e `frame_post_draw`: ele e emitido depois que o quadro foi DESENHADO. Quem chama
+	/// este metodo esta dentro do `_process` do quadro em que o mundo inteiro foi montado; esperar um
+	/// `frame_post_draw` daqui e esperar exatamente aquele quadro -- o primeiro com o corpo na tela,
+	/// o mesmo que paga a montagem do cenario e a compilacao dos shaders.
+	///
+	/// E POR ISSO NAO HA BURACO: a tela so e retirada DEPOIS que um quadro com o mundo ja foi
+	/// desenhado por baixo dela. O quadro seguinte troca cobertura por jogo, sem um so quadro de
+	/// fundo chapado no meio -- que e o defeito que o dono descreveu.
+	/// ==========================================================================================
+	/// </summary>
+	public async void Soltar()
+	{
+		if (!_raiz.Visible) return;
+
+		// GUARDA CONTRA DUAS SOLTURAS: duas corrotinas esperando o mesmo sinal derrubariam a tela
+		// duas vezes -- inofensivo hoje, e um jeito de a segunda apagar uma cobertura que a primeira
+		// ja tinha levantado de novo (entrar, sair pro login, entrar de novo depressa).
+		if (_soltando) return;
+		_soltando = true;
+
+		await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+
+		_soltando = false;
+		_raiz.Visible = false;
+	}
+
+	private bool _soltando;
 }

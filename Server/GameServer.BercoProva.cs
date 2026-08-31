@@ -54,6 +54,18 @@ namespace Jandirus.Server;
 /// varredura que acontece uma vez, no mundo que por acaso estiver no disco.
 /// ================================================================================================
 ///
+/// ============================ E ELA TEM UMA SEGUNDA METADE, NOUTRO ARQUIVO ============================
+/// As familias 8, 9 e 10 moram em `GameServer.RefugioProva.cs` e rodam nesta mesma bancada. Elas
+/// existem porque a familia 7 mede a escolha do refugio com UM personagem, e o pedido do dono nao fala
+/// de um personagem: *"quando uma RACA fica sem planeta natal..."*. La a prova e nominal nas duas
+/// metades (natal de pe e natal morto), passa pelas bordas -- inclusive **todos os planetas mortos** --
+/// e poe de volta a injecao do planeta ficticio na frente da carta, agora exigindo que ninguem se mova.
+///
+/// **AVISO DE STDERR**: esta bancada passa a deixar DUAS linhas de `WARNING` no stderr, e as duas sao a
+/// prova funcionando: a familia 8 tenta destruir `Heaven` e `Hell` de verdade pra mostrar que o
+/// `ComecarDestruicao` recusa. Stderr com essas duas linhas e nenhuma outra e o placar limpo.
+/// ==================================================================================================
+///
 /// ============================ E O MUNDO DO DONO NAO PAGA A CONTA ============================
 /// Toda morte de planeta desta bancada acontece dentro do `using PalcoDeMortesDeBancada()`
 /// (`GameServer.Destruicao.cs`): a gravacao e recusada, o registro/tremores/cargas/ceu voltam no fim,
@@ -75,15 +87,11 @@ public partial class GameServer
 	private const int FaixaDaProva = 20;
 
 	/// <summary>
-	/// O planeta que a familia 3 enfia na FRENTE da carta estelar. **Hera nao e um nome inventado**:
-	/// ela tem mapa convertido (`Assets/Maps/manifest.json`, z11) e o cabecalho do
-	/// <see cref="Bercos.PlanetaNatal"/> ja declara, com todas as letras, que o lar do Heran e ela e
-	/// que faltam "uma LINHA em `Espaco.PreFeitos()`" pra ela virar corpo celeste.
-	///
-	/// Ou seja: a familia 3 nao simula um acidente improvavel -- ela simula a proxima mudanca que este
-	/// arquivo ja prometeu que alguem vai fazer.
+	/// A CONTA DA BANCADA DO REFUGIO -- a que finca bandeira na familia 7. Separada da conta das
+	/// outras familias porque dominio e do PERSONAGEM (a assinatura), e um dominio deixado no livro
+	/// por uma familia mudaria o destino das outras sem ninguem entender por que.
 	/// </summary>
-	private const string PlanetaIntruso = "Hera";
+	private const string ContaDoRefugio = "bancada_refugio";
 
 	private int _pbOk, _pbFalhou;
 
@@ -103,10 +111,17 @@ public partial class GameServer
 		{
 			OMundoComoEleEsta();
 			ODefeitoDeVolta();
-			AOrdemDaCarta();
+			AOrdemDaCartaNaoImportaMais();
 			RenascerEhOOutroCaminho();
 			OPovoNoMundoENaoNaTabela();
 			PorQueNenhumaBancadaPegou();
+			AEscolhaDoRefugio();
+
+			// AS TRES DE `GameServer.RefugioProva.cs` -- a familia 7 mede a escolha com UM personagem,
+			// e estas medem com as 24, nas bordas, e com a carta trocada. Ver o cabecalho de la.
+			AEscolhaRacaPorRaca();
+			AsBordasDoRefugio();
+			AListaMorreuDeVerdade();
 		}
 		catch (Exception ex)
 		{
@@ -136,8 +151,55 @@ public partial class GameServer
 		public readonly List<string> Certas = [];
 		public readonly List<(string Raca, string Esperado, string Obtido)> Desvios = [];
 
+		/// <summary>
+		/// QUEM ACORDOU NO REFUGIO -- certo, mas fora de casa, porque casa nao existe mais.
+		///
+		/// ============================ SEM ESTA LISTA A FAMILIA 2 FICARIA VERDE POR IMOBILIDADE ============================
+		/// Depois da regra nova, "a chamada nominal ficou verde com a Terra morta" e verdade tanto se o
+		/// refugio funcionou quanto se NADA ACONTECEU -- porque o conjunto esperado passou a incluir os
+		/// mundos de refugio. As duas metades tem que ser exigidas juntas: **ninguem foi pro lugar
+		/// errado** (`Desvios`) e **todo mundo saiu de casa** (esta lista). E o mesmo par positiva/negativa
+		/// da familia 1, aplicado ao mundo estragado.
+		/// ==========================================================================================================
+		/// </summary>
+		public readonly List<(string Raca, string Natal, string Obtido)> Refugiados = [];
+
 		/// <summary>Quantos corpos acordaram em cada mundo. E o que a familia 6 usa pros agregados.</summary>
 		public readonly Dictionary<string, int> PorMundoObtido = new(StringComparer.Ordinal);
+
+		/// <summary>
+		/// ONDE CADA RACA ACORDOU, pelo nome dela -- a sonda inteira num mapa.
+		///
+		/// ============================ SEM ELE A FAMILIA 10 NAO TERIA COMO SER NOMINAL ============================
+		/// As outras colecoes desta classe respondem "quantos" e "quem se desviou". A pergunta da
+		/// familia da carta e outra e nao cabe em nenhuma delas: *este corpo foi parar no MESMO lugar
+		/// nas duas rodadas?*. Comparar `PorMundoObtido` nao serve -- ele ficaria identico se duas
+		/// racas simplesmente trocassem de mundo entre si, que e exatamente o desvio que uma carta
+		/// trocada poderia causar.
+		/// ====================================================================================================
+		/// </summary>
+		public readonly Dictionary<string, string> Destino = new(StringComparer.Ordinal);
+
+		/// <summary>
+		/// A ZONA em que cada raca acordou -- a CHAVE, e nao o rotulo.
+		///
+		/// O <see cref="Destino"/> guarda nome porque nome e o que se le num placar. Nome nao serve pra
+		/// perguntar ao registro de mortos: a chave de um mundo gerado e a SEED
+		/// (<see cref="ChaveDePlaneta"/>), e dois mundos de celulas diferentes chegam a sair com o mesmo
+		/// rotulo. A familia 9(b) precisa afirmar *"nenhum destino esta no registro de mortos"*, e essa
+		/// pergunta so tem resposta com a chave na mao.
+		/// </summary>
+		public readonly Dictionary<string, ZoneKey> ZonaDe = new(StringComparer.Ordinal);
+
+		/// <summary>
+		/// QUEM NAO PISOU EM CHAO DE VERDADE (<see cref="PisouEmChao"/>) -- ficou no espaco, caiu numa
+		/// zona sem colisao ou dentro de parede.
+		///
+		/// A sonda media a ZONA e nada mais, e zona certa nao e chao: um refugio que devolvesse a
+		/// orbita de um mundo que nunca nasce ficaria VERDE em toda afirmacao nominal deste arquivo.
+		/// A frase do pedido do dono e literal -- *"ninguem pode nascer no espaco"*.
+		/// </summary>
+		public readonly List<string> ForaDoChao = [];
 
 		/// <summary>Quantos corpos a TABELA prometia pra cada mundo. A outra metade do "quem nasce aqui".</summary>
 		public readonly Dictionary<string, int> PorMundoEsperado = new(StringComparer.Ordinal);
@@ -160,8 +222,9 @@ public partial class GameServer
 	/// OBTIDA.
 	///
 	/// ============================ AS DUAS PONTAS SAO DE DONOS DIFERENTES, E E ISSO QUE FAZ A PROVA ============================
-	/// ESPERADO -- <see cref="Bercos.PlanetaNatal"/>, um `switch` de trinta linhas. E a frase do dono
-	///             ("cada raca no seu devido planeta") escrita numa funcao so, sem servidor nenhum.
+	/// ESPERADO -- <see cref="OndeEsteCorpoDeveriaAcordar"/>: com o natal vivo, a
+	///             <see cref="Bercos.PlanetaNatal"/> (a frase do dono numa funcao so); com o natal
+	///             MORTO, os mundos vivos mais perto dele, RE-DERIVADOS A MAO das primitivas da carta.
 	/// OBTIDO   -- `pl.Zone.Name` DEPOIS de `Birth.Nascer` -> `AplicarBercoNoSave` ->
 	///             `AccountStore.ParaJogador` -> `PorNoMundo` -> `TickDoEspaco` -> pouso. O servidor
 	///             inteiro.
@@ -171,6 +234,17 @@ public partial class GameServer
 	/// `DestinoDoBerco`. Uma bancada em que as duas pontas tem o mesmo dono nao mede a corrente: mede a
 	/// coerencia de um arquivo consigo mesmo.
 	/// ========================================================================================================================
+	///
+	/// ============================ O "ESPERADO" DEIXOU DE SER UM NOME ============================
+	/// **Esta e a mudanca que a regra nova obrigou.** Enquanto o destino de quem perdia o berco era o
+	/// primeiro pre-feito vivo da carta, "o esperado" era sempre um NOME (o natal), e todo desvio era
+	/// erro. Com o refugio, quem perde o natal ACERTA indo pra outro lugar -- e o esperado vira um
+	/// CONJUNTO: o natal enquanto ele existir, os mundos vivos mais perto dele quando ele acabar.
+	///
+	/// Uma sonda que continuasse cravando o nome ficaria vermelha exatamente onde o pedido do dono
+	/// esta sendo cumprido, e a leitura obvia seria "conserta o refugio" -- ou seja, ela empurraria a
+	/// proxima pessoa a desfazer o trabalho.
+	/// =======================================================================================
 	///
 	/// ============================ A CLASSE E CRAVADA EM "Normal", E ISSO E DE PROPOSITO ============================
 	/// As duas excecoes do dono dependem da CLASSE (o Low-Class vai pra Terra, o Lendario e exilado) e
@@ -194,7 +268,9 @@ public partial class GameServer
 		{
 			string[] escolhas = CharacterDraft.EscolhasDeClasse(raca);
 			string linhagem = escolhas.Length > 0 ? escolhas[0] : "";
-			string esperado = Bercos.PlanetaNatal(raca);
+			string natal = Bercos.PlanetaNatal(raca);
+			HashSet<string> aceitos = OndeEsteCorpoDeveriaAcordar(natal);
+			string esperado = string.Join("|", aceitos.OrderBy(x => x, StringComparer.Ordinal));
 
 			CharacterSave c = SaveDeBancada($"Prova {raca}", raca, linhagem, "Normal", false, rng);
 			ServerPlayer pl = CorpoDoSave(c, FaixaDaProva);
@@ -203,22 +279,99 @@ public partial class GameServer
 				PousarDeVerdade(pl);
 				string obtido = pl.Zone.Name;
 
-				r.PorMundoEsperado[esperado] = r.PorMundoEsperado.GetValueOrDefault(esperado) + 1;
+				r.PorMundoEsperado[natal] = r.PorMundoEsperado.GetValueOrDefault(natal) + 1;
 				r.PorMundoObtido[obtido] = r.PorMundoObtido.GetValueOrDefault(obtido) + 1;
+				r.Destino[raca] = obtido;
+				r.ZonaDe[raca] = pl.Zone;
+				if (!PisouEmChao(pl, out string porque)) r.ForaDoChao.Add($"{raca} em {obtido}: {porque}");
 
-				if (string.Equals(obtido, esperado, StringComparison.OrdinalIgnoreCase)) r.Certas.Add(raca);
+				bool certa = aceitos.Contains(obtido);
+				if (certa)
+				{
+					r.Certas.Add(raca);
+					// SAIU DE CASA E ACERTOU -- e o refugio funcionando. Ver `Chamada.Refugiados`:
+					// sem esta metade, "verde" tambem seria o nome de "nada aconteceu".
+					if (!string.Equals(obtido, natal, StringComparison.OrdinalIgnoreCase))
+						r.Refugiados.Add((raca, natal, obtido));
+				}
 				else r.Desvios.Add((raca, esperado, obtido));
 
 				if (detalhar)
-					GD.Print($"[bercoprova]      {raca,-14} esperado {esperado,-12} obtido {obtido,-12}"
+					GD.Print($"[bercoprova]      {raca,-14} esperado {esperado,-28} obtido {obtido,-16}"
 						   + $" @ ({pl.Pos.X / ZoneCollision.TileSize:0},{pl.Pos.Y / ZoneCollision.TileSize:0})"
-						   + (string.Equals(obtido, esperado, StringComparison.OrdinalIgnoreCase) ? "" : "   <<< DESVIADA"));
+						   + (certa ? "" : "   <<< DESVIADA"));
 			}
 			finally { Recolher(pl); }
 		}
 
 		GD.Print($"[bercoprova]   [{rotulo}] {r.Resumo}");
 		return r;
+	}
+
+	/// <summary>
+	/// **O CONJUNTO DE LUGARES CERTOS PRA UM NATAL** -- a outra ponta da sonda, e ela e escrita A MAO.
+	///
+	/// ============================ ELA NAO PODE CHAMAR O REFUGIO, E E ISSO QUE A FAZ VALER ============================
+	/// Se o esperado saisse de `Refugios.MundosPertoDe` (o codigo de producao), as duas pontas da
+	/// sonda teriam o MESMO dono e a bancada mediria a coerencia de um arquivo consigo mesmo -- que e
+	/// exatamente o defeito da `--bercovivo` que fez esta bancada existir.
+	///
+	/// Entao aqui a regra do dono ("o mundo vivo mais perto de casa") e reescrita por um caminho
+	/// diferente: **varredura burra do 3x3 de celulas, sem anel, sem parada antecipada e sem top-N
+	/// incremental** -- junta tudo, ordena, corta. A producao faz aneis com parada exata e insercao
+	/// ordenada numa lista de tres. Duas implementacoes da mesma frase; a bancada e a diferenca.
+	///
+	/// (O 3x3 e a leitura direta de <see cref="Refugios.CelulasDeBusca"/> = 1. Ele nao esta cravado:
+	/// se aquele numero mudar, esta varredura muda junto -- o que se recusa a compartilhar e o
+	/// CAMINHO, nao o parametro.)
+	/// ==========================================================================================================
+	///
+	/// A ordem dos desfechos e a mesma da regra, e todos sao alcancaveis pela bancada: o natal vivo,
+	/// os vizinhos que servem, a RESERVA (so sobrou mundo pesado) e o ESPACO ABERTO.
+	/// </summary>
+	private HashSet<string> OndeEsteCorpoDeveriaAcordar(string natal)
+	{
+		var aceitos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+		// O NATAL VIVO E A RESPOSTA INTEIRA -- e a ancora que a bancada nunca abre mao (ver as tres
+		// linhas de ancora da familia 1).
+		if (!ZonaMorta(ZoneKey.Premade(natal))) { aceitos.Add(natal); return aceitos; }
+
+		// A POSICAO DO NATAL, tirada da carta e nao de um `Berco`: Paraiso e Inferno nao sao corpos, e
+		// pra eles a ancora e a ORIGEM da carta -- a mesma leitura que o refugio faz de `K < 0`.
+		Vec2 ancora = default;
+		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
+			if (string.Equals(p.Nome, natal, StringComparison.OrdinalIgnoreCase)) ancora = p.Pos;
+
+		var servem = new List<(string Nome, double D)>();
+		var pesados = new List<(string Nome, double D)>();
+
+		SistemaId c0 = SistemaId.De(ancora);
+		for (int dy = -Refugios.CelulasDeBusca; dy <= Refugios.CelulasDeBusca; dy++)
+			for (int dx = -Refugios.CelulasDeBusca; dx <= Refugios.CelulasDeBusca; dx++)
+			{
+				if (Sistemas.Do(SeedDoUniverso, c0.Sx + dx, c0.Sy + dy) is not { } s) continue;
+
+				for (int k = 0; k < s.Orbitas; k++)
+				{
+					PlanetaNoEspaco p = s.Planeta(k);
+					if (_mortos.Morto(p)) continue;
+					if (p.Premade && _catalogo?.Get(ZoneKey.Premade(p.Nome)) == null) continue;
+
+					double ex = p.Pos.X - ancora.X, ey = p.Pos.Y - ancora.Y;
+					(Bercos.ServeDeBerco(p) ? servem : pesados).Add((p.Nome, Math.Sqrt(ex * ex + ey * ey)));
+				}
+			}
+
+		List<(string Nome, double D)> fonte = servem.Count > 0 ? servem : pesados;
+		foreach ((string nome, double _) in fonte.OrderBy(t => t.D).Take(Refugios.MundosGuardados))
+			aceitos.Add(nome);
+
+		// NAO SOBROU NADA: o ultimo recurso e o ESPACO ABERTO, e ele e um lugar de verdade -- a zona
+		// do universo, de onde se alcanca todos os outros. Ver o bloco do ultimo recurso do refugio.
+		if (aceitos.Count == 0) aceitos.Add(Espaco.NomeDoEspaco);
+
+		return aceitos;
 	}
 
 	// =====================================================================
@@ -314,7 +467,7 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// 2) O DEFEITO DE VOLTA -- as duas metades, uma de cada vez
+	// 2) O BERCO MORTO -- e a regra nova, as duas metades
 	// =====================================================================
 	/// <summary>
 	/// ============================ A UNICA PROVA DE QUE UMA BANCADA FUNCIONA E VE-LA REPROVAR ============================
@@ -322,20 +475,36 @@ public partial class GameServer
 	/// `TickDaDestruicao` ate a fase virar `Destruido` -- os mesmos ~310 s que a Final Explosion da
 	/// `--escudoteste` disparou no mundo do dono. Nao ha atalho escrevendo `FaseDaMorte.Destruido` no
 	/// registro: o que se quer reproduzir e o ESTADO que o jogo produz, e nao um estado parecido.
-	///
-	/// E ele e reposto DUAS VEZES, uma por metade:
-	///   * a TERRA morta -- a metade do relato. Tem que ficar vermelho nas racas da Terra;
-	///   * NAMEK morta   -- a outra metade. Tem que ficar vermelho nas racas de NAMEK, e as da Terra
-	///                      tem que continuar VERDES.
-	///
-	/// Sem a segunda, uma bancada que so soubesse dizer "todo mundo foi parar em Namek" ficaria verde
-	/// no dia em que o desvio fosse pro outro lado -- e o pedido do dono e simetrico: *quem nasce na
-	/// Terra nasce na Terra E quem nasce em Namek nasce em Namek*.
 	/// ==============================================================================================================
+	///
+	/// ============================ O QUE ESTA FAMILIA AFIRMAVA, E POR QUE VIROU O CONTRARIO ============================
+	/// Ela exigia **vermelho**: com a Terra morta, *"a chamada nominal FICOU VERMELHA"*, *"o destino
+	/// do desvio foi UM so"*. Aquilo era a descricao correta do recuo por lista -- todo mundo ia parar
+	/// no mesmo planeta, o segundo da carta, e isso ERA o defeito.
+	///
+	/// Com o refugio a mesma injecao tem que ficar **VERDE**, e verde por dois motivos ao mesmo tempo,
+	/// exigidos juntos (a armadilha aqui e grande: depois que o esperado virou um CONJUNTO, "verde"
+	/// tambem seria o nome de "nada aconteceu"):
+	///   * NEGATIVA -- ninguem foi parar fora do conjunto certo;
+	///   * POSITIVA -- **todo mundo da Terra SAIU da Terra** (`Chamada.Refugiados`), e foi parar num
+	///                 mundo perto de casa, e nao no segundo planeta de uma lista.
+	///
+	/// E a terceira afirmacao e a que enterra a regra velha: **nenhum destino e um pre-feito da
+	/// carta**. Nao e gosto -- e geometria: o pre-feito mais proximo da Terra e Makyo_Star, a 68,9 min
+	/// de voo, ou 10 celulas de sistema, e a busca do refugio para em 2. Se um corpo aparecer em
+	/// Namek de novo, e porque alguem ressuscitou a lista.
+	/// ============================================================================================================
+	///
+	/// E ela e reposta DUAS VEZES, uma por metade -- Terra e depois Namek --, porque o pedido do dono
+	/// e simetrico: *quem nasce na Terra nasce na Terra E quem nasce em Namek nasce em Namek*. Sem a
+	/// segunda, uma bancada que so soubesse olhar a Terra ficaria verde no dia em que o refugio
+	/// quebrasse pro outro lado.
 	/// </summary>
 	private void ODefeitoDeVolta()
 	{
-		GD.Print("[bercoprova] -- 2) O DEFEITO DE VOLTA (no palco: o save do dono nao e tocado)");
+		GD.Print("[bercoprova] -- 2) O BERCO MORTO: o refugio, e nao mais a lista (no palco)");
+
+		string[] daCarta = [.. Espaco.PreFeitos().Select(p => p.Nome)];
 
 		// --- (a) A TERRA MORTA: o mundo exato do relato -----------------------
 		//
@@ -347,33 +516,44 @@ public partial class GameServer
 		{
 			var terra = ZoneKey.Premade("Earth");
 			Provar("a injecao MATOU a Terra de verdade (pelo funil de producao)",
-				   MatarPlanetaNoPalco(terra, "bercoprova: o defeito do relato, de volta"),
+				   MatarPlanetaNoPalco(terra, "bercoprova: o berco morto, de volta"),
 				   "a Terra nao chegou a `Destruido` -- a injecao nao aconteceu e o resto nao prova nada");
 
 			Chamada c = ChamadaNominal("TERRA MORTA", detalhar: false);
 			string[] daTerra = [.. ConjuntoDeRacas().Where(r => Bercos.PlanetaNatal(r) == "Earth")];
 
-			Provar($"...e a chamada nominal FICOU VERMELHA ({c.Desvios.Count} desvios)",
-				   c.Desvios.Count > 0,
-				   "a bancada nao viu o defeito que causou o relato -- ela nao serve");
+			Provar($"NEGATIVA: com a Terra morta, nenhuma das {c.Total} racas foi parar fora do refugio",
+				   c.Desvios.Count == 0,
+				   "alguem acordou num lugar que a regra do refugio nao aceita -- " + c.Resumo);
 
-			Provar($"...vermelha em TODAS as {daTerra.Length} racas da Terra, e so nelas",
-				   c.Desvios.Count == daTerra.Length
-				   && c.Desvios.All(d => d.Esperado == "Earth"),
-				   $"{c.Desvios.Count} desvios: {string.Join(",", c.Desvios.Select(d => d.Raca))}");
+			Provar($"POSITIVA: as {daTerra.Length} racas da Terra SAIRAM de casa (e so elas)",
+				   c.Refugiados.Count == daTerra.Length && c.Refugiados.All(x => x.Natal == "Earth"),
+				   $"{c.Refugiados.Count} refugiadas: "
+				   + string.Join(", ", c.Refugiados.Take(6).Select(x => $"{x.Raca}->{x.Obtido}")));
 
-			Provar($"...e o destino do desvio foi UM so ({string.Join(",", c.DestinosErrados)})",
-				   c.DestinosErrados.Length == 1, string.Join(",", c.DestinosErrados));
+			// A REGRA VELHA ENTERRADA, NOMINALMENTE. Ver o cabecalho: 68,9 min ate o pre-feito mais
+			// proximo contra os 13,6 min de teto da busca -- nenhum destino pode ser da carta.
+			string[] emPreFeito = [.. c.Refugiados.Select(x => x.Obtido)
+										.Where(o => daCarta.Contains(o, StringComparer.OrdinalIgnoreCase))
+										.Distinct(StringComparer.Ordinal)];
 
-			// O NOME NAO E AFIRMADO, E ISTO E DE PROPOSITO: ele e uma consequencia da ORDEM da carta
-			// (familia 3), e cravar "Namek" aqui seria gravar o acidente. O que se afirma e que ele
-			// NAO e o planeta certo -- e a familia 3 troca a carta e ve o nome mudar.
-			GD.Print($"[bercoprova]      o desvio levou {c.Desvios.Count} raca(s) da Terra pra "
-				   + $"'{c.DestinosErrados.FirstOrDefault()}' -- e este nome sai da ORDEM de `Espaco.PreFeitos()`");
+			Provar("...e NENHUM deles foi parar num pre-feito da carta (a lista morreu)",
+				   emPreFeito.Length == 0,
+				   "foram parar em " + string.Join(",", emPreFeito) + " -- o recuo por lista voltou");
 
-			Provar($"...e as racas de Namek/Vegeta continuaram certas ({c.Certas.Count} verdes)",
-				   c.Certas.Contains("Namekian") && c.Certas.Contains("Saiyan"),
-				   string.Join(",", c.Certas));
+			Provar("...em particular, NINGUEM foi parar em Namek (o destino da regra velha)",
+				   !c.Refugiados.Any(x => string.Equals(x.Obtido, "Namek", StringComparison.OrdinalIgnoreCase)),
+				   string.Join(",", c.Refugiados.Select(x => x.Obtido).Distinct(StringComparer.Ordinal)));
+
+			GD.Print($"[bercoprova]      as {c.Refugiados.Count} racas da Terra se espalharam por "
+				   + $"{c.Refugiados.Select(x => x.Obtido).Distinct(StringComparer.Ordinal).Count()} "
+				   + "mundo(s) da propria estrela da Terra: "
+				   + string.Join(", ", c.Refugiados.Select(x => x.Obtido).Distinct(StringComparer.Ordinal)));
+
+			Provar($"...e as racas de Namek/Vegeta continuaram EM CASA ({c.Certas.Count} verdes)",
+				   c.Certas.Contains("Namekian") && c.Certas.Contains("Saiyan")
+				   && !c.Refugiados.Any(x => x.Natal is "Namek" or "Vegeta"),
+				   string.Join(",", c.Refugiados.Select(x => $"{x.Raca}({x.Natal})")));
 		}
 		finally { palco.Dispose(); }
 
@@ -386,8 +566,9 @@ public partial class GameServer
 			   !ZonaMorta(ZoneKey.Premade("Earth")), "o palco nao desfez a morte");
 
 		Chamada volta = ChamadaNominal("depois do palco", detalhar: false);
-		Provar($"...e a chamada nominal VOLTOU AO VERDE ({volta.Resumo})", volta.Desvios.Count == 0,
-			   "a sonda ficou presa em vermelho -- ela estaria medindo a si mesma, e nao o mundo");
+		Provar($"...e TODO MUNDO VOLTOU PRA CASA ({volta.Resumo})",
+			   volta.Desvios.Count == 0 && volta.Refugiados.Count == 0,
+			   "a sonda ficou presa no refugio -- ela estaria medindo a si mesma, e nao o mundo");
 
 		// --- (b) A OUTRA METADE: NAMEK morta ---------------------------------
 		using (PalcoDeMortesDeBancada())
@@ -399,20 +580,30 @@ public partial class GameServer
 			Chamada c = ChamadaNominal("NAMEK MORTA", detalhar: false);
 			string[] deNamek = [.. ConjuntoDeRacas().Where(r => Bercos.PlanetaNatal(r) == "Namek")];
 
-			Provar($"...a chamada nominal ficou vermelha nas {deNamek.Length} racas de NAMEK",
-				   c.Desvios.Count == deNamek.Length && c.Desvios.All(d => d.Esperado == "Namek"),
+			Provar($"...as {deNamek.Length} racas de NAMEK acharam refugio, e nenhuma se perdeu",
+				   c.Desvios.Count == 0
+				   && c.Refugiados.Count == deNamek.Length
+				   && c.Refugiados.All(x => x.Natal == "Namek"),
 				   c.Resumo);
 
-			Provar("...e as racas da TERRA continuaram VERDES (a metade que nao quebrou)",
+			Provar("...e as racas da TERRA continuaram EM CASA (a metade que nao quebrou)",
 				   c.Certas.Contains("Human") && c.Certas.Contains("Majin")
-				   && !c.Desvios.Any(d => d.Esperado == "Earth"),
+				   && !c.Refugiados.Any(x => x.Natal == "Earth"),
 				   c.Resumo);
 
-			// AQUI O RECUO NEM E CONSULTADO: a `SpawnZone` esta viva, entao o `ZonaDeRecuoViva`
-			// devolve a Terra na primeira linha. E por isso que TODO desvio desta metade vai pra Terra
-			// -- a assimetria e do codigo e nao da bancada, e vale registra-la.
-			GD.Print($"[bercoprova]      com Namek morta o desvio vai pra '{c.DestinosErrados.FirstOrDefault()}'"
-				   + " -- aqui o recuo nem desce a carta: a `SpawnZone` esta viva");
+			// ============================ A ASSIMETRIA MORREU, E ISTO E O REGISTRO ============================
+			// Aqui estava escrito: *"com Namek morta o desvio vai pra 'Earth' -- aqui o recuo nem desce
+			// a carta: a `SpawnZone` esta viva"*. Era verdade e era o retrato do defeito: o destino de
+			// quem perdia Namek dependia de a TERRA estar viva, ou seja, de um planeta que nao tem nada
+			// a ver com Namek. Agora nao depende: a ancora e o proprio natal, e a Terra esta a 167 min
+			// de Namek -- longe demais pra a busca do refugio sequer olhar.
+			// ==============================================================================================
+			Provar("...e NENHUMA delas foi parar na Terra (a assimetria da `SpawnZone` morreu)",
+				   !c.Refugiados.Any(x => string.Equals(x.Obtido, "Earth", StringComparison.OrdinalIgnoreCase)),
+				   string.Join(",", c.Refugiados.Select(x => $"{x.Raca}->{x.Obtido}")));
+
+			GD.Print("[bercoprova]      com Namek morta o refugio fica na estrela de NAMEK: "
+				   + string.Join(", ", c.Refugiados.Select(x => x.Obtido).Distinct(StringComparer.Ordinal)));
 		}
 
 		Provar("Namek voltou a existir quando o palco fechou", !ZonaMorta(ZoneKey.Premade("Namek")));
@@ -442,39 +633,45 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// 3) A ORDEM DA CARTA -- a fragilidade e de LISTA
+	// 3) A ORDEM DA CARTA NAO IMPORTA MAIS
 	// =====================================================================
 	/// <summary>
-	/// ============================ O DESTINO DO DEFEITO E UMA POSICAO NUMA LISTA ============================
-	/// `ZonaDeRecuoViva` desce `Espaco.PreFeitos()` e devolve o PRIMEIRO vivo. Namek so foi o destino do
-	/// relato porque e a **segunda linha** de um `yield return` (`Core/World/Espaco.cs:116`).
+	/// ============================ ESTA FAMILIA E A INVERSAO LITERAL DA ANTIGA ============================
+	/// Ela se chamava *"A ORDEM DA CARTA -- a fragilidade e de LISTA"* e provava, com todas as letras,
+	/// que **o destino de quem perdia o berco era uma posicao numa lista**:
 	///
-	/// Isso significa duas coisas, e as duas sao medidas aqui:
-	///   (a) matando os primeiros da carta em ordem, o destino ANDA -- Namek, depois Vegeta, depois
-	///       Icer. Se ele nao andasse, a fragilidade nao seria de ordem e este comentario estaria
-	///       mentindo;
-	///   (b) uma linha NOVA na frente da lista muda o destino sem mudar mais nada. E o cabecalho do
-	///       `Bercos.PlanetaNatal` ja avisa que essa linha vai ser escrita ("Hera... e uma LINHA em
-	///       `Espaco.PreFeitos()`").
+	///   * matando os primeiros da carta em ordem, o destino ANDAVA -- Namek, depois Vegeta, depois
+	///     Icer --, e a afirmacao era `caminhados.Distinct().Count() == caminhados.Count`;
+	///   * enfiando um planeta novo ("Hera") na FRENTE de `Espaco.PreFeitos()` por um campo trocavel
+	///     (`_cartaDeRecuo`), o destino mudava de planeta sem mais nada mudar.
 	///
-	/// **Uma bancada que cravasse "com a Terra morta o corpo vai pra Namek" ficaria VERDE no dia da
-	/// linha nova**, em cima do mesmo estrago. A sonda desta bancada nao sabe o nome do lugar errado:
-	/// ela sabe o nome do lugar CERTO, que e o unico que nao muda.
-	/// ====================================================================================================
+	/// **Aquilo era o retrato do defeito, e o defeito foi deletado.** As duas injecoes deixaram de ter
+	/// objeto: o campo `_cartaDeRecuo` morreu junto com o `ZonaDeRecuoViva`, e uma injecao sem objeto
+	/// nao fica vermelha nunca mais -- ela fica **verde para sempre**, que e o modo de falha que este
+	/// projeto ja catalogou (afirmacao verde num sistema morto).
 	///
-	/// E a terceira medida e a que impede a bancada de virar um alarme falso: com a carta intrusa e
-	/// **tudo vivo**, nada pode mudar. Um recuo saudavel nunca e consultado.
+	/// Entao a familia foi virada do avesso e mede o OPOSTO, com a mesma arma (matar planetas na ordem
+	/// da carta, pelo funil de producao):
+	///
+	///   (a) matar Earth -> Namek -> Vegeta **nao move** o destino de quem e da Terra. A afirmacao e
+	///       `Distinct().Count() == 1` -- a negacao exata da antiga;
+	///   (b) matar o que esta PERTO move: com a estrela da Terra inteira destruida, o refugio anda pro
+	///       anel seguinte. Sem esta metade, (a) ficaria verde num refugio que nunca mudasse de ideia;
+	///   (c) e o corte dos <see cref="Refugios.MundosGuardados"/> DISPARA de verdade -- ha mais mundos
+	///       vivos ao alcance do que os que sao oferecidos, e o destino esta sempre entre os mais
+	///       proximos. Teto que nunca dispara e indistinguivel de teto nenhum.
+	/// ==================================================================================================
 	/// </summary>
-	private void AOrdemDaCarta()
+	private void AOrdemDaCartaNaoImportaMais()
 	{
-		GD.Print("[bercoprova] -- 3) A ORDEM DA CARTA: o destino do defeito e uma posicao numa lista");
+		GD.Print("[bercoprova] -- 3) A ORDEM DA CARTA NAO IMPORTA MAIS: o destino e distancia, nao posicao");
 
 		string[] ordem = [.. Espaco.PreFeitos().Select(p => p.Nome)];
 		GD.Print($"[bercoprova]      a carta, na ordem: {string.Join(" -> ", ordem)}");
-		Provar("a carta estelar tem uma ORDEM observavel (a Terra e a primeira)",
+		Provar("a carta estelar CONTINUA tendo uma ordem observavel (a Terra e a primeira)",
 			   ordem.Length >= 3 && ordem[0] == "Earth", string.Join(",", ordem));
 
-		// --- (a) O DESTINO ANDA quando a frente da carta morre ----------------
+		// --- (a) MATAR A FRENTE DA CARTA NAO MOVE O DESTINO -------------------
 		using (PalcoDeMortesDeBancada())
 		{
 			var caminhados = new List<string>();
@@ -488,76 +685,179 @@ public partial class GameServer
 				}
 
 				Chamada c = ChamadaNominal($"mortos ate {vitima}", detalhar: false);
-				string destino = c.Desvios.Where(d => d.Esperado == "Earth")
-									      .Select(d => d.Obtido).FirstOrDefault() ?? "(nenhum)";
+
+				// O DESTINO DE QUEM E DA TERRA, como CONJUNTO: sao 10 racas e cada uma sorteia a sua
+				// irma, entao "o destino" nunca foi um nome so -- o que tem que ficar parado e o
+				// conjunto de mundos que a estrela da Terra oferece.
+				string destino = string.Join("+", c.Refugiados.Where(x => x.Natal == "Earth")
+													.Select(x => x.Obtido)
+													.Distinct(StringComparer.Ordinal)
+													.OrderBy(x => x, StringComparer.Ordinal));
 				caminhados.Add(destino);
 
-				Provar($"com '{vitima}' e os anteriores mortos, quem e da Terra foi parar em '{destino}'"
-					   + " -- e a bancada VIU", c.Desvios.Count > 0, c.Resumo);
+				Provar($"com '{vitima}' e os anteriores mortos, quem e da Terra continua achando refugio"
+					   + $" ('{destino}')",
+					   c.Desvios.Count == 0 && destino.Length > 0, c.Resumo);
 			}
 
-			// O TETO DESTA FAMILIA DISPARA: se os tres destinos fossem iguais, a fragilidade nao seria
-			// de ordem e a familia inteira estaria provando outra coisa.
-			Provar($"o destino do desvio ANDOU pela carta ({string.Join(" -> ", caminhados)})",
-				   caminhados.Distinct(StringComparer.Ordinal).Count() == caminhados.Count && caminhados.Count >= 2,
-				   "os destinos se repetiram -- a fragilidade nao e de ordem, e este diagnostico esta errado");
+			// **A LINHA QUE INVERTE A FAMILIA.** A antiga exigia `Distinct().Count() == caminhados.Count`
+			// ("o destino ANDOU pela carta") e o texto de falha dizia *"os destinos se repetiram -- a
+			// fragilidade nao e de ordem"*. Hoje a repeticao E o resultado desejado.
+			Provar($"o destino NAO ANDOU com a carta ({string.Join(" | ", caminhados)})",
+				   caminhados.Count >= 2 && caminhados.Distinct(StringComparer.Ordinal).Count() == 1,
+				   "matar Namek/Vegeta mexeu em quem e da TERRA -- o destino voltou a depender da "
+				   + "ordem de `Espaco.PreFeitos()`, e a regra do refugio nao esta valendo");
 		}
 
-		// --- (b) A LINHA NOVA NA FRENTE DA CARTA ------------------------------
-		// A carta intrusa e a de VERDADE com um planeta a mais NA FRENTE. Nada mais muda.
-		IReadOnlyList<PlanetaNoEspaco> cartaIntrusa =
-		[
-			new PlanetaNoEspaco
-			{
-				Nome = PlanetaIntruso,
-				Pos = new Vec2(0, 0),
-				Raio = 170,
-				Premade = true,
-				Seed = Espaco.Hash64(PlanetaIntruso),
-			},
-			.. Espaco.PreFeitos(),
-		];
-
-		Provar($"'{PlanetaIntruso}' e uma zona de verdade (tem mapa no manifesto), e nao um nome solto",
-			   _catalogo?.Get(ZoneKey.Premade(PlanetaIntruso)) != null,
-			   "sem mapa o recuo a pularia e a injecao nao provaria nada");
+		// --- (b) MATAR O QUE ESTA PERTO, ESSE SIM, MOVE -----------------------
+		//
+		// Sem esta metade, (a) ficaria verde num refugio que devolvesse sempre a mesma coisa aconteca o
+		// que acontecer -- inclusive num refugio quebrado que ignorasse o estado do mundo.
+		SistemaSolar estrelaDaTerra = default;
+		foreach (SistemaSolar s in Sistemas.ComPreFeito)
+			if (s.PreFeito.Nome == "Earth") estrelaDaTerra = s;
 
 		using (PalcoDeMortesDeBancada())
-		using (OutraCartaDeRecuo(cartaIntrusa))
 		{
-			Provar("a injecao matou a Terra (de novo, com a carta intrusa)",
-				   MatarPlanetaNoPalco(ZoneKey.Premade("Earth"), "bercoprova: ordem + zona nova"));
+			Provar("a injecao matou a Terra (rodada da vizinhanca)",
+				   MatarPlanetaNoPalco(ZoneKey.Premade("Earth"), "bercoprova: vizinhanca, a Terra"));
 
-			Chamada c = ChamadaNominal($"TERRA MORTA + '{PlanetaIntruso}' na frente", detalhar: false);
+			Chamada antes = ChamadaNominal("Terra morta, estrela intacta", detalhar: false);
+			string[] naEstrela = [.. antes.Refugiados.Where(x => x.Natal == "Earth")
+									   .Select(x => x.Obtido).Distinct(StringComparer.Ordinal)];
 
-			Provar($"a chamada nominal ficou VERMELHA de novo ({c.Desvios.Count} desvios)",
-				   c.Desvios.Count > 0,
-				   "uma zona nova na frente da carta apagou o defeito da vista -- e o modo de falha "
-				   + "que esta familia existe pra impedir");
+			// AS IRMAS DE ORBITA DA TERRA, todas -- inclusive a pesada que o crivo de gravidade
+			// reprovaria. A reserva do refugio pega essa, entao deixa-la viva nao esvaziaria o anel 0.
+			var mortas = new List<string>();
+			for (int k = 0; k < estrelaDaTerra.Orbitas; k++)
+			{
+				if (k == estrelaDaTerra.OrbitaPreFeita) continue;
+				PlanetaNoEspaco irma = estrelaDaTerra.Planeta(k);
+				if (MatarPlanetaNoPalco(ZoneKey.Procedural(irma.Nome, irma.Seed),
+										$"bercoprova: vizinhanca, {irma.Nome}"))
+					mortas.Add(irma.Nome);
+			}
 
-			Provar($"...e agora o destino errado e '{PlanetaIntruso}', e nao mais Namek",
-				   c.DestinosErrados.Length == 1 && c.DestinosErrados[0] == PlanetaIntruso,
-				   string.Join(",", c.DestinosErrados));
+			Provar($"a injecao matou a ESTRELA DA TERRA inteira ({mortas.Count} irmas: {string.Join(",", mortas)})",
+				   mortas.Count == estrelaDaTerra.Orbitas - 1,
+				   "sem matar todas as irmas o anel 0 continua servindo e esta metade nao prova nada");
 
-			// O CONTRAFACTUAL, ESCRITO: esta e a linha que uma bancada tentada a gravar o acidente
-			// teria escrito ("com a Terra morta o corpo vai parar em Namek"), e AQUI ELA FICARIA VERDE
-			// -- porque nenhum corpo foi parar em Namek nesta rodada. Ela nao afirma o mundo: afirma
-			// que aquela outra bancada seria cega, e e por isso que ela mora aqui e nao la.
-			Provar("...e a bancada que cravasse 'Namek' ficaria VERDE nesta rodada (o contrafactual)",
-				   !c.Desvios.Any(d => d.Obtido == "Namek"),
-				   "alguem foi parar em Namek -- o contrafactual nao vale e esta linha nao prova nada");
+			Chamada depois = ChamadaNominal("estrela da Terra inteira morta", detalhar: false);
+			string[] longe = [.. depois.Refugiados.Where(x => x.Natal == "Earth")
+									 .Select(x => x.Obtido).Distinct(StringComparer.Ordinal)];
 
-			Provar("...com EXATAMENTE as mesmas racas desviadas de antes (o defeito e o mesmo)",
-				   c.Desvios.All(d => d.Esperado == "Earth"), c.Resumo);
+			// ============================ E ELE NAO E "TODO O CONJUNTO MUDOU" -- MEDIDO ============================
+			// A primeira versao desta afirmacao exigia intersecao VAZIA entre o antes e o depois, e ela
+			// ficou vermelha na primeira rodada -- **e o codigo estava certo**. A Terra tem 3 irmas de
+			// orbita e uma delas (`Alienigena-002`, 30 g) e reprovada pelo crivo de gravidade, entao o
+			// terceiro lugar do sorteio JA ERA de um mundo do anel 1 antes de qualquer injecao. Esse
+			// mundo continua sendo o terceiro mais perto depois -- ele nao tinha por que sair.
+			//
+			// O que a metade (b) mede de verdade e outra coisa, e e mais exata: **nenhuma irma da
+			// estrela da Terra sobrou no sorteio, e o conjunto mudou.** Exigir troca total seria exigir
+			// do refugio uma reacao que a geometria nao pede.
+			// ==================================================================================================
+			Provar($"...e agora NENHUMA irma da estrela da Terra esta no sorteio ({string.Join(",", longe)})",
+				   longe.Length > 0 && !longe.Intersect(mortas, StringComparer.Ordinal).Any(),
+				   $"sobrou irma morta no sorteio: {string.Join(",", longe.Intersect(mortas, StringComparer.Ordinal))}");
+
+			Provar("...e o conjunto de destinos MUDOU (o refugio reagiu ao mundo)",
+				   !longe.OrderBy(x => x, StringComparer.Ordinal)
+						 .SequenceEqual(naEstrela.OrderBy(x => x, StringComparer.Ordinal), StringComparer.Ordinal),
+				   $"antes {string.Join(",", naEstrela)} / depois {string.Join(",", longe)} -- "
+				   + "o refugio nao reagiu a vizinhanca morrer, entao ele nao esta olhando o mundo");
+
+			Provar($"...e ninguem se perdeu na mudanca ({depois.Resumo})", depois.Desvios.Count == 0,
+				   "alguem acordou fora do conjunto certo quando a busca teve que crescer");
+
+			Provar("...e continua NAO sendo um pre-feito da carta",
+				   !longe.Any(o => ordem.Contains(o, StringComparer.OrdinalIgnoreCase)),
+				   string.Join(",", longe));
 		}
 
-		// --- (c) E COM TUDO VIVO, a carta intrusa nao muda NADA ---------------
-		using (OutraCartaDeRecuo(cartaIntrusa))
+		// --- (c) O CORTE DOS TRES MUNDOS DISPARA DE VERDADE -------------------
+		using (PalcoDeMortesDeBancada())
 		{
-			Chamada c = ChamadaNominal($"'{PlanetaIntruso}' na frente, tudo VIVO", detalhar: false);
-			Provar($"com tudo vivo, '{PlanetaIntruso}' na frente da carta nao muda nada ({c.Resumo})",
-				   c.Desvios.Count == 0,
-				   "a bancada reprovou por barulho: um recuo saudavel nunca chega a ser consultado");
+			Provar("a injecao matou a Terra (rodada do corte)",
+				   MatarPlanetaNoPalco(ZoneKey.Premade("Earth"), "bercoprova: o corte dos tres"));
+
+			// TODOS os mundos vivos ao alcance, contados A MAO -- e nao os tres que a producao guarda.
+			int aoAlcance = 0;
+			SistemaId c0 = SistemaId.De(estrelaDaTerra.PreFeito.Pos);
+			for (int dy = -Refugios.CelulasDeBusca; dy <= Refugios.CelulasDeBusca; dy++)
+				for (int dx = -Refugios.CelulasDeBusca; dx <= Refugios.CelulasDeBusca; dx++)
+				{
+					if (Sistemas.Do(SeedDoUniverso, c0.Sx + dx, c0.Sy + dy) is not { } s) continue;
+					for (int k = 0; k < s.Orbitas; k++)
+					{
+						PlanetaNoEspaco p = s.Planeta(k);
+						if (!_mortos.Morto(p) && Bercos.ServeDeBerco(p)) aoAlcance++;
+					}
+				}
+
+			HashSet<string> oferecidos = OndeEsteCorpoDeveriaAcordar("Earth");
+
+			Provar($"o corte de {Refugios.MundosGuardados} mundos DISPARA: ha {aoAlcance} mundos vivos "
+				 + $"ao alcance e so {oferecidos.Count} entram no sorteio",
+				   aoAlcance > Refugios.MundosGuardados && oferecidos.Count <= Refugios.MundosGuardados,
+				   $"{aoAlcance} ao alcance, {oferecidos.Count} oferecidos -- um corte que nunca morde "
+				   + "e indistinguivel de corte nenhum");
+
+			Chamada c = ChamadaNominal("com o corte medido", detalhar: false);
+			Provar("...e todo destino de verdade esta dentro desse corte",
+				   c.Refugiados.Where(x => x.Natal == "Earth").All(x => oferecidos.Contains(x.Obtido)),
+				   string.Join(",", c.Refugiados.Where(x => x.Natal == "Earth").Select(x => x.Obtido)));
+		}
+
+		// --- (d) DE ONDE SE MEDE "PERTO": O BERCO MAGRO DO NPC ----------------
+		//
+		// ============================ O DEFEITO QUE ESTA METADE FECHA, MEDIDO ============================
+		// **Nem todo `Berco` deste jogo vem do `Bercos.Onde`.** O `GameServer.Npc.cs` monta um a mao com
+		// TRES campos (`Planeta`, `Natal`, `PreFeito`) -- e o comentario dele explica por que --, entao
+		// `Pos` fica em `(0,0)`. E `(0,0)` **e exatamente onde a Terra esta**.
+		//
+		// Um refugio que medisse a distancia a partir de `b.Pos` mandaria um cidadao de NAMEK, cujo
+		// planeta acabou de explodir, procurar abrigo na vizinhanca da TERRA -- calado, plausivel, e
+		// errado. Por isso a ancora sai do NOME do natal na carta (`AncoraDoRefugio`) e nao do campo.
+		// A prova e nominal: um berco magro de Namek tem que achar refugio na estrela de Namek.
+		// ============================================================================================
+		using (PalcoDeMortesDeBancada())
+		{
+			Provar("a injecao matou Namek (rodada do berco magro)",
+				   MatarPlanetaNoPalco(ZoneKey.Premade("Namek"), "bercoprova: berco magro"));
+
+			// O BERCO EXATAMENTE COMO O `NascerNpc` O ESCREVE -- tres campos, `Pos` em (0,0).
+			var magro = new Berco { Planeta = "Namek", Natal = "Namek", PreFeito = true };
+			Provar("o berco magro tem MESMO `Pos` em (0,0) -- onde a Terra fica",
+				   Math.Abs(magro.Pos.X) < 1 && Math.Abs(magro.Pos.Y) < 1,
+				   "o `Berco` mudou de forma e esta prova perdeu o objeto");
+
+			HashSet<string> deNamek = OndeEsteCorpoDeveriaAcordar("Namek");
+			HashSet<string> daTerra = OndeEsteCorpoDeveriaAcordar("Earth");
+
+			// UM CORPO DE VERDADE, E POUSADO. `DestinoDoBerco` sozinho devolveria "Espaco" e a prova
+			// ficaria vermelha por medir cedo demais: um refugio GERADO nasce em ORBITA de proposito
+			// (ver o comentario do `PousarNo`), e quem faz o mundo existir e o `TickDoEspaco`. Foi
+			// exatamente assim que esta linha reprovou na primeira rodada -- e o codigo estava certo.
+			CharacterSave cm = SaveDeBancada("Prova Magro", "Namekian", "Namekian", "Normal",
+											 false, new Random(5));
+			ServerPlayer plm = CorpoDoSave(cm, FaixaDaProva);
+			try
+			{
+				PousarDeVerdade(plm);
+				plm.Berco = magro;        // o berco do NPC, por cima do que o save calculou
+				MandarProBerco(plm);
+				PousarDeVerdade(plm);
+
+				Provar($"...e mesmo assim ele acha refugio na estrela de NAMEK ('{plm.Zone.Name}')",
+					   deNamek.Contains(plm.Zone.Name),
+					   $"foi parar em {plm.Zone.Name}, que nao e vizinho de Namek -- a ancora voltou a "
+					   + "sair do campo `Pos` em vez do nome do natal");
+
+				Provar("...e NAO na vizinhanca da Terra (que e onde o (0,0) fica)",
+					   !daTerra.Contains(plm.Zone.Name), plm.Zone.Name);
+			}
+			finally { Recolher(plm); }
 		}
 	}
 
@@ -576,29 +876,44 @@ public partial class GameServer
 	/// Namekian" -- os oito perfis da `--bercovivo`) que deixou o resto passar.
 	/// ============================================================================================================
 	///
-	/// E ela e injetada tambem: com a Terra morta, o RENASCIMENTO tem que ficar vermelho junto. Um
-	/// caminho que ninguem mede e onde o proximo defeito mora.
+	/// ============================ E AQUI ESTA A INVERSAO CENTRAL DA REGRA NOVA ============================
+	/// Esta familia exigia, com a Terra morta: *"...e o RENASCIMENTO tambem ficou vermelho"*, com o
+	/// texto de falha *"o renascimento nao viu o defeito"*. **Depois do refugio, vermelho aqui e que
+	/// seria o defeito**: quem perdeu o planeta natal TEM que renascer noutro lugar, e esse outro
+	/// lugar e a resposta certa.
+	///
+	/// O que a familia guarda e o que ela sempre mediu de verdade: que o renascimento e um caminho
+	/// SEPARADO do nascimento (`DestinoDe` -> `MandarProBerco`, com o dominio no meio), e que ele
+	/// chega no mesmo lugar. A afirmacao virou "renasceu no refugio, e no mesmo refugio", e a metade
+	/// nova (`SaiuDeCasa`) impede que "verde" volte a significar "nada aconteceu".
+	/// ==================================================================================================
 	/// </summary>
 	private void RenascerEhOOutroCaminho()
 	{
 		GD.Print("[bercoprova] -- 4) RENASCER: o outro caminho, raca por raca");
 
-		(int certas, List<string> erradas) sadio = RodadaDeRenascimento("mundo como esta");
+		(int certas, List<string> erradas, List<string> saiu) sadio = RodadaDeRenascimento("mundo como esta");
 		Provar($"todas as {sadio.certas} racas RENASCERAM no planeta delas",
-			   sadio.erradas.Count == 0, string.Join(" | ", sadio.erradas.Take(6)));
+			   sadio.erradas.Count == 0 && sadio.saiu.Count == 0,
+			   string.Join(" | ", sadio.erradas.Take(6)));
 
 		using (PalcoDeMortesDeBancada())
 		{
 			Provar("a injecao matou a Terra (rodada do renascimento)",
 				   MatarPlanetaNoPalco(ZoneKey.Premade("Earth"), "bercoprova: renascimento"));
 
-			(int certas, List<string> erradas) doente = RodadaDeRenascimento("TERRA MORTA");
-			Provar($"...e o RENASCIMENTO tambem ficou vermelho ({doente.erradas.Count} racas)",
-				   doente.erradas.Count > 0,
-				   "o renascimento nao viu o defeito -- e ele e o caminho que o jogador usa mais");
-			Provar("...nas racas da Terra, e so nelas",
-				   doente.erradas.Count == ConjuntoDeRacas().Count(r => Bercos.PlanetaNatal(r) == "Earth"),
-				   string.Join(" | ", doente.erradas.Take(6)));
+			(int certas, List<string> erradas, List<string> saiu) doente = RodadaDeRenascimento("TERRA MORTA");
+
+			Provar($"...e o RENASCIMENTO achou o refugio ({doente.certas} certas, "
+				 + $"{doente.erradas.Count} perdidas)",
+				   doente.erradas.Count == 0,
+				   "alguem RENASCEU fora do conjunto certo -- e este e o caminho que o jogador usa "
+				   + "mais: " + string.Join(" | ", doente.erradas.Take(6)));
+
+			Provar($"...e as {doente.saiu.Count} racas da Terra renasceram FORA de casa, e so elas",
+				   doente.saiu.Count == ConjuntoDeRacas().Count(r => Bercos.PlanetaNatal(r) == "Earth"),
+				   "se ninguem saiu de casa, a rodada ficou verde por imobilidade: "
+				   + string.Join(" | ", doente.saiu.Take(6)));
 		}
 	}
 
@@ -607,11 +922,15 @@ public partial class GameServer
 	///
 	/// O desvio pra longe nao e enfeite: sem ele o `Renascer` cai no ramo "mesma zona" e nunca chega
 	/// no `MandarProBerco`, que e justamente o pedaco que so a morte usa.
+	///
+	/// `SaiuDeCasa` e a metade POSITIVA -- ver `Chamada.Refugiados` pro argumento: com o esperado
+	/// virando um conjunto, "nenhuma errada" tambem e o placar de um renascimento que nao fez nada.
 	/// </summary>
-	private (int Certas, List<string> Erradas) RodadaDeRenascimento(string rotulo)
+	private (int Certas, List<string> Erradas, List<string> SaiuDeCasa) RodadaDeRenascimento(string rotulo)
 	{
 		var rng = new Random(31337);
 		var erradas = new List<string>();
+		var saiu = new List<string>();
 		int certas = 0;
 
 		foreach (string raca in ConjuntoDeRacas())
@@ -620,7 +939,8 @@ public partial class GameServer
 			CharacterSave c = SaveDeBancada($"Renasce {raca}", raca,
 				escolhas.Length > 0 ? escolhas[0] : "", "Normal", false, rng);
 
-			string esperado = Bercos.PlanetaNatal(raca);
+			string natal = Bercos.PlanetaNatal(raca);
+			HashSet<string> aceitos = OndeEsteCorpoDeveriaAcordar(natal);
 			ServerPlayer pl = CorpoDoSave(c, FaixaDaProva);
 			try
 			{
@@ -634,14 +954,23 @@ public partial class GameServer
 				Renascer(pl);
 				PousarDeVerdade(pl);
 
-				if (string.Equals(pl.Zone.Name, esperado, StringComparison.OrdinalIgnoreCase)) certas++;
-				else erradas.Add($"{raca}: renasceu em {pl.Zone.Name}, esperado {esperado}");
+				if (!aceitos.Contains(pl.Zone.Name))
+				{
+					erradas.Add($"{raca}: renasceu em {pl.Zone.Name}, esperado "
+							  + string.Join("|", aceitos.OrderBy(x => x, StringComparer.Ordinal)));
+					continue;
+				}
+
+				certas++;
+				if (!string.Equals(pl.Zone.Name, natal, StringComparison.OrdinalIgnoreCase))
+					saiu.Add($"{raca}: {natal} -> {pl.Zone.Name}");
 			}
 			finally { Recolher(pl); }
 		}
 
-		GD.Print($"[bercoprova]   [{rotulo}] renascimento: {certas} certas, {erradas.Count} erradas");
-		return (certas, erradas);
+		GD.Print($"[bercoprova]   [{rotulo}] renascimento: {certas} certas, {erradas.Count} erradas, "
+			   + $"{saiu.Count} no refugio");
+		return (certas, erradas, saiu);
 	}
 
 	// =====================================================================
@@ -817,7 +1146,15 @@ public partial class GameServer
 			   MatarPlanetaNoPalco(ZoneKey.Premade("Earth"), "bercoprova: as tres cegueiras"));
 
 		Chamada c = ChamadaNominal("mundo estragado", detalhar: false);
-		Provar($"o mundo esta MESMO estragado ({c.Desvios.Count} racas fora de casa)", c.Desvios.Count > 0);
+
+		// ============================ "ESTRAGADO" MUDOU DE NOME, E NAO DE FATO ============================
+		// Era `c.Desvios.Count > 0` -- "gente no lugar errado". Com o refugio ninguem esta no lugar
+		// errado: as racas da Terra estao no lugar CERTO, que agora e outro. O que a familia 6 precisa
+		// e que o mundo esteja MEXIDO -- gente longe de casa --, porque e isso que as tres cegueiras
+		// deixavam passar. `Refugiados` e a mesma medida de antes lida pela regra de hoje.
+		// =============================================================================================
+		Provar($"o mundo esta MESMO mexido ({c.Refugiados.Count} racas longe de casa)",
+			   c.Refugiados.Count > 0);
 
 		// ---- CEGUEIRA 1: A INTENCAO NAO E O EFEITO -------------------------
 		// A checagem antiga, literal (`GameServer.BercoVivoTeste.cs`, antes do conserto):
@@ -859,8 +1196,169 @@ public partial class GameServer
 			 + $"(maior grupo {maiorGrupo} de {c.Total})",
 			   maiorGrupo < c.Total, $"{maiorGrupo}/{c.Total}");
 
-		GD.Print($"[bercoprova]      => as tres cegueiras passam no mundo em que {c.Desvios.Count} racas "
-			   + "nascem no planeta errado. O que corta e a afirmacao NOMINAL: uma linha por raca, com "
-			   + "o nome do planeta esperado e o do obtido.");
+		GD.Print($"[bercoprova]      => as tres cegueiras passam no mundo em que {c.Refugiados.Count} racas "
+			   + "acordam longe de casa. O que corta e a afirmacao NOMINAL: uma linha por raca, com o "
+			   + "conjunto de lugares certos e o obtido.");
+	}
+
+	// =====================================================================
+	// 7) A ESCOLHA -- o dominio, a vizinhanca, e o que sobra quando nao ha nenhum
+	// =====================================================================
+	/// <summary>
+	/// **O PEDIDO DO DONO, MEDIDO NOS QUATRO ESTADOS.**
+	///
+	/// *"quando uma raca fica sem planeta natal, o jogador pode ou spawnar em um planeta q ele
+	/// conquistou ou em um planeta proximo do planeta natal dele"*.
+	///
+	/// ============================ AS DUAS METADES, SEMPRE JUNTAS ============================
+	/// Cada estado e afirmado por DUAS medidas que tem donos diferentes:
+	///   * a ESCOLHA que existia (<see cref="EscolhaDeRefugio"/>) -- quantas saidas havia e se havia o
+	///     que decidir. E o que manda a tela ser empurrada ou nao;
+	///   * o DESTINO de verdade (`DestinoDe`, o funil que a morte usa) -- a zona e o ponto.
+	///
+	/// Uma sozinha seria medir intencao; a outra sozinha nao distinguiria *"foi pra vizinhanca porque
+	/// escolheu"* de *"foi porque nao havia mais nada"*. Sao exatamente os dois erros que este projeto
+	/// ja pagou.
+	/// ====================================================================================
+	///
+	/// ============================ E OS DOIS RAMOS RAROS SAO ALCANCADOS DE VERDADE ============================
+	/// *"So o dominio existe"* e *"nao existe nenhum dos dois"* nao acontecem em jogo -- o universo e
+	/// infinito e sempre ha um mundo vivo por perto. Sem uma manivela eles seriam CODIGO MORTO com
+	/// aparencia de codigo vivo. A manivela e o <see cref="_celulasDeRefugio"/> (desliga a busca),
+	/// apertando o PARAMETRO contra a producao, e nao um caminho paralelo -- mesma disciplina do
+	/// `teto` do <see cref="Bercos.ServeDeBerco"/>.
+	/// =====================================================================================================
+	///
+	/// O LIVRO DE DOMINIOS E DEVOLVIDO INTACTO no fim (`finally`): o `FincarDominio` de producao grava
+	/// `conquista.json` na pasta do dono, e uma bancada que deixasse uma bandeira plantada la mudaria
+	/// o renascimento de um personagem de verdade.
+	/// </summary>
+	private void AEscolhaDoRefugio()
+	{
+		GD.Print("[bercoprova] -- 7) A ESCOLHA: o dominio conquistado ou a vizinhanca de casa");
+
+		// O CONQUISTADO E NAMEK, e a distancia e o argumento: 167 min de voo da Terra, ou 24 celulas
+		// de sistema contra as 2 que a busca do refugio olha. Ou seja, o dominio NUNCA pode ser
+		// confundido com um vizinho -- se o corpo aparecer la, foi por B1 e por mais nada.
+		PlanetaNoEspaco namek = default;
+		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
+			if (p.Nome == "Namek") namek = p;
+
+		var salvos = new List<Dominio>(_dominios);
+		CharacterSave c = SaveDeBancada("Prova Refugio", "Human", "Human", "Normal", false, new Random(97));
+		ServerPlayer pl = CorpoDoSave(c, FaixaDaProva);
+		pl.Conta = ContaDoRefugio;   // assinatura propria: dominio e do PERSONAGEM, nao da conta
+
+		try
+		{
+			PousarDeVerdade(pl);
+			Provar("o corpo da familia 7 nasceu na Terra (o mundo ainda esta inteiro)",
+				   pl.Zone.Name == "Earth", pl.Zone.Name);
+
+			Dominio d = FincarDominio(pl, namek, namek.Pos);
+			Provar("...e ele conquistou Namek pelo funil de producao (`FincarDominio`)",
+				   DominioDe(d.Chave) is { } meu
+				   && string.Equals(meu.Assinatura, pl.Assinatura, StringComparison.Ordinal),
+				   "a bandeira nao entrou no livro -- o resto desta familia nao prova nada");
+
+			// --- COM A TERRA VIVA, O VERBO SE RECUSA A ESCREVER ---------------
+			// A fronteira com o `conq_spawn`, que exige estar DE PE JUNTO DA BANDEIRA. Sem esta prova,
+			// o verb do refugio seria um segundo caminho pro mesmo bit sem a exigencia do primeiro --
+			// "regra num chamador, esquecida no outro", o defeito mais repetido deste port.
+			ComandoDeRefugio(pl, "refugio", d.Chave.Texto);
+			Provar("com o berco VIVO, o verb do refugio NAO escreve (a regra da bandeira continua de pe)",
+				   !d.EhOSpawn,
+				   "o verb remoto marcou o dominio sem o jogador ir ate a bandeira -- ele apagou a "
+				   + "exigencia do `conq_spawn` calado");
+
+			using (PalcoDeMortesDeBancada())
+			{
+				Provar("a injecao matou a Terra (rodada da escolha)",
+					   MatarPlanetaNoPalco(ZoneKey.Premade("Earth"), "bercoprova: a escolha"));
+
+				// --- ESTADO 1: AS DUAS EXISTEM -> ESCOLHA, e o padrao e a vizinhanca ----
+				(Vec2 _, List<Dominio> dom1, Arredores perto1, bool escolha1) = EscolhaDeRefugio(pl);
+				Provar($"ESTADO 1: ha as DUAS saidas -- {dom1.Count} dominio(s) e "
+					 + $"{perto1.Mundos.Count} mundo(s) perto de casa",
+					   escolha1 && dom1.Count == 1 && !perto1.Vazia,
+					   $"dominios={dom1.Count} vizinhos={perto1.Mundos.Count}");
+
+				(ZoneKey z1, Vec2 _) = DestinoDe(pl);
+				Provar($"...e o PADRAO e a vizinhanca ('{z1.Name}'), e nao o dominio",
+					   z1.Name != "Namek" && perto1.Mundos.Any(m => m.Corpo.Nome == z1.Name),
+					   $"foi parar em {z1.Name} -- o padrao mudou, e o bit `EhOSpawn` do `conq_spawn` "
+					   + "deixou de significar alguma coisa");
+
+				// --- ESTADO 2: O JOGADOR ESCOLHE O DOMINIO -----------------------
+				ComandoDeRefugio(pl, "refugio", d.Chave.Texto);
+				Provar("ESTADO 2: com o berco morto, o verb do refugio ESCREVE (e o unico caso em que ir "
+					 + "ate a bandeira e impossivel)", d.EhOSpawn);
+
+				(ZoneKey z2, Vec2 _) = DestinoDe(pl);
+				Provar($"...e agora o corpo vai pro DOMINIO ('{z2.Name}')", z2.Name == "Namek", z2.Name);
+
+				// --- ESTADO 3: E ELE PODE VOLTAR ATRAS ---------------------------
+				// Sem esta, a escolha seria uma porta de mao unica -- e o `conq_spawn` e um liga/desliga.
+				ComandoDeRefugio(pl, "refugio", "vizinhanca");
+				(ZoneKey z3, Vec2 _) = DestinoDe(pl);
+				Provar($"ESTADO 3: escolhendo a vizinhanca, o corpo volta pra perto de casa ('{z3.Name}')",
+					   !d.EhOSpawn && z3.Name == z1.Name, $"{z3.Name} / EhOSpawn={d.EhOSpawn}");
+
+				// --- ESTADO 4: SO O DOMINIO EXISTE -> ele e o destino, sem perguntar ----
+				using (SemVizinhancaDeRefugio())
+				{
+					(Vec2 _, List<Dominio> dom4, Arredores perto4, bool escolha4) = EscolhaDeRefugio(pl);
+					Provar($"ESTADO 4: sem vizinhanca, sobra UMA saida ({dom4.Count} dominio) e NAO ha "
+						 + "escolha -- ninguem e perguntado",
+						   !escolha4 && dom4.Count == 1 && perto4.Vazia,
+						   $"escolha={escolha4} dominios={dom4.Count} vizinhos={perto4.Mundos.Count}");
+
+					(ZoneKey z4, Vec2 _) = DestinoDe(pl);
+					Provar($"...e o corpo vai pro dominio ('{z4.Name}') mesmo com o `EhOSpawn` DESLIGADO",
+						   z4.Name == "Namek" && !d.EhOSpawn,
+						   $"{z4.Name} / EhOSpawn={d.EhOSpawn}");
+				}
+
+				// --- ESTADO 5: NENHUMA DAS DUAS -> o espaco aberto ---------------
+				PerderDominio(d, "", "bercoprova: fim da familia 7", anunciar: false);
+
+				using (SemVizinhancaDeRefugio())
+				{
+					(Vec2 _, List<Dominio> dom5, Arredores perto5, bool escolha5) = EscolhaDeRefugio(pl);
+					Provar("ESTADO 5: sem dominio e sem vizinhanca, NAO HA saida nenhuma",
+						   !escolha5 && dom5.Count == 0 && perto5.Vazia,
+						   $"dominios={dom5.Count} vizinhos={perto5.Mundos.Count}");
+
+					(ZoneKey z5, Vec2 p5) = DestinoDe(pl);
+
+					// ============================ E ISTO E O QUE NAO PRENDE NINGUEM ============================
+					// A regra velha desistia devolvendo "a Terra, viva ou MORTA" -- um corpo num cadaver,
+					// e o login seguinte caia no mesmo funil e devolvia a mesma Terra morta: um LACO.
+					// O espaco aberto e o unico lugar deste jogo de onde se alcanca TODOS os outros.
+					// ======================================================================================
+					Provar($"...e o ultimo recurso e o ESPACO ABERTO ('{z5.Name}'), e nao a Terra morta",
+						   Espaco.EhEspaco(z5) && !ZonaMorta(z5),
+						   $"{z5.Name} -- se isto voltar a ser um planeta, o laco do cadaver volta junto");
+
+					Provar("...na coordenada exata de onde a Terra ficava (o corpo abre os olhos em casa)",
+						   Math.Abs(p5.X) < 1 && Math.Abs(p5.Y) < 1, $"({p5.X:0.0},{p5.Y:0.0})");
+				}
+			}
+		}
+		finally
+		{
+			Recolher(pl);
+
+			// O LIVRO VOLTA COMO ESTAVA -- e o `SalvarConquista` reescreve o arquivo do dono com o
+			// mesmo conteudo. Sem isto, uma bandeira de bancada ficaria plantada em Namek pra sempre.
+			_dominios.Clear();
+			_dominios.AddRange(salvos);
+			SalvarConquista();
+
+			Provar($"o livro de dominios voltou intacto ({_dominios.Count} dominio(s), como antes)",
+				   _dominios.Count == salvos.Count && !_dominios.Any(x => x.Planeta == "Namek"
+					   && string.Equals(x.Conta, ContaDoRefugio, StringComparison.Ordinal)),
+				   "a bancada deixou bandeira plantada na pasta do dono");
+		}
 	}
 }

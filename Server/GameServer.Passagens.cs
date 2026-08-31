@@ -150,6 +150,16 @@ public sealed partial class GameServer
 		_acabouDeAtravessar[pl.Id] = NowMs() + MsDeCarenciaDePassagem;
 
 		string destino = p.Nome.Length > 0 ? p.Nome : p.Zona;
+
+		// O DESTINO PODE TER EXPLODIDO ENQUANTO A PESSOA ESTAVA DO OUTRO LADO. Ver
+		// `SaidaParaUmMundoMorto`: o Templo, a Sala do Tempo e as cavernas tem saida CRAVADA no mapa,
+		// e sem esta linha elas depositavam o corpo dentro de um cadaver de planeta.
+		//
+		// **AQUI E NAO NO LACO DE CIMA**: a carencia (`_acabouDeAtravessar`) ja foi armada, e e ela
+		// que impede o corpo de ricochetear na boca da passagem. Recusar antes dela faria a pessoa
+		// pisar na saida trinta vezes por segundo.
+		if (SaidaParaUmMundoMorto(pl, ZoneKey.Premade(p.Zona))) return;
+
 		Avisar(pl, $"você atravessa e chega em {destino}.");
 		GD.Print($"[server] {pl.Name}: {pl.Zone.Name} -> {p.Zona} ({destino})");
 
