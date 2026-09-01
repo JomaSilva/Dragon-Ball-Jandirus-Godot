@@ -448,7 +448,23 @@ public partial class GameClient : Node
 		foreach (Jandirus.Core.World.EstadoDaMorte e in lista)
 		{
 			vistos.Add(e.Chave);
-			if (e.Faltam > 0) _agoniaAte[e.Chave] = TempoDoMundo + e.Faltam;
+
+			// ============================ E O PRAZO **NEGATIVO** DE UM MUNDO JA MORTO TAMBEM ENTRA ============================
+			// Antes o crivo era so `Faltam > 0`, e isso deixava um buraco que so aparecia com os
+			// destrocos: quem estava online quando o planeta morreu ficava com o prazo vencido aqui
+			// dentro e contava negativo direitinho, mas **quem chegava na orbita 30 s depois nao tinha
+			// entrada nenhuma** -- o `SegundosAteOEstouro` devolvia nulo e ele nao via rescaldo nenhum.
+			// Duas telas discordando no mesmo lugar e exatamente o que o *"server sync"* do dono proibe.
+			//
+			// O conserto nao inventou campo: o servidor passou a deixar o `Faltam` de um destruido
+			// **continuar descendo** ate o fim da janela dos destrocos (ver `GameServer.TickDaDestruicao`),
+			// e este lado passou a aceitar o numero negativo que ja vinha no pacote. Zero byte novo.
+			//
+			// O CRIVO E A FASE, e nao o sinal: pra quem ainda esta MORRENDO, `Faltam` e o que resta do
+			// ESTAGIO (nao do estouro), e um valor negativo ali seria save corrompido -- nao um prazo.
+			// =============================================================================================================
+			if (e.Faltam > 0 || Jandirus.Core.World.MortePlanetaria.EstaMorto(e.Fase))
+				_agoniaAte[e.Chave] = TempoDoMundo + e.Faltam;
 		}
 
 		foreach (string k in _agoniaAte.Keys.ToList())

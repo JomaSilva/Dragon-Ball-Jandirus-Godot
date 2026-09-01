@@ -135,6 +135,18 @@ public partial class GameServer
 		public double SegundosDeExplosao = MortePlanetaria.SegundosDeExplosao;
 
 		/// <summary>
+		/// A JANELA DO RESCALDO -- quanto tempo o `Faltam` de um mundo destruido continua descendo pra
+		/// baixo de zero, que e o unico jeito de o cliente saber HA QUANTO TEMPO ele morreu.
+		///
+		/// Sonda porque o defeito aqui e o mais silencioso de todo este arquivo: se a janela virar zero,
+		/// **nada quebra no servidor** -- nenhum log, nenhuma excecao, nenhum estado invalido. O que
+		/// acontece e que quem chega na orbita depois do estouro deixa de ver os destrocos, enquanto
+		/// quem estava online continua vendo. Um defeito que so aparece em duas telas ao mesmo tempo, e
+		/// que uma bancada de um cliente so nunca pegaria.
+		/// </summary>
+		public double SegundosDosDestrocos = DestrocosDeMundo.SegundosDaJanela;
+
+		/// <summary>
 		/// A furia que a EXPLOSAO gasta. Nula = <see cref="FuriaDoPlaneta"/>, a mesma chamada que a
 		/// vida do mundo usa -- e o defeito injetavel e justamente as duas deixarem de ser uma.
 		/// </summary>
@@ -203,6 +215,8 @@ public partial class GameServer
 								 + "-- ausencia e a resposta pra vivo; registro descartado");
 					continue;
 				}
+
+				FecharAJanelaDoRescaldo(e);
 				_mortos.Por(e);
 			}
 
@@ -243,6 +257,28 @@ public partial class GameServer
 							 + "'Restore Planet' em orbita dele.");
 		}
 		catch (Exception e) { GD.PushWarning($"[server] planetas-mortos.json ilegivel: {e.Message}"); }
+	}
+
+	/// <summary>
+	/// ============================ O RESCALDO NAO RESSUSCITA NO BOOT ============================
+	/// O `Faltam` de um mundo destruido virou o relogio do rescaldo (ver <see cref="RelogioDoRescaldo"/>):
+	/// ele desce pra baixo de zero pelos 60 s da janela dos destrocos e para. **Mundo que volta do
+	/// disco tem a janela FECHADA**, e nao aberta.
+	///
+	/// Sem isto, todo boot de servidor reacenderia a explosao e o campo de cacos de **todos os mundos
+	/// que ja morreram na vida daquele save** -- o <see cref="ConsumarDestruicao"/> grava `Faltam = 0`,
+	/// e zero e o instante da morte. Um `planetas-mortos.json` com as quatro sagas consumadas viraria
+	/// quatro explosoes no ceu a cada vez que o dono sobe o servidor, por mundos que sumiram ha meses.
+	///
+	/// **METODO E NAO LINHA SOLTA** porque a prova precisa chamar a regra sem passar por arquivo: a
+	/// bancada roda dentro do <see cref="PalcoDeMortes"/>, onde toda gravacao e barrada de proposito, e
+	/// uma regra que so pode ser exercitada lendo disco e uma regra que nao vai ser exercitada.
+	/// ======================================================================================
+	/// </summary>
+	private static void FecharAJanelaDoRescaldo(EstadoDaMorte e)
+	{
+		if (MortePlanetaria.EstaMorto(e.Fase))
+			e.Faltam = -DestrocosDeMundo.SegundosDaJanela;
 	}
 
 	/// <summary>
@@ -1345,7 +1381,7 @@ public partial class GameServer
 		bool mudou = false;
 		foreach (EstadoDaMorte e in _mortos.Todos.ToList())
 		{
-			if (MortePlanetaria.EstaMorto(e.Fase)) continue;
+			if (MortePlanetaria.EstaMorto(e.Fase)) { if (RelogioDoRescaldo(e, dt)) mudou = true; continue; }
 
 			ZoneKey zona = e.Zona();
 			switch (e.Fase)
@@ -1369,6 +1405,53 @@ public partial class GameServer
 		// segundo, e gravar por isso seria uma escrita em disco por segundo por planeta morrendo --
 		// pra proteger, no pior caso, um segundo de pavio. O que nao pode se perder e o ESTAGIO.
 		if (mudou) { SalvarPlanetasMortos(); MandarMortosPraTodos(); }
+	}
+
+	/// <summary>
+	/// ============================ O RELOGIO DO RESCALDO -- E TODO O CUSTO DE SERVIDOR DOS DESTROCOS ============================
+	/// O dono pediu o despawn dos asteroides com uma razao explicita: *"pro servidor n ter q ficar
+	/// gastando tempo de tick pra ver a posicao de asteroides"*. **Isto e o servidor inteiro pagando
+	/// pelos destrocos**, e sao duas comparacoes de `double` por mundo morto, uma vez por SEGUNDO --
+	/// nao ha posicao de asteroide em lugar nenhum daqui, nem por um quadro. A posicao e funcao pura de
+	/// `(semente, indice, tempo)` no cliente; ver `Core.World.DestrocosDeMundo`.
+	///
+	/// Medido nesta mesma casa, com o orcamento de um tique em 33.333 us (30 Hz): 0,025 us com zero
+	/// mortos, 0,457 us com 128 e **1,686 us com 512** -- e so 1 tique em 30 paga, porque este laco
+	/// mora no bloco de 1 Hz. Com o ceu inteiro em cinzas o custo por segundo continua sendo micros.
+	///
+	/// ============================ POR QUE `Faltam` E NAO UM CAMPO NOVO ============================
+	/// O cliente precisa de UM numero: ha quantos segundos este mundo morreu. Esse numero ja viaja --
+	/// `EstadoDaMorte.Faltam` esta no `S2C.Mortos` desde que a rampa da agonia foi ligada. O que faltava
+	/// era o servidor **deixar de congela-lo em zero** no commit: dali pra frente ele desce pra
+	/// negativo, e negativo passou a querer dizer "faz tanto tempo".
+	///
+	/// Um campo novo no pacote seria uma segunda fonte pro mesmo instante -- e a primeira a divergir
+	/// seria a de la, calada. Ver o cabecalho do <see cref="MandarMortos"/>, que ja diz isso do `Faltam`.
+	///
+	/// ============================ E ELE PARA, E O FIM E GRAVADO ============================
+	/// Passada a janela o valor CONGELA em `-janela` e o metodo devolve verdadeiro uma unica vez, o que
+	/// pede o save (o campo fechado tem que sobreviver a um boot) e um `MandarMortosPraTodos` (quem
+	/// esta olhando fica sabendo que acabou, sem ter que descobrir sozinho).
+	///
+	/// Sem o congelamento, o `Faltam` de um mundo morto desceria pra sempre -- e um `double` que so
+	/// desce vira, no save de um servidor de anos, um numero grande o bastante pra perder precisao no
+	/// lugar que importa.
+	/// ========================================================================================================================
+	/// </summary>
+	/// <returns>Verdadeiro **uma unica vez**: no segundo em que a janela do rescaldo fecha.</returns>
+	private bool RelogioDoRescaldo(EstadoDaMorte e, double dt)
+	{
+		double janela = Agonia.SegundosDosDestrocos;
+
+		// A SAIDA BARATA VEM PRIMEIRO, e ela e o caso de quase todo mundo morto de um servidor antigo:
+		// a janela deles fechou ha muito tempo, e o que resta e esta comparacao.
+		if (e.Faltam <= -janela) return false;
+
+		e.Faltam -= dt;
+		if (e.Faltam > -janela) return false;
+
+		e.Faltam = -janela;
+		return true;
 	}
 
 	/// <summary>

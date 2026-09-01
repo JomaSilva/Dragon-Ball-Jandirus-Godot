@@ -4446,10 +4446,32 @@ public partial class World : Node2D
 			{
 				Nome = p.Nome, Seed = p.Seed, Premade = p.Premade,
 			});
-			if (cli.Mortos.Morto(chave)
-				&& (cli.SegundosAteOEstouro(chave) is not { } falta
-					|| falta < -Jandirus.Core.World.MortePlanetaria.SegundosDoEstouro))
-				continue;
+			if (cli.Mortos.Morto(chave))
+			{
+				double? quanto = cli.SegundosAteOEstouro(chave);
+
+				// ============================ E O QUE SOBRA DELE, PRA QUEM CHEGOU DEPOIS ============================
+				// *"onde ficava o planeta vao ter uns asteroides/rochas"*. O campo de destrocos dura
+				// MUITO mais que o disco (60 s contra 2,2 s), entao ele e montado no ramo do MORTO --
+				// ou seja, exatamente onde o planeta deixa de ser desenhado.
+				//
+				// **ESTA E A PORTA DE QUEM NAO ESTAVA OLHANDO.** A outra e o `PlanetaDesenhado.Estourar`,
+				// que serve quem viu o mundo morrer. Esta aqui serve tres casos que aquela nao alcanca:
+				// quem chegou na orbita depois, quem cruzou uma fronteira de chunk (o `QueueFree` la em
+				// cima apaga o campo, e este laco o remonta identico no mesmo quadro, porque a posicao de
+				// cada caco e funcao pura) e quem relogou. Ver `Core.World.DestrocosDeMundo`.
+				//
+				// E ele nao custa um byte a mais no fio: o unico dado que isto le e o `SegundosAteOEstouro`,
+				// que ja vinha do `EstadoDaMorte.Faltam` do `S2C.Mortos`.
+				// ==============================================================================================
+				if (quanto is { } desde
+					&& Jandirus.Core.World.DestrocosDeMundo.DentroDaJanela(-desde))
+					DestrocosNoEspaco.Garantir(_orbes, p.Nome, p.Pos, p.Raio, p.Seed, chave);
+
+				if (quanto is not { } falta
+					|| falta < -Jandirus.Core.World.MortePlanetaria.SegundosDoEstouro)
+					continue;
+			}
 
 			_orbes.AddChild(new PlanetaDesenhado
 			{

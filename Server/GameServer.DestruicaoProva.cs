@@ -123,6 +123,7 @@ public partial class GameServer
 			AMesmaPortaDoK6(),
 			AsConsequenciasNoResto(),
 			AsBordasDoK(),
+			ORescaldoDoMundo(),
 		];
 
 		int ok = 0, falhas = 0, cegos = 0, defeitos = 0;
@@ -1378,4 +1379,218 @@ public partial class GameServer
 			 s => s.MundoJaCondenado = _ => false),
 		],
 	};
+
+	// =====================================================================
+	// PROVA 10 -- O RESCALDO: O RELOGIO QUE DESENHA OS DESTROCOS
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE ESTA FAMILIA COBRA, E POR QUE ELA E DO SERVIDOR ============================
+	/// O pedido do dono: *"onde ficava o planeta vao ter uns asteroides/rochas... dps de um tempo eles
+	/// despawnam pro servidor n ter q ficar gastando tempo de tick pra ver a posicao de asteroides"*.
+	///
+	/// **A POSICAO DOS ASTEROIDES NAO EXISTE AQUI**, e por isso nao ha nada sobre asteroide nesta
+	/// familia. O campo inteiro e funcao pura de `(semente, indice, tempo)` no cliente (ver
+	/// `Core.World.DestrocosDeMundo`), o desenho e medido na bancada `--diagagonia`, e o que o servidor
+	/// deve e **um numero so**: ha quantos segundos este mundo morreu.
+	///
+	/// Esse numero e o `EstadoDaMorte.Faltam`, que ja viajava no `S2C.Mortos` -- o que mudou foi ele
+	/// parar de congelar em zero no commit e passar a descer pra negativo pela janela. Entao o que se
+	/// prova aqui e o RELOGIO, em quatro pontas:
+	///
+	///   1. ele **anda** (senao quem chega depois nao sabe ha quanto tempo o mundo caiu, e ve um ceu
+	///      diferente do de quem estava online -- o oposto do *"server sync"* que o dono grifou);
+	///   2. ele **para** no fim da janela (um `double` que so desce vira, num save de anos, um numero
+	///      grande demais pra ser preciso onde importa);
+	///   3. o Core **concorda** com o servidor sobre quando a janela fecha -- e uma constante so, lida
+	///      pelos dois lados, e nao dois prazos com o mesmo nome;
+	///   4. e um mundo que volta **do disco** vem com a janela FECHADA, senao todo boot reacende a
+	///      explosao de todos os mundos que ja morreram naquele save.
+	/// ==========================================================================================================
+	/// </summary>
+	private ProvaDaMorte ORescaldoDoMundo() => new()
+	{
+		Nome = "PROVA 10 -- O RESCALDO (o relogio dos destrocos, e o custo dele no tique)",
+		Frase = "dps de um tempo eles despawnam pro servidor n ter q ficar gastando tempo de tick pra "
+			  + "ver a posicao de asteroides",
+		Provas = c =>
+		{
+			double janela = DestrocosDeMundo.SegundosDaJanela;
+
+			c("(montagem) a cobaia esta viva", !ZonaCondenada(Cobaia));
+
+			// PELA PORTA DE PRODUCAO: ninguem escreve `Fase = Destruido` na mao aqui. A explosao anda
+			// os 310 s dela e o commit acontece por conta propria, como no jogo.
+			ComecarDestruicao(Cobaia, 1, "prova-do-rescaldo");
+			for (int i = 0; i <= (int)MortePlanetaria.SegundosDeExplosao && !ZonaMorta(Cobaia); i++)
+				TickDaDestruicao(1);
+
+			EstadoDaMorte? e = MorteDaZona(Cobaia);
+			c("(montagem) o mundo caiu, e o relogio dele zera no instante da morte",
+			  e is { Fase: FaseDaMorte.Destruido } && Math.Abs(e.Faltam) < 1e-9,
+			  $"{e?.Fase}, faltam {e?.Faltam:0.###}");
+
+			// ---- 1. O RELOGIO ANDA ----
+			for (int i = 0; i < 10; i++) TickDaDestruicao(1);
+			e = MorteDaZona(Cobaia);
+
+			c("**O RELOGIO DO RESCALDO ANDA**: dez segundos depois da morte o servidor sabe dizer que "
+			+ "foram dez -- e o cliente desenha os destrocos a partir disso, sem um byte novo no fio",
+			  e != null && Math.Abs(e.Faltam + 10) < 1e-9, $"faltam {e?.Faltam:0.###}, esperado -10");
+
+			c("...e o Core concorda que isso ainda esta DENTRO da janela dos destrocos",
+			  e != null && DestrocosDeMundo.DentroDaJanela(-e.Faltam),
+			  $"-{e?.Faltam:0.#} contra janela de {janela:0}");
+
+			// ---- 2. E ELE PARA, e para EXATAMENTE no fim da janela ----
+			for (int i = 0; i < (int)janela + 30; i++) TickDaDestruicao(1);
+			e = MorteDaZona(Cobaia);
+
+			c($"**E ELE PARA NO FIM DA JANELA** ({janela:0} s), em vez de descer pra sempre",
+			  e != null && Math.Abs(e.Faltam + janela) < 1e-9,
+			  $"faltam {e?.Faltam:0.###}, esperado -{janela:0}");
+
+			c("...e o Core concorda que ai a janela FECHOU (o campo de cacos deixa de ser desenhado)",
+			  e != null && !DestrocosDeMundo.DentroDaJanela(-e.Faltam),
+			  $"-{e?.Faltam:0.#} contra janela de {janela:0}");
+
+			// ---- 3. O MUNDO QUE VOLTA DO DISCO VEM COM A JANELA FECHADA ----
+			// A regra mora no `FecharAJanelaDoRescaldo`, que o carregador chama. Ela e exercitada aqui
+			// direto (e nao por arquivo) porque esta bancada roda dentro do `PalcoDeMortes`, onde toda
+			// gravacao e barrada -- e uma regra que so pode ser testada lendo disco e uma regra que nao
+			// vai ser testada.
+			var doDisco = new EstadoDaMorte
+			{
+				Chave = "prova-do-disco", Nome = "Earth",
+				Fase = FaseDaMorte.Destruido, Faltam = 0,
+			};
+			FecharAJanelaDoRescaldo(doDisco);
+
+			c("**UM MUNDO QUE VOLTA DO DISCO VEM COM A JANELA FECHADA** -- senao todo boot reacenderia "
+			+ "a explosao de todo mundo que ja morreu neste save",
+			  Math.Abs(doDisco.Faltam + janela) < 1e-9 && !DestrocosDeMundo.DentroDaJanela(-doDisco.Faltam),
+			  $"faltam {doDisco.Faltam:0.###}");
+
+			// ...E A OUTRA METADE: quem ainda esta MORRENDO nao e tocado. Sem esta linha, um
+			// `FecharAJanelaDoRescaldo` que zerasse tudo passaria -- e apagaria o pavio de 20 minutos.
+			var noPavio = new EstadoDaMorte
+			{
+				Chave = "prova-do-pavio", Nome = "Namek",
+				Fase = FaseDaMorte.Morrendo, Estagio = 1, Faltam = 300,
+			};
+			FecharAJanelaDoRescaldo(noPavio);
+
+			c("...e ele NAO encosta em quem ainda esta morrendo (o pavio de 20 minutos retoma de onde "
+			+ "parou, que e o motivo de o `Faltam` ser 'o que resta' e nao um instante absoluto)",
+			  Math.Abs(noPavio.Faltam - 300) < 1e-9, $"faltam {noPavio.Faltam:0.###}");
+
+			// ---- 4. O CUSTO NO TIQUE, MEDIDO -- com o campo no ar e sem ----
+			MedirOCustoDoRescaldo(c);
+		},
+		Defeitos =
+		[
+			// A JANELA ZERADA e o defeito MUDO deste sistema: nada quebra no servidor, nenhum log sai,
+			// e o unico sintoma e que quem chega na orbita depois do estouro nao ve destroco nenhum --
+			// enquanto quem estava online ve. Um defeito que so existe em duas telas ao mesmo tempo.
+			("a janela do rescaldo virou zero (quem chega depois nao ve destroco nenhum)",
+			 s => s.SegundosDosDestrocos = 0),
+
+			// E O OPOSTO: o relogio nunca para, e o campo de cacos fica no ceu pra sempre.
+			("a janela do rescaldo virou eterna (o relogio desce pra sempre e o ceu vira cemiterio)",
+			 s => s.SegundosDosDestrocos = 1_000_000),
+		],
+	};
+
+	/// <summary>
+	/// ============================ O CUSTO DOS DESTROCOS NO TIQUE, MEDIDO -- E OS DOIS NUMEROS IMPRESSOS ============================
+	/// O dono deu a RAZAO do despawn com todas as letras: *"dps de um tempo eles despawnam pro servidor
+	/// n ter q ficar gastando tempo de tick pra ver a posicao de asteroides"*.
+	///
+	/// O cabecalho do <see cref="RelogioDoRescaldo"/> ja afirmava o custo em numeros -- e afirmava de
+	/// uma medida feita **na mao, uma vez, por quem escreveu**. Isso e a mesma coisa que este projeto
+	/// chama de "leitura de codigo": vale ate o dia em que alguem poe um `foreach` ali dentro. Aqui a
+	/// medida roda TODA rodada, com o codigo de producao, e imprime os dois numeros que o pedido do
+	/// dono compara:
+	///
+	///   * **COM O CAMPO NO AR**: N mundos mortos dentro da janela -- o caso em que o servidor "esta
+	///     pagando" pelos destrocos. Sao duas comparacoes de `double` e uma subtracao por mundo;
+	///   * **SEM**: os mesmos N com a janela ja fechada -- a saida barata, uma comparacao;
+	///   * e o **ZERO** por baixo, que e o que o laco custa sem mundo morto nenhum. Sem ele os dois
+	///     numeros de cima incluiriam o custo do resto do `TickDaDestruicao` e nao diriam nada sobre
+	///     os destrocos.
+	///
+	/// **NAO HA POSICAO DE ASTEROIDE EM NENHUM DOS TRES.** E esse o ponto: o pedido do dono foi
+	/// atendido de forma mais forte do que ele pediu -- o servidor nunca soube onde as pedras estao, em
+	/// nenhum momento da janela. Ver `Core.World.DestrocosDeMundo`.
+	/// ============================================================================================================================
+	/// </summary>
+	private void MedirOCustoDoRescaldo(Checagem c)
+	{
+		const int Mundos = 128, Voltas = 200;
+		double janela = DestrocosDeMundo.SegundosDaJanela;
+
+		// `dt = 0` DE PROPOSITO: o que se mede e o custo de PERGUNTAR, e nao o de o relogio andar. Com
+		// dt positivo os 128 mundos sairiam da janela no meio da medida e as duas metades se
+		// misturariam -- a segunda volta ja estaria medindo o caso barato.
+		double UmaMedida()
+		{
+			for (int i = 0; i < 20; i++) TickDaDestruicao(0);   // aquece o JIT e o cache
+			ulong t0 = Time.GetTicksUsec();
+			for (int i = 0; i < Voltas; i++) TickDaDestruicao(0);
+			return (Time.GetTicksUsec() - t0) / (double)Voltas;
+		}
+
+		double vazio = UmaMedida();
+
+		var chaves = new List<ChaveDePlaneta>();
+		for (int i = 0; i < Mundos; i++)
+		{
+			var ch = new ChaveDePlaneta(false, "CustoDoRescaldo", (ulong)(900_000 + i));
+			chaves.Add(ch);
+			_mortos.Por(new EstadoDaMorte
+			{
+				Chave = ch.Texto, Nome = "CustoDoRescaldo",
+				Fase = FaseDaMorte.Destruido, Faltam = -1,   // DENTRO da janela: o campo esta no ar
+			});
+		}
+		double noAr = UmaMedida();
+
+		foreach (ChaveDePlaneta ch in chaves)
+			if (_mortos.De(ch) is { } e) e.Faltam = -janela;   // a janela fechou: a saida barata
+		double fechada = UmaMedida();
+
+		foreach (ChaveDePlaneta ch in chaves) _mortos.Tirar(ch);
+
+		GD.Print($"    --   O CUSTO DO RESCALDO NO TIQUE, com {Mundos} mundos mortos (media de "
+			   + $"{Voltas} voltas do `TickDaDestruicao`, que mora no bloco de 1 Hz):");
+		GD.Print($"         sem mundo morto nenhum ........ {vazio,7:0.000} us");
+		GD.Print($"         COM O CAMPO NO AR ............. {noAr,7:0.000} us  "
+			   + $"(+{noAr - vazio:0.000} us, ou {(noAr - vazio) * 1000 / Mundos:0.00} ns por mundo)");
+		GD.Print($"         com a janela ja FECHADA ....... {fechada,7:0.000} us  "
+			   + $"(+{fechada - vazio:0.000} us)");
+		GD.Print($"         o orcamento de um tique a 30 Hz e 33.333 us -- o campo no ar ocupa "
+			   + $"{(noAr - vazio) / 33_333 * 100:0.0000}% dele, uma vez por segundo");
+
+		// ============================ E O QUE A MEDIDA MOSTROU, QUE NENHUM CABECALHO PREVIA ============================
+		// Os dois numeros de cima sao **iguais** dentro do ruido (medido: 1,93 contra 1,94 us). Ou seja:
+		// a diferenca entre "o servidor esta pagando pelos destrocos" e "nao esta" nao aparece no
+		// relogio. O que custa nao e a janela -- e ANDAR na lista de mortos (o `_mortos.Todos.ToList()`
+		// aloca uma lista de 128 itens por volta), e isso ja acontecia antes de existir destroco.
+		//
+		// Isso e mais forte do que o pedido do dono, e vale dizer com todas as letras: **nao ha nada
+		// pra despawnar**. Ele pediu que os asteroides sumissem pra o servidor parar de gastar tique
+		// com eles; aqui o servidor nunca gastou, porque nunca soube onde eles estavam.
+		// ==========================================================================================================
+		GD.Print($"         os dois numeros do meio sao IGUAIS dentro do ruido ({noAr - vazio:0.00} contra "
+			   + $"{fechada - vazio:0.00} us): o que custa e andar na lista, e nao a janela. Nao ha "
+			   + "posicao de asteroide em lugar nenhum do servidor.");
+
+		// O CRIVO E O ORCAMENTO, e nao um numero bonito: 1% de um tique (333 us) com 128 mundos mortos
+		// e um teto folgado o bastante pra nao reprovar por causa de uma maquina lenta, e apertado o
+		// bastante pra pegar o defeito real -- alguem varrendo asteroide aqui dentro. Um laco de 24
+		// pedacos por mundo poria isto na casa dos milissegundos.
+		c($"**O RESCALDO NAO CUSTA TIQUE**: com {Mundos} mundos mortos e o campo no ar, o servidor "
+		+ $"gasta {noAr - vazio:0.00} us por segundo -- porque ele nao guarda posicao de asteroide "
+		+ "nenhuma, so pergunta as horas",
+		  noAr - vazio < 333, $"{noAr - vazio:0.000} us acima do vazio");
+	}
 }

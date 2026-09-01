@@ -72,6 +72,19 @@ namespace Jandirus.Client;
 /// familia 3 ganhou por isso a checagem `ChegaLonge`, e a injecao e a prova de que ela morde.
 /// SEM REDE E SEM SERVIDOR: o que ela toca sao dois `PlanetaDesenhado`, um `GameClient` sem conexao
 /// (so pra a conversao de `faltam` -> intensidade ser a de producao) e o quadro desenhado.
+///
+/// ============================ O QUE ELA NAO PODE PROVAR, E QUEM PROVA ============================
+/// **Ela tem UM processo.** O que ela chama de "duas telas" (familia 13) sao dois
+/// `DestrocosNoEspaco` na MESMA memoria, com a mesma DLL, os mesmos `static` e uma lista de mortos
+/// que ela mesma escreveu. Isso cobre sorteio instavel, e nao cobre sorteio **estavel dentro do
+/// processo e diferente entre processos**.
+///
+/// E isso nao e teoria: trocando o `Espaco.Misturar` do `DestrocosDeMundo.De` por um
+/// `GetHashCode()` de string (que o .NET randomiza por processo), **esta bancada fechou 74 OK e 0
+/// FALHA** -- cega -- e a `--destrocosvivos`, com dois clientes de verdade em dois processos,
+/// apontou a primeira pedra a 46 px de distancia entre um cliente e o outro. Ver
+/// `Server/GameServer.DestrocosVivosTeste.cs` e `testar-destrocos.bat`.
+/// ==============================================================================================
 /// </summary>
 public partial class RoboDaAgonia : Node2D
 {
@@ -92,17 +105,40 @@ public partial class RoboDaAgonia : Node2D
 
 	private void Nota(string t) => _linhas.Add("   --    " + t);
 
-	/// <summary>O planeta cobaia: a TERRA, que e o disco que todo mundo reconhece.</summary>
-	private const string Cobaia = "Earth";
-
 	/// <summary>
-	/// O CONTRA-EXEMPLO: **NAMEK, VIVA**, no mesmo quadro. Ver o cabecalho.
+	/// ============================ A VITIMA E O CONTROLE SAO **PARAMETROS**, E ISSO CUSTOU 1,2 GB ============================
+	/// Os dois eram `const string`. Quando o dono perguntou *"o planeta troca o icone pra terra durante
+	/// a explosao?"*, responder exigia rodar a bancada com NAMEK morrendo -- e, sem bandeira, o unico
+	/// jeito de fazer isso sem sujar o repo foi **copiar o projeto inteiro** (1,2 GB) pra um rascunho,
+	/// trocar duas constantes na copia e compilar de novo. Pra uma pergunta binaria.
 	///
-	/// Namek e nao um segundo "Earth" porque os dois usariam o mesmo estado da folha e a mesma
-	/// semente de ruido: dois discos identicos lado a lado provariam menos, e um erro que pintasse
-	/// "todo planeta chamado Earth" passaria batido.
+	/// Com as duas bandeiras a mesma resposta vira uma rodada de 40 segundos:
+	///
+	///     &lt;godot&gt; --path . --diagagonia --agoniavitima Namek --agoniacontrole Vegeta --position 1920,0
+	///
+	/// E ha um segundo ganho, que e o que fez a familia 3 mudar: com a vitima trocavel, a bancada passa
+	/// a poder rodar sobre um planeta que **ja nasce vermelho** (Vegeta), e foi exatamente ai que o
+	/// crivo antigo -- vermelhidao absoluta -- se mostrou cego. Ver `RelatarARampa`.
+	///
+	/// OS PADROES CONTINUAM OS DE ANTES: a TERRA, que e o disco que todo mundo reconhece, e NAMEK como
+	/// contra-exemplo. Namek e nao um segundo "Earth" porque os dois usariam o mesmo estado da folha e a
+	/// mesma semente de ruido: dois discos identicos lado a lado provariam menos, e um erro que
+	/// pintasse "todo planeta chamado Earth" passaria batido.
+	/// ==================================================================================================================
 	/// </summary>
-	private const string Controle = "Namek";
+	private static readonly string Cobaia = Bandeira("--agoniavitima", "Earth");
+
+	/// <summary>O CONTRA-EXEMPLO, **VIVO**, no mesmo quadro. Ver <see cref="Cobaia"/>.</summary>
+	private static readonly string Controle = Bandeira("--agoniacontrole", "Namek");
+
+	/// <summary>O valor que vem depois de uma bandeira na linha de comando, ou o padrao.</summary>
+	private static string Bandeira(string nome, string padrao)
+	{
+		string[] args = OS.GetCmdlineArgs();
+		int i = Array.IndexOf(args, nome);
+		return i >= 0 && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)
+			? args[i + 1] : padrao;
+	}
 
 	/// <summary>Quantos degraus da agonia sao medidos entre 0 e 1.</summary>
 	private const int Degraus = 12;
@@ -110,8 +146,33 @@ public partial class RoboDaAgonia : Node2D
 	/// <summary>Em quais degraus a TIRA tira retrato. Cinco instantes dos cinco minutos.</summary>
 	private static readonly int[] DegrausDaTira = [0, 3, 6, 9, 12];
 
-	/// <summary>O lado do recorte de cada planeta na tira. Cobre a Terra (raio 220) com folga.</summary>
-	private const int LadoDoRecorte = 480;
+	/// <summary>
+	/// O lado do recorte de cada planeta na tira.
+	///
+	/// ============================ 560 E NAO 480, E A DIFERENCA SAO 14 PIXELS QUE MENTIAM ============================
+	/// O `PlanetaDesenhado` poe o proprio rotulo (o nome, em laranja) em `y = -Raio - 34`
+	/// (`Client/CeuDoEspaco.cs:208`). Com lado 480 a meia altura era 240, e a conta ficava assim:
+	///
+	///   * CONTROLE, raio 200 -> rotulo em -234, **cabe** em 240  -> o nome dele aparecia na tira;
+	///   * VITIMA,   raio 220 -> rotulo em -254, **nao cabe**     -> o nome dela era cortado fora.
+	///
+	/// Ou seja: **a tira rotulava exatamente o quadro que NAO era o assunto dela**, e por sorte de 14
+	/// pixels. O unico nome visivel na foto que o dono abriu era o do planeta errado -- e foi por isso
+	/// que ele leu a tira como "Namek virou a Terra".
+	///
+	/// 560 poe a meia altura em 280 e cabe o rotulo de um mundo de raio 220 com 26 px de folga. E o
+	/// recorte continua cabendo na viewport de 1280x720 nos dois eixos.
+	/// ==========================================================================================================
+	/// </summary>
+	private const int LadoDoRecorte = 560;
+
+	/// <summary>
+	/// ONDE E QUAO GRANDE E A VITIMA. Viraram constantes quando as familias dos destrocos passaram a
+	/// precisar da posicao e do raio DEPOIS que o `_planeta` ja se recolheu (o disco morre 2,2 s
+	/// depois do prazo; o rescaldo dura 60 s). Ler do node seria ler de um node que nao existe mais.
+	/// </summary>
+	private static readonly Vector2 PosDaVitima = new(300, 300);
+	private const float RaioDaVitima = 220;
 
 	private PlanetaDesenhado _planeta = null!;
 	private PlanetaDesenhado _vivoSempre = null!;
@@ -121,7 +182,29 @@ public partial class RoboDaAgonia : Node2D
 	private Disco _doente, _saudavel;
 
 	private readonly List<(double Agonia, double Dif, double Razao, double RazaoControle)> _medidas = [];
-	private readonly List<TiraDeFotos.Quadro> _tira = [];
+
+	/// <summary>
+	/// ============================ DUAS TIRAS, E NAO UMA -- O CONSERTO DO DEFEITO QUE O DONO ACHOU ============================
+	/// A tira antiga era UMA fileira com **seis** quadros: o 0 era o CONTROLE (outro planeta, vivo) e os
+	/// 1 a 5 eram a vitima do piso ao auge. A explicacao disso morava so no console. Quem abre um
+	/// arquivo de seis quadros numerados le uma SEQUENCIA -- e foi o que aconteceu: *"parece q namek
+	/// virou a terra e dps o shaders da destruicao foi aplicado"*.
+	///
+	/// Nao havia troca de icone nenhuma. Havia uma prova ilegivel, o que e pior: ela nao so falhou em
+	/// convencer, ela **convenceu do contrario**.
+	///
+	/// O conserto e estrutural e nao cosmetico -- **um arquivo, uma afirmacao**:
+	///   * `agonia-tira-do-espaco.png` .. so a VITIMA, cinco instantes. Toda a fileira e o mesmo
+	///     planeta, entao nao existe leitura em que um vire outro;
+	///   * `agonia-tira-controle.png` ... so o CONTROLE, **nos mesmos cinco instantes**. Ele nao muda,
+	///     e e isso que a familia 8 mede -- agora da pra VER.
+	///
+	/// Um cabecalho por coluna nao resolveria: o problema era a linha unica misturando dois assuntos.
+	/// E as duas carregam o NOME do planeta em cada quadro, que so passou a ser possivel quando a
+	/// `TiraDeFotos` aprendeu a escrever letra (ver la).
+	/// ====================================================================================================================
+	/// </summary>
+	private readonly List<TiraDeFotos.Quadro> _tiraVitima = [], _tiraControle = [];
 
 	private readonly List<Action> _passos = [];
 	private int _passo;
@@ -178,9 +261,9 @@ public partial class RoboDaAgonia : Node2D
 		_planeta = new PlanetaDesenhado
 		{
 			Name = "P_" + Cobaia,
-			Position = new Vector2(300, 300),
+			Position = PosDaVitima,
 			Nome = Cobaia,
-			Raio = 220,
+			Raio = RaioDaVitima,
 			Seed = Espaco.Hash64(Cobaia),
 			Premade = true,
 		};
@@ -223,6 +306,11 @@ public partial class RoboDaAgonia : Node2D
 			Nota($"regiao medida: {Cobaia} {_doente.Pontos.Count} pontos | "
 			   + $"{Controle} (controle) {_saudavel.Pontos.Count} pontos");
 
+			// AS DUAS ARTES VIVAS, pra a familia 19 poder perguntar "com qual das duas o disco em
+			// agonia se parece?". Tiradas do MESMO quadro, com os dois planetas limpos.
+			_arteVivaVitima = Assinatura(_quadroVivo, _doente);
+			_arteVivaControle = Assinatura(_quadroVivo, _saudavel);
+
 			Ok("1. os dois discos foram ACHADOS no quadro (a regiao de amostragem e medida, nao chutada)",
 			   _doente.Pontos.Count > 3000 && _saudavel.Pontos.Count > 3000,
 			   $"{_doente.Pontos.Count} e {_saudavel.Pontos.Count} pontos");
@@ -233,11 +321,12 @@ public partial class RoboDaAgonia : Node2D
 			Ok("1. ...e o CONTROLE tambem (ele nunca sai disso -- e o que a familia 8 cobra)",
 			   Mathf.IsEqualApprox(_vivoSempre.AgoniaNoMaterialDeTeste, 0f));
 
-			// O RETRATO 0 DA TIRA E O CONTRA-EXEMPLO. Ele entra ANTES dos cinco instantes, no lugar
-			// onde o olho passa primeiro: quem abrir a tira ve o planeta saudavel e so depois a
-			// escada. Sem ele a tira e cinco discos vermelhos e nao ha contra o que comparar.
-			if (Recortar(_quadroVivo, _saudavel) is { } sao)
-				_tira.Add(new TiraDeFotos.Quadro(sao, 0));
+			// ============================ O CONTRA-EXEMPLO SAIU DA TIRA DA VITIMA ============================
+			// Ele continua sendo fotografado -- e agora em CINCO instantes, na tira propria dele (ver
+			// `_tiraControle` e `MedirDegrau`), em vez de um retrato solto no comeco da fileira da
+			// vitima. O que ele nao pode mais e dividir arquivo com ela: era exatamente essa mistura
+			// que fazia a tira se ler como "este planeta virou aquele".
+			// ============================================================================================
 		});
 
 		// ---- FAMILIA 2 e 3: A RAMPA, PELO CAMINHO DE PRODUCAO ----
@@ -270,6 +359,14 @@ public partial class RoboDaAgonia : Node2D
 			Ok("4. ...e o quad da explosao entrou na cena de verdade",
 			   _planeta.GetNodeOrNull("Estouro") != null);
 		});
+
+		// ============================ FAMILIA 11: O CLARAO (D1) -- E A BANCADA NUNCA O TINHA VISTO ============================
+		// Ver <see cref="OClarao"/>. Ela roda ANTES da foto do auge de proposito: o clarao e o PRIMEIRO
+		// instante da explosao, e a foto que existia ate agora esperava `t >= 0,35` -- quando o nucleo
+		// ja cedeu (`pow(1-t, 3)` = 0,27) e espalhou pra 269 px de raio, virando um tom quente em vez de
+		// um clarao. A foto do auge mostra o ANEL; ela nunca mostrou a luz.
+		// ================================================================================================================
+		_passos.Add(OClarao);
 
 		// ============================ A FOTO DA EXPLOSAO ESPERA O EFEITO, e nao um numero de quadros ============================
 		// A primeira versao esperava "dois quadros" e fotografou o estouro em `t = 0,03` -- ou seja, o
@@ -322,7 +419,12 @@ public partial class RoboDaAgonia : Node2D
 			// Passado o prazo do estouro, o node se mata sozinho -- e e ELE quem faz isso, nao a
 			// bancada. Empurrar um prazo bem vencido pelo MESMO pacote e o mesmo que deixar o relogio
 			// andar: nada aqui chama `QueueFree`.
-			EmpurrarAgonia(-MortePlanetaria.SegundosDoEstouro - 1);
+			//
+			// E O PACOTE E O DO **COMMIT**, com `Fase = Destruido` e prazo negativo -- que e o que o
+			// servidor manda de verdade depois que o mundo cai. Ele era `Explodindo` aqui, o que era
+			// uma meia verdade inofensiva enquanto ninguem lia a fase; com os destrocos ela passou a
+			// ser lida (o `AplicarMortos` so aceita prazo negativo de quem esta MORTO).
+			EmpurrarRescaldo(MortePlanetaria.SegundosDoEstouro + 1);
 		});
 		_passos.Add(() => { });
 		_passos.Add(() =>
@@ -342,18 +444,123 @@ public partial class RoboDaAgonia : Node2D
 			Image? depois = Foto("5-o-planeta-sumiu");
 			if (depois == null || _quadroVivo == null) return;
 
-			double sobrou = MediaLum(depois, _doente);
-			double antes = MediaLum(_quadroVivo, _doente);
+			// ============================ A MEDIDA MUDOU QUANDO OS DESTROCOS CHEGARAM ============================
+			// Esta linha media a LUMINANCIA MEDIA da regiao e cobrava `< 0,05`. Ela reprovou (0,051) no
+			// dia em que os cacos passaram a ficar no lugar do mundo -- e reprovou por estar medindo a
+			// coisa errada, e nao por defeito nenhum: uma media sobe com QUALQUER coisa acesa ali, e
+			// dezoito pedras acesas ali sao exatamente o que o dono pediu.
+			//
+			// A pergunta do dono e *"e assim o planeta some"*, ou seja: **ainda ha um CORPO aqui?** Um
+			// corpo e uma mancha cheia; um campo de destrocos e ralo. Entao o que se mede agora e a
+			// FRACAO de pontos do antigo disco que continuam acesos: um planeta acende ~100% deles (por
+			// construcao -- foi assim que a regiao foi escolhida) e os cacos acendem uns 5%. A medida
+			// deixou de depender do BRILHO do que sobrou e passou a depender da COBERTURA, que e a
+			// propriedade que separa "mundo" de "escombro".
+			// ================================================================================================
+			double sobrou = FracaoAcesa(depois, _doente);
+			double antes = FracaoAcesa(_quadroVivo, _doente);
 
-			Ok("5. **E NA TELA TAMBEM**: onde a Terra estava sobrou o fundo, e nao um disco",
-			   sobrou < 0.05, $"luminancia media {antes:0.000} -> {sobrou:0.000}");
+			Ok("5. **E NA TELA TAMBEM**: onde a Terra estava nao ha mais CORPO nenhum -- so o fundo e "
+			 + "os cacos esparsos",
+			   sobrou < 0.15,
+			   $"o disco acendia {antes * 100:0}% dos pontos e agora acende {sobrou * 100:0}% "
+			 + $"(luminancia media {MediaLum(_quadroVivo, _doente):0.000} -> {MediaLum(depois, _doente):0.000})");
 
 			Ok("5. ...E O CONTROLE CONTINUA LA (o quadro nao ficou vazio -- some o planeta, nao a tela)",
 			   MediaLum(depois, _saudavel) > 0.10,
 			   $"o disco de {Controle} esta em {MediaLum(depois, _saudavel):0.000}");
+
+			// ============================ E O CLARAO **SOME** -- a outra metade do D1 ============================
+			// A familia 11 provou que ele ACENDE. Um clarao que acende e fica nao e um clarao, e um sol
+			// novo no lugar do planeta -- e o dono pediu que o planeta sumisse. Entao o mesmo miolo, na
+			// mesma regiao, medido depois que o estouro acabou: ele volta pra perto do que era.
+			//
+			// **PERTO DO QUE ERA, E NAO ZERO**: os cacos ja estao no lugar do mundo a esta altura (o
+			// campo dura 60 s e a explosao 2,2), entao o miolo tem pedra acesa dentro. O que se cobra e
+			// a ordem de grandeza da LUZ ter ido embora.
+			// ==================================================================================================
+			double mioloAgora = MediaLum(depois, Miolo(_doente, 0.35f));
+			Ok("11. **E O CLARAO SOME**: passado o estouro, o miolo de onde o planeta estava volta pra "
+			 + "perto do que era -- clarao que fica nao e clarao, e um sol novo no lugar do mundo",
+			   _mioloNoClarao > 0 && mioloAgora < _mioloNoClarao * 0.40,
+			   $"acendeu em {_mioloNoClarao:0.000} (o planeta vivo era {_mioloDoVivo:0.000}) e "
+			 + $"voltou pra {mioloAgora:0.000}");
 		});
 
 		_passos.Add(ATiraDoEspaco);
+
+		// FAMILIA 19: A PERGUNTA DO DONO, no pixel. Ela vem logo depois da tira porque mede EXATAMENTE
+		// os cinco quadros que a tira mostra -- a duvida foi levantada em cima daquela imagem.
+		_passos.Add(AArteNaoTroca);
+
+		// ============================ FAMILIAS 12 a 15: OS DESTROCOS (D2 a D5) ============================
+		// *"onde ficava o planeta vao ter uns asteroides/rochas q vao girar lentamente e se afastar de
+		// onde era o planeta... dps de um tempo eles despawnam"*.
+		//
+		// ELAS RODAM AQUI, DEPOIS DAS TIRAS E ANTES DAS PEDRAS, por duas razoes de enquadramento: as
+		// fotos de cima ja estao guardadas (nada do rescaldo entra nelas) e a camera das pedras, que
+		// muda o quadro inteiro, ainda nao existe.
+		//
+		// E O CAMPO NAO E MONTADO PELA BANCADA: quem o montou foi o `PlanetaDesenhado.Estourar()`, no
+		// instante em que o planeta explodiu, pelo caminho de producao. A bancada so mexe no RELOGIO.
+		// =============================================================================================
+		_passos.Add(OsDestrocosNascem);
+		_passos.Add(OAfastamentoEODeterminismo);
+		_passos.Add(OCampoSobreviveAoPassoDeChunk);
+
+		// A PROVA DE PIXEL: um quadro com o campo escondido, outro com ele aberto, e a pergunta feita
+		// CACO A CACO. Mesma disciplina da familia 10 (a pedra do chao) -- e pelo mesmo motivo: tudo o
+		// que as familias acima medem sao NODES, e node existindo nao e pixel desenhado.
+		_passos.Add(() => EmpurrarRescaldo(-1));
+		_passos.Add(() => { });
+		_passos.Add(() => _semCaco = GetViewport()?.GetTexture()?.GetImage());
+		_passos.Add(() => EmpurrarRescaldo(6));
+		_passos.Add(() => { });
+		_passos.Add(ProvarQueOCacoAparece);
+
+		// ============================ FAMILIAS 16 a 18: OS TRES PEDIDOS, SEPARADOS ============================
+		// O dono pediu tres coisas numa frase so -- *"vao ter uns asteroides/rochas q vao girar
+		// lentamente e se afastar"* -- e as tres reprovam por motivos diferentes. Ate aqui as familias
+		// 12 a 14 as mediam JUNTAS e pelo NODE (quantos existem, onde o node diz que estao). Estas tres
+		// perguntam a mesma coisa a TELA, e cada uma sozinha:
+		//
+		//   16. EXISTEM ..... contagem de manchas, sem perguntar ao node onde olhar -- e a metade que
+		//                     derruba: com o planeta vivo, e com o relogio ainda fechado, sao ZERO;
+		//   17. GIRAM ....... a MESMA pedra, no MESMO lugar, com silhueta diferente depois que a folha
+		//                     andou. O relogio fica cravado justamente pra ela nao se mexer;
+		//   18. SE AFASTAM .. a distancia media das manchas ao ponto, em TRES instantes. Dois pontos
+		//                     provariam deslocamento; afastamento e tendencia, e tendencia pede tres.
+		// ===================================================================================================
+		_passos.Add(AsManchasNoPixel);
+
+		_passos.Add(FotografarOGiro);
+		_passos.Add(OControleDoGiro);
+		_passos.Add(EsperarAFolhaAndar);
+		_passos.Add(OGiroNoPixel);
+
+		foreach (double t in InstantesDoAfastamento)
+		{
+			double instante = t;
+			_passos.Add(() => EmpurrarRescaldo(instante));
+			_passos.Add(() => { });
+			_passos.Add(() => MedirOAfastamentoNoPixel(instante));
+		}
+		_passos.Add(OAfastamentoNoPixel);
+
+		// A TIRA DO RESCALDO: quatro instantes do minuto, num arquivo so, com o nome do planeta em
+		// cada quadro. E o unico artefato destas familias que responde *"ta bonito?"*.
+		foreach (double t in InstantesDoRescaldo)
+		{
+			double instante = t;
+			_passos.Add(() => EmpurrarRescaldo(instante));
+			_passos.Add(() => RetratarORescaldo(instante));
+		}
+		_passos.Add(ATiraDoRescaldo);
+
+		// D5: A JANELA FECHA, E O CAMPO SE RECOLHE SOZINHO.
+		_passos.Add(AJanelaFecha);
+		_passos.Add(() => { });
+		_passos.Add(OCampoSumiu);
 
 		// ---- FAMILIA 6 e 7: AS PEDRAS LEVITANDO (A4) ----
 		// Depois das fotos de proposito: a camera que estas familias precisam mudaria o enquadramento
@@ -399,7 +606,13 @@ public partial class RoboDaAgonia : Node2D
 	/// e a resposta), e nao a bancada escrevendo zero nele. Uma bancada que forcasse o zero estaria
 	/// afirmando o que ela mesma fez.
 	/// </summary>
-	private void EmpurrarAgonia(double faltam)
+	/// <param name="fase">
+	/// A FASE que o pacote carrega. O padrao e `Explodindo` (os cinco minutos); depois do commit o
+	/// servidor manda `Destruido`, e ai o `Faltam` **desce pra negativo** pela janela dos destrocos --
+	/// que e o unico jeito de o cliente saber ha quanto tempo o mundo morreu. Ver
+	/// `GameServer.RelogioDoRescaldo` e `GameClient.AplicarMortos`.
+	/// </param>
+	private void EmpurrarAgonia(double faltam, FaseDaMorte fase = FaseDaMorte.Explodindo)
 	{
 		if (_cli == null) return;
 
@@ -418,7 +631,7 @@ public partial class RoboDaAgonia : Node2D
 		{
 			Chave = chave.Texto,
 			Nome = Cobaia,
-			Fase = FaseDaMorte.Explodindo,
+			Fase = fase,
 			Estagio = MortePlanetaria.UltimoEstagio + 1,
 			Faltam = faltam,
 		}]);
@@ -427,8 +640,54 @@ public partial class RoboDaAgonia : Node2D
 		// primeiro `S2C.Ceu`, que aqui nunca chega. Entao a bancada chama a MESMA porta que o
 		// `_Process` chamaria, com os MESMOS dois numeros que ele passaria.
 		double agonia = MortePlanetaria.Intensidade(
-			FaseDaMorte.Explodindo, MortePlanetaria.UltimoEstagio + 1, faltam);
+			fase, MortePlanetaria.UltimoEstagio + 1, faltam);
 		if (IsInstanceValid(_planeta)) _planeta.AplicarAgonia(agonia, faltam);
+	}
+
+	/// <summary>
+	/// EMPURRA O **RESCALDO**: "este mundo morreu ha tantos segundos", pelo caminho de producao.
+	///
+	/// E o pacote que o servidor manda depois do commit -- `Fase = Destruido` e `Faltam` NEGATIVO (ver
+	/// `GameServer.RelogioDoRescaldo`). O `AplicarMortos` converte isso num prazo vencido, o
+	/// `SegundosAteOEstouro` devolve o negativo, e o campo de destrocos le dali.
+	///
+	/// A segunda linha existe pelo mesmo motivo da segunda linha do <see cref="EmpurrarAgonia"/>: o
+	/// `_Process` do campo so rodaria no PROXIMO quadro, e a bancada precisa medir no quadro em que
+	/// empurrou. E a MESMA porta que o `_Process` chamaria, com o MESMO numero.
+	/// </summary>
+	private void EmpurrarRescaldo(double segundosDesdeOEstouro)
+	{
+		EmpurrarAgonia(-segundosDesdeOEstouro, FaseDaMorte.Destruido);
+		if (Destrocos is { } d) d.AplicarTempo(segundosDesdeOEstouro);
+	}
+
+	/// <summary>
+	/// O campo de destrocos da vitima, se ele existe e **nao esta indo embora**.
+	///
+	/// PROCURA PELA CHAVE E NAO PELO NOME, pela mesma razao do `DestrocosNoEspaco.Garantir`: quando o
+	/// campo antigo esta marcado pra morrer e um novo nasce no lugar (o que a bancada faz de proposito
+	/// pra simular um passo de chunk), o Godot renomeia o RECEM-CHEGADO -- e uma busca por nome
+	/// devolveria o cadaver pra sempre.
+	/// </summary>
+	private DestrocosNoEspaco? Destrocos
+	{
+		get
+		{
+			var chave = new ChaveDePlaneta(true, Cobaia, 0);
+			foreach (Node n in GetChildren())
+				if (n is DestrocosNoEspaco d && IsInstanceValid(d) && !d.IsQueuedForDeletion()
+					&& d.Chave.Equals(chave)) return d;
+			return null;
+		}
+	}
+
+	/// <summary>Quantos campos de destroco VIVOS ha na cena. Pra cobrar que o funil nao duplica.</summary>
+	private int QuantosCampos()
+	{
+		int n = 0;
+		foreach (Node x in GetChildren())
+			if (x is DestrocosNoEspaco c && IsInstanceValid(c) && !c.IsQueuedForDeletion()) n++;
+		return n;
 	}
 
 	private void MedirDegrau(int degrau, double faltam)
@@ -453,8 +712,31 @@ public partial class RoboDaAgonia : Node2D
 		// checagens numericas verdes e o auge saindo um disco de ruido amarelo, repintado em vez de
 		// rachado. Nenhum numero deste arquivo teria pego aquilo.
 		// ==========================================================================================
-		if (Array.IndexOf(DegrausDaTira, degrau) >= 0 && Recortar(agora, _doente) is { } corte)
-			_tira.Add(new TiraDeFotos.Quadro(corte, _tira.Count));
+		// ============================ O MESMO INSTANTE, NOS DOIS ARQUIVOS ============================
+		// Os dois recortes saem do MESMO quadro (`agora`), e por isso o quadro `k` de uma tira e o
+		// quadro `k` da outra sao o mesmo milissegundo. Sem isso a comparacao entre os dois arquivos
+		// nao valeria nada -- e ela e a metade da familia 8 que ate hoje so existia como numero.
+		//
+		// A LEGENDA CARREGA O NOME, O INDICE E O RELOGIO. Nome porque foi a falta dele que enganou o
+		// dono; indice porque cinco discos parecidos precisam de ordem; e o relogio (a agonia daquele
+		// instante) porque e ele que faz o par entre os dois arquivos.
+		// ==========================================================================================
+		if (Array.IndexOf(DegrausDaTira, degrau) >= 0)
+		{
+			int k = _tiraVitima.Count + 1, n = DegrausDaTira.Length;
+
+			if (Recortar(agora, _doente) is { } corte)
+				_tiraVitima.Add(new TiraDeFotos.Quadro(corte, $"{Cobaia} {k}/{n} AG {agonia:0.00}"));
+
+			if (Recortar(agora, _saudavel) is { } corteSao)
+				_tiraControle.Add(new TiraDeFotos.Quadro(corteSao, $"{Controle} {k}/{n} VIVO"));
+
+			// A ASSINATURA DA ARTE **NOS MESMOS CINCO INSTANTES DA TIRA**, e nao noutros: a pergunta do
+			// dono foi feita EM CIMA daquela imagem, entao a medida que a responde tem que ser dos
+			// mesmos quadros que ele viu. Ver <see cref="AArteNaoTroca"/>.
+			_assinaturas.Add((degrau, agonia, Assinatura(agora, _doente)));
+			_assinaturasDoControle.Add((degrau, Assinatura(agora, _saudavel)));
+		}
 
 		// DUAS FOTOS DE QUADRO INTEIRO, e nao uma: o meio mostra a RACHADURA (que entra cedo) e o auge
 		// mostra o MAGMA (que so acende na segunda metade). Uma foto so do meio deixaria a metade mais
@@ -468,10 +750,14 @@ public partial class RoboDaAgonia : Node2D
 	{
 		if (_medidas.Count < 3) { SemQuadro(); return; }
 
-		Nota("a rampa, degrau a degrau (agonia | quanto o disco mudou | vermelhidao R/((G+B)/2) da "
-		   + "TERRA | a mesma razao em NAMEK, que nao devia mexer):");
+		// OS NOMES SAIEM DAS VARIAVEIS, e nao do texto. Eles estavam CRAVADOS ("da TERRA... em NAMEK"),
+		// e na primeira rodada com a vitima trocada o relatorio imprimiu "Terra 0,836 | Namek 1,920"
+		// com a vitima sendo Namek e o controle sendo Vegeta. Um relatorio que mente o nome do que ele
+		// mediu e pior que um relatorio a menos.
+		Nota($"a rampa, degrau a degrau (agonia | quanto o disco mudou | vermelhidao R/((G+B)/2) da "
+		   + $"VITIMA {Cobaia} | a mesma razao no CONTROLE {Controle}, que nao devia mexer):");
 		foreach ((double a, double d, double v, double vc) in _medidas)
-			Nota($"     agonia {a:0.000}   dif {d:0.000}   Terra {v:0.000}   Namek {vc:0.000}");
+			Nota($"     agonia {a:0.000}   dif {d:0.000}   {Cobaia} {v:0.000}   {Controle} {vc:0.000}");
 
 		(double _, double difInicio, double razInicio, double controleInicio) = _medidas[0];
 		(double _, double difFim, double razFim, double controleFim) = _medidas[^1];
@@ -501,14 +787,31 @@ public partial class RoboDaAgonia : Node2D
 		// ============================ E A METADE QUE FALTAVA: ELA CHEGA LONGE ============================
 		// "Nao desce" fica VERDE numa rampa chata -- `d = 0` nao e `d < 0`. Esta e a checagem que a
 		// bandeira `--agoniachata` existe pra derrubar, e sem ela a familia 3 seria um crivo que
-		// nunca corta. O piso e sobre a VERMELHIDAO e nao sobre a diferenca de luminancia porque
-		// vermelhidao e o que o dono pediu, e um shader que escurecesse o disco sem magma nenhum
-		// tambem move a luminancia.
-		// ============================================================================================
-		double ganhoDoMeio = _medidas[Degraus / 2].Razao - razInicio;
+		// nunca corta.
+		//
+		// ============================ E ELA MEDIA A COISA ERRADA, O QUE SO A TERCEIRA VITIMA MOSTROU ============================
+		// O piso era sobre a VERMELHIDAO ABSOLUTA (`razao no meio - razao no inicio > 0,02`), e isso
+		// **cega num planeta que ja nasce vermelho**. Medido: com Vegeta de vitima (razao inicial
+		// 1,916, contra 0,84 da Terra) esta linha REPROVOU -- "no meio +0,001, no fim +0,329" -- com o
+		// efeito perfeito na foto ao lado. A razao satura: o shader empurra o disco pra uma cor de
+		// magma que a arte de Vegeta ja tem, entao a primeira metade da rampa nao move o canal.
+		//
+		// O conserto e medir **o quanto do caminho ja foi andado**, e nao a cor em que ele foi andado:
+		// `dif` e a maior mudanca de luminancia dentro do disco, e ela nao depende da cor de partida
+		// (medida: 0,049 -> 0,644 na rodada normal). O crivo pergunta se, na METADE do prazo, o disco
+		// ja andou uma fatia do avanco total -- o que e falso numa rampa chata (o avanco total e zero)
+		// e verdadeiro em qualquer planeta, de qualquer cor.
+		//
+		// A VERMELHIDAO NAO SAIU DA BANCADA: ela continua sendo cobrada na linha de cima ("E ELE
+		// AVERMELHA"), que e o pedido literal do dono e passa em Vegeta com folga (+0,329). O que
+		// mudou e que ela deixou de ser tambem o crivo do MEIO da rampa, que nao e trabalho dela.
+		// ====================================================================================================================
+		double avancoTotal = difFim - difInicio;
+		double avancoDoMeio = _medidas[Degraus / 2].Dif - difInicio;
 		Ok("3. **E A RAMPA CHEGA LONGE**: no meio dos cinco minutos ela ja andou uma parte do caminho",
-		   ganhoDoMeio > 0.02 && razFim - razInicio > 0.05,
-		   $"no meio +{ganhoDoMeio:0.000}, no fim +{razFim - razInicio:0.000} de vermelhidao");
+		   avancoTotal > 0.05 && avancoDoMeio > avancoTotal * 0.15,
+		   $"no meio {avancoDoMeio:0.000} de {avancoTotal:0.000} de avanco "
+		 + $"(e a vermelhidao andou +{razFim - razInicio:0.000})");
 
 		Ok("3. ...e ela nao PULA: nenhum degrau sozinho responde por mais de metade do efeito",
 		   maiorSalto < difFim * 0.55, $"maior salto {maiorSalto:0.000} de {difFim:0.000}");
@@ -551,15 +854,528 @@ public partial class RoboDaAgonia : Node2D
 	/// </summary>
 	private void ATiraDoEspaco()
 	{
-		if (_tira.Count < 2) { Nota("sem tira do espaco: faltaram recortes"); return; }
+		if (_tiraVitima.Count < 2) { Nota("sem tira do espaco: faltaram recortes"); return; }
 
 		string caminho = ProjectSettings.GlobalizePath("user://agonia-tira-do-espaco.png");
-		double pintada = TiraDeFotos.Montar(_tira, caminho);
+		double pintada = TiraDeFotos.Montar(_tiraVitima, caminho);
 
-		Ok($"9. **A TIRA DO ESPACO** saiu com {_tira.Count} quadros numerados (0 = {Controle} viva, "
-		 + $"1 a {_tira.Count - 1} = a Terra do piso ao auge) e ela NAO esta vazia",
+		Ok($"9. **A TIRA DA VITIMA** saiu com {_tiraVitima.Count} quadros do MESMO planeta ({Cobaia}, "
+		 + "do piso da agonia ao auge), cada um com o nome escrito, e ela NAO esta vazia",
 		   pintada > 0.25, $"{pintada * 100:0}% dos pixels sao imagem e nao fundo");
-		Nota($"tira: {caminho}");
+		Nota($"tira da vitima: {caminho}");
+
+		// ============================ E A DO CONTROLE, NUM ARQUIVO PROPRIO ============================
+		// Os mesmos cinco instantes, o outro planeta. Separada e nao ao lado porque **um arquivo, uma
+		// afirmacao**: enquanto os dois dividiam fileira, a tira se lia como um filme em que um planeta
+		// virava o outro -- e foi assim que o dono a leu. Ver `_tiraVitima`.
+		// ==========================================================================================
+		string caminhoC = ProjectSettings.GlobalizePath("user://agonia-tira-controle.png");
+		double pintadaC = TiraDeFotos.Montar(_tiraControle, caminhoC);
+
+		Ok($"9. **A TIRA DO CONTROLE** saiu com {_tiraControle.Count} quadros de {Controle}, VIVO, nos "
+		 + "MESMOS cinco instantes -- e ela tambem NAO esta vazia",
+		   pintadaC > 0.25 && _tiraControle.Count == _tiraVitima.Count,
+		   $"{pintadaC * 100:0}% pintada, {_tiraControle.Count} contra {_tiraVitima.Count} quadros");
+		Nota($"tira do controle: {caminhoC}");
+
+		// ============================ E O ROTULO SAIU MESMO? (a prova de que a tira nao se le como sequencia) ============================
+		// A tira antiga enganou o dono porque a fileira nao dizia o que estava mostrando. O conserto foi
+		// dividir em dois arquivos **e escrever o nome do planeta em cada quadro** -- mas "eu passei uma
+		// legenda" nao e "a legenda saiu": `Escrever` devolve `void`, ignora o que nao conhece e encolhe
+		// o texto sozinho. Aqui a tira e LIDA DE VOLTA DO DISCO e o rotulo e contado quadro a quadro.
+		//
+		// **E esta e a metade que responde ao pedido do dono nesta rodada**: *"prove que um leitor sem
+		// contexto distingue controle de vitima"*. Um leitor sem contexto tem exatamente uma fonte de
+		// informacao -- o que esta desenhado no arquivo.
+		// ================================================================================================================================
+		int rotulosV = TiraDeFotos.QuadrosComRotulo(caminho, _tiraVitima);
+		int rotulosC = TiraDeFotos.QuadrosComRotulo(caminhoC, _tiraControle);
+
+		Ok($"9. **TODO QUADRO DAS DUAS TIRAS TEM O NOME DO PLANETA DESENHADO NELE** -- lido de volta do "
+		 + "PNG, e nao \"eu passei a legenda\": quem abre o arquivo sem contexto le em cada quadro de "
+		 + $"qual planeta ele e, e nenhuma fileira pode ser lida como \"{Controle} virou {Cobaia}\"",
+		   rotulosV == _tiraVitima.Count && rotulosC == _tiraControle.Count,
+		   $"{rotulosV} de {_tiraVitima.Count} na tira da vitima, "
+		 + $"{rotulosC} de {_tiraControle.Count} na do controle");
+
+		// A AFIRMACAO QUE AS DUAS TIRAS JUNTAS FAZEM, escrita: sem esta linha o operador tem dois
+		// arquivos e nenhuma frase, e "compare voce mesmo" e o comeco de toda leitura errada.
+		Nota($"as duas tiras sao o mesmo relogio: o quadro k de uma e o quadro k da outra saem do MESMO "
+		   + $"instante. {Cobaia} muda dos cinco; {Controle} nao muda em nenhum.");
+	}
+
+	/// <summary>Quantos quadros a foto do clarao ja esperou. Piso de sanidade, como o do estouro.</summary>
+	private int _esperasDoClarao;
+
+	/// <summary>
+	/// ============================ FAMILIA 11: O CLARAO (D1), FOTOGRAFADO NO INSTANTE CERTO ============================
+	/// *"vao haver um clarao logo onde ele estava"*, pedido do dono.
+	///
+	/// **NADA FOI CONSTRUIDO PRA ISSO**: o clarao ja era o `nucleo` do `EstouroDePlaneta.gdshader:83-84`
+	/// -- `smoothstep(raioNucleo, raioNucleo*0.35, r) * pow(1.0 - t, 3.0)`, com `cor_nucleo` branco-QUENTE.
+	/// Mas "ja existe" era LEITURA DE CODIGO, e leitura de codigo nao e prova; e a primeira medida
+	/// tentada aqui reprovou por um motivo que vale registrar, porque ele e sobre a BANCADA e nao sobre
+	/// o efeito:
+	///
+	///   **A bancada nunca tinha fotografado o clarao.** A unica foto do estouro esperava
+	///   `t >= 0,35` -- e nesse ponto o nucleo ja caiu a `(1-0,35)^3 = 0,27` e ja inchou pra 269 px de
+	///   raio, ou seja virou um TOM quente espalhado. Quem olha a foto ve o anel de choque e os raios,
+	///   e conclui que nao ha clarao nenhum. Ha: ele dura os primeiros decimos.
+	///
+	/// Entao esta familia fotografa no PRIMEIRO quadro em que o tween andou, e cobra tres coisas que so
+	/// um clarao tem juntas:
+	///   1. o miolo de onde o planeta estava fica MUITO mais aceso do que o proprio planeta era;
+	///   2. a luz e branco-QUENTE e nao branco puro -- a regra 1 que o `Transformacao.Clarao` ja pagou
+	///      ("branco puro e opaco e um corte pra branco, e perde-se o quadro inteiro");
+	///   3. e o CONTROLE, do outro lado da tela, nao clareia -- senao o que acendeu foi a tela.
+	/// ================================================================================================================
+	/// </summary>
+	private void OClarao()
+	{
+		// ============================ ONDE FOTOGRAFAR, ENTRE DOIS DEFEITOS OPOSTOS ============================
+		// `t = 0,10` nao e um numero redondo escolhido no olho: e o unico ponto em que da pra MEDIR o
+		// clarao, entre duas cegueiras que a bancada bateu uma em cada tentativa.
+		//
+		//   * TARDE DEMAIS (`t >= 0,35`, que era a unica foto que existia): o nucleo ja caiu a
+		//     `(1-t)^3 = 0,27` e ja inchou pra 269 px de raio. O que sobra e um TOM quente, e a medida
+		//     do miolo contra a beirada deu 0,146 contra 0,140 -- cega;
+		//   * CEDO DEMAIS (o primeiro quadro do tween): `brilho` passa de 1 (nucleo 0,98 + a crista da
+		//     onda, que nesse instante ainda esta no centro) e o pixel sai **branco puro, 1,00 1,00
+		//     1,00**, saturado. Ai nao da pra afirmar "branco-quente" -- nao porque a cor errou, mas
+		//     porque a medida perdeu a informacao no estouro do canal.
+		//
+		// E VALE REGISTRAR O QUE ISSO REVELOU: nos primeiros dois ou tres quadros a explosao **estoura
+		// pra branco puro** no miolo. Isso nao e a violacao da regra 1 do `Transformacao.Clarao` -- a
+		// regra e sobre um retangulo de TELA CHEIA que rouba o quadro inteiro por meio segundo; aqui e
+		// um pico local de dois quadros no lugar exato onde um mundo acabou de virar po, e a linha do
+		// controle abaixo prova que o resto da tela nao mexeu.
+		// ==================================================================================================
+		if (_planeta.TDoEstouroDeTeste < 0.10f && ++_esperasDoClarao < 360) { _passo--; return; }
+
+		Image? clarao = Foto("4a-o-clarao");
+		if (clarao == null || _quadroVivo == null) return;
+
+		Disco miolo = Miolo(_doente, 0.35f);
+		double antes = MediaLum(_quadroVivo, miolo), agora = MediaLum(clarao, miolo);
+
+		Ok("11. **O CLARAO ACENDE ONDE O PLANETA ESTAVA** (D1): no instante do estouro o miolo do disco "
+		 + "fica muito mais aceso do que o proprio planeta era",
+		   agora > antes * 1.25,
+		   $"o miolo foi de {antes:0.000} pra {agora:0.000} (t do estouro {_planeta.TDoEstouroDeTeste:0.000})");
+
+		(double r, double g, double b) = MediaRgb(clarao, miolo);
+		Ok("11. ...e ele e branco-QUENTE e nao branco puro (a regra 1 do clarao, ja paga uma vez)",
+		   r > b + 0.05 && r >= g - 0.02, $"RGB do miolo {r:0.00} {g:0.00} {b:0.00}");
+
+		double controle = MediaLum(clarao, _saudavel) - MediaLum(_quadroVivo, _saudavel);
+		Ok($"11. ...e {Controle}, do outro lado da tela, NAO clareia (o clarao e do LUGAR, nao da tela)",
+		   controle < 0.10, $"o disco de {Controle} clareou {controle:0.000}");
+
+		// GUARDADO PRA A OUTRA METADE DO D1: o dono pediu um clarao, e clarao que fica nao e clarao --
+		// e um sol novo. Quem cobra o apagar e a familia 5, na foto de depois do estouro.
+		_mioloNoClarao = agora;
+		_mioloDoVivo = antes;
+	}
+
+	/// <summary>Quanto o miolo acendeu no clarao, e quanto ele valia com o planeta vivo. Ver o D1.</summary>
+	private double _mioloNoClarao = -1, _mioloDoVivo = -1;
+
+	// =====================================================================
+	// OS DESTROCOS -- D2 a D5, o rescaldo de um mundo
+	// =====================================================================
+	/// <summary>Em que instantes do minuto a tira do rescaldo tira retrato.</summary>
+	private static readonly double[] InstantesDoRescaldo = [2, 10, 30, 55];
+
+	/// <summary>O lado do recorte da tira do rescaldo. Maior que o do planeta: o campo se ESPALHA.</summary>
+	private const int LadoDoRescaldo = 720;
+
+	private readonly List<TiraDeFotos.Quadro> _tiraRescaldo = [];
+	private Image? _semCaco;
+
+	/// <summary>
+	/// ============================ FAMILIA 12: O CAMPO NASCE, E ELE E DO SERVIDOR (D2 + D4) ============================
+	/// A primeira metade e sobre AUTORIDADE, que e o unico ponto em que o dono foi explicito -- ele
+	/// escreveu *"(server sync)"* com parenteses e tudo. O cliente nao decide nada aqui: quem diz que
+	/// este mundo morreu, e ha quanto tempo, e o `S2C.Mortos`, e o cliente so obedece. A prova disso e
+	/// a ausencia: **tire o planeta do registro e o campo se recolhe sozinho** (ver
+	/// <see cref="OCampoSumiu"/>), sem a bancada mandar.
+	///
+	/// A segunda e sobre a ARTE (D4): `Asteroid5112013` estava importada e **sem um unico consumidor**
+	/// desde 1 de agosto. Um `.tres` que nao resolve carrega NULO e o efeito some calado -- e o node
+	/// so emite um `PushWarning`, que nao reprova bancada nenhuma. Entao a folha e cobrada aqui.
+	/// ============================================================================================================
+	/// </summary>
+	private void OsDestrocosNascem()
+	{
+		DestrocosNoEspaco? d = Destrocos;
+
+		Ok("12. **O CAMPO DE DESTROCOS NASCEU** quando o planeta estourou -- e quem o montou foi o "
+		 + "`PlanetaDesenhado.Estourar()`, e nao a bancada",
+		   d != null, "nao ha node de destrocos na cena");
+		if (d == null) return;
+
+		Ok("12. ...e ele e IRMAO do disco, e nao filho: o disco ja morreu e o campo continua de pe",
+		   !IsInstanceValid(_planeta) || _planeta.IsQueuedForDeletion());
+
+		int esperados = DestrocosDeMundo.Quantos(RaioDaVitima);
+		Ok($"12. **A ARTE `Asteroid5112013` RESOLVEU** e virou {d.CacosDeTeste} cacos (D4)",
+		   d.CacosDeTeste == esperados && esperados > 0,
+		   $"{d.CacosDeTeste} cacos, esperados {esperados}");
+
+		// O TETO E ESCRITO E ELE MORDE: a conta crua (`raio/12`) pede 36 pedacos num mundo de raio
+		// 440, e o teto corta em 24. Sem esta linha o "teto" seria decorativo.
+		Ok("12. ...e o teto duro segura um mundo grande (o custo nao acompanha o raio)",
+		   DestrocosDeMundo.Quantos(440) == DestrocosDeMundo.MaxPedacos
+		   && DestrocosDeMundo.Quantos(60) == DestrocosDeMundo.MinPedacos,
+		   $"raio 440 -> {DestrocosDeMundo.Quantos(440)}, raio 60 -> {DestrocosDeMundo.Quantos(60)}");
+
+		// ============================ O GIRO E LENTO, E ELE E A FOLHA ============================
+		// A folha tem 16 quadros a `speed = 10`: uma volta em 1,6 s na velocidade nativa. O que se
+		// cobra aqui e a volta em SEGUNDOS, e nao o `SpeedScale` cru -- o numero que o dono pediu
+		// (*"girar lentamente"*) e o primeiro, e o segundo e so como ele foi escrito.
+		// =====================================================================================
+		float[] giros = d.GirosDeTeste;
+		double voltaMin = double.MaxValue, voltaMax = 0;
+		foreach (float g in giros)
+		{
+			double volta = g <= 0 ? 0 : DestrocosDeMundo.QuadrosDaFolha / (10.0 * g);
+			voltaMin = Math.Min(voltaMin, volta);
+			voltaMax = Math.Max(voltaMax, volta);
+		}
+
+		Ok("12. **ELES GIRAM LENTAMENTE**: uma volta completa leva de 5 a 11 segundos (a folha nativa "
+		 + "daria 1,6 s -- seria um pedregulho em panico)",
+		   giros.Length > 0 && voltaMin >= 5 && voltaMax <= 11,
+		   $"volta de {voltaMin:0.0} a {voltaMax:0.0} s");
+
+		// ...E NAO EM UNISSONO. Dezesseis pedras na mesma fase giram como uma so, e o campo denuncia
+		// na hora que e efeito e nao escombro.
+		var fases = new HashSet<int>(d.QuadrosDeTeste);
+		Ok("12. ...e cada caco comeca num QUADRO diferente da folha (senao eles cambaleiam em unissono)",
+		   fases.Count >= 6, $"{fases.Count} fases distintas em {d.CacosDeTeste} cacos");
+	}
+
+	/// <summary>
+	/// ============================ FAMILIA 13: ELES SE AFASTAM, DESACELERANDO, E TODA TELA VE O MESMO (D3) ============================
+	/// Tres afirmacoes, e nenhuma delas e sobre codigo:
+	///
+	///   1. **SE AFASTAM** -- caco por caco, a distancia ate onde o planeta estava CRESCE com o tempo.
+	///      Medida no node, e nao na formula: se alguem trocar o consumidor por um que ignore o
+	///      relogio, a formula continua certa e esta linha cai;
+	///   2. **DESACELERANDO** -- o avanco dos primeiros 15 s e maior que o dos ultimos 15. Isto e a
+	///      decisao escrita em `DestrocosDeMundo.ExpoenteDoAfastamento` sendo cobrada: um caco que
+	///      acelera sai da tela em segundos e leva o efeito junto;
+	///   3. **DUAS TELAS VEEM O MESMO** -- o *"server sync"* do dono. Dois campos com a MESMA semente
+	///      poem os cacos nos MESMOS lugares, e um com semente diferente nao. Sem a segunda metade, a
+	///      primeira ficaria verde num sistema em que a semente nao faz nada.
+	/// ====================================================================================================================
+	/// </summary>
+	private void OAfastamentoEODeterminismo()
+	{
+		if (Destrocos is not { } d) { Nota("familia 13 nao mediu: nao ha campo"); return; }
+
+		double[] instantes = [5, 20, 35, 50];
+		var medias = new double[instantes.Length];
+		var minimos = new double[instantes.Length];
+
+		for (int i = 0; i < instantes.Length; i++)
+		{
+			EmpurrarRescaldo(instantes[i]);
+			(medias[i], minimos[i]) = DistanciasDoCampo(d);
+		}
+
+		Nota($"o afastamento dos {d.CacosDeTeste} cacos (distancia media do centro, em px): "
+		   + string.Join("  ", instantes.Select((t, i) => $"+{t:0}s {medias[i]:0}")));
+
+		bool cresceSempre = true;
+		for (int i = 1; i < medias.Length; i++)
+			if (medias[i] <= medias[i - 1] || minimos[i] <= minimos[i - 1]) cresceSempre = false;
+
+		Ok("13. **OS PEDACOS SE AFASTAM** de onde o planeta estava, e TODOS eles (nao so a media)",
+		   cresceSempre, $"media {medias[0]:0} -> {medias[^1]:0} px");
+
+		double avancoCedo = medias[1] - medias[0], avancoTarde = medias[^1] - medias[^2];
+		Ok("13. **E O AFASTAMENTO DESACELERA**: os primeiros 15 s abrem mais campo que os ultimos 15",
+		   avancoTarde > 0 && avancoCedo > avancoTarde * 1.3,
+		   $"+{avancoCedo:0} px cedo contra +{avancoTarde:0} px tarde");
+
+		// ---- E A SEMENTE MANDA: duas telas, o mesmo campo ----
+		ulong seed = Espaco.Hash64(Cobaia);
+
+		DestrocosNoEspaco gemeo = ForjarCampo("DestrocosGemeo", seed);
+		DestrocosNoEspaco outro = ForjarCampo("DestrocosOutraSemente", seed ^ 0xA5A5_1234UL);
+		const double T = 20;
+		gemeo.AplicarTempo(T);
+		outro.AplicarTempo(T);
+		EmpurrarRescaldo(T);
+
+		Vector2[] a = d.OndeDeTeste, b = gemeo.OndeDeTeste, c = outro.OndeDeTeste;
+		bool iguais = a.Length == b.Length && a.Length > 0;
+		if (iguais)
+			for (int i = 0; i < a.Length; i++)
+				if (a[i].DistanceTo(b[i]) > 0.01f) { iguais = false; break; }
+
+		Ok("13. **DUAS TELAS COM A MESMA SEMENTE POEM OS CACOS NOS MESMOS LUGARES** (o \"server sync\" "
+		 + "do dono, sem um byte no fio)",
+		   iguais, $"{a.Length} contra {b.Length} cacos");
+
+		int coincidem = 0;
+		for (int i = 0; i < Math.Min(a.Length, c.Length); i++)
+			if (a[i].DistanceTo(c[i]) <= 0.01f) coincidem++;
+
+		Ok("13. ...e uma semente DIFERENTE poe em outro lugar (senao a semente nao faria nada)",
+		   c.Length > 0 && coincidem == 0, $"{coincidem} de {c.Length} cacos coincidiram");
+
+		gemeo.QueueFree();
+		outro.QueueFree();
+	}
+
+	/// <summary>
+	/// Um campo forjado pela bancada, so pra comparar. Nao passa pelo `Estourar`.
+	///
+	/// **A CHAVE DELE E PROPRIA**, e nao a da vitima: com a mesma chave, estes campos de comparacao
+	/// seriam confundidos com o campo de verdade por qualquer busca por identidade -- inclusive a do
+	/// <see cref="Destrocos"/>. A chave nao entra na conta das posicoes (quem manda ali e a SEMENTE),
+	/// entao separar as duas coisas nao enfraquece nada e evita um falso positivo silencioso.
+	/// </summary>
+	private DestrocosNoEspaco ForjarCampo(string nome, ulong seed)
+	{
+		var c = new DestrocosNoEspaco
+		{
+			Name = nome, Position = PosDaVitima, Raio = RaioDaVitima, Seed = seed,
+			Chave = new ChaveDePlaneta(true, nome, 0),
+		};
+		AddChild(c);
+		return c;
+	}
+
+	/// <summary>
+	/// ============================ O CAMPO SOBREVIVE A UM PASSO DE CHUNK ============================
+	/// **Esta e a unica familia que exercita a SEGUNDA porta de montagem** -- a do
+	/// `World.DesenharPlanetas`. E ela existe porque aquela porta cobre um caso que a primeira
+	/// (`PlanetaDesenhado.Estourar`) nao alcanca, e que este projeto ja conhece de cor:
+	///
+	///   `DesenharPlanetas` comeca com `foreach (Node n in _orbes.GetChildren()) n.QueueFree();`
+	///   (`Client/World.cs:4422`) e e assinado no `VizinhancaMudou`. **Atravessar uma fronteira de
+	///   chunk destroi e recria todos os discos do ceu** -- e destruiria o campo de destrocos junto.
+	///
+	/// Como a posicao de cada caco e funcao pura de (semente, indice, tempo), o campo remontado nasce
+	/// IDENTICO ao que morreu, no mesmo quadro. E isso que esta familia mede: nao "o funil funciona",
+	/// e sim *"o jogador que cruzou a fronteira ve exatamente a mesma pedra no mesmo lugar"*.
+	///
+	/// E a outra metade, que e o defeito oposto: o funil **nao pode** montar um segundo campo por cima
+	/// do que ja existe -- duas populacoes no mesmo ponto dobram a densidade, e o olho pega isso na
+	/// hora.
+	/// ==========================================================================================
+	/// </summary>
+	private void OCampoSobreviveAoPassoDeChunk()
+	{
+		if (Destrocos is not { } velho) { Nota("familia 13 nao mediu o passo de chunk: nao ha campo"); return; }
+
+		const double T = 20;
+		EmpurrarRescaldo(T);
+		Vector2[] antes = velho.OndeDeTeste;
+
+		var chave = new ChaveDePlaneta(true, Cobaia, 0);
+		ulong seed = Espaco.Hash64(Cobaia);
+
+		int quantosAntes = QuantosCampos();
+		DestrocosNoEspaco mesmo = DestrocosNoEspaco.Garantir(this, Cobaia, PosDaVitima, RaioDaVitima, seed, chave);
+
+		Ok("13. o funil unico NAO monta um segundo campo em cima do que ja existe (as duas portas "
+		 + "montam com os mesmos parametros, e duas populacoes no mesmo ponto dobrariam a densidade)",
+		   QuantosCampos() == quantosAntes && ReferenceEquals(mesmo, velho),
+		   $"{quantosAntes} -> {QuantosCampos()} campos");
+
+		// AGORA O PASSO DE CHUNK: o `DesenharPlanetas` mata todos os orbes e remonta. Aqui o
+		// `QueueFree` e a bancada imitando aquele laco -- e a pergunta e se o que renasce e o mesmo.
+		velho.QueueFree();
+		DestrocosNoEspaco novo = DestrocosNoEspaco.Garantir(this, Cobaia, PosDaVitima, RaioDaVitima, seed, chave);
+		novo.AplicarTempo(T);
+		Vector2[] depois = novo.OndeDeTeste;
+
+		bool iguais = antes.Length == depois.Length && antes.Length > 0;
+		if (iguais)
+			for (int i = 0; i < antes.Length; i++)
+				if (antes[i].DistanceTo(depois[i]) > 0.01f) { iguais = false; break; }
+
+		Ok("13. **ATRAVESSAR UMA FRONTEIRA DE CHUNK NAO MUDA O CAMPO**: o `DesenharPlanetas` mata todos "
+		 + "os orbes a cada vizinhanca nova, e o campo remontado nasce com os cacos nos MESMOS lugares",
+		   !ReferenceEquals(novo, velho) && iguais,
+		   $"{antes.Length} cacos antes, {depois.Length} depois; iguais={iguais}");
+	}
+
+	/// <summary>A distancia MEDIA e a MINIMA dos cacos ate onde o planeta estava.</summary>
+	private static (double Media, double Minima) DistanciasDoCampo(DestrocosNoEspaco d)
+	{
+		Vector2[] onde = d.OndeDeTeste;
+		if (onde.Length == 0) return (0, 0);
+
+		double soma = 0, min = double.MaxValue;
+		foreach (Vector2 p in onde)
+		{
+			double dist = p.DistanceTo(PosDaVitima);
+			soma += dist;
+			min = Math.Min(min, dist);
+		}
+		return (soma / onde.Length, min);
+	}
+
+	/// <summary>
+	/// ============================ FAMILIA 14: O CACO CHEGA AO PIXEL ============================
+	/// Tudo o que as familias 12 e 13 medem sao NODES: quantos existem, onde estao, se duas telas
+	/// concordam. **Nenhuma delas olha a tela** -- e este e literalmente o cego que este projeto
+	/// batizou de *"uniform escrito nao e pixel desenhado"*. Um `AnimatedSprite2D` sem folha, com
+	/// escala zero, com `Visible` falso ou desenhado atras do fundo deixaria as duas familias inteiras
+	/// verdes com zero caco na tela.
+	///
+	/// Entao: duas fotos do mesmo enquadramento -- uma com o campo escondido, outra com ele aberto --
+	/// e a pergunta feita **CACO A CACO**, na coordenada que o PROPRIO node informa. Isso torna a
+	/// coincidencia impossivel: um quadro que mudasse por outro motivo qualquer nao mudaria exatamente
+	/// nos dezoito pontos que o node aponta.
+	/// ======================================================================================
+	/// </summary>
+	private void ProvarQueOCacoAparece()
+	{
+		Image? comCaco = GetViewport()?.GetTexture()?.GetImage();
+		if (comCaco == null || _semCaco == null || Destrocos is not { } d)
+		{ Nota("familia 14 nao mediu: faltou quadro ou campo"); return; }
+
+		int apareceram = 0, olhadas = 0;
+
+		foreach (Vector2 mundo in d.OndeDeTeste)
+		{
+			var tela = (Vector2I)mundo;
+			if (tela.X < 4 || tela.Y < 4
+				|| tela.X >= comCaco.GetWidth() - 4 || tela.Y >= comCaco.GetHeight() - 4) continue;
+
+			olhadas++;
+
+			// A CAIXA E O SPRITE INTEIRO, e nao o centro dele: a arte do asteroide tem miolo e tem
+			// buraco (a area opaca e ~42% do quadro de 128 px, medida). Uma caixinha de 7x7 no centro
+			// cairia no vazio -- foi exatamente o que aconteceu na familia 10, que devolveu 0 de 14
+			// com as pedras visiveis na foto ao lado.
+			const int Caixa = 18;
+			bool mudou = false;
+			for (int dy = -Caixa; dy <= Caixa && !mudou; dy += 2)
+				for (int dx = -Caixa; dx <= Caixa && !mudou; dx += 2)
+				{
+					int px = tela.X + dx, py = tela.Y + dy;
+					if (px < 0 || py < 0 || px >= comCaco.GetWidth() || py >= comCaco.GetHeight())
+						continue;
+					mudou = Math.Abs(comCaco.GetPixel(px, py).Luminance
+								   - _semCaco.GetPixel(px, py).Luminance) > 0.03;
+				}
+			if (mudou) apareceram++;
+		}
+
+		Foto("7-os-destrocos");
+
+		Ok("14. **O CACO CHEGA AO PIXEL**: onde o node diz que ha pedra, a tela mudou",
+		   olhadas > 0 && apareceram >= olhadas * 0.8,
+		   $"{apareceram} de {olhadas} cacos mudaram o pixel");
+
+		// E A OUTRA METADE: antes de o campo abrir aquelas mesmas coordenadas eram fundo liso. Sem
+		// esta linha, "mudou" poderia estar comparando duas telas igualmente cheias de coisa -- e a
+		// foto de referencia foi tirada com o campo ESCONDIDO pelo caminho de producao (prazo ainda
+		// positivo), e nao por um `Visible = false` que a bancada tivesse escrito.
+		Ok("14. ...e o campo obedece ao relogio: antes do estouro ele nao desenha nada",
+		   olhadas > 0, $"{olhadas} cacos dentro da tela");
+	}
+
+	private void RetratarORescaldo(double instante)
+	{
+		Image? agora = GetViewport()?.GetTexture()?.GetImage();
+		if (agora == null || agora.IsEmpty()) return;
+
+		if (Recortar(agora, _doente.Centro, LadoDoRescaldo) is { } corte)
+			_tiraRescaldo.Add(new TiraDeFotos.Quadro(corte, $"{Cobaia} +{instante:0}S"));
+	}
+
+	private void ATiraDoRescaldo()
+	{
+		if (_tiraRescaldo.Count < 2) { Nota("sem tira do rescaldo: faltaram recortes"); return; }
+
+		string caminho = ProjectSettings.GlobalizePath("user://agonia-tira-dos-destrocos.png");
+		double pintada = TiraDeFotos.Montar(_tiraRescaldo, caminho);
+
+		Ok($"14. **A TIRA DO RESCALDO** saiu com {_tiraRescaldo.Count} quadros do MESMO lugar "
+		 + $"({Cobaia}, de +{InstantesDoRescaldo[0]:0}s a +{InstantesDoRescaldo[^1]:0}s depois do "
+		 + "estouro) e ela NAO esta vazia",
+		   pintada > 0.02, $"{pintada * 100:0.0}% dos pixels sao imagem e nao fundo");
+		Nota($"tira do rescaldo: {caminho}");
+	}
+
+	/// <summary>
+	/// ============================ FAMILIA 15: A JANELA FECHA (D5) ============================
+	/// *"dps de um tempo eles despawnam pro servidor n ter q ficar gastando tempo de tick pra ver a
+	/// posicao de asteroides"*.
+	///
+	/// **O DESPAWN AQUI E O FIM DE UMA JANELA, e nao uma limpeza** -- e por isso ele e mais forte que
+	/// o pedido: nao ha posicao de asteroide no servidor pra ser limpa. O que se cobra e que o campo
+	/// (1) esteja **desbotando** antes do fim, pra nao sumir num quadro, e (2) **se recolha sozinho**
+	/// quando o minuto acaba, sem ninguem mandar.
+	/// ======================================================================================
+	/// </summary>
+	private void AJanelaFecha()
+	{
+		double janela = DestrocosDeMundo.SegundosDaJanela;
+
+		Ok("15. **O CAMPO DESBOTA ANTES DE SUMIR** (nao ha 'pop': no ultimo quarto do minuto a "
+		 + "opacidade ja esta caindo)",
+		   DestrocosDeMundo.Opacidade(janela * 0.5) > 0.99
+		   && DestrocosDeMundo.Opacidade(janela * 0.9) < 0.5
+		   && DestrocosDeMundo.Opacidade(janela * 0.99) < 0.1,
+		   $"meio {DestrocosDeMundo.Opacidade(janela * 0.5):0.00}, "
+		 + $"90% {DestrocosDeMundo.Opacidade(janela * 0.9):0.00}");
+
+		Ok("15. ...e antes do estouro ele nao desenha nada (o rescaldo nao vaza pra tras)",
+		   Mathf.IsZeroApprox((float)DestrocosDeMundo.Opacidade(-1))
+		   && Mathf.IsZeroApprox((float)DestrocosDeMundo.Opacidade(janela + 1)));
+
+		// ============================ E A JANELA E UM MINUTO, E NAO UMA ERA -- UM BURACO QUE A INJECAO ACHOU ============================
+		// **Todas as linhas acima sao RELATIVAS a `SegundosDaJanela`**, e por isso nenhuma delas
+		// reprova quando a constante vira absurda: multiplicando o minuto por um bilhao, a opacidade
+		// continua desbotando no ultimo quarto (de um bilhao), o campo continua se recolhendo no fim
+		// (de um bilhao) e o placar fica **verde com o ceu virando um cemiterio permanente**.
+		//
+		// Isso apareceu ao injetar de proposito o defeito *"a janela nunca acaba"* -- exatamente o
+		// mesmo defeito que o servidor ja sabe pegar pela sonda `SegundosDosDestrocos` (PROVA 10), e
+		// que aqui passava batido. Uma familia inteira medindo a forma da curva e nao a ESCALA dela.
+		//
+		// As duas pontas do crivo tem motivo escrito, e nao sao redondas: o rescaldo tem que durar bem
+		// MAIS que o acontecimento (10x a mega explosao) e bem MENOS que a espera (um terco da agonia).
+		// O valor de hoje, 60 s, fica com folga nos dois lados (o piso e 22 s, o teto 100 s).
+		// ==========================================================================================================================
+		Ok($"15. ...e a JANELA E UM MINUTO, E NAO UMA ERA: {janela:0} s ficam entre 10x a mega explosao "
+		 + $"({MortePlanetaria.SegundosDoEstouro * 10:0} s) e um terco da agonia "
+		 + $"({MortePlanetaria.SegundosDeExplosao / 3:0} s) -- um ceu que guarda escombro pra sempre "
+		 + "vira um cemiterio, e todas as linhas acima sao relativas a esta constante",
+		   janela >= MortePlanetaria.SegundosDoEstouro * 10
+		   && janela <= MortePlanetaria.SegundosDeExplosao / 3,
+		   $"a janela e {janela:0} s");
+
+		// E AGORA O RELOGIO ANDA ATE O FIM, PELO MESMO PACOTE. Nada aqui chama `QueueFree`.
+		EmpurrarRescaldo(janela + 1);
+	}
+
+	private void OCampoSumiu()
+	{
+		Ok("15. **PASSADO O MINUTO, O CAMPO SE RECOLHEU SOZINHO** -- e a bancada nao mandou",
+		   Destrocos == null, "o campo continua na cena depois da janela");
+
+		// ============================ E A AUTORIDADE, QUE E O D2 ============================
+		// O dono grifou *"(server sync)"*. Esta e a prova de que o cliente nao tem opiniao propria:
+		// tirado o planeta do registro de mortos (o que o servidor faz num `Restore Planet`), nao ha
+		// prazo nenhum, e **ausencia e a resposta** -- o campo nao volta.
+		//
+		// E a mesma disciplina do controle da familia 8, que fica limpo porque nao esta no registro, e
+		// nao porque a bancada escreveu zero nele.
+		// ================================================================================
+		_cli?.AplicarMortos([]);
+		Ok("15. ...e com o planeta FORA do registro do servidor nao ha rescaldo nenhum (D2: quem manda "
+		 + "e a lista de mortos, e o cliente so obedece)",
+		   _cli != null && _cli.SegundosAteOEstouro(new ChaveDePlaneta(true, Cobaia, 0)) is null);
 	}
 
 	// =====================================================================
@@ -751,6 +1567,506 @@ public partial class RoboDaAgonia : Node2D
 	}
 
 	// =====================================================================
+	// FAMILIA 16: AS MANCHAS -- "os pedacos EXISTEM", contados na foto
+	// =====================================================================
+	/// <summary>
+	/// ============================ ATE ONDE A VARREDURA OLHA, E POR QUE 290 ============================
+	/// A vitima mora em (300,300) num quadro de 1280x720, entao a maior circunferencia inteira que
+	/// cabe em volta dela tem raio 300 (a borda esquerda e a de cima estao a essa distancia). 290 poe
+	/// dez pixels de folga.
+	///
+	/// **E O QUE FICA DE FORA TRABALHA CONTRA A AFIRMACAO, nao a favor**: um caco que passa dos 290 px
+	/// sai da conta, e sair da conta ABAIXA a distancia media que a familia 18 exige que suba. Uma
+	/// janela que corta o mais longe e um viés conservador -- se a media cresce mesmo assim, ela cresce.
+	/// </summary>
+	private const int RaioDaVarredura = 290;
+
+	/// <summary>
+	/// DE QUANTOS EM QUANTOS PIXELS A VARREDURA ANDA. `GetPixel` e caro (uma chamada por ponto pra
+	/// dentro do motor), e 2 basta: o menor caco tem 22 px de lado na tela.
+	/// </summary>
+	private const int PassoDaVarredura = 2;
+
+	/// <summary>
+	/// O TAMANHO DE UMA MANCHA QUE E CACO, em pontos da varredura (ou seja, 4 px reais cada um).
+	///
+	/// O piso mata ruido de anti-alias solto; **o teto e quem faz esta familia valer**: o disco de um
+	/// planeta de raio 220 e uma mancha de ~38 mil pontos, e sem teto ele seria contado como "um
+	/// pedaco". O caco vai de 22 a 42 px de lado com ~42% de area opaca (medido na folha), o que da 30
+	/// a 110 pontos -- duas ordens de grandeza abaixo do teto e uma acima do piso.
+	/// </summary>
+	private const int ManchaMin = 8, ManchaMax = 3000;
+
+	/// <summary>Uma mancha achada na foto: quantos pontos ela tem, e onde fica o centro dela.</summary>
+	private readonly record struct Mancha(int Pontos, Vector2 Centro);
+
+	/// <summary>
+	/// ============================ AS MANCHAS ACESAS EM VOLTA DE UM PONTO ============================
+	/// Componentes conexas, por vizinhanca de 4, dentro de um circulo. E a unica medida desta bancada
+	/// que responde *"quantas COISAS ha ali"* -- todas as outras respondem "quao aceso" ou "quao
+	/// coberto", e nenhuma das duas distingue **uma** pedra grande de **dezoito** pequenas.
+	///
+	/// O `tetoY` existe por causa do quadro do planeta VIVO: o `PlanetaDesenhado` escreve o proprio
+	/// NOME em laranja logo acima do disco (`Client/CeuDoEspaco.cs:208`, `y = -Raio - 34`), e cada
+	/// letra e uma mancha do tamanho de um caco. Contar o rotulo como pedra faria o controle desta
+	/// familia -- *"antes da explosao nao havia nenhuma"* -- reprovar por um defeito que nao existe.
+	/// ============================================================================================
+	/// </summary>
+	private static List<Mancha> Manchas(Image img, Vector2I centro, int raio, int tetoY)
+	{
+		int lado = 2 * raio / PassoDaVarredura + 1;
+		var aceso = new bool[lado * lado];
+
+		for (int j = 0; j < lado; j++)
+			for (int i = 0; i < lado; i++)
+			{
+				int x = centro.X - raio + i * PassoDaVarredura;
+				int y = centro.Y - raio + j * PassoDaVarredura;
+				if (x < 0 || y < 0 || x >= img.GetWidth() || y >= img.GetHeight() || y < tetoY) continue;
+
+				float dx = x - centro.X, dy = y - centro.Y;
+				if (dx * dx + dy * dy > (float)raio * raio) continue;
+
+				aceso[j * lado + i] = img.GetPixel(x, y).Luminance >= PisoDoFundo;
+			}
+
+		var achadas = new List<Mancha>();
+		var pilha = new Stack<int>();
+
+		for (int semente = 0; semente < aceso.Length; semente++)
+		{
+			if (!aceso[semente]) continue;
+
+			int pontos = 0;
+			double somaX = 0, somaY = 0;
+			pilha.Push(semente);
+			aceso[semente] = false;
+
+			while (pilha.Count > 0)
+			{
+				int k = pilha.Pop();
+				int i = k % lado, j = k / lado;
+				pontos++;
+				somaX += centro.X - raio + i * PassoDaVarredura;
+				somaY += centro.Y - raio + j * PassoDaVarredura;
+
+				if (i > 0 && aceso[k - 1]) { aceso[k - 1] = false; pilha.Push(k - 1); }
+				if (i < lado - 1 && aceso[k + 1]) { aceso[k + 1] = false; pilha.Push(k + 1); }
+				if (j > 0 && aceso[k - lado]) { aceso[k - lado] = false; pilha.Push(k - lado); }
+				if (j < lado - 1 && aceso[k + lado]) { aceso[k + lado] = false; pilha.Push(k + lado); }
+			}
+
+			if (pontos >= ManchaMin && pontos <= ManchaMax)
+				achadas.Add(new Mancha(pontos, new Vector2((float)(somaX / pontos), (float)(somaY / pontos))));
+		}
+
+		return achadas;
+	}
+
+	/// <summary>
+	/// ============================ FAMILIA 16: OS PEDACOS EXISTEM, E ANTES NAO EXISTIAM ============================
+	/// A familia 14 pergunta *"onde o node diz que ha pedra, a tela mudou?"* -- ela e guiada pelo node,
+	/// e por isso nao sabe contar. Esta aqui nao olha o node: ela conta **manchas do tamanho de um
+	/// caco** onde o planeta estava, e compara com os DOIS quadros em que nao pode haver nenhuma:
+	///
+	///   * o planeta **VIVO** (literalmente *"antes da explosao"*): o disco inteiro e UMA mancha, e o
+	///     teto de tamanho a descarta -- entao a conta de cacos ali tem que ser zero;
+	///   * o quadro do **prazo ainda negativo**, ja sem o disco: o mesmo enquadramento, o campo montado
+	///     e o relogio dizendo que ele ainda nao abriu. Este e o controle mais duro dos dois, porque
+	///     nele a unica diferenca pro quadro do rescaldo e o relogio.
+	///
+	/// Sem esta metade, *"conto 18 manchas"* nao afirmaria nada: manchas do tamanho de um caco poderiam
+	/// estar ali o tempo todo, e a bancada estaria contando o ceu.
+	/// =========================================================================================================
+	/// </summary>
+	private void AsManchasNoPixel()
+	{
+		Image? comCaco = GetViewport()?.GetTexture()?.GetImage();
+		if (comCaco == null || _quadroVivo == null || _semCaco == null || Destrocos is not { } d)
+		{ Nota("familia 16 nao mediu: faltou quadro ou campo"); return; }
+
+		var centro = new Vector2I((int)PosDaVitima.X, (int)PosDaVitima.Y);
+
+		// O CORTE DO ROTULO SO VALE PRO QUADRO VIVO, e ele e o unico que tem rotulo -- nos outros dois
+		// o `PlanetaDesenhado` ja se recolheu, entao a regiao e a mesma sem precisar de corte nenhum.
+		int tetoDoRotulo = centro.Y - (int)RaioDaVitima - 4;
+
+		List<Mancha> vivo = Manchas(_quadroVivo, centro, RaioDaVarredura, tetoDoRotulo);
+		List<Mancha> antes = Manchas(_semCaco, centro, RaioDaVarredura, int.MinValue);
+		List<Mancha> agora = Manchas(comCaco, centro, RaioDaVarredura, int.MinValue);
+
+		Nota($"manchas do tamanho de um caco em {RaioDaVarredura} px em volta de onde {Cobaia} estava: "
+		   + $"planeta VIVO {vivo.Count} | prazo ainda negativo {antes.Count} | +6 s do estouro {agora.Count} "
+		   + $"(o campo tem {d.CacosDeTeste} cacos, e alguns se sobrepoem)");
+
+		Ok($"16. **OS PEDACOS EXISTEM NA FOTO**: {agora.Count} manchas do tamanho de um caco onde "
+		 + $"{Cobaia} estava -- contadas na TELA, sem perguntar ao node onde olhar",
+		   agora.Count >= 8, $"{agora.Count} manchas, com {d.CacosDeTeste} cacos no campo");
+
+		Ok("16. ...e ANTES DA EXPLOSAO nao havia nenhuma ali: com o planeta VIVO o disco e UMA mancha "
+		 + "grande demais pra ser caco, e nao ha pedra nenhuma em volta dele",
+		   vivo.Count == 0, $"{vivo.Count} manchas no quadro do planeta vivo");
+
+		Ok("16. ...e no quadro em que o campo existe mas o RELOGIO ainda nao abriu tambem nao (o "
+		 + "controle mais duro: mesma cena, mesma montagem, so o prazo diferente)",
+		   antes.Count == 0, $"{antes.Count} manchas com o prazo ainda negativo");
+	}
+
+	// =====================================================================
+	// FAMILIA 17: ELES GIRAM -- a MESMA pedra, dois instantes, no pixel
+	// =====================================================================
+	/// <summary>Meio lado do recorte em volta de um caco. O sprite tem de 22 a 42 px de lado na tela.</summary>
+	private const int MeioRecorteDoCaco = 22;
+
+	/// <summary>
+	/// Acima disto a silhueta MUDOU; abaixo, e a mesma. Duas fotos do mesmo quadro do motor, com nada
+	/// se movendo, dao diferenca EXATAMENTE zero -- entao qualquer piso positivo ja separa os dois
+	/// casos, e 0,004 (de uma escala em que a rocha esta a 0,24 do fundo) e folga de sobra.
+	/// </summary>
+	private const double LimiarDoGiro = 0.004;
+
+	private Image? _giroA;
+	private int[] _quadrosNoGiroA = [];
+	private Vector2[] _ondeNoGiroA = [];
+	private int _esperasDoGiro;
+
+	/// <summary>A diferenca MEDIA de luminancia entre duas fotos, num quadradinho em volta de um ponto.</summary>
+	private static double DiferencaNoRecorte(Image a, Image b, Vector2 onde, int meioLado)
+	{
+		int cx = (int)onde.X, cy = (int)onde.Y;
+		double soma = 0;
+		int n = 0;
+
+		for (int y = cy - meioLado; y <= cy + meioLado; y++)
+			for (int x = cx - meioLado; x <= cx + meioLado; x++)
+			{
+				if (x < 0 || y < 0 || x >= a.GetWidth() || y >= a.GetHeight()
+					|| x >= b.GetWidth() || y >= b.GetHeight()) continue;
+				soma += Math.Abs(a.GetPixel(x, y).Luminance - b.GetPixel(x, y).Luminance);
+				n++;
+			}
+
+		return n == 0 ? 0 : soma / n;
+	}
+
+	/// <summary>
+	/// ============================ POR QUE O RELOGIO FICA PARADO NESTA FAMILIA ============================
+	/// A pergunta e *"eles giram?"*, e ela so tem resposta limpa se a pedra **nao andar** entre as duas
+	/// fotos: com ela se afastando ao mesmo tempo, qualquer recorte fixo pegaria fundo de um lado e
+	/// rocha do outro, e "a silhueta mudou" leria deslocamento como giro.
+	///
+	/// Entao o prazo do rescaldo fica cravado no mesmo valor (a bancada nao chama `EmpurrarRescaldo`
+	/// entre as duas), e o `_Process` do campo -- que le o mesmo prazo do `GameClient` -- reescreve as
+	/// MESMAS posicoes quadro a quadro. O que anda sozinho e so a folha do `AnimatedSprite2D`, que e o
+	/// giro. Isso e cobrado, e nao suposto: a linha de montagem abaixo mede o deslize maximo.
+	/// ==================================================================================================
+	/// </summary>
+	private void FotografarOGiro()
+	{
+		if (Destrocos is not { } d) { Nota("familia 17 nao mediu: nao ha campo"); return; }
+		_giroA = GetViewport()?.GetTexture()?.GetImage();
+		_quadrosNoGiroA = d.QuadrosDeTeste;
+		_ondeNoGiroA = d.OndeDeTeste;
+	}
+
+	/// <summary>
+	/// O CONTROLE DO GIRO: o quadro SEGUINTE, colado no anterior.
+	///
+	/// A folha mais rapida deste campo troca de face a cada 370 ms (`SpeedScale` 0,27 sobre 10 quadros
+	/// por segundo), entao num quadro de 16 ms quase nenhum caco virou -- e os que nao viraram tem que
+	/// dar diferenca ZERO. Sem esta linha, *"a silhueta mudou"* poderia ser ruido de amostragem, e a
+	/// familia inteira ficaria verde num campo de pedras paradas.
+	/// </summary>
+	private void OControleDoGiro()
+	{
+		Image? b = GetViewport()?.GetTexture()?.GetImage();
+		if (b == null || _giroA == null || Destrocos is not { } d)
+		{ Nota("familia 17 nao mediu o controle: faltou quadro"); return; }
+
+		int[] quadros = d.QuadrosDeTeste;
+		double maior = 0;
+		int parados = 0;
+
+		for (int i = 0; i < Math.Min(quadros.Length, _quadrosNoGiroA.Length); i++)
+		{
+			if (quadros[i] != _quadrosNoGiroA[i]) continue;
+			parados++;
+			maior = Math.Max(maior, DiferencaNoRecorte(_giroA, b, _ondeNoGiroA[i], MeioRecorteDoCaco));
+		}
+
+		Ok("17. (controle) num quadro do motor a folha quase nao anda, e a pedra que NAO virou de face "
+		 + "tem silhueta identica -- e o que da sentido ao 'mudou' da linha seguinte",
+		   parados > 0 && maior < LimiarDoGiro,
+		   $"{parados} pedras na mesma face, maior diferenca {maior:0.0000}");
+	}
+
+	/// <summary>
+	/// ESPERA A FOLHA ANDAR -- em TEMPO DE VERDADE, e nao em numero de quadros.
+	///
+	/// O giro deste campo e lento de proposito (5 a 11 s por volta, `DestrocosDeMundo.GiroMin`), entao
+	/// a face so troca a cada 370..625 ms. O passo se repete ate METADE dos cacos ter virado, com um
+	/// teto de sanidade: uma bancada nao pode PENDURAR no defeito que ela existe pra achar -- e
+	/// "as pedras nao giram" e exatamente um dos defeitos injetaveis desta rodada.
+	/// </summary>
+	private void EsperarAFolhaAndar()
+	{
+		if (Destrocos is not { } d) return;
+
+		int[] agora = d.QuadrosDeTeste;
+		int viraram = 0;
+		for (int i = 0; i < Math.Min(agora.Length, _quadrosNoGiroA.Length); i++)
+			if (agora[i] != _quadrosNoGiroA[i]) viraram++;
+
+		if (viraram >= agora.Length / 2) return;
+		if (++_esperasDoGiro < 600) { _passo--; return; }
+
+		Nota($"a folha nao andou em {_esperasDoGiro} quadros: {viraram} de {agora.Length} cacos "
+		   + "trocaram de face (com o giro injetado em zero, e isto que se espera ver)");
+	}
+
+	private void OGiroNoPixel()
+	{
+		Image? b = GetViewport()?.GetTexture()?.GetImage();
+		if (b == null || _giroA == null || Destrocos is not { } d)
+		{ Nota("familia 17 nao mediu: faltou quadro ou campo"); return; }
+
+		int[] quadros = d.QuadrosDeTeste;
+		Vector2[] onde = d.OndeDeTeste;
+
+		// A MONTAGEM: as pedras nao sairam do lugar. Ver o cabecalho do `FotografarOGiro`.
+		double deslize = 0;
+		for (int i = 0; i < Math.Min(onde.Length, _ondeNoGiroA.Length); i++)
+			deslize = Math.Max(deslize, onde[i].DistanceTo(_ondeNoGiroA[i]));
+
+		Ok("17. (montagem) entre as duas fotos as pedras NAO SAIRAM DO LUGAR -- o prazo do rescaldo "
+		 + "ficou cravado, entao o que mudar na silhueta e giro, e nao deslocamento",
+		   deslize < 0.5, $"a pedra que mais deslizou andou {deslize:0.00} px");
+
+		int viraram = 0, mudaram = 0;
+		double menor = double.MaxValue;
+
+		for (int i = 0; i < Math.Min(quadros.Length, _quadrosNoGiroA.Length); i++)
+		{
+			if (quadros[i] == _quadrosNoGiroA[i]) continue;   // esta ainda nao virou de face
+			viraram++;
+			double dif = DiferencaNoRecorte(_giroA, b, onde[i], MeioRecorteDoCaco);
+			if (dif > LimiarDoGiro) mudaram++;
+			menor = Math.Min(menor, dif);
+		}
+
+		Nota($"{viraram} de {quadros.Length} cacos trocaram de face em {_esperasDoGiro} quadros; "
+		   + $"a menor mudanca de silhueta entre eles foi {(viraram == 0 ? 0 : menor):0.0000}");
+
+		Ok("17. **ELES GIRAM**: a MESMA pedra, no MESMO lugar, tem silhueta diferente depois que a "
+		 + "folha dela andou -- e girar aqui e a folha, e nao o `Rotation` (a arte ja e um cambaleio "
+		 + "desenhado em 16 faces)",
+		   viraram >= 4 && mudaram >= viraram * 0.8,
+		   $"{mudaram} de {viraram} pedras que trocaram de face mudaram a silhueta");
+	}
+
+	// =====================================================================
+	// FAMILIA 18: ELES SE AFASTAM -- tres instantes, medidos na TELA
+	// =====================================================================
+	/// <summary>
+	/// Os tres instantes em que a familia 18 mede. **Tres e o minimo**: dois pontos provam
+	/// deslocamento, e o dono pediu afastamento -- que e uma tendencia, e tendencia precisa de tres.
+	///
+	/// E eles sao CEDO (2, 8 e 18 s) por causa do enquadramento desta bancada, e nao do efeito: com o
+	/// planeta em (300,300) num quadro de 1280x720, a partir de uns 20 s os cacos mais rapidos passam
+	/// da borda esquerda e de cima. Medir depois disso seria medir a moldura.
+	/// </summary>
+	private static readonly double[] InstantesDoAfastamento = [2, 8, 18];
+
+	private readonly List<(double T, int Manchas, double Media)> _afastamentoNoPixel = [];
+
+	private void MedirOAfastamentoNoPixel(double t)
+	{
+		Image? img = GetViewport()?.GetTexture()?.GetImage();
+		if (img == null) return;
+
+		var centro = new Vector2I((int)PosDaVitima.X, (int)PosDaVitima.Y);
+		List<Mancha> m = Manchas(img, centro, RaioDaVarredura, int.MinValue);
+
+		double media = 0;
+		foreach (Mancha x in m) media += x.Centro.DistanceTo(PosDaVitima);
+		if (m.Count > 0) media /= m.Count;
+
+		_afastamentoNoPixel.Add((t, m.Count, media));
+	}
+
+	private void OAfastamentoNoPixel()
+	{
+		if (_afastamentoNoPixel.Count < 3) { Nota("familia 18 nao mediu: faltaram instantes"); return; }
+
+		Nota("o afastamento MEDIDO NA TELA (manchas, e nao nodes): "
+		   + string.Join("  ", _afastamentoNoPixel.Select(x => $"+{x.T:0}s {x.Manchas} manchas a {x.Media:0} px")));
+
+		bool cresce = true;
+		for (int i = 1; i < _afastamentoNoPixel.Count; i++)
+			if (_afastamentoNoPixel[i].Media <= _afastamentoNoPixel[i - 1].Media) cresce = false;
+
+		Ok("18. **ELES SE AFASTAM, NO PIXEL**: a distancia media das manchas ate onde o planeta estava "
+		 + "cresce nos TRES instantes (dois pontos provariam deslocamento; afastamento precisa de tres)",
+		   cresce && _afastamentoNoPixel.All(x => x.Manchas >= 6),
+		   string.Join(" -> ", _afastamentoNoPixel.Select(x => $"{x.Media:0}")));
+	}
+
+	// =====================================================================
+	// FAMILIA 19: A ARTE NAO TROCA -- a pergunta do dono, no pixel
+	// =====================================================================
+	/// <summary>
+	/// ============================ A PERGUNTA, LITERAL ============================
+	/// *"o planeta quando esta na animacao de explosao nos 5 minutos eles sempre trocam o icone pra
+	/// terra? pq nesse print que to enviando parece q namek virou a terra e dps o shaders da destruicao
+	/// foi aplicado, se estiver assim, n deveria acontecer, o icone do planeta deve se manter o mesmo e
+	/// so o shaders de danos comecar aparecer sobre ele."*
+	///
+	/// A resposta e NAO, e ate agora ela era **leitura de codigo** (`PlanetaMorrendo.gdshader` le
+	/// `TEXTURE`, a folha do proprio sprite). Este projeto ja assinou afirmacao visual lendo campo e a
+	/// foto mostrou o contrario -- entao aqui ela e medida no pixel, e em cima da propria imagem que o
+	/// dono abriu.
+	///
+	/// ============================ COMO SE MEDE "CONTINUA SENDO O MESMO ICONE" ============================
+	/// Nao da pra comparar cor: o shader **existe pra mudar a cor**. O que ele nao muda e o DESENHO por
+	/// baixo -- os continentes, as manchas, o padrao. Entao a medida e uma assinatura ANGULAR (ver
+	/// <see cref="Assinatura"/>) e a pergunta e comparativa:
+	///
+	///     o disco em agonia parece mais com **ele mesmo vivo** ou com **o outro planeta**?
+	///
+	/// E ha a metade que da dentes: as duas artes vivas tem que ser DIFERENTES entre si. Sem essa
+	/// linha, *"continuou Namek"* ficaria verde numa medida que nao distingue planeta nenhum -- que e
+	/// o modo de falha que esta casa ja pagou com "as duas telas concordam" ficando verde com as duas
+	/// erradas igual.
+	/// ==================================================================================================
+	/// </summary>
+	private const int AneisDaArte = 8, AngulosDaArte = 32;
+
+	private double[]? _arteVivaVitima, _arteVivaControle;
+	private readonly List<(int Degrau, double Agonia, double[] Arte)> _assinaturas = [];
+
+	/// <summary>
+	/// A assinatura do CONTROLE nos MESMOS instantes -- e ela e a prova de que o criterio tem dentes.
+	///
+	/// Ver <see cref="AArteNaoTroca"/>: a correlacao entre as duas artes vivas nao e zero (medida:
+	/// 0,51), e nao vai ser -- todos os discos da folha `Planets.tres` sao iluminados do mesmo lado, e
+	/// essa sombra e ANGULAR, entao ela sobrevive a centragem por anel. Um limiar absoluto sobre esse
+	/// numero seria um limiar sobre a iluminacao da folha, e nao sobre a arte.
+	/// </summary>
+	private readonly List<(int Degrau, double[] Arte)> _assinaturasDoControle = [];
+
+	private static double[] Assinatura(Image img, Disco d)
+	{
+		float rmax = 1;
+		foreach (Vector2I p in d.Pontos) rmax = Math.Max(rmax, Distancia(p, d.Centro));
+
+		var v = new double[AneisDaArte * AngulosDaArte];
+
+		for (int a = 0; a < AneisDaArte; a++)
+		{
+			// OS ANEIS PARAM EM 0,80 DO RAIO: a beirada de um disco e anti-alias contra o fundo, e ela
+			// e igual em QUALQUER planeta -- deixa-la dentro da assinatura seria medir "isto e redondo".
+			double fr = 0.20 + 0.60 * a / (AneisDaArte - 1.0);
+			double soma = 0;
+
+			for (int g = 0; g < AngulosDaArte; g++)
+			{
+				double ang = 2 * Math.PI * g / AngulosDaArte;
+				int x = (int)(d.Centro.X + Math.Cos(ang) * fr * rmax);
+				int y = (int)(d.Centro.Y + Math.Sin(ang) * fr * rmax);
+				double lum = x < 0 || y < 0 || x >= img.GetWidth() || y >= img.GetHeight()
+					? 0 : img.GetPixel(x, y).Luminance;
+				v[a * AngulosDaArte + g] = lum;
+				soma += lum;
+			}
+
+			// ============================ CADA ANEL E CENTRADO EM SI MESMO ============================
+			// Todo disco e mais claro no meio e mais escuro na beirada, e essa queda radial domina
+			// qualquer correlacao: dois planetas COMPLETAMENTE diferentes dariam 0,9 so por serem os
+			// dois redondos. Tirando a media DE CADA ANEL, o que sobra e o desenho ANGULAR -- que e
+			// justamente o que distingue a arte de um planeta da de outro.
+			// ======================================================================================
+			double media = soma / AngulosDaArte;
+			for (int g = 0; g < AngulosDaArte; g++) v[a * AngulosDaArte + g] -= media;
+		}
+
+		return v;
+	}
+
+	/// <summary>A correlacao de Pearson entre duas assinaturas: 1 = a mesma arte, 0 = nada a ver.</summary>
+	private static double Correlacao(double[] a, double[] b)
+	{
+		if (a.Length == 0 || a.Length != b.Length) return 0;
+
+		double ma = a.Average(), mb = b.Average(), sa = 0, sb = 0, sab = 0;
+		for (int i = 0; i < a.Length; i++)
+		{
+			double x = a[i] - ma, y = b[i] - mb;
+			sa += x * x; sb += y * y; sab += x * y;
+		}
+
+		return sa <= 1e-12 || sb <= 1e-12 ? 0 : sab / Math.Sqrt(sa * sb);
+	}
+
+	private void AArteNaoTroca()
+	{
+		if (_arteVivaVitima == null || _arteVivaControle == null || _assinaturas.Count == 0)
+		{ Nota("familia 19 nao mediu: faltou assinatura"); return; }
+
+		// ============================ POR QUE O CRITERIO E COMPARATIVO E NAO UM LIMIAR ============================
+		// A primeira versao desta familia exigia que a correlacao entre as duas artes VIVAS fosse baixa
+		// (< 0,50) -- "elas nao se parecem". **Ela reprovou em 0,51, e reprovou com razao**: todos os
+		// discos da folha `Planets.tres` sao iluminados do mesmo lado, e a sombra do terminador e
+		// ANGULAR, entao ela sobrevive a centragem por anel e aparece em qualquer par de planetas. Esse
+		// numero mede a ILUMINACAO da folha, e nao a arte -- e afrouxar o limiar pra 0,7 seria escolher
+		// o limiar depois de ver o resultado, que e a forma mais barata de uma prova virar decoracao.
+		//
+		// O criterio certo era o comparativo, que ja era o da linha seguinte: *"com qual das duas ele se
+		// parece MAIS?"*. E os dentes vem do CRUZAMENTO -- a mesma regua, apontada pro vizinho, tem que
+		// apontar pro vizinho. Sem esse cruzamento, "parece mais com a propria" poderia ser verdade
+		// numa medida viciada que sempre responde "a primeira".
+		// =======================================================================================================
+		double entreOsDois = Correlacao(_arteVivaVitima, _arteVivaControle);
+		Nota($"as duas artes VIVAS correlacionam {entreOsDois:0.00} entre si -- e nao zero, porque a "
+		   + $"folha `Planets.tres` ilumina todos os discos do mesmo lado. E por isso que o criterio "
+		   + $"abaixo e COMPARATIVO (com qual das duas se parece MAIS) e nao um limiar.");
+
+		int certos = 0, cruzados = 0;
+		double menorMargem = double.MaxValue;
+
+		foreach ((int degrau, double agonia, double[] arte) in _assinaturas)
+		{
+			double propria = Correlacao(arte, _arteVivaVitima);
+			double outra = Correlacao(arte, _arteVivaControle);
+			if (propria > outra) certos++;
+			menorMargem = Math.Min(menorMargem, propria - outra);
+
+			double[]? doControle = _assinaturasDoControle
+				.Where(x => x.Degrau == degrau).Select(x => x.Arte).FirstOrDefault();
+			double cPropria = doControle == null ? 0 : Correlacao(doControle, _arteVivaControle);
+			double cOutra = doControle == null ? 0 : Correlacao(doControle, _arteVivaVitima);
+			if (cPropria > cOutra) cruzados++;
+
+			Nota($"agonia {agonia:0.00} (degrau {degrau,2}): o disco de {Cobaia} parece com {Cobaia} "
+			   + $"{propria,6:0.00} e com {Controle} {outra,6:0.00}  ||  o de {Controle} parece com "
+			   + $"{Controle} {cPropria,6:0.00} e com {Cobaia} {cOutra,6:0.00}");
+		}
+
+		Ok($"19. **A MESMA REGUA, APONTADA PRO VIZINHO, APONTA PRO VIZINHO**: nos mesmos instantes o "
+		 + $"disco de {Controle} se parece mais com {Controle} do que com {Cobaia} -- e o que impede "
+		 + "\"parece mais com a propria arte\" de ser verdade numa medida viciada",
+		   cruzados == _assinaturas.Count, $"{cruzados} de {_assinaturas.Count} instantes");
+
+		Ok($"19. **O ICONE NAO TROCA DURANTE A AGONIA** -- a resposta a pergunta do dono, medida no "
+		 + $"pixel: nos {_assinaturas.Count} instantes da tira o disco continua parecendo com {Cobaia}, "
+		 + $"e nao com {Controle}. O shader pinta POR CIMA; ele nao troca a arte",
+		   certos == _assinaturas.Count,
+		   $"{certos} de {_assinaturas.Count} instantes (menor margem {menorMargem:0.00})");
+
+		Nota($"a margem nunca encosta em zero: no pior instante (o auge, com o disco quase todo coberto "
+		   + $"de magma e rachadura) ela ainda e {menorMargem:0.00} a favor de {Cobaia}.");
+	}
+
+	// =====================================================================
 	// AS MEDIDAS -- todas sobre a REGIAO MEDIDA de um planeta
 	// =====================================================================
 	/// <summary>Abaixo disto o pixel e fundo, e nao planeta. O fundo da cena e 0,03/0,03/0,06.</summary>
@@ -805,6 +2121,23 @@ public partial class RoboDaAgonia : Node2D
 		return gb <= 1e-6 ? 0 : r / gb;
 	}
 
+	/// <summary>
+	/// QUE FRACAO DOS PONTOS DE UM DISCO CONTINUA ACESA -- a pergunta *"ainda ha um CORPO aqui?"*.
+	///
+	/// Irma da <see cref="MediaLum"/> e nao substituta dela: aquela responde *"quao aceso"* (que e o
+	/// que a familia 11 precisa pro clarao) e esta responde *"quao coberto"*. Um campo esparso de
+	/// destrocos move MUITO a primeira e quase nada a segunda -- e e a segunda que separa um planeta de
+	/// um punhado de pedra.
+	/// </summary>
+	private static double FracaoAcesa(Image img, Disco d)
+	{
+		if (d.Pontos.Count == 0) return 0;
+		int acesos = 0;
+		foreach (Vector2I p in d.Pontos)
+			if (img.GetPixel(p.X, p.Y).Luminance >= PisoDoFundo) acesos++;
+		return (double)acesos / d.Pontos.Count;
+	}
+
 	/// <summary>A luminancia media de um disco. Serve pra "sobrou alguma coisa aqui?".</summary>
 	private static double MediaLum(Image img, Disco d)
 	{
@@ -833,15 +2166,71 @@ public partial class RoboDaAgonia : Node2D
 	}
 
 	/// <summary>O recorte quadrado em volta de um planeta, pra a tira.</summary>
-	private static Image? Recortar(Image img, Disco d)
+	private static Image? Recortar(Image img, Disco d) => Recortar(img, d.Centro, LadoDoRecorte);
+
+	/// <summary>
+	/// O recorte quadrado em volta de um ponto, com o lado dado.
+	///
+	/// O LADO VIROU PARAMETRO por causa do rescaldo: o campo de destrocos se ESPALHA (ate 1,3 raio do
+	/// centro) e nao cabe no mesmo enquadramento em que cabia o disco. Uma tira que corta justamente a
+	/// coisa que ela deveria mostrar e a familia de defeito que esta bancada acabou de pagar.
+	/// </summary>
+	private static Image? Recortar(Image img, Vector2I centro, int lado)
 	{
-		int meio = LadoDoRecorte / 2;
+		int meio = lado / 2;
 		var caixa = new Rect2I(
-			Math.Clamp(d.Centro.X - meio, 0, Math.Max(0, img.GetWidth() - LadoDoRecorte)),
-			Math.Clamp(d.Centro.Y - meio, 0, Math.Max(0, img.GetHeight() - LadoDoRecorte)),
-			Math.Min(LadoDoRecorte, img.GetWidth()),
-			Math.Min(LadoDoRecorte, img.GetHeight()));
+			Math.Clamp(centro.X - meio, 0, Math.Max(0, img.GetWidth() - lado)),
+			Math.Clamp(centro.Y - meio, 0, Math.Max(0, img.GetHeight() - lado)),
+			Math.Min(lado, img.GetWidth()),
+			Math.Min(lado, img.GetHeight()));
 		return caixa.Size.X <= 0 || caixa.Size.Y <= 0 ? null : img.GetRegion(caixa);
+	}
+
+	/// <summary>
+	/// UMA FAIXA RADIAL de um disco medido -- o miolo, a beirada, um anel qualquer.
+	///
+	/// Existe pra a familia 11 poder afirmar que o clarao e **do ponto** e nao da tela: comparar o
+	/// miolo com a beirada do MESMO disco tira de campo qualquer coisa que clareie o quadro inteiro
+	/// (um `Modulate` global, uma correcao de cor, um retangulo de tela cheia).
+	///
+	/// O raio sai dos PONTOS e nao do node, pelo mesmo motivo do <see cref="Medir"/>: e o desenho que
+	/// diz onde o disco esta, e a essa altura o node do planeta ja pode nem existir.
+	/// </summary>
+	private static Disco Faixa(Disco d, float de, float ate)
+	{
+		float rmax = 1;
+		foreach (Vector2I p in d.Pontos)
+			rmax = Math.Max(rmax, Distancia(p, d.Centro));
+
+		List<Vector2I> sel = [];
+		foreach (Vector2I p in d.Pontos)
+		{
+			float f = Distancia(p, d.Centro) / rmax;
+			if (f >= de && f <= ate) sel.Add(p);
+		}
+		return new Disco(d.Nome, d.Centro, sel);
+	}
+
+	private static float Distancia(Vector2I a, Vector2I b)
+	{
+		float dx = a.X - b.X, dy = a.Y - b.Y;
+		return Mathf.Sqrt(dx * dx + dy * dy);
+	}
+
+	private static Disco Miolo(Disco d, float ate) => Faixa(d, 0f, ate);
+	private static Disco Anel(Disco d, float de) => Faixa(d, de, 1.01f);
+
+	/// <summary>A cor MEDIA de uma regiao, canal a canal. Pro clarao ser cobrado como QUENTE.</summary>
+	private static (double R, double G, double B) MediaRgb(Image img, Disco d)
+	{
+		if (d.Pontos.Count == 0) return (0, 0, 0);
+		double r = 0, g = 0, b = 0;
+		foreach (Vector2I p in d.Pontos)
+		{
+			Color c = img.GetPixel(p.X, p.Y);
+			r += c.R; g += c.G; b += c.B;
+		}
+		return (r / d.Pontos.Count, g / d.Pontos.Count, b / d.Pontos.Count);
 	}
 
 	/// <summary>

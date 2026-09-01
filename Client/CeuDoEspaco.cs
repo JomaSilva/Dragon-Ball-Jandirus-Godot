@@ -282,13 +282,21 @@ public partial class PlanetaDesenhado : Node2D
 	{
 		if (GameClient.Instance is not { } cli) return;
 
-		var chave = ChaveDePlaneta.De(new PlanetaNoEspaco
-		{
-			Nome = Nome, Seed = Seed, Premade = Premade,
-		});
-
+		ChaveDePlaneta chave = Chave;
 		AplicarAgonia(cli.IntensidadeDaAgonia(chave), cli.SegundosAteOEstouro(chave));
 	}
+
+	/// <summary>
+	/// A CHAVE DESTE PLANETA -- a identidade honesta, e nao o nome (ver <see cref="ChaveDePlaneta"/>).
+	///
+	/// Virou propriedade quando o <see cref="Estourar"/> passou a precisar dela pra entregar a chave ao
+	/// campo de destrocos: duas montagens da mesma chave em dois metodos do mesmo arquivo e o comeco
+	/// classico de duas nocoes de identidade discordando.
+	/// </summary>
+	private ChaveDePlaneta Chave => ChaveDePlaneta.De(new PlanetaNoEspaco
+	{
+		Nome = Nome, Seed = Seed, Premade = Premade,
+	});
 
 	/// <summary>
 	/// ESTADO -> UNIFORM -> PIXEL, num metodo so.
@@ -389,6 +397,21 @@ public partial class PlanetaDesenhado : Node2D
 		// muito mais longe que um soco, e o raio dele e a unica medida de "muito mais longe" que o
 		// espaco tem.
 		AudioDirector.EfeitoNoLugar(this, Trilha.Explosao, 1f, Raio * 8f);
+
+		// ============================ E O QUE SOBRA DO MUNDO NASCE AQUI -- IRMAO, E NAO FILHO ============================
+		// *"onde ficava o planeta vao ter uns asteroides/rochas"*, pedido do dono. O campo vai pro PAI
+		// e nao pra este node porque este node **se mata** 2,2 s depois (o `QueueFree` do
+		// `AplicarAgonia`, que e o *"e assim o planeta some"*) -- um campo pendurado nele morreria
+		// junto, e o rescaldo dura 60 s.
+		//
+		// **O CLARAO QUE O DONO PEDIU JA E O `nucleo` DO SHADER ACIMA** (`EstouroDePlaneta.gdshader:83`),
+		// que acende exatamente onde o planeta estava e cede em `(1-t)^3`. Nao ha efeito novo aqui: o
+		// que se acrescenta e so o que sobra depois que ele cede.
+		//
+		// A montagem passa pelo funil unico (`Garantir`) porque o `World.DesenharPlanetas` monta pela
+		// outra porta -- ver o cabecalho de la.
+		if (GetParent() is { } pai)
+			DestrocosNoEspaco.Garantir(pai, Nome, Position, Raio, Seed, Chave);
 	}
 
 	/// <summary>A agonia que o material do planeta esta desenhando AGORA. Pra bancada -- ver o robo.</summary>

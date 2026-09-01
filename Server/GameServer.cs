@@ -2299,6 +2299,17 @@ public partial class GameServer : Node
 		_planetaDeTeste = Array.IndexOf(args, "--planetateste") >= 0;
 		if (_planetaDeTeste) GD.Print("[server] BANCADA: destruicao de planeta no 1o login");
 
+		// `--destrocosvivos`: o RESCALDO com dois clientes de VERDADE. A `--planetateste` prova o
+		// relogio do rescaldo sem desenhar nada e a `--diagagonia` prova o pixel num processo so; a
+		// palavra que o dono grifou -- *"ele vai sumir do espaco pra TODOS os jogadores (server
+		// sync)"* -- so tem sentido com dois processos. Ver `GameServer.DestrocosVivosTeste.cs`.
+		//
+		// O ARGUMENTO DA FLAG E DO CLIENTE (`--destrocos a|b` = o papel); o servidor e um so e nao
+		// tem papel, entao aqui basta a presenca.
+		_destrocosVivosLigados = Array.IndexOf(args, "--destrocosvivos") >= 0;
+		if (_destrocosVivosLigados)
+			GD.Print("[server] BANCADA: o rescaldo sera medido quando os dois clientes entrarem");
+
 		// `--provateste`: as SETE perguntas do dono sobre NPC e saga, cada uma com o defeito INJETADO.
 		//
 		// Ela nao repete o que a `--povoteste` e a `--sagateste` afirmam: ela prova que aquelas
@@ -4239,6 +4250,10 @@ public partial class GameServer : Node
 		// motivo". A viva espera `--vozvivagente` clientes (padrao 4); a dupla espera 2.
 		VozVivaNoLogin();
 		VozDuplaNoLogin();
+
+		// E A DO RESCALDO, que espera DOIS: o "pra todos os jogadores" do dono nao cabe num processo
+		// so. Ver `GameServer.DestrocosVivosTeste.cs`.
+		DestrocosVivosNoLogin();
 	}
 
 	/// <summary>
@@ -4905,6 +4920,10 @@ public partial class GameServer : Node
 		// silencio, que e o mesmo modo de falhar do `--esquivateste`.
 		TickDaVozDupla();
 		TickDaVozViva();
+
+		// E O DA BANCADA DO RESCALDO (`--destrocosvivos`), guardado pela propria flag. Ele so vira
+		// fase; o pavio do planeta desce pelo `TickDaDestruicao`, que e o de producao.
+		TickDosDestrocosVivos();
 
 		// OS MUNDOS QUE NASCERAM FORA DO TIQUE. Ver `GameServer.Procedural.cs`: gerar um planeta
 		// custa de 27 ms (352 tiles) a ~220 ms (1000), e fazer isso aqui dentro parava o servidor

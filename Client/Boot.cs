@@ -1455,6 +1455,20 @@ public partial class Boot : Node2D
 		if (Arg(OS.GetCmdlineArgs(), "--vozdupla") is { } papelDaDupla)
 			AddChild(new RoboDeVozDupla { Name = "RoboDeVozDupla", Papel = papelDaDupla });
 
+		// --destrocos <a|b>: o RESCALDO de um mundo morto visto por DOIS clientes de verdade.
+		//
+		// O dono escreveu *"ele vai sumir do espaco pra todos os jogadores (server sync)"*, e "pra
+		// todos" e uma afirmacao sobre PROCESSOS. A `--diagagonia` mede o efeito inteiro no pixel, mas
+		// num processo so: la "duas telas" sao dois nodes na mesma memoria, com a mesma lista de mortos
+		// que a propria bancada escreveu. Aqui a lista VIAJA, e cada cliente obedece sozinho -- que e
+		// onde mora o unico defeito que o dono nomeou (o planeta sumir pra um e ficar pro outro).
+		//
+		// Os dois papeis fazem a MESMA coisa: olham a arvore de cena deles e escrevem no `user://`.
+		// Quem compara e da veredito e o SERVIDOR (`--destrocosvivos`), porque o juiz de uma bancada
+		// de sincronia nao pode morar dentro de um dos dois lados. Ver `testar-destrocos.bat`.
+		if (Arg(OS.GetCmdlineArgs(), "--destrocos") is { } papelDoDestroco)
+			AddChild(new RoboDeDestrocos { Name = "RoboDeDestrocos", Papel = papelDoDestroco });
+
 		// --diagdesvio: bancada do DESVIO (o pedido do dono -- "falta o SOM do dodge e o EFEITO DE
 		// DESVIO"). Precisa de DOIS corpos e de DESNIVEL DE PODER: entre iguais a pontaria acerta
 		// 100% das vezes e nao ha esquiva nenhuma pra ver. Sobe com `--host --esquivateste N` deste
