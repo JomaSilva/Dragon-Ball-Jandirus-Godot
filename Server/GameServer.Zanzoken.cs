@@ -46,6 +46,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private void Zanzoken(ServerPlayer pl, Vec2 destino)
 	{
+		// O FIO PSIQUICO DO HERAN (lote G11) usa o MESMO clique no chao: com o toggle ligado, o duplo
+		// clique arma um fio de paralisia aos pes em vez de piscar. Ver `FioPsiquicoNoCliqueG11`.
+		if (FioPsiquicoNoCliqueG11(pl, destino)) return;
+
 		if (pl.Livro?.Sabe(PathDoZanzoken) != true)
 		{
 			Avisar(pl, "você não sabe se mover assim -- é o que a Afterimage Technique ensina.");

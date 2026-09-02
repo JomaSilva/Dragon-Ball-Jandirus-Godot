@@ -53,12 +53,10 @@ public partial class GameServer
 	/// <summary>Multiplo de Kaio-ken escolhido por quem esta com ele ligado (o `kaioamount`).</summary>
 	private readonly Dictionary<int, double> _kaiokenAmtG2 = [];
 
-	/// <summary>
-	/// O `KaiokenMastery`. NAO PERSISTE entre sessoes -- no DM e uma `mob/var` salva, aqui nao ha
-	/// onde guardar sem inventar campo. Consequencia real: quem passa horas segurando x20 perde o
-	/// progresso de maestria ao deslogar. Fica anotado como divida, nao como decisao.
-	/// </summary>
-	private readonly Dictionary<int, double> _kaiokenMaestriaG2 = [];
+	// O `KaiokenMastery` MORAVA AQUI, num dicionario de sessao ("nao ha onde guardar sem inventar
+	// campo") -- e quem passava horas segurando x20 perdia a maestria ao deslogar. Agora e
+	// `Fighter.KaiokenMastery`, que vai pro disco com a ficha; a skill soma os +3 do `after_learn`
+	// (kaioken.dm:93) pelo canal normal dos buffs. Ver `MaestriaKaiokenG2`.
 
 	/// <summary>`bigforming` -- a trava de 1s entre dois toques no Giant Form.</summary>
 	private readonly Dictionary<int, long> _giganteTravaG2 = [];
@@ -252,8 +250,13 @@ public partial class GameServer
 	/// <summary>Teto do Kaio-ken empilhado sobre o Blue (`GODKI_KAIOKEN_CAP`, 1A Defines.dm:57).</summary>
 	private const double KaiokenCapNoBlueG2 = 20;
 
-	private double MaestriaKaiokenG2(ServerPlayer pl)
-		=> _kaiokenMaestriaG2.TryGetValue(pl.Id, out double m) ? m : KaiokenMaestriaInicialG2;
+	/// <summary>
+	/// A MAESTRIA DE VERDADE: `Fighter.KaiokenMastery`, que persiste. O piso de 4 fica como rede de
+	/// seguranca pra ficha em que a skill entrou sem o `+3` (o campo nao existia ate este lote): quem
+	/// pode usar o verb nunca esta abaixo do que o `after_learn` da.
+	/// </summary>
+	private static double MaestriaKaiokenG2(ServerPlayer pl)
+		=> Math.Max(pl.Ficha.KaiokenMastery, KaiokenMaestriaInicialG2);
 
 	private void Kaioken(ServerPlayer pl, double pedido)
 	{
@@ -305,7 +308,7 @@ public partial class GameServer
 		}
 
 		_kaiokenAmtG2[pl.Id] = amt;
-		_kaiokenMaestriaG2[pl.Id] = maestria;
+		pl.Ficha.KaiokenMastery = maestria;
 
 		Falar(pl, Protocol.Fala.Diz, amt < 3 ? "KAIOKEN!!" : $"KAIOKEN TIMES {amt:0}!!");
 		Avisar(pl, $"uma aura vermelha estoura em volta de você (x{mult:0.##} de poder).");
@@ -700,11 +703,10 @@ public partial class GameServer
 	// =====================================================================
 	// 7. PUNHO ESPIRITUAL  (Spirit.dm:441)
 	// =====================================================================
-	/// <summary>`mob/var/SpiritFistCost = 2` (Spirit.dm:438). Os niveis da skill dividem por 2; sem niveis no port, fica 2.</summary>
-	private const double SpiritFistCustoG2 = 2;
-
-	/// <summary>`MeleeAttack(SpiritFistDamage*3, TRUE)` com `SpiritFistDamage = 1` -> +3 de dano plano.</summary>
-	private const double SpiritFistDanoG2 = 3;
+	// `SpiritFistCost` e `SpiritFistDamage` ERAM DUAS CONSTANTES AQUI ("sem niveis no port, fica 2").
+	// Agora sao `Fighter.SpiritFistCost` / `SpiritFistDamage` (Spirit.dm:436-439), que os degraus 1 e 2
+	// da skill dividem e multiplicam pelo canal multiplicativo do `niveis.json`. O dano plano do DM e
+	// `MeleeAttack(SpiritFistDamage*3, TRUE)` (:446): 3x o campo, e nao 3 cravado.
 
 	/// <summary>`usr.basicCD += 45` -- 45 ticks do BYOND, 4,5 segundos.</summary>
 	private const double SpiritFistRecargaSG2 = 4.5;
@@ -741,7 +743,7 @@ public partial class GameServer
 
 		// `var/kireq = angerBuff * usr.Ephysoff * SpiritFistCost` -- e sai da STAMINA, nao do Ki
 		// (o nome da variavel no DM e "kireq", mas o desconto e `usr.stamina -= kireq`).
-		double custo = pl.Ficha.angerBuff * pl.Ficha.Ephysoff * SpiritFistCustoG2;
+		double custo = pl.Ficha.angerBuff * pl.Ficha.Ephysoff * pl.Ficha.SpiritFistCost;
 		if (pl.Ficha.stamina < custo)
 		{
 			Avisar(pl, $"isso pede {custo:0.#} de fôlego (você tem {pl.Ficha.stamina:0.#}).");
@@ -779,7 +781,7 @@ public partial class GameServer
 		try
 		{
 			CombatKnobs.ChanceCrit = 100;
-			r = MeleeResolver.Resolver(ca, cd, angulo, _rng, tipo: 1, addDano: SpiritFistDanoG2);
+			r = MeleeResolver.Resolver(ca, cd, angulo, _rng, tipo: 1, addDano: pl.Ficha.SpiritFistDamage * 3);
 		}
 		finally { CombatKnobs.ChanceCrit = critAntes; }
 
@@ -895,7 +897,7 @@ public partial class GameServer
 			// comentario do DM e literal: "kaioken is long as fuck to master".
 			if (maestria < 20) maestria += 0.001 * amt / LoopDmG2;
 			else maestria = Math.Min(maestria + 0.00001 * amt / LoopDmG2, 50);
-			_kaiokenMaestriaG2[id] = maestria;
+			pl.Ficha.KaiokenMastery = maestria;   // na ficha: e o que vai pro disco
 		}
 	}
 

@@ -391,7 +391,10 @@ public partial class GameServer
 		// O gesto de SE DEBATER nao morre com a recusa: ele e lido no `Input` **antes** desta porta e
 		// guardado em `DebatendoSe`. Ver la, e o `LutaPraEscapar`.
 		&& !Agarrado(pl)
-		&& !PrensadoPelaGravidade(pl);
+		&& !PrensadoPelaGravidade(pl)
+		// PLANTADO POR UMA TECNICA DO LOTE G12 (`usr.move = 0` da Death Ball e da Genkidama, `canmove = 0`
+		// das rajadas). Mesmo funil, pela mesma razao de tudo acima.
+		&& !PresoPeloG12(pl.Id);
 
 	/// <summary>
 	/// O QUE O JOGO RESPONDE QUE ESTE CORPO PODE FAZER. Lido a 1 Hz por corpo (ver

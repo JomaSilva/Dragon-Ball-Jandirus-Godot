@@ -406,6 +406,32 @@ public sealed partial class Fighter
 	public double weaponeq;
 
 	/// <summary>
+	/// A ESCOLHA EXCLUSIVA DAS ARVORES RACIAIS -- `mob/var/pitted = 0` (tsujin.dm:26). Cada par de
+	/// skills irmas escreve 1 ou 2 no `after_learn` (Stick = 1 / Supa = 2, arlian.dm:88/110;
+	/// DollRegen / Play, spirit-doll.dm:34/52; Against / Biggest_Brain, tsujin.dm:40/62; Light /
+	/// Telespeed, yardrat.dm), e o `treegrow()` da arvore APAGA a irma: `if(savant.pitted==1)
+	/// disableskill(Supa)` (arlian.dm:13-16). Nove skills escreviam isto em `flags` e o campo nao
+	/// existia: a flag caia em `Desconhecidos` e as duas irmas ficavam compraveis juntas.
+	/// </summary>
+	public double pitted;
+
+	/// <summary>
+	/// `mob/var/HPregenbuff = 1` (master.dm:60): multiplica a cura passiva do canal 4
+	/// (`SpreadHeal(0.001 * Ephysdef * ... * HPregenbuff * THPregen)`, master.dm:185). Quem escreve e a
+	/// `Supa` do Arlian (`+= 0.1`, arlian.dm:108) e o virus de regeneracao (Viruses.dm:379, `+= 2`).
+	/// Consumido em <see cref="Combat.Regeneracao"/>.
+	/// </summary>
+	public double HPregenbuff = 1;
+
+	/// <summary>
+	/// A PARTE DAS SKILLS no `misc_stats["Regeneration"]` do genoma -- `add_to_stat("Regeneration", N)`
+	/// (spirit-doll.dm:33 = 10, alien.dm:65 = 5, Bodybuilding.dm:254 = 1). A parte da RACA continua no
+	/// `races.json`; as duas se somam no `GameServer.EixoDeRegen`, que refaz o <see cref="Combat.PerfilDeRegen"/>
+	/// do corpo. Separado da raca de proposito: a raca e dado do catalogo, isto e progresso do personagem.
+	/// </summary>
+	public double RegenerationDeSkill;
+
+	/// <summary>
 	/// O QUE AS SKILLS APRENDIDAS ESTAO SOMANDO AGORA (campo -> quanto). Guardado pra que
 	/// reaplicar seja idempotente: <see cref="Skills.EfeitosDeSkill.Aplicar"/> desconta isto
 	/// antes de somar de novo, senao cada login empilharia os buffs mais uma vez.
@@ -485,6 +511,15 @@ public sealed partial class Fighter
 	public double MysticPcnt = 1, MajinPcnt = 1, aurasBuff = 1;
 
 	public double KaioPcnt = 1;             // o Kaio-ken VIVO (a maestria e outro numero)
+
+	/// <summary>
+	/// `mob/var/KaiokenMastery = 1` (kaioken.dm:3) -- a maestria do Kaio-ken, que PERSISTE no save do
+	/// DM e vivia num dicionario de sessao do servidor (a divida anotada em `GameServer.Tecnicas.G2`).
+	/// Aprender a skill soma 3 (`savant.KaiokenMastery += 3`, kaioken.dm:93) pelo canal normal dos
+	/// buffs, e segurar a aura sobe devagar (`+= 0.001 * amt` por volta ate 20). Mora na ficha
+	/// porque a ficha e o que vai pro disco inteira.
+	/// </summary>
+	public double KaiokenMastery = 1;
 	public double ParanormalBPMult = 1;     // Vampiro / Lobisomem
 
 	// =====================================================================
@@ -524,6 +559,12 @@ public sealed partial class Fighter
 	public double HVBPExpAdd, MagAdd, TMagAdd;
 	public double FuseBuff, HVBPAdd, CooldownAmount, majin_absorb_bp, AbsorbBP;
 	public bool AbsorbDeterminesBP, HVBPAddEnd;
+
+	/// <summary>
+	/// `HasSoul` (`Absorption.dm:6`): nasce com alma; o Soul Absorb (`demon.dm:41-42`) a tira, uma vez
+	/// na vida. Vai pro save junto com a ficha. Ver o lote G12.
+	/// </summary>
+	public bool HasSoul = true;
 
 	// =====================================================================
 	// GOD KI
@@ -753,6 +794,23 @@ public sealed partial class Fighter
 	public double ssj3LearnReq = 0;    // requisito pessoal, quando ja sorteado
 	public string ParentRace = "";
 	public bool canSSJ;
+
+	// =====================================================================
+	// LOTE G11 -- os campos que as skills "mudas" do censo escreviam no DM e o port nao tinha.
+	// Todos `double` de proposito: o extrator de skills (`EfeitosDeSkill`, canal ATRIBUICAO) e o
+	// motor de niveis so escrevem campo `double` por reflexao, e e por eles que `partplant`,
+	// `can_stretch_arms`, `psythre`, `cangivepower`, `hellstar_disabled` e `teleskill` chegam aqui
+	// ao aprender a skill (`skills.json`: flags). Persistem com a ficha (a JSON inclui campos).
+	// =====================================================================
+	public double makyosunmastery, makyomoonmastery, makyoaamastery;   // maestria 0-100 do astro (makyo.dm:16-18)
+	public double hellstar_disabled = 1;   // makyo.dm:135 (o Above_All escreve 0; a Estrela nao existe no port)
+	public double teleskill = 1;           // yardrat.dm:68 -- cresce com a distancia teletransportada
+	public double partplant, can_stretch_arms, psythre, cangivepower;   // alien.dm:131, namekian.dm:139, heran.dm:151, givepower.dm:13
+	public double stored_time;             // kanassa-jin.dm:50 -- a moeda do tempo guardado (1 por mes)
+	public double stuckage;                // kanassa-jin.dm:60 -- a idade em que o Time Store prendeu o corpo (0 = ainda nao)
+	public double unlockPotential;         // UnlockPotential.dm:5 -- 1 = ja despertou, UMA vez por vida
+	public double expandlevel;             // Body Expansion.dm:9 -- o grau atual da expansao
+	public double observingnow;            // observe.dm:7/12 -- projetando a mente em alguem
 
 	/// <summary>O genoma que gerou este lutador. Usado pra saber a fracao de sangue Saiyajin.</summary>
 	public Races.Genome? Genoma;

@@ -119,6 +119,8 @@ public sealed partial class GameServer
 		// sao um sistema com estado compartilhado (tronos, convites, linha de sucessao, o relogio do
 		// titulo) e nao meia duzia de `case`.
 		if (ComandoDeCargo(pl, cmd, arg)) return;
+		// AS ORDENS DAS COPIAS DO SPLIT FORM E A RESPOSTA A GENKIDAMA (lote G12).
+		if (ComandoG12(pl, cmd, arg)) return;
 
 		switch (cmd)
 		{
@@ -159,6 +161,11 @@ public sealed partial class GameServer
 			// canal; abrir um opcode pra ela seria caro e nao ficaria mais claro.
 			// ==============================================================================================
 			case "skill_escolha": VerboEscolhaDeSkill(pl, arg); break;
+
+			// ESQUECER UMA SKILL COMPRADA, com reembolso e encolhimento da arvore -- o modo FORGET da
+			// janela do DM (`attemptforget` -> `refund` -> `treeshrink`). Mesmo canal e mesmo argumento
+			// da escolha unica, pelo mesmo motivo. Ver `VerboEsquecerSkill`.
+			case "skill_esquecer": VerboEsquecerSkill(pl, arg); break;
 
 			// ============================ A TECLA DE UMA FORMA -- `forma <id>` ============================
 			// O jogador ligou uma tecla a uma transformacao (ver `Client/TelaDeTeclas.cs`). Ate aqui

@@ -33,6 +33,23 @@ public sealed class Skill
 
 	public bool CustoFixo;
 
+	/// <summary>`can_forget`: da pra esquecer -- e e o que a arvore encolhendo pode tirar de volta.</summary>
+	public bool Esquecivel = true;
+
+	/// <summary>
+	/// SO NAS ARVORES: o `allowedtier` de nascenca e o `maxtier` (`trees.dm:10-11`). A vitrine do DM
+	/// so mostra skill com `tier &lt;= allowedtier` (`HtmlUI.dm:820`, `SkillTreesWindow.dm:169`), e o
+	/// `allowedtier` sobe pelo `growbranches()` -- as <see cref="RegrasDeGalho"/>.
+	/// </summary>
+	public int TierInicial = 1;
+	public int TierMax = 1;
+
+	/// <summary>SO NAS ARVORES: o `growbranches()` traduzido em dado (`tipo;alvo;condicao`), na ordem do DM.</summary>
+	public string[] Regras = [];
+
+	/// <summary>As mesmas regras, ja lidas. Ver <see cref="RegraDeArvore"/>.</summary>
+	public RegraDeArvore[] RegrasDeGalho = [];
+
 	public string[] Racas = [];
 	public string[] Classes = [];
 	public string[] PreReqs = [];
@@ -71,6 +88,22 @@ public sealed class Skill
 	public Escolha[] Escolhas = [];
 
 	/// <summary>
+	/// A SKILL CUJA ESCOLHA ESTA SEGUE (typepath). `Grace` nao pergunta: ela abre
+	/// `switch(savant.trinitytype)` (Bodybuilding.dm:243) e entra na casa que `TheHolyTrinity`
+	/// escolheu. O extrator casa as duas pelos rotulos das casas; o efeito le a casa da lider --
+	/// ver <see cref="EfeitosDeSkill.CasaEscolhida"/>. Vazio pra quem escolhe sozinha.
+	/// </summary>
+	public string EscolhaSegue = "";
+
+	/// <summary>
+	/// O GANHO NA COMPRA COM EXPRESSAO: `BP += max(1, BP*0.01)`, `hiddenpotential += relBPmax*2`
+	/// (One_Hundred, Bodybuilding.dm:89-92; One_Punch/One_Training com `relBPmax*0.5`). Nao e buff
+	/// (nao se reaplica no login: e um ganho que o corpo ABSORVE uma vez e devolve ao esquecer), e o
+	/// valor depende da ficha no instante da compra. Ver <see cref="GanhoNaCompra"/>.
+	/// </summary>
+	public GanhoNaCompra[] Compra = [];
+
+	/// <summary>
 	/// Uma folha que nao soma nada nem destrava nada AINDA nao tem efeito portado.
 	///
 	/// A ESCOLHA CONTA COMO EFEITO mesmo antes de o dono escolher: o que o censo mede aqui e se
@@ -79,7 +112,8 @@ public sealed class Skill
 	/// ninguem leu -- e as duas coisas pedem trabalho oposto.
 	/// </summary>
 	public bool SemEfeito => !Arvore && Buffs.Count == 0 && Verbos.Length == 0 && Estilo.Length == 0
-		&& Mults.Count == 0 && Genes.Count == 0 && Flags.Count == 0 && Escolhas.Length == 0;
+		&& Mults.Count == 0 && Genes.Count == 0 && Flags.Count == 0 && Escolhas.Length == 0
+		&& Compra.Length == 0;
 }
 
 /// <summary>
@@ -177,13 +211,19 @@ public sealed class SkillCatalog
 	/// <summary>
 	/// Este personagem PODE, em principio, destravar esta skill?
 	///
-	/// E o `canLearnSkill` + `skillUnlockOK` do original, com a mesma ordem de decisao: skill
-	/// desligada nunca; so-vilao pede vilao; `common_sense` libera pra todos; sem lista de raca
-	/// NEM de classe tambem libera (a arvore ja e o gate); com lista, tem que casar.
+	/// E o `skillUnlockOK` do original (`Skills Master/mobhandlers.dm:59`): so-vilao pede vilao;
+	/// `common_sense` libera pra todos; sem lista de raca NEM de classe tambem libera (a arvore ja e
+	/// o gate); com lista, tem que casar.
+	///
+	/// O `enabled` NAO MORA AQUI. Ele morava (`if (!s.Ligada) return false`), e era o defeito de
+	/// origem da progressao inteira: `enabled = 0` no DM nao e "desligada", e "trancada ATE o
+	/// pre-requisito entrar" (`skill.dm:26`, "set to 0 and modify with other skills to establish
+	/// prereqs") -- quem o acende e o `testskillprereqs()` (`trees.dm:28-40`) e os `enableskill()`
+	/// dos `growbranches()`. Quem le isso agora e o <see cref="SkillBook.Avaliar"/>, com o estado
+	/// da arvore na mao.
 	/// </summary>
 	public bool Permitida(Skill s, string raca, string classe, bool vilao)
 	{
-		if (!s.Ligada) return false;
 		if (s.SoVilao && !vilao) return false;
 		if (s.Comum) return true;
 		if (s.Racas.Length == 0 && s.Classes.Length == 0) return true;
@@ -253,18 +293,29 @@ public sealed class SkillCatalog
 				Ensinavel = Num(bloco, "ensinavel", 0) != 0,
 				CustoDeEnsino = Num(bloco, "custoensino", 0),
 				CustoFixo = Num(bloco, "custofixo", 0) != 0,
+				Esquecivel = Num(bloco, "esquecivel", 1) != 0,
+				TierInicial = Num(bloco, "tierinicial", 1),
+				TierMax = Num(bloco, "tiermax", 1),
+				Regras = Lista(bloco, "regras"),
 				Racas = Lista(bloco, "racas"),
 				Classes = Lista(bloco, "classes"),
 				PreReqs = Lista(bloco, "prereqs"),
 				Galhos = Lista(bloco, "galhos"),
 				Verbos = Lista(bloco, "verbos"),
 				Estilo = Str(bloco, "estilo"),
+				EscolhaSegue = Str(bloco, "escolhasegue"),
 			};
 			Pares(bloco, "buffs", s.Buffs);
 			Pares(bloco, "mults", s.Mults);
 			Pares(bloco, "genes", s.Genes);
 			Pares(bloco, "flags", s.Flags);
 			s.Escolhas = [.. Lista(bloco, "escolhas").Select(Casa)];
+			// o ganho que nao parseia cai fora AQUI (e nao na compra): uma expressao que o Core nao
+			// le nao pode virar um `+=` de zero em silencio
+			s.Compra = [.. Lista(bloco, "compra").Select(GanhoNaCompra.Parse).Where(g => g != null)!];
+			// regra que o Core nao entende (tipo desconhecido) cai fora aqui, e nao na avaliacao:
+			// o `growbranches()` de uma arvore nunca pode derrubar a compra das outras
+			s.RegrasDeGalho = [.. s.Regras.Select(RegraDeArvore.Parse).Where(r => r != null)!];
 			if (s.Path.Length > 0) cat._porPath[s.Path] = s;
 		}
 

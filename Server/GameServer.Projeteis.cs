@@ -435,6 +435,8 @@ public sealed partial class GameServer
 		if (pl.Ficha.med) { porque = "nao da pra atirar meditando."; return false; }
 		if (pl.Ficha.train) { porque = "pare o treino antes de atirar."; return false; }
 		if (_canais.ContainsKey(pl.Id)) { porque = "voce ja esta com um raio na mao."; return false; }
+		// O `blasting` das tecnicas sustentadas do lote G12 (Death Ball, Buster Barrage, as rajadas, a Genkidama).
+		if (BlastingG12(pl.Id)) { porque = "voce ja esta com uma tecnica de ki no ar."; return false; }
 		if (pl.Ficha.Ki < custo) { porque = $"isso pede pelo menos {custo:0} de energia."; return false; }
 
 		// O TETO, E ELE FALA. Um teto que recusa em silencio e indistinguivel de um tiro que sumiu.
@@ -563,7 +565,8 @@ public sealed partial class GameServer
 			// `log(kidebuffskill)/log(10 ou 11)` -- ou seja o tamanho da bola cresceria com a
 			// PERICIA de quem atira, coisa que o original nao faz em lugar nenhum.
 			// =======================================================================================
-			EscalaVisual = r.Tipo == TipoDeProjetil.Beam ? r.MultDeOnda : 1,
+			// A TECNICA PODE PEDIR A ESCALA (`ReceitaDeProjetil.EscalaVisual`, lote G12: as bolas que crescem).
+			EscalaVisual = r.EscalaVisual > 0 ? r.EscalaVisual : (r.Tipo == TipoDeProjetil.Beam ? r.MultDeOnda : 1),
 			SegundosPorTile = r.Tipo == TipoDeProjetil.Beam
 				? Projetil.AtrasoDeRaio(r.Velocidade)
 				: Projetil.AtrasoDeBola(r.Velocidade),
@@ -847,6 +850,15 @@ public sealed partial class GameServer
 							   ZoneKey zona, bool temChao, bool noEspaco)
 	{
 		ServerPlayer? dono = _players.GetValueOrDefault(p.Dono);
+
+		// 0) AINDA SENDO FORMADA (`Projetil.Inerte`, lote G12): nao anda, nao colide, nao gasta alcance.
+		//    So o prazo corre -- e o alvo de treino do Ki Targets, que vive 5 s, e quem precisa disso.
+		if (p.Inerte)
+		{
+			p.VidaRestante -= dt;
+			if (p.VidaRestante <= 0) Matar(p, FimDeProjetil.Apagou);
+			return;
+		}
 
 		// 1) PRESO NUMA DISPUTA: a cabeca nao anda, nao colide, nao morre de alcance -- e **nao
 		//    envelhece**. Quem manda nela e o `TickDosEmbatesDeKi`. E o `if(!in_beamclash) walk(...)`

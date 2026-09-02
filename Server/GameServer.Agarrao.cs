@@ -232,6 +232,19 @@ public sealed partial class GameServer
 		// ================================================================================================
 		if (!PodeMexerOCorpo(pl)) { Avisar(pl, "não dá pra agarrar ninguém assim."); return; }
 
+		// O BRACO ESTICADO DO NAMEKUSEIJIN (lote G11) vem ANTES de quem esta na frente, como no DM
+		// (`Grabbing.dm:97`): com a flag e um alvo marcado a tres tiles ou mais, o agarrao vai ate ele
+		// com um terco da forca (`namekian.dm:241`). Ver `AlvoDoBracoEsticadoG11` / `FatorDoBracoG11`.
+		if (AlvoDoBracoEsticadoG11(pl) is { } longe)
+		{
+			_agarroesEsticadosG11.Add(pl.Id);
+			Prender(pl, longe);
+			longe.ForcaDeQuemMeSegura /= FatorDoBracoG11(pl);
+			Avisar(pl, $"seus bracos se esticam e agarram {longe.Name} a distancia!");
+			return;
+		}
+		_agarroesEsticadosG11.Remove(pl.Id);
+
 		if (CorpoNaFrente(pl) is not { } alvo)
 		{
 			Avisar(pl, "não há ninguém ao seu alcance pra agarrar.");
@@ -437,15 +450,20 @@ public sealed partial class GameServer
 			// sem esta linha, quem fosse afastado sem se debater ficaria preso a distancia pra
 			// sempre, porque a soltura por distancia so acontece dentro da LUTA.
 			// ======================================================================================
+			// O BRACO ESTICADO (lote G11) segura a DISTANCIA por definicao: o `stretch_arms()` do DM nao
+			// tem regra de alcance no laco (`namekian.dm:245-276`) -- so nocaute, andar e `totalTime`. O
+			// que ele tem e o alcance do INSTANTE de agarrar (`target in view(screenx)`, `Grabbing.dm:97`),
+			// e e esse que vale aqui: o braco vai ate onde a vista vai.
+			float alcanceDoAperto = _agarroesEsticadosG11.Contains(a.Id) ? RaioDaVista : CombatKnobs.Alcance;
 			if (a.ModoDoAgarrao == ModoDeAgarrao.Segurando
 				&& (!AlcancaPelaAltura(a, d)
-					|| (d.Pos - a.Pos).LengthSquared > CombatKnobs.Alcance * CombatKnobs.Alcance))
+					|| (d.Pos - a.Pos).LengthSquared > alcanceDoAperto * alcanceDoAperto))
 			{ Soltar(a, MotivoDaSoltura.Distancia); continue; }
 
 			// ---- o aperto, recalculado ---- `grabbee.grabberSTR = (Ephysoff*expressedBP)` (`:188`)
 			if (tiqueDoDm)
 			{
-				double forca = Agarrao.Forca(a.Ficha);
+				double forca = Agarrao.Forca(a.Ficha) / FatorDoBracoG11(a);   // braco esticado: um terco (lote G11)
 				if (a.ModoDoAgarrao == ModoDeAgarrao.Carregando) forca *= Agarrao.ApertoDeQuemCarrega;
 				d.ForcaDeQuemMeSegura = forca;
 			}

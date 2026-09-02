@@ -231,9 +231,10 @@ public static class Regeneracao
 		porCiclo += 0.05 * 0.01;
 
 		// CANAL 4 -- `master.dm:185-186`, dentro do `statify()`. Os dois ramos sao exclusivos e o
-		// corte e em 25 de HP. `HPregenbuff` e `THPregen` do DM sao 1 pra todo mundo neste port (nao
-		// ha escritor pros dois), entao entram como 1 em vez de virarem dois campos mortos.
-		if (hp > 25 && hp < 99.99) porCiclo += 0.001 * f.Ephysdef * Math.Max(f.staminapercent * 10, 1);
+		// corte e em 25 de HP. `HPregenbuff` ENTRA (a `Supa` do Arlian soma 0,1 nele, arlian.dm:108 --
+		// ate este lote o campo nao existia e o buff caia em `Desconhecidos`); `THPregen` continua 1
+		// pra todo mundo, porque ninguem no port o escreve.
+		if (hp > 25 && hp < 99.99) porCiclo += 0.001 * f.Ephysdef * Math.Max(f.staminapercent * 10, 1) * f.HPregenbuff;
 		else if (hp <= 25) porCiclo += 0.02;
 
 		return porCiclo / CicloDoDm;

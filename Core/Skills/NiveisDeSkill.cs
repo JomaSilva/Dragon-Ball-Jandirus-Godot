@@ -15,12 +15,70 @@ public sealed class Degrau
 {
 	public int Nivel;
 
+	/// <summary>
+	/// O DEGRAU PERIODICO: `if(level % 5 == 0)` (Mind.dm:92, Effusion.dm:49). Zero = degrau exato.
+	///
+	/// ============================ ISTO ERA EXTRAIDO E JOGADO FORA ============================
+	/// O `niveis.json` trazia 93 degraus com `periodo` preenchido, e o leitor (`RegrasDoDisco`) os
+	/// descartava com um `break` -- "expandir isso em vinte degraus iguais seria inventar uma
+	/// estrutura". So que o periodico E a estrutura: nas 30 maestrias de Ki o grosso do ganho mora
+	/// nele (`kiawarenessskill += 1` a cada 5 niveis = +20 no nivel 100), e os degraus exatos sao
+	/// so os marcos. Sem ele uma maestria subia ate 100 rendendo um quarto do que o DM da.
+	///
+	/// Um degrau periodico DISPARA em todo nivel multiplo de <see cref="Periodo"/> (nunca no zero:
+	/// o `if(levelup)` que o envolve so acende quando o motor SOBE um nivel, skill.dm:94), e por isso
+	/// <see cref="RegraDeNivel.Vezes"/> conta quantas vezes ele ja rendeu: `nivel / periodo`.
+	/// ========================================================================================
+	/// </summary>
+	public int Periodo;
+
 	/// <summary>Campo do lutador -> quanto somar ao cruzar este degrau. Mesmo canal aditivo do
 	/// <see cref="EfeitosDeSkill"/>, so que disparado por nivel em vez de por compra.</summary>
 	public Dictionary<string, double> Buffs = new(StringComparer.Ordinal);
 
+	/// <summary>
+	/// O CANAL MULTIPLICATIVO DO DEGRAU: `savant.SpiritBallCost /= 2` (Spirit.dm:321),
+	/// `savant.SpiritBallDamage *= 2` (:322), `savant.MedMod *= 1.1` (gray.dm). O extrator ja os
+	/// emitia em `mults`; o leitor nao tinha canal e os campos caiam em `Desconhecidos`. Compoe:
+	/// dois degraus que dividem por 2 deixam o custo em um quarto.
+	/// </summary>
+	public Dictionary<string, double> Mults = new(StringComparer.Ordinal);
+
+	/// <summary>
+	/// O CANAL GENETICO DO DEGRAU: `savant.genome.add_to_stat("Energy Level", 0.05)` (Mind.dm:99,
+	/// Effusion.dm:57). Mesma traducao do <see cref="EfeitosDeSkill"/> ("Energy Level" -> `KiMod`),
+	/// feita na hora de aplicar -- 18 skills mexem na genetica por DEGRAU, e o Ki Unlocked sozinho
+	/// entrega +1,0 de KiMod ate o nivel 100 (0,2 a cada 20 niveis).
+	/// </summary>
+	public Dictionary<string, double> Genes = new(StringComparer.Ordinal);
+
 	/// <summary>As habilidades ativas que este degrau destrava (os `assignverb` do DM).</summary>
 	public string[] Verbos = [];
+
+	/// <summary>
+	/// OUTRAS SKILLS QUE ESTE DEGRAU ACENDE -- o `enableskill(/datum/skill/mind/Advanced_Ki_Awareness)`
+	/// do nivel 100 (Mind.dm:186). E o `enabled = 1` de uma skill que nasceu `enabled = 0`, e o UNICO
+	/// acendedor de toda Advanced_* e Perfect_* de Ki: sem este canal 55 folhas do catalogo eram "sem
+	/// acendedor (mortas neste port)". Quem consome e o <see cref="SkillBook.Recalcular"/>, via
+	/// <see cref="NiveisDeSkill.Destravadas"/>.
+	/// </summary>
+	public string[] Destrava = [];
+
+	/// <summary>
+	/// SKILLS INTEIRAS QUE ESTE DEGRAU ENTREGA: `var/datum/skill/A = new/datum/skill/sense` +
+	/// `A.learn(savant, 1)` (Mind.dm:103-104). A skill entra no livro (nao e comprada) ja no nivel
+	/// que o `learn` recebe. E por aqui que o Sense chega -- nivel 5 do Ki Unlocked -- e sem isto o
+	/// bit `Poder.Sense` nunca acendia por skill nenhuma.
+	/// </summary>
+	public (string Path, int Nivel)[] Concede = [];
+
+	/// <summary>
+	/// A BARREIRA TROCADA NESTE DEGRAU: `expbarrier = 20` dentro do `if(levelup)` do nivel 1
+	/// (Spirit.dm:323). Vale DALI PRA FRENTE, ate outro degrau trocar de novo. Zero = nao troca.
+	/// Chegava como flag `expbarrier` e virava um `Escrever(f, "expbarrier")` num campo que o
+	/// lutador nao tem -- ver <see cref="RegraDeNivel.BarreiraEm"/>, que e quem le isto.
+	/// </summary>
+	public double Barreira;
 
 	/// <summary>
 	/// CHAVE LIGADA, e nao valor somado: `campo = n` no DM (`savant.canPower = 1`).
@@ -167,6 +225,16 @@ public sealed class RegraDeNivel
 	/// <summary>Quanto exp falta pra sair de <paramref name="nivel"/> pro seguinte.</summary>
 	public double BarreiraEm(int nivel)
 	{
+		// A BARREIRA TROCADA NUM DEGRAU VENCE A CURVA. `expbarrier = 20` no `if(levelup)` do nivel 1
+		// (Spirit.dm:323) e uma atribuicao que fica: do nivel 1 em diante a barreira e 20, e nao os
+		// 10 declarados na propriedade. O degrau mais alto ja cruzado e o que vale (o DM sobrescreve
+		// a cada subida). Skill sem degrau de barreira cai na curva de sempre.
+		double trocada = 0;
+		int em = -1;
+		foreach (Degrau d in Degraus)
+			if (d.Barreira > 0 && d.Periodo == 0 && d.Nivel <= nivel && d.Nivel > em) { em = d.Nivel; trocada = d.Barreira; }
+		if (em >= 0) return trocada;
+
 		// MULTIPLICACAO REPETIDA, e nao `Math.Pow`. Cliente e servidor precisam chegar no MESMO
 		// numero, e `Math.Pow` nao tem resultado identico garantido entre implementacoes de
 		// libm -- o `GeradorDeTerreno` deste mesmo lote se proibe disso pelo mesmo motivo, e
@@ -178,10 +246,35 @@ public sealed class RegraDeNivel
 		return b;
 	}
 
+	/// <summary>O degrau EXATO deste nivel (o que carrega o aviso). Periodico nao entra aqui.</summary>
 	public Degrau? DegrauDe(int nivel)
 	{
-		foreach (Degrau d in Degraus) if (d.Nivel == nivel) return d;
+		foreach (Degrau d in Degraus) if (d.Periodo == 0 && d.Nivel == nivel) return d;
 		return null;
+	}
+
+	/// <summary>
+	/// TODOS OS DEGRAUS QUE DISPARAM AO CHEGAR EM <paramref name="nivel"/>: o exato, e cada
+	/// periodico de que o nivel e multiplo. No nivel 100 do Ki Unlocked sao QUATRO de uma vez
+	/// (`==100`, `%5`, `%10`, `%20`, Mind.dm:92-125) -- e e assim no DM, porque os `if` sao
+	/// irmaos, nao alternativas.
+	/// </summary>
+	public IEnumerable<Degrau> DegrausEm(int nivel)
+	{
+		foreach (Degrau d in Degraus)
+			if (Vezes(d, nivel) > 0 && (d.Periodo > 0 ? nivel % d.Periodo == 0 : d.Nivel == nivel))
+				yield return d;
+	}
+
+	/// <summary>
+	/// QUANTAS VEZES este degrau ja rendeu pra quem esta no <paramref name="nivel"/>: o exato rende
+	/// uma vez a partir do proprio nivel; o periodico rende `nivel / periodo` vezes (nivel 35 com
+	/// periodo 5 = 7 vezes). E esta conta que faz o `Aplicar` ser idempotente com periodico dentro.
+	/// </summary>
+	public static int Vezes(Degrau d, int nivel)
+	{
+		if (d.Periodo > 0) return nivel <= 0 ? 0 : nivel / d.Periodo;
+		return nivel >= d.Nivel ? 1 : 0;
 	}
 }
 
@@ -203,6 +296,14 @@ public sealed class NivelSave
 	/// nao aparece.
 	/// </summary>
 	public Dictionary<string, double> Somados = [];
+
+	/// <summary>
+	/// O QUE OS DEGRAUS JA MULTIPLICARAM (campo -> fator). O irmao multiplicativo do
+	/// <see cref="Somados"/>, pelo mesmo motivo e com o mesmo destino: desfaz-se por DIVISAO no
+	/// login, e nao por subtracao. Save antigo chega sem isto (= fator 1 em tudo), que e a
+	/// resposta certa: nenhum degrau multiplicativo tinha sido aplicado ate hoje.
+	/// </summary>
+	public Dictionary<string, double> Multiplicados = [];
 }
 
 /// <summary>
@@ -259,14 +360,22 @@ public sealed class NiveisDeSkill
 	/// <summary>O que os degraus ja somaram no corpo. Ver <see cref="NivelSave.Somados"/>.</summary>
 	private Dictionary<string, double> _somados = new(StringComparer.Ordinal);
 
+	/// <summary>O que os degraus ja multiplicaram. Ver <see cref="NivelSave.Multiplicados"/>.</summary>
+	private Dictionary<string, double> _multiplicados = new(StringComparer.Ordinal);
+
 	public struct Progresso
 	{
 		public int Nivel;
 		public double Exp;
 	}
 
-	/// <summary>Uma subida de nivel acontecida NESTE tique. E o `levelup=1` do DM, ja consumido.</summary>
-	public readonly record struct Subida(string Path, string Nome, int Nivel, Degrau? Degrau);
+	/// <summary>
+	/// Uma subida de nivel acontecida NESTE tique. E o `levelup=1` do DM, ja consumido.
+	/// <paramref name="Degrau"/> e o degrau EXATO (quem carrega o aviso); <paramref name="Degraus"/>
+	/// sao TODOS os que dispararam, periodicos inclusive -- e por eles que o servidor concede skill
+	/// e avisa o que acendeu.
+	/// </summary>
+	public readonly record struct Subida(string Path, string Nome, int Nivel, Degrau? Degrau, Degrau[]? Degraus = null);
 
 	public int Nivel(string path) => _p.TryGetValue(path, out Progresso pr) ? pr.Nivel : 0;
 	public double Exp(string path) => _p.TryGetValue(path, out Progresso pr) ? pr.Exp : 0;
@@ -352,7 +461,8 @@ public sealed class NiveisDeSkill
 			{
 				pr.Exp = 0;
 				pr.Nivel++;
-				(subidas ??= []).Add(new Subida(path, cat.Get(path)?.Nome ?? path, pr.Nivel, r.DegrauDe(pr.Nivel)));
+				(subidas ??= []).Add(new Subida(path, cat.Get(path)?.Nome ?? path, pr.Nivel,
+												r.DegrauDe(pr.Nivel), [.. r.DegrausEm(pr.Nivel)]));
 			}
 
 			_p[path] = pr;
@@ -490,8 +600,49 @@ public sealed class NiveisDeSkill
 			RegraDeNivel? r = RegrasDeNivel.Get(path);
 			if (r == null) continue;
 			foreach (Degrau d in r.Degraus)
-				if (d.Nivel <= pr.Nivel)
+				if (RegraDeNivel.Vezes(d, pr.Nivel) > 0)
 					foreach (string v in d.Verbos) yield return v;
+		}
+	}
+
+	/// <summary>
+	/// AS SKILLS QUE OS NIVEIS ATUAIS ACENDERAM -- o `enableskill()` disparado por degrau
+	/// (Mind.dm:186: `if(level == 100) enableskill(/datum/skill/mind/Advanced_Ki_Awareness)`).
+	///
+	/// E a mesma pergunta do <see cref="VerbosAtivos"/> ("o que os niveis de agora ja deram?"),
+	/// recalculada do nivel toda vez em vez de guardada: quem chegou ao 100 offline, ou por
+	/// concessao de admin, acende igual. O <see cref="SkillBook.Recalcular"/> le isto pelo
+	/// <see cref="ContextoDeRegra.DestravadasPorDegrau"/> e poe o alvo em `Acesas` da arvore que o
+	/// pendura -- e o veredito da loja passa de "sem acendedor" a "pode".
+	/// </summary>
+	public IEnumerable<string> Destravadas()
+	{
+		foreach ((string path, Progresso pr) in _p)
+		{
+			RegraDeNivel? r = RegrasDeNivel.Get(path);
+			if (r == null) continue;
+			foreach (Degrau d in r.Degraus)
+				if (RegraDeNivel.Vezes(d, pr.Nivel) > 0)
+					foreach (string alvo in d.Destrava) yield return alvo;
+		}
+	}
+
+	/// <summary>
+	/// AS SKILLS QUE UM DEGRAU JA CRUZADO ENTREGA E O LIVRO AINDA NAO TEM -- (o que conceder, em que
+	/// nivel). E o `A.learn(savant, 1)` do Mind.dm:104, lido do nivel e nao do momento: um save que
+	/// passou do nivel 5 antes de este canal existir recebe o Sense no proximo login, em vez de
+	/// nunca. Quem concede e o servidor (ele e quem tem o livro E os poderes que dependem dele).
+	/// </summary>
+	public IEnumerable<(string Path, int Nivel)> ConcessoesPendentes(SkillBook livro)
+	{
+		foreach ((string path, Progresso pr) in _p)
+		{
+			RegraDeNivel? r = RegrasDeNivel.Get(path);
+			if (r == null) continue;
+			foreach (Degrau d in r.Degraus)
+				if (RegraDeNivel.Vezes(d, pr.Nivel) > 0)
+					foreach ((string alvo, int nivel) in d.Concede)
+						if (!livro.Sabe(alvo)) yield return (alvo, nivel);
 		}
 	}
 
@@ -512,6 +663,7 @@ public sealed class NiveisDeSkill
 	public int Aplicar(Fighter f)
 	{
 		var alvo = new Dictionary<string, double>(StringComparer.Ordinal);
+		var fator = new Dictionary<string, double>(StringComparer.Ordinal);
 		var chaves = new Dictionary<string, double>(StringComparer.Ordinal);
 		foreach ((string path, Progresso pr) in _p)
 		{
@@ -519,9 +671,31 @@ public sealed class NiveisDeSkill
 			if (r == null) continue;
 			foreach (Degrau d in r.Degraus)
 			{
-				if (d.Nivel > pr.Nivel) continue;
+				// O PERIODICO RENDE `vezes` VEZES. `kiawarenessskill += 1` a cada 5 niveis, no nivel
+				// 35, e +7 -- e nao +1 (que era o que um degrau exato daria) nem zero (que era o que
+				// o leitor dava, descartando o periodico inteiro).
+				int vezes = RegraDeNivel.Vezes(d, pr.Nivel);
+				if (vezes == 0) continue;
 				foreach ((string campo, double v) in d.Buffs)
-					alvo[campo] = alvo.GetValueOrDefault(campo) + v;
+					alvo[campo] = alvo.GetValueOrDefault(campo) + v * vezes;
+
+				// O GENE CAI NO MESMO BALDE DO ADITIVO depois de traduzido ("Energy Level" -> KiMod),
+				// exatamente como no `EfeitosDeSkill.Totalizar` -- um so razao pra desfazer no login.
+				foreach ((string stat, double v) in d.Genes)
+				{
+					string? campo = EfeitosDeSkill.TraduzirGene(stat);
+					if (campo == null) continue;
+					alvo[campo] = alvo.GetValueOrDefault(campo) + v * vezes;
+				}
+
+				// O MULTIPLICATIVO COMPOE: `/= 2` no nivel 1 e `/= 2` no nivel 2 deixam o custo em
+				// 1/4. Multiplicacao repetida (e nao `Math.Pow`) pelo mesmo motivo do `BarreiraEm`.
+				foreach ((string campo, double v) in d.Mults)
+				{
+					double acc = fator.GetValueOrDefault(campo, 1);
+					for (int i = 0; i < vezes; i++) acc *= v;
+					fator[campo] = acc;
+				}
 
 				// CHAVE SE ESCREVE, nao se acumula -- e por isso ela nao entra no razao
 				// `_somados`: nao ha o que desfazer. Duas skills que ligam a mesma chave chegam
@@ -542,8 +716,44 @@ public sealed class NiveisDeSkill
 			if (Math.Abs(delta) > 1e-9 && Somar(f, campo, delta)) mexidos++;
 		}
 
-		_somados = alvo;
+		// --- MULTIPLICATIVO: DIVIDE o fator antigo antes de multiplicar o novo ---
+		foreach ((string campo, double antigo) in _multiplicados)
+			if (!fator.ContainsKey(campo) && antigo != 0 && Multiplicar(f, campo, 1 / antigo)) mexidos++;
+		foreach ((string campo, double v) in fator)
+		{
+			double antigo = _multiplicados.GetValueOrDefault(campo, 1);
+			if (antigo == 0) antigo = 1;
+			double raz = v / antigo;
+			if (Math.Abs(raz - 1) > 1e-9 && Multiplicar(f, campo, raz)) mexidos++;
+		}
+
+		// ============================ O RAZAO SO GUARDA O QUE PEGOU ============================
+		// Campo que o lutador ainda nao tem NAO entra no razao. Se entrasse, o save carregaria
+		// "ja somei 3 em KaiokenMastery" sobre um campo que nao existia -- e no dia em que o campo
+		// nascesse, o delta daria zero e o buff nunca chegaria em ninguem com save antigo. Foi
+		// exatamente o que teria acontecido com `pitted`, `HPregenbuff` e `KaiokenMastery` neste
+		// lote: os tres ja constavam no `FlagsDeSkill`/`BuffsDeSkill` de saves como aplicados.
+		// ======================================================================================
+		_somados = SoOsQueExistem(alvo);
+		_multiplicados = SoOsQueExistem(fator);
 		return mexidos;
+	}
+
+	/// <summary>Filtra um razao aos campos que o <see cref="Fighter"/> de verdade tem.</summary>
+	internal static Dictionary<string, double> SoOsQueExistem(Dictionary<string, double> d)
+	{
+		var r = new Dictionary<string, double>(StringComparer.Ordinal);
+		foreach ((string campo, double v) in d)
+			if (EfeitosDeSkill.Campo(campo) != null) r[campo] = v;
+		return r;
+	}
+
+	private static bool Multiplicar(Fighter f, string campo, double razao)
+	{
+		System.Reflection.FieldInfo? fi = EfeitosDeSkill.Campo(campo);
+		if (fi == null) return false;
+		fi.SetValue(f, (double)fi.GetValue(f)! * razao);
+		return true;
 	}
 
 	private static readonly Dictionary<string, FieldInfo?> Cache = new(StringComparer.Ordinal);
@@ -589,7 +799,11 @@ public sealed class NiveisDeSkill
 	// =====================================================================
 	public NivelSave ParaSave()
 	{
-		var s = new NivelSave { Somados = new Dictionary<string, double>(_somados, StringComparer.Ordinal) };
+		var s = new NivelSave
+		{
+			Somados = new Dictionary<string, double>(_somados, StringComparer.Ordinal),
+			Multiplicados = new Dictionary<string, double>(_multiplicados, StringComparer.Ordinal),
+		};
 		foreach ((string path, Progresso pr) in _p)
 			if (pr.Nivel > 0 || pr.Exp > 0) s.Skills[path] = [pr.Nivel, pr.Exp];
 		return s;
@@ -599,6 +813,7 @@ public sealed class NiveisDeSkill
 	{
 		_p.Clear();
 		_somados = new Dictionary<string, double>(StringComparer.Ordinal);
+		_multiplicados = new Dictionary<string, double>(StringComparer.Ordinal);
 		if (s == null) return;
 		foreach ((string path, double[] v) in s.Skills)
 		{
@@ -614,6 +829,8 @@ public sealed class NiveisDeSkill
 				_p[path] = new Progresso { Nivel = (int)v[0], Exp = v[1] };
 		}
 		foreach ((string campo, double v) in s.Somados) _somados[campo] = v;
+		if (s.Multiplicados != null)
+			foreach ((string campo, double v) in s.Multiplicados) _multiplicados[campo] = v;
 	}
 
 	// =====================================================================
@@ -670,6 +887,49 @@ public static class RegrasDeNivel
 		// o indice por contador vira poeira: a carga do disco troca regras em lote (`RegrasDoDisco`)
 		// e uma delas pode ser a que observa um contador novo
 		_porContador = null;
+		_destravaPor = null;
+	}
+
+	/// <summary>Quem acende uma skill por degrau: a skill dona do degrau e o nivel dele.</summary>
+	public readonly record struct AcendedorPorDegrau(string Path, int Nivel);
+
+	/// <summary>
+	/// QUEM ACENDE <paramref name="alvo"/> POR DEGRAU DE NIVEL -- o indice invertido do
+	/// `Degrau.Destrava`. Duas bocas o leem: o veredito da loja (pra dizer "acende no nivel 100 da
+	/// Basic Ki Awareness" em vez de "morta neste port") e o censo (pra tirar essas folhas da conta
+	/// de "sem acendedor"). Vazio pra quem nenhum degrau acende.
+	/// </summary>
+	public static IReadOnlyList<AcendedorPorDegrau> DestravadaPor(string alvo)
+	{
+		_destravaPor ??= IndexarDestrava();
+		return _destravaPor.GetValueOrDefault(alvo) ?? [];
+	}
+
+	/// <summary>Todo alvo que algum degrau acende -> quem acende (o primeiro, pro texto do censo).</summary>
+	public static IReadOnlyDictionary<string, AcendedorPorDegrau> DestravadasPorDegrau
+	{
+		get
+		{
+			_destravaPor ??= IndexarDestrava();
+			var d = new Dictionary<string, AcendedorPorDegrau>(StringComparer.OrdinalIgnoreCase);
+			foreach ((string alvo, List<AcendedorPorDegrau> l) in _destravaPor) if (l.Count > 0) d[alvo] = l[0];
+			return d;
+		}
+	}
+
+	private static Dictionary<string, List<AcendedorPorDegrau>>? _destravaPor;
+
+	private static Dictionary<string, List<AcendedorPorDegrau>> IndexarDestrava()
+	{
+		var ix = new Dictionary<string, List<AcendedorPorDegrau>>(StringComparer.OrdinalIgnoreCase);
+		foreach (RegraDeNivel r in Mapa.Values)
+			foreach (Degrau d in r.Degraus)
+				foreach (string alvo in d.Destrava)
+				{
+					if (!ix.TryGetValue(alvo, out List<AcendedorPorDegrau>? l)) ix[alvo] = l = [];
+					l.Add(new AcendedorPorDegrau(r.Path, d.Periodo > 0 ? d.Periodo : d.Nivel));
+				}
+		return ix;
 	}
 
 	/// <summary>Uma skill que observa um contador, e o fator dela. Ver <see cref="DoContador"/>.</summary>

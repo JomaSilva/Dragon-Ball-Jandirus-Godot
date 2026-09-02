@@ -718,11 +718,23 @@ if (args.Length >= 1 && args[0] == "efeitos")
     // skills somam num campo --, e faltava a pergunta que interessa: dos verbos que o jogo CONCEDE,
     // quantos fazem alguma coisa?
     //
-    // O CONSOLE NAO CARREGA `niveis.json`, entao ele passa a lista de degraus VAZIA e conta so os
-    // verbos que uma skill concede direto. O numero sai menor que o do servidor de proposito, e a
-    // diferenca e exatamente o tanto de verb que so existe por DEGRAU -- ver `RegrasDoDisco`.
+    // O CONSOLE CARREGA O `niveis.json` TAMBEM, quando ele existe: sem os degraus o censo dava 55
+    // folhas "sem acendedor" que o servidor sabia serem acesas pelo nivel 100 da anterior, e contava
+    // 130 verbos onde o jogo concede 189. Dois relatorios com numeros diferentes sobre a mesma
+    // pergunta e o jeito de ninguem confiar em nenhum. Sem o arquivo, cai no que sempre foi.
     // =================================================================================================
-    var censo = Jandirus.Core.Skills.CensoDeSkills.Levantar(cat);
+    string cn = System.IO.Path.Combine("Assets", "data", "niveis.json");
+    IEnumerable<string>? verbosDeDegrau = null;
+    IReadOnlyDictionary<string, Jandirus.Core.Skills.RegrasDeNivel.AcendedorPorDegrau>? porDegrau = null;
+    if (System.IO.File.Exists(cn))
+    {
+        int regrasDeNivel = Jandirus.Core.Skills.RegrasDoDisco.Carregar(System.IO.File.ReadAllText(cn));
+        verbosDeDegrau = Jandirus.Core.Skills.RegrasDeNivel.VerbosDeDegrau;
+        porDegrau = Jandirus.Core.Skills.RegrasDeNivel.DestravadasPorDegrau;
+        Console.WriteLine($"(niveis.json carregado: {regrasDeNivel} regras de nivel -- os verbos e os acendedores por DEGRAU entram no censo)\n");
+    }
+    else Console.WriteLine("(sem niveis.json: o censo conta so o que a compra concede)\n");
+    var censo = Jandirus.Core.Skills.CensoDeSkills.Levantar(cat, verbosDeDegrau, porDegrau);
     foreach (string linha in Jandirus.Core.Skills.CensoDeSkills.Texto(censo)) Console.WriteLine(linha);
     Console.WriteLine();
 
@@ -952,6 +964,23 @@ if (args.Length >= 1 && args[0] == "sol")
     return 0;
 }
 
+if (args.Length >= 1 && args[0] == "niveis")
+{
+    // niveis [pastaDados] : a bancada dos DEGRAUS DESCARTADOS (periodico, destrava, gene, concede,
+    // mult, barreira) e dos buffs que o extrator nao pegava (pitted, Regeneration, HPregenbuff,
+    // KaiokenMastery, ganho na compra, escolha na 2a forma) -- Core puro sobre os .json no disco.
+    // Ver o cabecalho do `NiveisBench`. Devolve o numero de falhas como codigo de saida.
+    return NiveisBench.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : Path.Combine("Assets", "Data"));
+}
+
+if (args.Length >= 1 && args[0] == "arvores")
+{
+    // arvores [pastaDados] : a bancada das ARVORES DE SKILL -- o tier de vitrine por marco investido e
+    // o `enabled = 0` lido como o DM le, sobre o `skills.json` NO DISCO e o Core de producao. Ver o
+    // cabecalho do `ArvoresBench`. Devolve o numero de falhas como codigo de saida.
+    return ArvoresBench.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : Path.Combine("Assets", "Data"));
+}
+
 if (args.Length >= 2 && args[0] == "extrator")
 {
     // extrator <pastaCode> [skills.json] : a bancada do EXTRATOR DE SKILLS.
@@ -1026,7 +1055,40 @@ if (args.Length >= 3 && args[0] == "skills")
     var comEscolha = sk.Values.Where(s3 => s3.Escolhas.Count > 0).ToList();
     Console.WriteLine($"\nskills com ESCOLHA UNICA: {comEscolha.Count}");
     foreach (SkillDef d3 in comEscolha)
-        Console.WriteLine($"   {d3.Nome,-26} {d3.Escolhas.Count} casas: {string.Join(" | ", d3.Escolhas.Select(e => e.Rotulo))}");
+        Console.WriteLine($"   {d3.Nome,-26} {d3.Escolhas.Count} casas: {string.Join(" | ", d3.Escolhas.Select(e => e.Rotulo))}"
+                          + (d3.EscolhaSegue.Length > 0 ? $"   (segue {d3.EscolhaSegue.Split('/')[^1]})" : ""));
+    foreach ((string quem, string var) in DmSkillScanner.EscolhasSemLider)
+        Console.WriteLine($"   ATENCAO: {quem} escolhe por `savant.{var}` e nenhuma skill tem as mesmas casas");
+
+    // O GANHO NA COMPRA COM EXPRESSAO: o que o Core avalia na hora, e o que ele NAO le (diario).
+    var comCompra = sk.Values.Where(s3 => s3.Compra.Count > 0).ToList();
+    Console.WriteLine($"\nskills com GANHO NA COMPRA por expressao: {comCompra.Count}");
+    foreach (SkillDef d3 in comCompra)
+        Console.WriteLine($"   {d3.Nome,-26} {string.Join(" ; ", d3.Compra)}");
+    Console.WriteLine($"ganhos na compra que o Core NAO le: {DmSkillScanner.ComprasNaoLidas.Count}");
+    foreach ((string quem, string linha) in DmSkillScanner.ComprasNaoLidas.Take(12))
+        Console.WriteLine($"   {quem.Split('/')[^1],-22} {linha}");
+
+    // ============================ O `growbranches()` COMO DADO ============================
+    // Tier de vitrine por marco investido, arvore que abre arvore, skill que acende skill -- tudo
+    // que antes era "46 blocos de DM que o port nao lia" sai contado aqui, e o que o tradutor NAO
+    // entendeu sai NOMEADO (ver `DmGalhosScanner.NaoLidas`): linha de growbranches que some calada
+    // e uma porta de progressao que ninguem sabe que esta fechada.
+    // ======================================================================================
+    var comRegras = arvores.Where(a => a.Regras.Count > 0).ToList();
+    Console.WriteLine($"\ngrowbranches traduzido: {comRegras.Count} arvores, "
+                      + $"{arvores.Sum(a => a.Regras.Count)} regras "
+                      + $"(tier {arvores.Sum(a => a.Regras.Count(r => r.StartsWith("tier;")))}, "
+                      + $"arvore {arvores.Sum(a => a.Regras.Count(r => r.StartsWith("arvore;")))}, "
+                      + $"acende {arvores.Sum(a => a.Regras.Count(r => r.StartsWith("acende;")))}, "
+                      + $"apaga {arvores.Sum(a => a.Regras.Count(r => r.StartsWith("apaga;")))})");
+    foreach (SkillDef a in comRegras.Where(a2 => a2.Regras.Any(r => r.StartsWith("tier;") || r.StartsWith("arvore;"))))
+        Console.WriteLine($"   {a.Path.Split('/')[^1],-22} nasce t{a.TierInicial}/{a.TierMax}  "
+                          + string.Join("  ", a.Regras.Where(r => r.StartsWith("tier;") || r.StartsWith("arvore;")).Take(4)));
+    var naoLidas = DmGalhosScanner.NaoLidas;
+    Console.WriteLine($"linhas de growbranches que o tradutor NAO le: {naoLidas.Count}");
+    foreach (var g in naoLidas.GroupBy(x => x.Arvore).OrderByDescending(g2 => g2.Count()))
+        Console.WriteLine($"   {g.Key.Split('/')[^1],-22} {g.Count(),2}   {string.Join(" | ", g.Take(3).Select(x => x.Linha.Trim()))}");
 
     DmSkillScanner.Escrever(Path.GetFullPath(args[2]), sk);
     Console.WriteLine($"\ngravado: {args[2]}");

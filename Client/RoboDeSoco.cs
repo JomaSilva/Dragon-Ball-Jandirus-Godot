@@ -169,6 +169,9 @@ public partial class RoboDeSoco : Node
 
         var livro = new Jandirus.Core.Skills.SkillBook { MarcosLivres = cli.MarcosLivres };
         livro.Carregar(cli.SkillsAprendidas);
+        // o tier de vitrine e as arvores abertas vem do servidor; sem eles o robo ofereceria a si
+        // mesmo o que o balcao recusa (Body Expansion e tier 2 e nasce trancada)
+        livro.CarregarEstado(cli.SkillsDestravadas, cli.SkillsArvores);
 
         var ofertas = livro.Ofertas(cat, cli.Atributos.Raca ?? "", cli.Sheet.Class ?? "", false)
                            .Where(o => o.Item2 == Jandirus.Core.Skills.Recusa.Pode)

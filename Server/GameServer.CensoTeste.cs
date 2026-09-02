@@ -123,7 +123,10 @@ public partial class GameServer
 
 		if (_skills == null) { AfirmarCen("o catalogo de skills esta carregado", false); return; }
 
-		_relatorio = CensoDeSkills.Levantar(_skills, RegrasDeNivel.VerbosDeDegrau);
+		// OS DEGRAUS ENTRAM NAS DUAS PONTAS: os verbos que um nivel concede E as skills que um nivel
+		// acende (`enableskill` no effector, Mind.dm:186). Sem a segunda, 32 folhas saiam como "sem
+		// acendedor" num servidor que sabia quem as acende.
+		_relatorio = CensoDeSkills.Levantar(_skills, RegrasDeNivel.VerbosDeDegrau, RegrasDeNivel.DestravadasPorDegrau);
 		foreach (string linha in CensoDeSkills.Texto(_relatorio)) GD.Print($"[censo] {linha}");
 
 		AfirmarCen("o relatorio conta folhas de verdade (mais de 200)", _relatorio.Folhas > 200,
@@ -416,8 +419,11 @@ public partial class GameServer
 				   mudas.Count == 0, string.Join(" | ", mudas));
 
 		// O DEFEITO INJETADO: uma tecnica que este lote NAO portou nao pode entrar por engano.
-		AfirmarCen("...e um verbo que o lote NAO portou (Death_Ball) continua fora dele",
-				   !EhDoLoteG6("Death_Ball") && Tecnicas.Get("Death_Ball")!.Modo == Modo.NaoPortada);
+		// ERA A `Death_Ball`, e ela foi portada pelo lote G12 (`GameServer.Tecnicas.G12.cs`) -- esta linha
+		// ficou vermelha por isso. O exemplo agora e o `Reincarnate_Mob`, que depende da reencarnacao
+		// (sistema ausente, `CensoDeSkills.SistAlem`) e nao esta em lote nenhum.
+		AfirmarCen("...e um verbo que o lote NAO portou (Reincarnate_Mob) continua fora dele",
+				   !EhDoLoteG6("Reincarnate_Mob") && Tecnicas.Get("Reincarnate_Mob")!.Modo == Modo.NaoPortada);
 
 		Vec2 chao = CorredorLivre(24);
 		ServerPlayer nu = Forjar("SemSkillG6", chao, bp: 5_000);

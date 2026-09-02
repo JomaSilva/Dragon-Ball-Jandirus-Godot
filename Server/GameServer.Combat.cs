@@ -181,11 +181,16 @@ public partial class GameServer
 	/// qualquer corpo que o `races.json` nao conheca.
 	/// ================================================================================================
 	/// </summary>
-	private PerfilDeRegen EixoDeRegen(string raca)
+	private PerfilDeRegen EixoDeRegen(string raca, Jandirus.Core.Stats.Fighter? ficha = null)
 	{
 		// Half-Saiyan nao tem proto proprio -- o corpo vem do Saiyajin. Mesma ponte do `Birth.Nascer`.
 		string proto = raca == "Halfbreed" ? "Saiyan" : raca;
 		double reg = _racas?.Get(proto)?.MiscStat("Regeneration") ?? 1;
+		// A PARTE DAS SKILLS SOMA POR CIMA DA RACA -- `genome.add_to_stat("Regeneration", 10)` da
+		// Doll Regeneration (spirit-doll.dm:33), `5` da Regenerate (alien.dm:65), `1` da Grace de
+		// Ricardo (Bodybuilding.dm:254). O `assign_regen()` do DM relê o genoma inteiro; aqui o
+		// `AplicarEfeitos` chama isto de novo e reescreve o perfil do corpo.
+		if (ficha != null) reg += ficha.RegenerationDeSkill;
 		return PerfilDeRegen.De(raca, reg);
 	}
 
@@ -204,7 +209,7 @@ public partial class GameServer
 	// (a explosao varre a zona e manda efeito). Ver `CombatState.NegarMorte`.
 	private void PrepararCombate(ServerPlayer pl, CharacterSave? save)
 	{
-		pl.Combate = new CombatState(pl.Ficha, TemRabo(pl.Race), EixoDeRegen(pl.Race));
+		pl.Combate = new CombatState(pl.Ficha, TemRabo(pl.Race), EixoDeRegen(pl.Race, pl.Ficha));
 
 		// QUEM PODE BARRAR A MORTE DESTE CORPO. Instalado UMA vez, aqui, porque `Morrer()` e a porta
 		// unica -- ver `CombatState.NegarMorte`. Sao DOIS agora, e a ORDEM E A DO DM:

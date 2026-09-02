@@ -169,38 +169,41 @@ public partial class GameServer
 						  BpMax = 1000, MarcosBase = 0, MarcosPorDecada = 0 },
 						  7, _racas!, _skills, zona.Name, 0).Livro.Aprendidas.Count == 0);
 
-				// ============================ A ARVORE POR PROGRESSO ESTA MORTA NO CATALOGO ============================
-				// A checagem que estava aqui era "comprar ABRIU arvore nova", e ela REPROVOU. Investigando,
-				// o defeito nao e do sorteio: das 364 skills do catalogo, 198 estao LIGADAS, e apenas DUAS
-				// carregam os contadores `bodyskill`/`bodyreadiness` (`training` e `force`). A `force` e tier 2
-				// e pende de `/datum/skill/physical`, que esta `enabled = 0` -- ou seja, inalcancavel.
+				// ============================ A ARVORE POR PROGRESSO VIROU ============================
+				// Esta checagem dizia o contrario: "o destravamento por progresso continua INALCANCAVEL
+				// (2 skills ligadas carregam os contadores, teto 1 contra o `> 2` do gate) -- se esta linha
+				// reprovar, o dado mudou e a checagem tem que virar". Ela reprovou, e o dado mudou porque a
+				// LEITURA do dado estava errada, nao o dado: `enabled = 0` no DM e "trancada ate o
+				// pre-requisito entrar" (`skill.dm:26`), e o port lia como tranca permanente. Com o
+				// `SkillBook.Avaliar` lendo o `enabled` como o `testskillprereqs()` le, as 18 skills de
+				// corpo com pre-requisito abrem em cadeia, os contadores passam de 2, e o `growbranches()`
+				// do Body (extraido em `skills.json`) abre Bodybuilding e Martial Skill -- pro NPC pelo
+				// MESMO `Ofertas`/`Aprender` do jogador.
 				//
-				// O teto real dos contadores e 1, e `RecalcularDestravadas` pede `> 2` (SkillBook.cs:114-122).
-				// **Bodybuilding, Martial Skill, Weapons Expert e Cultivation sao inalcancaveis por compra --
-				// PRA JOGADOR TAMBEM**, e nao so pro NPC. Nao e uma regra deste port: e o `enabled = 0` que veio
-				// do DM em todo o meio da arvore de corpo.
-				//
-				// Entao a bancada afirma o que E VERDADE hoje, e a checagem existe pra VIRAR: no dia em que
-				// alguem religar aquelas skills no `skills.json`, esta linha reprova e manda trocar a
-				// afirmacao pela de cima ("comprar abriu arvore nova"). Afirmar o mundo que se queria em vez
-				// do que se tem e como uma bancada fica vermelha pra sempre e todo mundo aprende a ignora-la.
-				// ==================================================================================================
+				// O molde `forte` tem 18 marcos (1,5 por decada de BP, 12 decadas) e vocacao de soldado
+				// (o corpo primeiro): e o bastante pra atravessar o tronco.
+				// ==================================================================================
 				FichaSorteada rico = SorteioDeNpc.Sortear(forte, 7, _racas!, _skills, zona.Name, 0);
-				int contadoras = _skills.Todas.Count(s => s.Ligada && !s.Arvore
-					&& (s.Buffs.ContainsKey("bodyskill") || s.Buffs.ContainsKey("bodyreadiness")));
+				Checa("comprar pelo funil do jogador ABRE arvore nova pro NPC (bodyskill/bodyreadiness passam de 2 "
+					+ "e o growbranches do Body abre Bodybuilding ou Martial Skill)",
+					  rico.Livro.Destravadas.Count > 0
+					  && (rico.Ficha.bodyskill > 2 || rico.Ficha.bodyreadiness > 2),
+					  $"abertas: {string.Join(", ", rico.Livro.Destravadas)} | bodyskill={rico.Ficha.bodyskill:0.#} "
+					  + $"bodyreadiness={rico.Ficha.bodyreadiness:0.#} | {rico.Livro.Aprendidas.Count} skills");
+				Checa("...e o tier de vitrine do Body subiu com o investimento (invested >= 4 -> tier 2, Body.dm:20)",
+					  rico.Livro.Arvore("/datum/skill/tree/Body") is { Tier: >= 2, Investido: >= 4 },
+					  $"{rico.Livro.Arvore("/datum/skill/tree/Body")?.Tier}/{rico.Livro.Arvore("/datum/skill/tree/Body")?.Investido}");
 
-				Checa("o destravamento de arvore por progresso continua INALCANCAVEL neste catalogo "
-					+ "(2 skills ligadas carregam os contadores, e o teto delas e 1 contra o `> 2` do gate) "
-					+ "-- se esta linha reprovar, o dado mudou e a checagem tem que virar",
-					  contadoras <= 2 && rico.Ficha.bodyskill <= 2 && rico.Ficha.bodyreadiness <= 2,
-					  $"{contadoras} skills ligadas contam | bodyskill={rico.Ficha.bodyskill:0.#} "
-					  + $"bodyreadiness={rico.Ficha.bodyreadiness:0.#}");
-
-				// O QUE DA PRA PROVAR HOJE sobre as voltas: o sorteio para quando nao ha mais oferta, e nao
-				// quando acaba o marco. Sobrar marco com o catalogo desta raca esgotado e o comportamento
-				// certo -- e e a prova de que ele consultou `Ofertas` de novo depois de cada compra.
-				Checa("o sorteio para por falta de OFERTA, nao por falta de marco (ele reconsulta a cada compra)",
-					  rico.Livro.MarcosLivres > 0 && rico.Livro.Aprendidas.Count > 0,
+				// AS VOLTAS: cada compra reconsulta `Ofertas`, e a prova disso e a arvore aberta acima --
+				// ela so entra na oferta DEPOIS de uma compra ter subido o contador. A afirmacao anterior
+				// aqui ("o sorteio para por falta de OFERTA, e sobra marco") descrevia o catalogo TRANCADO:
+				// com o tronco do Body aberto em cadeia, 18 marcos compram uma dezena de skills e ACABAM,
+				// e sobrar marco deixou de ser o normal. O que continua verdade e que ele gasta ate o
+				// fim de um dos dois: oferta ou marco.
+				Checa("o sorteio gasta ate acabar a oferta OU o marco, e com o tronco aberto 18 marcos viram uma dezena de skills",
+					  rico.Livro.Aprendidas.Count >= 8
+					  && (rico.Livro.MarcosLivres == 0
+						  || !rico.Livro.Ofertas(_skills, "Saiyan", rico.Classe, false).Any(o => o.Estado == Recusa.Pode)),
 					  $"{rico.Livro.Aprendidas.Count} skills, {rico.Livro.MarcosLivres}/{rico.Livro.MarcosTotais} marcos sobrando");
 			}
 

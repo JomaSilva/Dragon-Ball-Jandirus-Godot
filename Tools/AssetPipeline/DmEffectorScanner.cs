@@ -583,7 +583,17 @@ public static class DmEffectorScanner
 		if (RxObj.Match(cmd) is { Success: true } mo) { Somar(deg.Verbos, mo.Groups["o"].Value); return; }
 		if (RxDestrava.Match(cmd) is { Success: true } md) { Somar(deg.Destrava, Normalizar(md.Groups["p"].Value)); return; }
 		if (RxConcede.Match(cmd) is { Success: true } mcd) { Somar(deg.Concede, Normalizar(mcd.Groups["p"].Value)); return; }
-		if (cmd.Contains(".learn(", StringComparison.Ordinal)) return;   // par do `new` acima
+		if (cmd.Contains(".learn(", StringComparison.Ordinal))
+		{
+			// O PAR DO `new` ACIMA, e ele carrega o `baselevel`: `A.learn(savant, 1)` (Mind.dm:104)
+			// entrega o Sense ja no nivel 1; `A.learn(savant, 0)` (:110) entrega o voo no zero. Vai
+			// colado no caminho (`/datum/skill/sense=1`) porque a lista e plana e o leitor do jogo
+			// fatia por `=` -- o mesmo formato dos buffs.
+			Match mn = Regex.Match(cmd, @"\.learn\(\s*savant\s*,\s*(?<n>[0-9]+)");
+			if (mn.Success && deg.Concede.Count > 0 && !deg.Concede[^1].Contains('='))
+				deg.Concede[^1] = deg.Concede[^1] + "=" + mn.Groups["n"].Value;
+			return;
+		}
 
 		if (RxGene.Match(cmd) is { Success: true } mg)
 		{

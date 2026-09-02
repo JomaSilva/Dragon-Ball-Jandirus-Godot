@@ -548,6 +548,12 @@ public partial class GameServer
 			presa = dono;
 			destino = dono.Pos;
 		}
+		else if (_splitformsG12.TryGetValue(npc.Id, out SplitformG12? copiaDividida))
+		{
+			// A COPIA DO SPLIT FORM (lote G12): quem manda nela e a ORDEM do dono, por verbo -- nem molde,
+			// nem fera. Ver `GuiarSplitformG12`.
+			if (!GuiarSplitformG12(npc, copiaDividida, out presa, out destino)) return;
+		}
 		else if (npc.Papel != null && npc.CerebroDaPosse == null)
 		{
 			// ============================ O HABITANTE. ELE NAO E A FERA. ============================

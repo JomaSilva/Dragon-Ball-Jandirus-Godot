@@ -1247,6 +1247,13 @@ public sealed class ServerPlayer
 	/// </summary>
 	public Jandirus.Core.Appearance.Appearance? LookDeFusao;
 
+	/// <summary>
+	/// O DISFARCE DA IMITACAO (lote G12) -- irmao do <see cref="LookDeFusao"/>, pelo mesmo motivo: o que
+	/// o mundo ve sai do funil (`NomeVisivel`/`VisualVisivel`), e a ficha que vai pro disco nao e tocada.
+	/// A fusao VENCE o disfarce quando os dois existem. Ver `DisfarceG12`.
+	/// </summary>
+	public DisfarceG12? Disfarce;
+
 	/// <summary>A conta a que este personagem pertence, e em qual dos tres slots ele mora.</summary>
 	public string Conta = "";
 	public int Slot = -1;
@@ -1581,29 +1588,9 @@ public partial class GameServer : Node
 			// ======================================================================================
 			if (!EhJogador(pl)) continue;
 			if (pl.Ficha.dead || pl.Livro == null) continue;
-
-			// O ESTADO DO CORPO ENTRA NO EFETOR. Sem ele, as 122 regras de exp condicionais do
-			// `niveis.json` continuariam abertas e descartadas -- entre elas as tres do
-			// `Ki_Unlocked`, a raiz da arvore de Ki: 2 por tique MEDITANDO, 2 VOANDO, 1 parado.
-			// Era por isso que meditar nao rendia maestria de Ki nenhuma.
-			List<Jandirus.Core.Skills.NiveisDeSkill.Subida> subiu =
-				pl.Niveis.Efetor(_rng, _skills, pl.Livro,
-					new Jandirus.Core.Skills.NiveisDeSkill.EstadoDoCorpo(
-						Meditando: pl.Ficha.med, Voando: pl.Voando, Treinando: pl.Ficha.train));
-			if (subiu.Count == 0) continue;
-
-			pl.Niveis.Aplicar(pl.Ficha);
-			pl.Ficha.Statify();
-			pl.SigAtributos = "";
-
-			foreach (Jandirus.Core.Skills.NiveisDeSkill.Subida s in subiu)
-			{
-				GD.Print($"[server] {pl.Name}: {s.Nome} chegou ao nivel {s.Nivel}");
-				Avisar(pl, s.Degrau is { Aviso.Length: > 0 } d
-					? $"{s.Nome} — {d.Aviso}"
-					: $"{s.Nome} chega ao nível {s.Nivel}.");
-			}
-			HabilidadesMudaram(pl);
+			// o tique de UM corpo mora em `GameServer.Skills.cs` (`TicarNiveisDe`): e a mesma
+			// funcao que a bancada `--arvoreteste` chama num corpo forjado, que nao passa por `EhJogador`
+			TicarNiveisDe(pl);
 		}
 	}
 
@@ -2528,6 +2515,19 @@ public partial class GameServer : Node
 			// Ver `GameServer.PunhoTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--punhoteste") >= 0) RodarBancadaDoPunho();
 
+			// `--g10teste`: OS VINTE DO LOTE G10 (os golpes do molde do G7 que o censo achou mudos + a
+			// Trindade). Mesma infraestrutura da `--punhoteste`. Ver `GameServer.G10Teste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--g10teste") >= 0) RodarBancadaG10();
+
+			// `--g12teste`: OS ONZE VERBOS E A PASSIVA DO LOTE G12. Mesma infraestrutura da
+			// `--arsenalteste`, pelos mesmos motivos. Ver `GameServer.G12Teste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--g12teste") >= 0) RodarBancadaG12();
+
+			// `--g11teste`: AS SKILLS QUE JA ESTAVAM NA ARVORE SEM EFEITO (lote G11). Mesma
+			// infraestrutura da `--arsenalteste` (corpos forjados na Terra, ninguem logado); a familia
+			// dos astros mexe no relogio do ceu e o devolve no fim. Ver `GameServer.G11Teste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--g11teste") >= 0) RodarBancadaG11();
+
 			// `--tecnicateste`: a criacao de tecnicas de ki. No boot pelos mesmos dois motivos da de
 			// cima -- ela precisa de zonas com colisao (a familia 5 dispara de verdade e o tiro tem
 			// que ter chao) e do `AccountStore` (a familia 4 grava e le), mas nao precisa de ninguem
@@ -2713,6 +2713,12 @@ public partial class GameServer : Node
 			// muda, e a familia 1 desta bancada afirma o contrario lendo o MESMO catalogo. As duas
 			// vizinhas, e a divida que uma media a outra fecha. Ver `GameServer.EscolhaTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--escolhateste") >= 0) RodarBancadaDaEscolha();
+
+			// `--arvoreteste`: O TIER DE VITRINE E O `enabled` LIDO COMO O DM LE -- pelo FUNIL do
+			// servidor (comprar -> efeitos -> contadores -> growbranches -> pacote), e o pacote
+			// desmontado com o leitor do cliente. Vizinha da escolha unica pelo mesmo motivo que ela e
+			// vizinha do censo: as tres medem o que o extrator entrega. Ver `GameServer.ArvoreTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--arvoreteste") >= 0) RodarBancadaDasArvores();
 
 			// `--seloteste`: O SELO, O POTE, A DEAD ZONE E O SIGILO DE PODER (lote G9).
 			//
@@ -3129,6 +3135,22 @@ public partial class GameServer : Node
 		// `after_learn` deles; os dois ultimos fecham o lado de quem ESCONDE do sigilo de poder, que
 		// o port so tinha do lado de quem le. Ver `GameServer.Tecnicas.G9.cs`.
 		RegistrarTecnicasG9();
+
+		// O LOTE DOS GOLPES MUDOS DO MOLDE DO G7: os cinco do assassino, os quatro do berserker, os
+		// quatro da luta livre (todos no PRESO), a corrida de Ki, os dois teleportes e a Trindade.
+		// Depende do G3 (GolpeG3), do G7 (a moldura de punho), do agarrao e do arremesso. Ver
+		// `GameServer.Tecnicas.G10.cs`.
+		RegistrarTecnicasG10();
+
+		// O LOTE DOS PROJETEIS QUE FALTAVAM E DOS SISTEMAS PEQUENOS: Death Ball, Buster Barrage, as duas
+		// rajadas, a Genkidama, as duas absorcoes, a Imitacao, a Divisao do Corpo, o Senzu e os Alvos de
+		// Ki (mais a Precognicao, que e passiva). Ver `GameServer.Tecnicas.G12.cs`.
+		RegistrarTecnicasG12();
+
+		// O LOTE "UMA FUNCAO SOBRE PECA EXISTENTE": Sneak, Expand Body, Majin, Shackle, os tres
+		// teleportes com carona, Flip, Self Destruct, Psycho Thread, Freeze, Observe, Unlock Potential
+		// e Give Power -- as skills que ja estavam na arvore sem efeito. Ver `GameServer.Tecnicas.G11.cs`.
+		RegistrarTecnicasG11();
 
 		// O `Planet_Destroy` -- a unica tecnica so-de-vilao do catalogo. Ver `GameServer.Destruicao.cs`.
 		RegistrarTecnicasDaDestruicao();
@@ -4291,8 +4313,9 @@ public partial class GameServer : Node
 			// precisa aparecer. (O `JoinAccepted` fica com o `Name` cru de proposito: ninguem entra
 			// no mundo ja fundido -- a fusao e desfeita antes do save.)
 			w.Put(NomeVisivel(p));
-			w.Put(p.Race);
-			w.Put(p.Genero);
+			// A RACA E O GENERO TAMBEM PASSAM PELO DISFARCE (lote G12): o corpo desenhado sai da raca.
+			w.Put(p.Disfarce?.Raca ?? p.Race);
+			w.Put(p.Disfarce?.Genero ?? p.Genero);
 			// A APARENCIA QUE O MUNDO VE, e nao a do save -- gemea da linha do nome logo acima, e pelo
 			// mesmo motivo. Ver `ServerPlayer.LookDeFusao`: a roupa e o cabelo da fusao NAO podem
 			// encostar em `pl.Visual`, que vai pro disco a cada 2 minutos.
@@ -4775,6 +4798,9 @@ public partial class GameServer : Node
 		EsquecerVacuo(pl.Id);         // idem -- e sem isto o proximo a herdar o id nasceria "sufocando"
 		EsquecerG6(pl.Id);            // recarga do sopro, silaba do Kikoho, cura e rugido em carga
 		EsquecerG7(pl.Id);            // recarga da Bala Dispersa
+		EsquecerG10(pl.Id);           // ultiCD do Hokuto, rush/exaustao e danos atrasados
+		EsquecerG12(pl.Id);           // Death Ball, rajadas, Genkidama, dreno, copias, Senzu, alvos de Ki, disfarce
+		EsquecerG11(pl.Id);           // Sneak, transmissao, autodestruicao, doacao, astros, braco esticado
 		LimparProjeteisDeUmDono(pl.Id, pl.Zone.Hash);
 
 		// ============================ RECONSTRUIDO (mais novo que a copia de 23:07) ============================
@@ -4899,6 +4925,9 @@ public partial class GameServer : Node
 		//     30 Hz, e a 5 Hz andaria 64 px de uma vez -- passaria por dentro de um corpo sem
 		//     encostar nele, que e a pior falha possivel num sistema de acerto.
 		TickDosCanaisDeKi(Protocol.TickSeconds);
+		// O LOTE G12 ENTRE OS DOIS pelo mesmo motivo do canal: e ele quem PARE as esferas das rajadas e da
+		// Death Ball, e a esfera que nasce neste quadro tem que andar neste quadro.
+		TickG12(Protocol.TickSeconds);
 		TickDosProjeteis(Protocol.TickSeconds);
 
 		// A COLISAO DE KI, DEPOIS dos projeteis: e o tique deles que descobre o encontro (dois feixes
@@ -4960,7 +4989,7 @@ public partial class GameServer : Node
 		// invisivel), aplica o teto da zona (uma contagem) e acende o "[E] corpo de Fulano" pra quem
 		// chegou perto -- e chegar perto leva mais de 200 ms. Ver `GameServer.Cadaver.cs`.
 		if (++_tickCount % TicksPorFicha == 0)
-			{ TickFichas(); TickDosNiveis(); TickDasFeridas(); TickDasAureolas(); TickDosCadaveres(); }
+			{ TickFichas(); TickDosNiveis(); TickDasFeridas(); TickDasAureolas(); TickDosCadaveres(); TickDoEfetorG11(); }
 		// O EMBATE ANDA NO TIQUE CHEIO: os corpos se cruzam a cada 260 ms e as letras tem prazo de
 		// 900 ms. A 5 Hz o prazo erraria por ate 200 ms, que num quick time event e a diferenca
 		// entre acertar e nao.
@@ -5461,7 +5490,7 @@ public partial class GameServer : Node
 	/// Ver <see cref="ServerPlayer.NomeDeFusao"/> pra saber por que os dois nao sao o mesmo campo.
 	/// </summary>
 	private static string NomeVisivel(ServerPlayer p) =>
-		p.NomeDeFusao.Length > 0 ? p.NomeDeFusao : p.Name;
+		p.NomeDeFusao.Length > 0 ? p.NomeDeFusao : p.Disfarce?.Nome ?? p.Name;
 
 	/// <summary>
 	/// A APARENCIA QUE O MUNDO VE: a da fusao enquanto ela dura, a do personagem no resto do tempo.
@@ -5473,5 +5502,5 @@ public partial class GameServer : Node
 	/// e a UNICA excecao de propósito e ela esta comentada la -- ninguem entra no mundo ja fundido.
 	/// </summary>
 	private static Jandirus.Core.Appearance.Appearance VisualVisivel(ServerPlayer p) =>
-		p.LookDeFusao ?? p.Visual;
+		p.LookDeFusao ?? p.Disfarce?.Visual ?? p.Visual;
 }

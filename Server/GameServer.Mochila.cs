@@ -83,6 +83,10 @@ public sealed partial class GameServer
 
 		switch (acao)
 		{
+			// A SEMENTE SENZU cura o corpo inteiro alem de alimentar (`Food.dm:38-48`), e tem o gesto de
+			// acudir um caido (`:57-66`). Ver o lote G12.
+			case "comer" when def.Id == CatalogoDeItens.Senzu: ComerSenzuG12(pl, def); break;
+			case "acudir": AcudirComSenzuG12(pl, def); break;
 			case "comer": ComerItem(pl, def); break;
 			case "equipar": Equipar(pl, def); break;
 			case "ajustar": AjustarPeso(pl, arg2); break;

@@ -145,6 +145,47 @@ public static class VerbosDoJogo
 			"Recusa a oferta de voltar a ser jovem.",
 			() => C?.SendVerbo("juventude_recusar")));
 
+		// A RESPOSTA A OFERTA DE DESPERTAR O POTENCIAL (`Unlock_Potential`, lote G11): no DM o verb
+		// pergunta AO ALVO "Do you want to do this?" (`UnlockPotential.dm:13`) e so entao desperta.
+		// Mesmo molde da juventude: os dois botoes sao de quem RECEBE, na aba de todo mundo.
+		Verbos.Registrar(new Verbo("Accept Potential", Verbos.Outros,
+			"Aceita que despertem o seu potencial adormecido (uma vez na vida).",
+			() => C?.SendVerbo("potencial_aceitar")));
+
+		Verbos.Registrar(new Verbo("Decline Potential", Verbos.Outros,
+			"Recusa a oferta de despertar o seu potencial.",
+			() => C?.SendVerbo("potencial_recusar")));
+
+		// ============================ AS ORDENS DAS COPIAS DO SPLIT FORM (lote G12) ============================
+		// No DM cada copia tem um `Click()` com o menu Follow / Stop / Attack Target / Attack Nearest /
+		// Destroy (`Split Forms.dm:28-68`). O port nao tem clique em NPC, entao o menu virou cinco verbos
+		// de quem e o DONO, e cada ordem vale pra TODAS as copias dele de uma vez.
+		Verbos.Registrar(new Verbo("Split Form: Follow", Verbos.Outros,
+			"Suas copias passam a seguir voce (param a dois tiles).",
+			() => C?.SendVerbo("splitform_seguir")));
+		Verbos.Registrar(new Verbo("Split Form: Stop", Verbos.Outros,
+			"Suas copias param onde estao.",
+			() => C?.SendVerbo("splitform_parar")));
+		Verbos.Registrar(new Verbo("Split Form: Attack Target", Verbos.Outros,
+			"Suas copias atacam quem voce marcou (duplo clique).",
+			() => C?.SendVerbo("splitform_alvo")));
+		Verbos.Registrar(new Verbo("Split Form: Attack Nearest", Verbos.Outros,
+			"Suas copias atacam quem estiver mais perto delas (menos voce).",
+			() => C?.SendVerbo("splitform_perto")));
+		Verbos.Registrar(new Verbo("Split Form: Destroy", Verbos.Outros,
+			"Desfaz todas as suas copias.",
+			() => C?.SendVerbo("splitform_destruir")));
+
+		// ============================ A RESPOSTA A GENKIDAMA (lote G12) ============================
+		// `alert("Give power? It'll drain 10% of your Ki.")` em quem MEDITA (`SpiritBomb.dm:81`): os dois
+		// botoes sao de quem recebe o pedido, pelo mesmo desenho da oferta de juventude acima.
+		Verbos.Registrar(new Verbo("Give Power to Spirit Bomb", Verbos.Outros,
+			"Doa um decimo do seu Ki a Genkidama que alguem esta formando neste mundo (so meditando).",
+			() => C?.SendVerbo("genkidama_doar")));
+		Verbos.Registrar(new Verbo("Refuse Spirit Bomb", Verbos.Outros,
+			"Guarda a sua energia.",
+			() => C?.SendVerbo("genkidama_negar")));
+
 		Verbos.Registrar(new Verbo("Name Heir", Verbos.Outros,
 			"So o Rei de Vegeta: poe quem esta marcado na linha de sucessao do trono.",
 			() => NoAlvo("cargo_herdeiro")));

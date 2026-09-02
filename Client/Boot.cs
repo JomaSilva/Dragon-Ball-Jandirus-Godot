@@ -94,6 +94,17 @@ public partial class Boot : Node2D
 		Teclas.Aplicar(Config);
 		Config.Aplicar();
 
+		// ============================ `--semfoco`: A JANELA DA BANCADA NAO ROUBA O TECLADO ============================
+		// A regra da casa manda a janela de bancada nascer no SEGUNDO monitor pra nao atrapalhar o dono
+		// -- e isso resolvia a metade da tela. A outra metade e o TECLADO: a primeira rodada da
+		// `--diagskills` saiu com o menu de PAUSA aberto, o zoom trocado e o menu do P fechado no meio
+		// do roteiro, e nada no roteiro aperta ESC. Foram teclas do dono, digitando no monitor
+		// principal, chegando numa janela que tinha ficado com o foco. Com a bandeira `NoFocus` a
+		// janela continua desenhando e fotografando, mas nunca vira a dona do teclado.
+		// ================================================================================================
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semfoco") >= 0)
+			DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, true);
+
 		// processo servidor nao abre janela de login
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--server") >= 0)
 		{
@@ -627,7 +638,7 @@ public partial class Boot : Node2D
 		// Daqui pra frente TUDO que a tela mostra come dos arquivos que o `Aquecimento` esta puxando:
 		// a lista de slots desenha um `CharacterVisual` por personagem (corpo, cabelo, roupa, o shader
 		// `Personagem`), e o `AutoEscolher` logo abaixo vai direto pro mundo.
-        //
+		//
 		// Enquanto houver carga em thread NO AR, um `ResourceLoader.Load` do mesmo arquivo TRAVA a
 		// thread principal -- medido, 240 s de log mudo. Ver `Aquecimento.Concluir`: ele espera o que
 		// faltar (nada, no caso normal) e deixa o campo limpo pra todo mundo.
@@ -858,6 +869,14 @@ public partial class Boot : Node2D
 		// o admin (o defeito que fazia o host nunca ver a aba). Ver RoboDeAdmin.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagadmin") >= 0)
 			AddChild(new RoboDeAdmin { Name = "RoboDeAdmin" });
+
+		// --diagskills: a bancada da ABA DE SKILLS do menu P (Learning, a ficha, a aba Skills e a
+		// busca). Precisa de JANELA: ela le a foto -- borda de card, icone apagado, cor do painel
+		// da ficha contra a paleta -- e sem foto essas linhas sao PULADAS, nao verdes. Vizinha da
+		// `--diagadmin` porque nasce do mesmo jeito: dentro do mundo, com o host como jogador, e
+		// aperta os controles de producao achados pelo texto. Ver RoboDeSkills.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagskills") >= 0)
+			AddChild(new RoboDeSkills { Name = "RoboDeSkills" });
 
 		// --diagnav: bancada da CARTA ESTELAR. Um mapa desenhado nao devolve nada -- esta bancada
 		// mede o que o `_Draw` pinta: quantos planetas o enquadramento cobre, se os gerados entram

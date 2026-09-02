@@ -163,6 +163,9 @@ public partial class GameServer
 			// quatro segundos que o servidor conduz. Cobrar Ki dela derrubaria os dois no meio do
 			// embate -- e o pior jeito de acabar uma disputa e sem que nenhum dos dois tenha errado.
 			if (_emEmbate.ContainsKey(id)) continue;
+			// O SNEAK (lote G11) TAMBEM NAO PAGA ALUGUEL: no DM ele e um `TempBuff` com custo unico no
+			// verb (`Assassain Skills.dm:167-171`), sem dreno por segundo; quem o expira e o efetor do G11.
+			if (_sneakAteG11.ContainsKey(id)) continue;
 
 			pl.Ficha.Ki -= Tecnicas.InvisDrenoPorSegundo(pl.Ficha);
 			if (pl.Ficha.Ki >= Tecnicas.InvisKiMinimo && !pl.Ficha.KO) continue;
@@ -222,6 +225,10 @@ public partial class GameServer
 		// (`Power_Control:40`). Ver o cabecalho do `GameServer.Tecnicas.G9.cs`.
 		if (UsarTecnicasG9(pl, id)) return true;
 
+		// E O LOTE G11 pelo mesmo motivo: seis dos catorze aceitam id com ARGUMENTO (`Expand_Body:2`,
+		// `Kai_Kai:Namek`, `Instant_Transmission:Goku`...). Ver o cabecalho do `GameServer.Tecnicas.G11.cs`.
+		if (UsarTecnicasG11(pl, id)) return true;
+
 		// AS TECNICAS QUE O JOGADOR INVENTOU entram AQUI, antes do gate generico, e pelo mesmo
 		// motivo dos lotes acima: `SabeTecnica` pergunta se alguma SKILL destrava este verbo, e
 		// nenhuma skill destrava `Custom_Attack7` -- no DM os verbos custom sao concedidos pelo
@@ -278,6 +285,11 @@ public partial class GameServer
 				// E O LOTE G7 pela terceira vez pela mesma porta: catorze punhos nomeados e as duas
 				// bolas que faltavam. A lista mora no proprio lote (`IdsG7`).
 				else if (EhDoLoteG7(id)) UsarTecnicasG7(pl, id);
+				// E O LOTE G10 pela mesma porta: os golpes do molde do G7 que o censo achou mudos. A
+				// lista mora no proprio lote (`IdsG10`); nenhum aceita argumento.
+				else if (EhDoLoteG10(id)) UsarTecnicasG10(pl, id);
+				// E O LOTE G12 (os projeteis que faltavam e os sistemas pequenos): a lista mora no lote.
+				else if (EhDoLoteG12(id)) UsarTecnicasG12(pl, id);
 				else Avisar(pl, $"{t.Nome} ainda nao tem efeito.");
 				break;
 		}

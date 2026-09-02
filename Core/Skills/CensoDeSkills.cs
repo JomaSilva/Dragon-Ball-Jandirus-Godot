@@ -182,17 +182,21 @@ public static class CensoDeSkills
 		// A `--catalogoteste` agora afirma que nenhum verb esta nas duas listas ao mesmo tempo. Ver
 		// `Contradicoes`.
 		// ==========================================================================================
-		["Clench"] = SistCombo, ["Flip"] = SistCombo, ["Gigantic_Spike"] = SistCombo,
-		["Hokuto_Hyakuretsu_Ken"] = SistCombo, ["Hold"] = SistCombo, ["Power_Drag"] = SistCombo,
-		["Power_Slam"] = SistCombo, ["Precise_Explosion"] = SistCombo, ["Revenge_Demon"] = SistCombo,
-		["Reverb"] = SistCombo, ["Seismic_Press"] = SistCombo, ["Shock"] = SistCombo,
-		["Sneak"] = SistCombo, ["Suplex"] = SistCombo, ["Trip"] = SistCombo,
+		// ============================ E FICOU COM DOIS: O LOTE G10 LEVOU TREZE ============================
+		// Clench, Hold, Power_Slam, Suplex, Gigantic_Spike, Power_Drag, Revenge_Demon, Seismic_Press,
+		// Hokuto_Hyakuretsu_Ken, Precise_Explosion, Reverb, Shock e Trip sairam daqui pelo lote G10
+		// (`Server/GameServer.Tecnicas.G10.cs`): nenhum deles esperava motor nenhum -- eram a moldura
+		// de punho do G7 com o agarrao e o arremesso que ja existiam. Ficam os dois que sao outra coisa:
+		// `Flip` e a tecla de ESCAPAR do agarrao (a luta pra escapar do port e por passo, sem tecla) e
+		// `Sneak` e invisibilidade TEMPORARIA (`TempBuff("invisibility", 10 + Etechnique)`).
+		// ==========================================================================================
 
 		// ---- 7 ----
-		// O `Bio_Absorb` SAIU daqui pro `PorOutroCanal` -- ver a nota la. As tres irmas ficaram, e a
-		// razao esta escrita junto: o bio CONSOME e o Majin SELA; sao motores diferentes.
-		["Absorb_Android"] = SistAbsorcao, ["Buu_Absorb"] = SistAbsorcao,
-		["Soul_Absorb"] = SistAbsorcao, ["Imitation"] = SistAbsorcao, ["Permanent_Imitation"] = SistAbsorcao,
+		// O `Bio_Absorb` SAIU daqui pro `PorOutroCanal` -- ver a nota la. Depois dele, o lote G12 tirou
+		// `Soul_Absorb`, `Absorb_Android` e `Imitation` (portados como as tecnicas que sao, sem dimensao
+		// interna: o ramo COMUM do `absorb()` mata a vitima e nao sela ninguem). Ficam o `Buu_Absorb`
+		// (o Majin SELA -- e um motor diferente), a Imitacao Permanente (sobrecarga de genoma) e o Bodyswap.
+		["Buu_Absorb"] = SistAbsorcao, ["Permanent_Imitation"] = SistAbsorcao,
 		["BodyswapOBJ"] = SistAbsorcao,
 
 		// ============================ ERAM 7, VIRARAM 2 -- E CINCO DELES NUNCA PRECISARAM DESTE SISTEMA ============================
@@ -221,8 +225,7 @@ public static class CensoDeSkills
 
 		// ---- 7 ----
 		["Word_Power"] = SistMagia, ["Watagashi"] = SistMagia, ["Void_Shout"] = SistMagia,
-		["Psycho_Thread"] = SistMagia, ["Purification"] = SistMagia, ["Erasure"] = SistMagia,
-		["Shackle"] = SistMagia,
+		["Purification"] = SistMagia, ["Erasure"] = SistMagia,
 
 		// ============================ ERAM 7 E VIRARAM 8, E O OITAVO E UMA DIVIDA QUE ATE ONTEM NAO EXISTIA ============================
 		// O `Seal_Mob` (skill `Superior Seal`, do Guardiao da Terra, do Assistente e do Guardiao
@@ -241,10 +244,10 @@ public static class CensoDeSkills
 		// ==========================================================================================================================
 		["Seal_Mob"] = SistMagia,
 
-		// ---- 6 ----
+		// ---- 2 (eram 6: Zanzoken_Combo, Zanzoken_Dash, Zanzoken_Rush e Rapid_Movement sairam pelo
+		// lote G10 -- os dois teleportes e a corrida de Ki nao esperavam "zanzoken avancado": eram um
+		// `Move` e um laco de `step`, ver `GameServer.Tecnicas.G10.cs`) ----
 		["Afterimage_Toggle"] = SistZanzo, ["Zanzoken_Afterimage"] = SistZanzo,
-		["Zanzoken_Combo"] = SistZanzo, ["Zanzoken_Dash"] = SistZanzo,
-		["Zanzoken_Rush"] = SistZanzo, ["Rapid_Movement"] = SistZanzo,
 
 		// ---- 6 ----
 		["Earth_Taxes"] = SistImposto, ["Vegeta_Taxes"] = SistImposto,
@@ -252,17 +255,18 @@ public static class CensoDeSkills
 		["Exempt_Earth_Taxes"] = SistImposto, ["Exempt_Vegeta_Taxes"] = SistImposto,
 
 		// ---- 5 ----
-		["Focus_Skill"] = SistEstudo, ["Study_Other"] = SistEstudo, ["Observe"] = SistEstudo,
-		["Ki_Targets"] = SistEstudo, ["Write_Teachings"] = SistEstudo,
+		// O `Ki_Targets` SAIU daqui pelo lote G12 (parcial: sem o clique, ver o lote).
+		["Focus_Skill"] = SistEstudo, ["Study_Other"] = SistEstudo,
+		["Write_Teachings"] = SistEstudo,
 
 		// ---- 3 e 3 e 3 e 3 ----
-		["Freeze"] = SistTempo, ["Stop"] = SistTempo, ["Tele_Stop"] = SistTempo,
-		["SplitForm"] = SistDividido, ["Expand_Body"] = SistDividido, ["Devil_Bringer"] = SistDividido,
+		["Stop"] = SistTempo, ["Tele_Stop"] = SistTempo,
+		// O `SplitForm` SAIU daqui pelo lote G12 (a copia e um corpo sem dono com cerebro, guiada por verbo).
 		["Equip_Tree"] = SistArvore, ["Throw_Tree"] = SistArvore, ["Pluck_Tree"] = SistArvore,
-		["BusterBarrage"] = SistVolei, ["Continuous_Energy_Bullets"] = SistVolei, ["Spin_Blast"] = SistVolei,
+		// O `SistVolei` inteiro (Buster Barrage, Balas Continuas, Rajada Giratoria) SAIU pelo lote G12, e a
+		// constante foi apagada junto: grupo sem verb e uma linha de zero no relatorio.
 
 		// ---- 2 e 2 e 2 e 2 e 2 ----
-		["Instant_Transmission"] = SistTeleporte, ["Kai_Kai"] = SistTeleporte,
 
 		// A `Scattering_Bullet` saiu daqui pelo lote G7 (a nuvem que converge de todos os angulos foi
 		// portada como bolas de verdade). O `Energy_Wave_Volley` FICOU, e o motivo esta escrito no
@@ -303,14 +307,7 @@ public static class CensoDeSkills
 		// =========================================================================================================
 
 		// ---- e os que sao um sistema cada, com o nome do sistema no lugar do grupo ----
-		["Death_Ball"] = "carga de BOLA segurada (o `Canalizar` so carrega RAIO)",
-		["Self_Destruct"] = "autodestruicao: o corpo vira a explosao, e o agarrao que a acompanha",
-		["Give_Power"] = "doacao de BP entre dois corpos",
-		["Majin"] = "majinizacao: a marca do M em outro jogador, com dono e reversao",
 		["Golden_Form"] = "a camada Golden do Frost Demon (god ki temporario por cima da evolucao)",
-		["Unlock_Potential"] = "despertar de potencial (o ritual do Ancia~o, uma vez por vida)",
-		["Grow_Senzu_Bean"] = "plantio: semente que vira item com o tempo",
-		["SpiritBomb"] = "genkidama: energia EMPRESTADA de quem esta em volta",
 		["Narrate"] = "ferramentas de narrador (o verb e do `mob/Admin1`, nao do jogador)",
 		["Acid_Spit"] = "veneno: dano ao longo do tempo carregado por um tiro",
 	};
@@ -325,11 +322,8 @@ public static class CensoDeSkills
 	private const string SistImposto = "impostos: cofre que TIRA dinheiro de quem mora no planeta";
 	private const string SistEstudo = "percepcao e estudo de Ki (aprender vendo o outro usar)";
 	private const string SistTempo = "parar o tempo";
-	private const string SistDividido = "corpo dividido / mudado de tamanho";
 	private const string SistArvore = "arvore-arma (arrancar cenario e usar como arma)";
-	private const string SistVolei = "barragem SUSTENTADA (aperta, segura, jorra ate soltar)";
 	private const string SistTrem = "raio em TREM DE SEGMENTOS (o port colapsou o raio num objeto so)";
-	private const string SistTeleporte = "teleporte por assinatura de Ki";
 	private const string SistFusao = "fusao de dois corpos num so";
 	private const string SistPatronato = "patronato de Kaishin (aprendiz com varios donos)";
 
@@ -406,6 +400,40 @@ public static class CensoDeSkills
 
 		/// <summary>Os que nao estao em lista nenhuma. Vazio = a divida esta toda catalogada.</summary>
 		public List<string> SemCobertura = [];
+
+		// ============================ AS FOLHAS QUE NASCEM `enabled = 0` ============================
+		// 152 das 317. `enabled = 0` nao e "desligada" (`skill.dm:26`): e "trancada ate alguem
+		// acender". Este bloco diz QUEM acende cada uma -- e, quando ninguem acende, diz isso em
+		// vez de deixar a skill parecer desativada por escolha de servidor.
+		// ============================================================================================
+		/// <summary>Trancadas que um PRE-REQUISITO acende (`testskillprereqs`, `trees.dm:28-36`).</summary>
+		public int TrancadasPorPreReq;
+
+		/// <summary>Trancadas que o bit de VILAO acende (`trees.dm:37-43`).</summary>
+		public int TrancadasSoVilao;
+
+		/// <summary>Trancadas com regra `acende` numa arvore que as pendura, e o port SABE avaliar a condicao.</summary>
+		public int TrancadasComAcendedor;
+
+		/// <summary>Trancadas com regra `acende`, mas a condicao le algo que o port nao tem. (nome, condicao, o que falta)</summary>
+		public List<(string Nome, string Condicao, string Falta)> AcendedorForaDoPort = [];
+
+		/// <summary>
+		/// Trancadas que um DEGRAU DE NIVEL de outra skill acende (`enableskill` no `effector()`,
+		/// Mind.dm:186) -- (nome, quem acende). Eram a maior parte das "sem acendedor": as
+		/// Advanced_*/Perfect_* de Ki, que acendem no nivel 100 da anterior.
+		/// </summary>
+		public List<(string Nome, string Quem)> TrancadasPorDegrau = [];
+
+		/// <summary>Trancadas sem regra nenhuma, so ensinaveis: chegam por um mestre e por mais nada.</summary>
+		public int TrancadasSoPorEnsino;
+
+		/// <summary>
+		/// TRANCADAS SEM ACENDEDOR: nenhum pre-requisito, nenhuma regra em arvore que as pendure,
+		/// nao ensinaveis. No DM elas tambem nao acendem por arvore -- ou acendem por um canal que
+		/// o extrator nao le (degrau de nivel de OUTRA skill, `effector()` de arvore racial, cargo).
+		/// </summary>
+		public List<string> SemAcendedor = [];
 	}
 
 	/// <summary>
@@ -413,7 +441,13 @@ public static class CensoDeSkills
 	/// (`niveis.json`) -- eles NAO estao no `Skill.Verbos` e ja sumiram do radar uma vez: dois dos
 	/// tres verbos de tiro do jogo sao concedidos por degrau, e o menu inteiro os ignorava.
 	/// </summary>
-	public static Relatorio Levantar(SkillCatalog cat, IEnumerable<string>? verbosDeDegrau = null)
+	/// <param name="destravadasPorDegrau">
+	/// Skill acesa por degrau -> quem a acende (`RegrasDeNivel.DestravadasPorDegrau`). Quem nao
+	/// carrega o `niveis.json` passa nulo, e as folhas acesas por degrau caem em "sem acendedor" --
+	/// o numero sai maior de proposito, porque e o que aquele leitor sabe.
+	/// </param>
+	public static Relatorio Levantar(SkillCatalog cat, IEnumerable<string>? verbosDeDegrau = null,
+									 IReadOnlyDictionary<string, RegrasDeNivel.AcendedorPorDegrau>? destravadasPorDegrau = null)
 	{
 		var r = new Relatorio { ComCorpo = Tecnicas.Portadas };
 		var porVerbo = new Dictionary<string, LinhaDeVerbo>(StringComparer.OrdinalIgnoreCase);
@@ -484,6 +518,8 @@ public static class CensoDeSkills
 		r.VerbosSemCobertura = r.Verbos.Count(l => l.Situacao == Situacao.SemCobertura);
 		r.SemCobertura = [.. r.Verbos.Where(l => l.Situacao == Situacao.SemCobertura).Select(l => l.Verbo)];
 
+		ClassificarTrancadas(cat, r, destravadasPorDegrau);
+
 		r.VerbosDeCargo = r.Verbos.Count(l => l.DeCargo);
 		r.VerbosDeCargoVivos = r.Verbos.Count(
 			l => l.DeCargo && l.Situacao is Situacao.Portada or Situacao.OutroCanal);
@@ -494,6 +530,65 @@ public static class CensoDeSkills
 			.OrderByDescending(t => t.Item2).ThenBy(t => t.Key, StringComparer.Ordinal)];
 
 		return r;
+	}
+
+	/// <summary>
+	/// QUEM ACENDE CADA FOLHA NASCIDA `enabled = 0` -- na mesma ordem em que o
+	/// <see cref="SkillBook.Avaliar"/> pergunta, pra que o censo e a loja nunca discordem.
+	///
+	/// A regra e procurada SO nas arvores que penduram a skill, porque e assim que o
+	/// `enableskill()` do DM alcanca (`trees.dm:172-176` varre os `constituentskills` da propria
+	/// arvore). E o que faz a Ki Buff Mastery sair como SEM ACENDEDOR: o `growbranches()` que acende
+	/// as tres basicas dela esta escrito na arvore errada (`BuffMastery.dm:15` declara
+	/// `/datum/skill/tree/effusionmas/growbranches()`), e na effusionmas elas nao sao galho.
+	/// </summary>
+	private static void ClassificarTrancadas(SkillCatalog cat, Relatorio r,
+											 IReadOnlyDictionary<string, RegrasDeNivel.AcendedorPorDegrau>? porDegrau)
+	{
+		List<Skill> arvores = [.. cat.Arvores];
+		foreach (Skill s in cat.Todas)
+		{
+			if (s.Arvore || s.Ligada) continue;
+			if (s.PreReqs.Length > 0) { r.TrancadasPorPreReq++; continue; }
+			if (s.SoVilao) { r.TrancadasSoVilao++; continue; }
+
+			// O DEGRAU DE OUTRA SKILL, na mesma posicao em que o `Avaliar` o ve: depois do
+			// pre-requisito e do vilao, ao lado da regra de arvore. Quem passou nulo (o console sem
+			// `niveis.json`) nao sabe disto, e a folha cai onde sempre caiu.
+			if (porDegrau != null && porDegrau.TryGetValue(s.Path, out RegrasDeNivel.AcendedorPorDegrau quem))
+			{
+				r.TrancadasPorDegrau.Add((s.Nome, $"{cat.Get(quem.Path)?.Nome ?? quem.Path} nivel {quem.Nivel}"));
+				continue;
+			}
+
+			string? condicao = null;
+			var falta = new SortedSet<string>(StringComparer.Ordinal);
+			foreach (Skill arv in arvores)
+			{
+				if (!Array.Exists(arv.Galhos, g => string.Equals(g, s.Path, StringComparison.OrdinalIgnoreCase))) continue;
+				foreach (RegraDeArvore rg in arv.RegrasDeGalho)
+				{
+					if (rg.Tipo != TipoDeRegra.Acende) continue;
+					if (rg.Alvo != "*" && !string.Equals(rg.Alvo, s.Path, StringComparison.OrdinalIgnoreCase)) continue;
+					condicao ??= rg.Condicao.Length > 0 ? rg.Condicao : "sempre";
+					foreach (string id in rg.Identificadores)
+						if (!ContextoDeRegra.PortConhece(id)) falta.Add(id);
+					if (rg.Condicao.Contains('?')) falta.Add("(laco que o port nao enxerga)");
+				}
+			}
+
+			if (condicao != null)
+			{
+				if (falta.Count == 0) r.TrancadasComAcendedor++;
+				else r.AcendedorForaDoPort.Add((s.Nome, condicao, string.Join(", ", falta)));
+				continue;
+			}
+			if (s.Ensinavel) { r.TrancadasSoPorEnsino++; continue; }
+			r.SemAcendedor.Add(s.Nome);
+		}
+		r.SemAcendedor.Sort(StringComparer.OrdinalIgnoreCase);
+		r.AcendedorForaDoPort.Sort((a, b) => string.Compare(a.Nome, b.Nome, StringComparison.OrdinalIgnoreCase));
+		r.TrancadasPorDegrau.Sort((a, b) => string.Compare(a.Nome, b.Nome, StringComparison.OrdinalIgnoreCase));
 	}
 
 	/// <summary>
@@ -564,6 +659,28 @@ public static class CensoDeSkills
 		yield return "================ O QUE FALTA, POR SISTEMA ================";
 		foreach ((string sistema, int quantos) in r.PorSistema)
 			yield return $"  {quantos,3}  {sistema}";
+
+		// AS TRANCADAS, POR QUEM AS ACENDE. O total confere com as 152 `ligada: 0` do catalogo; o
+		// que interessa e a ultima linha -- a que diz quantas ninguem acende, e quais.
+		int trancadas = r.TrancadasPorPreReq + r.TrancadasSoVilao + r.TrancadasComAcendedor
+					  + r.AcendedorForaDoPort.Count + r.TrancadasPorDegrau.Count
+					  + r.TrancadasSoPorEnsino + r.SemAcendedor.Count;
+		yield return "";
+		yield return "================ AS FOLHAS QUE NASCEM `enabled = 0`, E QUEM AS ACENDE ================";
+		yield return $"trancadas de nascenca                   : {trancadas}";
+		yield return $"  um PRE-REQUISITO acende               : {r.TrancadasPorPreReq}";
+		yield return $"  o bit de VILAO acende                 : {r.TrancadasSoVilao}";
+		yield return $"  regra de arvore que o port AVALIA     : {r.TrancadasComAcendedor}";
+		yield return $"  regra de arvore FORA do alcance       : {r.AcendedorForaDoPort.Count}";
+		yield return $"  um DEGRAU de outra skill acende       : {r.TrancadasPorDegrau.Count}";
+		yield return $"  so por ENSINO (sem regra, ensinavel)  : {r.TrancadasSoPorEnsino}";
+		yield return $"  SEM ACENDEDOR (mortas neste port)     : {r.SemAcendedor.Count}";
+		foreach ((string nome, string cond, string falta) in r.AcendedorForaDoPort)
+			yield return $"     fora do alcance: {nome,-28} {cond}   (falta: {falta})";
+		foreach ((string nome, string quem) in r.TrancadasPorDegrau)
+			yield return $"     por degrau     : {nome,-28} {quem}";
+		foreach (string nome in r.SemAcendedor)
+			yield return $"     sem acendedor  : {nome}";
 
 		if (r.SemCobertura.Count == 0) yield break;
 		yield return "";

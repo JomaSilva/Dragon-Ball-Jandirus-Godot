@@ -2455,11 +2455,20 @@ public static class FormasBench
 
 				// INERTE, E PELA PORTA DE PRODUCAO: quem responde nao e o campo, e o
 				// `SkillBook.PodeAprender` -- a mesma funcao que a loja chama.
+				//
+				// A RECUSA MUDOU DE NOME quando o `enabled = 0` passou a ser lido como o DM le
+				// (`skill.dm:26`: trancada ate alguem acender, e nao "desligada"): a Golden Form tem
+				// acendedor na arvore racial do Frost Demon (`icer.dm:22-23`), so que ele le `godki_at`,
+				// `KOcount` e `Age`, que o port nao tem -> `AguardaAcendedor`, com a condicao como dado;
+				// e o Majin pende so de arvores que um Icer nao possui (a do Demonio e a do Outro
+				// Mundo) -> `SemArvore`. Nas duas a loja continua recusando, que e o que esta linha mede.
 				var livro = new Jandirus.Core.Skills.SkillBook();
 				livro.Conceder(99);
 				Jandirus.Core.Skills.Recusa r = livro.PodeAprender(cat, path, "Icer", "Frost Demon", vilao: false);
-				Checa($"...e NAO se aprende hoje ({s.Nome}): a loja recusa por DESLIGADA",
-					  r == Jandirus.Core.Skills.Recusa.Desligada, r.ToString());
+				Jandirus.Core.Skills.Recusa esperada = path.EndsWith("Golden_Form", StringComparison.Ordinal)
+					? Jandirus.Core.Skills.Recusa.AguardaAcendedor : Jandirus.Core.Skills.Recusa.SemArvore;
+				Checa($"...e NAO se aprende hoje ({s.Nome}): a loja recusa por {esperada}",
+					  r == esperada, r.ToString());
 
 				// E NENHUMA FORMA DO CATALOGO A ESPERA: uma entrada que pedisse a flag de uma skill
 				// desligada seria uma forma inalcancavel pra sempre -- e inalcancavel e indistinguivel

@@ -80,27 +80,8 @@ public partial class MenuJogo : CanvasLayer
 	private string _aba = "Stats";
 	private Protocol.AtributosState _atributos;
 
-	/// <summary>
-	/// QUE ARVORE ESTA ABERTA no balcao de aprendizado. Vazio = a lista de arvores.
-	///
-	/// E o `mob/var/CurrentTree` do original (SkillTreesWindow.dm:53), com a mesma vida: nasce
-	/// nulo, o clique num card de arvore o preenche, e o botao de voltar o zera de novo
-	/// (`backbutton()`, SkillTreesWindow.dm:114).
-	/// </summary>
-	private string _arvoreAberta = "";
-
-	/// <summary>A gaveta das trancadas da arvore aberta esta escancarada? Ver <see cref="SkillsDaArvore"/>.</summary>
-	private bool _verTrancadas;
-
-	/// <summary>
-	/// O CATALOGO, lido do mesmo arquivo que o servidor le.
-	///
-	/// O cliente precisa dele pra MOSTRAR (nome, custo, o que falta) e pra nao oferecer o que
-	/// vai ser recusado. Quem DECIDE continua sendo o servidor -- e a mesma funcao do Core
-	/// roda nos dois lados, entao nao ha duas regras pra divergir.
-	/// </summary>
-	private static SkillCatalog? _catalogo;
-	private readonly SkillBook _livro = new();
+	// A ARVORE ABERTA, O CATALOGO E O LIVRO moram em `MenuJogo.Skills.cs`, junto de toda a aba de
+	// aprendizado (Learning), da aba Skills e da ficha de compra.
 
 	public override void _Ready()
 	{
@@ -252,7 +233,24 @@ public partial class MenuJogo : CanvasLayer
 	}
 
 	private void AoObras() { if (Visible && _aba == "Tech") Redesenhar(); }
-	private void AoMudarVerbos() { if (Visible) Redesenhar(); }
+
+	/// <summary>
+	/// O CATALOGO DE VERBS MUDOU -- e ele muda EM RAJADA: `Habilidades.Montar` chama `Verbos.Limpar()` e
+	/// re-registra o catalogo inteiro, e o `Mudou` dispara uma vez por verb. Isto era uma dezena de
+	/// `Redesenhar()` num tique so, e ficou visivel no dia em que a aba de aprendizado passou a assinar
+	/// os proprios verbs: a lista cresce de volta um a um, a assinatura muda a cada passo, e a pagina
+	/// era remontada 17 vezes por pacote de skills -- com o botao que o jogador ia clicar morrendo a
+	/// cada uma. Um redesenho ADIADO pro fim do quadro ve o catalogo ja inteiro: uma comparacao de
+	/// assinatura, e nenhuma remontagem quando ele voltou igual.
+	/// </summary>
+	private bool _redesenhoAdiado;
+
+	private void AoMudarVerbos()
+	{
+		if (!Visible || _redesenhoAdiado) return;
+		_redesenhoAdiado = true;
+		Callable.From(() => { _redesenhoAdiado = false; if (Visible) Redesenhar(); }).CallDeferred();
+	}
 
 	// =====================================================================
 	// ABRIR E FECHAR
@@ -288,11 +286,13 @@ public partial class MenuJogo : CanvasLayer
 		// _UnhandledInput, que roda depois daqui)
 		if (Visible && k.Keycode == Key.Escape)
 		{
-			// ESC DESFAZ UMA CAMADA POR VEZ, da mais interna pra mais externa: primeiro a busca,
-			// depois a arvore aberta, e so entao o menu. Fechar tudo de uma vez faria quem entrou
-			// numa arvore por engano perder o painel inteiro pra corrigir o clique.
-			if (_busca.HasFocus() && _busca.Text.Length > 0) { _busca.Text = ""; Redesenhar(); }
-			else if (_aba == "Learning" && _arvoreAberta.Length > 0) FecharArvore();
+			// ESC DESFAZ UMA CAMADA POR VEZ, da mais interna pra mais externa: primeiro a FICHA de
+			// skill (ela e um painel por cima da aba), depois a busca, depois a arvore aberta, e so
+			// entao o menu. Fechar tudo de uma vez faria quem entrou numa arvore por engano perder
+			// o painel inteiro pra corrigir o clique.
+			if (FecharFicha()) { }
+			else if (_busca.HasFocus() && _busca.Text.Length > 0) { _busca.Text = ""; Redesenhar(); }
+			else if (_aba == "Learning" && _arvoreAberta.Length > 0) { FecharArvore(); Redesenhar(); }
 			else Fechar();
 			GetViewport().SetInputAsHandled();
 		}
@@ -331,6 +331,7 @@ public partial class MenuJogo : CanvasLayer
 
 	public void Fechar()
 	{
+		FecharFicha();
 		Visible = false;
 		Aberto = false;
 		_busca.ReleaseFocus();
@@ -392,6 +393,10 @@ public partial class MenuJogo : CanvasLayer
 		rolagemAbas.AddChild(_barraAbas);
 
 		coluna.AddChild(new HSeparator());
+
+		// A FAIXA DE MARCOS: fixa, FORA da rolagem, e so na aba de aprendizado -- ver
+		// `MontarFaixaDeMarcos` no arquivo da aba.
+		MontarFaixaDeMarcos(coluna);
 
 		// --- conteudo ---
 		var rolagem = new ScrollContainer
@@ -504,8 +509,13 @@ public partial class MenuJogo : CanvasLayer
 					 + $"|{_atributos.GravEfetiva:0.#}|{_atributos.PesoMult:0.##}"
 					 + $"|{_atributos.ZonaMult:0.#}|{_atributos.Esmagamento:0.##}",
 			"Body" => $"{comum}|{string.Join(',', (c?.Corpo ?? []).Select(p => p.Nome + p.Vida + (p.Decepado ? "x" : "")))}",
-			"Learning" => $"{comum}|{c?.SkillsAprendidas.Count}|{c?.MarcosTotais}|{c?.MarcosLivres}",
-			"Skills" => $"{comum}|{c?.SkillsAprendidas.Count}",
+			// AS DUAS ABAS DE SKILLS ASSINAM POR PECAS NOMEADAS (ver `AssinaturaDeSkills`). Foi uma
+			// variavel fora desta linha que produziu a gaveta que nao abria (o clique invertia a flag,
+			// a pagina era reaproveitada) -- e a bancada `--diagskills` tira uma peca por vez pra
+			// provar que cada uma e necessaria. Elas NAO passam pelo `comum`: ele carrega `f.Estado`,
+			// cujos bits altos sao a direcao do corpo, e virar pra esquerda com a arvore aberta
+			// remontaria a pagina e jogaria a rolagem de volta pro topo.
+			"Learning" or "Skills" => AssinaturaDeSkills(aba),
 			// A PROFICIENCIA DA DISCIPLINA ENTRA AQUI porque a aba passou a DESENHA-LA: as quatro
 			// formas divinas relatam a proficiencia da skill no lugar da maestria, e sem este pedaco
 			// a barra delas ficaria congelada na tela enquanto sobe de verdade no servidor.
@@ -693,6 +703,11 @@ public partial class MenuJogo : CanvasLayer
 		_conteudo = PaginaDe(_aba);
 		foreach ((string nome, VBoxContainer pg) in _paginas)
 			if (IsInstanceValid(pg)) pg.Visible = nome == _aba;
+
+		// A FAIXA DE MARCOS E FIXA (fora da rolagem) e so existe na aba de aprendizado sem busca. A
+		// visibilidade se decide AQUI, antes do desvio de cache logo abaixo: trocar de aba com a
+		// pagina ja montada nao remonta nada, e a faixa tem que sumir mesmo assim.
+		_faixaDeMarcos.Visible = _aba == "Learning" && _busca.Text.Trim().Length == 0;
 
 		// NADA MUDOU? Entao a pagina que ja esta ai continua certa. E o que corta as cinco
 		// remontagens por segundo que o pacote de ficha provocava com o menu aberto.
@@ -2144,582 +2159,8 @@ public partial class MenuJogo : CanvasLayer
 	}
 
 	// =====================================================================
-	// SKILLS
+	// SKILLS -- a aba inteira (Learning, Skills e a ficha) mora em MenuJogo.Skills.cs
 	// =====================================================================
-	/// <summary>O mesmo catalogo, pra quem mais precisar dele no cliente (o robo de teste).</summary>
-	public static SkillCatalog? CatalogoPublico() => Catalogo();
-
-	private static SkillCatalog? Catalogo()
-	{
-		if (_catalogo != null) return _catalogo;
-		const string a = "res://Assets/Data/skills.json", b = "res://Assets/Data/skilltrees.json";
-		if (!Godot.FileAccess.FileExists(a) || !Godot.FileAccess.FileExists(b)) return null;
-		_catalogo = SkillCatalog.Parse(Godot.FileAccess.GetFileAsString(a), Godot.FileAccess.GetFileAsString(b));
-		return _catalogo;
-	}
-
-	/// <summary>Copia pro livro local o que o servidor mandou. O servidor e a verdade.</summary>
-	private void SincronizarLivro()
-	{
-		if (GameClient.Instance is not { } cli) return;
-		_livro.Carregar(cli.SkillsAprendidas);
-		_livro.MarcosTotais = cli.MarcosTotais;
-		_livro.MarcosLivres = cli.MarcosLivres;
-	}
-
-	/// <summary>
-	/// O QUE EU JA SEI, agrupado pela arvore de onde veio.
-	///
-	/// A arvore e o endereco da habilidade na cabeca de quem joga: ninguem lembra "eu comprei
-	/// Backstab", lembra "eu fui pro lado do assassino". Uma lista alfabetica de trinta nomes
-	/// perde justamente isso -- e era o que esta aba fazia, apesar de o comentario dela prometer
-	/// agrupamento desde sempre.
-	///
-	/// A ULTIMA SECAO E A INTERESSANTE: o que NAO pende de nenhuma arvore sua so pode ter chegado
-	/// por ensino. E a mesma leitura que o Core faz em <see cref="SkillBook.PenduraEmArvoreDe"/>
-	/// ("skill solta e ensinada, nao comprada"): Kaio-ken e Genkidama vem do Senhor Kaioh, nao de
-	/// um balcao.
-	/// </summary>
-	/// <summary>
-	/// A FICHA DA SKILL, com Comprar e Cancelar.
-	///
-	/// POR QUE UM PASSO A MAIS: a compra e IRREVERSIVEL -- marco gasto nao volta -- e no balcao so
-	/// cabem nome e preco. Sem esta tela o jogador clica num nome que nao conhece e descobre o que
-	/// comprou depois de pago. A dica de mouse nao resolvia: ninguem passa o mouse antes de
-	/// clicar, e em tela sensivel ao toque ela nem existe.
-	///
-	/// E ELA DIZ O QUE A SKILL FAZ, nao so o que ela e. O texto do DM descreve a fantasia ("a arte
-	/// da assassinacao deixa sua marca"); os EFEITOS extraidos dizem o numero. Os dois juntos sao
-	/// a unica resposta honesta pra "vale a pena?".
-	/// </summary>
-	private void AbrirFichaDaSkill(Skill s, int custo)
-	{
-		if (_fichaAberta != null && IsInstanceValid(_fichaAberta)) _fichaAberta.QueueFree();
-
-		var janela = new AcceptDialog
-		{
-			Title = s.Nome,
-			MinSize = new Vector2I(440, 0),
-			OkButtonText = $"Comprar  ·  {custo} marco{(custo > 1 ? "s" : "")}",
-		};
-		janela.AddCancelButton("Cancelar");
-
-		var caixa = new VBoxContainer();
-		janela.AddChild(caixa);
-
-		if (s.Desc.Length > 0)
-			caixa.AddChild(new Label
-			{
-				Text = s.Desc,
-				AutowrapMode = TextServer.AutowrapMode.WordSmart,
-				CustomMinimumSize = new Vector2(420, 0),
-			});
-
-		var efeitos = EfeitosEmTexto(s).ToList();
-		if (efeitos.Count > 0)
-		{
-			caixa.AddChild(new HSeparator());
-			foreach (string linha in efeitos)
-			{
-				var l = new Label { Text = "• " + linha };
-				l.AddThemeColorOverride("font_color", Tema.Destaque);
-				caixa.AddChild(l);
-			}
-		}
-		else
-		{
-			// HONESTIDADE NO BALCAO: 68 folhas ainda nao tem efeito portado. Vender em silencio
-			// seria cobrar por nada sem dizer.
-			var l = new Label { Text = "O efeito mecânico desta habilidade ainda não foi portado." };
-			l.AddThemeColorOverride("font_color", Tema.TextoFraco);
-			caixa.AddChild(l);
-		}
-
-		string caminho = s.Path;
-		janela.Confirmed += () => { GameClient.Instance?.SendAprender(caminho); _fichaAberta = null; };
-		janela.Canceled += () => _fichaAberta = null;
-
-		AddChild(janela);
-		_fichaAberta = janela;
-		janela.PopupCentered();
-	}
-
-	private AcceptDialog? _fichaAberta;
-
-	/// <summary>
-	/// A ESCOLHA UNICA de uma skill: as casas lado a lado, com o que cada uma da.
-	///
-	/// QUEM DECIDE E O SERVIDOR, como sempre. Daqui so sai `skill_escolha <path> <n>`; se a pessoa
-	/// ja escolheu (a escolha e definitiva, igual ao `chosen` do DM, que so morre esquecendo a
-	/// skill), quem responde "voce ja escolheu" e ele. O cliente nao guarda a resposta porque nao
-	/// e dele -- e o mesmo motivo de o botao de compra nao descontar marco sozinho.
-	/// </summary>
-	private void AbrirEscolhaDaSkill(Skill s)
-	{
-		if (_fichaAberta != null && IsInstanceValid(_fichaAberta)) _fichaAberta.QueueFree();
-
-		var janela = new AcceptDialog
-		{
-			Title = s.Nome,
-			MinSize = new Vector2I(460, 0),
-			OkButtonText = "Fechar",
-		};
-		var caixa = new VBoxContainer();
-		janela.AddChild(caixa);
-
-		var aviso = new Label
-		{
-			Text = "Escolha uma linhagem. A escolha é definitiva e, até você escolher, "
-				 + "esta habilidade não faz nada.",
-			AutowrapMode = TextServer.AutowrapMode.WordSmart,
-			CustomMinimumSize = new Vector2(440, 0),
-		};
-		aviso.AddThemeColorOverride("font_color", Tema.TextoFraco);
-		caixa.AddChild(aviso);
-		caixa.AddChild(new HSeparator());
-
-		for (int i = 0; i < s.Escolhas.Length; i++)
-		{
-			Escolha e = s.Escolhas[i];
-			int casa = i + 1;
-			string path = s.Path;
-			var b = new Button { Text = e.Rotulo, Alignment = HorizontalAlignment.Left };
-			b.Pressed += () =>
-			{
-				GameClient.Instance?.SendVerbo("skill_escolha", $"{path} {casa}");
-				janela.Hide();
-				_fichaAberta = null;
-			};
-			caixa.AddChild(b);
-
-			// O QUE A CASA DA, pelo mesmo canal de sempre: os efeitos EXTRAIDOS. Sem isto a
-			// escolha definitiva seria feita por nome de linhagem, que nao diz nada.
-			var l = new Label { Text = "      " + TextoDaCasa(e), AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(440, 0) };
-			l.AddThemeColorOverride("font_color", Tema.Destaque);
-			caixa.AddChild(l);
-		}
-
-		janela.Confirmed += () => _fichaAberta = null;
-		janela.Canceled += () => _fichaAberta = null;
-		AddChild(janela);
-		_fichaAberta = janela;
-		janela.PopupCentered();
-	}
-
-	/// <summary>O que uma casa da, em portugues -- mesma fonte do <see cref="EfeitosEmTexto"/>.</summary>
-	private static string TextoDaCasa(Escolha e)
-	{
-		var p = new List<string>();
-		foreach ((string campo, double v) in e.Buffs) p.Add($"{NomesLegiveis.Campo(campo)} +{v:0.##}");
-		foreach ((string campo, double v) in e.Mults) p.Add($"{NomesLegiveis.Campo(campo)} ×{v:0.##}");
-		foreach ((string stat, double v) in e.Genes) p.Add($"{stat} +{v:0.##}");
-		foreach ((string campo, double v) in e.Flags) p.Add($"{NomesLegiveis.Campo(campo)} = {v:0.##}");
-		p.AddRange(e.Verbos.Select(NomesLegiveis.Habilidade));
-		return p.Count > 0 ? string.Join(", ", p) : "sem efeito portado ainda";
-	}
-
-	/// <summary>
-	/// O QUE A SKILL FAZ, em portugues. Sai dos efeitos EXTRAIDOS do DM -- por isso a lista fica
-	/// vazia justamente nas que ainda nao tem efeito portado, o que e a verdade e nao um descuido.
-	/// </summary>
-	private static IEnumerable<string> EfeitosEmTexto(Skill s)
-	{
-		foreach ((string campo, double v) in s.Buffs)
-			yield return $"{Jandirus.Core.Skills.NomesLegiveis.Campo(campo)} {v:+0.##;-0.##}";
-		foreach ((string campo, double v) in s.Mults)
-			yield return $"{Jandirus.Core.Skills.NomesLegiveis.Campo(campo)} x{v:0.##}";
-		foreach (string verbo in s.Verbos)
-		{
-			var t = Jandirus.Core.Skills.Tecnicas.Get(verbo);
-			yield return t is { Modo: not Jandirus.Core.Skills.Modo.NaoPortada }
-				? $"habilidade nova: {t.Nome}"
-				: $"habilidade nova: {Jandirus.Core.Skills.NomesLegiveis.Habilidade(verbo)} (efeito ainda não portado)";
-		}
-		if (s.Estilo.Length > 0) yield return $"estilo de luta: {s.Estilo}";
-	}
-
-	private void Sabidas()
-	{
-		SkillCatalog? cat = Catalogo();
-		if (cat == null) { Aviso("catálogo de skills não encontrado (rode o AssetPipeline: comando 'skills')."); return; }
-
-		if (_livro.Aprendidas.Count == 0)
-		{
-			Secao("Aprendidas (0)");
-			Aviso("Você ainda não aprendeu nada. Abra a aba Learning.");
-		}
-		else
-		{
-			string raca = _atributos.Raca ?? "";
-			string classe = GameClient.Instance?.Sheet.Class ?? "";
-
-			// Vai esvaziando conforme cada arvore reclama as suas. O que sobrar no fim veio de fora.
-			var sobrou = new HashSet<string>(_livro.Aprendidas, StringComparer.OrdinalIgnoreCase);
-
-			foreach (Skill arv in ArvoresDoPersonagem(cat, raca, classe))
-			{
-				var minhas = arv.Galhos.Where(sobrou.Contains).ToList();
-				if (minhas.Count == 0) continue;
-
-				Secao($"{arv.Nome}  ({minhas.Count})");
-				foreach (string p in minhas.OrderBy(x => cat.Get(x)?.Tier ?? 0))
-				{
-					sobrou.Remove(p);
-					Skill? s = cat.Get(p);
-					Linha(s?.Nome ?? p, s?.Tipo ?? "", Tema.Bom);
-				}
-			}
-
-			if (sobrou.Count > 0)
-			{
-				Secao($"Avulsas  ({sobrou.Count})");
-				foreach (string p in sobrou.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
-				{
-					Skill? s = cat.Get(p);
-					Linha(s?.Nome ?? p, s?.Tipo ?? "", Tema.Destaque);
-				}
-				Aviso("      Não pendem de nenhuma árvore que este painel liste: vieram de um mestre, "
-					+ "ou de um caminho que só se abre jogando.");
-			}
-		}
-
-		// os verbs registrados por skills que ja tem EFEITO implementado
-		var acoes = Verbos.Da(Verbos.Skills).ToList();
-		if (acoes.Count == 0) return;
-		Secao("Ações");
-		foreach (Verbo v in acoes) Botao(v);
-	}
-
-	/// <summary>
-	/// O BALCAO, EM DOIS NIVEIS: escolhe a ARVORE, depois as skills dela.
-	///
-	/// E o caminho de duas janelas do original. A `SkillTreeWindow` lista as arvores em cards; o
-	/// clique num card guarda a arvore e abre a `SkillsListWindow` com as skills DAQUELA arvore
-	/// (`CurrentTree = A; SkillWindowOpen()` -- SkillTreesWindow.dm:18-23 e HtmlUI.dm:988-993). O
-	/// caminho de volta e o `backbutton()`, que zera o CurrentTree e reabre a lista de arvores
-	/// (SkillTreesWindow.dm:111-122).
-	///
-	/// POR QUE NAO UMA LISTA SO: sao 317 folhas em 47 arvores. Ninguem procura "uma skill", procura
-	/// "o que a minha arvore de corpo tem" -- a arvore E a pergunta. Achatar tudo numa lista joga
-	/// fora exatamente a informacao que organiza a escolha, e ainda enterra as trinta skills que
-	/// interessam debaixo de trezentas que nao.
-	///
-	/// A BUSCA CONTINUA VENCENDO A ABA (ver o comentario da classe): quem sabe o nome nao precisa
-	/// saber a arvore.
-	/// </summary>
-	private void Aprendizado()
-	{
-		SkillCatalog? cat = Catalogo();
-		if (cat == null) { Aviso("catálogo de skills não encontrado (rode o AssetPipeline: comando 'skills')."); return; }
-		if (GameClient.Instance is not { } cli) return;
-
-		string raca = _atributos.Raca ?? "";
-		string classe = cli.Sheet.Class ?? "";
-
-		Secao($"Marcos: {_livro.MarcosLivres} livres de {_livro.MarcosTotais}");
-
-		List<Skill> arvores = ArvoresDoPersonagem(cat, raca, classe);
-
-		// A ARVORE ABERTA PODE TER SUMIDO no meio do caminho (a ficha lenta trouxe outra raca, um
-		// cargo caiu). Cair de volta na lista e melhor que uma pagina vazia sem explicacao -- e o
-		// mesmo cuidado que o `Redesenhar()` toma com a aba Scan quando o scouter sai.
-		Skill? aberta = _arvoreAberta.Length > 0 ? cat.Get(_arvoreAberta) : null;
-		if (aberta != null && !arvores.Contains(aberta)) aberta = null;
-
-		if (aberta == null) { _arvoreAberta = ""; ListaDeArvores(cat, arvores, raca, classe); }
-		else SkillsDaArvore(cat, cli, aberta, raca, classe);
-	}
-
-	/// <summary>Volta pro primeiro nivel. O `backbutton()` do original (SkillTreesWindow.dm:111).</summary>
-	private void FecharArvore()
-	{
-		_arvoreAberta = "";
-		_verTrancadas = false;
-	}
-
-	/// <summary>
-	/// AS ARVORES QUE ESTE PERSONAGEM TEM: as da raca e da classe (`generatetrees`) mais as que o
-	/// PROGRESSO abriu (`enabletree`). E a mesma uniao de <see cref="SkillBook.Ofertas"/>.
-	///
-	/// POR QUE NAO CHAMO Ofertas() DIRETO, ja que ela existe: ela DEDUPLICA entre arvores e devolve
-	/// a lista achatada. Uma navegacao em dois niveis precisa justamente do que ela descarta -- de
-	/// QUE arvore cada skill veio -- e uma skill pendurada em duas arvores tem que aparecer nas
-	/// duas, senao ela some da segunda sem motivo visivel. As regras de recusa, essas sim, saem
-	/// inteiras do Core (<see cref="SkillBook.PodeAprender"/>): nao ha uma segunda copia aqui.
-	/// </summary>
-	private List<Skill> ArvoresDoPersonagem(SkillCatalog cat, string raca, string classe)
-	{
-		List<Skill> l = cat.ArvoresDe(raca, classe);
-		foreach (string p in _livro.Destravadas)
-			if (cat.Get(p) is { } a && !l.Contains(a)) l.Add(a);
-		return l;
-	}
-
-	/// <summary>
-	/// A RECUSA DO CORE, com um unico ajuste -- e uma porta so pras duas telas do balcao, pra que
-	/// a contagem da lista de arvores nunca discorde do botao que ela promete.
-	///
-	/// O AJUSTE: a classe nao chega mais ao cliente, e nao deve mesmo chegar -- o sigilo zera o
-	/// campo em TODA ficha, com scouter ou sem (GameServer.Sigilo.cs:105). So que a classe e um
-	/// dos gates de skill do DM (`compatible_classes`, skill.dm:13), entao daqui pra frente o
-	/// cliente passa a errar pra MENOS: uma skill que a classe permite volta como RacaOuClasse.
-	///
-	/// Errar pra menos e o pior dos dois erros. Um botao apagado por engano esconde conteudo PRA
-	/// SEMPRE, e o jogador nao tem como desconfiar que a recusa era do cliente; errar pra mais
-	/// custa uma frase de recusa vinda do servidor, que e onde a decisao sempre morou. Entao:
-	/// quando a skill pede CLASSE e eu nao sei a minha, eu nao decido -- deixo passar e quem sabe
-	/// responde.
-	/// </summary>
-	private Recusa Estado(SkillCatalog cat, Skill s, string raca, string classe)
-	{
-		// O `vilao:` era `false` cravado, e por isso a unica skill de vilao do catalogo (Planet
-		// Destroy) aparecia trancada ate pra quem o admin tinha designado vilao -- e o servidor
-		// teria aceitado a compra. O bit chega junto das skills (`S2C.Skills`); sem cliente na mao
-		// (a bancada monta o menu solto) a resposta e "nao", que e o erro pro lado seguro descrito
-		// no comentario acima.
-		Recusa r = _livro.PodeAprender(cat, s.Path, raca, classe,
-									   vilao: GameClient.Instance?.SouVilao ?? false);
-		if (r == Recusa.RacaOuClasse && classe.Length == 0 && s.Classes.Length > 0) return Recusa.Pode;
-		return r;
-	}
-
-	/// <summary>
-	/// NIVEL 1: as arvores, com quanto de cada uma ja e seu e quanto da pra comprar agora.
-	///
-	/// O CONTADOR "pra aprender agora" e o que faz a lista valer: sem ele, escolher arvore vira
-	/// tentativa e erro em quatorze cards. Com ele, a aba responde de relance a unica pergunta que
-	/// alguem com marcos na mao tem -- onde e que eu gasto isto.
-	/// </summary>
-	private void ListaDeArvores(SkillCatalog cat, List<Skill> arvores, string raca, string classe)
-	{
-		Secao("Suas árvores");
-
-		bool alguma = false;
-		foreach (Skill arv in arvores)
-		{
-			int total = 0, sabidas = 0, agora = 0, trancadas = 0;
-			foreach (string p in arv.Galhos)
-			{
-				Skill? s = cat.Get(p);
-				if (s == null || s.Nome.Length == 0 || s.Arvore) continue;
-				total++;
-				if (_livro.Sabe(p)) { sabidas++; continue; }
-				if (!s.Ligada) { trancadas++; continue; }
-				if (Estado(cat, s, raca, classe) == Recusa.Pode) agora++;
-			}
-
-			// "Tree Mastery" nasce sem galho nenhum no DM e continua assim. Card vazio so ocupa
-			// espaco e faz o jogador clicar duas vezes pra descobrir que nao tem nada.
-			if (total == 0) continue;
-			alguma = true;
-
-			var b = new Button
-			{
-				Text = $"{arv.Nome}   ·   {sabidas}/{total} suas"
-					 + (agora > 0 ? $"   ·   {agora} pra aprender agora" : ""),
-				// AS TRANCADAS FICAM NO TOOLTIP, nao numa linha embaixo do card: uma linha por
-				// arvore devolveria pro indice exatamente o ruido que esta reforma tirou da lista.
-				// No indice a pergunta e "onde eu gasto marco"; o resto e assunto de dentro.
-				TooltipText = (arv.Desc.Length > 0 ? arv.Desc : arv.Path)
-							+ (trancadas > 0 ? $"\n\n+ {trancadas} que não estão à venda -- entre pra ver por quê" : ""),
-				Alignment = HorizontalAlignment.Left,
-			};
-			if (agora > 0) b.AddThemeColorOverride("font_color", Tema.Bom);
-			string caminho = arv.Path;
-			b.Pressed += () => { _arvoreAberta = caminho; _verTrancadas = false; Redesenhar(); };
-			_conteudo.AddChild(b);
-		}
-
-		if (!alguma)
-			Aviso("Nenhuma árvore ainda. Elas vêm da raça, da classe e do que você treina.");
-	}
-
-	/// <summary>
-	/// NIVEL 2: as skills DESTA arvore, na escada de tiers do original.
-	///
-	/// A ORDEM E POR TIER porque a arvore e uma escada: o tier 1 e o tronco e o tier 5 e a ponta.
-	/// O original desenhava uma grade por tier (`SkillListTier[N]Grid`, SkillTreesWindow.dm:184-198)
-	/// pelo mesmo motivo; a unica diferenca e que ele listava de cima pra baixo (tier 6 primeiro,
-	/// HtmlUI.dm:827) porque era grade de janela, e aqui a leitura e de rolagem -- comecar pela
-	/// base e ler na ordem em que se compra.
-	///
-	/// AS DESATIVADAS SAIRAM DO BALCAO. Ver <see cref="Trancadas"/>.
-	/// </summary>
-	private void SkillsDaArvore(SkillCatalog cat, GameClient cli, Skill arv, string raca, string classe)
-	{
-		// VOLTAR SEMPRE VISIVEL, no topo, antes de qualquer coisa que role pra fora da tela. ESC
-		// faz o mesmo (ver _Input), mas quem entrou clicando espera sair clicando.
-		var voltar = new Button { Text = "‹  todas as árvores", Alignment = HorizontalAlignment.Left };
-		voltar.Pressed += () => { FecharArvore(); Redesenhar(); };
-		_conteudo.AddChild(voltar);
-
-		Secao(arv.Nome);
-		if (arv.Desc.Length > 0) Aviso(arv.Desc);
-
-		var balcao = new List<Skill>();      // da pra comprar (ou faltam marcos/pre-requisito)
-		var jaSao = new List<Skill>();       // ja sao suas
-		var trancadas = new List<Skill>();   // enabled = 0: nao se compram de jeito nenhum
-
-		foreach (string p in arv.Galhos)
-		{
-			Skill? s = cat.Get(p);
-			if (s == null || s.Nome.Length == 0 || s.Arvore) continue;
-			if (_livro.Sabe(p)) jaSao.Add(s);
-			else if (!s.Ligada) trancadas.Add(s);
-			else balcao.Add(s);
-		}
-
-		// ---- o balcao, por tier ----
-		if (balcao.Count == 0) Aviso("Nada à venda nesta árvore agora.");
-
-		int tier = int.MinValue;
-		foreach (Skill s in balcao.OrderBy(x => x.Tier).ThenBy(x => x.Nome, StringComparer.OrdinalIgnoreCase))
-		{
-			if (s.Tier != tier) { tier = s.Tier; Secao($"Tier {tier}"); }
-
-			Recusa r = Estado(cat, s, raca, classe);
-			int custo = SkillCatalog.CustoDe(s);
-
-			var b = new Button
-			{
-				Text = $"{s.Nome}   ·   {custo} marco{(custo > 1 ? "s" : "")}",
-				TooltipText = s.Desc.Length > 0 ? s.Desc : s.Path,
-				Alignment = HorizontalAlignment.Left,
-				Disabled = r != Recusa.Pode,
-			};
-			Skill escolhida = s;
-			// CLICAR ABRE A FICHA, NAO COMPRA. Marco gasto nao volta, e a lista mostra so nome e
-			// preco -- comprar no clique faz o jogador pagar por uma coisa que ele ainda nao leu.
-			// Um passo a mais aqui vale mais que um desfazer que nao existe.
-			b.Pressed += () => AbrirFichaDaSkill(escolhida, custo);
-			_conteudo.AddChild(b);
-
-			if (r == Recusa.Pode) continue;
-			Aviso("      " + r switch
-			{
-				Recusa.SemMarcos => $"faltam {custo - _livro.MarcosLivres} marco(s)",
-				Recusa.FaltaPreRequisito => "falta pré-requisito: "
-					+ string.Join(", ", s.PreReqs.Select(p => cat.Get(p)?.Nome ?? p)),
-				Recusa.RacaOuClasse => "sua raça ou classe não aprende esta",
-				Recusa.SoVilao => "só pra vilão",
-				// as duas abaixo nao deviam chegar aqui (a filtragem acima ja tirou), mas se
-				// chegarem eu prefiro uma frase certa a um nome de enum na cara do jogador
-				Recusa.Desligada => "não está à venda",
-				Recusa.SemArvore => "não pende desta árvore",
-				_ => "indisponível",
-			});
-		}
-
-		// ---- o que ja e seu ----
-		if (jaSao.Count > 0)
-		{
-			Secao($"Já são suas  ({jaSao.Count})");
-			foreach (Skill s in jaSao.OrderBy(x => x.Tier).ThenBy(x => x.Nome, StringComparer.OrdinalIgnoreCase))
-			{
-				Linha($"{s.Nome}  (tier {s.Tier})", "aprendida", Tema.Bom);
-
-				// A ESCOLHA UNICA. Uma skill no catalogo inteiro tem casas exclusivas (a `Great
-				// Robotic Alliance` do Metamoriano) e, enquanto o dono nao escolhe, ela nao rende
-				// NADA -- exatamente como no DM, onde os buffs moram dentro do `switch(input(...))`.
-				//
-				// O BOTAO FICA AQUI E NAO NA COMPRA porque a pergunta sobrevive ao relog: quem
-				// comprou e saiu antes de responder precisa achar a pergunta de novo. Quem manda na
-				// resposta e o servidor -- se ja houver escolha feita, e ele quem diz.
-				if (s.Escolhas.Length == 0) continue;
-				var bEsc = new Button
-				{
-					Text = "      escolher linhagem…",
-					Alignment = HorizontalAlignment.Left,
-				};
-				Skill comEscolha = s;
-				bEsc.Pressed += () => AbrirEscolhaDaSkill(comEscolha);
-				_conteudo.AddChild(bEsc);
-			}
-		}
-
-		Trancadas(cat, trancadas);
-	}
-
-	/// <summary>
-	/// AS QUE NAO ESTAO A VENDA -- fora do balcao, numa gaveta fechada que diz por que.
-	///
-	/// O PROBLEMA: 152 das 317 folhas nascem com `enabled = 0`. Elas estavam na lista como botao
-	/// apagado com a legenda "desativada neste servidor" -- que e ruido e ainda por cima mentira,
-	/// porque nao ha servidor nenhum desativando nada.
-	///
-	/// O QUE O ORIGINAL FAZ: some com elas. `enabled == 0` e pulado ANTES de virar card, tanto na
-	/// janela antiga (SkillTreesWindow.dm:168) quanto na de HTML (HtmlUI.dm:820). A pessoa nunca
-	/// via a skill; ela APARECIA sozinha quando destravava, com um `to_chat` avisando ("You can now
-	/// learn [nome]!", trees.dm:175).
-	///
-	/// POR QUE EU NAO SUMI DE VEZ, ENTAO: porque `enabled = 0` no DM nao quer dizer UMA coisa so.
-	/// O proprio comentario do campo diz que ele e mecanismo de pre-requisito, nao de desligar
-	/// ("set to 0 and modify with other skills to establish prereqs", skill.dm:26). As 152 se
-	/// partem em tres grupos que pedem acoes OPOSTAS de quem joga, e por isso a gaveta separa:
-	///
-	///   * 35 sao `teacher`. NUNCA acendem sozinhas: so chegam por outra pessoa, porque o `Study()`
-	///     do DM pula a checagem inteira quando a skill e de ensino (`canLearnSkill(S) ||
-	///     S.teacher == TRUE`, teachable.dm:46). Quem junta marco esperando o balcao abrir espera
-	///     pra sempre -- estas pedem que voce ACHE ALGUEM.
-	///   * 34 tem pre-requisito e nao sao de ensino. Nascem apagadas e o `testskillprereqs()` as
-	///     acende sozinho quando os pre-requisitos entram (trees.dm:29-36). Estas sao o mapa da
-	///     arvore: e o "compre isto pra abrir aquilo" que da direcao a compra.
-	///   * as 83 restantes abrem POR FORA da arvore -- um cargo, um ritual, outra skill chamando
-	///     `enableskill()` (207 chamadas dessas no DM). Estas pedem so que a vida aconteca.
-	///
-	/// ENTAO: botao nenhum (ninguem compra nada disto, e botao apagado convida clique), mas o nome
-	/// e o motivo ficam acessiveis atras de UM clique, fechados por padrao. Aberta, a gaveta e o
-	/// mapa; fechada, ela e uma linha. O que nao da e a pessoa nao ter como descobrir que a skill
-	/// existe e que o caminho ate ela nao passa por marcos.
-	/// </summary>
-	private void Trancadas(SkillCatalog cat, List<Skill> trancadas)
-	{
-		if (trancadas.Count == 0) return;
-
-		var gaveta = new Button
-		{
-			Text = (_verTrancadas ? "▾  " : "▸  ") + $"{trancadas.Count} não estão à venda nesta árvore",
-			Alignment = HorizontalAlignment.Left,
-			TooltipText = "estas não se compram com marcos: ou abrem sozinhas, ou vêm de um mestre",
-		};
-		gaveta.AddThemeColorOverride("font_color", Tema.TextoFraco);
-		gaveta.Pressed += () => { _verTrancadas = !_verTrancadas; Redesenhar(); };
-		_conteudo.AddChild(gaveta);
-		if (!_verTrancadas) return;
-
-		// ENSINO PRIMEIRO porque e o unico grupo que pede uma ACAO do jogador (achar quem saiba).
-		// Os outros dois pedem so paciencia, e por isso vem depois.
-		var ensino = trancadas.Where(s => s.Ensinavel).ToList();
-		var porPreReq = trancadas.Where(s => !s.Ensinavel && s.PreReqs.Length > 0).ToList();
-		var deFora = trancadas.Where(s => !s.Ensinavel && s.PreReqs.Length == 0).ToList();
-
-		if (ensino.Count > 0)
-		{
-			Secao($"Isto é ensinado, não comprado  ({ensino.Count})");
-			Aviso("Marco nenhum abre estas. Você precisa de alguém que já as saiba, por perto, "
-				+ "disposto a ensinar.");
-			foreach (Skill s in ensino.OrderBy(x => x.Tier).ThenBy(x => x.Nome, StringComparer.OrdinalIgnoreCase))
-				Linha($"{s.Nome}  (tier {s.Tier})", "só com um mestre", Tema.Destaque);
-		}
-
-		if (porPreReq.Count > 0)
-		{
-			Secao($"Abrem quando você aprender o que vem antes  ({porPreReq.Count})");
-			foreach (Skill s in porPreReq.OrderBy(x => x.Tier).ThenBy(x => x.Nome, StringComparer.OrdinalIgnoreCase))
-				Linha($"{s.Nome}  (tier {s.Tier})",
-					"depois de " + string.Join(", ", s.PreReqs.Select(p => cat.Get(p)?.Nome ?? p)),
-					Tema.TextoFraco);
-		}
-
-		if (deFora.Count > 0)
-		{
-			Secao($"Abrem por fora da árvore  ({deFora.Count})");
-			Aviso("Um cargo, um ritual ou outra habilidade destrava estas. Elas aparecem no balcão "
-				+ "sozinhas no dia em que isso acontecer.");
-			foreach (Skill s in deFora.OrderBy(x => x.Tier).ThenBy(x => x.Nome, StringComparer.OrdinalIgnoreCase))
-				Linha($"{s.Nome}  (tier {s.Tier})", "trancada", Tema.TextoFraco);
-		}
-	}
 
 	// =====================================================================
 	// VERBS
@@ -3426,11 +2867,17 @@ public partial class MenuJogo : CanvasLayer
 	{
 		var lista = Verbos.Buscar(termo).ToList();
 		Secao($"Busca: \"{termo}\"");
-		if (lista.Count == 0) { Aviso("Nenhuma acao com esse nome."); return; }
 		foreach (Verbo v in lista) Botao(v, mostrarCategoria: true);
+		// AS SKILLS ENTRAM NA BUSCA. O comentario da classe prometia "a busca vale pro jogo inteiro"
+		// e ela so varria os verbs: quem digitava "Afterimage" achava nada. Ver `AchadosDeSkills`.
+		int skills = AchadosDeSkills(termo);
+		if (lista.Count == 0 && skills == 0) Aviso("Nenhuma acao nem habilidade com esse nome.");
 	}
 
-	private void Botao(Verbo v, bool mostrarCategoria = false)
+	private void Botao(Verbo v, bool mostrarCategoria = false) => _conteudo.AddChild(BotaoDe(v, mostrarCategoria));
+
+	/// <summary>O botao de um verb, sem pendura-lo em lugar nenhum: a aba de aprendizado o poe numa grade.</summary>
+	private Button BotaoDe(Verbo v, bool mostrarCategoria = false)
 	{
 		var b = new Button
 		{
@@ -3444,7 +2891,7 @@ public partial class MenuJogo : CanvasLayer
 			Disabled = !v.PodeAgora || v.Acionar == null,
 		};
 		b.Pressed += () => { v.Acionar?.Invoke(); Redesenhar(); };
-		_conteudo.AddChild(b);
+		return b;
 	}
 
 	/// <summary>

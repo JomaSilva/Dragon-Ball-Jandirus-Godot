@@ -33,6 +33,24 @@ public sealed class SkillDef
 	public int CustoDeEnsino;
 
 	public bool Arvore;               // e um /datum/skill/tree/... (o galho, nao a folha)
+
+	/// <summary>`can_forget` -- da pra esquecer (e ser reembolsada) quando a arvore encolhe.</summary>
+	public bool Esquecivel = true;
+
+	/// <summary>
+	/// SO NAS ARVORES: `allowedtier` de nascenca e `maxtier` (`trees.dm:10-11`). A vitrine do DM so
+	/// mostra skill com `tier &lt;= allowedtier` (`HtmlUI.dm:820`), e o `allowedtier` CRESCE pelo
+	/// `growbranches()` -- que sai traduzido em <see cref="Regras"/>.
+	/// </summary>
+	public int TierInicial = 1;
+	public int TierMax = 1;
+
+	/// <summary>
+	/// SO NAS ARVORES: o `growbranches()` como dado -- `tipo;alvo;condicao`, uma por efeito, na ordem
+	/// do DM. Ver <see cref="DmGalhosScanner"/> pro formato e pro que fica de fora.
+	/// </summary>
+	public List<string> Regras = [];
+
 	public List<string> Racas = [];
 	public List<string> Classes = [];
 	public List<string> PreReqs = [];
@@ -103,6 +121,27 @@ public sealed class SkillDef
 	/// juntos. Errado pra mais e errado calado; "muda" ao menos aparece no censo.
 	/// </summary>
 	public List<EscolhaDeSkill> Escolhas = [];
+
+	/// <summary>
+	/// A TERCEIRA FORMA DA ESCOLHA UNICA: `switch(savant.trinitytype)` (Grace, Bodybuilding.dm:243) --
+	/// a skill nao pergunta, ela entra na casa que OUTRA skill escolheu. Aqui fica o nome da `mob/var`
+	/// lida (`trinitytype`); <see cref="EscolhaSegue"/> e a skill lider, resolvida no fim da varredura
+	/// pelos rotulos das casas (as duas tem "Van-sama"/"Ricardo"/"Aniki").
+	/// </summary>
+	public string EscolhaPorVar = "";
+	public string EscolhaSegue = "";
+
+	/// <summary>
+	/// O GANHO NA COMPRA COM EXPRESSAO -- `campo+=expr` sem `savant.` e sem espacos:
+	/// `BP+=max(1,BP*0.01)`, `hiddenpotential+=relBPmax*2` (One_Hundred, Bodybuilding.dm:89-92).
+	///
+	/// O extrator so lia CONSTANTE; estas linhas usam um local do datum (`storedBP`) preenchido
+	/// duas linhas antes com uma expressao sobre a ficha. Aqui o local e substituido pela expressao
+	/// dele e a linha vira dado -- que o Core avalia na compra com o mesmo avaliador das regras de
+	/// arvore (`GanhoNaCompra`). O que o Core nao consegue ler vai pro diario
+	/// <see cref="DmSkillScanner.ComprasNaoLidas"/>, e nao pro json.
+	/// </summary>
+	public List<string> Compra = [];
 }
 
 /// <summary>
@@ -245,11 +284,54 @@ public static class DmSkillScanner
 	/// resolver e resolve-se no fim, quando o catalogo inteiro esta na mao.
 	/// ================================================================================
 	/// </summary>
-	private static readonly Dictionary<string, List<string>> CorposDeAprendizado =
+	private static readonly Dictionary<string, List<(int Ind, string Txt)>> CorposDeAprendizado =
 		new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// OS DONOS QUE JA ESTAVAM LIDOS quando o corpo do `after_learn` apareceu. TODO corpo e guardado e
+	/// lido no fim agora (o `switch(input(...))` e o local `storedBP` precisam do corpo INTEIRO, com
+	/// indentacao, e nao de uma linha por vez); esta lista guarda a distincao que a bancada do
+	/// extrator mede -- <see cref="ComoAntesDoConserto"/> joga fora so quem NAO esta aqui, que e
+	/// exatamente o que o extrator de antes do conserto fazia.
+	/// </summary>
+	private static readonly HashSet<string> DonosLidosNaHora = new(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>Onde (arquivo:linha) cada `after_learn` adiado foi visto -- so pro diario.</summary>
 	private static readonly Dictionary<string, string> OndeAdiou = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// GANHOS NA COMPRA QUE O CORE NAO LE -- (skill, linha). `savant.X += algo` que nao e constante
+	/// nem expressao legivel (`savant.contents += ...` cai no canal de verb antes; o que sobra aqui e
+	/// mesmo logica). Diario, nao json: uma expressao que o Core nao avalia nao pode virar `+= 0`.
+	/// </summary>
+	public static readonly List<(string Skill, string Linha)> ComprasNaoLidas = [];
+
+	/// <summary>
+	/// `switch(savant.<var>)` de casa unica cuja LIDER nao foi achada -- (skill, var). A lider e a
+	/// skill com casas de mesmos rotulos; sem ela a seguidora sai com as casas e sem `escolhasegue`,
+	/// e o Core nunca entra em casa nenhuma (que e o que o DM faz sem a var escrita).
+	/// </summary>
+	public static readonly List<(string Skill, string Var)> EscolhasSemLider = [];
+
+	/// <summary>
+	/// O CORPO DO `growbranches()` DE CADA ARVORE, com indentacao, na ordem em que foi lido.
+	///
+	/// Guardado cru e traduzido SO NO FIM da varredura (<see cref="DmGalhosScanner.Traduzir"/>), porque
+	/// a traducao precisa do `maxtier` da arvore e o corpo pode vir num arquivo lido antes da
+	/// declaracao dela -- a mesma armadilha de ordem do `after_learn` adiado, logo acima.
+	///
+	/// A lista ACUMULA se o DM declarar o proc duas vezes pra mesma arvore: e o caso de
+	/// `/datum/skill/tree/effusionmas/growbranches()`, escrito em `Effusion.dm:17` E em
+	/// `BuffMastery.dm:15` -- o segundo era pra ser da `kibuffmas` e acende skills que nao sao galho
+	/// da `effusionmas`. Fiel ao DM, a regra sai anexada a arvore errada e nao pega em nada; o censo do
+	/// Core e quem diz que a Ki Buff Mastery ficou sem acendedor.
+	/// </summary>
+	private static readonly Dictionary<string, List<(int Ind, string Txt)>> CorposDeGalhos =
+		new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>O `prunebranches()` de cada arvore -- traduzido DEPOIS do growbranches, na ordem do `testunlocks()`.</summary>
+	private static readonly Dictionary<string, List<(int Ind, string Txt)>> CorposDePoda =
+		new(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// OS `after_learn()` QUE NEM COM TUDO LIDO ACHARAM DONO -- (skill, arquivo:linha).
@@ -322,37 +404,45 @@ public static class DmSkillScanner
 		Chamados.Clear();
 		ProcsComEfeito.Clear();
 		CorposDeAprendizado.Clear();
+		DonosLidosNaHora.Clear();
 		OndeAdiou.Clear();
 		AprendizadosSemDono.Clear();
+		ComprasNaoLidas.Clear();
+		EscolhasSemLider.Clear();
+		CorposDeGalhos.Clear();
+		CorposDePoda.Clear();
+		DmGalhosScanner.NaoLidas.Clear();
 
 		foreach (string arq in Directory.GetFiles(pastaCode, "*.dm", SearchOption.AllDirectories))
 			Ler(arq, defs);
 
-		// BANCADA: o mundo de ANTES do conserto -- o corpo adiado vai pro lixo e o alarme nao fala.
-		// Ver <see cref="ComoAntesDoConserto"/>. Uma linha guardada, e ela e o controle negativo da
-		// `dotnet run -- extrator`.
+		// BANCADA: o mundo de ANTES do conserto -- o corpo de dono nao-lido vai pro lixo e o alarme
+		// nao fala. Ver <see cref="ComoAntesDoConserto"/>. Uma linha guardada, e ela e o controle
+		// negativo da `dotnet run -- extrator`.
 		if (ComoAntesDoConserto)
 		{
 			Console.Error.WriteLine(
 				"[extrator] `ComoAntesDoConserto` LIGADO: o after_learn de dono nao-lido sera JOGADO "
 				+ "FORA e o alarme ficara MUDO. Este e o extrator de antes do conserto -- se voce nao "
 				+ "esta rodando uma bancada, desligue isto.");
-			CorposDeAprendizado.Clear();
+			foreach (string skill in CorposDeAprendizado.Keys.Where(k => !DonosLidosNaHora.Contains(k)).ToList())
+				CorposDeAprendizado.Remove(skill);
 			OndeAdiou.Clear();
 		}
 
-		// O `after_learn()` DE CAMINHO ABSOLUTO CUJO DONO SO APARECEU NOUTRO ARQUIVO. Ver
-		// <see cref="CorposDeAprendizado"/> pra historia; aqui so importa a ORDEM: este laco vem
-		// ANTES do dos `Chamados` de proposito, porque um corpo adiado tambem pode DELEGAR
-		// (`choose()`), e a delegacao so e resolvida se ja estiver anotada quando o de baixo rodar.
-		foreach ((string skill, List<string> corpo) in CorposDeAprendizado)
+		// TODO `after_learn()` E LIDO AQUI, com o catalogo inteiro na mao -- o de dono ja lido e o de
+		// dono que so apareceu noutro arquivo (ver <see cref="CorposDeAprendizado"/> pra historia).
+		// A ORDEM importa: este laco vem ANTES do dos `Chamados` de proposito, porque um corpo tambem
+		// pode DELEGAR (`choose()`), e a delegacao so e resolvida se ja estiver anotada quando o de
+		// baixo rodar.
+		foreach ((string skill, List<(int Ind, string Txt)> corpo) in CorposDeAprendizado)
 		{
-			if (!defs.TryGetValue(skill, out SkillDef? adiada))
+			if (!defs.TryGetValue(skill, out SkillDef? dona))
 			{
 				AprendizadosSemDono.Add((skill, OndeAdiou.GetValueOrDefault(skill, "?")));
 				continue;
 			}
-			foreach (string linha in corpo) AplicarAprendizado(adiada, skill, linha);
+			AbsorverAprendizado(dona, skill, corpo);
 		}
 		AprendizadosSemDono.Sort((a, b) => string.CompareOrdinal(a.Skill, b.Skill));
 
@@ -363,6 +453,21 @@ public static class DmSkillScanner
 			if (!Corpos.TryGetValue((skill, proc), out List<(int Ind, string Txt)>? corpo)) continue;
 			if (!defs.TryGetValue(skill, out SkillDef? d)) continue;
 			Absorver(d, corpo);
+		}
+
+		// A LIDER DA ESCOLHA HERDADA: a skill que abre `switch(savant.trinitytype)` segue a que tem
+		// casas de MESMOS ROTULOS (Grace <- TheHolyTrinity). Pelos rotulos e nao pelo nome da var
+		// porque a var e escrita no `login()` da lider (Bodybuilding.dm:167), que este scanner nao le
+		// -- e os rotulos sao a mesma lista nas duas, por construcao do proprio DM.
+		foreach (SkillDef seguidora in defs.Values)
+		{
+			if (seguidora.EscolhaPorVar.Length == 0 || seguidora.Escolhas.Count == 0) continue;
+			var rotulos = new HashSet<string>(seguidora.Escolhas.Select(e => e.Rotulo), StringComparer.OrdinalIgnoreCase);
+			SkillDef? lider = defs.Values.FirstOrDefault(o =>
+				o != seguidora && o.EscolhaPorVar.Length == 0 && o.Escolhas.Count == rotulos.Count
+				&& o.Escolhas.All(e => rotulos.Contains(e.Rotulo)));
+			if (lider != null) seguidora.EscolhaSegue = lider.Path;
+			else EscolhasSemLider.Add((seguidora.Path, seguidora.EscolhaPorVar));
 		}
 
 		// HERANCA: `/datum/skill/Assassain/Backstab` herda de `/datum/skill/Assassain` se ele
@@ -376,6 +481,22 @@ public static class DmSkillScanner
 			if (defs.ContainsKey(pai)) d.Pai = pai;
 		}
 		foreach (SkillDef d in defs.Values) Herdar(d, defs, 0);
+
+		// O `growbranches()` VIRA REGRA agora que toda arvore ja tem o proprio `maxtier` lido. Corpo
+		// de arvore que nao existe no catalogo (um typepath comentado, um `/proc/` do motor) fica no
+		// diario em vez de sumir.
+		foreach (string arvore in CorposDeGalhos.Keys.Concat(CorposDePoda.Keys).Distinct(StringComparer.OrdinalIgnoreCase))
+		{
+			if (!defs.TryGetValue(arvore, out SkillDef? a) || !a.Arvore)
+			{
+				DmGalhosScanner.NaoLidas.Add((arvore, "(growbranches de uma arvore que o catalogo nao tem)"));
+				continue;
+			}
+			if (CorposDeGalhos.TryGetValue(arvore, out List<(int, string)>? cresce))
+				a.Regras.AddRange(DmGalhosScanner.Traduzir(arvore, cresce, a.TierMax));
+			if (CorposDePoda.TryGetValue(arvore, out List<(int, string)>? poda))
+				a.Regras.AddRange(DmGalhosScanner.Traduzir(arvore, poda, a.TierMax));
+		}
 
 		return defs;
 	}
@@ -437,18 +558,107 @@ public static class DmSkillScanner
 	/// caminho direto do `after_learn` nao le. Reaproveita-lo faria o corpo adiado ser lido com
 	/// regra diferente da do corpo normal -- a mesma divergencia, so que escondida.
 	/// </summary>
-	private static void AplicarAprendizado(SkillDef alvo, string skill, string corpo)
-	{
-		Colher(corpo, alvo.Buffs, alvo.Mults, alvo.Genes, alvo.Flags, alvo.Verbos, e => alvo.Estilo = e);
+	/// <summary>`switch(savant.trinitytype)` -- a casa unica decidida por uma var do mob (Bodybuilding.dm:243).</summary>
+	private static readonly Regex RxEscolhaPorVar = new(
+		@"^switch\s*\(\s*savant\.(?<v>[A-Za-z_][A-Za-z0-9_]*)\s*\)\s*$", RegexOptions.Compiled);
 
-		// O `after_learn()` QUE SO DELEGA. `Great_Robotic_Alliance` (meta.dm:127) tem corpo de duas
-		// linhas: `choose()` e um `to_chat`. Todo o efeito da skill mora no proc PROPRIO que ela
-		// chama, e por isso ela saia do extrator como muda. Aqui so se anota a chamada; o corpo do
-		// proc e resolvido no fim da varredura, porque ele pode ter sido declarado ANTES do
-		// `after_learn` no arquivo.
-		if (RxChamadaSimples.Match(corpo) is { Success: true } mc)
-			Chamados.Add((skill, mc.Groups["n"].Value));
+	/// <summary>`storedBP = max(1,savant.BP*0.01)` -- um local do datum preenchido com a ficha.</summary>
+	private static readonly Regex RxLocal = new(
+		@"^(?<v>[A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(?<e>.+)$", RegexOptions.Compiled);
+
+	/// <summary>`savant.BP += storedBP` / `savant.hiddenpotential += (savant.relBPmax*0.5)` -- o ganho com expressao.</summary>
+	private static readonly Regex RxGanho = new(
+		@"^savant\.(?<c>[A-Za-z_][A-Za-z0-9_]*)\s*(?<op>\+=|-=)\s*(?<e>.+)$", RegexOptions.Compiled);
+
+	/// <summary>
+	/// O CORPO INTEIRO DE UM `after_learn()`, com indentacao -- as TRES formas de efeito que ele pode ter:
+	///
+	///   1. o efeito incondicional, linha a linha (<see cref="Colher"/>) mais a delegacao (`choose()`);
+	///   2. a ESCOLHA UNICA direto no corpo: `switch(input(...) in list(...))` (TheHolyTrinity,
+	///      Bodybuilding.dm:119) ou `switch(savant.<var>)` (Grace, :243) com `if("casa")` dentro.
+	///      Antes so a forma DELEGADA (`choose()`, <see cref="Absorver"/>) era lida como escolha, e a
+	///      direta era SOMADA: a Holy Trinity saia com as tres casas juntas (`physdefBuff=0.6`,
+	///      `physoffBuff=0.6`) -- errado pra mais, e calado;
+	///   3. o GANHO NA COMPRA COM EXPRESSAO: `storedBP = max(1,savant.BP*0.01)` + `savant.BP+=storedBP`
+	///      (:89-92). O local e substituido pela expressao e a linha vira `BP+=max(1,BP*0.01)`, que o
+	///      Core avalia na compra. O que o Core nao le vai pro diario, nao pro json.
+	/// </summary>
+	private static void AbsorverAprendizado(SkillDef alvo, string skill, List<(int Ind, string Txt)> corpo)
+	{
+		int indSwitch = -1;
+		EscolhaDeSkill? casa = null;
+		int indCasa = -1;
+		var locais = new Dictionary<string, string>(StringComparer.Ordinal);
+
+		foreach ((int ind, string txt) in corpo)
+		{
+			if (indCasa >= 0 && ind <= indCasa) { casa = null; indCasa = -1; }
+			if (indSwitch >= 0 && ind <= indSwitch) indSwitch = -1;
+
+			if (indSwitch < 0 && RxEscolhaLista.IsMatch(txt)) { indSwitch = ind; continue; }
+			if (indSwitch < 0 && RxEscolhaPorVar.Match(txt) is { Success: true } mv)
+			{
+				// `switch(level)` no after_learn (kaioken.dm:88) NAO e escolha: e o nivel de entrada, e
+				// as casas dele se somam do jeito que sempre se somaram
+				indSwitch = ind;
+				alvo.EscolhaPorVar = mv.Groups["v"].Value;
+				continue;
+			}
+			if (indSwitch >= 0 && RxCasa.Match(txt) is { Success: true } mc)
+			{
+				casa = new EscolhaDeSkill { Rotulo = mc.Groups["s"].Value };
+				alvo.Escolhas.Add(casa);
+				indCasa = ind;
+				continue;
+			}
+			if (casa != null)
+			{
+				Colher(txt, casa.Buffs, casa.Mults, casa.Genes, casa.Flags, casa.Verbos, _ => { });
+				continue;
+			}
+			if (indSwitch >= 0) continue;   // dentro do switch, fora de casa: contabilidade do datum
+
+			// 3) O LOCAL PREENCHIDO COM A FICHA, e o ganho que o usa. Vem ANTES do `Colher` porque
+			// `savant.BP += storedBP` nao casa com nenhum canal de constante -- e `savant.X += 0.5`
+			// nao casa aqui, porque o numero puro e do `Colher`.
+			// (sem `continue`: `attachedstyle = new /datum/style/KameStyle` tambem casa aqui e e o
+			// canal de ESTILO do `Colher` -- anotar o local nao tira a linha de ninguem)
+			if (RxLocal.Match(txt) is { Success: true } ml && !txt.StartsWith("savant.", StringComparison.Ordinal)
+				&& ml.Groups["e"].Value.Contains("savant.", StringComparison.Ordinal))
+				locais[ml.Groups["v"].Value] = ml.Groups["e"].Value.Trim();
+			if (RxGanho.Match(txt) is { Success: true } mg && !EhNumero(mg.Groups["e"].Value))
+			{
+				string expr = mg.Groups["e"].Value.Trim();
+				foreach ((string nome, string valor) in locais)
+					expr = Regex.Replace(expr, @"(?<![A-Za-z0-9_.])" + Regex.Escape(nome) + @"(?![A-Za-z0-9_])", "(" + valor + ")");
+
+				// SO E GANHO NA COMPRA O QUE LE A FICHA (`savant.` na expressao, direto ou pelo local).
+				// `savant.availableStyles += attachedstyle` e o canal de ESTILO e `savant.known_words +=
+				// "..."` e magia -- os dois caem no `Colher` de sempre, que sabe (ou nao) o que fazer.
+				if (expr.Contains("savant.", StringComparison.Ordinal))
+				{
+					string ganho = mg.Groups["c"].Value + mg.Groups["op"].Value + DmGalhosScanner.Normalizar(expr);
+					// VALIDADO PELO LEITOR DE VERDADE: se o Core nao parseia, nao vai pro json
+					if (Jandirus.Core.Skills.GanhoNaCompra.Parse(ganho) != null) alvo.Compra.Add(ganho);
+					else ComprasNaoLidas.Add((skill, txt));
+					continue;
+				}
+			}
+
+			Colher(txt, alvo.Buffs, alvo.Mults, alvo.Genes, alvo.Flags, alvo.Verbos, e => alvo.Estilo = e);
+
+			// O `after_learn()` QUE SO DELEGA. `Great_Robotic_Alliance` (meta.dm:127) tem corpo de duas
+			// linhas: `choose()` e um `to_chat`. Todo o efeito da skill mora no proc PROPRIO que ela
+			// chama, e por isso ela saia do extrator como muda. Aqui so se anota a chamada; o corpo do
+			// proc e resolvido no fim da varredura, porque ele pode ter sido declarado ANTES do
+			// `after_learn` no arquivo.
+			if (RxChamadaSimples.Match(txt) is { Success: true } mch)
+				Chamados.Add((skill, mch.Groups["n"].Value));
+		}
 	}
+
+	private static bool EhNumero(string s) =>
+		double.TryParse(s.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _);
 
 	/// <summary>
 	/// OS CINCO CANAIS DE EFEITO numa linha de DM, lidos de uma vez.
@@ -651,20 +861,16 @@ public static class DmSkillScanner
 			{
 				if (donoLearn != null)
 				{
-					// DONO JA LIDO -> aplica agora. DONO AINDA NAO LIDO -> GUARDA a linha crua e
-					// resolve no fim da varredura, quando o catalogo inteiro esta na mao. Antes
-					// deste `else` o corpo era jogado fora em silencio -- ver
-					// <see cref="CorposDeAprendizado"/>.
-					if (defs.TryGetValue(donoLearn, out SkillDef? alvo))
-					{
-						AplicarAprendizado(alvo, donoLearn, corpo);
-					}
-					else
-					{
-						if (!CorposDeAprendizado.TryGetValue(donoLearn, out List<string>? adiado))
-							CorposDeAprendizado[donoLearn] = adiado = [];
-						adiado.Add(corpo);
-					}
+					// O CORPO E GUARDADO INTEIRO, com indentacao, e lido no fim da varredura -- o
+					// `switch(input(...))` de casa unica e o local `storedBP` do ganho na compra so se
+					// leem com o bloco todo na mao. Dono ja lido ou nao, o caminho e o mesmo; a
+					// diferenca fica anotada (<see cref="DonosLidosNaHora"/>) porque e ela que a
+					// bancada do extrator mede. Antes, o corpo de dono nao-lido era jogado fora em
+					// silencio -- ver <see cref="CorposDeAprendizado"/>.
+					if (defs.ContainsKey(donoLearn)) DonosLidosNaHora.Add(donoLearn);
+					if (!CorposDeAprendizado.TryGetValue(donoLearn, out List<(int, string)>? linhasLearn))
+						CorposDeAprendizado[donoLearn] = linhasLearn = [];
+					linhasLearn.Add((ind, corpo));
 				}
 				continue;
 			}
@@ -676,6 +882,33 @@ public static class DmSkillScanner
 			{
 				if (donoProc != null && nomeProc != null)
 				{
+					// O `growbranches()` DE UMA ARVORE e o unico corpo de proc de arvore que se le: e
+					// ele que sobe o tier, abre outras arvores e acende skills. Guardado cru com a
+					// indentacao (o `if` aninhado E a condicao) e traduzido no fim -- ver
+					// <see cref="CorposDeGalhos"/>.
+					// (`!procProprio` deixa de fora a declaracao BASE do motor,
+					// `/datum/skill/tree/proc/growbranches()` em `trees.dm:136`, que nao e arvore nenhuma)
+					//
+					// O `prunebranches()` ENTRA TAMBEM, atras do `growbranches()`: o `testunlocks()` do DM
+					// chama os dois em sequencia (`SkillTreesWindow.dm:306-310`), e ha exclusividade que
+					// so mora no prune -- as tres especialidades de Ki se APAGAM uma a outra em
+					// `Effusion Specialization.dm:37-47`. O tier que o prune abaixa e redundante num
+					// recalculo do zero, mas nao atrapalha: a mesma condicao da o mesmo numero.
+					// O `treegrow()`/`treeshrink()` DAS ARVORES RACIAIS ENTRAM PELA MESMA PORTA: e neles
+					// que Arlian, Tsujin, Yardrat e Spirit Doll apagam a irma da skill escolhida
+					// (`if(savant.pitted==1) disableskill(Supa)`, arlian.dm:13-16). O motor os chama
+					// depois da compra (`SkillTreesWindow.dm:345`) e no encolhimento (`trees.dm:96`);
+					// num recalculo do zero o `treegrow` vale como grow e o `treeshrink` como prune.
+					if (nomeProc is "growbranches" or "prunebranches" or "treegrow" or "treeshrink" && !procProprio
+						&& donoProc.StartsWith("/datum/skill/tree/", StringComparison.OrdinalIgnoreCase))
+					{
+						Dictionary<string, List<(int Ind, string Txt)>> onde =
+							nomeProc is "growbranches" or "treegrow" ? CorposDeGalhos : CorposDePoda;
+						if (!onde.TryGetValue(donoProc, out List<(int, string)>? galhos))
+							onde[donoProc] = galhos = [];
+						galhos.Add((ind, corpo));
+					}
+
 					// PROC PROPRIO da skill: no DM ele nasce com o prefixo `proc/`, e e essa palavra
 					// -- nao uma lista de nomes conhecidos -- que separa "declarei um proc novo" de
 					// "sobrescrevi um do motor". Guarda-se o corpo INTEIRO, com a indentacao, porque
@@ -697,7 +930,21 @@ public static class DmSkillScanner
 			}
 
 			// linha de continuacao do DM (barra invertida no fim)
-			while (corpo.EndsWith('\\') && i + 1 < linhas.Length) corpo = corpo[..^1] + linhas[++i].Trim();
+			while (corpo.EndsWith('\\') && i + 1 < linhas.Length)
+				corpo = corpo[..^1] + SemComentario(linhas[++i].Trim(), ref profCom).TrimEnd();
+
+			// ============================ A CONTINUACAO POR PARENTESE ABERTO ============================
+			// O DM tambem continua uma lista SEM a barra: basta o `(` do `list(` ainda estar aberto.
+			// Tres arvores declaram os galhos assim (`Cultivation.dm:8`, `spirit-doll.dm:10`,
+			// `CustomAttacks/physical/basic.dm:8`), e so ler a barra PERDIA 13 galhos calado -- a
+			// Cultivation saia com 4 dos 7 (sem Ki_Shield, Shield_Bash e Sharpened_Ki), a Spirit Doll
+			// com 3 dos 6. Skill que nao pende de arvore nenhuma e skill que ninguem compra.
+			//
+			// O parentese e contado FORA de aspas: uma `desc` com `(` solto dentro do texto nao pode
+			// engolir a linha seguinte.
+			// ==========================================================================================
+			while (Desbalanco(corpo) > 0 && i + 1 < linhas.Length)
+				corpo += SemComentario(linhas[++i].Trim(), ref profCom).TrimEnd();
 
 			// --- propriedade ---
 			int igual = corpo.IndexOf('=');
@@ -795,13 +1042,34 @@ public static class DmSkillScanner
 				continue;
 			if (!caminho.StartsWith("/datum/skill", StringComparison.OrdinalIgnoreCase)) continue;
 
+			// ARVORE E O QUE MORA DEBAIXO DE `/datum/skill/tree/` -- com a barra. Sem ela,
+			// `/datum/skill/Tree_Mastery` (uma FOLHA da Weapons Expert, `Weapons Expert.dm:83`) casava
+			// com o prefixo e saia do extrator como arvore sem galho nenhum; o menu precisava de uma
+			// gambiarra pra esconder o card vazio.
 			if (!defs.ContainsKey(caminho))
 				defs[caminho] = new SkillDef
 				{
 					Path = caminho,
-					Arvore = caminho.StartsWith("/datum/skill/tree", StringComparison.OrdinalIgnoreCase),
+					Arvore = caminho.Equals("/datum/skill/tree", StringComparison.OrdinalIgnoreCase)
+						  || caminho.StartsWith("/datum/skill/tree/", StringComparison.OrdinalIgnoreCase),
 				};
 		}
+	}
+
+	/// <summary>Parenteses abertos menos fechados, ignorando o que esta entre aspas.</summary>
+	private static int Desbalanco(string s)
+	{
+		if (!s.Contains('(')) return 0;
+		int prof = 0;
+		bool aspas = false;
+		foreach (char ch in s)
+		{
+			if (ch == '"') aspas = !aspas;
+			if (aspas) continue;
+			if (ch == '(') prof++;
+			else if (ch == ')') prof--;
+		}
+		return prof;
 	}
 
 	private static void Aplicar(SkillDef d, string chave, string valor)
@@ -822,6 +1090,9 @@ public static class DmSkillScanner
 			case "fixedcost": d.CustoFixo = cru is "1" or "TRUE"; break;
 			case "common_sense": d.Comum = cru is "1" or "TRUE"; break;
 			case "enabled": d.Ligada = cru is not ("0" or "FALSE"); break;
+			case "can_forget": d.Esquecivel = cru is not ("0" or "FALSE"); break;
+			case "allowedtier": if (int.TryParse(cru, out int at)) d.TierInicial = at; break;
+			case "maxtier": if (int.TryParse(cru, out int mt)) d.TierMax = mt; break;
 			case "villainonly": d.SoVilao = cru is "1" or "TRUE"; break;
 			case "teacher": d.Ensinavel = cru is "1" or "TRUE"; break;
 			case "teachcost": if (int.TryParse(cru, out int tc)) d.CustoDeEnsino = tc; break;
@@ -969,7 +1240,14 @@ public static class DmSkillScanner
 			sb.Append($"\"arvore\": {(d.Arvore ? 1 : 0)}, \"comum\": {(d.Comum ? 1 : 0)}, ");
 			sb.Append($"\"ligada\": {(d.Ligada ? 1 : 0)}, \"vilao\": {(d.SoVilao ? 1 : 0)}, ");
 			sb.Append($"\"ensinavel\": {(d.Ensinavel ? 1 : 0)}, \"custofixo\": {(d.CustoFixo ? 1 : 0)}, ");
-			sb.Append($"\"custoensino\": {d.CustoDeEnsino}, ");
+			sb.Append($"\"custoensino\": {d.CustoDeEnsino}, \"esquecivel\": {(d.Esquecivel ? 1 : 0)}, ");
+			// SO NAS ARVORES: o tier de nascenca, o teto, e o `growbranches()` traduzido. Folha nao
+			// tem tier de vitrine -- tem o proprio `tier`, que e o outro lado da mesma comparacao.
+			if (d.Arvore)
+			{
+				sb.Append($"\"tierinicial\": {d.TierInicial}, \"tiermax\": {d.TierMax}, ");
+				sb.Append($"\"regras\": [{string.Join(", ", d.Regras.Select(J))}], ");
+			}
 			sb.Append($"\"racas\": [{string.Join(", ", d.Racas.Select(J))}], ");
 			sb.Append($"\"classes\": [{string.Join(", ", d.Classes.Select(J))}], ");
 			sb.Append($"\"prereqs\": [{string.Join(", ", d.PreReqs.Select(J))}], ");
@@ -991,6 +1269,9 @@ public static class DmSkillScanner
 			// `v:` = verbo. Vazio na esmagadora maioria -- uma skill no jogo inteiro usa isto.
 			if (d.Escolhas.Count > 0)
 				sb.Append($", \"escolhas\": [{string.Join(", ", d.Escolhas.Select(e => J(Casa(e))))}]");
+			// A ESCOLHA HERDADA e o GANHO NA COMPRA, so em quem os tem -- ver os campos no `SkillDef`.
+			if (d.EscolhaSegue.Length > 0) sb.Append($", \"escolhasegue\": {J(d.EscolhaSegue)}");
+			if (d.Compra.Count > 0) sb.Append($", \"compra\": [{string.Join(", ", d.Compra.Select(J))}]");
 			sb.Append(" }");
 		}
 		sb.Append("\n]\n");

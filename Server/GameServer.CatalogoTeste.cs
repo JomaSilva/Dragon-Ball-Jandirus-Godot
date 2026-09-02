@@ -235,6 +235,14 @@ public partial class GameServer
 			"o primeiro aperto PERGUNTA a idade e o efeito depende de o ALVO aceitar, por verb proprio "
 			+ "(`juventude_aceitar`) -- um corpo forjado nao aperta botao. Ver `OferecerJuventudeG8`",
 
+		// ---- lote G12: as duas absorcoes exigem um caido, como o Life Suck acima ----
+		["Soul_Absorb"] =
+			"o alvo precisa estar NOCAUTEADO e vivo (`demon.dm:41`); nocautear o boneco faria os outros verbos "
+			+ "medirem um alvo caido. Quem o prova com um caido de verdade e a `--g12teste`",
+		["Absorb_Android"] =
+			"o alvo precisa estar NOCAUTEADO e vivo (`Absorption.dm:22`), pelo mesmo motivo do de cima; a "
+			+ "`--g12teste` prova os dois ramos (o androide absorvido e o dreno sustentado)",
+
 		// ---- lote G9: o unico que precisa de uma COISA no chao, e nao de uma condicao no corpo ----
 		["Mafuba"] =
 			"precisa de um POTE SELANTE assentado a vista, e a cena da varredura e so dois corpos. Nao "
@@ -243,6 +251,28 @@ public partial class GameServer
 			+ "existe no jogo original**. Assentar um pote so pra este verb mudaria a cena dos outros "
 			+ "noventa (o pote e denso e entra na colisao). Quem o prova de ponta a ponta, com pote, "
 			+ "fita e preso, e a `--seloteste`",
+
+		// ---- lote G10: a Trindade NAO TEM PORTA neste port -- ver `SemPortaNestePort` ----
+		["Taunt"] =
+			"NAO TEM PORTA neste port -- ver `SemPortaNestePort`. A recusa e do gate (\"voce nao sabe\"), e "
+			+ "nao do efeito; quem prova o efeito, com um degrau sintetico, e a `--g10teste`",
+		["Counter_Taunt"] =
+			"NAO TEM PORTA neste port -- ver `SemPortaNestePort`. A recusa e do gate, e nao do efeito; "
+			+ "a `--g10teste` prova o dano mental com um degrau sintetico",
+		["Slap"] =
+			"NAO TEM PORTA neste port -- ver `SemPortaNestePort`. A recusa e do gate, e nao do efeito; "
+			+ "a `--g10teste` prova o atordoamento com um degrau sintetico",
+
+		// ---- lote G11: um que exige um AGARRADO e um cuja lista depende de pericia e de poder relativo ----
+		["Self_Destruct"] =
+			"exige alguem AGARRADO (`Ki/misc.dm:223-225`, \"You need to be grabbing someone!\"); agarrar o "
+			+ "boneco mudaria a cena dos outros noventa (preso nao anda, nao ataca). Quem prova as duas "
+			+ "fases, a morte do agarrado e o dano em si e a `--g11teste`",
+		["Instant_Transmission"] =
+			"a lista de assinaturas (`yardrat.dm:185`) so aceita farol com `BP <= eBP*fam/(2*max(dist/30,0.2)*50/teleskill)`: "
+			+ "com a pericia de estreia (1) e o boneco colado, de poder igual, e preciso um farol 20x mais "
+			+ "forte -- a cena da varredura nao tem um, e o DM tambem nao acharia. A `--g11teste` prova a "
+			+ "lista, a concentracao parada, a chegada com carona e a pericia crescendo",
 	};
 
 	/// <summary>
@@ -281,6 +311,13 @@ public partial class GameServer
 		// `powerMod`. Entra aqui e nao no `RecusamPorCondicao` de proposito -- declarar como recusa
 		// daria a ele um passe livre, e o segundo aperto (que e o que faz o efeito) nunca seria medido.
 		["Power_Control"] = "Power_Control:40",
+
+		// ---- lote G11: os dois saltos de planeta com carona (o desenho do `RiftTeleport`) e a projecao ----
+		// `Observe:<nome>` escreve `observingnow` na ficha de quem projeta e responde com a leitura do alvo:
+		// o primeiro aperto LISTA quem da pra seguir, o segundo age (e o campo e o que a varredura ve mudar).
+		["Devil_Bringer"] = "Devil_Bringer:Namek",
+		["Kai_Kai"] = "Kai_Kai:Namek",
+		["Observe"] = "Observe:Boneco",
 	};
 
 	/// <summary>
@@ -305,6 +342,18 @@ public partial class GameServer
 	private static readonly Dictionary<string, string> SemPortaNestePort = new(StringComparer.OrdinalIgnoreCase)
 	{
 		["Bite"] = "vampirismo/licantropia (maestria ESCONDIDA do DM, fora do `skills.json`)",
+
+		// ============================ A TRINDADE: A PORTA E UMA ESCOLHA QUE O EXTRATOR POE EM QUARENTENA ============================
+		// `Taunt`, `Counter_Taunt` e `Slap` (lote G10) sao concedidos no DM pelo degrau 2 de
+		// `/datum/skill/Bodybuilding/TheHolyTrinity` -- UM dos tres, conforme o `TrinityType` que o
+		// jogador escolhe num `input()` ao aprender (`Bodybuilding.dm:113-140`, `:180-185`). O extrator
+		// nao le a escolha: o degrau sai do `niveis.json` com `verbos: []` e o `switch` inteiro em
+		// `logica` (quarentena). E a familia F1 do censo ("escolha unica na 2a forma"), do lote do
+		// extrator; enquanto ela nao chega, os tres tem corpo e nao tem porta -- como o `Bite`.
+		// ==========================================================================================================================
+		["Taunt"] = "a escolha do TrinityType (`Bodybuilding.dm:182-185`, degrau em quarentena no extrator)",
+		["Counter_Taunt"] = "a escolha do TrinityType (`Bodybuilding.dm:182-185`, degrau em quarentena no extrator)",
+		["Slap"] = "a escolha do TrinityType (`Bodybuilding.dm:182-185`, degrau em quarentena no extrator)",
 	};
 
 	/// <summary>As tres frases com que o despacho responde "isto nao existe". Nenhuma conta como resposta.</summary>
@@ -691,6 +740,10 @@ public partial class GameServer
 		// pode atirar sem folego -- ou o contrario, timida com o tanque cheio. Liga-lo pede um segundo
 		// campo de MOEDA na linha, que e decisao de dado e nao remendo.
 		"Spirit_Gun",
+
+		// ---- lote G12: as bolas que nascem no aperto (Death Ball e Genkidama nascem INERTES sobre a cabeca)
+		// e as tres que so cospem no tique. Nenhuma tem janela de alcance na tabela da IA ainda.
+		"Death_Ball", "SpiritBomb", "BusterBarrage", "Continuous_Energy_Bullets", "Spin_Blast",
 	];
 
 	private void AIaCresceComOJogo()

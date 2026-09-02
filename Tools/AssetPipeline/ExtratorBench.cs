@@ -104,6 +104,8 @@ public static class ExtratorBench
 			ASinteticaComOrdemRuim(raiz);
 			ASinteticaComOrdemBoa(raiz);
 			OAlarme(raiz);
+			OsGalhos(raiz);
+			OQueOExtratorNaoPegava(raiz);
 			AArvoreDeVerdade(pastaCode, artefato);
 		}
 		catch (Exception e)
@@ -260,6 +262,192 @@ public static class ExtratorBench
 	}
 
 	// =====================================================================
+	// 5) OS GALHOS: a continuacao por parentese, a falsa arvore e o growbranches como dado
+	// =====================================================================
+	/// <summary>
+	/// UMA ARVORE SINTETICA COM OS TRES DEFEITOS DA RODADA DAS ARVORES:
+	///   * a lista de galhos continua na linha seguinte SEM barra (so o `(` aberto) -- o extrator so
+	///     lia a barra e perdia 13 galhos em tres arvores do DM;
+	///   * um typepath `/datum/skill/Tree_Mastery_Bancada` casa com o prefixo `/datum/skill/tree` e
+	///     virava arvore;
+	///   * o `growbranches()` com tier por investimento, porta por contador atras de uma flag de
+	///     "algo mudou", e um `switch(savant.Rank)` -- tudo isso tem que sair como REGRA.
+	/// </summary>
+	private const string DmDosGalhos = """
+		/datum/skill/tree/GalhoDeBancada
+			name = "Galho de Bancada"
+			maxtier = 3
+			allowedtier = 1
+			constituentskills = list(new/datum/skill/rank/SeloDeBancada,
+				new/datum/skill/rank/DelegaDeBancada)
+			growbranches()
+				if(invested>=2)allowedtier = 2
+				if(savant.didbodychange)
+					savant.didbodychange=0
+					if(savant.bodyskill>2)
+						enabletree(/datum/skill/tree/Bodybuilding)
+				switch(savant.Rank)
+					if("Turtle")
+						enableskill(/datum/skill/rank/SeloDeBancada)
+				..()
+			prunebranches()
+				if(invested<2)allowedtier = 1
+
+		/datum/skill/Tree_Mastery_Bancada
+			name = "Falsa arvore de bancada"
+			tier = 2
+
+		""";
+
+	private static void OsGalhos(string raiz)
+	{
+		Console.WriteLine("\n-- 5) OS GALHOS: continuacao por parentese, a falsa arvore, o growbranches como dado --");
+
+		string pasta = Montar(raiz, "galhos", "aaa_efeito.dm", "zzz_donos.dm");
+		File.WriteAllText(Path.Combine(pasta, "mmm_galhos.dm"), DmDosGalhos, new UTF8Encoding(false));
+		DmSkillScanner.ComoAntesDoConserto = false;
+		Dictionary<string, SkillDef> d = DmSkillScanner.Scan(pasta);
+
+		SkillDef? arv = d.GetValueOrDefault("/datum/skill/tree/GalhoDeBancada");
+		Conferir("a arvore sintetica existe e e arvore", arv is { Arvore: true });
+		if (arv == null) return;
+		Conferir("os DOIS galhos chegaram -- a segunda linha da lista nao tem barra, so o `(` aberto",
+				 arv.Constituintes.Count == 2, string.Join(",", arv.Constituintes));
+		Conferir("`/datum/skill/Tree_Mastery_Bancada` NAO e arvore (o prefixo `/datum/skill/tree` sem a barra casava)",
+				 d.GetValueOrDefault("/datum/skill/Tree_Mastery_Bancada") is { Arvore: false });
+		Conferir("allowedtier 1 / maxtier 3 lidos", arv is { TierInicial: 1, TierMax: 3 }, $"{arv.TierInicial}/{arv.TierMax}");
+		Conferir("`if(invested>=2)allowedtier = 2` virou `tier;2;invested>=2`",
+				 arv.Regras.Contains("tier;2;invested>=2"), string.Join(" | ", arv.Regras));
+		Conferir("a porta por contador atras do `didbodychange` saiu SEM a flag (ela e 'algo mudou', e o port reavalia sempre)",
+				 arv.Regras.Contains("arvore;/datum/skill/tree/Bodybuilding;bodyskill>2"), string.Join(" | ", arv.Regras));
+		Conferir("`switch(savant.Rank) if(\"Turtle\")` virou `acende;...;Rank=='Turtle'` (aspas SIMPLES, pro leitor de json)",
+				 arv.Regras.Contains("acende;/datum/skill/rank/SeloDeBancada;Rank=='Turtle'"), string.Join(" | ", arv.Regras));
+		Conferir("o prunebranches entra DEPOIS do growbranches (a ordem do testunlocks)",
+				 arv.Regras.Count == 4 && arv.Regras[^1] == "tier;1;invested<2", string.Join(" | ", arv.Regras));
+		Conferir("`..()` e o `savant.didbodychange=0` nao viram diario (sao ruido do DM, nao efeito)",
+				 !DmGalhosScanner.NaoLidas.Any(x => x.Arvore.Contains("GalhoDeBancada")),
+				 string.Join(" | ", DmGalhosScanner.NaoLidas.Where(x => x.Arvore.Contains("GalhoDeBancada")).Select(x => x.Linha)));
+	}
+
+	// =====================================================================
+	// 6) O QUE O EXTRATOR NAO PEGAVA: a escolha na 2a forma, a que se herda, o ganho com expressao, o treegrow
+	// =====================================================================
+	/// <summary>
+	/// UMA ARVORE SINTETICA COM OS QUATRO BURACOS DA RODADA DOS DEGRAUS:
+	///   * `switch(input(...) in list(...))` DIRETO no `after_learn` (TheHolyTrinity, Bodybuilding.dm:119)
+	///     -- so a forma delegada (`choose()`) era lida como escolha; a direta era SOMADA;
+	///   * `switch(savant.<var>)` (Grace, :243) -- a skill que entra na casa que outra escolheu;
+	///   * o ganho com expressao por um local do datum (`storedBP = max(1,savant.BP*0.01)` +
+	///     `savant.BP+=storedBP`, :89-90) -- o extrator so lia constante;
+	///   * o `treegrow()`/`treeshrink()` das raciais (arlian.dm:12-20), que ninguem traduzia em regra.
+	/// E um CONTROLE: `switch(level)` no after_learn (kaioken.dm:88) NAO e escolha e continua somando.
+	/// </summary>
+	private const string DmDosBuracos = """
+		/datum/skill/rank/TrindadeDeBancada
+			name = "Trindade de Bancada"
+			after_learn()
+				to_chat(savant, "escolha")
+				switch(input(savant,"Qual casa?","Trindade","Casa A") in list("Casa A","Casa B"))
+					if("Casa A")
+						to_chat(savant, "A")
+						savant.physoffBuff += 0.3
+						savant.genome.add_to_stat("Lifespan",0.1)
+					if("Casa B")
+						savant.physdefBuff += 0.3
+
+		/datum/skill/rank/GracaDeBancada
+			name = "Graca de Bancada"
+			after_learn()
+				switch(savant.trindadetipo)
+					if("Casa A")
+						savant.willpowerMod += 0.05
+					if("Casa B")
+						savant.willpowerMod += 0.1
+
+		/datum/skill/rank/CemDeBancada
+			name = "Cem de Bancada"
+			var/storedBP
+			var/hiddenpot
+			after_learn()
+				storedBP = max(1,savant.BP*0.01)
+				savant.BP+=storedBP
+				hiddenpot = (savant.relBPmax*2)
+				savant.hiddenpotential += hiddenpot
+				savant.staminagainMod += 0.1
+
+		/datum/skill/rank/KaioDeBancada
+			name = "Kaio de Bancada"
+			after_learn()
+				switch(level)
+					if(0) to_chat(savant, "zero")
+					if(1)
+						assignverb(/verb/Kaioken_De_Bancada)
+						savant.KaiokenMastery+=3
+
+		/datum/skill/tree/RacialDeBancada
+			name = "Racial de Bancada"
+			maxtier = 2
+			allowedtier = 2
+			constituentskills = list(new/datum/skill/rank/TrindadeDeBancada,new/datum/skill/rank/GracaDeBancada)
+			treegrow()
+				if(savant.pitted==1)
+					disableskill(/datum/skill/rank/GracaDeBancada)
+			treeshrink()
+				if(savant.pitted==0)
+					enableskill(/datum/skill/rank/GracaDeBancada)
+
+		""";
+
+	private static void OQueOExtratorNaoPegava(string raiz)
+	{
+		Console.WriteLine("\n-- 6) O QUE O EXTRATOR NAO PEGAVA: escolha na 2a forma, escolha herdada, ganho com expressao, treegrow --");
+
+		string pasta = Montar(raiz, "buracos", "aaa_efeito.dm", "zzz_donos.dm");
+		File.WriteAllText(Path.Combine(pasta, "mmm_buracos.dm"), DmDosBuracos, new UTF8Encoding(false));
+		DmSkillScanner.ComoAntesDoConserto = false;
+		Dictionary<string, SkillDef> d = DmSkillScanner.Scan(pasta);
+
+		SkillDef? tr = d.GetValueOrDefault("/datum/skill/rank/TrindadeDeBancada");
+		Conferir("a Trindade sintetica saiu com DUAS casas e NENHUM buff somado",
+				 tr is { Escolhas.Count: 2, Buffs.Count: 0, Genes.Count: 0 }, $"{tr?.Escolhas.Count} casas / {tr?.Buffs.Count} buffs");
+		// guardado por `Count == 2` de proposito: com a deteccao da escolha desligada (o defeito que
+		// esta familia guarda) a linha fica VERMELHA, e nao derruba a bancada inteira
+		Conferir("...a casa A tem physoffBuff 0,3 e o gene Lifespan; a B tem physdefBuff 0,3",
+				 tr != null && tr.Escolhas.Count == 2
+				 && tr.Escolhas[0].Rotulo == "Casa A" && Perto(tr.Escolhas[0].Buffs.GetValueOrDefault("physoffBuff"), 0.3)
+				 && Perto(tr.Escolhas[0].Genes.GetValueOrDefault("Lifespan"), 0.1)
+				 && tr.Escolhas[1].Rotulo == "Casa B" && Perto(tr.Escolhas[1].Buffs.GetValueOrDefault("physdefBuff"), 0.3));
+
+		SkillDef? gr = d.GetValueOrDefault("/datum/skill/rank/GracaDeBancada");
+		Conferir("a Graca sintetica (`switch(savant.trindadetipo)`) tem duas casas e SEGUE a Trindade (casas de mesmos rotulos)",
+				 gr is { Escolhas.Count: 2, Buffs.Count: 0 } && gr.EscolhaSegue == "/datum/skill/rank/TrindadeDeBancada" && gr.EscolhaPorVar == "trindadetipo",
+				 $"{gr?.Escolhas.Count} casas, segue '{gr?.EscolhaSegue}', var '{gr?.EscolhaPorVar}'");
+		Conferir("...e ninguem ficou sem lider no diario", DmSkillScanner.EscolhasSemLider.Count == 0,
+				 string.Join(", ", DmSkillScanner.EscolhasSemLider));
+
+		SkillDef? cem = d.GetValueOrDefault("/datum/skill/rank/CemDeBancada");
+		Conferir("o ganho com expressao saiu como dado: `BP+=(max(1,BP*0.01))` e `hiddenpotential+=((relBPmax*2))` (o local substituido)",
+				 cem != null && cem.Compra.Count == 2 && cem.Compra[0] == "BP+=(max(1,BP*0.01))" && cem.Compra[1] == "hiddenpotential+=((relBPmax*2))",
+				 string.Join(" ; ", cem?.Compra ?? []));
+		Conferir("...o buff CONSTANTE da mesma skill continua no canal de sempre (staminagainMod 0,1)",
+				 cem != null && Perto(cem.Buffs.GetValueOrDefault("staminagainMod"), 0.1));
+		Conferir("...e o Core LE as duas expressoes (a validacao e o parser de producao)",
+				 cem != null && cem.Compra.All(c => Jandirus.Core.Skills.GanhoNaCompra.Parse(c) != null)
+				 && DmSkillScanner.ComprasNaoLidas.Count == 0, string.Join(" | ", DmSkillScanner.ComprasNaoLidas));
+
+		SkillDef? kaio = d.GetValueOrDefault("/datum/skill/rank/KaioDeBancada");
+		Conferir("CONTROLE: `switch(level)` no after_learn NAO vira escolha -- o verb e o +3 somam como antes",
+				 kaio is { Escolhas.Count: 0 } && kaio.Verbos.Contains("Kaioken_De_Bancada") && Perto(kaio.Buffs.GetValueOrDefault("KaiokenMastery"), 3),
+				 $"{kaio?.Escolhas.Count} casas, verbos {string.Join(",", kaio?.Verbos ?? [])}");
+
+		SkillDef? arv = d.GetValueOrDefault("/datum/skill/tree/RacialDeBancada");
+		Conferir("o `treegrow()` virou regra: `apaga;/datum/skill/rank/GracaDeBancada;pitted==1`",
+				 arv != null && arv.Regras.Contains("apaga;/datum/skill/rank/GracaDeBancada;pitted==1"), string.Join(" | ", arv?.Regras ?? []));
+		Conferir("...e o `treeshrink()` DEPOIS dele: `acende;...;pitted==0`",
+				 arv != null && arv.Regras.Count == 2 && arv.Regras[^1] == "acende;/datum/skill/rank/GracaDeBancada;pitted==0", string.Join(" | ", arv?.Regras ?? []));
+	}
+
+	// =====================================================================
 	// 4) A ARVORE DE VERDADE
 	// =====================================================================
 	/// <summary>
@@ -314,6 +502,19 @@ public static class ExtratorBench
 				 + "nada no relatorio mudava",
 				 antes.Values.Count(s => s.Nome.Length > 0) == comNome);
 
+		// OS QUATRO BURACOS DA RODADA DOS DEGRAUS, no DM do dono
+		SkillDef? trin = hoje.GetValueOrDefault("/datum/skill/Bodybuilding/TheHolyTrinity");
+		Conferir("a Holy Trinity (Bodybuilding.dm:119) sai com 3 casas e SEM os buffs somados (antes: physdefBuff 0,6)",
+				 trin is { Escolhas.Count: 3, Buffs.Count: 0 }, $"{trin?.Escolhas.Count} casas / {trin?.Buffs.Count} buffs");
+		Conferir("a Grace (Bodybuilding.dm:243) segue a Holy Trinity",
+				 hoje.GetValueOrDefault("/datum/skill/Bodybuilding/Grace")?.EscolhaSegue == "/datum/skill/Bodybuilding/TheHolyTrinity");
+		Conferir("a One Hundred (Bodybuilding.dm:89-92) traz os dois ganhos com expressao, e as tres do Bodybuilding sao as UNICAS",
+				 hoje.GetValueOrDefault("/datum/skill/Bodybuilding/One_Hundred")?.Compra.Count == 2
+				 && hoje.Values.Count(s => s.Compra.Count > 0) == 3,
+				 string.Join(", ", hoje.Values.Where(s => s.Compra.Count > 0).Select(s => s.Nome)));
+		Conferir("a arvore Arlian (arlian.dm:12-20) traz o `treegrow` como `apaga;Supa;pitted==1`",
+				 hoje.GetValueOrDefault("/datum/skill/tree/arlian")?.Regras.Contains("apaga;/datum/skill/arlian/Supa;pitted==1") == true);
+
 		if (artefato == null || !File.Exists(artefato))
 		{
 			Console.WriteLine("  (sem `skills.json` na linha de comando -- o artefato nao foi conferido)");
@@ -330,6 +531,11 @@ public static class ExtratorBench
 					 + "ele le o arquivo",
 					 vs.Contains(verbo, StringComparer.OrdinalIgnoreCase), string.Join(",", vs));
 		}
+		Conferir("e o `skills.json` NO DISCO ja tem as casas da Trinity, a Grace seguindo, a compra da One Hundred e o pitted do Arlian",
+				 cat.Get("/datum/skill/Bodybuilding/TheHolyTrinity") is { Escolhas.Length: 3, Buffs.Count: 0 }
+				 && cat.Get("/datum/skill/Bodybuilding/Grace")?.EscolhaSegue == "/datum/skill/Bodybuilding/TheHolyTrinity"
+				 && cat.Get("/datum/skill/Bodybuilding/One_Hundred")?.Compra.Length == 2
+				 && cat.Get("/datum/skill/tree/arlian")?.Regras.Contains("apaga;/datum/skill/arlian/Supa;pitted==1") == true);
 	}
 
 	// =====================================================================

@@ -88,6 +88,25 @@ public sealed class CharacterSave
     /// </summary>
     public Dictionary<string, int> SkillsEscolhas = [];
 
+    /// <summary>
+    /// O QUE CADA SKILL SOMOU NA FICHA AO SER COMPRADA (typepath -> campo -> quanto): o `storedBP` e o
+    /// `hiddenpot` que o datum do DM guarda (Bodybuilding.dm:85-86) pra devolver no `before_forget`.
+    /// Sem persistir, esquecer a One Hundred depois de um relog devolveria zero -- ou o login somaria
+    /// o 1% de novo. Ver `Core.Skills.GanhoNaCompra`.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, double>> SkillsGanhos = [];
+
+    /// <summary>
+    /// A VERSAO DO RAZAO DE BUFFS (`Ficha.BuffsDeSkill`/`FlagsDeSkill`/`MultsDeSkill`, `Niveis.Somados`).
+    ///
+    /// Ate a versao 1 o razao guardava campo que a ficha NAO TINHA: `KaiokenMastery=3` e `pitted=1`
+    /// constavam como "ja aplicados" num lutador sem os campos. Quando os campos nasceram (este lote),
+    /// o delta contra o razao dava zero e o buff nunca chegava em quem ja tinha a skill. Save com
+    /// versao 0 passa por uma migracao UNICA no login (`GameServer.PrepararSkills`) que tira do razao
+    /// os campos novos; a partir dai o razao so guarda o que pegou de verdade.
+    /// </summary>
+    public int RazaoVersao;
+
     /// <summary>O NIVEL de cada skill (e o que os degraus ja somaram). Ver NiveisDeSkill.</summary>
     public Jandirus.Core.Skills.NivelSave Niveis = new();
 
@@ -689,6 +708,10 @@ public sealed class AccountStore(string pasta)
         Skills = pl.Livro != null ? [.. pl.Livro.Aprendidas] : [],
         SkillsEnsinadas = pl.Livro != null ? [.. pl.Livro.Ensinadas] : [],
         SkillsEscolhas = pl.Livro != null ? new Dictionary<string, int>(pl.Livro.Escolhas) : [],
+        SkillsGanhos = pl.Livro != null
+            ? pl.Livro.GanhosNaCompra.ToDictionary(kv => kv.Key, kv => new Dictionary<string, double>(kv.Value))
+            : [],
+        RazaoVersao = GameServer.RazaoVersaoAtual,
         Niveis = pl.Niveis?.ParaSave() ?? new(),
         Social = pl.Social ?? new(),
         Maestrias = pl.Forma?.Maestria.ParaSave() ?? [],

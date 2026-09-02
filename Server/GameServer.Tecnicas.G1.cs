@@ -152,6 +152,9 @@ public partial class GameServer
 	private static readonly string[] SlotBuffG1 =
 	[
 		"Brutal_Clarity", "Extreme_Burst", "Fighting_Power", "Ultradense_Body", "Ki_Blade", "Ki_Sword",
+		// O EXPAND BODY (lote G11) declara o MESMO `slot=sBUFF` (`Body Expansion.dm:15`): entra na
+		// briga pelo slot nas duas direcoes -- nem ele liga por cima dos seis, nem os seis por cima dele.
+		"Expand_Body",
 	];
 
 	/// <summary>

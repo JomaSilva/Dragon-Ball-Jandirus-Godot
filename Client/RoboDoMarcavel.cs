@@ -813,7 +813,7 @@ public partial class RoboDoMarcavel : Node
 			for (int i = 0; i < recortes.Count; i++)
 			{
 				Image? antes = Image.LoadFromFile(ant + $"{tela}-{slug}-{i + 1}-{Slug(Estados[i].Rotulo)}.png");
-				pares.Add(new TiraDeFotos.Quadro(antes == null ? recortes[i] : Empilhar(antes, recortes[i]), i + 1));
+				pares.Add(new TiraDeFotos.Quadro(antes == null ? recortes[i] : TiraDeFotos.Empilhar(antes, recortes[i]), i + 1));
 			}
 			string caminho = _pasta + (estrela ? "TIRA-ANTES-x-DEPOIS.png" : $"TIRA-ANTES-x-DEPOIS-{tela}-{slug}.png");
 			double pintada = TiraDeFotos.Montar(pares, caminho);
@@ -833,25 +833,6 @@ public partial class RoboDoMarcavel : Node
 			for (int i = 0; i < x.GetWidth(); i++)
 				if (Chave(x.GetPixel(i, j)) != Chave(y.GetPixel(i, j))) dif++;
 		return total == 0 ? 1 : (double)dif / total;
-	}
-
-	/// <summary>
-	/// Duas fotos, uma em cima da outra. O empilhamento vertical mora aqui e a fileira numerada mora
-	/// na <see cref="TiraDeFotos"/> -- sao coisas diferentes, mas a licao e a mesma e ela ja foi paga
-	/// la: `BlitRect` copia byte a byte e NAO converte formato, e sem o `Convert` a montagem sai
-	/// preta com as duas fotos boas no disco.
-	/// </summary>
-	private static Image Empilhar(Image cima, Image baixo)
-	{
-		var a = (Image)cima.Duplicate(); a.Convert(Image.Format.Rgba8);
-		var b = (Image)baixo.Duplicate(); b.Convert(Image.Format.Rgba8);
-		const int Vao = 6;
-		int larg = Math.Max(a.GetWidth(), b.GetWidth());
-		Image fora = Image.CreateEmpty(larg, a.GetHeight() + b.GetHeight() + Vao, false, Image.Format.Rgba8);
-		fora.Fill(TiraDeFotos.Fundo);
-		fora.BlitRect(a, new Rect2I(0, 0, a.GetWidth(), a.GetHeight()), Vector2I.Zero);
-		fora.BlitRect(b, new Rect2I(0, 0, b.GetWidth(), b.GetHeight()), new Vector2I(0, a.GetHeight() + Vao));
-		return fora;
 	}
 
 	// =====================================================================

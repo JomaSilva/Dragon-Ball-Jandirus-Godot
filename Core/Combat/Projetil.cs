@@ -163,6 +163,17 @@ public sealed class ReceitaDeProjetil
 	/// =====================================================================================
 	/// </summary>
 	public ArteDeKi Arte = ArteDeKi.Nenhuma;
+
+	/// <summary>
+	/// A ESCALA DO SPRITE PEDIDA PELA TECNICA (0 = a regra de sempre: `MultDeOnda` no raio, 1 na bola).
+	///
+	/// Existe pelas bolas que CRESCEM enquanto sao formadas -- a Death Ball (`DeathBall.dm:81`,
+	/// `nA.Scale(1+movestrength/4, ...)`) e a Genkidama (`SpiritBomb.dm:119-121`, `prevscale += 0.1`).
+	/// La a `transform` e reescrita na bola viva; aqui a escala viaja UMA vez, no `Nasceu`, entao a bola
+	/// que cresce RENASCE com a escala nova -- e a receita e a unica porta por onde ela entra. Ver o
+	/// lote G12.
+	/// </summary>
+	public double EscalaVisual;
 }
 
 /// <summary>
@@ -305,6 +316,15 @@ public sealed class Projetil
 
 	/// <summary>O dono ainda esta segurando o raio. So o Beam usa.</summary>
 	public bool Canalizando;
+
+	/// <summary>
+	/// AINDA ESTA SENDO FORMADA (ou e um alvo de treino): NAO anda, NAO colide, NAO gasta alcance --
+	/// so o prazo corre. E a bola parada sobre a cabeca de quem carrega a Death Ball ou a Genkidama
+	/// (`A.loc = locate(usr.x, usr.y+1, usr.z)` com `density = 1` e sem `walk`: no BYOND uma bola
+	/// parada e um obstaculo, porque so o MOVEDOR chama `Bump`), e o `training_obj/Ki_Target`.
+	/// Um `Projetil` comum com este bit, e nao um segundo tipo de entidade -- ver o lote G12.
+	/// </summary>
+	public bool Inerte;
 
 	/// <summary>Ja acertou alguem e esta EMPURRANDO contra ele -- a cabeca para e continua moendo.</summary>
 	public bool Encostado;

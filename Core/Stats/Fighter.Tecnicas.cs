@@ -128,6 +128,22 @@ public partial class Fighter
 	public double kiaiskill, kibuffskill, kiawarenessskill;
 
 	/// <summary>
+	/// AS TRES CHAVES QUE OS `growbranches()` LEEM e que o port nao tinha onde guardar -- a SEXTA
+	/// vez do mesmo achado: o extrator ja as escrevia (`effusionspecial=1` no degrau 25 da Basic Ki
+	/// Effusion em `niveis.json`; `effspec=1..3` e `gravitate=1..2` nos `after_learn` de
+	/// `Effusion Specialization.dm:63-105` e `Spirit.dm:101-134`) e as tres caiam em
+	/// <see cref="Skills.EfeitosDeSkill.Desconhecidos"/>.
+	///
+	/// O que cada uma abre (as regras estao em `skills.json`, extraidas do DM):
+	///   * `effusionspecial == 1` -> a arvore Effusive Specialty (`Effusion.dm:22-23`);
+	///   * `effspec == 0`         -> as tres especialidades a escolher (Ki Shock, Interference,
+	///                              Forceful Ki -- `Effusion Specialization.dm:18-23`); escolher uma
+	///                              escreve 1..3 e as outras duas APAGAM. E a exclusividade do DM;
+	///   * `gravitate`            -> a Greater Will (`Spirit.dm:26-27`), depois de Upper ou Lower.
+	/// </summary>
+	public double effusionspecial, effspec, gravitate;
+
+	/// <summary>
 	/// A PERICIA DO FULL POWER (`Buffs/racial/grays.dm:41-45`), e ela e do CINZA e de mais ninguem.
 	///
 	/// Nasce 1 no `after_learn()` do DM (`:63`) e sobe 0,5 por tique enquanto a forma esta de pe,
@@ -161,6 +177,14 @@ public partial class Fighter
 	/// ======================================================================================================
 	/// </summary>
 	public double SpiritBallCost = 2, SpiritBallDamage = 1;
+
+	/// <summary>
+	/// OS DOIS DO PUNHO ESPIRITUAL -- `mob/var/SpiritFistCost = 2`, `SpiritFistDamage = 1`
+	/// (Spirit.dm:436-439). Mesma historia dos dois de cima: o `niveis.json` ja trazia
+	/// `"mults": ["SpiritFistCost=0.5", ...]` nos degraus 1 e 2 da `Spirit_Fist` (Spirit.dm:418-429) e
+	/// o verb usava duas constantes -- "sem niveis no port, fica 2". Agora o degrau cai aqui.
+	/// </summary>
+	public double SpiritFistCost = 2, SpiritFistDamage = 1;
 
 	/// <summary>Modificadores de dreno: `P` e permanente, o outro e o de agora.</summary>
 	public double PDrainMod = 1, DrainMod = 1;

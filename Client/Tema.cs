@@ -25,8 +25,27 @@ public static class Tema
     public static readonly Color Fundo = new("12141c");
     public static readonly Color Painel = new("1b1f2ae6");     // com alfa: o mundo respira atras
     public static readonly Color PainelClaro = new("252a38");
+
+    /// <summary>
+    /// A CHAPA DE HOVER: o mouse CLAREIA a chapa normal (252a38 -> 2f3549). E o que todo Button do tema
+    /// ganha embaixo do mouse. Era um literal `cHover` dentro de <see cref="Montar"/>; virou paleta no
+    /// dia em que o CARD de skill precisou acender com a MESMA chapa (o botao dele e Flat e nao desenha
+    /// estado nenhum -- quem acende e o painel do card) e a bancada precisou perguntar ao pixel "e a
+    /// chapa de hover do tema?" a uma constante que existe.
+    /// </summary>
+    public static readonly Color PainelAceso = new("2f3549");
     public static readonly Color Borda = new("39405a");
     public static readonly Color BordaViva = new("f0a041");
+
+    /// <summary>
+    /// A CHAPA E A BORDA DO QUE ESTA APAGADO: o botao desabilitado, o campo travado e o CARTAO de skill
+    /// trancado. Eram dois literais repetidos dentro de <see cref="Montar"/>; viraram paleta no dia em
+    /// que a aba de skills precisou pintar um card "trancado" com a MESMA cara do botao desabilitado --
+    /// a bancada le a foto e cobra que toda cor de painel pertenca a esta paleta, e uma cor que so
+    /// existe como literal dentro de um metodo nao e paleta.
+    /// </summary>
+    public static readonly Color PainelApagado = new("1b1f2a");
+    public static readonly Color BordaApagada = new("2a2f3f");
 
     public static readonly Color Texto = new("e6e9f2");
     public static readonly Color TextoFraco = new("8f9ab5");
@@ -87,6 +106,27 @@ public static class Tema
         return s;
     }
 
+    /// <summary>
+    /// A MOLDURA DE UM PAINEL CLICAVEL COM O MOUSE EM CIMA (o card de skill, o card de arvore). Fala a
+    /// lingua do hover de <c>Button</c> -- a chapa <see cref="PainelAceso"/> e a borda
+    /// <see cref="BordaViva"/> -- porque o jogador ja aprendeu essa lingua em todo botao do jogo. Mas
+    /// com 2 px e um BRILHO por fora: a borda de 1 px do botao seria invisivel num card que JA e
+    /// laranja (o compravel), e o card apontado tem que ser o realce mais forte da tela -- foi um card
+    /// mudo que fez o dono ler o vizinho como o apontado. As margens sao as da moldura de repouso,
+    /// pra nada se mexer quando o mouse entra.
+    /// </summary>
+    public static StyleBoxFlat CaixaSobOMouse(StyleBoxFlat repouso)
+    {
+        StyleBoxFlat s = Caixa(PainelAceso, BordaViva, (int)repouso.ContentMarginLeft);
+        s.ContentMarginRight = repouso.ContentMarginRight;
+        s.ContentMarginTop = repouso.ContentMarginTop;
+        s.ContentMarginBottom = repouso.ContentMarginBottom;
+        s.SetBorderWidthAll(2);
+        s.ShadowColor = new Color(BordaViva, 0.45f);
+        s.ShadowSize = 5;
+        return s;
+    }
+
     private static StyleBoxFlat Chapa(Color cor, int raio = RaioCanto)
     {
         var s = new StyleBoxFlat { BgColor = cor };
@@ -106,13 +146,13 @@ public static class Tema
         // ---- botao ----
         // AS CHAPAS EM VARIAVEL DE COR, e nao direto no `Caixa()`: o estado "marcado + mouse em
         // cima" nao tem cor propria no jogo -- ele e DERIVADO destas duas logo abaixo.
-        var cHover = new Color("2f3549");   // o mouse CLAREIA a chapa normal (252a38 -> 2f3549)
+        Color cHover = PainelAceso;         // o mouse CLAREIA a chapa normal (252a38 -> 2f3549); e paleta: ver PainelAceso
         var cPress = new Color("1a1e29");   // apertado/marcado AFUNDA: e a normal escurecida ~29%
 
         var bNormal = Caixa(PainelClaro, Borda, 10);
         var bHover = Caixa(cHover, BordaViva, 10);
         var bPress = Caixa(cPress, BordaViva, 10);
-        var bDesab = Caixa(new Color("1b1f2a"), new Color("2a2f3f"), 10);
+        var bDesab = Caixa(PainelApagado, BordaApagada, 10);
         t.SetStylebox("normal", "Button", bNormal);
         t.SetStylebox("hover", "Button", bHover);
         t.SetStylebox("pressed", "Button", bPress);
@@ -155,7 +195,7 @@ public static class Tema
         // CAMPO TRAVADO (`Editable = false`). Mesma cova escura do campo normal, com a borda
         // apagada do botao desabilitado -- e a mesma frase visual: "existe, mas nao e com voce
         // agora". Sem consumidor hoje; e a mesma lacuna do hover_pressed, esperando o proximo.
-        t.SetStylebox("read_only", "LineEdit", Caixa(new Color("0e1017"), new Color("2a2f3f"), 8));
+        t.SetStylebox("read_only", "LineEdit", Caixa(new Color("0e1017"), BordaApagada, 8));
         t.SetColor("font_color", "LineEdit", Texto);
         t.SetColor("font_uneditable_color", "LineEdit", TextoFraco);
         t.SetColor("font_placeholder_color", "LineEdit", new Color(TextoFraco, 0.7f));

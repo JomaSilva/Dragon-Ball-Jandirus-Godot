@@ -618,6 +618,11 @@ public partial class GameServer
 			case "juventude_aceitar": ResponderJuventudeG8(pl, aceitou: true); return true;
 			case "juventude_recusar": ResponderJuventudeG8(pl, aceitou: false); return true;
 
+			// A RESPOSTA A OFERTA DE DESPERTAR O POTENCIAL (`Unlock_Potential`, lote G11) -- o mesmo
+			// molde da juventude, pelo mesmo motivo: quem responde e o ALVO, que nao tem a skill.
+			case "potencial_aceitar": ResponderPotencialG11(pl, aceitou: true); return true;
+			case "potencial_recusar": ResponderPotencialG11(pl, aceitou: false); return true;
+
 			// os deveres moram no `GameServer.CargoMissoes.cs` -- o roteador continua sendo um so
 			case "cargo_deveres": VerboMeusDeveres(pl); return true;
 			case "cargo_verba": VerboDepositarVerba(pl); return true;

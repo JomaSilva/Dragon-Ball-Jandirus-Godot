@@ -53,6 +53,14 @@ public static class CatalogoDeItens
 	public const string Furadeira = "Hand_Drill";
 
 	/// <summary>
+	/// A SEMENTE SENZU -- `obj/items/food/Senzu` (`Stamina/Food.dm:19-48`), que o cargo de Assistente do
+	/// Guardiao cultiva (`Grow_Senzu_Bean`, `:2-13`: um minuto por semente). Comer cura TODO membro
+	/// nao decepado ate o cheio e alimenta 10; o corpo so aceita uma de cada vez (`Senzu + 4 <= 4`).
+	/// "acudir" e o `Use_on` num caido (`:57-66`). Ver o lote G12.
+	/// </summary>
+	public const string Senzu = "Senzu";
+
+	/// <summary>
 	/// OS BRINCOS POTARA -- insignia do cargo de Kaioshin, e a porta da fusao Potara.
 	///
 	/// ============================ UM ITEM, E NAO DOIS BRINCOS PAREADOS ============================
@@ -206,6 +214,14 @@ public static class CatalogoDeItens
 			Furadeira, "Furadeira Manual", "Cava bem mais rápido que uma pá.",
 			"res://Assets/Sprites/Misc/Objects/Technology/tech.tres", "drill",
 			Empilhavel: false, Acoes: ["cavar"]),
+
+		// `stackable = 1`, `nutrition = 10` (`Food.dm:21-28`). A arte e o `Senzu Bean.dmi` de `:24`.
+		[Senzu] = new ItemDef(
+			Senzu, "Semente Senzu",
+			"Cura o corpo inteiro de uma vez e mata a fome. O corpo só aceita uma de cada vez. "
+			+ "\"Acudir\" dá a semente a alguém desacordado ao seu lado.",
+			"res://Assets/Sprites/Misc/Objects/Items/Senzu Bean.tres", "",
+			Empilhavel: true, Nutricao: 10, Acoes: ["comer", "acudir"]),
 
 		// O ESTADO E "radar" EM MINUSCULA, e o `construcoes.json` diz "Radar" com maiuscula. Os dois
 		// funcionam -- o `Sanear` do desenho baixa a caixa antes de procurar a animacao --, mas o que

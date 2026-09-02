@@ -28,6 +28,13 @@ public static class RegrasDoDisco
 
 	private static int _porEstado, _porContador, _condDesconhecida;
 
+	/// <summary>
+	/// O LOTE DO DISCO JA ENTROU NESTE PROCESSO? O registro (`RegrasDeNivel`) e estatico e um so: no
+	/// `--host` o servidor o carrega no boot e o cliente do mesmo processo nao precisa ler o arquivo
+	/// de novo; quem disca (`--connect`) e quem paga a leitura (ver `MenuJogo.CarregarNiveisNoCliente`).
+	/// </summary>
+	public static bool Carregado { get; private set; }
+
 	/// <summary>Le e registra. Devolve quantas regras entraram.</summary>
 	public static int Carregar(string json)
 	{
@@ -112,32 +119,43 @@ public static class RegrasDoDisco
 				case "degrau":
 				{
 					int nivel = (int)Num(bloco, "nivel", -1);
-					// PERIODICO NAO ENTRA. `if(level % 5 == 0)` nao e um degrau, e uma familia
-					// deles -- expandir isso em vinte degraus iguais aqui seria inventar uma
-					// estrutura que o extrator nao afirmou. Fica de fora, e o relatorio conta.
-					if (nivel < 0 || Num(bloco, "periodo", 0) > 0) break;
+					int periodo = (int)Num(bloco, "periodo", 0);
+					// ============================ O PERIODICO ENTRA, E E UM DEGRAU SO ============================
+					// Ate aqui `if(level % 5 == 0)` era descartado com a justificativa de que "expandir isso
+					// em vinte degraus iguais seria inventar uma estrutura". Nao se expande nada: o degrau
+					// guarda o PERIODO e quem aplica conta quantas vezes ele ja rendeu (`RegraDeNivel.Vezes`).
+					// Eram 93 degraus fora -- o grosso do ganho das 30 maestrias de Ki. Ver `Degrau.Periodo`.
+					// ==========================================================================================
+					if (nivel < 0 && periodo <= 0) break;
 
-					var d = new Degrau { Nivel = nivel, Aviso = Str(bloco, "msg") };
-					foreach (string par in Lista(bloco, "buffs"))
-					{
-						int ig = par.IndexOf('=');
-						if (ig <= 0) continue;
-						if (double.TryParse(par[(ig + 1)..], System.Globalization.NumberStyles.Float,
-								System.Globalization.CultureInfo.InvariantCulture, out double v))
-							d.Buffs[par[..ig]] = v;
-					}
+					var d = new Degrau { Nivel = Math.Max(nivel, 0), Periodo = Math.Max(periodo, 0), Aviso = Str(bloco, "msg") };
+					Pares(bloco, "buffs", d.Buffs);
+					Pares(bloco, "mults", d.Mults);   // `SpiritBallCost /= 2` -- ver `Degrau.Mults`
+					Pares(bloco, "genes", d.Genes);   // `add_to_stat("Energy Level", 0.05)` -- ver `Degrau.Genes`
+
 					// AS CHAVES (`campo = n`). Canal separado dos buffs -- ver `Degrau.Flags`.
-					foreach (string par in Lista(bloco, "flags"))
-					{
-						int ig = par.IndexOf('=');
-						if (ig <= 0) continue;
-						if (double.TryParse(par[(ig + 1)..], System.Globalization.NumberStyles.Float,
-								System.Globalization.CultureInfo.InvariantCulture, out double v))
-							d.Flags[par[..ig]] = v;
-					}
+					Pares(bloco, "flags", d.Flags);
+					// A BARREIRA TROCADA NO DEGRAU vem como flag do extrator (`expbarrier=20`) porque la
+					// ela e uma atribuicao como as outras; aqui ela NAO e campo do lutador, e da regra --
+					// sai das flags e vai pro `Degrau.Barreira`, que o `BarreiraEm` le.
+					if (d.Flags.Remove("expbarrier", out double barreira) && barreira > 0) d.Barreira = barreira;
 
 					d.Verbos = Lista(bloco, "verbos");
-					if (d.Buffs.Count == 0 && d.Flags.Count == 0 && d.Verbos.Length == 0 && d.Aviso.Length == 0) break;
+					d.Destrava = Lista(bloco, "destrava");
+					// `path=nivel`: a skill concedida e o `baselevel` do `learn()` (Mind.dm:104 passa 1,
+					// :110 passa 0). Sem `=`, vale 0 -- o que o DM faz com quem compra.
+					var concede = new List<(string, int)>();
+					foreach (string item in Lista(bloco, "concede"))
+					{
+						int ig = item.IndexOf('=');
+						if (ig < 0) { concede.Add((item, 0)); continue; }
+						concede.Add((item[..ig], int.TryParse(item[(ig + 1)..], out int baselevel) ? baselevel : 0));
+					}
+					d.Concede = [.. concede];
+
+					if (d.Buffs.Count == 0 && d.Mults.Count == 0 && d.Genes.Count == 0 && d.Flags.Count == 0
+						&& d.Verbos.Length == 0 && d.Destrava.Length == 0 && d.Concede.Length == 0
+						&& d.Barreira <= 0 && d.Aviso.Length == 0) break;
 
 					if (!degraus.TryGetValue(path, out List<Degrau>? l)) degraus[path] = l = [];
 					l.Add(d);
@@ -149,13 +167,17 @@ public static class RegrasDoDisco
 		int n = 0;
 		foreach ((string path, RegraDeNivel r) in emObra)
 		{
-			if (degraus.TryGetValue(path, out List<Degrau>? l)) r.Degraus = [.. l.OrderBy(d => d.Nivel)];
+			// exatos por nivel, e os periodicos depois (do menor periodo pro maior) -- a ordem so
+			// importa pra quem imprime; quem aplica pergunta `Vezes` degrau a degrau
+			if (degraus.TryGetValue(path, out List<Degrau>? l))
+				r.Degraus = [.. l.OrderBy(d => d.Periodo > 0 ? 1000 + d.Periodo : d.Nivel)];
 			// SKILL SEM DEGRAU NENHUM NAO VIRA REGRA. Ela subiria de nivel pra sempre sem nada
 			// acontecer -- barulho no save e no relatorio, efeito zero na tela.
 			if (r.Degraus.Length == 0) continue;
 			RegrasDeNivel.Registrar(r);
 			n++;
 		}
+		Carregado = true;
 		return n;
 	}
 
@@ -163,6 +185,19 @@ public static class RegrasDoDisco
 	{
 		if (!mapa.TryGetValue(path, out RegraDeNivel? r)) mapa[path] = r = new RegraDeNivel { Path = path };
 		return r;
+	}
+
+	/// <summary>Le uma lista plana de "campo=valor" pra dentro de um dicionario (os quatro canais do degrau).</summary>
+	private static void Pares(string bloco, string chave, Dictionary<string, double> destino)
+	{
+		foreach (string par in Lista(bloco, chave))
+		{
+			int ig = par.IndexOf('=');
+			if (ig <= 0) continue;
+			if (double.TryParse(par[(ig + 1)..], System.Globalization.NumberStyles.Float,
+					System.Globalization.CultureInfo.InvariantCulture, out double v))
+				destino[par[..ig]] = v;
+		}
 	}
 
 	// ---- o mesmo leitor de meia pagina dos outros catalogos ----

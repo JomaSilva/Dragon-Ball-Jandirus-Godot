@@ -106,6 +106,27 @@ public static class TiraDeFotos
 	}
 
 	/// <summary>
+	/// DUAS FOTOS, UMA EM CIMA DA OUTRA -- o quadro "antes x depois" de uma tira.
+	///
+	/// Nasceu privada na `RoboDoMarcavel` e subiu pra ca no dia em que a segunda bancada (a da aba
+	/// de skills) precisou do mesmo empilhamento: a licao e a mesma da fileira -- `BlitRect` copia
+	/// byte a byte e NAO converte formato, e sem o `Convert` a montagem sai preta com as duas fotos
+	/// boas no disco. Uma segunda copia seria uma segunda chance de reaprender isso.
+	/// </summary>
+	public static Image Empilhar(Image cima, Image baixo)
+	{
+		var a = (Image)cima.Duplicate(); a.Convert(Image.Format.Rgba8);
+		var b = (Image)baixo.Duplicate(); b.Convert(Image.Format.Rgba8);
+		const int Entre = 6;
+		int larg = Math.Max(a.GetWidth(), b.GetWidth());
+		Image fora = Image.CreateEmpty(larg, a.GetHeight() + b.GetHeight() + Entre, false, Image.Format.Rgba8);
+		fora.Fill(Fundo);
+		fora.BlitRect(a, new Rect2I(0, 0, a.GetWidth(), a.GetHeight()), Vector2I.Zero);
+		fora.BlitRect(b, new Rect2I(0, 0, b.GetWidth(), b.GetHeight()), new Vector2I(0, a.GetHeight() + Entre));
+		return fora;
+	}
+
+	/// <summary>
 	/// ============================ QUANTOS QUADROS DA TIRA GRAVADA TEM ROTULO **DESENHADO** ============================
 	/// Le o PNG de volta do disco e conta, quadro a quadro, quantos tem tinta na faixa do rotulo.
 	///

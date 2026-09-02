@@ -57,7 +57,24 @@ public static class EfeitosDeSkill
 		["Battle Power"] = "BPMod",
 		["Tech Modifier"] = "techmod",
 		["Ascension Mod"] = "ascBPmod",
+		// `misc_stats["Regeneration"]` (Genetic_Datum.dm:247-267): a RACA poe o dela pelo
+		// `races.json`, e as skills SOMAM por cima (`add_to_stat("Regeneration", 10)`,
+		// spirit-doll.dm:33; `5`, alien.dm:65; `1`, Bodybuilding.dm:254). O campo do lutador guarda
+		// so a parte das skills, e quem junta as duas e o `GameServer.EixoDeRegen`.
+		["Regeneration"] = "RegenerationDeSkill",
 	};
+
+	/// <summary>
+	/// O NOME DO CAMPO DO LUTADOR pra um stat do genoma -- a mesma tabela, pra quem aplica gene por
+	/// DEGRAU (<see cref="NiveisDeSkill.Aplicar"/>). Uma tabela so: a segunda copia e a que envelhece.
+	/// Devolve nulo (e anota no relatorio) pro stat que o port ainda nao tem.
+	/// </summary>
+	internal static string? TraduzirGene(string stat)
+	{
+		if (DeGene.TryGetValue(stat, out string? campo)) return campo;
+		Desconhecidos.Add($"gene:{stat}");
+		return null;
+	}
 
 	/// <summary>
 	/// O que a soma de todas as skills aprendidas da, canal a canal.
@@ -114,12 +131,37 @@ public static class EfeitosDeSkill
 			// escolheu.
 			// ======================================================================
 			if (s.Escolhas.Length == 0 || escolhas == null) continue;
-			if (!escolhas.TryGetValue(s.Path, out int qual)) continue;
+			int qual = CasaEscolhida(cat, s, escolhas);
 			if (qual < 1 || qual > s.Escolhas.Length) continue;
 			Escolha e = s.Escolhas[qual - 1];
 			Somar1(e.Buffs, e.Genes, e.Mults, e.Flags);
 		}
 		return (soma, fator, set);
+	}
+
+	/// <summary>
+	/// QUAL CASA VALE pra esta skill: a escolhida nela mesma, ou -- quando ela SEGUE outra -- a casa
+	/// de mesmo rotulo escolhida na lider.
+	///
+	/// ============================ A ESCOLHA QUE SE HERDA ============================
+	/// `Grace` nao pergunta nada: o `after_learn` dela abre `switch(savant.trinitytype)`
+	/// (Bodybuilding.dm:243) e entra na casa que `TheHolyTrinity` escolheu. So que no DM o
+	/// `trinitytype` do mob e escrito no `login()` da Trinity (:167) -- comprar as duas na mesma
+	/// sessao deixava a Grace sem casa nenhuma pra sempre, porque o `after_learn` roda uma vez. O
+	/// port herda a casa pelo ROTULO (as tres sao "Van-sama"/"Ricardo"/"Aniki" nas duas skills), e
+	/// nao pelo instante do login: quem escolheu na Trinity tem a Grace correspondente.
+	/// ==============================================================================
+	/// </summary>
+	public static int CasaEscolhida(SkillCatalog cat, Skill s, IReadOnlyDictionary<string, int> escolhas)
+	{
+		if (escolhas.TryGetValue(s.Path, out int propria)) return propria;
+		if (s.EscolhaSegue.Length == 0) return 0;
+		if (cat.Get(s.EscolhaSegue) is not { } lider || !escolhas.TryGetValue(lider.Path, out int daLider)) return 0;
+		if (daLider < 1 || daLider > lider.Escolhas.Length) return 0;
+		string rotulo = lider.Escolhas[daLider - 1].Rotulo;
+		for (int i = 0; i < s.Escolhas.Length; i++)
+			if (string.Equals(s.Escolhas[i].Rotulo, rotulo, StringComparison.OrdinalIgnoreCase)) return i + 1;
+		return 0;
 	}
 
 	/// <summary>
@@ -162,9 +204,16 @@ public static class EfeitosDeSkill
 		foreach ((string campo, double v) in set)
 			if (Math.Abs(v - f.FlagsDeSkill.GetValueOrDefault(campo)) > 1e-9 && Escrever(f, campo, v)) mexidos++;
 
-		f.BuffsDeSkill = soma;
-		f.MultsDeSkill = fator;
-		f.FlagsDeSkill = set;
+		// ============================ O RAZAO SO GUARDA O QUE PEGOU ============================
+		// Antes ele guardava o total INTEIRO, campo existente ou nao. Num save isso e uma armadilha
+		// armada: `KaiokenMastery=3` ficava registrado como aplicado num lutador que nao tinha o
+		// campo, e no dia em que o campo nascesse o delta seria zero -- o buff nunca chegaria em
+		// quem ja tinha a skill. Tres campos deste lote (`pitted`, `HPregenbuff`, `KaiokenMastery`)
+		// nasceram exatamente nessa situacao. Ver `NiveisDeSkill.SoOsQueExistem`.
+		// ======================================================================================
+		f.BuffsDeSkill = NiveisDeSkill.SoOsQueExistem(soma);
+		f.MultsDeSkill = NiveisDeSkill.SoOsQueExistem(fator);
+		f.FlagsDeSkill = NiveisDeSkill.SoOsQueExistem(set);
 		return mexidos;
 	}
 

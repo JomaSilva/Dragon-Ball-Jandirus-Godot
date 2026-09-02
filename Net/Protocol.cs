@@ -357,7 +357,7 @@ public static class Protocol
         Corpo = 12,        // o estado de CADA membro do meu personagem (so quando muda)
         Chat = 13,         // alguem falou e eu estou no alcance: canal + quem + o que
         Atributos = 14,    // a ficha LENTA: os 8 atributos e o que o menu abre com P mostra
-        Skills = 15,       // o que eu aprendi e quantos marcos tenho
+        Skills = 15,       // o que eu aprendi, quantos marcos tenho, e o ESTADO das minhas arvores (ver PorEstadoDeSkills)
         Forma = 16,        // fulano mudou de forma: de, pra, e o byte de `Core.Forms.DegrauDeCena`
         Cargos = 17,       // a lista de cargos: chave, quem ocupa, e o que falta PRA MIM
         Vizinhanca = 18,   // os planetas por perto no espaco (so quando a CHUNK muda)
@@ -1653,6 +1653,86 @@ public static class Protocol
 
     public static NetDataWriter Begin(C2S id) { var w = new NetDataWriter(); w.Put((byte)id); return w; }
     public static NetDataWriter Begin(S2C id) { var w = new NetDataWriter(); w.Put((byte)id); return w; }
+
+    // =====================================================================
+    // O ESTADO DAS ARVORES NO PACOTE `S2C.Skills`
+    // =====================================================================
+    /// <summary>
+    /// A CAUDA DO `S2C.Skills`: o que o `growbranches()` de cada arvore produziu pra este personagem.
+    ///
+    /// ============================ POR QUE O RESULTADO, E NAO OS CONTADORES ============================
+    /// O cliente rodava `SkillBook.PodeAprender` com um livro que so tinha os paths aprendidos:
+    /// `Destravadas` sempre vazio, tier de arvore nenhum, skill acesa nenhuma. Mesmo com o servidor
+    /// abrindo a Martial Skill, a tela nao sabia.
+    ///
+    /// Havia duas saidas: mandar os CONTADORES da ficha (`bodyskill`, `kieffusionskill`, `lssj`...)
+    /// e deixar o cliente reavaliar as regras, ou mandar o RESULTADO (arvores abertas, tier de cada
+    /// uma, skills acesas e apagadas). Vai o resultado, por tres razoes:
+    ///   1. o cliente nao tem `Fighter`. Os contadores sao campos dele, lidos por reflexao pelo nome
+    ///      do DM; mandar contadores obrigaria o cliente a criar meia ficha so pra avaliar;
+    ///   2. `invested` depende de QUAIS skills foram ensinadas (copia ensinada nao investe,
+    ///      `teachable.dm:53-56`), e a marca de ensino e do servidor -- com contadores o cliente
+    ///      calcularia um tier diferente do servidor e a tela discordaria do balcao;
+    ///   3. o resultado e pequeno (meia duzia de arvores) e e literalmente o que a tela pinta.
+    /// O cliente continua rodando o MESMO `SkillBook.Avaliar` do Core sobre esse estado -- a regra
+    /// de recusa e uma so; o que muda e de onde vem o estado. A recusa em si NAO viaja: ela e
+    /// calculada nas duas pontas pela mesma funcao, e mandar uma segunda copia dela e o jeito de as
+    /// duas divergirem.
+    /// =================================================================================================
+    ///
+    /// Layout (depois dos campos antigos do pacote, pra quem ja le nao mudar):
+    ///     u16 nDestravadas, string[]                  -- arvores que o progresso abriu
+    ///     u16 nArvores; por arvore:
+    ///         string path; u8 tier; u16 investido; u16 proximoInvestir; u8 proximoTier;
+    ///         u16 nAcesas, string[]; u16 nApagadas, string[]
+    /// </summary>
+    public static void PorEstadoDeSkills(NetDataWriter w, SkillBook livro)
+    {
+        w.Put((ushort)livro.Destravadas.Count);
+        foreach (string p in livro.Destravadas) w.Put(p);
+
+        w.Put((ushort)livro.Arvores.Count);
+        foreach (EstadoDeArvore e in livro.Arvores)
+        {
+            w.Put(e.Path);
+            w.Put((byte)Math.Clamp(e.Tier, 0, 255));
+            w.Put((ushort)Math.Clamp(e.Investido, 0, ushort.MaxValue));
+            w.Put((ushort)Math.Clamp(e.ProximoInvestir, 0, ushort.MaxValue));
+            w.Put((byte)Math.Clamp(e.ProximoTier, 0, 255));
+            w.Put((ushort)e.Acesas.Count);
+            foreach (string p in e.Acesas) w.Put(p);
+            w.Put((ushort)e.Apagadas.Count);
+            foreach (string p in e.Apagadas) w.Put(p);
+        }
+    }
+
+    /// <summary>O espelho de <see cref="PorEstadoDeSkills"/> -- o cliente e a bancada leem por aqui.</summary>
+    public static (List<string> Destravadas, List<EstadoDeArvore> Arvores) LerEstadoDeSkills(NetDataReader r)
+    {
+        int nd = r.GetUShort();
+        var destravadas = new List<string>(nd);
+        for (int i = 0; i < nd; i++) destravadas.Add(r.GetString(96));
+
+        int na = r.GetUShort();
+        var arvores = new List<EstadoDeArvore>(na);
+        for (int i = 0; i < na; i++)
+        {
+            var e = new EstadoDeArvore
+            {
+                Path = r.GetString(96),
+                Tier = r.GetByte(),
+                Investido = r.GetUShort(),
+                ProximoInvestir = r.GetUShort(),
+                ProximoTier = r.GetByte(),
+            };
+            int nac = r.GetUShort();
+            for (int k = 0; k < nac; k++) e.Acesas.Add(r.GetString(96));
+            int nap = r.GetUShort();
+            for (int k = 0; k < nap; k++) e.Apagadas.Add(r.GetString(96));
+            arvores.Add(e);
+        }
+        return (destravadas, arvores);
+    }
 }
 
 /// <summary>

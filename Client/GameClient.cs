@@ -386,6 +386,16 @@ public partial class GameClient : Node
 	public int MarcosLivres { get; private set; }
 
 	/// <summary>
+	/// O ESTADO DAS MINHAS ARVORES, como o servidor calculou: as que o progresso abriu, o tier de
+	/// vitrine de cada uma (e o proximo degrau), as skills acesas e apagadas. Chega na cauda do
+	/// `S2C.Skills` (ver `Protocol.PorEstadoDeSkills` pro porque de ser o resultado e nao os
+	/// contadores). Quem consome poe isto num `SkillBook` com `CarregarEstado` e pergunta ao
+	/// `Avaliar` -- a mesma funcao que o servidor usa pra decidir.
+	/// </summary>
+	public List<string> SkillsDestravadas { get; private set; } = [];
+	public List<Jandirus.Core.Skills.EstadoDeArvore> SkillsArvores { get; private set; } = [];
+
+	/// <summary>
 	/// ESTE PERSONAGEM FOI DESIGNADO VILAO por um admin (`mob/var/isVillain` do DM).
 	///
 	/// Chega junto das skills, e serve **so pro desenho do menu**: quem decide se a compra sai e o
@@ -1857,6 +1867,10 @@ public partial class GameClient : Node
 				int quantas = reader.GetUShort();
 				SkillsAprendidas.Clear();
 				for (int i = 0; i < quantas; i++) SkillsAprendidas.Add(reader.GetString(96));
+				// A CAUDA: o estado das arvores. Lida pelo mesmo leitor que a bancada do servidor usa
+				// pra desmontar o pacote -- uma leitura so, pra que "o cliente le" e "o servidor
+				// escreveu" nunca sejam duas versoes do mesmo layout.
+				(SkillsDestravadas, SkillsArvores) = Protocol.LerEstadoDeSkills(reader);
 				SkillsMudaram?.Invoke();
 				break;
 			}

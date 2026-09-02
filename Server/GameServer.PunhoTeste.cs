@@ -99,15 +99,16 @@ public partial class GameServer
 	/// </summary>
 	private static readonly (string Verbo, string Espera)[] RecusadasG7 =
 	[
-		("Suplex", "agarrao"),
-		("Flip", "agarrao"),
-		("Shock", "dano ao longo do tempo"),
+		// `Suplex` e `Shock` SAIRAM desta lista pelo lote G10 (`GameServer.Tecnicas.G10.cs`): o agarrao
+		// chegou e o dano residual do Shock e o `damage_mob` atrasado, que o G10 trouxe. As sete que
+		// ficam continuam mudas pelos motivos escritos ao lado.
+		// `Flip` SAIU desta lista pelo lote G11 (`GameServer.Tecnicas.G11.cs`, `CambalhotaG11`): o agarrao
+		// que ela esperava ja tinha chegado, e a cambalhota e uma funcao sobre ele.
+		// `BusterBarrage`, `Continuous_Energy_Bullets`, `Spin_Blast` e `Death_Ball` SAIRAM desta lista pelo
+		// lote G12 (`GameServer.Tecnicas.G12.cs`): o jorro sustentado e a bola que se carrega na mao chegaram
+		// (bola INERTE que renasce por estagio, ver `Projetil.Inerte`). Ficam as duas que ainda esperam.
 		("Acid_Spit", "dano ao longo do tempo"),
-		("BusterBarrage", "jorro sustentado"),
-		("Continuous_Energy_Bullets", "jorro sustentado"),
-		("Spin_Blast", "jorro sustentado"),
 		("Energy_Wave_Volley", "jorro sustentado"),
-		("Death_Ball", "carga de bola"),
 	];
 
 	public void RodarBancadaDoPunho()

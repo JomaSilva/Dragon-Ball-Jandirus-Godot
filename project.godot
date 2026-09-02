@@ -45,13 +45,4 @@ project/assembly_name="Dragon ball Jandirus"
 textures/canvas_textures/default_texture_filter=0
 rendering_device/driver.windows="d3d12"
 environment/defaults/default_clear_color=Color(0, 0, 0, 1)
-; O ARREDONDAMENTO DE POSICAO E NOSSO, E NAO DO MOTOR -- e por isso ele esta DESLIGADO aqui.
-; O motor arredonda em pixel de MUNDO, e essa grade e `zoom` vezes mais grossa que a da TELA: no
-; zoom 2 do dono ela obrigava o cenario inteiro a rolar de 2 em 2 px de tela quando o passo real da
-; caminhada e 2,3 -- saia 2,2,2,4, que e o "personagem borrado/tremendo" que ele relatou.
-; Quem arredonda agora e `LocalPlayer.NoPontoDaGrade`, na grade de `World.GradeDeDesenho` (o pixel
-; de TELA), e os corpos remotos usam a mesma. Medido pela bancada `--diagrolagem`: erro de 2 px cai
-; pra menos de 1, com o boneco cravado na tela em 75/75 quadros fotografados.
-; O de VERTICE fica LIGADO: ele arredonda em espaco LOCAL e nao briga com a camera.
-2d/snap/snap_2d_transforms_to_pixel=false
 2d/snap/snap_2d_vertices_to_pixel=true

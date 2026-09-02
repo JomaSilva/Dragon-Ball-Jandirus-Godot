@@ -141,8 +141,11 @@ public partial class GameServer
 		// ser reconhecido. Sem esta afirmacao, um `EhDoLoteG5` que devolvesse sempre `true` faria
 		// a familia inteira passar -- e o `default` do despacho engoliria toda tecnica muda em
 		// silencio, que e o oposto do que este lote existe pra consertar.
-		AfirmarArs("...e uma tecnica que este lote NAO portou (Death_Ball) continua fora dele",
-				   !EhDoLoteG5("Death_Ball") && Tecnicas.Get("Death_Ball")!.Modo == Modo.NaoPortada);
+		// ERA A `Death_Ball`, portada pelo lote G12 (`GameServer.Tecnicas.G12.cs`) -- esta linha ficou
+		// vermelha por isso. O exemplo agora e o `Reincarnate_Mob` (reencarnacao: sistema ausente,
+		// `CensoDeSkills.SistAlem`), que nao esta em lote nenhum.
+		AfirmarArs("...e uma tecnica que este lote NAO portou (Reincarnate_Mob) continua fora dele",
+				   !EhDoLoteG5("Reincarnate_Mob") && Tecnicas.Get("Reincarnate_Mob")!.Modo == Modo.NaoPortada);
 
 		Vec2 chao = CorredorLivre(24);
 		ServerPlayer nu = Forjar("SemSkill", chao, bp: 5_000);

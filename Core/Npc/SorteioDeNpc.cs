@@ -243,9 +243,11 @@ public static class SorteioDeNpc
 			if (livro.Aprender(cat, escolhida.Path, raca, classe, vilao: false) != Recusa.Pode) break;
 
 			// os contadores de arvore sao efeito de skill: sem reaplicar, a arvore nova so
-			// apareceria na volta seguinte a proxima compra
+			// apareceria na volta seguinte a proxima compra. O recalculo le a ficha AO VIVO
+			// (`ContextoDeRegra.De`), entao o tier de vitrine e as portas por contador
+			// (`bodyskill > 2` etc.) valem ja nesta volta -- as MESMAS regras do jogador.
 			EfeitosDeSkill.Aplicar(f, cat, livro.Aprendidas);
-			livro.RecalcularDestravadas(f.bodyskill, f.bodyreadiness, f.weaponeq > 0);
+			livro.Recalcular(cat, ContextoDeRegra.De(f, raca, classe), raca, classe);
 		}
 	}
 
