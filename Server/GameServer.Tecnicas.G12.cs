@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core;
 using Jandirus.Core.Ai;
 using Jandirus.Core.Appearance;
 using Jandirus.Core.Combat;
@@ -56,10 +57,13 @@ public sealed class DisfarceG12
 ///     (precognition)              `/datum/skill/kanassajin/precognition`      `Race Trees/kanassa-jin.dm:38-43` -- SEM verbo: e um `effector()`
 ///
 /// ============================ AS REGRAS DA CASA QUE ESTE ARQUIVO SEGUE ============================
-///  * NUMEROS 1:1 com o DM, com arquivo:linha ao lado. Onde o DM tem um defeito OBVIO, o defeito FICA
-///    e ganha nome aqui (a Spin Blast que "atira em todas as direcoes" e sai toda pra frente; a Spirit
-///    Bomb que joga fora todo o poder acumulado no instante do disparo; o Senzu que cura quem DA em vez
-///    de quem recebe).
+///  * NUMEROS 1:1 com o DM, com arquivo:linha ao lado. Onde o DM tinha um defeito OBVIO, o lote nasceu
+///    mantendo-o com nome; em 2026-09-02 o dono mandou consertar os citados (*"corrija esses bugs q vc
+///    citou"*) e quatro passaram a fazer o que a descricao promete: a Death Ball cujo dano por estagio
+///    era 40/20/30/40 (agora 10/20/30/40); a Spin Blast que "atira em todas as direcoes" e saia toda
+///    pra frente (agora os oito rumos); a Spirit Bomb que jogava fora o poder acumulado no disparo
+///    (agora leva); o Senzu que curava quem DA em vez de quem recebe (agora cura o caido). A citacao do
+///    DM fica em cada um -- e a prova de que o desvio e consciente.
 ///  * TODO SUSTENTADO DESLIGA: ao apertar de novo, ao acabar o Ki, no nocaute, no relog
 ///    (<see cref="EsquecerG12"/>) e ao trocar de planeta. Um toggle que nao desliga vira poder de graca.
 ///  * `sleep(N)` do DM e N/10 s (ver a memoria da unidade de tempo). Todo relogio deste lote conta
@@ -80,19 +84,6 @@ public sealed class DisfarceG12
 /// </summary>
 public sealed partial class GameServer
 {
-	// =====================================================================
-	// 0. O REGISTRO, O DESPACHO E OS RELOGIOS
-	// =====================================================================
-	/// <summary>Os onze verbos deste lote (a precognicao nao tem verbo: e passiva).</summary>
-	private static readonly string[] IdsG12 =
-	[
-		"Death_Ball", "BusterBarrage", "Continuous_Energy_Bullets", "Spin_Blast", "SpiritBomb",
-		"Soul_Absorb", "Absorb_Android", "Imitation", "SplitForm", "Grow_Senzu_Bean", "Ki_Targets",
-	];
-
-	private static bool EhDoLoteG12(string id) =>
-		Array.FindIndex(IdsG12, v => string.Equals(v, id, StringComparison.OrdinalIgnoreCase)) >= 0;
-
 	/// <summary>O typepath da skill passiva. Quem a tem no livro desvia de blast sozinho.</summary>
 	private const string PathDaPrecognicaoG12 = "/datum/skill/kanassajin/precognition";
 
@@ -100,84 +91,20 @@ public sealed partial class GameServer
 	/// AS ONZE TECNICAS DESTE LOTE. Chamado do `RegistrarTecnicas` junto dos outros lotes. As
 	/// linhas-espelho estao em `Core/Skills/Tecnicas.Portadas.cs` (a `--catalogoteste` cobra).
 	/// </summary>
-	private static void RegistrarTecnicasG12()
+	private void RegistrarTecnicasG12()
 	{
-		Tecnicas.Registrar("Death_Ball", "Death Ball", Modo.Sustentada,
-			"Uma esfera pesada que voce forma sobre a cabeca por ate quatro estagios de 1,5 s (cada um "
-			+ "come um terco do custo de novo), e depois GUIA com o proprio olhar. Aperte de novo pra "
-			+ "largar a guia; apertando uma terceira vez durante a carga ela sai na hora. Custa 150x o "
-			+ "dreno-base e prende voce no lugar enquanto durar.");
-
-		Tecnicas.Registrar("BusterBarrage", "Buster Barrage", Modo.Sustentada,
-			"Liga e voce passa a cuspir duas esferas por ciclo em direcoes ALEATORIAS, ate desligar, "
-			+ "cair ou ficar sem energia. Cada ciclo custa um dreno-base. Nao prende voce no lugar.");
-
-		Tecnicas.Registrar("Continuous_Energy_Bullets", "Balas Continuas de Energia", Modo.Sustentada,
-			"Uma rajada sem fim de esferas pra frente, dez por segundo, enquanto voce segurar -- plantado "
-			+ "no lugar. A primeira custa pouco; cada esfera seguinte custa DEZ vezes mais, e a rajada "
-			+ "para sozinha quando a energia nao paga a proxima. Cinco segundos de espera depois.");
-
-		Tecnicas.Registrar("Spin_Blast", "Rajada Giratoria", Modo.Sustentada,
-			"A irma mais cara das Balas Continuas: vinte esferas por segundo nascendo em volta de voce "
-			+ "e um pouco mais fortes. Oito segundos de espera depois. (No jogo antigo a promessa de "
-			+ "\"todas as direcoes\" nunca se cumpriu: todas saem pra frente -- ficou igual.)");
-
-		Tecnicas.Registrar("SpiritBomb", "Genkidama", Modo.Sustentada,
-			"Custa 90% do seu Ki maximo. A esfera se forma sobre voce em 3 s e passa a CRESCER em pulsos "
-			+ "de 1,5 s; quem estiver MEDITANDO no mesmo mundo pode doar um decimo do proprio Ki e "
-			+ "engorda-la mais. Aperte de novo pra atirar: ela sai 2 s depois, na direcao do seu olhar, "
-			+ "e voce fica preso ate 3 s depois do disparo.");
-
-		Tecnicas.Registrar("Soul_Absorb", "Absorver a Alma", Modo.Instantanea,
-			"Arranca a alma de alguem NOCAUTEADO e vivo ao seu lado: a energia dele vira sua, uma "
-			+ "parte do poder dele fica com voce, e ele morre um segundo depois. Cada alma so pode ser "
-			+ "tomada uma vez, e o mesmo corpo nao pode ser absorvido de novo por cinco minutos.");
-
-		Tecnicas.Registrar("Absorb_Android", "Dreno de Energia", Modo.Sustentada,
-			"Contra um Androide caido: absorve-o inteiro. Contra qualquer outro caido: comeca a DRENAR a "
-			+ "energia dele, um decimo a cada 0,7 s, enquanto ele estiver colado em voce -- e ele morre "
-			+ "se a energia cair abaixo de um decimo. Aperte de novo, leve um golpe ou caia e o dreno para.");
-
-		Tecnicas.Registrar("Imitation", "Imitacao", Modo.Sustentada,
-			"Copia o nome e a aparencia inteira de quem voce marcou (ou do mais proximo, a ate cinco "
-			+ "tiles) -- pra todo mundo que olhar. Aperte de novo pra voltar a ser voce.");
-
-		Tecnicas.Registrar("SplitForm", "Divisao do Corpo", Modo.Instantanea,
-			"Cria uma copia sua com METADE do seu poder expresso, que obedece aos verbos Split Form da "
-			+ "aba Other (seguir, parar, atacar o alvo, atacar o mais perto, desfazer). Custa metade do "
-			+ "Ki maximo dividido pela sua pericia de divisao, e cada copia viva abaixa o seu proprio "
-			+ "poder. Ela some sozinha em 100 s, ou quando cai.");
-
-		Tecnicas.Registrar("Grow_Senzu_Bean", "Cultivar Senzu", Modo.Instantanea,
-			"Comeca a cultivar uma Semente Senzu: um minuto depois ela aparece na sua mochila. Uma de "
-			+ "cada vez.", aba: "Outros");
-
-		Tecnicas.Registrar("Ki_Targets", "Alvos de Ki", Modo.Sustentada,
-			"Voce entra em meditacao e, a cada 3,5 s, uma esfera de treino nasce ate quatro tiles de "
-			+ "voce e vaga por cinco segundos. SOQUE-A (rende ganho de treino). Aperte de novo, ou "
-			+ "pare de meditar, pra encerrar.");
-	}
-
-	/// <summary>
-	/// O DESPACHO DO LOTE. Chamado do `default` do <see cref="UsarTecnica"/>, DEPOIS do
-	/// `SabeTecnica` -- nenhum dos onze aceita id com argumento, entao o gate generico ja e a porta.
-	/// </summary>
-	private void UsarTecnicasG12(ServerPlayer pl, string id)
-	{
-		switch (id)
-		{
-			case "Death_Ball": DeathBallG12(pl); break;
-			case "BusterBarrage": BusterBarrageG12(pl); break;
-			case "Continuous_Energy_Bullets": VoleiG12(pl, giro: false); break;
-			case "Spin_Blast": VoleiG12(pl, giro: true); break;
-			case "SpiritBomb": GenkidamaG12(pl); break;
-			case "Soul_Absorb": AbsorverAlmaG12(pl); break;
-			case "Absorb_Android": DrenoDeEnergiaG12(pl); break;
-			case "Imitation": ImitarG12(pl); break;
-			case "SplitForm": DividirOCorpoG12(pl); break;
-			case "Grow_Senzu_Bean": CultivarSenzuG12(pl); break;
-			case "Ki_Targets": AlvosDeKiG12(pl); break;
-		}
+		IniciarLote("G12");
+		Vivo("Death_Ball", DeathBallG12);
+		Vivo("BusterBarrage", BusterBarrageG12);
+		Vivo("Continuous_Energy_Bullets", pl => VoleiG12(pl, giro: false));
+		Vivo("Spin_Blast", pl => VoleiG12(pl, giro: true));
+		Vivo("SpiritBomb", GenkidamaG12);
+		Vivo("Soul_Absorb", AbsorverAlmaG12);
+		Vivo("Absorb_Android", DrenoDeEnergiaG12);
+		Vivo("Imitation", ImitarG12);
+		Vivo("SplitForm", DividirOCorpoG12);
+		Vivo("Grow_Senzu_Bean", CultivarSenzuG12);
+		Vivo("Ki_Targets", AlvosDeKiG12);
 	}
 
 	/// <summary>
@@ -186,22 +113,6 @@ public sealed partial class GameServer
 	/// inexercitavel, e o `_relogioDoMundo` da IA ja passou por essa descoberta.
 	/// </summary>
 	private double _relogioG12;
-
-	/// <summary>`sleep(1)` do DM.</summary>
-	private const double TiqueDoDmG12 = 0.1;
-
-	private static double Log10G12(double x, double piso) => Math.Log(Math.Max(x, piso)) / Math.Log(10);
-
-	/// <summary>`turn(dir, 90)` do BYOND: 90 graus no sentido ANTI-HORARIO (com o Y pra baixo da tela: (x,y) -> (y,-x)).</summary>
-	private static Vec2 Girar90G12(Vec2 v) => new(v.Y, -v.X);
-
-	/// <summary>Os oito rumos do `rand(1,8)` -> NORTH/SOUTH/EAST/WEST/NW/NE/SW/SE (`BusterBarrage.dm:47-55`).</summary>
-	private static readonly Vec2[] OitoRumosG12 =
-	[
-		new(0, -1), new(0, 1), new(1, 0), new(-1, 0),
-		new(-0.70710678f, -0.70710678f), new(0.70710678f, -0.70710678f),
-		new(-0.70710678f, 0.70710678f), new(0.70710678f, 0.70710678f),
-	];
 
 	/// <summary>
 	/// O `blasting` DO DM PRA ESTE LOTE. Quem esta com uma destas tecnicas de pe nao atira outra
@@ -322,12 +233,13 @@ public sealed partial class GameServer
 	/// (dez de Ki FLAT por estagio, sem BaseDrain -- literal, `:77-78`). O Ki vai a zero e nao abaixo:
 	/// o DM deixa ficar negativo, e Ki negativo aqui quebraria a razao de carga (`kiratio`).
 	///
-	/// ============================ O DANO POR ESTAGIO E UM DEFEITO DO DM, MANTIDO ============================
-	/// A bola nasce com `basedamage = 40` (`:62`) e cada estagio escreve `basedamage = 10*movestrength`
-	/// (`:80`): o estagio 2 vale 20, o 3 vale 30 e so o 4 volta aos 40 com que ela nasceu. Carregar
-	/// ate o fim nao rende MAIS que soltar na hora -- rende o mesmo, com o dobro do tamanho. A
-	/// descricao promete "ate quatro vezes a forca"; o codigo entrega isto. Fica o codigo, e fica
-	/// escrito.
+	/// ============================ O DANO POR ESTAGIO: O DEFEITO DO DM, CONSERTADO ============================
+	/// A bola nascia com `basedamage = 40` (`:62`) e cada estagio escrevia `basedamage = 10*movestrength`
+	/// (`:80`): o estagio 2 valia 20, o 3 valia 30 e so o 4 voltava aos 40 com que ela nasceu --
+	/// carregar ate o fim rendia o MESMO que soltar na hora, com o dobro do tamanho. A descricao promete
+	/// "ate quatro vezes a forca"; por decisao do dono (2026-09-02, "corrija esses bugs q vc citou") o
+	/// dano CRESCE com a carga: `10*movestrength` em todo estagio, 10/20/30/40 -- a linha `:80` vale
+	/// desde o nascimento.
 	///
 	/// A GUIA: `A.dir = usr.dir` e um `step(A, A.dir)` a cada `Eactspeed/5` tiques (`:93-102`) -- a bola
 	/// anda UM tile por pulso, no rumo do seu olhar, enquanto `Guiding`. Nao ha `walk()` (esta
@@ -363,8 +275,8 @@ public sealed partial class GameServer
 		if (!PodeAtirar(pl, kiReq, out string porque)) { Avisar(pl, porque); return; }
 
 		// `!basicCD && canfight` -- a recarga da bola basica e a mesma (`basicCD += 15`, `:36`).
+		if (EmEspera(pl, _blastPronto, "sua mao ainda esta juntando energia")) return;
 		long agora = NowMs();
-		if (_blastPronto.TryGetValue(pl.Id, out long pronto) && agora < pronto) { Avisar(pl, "sua mao ainda esta juntando energia."); return; }
 		if (pl.Combate == null || !pl.Combate.PodeAtacar()) { Avisar(pl, "voce nao esta em condicoes de lutar."); return; }
 		_blastPronto[pl.Id] = agora + 1500;
 
@@ -402,8 +314,8 @@ public sealed partial class GameServer
 	private Projetil? NascerDeathBallG12(ServerPlayer pl, EstadoDaDeathBallG12 db)
 	{
 		Fighter f = pl.Ficha;
-		double baseDano = (db.Estagio == 1 ? 40 : 10 * db.Estagio)   // `:62` e `:80`
-						  * Log10G12(f.kieffusionskill, 2) * Log10G12(f.blastskill, 2);
+		double baseDano = 10 * db.Estagio   // `:80` em todo estagio (o `:62` dava 40 ao nascer -- ver o cabecalho)
+						  * DanoDeKi.Log10Min(f.kieffusionskill, 2) * DanoDeKi.Log10Min(f.blastskill, 2);
 		Projetil p = Disparar(pl, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,
@@ -421,10 +333,8 @@ public sealed partial class GameServer
 
 	private void TickDaDeathBallG12()
 	{
-		foreach (int id in _deathBallG12.Keys.ToList())
+		foreach ((int id, EstadoDaDeathBallG12 db, ServerPlayer pl) in Varrer(_deathBallG12))
 		{
-			EstadoDaDeathBallG12 db = _deathBallG12[id];
-			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _deathBallG12.Remove(id); continue; }
 			Fighter f = pl.Ficha;
 
 			// CAIR, MORRER, MEDITAR OU TROCAR DE PLANETA DESFAZ TUDO. O DM nao trata nenhum dos quatro
@@ -440,7 +350,7 @@ public sealed partial class GameServer
 			if (!db.Lancada)
 			{
 				// A ANCORA: `usr.move = 0` (`:33`). Qualquer passo que o cliente tenha dado e desfeito.
-				if (Vec2.Distance(pl.Pos, db.Ancora) > 4) { pl.Pos = db.Ancora; MandarCorrecaoG3(pl); }
+				Ancorar(pl, db.Ancora);
 
 				if (db.Carregando && db.Estagio < 4 && _relogioG12 >= db.ProximoEstagioEm)
 				{
@@ -470,7 +380,7 @@ public sealed partial class GameServer
 			// guidedcounter+=3; step(A, A.dir) }` (`:93-102`).
 			if (!db.Guiando) { EncerrarDeathBallG12(pl, db); continue; }
 			if (_relogioG12 < db.ProximoPulsoDeGuiaEm) continue;
-			db.ProximoPulsoDeGuiaEm = _relogioG12 + Math.Max(f.Eactspeed / 5, 1) * TiqueDoDmG12;
+			db.ProximoPulsoDeGuiaEm = _relogioG12 + Math.Max(f.Eactspeed / 5, 1) * TempoDoDm.SegundosPorTique;
 			db.Bola.Rumo = MeleeArea.Frente(pl.Facing);
 			f.BlastGain(_rng);
 			CreditarContador(pl, "blastcounter", 3);
@@ -495,7 +405,7 @@ public sealed partial class GameServer
 		Vec2 frente = MeleeArea.Frente(pl.Facing);
 		p.Pos = BocaDeCano.De(pl.Pos, frente);
 		p.Cauda = p.Pos;
-		p.SegundosPorTile = Math.Max(f.Eactspeed / 5, 1) * TiqueDoDmG12;   // um `step()` por pulso de `Eactspeed/5` tiques
+		p.SegundosPorTile = Math.Max(f.Eactspeed / 5, 1) * TempoDoDm.SegundosPorTique;   // um `step()` por pulso de `Eactspeed/5` tiques
 		Falar(pl, Protocol.Fala.Diz, "Death Ball!!");
 		if (db.Guiando)
 		{
@@ -565,11 +475,8 @@ public sealed partial class GameServer
 			Avisar(pl, "voce fecha as maos e a barragem para.");
 			return;
 		}
-		Fighter f = pl.Ficha;
-		if (f.med || f.train) { Avisar(pl, "nao da meditando ou treinando."); return; }
-		if (f.KO || f.dead) { Avisar(pl, "voce esta caido."); return; }
-		if (f.Ki < 1) { Avisar(pl, "voce nao tem energia nem pra uma esfera."); return; }
-		if (BlastingG12(pl.Id) || _canais.ContainsKey(pl.Id)) { Avisar(pl, "voce ja esta com uma tecnica de ki no ar."); return; }
+		// `if(usr.Ki>=1 && !usr.KO && !usr.med && !usr.train && !usr.blasting)`: e o `PodeAtirar`, com 1 de Ki
+		if (!PodeAtirar(pl, 1, out string porque)) { Avisar(pl, porque); return; }
 
 		_busterG12[pl.Id] = new BusterG12 { ProximoEm = _relogioG12, Zona = pl.Zone.Hash };
 		MandarEfeito(pl, "BusterBarrage", -1);   // o `USEDUNDERLAY` (`Brolly1.dmi` tingido, `:32-35`)
@@ -578,10 +485,8 @@ public sealed partial class GameServer
 
 	private void TickDoBusterG12()
 	{
-		foreach (int id in _busterG12.Keys.ToList())
+		foreach ((int id, BusterG12 b, ServerPlayer pl) in Varrer(_busterG12))
 		{
-			BusterG12 b = _busterG12[id];
-			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _busterG12.Remove(id); continue; }
 			if (_relogioG12 < b.ProximoEm) continue;
 			Fighter f = pl.Ficha;
 
@@ -604,7 +509,7 @@ public sealed partial class GameServer
 
 			// `sleep(usr.Eactspeed/4)` depois da A, `sleep(usr.Eactspeed/2)` depois da B (`:59`, `:77`).
 			double tiques = b.Fase == 0 ? f.Eactspeed / 4 : f.Eactspeed / 2;
-			b.ProximoEm = _relogioG12 + Math.Max(tiques, 1) * TiqueDoDmG12;
+			b.ProximoEm = _relogioG12 + Math.Max(tiques, 1) * TempoDoDm.SegundosPorTique;
 			b.Fase = 1 - b.Fase;
 		}
 	}
@@ -613,8 +518,8 @@ public sealed partial class GameServer
 	private void CuspirEsferaDoBusterG12(ServerPlayer pl, BusterG12 b)
 	{
 		Fighter f = pl.Ficha;
-		int qual = _rng.Next(OitoRumosG12.Length);
-		Vec2 rumo = OitoRumosG12[qual];
+		int qual = _rng.Next(MoveRules.OitoRumos.Length);
+		Vec2 rumo = MoveRules.OitoRumos[qual];
 		b.Cuspidas++;
 		b.RumosVistos.Add(qual);
 		Vec2 berco = pl.Pos + new Vec2((_rng.Next(3) - 1) * ZoneCollision.TileSize, (_rng.Next(3) - 1) * ZoneCollision.TileSize);
@@ -643,6 +548,8 @@ public sealed partial class GameServer
 		public bool Desligando;
 		public Vec2 Ancora;
 		public ulong Zona;
+		/// <summary>Em quantos dos oito rumos a Giratoria ja cuspiu -- o instrumento da bancada (as esferas morrem na parede antes de serem contadas).</summary>
+		public readonly HashSet<int> RumosVistos = [];
 	}
 
 	private readonly Dictionary<int, EstadoDoVoleiG12> _voleiG12 = [];
@@ -676,11 +583,14 @@ public sealed partial class GameServer
 	///    barragens do G5 (o projetil do port nao tem "chance de caca"); a esfera voa reta.
 	///  * `A.inaccuracy` / `BlastControl` (o tremor): idem, nao portado.
 	///
-	/// ============================ A RAJADA GIRATORIA NAO GIRA, E ISSO E DO DM ============================
+	/// ============================ A RAJADA GIRATORIA AGORA GIRA (o DM nao girava) ============================
 	/// `step_rand(A); A.dir = get_step_rand(A); walk(A, dir)` (`:382-384`). O `get_step_rand` devolve
 	/// um TURF (nao uma direcao) e o `walk` usa `dir` -- que dentro de um verb do mob e o `dir` DO MOB.
-	/// Resultado: a esfera nasce num tile adjacente sorteado e voa TODA no rumo do olhar do atirador.
-	/// A descricao promete "em todas as direcoes"; o jogo nunca fez isso. Fica igual, e fica escrito.
+	/// Resultado no DM: a esfera nascia num tile adjacente sorteado e voava TODA no rumo do olhar do
+	/// atirador. A descricao promete "em todas as direcoes" ("Fire an endless barrage of energy blasts
+	/// in all directions", `:335`); por decisao do dono (2026-09-02, "corrija esses bugs q vc citou")
+	/// cada esfera sorteia UM dos oito rumos e nasce no tile adjacente DESSE rumo -- o `step_rand` e o
+	/// `walk` que a linha claramente quis.
 	/// `canfight = 0` (`:341`) tambem nao entrou: o port nao tem um bit de "nao pode socar" por
 	/// tecnica, e criar um so pra isto seria a segunda porta de ataque.
 	/// ===================================================================================================
@@ -696,9 +606,8 @@ public sealed partial class GameServer
 		}
 		Fighter f = pl.Ficha;
 		double kireq = (giro ? 50 : 30) * f.BaseDrain();
-		if (f.med || f.train) { Avisar(pl, "nao da meditando ou treinando."); return; }
 		if (!PodeAtirar(pl, kireq, out string porque)) { Avisar(pl, porque); return; }
-		if (EmEsperaG5(pl, _volleyPronto, "suas maos ainda estao quentes da ultima barragem")) return;
+		if (EmEspera(pl, _volleyPronto, "suas maos ainda estao quentes da ultima barragem")) return;
 		if (pl.Combate == null || !pl.Combate.PodeAtacar()) { Avisar(pl, "voce nao esta em condicoes de lutar."); return; }
 
 		// `canmove = 0; barrageCD = 1; Ki -= kireq; Blast_Gain(); blasting = 1; volleying = 1` (`:270-276`).
@@ -716,10 +625,8 @@ public sealed partial class GameServer
 
 	private void TickDoVoleiG12()
 	{
-		foreach (int id in _voleiG12.Keys.ToList())
+		foreach ((int id, EstadoDoVoleiG12 v, ServerPlayer pl) in Varrer(_voleiG12))
 		{
-			EstadoDoVoleiG12 v = _voleiG12[id];
-			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _voleiG12.Remove(id); continue; }
 			Fighter f = pl.Ficha;
 
 			// `while(volleying && !usr.KO && usr.Ki > kireq)` (`:280`) -- mais o relog/planeta da casa.
@@ -732,7 +639,7 @@ public sealed partial class GameServer
 				continue;
 			}
 
-			if (Vec2.Distance(pl.Pos, v.Ancora) > 4) { pl.Pos = v.Ancora; MandarCorrecaoG3(pl); }
+			Ancorar(pl, v.Ancora);
 			if (_relogioG12 < v.ProximoEm) continue;
 
 			// A GIRATORIA cospe DUAS por tique de 0,1 s (`if(duration % 2 == 0) sleep(1)`, `:387-388`).
@@ -752,7 +659,7 @@ public sealed partial class GameServer
 				v.Duracao++;
 				v.KiReq = Math.Max(Math.Log(v.Duracao), 1) * (v.Giro ? 500 : 300) * f.BaseDrain();   // `:316`, `:386`
 			}
-			v.ProximoEm = _relogioG12 + TiqueDoDmG12;
+			v.ProximoEm = _relogioG12 + TempoDoDm.SegundosPorTique;
 		}
 	}
 
@@ -760,12 +667,16 @@ public sealed partial class GameServer
 	private void CuspirEsferaDoVoleiG12(ServerPlayer pl, EstadoDoVoleiG12 v)
 	{
 		Fighter f = pl.Ficha;
-		Vec2 frente = MeleeArea.Frente(pl.Facing);
+		Vec2 rumo = MeleeArea.Frente(pl.Facing);
 		Vec2 berco;
 		if (v.Giro)
 		{
-			// `step_rand(A)`: um tile adjacente sorteado.
-			berco = pl.Pos + OitoRumosG12[_rng.Next(OitoRumosG12.Length)] * ZoneCollision.TileSize;
+			// `step_rand(A); A.dir = get_step_rand(A); walk(A, dir)` (`:382-384`) como a linha quis: um dos
+			// oito rumos sorteado, e a esfera nasce no tile adjacente DESSE rumo (ver o cabecalho).
+			int qual = _rng.Next(MoveRules.OitoRumos.Length);
+			rumo = MoveRules.OitoRumos[qual];
+			v.RumosVistos.Add(qual);
+			berco = pl.Pos + rumo * ZoneCollision.TileSize;
 		}
 		else
 		{
@@ -774,21 +685,21 @@ public sealed partial class GameServer
 			// (dx = 1, dy = +-1): o vetor vai SEM normalizar de proposito.
 			Vec2 leque = _rng.Next(3) switch
 			{
-				0 => frente + Girar90G12(frente),
-				1 => frente,
-				_ => frente - Girar90G12(frente),
+				0 => rumo + rumo.Girado90(),
+				1 => rumo,
+				_ => rumo - rumo.Girado90(),
 			};
-			berco = pl.Pos + frente * ZoneCollision.TileSize + leque * ZoneCollision.TileSize;
+			berco = pl.Pos + rumo * ZoneCollision.TileSize + leque * ZoneCollision.TileSize;
 		}
 		Disparar(pl, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,
-			BaseDano = (v.Giro ? 1.1 : 0.7) * f.Ekioff * Log10G12(f.blastskill, 10) * DanoDeKi.DanoGlobalDeKi
-					   * Log10G12(f.kieffusionskill, 2) * Log10G12(f.blastskill, 2),
+			BaseDano = (v.Giro ? 1.1 : 0.7) * f.Ekioff * DanoDeKi.Log10Min(f.blastskill, 10) * DanoDeKi.DanoGlobalDeKi
+					   * DanoDeKi.Log10Min(f.kieffusionskill, 2) * DanoDeKi.Log10Min(f.blastskill, 2),
 			Velocidade = 3,       // `walk(A, dir)` sem lag: um tile por tique
 			AlcanceTiles = 30,    // o `distance = 30` de todo `/obj/attack/blast` (`objects.dm:17-18`)
 			Nome = v.Giro ? "esfera da Rajada Giratoria" : "bala de energia",
-		}, rumoDado: frente, deOnde: berco, verbo: v.Giro ? "Spin_Blast" : "Continuous_Energy_Bullets");
+		}, rumoDado: rumo, deOnde: berco, verbo: v.Giro ? "Spin_Blast" : "Continuous_Energy_Bullets");
 	}
 
 	// =====================================================================
@@ -844,16 +755,15 @@ public sealed partial class GameServer
 	///     (`:169-173`): `A.loc = get_step(usr, usr.dir); walk(A, usr.dir)` (sem lag: um tile por tique),
 	///     `Burnout(1000)` = 100 s. `sleep(30)` = 3 s depois: `blasting = 0; move = 1`.
 	///
-	/// ============================ O DEFEITO DO DM QUE ESTA MANTIDO, EM CAIXA ALTA ============================
-	/// `A.BP = expressedBP` (`SpiritBomb.dm:170`), UMA linha antes de a bola sair. Tudo que os pulsos e
-	/// as doacoes somaram em `A.BP` durante a espera e JOGADO FORA no instante do disparo: a Genkidama
-	/// sai com o poder de quem a formou e nada mais. O que as doacoes e os pulsos deixam de verdade e o
-	/// TAMANHO (a `transform`, que ninguem reescreve) e o bit `mega` -- que so acende com escala >= 12
-	/// (`:168`), ou seja 110 pulsos, e o teto de pulsos e 40 mais uma por doador. Este port entrega
-	/// EXATAMENTE isso: a bola cresce na tela (o `Escala` renasce a cada pulso), o `BpAcumulado` fica
-	/// registrado e vai pro aviso e pro console, e o projetil parte com `Bp = expressedBP`. O aviso do
-	/// disparo diz em voz alta que o poder acumulado nao foi junto. Consertar seria mudar a tecnica;
-	/// fingir que ela cresce em poder seria mentir sobre a que existe.
+	/// ============================ O DEFEITO DO DM, CONSERTADO POR DECISAO DO DONO ============================
+	/// `A.BP = expressedBP` (`SpiritBomb.dm:170`), UMA linha antes de a bola sair. Tudo que os pulsos
+	/// (`A.BP += A.BP*0.01`, `:122`) e as doacoes (`A.BP += M.expressedBP*(M.Ki*0.1)`, `:85`) somaram em
+	/// `A.BP` durante a espera era JOGADO FORA no instante do disparo: a Genkidama saia com o poder de
+	/// quem a formou e nada mais, e o que a espera deixava de verdade era so o TAMANHO (a `transform`)
+	/// e o bit `mega`. A descricao promete que doar "engorda" a bola; em 2026-09-02 o dono mandou
+	/// consertar ("corrija esses bugs q vc citou") e o projetil parte com `Bp = BpAcumulado` -- a bola
+	/// VALE o que foi doado e o que os pulsos renderam. O `BpAcumulado` continua nascendo em
+	/// `expressedBP` (`:68`): sem doador e sem pulso o disparo e o de antes.
 	/// =========================================================================================================
 	///
 	/// O `mega` (a bola que destroi turfs em `view(1)` enquanto voa, `:159-167`) nao entrou: com 40+N
@@ -877,11 +787,7 @@ public sealed partial class GameServer
 		}
 
 		Fighter f = pl.Ficha;
-		double custo = f.MaxKi * 0.9;
-		if (f.KO || f.dead) { Avisar(pl, "voce esta caido."); return; }
-		if (f.med || f.train) { Avisar(pl, "nao da meditando ou treinando."); return; }
-		if (BlastingG12(pl.Id) || _canais.ContainsKey(pl.Id)) { Avisar(pl, "voce ja esta com uma tecnica de ki no ar."); return; }
-		if (f.Ki < custo) { Avisar(pl, "voce precisa de 90% da energia pra isto."); return; }   // `:180`
+		double custo = f.MaxKi * 0.9;   // `if(usr.Ki >= usr.MaxKi*0.9)` (`:180`) -- e o `PodeAtirar` quem recusa, com o numero
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
 		f.Ki -= custo;
@@ -925,10 +831,8 @@ public sealed partial class GameServer
 
 	private void TickDaGenkidamaG12()
 	{
-		foreach (int id in _genkidamaG12.Keys.ToList())
+		foreach ((int id, EstadoDaGenkidamaG12 g, ServerPlayer pl) in Varrer(_genkidamaG12))
 		{
-			EstadoDaGenkidamaG12 g = _genkidamaG12[id];
-			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _genkidamaG12.Remove(id); continue; }
 			Fighter f = pl.Ficha;
 
 			if (g.Fase < 3 && (f.dead || f.KO || pl.Zone.Hash != g.Zona || g.Bola is not { Vivo: true }))
@@ -937,7 +841,7 @@ public sealed partial class GameServer
 				EncerrarGenkidamaG12(pl, g, "a Genkidama se desfaz no ar.");
 				continue;
 			}
-			if (g.Fase < 3 && Vec2.Distance(pl.Pos, g.Ancora) > 4) { pl.Pos = g.Ancora; MandarCorrecaoG3(pl); }
+			if (g.Fase < 3) Ancorar(pl, g.Ancora);
 
 			switch (g.Fase)
 			{
@@ -1064,9 +968,9 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// O DISPARO (`:159-179`). `A.BP = expressedBP` (`:170`) -- ver o cabecalho: o acumulado NAO vai junto,
-	/// e o aviso diz isso. A bola deixa de ser inerte, vai pra boca do cano e voa no rumo do olhar, um
-	/// tile por tique, por 100 s.
+	/// O DISPARO (`:159-179`). O `A.BP = expressedBP` do `:170` NAO veio -- ver o cabecalho: a bola parte
+	/// com o poder ACUMULADO na espera (decisao do dono, 2026-09-02). Ela deixa de ser inerte, vai pra
+	/// boca do cano e voa no rumo do olhar, um tile por tique, por 100 s.
 	/// </summary>
 	private void LancarGenkidamaG12(ServerPlayer pl, EstadoDaGenkidamaG12 g)
 	{
@@ -1075,17 +979,17 @@ public sealed partial class GameServer
 		g.Fase = 3;
 		g.FaseAte = _relogioG12 + 3.0;
 		p.Inerte = false;
-		p.Bp = f.expressedBP;              // `A.BP = expressedBP` (`:170`) -- o defeito mantido
+		p.Bp = g.BpAcumulado;              // o `A.BP = expressedBP` do `:170` descartava isto -- ver o cabecalho
 		p.VidaRestante = 100;              // `A.Burnout(1000)` (`:178`)
 		Vec2 frente = MeleeArea.Frente(pl.Facing);
 		p.Pos = BocaDeCano.De(pl.Pos, frente);
 		p.Cauda = p.Pos;
 		p.Rumo = frente;
-		p.SegundosPorTile = TiqueDoDmG12;   // `walk(A, usr.dir)` sem lag
+		p.SegundosPorTile = TempoDoDm.SegundosPorTique;   // `walk(A, usr.dir)` sem lag
 		Falar(pl, Protocol.Fala.Diz, "GENKIDAMA!!");
-		Avisar(pl, $"a Genkidama parte com escala {g.Escala:0.0} ({g.Doadores} doador(es)). O poder acumulado na espera "
-				   + $"({g.BpAcumulado:N0}) NAO vai junto: ela sai com o seu proprio poder ({f.expressedBP:N0}), como no jogo antigo.");
-		GD.Print($"[server] Genkidama de {pl.Name}: escala {g.Escala:0.0}, {g.Doadores} doador(es), BP acumulado {g.BpAcumulado:0} descartado -> {f.expressedBP:0}");
+		Avisar(pl, $"a Genkidama parte com escala {g.Escala:0.0} ({g.Doadores} doador(es)) e o poder acumulado na espera: "
+				   + $"{g.BpAcumulado:N0} (o seu proprio e {f.expressedBP:N0}).");
+		GD.Print($"[server] Genkidama de {pl.Name}: escala {g.Escala:0.0}, {g.Doadores} doador(es), BP {g.BpAcumulado:0} (o expresso do dono e {f.expressedBP:0})");
 	}
 
 	private void EncerrarGenkidamaG12(ServerPlayer pl, EstadoDaGenkidamaG12 g, string? aviso)
@@ -1155,7 +1059,7 @@ public sealed partial class GameServer
 	{
 		if (!PodeAbsorverG12(pl, out string porque)) { Avisar(pl, porque); return; }
 
-		ServerPlayer? alvo = AlvoPertoG4(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && AbsorvivelG12(o));
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && AbsorvivelG12(o));
 		if (alvo == null)
 		{
 			Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, ao seu lado, e nao ter sido absorvido nos ultimos cinco minutos.");
@@ -1186,7 +1090,7 @@ public sealed partial class GameServer
 	private bool PodeAbsorverG12(ServerPlayer pl, out string porque)
 	{
 		porque = "";
-		if (pl.Ficha.KO || pl.Ficha.dead) { porque = "nao da, caido."; return false; }
+		if (Caido(pl)) { porque = "nao da, caido."; return false; }
 		if (_absorvendoAteG12.TryGetValue(pl.Id, out double ate) && _relogioG12 < ate) { porque = "seu corpo ainda esta absorvendo a ultima."; return false; }
 		if (_drenoG12.ContainsKey(pl.Id)) { porque = "voce ja esta drenando alguem."; return false; }
 		return true;
@@ -1208,11 +1112,9 @@ public sealed partial class GameServer
 		_absorvivelEmG12[alvo.Id] = _relogioG12 + 300.0;   // `spawn M.absorbproc()`
 		_mortesPendentesG12.Add((alvo.Id, pl.Id, _relogioG12 + 1.0));   // `spawn(10) M.Death()`
 
-		double modAlvo = Math.Max(m.BPMod, 0.1);
 		if (EhJogador(alvo) || alvo.Papel == null)
 		{
-			if (f.BP < m.BP) f.AbsorbBP += f.CapCheck(eff * (m.BP / modAlvo) * f.BPMod / (downscaler / upscaler));
-			if (m.BP <= f.BP) f.AbsorbBP += f.CapCheck(eff * (m.BP / modAlvo) / downscaler);
+			f.AbsorbBP += GanhoDeAbsorcao(f, m, eff, upscaler, downscaler);   // `Absorption.dm:383-386`
 			double piso = eff * (m.BP + m.AbsorbBP) * (m.Anger / 100);
 			if (f.AbsorbBP < piso) f.AbsorbBP += piso;
 		}
@@ -1279,7 +1181,7 @@ public sealed partial class GameServer
 		}
 		if (!PodeAbsorverG12(pl, out string porque)) { Avisar(pl, porque); return; }
 
-		ServerPlayer? alvo = AlvoPertoG4(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && AbsorvivelG12(o));
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && AbsorvivelG12(o));
 		if (alvo == null)
 		{
 			Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, ao seu lado, e nao ter sido absorvido nos ultimos cinco minutos.");
@@ -1319,10 +1221,8 @@ public sealed partial class GameServer
 
 	private void TickDoDrenoG12()
 	{
-		foreach (int id in _drenoG12.Keys.ToList())
+		foreach ((int id, DrenoG12 d, ServerPlayer pl) in Varrer(_drenoG12))
 		{
-			DrenoG12 d = _drenoG12[id];
-			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _drenoG12.Remove(id); continue; }
 			if (_relogioG12 < d.ProximoEm) continue;
 			Fighter f = pl.Ficha;
 			_players.TryGetValue(d.Alvo, out ServerPlayer? alvo);
@@ -1385,9 +1285,9 @@ public sealed partial class GameServer
 			Falar(pl, Protocol.Fala.Emote, "treme, e volta a ser quem era.");
 			return;
 		}
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "nao da, caido."); return; }
+		if (RecusarCaido(pl)) return;
 
-		ServerPlayer? alvo = AlvoPertoG4(pl, RaioDaImitacaoG12, o => o.Disfarce == null && !o.Ficha.dead);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDaImitacaoG12, o => o.Disfarce == null && !o.Ficha.dead);
 		if (alvo == null) { Avisar(pl, "nao ha ninguem a cinco tiles pra imitar (marque alguem com duplo clique)."); return; }
 
 		pl.Disfarce = new DisfarceG12
@@ -1445,7 +1345,7 @@ public sealed partial class GameServer
 	private void DividirOCorpoG12(ServerPlayer pl)
 	{
 		Fighter f = pl.Ficha;
-		if (f.KO || f.dead) { Avisar(pl, "nao da, caido."); return; }
+		if (RecusarCaido(pl)) return;
 		int skill = SplitformskillG12(f);
 		int vivas = _splitformsG12.Values.Count(s => s.Master == pl.Id);
 		f.splitformCount = vivas;   // `usr.splitformCount = Splitforms` (`:81-84`)
@@ -1474,7 +1374,28 @@ public sealed partial class GameServer
 		GD.Print($"[server] {pl.Name} criou a copia '{copia.Name}' (id {copia.Id}, BP {copia.Ficha.BP:0})");
 	}
 
-	/// <summary>A copia -- o `makeCopy(2, ...)` (`CopyMaker.dm:34-46`, `:60-78`) e o `Split Forms.dm:86-96`.</summary>
+	/// <summary>
+	/// A copia -- o `makeCopy(2, ...)` (`CopyMaker.dm:34-46`, `:60-78`) e o `Split Forms.dm:86-96`.
+	///
+	/// ============ POR QUE ISTO NAO CHAMA O <see cref="EspelharODono"/>, QUE PARECE IGUAL ============
+	/// O bloco de stats abaixo e, linha por linha, o do reflexo da mente -- e MESMO ASSIM sao duas
+	/// regras, porque no DM sao dois procs diferentes: o reflexo e escrito a mao no
+	/// `spawn_clone` (`MindMeditate.dm:254-275`) e a copia sai do `makeCopy` generico
+	/// (`AssignDupeVars` + `CopyMaker.dm:35`). As duas discordam em tres pontos, e todos importam:
+	///
+	///   1. O PODER. Aqui `z.BP = expressedBP/2` (`CopyMaker.dm:35`) -- METADE. La
+	///      `C.mind_seed_bp = max(round(expressedBP), 1)` (`:254`) -- INTEIRO. Espelhar dobraria a copia.
+	///   2. O PINO. O `EspelharODono` escreve <see cref="ServerPlayer.BpDaMente"/>, e o
+	///      `TicarUmCorpo` REESCREVE `Ficha.BP = BpDaMente` a cada tique enquanto o pino for > 0
+	///      (`GameServer.Clone.cs`, o `NPCTicker()` do `MindClone`). A copia do Splitform nao tem
+	///      `mind_seed_bp` nenhum no DM: dar-lhe um congelaria o poder dela pra sempre.
+	///   3. O RESTO DO NASCIMENTO. `Anger = 100`, `staminadeBuff = 100` e a barriga cheia sao do
+	///      `spawn_clone` (`:269-272`); a copia herda os dela do `AssignDupeVars`.
+	///
+	/// Ou seja: o que se parece nao e o mesmo conceito escrito duas vezes -- sao duas receitas do DM
+	/// que por acaso compartilham o meio. Unificar aqui trocaria a regra de uma delas em silencio.
+	/// =============================================================================================
+	/// </summary>
 	private ServerPlayer CriarSplitformG12(ServerPlayer dono)
 	{
 		Fighter d = dono.Ficha;
@@ -1588,7 +1509,7 @@ public sealed partial class GameServer
 			if (copia.Ficha.dead || (copia.Ficha.KO && copia.Ficha.HP <= 8) || masterSumiu || _relogioG12 >= sf.ExpiraEm)
 			{
 				if (!copia.Ficha.dead && !masterSumiu)
-					foreach (ServerPlayer o in ZoneList(copia.Zone.Hash)) Avisar(o, $"{copia.Name} foi derrotado.");   // `to_chat(view(src), "[src] has been defeated.")`
+					AvisarPertoG3(copia, RaioDaVista, $"{copia.Name} foi derrotado.");   // `to_chat(view(src), "[src] has been defeated.")`
 				DesfazerSplitformG12(id);
 			}
 		}
@@ -1713,25 +1634,27 @@ public sealed partial class GameServer
 	/// DAR A SEMENTE A UM CAIDO -- o `Use_on(mob/M in oview(1))` (`Food.dm:57-66`): `if(M.KO) { M.Un_KO();
 	/// sensuuse(usr); M.Senzu += Increase; del(src) }`.
 	///
-	/// ============================ O DEFEITO DO DM, MANTIDO ============================
-	/// `sensuuse(usr)`: a cura completa vai pra QUEM DA, e nao pra quem esta caido -- que so recebe o
-	/// `Un_KO()` (25 de vida nos vitais, `KO.dm:133`) e as quatro doses no corpo. E um erro de variavel de
-	/// uma linha, e e o que o jogo entregava. Fica, e fica dito na mensagem.
-	/// ==================================================================================
+	/// ============================ O DEFEITO DO DM, CONSERTADO ============================
+	/// `sensuuse(usr)` (`:63`): a cura completa ia pra QUEM DA, e nao pra quem esta caido -- que so
+	/// recebia o `Un_KO()` (25 de vida nos vitais, `KO.dm:133`) e as quatro doses no corpo. E um erro de
+	/// variavel de uma linha (`usr` onde devia ser `M`, como o `M.Un_KO()` e o `M.Senzu` ao lado). Por
+	/// decisao do dono (2026-09-02, "corrija esses bugs q vc citou") a semente cura quem a RECEBE:
+	/// `sensuuse(M)`.
+	/// ======================================================================================
 	/// </summary>
 	private void AcudirComSenzuG12(ServerPlayer pl, ItemDef def)
 	{
-		ServerPlayer? alvo = AlvoPertoG4(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && o.Combate != null);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && o.Combate != null);
 		if (alvo == null) { Avisar(pl, "isto so serve em alguem DESACORDADO ao seu lado."); return; }   // `:66`
 
 		pl.Mochila.Tirar(def.Id);
 		MandarMochila(pl);
 		alvo.Combate!.Levantar();   // `M.Un_KO()`
-		pl.Combate?.Corpo.Curar(100);   // `sensuuse(usr)` -- em QUEM DA, como no DM
-		pl.Combate?.SincronizarVida();
+		alvo.Combate.Corpo.Curar(100);   // `sensuuse(M)` -- em quem RECEBE (o DM escrevia `usr`: ver o cabecalho)
+		alvo.Combate.SincronizarVida();
 		_senzuNoCorpoG12[alvo.Id] = _senzuNoCorpoG12.GetValueOrDefault(alvo.Id) + 4;
-		Avisar(alvo, $"{pl.Name} poe uma Semente Senzu na sua boca e voce acorda.");
-		Avisar(pl, $"voce da a semente a {alvo.Name} -- e, como no jogo antigo, e o SEU corpo que se refaz inteiro.");
+		Avisar(alvo, $"{pl.Name} poe uma Semente Senzu na sua boca: voce acorda e o corpo inteiro se refaz.");
+		Avisar(pl, $"voce da a semente a {alvo.Name} e o corpo dele se refaz inteiro.");
 		Falar(pl, Protocol.Fala.Emote, $"da uma Semente Senzu a {alvo.Name}.");
 	}
 
@@ -1781,7 +1704,7 @@ public sealed partial class GameServer
 			Avisar(pl, "voce para de treinar com alvos de Ki.");   // `:245`
 			return;
 		}
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "nao da, caido."); return; }
+		if (RecusarCaido(pl)) return;
 		if (!PodeMexerOCorpo(pl)) { Avisar(pl, "voce esta preso demais pra isso agora."); return; }   // `if(!move) return`
 
 		pl.Ficha.med = true;   // `med = 1` (`:248`)
@@ -1796,10 +1719,8 @@ public sealed partial class GameServer
 
 	private void TickDosAlvosDeKiG12()
 	{
-		foreach (int id in _alvosDeKiG12.Keys.ToList())
+		foreach ((int id, EstadoDosAlvosDeKiG12 ak, ServerPlayer pl) in Varrer(_alvosDeKiG12))
 		{
-			EstadoDosAlvosDeKiG12 ak = _alvosDeKiG12[id];
-			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _alvosDeKiG12.Remove(id); continue; }
 			Fighter f = pl.Ficha;
 			ak.Alvos.RemoveAll(t => !t.Vivo);
 
@@ -1841,7 +1762,7 @@ public sealed partial class GameServer
 				ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
 				foreach (Projetil t in ak.Alvos)
 				{
-					Vec2 passo = OitoRumosG12[_rng.Next(OitoRumosG12.Length)] * ZoneCollision.TileSize;
+					Vec2 passo = MoveRules.OitoRumos[_rng.Next(MoveRules.OitoRumos.Length)] * ZoneCollision.TileSize;
 					if (mapa != null && mapa.BlockedAt(t.Pos + passo)) continue;
 					t.Pos += passo;
 					t.Cauda = t.Pos;
@@ -1920,7 +1841,7 @@ public sealed partial class GameServer
 				if (!t.Vivo || t.Inerte || t.Dono == id || t.Rumo.LengthSquared < 1e-6f) continue;
 				if (Math.Abs(t.Pos.X - pl.Pos.X) > alcance || Math.Abs(t.Pos.Y - pl.Pos.Y) > alcance) continue;
 
-				Vec2 rumo = Girar90G12(t.Rumo).Normalized();
+				Vec2 rumo = t.Rumo.Girado90().Normalized();
 				Vec2 destino = pl.Pos + rumo * ZoneCollision.TileSize;
 				ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
 				pl.Facing = MoveRules.FacingFrom(rumo, pl.Facing);   // `savant.dir = turn(...)`

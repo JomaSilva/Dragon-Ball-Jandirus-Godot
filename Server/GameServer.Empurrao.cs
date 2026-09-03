@@ -289,16 +289,8 @@ public sealed partial class GameServer
 
 				// A MESMA COSTURA DA CORRECAO do arremesso, e pelas mesmas razoes -- o carimbo de
 				// sequencia e o que impede os pacotes de input ja no ar (com a posicao antiga) de serem
-				// lidos como cliente errado e puxarem o corpo de volta.
-				pl.LastInputMs = agora;
-				pl.CorrecaoEsperadaAte = agora + 500;
-				pl.SeqDoTeleporte = pl.SeqInput;
-				pl.OrcamentoPx = 0;
-
-				var cw = Protocol.Begin(Protocol.S2C.Correction);
-				cw.Put(pl.SeqInput);
-				cw.PutVec(pl.Pos);
-				pl.Peer?.Send(cw, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+				// lidos como cliente errado e puxarem o corpo de volta. Um funil pra todo teleporte.
+				CravarPosicao(pl, pl.Pos);
 
 				// SOLTOU: a ficha leva o bit `Empurrado` apagado -- sem ela o cliente continuaria
 				// deslizando pra a ultima correcao em vez de voltar a obedecer a tecla.
@@ -499,16 +491,8 @@ public sealed partial class GameServer
 
 			// O CLIENTE PRECISA SABER ONDE ELE ESTA, e com a sequencia carimbada -- senao os pacotes
 			// que ele ja mandou (da posicao antiga) seriam tratados como cliente errado e puxariam o
-			// corpo de volta. Mesma armadilha do dash.
-			pl.LastInputMs = agora;
-			pl.CorrecaoEsperadaAte = agora + 500;
-			pl.SeqDoTeleporte = pl.SeqInput;
-			pl.OrcamentoPx = 0;
-
-			var w = Protocol.Begin(Protocol.S2C.Correction);
-			w.Put(pl.SeqInput);
-			w.PutVec(pl.Pos);
-			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			// corpo de volta. Mesma armadilha do dash, mesmo funil.
+			CravarPosicao(pl, pl.Pos);
 			if (pousou) MandarFicha(pl);   // a posicao final vai ANTES do "acabou"
 		}
 	}
@@ -777,22 +761,32 @@ public sealed partial class GameServer
 	/// muda e o DESENHO (vira terra batida, o Ground8). Por isso o caminho aqui e proprio e nao
 	/// consulta colisao nenhuma.
 	/// ==========================================================================
+	///
+	/// ============================ RAIO E CHANCE SAO PARAMETROS ============================
+	/// O DM tem DUAS versoes desta varredura: o `view(1)` com `prob(40)` do impacto (acima) e o
+	/// `view(N)` sem sorteio do Seismic Press e do Gigantic Spike (`Beserker Skills.dm:137-140`,
+	/// `:73-76`), que o lote G10 chama com `raio: N, chance: 1`. Uma segunda copia do laco seria a
+	/// segunda copia da regra da borda. O mapa vem de <see cref="MapaDaZonaOuCatalogo"/>, como no
+	/// <see cref="DerrubarCelula"/> que ele chama: o chao racha em mundo gerado tambem.
+	/// Devolve quantas celulas cairam.
+	/// ==================================================================================
 	/// </summary>
-	private void RacharChao(ZoneKey zona, Vec2 centro, double bp)
+	private int RacharChao(ZoneKey zona, Vec2 centro, double bp, int raio = 1, double chance = 0.40)
 	{
-		if (bp < Empurrao.ResistenciaPadrao) return;
-		if (_catalogo?.Get(zona)?.Mapa is not { } mapa) return;
+		if (bp < Empurrao.ResistenciaPadrao) return 0;
+		if (MapaDaZonaOuCatalogo(zona) is not { } mapa) return 0;
 
 		const int T = ZoneCollision.TileSize;
 		int cx0 = (int)Math.Floor(centro.X / T), cy0 = (int)Math.Floor(centro.Y / T);
+		int cairam = 0;
 
 		// `view(1)` sao as nove celulas em volta -- a do impacto e as oito vizinhas.
-		for (int dy = -1; dy <= 1; dy++)
-			for (int dx = -1; dx <= 1; dx++)
+		for (int dy = -raio; dy <= raio; dy++)
+			for (int dx = -raio; dx <= raio; dx++)
 			{
 				int cx = cx0 + dx, cy = cy0 + dy;
 				if (cx < 0 || cy < 0 || cx >= mapa.Width || cy >= mapa.Height) continue;
-				if (_rng.NextDouble() >= 0.40) continue;            // o `prob(40)` do original
+				if (_rng.NextDouble() >= chance) continue;          // o `prob(40)` do original
 				if (mapa.NaBorda(cx, cy)) continue;   // beirada do mapa nao racha (ver `DerrubarCenario`)
 
 				// ============================ A MUDANCA E DO `DerrubarCelula`, E SO DELE ============================
@@ -806,8 +800,9 @@ public sealed partial class GameServer
 				// exatamente como o soco e o arremesso. A unica coisa que e do rachar e o sorteio e o
 				// `view(1)` -- e essas duas ficaram aqui.
 				// ==================================================================================================
-				DerrubarCelula(zona, cx, cy);
+				if (DerrubarCelula(zona, cx, cy)) cairam++;
 			}
+		return cairam;
 	}
 
 	/// <summary>Quantas celulas o `--quebrarteste N` derruba no nascimento. 0 = desligado.</summary>

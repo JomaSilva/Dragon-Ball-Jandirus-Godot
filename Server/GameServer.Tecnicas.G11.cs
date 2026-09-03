@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Skills;
 using Jandirus.Core.Stats;
@@ -45,11 +46,14 @@ namespace Jandirus.Server;
 ///   * O que NAO cabe numa peca existente NAO foi inventado: a Estrela Makyo (a metade noturna do
 ///     Above_All e o 4o grau do Expand_Body), o olho remoto do Observe, o ritual de God Ki que o
 ///     Give_Power alimenta. Cada um esta escrito no verb que o cita.
-///   * Bug OBVIO do DM se mantem com o numero visivel no comentario (o `Ki*=0.5` POR ALVO do Freeze,
-///     o `Ki>=700 / Ki-=100` do Psycho Thread, o `switch(currentMoonlight==5)` da Moon que nunca
-///     casa, o `kireq*BaseDrain` do Instant Transmission que zera o Ki). O que NAO se mantem e
-///     defeito de DESFAZER (o `Tspeed -=` no lugar de `+=` do Expand), porque o alicerce desfaz por
-///     construcao e reproduzir o vazamento exigiria escreve-lo na mao.
+///   * Bug OBVIO do DM nasceu mantido com o numero visivel no comentario. Em 2026-09-02 o dono mandou
+///     consertar os citados (*"corrija esses bugs q vc citou"*) e tres deles passaram a cobrar o que a
+///     descricao promete: o `Ki*=0.5` POR ALVO do Freeze (agora UMA vez), o `Ki>=700 / Ki-=100` do
+///     Psycho Thread (agora confere e cobra `100*BaseDrain`), o `kireq*BaseDrain` do Instant
+///     Transmission que zerava o Ki (agora cobra `kireq`). Cada verb guarda a citacao do DM ao lado do
+///     conserto. FICA o `switch(currentMoonlight==5)` da Moon que nunca casa (o dono nao o citou). O
+///     que nunca se manteve e defeito de DESFAZER (o `Tspeed -=` no lugar de `+=` do Expand), porque
+///     o alicerce desfaz por construcao e reproduzir o vazamento exigiria escreve-lo na mao.
 /// =====================================================================================
 /// </summary>
 public sealed partial class GameServer
@@ -66,134 +70,23 @@ public sealed partial class GameServer
 	/// `effector()`/`after_learn()` e nao botao -- o efeito delas mora no <see cref="TickDoEfetorG11"/>
 	/// e nos ganchos do agarrao. Registra-las como tecnica inflaria o "portadas" sem botao nenhum.
 	/// </summary>
-	private static void RegistrarTecnicasG11()
+	private void RegistrarTecnicasG11()
 	{
-		Tecnicas.Registrar("Sneak", "Sneak", Modo.Instantanea,
-			"A furtividade do assassino: voce some da vista por alguns instantes (um segundo mais um "
-			+ "decimo por ponto de Tecnica). Custa Ki e deixa os golpes especiais em espera por seis "
-			+ "segundos. Nao funciona se voce ja estiver invisivel.");
-
-		Tecnicas.Registrar("Expand_Body", "Expansao do Corpo", Modo.Sustentada,
-			"Infla os musculos com Ki: ofensiva e defesa fisica sobem por grau, e a velocidade cai. "
-			+ "Use Expand_Body:1, :2 ou :3 (e :0 pra relaxar). Cada grau custa uma mordida de Ki e "
-			+ "o corpo continua pagando aos poucos; com Ki quase zerado ele relaxa sozinho. Ocupa o "
-			+ "mesmo lugar dos buffs de corpo e nao convive com as laminas de Ki.");
-
-		Tecnicas.Registrar("Majin", "Majin", Modo.Sustentada,
-			"Canaliza os proprios demonios na forma Majin: um pedaco do seu poder vira soma fixa, a "
-			+ "ofensiva fisica sobe 30%, o Ki regenera mais rapido e a raiva sobe mais devagar. "
-			+ "Aperte de novo pra voltar ao normal.");
-
-		Tecnicas.Registrar("Shackle", "Grilhao", Modo.Instantanea,
-			"Prende as pernas de quem voce marcou com uma aura de interferencia: a velocidade dele "
-			+ "cai por alguns segundos (quanto melhor a sua pericia de debuff, menos ela cai, mas mais "
-			+ "tempo dura). Compartilha a espera com a Paralysis e o Solar Flare.");
-
-		Tecnicas.Registrar("Devil_Bringer", "Devil Bringer", Modo.Instantanea,
-			"Rasga um buraco na realidade e some -- levando junto quem estiver colado em voce. Exige "
-			+ "Ki CHEIO e leva TODO ele. Um poder demoniaco: alcanca o Inferno, mas nunca o Ceu. "
-			+ "Mande sem destino pra ver aonde ele chega.", aba: "Outros");
-
-		Tecnicas.Registrar("Kai_Kai", "Kai Kai", Modo.Instantanea,
-			"O teleporte dos Kaioshin: voce grita 'Kai Kai!' e aparece em outro mundo, levando quem "
-			+ "estiver colado em voce. Exige Ki CHEIO e leva TODO ele. Alcanca ate o Ceu. Mande sem "
-			+ "destino pra ver a lista.", aba: "Outros");
-
-		Tecnicas.Registrar("Instant_Transmission", "Teletransporte", Modo.Instantanea,
-			"Sente uma assinatura de Ki e se desmonta ate ela. Mande sem argumento pra ver quem da "
-			+ "pra sentir (conhecidos pelo nome, desconhecidos pela assinatura); depois "
-			+ "Instant_Transmission:<nome>. Voce precisa ficar PARADO enquanto se concentra; quem "
-			+ "estiver colado vai junto. Custa quase toda a energia e vai ficando mais facil com a "
-			+ "distancia percorrida.", aba: "Outros");
-
-		Tecnicas.Registrar("Flip", "Cambalhota", Modo.Instantanea,
-			"A esquiva do gato: preso num agarrao, voce tenta se soltar com uma cambalhota. A chance "
-			+ "cresce com a sua ofensiva e o seu poder contra a forca de quem segura, e com o quanto "
-			+ "voce ja se debateu. Escapar machuca quem te segurava. Custa Ki mesmo se falhar.");
-
-		Tecnicas.Registrar("Self_Destruct", "Autodestruicao", Modo.Instantanea,
-			"So com alguem AGARRADO. O primeiro aperto comeca a juntar energia (voce fica preso no "
-			+ "lugar e o poder cresce a cada dois segundos e meio); o segundo detona: quem esta nos "
-			+ "seus bracos leva a explosao inteira, quem esta a ate tres tiles leva uma parte -- e "
-			+ "voce leva a mesma explosao. Carregando alem de vinte, 75% de chance de MORRER junto.");
-
-		Tecnicas.Registrar("Psycho_Thread", "Fio Psiquico", Modo.Sustentada,
-			"Liga e desliga os fios dos Herans. Com eles ligados, o duplo clique no chao deixa de "
-			+ "ser Zanzoken e passa a ARMAR um fio de paralisia embaixo dos seus pes por cinco "
-			+ "segundos: quem pisar nele fica com as pernas trancadas. Pede setecentos de Ki de "
-			+ "reserva e cobra cem.");
-
-		Tecnicas.Registrar("Freeze", "Congelar o Tempo", Modo.Instantanea,
-			"Congela todo mundo a vista por alguns segundos (mais tempo quanto maior a sua pericia "
-			+ "de Ki, menos quanto mais forte o alvo). Exige mais de um quarto do Ki -- e METADE do "
-			+ "que voce tem vai embora POR PESSOA congelada.");
-
-		Tecnicas.Registrar("Observe", "Observar", Modo.Instantanea,
-			"Projeta a mente ate alguem e sente onde ele esta e o que o cerca: o mundo, a hora, a "
-			+ "condicao dele e quem esta por perto. Nao alcanca quem esconde o poder, Androides nem "
-			+ "energia fraca demais. Observe:<nome>; Observe sem nome solta.", aba: "Outros");
-
-		Tecnicas.Registrar("Unlock_Potential", "Despertar o Potencial", Modo.Instantanea,
-			"O ritual do Anciao: oferece a quem esta marcado ao seu lado (ou a voce mesmo) despertar "
-			+ "o potencial adormecido -- UMA vez na vida. O poder base sobe uma fracao por ponto de "
-			+ "Potencial da raca, e o potencial acumulado por idade e treino vira poder na hora. "
-			+ "Quem recebe precisa aceitar na aba Other.", aba: "Outros");
-
-		Tecnicas.Registrar("Give_Power", "Dar Poder", Modo.Sustentada,
-			"Transfere a sua energia pra quem esta marcado ou perto: um por cento do seu Ki maximo "
-			+ "a cada quinto de segundo, curando um pouco a cada dose. Quando a energia acaba (ou "
-			+ "voce para), voce DESMAIA. Aperte de novo pra parar.");
-	}
-
-	/// <summary>Os catorze ids deste lote.</summary>
-	private static readonly string[] IdsG11 =
-	[
-		"Sneak", "Expand_Body", "Majin", "Shackle",
-		"Devil_Bringer", "Kai_Kai", "Instant_Transmission",
-		"Flip", "Self_Destruct", "Psycho_Thread", "Freeze",
-		"Observe", "Unlock_Potential", "Give_Power",
-	];
-
-	/// <summary>
-	/// O DESPACHO DO LOTE -- entra ANTES do gate generico, como o G4/G8/G9 e pelo mesmo motivo: seis
-	/// destes verbs aceitam id com ARGUMENTO (`Expand_Body:2`, `Kai_Kai:Namek`,
-	/// `Instant_Transmission:Goku`, `Observe:Goku`, `Devil_Bringer:Hell`), e o `SabeTecnica` do funil
-	/// geral compara o id INTEIRO com os verbs da skill -- nunca casaria com a variante.
-	/// </summary>
-	public bool UsarTecnicasG11(ServerPlayer pl, string id)
-	{
-		if (id.Length == 0) return false;
-
-		int corte = id.IndexOf(':');
-		string baseId = corte < 0 ? id : id[..corte];
-		string arg = corte < 0 ? "" : id[(corte + 1)..].Trim();
-
-		if (Array.IndexOf(IdsG11, baseId) < 0) return false;
-
-		if (!SabeTecnica(pl, baseId))
-		{
-			Avisar(pl, $"voce nao sabe {Tecnicas.Get(baseId)?.Nome ?? baseId}.");
-			return true;
-		}
-
-		switch (baseId)
-		{
-			case "Sneak": SneakG11(pl); break;
-			case "Expand_Body": ExpandirCorpoG11(pl, arg); break;
-			case "Majin": MajinG11(pl); break;
-			case "Shackle": GrilhaoG11(pl); break;
-			case "Devil_Bringer": TeleporteDePlanetaG11(pl, arg, DestinosDoDevilBringerG11, "Devil_Bringer", demoniaco: true); break;
-			case "Kai_Kai": TeleporteDePlanetaG11(pl, arg, DestinosDoKaiKaiG11, "Kai_Kai", demoniaco: false); break;
-			case "Instant_Transmission": TeletransporteG11(pl, arg); break;
-			case "Flip": CambalhotaG11(pl); break;
-			case "Self_Destruct": AutodestruirG11(pl); break;
-			case "Psycho_Thread": AlternarFioPsiquicoG11(pl); break;
-			case "Freeze": CongelarG11(pl); break;
-			case "Observe": ObservarG11(pl, arg); break;
-			case "Unlock_Potential": OferecerPotencialG11(pl); break;
-			case "Give_Power": DarPoderG11(pl); break;
-		}
-		return true;
+		IniciarLote("G11");
+		Vivo("Sneak", SneakG11);
+		Vivo("Expand_Body", ExpandirCorpoG11);
+		Vivo("Majin", MajinG11);
+		Vivo("Shackle", GrilhaoG11);
+		Vivo("Devil_Bringer", (pl, arg) => TeleporteDePlanetaG11(pl, arg, DestinosDoDevilBringerG11, "Devil_Bringer", demoniaco: true));
+		Vivo("Kai_Kai", (pl, arg) => TeleporteDePlanetaG11(pl, arg, DestinosDoKaiKaiG11, "Kai_Kai", demoniaco: false));
+		Vivo("Instant_Transmission", TeletransporteG11);
+		Vivo("Flip", CambalhotaG11);
+		Vivo("Self_Destruct", AutodestruirG11);
+		Vivo("Psycho_Thread", AlternarFioPsiquicoG11);
+		Vivo("Freeze", CongelarG11);
+		Vivo("Observe", ObservarG11);
+		Vivo("Unlock_Potential", OferecerPotencialG11);
+		Vivo("Give_Power", DarPoderG11);
 	}
 
 	// =====================================================================
@@ -218,9 +111,6 @@ public sealed partial class GameServer
 	/// <summary>O `majining` do DM (`Majin.dm:11-18`): dois segundos entre um toggle e outro.</summary>
 	private readonly Dictionary<int, long> _prontoMajinG11 = [];
 
-	/// <summary>Recarga de um segundo do salto de planeta -- o `inteleport` (ver `RecargaDoRasgoMsG4`).</summary>
-	private readonly Dictionary<int, long> _prontoSaltoG11 = [];
-
 	/// <summary>Um Instant Transmission em concentracao.</summary>
 	private sealed class TransmissaoG11
 	{
@@ -231,18 +121,6 @@ public sealed partial class GameServer
 	}
 
 	private readonly Dictionary<int, TransmissaoG11> _transmissaoG11 = [];
-
-	/// <summary>Uma autodestruicao carregando -- o `sding`/`chargecounter` (`Ki/misc.dm:163-164`).</summary>
-	private sealed class AutodestruicaoG11
-	{
-		public int Contador = 1;    // `chargecounter=1` (misc.dm:232)
-		public long ComecouMs;
-		public long ProximoMs;
-		public Vec2 Ancora;
-		public int Narrou;
-	}
-
-	private readonly Dictionary<int, AutodestruicaoG11> _autodestruicaoG11 = [];
 
 	/// <summary>Uma doacao de poder em andamento -- o `givingpower` (`givepower.dm:27`).</summary>
 	private sealed class DoacaoG11
@@ -304,6 +182,10 @@ public sealed partial class GameServer
 	/// DECISSEGUNDOS (`Effects Master.dm:66`, `world.time - time > duration`). O comentario do verb
 	/// promete "10 seconds + technique"; o codigo entrega um segundo mais um decimo por ponto de
 	/// Tecnica. Vale o que o codigo entrega.
+	///
+	/// CONFERIDO em 2026-09-02, quando o dono mandou consertar os defeitos citados: este ja estava
+	/// portado pela INTENCAO (a `--g11teste` mede o corpo sumindo, durando e voltando), e nada mudou
+	/// alem desta nota.
 	/// ======================================================================================================
 	///
 	/// A INVISIBILIDADE E A DO PORT (`_invisiveis` + `isconcealed`, ver `GameServer.Tecnicas.cs`): e o
@@ -313,26 +195,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private void SneakG11(ServerPlayer pl)
 	{
-		if (!ProntoPraGolpeG3(pl, out string porque)) { Avisar(pl, porque); return; }
-
-		long agora = NowMs();
-		if (_prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"seus golpes especiais ainda estao em espera ({(livre - agora) / 1000.0:0.#}s).");
-			return;
-		}
 		// `!invisibility` -- ja invisivel (pelo Sneak ou pela Invisibility) nao empilha.
 		if (_invisiveis.Contains(pl.Id)) { Avisar(pl, "voce ja esta fora da vista."); return; }
-
-		double kireq = pl.Ficha.Ephysoff * pl.Ficha.BaseDrain() * 12;
-		if (pl.Ficha.Ki < kireq)
-		{
-			Avisar(pl, $"o Sneak pede pelo menos {kireq:0} de energia e voce tem {pl.Ficha.Ki:0}.");
-			return;
-		}
-
-		_prontoG3[pl.Id] = agora + RecargaDoSneakMsG11;
-		pl.Ficha.Ki -= kireq;
+		if (!AbrirPunhoG7(pl, 12, RecargaDoSneakMsG11, out double kireq)) return;
+		long agora = NowMs();
 
 		long duracao = (long)((10 + pl.Ficha.Etechnique) * 100);   // decissegundos -> ms
 		_sneakAteG11[pl.Id] = agora + duracao;
@@ -382,7 +248,8 @@ public sealed partial class GameServer
 	/// DUAS vezes e devolve uma so no `DeBuff()` (`:87`). Quem alterna 1->2->3 sai mais lento do que
 	/// entrou ate o proximo relog. Nao reproduzi: o alicerce desfaz por construcao (guarda o que
 	/// aplicou), e o vazamento so existiria se eu o escrevesse na mao. Trocar de grau aqui e desligar
-	/// o grau velho (exato) e ligar o novo.
+	/// o grau velho (exato) e ligar o novo. CONFERIDO em 2026-09-02 (a `--g11teste` mede 2 -> 3 -> 0 e
+	/// o Tspeed volta exato ao de antes): nada a consertar.
 	/// ==========================================================================================================
 	///
 	/// A ESCOLHA VIROU ARGUMENTO (`Expand_Body:2`), como todo `input()` deste port; sem argumento lista.
@@ -428,7 +295,7 @@ public sealed partial class GameServer
 		if (grau == 0)
 		{
 			f.expandlevel = 0;
-			if (DesligarBuff(pl, id)) { MandarEfeito(pl, "expand", 0); Avisar(pl, "voce relaxa o corpo."); }
+			if (DesligarBuff(pl, id)) Avisar(pl, "voce relaxa o corpo.");   // o efeito sai pelo proprio `DesligarBuff`
 			else Avisar(pl, "seu corpo ja esta relaxado.");
 			return;
 		}
@@ -439,7 +306,7 @@ public sealed partial class GameServer
 			return;
 		}
 
-		if (f.KO || f.dead) { Avisar(pl, "voce nao esta em condicoes de expandir o corpo."); return; }
+		if (RecusarCaido(pl, "voce nao esta em condicoes de expandir o corpo.")) return;
 
 		// o menu do DM so LISTA o grau que da pra pagar e que nao e o atual (`:128-130`)
 		if (ligado && grau == atual) { Avisar(pl, $"voce ja esta no {grau}o grau."); return; }
@@ -473,7 +340,6 @@ public sealed partial class GameServer
 		f.expandlevel = grau;
 		f.Ki -= custo;
 		_relogioDoExpandG11[pl.Id] = 0;
-		MandarEfeito(pl, "expand", -1);
 
 		Avisar(pl, grau switch
 		{
@@ -512,22 +378,17 @@ public sealed partial class GameServer
 	private void MajinG11(ServerPlayer pl)
 	{
 		const string id = "Majin";
+		if (EmEspera(pl, _prontoMajinG11, "espere um instante antes de mexer na forma de novo")) return;
 		long agora = NowMs();
-		if (_prontoMajinG11.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, "espere um instante antes de mexer na forma de novo.");
-			return;
-		}
 		_prontoMajinG11[pl.Id] = agora + EsperaDoMajinMsG11;
 
 		if (DesligarBuff(pl, id))
 		{
-			MandarEfeito(pl, "majin", 0);
 			Avisar(pl, "sua raiva se aquieta e voce deixa o poder Majin.");
 			return;
 		}
 
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "voce nao esta em condicoes de assumir a forma."); return; }
+		if (RecusarCaido(pl, "voce nao esta em condicoes de assumir a forma.")) return;
 
 		Fighter f = pl.Ficha;
 		double majinAdd = f.BP * MajinModG11 * (f.MaxAnger / 100) / 10;   // `Majin.dm:34`
@@ -544,7 +405,6 @@ public sealed partial class GameServer
 				["angerMod"] = 1 / 1.2,
 				["physoffMod"] = 1.3,
 			});
-		MandarEfeito(pl, "majin", -1);
 		Avisar(pl, "voce canaliza os proprios demonios na forma Majin!");
 		GD.Print($"[G11] {pl.Name} virou Majin (+{majinAdd:0} de BPadd)");
 	}
@@ -576,9 +436,9 @@ public sealed partial class GameServer
 	{
 		Fighter f = pl.Ficha;
 		if (f.med || f.train) { Avisar(pl, "nao da pra moldar um debuff meditando ou treinando."); return; }
-		if (f.KO || f.dead) { Avisar(pl, "voce nao pode fazer isso agora."); return; }
+		if (RecusarCaido(pl)) return;
 		if (_canais.ContainsKey(pl.Id)) { Avisar(pl, "voce ja esta com um raio na mao."); return; }
-		if (EmEsperaG5(pl, _debuffPronto, "voce ainda nao consegue moldar outro debuff")) return;
+		if (EmEspera(pl, _debuffPronto, "voce ainda nao consegue moldar outro debuff")) return;
 
 		ServerPlayer? alvo = Marcado(pl);
 		if (alvo == null) { Avisar(pl, "voce precisa de um alvo marcado pra usar isto."); return; }
@@ -598,7 +458,7 @@ public sealed partial class GameServer
 		// `if(target.Tspeed - debuff > 0.1) ... else debuff = target.Tspeed - 0.1` (`:57-61`)
 		if (alvo.Ficha.Tspeed - debuff <= 0.1) debuff = alvo.Ficha.Tspeed - 0.1;
 
-		_debuffPronto[pl.Id] = NowMs() + (long)(Math.Max(f.Eactspeed * 10, 2) * MsPorTique);
+		_debuffPronto[pl.Id] = NowMs() + (long)(Math.Max(f.Eactspeed * 10, 2) * TempoDoDm.MsPorTique);
 		for (int i = 0; i < 4; i++) f.BlastGain(_rng);   // `:69-72`
 
 		string id = $"Shackle:{++_seqShackleG11}";
@@ -610,123 +470,50 @@ public sealed partial class GameServer
 		GD.Print($"[G11] {pl.Name} grilhou {alvo.Name} (-{debuff:0.##} Tspeed por {prazoS:0}s)");
 	}
 
-	// =====================================================================
-	// 7. DEVIL BRINGER / KAI KAI -- `demon.dm:174-201` e `kai.dm:112-139`
-	// =====================================================================
-	/// <summary>
-	/// OS ONZE DESTINOS do Devil Bringer (`demon.dm:178`), na ordem do `input()`, mapeados pro nome
-	/// de zona deste port. SEM O CEU: "A demonic power like this prevents you from entering Heaven".
-	/// </summary>
-	private static readonly string[] DestinosDoDevilBringerG11 =
-	[
-		"Earth", "Namek", "Vegeta", "Icer", "Arconia", "Desert", "Arlia",
-		"Large_Space_Station", "Small_Space_Station", "Afterlife", "Hell",
-	];
-
-	/// <summary>Os doze do Kai Kai (`kai.dm:117`): os mesmos onze, mais o Ceu.</summary>
+	/// <summary>Os doze do Kai Kai (`kai.dm:117`): onze mundos mais o Ceu.</summary>
 	private static readonly string[] DestinosDoKaiKaiG11 =
 	[
 		"Earth", "Namek", "Vegeta", "Icer", "Arconia", "Desert", "Arlia",
 		"Large_Space_Station", "Small_Space_Station", "Afterlife", "Hell", "Heaven",
 	];
 
+	/// <summary>Os onze do Devil Bringer (`demon.dm:174`): a MESMA lista sem o Ceu -- e nao uma segunda copia dela.</summary>
+	private static readonly string[] DestinosDoDevilBringerG11 = [.. DestinosDoKaiKaiG11.Where(d => d != "Heaven")];
+
 	/// <summary>
 	/// O SALTO DE PLANETA COM CARONA -- os dois verbs sao o mesmo corpo com listas e falas diferentes
-	/// (`demon.dm:174-201` e `kai.dm:112-139` sao copia um do outro). E o `RiftTeleport` do G4 mais
-	/// a carona do `Holy_Shortcut` do G8:
-	///
-	///   * a porta muda (`:176`, `:114`): `!canmove || KO || deathregening || grabParalysis || stagger`
-	///     -- o DM sai calado; aqui cada uma fala;
-	///   * a porta que fala (`:177`, `:115`): `canfight && !med && !train && Ki >= MaxKi &&
-	///     Planet != "Sealed" && !inteleport` -- "You need full ki and total concentration";
-	///   * o preco: `usr.Ki = 0` -- ZERA (`:181`, `:119`);
-	///   * a carona: `for(var/mob/V in oview(1))` -- quem esta colado vai junto, sem escolher
-	///     (`:185-194`, `:123-132`);
-	///   * a chegada e o ponto de spawn da zona, como no `RiftTeleport` (o `GotoPlanet` do DM cai no
-	///     spawn do planeta tambem).
-	///
-	/// O `sleep(1)`/`spawn(1)` que escalonam a chegada nao vieram: despacho sincrono (mesmo argumento
-	/// do G4 e do G8). O `inteleport` virou recarga de um segundo. Os sons (`demonteleport.wav`,
-	/// `Instant_Pop.wav`) vao como efeito pro cliente pelo id do verb.
+	/// (`demon.dm:174-201` e `kai.dm:112-139` sao copia um do outro), e o corpo e o
+	/// <see cref="SaltarDePlaneta"/> que o RiftTeleport e o Atalho Sagrado tambem usam: a porta
+	/// (`:176`/`:114` muda, `:177`/`:115` fala: "You need full ki and total concentration"), o preco
+	/// `usr.Ki = 0` (`:181`/`:119`), a carona `for(var/mob/V in oview(1))` (`:185-194`/`:123-132`) e a
+	/// chegada no spawn (o `GotoPlanet` do DM cai no spawn do planeta tambem). Os sons
+	/// (`demonteleport.wav`, `Instant_Pop.wav`) vao como efeito pro cliente pelo id do verb.
 	/// </summary>
 	private void TeleporteDePlanetaG11(ServerPlayer pl, string destino, string[] lista, string verbo, bool demoniaco)
 	{
-		Fighter f = pl.Ficha;
-		if (f.KO || f.dead) { Avisar(pl, "nao da, caido."); return; }
-		if (pl.Combate is { Stun: > 0 }) { Avisar(pl, "voce ainda esta atordoado."); return; }
-		if (Agarrado(pl)) { Avisar(pl, "preso num agarrao voce nao se concentra."); return; }
-		if (f.med || f.train || NaMente(pl) || _canais.ContainsKey(pl.Id))
+		// `demon.dm` nao tem o Ceu na lista, e a recusa e propria: um poder demoniaco nao entra la.
+		if (demoniaco && destino.Equals("Heaven", StringComparison.OrdinalIgnoreCase))
 		{
-			Avisar(pl, "voce precisa de Ki cheio e concentracao total pra usar isto.");
-			return;
-		}
-		if (pl.Selo.Preso) { Avisar(pl, "daqui de dentro nao."); return; }
-
-		long agora = NowMs();
-		if (_prontoSaltoG11.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, "o espaco em volta de voce ainda esta se recompondo.");
+			Avisar(pl, "um poder demoniaco como este nao entra no Ceu.");
 			return;
 		}
 
-		// `usr.Ki >= usr.MaxKi` -- com a mesma folga de meio ponto do `RiftTeleport` (Ki e float por tique)
-		if (f.Ki < f.MaxKi - 0.5)
-		{
-			Avisar(pl, $"voce precisa de Ki cheio e concentracao total pra usar isto ({f.Ki:0} de {f.MaxKi:0}).");
+		// O "parece estar se concentrando..." (`:180`/`:118`) e o grito sao um emote so: no DM havia
+		// um `sleep` entre os dois, e sem ele as duas frases sairiam no mesmo instante de qualquer jeito.
+		if (!SaltarDePlaneta(pl, destino, lista, demoniaco ? "o poder demoniaco" : "o Kai Kai", verbo,
+							 kiCheio: true, comCarona: true,
+							 emote: demoniaco
+								 ? "parece estar se concentrando... rasga um buraco na realidade e some!"
+								 : "parece estar se concentrando... grita 'Kai Kai!' e some!",
+							 fraseDaCarona: "te leva junto no teleporte.", pontoDeChegada: null,
+							 out string escolhido, out int levou))
 			return;
-		}
 
-		if (destino.Length == 0)
-		{
-			Avisar(pl, $"{(demoniaco ? "o poder demoniaco" : "o Kai Kai")} alcanca: {string.Join(", ", lista)}");
-			Avisar(pl, $"para ir: {verbo}:<destino>");
-			return;
-		}
-
-		string? escolhido = null;
-		foreach (string d in lista)
-			if (string.Equals(d, destino, StringComparison.OrdinalIgnoreCase)) { escolhido = d; break; }
-		if (escolhido == null)
-		{
-			Avisar(pl, demoniaco && destino.Equals("Heaven", StringComparison.OrdinalIgnoreCase)
-				? "um poder demoniaco como este nao entra no Ceu."
-				: $"'{destino}' nao esta ao alcance. Alcanca: {string.Join(", ", lista)}");
-			return;
-		}
-		if (_catalogo?.Get(escolhido) == null) { Avisar(pl, $"{escolhido} nao tem mapa carregado neste servidor."); return; }
-		if (string.Equals(escolhido, pl.Zone.Name, StringComparison.Ordinal)) { Avisar(pl, $"voce ja esta em {escolhido}."); return; }
-
-		// A CARONA, colhida ANTES do primeiro `MoveToZone` (ele mexe na lista da zona -- ver G8).
-		var caronas = new List<ServerPlayer>();
-		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-			if (o != pl && !o.Ficha.dead && _players.ContainsKey(o.Id)
-				&& Vec2.Distance(o.Pos, pl.Pos) <= RaioDeUmTileG4)
-				caronas.Add(o);
-
-		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-			if (Vec2.Distance(o.Pos, pl.Pos) <= 6 * ZoneCollision.TileSize)
-				Avisar(o, $"{pl.Name} parece estar se concentrando...");
-
-		f.Ki = 0;   // `usr.Ki=0` -- zera, nao desconta
-		_prontoSaltoG11[pl.Id] = agora + 1000;
-
-		Falar(pl, Protocol.Fala.Emote, demoniaco
-			? "rasga um buraco na realidade e some!"
-			: "grita 'Kai Kai!' e some!");
-
-		ZoneKey z = ZoneKey.Premade(escolhido);
-		MoveToZone(pl.Id, z, SpawnPos);
-		foreach (ServerPlayer c in caronas)
-		{
-			MoveToZone(c.Id, z, SpawnPos);
-			Avisar(c, $"{pl.Name} te leva junto no teleporte.");
-		}
-		MandarEfeito(pl, verbo == "Kai_Kai" ? "kaikai" : "devilbringer", 1000);
-
-		Avisar(pl, caronas.Count == 0
+		MandarEfeito(pl, demoniaco ? "devilbringer" : "kaikai", RecargaDoSaltoMs);
+		Avisar(pl, levou == 0
 			? $"voce reaparece em {escolhido}, sem uma gota de energia."
-			: $"voce reaparece em {escolhido} com {caronas.Count} pessoa{(caronas.Count == 1 ? "" : "s")} a tiracolo, sem uma gota de energia.");
-		GD.Print($"[G11] {pl.Name} usou {verbo} ate {escolhido} (+{caronas.Count} de carona)");
+			: $"voce reaparece em {escolhido} com {levou} pessoa{(levou == 1 ? "" : "s")} a tiracolo, sem uma gota de energia.");
+		GD.Print($"[G11] {pl.Name} usou {verbo} ate {escolhido} (+{levou} de carona)");
 	}
 
 	// =====================================================================
@@ -747,12 +534,14 @@ public sealed partial class GameServer
 	/// selado. Conhecido (familiaridade > 0) aparece pelo NOME; desconhecido, pela ASSINATURA.
 	/// ==============================================================================================
 	///
-	/// ============================ O CUSTO, E O DEFEITO QUE ELE CARREGA ============================
+	/// ============================ O CUSTO, E O DEFEITO QUE ELE CARREGAVA ============================
 	/// `kireq = min(MaxKi, MaxKi/(teleskill/100))` (`:101`) e depois `Ki -= kireq*BaseDrain`
-	/// (`:146`): o `kireq` JA e uma fracao do tanque, e o `BaseDrain` (raiz do MaxKi/140) o multiplica
-	/// de novo -- pra qualquer tanque acima de 140 o custo passa do proprio Ki e o `max(Ki,0)` da
-	/// linha seguinte ZERA a energia. Portado assim: o teletransporte chega sem Ki, sempre. O numero
-	/// esta aqui pra quem for reequilibrar saber de onde vem.
+	/// (`:146`): o `kireq` JA e uma fracao do tanque (o tanque inteiro ate `teleskill` 100, um terco
+	/// em 300, um quinto em 500 -- e o proprio comentario do `:101`), e o `BaseDrain` (raiz do MaxKi/140)
+	/// o multiplicava de novo: pra qualquer tanque acima de 140 o custo passava do proprio Ki e o
+	/// `max(Ki,0)` da linha seguinte ZERAVA a energia, sempre. Por decisao do dono (2026-09-02,
+	/// "corrija esses bugs q vc citou") o verb cobra o que confere: `Ki -= kireq`. E a mesma familia
+	/// que o G5/G6/G7 ja fecharam ("conferia X e cobrava X*BaseDrain").
 	/// ==========================================================================================
 	///
 	/// A ESPERA `max(600/teleskill, 15)` decimos (`:136`) virou agenda no efetor: o corpo fica
@@ -863,30 +652,13 @@ public sealed partial class GameServer
 		if (yardrat && f.teleskill < 500) f.teleskill = Math.Min(500, f.teleskill + distTiles * 0.2);
 		else if (!yardrat && f.teleskill < 300) f.teleskill = Math.Min(300, f.teleskill + distTiles * 0.1);
 
-		f.Ki -= t.Kireq * f.BaseDrain();   // `:146` -- ver o cabecalho: isto zera o Ki
+		f.Ki -= t.Kireq;   // o `:146` cobrava `kireq*BaseDrain` e zerava o Ki -- ver o cabecalho
 		f.Ki = Math.Max(f.Ki, 0);
 
-		// `for(var/mob/nnM in oview(1)) if(M.client)` (`:151`)
-		var caronas = new List<ServerPlayer>();
-		if (EhPessoa(alvo))
-			foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-				if (o != pl && !o.Ficha.dead && _players.ContainsKey(o.Id)
-					&& Vec2.Distance(o.Pos, pl.Pos) <= RaioDeUmTileG4)
-					caronas.Add(o);
-
-		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-			if (o != pl && Vec2.Distance(o.Pos, pl.Pos) <= RaioDaVista)
-				Avisar(o, $"{pl.Name} desaparece num clarao!");
-
-		Vec2 ponto = PontoAoLadoG11(alvo);
-		if (mesmaZona) CravarPosicaoG11(pl, ponto);
-		else MoveToZone(pl.Id, alvo.Zone, ponto);
-		foreach (ServerPlayer c in caronas)
-		{
-			if (mesmaZona) CravarPosicaoG11(c, ponto);
-			else MoveToZone(c.Id, alvo.Zone, ponto);
-			Avisar(c, $"{pl.Name} te leva junto no Teletransporte.");
-		}
+		// `for(var/mob/nnM in oview(1)) if(M.client)` (`:151`) -- so ha carona quando se chega numa PESSOA
+		List<ServerPlayer> caronas = EhPessoa(alvo) ? LevarCaronas(pl) : [];
+		AvisarPertoG3(pl, RaioDaVista, $"{pl.Name} desaparece num clarao!", excetoCentro: true);
+		Saltar(pl, alvo.Zone, PontoAoLadoG11(alvo), caronas, "te leva junto no Teletransporte.");
 		MandarEfeito(pl, "zanzoken", 500);
 
 		Avisar(pl, "voce localiza a assinatura e aparece num instante!");
@@ -896,22 +668,7 @@ public sealed partial class GameServer
 
 	/// <summary>O tile ao lado do alvo (`usr.loc = M.loc` poe os dois no MESMO tile; aqui um tile a leste, se livre).</summary>
 	private Vec2 PontoAoLadoG11(ServerPlayer alvo)
-	{
-		var p = new Vec2(alvo.Pos.X + ZoneCollision.TileSize, alvo.Pos.Y);
-		ZoneCollision? mapa = MapaDaZonaOuCatalogo(alvo.Zone);
-		return mapa == null || !mapa.BlockedAt(p) ? p : alvo.Pos;
-	}
-
-	/// <summary>Teleporte dentro da MESMA zona -- a costura de sequencia do `AvancarG3`, sem a parede no caminho (e teleporte).</summary>
-	private static void CravarPosicaoG11(ServerPlayer pl, Vec2 destino)
-	{
-		pl.Pos = destino;
-		long agora = NowMs();
-		pl.LastInputMs = agora;
-		pl.CorrecaoEsperadaAte = agora + 500;
-		pl.SeqDoTeleporte = pl.SeqInput;
-		MandarCorrecaoG3(pl);
-	}
+		=> PontoLivre(alvo.Zone, new Vec2(alvo.Pos.X + ZoneCollision.TileSize, alvo.Pos.Y)) ?? alvo.Pos;
 
 	// =====================================================================
 	// 9. FLIP -- `Martial Skill Attacks.dm:289-323`
@@ -937,25 +694,14 @@ public sealed partial class GameServer
 	private void CambalhotaG11(ServerPlayer pl)
 	{
 		Fighter f = pl.Ficha;
-		if (f.med || f.train || f.KO || f.dead) { Avisar(pl, "voce nao esta em condicoes de tentar isso."); return; }
-
-		long agora = NowMs();
-		if (_prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"seus golpes especiais ainda estao em espera ({(livre - agora) / 1000.0:0.#}s).");
-			return;
-		}
-
-		double kireq = f.Ephysoff * 12 * f.BaseDrain();
-		if (f.Ki < kireq) { Avisar(pl, $"a cambalhota pede {kireq:0} de energia e voce tem {f.Ki:0}."); return; }
-
-		_prontoG3[pl.Id] = agora + 500;
-		f.Ki -= kireq;
+		// SEM `canfight` (`:290` nao o pergunta): preso E atordoado ainda se debate -- a cambalhota e a
+		// unica saida de quem esta nos bracos de alguem. `basicCD += 5`: meio segundo.
+		if (!AbrirPunhoG7(pl, 12, 500, out _, exigirCanfight: false)) return;
 
 		if (pl.AgarradoPorId == 0) { Avisar(pl, "voce da uma cambalhota no lugar -- ninguem estava te segurando."); return; }
 
-		ServerPlayer? quem = CorpoNaMinhaZona(pl, pl.AgarradoPorId);
-		if (quem == null || quem.AgarrandoId != pl.Id)
+		ServerPlayer? quem = QuemMeSegura(pl);
+		if (quem == null)
 		{
 			LimparPreso(pl);   // o aperto ja tinha sido desfeito do outro lado
 			Avisar(pl, "voce se sacode e percebe que ninguem te segurava mais.");
@@ -975,25 +721,19 @@ public sealed partial class GameServer
 			double dano = CombatMath.DanoBase(f, quem.Ficha) + pl.ContadorDaLuta;
 			Soltar(quem, MotivoDaSoltura.Escapou);
 			Espalhar(quem, dano);
-			foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-				if (Vec2.Distance(o.Pos, pl.Pos) <= RaioDaVista)
-					Avisar(o, $"{pl.Name} se solta do aperto de {quem.Name} com uma cambalhota!");
+			AvisarPertoG3(pl, RaioDaVista, $"{pl.Name} se solta do aperto de {quem.Name} com uma cambalhota!");
 			GD.Print($"[G11] {pl.Name} escapou de {quem.Name} pelo Flip (chance {chance:0.##} x {pl.ContadorDaLuta:0})");
 			return;
 		}
 
 		pl.ContadorDaLuta += 5;
-		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-			if (Vec2.Distance(o.Pos, pl.Pos) <= RaioDaVista)
-				Avisar(o, $"{pl.Name} se debate contra o aperto de {quem.Name}!");
+		AvisarPertoG3(pl, RaioDaVista, $"{pl.Name} se debate contra o aperto de {quem.Name}!");
 	}
 
 	// =====================================================================
 	// 10. SELF DESTRUCT -- `Ki/misc.dm:166-270`
 	// =====================================================================
 	/// <summary>`spawn(25)` entre dois incrementos do `chargecounter` (`misc.dm:257-259`).</summary>
-	private const long PassoDaAutodestruicaoMsG11 = 2500;
-
 	/// <summary>`if(chargecounter>20) if(prob(75))` (`misc.dm:210-211`).</summary>
 	private const int CargaLetalDaAutodestruicaoG11 = 20;
 	private const double ChanceDeMorrerNaAutodestruicaoG11 = 75;
@@ -1022,19 +762,32 @@ public sealed partial class GameServer
 	/// </summary>
 	private void AutodestruirG11(ServerPlayer pl)
 	{
-		if (_cargaG3.ContainsKey(pl.Id)) { Avisar(pl, "voce nao consegue usar isto junto com a Final Explosion."); return; }
-
-		if (_autodestruicaoG11.TryGetValue(pl.Id, out AutodestruicaoG11? carga)) { DetonarG11(pl, carga); return; }
+		if (_cargaG3.TryGetValue(pl.Id, out CargaG3? carga))
+		{
+			// `sdingtype == 2` e a Final Explosion carregando: "You can't use Final Explosion with this"
+			if (carga.Verbo != "Self_Destruct") { Avisar(pl, $"voce nao consegue usar isto junto com a {carga.Nome}."); return; }
+			DetonarG11(pl, carga);
+			return;
+		}
 
 		if (pl.AgarrandoId == 0) { Avisar(pl, "voce precisa estar agarrando alguem!"); return; }
 		if (pl.Ficha.KO) { Avisar(pl, "voce nao consegue fazer isso caido!"); return; }
 		if (pl.Ficha.dead) { Avisar(pl, "morto nao usa isto!"); return; }
 
+		// A CARGA E A MESMA DA FINAL EXPLOSION (a classe, o dicionario e o pulso de 10 Hz): o que e desta
+		// e o passo de 5 (`chargecounter += 5`, `:259`), o limiar de 20, e cair ao soltar o agarrao.
 		long agora = NowMs();
-		_autodestruicaoG11[pl.Id] = new AutodestruicaoG11
+		_cargaG3[pl.Id] = new CargaG3
 		{
-			Contador = 1, ComecouMs = agora, ProximoMs = agora + PassoDaAutodestruicaoMsG11, Ancora = pl.Pos,
+			Verbo = "Self_Destruct", Nome = "autodestruicao",
+			Contador = 1, Passo = 5, Limiar = CargaLetalDaAutodestruicaoG11,
+			AvisoLetal = "a carga passou de vinte: detonar agora tem 75% de chance de te levar junto.",
+			PrecisaAgarrar = true,                // `if(sding && (!grabbee || KO))` -> "lost control" (`:238-246`, `:263-268`)
+			AoCair = CancelarAutodestruicaoG11,
+			Ancora = pl.Pos,                      // `move = 0` (`:237`) virou ancora, como a Final Explosion
+			ComecouMs = agora, ProximoMs = agora + CargaPassoMs,
 		};
+		LigarPulso();
 		MandarEfeito(pl, "carga_final", -1);
 		Avisar(pl, "voce comeca a carregar a sua autodestruicao!");
 		Avisar(pl, "aperte Self Destruct de novo pra detonar. Quanto mais carregar, mais forte a explosao.");
@@ -1043,18 +796,18 @@ public sealed partial class GameServer
 
 	private void CancelarAutodestruicaoG11(ServerPlayer pl)
 	{
-		_autodestruicaoG11.Remove(pl.Id);
+		_cargaG3.Remove(pl.Id);
 		MandarEfeito(pl, "carga_final", 0);
 		AvisarPertoG3(pl, 20 * ZoneCollision.TileSize, $"{pl.Name} perde o controle da situacao.");
 	}
 
-	private void DetonarG11(ServerPlayer pl, AutodestruicaoG11 carga)
+	private void DetonarG11(ServerPlayer pl, CargaG3 carga)
 	{
-		_autodestruicaoG11.Remove(pl.Id);
+		_cargaG3.Remove(pl.Id);
 		MandarEfeito(pl, "carga_final", 0);
 
-		ServerPlayer? mz = pl.AgarrandoId != 0 ? CorpoNaMinhaZona(pl, pl.AgarrandoId) : null;
-		if (mz == null || mz.AgarradoPorId != pl.Id)
+		ServerPlayer? mz = QuemEuSeguro(pl);
+		if (mz == null)
 		{
 			AvisarPertoG3(pl, 20 * ZoneCollision.TileSize, $"{pl.Name} perde o controle da situacao.");
 			return;
@@ -1122,8 +875,10 @@ public sealed partial class GameServer
 	/// (`objects.dm:655`) explodi-lo: e uma ARMADILHA de paralisia de cinco segundos aos pes de quem
 	/// clicou, exatamente o que a skill descreve ("click on the ground to place them").
 	///
-	/// OS NUMEROS: entra com `Ki >= 700*BaseDrain` e cobra `Ki -= 100*BaseDrain` (`:5` e `:8`) --
-	/// os dois estao aqui, do jeito que estao la. `kidebuffcounter += 5`, `BP = expressedBP *
+	/// OS NUMEROS: o DM entrava com `Ki >= 700*BaseDrain` e cobrava `Ki -= 100*BaseDrain` (`:5` e `:8`)
+	/// -- conferia SETE vezes o que cobrava. Por decisao do dono (2026-09-02, "corrija esses bugs q vc
+	/// citou") a porta e o custo sao o MESMO numero, o real: `100*BaseDrain` (a familia "conferia X e
+	/// cobrava Y" que o G5/G6/G7 ja fecharam). `kidebuffcounter += 5`, `BP = expressedBP *
 	/// log(11, max(kidebuffskill, 10))` (`:29`, base ONZE, como o Stunlock), `deflectable = 0`,
 	/// `paralysis = 1`, `basedamage = 0.1`, quatro `Blast_Gain()` e `debuffCD = Eactspeed*6`.
 	/// O `sleep(Eactspeed)` de preparo (`:16`) nao veio, como no G5.
@@ -1139,12 +894,13 @@ public sealed partial class GameServer
 
 		// `if(!usr.med&&!usr.train)` -- meditando, o clique nao faz nada (e nao vira Zanzoken)
 		if (f.med || f.train) { Avisar(pl, "com o fio ligado, meditando ou treinando o clique nao arma nada."); return true; }
-		if (f.KO || f.dead) return true;
-		if (f.Ki < 700 * f.BaseDrain()) { Avisar(pl, $"o fio pede {700 * f.BaseDrain():0} de Ki de reserva."); return true; }
+		if (Caido(pl)) return true;
+		double custo = 100 * f.BaseDrain();   // `:8`; a porta do DM (`:5`) pedia 700x -- ver o cabecalho
+		if (f.Ki < custo) { Avisar(pl, $"o fio pede {custo:0} de Ki."); return true; }
 		if (_canais.ContainsKey(pl.Id)) { Avisar(pl, "voce esta com um raio na mao."); return true; }
-		if (EmEsperaG5(pl, _debuffPronto, "voce ainda nao consegue armar outro fio")) return true;
+		if (EmEspera(pl, _debuffPronto, "voce ainda nao consegue armar outro fio")) return true;
 
-		f.Ki -= 100 * f.BaseDrain();
+		f.Ki -= custo;
 		f.kidebuffskill += 0.5;
 		CreditarContador(pl, "kidebuffcounter", 5);
 
@@ -1164,7 +920,7 @@ public sealed partial class GameServer
 		if (p.Vivo) p.VidaRestante = 5;   // `Burnout()` sem argumento: 50 tiques
 
 		for (int i = 0; i < 4; i++) f.BlastGain(_rng);
-		_debuffPronto[pl.Id] = NowMs() + (long)(Math.Max(f.Eactspeed * 6, 2) * MsPorTique);
+		_debuffPronto[pl.Id] = NowMs() + (long)(Math.Max(f.Eactspeed * 6, 2) * TempoDoDm.MsPorTique);
 
 		Avisar(pl, "voce arma um fio psiquico embaixo dos seus pes.");
 		GD.Print($"[G11] {pl.Name} armou um Fio Psiquico em {pl.Pos}");
@@ -1180,11 +936,12 @@ public sealed partial class GameServer
 	/// da paralisia, entao aqui ele entra pela mesma peca (`_paralisadoAte`, com a fresta de 1 em 12
 	/// que a paralisia do port tem e o Frozen do DM nao tinha).
 	///
-	/// ============================ O DEFEITO VISIVEL: METADE DO KI POR ALVO ============================
-	/// `usr.Ki *= 0.5` esta DENTRO do `for` (`:14-16`): quem congela tres pessoas fica com um oitavo
-	/// do Ki. E a porta e `Ki <= MaxKi*0.25` (`:7`) -- pede mais de um quarto, e nao cobra nada se
-	/// nao houver ninguem pra congelar. Portado assim; o numero esta aqui.
-	/// ==================================================================================================
+	/// ============================ O DEFEITO DO DM: METADE DO KI POR ALVO -- CONSERTADO ============================
+	/// `usr.Ki *= 0.5` esta DENTRO do `for` (`:14-16`): quem congelava tres pessoas ficava com um oitavo
+	/// do Ki. A descricao promete metade; por decisao do dono (2026-09-02, "corrija esses bugs q vc
+	/// citou") a metade sai UMA vez, depois do laco, e so se alguem foi congelado -- a porta continua
+	/// `Ki <= MaxKi*0.25` (`:7`), e sem ninguem a vista continua nao cobrando nada (como no DM).
+	/// ==========================================================================================================
 	///
 	/// O `sleep(10)` entre um alvo e outro (`:15`) nao veio (despacho sincrono): todos congelam no
 	/// mesmo instante. `!A.Frozen` -- quem ja esta com as pernas trancadas nao renova e nao paga.
@@ -1192,7 +949,7 @@ public sealed partial class GameServer
 	private void CongelarG11(ServerPlayer pl)
 	{
 		Fighter f = pl.Ficha;
-		if (f.KO || f.dead) { Avisar(pl, "voce nao esta em condicoes."); return; }
+		if (RecusarCaido(pl)) return;
 		if (f.Ki <= f.MaxKi * 0.25) { Avisar(pl, "voce nao consegue congelar o tempo com tao pouco Ki!"); return; }
 
 		int pegos = 0;
@@ -1203,13 +960,13 @@ public sealed partial class GameServer
 			if (Vec2.Distance(a.Pos, pl.Pos) > RaioDaVista) continue;
 			if (_paralisadoAte.ContainsKey(a.Id)) continue;   // `!A.Frozen`
 
-			f.Ki *= 0.5;   // POR ALVO -- ver o cabecalho
 			long ms = (long)(20 * f.Ekiskill / Math.Max(a.Ficha.Ephysoff, 1e-9) * 100);
 			_paralisadoAte[a.Id] = agora + ms;
 			MandarEfeito(a, "paralisia", ms);
 			Avisar(a, $"{pl.Name} congela o tempo em volta de voce: suas pernas param ({ms / 1000.0:0.#}s).");
 			pegos++;
 		}
+		if (pegos > 0) f.Ki *= 0.5;   // UMA vez (o `:16` cobrava dentro do `for`) -- ver o cabecalho
 
 		MandarEfeito(pl, "timefreeze", 1000);
 		Avisar(pl, pegos == 0
@@ -1232,8 +989,9 @@ public sealed partial class GameServer
 	/// AS TRES RECUSAS SAO AS DA TELEPATIA (`:9`): quem esconde o poder, Android e `expressedBP <= 5`
 	/// -- "You can't find their energy!" (o `AchoAEnergiaG4`). Observar a si mesmo, ou mandar sem
 	/// nome, solta (`:4-8`: `M == usr` reseta a perspectiva). O `observingnow` e o campo que o
-	/// `Advanced_Ki_Awareness` le pra render mais exp (`Mind.dm:461-462`) -- o motor de niveis ainda
-	/// nao avalia essa condicao, entao a exp fica pra quando avaliar; o campo ja esta certo.
+	/// `Advanced_Ki_Awareness` le pra render mais exp (`Mind.dm:461-462`) -- e desde o lote G13 o
+	/// motor de niveis AVALIA essa condicao (`RegraDeNivel.Estado.Observando`): projetar a mente
+	/// treina Percepcao de Ki a 3 por tique em vez de 1.
 	/// </summary>
 	private void ObservarG11(ServerPlayer pl, string arg)
 	{
@@ -1294,7 +1052,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void OferecerPotencialG11(ServerPlayer pl)
 	{
-		if (pl.Ficha.dead || pl.Ficha.KO) { Avisar(pl, "voce nao esta em condicoes."); return; }
+		if (RecusarCaido(pl)) return;
 
 		ServerPlayer? alvo = Marcado(pl);
 		if (alvo != null && Vec2.Distance(alvo.Pos, pl.Pos) > RaioDeUmTileG4)
@@ -1389,9 +1147,7 @@ public sealed partial class GameServer
 		MandarFicha(alvo);
 		if (EhJogador(alvo)) Persistir(alvo);
 
-		foreach (ServerPlayer v in ZoneList(alvo.Zone.Hash))
-			if (Vec2.Distance(v.Pos, alvo.Pos) <= RaioDaVista)
-				Avisar(v, $"{quem.Name} desperta o potencial de {alvo.Name}!");
+		AvisarPertoG3(alvo, RaioDaVista, $"{quem.Name} desperta o potencial de {alvo.Name}!");
 		string msg = $"seu potencial desperta! +{gainedBase:N0} de BP base";
 		if (gainedHidden > 0) msg += $" e +{gainedHidden:N0} do potencial acumulado (treino/idade)";
 		Avisar(alvo, msg + ".");
@@ -1440,15 +1196,11 @@ public sealed partial class GameServer
 		// `after_learn` e apagada no `before_forget` (`givepower.dm:13,17`) -- ela e "sabe a skill", que o
 		// `SabeTecnica` do despacho ja perguntou. (O campo continua chegando pelo extrator, como dado.)
 		Fighter f = pl.Ficha;
-		if (f.KO || f.dead) { Avisar(pl, "voce nao esta em condicoes."); return; }
+		if (RecusarCaido(pl)) return;
+		if (EmEspera(pl, _poderDadoAteG11, "seu corpo ainda se recompoe da ultima doacao")) return;
 		long agora = NowMs();
-		if (_poderDadoAteG11.TryGetValue(pl.Id, out long ate) && agora < ate)
-		{
-			Avisar(pl, $"seu corpo ainda se recompoe da ultima doacao ({(ate - agora) / 1000.0:0.#}s).");
-			return;
-		}
 
-		ServerPlayer? alvo = Marcado(pl) ?? AoLadoG2(pl, 5 * ZoneCollision.TileSize);
+		ServerPlayer? alvo = Marcado(pl) ?? AlvoDeTecnica(pl, 5 * ZoneCollision.TileSize);
 		if (alvo == null || alvo == pl || !EhPessoa(alvo) || alvo.Combate == null)
 		{
 			Avisar(pl, "marque um jogador a ate cinco tiles pra receber a sua energia.");
@@ -1460,9 +1212,7 @@ public sealed partial class GameServer
 		_doacaoG11[pl.Id] = doacao;
 		_poderDadoAteG11[pl.Id] = agora + TravaDaDoacaoMsG11;
 		MandarEfeito(pl, "dando_poder", -1);
-		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-			if (Vec2.Distance(o.Pos, pl.Pos) <= 12 * ZoneCollision.TileSize)
-				Avisar(o, $"{pl.Name} transfere a propria energia pra {alvo.Name}!!");
+		AvisarPertoG3(pl, 12 * ZoneCollision.TileSize, $"{pl.Name} transfere a propria energia pra {alvo.Name}!!");
 		// A PRIMEIRA DOSE SAI NO APERTO: o `while` do DM roda a primeira volta ANTES do primeiro
 		// `sleep(2)` (`:41-48`); as seguintes vem do efetor, a cada 0,2 s.
 		DoseDaDoacaoG11(pl, doacao, alvo);
@@ -1499,8 +1249,9 @@ public sealed partial class GameServer
 	/// <summary>
 	/// TUDO QUE E `effector()` NESTE LOTE roda aqui, no bloco de 5 Hz do servidor -- a MESMA cadencia
 	/// do `spawn while(savant) { effector(); sleep(2) }` do DM. O que tem cadencia propria (a agua a
-	/// 0,3 s, o Loop do Expand a 1 s, o decaimento do CooldownAmount a 1 s, os passos de 2,5 s da
-	/// autodestruicao) acumula o dt e dispara no prazo -- a disciplina do `_relogioDoEstomago`.
+	/// 0,3 s, o Loop do Expand a 1 s, o decaimento do CooldownAmount a 1 s) acumula o dt e dispara no
+	/// prazo -- a disciplina do `_relogioDoEstomago`. A carga da autodestruicao NAO mora aqui: ela e uma
+	/// `CargaG3` e anda no pulso de 10 Hz do G3, onde os prazos dela estao escritos.
 	/// </summary>
 	private void TickDoEfetorG11()
 	{
@@ -1528,7 +1279,6 @@ public sealed partial class GameServer
 			}
 
 			if (_transmissaoG11.TryGetValue(pl.Id, out TransmissaoG11? t)) TickDaTransmissaoG11(pl, t, agora);
-			if (_autodestruicaoG11.TryGetValue(pl.Id, out AutodestruicaoG11? c)) TickDaAutodestruicaoG11(pl, c, agora);
 			if (_doacaoG11.TryGetValue(pl.Id, out DoacaoG11? d)) TickDaDoacaoG11(pl, d, agora);
 
 			if (f.dead) continue;
@@ -1880,13 +1630,12 @@ public sealed partial class GameServer
 		{
 			DesligarBuff(pl, "Expand_Body");
 			f.expandlevel = 0;
-			MandarEfeito(pl, "expand", 0);
 			Avisar(pl, "sem energia, seu corpo relaxa sozinho.");
 		}
 	}
 
 	// ---------------------------------------------------------------
-	// 16g. OS PENDENTES: transmissao, autodestruicao, doacao, CooldownAmount
+	// 16g. OS PENDENTES: transmissao, doacao, CooldownAmount
 	// ---------------------------------------------------------------
 	private void TickDaTransmissaoG11(ServerPlayer pl, TransmissaoG11 t, long agora)
 	{
@@ -1904,45 +1653,6 @@ public sealed partial class GameServer
 		ChegarPelaTransmissaoG11(pl, t);
 	}
 
-	private void TickDaAutodestruicaoG11(ServerPlayer pl, AutodestruicaoG11 c, long agora)
-	{
-		// `if(sding && (!grabbee || KO))` -> "lost control" (`misc.dm:238-246`, `:263-268`)
-		if (pl.Ficha.KO || pl.Ficha.dead || pl.AgarrandoId == 0)
-		{
-			CancelarAutodestruicaoG11(pl);
-			return;
-		}
-
-		// `move = 0` (`:237`) virou ancora, como a Final Explosion
-		if (Vec2.Distance(pl.Pos, c.Ancora) > 4)
-		{
-			pl.Pos = c.Ancora;
-			pl.LastInputMs = agora;
-			pl.CorrecaoEsperadaAte = agora + 400;
-			pl.SeqDoTeleporte = pl.SeqInput;
-			MandarCorrecaoG3(pl);
-		}
-
-		long decorrido = agora - c.ComecouMs;
-		if (c.Narrou < 1 && decorrido >= 2000)
-		{
-			c.Narrou = 1;
-			AvisarPertoG3(pl, 20 * ZoneCollision.TileSize, $"{pl.Name} comeca a juntar toda a energia em volta dentro do proprio corpo!");
-		}
-		else if (c.Narrou < 2 && decorrido >= 6000)
-		{
-			c.Narrou = 2;
-			AvisarPertoG3(pl, 20 * ZoneCollision.TileSize, $"o chao comeca a tremer com forca em volta de {pl.Name}!");
-		}
-
-		if (agora < c.ProximoMs) return;
-		c.Contador += 5;   // `chargecounter += 5` (`:259`)
-		c.ProximoMs = agora + PassoDaAutodestruicaoMsG11;
-		MandarEfeito(pl, "carga_final", -1);
-		if (c.Contador == CargaLetalDaAutodestruicaoG11 + 1)
-			Avisar(pl, "a carga passou de vinte: detonar agora tem 75% de chance de te levar junto.");
-	}
-
 	private void TickDaDoacaoG11(ServerPlayer pl, DoacaoG11 d, long agora)
 	{
 		Fighter f = pl.Ficha;
@@ -1953,14 +1663,7 @@ public sealed partial class GameServer
 		if (!continua) { EncerrarDoacaoG11(pl, d); return; }
 
 		// o `gavepower` prende o doador no lugar enquanto doa (`movement handler.dm:139`)
-		if (Vec2.Distance(pl.Pos, d.Ancora) > 4)
-		{
-			pl.Pos = d.Ancora;
-			pl.LastInputMs = agora;
-			pl.CorrecaoEsperadaAte = agora + 400;
-			pl.SeqDoTeleporte = pl.SeqInput;
-			MandarCorrecaoG3(pl);
-		}
+		Ancorar(pl, d.Ancora);
 
 		DoseDaDoacaoG11(pl, d, alvo!);
 	}
@@ -2016,9 +1719,7 @@ public sealed partial class GameServer
 	{
 		_sneakAteG11.Remove(id);
 		_prontoMajinG11.Remove(id);
-		_prontoSaltoG11.Remove(id);
 		_transmissaoG11.Remove(id);
-		_autodestruicaoG11.Remove(id);
 		_doacaoG11.Remove(id);
 		_poderDadoAteG11.Remove(id);
 		_bufferHeranG11.Remove(id);

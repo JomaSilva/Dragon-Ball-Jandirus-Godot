@@ -305,6 +305,9 @@ public partial class TelaDeInventario : CanvasLayer
 		"tirar" => "Tirar os pesos",
 		"usar" => "Usar",
 		"cavar" => "Cavar aqui",
+		// O LIVRO DE ENSINAMENTOS (lote G13). "Ler" sozinho serviria -- o `_` la embaixo ja
+		// capitaliza --, mas o botao precisa dizer que o livro SE GASTA, e isso nao cabe no verbo.
+		"ler" => "Ler (gasta o livro)",
 		"jogar" => "Jogar no alvo marcado",
 		// A PALAVRA E A DO DONO ("clicar em instalar"), e ela e a MESMA na frase que o servidor manda
 		// depois de fabricar -- ver `GameServer.Construir`. Duas palavras pro mesmo botao fariam o

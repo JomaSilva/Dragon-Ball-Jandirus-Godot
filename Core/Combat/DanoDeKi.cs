@@ -34,6 +34,16 @@ namespace Jandirus.Core.Combat;
 public static class DanoDeKi
 {
 	/// <summary>
+	/// `log_10(max(x, piso))` -- o padrao que aparece em quase todo `basedamage` do `blasts.dm`.
+	///
+	/// Existe como funcao pra que o piso NAO seja digitado vinte vezes: e ele que faz um personagem
+	/// novo (pericia zero) receber exatamente 1,0 em vez de menos infinito, e um piso esquecido num
+	/// dos vinte seria um dano negativo que ninguem consegue relatar. Cada lote tinha a sua copia
+	/// (`Log10Min`, `Log10G12`); esta e a unica.
+	/// </summary>
+	public static double Log10Min(double x, double piso) => Math.Log(Math.Max(x, piso)) / Math.Log(10);
+
+	/// <summary>
 	/// `var/globalKiDamage = 2` (`objects.dm:56`) -- o irmao do `globalmeleeattackdamage`, que no
 	/// port e <see cref="CombatKnobs.DanoGlobal"/>. Botao de balanceamento: mexe no dano de TODO
 	/// ataque de ki de uma vez.

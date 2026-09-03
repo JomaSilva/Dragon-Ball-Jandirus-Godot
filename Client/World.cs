@@ -656,8 +656,25 @@ public partial class World : Node2D
 			case "explosao_final":
 				if (ligado && _local != null) EstouroNoMundo(_local.GlobalPosition, Math.Abs(ms));
 				break;
+
+			// ============================ O ID SEM DESENHO NAO PODE SER MUDO ============================
+			// O canal aceita qualquer id, e o que nao tinha `case` aqui caia no chao em silencio perfeito
+			// -- foi assim que a Final Explosion ficou meses sem estouro (o `case` logo acima). Hoje os
+			// ids do lote G11 (`expand`, `majin`, `kaikai`, `devilbringer`, `transmissao`, `timefreeze`,
+			// `dando_poder`, `zanzoken`, `carga_final`, `paralisia`, `invisivel`) chegam, entram em
+			// `GameClient.EfeitosAtivos` e NAO sao desenhados -- divida NOMEADA em `PROXIMOS-SISTEMAS.md`,
+			// secao 6 ("efeitos que chegam sem desenho"). Ate alguem desenha-los, cada id novo e dito UMA
+			// vez no console: o silencio e o que se proibe aqui, nao a falta de arte.
+			// ==========================================================================================
+			default:
+				if (_efeitosSemDesenho.Add(efeito))
+					GD.Print($"[efeito] '{efeito}' chegou ({ms} ms) e este cliente nao o desenha -- divida nomeada em PROXIMOS-SISTEMAS.md");
+				break;
 		}
 	}
+
+	/// <summary>Os ids de efeito que ja chegaram sem `case` -- pra dizer cada um UMA vez. Ver o `default` acima.</summary>
+	private readonly HashSet<string> _efeitosSemDesenho = new(StringComparer.Ordinal);
 
 	/// <summary>
 	/// UM ESTOURO ANCORADO NO MUNDO -- o quad do <c>EstouroDePlaneta.gdshader</c>, mais o tremor e o som.

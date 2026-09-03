@@ -43,7 +43,41 @@ public sealed partial class Fighter
 
 		buffBuff = expandBuff * giantFormbuff * ArtifactsBuff * eyeBuff;
 		formBuff = ssjBuff * transBuff * formsBuff * gateBuff * HellstarBuff * Math.Max(ue_ego_mult, 1);
-		deBuff = 1 / Math.Max(weight * BPrestriction * splitformdeBuff, 1);
+		// ==================== O CORTE POR COPIA VIVA SAIU DE DENTRO DO `max(...,1)` ====================
+		// DIVERGENCIA DECLARADA DO DM (`Modules/Stats/BP/base.dm:84`) -- nao e correcao de port. La esta
+		// escrito `1/max((weight*BPrestriction*splitformdeBuff),1)`, com o fator da copia DENTRO da
+		// guarda, e este port copiou aquilo letra por letra ate 2026-09-02. O defeito e do original.
+		//
+		// O ERRO E DE FAMILIA (ver o cabecalho desta classe). O `splitformdeBuff` nasce em
+		// `min((1+splitformMastery)/(1+splitformCount),1)`: por CONSTRUCAO ele e <= 1. E a guarda
+		// `max(...,1)` existe pros OUTROS dois fatores, que sao divisores e entram acima de 1 -- peso e
+		// `max(min(weight_ratio*2, WEIGHT_GAIN_MAX),1)` e restricao e `= weight`, 1, ou os 100 da larva
+		// bio (`Stats.dm:373-388`, `DNALabs.dm:494`). A guarda so impede que um divisor abaixo de 1 vire
+		// buff. Um fator <= 1 metido nesse mesmo produto nao tem como sobreviver a ela:
+		//   - corpo sem peso vestido (`weight = 1`, `BPrestriction = 1`), que e o caso comum: o produto
+		//     da <= 1, a guarda devolve 1, o `deBuff` sai 1 -- a copia viva NAO cobra nada;
+		//   - corpo com peso (`weight*BPrestriction > 1`): ele DIVIDE o divisor, isto e, ALIVIA a
+		//     penalidade do chumbo. Dividir o corpo deixava o jogador com MAIS poder expresso.
+		// Em nenhum ramo ele cortou coisa alguma, e a guarda nunca teve outro efeito real alem de
+		// mata-lo: os dois operandos que ela protege ja nascem >= 1 sozinhos.
+		//
+		// AQUI ELE VIRA O QUE O PROPRIO DM DIZ QUE ELE E. O comentario da declaracao (`base.dm:23`) le
+		// "debuffs player depending on splitform count", e `splitformCount`/`splitformMastery` nao tem
+		// NENHUM outro consumidor no jogo inteiro -- os dois existem so pra alimentar este corte.
+		// Multiplicando o `deBuff` por fora da guarda ele finalmente cobra: uma copia sem maestria custa
+		// metade do poder expresso ((1+0)/(1+1) = 0,5) e cada 0,2 de maestria (uma subida do
+		// `Splitformskill`) devolve um pedaco, ate a maestria 1 anular o custo de uma copia.
+		//
+		// SEM COPIA NADA MUDA -- e e isso que torna a divergencia segura. Com `splitformCount = 0` o
+		// fator vale exatamente 1 e a linha devolve `1/max(weight*BPrestriction,1)`, o mesmo numero do
+		// DM pra todo corpo que nao dividiu (a esmagadora maioria deles).
+		//
+		// E FICA NO `deBuff`, NAO NUMA FAMILIA NOVA, porque e fator de CONDICAO: "estou espalhado em
+		// duas carcacas" e da mesma natureza que peso e ferimento, e e assim que a `Inteireza` e o
+		// `peakexBP` precisam enxerga-lo. Na familia 1 (multiplicando `tempBP`) ele sumiria da % de
+		// poder efetivo; na familia 3 (no fim) passaria por cima do teto duro da larva bio.
+		// ==============================================================================================
+		deBuff = splitformdeBuff / Math.Max(weight * BPrestriction, 1);
 
 		// Ki acima de 100% e LINEAR: 200% = 2x, 300% = 3x. A versao antiga inflava a faixa
 		// 100-200% (150% virava 1,66x) antes de virar linear.
@@ -149,7 +183,9 @@ public sealed partial class Fighter
 		relBPmax = BP * (1 + UPMod) * relcaprate * BPMod;
 		if (HVBPAddEnd) relBPmax = BP;
 
-		// O QUE O PERSONAGEM SERIA SEM IDADE, PESO, FERIMENTO E GRAVIDADE -- o "poder de pico".
+		// O QUE O PERSONAGEM SERIA SEM IDADE, PESO, FERIMENTO, COPIA VIVA E GRAVIDADE -- o "poder de
+		// pico". (A COPIA entrou nesta lista em 2026-09-02, junto com o corte que passou a existir de
+		// verdade: ela chega aqui dentro do `deBuff`, que e por onde peso e restricao ja entravam.)
 		//
 		// A DIVISAO E O QUE FAZ A FORMA SUMIR DA CONTA, e e essa a propriedade que interessa: SSJ,
 		// God Ki e raiva multiplicam os DOIS lados, entao a razao `expressedBP / peakexBP` nao se
@@ -194,7 +230,8 @@ public sealed partial class Fighter
 	/// causa dele um corpo perfeitamente inteiro com Ki cheio media 98,0% em vez de 100%.
 	/// =============================================================================================================
 	///
-	/// Ki, vida, estamina, idade, peso/restricao e gravidade -- e mais nada. TRANSFORMAR NAO A MEXE,
+	/// Ki, vida, estamina, idade, peso/restricao, COPIA VIVA (divisao do corpo) e gravidade -- e mais
+	/// nada. TRANSFORMAR NAO A MEXE,
 	/// porque nenhum fator de forma entra neste produto; e essa invariancia e a definicao que o dono
 	/// deu, de graca.
 	///

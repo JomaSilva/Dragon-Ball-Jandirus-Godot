@@ -326,6 +326,7 @@ public static class CatalogoDeItens
 	public static ItemDef? Get(string id)
 	{
 		if (Tudo.TryGetValue(id, out ItemDef? mao)) return mao;
+		if (LivroDeEnsinamentos.Ler(id) is { } livro) return livro.Ficha;
 
 		Tech.Construcao? c = Obras?.Get(id);
 		if (c == null) return null;
@@ -478,5 +479,76 @@ public sealed class Inventario
 	{
 		Pilhas.RemoveAll(p => CatalogoDeItens.Get(p.Id) == null || p.Quantidade <= 0);
 		if (Pilhas.Count > Slots) Pilhas.RemoveRange(Slots, Pilhas.Count - Slots);
+	}
+}
+
+/// <summary>
+/// O LIVRO DE ENSINAMENTOS -- o `/obj/items/book/Skillbook` do original (`KiStatsModule.dm:178-200`),
+/// escrito pelo verb `Write_Teachings` e lido por quem sabe a mesma skill num nivel mais baixo.
+///
+/// ============================ ELE NAO CABE NO CATALOGO ESCRITO A MAO, E POR ISSO E UM ID ============================
+/// Todo item deste port e um par `(id, quantidade)`: a mochila nao guarda estado POR UNIDADE
+/// (`Pilha`), o pacote de rede so leva o id e o numero, e o save so grava isso. O livro do DM tem
+/// tres campos proprios (`skillname`, `level`, `exp`) e duas copias dele nunca sao iguais.
+///
+/// Havia duas saidas: por um campo de carga na `Pilha` -- o que mexeria no save, no protocolo, na
+/// tela do inventario e em todo lugar que copia uma pilha --, ou **por o dado NO PROPRIO ID**. Vai
+/// no id, porque o id ja atravessa as tres pontas intacto e porque a mochila nao precisa aprender
+/// nada de novo: `Livro|Basic Ki Awareness|48` E o livro.
+///
+/// O `exp` NAO ENTRA NO ID porque ele nao e um dado independente: no DM os dois campos saem do
+/// MESMO numero, o nivel do autor na hora de escrever (`writelevel = round(level/2)`,
+/// `writeexp = 2000*max(1,log(2,level))*1.04**level`, `:163-165`). Guardar o nivel do autor guarda
+/// os dois, e sem risco de gravar um par que o DM nunca produziria.
+///
+/// O NOME DA SKILL, E NAO O TYPEPATH, tambem e do DM: o `Study_Book` compara `S.name == skillname`
+/// (`:196`). Isso vale de graca TRES coisas -- a tela mostra o livro sem consultar catalogo nenhum,
+/// o id fica curto (o maior nome de `/datum/skill/mind` tem 25 letras contra 30 do typepath), e ele
+/// nao tem BARRA dentro: o canal de itens do servidor (`GameServer.ComandoDeItem`) parte o argumento
+/// na primeira `/` pra carregar um numero junto ("Weights/40"), e um id com typepath seria cortado
+/// no primeiro segmento -- o livro viraria "isso nao existe" no clique.
+/// ============================================================================================================
+/// </summary>
+public sealed record LivroDeEnsinamentos(string Skill, int NivelDoAutor)
+{
+	/// <summary>O prefixo do id. Uma constante porque ela e um contrato entre o catalogo e o servidor.</summary>
+	public const string Prefixo = "Livro|";
+
+	/// <summary>
+	/// ATE QUE NIVEL ELE ENSINA -- `writelevel = round(nA.level/2)` (`KiStatsModule.dm:164`). O
+	/// `round()` de um argumento no BYOND e PISO, nao arredondamento.
+	/// </summary>
+	public int NivelQueEnsina => (int)Math.Floor(NivelDoAutor / 2.0);
+
+	/// <summary>
+	/// QUANTO EXP ELE DA -- `2000 * max(1, log(2, level)) * 1.04**level` (`:165`). Ele ainda passa
+	/// pelo `KiSkillGains` do leitor na hora de ler (`:198`), como no original.
+	/// </summary>
+	public double Exp => 2000 * Math.Max(1, Math.Log2(Math.Max(NivelDoAutor, 1))) * Math.Pow(1.04, NivelDoAutor);
+
+	public string Id => $"{Prefixo}{Skill}|{NivelDoAutor}";
+
+	/// <summary>A ficha que a mochila e a tela leem. "ler" e a acao -- o `Study_Book` do DM.</summary>
+	public ItemDef Ficha => new(
+		Id,
+		$"Ensinamentos: {Skill}",
+		$"Um livro escrito por alguem que chegou ao nível {NivelDoAutor} de {Skill}. "
+		+ $"Só ensina quem já sabe {Skill} e ainda está no nível {NivelQueEnsina} ou abaixo -- "
+		+ "e some ao ser lido.",
+		"res://Assets/Sprites/Misc/Objects/Technology/Books.tres", "",
+		Empilhavel: false, Acoes: ["ler"]);
+
+	/// <summary>Desmonta um id de livro. Nulo pra qualquer outro id -- e a porta do <see cref="CatalogoDeItens.Get"/>.</summary>
+	public static LivroDeEnsinamentos? Ler(string id)
+	{
+		if (!id.StartsWith(Prefixo, StringComparison.Ordinal)) return null;
+		int barra = id.LastIndexOf('|');
+		if (barra <= Prefixo.Length - 1) return null;
+		string skill = id[Prefixo.Length..barra];
+		// NOME VAZIO NAO VIRA LIVRO: um id malformado (de um save adulterado, ou de um cliente
+		// remendado) tem que devolver nulo pra o `Sanear` da mochila varrer a pilha, e nao um item
+		// sem nome que a tela desenha como um quadrado mudo.
+		if (skill.Length == 0 || !int.TryParse(id[(barra + 1)..], out int nivel) || nivel <= 0) return null;
+		return new LivroDeEnsinamentos(skill, nivel);
 	}
 }

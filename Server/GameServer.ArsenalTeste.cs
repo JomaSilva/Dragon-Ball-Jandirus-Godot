@@ -10,7 +10,7 @@ namespace Jandirus.Server;
 ///
 /// ============================ ELA EXERCITA A PRODUCAO, E SO ELA ============================
 /// Nenhuma familia daqui chama o efeito direto. Toda tecnica entra por
-/// <see cref="UsarHabilidade"/> -> <see cref="UsarTecnica"/> -> <see cref="UsarTecnicasG5"/> --
+/// <see cref="UsarHabilidade"/> -> <see cref="UsarTecnica"/> -> o registro de tecnicas vivas do lote G5 --
 /// o mesmo caminho do pacote do jogador, com o mesmo `SabeTecnica` no meio. Uma bancada que
 /// chamasse `MasenkoG5(pl)` na mao provaria que o metodo existe, e nao que o jogador o alcanca:
 /// e exatamente esse o buraco que deixou 60 verbos concedidos e mudos por meses.
@@ -130,7 +130,7 @@ public partial class GameServer
 		foreach ((string v, _) in PorSkillG5) todos.Add(v);
 
 		AfirmarArs("as catorze do lote sao exatamente as catorze desta bancada",
-				   todos.Count == 14 && todos.TrueForAll(EhDoLoteG5),
+				   todos.Count == 14 && todos.TrueForAll(v => EhDoLote("G5", v)),
 				   $"{todos.Count} verbos");
 
 		var mudas = todos.FindAll(v => Tecnicas.Get(v)!.Modo == Modo.NaoPortada);
@@ -138,31 +138,27 @@ public partial class GameServer
 				   mudas.Count == 0, string.Join(" | ", mudas));
 
 		// O DEFEITO INJETADO: um verbo de ki que EXISTE no DM e que este lote NAO portou nao pode
-		// ser reconhecido. Sem esta afirmacao, um `EhDoLoteG5` que devolvesse sempre `true` faria
+		// ser reconhecido. Sem esta afirmacao, um `EhDoLote` que devolvesse sempre `true` faria
 		// a familia inteira passar -- e o `default` do despacho engoliria toda tecnica muda em
 		// silencio, que e o oposto do que este lote existe pra consertar.
 		// ERA A `Death_Ball`, portada pelo lote G12 (`GameServer.Tecnicas.G12.cs`) -- esta linha ficou
 		// vermelha por isso. O exemplo agora e o `Reincarnate_Mob` (reencarnacao: sistema ausente,
 		// `CensoDeSkills.SistAlem`), que nao esta em lote nenhum.
 		AfirmarArs("...e uma tecnica que este lote NAO portou (Reincarnate_Mob) continua fora dele",
-				   !EhDoLoteG5("Reincarnate_Mob") && Tecnicas.Get("Reincarnate_Mob")!.Modo == Modo.NaoPortada);
+				   !EhDoLote("G5", "Reincarnate_Mob") && Tecnicas.Get("Reincarnate_Mob")!.Modo == Modo.NaoPortada);
 
 		Vec2 chao = CorredorLivre(24);
 		ServerPlayer nu = Forjar("SemSkill", chao, bp: 5_000);
 		nu.Facing = Facing.East;
 
-		EscutaDeAvisos = [];
-		UsarHabilidade(nu, "Final_Flash");
+		List<string> falas = ApertarEOuvir(nu, "Final_Flash");
 		AfirmarArs("quem NAO comprou a skill ouve \"voce nao sabe\" e nao abre canal nenhum",
 				   ProjeteisDaZona(nu.Zone.Hash).Count == 0 && !_canais.ContainsKey(nu.Id)
-				   && EscutaDeAvisos.Exists(a => a.Contains("nao sabe", StringComparison.OrdinalIgnoreCase)),
-				   string.Join(" | ", EscutaDeAvisos));
+				   && Disse(falas, "nao sabe"), Ultimos(falas));
 
-		EscutaDeAvisos.Clear();
 		double kiAntes = nu.Ficha.Ki;
 		UsarHabilidade(nu, "Hellzone_Grenade");
 		AfirmarArs("...e a recusa nao cobra Ki nenhum", Math.Abs(nu.Ficha.Ki - kiAntes) < 0.001);
-		EscutaDeAvisos = null;
 
 		LimparTudoDaBancada();
 	}
@@ -220,22 +216,17 @@ public partial class GameServer
 		LimparTudoDaBancada();
 	}
 
-	/// <summary>Um corpo com as catorze destravadas -- o ponto de partida das familias 3 a 6.</summary>
+	/// <summary>
+	/// Um corpo com as catorze destravadas -- o ponto de partida das familias 3 a 6. O KI DAS TECNICAS
+	/// CARAS: a Paralysis pede 700 x `BaseDrain` e a Hellzone chega perto disso vezes o numero de
+	/// bolas; sem o tanque metade das familias mediria a recusa por falta de energia, que ja tem
+	/// bancada propria na `--projetilteste`.
+	/// </summary>
 	private ServerPlayer ForjarArmado(string nome, Vec2 onde, double bp)
-	{
-		ServerPlayer pl = Forjar(nome, onde, bp);
-		var save = new NivelSave();
-		foreach ((_, string path, int nivel) in PorDegrauG5) save.Skills[path] = [nivel, 0];
-		pl.Niveis.DoSave(save);
-		foreach ((_, string path) in PorSkillG5) pl.Livro.Dar(path);
-
-		// O KI DAS TECNICAS CARAS: a Paralysis pede 700 x `BaseDrain` e a Hellzone chega perto disso
-		// vezes o numero de bolas. Sem esta linha metade das familias mediria a recusa por falta de
-		// energia, que ja tem bancada propria na `--projetilteste`.
-		pl.Ficha.MaxKi = Math.Max(pl.Ficha.MaxKi, 5_000_000);
-		pl.Ficha.Ki = pl.Ficha.MaxKi;
-		return pl;
-	}
+		=> ForjarComSkills(nome, onde, bp,
+						   skills: [.. PorSkillG5.Select(t => t.Path)],
+						   degraus: [.. PorDegrauG5.Select(t => (t.Path, t.Nivel))],
+						   kiMin: 5_000_000);
 
 	// =====================================================================
 	// 3) OS QUATRO RAIOS
@@ -313,13 +304,9 @@ public partial class GameServer
 
 		// A RECARGA E COMPARTILHADA (`barrageCD`). O defeito injetado: se cada verbo tivesse a sua,
 		// o jogador alternaria os dois e dobraria o volume de fogo sem pagar nada por isso.
-		EscutaDeAvisos = [];
-		UsarHabilidade(pl, "Scattershot");
+		List<string> falas = ApertarEOuvir(pl, "Scattershot");
 		AfirmarArs("...e o Tiro Disperso e RECUSADO em seguida: a recarga e a MESMA das duas",
-				   ProjeteisDaZona(pl.Zone.Hash).Count == cru
-				   && EscutaDeAvisos.Exists(a => a.Contains("faltam", StringComparison.OrdinalIgnoreCase)),
-				   string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos = null;
+				   ProjeteisDaZona(pl.Zone.Hash).Count == cru && Disse(falas, "faltam"), Ultimos(falas));
 
 		// OS CAMPOS ORFAOS ACORDARAM: `bonusShots` e `volleyskill` estavam sendo escritos por 10
 		// degraus cada e caiam em `EfeitosDeSkill.Desconhecidos`. Se eles nao chegassem na conta, o
@@ -351,16 +338,13 @@ public partial class GameServer
 			_projeteisVivos++;
 		}
 		double kiAntes = pl.Ficha.Ki;
-		EscutaDeAvisos = [];
-		UsarHabilidade(pl, "Energy_Barrage");
+		falas = ApertarEOuvir(pl, "Energy_Barrage");
 		AfirmarArs("com a zona quase cheia a barragem e RECUSADA inteira, e nao entregue pela metade",
-				   lista.Count == MaxProjeteisPorZona - 3
-				   && EscutaDeAvisos.Exists(a => a.Contains("saturado", StringComparison.OrdinalIgnoreCase)),
-				   $"{lista.Count} tiros | {string.Join(" | ", EscutaDeAvisos)}");
+				   lista.Count == MaxProjeteisPorZona - 3 && Disse(falas, "saturado"),
+				   $"{lista.Count} tiros | {Ultimos(falas)}");
 		AfirmarArs("...e a recusa NAO cobrou o Ki da barragem que nao saiu",
 				   Math.Abs(pl.Ficha.Ki - kiAntes) < 0.001,
 				   $"{kiAntes:0.#} -> {pl.Ficha.Ki:0.#}");
-		EscutaDeAvisos = null;
 
 		LimparTudoDaBancada();
 	}
@@ -376,13 +360,9 @@ public partial class GameServer
 		ServerPlayer pl = ForjarArmado("Cercador", chao, bp: 50_000);
 		pl.Facing = Facing.East;
 
-		EscutaDeAvisos = [];
-		UsarHabilidade(pl, "Ki_Bomb");
+		List<string> falas = ApertarEOuvir(pl, "Ki_Bomb");
 		AfirmarArs("sem alvo marcado o cerco e recusado com motivo",
-				   ProjeteisDaZona(pl.Zone.Hash).Count == 0
-				   && EscutaDeAvisos.Exists(a => a.Contains("alvo", StringComparison.OrdinalIgnoreCase)),
-				   string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos = null;
+				   ProjeteisDaZona(pl.Zone.Hash).Count == 0 && Disse(falas, "alvo"), Ultimos(falas));
 
 		ServerPlayer vitima = Forjar("Cercado", chao + new Vec2(6 * ZoneCollision.TileSize, 0), bp: 5_000);
 		pl.AlvoId = vitima.Id;

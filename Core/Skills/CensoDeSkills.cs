@@ -1,4 +1,4 @@
-using Jandirus.Core.Ranks;
+﻿using Jandirus.Core.Ranks;
 
 namespace Jandirus.Core.Skills;
 
@@ -254,10 +254,24 @@ public static class CensoDeSkills
 		["Collect_Earth_Taxes"] = SistImposto, ["Collect_Vegeta_Taxes"] = SistImposto,
 		["Exempt_Earth_Taxes"] = SistImposto, ["Exempt_Vegeta_Taxes"] = SistImposto,
 
-		// ---- 5 ----
-		// O `Ki_Targets` SAIU daqui pelo lote G12 (parcial: sem o clique, ver o lote).
-		["Focus_Skill"] = SistEstudo, ["Study_Other"] = SistEstudo,
-		["Write_Teachings"] = SistEstudo,
+		// ============================ O `SistEstudo` FECHOU INTEIRO, E ERAM ESTES TRES ============================
+		// `Focus_Skill`, `Study_Other` e `Write_Teachings` moravam aqui com a etiqueta *"percepcao e
+		// estudo de Ki (aprender vendo o outro usar)"*, e o "sistema que faltava" era UM CAMPO: o
+		// `expbuffer` de cada skill da Mente -- que o proprio `NiveisDeSkill.KiSkillGains` descrevia
+		// como *"um banco de exp adiantado que este port nao tem em lugar nenhum (nao ha campo nem
+		// quem o encha)"*. Os tres verbs SAO quem o enche; sem eles o campo nao tinha razao de
+		// existir, e sem o campo eles nao tinham onde entregar. Um circulo de duas pecas, e nenhuma
+		// das duas era grande.
+		//
+		// O livro do `Write_Teachings` foi o unico ponto que pediu peca nova, e ela e pequena:
+		// `LivroDeEnsinamentos` (`Core/Items/Inventario.cs`) poe os dados do livro NO ID do item, em
+		// vez de dar carga por unidade a `Pilha` -- que mexeria no save, no protocolo e na tela.
+		// Ver `Server/GameServer.Tecnicas.G13.cs`.
+		//
+		// A CONSTANTE `SistEstudo` FOI DELETADA JUNTO, pela mesma regra do `SistSigilo` e do
+		// `SistEsferas`: grupo sem verb dentro e uma linha de zero no relatorio.
+		// ======================================================================================================
+		// (o `Ki_Targets` ja tinha saido pelo lote G12 -- parcial: sem o clique, ver o lote.)
 
 		// ---- 3 e 3 e 3 e 3 ----
 		["Stop"] = SistTempo, ["Tele_Stop"] = SistTempo,
@@ -320,7 +334,6 @@ public static class CensoDeSkills
 	private const string SistMagia = "magia: mana, palavra de poder e ritual";
 	private const string SistZanzo = "zanzoken avancado (o port so tem a esquiva reflexa)";
 	private const string SistImposto = "impostos: cofre que TIRA dinheiro de quem mora no planeta";
-	private const string SistEstudo = "percepcao e estudo de Ki (aprender vendo o outro usar)";
 	private const string SistTempo = "parar o tempo";
 	private const string SistArvore = "arvore-arma (arrancar cenario e usar como arma)";
 	private const string SistTrem = "raio em TREM DE SEGMENTOS (o port colapsou o raio num objeto so)";

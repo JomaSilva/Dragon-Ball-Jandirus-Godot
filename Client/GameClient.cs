@@ -396,6 +396,13 @@ public partial class GameClient : Node
 	public List<Jandirus.Core.Skills.EstadoDeArvore> SkillsArvores { get; private set; } = [];
 
 	/// <summary>
+	/// OS VERBS QUE EU POSSO ACIONAR HOJE, ditos pelo servidor -- a mesma lista que o `SabeTecnica` de la
+	/// aceita. E daqui que nasce o botao de um verb concedido por NIVEL ou por CASA (o cliente nao tem o
+	/// nivel das skills). Ver `Protocol.PorEstadoDeSkills` e `Habilidades.DasSkills`.
+	/// </summary>
+	public List<string> VerbosAtivos { get; private set; } = [];
+
+	/// <summary>
 	/// ESTE PERSONAGEM FOI DESIGNADO VILAO por um admin (`mob/var/isVillain` do DM).
 	///
 	/// Chega junto das skills, e serve **so pro desenho do menu**: quem decide se a compra sai e o
@@ -1870,7 +1877,7 @@ public partial class GameClient : Node
 				// A CAUDA: o estado das arvores. Lida pelo mesmo leitor que a bancada do servidor usa
 				// pra desmontar o pacote -- uma leitura so, pra que "o cliente le" e "o servidor
 				// escreveu" nunca sejam duas versoes do mesmo layout.
-				(SkillsDestravadas, SkillsArvores) = Protocol.LerEstadoDeSkills(reader);
+				(SkillsDestravadas, SkillsArvores, VerbosAtivos) = Protocol.LerEstadoDeSkills(reader);
 				SkillsMudaram?.Invoke();
 				break;
 			}

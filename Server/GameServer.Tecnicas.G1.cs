@@ -28,102 +28,21 @@ public partial class GameServer
 	// REGISTRO
 	// =====================================================================
 	/// <summary>Anuncia as sete no catalogo. Chamado uma vez, no boot do servidor.</summary>
-	public static void RegistrarTecnicasG1()
+	private void RegistrarTecnicasG1()
 	{
-		Tecnicas.Registrar("Brutal_Clarity", "Brutal Clarity", Modo.Sustentada,
-			"Você traz o poder para dentro: a técnica sobe muito enquanto o buff estiver de pé. "
-			+ "Em troca, sua energia vai embora cinco vezes mais rápido. Só se sustenta uma dessas "
-			+ "por vez, e ela cai sozinha quando o Ki acaba.");
-
-		Tecnicas.Registrar("Extreme_Burst", "Extreme Burst", Modo.Sustentada,
-			"Estoura a própria velocidade muito além do normal. O corpo paga o preço: a energia "
-			+ "drena cinco vezes mais rápido enquanto durar. Só se sustenta uma dessas por vez.");
-
-		Tecnicas.Registrar("Fighting_Power", "Fighting Power", Modo.Sustentada,
-			"Empurra Ki para dentro dos músculos e a ofensiva física dispara. Custa cinco vezes o "
-			+ "dreno normal de energia enquanto estiver ligada. Só se sustenta uma dessas por vez.");
-
-		Tecnicas.Registrar("Ultradense_Body", "Ultradense Body", Modo.Sustentada,
-			"O corpo vira algo parecido com aço e a defesa física sobe muito. O dreno de energia "
-			+ "fica cinco vezes maior enquanto você segurar essa densidade. Uma dessas por vez.");
-
-		Tecnicas.Registrar("Ki_Blade", "Ki Blade", Modo.Sustentada,
-			"Molda uma lâmina de Ki na mão: soma o mesmo bônus na ofensiva física E na de Ki. "
-			+ "Cobra uma mordida de energia só para nascer, e depois não drena nada. Ocupa a mão -- "
-			+ "não dá para manter a lâmina e outro buff de corpo ao mesmo tempo.");
-
-		Tecnicas.Registrar("Ki_Sword", "Ki Sword", Modo.Sustentada,
-			"A lâmina vira uma espada longa: o mesmo bônus do Ki Blade, só que mais generoso, e uma "
-			+ "mordida de energia maior para invocar. Ocupa a mão como a lâmina, e as duas não "
-			+ "convivem.");
-
-		Tecnicas.Registrar("Super_Majin", "Super Majin", Modo.Sustentada,
-			"A forma de Super Majin: técnica, ofensiva de Ki e velocidade sobem juntas. Fora da "
-			+ "Ascensão isso custa um pedaço da sua defesa; com a Ascensão de pé não há penalidade "
-			+ "e o corpo ainda ganha poder e o dobro de capacidade de energia.");
+		IniciarLote("G1");
+		Vivo("Brutal_Clarity", pl => ToggleDeBuffG1(pl, "Brutal_Clarity", "Brutal Clarity", "Ttechnique",
+			"você começa a fluir.", "seu fluxo se desfaz."));
+		Vivo("Extreme_Burst", pl => ToggleDeBuffG1(pl, "Extreme_Burst", "Extreme Burst", "Tspeed",
+			"você estoura a própria velocidade!", "você deixa a velocidade afrouxar."));
+		Vivo("Fighting_Power", pl => ToggleDeBuffG1(pl, "Fighting_Power", "Fighting Power", "Tphysoff",
+			"seu poder de luta dispara!", "você deixa o poder afrouxar."));
+		Vivo("Ultradense_Body", pl => ToggleDeBuffG1(pl, "Ultradense_Body", "Ultradense Body", "Tphysdef",
+			"seu corpo vira algo como aço!", "seu corpo perde a densidade."));
+		Vivo("Ki_Blade", pl => ArmaDeKiG1(pl, "Ki_Blade", "Ki Blade", baseDoLog: 8.3, divisorDaMordida: 10));
+		Vivo("Ki_Sword", pl => ArmaDeKiG1(pl, "Ki_Sword", "Ki Sword", baseDoLog: 8, divisorDaMordida: 9));
+		Vivo("Super_Majin", SuperMajinG1);
 	}
-
-	// =====================================================================
-	// DESPACHO
-	// =====================================================================
-	/// <summary>
-	/// Devolve true quando o id E deste lote (tratado ou recusado com motivo), false quando nao e.
-	/// </summary>
-	/// <summary>Os sete ids deste lote. Fonte unica -- o switch abaixo confere com ela.</summary>
-	private static bool MinhaG1(string id) => id is
-		"Brutal_Clarity" or "Extreme_Burst" or "Fighting_Power" or "Ultradense_Body"
-		or "Ki_Blade" or "Ki_Sword" or "Super_Majin";
-
-	public bool UsarTecnicasG1(ServerPlayer pl, string id)
-	{
-		// O GATE E DAQUI, e nao do despacho generico. Os quatro lotes rodam ANTES do
-		// `SabeTecnica` de `UsarTecnica` (porque os outros tres usam ids com argumento, que aquele
-		// gate nunca casaria) -- entao passar por aqui sem conferir deixaria qualquer um usar as
-		// sete tecnicas deste lote sem ter aprendido nenhuma.
-		if (!MinhaG1(id)) return false;
-		if (!SabeTecnica(pl, id))
-		{
-			Avisar(pl, $"você não sabe {Jandirus.Core.Skills.NomesLegiveis.Habilidade(id)}.");
-			return true;
-		}
-
-		switch (id)
-		{
-			// OS QUATRO GEMEOS. No DM sao quatro verbs e quatro `/obj/buff` com o corpo IDENTICO
-			// (`initdrain = 5`, `initbuff = 5`, muda so o campo). Quatro copias de sete linhas sao
-			// quatro lugares pra divergirem no dia em que alguem reequilibrar o dreno.
-			case "Brutal_Clarity":
-				ToggleDeBuffG1(pl, id, "Brutal Clarity", "Ttechnique",
-					"você começa a fluir.", "seu fluxo se desfaz."); return true;
-
-			case "Extreme_Burst":
-				ToggleDeBuffG1(pl, id, "Extreme Burst", "Tspeed",
-					"você estoura a própria velocidade!", "você deixa a velocidade afrouxar."); return true;
-
-			case "Fighting_Power":
-				ToggleDeBuffG1(pl, id, "Fighting Power", "Tphysoff",
-					"seu poder de luta dispara!", "você deixa o poder afrouxar."); return true;
-
-			case "Ultradense_Body":
-				ToggleDeBuffG1(pl, id, "Ultradense Body", "Tphysdef",
-					"seu corpo vira algo como aço!", "seu corpo perde a densidade."); return true;
-
-			// AS DUAS LAMINAS: mesma forma, base do log e mordida de Ki diferentes.
-			case "Ki_Blade": ArmaDeKiG1(pl, id, "Ki Blade", baseDoLog: 8.3, divisorDaMordida: 10); return true;
-			case "Ki_Sword": ArmaDeKiG1(pl, id, "Ki Sword", baseDoLog: 8, divisorDaMordida: 9); return true;
-
-			case "Super_Majin": SuperMajinG1(pl); return true;
-
-			default: return false;
-		}
-	}
-
-	/// <summary>
-	/// Apelido do despacho. As duas grafias (`UsarTecnicaG1` e `UsarTecnicasG1`) aparecem na
-	/// especificacao deste lote; ter as duas custa uma linha e evita que a ligacao no dispatch
-	/// principal falhe por causa de um "s".
-	/// </summary>
-	public bool UsarTecnicaG1(ServerPlayer pl, string id) => UsarTecnicasG1(pl, id);
 
 	// =====================================================================
 	// OS NUMEROS DO DM
@@ -364,13 +283,11 @@ public partial class GameServer
 	/// </summary>
 	private bool EsperandoG1(ServerPlayer pl)
 	{
-		long agora = NowMs();
-		if (_prontoG1.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, $"espere um instante ({(pronto - agora) / 1000.0:0.0}s).");
-			return true;
-		}
-		_prontoG1[pl.Id] = agora + EsperaG1;
+		if (EmEspera(pl, _prontoG1, "espere um instante")) return true;
+		_prontoG1[pl.Id] = NowMs() + EsperaG1;
 		return false;
 	}
+
+	/// <summary>QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`, porque id se reusa.</summary>
+	private void EsquecerG1(int id) => _prontoG1.Remove(id);
 }

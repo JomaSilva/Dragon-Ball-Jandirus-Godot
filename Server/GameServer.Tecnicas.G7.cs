@@ -1,3 +1,4 @@
+using Jandirus.Core;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Skills;
 using Jandirus.Core.Stats;
@@ -97,128 +98,24 @@ public sealed partial class GameServer
 	// =====================================================================
 	// REGISTRO
 	// =====================================================================
-	public static void RegistrarTecnicasG7()
+	private void RegistrarTecnicasG7()
 	{
-		// ---- boxe (`Physical Skills.dm:66,89,113,120`) ----
-		Tecnicas.Registrar("One_Two", "Um-Dois", Modo.Instantanea,
-			"O basico do boxe: um jab pra medir e um cruzado por cima, mais forte. Voce da um passo "
-			+ "pra frente antes do primeiro, entao pega quem esta a dois tiles.");
-
-		Tecnicas.Registrar("One_Two_Five", "Um-Dois-Cinco", Modo.Instantanea,
-			"Jab, cruzado e uppercut, nessa ordem e cada um mais forte que o anterior. Custa metade "
-			+ "a mais que o Um-Dois e o ultimo golpe e o que derruba.");
-
-		Tecnicas.Registrar("Two_One_Four", "Dois-Um-Quatro", Modo.Instantanea,
-			"Cruzado, jab e uppercut -- a combinacao que comeca forte. Nao avanca: e pra quem JA "
-			+ "esta colado e quer despejar tres golpes sem dar um passo.");
-
-		Tecnicas.Registrar("KO_Punch", "Soco de Nocaute", Modo.Instantanea,
-			"Um uppercut so, com dano enorme somado. E o golpe mais caro do boxe e o unico que aposta "
-			+ "tudo numa unica leitura -- se o outro bloquear, acabou.");
-
-		// ---- chutes (`Physical Skills.dm:155,203,224`) ----
-		Tecnicas.Registrar("Dropkick", "Voadora", Modo.Instantanea,
-			"Voce se lanca contra o alvo e acerta com os dois pes. Quanto MENOS chao voce precisar "
-			+ "correr, mais forte ela chega. Se o alvo nao estiver no fim da corrida, voce cai "
-			+ "sozinho e fica atordoado.");
-
-		Tecnicas.Registrar("Falling_Kick", "Chute Descendente", Modo.Instantanea,
-			"Um chute pra baixo. Se o alvo estiver VOANDO, voce emenda um segundo golpe que o traz "
-			+ "junto pro chao. Se errar, voce e quem se desequilibra.");
-
-		Tecnicas.Registrar("Kickup", "Chute Ascendente", Modo.Instantanea,
-			"Um chute de baixo pra cima, com dano extra. Barato, rapido, e o pao com manteiga de "
-			+ "quem luta de perna.");
-
-		// ---- artes marciais (`Martial Skill Attacks.dm:241,325,340,355`) ----
-		Tecnicas.Registrar("Dash_Attack", "Investida", Modo.Instantanea,
-			"Uma corrida longa terminada num golpe pesado -- ela alcanca MUITO mais longe que a "
-			+ "Voadora e custa quase metade. O preco e o mesmo: chegar e nao achar ninguem deixa "
-			+ "voce atordoado no lugar.");
-
-		Tecnicas.Registrar("Spin_Attack", "Ataque Giratorio", Modo.Instantanea,
-			"Voce gira e acerta ate TRES pessoas coladas em voce de uma vez. Nao precisa de alvo "
-			+ "marcado e nao anda: e a resposta de quem esta cercado de perto.");
-
-		Tecnicas.Registrar("Stun_Attack", "Golpe Atordoante", Modo.Instantanea,
-			"Voce avanca ate dez tiles e acerta um golpe que deixa o alvo dois segundos e meio sem "
-			+ "reagir. O dano nao e o ponto -- o silencio depois dele e.");
-
-		Tecnicas.Registrar("Takedown", "Derrubada", Modo.Instantanea,
-			"Voce agarra o alvo pelo tronco e o poe no chao. Contra alguem VOANDO ela e devastadora: "
-			+ "tira o voo, bate duas vezes e deixa tres segundos e meio de atordoamento.");
-
-		// ---- a investida de Ki (`speedy.dm:178`) ----
-		Tecnicas.Registrar("Lariat", "Lariat", Modo.Instantanea,
-			"Voce acende o Ki e se lanca contra o alvo marcado, de ate trinta e cinco tiles, "
-			+ "terminando com um ombro no peito dele. Custa quase nada -- e quanto mais forte e "
-			+ "tecnico voce for, MENOS custa.");
-
-		// ---- assassino (`Assassain Skills.dm:122,141`) ----
-		Tecnicas.Registrar("Cutthroat", "Degola", Modo.Instantanea,
-			"Um corte curto que vale muito mais quando o alvo AINDA NAO ESTA EM COMBATE. Contra quem "
-			+ "ja esta lutando e um golpe comum e caro. Deixa seus golpes especiais em espera por "
-			+ "dois segundos e meio.");
-
-		Tecnicas.Registrar("Backstab", "Punhalada", Modo.Instantanea,
-			"Vale pelo lugar de onde sai: se voce estiver olhando PRO MESMO LADO que o alvo -- ou "
-			+ "seja, nas costas dele --, o golpe crita. Fora de combate ele soma ainda mais. Tres "
-			+ "segundos de espera depois.");
-
-		// ---- as duas bolas (`blasts.dm:530`, `Core Trees/Spirit.dm:344`) ----
-		Tecnicas.Registrar("Scattering_Bullet", "Bala Dispersa", Modo.Instantanea,
-			"Uma nuvem de esferas que nasce ESPALHADA em volta de voce, fica um instante no ar e "
-			+ "entao converge toda no alvo marcado, de qualquer angulo. Quantas saem depende da sua "
-			+ "pericia de Ki e da sua forca. Precisa de alvo a ate trinta tiles.");
-
-		Tecnicas.Registrar("Spirit_Gun", "Spirit Gun", Modo.Instantanea,
-			"Uma bala de espirito disparada do dedo. Ela NAO gasta energia: gasta FOLEGO -- e por "
-			+ "isso sai quando o Ki ja acabou. Treinar a arvore do Espirito a deixa mais barata e "
-			+ "mais forte ao mesmo tempo.");
-	}
-
-	/// <summary>Os dezesseis ids deste lote -- lidos pelo `switch` do despacho geral.</summary>
-	private static readonly string[] IdsG7 =
-	[
-		"One_Two", "One_Two_Five", "Two_One_Four", "KO_Punch",
-		"Dropkick", "Falling_Kick", "Kickup",
-		"Dash_Attack", "Spin_Attack", "Stun_Attack", "Takedown", "Lariat",
-		"Cutthroat", "Backstab",
-		"Scattering_Bullet", "Spirit_Gun",
-	];
-
-	public static bool EhDoLoteG7(string id) => Array.IndexOf(IdsG7, id) >= 0;
-
-	/// <summary>
-	/// O DESPACHO DO LOTE. Chamado de dentro do `switch` do <see cref="UsarTecnica"/>, DEPOIS do
-	/// <see cref="SabeTecnica"/> geral -- igual ao G5 e ao G6, e pela mesma razao: quem nao comprou
-	/// ouve "voce nao sabe" por uma porta so.
-	/// </summary>
-	private void UsarTecnicasG7(ServerPlayer pl, string id)
-	{
-		switch (id)
-		{
-			case "One_Two": ComboDeBoxeG7(pl, id); break;
-			case "One_Two_Five": ComboDeBoxeG7(pl, id); break;
-			case "Two_One_Four": ComboDeBoxeG7(pl, id); break;
-			case "KO_Punch": SocoDeNocauteG7(pl); break;
-
-			case "Dropkick": VoadoraG7(pl); break;
-			case "Falling_Kick": ChuteDescendenteG7(pl); break;
-			case "Kickup": ChuteAscendenteG7(pl); break;
-
-			case "Dash_Attack": InvestidaG7(pl); break;
-			case "Spin_Attack": GiratorioG7(pl); break;
-			case "Stun_Attack": AtordoanteG7(pl); break;
-			case "Takedown": DerrubadaG7(pl); break;
-			case "Lariat": LariatG7(pl); break;
-
-			case "Cutthroat": DegolaG7(pl); break;
-			case "Backstab": PunhaladaG7(pl); break;
-
-			case "Scattering_Bullet": BalaDispersaG7(pl); break;
-			case "Spirit_Gun": SpiritGunG7(pl); break;
-		}
+		IniciarLote("G7");
+		foreach (string combo in new[] { "One_Two", "One_Two_Five", "Two_One_Four" })
+			Vivo(combo, pl => ComboDeBoxeG7(pl, combo));
+		Vivo("KO_Punch", SocoDeNocauteG7);
+		Vivo("Dropkick", VoadoraG7);
+		Vivo("Falling_Kick", ChuteDescendenteG7);
+		Vivo("Kickup", ChuteAscendenteG7);
+		Vivo("Dash_Attack", InvestidaG7);
+		Vivo("Spin_Attack", GiratorioG7);
+		Vivo("Stun_Attack", AtordoanteG7);
+		Vivo("Takedown", DerrubadaG7);
+		Vivo("Lariat", LariatG7);
+		Vivo("Cutthroat", DegolaG7);
+		Vivo("Backstab", PunhaladaG7);
+		Vivo("Scattering_Bullet", BalaDispersaG7);
+		Vivo("Spirit_Gun", SpiritGunG7);
 	}
 
 	// =====================================================================
@@ -236,25 +133,33 @@ public sealed partial class GameServer
 	/// nao da tecnica. Quem acabou de dar um Um-Dois-Cinco tem o Sword Strike, o Multihit, a Presa do
 	/// Lobo e os outros treze deste lote em espera junto -- e esse contador unico E o teto de dano
 	/// por segundo do jogo. Uma recarga por tecnica multiplicaria esse teto por catorze.
+	///
+	/// E A ABERTURA DE TODO PUNHO DOS OUTROS LOTES TAMBEM (G10, G11): tres copias dela viviam em
+	/// `AbrirGolpeDeAgarraoG10`, no Sneak e na Cambalhota, cada uma com a sua frase de recarga. Quem
+	/// precisa de uma pergunta PROPRIA entre a abertura e a cobranca (os agarroes, "tem alguem preso?")
+	/// abre com <paramref name="cobrar"/> falso e cobra pelo <see cref="CobrarPunho"/> depois; quem o
+	/// DM nao trava por `canfight` passa <paramref name="exigirCanfight"/> falso (ver `ProntoPraGolpeG3`).
 	/// </summary>
-	private bool AbrirPunhoG7(ServerPlayer pl, double multKi, long recargaMs, out double custo)
+	private bool AbrirPunhoG7(ServerPlayer pl, double multKi, long recargaMs, out double custo,
+							  bool cobrar = true, bool exigirCanfight = true)
 	{
 		custo = pl.Ficha.Ephysoff * pl.Ficha.BaseDrain() * multKi;
 
-		if (!ProntoPraGolpeG3(pl, out string porque)) { Avisar(pl, porque); return false; }
+		if (!ProntoPraGolpeG3(pl, out string porque, exigirCanfight)) { Avisar(pl, porque); return false; }
 
-		long agora = NowMs();
-		if (_prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"seus golpes especiais ainda se recompoem (faltam {(livre - agora) / 1000.0:0.0}s).");
-			return false;
-		}
+		if (EmEspera(pl, _prontoG3, "seus golpes especiais ainda se recompoem")) return false;
 		if (_barragemG3.ContainsKey(pl.Id)) { Avisar(pl, "voce ja esta no meio de uma sequencia."); return false; }
 		if (pl.Ficha.Ki < custo) { Avisar(pl, $"isso pede {custo:0} de energia."); return false; }
 
-		pl.Ficha.Ki -= custo;
-		_prontoG3[pl.Id] = agora + recargaMs;
+		if (cobrar) CobrarPunho(pl, custo, recargaMs);
 		return true;
+	}
+
+	/// <summary>A COBRANCA de um punho: o Ki e o `basicCD += N` do mob. Separada da abertura pra quem pergunta algo entre as duas.</summary>
+	private void CobrarPunho(ServerPlayer pl, double custo, long recargaMs)
+	{
+		pl.Ficha.Ki -= custo;
+		_prontoG3[pl.Id] = NowMs() + recargaMs;
 	}
 
 	/// <summary>
@@ -268,26 +173,33 @@ public sealed partial class GameServer
 	private GolpeResultado? GolpeNomeadoG7(ServerPlayer pl, double addDano, int nivel,
 										   double stunDoAlvo = 0)
 	{
-		// `get_me_a_target()` e depois `if(target in view(2))` -- o marcado primeiro, senao o mais
-		// proximo. E o mesmo `AlvoDeTecnicaG3` que o Light Buster e o jokenpo ja usam.
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, PassoDeAproximacaoG7);
-		if (alvo == null) { Avisar(pl, "nao ha ninguem por perto pra acertar."); return null; }
+		ServerPlayer? alvo = AproximarDoAlvo(pl, "acertar");
+		if (alvo == null) return null;
 
-		// `step(src, get_dir(src,target))`: UM passo pra cima do alvo antes de bater. O `AvancarG3`
-		// respeita parede -- ver o bloco dele --, entao o golpe nao empurra ninguem pro cenario.
+		// `target.stagger += 1` ... `-= 1`: a trava do alvo enquanto o golpe corre. Ver o cabecalho.
+		if (stunDoAlvo > 0) Travar(alvo, stunDoAlvo);
+
+		return GolpeG3(pl, alvo, addDano: addDano, nivel: nivel);
+	}
+
+	/// <summary>
+	/// A APROXIMACAO DE TODO GOLPE NOMEADO: `get_me_a_target(); if(target in view(2)) step(src,
+	/// get_dir(src,target)); if(target in view(1)) ...`. O marcado primeiro, senao o mais proximo
+	/// (<see cref="AlvoDeTecnica"/>); UM passo pra cima do alvo (o <see cref="AvancarG3"/> respeita
+	/// parede, entao o golpe nao empurra ninguem pro cenario); e se ele ainda esta longe, o golpe
+	/// corta o ar. Devolve o alvo colado ou nulo, ja avisando. O G10 tinha a sua copia.
+	/// </summary>
+	private ServerPlayer? AproximarDoAlvo(ServerPlayer pl, string oQue)
+	{
+		ServerPlayer? alvo = AlvoDeTecnica(pl, PassoDeAproximacaoG7);
+		if (alvo == null) { Avisar(pl, $"nao ha ninguem por perto pra {oQue}."); return null; }
 		AvancarG3(pl, alvo, ZoneCollision.TileSize);
-
 		if (Vec2.Distance(alvo.Pos, pl.Pos) > ColadoG7)
 		{
 			Avisar(pl, $"{alvo.Name} ficou longe demais e o golpe corta o ar.");
 			return null;
 		}
-
-		// `target.stagger += 1` ... `-= 1`: a trava do alvo enquanto o golpe corre. Ver o cabecalho.
-		if (stunDoAlvo > 0 && alvo.Combate != null)
-			alvo.Combate.Stun = Math.Max(alvo.Combate.Stun, stunDoAlvo);
-
-		return GolpeG3(pl, alvo, addDano: addDano, nivel: nivel);
+		return alvo;
 	}
 
 	/// <summary>
@@ -300,7 +212,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private static void TropecarG7(ServerPlayer pl)
 	{
-		if (pl.Combate != null) pl.Combate.Stun = Math.Max(pl.Combate.Stun, 0.4);
+		Travar(pl, 0.4);
 	}
 
 	// =====================================================================
@@ -330,7 +242,7 @@ public sealed partial class GameServer
 
 		if (!AbrirPunhoG7(pl, multKi, BasicCdG3, out double custo)) return;
 
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, avanca ? PassoDeAproximacaoG7 : ColadoG7);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, avanca ? PassoDeAproximacaoG7 : ColadoG7);
 		if (alvo == null) { Avisar(pl, "nao ha ninguem por perto pra acertar."); return; }
 		if (avanca) AvancarG3(pl, alvo, ZoneCollision.TileSize);
 		if (Vec2.Distance(alvo.Pos, pl.Pos) > ColadoG7)
@@ -344,8 +256,7 @@ public sealed partial class GameServer
 
 		// A TRAVA DO ALVO DURA O COMBO INTEIRO (`target.stagger += 1` antes, `-= 1` depois): e o que
 		// garante que os tres golpes achem o mesmo corpo no mesmo lugar.
-		if (alvo.Combate != null)
-			alvo.Combate.Stun = Math.Max(alvo.Combate.Stun, total / 1000.0 + 0.2);
+		Travar(alvo, total / 1000.0 + 0.2);
 
 		string nome = id switch
 		{
@@ -370,7 +281,7 @@ public sealed partial class GameServer
 			EscadaIdx = 1,
 			ProximoMs = NowMs() + escada[1].Item2,
 		};
-		LigarRelogioG3();
+		LigarPulso();
 	}
 
 	/// <summary>
@@ -413,7 +324,7 @@ public sealed partial class GameServer
 			DmMath.Round(pl.Ficha.Espeed + pl.Ficha.Etechnique + pl.Ficha.Ephysoff / 2, 1), 1);
 		float alcance = (float)tiles * ZoneCollision.TileSize;
 
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, alcance);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, alcance);
 		if (alvo == null)
 		{
 			Avisar(pl, "voce se lanca e nao ha ninguem no fim da corrida -- e cai sozinho.");
@@ -456,7 +367,7 @@ public sealed partial class GameServer
 	{
 		if (!AbrirPunhoG7(pl, 12, BasicCdG3, out _)) return;
 
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, PassoDeAproximacaoG7);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, PassoDeAproximacaoG7);
 		if (alvo == null) { Avisar(pl, "voce chuta o ar e se desequilibra."); TropecarG7(pl); return; }
 
 		AvancarG3(pl, alvo, ZoneCollision.TileSize);
@@ -466,7 +377,7 @@ public sealed partial class GameServer
 		}
 
 		bool voava = alvo.Voando;
-		if (alvo.Combate != null) alvo.Combate.Stun = Math.Max(alvo.Combate.Stun, 0.4);
+		Travar(alvo, 0.4);
 		GolpeResultado r = GolpeG3(pl, alvo, addDano: 0, nivel: 2);
 
 		if (!r.Encostou) { Avisar(pl, "o chute passa raspando e voce se desequilibra."); TropecarG7(pl); return; }
@@ -524,7 +435,7 @@ public sealed partial class GameServer
 			DmMath.Round(pl.Ficha.Espeed + pl.Ficha.Etechnique + pl.Ficha.Ephysoff, 1) + 5, 1);
 		float alcance = (float)tiles * ZoneCollision.TileSize;
 
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, alcance);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, alcance);
 		if (alvo == null)
 		{
 			Avisar(pl, "voce atravessa o campo e nao acha ninguem -- e cai. (Voce esta atordoado.)");
@@ -590,7 +501,7 @@ public sealed partial class GameServer
 		if (!AbrirPunhoG7(pl, 20, BasicCdG3, out _)) return;
 
 		float alcance = 10 * ZoneCollision.TileSize;
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, alcance);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, alcance);
 		if (alvo == null) { Avisar(pl, "nao ha ninguem a dez tiles pra alcancar."); return; }
 
 		AvancarG3(pl, alvo, alcance);
@@ -603,7 +514,7 @@ public sealed partial class GameServer
 		GolpeResultado r = GolpeG3(pl, alvo, addDano: 0, nivel: 2);
 		if (!r.Encostou) { Avisar(pl, $"{alvo.Name} escapa do golpe atordoante."); return; }
 
-		if (alvo.Combate != null) alvo.Combate.Stun = Math.Max(alvo.Combate.Stun, 2.5);
+		Travar(alvo, 2.5);
 		Avisar(alvo, $"o golpe de {pl.Name} te deixa sem reacao.");
 		Avisar(pl, $"{alvo.Name} fica sem reacao por dois segundos e meio.");
 	}
@@ -628,7 +539,7 @@ public sealed partial class GameServer
 	{
 		if (!AbrirPunhoG7(pl, 20, BasicCdG3, out _)) return;
 
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, PassoDeAproximacaoG7);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, PassoDeAproximacaoG7);
 		if (alvo == null) { Avisar(pl, "nao ha ninguem por perto pra derrubar."); return; }
 		AvancarG3(pl, alvo, ZoneCollision.TileSize);
 		if (Vec2.Distance(alvo.Pos, pl.Pos) > ColadoG7)
@@ -643,7 +554,7 @@ public sealed partial class GameServer
 		{
 			alvo.Voando = false;
 			MandarEfeito(alvo, "voo", 0);
-			if (alvo.Combate != null) alvo.Combate.Stun = Math.Max(alvo.Combate.Stun, 3.5);
+			Travar(alvo, 3.5);
 		}
 
 		GolpeG3(pl, alvo, addDano: 0, nivel: 3);
@@ -672,12 +583,8 @@ public sealed partial class GameServer
 	{
 		if (!ProntoPraGolpeG3(pl, out string porque)) { Avisar(pl, porque); return; }
 
+		if (EmEspera(pl, _prontoG3, "voce ainda esta se recompondo")) return;
 		long agora = NowMs();
-		if (_prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"voce ainda esta se recompondo (faltam {(livre - agora) / 1000.0:0.0}s).");
-			return;
-		}
 
 		double custo = pl.Ficha.angerBuff * 1.5
 					   / Math.Max(pl.Ficha.Ephysoff + pl.Ficha.Etechnique, 0.01)
@@ -726,7 +633,7 @@ public sealed partial class GameServer
 	{
 		if (!AbrirPunhoG7(pl, 15, 2500, out _)) return;
 
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, PassoDeAproximacaoG7);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, PassoDeAproximacaoG7);
 		if (alvo == null) { Avisar(pl, "nao ha ninguem por perto."); return; }
 
 		// A PERGUNTA E SOBRE O ALVO (`target.IsInFight` no `AttackMultiple`... nao: `!IsInFight` sem
@@ -738,7 +645,7 @@ public sealed partial class GameServer
 		AvancarG3(pl, alvo, ZoneCollision.TileSize);
 		if (Vec2.Distance(alvo.Pos, pl.Pos) > ColadoG7) { Avisar(pl, "o corte passa longe."); return; }
 
-		if (alvo.Combate != null) alvo.Combate.Stun = Math.Max(alvo.Combate.Stun, 0.4);
+		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: extra, nivel: emBriga ? 2 : 3);
 		Avisar(pl, emBriga
 			? "voce ja esta na briga: o corte sai comum."
@@ -766,7 +673,7 @@ public sealed partial class GameServer
 	{
 		if (!AbrirPunhoG7(pl, 15, 3000, out _)) return;
 
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, PassoDeAproximacaoG7);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, PassoDeAproximacaoG7);
 		if (alvo == null) { Avisar(pl, "nao ha ninguem por perto."); return; }
 
 		AvancarG3(pl, alvo, ZoneCollision.TileSize);
@@ -778,7 +685,7 @@ public sealed partial class GameServer
 		bool pelasCostas = pl.Facing == alvo.Facing;
 		if (pelasCostas) dmg += pl.Ficha.Etechnique / 2;
 
-		if (alvo.Combate != null) alvo.Combate.Stun = Math.Max(alvo.Combate.Stun, 0.4);
+		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: dmg, nivel: pelasCostas ? 3 : 2);
 		Avisar(pl, pelasCostas
 			? $"voce acerta {alvo.Name} pelas costas (+{dmg:0.#})."
@@ -820,7 +727,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void BalaDispersaG7(ServerPlayer pl)
 	{
-		if (EmEsperaG5(pl, _scatterPronto, "as suas maos ainda estao formigando")) return;
+		if (EmEspera(pl, _scatterPronto, "as suas maos ainda estao formigando")) return;
 
 		double custo = 60 * pl.Ficha.BaseDrain();
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
@@ -848,7 +755,7 @@ public sealed partial class GameServer
 		}
 
 		double tiques = Math.Max(20 * pl.Ficha.Eactspeed, 70);
-		_scatterPronto[pl.Id] = NowMs() + (long)(tiques * MsPorTique);
+		_scatterPronto[pl.Id] = NowMs() + (long)(tiques * TempoDoDm.MsPorTique);
 		pl.Ficha.Ki -= custo;
 		for (int i = 0; i < 7; i++) pl.Ficha.BlastGain(_rng);   // sete `Blast_Gain()` literais
 		pl.Ficha.blastskill += 0.05 * quantas;
@@ -873,7 +780,7 @@ public sealed partial class GameServer
 		int saiu = 0;
 		for (int i = 0; i < quantas; i++)
 		{
-			Vec2 berco = pl.Pos + DirecaoSorteadaG5()
+			Vec2 berco = pl.Pos + RumoSorteado()
 						 * (float)(_rng.Next(1, (int)raioTiles + 1) * ZoneCollision.TileSize);
 
 			Projetil p = Disparar(pl, receita, rumoDado: Vec2.Zero, deOnde: berco,
@@ -925,12 +832,8 @@ public sealed partial class GameServer
 	{
 		if (!ProntoPraGolpeG3(pl, out string porque)) { Avisar(pl, porque); return; }
 
+		if (EmEspera(pl, _prontoG3, "seus golpes especiais ainda se recompoem")) return;
 		long agora = NowMs();
-		if (_prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"seus golpes especiais ainda se recompoem (faltam {(livre - agora) / 1000.0:0.0}s).");
-			return;
-		}
 
 		double custo = pl.Ficha.angerBuff * pl.Ficha.Ephysoff * pl.Ficha.SpiritBallCost * 10;
 		if (pl.Ficha.stamina < custo)
@@ -949,7 +852,7 @@ public sealed partial class GameServer
 		// `reload = max(Eactspeed/6, 0.1)` e `basicCD += reload + 45` -- quatro segundos e meio de
 		// espera, a mais longa deste lote inteiro. E o que paga o tiro que nao custa Ki.
 		double tiques = Math.Max(pl.Ficha.Eactspeed / 6, 0.1) + 45;
-		_prontoG3[pl.Id] = agora + (long)(tiques * MsPorTique);
+		_prontoG3[pl.Id] = agora + (long)(tiques * TempoDoDm.MsPorTique);
 
 		// `usr.Attack_Gain()` -- ela treina PUNHO, e nao tiro, e isso e coerente: o `mods` dela sai do
 		// `Ephysoff`. O `SpiritBallFireCount++` do DM NAO veio: ele so alimenta o `exp+=1` do efetor
@@ -982,8 +885,7 @@ public sealed partial class GameServer
 	private void GolpeNomeadoG7ComAlvo(ServerPlayer pl, ServerPlayer alvo, double addDano,
 									   int nivel, double stunDoAlvo)
 	{
-		if (stunDoAlvo > 0 && alvo.Combate != null)
-			alvo.Combate.Stun = Math.Max(alvo.Combate.Stun, stunDoAlvo);
+		if (stunDoAlvo > 0) Travar(alvo, stunDoAlvo);
 		GolpeG3(pl, alvo, addDano: addDano, nivel: nivel);
 	}
 

@@ -190,6 +190,7 @@ public static class Habilidades
 		DoDiscipulado();
 		DaFusao();
 		DoEnsinoDeSkill();
+		DoEstudoDaMente();
 		DasDisciplinas();
 		DasSkills();
 		DosEstilos();
@@ -473,6 +474,73 @@ public static class Habilidades
 	}
 
 	/// <summary>
+	/// O SISTEMA DE ESTUDO DA MENTE -- os dois verbs que ESCOLHEM uma habilidade (lote G13).
+	///
+	/// ============================ UM BOTAO POR OPCAO, COMO O ENSINO LOGO ACIMA ============================
+	/// `Focus_Skill` e `Write_Teachings` abrem um `input()` no DM (`KiStatsModule.dm:88`, `:151-154`)
+	/// com as SUAS habilidades da Mente. Aqui nao ha caixa modal e o painel de verbs so tem botao --
+	/// entao a lista vira botoes, exatamente como o `DoEnsinoDeSkill` faz com "Ensinar: X" e como o
+	/// `DosChefesDaMente` faz com a lembranca de cada chefe.
+	///
+	/// **SEM ISTO OS DOIS SERIAM PORTADOS E INALCANCAVEIS**: o aperto nu deles LISTA (e util pra
+	/// conferir), mas nada na tela monta a string `Focus_Skill:<nome>`. O terceiro verb do lote
+	/// (`Study_Other`) nao precisa de botao por opcao -- o alvo dele e o do DUPLO CLIQUE, e o
+	/// servidor le o marcado no aperto nu.
+	/// ==================================================================================================
+	///
+	/// A LISTA E DAS `/datum/skill/mind/*` porque e o laco do DM
+	/// (`for(var/datum/skill/mind/S in usr.learned_skills)`): sao as 17 da arvore da Mente mais as 33
+	/// pericias de Ki, que sao da mesma classe la.
+	/// </summary>
+	public static void DoEstudoDaMente()
+	{
+		SkillCatalog? cat = MenuJogo.CatalogoPublico();
+		GameClient? cli = GameClient.Instance;
+		if (cat == null || cli == null) return;
+
+		bool alguma = false;
+		foreach (string path in cli.SkillsAprendidas.OrderBy(p => p, StringComparer.Ordinal))
+		{
+			if (!path.StartsWith("/datum/skill/mind/", StringComparison.OrdinalIgnoreCase)) continue;
+			if (cat.Get(path) is not { Arvore: false, Nome.Length: > 0 } s) continue;
+			alguma = true;
+			string nome = s.Nome;
+
+			Verbos.Registrar(new Verbo(
+				$"Focar: {nome}",
+				Verbos.Aprendizado,
+				$"Concentra o seu estudo em {nome}. Enquanto estiver estudando alguem, so ela adianta "
+				+ "-- e adianta DEZ VEZES mais do que o estudo espalhado.",
+				() => GameClient.Instance?.SendHabilidade($"Focus_Skill:{nome}"))
+				{ Chave = $"hab:Focus_Skill:{nome}" });
+
+			Verbos.Registrar(new Verbo(
+				$"Escrever sobre: {nome}",
+				Verbos.Aprendizado,
+				$"Escreve um livro sobre {nome}. So se escreve MEDITANDO, e leva um minuto por nivel "
+				+ "que voce tem nela. O livro fica na mochila e ensina quem ja saiba a habilidade e "
+				+ "esteja na METADE do seu nivel ou abaixo.",
+				() => GameClient.Instance?.SendHabilidade($"Write_Teachings:{nome}"))
+				{ Chave = $"hab:Write_Teachings:{nome}" });
+		}
+
+		if (!alguma) return;
+
+		Verbos.Registrar(new Verbo(
+			"Focar: nenhuma",
+			Verbos.Aprendizado,
+			"Solta o foco: o estudo volta a adiantar um pouco de TUDO que a pessoa estudada sabe mais "
+			+ "que voce, em vez de dez vezes numa so.",
+			() => GameClient.Instance?.SendHabilidade("Focus_Skill:nenhuma")) { Chave = "hab:Focus_Skill:nenhuma" });
+
+		Verbos.Registrar(new Verbo(
+			"Parar de escrever",
+			Verbos.Aprendizado,
+			"Desiste do livro em obra. **Voce perde tudo que ja tinha escrito** -- e assim no original.",
+			() => GameClient.Instance?.SendHabilidade("Write_Teachings:parar")) { Chave = "hab:Write_Teachings:parar" });
+	}
+
+	/// <summary>
 	/// AS TECNICAS QUE O JOGADOR INVENTOU -- uma por botao, mais a porta da mesa de montagem.
 	///
 	/// ============================ ELAS NAO PASSAM PELO `DasSkills` ============================
@@ -643,25 +711,37 @@ public static class Habilidades
 		if (cat == null || cli == null) return;
 
 		var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		void Botao(string id)
+		{
+			if (!vistos.Add(id)) return;
+			Tecnicas.Tecnica? t = Tecnicas.Get(id);
+			if (t == null) return;
+
+			bool pronta = t.Modo != Modo.NaoPortada;
+			string idLocal = id;
+			Verbos.Registrar(new Verbo(
+				pronta ? t.Nome : $"{t.Nome} (nao portada)",
+				t.Aba,
+				t.Desc,
+				() => GameClient.Instance?.SendHabilidade(idLocal),
+				pronta ? null : () => false) { Chave = $"hab:{idLocal}" });
+		}
+
 		foreach (string path in cli.SkillsAprendidas)
 		{
 			Skill? s = cat.Get(path);
 			if (s == null) continue;
-			foreach (string id in s.Verbos)
-			{
-				if (!vistos.Add(id)) continue;
-				Tecnicas.Tecnica? t = Tecnicas.Get(id);
-				if (t == null) continue;
-
-				bool pronta = t.Modo != Modo.NaoPortada;
-				string idLocal = id;
-				Verbos.Registrar(new Verbo(
-					pronta ? t.Nome : $"{t.Nome} (nao portada)",
-					t.Aba,
-					t.Desc,
-					() => GameClient.Instance?.SendHabilidade(idLocal),
-					pronta ? null : () => false) { Chave = $"hab:{idLocal}" });
-			}
+			foreach (string id in s.Verbos) Botao(id);
 		}
+
+		// ============================ OS VERBS QUE O DEGRAU (E A CASA) CONCEDEM ============================
+		// Ate aqui o botao so nascia do CATALOGO. Os verbs concedidos por NIVEL (o Hokuto Hyakuretsu Ken no
+		// nivel 2 do Hokuto no Shinken; 60 dos 189 do jogo) e os por CASA (a Trindade) nao estao em skill
+		// nenhuma -- estao no `niveis.json` cruzado com o NIVEL ATUAL, que so o servidor tem. Ele manda o
+		// RESULTADO (`TecnicasDe`, a mesma lista que o `SabeTecnica` aceita) no `S2C.Skills`, e e daqui que
+		// o botao deles nasce. Sem esta metade, 16 golpes do lote G10 e 13 do G7 tinham corpo, porta e
+		// NENHUM botao -- alcancaveis so por tecla ligada a mao. Ver `Protocol.PorEstadoDeSkills`.
+		// ================================================================================================
+		foreach (string id in cli.VerbosAtivos) Botao(id);
 	}
 }

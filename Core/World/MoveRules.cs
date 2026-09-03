@@ -17,6 +17,22 @@ public enum Facing : byte { South = 0, North = 1, East = 2, West = 3 }
 /// </summary>
 public static class MoveRules
 {
+	/// <summary>
+	/// OS OITO RUMOS DO BYOND -- N, S, L, O e as quatro diagonais normalizadas. E a tabela de todo
+	/// `pick(NORTH,SOUTH,EAST,WEST,NORTHWEST,...)` e `rand(1,8)` de direcao do DM (o Scattershot,
+	/// `blasts.dm:186`; a Buster Barrage, `BusterBarrage.dm:47-55`).
+	///
+	/// AS OITO, E NAO UM ANGULO QUALQUER: no DM as diagonais tem o mesmo peso das retas, e e isso
+	/// que da a nuvem de tiros a cara de xadrez que ela tem. Um angulo continuo faria um disco
+	/// uniforme -- mais bonito, e outra tecnica.
+	/// </summary>
+	public static readonly Vec2[] OitoRumos =
+	[
+		new(0, -1), new(0, 1), new(1, 0), new(-1, 0),
+		new(-0.70710678f, -0.70710678f), new(0.70710678f, -0.70710678f),
+		new(-0.70710678f, 0.70710678f), new(0.70710678f, 0.70710678f),
+	];
+
 	// ============================== CONFIG ======================================
 	public const float BaseSpeedPx = 160f;     // pixels por segundo em stats base (5 tiles/s a 32px)
 	public const float MaxDeltaSeconds = 0.25f;// teto do dt aceito num pacote: sem isso, "passei 10s offline" = teleporte

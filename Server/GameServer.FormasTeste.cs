@@ -1918,6 +1918,10 @@ public partial class GameServer
 				Protocol.C2S.Aim, Protocol.C2S.Lethal, Protocol.C2S.InputState, Protocol.C2S.Ping,
 				Protocol.C2S.Login, Protocol.C2S.PickSlot, Protocol.C2S.CreateChar,
 				Protocol.C2S.DeleteChar, Protocol.C2S.ClashTecla,
+				// A VOZ passa pelo mesmo motivo do `Chat`: e a boca, e boca possuida continua falando. O
+				// `C2S.Voz` entrou no "Grande Update parte 3" sem ninguem decidir o lado, e esta linha ficou
+				// vermelha ate 2026-09-02 -- exatamente o que ela existe pra fazer.
+				Protocol.C2S.Voz,
 			];
 
 			// A VARREDURA E DO ENUM INTEIRO, e as duas listas tem que cobri-lo sem sobra nem falta. Sem

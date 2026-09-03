@@ -82,7 +82,7 @@ public static class EfeitosDeSkill
 	/// </summary>
 	public static (Dictionary<string, double> Soma, Dictionary<string, double> Fator, Dictionary<string, double> Set)
 		Totalizar(SkillCatalog cat, IEnumerable<string> aprendidas,
-				  IReadOnlyDictionary<string, int>? escolhas = null)
+				  IReadOnlyDictionary<string, int>? escolhas = null, string? raca = null)
 	{
 		var soma = new Dictionary<string, double>(StringComparer.Ordinal);
 		var fator = new Dictionary<string, double>(StringComparer.Ordinal);
@@ -119,6 +119,18 @@ public static class EfeitosDeSkill
 			if (s == null) continue;
 
 			Somar1(s.Buffs, s.Genes, s.Mults, s.Flags);
+
+			// ============================ O EFEITO CONDICIONADO A RACA ============================
+			// `if(savant.Race=="Yardrat") savant.teleskill=70` (yardrat.dm:85-87). A Instant
+			// Transmission e ENSINAVEL a qualquer raca, e so o Yardrat nasce com a pericia 70 -- os
+			// outros comecam em 1 (`mob/var/teleskill=1`, :68) e pagam o salto com a metade do Ki.
+			// O extrator emitia a linha como flag INCONDICIONAL e todo aprendiz virava Yardrat por
+			// dentro. Agora ela vem em `porraca` (rotulo = a raca) e so entra pra quem E daquela raca.
+			// Sem raca informada (censo, bancada de mesa) nenhuma entra -- que e o lado seguro.
+			// ====================================================================================
+			foreach (Escolha porRaca in s.PorRaca)
+				if (raca != null && string.Equals(porRaca.Rotulo, raca, StringComparison.OrdinalIgnoreCase))
+					Somar1(porRaca.Buffs, porRaca.Genes, porRaca.Mults, porRaca.Flags);
 
 			// ============================ A ESCOLHA UNICA ============================
 			// Uma skill no jogo tem casas EXCLUSIVAS (`Great Robotic Alliance`, meta.dm:104-125).
@@ -165,6 +177,20 @@ public static class EfeitosDeSkill
 	}
 
 	/// <summary>
+	/// O ROTULO DA CASA ESCOLHIDA numa skill de escolha unica ("Van-sama"), ou nulo sem escolha (ou
+	/// pra skill que nao e de escolha). E o que o <see cref="NiveisDeSkill.VerbosAtivos"/> pergunta pra
+	/// decidir qual verb por casa vale -- a MESMA resolucao (propria ou herdada da lider) do
+	/// <see cref="CasaEscolhida"/>, pra que a Grace e o degrau 2 da Trindade nunca discordem sobre em
+	/// que casa o jogador esta.
+	/// </summary>
+	public static string? RotuloDaCasa(SkillCatalog cat, IReadOnlyDictionary<string, int> escolhas, string path)
+	{
+		if (cat.Get(path) is not { } s || s.Escolhas.Length == 0) return null;
+		int qual = CasaEscolhida(cat, s, escolhas);
+		return qual >= 1 && qual <= s.Escolhas.Length ? s.Escolhas[qual - 1].Rotulo : null;
+	}
+
+	/// <summary>
 	/// Poe no lutador exatamente os efeitos das skills que ele sabe -- nem mais, nem de novo.
 	/// Devolve quantos campos foram efetivamente mexidos.
 	/// </summary>
@@ -172,7 +198,7 @@ public static class EfeitosDeSkill
 							  IReadOnlyDictionary<string, int>? escolhas = null)
 	{
 		(Dictionary<string, double> soma, Dictionary<string, double> fator, Dictionary<string, double> set)
-			= Totalizar(cat, aprendidas, escolhas);
+			= Totalizar(cat, aprendidas, escolhas, f.Race);   // a raca do corpo decide o `porraca`
 		int mexidos = 0;
 
 		// --- ADITIVO: desfaz o que saiu, ajusta o que mudou ---
@@ -201,19 +227,31 @@ public static class EfeitosDeSkill
 		foreach ((string campo, double _) in f.FlagsDeSkill)
 			if (!set.ContainsKey(campo)) mexidos += Escrever(f, campo, 0) ? 1 : 0;
 
+		// CHAVE SE ESCREVE, SEMPRE -- e nao "so se o razao diz que mudou". Escrever o mesmo valor duas
+		// vezes e inofensivo, e e o que dispensa o razao das flags de ser filtrado (ver abaixo): um save
+		// que trouxe `pitted=1` como aplicado antes de o campo `pitted` existir recebe o 1 no dia em que o
+		// campo nasce, porque a escrita nao pergunta ao razao.
 		foreach ((string campo, double v) in set)
-			if (Math.Abs(v - f.FlagsDeSkill.GetValueOrDefault(campo)) > 1e-9 && Escrever(f, campo, v)) mexidos++;
+			if (Escrever(f, campo, v)) mexidos++;
 
-		// ============================ O RAZAO SO GUARDA O QUE PEGOU ============================
+		// ============================ O RAZAO SO GUARDA O QUE PEGOU (buffs e mults) ============================
 		// Antes ele guardava o total INTEIRO, campo existente ou nao. Num save isso e uma armadilha
 		// armada: `KaiokenMastery=3` ficava registrado como aplicado num lutador que nao tinha o
 		// campo, e no dia em que o campo nascesse o delta seria zero -- o buff nunca chegaria em
-		// quem ja tinha a skill. Tres campos deste lote (`pitted`, `HPregenbuff`, `KaiokenMastery`)
+		// quem ja tinha a skill. Tres campos daquele lote (`pitted`, `HPregenbuff`, `KaiokenMastery`)
 		// nasceram exatamente nessa situacao. Ver `NiveisDeSkill.SoOsQueExistem`.
-		// ======================================================================================
+		//
+		// ============================ AS FLAGS FICAM INTEIRAS, E ISSO NAO E DESCUIDO ============================
+		// `FlagsDeSkill` NAO e so razao: e o ARMAZEM das chaves que o `Fighter` nao tem como campo e que
+		// o catalogo de formas le por nome (`Formas.PedeFlag` -> `ContextoDeForma.Flag`): o `snamek=1` da
+		// Super Namek e o `hasayyform=2` da transformacao Alien so existem AQUI. Filtra-los "porque o campo
+		// nao existe" apagou as duas escadas: a skill era comprada, a tecla C ficava parada na base e a
+		// `--formasteste` ficou vermelha em seis linhas (2026-09-02). A armadilha do save que motivou o
+		// filtro nao alcanca as flags, porque a escrita acima nao consulta o razao.
+		// ====================================================================================================
 		f.BuffsDeSkill = NiveisDeSkill.SoOsQueExistem(soma);
 		f.MultsDeSkill = NiveisDeSkill.SoOsQueExistem(fator);
-		f.FlagsDeSkill = NiveisDeSkill.SoOsQueExistem(set);
+		f.FlagsDeSkill = set;
 		return mexidos;
 	}
 

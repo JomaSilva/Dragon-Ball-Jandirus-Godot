@@ -707,8 +707,13 @@ public partial class GameServer
 		ServerPlayer presa = Forjar("Presa", new Vec2(pista.X + 400, pista.Y), bp: 5_000);
 		presa.Altitude = noAr;
 
+		// `Deflectivel = false` PELA RAZAO DO `RaioDaBancada` (`GameServer.ProjeteisTeste.cs:2167`): o
+		// que se mede aqui e a PERSEGUICAO, e o `Acertar` sorteia deflexao em todo impacto contra quem
+		// esta de pe (`GameServer.Projeteis.cs:1190-1240`) -- com 5.000 contra 5.000 e `base_damage` 15
+		// da 0,0044% por impacto, e um `Defletido` no fim da caca viraria "o teleguiado nao alcancou".
+		// Vale pros DOIS tipos: o teleguiado e o contra-exemplo passam pela mesma receita de proposito.
 		Projetil p = Disparar(atirador, new ReceitaDeProjetil
-		{ Tipo = tipo, BaseDano = 15, Velocidade = 1, AlcanceTiles = 60 });
+		{ Tipo = tipo, BaseDano = 15, Velocidade = 1, AlcanceTiles = 60, Deflectivel = false });
 		if (tipo == TipoDeProjetil.Guided) p.Alvo = presa.Id;
 		p.VidaRestante = 60;
 

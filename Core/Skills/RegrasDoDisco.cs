@@ -44,6 +44,9 @@ public static class RegrasDoDisco
 		var emObra = new Dictionary<string, RegraDeNivel>(StringComparer.OrdinalIgnoreCase);
 		var degraus = new Dictionary<string, List<Degrau>>(StringComparer.OrdinalIgnoreCase);
 
+		// (path, cadeia) das correntes em que ALGUM ramo nao foi entendido -- ver o bloco no `case "exp"`
+		var quebradas = new HashSet<(string, int)>();
+
 		foreach (string bloco in Blocos(json))
 		{
 			string tipo = Str(bloco, "tipo");
@@ -97,6 +100,24 @@ public static class RegrasDoDisco
 					}
 
 					string cond = Str(bloco, "cond").Replace(" ", "");
+					int cadeia = (int)Num(bloco, "cadeia", 0);
+
+					// O PORTAO DE NIVEL SAI DA FRENTE DA CONDICAO: `level<10&&savant.med` e
+					// "meditando, ate o nivel 10" -- duas coisas, e so uma delas e estado do corpo.
+					// Sem tirar o prefixo, as quatro condicoes assim caiam inteiras em
+					// `_condDesconhecida` (e com elas as tres skills Basic que so tem elas).
+					int nivelMenorQue = 0;
+					if (cond.StartsWith("level<", StringComparison.Ordinal))
+					{
+						int amp = cond.IndexOf("&&", StringComparison.Ordinal);
+						string num = amp > 0 ? cond[6..amp] : cond[6..];
+						if (int.TryParse(num, out int teto) && teto > 0)
+						{
+							nivelMenorQue = teto;
+							cond = amp > 0 ? cond[(amp + 2)..] : "";
+						}
+					}
+
 					RegraDeNivel.Estado? quando = cond switch
 					{
 						"" => RegraDeNivel.Estado.Sempre,
@@ -104,14 +125,49 @@ public static class RegrasDoDisco
 						"savant.flight" => RegraDeNivel.Estado.Voando,
 						"savant.train" => RegraDeNivel.Estado.Treinando,
 						"!savant.med&&!savant.flight" => RegraDeNivel.Estado.Ocioso,
+						// EM LUTA (`IsInFight`): a fonte de exp da Holy Trinity e das artes marciais do corpo.
+						// Ate aqui as duas caiam em `_condDesconhecida` -- a Trindade nunca subia de nivel.
+						"savant.IsInFight" => RegraDeNivel.Estado.Lutando,
+						"savant.train||savant.IsInFight" => RegraDeNivel.Estado.TreinandoOuLutando,
+
+						// ---- as sete da arvore da Mente (ver `RegraDeNivel.Estado`) ----
+						"else" => RegraDeNivel.Estado.Senao,
+						"savant.studying" => RegraDeNivel.Estado.Estudando,
+						"savant.observingnow" => RegraDeNivel.Estado.Observando,
+						"savant.kibuffon" => RegraDeNivel.Estado.ComBuffDeKi,
+						"savant.kiratio>1" => RegraDeNivel.Estado.KiAcimaDoNormal,
+						"savant.Ki!=lastki&&diffki<0" => RegraDeNivel.Estado.GastandoKi,
+						"(savant.Ki/savant.MaxKi)<0.9" => RegraDeNivel.Estado.TanqueAbaixoDe90,
+						"savant.deepmeditation" => RegraDeNivel.Estado.MeditacaoProfunda,
 						_ => null,
 					};
 
-					if (quando is not { } q) { _condDesconhecida++; break; }
+					if (quando is not { } q)
+					{
+						_condDesconhecida++;
+						// ============================ UMA CORRENTE QUEBRADA SAI INTEIRA ============================
+						// Se um ramo de um `if/else` nao foi entendido, os OUTROS ramos daquela corrente
+						// tambem tem que sair: sem o ramo perdido, o `else` (que vale sempre) passaria a
+						// render em situacoes que no DM caem no ramo que se perdeu. Melhor nao creditar do
+						// que creditar demais em silencio -- e hoje isto nao remove nada (nenhuma corrente
+						// do `niveis.json` mistura condicao lida e nao lida), mas a proxima pode misturar.
+						// ======================================================================================
+						if (cadeia != 0) quebradas.Add((path, cadeia));
+						break;
+					}
 
 					double quanto = Num(bloco, "quanto", 0);
 					if (quanto <= 0) break;
-					r.PorEstado.Add(new RegraDeNivel.GanhoPorEstado { Quanto = quanto, Quando = q });
+					r.PorEstado.Add(new RegraDeNivel.GanhoPorEstado
+					{
+						Quanto = quanto,
+						Quando = q,
+						Cadeia = cadeia,
+						NivelMenorQue = nivelMenorQue,
+						NivelMinimo = (int)Num(bloco, "nivelmin", 0),
+						// `curva: 1` = passou pelo `KiSkillGains` do DM. Ver `GanhoPorEstado.Curva`.
+						Curva = Num(bloco, "curva", 0) > 0,
+					});
 					_porEstado++;
 					break;
 				}
@@ -141,6 +197,16 @@ public static class RegrasDoDisco
 					if (d.Flags.Remove("expbarrier", out double barreira) && barreira > 0) d.Barreira = barreira;
 
 					d.Verbos = Lista(bloco, "verbos");
+					// O VERB POR CASA ("Van-sama|Taunt") -- ver `Degrau.VerbosPorCasa`. Mesmo formato plano
+					// `rotulo|valor` das casas do `skills.json`, pelo mesmo motivo (o leitor fatia por `{`..`}`).
+					var porCasa = new List<(string, string)>();
+					foreach (string item in Lista(bloco, "verbosporcasa"))
+					{
+						int ib = item.IndexOf('|');
+						if (ib <= 0 || ib >= item.Length - 1) continue;
+						porCasa.Add((item[..ib], item[(ib + 1)..]));
+					}
+					d.VerbosPorCasa = [.. porCasa];
 					d.Destrava = Lista(bloco, "destrava");
 					// `path=nivel`: a skill concedida e o `baselevel` do `learn()` (Mind.dm:104 passa 1,
 					// :110 passa 0). Sem `=`, vale 0 -- o que o DM faz com quem compra.
@@ -154,8 +220,8 @@ public static class RegrasDoDisco
 					d.Concede = [.. concede];
 
 					if (d.Buffs.Count == 0 && d.Mults.Count == 0 && d.Genes.Count == 0 && d.Flags.Count == 0
-						&& d.Verbos.Length == 0 && d.Destrava.Length == 0 && d.Concede.Length == 0
-						&& d.Barreira <= 0 && d.Aviso.Length == 0) break;
+						&& d.Verbos.Length == 0 && d.VerbosPorCasa.Length == 0 && d.Destrava.Length == 0
+						&& d.Concede.Length == 0 && d.Barreira <= 0 && d.Aviso.Length == 0) break;
 
 					if (!degraus.TryGetValue(path, out List<Degrau>? l)) degraus[path] = l = [];
 					l.Add(d);
@@ -163,6 +229,12 @@ public static class RegrasDoDisco
 				}
 			}
 		}
+
+		// AS CORRENTES QUEBRADAS SAEM DEPOIS DA PASSADA, e nao durante: o ramo que nao foi entendido
+		// pode ser o ULTIMO da corrente, e ai os anteriores ja teriam entrado.
+		foreach ((string path, int cadeia) in quebradas)
+			if (emObra.TryGetValue(path, out RegraDeNivel? rq))
+				_porEstado -= rq.PorEstado.RemoveAll(g => g.Cadeia == cadeia);
 
 		int n = 0;
 		foreach ((string path, RegraDeNivel r) in emObra)

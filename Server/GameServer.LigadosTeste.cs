@@ -388,7 +388,7 @@ public partial class GameServer
 				// qualquer outro motivo -- ela nao distingue "recusou pela velhice" de "nao revive
 				// mais ninguem".
 				//
-				// LONGE DO OUTRO CADAVER, e isto custou uma rodada vermelha: `AlvoPertoG4` pega o
+				// LONGE DO OUTRO CADAVER, e isto custou uma rodada vermelha: `AlvoDeTecnica` pega o
 				// morto MAIS PROXIMO dentro de um tile, e com o par de controle ao lado do morto de
 				// velhice era o VELHO que ele achava de novo -- o revive recusava certo, pelo motivo
 				// certo, e o controle acusava "parou de funcionar pra todo mundo". Um par novo, a

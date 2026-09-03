@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Races;
 using Jandirus.Core.Stats;
@@ -1554,6 +1554,8 @@ public partial class GameServer : Node
 	private double _techDeTeste, _zeniDeTeste;
 	private int _marcosDeTeste;
 	private List<string> _skillsDeTeste = [];
+	/// <summary>`--nivelteste path=n,...`: (skill, nivel) pra quem entra e pra quem a compra. Ver `AplicarNiveisDeTeste`.</summary>
+	private readonly List<(string Path, int Nivel)> _niveisDeTeste = [];
 	private bool _nascerEmGerado;
 
 	/// <summary>As fichas dos planetas (gravidade e tipo), lidas de `planetas.json`.</summary>
@@ -1592,6 +1594,11 @@ public partial class GameServer : Node
 			// funcao que a bancada `--arvoreteste` chama num corpo forjado, que nao passa por `EhJogador`
 			TicarNiveisDe(pl);
 		}
+
+		// O LOTE G13 ANDA AQUI, e nao no tique cheio: os dois passos dele (a escrita do livro e o
+		// laco do estudo) sao do relogio do EFETOR no original -- `writetime++` mora no `medproc()`,
+		// que roda no mesmo `sleep(2)` das skills. Ver `GameServer.Tecnicas.G13.cs`.
+		TickG13();
 	}
 
 	/// <summary>
@@ -1675,7 +1682,7 @@ public partial class GameServer : Node
 	}
 
 	/// <summary>Um degrau pode ter concedido verb novo: o menu do cliente precisa saber.</summary>
-	private static void HabilidadesMudaram(ServerPlayer pl) => MandarSkills(pl, forcar: true);
+	private void HabilidadesMudaram(ServerPlayer pl) => MandarSkills(pl, forcar: true);
 
 	private void CarregarNiveis()
 	{
@@ -1959,6 +1966,24 @@ public partial class GameServer : Node
 			_skillsDeTeste = [.. args[sIdx + 1].Split(',', StringSplitOptions.RemoveEmptyEntries
 													   | StringSplitOptions.TrimEntries)];
 			GD.Print($"[server] BANCADA: concedendo {_skillsDeTeste.Count} skills: {string.Join(" | ", _skillsDeTeste)}");
+		}
+
+		// `--nivelteste path=n,path=n`: poe as skills listadas NO NIVEL n -- as que quem entra JA TEM (no
+		// login, depois do `--skillteste`) e as que ele COMPRAR depois. Nao concede nada: a bancada do
+		// cliente que disca (`--diagdegrau`) precisa de um verb concedido POR NIVEL (o Hokuto, dado pelo
+		// `--skillteste` e posto no 2 aqui) e de uma Trindade no nivel 2 depois de COMPRADA pelo funil,
+		// sem esperar o efetor subir cem tiques de luta -- a subida em si ja tem bancada propria.
+		// Ver `AplicarNiveisDeTeste`.
+		int nvIdx = Array.IndexOf(args, "--nivelteste");
+		if (nvIdx >= 0 && nvIdx + 1 < args.Length)
+		{
+			foreach (string par in args[nvIdx + 1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+			{
+				int ig = par.LastIndexOf('=');
+				if (ig > 0 && int.TryParse(par[(ig + 1)..], out int nivel)) _niveisDeTeste.Add((par[..ig], nivel));
+			}
+			GD.Print($"[server] BANCADA: {_niveisDeTeste.Count} skill(s) no nivel de teste: "
+					 + string.Join(" | ", _niveisDeTeste.Select(p => $"{p.Path}={p.Nivel}")));
 		}
 
 		// `--voltateste`: quem entrar nasce a SEIS tiles da beirada oeste.
@@ -2447,6 +2472,7 @@ public partial class GameServer : Node
 			CarregarRacas();
 			CarregarVisual();
 			Wire();
+			InscreverEsquecimentos();
 			_carregado = true;
 
 			// `--diagberco`: a bancada do BERCO, e ela roda no BOOT e nao no primeiro login.
@@ -2713,6 +2739,15 @@ public partial class GameServer : Node
 			// muda, e a familia 1 desta bancada afirma o contrario lendo o MESMO catalogo. As duas
 			// vizinhas, e a divida que uma media a outra fecha. Ver `GameServer.EscolhaTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--escolhateste") >= 0) RodarBancadaDaEscolha();
+
+			// `--menteskills`: AS DEZESSETE SKILLS DE "STRENGTH OF MIND", uma a uma -- alcance (quem
+			// da pra comprar, e o que acende cada uma) e EFEITO (o que o corpo ganha), separados.
+			//
+			// VIZINHA DA `--arvoreteste` pelo mesmo motivo que a escolha unica e vizinha do censo:
+			// aquela prova o MOTOR de arvores com a arvore do Corpo; esta atravessa a arvore da MENTE
+			// inteira pelo mesmo funil, e ela e a unica que exercita a cadeia de tres degraus
+			// (Basic 100 -> Advanced 100 -> Perfect). Ver `GameServer.MenteSkillsTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--menteskills") >= 0) RodarBancadaDasSkillsDaMente();
 
 			// `--arvoreteste`: O TIER DE VITRINE E O `enabled` LIDO COMO O DM LE -- pelo FUNIL do
 			// servidor (comprar -> efeitos -> contadores -> growbranches -> pacote), e o pacote
@@ -3098,6 +3133,7 @@ public partial class GameServer : Node
 
 		// OS QUATRO LOTES SE ANUNCIAM. Cada um vive no proprio arquivo e registra as tecnicas dele
 		// -- portar o proximo lote nao mexe nesta lista, so acrescenta uma linha.
+		RegistrarTecnicasBase();
 		RegistrarTecnicasG1();
 		RegistrarTecnicasG2();
 		RegistrarTecnicasG3();
@@ -3151,6 +3187,11 @@ public partial class GameServer : Node
 		// teleportes com carona, Flip, Self Destruct, Psycho Thread, Freeze, Observe, Unlock Potential
 		// e Give Power -- as skills que ja estavam na arvore sem efeito. Ver `GameServer.Tecnicas.G11.cs`.
 		RegistrarTecnicasG11();
+
+		// O LOTE DO SISTEMA DE ESTUDO da arvore "Strength of Mind": Study_Other, Focus_Skill e
+		// Write_Teachings -- os tres verbs que faltavam das dezessete skills da Mente. Ver
+		// `GameServer.Tecnicas.G13.cs`.
+		RegistrarTecnicasG13();
 
 		// O `Planet_Destroy` -- a unica tecnica so-de-vilao do catalogo. Ver `GameServer.Destruicao.cs`.
 		RegistrarTecnicasDaDestruicao();
@@ -3857,6 +3898,7 @@ public partial class GameServer : Node
 		// o mesmo tropeco que o `--quebrarteste` deu com a zona.
 		if (_feridaDeTeste) FerirDeTeste(pl);
 		foreach (string sk in _skillsDeTeste) pl.Livro.Dar(sk);
+		AplicarNiveisDeTeste(pl);   // `--nivelteste`: as skills que ele ja tem, no nivel pedido (depois do Dar de cima)
 
 		// BANCADA DO EMBATE: o host fica mais forte, pra a vantagem de poder ter o que multiplicar.
 		if (_clashSempre && EhHost(peer)) { pl.Ficha.BP *= BpDoHostNoTeste; pl.Ficha.Statify(); }
@@ -4769,6 +4811,17 @@ public partial class GameServer : Node
 		SoltarDoEmbateDeKi(pl.Id);
 
 		_contas.Remove(peer);   // ANTES de soltar: sair do jogo nao pode custar o progresso
+		DespedirCorpo(pl);
+	}
+
+	/// <summary>
+	/// ESTE CORPO SAIU DO MUNDO -- a metade do logout que apaga o ID. Separada do <see cref="Drop"/>
+	/// porque o `Drop` precisa de um `NetPeer` e a bancada nao tem um: e por aqui que ela prova o
+	/// relog (`--catalogoteste`, familia 7) pelo MESMO caminho que o jogador de verdade percorre.
+	/// Nada e gravado aqui: o `Persistir` ja aconteceu la em cima, com a conta ainda na mao.
+	/// </summary>
+	private void DespedirCorpo(ServerPlayer pl)
+	{
 		_players.Remove(pl.Id);
 		ZoneList(pl.Zone.Hash).Remove(pl);
 
@@ -4796,11 +4849,12 @@ public partial class GameServer : Node
 		EsquecerParalisia(pl.Id);
 		EsquecerEsmagamento(pl.Id);   // o relogio do aviso, pelo mesmo motivo: id se reusa
 		EsquecerVacuo(pl.Id);         // idem -- e sem isto o proximo a herdar o id nasceria "sufocando"
-		EsquecerG6(pl.Id);            // recarga do sopro, silaba do Kikoho, cura e rugido em carga
-		EsquecerG7(pl.Id);            // recarga da Bala Dispersa
-		EsquecerG10(pl.Id);           // ultiCD do Hokuto, rush/exaustao e danos atrasados
-		EsquecerG12(pl.Id);           // Death Ball, rajadas, Genkidama, dreno, copias, Senzu, alvos de Ki, disfarce
-		EsquecerG11(pl.Id);           // Sneak, transmissao, autodestruicao, doacao, astros, braco esticado
+
+		// OS LOTES DE TECNICAS, POR UM NOME SO: cada um se inscreveu no boot (ver `_aoEsquecer`).
+		// Antes eram cinco linhas a mao (G6, G7, G10, G11, G12) e CINCO lotes fora da cadeia -- o
+		// proximo dono do id herdava o escudo, a carga da Final Explosion e ate as frases gravadas de
+		// outra pessoa.
+		EsquecerTecnicas(pl.Id);
 		LimparProjeteisDeUmDono(pl.Id, pl.Zone.Hash);
 
 		// ============================ RECONSTRUIDO (mais novo que a copia de 23:07) ============================
@@ -4821,6 +4875,49 @@ public partial class GameServer : Node
 			other.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 
 		GD.Print($"[server] {pl.Name} saiu");
+	}
+
+	/// <summary>
+	/// QUEM PRECISA SABER QUE UM ID SAIU DO MUNDO. Cada lote de tecnicas guarda estado por id de
+	/// jogador (recargas, cargas, ancoras, o escudo) fora do <see cref="ServerPlayer"/> -- ver o
+	/// cabecalho de `GameServer.Tecnicas.cs` -- e id se reusa. O logout chama UM nome
+	/// (<see cref="EsquecerTecnicas"/>); quem tem estado por id se inscreve no boot
+	/// (<see cref="InscreverEsquecimentos"/>), e a bancada limpa os corpos dela pelo mesmo nome.
+	///
+	/// ============================ O BURACO QUE ISTO FECHA ============================
+	/// A cadeia antiga era escrita a mao no `Drop`, um `EsquecerGx(pl.Id)` por lote -- e cinco lotes
+	/// (a base, G1, G2, G3, G4) nunca entraram nela. Um id reusado herdava o `_escudoAtivo` do
+	/// anterior: ao apertar Ki Shield, o corpo novo SUBTRAIA um bonus que nunca recebeu e ficava com
+	/// a defesa abaixo da que nasceu. A lista e o que impede um sexto lote de ficar de fora: quem
+	/// esquece de se inscrever esquece num lugar so, e a familia 7 da `--catalogoteste` prova o relog
+	/// com o escudo de pe -- e prova que sabe ficar vermelha, esvaziando a lista.
+	/// ==================================================================================
+	/// </summary>
+	private readonly List<Action<int>> _aoEsquecer = [];
+
+	/// <summary>Este id saiu do mundo: todo estado por id das tecnicas some com ele.</summary>
+	private void EsquecerTecnicas(int id)
+	{
+		foreach (Action<int> esquecer in _aoEsquecer) esquecer(id);
+	}
+
+	/// <summary>OS INSCRITOS, no boot: um por lote, cada um no arquivo do seu lote (`EsquecerGx`).</summary>
+	private void InscreverEsquecimentos()
+	{
+		_aoEsquecer.Add(EsquecerBaseDasTecnicas);
+		_aoEsquecer.Add(EsquecerG1);
+		_aoEsquecer.Add(EsquecerG2);
+		_aoEsquecer.Add(EsquecerG3);
+		_aoEsquecer.Add(EsquecerG4);
+		_aoEsquecer.Add(EsquecerG5);
+		_aoEsquecer.Add(EsquecerG6);
+		_aoEsquecer.Add(EsquecerG7);
+		_aoEsquecer.Add(EsquecerG9);
+		_aoEsquecer.Add(EsquecerProjeteis);
+		_aoEsquecer.Add(EsquecerG10);
+		_aoEsquecer.Add(EsquecerG11);
+		_aoEsquecer.Add(EsquecerG12);
+		_aoEsquecer.Add(EsquecerG13);
 	}
 
 	// ---------------------------------------------------------------------

@@ -69,6 +69,15 @@ public sealed class SkillDef
 	public List<string> Verbos = [];
 
 	/// <summary>
+	/// O EFEITO CONDICIONADO A RACA: `if(savant.Race=="Yardrat") savant.teleskill=70` (yardrat.dm:85-87).
+	/// Uma entrada por raca, no MESMO molde da casa da escolha unica (rotulo = a raca), e quem a aplica
+	/// e o Core, so pra quem E daquela raca. Ate este canal existir o `if` era invisivel pro extrator e
+	/// a linha de dentro saia como flag INCONDICIONAL -- a Instant Transmission e ensinavel, e todo
+	/// aprendiz nascia com a pericia de um Yardrat.
+	/// </summary>
+	public List<EscolhaDeSkill> PorRaca = [];
+
+	/// <summary>
 	/// BUFF MULTIPLICATIVO (`savant.MedMod *= 2`). Canal SEPARADO do aditivo de proposito: no
 	/// DM os campos que levam `*=` sao modificadores que nascem em 1 (MedMod, kicapacityMod,
 	/// PDrainMod), e somar 2 num campo que deveria DOBRAR e um erro que passa despercebido --
@@ -241,6 +250,10 @@ public static class DmSkillScanner
 	private static readonly Regex RxCasa = new(
 		@"^if\s*\(\s*""(?<s>[^""]*)""\s*\)\s*$", RegexOptions.Compiled);
 
+	/// <summary>`if(savant.Race=="Yardrat")` (com ou sem o comando na mesma linha) -- o efeito por RACA.</summary>
+	private static readonly Regex RxPorRaca = new(
+		@"^if\s*\(\s*savant\.Race\s*==\s*""(?<r>[^""]+)""\s*\)\s*(?<resto>.*)$", RegexOptions.Compiled);
+
 	private static readonly Regex RxProp = new(
 		@"^(?<ind>\t*)(?<k>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<v>.+?)\s*$", RegexOptions.Compiled);
 
@@ -305,6 +318,13 @@ public static class DmSkillScanner
 	/// mesmo logica). Diario, nao json: uma expressao que o Core nao avalia nao pode virar `+= 0`.
 	/// </summary>
 	public static readonly List<(string Skill, string Linha)> ComprasNaoLidas = [];
+
+	/// <summary>
+	/// O RAMO `else` DE UM `if(savant.Race=="X")` QUE TEM EFEITO -- (skill, linha). "Todo mundo menos X"
+	/// nao tem canal no `skills.json` e inventar um seria adivinhar; a linha vai pro diario e o relatorio
+	/// do extrator a imprime. No DM do dono o unico `else` desses e um `to_chat` (yardrat.dm:88).
+	/// </summary>
+	public static readonly List<(string Skill, string Linha)> CondicionaisNaoLidas = [];
 
 	/// <summary>
 	/// `switch(savant.<var>)` de casa unica cuja LIDER nao foi achada -- (skill, var). A lider e a
@@ -408,6 +428,7 @@ public static class DmSkillScanner
 		OndeAdiou.Clear();
 		AprendizadosSemDono.Clear();
 		ComprasNaoLidas.Clear();
+		CondicionaisNaoLidas.Clear();
 		EscolhasSemLider.Clear();
 		CorposDeGalhos.Clear();
 		CorposDePoda.Clear();
@@ -589,11 +610,53 @@ public static class DmSkillScanner
 		EscolhaDeSkill? casa = null;
 		int indCasa = -1;
 		var locais = new Dictionary<string, string>(StringComparer.Ordinal);
+		EscolhaDeSkill? raca = null;   // dentro de um `if(savant.Race=="X")` em bloco
+		int indRaca = -1, indElse = -1;
 
-		foreach ((int ind, string txt) in corpo)
+		foreach ((int ind, string linhaCrua) in corpo)
 		{
+			string txt = linhaCrua;
 			if (indCasa >= 0 && ind <= indCasa) { casa = null; indCasa = -1; }
 			if (indSwitch >= 0 && ind <= indSwitch) indSwitch = -1;
+
+			// ============================ O EFEITO CONDICIONADO A RACA ============================
+			// `if(savant.Race=="Yardrat")` + corpo indentado (yardrat.dm:85-87). O que mora dentro vai
+			// pra `PorRaca` com o rotulo da raca. O `else` que o segue (`else to_chat(...)`, :88) e
+			// ignorado -- e, se tiver efeito, vai pro diario `CondicionaisNaoLidas`: "todo mundo menos
+			// X" nao tem canal, e inventar um seria adivinhar. Ate aqui o `if` era INVISIVEL pra este
+			// laco e a linha de dentro saia como flag de todo mundo.
+			// ====================================================================================
+			if (indRaca >= 0 && ind <= indRaca)
+			{
+				raca = null; indRaca = -1;
+				if (txt.StartsWith("else", StringComparison.Ordinal))
+				{
+					string restoElse = txt[4..].TrimStart();
+					if (restoElse.Length == 0) { indElse = ind; continue; }        // `else` em bloco: pula o corpo
+					if (restoElse.StartsWith("if", StringComparison.Ordinal)) txt = restoElse;   // `else if(...)`: le como `if`
+					else { if (TemEfeito(restoElse)) CondicionaisNaoLidas.Add((skill, linhaCrua)); continue; }
+				}
+			}
+			if (indElse >= 0)
+			{
+				if (ind > indElse) { if (TemEfeito(txt)) CondicionaisNaoLidas.Add((skill, linhaCrua)); continue; }
+				indElse = -1;
+			}
+			if (raca != null)
+			{
+				Colher(txt, raca.Buffs, raca.Mults, raca.Genes, raca.Flags, raca.Verbos, _ => { });
+				continue;
+			}
+			if (indSwitch < 0 && casa == null && RxPorRaca.Match(txt) is { Success: true } mr)
+			{
+				string nome = mr.Groups["r"].Value;
+				EscolhaDeSkill entrada = alvo.PorRaca.Find(e => e.Rotulo == nome) ?? new EscolhaDeSkill { Rotulo = nome };
+				if (!alvo.PorRaca.Contains(entrada)) alvo.PorRaca.Add(entrada);
+				string inline = mr.Groups["resto"].Value.Trim();
+				if (inline.Length > 0) Colher(inline, entrada.Buffs, entrada.Mults, entrada.Genes, entrada.Flags, entrada.Verbos, _ => { });
+				else { raca = entrada; indRaca = ind; }
+				continue;
+			}
 
 			if (indSwitch < 0 && RxEscolhaLista.IsMatch(txt)) { indSwitch = ind; continue; }
 			if (indSwitch < 0 && RxEscolhaPorVar.Match(txt) is { Success: true } mv)
@@ -1269,6 +1332,11 @@ public static class DmSkillScanner
 			// `v:` = verbo. Vazio na esmagadora maioria -- uma skill no jogo inteiro usa isto.
 			if (d.Escolhas.Count > 0)
 				sb.Append($", \"escolhas\": [{string.Join(", ", d.Escolhas.Select(e => J(Casa(e))))}]");
+			// O EFEITO POR RACA, no mesmo formato de casa ("Yardrat|!teleskill=70") -- ver `PorRaca`. So as
+			// entradas COM efeito: um `if(savant.Race=="Demon")` que so muda a frase (demon.dm:159) nao e dado.
+			List<EscolhaDeSkill> porRaca = d.PorRaca.Where(ComEfeito).ToList();
+			if (porRaca.Count > 0)
+				sb.Append($", \"porraca\": [{string.Join(", ", porRaca.Select(e => J(Casa(e))))}]");
 			// A ESCOLHA HERDADA e o GANHO NA COMPRA, so em quem os tem -- ver os campos no `SkillDef`.
 			if (d.EscolhaSegue.Length > 0) sb.Append($", \"escolhasegue\": {J(d.EscolhaSegue)}");
 			if (d.Compra.Count > 0) sb.Append($", \"compra\": [{string.Join(", ", d.Compra.Select(J))}]");
@@ -1283,6 +1351,10 @@ public static class DmSkillScanner
 	/// <summary>Um dicionario como lista plana de "chave=valor" -- ver o comentario de `buffs`.</summary>
 	private static string Pares(Dictionary<string, double> d) => string.Join(", ", d.Select(kv =>
 		J($"{kv.Key}={kv.Value.ToString("0.####", CultureInfo.InvariantCulture)}")));
+
+	/// <summary>Uma entrada (casa ou raca) que faz alguma coisa no corpo -- as vazias nao viram dado.</summary>
+	public static bool ComEfeito(EscolhaDeSkill e) =>
+		e.Buffs.Count + e.Mults.Count + e.Genes.Count + e.Flags.Count + e.Verbos.Count > 0;
 
 	/// <summary>Uma casa da escolha unica numa string so -- ver o comentario de `escolhas`.</summary>
 	private static string Casa(EscolhaDeSkill e)

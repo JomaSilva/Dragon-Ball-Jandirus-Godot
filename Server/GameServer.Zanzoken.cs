@@ -81,24 +81,71 @@ public sealed partial class GameServer
 			return;
 
 		pl.Ficha.Ki -= custo;
-		pl.Pos = destino;
 		pl.Facing = MoveRules.FacingFrom(d, pl.Facing);
 		pl.ZanzoLivreEm = agora + RecargaZanzoMs;
-
-		// O MESMO CUIDADO DA INVESTIDA: os pacotes que o cliente ja mandou falam da posicao velha,
-		// e sem o carimbo de sequencia o servidor os trataria como cliente errado e puxaria o
-		// corpo de volta (ver `GameServer.Input`).
-		pl.LastInputMs = agora;
-		pl.CorrecaoEsperadaAte = agora + 500;
-		pl.SeqDoTeleporte = pl.SeqInput;
-		pl.OrcamentoPx = 0;
-
-		var corr = Protocol.Begin(Protocol.S2C.Correction);
-		corr.Put(pl.SeqInput);
-		corr.PutVec(pl.Pos);
-		pl.Peer?.Send(corr, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		CravarPosicao(pl, destino);
 
 		AnunciarZanzo(pl, de);
+	}
+
+	/// <summary>
+	/// CRAVA O CORPO NUM PONTO -- o `loc = locate(...)` de toda tecnica que desloca sem o jogador
+	/// andar: a piscada, a investida, o passo do Light Buster, a ancora de uma carga, o puxao da
+	/// volta no tempo.
+	///
+	/// ============================ UM CAMINHO PRA "O SERVIDOR MOVEU VOCE" ============================
+	/// Sao quatro linhas e um pacote, e eram copiadas em nove lugares com pequenas diferencas: uma
+	/// copia sem zerar o `OrcamentoPx`, outra sem o carimbo de sequencia, outra que montava o pacote a
+	/// mao (a chance de mandar so a posicao e o cliente ler a coordenada como sequencia). Aqui vale a
+	/// versao inteira, sempre:
+	///   * `LastInputMs`: o proximo pacote do cliente parte da posicao NOVA e nao conta como passo;
+	///   * `CorrecaoEsperadaAte`: as correcoes desta janela sao a tecnica funcionando, e nao cliente
+	///     desonesto -- nao entram no medidor (ver `GameServer.Input`);
+	///   * `SeqDoTeleporte`: input montado ANTES deste instante nao opina sobre onde o corpo esta;
+	///   * `OrcamentoPx = 0`: teleporte nao carrega credito de passo acumulado andando;
+	///   * o pacote sai pelo <see cref="MandarCorrecaoG3"/>, o unico jeito certo de monta-lo.
+	/// O `Facing` fica com quem chama: cada tecnica chega olhando pra um lado diferente.
+	/// ================================================================================================
+	/// </summary>
+	/// <param name="janelaMs">Quanto tempo as correcoes seguintes contam como esperadas. Meio segundo
+	/// basta pra quem se moveu por gesto proprio; quem foi puxado por OUTRA tecnica pede mais.</param>
+	private void CravarPosicao(ServerPlayer pl, Vec2 destino, long janelaMs = 500)
+	{
+		long agora = NowMs();
+		pl.Pos = destino;
+		pl.LastInputMs = agora;
+		pl.CorrecaoEsperadaAte = agora + janelaMs;
+		pl.SeqDoTeleporte = pl.SeqInput;
+		pl.OrcamentoPx = 0;
+		MandarCorrecaoG3(pl);
+	}
+
+	/// <summary>
+	/// A ANCORA: se o corpo saiu de onde a tecnica o prende (uma carga, um canal), volta pra la.
+	/// Nao e cliente desonesto -- e a trava. Devolve se puxou; a folga de 4 px existe pra nao brigar
+	/// com o arredondamento do cliente a cada tique.
+	/// </summary>
+	private bool Ancorar(ServerPlayer pl, Vec2 ancora, long janelaMs = 400)
+	{
+		if (Vec2.Distance(pl.Pos, ancora) <= 4) return false;
+		CravarPosicao(pl, ancora, janelaMs);
+		return true;
+	}
+
+	/// <summary>
+	/// O PRIMEIRO PONTO LIVRE de uma lista de candidatos -- o `locate()` + `Enter()` de todo
+	/// teleporte curto do DM (atras do alvo, ao lado dele, num vizinho diagonal), que aqui pergunta
+	/// ao passo (<see cref="MoveRules.Occupied"/>: parede E agua). Nulo quando nenhum serve; sem
+	/// mapa carregado o primeiro vale, porque nao ha parede pra conferir. Quatro tecnicas tinham
+	/// cada uma a sua copia desta pergunta.
+	/// </summary>
+	private Vec2? PontoLivre(ZoneKey zona, params Vec2[] candidatos)
+	{
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
+		if (mapa == null) return candidatos.Length > 0 ? candidatos[0] : null;
+		foreach (Vec2 c in candidatos)
+			if (!MoveRules.Occupied(mapa, c)) return c;
+		return null;
 	}
 
 	/// <summary>

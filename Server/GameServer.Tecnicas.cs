@@ -35,6 +35,20 @@ public partial class GameServer
 
 	public bool EstaOculto(int id) => _invisiveis.Contains(id);
 
+	/// <summary>
+	/// QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`, porque id se reusa. So o
+	/// REGISTRO some: o bonus do escudo mora em `Tphysdef`/`Tkidef`, que nao vao pro disco -- o corpo
+	/// que relogar nasce com a defesa limpa, e e por isso que herdar a ENTRADA era o problema (o
+	/// desligar subtrairia de um corpo que nunca somou). A `--catalogoteste` (familia 7) prova.
+	/// </summary>
+	private void EsquecerBaseDasTecnicas(int id)
+	{
+		_cegoAte.Remove(id);
+		_solarPronto.Remove(id);
+		_invisiveis.Remove(id);
+		_escudoAtivo.Remove(id);
+	}
+
 	// =====================================================================
 	// SOLAR FLARE
 	// =====================================================================
@@ -48,12 +62,8 @@ public partial class GameServer
 	/// </summary>
 	private void SolarFlare(ServerPlayer pl)
 	{
+		if (EmEspera(pl, _solarPronto, "a tecnica ainda se recompoe")) return;
 		long agora = NowMs();
-		if (_solarPronto.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, $"a tecnica ainda se recompoe ({(pronto - agora) / 1000.0:0.#}s).");
-			return;
-		}
 
 		double custo = Tecnicas.SolarCustoKi(pl.Ficha);
 		if (pl.Ficha.Ki < custo) { Avisar(pl, $"isso pede pelo menos {custo:0} de energia."); return; }
@@ -199,42 +209,173 @@ public partial class GameServer
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
+	// =====================================================================
+	// O REGISTRO DAS TECNICAS VIVAS -- uma tabela, e nao doze cadeias de `if`
+	// =====================================================================
+	/// <summary>
+	/// UMA TECNICA VIVA no servidor: o verb que a DESTRAVA (<see cref="Gate"/>, o que o
+	/// <see cref="SabeTecnica"/> pergunta), o LOTE que a registrou (so as bancadas leem) e o que
+	/// fazer quando o jogador aperta. <see cref="Agir"/> recebe o ARGUMENTO do id -- o que vem
+	/// depois do ':' (`Telepathy:Goku:oi`) -- ou, nas registradas por prefixo, o id inteiro
+	/// (`Kaioken_20`, `Phrase_3`), que cada familia parte do seu jeito.
+	/// </summary>
+	private sealed record TecnicaViva(string Gate, string Lote, bool PorPrefixo, Action<ServerPlayer, string> Agir);
+
+	private readonly Dictionary<string, TecnicaViva> _tecnicas = new(StringComparer.OrdinalIgnoreCase);
+	private readonly List<(string Prefixo, TecnicaViva Tecnica)> _tecnicasPorPrefixo = [];
+	private string _loteEmRegistro = "";
+
+	/// <summary>O lote que as proximas chamadas de <see cref="Vivo"/> assinam. Cada `RegistrarTecnicasGx` abre o seu.</summary>
+	private void IniciarLote(string lote) => _loteEmRegistro = lote;
+
+	/// <summary>
+	/// REGISTRA uma tecnica viva pelo id exato. O MESMO lote pode registrar de novo (a bancada do selo
+	/// re-roda o `RegistrarTecnicasG9` pra desfazer uma arrancada de efeito); DOIS lotes com o mesmo id
+	/// e erro de programacao e derruba o boot de proposito -- e o "todo verb esta em uma lista, e em
+	/// uma so", que antes era uma afirmacao de bancada sobre doze listas e agora e uma propriedade da
+	/// tabela.
+	/// </summary>
+	private void Vivo(string id, Action<ServerPlayer> agir) => Vivo(id, (pl, _) => agir(pl));
+
+	private void Vivo(string id, Action<ServerPlayer, string> agir)
+	{
+		if (_tecnicas.TryGetValue(id, out TecnicaViva? outra) && outra.Lote != _loteEmRegistro)
+			throw new InvalidOperationException($"tecnica registrada por dois lotes: {id} ({outra.Lote} e {_loteEmRegistro})");
+		_tecnicas[id] = new TecnicaViva(id, _loteEmRegistro, PorPrefixo: false, agir);
+	}
+
+	/// <summary>
+	/// REGISTRA uma FAMILIA de ids por prefixo (`Kaioken_20`, `Final_Explosion_25`, `Phrase_3`): quem
+	/// destrava e <paramref name="gate"/>, e o handler recebe o id INTEIRO pra partir o sufixo.
+	/// </summary>
+	private void VivoPorPrefixo(string prefixo, string gate, Action<ServerPlayer, string> agir)
+	{
+		_tecnicasPorPrefixo.RemoveAll(p => p.Prefixo.Equals(prefixo, StringComparison.OrdinalIgnoreCase));   // idem: re-registro do mesmo lote
+		_tecnicasPorPrefixo.Add((prefixo, new TecnicaViva(gate, _loteEmRegistro, PorPrefixo: true, agir)));
+	}
+
+	/// <summary>A tecnica que atende este id-base: exata primeiro, senao a familia cujo prefixo casa.</summary>
+	private TecnicaViva? TecnicaVivaDe(string baseId)
+	{
+		if (_tecnicas.TryGetValue(baseId, out TecnicaViva? t)) return t;
+		foreach ((string prefixo, TecnicaViva familia) in _tecnicasPorPrefixo)
+			if (baseId.StartsWith(prefixo, StringComparison.OrdinalIgnoreCase)) return familia;
+		return null;
+	}
+
+	/// <summary>
+	/// VARRE UM DICIONARIO DE ESTADO SUSTENTADO e devolve so as linhas que ainda tem DONO NO MUNDO --
+	/// tirando do dicionario, no caminho, quem saiu. Era o preambulo de seis tiques do G12, escrito
+	/// seis vezes:
+	///
+	///     foreach (int id in _xG12.Keys.ToList())
+	///     {
+	///         EstadoX x = _xG12[id];
+	///         if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _xG12.Remove(id); continue; }
+	///
+	/// So o PREAMBULO mora aqui. A condicao de QUEDA ("cai quando ele medita", "cai quando ele troca
+	/// de planeta") continua escrita em cada tique, porque ela e LITERAL DO DM e cada tecnica tem a
+	/// sua: o `med`/`train` derruba a Death Ball e o Buster e NAO derruba o Volei nem a Genkidama, e
+	/// "trocou de zona" so o G12 confere. Uma condicao unica aqui inventaria regra pra quem nao tinha.
+	///
+	/// `Keys.ToList()` porque o corpo do laco REMOVE do proprio dicionario; e o `TryGetValue` no
+	/// estado (onde antes havia um indexador cru) porque um tique pode tirar a linha de OUTRO id --
+	/// o indexador estouraria, e a varredura ja tinha a resposta certa a mao.
+	/// </summary>
+	private IEnumerable<(int Id, T Estado, ServerPlayer Corpo)> Varrer<T>(Dictionary<int, T> estados)
+	{
+		foreach (int id in estados.Keys.ToList())
+		{
+			if (!estados.TryGetValue(id, out T? estado)) continue;
+			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { estados.Remove(id); continue; }
+			yield return (id, estado, pl);
+		}
+	}
+
+	/// <summary>
+	/// OS IDS QUE ESTE SERVIDOR SABE ATENDER -- o lado "vivo no jogo" da conta das DUAS BOCAS.
+	///
+	/// ============================ POR QUE ISTO PRECISOU EXISTIR ============================
+	/// Enquanto cada lote escrevia o DESCRITOR (`Tecnicas.Registrar`) alem do CORPO (<see cref="Vivo"/>),
+	/// "vivo no jogo" dava pra ler do proprio catalogo: `Tecnicas.Vivas` era o que os lotes tinham
+	/// registrado. Com o descritor morando so no Core, `Tecnicas.Vivas` passou a ser *o espelho* -- e
+	/// comparar o espelho com ele mesmo e uma prova que nunca reprova. A pergunta de verdade e outra e
+	/// continua valendo: **todo id com CORPO tem descritor, e todo descritor tem CORPO?**
+	///
+	/// AS FAMILIAS POR PREFIXO NAO SE ENUMERAM (`Kaioken_20`, `Phrase_3`: um corpo atende qualquer
+	/// sufixo), entao elas entram pelo lado do ESPELHO -- todo descritor que <see cref="TecnicaVivaDe"/>
+	/// consegue atender conta como "tem corpo". Quem responde e o MESMO despacho que o jogador aperta,
+	/// e nao uma segunda lista de prefixos que poderia discordar dele.
+	/// ======================================================================================
+	/// </summary>
+	private List<string> TecnicasComCorpo()
+	{
+		var ids = new List<string>(_tecnicas.Keys);
+		foreach (string id in Tecnicas.NoEspelho)
+			if (!_tecnicas.ContainsKey(id) && TecnicaVivaDe(id) != null) ids.Add(id);
+		return ids;
+	}
+
+	/// <summary>Os ids que um lote registrou, na ordem do registro -- pras bancadas de lote.</summary>
+	private List<string> IdsDoLote(string lote) => [.. _tecnicas.Where(kv => kv.Value.Lote == lote).Select(kv => kv.Key)];
+
+	/// <summary>Este id foi registrado por este lote? -- pras bancadas que afirmam "continua FORA do lote".</summary>
+	private bool EhDoLote(string lote, string id) => _tecnicas.TryGetValue(id, out TecnicaViva? t) && t.Lote == lote;
+
+	/// <summary>
+	/// AS CINCO DA BASE. Os descritores delas moram no Core (o construtor estatico de `Tecnicas`);
+	/// aqui entra so o corpo, como em todo lote.
+	/// </summary>
+	private void RegistrarTecnicasBase()
+	{
+		IniciarLote("base");
+		Vivo("Solar_Flare", SolarFlare);
+		Vivo("Invisibility", Invisibilidade);
+		Vivo("Ki_Shield", KiShield);
+		Vivo("Regenerate", Regenerar);
+		Vivo("Space_Flight", Decolar);
+	}
+
 	/// <summary>
 	/// O DESPACHO das tecnicas ativas, pelo id do verb do DM.
 	///
-	/// A tecnica que o jogador NAO sabe e recusada aqui, nao no cliente: o botao pode nem existir
-	/// na tela, mas quem manda o pacote na mao tem que ouvir nao.
+	/// ============================ UMA TABELA, E NAO DOZE CADEIAS DE `if` ============================
+	/// Cada lote registra no boot as suas tecnicas vivas (<see cref="Vivo"/>/<see cref="VivoPorPrefixo"/>,
+	/// nos `RegistrarTecnicasGx`), e este metodo faz TRES coisas, uma vez cada: parte o argumento no
+	/// primeiro ':' (`Telepathy:Goku:oi` -> `Telepathy` + `Goku:oi`), acha a tecnica (id exato, senao
+	/// a familia do prefixo: `Kaioken_20`, `Phrase_3`) e pergunta ao <see cref="SabeTecnica"/> pelo
+	/// verb que a DESTRAVA -- que nem sempre e o id: `Phrase_3` e destravada por `Magic_Words`.
+	///
+	/// Antes eram sete lotes com o proprio `if`/`switch`, cada um partindo o id do seu jeito e
+	/// repetindo o gate com a sua frase de recusa, mais cinco lotes pendurados num `default` -- e a
+	/// ORDEM entre eles era regra ("quem aceita argumento vem antes do gate generico"). Todo id e
+	/// comparado sem diferenciar maiusculas, em todos os lotes.
+	///
+	/// A tecnica que o jogador NAO sabe e recusada aqui, nao no cliente: o botao pode nem existir na
+	/// tela, mas quem manda o pacote na mao tem que ouvir nao. AS INVENTADAS (`Custom_AttackN`)
+	/// entram DEPOIS da tabela e ANTES da recusa generica, como sempre: nenhuma skill as destrava --
+	/// no DM os verbos custom sao concedidos pelo `after_learn()` do proprio datum (`:122-127`).
+	/// ================================================================================================
 	/// </summary>
 	private bool UsarTecnica(ServerPlayer pl, string id)
 	{
-		// OS LOTES PORTADOS VEM PRIMEIRO, e a ordem nao e gosto: eles aceitam ids com ARGUMENTO
-		// ("Kaioken_20", "DirectSSJ:2", "Final_Explosion_25"), e o gate generico logo abaixo
-		// pergunta `SabeTecnica(id)` -- que compara o id INTEIRO com os verbs da skill e nunca
-		// casaria com a variante. Passando antes, cada lote confere o verb BASE por conta propria.
-		if (UsarTecnicasG1(pl, id)) return true;
-		if (UsarTecnicasG2(pl, id)) return true;
-		if (UsarTecnicasG3(pl, id)) return true;
-		if (UsarTecnicasG4(pl, id)) return true;
+		if (id.Length == 0) return false;
 
-		// O LOTE G8 entra AQUI, com os quatro de cima e nao com os tres de baixo, por um motivo so: o
-		// `Restore_Youth` aceita id com ARGUMENTO (`Restore_Youth:14`). Ver o cabecalho do
-		// `GameServer.Tecnicas.G8.cs`.
-		if (UsarTecnicasG8(pl, id)) return true;
+		int corte = id.IndexOf(':');
+		string baseId = corte < 0 ? id : id[..corte];
+		string arg = corte < 0 ? "" : id[(corte + 1)..].Trim();
 
-		// E O LOTE G9 pelo mesmo motivo do G8: o `Power_Control` aceita id com ARGUMENTO
-		// (`Power_Control:40`). Ver o cabecalho do `GameServer.Tecnicas.G9.cs`.
-		if (UsarTecnicasG9(pl, id)) return true;
+		if (TecnicaVivaDe(baseId) is { } viva)
+		{
+			if (!SabeTecnica(pl, viva.Gate))
+			{
+				Avisar(pl, $"voce nao sabe {Tecnicas.Get(viva.Gate)?.Nome ?? viva.Gate}.");
+				return true;
+			}
+			viva.Agir(pl, viva.PorPrefixo ? baseId : arg);
+			return true;
+		}
 
-		// E O LOTE G11 pelo mesmo motivo: seis dos catorze aceitam id com ARGUMENTO (`Expand_Body:2`,
-		// `Kai_Kai:Namek`, `Instant_Transmission:Goku`...). Ver o cabecalho do `GameServer.Tecnicas.G11.cs`.
-		if (UsarTecnicasG11(pl, id)) return true;
-
-		// AS TECNICAS QUE O JOGADOR INVENTOU entram AQUI, antes do gate generico, e pelo mesmo
-		// motivo dos lotes acima: `SabeTecnica` pergunta se alguma SKILL destrava este verbo, e
-		// nenhuma skill destrava `Custom_Attack7` -- no DM os verbos custom sao concedidos pelo
-		// `after_learn()` do proprio datum (`:122-127`), sem `assignverb` e sem arvore. Passando
-		// depois do gate, toda tecnica inventada ouviria "voce nao sabe" -- sobre uma tecnica que
-		// o jogador desenhou com a propria mao.
 		if (UsarTecnicaCustomizada(pl, id)) return true;
 
 		Tecnicas.Tecnica? t = Tecnicas.Get(id);
@@ -250,49 +391,7 @@ public partial class GameServer
 			Avisar(pl, $"{t.Nome}: voce sabe a tecnica, mas o efeito dela ainda nao foi portado.");
 			return true;
 		}
-
-		switch (id)
-		{
-			case "Solar_Flare": SolarFlare(pl); break;
-			case "Invisibility": Invisibilidade(pl); break;
-			case "Ki_Shield": KiShield(pl); break;
-			case "Regenerate": Regenerar(pl); break;
-			case "Space_Flight": Decolar(pl); break;
-
-			// OS TRES QUE ATIRAM entram AQUI e nao num lote proprio antes do gate, de proposito:
-			// eles nao aceitam id com argumento (nao ha "Basic_Blast:3"), entao o `SabeTecnica` logo
-			// acima ja e a porta certa -- e assim quem nao comprou a skill ouve "voce nao sabe" pelo
-			// mesmo caminho de todo mundo, em vez de cada tecnica repetir a recusa.
-			case "Ki_Wave":
-			case "Basic_Blast":
-			case "Guided_Ball": UsarTecnicasDeProjetil(pl, id); break;
-
-			// A UNICA TECNICA SO-DE-VILAO do catalogo. Entra aqui e nao num lote proprio porque ela
-			// tambem nao aceita id com argumento -- a caixa "Sim/Nao" do original virou os trinta
-			// segundos de carga, que sao publicos. Ver `GameServer.Destruicao.cs`.
-			case "Planet_Destroy": PlanetDestroy(pl); break;
-
-			// O ARSENAL NOMEADO (lote G5): catorze verbos de ki que uma skill ja concedia e que o
-			// servidor nao atendia. Entram pelo `default` e nao por catorze `case` porque a lista
-			// deles mora no proprio lote (`IdsG5`) -- acrescentar a decima quinta nao deve mexer
-			// neste arquivo. Nenhum aceita argumento, entao o `SabeTecnica` la em cima ja e o
-			// portao, igual aos tres de projetil.
-			default:
-				if (EhDoLoteG5(id)) UsarTecnicasG5(pl, id);
-				// O LOTE G6 entra pela mesma porta e pelo mesmo motivo: a lista dos dezenove mora no
-				// proprio lote (`IdsG6`), entao portar o vigesimo nao deve mexer neste arquivo.
-				else if (EhDoLoteG6(id)) UsarTecnicasG6(pl, id);
-				// E O LOTE G7 pela terceira vez pela mesma porta: catorze punhos nomeados e as duas
-				// bolas que faltavam. A lista mora no proprio lote (`IdsG7`).
-				else if (EhDoLoteG7(id)) UsarTecnicasG7(pl, id);
-				// E O LOTE G10 pela mesma porta: os golpes do molde do G7 que o censo achou mudos. A
-				// lista mora no proprio lote (`IdsG10`); nenhum aceita argumento.
-				else if (EhDoLoteG10(id)) UsarTecnicasG10(pl, id);
-				// E O LOTE G12 (os projeteis que faltavam e os sistemas pequenos): a lista mora no lote.
-				else if (EhDoLoteG12(id)) UsarTecnicasG12(pl, id);
-				else Avisar(pl, $"{t.Nome} ainda nao tem efeito.");
-				break;
-		}
+		Avisar(pl, $"{t.Nome} ainda nao tem efeito.");
 		return true;
 	}
 
@@ -338,11 +437,20 @@ public partial class GameServer
 		// o catalogo INTEIRO sai com as tres tecnicas de longe, e ele saia com UMA. E a quarta vez que
 		// este projeto encontra dado extraido sem consumidor.
 		// ==========================================================================================
-		foreach (string v in pl.Niveis.VerbosAtivos())
+		foreach (string v in pl.Niveis.VerbosAtivos(path => CasaEscolhidaDe(pl, path)))
 			if (string.Equals(v, verb, StringComparison.OrdinalIgnoreCase)) return true;
 
 		return false;
 	}
+
+	/// <summary>
+	/// A CASA ESCOLHIDA numa skill de escolha unica ("Van-sama"), ou nulo -- o que o verb POR CASA de um
+	/// degrau pergunta (`Degrau.VerbosPorCasa`: o Taunt/Counter_Taunt/Slap do degrau 2 da Trindade). A
+	/// resolucao e a do `EfeitosDeSkill` (propria ou herdada da lider), pra que o degrau e a Grace nunca
+	/// discordem sobre em que casa o jogador esta.
+	/// </summary>
+	private string? CasaEscolhidaDe(ServerPlayer pl, string path)
+		=> _skills == null || pl.Livro == null ? null : EfeitosDeSkill.RotuloDaCasa(_skills, pl.Livro.Escolhas, path);
 
 	/// <summary>
 	/// As tecnicas ATIVAS que este personagem tem -- pro menu do cliente e pro arsenal da IA.
@@ -364,7 +472,7 @@ public partial class GameServer
 		// OS VERBS CONCEDIDOS POR NIVEL entram pela mesma porta -- ver o bloco no `SabeTecnica` sobre
 		// por que esta chamada faltava. As duas listas tem que ser a MESMA: o que o menu mostra e o
 		// que o `SabeTecnica` aceita, senao o botao existe e o servidor diz nao (ou o contrario).
-		foreach (string v in pl.Niveis.VerbosAtivos()) if (!l.Contains(v)) l.Add(v);
+		foreach (string v in pl.Niveis.VerbosAtivos(path => CasaEscolhidaDe(pl, path))) if (!l.Contains(v)) l.Add(v);
 
 		return l;
 	}

@@ -69,15 +69,15 @@ public static class MaestriaBench
         var livro = new SkillBook();
         livro.Dar(KiUnlocked);
 
-        double Rodar(NiveisDeSkill.EstadoDoCorpo corpo)
+        double Rodar(NiveisDeSkill.EstadoDoCorpo corpo, int quantos = tiques)
         {
             var n = new NiveisDeSkill();
             n.Por(KiUnlocked, 0);
             // SEMENTE FIXA: o ganho por tempo usa `prob(50)` e uma bancada que sorteia da numeros
-            // diferentes a cada rodada. O Ki Unlocked nao tem ganho por tempo, mas fixar a semente
-            // deixa o teste reprodutivel se um dia tiver.
+            // diferentes a cada rodada. O Ki Unlocked nao tem ganho por tempo, mas o BANCO de exp
+            // adiantado tem `prob(10)` -- e a semente e o que torna a medida repetivel.
             var rng = new Random(1234);
-            for (int i = 0; i < tiques; i++) n.Efetor(rng, cat, livro, corpo);
+            for (int i = 0; i < quantos; i++) n.Efetor(rng, cat, livro, corpo);
             return n.Exp(KiUnlocked);
         }
 
@@ -85,13 +85,32 @@ public static class MaestriaBench
         double voando = Rodar(new NiveisDeSkill.EstadoDoCorpo(Meditando: false, Voando: true, Treinando: false));
         double parado = Rodar(default);
 
-        Conferir(meditando == 2 * tiques,
-            $"o efetor CREDITOU meditando: {meditando} de exp em {tiques} tiques (esperado {2 * tiques})");
+        // ============================ MEDITAR RENDE 2 POR TIQUE **E MAIS UM POUCO** ============================
+        // O piso e 2 por tique (a regra do `Mind.dm:81`). O que passa disso e o BANCO DE EXP ADIANTADO
+        // do `/datum/skill/mind` (`Mind.dm:44-47`): com o dono lutando, meditando ou treinando, a skill
+        // guarda 1 de exp adiantado com 10% de chance por tique, e o banco multiplica o ganho seguinte.
+        //
+        // Por isso a medida meditando NAO e uma igualdade e as outras duas sao: VOAR e FICAR PARADO nao
+        // estao entre os tres estados que enchem o banco, entao elas continuam exatas. Ver as duas linhas
+        // logo abaixo, que separam as duas metades.
+        // ====================================================================================================
+        Conferir(meditando >= 2 * tiques,
+            $"o efetor CREDITOU meditando: {meditando} de exp em {tiques} tiques (piso {2 * tiques})");
         Conferir(voando == 2 * tiques,
-            $"...e voando: {voando} (esperado {2 * tiques})");
+            $"...e voando: {voando} (esperado {2 * tiques}, exato -- voar nao enche o banco)");
         Conferir(parado == 1 * tiques,
-            $"...e parado rende MENOS: {parado} (esperado {1 * tiques})");
+            $"...e parado rende MENOS: {parado} (esperado {1 * tiques}, exato)");
         Conferir(meditando > parado, "meditar rende MAIS que ficar parado -- que e a regra que o dono pediu");
+
+        // O BANCO, NAS DUAS METADES: meditando ele existe e rende por cima; parado ele nunca enche, e
+        // o total fica cravado na taxa nua. Duzentos tiques pra a chance de 10% nao ser uma moeda.
+        const int longos = 200;
+        double medLongo = Rodar(new NiveisDeSkill.EstadoDoCorpo(Meditando: true, Voando: false, Treinando: false), longos);
+        double paradoLongo = Rodar(default, longos);
+        Conferir(medLongo > 2 * longos,
+            $"o BANCO de exp adiantado rende POR CIMA da taxa meditando: {medLongo} em {longos} tiques (taxa nua {2 * longos})");
+        Conferir(paradoLongo == 1 * longos,
+            $"...e parado o banco NUNCA enche (nem luta, nem medita, nem treina): {paradoLongo} = taxa nua {1 * longos}");
 
         // ---------- quanto tempo ate destravar o voo? ----------
         // Numero informativo, e importa: se der "quarenta horas", a regra esta ligada e o RITMO e

@@ -52,6 +52,35 @@ public partial class GameServer
 	/// de absorcao so se formam ao amadurecer"*. E ela e a primeira coisa checada de proposito --
 	/// dizer "nao ha ninguem caido" pra uma larva ensinaria que basta achar alguem.
 	/// </summary>
+	/// <summary>
+	/// O NUCLEO DAS DUAS ABSORCOES DO DM -- `absorb()` (`Absorption.dm:383-386`) e `Life_Suck`
+	/// (`demon.dm`): o poder do outro em moeda neutra (`M.BP / M.BPMod`), remultiplicado pelo SEU
+	/// `BPMod` so quando ele e mais forte que voce, dividido por `downscaler/upscaler` (mais fraco) ou
+	/// por `downscaler` (mais forte), com o `capcheck` do absorvedor.
+	///
+	/// ============================ SAO DUAS REGRAS, E NAO UMA ============================
+	/// Elas dividem SO esta conta. O `absorb()` soma o resultado no `absorbadd` (o `AbsorbBP` do port),
+	/// com eficacia que decai 10% por 600 s, vitima inabsorvivel por 300 s e morta em 1 s
+	/// (`Absorption.dm:373-377`) e piso `eff*(M.BP+M.absorbadd)*Anger` (`:387-388`); e chamado com
+	/// (2,6) pelo Soul_Absorb (`demon.dm:43`) e pelas absorcoes de Majin/bio (`Absorption.dm:28,90`).
+	/// O `Life_Suck` (`demon.dm`, verb proprio) soma direto no `BP` -- permanente --, sem eficacia,
+	/// sem matar, com `Ki += M.MaxKi` e a tecnologia do alvo, e piso `(M.BP/2+M.absorbadd)*PowerPcnt
+	/// *Anger`: a "(2,8)" dele e a divisao por 4 e por 8 escrita a mao. Unificar os dois numa funcao
+	/// apagaria uma das duas regras; o que se unifica e a conta.
+	///
+	/// OS DOIS `if` DO DM SAO INDEPENDENTES e, no Life_Suck, o primeiro muda o `BP` antes de o segundo
+	/// ser testado -- com o alvo pouco acima de voce, os dois pagavam. Aqui e um `else`: sao o mesmo
+	/// caso visto de dois lados. O `BPMod` do alvo tem piso porque o DM divide sem se proteger do zero.
+	/// ================================================================================
+	/// </summary>
+	private static double GanhoDeAbsorcao(Fighter f, Fighter m, double eficacia, double upscaler, double downscaler)
+	{
+		double modAlvo = Math.Max(m.BPMod, 0.1);
+		return f.BP < m.BP
+			? f.CapCheck(eficacia * (m.BP / modAlvo) * f.BPMod / (downscaler / upscaler))
+			: f.CapCheck(eficacia * (m.BP / modAlvo) / downscaler);
+	}
+
 	private void AbsorverBio(ServerPlayer pl)
 	{
 		Fighter f = pl.Ficha;
@@ -71,7 +100,7 @@ public partial class GameServer
 		// A VITIMA TEM QUE ESTAR NOCAUTEADA E VIVA -- `if(M.KO && !M.dead)`. Morto nao serve: nao ha
 		// biomassa viva pra reescrever. E o mesmo crivo da agulha do laboratorio, e pela mesma razao
 		// tematica: o preco do bio-androide e sempre DERRUBAR alguem primeiro.
-		ServerPlayer? alvo = AlvoPertoG4(pl, RaioDaAbsorcao, o => o.Ficha.KO && !o.Ficha.dead);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDaAbsorcao, o => o.Ficha.KO && !o.Ficha.dead);
 		if (alvo == null)
 		{ Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, e ao seu lado."); return; }
 

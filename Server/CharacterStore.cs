@@ -813,6 +813,7 @@ public sealed class AccountStore(string pasta)
         // uma referencia nula que estouraria no primeiro tique de proximidade.
         pl.Social = s.Social ?? new();
 
+
         // ============================ O KARMA VOLTA DO DISCO, APARADO ============================
         // SAVE ANTIGO NAO TEM O CAMPO e cai em zero -- que e o NEUTRO com que toda alma nasce
         // (`Karma.Neutro`), entao a migracao e "nao fazer nada" e ninguem e punido por ter jogado
@@ -869,6 +870,25 @@ public sealed class AccountStore(string pasta)
 
         pl.Ficha = s.Ficha;
         pl.Class = s.Ficha.Class;
+
+        // ============================ O QUE E `tmp` NO DM NAO PODE VOLTAR DO DISCO ============================
+        // A ficha inteira e serializada de proposito (ver `CharacterSave.Ficha`), e o preco disso e
+        // que os campos que no original sao `mob/var/tmp` -- ou seja, EXPLICITAMENTE nao salvos --
+        // voltam do arquivo. Sao dois, os dois do sistema de estudo da Mente (lote G13):
+        //
+        //   * `studying` (`KiStatsModule.dm:49`): o save automatico roda a cada 2 minutos, entao um
+        //     save gravado NO MEIO de um estudo traria o bit de volta -- e sem o laco que o sustenta
+        //     (ele morre com a sessao, `EsquecerG13`) o dono ganharia o bonus de exp de "estudando"
+        //     para sempre, sem estar estudando ninguem;
+        //   * `kibuffon` (`Ki2.0/KiBuffs.dm:2`): o logout derruba os buffs e ele cai junto, mas um
+        //     servidor que morra de pe grava com ele ligado -- e a chave sem buff nenhum de pe daria
+        //     exp de Circulacao e a cura do `buffregen` de graca.
+        //
+        // O `buffregen` NAO entra nesta lista: la ele nao e `tmp` (`mob/var/buffregen`, `Mind.dm:497`),
+        // e aqui ele e reescrito no login pelo `Niveis.Aplicar` a partir do nivel da skill.
+        // ==================================================================================================
+        pl.Ficha.studying = 0;
+        pl.Ficha.kibuffon = 0;
 
         // A IDADE PRECISA CHEGAR NA FICHA, e nao so no jogador: quem calcula poder e ela, e o
         // divisor de idade le daqui. Sem esta linha a curva de `Envelhecimento` receberia sempre o

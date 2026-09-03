@@ -104,6 +104,15 @@ public sealed class Skill
 	public GanhoNaCompra[] Compra = [];
 
 	/// <summary>
+	/// O EFEITO CONDICIONADO A RACA: `if(savant.Race=="Yardrat") savant.teleskill=70`
+	/// (shunkanido, yardrat.dm:85-87). Uma <see cref="Escolha"/> por raca, com o ROTULO = a raca, e so
+	/// quem e daquela raca a recebe (ver <see cref="EfeitosDeSkill.Totalizar"/>). Nao mora em
+	/// <see cref="Flags"/> de proposito: la a linha valia pra TODO aprendiz, e a Instant Transmission
+	/// e ensinavel -- um humano ensinado nascia com a pericia de um Yardrat.
+	/// </summary>
+	public Escolha[] PorRaca = [];
+
+	/// <summary>
 	/// Uma folha que nao soma nada nem destrava nada AINDA nao tem efeito portado.
 	///
 	/// A ESCOLHA CONTA COMO EFEITO mesmo antes de o dono escolher: o que o censo mede aqui e se
@@ -113,7 +122,7 @@ public sealed class Skill
 	/// </summary>
 	public bool SemEfeito => !Arvore && Buffs.Count == 0 && Verbos.Length == 0 && Estilo.Length == 0
 		&& Mults.Count == 0 && Genes.Count == 0 && Flags.Count == 0 && Escolhas.Length == 0
-		&& Compra.Length == 0;
+		&& Compra.Length == 0 && PorRaca.Length == 0;
 }
 
 /// <summary>
@@ -310,6 +319,8 @@ public sealed class SkillCatalog
 			Pares(bloco, "genes", s.Genes);
 			Pares(bloco, "flags", s.Flags);
 			s.Escolhas = [.. Lista(bloco, "escolhas").Select(Casa)];
+			// o efeito por RACA vem no MESMO formato de casa ("Yardrat|!teleskill=70") -- ver `PorRaca`
+			s.PorRaca = [.. Lista(bloco, "porraca").Select(Casa)];
 			// o ganho que nao parseia cai fora AQUI (e nao na compra): uma expressao que o Core nao
 			// le nao pode virar um `+=` de zero em silencio
 			s.Compra = [.. Lista(bloco, "compra").Select(GanhoNaCompra.Parse).Where(g => g != null)!];

@@ -1069,6 +1069,18 @@ if (args.Length >= 3 && args[0] == "skills")
     foreach ((string quem, string linha) in DmSkillScanner.ComprasNaoLidas.Take(12))
         Console.WriteLine($"   {quem.Split('/')[^1],-22} {linha}");
 
+    // O EFEITO POR RACA (`if(savant.Race=="X")` no after_learn): o que vira dado, e o `else` que nao.
+    var porRaca = sk.Values.Where(s3 => s3.PorRaca.Any(DmSkillScanner.ComEfeito)).ToList();
+    Console.WriteLine($"\nskills com efeito POR RACA: {porRaca.Count}"
+                      + $" | ramos `else` com efeito que NAO viraram dado: {DmSkillScanner.CondicionaisNaoLidas.Count}");
+    foreach (SkillDef d3 in porRaca)
+        Console.WriteLine($"   {d3.Nome,-26} {string.Join(" ; ", d3.PorRaca.Where(DmSkillScanner.ComEfeito).Select(e =>
+            $"{e.Rotulo}: " + string.Join(",", e.Flags.Select(kv => $"{kv.Key}={kv.Value}")
+                                                    .Concat(e.Buffs.Select(kv => $"{kv.Key}+={kv.Value}"))
+                                                    .Concat(e.Verbos))))}");
+    foreach ((string quem, string linha) in DmSkillScanner.CondicionaisNaoLidas.Take(12))
+        Console.WriteLine($"   ATENCAO: {quem.Split('/')[^1],-22} {linha}");
+
     // ============================ O `growbranches()` COMO DADO ============================
     // Tier de vitrine por marco investido, arvore que abre arvore, skill que acende skill -- tudo
     // que antes era "46 blocos de DM que o port nao lia" sai contado aqui, e o que o tradutor NAO

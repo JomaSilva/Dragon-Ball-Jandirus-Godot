@@ -94,6 +94,9 @@ public sealed partial class GameServer
 			case "usar": UsarRemedio(pl, def); break;
 			case "cavar": Cavar(pl, def); break;
 
+			// O LIVRO DE ENSINAMENTOS -- `Study_Book` (`KiStatsModule.dm:190-203`). Ver o lote G13.
+			case "ler": LerOsEnsinamentosG13(pl, def); break;
+
 			// OS BRINCOS POTARA: o clique NAO funde -- ele OFERECE. Ver `OferecerOsBrincos`, e la
 			// esta escrito por que o `checkEarringDist()` do DM (que funde a forca, sem perguntar)
 			// nao foi portado.

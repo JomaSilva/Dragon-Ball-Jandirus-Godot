@@ -515,6 +515,21 @@ public static class ExtratorBench
 		Conferir("a arvore Arlian (arlian.dm:12-20) traz o `treegrow` como `apaga;Supa;pitted==1`",
 				 hoje.GetValueOrDefault("/datum/skill/tree/arlian")?.Regras.Contains("apaga;/datum/skill/arlian/Supa;pitted==1") == true);
 
+		// O EFEITO POR RACA (yardrat.dm:85-87): `if(savant.Race=="Yardrat") savant.teleskill=70`. Ate
+		// 2026-09-02 o `if` era invisivel e a flag saia INCONDICIONAL -- todo aprendiz da Instant
+		// Transmission (que e ensinavel) nascia com a pericia de um Yardrat. Ver `SkillDef.PorRaca`.
+		SkillDef? it = hoje.GetValueOrDefault("/datum/skill/shunkanido");
+		Conferir("a Instant Transmission (yardrat.dm:85-87) sai com `teleskill=70` SO PRA YARDRAT (`porraca`) e NENHUMA flag incondicional (antes: flag de todo mundo)",
+				 it is { Flags.Count: 0 } && it.PorRaca.Count(DmSkillScanner.ComEfeito) == 1
+				 && it.PorRaca.First(DmSkillScanner.ComEfeito) is { Rotulo: "Yardrat" } yd
+				 && Math.Abs(yd.Flags.GetValueOrDefault("teleskill") - 70) < 1e-9,
+				 it == null ? "sem shunkanido" : $"flags {it.Flags.Count}, porraca {string.Join(";", it.PorRaca.Select(e => e.Rotulo + ":" + string.Join(",", e.Flags.Select(kv => kv.Key + "=" + kv.Value))))}");
+		Conferir("...o `else to_chat` que o segue (yardrat.dm:88) nao vira dado nem entra no diario (so tem frase)",
+				 DmSkillScanner.CondicionaisNaoLidas.Count == 0, string.Join(" | ", DmSkillScanner.CondicionaisNaoLidas.Select(x => x.Linha)));
+		Conferir("...e o `if(savant.Race==\"Demon\")` do Devil Bringer (demon.dm:159), que so muda a frase, NAO gera entrada por raca",
+				 hoje.GetValueOrDefault("/datum/skill/demon/Devil_Bringer") is { } db && db.PorRaca.Count(DmSkillScanner.ComEfeito) == 0
+				 && db.Verbos.Contains("Devil_Bringer"));
+
 		if (artefato == null || !File.Exists(artefato))
 		{
 			Console.WriteLine("  (sem `skills.json` na linha de comando -- o artefato nao foi conferido)");
@@ -536,6 +551,20 @@ public static class ExtratorBench
 				 && cat.Get("/datum/skill/Bodybuilding/Grace")?.EscolhaSegue == "/datum/skill/Bodybuilding/TheHolyTrinity"
 				 && cat.Get("/datum/skill/Bodybuilding/One_Hundred")?.Compra.Length == 2
 				 && cat.Get("/datum/skill/tree/arlian")?.Regras.Contains("apaga;/datum/skill/arlian/Supa;pitted==1") == true);
+
+		// O EFEITO POR RACA NO DISCO, e o Core aplicando-o SO pra raca certa (o consumidor de verdade).
+		Jandirus.Core.Skills.Skill? itDisco = cat.Get("/datum/skill/shunkanido");
+		Conferir("e o `skills.json` NO DISCO traz a Instant Transmission com `porraca` Yardrat (`teleskill=70`) e flags VAZIAS",
+				 itDisco is { Flags.Count: 0, PorRaca.Length: 1 } && itDisco.PorRaca[0].Rotulo == "Yardrat"
+				 && Math.Abs(itDisco.PorRaca[0].Flags.GetValueOrDefault("teleskill") - 70) < 1e-9,
+				 itDisco == null ? "sem shunkanido" : $"flags {itDisco.Flags.Count} porraca {itDisco.PorRaca.Length}");
+		var soYardrat = Jandirus.Core.Skills.EfeitosDeSkill.Totalizar(cat, ["/datum/skill/shunkanido"], null, "Yardrat").Set;
+		var soHumano = Jandirus.Core.Skills.EfeitosDeSkill.Totalizar(cat, ["/datum/skill/shunkanido"], null, "Human").Set;
+		var semRaca = Jandirus.Core.Skills.EfeitosDeSkill.Totalizar(cat, ["/datum/skill/shunkanido"]).Set;
+		Conferir("...e o `EfeitosDeSkill` de producao poe `teleskill=70` no Yardrat, e NADA no humano ensinado nem em quem nao informa raca",
+				 Math.Abs(soYardrat.GetValueOrDefault("teleskill") - 70) < 1e-9
+				 && !soHumano.ContainsKey("teleskill") && !semRaca.ContainsKey("teleskill"),
+				 $"yardrat {soYardrat.GetValueOrDefault("teleskill")} humano {soHumano.GetValueOrDefault("teleskill")}");
 	}
 
 	// =====================================================================

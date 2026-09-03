@@ -15,7 +15,7 @@ namespace Jandirus.Server;
 ///
 /// ============================ ELA EXERCITA A PRODUCAO, E SO ELA ============================
 /// Toda tecnica entra por <see cref="UsarHabilidade"/> -> <see cref="UsarTecnica"/> ->
-/// <see cref="UsarTecnicasG12"/>, o caminho do pacote do jogador, com o `SabeTecnica` no meio; os
+/// o registro de tecnicas vivas do lote G12, o caminho do pacote do jogador, com o `SabeTecnica` no meio; os
 /// verbos de menu entram por <see cref="ComandoG12"/> (o `C2S.Verbo`); o item, por
 /// <see cref="ComandoDeItem"/>. O tempo anda pelos MESMOS tiques do servidor (`TickG12`,
 /// `TickDosProjeteis`, `TickDosCorposSemDono`, `TickCombate`), chamados na mao -- e o unico
@@ -27,22 +27,24 @@ namespace Jandirus.Server;
 /// ============================ UMA PROVA DE EFEITO NOMEADO POR VERBO ============================
 ///  1. o CATALOGO e o GATE (quem nao comprou ouve "voce nao sabe"; quem comprou, ou cruzou o degrau, e reconhecido);
 ///  2. DEATH BALL: nasce INERTE sobre a cabeca, quatro estagios com quatro escalas CRESCENTES e o dano
-///     do DM (40, 20, 30, 40), depois SAI e obedece ao olhar; prende o corpo enquanto dura; o segundo
-///     aperto larga a guia e a bola para;
+///     CRESCENTE (10, 20, 30, 40 -- o DM dava 40/20/30/40), depois SAI e obedece ao olhar; prende o
+///     corpo enquanto dura; o segundo aperto larga a guia e a bola para;
 ///  3. BUSTER BARRAGE: liga, cospe duas esferas por ciclo em rumos sortidos, cobra um dreno-base por
 ///     ciclo, e DESLIGA no aperto, sem Ki, no nocaute e ao trocar de planeta;
 ///  4. AS DUAS RAJADAS: dez (e vinte) esferas por segundo, plantado, custo que sobe dez vezes, DESLIGA
-///     quando a energia nao paga a proxima e ao apertar de novo; a Giratoria nasce em volta e sai pra
-///     frente (o defeito do DM, medido);
+///     quando a energia nao paga a proxima e ao apertar de novo; a Giratoria nasce em volta e sai nos
+///     OITO rumos (o DM soltava tudo pra frente: o contra-exemplo e 1 rumo);
 ///  5. GENKIDAMA: 90% do Ki, 3 s de forma, pulsos de +0,1; SEM doador a escala e X, COM um doador
-///     meditando e X + 0,1; o disparo sai com o poder do dono e NAO com o acumulado (`:170`);
+///     meditando e X + 0,1; o disparo leva o poder ACUMULADO -- sem doador X, com doador X mais a
+///     doacao (o DM descartava tudo em `:170`);
 ///  6. SOUL ABSORB: a alma sai, o poder entra, a vitima MORRE um segundo depois, e a alma so sai uma vez;
 ///  7. DRENO DE ENERGIA: o androide caido e absorvido; o humano caido e drenado 10% a cada 0,7 s, e o
 ///     dreno para no golpe, no aperto e mata quem fica sem um decimo;
 ///  8. IMITACAO: nome, raca, genero e aparencia copiados campo a campo; volta ao proprio no segundo aperto;
 ///  9. DIVISAO DO CORPO: a copia EXISTE, tem cerebro, metade do poder, obedece a seguir / atacar /
 ///     desfazer, some no prazo, e o dono perde poder por copia viva;
-/// 10. SENZU: a semente aparece na mochila aos 60 s E NAO ANTES; comer cura; acudir levanta;
+/// 10. SENZU: a semente aparece na mochila aos 60 s E NAO ANTES; comer cura; acudir levanta E cura o
+///     caido, nao quem da (o DM curava quem da);
 /// 11. ALVOS DE KI: meditando, um alvo nasce a cada 3,5 s, vaga, some em 5 s, e o SOCO o acerta;
 /// 12. PRECOGNICAO: quem tem a skill da um passo perpendicular ao tiro inimigo; quem nao tem, nao;
 /// 13. RELOG e NOCAUTE derrubam tudo (`EsquecerG12` e as guardas dos tiques).
@@ -153,39 +155,28 @@ public partial class GameServer
 		return CorredorLivre(tiles);
 	}
 
-	/// <summary>Um corpo com as skills pedidas, Ki cheio. `degraus` sao (path, nivel).</summary>
+	/// <summary>
+	/// Um corpo com as skills pedidas, Ki cheio. `degraus` sao (path, nivel).
+	///
+	/// UM TANQUE DE VERDADE: o `Forjar` nasce com `baseKi = 100` (MaxKi 100), e a Death Ball pede
+	/// `150*BaseDrain` -- 173 num tanque desses. Cinco mil e o Ki de quem ja treinou um pouco.
+	///
+	/// ============ ELA JA FOI DUAS LINHAS A MAIS, E ERAM UM REMENDO ============
+	/// Ate 2026-09-02 esta forja repetia `Ki = MaxKi; Tick()` depois do <see cref="ForjarComSkills"/>,
+	/// porque o comum enchia o tanque DEPOIS da conta de poder e o `expressedBP` deste lote nascia em
+	/// jejum -- 1,667x baixo demais. Era o remendo de quem precisava da ordem certa. O comum passou a
+	/// forjar na ordem de producao e o remendo saiu: esta forja e hoje so a CONFIGURACAO (o `baseKi`)
+	/// que e dela.
+	///
+	/// O QUE ESTE PARAGRAFO DIZIA ERRADO ate hoje: que sem o remendo "o corte do `splitformdeBuff` nao
+	/// aparecia". Nao era o corte -- ele nao existia em ramo nenhum (ver a divergencia declarada em
+	/// `Fighter.Power.cs`). O que o jejum escondia era o `kiratio`, que e o que a prova media de fato.
+	/// A frase estava creditando a um mecanismo morto o efeito de outro, exatamente como a prova.
+	/// ==========================================================================
+	/// </summary>
 	private ServerPlayer ForjarG12(string nome, Vec2 onde, double bp, string[]? skills = null,
 								  (string Path, int Nivel)[]? degraus = null)
-	{
-		ServerPlayer pl = Forjar(nome, onde, bp);
-		// UM TANQUE DE VERDADE: o `Forjar` nasce com `baseKi = 100` (MaxKi 100), e a Death Ball pede
-		// `150*BaseDrain` -- 173 num tanque desses. Cinco mil e o Ki de quem ja treinou um pouco.
-		pl.Ficha.baseKi = 5_000;
-		if (skills != null) foreach (string s in skills) pl.Livro!.Dar(s);
-		if (degraus != null)
-		{
-			var save = new NivelSave();
-			foreach ((string path, int nivel) in degraus) save.Skills[path] = [nivel, 0];
-			pl.Niveis.DoSave(save);
-		}
-		pl.Ficha.Statify();
-		pl.Ficha.Ki = pl.Ficha.MaxKi;
-		pl.Ficha.Tick(agoraMs: NowMs());
-		return pl;
-	}
-
-	/// <summary>Aperta o verb pelo funil de producao e devolve o que o servidor DISSE.</summary>
-	private List<string> ApertarG12(ServerPlayer pl, string id)
-	{
-		EscutaDeAvisos = [];
-		UsarHabilidade(pl, id);
-		List<string> falou = EscutaDeAvisos;
-		EscutaDeAvisos = null;
-		return falou;
-	}
-
-	private static bool Disse(List<string> falas, string trecho) =>
-		falas.Exists(f => f.Contains(trecho, StringComparison.OrdinalIgnoreCase));
+		=> ForjarComSkills(nome, onde, bp, skills, degraus, baseKi: 5_000);
 
 	/// <summary>Derruba um corpo: o `KO()` do DM, pela porta do combate.</summary>
 	private static void DerrubarG12(ServerPlayer pl) => pl.Combate.Nocautear(60);
@@ -208,14 +199,14 @@ public partial class GameServer
 		GD.Print("[g12] -- 1) O CATALOGO E O GATE");
 
 		var naoPortadas = new List<string>();
-		foreach (string id in IdsG12)
+		foreach (string id in IdsDoLote("G12"))
 			if (Tecnicas.Get(id) is not { Modo: not Modo.NaoPortada }) naoPortadas.Add(id);
 		AfirmarG12("as onze estao registradas como PORTADAS", naoPortadas.Count == 0, string.Join(" | ", naoPortadas));
 
 		ServerPlayer nu = ForjarG12("Nu", CorredorLivre(24), bp: 5_000);
 		var passou = new List<string>();
-		foreach (string id in IdsG12)
-			if (!Disse(ApertarG12(nu, id), "voce nao sabe")) passou.Add(id);
+		foreach (string id in IdsDoLote("G12"))
+			if (!Disse(ApertarEOuvir(nu, id), "voce nao sabe")) passou.Add(id);
 		AfirmarG12("quem nao comprou nada ouve 'voce nao sabe' nos onze", passou.Count == 0, string.Join(" | ", passou));
 
 		ServerPlayer sabe = ForjarG12("Sabe", CorredorLivre(24), bp: 5_000,
@@ -223,7 +214,7 @@ public partial class GameServer
 					 PathImitationG12, PathSplitformG12, PathGrowSenzuG12],
 			degraus: [(PathVolleyG12, 50), (PathKiUnlockedG12, 50)]);
 		var faltou = new List<string>();
-		foreach (string id in IdsG12) if (!SabeTecnica(sabe, id)) faltou.Add(id);
+		foreach (string id in IdsDoLote("G12")) if (!SabeTecnica(sabe, id)) faltou.Add(id);
 		AfirmarG12("com as skills e os degraus, os onze sao reconhecidos (8 por skill, 3 por degrau)",
 				   faltou.Count == 0, string.Join(" | ", faltou));
 
@@ -232,7 +223,7 @@ public partial class GameServer
 				   SabeTecnica(meio, "Continuous_Energy_Bullets") && !SabeTecnica(meio, "Spin_Blast"));
 
 		List<string> menu = TecnicasDe(sabe);
-		AfirmarG12("...e o menu do cliente enxerga os onze", IdsG12.All(menu.Contains));
+		AfirmarG12("...e o menu do cliente enxerga os onze", IdsDoLote("G12").All(menu.Contains));
 		LimparTudoG12();
 	}
 
@@ -250,7 +241,7 @@ public partial class GameServer
 		double kiAntes = f.Ki;
 		double custo = 150 * f.BaseDrain();
 
-		List<string> falou = ApertarG12(pl, "Death_Ball");
+		List<string> falou = ApertarEOuvir(pl, "Death_Ball");
 		bool ligou = _deathBallG12.TryGetValue(pl.Id, out EstadoDaDeathBallG12? db);
 		AfirmarG12("o aperto abre a carga e cobra 150x o dreno-base", ligou && Math.Abs(kiAntes - custo - f.Ki) < 0.01,
 				   $"ki {kiAntes:0} -> {f.Ki:0}, custo {custo:0}, falou: {string.Join(" / ", falou)}");
@@ -266,7 +257,8 @@ public partial class GameServer
 				   Avancou(() => TiquesG12(30), () => bola!.Pos, out Vec2 p0, out Vec2 p1) == false && bola!.Vivo,
 				   $"{p0} -> {p1}");
 
-		// OS QUATRO ESTAGIOS: 1,5 s cada, escala 1,25 / 1,5 / 1,75 / 2,0 e dano 40 / 20 / 30 / 40 (o defeito do DM).
+		// OS QUATRO ESTAGIOS: 1,5 s cada, escala 1,25 / 1,5 / 1,75 / 2,0 e dano 10 / 20 / 30 / 40 (o DM dava 40 ao
+		// nascer, DeathBall.dm:62, e o estagio 1 valia mais que o 2 -- consertado por decisao do dono).
 		double k = Math.Log(2) / Math.Log(10);
 		k *= k;   // `log10(max(kieffusionskill,2)) * log10(max(blastskill,2))` num corpo novo
 		var escalas = new List<double> { bola!.EscalaVisual };
@@ -290,8 +282,8 @@ public partial class GameServer
 		AfirmarG12("as quatro escalas sao CRESCENTES: 1,25 / 1,5 / 1,75 / 2,0",
 				   escalas.Count == 4 && escalas.Zip(new[] { 1.25, 1.5, 1.75, 2.0 }).All(z => Math.Abs(z.First - z.Second) < 1e-9),
 				   string.Join(", ", escalas.Select(e => e.ToString("0.00"))));
-		AfirmarG12("...e o dano por estagio e o do DM: 40, 20, 30, 40 (o estagio 2 vale MENOS que o 1 -- mantido)",
-				   danos.Count == 4 && danos.Zip(new[] { 40.0, 20.0, 30.0, 40.0 }).All(z => Math.Abs(z.First - z.Second) < 1e-6),
+		AfirmarG12("...e o dano CRESCE com a carga: 10, 20, 30, 40 (`10*movestrength` em todo estagio; o DM dava 40/20/30/40 -- o estagio 1 valia MAIS que o 2, DeathBall.dm:62/:80)",
+				   danos.Count == 4 && danos.Zip(new[] { 10.0, 20.0, 30.0, 40.0 }).All(z => Math.Abs(z.First - z.Second) < 1e-6),
 				   string.Join(", ", danos.Select(d => d.ToString("0.#"))));
 
 		// NO FIM DO ESTAGIO 4 ELA SAI: deixa de ser inerte, vai pra boca do cano e obedece ao olhar.
@@ -315,7 +307,7 @@ public partial class GameServer
 		AfirmarG12("...e o corpo continua plantado enquanto guia", !PodeMexerOCorpo(pl));
 
 		// O SEGUNDO APERTO: larga a guia -- a bola PARA e se apaga em 5 s; o corpo se solta; 4x Blast_Gain.
-		ApertarG12(pl, "Death_Ball");
+		ApertarEOuvir(pl, "Death_Ball");
 		AfirmarG12("o segundo aperto larga a guia: a bola para onde esta e ganha o prazo de 5 s do `Burnout()`",
 				   !_deathBallG12.ContainsKey(pl.Id) && solta.Rumo.LengthSquared < 1e-6f && solta.VidaRestante <= 5.0 + 1e-6,
 				   $"rumo {solta.Rumo} vida {solta.VidaRestante:0.##}");
@@ -325,10 +317,10 @@ public partial class GameServer
 
 		// O TERCEIRO APERTO DURANTE A CARGA: larga a guia (2o) e ENCURTA a carga (3o) -- sai no estagio de agora, parada.
 		ServerPlayer curto = ForjarG12("Curto", CorredorLivre(24), bp: 50_000, skills: [PathDeathBallG12]);
-		ApertarG12(curto, "Death_Ball");
+		ApertarEOuvir(curto, "Death_Ball");
 		TiquesG12(TiquesDeG12(1.6));
-		ApertarG12(curto, "Death_Ball");   // larga a guia
-		ApertarG12(curto, "Death_Ball");   // interrompe a carga
+		ApertarEOuvir(curto, "Death_Ball");   // larga a guia
+		ApertarEOuvir(curto, "Death_Ball");   // interrompe a carga
 		TiquesG12(2);
 		bool saiuParada = !_deathBallG12.ContainsKey(curto.Id) && TirosDeG12(curto).Count == 1
 						  && TirosDeG12(curto)[0] is { Inerte: false } b2 && b2.Rumo.LengthSquared < 1e-6f && b2.EscalaVisual == 1.5;
@@ -337,7 +329,7 @@ public partial class GameServer
 
 		// O NOCAUTE DERRUBA A CARGA.
 		ServerPlayer caido = ForjarG12("Caido", CorredorLivre(24), bp: 50_000, skills: [PathDeathBallG12]);
-		ApertarG12(caido, "Death_Ball");
+		ApertarEOuvir(caido, "Death_Ball");
 		DerrubarG12(caido);
 		TiquesG12(2);
 		AfirmarG12("o nocaute durante a carga desfaz a Death Ball e solta o corpo (na medida do nocaute)",
@@ -364,7 +356,7 @@ public partial class GameServer
 		ServerPlayer pl = ForjarG12("Broly", PracaLivre(), bp: 50_000, skills: [PathBusterG12]);
 		Fighter f = pl.Ficha;
 		double kiAntes = f.Ki;
-		ApertarG12(pl, "BusterBarrage");
+		ApertarEOuvir(pl, "BusterBarrage");
 		AfirmarG12("o aperto liga a barragem", _busterG12.ContainsKey(pl.Id));
 		AfirmarG12("...e ela NAO planta o corpo (o DM nao mexe em `canmove`)", PodeMexerOCorpo(pl));
 
@@ -388,7 +380,7 @@ public partial class GameServer
 		AfirmarG12("...com o dano do `Create_Blast`: (0,5 + Ekioff) x Ephysoff",
 				   tiros.Count >= 1 && tiros.All(t => Math.Abs(t.BaseDano - (0.5 + f.Ekioff) * f.Ephysoff) < 1e-6));
 
-		ApertarG12(pl, "BusterBarrage");
+		ApertarEOuvir(pl, "BusterBarrage");
 		AfirmarG12("o segundo aperto DESLIGA", !_busterG12.ContainsKey(pl.Id));
 		int vivos = TirosDeG12(pl).Count;
 		TiquesG12(TiquesDeG12(2.0));
@@ -396,7 +388,7 @@ public partial class GameServer
 
 		// SEM KI: desliga sozinha.
 		ServerPlayer seco = ForjarG12("Seco", CorredorLivre(24), bp: 50_000, skills: [PathBusterG12]);
-		ApertarG12(seco, "BusterBarrage");
+		ApertarEOuvir(seco, "BusterBarrage");
 		TiquesG12(1);
 		seco.Ficha.Ki = 0.5;
 		TiquesG12(TiquesDeG12(2.0));
@@ -404,14 +396,14 @@ public partial class GameServer
 
 		// NOCAUTE: desliga.
 		ServerPlayer caido = ForjarG12("CaidoB", CorredorLivre(24), bp: 50_000, skills: [PathBusterG12]);
-		ApertarG12(caido, "BusterBarrage");
+		ApertarEOuvir(caido, "BusterBarrage");
 		DerrubarG12(caido);
 		TiquesG12(TiquesDeG12(2.0));
 		AfirmarG12("o nocaute DESLIGA a barragem", !_busterG12.ContainsKey(caido.Id));
 
 		// TROCAR DE PLANETA: desliga.
 		ServerPlayer viajante = ForjarG12("Viajante", CorredorLivre(24), bp: 50_000, skills: [PathBusterG12]);
-		ApertarG12(viajante, "BusterBarrage");
+		ApertarEOuvir(viajante, "BusterBarrage");
 		viajante.Zone = new ZoneKey(ZoneKey.KindPremade, "Namek");
 		TiquesG12(TiquesDeG12(2.0));
 		AfirmarG12("trocar de planeta DESLIGA a barragem", !_busterG12.ContainsKey(viajante.Id));
@@ -433,7 +425,7 @@ public partial class GameServer
 		double kiAntes = f.Ki;
 		double entrada = 30 * f.BaseDrain();
 
-		ApertarG12(pl, "Continuous_Energy_Bullets");
+		ApertarEOuvir(pl, "Continuous_Energy_Bullets");
 		AfirmarG12("o aperto liga a rajada, cobra 30x o dreno-base e PLANTA o corpo",
 				   _voleiG12.ContainsKey(pl.Id) && Math.Abs(kiAntes - entrada - f.Ki) < 1 && !PodeMexerOCorpo(pl),
 				   $"ki {kiAntes:0} -> {f.Ki:0}");
@@ -452,10 +444,10 @@ public partial class GameServer
 		AfirmarG12("...nascidas num LEQUE de +-45 graus (o Y das vivas varia entre tres fileiras)",
 				   tiros.Select(t => Math.Round(t.Pos.Y)).Distinct().Count() >= 2 && tiros.All(t => Math.Abs(t.Pos.Y - pl.Pos.Y) <= 32.5));
 		AfirmarG12("...com o dano do DM: 0,7 x Ekioff x log10(max(blastskill,10)) x dano global x os dois logs do `mods`",
-				   tiros.All(t => Math.Abs(t.BaseDano - 0.7 * f.Ekioff * Log10G12(f.blastskill, 10) * DanoDeKi.DanoGlobalDeKi * Log10G12(f.kieffusionskill, 2) * Log10G12(f.blastskill, 2)) < 1e-6));
+				   tiros.All(t => Math.Abs(t.BaseDano - 0.7 * f.Ekioff * DanoDeKi.Log10Min(f.blastskill, 10) * DanoDeKi.DanoGlobalDeKi * DanoDeKi.Log10Min(f.kieffusionskill, 2) * DanoDeKi.Log10Min(f.blastskill, 2)) < 1e-6));
 
 		// APERTAR DE NOVO DESLIGA, e abre a espera de 5 s no `_volleyPronto` (o `barrageCD`).
-		ApertarG12(pl, "Continuous_Energy_Bullets");
+		ApertarEOuvir(pl, "Continuous_Energy_Bullets");
 		TiquesG12(1);
 		AfirmarG12("o segundo aperto DESLIGA a rajada e solta o corpo", !_voleiG12.ContainsKey(pl.Id) && PodeMexerOCorpo(pl));
 		AfirmarG12("...e deixa a familia de barragem em espera por 5 s (`reload = 50`)",
@@ -463,20 +455,20 @@ public partial class GameServer
 
 		// SEM KI: desliga sozinha.
 		ServerPlayer seco = ForjarG12("SecoV", CorredorLivre(24), bp: 50_000, degraus: [(PathVolleyG12, 20)]);
-		ApertarG12(seco, "Continuous_Energy_Bullets");
+		ApertarEOuvir(seco, "Continuous_Energy_Bullets");
 		TiquesG12(1);
 		bool ligada = _voleiG12.ContainsKey(seco.Id);
 		seco.Ficha.Ki = 1;   // abaixo do proximo `kireq`
 		TiquesG12(2);
 		AfirmarG12("quando a energia nao paga a proxima esfera a rajada DESLIGA sozinha", ligada && !_voleiG12.ContainsKey(seco.Id));
 
-		// A GIRATORIA: duas por tique, nasce em volta, e sai TODA pra frente (o defeito do DM, medido).
+		// A GIRATORIA: duas por tique, nasce em volta, e sai nos OITO rumos (o DM soltava tudo pra frente: 1 rumo).
 		ServerPlayer giro = ForjarG12("Giro", PracaLivre(), bp: 50_000, degraus: [(PathVolleyG12, 50)]);
 		giro.Facing = Facing.East;
 		Fighter g = giro.Ficha;
 		g.Ki = g.MaxKi = 5_000_000_000;
 		double kiG = g.Ki;
-		ApertarG12(giro, "Spin_Blast");
+		ApertarEOuvir(giro, "Spin_Blast");
 		AfirmarG12("a Giratoria cobra 50x o dreno-base na entrada", Math.Abs(kiG - 50 * g.BaseDrain() - g.Ki) < 1);
 		TiquesG12(TiquesDeG12(1.0));
 		List<Projetil> giros = TirosDeG12(giro);
@@ -484,11 +476,14 @@ public partial class GameServer
 		AfirmarG12("um segundo de Giratoria sao ~vinte esferas cuspidas (duas por 0,1 s)", cuspidas >= 20 && cuspidas <= 22, $"{cuspidas} cuspidas, {giros.Count} vivas");
 		AfirmarG12("...e as vivas voam a partir de um tile ADJACENTE ao corpo (ja andaram; nasceram a ate um tile)",
 				   giros.Count >= 5 && giros.Select(t => (Math.Round(t.Pos.Y))).Distinct().Count() >= 2, $"{giros.Count} vivas");
-		AfirmarG12("...e TODAS voam pra frente (leste) -- `walk(A, dir)` usa o `dir` do MOB; o defeito do DM fica",
-				   giros.Count > 0 && giros.All(t => t.Rumo.X > 0.99));
+		int rumosDistintos = vg?.RumosVistos.Count ?? 0;
+		AfirmarG12("...e saem em TODAS as direcoes: ~20 esferas cobrem pelo menos 5 dos 8 rumos e as vivas NAO voam todas pra leste (o DM usava o `dir` do MOB em `walk(A, dir)`, blasts.dm:384: um rumo so -- consertado por decisao do dono)",
+				   rumosDistintos >= 5 && giros.Count > 0 && !giros.All(t => t.Rumo.X > 0.99)
+				   && giros.All(t => Math.Abs(t.Rumo.LengthSquared - 1) < 1e-3),
+				   $"{rumosDistintos} rumos distintos em {cuspidas} cuspidas; {giros.Count(t => t.Rumo.X > 0.99)} de {giros.Count} vivas pra leste");
 		AfirmarG12("...com 1,1x o dano das Balas Continuas",
-				   giros.All(t => Math.Abs(t.BaseDano - 1.1 * g.Ekioff * Log10G12(g.blastskill, 10) * DanoDeKi.DanoGlobalDeKi * Log10G12(g.kieffusionskill, 2) * Log10G12(g.blastskill, 2)) < 1e-6));
-		ApertarG12(giro, "Spin_Blast");
+				   giros.All(t => Math.Abs(t.BaseDano - 1.1 * g.Ekioff * DanoDeKi.Log10Min(g.blastskill, 10) * DanoDeKi.DanoGlobalDeKi * DanoDeKi.Log10Min(g.kieffusionskill, 2) * DanoDeKi.Log10Min(g.blastskill, 2)) < 1e-6));
+		ApertarEOuvir(giro, "Spin_Blast");
 		TiquesG12(1);
 		AfirmarG12("...e a espera dela e de 8 s (`reload = 80`)",
 				   _volleyPronto.TryGetValue(giro.Id, out long pg) && pg - NowMs() > 7_000 && pg - NowMs() <= 8_000);
@@ -496,9 +491,9 @@ public partial class GameServer
 		// COM A RAJADA NO AR, OUTRO TIRO E RECUSADO (o `blasting` do DM, pelo `PodeAtirar`).
 		ServerPlayer duplo = ForjarG12("Duplo", CorredorLivre(24), bp: 50_000, degraus: [(PathVolleyG12, 20), (PathKiUnlockedG12, 50)]);
 		duplo.Ficha.Ki = duplo.Ficha.MaxKi = 5_000_000_000;
-		ApertarG12(duplo, "Continuous_Energy_Bullets");
+		ApertarEOuvir(duplo, "Continuous_Energy_Bullets");
 		AfirmarG12("com a rajada no ar, a Bola de Ki e recusada ('tecnica de ki no ar')",
-				   Disse(ApertarG12(duplo, "Basic_Blast"), "tecnica de ki no ar"));
+				   Disse(ApertarEOuvir(duplo, "Basic_Blast"), "tecnica de ki no ar"));
 		LimparTudoG12();
 	}
 
@@ -514,7 +509,7 @@ public partial class GameServer
 		pl.Facing = Facing.East;
 		Fighter f = pl.Ficha;
 		double kiAntes = f.Ki;
-		ApertarG12(pl, "SpiritBomb");
+		ApertarEOuvir(pl, "SpiritBomb");
 		bool ligou = _genkidamaG12.TryGetValue(pl.Id, out EstadoDaGenkidamaG12? g);
 		AfirmarG12("o aperto cobra 90% do Ki maximo, planta o corpo e pare a esfera INERTE ao norte",
 				   ligou && Math.Abs(f.Ki - (kiAntes - 0.9 * f.MaxKi)) < 0.5 && !PodeMexerOCorpo(pl)
@@ -524,7 +519,8 @@ public partial class GameServer
 		AfirmarG12("...com dano-base 30 e NAO defletivel", g!.Bola!.BaseDano == 30 && !g.Bola.Deflectivel);
 		ServerPlayer cansado = ForjarG12("Cansado", CorredorLivre(24), bp: 50_000, skills: [PathSpiritBombG12]);
 		cansado.Ficha.Ki = cansado.Ficha.MaxKi * 0.5;
-		AfirmarG12("...e sem Ki o verb recusa com a frase do DM ('90% da energia')", Disse(ApertarG12(cansado, "SpiritBomb"), "90%"));
+		AfirmarG12("...e sem Ki o verb recusa por energia (o `PodeAtirar`, com o numero: 90% do maximo)",
+				   Disse(ApertarEOuvir(cansado, "SpiritBomb"), "energia") && Math.Abs(cansado.Ficha.Ki - cansado.Ficha.MaxKi * 0.5) < 1e-9);
 
 		TiquesG12(TiquesDeG12(2.9));
 		AfirmarG12("aos 2,9 s ela ainda esta se FORMANDO (fase 0, escala 1)", g.Fase == 0 && g.Escala == 1);
@@ -537,9 +533,9 @@ public partial class GameServer
 				   $"escala {g.Escala:0.00}, bola {g.Bola?.EscalaVisual:0.00}");
 		AfirmarG12("...e o poder acumulado subiu 1% por pulso", Math.Abs(g.BpAcumulado - f.expressedBP * 1.01 * 1.01) < 1e-6 * f.expressedBP);
 
-		// O DISPARO: 2 s depois a bola sai com o poder do DONO, nao com o acumulado (`:170`), escala mantida.
+		// O DISPARO: 2 s depois a bola sai com o poder ACUMULADO (o `:170` do DM descartava e saia com o do dono), escala mantida.
 		double acumulado = g.BpAcumulado;
-		ApertarG12(pl, "SpiritBomb");
+		ApertarEOuvir(pl, "SpiritBomb");
 		AfirmarG12("o segundo aperto pede o disparo (fase 2) e a bola ainda esta parada", g.Fase == 2 && g.Bola is { Inerte: true });
 		TiquesG12(TiquesDeG12(2.0) + 1);
 		Projetil? bomba = g.Bola;
@@ -547,8 +543,10 @@ public partial class GameServer
 				   g.Fase == 3 && bomba is { Vivo: true, Inerte: false } && bomba.Rumo.X > 0.99 && Math.Abs(bomba.SegundosPorTile - 0.1) < 1e-9
 				   && Math.Abs(bomba.VidaRestante - 100) < 0.2 && Math.Abs(bomba.EscalaVisual - semDoador) < 1e-9,
 				   bomba == null ? "sem bola" : $"fase {g.Fase} inerte {bomba.Inerte} rumo {bomba.Rumo} vida {bomba.VidaRestante:0.#}");
-		AfirmarG12("...e o BP dela e o expressedBP do dono, NAO o acumulado (o defeito do DM, mantido e dito)",
-				   bomba != null && Math.Abs(bomba.Bp - f.expressedBP) < 1e-6 && acumulado > f.expressedBP,
+		double bpSemDoador = bomba?.Bp ?? 0;
+		AfirmarG12("...e o BP dela e o ACUMULADO (expressedBP x 1,01 x 1,01 dos dois pulsos), e nao o expressedBP cru do dono (o `A.BP = expressedBP` de SpiritBomb.dm:170 descartava -- consertado por decisao do dono)",
+				   bomba != null && Math.Abs(bomba.Bp - acumulado) < 1e-6 && acumulado > f.expressedBP
+				   && Math.Abs(bomba.Bp - f.expressedBP * 1.01 * 1.01) < 1e-6 * f.expressedBP,
 				   $"bp {bomba?.Bp:0} expresso {f.expressedBP:0} acumulado {acumulado:0}");
 		AfirmarG12("...e o corpo continua preso por 3 s depois do disparo", !PodeMexerOCorpo(pl));
 		TiquesG12(TiquesDeG12(3.1));
@@ -561,7 +559,7 @@ public partial class GameServer
 		ServerPlayer distraido = ForjarG12("Yamcha", CorredorLivre(24), bp: 20_000);
 		doador.Ficha.med = true;
 		double kiDoador = doador.Ficha.Ki;
-		ApertarG12(dono, "SpiritBomb");
+		ApertarEOuvir(dono, "SpiritBomb");
 		TiquesG12(TiquesDeG12(3.1));
 		AfirmarG12("ao formar, quem MEDITA no mundo e convidado; quem nao medita, nao",
 				   _ofertasDeGenkidamaG12.ContainsKey(doador.Id) && !_ofertasDeGenkidamaG12.ContainsKey(distraido.Id));
@@ -585,22 +583,32 @@ public partial class GameServer
 		TiquesG12(TiquesDeG12(30.0));
 		AfirmarG12("...e 30 s dentro da espera ela continua na mesma escala", Math.Abs(g2.Escala - 3.1) < 1e-9);
 
-		// O NOCAUTE DESFAZ.
-		DerrubarG12(dono);
+		// O DISPARO COM DOADOR: a bola vale o acumulado -- X (o disparo sem doador) MAIS a doacao, pelo menos.
+		double doacao = doador.Ficha.expressedBP * (kiDoador * 0.1);
+		double acumuladoComDoador = g2.BpAcumulado;
+		ApertarEOuvir(dono, "SpiritBomb");
+		TiquesG12(TiquesDeG12(2.0) + 1);
+		Projetil? bombaComDoador = g2.Bola;
+		AfirmarG12("COM um doador o disparo leva o acumulado: o BP da bola e exatamente o `BpAcumulado` e passa do disparo sem doador por pelo menos a doacao (expressedBP x Ki x 0,1)",
+				   g2.Fase == 3 && bombaComDoador is { Vivo: true, Inerte: false }
+				   && Math.Abs(bombaComDoador.Bp - acumuladoComDoador) < 1e-6
+				   && bombaComDoador.Bp >= bpSemDoador + doacao - 1e-6,
+				   $"bp {bombaComDoador?.Bp:0} = acumulado {acumuladoComDoador:0}; sem doador {bpSemDoador:0} + doacao {doacao:0}");
+		LimparTudoG12();
+
+		// O NOCAUTE DESFAZ (uma bomba nova: a de cima ja saiu da mao).
+		ServerPlayer caido = ForjarG12("Goku3", CorredorLivre(24), bp: 50_000, skills: [PathSpiritBombG12]);
+		ApertarEOuvir(caido, "SpiritBomb");
+		TiquesG12(TiquesDeG12(3.1));
+		DerrubarG12(caido);
 		TiquesG12(2);
-		AfirmarG12("o nocaute desfaz a Genkidama e apaga a bola", !_genkidamaG12.ContainsKey(dono.Id) && TirosDeG12(dono).Count == 0);
+		AfirmarG12("o nocaute desfaz a Genkidama e apaga a bola", !_genkidamaG12.ContainsKey(caido.Id) && TirosDeG12(caido).Count == 0);
 		LimparTudoG12();
 	}
 
 	/// <summary>Aperta um verb de MENU (`C2S.Verbo`) pelo funil de producao e diz se a resposta trouxe o trecho.</summary>
 	private bool ApertarVerboG12(ServerPlayer pl, string cmd, string trecho)
-	{
-		EscutaDeAvisos = [];
-		Verbo(pl, cmd, "");
-		bool ok = Disse(EscutaDeAvisos, trecho);
-		EscutaDeAvisos = null;
-		return ok;
-	}
+		=> Disse(Ouvir(() => Verbo(pl, cmd, "")), trecho);
 
 	// =====================================================================
 	// 6) SOUL ABSORB
@@ -615,10 +623,10 @@ public partial class GameServer
 		Fighter f = demo.Ficha;
 		f.Ki = f.MaxKi * 0.3;
 
-		AfirmarG12("contra alguem DE PE o verb recusa em voz alta ('NOCAUTEADO')", Disse(ApertarG12(demo, "Soul_Absorb"), "NOCAUTEADO"));
+		AfirmarG12("contra alguem DE PE o verb recusa em voz alta ('NOCAUTEADO')", Disse(ApertarEOuvir(demo, "Soul_Absorb"), "NOCAUTEADO"));
 		DerrubarG12(vitima);
 		double kiAntes = f.Ki, kiVitima = vitima.Ficha.Ki, absorbAntes = f.AbsorbBP;
-		List<string> falou = ApertarG12(demo, "Soul_Absorb");
+		List<string> falou = ApertarEOuvir(demo, "Soul_Absorb");
 		AfirmarG12("contra o caido a alma SAI (`HasSoul = 0`)", !vitima.Ficha.HasSoul, string.Join(" / ", falou));
 		AfirmarG12("...o Ki da vitima vira seu (com o teto do port)", Math.Abs(f.Ki - Math.Min(kiAntes + kiVitima, f.MaxKi)) < 1e-6, $"{kiAntes:0} + {kiVitima:0} -> {f.Ki:0}");
 		AfirmarG12("...e uma parte do poder dela entra no AbsorbBP pela conta do `absorb(M,2,6)`", f.AbsorbBP > absorbAntes, $"{absorbAntes:0} -> {f.AbsorbBP:0}");
@@ -642,7 +650,7 @@ public partial class GameServer
 		oca.Ficha.HasSoul = false;
 		DerrubarG12(oca);
 		TiquesG12(TiquesDeG12(2.1));   // a recarga de 2 s do `absorbing`
-		AfirmarG12("um caido que ja nao tem alma e recusado ('nao tem mais alma')", Disse(ApertarG12(demo, "Soul_Absorb"), "nao tem mais alma") && !oca.Ficha.dead);
+		AfirmarG12("um caido que ja nao tem alma e recusado ('nao tem mais alma')", Disse(ApertarEOuvir(demo, "Soul_Absorb"), "nao tem mais alma") && !oca.Ficha.dead);
 		LimparTudoG12();
 	}
 
@@ -659,11 +667,11 @@ public partial class GameServer
 		robo.Race = "Android";
 		Fighter f = c17.Ficha;
 		f.Ki = f.MaxKi * 0.3;
-		AfirmarG12("contra alguem de pe o verb recusa ('NOCAUTEADO')", Disse(ApertarG12(c17, "Absorb_Android"), "NOCAUTEADO"));
+		AfirmarG12("contra alguem de pe o verb recusa ('NOCAUTEADO')", Disse(ApertarEOuvir(c17, "Absorb_Android"), "NOCAUTEADO"));
 
 		DerrubarG12(robo);
 		double absorbAntes = f.AbsorbBP;
-		ApertarG12(c17, "Absorb_Android");
+		ApertarEOuvir(c17, "Absorb_Android");
 		AfirmarG12("o ANDROIDE caido e absorvido inteiro: AbsorbBP sobe e o Ki e somado ate o teto do DM (MaxKi)",
 				   f.AbsorbBP > absorbAntes && f.Ki <= f.MaxKi + 1e-6 && !_drenoG12.ContainsKey(c17.Id), $"{absorbAntes:0} -> {f.AbsorbBP:0}");
 		TiquesG12(TiquesDeG12(1.1));
@@ -676,7 +684,7 @@ public partial class GameServer
 		TiquesG12(TiquesDeG12(2.1));
 		f.Ki = f.MaxKi * 0.3;
 		double kiH = humano.Ficha.Ki, kiC = f.Ki;
-		ApertarG12(c17, "Absorb_Android");
+		ApertarEOuvir(c17, "Absorb_Android");
 		AfirmarG12("o HUMANO caido abre o dreno sustentado", _drenoG12.ContainsKey(c17.Id));
 		TiquesG12(TiquesDeG12(0.7) + 1);
 		AfirmarG12("0,7 s depois um decimo do Ki dele passou pra voce", Math.Abs(humano.Ficha.Ki - kiH * 0.9) < 1e-6 && Math.Abs(f.Ki - (kiC + kiH * 0.1)) < 1e-6,
@@ -684,7 +692,7 @@ public partial class GameServer
 		TiquesG12(TiquesDeG12(0.7));
 		AfirmarG12("...e mais um decimo do que sobrou, 0,7 s depois (o dreno CONTINUA)", Math.Abs(humano.Ficha.Ki - kiH * 0.81) < 1e-6 && _drenoG12.ContainsKey(c17.Id));
 		AfirmarG12("...e o AbsorbBP cresce M.BP/50 por tique", f.AbsorbBP > absorbAntes);
-		ApertarG12(c17, "Absorb_Android");
+		ApertarEOuvir(c17, "Absorb_Android");
 		AfirmarG12("o segundo aperto PARA o dreno", !_drenoG12.ContainsKey(c17.Id));
 
 		// O GOLPE INTERROMPE.
@@ -692,7 +700,7 @@ public partial class GameServer
 		DerrubarG12(humano2);
 		c17.AlvoId = humano2.Id;
 		TiquesG12(TiquesDeG12(2.1));
-		ApertarG12(c17, "Absorb_Android");
+		ApertarEOuvir(c17, "Absorb_Android");
 		bool abriu = _drenoG12.ContainsKey(c17.Id);
 		f.HP -= 1;   // o `prehp > usr.HP`
 		TiquesG12(TiquesDeG12(0.8));
@@ -704,7 +712,7 @@ public partial class GameServer
 		fraco.Ficha.Ki = fraco.Ficha.MaxKi * 0.11;
 		c17.AlvoId = fraco.Id;
 		TiquesG12(TiquesDeG12(2.1));
-		ApertarG12(c17, "Absorb_Android");
+		ApertarEOuvir(c17, "Absorb_Android");
 		TiquesG12(TiquesDeG12(0.8));
 		AfirmarG12("a vitima que fica abaixo de um decimo do Ki maximo MORRE (`spawn M.Death()`)", fraco.Ficha.dead, $"ki {fraco.Ficha.Ki:0} / {fraco.Ficha.MaxKi:0}");
 		LimparTudoG12();
@@ -718,7 +726,7 @@ public partial class GameServer
 		GD.Print("[g12] -- 8) IMITACAO: copia campo a campo, e volta");
 
 		// O SOZINHO VEM PRIMEIRO: as fileiras da bancada ficam a tres tiles uma da outra, dentro dos cinco.
-		AfirmarG12("sem ninguem a cinco tiles o verb recusa", Disse(ApertarG12(ForjarG12("Sozinho", CorredorLivre(24), bp: 5_000, skills: [PathImitationG12]), "Imitation"), "ninguem"));
+		AfirmarG12("sem ninguem a cinco tiles o verb recusa", Disse(ApertarEOuvir(ForjarG12("Sozinho", CorredorLivre(24), bp: 5_000, skills: [PathImitationG12]), "Imitation"), "ninguem"));
 		LimparTudoG12();
 
 		Vec2 chao = CorredorLivre(24);
@@ -731,7 +739,7 @@ public partial class GameServer
 		modelo.Visual.CorPele = new Jandirus.Core.Appearance.Rgb(10, 200, 30);
 
 		string nomeReal = puar.Name;
-		ApertarG12(puar, "Imitation");
+		ApertarEOuvir(puar, "Imitation");
 		AfirmarG12("o aperto copia o NOME visivel do modelo (e o nome do save continua o seu)",
 				   puar.Disfarce != null && NomeVisivel(puar) == modelo.Name && puar.Name == nomeReal);
 		Jandirus.Core.Appearance.Appearance v = VisualVisivel(puar);
@@ -742,12 +750,12 @@ public partial class GameServer
 				   ReferenceEquals(v, modelo.Visual) == false);
 		AfirmarG12("...e a ficha de aparencia de verdade nao foi tocada", puar.Visual.Cabelo != "Spiky" && puar.Visual.Corpo != 3);
 
-		ApertarG12(puar, "Imitation");
+		ApertarEOuvir(puar, "Imitation");
 		AfirmarG12("o segundo aperto devolve o proprio rosto e o proprio nome",
 				   puar.Disfarce == null && NomeVisivel(puar) == nomeReal && ReferenceEquals(VisualVisivel(puar), puar.Visual));
 
 		// O RELOG derruba o disfarce.
-		ApertarG12(puar, "Imitation");
+		ApertarEOuvir(puar, "Imitation");
 		EsquecerG12(puar.Id);
 		AfirmarG12("o relog derruba o disfarce", puar.Disfarce == null);
 		LimparTudoG12();
@@ -767,7 +775,7 @@ public partial class GameServer
 		double expressoAntes = f.expressedBP, kiAntes = f.Ki;
 		int corposAntes = _players.Count;
 
-		ApertarG12(tien, "SplitForm");
+		ApertarEOuvir(tien, "SplitForm");
 		ServerPlayer? copia = CopiaDeG12(tien);
 		AfirmarG12("o aperto poe uma copia NOVA no mundo, com cerebro (IA), o nome '<dono> Copy' e METADE do poder expresso",
 				   copia != null && _players.Count == corposAntes + 1 && copia.Cerebro != null && copia.Name == tien.Name + " Copy"
@@ -777,10 +785,72 @@ public partial class GameServer
 		AfirmarG12("...um passo a frente do dono, com a mesma aparencia e sem tela (Peer nulo)",
 				   Math.Abs(copia.Pos.X - (chao.X + 32)) < 0.5 && copia.Peer == null && copia.Visual.Cabelo == tien.Visual.Cabelo);
 		AfirmarG12("...cobrando MaxKi x 0,5 / Splitformskill (skill 1)", Math.Abs(kiAntes - f.MaxKi * 0.5 - f.Ki) < 0.5, $"{kiAntes:0} -> {f.Ki:0}");
-		AfirmarG12("...e o dono passa a contar UMA copia viva -- o `splitformdeBuff` corta o poder expresso dele",
-				   f.splitformCount == 1 && f.expressedBP < expressoAntes, $"expresso {expressoAntes:0} -> {f.expressedBP:0}");
+		AfirmarG12("...e o dono passa a contar UMA copia viva", f.splitformCount == 1, $"count {f.splitformCount}");
+
+		// ======================== AS DUAS CAUSAS, SEPARADAS ========================
+		// A prova que morava aqui dizia "o `splitformdeBuff` corta o poder expresso dele" e conferia
+		// `f.expressedBP < expressoAntes`. Ela passava, mas NAO pelo motivo que a frase dava: quem
+		// derrubava o numero era o KI COBRADO pela divisao (`MaxKi*0,5`), que leva o `kiratio` de 1,0
+		// pro piso de 0,6. Medido em 2026-09-02: 49020 -> 29412, razao 0,600 exata. O corte por copia
+		// nao existia (ver a divergencia declarada em `Fighter.Power.cs`) e a frase o creditava.
+		//
+		// UMA AFIRMACAO SO NAO CONSEGUE dizer qual de duas causas simultaneas ela mediu -- e foi por
+		// isso que ela ficou verde por cima de um mecanismo morto. Agora sao duas, cada uma segurando
+		// a outra variavel parada, e cada uma com o CONTRA-EXEMPLO que a derruba se ela voltar a medir
+		// a causa errada.
+		// ===========================================================================
+		double kiDepoisDaDivisao = f.Ki;
 		f.splitformMastery = 0;   // o `prob(50/(Splitformskill*5))` pode ter subido o skill na primeira: a bancada zera o dado
-		AfirmarG12("com skill 1, a segunda divisao e recusada ('pericia')", Disse(ApertarG12(tien, "SplitForm"), "pericia"));
+
+		// As DUAS chamadas que a producao faz quando a contagem muda (`AtualizarContagemDeSplitformsG12`):
+		// o `Statify` escreve o `splitformdeBuff` e o `PowerLevel` -- dentro do `RepercutirPoder` -- o gasta.
+		// Medir pelo mesmo funil do jogo e o que impede a bancada de provar uma conta que so ela faz.
+		double PoderAgora() { f.Statify(); RepercutirPoder(tien); return f.expressedBP; }
+
+		// ---- CAUSA 1: O KI QUE A DIVISAO COBROU ----
+		// A copia viva fica FIXA (contagem 1 nos dois lados); so o tanque muda.
+		double comKiGasto = PoderAgora();
+		f.Ki = f.MaxKi;
+		double comKiCheio = PoderAgora();
+		AfirmarG12("CAUSA 1 -- o Ki cobrado pela divisao derruba o poder expresso pelo `kiratio`: com a MESMA copia viva de pe, devolver o tanque levanta o numero de volta",
+				   comKiCheio > comKiGasto, $"Ki {kiDepoisDaDivisao:0} -> poder {comKiGasto:0}; Ki cheio -> poder {comKiCheio:0}");
+
+		// O CONTRA-EXEMPLO DA CAUSA 1 e o proprio defeito que ela teve: o `kiratio` tem PISO 0,6, e
+		// abaixo dele gastar Ki nao move poder nenhum. Num corpo em jejum esta causa e INVISIVEL -- foi
+		// num corpo desses que a prova antiga ficou vermelha e o mecanismo morto apareceu.
+		f.Ki = f.MaxKi * 0.5;
+		double noPiso = PoderAgora();
+		f.Ki = f.MaxKi * 0.1;
+		double bemAbaixoDoPiso = PoderAgora();
+		AfirmarG12("...e o CONTRA-EXEMPLO dela: abaixo do piso de 0,6 do `kiratio`, gastar MAIS Ki nao move o poder -- a causa 1 so e mensuravel num corpo com tanque",
+				   Math.Abs(noPiso - bemAbaixoDoPiso) < 0.5, $"Ki 50% -> {noPiso:0}; Ki 10% -> {bemAbaixoDoPiso:0}");
+
+		// ---- CAUSA 2: A COPIA VIVA ----
+		// Agora o Ki fica CHEIO nos dois lados e so a contagem muda. Este e o corte que nao existia.
+		f.Ki = f.MaxKi;
+		double comUmaCopia = PoderAgora();
+		f.splitformCount = 0;
+		double semCopiaNenhuma = PoderAgora();
+		f.splitformCount = 1;
+		double razaoDoCorte = comUmaCopia / Math.Max(semCopiaNenhuma, 1);
+		AfirmarG12("CAUSA 2 -- com o Ki CHEIO nos dois lados, a copia viva SOZINHA corta o poder expresso pela METADE (`(1+0)/(1+1)`)",
+				   comUmaCopia < semCopiaNenhuma && Math.Abs(razaoDoCorte - 0.5) < 0.01,
+				   $"sem copia {semCopiaNenhuma:0}, com uma {comUmaCopia:0} -- razao {razaoDoCorte:0.####} (esperado 0,5)");
+
+		// O CONTRA-EXEMPLO DA CAUSA 2: quem paga o custo e a MAESTRIA. Com maestria 1 a MESMA copia viva
+		// deixa de custar (`(1+1)/(1+1) = 1`) e o poder volta INTEIRO. Se a prova de cima passar a medir
+		// qualquer outra coisa que a divisao mexeu no corpo, esta aqui nao volta ao numero inteiro.
+		f.splitformMastery = 1;
+		double comCopiaMasterizada = PoderAgora();
+		AfirmarG12("...e o CONTRA-EXEMPLO dela: com maestria 1 a MESMA copia viva para de custar e o poder volta INTEIRO",
+				   Math.Abs(comCopiaMasterizada - semCopiaNenhuma) < 0.5,
+				   $"cortado {comUmaCopia:0} -> masterizado {comCopiaMasterizada:0} (inteiro {semCopiaNenhuma:0})");
+
+		// devolve o corpo ao estado de PRODUCAO: uma copia viva, maestria zerada, Ki como a divisao deixou
+		f.splitformMastery = 0;
+		f.Ki = kiDepoisDaDivisao;
+		PoderAgora();
+		AfirmarG12("com skill 1, a segunda divisao e recusada ('pericia')", Disse(ApertarEOuvir(tien, "SplitForm"), "pericia"));
 
 		// SEGUIR: o dono se afasta e a copia vem atras (pela IA de producao).
 		AfirmarG12("a copia nasce PARADA (o `hasAI = 0` do DM)", _splitformsG12[copia.Id].Funcao == FuncaoDeSplitformG12.Parado);
@@ -816,14 +886,18 @@ public partial class GameServer
 		AfirmarG12("'Attack Target': a presa da copia e o alvo marcado do dono", guiou && presa == marcado);
 
 		// DESFAZER: some, e o dono volta a contar zero.
+		// O Ki NAO muda no caminho do 'Destroy' (`AtualizarContagemDeSplitformsG12` so refaz a conta),
+		// entao a diferenca de poder daqui pra logo depois e a CONTAGEM e mais nada.
+		double expressoComACopiaViva = PoderAgora();
 		ApertarVerboG12(tien, "splitform_destruir", "reabsorve");
-		AfirmarG12("'Destroy': a copia sai do mundo e o dono volta a contar zero copias -- e o corte de poder (`splitformdeBuff`) some",
-				   !_players.ContainsKey(copia.Id) && f.splitformCount == 0 && Math.Abs(f.splitformdeBuff - 1) < 1e-9,
-				   $"count {f.splitformCount}, debuff {f.splitformdeBuff:0.###}");
+		AfirmarG12("'Destroy': a copia sai do mundo, o dono volta a contar zero copias, o corte por copia some -- e com o MESMO Ki o poder expresso sobe de volta",
+				   !_players.ContainsKey(copia.Id) && f.splitformCount == 0 && Math.Abs(f.splitformdeBuff - 1) < 1e-9
+				   && f.expressedBP > expressoComACopiaViva,
+				   $"count {f.splitformCount}, debuff {f.splitformdeBuff:0.###}, expresso {expressoComACopiaViva:0} -> {f.expressedBP:0}");
 
 		// O PRAZO: 100 s.
 		f.Ki = f.MaxKi;
-		ApertarG12(tien, "SplitForm");
+		ApertarEOuvir(tien, "SplitForm");
 		ServerPlayer? segunda = CopiaDeG12(tien);
 		AfirmarG12("uma nova divisao e possivel depois de desfazer a primeira", segunda != null);
 		if (segunda != null)
@@ -836,7 +910,7 @@ public partial class GameServer
 
 		// A COPIA QUE CAI SOME.
 		f.Ki = f.MaxKi;
-		ApertarG12(tien, "SplitForm");
+		ApertarEOuvir(tien, "SplitForm");
 		ServerPlayer? terceira = CopiaDeG12(tien);
 		if (terceira != null)
 		{
@@ -865,9 +939,9 @@ public partial class GameServer
 
 		Vec2 chao = CorredorLivre(24);
 		ServerPlayer korin = ForjarG12("Korin", chao, bp: 5_000, skills: [PathGrowSenzuG12]);
-		ApertarG12(korin, "Grow_Senzu_Bean");
+		ApertarEOuvir(korin, "Grow_Senzu_Bean");
 		AfirmarG12("o aperto comeca a cultivar", _senzuG12.ContainsKey(korin.Id));
-		AfirmarG12("...e apertar de novo enquanto cresce e recusado ('espere')", Disse(ApertarG12(korin, "Grow_Senzu_Bean"), "espere"));
+		AfirmarG12("...e apertar de novo enquanto cresce e recusado ('espere')", Disse(ApertarEOuvir(korin, "Grow_Senzu_Bean"), "espere"));
 		TiquesG12(TiquesDeG12(59.0));
 		AfirmarG12("aos 59 s a mochila ainda NAO tem a semente", korin.Mochila.Quantos(CatalogoDeItens.Senzu) == 0);
 		TiquesG12(TiquesDeG12(1.1));
@@ -884,14 +958,11 @@ public partial class GameServer
 				   Math.Abs(membro.Vida - membro.VidaMax) < 1e-6 && korin.Ficha.CurrentNutrition >= comida + 10 - 1e-6 && korin.Mochila.Quantos(CatalogoDeItens.Senzu) == 0,
 				   $"vida {membro.Vida:0}, comida {comida:0} -> {korin.Ficha.CurrentNutrition:0}");
 		korin.Mochila.Guardar(CatalogoDeItens.Senzu);
-		EscutaDeAvisos = [];
-		ComandoDeItem(korin, "item_comer", CatalogoDeItens.Senzu);
-		bool recusou = Disse(EscutaDeAvisos, "digere");
-		EscutaDeAvisos = null;
+		bool recusou = Disse(Ouvir(() => ComandoDeItem(korin, "item_comer", CatalogoDeItens.Senzu)), "digere");
 		AfirmarG12("...e uma segunda semente logo depois e recusada (`Senzu + 4 <= 4`): o corpo ainda digere",
 				   recusou && korin.Mochila.Quantos(CatalogoDeItens.Senzu) == 1);
 
-		// ACUDIR: o caido levanta; quem DA e curado (o defeito do DM, mantido).
+		// ACUDIR: o caido levanta E e curado; quem DA fica como estava (o DM curava quem da: `sensuuse(usr)`, Food.dm:63).
 		ServerPlayer caido = ForjarG12("CaidoS", chao + new Vec2(28, 0), bp: 5_000);
 		DerrubarG12(caido);
 		BodyPart meu = korin.Combate.Corpo.Partes.First(x => x.Papel == Vitalidade.Membro);
@@ -900,13 +971,10 @@ public partial class GameServer
 		dele.Vida = 40;
 		ComandoDeItem(korin, "item_acudir", CatalogoDeItens.Senzu);
 		AfirmarG12("acudir um caido o LEVANTA e consome a semente", !caido.Ficha.KO && korin.Mochila.Quantos(CatalogoDeItens.Senzu) == 0);
-		AfirmarG12("...e cura QUEM DA (`sensuuse(usr)`), nao quem recebe -- o defeito do DM, mantido",
-				   Math.Abs(meu.Vida - meu.VidaMax) < 1e-6 && dele.Vida < dele.VidaMax, $"meu {meu.Vida:0}, dele {dele.Vida:0}");
+		AfirmarG12("...e cura QUEM RECEBE (o membro do caido volta de 40 ao cheio) e NAO quem da (o meu fica em 40) -- o DM fazia o contrario (`sensuuse(usr)`, Food.dm:63; consertado por decisao do dono)",
+				   Math.Abs(dele.Vida - dele.VidaMax) < 1e-6 && Math.Abs(meu.Vida - 40) < 1e-6, $"meu {meu.Vida:0}, dele {dele.Vida:0}");
 		korin.Mochila.Guardar(CatalogoDeItens.Senzu);
-		EscutaDeAvisos = [];
-		ComandoDeItem(korin, "item_acudir", CatalogoDeItens.Senzu);
-		bool semCaido = Disse(EscutaDeAvisos, "DESACORDADO");
-		EscutaDeAvisos = null;
+		bool semCaido = Disse(Ouvir(() => ComandoDeItem(korin, "item_acudir", CatalogoDeItens.Senzu)), "DESACORDADO");
 		AfirmarG12("...e sem caido ao lado, acudir recusa e nao gasta a semente", semCaido && korin.Mochila.Quantos(CatalogoDeItens.Senzu) == 1);
 		LimparTudoG12();
 	}
@@ -921,7 +989,7 @@ public partial class GameServer
 		Vec2 chao = CorredorLivre(24);
 		ServerPlayer pl = ForjarG12("Mirador", PracaLivre(), bp: 5_000, degraus: [(PathKiUnlockedG12, 50)]);
 		chao = pl.Pos;
-		ApertarG12(pl, "Ki_Targets");
+		ApertarEOuvir(pl, "Ki_Targets");
 		AfirmarG12("o aperto poe o corpo em MEDITACAO e liga os alvos", pl.Ficha.med && _alvosDeKiG12.ContainsKey(pl.Id));
 		TiquesG12(1);
 		List<Projetil> alvos = TirosDeG12(pl);
@@ -970,7 +1038,7 @@ public partial class GameServer
 		atirador.Facing = Facing.East;
 		TiquesG12(TiquesDeG12(1.1));   // a lista de quem tem a skill e refeita a cada 1 s: o corpo acabou de nascer
 		int esquivasAntes = _esquivasDePrecognicaoG12;
-		ApertarG12(atirador, "Basic_Blast");
+		ApertarEOuvir(atirador, "Basic_Blast");
 		AfirmarG12("o tiro inimigo saiu", TirosDeG12(atirador).Count == 1);
 		TiquesG12(TiquesDeG12(1.5));
 		AfirmarG12("quem tem a skill da um passo pro lado (norte: `turn(EAST, 90)`) e vira pra la, sem apertar nada",
@@ -983,7 +1051,7 @@ public partial class GameServer
 		ServerPlayer cego = ForjarG12("Cego", chao2, bp: 5_000);
 		ServerPlayer atirador2 = ForjarG12("Atirador2", chao2 - new Vec2(4 * 32, 0), bp: 5_000, degraus: [(PathKiUnlockedG12, 50)]);
 		atirador2.Facing = Facing.East;
-		ApertarG12(atirador2, "Basic_Blast");
+		ApertarEOuvir(atirador2, "Basic_Blast");
 		int esquivas = _esquivasDePrecognicaoG12;
 		TiquesG12(TiquesDeG12(1.5));
 		AfirmarG12("quem NAO tem a skill fica onde esta", Vec2.Distance(cego.Pos, chao2) < 0.5 && _esquivasDePrecognicaoG12 == esquivas);
@@ -993,7 +1061,7 @@ public partial class GameServer
 		ServerPlayer proprio = ForjarG12("Proprio", chao3, bp: 5_000, skills: [PathDaPrecognicaoG12], degraus: [(PathKiUnlockedG12, 50)]);
 		proprio.Facing = Facing.East;
 		TiquesG12(TiquesDeG12(1.1));
-		ApertarG12(proprio, "Basic_Blast");
+		ApertarEOuvir(proprio, "Basic_Blast");
 		esquivas = _esquivasDePrecognicaoG12;
 		TiquesG12(TiquesDeG12(1.0));
 		AfirmarG12("o PROPRIO tiro nao dispara a esquiva (`A.proprietor != savant`)", Vec2.Distance(proprio.Pos, chao3) < 0.5 && _esquivasDePrecognicaoG12 == esquivas);
@@ -1008,9 +1076,9 @@ public partial class GameServer
 		GD.Print("[g12] -- 13) O RELOG DERRUBA TUDO");
 
 		ServerPlayer pl = ForjarG12("Relogado", CorredorLivre(24), bp: 50_000, skills: [PathBusterG12, PathGrowSenzuG12, PathSplitformG12]);
-		ApertarG12(pl, "BusterBarrage");
-		ApertarG12(pl, "Grow_Senzu_Bean");
-		ApertarG12(pl, "SplitForm");
+		ApertarEOuvir(pl, "BusterBarrage");
+		ApertarEOuvir(pl, "Grow_Senzu_Bean");
+		ApertarEOuvir(pl, "SplitForm");
 		bool tudoLigado = _busterG12.ContainsKey(pl.Id) && _senzuG12.ContainsKey(pl.Id) && _splitformsG12.Values.Any(s => s.Master == pl.Id);
 		EsquecerG12(pl.Id);
 		AfirmarG12("com barragem, semente e copia de pe, o relog (`EsquecerG12`) apaga os tres",

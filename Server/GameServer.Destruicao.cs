@@ -1717,12 +1717,11 @@ public partial class GameServer
 	// =====================================================================
 	// O VERB DO JOGADOR -- `Planet_Destroy` (`Planets.dm:318-370`)
 	// =====================================================================
-	public static void RegistrarTecnicasDaDestruicao() =>
-		Tecnicas.Registrar("Planet_Destroy", "Planet Destroy", Modo.Instantanea,
-			"Concentra toda a sua energia sobre o planeta em que você está e o parte ao meio. "
-			+ "Custa 1000 de Ki, exige BP expresso de 10.000 vezes a gravidade daqui, e leva trinta "
-			+ "segundos de carga -- se você for nocauteado nesse meio-tempo, não acontece nada. "
-			+ "Depois disso o planeta tem cinco minutos, e some do mapa PARA SEMPRE. Só um vilão.");
+	private void RegistrarTecnicasDaDestruicao()
+	{
+		IniciarLote("destruicao");
+		Vivo("Planet_Destroy", PlanetDestroy);
+	}
 
 	/// <summary>
 	/// O VERB, literal onde da e explicito onde nao da.

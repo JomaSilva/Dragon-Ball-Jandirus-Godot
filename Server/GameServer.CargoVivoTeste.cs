@@ -554,14 +554,16 @@ public partial class GameServer
 		C("...e a GENKIDAMA entra junto (o cargo entrega as DUAS, como o `OtherworldRanks.dm:116-117`)",
 		  dono.Livro.Sabe(genkidama), "");
 
-		// A VITRINE DO PAINEL DIZ A VERDADE SOBRE AS DUAS: o Kaio-ken do lado pronto, a Genkidama
-		// marcada como muda. E a resposta que o jogador consegue LER antes de disputar o cargo.
+		// A VITRINE DO PAINEL DIZ A VERDADE SOBRE AS DUAS. Ate 2026-09-02 ela dizia "Kaio-ken pronto,
+		// Genkidama AINDA MUDA" e esta linha exigia isso; o lote G12 portou a Genkidama e a linha
+		// envelheceu (ficou vermelha com o kit funcionando -- o jeito certo de envelhecer). Hoje o kit
+		// do Kaio do Norte esta INTEIRO e a vitrine nao pode marcar nada como mudo. Quem prova que o
+		// debito ainda e DITO quando existe e a `--cargoportas`, com o Reincarnate do Grande Kaio.
 		string vitrine = OQueOCargoEntrega("nkai");
-		int corte = vitrine.IndexOf("ainda mudo", StringComparison.OrdinalIgnoreCase);
-		C("...e o painel do cargo mostra o Kaio-ken PRONTO e a Genkidama como AINDA MUDA",
-		  corte > 0
-		  && vitrine.IndexOf("Kaio-ken", StringComparison.OrdinalIgnoreCase) is var k && k >= 0 && k < corte
-		  && vitrine.IndexOf("Spirit Bomb", StringComparison.OrdinalIgnoreCase) > corte,
+		C("...e o painel do cargo mostra o Kaio-ken E a Genkidama do lado PRONTO, sem nada marcado como mudo (a Genkidama ganhou corpo no G12)",
+		  !vitrine.Contains("ainda mudo", StringComparison.OrdinalIgnoreCase)
+		  && vitrine.Contains("Kaio-ken", StringComparison.OrdinalIgnoreCase)
+		  && vitrine.Contains("Spirit Bomb", StringComparison.OrdinalIgnoreCase),
 		  vitrine);
 
 		// UMA ALMA, UM TRONO -- e a recusa nao pode entregar kit de brinde.

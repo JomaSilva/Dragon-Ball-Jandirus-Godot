@@ -39,7 +39,6 @@ public partial class GameServer
 	private const float RaioDeUmTileG4 = 1.5f * ZoneCollision.TileSize;
 
 	private readonly Dictionary<int, long> _prontoTelepatiaG4 = [];
-	private readonly Dictionary<int, long> _prontoRiftG4 = [];
 	private readonly Dictionary<int, long> _prontoSuccaoG4 = [];
 
 	/// <summary>O ponto cravado no tempo. Nulo = nao ha ponto (ver Chrono Trigger).</summary>
@@ -68,118 +67,26 @@ public partial class GameServer
 	// =====================================================================
 	// REGISTRO
 	// =====================================================================
-	public static void RegistrarTecnicasG4()
+	private void RegistrarTecnicasG4()
 	{
-		Tecnicas.Registrar("Telepathy", "Telepatia", Modo.Instantanea,
-			"Fala direto na mente de qualquer pessoa do mundo, sem limite de distância. Não alcanca "
-			+ "quem está escondido, quem e Android, nem quem tem energia fraca demais pra ser achado. "
-			+ "Mande sem alvo pra ver quem da pra alcancar.", aba: "Outros");
-
-		Tecnicas.Registrar("Revive", "Ressuscitar", Modo.Instantanea,
-			"Traz de volta a vida um morto que esteja do seu lado, e o puxa pra onde você esta. O "
-			+ "corpo volta inteiro: membros decepados crescem de novo, Ki e fôlego cheios. Você "
-			+ "precisa estar vivo pra usar.");
-
-		Tecnicas.Registrar("RiftTeleport", "Rasgo Dimensional", Modo.Instantanea,
-			"Rasga a realidade e atravessa ate outro mundo. Exige Ki CHEIO e leva TODO ele: você "
-			+ "chega do outro lado sem energia nenhuma. Mande sem destino pra ver aonde o rasgo "
-			+ "alcanca.", aba: "Outros");
-
-		Tecnicas.Registrar("Chrono_Trigger", "Gatilho Cronico", Modo.Instantanea,
-			"Crava um ponto no tempo guardando seu corpo como ele está agora: vida, energia, fôlego, "
-			+ "idade, lugar -- e ate se você estava vivo. Usar de novo devolve você aquele instante e "
-			+ "apaga o ponto. Isso desfaz ate a própria morte.");
-
-		Tecnicas.Registrar("Life_Suck", "Sugar a Vida", Modo.Instantanea,
-			"Se alimenta da alma de alguém NOCAUTEADO e vivo ao seu lado. A energia maxima da vitima "
-			+ "vira energia sua na hora, e uma fatia do poder dela vira poder seu. Não mata -- mas o "
-			+ "corpo leva cinco minutos pra conseguir de novo.");
-
-		Tecnicas.Registrar("DirectSSJ", "Transformacao Direta", Modo.Instantanea,
-			"Pula direto pra qualquer forma que você JA despertou, sem subir a escada degrau por "
-			+ "degrau. Não afrouxa nenhum requisito: a forma continua pedindo o poder e a maestria "
-			+ "de sempre. Mande sem numero pra ver o que está aberto.", aba: "Formas");
-
-		Tecnicas.Registrar("Magic_Words", "Palavras Magicas", Modo.Instantanea,
-			"Grava ate dez frases que viram atalhos de fala. Mande sem argumento pra ver as suas, e "
-			+ "com numero e texto pra gravar. Depois de gravada, a frase sai com um comando so.",
-			aba: "Outros");
-
-		// AS DEZ FRASES NAO SAO REGISTRADAS DE PROPOSITO. `Tecnicas.Portadas` contra
+		// AS DEZ FRASES NAO TEM DESCRITOR DE PROPOSITO. `Tecnicas.Portadas` contra
 		// `Tecnicas.Total` e a medida honesta de quanto do jogo antigo ja foi trazido -- somar dez
 		// atalhos de fala ali inflaria o numero em dez sem portar tecnica nenhuma. Elas sao
 		// tratadas no despacho e pertencem a quem sabe Magic_Words.
-	}
 
-	// =====================================================================
-	// DESPACHO
-	// =====================================================================
-	/// <summary>
-	/// O despacho do lote. Devolve true quando o id E deste lote (mesmo que a tecnica tenha sido
-	/// RECUSADA -- recusa tambem e resposta), e false quando nao e pra ca.
-	///
-	/// O ID VEM COM ARGUMENTO, separado por dois-pontos: "Telepathy:Goku:oi", "DirectSSJ:2". Por
-	/// isso a checagem de "voce sabe essa tecnica?" e feita AQUI e sobre o id BASE -- o despacho
-	/// generico de <c>UsarTecnica</c> procuraria o verb "DirectSSJ:2" no livro de skills e nao
-	/// acharia nunca, entao toda tecnica com argumento seria recusada como desconhecida.
-	/// </summary>
-	public bool UsarTecnicasG4(ServerPlayer pl, string id)
-	{
-		if (id.Length == 0) return false;
-
-		int corte = id.IndexOf(':');
-		string baseId = corte < 0 ? id : id[..corte];
-		string arg = corte < 0 ? "" : id[(corte + 1)..];
-
+		IniciarLote("G4");
+		Vivo("Telepathy", TelepatiaG4);
+		Vivo("Revive", RessuscitarG4);
+		Vivo("RiftTeleport", RasgoDimensionalG4);
+		Vivo("Chrono_Trigger", GatilhoCronicoG4);
+		Vivo("Life_Suck", SugarVidaG4);
+		Vivo("DirectSSJ", FormaDiretaG4);
+		Vivo("Magic_Words", PalavrasMagicasG4);
 		// AS FRASES PERTENCEM AO MENU QUE AS GRAVOU. No DM elas sao verbs criados na hora pelo
-		// `reinitialize_words()`; aqui nao ha verb pra criar, entao quem autoriza a frase e a
+		// `reinitialize_words()`; aqui nao ha verb pra criar, entao quem destrava `Phrase_N` e a
 		// propria Magic_Words -- e por isso o gate delas e o dela.
-		bool frase = baseId.StartsWith("Phrase_", StringComparison.OrdinalIgnoreCase);
-		string gate = frase ? "Magic_Words" : baseId;
-
-		switch (baseId)
-		{
-			case "Telepathy":
-			case "Revive":
-			case "RiftTeleport":
-			case "Chrono_Trigger":
-			case "Life_Suck":
-			case "DirectSSJ":
-			case "Magic_Words":
-				break;
-			default:
-				if (!frase) return false;
-				break;
-		}
-
-		if (!SabeTecnica(pl, gate))
-		{
-			Avisar(pl, frase
-				? "você não sabe gravar palavras magicas."
-				: $"você não sabe {Tecnicas.Get(baseId)?.Nome ?? baseId}.");
-			return true;
-		}
-
-		if (frase) { DizerFraseG4(pl, baseId); return true; }
-
-		switch (baseId)
-		{
-			case "Telepathy": TelepatiaG4(pl, arg); break;
-			case "Revive": RessuscitarG4(pl); break;
-			case "RiftTeleport": RasgoDimensionalG4(pl, arg); break;
-			case "Chrono_Trigger": GatilhoCronicoG4(pl); break;
-			case "Life_Suck": SugarVidaG4(pl); break;
-			case "DirectSSJ": FormaDiretaG4(pl, arg); break;
-			case "Magic_Words": PalavrasMagicasG4(pl, arg); break;
-		}
-		return true;
+		VivoPorPrefixo("Phrase_", gate: "Magic_Words", DizerFraseG4);
 	}
-
-	/// <summary>
-	/// Apelido pro nome no singular. Existe so porque a fiacao das quatro levas pode chamar por
-	/// qualquer um dos dois nomes -- um alias de uma linha custa menos que um dispatch mudo.
-	/// </summary>
-	public bool UsarTecnicaG4(ServerPlayer pl, string id) => UsarTecnicasG4(pl, id);
 
 	// =====================================================================
 	// TELEPATHY -- Communication.dm:49
@@ -229,13 +136,8 @@ public partial class GameServer
 		// sobre quanto texto uma pessoa pode empurrar por segundo. O DM nao tem freada nenhuma
 		// aqui -- e sem ela a telepatia seria o canal mais barato do jogo pra inundar alguem,
 		// porque alcanca o mundo inteiro e nao custa Ki.
-		long agora = NowMs();
-		if (_prontoTelepatiaG4.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, "sua mente ainda está formando o pensamento anterior.");
-			return;
-		}
-		_prontoTelepatiaG4[pl.Id] = agora + MsEntreFalas;
+		if (EmEspera(pl, _prontoTelepatiaG4, "sua mente ainda está formando o pensamento anterior")) return;
+		_prontoTelepatiaG4[pl.Id] = NowMs() + MsEntreFalas;
 
 		if (texto.Length > Protocol.MaxFala) texto = texto[..Protocol.MaxFala];
 		texto = texto.Replace('\n', ' ').Replace('\r', ' ').Replace('\t', ' ').Trim();
@@ -311,12 +213,12 @@ public partial class GameServer
 	///
 	/// O ALCANCE NAO E O DO DM, E A DIVERGENCIA E ANTIGA: la a versao de cargo varre `get_step(usr,
 	/// usr.dir)` -- **so o tile pra onde voce esta virado** -- e a racial varre `view(1)`. Aqui as duas
-	/// usam o mesmo <see cref="AlvoPertoG4"/> de um tile de raio, que e a adjacencia deste port (o
+	/// usam o mesmo <see cref="AlvoDeTecnica"/> de um tile de raio, que e a adjacencia deste port (o
 	/// movimento e continuo, nao ha "o tile da frente"). Separa-las agora inventaria uma regra de mira
 	/// que nenhuma outra tecnica corpo-a-corpo deste port tem.
 	///
 	/// O `input()` de escolha entre varios mortos no mesmo tile (`:246-248`) tambem nao veio: o
-	/// `AlvoPertoG4` pega o mais proximo, que e a convencao de todo alvo adjacente deste port.
+	/// `AlvoDeTecnica` pega o mais proximo, que e a convencao de todo alvo adjacente deste port.
 	/// ==========================================================================================================
 	///
 	/// O `ReviveMe()` do DM (Death.dm:143) ja cura tudo, enche Ki e folego e faz membro decepado
@@ -333,11 +235,11 @@ public partial class GameServer
 		// `if(!usr.dead)` -- o morto nao ressuscita ninguem, nem a si mesmo
 		if (pl.Ficha.dead) { Avisar(pl, "você precisa estar vivo pra trazer alguém de volta."); return; }
 
-		ServerPlayer? alvo = AlvoPertoG4(pl, RaioDeUmTileG4, o => o.Ficha.dead);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.dead);
 		if (alvo == null)
 		{
 			// as duas recusas do DM em uma: ou nao ha ninguem do lado, ou quem esta nao morreu
-			ServerPlayer? vivo = AlvoPertoG4(pl, RaioDeUmTileG4, _ => true);
+			ServerPlayer? vivo = AlvoDeTecnica(pl, RaioDeUmTileG4, _ => true);
 			Avisar(pl, vivo != null ? $"{vivo.Name} não está morto." : "não ha nenhum morto ao seu lado.");
 			return;
 		}
@@ -419,91 +321,159 @@ public partial class GameServer
 		"Small_Space_Station", "Afterlife", "Heaven",
 	];
 
+	// =====================================================================
+	// O SALTO DE PLANETA -- o que o RiftTeleport, o Atalho Sagrado, o Kai Kai, o Devil Bringer e a
+	// Transmissao dividem
+	// =====================================================================
 	/// <summary>
-	/// `sleep(10)` -- os dez decimos de segundo que o DM segura entre o rasgo abrir e o corpo
-	/// aparecer do outro lado, com o `inteleport` travado pra nao rasgar duas vezes.
-	///
-	/// Aqui vira RECARGA em vez de espera: o despacho de tecnica e sincrono, entao segurar um
-	/// segundo dentro dele seria segurar o servidor inteiro. O efeito pro jogador e o mesmo (nao
-	/// da pra encadear rasgos), e sem a espera nao ha a janela em que o DM deixava o corpo
-	/// existindo em dois lugares.
+	/// QUANDO CADA UM PODE SALTAR DE NOVO -- o `inteleport` do DM, que virou um segundo de recarga.
+	/// Era um dicionario por verb (`_prontoRiftG4`, `_prontoSaltoG11`); e o mesmo espaco se
+	/// recompondo, entao e um so.
 	/// </summary>
-	private const long RecargaDoRasgoMsG4 = 1000;
+	private readonly Dictionary<int, long> _saltoPronto = [];
 
-	private void RasgoDimensionalG4(ServerPlayer pl, string destino)
+	private const long RecargaDoSaltoMs = 1000;
+
+	/// <summary>
+	/// A PORTA DE TODO SALTO DE PLANETA -- a UNIAO das recusas dos quatro verbs, valendo pros quatro:
+	/// caido, atordoado, meditando/treinando, em transe, PRESO NUM AGARRAO, SELADO e COM UM RAIO NA
+	/// MAO. As tres ultimas eram so do Kai Kai/Devil Bringer (`kai.dm:114`: `grabParalysis`,
+	/// `Planet != "Sealed"` e o raio que planta o corpo); o RiftTeleport e o Atalho Sagrado nao as
+	/// perguntavam -- decisao do dono (superconjunto): rasgar a realidade com alguem te segurando ou
+	/// com um raio canalizado na mao e o mesmo absurdo em qualquer um dos quatro.
+	///
+	/// A RECUSA VEM COM MOTIVO: o DM sai calado nas mudas (`if(!usr.canmove || usr.KO ...) return`),
+	/// e uma recusa que nao diz qual porta fechou obriga o jogador a adivinhar.
+	/// </summary>
+	private bool PodeSaltarDePlaneta(ServerPlayer pl, out string porque)
 	{
-		// `if(!usr.canmove || usr.KO || ...) return` -- o DM sai CALADO aqui, e isso e um defeito
-		// pequeno e chato: o jogador aperta, nao acontece nada, e nada explica. Aqui fala.
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "não da, caido."); return; }
-		if (pl.Combate is { Stun: > 0 }) { Avisar(pl, "você ainda está atordoado."); return; }
+		porque = pl.Ficha.KO || pl.Ficha.dead ? "nao da, caido."
+			: pl.Combate is { Stun: > 0 } ? "voce ainda esta atordoado."
+			: pl.Ficha.med || pl.Ficha.train ? "voce precisa parar de treinar pra se concentrar nisto."
+			: NaMente(pl) ? "primeiro saia do transe."
+			: Agarrado(pl) ? "preso num agarrao voce nao se concentra."
+			: pl.Selo.Preso ? "daqui de dentro nao."
+			: _canais.ContainsKey(pl.Id) ? "com um raio na mao nao da pra se concentrar nisto."
+			: "";
+		return porque.Length == 0;
+	}
 
-		// `canfight && !usr.med && !usr.train` -- rasgar a realidade e concentracao total
-		if (pl.Ficha.med || pl.Ficha.train)
-		{
-			Avisar(pl, "você precisa parar de treinar pra se concentrar no rasgo.");
-			return;
-		}
-		// PELO LUGAR e nao pelo reflexo -- ver `GameServer.Mente.NaMente`. (Na pratica o `med` acima ja
-		// barra quem esta em transe; esta linha continua aqui porque ela responde outra coisa: nao ha
-		// realidade pra rasgar dentro de uma mente.)
-		if (NaMente(pl)) { Avisar(pl, "primeiro saia do transe."); return; }
-
-		long agora = NowMs();
-		if (_prontoRiftG4.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, $"o rasgo anterior ainda está se fechando ({(pronto - agora) / 1000.0:0.#}s).");
-			return;
-		}
-
-		// `usr.Ki >= usr.MaxKi` -- KI CHEIO, nao "quase cheio". A tolerancia existe porque o Ki
-		// do port e ponto flutuante recalculado por tick: exigir igualdade exata deixaria a
-		// tecnica recusando um jogador que esta com 99,9999% por arredondamento.
-		if (pl.Ficha.Ki < pl.Ficha.MaxKi - 0.5)
-		{
-			Avisar(pl, $"isso pede energia CHEIA: {pl.Ficha.Ki:0} de {pl.Ficha.MaxKi:0}.");
-			return;
-		}
-
+	/// <summary>
+	/// ESCOLHE O DESTINO numa lista, como o `input() in list(...)` do DM. Sem argumento LISTA e nao
+	/// adivinha: o DM SEMPRE abre o menu, e todo verb de teleporte deste port lista no primeiro aperto
+	/// -- um que agisse no primeiro clique seria o unico jeito de alguem ir parar noutro planeta sem
+	/// querer. Fora da lista, sem mapa carregado ou ja estando la, diz por que. Nulo = ja falou.
+	/// </summary>
+	private string? EscolherDaLista(ServerPlayer pl, string destino, string[] lista, string oQue, string verbo)
+	{
 		if (destino.Length == 0)
 		{
-			Avisar(pl, $"seu rasgo alcanca: {string.Join(", ", DestinosDoRasgoG4)}");
-			Avisar(pl, "para atravessar: RiftTeleport:<destino>");
-			return;
+			Avisar(pl, $"{oQue} alcanca: {string.Join(", ", lista)}");
+			Avisar(pl, $"para ir: {verbo}:<destino>");
+			return null;
 		}
-
 		string? escolhido = null;
-		foreach (string d in DestinosDoRasgoG4)
+		foreach (string d in lista)
 			if (string.Equals(d, destino, StringComparison.OrdinalIgnoreCase)) { escolhido = d; break; }
-
 		if (escolhido == null)
 		{
-			Avisar(pl, $"seu rasgo não alcanca '{destino}'. Alcanca: {string.Join(", ", DestinosDoRasgoG4)}");
-			return;
+			Avisar(pl, $"{oQue} nao alcanca '{destino}'. Alcanca: {string.Join(", ", lista)}");
+			return null;
 		}
-		if (_catalogo?.Get(escolhido) == null)
+		if (_catalogo?.Get(escolhido) == null) { Avisar(pl, $"{escolhido} nao tem mapa carregado neste servidor."); return null; }
+		if (string.Equals(escolhido, pl.Zone.Name, StringComparison.Ordinal)) { Avisar(pl, $"voce ja esta em {escolhido}."); return null; }
+		return escolhido;
+	}
+
+	/// <summary>
+	/// QUEM VAI JUNTO: todo corpo VIVO e simulado a um tile e meio -- o `for(var/mob/M in oview(1))`
+	/// do DM, que leva NPC tambem. E a regra do Kai Kai; o Atalho Sagrado levava so pessoas
+	/// (`EhPessoa`) e passa a levar o que o DM leva (decisao do dono). Colhida ANTES do primeiro
+	/// `MoveToZone`: ele mexe na lista da zona, e varrer uma lista que esta sendo mexida e o
+	/// "Collection was modified" que o `_npcsPraTirar` deste projeto ja existe pra evitar.
+	/// </summary>
+	private List<ServerPlayer> LevarCaronas(ServerPlayer pl)
+	{
+		var caronas = new List<ServerPlayer>();
+		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
+			if (o != pl && !o.Ficha.dead && _players.ContainsKey(o.Id) && Vec2.Distance(o.Pos, pl.Pos) <= RaioDeUmTileG4)
+				caronas.Add(o);
+		return caronas;
+	}
+
+	/// <summary>
+	/// O SALTO EM SI: quem salta e as caronas vao pro mesmo ponto -- por `MoveToZone` se e outra
+	/// zona, por <see cref="CravarPosicao"/> se e a mesma (a Transmissao pode chegar ao lado de quem
+	/// esta neste planeta). Cada carona ouve <paramref name="fraseDaCarona"/> ("te leva junto...").
+	/// </summary>
+	private void Saltar(ServerPlayer pl, ZoneKey zona, Vec2 ponto, List<ServerPlayer> caronas, string fraseDaCarona)
+	{
+		if (pl.Zone.Hash == zona.Hash) CravarPosicao(pl, ponto); else MoveToZone(pl.Id, zona, ponto);
+		foreach (ServerPlayer c in caronas)
 		{
-			Avisar(pl, $"{escolhido} não tem mapa carregado neste servidor.");
-			return;
+			if (c.Zone.Hash == zona.Hash) CravarPosicao(c, ponto); else MoveToZone(c.Id, zona, ponto);
+			Avisar(c, $"{pl.Name} {fraseDaCarona}");
 		}
-		if (string.Equals(escolhido, pl.Zone.Name, StringComparison.Ordinal))
+	}
+
+	/// <summary>
+	/// UM SALTO DE PLANETA INTEIRO, na ordem do DM: porta, recarga, preco, destino, carona, emote,
+	/// cobranca, salto. O que muda entre os quatro verbs sao parametros -- a lista, o preco (Ki CHEIO
+	/// que zera, ou METADE que paga metade: o Atalho Sagrado, `usr.Ki >= MaxKi/2` e `Ki /= 2`), se
+	/// leva carona, o ponto de chegada (o spawn da zona, salvo o Atalho, que cai em coordenadas
+	/// proprias do DM) e as frases. Devolve o destino escolhido e quantas caronas foram, pra fala de
+	/// chegada de cada verb. Os `sleep(1)`/`spawn(1)` que escalonavam a chegada no DM nao vieram:
+	/// despacho sincrono.
+	/// </summary>
+	private bool SaltarDePlaneta(ServerPlayer pl, string destino, string[] lista, string oQue, string verbo,
+								 bool kiCheio, bool comCarona, string emote, string fraseDaCarona,
+								 Func<ZoneKey, Vec2>? pontoDeChegada, out string escolhido, out int levou)
+	{
+		escolhido = ""; levou = 0;
+		if (!PodeSaltarDePlaneta(pl, out string porque)) { Avisar(pl, porque); return false; }
+		if (EmEspera(pl, _saltoPronto, "o espaco em volta de voce ainda esta se recompondo")) return false;
+
+		// `usr.Ki >= usr.MaxKi` -- KI CHEIO, com meio ponto de folga: o Ki do port e float recalculado
+		// por tique, e exigir igualdade exata recusaria quem esta com 99,9999% por arredondamento.
+		double pedagio = kiCheio ? pl.Ficha.MaxKi - 0.5 : pl.Ficha.MaxKi / 2;
+		if (pl.Ficha.Ki < pedagio)
 		{
-			Avisar(pl, $"você ja está em {escolhido}.");
-			return;
+			Avisar(pl, kiCheio
+				? $"isso pede Ki cheio: {pl.Ficha.Ki:0} de {pl.Ficha.MaxKi:0}."
+				: $"isso pede metade da energia ({pedagio:0}) e voce tem {pl.Ficha.Ki:0}.");
+			return false;
 		}
 
-		// `usr.Ki=0` -- ZERA, nao desconta. Atravessar custa TUDO, e e esse "tudo" que faz o
-		// rasgo ser uma decisao: chega-se do outro lado indefeso.
-		pl.Ficha.Ki = 0;
-		_prontoRiftG4[pl.Id] = agora + RecargaDoRasgoMsG4;
+		string? alvo = EscolherDaLista(pl, destino, lista, oQue, verbo);
+		if (alvo == null) return false;
+		escolhido = alvo;
 
-		// FICOU DE FORA: o `input("X Location?")` do DM, que deixa escolher a coordenada exata de
-		// chegada. Isso e teleporte cirurgico pra dentro de qualquer lugar do mapa de destino --
-		// inclusive pra dentro de parede, que o DM nem confere. Aqui a chegada e o ponto de
-		// spawn da zona, que e o unico lugar de que se sabe que existe chao.
-		Falar(pl, Protocol.Fala.Emote, "rasga o ar e desaparece dentro dele.");
-		MoveToZone(pl.Id, ZoneKey.Premade(escolhido), SpawnPos);
-		MandarEfeito(pl, "rasgo", RecargaDoRasgoMsG4);
+		List<ServerPlayer> caronas = comCarona ? LevarCaronas(pl) : [];
+		Falar(pl, Protocol.Fala.Emote, emote);
+		pl.Ficha.Ki = kiCheio ? 0 : pl.Ficha.Ki / 2;   // `usr.Ki = 0` -- ZERA, nao desconta; o Atalho paga metade
+		_saltoPronto[pl.Id] = NowMs() + RecargaDoSaltoMs;
 
+		ZoneKey z = ZoneKey.Premade(alvo);
+		Saltar(pl, z, pontoDeChegada?.Invoke(z) ?? SpawnPos, caronas, fraseDaCarona);
+		levou = caronas.Count;
+		return true;
+	}
+
+	/// <summary>
+	/// RIFT TELEPORT -- `demigod.dm:43`. Ki cheio que zera, sem carona (o verb nao tem `oview(1)`).
+	///
+	/// FICOU DE FORA: o `input("X Location?")` do DM, que deixa escolher a coordenada exata de
+	/// chegada. Isso e teleporte cirurgico pra dentro de qualquer lugar do mapa de destino --
+	/// inclusive pra dentro de parede, que o DM nem confere. Aqui a chegada e o ponto de spawn da
+	/// zona, que e o unico lugar de que se sabe que existe chao.
+	/// </summary>
+	private void RasgoDimensionalG4(ServerPlayer pl, string destino)
+	{
+		if (!SaltarDePlaneta(pl, destino, DestinosDoRasgoG4, "seu rasgo", "RiftTeleport",
+							 kiCheio: true, comCarona: false, emote: "rasga o ar e desaparece dentro dele.",
+							 fraseDaCarona: "", pontoDeChegada: null, out string escolhido, out _))
+			return;
+		MandarEfeito(pl, "rasgo", RecargaDoSaltoMs);
 		Avisar(pl, $"você atravessa o rasgo e chega em {escolhido}, sem uma gota de energia.");
 		GD.Print($"[server] {pl.Name} rasgou ate {escolhido}");
 	}
@@ -637,14 +607,10 @@ public partial class GameServer
 	{
 		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "não da, caido."); return; }
 
+		if (EmEspera(pl, _prontoSuccaoG4, "você ainda está digerindo a ultima alma")) return;
 		long agora = NowMs();
-		if (_prontoSuccaoG4.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, $"você ainda está digerindo a ultima alma ({(pronto - agora) / 1000.0:0}s).");
-			return;
-		}
 
-		ServerPlayer? alvo = AlvoPertoG4(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead);
 		if (alvo == null)
 		{
 			Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, e ao seu lado.");
@@ -677,10 +643,8 @@ public partial class GameServer
 
 		// --- as duas formulas de BP ----------------------------------------
 		double bpAlvo = alvo.Ficha.BP;
-		double modAlvo = Math.Max(alvo.Ficha.BPMod, 0.1);   // o DM divide sem se proteger do zero
-		double ganho;
-		if (pl.Ficha.BP < bpAlvo) ganho = pl.Ficha.CapCheck(bpAlvo / modAlvo * pl.Ficha.BPMod / 4);
-		else ganho = pl.Ficha.CapCheck(bpAlvo / modAlvo / 8);
+		// o `/4` e o `/8` do DM sao a conta do `absorb(M, 2, 8)`: `(downscaler/upscaler)` = 4, `downscaler` = 8
+		double ganho = GanhoDeAbsorcao(pl.Ficha, alvo.Ficha, eficacia: 1, upscaler: 2, downscaler: 8);
 		pl.Ficha.BP += ganho;
 
 		// --- `absorbadd` -> o `AbsorbBP` do port ---------------------------
@@ -1024,37 +988,23 @@ public partial class GameServer
 		return v;
 	}
 
+	/// <summary>
+	/// QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`. As tres recargas, o
+	/// ponto cravado no tempo e as dez frases: nenhum vai pro disco, e as frases em especial nao
+	/// podem ser herdadas pelo proximo dono do id -- sao a voz de outra pessoa.
+	/// </summary>
+	private void EsquecerG4(int id)
+	{
+		_prontoTelepatiaG4.Remove(id);
+		_saltoPronto.Remove(id);
+		_prontoSuccaoG4.Remove(id);
+		_pontoCronoG4.Remove(id);
+		_frasesG4.Remove(id);
+	}
+
 	// =====================================================================
 	// AJUDANTES
 	// =====================================================================
-	/// <summary>
-	/// QUEM ESTA DO MEU LADO e serve pra isto.
-	///
-	/// O ALVO MARCADO VEM PRIMEIRO, e nao e enfeite: o DM usa `if(!target) target = input(...)`,
-	/// ou seja, quem ja mirou em alguem nao ve caixa nenhuma. No port o duplo clique marca o
-	/// `AlvoId`, e respeita-lo aqui e o que impede a tecnica de ressuscitar o cadaver errado numa
-	/// pilha de corpos -- que e exatamente a situacao em que se ressuscita alguem.
-	/// </summary>
-	private ServerPlayer? AlvoPertoG4(ServerPlayer pl, float raio, Func<ServerPlayer, bool> serve)
-	{
-		if (pl.AlvoId != 0 && _players.TryGetValue(pl.AlvoId, out ServerPlayer? marcado)
-			&& marcado != pl && marcado.Zone.Equals(pl.Zone)
-			&& Vec2.Distance(marcado.Pos, pl.Pos) <= raio && serve(marcado))
-			return marcado;
-
-		ServerPlayer? melhor = null;
-		float perto = float.MaxValue;
-		foreach (ServerPlayer o in _players.Values)
-		{
-			if (o == pl || !o.Zone.Equals(pl.Zone)) continue;
-			float d = Vec2.Distance(o.Pos, pl.Pos);
-			if (d > raio || d >= perto || !serve(o)) continue;
-			perto = d;
-			melhor = o;
-		}
-		return melhor;
-	}
-
 	/// <summary>
 	/// PUXA UM CORPO pra uma zona e uma posicao -- o `loc = locate(x,y,z)` do DM.
 	///
@@ -1067,14 +1017,8 @@ public partial class GameServer
 	{
 		if (!quem.Zone.Equals(zona)) { MoveToZone(quem.Id, zona, pos); return; }
 
-		quem.Pos = pos;
-		quem.LastInputMs = NowMs();   // sem isto o proximo pacote em voo vira "correcao" e conta cheat
-		quem.CorrecaoEsperadaAte = NowMs() + 1000;   // + a SEQUENCIA: input montado antes deste instante nao opina sobre onde o corpo esta
-		quem.SeqDoTeleporte = quem.SeqInput;
-
-		var w = Protocol.Begin(Protocol.S2C.Correction);
-		w.Put(quem.SeqInput);   // sequencia + posicao -- ver o comentario nos outros pontos
-		w.PutVec(pos);
-		quem.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		// UM SEGUNDO de janela, e nao meio: o puxao vem de OUTRA tecnica (a volta no tempo), e o
+		// cliente do puxado nao tinha como esperar por ele.
+		CravarPosicao(quem, pos, janelaMs: 1000);
 	}
 }

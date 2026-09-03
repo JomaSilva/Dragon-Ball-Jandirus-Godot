@@ -151,6 +151,20 @@ public partial class GameServer
 		["Permission"] = "a Sala do Tempo passa a aceitar quem o dono do cargo autorizou",
 		["RankChat"] = "o canal fechado dos cargos aceita a fala de quem carrega um cargo",
 		["Appoint_Elder"] = "o convite de Anciao chega de verdade na conta do namekuseijin escolhido",
+
+		// ---- os doze que os lotes G9/G11/G12 puseram de pe (2026-09-02), provados nas bancadas deles ----
+		["BusterBarrage"] = "a barragem LIGA e passa a cuspir esferas em rumos sorteados drenando Ki; desliga sem Ki e no nocaute (`BusterBarrage.dm:26-87`)",
+		["Death_Ball"] = "a bola nasce e CARREGA em ate quatro estagios (1,5 s cada, `DeathBall.dm:75`), guiada pelo olhar; o nocaute a desfaz",
+		["SpiritBomb"] = "a Genkidama se forma com 90% do Ki, cresce com quem doa meditando e SAI dois segundos depois do segundo aperto (`SpiritBomb.dm:169-173`)",
+		["Grow_Senzu_Bean"] = "um minuto depois do aperto (`sleep(600)`, `Food.dm:7`) a Semente Senzu APARECE na mochila de quem cultivou",
+		["SplitForm"] = "nasce uma COPIA com cerebro proprio, o nome '<dono> Copy' e metade do poder expresso (`Split Forms.dm:78-103`)",
+		["Expand_Body"] = "o grau pedido infla o corpo: Tphysoff/Tphysdef sobem e Tspeed cai pelos numeros do `Loop()` (`Body Expansion.dm`)",
+		["Majin"] = "o buff de forma liga em si mesmo: BPadd, physoffMod x1,3, kiregenMod +0,5, angerMod /1,2 (`Magic/Majin.dm:25-50`)",
+		["Observe"] = "a mente se projeta ate o alvo e devolve onde ele esta, como esta e quem esta em volta (`observe.dm:1-14`, sem olho remoto)",
+		["Self_Destruct"] = "com alguem agarrado, o segundo aperto DETONA: tira `power` de cada membro de quem detona, zera o Ki e mata o agarrado (`Ki/misc.dm:166-268`)",
+		["Unlock_Potential"] = "o alvo aceita e o potencial desperta: BP += capcheck(BP*0,25*Potencial), kiskill +0,4, uma vez por vida (`UnlockPotential.dm:21-45`)",
+		["Mafuba"] = "com um Pote Selante a vista o alvo e SELADO dentro dele -- e quebrar o pote solta o preso (`Sealing.dm`)",
+		["Open_Dead_Zone"] = "o alvo e selado com o BP declarado -- o caminho da Dead Zone (`Sealing.dm`)",
 	};
 
 	/// <summary>
@@ -196,6 +210,22 @@ public partial class GameServer
 							"...e com o cargo ele NAO recusa (o RankChat e a unica skill que todo cargo tem)"),
 			["Appoint_Elder"] = ("Server/GameServer.CargoVivoTeste.cs",
 								 "...e o Grande Anciao, que recebe o Appoint_Elder do cargo, convida de verdade"),
+
+			// OS DOZE DOS LOTES G9/G11/G12: cada um tem familia propria na bancada do lote, com a cena que
+			// ele exige (a barragem sustentada, a bola carregando por tiques, o agarrado, o pote selante...).
+			// Repetir a cena aqui seria a segunda tela que concorda com a primeira.
+			["BusterBarrage"] = ("Server/GameServer.G12Teste.cs", "o aperto liga a barragem"),
+			["Death_Ball"] = ("Server/GameServer.G12Teste.cs", "o nocaute durante a carga desfaz a Death Ball e solta o corpo (na medida do nocaute)"),
+			["SpiritBomb"] = ("Server/GameServer.G12Teste.cs", "2 s depois a Genkidama SAI: nao inerte, pra frente, um tile por tique, 100 s de prazo, escala mantida"),
+			["Grow_Senzu_Bean"] = ("Server/GameServer.G12Teste.cs", "aos 60 s a Semente Senzu APARECE na mochila"),
+			["SplitForm"] = ("Server/GameServer.G12Teste.cs", "o aperto poe uma copia NOVA no mundo, com cerebro (IA), o nome '<dono> Copy' e METADE do poder expresso"),
+			["Expand_Body"] = ("Server/GameServer.G11Teste.cs", "2o grau: Tphysoff +1,25, Tphysdef +1,125 e Tspeed -(1 - 1/1,125) -- os numeros do `Loop()`"),
+			["Majin"] = ("Server/GameServer.G11Teste.cs", "Majin liga: BPadd += BP*1,2*(MaxAnger/100)/10, physoffMod x1,3, kiregenMod +0,5, angerMod /1,2, MajinPcnt 1,2"),
+			["Observe"] = ("Server/GameServer.G11Teste.cs", "Observe:<nome> projeta a mente: diz o mundo, o tile e a condicao, e marca `observingnow`"),
+			["Self_Destruct"] = ("Server/GameServer.G11Teste.cs", "detonar tira exatamente `power` de CADA membro de quem detona (o `usr.SpreadDamage(power)`)"),
+			["Unlock_Potential"] = ("Server/GameServer.G11Teste.cs", "ao aceitar, o potencial desperta: BP += pelo menos capcheck(BP*0,25*Potencial), kiskill +0,4, flag gravada"),
+			["Mafuba"] = ("Server/GameServer.SeloTeste.cs", "QUEBRAR O POTE SOLTA O PRESO -- a interacao principal do Mafuba"),
+			["Open_Dead_Zone"] = ("Server/GameServer.SeloTeste.cs", "...e selar com BP declarado vale o BP declarado (o caminho da Dead Zone)"),
 		};
 
 	/// <summary>

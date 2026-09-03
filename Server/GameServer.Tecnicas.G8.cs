@@ -67,74 +67,15 @@ public sealed partial class GameServer
 	/// `--catalogoteste` compara as duas bocas nas duas direcoes toda rodada, e foi ela que pegou o
 	/// lote G7 inteiro faltando la. Ver o cabecalho de `Tecnicas.DesencontroDoEspelho`.
 	/// </summary>
-	private static void RegistrarTecnicasG8()
+	private void RegistrarTecnicasG8()
 	{
-		Tecnicas.Registrar("Dead", "Ver os Mortos", Modo.Instantanea,
-			"Lista quem, no mundo agora, esta morto. E o servico de quem cuida do Outro Mundo -- e, "
-			+ "como o proprio jogo antigo brinca, tambem da pra so olhar a aureola.", aba: "Outros");
-
-		Tecnicas.Registrar("Go_To_Heaven_Or_Hell", "Ir ao Ceu ou ao Inferno", Modo.Instantanea,
-			"O caminho do juiz do Outro Mundo: leva VOCE ao Ceu ou ao Inferno, na hora. Mande sem "
-			+ "destino pra ver os dois.", aba: "Outros");
-
-		Tecnicas.Registrar("Holy_Shortcut", "Atalho Sagrado", Modo.Instantanea,
-			"O atalho secreto entre o Reino Divino e Arconia. Cobra METADE da sua energia e leva "
-			+ "junto quem estiver colado em voce. So sai com o corpo parado e inteiro.", aba: "Outros");
-
-		Tecnicas.Registrar("Detect_Shard", "Detectar a Esmeralda", Modo.Instantanea,
-			"Tenta sentir a energia da Esmeralda Mestra. Ela nao existe mais -- e no jogo antigo o "
-			+ "poder tambem nao fazia nada alem de dizer isso.", aba: "Outros");
-
-		Tecnicas.Registrar("Keep_Body", "Manter o Corpo", Modo.Instantanea,
-			"Liga (e desliga) em quem voce marcou o direito de ficar com o proprio corpo depois de "
-			+ "morto: em vez de sumir pro Outro Mundo, o corpo fica onde caiu enquanto houver energia "
-			+ "-- com a aureola acesa, e ao alcance de quem quiser ressuscita-lo.", aba: "Outros");
-
-		Tecnicas.Registrar("Restore_Youth", "Restaurar a Juventude", Modo.Instantanea,
-			"Oferece a quem voce marcou a idade que voce escolher, de 0 a 25 anos. E uma OFERTA: so "
-			+ "vale se a pessoa aceitar. Use Restore_Youth:<idade>.", aba: "Outros");
-	}
-
-	/// <summary>Os seis ids deste lote.</summary>
-	private static readonly string[] IdsG8 =
-	[
-		"Dead", "Go_To_Heaven_Or_Hell", "Holy_Shortcut", "Detect_Shard", "Keep_Body", "Restore_Youth",
-	];
-
-	/// <summary>
-	/// O DESPACHO DO LOTE -- e ele entra ANTES do gate generico, como o G1..G4 e nao como o G5..G7.
-	///
-	/// O motivo e um so e esta no `Restore_Youth`: ele aceita id com ARGUMENTO (`Restore_Youth:14`),
-	/// e o `SabeTecnica` do funil geral compara o id INTEIRO com os verbs da skill -- nunca casaria
-	/// com a variante. Passando antes, o lote confere o verb BASE por conta propria, que e
-	/// literalmente o que o comentario do `UsarTecnica` manda fazer nesse caso.
-	/// </summary>
-	public bool UsarTecnicasG8(ServerPlayer pl, string id)
-	{
-		if (id.Length == 0) return false;
-
-		int corte = id.IndexOf(':');
-		string baseId = corte < 0 ? id : id[..corte];
-		string arg = corte < 0 ? "" : id[(corte + 1)..];
-
-		if (Array.IndexOf(IdsG8, baseId) < 0) return false;
-
-		if (!SabeTecnica(pl, baseId))
-		{
-			Avisar(pl, $"voce nao sabe {Tecnicas.Get(baseId)?.Nome ?? baseId}.");
-			return true;
-		}
-
-		switch (baseId)
-		{
-			case "Dead": VerOsMortosG8(pl); break;
-			case "Go_To_Heaven_Or_Hell": JulgarG8(pl, arg); break;
-			case "Holy_Shortcut": AtalhoSagradoG8(pl, arg); break;
-			case "Detect_Shard": DetectarEsmeraldaG8(pl); break;
-			case "Keep_Body": ManterOCorpoG8(pl); break;
-			case "Restore_Youth": OferecerJuventudeG8(pl, arg); break;
-		}
-		return true;
+		IniciarLote("G8");
+		Vivo("Dead", VerOsMortosG8);
+		Vivo("Go_To_Heaven_Or_Hell", JulgarG8);
+		Vivo("Holy_Shortcut", AtalhoSagradoG8);
+		Vivo("Detect_Shard", DetectarEsmeraldaG8);
+		Vivo("Keep_Body", ManterOCorpoG8);
+		Vivo("Restore_Youth", OferecerJuventudeG8);
 	}
 
 	// =====================================================================
@@ -251,92 +192,35 @@ public sealed partial class GameServer
 	private const string ZonaDeArconiaG8 = "Arconia";
 
 	/// <summary>
-	/// O ATALHO DO GUARDIAO ARCONIANO -- ida e volta entre o Cume Sagrado e Arconia.
-	///
-	/// ============================ O QUE FOI PORTADO, LINHA A LINHA ============================
-	///   * o portao: `if(!usr.KO && canfight && !usr.med && !usr.train && usr.Ki >= (usr.MaxKi/2))`;
-	///   * o preco: `usr.Ki = (usr.Ki/2)` -- METADE do que voce tem, e nao um custo fixo. Quem chega
-	///     com o tanque cheio paga caro e quem chega raspando paga pouco, o que e o inverso do
-	///     normal e e assim mesmo la;
-	///   * a carona: `for(var/mob/V in oview(1))` -- **quem estiver colado vem junto**, sem escolher
-	///     e sem poder recusar. E a coisa mais estranha do verb e a mais divertida dele;
-	///   * as tres falas (`folds their arms and smirks`, `chuckles and vanishes`, `suddenly appears`).
-	///
-	/// O `sleep(5)`/`spawn(10)` que escalonam a chegada dos passageiros nao vieram: o despacho de
-	/// tecnica deste port e sincrono e segurar meio segundo dentro dele seria segurar o servidor
-	/// inteiro (o mesmo argumento do `RiftTeleport`). Todo mundo chega no mesmo instante.
-	/// ======================================================================================
+	/// HOLY SHORTCUT -- o unico salto que NAO exige Ki cheio: `usr.Ki >= (usr.MaxKi/2)` pra sair e
+	/// `Ki /= 2` de preco, e o unico que cai em coordenadas proprias do DM em vez do spawn. A recusa
+	/// do DM era uma frase so pros quatro casos (*"You lack the sufficient Ki required to chuckle.
+	/// Either that or you refused to stand still..."*); aqui cada porta fala pela `PodeSaltarDePlaneta`.
 	/// </summary>
 	private void AtalhoSagradoG8(ServerPlayer pl, string destino)
 	{
-		// `!usr.KO && canfight && !usr.med && !usr.train` -- e a recusa do DM e uma frase so pros
-		// quatro casos (*"You lack the sufficient Ki required to chuckle. Either that or you refused
-		// to stand still..."*). Aqui cada um tem a sua: uma recusa que nao diz qual das quatro portas
-		// fechou obriga o jogador a adivinhar.
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "nao da, caido."); return; }
-		if (pl.Combate is { Stun: > 0 }) { Avisar(pl, "voce ainda esta atordoado."); return; }
-		if (pl.Ficha.med || pl.Ficha.train) { Avisar(pl, "voce precisa parar de treinar primeiro."); return; }
-
-		// `usr.Ki >= (usr.MaxKi/2)` -- METADE do maximo pra sair, e METADE do que tem de preco.
-		double pedagio = pl.Ficha.MaxKi / 2;
-		if (pl.Ficha.Ki < pedagio)
-		{
-			Avisar(pl, $"falta energia pra rir direito: o atalho pede {pedagio:0} e voce tem {pl.Ficha.Ki:0}.");
-			return;
-		}
-
-		string alvo = destino.Trim() switch
+		// OS DOIS LADOS DO ATALHO, com os apelidos que a mao digita: "cume"/"summit" e "arconia".
+		string canonico = destino.Trim() switch
 		{
 			var s when s.Equals("cume", StringComparison.OrdinalIgnoreCase)
-					   || s.Equals("summit", StringComparison.OrdinalIgnoreCase)
-					   || s.Equals(ZonaDoCumeSagradoG8, StringComparison.OrdinalIgnoreCase) => ZonaDoCumeSagradoG8,
+					   || s.Equals("summit", StringComparison.OrdinalIgnoreCase) => ZonaDoCumeSagradoG8,
 			var s when s.Equals("arconia", StringComparison.OrdinalIgnoreCase) => ZonaDeArconiaG8,
-			_ => "",
+			var s => s,
 		};
 
-		// SEM ARGUMENTO ELE LISTA, e nao adivinha o outro lado. A tentacao era mandar pro lado oposto
-		// sozinho ("e um atalho, o destino e obvio"), e ela esta errada por duas razoes: o DM SEMPRE
-		// abre o `input()` com as duas opcoes e um "Nevermind", e neste port todo verb que virou menu
-		// (o `RiftTeleport`, o `Go_To_Heaven_Or_Hell` aqui ao lado) lista no primeiro aperto. Um unico
-		// verb de teleporte que age no primeiro clique seria o unico jeito de alguem se mandar pra
-		// outro planeta sem querer.
-		if (alvo.Length == 0)
-		{
-			Avisar(pl, $"o atalho liga o Cume Sagrado ({ZonaDoCumeSagradoG8}) e {ZonaDeArconiaG8}.");
-			Avisar(pl, "para atravessar: Holy_Shortcut:cume ou Holy_Shortcut:arconia");
+		if (!SaltarDePlaneta(pl, canonico, [ZonaDoCumeSagradoG8, ZonaDeArconiaG8], "o atalho", "Holy_Shortcut",
+							 kiCheio: false, comCarona: true, emote: "cruza os bracos e da um sorrisinho...",
+							 fraseDaCarona: "te leva junto usando... risadinha?",
+							 pontoDeChegada: z => string.Equals(z.Name, ZonaDoCumeSagradoG8, StringComparison.Ordinal)
+								 ? CoordenadaDoDmG8(z, 44, 210)
+								 : CoordenadaDoDmG8(z, 340, 270),
+							 out string alvo, out int levou))
 			return;
-		}
-		if (string.Equals(alvo, pl.Zone.Name, StringComparison.Ordinal)) { Avisar(pl, $"voce ja esta em {alvo}."); return; }
-		if (_catalogo?.Get(alvo) == null) { Avisar(pl, $"{alvo} nao tem mapa carregado neste servidor."); return; }
 
-		ZoneKey z = ZoneKey.Premade(alvo);
-		Vec2 ponto = string.Equals(alvo, ZonaDoCumeSagradoG8, StringComparison.Ordinal)
-			? CoordenadaDoDmG8(z, 44, 210)
-			: CoordenadaDoDmG8(z, 340, 270);
-
-		// A CARONA -- `for(var/mob/V in oview(1))`. Colhida ANTES de qualquer `MoveToZone`: a primeira
-		// viagem mexe na lista da zona de origem, e varrer uma lista que esta sendo mexida e o
-		// "Collection was modified" que o `_npcsPraTirar` deste projeto ja existe pra evitar.
-		var caronas = new List<ServerPlayer>();
-		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-			if (o != pl && EhPessoa(o) && Vec2.Distance(o.Pos, pl.Pos) <= ZoneCollision.TileSize * 1.5)
-				caronas.Add(o);
-
-		Falar(pl, Protocol.Fala.Emote, "cruza os bracos e da um sorrisinho...");
-		pl.Ficha.Ki /= 2;
-
-		MoveToZone(pl.Id, z, ponto);
-		foreach (ServerPlayer c in caronas)
-		{
-			MoveToZone(c.Id, z, ponto);
-			Avisar(c, $"{pl.Name} te leva junto usando... risadinha?");
-		}
-
-		Avisar(pl, caronas.Count == 0
+		Avisar(pl, levou == 0
 			? $"voce da uma risadinha e reaparece em {alvo}."
-			: $"voce da uma risadinha e reaparece em {alvo}, com {caronas.Count} pessoa"
-			  + $"{(caronas.Count == 1 ? "" : "s")} a tiracolo.");
-		GD.Print($"[server] {pl.Name} usou o Atalho Sagrado pra {alvo} (+{caronas.Count} de carona)");
+			: $"voce da uma risadinha e reaparece em {alvo}, com {levou} pessoa{(levou == 1 ? "" : "s")} a tiracolo.");
+		GD.Print($"[server] {pl.Name} usou o Atalho Sagrado pra {alvo} (+{levou} de carona)");
 	}
 
 	// =====================================================================

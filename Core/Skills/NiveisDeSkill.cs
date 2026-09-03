@@ -56,6 +56,25 @@ public sealed class Degrau
 	public string[] Verbos = [];
 
 	/// <summary>
+	/// O VERB QUE ESTE DEGRAU CONCEDE CONFORME A CASA ESCOLHIDA NA SKILL -- o degrau 2 da Holy Trinity
+	/// (Bodybuilding.dm:180-185):
+	///
+	///     switch(TrinityType)
+	///         if("Van-sama") assignverb(/mob/keyable/verb/Taunt)
+	///         if("Aniki")    assignverb(/mob/keyable/verb/Counter_Taunt)
+	///         if("Ricardo")  assignverb(/mob/keyable/verb/Slap)
+	///
+	/// Cada par e (rotulo da casa, verb), e vale SO o par cuja casa e a que o livro registrou pra esta
+	/// skill (`SkillBook.Escolhas`, resolvida por <see cref="EfeitosDeSkill.RotuloDaCasa"/>). Sem casa
+	/// escolhida, nenhum -- e assim no DM: `TrinityType` nasce nulo e o `switch` nao entra em ramo nenhum.
+	///
+	/// ATE ESTE CANAL EXISTIR a linha ia INTEIRA pra `logica` (quarentena do extrator), os tres verbs da
+	/// Trindade tinham corpo no lote G10 e PORTA NENHUMA no port, e a bancada os provava com um degrau
+	/// sintetico. Quem le isto e <see cref="NiveisDeSkill.VerbosAtivos"/>.
+	/// </summary>
+	public (string Casa, string Verbo)[] VerbosPorCasa = [];
+
+	/// <summary>
 	/// OUTRAS SKILLS QUE ESTE DEGRAU ACENDE -- o `enableskill(/datum/skill/mind/Advanced_Ki_Awareness)`
 	/// do nivel 100 (Mind.dm:186). E o `enabled = 1` de uma skill que nasceu `enabled = 0`, e o UNICO
 	/// acendedor de toda Advanced_* e Perfect_* de Ki: sem este canal 55 folhas do catalogo eram "sem
@@ -110,6 +129,17 @@ public sealed class RegraDeNivel
 	public double Barreira = NiveisDeSkill.BarreiraPadrao;
 
 	/// <summary>
+	/// ESTA SKILL E UM `/datum/skill/mind`? -- e nao "é da arvore Strength of Mind": o typepath
+	/// abriga as 17 da Mente E as 33 das dez familias de pericia de Ki (Beam, Blast, Volley...).
+	///
+	/// E o que decide DUAS coisas, e as duas sao daquela classe do DM e de nenhuma outra: o
+	/// `expbuffer` (`Mind.dm:34`, a var e do `/datum/skill/mind`) e o `KiSkillGains` (`:859`, o proc
+	/// tambem). Medido no `niveis.json`: as 66 fontes de exp marcadas `curva` sao EXATAMENTE as 66
+	/// deste typepath -- nao ha uma so fora.
+	/// </summary>
+	public bool Mental => Path.StartsWith("/datum/skill/mind/", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
 	/// Quanto a barreira INCHA por nivel: `expbarrier = base * Crescimento**level`.
 	///
 	/// 1 = barreira fixa, que e o caso das 24 skills fisicas semeadas aqui. As arvores de Ki
@@ -150,6 +180,41 @@ public sealed class RegraDeNivel
 
 		/// <summary>Que estado do corpo liga este ganho.</summary>
 		public Estado Quando;
+
+		/// <summary>
+		/// A CORRENTE `if / else if / else` (0 = ganho solto). Ganhos da MESMA corrente sao
+		/// ALTERNATIVAS em ordem: vale o primeiro cuja condicao valer, e so ele.
+		///
+		/// ============================ O `else` CREDITAVA POR CIMA ============================
+		/// Advanced Ki Circulation e `if(kibuffon) +2 else +1` (Mind.dm:513-519). Sem a corrente, os
+		/// dois sao condicoes independentes -- e o `else`, que nao tem condicao nenhuma, valeria
+		/// SEMPRE: com o buff de pe a skill renderia 3 em vez de 2, meio a mais pra sempre. Sao
+		/// treze `else` so na familia da Mente. Ver `FonteExp.Cadeia` no extrator.
+		/// ==================================================================================
+		/// </summary>
+		public int Cadeia;
+
+		/// <summary>`level &lt; N` na condicao (0 = sem teto): `if(level&lt;10 &amp;&amp; savant.med)`, Mind.dm:190.</summary>
+		public int NivelMenorQue;
+
+		/// <summary>
+		/// O PISO DE NIVEL do ramo `else` de um portao de nivel (0 = sem piso). `if(level&lt;5) ... else
+		/// if(kiratio&gt;1)` (Basic Ki Control, Mind.dm:290-296): o segundo ramo so existe do 5 em diante.
+		/// </summary>
+		public int NivelMinimo;
+
+		/// <summary>
+		/// PASSA PELO <see cref="KiSkillGains"/>? (`exp += KiSkillGains(2)` contra `exp++`.)
+		///
+		/// ============================ O NUMERO CRU NAO E O NUMERO DO DM ============================
+		/// O extrator ja marcava `curva: 1` em 122 das 146 fontes e o leitor ignorava: creditava o
+		/// `2` literal onde o DM credita `2 * 2 * Ekiskill * GlobalKiExpRate` -- e, num corpo recem
+		/// nascido (`MaxKi <= 300`), um DECIMO disso. Ou seja, o ganho estava errado nos dois
+		/// sentidos ao mesmo tempo, e mais errado justamente na arvore de Ki, onde toda fonte tem
+		/// curva.
+		/// ======================================================================================
+		/// </summary>
+		public bool Curva;
 	}
 
 	/// <summary>
@@ -176,6 +241,83 @@ public sealed class RegraDeNivel
 		Treinando,
 		/// <summary>`!savant.med&amp;&amp;!savant.flight` -- nem uma coisa nem outra.</summary>
 		Ocioso,
+		/// <summary>
+		/// `savant.IsInFight` -- em luta: o relogio CURTO do combate (`CombatState.LutandoDeVerdade`,
+		/// 10 s desde o ultimo golpe), que e o que o DM liga e desliga no `UpdateFightingStatus`. E a
+		/// unica fonte de exp da Holy Trinity (Bodybuilding.dm:176: `if(savant.IsInFight) exp++`) --
+		/// sem este estado ela NUNCA chegava ao nivel 2, e o verb da casa escolhida nunca vinha.
+		/// </summary>
+		Lutando,
+		/// <summary>`savant.train || savant.IsInFight` -- treinando OU em luta (as artes marciais do corpo).</summary>
+		TreinandoOuLutando,
+
+		// ============================ AS SETE DA ARVORE DA MENTE ============================
+		// Elas entraram juntas porque juntas elas sao a arvore: das 34 fontes de exp das dezessete
+		// skills de "Strength of Mind", TRINTA E UMA dependiam de uma destas. Sem elas quinze das
+		// dezessete tinham exatamente ZERO fonte de exp -- compraveis e congeladas no nivel 0 --, e
+		// como as Advanced/Perfect so acendem no nivel 100 das Basic, DEZ delas eram inalcancaveis.
+		// ==================================================================================
+
+		/// <summary>`savant.studying` -- estudando outra pessoa (o verb `Study_Other`, KiStatsModule.dm:51).</summary>
+		Estudando,
+
+		/// <summary>`savant.observingnow` -- projetando a mente em alguem (o verb `Observe`, observe.dm:7).</summary>
+		Observando,
+
+		/// <summary>`savant.kibuffon` -- com Focus, Efficiency ou Energy Shield de pe (Ki2.0/KiBuffs.dm).</summary>
+		ComBuffDeKi,
+
+		/// <summary>
+		/// `savant.kiratio > 1` -- o tanque de Ki acima do que o corpo considera cheio.
+		///
+		/// ESTE GANHO E ESCALADO PELA PROPRIA RAZAO: o DM escreve `exp += KiSkillGains(1*savant.kiratio)`
+		/// nas tres skills de Controle (Mind.dm:296, 555, 762), e o extrator so consegue guardar o
+		/// primeiro numero da expressao (o `1`). A escala mora na condicao porque ela e a MESMA nas
+		/// tres ocorrencias -- e a assinatura do ganho, nao um parametro dele.
+		/// </summary>
+		KiAcimaDoNormal,
+
+		/// <summary>
+		/// `savant.Ki != lastki &amp;&amp; diffki &lt; 0` -- GASTOU Ki desde o tique anterior. E como as tres
+		/// skills de Eficiencia treinam: nao por tempo, por consumo (Mind.dm:352-355).
+		///
+		/// O `lastki` do DM e `var/tmp` de cada skill, atualizado no mesmo tique nas tres -- entao um
+		/// unico "caiu desde o ultimo tique" por corpo diz exatamente a mesma coisa, e sem estado
+		/// repetido tres vezes. Quem guarda e o proprio <see cref="NiveisDeSkill"/>.
+		/// </summary>
+		GastandoKi,
+
+		/// <summary>
+		/// `(savant.Ki / savant.MaxKi) &lt; 0.9` -- o tanque abaixo de 90%. As tres skills de Reserva
+		/// treinam com o tanque VAZIO, e quanto mais vazio mais rendem.
+		///
+		/// ESCALADO POR `2 - fracao`, que e o `KiSkillGains(3*(2-(savant.Ki/savant.MaxKi)))` do DM
+		/// (Mind.dm:412, 669, 851): 1,1x com o tanque quase cheio e 2x com ele zerado.
+		/// </summary>
+		TanqueAbaixoDe90,
+
+		/// <summary>
+		/// `savant.deepmeditation` -- e ela NUNCA VALE, aqui nem no original.
+		///
+		/// ============================ UM DEFEITO DO DM, MANTIDO A VISTA ============================
+		/// `deepmeditation` aparece 23 vezes no `Code/` e em NENHUMA delas alguem escreve 1: a reforma
+		/// da meditacao trocou o minigame de equilibrio pela Dimensao Mental (`Meditate.dm:44-46`) e
+		/// deixou so os `deepmeditation = 0`. O `else if(savant.deepmeditation)` das tres skills de
+		/// Reserva e, portanto, codigo morto no jogo original.
+		///
+		/// Ele entra assim mesmo -- como estado que o servidor sempre responde "nao" -- porque o
+		/// contrario seria escolher entre duas coisas piores: descartar a regra (e o relatorio diria
+		/// "condicao que o port nao entende", mentindo sobre a causa) ou LIGAR a Dimensao Mental nela
+		/// (e ai o port renderia exp que o original nao rende). Ver a bancada `--menteskills`.
+		/// ======================================================================================
+		/// </summary>
+		MeditacaoProfunda,
+
+		/// <summary>
+		/// `else` -- o ramo final de uma corrente. Vale SEMPRE; quem o segura e a
+		/// <see cref="GanhoPorEstado.Cadeia"/>, que so o deixa render se nenhum ramo anterior rendeu.
+		/// </summary>
+		Senao,
 	}
 
 	/// <summary>Os ganhos por estado desta skill.</summary>
@@ -363,10 +505,34 @@ public sealed class NiveisDeSkill
 	/// <summary>O que os degraus ja multiplicaram. Ver <see cref="NivelSave.Multiplicados"/>.</summary>
 	private Dictionary<string, double> _multiplicados = new(StringComparer.Ordinal);
 
+	/// <summary>
+	/// O Ki do tique anterior -- o `var/tmp/lastki` das skills de Eficiencia (Mind.dm:338).
+	/// `tmp` no DM e "morre com a sessao", e aqui tambem: nao vai pro save.
+	/// </summary>
+	private double _ultimoKi;
+
 	public struct Progresso
 	{
 		public int Nivel;
 		public double Exp;
+
+		/// <summary>
+		/// O `expbuffer` DA SKILL (`/datum/skill/mind/var/expbuffer`, Mind.dm:34) -- um banco de exp
+		/// ADIANTADO que multiplica os ganhos seguintes em vez de virar exp de uma vez.
+		///
+		/// ============================ ELE ERA "NAO TEM QUEM ENCHA" E AGORA TEM ============================
+		/// O <see cref="KiSkillGains"/> deste port dizia, por escrito, que o buffer ficava de fora
+		/// *"porque nao ha campo nem quem o encha"*. Quem enche sao DUAS coisas, e as duas sao da
+		/// arvore da Mente: o efetor base de `/datum/skill/mind` (`prob(10)` por tique enquanto o dono
+		/// esta lutando, meditando ou treinando, Mind.dm:44-47) e o verb `Study_Other` -- estudar
+		/// alguem mais adiantado que voce naquela skill (`KiStatsModule.dm:70-78`), que deposita ate
+		/// DEZ VEZES mais quando ha uma skill em foco.
+		///
+		/// Sem ele o `Study_Other` nao teria onde entregar o que aprendeu, e a diferenca de taxa entre
+		/// treinar sozinho e treinar olhando um mestre simplesmente nao existiria.
+		/// ============================================================================================
+		/// </summary>
+		public double Buffer;
 	}
 
 	/// <summary>
@@ -415,13 +581,41 @@ public sealed class NiveisDeSkill
 	/// contadores de golpe...), e trocar a assinatura de um metodo chamado de tres lugares toda vez
 	/// que uma condicao nova entra e como se perde chamada pelo caminho.
 	/// </summary>
-	public readonly record struct EstadoDoCorpo(bool Meditando, bool Voando, bool Treinando);
+	/// <param name="Estudando">`savant.studying` -- o laco do verb `Study_Other` esta de pe.</param>
+	/// <param name="Observando">`savant.observingnow` -- o verb `Observe` esta projetando a mente.</param>
+	/// <param name="ComBuffDeKi">`savant.kibuffon` -- Focus, Efficiency ou Energy Shield ligados.</param>
+	/// <param name="MeditacaoProfunda">
+	/// `savant.deepmeditation`. **Sempre falso**, e nao por esquecimento: ver
+	/// <see cref="RegraDeNivel.Estado.MeditacaoProfunda"/>.
+	/// </param>
+	/// <param name="Ficha">
+	/// A FICHA, pros ganhos que sao uma CONTA e nao uma chave: `kiratio`, `Ki/MaxKi` e a propria
+	/// curva do <see cref="KiSkillGains"/> (que le `MaxKi` e `Ekiskill`).
+	///
+	/// Opcional porque as bancadas de mesa exercitam o motor sem corpo nenhum; sem ficha esses
+	/// ganhos simplesmente nao valem (e a curva nao se aplica), que e o lado seguro.
+	/// </param>
+	public readonly record struct EstadoDoCorpo(bool Meditando, bool Voando, bool Treinando, bool Lutando = false,
+											    bool Estudando = false, bool Observando = false,
+											    bool ComBuffDeKi = false, bool MeditacaoProfunda = false,
+											    Fighter? Ficha = null);
 
 	public List<Subida> Efetor(Random rng, SkillCatalog cat, SkillBook livro,
 							   EstadoDoCorpo corpo = default)
 	{
 		Sincronizar(livro);
 		List<Subida>? subidas = null;
+
+		// ============================ "GASTOU KI DESDE O ULTIMO TIQUE" ============================
+		// O `var/tmp/lastki` das tres skills de Eficiencia (Mind.dm:338-339), medido UMA vez por
+		// tique em vez de tres: as tres leem e escrevem no mesmo instante, entao o resultado e o
+		// mesmo. `tmp` no DM quer dizer "nao vai pro save", e este campo tambem nao vai.
+		bool gastouKi = false;
+		if (corpo.Ficha is { } fichaDoTique)
+		{
+			gastouKi = fichaDoTique.Ki < _ultimoKi;
+			_ultimoKi = fichaDoTique.Ki;
+		}
 
 		foreach (string path in _p.Keys.ToList())
 		{
@@ -442,18 +636,44 @@ public sealed class NiveisDeSkill
 			// GANHO POR ESTADO DO CORPO -- o que estava extraido e nunca creditado. Ver
 			// `RegraDeNivel.PorEstado`. Mesma trava do ganho por tempo: quem ja esta no teto nao
 			// acumula, senao a skill "estouraria" no dia em que o maxlevel subisse.
+			//
+			// ============================ A CORRENTE `if / else` ============================
+			// Ganhos da MESMA <see cref="RegraDeNivel.GanhoPorEstado.Cadeia"/> sao ALTERNATIVAS: vale
+			// o primeiro que casar. Eles chegam CONTIGUOS (a ordem do JSON e a ordem do DM, e um
+			// `if/else if/else` sao linhas seguidas), entao basta lembrar da corrente ANTERIOR --
+			// nao ha conjunto pra alocar 5 vezes por segundo por skill por jogador.
+			// ==============================================================================
 			if (pr.Nivel < max)
+			{
+				int cadeiaAtual = 0;
+				bool jaRendeu = false;
 				foreach (RegraDeNivel.GanhoPorEstado g in r.PorEstado)
-					if (g.Quando switch
-						{
-							RegraDeNivel.Estado.Sempre => true,
-							RegraDeNivel.Estado.Meditando => corpo.Meditando,
-							RegraDeNivel.Estado.Voando => corpo.Voando,
-							RegraDeNivel.Estado.Treinando => corpo.Treinando,
-							RegraDeNivel.Estado.Ocioso => !corpo.Meditando && !corpo.Voando,
-							_ => false,
-						})
-						pr.Exp += g.Quanto;
+				{
+					if (g.Cadeia != cadeiaAtual) { cadeiaAtual = g.Cadeia; jaRendeu = false; }
+					if (g.Cadeia != 0 && jaRendeu) continue;
+
+					// os portoes de NIVEL: `if(level<10 && ...)` e o piso do `else` de um deles
+					if (g.NivelMenorQue > 0 && pr.Nivel >= g.NivelMenorQue) continue;
+					if (pr.Nivel < g.NivelMinimo) continue;
+
+					if (Escala(g.Quando, corpo, gastouKi) is not { } escala) continue;
+					double ganho = g.Quanto * escala;
+					pr.Exp += g.Curva ? GastarDoBuffer(ref pr, KiSkillGains(ganho, corpo.Ficha)) : ganho;
+					if (g.Cadeia != 0) jaRendeu = true;
+				}
+			}
+
+			// ============================ O EFETOR BASE DE `/datum/skill/mind` ============================
+			// `if(savant && (IsInFight || med || train) && prob(10) && !afk) if(expbuffer <= 100*rate) expbuffer++`
+			// (Mind.dm:44-47) -- a skill da Mente guarda um pouquinho de exp adiantado so por o dono
+			// estar FAZENDO alguma coisa. E ele que o `Study_Other` enche aos montes.
+			//
+			// `!savant.afk` NAO TEM PAR AQUI: este port nao tem detector de ausencia (o DM marca `afk`
+			// por tempo sem input). Quem esta parado tambem nao esta lutando, meditando nem treinando,
+			// entao a guarda que sobra ja e a que importa.
+			if (r.Mental && (corpo.Lutando || corpo.Meditando || corpo.Treinando)
+				&& rng.NextDouble() < 0.10 && pr.Buffer <= 100 * GainKnobs.GlobalKiExpRate)
+				pr.Buffer++;
 
 			// skill.dm:92-95 -- a subida em si
 			double barreira = r.BarreiraEm(pr.Nivel);
@@ -461,6 +681,9 @@ public sealed class NiveisDeSkill
 			{
 				pr.Exp = 0;
 				pr.Nivel++;
+				// `if(levelup) expbuffer = 0` (Mind.dm:48-49): o banco NAO atravessa a subida de
+				// nivel. E o freio do estudo -- ele adianta UM degrau, nao a arvore inteira.
+				pr.Buffer = 0;
 				(subidas ??= []).Add(new Subida(path, cat.Get(path)?.Nome ?? path, pr.Nivel,
 												r.DegrauDe(pr.Nivel), [.. r.DegrausEm(pr.Nivel)]));
 			}
@@ -469,6 +692,107 @@ public sealed class NiveisDeSkill
 		}
 
 		return subidas ?? [];
+	}
+
+	/// <summary>
+	/// GASTA O BANCO DE EXP ADIANTADO nesta skill e devolve o ganho JA MULTIPLICADO -- o segundo
+	/// bloco do `KiSkillGains` do DM (Mind.dm:864-870):
+	///
+	///     if(expbuffer)
+	///         if(expbuffer-gain > 0)
+	///             expbuffer -= gain
+	///             gain *= sqrt(max(4, (expbuffer/gain)*4))
+	///         else
+	///             gain += expbuffer
+	///             expbuffer = 0
+	///
+	/// LEIA COM CUIDADO: quando o banco cobre o ganho, ele e DEBITADO e o que multiplica e o SALDO
+	/// QUE SOBROU -- no minimo 2x (`sqrt(4)`), e mais quanto maior o banco. Quando nao cobre, o
+	/// resto e simplesmente somado. O banco nao vira exp: ele acelera.
+	/// </summary>
+	private static double GastarDoBuffer(ref Progresso pr, double ganho)
+	{
+		if (pr.Buffer <= 0 || ganho <= 0) return ganho;
+		if (pr.Buffer - ganho > 0)
+		{
+			pr.Buffer -= ganho;
+			return ganho * Math.Sqrt(Math.Max(4, pr.Buffer / ganho * 4));
+		}
+		ganho += pr.Buffer;
+		pr.Buffer = 0;
+		return ganho;
+	}
+
+	/// <summary>
+	/// DEPOSITA no banco de exp adiantado desta skill -- e o que o `Study_Other` faz
+	/// (`KiStatsModule.dm:74-78`). Devolve false pra skill que a pessoa nao tem.
+	/// </summary>
+	public bool Depositar(string path, double quanto)
+	{
+		if (quanto <= 0 || !_p.TryGetValue(path, out Progresso pr)) return false;
+		pr.Buffer += quanto;
+		_p[path] = pr;
+		return true;
+	}
+
+	/// <summary>Quanto de exp adiantado esta guardado nesta skill. Diagnostico e bancada.</summary>
+	public double Buffer(string path) => _p.TryGetValue(path, out Progresso pr) ? pr.Buffer : 0;
+
+	/// <summary>
+	/// CREDITA EXP JA PASSANDO PELA CURVA E PELO BANCO desta skill -- o `S.exp += S.KiSkillGains(exp)`
+	/// do `Study_Book` (`KiStatsModule.dm:198`). Devolve quanto entrou de verdade (zero pra quem nao
+	/// tem a skill), que e o numero que o livro anuncia ao leitor.
+	/// </summary>
+	public double CreditarComCurva(string path, double bruto, Fighter? f)
+	{
+		if (bruto <= 0 || !_p.TryGetValue(path, out Progresso pr)) return 0;
+		double ganho = GastarDoBuffer(ref pr, KiSkillGains(bruto, f));
+		_p[path] = pr;
+		return Creditar(path, ganho) ? ganho : 0;
+	}
+
+	/// <summary>
+	/// A CONDICAO VALE? E, quando vale, POR QUANTO o ganho e multiplicado.
+	///
+	/// Devolve nulo quando nao vale -- e nao zero: zero seria um ganho de valor zero, e um ganho de
+	/// valor zero SATISFAZ a corrente (o `else` seguinte nunca renderia). Nulo diz "este ramo nao
+	/// e o meu", que e o que o `if` do DM diz.
+	///
+	/// A ESCALA E DA CONDICAO e nao do numero porque e assim que ela aparece no DM: as tres skills
+	/// de Controle escrevem `KiSkillGains(1*savant.kiratio)` e as tres de Reserva escrevem
+	/// `KiSkillGains(3*(2-(savant.Ki/savant.MaxKi)))`. O extrator so guarda o primeiro numero da
+	/// expressao (`1` e `3`); o resto e a assinatura do estado, e mora aqui.
+	/// </summary>
+	private static double? Escala(RegraDeNivel.Estado quando, EstadoDoCorpo corpo, bool gastouKi)
+	{
+		switch (quando)
+		{
+			case RegraDeNivel.Estado.Sempre: return 1;
+			case RegraDeNivel.Estado.Senao: return 1;   // quem segura o `else` e a cadeia
+			case RegraDeNivel.Estado.Meditando: return corpo.Meditando ? 1 : null;
+			case RegraDeNivel.Estado.Voando: return corpo.Voando ? 1 : null;
+			case RegraDeNivel.Estado.Treinando: return corpo.Treinando ? 1 : null;
+			case RegraDeNivel.Estado.Ocioso: return !corpo.Meditando && !corpo.Voando ? 1 : null;
+			case RegraDeNivel.Estado.Lutando: return corpo.Lutando ? 1 : null;
+			case RegraDeNivel.Estado.TreinandoOuLutando: return corpo.Treinando || corpo.Lutando ? 1 : null;
+			case RegraDeNivel.Estado.Estudando: return corpo.Estudando ? 1 : null;
+			case RegraDeNivel.Estado.Observando: return corpo.Observando ? 1 : null;
+			case RegraDeNivel.Estado.ComBuffDeKi: return corpo.ComBuffDeKi ? 1 : null;
+			case RegraDeNivel.Estado.MeditacaoProfunda: return corpo.MeditacaoProfunda ? 1 : null;
+			case RegraDeNivel.Estado.GastandoKi: return gastouKi ? 1 : null;
+
+			case RegraDeNivel.Estado.KiAcimaDoNormal:
+				return corpo.Ficha is { kiratio: > 1 } f ? f.kiratio : null;
+
+			case RegraDeNivel.Estado.TanqueAbaixoDe90:
+			{
+				if (corpo.Ficha is not { } t || t.MaxKi <= 0) return null;
+				double fracao = t.Ki / t.MaxKi;
+				return fracao < 0.9 ? 2 - fracao : null;
+			}
+
+			default: return null;
+		}
 	}
 
 	/// <summary>
@@ -498,13 +822,20 @@ public sealed class NiveisDeSkill
 	/// decimo, e ela existe pra impedir que um personagem recem-criado suba as pericias de Ki na
 	/// mesma velocidade de quem ja abriu o tanque.
 	///
-	/// O `expbuffer` do DM NAO ENTRA. Ele e um banco de exp adiantado que este port nao tem em lugar
-	/// nenhum (nao ha campo nem quem o encha); implementar so a metade que GASTA daria taxa
-	/// diferente do original em silencio. Sem ele o ganho e a taxa nua -- mais previsivel, e
-    /// menos generoso no comeco, que e onde o buffer do DM ajudava.
+	/// O `expbuffer` ENTRA, MAS NAO AQUI. Esta funcao e estatica e nao sabe de QUAL skill e o ganho;
+	/// o banco e por skill (`Progresso.Buffer`) e quem o gasta e o <see cref="GastarDoBuffer"/>, que
+	/// envolve toda chamada desta. A separacao e de proposito: assim a curva continua sendo uma
+	/// funcao pura, testavel com um numero e uma ficha.
+	///
+	/// (Ate o lote da Mente o banco simplesmente nao existia -- "nao ha campo nem quem o encha".
+	/// Quem enche e o efetor base de `/datum/skill/mind` e o verb `Study_Other`, e os dois entraram
+	/// com este lote. Ver `Progresso.Buffer`.)
 	/// </summary>
-	public static double KiSkillGains(double exp, Fighter f)
+	public static double KiSkillGains(double exp, Fighter? f)
 	{
+		// SEM FICHA A CURVA NAO SE APLICA (bancada de mesa, cliente): devolve o numero cru. Chutar
+		// um `Ekiskill` medio aqui daria um ganho que nao e o de ninguem.
+		if (f == null) return exp;
 		if (f.MaxKi <= 300) exp *= f.MaxKi / 3000.0;
 		return exp * 2 * f.Ekiskill * GainKnobs.GlobalKiExpRate;
 	}
@@ -550,8 +881,13 @@ public sealed class NiveisDeSkill
 		int n = 0;
 		foreach (RegrasDeNivel.CreditoDeContador c in RegrasDeNivel.DoContador(contador))
 		{
-			// o `10*(savant.beamcounter-attackcounter)` de dentro do `KiSkillGains`
-			if (Creditar(c.Path, KiSkillGains(c.Quanto * vezes, f))) n++;
+			// o `10*(savant.beamcounter-attackcounter)` de dentro do `KiSkillGains` -- e o banco de
+			// exp adiantado tambem vale aqui: as 30 pericias de Ki sao `/datum/skill/mind` como as
+			// da Mente, e la o `KiSkillGains` e um proc so pras duas familias. Ver `Progresso.Buffer`.
+			if (!_p.TryGetValue(c.Path, out Progresso pr)) continue;
+			double ganho = GastarDoBuffer(ref pr, KiSkillGains(c.Quanto * vezes, f));
+			_p[c.Path] = pr;
+			if (Creditar(c.Path, ganho)) n++;
 		}
 		return n;
 	}
@@ -593,15 +929,33 @@ public sealed class NiveisDeSkill
 	/// sessao. Aqui nao existe "verb do mob": existe a pergunta "voce pode usar isto?", e a
 	/// resposta e recalculada do nivel toda vez. Nada pra reatribuir, nada pra esquecer.
 	/// </summary>
-	public IEnumerable<string> VerbosAtivos()
+	/// <param name="casaDe">
+	/// A CASA ESCOLHIDA numa skill de escolha unica (typepath -> rotulo, nulo = sem escolha) -- o que o
+	/// <see cref="Degrau.VerbosPorCasa"/> pergunta. Quem tem o livro passa
+	/// `path => EfeitosDeSkill.RotuloDaCasa(cat, livro.Escolhas, path)`; sem resolvedor, nenhum verb por
+	/// casa vale (o que e o certo pra quem nao escolheu nada).
+	/// </param>
+	public IEnumerable<string> VerbosAtivos(Func<string, string?>? casaDe = null)
 	{
 		foreach ((string path, Progresso pr) in _p)
 		{
 			RegraDeNivel? r = RegrasDeNivel.Get(path);
 			if (r == null) continue;
+			string? casa = null;
+			bool casaLida = false;
 			foreach (Degrau d in r.Degraus)
-				if (RegraDeNivel.Vezes(d, pr.Nivel) > 0)
-					foreach (string v in d.Verbos) yield return v;
+			{
+				if (RegraDeNivel.Vezes(d, pr.Nivel) <= 0) continue;
+				foreach (string v in d.Verbos) yield return v;
+
+				// O VERB POR CASA: so o par da casa que o livro registrou -- ver `Degrau.VerbosPorCasa`.
+				// A casa e lida UMA vez por skill (e so quando algum degrau cruzado a pede).
+				if (d.VerbosPorCasa.Length == 0) continue;
+				if (!casaLida) { casa = casaDe?.Invoke(path); casaLida = true; }
+				if (casa == null) continue;
+				foreach ((string c, string v) in d.VerbosPorCasa)
+					if (string.Equals(c, casa, StringComparison.OrdinalIgnoreCase)) yield return v;
+			}
 		}
 	}
 
@@ -805,7 +1159,9 @@ public sealed class NiveisDeSkill
 			Multiplicados = new Dictionary<string, double>(_multiplicados, StringComparer.Ordinal),
 		};
 		foreach ((string path, Progresso pr) in _p)
-			if (pr.Nivel > 0 || pr.Exp > 0) s.Skills[path] = [pr.Nivel, pr.Exp];
+			// O TERCEIRO NUMERO E O `expbuffer` (ver `Progresso.Buffer`). Save antigo tem dois e
+			// continua valendo -- o `DoSave` le o terceiro so quando ele existe.
+			if (pr.Nivel > 0 || pr.Exp > 0 || pr.Buffer > 0) s.Skills[path] = [pr.Nivel, pr.Exp, pr.Buffer];
 		return s;
 	}
 
@@ -826,7 +1182,7 @@ public sealed class NiveisDeSkill
 			// Filtrar na ENTRADA, e nao no laco: assim o progresso orfao simplesmente nao
 			// existe, em vez de existir e ter que ser desviado em todo lugar que o percorre.
 			if (v.Length >= 2 && RegrasDeNivel.Get(path) != null)
-				_p[path] = new Progresso { Nivel = (int)v[0], Exp = v[1] };
+				_p[path] = new Progresso { Nivel = (int)v[0], Exp = v[1], Buffer = v.Length >= 3 ? v[2] : 0 };
 		}
 		foreach ((string campo, double v) in s.Somados) _somados[campo] = v;
 		if (s.Multiplicados != null)
@@ -877,7 +1233,10 @@ public static class RegrasDeNivel
 	/// concede 186 -- e os 59 que faltassem seriam justamente os que ninguem sabe que existem.
 	/// </summary>
 	public static IEnumerable<string> VerbosDeDegrau =>
-		Mapa.Values.SelectMany(r => r.Degraus).SelectMany(d => d.Verbos)
+		// os verbs POR CASA entram na mesma conta: o degrau os concede (a uma casa de cada vez), e um
+		// censo que nao os visse chamaria a Trindade de "sem porta" de novo
+		Mapa.Values.SelectMany(r => r.Degraus)
+			.SelectMany(d => d.Verbos.Concat(d.VerbosPorCasa.Select(p => p.Verbo)))
 			.Where(v => v.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase);
 
 	public static void Registrar(RegraDeNivel r)

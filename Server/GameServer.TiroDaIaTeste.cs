@@ -262,8 +262,31 @@ public partial class GameServer
 		}
 
 		// E O TIRO ACERTA. O funil de dano e o de sempre (`Acertar` -> `DanoDeKi` -> `AplicarDanoPronto`).
+		//
+		// ============================ SEM O DADO DA DEFLEXAO, PELO MESMO MOTIVO DE SEMPRE ============================
+		// O `Acertar` sorteia deflexao em todo impacto contra quem esta de pe
+		// (`GameServer.Projeteis.cs:1190-1240`), e a chance e a razao entre as duas forcas
+		// (`DanoDeKi.ChanceDeDeflexao`, `objects.dm:333`). MEDIDO com os corpos daqui -- dois de 50.000
+		// e o feixe do `Ki_Wave` de `base_damage` 1 --: **1% por impacto**. E uma medicao de "o funil
+		// chegou ao fim" que as vezes mede o dado, que e o defeito que derrubou a `--tecnicateste` em
+		// 2026-09-02 (la a bola dava 0,0999%).
+		//
+		// AQUI O KNOB NAO CABE NA RECEITA: quem monta o tiro e o ARSENAL de producao, dentro da decisao
+		// da IA -- escrever `Deflectivel = false` la seria dar a todo NPC do jogo um raio que ninguem
+		// deflete. Entao a bancada desarma o que ja esta no ar, a cada tique: e o mesmo campo, pelo
+		// mesmo motivo do `RaioDaBancada` (`GameServer.ProjeteisTeste.cs:2167`), no unico lugar que ela
+		// alcanca. Vale pra QUALQUER tiro da zona porque a IA pode atirar mais de uma vez nos 8 s.
+		//
+		// E nao da pra desligar pelo corpo do alvo: `Fighter.Statify` calcula o `Rkidef` com piso
+		// (`max(kidef, 0.1)`, `Core/Stats/Fighter.Statify.cs:88`), entao `Ekidef` de um corpo vivo e
+		// sempre maior que zero -- a chance nunca e nula.
+		// ============================================================================================================
 		double vidaAntes = alvo.Combate.Corpo.Vida();
-		for (int i = 0; i < 30 * 8 && alvo.Combate.Corpo.Vida() >= vidaAntes; i++) TiqueDeMundo();
+		for (int i = 0; i < 30 * 8 && alvo.Combate.Corpo.Vida() >= vidaAntes; i++)
+		{
+			foreach (Projetil no in ProjeteisDaZona(atirador.Zone.Hash)) no.Deflectivel = false;
+			TiqueDeMundo();
+		}
 		AfirmarTi("...e alguem levou dano no fim da linha (o funil de ki de producao)",
 				  alvo.Combate.Corpo.Vida() < vidaAntes,
 				  $"vida {alvo.Combate.Corpo.Vida():0.###} contra {vidaAntes:0.###}");

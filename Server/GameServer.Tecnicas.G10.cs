@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Skills;
 using Jandirus.Core.Stats;
@@ -40,26 +41,35 @@ namespace Jandirus.Server;
 /// mirada. O port tinha o irmao dele (<see cref="EspalharDanoG3"/>, o `SpreadDamage`) e nao ele --
 /// e Shock, Precise_Explosion e Counter_Taunt sao exatamente `damage_mob`.
 ///
-/// ============================ OS DEFEITOS DO DM QUE FICAM, COM O NUMERO A VISTA ============================
-/// A regra da casa e MANTER o comportamento do original e deixar o numero visivel; consertar e decisao
-/// do dono. Sao estes, cada um com a constante ao lado:
-///   * `Revenge_Demon` le `grabbee.Ephysoff` sem ninguem agarrado (`:27`) -> runtime -> o
-///     `damage_mob` do `:30` NUNCA roda: <see cref="DanoExtraRevengeDemonG10"/> = 0.
+/// ============================ OS DEFEITOS DO DM: O QUE O DONO MANDOU CONSERTAR, E O QUE FICA ============================
+/// Este lote nasceu MANTENDO os defeitos do original com o numero a vista (a regra da casa: consertar e
+/// decisao do dono). Em 2026-09-02 o dono decidiu, com estas palavras -- *"corrija esses bugs q vc
+/// citou"* --, e cinco deles passaram a fazer o que o NOME e a DESCRICAO do verb prometem. A citacao do
+/// DM fica em cada um: e a prova de que o desvio e consciente.
+///
+///   CONSERTADOS (decisao do dono, 2026-09-02):
+///   * `Revenge_Demon` lia `grabbee.Ephysoff` sem ninguem agarrado (`:27`) -> runtime -> o
+///     `damage_mob` do `:30` nunca rodava. Aqui roda, com a ofensiva+tecnica do ALVO no divisor
+///     (o `grabbee` e residuo de copiar-e-colar dos verbs de agarrao): <see cref="DanoExtraRevengeDemonG10"/>.
 ///   * `Hokuto` faz `if(BarrageAttack(...))` e o `BarrageAttack` nao tem `return` (`attack_proc.dm:120`)
-///     -> o `damage_mob(dmg)` + `damage_mob(70)` do `:113-116` nunca rodam: <see cref="DanoExtraHokutoG10"/> = 0.
-///     E `beatdown = round(unarmedskill/5)` com um `unarmedskill` que este port nao tem: <see cref="BeatdownHokutoG10"/> = 0.
-///   * `Gigantic_Spike` bate em `target` e nao em `grabbee` (`:72`): quem apanha e o MARCADO; sem
-///     marcado, ninguem apanha (o `AttackMultiple(null)` devolve na porta).
-///   * `Clench`/`Hold` escrevem `grabbee.grabCounter = max(0, grabCounter - N)` lendo o contador de QUEM
-///     APERTA (`:13`, `:25`) -- na pratica zeram o contador do preso.
-///   * `get_me_a_grab(1)` com alguem JA seguro (modo 1) devolve TRUE sem levantar (`Grabbing.dm:332`);
-///     `Gigantic_Spike`/`Power_Drag` cobram o Ki e o `if(grabMode==2)` falha: paga e nada acontece.
+///     -> o `damage_mob(dmg)` + `damage_mob(70)` do `:113-116` nunca rodavam. Aqui, se a rajada ENCOSTOU,
+///     o `NormDamageCalc` entra na hora e os 70 um segundo depois (<see cref="GolpeFinalDoHokutoG10"/>).
+///     O `beatdown = round(unarmedskill/5)` foi REMOVIDO (ver <see cref="HokutoG10"/>: a maestria que o
+///     alimenta nao existe neste port, e sem ela o proprio DM da zero).
+///   * `Gigantic_Spike` batia em `target` e nao em `grabbee` (`:72`). Aqui esmaga quem esta NOS BRACOS.
+///   * `Clench`/`Hold` escreviam `grabbee.grabCounter = max(0, grabCounter - N)` lendo o contador de QUEM
+///     APERTA (`:13`, `:25`) -- zeravam o contador do preso. Aqui tiram N do contador DO PRESO.
+///   * `get_me_a_grab(1)` com alguem JA seguro (modo 1) devolvia TRUE sem levantar (`Grabbing.dm:332`);
+///     `Gigantic_Spike`/`Power_Drag` cobravam e nada acontecia. Aqui quem ja segura LEVANTA e o golpe sai
+///     (<see cref="AgarrarSePrecisoG10"/>).
+///
+///   MANTIDOS (o dono nao os citou; ficam com o numero a vista):
 ///   * `Zanzoken_Dash` liga `rapidmovement=1`, chama `rapidProc()` (que nao dorme) e desliga: o ramo do
 ///     `movement handler.dm:118` nunca ve a flag. E o MESMO verb que o Rapid_Movement.
 ///   * `Taunt`/`Slap`/`Counter_Taunt` conferem `Ki >= kireq` e NAO descontam (`Bodybuilding.dm:194-230`).
 ///   * `Zanzoken_Combo` cobra ANTES de olhar se ha alvo no alcance (`Physical Skills.dm:12-15`).
 ///
-/// A UNICA EXCECAO a essa regra segue um precedente do proprio port: `Rapid_Movement` confere `kiReq`
+/// A OUTRA EXCECAO segue um precedente do proprio port: `Rapid_Movement` confere `kiReq`
 /// e desconta `kiReq*BaseDrain` (`speedy.dm:147-149`, BaseDrain AO QUADRADO). E a mesma familia que o
 /// G7 ja fechou quatro vezes (Scattering_Bullet, Guided Ball, Kill Driver, cura): cobra-se o que se
 /// confere.
@@ -99,26 +109,42 @@ public sealed partial class GameServer
 	private const int TiquesDoArremessoDoDemonioG10 = 1;
 
 	/// <summary>
-	/// O `damage_mob(target, dmg*BPModulus/4)` do Revenge_Demon (`Beserker Skills.dm:30`) NUNCA RODA: tres
-	/// linhas antes o verb le `grabbee.Ephysoff` (`:27`) sem ninguem agarrado -- "Cannot read null.Ephysoff"
-	/// -- e o proc morre ali. Mantido como o DM entrega: zero. (O que o runtime deixava pra tras --
-	/// `knockbackon` preso em 0 e `target.stagger` preso em +1 -- e residuo de crash, nao comportamento, e
-	/// nao veio.)
+	/// O `damage_mob(target, dmg*BPModulus/4)` do Revenge_Demon (`Beserker Skills.dm:21-30`):
+	///
+	///     base = Ephysoff
+	///     phystechcalc         = Ephysoff + Etechnique        se Ephysoff > 1 || Etechnique > 1 (senao null -> 0)
+	///     opponentphystechcalc = X.Ephysoff + X.Etechnique    idem, pro outro (null -> o DamageCalc poe 1)
+	///     dmg = DamageCalc(phystechcalc, opponentphystechcalc, base) = up/down * base     (`calcs.dm:1-7`)
+	///     damage_mob(target, dmg * BPModulus(expressedBP, target.expressedBP) / 4)
+	///
+	/// NO DM ISTO NUNCA RODAVA: o `X` do divisor e `grabbee` (`:27`), e ninguem esta agarrado num verb que
+	/// nao agarra -- "Cannot read null.Ephysoff", e o proc morria tres linhas antes do `damage_mob`. O
+	/// `grabbee` e residuo de copiar-e-colar dos verbs de luta livre; a pessoa em que o golpe bate e
+	/// `target`, e e a ofensiva+tecnica DELE que entra no divisor. Por decisao do dono (2026-09-02,
+	/// "corrija esses bugs q vc citou") o dano roda, com o alvo no lugar do agarrado. (O que o runtime
+	/// deixava pra tras -- `knockbackon` preso em 0 e `target.stagger` preso em +1 -- e residuo de crash,
+	/// nao comportamento, e nao veio.)
 	/// </summary>
-	private const double DanoExtraRevengeDemonG10 = 0;
+	private static double DanoExtraRevengeDemonG10(Fighter a, Fighter alvo)
+	{
+		double up = a.Ephysoff > 1 || a.Etechnique > 1 ? a.Ephysoff + a.Etechnique : 0;
+		double down = alvo.Ephysoff > 1 || alvo.Etechnique > 1 ? alvo.Ephysoff + alvo.Etechnique : 1;
+		double dmg = up / down * a.Ephysoff;
+		return dmg * CombatMath.BpModulus(a.expressedBP, alvo.expressedBP) / 4;
+	}
 
 	/// <summary>
-	/// `if(BarrageAttack(...)) { damage_mob(target, NormDamageCalc); sleep(10); damage_mob(target, 70) }`
+	/// `if(BarrageAttack(...)) { damage_mob(target, NormDamageCalc(target)); sleep(10); damage_mob(target, 70) }`
 	/// (`Assassain Skills.dm:112-116`). O `BarrageAttack` termina em `attacking=0` sem `return`
-	/// (`attack_proc.dm:120-155`): devolve null, e o bloco nunca entra. Mantido: zero.
+	/// (`attack_proc.dm:120-155`): devolvia null e o bloco nunca entrava. Por decisao do dono (2026-09-02)
+	/// o bloco entra quando a rajada ENCOSTOU (o `firstBarrage` do `:139` -- o primeiro `doAttack` >= 2):
+	/// o `NormDamageCalc` (`calcs.dm:9-21`, que e o <see cref="CombatMath.DanoBase"/>) na hora, e estes 70
+	/// um segundo depois (`sleep(10)`), direto num membro, pelo relogio do lote.
 	/// </summary>
-	private const double DanoExtraHokutoG10 = 0;
+	private const double GolpeFinalDoHokutoG10 = 70;
 
-	/// <summary>
-	/// `beatdown = round(usr.unarmedskill/5)` (`Assassain Skills.dm:98`). `unarmedskill` e a maestria de
-	/// mao nua do `Melee Masteries.dm:273`, que este port nao tem -- nasce 0 e fica 0. Zero `MeleeAttack(0.4)`.
-	/// </summary>
-	private const int BeatdownHokutoG10 = 0;
+	/// <summary>`sleep(10)` entre o `NormDamageCalc` e o golpe final de 70 (`Assassain Skills.dm:115`).</summary>
+	private const long AtrasoDoGolpeFinalDoHokutoMsG10 = 1000;
 
 	/// <summary>`view(N)` do BYOND nao passa de 34 -- e o teto do `ArrasarEmVoltaG10`, que sem ele cresceria com o `Ephysoff`.</summary>
 	private const int RaioMaximoDeViewG10 = 34;
@@ -161,153 +187,31 @@ public sealed partial class GameServer
 	// =====================================================================
 	// REGISTRO
 	// =====================================================================
-	public static void RegistrarTecnicasG10()
+	private void RegistrarTecnicasG10()
 	{
-		// ---- assassino (`Assassain Skills.dm:2,27,52,73,175`) ----
-		Tecnicas.Registrar("Shock", "Choque", Modo.Instantanea,
-			"Um golpe curto que deixa energia presa no corpo do alvo: ele perde vida no membro mirado "
-			+ "na hora e de novo um segundo e meio depois, sem rolagem nenhuma.");
-		Tecnicas.Registrar("Reverb", "Reverberacao", Modo.Instantanea,
-			"Um punho carregado de energia que ECOA: tres ondas de dano espalhado pelo corpo inteiro "
-			+ "do alvo, uma a cada dois segundos, depois do golpe.");
-		Tecnicas.Registrar("Precise_Explosion", "Explosao Precisa", Modo.Instantanea,
-			"Voce crava um dedo no membro mirado e, dois segundos depois, ele estoura por dentro: "
-			+ "setenta de dano mais a sua forca e a sua tecnica, direto no membro.");
-		Tecnicas.Registrar("Hokuto_Hyakuretsu_Ken", "Hokuto Hyakuretsu Ken", Modo.Instantanea,
-			"ATATATATATA. Custa folego E energia, e deixa o alvo DEZ segundos sem reagir. Exige estar "
-			+ "colado e com a mao livre; os golpes especiais de corpo ficam em espera depois.");
-		Tecnicas.Registrar("Trip", "Rasteira", Modo.Instantanea,
-			"Uma rasteira suja: se o alvo estiver NO CHAO, ele fica tres segundos sem reagir e leva um "
-			+ "pouco de dano em cada membro. Contra quem voa nao ha chao pra tropecar.");
+		IniciarLote("G10");
+		Vivo("Shock", ChoqueG10);
+		Vivo("Reverb", ReverberacaoG10);
+		Vivo("Precise_Explosion", ExplosaoPrecisaG10);
+		Vivo("Hokuto_Hyakuretsu_Ken", HokutoG10);
+		Vivo("Trip", RasteiraG10);
+		Vivo("Revenge_Demon", DemonioDaVingancaG10);
+		Vivo("Gigantic_Spike", EspigaoGiganteG10);
+		Vivo("Power_Drag", ArrastoBrutalG10);
+		Vivo("Seismic_Press", PrensaSismicaG10);
+		Vivo("Clench", ApertoG10);
+		Vivo("Hold", ChaveG10);
+		Vivo("Power_Slam", PowerSlamG10);
+		Vivo("Suplex", SuplexG10);
+		foreach (string corrida in new[] { "Rapid_Movement", "Zanzoken_Dash" })
+			Vivo(corrida, pl => CorridaRapidaG10(pl, corrida));
+		Vivo("Zanzoken_Combo", ZanzokenComboG10);
+		Vivo("Zanzoken_Rush", ZanzokenRushG10);
+		Vivo("Taunt", ProvocacaoG10);
+		Vivo("Counter_Taunt", ContraProvocacaoG10);
+		Vivo("Slap", TapaG10);
 
-		// ---- berserker (`Beserker Skills.dm:2,39,85,122`) ----
-		Tecnicas.Registrar("Revenge_Demon", "Demonio da Vinganca", Modo.Instantanea,
-			"Um soco e um jab na cara, e o alvo e ARREMESSADO pra frente. Se o primeiro golpe nao "
-			+ "entrar, voce e quem se desequilibra.");
-		Tecnicas.Registrar("Gigantic_Spike", "Espigao Gigante", Modo.Instantanea,
-			"Com alguem CARREGADO (agarrar duas vezes), voce corre pra frente derrubando o que houver "
-			+ "no caminho e esmaga o alvo marcado no fim -- quanto mais parede, mais forte. O chao em "
-			+ "volta racha.");
-		Tecnicas.Registrar("Power_Drag", "Arrasto Brutal", Modo.Instantanea,
-			"Com alguem CARREGADO, voce dispara pra frente arrastando o corpo dele pelo chao por "
-			+ "varios tiles, e ele sai machucado do arrasto.");
-		Tecnicas.Registrar("Seismic_Press", "Prensa Sismica", Modo.Instantanea,
-			"Um golpe pesado que deixa o alvo dois segundos sem reagir e RACHA o chao num raio igual "
-			+ "a sua forca.");
-
-		// ---- luta livre (`Wrestling Skills.dm:2,18,33,48`) -- todos exigem alguem AGARRADO ----
-		Tecnicas.Registrar("Clench", "Aperto", Modo.Instantanea,
-			"Aperta quem esta nos seus bracos (+4 de dano) e desfaz o que ele ja tinha lutado pra "
-			+ "escapar. Se nao houver ninguem agarrado, agarra quem estiver na frente.");
-		Tecnicas.Registrar("Hold", "Chave", Modo.Instantanea,
-			"Uma chave em quem esta agarrado: zera a luta pra escapar dele e o deixa CINCO segundos "
-			+ "sem reagir.");
-		Tecnicas.Registrar("Power_Slam", "Power Slam", Modo.Instantanea,
-			"Levanta e ESMAGA quem esta agarrado no chao: o golpe mais forte da luta livre (+10).");
-		Tecnicas.Registrar("Suplex", "Suplex", Modo.Instantanea,
-			"O suplex: dano somado em quem esta agarrado e dois segundos sem reagir depois.");
-
-		// ---- a corrida de Ki (`speedy.dm:135-161`) ----
-		Tecnicas.Registrar("Rapid_Movement", "Movimento Rapido", Modo.Instantanea,
-			"Bombeia Ki nas pernas e avanca tres tiles contra o alvo MARCADO (ate vinte tiles). Nao "
-			+ "bate: e o passo de quem quer fechar a distancia. Custa menos quanto mais rapido voce e.");
-		Tecnicas.Registrar("Zanzoken_Dash", "Investida Zanzoken", Modo.Instantanea,
-			"A mesma corrida do Movimento Rapido. No jogo antigo ela prometia rodear o inimigo depois "
-			+ "de chegar, e a promessa nunca foi cumprida: e o mesmo avanco de tres tiles.");
-
-		// ---- os dois teleportes (`Physical Skills.dm:8`, `Martial Skill Attacks.dm:55`) ----
-		Tecnicas.Registrar("Zanzoken_Combo", "Zanzoken Combo", Modo.Instantanea,
-			"Voce some e reaparece ATRAS do alvo, olhando pra ele -- e o proximo soco e seu. O alcance "
-			+ "cresce com a sua pericia de Ki e a sua velocidade. Nao ha espaco atras dele? Voce fica.");
-		Tecnicas.Registrar("Zanzoken_Rush", "Zanzoken Rush", Modo.Instantanea,
-			"Aparece ao lado do alvo e golpeia, varias vezes seguidas -- quantas depende da sua "
-			+ "velocidade e de quanto voce treinou a tecnica. Depois vem a exaustao, que dura vinte "
-			+ "vezes o intervalo entre os saltos.");
-
-		// ---- a Trindade (`Bodybuilding.dm:191-230`) ----
-		Tecnicas.Registrar("Taunt", "Provocacao", Modo.Instantanea,
-			"Voce xinga alto e todo mundo por perto que ja estava lutando com alguem passa a lutar com "
-			+ "VOCE -- quanto menos vontade a pessoa tem, mais facil ela cai.");
-		Tecnicas.Registrar("Counter_Taunt", "Contra-Provocacao", Modo.Instantanea,
-			"Uma resposta atravessada que machuca: o seu alvo marcado leva dano MENTAL, um quarto de "
-			+ "um golpe, sem poder desviar.");
-		Tecnicas.Registrar("Slap", "Tapa", Modo.Instantanea,
-			"Voce bate na propria bunda e todo mundo por perto que estava lutando fica um segundo e "
-			+ "meio sem reagir, de tao pasmo.");
-	}
-
-	/// <summary>Os vinte ids deste lote -- lidos pelo `default` do despacho geral.</summary>
-	private static readonly string[] IdsG10 =
-	[
-		"Shock", "Reverb", "Precise_Explosion", "Hokuto_Hyakuretsu_Ken", "Trip",
-		"Revenge_Demon", "Gigantic_Spike", "Power_Drag", "Seismic_Press",
-		"Clench", "Hold", "Power_Slam", "Suplex",
-		"Rapid_Movement", "Zanzoken_Dash",
-		"Zanzoken_Combo", "Zanzoken_Rush",
-		"Taunt", "Counter_Taunt", "Slap",
-	];
-
-	public static bool EhDoLoteG10(string id) => Array.IndexOf(IdsG10, id) >= 0;
-
-	/// <summary>
-	/// O DESPACHO DO LOTE. Chamado do `default` do <see cref="UsarTecnica"/>, DEPOIS do
-	/// <see cref="SabeTecnica"/> geral -- como o G5, o G6 e o G7. Nenhum id daqui leva argumento.
-	/// </summary>
-	private void UsarTecnicasG10(ServerPlayer pl, string id)
-	{
-		switch (id)
-		{
-			case "Shock": ChoqueG10(pl); break;
-			case "Reverb": ReverberacaoG10(pl); break;
-			case "Precise_Explosion": ExplosaoPrecisaG10(pl); break;
-			case "Hokuto_Hyakuretsu_Ken": HokutoG10(pl); break;
-			case "Trip": RasteiraG10(pl); break;
-
-			case "Revenge_Demon": DemonioDaVingancaG10(pl); break;
-			case "Gigantic_Spike": EspigaoGiganteG10(pl); break;
-			case "Power_Drag": ArrastoBrutalG10(pl); break;
-			case "Seismic_Press": PrensaSismicaG10(pl); break;
-
-			case "Clench": ApertoG10(pl); break;
-			case "Hold": ChaveG10(pl); break;
-			case "Power_Slam": PowerSlamG10(pl); break;
-			case "Suplex": SuplexG10(pl); break;
-
-			case "Rapid_Movement":
-			case "Zanzoken_Dash": CorridaRapidaG10(pl, id); break;
-
-			case "Zanzoken_Combo": ZanzokenComboG10(pl); break;
-			case "Zanzoken_Rush": ZanzokenRushG10(pl); break;
-
-			case "Taunt": ProvocacaoG10(pl); break;
-			case "Counter_Taunt": ContraProvocacaoG10(pl); break;
-			case "Slap": TapaG10(pl); break;
-		}
-	}
-
-	// =====================================================================
-	// AS PECAS COMUNS DO LOTE
-	// =====================================================================
-	/// <summary>`target.stagger += 1 ... -= 1` -- a trava do alvo enquanto o golpe corre (a mesma escolha do G7).</summary>
-	private static void TravarG10(ServerPlayer? alvo, double segundos)
-	{
-		if (alvo?.Combate != null) alvo.Combate.Stun = Math.Max(alvo.Combate.Stun, segundos);
-	}
-
-	/// <summary>
-	/// O CORPO SAI DO LUGAR PELA MAO DO SERVIDOR -- a mesma costura de sequencia do <see cref="AvancarG3"/>
-	/// e do Zanzoken: sem os tres carimbos, o input que o cliente JA mandou (da posicao velha) puxaria o
-	/// corpo de volta.
-	/// </summary>
-	private static void MoverCorpoG10(ServerPlayer pl, Vec2 destino)
-	{
-		long agora = NowMs();
-		pl.Pos = destino;
-		pl.LastInputMs = agora;
-		pl.CorrecaoEsperadaAte = agora + 500;
-		pl.SeqDoTeleporte = pl.SeqInput;
-		pl.OrcamentoPx = 0;
-		MandarCorrecaoG3(pl);
+		InscreverNoPulso(() => _rushG10.Count > 0 || _atrasosG10.Count > 0, PulsoG10);
 	}
 
 	/// <summary>
@@ -337,47 +241,7 @@ public sealed partial class GameServer
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);
 
-		// A MESMA CAUDA DO `EspalharDanoG3`: pelo funil da derrota, e nao pelo Zenkai direto.
-		if (c.Corpo.DeveMorrer() && !c.Corpo.RegeneraDecepado && c.Morrer())
-		{
-			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: true);
-			else ZenkaiPorDerrota(vitima, autor);
-			GD.Print($"[server] {autor.Name} MATOU {vitima.Name} com dano direto ({membro.Nome})");
-		}
-		else if (!vitima.Ficha.KO && c.Corpo.DeveNocautear())
-		{
-			c.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
-			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: false);
-			else ZenkaiPorDerrota(vitima, autor);
-		}
-	}
-
-	/// <summary>
-	/// `for(var/turf/T in view(N)) if(expressedBP >= T.Resistance) { createDust(T,1); T.Destroy() }` --
-	/// o estrago em raio do Seismic_Press (`Beserker Skills.dm:137-140`) e do Gigantic_Spike (`:73-76`).
-	///
-	/// Cada celula cai pelo <see cref="DerrubarCelula"/>, que e o `T.Destroy()` deste port (com o
-	/// `destroyable` dentro dele, como la). A beirada do mapa nao entra pela mesma regra do
-	/// <see cref="RacharChao"/>. Devolve quantas celulas cairam.
-	/// </summary>
-	private int ArrasarEmVoltaG10(ServerPlayer pl, int raioTiles)
-	{
-		if (MapaDaZonaOuCatalogo(pl.Zone) is not { } mapa) return 0;
-		// `expressedBP >= T.Resistance` -- a resistencia padrao de todo turf e 20 (`buildable.dm:353`).
-		if (pl.Ficha.expressedBP < Empurrao.ResistenciaPadrao) return 0;
-
-		int raio = Math.Clamp(raioTiles, 0, RaioMaximoDeViewG10);
-		(int cx0, int cy0) = CelulaDoPonto(pl.Pos);
-		int caiu = 0;
-		for (int dy = -raio; dy <= raio; dy++)
-			for (int dx = -raio; dx <= raio; dx++)
-			{
-				int cx = cx0 + dx, cy = cy0 + dy;
-				if (cx < 0 || cy < 0 || cx >= mapa.Width || cy >= mapa.Height) continue;
-				if (mapa.NaBorda(cx, cy)) continue;
-				if (DerrubarCelula(pl.Zone, cx, cy)) caiu++;
-			}
-		return caiu;
+		ConsequenciaDoDano(vitima, autor, $"com dano direto ({membro.Nome})");   // a mesma cauda do `EspalharDanoG3`
 	}
 
 	/// <summary>
@@ -387,18 +251,22 @@ public sealed partial class GameServer
 	/// Pelo GESTO que ja existe: o primeiro <see cref="AlternarAgarrao"/> e o `grabbee = M` do `:342`, o
 	/// segundo e o `grabMode = 2; grabberSTR *= 1.5` do `:348-351`. Um segundo caminho de "pegar" seria
 	/// a segunda resposta pra quem pode ser agarrado.
+	///
+	/// O "NAO MEXE NO MODO" ERA UM DEFEITO: com alguem so SEGURO (modo 1) e `grb_type = 1`, o DM devolvia
+	/// TRUE sem levantar (`:332`), e o `if(grabMode==2)` do Gigantic_Spike/Power_Drag falhava DEPOIS de
+	/// cobrar o Ki -- pagava e nada acontecia. Por decisao do dono (2026-09-02, "corrija esses bugs q vc
+	/// citou") quem ja segura e precisa carregar LEVANTA aqui, pelo mesmo segundo toque.
 	/// </summary>
 	private bool AgarrarSePrecisoG10(ServerPlayer pl, bool levantar)
 	{
-		if (pl.AgarrandoId != 0) return true;
-		AlternarAgarrao(pl);
-		if (pl.AgarrandoId == 0) return false;
-		if (levantar) AlternarAgarrao(pl);
+		if (pl.AgarrandoId == 0)
+		{
+			AlternarAgarrao(pl);
+			if (pl.AgarrandoId == 0) return false;
+		}
+		if (levantar && pl.ModoDoAgarrao == ModoDeAgarrao.Segurando) AlternarAgarrao(pl);
 		return true;
 	}
-
-	private ServerPlayer? PresoG10(ServerPlayer pl)
-		=> pl.AgarrandoId == 0 ? null : CorpoNaMinhaZona(pl, pl.AgarrandoId);
 
 	/// <summary>
 	/// A ABERTURA DOS VERBS DE AGARRAO (`Wrestling Skills.dm`, `Beserker Skills.dm:39-121`), na ordem do DM:
@@ -415,48 +283,19 @@ public sealed partial class GameServer
 	private bool AbrirGolpeDeAgarraoG10(ServerPlayer pl, double multKi, bool levantar,
 										 out double custo, out ServerPlayer? preso)
 	{
-		custo = pl.Ficha.Ephysoff * pl.Ficha.BaseDrain() * multKi;
 		AgarrarSePrecisoG10(pl, levantar);
-		preso = PresoG10(pl);
+		preso = QuemEuSeguro(pl);
 
-		if (pl.Combate == null || pl.Ficha.dead || pl.Ficha.KO || pl.Ficha.med || pl.Ficha.train)
-		{
-			Avisar(pl, "voce nao esta em condicoes de fazer isso.");
-			return false;
-		}
+		// A ABERTURA E A DE TODO PUNHO (`AbrirPunhoG7`), sem `canfight` e cobrando so depois de saber
+		// que ha alguem preso: a unica pergunta propria destes verbs.
+		if (!AbrirPunhoG7(pl, multKi, BasicCdG3, out custo, cobrar: false, exigirCanfight: false)) return false;
 		if (preso == null)
 		{
 			Avisar(pl, "voce precisa ter alguem AGARRADO (aperte agarrar; duas vezes pra carregar).");
 			return false;
 		}
-		long agora = NowMs();
-		if (_prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"seus golpes especiais ainda se recompoem (faltam {(livre - agora) / 1000.0:0.0}s).");
-			return false;
-		}
-		if (pl.Ficha.Ki < custo) { Avisar(pl, $"isso pede {custo:0} de energia."); return false; }
-
-		pl.Ficha.Ki -= custo;
-		_prontoG3[pl.Id] = agora + BasicCdG3;
+		CobrarPunho(pl, custo, BasicCdG3);
 		return true;
-	}
-
-	/// <summary>
-	/// A MOLDURA DE PUNHO DO G7 com a aproximacao ja feita: `get_me_a_target(); if(target in view(2))
-	/// step; if(target in view(1)) ...`. Devolve o alvo colado ou nulo (ja avisando).
-	/// </summary>
-	private ServerPlayer? AproximarDoAlvoG10(ServerPlayer pl, string oQue)
-	{
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, PassoDeAproximacaoG7);
-		if (alvo == null) { Avisar(pl, $"nao ha ninguem por perto pra {oQue}."); return null; }
-		AvancarG3(pl, alvo, ZoneCollision.TileSize);
-		if (Vec2.Distance(alvo.Pos, pl.Pos) > ColadoG7)
-		{
-			Avisar(pl, $"{alvo.Name} ficou longe demais e o golpe corta o ar.");
-			return null;
-		}
-		return alvo;
 	}
 
 	// =====================================================================
@@ -473,10 +312,10 @@ public sealed partial class GameServer
 	private void ChoqueG10(ServerPlayer pl)
 	{
 		if (!AbrirPunhoG7(pl, 8, BasicCdG3, out double custo)) return;
-		ServerPlayer? alvo = AproximarDoAlvoG10(pl, "chocar");
+		ServerPlayer? alvo = AproximarDoAlvo(pl, "chocar");
 		if (alvo == null) return;
 
-		TravarG10(alvo, 0.4);
+		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: 2, nivel: 2);
 		if (alvo.Ficha.dead || alvo.Combate.Intocavel) return;
 
@@ -496,10 +335,10 @@ public sealed partial class GameServer
 	private void ReverberacaoG10(ServerPlayer pl)
 	{
 		if (!AbrirPunhoG7(pl, 12, BasicCdG3, out double custo)) return;
-		ServerPlayer? alvo = AproximarDoAlvoG10(pl, "acertar");
+		ServerPlayer? alvo = AproximarDoAlvo(pl, "acertar");
 		if (alvo == null) return;
 
-		TravarG10(alvo, 0.4);
+		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: 2, nivel: 2);
 		if (alvo.Ficha.dead || alvo.Combate.Intocavel) return;
 
@@ -521,10 +360,10 @@ public sealed partial class GameServer
 	private void ExplosaoPrecisaG10(ServerPlayer pl)
 	{
 		if (!AbrirPunhoG7(pl, 15, 2000, out double custo)) return;
-		ServerPlayer? alvo = AproximarDoAlvoG10(pl, "acertar");
+		ServerPlayer? alvo = AproximarDoAlvo(pl, "acertar");
 		if (alvo == null) return;
 
-		TravarG10(alvo, 0.4);
+		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: 2, nivel: 2);
 		if (alvo.Ficha.dead || alvo.Combate.Intocavel) return;
 
@@ -538,10 +377,22 @@ public sealed partial class GameServer
 	/// HOKUTO HYAKURETSU KEN (`:73-119`) -- o verb tem DUAS metades coladas, e as duas vieram na ordem:
 	///
 	///   1. (`:76-104`) mao livre, `ultiCD`, `canfight/KO/med/stamina >= 18`, alvo colado;
-	///      `target.AddEffect(/effect/stun/Hundred_Fists)` (4 s); `beatdown` golpes de +0,4 (ZERO aqui --
-	///      ver <see cref="BeatdownHokutoG10"/>); `stamina -= 18`; `ultiCD = 18*Eactspeed` tiques.
+	///      `target.AddEffect(/effect/stun/Hundred_Fists)` (4 s); `stamina -= 18`; `ultiCD = 18*Eactspeed` tiques.
 	///   2. (`:105-119`) a moldura de punho: `kireq = Ephysoff*BaseDrain*20`, `basicCD += 30`; com o alvo
-	///      colado, `stunCount += 100` (DEZ segundos) e `BarrageAttack(0,0,0,..., 100, 1)`.
+	///      colado, `stunCount += 100` (DEZ segundos), `BarrageAttack(0,0,0,..., 100, 1)` e, SE A RAJADA
+	///      ENCOSTOU, `damage_mob(NormDamageCalc)` na hora e `damage_mob(70)` um segundo depois -- o bloco
+	///      que o DM nunca entrava (ver <see cref="GolpeFinalDoHokutoG10"/>; decisao do dono, 2026-09-02).
+	///
+	/// ============================ O `beatdown` FOI REMOVIDO, E POR QUE ============================
+	/// `beatdown = round(usr.unarmedskill/5); while(beatdown) MeleeAttack(target, 0.4)` (`:98-102`).
+	/// `unarmedskill` e a maestria Unarmed Fighting (`Melee Masteries.dm:262-300`: +0,4 por nivel, ate 40
+	/// -> ate 8 golpes), e ela e a UNICA coisa que o escreve: um personagem do DM sem essa maestria
+	/// tambem da zero golpes. Este port nao tem as maestrias de melee, entao nao ha substituto que
+	/// EXISTA -- `Etechnique` e uma razao (~1..3), nao uma escada 0..40, e `round(Etechnique/5)` seria
+	/// zero pra todo mundo: um port de mentira. Removido em 2026-09-02 pela opcao que o dono deu
+	/// ("ou remova o beatdown dizendo por que"); no dia em que as maestrias de melee vierem, o numero vem
+	/// com elas.
+	/// ==================================================================================================
 	///
 	/// A metade 1 NAO olha o `basicCD`: quem esta com os punhos em espera paga o folego e arma o `ultiCD`
 	/// e so entao ouve a recusa da metade 2 -- e assim no original, e esta assim aqui.
@@ -553,12 +404,8 @@ public sealed partial class GameServer
 		// `if(!unarmed && (weaponeq > 1 || twohanding))` -- o port tem `weaponeq`; `unarmed`/`twohanding` nao.
 		if (f.weaponeq > 1) { Avisar(pl, "voce precisa de uma mao livre pra isso."); return; }
 
+		if (EmEspera(pl, _ultiG10, "os golpes especiais de corpo ainda estao em espera")) return;
 		long agora = NowMs();
-		if (_ultiG10.TryGetValue(pl.Id, out long ulti) && agora < ulti)
-		{
-			Avisar(pl, $"os golpes especiais de corpo ainda estao em espera ({(ulti - agora) / 1000.0:0.#}s).");
-			return;
-		}
 		if (pl.Combate == null || f.dead || f.KO || f.med || pl.Combate.Stun > 0 || f.stamina < 18)
 		{
 			Avisar(pl, "voce nao consegue usar isso agora.");
@@ -566,13 +413,12 @@ public sealed partial class GameServer
 		}
 
 		// `if(!target || get_dist > 1) for(M in oview(1)) target = M` / "You must be next to your target"
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, ColadoG7);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, ColadoG7);
 		if (alvo == null) { Avisar(pl, "voce precisa estar colado no seu alvo pra usar isso."); return; }
 
-		TravarG10(alvo, HundredFistsSegundosG10);
-		for (int i = 0; i < BeatdownHokutoG10; i++) GolpeG3(pl, alvo, addDano: 0.4, nivel: 2);
+		Travar(alvo, HundredFistsSegundosG10);
 		f.stamina -= 18;
-		_ultiG10[pl.Id] = agora + (long)(18 * f.Eactspeed * MsPorTique);
+		_ultiG10[pl.Id] = agora + (long)(18 * f.Eactspeed * TempoDoDm.MsPorTique);
 
 		// ---- a metade 2 ----
 		if (!AbrirPunhoG7(pl, 20, 3000, out double custo))
@@ -582,17 +428,22 @@ public sealed partial class GameServer
 		}
 		if (Vec2.Distance(alvo.Pos, pl.Pos) > ColadoG7) return;   // `if(target in view(1))`
 
-		TravarG10(alvo, 10.0);   // `stunCount += 100`
+		Travar(alvo, 10.0);   // `stunCount += 100`
 		Falar(pl, Protocol.Fala.Diz, "ATATATATATATATATATA!");
 		// `BarrageAttack(..., 100, 1)`: ate cem golpes de dano/100 = um golpe inteiro (ver o cabecalho).
-		GolpeG3(pl, alvo, addDano: 0, nivel: 3);
-		// `if(BarrageAttack(...)) { damage_mob(...); damage_mob(target, 70) }` -- nunca entra: ver
-		// DanoExtraHokutoG10. A chamada fica (o `damage_mob` do port recusa dano zero) pra o numero
-		// continuar no caminho, e nao num comentario.
-		FerirUmMembroG10(alvo, pl, DanoExtraHokutoG10, pl.Combate.Letal);
-
+		GolpeResultado rajada = GolpeG3(pl, alvo, addDano: 0, nivel: 3);
 		Avisar(pl, $"voce despeja a rajada em {alvo.Name}: ele fica dez segundos sem reagir (-18 de folego, -{custo:0} de energia).");
 		Avisar(alvo, $"{pl.Name} te enche de socos: voce nao consegue reagir.");
+
+		// `if(BarrageAttack(...)) { damage_mob(target, NormDamageCalc(target)); sleep(10); damage_mob(target, 70) }`
+		// (`:112-116`): o bloco que o DM nunca entrava (ver GolpeFinalDoHokutoG10). "Encostou" e o
+		// `firstBarrage` -- o primeiro golpe da rajada entrou (acertou, critico ou aparado).
+		if (!rajada.Encostou || alvo.Ficha.dead || alvo.Combate.Intocavel) return;
+		double golpeFinal = CombatMath.DanoBase(pl.Ficha, alvo.Ficha);
+		FerirUmMembroG10(alvo, pl, golpeFinal, pl.Combate.Letal);
+		AgendarAtrasoG10(pl, alvo, NowMs() + AtrasoDoGolpeFinalDoHokutoMsG10, GolpeFinalDoHokutoG10,
+						 espalhado: false, letal: pl.Combate.Letal, nome: "golpe final do Hokuto");
+		Avisar(pl, $"a rajada entrou: {golpeFinal:0.##} direto no membro agora, e {GolpeFinalDoHokutoG10:0} mais em 1 s.");
 	}
 
 	/// <summary>
@@ -603,10 +454,10 @@ public sealed partial class GameServer
 	private void RasteiraG10(ServerPlayer pl)
 	{
 		if (!AbrirPunhoG7(pl, 15, BasicCdG3, out double custo)) return;
-		ServerPlayer? alvo = AproximarDoAlvoG10(pl, "derrubar");
+		ServerPlayer? alvo = AproximarDoAlvo(pl, "derrubar");
 		if (alvo == null) return;
 
-		TravarG10(alvo, 0.4);
+		Travar(alvo, 0.4);
 		if (alvo.Voando)
 		{
 			Avisar(pl, $"{alvo.Name} esta no ar: nao ha chao pra ele tropecar (-{custo:0} de energia).");
@@ -614,7 +465,7 @@ public sealed partial class GameServer
 		}
 
 		double dano = 1 + pl.Ficha.Etechnique;
-		TravarG10(alvo, 3.0);
+		Travar(alvo, 3.0);
 		EspalharDanoG3(alvo, pl, dano, letal: false);
 		AvisarPertoG3(pl, 8 * ZoneCollision.TileSize, $"{pl.Name} passa uma rasteira em {alvo.Name}!!!");
 		Avisar(pl, $"{alvo.Name} cai: tres segundos sem reagir e {dano:0.#} em cada membro (-{custo:0} de energia).");
@@ -627,16 +478,17 @@ public sealed partial class GameServer
 	/// REVENGE DEMON (`:2-38`). `kireq = Ephysoff*BaseDrain*15`, `basicCD += 15`; com `knockbackon = 0`,
 	/// `doAttack(target, null, ..., 1)` e, SE ENTROU: `AttackMultiple(target, 2, ..., "jabs")`,
 	/// `target.ThrowMe(dir, 1)` com `ThrowStrength = (expressedBP/2)*Ephysoff*Etechnique` (a mesma
-	/// <see cref="Agarrao.ForcaDoArremesso"/> do agarrao) e o `damage_mob` que nunca roda
-	/// (<see cref="DanoExtraRevengeDemonG10"/>). Se o primeiro nao entrou: `stagger += 1; spawn(4) -= 1`.
+	/// <see cref="Agarrao.ForcaDoArremesso"/> do agarrao) e o `damage_mob(dmg*BPModulus/4)` que o DM
+	/// nunca chegava a rodar e aqui roda (<see cref="DanoExtraRevengeDemonG10"/>; decisao do dono,
+	/// 2026-09-02). Se o primeiro nao entrou: `stagger += 1; spawn(4) -= 1`.
 	/// </summary>
 	private void DemonioDaVingancaG10(ServerPlayer pl)
 	{
 		if (!AbrirPunhoG7(pl, 15, BasicCdG3, out double custo)) return;
-		ServerPlayer? alvo = AproximarDoAlvoG10(pl, "acertar");
+		ServerPlayer? alvo = AproximarDoAlvo(pl, "acertar");
 		if (alvo == null) return;
 
-		TravarG10(alvo, 0.4);
+		Travar(alvo, 0.4);
 
 		// `var/hdkb = knockbackon; knockbackon = 0` -- o soco nao pode arremessar por conta propria: quem
 		// arremessa e o verb, um tile, depois do jab. Guardado e devolvido, como o Furacao do lobo.
@@ -653,14 +505,17 @@ public sealed partial class GameServer
 		}
 
 		GolpeG3(pl, alvo, addDano: 2, nivel: 2);
+		// `damage_mob(target, dmg*BPModulus/4)` (`:30`) -- o que o runtime do DM nunca deixava rodar, com a
+		// ofensiva+tecnica do ALVO no divisor (ver DanoExtraRevengeDemonG10). Entra ANTES do voo porque o
+		// DM o aplica no mesmo instante do `ThrowMe` (o voo e um spawn) e um corpo em voo pode estar
+		// intocavel na porta do `FerirUmMembroG10`.
+		double extra = DanoExtraRevengeDemonG10(pl.Ficha, alvo.Ficha);
+		FerirUmMembroG10(alvo, pl, extra, pl.Combate.Letal);
 		AvisarPertoG3(pl, 8 * ZoneCollision.TileSize, $"{pl.Name} arremessa {alvo.Name} pra frente!");
 		if (!alvo.Ficha.dead)
 			Arremessar(alvo, MeleeArea.Frente(pl.Facing), Agarrao.ForcaDoArremesso(pl.Ficha),
 					   TiquesDoArremessoDoDemonioG10);
-		// o `damage_mob` que o runtime do DM nunca deixa rodar -- fica na linha (dano zero e recusado
-		// na porta do `FerirUmMembroG10`) pra o numero morar no caminho e nao so no comentario
-		FerirUmMembroG10(alvo, pl, DanoExtraRevengeDemonG10, pl.Combate.Letal);
-		Avisar(pl, $"soco, jab na cara e {alvo.Name} voa pra frente (-{custo:0} de energia).");
+		Avisar(pl, $"soco, jab na cara e {alvo.Name} voa pra frente (+{extra:0.##} direto no membro; -{custo:0} de energia).");
 	}
 
 	/// <summary>
@@ -672,22 +527,26 @@ public sealed partial class GameServer
 	///         if(!canmove) break
 	///         parede na frente: dmg += 2 ; destrutivel e mais fraca que o BP -> cai ; senao dmg += 2 (e o passo bate nela)
 	///         step(src, dir) }
-	///     if(grabbee in view(1)) AttackMultiple(TARGET, 16 + dmg, crit, ..., 3) ; turfs em view(Ephysoff/2 + 1) caem
+	///     if(grabbee in view(1)) AttackMultiple(target, 16 + dmg, crit, ..., 3) ; turfs em view(Ephysoff/2 + 1) caem
 	///     else stagger 0,4 s
 	///
 	/// O `break` do `else` da parede quebra o `for` dos turfs e NAO o `while` (`:66`): a corrida continua
 	/// contando e somando +4 por passo contra uma parede que resiste. Portado como esta.
 	/// O corpo carregado vem junto a cada passo pelo <see cref="LevarNoColo"/> -- o `grab()` do original.
+	///
+	/// ============================ DOIS DEFEITOS DO DM CONSERTADOS (decisao do dono, 2026-09-02) ============================
+	/// * O `AttackMultiple(target, ...)` do `:72` batia no MARCADO e nao em quem esta nos bracos: com outro
+	///   alvo marcado o preso fazia a viagem inteira e quem apanhava era o outro; sem marcado, ninguem
+	///   (`AttackMultiple(null)` devolve na porta). O verb "slams a person into a wall or ground after
+	///   picking them up" (`:39`): aqui o esmagado e o PRESO (`grabbee`), que e quem chegou junto.
+	/// * `get_me_a_grab(1)` com alguem JA seguro (modo 1) devolvia TRUE sem levantar (`Grabbing.dm:332`) e
+	///   o `if(grabMode==2)` falhava: o Ki ia embora e nada acontecia. Aqui quem ja segura LEVANTA
+	///   (<see cref="AgarrarSePrecisoG10"/>) e a corrida sai -- o `if(grabMode==2)` deixou de ter ramo falso.
+	/// ===========================================================================================================
 	/// </summary>
 	private void EspigaoGiganteG10(ServerPlayer pl)
 	{
 		if (!AbrirGolpeDeAgarraoG10(pl, 12, levantar: true, out double custo, out ServerPlayer? preso)) return;
-		if (pl.ModoDoAgarrao != ModoDeAgarrao.Carregando)
-		{
-			// `get_me_a_grab(1)` com alguem JA seguro devolve TRUE sem levantar: o Ki foi e nada acontece.
-			Avisar(pl, $"voce paga o golpe segurando em vez de CARREGANDO {preso!.Name}: nada acontece (-{custo:0} de energia). Aperte agarrar de novo pra levantar.");
-			return;
-		}
 
 		Fighter f = pl.Ficha;
 		int dist = (int)Math.Max(DmMath.Round(f.Espeed + f.Etechnique + f.Ephysoff, 1), 0);
@@ -720,7 +579,7 @@ public sealed partial class GameServer
 		}
 		if (passos > 0)
 		{
-			MoverCorpoG10(pl, pl.Pos);
+			CravarPosicao(pl, pl.Pos);
 			AnunciarZanzo(pl, pl.Pos - frente * (passos * ZoneCollision.TileSize), vulto: false);
 		}
 
@@ -731,18 +590,13 @@ public sealed partial class GameServer
 			return;
 		}
 
-		// `AttackMultiple(target, 16 + dmg, 1, null, "slams", null, 3)` -- em TARGET, e nao no preso.
-		ServerPlayer? quemApanha = Marcado(pl);
-		if (quemApanha != null && !quemApanha.Ficha.dead && Vec2.Distance(quemApanha.Pos, pl.Pos) <= ColadoG7)
-		{
-			GolpeG3(pl, quemApanha, addDano: 16 + dmg, nivel: 3);
-			Avisar(pl, $"voce esmaga {quemApanha.Name} no fim da corrida (+{16 + dmg:0}: {passos} passos, {paredes} paredes; -{custo:0} de energia).");
-		}
-		else
-		{
-			Avisar(pl, $"a corrida termina e nao ha alvo MARCADO pra esmagar (o original bate no marcado, nao em quem esta nos bracos): {passos} passos, +{16 + dmg:0} guardados a toa (-{custo:0} de energia).");
-		}
-		int celulas = ArrasarEmVoltaG10(pl, (int)Math.Floor(f.Ephysoff / 2 + 1));
+		// `AttackMultiple(target, 16 + dmg, 1, null, "slams", null, 3)` (`:72`) -- no PRESO, que e quem fez a
+		// viagem nos bracos (o DM batia no marcado: ver o cabecalho).
+		GolpeG3(pl, preso, addDano: 16 + dmg, nivel: 3);
+		Avisar(pl, $"voce esmaga {preso.Name} no fim da corrida (+{16 + dmg:0}: {passos} passos, {paredes} paredes; -{custo:0} de energia).");
+		AvisarSePessoa(preso, $"{pl.Name} te esmaga no chao no fim da corrida!");
+		int celulas = RacharChao(pl.Zone, pl.Pos, f.expressedBP,
+								 raio: Math.Clamp((int)Math.Floor(f.Ephysoff / 2 + 1), 0, RaioMaximoDeViewG10), chance: 1);
 		if (celulas > 0) Avisar(pl, $"o chao em volta racha ({celulas} celulas).");
 	}
 
@@ -754,18 +608,17 @@ public sealed partial class GameServer
 	///
 	/// OS N GOLPES VIRAM UM: `isBarrage = m_dist` divide cada golpe por N (`attack cmn.dm:132`), e o funil
 	/// do port nao divide o dano base. Um `GolpeG3(+5)` no fim do arrasto e o mesmo total que os N do DM.
+	///
+	/// O `get_me_a_grab(1)` com alguem so SEGURO devolvia TRUE sem levantar e o `if(grabMode==2)` (`:91`)
+	/// falhava depois de cobrar -- o mesmo defeito do Gigantic_Spike, consertado no mesmo lugar
+	/// (<see cref="AgarrarSePrecisoG10"/>, decisao do dono 2026-09-02): quem ja segura levanta e arrasta.
 	/// </summary>
 	private void ArrastoBrutalG10(ServerPlayer pl)
 	{
 		if (!AbrirGolpeDeAgarraoG10(pl, 12, levantar: true, out double custo, out ServerPlayer? preso)) return;
-		if (pl.ModoDoAgarrao != ModoDeAgarrao.Carregando)
-		{
-			Avisar(pl, $"voce paga o golpe segurando em vez de CARREGANDO {preso!.Name}: nada acontece (-{custo:0} de energia). Aperte agarrar de novo pra levantar.");
-			return;
-		}
 
 		Fighter f = pl.Ficha;
-		TravarG10(preso, 0.4);
+		Travar(preso, 0.4);
 		int dist = (int)Math.Max(DmMath.Round(f.Espeed + f.Etechnique + f.Ephysoff, 1), 0);
 		int passos = 0;
 		Vec2 frente = MeleeArea.Frente(pl.Facing);
@@ -785,7 +638,7 @@ public sealed partial class GameServer
 		}
 		if (passos > 0)
 		{
-			MoverCorpoG10(pl, pl.Pos);
+			CravarPosicao(pl, pl.Pos);
 			AnunciarZanzo(pl, de, vulto: false);
 		}
 
@@ -809,14 +662,14 @@ public sealed partial class GameServer
 	private void PrensaSismicaG10(ServerPlayer pl)
 	{
 		if (!AbrirPunhoG7(pl, 18, BasicCdG3, out double custo)) return;
-		ServerPlayer? alvo = AproximarDoAlvoG10(pl, "prensar");
+		ServerPlayer? alvo = AproximarDoAlvo(pl, "prensar");
 		if (alvo == null) return;
 
-		TravarG10(alvo, 0.4);
+		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: 15, nivel: 3);
 		int raio = (int)Math.Floor(pl.Ficha.Ephysoff);
-		int celulas = ArrasarEmVoltaG10(pl, raio);
-		TravarG10(alvo, 2.0);
+		int celulas = RacharChao(pl.Zone, pl.Pos, pl.Ficha.expressedBP, raio: Math.Clamp(raio, 0, RaioMaximoDeViewG10), chance: 1);
+		Travar(alvo, 2.0);
 
 		// o tremor e de quem esta perto (o `emit_Sound('kiplosion.wav')` + a poeira dos turfs)
 		float raioPx = (raio + 2) * ZoneCollision.TileSize;
@@ -832,29 +685,37 @@ public sealed partial class GameServer
 	// =====================================================================
 	/// <summary>
 	/// CLENCH (`:2-17`). `kireq = Ephysoff*BaseDrain*9`; `grabbee.stagger += 1`, `AttackMultiple(grabbee, 4)`,
-	/// `grabbee.grabCounter = max(0, grabCounter - 4)` -- o `grabCounter` sem prefixo e o de QUEM APERTA.
+	/// `grabbee.grabCounter = max(0, grabCounter - 4)`.
+	///
+	/// O `grabCounter` SEM PREFIXO (`:13`) e o de QUEM APERTA -- que nao luta pra escapar de ninguem e vale
+	/// zero: o DM ZERAVA a luta do preso em vez de tirar 4 dela. O verb promete "destroys some grab escape
+	/// stacks" (`:2`); por decisao do dono (2026-09-02, "corrija esses bugs q vc citou") saem 4 do
+	/// contador DO PRESO.
 	/// </summary>
 	private void ApertoG10(ServerPlayer pl)
 	{
 		if (!AbrirGolpeDeAgarraoG10(pl, 9, levantar: false, out double custo, out ServerPlayer? preso)) return;
-		TravarG10(preso, 0.4);
+		Travar(preso, 0.4);
 		GolpeG3(pl, preso!, addDano: 4, nivel: 2);
-		preso!.ContadorDaLuta = Math.Max(0, pl.ContadorDaLuta - 4);
-		Avisar(pl, $"voce aperta {preso.Name} (+4) e desfaz a luta dele pra escapar (-{custo:0} de energia).");
-		AvisarSePessoa(preso, $"{pl.Name} aperta voce: o que voce tinha lutado pra sair se desfaz.");
+		preso!.ContadorDaLuta = Math.Max(0, preso.ContadorDaLuta - 4);
+		Avisar(pl, $"voce aperta {preso.Name} (+4) e desfaz parte da luta dele pra escapar (-4; -{custo:0} de energia).");
+		AvisarSePessoa(preso, $"{pl.Name} aperta voce: parte do que voce tinha lutado pra sair se desfaz.");
 	}
 
 	/// <summary>
-	/// HOLD (`:18-32`). `kireq = Ephysoff*BaseDrain*12`; `grabbee.grabCounter = max(0, grabCounter - 15)`
-	/// (o contador de quem aperta, de novo), `AttackMultiple(grabbee, null)`, `grabbee.stunCount += 50` (5 s).
+	/// HOLD (`:18-32`). `kireq = Ephysoff*BaseDrain*12`; `grabbee.grabCounter = max(0, grabCounter - 15)`,
+	/// `AttackMultiple(grabbee, null)`, `grabbee.stunCount += 50` (5 s).
+	///
+	/// O mesmo `grabCounter` sem prefixo do Clench (`:25`): o DM zerava a luta do preso. Por decisao do dono
+	/// (2026-09-02) saem 15 do contador DO PRESO -- "mainly destroys grab stacks" (`:18`).
 	/// </summary>
 	private void ChaveG10(ServerPlayer pl)
 	{
 		if (!AbrirGolpeDeAgarraoG10(pl, 12, levantar: false, out double custo, out ServerPlayer? preso)) return;
-		preso!.ContadorDaLuta = Math.Max(0, pl.ContadorDaLuta - 15);
+		preso!.ContadorDaLuta = Math.Max(0, preso.ContadorDaLuta - 15);
 		GolpeG3(pl, preso, addDano: 0, nivel: 2);
-		TravarG10(preso, 5.0);
-		Avisar(pl, $"voce trava {preso.Name} numa chave: cinco segundos sem reagir e a luta dele zerada (-{custo:0} de energia).");
+		Travar(preso, 5.0);
+		Avisar(pl, $"voce trava {preso.Name} numa chave: cinco segundos sem reagir e a luta dele pra escapar cai 15 (-{custo:0} de energia).");
 		AvisarSePessoa(preso, $"{pl.Name} te prende numa chave: voce nao consegue reagir.");
 	}
 
@@ -866,7 +727,7 @@ public sealed partial class GameServer
 	private void PowerSlamG10(ServerPlayer pl)
 	{
 		if (!AbrirGolpeDeAgarraoG10(pl, 20, levantar: false, out double custo, out ServerPlayer? preso)) return;
-		TravarG10(preso, 0.4);
+		Travar(preso, 0.4);
 		GolpeG3(pl, preso!, addDano: 10, nivel: 3);
 		Falar(pl, Protocol.Fala.Diz, "POWER SLAM!");
 		Avisar(pl, $"voce levanta e esmaga {preso!.Name} no chao (+10; -{custo:0} de energia).");
@@ -879,9 +740,9 @@ public sealed partial class GameServer
 	private void SuplexG10(ServerPlayer pl)
 	{
 		if (!AbrirGolpeDeAgarraoG10(pl, 15, levantar: false, out double custo, out ServerPlayer? preso)) return;
-		TravarG10(preso, 0.4);
+		Travar(preso, 0.4);
 		GolpeG3(pl, preso!, addDano: 5, nivel: 3);
-		TravarG10(preso, 2.0);
+		Travar(preso, 2.0);
 		Avisar(pl, $"SUPLEX em {preso!.Name} (+5): dois segundos sem reagir (-{custo:0} de energia).");
 		AvisarSePessoa(preso, $"{pl.Name} te aplica um suplex!");
 	}
@@ -911,7 +772,7 @@ public sealed partial class GameServer
 	{
 		Fighter f = pl.Ficha;
 		long agora = NowMs();
-		bool cansado = _prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre;
+		bool cansado = EmEspera(pl, _prontoG3, out _);
 		if (cansado) Avisar(pl, "voce nao consegue usar isso agora (a investida ainda esta se recompondo).");
 
 		double kiReq = 10 * f.BaseDrain() / Math.Max(f.speed, 0.01);
@@ -956,7 +817,7 @@ public sealed partial class GameServer
 		if (!AbrirPunhoG7(pl, 4, BasicCdG3, out double custo)) return;
 
 		int zanzorange = ZanzorangeG10(pl.Ficha);
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, (zanzorange + 2) * ZoneCollision.TileSize);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, (zanzorange + 2) * ZoneCollision.TileSize);
 		if (alvo == null)
 		{
 			Avisar(pl, $"ninguem a ate {zanzorange + 2} tiles pra aparecer atras (-{custo:0} de energia, como no original).");
@@ -964,15 +825,13 @@ public sealed partial class GameServer
 		}
 
 		Vec2 de = pl.Pos;
-		Vec2 atras = alvo.Pos + (alvo.Pos - pl.Pos).Normalized() * DistanciaDeParada;
-		ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
-		if (mapa != null && MoveRules.Occupied(mapa, atras))
+		if (PontoLivre(pl.Zone, alvo.Pos + (alvo.Pos - pl.Pos).Normalized() * DistanciaDeParada) is not { } atras)
 		{
 			Avisar(pl, $"nao ha espaco atras de {alvo.Name}: voce fica onde esta (-{custo:0} de energia).");
 			return;
 		}
 
-		MoverCorpoG10(pl, atras);
+		CravarPosicao(pl, atras);
 		pl.Facing = MoveRules.FacingFrom(alvo.Pos - pl.Pos, pl.Facing);
 		AnunciarZanzo(pl, de);
 		MandarEfeito(alvo, "zanzoken", 300);
@@ -1022,11 +881,11 @@ public sealed partial class GameServer
 		double zrcd = jumpTiques * 20;
 
 		// `get_me_a_target()`: o marcado, senao o mais proximo colado; depois `get_dist < 20`.
-		ServerPlayer? alvo = Marcado(pl) ?? AlvoDeTecnicaG3(pl, PassoDeAproximacaoG7);
+		ServerPlayer? alvo = Marcado(pl) ?? AlvoDeTecnica(pl, PassoDeAproximacaoG7);
 		bool alvoValido = alvo != null && alvo != pl && !alvo.Ficha.dead
 						  && Vec2.Distance(alvo.Pos, pl.Pos) < AlcanceDaCorridaG10;
 		bool emRush = _rushG10.ContainsKey(pl.Id);
-		bool exausto = _rushProntoG10.TryGetValue(pl.Id, out long pronto) && agora < pronto;
+		bool exausto = EmEspera(pl, _rushProntoG10, out long restanteDoRush);
 
 		if (f.Ki >= custo && alvoValido && !f.KO && !emRush && !exausto && pl.Combate != null)
 		{
@@ -1039,21 +898,21 @@ public sealed partial class GameServer
 				Alvo = presa.Id,
 				Faltam = rushmax,
 				ProximoMs = agora,
-				PassoMs = (long)(jumpTiques * MsPorTique),
+				PassoMs = (long)(jumpTiques * TempoDoDm.MsPorTique),
 				ExpPorSalto = jumpTiques / 2,       // `exp += 1` a cada 2 tiques do efetor, durante o salto
 				ExpNaExaustao = zrcd / 2,           // ...e durante a exaustao inteira (`currush == 2` tambem conta)
-				ExaustaoMs = (long)(zrcd * MsPorTique),
+				ExaustaoMs = (long)(zrcd * TempoDoDm.MsPorTique),
 			};
 			_rushG10[pl.Id] = r;
 			SaltarG10(pl, r, agora);
-			if (_rushG10.ContainsKey(pl.Id)) LigarRelogioG10();
+			if (_rushG10.ContainsKey(pl.Id)) LigarPulso();
 			return;
 		}
 
 		if (!alvoValido) Avisar(pl, "voce precisa de um alvo valido a menos de vinte tiles.");
 		else if (f.Ki < custo) Avisar(pl, $"voce precisa de pelo menos {custo:0.#} de energia pra usar isso.");
 		else if (emRush) Avisar(pl, "voce ja esta usando isso!");
-		else if (exausto) Avisar(pl, $"voce ainda esta exausto do rush ({(pronto - agora) / 1000.0:0.#}s).");
+		else if (exausto) Avisar(pl, $"voce ainda esta exausto do rush ({restanteDoRush / 1000.0:0.#}s).");
 	}
 
 	/// <summary>Um salto do rush: teleporte pra um vizinho diagonal do alvo, virada, e o soco cru.</summary>
@@ -1066,15 +925,14 @@ public sealed partial class GameServer
 		{ EncerrarRushG10(pl, r, "seu ataque falha porque voce nao consegue se mover!"); return; }
 
 		// `locate(target.x + pick(-1,1), target.y + pick(-1,1), target.z)`
-		var destino = new Vec2(
+		var diagonal = new Vec2(
 			alvo.Pos.X + (_rng.Next(2) == 0 ? -ZoneCollision.TileSize : ZoneCollision.TileSize),
 			alvo.Pos.Y + (_rng.Next(2) == 0 ? -ZoneCollision.TileSize : ZoneCollision.TileSize));
-		ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
-		if (mapa != null && MoveRules.Occupied(mapa, destino))
+		if (PontoLivre(pl.Zone, diagonal) is not { } destino)
 		{ EncerrarRushG10(pl, r, "seu ataque foi barrado por um obstaculo!"); return; }
 
 		Vec2 de = pl.Pos;
-		MoverCorpoG10(pl, destino);
+		CravarPosicao(pl, destino);
 		pl.Facing = MoveRules.FacingFrom(alvo.Pos - pl.Pos, pl.Facing);
 		AnunciarZanzo(pl, de);
 		GolpeG3(pl, alvo, addDano: 0, nivel: 2);   // `usr.MeleeAttack()`
@@ -1108,12 +966,8 @@ public sealed partial class GameServer
 	{
 		custo = pl.Ficha.Ephysoff * pl.Ficha.BaseDrain();
 		if (!ProntoPraGolpeG3(pl, out string porque)) { Avisar(pl, porque); return false; }
+		if (EmEspera(pl, _prontoG3, "seus golpes especiais ainda se recompoem")) return false;
 		long agora = NowMs();
-		if (_prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"seus golpes especiais ainda se recompoem (faltam {(livre - agora) / 1000.0:0.0}s).");
-			return false;
-		}
 		if (pl.Ficha.Ki < custo)
 		{
 			Avisar(pl, $"isso pede {custo:0} de energia (o original confere e nao cobra -- mas confere).");
@@ -1193,7 +1047,7 @@ public sealed partial class GameServer
 		{
 			if (!TemAlvoG10(m)) continue;
 			if (_rng.NextDouble() * 100 >= 100 - m.Ficha.Ewillpower * 25) continue;
-			TravarG10(m, 1.5);
+			Travar(m, 1.5);
 			AvisarSePessoa(m, $"{pl.Name} bate na propria bunda e voce fica um segundo e meio pasmo!");
 			pegos++;
 		}
@@ -1238,8 +1092,6 @@ public sealed partial class GameServer
 	// =====================================================================
 	// O RELOGIO DO LOTE -- os danos atrasados e os saltos do rush
 	// =====================================================================
-	private const double PassoG10 = 0.1;
-	private bool _relogioG10;
 
 	private void AgendarAtrasoG10(ServerPlayer autor, ServerPlayer alvo, long quandoMs, double dano,
 								  bool espalhado, bool letal, string nome)
@@ -1249,37 +1101,10 @@ public sealed partial class GameServer
 			Autor = autor.Id, Alvo = alvo.Id, QuandoMs = quandoMs, Dano = dano,
 			Espalhado = espalhado, Letal = letal, Nome = nome,
 		});
-		LigarRelogioG10();
+		LigarPulso();
 	}
 
-	/// <summary>
-	/// O MESMO DESENHO DO RELOGIO DO G3 (e pelo mesmo motivo): os ganchos de tique moram noutros arquivos,
-	/// entao o lote traz o proprio, de 10 Hz, que so existe enquanto ha salto ou dano atrasado no ar.
-	/// </summary>
-	private void LigarRelogioG10()
-	{
-		if (_relogioG10 || !IsInsideTree()) return;
-		_relogioG10 = true;
-		AgendarPulsoG10();
-	}
-
-	private void AgendarPulsoG10()
-	{
-		SceneTree? arv = IsInsideTree() ? GetTree() : null;
-		if (arv == null) { _relogioG10 = false; return; }
-
-		SceneTreeTimer t = arv.CreateTimer(PassoG10);
-		t.Timeout += () =>
-		{
-			try { PulsoG10(); }
-			catch (Exception ex) { GD.PushWarning($"[G10] pulso: {ex.Message}"); }
-
-			if (_rushG10.Count == 0 && _atrasosG10.Count == 0) { _relogioG10 = false; return; }
-			AgendarPulsoG10();
-		};
-	}
-
-	/// <summary>Um tique do lote. Publico pra bancada: ela avanca o relogio na mao, como faz com o `PulsoG3`.</summary>
+	/// <summary>A agenda deste lote no pulso de 10 Hz: os saltos do rush e os danos atrasados. Chamada tambem pela bancada, que avanca o relogio na mao.</summary>
 	private void PulsoG10()
 	{
 		long agora = NowMs();

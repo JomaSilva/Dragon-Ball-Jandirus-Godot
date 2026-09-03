@@ -72,6 +72,37 @@ public sealed partial class GameServer
 	private static bool Agarrado(ServerPlayer pl) => pl.AgarradoPorId != 0;
 
 	/// <summary>
+	/// O CORPO QUE <paramref name="a"/> SEGURA -- e so se o aperto e confirmado DOS DOIS LADOS. Nulo
+	/// quando nao segura ninguem, quando o outro corpo sumiu do mundo, ou quando o outro lado ja foi
+	/// solto por outra ponta: *se o aperto nao e confirmado dos dois lados, ele nao existe*.
+	///
+	/// ============================ O PRESO E RESOLVIDO PELA ZONA, E NAO PELO `_players` ============================
+	/// ISTO ERA UM DEFEITO ANTES DO CADAVER EXISTIR, e contradizia o cabecalho deste arquivo: la esta
+	/// escrito que o BONECO DO CORPO LARGADO **pode** ser agarrado. Nao podia -- o `CorpoNaFrente` o
+	/// achava (varre a `ZoneList`), o `Prender` escrevia os dois lados, e no tique seguinte um
+	/// `_players.TryGetValue` falhava (o boneco fica fora do `_players` de proposito) e o aperto era
+	/// desfeito na hora, sem uma linha dizendo por que. <see cref="CorpoNaMinhaZona"/> e a resolucao
+	/// que o `Mirar` e o arremesso ja usam: **nem todo corpo que existe num lugar e um corpo
+	/// SIMULADO**. Com ela o boneco e agarravel de verdade e o CADAVER sai de graca.
+	///
+	/// O CUSTO E UMA VARREDURA DE ZONA POR AGARRAO, nao por corpo: so quem tem `AgarrandoId != 0` chega
+	/// aqui, e em qualquer instante do jogo sao zero ou um punhado.
+	/// ==========================================================================================================
+	/// </summary>
+	private ServerPlayer? QuemEuSeguro(ServerPlayer a)
+		=> a.AgarrandoId != 0 && CorpoNaMinhaZona(a, a.AgarrandoId) is { } d && d.AgarradoPorId == a.Id ? d : null;
+
+	/// <summary>
+	/// QUEM SEGURA <paramref name="d"/> -- confirmado dos dois lados, como acima. Aqui o dicionario
+	/// BASTA: quem agarra e sempre um corpo simulado (agarrar e um gesto -- vem de uma tecla ou de um
+	/// cerebro -- e as duas coisas so existem em corpo do `_players`). E isto importa: esta pergunta
+	/// e feita pelo `EntraNaGrade` uma vez por corpo por tique, e uma varredura de zona aqui faria a
+	/// montagem da grade -- que existe justamente pra nao ser O(n²) -- virar O(n²).
+	/// </summary>
+	private ServerPlayer? QuemMeSegura(ServerPlayer d)
+		=> d.AgarradoPorId != 0 && _players.TryGetValue(d.AgarradoPorId, out ServerPlayer? a) && a.AgarrandoId == d.Id ? a : null;
+
+	/// <summary>
 	/// ESTE CORPO ESTA NO COLO DE ALGUEM? -- a pergunta que o <see cref="TickDoVoo"/> faz pra nao
 	/// derrubar quem esta sendo levado pelo ar.
 	///
@@ -85,22 +116,8 @@ public sealed partial class GameServer
 	/// dicionario, e em qualquer instante do jogo quase ninguem esta preso.
 	/// ==========================================================================================================
 	/// </summary>
-	/// <remarks>
-	/// **O DICIONARIO BASTA AQUI, E SO AQUI**, porque quem BUSCA e sempre um corpo simulado: agarrar e
-	/// um gesto -- vem de uma tecla ou de um cerebro --, e as duas coisas so existem em corpo do
-	/// `_players`. Quem e AGARRADO, nao: pode ser um boneco de quem esta meditando ou um cadaver, e os
-	/// dois vivem so na `ZoneList`. Por isso as buscas do OUTRO lado passaram a usar
-	/// <see cref="CorpoNaMinhaZona"/> e esta nao.
-	///
-	/// A diferenca importa: esta funcao e chamada pelo `EntraNaGrade`, ou seja **uma vez por corpo por
-	/// tique** enquanto a grade e montada. Uma varredura de zona aqui transformaria a montagem da grade
-	/// -- que existe justamente pra nao ser O(n²) -- em O(n²).
-	/// </remarks>
 	private bool SendoCarregado(ServerPlayer pl)
-		=> pl.AgarradoPorId != 0
-		   && _players.TryGetValue(pl.AgarradoPorId, out ServerPlayer? g)
-		   && g.AgarrandoId == pl.Id
-		   && g.ModoDoAgarrao == ModoDeAgarrao.Carregando;
+		=> QuemMeSegura(pl) is { ModoDoAgarrao: ModoDeAgarrao.Carregando };
 
 	/// <summary>
 	/// O CORPO NA FRENTE -- o `for(var/mob/A in get_step(src,dir))` do `Grab()` (`Grabbing.dm:105`).
@@ -203,9 +220,7 @@ public sealed partial class GameServer
 			if (pl.ModoDoAgarrao == ModoDeAgarrao.Segurando)
 			{
 				// SEGUNDO TOQUE: sobe pro colo. `grabbee.grabberSTR *= 1.5` (`Grabbing.dm:83`).
-				// `CorpoNaMinhaZona` E NAO `_players[...]` -- ver o bloco no `TickDoAgarrao`: quem esta
-				// preso pode ser um boneco ou um CADAVER, e nenhum dos dois esta no dicionario.
-				if (CorpoNaMinhaZona(pl, pl.AgarrandoId) is { } preso)
+				if (QuemEuSeguro(pl) is { } preso)
 				{
 					pl.ModoDoAgarrao = ModoDeAgarrao.Carregando;
 					preso.ForcaDeQuemMeSegura *= Agarrao.ApertoDeQuemCarrega;
@@ -400,26 +415,8 @@ public sealed partial class GameServer
 			// **A ORDEM E: PERGUNTE PRIMEIRO, SOLTE SEMPRE.** Nao ha ramo em que a duvida mantenha o
 			// aperto de pe -- *"prefira soltar"*.
 			// =========================================================================================================
-			// ============================ O PRESO E RESOLVIDO PELA ZONA, E NAO PELO `_players` ============================
-			// **ISTO ERA UM DEFEITO ANTES DO CADAVER EXISTIR, e ele contradizia o proprio cabecalho deste
-			// arquivo**: la esta escrito, num bloco de cinco linhas, que o BONECO DO CORPO LARGADO
-			// **PODE** ser agarrado. Nao podia. O `CorpoNaFrente` o achava (ele varre a `ZoneList`) e o
-			// `Prender` escrevia os dois lados -- e neste `if`, no tique seguinte,
-			// `_players.TryGetValue` falhava (o boneco fica fora do `_players` de proposito) e o aperto
-			// era desfeito na hora. Agarrar quem esta meditando "nao fazia nada", sem uma linha de
-			// mensagem dizendo por que.
-			//
-			// `CorpoNaMinhaZona` e a resolucao que o `Mirar` e o arremesso ja usam, e pelo mesmo motivo
-			// documentado la: **nem todo corpo que existe num lugar e um corpo SIMULADO**. Com ela, o
-			// boneco passa a ser agarravel de verdade e o CADAVER sai de graca -- que e a instrucao da
-			// tarefa em letra (*"se nao saiu de graca, volte e conserte la"*).
-			//
-			// O CUSTO E UMA VARREDURA DE ZONA POR AGARRAO POR TIQUE, e nao por corpo: este ramo so e
-			// alcancado por quem tem `AgarrandoId != 0`, que em qualquer instante do jogo sao zero ou
-			// um punhado. (A grade de colisao, que roda por CORPO, continua no dicionario -- ver o
-			// `remarks` do `SendoCarregado`.)
-			// ==========================================================================================================
-			if (CorpoNaMinhaZona(a, a.AgarrandoId) is not { } d || d.AgarradoPorId != a.Id)
+			// O PRESO E RESOLVIDO PELA ZONA, e o aperto so existe confirmado dos dois lados -- ver `QuemEuSeguro`.
+			if (QuemEuSeguro(a) is not { } d)
 			{
 				// o outro corpo nao existe mais (ou ja foi solto por outra ponta): limpa o meu lado
 				a.AgarrandoId = 0;
@@ -501,7 +498,7 @@ public sealed partial class GameServer
 		foreach (ServerPlayer d in TodosOsCorpos())
 		{
 			if (d.AgarradoPorId == 0) continue;
-			if (_players.TryGetValue(d.AgarradoPorId, out ServerPlayer? a) && a.AgarrandoId == d.Id) continue;
+			if (QuemMeSegura(d) != null) continue;
 
 			LimparPreso(d);
 			MandarFicha(d);
@@ -546,7 +543,6 @@ public sealed partial class GameServer
 	/// </summary>
 	private void LevarNoColo(ServerPlayer a, ServerPlayer d, long agora)
 	{
-		d.Pos = a.Pos;
 		d.Altitude = a.Altitude;
 		d.Nadando = a.Nadando;
 
@@ -559,21 +555,10 @@ public sealed partial class GameServer
 		// Enquanto nao houver uma pose de "carregado", a animacao de quem anda e a leitura menos errada.
 		d.Moving = a.Moving;
 
-		// ============================ A MESMA COSTURA DA CORRECAO DO ARRASTO ============================
-		// Copiada em espirito do bloco de `ArrastoRestante` no `TickDoEmpurrao`, e pelas mesmas
-		// razoes: o carimbo de sequencia e o que impede os pacotes de input que o cliente do
-		// carregado JA MANDOU (com a posicao antiga) de serem lidos como cliente errado e puxarem o
-		// corpo de volta pro chao. Sem ele, quem e levado pelo ar vem sacudindo.
-		// ==========================================================================================
-		d.LastInputMs = agora;
-		d.CorrecaoEsperadaAte = agora + 500;
-		d.SeqDoTeleporte = d.SeqInput;
-		d.OrcamentoPx = 0;
-
-		var w = Protocol.Begin(Protocol.S2C.Correction);
-		w.Put(d.SeqInput);
-		w.PutVec(d.Pos);
-		d.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		// O CARIMBO DE SEQUENCIA e o que impede os pacotes de input que o cliente do carregado JA
+		// MANDOU (com a posicao antiga) de serem lidos como cliente errado e puxarem o corpo de volta
+		// pro chao. Sem ele, quem e levado pelo ar vem sacudindo. E o funil de todo teleporte.
+		CravarPosicao(d, a.Pos);
 	}
 
 	/// <summary>O `turn(dir,180)` do BYOND, nas quatro direcoes que o sprite tem.</summary>
@@ -707,8 +692,7 @@ public sealed partial class GameServer
 		a.AfogamentoLivreEm = agora + MsEntreTrocasDeAperto;
 
 		a.Estrangulando = !a.Estrangulando;
-		// Pela zona, como todas as outras buscas do lado do PRESO -- ver o `TickDoAgarrao`.
-		if (CorpoNaMinhaZona(a, a.AgarrandoId) is { } d)
+		if (QuemEuSeguro(a) is { } d)
 		{
 			Avisar(a, a.Estrangulando
 				? $"você aperta o pescoço de {d.Name}."

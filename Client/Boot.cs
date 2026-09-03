@@ -878,6 +878,12 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagskills") >= 0)
 			AddChild(new RoboDeSkills { Name = "RoboDeSkills" });
 
+		// --diagdegrau: O BOTAO DO VERB CONCEDIDO POR DEGRAU (e por CASA), num cliente que DISCA e sem
+		// janela. Irma da `--diagskills` pelo mesmo motivo dos dois processos: so um cliente que disca mede
+		// o que chega pelo FIO. Ver RoboDoDegrau -- e rode pelo `testar-o-degrau-no-cliente.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdegrau") >= 0)
+			AddChild(new RoboDoDegrau { Name = "RoboDoDegrau" });
+
 		// --diagnav: bancada da CARTA ESTELAR. Um mapa desenhado nao devolve nada -- esta bancada
 		// mede o que o `_Draw` pinta: quantos planetas o enquadramento cobre, se os gerados entram
 		// ao aproximar, quanto custa a varredura, e se clicar e viajar fazem o que prometem.

@@ -770,11 +770,74 @@ public sealed partial class GameServer
 
 		// A BOLA ACERTA, E QUEM DECIDE E O SERVIDOR -- pelo mesmo `Acertar` da camada 1.
 		ServerPlayer vitima = Forjar("Vitima", new Vec2(p.Pos.X + 200, chao.Y), bp: 500);
+
+		// ============================ O DADO DA DEFLEXAO SAI DE CIMA DA MESA ============================
+		// ATE 2026-09-02 ESTA PROVA ERA UMA MOEDA, e ela caiu: uma rodada de dez saiu vermelha com
+		// `fim Defletido / vida 100 -> 100` e as tres seguintes deram verde. Nao havia defeito nenhum
+		// no jogo -- o que a linha de baixo estava medindo era o SORTEIO DE DEFLEXAO DE PRODUCAO.
+		//
+		// ---- ONDE MORA O DADO ----
+		// `GameServer.Projeteis.cs:1190-1240`, dentro do `Acertar`: a chance sai de
+		// `DanoDeKi.ChanceDeDeflexao` (`Core/Combat/DanoDeKi.cs:170`), que e
+		//
+		//     (Ekidef * max(expressedBP,1) * max(Ekiskill,Etechnique) * max(kidefenseskill/10,1))
+		//     / (BP_do_tiro * mods * basedamage)                            (`objects.dm:333`)
+		//
+		// em PORCENTO, sorteada DUAS vezes por impacto: `prob(chance/2)` e a deflexao barata (o corpo
+		// sai da linha e o tiro segue) e `prob(chance)` e a cara, que MATA o tiro com
+		// `FimDeProjetil.Defletido`. Ela dispara em todo impacto contra quem NAO esta nocauteado nem
+		// atordoado e tem 5 de Ki -- ou seja, contra a vitima desta prova, que e um corpo inteiro de pe.
+		// MEDIDO com os corpos exatos daqui (atirador 5.000, vitima 500, `base_damage` 1,0): 0,0999%
+		// por impacto, e o laco de sub-passos do `AndarProjetil` testa a colisao umas seis vezes na
+		// janela de 16 px -- da meio por cento por rodada, que e exatamente a frequencia observada.
+		//
+		// ---- POR QUE DESLIGAR ASSIM, E NAO DE OUTRO JEITO ----
+		// O precedente e o `RaioDaBancada` (`GameServer.ProjeteisTeste.cs:2167`): a receita da bancada
+		// nasce com `Deflectivel = false` *"porque um sorteio no meio da medicao mediria o dado"* -- o
+		// mesmo motivo pelo qual o `Dupla` (`GameServer.BancadaComum.cs:124`) desliga o bloqueio.
+		// Aqui a RECEITA nao e nossa: ela sai de `TecnicaCustomizada.Receita()`, e o comentario de la
+		// (`Core/Skills/TecnicaCustomizada.cs:258`) diz por que `Deflectivel` fica no padrao -- o painel
+		// do DM nao vende esse botao, e escrever `false` la daria a todo jogador uma tecnica que
+		// ninguem consegue defletir. Entao o knob e virado no PROJETIL desta prova, que e o mais perto
+		// que da pra chegar do precedente sem mexer em producao: mesmo campo, mesma razao, so no unico
+		// lugar que a bancada alcanca.
+		//
+		// O CRITERIO DA AFIRMACAO NAO MUDOU: ela continua exigindo `!Vivo && Fim == Acertou && vida
+		// caiu`. O que mudou foi de onde vem a resposta -- do jogo, e nao do dado.
+		//
+		// A CHANCE CRUA E LIDA ANTES, e ela e a prova de que isto NAO afrouxou nada: se um dia ela
+		// vier zero, e porque a vitima deixou de saber defender (corpo de bancada diferente do corpo
+		// do jogo), e a linha do placar la embaixo fica vermelha por isso.
+		// ==============================================================================================
+		double chanceCrua = DanoDeKi.ChanceDeDeflexao(vitima.Ficha, p.Bp, p.ModsAgora(), p.BaseDano,
+													  vitima.Combate.Bloqueando);
+		p.Deflectivel = false;
+
 		double vidaAntes = vitima.Combate.Corpo.Vida();
-		for (int i = 0; i < 300 && p.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
+		List<string> noVoo = Ouvir(() =>
+		{
+			for (int i = 0; i < 300 && p.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
+		});
 		AfirmarTc("...ela morre em quem acerta, e a vitima perde vida",
 				  !p.Vivo && p.Fim == FimDeProjetil.Acertou && vitima.Combate.Corpo.Vida() < vidaAntes,
 				  $"fim {p.Fim} / vida {vidaAntes:0.#} -> {vitima.Combate.Corpo.Vida():0.#}");
+
+		// A LINHA QUE PROVA O MECANISMO, e nao "nao caiu nesta rodada". Ela junta as tres coisas que
+		// tornam o caminho da deflexao INALCANCAVEL com esta receita:
+		//   1. o dado EXISTE (`chanceCrua > 0`): a vitima nao foi enfraquecida pra prova passar;
+		//   2. o projetil que voou tinha `Deflectivel = false`, e com ele o `Acertar` zera a chance
+		//      na porta (`GameServer.Projeteis.cs:1192`);
+		//   3. `Sorteio(0)` e falso pra QUALQUER rolagem -- o `porcento > 0` corta antes de tocar no
+		//      `_rng` (`GameServer.Projeteis.cs:1567`). Chamar o sorteio de producao com zero nao
+		//      consome numero nenhum do gerador, entao esta linha nao move o dado das provas seguintes.
+		// E a SONDA de runtime junto: nenhuma das tres falas que a deflexao escreve (`voce defletiu`,
+		// `de raspao`, `defletiu seu ataque`) saiu durante o voo. As duas metades sao necessarias --
+		// a fala sozinha seria so mais uma rodada; o knob sozinho nao mostraria que o caminho calou.
+		AfirmarTc($"...e o DADO DA DEFLEXAO estava desligado PELO MECANISMO: a chance crua era "
+				+ $"{chanceCrua:0.####}% por impacto e `Deflectivel = false` a zera na porta do `Acertar`",
+				  chanceCrua > 0 && !p.Deflectivel && !Sorteio(0)
+				  && !Disse(noVoo, "defletiu") && !Disse(noVoo, "raspao"),
+				  $"chance {chanceCrua:0.#####}% / deflectivel {p.Deflectivel} / falas: {string.Join(" | ", noVoo)}");
 
 		LimparTudoDaBancada();
 

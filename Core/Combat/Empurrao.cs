@@ -67,8 +67,8 @@ public static class Empurrao
 	/// <summary>`duration = min(kbdur,10)` -- o teto de tiques de voo.</summary>
 	public const int TiquesMax = 10;
 
-	/// <summary>`tick_delay = 1` -- um decimo de segundo por tique.</summary>
-	public const double SegundosPorTique = 0.1;
+	/// <summary>`tick_delay = 1` -- um tique do DM por passo. O numero mora em <see cref="TempoDoDm"/>.</summary>
+	public const double SegundosPorTique = TempoDoDm.SegundosPorTique;
 
 	/// <summary>Dois `step(...,16)` por tique. Em pixels: dois tiles.</summary>
 	public const double TilesPorTique = 2;

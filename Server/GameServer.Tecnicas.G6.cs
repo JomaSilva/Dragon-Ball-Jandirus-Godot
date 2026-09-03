@@ -1,4 +1,5 @@
 ﻿using Godot;
+using Jandirus.Core;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Skills;
 using Jandirus.Core.Stats;
@@ -106,155 +107,24 @@ public sealed partial class GameServer
 	// =====================================================================
 	// REGISTRO
 	// =====================================================================
-	public static void RegistrarTecnicasG6()
+	private void RegistrarTecnicasG6()
 	{
-		// ---- os seis raios nomeados (beams/*.dm) ----
-		Tecnicas.Registrar("Kamehameha", "Kamehameha", Modo.Sustentada,
-			"A onda da Escola da Tartaruga: o raio que ANDA MAIS LONGE de todos e que menos cobra "
-			+ "por segundo. Quanto melhor a sua pericia de raio, mais forte ele sai -- e mais caro "
-			+ "fica de sustentar.");
-
-		Tecnicas.Registrar("GalicGun", "Galick Ho", Modo.Sustentada,
-			"A onda da realeza saiyajin. Irma do Kamehameha, um pouco mais forte e um pouco mais "
-			+ "lenta -- e no topo da pericia ela alcanca cinquenta tiles, mais que qualquer outro "
-			+ "raio do jogo.");
-
-		Tecnicas.Registrar("Death_Beam", "Death Beam", Modo.Sustentada,
-			"Um fio de energia com CINCO vezes a potencia de um raio comum e alcance de dez tiles. "
-			+ "E a tecnica de matar de perto: nao ha raio no jogo que concentre tanto dano em tao "
-			+ "pouca distancia.");
-
-		Tecnicas.Registrar("Dodompa", "Dodon Ray", Modo.Sustentada,
-			"O raio da Escola do Grou: quatro vezes a potencia de um raio comum, alcance longo e o "
-			+ "voo mais rapido da familia. Em troca, e o mais caro de sustentar depois do Death "
-			+ "Beam.");
-
-		Tecnicas.Registrar("Enkumei", "Enkumei", Modo.Sustentada,
-			"A onda de fogo negro dos Namekuseijin. Ela nao e a mais forte, mas carrega mais poder "
-			+ "por tras do feixe que o seu proprio corpo -- e quem domina a pericia de raio dobra "
-			+ "esse poder.");
-
-		Tecnicas.Registrar("Boom_Wave", "Boom Wave", Modo.Sustentada,
-			"Um raio CURTO e grosso, de cinco tiles, que quase nao custa nada por segundo: o preco "
-			+ "dele cai conforme a sua pericia de Ki sobe. E a arma de quem luta colado e nao pode "
-			+ "parar pra carregar um raio caro.");
-
-		// ---- a bola que cobra em SANGUE ----
-		Tecnicas.Registrar("Kikoho", "Kikoho", Modo.Instantanea,
-			"A Tri-Bomba: uma esfera pesada paga com a PROPRIA VIDA, e nao so com energia. Cada "
-			+ "uso seguido grita uma silaba (KI, KO, HO) e sai mais forte que o anterior -- e cobra "
-			+ "mais sangue. Tres seguidos podem derrubar voce.");
-
-		// ---- os quatro buffs (Ki2.0/KiBuffs.dm, racial/grays.dm) ----
-		Tecnicas.Registrar("Focus", "Foco", Modo.Sustentada,
-			"Voce concentra a circulacao do proprio Ki: a ofensiva de energia sobe, e o gasto sobe "
-			+ "na mesma medida. Quem treinou circulacao e buff ganha mais dos dois lados. Apertar "
-			+ "de novo desliga.");
-
-		Tecnicas.Registrar("Efficiency", "Eficiencia", Modo.Sustentada,
-			"O contrario do Foco: voce racionaliza o gasto e a energia dura MUITO mais, ao preco de "
-			+ "uma parte da sua ofensiva de Ki. Apertar de novo desliga.");
-
-		Tecnicas.Registrar("Energy_Shield", "Escudo de Energia", Modo.Sustentada,
-			"Uma casca que soma defesa de Ki E armadura de energia -- a armadura e o que aguenta "
-			+ "tiro sem descontar da sua vida. Consome energia todo segundo e cai sozinha quando a "
-			+ "armadura acaba.");
-
-		Tecnicas.Registrar("Full_Power", "Full Power", Modo.Sustentada,
-			"A concentracao total da aura: forca fisica, ofensiva de Ki e velocidade sobem juntas. "
-			+ "Custa energia por segundo, e o custo CAI conforme voce pratica. Cai sozinha quando "
-			+ "sua energia chega perto do fim.");
-
-		// ---- o sopro (Ki2.0/Kiai.dm) ----
-		Tecnicas.Registrar("Kiai", "Kiai", Modo.Instantanea,
-			"Um grito de energia que ARREMESSA quem estiver na sua frente, sem tiro nenhum pra "
-			+ "desviar. Se nao houver ninguem no caminho, o sopro vira uma lamina de ar que segue "
-			+ "em frente.");
-
-		Tecnicas.Registrar("Shockwave", "Onda de Choque", Modo.Instantanea,
-			"O sopro em VOLTA de voce: joga longe todo mundo colado e APAGA os tiros de energia que "
-			+ "estiverem chegando, desde que voce tenha poder pra isso. E a resposta de quem esta "
-			+ "cercado.");
-
-		Tecnicas.Registrar("Deflection", "Deflexao", Modo.Instantanea,
-			"Voce empurra de volta o que vem voando na sua direcao. Por tres investidas seguidas, "
-			+ "todo tiro na sua frente que for mais fraco que voce e DEVOLVIDO a quem atirou -- e "
-			+ "passa a ser seu.");
-
-		Tecnicas.Registrar("Explosive_Roar", "Rugido Explosivo", Modo.Instantanea,
-			"Duas fases: aperte pra comecar a juntar o rugido e aperte de novo pra soltar. Quanto "
-			+ "mais tempo carregar, maior o raio e mais longe todo mundo voa -- mas passando de "
-			+ "cinco segundos so o preco continua subindo.");
-
-		// ---- os dois punhos (Martial Skill Attacks.dm) ----
-		Tecnicas.Registrar("Wolf_Fang_Fist", "Punho da Presa do Lobo", Modo.Instantanea,
-			"Tres socos secos em quem estiver colado, e o terceiro ARREMESSA. Custa folego alem de "
-			+ "energia, e precisa de pelo menos uma mao livre.");
-
-		Tecnicas.Registrar("Wolf_Fang_Hurricane", "Furacao da Presa do Lobo", Modo.Instantanea,
-			"A versao encadeada do Punho da Presa: quatro golpes AVANCANDO, cada um empurrando voce "
-			+ "pra cima do alvo. Nenhum deles arremessa -- e essa e a graca, o alvo fica na sua "
-			+ "frente ate o ultimo.");
-
-		// ---- servico (misc.dm, KiStatsModule.dm) ----
-		Tecnicas.Registrar("Heal", "Curar", Modo.Sustentada,
-			"Poe a mao em quem esta do seu lado e fecha as feridas dele com o seu Ki, continuamente. "
-			+ "Cura mais quem tem mais pericia de Ki. Se o alvo se afastar, a cura para sozinha. "
-			+ "Apertar de novo tambem para.");
-
-		Tecnicas.Registrar("Assess_Ki_Skill", "Avaliar o Ki", Modo.Instantanea,
-			"Le a pericia de Ki de quem voce marcou. Um novato so sente quem e mais treinado; com "
-			+ "percepcao media voce compara pericia por pericia; passando de cinquenta, voce le os "
-			+ "numeros dele como se fosse a sua propria ficha.", aba: "Outros");
-	}
-
-	/// <summary>Os dezenove ids deste lote -- lidos pelo `switch` do despacho geral.</summary>
-	private static readonly string[] IdsG6 =
-	[
-		"Kamehameha", "GalicGun", "Death_Beam", "Dodompa", "Enkumei", "Boom_Wave",
-		"Kikoho",
-		"Focus", "Efficiency", "Energy_Shield", "Full_Power",
-		"Kiai", "Shockwave", "Deflection", "Explosive_Roar",
-		"Wolf_Fang_Fist", "Wolf_Fang_Hurricane",
-		"Heal", "Assess_Ki_Skill",
-	];
-
-	public static bool EhDoLoteG6(string id) => Array.IndexOf(IdsG6, id) >= 0;
-
-	/// <summary>
-	/// O DESPACHO DO LOTE. Chamado de dentro do `switch` do <see cref="UsarTecnica"/>, DEPOIS do
-	/// <see cref="SabeTecnica"/> geral -- igual ao G5, e pela mesma razao: quem nao comprou ouve
-	/// "voce nao sabe" por uma porta so.
-	/// </summary>
-	private void UsarTecnicasG6(ServerPlayer pl, string id)
-	{
-		switch (id)
-		{
-			case "Kamehameha":
-			case "GalicGun":
-			case "Death_Beam":
-			case "Dodompa":
-			case "Enkumei":
-			case "Boom_Wave": RaioNomeadoG6(pl, id); break;
-
-			case "Kikoho": KikohoG6(pl); break;
-
-			case "Focus": FocoG6(pl); break;
-			case "Efficiency": EficienciaG6(pl); break;
-			case "Energy_Shield": EscudoDeEnergiaG6(pl); break;
-			case "Full_Power": FullPowerG6(pl); break;
-
-			case "Kiai": SoproG6(pl, TipoDeSopro.Kiai); break;
-			case "Shockwave": SoproG6(pl, TipoDeSopro.Onda); break;
-			case "Deflection": SoproG6(pl, TipoDeSopro.Deflexao); break;
-			case "Explosive_Roar": RugidoExplosivoG6(pl); break;
-
-			case "Wolf_Fang_Fist": PresaDoLoboG6(pl, furacao: false); break;
-			case "Wolf_Fang_Hurricane": PresaDoLoboG6(pl, furacao: true); break;
-
-			case "Heal": CurarG6(pl); break;
-			case "Assess_Ki_Skill": AvaliarOKiG6(pl); break;
-		}
+		IniciarLote("G6");
+		foreach (string raio in new[] { "Kamehameha", "GalicGun", "Death_Beam", "Dodompa", "Enkumei", "Boom_Wave" })
+			Vivo(raio, pl => RaioNomeadoG6(pl, raio));
+		Vivo("Kikoho", KikohoG6);
+		Vivo("Focus", FocoG6);
+		Vivo("Efficiency", EficienciaG6);
+		Vivo("Energy_Shield", EscudoDeEnergiaG6);
+		Vivo("Full_Power", FullPowerG6);
+		Vivo("Kiai", pl => SoproG6(pl, TipoDeSopro.Kiai));
+		Vivo("Shockwave", pl => SoproG6(pl, TipoDeSopro.Onda));
+		Vivo("Deflection", pl => SoproG6(pl, TipoDeSopro.Deflexao));
+		Vivo("Explosive_Roar", RugidoExplosivoG6);
+		Vivo("Wolf_Fang_Fist", pl => PresaDoLoboG6(pl, furacao: false));
+		Vivo("Wolf_Fang_Hurricane", pl => PresaDoLoboG6(pl, furacao: true));
+		Vivo("Heal", CurarG6);
+		Vivo("Assess_Ki_Skill", AvaliarOKiG6);
 	}
 
 	// =====================================================================
@@ -406,7 +276,7 @@ public sealed partial class GameServer
 	private void KikohoG6(ServerPlayer pl)
 	{
 		long agora = NowMs();
-		if (EmEsperaG5(pl, _blastPronto, "suas maos ainda estao juntando energia")) return;
+		if (EmEspera(pl, _blastPronto, "suas maos ainda estao juntando energia")) return;
 
 		// A SILABA. O `kikohoblasts` do DM e um contador de 1 a 3 que reinicia; o prazo de 6 s
 		// (`sleep(60)`) e o que decide se voce ainda esta na mesma sequencia.
@@ -613,7 +483,7 @@ public sealed partial class GameServer
 
 	private void SoproG6(ServerPlayer pl, TipoDeSopro qual)
 	{
-		if (EmEsperaG5(pl, _soproPronto, "seu Ki ainda nao se reagrupou")) return;
+		if (EmEspera(pl, _soproPronto, "seu Ki ainda nao se reagrupou")) return;
 
 		double custo = CustoDoSopro(pl, qual);
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
@@ -623,7 +493,7 @@ public sealed partial class GameServer
 		double tiques = Math.Max(DmMath.Round(numerador / Math.Max(pericia, 1), 1), 10);
 
 		pl.Ficha.Ki -= custo;
-		_soproPronto[pl.Id] = NowMs() + (long)(tiques * MsPorTique);
+		_soproPronto[pl.Id] = NowMs() + (long)(tiques * TempoDoDm.MsPorTique);
 		int gains = qual == TipoDeSopro.Kiai ? 1 : 2;
 		for (int i = 0; i < gains; i++) pl.Ficha.BlastGain(_rng);
 		pl.Ficha.kiaiskill += 0.1 * gains;   // `kiaicounter++` / `+= 2` -- usar treina
@@ -705,7 +575,7 @@ public sealed partial class GameServer
 		Disparar(pl, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,
-			BaseDano = 0.5 * pl.Ficha.Ekioff * Log10Min(pl.Ficha.blastskill, 10),
+			BaseDano = 0.5 * pl.Ficha.Ekioff * DanoDeKi.Log10Min(pl.Ficha.blastskill, 10),
 			Velocidade = 1,
 			AlcanceTiles = AlcanceDeBolaG5,
 			Nome = "lamina de ar",
@@ -834,7 +704,7 @@ public sealed partial class GameServer
 			SoltarRugidoG6(pl, carga);
 			return;
 		}
-		if (EmEsperaG5(pl, _soproPronto, "seu Ki ainda nao se reagrupou")) return;
+		if (EmEspera(pl, _soproPronto, "seu Ki ainda nao se reagrupou")) return;
 
 		double custo = 50 * pl.Ficha.BaseDrain();
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
@@ -902,7 +772,7 @@ public sealed partial class GameServer
 		// o rugido nao consome a espera. Quem carrega vinte segundos ainda espera a recarga inteira.
 		double pericia = pl.Ficha.Ekiskill * 10 + pl.Ficha.kieffusionskill + pl.Ficha.kiaiskill;
 		double tiques = Math.Max(DmMath.Round(12000 / Math.Max(pericia, 1), 1), 10);
-		_soproPronto[pl.Id] = NowMs() + (long)(tiques * MsPorTique);
+		_soproPronto[pl.Id] = NowMs() + (long)(tiques * TempoDoDm.MsPorTique);
 
 		Avisar(pl, $"o rugido estoura num raio de {Math.Max(util - 1, 1)} tiles: "
 				 + $"{pegos} arremessado(s), {apagados} tiro(s) apagado(s).");
@@ -930,12 +800,8 @@ public sealed partial class GameServer
 	{
 		if (!ProntoPraGolpeG3(pl, out string porque)) { Avisar(pl, porque); return; }
 
+		if (EmEspera(pl, _prontoG3, "seus golpes especiais ainda se recompoem")) return;
 		long agora = NowMs();
-		if (_prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"seus golpes especiais ainda se recompoem (faltam {(livre - agora) / 1000.0:0.0}s).");
-			return;
-		}
 		if (_barragemG3.ContainsKey(pl.Id)) { Avisar(pl, "voce ja esta no meio de uma sequencia."); return; }
 
 		double custo = pl.Ficha.Ephysoff * (furacao ? 9 : 10) * pl.Ficha.BaseDrain();
@@ -958,7 +824,7 @@ public sealed partial class GameServer
 
 		// O PRIMEIRO GOLPE SAI AGORA. O `AddEffect(/effect/stun)` do Punho (`:180`) vira o mesmo
 		// atordoamento curto que o resto do port usa -- e o que segura o alvo pros dois seguintes.
-		if (!furacao) alvo.Combate.Stun = Math.Max(alvo.Combate.Stun, 0.6);
+		if (!furacao) Travar(alvo, 0.6);
 		GolpeG3(pl, alvo, addDano: furacao ? 2 : 0.5, nivel: 2);
 
 		_barragemG3[pl.Id] = new BarragemG3
@@ -971,7 +837,7 @@ public sealed partial class GameServer
 			AvancaPx = furacao ? ZoneCollision.TileSize : 0,
 			ArremessoNoFim = furacao ? 0 : 4,
 		};
-		LigarRelogioG3();
+		LigarPulso();
 	}
 
 	// =====================================================================

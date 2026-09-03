@@ -69,63 +69,13 @@ public sealed partial class GameServer
 	/// AS LINHAS-ESPELHO ESTAO EM `Core/Skills/Tecnicas.Portadas.cs`, e nao e opcional: a
 	/// `--catalogoteste` compara as duas bocas nas duas direcoes toda rodada.
 	/// </summary>
-	private static void RegistrarTecnicasG9()
+	private void RegistrarTecnicasG9()
 	{
-		Tecnicas.Registrar("Mafuba", "Mafuba", Modo.Instantanea,
-			"A Onda Selante. Precisa de um Pote Selante assentado por perto: a fita sai atras do "
-			+ "alvo e o prende no pote pra sempre. Custa 90 de dano em CADA membro seu -- pode te "
-			+ "matar. Quem quiser o preso de volta tem que quebrar o pote.", aba: "Outros");
-
-		Tecnicas.Registrar("Open_Dead_Zone", "Abrir a Dead Zone", Modo.Instantanea,
-			"Rasga a realidade cinco tiles ao norte e abre a Dead Zone por dez segundos. Ela puxa "
-			+ "quem estiver por perto e sela quem cair dentro -- sem pote, sem quebrar: só sai "
-			+ "quem ficar 25% mais forte do que você era na hora. Custa quase toda a sua energia.",
-			aba: "Outros");
-
-		Tecnicas.Registrar("Conceal_Power", "Ocultar o Poder", Modo.Sustentada,
-			"Esconde o seu poder de quem olha: o scouter dos outros passa a ler quase nada. Liga e "
-			+ "desliga, com cinco segundos de espera entre um e outro.", aba: "Skills");
-
-		Tecnicas.Registrar("Power_Control", "Controle de Poder", Modo.Sustentada,
-			"Segura o seu próprio poder numa porcentagem, de 1 a 100. Só serve pra BAIXAR -- pra "
-			+ "voltar a subir é carregando (tecla C). Use Power_Control:40.", aba: "Skills");
-	}
-
-	/// <summary>Os quatro ids deste lote.</summary>
-	private static readonly string[] IdsG9 =
-	[
-		"Mafuba", "Open_Dead_Zone", "Conceal_Power", "Power_Control",
-	];
-
-	/// <summary>
-	/// O DESPACHO DO LOTE -- e ele entra ANTES do gate generico, como o G8 e pelo mesmo motivo: o
-	/// `Power_Control` aceita id com ARGUMENTO (`Power_Control:40`), e o `SabeTecnica` do funil geral
-	/// compara o id INTEIRO com os verbs da skill -- nunca casaria com a variante.
-	/// </summary>
-	public bool UsarTecnicasG9(ServerPlayer pl, string id)
-	{
-		if (id.Length == 0) return false;
-
-		int corte = id.IndexOf(':');
-		string baseId = corte < 0 ? id : id[..corte];
-		string arg = corte < 0 ? "" : id[(corte + 1)..];
-
-		if (Array.IndexOf(IdsG9, baseId) < 0) return false;
-
-		if (!SabeTecnica(pl, baseId))
-		{
-			Avisar(pl, $"voce nao sabe {Tecnicas.Get(baseId)?.Nome ?? baseId}.");
-			return true;
-		}
-
-		switch (baseId)
-		{
-			case "Mafuba": MafubaG9(pl); break;
-			case "Open_Dead_Zone": AbrirDeadZoneG9(pl); break;
-			case "Conceal_Power": OcultarPoderG9(pl); break;
-			case "Power_Control": ControleDePoderG9(pl, arg); break;
-		}
-		return true;
+		IniciarLote("G9");
+		Vivo("Mafuba", MafubaG9);
+		Vivo("Open_Dead_Zone", AbrirDeadZoneG9);
+		Vivo("Conceal_Power", OcultarPoderG9);
+		Vivo("Power_Control", ControleDePoderG9);
 	}
 
 	// =====================================================================
@@ -173,7 +123,7 @@ public sealed partial class GameServer
 			return;
 		}
 
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, RaioDaVista);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDaVista);
 		if (alvo == null) { Avisar(pl, "nao ha ninguem a vista pra selar."); return; }
 		if (alvo.Selo.Preso) { Avisar(pl, $"{alvo.Name} ja esta selado."); return; }
 
@@ -261,6 +211,9 @@ public sealed partial class GameServer
 	/// <summary>Quando cada um pode tornar a mexer no sigilo. O `canconceal` do DM.</summary>
 	private readonly Dictionary<int, long> _sigiloPronto = [];
 
+	/// <summary>QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`, porque id se reusa.</summary>
+	private void EsquecerG9(int id) => _sigiloPronto.Remove(id);
+
 	/// <summary>
 	/// `sleep(50)` (`Power Control.dm:76` e `:81`) -- CINCO segundos entre ligar e desligar.
 	///
@@ -280,13 +233,9 @@ public sealed partial class GameServer
 	/// </summary>
 	private void OcultarPoderG9(ServerPlayer pl)
 	{
+		// `else to_chat(src, "You can't do that yet.")` (`:83`)
+		if (EmEspera(pl, _sigiloPronto, "ainda nao da")) return;
 		long agora = NowMs();
-		if (_sigiloPronto.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			// `else to_chat(src, "You can't do that yet.")` (`:83`)
-			Avisar(pl, $"ainda nao da ({(pronto - agora) / 1000.0:0.#}s).");
-			return;
-		}
 
 		_sigiloPronto[pl.Id] = agora + EsperaDoSigiloMs;
 		pl.Ficha.isconcealed = !pl.Ficha.isconcealed;

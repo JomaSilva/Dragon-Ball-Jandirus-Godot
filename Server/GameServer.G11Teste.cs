@@ -11,7 +11,7 @@ namespace Jandirus.Server;
 ///
 /// ============================ O QUE ELA AFIRMA, E COMO ============================
 /// Uma prova de EFEITO NOMEADO por verb, pelo caminho de producao (`UsarHabilidade` -> `UsarTecnica`
-/// -> `UsarTecnicasG11`, o `Zanzoken` de verdade pro fio, o `AlternarAgarrao` de verdade pro braco
+/// -> o registro de tecnicas vivas do G11, o `Zanzoken` de verdade pro fio, o `AlternarAgarrao` de verdade pro braco
 /// esticado, o `ComandoDeCargo` de verdade pra resposta a oferta). Em cada verb, as DUAS metades:
 /// sem o requisito ele recusa E nao cobra; com o requisito ele acontece. Em cada buff com prazo:
 /// acende, dura, APAGA e o stat volta ao valor de antes -- MEDIDO no campo, nunca lido do razao.
@@ -90,18 +90,12 @@ public sealed partial class GameServer
 	// =====================================================================
 	// A INFRAESTRUTURA
 	// =====================================================================
-	/// <summary>Um corpo forjado que SABE as skills dadas -- pelo livro e pelo extrator (as flags chegam ao lutador aqui).</summary>
+	/// <summary>
+	/// Um corpo forjado que SABE as skills dadas -- pelo livro e pelo extrator (as flags chegam ao
+	/// lutador aqui, e por isso este lote e o unico que liga o <c>efeitosDeSkill</c> do comum).
+	/// </summary>
 	private ServerPlayer ForjarG11(string nome, Vec2 onde, double bp, params string[] skills)
-	{
-		ServerPlayer pl = Forjar(nome, onde, bp);
-		foreach (string s in skills) pl.Livro.Dar(s);
-		if (_skills != null && skills.Length > 0)
-			EfeitosDeSkill.Aplicar(pl.Ficha, _skills, pl.Livro.Aprendidas, pl.Livro.Escolhas);
-		pl.Ficha.Statify();
-		pl.Ficha.Tick(agoraMs: NowMs());
-		pl.Ficha.Ki = pl.Ficha.MaxKi;
-		return pl;
-	}
+		=> ForjarComSkills(nome, onde, bp, skills, efeitosDeSkill: true);
 
 	/// <summary>Sobe o nivel de uma skill pelo caminho do disco (`DoSave`), que e por onde o login o repoe.</summary>
 	private static void SubirNivelG11(ServerPlayer pl, string path, int nivel)
@@ -110,9 +104,6 @@ public sealed partial class GameServer
 		save.Skills[path] = [nivel, 0];
 		pl.Niveis.DoSave(save);
 	}
-
-	private static bool DisseG11(string trecho) =>
-		EscutaDeAvisos != null && EscutaDeAvisos.Exists(a => a.Contains(trecho, StringComparison.OrdinalIgnoreCase));
 
 	/// <summary>Tira da bancada tudo que ela pos no mundo: buffs, estado do lote, paralisias e os corpos.</summary>
 	private void LimparG11()
@@ -139,27 +130,24 @@ public sealed partial class GameServer
 		GD.Print("[g11] -- 1) O CATALOGO CONHECE AS CATORZE, E O GATE CONTINUA FECHADO");
 
 		var vivas = new HashSet<string>(Tecnicas.Vivas, StringComparer.OrdinalIgnoreCase);
-		var faltam = IdsG11.Where(id => !vivas.Contains(id)).ToList();
+		var faltam = IdsDoLote("G11").Where(id => !vivas.Contains(id)).ToList();
 		AfirmarG11("os catorze verbs do lote estao VIVOS no catalogo", faltam.Count == 0, string.Join(" | ", faltam));
 		AfirmarG11("...e um verb que este lote NAO portou (Stop, parar o tempo) continua NAO-PORTADO",
 				   Tecnicas.Get("Stop")!.Modo == Modo.NaoPortada);
 		AfirmarG11("...e nenhum dos catorze consta mais na fila de 'esperando sistema'",
-				   IdsG11.All(id => !CensoDeSkills.Esperando.ContainsKey(id)));
+				   IdsDoLote("G11").All(id => !CensoDeSkills.Esperando.ContainsKey(id)));
 
 		Vec2 chao = CorredorLivre(12);
 		ServerPlayer nu = Forjar("SemSkill", chao, bp: 5_000);
 		double kiAntes = nu.Ficha.Ki;
 
-		EscutaDeAvisos = [];
-		UsarHabilidade(nu, "Sneak");
+		List<string> falas = ApertarEOuvir(nu, "Sneak");
 		AfirmarG11("quem NAO comprou a skill ouve \"nao sabe\" no Sneak, e fica a vista",
-				   DisseG11("nao sabe") && !_invisiveis.Contains(nu.Id), string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(nu, "Kai_Kai:Namek");
+				   Disse(falas, "nao sabe") && !_invisiveis.Contains(nu.Id), Ultimos(falas));
+		falas = ApertarEOuvir(nu, "Kai_Kai:Namek");
 		AfirmarG11("...e no Kai Kai (com argumento) tambem, sem sair do lugar",
-				   DisseG11("nao sabe") && nu.Zone.Name == "Earth", string.Join(" | ", EscutaDeAvisos));
+				   Disse(falas, "nao sabe") && nu.Zone.Name == "Earth", Ultimos(falas));
 		AfirmarG11("...e nenhuma das duas recusas cobrou Ki", Math.Abs(nu.Ficha.Ki - kiAntes) < 1e-9);
-		EscutaDeAvisos = null;
 
 		LimparG11();
 	}
@@ -178,11 +166,10 @@ public sealed partial class GameServer
 
 		// --- sem requisito: sem Ki recusa e nao cobra recarga ---
 		pl.Ficha.Ki = 0;
-		EscutaDeAvisos = [];
-		UsarHabilidade(pl, "Sneak");
+		List<string> falas = ApertarEOuvir(pl, "Sneak");
 		AfirmarG11("sem Ki o Sneak recusa dizendo o preco, e nao arma a recarga",
-				   DisseG11("energia") && !_invisiveis.Contains(pl.Id) && !_prontoG3.ContainsKey(pl.Id),
-				   string.Join(" | ", EscutaDeAvisos));
+				   Disse(falas, "energia") && !_invisiveis.Contains(pl.Id) && !_prontoG3.ContainsKey(pl.Id),
+				   Ultimos(falas));
 
 		// --- com requisito: some, cobra `Ephysoff*BaseDrain*12`, dura `(10+Etechnique)` decimos ---
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
@@ -206,18 +193,16 @@ public sealed partial class GameServer
 		AfirmarG11("o Sneak NAO paga aluguel por segundo (o tique da Invisibility pula quem esta em Sneak)",
 				   Math.Abs(pl.Ficha.Ki - kiSneak) < 1e-9 && _invisiveis.Contains(pl.Id));
 
-		EscutaDeAvisos.Clear();
 		_prontoG3.Remove(pl.Id);
-		UsarHabilidade(pl, "Sneak");
+		falas = ApertarEOuvir(pl, "Sneak");
 		AfirmarG11("ja invisivel, apertar de novo recusa (`!invisibility`) sem cobrar",
-				   DisseG11("fora da vista") && Math.Abs(pl.Ficha.Ki - kiSneak) < 1e-9);
+				   Disse(falas, "fora da vista") && Math.Abs(pl.Ficha.Ki - kiSneak) < 1e-9);
 
 		// --- o prazo VENCE: o efetor devolve o corpo a vista ---
 		_sneakAteG11[pl.Id] = NowMs() - 1;
 		TickDoEfetorG11();
 		AfirmarG11("vencido o prazo, o efetor APAGA o Sneak: corpo a vista, poder visivel de novo",
 				   !_invisiveis.Contains(pl.Id) && !pl.Ficha.isconcealed && !_sneakAteG11.ContainsKey(pl.Id));
-		EscutaDeAvisos = null;
 
 		// ---------------- GRILHAO ----------------
 		ServerPlayer gr = ForjarG11("Grilhoeiro", chao, 50_000, PathDebuffG11T);
@@ -229,11 +214,10 @@ public sealed partial class GameServer
 		ServerPlayer alvo = Forjar("Grilhado", chao + new Vec2(3 * ZoneCollision.TileSize, 0), bp: 5_000);
 		double tspeedAntes = alvo.Ficha.Tspeed;
 
-		EscutaDeAvisos = [];
 		double kiGr = gr.Ficha.Ki;
-		UsarHabilidade(gr, "Shackle");
+		falas = ApertarEOuvir(gr, "Shackle");
 		AfirmarG11("sem alvo marcado o Grilhao recusa com motivo e nao cobra",
-				   DisseG11("alvo") && Math.Abs(gr.Ficha.Ki - kiGr) < 1e-9 && Math.Abs(alvo.Ficha.Tspeed - tspeedAntes) < 1e-12);
+				   Disse(falas, "alvo") && Math.Abs(gr.Ficha.Ki - kiGr) < 1e-9 && Math.Abs(alvo.Ficha.Tspeed - tspeedAntes) < 1e-12);
 
 		gr.AlvoId = alvo.Id;
 		double prazoEsperado = DmMath.Round(gr.Ficha.Ekiskill + gr.Ficha.kidebuffskill / 10, 1);
@@ -264,7 +248,6 @@ public sealed partial class GameServer
 		AfirmarG11("vencidos os prazos, o Tspeed do alvo VOLTA exatamente ao de antes",
 				   Math.Abs(alvo.Ficha.Tspeed - tspeedAntes) < 1e-9 && BuffsDe(alvo.Id).Count == 0,
 				   $"{alvo.Ficha.Tspeed:0.######} vs {tspeedAntes:0.######}");
-		EscutaDeAvisos = null;
 
 		LimparG11();
 	}
@@ -283,10 +266,9 @@ public sealed partial class GameServer
 		f.Ki = f.MaxKi;
 		double offAntes = f.Tphysoff, defAntes = f.Tphysdef, spdAntes = f.Tspeed;
 
-		EscutaDeAvisos = [];
-		UsarHabilidade(pl, "Expand_Body");
+		List<string> falas = ApertarEOuvir(pl, "Expand_Body");
 		AfirmarG11("sem grau, o Expand Body LISTA os graus e nao muda nada",
-				   DisseG11("grau") && Math.Abs(f.Tphysoff - offAntes) < 1e-12 && !TemBuff(pl, "Expand_Body"));
+				   Disse(falas, "grau") && Math.Abs(f.Tphysoff - offAntes) < 1e-12 && !TemBuff(pl, "Expand_Body"));
 
 		double kiAntes = f.Ki;
 		double custo2 = 35 / Math.Max(f.Ekiskill, 0.01) * 2 + 5;
@@ -309,18 +291,16 @@ public sealed partial class GameServer
 				   Math.Abs(f.Tphysoff - offAntes) < 1e-9 && Math.Abs(f.Tphysdef - defAntes) < 1e-9
 				   && Math.Abs(f.Tspeed - spdAntes) < 1e-9 && !TemBuff(pl, "Expand_Body") && f.expandlevel == 0);
 
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(pl, "Expand_Body:4");
+		falas = ApertarEOuvir(pl, "Expand_Body:4");
 		AfirmarG11("o 4o grau e recusado dizendo que a Estrela Makyo nao existe aqui (nao foi inventada)",
-				   DisseG11("Estrela") && !TemBuff(pl, "Expand_Body"));
+				   Disse(falas, "Estrela") && !TemBuff(pl, "Expand_Body"));
 
 		// o slot `sBUFF`: com um dos seis do G1 de pe, o Expand nao liga e nao cobra
 		LigarBuff(pl, "Fighting_Power", "Fighting Power", new Dictionary<string, double> { ["Tphysoff"] = 5 });
-		EscutaDeAvisos.Clear();
 		kiAntes = f.Ki;
-		UsarHabilidade(pl, "Expand_Body:1");
+		falas = ApertarEOuvir(pl, "Expand_Body:1");
 		AfirmarG11("com Fighting Power de pe o Expand e recusado pelo SLOT, sem cobrar",
-				   DisseG11("sustentando") && !TemBuff(pl, "Expand_Body") && Math.Abs(f.Ki - kiAntes) < 1e-9);
+				   Disse(falas, "sustentando") && !TemBuff(pl, "Expand_Body") && Math.Abs(f.Ki - kiAntes) < 1e-9);
 		DesligarBuff(pl, "Fighting_Power");
 
 		// o `Loop()`: com Ki <= 10 o corpo relaxa sozinho (um segundo de efetor)
@@ -330,7 +310,6 @@ public sealed partial class GameServer
 		for (int i = 0; i < 6; i++) TickDoEfetorG11();
 		AfirmarG11("com Ki <= 10, o Loop de 1 s relaxa o corpo sozinho e o stat volta",
 				   !TemBuff(pl, "Expand_Body") && Math.Abs(f.Tphysoff - offAntes) < 1e-9 && f.expandlevel == 0);
-		EscutaDeAvisos = null;
 
 		// ---------------- MAJIN ----------------
 		ServerPlayer bu = ForjarG11("Boo", chao, 10_000, PathMajinG11T);
@@ -394,13 +373,11 @@ public sealed partial class GameServer
 		AfirmarG11("...e fora do meio-dia a maestria NAO sobe", Math.Abs(f.makyosunmastery - 0.02) < 1e-9);
 
 		// NOITE (22h30 -> estagio 7): o Sol se poe e o fator vai embora -- medido no campo
-		EscutaDeAvisos = [];
 		AjustarCeuDaTerra(hora: 22.5 / 24);
-		TickDoEfetorG11();
+		List<string> falas = Ouvir(() => TickDoEfetorG11());
 		AfirmarG11("a NOITE o Sol se poe: buff apagado e formsBuff de volta ao de antes",
-				   !TemBuff(pl, "Makyo_Sun") && Math.Abs(f.formsBuff - formsAntes) < 1e-9 && DisseG11("se poe"),
+				   !TemBuff(pl, "Makyo_Sun") && Math.Abs(f.formsBuff - formsAntes) < 1e-9 && Disse(falas, "se poe"),
 				   $"{f.formsBuff:0.###}");
-		EscutaDeAvisos = null;
 
 		// ---------------- LUA ----------------
 		pl.Livro.Esquecer(SkillSunG11);
@@ -460,20 +437,18 @@ public sealed partial class GameServer
 		ServerPlayer colado = Forjar("Colado", chao + new Vec2(ZoneCollision.TileSize, 0), bp: 1_000);
 		ServerPlayer longe = Forjar("Longe", chao + new Vec2(6 * ZoneCollision.TileSize, 0), bp: 1_000);
 
-		EscutaDeAvisos = [];
 		kai.Ficha.Ki = kai.Ficha.MaxKi / 2;
-		UsarHabilidade(kai, "Kai_Kai:Namek");
+		List<string> falas = ApertarEOuvir(kai, "Kai_Kai:Namek");
 		AfirmarG11("com Ki pela metade o Kai Kai recusa ('Ki cheio') e ninguem sai do lugar",
-				   DisseG11("Ki cheio") && kai.Zone.Name == "Earth" && colado.Zone.Name == "Earth"
-				   && Math.Abs(kai.Ficha.Ki - kai.Ficha.MaxKi / 2) < 1e-9, string.Join(" | ", EscutaDeAvisos));
+				   Disse(falas, "Ki cheio") && kai.Zone.Name == "Earth" && colado.Zone.Name == "Earth"
+				   && Math.Abs(kai.Ficha.Ki - kai.Ficha.MaxKi / 2) < 1e-9, Ultimos(falas));
 
 		// a lista vem DEPOIS da porta do Ki (`if(...Ki>=MaxKi...) { input }`, `kai.dm:115-117`)
 		kai.Ficha.Ki = kai.Ficha.MaxKi;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(kai, "Kai_Kai");
+		falas = ApertarEOuvir(kai, "Kai_Kai");
 		AfirmarG11("sem destino ele LISTA (com o Ceu, que o Kai Kai alcanca) e nao viaja nem cobra",
-				   DisseG11("Heaven") && kai.Zone.Name == "Earth" && Math.Abs(kai.Ficha.Ki - kai.Ficha.MaxKi) < 1e-9,
-				   string.Join(" | ", EscutaDeAvisos));
+				   Disse(falas, "Heaven") && kai.Zone.Name == "Earth" && Math.Abs(kai.Ficha.Ki - kai.Ficha.MaxKi) < 1e-9,
+				   Ultimos(falas));
 
 		UsarHabilidade(kai, "Kai_Kai:Namek");
 		AfirmarG11("com Ki cheio o Kaioshin CHEGA em Namek, sem uma gota de Ki",
@@ -481,21 +456,18 @@ public sealed partial class GameServer
 		AfirmarG11("...quem estava COLADO chegou junto", colado.Zone.Name == "Namek", colado.Zone.Name);
 		AfirmarG11("...e quem estava a seis tiles FICOU na Terra", longe.Zone.Name == "Earth", longe.Zone.Name);
 
-		_prontoSaltoG11.Remove(kai.Id);
+		_saltoPronto.Remove(kai.Id);
 		kai.Ficha.Ki = kai.Ficha.MaxKi;
 		UsarHabilidade(kai, "Kai_Kai:Heaven");
 		AfirmarG11("o Kai Kai alcanca o Ceu", kai.Zone.Name == "Heaven", kai.Zone.Name);
-		EscutaDeAvisos = null;
 
 		ServerPlayer demo = ForjarG11("Demonio", CorredorLivre(12), 5_000, PathDevilG11T);
-		EscutaDeAvisos = [];
-		UsarHabilidade(demo, "Devil_Bringer:Heaven");
+		falas = ApertarEOuvir(demo, "Devil_Bringer:Heaven");
 		AfirmarG11("o Devil Bringer NAO entra no Ceu (recusa dizendo isso, Ki intacto)",
-				   DisseG11("Ceu") && demo.Zone.Name == "Earth" && Math.Abs(demo.Ficha.Ki - demo.Ficha.MaxKi) < 1e-9,
-				   string.Join(" | ", EscutaDeAvisos));
+				   Disse(falas, "Ceu") && demo.Zone.Name == "Earth" && Math.Abs(demo.Ficha.Ki - demo.Ficha.MaxKi) < 1e-9,
+				   Ultimos(falas));
 		UsarHabilidade(demo, "Devil_Bringer:Hell");
 		AfirmarG11("...mas alcanca o Inferno", demo.Zone.Name == "Hell" && demo.Ficha.Ki == 0, demo.Zone.Name);
-		EscutaDeAvisos = null;
 
 		LimparG11();
 	}
@@ -509,20 +481,27 @@ public sealed partial class GameServer
 
 		Vec2 chao = CorredorLivre(30);
 		ServerPlayer yd = ForjarG11("Yardrat", chao, 1_000, PathShunkanG11T);
-		yd.Race = "Yardrat";
-		AfirmarG11("a flag `teleskill=70` do extrator chegou no campo do lutador ao aprender",
+		// A RACA ANTES DO EFEITO: `if(savant.Race=="Yardrat") savant.teleskill=70` (yardrat.dm:85-87) e
+		// dado POR RACA (`porraca` do skills.json) desde 2026-09-02 -- ate entao a flag valia pra todo
+		// aprendiz e esta bancada afirmava isso como verdade. O `Aplicar` e idempotente: reaplicar com a
+		// raca certa e o que o login faz.
+		yd.Race = yd.Ficha.Race = "Yardrat";
+		EfeitosDeSkill.Aplicar(yd.Ficha, _skills!, yd.Livro.Aprendidas, yd.Livro.Escolhas);
+		AfirmarG11("a pericia `teleskill=70` chega ao campo do lutador ao aprender -- SO PRO YARDRAT (`porraca`, yardrat.dm:85-87)",
 				   Math.Abs(yd.Ficha.teleskill - 70) < 1e-9, $"{yd.Ficha.teleskill}");
+		ServerPlayer ensinado = ForjarG11("Ensinado", chao + new Vec2(0, 3 * ZoneCollision.TileSize), 1_000, PathShunkanG11T);
+		AfirmarG11("...e um HUMANO que aprende a mesma skill (ela e ensinavel) fica com a pericia de estreia, 1 -- nao vira Yardrat por dentro (antes virava)",
+				   Math.Abs(ensinado.Ficha.teleskill - 1) < 1e-9, $"{ensinado.Ficha.teleskill} (raca {ensinado.Ficha.Race})");
 
 		ServerPlayer farol = Forjar("Farol", chao + new Vec2(20 * ZoneCollision.TileSize, 0), bp: 5_000);
 		farol.Conta = "g11_farol";   // assinatura propria (os forjados partilham a conta da bancada)
 		ServerPlayer colado = Forjar("Colado", chao + new Vec2(ZoneCollision.TileSize, 0), bp: 1_000);
 		ServerPlayer longe = Forjar("Longe", chao + new Vec2(-6 * ZoneCollision.TileSize, 0), bp: 1_000);
 
-		EscutaDeAvisos = [];
-		UsarHabilidade(yd, "Instant_Transmission");
+		List<string> falas = ApertarEOuvir(yd, "Instant_Transmission");
 		AfirmarG11("sem argumento ele LISTA: o desconhecido aparece pela ASSINATURA, com a razao de poder",
-				   DisseG11(farol.Assinatura) && DisseG11("x o seu poder") && !DisseG11("Farol:"),
-				   string.Join(" | ", EscutaDeAvisos));
+				   Disse(falas, farol.Assinatura) && Disse(falas, "x o seu poder") && !Disse(falas, "Farol:"),
+				   Ultimos(falas));
 
 		UsarHabilidade(yd, $"Instant_Transmission:{farol.Assinatura}");
 		long esperaEsperada = (long)(Math.Max(600 / 70.0, 15) * 100);
@@ -531,31 +510,43 @@ public sealed partial class GameServer
 				   && Math.Abs(t.QuandoMs - NowMs() - esperaEsperada) <= 60, $"{esperaEsperada} ms");
 
 		yd.Pos = yd.Pos + new Vec2(10, 0);   // "You moved!"
-		EscutaDeAvisos.Clear();
-		TickDoEfetorG11();
+		falas = Ouvir(() => TickDoEfetorG11());
 		AfirmarG11("quem se MEXE na concentracao perde o teletransporte ('You moved!')",
-				   !_transmissaoG11.ContainsKey(yd.Id) && DisseG11("mexeu") && Vec2.Distance(yd.Pos, farol.Pos) > 10 * ZoneCollision.TileSize);
+				   !_transmissaoG11.ContainsKey(yd.Id) && Disse(falas, "mexeu") && Vec2.Distance(yd.Pos, farol.Pos) > 10 * ZoneCollision.TileSize);
 		yd.Pos = chao;
 
 		UsarHabilidade(yd, $"Instant_Transmission:{farol.Assinatura}");
 		_transmissaoG11[yd.Id].QuandoMs = NowMs() - 1;
+		double kiAntesDaChegada = yd.Ficha.Ki;
 		TickDoEfetorG11();
 		AfirmarG11("vencida a concentracao, o Yardrat aparece ao LADO do farol",
 				   Vec2.Distance(yd.Pos, farol.Pos) <= 1.5 * ZoneCollision.TileSize, $"{Vec2.Distance(yd.Pos, farol.Pos):0} px");
 		AfirmarG11("...quem estava COLADO chegou junto, quem estava longe nao",
 				   Vec2.Distance(colado.Pos, farol.Pos) <= 1.5 * ZoneCollision.TileSize
 				   && Vec2.Distance(longe.Pos, farol.Pos) > 10 * ZoneCollision.TileSize);
-		AfirmarG11("...o Ki ZEROU (`kireq*BaseDrain`: o defeito visivel do DM, mantido)", yd.Ficha.Ki == 0, $"{yd.Ficha.Ki}");
+		double kireq70 = Math.Min(yd.Ficha.MaxKi, yd.Ficha.MaxKi / (70.0 / 100));   // = MaxKi: ate teleskill 100 o custo e o tanque inteiro
+		AfirmarG11("...e cobrou exatamente `kireq = min(MaxKi, MaxKi/(teleskill/100))` -- com teleskill 70 isso e o tanque INTEIRO, por conta propria e nao por um BaseDrain em cima (yardrat.dm:101)",
+				   Math.Abs(kiAntesDaChegada - kireq70 - yd.Ficha.Ki) < 1e-6 && Math.Abs(kireq70 - yd.Ficha.MaxKi) < 1e-6,
+				   $"ki {kiAntesDaChegada:0} -> {yd.Ficha.Ki:0} (kireq {kireq70:0})");
 		AfirmarG11("...e a pericia cresceu +0,2 por tile (Yardrat): 70 -> 74",
 				   Math.Abs(yd.Ficha.teleskill - 74) < 0.5, $"{yd.Ficha.teleskill:0.##}");
+
+		// A SEGUNDA VIAGEM, com pericia 200: kireq = MaxKi/2 e SOBRA metade. O contra-exemplo e o DM, que
+		// cobrava `kireq*BaseDrain` (`:146`) e zerava qualquer tanque acima de 140 -- consertado por decisao do dono.
+		yd.Ficha.teleskill = 200;
+		yd.Ficha.Ki = yd.Ficha.MaxKi;
+		UsarHabilidade(yd, $"Instant_Transmission:{farol.Assinatura}");
+		bool concentrou = _transmissaoG11.TryGetValue(yd.Id, out TransmissaoG11? t2);
+		if (concentrou) { t2!.QuandoMs = NowMs() - 1; TickDoEfetorG11(); }
+		AfirmarG11($"com teleskill 200 a viagem cobra kireq = MaxKi/2 e DEIXA metade do Ki (o DM cobrava kireq*BaseDrain = {yd.Ficha.MaxKi / 2 * yd.Ficha.BaseDrain():0} deste tanque de {yd.Ficha.MaxKi:0} -- e ZERA qualquer tanque acima de 140, yardrat.dm:146)",
+				   concentrou && Math.Abs(yd.Ficha.Ki - yd.Ficha.MaxKi / 2) < 1e-6 && yd.Ficha.Ki > 0,
+				   $"concentrou {concentrou}, ki {yd.Ficha.Ki:0} de {yd.Ficha.MaxKi:0}, BaseDrain {yd.Ficha.BaseDrain():0.##}");
 
 		// conhecido pelo NOME
 		yd.Social.Fotografar(farol.Assinatura, farol.Name, "Human", "Normal", "Male", 25, NowMs());
 		yd.Social.SomarFamiliaridade(farol.Assinatura);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(yd, "Instant_Transmission");
-		AfirmarG11("conhecendo a pessoa, ela passa a aparecer pelo NOME", DisseG11("Farol:"), string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos = null;
+		falas = ApertarEOuvir(yd, "Instant_Transmission");
+		AfirmarG11("conhecendo a pessoa, ela passa a aparecer pelo NOME", Disse(falas, "Farol:"), Ultimos(falas));
 
 		LimparG11();
 	}
@@ -576,11 +567,10 @@ public sealed partial class GameServer
 		Prender(grabber, gato);
 		AfirmarG11("(preparo) o gato esta preso", gato.AgarradoPorId == grabber.Id);
 
-		EscutaDeAvisos = [];
 		gato.Ficha.Ki = 0;
-		UsarHabilidade(gato, "Flip");
+		List<string> falas = ApertarEOuvir(gato, "Flip");
 		AfirmarG11("sem Ki a cambalhota recusa e nao arma recarga",
-				   DisseG11("energia") && gato.AgarradoPorId == grabber.Id && !_prontoG3.ContainsKey(gato.Id));
+				   Disse(falas, "energia") && gato.AgarradoPorId == grabber.Id && !_prontoG3.ContainsKey(gato.Id));
 
 		gato.Ficha.Ki = gato.Ficha.MaxKi;
 		double custo = gato.Ficha.Ephysoff * 12 * gato.Ficha.BaseDrain();
@@ -600,7 +590,6 @@ public sealed partial class GameServer
 		AfirmarG11("com chance de sobra o gato se SOLTA (os dois lados limpos) e quem segurava leva dano",
 				   gato.AgarradoPorId == 0 && grabber.AgarrandoId == 0 && grabber.Combate.Corpo.Vida() < vidaGrabber,
 				   $"vida {vidaGrabber:0.##} -> {grabber.Combate.Corpo.Vida():0.##}");
-		EscutaDeAvisos = null;
 
 		// ---------------- STRETCHY ARMS ----------------
 		// corredor PROPRIO: o Agarrador da cambalhota continua de pe no anterior, e estaria "na frente"
@@ -609,17 +598,16 @@ public sealed partial class GameServer
 		AfirmarG11("a flag `can_stretch_arms=1` do extrator chegou no campo ao aprender", namek.Ficha.can_stretch_arms > 0);
 		ServerPlayer alvo = Forjar("Distante", chaoNamek + new Vec2(5 * ZoneCollision.TileSize, 0), bp: 1_000);
 
-		EscutaDeAvisos = [];
-		UsarHabilidade(namek, "agarrar");
+		falas = ApertarEOuvir(namek, "agarrar");
 		AfirmarG11("sem alvo marcado, o agarrao continua exigindo alguem NA FRENTE (recusa)",
-				   namek.AgarrandoId == 0 && DisseG11("ao seu alcance"), string.Join(" | ", EscutaDeAvisos));
+				   namek.AgarrandoId == 0 && Disse(falas, "ao seu alcance"), Ultimos(falas));
 
 		namek.AlvoId = alvo.Id;
-		UsarHabilidade(namek, "agarrar");
+		falas = ApertarEOuvir(namek, "agarrar");
 		double forcaEsperada = Agarrao.Forca(namek.Ficha) / 3;
 		AfirmarG11("com alvo marcado a 5 tiles, o braco ESTICA e agarra a distancia",
 				   namek.AgarrandoId == alvo.Id && alvo.AgarradoPorId == namek.Id,
-				   $"marcado={Marcado(namek)?.Name ?? "-"} pode={PodeMexerOCorpo(namek)} | {string.Join(" | ", EscutaDeAvisos)}");
+				   $"marcado={Marcado(namek)?.Name ?? "-"} pode={PodeMexerOCorpo(namek)} | {Ultimos(falas)}");
 		AfirmarG11("...com UM TERCO da forca (`(Ephysoff*expressedBP)/3`)",
 				   Math.Abs(alvo.ForcaDeQuemMeSegura - forcaEsperada) < 1e-6, $"{alvo.ForcaDeQuemMeSegura:0.##} vs {forcaEsperada:0.##}");
 		TickDoAgarrao(0.1);
@@ -632,7 +620,6 @@ public sealed partial class GameServer
 		humano.AlvoId = longe2.Id;
 		UsarHabilidade(humano, "agarrar");
 		AfirmarG11("sem a flag, o mesmo gesto NAO alcanca o alvo a 5 tiles", humano.AgarrandoId == 0);
-		EscutaDeAvisos = null;
 
 		LimparG11();
 	}
@@ -648,18 +635,17 @@ public sealed partial class GameServer
 		ServerPlayer bomba = ForjarG11("Bomba", chao, 2_000, PathSelfDestructG11T);
 		ServerPlayer refem = Forjar("Refem", chao + new Vec2(ZoneCollision.TileSize, 0), bp: 1_000);
 
-		EscutaDeAvisos = [];
 		double kiAntes = bomba.Ficha.Ki;
-		UsarHabilidade(bomba, "Self_Destruct");
+		List<string> falas = ApertarEOuvir(bomba, "Self_Destruct");
 		AfirmarG11("sem ninguem agarrado ela recusa ('agarrando alguem'), nao carrega e nao cobra",
-				   DisseG11("agarrando") && !_autodestruicaoG11.ContainsKey(bomba.Id) && Math.Abs(bomba.Ficha.Ki - kiAntes) < 1e-9);
+				   Disse(falas, "agarrando") && !_cargaG3.ContainsKey(bomba.Id) && Math.Abs(bomba.Ficha.Ki - kiAntes) < 1e-9);
 
 		Prender(bomba, refem);
 		UsarHabilidade(bomba, "Self_Destruct");
 		AfirmarG11("com alguem agarrado o primeiro aperto ARMA a carga (contador 1)",
-				   _autodestruicaoG11.TryGetValue(bomba.Id, out AutodestruicaoG11? c) && c.Contador == 1);
+				   _cargaG3.TryGetValue(bomba.Id, out CargaG3? c) && c.Contador == 1);
 		c!.ProximoMs = NowMs() - 1;
-		TickDoEfetorG11();
+		PulsoG3();   // a carga anda no pulso de 10 Hz, como a Final Explosion
 		AfirmarG11("...e a cada 2,5 s o contador sobe 5", c.Contador == 6, $"{c.Contador}");
 
 		// o DANO EM SI: re-arma e detona com carga 1 -- power = (eBP*Ekioff)/(eBP_refem*Ekidef) * 5 * 1,
@@ -683,10 +669,9 @@ public sealed partial class GameServer
 			return p != null && Math.Abs(kv.Value - p.Vida - power) < 1e-6;
 		});
 		AfirmarG11("detonar tira exatamente `power` de CADA membro de quem detona (o `usr.SpreadDamage(power)`)",
-				   danoBate && !_autodestruicaoG11.ContainsKey(bomba.Id), $"power {power:0.###} | {string.Join(" ", desvios)}");
+				   danoBate && !_cargaG3.ContainsKey(bomba.Id), $"power {power:0.###} | {string.Join(" ", desvios)}");
 		AfirmarG11("...o Ki de quem detona ZERA e o agarrao e desfeito", fb.Ki == 0 && bomba.AgarrandoId == 0);
 		AfirmarG11("...e quem detonou com carga <= 20 NAO morre (o sorteio de 75% so passa de 20)", !fb.dead);
-		EscutaDeAvisos = null;
 
 		// A MORTE DO AGARRADO: um poder esmagador, carga 1, detonacao imediata
 		ServerPlayer bomba2 = ForjarG11("Bomba2", CorredorLivre(12), 1_000_000, PathSelfDestructG11T);
@@ -830,28 +815,28 @@ public sealed partial class GameServer
 		ServerPlayer alien = ForjarG11("Alien", chao, 5_000, PathFreezeG11T);
 		ServerPlayer a1 = Forjar("Congelado1", chao + new Vec2(3 * ZoneCollision.TileSize, 0), bp: 1_000);
 		ServerPlayer a2 = Forjar("Congelado2", chao + new Vec2(5 * ZoneCollision.TileSize, 0), bp: 1_000);
+		ServerPlayer a3 = Forjar("Congelado3", chao + new Vec2(7 * ZoneCollision.TileSize, 0), bp: 1_000);
 
-		EscutaDeAvisos = [];
 		alien.Ficha.Ki = alien.Ficha.MaxKi * 0.2;
-		UsarHabilidade(alien, "Freeze");
+		List<string> falas = ApertarEOuvir(alien, "Freeze");
 		AfirmarG11("com um quinto do Ki o Freeze recusa e nao cobra nem congela",
-				   DisseG11("pouco Ki") && Math.Abs(alien.Ficha.Ki - alien.Ficha.MaxKi * 0.2) < 1e-9
+				   Disse(falas, "pouco Ki") && Math.Abs(alien.Ficha.Ki - alien.Ficha.MaxKi * 0.2) < 1e-9
 				   && !_paralisadoAte.ContainsKey(a1.Id));
 
 		alien.Ficha.Ki = alien.Ficha.MaxKi;
 		long antes = NowMs();
 		UsarHabilidade(alien, "Freeze");
 		long msEsperado1 = (long)(20 * alien.Ficha.Ekiskill / a1.Ficha.Ephysoff * 100);
-		AfirmarG11("com Ki, os DOIS a vista ficam com as pernas trancadas por `(20*Ekiskill)/Ephysoff` decimos",
-				   _paralisadoAte.TryGetValue(a1.Id, out long p1) && _paralisadoAte.ContainsKey(a2.Id)
+		AfirmarG11("com Ki, os TRES a vista ficam com as pernas trancadas por `(20*Ekiskill)/Ephysoff` decimos",
+				   _paralisadoAte.TryGetValue(a1.Id, out long p1) && _paralisadoAte.ContainsKey(a2.Id) && _paralisadoAte.ContainsKey(a3.Id)
 				   && Math.Abs(p1 - antes - msEsperado1) <= 60, $"{msEsperado1} ms");
-		AfirmarG11("...e o Ki caiu para UM QUARTO: metade POR ALVO (o defeito visivel do DM, mantido)",
-				   Math.Abs(alien.Ficha.Ki - alien.Ficha.MaxKi * 0.25) < 1e-6, $"{alien.Ficha.Ki:0.##} de {alien.Ficha.MaxKi:0.##}");
+		AfirmarG11("...e o Ki caiu para METADE, uma vez so, com TRES congelados (o DM cobrava `Ki*=0.5` dentro do `for`, TimeStop.dm:14-16: 87,5% -- consertado por decisao do dono)",
+				   Math.Abs(alien.Ficha.Ki - alien.Ficha.MaxKi * 0.5) < 1e-6, $"{alien.Ficha.Ki:0.##} de {alien.Ficha.MaxKi:0.##}");
 		AfirmarG11("...e quem esta congelado quase nunca anda (a paralisia de producao)",
 				   Enumerable.Range(0, 100).Count(_ => PodeMexerOCorpo(a1)) < 40);
 		EsquecerParalisia(a1.Id);
 		EsquecerParalisia(a2.Id);
-		EscutaDeAvisos = null;
+		EsquecerParalisia(a3.Id);
 
 		// ---------------- PSYCHO THREAD ----------------
 		ServerPlayer heran = ForjarG11("Heran", CorredorLivre(12), 50_000, SkillPsychoThreadG11);
@@ -869,7 +854,7 @@ public sealed partial class GameServer
 				   fio != null && fio.Paralisia && !fio.Deflectivel && fio.Rumo.LengthSquared < 1e-9
 				   && Vec2.Distance(fio.Pos, pos) < 1 && Vec2.Distance(heran.Pos, pos) < 1,
 				   $"{tiros.Count - tirosAntes} tiro(s)");
-		AfirmarG11("...que vive 5 s (o `Burnout()` padrao) e cobra `100*BaseDrain` (a porta confere 700)",
+		AfirmarG11("...que vive 5 s (o `Burnout()` padrao) e cobra `100*BaseDrain` -- o mesmo numero que a porta confere",
 				   fio != null && Math.Abs(fio.VidaRestante - 5) < 1e-9
 				   && Math.Abs(kiAntes - heran.Ficha.Ki - 100 * heran.Ficha.BaseDrain()) < 1e-6);
 
@@ -879,14 +864,23 @@ public sealed partial class GameServer
 		AfirmarG11("...mas o proprio Heran nao (o dono do tiro nao pisa no proprio fio)", !_paralisadoAte.ContainsKey(heran.Id));
 		EsquecerParalisia(pisou.Id);
 
+		// COM 500x O DRENO-BASE (entre os 100x do custo e os 700x da porta velha): o fio ARMA e cobra 100x.
+		// O contra-exemplo e o DM, que recusava aqui (`Ki >= 700*BaseDrain`, click.dm:5) -- consertado por decisao do dono.
 		_debuffPronto.Remove(heran.Id);
 		heran.Ficha.Ki = 500 * heran.Ficha.BaseDrain();
 		int antesTiros = ProjeteisDaZona(heran.Zone.Hash).Count;
-		double kiPouco = heran.Ficha.Ki;
-		EscutaDeAvisos = [];
+		double kiMeio = heran.Ficha.Ki;
 		Zanzoken(heran, pos + new Vec2(4 * ZoneCollision.TileSize, 0));
-		AfirmarG11("abaixo dos 700*BaseDrain da porta o fio recusa e nao cobra",
-				   ProjeteisDaZona(heran.Zone.Hash).Count == antesTiros && Math.Abs(heran.Ficha.Ki - kiPouco) < 1e-9 && DisseG11("reserva"));
+		AfirmarG11("com 500x o dreno-base o fio ARMA e cobra 100x: a porta e o custo sao o MESMO numero (o DM recusava abaixo de 700x, click.dm:5)",
+				   ProjeteisDaZona(heran.Zone.Hash).Count == antesTiros + 1 && Math.Abs(kiMeio - heran.Ficha.Ki - 100 * heran.Ficha.BaseDrain()) < 1e-6,
+				   $"tiros +{ProjeteisDaZona(heran.Zone.Hash).Count - antesTiros}, ki {kiMeio:0} -> {heran.Ficha.Ki:0}");
+		_debuffPronto.Remove(heran.Id);
+		heran.Ficha.Ki = 50 * heran.Ficha.BaseDrain();
+		antesTiros = ProjeteisDaZona(heran.Zone.Hash).Count;
+		double kiPouco = heran.Ficha.Ki;
+		falas = Ouvir(() => Zanzoken(heran, pos + new Vec2(4 * ZoneCollision.TileSize, 0)));
+		AfirmarG11("abaixo dos 100*BaseDrain do custo o fio recusa dizendo o preco e nao cobra",
+				   ProjeteisDaZona(heran.Zone.Hash).Count == antesTiros && Math.Abs(heran.Ficha.Ki - kiPouco) < 1e-9 && Disse(falas, "o fio pede"));
 
 		UsarHabilidade(heran, "Psycho_Thread");
 		AfirmarG11("o toggle DESLIGA o fio", heran.Ficha.psythre == 0);
@@ -895,7 +889,6 @@ public sealed partial class GameServer
 		Zanzoken(heran, pos + new Vec2(4 * ZoneCollision.TileSize, 0));
 		AfirmarG11("desligado, o clique volta a ser o Zanzoken (que este corpo nao sabe): nenhum fio, nenhum Ki",
 				   ProjeteisDaZona(heran.Zone.Hash).Count == antesTiros && Math.Abs(heran.Ficha.Ki - kiDesl) < 1e-9);
-		EscutaDeAvisos = null;
 
 		LimparG11();
 	}
@@ -913,25 +906,21 @@ public sealed partial class GameServer
 		ServerPlayer robo = Forjar("Robo", longe.Pos + new Vec2(ZoneCollision.TileSize, 0), bp: 5_000);
 		robo.Race = "Android";
 
-		EscutaDeAvisos = [];
-		UsarHabilidade(obs, "Observe:Vigiado");
+		List<string> falas = ApertarEOuvir(obs, "Observe:Vigiado");
 		AfirmarG11("Observe:<nome> projeta a mente: diz o mundo, o tile e a condicao, e marca `observingnow`",
-				   obs.Ficha.observingnow > 0 && DisseG11("Earth") && DisseG11("condicao"), string.Join(" | ", EscutaDeAvisos));
-		AfirmarG11("...e enxerga quem esta em volta do vigiado", DisseG11("Robo"));
+				   obs.Ficha.observingnow > 0 && Disse(falas, "Earth") && Disse(falas, "condicao"), Ultimos(falas));
+		AfirmarG11("...e enxerga quem esta em volta do vigiado", Disse(falas, "Robo"));
 
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(obs, "Observe:Robo");
-		AfirmarG11("um Android nao tem energia pra achar: recusa", DisseG11("energia"), string.Join(" | ", EscutaDeAvisos));
+		falas = ApertarEOuvir(obs, "Observe:Robo");
+		AfirmarG11("um Android nao tem energia pra achar: recusa", Disse(falas, "energia"), Ultimos(falas));
 
 		longe.Ficha.isconcealed = true;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(obs, "Observe:Vigiado");
-		AfirmarG11("quem esconde o poder tambem nao", DisseG11("energia"));
+		falas = ApertarEOuvir(obs, "Observe:Vigiado");
+		AfirmarG11("quem esconde o poder tambem nao", Disse(falas, "energia"));
 		longe.Ficha.isconcealed = false;
 
 		UsarHabilidade(obs, "Observe");
 		AfirmarG11("Observe sem nome SOLTA a projecao", obs.Ficha.observingnow == 0);
-		EscutaDeAvisos = null;
 
 		// ---------------- UNLOCK POTENTIAL ----------------
 		ServerPlayer kai = ForjarG11("Anciao", chao, 5_000, PathUnlockG11T);
@@ -943,11 +932,10 @@ public sealed partial class GameServer
 		double ganhoBaseMinimo = aprendiz.Ficha.CapCheck(aprendiz.Ficha.BP * 0.25 * Math.Max(aprendiz.Ficha.UPMod, 1));
 		aprendiz.Ficha.BPBuffer = 0;
 
-		EscutaDeAvisos = [];
-		UsarHabilidade(kai, "Unlock_Potential");
+		falas = ApertarEOuvir(kai, "Unlock_Potential");
 		AfirmarG11("o Anciao OFERECE ao marcado ao lado (nada muda ate ele aceitar)",
 				   _ofertasDePotencialG11.ContainsKey(aprendiz.Conta) && Math.Abs(aprendiz.Ficha.BP - bpAntes) < 1e-12
-				   && DisseG11("oferece"));
+				   && Disse(falas, "oferece"));
 
 		ComandoDeCargo(aprendiz, "potencial_aceitar", "");
 		AfirmarG11("ao aceitar, o potencial desperta: BP += pelo menos capcheck(BP*0,25*Potencial), kiskill +0,4, flag gravada",
@@ -958,10 +946,9 @@ public sealed partial class GameServer
 		AfirmarG11("...e o marco 'potential' (1,5x) foi alcancado", aprendiz.Ficha.bp_milestones_done.Contains("potential"));
 
 		double bpUmaVez = aprendiz.Ficha.BP;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(kai, "Unlock_Potential");
+		falas = ApertarEOuvir(kai, "Unlock_Potential");
 		AfirmarG11("a SEGUNDA vez e recusada ('ja foi despertado') e nao ha oferta nova",
-				   DisseG11("ja foi despertado") && !_ofertasDePotencialG11.ContainsKey(aprendiz.Conta));
+				   Disse(falas, "ja foi despertado") && !_ofertasDePotencialG11.ContainsKey(aprendiz.Conta));
 		ComandoDeCargo(aprendiz, "potencial_aceitar", "");
 		AfirmarG11("...e aceitar sem oferta nao desperta nada de novo (UMA vez por vida)",
 				   Math.Abs(aprendiz.Ficha.BP - bpUmaVez) < 1e-12);
@@ -971,7 +958,6 @@ public sealed partial class GameServer
 		UsarHabilidade(kai, "Unlock_Potential");
 		AfirmarG11("sem marcado, o Anciao desperta o PROPRIO potencial na hora (o `view(1)` do DM inclui ele)",
 				   kai.Ficha.unlockPotential >= 1 && kai.Ficha.BP > bpKai);
-		EscutaDeAvisos = null;
 
 		LimparG11();
 	}
@@ -990,10 +976,9 @@ public sealed partial class GameServer
 		alvo.Ficha.Ki = 0;
 		doador.AlvoId = alvo.Id;
 
-		EscutaDeAvisos = [];
 		doador.Ficha.Ki = doador.Ficha.MaxKi * 0.005;
-		UsarHabilidade(doador, "Give_Power");
-		AfirmarG11("sem Ki pra uma dose sequer a doacao recusa", !_doacaoG11.ContainsKey(doador.Id) && DisseG11("dose"));
+		List<string> falas = ApertarEOuvir(doador, "Give_Power");
+		AfirmarG11("sem Ki pra uma dose sequer a doacao recusa", !_doacaoG11.ContainsKey(doador.Id) && Disse(falas, "dose"));
 
 		doador.Ficha.Ki = doador.Ficha.MaxKi;
 		double dose = doador.Ficha.MaxKi * 0.01;
@@ -1018,7 +1003,6 @@ public sealed partial class GameServer
 		for (int i = 0; i < 6; i++) TickDoEfetorG11();
 		AfirmarG11("...e o CooldownAmount DECAI a cada segundo (0,1% enquanto >= 1; abaixo disso zera)",
 				   cd < 1 ? doador.Ficha.CooldownAmount == 0 : doador.Ficha.CooldownAmount < cd, $"{cd:0.####} -> {doador.Ficha.CooldownAmount:0.####}");
-		EscutaDeAvisos = null;
 
 		// ---------------- TIME STORE ----------------
 		ServerPlayer kan = ForjarG11("Kanassa", chao, 5_000, SkillTimeStoreG11);

@@ -261,6 +261,7 @@ public partial class GameServer
 		Skill s = _skills.Get(path)!;
 		GD.Print($"[server] {pl.Name} aprendeu '{s.Nome}' ({SkillCatalog.CustoDe(s)} marcos, restam {pl.Livro.MarcosLivres})");
 		Avisar(pl, EfeitoEmTexto(s));
+		AplicarNiveisDeTeste(pl, so: path);   // `--nivelteste`: a skill comprada ja nasce no nivel pedido (so bancada)
 
 		// O GANHO NA COMPRA COM EXPRESSAO -- `BP += max(1, BP*0.01)`, `hiddenpotential += relBPmax*2`
 		// (One Hundred, Bodybuilding.dm:89-92). Uma vez, agora, sobre a ficha de agora; o que somou
@@ -323,14 +324,48 @@ public partial class GameServer
 	{
 		if (_skills == null || pl.Livro == null) return false;
 
+		// ============================ O QUE O BUFF DE KI FAZ POR TIQUE ============================
+		// As duas linhas moram no `effector()` de skills da arvore da Mente, e as duas dependem de
+		// `kibuffon` -- por isso elas rodam AQUI, na cadencia do efetor (5 Hz), e nao no tique de
+		// buffs (1 Hz): a taxa de exp e a de cura seriam um quinto das do original.
+		//
+		//   * `if(savant.kibuffon) savant.kibuffcounter += 1` -- Ki Unlocked, `Mind.dm:133`. E a UNICA
+		//     fonte do contador que treina a familia Buff Mastery. (Aquelas tres skills sao
+		//     inalcancaveis no DM por um `growbranches()` escrito na arvore errada -- ver o censo --,
+		//     entao hoje isto quase nunca credita; a linha existe porque a do DM existe, e o dia em
+		//     que o dono consertar a arvore ela ja estara ligada.)
+		//   * `if(savant.buffregen) savant.SpreadHeal(0.01)` -- Advanced Ki Circulation, `Mind.dm:517`,
+		//     que so tem `buffregen` a partir do nivel 30 dela.
+		if (pl.Ficha.kibuffon != 0)
+		{
+			pl.Niveis.CreditarPorContador("kibuffcounter", 1, pl.Ficha);
+			if (pl.Ficha.buffregen != 0) pl.Combate?.Corpo.Curar(0.01);
+		}
+
 		// O ESTADO DO CORPO ENTRA NO EFETOR. Sem ele, as 122 regras de exp condicionais do
 		// `niveis.json` continuariam abertas e descartadas -- entre elas as tres do
 		// `Ki_Unlocked`, a raiz da arvore de Ki: 2 por tique MEDITANDO, 2 VOANDO, 1 parado.
 		// Era por isso que meditar nao rendia maestria de Ki nenhuma.
+		// E EM LUTA (`IsInFight`, o relogio curto do combate): a unica fonte de exp da Holy Trinity
+		// (Bodybuilding.dm:176) e das artes marciais do corpo -- sem ela a Trindade nunca chegava ao
+		// nivel 2 e o verb da casa escolhida nunca vinha.
 		List<NiveisDeSkill.Subida> subiu =
 			pl.Niveis.Efetor(_rng, _skills, pl.Livro,
 				new NiveisDeSkill.EstadoDoCorpo(
-					Meditando: pl.Ficha.med, Voando: pl.Voando, Treinando: pl.Ficha.train));
+					Meditando: pl.Ficha.med, Voando: pl.Voando, Treinando: pl.Ficha.train,
+					Lutando: pl.Ficha.IsInFight,
+					// ---- os quatro do lote G13 (a arvore "Strength of Mind") ----
+					// Os tres primeiros sao campos do proprio lutador; passam pelo estado porque o
+					// Core nao le a ficha pra decidir CHAVE (so pra fazer CONTA -- ver `Ficha` abaixo).
+					Estudando: pl.Ficha.studying != 0,
+					Observando: pl.Ficha.observingnow != 0,
+					ComBuffDeKi: pl.Ficha.kibuffon != 0,
+					// `savant.deepmeditation` NUNCA e ligado no DM (a reforma da meditacao o deixou
+					// so com os `= 0`): o `false` cravado aqui e o defeito do original, a vista.
+					// Ver `RegraDeNivel.Estado.MeditacaoProfunda`.
+					MeditacaoProfunda: false,
+					// A FICHA: `kiratio`, `Ki/MaxKi` e a curva do `KiSkillGains` sao CONTA, nao chave.
+					Ficha: pl.Ficha));
 		if (subiu.Count == 0) return false;
 
 		pl.Niveis.Aplicar(pl.Ficha);
@@ -526,7 +561,7 @@ public partial class GameServer
 	}
 
 	/// <summary>Manda a lista de aprendidas e os marcos. Como o resto: so quando muda.</summary>
-	private static void MandarSkills(ServerPlayer pl, bool forcar = false)
+	private void MandarSkills(ServerPlayer pl, bool forcar = false)
 	{
 		// O BIT DE VILAO ENTRA NA ASSINATURA. Todo campo que vai no pacote precisa estar aqui, senao
 		// ele so chega de carona quando outro muda -- e a promocao a vilao (que nao mexe em marco
@@ -535,8 +570,12 @@ public partial class GameServer
 		// O ESTADO DAS ARVORES TAMBEM ENTRA, pelo mesmo motivo do bit de vilao: um contador que
 		// subiu por NIVEL (o `kieffusionskill` do degrau 35 da Basic Ki Circulation) abre a Effusive
 		// Mastery sem mexer em marco nem em skill aprendida -- e a tela so saberia na proxima compra.
+		// E OS VERBS ATIVOS, pelo mesmo motivo de novo: um degrau cruzado no tique (ou a casa escolhida na
+		// Trindade) concede verb sem mexer em marco, skill nem arvore -- e o botao so nasceria na proxima
+		// compra. Ver `Protocol.PorEstadoDeSkills`.
 		string sig = $"{pl.Livro.MarcosLivres}/{pl.Livro.MarcosTotais}:{pl.Livro.Aprendidas.Count}"
-				   + $":{(EhVilao(pl) ? 'v' : '-')}:{pl.Livro.AssinaturaDasArvores()}";
+				   + $":{(EhVilao(pl) ? 'v' : '-')}:{pl.Livro.AssinaturaDasArvores()}"
+				   + $":{string.Join(",", TecnicasDe(pl))}";
 		if (!forcar && sig == pl.SigSkills) return;
 		pl.SigSkills = sig;
 
@@ -544,11 +583,31 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// O `--nivelteste` APLICADO: poe no nivel pedido a skill que o livro JA TEM. `so` = so esta skill (a
+	/// compra que acabou de acontecer), nulo = todas as que o livro tem (o login). E o irmao do
+	/// `--skillteste` pro DEGRAU, e de proposito NAO concede nada: quem concede e o `--skillteste` (no
+	/// login) ou a COMPRA pelo funil -- a primeira versao dava a skill aqui, e a bancada do cliente
+	/// (`--diagdegrau`) "comprou" a Trindade com zero compras, porque ela ja tinha nascido no livro. A
+	/// subida de nivel em si tem bancada propria (`--arvoreteste`, `niveis`); aqui o nivel e dado pra que
+	/// a pergunta seja uma so: o verb concedido vira botao e funciona?
+	/// </summary>
+	private void AplicarNiveisDeTeste(ServerPlayer pl, string? so = null)
+	{
+		if (pl.Livro == null || pl.Niveis == null) return;
+		foreach ((string path, int nivel) in _niveisDeTeste)
+		{
+			if (so != null && !string.Equals(so, path, StringComparison.OrdinalIgnoreCase)) continue;
+			if (!pl.Livro.Sabe(path)) continue;
+			pl.Niveis.Por(path, nivel);
+		}
+	}
+
+	/// <summary>
 	/// OS BYTES DO `S2C.Skills`. Separado do envio pra que a bancada (`--arvoreteste`) possa
 	/// desmontar o pacote com o leitor do CLIENTE e conferir que o que sai no fio e o que o livro tem
 	/// -- um pacote que so existe dentro de um `Peer.Send` nao se confere.
 	/// </summary>
-	private static NetDataWriter MontarPacoteDeSkills(ServerPlayer pl)
+	private NetDataWriter MontarPacoteDeSkills(ServerPlayer pl)
 	{
 		var w = Protocol.Begin(Protocol.S2C.Skills);
 		w.Put(pl.Livro.MarcosTotais);
@@ -566,9 +625,11 @@ public partial class GameServer
 		w.Put((ushort)pl.Livro.Aprendidas.Count);
 		foreach (string p in pl.Livro.Aprendidas) w.Put(p);
 
-		// A CAUDA: o estado das arvores -- o RESULTADO do `growbranches()`, e nao os contadores.
-		// O porque esta em `Protocol.PorEstadoDeSkills`.
-		Protocol.PorEstadoDeSkills(w, pl.Livro);
+		// A CAUDA: o estado das arvores -- o RESULTADO do `growbranches()`, e nao os contadores -- e os
+		// VERBS ATIVOS (skill + degrau + casa), a MESMA lista que o `SabeTecnica` aceita: o que o menu
+		// mostra e o que o servidor executa nunca podem ser duas listas. O porque esta em
+		// `Protocol.PorEstadoDeSkills`.
+		Protocol.PorEstadoDeSkills(w, pl.Livro, TecnicasDe(pl));
 		return w;
 	}
 }

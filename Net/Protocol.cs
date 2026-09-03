@@ -1644,7 +1644,12 @@ public static class Protocol
         int n = Math.Min((int)r.GetByte(), Jandirus.Core.Items.Inventario.Slots);
         for (int i = 0; i < n; i++)
         {
-            string id = r.GetString(32);
+            // 64 E NAO 32: o LIVRO DE ENSINAMENTOS carrega os proprios dados NO ID
+            // (`Livro|Advanced Targeted Mastery|100`, 35 letras -- ver `LivroDeEnsinamentos`).
+            // `GetString(max)` do LiteNetLib devolve VAZIO quando o texto passa do limite -- ele
+            // consome os bytes do mesmo jeito, entao o pacote nao se desalinha: o livro
+            // simplesmente SUMIA da mochila do dono, sem erro em lugar nenhum.
+            string id = r.GetString(64);
             int q = r.GetUShort();
             if (id.Length > 0 && q > 0) inv.Pilhas.Add(new Jandirus.Core.Items.Pilha(id, q));
         }
@@ -1685,8 +1690,18 @@ public static class Protocol
     ///     u16 nArvores; por arvore:
     ///         string path; u8 tier; u16 investido; u16 proximoInvestir; u8 proximoTier;
     ///         u16 nAcesas, string[]; u16 nApagadas, string[]
+    ///     u16 nVerbos, string[]                       -- os verbs que este personagem pode acionar HOJE
+    ///
+    /// ============================ OS VERBS ATIVOS VIAJAM PELO MESMO MOTIVO ============================
+    /// O cliente montava os botoes de tecnica so do CATALOGO (`Skill.Verbos` das aprendidas). Os verbs
+    /// concedidos por NIVEL (o Hokuto Hyakuretsu Ken no nivel 2 do Hokuto no Shinken -- 60 dos 189 do
+    /// jogo) e os por CASA (a Trindade) nao estao em skill nenhuma: estao no `niveis.json` cruzado com o
+    /// NIVEL ATUAL, e o nivel e do servidor (decisao de 2026-09-01: ele nao viaja). Entao o servidor
+    /// manda o RESULTADO -- a mesma lista que o `SabeTecnica` aceita (`TecnicasDe`) -- e o botao nasce
+    /// dela. Sem esta cauda, 16 golpes do lote G10 e 13 do G7 tinham corpo, porta e NENHUM botao.
+    /// ================================================================================================
     /// </summary>
-    public static void PorEstadoDeSkills(NetDataWriter w, SkillBook livro)
+    public static void PorEstadoDeSkills(NetDataWriter w, SkillBook livro, IReadOnlyList<string> verbos)
     {
         w.Put((ushort)livro.Destravadas.Count);
         foreach (string p in livro.Destravadas) w.Put(p);
@@ -1704,10 +1719,13 @@ public static class Protocol
             w.Put((ushort)e.Apagadas.Count);
             foreach (string p in e.Apagadas) w.Put(p);
         }
+
+        w.Put((ushort)Math.Min(verbos.Count, ushort.MaxValue));
+        foreach (string v in verbos) w.Put(v);
     }
 
     /// <summary>O espelho de <see cref="PorEstadoDeSkills"/> -- o cliente e a bancada leem por aqui.</summary>
-    public static (List<string> Destravadas, List<EstadoDeArvore> Arvores) LerEstadoDeSkills(NetDataReader r)
+    public static (List<string> Destravadas, List<EstadoDeArvore> Arvores, List<string> Verbos) LerEstadoDeSkills(NetDataReader r)
     {
         int nd = r.GetUShort();
         var destravadas = new List<string>(nd);
@@ -1731,7 +1749,11 @@ public static class Protocol
             for (int k = 0; k < nap; k++) e.Apagadas.Add(r.GetString(96));
             arvores.Add(e);
         }
-        return (destravadas, arvores);
+
+        int nv = r.GetUShort();
+        var verbos = new List<string>(nv);
+        for (int i = 0; i < nv; i++) verbos.Add(r.GetString(64));
+        return (destravadas, arvores, verbos);
     }
 }
 

@@ -113,6 +113,7 @@ public partial class GameServer
 			OCargoDaETira();
 			ARextracaoNaoQuebrouNada();
 			CoberturaESemContradicao();
+			ORelogNaoHerda();
 		}
 		catch (Exception e)
 		{
@@ -149,11 +150,17 @@ public partial class GameServer
 
 		// ============================ AS DUAS BOCAS ============================
 		// O efeito mora no servidor; o descritor mora no Core, porque o console do extrator nao
-		// carrega Godot e mesmo assim conta o progresso. Enquanto as duas escreviam no mesmo
-		// dicionario, a divergencia era invisivel -- o segundo registro cobria o primeiro.
+		// carrega Godot e mesmo assim conta o progresso.
+		//
+		// O DESCRITOR NAO E MAIS ESCRITO DUAS VEZES: os lotes registram so o CORPO (`Vivo`), e o
+		// texto vive so em `Tecnicas.Portadas.cs`. Mas a conta continua podendo nao fechar nas duas
+		// direcoes -- um lote pode ganhar um `Vivo` sem descritor, e um descritor pode sobreviver ao
+		// corpo que ele descrevia. Por isso o lado "vivo" vem do REGISTRO DO SERVIDOR
+		// (<see cref="TecnicasComCorpo"/>) e nao de `Tecnicas.Vivas`, que hoje E o espelho: comparar
+		// o espelho com ele mesmo seria uma prova que nunca reprova.
 		// =====================================================================
 		(List<string> soNoJogo, List<string> soNoEspelho) =
-			Tecnicas.DesencontroDoEspelho(Tecnicas.Vivas, Tecnicas.NoEspelho);
+			Tecnicas.DesencontroDoEspelho(TecnicasComCorpo(), Tecnicas.NoEspelho);
 
 		AfirmarCat("o ESPELHO DO CORE conhece todo verb que o servidor porta (senao o console subconta)",
 				   soNoJogo.Count == 0,
@@ -252,16 +259,21 @@ public partial class GameServer
 			+ "noventa (o pote e denso e entra na colisao). Quem o prova de ponta a ponta, com pote, "
 			+ "fita e preso, e a `--seloteste`",
 
-		// ---- lote G10: a Trindade NAO TEM PORTA neste port -- ver `SemPortaNestePort` ----
+		// ---- lote G10: a Trindade tem porta, e a porta e uma CASA (escolha unica) ----
+		// O degrau 2 da Holy Trinity concede UM dos tres conforme a casa escolhida (`verbosporcasa`,
+		// `Bodybuilding.dm:180-185`). O corpo da varredura aprende tudo mas NAO escolhe casa nenhuma --
+		// e escolher uma faria os outros dois recusar de qualquer jeito: sao exclusivos. A recusa aqui e
+		// do gate ("voce nao sabe"), e quem prova os tres pelo caminho de producao (Dar + Escolher +
+		// nivel 2) e a `--g10teste`.
 		["Taunt"] =
-			"NAO TEM PORTA neste port -- ver `SemPortaNestePort`. A recusa e do gate (\"voce nao sabe\"), e "
-			+ "nao do efeito; quem prova o efeito, com um degrau sintetico, e a `--g10teste`",
+			"e da CASA Van-sama da Trindade (escolha unica): o corpo da varredura nao escolheu casa. "
+			+ "A recusa e do gate; a `--g10teste` prova o efeito com a casa escolhida",
 		["Counter_Taunt"] =
-			"NAO TEM PORTA neste port -- ver `SemPortaNestePort`. A recusa e do gate, e nao do efeito; "
-			+ "a `--g10teste` prova o dano mental com um degrau sintetico",
+			"e da CASA Aniki da Trindade (escolha unica): o corpo da varredura nao escolheu casa. "
+			+ "A recusa e do gate; a `--g10teste` prova o dano mental com a casa escolhida",
 		["Slap"] =
-			"NAO TEM PORTA neste port -- ver `SemPortaNestePort`. A recusa e do gate, e nao do efeito; "
-			+ "a `--g10teste` prova o atordoamento com um degrau sintetico",
+			"e da CASA Ricardo da Trindade (escolha unica): o corpo da varredura nao escolheu casa. "
+			+ "A recusa e do gate; a `--g10teste` prova o atordoamento com a casa escolhida",
 
 		// ---- lote G11: um que exige um AGARRADO e um cuja lista depende de pericia e de poder relativo ----
 		["Self_Destruct"] =
@@ -318,6 +330,18 @@ public partial class GameServer
 		["Devil_Bringer"] = "Devil_Bringer:Namek",
 		["Kai_Kai"] = "Kai_Kai:Namek",
 		["Observe"] = "Observe:Boneco",
+
+		// ---- lote G13: os tres do sistema de estudo, todos do mesmo desenho ----
+		// Os tres do DM abrem `input()`: `Study_Other` lista quem esta a vinte tiles (`:57-61`),
+		// `Focus_Skill` e `Write_Teachings` listam as SUAS skills da Mente (`:88`, `:151-154`). Aqui o
+		// id nu responde a lista e o id com argumento age -- e cada um mexe num registro do servidor
+		// (`_estudoG13`, `_focoG13`, `_escritaG13`), que e o que a impressao do mundo enxerga.
+		//
+		// O ALVO DO ESTUDO E O "Boneco" da cena (o segundo corpo); as duas skills escolhidas sao a
+		// `Ki Unlocked`, que o corpo da varredura sabe no nivel 99.
+		["Study_Other"] = "Study_Other:Boneco",
+		["Focus_Skill"] = "Focus_Skill:Ki Unlocked",
+		["Write_Teachings"] = "Write_Teachings:Ki Unlocked",
 	};
 
 	/// <summary>
@@ -343,17 +367,11 @@ public partial class GameServer
 	{
 		["Bite"] = "vampirismo/licantropia (maestria ESCONDIDA do DM, fora do `skills.json`)",
 
-		// ============================ A TRINDADE: A PORTA E UMA ESCOLHA QUE O EXTRATOR POE EM QUARENTENA ============================
-		// `Taunt`, `Counter_Taunt` e `Slap` (lote G10) sao concedidos no DM pelo degrau 2 de
-		// `/datum/skill/Bodybuilding/TheHolyTrinity` -- UM dos tres, conforme o `TrinityType` que o
-		// jogador escolhe num `input()` ao aprender (`Bodybuilding.dm:113-140`, `:180-185`). O extrator
-		// nao le a escolha: o degrau sai do `niveis.json` com `verbos: []` e o `switch` inteiro em
-		// `logica` (quarentena). E a familia F1 do censo ("escolha unica na 2a forma"), do lote do
-		// extrator; enquanto ela nao chega, os tres tem corpo e nao tem porta -- como o `Bite`.
-		// ==========================================================================================================================
-		["Taunt"] = "a escolha do TrinityType (`Bodybuilding.dm:182-185`, degrau em quarentena no extrator)",
-		["Counter_Taunt"] = "a escolha do TrinityType (`Bodybuilding.dm:182-185`, degrau em quarentena no extrator)",
-		["Slap"] = "a escolha do TrinityType (`Bodybuilding.dm:182-185`, degrau em quarentena no extrator)",
+		// A TRINDADE MORAVA AQUI ate 2026-09-02 ("a escolha do TrinityType, degrau em quarentena no
+		// extrator"). O extrator passou a ler o `switch(TrinityType)` do degrau 2 como `verbosporcasa`
+		// (`Bodybuilding.dm:180-185`), o `RegrasDeNivel.VerbosDeDegrau` passou a conta-los, e a linha
+		// "nenhum dos declarados SEM PORTA ganhou uma sem que a lista soubesse" e a que exigiu a saida
+		// deles daqui -- exatamente o que ela existe pra fazer. Ver `RecusamPorCondicao` (a casa).
 	};
 
 	/// <summary>As tres frases com que o despacho responde "isto nao existe". Nenhuma conta como resposta.</summary>
@@ -533,15 +551,14 @@ public partial class GameServer
 		bool canalAntes = _canais.ContainsKey(a.Id);
 
 		string antes = ImpressaoDoMundo(a, d);
-		EscutaDeAvisos = [];
 		string estouro = "";
-
-		try { UsarHabilidade(a, id); }
-		catch (Exception e) { estouro = e.GetType().Name + ": " + e.Message; }
+		List<string> falou = Ouvir(() =>
+		{
+			try { UsarHabilidade(a, id); }
+			catch (Exception e) { estouro = e.GetType().Name + ": " + e.Message; }
+		});
 
 		string depois = ImpressaoDoMundo(a, d);
-		List<string> falou = EscutaDeAvisos ?? [];
-		EscutaDeAvisos = null;
 
 		int tirosDepois = ProjeteisDaZona(ZonaDaBancadaDeProjetil.Hash).Count;
 		bool canalDepois = _canais.ContainsKey(a.Id);
@@ -599,24 +616,17 @@ public partial class GameServer
 	/// </summary>
 	private ServerPlayer ForjarQueSabeTudo(string nome, Vec2 onde)
 	{
-		ServerPlayer pl = Forjar(nome, onde, bp: 80_000_000);
+		string[] tudo = [.. _skills!.Todas.Where(s => !s.Arvore).Select(s => s.Path)];
+		ServerPlayer pl = ForjarComSkills(nome, onde, bp: 80_000_000, skills: tudo,
+										  degraus: [.. tudo.Select(p => (p, 99))]);
 
 		// SAIYAJIN, e nao Humano (o padrao do forjador). Uma raca so pode ser escolhida, e esta e a
 		// que tem escada de transformacao: com um Humano o `DirectSSJ` responde "sua raca nao tem essa
 		// escada" -- recusa CORRETA, e a varredura estaria medindo a cena em vez do efeito. As
 		// tecnicas de outra raca continuam fora do alcance desta bancada, e isso esta dito aqui em vez
-		// de escondido num numero verde.
+		// de escondido num numero verde. O tanque vem DEPOIS da troca: o `Statify` refaz o MaxKi.
 		pl.Race = pl.Ficha.Race = "Saiyan";
 		pl.Ficha.Statify();
-
-		var save = new NivelSave();
-		foreach (Skill s in _skills!.Todas)
-		{
-			if (s.Arvore) continue;
-			pl.Livro!.Dar(s.Path);
-			save.Skills[s.Path] = [99, 0];
-		}
-		pl.Niveis.DoSave(save);
 
 		pl.Ficha.Ki = pl.Ficha.MaxKi = Math.Max(pl.Ficha.MaxKi, 5_000_000_000);
 		pl.Ficha.stamina = pl.Ficha.maxstamina = Math.Max(pl.Ficha.maxstamina, 10_000_000);
@@ -1190,5 +1200,90 @@ public partial class GameServer
 			if (id >= IdBaseDeProjetil) _cargaDoPlanetDestroy.Remove(id);
 
 		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// 7) O RELOG NAO HERDA
+	// =====================================================================
+	private const string PathDoKiShield = "/datum/skill/Cultivation/Ki_Shield";
+
+	/// <summary>
+	/// O ESTADO POR ID NAO SOBREVIVE AO CORPO. Os lotes guardam recarga, carga e escudo em dicionarios
+	/// por id de jogador, e id se reusa: um corpo ergue o Ki Shield e SAI pelo funil de producao
+	/// (<see cref="DespedirCorpo"/>, a metade do logout que apaga o id); o proximo corpo com o MESMO id
+	/// aperta Ki Shield e tem que GANHAR defesa. Herdar a entrada de `_escudoAtivo` faria o toggle
+	/// SUBTRAIR um bonus que este corpo nunca somou -- defesa abaixo da que nasceu.
+	///
+	/// A INJECAO no fim esvazia o registro (<see cref="_aoEsquecer"/>) e exige ver a heranca acontecer:
+	/// e o que prova que a familia mede o registro, e nao um acaso da ordem dos ids.
+	/// </summary>
+	private void ORelogNaoHerda()
+	{
+		GD.Print("[catalogo] -- 7) O RELOG NAO HERDA: o estado por id morre com o corpo");
+		Vec2 chao = ChaoDaBancada();
+
+		ServerPlayer a = ForjarComSkills("QuemSai", chao, 1_000_000, skills: [PathDoKiShield], kiMin: 1_000_000);
+		int id = a.Id;
+		double defDeNascenca = a.Ficha.Tphysdef;
+		UsarHabilidade(a, "Ki_Shield");
+		AfirmarCat("um corpo ergue o Ki Shield: o registro guarda o bonus e a defesa sobe",
+				   _escudoAtivo.TryGetValue(id, out double bonus) && bonus > 0 && a.Ficha.Tphysdef > defDeNascenca,
+				   $"bonus {bonus:0.##}, Tphysdef {defDeNascenca:0.##} -> {a.Ficha.Tphysdef:0.##}");
+
+		// O RESTO DO ESTADO POR ID que o logout nunca limpava: entra a mao, tem que sair pelo funil.
+		long daquiAUmMinuto = NowMs() + 60_000;
+		_prontoG3[id] = daquiAUmMinuto;
+		_prontoG1[id] = daquiAUmMinuto;
+		_cegoAte[id] = daquiAUmMinuto;
+		_solarPronto[id] = daquiAUmMinuto;
+		_cargaG3[id] = new CargaG3 { Raio = 3, Ancora = a.Pos, ComecouMs = NowMs(), ProximoMs = daquiAUmMinuto };
+		_pontoCronoG4[id] = new PontoCronoG4 { Zona = a.Zone, Pos = a.Pos };
+		FrasesDeG4(id)[0] = "segredo de quem saiu";
+
+		DespedirCorpo(a);   // o logout de verdade, da linha `_players.Remove` em diante
+		string sobrou = string.Join(", ", new[]
+		{
+			_escudoAtivo.ContainsKey(id) ? "escudo" : "", _prontoG3.ContainsKey(id) ? "prontoG3" : "",
+			_prontoG1.ContainsKey(id) ? "prontoG1" : "", _cegoAte.ContainsKey(id) ? "cegoAte" : "",
+			_solarPronto.ContainsKey(id) ? "solarPronto" : "", _cargaG3.ContainsKey(id) ? "cargaG3" : "",
+			_pontoCronoG4.ContainsKey(id) ? "pontoCrono" : "", _frasesG4.ContainsKey(id) ? "frasesG4" : "",
+		}.Where(s => s.Length > 0));
+		AfirmarCat("...e sair do mundo pelo funil do logout apaga TODO o estado por id (base, G1, G3, G4)",
+				   sobrou.Length == 0, $"sobrou: {sobrou}");
+
+		// O PROXIMO CORPO REUSA O ID -- e o `_nextId` reciclado do jogo, montado a mao.
+		_pjCorpos--;
+		ServerPlayer b = ForjarComSkills("QuemEntra", chao, 1_000_000, skills: [PathDoKiShield], kiMin: 1_000_000);
+		AfirmarCat("o corpo seguinte nasce com o MESMO id", b.Id == id, $"{b.Id} vs {id}");
+		double defAntes = b.Ficha.Tphysdef;
+		UsarHabilidade(b, "Ki_Shield");
+		AfirmarCat("...e ao erguer o escudo GANHA defesa: nao herdou a entrada do anterior",
+				   b.Ficha.Tphysdef > defAntes && _escudoAtivo.ContainsKey(id),
+				   $"Tphysdef {defAntes:0.##} -> {b.Ficha.Tphysdef:0.##}");
+		UsarHabilidade(b, "Ki_Shield");
+		AfirmarCat("...e desligar devolve exatamente o que somou",
+				   Math.Abs(b.Ficha.Tphysdef - defAntes) < 1e-9 && !_escudoAtivo.ContainsKey(id));
+
+		// A INJECAO: com o registro VAZIO o relog herda, e erguer o proprio escudo DERRUBA a defesa.
+		List<Action<int>> inscritos = [.. _aoEsquecer];
+		_aoEsquecer.Clear();
+		try
+		{
+			UsarHabilidade(b, "Ki_Shield");
+			DespedirCorpo(b);
+			bool herdou = _escudoAtivo.ContainsKey(id);
+			_pjCorpos--;
+			ServerPlayer c = ForjarComSkills("Herdeiro", chao, 1_000_000, skills: [PathDoKiShield], kiMin: 1_000_000);
+			double antes = c.Ficha.Tphysdef;
+			UsarHabilidade(c, "Ki_Shield");
+			AfirmarCat("[injecao] sem os inscritos o id reusado HERDA o escudo, e erguer o proprio DERRUBA a defesa -- a regra sabe ficar vermelha",
+					   herdou && c.Ficha.Tphysdef < antes, $"herdou={herdou}, Tphysdef {antes:0.##} -> {c.Ficha.Tphysdef:0.##}");
+		}
+		finally
+		{
+			_aoEsquecer.AddRange(inscritos);
+		}
+
+		LimparTudoDoCatalogo();
 	}
 }

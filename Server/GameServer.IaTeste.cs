@@ -1438,10 +1438,8 @@ public partial class GameServer
 					{
 						// 1. SEM SABER A TECNICA: o funil recusa, e a frase e a MESMA que o jogador leria.
 						double antesDeSaber = atirador.Ficha.Ki;
-						EscutaDeAvisos = [];
-						AplicarComando(atirador, new Comando { Habilidade = "Solar_Flare" }, Protocol.TickSeconds);
-						List<string> ditos = EscutaDeAvisos ?? [];
-						EscutaDeAvisos = null;
+						List<string> ditos = Ouvir(() =>
+							AplicarComando(atirador, new Comando { Habilidade = "Solar_Flare" }, Protocol.TickSeconds));
 
 						Checa("o pulso de tecnica atravessa o `UsarHabilidade` -- o MESMO do `C2S.Habilidade` -- "
 							+ "e o JOGO recusa quem nao sabe a tecnica (o atuador nao conferiu nada)",
@@ -1464,10 +1462,8 @@ public partial class GameServer
 						atirador.Ficha.Ki = Math.Max(atirador.Ficha.MaxKi, custo * 2);
 						double antes = atirador.Ficha.Ki;
 
-						EscutaDeAvisos = [];
-						AplicarComando(atirador, new Comando { Habilidade = "Solar_Flare" }, Protocol.TickSeconds);
-						List<string> resposta = EscutaDeAvisos ?? [];
-						EscutaDeAvisos = null;
+						List<string> resposta = Ouvir(() =>
+							AplicarComando(atirador, new Comando { Habilidade = "Solar_Flare" }, Protocol.TickSeconds));
 
 						Checa("...e uma tecnica que ele SABE e executada e COBRA o preco dela, igual a do jogador",
 							  Math.Abs(antes - atirador.Ficha.Ki - custo) < custo * Folga + 0.01,

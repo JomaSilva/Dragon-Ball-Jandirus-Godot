@@ -82,127 +82,39 @@ public partial class GameServer
 	// =====================================================================
 	// REGISTRO
 	// =====================================================================
-	public static void RegistrarTecnicasG2()
+	private void RegistrarTecnicasG2()
 	{
 		// KAIO-KEN. O DM pergunta o multiplo num `input()` (kaioken.dm:102); aqui nao ha popup,
-		// entao o NUMERO VEM NO PROPRIO ID. Cada entrada abaixo e um multiplo fixo.
+		// entao o NUMERO VEM NO PROPRIO ID: `Kaioken_20` e um multiplo fixo, e a familia inteira
+		// e atendida pelo `VivoPorPrefixo` logo abaixo.
 		//
 		// DESVIO CONSCIENTE: no DM `Kaioken_1/2/3` sao ATALHOS configuraveis (Kaioken1Set...), nao
 		// multiplos -- o jogador escolhia o valor de cada slot no `Kaioken_Settings`. Aqui o numero
 		// do id E o multiplo, porque um menu de configuracao de atalho nao tem canal no port.
-		Tecnicas.Registrar("Kaioken", "Kaio-ken", Modo.Sustentada,
-			"Sincroniza o Ki com o corpo e MULTIPLICA seu poder de verdade -- ao preco de queimar "
-			+ "energia, fôlego e a própria carne, continuamente. Apertar de novo desliga. Usar um "
-			+ "múltiplo acima do dobro da sua maestria e ficar sem Ki despedaça o corpo.");
-
-		Registrarkaioken(2); Registrarkaioken(3); Registrarkaioken(5);
-		Registrarkaioken(10); Registrarkaioken(20); Registrarkaioken(50); Registrarkaioken(100);
-
-		Tecnicas.Registrar("Giant_Form", "Forma Gigante", Modo.Sustentada,
-			"O corpo incha até mais de quatro vezes o tamanho normal: muito mais força e defesa "
-			+ "física, e menos velocidade. Consome fôlego enquanto durar. Apertar de novo desliga.");
-
-		Tecnicas.Registrar("Elemental", "Elemental", Modo.Sustentada,
-			"Chama o elemento que dorme em você e o veste como armadura. O que ele soma depende de "
-			+ "QUAL elemento é. Drena Ki e fôlego, e cai sozinho quando um dos dois acaba.");
-
-		Tecnicas.Registrar("Time_Touch", "Toque do Tempo", Modo.Instantanea,
-			"Toca alguém ao seu lado e empurra o tempo dele: um surto curto de velocidade, pago com "
-			+ "um pedaço da idade de quem recebe.");
-
-		Tecnicas.Registrar("Growth_Spurt", "Estirão", Modo.Instantanea,
-			"Um Saibaman nunca para de crescer. Envelhece um mês de uma vez e, em troca, recebe uma "
-			+ "carga de energia de cerca de duas vezes o seu máximo -- e um empurrão de poder.");
-
-		Tecnicas.Registrar("HamonBreathing", "Respiração Hamon", Modo.Instantanea,
-			"Respiração de emergência: gasta uma fatia do Ki máximo e devolve vida ao corpo inteiro. "
-			+ "Só serve ferido, e demora muito a voltar.");
-
-		Tecnicas.Registrar("Spirit_Fist", "Punho Espiritual", Modo.Instantanea,
-			"Um soco carregado de espírito, que sai como golpe CRÍTICO garantido. É pago com FÔLEGO, "
-			+ "não com Ki -- e trava seus golpes normais por alguns segundos.");
-	}
-
-	private static void Registrarkaioken(int x) => Tecnicas.Registrar($"Kaioken_{x}", $"Kaio-ken x{x}",
-		Modo.Sustentada,
-		$"Liga o Kaio-ken direto em x{x}. Quanto maior o múltiplo, mais poder e mais rápido o corpo "
-		+ "se desfaz. Apertar de novo desliga.");
-
-	// =====================================================================
-	// DESPACHO
-	// =====================================================================
-	/// <summary>
-	/// O despacho do lote. Devolve true se o id e meu (mesmo que a tecnica tenha sido RECUSADA --
-	/// recusa tratada continua sendo tratamento).
-	///
-	/// O GATE DE "SABER A TECNICA" E FEITO AQUI DENTRO de proposito. `UsarTecnica` so aceita ids
-	/// que aparecem literalmente na lista de verbs de alguma skill, e os aliases `Kaioken_5`,
-	/// `Kaioken_20`, `Elemental_Fire` nao existem no DM -- entrariam recusados como
-	/// "voce nao sabe". Cada id meu declara qual VERB BASE ele exige.
-	/// </summary>
-	public bool UsarTecnicasG2(ServerPlayer pl, string id)
-	{
-		if (id.StartsWith("Kaioken", StringComparison.OrdinalIgnoreCase))
+		//
+		// OS SETE PRESETS SAO DESCRITOR PURO e por isso moram SO no espelho do Core
+		// (`Tecnicas.Portadas.cs`), escritos linha a linha: dado que sai de um laco nao da pra ler
+		// nem pra conferir. Aqui ficou so o CORPO, que e um so pra familia toda.
+		IniciarLote("G2");
+		// `Kaioken_20`, `Kaioken_Settings`: uma FAMILIA de ids, destravada pelo verb `Kaioken`. O menu de
+		// atalhos do DM (`Kaioken_Settings`) nao tem equivalente -- era popup em cima de popup -- e quem
+		// apertar recebe a explicacao em vez de um botao mudo. O portao vem ANTES: quem nao sabe Kaio-ken
+		// nao ouve nem a explicacao (achado pela `--formasteste` [cargo]).
+		VivoPorPrefixo("Kaioken", gate: "Kaioken", (pl, id) =>
 		{
-			// ============================ O PORTAO VEM ANTES DO ATALHO ============================
-			// `Kaioken_Settings` respondia ANTES do `SabeG2`, e quem nunca aprendeu a tecnica recebia a
-			// explicacao dos sete botoes em vez da recusa. No DM os dois verbs sao concedidos pela MESMA
-			// skill (`kaioken.dm`), entao quem nao a tem nao tem nenhum dos dois.
-			//
-			// Nao era exploravel pelo menu (o cliente so desenha o botao de quem sabe), e e exatamente
-			// por isso que passou: **a validacao e toda do servidor**, e um id de texto chega pelo
-			// `C2S.Habilidade` venha ele do menu ou nao. Achado pela `--formasteste` [cargo], a primeira
-			// bancada que aperta a tecla com um corpo SEM o cargo.
-			// ==================================================================================
-			if (!SabeG2(pl, "Kaioken", "Kaio-ken")) return true;
-
-			// o menu de atalhos do DM (`Kaioken_Settings`) nao tem equivalente: era popup em cima
-			// de popup. Quem apertar recebe a explicacao em vez de um botao mudo.
 			if (id.Equals("Kaioken_Settings", StringComparison.OrdinalIgnoreCase))
 			{
 				Avisar(pl, "os atalhos de Kaio-ken viraram botões próprios (x2, x3, x5, x10, x20, x50, x100).");
-				return true;
+				return;
 			}
 			Kaioken(pl, NumeroDoIdG2(id));
-			return true;
-		}
-
-		if (id.StartsWith("Elemental", StringComparison.OrdinalIgnoreCase))
-		{
-			if (!SabeG2(pl, "Elemental", "Elemental")) return true;
-			Elemental(pl, SufixoDoIdG2(id));
-			return true;
-		}
-
-		switch (id)
-		{
-			case "Giant_Form":
-				if (SabeG2(pl, "Giant_Form", "Forma Gigante")) FormaGigante(pl);
-				return true;
-			case "Time_Touch":
-				if (SabeG2(pl, "Time_Touch", "Toque do Tempo")) ToqueDoTempo(pl);
-				return true;
-			case "Growth_Spurt":
-				if (SabeG2(pl, "Growth_Spurt", "Estirão")) Estirao(pl);
-				return true;
-			case "HamonBreathing":
-				if (SabeG2(pl, "HamonBreathing", "Respiração Hamon")) RespiracaoHamon(pl);
-				return true;
-			case "Spirit_Fist":
-				if (SabeG2(pl, "Spirit_Fist", "Punho Espiritual")) PunhoEspiritual(pl);
-				return true;
-		}
-		return false;
-	}
-
-	/// <summary>Apelido, caso o dispatch la de fora chame pelo nome no singular.</summary>
-	public bool UsarTecnicaG2(ServerPlayer pl, string id) => UsarTecnicasG2(pl, id);
-
-	private bool SabeG2(ServerPlayer pl, string verbBase, string nome)
-	{
-		if (SabeTecnica(pl, verbBase)) return true;
-		Avisar(pl, $"você não sabe {nome}.");
-		return false;
+		});
+		VivoPorPrefixo("Elemental", gate: "Elemental", (pl, id) => Elemental(pl, SufixoDoIdG2(id)));
+		Vivo("Giant_Form", FormaGigante);
+		Vivo("Time_Touch", ToqueDoTempo);
+		Vivo("Growth_Spurt", Estirao);
+		Vivo("HamonBreathing", RespiracaoHamon);
+		Vivo("Spirit_Fist", PunhoEspiritual);
 	}
 
 	/// <summary>"Kaioken_20" -> 20. Zero quando nao ha numero (o id nu).</summary>
@@ -370,12 +282,8 @@ public partial class GameServer
 
 	private void FormaGigante(ServerPlayer pl)
 	{
+		if (EmEspera(pl, _giganteTravaG2, "seu corpo ainda está mudando de tamanho")) return;
 		long agora = NowMs();
-		if (_giganteTravaG2.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"seu corpo ainda está mudando de tamanho ({(livre - agora) / 1000.0:0.#}s).");
-			return;
-		}
 		_giganteTravaG2[pl.Id] = agora + GiganteTravaMsG2;
 
 		if (DesligarBuff(pl, BuffGiganteG2))
@@ -509,15 +417,11 @@ public partial class GameServer
 
 	private void ToqueDoTempo(ServerPlayer pl)
 	{
+		if (EmEspera(pl, _prontoTimeTouchG2, "o tempo ainda não voltou pra sua mão")) return;
 		long agora = NowMs();
-		if (_prontoTimeTouchG2.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, $"o tempo ainda não voltou pra sua mão ({(pronto - agora) / 1000.0:0.#}s).");
-			return;
-		}
 		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "você não está em condições."); return; }
 
-		ServerPlayer? alvo = AoLadoG2(pl, TimeTouchAlcanceG2);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, TimeTouchAlcanceG2);
 		if (alvo == null) { Avisar(pl, "não há ninguém ao seu alcance pra tocar."); return; }
 
 		if (!LigarBuff(alvo, BuffTimeTouchG2, "Toque do Tempo",
@@ -538,25 +442,21 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// Quem esta ao lado: o ALVO MARCADO primeiro (se estiver perto), senao o mais proximo dentro
-	/// do alcance. Mesma prioridade do resto do combate -- quem marcou alguem ja disse em quem quer
-	/// agir, e pedir a mesma informacao duas vezes e o que o `input() in view(1)` do DM fazia.
+	/// QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`, porque id se reusa e
+	/// nenhum destes dicionarios vai pro disco: a fracao de idade e o progresso do Hamon ja morriam
+	/// com a sessao; o que muda e que nao renascem em cima do proximo dono do id.
 	/// </summary>
-	private ServerPlayer? AoLadoG2(ServerPlayer pl, float alcance)
+	private void EsquecerG2(int id)
 	{
-		if (Marcado(pl) is { } mira && (mira.Pos - pl.Pos).LengthSquared <= alcance * alcance) return mira;
-
-		ServerPlayer? melhor = null;
-		float melhorDist = float.MaxValue;
-		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-		{
-			if (o == pl || o.Ficha.dead) continue;
-			float d2 = (o.Pos - pl.Pos).LengthSquared;
-			if (d2 > alcance * alcance || d2 >= melhorDist) continue;
-			melhorDist = d2;
-			melhor = o;
-		}
-		return melhor;
+		_kaiokenAmtG2.Remove(id);
+		_giganteTravaG2.Remove(id);
+		_elementoG2.Remove(id);
+		_prontoTimeTouchG2.Remove(id);
+		_prontoGrowthG2.Remove(id);
+		_prontoHamonG2.Remove(id);
+		_hamonSkillG2.Remove(id);
+		_hamonBufferG2.Remove(id);
+		_idadeFracaoG2.Remove(id);
 	}
 
 	// =====================================================================
@@ -573,12 +473,8 @@ public partial class GameServer
 
 	private void Estirao(ServerPlayer pl)
 	{
+		if (EmEspera(pl, _prontoGrowthG2, "seu corpo ainda está assentando o último estirão")) return;
 		long agora = NowMs();
-		if (_prontoGrowthG2.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, $"seu corpo ainda está assentando o último estirão ({(pronto - agora) / 1000.0:0.#}s).");
-			return;
-		}
 
 		// `if(IsAVampire||immortal||biologicallyimmortal||dead||DeathRegen<2)` (saibaman.dm:57).
 		//
@@ -646,12 +542,8 @@ public partial class GameServer
 
 	private void RespiracaoHamon(ServerPlayer pl)
 	{
+		if (EmEspera(pl, _prontoHamonG2, "sua respiração Hamon ainda está se refazendo")) return;
 		long agora = NowMs();
-		if (_prontoHamonG2.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, $"sua respiração Hamon ainda está se refazendo ({(pronto - agora) / 1000.0:0.#}s).");
-			return;
-		}
 
 		double kireq = pl.Ficha.MaxKi / HamonCustoDivisorG2;
 

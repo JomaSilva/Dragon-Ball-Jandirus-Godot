@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -28,6 +28,14 @@ public sealed class DegrauEffector
 	public List<string> Destrava = [];    // enableskill(...) / enabletree(...): abre OUTRA skill
 	public List<string> Concede = [];     // new/datum/skill/x + learn(): entrega uma skill inteira
 
+	/// <summary>
+	/// O VERB CONCEDIDO POR CASA: `switch(TrinityType) if("Van-sama") assignverb(Taunt)` (Bodybuilding.dm:180-185).
+	/// (rotulo da casa, verb) -- a casa e a da escolha unica que o `after_learn` da MESMA skill registrou
+	/// (`skills.json`, `escolhas`), e quem decide qual vale e o livro do jogador. Ate este canal existir
+	/// o `switch` inteiro ia pra <see cref="Logica"/> e os tres verbs da Trindade nao tinham porta.
+	/// </summary>
+	public List<(string Casa, string Verbo)> VerbosPorCasa = [];
+
 	/// <summary>A frase que o DM manda pro jogador no degrau -- fonte pro texto em portugues.</summary>
 	public string Msg = "";
 
@@ -39,9 +47,9 @@ public sealed class DegrauEffector
 
 	public bool Puro => Logica.Count == 0;
 
-	public bool Vazio => Logica.Count == 0 && Verbos.Count == 0 && Destrava.Count == 0
-					  && Concede.Count == 0 && Buffs.Count == 0 && Mults.Count == 0
-					  && Genes.Count == 0 && Flags.Count == 0;
+	public bool Vazio => Logica.Count == 0 && Verbos.Count == 0 && VerbosPorCasa.Count == 0
+					  && Destrava.Count == 0 && Concede.Count == 0 && Buffs.Count == 0
+					  && Mults.Count == 0 && Genes.Count == 0 && Flags.Count == 0;
 }
 
 /// <summary>
@@ -56,6 +64,38 @@ public sealed class FonteExp
 	public bool Curva;            // passou por KiSkillGains() (Mind.dm:859-871), que escala por Ki
 	public string Cond = "";      // o gate verbatim: "savant.med", "savant.flight", ...
 	public string Cru = "";       // a linha do DM inteira, pra conferencia
+
+	/// <summary>
+	/// A CORRENTE `if / else if / else` A QUE ESTA FONTE PERTENCE -- 0 = fonte solta (um `if` que nao
+	/// tem irmao nenhum).
+	///
+	/// ============================ SEM ISTO O `else` VIRAVA UM SEGUNDO GANHO ============================
+	/// O `Cond` sozinho perde o que o `else` quer dizer. Advanced Ki Circulation (Mind.dm:513-519) e
+	///
+	///     if(savant.kibuffon) exp += KiSkillGains(2)
+	///     else                exp += KiSkillGains(1)
+	///
+	/// e sao ALTERNATIVAS: com o buff de pe rende 2, sem ele rende 1. Emitidas como duas condicoes
+	/// independentes (`savant.kibuffon` e `else`), quem le nao tem como saber disso -- e com o buff
+	/// ligado creditava 3, meio a mais, pra sempre e em silencio. Sao TREZE `else` na familia da
+	/// Mente sozinha.
+	///
+	/// Fontes com a MESMA cadeia sao alternativas EM ORDEM: vale a primeira cuja condicao valer, e
+	/// so ela (`RegraDeNivel.GanhoPorEstado.Cadeia`). Cadeias diferentes sao `if` irmaos e somam.
+	/// ==============================================================================================
+	/// </summary>
+	public int Cadeia;
+
+	/// <summary>
+	/// O PISO DE NIVEL QUE O `else` DE UM PORTAO DE NIVEL CRIA: `if(level&lt;5) ... else if(kiratio&gt;1)`
+	/// (Basic Ki Control, Mind.dm:290-296) so roda o segundo ramo a partir do nivel 5.
+	///
+	/// Ele existe a parte da <see cref="Cadeia"/> porque neste caso os dois ramos NAO estao na mesma
+	/// corrente emitida: o `if(level&lt;5)` nao tem `exp` proprio (os dele estao ANINHADOS, numa cadeia
+	/// mais funda), entao a exclusao mutua nao aparece na cadeia de cima. O piso diz o mesmo em
+	/// numero. Zero = sem piso.
+	/// </summary>
+	public int NivelMinimo;
 }
 
 /// <summary>O effector() de UMA skill, lido.</summary>
@@ -86,6 +126,19 @@ public sealed class EffectorDef
 
 	public List<FonteExp> Exps = [];
 	public List<DegrauEffector> Degraus = [];
+
+	// ---- estado da leitura das CORRENTES `if / else if / else` (ver `FonteExp.Cadeia`) ----
+	/// <summary>Contador de correntes deste effector. Cada `if` que nao e `else` abre uma nova.</summary>
+	internal int CadeiaSeq;
+
+	/// <summary>Indentacao -> corrente aberta ali. Um `else` no MESMO nivel continua a do irmao.</summary>
+	internal readonly Dictionary<int, int> CadeiaPorInd = [];
+
+	/// <summary>
+	/// Indentacao -> a condicao do `if` que abriu a corrente ali, quando ela e um portao de NIVEL
+	/// puro (`level&lt;5`). E o que vira <see cref="FonteExp.NivelMinimo"/> no ramo `else`.
+	/// </summary>
+	internal readonly Dictionary<int, int> TetoDeNivelPorInd = [];
 
 	/// <summary>O que roda TODO TIQUE fora de qualquer degrau -- o efeito passivo da skill.</summary>
 	public DegrauEffector Passivo = new();
@@ -172,6 +225,14 @@ public static class DmEffectorScanner
 	private static readonly Regex RxVerb = new(
 		@"^assignverb\(\s*/(?:[A-Za-z0-9_]+/)*verb/(?<v>[A-Za-z0-9_]+)", RegexOptions.Compiled);
 
+	/// <summary>Um identificador NU (`TrinityType`): a var da PROPRIA skill, e nao `savant.X` nem `f(x)`.</summary>
+	private static readonly Regex RxIdentificador = new(
+		@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
+
+	/// <summary>A condicao de uma CASA: `"Van-sama"` -- o `if("...")` de um `switch(<var da skill>)`.</summary>
+	private static readonly Regex RxCasaLiteral = new(
+		@"^""(?<s>[^""]+)""$", RegexOptions.Compiled);
+
 	// ---------------------------------------------------------------------
 	// OS CANAIS QUE SO O effector TEM
 	// ---------------------------------------------------------------------
@@ -205,6 +266,9 @@ public static class DmEffectorScanner
 	private static readonly Regex RxCondNivel = new(@"^level\s*==\s*(?<n>[0-9]+)$", RegexOptions.Compiled);
 	private static readonly Regex RxCondModulo = new(@"^level\s*%\s*(?<k>[0-9]+)\s*==\s*0$", RegexOptions.Compiled);
 	private static readonly Regex RxCondProb = new(@"^prob\((?<p>[0-9]+)\)$", RegexOptions.Compiled);
+
+	/// <summary>O portao de nivel PURO: `if(level&lt;5)` (Mind.dm:290). O `else` dele e um piso.</summary>
+	private static readonly Regex RxCondTetoNivel = new(@"^level\s*<\s*(?<n>[0-9]+)$", RegexOptions.Compiled);
 
 	private static readonly Regex RxTypePath = new(
 		@"^(?<p>/?[A-Za-z_][A-Za-z0-9_]*(?:/[A-Za-z0-9_]+)*)$", RegexOptions.Compiled);
@@ -256,6 +320,23 @@ public static class DmEffectorScanner
 		public bool Switch;           // e um `switch(level)`: os filhos `if(N)` sao niveis
 		public bool Quarentena;       // condicao que nao sei ler: nada daqui pra dentro e colhido
 		public string Cond = "";      // a condicao verbatim, pra sair no relatorio e nas fontes de exp
+
+		/// <summary>
+		/// E um `switch(<var da skill>)` (`switch(TrinityType)`): os filhos `if("Casa")` sao as CASAS da
+		/// escolha unica, e o que cada um concede vai em <see cref="DegrauEffector.VerbosPorCasa"/>.
+		/// A var e da PROPRIA skill (identificador nu); `switch(savant.X)` continua em quarentena,
+		/// porque o estado do MOB nao e a escolha de ninguem.
+		/// </summary>
+		public string? SwitchCasa;
+
+		/// <summary>Dentro de uma casa (`if("Van-sama")`): o rotulo dela.</summary>
+		public string? Casa;
+
+		/// <summary>A corrente `if/else if/else` deste bloco -- ver <see cref="FonteExp.Cadeia"/>.</summary>
+		public int Cadeia;
+
+		/// <summary>O piso de nivel herdado do `else` de um portao de nivel -- ver <see cref="FonteExp.NivelMinimo"/>.</summary>
+		public int Piso;
 	}
 
 	private static void Ler(string arq, string raiz, Dictionary<string, EffectorDef> defs,
@@ -382,21 +463,59 @@ public static class DmEffectorScanner
 		// fecha os blocos que esta linha deixou pra tras
 		while (ctx.Count > 0 && ctx[^1].Ind >= ind) ctx.RemoveAt(ctx.Count - 1);
 
+		// ============================ A CORRENTE `if / else if / else` ============================
+		// Uma linha que comeca com `else` CONTINUA a corrente do irmao no mesmo nivel de indentacao;
+		// qualquer outra abre uma corrente nova. Guardar isso por indentacao e o suficiente porque e
+		// exatamente assim que o DM (que nao tem chaves) delimita bloco. Ver `FonteExp.Cadeia`.
+		//
+		// Ao ENTRAR num nivel mais fundo, tudo que estava aberto abaixo dele morre: um `if` novo no
+		// nivel 2 nao pode herdar a corrente de um `else` que ficou pra tras no nivel 3.
+		bool ehElse = linha.StartsWith("else", StringComparison.Ordinal);
+		foreach (int fundo in eff.CadeiaPorInd.Keys.Where(k => k > ind).ToList())
+		{
+			eff.CadeiaPorInd.Remove(fundo);
+			eff.TetoDeNivelPorInd.Remove(fundo);
+		}
+		int cadeia;
+		if (ehElse && eff.CadeiaPorInd.TryGetValue(ind, out int aberta)) cadeia = aberta;
+		else
+		{
+			cadeia = ++eff.CadeiaSeq;
+			eff.CadeiaPorInd[ind] = cadeia;
+			eff.TetoDeNivelPorInd.Remove(ind);
+		}
+
 		// desmonta a corrente de condicoes: `if(level < maxlevel) if(prob(50)) exp++` sao DUAS
 		// condicoes e um comando, tudo na mesma linha (o DM permite, e 24 skills escrevem assim)
 		var conds = new List<string>();
 		string resto = linha;
 		while (Condicao(resto, out string c, out string r)) { conds.Add(c); resto = r; }
 
+		// O PORTAO DE NIVEL PURO (`if(level<5)`) fica anotado: o `else` dele e um PISO de nivel pro
+		// ramo seguinte, e sem isso o `else if(savant.kiratio>1)` da Basic Ki Control renderia exp
+		// desde o nivel 0. Ver `FonteExp.NivelMinimo`.
+		int piso = ehElse ? eff.TetoDeNivelPorInd.GetValueOrDefault(ind) : 0;
+		if (!ehElse && conds.Count == 1 && RxCondTetoNivel.Match(conds[0]) is { Success: true } mteto)
+			eff.TetoDeNivelPorInd[ind] = int.Parse(mteto.Groups["n"].Value, CultureInfo.InvariantCulture);
+
 		if (conds.Count > 0 && resto.Length == 0)
 		{
 			// linha que so ABRE bloco: empilha um contexto pro que vem indentado abaixo
-			ctx.Add(Abrir(eff, ctx, ind, conds));
+			Ctx aberto = Abrir(eff, ctx, ind, conds);
+			// A CORRENTE E O PISO DESCEM PRO BLOCO. O `exp` do `else if(kiratio>1)` esta na linha
+			// DE BAIXO, nao nesta -- sem herdar, o piso morreria aqui.
+			aberto.Cadeia = cadeia;
+			aberto.Piso = Math.Max(aberto.Piso, piso);
+			ctx.Add(aberto);
 			return;
 		}
 
 		// linha de comando (com ou sem condicao inline)
 		Ctx atual = ctx.Count > 0 ? ctx[^1] : new Ctx { Ind = -1 };
+		// UMA LINHA DE COMANDO NUA (sem `if` proprio) e o CORPO do bloco que a envolve: ela herda a
+		// corrente dele. Com `if` proprio inline (`if(prob(50)) exp++`) ela e uma corrente sua.
+		if (conds.Count == 0 && atual.Cadeia != 0) cadeia = atual.Cadeia;
+		piso = Math.Max(piso, atual.Piso);
 		bool quarentena = atual.Quarentena;
 		var gates = new List<string>();
 		if (atual.Cond.Length > 0) gates.Add(atual.Cond);
@@ -404,6 +523,7 @@ public static class DmEffectorScanner
 		// a condicao inline pode ser transparente, pode abrir degrau, pode ser opaca
 		DegrauEffector? deg = atual.Deg;
 		int prob = 0;
+		string? casa = atual.Casa;
 		foreach (string c in conds)
 		{
 			if (RxCondProb.Match(c) is { Success: true } mprob)
@@ -413,24 +533,40 @@ public static class DmEffectorScanner
 			{ deg = Degrau(eff, int.Parse(mn.Groups["n"].Value, CultureInfo.InvariantCulture), 0); continue; }
 			if (RxCondModulo.Match(c) is { Success: true } mm)
 			{ deg = Degrau(eff, -1, int.Parse(mm.Groups["k"].Value, CultureInfo.InvariantCulture)); continue; }
+			// a casa INLINE: `if("Van-sama") assignverb(...)` debaixo de um `switch(TrinityType)`
+			if (atual.SwitchCasa != null && RxCasaLiteral.Match(c) is { Success: true } mcl)
+			{ casa = mcl.Groups["s"].Value; continue; }
 			gates.Add(c);
 			quarentena = true;
 		}
 
-		Aplicar(eff, deg ?? eff.Passivo, quarentena, prob, string.Join(" && ", gates), resto, linha);
+		Aplicar(eff, deg ?? eff.Passivo, quarentena, prob, string.Join(" && ", gates), resto, linha, casa, cadeia, piso);
 	}
 
 	/// <summary>Empilha o contexto de um bloco que abre (`switch(level)`, `if(level == 25)`, ...).</summary>
 	private static Ctx Abrir(EffectorDef eff, List<Ctx> ctx, int ind, List<string> conds)
 	{
 		Ctx pai = ctx.Count > 0 ? ctx[^1] : new Ctx { Ind = -1 };
-		var novo = new Ctx { Ind = ind, Deg = pai.Deg, Quarentena = pai.Quarentena, Cond = pai.Cond };
+		var novo = new Ctx { Ind = ind, Deg = pai.Deg, Quarentena = pai.Quarentena, Cond = pai.Cond, Casa = pai.Casa };
 
 		foreach (string c in conds)
 		{
 			// `switch(level)`: quem manda sao os filhos `if(N)`
 			if (c == "switch:level") { novo.Switch = true; continue; }
-			if (c.StartsWith("switch:", StringComparison.Ordinal)) { novo.Quarentena = true; novo.Cond = c; continue; }
+			if (c.StartsWith("switch:", StringComparison.Ordinal))
+			{
+				// `switch(TrinityType)` -- a VAR DA PROPRIA SKILL que guarda a casa escolhida
+				// (Bodybuilding.dm:180): os ramos `if("Van-sama")` sao as casas, e o que cada um concede
+				// vai em `VerbosPorCasa`. So um identificador NU conta como var da skill; `switch(savant.X)`
+				// e `switch(f(x))` continuam em quarentena, porque o estado do MOB nao e a escolha de ninguem.
+				string expr = c["switch:".Length..].Trim();
+				if (RxIdentificador.IsMatch(expr)) { novo.SwitchCasa = expr; continue; }
+				novo.Quarentena = true; novo.Cond = c; continue;
+			}
+
+			// ramo de CASA em bloco: `if("Van-sama")` numa linha so, com o corpo indentado abaixo
+			if (pai.SwitchCasa != null && RxCasaLiteral.Match(c) is { Success: true } mcasa)
+			{ novo.Casa = mcasa.Groups["s"].Value; continue; }
 
 			// ramo do switch de nivel: `if(2)`
 			if (pai.Switch && RxNum.IsMatch(c))
@@ -511,7 +647,8 @@ public static class DmEffectorScanner
 	// COLHER UM COMANDO
 	// =====================================================================
 	private static void Aplicar(EffectorDef eff, DegrauEffector deg, bool quarentena,
-								int prob, string cond, string cmd, string cru)
+								int prob, string cond, string cmd, string cru, string? casa = null,
+								int cadeia = 0, int piso = 0)
 	{
 		if (cmd.Length == 0) return;
 
@@ -541,6 +678,8 @@ public static class DmEffectorScanner
 				Cru = cru,
 				Curva = r.Contains("KiSkillGains", StringComparison.Ordinal),
 				Quanto = 1,
+				Cadeia = cadeia,
+				NivelMinimo = piso,
 			};
 			if (me.Groups["op"].Value is "+=" or "-=")
 			{
@@ -578,6 +717,21 @@ public static class DmEffectorScanner
 		// DAQUI PRA BAIXO SO SE NAO ESTIVER EM QUARENTENA. A linha existe e vai pro relatorio,
 		// mas nao vira dado: buff atras de condicao que nao sei ler nao e buff daquele nivel.
 		if (quarentena) { deg.Logica.Add(cru); return; }
+
+		// DENTRO DE UMA CASA (`if("Van-sama")` de um `switch(TrinityType)`): so o `assignverb` tem canal
+		// -- vai em `VerbosPorCasa` com o rotulo. Qualquer outra coisa numa casa continua em quarentena:
+		// um buff por casa NUM DEGRAU nao tem consumidor no jogo, e dado sem consumidor e o defeito
+		// que este extrator existe pra nao repetir.
+		if (casa != null)
+		{
+			if (RxVerb.Match(cmd) is { Success: true } mvc)
+			{
+				if (!deg.VerbosPorCasa.Contains((casa, mvc.Groups["v"].Value))) deg.VerbosPorCasa.Add((casa, mvc.Groups["v"].Value));
+				return;
+			}
+			deg.Logica.Add(cru);
+			return;
+		}
 
 		if (RxVerb.Match(cmd) is { Success: true } mv) { Somar(deg.Verbos, mv.Groups["v"].Value); return; }
 		if (RxObj.Match(cmd) is { Success: true } mo) { Somar(deg.Verbos, mo.Groups["o"].Value); return; }
@@ -695,6 +849,8 @@ public static class DmEffectorScanner
 				Virgula();
 				sb.Append($"  {{ \"tipo\": \"exp\", \"path\": {J(e.Path)}, \"quanto\": {N(f.Quanto)}, ");
 				sb.Append($"\"prob\": {f.Prob}, \"contador\": {J(f.Contador)}, \"curva\": {(f.Curva ? 1 : 0)}, ");
+				// `cadeia` e `nivelmin` sao a corrente `if/else if/else` -- ver `FonteExp.Cadeia`
+				sb.Append($"\"cadeia\": {f.Cadeia}, \"nivelmin\": {f.NivelMinimo}, ");
 				sb.Append($"\"cond\": {J(f.Cond)}, \"dm\": {J(f.Cru)} }}");
 			}
 
@@ -721,6 +877,10 @@ public static class DmEffectorScanner
 			sb.Append($"\"buffs\": [{Pares(d.Buffs)}], \"mults\": [{Pares(d.Mults)}], ");
 			sb.Append($"\"genes\": [{Pares(d.Genes)}], \"flags\": [{Pares(d.Flags)}], ");
 			sb.Append($"\"verbos\": [{string.Join(", ", d.Verbos.Select(J))}], ");
+			// o verb POR CASA no formato plano `rotulo|verb` (o leitor do jogo fatia por `{`..`}`); so em
+			// quem o tem (um degrau no jogo inteiro), como as `escolhas` do `skills.json`
+			if (d.VerbosPorCasa.Count > 0)
+				sb.Append($"\"verbosporcasa\": [{string.Join(", ", d.VerbosPorCasa.Select(p => J($"{p.Casa}|{p.Verbo}")))}], ");
 			sb.Append($"\"destrava\": [{string.Join(", ", d.Destrava.Select(J))}], ");
 			sb.Append($"\"concede\": [{string.Join(", ", d.Concede.Select(J))}], ");
 			sb.Append($"\"msg\": {J(d.Msg)}, ");

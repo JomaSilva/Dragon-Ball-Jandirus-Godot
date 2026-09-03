@@ -60,6 +60,13 @@ public sealed partial class Fighter
         if (!IsInFight) speedDIFF = 1;
         dashingMod = dashing ? 1 / (Espeed + 1) : 1;
 
+        // O CUSTO DE ESTAR ESPALHADO EM MAIS DE UM CORPO. Uma copia viva sem maestria vale 0,5 (=
+        // metade do poder expresso); cada 0,2 de maestria -- uma subida do `Splitformskill` do
+        // `Split Forms.dm` -- devolve um pedaco, e maestria 1 anula o custo de uma copia.
+        //
+        // QUEM GASTA ESTE NUMERO e o `deBuff` do `PowerLevel`, e SO ELE. Ate 2026-09-02 ele era
+        // calculado aqui e jogado fora la, porque no DM entra dentro de um `max(...,1)` que um fator
+        // <= 1 nunca atravessa -- ver a divergencia declarada em `Fighter.Power.cs`.
         splitformdeBuff = Math.Min((1 + splitformMastery) / (1 + splitformCount), 1);
 
         // --- os sete stats ----------------------------------------------

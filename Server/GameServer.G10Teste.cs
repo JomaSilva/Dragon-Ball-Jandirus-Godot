@@ -12,7 +12,7 @@ namespace Jandirus.Server;
 ///
 /// ============================ ELA EXERCITA A PRODUCAO, E SO ELA ============================
 /// Nenhuma familia chama o efeito direto. Toda tecnica entra por <see cref="UsarHabilidade"/> ->
-/// <see cref="UsarTecnica"/> -> <see cref="UsarTecnicasG10"/> -- o pacote do jogador, com o mesmo
+/// <see cref="UsarTecnica"/> -> o registro de tecnicas vivas do lote G10 -- o pacote do jogador, com o mesmo
 /// `SabeTecnica` no meio. A infraestrutura (`Forjar`, `CorredorLivre`, `LimparTudoDaBancada`) e a da
 /// `--projetilteste`, como a `--punhoteste`.
 ///
@@ -70,13 +70,18 @@ public partial class GameServer
 	];
 
 	/// <summary>
-	/// A TRINDADE NAO E CONCEDIDA POR DADO NENHUM: o DM escolhe o verb por `TrinityType` dentro de um
-	/// `switch` que o extrator poe em quarentena (`niveis.json`, `logica`). Pra exercitar os tres pelo
-	/// caminho de producao, a bancada registra uma regra de nivel SINTETICA que os concede no degrau 1 --
-	/// e a apaga no fim. E o mesmo `SabeTecnica` -> `VerbosAtivos()` que o jogo usa.
+	/// A TRINDADE VEM DO DADO, E DA CASA: o degrau 2 de `/datum/skill/Bodybuilding/TheHolyTrinity` concede
+	/// UM dos tres conforme a casa escolhida (`niveis.json`, `verbosporcasa`; `Bodybuilding.dm:180-185`).
+	/// Ate 2026-09-02 o extrator punha o `switch(TrinityType)` em quarentena e esta bancada os provava
+	/// com um degrau SINTETICO; hoje ela anda o caminho de producao -- `Livro.Dar` + `Livro.Escolher` +
+	/// nivel 2 -- e e o MESMO `SabeTecnica` -> `VerbosAtivos(casa)` que o jogo usa. As casas, na ordem do
+	/// `skills.json`: 1 = Van-sama (Taunt), 2 = Ricardo (Slap), 3 = Aniki (Counter_Taunt).
 	/// </summary>
-	private const string PathDaTrindadeDeBancadaG10 = "/bancada/g10/TheHolyTrinity";
+	private const string PathDaTrindadeG10 = "/datum/skill/Bodybuilding/TheHolyTrinity";
+	private const string PathDaGracaG10 = "/datum/skill/Bodybuilding/Grace";
 	private static readonly string[] VerbosDaTrindadeG10 = ["Taunt", "Counter_Taunt", "Slap"];
+	private static readonly (int Casa, string Rotulo, string Verbo)[] CasasDaTrindadeG10 =
+		[(1, "Van-sama", "Taunt"), (2, "Ricardo", "Slap"), (3, "Aniki", "Counter_Taunt")];
 
 	public void RodarBancadaG10()
 	{
@@ -87,15 +92,7 @@ public partial class GameServer
 
 		AfirmarG10("a zona da bancada tem colisao carregada", _pjMapa != null);
 
-		// O CENSO E MEDIDO ANTES da regra sintetica da Trindade entrar no mapa de degraus: ela e da
-		// bancada, e um censo que a visse contaria tres verbos que nenhuma skill de verdade concede.
 		G10OCenso();
-
-		RegrasDeNivel.Registrar(new RegraDeNivel
-		{
-			Path = PathDaTrindadeDeBancadaG10,
-			Degraus = [new Degrau { Nivel = 1, Verbos = VerbosDaTrindadeG10 }],
-		});
 
 		try
 		{
@@ -111,9 +108,6 @@ public partial class GameServer
 		finally
 		{
 			LimparTudoDaBancada();
-			// a regra sintetica sai do mapa de degraus: sem verbos, ela nao concede mais nada a ninguem
-			RegrasDeNivel.Registrar(new RegraDeNivel { Path = PathDaTrindadeDeBancadaG10, Degraus = [] });
-			EscutaDeAvisos = null;
 		}
 
 		GD.Print($"[g10] ================ {_g10Ok} passaram, {_g10Falhou} falharam ================");
@@ -122,37 +116,39 @@ public partial class GameServer
 	// =====================================================================
 	// FERRAMENTAS
 	// =====================================================================
-	/// <summary>Um corpo com os vinte destravados pelo caminho de producao, Ki e folego cheios, golpes que entram.</summary>
-	private ServerPlayer ForjarLutadorG10(string nome, Vec2 onde, double bp, int nivelDoRush = 0)
+	/// <summary>
+	/// Um corpo com os vinte destravados pelo caminho de producao, Ki e folego cheios, golpes que entram.
+	/// A Trindade entra COMPRADA (`Dar`), no nivel 2 e com a casa <paramref name="casaDaTrindade"/>
+	/// escolhida (1 = Van-sama): so o verb dessa casa fica ativo -- e o `verbosporcasa` do degrau.
+	/// </summary>
+	private ServerPlayer ForjarLutadorG10(string nome, Vec2 onde, double bp, int nivelDoRush = 0, int casaDaTrindade = 1)
 	{
-		ServerPlayer pl = Forjar(nome, onde, bp);
-		var save = new NivelSave();
-		foreach ((_, string path, int nivel) in PorDegrauG10)
-			if (!save.Skills.TryGetValue(path, out double[]? v) || v[0] < nivel) save.Skills[path] = [nivel, 0];
-		save.Skills[PathDaTrindadeDeBancadaG10] = [1, 0];
-		if (nivelDoRush > 0) save.Skills[PathDoRushG10] = [nivelDoRush, 0];
-		pl.Niveis.DoSave(save);
-		foreach ((_, string path) in PorSkillG10) pl.Livro.Dar(path);
-		pl.Livro.Dar("/datum/skill/rapidmovement");
+		var degraus = new List<(string Path, int Nivel)>();
+		foreach ((_, string path, int nivel) in PorDegrauG10) degraus.Add((path, nivel));
+		degraus.Add((PathDaTrindadeG10, 2));
+		if (nivelDoRush > 0) degraus.Add((PathDoRushG10, nivelDoRush));
 
-		pl.Ficha.Ki = pl.Ficha.MaxKi = Math.Max(pl.Ficha.MaxKi, 50_000_000);
-		pl.Ficha.stamina = pl.Ficha.maxstamina = Math.Max(pl.Ficha.maxstamina, 100_000);
+		var skills = new List<string>();
+		foreach ((_, string path) in PorSkillG10) skills.Add(path);
+		skills.Add(PathDaTrindadeG10);
+		skills.Add("/datum/skill/rapidmovement");
+
+		// o degrau REPETIDO vence pelo MAIOR nivel -- era o `TryGetValue` do `DoSave` escrito a mao
+		ServerPlayer pl = ForjarComSkills(nome, onde, bp, [.. skills], [.. degraus],
+										  kiMin: 50_000_000, staminaMin: 100_000);
+		if (casaDaTrindade > 0 && _skills != null) pl.Livro.Escolher(_skills, PathDaTrindadeG10, casaDaTrindade);
 		pl.Combate.Precisao = 1000;   // o `accuracy` do DM: o golpe rolado ENTRA, e a prova mede o efeito
 		return pl;
 	}
 
-	/// <summary>Dois corpos colados, A olhando pra D (que esta na frente dele, a leste), D de guarda baixa.</summary>
+	/// <summary>
+	/// A <see cref="Dupla"/> do comum com o que e DESTE lote: o lutador do G10 e um corredor de terra
+	/// firme (sete provas daqui ANDAM, e um corredor em cima do mar mediria a agua e nao o verb).
+	/// O forjador vai em lambda porque um grupo de metodos com parametro opcional nao converte pra
+	/// `Func` de tres argumentos.
+	/// </summary>
 	private (ServerPlayer A, ServerPlayer D) DuplaG10(double bpA = 5_000, double bpD = 5_000, float tilesEntre = 0.9f)
-	{
-		Vec2 chao = CorredorAndavelG10();
-		ServerPlayer a = ForjarLutadorG10("Lutador", chao, bpA);
-		ServerPlayer d = ForjarLutadorG10("Alvo", chao + new Vec2(ZoneCollision.TileSize * tilesEntre, 0), bpD);
-		a.Facing = Facing.East;
-		d.Facing = Facing.West;
-		a.AlvoId = d.Id;
-		d.Combate.Bloqueando = false;
-		return (a, d);
-	}
+		=> Dupla((n, onde, bp) => ForjarLutadorG10(n, onde, bp), bpA, bpD, tilesEntre, CorredorDeTerraFirme());
 
 	private static double VidaTotalG10(ServerPlayer pl)
 	{
@@ -169,37 +165,6 @@ public partial class GameServer
 	private int CelulasCaidasG10(ZoneKey zona)
 		=> _cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? c) ? c.Count : 0;
 
-	private static string Ultimos(List<string>? avisos) => string.Join(" | ", avisos ?? []);
-
-	/// <summary>
-	/// UM CORREDOR ANDAVEL, e nao so sem parede: o <see cref="CorredorLivre"/> pergunta a colisao
-	/// (`BlockedCell`), e a agua nao bloqueia a colisao -- bloqueia o PASSO (`ClasseDeAgua`, via
-	/// `MoveRules.Occupied`). Sete provas deste lote ANDAM (corrida, arrasto, teleporte pra um vizinho),
-	/// e um corredor em cima do mar media a agua e nao o verb. Confere a fileira e as duas vizinhas.
-	/// </summary>
-	/// <param name="diagonaisEm">
-	/// Um indice de tile na fileira cujos QUATRO vizinhos diagonais tambem precisam estar livres -- e onde
-	/// o alvo do Zanzoken Rush fica, porque o salto cai em `(x +- 1, y +- 1)` do alvo e um vizinho de
-	/// parede seria "barrado por um obstaculo" por sorteio, e nao por defeito. -1 = nao exige.
-	/// </param>
-	private Vec2 CorredorAndavelG10(int tiles = 24, int diagonaisEm = -1)
-	{
-		for (int tentativa = 0; tentativa < 60; tentativa++)
-		{
-			Vec2 c = CorredorLivre(tiles);
-			if (_pjMapa is not { } mapa) return c;
-			// a fileira inteira tem que ser ANDAVEL (a agua nao e `BlockedCell`, mas barra o passo)
-			bool ok = !MoveRules.PathOccupied(mapa, c, c + new Vec2((tiles - 2) * ZoneCollision.TileSize, 0));
-			if (ok && diagonaisEm >= 0)
-				for (int dx = -1; dx <= 1 && ok; dx += 2)
-					for (int dy = -1; dy <= 1 && ok; dy += 2)
-						ok &= !MoveRules.Occupied(mapa, c + new Vec2((diagonaisEm + dx) * ZoneCollision.TileSize, dy * ZoneCollision.TileSize));
-			if (ok) return c;
-		}
-		AfirmarG10("achei um corredor ANDAVEL (sem agua na fileira) pra bancada", false, "varredura falhou");
-		return CorredorLivre(tiles);
-	}
-
 	// =====================================================================
 	// 1) O CATALOGO E A FRONTEIRA
 	// =====================================================================
@@ -214,7 +179,7 @@ public partial class GameServer
 		todos.AddRange(VerbosDaTrindadeG10);
 
 		AfirmarG10("os vinte do lote sao exatamente os vinte desta bancada",
-				   todos.Count == 20 && todos.TrueForAll(EhDoLoteG10), $"{todos.Count} verbos");
+				   todos.Count == 20 && todos.TrueForAll(v => EhDoLote("G10", v)), $"{todos.Count} verbos");
 
 		var mudas = todos.FindAll(v => Tecnicas.Get(v)!.Modo == Modo.NaoPortada);
 		AfirmarG10("...e nenhum deles continua marcado como NAO-PORTADO", mudas.Count == 0, string.Join(" | ", mudas));
@@ -228,19 +193,17 @@ public partial class GameServer
 		AfirmarG10("...e nenhum deles continua escrito na fila de 'esperando um sistema' (as tres listas concordam)",
 				   minhas.Count == 0, string.Join(" | ", minhas));
 
-		Vec2 chao = CorredorAndavelG10();
+		Vec2 chao = CorredorDeTerraFirme();
 		ServerPlayer nu = Forjar("SemSkill", chao, bp: 5_000);
 		nu.Facing = Facing.East;
 		Forjar("Saco", chao + new Vec2(ZoneCollision.TileSize * 0.9f, 0), bp: 5_000);
 
-		EscutaDeAvisos = [];
 		double kiAntes = nu.Ficha.Ki;
-		UsarHabilidade(nu, "Suplex");
+		List<string> falas = ApertarEOuvir(nu, "Suplex");
 		AfirmarG10("quem NAO destravou o verbo ouve \"voce nao sabe\", nao gasta nada e nao agarra ninguem",
 				   Perto(nu.Ficha.Ki, kiAntes) && nu.AgarrandoId == 0
-				   && EscutaDeAvisos.Exists(a => a.Contains("nao sabe", StringComparison.OrdinalIgnoreCase)),
-				   Ultimos(EscutaDeAvisos));
-		EscutaDeAvisos = null;
+				   && falas.Exists(a => a.Contains("nao sabe", StringComparison.OrdinalIgnoreCase)),
+				   Ultimos(falas));
 		LimparTudoDaBancada();
 	}
 
@@ -252,7 +215,7 @@ public partial class GameServer
 		_pjProximoCorredor = 8;   // as fileiras andaveis sao poucas; a familia anterior ja saiu do mundo
 		GD.Print("[g10] -- 2) DEZESSEIS SAO DO DEGRAU, UM E DA SKILL, TRES SAO DA TRINDADE");
 
-		ServerPlayer pl = Forjar("Estudioso", CorredorAndavelG10(), bp: 5_000);
+		ServerPlayer pl = Forjar("Estudioso", CorredorDeTerraFirme(), bp: 5_000);
 
 		var semNada = new List<string>();
 		foreach ((string v, _, _) in PorDegrauG10) if (SabeTecnica(pl, v)) semNada.Add(v);
@@ -273,7 +236,7 @@ public partial class GameServer
 		// O DEGRAU EXATO IMPORTA: Beserker nivel 2 da o Power_Drag e NAO o Revenge_Demon (nivel 3).
 		var so2 = new NivelSave();
 		so2.Skills["/datum/skill/MartialSkill/Beserker"] = [2, 0];
-		ServerPlayer meio = Forjar("MeioBerserker", CorredorAndavelG10(), bp: 5_000);
+		ServerPlayer meio = Forjar("MeioBerserker", CorredorDeTerraFirme(), bp: 5_000);
 		meio.Niveis.DoSave(so2);
 		AfirmarG10("...e o nivel 2 do Beserker da o Power_Drag mas NAO o Revenge_Demon (nivel 3)",
 				   SabeTecnica(meio, "Power_Drag") && !SabeTecnica(meio, "Revenge_Demon"));
@@ -283,17 +246,36 @@ public partial class GameServer
 		AfirmarG10("...o Zanzoken_Rush so vem da SKILL, e aprender a skill o abre",
 				   !rushAntesDaSkill && SabeTecnica(pl, "Zanzoken_Rush"));
 
-		AfirmarG10("...e a Trindade nao vem de dado nenhum: so o degrau sintetico da bancada a concede",
-				   !SabeTecnica(pl, "Taunt") && !SabeTecnica(pl, "Slap") && !SabeTecnica(pl, "Counter_Taunt"));
-		save.Skills[PathDaTrindadeDeBancadaG10] = [1, 0];
+		// ============================ A TRINDADE: DADO + CASA, pelo caminho de producao ============================
+		// `Bodybuilding.dm:180-185`: no degrau 2, `switch(TrinityType)` concede UM verb por casa. Comprada e
+		// no nivel 2 mas SEM casa, o `TrinityType` do DM e nulo e o switch nao entra em ramo nenhum.
+		// =======================================================================================================
+		pl.Livro.Dar(PathDaTrindadeG10);
+		save.Skills[PathDaTrindadeG10] = [2, 0];
 		pl.Niveis.DoSave(save);
-		AfirmarG10("...e com ele os tres passam pelo mesmo `SabeTecnica` do jogo",
-				   SabeTecnica(pl, "Taunt") && SabeTecnica(pl, "Slap") && SabeTecnica(pl, "Counter_Taunt"));
+		AfirmarG10("...a Trindade COMPRADA e no nivel 2, SEM casa escolhida, nao concede nenhum dos tres (TrinityType nulo)",
+				   !SabeTecnica(pl, "Taunt") && !SabeTecnica(pl, "Slap") && !SabeTecnica(pl, "Counter_Taunt"));
+		foreach ((int casa, string rotulo, string verbo) in CasasDaTrindadeG10)
+		{
+			pl.Livro.Escolher(_skills!, PathDaTrindadeG10, casa);
+			var outros = VerbosDaTrindadeG10.Where(v => v != verbo).ToList();
+			AfirmarG10($"...escolhida a casa {casa} ({rotulo}), SO o {verbo} passa pelo `SabeTecnica` do jogo -- os outros dois nao (o `verbosporcasa` do degrau 2)",
+					   SabeTecnica(pl, verbo) && outros.TrueForAll(v => !SabeTecnica(pl, v)),
+					   $"{verbo}={SabeTecnica(pl, verbo)} {outros[0]}={SabeTecnica(pl, outros[0])} {outros[1]}={SabeTecnica(pl, outros[1])}");
+		}
+		pl.Livro.Escolher(_skills!, PathDaTrindadeG10, 1);   // Van-sama de novo
+		save.Skills[PathDaTrindadeG10] = [1, 0];
+		pl.Niveis.DoSave(save);
+		AfirmarG10("...e no nivel 1, mesmo com a casa escolhida, nenhum: o verb e do DEGRAU 2 (Bodybuilding.dm:180), nao da compra",
+				   !SabeTecnica(pl, "Taunt") && !SabeTecnica(pl, "Slap") && !SabeTecnica(pl, "Counter_Taunt"));
+		save.Skills[PathDaTrindadeG10] = [2, 0];
+		pl.Niveis.DoSave(save);
 
 		List<string> menu = TecnicasDe(pl);
-		AfirmarG10("...e o `TecnicasDe` do servidor lista os vinte (uma lista so, nao duas)",
+		AfirmarG10("...e o `TecnicasDe` do servidor lista os dezoito (dezesseis do degrau, o Rush da skill, o Taunt da casa) -- uma lista so, e sem Slap nem Counter_Taunt",
 				   PorDegrauG10.All(t => menu.Contains(t.Verbo)) && menu.Contains("Zanzoken_Rush")
-				   && VerbosDaTrindadeG10.All(menu.Contains));
+				   && menu.Contains("Taunt") && !menu.Contains("Slap") && !menu.Contains("Counter_Taunt"),
+				   string.Join(",", menu));
 
 		LimparTudoDaBancada();
 	}
@@ -307,27 +289,25 @@ public partial class GameServer
 		GD.Print("[g10] -- 3) CLENCH, HOLD, POWER SLAM E SUPLEX EXIGEM ALGUEM AGARRADO");
 
 		// SEM NINGUEM NA FRENTE: recusa, nao gasta, nao agarra.
-		ServerPlayer so = ForjarLutadorG10("Sozinho", CorredorAndavelG10(), 5_000);
+		ServerPlayer so = ForjarLutadorG10("Sozinho", CorredorDeTerraFirme(), 5_000);
 		so.Facing = Facing.East;
 		_prontoG3.Remove(so.Id);
-		EscutaDeAvisos = [];
 		double kiSo = so.Ficha.Ki;
-		UsarHabilidade(so, "Suplex");
+		List<string> falas = ApertarEOuvir(so, "Suplex");
 		AfirmarG10("Suplex SEM ninguem pra agarrar: recusa (\"precisa ter alguem AGARRADO\"), nao cobra Ki e nao arma recarga",
 				   Perto(so.Ficha.Ki, kiSo) && so.AgarrandoId == 0 && !_prontoG3.ContainsKey(so.Id)
-				   && EscutaDeAvisos.Exists(a => a.Contains("AGARRADO")),
-				   Ultimos(EscutaDeAvisos));
+				   && falas.Exists(a => a.Contains("AGARRADO")),
+				   Ultimos(falas));
 		LimparTudoDaBancada();
 
 		// COM ALGUEM NA FRENTE: o verb agarra (o `get_me_a_grab()`) e aplica o golpe no preso.
 		(ServerPlayer a, ServerPlayer d) = DuplaG10();
 		_prontoG3.Remove(a.Id);
-		EscutaDeAvisos = [];
 		double ki = a.Ficha.Ki, vida = VidaTotalG10(d), custo = CustoDePunhoG10(a, 15);
 		d.Combate.Stun = 0;
-		UsarHabilidade(a, "Suplex");
+		falas = ApertarEOuvir(a, "Suplex");
 		AfirmarG10("Suplex COM alguem na frente: o verb AGARRA quem esta ali (get_me_a_grab) e o alvo vira o preso",
-				   a.AgarrandoId == d.Id && d.AgarradoPorId == a.Id, Ultimos(EscutaDeAvisos));
+				   a.AgarrandoId == d.Id && d.AgarradoPorId == a.Id, Ultimos(falas));
 		AfirmarG10("...o preso leva o golpe (+5) e perde vida", VidaTotalG10(d) < vida - 0.5,
 				   $"vida {vida:0.#} -> {VidaTotalG10(d):0.#}");
 		AfirmarG10("...e fica 2,0 s sem reagir (stunCount += 20)", d.Combate.Stun >= 1.99, $"stun {d.Combate.Stun:0.##}");
@@ -336,34 +316,33 @@ public partial class GameServer
 				   $"ki {ki:0.##} -> {a.Ficha.Ki:0.##}");
 
 		// A RECARGA E DO MOB: o Clench, logo depois, cai nela sem cobrar.
-		EscutaDeAvisos.Clear();
 		ki = a.Ficha.Ki;
-		UsarHabilidade(a, "Clench");
+		falas = ApertarEOuvir(a, "Clench");
 		AfirmarG10("...e o Clench logo em seguida cai na MESMA recarga (basicCD do mob), sem cobrar",
-				   Perto(a.Ficha.Ki, ki) && EscutaDeAvisos.Exists(s => s.Contains("recompoem")), Ultimos(EscutaDeAvisos));
+				   Perto(a.Ficha.Ki, ki) && falas.Exists(s => s.Contains("recompoem")), Ultimos(falas));
 
-		// CLENCH: zera a luta pra escapar (o DM le o contador de QUEM APERTA: max(0, 0 - 4) = 0).
+		// CLENCH: tira 4 da luta DO PRESO pra escapar (12 -> 8). O DM lia o contador de QUEM APERTA
+		// (`max(0, 0 - 4)`) e ZERAVA -- o contra-exemplo e o zero. Consertado por decisao do dono (2026-09-02).
 		_prontoG3.Remove(a.Id);
 		d.ContadorDaLuta = 12;
 		a.ContadorDaLuta = 0;
 		vida = VidaTotalG10(d);
 		custo = CustoDePunhoG10(a, 9);
 		ki = a.Ficha.Ki;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Clench");
-		AfirmarG10("Clench: o preso leva +4 e a luta dele pra escapar volta a ZERO (`max(0, grabCounter_de_quem_aperta - 4)`, Wrestling Skills.dm:13)",
-				   VidaTotalG10(d) < vida - 0.5 && Perto(d.ContadorDaLuta, 0) && Perto(ki - a.Ficha.Ki, custo, 0.05),
-				   $"contador {d.ContadorDaLuta} | vida {vida:0.#}->{VidaTotalG10(d):0.#} | {Ultimos(EscutaDeAvisos)}");
+		falas = ApertarEOuvir(a, "Clench");
+		AfirmarG10("Clench: o preso leva +4 e a luta dele pra escapar cai de 12 pra 8 (-4 do contador DO PRESO; o DM zerava lendo o de quem aperta, Wrestling Skills.dm:13)",
+				   VidaTotalG10(d) < vida - 0.5 && Perto(d.ContadorDaLuta, 8) && Perto(ki - a.Ficha.Ki, custo, 0.05),
+				   $"contador {d.ContadorDaLuta} | vida {vida:0.#}->{VidaTotalG10(d):0.#} | {Ultimos(falas)}");
 
-		// HOLD: cinco segundos sem reagir + contador zerado.
+		// HOLD: cinco segundos sem reagir + 15 a menos no contador DO PRESO (30 -> 15; o DM zerava).
 		_prontoG3.Remove(a.Id);
 		d.ContadorDaLuta = 30;
 		d.Combate.Stun = 0;
 		custo = CustoDePunhoG10(a, 12);
 		ki = a.Ficha.Ki;
 		UsarHabilidade(a, "Hold");
-		AfirmarG10("Hold: o preso fica 5,0 s sem reagir (stunCount += 50) e a luta dele volta a zero (-15 do contador de quem aperta)",
-				   d.Combate.Stun >= 4.99 && Perto(d.ContadorDaLuta, 0) && Perto(ki - a.Ficha.Ki, custo, 0.05),
+		AfirmarG10("Hold: o preso fica 5,0 s sem reagir (stunCount += 50) e a luta dele cai de 30 pra 15 (-15 do contador DO PRESO; o DM zerava, Wrestling Skills.dm:25)",
+				   d.Combate.Stun >= 4.99 && Perto(d.ContadorDaLuta, 15) && Perto(ki - a.Ficha.Ki, custo, 0.05),
 				   $"stun {d.Combate.Stun:0.##} contador {d.ContadorDaLuta}");
 
 		// POWER SLAM: o golpe mais forte (+10, nivel 3), no preso.
@@ -371,18 +350,16 @@ public partial class GameServer
 		vida = VidaTotalG10(d);
 		custo = CustoDePunhoG10(a, 20);
 		ki = a.Ficha.Ki;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Power_Slam");
+		falas = ApertarEOuvir(a, "Power_Slam");
 		AfirmarG10("Power Slam: o preso perde vida (+10, Type 3) e custou Ephysoff*BaseDrain*20",
 				   VidaTotalG10(d) < vida - 0.5 && Perto(ki - a.Ficha.Ki, custo, 0.05)
-				   && EscutaDeAvisos.Exists(s => s.Contains("esmaga")),
-				   $"vida {vida:0.#}->{VidaTotalG10(d):0.#} | {Ultimos(EscutaDeAvisos)}");
+				   && falas.Exists(s => s.Contains("esmaga")),
+				   $"vida {vida:0.#}->{VidaTotalG10(d):0.#} | {Ultimos(falas)}");
 
 		// NADA DISSO SOLTA O PRESO: os quatro golpes acontecem com o agarrao de pe.
 		AfirmarG10("...e depois dos quatro golpes o preso continua nos bracos (nenhum golpe de luta livre solta)",
 				   a.AgarrandoId == d.Id && d.AgarradoPorId == a.Id);
 
-		EscutaDeAvisos = null;
 		LimparTudoDaBancada();
 	}
 
@@ -398,10 +375,9 @@ public partial class GameServer
 		(ServerPlayer a, ServerPlayer d) = DuplaG10(tilesEntre: 3.2f);
 		_prontoG3.Remove(a.Id);
 		long arremessos = _arremessosFeitos;
-		EscutaDeAvisos = [];
-		UsarHabilidade(a, "Revenge_Demon");
+		List<string> falas = ApertarEOuvir(a, "Revenge_Demon");
 		AfirmarG10("Revenge Demon com o alvo a 3 tiles: ninguem e arremessado (o verb so alcanca view(2))",
-				   _arremessosFeitos == arremessos && d.TiquesDeVoo == 0, Ultimos(EscutaDeAvisos));
+				   _arremessosFeitos == arremessos && d.TiquesDeVoo == 0, Ultimos(falas));
 		LimparTudoDaBancada();
 
 		// REVENGE DEMON -- colado: soco, jab e o alvo VOA pra frente (ThrowMe(dir, 1)).
@@ -409,23 +385,24 @@ public partial class GameServer
 		_prontoG3.Remove(a.Id);
 		arremessos = _arremessosFeitos;
 		double ki = a.Ficha.Ki, custo = CustoDePunhoG10(a, 15), vida = VidaTotalG10(d);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Revenge_Demon");
+		double extra = DanoExtraRevengeDemonG10(a.Ficha, d.Ficha);   // a conta do DM com o ALVO no divisor
+		falas = ApertarEOuvir(a, "Revenge_Demon");
 		Vec2 frente = MeleeArea.Frente(Facing.East);
 		AfirmarG10("Revenge Demon colado: o alvo leva o soco e o jab (+2) e e ARREMESSADO pra frente (na direcao em que voce olha)",
 				   _arremessosFeitos == arremessos + 1 && d.TiquesDeVoo >= 1
 				   && d.RumoDoVoo.X == frente.X && d.RumoDoVoo.Y == frente.Y && VidaTotalG10(d) < vida - 0.5,
-				   $"arremessos {arremessos}->{_arremessosFeitos} voo {d.TiquesDeVoo} | {Ultimos(EscutaDeAvisos)}");
+				   $"arremessos {arremessos}->{_arremessosFeitos} voo {d.TiquesDeVoo} | {Ultimos(falas)}");
 		AfirmarG10($"...com a forca do agarrao ((expressedBP/2)*Ephysoff*Etechnique = {Agarrao.ForcaDoArremesso(a.Ficha):0}) e por 1 tique (ThrowMe(dir,1))",
 				   Perto(d.ForcaDoVoo, Agarrao.ForcaDoArremesso(a.Ficha), 0.5) && d.TiquesIniciaisDoVoo == 1,
 				   $"forca {d.ForcaDoVoo:0} tiques {d.TiquesIniciaisDoVoo}");
 		AfirmarG10($"...e custou Ephysoff*BaseDrain*15 = {custo:0.##}", Perto(ki - a.Ficha.Ki, custo, 0.05));
-		AfirmarG10("...e o `damage_mob` extra do DM continua ZERO (o runtime do `grabbee.Ephysoff` nunca deixa ele rodar)",
-				   DanoExtraRevengeDemonG10 == 0);
+		AfirmarG10($"...e o `damage_mob(dmg*BPModulus/4)` do DM RODA: +{extra:0.##} direto num membro, com a ofensiva+tecnica do ALVO no divisor (o DM morria em `grabbee.Ephysoff`, Beserker Skills.dm:27 -- consertado por decisao do dono)",
+				   extra > 0 && VidaTotalG10(d) <= vida - extra + 0.01 && falas.Exists(s => s.Contains($"+{extra:0.##} direto")),
+				   $"extra {extra:0.###} (Ephysoff {a.Ficha.Ephysoff:0.##}, Etechnique {a.Ficha.Etechnique:0.##}) | vida {vida:0.#}->{VidaTotalG10(d):0.#} | {Ultimos(falas)}");
 		LimparTudoDaBancada();
 
 		// GIGANTIC SPIKE -- sem ninguem: recusa sem cobrar.
-		ServerPlayer so = ForjarLutadorG10("Sozinho", CorredorAndavelG10(), 5_000);
+		ServerPlayer so = ForjarLutadorG10("Sozinho", CorredorDeTerraFirme(), 5_000);
 		so.Facing = Facing.East;
 		_prontoG3.Remove(so.Id);
 		ki = so.Ficha.Ki;
@@ -435,34 +412,37 @@ public partial class GameServer
 				   Perto(so.Ficha.Ki, ki) && Vec2.Distance(so.Pos, antes) < 0.5f && so.AgarrandoId == 0);
 		LimparTudoDaBancada();
 
-		// GIGANTIC SPIKE -- so SEGURANDO (modo 1): paga e nada acontece (get_me_a_grab(1) nao levanta quem ja esta seguro).
+		// GIGANTIC SPIKE -- so SEGURANDO (modo 1): LEVANTA, corre e esmaga. O DM cobrava e nada acontecia
+		// (`get_me_a_grab(1)` nao levantava quem ja estava seguro) -- consertado por decisao do dono (2026-09-02).
 		(a, d) = DuplaG10();
 		AlternarAgarrao(a);   // modo 1
 		_prontoG3.Remove(a.Id);
-		ki = a.Ficha.Ki; antes = a.Pos; custo = CustoDePunhoG10(a, 12);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Gigantic_Spike");
-		AfirmarG10("Gigantic Spike com o alvo apenas SEGURO (modo 1): cobra o Ki e nao faz nada -- `get_me_a_grab(1)` devolve TRUE sem levantar e o `if(grabMode==2)` falha (Beserker Skills.dm:43-46)",
-				   a.ModoDoAgarrao == ModoDeAgarrao.Segurando && Perto(ki - a.Ficha.Ki, custo, 0.05)
-				   && Vec2.Distance(a.Pos, antes) < 0.5f && EscutaDeAvisos.Exists(s => s.Contains("nada acontece")),
-				   Ultimos(EscutaDeAvisos));
+		ki = a.Ficha.Ki; antes = a.Pos; custo = CustoDePunhoG10(a, 12); vida = VidaTotalG10(d);
+		falas = ApertarEOuvir(a, "Gigantic_Spike");
+		AfirmarG10("Gigantic Spike com o alvo apenas SEGURO (modo 1): LEVANTA (modo 2), corre pra frente carregando e esmaga o preso -- o DM cobrava e nao fazia nada (`get_me_a_grab(1)` devolvia TRUE sem levantar, Grabbing.dm:332; Beserker Skills.dm:43-46)",
+				   a.ModoDoAgarrao == ModoDeAgarrao.Carregando && Perto(ki - a.Ficha.Ki, custo, 0.05)
+				   && (a.Pos.X - antes.X) / ZoneCollision.TileSize >= 1 && VidaTotalG10(d) < vida - 0.5
+				   && falas.Exists(s => s.Contains("esmaga")),
+				   $"modo {a.ModoDoAgarrao} | andou {(a.Pos.X - antes.X) / ZoneCollision.TileSize:0.##} | vida {vida:0.#}->{VidaTotalG10(d):0.#} | {Ultimos(falas)}");
 		LimparTudoDaBancada();
 
-		// GIGANTIC SPIKE -- com alguem na frente: agarra, LEVANTA, corre, esmaga o MARCADO, racha o chao.
+		// GIGANTIC SPIKE -- com alguem na frente: agarra, LEVANTA, corre, esmaga o PRESO (e NAO o marcado), racha o chao.
 		(a, d) = DuplaG10();
+		ServerPlayer marcado = ForjarLutadorG10("Marcado", a.Pos + new Vec2(-4 * ZoneCollision.TileSize, 0), 5_000);
+		a.AlvoId = marcado.Id;   // o MARCADO e outro corpo: o DM esmagaria ELE (`AttackMultiple(target, ...)`, :72)
+		double vidaMarcado = VidaTotalG10(marcado);
 		_prontoG3.Remove(a.Id);
 		ki = a.Ficha.Ki; antes = a.Pos; custo = CustoDePunhoG10(a, 12); vida = VidaTotalG10(d);
 		int caidas = CelulasCaidasG10(a.Zone);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Gigantic_Spike");
+		falas = ApertarEOuvir(a, "Gigantic_Spike");
 		float andou = (a.Pos.X - antes.X) / ZoneCollision.TileSize;
 		AfirmarG10("Gigantic Spike com alguem na frente: agarra E levanta (modo 2) e corre pra frente carregando o corpo (que chega junto)",
 				   a.ModoDoAgarrao == ModoDeAgarrao.Carregando && a.AgarrandoId == d.Id && andou >= 1
 				   && Vec2.Distance(d.Pos, a.Pos) < 1f,
-				   $"andou {andou:0.##} tiles | preso a {Vec2.Distance(d.Pos, a.Pos):0.#}px | {Ultimos(EscutaDeAvisos)}");
-		AfirmarG10("...e esmaga o alvo MARCADO no fim (+16+dmg -- em `target`, como o DM, que aqui e o mesmo corpo)",
-				   VidaTotalG10(d) < vida - 0.5 && EscutaDeAvisos.Exists(s => s.Contains("esmaga")),
-				   $"vida {vida:0.#}->{VidaTotalG10(d):0.#}");
+				   $"andou {andou:0.##} tiles | preso a {Vec2.Distance(d.Pos, a.Pos):0.#}px | {Ultimos(falas)}");
+		AfirmarG10("...e esmaga quem esta NOS BRACOS no fim (+16+dmg no `grabbee`) e NAO o alvo marcado, que e outro corpo e sai ileso (o DM batia em `target`, Beserker Skills.dm:72 -- consertado por decisao do dono)",
+				   VidaTotalG10(d) < vida - 0.5 && Perto(VidaTotalG10(marcado), vidaMarcado) && falas.Exists(s => s.Contains("esmaga")),
+				   $"preso {vida:0.#}->{VidaTotalG10(d):0.#} | marcado {vidaMarcado:0.#}->{VidaTotalG10(marcado):0.#}");
 		AfirmarG10("...e o chao em volta racha (turfs em view(Ephysoff/2+1) caem) e custou Ephysoff*BaseDrain*12",
 				   CelulasCaidasG10(a.Zone) > caidas && Perto(ki - a.Ficha.Ki, custo, 0.05),
 				   $"celulas {caidas}->{CelulasCaidasG10(a.Zone)}");
@@ -472,17 +452,27 @@ public partial class GameServer
 		(a, d) = DuplaG10();
 		_prontoG3.Remove(a.Id);
 		ki = a.Ficha.Ki; antes = a.Pos; custo = CustoDePunhoG10(a, 12); vida = VidaTotalG10(d);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Power_Drag");
+		falas = ApertarEOuvir(a, "Power_Drag");
 		andou = (a.Pos.X - antes.X) / ZoneCollision.TileSize;
 		int distEsperada = (int)DmMath.Round(a.Ficha.Espeed + a.Ficha.Etechnique + a.Ficha.Ephysoff, 1);
 		AfirmarG10($"Power Drag: agarra, levanta e arrasta o corpo por round(Espeed+Etechnique+Ephysoff) = {distEsperada} tiles, com o preso colado",
 				   a.ModoDoAgarrao == ModoDeAgarrao.Carregando && andou >= Math.Min(distEsperada, 3) - 0.5
 				   && Vec2.Distance(d.Pos, a.Pos) < 1f,
-				   $"andou {andou:0.##} tiles | {Ultimos(EscutaDeAvisos)}");
+				   $"andou {andou:0.##} tiles | {Ultimos(falas)}");
 		AfirmarG10("...e o arrastado perde vida (os N golpes de (base+5)/N do DM viraram UM de base+5) e custou Ephysoff*BaseDrain*12",
 				   VidaTotalG10(d) < vida - 0.5 && Perto(ki - a.Ficha.Ki, custo, 0.05),
 				   $"vida {vida:0.#}->{VidaTotalG10(d):0.#}");
+		LimparTudoDaBancada();
+
+		// POWER DRAG -- ja SEGURANDO (modo 1): levanta e arrasta (a mesma familia do Gigantic Spike; o DM cobrava e nada acontecia).
+		(a, d) = DuplaG10();
+		AlternarAgarrao(a);   // modo 1
+		_prontoG3.Remove(a.Id);
+		antes = a.Pos; vida = VidaTotalG10(d);
+		UsarHabilidade(a, "Power_Drag");
+		AfirmarG10("Power Drag com o alvo apenas SEGURO (modo 1): levanta (modo 2), arrasta e machuca -- o DM cobrava e nao fazia nada (`get_me_a_grab(1)`, Beserker Skills.dm:88-91; consertado por decisao do dono)",
+				   a.ModoDoAgarrao == ModoDeAgarrao.Carregando && (a.Pos.X - antes.X) / ZoneCollision.TileSize >= 1 && VidaTotalG10(d) < vida - 0.5,
+				   $"modo {a.ModoDoAgarrao} | andou {(a.Pos.X - antes.X) / ZoneCollision.TileSize:0.##} | vida {vida:0.#}->{VidaTotalG10(d):0.#}");
 		LimparTudoDaBancada();
 
 		// SEISMIC PRESS -- golpe pesado, 2 s de atordoamento, o chao racha em view(Ephysoff).
@@ -491,15 +481,13 @@ public partial class GameServer
 		ki = a.Ficha.Ki; custo = CustoDePunhoG10(a, 18); vida = VidaTotalG10(d);
 		caidas = CelulasCaidasG10(a.Zone);
 		d.Combate.Stun = 0;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Seismic_Press");
+		falas = ApertarEOuvir(a, "Seismic_Press");
 		AfirmarG10("Seismic Press: o alvo leva o golpe (+15) e fica 2,0 s sem reagir (stunCount += 20)",
 				   VidaTotalG10(d) < vida - 0.5 && d.Combate.Stun >= 1.99,
-				   $"stun {d.Combate.Stun:0.##} | {Ultimos(EscutaDeAvisos)}");
+				   $"stun {d.Combate.Stun:0.##} | {Ultimos(falas)}");
 		AfirmarG10($"...e todo turf em view(Ephysoff = {Math.Floor(a.Ficha.Ephysoff)}) mais fraco que o BP cai; custou Ephysoff*BaseDrain*18",
 				   CelulasCaidasG10(a.Zone) > caidas && Perto(ki - a.Ficha.Ki, custo, 0.05),
 				   $"celulas {caidas}->{CelulasCaidasG10(a.Zone)}");
-		EscutaDeAvisos = null;
 		LimparTudoDaBancada();
 	}
 
@@ -517,11 +505,10 @@ public partial class GameServer
 		_atrasosG10.Clear();
 		double dose = 1 + a.Ficha.Ephysoff / 2 + a.Ficha.Etechnique / 2;
 		double ki = a.Ficha.Ki, custo = CustoDePunhoG10(a, 8), vida = VidaTotalG10(d);
-		EscutaDeAvisos = [];
-		UsarHabilidade(a, "Shock");
+		List<string> falas = ApertarEOuvir(a, "Shock");
 		AfirmarG10($"Shock: alem do golpe (+2), o alvo perde {dose:0.##} (1+Ephysoff/2+Etechnique/2) DIRETO num membro agora...",
 				   VidaTotalG10(d) <= vida - dose + 0.01 && Perto(ki - a.Ficha.Ki, custo, 0.05),
-				   $"vida {vida:0.#}->{VidaTotalG10(d):0.#} | {Ultimos(EscutaDeAvisos)}");
+				   $"vida {vida:0.#}->{VidaTotalG10(d):0.#} | {Ultimos(falas)}");
 		AfirmarG10("...e a segunda dose fica AGENDADA pra 1,5 s depois (o `sleep(15)` do `spawn while(a > 0)`)",
 				   _atrasosG10.Count == 1 && _atrasosG10[0].Alvo == d.Id && !_atrasosG10[0].Espalhado
 				   && Perto(_atrasosG10[0].Dano, dose) && _atrasosG10[0].QuandoMs > NowMs() + 1000,
@@ -542,11 +529,10 @@ public partial class GameServer
 		BodyPart torso = d.Combate.Corpo.Achar("Torso")!;
 		double torsoAntes = torso.Vida;
 		custo = CustoDePunhoG10(a, 12); ki = a.Ficha.Ki;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Reverb");
+		falas = ApertarEOuvir(a, "Reverb");
 		AfirmarG10($"Reverb: alem do golpe (+2), TODO membro do alvo perde {onda:0.##} (5+Ephysoff+Etechnique) agora -- o torso inclusive...",
 				   torso.Vida <= torsoAntes - onda + 0.01 && Perto(ki - a.Ficha.Ki, custo, 0.05),
-				   $"torso {torsoAntes:0.#}->{torso.Vida:0.#} | {Ultimos(EscutaDeAvisos)}");
+				   $"torso {torsoAntes:0.#}->{torso.Vida:0.#} | {Ultimos(falas)}");
 		AfirmarG10("...e ficam DUAS ondas agendadas, espalhadas, com o mesmo valor",
 				   _atrasosG10.Count == 2 && _atrasosG10.TrueForAll(at => at.Espalhado && Perto(at.Dano, onda) && at.Alvo == d.Id),
 				   $"{_atrasosG10.Count} atrasos");
@@ -565,12 +551,11 @@ public partial class GameServer
 		double estouro = 70 + a.Ficha.Ephysoff + a.Ficha.Etechnique;
 		custo = CustoDePunhoG10(a, 15); ki = a.Ficha.Ki;
 		long t0 = NowMs();
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Precise_Explosion");
+		falas = ApertarEOuvir(a, "Precise_Explosion");
 		AfirmarG10($"Precise Explosion: o golpe (+2) entra e um ESTOURO de {estouro:0.##} (70+Ephysoff+Etechnique) fica agendado pra 2 s depois, num membro so",
 				   _atrasosG10.Count == 1 && !_atrasosG10[0].Espalhado && Perto(_atrasosG10[0].Dano, estouro)
 				   && _atrasosG10[0].QuandoMs >= t0 + 1900 && Perto(ki - a.Ficha.Ki, custo, 0.05),
-				   $"{_atrasosG10.Count} atrasos | {Ultimos(EscutaDeAvisos)}");
+				   $"{_atrasosG10.Count} atrasos | {Ultimos(falas)}");
 		AfirmarG10("...e a recarga dela e a mais longa do assassino (basicCD += 20 = 2 s)",
 				   _prontoG3.TryGetValue(a.Id, out long livre) && livre - t0 >= 1900 && livre - t0 <= 2100,
 				   $"{(_prontoG3.TryGetValue(a.Id, out long l2) ? l2 - t0 : -1)} ms");
@@ -591,12 +576,11 @@ public partial class GameServer
 		torso = d.Combate.Corpo.Achar("Torso")!;
 		torsoAntes = torso.Vida;
 		custo = CustoDePunhoG10(a, 15); ki = a.Ficha.Ki;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Trip");
+		falas = ApertarEOuvir(a, "Trip");
 		AfirmarG10($"Trip com o alvo NO CHAO: ele fica 3,0 s sem reagir (stunCount += 30) e cada membro perde {rasteira:0.##} (1+Etechnique), sem rolagem",
 				   d.Combate.Stun >= 2.99 && torso.Vida <= torsoAntes - rasteira + 0.01 && Perto(ki - a.Ficha.Ki, custo, 0.05)
-				   && EscutaDeAvisos.Exists(s => s.Contains("rasteira")),
-				   $"stun {d.Combate.Stun:0.##} torso {torsoAntes:0.#}->{torso.Vida:0.#} | {Ultimos(EscutaDeAvisos)}");
+				   && falas.Exists(s => s.Contains("rasteira")),
+				   $"stun {d.Combate.Stun:0.##} torso {torsoAntes:0.#}->{torso.Vida:0.#} | {Ultimos(falas)}");
 		LimparTudoDaBancada();
 
 		// TRIP -- voando: nada (e o Ki ja foi, como no DM).
@@ -605,11 +589,10 @@ public partial class GameServer
 		d.Voando = true;
 		d.Combate.Stun = 0;
 		vida = VidaTotalG10(d);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Trip");
+		falas = ApertarEOuvir(a, "Trip");
 		AfirmarG10("Trip com o alvo VOANDO: nao atordoa e nao machuca (nao ha chao pra tropecar) -- o requisito e o chao",
-				   d.Combate.Stun < 1.0 && VidaTotalG10(d) >= vida - 0.01 && EscutaDeAvisos.Exists(s => s.Contains("no ar")),
-				   $"stun {d.Combate.Stun:0.##} | {Ultimos(EscutaDeAvisos)}");
+				   d.Combate.Stun < 1.0 && VidaTotalG10(d) >= vida - 0.01 && falas.Exists(s => s.Contains("no ar")),
+				   $"stun {d.Combate.Stun:0.##} | {Ultimos(falas)}");
 		LimparTudoDaBancada();
 
 		// HOKUTO -- sem folego: recusa e nada muda.
@@ -619,33 +602,44 @@ public partial class GameServer
 		a.Ficha.stamina = 10;
 		d.Combate.Stun = 0;
 		ki = a.Ficha.Ki;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Hokuto_Hyakuretsu_Ken");
+		falas = ApertarEOuvir(a, "Hokuto_Hyakuretsu_Ken");
 		AfirmarG10("Hokuto com folego < 18: recusa, nao cobra folego nem Ki, nao atordoa",
 				   Perto(a.Ficha.stamina, 10) && Perto(a.Ficha.Ki, ki) && d.Combate.Stun == 0 && !_ultiG10.ContainsKey(a.Id),
-				   Ultimos(EscutaDeAvisos));
+				   Ultimos(falas));
 		LimparTudoDaBancada();
 
-		// HOKUTO -- com folego e colado: -18 de folego, ultiCD, DEZ segundos sem reagir, Ki*20, basicCD 30.
+		// HOKUTO -- com folego e colado: -18 de folego, ultiCD, DEZ segundos sem reagir, Ki*20, basicCD 30,
+		// e o bloco do `if(BarrageAttack(...))`: NormDamageCalc agora e 70 em 1 s (o DM nunca entrava nele).
 		(a, d) = DuplaG10();
 		_prontoG3.Remove(a.Id);
 		_ultiG10.Remove(a.Id);
+		_atrasosG10.Clear();
 		d.Combate.Stun = 0;
 		double folego = a.Ficha.stamina;
 		ki = a.Ficha.Ki; custo = CustoDePunhoG10(a, 20); vida = VidaTotalG10(d);
 		t0 = NowMs();
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Hokuto_Hyakuretsu_Ken");
+		falas = ApertarEOuvir(a, "Hokuto_Hyakuretsu_Ken");
 		AfirmarG10("Hokuto colado e com folego: cobra 18 de FOLEGO, arma o ultiCD (18*Eactspeed tiques) e o alvo fica DEZ segundos sem reagir (stunCount += 100)",
 				   Perto(folego - a.Ficha.stamina, 18) && _ultiG10.ContainsKey(a.Id) && d.Combate.Stun >= 9.99,
-				   $"folego {folego:0.#}->{a.Ficha.stamina:0.#} stun {d.Combate.Stun:0.##} | {Ultimos(EscutaDeAvisos)}");
+				   $"folego {folego:0.#}->{a.Ficha.stamina:0.#} stun {d.Combate.Stun:0.##} | {Ultimos(falas)}");
 		AfirmarG10($"...e a segunda metade cobra Ephysoff*BaseDrain*20 = {custo:0.##} de Ki, arma basicCD += 30 e o alvo perde vida",
 				   Perto(ki - a.Ficha.Ki, custo, 0.05) && _prontoG3.TryGetValue(a.Id, out long l3) && l3 - t0 >= 2900
 				   && VidaTotalG10(d) < vida - 0.5,
 				   $"ki {ki:0.##}->{a.Ficha.Ki:0.##}");
-		AfirmarG10("...e os dois extras do DM continuam ZERO: o `damage_mob` que pende de um BarrageAttack sem return, e o beatdown de um `unarmedskill` que nao existe",
-				   DanoExtraHokutoG10 == 0 && BeatdownHokutoG10 == 0);
-		EscutaDeAvisos = null;
+		double golpeFinal = CombatMath.DanoBase(a.Ficha, d.Ficha);
+		AfirmarG10($"...e o bloco que o DM nunca entrava (`if(BarrageAttack(...))` sem return, Assassain Skills.dm:112-116) RODA: a rajada encostou, {golpeFinal:0.##} (NormDamageCalc) entra direto num membro agora e os 70 ficam AGENDADOS pra 1 s depois",
+				   _atrasosG10.Count == 1 && _atrasosG10[0].Alvo == d.Id && !_atrasosG10[0].Espalhado
+				   && Perto(_atrasosG10[0].Dano, 70) && _atrasosG10[0].QuandoMs >= t0 + 900
+				   && falas.Exists(s => s.Contains("a rajada entrou")),
+				   $"{_atrasosG10.Count} atrasos | {Ultimos(falas)}");
+		d.Combate.Corpo.Curar(100);   // membros cheios: o que sai no pulso e SO o golpe final
+		d.Combate.SincronizarVida();
+		vida = VidaTotalG10(d);
+		foreach (AtrasoG10 at in _atrasosG10) at.QuandoMs = 0;
+		PulsoG10();
+		AfirmarG10("...e quando o relogio chega la o membro leva os 70 do `damage_mob(target, 70)` (o contra-exemplo do DM era zero) e a agenda esvazia",
+				   VidaTotalG10(d) <= vida - 70 + 0.01 && _atrasosG10.Count == 0,
+				   $"vida {vida:0.#}->{VidaTotalG10(d):0.#}");
 		LimparTudoDaBancada();
 	}
 
@@ -663,23 +657,21 @@ public partial class GameServer
 		_prontoG3.Remove(a.Id);
 		double ki = a.Ficha.Ki;
 		Vec2 antes = a.Pos;
-		EscutaDeAvisos = [];
-		UsarHabilidade(a, "Rapid_Movement");
+		List<string> falas = ApertarEOuvir(a, "Rapid_Movement");
 		AfirmarG10("Rapid Movement SEM alvo marcado: recusa (\"alvo MARCADO\"), nao anda e nao cobra",
-				   Perto(a.Ficha.Ki, ki) && Vec2.Distance(a.Pos, antes) < 0.5f && EscutaDeAvisos.Exists(s => s.Contains("MARCADO")),
-				   Ultimos(EscutaDeAvisos));
+				   Perto(a.Ficha.Ki, ki) && Vec2.Distance(a.Pos, antes) < 0.5f && falas.Exists(s => s.Contains("MARCADO")),
+				   Ultimos(falas));
 
 		// COM alvo marcado a 8 tiles: tres passos (tres tiles) na direcao dele, custo 10*BaseDrain/speed.
 		a.AlvoId = d.Id;
 		double kiReq = 10 * a.Ficha.BaseDrain() / a.Ficha.speed;
 		ki = a.Ficha.Ki; antes = a.Pos;
 		float distAntes = Vec2.Distance(a.Pos, d.Pos);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Rapid_Movement");
+		falas = ApertarEOuvir(a, "Rapid_Movement");
 		float aproximou = (distAntes - Vec2.Distance(a.Pos, d.Pos)) / ZoneCollision.TileSize;
 		AfirmarG10($"Rapid Movement COM alvo marcado a 8 tiles: avanca TRES tiles contra ele e cobra 10*BaseDrain/speed = {kiReq:0.##} (e nao kiReq*BaseDrain, ver o cabecalho)",
 				   aproximou >= 2.5f && aproximou <= 3.5f && Perto(ki - a.Ficha.Ki, kiReq, 0.05),
-				   $"aproximou {aproximou:0.##} tiles | ki {ki:0.##}->{a.Ficha.Ki:0.##} | {Ultimos(EscutaDeAvisos)}");
+				   $"aproximou {aproximou:0.##} tiles | ki {ki:0.##}->{a.Ficha.Ki:0.##} | {Ultimos(falas)}");
 		AfirmarG10("...e NAO arma recarga nenhuma: o `dashtired` so seria armado por um `stopDashing()` que o DM nunca chama",
 				   !_prontoG3.ContainsKey(a.Id));
 
@@ -706,29 +698,27 @@ public partial class GameServer
 		_prontoG3.Remove(a.Id);
 		ki = a.Ficha.Ki; antes = a.Pos;
 		double custo = CustoDePunhoG10(a, 4);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Zanzoken_Combo");
+		falas = ApertarEOuvir(a, "Zanzoken_Combo");
 		AfirmarG10($"Zanzoken Combo com o alvo alem de zanzorange+2 (= {zanzorange + 2} tiles): nao move -- e cobra Ephysoff*BaseDrain*4 mesmo assim, como o DM (Physical Skills.dm:12-15)",
 				   Vec2.Distance(a.Pos, antes) < 0.5f && Perto(ki - a.Ficha.Ki, custo, 0.05),
-				   Ultimos(EscutaDeAvisos));
+				   Ultimos(falas));
 		LimparTudoDaBancada();
 
 		// ZANZOKEN COMBO -- no alcance: aparece do OUTRO lado do alvo, olhando pra ele.
 		(a, d) = DuplaG10(tilesEntre: 3f);
 		_prontoG3.Remove(a.Id);
 		ki = a.Ficha.Ki; custo = CustoDePunhoG10(a, 4);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Zanzoken_Combo");
+		falas = ApertarEOuvir(a, "Zanzoken_Combo");
 		AfirmarG10("Zanzoken Combo no alcance: voce reaparece ATRAS do alvo (o tile do outro lado, continuando a sua direcao) e vira pra ele",
 				   a.Pos.X > d.Pos.X && Vec2.Distance(a.Pos, d.Pos) <= DistanciaDeParada + 1 && a.Facing == Facing.West
 				   && Perto(ki - a.Ficha.Ki, custo, 0.05),
-				   $"a {a.Pos.X:0},{a.Pos.Y:0} d {d.Pos.X:0},{d.Pos.Y:0} facing {a.Facing} | {Ultimos(EscutaDeAvisos)}");
+				   $"a {a.Pos.X:0},{a.Pos.Y:0} d {d.Pos.X:0},{d.Pos.Y:0} facing {a.Facing} | {Ultimos(falas)}");
 		LimparTudoDaBancada();
 
 		// ZANZOKEN RUSH -- o rushmod vem do DEGRAU (niveis.json: 2/3/4), e nasce 1.
-		ServerPlayer novato = ForjarLutadorG10("Novato", CorredorAndavelG10(), 5_000);
-		ServerPlayer veterano = ForjarLutadorG10("Veterano", CorredorAndavelG10(), 5_000, nivelDoRush: 3);
-		ServerPlayer meio = ForjarLutadorG10("Meio", CorredorAndavelG10(), 5_000, nivelDoRush: 2);
+		ServerPlayer novato = ForjarLutadorG10("Novato", CorredorDeTerraFirme(), 5_000);
+		ServerPlayer veterano = ForjarLutadorG10("Veterano", CorredorDeTerraFirme(), 5_000, nivelDoRush: 3);
+		ServerPlayer meio = ForjarLutadorG10("Meio", CorredorDeTerraFirme(), 5_000, nivelDoRush: 2);
 		AfirmarG10("Zanzoken Rush: o rushmod nasce 1 e os degraus 1-3 o levam a 2/3/4 (lido do niveis.json, nao de uma escada digitada)",
 				   Perto(RushmodG10(novato), 1) && Perto(RushmodG10(meio), 3) && Perto(RushmodG10(veterano), 4),
 				   $"{RushmodG10(novato)} / {RushmodG10(meio)} / {RushmodG10(veterano)}");
@@ -738,14 +728,13 @@ public partial class GameServer
 		(a, d) = DuplaG10(tilesEntre: 25f);
 		_rushG10.Remove(a.Id); _rushProntoG10.Remove(a.Id);
 		ki = a.Ficha.Ki;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Zanzoken_Rush");
+		falas = ApertarEOuvir(a, "Zanzoken_Rush");
 		AfirmarG10("Zanzoken Rush com o alvo a 25 tiles: recusa (\"alvo valido a menos de vinte tiles\") e nao cobra",
-				   Perto(a.Ficha.Ki, ki) && !_rushG10.ContainsKey(a.Id), Ultimos(EscutaDeAvisos));
+				   Perto(a.Ficha.Ki, ki) && !_rushG10.ContainsKey(a.Id), Ultimos(falas));
 		LimparTudoDaBancada();
 
 		// ZANZOKEN RUSH -- com alvo a 5 tiles e nivel 2 (rushmod 3), Espeed 3: rushmax = max(round(3*ln 3), 1) = 3 saltos.
-		Vec2 pista = CorredorAndavelG10(diagonaisEm: 5);
+		Vec2 pista = CorredorDeTerraFirme(diagonaisEm: 5);
 		d = ForjarLutadorG10("Alvo", pista + new Vec2(5 * ZoneCollision.TileSize, 0), 5_000);
 		a = ForjarLutadorG10("Saltador", pista, 5_000, nivelDoRush: 2);
 		a.Facing = Facing.East; a.AlvoId = d.Id;
@@ -757,12 +746,11 @@ public partial class GameServer
 		double exp = a.Niveis.Exp(PathDoRushG10);
 		ki = a.Ficha.Ki;
 		double vida = VidaTotalG10(d);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Zanzoken_Rush");
+		falas = ApertarEOuvir(a, "Zanzoken_Rush");
 		AfirmarG10($"Zanzoken Rush com alvo a 5 tiles: cobra angerBuff*5/(Ephysoff+Etechnique)*BaseDrain = {custoRush:0.##}, o primeiro salto sai AGORA (voce aparece num vizinho diagonal do alvo) e golpeia",
 				   Perto(ki - a.Ficha.Ki, custoRush, 0.05) && Vec2.Distance(a.Pos, d.Pos) <= 1.5f * ZoneCollision.TileSize
 				   && VidaTotalG10(d) < vida - 0.5,
-				   $"dist {Vec2.Distance(a.Pos, d.Pos) / ZoneCollision.TileSize:0.##} tiles | {Ultimos(EscutaDeAvisos)}");
+				   $"dist {Vec2.Distance(a.Pos, d.Pos) / ZoneCollision.TileSize:0.##} tiles | {Ultimos(falas)}");
 		AfirmarG10($"...e ficam rushmax-1 = {rushmax - 1} saltos na agenda do lote (rushmax = max(round(rushmod*ln(Espeed)),1) = {rushmax})",
 				   rushmax > 1 && _rushG10.TryGetValue(a.Id, out RushG10? r) && r.Faltam == rushmax - 1,
 				   $"{(_rushG10.TryGetValue(a.Id, out RushG10? r2) ? r2.Faltam : -1)} faltam");
@@ -781,11 +769,9 @@ public partial class GameServer
 				   a.Niveis.Exp(PathDoRushG10) > exp || a.Niveis.Nivel(PathDoRushG10) > 2,
 				   $"exp {exp:0.#} -> {a.Niveis.Exp(PathDoRushG10):0.#} nivel {a.Niveis.Nivel(PathDoRushG10)}");
 		ki = a.Ficha.Ki;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Zanzoken_Rush");
+		falas = ApertarEOuvir(a, "Zanzoken_Rush");
 		AfirmarG10("...e usar de novo durante a exaustao recusa (\"exausto\") sem cobrar",
-				   Perto(a.Ficha.Ki, ki) && EscutaDeAvisos.Exists(s => s.Contains("exausto")), Ultimos(EscutaDeAvisos));
-		EscutaDeAvisos = null;
+				   Perto(a.Ficha.Ki, ki) && falas.Exists(s => s.Contains("exausto")), Ultimos(falas));
 		LimparTudoDaBancada();
 	}
 
@@ -797,7 +783,7 @@ public partial class GameServer
 		_pjProximoCorredor = 8;   // as fileiras andaveis sao poucas; a familia anterior ja saiu do mundo
 		GD.Print("[g10] -- 7) TAUNT VIRA A MIRA DOS OUTROS PRA VOCE; SLAP PASMA; COUNTER TAUNT MACHUCA A MENTE");
 
-		Vec2 chao = CorredorAndavelG10();
+		Vec2 chao = CorredorDeTerraFirme();
 		ServerPlayer p = ForjarLutadorG10("Provocador", chao, 5_000);
 		ServerPlayer m = ForjarLutadorG10("Brigao", chao + new Vec2(3 * ZoneCollision.TileSize, 0), 5_000);
 		ServerPlayer n = ForjarLutadorG10("Pacato", chao + new Vec2(-3 * ZoneCollision.TileSize, 0), 5_000);
@@ -822,19 +808,17 @@ public partial class GameServer
 		_prontoG3.Remove(p.Id);
 		double kiGuardado = p.Ficha.Ki;
 		p.Ficha.Ki = 0;
-		EscutaDeAvisos = [];
-		UsarHabilidade(p, "Taunt");
+		List<string> falas = ApertarEOuvir(p, "Taunt");
 		AfirmarG10("Taunt sem Ki pra conferir (Ki < Ephysoff*BaseDrain): recusa e ninguem muda de alvo",
-				   m.AlvoId == x.Id && EscutaDeAvisos.Exists(s => s.Contains("pede")), Ultimos(EscutaDeAvisos));
+				   m.AlvoId == x.Id && falas.Exists(s => s.Contains("pede")), Ultimos(falas));
 		p.Ficha.Ki = kiGuardado;
 
 		// TAUNT -- com Ki: quem tinha alvo passa a mirar em voce; quem nao tinha, nao.
 		_prontoG3.Remove(p.Id);
 		double ki = p.Ficha.Ki;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(p, "Taunt");
+		falas = ApertarEOuvir(p, "Taunt");
 		AfirmarG10("Taunt: quem ja lutava com alguem (o Brigao mirava o Outro) passa a mirar em VOCE -- `M.target = usr`",
-				   m.AlvoId == p.Id, $"alvo do Brigao = {m.AlvoId} (provocador {p.Id}) | {Ultimos(EscutaDeAvisos)}");
+				   m.AlvoId == p.Id, $"alvo do Brigao = {m.AlvoId} (provocador {p.Id}) | {Ultimos(falas)}");
 		AfirmarG10("...quem nao lutava com ninguem (o Pacato) continua sem alvo -- o `if(M.target)` e o requisito",
 				   n.AlvoId == 0, $"alvo do Pacato = {n.AlvoId}");
 		AfirmarG10("...e o Ki e conferido e NAO cobrado (Bodybuilding.dm:194-201 nao tem `Ki -= kireq`), so o basicCD += 10 e armado",
@@ -846,36 +830,47 @@ public partial class GameServer
 		else
 			AfirmarG10("(sem npcs.json carregado: o ramo do NPC pacifico nao foi medido)", false, "molde 'cidadao' ausente");
 
-		// SLAP -- quem tem alvo fica 1,5 s sem reagir; quem nao tem, nao.
+		// A GRACE SEGUE A CASA DA TRINDADE (Bodybuilding.dm:243, `switch(savant.trinitytype)`): comprada com
+		// Van-sama escolhido, ela soma o willpower da casa Van-sama (+0,05) -- nao o de Aniki (+0,1), e nao
+		// zero (sem casa). E o `EfeitosDeSkill.CasaEscolhida` herdando a casa da lider pelo rotulo.
+		EfeitosDeSkill.Aplicar(p.Ficha, _skills!, p.Livro.Aprendidas, p.Livro.Escolhas);
+		double wpAntes = p.Ficha.willpowerMod;
+		p.Livro.Dar(PathDaGracaG10);
+		EfeitosDeSkill.Aplicar(p.Ficha, _skills!, p.Livro.Aprendidas, p.Livro.Escolhas);
+		AfirmarG10("a Grace comprada SEGUE a casa da Trindade: com Van-sama ela soma +0,05 de willpower (Aniki daria +0,1; sem casa, nada)",
+				   Perto(p.Ficha.willpowerMod - wpAntes, 0.05), $"{wpAntes:0.###} -> {p.Ficha.willpowerMod:0.###}");
+
+		// SLAP -- quem tem alvo fica 1,5 s sem reagir; quem nao tem, nao. O Slap e da casa RICARDO: o
+		// Provocador troca de casa (so a bancada pode: no jogo a escolha e definitiva) e o Taunt some.
+		p.Livro.Escolher(_skills!, PathDaTrindadeG10, 2);
+		AfirmarG10("trocada a casa pra Ricardo, o Taunt deixa de passar no gate e o Slap passa (um verb por casa)",
+				   !SabeTecnica(p, "Taunt") && SabeTecnica(p, "Slap"));
 		_prontoG3.Remove(p.Id);
 		m.AlvoId = x.Id;
 		m.Combate.Stun = 0; n.Combate.Stun = 0;
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(p, "Slap");
+		falas = ApertarEOuvir(p, "Slap");
 		AfirmarG10("Slap: quem lutava com alguem fica 1,5 s sem reagir (stagger por 15 tiques); quem nao lutava, nao",
 				   m.Combate.Stun >= 1.49 && n.Combate.Stun == 0,
-				   $"Brigao {m.Combate.Stun:0.##} Pacato {n.Combate.Stun:0.##} | {Ultimos(EscutaDeAvisos)}");
+				   $"Brigao {m.Combate.Stun:0.##} Pacato {n.Combate.Stun:0.##} | {Ultimos(falas)}");
 
-		// COUNTER TAUNT -- so o SEU alvo marcado, dano mental direto, um quarto.
+		// COUNTER TAUNT -- so o SEU alvo marcado, dano mental direto, um quarto. E da casa ANIKI.
+		p.Livro.Escolher(_skills!, PathDaTrindadeG10, 3);
 		_prontoG3.Remove(p.Id);
 		p.AlvoId = 0;
 		double vidaM = VidaTotalG10(m);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(p, "Counter_Taunt");
+		falas = ApertarEOuvir(p, "Counter_Taunt");
 		AfirmarG10("Counter Taunt SEM alvo marcado: ninguem se machuca (o `M == usr.target` e o requisito)",
-				   Perto(VidaTotalG10(m), vidaM), Ultimos(EscutaDeAvisos));
+				   Perto(VidaTotalG10(m), vidaM), Ultimos(falas));
 		_prontoG3.Remove(p.Id);
 		p.AlvoId = m.Id;
 		double mental = (CombatMath.DanoBase(p.Ficha, m.Ficha) + 2)
 						* CombatMath.BpModulus(p.Ficha.expressedBP, m.Ficha.expressedBP) * 0.25;
 		vidaM = VidaTotalG10(m);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(p, "Counter_Taunt");
+		falas = ApertarEOuvir(p, "Counter_Taunt");
 		AfirmarG10($"Counter Taunt COM o Brigao marcado: ele perde {mental:0.##} de vida MENTAL num membro ((DanoBase+Type 2)*BPModulus*0,25), sem rolagem",
 				   VidaTotalG10(m) <= vidaM - mental + 0.01 && VidaTotalG10(m) < vidaM,
-				   $"vida {vidaM:0.##}->{VidaTotalG10(m):0.##} | {Ultimos(EscutaDeAvisos)}");
+				   $"vida {vidaM:0.##}->{VidaTotalG10(m):0.##} | {Ultimos(falas)}");
 
-		EscutaDeAvisos = null;
 		LimparTudoDaBancada();
 	}
 
@@ -897,8 +892,14 @@ public partial class GameServer
 									  && l.Situacao == CensoDeSkills.Situacao.Portada));
 			AfirmarG10("o censo (`--censoteste`/`efeitos`) conta os DEZESSETE verbos concedidos deste lote como PORTADOS",
 					   naoPortados.Count == 0, string.Join(" | ", naoPortados));
-			AfirmarG10("...e os tres da Trindade NAO entram na conta dele (nenhuma skill os concede por dado -- e o que falta, e esta dito)",
-					   !r.Verbos.Exists(l => VerbosDaTrindadeG10.Contains(l.Verbo, StringComparer.OrdinalIgnoreCase)));
+			// ATE 2026-09-02 esta linha afirmava o CONTRARIO ("os tres da Trindade NAO entram na conta"):
+			// o extrator punha o `switch(TrinityType)` em quarentena. Hoje o degrau 2 os concede por casa
+			// (`verbosporcasa`) e o censo os ve por `RegrasDeNivel.VerbosDeDegrau`.
+			var trindadeFora = VerbosDaTrindadeG10.Where(v =>
+				!r.Verbos.Exists(l => string.Equals(l.Verbo, v, StringComparison.OrdinalIgnoreCase)
+									  && l.Situacao == CensoDeSkills.Situacao.Portada)).ToList();
+			AfirmarG10("...e os tres da Trindade ENTRAM na conta como PORTADOS: o degrau 2 os concede por casa (`verbosporcasa`, Bodybuilding.dm:180-185)",
+					   trindadeFora.Count == 0, string.Join(" | ", trindadeFora));
 		}
 		else AfirmarG10("o catalogo de skills carregou (sem ele o censo nao mede nada)", false);
 	}

@@ -933,15 +933,13 @@ public partial class GameServer
 		// disputa. Um defensor forte o bastante pra VENCER o embate tem, por construcao, chance de
 		// deflexao acima de 100% -- ele apararia o tiro antes de chegar aqui. A primeira versao desta
 		// familia reprovava exatamente assim, e o motivo nao era o embate: era a defesa funcionando.
+		// MEDIDO com os corpos daqui (raio de 5.000 contra guarda de 5.000.000): 1000%.
 		//
-		// Entao o raio sai NAO-DEFLETIVEL (`deflectable = 0` do DM -- ver `ReceitaDeProjetil`), que e
-		// um campo de producao e existe justamente pra tecnicas que *"nao ha o que defletir, so
-		// aguentar"*. O que se isola aqui e o EMBATE; a ordem entre ele e o sorteio tem afirmacao
-		// propria logo abaixo.
+		// Entao o raio sai pelo <see cref="SemDeflexao"/> -- a copia local que esta familia escrevia a
+		// mao virou metodo quando a varredura de 2026-09-02 achou o mesmo sorteio derrubando as
+		// familias do EMBATE (1% por impacto entre iguais). O que se isola aqui continua sendo o
+		// embate; a ordem entre ele e o sorteio tem afirmacao propria logo abaixo.
 		// =================================================================================================
-		ReceitaDeProjetil semDeflexao = RaioDeTeste();
-		semDeflexao.Deflectivel = false;
-
 		Vec2 chao = CorredorLivre(20);
 		ServerPlayer atirador = Forjar("Agressor", chao, bp: 5_000);
 		atirador.Facing = Facing.East;
@@ -951,7 +949,7 @@ public partial class GameServer
 		guarda.Combate.Guardar(true);
 		_comTecladoDeTeste.Add(guarda.Id);
 
-		Canalizar(atirador, "Ki_Wave", 10 * atirador.Ficha.BaseDrain(), semDeflexao);
+		Canalizar(atirador, "Ki_Wave", 10 * atirador.Ficha.BaseDrain(), SemDeflexao());
 		DisputaDeKi? d = null;
 		for (int i = 0; i < 30 * 8 && d == null; i++)
 		{
@@ -1001,7 +999,7 @@ public partial class GameServer
 		g2.Ficha.Ki = g2.Ficha.MaxKi;
 		g2.Combate.Guardar(true);
 
-		Canalizar(a2, "Ki_Wave", 10 * a2.Ficha.BaseDrain(), semDeflexao);
+		Canalizar(a2, "Ki_Wave", 10 * a2.Ficha.BaseDrain(), SemDeflexao());
 		for (int i = 0; i < 30 * 8 && !_emEmbateDeKi.ContainsKey(g2.Id); i++)
 		{
 			TickDosCanaisDeKi(Protocol.TickSeconds);
@@ -1229,11 +1227,43 @@ public partial class GameServer
 	// AS PECAS DA BANCADA
 	// =====================================================================
 	/// <summary>O `Ki_Wave` de producao, na receita que o verb monta (`beams.dm:270`).</summary>
+	/// <remarks>
+	/// ELE E O RAIO **COMUM**, E CONTINUA DEFLETIVEL DE PROPOSITO: a familia da ordem (`:1038`) mede
+	/// justamente que *"contra um raio COMUM, quem podia defletir defende de graca"* -- desligar o
+	/// sorteio aqui apagaria a unica prova de que a defesa de ki vem antes do embate. Quem precisa do
+	/// dado fora do caminho vira o knob no proprio disparo: ver o <see cref="SemDeflexao"/>.
+	/// </remarks>
 	private static ReceitaDeProjetil RaioDeTeste() => new()
 	{
 		Tipo = TipoDeProjetil.Beam, BaseDano = 1, Velocidade = 1,
 		AlcanceTiles = 30, CargaMinima = 1, Nome = "Onda de Ki",
 	};
+
+	/// <summary>
+	/// O MESMO RAIO, SEM O DADO DA DEFLEXAO -- `deflectable = 0` do DM (ver `ReceitaDeProjetil`), um
+	/// campo de producao que existe pra tecnicas em que *"nao ha o que defletir, so aguentar"*.
+	///
+	/// ============================ POR QUE ELE PRECISA EXISTIR ============================
+	/// A chance de defletir e a razao entre as duas forcas (`objects.dm:333`), calculada em
+	/// `DanoDeKi.ChanceDeDeflexao` e sorteada DUAS vezes por impacto no `Acertar`
+	/// (`GameServer.Projeteis.cs:1190-1240`). MEDIDO com os corpos desta bancada -- feixe de
+	/// `base_damage` 1, dois duelistas de 50.000: **1% por impacto**, e a linha *"o perdedor LEVOU o
+	/// ataque"* (`:628`) depende do feixe do vencedor chegar inteiro no corpo dele. E dez vezes o
+	/// sorteio de 0,0999% que derrubou a `--tecnicateste` em 2026-09-02 -- mesma familia de defeito,
+	/// mesmo conserto, e o motivo e o que o `RaioDaBancada` da `--projetilteste` (`:2167`) escreve:
+	/// um sorteio no meio da medicao mede o dado.
+	///
+	/// E NAO DA PRA DESLIGAR PELO CORPO: `Fighter.Statify` calcula o `Rkidef` com piso
+	/// (`max(kidef, 0.1)`, `Core/Stats/Fighter.Statify.cs:88`), entao `Ekidef` de um corpo vivo e
+	/// SEMPRE maior que zero e a chance nunca e nula. O knob do projetil e o unico lever que existe.
+	/// ==================================================================================
+	/// </summary>
+	private static ReceitaDeProjetil SemDeflexao()
+	{
+		ReceitaDeProjetil r = RaioDeTeste();
+		r.Deflectivel = false;
+		return r;
+	}
 
 	/// <summary>
 	/// DOIS CORPOS DE FRENTE, CADA UM COM UM RAIO, ate a disputa comecar (ou o prazo estourar).
@@ -1322,8 +1352,16 @@ public partial class GameServer
 		_comTecladoDeTeste.Add(a.Id);
 		if (tecladoNoSegundo) _comTecladoDeTeste.Add(b.Id);
 
-		Canalizar(a, "Ki_Wave", 10 * a.Ficha.BaseDrain(), RaioDeTeste());
-		Canalizar(b, "Ki_Wave", 10 * b.Ficha.BaseDrain(), RaioDeTeste());
+		// OS DOIS FEIXES DA DISPUTA SAEM SEM O DADO DA DEFLEXAO, e isso nao muda o embate: a disputa
+		// nasce do encontro de dois feixes e nao consulta `Deflectivel` em lugar nenhum. O que muda e
+		// o DEPOIS -- acabado o embate, o feixe do vencedor avanca no corpo do perdedor e cai no
+		// `Acertar`, onde o sorteio de 1% por impacto (ver <see cref="SemDeflexao"/>) trocaria a linha
+		// "o perdedor LEVOU o ataque" (`:628`) por um `Defletido` sem nada errado no jogo.
+		//
+		// A familia que PRECISA do raio defletivel (a ordem entre deflexao e embate, `:1038`) canaliza
+		// o dela na mao com o `RaioDeTeste` -- e por isso o knob esta aqui, e nao na receita comum.
+		Canalizar(a, "Ki_Wave", 10 * a.Ficha.BaseDrain(), SemDeflexao());
+		Canalizar(b, "Ki_Wave", 10 * b.Ficha.BaseDrain(), SemDeflexao());
 
 		for (int i = 0; i < 30 * 6; i++)
 		{

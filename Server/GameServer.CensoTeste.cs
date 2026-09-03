@@ -412,7 +412,7 @@ public partial class GameServer
 		foreach ((string v, _) in PorSkillG6) todos.Add(v);
 
 		AfirmarCen("os dezenove do lote sao exatamente os dezenove desta bancada",
-				   todos.Count == 19 && todos.TrueForAll(EhDoLoteG6), $"{todos.Count} verbos");
+				   todos.Count == 19 && todos.TrueForAll(v => EhDoLote("G6", v)), $"{todos.Count} verbos");
 
 		var mudas = todos.FindAll(v => Tecnicas.Get(v)!.Modo == Modo.NaoPortada);
 		AfirmarCen("...e nenhum deles continua marcado como NAO-PORTADO",
@@ -423,27 +423,21 @@ public partial class GameServer
 		// ficou vermelha por isso. O exemplo agora e o `Reincarnate_Mob`, que depende da reencarnacao
 		// (sistema ausente, `CensoDeSkills.SistAlem`) e nao esta em lote nenhum.
 		AfirmarCen("...e um verbo que o lote NAO portou (Reincarnate_Mob) continua fora dele",
-				   !EhDoLoteG6("Reincarnate_Mob") && Tecnicas.Get("Reincarnate_Mob")!.Modo == Modo.NaoPortada);
+				   !EhDoLote("G6", "Reincarnate_Mob") && Tecnicas.Get("Reincarnate_Mob")!.Modo == Modo.NaoPortada);
 
 		Vec2 chao = CorredorLivre(24);
 		ServerPlayer nu = Forjar("SemSkillG6", chao, bp: 5_000);
 		nu.Facing = Facing.East;
 
-		EscutaDeAvisos = [];
 		double kiAntes = nu.Ficha.Ki;
-		UsarHabilidade(nu, "Kamehameha");
+		List<string> falas = ApertarEOuvir(nu, "Kamehameha");
 		AfirmarCen("quem NAO comprou a skill ouve \"voce nao sabe\" e nao abre canal nenhum",
-				   !_canais.ContainsKey(nu.Id)
-				   && EscutaDeAvisos.Exists(a => a.Contains("nao sabe", StringComparison.OrdinalIgnoreCase)),
-				   string.Join(" | ", EscutaDeAvisos));
+				   !_canais.ContainsKey(nu.Id) && Disse(falas, "nao sabe"), Ultimos(falas));
 		AfirmarCen("...e a recusa nao cobra Ki nenhum", Math.Abs(nu.Ficha.Ki - kiAntes) < 0.001);
 
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(nu, "Kiai");
+		falas = ApertarEOuvir(nu, "Kiai");
 		AfirmarCen("o mesmo vale pro sopro, que vem de DEGRAU e nao de skill comprada",
-				   !TemBuff(nu, "Kiai")
-				   && EscutaDeAvisos.Exists(a => a.Contains("nao sabe", StringComparison.OrdinalIgnoreCase)));
-		EscutaDeAvisos = null;
+				   !TemBuff(nu, "Kiai") && Disse(falas, "nao sabe"));
 
 		// A OUTRA METADE DA PORTA: o degrau destrava, e o menu enxerga a mesma lista.
 		ServerPlayer pl = ForjarArmadoG6("Estudioso6", CorredorLivre(6), bp: 5_000);
@@ -463,21 +457,34 @@ public partial class GameServer
 		LimparTudoDaBancada();
 	}
 
-	/// <summary>Um corpo com os dezenove destravados -- o ponto de partida das familias 5 a 9.</summary>
-	private ServerPlayer ForjarArmadoG6(string nome, Vec2 onde, double bp)
+	/// <summary>
+	/// A CARGA DO RUGIDO, e um VEREDITO com nome quando ela nao existe mais. Ler `_rugindo[id]` na
+	/// unha estoura com `KeyNotFoundException` no dia em que o rugido se soltar sozinho (o Ki acabou
+	/// no meio, ou a carga bateu no teto) -- e excecao e ACIDENTE, nao resposta: a bancada morre sem
+	/// dizer o que mediu. Aqui a ausencia vira uma prova vermelha que se explica.
+	/// </summary>
+	private bool CargaDoRugido(ServerPlayer pl, out int carga)
 	{
-		ServerPlayer pl = Forjar(nome, onde, bp);
-		var save = new NivelSave();
-		foreach ((_, string path, int nivel) in PorDegrauG6) save.Skills[path] = [nivel, 0];
-		pl.Niveis.DoSave(save);
-		foreach ((_, string path) in PorSkillG6) pl.Livro.Dar(path);
-
-		// O KI DOS RAIOS CAROS: o Death Beam alimenta a 25x o `kireq`. Sem isto metade das familias
-		// mediria a recusa por falta de energia, que ja tem bancada propria.
-		pl.Ficha.MaxKi = Math.Max(pl.Ficha.MaxKi, 5_000_000);
-		pl.Ficha.Ki = pl.Ficha.MaxKi;
-		return pl;
+		if (_rugindo.TryGetValue(pl.Id, out RugidoG6? c)) { carga = c.Carga; return true; }
+		carga = -1;
+		return false;
 	}
+
+	/// <summary>O rodape das duas provas do Rugido: o numero, ou por que nao ha numero.</summary>
+	private static string PorQueSemCarga(int carga) => carga < 0
+		? "o rugido nao esta mais carregando -- soltou sozinho (sem Ki pro passo, ou carga no teto)"
+		: $"carga {carga}";
+
+	/// <summary>
+	/// Um corpo com os dezenove destravados -- o ponto de partida das familias 5 a 9. O KI DOS RAIOS
+	/// CAROS: o Death Beam alimenta a 25x o `kireq`; sem o tanque metade das familias mediria a recusa
+	/// por falta de energia, que ja tem bancada propria.
+	/// </summary>
+	private ServerPlayer ForjarArmadoG6(string nome, Vec2 onde, double bp)
+		=> ForjarComSkills(nome, onde, bp,
+						   skills: [.. PorSkillG6.Select(t => t.Path)],
+						   degraus: [.. PorDegrauG6.Select(t => (t.Path, t.Nivel))],
+						   kiMin: 5_000_000);
 
 	// =====================================================================
 	// 5) OS SEIS RAIOS
@@ -624,14 +631,10 @@ public partial class GameServer
 		// resto do jogo ainda nao produz; fingir que ele foi atingido seria o oposto.
 		// ============================================================================================
 		pl.Ficha.HP = 5;
-		EscutaDeAvisos = [];
 		int antes = ProjeteisDaZona(pl.Zone.Hash).Count;
-		UsarHabilidade(pl, "Kikoho");
+		List<string> falas = ApertarEOuvir(pl, "Kikoho");
 		AfirmarCen("...e um corpo ferido demais e RECUSADO (o `HP >= 10` do verb)",
-				   ProjeteisDaZona(pl.Zone.Hash).Count == antes
-				   && EscutaDeAvisos.Exists(a => a.Contains("ferido demais", StringComparison.OrdinalIgnoreCase)),
-				   string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos = null;
+				   ProjeteisDaZona(pl.Zone.Hash).Count == antes && Disse(falas, "ferido demais"), Ultimos(falas));
 
 		LimparTudoDaBancada();
 	}
@@ -751,12 +754,9 @@ public partial class GameServer
 		AfirmarCen("...e NAO toca em quem esta atras (o arco e a tecnica)", atras.TiquesDeVoo == 0);
 
 		// A RECARGA E UMA SO PRAS QUATRO -- trocar de verb nao burla a espera.
-		EscutaDeAvisos = [];
-		UsarHabilidade(pl, "Shockwave");
+		List<string> falas = ApertarEOuvir(pl, "Shockwave");
 		AfirmarCen("a recarga do sopro e COMPARTILHADA (Shockwave logo apos o Kiai e recusado)",
-				   EscutaDeAvisos.Exists(a => a.Contains("reagrupou", StringComparison.OrdinalIgnoreCase)),
-				   string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos = null;
+				   Disse(falas, "reagrupou"), Ultimos(falas));
 
 		// O KIAI SEM NINGUEM NA FRENTE VIRA TIRO (`if(!mobaff)`).
 		_soproPronto.Remove(pl.Id);
@@ -813,9 +813,23 @@ public partial class GameServer
 		AfirmarCen("o Rugido comeca a carregar no primeiro aperto", _rugindo.ContainsKey(pl.Id));
 
 		ServerPlayer perto = Forjar("Perto", pl.Pos + new Vec2(ZoneCollision.TileSize * 2, 0), bp: 100);
-		for (int i = 0; i < 4; i++) { _rugindo[pl.Id].ProximoMs = 0; TickDasTecnicasG6(); }
-		AfirmarCen("...e a carga anda no tique de 1 Hz", _rugindo[pl.Id].Carga >= 3,
-				   $"{_rugindo[pl.Id].Carga}");
+
+		// O CONTRA-EXEMPLO VEM ANTES, e sem ele a afirmacao de baixo nao afirma o que diz: quatro
+		// tiques com o prazo de 1 s AINDA CORRENDO nao podem mexer na carga. Sem esta linha, uma
+		// carga que andasse a cada tique (o defeito exato que o `ProximoMs` existe pra impedir)
+		// deixaria a prova verde -- ela so olha o total no fim.
+		for (int i = 0; i < 4; i++) TickDasTecnicasG6();
+		AfirmarCen("...e ANTES de o prazo de 1 s vencer, quatro tiques NAO andam com a carga",
+				   CargaDoRugido(pl, out int parada) && parada == 0, PorQueSemCarga(parada));
+
+		for (int i = 0; i < 4; i++)
+		{
+			if (!_rugindo.TryGetValue(pl.Id, out RugidoG6? c)) break;   // a ausencia e o veredito de baixo
+			c.ProximoMs = 0;
+			TickDasTecnicasG6();
+		}
+		AfirmarCen("...e a carga anda no tique de 1 Hz", CargaDoRugido(pl, out int carga) && carga >= 3,
+				   PorQueSemCarga(carga));
 
 		UsarHabilidade(pl, "Explosive_Roar");
 		AfirmarCen("o segundo aperto solta o rugido e ele arremessa quem esta no raio",
@@ -924,35 +938,23 @@ public partial class GameServer
 		ferido.Pos = chao + new Vec2(ZoneCollision.TileSize, 0);
 		ferido.Ficha.kieffusionskill = 42;
 
-		EscutaDeAvisos = [];
 		medico.Ficha.kiawarenessskill = 10;
-		UsarHabilidade(medico, "Assess_Ki_Skill");
-		bool vago = EscutaDeAvisos.Exists(a => a.Contains("dominio de Ki", StringComparison.OrdinalIgnoreCase));
-		bool numero1 = EscutaDeAvisos.Exists(a => a.Contains("42", StringComparison.Ordinal));
-		AfirmarCen("percepcao baixa: so a impressao geral, sem numero nenhum", vago && !numero1,
-				   string.Join(" | ", EscutaDeAvisos));
+		List<string> falas = ApertarEOuvir(medico, "Assess_Ki_Skill");
+		AfirmarCen("percepcao baixa: so a impressao geral, sem numero nenhum",
+				   Disse(falas, "dominio de Ki") && !Disse(falas, "42"), Ultimos(falas));
 
-		EscutaDeAvisos.Clear();
 		medico.Ficha.kiawarenessskill = 40;
-		UsarHabilidade(medico, "Assess_Ki_Skill");
+		falas = ApertarEOuvir(medico, "Assess_Ki_Skill");
 		AfirmarCen("percepcao media: comparacao pericia a pericia, ainda sem numero",
-				   EscutaDeAvisos.Exists(a => a.Contains("efusao", StringComparison.OrdinalIgnoreCase))
-				   && !EscutaDeAvisos.Exists(a => a.Contains("42", StringComparison.Ordinal)),
-				   string.Join(" | ", EscutaDeAvisos));
+				   Disse(falas, "efusao") && !Disse(falas, "42"), Ultimos(falas));
 
-		EscutaDeAvisos.Clear();
 		medico.Ficha.kiawarenessskill = 80;
-		UsarHabilidade(medico, "Assess_Ki_Skill");
-		AfirmarCen("percepcao alta: os NUMEROS dele na tela",
-				   EscutaDeAvisos.Exists(a => a.Contains("42", StringComparison.Ordinal)),
-				   string.Join(" | ", EscutaDeAvisos));
+		falas = ApertarEOuvir(medico, "Assess_Ki_Skill");
+		AfirmarCen("percepcao alta: os NUMEROS dele na tela", Disse(falas, "42"), Ultimos(falas));
 
-		EscutaDeAvisos.Clear();
 		ferido.Pos = chao + new Vec2(ZoneCollision.TileSize * 40, 0);
-		UsarHabilidade(medico, "Assess_Ki_Skill");
-		AfirmarCen("...e de longe demais (mais de 20 tiles) nao se le nada",
-				   EscutaDeAvisos.Exists(a => a.Contains("longe", StringComparison.OrdinalIgnoreCase)));
-		EscutaDeAvisos = null;
+		falas = ApertarEOuvir(medico, "Assess_Ki_Skill");
+		AfirmarCen("...e de longe demais (mais de 20 tiles) nao se le nada", Disse(falas, "longe"));
 
 		LimparTudoDaBancada();
 	}

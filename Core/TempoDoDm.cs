@@ -63,6 +63,19 @@ public static class TempoDoDm
 	public const double TiquesPorSegundo = 10.0;
 
 	/// <summary>
+	/// UM TIQUE EM MILISSEGUNDOS: <b>100</b>. E o fator de toda recarga do DM guardada em relogio de
+	/// parede (`basicCD += 20` vira `20 * MsPorTique`), escrito UMA vez: cada lote tinha a sua copia
+	/// do numero, e um lote com 120 seria 20% mais lento que os outros, calado.
+	/// </summary>
+	public const double MsPorTique = 1000.0 / TiquesPorSegundo;
+
+	/// <summary>
+	/// UM TIQUE EM SEGUNDOS: <b>0,1</b>. E o passo dos relogios do servidor que imitam o `spawn(1)`
+	/// do DM (a carga da Final Explosion, o tique do empurrao e do agarrao).
+	/// </summary>
+	public const double SegundosPorTique = 1.0 / TiquesPorSegundo;
+
+	/// <summary>
 	/// A CADENCIA DO `Stats()` -- `sleep(2)` (`Stats.dm:126` declara, `:511` dorme): 0,2 s, 5 Hz.
 	///
 	/// E o laco do CORPO: dreno de voo, nado, camara do tempo, ranking de BP. Todo custo que o DM

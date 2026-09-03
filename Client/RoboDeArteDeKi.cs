@@ -73,8 +73,8 @@ public partial class RoboDeArteDeKi : Node2D
 	/// <summary>
 	/// OS VERBOS DE PRODUCAO, um por um. A lista e escrita A MAO e nao lida da propria tabela, e
 	/// isso e deliberado: uma bancada que varre a tabela pra conferir a tabela sempre passa. O que
-	/// esta escrito aqui e a lista dos verbos que o JOGO despacha (`UsarTecnicasDeProjetil`,
-	/// `IdsG5`, o lote G6 e o G7), e ela reprova no dia em que alguem portar uma tecnica de tiro e
+	/// esta escrito aqui e a lista dos verbos que o JOGO despacha (o registro de tecnicas vivas: o de projetil,
+	/// o lote G5, o G6 e o G7), e ela reprova no dia em que alguem portar uma tecnica de tiro e
 	/// esquecer a arte -- que e o unico defeito que esta familia existe pra pegar.
 	/// </summary>
 	private static readonly string[] VerbosDeProducao =

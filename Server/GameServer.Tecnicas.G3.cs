@@ -1,4 +1,5 @@
 ﻿using Godot;
+using Jandirus.Core;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Stats;
 using Jandirus.Core.World;
@@ -187,15 +188,29 @@ public partial class GameServer
 		public int EscadaIdx;
 	}
 
-	/// <summary>Uma carga de Final Explosion em andamento.</summary>
+	/// <summary>
+	/// UMA CARGA POR ESTAGIO em andamento -- a Final Explosion (`misc.dm:338-367`) e a autodestruicao
+	/// (`misc.dm:230-259`) sao o MESMO laco: o corpo preso numa ancora, duas narracoes aos 2 s e 6 s,
+	/// um contador que sobe a cada 2,5 s e um aviso quando passa do que o corpo aguenta. O que muda
+	/// e DADO: o passo do contador (+1 na Explosao, +5 na autodestruicao), o limiar letal (10 e 20),
+	/// o aviso, e se soltar o agarrao derruba a carga. As DUAS DETONACOES ficam separadas -- as
+	/// formulas sao diferentes no DM -- e cada verb so detona a carga que e dele.
+	/// </summary>
 	private sealed class CargaG3
 	{
-		public int Raio;             // em tiles: 3, 10 ou 25
-		public int Contador = 1;     // o `chargecounter`, comeca em 1 (misc.dm:340)
-		public Vec2 Ancora;          // onde o corpo fica preso enquanto carrega
-		public long ProximoMs;       // proximo incremento do contador
-		public long ComecouMs;       // pras duas narracoes de 2s e 6s
-		public int Narrou;           // quantas das duas narracoes ja sairam
+		public string Verbo = "";        // quem armou ("Final_Explosion" / "Self_Destruct"): so ele detona
+		public string Nome = "";         // pra recusa de quem tenta armar a outra por cima
+		public int Raio;                 // em tiles: 3, 10 ou 25 (so a Explosao; 0 na autodestruicao)
+		public int Contador = 1;         // o `chargecounter`, comeca em 1 (misc.dm:340)
+		public int Passo = 1;            // quanto o contador sobe por estagio (`+= 1` / `+= 5`)
+		public int Limiar;               // acima disto a detonacao pode matar quem carregou
+		public string AvisoLetal = "";   // o que o corpo ouve ao passar do limiar
+		public bool PrecisaAgarrar;      // `if(sding && !grabbee)`: a autodestruicao cai ao soltar
+		public Action<ServerPlayer> AoCair = _ => { };   // o que acontece quando a carga cai (KO, morte, soltou)
+		public Vec2 Ancora;              // onde o corpo fica preso enquanto carrega
+		public long ProximoMs;           // proximo incremento do contador
+		public long ComecouMs;           // pras duas narracoes de 2s e 6s
+		public int Narrou;               // quantas das duas narracoes ja sairam
 	}
 
 	/// <summary>Um Light Buster no ar: gritou, ainda nao teleportou.</summary>
@@ -212,115 +227,26 @@ public partial class GameServer
 	// =====================================================================
 	// REGISTRO
 	// =====================================================================
-	public static void RegistrarTecnicasG3()
+	private void RegistrarTecnicasG3()
 	{
-		Jandirus.Core.Skills.Tecnicas.Registrar("Sword_Strike", "Sword Strike",
-			Jandirus.Core.Skills.Modo.Instantanea,
-			"Um giro com a espada de Ki que corta TODOS que estiverem na sua frente de uma vez, "
-			+ "somando dano em cada um. So sai com a Ki Sword ligada, e deixa os golpes especiais "
-			+ "em espera por um segundo e meio.");
+		// AS SUB-ESCOLHAS (Rock_Paper_Scissors_1..3, Final_Explosion_3/10/25) NAO TEM DESCRITOR no
+		// espelho. Elas sao ARGUMENTO de uma tecnica, nao tecnica -- descreve-las somava seis no
+		// total de "tecnicas portadas" sem portar tecnica nenhuma, e esse total e a unica medida
+		// honesta de quanto falta. O `VivoPorPrefixo` abaixo atende a familia inteira, entao o
+		// despacho as aceita mesmo sem uma linha por sufixo.
 
-		Jandirus.Core.Skills.Tecnicas.Registrar("Shield_Bash", "Shield Bash",
-			Jandirus.Core.Skills.Modo.Instantanea,
-			"Avanca com o Ki Shield na frente e empurra todo mundo que estiver no caminho. Exige o "
-			+ "escudo de pe -- sem ele não ha o que golpear com. Mesma espera do Sword Strike.");
+		IniciarLote("G3");
+		Vivo("Sword_Strike", pl => VarreduraG3(pl, arma: true));
+		Vivo("Shield_Bash", pl => VarreduraG3(pl, arma: false));
+		Vivo("Special_Multihit", MultihitG3);
+		// `Final_Explosion_25` e `Rock_Paper_Scissors_2`: o argumento vem no SUFIXO, como o DM escreve
+		VivoPorPrefixo("Final_Explosion", gate: "Final_Explosion", (pl, id) => ExplosaoFinalG3(pl, SepararG3(id).Arg));
+		Vivo("Light_Buster", LightBusterG3);
+		Vivo("Bite", MorderG3);
+		VivoPorPrefixo("Rock_Paper_Scissors", gate: "Rock_Paper_Scissors", (pl, id) => JokenpoG3(pl, SepararG3(id).Arg));
 
-		Jandirus.Core.Skills.Tecnicas.Registrar("Special_Multihit", "Special: Multihit",
-			Jandirus.Core.Skills.Modo.Instantanea,
-			"Uma barragem de socos num alvo so: ate dez golpes seguidos, um a cada dois decimos de "
-			+ "segundo. Quantos saem depende da sua Técnica. Se o alvo se afastar ou erguer a "
-			+ "guarda, a barragem para no meio.");
-
-		Jandirus.Core.Skills.Tecnicas.Registrar("Final_Explosion", "Final Explosion",
-			Jandirus.Core.Skills.Modo.Instantanea,
-			"Duas fases: primeiro você escolhe o tamanho do estouro e comeca a juntar energia, "
-			+ "preso no lugar; depois aperta de novo pra detonar. Quanto mais tempo carregar, mais "
-			+ "forte -- e passando de vinte e cinco segundos de carga você provavelmente MORRE junto.");
-
-		Jandirus.Core.Skills.Tecnicas.Registrar("Light_Buster", "Light Buster",
-			Jandirus.Core.Skills.Modo.Instantanea,
-			"Você grita, some, e meio segundo depois está nas costas do alvo acertando quatro "
-			+ "golpes seguidos. Pra quem assiste parece teleporte. Precisa de alguém a ate quatro "
-			+ "tiles de distância.");
-
-		Jandirus.Core.Skills.Tecnicas.Registrar("Bite", "Morder",
-			Jandirus.Core.Skills.Modo.Instantanea,
-			"Crava os dentes em quem estiver colado em você. Alimenta -- mata a fome de uma vez -- "
-			+ "e de vez em quando o sangue rende poder que NAO vai embora. Esse ganho tem cinco "
-			+ "minutos de espera entre um e outro.");
-
-		Jandirus.Core.Skills.Tecnicas.Registrar("Rock_Paper_Scissors", "Jokenpo",
-			Jandirus.Core.Skills.Modo.Instantanea,
-			"Você escolhe pedra, papel ou tesoura EM SEGREDO. No aperto seguinte você avanca dois "
-			+ "passos e soca: pedra pune quem não está atacando, papel pune quem esta, tesoura pune "
-			+ "quem está bloqueando. Acertar a leitura vale dano extra.");
-
-		// AS SUB-ESCOLHAS entram no catalogo pra que `Tecnicas.Get()` nao as sintetize como
-		// "nao portada" e o servidor recuse com a frase errada. Elas NAO aparecem no menu do
-		// jogador -- o menu e montado a partir dos verbs que as skills concedem
-		// (`TecnicasDe`), e nenhuma skill concede "Rock_Paper_Scissors_1".
-		// AS SUB-ESCOLHAS (Rock_Paper_Scissors_1..3, Final_Explosion_3/10/25) NAO SAO
-		// REGISTRADAS. Elas sao ARGUMENTO de uma tecnica, nao tecnica -- registra-las somava
-		// seis no total de "tecnicas portadas" sem portar tecnica nenhuma, e esse total e a
-		// unica medida honesta de quanto falta. O despacho as aceita mesmo sem registro,
-		// porque este lote roda antes do gate generico.
-
+		InscreverNoPulso(() => _barragemG3.Count > 0 || _cargaG3.Count > 0 || _busterG3.Count > 0, PulsoG3);
 	}
-
-	// =====================================================================
-	// DESPACHO
-	// =====================================================================
-	/// <summary>
-	/// O DESPACHO DO LOTE. Devolve false quando o id nao e de nenhuma tecnica daqui.
-	///
-	/// A CHECAGEM DE "SABE A TECNICA" E FEITA AQUI DENTRO, e nao so no despacho geral, por causa
-	/// das sub-escolhas: "Rock_Paper_Scissors_1" nao e um verb que skill nenhuma concede, entao o
-	/// gate generico (que pergunta "alguma skill sua destrava este verb?") recusaria a escolha e
-	/// deixaria passar so a execucao. Perguntando pelo id BASE, os dois passam ou os dois caem
-	/// juntos, que e o unico jeito de a tecnica de duas fases fazer sentido.
-	/// </summary>
-	public bool UsarTecnicasG3(ServerPlayer pl, string id)
-	{
-		(string bas, int arg) = SepararG3(id);
-
-		switch (bas)
-		{
-			case "Sword_Strike":
-			case "Shield_Bash":
-			case "Special_Multihit":
-			case "Final_Explosion":
-			case "Light_Buster":
-			case "Bite":
-			case "Rock_Paper_Scissors":
-				break;
-			default:
-				return false;   // nao e minha
-		}
-
-		if (!SabeTecnica(pl, bas))
-		{
-			Avisar(pl, "você não sabe essa técnica.");
-			return true;
-		}
-
-		switch (bas)
-		{
-			case "Sword_Strike": VarreduraG3(pl, arma: true); break;
-			case "Shield_Bash": VarreduraG3(pl, arma: false); break;
-			case "Special_Multihit": MultihitG3(pl); break;
-			case "Final_Explosion": ExplosaoFinalG3(pl, arg); break;
-			case "Light_Buster": LightBusterG3(pl); break;
-			case "Bite": MorderG3(pl); break;
-			case "Rock_Paper_Scissors": JokenpoG3(pl, arg); break;
-		}
-		return true;
-	}
-
-	/// <summary>
-	/// Nome do lote com a assinatura que a regra geral pediu (`UsarTecnicaG3`), pra que ligar o
-	/// lote no despacho funcione com qualquer um dos dois nomes. Sao o mesmo metodo.
-	/// </summary>
-	public bool UsarTecnicaG3(ServerPlayer pl, string id) => UsarTecnicasG3(pl, id);
 
 	/// <summary>
 	/// Parte o id em BASE + ARGUMENTO NUMERICO ("Final_Explosion_25" -> "Final_Explosion", 25).
@@ -385,12 +311,8 @@ public partial class GameServer
 			return;
 		}
 
+		if (EmEspera(pl, _prontoG3, "seus golpes especiais ainda se recompoem")) return;
 		long agora = NowMs();
-		if (_prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"seus golpes especiais ainda se recompoem (faltam {(livre - agora) / 1000.0:0.0}s).");
-			return;
-		}
 
 		double custo = CustoDaVarreduraG3(pl.Ficha);
 		if (pl.Ficha.Ki < custo) { Avisar(pl, $"isso pede {custo:0} de energia."); return; }
@@ -459,12 +381,8 @@ public partial class GameServer
 	{
 		if (!ProntoPraGolpeG3(pl, out string porque)) { Avisar(pl, porque); return; }
 
+		if (EmEspera(pl, _prontoG3, "seus golpes especiais ainda se recompoem")) return;
 		long agora = NowMs();
-		if (_prontoG3.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, $"seus golpes especiais ainda se recompoem (faltam {(livre - agora) / 1000.0:0.0}s).");
-			return;
-		}
 		if (_barragemG3.ContainsKey(pl.Id)) { Avisar(pl, "você ja está no meio de uma barragem."); return; }
 
 		double custo = pl.Ficha.Ephysoff * pl.Ficha.BaseDrain() * 6;
@@ -496,7 +414,7 @@ public partial class GameServer
 			AddDano = 2,
 			ProximoMs = agora + BarragemPassoMs,
 		};
-		LigarRelogioG3();
+		LigarPulso();
 	}
 
 	// =====================================================================
@@ -520,7 +438,12 @@ public partial class GameServer
 	/// </summary>
 	private void ExplosaoFinalG3(ServerPlayer pl, int raio)
 	{
-		if (_cargaG3.TryGetValue(pl.Id, out CargaG3? carga)) { DetonarG3(pl, carga); return; }
+		if (_cargaG3.TryGetValue(pl.Id, out CargaG3? carga))
+		{
+			if (carga.Verbo != "Final_Explosion") { Avisar(pl, $"voce ja esta juntando energia pra outra coisa ({carga.Nome})."); return; }
+			DetonarG3(pl, carga);
+			return;
+		}
 
 		if (pl.Ficha.dead || pl.Ficha.KO) { Avisar(pl, "você não está em condições."); return; }
 
@@ -534,13 +457,17 @@ public partial class GameServer
 		long agora = NowMs();
 		_cargaG3[pl.Id] = new CargaG3
 		{
+			Verbo = "Final_Explosion", Nome = "Final Explosion",
 			Raio = raio,
 			Contador = 1,                       // `chargecounter=1` (misc.dm:340)
+			Passo = 1, Limiar = CargaLetalG3,   // `chargecounter += 1` (misc.dm:363-367), `> 10` (misc.dm:319)
+			AvisoLetal = "a energia passou do que seu corpo aguenta: detonar agora provavelmente te MATA.",
+			AoCair = quem => { MandarEfeito(quem, "carga_final", 0); Avisar(quem, "a energia que você juntava se dispersa."); },
 			Ancora = pl.Pos,                    // o `move=0` (misc.dm:355) virou ancora
 			ProximoMs = agora + CargaPassoMs,
 			ComecouMs = agora,
 		};
-		LigarRelogioG3();
+		LigarPulso();
 
 		Avisar(pl, "você comeca a juntar TODA a energia em volta dentro do corpo. Você não consegue mais se mexer.");
 		Avisar(pl, "aperte Final Explosion de novo pra detonar. Quanto mais carregar, mais forte -- e mais perigoso pra você.");
@@ -684,14 +611,14 @@ public partial class GameServer
 		if (!ProntoPraGolpeG3(pl, out string porque)) { Avisar(pl, porque); return; }
 		if (_busterG3.ContainsKey(pl.Id)) { Avisar(pl, "você ja está no meio de um Light Buster."); return; }
 
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, AlcanceBusterG3);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, AlcanceBusterG3);
 		if (alvo == null) { Avisar(pl, "precisa de um alvo a ate 4 tiles."); return; }
 
 		Falar(pl, Protocol.Fala.Diz, "Light Buster!");
 		MandarEfeito(pl, "zanzoken", BusterAvisoMs);
 
 		_busterG3[pl.Id] = new BusterG3 { Alvo = alvo.Id, QuandoMs = NowMs() + BusterAvisoMs };
-		LigarRelogioG3();
+		LigarPulso();
 	}
 
 	/// <summary>O teleporte propriamente dito, meio segundo depois do grito.</summary>
@@ -707,26 +634,16 @@ public partial class GameServer
 		}
 		if (!ProntoPraGolpeG3(pl, out _)) return;   // caiu no meio do meio segundo
 
-		ZoneCollision? mapa = _catalogo?.Get(pl.Zone)?.Mapa;
-
 		// 1) o que a skill PROMETE: atras do alvo, em relacao a cara dele
 		Vec2 atras = alvo.Pos - MeleeArea.Frente(alvo.Facing) * DistanciaDeParada;
 		// 2) o que o codigo do DM faz: o vizinho do alvo do MEU lado
 		Vec2 meuLado = alvo.Pos + (pl.Pos - alvo.Pos).Normalized() * DistanciaDeParada;
 
-		Vec2? destino = null;
-		if (mapa == null || !MoveRules.Occupied(mapa, atras)) destino = atras;
-		else if (!MoveRules.Occupied(mapa, meuLado)) destino = meuLado;
-
-		if (destino is { } d)
+		if (PontoLivre(pl.Zone, atras, meuLado) is { } d)
 		{
 			Vec2 saiuDe = pl.Pos;   // pra miragem: e daqui que o vulto nasce
-			pl.Pos = d;
 			pl.Facing = MoveRules.FacingFrom(alvo.Pos - d, pl.Facing);
-			pl.LastInputMs = NowMs();
-			pl.CorrecaoEsperadaAte = NowMs() + 500;   // + a SEQUENCIA: input montado antes deste instante nao opina sobre onde o corpo esta
-			pl.SeqDoTeleporte = pl.SeqInput;   // os pacotes em voo do cliente sao da posicao velha
-			MandarCorrecaoG3(pl);
+			CravarPosicao(pl, d);
 
 			// A ZONA PRECISA VER. Este era o TERCEIRO caminho de deslocamento do servidor (com o dash
 			// e o Zanzoken) e o unico que so avisava o proprio jogador: pra quem estava olhando, o
@@ -822,7 +739,7 @@ public partial class GameServer
 		pl.Ficha.staminadeBuff = Math.Min(pl.Ficha.staminadeBuff + 40, 100);
 
 		// `if(!vampcooldown && prob(5))` (Vampires.dm:17-22)
-		bool naEspera = _mordidaProntaG3.TryGetValue(pl.Id, out long livre) && agora < livre;
+		bool naEspera = EmEspera(pl, _mordidaProntaG3, out _);
 		if (!naEspera && _rng.NextDouble() * 100 < VampProcPct)
 		{
 			_mordidaProntaG3[pl.Id] = agora + MordidaRecargaMs;
@@ -905,7 +822,7 @@ public partial class GameServer
 		// A ESCOLHA SAI DA MANGA AGORA, aconteca o que acontecer daqui pra frente.
 		_jokenpoG3.Remove(pl.Id);
 
-		ServerPlayer? alvo = AlvoDeTecnicaG3(pl, AlcanceJokenpoG3);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, AlcanceJokenpoG3);
 		if (alvo == null) { Avisar(pl, "ninguém a dois tiles: sua jogada se perde."); return; }
 
 		// `step_towards(src,target)` duas vezes -- dois tiles de avanco, parando encostado
@@ -931,44 +848,54 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// O PULSO DO LOTE
+	// O PULSO DE 10 Hz -- o `spawn(1)` de todo lote que tem agenda
 	// =====================================================================
-	/// <summary>Cadencia do relogio proprio deste lote, em segundos.</summary>
-	private const double PassoG3 = 0.1;
-
-	private bool _relogioG3;
-
 	/// <summary>
-	/// LIGA O RELOGIO se houver o que fazer. Ele se desliga sozinho quando a agenda esvazia --
-	/// um servidor com ninguem carregando nada nao paga nada por este lote.
+	/// UMA AGENDA POR LOTE: "tenho o que fazer?" e "de um tique". O relogio e um so -- um
+	/// `SceneTreeTimer` de um tique do DM -- e se desliga sozinho quando NENHUMA agenda tem trabalho:
+	/// um servidor com ninguem carregando nada nao paga nada por isto. Cada lote se inscreve no seu
+	/// `RegistrarTecnicasGx`. Antes o G3 e o G10 tinham cada um o seu relogio com o mesmo desenho, e
+	/// a autodestruicao do G11 andava no efetor de 5 Hz com prazos escritos em tiques de 10 Hz.
 	/// </summary>
-	private void LigarRelogioG3()
+	private readonly List<(Func<bool> TemOQueFazer, Action Pulsar)> _agendasDoPulso = [];
+
+	private bool _pulsoLigado;
+
+	private void InscreverNoPulso(Func<bool> temOQueFazer, Action pulsar) => _agendasDoPulso.Add((temOQueFazer, pulsar));
+
+	/// <summary>LIGA O PULSO se estiver parado. Quem poe trabalho numa agenda chama isto.</summary>
+	private void LigarPulso()
 	{
-		if (_relogioG3 || !IsInsideTree()) return;
-		_relogioG3 = true;
-		AgendarPulsoG3();
+		if (_pulsoLigado || !IsInsideTree()) return;
+		_pulsoLigado = true;
+		AgendarPulso();
 	}
 
-	private void AgendarPulsoG3()
+	private void AgendarPulso()
 	{
 		SceneTree? arv = IsInsideTree() ? GetTree() : null;
-		if (arv == null) { _relogioG3 = false; return; }
+		if (arv == null) { _pulsoLigado = false; return; }
 
-		SceneTreeTimer t = arv.CreateTimer(PassoG3);
+		SceneTreeTimer t = arv.CreateTimer(TempoDoDm.SegundosPorTique);   // o `spawn(1)` do DM
 		t.Timeout += () =>
 		{
-			try { PulsoG3(); }
-			catch (Exception ex) { GD.PushWarning($"[G3] pulso: {ex.Message}"); }
-
-			if (_barragemG3.Count == 0 && _cargaG3.Count == 0 && _busterG3.Count == 0)
-			{
-				_relogioG3 = false;
-				return;
-			}
-			AgendarPulsoG3();
+			Pulsar();
+			if (!_agendasDoPulso.Exists(a => a.TemOQueFazer())) { _pulsoLigado = false; return; }
+			AgendarPulso();
 		};
 	}
 
+	/// <summary>UM TIQUE DE TODAS AS AGENDAS. Uma agenda que estoura nao derruba as outras nem o relogio.</summary>
+	private void Pulsar()
+	{
+		foreach ((_, Action pulsar) in _agendasDoPulso.ToList())
+		{
+			try { pulsar(); }
+			catch (Exception ex) { GD.PushWarning($"[pulso] {ex.Message}"); }
+		}
+	}
+
+	/// <summary>A agenda deste lote: a barragem, a carga e o Light Buster. Chamada tambem pela bancada, que avanca o relogio na mao.</summary>
 	private void PulsoG3()
 	{
 		long agora = NowMs();
@@ -1075,23 +1002,16 @@ public partial class GameServer
 				_cargaG3.Remove(id);
 				continue;
 			}
-			if (pl.Ficha.dead || pl.Ficha.KO)
+			// `if(sding && (!grabbee || KO))` -- a carga cai com o corpo (e, na autodestruicao, com o agarrao)
+			if (pl.Ficha.dead || pl.Ficha.KO || (c.PrecisaAgarrar && pl.AgarrandoId == 0))
 			{
 				_cargaG3.Remove(id);
-				MandarEfeito(pl, "carga_final", 0);
-				Avisar(pl, "a energia que você juntava se dispersa.");
+				c.AoCair(pl);
 				continue;
 			}
 
 			// a ancora: qualquer passo que o cliente tenha dado e desfeito aqui
-			if (Vec2.Distance(pl.Pos, c.Ancora) > 4)
-			{
-				pl.Pos = c.Ancora;
-				pl.LastInputMs = agora;
-				pl.CorrecaoEsperadaAte = agora + 400;   // + a SEQUENCIA: input montado antes deste instante nao opina sobre onde o corpo esta
-				pl.SeqDoTeleporte = pl.SeqInput;   // nao e cliente desonesto: e a trava
-				MandarCorrecaoG3(pl);
-			}
+			Ancorar(pl, c.Ancora);
 
 			// misc.dm:356-361 -- as duas narracoes, aos 2s e aos 6s
 			long decorrido = agora - c.ComecouMs;
@@ -1111,14 +1031,13 @@ public partial class GameServer
 						$"a energia em volta de {pl.Name} poderia levar o planeta!!");
 			}
 
-			// misc.dm:363-367 -- `spawn(25) chargecounter += 1` em laco
+			// misc.dm:363-367 -- `spawn(25) chargecounter += 1` em laco (`+= 5` na autodestruicao, `:259`)
 			if (agora < c.ProximoMs) continue;
-			c.Contador++;
+			c.Contador += c.Passo;
 			c.ProximoMs = agora + CargaPassoMs;
 			MandarEfeito(pl, "carga_final", -1);
 
-			if (c.Contador == CargaLetalG3 + 1)
-				Avisar(pl, "a energia passou do que seu corpo aguenta: detonar agora provavelmente te MATA.");
+			if (c.Contador == c.Limiar + 1) Avisar(pl, c.AvisoLetal);
 		}
 	}
 
@@ -1144,8 +1063,14 @@ public partial class GameServer
 	///
 	/// A RECUSA VEM COM MOTIVO porque motivo ENSINA. "Voce nao pode agora" nao explica que a
 	/// tecnica nao sai meditando -- e o jogador desiste da tecnica em vez de sair da meditacao.
+	///
+	/// O `canfight` E O ATORDOAMENTO, e nem todo verb o pergunta: os de agarrao do DM (Clench, Hold,
+	/// Power Slam, Suplex, Gigantic Spike, Power Drag) abrem so com `!med && !train && !KO` -- segurar
+	/// alguem ja zera o `canfight` (`movement handler.dm:175`), entao quem esta atordoado ainda aperta
+	/// quem tem nos bracos --, e a Cambalhota tambem nao: preso E atordoado ainda se debate, e ela e a
+	/// unica saida de quem esta nos bracos de alguem. Esses passam <paramref name="exigirCanfight"/> falso.
 	/// </summary>
-	private static bool ProntoPraGolpeG3(ServerPlayer pl, out string porque)
+	private static bool ProntoPraGolpeG3(ServerPlayer pl, out string porque, bool exigirCanfight = true)
 	{
 		porque = "";
 		if (pl.Combate == null) { porque = "seu corpo ainda nao esta pronto."; return false; }
@@ -1153,7 +1078,32 @@ public partial class GameServer
 		if (pl.Ficha.KO) { porque = "voce esta caido."; return false; }
 		if (pl.Ficha.med) { porque = "nao da pra fazer isso meditando -- saia da meditacao primeiro."; return false; }
 		if (pl.Ficha.train) { porque = "voce esta treinando; pare o treino pra usar tecnica."; return false; }
-		if (pl.Combate.Stun > 0) { porque = "voce ainda esta atordoado."; return false; }
+		if (exigirCanfight && pl.Combate.Stun > 0) { porque = "voce ainda esta atordoado."; return false; }
+		return true;
+	}
+
+	/// <summary>
+	/// `target.stagger += 1 ... -= 1` -- a TRAVA de quem apanha (ou de quem tropeca) enquanto o golpe
+	/// corre. So cresce: nunca encurta um atordoamento que ja estava la. Era uma linha `Stun =
+	/// Math.Max(Stun, s)` copiada onze vezes em tres lotes.
+	/// </summary>
+	private static void Travar(ServerPlayer? quem, double segundos)
+	{
+		if (quem?.Combate != null) quem.Combate.Stun = Math.Max(quem.Combate.Stun, segundos);
+	}
+
+	/// <summary>Caido ou morto -- o `usr.KO || usr.dead` que abre metade dos verbs do DM.</summary>
+	private static bool Caido(ServerPlayer pl) => pl.Ficha.KO || pl.Ficha.dead;
+
+	/// <summary>
+	/// RECUSA quem esta caido ou morto, com a frase do verb. Devolve se recusou. Era um `if` de duas
+	/// condicoes e uma frase copiado em dez verbs dos lotes G11 e G12; quem tem mais portas que essa
+	/// usa o <see cref="ProntoPraGolpeG3"/> (golpes) ou o `PodeAtirar` (tiros).
+	/// </summary>
+	private bool RecusarCaido(ServerPlayer pl, string frase = "nao da, caido.")
+	{
+		if (!Caido(pl)) return false;
+		Avisar(pl, frase);
 		return true;
 	}
 
@@ -1219,18 +1169,32 @@ public partial class GameServer
 		}
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);
+		ConsequenciaDoDano(vitima, autor, "com dano em area");
+	}
 
-		// PELO FUNIL DA DERROTA, e nao pelo Zenkai direto: uma explosao que mata na frente dos
-		// amigos da vitima e exatamente a cena que o `Death.dm` descreve. Ver `AoPerderALuta`.
-		//
-		// `autor != vitima` porque uma tecnica pode ferir quem a soltou (a Final Explosion pega
-		// quem a usou, `misc.dm:317`) -- e morrer da propria explosao nao e "ser abatido por um
-		// inimigo": nao ha algoz, e o DM tambem so enfurece com `deathKiller` preenchido.
+	/// <summary>
+	/// A CAUDA DE TODO DANO DIRETO: morte ou nocaute, PELO FUNIL DA DERROTA e nao pelo Zenkai direto
+	/// -- uma explosao que mata na frente dos amigos da vitima e exatamente a cena que o `Death.dm`
+	/// descreve. Ver `AoPerderALuta`.
+	///
+	/// `autor != vitima` porque uma tecnica pode ferir quem a soltou (a Final Explosion pega quem a
+	/// usou, `misc.dm:317`) -- e morrer da propria explosao nao e "ser abatido por um inimigo": nao
+	/// ha algoz, e o DM tambem so enfurece com `deathKiller` preenchido.
+	///
+	/// UMA FUNCAO porque ha DOIS jeitos de bater direto -- o mesmo valor em cada membro
+	/// (`SpreadDamage`, aqui em cima) e um membro sorteado (`damage_mob`, no lote G10) -- e a cauda
+	/// dos dois tem que ser a mesma: se um deles nocauteasse sem passar pela derrota, o Zenkai de quem
+	/// cai pra uma bomba sumiria calado.
+	/// </summary>
+	/// <param name="relato">O que sai no log quando mata: "com dano em area", "com dano direto (braco)".</param>
+	private void ConsequenciaDoDano(ServerPlayer vitima, ServerPlayer autor, string relato)
+	{
+		if (vitima.Combate is not { } c) return;
 		if (c.Corpo.DeveMorrer() && !c.Corpo.RegeneraDecepado && c.Morrer())
 		{
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: true);
 			else ZenkaiPorDerrota(vitima, autor);
-			GD.Print($"[server] {autor.Name} MATOU {vitima.Name} com dano em area");
+			GD.Print($"[server] {autor.Name} MATOU {vitima.Name} {relato}");
 		}
 		else if (!vitima.Ficha.KO && c.Corpo.DeveNocautear())
 		{
@@ -1241,29 +1205,53 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// O ALVO DE UMA TECNICA DE ALCANCE: o MARCADO primeiro (e so a distancia conta, como no
-	/// resto do combate), senao o mais proximo dentro do raio.
+	/// O ALVO DE UMA TECNICA: o MARCADO primeiro, senao o mais proximo dentro do raio que
+	/// <paramref name="serve"/> -- e, nos dois casos, so quem esta na MESMA ALTURA.
+	///
+	/// ============================ UMA RESPOSTA PRA "EM QUEM ISSO PEGA" ============================
+	/// Eram quatro helpers, um por lote, com quatro respostas ligeiramente diferentes: um olhava
+	/// `Intocavel`, outro nao; um varria a zona, outro so o `_players`; nenhum olhava a ALTURA. Agora
+	/// e um so, e a regra da altura (<see cref="AlcancaPelaAltura"/>) vale pra todo alvo de tecnica:
+	/// marcar alguem e subir dois andares nao pode virar um passe livre pra alcancar de longe -- que
+	/// e exatamente o que o <see cref="Marcado"/> do soco ja recusa.
+	///
+	/// O MARCADO NAO PASSA PELO `Marcado()` DO COMBATE, e a diferenca e uma so: aquele so devolve
+	/// corpo VIVO e tocavel (e limpa a mira de um morto). Aqui quem decide quem serve e o verb --
+	/// ressuscitar e absorver existem justamente pra agir num corpo que o combate recusaria, e
+	/// respeitar a marca neles e o que impede a tecnica de pegar o cadaver errado numa pilha de
+	/// corpos (o `if(!target) target = input(...)` do DM: quem ja mirou nao ve caixa nenhuma).
+	/// A resolucao do id e a mesma do `Marcado()` (<see cref="CorpoNaMinhaZona"/>), e a varredura e
+	/// pela ZONA e nao pelo `_players`: o boneco de quem medita e o cadaver sao corpos como os outros.
 	///
 	/// O CONE NAO ENTRA aqui de proposito: `Light_Buster` e o jokenpo sao tecnicas de APROXIMACAO
 	/// -- elas existem justamente pra alcancar quem nao esta colado na sua cara, e exigir que o
 	/// alvo ja esteja no cone do soco tiraria a razao de existirem.
+	/// ==============================================================================================
 	/// </summary>
-	private ServerPlayer? AlvoDeTecnicaG3(ServerPlayer a, float raioPx)
+	/// <param name="serve">Quem conta pra esta tecnica. Nulo = a regra do combate: vivo e tocavel.</param>
+	private ServerPlayer? AlvoDeTecnica(ServerPlayer pl, float raioPx, Func<ServerPlayer, bool>? serve = null)
 	{
-		if (Marcado(a) is { } mira && Vec2.Distance(mira.Pos, a.Pos) <= raioPx) return mira;
+		serve ??= AlvoVivoETocavel;
+
+		if (CorpoNaMinhaZona(pl, pl.AlvoId) is { } mira && serve(mira) && AlcancaPelaAltura(pl, mira)
+			&& Vec2.Distance(mira.Pos, pl.Pos) <= raioPx)
+			return mira;
 
 		ServerPlayer? melhor = null;
 		float melhorDist = float.MaxValue;
-		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
+		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 		{
-			if (o == a || o.Ficha.dead || o.Combate == null || o.Combate.Intocavel) continue;
-			float d2 = (o.Pos - a.Pos).LengthSquared;
+			if (o == pl || !serve(o) || !AlcancaPelaAltura(pl, o)) continue;
+			float d2 = (o.Pos - pl.Pos).LengthSquared;
 			if (d2 > raioPx * raioPx || d2 >= melhorDist) continue;
 			melhorDist = d2;
 			melhor = o;
 		}
 		return melhor;
 	}
+
+	/// <summary>A regra do combate pra "em quem pega": vivo e fora de cinematica -- a mesma do <see cref="Marcado"/>.</summary>
+	private static bool AlvoVivoETocavel(ServerPlayer o) => !o.Ficha.dead && o.Combate is { Intocavel: false };
 
 	/// <summary>
 	/// AVANCA ate <paramref name="maxPx"/> na direcao do alvo, parando a um tile dele -- o
@@ -1284,12 +1272,8 @@ public partial class GameServer
 		ZoneCollision? mapa = _catalogo?.Get(a.Zone)?.Mapa;
 		if (mapa != null && MoveRules.PathOccupied(mapa, a.Pos, destino)) return;
 
-		a.Pos = destino;
 		a.Facing = MoveRules.FacingFrom(d, a.Facing);
-		a.LastInputMs = NowMs();
-		a.CorrecaoEsperadaAte = NowMs() + 500;   // + a SEQUENCIA: input montado antes deste instante nao opina sobre onde o corpo esta
-		a.SeqDoTeleporte = a.SeqInput;
-		MandarCorrecaoG3(a);
+		CravarPosicao(a, destino);
 	}
 
 	/// <summary>A posicao nova precisa chegar ao dono AGORA -- ver o comentario no dash.</summary>
@@ -1303,11 +1287,33 @@ public partial class GameServer
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
-	/// <summary>O `to_chat(range(N), ...)` do original: uma linha pra todo mundo por perto.</summary>
-	private void AvisarPertoG3(ServerPlayer centro, float raioPx, string texto)
+	/// <summary>
+	/// O `to_chat(range(N), ...)` do original: uma linha pra todo mundo por perto. Com
+	/// <paramref name="excetoCentro"/> vira o `oview(N)`: quem esta no centro ja ouviu a frase dele.
+	/// </summary>
+	private void AvisarPertoG3(ServerPlayer centro, float raioPx, string texto, bool excetoCentro = false)
 	{
 		float raio2 = raioPx * raioPx;
 		foreach (ServerPlayer o in ZoneList(centro.Zone.Hash))
+		{
+			if (excetoCentro && o == centro) continue;
 			if ((o.Pos - centro.Pos).LengthSquared <= raio2) Avisar(o, texto);
+		}
+	}
+
+	/// <summary>
+	/// QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`. A recarga compartilhada,
+	/// a mordida, o jokenpo e as tres agendas (barragem, carga, buster): sem isto o pulso do lote
+	/// continuaria achando uma carga pra um corpo que nao existe, e o proximo dono do id nasceria
+	/// "no meio de uma barragem".
+	/// </summary>
+	private void EsquecerG3(int id)
+	{
+		_prontoG3.Remove(id);
+		_mordidaProntaG3.Remove(id);
+		_jokenpoG3.Remove(id);
+		_barragemG3.Remove(id);
+		_cargaG3.Remove(id);
+		_busterG3.Remove(id);
 	}
 }

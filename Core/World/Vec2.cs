@@ -28,6 +28,9 @@ public readonly struct Vec2(float x, float y) : IEquatable<Vec2>
 
 	public static float Distance(Vec2 a, Vec2 b) => (a - b).Length;
 
+	/// <summary>O `turn(dir, 90)` do BYOND: 90 graus no sentido ANTI-HORARIO (com o Y pra baixo da tela: (x,y) -> (y,-x)).</summary>
+	public Vec2 Girado90() => new(Y, -X);
+
 	public bool Equals(Vec2 other) => X.Equals(other.X) && Y.Equals(other.Y);
 	public override bool Equals(object? o) => o is Vec2 v && Equals(v);
 	public override int GetHashCode() => HashCode.Combine(X, Y);

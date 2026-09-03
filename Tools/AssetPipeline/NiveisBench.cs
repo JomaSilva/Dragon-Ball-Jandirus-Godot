@@ -108,6 +108,7 @@ public static class NiveisBench
 			OKaiokenMastery(cat);
 			OGanhoNaCompra(cat);
 			AEscolhaNaSegundaForma(cat);
+			OVerbPorCasa(cat);
 			ORazao();
 			OCenso(cat);
 		}
@@ -532,6 +533,68 @@ public static class NiveisBench
 	}
 
 	// =====================================================================
+	// F1g) O VERB POR CASA -- o degrau 2 da Trindade
+	// =====================================================================
+	/// <summary>
+	/// `switch(TrinityType) if("Van-sama") assignverb(Taunt) ...` (Bodybuilding.dm:180-185): o degrau 2 da
+	/// Holy Trinity concede UM verb conforme a casa escolhida ao aprender. O extrator punha o `switch`
+	/// inteiro em quarentena (`logica`), e os tres verbs tinham corpo no lote G10 e porta NENHUMA -- a
+	/// bancada do G10 os provava com um degrau sintetico. Aqui: o dado NO DISCO, o `VerbosAtivos` com a
+	/// casa, e a fonte de exp (`if(savant.IsInFight) exp++`, :176) que ate entao era condicao desconhecida
+	/// -- sem ela a Trindade nunca chegava ao nivel 2 e o verb nunca vinha.
+	/// </summary>
+	private static void OVerbPorCasa(SkillCatalog cat)
+	{
+		Console.WriteLine("\n-- F1g) O VERB POR CASA: o degrau 2 da Trindade concede UM dos tres conforme a casa (Bodybuilding.dm:180-185) --");
+		RegraDeNivel? r = RegrasDeNivel.Get(Trinity);
+		Degrau? d2 = r?.Degraus.FirstOrDefault(d => d.Nivel == 2);
+		Conferir("o niveis.json NO DISCO traz o degrau 2 da Trindade com TRES verbs por casa e nenhum verb incondicional",
+				 d2 is { VerbosPorCasa.Length: 3, Verbos.Length: 0 }
+				 && d2.VerbosPorCasa.Any(p => p.Casa == "Van-sama" && p.Verbo == "Taunt")
+				 && d2.VerbosPorCasa.Any(p => p.Casa == "Ricardo" && p.Verbo == "Slap")
+				 && d2.VerbosPorCasa.Any(p => p.Casa == "Aniki" && p.Verbo == "Counter_Taunt"),
+				 d2 == null ? "sem degrau 2" : string.Join(",", d2.VerbosPorCasa.Select(p => $"{p.Casa}|{p.Verbo}")));
+		Conferir("...e o censo de verbs por degrau (`RegrasDeNivel.VerbosDeDegrau`) conta Taunt, Slap e Counter_Taunt",
+				 new[] { "Taunt", "Slap", "Counter_Taunt" }.All(v => RegrasDeNivel.VerbosDeDegrau.Contains(v, StringComparer.OrdinalIgnoreCase)));
+
+		var livro = new SkillBook();
+		livro.Dar(Trinity);
+		var n = new NiveisDeSkill();
+		n.Por(Trinity, 2);
+		string? Casa(string p) => EfeitosDeSkill.RotuloDaCasa(cat, livro.Escolhas, p);
+
+		Conferir("no nivel 2 SEM casa escolhida, nenhum verb (TrinityType nulo: o switch do DM nao entra em ramo nenhum)",
+				 !n.VerbosAtivos(Casa).Any(), string.Join(",", n.VerbosAtivos(Casa)));
+		livro.Escolher(cat, Trinity, 1);
+		Conferir("casa 1 (Van-sama): SO o Taunt", n.VerbosAtivos(Casa).SequenceEqual(["Taunt"]), string.Join(",", n.VerbosAtivos(Casa)));
+		livro.Escolher(cat, Trinity, 2);
+		Conferir("casa 2 (Ricardo): SO o Slap", n.VerbosAtivos(Casa).SequenceEqual(["Slap"]), string.Join(",", n.VerbosAtivos(Casa)));
+		livro.Escolher(cat, Trinity, 3);
+		Conferir("casa 3 (Aniki): SO o Counter_Taunt", n.VerbosAtivos(Casa).SequenceEqual(["Counter_Taunt"]), string.Join(",", n.VerbosAtivos(Casa)));
+		Conferir("sem resolvedor de casa (quem nao tem livro), nenhum -- o lado seguro",
+				 !n.VerbosAtivos().Any());
+		n.Por(Trinity, 1);
+		Conferir("no nivel 1, com a casa escolhida, nenhum: o verb e do DEGRAU 2 e nao da compra",
+				 !n.VerbosAtivos(Casa).Any());
+
+		// A FONTE DE EXP: em luta. `RegrasDoDisco` mapeava `savant.IsInFight` pra "condicao desconhecida".
+		Conferir("a Trindade sobe de nivel EM LUTA (`if(savant.IsInFight) exp++`, :176) -- a condicao entrou como `Estado.Lutando`",
+				 r != null && r.PorEstado.Any(g => g.Quando == RegraDeNivel.Estado.Lutando && g.Quanto > 0)
+				 && RegrasDoDisco.CondicoesNaoEntendidas >= 0);
+		var l3 = new SkillBook();
+		l3.Dar(Trinity);
+		var n3 = new NiveisDeSkill();
+		n3.Por(Trinity, 1);
+		var rng = new Random(20260902);
+		for (int i = 0; i < 100; i++) n3.Efetor(rng, cat, l3, new NiveisDeSkill.EstadoDoCorpo(false, false, false, Lutando: false));
+		Conferir("cem tiques FORA de luta: exp zero, nivel 1 (a Trindade nao sobe por tempo nem meditando)",
+				 n3.Nivel(Trinity) == 1 && n3.Exp(Trinity) == 0, $"nivel {n3.Nivel(Trinity)} exp {n3.Exp(Trinity)}");
+		for (int i = 0; i < 100; i++) n3.Efetor(rng, cat, l3, new NiveisDeSkill.EstadoDoCorpo(false, false, false, Lutando: true));
+		Conferir("cem tiques EM LUTA (barreira 100, um de exp por tique): chega ao nivel 2 -- o verb da casa passa a existir",
+				 n3.Nivel(Trinity) == 2, $"nivel {n3.Nivel(Trinity)} exp {n3.Exp(Trinity)}");
+	}
+
+	// =====================================================================
 	// R) O RAZAO
 	// =====================================================================
 	private static void ORazao()
@@ -550,11 +613,36 @@ public static class NiveisBench
 		EfeitosDeSkill.Aplicar(f, cat, livro.Aprendidas, livro.Escolhas);
 		Conferir("o buff no campo que existe pegou (physoffBuff 0,5) e esta no razao",
 				 Perto(f.physoffBuff, 0.5) && f.BuffsDeSkill.ContainsKey("physoffBuff"));
-		Conferir("o campo que NAO existe NAO entrou no razao (antes entrava, e o save carregava a mentira)",
-				 !f.BuffsDeSkill.ContainsKey("campoQueNaoExiste") && !f.FlagsDeSkill.ContainsKey("chaveQueNaoExiste") && !f.MultsDeSkill.ContainsKey("fatorQueNaoExiste"),
-				 string.Join(",", f.BuffsDeSkill.Keys.Concat(f.FlagsDeSkill.Keys).Concat(f.MultsDeSkill.Keys)));
+		Conferir("o buff e o mult em campo que NAO existe NAO entram no razao (antes entravam, e o save carregava a mentira)",
+				 !f.BuffsDeSkill.ContainsKey("campoQueNaoExiste") && !f.MultsDeSkill.ContainsKey("fatorQueNaoExiste"),
+				 string.Join(",", f.BuffsDeSkill.Keys.Concat(f.MultsDeSkill.Keys)));
 		Conferir("...e ele esta em Desconhecidos, que e onde um campo que falta tem que aparecer",
 				 EfeitosDeSkill.Desconhecidos.Contains("campoQueNaoExiste"));
+
+		// AS FLAGS SAO A EXCECAO, E ELA E DE PROPOSITO: `FlagsDeSkill` e o ARMAZEM das chaves sem campo
+		// que o catalogo de formas le por nome (`snamek`, `hasayyform` -- `Formas.PedeFlag`). Filtra-las
+		// apagou a Super Namek e a forma Alien em 2026-09-02; a escrita das flags nao consulta o razao,
+		// entao a armadilha do save nao as alcanca.
+		Conferir("a CHAVE sem campo FICA no razao das flags -- e o armazem que o `Formas.PedeFlag` le (snamek/hasayyform)",
+				 f.FlagsDeSkill.GetValueOrDefault("chaveQueNaoExiste") == 1, string.Join(",", f.FlagsDeSkill.Keys));
+		const string jsonNamek = """
+			[
+			  { "path": "/datum/skill/bancada/SuperNamekDeBancada", "nome": "Super Namek de bancada", "tipo": "Physical", "tier": 1, "custo": 1, "maxnivel": 1,
+			    "buffs": [], "flags": ["snamek=1"] }
+			]
+			""";
+		SkillCatalog catN = SkillCatalog.Parse(jsonNamek, "{}");
+		Fighter namek = Corpo("Namekian");
+		var livroN = new SkillBook();
+		livroN.Dar("/datum/skill/bancada/SuperNamekDeBancada");
+		EfeitosDeSkill.Aplicar(namek, catN, livroN.Aprendidas, livroN.Escolhas);
+		EfeitosDeSkill.Aplicar(namek, catN, livroN.Aprendidas, livroN.Escolhas);   // idempotente: a segunda nao apaga
+		Conferir("`snamek=1` (uma chave que o Fighter nao tem como campo) chega a `FlagsDeSkill` e sobrevive a reaplicacao -- o elo skill -> forma",
+				 namek.FlagsDeSkill.GetValueOrDefault("snamek") == 1, string.Join(",", namek.FlagsDeSkill.Keys));
+		livroN.Esquecer("/datum/skill/bancada/SuperNamekDeBancada");
+		EfeitosDeSkill.Aplicar(namek, catN, livroN.Aprendidas, livroN.Escolhas);
+		Conferir("...e esquecer a skill tira a chave do armazem (a forma fecha junto)",
+				 !namek.FlagsDeSkill.ContainsKey("snamek"));
 	}
 
 	// =====================================================================

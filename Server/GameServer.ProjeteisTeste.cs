@@ -189,9 +189,17 @@ public partial class GameServer
 		ServerPlayer atirador = Forjar("Atirador", chao, bp: 5_000);
 		atirador.Facing = Facing.East;
 
+		// `Deflectivel = false` PELO MESMO MOTIVO DO `RaioDaBancada`: esta familia mede "a bola anda,
+		// encosta e machuca", e o `Acertar` sorteia deflexao em todo impacto contra quem esta de pe
+		// (`GameServer.Projeteis.cs:1190-1240`). Com o par desta bancada -- atirador 5.000, vitima 500,
+		// `base_damage` 1 -- a chance MEDIDA e 0,0999% por impacto, e o laco de sub-passos testa a
+		// colisao umas seis vezes na janela de 16 px: meio por cento de rodadas em que o placar ficaria
+		// vermelho com `fim = Defletido` sem nada errado no jogo. E o defeito que a bancada da tecnica
+		// customizada pegou em 2026-09-02, e ele mora aqui igual.
 		Projetil p = Disparar(atirador, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 20,
+			Deflectivel = false,
 		});
 
 		// A BOCA DO CANO, E NAO O UMBIGO. Ate aqui esta linha cobrava `p.Pos == atirador.Pos`, e era
@@ -402,9 +410,16 @@ public partial class GameServer
 		ServerPlayer colada = Forjar("Vitima colada", BocaDeCano.De(raia, frente), bp: 500);
 		double vidaAntes = colada.Combate.Corpo.Vida();
 
+		// `Deflectivel = false` NAS DUAS RECEITAS DESTE PAR, e nas duas pela mesma razao do
+		// `RaioDaBancada`: o que se mede e a COLISAO, e a deflexao e um sorteio que come o tiro antes
+		// de ele virar dano (`GameServer.Projeteis.cs:1190-1240`). Aqui ela e rara -- 0,001% por
+		// impacto com 500.000 contra 500 -- mas rara e o intervalo em que este tipo de defeito mora, e
+		// o controle logo abaixo PRECISA nascer nas mesmas condicoes do tiro que ele controla: se so um
+		// dos dois tivesse o dado ligado, a dupla deixaria de comparar a mesma coisa.
 		Projetil tiro = Disparar(atirador, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 6,
+			Deflectivel = false,
 		}, rumoDado: frente);
 
 		for (int i = 0; i < 60 && tiro.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
@@ -418,6 +433,7 @@ public partial class GameServer
 		Projetil pulou = Disparar(atirador, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 6,
+			Deflectivel = false,   // MESMAS condicoes do tiro de cima: so o ponto de nascimento muda
 		}, rumoDado: frente, deOnde: BocaDeCano.De(BocaDeCano.De(raia, frente), frente));
 
 		for (int i = 0; i < 60 && pulou.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
@@ -460,9 +476,15 @@ public partial class GameServer
 		ServerPlayer presa = Forjar("Presa", new Vec2(pista.X + 400, pista.Y), bp: 5_000);
 		presa.Altitude = noAr;
 
+		// `Deflectivel = false` NOS DOIS TIROS DESTA FAMILIA (aqui e no controle la embaixo), pela razao
+		// do `RaioDaBancada`: o que se mede e a CURVA, e um sorteio de deflexao no fim da perseguicao
+		// (`GameServer.Projeteis.cs:1190-1240`) trocaria `Acertou` por `Defletido` sem o teleguiado ter
+		// errado nada. Com 5.000 contra 5.000 e `base_damage` 15 a chance e 0,0044% por impacto -- e o
+		// controle depende de nascer nas MESMAS condicoes, senao "so o TIPO muda" deixa de ser verdade.
 		Projetil p = Disparar(atirador, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Guided, BaseDano = 15, Velocidade = 1, AlcanceTiles = 60,
+			Deflectivel = false,
 		});
 		p.Alvo = presa.Id;
 		p.VidaRestante = 60;
@@ -490,6 +512,7 @@ public partial class GameServer
 		Projetil reto = Disparar(atirador2, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast, BaseDano = 15, Velocidade = 1, AlcanceTiles = 60,
+			Deflectivel = false,   // MESMAS condicoes do teleguiado: so o TIPO muda
 		});
 		reto.VidaRestante = 60;
 
@@ -2208,6 +2231,7 @@ public partial class GameServer
 		{
 			if (pl.Id < IdBaseDeProjetil) continue;
 			if (manter != null && manter.Contains(pl)) continue;
+			EsquecerTecnicas(pl.Id);   // o mesmo esquecimento do logout: recarga, carga, ancora -- nada sobrevive ao corpo
 			_players.Remove(pl.Id);
 			ZoneList(pl.Zone.Hash).Remove(pl);
 		}

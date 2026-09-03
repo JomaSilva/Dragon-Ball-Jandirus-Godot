@@ -1,4 +1,5 @@
 ﻿using Jandirus.Core.Combat;
+using Jandirus.Core;
 using Jandirus.Core.Skills;
 using Jandirus.Core.Stats;
 using Jandirus.Core.World;
@@ -63,13 +64,6 @@ public sealed partial class GameServer
 	private readonly Dictionary<int, long> _debuffPronto = [];
 
 	/// <summary>
-	/// `tick` do BYOND: um decimo de segundo. Toda recarga do DM esta escrita em tiques
-	/// (`basicCD += 20`, `reload = Eactspeed*5`), e converter na hora de usar espalharia a
-	/// constante por vinte lugares.
-	/// </summary>
-	private const double MsPorTique = 100;
-
-	/// <summary>
 	/// O ALCANCE PADRAO de uma bola solta, em tiles.
 	///
 	/// Nenhum verb de bola do DM escreve `maxdistance` -- eles confiam no `Burnout()` de 5 s pra
@@ -82,117 +76,24 @@ public sealed partial class GameServer
 	// =====================================================================
 	// REGISTRO
 	// =====================================================================
-	public static void RegistrarTecnicasG5()
+	private void RegistrarTecnicasG5()
 	{
-		// ---- os quatro raios (beams.dm) ----
-		Tecnicas.Registrar("Masenko", "Masenko", Modo.Sustentada,
-			"Um raio que sai FORTE e vai MORRENDO no caminho: cada tile viajado tira um pouco da "
-			+ "potencia. E a arma de quem luta colado -- de longe ela chega fraca.");
-
-		Tecnicas.Registrar("Makkankosappo", "Makankosappo", Modo.Sustentada,
-			"O avesso do Masenko: um raio fino que GANHA forca a cada tile e alcanca o dobro da "
-			+ "distancia. Em compensacao demora seis vezes mais pra carregar -- e essa espera, na "
-			+ "cara do inimigo, e o preco dele.");
-
-		Tecnicas.Registrar("Massive_Beam", "Raio Colossal", Modo.Sustentada,
-			"Um raio LARGO, com o dobro do poder do seu proprio corpo por tras e quatro vezes a "
-			+ "potencia de um raio comum. Custa quinze vezes mais Ki por segundo que o raio comum e "
-			+ "viaja devagar: quem carrega isso esta apostando tudo num tiro.");
-
-		Tecnicas.Registrar("Final_Flash", "Final Flash", Modo.Sustentada,
-			"Uma muralha de energia com QUATRO vezes o seu poder por tras dela, capaz de passar por "
-			+ "cima de gente mais forte que voce. Quanto melhor a sua pericia de raio, mais longe e "
-			+ "mais forte ela sai -- e mais absurdamente cara fica.");
-
-		// ---- as bolas nomeadas (blasts.dm, discs.dm, Debuffs.dm, meta.dm) ----
-		Tecnicas.Registrar("Charged_Shot", "Tiro Carregado", Modo.Instantanea,
-			"A Bola de Ki carregada: o dobro da potencia e um poder vinte por cento maior que o seu "
-			+ "por tras dela. Em troca custa cinco vezes mais e trava seu proximo tiro por dois "
-			+ "segundos.");
-
-		Tecnicas.Registrar("KillDriver", "Kill Driver", Modo.Instantanea,
-			"Um disco de energia rapido que NAO DA PRA DEFLETIR e PARALISA quem acerta. O dano e "
-			+ "quase nada -- o que ele faz e tirar as pernas do inimigo por ate dez segundos.");
-
-		Tecnicas.Registrar("BusterShell", "Buster Shell", Modo.Instantanea,
-			"Quatro esferas soltas de uma vez, abrindo em leque. Nenhuma delas machuca muito "
-			+ "sozinha; juntas cobrem a frente inteira e e dificil sair de todas.");
-
-		Tecnicas.Registrar("Scattershot", "Tiro Disperso", Modo.Instantanea,
-			"Uma nuvem de bolas que nascem ESPALHADAS em volta de voce e depois convergem pra frente. "
-			+ "Quantas saem depende da sua pericia de bola e de volei. Cara, e deixa toda a familia "
-			+ "de barragem em espera.");
-
-		Tecnicas.Registrar("Energy_Barrage", "Barragem de Energia", Modo.Instantanea,
-			"Mais bolas que o Tiro Disperso e mais baratas, todas retas pra frente. E a barragem do "
-			+ "dia a dia: menos dano por bola, muito mais volume.");
-
-		Tecnicas.Registrar("Ki_Bomb", "Campo Minado de Ki", Modo.Instantanea,
-			"Semeia bolas PARADAS em volta do alvo marcado e as deixa la por quatro segundos. Elas "
-			+ "nao perseguem ninguem -- quem se machuca e quem tentar sair do cerco. Precisa de alvo "
-			+ "a ate vinte tiles.");
-
-		Tecnicas.Registrar("Hellzone_Grenade", "Hellzone Grenade", Modo.Instantanea,
-			"O cerco que FECHA: as bolas nascem em volta do alvo, ficam paradas UM SEGUNDO e entao "
-			+ "convergem todas nele ao mesmo tempo. O dobro do dano do campo minado e mais de tres "
-			+ "vezes o preco.");
-
-		Tecnicas.Registrar("Kienzan", "Kienzan", Modo.Instantanea,
-			"Um disco de corte com dano fixo e ALTO, que persegue o alvo marcado por dois minutos "
-			+ "inteiros. Nao se apaga sozinho como os outros tiros: ou acerta, ou bate em alguma "
-			+ "coisa.");
-
-		Tecnicas.Registrar("Paralysis", "Paralisia", Modo.Instantanea,
-			"Um tiro que quase nao machuca e que NAO DA PRA DEFLETIR: ele tranca as pernas de quem "
-			+ "acerta por cinco a dez segundos. O alvo continua batendo e se defendendo -- so nao "
-			+ "consegue mais fugir. Custa uma fortuna em Ki.");
-
-		Tecnicas.Registrar("Stunlock", "Stunlock", Modo.Instantanea,
-			"A paralisia dos Metamorianos: mais barata que a Paralysis e com um poder um pouco menor "
-			+ "por tras, com a mesma promessa -- nao da pra defletir, e as pernas param.");
+		IniciarLote("G5");
+		Vivo("Masenko", MasenkoG5);
+		Vivo("Makkankosappo", MakankosappoG5);
+		Vivo("Massive_Beam", RaioColossalG5);
+		Vivo("Final_Flash", FinalFlashG5);
+		Vivo("Charged_Shot", TiroCarregadoG5);
+		Vivo("KillDriver", KillDriverG5);
+		Vivo("BusterShell", BusterShellG5);
+		Vivo("Scattershot", pl => BarragemG5(pl, disperso: true));
+		Vivo("Energy_Barrage", pl => BarragemG5(pl, disperso: false));
+		Vivo("Ki_Bomb", pl => CercoG5(pl, converge: false));
+		Vivo("Hellzone_Grenade", pl => CercoG5(pl, converge: true));
+		Vivo("Kienzan", KienzanG5);
+		Vivo("Paralysis", pl => ParalisiaG5(pl, forte: true));
+		Vivo("Stunlock", pl => ParalisiaG5(pl, forte: false));
 	}
-
-	// =====================================================================
-	// DESPACHO
-	// =====================================================================
-	/// <summary>
-	/// O DESPACHO DO LOTE. Nenhum destes ids aceita argumento, entao a checagem de "voce sabe esta
-	/// tecnica?" NAO e repetida aqui: este lote e chamado de dentro do `switch` do
-	/// <see cref="UsarTecnica"/>, ja depois do <see cref="SabeTecnica"/> geral -- o mesmo caminho
-	/// dos tres verbos de projetil originais, e pela mesma razao (quem nao comprou ouve o "voce nao
-	/// sabe" por uma porta so, em vez de catorze recusas repetidas).
-	/// </summary>
-	private void UsarTecnicasG5(ServerPlayer pl, string id)
-	{
-		switch (id)
-		{
-			case "Masenko": MasenkoG5(pl); break;
-			case "Makkankosappo": MakankosappoG5(pl); break;
-			case "Massive_Beam": RaioColossalG5(pl); break;
-			case "Final_Flash": FinalFlashG5(pl); break;
-
-			case "Charged_Shot": TiroCarregadoG5(pl); break;
-			case "KillDriver": KillDriverG5(pl); break;
-			case "BusterShell": BusterShellG5(pl); break;
-			case "Scattershot": BarragemG5(pl, disperso: true); break;
-			case "Energy_Barrage": BarragemG5(pl, disperso: false); break;
-			case "Ki_Bomb": CercoG5(pl, converge: false); break;
-			case "Hellzone_Grenade": CercoG5(pl, converge: true); break;
-			case "Kienzan": KienzanG5(pl); break;
-			case "Paralysis": ParalisiaG5(pl, forte: true); break;
-			case "Stunlock": ParalisiaG5(pl, forte: false); break;
-		}
-	}
-
-	/// <summary>Os catorze ids deste lote -- lidos pelo `switch` do despacho geral.</summary>
-	private static readonly string[] IdsG5 =
-	[
-		"Masenko", "Makkankosappo", "Massive_Beam", "Final_Flash",
-		"Charged_Shot", "KillDriver", "BusterShell", "Scattershot", "Energy_Barrage",
-		"Ki_Bomb", "Hellzone_Grenade", "Kienzan", "Paralysis", "Stunlock",
-	];
-
-	public static bool EhDoLoteG5(string id) => Array.IndexOf(IdsG5, id) >= 0;
 
 	// =====================================================================
 	// OS QUATRO RAIOS -- `Code/Modules/Skills/Ki/beams.dm`
@@ -336,12 +237,12 @@ public sealed partial class GameServer
 	private void TiroCarregadoG5(ServerPlayer pl)
 	{
 		long agora = NowMs();
-		if (EmEsperaG5(pl, _blastPronto, "sua mao ainda esta juntando energia")) return;
+		if (EmEspera(pl, _blastPronto, "sua mao ainda esta juntando energia")) return;
 
 		double custo = 50 * pl.Ficha.BaseDrain();
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
-		_blastPronto[pl.Id] = agora + (long)(20 * MsPorTique);
+		_blastPronto[pl.Id] = agora + (long)(20 * TempoDoDm.MsPorTique);
 		pl.Ficha.Ki -= custo;
 
 		// `usr.Blast_Gain()` tres vezes + `chargedcounter += 5` -- e o unico canal de treino da
@@ -358,7 +259,7 @@ public sealed partial class GameServer
 		Disparar(pl, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,
-			BaseDano = 2 * pl.Ficha.Ekioff * Log10Min(pl.Ficha.blastskill, 10)
+			BaseDano = 2 * pl.Ficha.Ekioff * DanoDeKi.Log10Min(pl.Ficha.blastskill, 10)
 					   * DanoDeKi.DanoGlobalDeKi,
 			Velocidade = 1,
 			AlcanceTiles = AlcanceDeBolaG5,
@@ -466,7 +367,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void BarragemG5(ServerPlayer pl, bool disperso)
 	{
-		if (EmEsperaG5(pl, _volleyPronto, "suas maos ainda estao quentes da ultima barragem")) return;
+		if (EmEspera(pl, _volleyPronto, "suas maos ainda estao quentes da ultima barragem")) return;
 
 		double baseQtd = disperso ? 8 : 10;
 		double porBola = disperso ? 40 : 15;
@@ -490,7 +391,7 @@ public sealed partial class GameServer
 			return;
 		}
 
-		_volleyPronto[pl.Id] = NowMs() + (long)(Math.Max(tiquesDeRecarga, 2) * MsPorTique);
+		_volleyPronto[pl.Id] = NowMs() + (long)(Math.Max(tiquesDeRecarga, 2) * TempoDoDm.MsPorTique);
 		pl.Ficha.Ki -= custo;
 		for (int i = 0; i < (disperso ? 4 : 3); i++) pl.Ficha.BlastGain(_rng);
 		pl.Ficha.blastskill += 0.05 * quantas;
@@ -516,7 +417,7 @@ public sealed partial class GameServer
 		var receita = new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,
-			BaseDano = dano * pl.Ficha.Ekioff * Log10Min(pl.Ficha.blastskill, 10)
+			BaseDano = dano * pl.Ficha.Ekioff * DanoDeKi.Log10Min(pl.Ficha.blastskill, 10)
 					   * DanoDeKi.DanoGlobalDeKi,
 			Velocidade = 1,
 			AlcanceTiles = AlcanceDeBolaG5,
@@ -531,7 +432,7 @@ public sealed partial class GameServer
 			Vec2 berco = pl.Pos;
 			if (disperso)
 			{
-				Vec2 desvio = DirecaoSorteadaG5();
+				Vec2 desvio = RumoSorteado();
 				berco += desvio * (3 * ZoneCollision.TileSize);
 			}
 			Disparar(pl, receita, rumoDado: frente, deOnde: berco,
@@ -561,7 +462,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void CercoG5(ServerPlayer pl, bool converge)
 	{
-		if (EmEsperaG5(pl, _alvoPronto, "voce ainda nao consegue armar outro cerco")) return;
+		if (EmEspera(pl, _alvoPronto, "voce ainda nao consegue armar outro cerco")) return;
 
 		ServerPlayer? alvo = Marcado(pl);
 		if (alvo == null || alvo == pl || alvo.Ficha.dead || !alvo.Zone.Equals(pl.Zone))
@@ -591,7 +492,7 @@ public sealed partial class GameServer
 		}
 
 		double tiques = Math.Max(pl.Ficha.Eactspeed * (converge ? 10 : 5), 20);
-		_alvoPronto[pl.Id] = NowMs() + (long)(tiques * MsPorTique);
+		_alvoPronto[pl.Id] = NowMs() + (long)(tiques * TempoDoDm.MsPorTique);
 		pl.Ficha.Ki -= custo;
 		for (int i = 0; i < (converge ? 5 : 4); i++) pl.Ficha.BlastGain(_rng);
 		pl.Ficha.blastskill += 0.05 * quantas;
@@ -609,7 +510,7 @@ public sealed partial class GameServer
 		var receita = new ReceitaDeProjetil
 		{
 			Tipo = converge ? TipoDeProjetil.Guided : TipoDeProjetil.Blast,
-			BaseDano = (converge ? 4 : 2) * pl.Ficha.Ekioff * Log10Min(pl.Ficha.blastskill, 10)
+			BaseDano = (converge ? 4 : 2) * pl.Ficha.Ekioff * DanoDeKi.Log10Min(pl.Ficha.blastskill, 10)
 					   * DanoDeKi.DanoGlobalDeKi,
 			Velocidade = 1,
 			AlcanceTiles = 200,      // ver abaixo: quem apaga estas bolas e o prazo, nao o alcance
@@ -733,13 +634,13 @@ public sealed partial class GameServer
 	/// </summary>
 	private void ParalisiaG5(ServerPlayer pl, bool forte)
 	{
-		if (EmEsperaG5(pl, _debuffPronto, "voce ainda nao consegue moldar outro debuff")) return;
+		if (EmEspera(pl, _debuffPronto, "voce ainda nao consegue moldar outro debuff")) return;
 
 		double custo = (forte ? 700 : 300) * pl.Ficha.BaseDrain();
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
 		double tiques = pl.Ficha.Eactspeed * (forte ? 6 : 7);
-		_debuffPronto[pl.Id] = NowMs() + (long)(Math.Max(tiques, 2) * MsPorTique);
+		_debuffPronto[pl.Id] = NowMs() + (long)(Math.Max(tiques, 2) * TempoDoDm.MsPorTique);
 
 		pl.Ficha.Ki -= custo;
 		for (int i = 0; i < 4; i++) pl.Ficha.BlastGain(_rng);
@@ -787,47 +688,48 @@ public sealed partial class GameServer
 	// FERRAMENTAS DO LOTE
 	// =====================================================================
 	/// <summary>
-	/// A RECARGA, COM O TEMPO QUE FALTA NA FRASE. Os quatro contadores do DM passam por aqui.
+	/// A RECARGA, COM O TEMPO QUE FALTA NA FRASE. Todo contador "id -> quando libera" dos lotes de
+	/// tecnicas passa por aqui: e o funil unico do "ainda nao da".
 	///
 	/// O NUMERO NA MENSAGEM E O PONTO. O original ja escrevia *"This skill was set on cooldown for
 	/// [barrageCD/10] seconds"* -- uma recusa muda faz o jogador apertar de novo achando que o
-	/// pacote se perdeu, e este e o lote com quatro recargas diferentes de uma vez.
+	/// pacote se perdeu. Eram dezessete copias desta pergunta escritas a mao, cada uma com o seu
+	/// formato de numero (uma sem numero nenhum); quem precisa so do SIM/NAO -- um `prob()` que fica
+	/// mudo enquanto a recarga corre -- usa a sobrecarga com `out`.
 	/// </summary>
-	private bool EmEsperaG5(ServerPlayer pl, Dictionary<int, long> mapa, string frase)
+	private bool EmEspera(ServerPlayer pl, Dictionary<int, long> mapa, string frase)
 	{
-		if (!mapa.TryGetValue(pl.Id, out long livre)) return false;
-		long agora = NowMs();
-		if (agora >= livre) { mapa.Remove(pl.Id); return false; }
-		Avisar(pl, $"{frase} (faltam {(livre - agora) / 1000.0:0.#}s).");
+		if (!EmEspera(pl, mapa, out long restanteMs)) return false;
+		Avisar(pl, $"{frase} (faltam {restanteMs / 1000.0:0.#}s).");
 		return true;
 	}
 
 	/// <summary>
-	/// `log_10(max(x, piso))` -- o padrao que aparece em quase todo `basedamage` do `blasts.dm`.
-	///
-	/// Existe como funcao pra que o piso NAO seja digitado quatorze vezes: e ele que faz um
-	/// personagem novo (pericia zero) receber exatamente 1,0 em vez de menos infinito, e um piso
-	/// esquecido num dos catorze seria um dano negativo que ninguem consegue relatar.
+	/// A MESMA PERGUNTA, MUDA: <paramref name="restanteMs"/> diz quanto falta (0 quando livre). Uma
+	/// entrada vencida SAI do dicionario aqui, pra que os mapas de recarga nao crescam a sessao inteira.
 	/// </summary>
-	private static double Log10Min(double x, double piso)
-		=> Math.Log(Math.Max(x, piso)) / Math.Log(10);
+	private bool EmEspera(ServerPlayer pl, Dictionary<int, long> mapa, out long restanteMs)
+	{
+		restanteMs = 0;
+		if (!mapa.TryGetValue(pl.Id, out long livre)) return false;
+		long agora = NowMs();
+		if (agora >= livre) { mapa.Remove(pl.Id); return false; }
+		restanteMs = livre - agora;
+		return true;
+	}
 
 	/// <summary>
 	/// UMA DAS OITO DIRECOES do BYOND, sorteada -- o `pick(NORTH,SOUTH,EAST,WEST,NORTHWEST,...)` do
-	/// Scattershot (`blasts.dm:186`).
-	///
-	/// AS OITO, E NAO UM ANGULO QUALQUER: no DM as diagonais tem o mesmo peso das retas, e e isso
-	/// que da a nuvem a cara de xadrez que ela tem. Um angulo continuo faria um disco uniforme --
-	/// mais bonito, e outra tecnica.
+	/// Scattershot (`blasts.dm:186`). A tabela e a <see cref="MoveRules.OitoRumos"/>, que explica
+	/// por que sao as oito e nao um angulo qualquer.
 	/// </summary>
-	private Vec2 DirecaoSorteadaG5()
+	private Vec2 RumoSorteado() => MoveRules.OitoRumos[_rng.Next(MoveRules.OitoRumos.Length)];
+
+	/// <summary>QUEM SAIU LEVA O ESTADO DELE JUNTO -- as tres recargas do lote, inscritas no `EsquecerTecnicas`.</summary>
+	private void EsquecerG5(int id)
 	{
-		const float d = 0.70710678f;   // raiz de 2 sobre 2: a diagonal normalizada
-		Vec2[] oito =
-		[
-			new(0, -1), new(0, 1), new(1, 0), new(-1, 0),
-			new(-d, -d), new(d, -d), new(-d, d), new(d, d),
-		];
-		return oito[_rng.Next(oito.Length)];
+		_volleyPronto.Remove(id);
+		_alvoPronto.Remove(id);
+		_debuffPronto.Remove(id);
 	}
 }

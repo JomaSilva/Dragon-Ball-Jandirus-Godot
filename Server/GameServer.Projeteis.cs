@@ -13,7 +13,7 @@ namespace Jandirus.Server;
 /// OS ATAQUES DE KI QUE VIAJAM -- a primeira entidade deste jogo que nao e um corpo.
 ///
 /// ============================ O QUE NAO EXISTIA, E POR QUE ISTO NAO E O SEGUNDO ============================
-/// As ~33 tecnicas ja portadas sao TODAS instantaneas: `AlvoDeTecnicaG3` escolhe alguem por raio e
+/// As ~33 tecnicas ja portadas sao TODAS instantaneas: `AlvoDeTecnica` escolhe alguem por raio e
 /// `GolpeG3` aplica o dano no mesmo instante, pelo funil do soco. Nao havia entidade com posicao
 /// propria, nao havia opcode de projetil, e o `EntityState` do snapshot so sabia descrever corpo.
 /// Entao nao ha "o projetil das 33 tecnicas" pra reusar: este e o primeiro, e as instantaneas
@@ -98,6 +98,13 @@ public sealed partial class GameServer
 
 	/// <summary>Recarga do <c>Basic_Blast</c> -- `basicCD` do DM, por corpo.</summary>
 	private readonly Dictionary<int, long> _blastPronto = [];
+
+	/// <summary>
+	/// QUEM SAIU LEVA A RECARGA JUNTO -- inscrito no `EsquecerTecnicas`. O canal (`_canais`) e a
+	/// paralisia tem funis proprios (`SoltarDoRaio`, `EsquecerParalisia`), porque soltar um raio e mais
+	/// que esquecer: a zona precisa ver o canal fechar.
+	/// </summary>
+	private void EsquecerProjeteis(int id) => _blastPronto.Remove(id);
 
 	/// <summary>
 	/// QUEM ESTA COM AS PERNAS TRANCADAS, e ate quando. O `paralyzed`/`paralysistime` do DM.
@@ -279,35 +286,12 @@ public sealed partial class GameServer
 	/// sem nenhum chamador de producao -- e caminho sem chamador e onde este projeto ja escondeu
 	/// codigo morto (uma API inteira de sigilo de BP escrita e nunca ligada).
 	/// </summary>
-	private static void RegistrarTecnicasDeProjetil()
+	private void RegistrarTecnicasDeProjetil()
 	{
-		Tecnicas.Registrar("Ki_Wave", "Onda de Ki", Modo.Sustentada,
-			"Concentra Ki na mao e solta um RAIO continuo. Aperte uma vez pra carregar, de novo pra "
-			+ "soltar, e de novo pra parar. Enquanto carrega e enquanto atira voce fica PLANTADO no "
-			+ "lugar -- e o preco de um raio, e e por isso que ele e a arma de quem ja ganhou espaco.");
-
-		Tecnicas.Registrar("Basic_Blast", "Bola de Ki", Modo.Instantanea,
-			"Uma esfera de energia solta na direcao em que voce olha. Sai na hora, nao prende voce e "
-			+ "custa pouco -- em troca voa devagar e perde forca contra quem sabe se defender de Ki.");
-
-		Tecnicas.Registrar("Guided_Ball", "Esfera Teleguiada", Modo.Instantanea,
-			"Uma esfera pesada que PERSEGUE o alvo marcado ate acerta-lo ou se apagar. Custa caro e "
-			+ "e lenta, mas nao adianta sair da frente. Sem alvo marcado, ela voa reto e voce e "
-			+ "avisado disso.");
-	}
-
-	/// <summary>
-	/// O despacho dos tres. Chamado de dentro do `switch` do <see cref="UsarTecnica"/>, DEPOIS do
-	/// gate de "voce sabe esta tecnica?" -- por isso nenhum dos tres o repete.
-	/// </summary>
-	private void UsarTecnicasDeProjetil(ServerPlayer pl, string id)
-	{
-		switch (id)
-		{
-			case "Ki_Wave": KiWave(pl); break;
-			case "Basic_Blast": BasicBlast(pl); break;
-			case "Guided_Ball": GuidedBall(pl); break;
-		}
+		IniciarLote("projetil");
+		Vivo("Ki_Wave", KiWave);
+		Vivo("Basic_Blast", BasicBlast);
+		Vivo("Guided_Ball", GuidedBall);
 	}
 
 	/// <summary>
@@ -342,12 +326,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private void BasicBlast(ServerPlayer pl)
 	{
+		if (EmEspera(pl, _blastPronto, "sua mao ainda esta juntando energia")) return;
 		long agora = NowMs();
-		if (_blastPronto.TryGetValue(pl.Id, out long pronto) && agora < pronto)
-		{
-			Avisar(pl, "sua mao ainda esta juntando energia.");
-			return;
-		}
 
 		double custo = 10 * pl.Ficha.BaseDrain();
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }

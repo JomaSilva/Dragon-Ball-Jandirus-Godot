@@ -12,8 +12,18 @@
 /// numerador so existia do lado que a bancada nao enxerga -- e um relatorio que subconta o proprio
 /// progresso e tao ruim quanto um que superconta.
 ///
-/// GERADO das chamadas `Tecnicas.Registrar(...)` dos quatro lotes. Ao portar uma tecnica nova,
-/// registre no lote como sempre e acrescente a linha aqui.
+/// ============================ ESTA E A UNICA BOCA ============================
+/// Esta tabela NASCEU gerada das chamadas `Tecnicas.Registrar(...)` dos lotes -- e portanto era uma
+/// COPIA. Uma copia envelhece: quando o corte foi feito, VINTE E DOIS descritores ja discordavam do
+/// que o lote dizia (o Kikoho tinha ganhado "Tres seguidos podem derrubar voce" no servidor e nao
+/// aqui; o `Planet_Destroy` tinha ate NOME diferente dos dois lados), e ninguem podia perceber,
+/// porque o registro do lote rodava DEPOIS e cobria este -- o jogador lia um texto e o console do
+/// extrator contava outro.
+///
+/// Agora o descritor mora SO aqui. O lote registra so o CORPO (`Vivo(id, handler)`). Ao portar uma
+/// tecnica nova: escreva o `Vivo` no lote e a linha `Por` aqui -- e a `--catalogoteste` cobra as
+/// duas direcoes (corpo sem descritor, descritor sem corpo) toda rodada.
+/// =============================================================================
 /// </summary>
 public static partial class Tecnicas
 {
@@ -122,31 +132,89 @@ public static partial class Tecnicas
 		// servidor, contava a unica tecnica so-de-vilao do jogo como NAO-PORTADA -- exatamente o
 		// defeito que este arquivo existe pra evitar, e que o cabecalho dele descreve. Achado pelo
 		// censo do lote G6.
-		Por("Planet_Destroy", "Destruir Planeta", Modo.Instantanea,
-			"Trinta segundos de carga publica e o mundo inteiro deixa de existir. So vilao consegue.");
+		Por("Planet_Destroy", "Planet Destroy", Modo.Instantanea,
+		"Concentra toda a sua energia sobre o planeta em que você está e o parte ao meio. "
+		+ "Custa 1000 de Ki, exige BP expresso de 10.000 vezes a gravidade daqui, e leva trinta "
+		+ "segundos de carga -- se você for nocauteado nesse meio-tempo, não acontece nada. "
+		+ "Depois disso o planeta tem cinco minutos, e some do mapa PARA SEMPRE. Só um vilão.");
 
 		// ---- lote G6: O KIT DOS CARGOS, o sopro e os buffs de Ki ----
 		// Dezenove folhas, ONZE delas verbos que um kit de cargo ja entregava e que nao faziam nada.
 		// Ver `Server/GameServer.Tecnicas.G6.cs`.
-		Por("Kamehameha", "Kamehameha", Modo.Sustentada, "A onda da Escola da Tartaruga: o raio que anda mais longe de todos e que menos cobra por segundo. Quanto melhor a sua pericia de raio, mais forte ele sai -- e mais caro fica de sustentar.");
-		Por("GalicGun", "Galick Ho", Modo.Sustentada, "A onda da realeza saiyajin. Irma do Kamehameha, um pouco mais forte e um pouco mais lenta -- e no topo da pericia ela alcanca cinquenta tiles.");
-		Por("Death_Beam", "Death Beam", Modo.Sustentada, "Um fio de energia com cinco vezes a potencia de um raio comum e alcance de dez tiles. E a tecnica de matar de perto.");
-		Por("Dodompa", "Dodon Ray", Modo.Sustentada, "O raio da Escola do Grou: quatro vezes a potencia de um raio comum, alcance longo e o voo mais rapido da familia.");
-		Por("Enkumei", "Enkumei", Modo.Sustentada, "A onda de fogo negro dos Namekuseijin. Carrega mais poder por tras do feixe que o seu proprio corpo -- e quem domina a pericia de raio dobra esse poder.");
-		Por("Boom_Wave", "Boom Wave", Modo.Sustentada, "Um raio curto e grosso, de cinco tiles, que quase nao custa nada por segundo: o preco cai conforme a sua pericia de Ki sobe.");
-		Por("Kikoho", "Kikoho", Modo.Instantanea, "A Tri-Bomba: uma esfera pesada paga com a PROPRIA VIDA. Cada uso seguido grita uma silaba (KI, KO, HO) e sai mais forte -- e cobra mais sangue.");
-		Por("Focus", "Foco", Modo.Sustentada, "Voce concentra a circulacao do proprio Ki: a ofensiva de energia sobe, e o gasto sobe na mesma medida.");
-		Por("Efficiency", "Eficiencia", Modo.Sustentada, "O contrario do Foco: a energia dura muito mais, ao preco de uma parte da sua ofensiva de Ki.");
-		Por("Energy_Shield", "Escudo de Energia", Modo.Sustentada, "Uma casca que soma defesa de Ki E armadura de energia -- a armadura e o que aguenta tiro sem descontar da vida.");
-		Por("Full_Power", "Full Power", Modo.Sustentada, "A concentracao total da aura: forca, Ki e velocidade sobem juntas, e o custo por segundo CAI conforme voce pratica.");
-		Por("Kiai", "Kiai", Modo.Instantanea, "Um grito de energia que arremessa quem estiver na sua frente, sem tiro nenhum pra desviar.");
-		Por("Shockwave", "Onda de Choque", Modo.Instantanea, "O sopro em volta de voce: joga longe todo mundo colado e apaga os tiros de energia que estiverem chegando.");
-		Por("Deflection", "Deflexao", Modo.Instantanea, "Todo tiro na sua frente que for mais fraco que voce e DEVOLVIDO a quem atirou -- e passa a ser seu.");
-		Por("Explosive_Roar", "Rugido Explosivo", Modo.Instantanea, "Aperte pra juntar o rugido e aperte de novo pra soltar. Quanto mais tempo carregar, maior o raio e mais longe todo mundo voa.");
-		Por("Wolf_Fang_Fist", "Punho da Presa do Lobo", Modo.Instantanea, "Tres socos secos em quem estiver colado, e o terceiro arremessa. Custa folego alem de energia.");
-		Por("Wolf_Fang_Hurricane", "Furacao da Presa do Lobo", Modo.Instantanea, "Quatro golpes avancando, cada um empurrando voce pra cima do alvo. Nenhum deles arremessa -- e essa e a graca.");
-		Por("Heal", "Curar", Modo.Sustentada, "Poe a mao em quem esta do seu lado e fecha as feridas dele com o seu Ki, continuamente.");
-		Por("Assess_Ki_Skill", "Avaliar o Ki", Modo.Instantanea, "Le a pericia de Ki de quem voce marcou. Quanto maior a sua percepcao, mais detalhe voce enxerga.", aba: "Outros");
+		Por("Kamehameha", "Kamehameha", Modo.Sustentada,
+		"A onda da Escola da Tartaruga: o raio que ANDA MAIS LONGE de todos e que menos cobra "
+		+ "por segundo. Quanto melhor a sua pericia de raio, mais forte ele sai -- e mais caro "
+		+ "fica de sustentar.");
+		Por("GalicGun", "Galick Ho", Modo.Sustentada,
+		"A onda da realeza saiyajin. Irma do Kamehameha, um pouco mais forte e um pouco mais "
+		+ "lenta -- e no topo da pericia ela alcanca cinquenta tiles, mais que qualquer outro "
+		+ "raio do jogo.");
+		Por("Death_Beam", "Death Beam", Modo.Sustentada,
+		"Um fio de energia com CINCO vezes a potencia de um raio comum e alcance de dez tiles. "
+		+ "E a tecnica de matar de perto: nao ha raio no jogo que concentre tanto dano em tao "
+		+ "pouca distancia.");
+		Por("Dodompa", "Dodon Ray", Modo.Sustentada,
+		"O raio da Escola do Grou: quatro vezes a potencia de um raio comum, alcance longo e o "
+		+ "voo mais rapido da familia. Em troca, e o mais caro de sustentar depois do Death "
+		+ "Beam.");
+		Por("Enkumei", "Enkumei", Modo.Sustentada,
+		"A onda de fogo negro dos Namekuseijin. Ela nao e a mais forte, mas carrega mais poder "
+		+ "por tras do feixe que o seu proprio corpo -- e quem domina a pericia de raio dobra "
+		+ "esse poder.");
+		Por("Boom_Wave", "Boom Wave", Modo.Sustentada,
+		"Um raio CURTO e grosso, de cinco tiles, que quase nao custa nada por segundo: o preco "
+		+ "dele cai conforme a sua pericia de Ki sobe. E a arma de quem luta colado e nao pode "
+		+ "parar pra carregar um raio caro.");
+		Por("Kikoho", "Kikoho", Modo.Instantanea,
+		"A Tri-Bomba: uma esfera pesada paga com a PROPRIA VIDA, e nao so com energia. Cada "
+		+ "uso seguido grita uma silaba (KI, KO, HO) e sai mais forte que o anterior -- e cobra "
+		+ "mais sangue. Tres seguidos podem derrubar voce.");
+		Por("Focus", "Foco", Modo.Sustentada,
+		"Voce concentra a circulacao do proprio Ki: a ofensiva de energia sobe, e o gasto sobe "
+		+ "na mesma medida. Quem treinou circulacao e buff ganha mais dos dois lados. Apertar "
+		+ "de novo desliga.");
+		Por("Efficiency", "Eficiencia", Modo.Sustentada,
+		"O contrario do Foco: voce racionaliza o gasto e a energia dura MUITO mais, ao preco de "
+		+ "uma parte da sua ofensiva de Ki. Apertar de novo desliga.");
+		Por("Energy_Shield", "Escudo de Energia", Modo.Sustentada,
+		"Uma casca que soma defesa de Ki E armadura de energia -- a armadura e o que aguenta "
+		+ "tiro sem descontar da sua vida. Consome energia todo segundo e cai sozinha quando a "
+		+ "armadura acaba.");
+		Por("Full_Power", "Full Power", Modo.Sustentada,
+		"A concentracao total da aura: forca fisica, ofensiva de Ki e velocidade sobem juntas. "
+		+ "Custa energia por segundo, e o custo CAI conforme voce pratica. Cai sozinha quando "
+		+ "sua energia chega perto do fim.");
+		Por("Kiai", "Kiai", Modo.Instantanea,
+		"Um grito de energia que ARREMESSA quem estiver na sua frente, sem tiro nenhum pra "
+		+ "desviar. Se nao houver ninguem no caminho, o sopro vira uma lamina de ar que segue "
+		+ "em frente.");
+		Por("Shockwave", "Onda de Choque", Modo.Instantanea,
+		"O sopro em VOLTA de voce: joga longe todo mundo colado e APAGA os tiros de energia que "
+		+ "estiverem chegando, desde que voce tenha poder pra isso. E a resposta de quem esta "
+		+ "cercado.");
+		Por("Deflection", "Deflexao", Modo.Instantanea,
+		"Voce empurra de volta o que vem voando na sua direcao. Por tres investidas seguidas, "
+		+ "todo tiro na sua frente que for mais fraco que voce e DEVOLVIDO a quem atirou -- e "
+		+ "passa a ser seu.");
+		Por("Explosive_Roar", "Rugido Explosivo", Modo.Instantanea,
+		"Duas fases: aperte pra comecar a juntar o rugido e aperte de novo pra soltar. Quanto "
+		+ "mais tempo carregar, maior o raio e mais longe todo mundo voa -- mas passando de "
+		+ "cinco segundos so o preco continua subindo.");
+		Por("Wolf_Fang_Fist", "Punho da Presa do Lobo", Modo.Instantanea,
+		"Tres socos secos em quem estiver colado, e o terceiro ARREMESSA. Custa folego alem de "
+		+ "energia, e precisa de pelo menos uma mao livre.");
+		Por("Wolf_Fang_Hurricane", "Furacao da Presa do Lobo", Modo.Instantanea,
+		"A versao encadeada do Punho da Presa: quatro golpes AVANCANDO, cada um empurrando voce "
+		+ "pra cima do alvo. Nenhum deles arremessa -- e essa e a graca, o alvo fica na sua "
+		+ "frente ate o ultimo.");
+		Por("Heal", "Curar", Modo.Sustentada,
+		"Poe a mao em quem esta do seu lado e fecha as feridas dele com o seu Ki, continuamente. "
+		+ "Cura mais quem tem mais pericia de Ki. Se o alvo se afastar, a cura para sozinha. "
+		+ "Apertar de novo tambem para.");
+		Por("Assess_Ki_Skill", "Avaliar o Ki", Modo.Instantanea,
+		"Le a pericia de Ki de quem voce marcou. Um novato so sente quem e mais treinado; com "
+		+ "percepcao media voce compara pericia por pericia; passando de cinquenta, voce le os "
+		+ "numeros dele como se fosse a sua propria ficha.", aba: "Outros");
 
 		// ============================ lote G7 -- E ELE FICOU UMA SESSAO INTEIRA DE FORA ============================
 		// Estas dezesseis linhas nao existiam. O lote G7 registrou os dezesseis verbos no servidor,
@@ -206,9 +274,15 @@ public static partial class Tecnicas
 		// As duas ultimas fecham o `SistSigilo`, que era o unico sistema do censo em que o port
 		// tinha o lado de quem LE e nao o de quem ESCREVE.
 		Por("Mafuba", "Mafuba", Modo.Instantanea, "A Onda Selante. Precisa de um Pote Selante assentado por perto: a fita sai atras do alvo e o prende no pote pra sempre. Custa 90 de dano em CADA membro seu -- pode te matar. Quem quiser o preso de volta tem que quebrar o pote.", aba: "Outros");
-		Por("Open_Dead_Zone", "Abrir a Dead Zone", Modo.Instantanea, "Rasga a realidade cinco tiles ao norte e abre a Dead Zone por dez segundos. Ela puxa quem estiver por perto e sela quem cair dentro -- sem pote, sem quebrar: so sai quem ficar 25% mais forte do que voce era na hora. Custa quase toda a sua energia.", aba: "Outros");
+		Por("Open_Dead_Zone", "Abrir a Dead Zone", Modo.Instantanea,
+		"Rasga a realidade cinco tiles ao norte e abre a Dead Zone por dez segundos. Ela puxa "
+		+ "quem estiver por perto e sela quem cair dentro -- sem pote, sem quebrar: só sai "
+		+ "quem ficar 25% mais forte do que você era na hora. Custa quase toda a sua energia.",
+		aba: "Outros");
 		Por("Conceal_Power", "Ocultar o Poder", Modo.Sustentada, "Esconde o seu poder de quem olha: o scouter dos outros passa a ler quase nada. Liga e desliga, com cinco segundos de espera entre um e outro.");
-		Por("Power_Control", "Controle de Poder", Modo.Sustentada, "Segura o seu proprio poder numa porcentagem, de 1 a 100. So serve pra BAIXAR -- pra voltar a subir e carregando (tecla C). Use Power_Control:<1 a 100>.");
+		Por("Power_Control", "Controle de Poder", Modo.Sustentada,
+		"Segura o seu próprio poder numa porcentagem, de 1 a 100. Só serve pra BAIXAR -- pra "
+		+ "voltar a subir é carregando (tecla C). Use Power_Control:40.", aba: "Skills");
 
 		// ---- lote G10: OS GOLPES DO MOLDE DO G7 QUE O CENSO ACHOU MUDOS, e a Trindade ----
 		// Dezenove verbos que a arvore ja concedia (dezesseis por DEGRAU) e o servidor nao atendia,
@@ -219,11 +293,11 @@ public static partial class Tecnicas
 		Por("Hokuto_Hyakuretsu_Ken", "Hokuto Hyakuretsu Ken", Modo.Instantanea, "ATATATATATA. Custa folego E energia, e deixa o alvo DEZ segundos sem reagir. Exige estar colado e com a mao livre; os golpes especiais de corpo ficam em espera depois.");
 		Por("Trip", "Rasteira", Modo.Instantanea, "Uma rasteira suja: se o alvo estiver NO CHAO, ele fica tres segundos sem reagir e leva um pouco de dano em cada membro. Contra quem voa nao ha chao pra tropecar.");
 		Por("Revenge_Demon", "Demonio da Vinganca", Modo.Instantanea, "Um soco e um jab na cara, e o alvo e ARREMESSADO pra frente. Se o primeiro golpe nao entrar, voce e quem se desequilibra.");
-		Por("Gigantic_Spike", "Espigao Gigante", Modo.Instantanea, "Com alguem CARREGADO (agarrar duas vezes), voce corre pra frente derrubando o que houver no caminho e esmaga o alvo marcado no fim -- quanto mais parede, mais forte. O chao em volta racha.");
+		Por("Gigantic_Spike", "Espigao Gigante", Modo.Instantanea, "Com alguem AGARRADO (se so estiver seguro, voce o levanta na hora), voce corre pra frente derrubando o que houver no caminho e esmaga quem carrega no fim -- quanto mais parede, mais forte. O chao em volta racha.");
 		Por("Power_Drag", "Arrasto Brutal", Modo.Instantanea, "Com alguem CARREGADO, voce dispara pra frente arrastando o corpo dele pelo chao por varios tiles, e ele sai machucado do arrasto.");
 		Por("Seismic_Press", "Prensa Sismica", Modo.Instantanea, "Um golpe pesado que deixa o alvo dois segundos sem reagir e RACHA o chao num raio igual a sua forca.");
-		Por("Clench", "Aperto", Modo.Instantanea, "Aperta quem esta nos seus bracos (+4 de dano) e desfaz o que ele ja tinha lutado pra escapar. Se nao houver ninguem agarrado, agarra quem estiver na frente.");
-		Por("Hold", "Chave", Modo.Instantanea, "Uma chave em quem esta agarrado: zera a luta pra escapar dele e o deixa CINCO segundos sem reagir.");
+		Por("Clench", "Aperto", Modo.Instantanea, "Aperta quem esta nos seus bracos (+4 de dano) e desfaz quatro pontos do que ele ja tinha lutado pra escapar. Se nao houver ninguem agarrado, agarra quem estiver na frente.");
+		Por("Hold", "Chave", Modo.Instantanea, "Uma chave em quem esta agarrado: tira quinze pontos da luta dele pra escapar e o deixa CINCO segundos sem reagir.");
 		Por("Power_Slam", "Power Slam", Modo.Instantanea, "Levanta e ESMAGA quem esta agarrado no chao: o golpe mais forte da luta livre (+10).");
 		Por("Suplex", "Suplex", Modo.Instantanea, "O suplex: dano somado em quem esta agarrado e dois segundos sem reagir depois.");
 		Por("Rapid_Movement", "Movimento Rapido", Modo.Instantanea, "Bombeia Ki nas pernas e avanca tres tiles contra o alvo MARCADO (ate vinte tiles). Nao bate: e o passo de quem quer fechar a distancia. Custa menos quanto mais rapido voce e.");
@@ -240,7 +314,7 @@ public static partial class Tecnicas
 		Por("Death_Ball", "Death Ball", Modo.Sustentada, "Uma esfera pesada que voce forma sobre a cabeca por ate quatro estagios de 1,5 s (cada um come um terco do custo de novo), e depois GUIA com o proprio olhar. Aperte de novo pra largar a guia; apertando uma terceira vez durante a carga ela sai na hora. Custa 150x o dreno-base e prende voce no lugar enquanto durar.");
 		Por("BusterBarrage", "Buster Barrage", Modo.Sustentada, "Liga e voce passa a cuspir duas esferas por ciclo em direcoes ALEATORIAS, ate desligar, cair ou ficar sem energia. Cada ciclo custa um dreno-base. Nao prende voce no lugar.");
 		Por("Continuous_Energy_Bullets", "Balas Continuas de Energia", Modo.Sustentada, "Uma rajada sem fim de esferas pra frente, dez por segundo, enquanto voce segurar -- plantado no lugar. A primeira custa pouco; cada esfera seguinte custa DEZ vezes mais, e a rajada para sozinha quando a energia nao paga a proxima. Cinco segundos de espera depois.");
-		Por("Spin_Blast", "Rajada Giratoria", Modo.Sustentada, "A irma mais cara das Balas Continuas: vinte esferas por segundo nascendo em volta de voce e um pouco mais fortes. Oito segundos de espera depois. (No jogo antigo a promessa de \"todas as direcoes\" nunca se cumpriu: todas saem pra frente -- ficou igual.)");
+		Por("Spin_Blast", "Rajada Giratoria", Modo.Sustentada, "A irma mais cara das Balas Continuas: vinte esferas por segundo nascendo em volta de voce e saindo em TODAS as oito direcoes, um pouco mais fortes. Oito segundos de espera depois.");
 		Por("SpiritBomb", "Genkidama", Modo.Sustentada, "Custa 90% do seu Ki maximo. A esfera se forma sobre voce em 3 s e passa a CRESCER em pulsos de 1,5 s; quem estiver MEDITANDO no mesmo mundo pode doar um decimo do proprio Ki e engorda-la mais. Aperte de novo pra atirar: ela sai 2 s depois, na direcao do seu olhar, e voce fica preso ate 3 s depois do disparo.");
 		Por("Soul_Absorb", "Absorver a Alma", Modo.Instantanea, "Arranca a alma de alguem NOCAUTEADO e vivo ao seu lado: a energia dele vira sua, uma parte do poder dele fica com voce, e ele morre um segundo depois. Cada alma so pode ser tomada uma vez, e o mesmo corpo nao pode ser absorvido de novo por cinco minutos.");
 		Por("Absorb_Android", "Dreno de Energia", Modo.Sustentada, "Contra um Androide caido: absorve-o inteiro. Contra qualquer outro caido: comeca a DRENAR a energia dele, um decimo a cada 0,7 s, enquanto ele estiver colado em voce -- e ele morre se a energia cair abaixo de um decimo. Aperte de novo, leve um golpe ou caia e o dreno para.");
@@ -262,10 +336,34 @@ public static partial class Tecnicas
 		Por("Instant_Transmission", "Teletransporte", Modo.Instantanea, "Sente uma assinatura de Ki e se desmonta ate ela. Mande sem argumento pra ver quem da pra sentir (conhecidos pelo nome, desconhecidos pela assinatura); depois Instant_Transmission:<nome>. Voce precisa ficar PARADO enquanto se concentra; quem estiver colado vai junto. Custa quase toda a energia e vai ficando mais facil com a distancia percorrida.", aba: "Outros");
 		Por("Flip", "Cambalhota", Modo.Instantanea, "A esquiva do gato: preso num agarrao, voce tenta se soltar com uma cambalhota. A chance cresce com a sua ofensiva e o seu poder contra a forca de quem segura, e com o quanto voce ja se debateu. Escapar machuca quem te segurava. Custa Ki mesmo se falhar.");
 		Por("Self_Destruct", "Autodestruicao", Modo.Instantanea, "So com alguem AGARRADO. O primeiro aperto comeca a juntar energia (voce fica preso no lugar e o poder cresce a cada dois segundos e meio); o segundo detona: quem esta nos seus bracos leva a explosao inteira, quem esta a ate tres tiles leva uma parte -- e voce leva a mesma explosao. Carregando alem de vinte, 75% de chance de MORRER junto.");
-		Por("Psycho_Thread", "Fio Psiquico", Modo.Sustentada, "Liga e desliga os fios dos Herans. Com eles ligados, o duplo clique no chao deixa de ser Zanzoken e passa a ARMAR um fio de paralisia embaixo dos seus pes por cinco segundos: quem pisar nele fica com as pernas trancadas. Pede setecentos de Ki de reserva e cobra cem.");
-		Por("Freeze", "Congelar o Tempo", Modo.Instantanea, "Congela todo mundo a vista por alguns segundos (mais tempo quanto maior a sua pericia de Ki, menos quanto mais forte o alvo). Exige mais de um quarto do Ki -- e METADE do que voce tem vai embora POR PESSOA congelada.");
+		Por("Psycho_Thread", "Fio Psiquico", Modo.Sustentada, "Liga e desliga os fios dos Herans. Com eles ligados, o duplo clique no chao deixa de ser Zanzoken e passa a ARMAR um fio de paralisia embaixo dos seus pes por cinco segundos: quem pisar nele fica com as pernas trancadas. Custa cem vezes o seu dreno-base por fio.");
+		Por("Freeze", "Congelar o Tempo", Modo.Instantanea, "Congela todo mundo a vista por alguns segundos (mais tempo quanto maior a sua pericia de Ki, menos quanto mais forte o alvo). Exige mais de um quarto do Ki -- e METADE do que voce tem vai embora, uma vez so, se alguem for congelado.");
 		Por("Observe", "Observar", Modo.Instantanea, "Projeta a mente ate alguem e sente onde ele esta e o que o cerca: o mundo, a hora, a condicao dele e quem esta por perto. Nao alcanca quem esconde o poder, Androides nem energia fraca demais. Observe:<nome>; Observe sem nome solta.", aba: "Outros");
 		Por("Unlock_Potential", "Despertar o Potencial", Modo.Instantanea, "O ritual do Anciao: oferece a quem esta marcado ao seu lado (ou a voce mesmo) despertar o potencial adormecido -- UMA vez na vida. O poder base sobe uma fracao por ponto de Potencial da raca, e o potencial acumulado por idade e treino vira poder na hora. Quem recebe precisa aceitar na aba Other.", aba: "Outros");
 		Por("Give_Power", "Dar Poder", Modo.Sustentada, "Transfere a sua energia pra quem esta marcado ou perto: um por cento do seu Ki maximo a cada quinto de segundo, curando um pouco a cada dose. Quando a energia acaba (ou voce para), voce DESMAIA. Aperte de novo pra parar.");
+
+		// ---- lote G13: O SISTEMA DE ESTUDO da arvore "Strength of Mind" ----
+		// Os tres verbs que faltavam das dezessete skills da Mente. Os tres mexem no MESMO lugar --
+		// o banco de exp adiantado de cada skill (`NiveisDeSkill.Progresso.Buffer`).
+		// Ver `Server/GameServer.Tecnicas.G13.cs`.
+		Por("Study_Other", "Estudar Outro", Modo.Sustentada,
+			"Fica observando alguem a ate dez tiles e aprende com o que ve: a cada segundo, toda "
+			+ "habilidade da Mente que a pessoa tem num nivel MAIS ALTO que o seu adianta o seu "
+			+ "progresso nela. Study_Other:<nome> comeca; apertar de novo para. Perder o alvo de "
+			+ "vista tambem para. Com uma habilidade em FOCO o ganho e dez vezes maior -- e so nela.",
+			aba: "Outros");
+
+		Por("Focus_Skill", "Focar Habilidade", Modo.Instantanea,
+			"Escolhe em qual habilidade da Mente o seu estudo vai se concentrar. Focus_Skill sem nome "
+			+ "lista as suas e diz qual esta escolhida; Focus_Skill:nenhuma solta o foco e volta a "
+			+ "aprender um pouco de tudo.",
+			aba: "Outros");
+
+		Por("Write_Teachings", "Escrever Ensinamentos", Modo.Sustentada,
+			"Escreve um livro sobre uma habilidade da Mente que voce ja subiu. So se escreve "
+			+ "MEDITANDO, e leva um minuto por nivel que voce tem nela. O livro fica na sua mochila e "
+			+ "ensina qualquer um que ja saiba aquela habilidade e ainda esteja na METADE do seu "
+			+ "nivel ou abaixo -- some ao ser lido. Write_Teachings:parar desiste e perde o escrito.",
+			aba: "Outros");
 	}
 }

@@ -576,7 +576,14 @@ public partial class GameServer
 		// ============================ A INJECAO: ARRANCA O EFEITO DO MAFUBA ============================
 		// O verb continua no catalogo de skills (o extrator nao mudou); o que sai e o CORPO -- que e a
 		// unica pergunta que o censo faz. Se o painel fosse uma lista escrita a mao, nada mudaria aqui.
+		//
+		// GUARDA O DESCRITOR ANTES DE ARRANCAR. A devolucao era um `RegistrarTecnicasG9()`, e ela so
+		// funcionava porque o lote escrevia o descritor ALEM do corpo. Com o descritor morando so no
+		// Core (`Tecnicas.Portadas.cs`), chamar o lote de novo nao devolve texto nenhum -- e o Mafuba
+		// ficava "ainda mudo" pelo resto da bancada. Guardar e repor o que esta la nao inventa uma
+		// terceira boca: repoe exatamente o que a injecao cobriu.
 		// ==========================================================================================
+		Tecnicas.Tecnica mafubaDeVerdade = Tecnicas.Get("Mafuba")!;
 		Tecnicas.Registrar("Mafuba", "Mafuba", Modo.NaoPortada, "arrancado pela bancada", aba: "Outros");
 		(_, string semEfeito) = PainelDoPacote(quemOlha, "turtle");
 
@@ -587,7 +594,8 @@ public partial class GameServer
 		AfirmarSe("...e o resto do kit continua do lado pronto (a injecao mexeu em UM verbo)",
 				  NoLadoPronto(semEfeito, "Kame Style"), semEfeito);
 
-		RegistrarTecnicasG9();
+		Tecnicas.Registrar(mafubaDeVerdade.Id, mafubaDeVerdade.Nome, mafubaDeVerdade.Modo,
+						   mafubaDeVerdade.Desc, mafubaDeVerdade.Aba);
 		(_, string devolta) = PainelDoPacote(quemOlha, "turtle");
 		AfirmarSe("devolvido o efeito, o Mafuba volta sozinho pro lado pronto", NoLadoPronto(devolta, "Mafuba"),
 				  devolta);
@@ -925,24 +933,11 @@ public partial class GameServer
 	/// -- que e a chance de deixar um corpo no `_players` com um id e na `ZoneList` com outro.
 	/// </summary>
 	private ServerPlayer ForjarSelador(string nome, Vec2 onde, double bp)
-	{
-		ServerPlayer pl = Forjar(nome, onde, bp);
-
-		foreach (string path in new[]
-				 {
-					 "/datum/skill/rank/Mafuba", "/datum/skill/rank/DeadZone",
-					 "/datum/skill/rank/SuperiorSeal",
-				 })
-			pl.Livro.Dar(path);
-
 		// `Conceal_Power` e `Power_Control` vem por DEGRAU (Basic Ki Control nivel 5, `Mind.dm:281`),
 		// e nao por skill comprada -- e por isso o livro sozinho nao basta.
-		var save = new NivelSave();
-		save.Skills["/datum/skill/mind/Basic_Ki_Control"] = [5, 0];
-		pl.Niveis.DoSave(save);
-
-		return pl;
-	}
+		=> ForjarComSkills(nome, onde, bp,
+						   skills: ["/datum/skill/rank/Mafuba", "/datum/skill/rank/DeadZone", "/datum/skill/rank/SuperiorSeal"],
+						   degraus: [("/datum/skill/mind/Basic_Ki_Control", 5)]);
 
 	/// <summary>Assenta um Pote Selante de verdade, pelo mesmo caminho de dado que o jogador usa.</summary>
 	private Obra PorUmPote(ZoneKey zona, float x, float y)
@@ -970,9 +965,7 @@ public partial class GameServer
 		_fitas.Clear();
 		_portais.Clear();
 
-		foreach (int id in _players.Keys.Where(k => k >= IdBaseDeProjetil).ToList())
-			_sigiloPronto.Remove(id);
-		LimparTudoDaBancada();
+		LimparTudoDaBancada();   // leva a recarga do sigilo junto: o G9 esta inscrito no `EsquecerTecnicas`
 
 		foreach (Obra o in _noChao.Where(o => o.DonoConta == "bancada_selo").ToList())
 			_noChao.Remove(o);

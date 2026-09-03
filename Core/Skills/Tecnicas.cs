@@ -184,8 +184,16 @@ public static partial class Tecnicas
 	private static bool _montandoEspelho;
 
 	/// <summary>
-	/// REGISTRA uma tecnica portada. Publico pra que cada lote de tecnicas viva no proprio
-	/// arquivo e se anuncie sozinho -- e o que permite portar as proximas sem tocar nesta lista.
+	/// REESCREVE o descritor de uma tecnica em tempo de execucao.
+	///
+	/// ISTO NAO E MAIS O CAMINHO DE REGISTRO. Cada lote do servidor anunciava a sua tecnica por aqui
+	/// alem de registrar o corpo, e a tabela do Core repetia a mesma linha -- duas bocas pro mesmo
+	/// fato, que divergiram em vinte e dois descritores antes de alguem comparar. Hoje o descritor
+	/// nasce so em <c>Tecnicas.Portadas.cs</c>.
+	///
+	/// O QUE SOBROU E A INJECAO DE BANCADA: `--seloteste` arranca o efeito do Mafuba e `--catalogoteste`
+	/// inventa um verb oco, pra provar que o censo e o painel PERCEBEM. Uma checagem que so sabe olhar
+	/// pro estado real nunca prova que ela reprovaria -- e e por isso que este metodo continua publico.
 	/// </summary>
 	public static void Registrar(string id, string nome, Modo modo, string desc, string aba = "Skills")
 		=> Por(id, nome, modo, desc, aba);

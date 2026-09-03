@@ -182,7 +182,7 @@ public sealed class ReceitaDeProjetil
 ///
 /// ============================ NAO HAVIA O QUE REUSAR ============================
 /// As ~33 tecnicas ja portadas sao TODAS instantaneas: escolhem alvo por raio
-/// (`AlvoDeTecnicaG3`) e aplicam o dano no mesmo instante, pelo funil do soco. Nenhuma tem
+/// (`AlvoDeTecnica`) e aplicam o dano no mesmo instante, pelo funil do soco. Nenhuma tem
 /// entidade que viaje, nenhuma tem posicao propria, e o `EntityState` do snapshot so sabe
 /// descrever CORPOS. Entao isto nao e "um segundo projetil": e o primeiro. As tecnicas
 /// instantaneas continuam instantaneas -- elas nao sao raios mal-feitos, sao golpes de alcance,

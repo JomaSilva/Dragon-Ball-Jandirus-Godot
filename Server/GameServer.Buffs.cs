@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Godot;
 using Jandirus.Core.Stats;
 
@@ -54,6 +54,41 @@ public partial class GameServer
 	public bool TemBuff(ServerPlayer pl, string id) => BuffsDe(pl.Id).ContainsKey(id);
 
 	/// <summary>
+	/// OS BUFFS QUE CONTAM COMO "BUFF DE KI" -- os tres `/obj/buff` que escrevem
+	/// `container.kibuffon = 1` no original (`Ki2.0/KiBuffs.dm:28`, `:57`, `:98`).
+	///
+	/// ============================ ELES SAO A CHAVE DE UMA ARVORE INTEIRA ============================
+	/// `kibuffon` nao e enfeite de HUD: e a fonte de exp das SEIS skills de Circulacao de Ki
+	/// (Basic/Advanced/Perfect, `Mind.dm:243`, `:513`, `:726`), o portao do <see cref="Fighter.buffregen"/>
+	/// (a cura passiva do nivel 30 da Advanced), e o que enche o `kibuffcounter` que treina a familia
+	/// Buff Mastery (`Mind.dm:133`). Enquanto o campo nao existia, ligar o Foco nao treinava NADA.
+	///
+	/// A LISTA E DOS TRES E SO DOS TRES. Kaio-ken, Ki Blade e os sete buffs de corpo do lote G1
+	/// tambem sao buffs, e no DM nenhum deles escreve `kibuffon` -- inclui-los daria exp de
+	/// Circulacao a quem ligasse uma lamina, que e outra arvore.
+	/// ============================================================================================
+	/// </summary>
+	private static readonly HashSet<string> BuffsDeKi =
+		new(StringComparer.Ordinal) { "Focus", "Efficiency", "Energy_Shield" };
+
+	/// <summary>
+	/// REESCREVE `kibuffon` a partir do que esta ligado AGORA.
+	///
+	/// Derivado, e nao um contador que sobe e desce: ligar Foco e Escudo juntos e depois desligar um
+	/// deles tem que deixar a chave LIGADA, e no DM isso e um defeito real (`DeBuff()` de qualquer um
+	/// dos tres zera a chave dos outros dois, `KiBuffs.dm:32`). Perguntar ao conjunto acerta os dois
+	/// casos sem guardar estado nenhum.
+	/// </summary>
+	private void SincronizarBuffDeKi(ServerPlayer pl)
+	{
+		Dictionary<string, BuffAtivo> meus = BuffsDe(pl.Id);
+		bool algum = false;
+		foreach (string id in BuffsDeKi)
+			if (meus.ContainsKey(id)) { algum = true; break; }
+		pl.Ficha.kibuffon = algum ? 1 : 0;
+	}
+
+	/// <summary>
 	/// LIGA um buff. `somas` sao campos do <see cref="Fighter"/> (por reflexao, como os efeitos de
 	/// skill); `dreno` multiplica o `DrainMod`. `duracaoMs` de 0 = fica ate desligarem.
 	///
@@ -92,6 +127,7 @@ public partial class GameServer
 		if (duracaoMs > 0) b.ExpiraEm = NowMs() + duracaoMs;
 
 		meus[id] = b;
+		SincronizarBuffDeKi(pl);   // `container.kibuffon = 1` dos tres buffs de Ki -- ver `BuffsDeKi`
 		pl.Ficha.Statify();
 		pl.SigAtributos = "";
 		MandarEfeito(pl, id, duracaoMs > 0 ? duracaoMs : -1);
@@ -108,6 +144,7 @@ public partial class GameServer
 		foreach ((string campo, double v) in b.Fatores) Multiplicar(pl.Ficha, campo, 1 / v);
 		if (b.Dreno != 0 && b.Dreno != 1) pl.Ficha.DrainMod /= b.Dreno;
 
+		SincronizarBuffDeKi(pl);   // ver `BuffsDeKi`: a chave e DERIVADA do que sobrou ligado
 		pl.Ficha.Statify();
 		pl.SigAtributos = "";
 		MandarEfeito(pl, id, 0);

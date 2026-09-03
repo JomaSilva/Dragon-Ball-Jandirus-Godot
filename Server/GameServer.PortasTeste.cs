@@ -315,27 +315,35 @@ public partial class GameServer
 		var escutaReal = EscutaDeAvisos;
 		var ditos = new List<string>();
 		EscutaDeAvisos = ditos;
+		// ============================ A TESTEMUNHA TROCOU: A GENKIDAMA FOI PORTADA ============================
+		// Ate 2026-09-02 a testemunha era o Kaio do Norte: a Genkidama do kit dele "nao tinha corpo neste
+		// port" e a bancada exigia o recado nomeando "energia EMPRESTADA". O lote G12 portou a Genkidama
+		// e o G11 o Observe -- o kit do Kaio do Norte ficou INTEIRO e as tres linhas envelheceram
+		// (ficaram vermelhas com o kit funcionando, que e o jeito certo de envelhecer). A prova de que o
+		// debito e DITO continua a mesma, agora com o GRANDE KAIO: o kit dele tem o Reincarnate, que
+		// espera a burocracia do alem (`CensoDeSkills.SistAlem`). E o Kaio do Norte vira o controle da
+		// outra direcao: "tudo pronto" nao pode dizer que falta alguma coisa.
+		// ======================================================================================================
 		try
 		{
-			_tronos["nkai"] = cobaia.Conta;
+			_tronos["grandkai"] = cobaia.Conta;
 			ReconciliarDadiva(cobaia);
 		}
 		finally { EscutaDeAvisos = escutaReal; }
 
-		AfirmarPrt("virar Kaio do Norte AVISA o que o cargo entregou",
+		AfirmarPrt("virar Grande Kaio AVISA o que o cargo entregou",
 			ditos.Any(t => t.Contains("o cargo te entrega", StringComparison.OrdinalIgnoreCase)),
 			string.Join(" | ", ditos));
 
-		// A GENKIDAMA E A TESTEMUNHA: ela e do kit do Kaio do Norte e nao tem corpo neste port.
-		// Ate aqui ela chegava ao livro e sumia -- nenhum botao, nenhuma palavra.
+		// O REINCARNATE E A TESTEMUNHA: ele e do kit do Grande Kaio e nao tem corpo neste port.
 		string recado = ditos.FirstOrDefault(
 			t => t.Contains("ainda não funciona", StringComparison.OrdinalIgnoreCase)) ?? "";
 		AfirmarPrt("...e AVISA, pelo nome, o que ele entregou e o port ainda nao faz",
-			recado.Contains("Spirit Bomb", StringComparison.OrdinalIgnoreCase), string.Join(" | ", ditos));
+			recado.Contains("Reincarnat", StringComparison.OrdinalIgnoreCase), string.Join(" | ", ditos));
 		AfirmarPrt("...nomeando o SISTEMA que falta, e nao um 'em breve'",
-			recado.Contains("energia EMPRESTADA", StringComparison.OrdinalIgnoreCase), recado);
+			recado.Contains("burocracia do alem", StringComparison.OrdinalIgnoreCase), recado);
 
-		_tronos.Remove("nkai");
+		_tronos.Remove("grandkai");
 		ReconciliarDadiva(cobaia);
 
 		// ============================ E A MESMA VERDADE NO PAINEL, ANTES DE TOMAR O CARGO ============================
@@ -345,23 +353,32 @@ public partial class GameServer
 		// de dentro do jogo.**
 		//
 		// A LINHA DO PAINEL SAI DA MESMA TABELA E DO MESMO CENSO do aviso, e por isso as duas nao
-		// podem divergir. Aqui a bancada afirma as duas metades no mesmo cargo: o Kaio-ken do lado
-		// PRONTO, a Genkidama do lado MUDO.
+		// podem divergir. Aqui a bancada afirma as duas metades no mesmo cargo: o Revive do lado
+		// PRONTO, o Reincarnate do lado MUDO.
 		// ========================================================================================================
-		string vitrine = OQueOCargoEntrega("nkai");
-		AfirmarPrt("o painel diz o que o Kaio do Norte DA (antes era chave, dono e mais nada)",
+		string vitrine = OQueOCargoEntrega("grandkai");
+		AfirmarPrt("o painel diz o que o Grande Kaio DA (antes era chave, dono e mais nada)",
 			vitrine.Length > 0, vitrine);
-		AfirmarPrt("...e o Kaio-ken aparece do lado PRONTO da linha",
-			vitrine.Contains("Kaio-ken", StringComparison.OrdinalIgnoreCase)
-			&& vitrine.IndexOf("Kaio-ken", StringComparison.OrdinalIgnoreCase)
+		AfirmarPrt("...e o Revive aparece do lado PRONTO da linha",
+			vitrine.Contains("Revive", StringComparison.OrdinalIgnoreCase)
+			&& vitrine.IndexOf("Revive", StringComparison.OrdinalIgnoreCase)
 			   < (vitrine.IndexOf("ainda mudo", StringComparison.OrdinalIgnoreCase) is var m && m >= 0
 				  ? m : int.MaxValue),
 			vitrine);
-		AfirmarPrt("...e a Genkidama aparece marcada como AINDA MUDA, e nao prometida em silencio",
+		AfirmarPrt("...e o Reincarnate aparece marcado como AINDA MUDO, e nao prometido em silencio",
 			vitrine.Contains("ainda mudo", StringComparison.OrdinalIgnoreCase)
-			&& vitrine.IndexOf("Spirit Bomb", StringComparison.OrdinalIgnoreCase)
+			&& vitrine.IndexOf("Reincarnat", StringComparison.OrdinalIgnoreCase)
 			   > vitrine.IndexOf("ainda mudo", StringComparison.OrdinalIgnoreCase),
 			vitrine);
+
+		// O CONTROLE DA OUTRA DIRECAO: o kit do Kaio do Norte ficou inteiro (Genkidama no G12, Observe
+		// no G11) e a vitrine dele NAO pode mais dizer "ainda mudo" -- a mesma tabela que acusa o
+		// Reincarnate e a que absolve a Genkidama, sozinha, no dia em que ela ganhou corpo.
+		string nkai = OQueOCargoEntrega("nkai");
+		AfirmarPrt("e o Kaio do Norte, cujo kit ficou INTEIRO (Genkidama e Observe portados), nao tem mais nada marcado como mudo",
+			nkai.Contains("Spirit Bomb", StringComparison.OrdinalIgnoreCase)
+			&& !nkai.Contains("ainda mudo", StringComparison.OrdinalIgnoreCase),
+			nkai);
 
 		// O CARGO QUE O DM DEIXA DE MAOS VAZIAS continua de maos vazias na vitrine -- ele so tem o
 		// canal dos cargos. Sem esta checagem, um bug que enchesse a linha de todo mundo passaria.

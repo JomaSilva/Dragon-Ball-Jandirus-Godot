@@ -11,7 +11,7 @@ namespace Jandirus.Server;
 ///
 /// ============================ ELA EXERCITA A PRODUCAO, E SO ELA ============================
 /// Nenhuma familia daqui chama o efeito direto. Toda tecnica entra por
-/// <see cref="UsarHabilidade"/> -> <see cref="UsarTecnica"/> -> <see cref="UsarTecnicasG7"/> -- o
+/// <see cref="UsarHabilidade"/> -> <see cref="UsarTecnica"/> -> o registro de tecnicas vivas do lote G7 -- o
 /// mesmo caminho do pacote do jogador, com o mesmo `SabeTecnica` no meio. A infraestrutura
 /// (`Forjar`, `CorredorLivre`, `LimparTudoDaBancada`) e emprestada da `--projetilteste`, pelo mesmo
 /// motivo de sempre: um segundo forjador seria a segunda resposta pra "como nasce um corpo de
@@ -151,7 +151,7 @@ public partial class GameServer
 		foreach ((string v, _) in PorSkillG7) todos.Add(v);
 
 		AfirmarPunho("os dezesseis do lote sao exatamente os dezesseis desta bancada",
-					 todos.Count == 16 && todos.TrueForAll(EhDoLoteG7), $"{todos.Count} verbos");
+					 todos.Count == 16 && todos.TrueForAll(v => EhDoLote("G7", v)), $"{todos.Count} verbos");
 
 		var mudas = todos.FindAll(v => Tecnicas.Get(v)!.Modo == Modo.NaoPortada);
 		AfirmarPunho("...e nenhum deles continua marcado como NAO-PORTADO",
@@ -162,7 +162,7 @@ public partial class GameServer
 		// antes de o jogador descobrir sozinho.
 		var vazadas = new List<string>();
 		foreach ((string v, string espera) in RecusadasG7)
-			if (EhDoLoteG7(v) || Tecnicas.Get(v)!.Modo != Modo.NaoPortada) vazadas.Add($"{v} ({espera})");
+			if (EhDoLote("G7", v) || Tecnicas.Get(v)!.Modo != Modo.NaoPortada) vazadas.Add($"{v} ({espera})");
 		AfirmarPunho("as NOVE recusadas continuam mudas e fora do lote (nenhuma foi meio-portada)",
 					 vazadas.Count == 0, string.Join(" | ", vazadas));
 
@@ -171,14 +171,10 @@ public partial class GameServer
 		nu.Facing = Facing.East;
 		Forjar("Saco", chao + new Vec2(ZoneCollision.TileSize, 0), bp: 5_000);
 
-		EscutaDeAvisos = [];
 		double kiAntes = nu.Ficha.Ki;
-		UsarHabilidade(nu, "KO_Punch");
+		List<string> falas = ApertarEOuvir(nu, "KO_Punch");
 		AfirmarPunho("quem NAO destravou o verbo ouve \"voce nao sabe\" e nao gasta nada",
-					 Math.Abs(nu.Ficha.Ki - kiAntes) < 0.001
-					 && EscutaDeAvisos.Exists(a => a.Contains("nao sabe", StringComparison.OrdinalIgnoreCase)),
-					 string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos = null;
+					 Math.Abs(nu.Ficha.Ki - kiAntes) < 0.001 && Disse(falas, "nao sabe"), Ultimos(falas));
 
 		LimparTudoDaBancada();
 	}
@@ -230,36 +226,12 @@ public partial class GameServer
 		LimparTudoDaBancada();
 	}
 
-	/// <summary>Um corpo com os dezesseis destravados, Ki e folego cheios.</summary>
+	/// <summary>Um corpo com os dezesseis destravados, Ki e folego cheios. A dupla colada e a <see cref="Dupla"/> comum.</summary>
 	private ServerPlayer ForjarSocador(string nome, Vec2 onde, double bp)
-	{
-		ServerPlayer pl = Forjar(nome, onde, bp);
-		var save = new NivelSave();
-		foreach ((_, string path, int nivel) in PorDegrauG7) save.Skills[path] = [nivel, 0];
-		pl.Niveis.DoSave(save);
-		foreach ((_, string path) in PorSkillG7) pl.Livro.Dar(path);
-
-		pl.Ficha.Ki = pl.Ficha.MaxKi = Math.Max(pl.Ficha.MaxKi, 50_000_000);
-		pl.Ficha.stamina = pl.Ficha.maxstamina = Math.Max(pl.Ficha.maxstamina, 100_000);
-		return pl;
-	}
-
-	/// <summary>Duas pessoas coladas, olhando uma pra outra -- o cenario de sete das oito familias.</summary>
-	private (ServerPlayer A, ServerPlayer D) Dupla(double bpA = 5_000, double bpD = 5_000)
-	{
-		Vec2 chao = CorredorLivre(24);
-		ServerPlayer a = ForjarSocador("Socador", chao, bpA);
-		ServerPlayer d = ForjarSocador("Alvo", chao + new Vec2(ZoneCollision.TileSize * 0.9f, 0), bpD);
-		a.Facing = Facing.East;
-		d.Facing = Facing.West;
-		a.AlvoId = d.Id;
-
-		// SEM GUARDA E SEM ESQUIVA nas familias que medem DANO: o `MeleeResolver` sorteia pontaria,
-		// bloqueio e esquiva, e um golpe que "as vezes sai" transforma toda medicao de dano numa
-		// moeda. Quem mede a rolagem e a bancada do soco (`--socoteste`); esta mede a RECEITA.
-		d.Combate.Bloqueando = false;
-		return (a, d);
-	}
+		=> ForjarComSkills(nome, onde, bp,
+						   skills: [.. PorSkillG7.Select(t => t.Path)],
+						   degraus: [.. PorDegrauG7.Select(t => (t.Path, t.Nivel))],
+						   kiMin: 50_000_000, staminaMin: 100_000);
 
 	// =====================================================================
 	// 3) A RECARGA E UMA SO
@@ -268,30 +240,23 @@ public partial class GameServer
 	{
 		GD.Print("[punho] -- 3) O `basicCD` E DO MOB, E NAO DA TECNICA");
 
-		(ServerPlayer a, _) = Dupla();
+		(ServerPlayer a, _) = Dupla(ForjarSocador);
 
 		_prontoG3.Remove(a.Id);
 		UsarHabilidade(a, "Kickup");
 		AfirmarPunho("usar um verbo do lote arma a recarga compartilhada", _prontoG3.ContainsKey(a.Id));
 
-		EscutaDeAvisos = [];
 		double kiAntes = a.Ficha.Ki;
-		UsarHabilidade(a, "KO_Punch");
+		List<string> falas = ApertarEOuvir(a, "KO_Punch");
 		AfirmarPunho("...e OUTRO verbo do lote e recusado por ela, sem cobrar Ki",
-					 Math.Abs(a.Ficha.Ki - kiAntes) < 0.001
-					 && EscutaDeAvisos.Exists(s => s.Contains("recompoem")),
-					 string.Join(" | ", EscutaDeAvisos));
+					 Math.Abs(a.Ficha.Ki - kiAntes) < 0.001 && Disse(falas, "recompoem"), Ultimos(falas));
 
 		// O ELO COM O LOTE G3: o Multihit usa o MESMO `_prontoG3`. Sem esta linha o lote novo poderia
 		// ter aberto um contador so dele e ninguem veria -- o teto de dano por segundo dobraria.
-		EscutaDeAvisos.Clear();
 		a.Livro.Dar("/datum/skill/MartialSkill/Special_Multihit");
-		UsarHabilidade(a, "Special_Multihit");
+		falas = ApertarEOuvir(a, "Special_Multihit");
 		AfirmarPunho("...e a recarga do lote G7 tambem segura o Multihit do lote G3",
-					 _barragemG3.Count == 0
-					 && EscutaDeAvisos.Exists(s => s.Contains("recompoem")),
-					 string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos = null;
+					 _barragemG3.Count == 0 && Disse(falas, "recompoem"), Ultimos(falas));
 
 		// A RECARGA MAIS LONGA DO LOTE e do Spirit Gun (`reload + 45` tiques = ~4,5 s), e a mais
 		// curta e a dos doze punhos (15 tiques). Se as duas fossem iguais, o `basicCD += 25/30` do
@@ -321,7 +286,7 @@ public partial class GameServer
 	{
 		GD.Print("[punho] -- 4) OS COMBOS SOBEM DE DANO; A BARRAGEM DE DANO FIXO CONTINUA FIXA");
 
-		(ServerPlayer a, ServerPlayer d) = Dupla();
+		(ServerPlayer a, ServerPlayer d) = Dupla(ForjarSocador);
 
 		_prontoG3.Remove(a.Id);
 		UsarHabilidade(a, "One_Two_Five");
@@ -359,20 +324,15 @@ public partial class GameServer
 		_prontoG3.Remove(a.Id);
 		d.Pos = a.Pos + new Vec2(ZoneCollision.TileSize * 2.2f, 0);
 		Vec2 antes = a.Pos;
-		EscutaDeAvisos = [];
-		UsarHabilidade(a, "Two_One_Four");
+		List<string> falas = ApertarEOuvir(a, "Two_One_Four");
 		AfirmarPunho("o Dois-Um-Quatro NAO da o passo: a dois tiles ele recusa e o corpo nao anda",
-					 Vec2.Distance(a.Pos, antes) < 0.5f && _barragemG3.Count == 0,
-					 string.Join(" | ", EscutaDeAvisos));
+					 Vec2.Distance(a.Pos, antes) < 0.5f && _barragemG3.Count == 0, Ultimos(falas));
 
 		// ...e o Um-Dois, que TEM o passo, alcanca da mesma distancia.
 		_prontoG3.Remove(a.Id);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "One_Two");
+		falas = ApertarEOuvir(a, "One_Two");
 		AfirmarPunho("...e o Um-Dois, que TEM o passo, alcanca da mesma distancia",
-					 Vec2.Distance(a.Pos, antes) > 0.5f,
-					 string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos = null;
+					 Vec2.Distance(a.Pos, antes) > 0.5f, Ultimos(falas));
 		_barragemG3.Clear();
 
 		LimparTudoDaBancada();
@@ -385,7 +345,7 @@ public partial class GameServer
 	{
 		GD.Print("[punho] -- 5) O CHUTE DESCENDENTE E A DERRUBADA PUNEM QUEM ESTA NO AR");
 
-		(ServerPlayer a, ServerPlayer d) = Dupla();
+		(ServerPlayer a, ServerPlayer d) = Dupla(ForjarSocador);
 
 		// NO CHAO: a Derrubada nao atordoa longo nem tira voo nenhum.
 		d.Voando = false;
@@ -406,11 +366,8 @@ public partial class GameServer
 		// O CHUTE DESCENDENTE tambem derruba -- mas so quem estava voando.
 		d.Voando = true;
 		_prontoG3.Remove(a.Id);
-		EscutaDeAvisos = [];
-		UsarHabilidade(a, "Falling_Kick");
-		AfirmarPunho("o Chute Descendente arranca do ar quem estava voando",
-					 !d.Voando, string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos = null;
+		List<string> falas = ApertarEOuvir(a, "Falling_Kick");
+		AfirmarPunho("o Chute Descendente arranca do ar quem estava voando", !d.Voando, Ultimos(falas));
 
 		LimparTudoDaBancada();
 	}
@@ -430,7 +387,7 @@ public partial class GameServer
 	{
 		GD.Print("[punho] -- 6) DEGOLA E PUNHALADA VALEM MAIS DE SURPRESA E PELAS COSTAS");
 
-		(ServerPlayer a, ServerPlayer d) = Dupla();
+		(ServerPlayer a, ServerPlayer d) = Dupla(ForjarSocador);
 
 		// FORA DE COMBATE
 		a.Combate.EmCombate = 0;
@@ -438,39 +395,30 @@ public partial class GameServer
 		double punhaladaCostas = a.Ficha.Etechnique / 2 + a.Ficha.Etechnique / 2;
 
 		_prontoG3.Remove(a.Id);
-		EscutaDeAvisos = [];
-		UsarHabilidade(a, "Cutthroat");
-		bool disseFundo = EscutaDeAvisos.Exists(s => s.Contains("corta fundo"));
-		AfirmarPunho($"fora de combate a Degola soma 1+Etecnica (={foraDeCombate:0.##})", disseFundo,
-					 string.Join(" | ", EscutaDeAvisos));
+		List<string> falas = ApertarEOuvir(a, "Cutthroat");
+		AfirmarPunho($"fora de combate a Degola soma 1+Etecnica (={foraDeCombate:0.##})",
+					 Disse(falas, "corta fundo"), Ultimos(falas));
 
 		// DENTRO DE COMBATE -- o proprio golpe acima ja poe os dois em briga, entao basta usar de novo.
 		_prontoG3.Remove(a.Id);
-		EscutaDeAvisos.Clear();
 		a.Combate.EntrarEmCombate();
-		UsarHabilidade(a, "Cutthroat");
+		falas = ApertarEOuvir(a, "Cutthroat");
 		AfirmarPunho("...e dentro dela o corte sai COMUM (o bonus e a tecnica, nao um tempero)",
-					 EscutaDeAvisos.Exists(s => s.Contains("sai comum")),
-					 string.Join(" | ", EscutaDeAvisos));
+					 Disse(falas, "sai comum"), Ultimos(falas));
 
 		// PELAS COSTAS: `dir == target.dir` -- os dois olhando pro MESMO lado.
 		a.Facing = Facing.East;
 		d.Facing = Facing.East;
 		_prontoG3.Remove(a.Id);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Backstab");
+		falas = ApertarEOuvir(a, "Backstab");
 		AfirmarPunho($"pelas costas a Punhalada crita (soma ate {punhaladaCostas:0.##})",
-					 EscutaDeAvisos.Exists(s => s.Contains("pelas costas")),
-					 string.Join(" | ", EscutaDeAvisos));
+					 Disse(falas, "pelas costas"), Ultimos(falas));
 
 		d.Facing = Facing.West;
 		_prontoG3.Remove(a.Id);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Backstab");
+		falas = ApertarEOuvir(a, "Backstab");
 		AfirmarPunho("...e de frente ela vale menos, e o jogo DIZ isso",
-					 EscutaDeAvisos.Exists(s => s.Contains("vale menos")),
-					 string.Join(" | ", EscutaDeAvisos));
-		EscutaDeAvisos = null;
+					 Disse(falas, "vale menos"), Ultimos(falas));
 
 		LimparTudoDaBancada();
 	}
@@ -482,24 +430,21 @@ public partial class GameServer
 	{
 		GD.Print("[punho] -- 7) A BALA DISPERSA E O SPIRIT GUN");
 
-		(ServerPlayer a, ServerPlayer d) = Dupla();
+		(ServerPlayer a, ServerPlayer d) = Dupla(ForjarSocador);
 
 		// SEM ALVO MARCADO: recusa, e NAO cobra. Um verb que cobra pela recusa e a familia de defeito
 		// que este port ja achou quatro vezes.
 		a.AlvoId = 0;
 		_scatterPronto.Remove(a.Id);
 		double kiAntes = a.Ficha.Ki;
-		EscutaDeAvisos = [];
-		UsarHabilidade(a, "Scattering_Bullet");
+		List<string> falas = ApertarEOuvir(a, "Scattering_Bullet");
 		AfirmarPunho("a Bala Dispersa sem alvo marcado recusa e NAO cobra Ki",
 					 Math.Abs(a.Ficha.Ki - kiAntes) < 0.001
-					 && ProjeteisDaZona(a.Zone.Hash).Count == 0,
-					 string.Join(" | ", EscutaDeAvisos));
+					 && ProjeteisDaZona(a.Zone.Hash).Count == 0, Ultimos(falas));
 
 		// COM ALVO: nasce uma nuvem, ESPALHADA, mirando o alvo, e com espera antes de cacar.
 		a.AlvoId = d.Id;
 		_scatterPronto.Remove(a.Id);
-		EscutaDeAvisos.Clear();
 		UsarHabilidade(a, "Scattering_Bullet");
 		List<Projetil> nuvem = ProjeteisDaZona(a.Zone.Hash);
 
@@ -522,20 +467,16 @@ public partial class GameServer
 					 nuvem.TrueForAll(p => Vec2.Distance(p.Pos, a.Pos) >= ZoneCollision.TileSize - 1));
 
 		// A RECARGA PROPRIA: ela nao e a das barragens do lote G5.
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(a, "Scattering_Bullet");
-		AfirmarPunho("...e a segunda tentativa cai na recarga propria dela",
-					 EscutaDeAvisos.Exists(s => s.Contains("formigando")),
-					 string.Join(" | ", EscutaDeAvisos));
+		falas = ApertarEOuvir(a, "Scattering_Bullet");
+		AfirmarPunho("...e a segunda tentativa cai na recarga propria dela", Disse(falas, "formigando"), Ultimos(falas));
 		LimparTudoDaBancada();
 
 		// --- SPIRIT GUN: A UNICA BOLA PAGA EM FOLEGO ---
-		(ServerPlayer b, ServerPlayer _) = Dupla();
+		(ServerPlayer b, ServerPlayer _) = Dupla(ForjarSocador);
 		b.Facing = Facing.East;
 		_prontoG3.Remove(b.Id);
 
 		double kiDele = b.Ficha.Ki, folegoDele = b.Ficha.stamina;
-		EscutaDeAvisos.Clear();
 		UsarHabilidade(b, "Spirit_Gun");
 
 		AfirmarPunho("o Spirit Gun gasta FOLEGO e nao encosta no Ki",
@@ -548,27 +489,23 @@ public partial class GameServer
 		// Espirito. Se um dia alguem o passar pro `PodeAtirar` com custo em Ki, esta linha fica
 		// vermelha.
 		LimparTudoDaBancada();
-		(ServerPlayer c, ServerPlayer _) = Dupla();
+		(ServerPlayer c, ServerPlayer _) = Dupla(ForjarSocador);
 		c.Facing = Facing.East;
 		c.Ficha.Ki = 0;
 		_prontoG3.Remove(c.Id);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(c, "Spirit_Gun");
+		falas = ApertarEOuvir(c, "Spirit_Gun");
 		AfirmarPunho("...e ele sai com o tanque de Ki ZERADO (e a promessa da arvore do Espirito)",
-					 ProjeteisDaZona(c.Zone.Hash).Count == 1, string.Join(" | ", EscutaDeAvisos));
+					 ProjeteisDaZona(c.Zone.Hash).Count == 1, Ultimos(falas));
 
 		// SEM FOLEGO, NAO SAI.
 		LimparTudoDaBancada();
-		(ServerPlayer e, ServerPlayer _) = Dupla();
+		(ServerPlayer e, ServerPlayer _) = Dupla(ForjarSocador);
 		e.Facing = Facing.East;
 		e.Ficha.stamina = 0;
 		_prontoG3.Remove(e.Id);
-		EscutaDeAvisos.Clear();
-		UsarHabilidade(e, "Spirit_Gun");
+		falas = ApertarEOuvir(e, "Spirit_Gun");
 		AfirmarPunho("...e sem folego ele NAO sai, e a recusa fala em folego",
-					 ProjeteisDaZona(e.Zone.Hash).Count == 0
-					 && EscutaDeAvisos.Exists(s => s.Contains("folego")),
-					 string.Join(" | ", EscutaDeAvisos));
+					 ProjeteisDaZona(e.Zone.Hash).Count == 0 && Disse(falas, "folego"), Ultimos(falas));
 
 		// OS DOIS CAMPOS NOVOS DA FICHA existem e nascem com os valores do DM -- sem eles os degraus
 		// da arvore do Espirito voltariam a cair em `EfeitosDeSkill.Desconhecidos`.
@@ -581,7 +518,6 @@ public partial class GameServer
 					 !EfeitosDeSkill.Desconhecidos.Contains("SpiritBallCost")
 					 && !EfeitosDeSkill.Desconhecidos.Contains("SpiritBallDamage"));
 
-		EscutaDeAvisos = null;
 		LimparTudoDaBancada();
 	}
 

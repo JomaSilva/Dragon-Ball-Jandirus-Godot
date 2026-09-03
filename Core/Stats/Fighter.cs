@@ -812,6 +812,38 @@ public sealed partial class Fighter
 	public double expandlevel;             // Body Expansion.dm:9 -- o grau atual da expansao
 	public double observingnow;            // observe.dm:7/12 -- projetando a mente em alguem
 
+	// =====================================================================
+	// LOTE G13 -- a familia da MENTE (`/datum/skill/tree/Mind`, "Strength of Mind").
+	//
+	// Os tres sao `double` pelo mesmo motivo dos de cima: o motor de niveis so ESCREVE campo
+	// `double` por reflexao, e `buffregen` chega exatamente assim -- e um `savant.buffregen=1` no
+	// degrau 30 da Advanced Ki Circulation (`Mind.dm:498`). Enquanto o campo nao existia, aquele
+	// degrau escrevia num campo inexistente e o relatorio nem reclamava: ninguem no port jamais
+	// tinha chegado ao nivel 30 daquela skill pra a escrita ser TENTADA.
+	// =====================================================================
+
+	/// <summary>
+	/// `savant.kibuffon` (Ki2.0/KiBuffs.dm:2) -- um buff de Ki de pe: Focus, Efficiency ou Energy
+	/// Shield. Quem liga e desliga e o motor de buffs do servidor (`GameServer.LigarBuff`).
+	///
+	/// Ele e condicao de exp em SEIS skills (as tres de Circulacao x Basic/Advanced/Perfect) e o
+	/// portao do <see cref="buffregen"/>.
+	/// </summary>
+	public double kibuffon;
+
+	/// <summary>
+	/// `savant.buffregen` (Mind.dm:498) -- a Advanced Ki Circulation no nivel 30 faz o corpo se
+	/// curar enquanto um buff de Ki estiver ligado (`SpreadHeal(0.01)` por tique, `:517`).
+	/// </summary>
+	public double buffregen;
+
+	/// <summary>
+	/// `savant.studying` (KiStatsModule.dm:49) -- o laco do verb `Study_Other` esta de pe. Fonte de
+	/// exp das tres skills de Percepcao. `tmp` no DM; aqui ele e zerado ao entrar (o laco nao
+	/// sobrevive a sessao).
+	/// </summary>
+	public double studying;
+
 	/// <summary>O genoma que gerou este lutador. Usado pra saber a fracao de sangue Saiyajin.</summary>
 	public Races.Genome? Genoma;
 

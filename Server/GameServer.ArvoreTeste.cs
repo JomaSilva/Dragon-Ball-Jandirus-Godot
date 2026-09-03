@@ -150,7 +150,7 @@ public partial class GameServer
 		int n = r.GetUShort();
 		var aprendidas = new List<string>();
 		for (int i = 0; i < n; i++) aprendidas.Add(r.GetString(96));
-		(List<string> destravadas, List<EstadoDeArvore> arvores) = Protocol.LerEstadoDeSkills(r);
+		(List<string> destravadas, List<EstadoDeArvore> arvores, List<string> verbosNoFio) = Protocol.LerEstadoDeSkills(r);
 
 		AfirmarArv("o opcode e S2C.Skills e a cabeca antiga (marcos, vilao, lista) continua no lugar",
 				   opcode == (byte)Protocol.S2C.Skills && totais == pl.Livro.MarcosTotais && livres == pl.Livro.MarcosLivres
