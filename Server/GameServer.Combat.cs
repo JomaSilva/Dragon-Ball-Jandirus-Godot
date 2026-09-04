@@ -1459,6 +1459,12 @@ public partial class GameServer
 			// quem estivesse la dentro). Ver `GameServer.SalaSessao.cs`.
 			SalaFase = FaseDaSalaPraTela(pl),
 			SalaMinutos = (float)MinutosDaSalaPraTela(pl),
+
+			// AS DEZENOVE PERICIAS DE KI, NA ORDEM DA TABELA DO FIO (`Protocol.PericiasDeKi`): a aba Ki as
+			// desenha, e ate aqui nenhuma chegava ao cliente. Vao na ficha lenta porque e o mesmo perfil dos
+			// vizinhos: um degrau de skill (ou um tiro que rendeu) por vez, nunca por quadro. A tabela e quem
+			// diz a ordem -- ler a ficha aqui campo a campo seria a segunda lista que envelhece calada.
+			Pericias = [.. Protocol.PericiasDeKi.Select(p => (float)p.Le(f))],
 		};
 
 		// assinatura grossa: 1% de resolucao por atributo. Sem isso o ruido de ponto flutuante
@@ -1473,7 +1479,11 @@ public partial class GameServer
 				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.FormaAtual}|"
 				   + $"{a.GanhoDeTreino:0.#}|{a.Gravidade:0.#}|{a.GravEfetiva:0.#}|{a.PesoMult:0.##}|"
 				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|"
-				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"));
+				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"))
+				   // AS PERICIAS ENTRAM COM UMA CASA (`0.#`), pelo mesmo motivo do ganho de treino: sao os
+				   // contadores da ficha, e os de tecnica sobem por fracao a cada tiro que rende. Com
+				   // resolucao fina este pacote lento sairia 30x por segundo pra quem estivesse atirando.
+				   + "|" + string.Join(',', a.Pericias.Select(p => p.ToString("0.#")));
 		if (sig == pl.SigAtributos) return;
 		pl.SigAtributos = sig;
 

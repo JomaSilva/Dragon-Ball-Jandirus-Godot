@@ -40,7 +40,12 @@ namespace Jandirus.Server;
 ///      corpo nao tem; depois tem) -- buff, gene, chave, verb e skill concedida;
 ///   5. O SISTEMA DE ESTUDO (lote G13): estudar rende, focar decupla, o livro escreve e ensina;
 ///   6. O `kibuffon` e o `buffregen`: ligar o Foco muda a taxa de exp da Circulacao, e a Advanced no
-///      nivel 30 passa a CURAR enquanto o buff estiver de pe.
+///      nivel 30 passa a CURAR enquanto o buff estiver de pe;
+///   7. A FICHA EM TEXTO (<see cref="FichaDeSkill"/>): o que a TELA diz que cada uma faz. O segundo
+///      relato do dono foi *"todas as skills (menos ki unlocked) n terem uma descriçao do q fazem, e
+///      estarem escritas q nao foram portadas"* -- a ficha so lia a COMPRA, e a Mente mora no NIVEL.
+///      Cobra que nenhuma das dezessete saia "sem efeito", que cada uma diga o que cada nivel da e
+///      como sobe, que nenhum nome cru do DM vaze, e que a TABELA de nomes cubra o catalogo inteiro.
 /// ====================================================================================================
 ///
 ///     Godot --headless --path . --host --menteskills
@@ -113,6 +118,7 @@ public partial class GameServer
 			OEfeitoDeCadaUma();
 			OSistemaDeEstudo();
 			OBuffDeKiEACura();
+			AFichaEmTexto();
 		}
 		catch (Exception e)
 		{
@@ -741,5 +747,190 @@ public partial class GameServer
 				  pl.Niveis.Exp(buffMastery) > expAntes,
 				  $"{expAntes:0.##} -> {pl.Niveis.Exp(buffMastery):0.##}");
 		ApertarEOuvir(pl, "Focus");
+	}
+
+	// =====================================================================
+	// 8) A FICHA EM TEXTO: o que a tela diz que cada uma faz
+	// =====================================================================
+	/// <summary>
+	/// A MESMA FUNCAO QUE O CLIENTE CHAMA (`FichaDeSkill.Montar`), sobre o mesmo catalogo e o mesmo
+	/// registro de niveis. O que se cobra aqui e TEXTO: a frase que o jogador vai ler.
+	///
+	/// ============================ AS DUAS METADES DO SEGUNDO RELATO ============================
+	/// "nao tem descricao do que fazem" -> cada uma diz o que cada NIVEL da e COMO sobe;
+	/// "estao escritas que nao foram portadas" -> nenhuma sai com a frase `SemEfeitoAinda`.
+	/// E o contra-exemplo nas duas: uma folha sem canal nenhum CONTINUA saindo sem efeito, e um
+	/// degrau que so avisa nao vira efeito -- senao a correcao seria "nunca mais dizer que falta".
+	/// ==========================================================================================
+	/// </summary>
+	private void AFichaEmTexto()
+	{
+		GD.Print("[mente] -- 8) A FICHA EM TEXTO (o que a tela diz que cada uma faz)");
+
+		FichaDeSkill.Texto Ficha(string curto)
+		{
+			Skill s = _skills!.Get(MnPath(curto))!;
+			return FichaDeSkill.Montar(_skills, s, RegrasDeNivel.Get(s.Path));
+		}
+
+		// ---- (a) as dezessete, uma a uma, IMPRESSAS -- e as quatro contas sobre elas ----
+		int semEfeito = 0, semNivel = 0, semProgressao = 0;
+		var cruas = new List<string>();
+		foreach (string curto in MnAsDezessete)
+		{
+			Skill s = _skills!.Get(MnPath(curto))!;
+			RegraDeNivel? r = RegrasDeNivel.Get(s.Path);
+			FichaDeSkill.Texto t = Ficha(curto);
+			if (!t.TemEfeito) semEfeito++;
+			if (t.PorNivel.Count == 0) semNivel++;
+			if (!t.Progressao.Contains("Ganha experiência", StringComparison.Ordinal)) semProgressao++;
+			GD.Print($"[mente]    {s.Nome}: {t.Resumo}");
+			foreach (string linha in t.NaCompra.Concat(t.PorNivel).Append(t.Progressao).Append(t.NoTopo))
+				foreach (string cru in NomesCrus(s, r))
+					if (linha.Contains(cru, StringComparison.Ordinal)) cruas.Add($"{s.Nome}: '{cru}' em '{linha}'");
+		}
+		AfirmarMn("NENHUMA das dezessete sai como 'efeito ainda nao portado' (era o texto de todas menos a raiz)",
+				  semEfeito == 0, $"{semEfeito} sem efeito");
+		AfirmarMn("todas as dezessete descrevem o que cada NIVEL da", semNivel == 0, $"{semNivel} sem linha de nivel");
+		AfirmarMn("todas dizem COMO sobem (as fontes de exp, em portugues)", semProgressao == 0, $"{semProgressao} sem progressao");
+		AfirmarMn("nenhum nome cru do DM (`kiawarenessskill`, `kiskillBuff`, `Study_Other`...) vaza pra tela",
+				  cruas.Count == 0, string.Join(" | ", cruas.Take(4)));
+
+		// ---- (b) frases EXATAS, contra o Mind.dm ----
+		FichaDeSkill.Texto aw = Ficha("Basic_Ki_Awareness");
+		AfirmarMn("Basic Ki Awareness: 'a cada 5 níveis: percepção de Ki +1' (Mind.dm:171)",
+				  aw.PorNivel.Contains("a cada 5 níveis: percepção de Ki +1"), string.Join(" | ", aw.PorNivel));
+		// OS VERBS SAEM COM O NOME DO BOTAO (a tabela `Tecnicas`: "Estudar Outro"), e nao com o id do
+		// DM ("Study_Other"): a ficha e o botao tem que dizer a mesma coisa.
+		AfirmarMn("...'nível 10: habilidades novas: Estudar Outro, Focar Habilidade' (:179-180, com o nome dos botoes)",
+				  aw.PorNivel.Any(l => l.StartsWith("nível 10:", StringComparison.Ordinal) && l.Contains("Estudar Outro") && l.Contains("Focar Habilidade")),
+				  aw.PorNivel.FirstOrDefault(l => l.StartsWith("nível 10:", StringComparison.Ordinal)) ?? "(sem nivel 10)");
+		AfirmarMn("...'nível 100: ... libera a compra de Advanced Ki Awareness' (o `enableskill`, :186)",
+				  aw.PorNivel.Any(l => l.StartsWith("nível 100:", StringComparison.Ordinal) && l.Contains("libera a compra de Advanced Ki Awareness")),
+				  aw.PorNivel.FirstOrDefault(l => l.StartsWith("nível 100:", StringComparison.Ordinal)) ?? "(sem nivel 100)");
+		AfirmarMn("...a progressao diz 'estudando alguém' e 'meditando antes do nível 10, senão' (a corrente if/else, :187-192)",
+				  aw.Progressao.Contains("estudando alguém (×2)") && aw.Progressao.Contains("meditando antes do nível 10 (×2), senão (×1)"),
+				  aw.Progressao);
+		AfirmarMn("...e o custo: 'o 1º nível pede 5.000 de experiência e cada um seguinte custa 3% a mais' (`5000*1.03**level`)",
+				  aw.Progressao.Contains("o 1º nível pede 5.000 de experiência e cada um seguinte custa 3% a mais"), aw.Progressao);
+		AfirmarMn("...e o topo soma: 'percepção de Ki +20' (20 disparos do periodico de 5) e 'controle de Ki +15' (10 do periodico + 1 + 2 + 2)",
+				  aw.NoTopo.Contains("percepção de Ki +20") && aw.NoTopo.Contains("controle de Ki +15"), aw.NoTopo);
+
+		FichaDeSkill.Texto ku = Ficha("Ki_Unlocked");
+		AfirmarMn("Ki Unlocked: a COMPRA diz 'desperta o Ki', 'meditar passa a regenerar Ki' e 'habilidade nova: Escrever Ensinamentos' (os dois flags e o verb do after_learn)",
+				  ku.NaCompra.Contains("desperta o Ki") && ku.NaCompra.Contains("meditar passa a regenerar Ki")
+				  && ku.NaCompra.Any(l => l.StartsWith("habilidade nova:", StringComparison.Ordinal) && l.Contains("Escrever Ensinamentos")),
+				  string.Join(" | ", ku.NaCompra));
+		AfirmarMn("...e o nivel 5 CONCEDE o Sense ja no nivel 1, o 35 da a Bola de Ki (o Basic_Blast, Mind.dm:103-116)",
+				  ku.PorNivel.Any(l => l.StartsWith("nível 5:", StringComparison.Ordinal) && l.Contains("concede a skill") && l.Contains("(já no nível 1)"))
+				  && ku.PorNivel.Any(l => l.StartsWith("nível 35:", StringComparison.Ordinal) && l.Contains("Bola de Ki")),
+				  string.Join(" | ", ku.PorNivel.Where(l => l.StartsWith("nível 5:") || l.StartsWith("nível 35:"))));
+		AfirmarMn("...e a progressao da raiz: 'sem meditar nem voar (×1)', 'meditando (×2)', 'voando (×2)' -- tres fontes soltas, nao uma corrente",
+				  ku.Progressao.Contains("sem meditar nem voar (×1)") && ku.Progressao.Contains("meditando (×2)") && ku.Progressao.Contains("voando (×2)")
+				  && !ku.Progressao.Contains("senão"), ku.Progressao);
+
+		FichaDeSkill.Texto ct = Ficha("Basic_Ki_Control");
+		AfirmarMn("Basic Ki Control nivel 5: 'libera carregar Ki (tecla C)' (a chave `canPower`) e Controle de Poder + Ocultar o Poder",
+				  ct.PorNivel.Any(l => l.StartsWith("nível 5:", StringComparison.Ordinal) && l.Contains("libera carregar Ki (tecla C)")
+									   && l.Contains("Controle de Poder") && l.Contains("Ocultar o Poder")),
+				  ct.PorNivel.FirstOrDefault(l => l.StartsWith("nível 5:", StringComparison.Ordinal)) ?? "(sem nivel 5)");
+		AfirmarMn("...e a progressao: 'com o Ki acima do normal, mais quanto mais acima do nível 5 em diante' (kiratio>1, :296)",
+				  ct.Progressao.Contains("com o Ki acima do normal, mais quanto mais acima do nível 5 em diante"), ct.Progressao);
+
+		FichaDeSkill.Texto ga = Ficha("Basic_Ki_Gathering");
+		AfirmarMn("Basic Ki Gathering: 'com o Ki abaixo de 90%, mais quanto mais vazio (×3)' e a meditacao profunda DECLARADA morta",
+				  ga.Progressao.Contains("com o Ki abaixo de 90%, mais quanto mais vazio (×3)") && ga.Progressao.Contains("nunca acontece"),
+				  ga.Progressao);
+
+		FichaDeSkill.Texto ci = Ficha("Advanced_Ki_Circulation");
+		AfirmarMn("Advanced Ki Circulation nivel 30: 'buffs de Ki passam a curar com o tempo' (`buffregen = 1`, :507)",
+				  ci.PorNivel.Any(l => l.StartsWith("nível 30:", StringComparison.Ordinal) && l.Contains("buffs de Ki passam a curar com o tempo")),
+				  ci.PorNivel.FirstOrDefault(l => l.StartsWith("nível 30:", StringComparison.Ordinal)) ?? "(sem nivel 30)");
+		AfirmarMn("...e um gene por degrau sai como 'gene de nível de energia +0,05', nao 'Energy Level'",
+				  ci.PorNivel.Any(l => l.Contains("gene de nível de energia +0,05")) && !ci.PorNivel.Any(l => l.Contains("Energy Level")),
+				  string.Join(" | ", ci.PorNivel));
+
+		// ---- (c) os CONTRA-EXEMPLOS: a resposta "nao" continua existindo ----
+		var muda = new Skill { Path = "/bancada/muda", Nome = "Muda" };
+		AfirmarMn("CONTRA-EXEMPLO: uma folha sem canal nenhum e sem regra de nivel continua SEM EFEITO",
+				  !FichaDeSkill.Montar(_skills!, muda, null).TemEfeito && !FichaDeSkill.TemEfeitoPortado(muda, null));
+		var soAviso = new RegraDeNivel { Path = muda.Path, Degraus = [new Degrau { Nivel = 2, Aviso = "You feel it." }] };
+		AfirmarMn("CONTRA-EXEMPLO: um degrau que SO AVISA nao conta como efeito",
+				  !FichaDeSkill.Montar(_skills!, muda, soAviso).TemEfeito && !FichaDeSkill.TemEfeitoPortado(muda, soAviso));
+		var comDegrau = new RegraDeNivel { Path = muda.Path, Degraus = [new Degrau { Nivel = 2, Buffs = { ["kicontrolskill"] = 1 } }] };
+		FichaDeSkill.Texto td = FichaDeSkill.Montar(_skills!, muda, comDegrau);
+		AfirmarMn("...e um degrau que SOMA conta, e a linha sai em portugues: 'nível 2: controle de Ki +1'",
+				  td.TemEfeito && td.PorNivel.SequenceEqual(["nível 2: controle de Ki +1"]), string.Join(" | ", td.PorNivel));
+		AfirmarMn("...e a skill SEM regra de nivel nao fala de nivel (o `maxlevel = 3` de fabrica do DM nao e progressao)",
+				  FichaDeSkill.Montar(_skills!, muda, null).Progressao.Length == 0);
+		// O GANHO NA COMPRA, com a expressao do extrator desembrulhada: `(max(1,BP*0.01))` -> "max(1, BP×0,01)"
+		Skill? cem = _skills!.Get("/datum/skill/Bodybuilding/One_Hundred");
+		string? ganho = cem == null ? null : FichaDeSkill.Montar(_skills, cem, RegrasDeNivel.Get(cem.Path)).NaCompra
+			.FirstOrDefault(l => l.StartsWith("na compra: BP", StringComparison.Ordinal));
+		AfirmarMn("One Hundred: 'na compra: BP + max(1, BP×0,01)' (Bodybuilding.dm:89, sem os parenteses do extrator)",
+				  ganho == "na compra: BP + max(1, BP×0,01)", ganho ?? "(sem linha de compra)");
+
+		// ---- (d) a MARCA DE HONESTIDADE: o campo que o Fighter nao tem sai dizendo que nao chega ----
+		var semCampo = new RegraDeNivel { Path = muda.Path, Degraus = [new Degrau { Nivel = 1, Buffs = { ["lssjmult"] = 0.5 } }] };
+		string linhaSemCampo = FichaDeSkill.Montar(_skills!, muda, semCampo).PorNivel.FirstOrDefault() ?? "";
+		AfirmarMn("um campo que o `Fighter` NAO tem (`lssjmult`) sai marcado '(ainda sem efeito neste port)' em vez de prometer o numero",
+				  linhaSemCampo == $"nível 1: poder Legendary +0,5 ({FichaDeSkill.CampoQueOPortNaoTem})", linhaSemCampo);
+		AfirmarMn("...e os campos da Mente, que ele TEM, saem sem a marca",
+				  !aw.PorNivel.Concat(ct.PorNivel).Concat(ga.PorNivel).Any(l => l.Contains(FichaDeSkill.CampoQueOPortNaoTem)));
+
+		// ---- (e) o CATALOGO INTEIRO: a pergunta velha contra a nova, e o censo na mesma conta ----
+		var folhas = _skills!.Todas.Where(s => !s.Arvore).ToList();
+		int velha = folhas.Count(s => s.SemEfeito);
+		int nova = folhas.Count(s => !FichaDeSkill.TemEfeitoPortado(s, RegrasDeNivel.Get(s.Path)));
+		GD.Print($"[mente]    folhas sem efeito: so pela COMPRA {velha}, pela compra E pelo nivel {nova} ({folhas.Count} folhas)");
+		AfirmarMn("no catalogo inteiro, a pergunta com os degraus deixa MENOS folhas mudas que a so da compra",
+				  nova < velha, $"{velha} -> {nova}");
+		CensoDeSkills.Relatorio censo = CensoDeSkills.Levantar(_skills, RegrasDeNivel.VerbosDeDegrau, RegrasDeNivel.DestravadasPorDegrau);
+		AfirmarMn("...e o censo conta as MESMAS mudas que a ficha (uma pergunta, duas bocas)",
+				  censo.Mudas == nova && censo.SoPorNivel == velha - nova, $"censo: mudas {censo.Mudas}, so por nivel {censo.SoPorNivel}");
+
+		// ---- (f) A TABELA DE NOMES COBRE O CATALOGO INTEIRO: todo campo, gene, chave e contador que
+		//      o skills.json e o niveis.json tocam tem nome em portugues. E o que impede o proximo
+		//      campo novo do extrator de vazar cru pra tela. ----
+		var semNome = new SortedSet<string>(StringComparer.Ordinal);
+		foreach (Skill s in folhas)
+		{
+			foreach (string c in s.Buffs.Keys.Concat(s.Mults.Keys)) if (!NomesLegiveis.Conhece(c)) semNome.Add("campo:" + c);
+			foreach (string g in s.Genes.Keys) if (!NomesLegiveis.ConheceGene(g)) semNome.Add("gene:" + g);
+			foreach (string f in s.Flags.Keys) if (!NomesLegiveis.ConheceChave(f)) semNome.Add("chave:" + f);
+			foreach (GanhoNaCompra g in s.Compra) if (!NomesLegiveis.Conhece(g.Campo)) semNome.Add("campo:" + g.Campo);
+			foreach (Escolha e in s.Escolhas.Concat(s.PorRaca))
+			{
+				foreach (string c in e.Buffs.Keys.Concat(e.Mults.Keys)) if (!NomesLegiveis.Conhece(c)) semNome.Add("campo:" + c);
+				foreach (string g in e.Genes.Keys) if (!NomesLegiveis.ConheceGene(g)) semNome.Add("gene:" + g);
+				foreach (string f in e.Flags.Keys) if (!NomesLegiveis.ConheceChave(f)) semNome.Add("chave:" + f);
+			}
+			if (RegrasDeNivel.Get(s.Path) is not { } r) continue;
+			foreach (Degrau d in r.Degraus)
+			{
+				foreach (string c in d.Buffs.Keys.Concat(d.Mults.Keys)) if (!NomesLegiveis.Conhece(c)) semNome.Add("campo:" + c);
+				foreach (string g in d.Genes.Keys) if (!NomesLegiveis.ConheceGene(g)) semNome.Add("gene:" + g);
+				foreach (string f in d.Flags.Keys) if (!NomesLegiveis.ConheceChave(f)) semNome.Add("chave:" + f);
+			}
+			foreach (RegraDeNivel.GanhoPorContador c in r.PorContador) if (!NomesLegiveis.ConheceContador(c.Contador)) semNome.Add("contador:" + c.Contador);
+		}
+		AfirmarMn("a TABELA DE NOMES cobre todo campo, gene, chave e contador do catalogo e dos degraus (nada sai cru)",
+				  semNome.Count == 0, string.Join(", ", semNome.Take(12)));
+	}
+
+	/// <summary>
+	/// OS NOMES CRUS que a ficha desta skill teria como vazar: as chaves dos canais dela (compra e
+	/// degraus) e os ids dos verbs com `_`. Um deles numa linha da ficha e a tabela de nomes falhando.
+	/// </summary>
+	private static IEnumerable<string> NomesCrus(Skill s, RegraDeNivel? r)
+	{
+		foreach (string c in s.Buffs.Keys.Concat(s.Mults.Keys).Concat(s.Flags.Keys)) yield return c;
+		foreach (string v in s.Verbos) if (v.Contains('_')) yield return v;
+		if (r == null) yield break;
+		foreach (Degrau d in r.Degraus)
+		{
+			foreach (string c in d.Buffs.Keys.Concat(d.Mults.Keys).Concat(d.Flags.Keys)) yield return c;
+			foreach (string v in d.Verbos) if (v.Contains('_')) yield return v;
+		}
 	}
 }

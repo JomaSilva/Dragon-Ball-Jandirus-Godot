@@ -878,6 +878,12 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagskills") >= 0)
 			AddChild(new RoboDeSkills { Name = "RoboDeSkills" });
 
+		// --diagabas: as OUTRAS abas do menu P (Stats, Equip, Body, Forms, Ki, People, World, Cargos,
+		// Other, Tech, Admin) -- a irma da `--diagskills` pro pedido "melhore o resto igual a Learning".
+		// Abre cada aba pelo botao, fotografa, e cobra a lingua visual comum. Ver RoboDasAbas.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagabas") >= 0)
+			AddChild(new RoboDasAbas { Name = "RoboDasAbas" });
+
 		// --diagdegrau: O BOTAO DO VERB CONCEDIDO POR DEGRAU (e por CASA), num cliente que DISCA e sem
 		// janela. Irma da `--diagskills` pelo mesmo motivo dos dois processos: so um cliente que disca mede
 		// o que chega pelo FIO. Ver RoboDoDegrau -- e rode pelo `testar-o-degrau-no-cliente.bat`.

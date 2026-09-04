@@ -2748,6 +2748,7 @@ public partial class GameServer : Node
 			// inteira pelo mesmo funil, e ela e a unica que exercita a cadeia de tres degraus
 			// (Basic 100 -> Advanced 100 -> Perfect). Ver `GameServer.MenteSkillsTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--menteskills") >= 0) RodarBancadaDasSkillsDaMente();
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--sentidosteste") >= 0) RodarBancadaDosSentidos();   // `--sentidosteste`: a aba Sense/Scan -- alcances, identidade, sigilo do BP no fio e reenvio so na mudanca; vizinha da mente porque os alcances acendem pelo contador dela. Ver `GameServer.SentidosTeste.cs`.
 
 			// `--arvoreteste`: O TIER DE VITRINE E O `enabled` LIDO COMO O DM LE -- pelo FUNIL do
 			// servidor (comprar -> efeitos -> contadores -> growbranches -> pacote), e o pacote
@@ -5136,6 +5137,7 @@ public partial class GameServer : Node
 		// 200 ms la tem que custar 200 ms de dano; ninguem "roça" o vacuo. Ver `GameServer.Vacuo.cs`.
 		if (_tickCount % TicksPorSegundo == 0)
 			{ TickDasTecnicas(); TickDasTecnicasG6(); TickDoEstudo(); TickDaGestacao(); TickDaLarva(); TickDoPalcoDoBio(); TickDoOlharDoBio(); TickDoFilmeDoBio(); TickDoNucleoInfinito(); TickDaPostura(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); TickDasSagas(); TickDoPalcoDaAgonia(1); TickDaDestruicao(1); TickDasInvasoes(); TickDaConquista(); TickDasEsferas(); TickDasSuperEsferas(); TickDosCargos(); TickDoEsmagamento(); TickDoVacuo(); TickDaFusao(); }
+			if (_tickCount % TicksPorSegundo == 0) TickDosSentidos();   // OS SENTIDOS (a aba Sense/Scan) ANDAM A 1 Hz: a lista de quem eu sinto so muda quando alguem anda um tile, e so sai quando muda -- ver `GameServer.Sentidos.cs`
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
 		// Dois minutos e o maximo de treino que alguem pode perder.

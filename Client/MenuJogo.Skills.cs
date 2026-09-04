@@ -782,7 +782,9 @@ public partial class MenuJogo
 		PanelContainer card = CartaoRico(corpo, moldura, () => AbrirFicha(escolhida));
 		card.SetMeta("cartao", "skill");   // metadado, e nao `Name` -- ver `CartaoDeArvore`
 		card.CustomMinimumSize = new Vector2(LarguraDoCartao, 0);
-		card.TooltipText = s.Nome + (s.Desc.Length > 0 ? "\n" + s.Desc : "");
+		// O TOOLTIP DIZ O QUE ELA FAZ, e nao so o que ela e: a mesma linha da aba Skills.
+		string resumo = FichaDeSkill.Montar(cat, s, RegrasDeNivel.Get(s.Path)).Resumo;
+		card.TooltipText = s.Nome + (s.Desc.Length > 0 ? "\n" + s.Desc : "") + (resumo.Length > 0 ? "\n\n" + resumo : "");
 		card.SetMeta("path", s.Path);
 		card.SetMeta("estado", estado);
 
@@ -1029,6 +1031,11 @@ public partial class MenuJogo
 	/// da assassinacao deixa sua marca"); os EFEITOS extraidos dizem o numero. Os dois juntos sao
 	/// a unica resposta honesta pra "vale a pena?".
 	///
+	/// OS EFEITOS SAO OS DOIS CANAIS: o que a COMPRA da e o que cada NIVEL da (`FichaDeSkill`, no
+	/// Core). Ate 2026-09-03 so o primeiro entrava, e a ficha de dezesseis skills da Mente -- todas
+	/// portadas por degrau -- dizia "efeito ainda nao portado". O dono leu isso e pediu o port de
+	/// algo que ja estava portado.
+	///
 	/// O BOTAO DEPENDE DO ESTADO: comprar (com o preco e o saldo escritos), esquecer (em dois cliques,
 	/// o molde da `TelaDeTecnicas`) quando e sua e esquecivel, escolher linhagem quando e sua e de
 	/// escolha unica, e nenhum -- so o motivo -- quando esta trancada.
@@ -1075,22 +1082,42 @@ public partial class MenuJogo
 
 		caixa.AddChild(new HSeparator());
 
-		// ---- o que ela faz ----
-		var efeitos = EfeitosEmTexto(s).ToList();
-		if (efeitos.Count > 0)
-			foreach (string linha in efeitos)
-			{
-				var l = new Label { Text = "• " + linha, AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(440, 0) };
-				l.AddThemeColorOverride("font_color", Tema.Destaque);
-				caixa.AddChild(l);
-			}
-		else
+		// ---- o que ela faz: a COMPRA e o NIVEL, montados no Core (`FichaDeSkill`) ----
+		// A ficha lia so `Skill.Buffs/Mults/Verbos/Estilo` (a compra) e chamava de "efeito ainda nao
+		// portado" toda skill cujo efeito mora nos DEGRAUS -- as dezesseis da Mente que nao sao a
+		// raiz, o Green Dean, o Hokuto. O texto agora vem de uma funcao pura do Core, a mesma que a
+		// `--menteskills` (secao 8) cobra frase a frase.
+		FichaDeSkill.Texto ficha = FichaDeSkill.Montar(cat, s, RegrasDeNivel.Get(s.Path));
+		if (!ficha.TemEfeito)
 		{
-			// HONESTIDADE NO BALCAO: dezenas de folhas ainda nao tem efeito portado. Vender em
-			// silencio seria cobrar por nada sem dizer.
-			var l = new Label { Text = "O efeito mecânico desta habilidade ainda não foi portado." };
+			// HONESTIDADE NO BALCAO: as folhas que ainda nao tem efeito portado (nem na compra nem
+			// por nivel) continuam dizendo isso. Vender em silencio seria cobrar por nada sem dizer.
+			var l = new Label { Text = FichaDeSkill.SemEfeitoAinda };
 			l.AddThemeColorOverride("font_color", Tema.TextoFraco);
 			caixa.AddChild(l);
+		}
+		else
+		{
+			foreach (string linha in ficha.NaCompra) caixa.AddChild(LinhaDeEfeito(linha));
+			if (ficha.Progressao.Length > 0) caixa.AddChild(LinhaDeNota(ficha.Progressao));
+			// MUITOS DEGRAUS ROLAM: a Ki Unlocked tem treze marcos, e uma ficha que nao coubesse na
+			// tela perderia os botoes de baixo. Ate oito linhas ficam soltas; acima disso entram numa
+			// caixa de altura fixa com rolagem propria.
+			if (ficha.PorNivel.Count <= 8)
+				foreach (string linha in ficha.PorNivel) caixa.AddChild(LinhaDeEfeito(linha));
+			else
+			{
+				var rol = new ScrollContainer
+				{
+					CustomMinimumSize = new Vector2(440, 200),
+					HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+				};
+				var lista = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+				foreach (string linha in ficha.PorNivel) lista.AddChild(LinhaDeEfeito(linha));
+				rol.AddChild(lista);
+				caixa.AddChild(rol);
+			}
+			if (ficha.NoTopo.Length > 0) caixa.AddChild(LinhaDeNota(ficha.NoTopo));
 		}
 
 		// ---- pre-requisitos NOMEADOS, com o tique de quais ja sao seus ----
@@ -1223,7 +1250,7 @@ public partial class MenuJogo
 
 			// O QUE A CASA DA, pelo mesmo canal de sempre: os efeitos EXTRAIDOS. Sem isto a
 			// escolha definitiva seria feita por nome de linhagem, que nao diz nada.
-			var l = new Label { Text = "      " + TextoDaCasa(e), AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(440, 0) };
+			var l = new Label { Text = "      " + FichaDeSkill.TextoDaCasa(e), AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(440, 0) };
 			l.AddThemeColorOverride("font_color", Tema.Destaque);
 			caixa.AddChild(l);
 		}
@@ -1233,36 +1260,32 @@ public partial class MenuJogo
 		caixa.AddChild(fechar);
 	}
 
-	/// <summary>O que uma casa da, em portugues -- mesma fonte do <see cref="EfeitosEmTexto"/>.</summary>
-	private static string TextoDaCasa(Escolha e)
+	// O TEXTO DO QUE UMA SKILL (ou uma casa) FAZ mora no Core: `FichaDeSkill.Montar` e
+	// `FichaDeSkill.TextoDaCasa`. Aqui so se pinta. As duas versoes locais que existiam liam so a
+	// COMPRA, e foi por isso que a Mente inteira saia como "efeito ainda nao portado".
+
+	/// <summary>Uma linha de efeito da ficha: com marcador, na cor de destaque. As casas da escolha
+	/// unica chegam recuadas (quatro espacos) e saem sem o marcador.</summary>
+	private static Label LinhaDeEfeito(string linha)
 	{
-		var p = new List<string>();
-		foreach ((string campo, double v) in e.Buffs) p.Add($"{NomesLegiveis.Campo(campo)} +{v:0.##}");
-		foreach ((string campo, double v) in e.Mults) p.Add($"{NomesLegiveis.Campo(campo)} ×{v:0.##}");
-		foreach ((string stat, double v) in e.Genes) p.Add($"{stat} +{v:0.##}");
-		foreach ((string campo, double v) in e.Flags) p.Add($"{NomesLegiveis.Campo(campo)} = {v:0.##}");
-		p.AddRange(e.Verbos.Select(NomesLegiveis.Habilidade));
-		return p.Count > 0 ? string.Join(", ", p) : "sem efeito portado ainda";
+		bool recuada = linha.StartsWith("    ", StringComparison.Ordinal);
+		var l = new Label
+		{
+			Text = recuada ? "      " + linha.TrimStart() : "• " + linha,
+			AutowrapMode = TextServer.AutowrapMode.WordSmart,
+			CustomMinimumSize = new Vector2(440, 0),
+		};
+		l.AddThemeColorOverride("font_color", Tema.Destaque);
+		return l;
 	}
 
-	/// <summary>
-	/// O QUE A SKILL FAZ, em portugues. Sai dos efeitos EXTRAIDOS do DM -- por isso a lista fica
-	/// vazia justamente nas que ainda nao tem efeito portado, o que e a verdade e nao um descuido.
-	/// </summary>
-	private static IEnumerable<string> EfeitosEmTexto(Skill s)
+	/// <summary>Uma nota da ficha (como sobe, a soma no topo): menor e em cor fraca.</summary>
+	private static Label LinhaDeNota(string texto)
 	{
-		foreach ((string campo, double v) in s.Buffs)
-			yield return $"{NomesLegiveis.Campo(campo)} {v:+0.##;-0.##}";
-		foreach ((string campo, double v) in s.Mults)
-			yield return $"{NomesLegiveis.Campo(campo)} x{v:0.##}";
-		foreach (string verbo in s.Verbos)
-		{
-			Tecnicas.Tecnica? t = Tecnicas.Get(verbo);
-			yield return t is { Modo: not Modo.NaoPortada }
-				? $"habilidade nova: {t.Nome}"
-				: $"habilidade nova: {NomesLegiveis.Habilidade(verbo)} (efeito ainda não portado)";
-		}
-		if (s.Estilo.Length > 0) yield return $"estilo de luta: {s.Estilo}";
+		var l = new Label { Text = texto, AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(440, 0) };
+		l.AddThemeFontSizeOverride("font_size", 12);
+		l.AddThemeColorOverride("font_color", Tema.TextoFraco);
+		return l;
 	}
 
 	// =====================================================================
@@ -1290,8 +1313,7 @@ public partial class MenuJogo
 
 		if (_livro.Aprendidas.Count == 0)
 		{
-			Secao("Aprendidas (0)");
-			Aviso("Você ainda não aprendeu nada. Abra a aba Learning.");
+			Nota("Você ainda não aprendeu nada. Abra a aba Learning.", Cartao("Aprendidas  (0)"));
 		}
 		else
 		{
@@ -1301,52 +1323,72 @@ public partial class MenuJogo
 			// Vai esvaziando conforme cada arvore reclama as suas. O que sobrar no fim veio de fora.
 			var sobrou = new HashSet<string>(_livro.Aprendidas, StringComparer.OrdinalIgnoreCase);
 
+			// UM CARTAO POR ARVORE, na mesma lingua da Learning (ver MenuJogo.Pecas.cs). O titulo
+			// continua "{arvore}  ({n})": a `--diagskills` F8 procura um rotulo que COMECA com
+			// "STRENGTH OF BODY" e traz "(10)", e o `Cartao` passa o titulo pelo `Tema.Rotulo`, que e
+			// quem o poe em caixa alta.
 			foreach (Skill arv in ArvoresDoPersonagem(cat, raca, classe))
 			{
 				var minhas = Folhas(cat, arv).Where(s => sobrou.Contains(s.Path)).ToList();
 				if (minhas.Count == 0) continue;
 
-				Secao($"{arv.Nome}  ({minhas.Count})");
+				VBoxContainer corpo = Cartao($"{arv.Nome}  ({minhas.Count})");
 				foreach (Skill s in minhas.OrderBy(x => x.Tier))
 				{
 					sobrou.Remove(s.Path);
-					LinhaDeSabida(s);
+					LinhaDeSabida(cat, s, corpo);
 				}
 			}
 
 			if (sobrou.Count > 0)
 			{
-				Secao($"Avulsas  ({sobrou.Count})");
+				VBoxContainer corpo = Cartao($"Avulsas  ({sobrou.Count})");
 				foreach (string p in sobrou.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
 				{
-					if (cat.Get(p) is { } s) LinhaDeSabida(s);
-					else Linha(p, "", Tema.TextoFraco);
+					if (cat.Get(p) is { } s) LinhaDeSabida(cat, s, corpo);
+					else Linha(p, "", Tema.TextoFraco, corpo);
 				}
-				Aviso("      Não pendem de nenhuma árvore que este painel liste: vieram de um mestre, "
-					+ "ou de um caminho que só se abre jogando.");
+				Nota("Não pendem de nenhuma árvore que este painel liste: vieram de um mestre, "
+					+ "ou de um caminho que só se abre jogando.", corpo);
 			}
 		}
 
 		// os verbs registrados por skills que ja tem EFEITO implementado
 		var acoes = Verbos.Da(Verbos.Skills).ToList();
 		if (acoes.Count == 0) return;
-		Secao("Ações");
-		foreach (Verbo v in acoes) Botao(v);
+		VBoxContainer cartaoDeAcoes = Cartao($"Ações  ({acoes.Count})");
+		// EM DUAS COLUNAS quando ha mais de um, como os verbs da aba Other: cada botao continua um
+		// `Button` com o nome do verb (contrato das bancadas), com a frase do que faz embaixo.
+		Control pai = acoes.Count >= 2 ? Colunas(cartaoDeAcoes) : cartaoDeAcoes;
+		foreach (Verbo v in acoes) pai.AddChild(BotaoComDescricao(BotaoDe(v), v.Descricao));
 	}
 
-	/// <summary>Nome a esquerda, "tier N · categoria" a direita, e o efeito embaixo.</summary>
-	private void LinhaDeSabida(Skill s)
+	/// <summary>
+	/// Nome a esquerda, "tier N · categoria" a direita, e o efeito embaixo -- a compra E o nivel, numa
+	/// linha, DENTRO do cartao da arvore. O valor "tier 1  ·  buff" e contrato: e o que a `--diagskills`
+	/// F8 le por `ValorDesenhado("Skills", "Basic Training")`.
+	///
+	/// O NOME SAI EM DESTAQUE, e nao apagado como o rotulo de toda outra linha: nas outras abas o rotulo
+	/// e a pergunta ("Ki") e o valor e a resposta; aqui e o contrario -- o nome da habilidade e o que se
+	/// procura na lista, e "tier 1 · buff" e o detalhe.
+	/// </summary>
+	private static void LinhaDeSabida(SkillCatalog cat, Skill s, Control pai)
 	{
-		Linha(s.Nome, $"tier {s.Tier}  ·  {NomesLegiveis.Categoria(s.Tipo)}", Tema.TextoFraco);
-		var efeitos = EfeitosEmTexto(s).ToList();
+		HBoxContainer linha = Linha(s.Nome, $"tier {s.Tier}  ·  {NomesLegiveis.Categoria(s.Tipo)}", Tema.TextoFraco, pai);
+		if (linha.GetChild(0) is Label nome)
+		{
+			nome.AddThemeColorOverride("font_color", Tema.Texto);
+			nome.AddThemeFontSizeOverride("font_size", 14);
+		}
+		FichaDeSkill.Texto ficha = FichaDeSkill.Montar(cat, s, RegrasDeNivel.Get(s.Path));
 		var l = new Label
 		{
-			Text = "      " + (efeitos.Count > 0 ? string.Join(", ", efeitos) : "efeito ainda não portado"),
+			Text = "      " + (ficha.TemEfeito ? ficha.Resumo : "efeito ainda não portado"),
 			AutowrapMode = TextServer.AutowrapMode.WordSmart,
 		};
 		l.AddThemeFontSizeOverride("font_size", 12);
-		l.AddThemeColorOverride("font_color", efeitos.Count > 0 ? Tema.Destaque : Tema.TextoFraco);
-		_conteudo.AddChild(l);
+		l.AddThemeColorOverride("font_color", ficha.TemEfeito ? Tema.Destaque : Tema.TextoFraco);
+		pai.AddChild(l);
 	}
 
 	// =====================================================================

@@ -259,11 +259,30 @@ public static class EfeitosDeSkill
 	/// niveis use este e nao escreva um segundo -- ver NiveisDeSkill.Somar.</summary>
 	internal static FieldInfo? Campo(string nome)
 	{
+		FieldInfo? fi = Resolver(nome);
+		// ANOTA A CADA APLICACAO, e nao so na primeira resolucao: perguntar (`CampoExiste`, a ficha)
+		// nao e aplicar, e um nome que a ficha perguntou antes de alguem aplicar continua entrando
+		// no relatorio de desconhecidos quando a aplicacao chegar
+		if (fi == null) Desconhecidos.Add(nome);
+		return fi;
+	}
+
+	/// <summary>
+	/// O `Fighter` TEM este campo? A MESMA resolucao do <see cref="Campo"/> (publico, `double`), sem
+	/// o efeito colateral do relatorio -- e o que a ficha (<see cref="FichaDeSkill"/>) pergunta pra
+	/// marcar "ainda sem efeito neste port" na linha de um campo que o aplicador descartaria calado.
+	/// </summary>
+	public static bool CampoExiste(string nome) => Resolver(nome) != null;
+
+	/// <summary>O port ja resolveu este stat do genoma num campo? (A tabela <c>DeGene</c>, sem anotar.)</summary>
+	public static bool GeneExiste(string stat) => DeGene.ContainsKey(stat);
+
+	private static FieldInfo? Resolver(string nome)
+	{
 		if (Cache.TryGetValue(nome, out FieldInfo? fi)) return fi;
 		fi = typeof(Fighter).GetField(nome, BindingFlags.Public | BindingFlags.Instance);
 		if (fi != null && fi.FieldType != typeof(double)) fi = null;
 		Cache[nome] = fi;
-		if (fi == null) Desconhecidos.Add(nome);
 		return fi;
 	}
 

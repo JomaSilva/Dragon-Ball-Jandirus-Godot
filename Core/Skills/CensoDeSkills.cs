@@ -403,6 +403,15 @@ public static class CensoDeSkills
 		public int ComCorpo;
 
 		public int Folhas, ComEfeitoPassivo, SoVerbo, PassivoEVerbo, Mudas;
+
+		/// <summary>
+		/// NADA NA COMPRA, MAS UM DEGRAU DE NIVEL DA ALGUMA COISA -- as dezesseis da Mente, o Green
+		/// Dean, o Hokuto no Shinken. Ate 2026-09-03 elas caiam em <see cref="Mudas"/>, e a ficha do
+		/// cliente, fazendo a mesma conta, chamava todas de "efeito ainda nao portado". A pergunta e a
+		/// de <see cref="FichaDeSkill.TemEfeitoPortado"/>; so entra quando o registro de niveis esta
+		/// carregado (sem `niveis.json` elas continuam mudas, que e o que aquele leitor sabe).
+		/// </summary>
+		public int SoPorNivel;
 		public int VerbosTotal, VerbosPortados, VerbosPorCanal, VerbosEsperando, VerbosSemCobertura;
 		public int VerbosDeCargo, VerbosDeCargoVivos;
 		public int SkillsDeCargo;
@@ -492,6 +501,9 @@ public static class CensoDeSkills
 			if (passivo && verbo) r.PassivoEVerbo++;
 			else if (passivo) r.ComEfeitoPassivo++;
 			else if (verbo) r.SoVerbo++;
+			// O DEGRAU CONTA, pela MESMA pergunta da ficha (`FichaDeSkill.TemEfeitoPortado`): o registro
+			// de niveis e o mesmo de onde vem o `verbosDeDegrau` e o `destravadasPorDegrau` desta chamada
+			else if (RegrasDeNivel.Get(s.Path) is { } regra && Array.Exists(regra.Degraus, FichaDeSkill.DegrauTemEfeito)) r.SoPorNivel++;
 			else r.Mudas++;
 
 			bool doCargo = deCargo.Contains(s.Path);
@@ -657,7 +669,8 @@ public static class CensoDeSkills
 		yield return $"  so numero no corpo (buff/gene/flag)   : {r.ComEfeitoPassivo}";
 		yield return $"  numero E verbo                        : {r.PassivoEVerbo}";
 		yield return $"  so destravam um verbo                 : {r.SoVerbo}";
-		yield return $"  MUDAS (nada extraido do DM)           : {r.Mudas}";
+		yield return $"  so por DEGRAU de nivel                : {r.SoPorNivel}";
+		yield return $"  MUDAS (nada na compra nem por nivel)  : {r.Mudas}";
 		yield return "";
 		yield return "================ OS VERBOS QUE O JOGO CONCEDE ================";
 		yield return $"verbos distintos                        : {r.VerbosTotal}";

@@ -25,7 +25,11 @@ REM        4. o ALCANCE: `Aprender` -> os cinco acendedores por contador -> a
 REM           cadeia Basic 100 -> Advanced 100 -> Perfect, e a Targeted;
 REM        5. o EFEITO NOMEADO de cada uma (corpo sem ela contra corpo com ela);
 REM        6. o SISTEMA DE ESTUDO (Study_Other, Focus_Skill, Write_Teachings);
-REM        7. o `kibuffon` e a cura do `buffregen`.
+REM        7. o `kibuffon` e a cura do `buffregen`;
+REM        8. a FICHA EM TEXTO: o que a tela diz que cada uma faz (o segundo
+REM           relato do dono: "todas menos a Ki Unlocked dizem que nao foram
+REM           portadas") -- nenhuma sai muda, cada uma diz o que cada nivel
+REM           da e como sobe, e a tabela de nomes cobre o catalogo inteiro.
 REM
 REM  O QUE ELA GUARDA: quinze das dezessete tinham ZERO fonte de exp neste port
 REM  (as condicoes de ganho delas caiam em "condicao que o port nao entende"), e

@@ -35,6 +35,10 @@ REM         100; sao 32 assim) diz QUEM acende e EM QUE NIVEL -- e nao "sem
 REM         acendedor". Contra-exemplos: a trancada por CONDICAO de arvore, a
 REM         por PRE-REQUISITO e a por TIER continuam com os textos delas. Isto
 REM         so se mede com o cliente NOUTRO processo (ver DOIS PROCESSOS).
+REM         E (e): a FICHA de uma skill da Mente diz o que cada NIVEL da e
+REM         como sobe -- e nao "efeito ainda nao portado", que era o texto de
+REM         todas menos a Ki Unlocked (a ficha so lia a compra; a Mente mora
+REM         nos degraus).
 REM    F5   esquecer em dois cliques devolve o marco.
 REM    F6   comprar o tier 1 inteiro: a linha do tier CONTINUA (o defeito G).
 REM    F7   a busca acha skill pelo nome e leva ate ela.

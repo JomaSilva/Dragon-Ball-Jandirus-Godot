@@ -903,6 +903,18 @@ public partial class GameClient : Node
 	public string PedidoDeAmizade { get; private set; } = "";
 	public event Action? ConhecidosMudaram;
 
+	/// <summary>
+	/// QUEM EU SINTO (ou quem o scouter le) -- a lista da aba Sense/Scan, do jeito que veio no fio.
+	///
+	/// Chega a no maximo 1 Hz e so quando muda (ver `Protocol.S2C.Sentidos`). <see cref="SentidosSaoDoScouter"/>
+	/// diz de qual dos dois modos a lista e: com o scouter ligado cada presenca traz o BP exato; sem ele o
+	/// BP vem NaN e so a razao viaja (ver `GameServer.Sigilo`). A aba desenha o que veio e nada mais -- ela
+	/// nao tem de onde tirar poder alheio, e e assim que o sigilo se sustenta.
+	/// </summary>
+	public List<Protocol.PresencaState> Sentidos { get; private set; } = [];
+	public bool SentidosSaoDoScouter { get; private set; }
+	public event Action? SentidosMudaram;
+
 	/// <summary>Chave vazia = so me manda a lista; com chave = reivindico aquele cargo.</summary>
 	public void SendCargo(string chave = "")
 	{
@@ -1735,6 +1747,17 @@ public partial class GameClient : Node
 						reader.GetFloat(), reader.GetFloat(), reader.GetBool()));
 				Conhecidos = lista;
 				ConhecidosMudaram?.Invoke();
+				break;
+			}
+
+			case Protocol.S2C.Sentidos:
+			{
+				// A LISTA INTEIRA, como os conhecidos: o servidor so a manda quando ela muda, e ela SUBSTITUI
+				// a anterior -- quem saiu do alcance simplesmente nao esta mais nela.
+				(bool scan, List<Protocol.PresencaState> lista) = reader.GetSentidos();
+				SentidosSaoDoScouter = scan;
+				Sentidos = lista;
+				SentidosMudaram?.Invoke();
 				break;
 			}
 

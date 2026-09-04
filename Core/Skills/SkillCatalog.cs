@@ -113,7 +113,15 @@ public sealed class Skill
 	public Escolha[] PorRaca = [];
 
 	/// <summary>
-	/// Uma folha que nao soma nada nem destrava nada AINDA nao tem efeito portado.
+	/// Uma folha que NA COMPRA nao soma nada nem destrava nada.
+	///
+	/// ============================ ISTO E SO O CANAL DA COMPRA ============================
+	/// O `after_learn()`. A skill pode fazer TUDO pelo NIVEL (os degraus do `effector()`, que moram
+	/// na <see cref="RegraDeNivel"/> e nao aqui) e esta propriedade continuar verdadeira -- e o caso
+	/// das dezesseis de "Strength of Mind" que nao sao a raiz. A pergunta completa ("o port sabe o
+	/// que ela faz?") e <see cref="FichaDeSkill.TemEfeitoPortado"/>, e foi por perguntar so isto que a
+	/// ficha do cliente chamou dezesseis skills portadas de "efeito ainda nao portado".
+	/// ==================================================================================
 	///
 	/// A ESCOLHA CONTA COMO EFEITO mesmo antes de o dono escolher: o que o censo mede aqui e se
 	/// o PORT sabe o que a skill faz, nao se um personagem especifico ja decidiu. Enquanto isto

@@ -287,6 +287,40 @@ if (args.Length >= 1 && args[0] == "gravidade")
     return GravidadeBench.Rodar(Directory.GetCurrentDirectory());
 }
 
+if (args.Length >= 1 && args[0] == "fichas")
+{
+    // fichas [filtro] : a FICHA EM TEXTO de cada folha -- o que a tela do jogo diz que a skill faz
+    // (compra E degraus de nivel), montada pela MESMA `FichaDeSkill.Montar` que o cliente chama.
+    // Pra ler de uma vez o que o jogador vai ler uma a uma, e achar nome cru ou frase torta antes
+    // dele. Filtro = pedaco do typepath ou do nome ("mind", "Hokuto").
+    string cs = System.IO.Path.Combine("Assets", "data", "skills.json");
+    string ct = System.IO.Path.Combine("Assets", "data", "skilltrees.json");
+    string cn = System.IO.Path.Combine("Assets", "data", "niveis.json");
+    if (!System.IO.File.Exists(cs)) { Console.Error.WriteLine($"faltou {cs} -- rode o comando 'skills'"); return 1; }
+    var cat = Jandirus.Core.Skills.SkillCatalog.Parse(System.IO.File.ReadAllText(cs), System.IO.File.ReadAllText(ct));
+    if (System.IO.File.Exists(cn)) Jandirus.Core.Skills.RegrasDoDisco.Carregar(System.IO.File.ReadAllText(cn));
+    else Console.WriteLine("(sem niveis.json: as fichas saem so com o que a compra da)\n");
+
+    string filtro = args.Length >= 2 ? args[1] : "";
+    int n = 0, mudas = 0;
+    foreach (Jandirus.Core.Skills.Skill s in cat.Todas.Where(x => !x.Arvore).OrderBy(x => x.Path, StringComparer.OrdinalIgnoreCase))
+    {
+        if (filtro.Length > 0 && !s.Path.Contains(filtro, StringComparison.OrdinalIgnoreCase)
+            && !s.Nome.Contains(filtro, StringComparison.OrdinalIgnoreCase)) continue;
+        Jandirus.Core.Skills.FichaDeSkill.Texto t = Jandirus.Core.Skills.FichaDeSkill.Montar(
+            cat, s, Jandirus.Core.Skills.RegrasDeNivel.Get(s.Path));
+        n++;
+        Console.WriteLine($"== {s.Nome}   ({s.Path})");
+        if (!t.TemEfeito) { mudas++; Console.WriteLine("   " + Jandirus.Core.Skills.FichaDeSkill.SemEfeitoAinda); }
+        foreach (string l in t.NaCompra) Console.WriteLine("   • " + l);
+        if (t.Progressao.Length > 0) Console.WriteLine("   " + t.Progressao);
+        foreach (string l in t.PorNivel) Console.WriteLine("   • " + l);
+        if (t.NoTopo.Length > 0) Console.WriteLine("   " + t.NoTopo);
+    }
+    Console.WriteLine($"\n{n} fichas, {mudas} sem efeito portado");
+    return 0;
+}
+
 if (args.Length >= 1 && args[0] == "maestria")
 {
     // maestria : as regras de exp CONDICIONAIS do niveis.json chegam ao efetor?
@@ -741,16 +775,21 @@ if (args.Length >= 1 && args[0] == "efeitos")
     var folhas = cat.Todas.Where(s2 => !s2.Arvore).ToList();
     var comBuff = folhas.Where(s2 => s2.Buffs.Count > 0).ToList();
     var comVerb = folhas.Where(s2 => s2.Verbos.Length > 0).ToList();
-    var vazias = folhas.Where(s2 => s2.SemEfeito).ToList();
+    // A PERGUNTA E A DA FICHA (`FichaDeSkill.TemEfeitoPortado`): compra OU degrau de nivel. So a
+    // compra (`SemEfeito`) chamava de "sem efeito" as dezesseis da Mente cujo efeito inteiro e por nivel.
+    var vazias = folhas.Where(s2 => !Jandirus.Core.Skills.FichaDeSkill.TemEfeitoPortado(
+        s2, Jandirus.Core.Skills.RegrasDeNivel.Get(s2.Path))).ToList();
+    int soPorNivel = folhas.Count(s2 => s2.SemEfeito && !vazias.Contains(s2));
 
-    Console.WriteLine("=== O QUE AS SKILLS FAZEM (quatro canais) ===");
+    Console.WriteLine("=== O QUE AS SKILLS FAZEM (quatro canais na compra, e o nivel) ===");
     Console.WriteLine($"folhas (skills de verdade) : {folhas.Count}");
     Console.WriteLine($"  1. somam num campo       : {comBuff.Count}");
     Console.WriteLine($"  2. multiplicam um campo  : {folhas.Count(s2 => s2.Mults.Count > 0)}");
     Console.WriteLine($"  3. mexem na genetica     : {folhas.Count(s2 => s2.Genes.Count > 0)}");
     Console.WriteLine($"  4. escrevem flag/contador: {folhas.Count(s2 => s2.Flags.Count > 0)}");
     Console.WriteLine($"  destravam tecnica ativa  : {comVerb.Count}");
-    Console.WriteLine($"  sem efeito portado ainda : {vazias.Count}");
+    Console.WriteLine($"  so por DEGRAU de nivel   : {soPorNivel}");
+    Console.WriteLine($"  sem efeito portado ainda : {vazias.Count}   (nem na compra nem por degrau)");
     // CONTA A PARTIR DO CATALOGO, nao da tabela de tecnicas: a tabela so conhece o que ja foi
     // portado, e contar por ela dava "5 de 5 portadas" -- cobertura de 100% que era so a tabela
     // olhando pro proprio umbigo. O denominador tem que ser o que o JOGO concede.

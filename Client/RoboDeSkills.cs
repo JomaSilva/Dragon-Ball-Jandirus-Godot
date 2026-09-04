@@ -664,6 +664,36 @@ public partial class RoboDeSkills : Node
 			if (ficha != null && Botao(ficha, "Fechar") is { } fechar) await Clicar(fechar);
 		}
 
+		// ---- (e) a ficha de uma skill da Mente DIZ O QUE ELA FAZ ----
+		// O segundo relato do dono: "todas as skills (menos ki unlocked) n terem uma descriçao do q
+		// fazem, e estarem escritas q nao foram portadas". A ficha lia so a COMPRA; a Mente mora nos
+		// DEGRAUS. O texto e montado no Core (`FichaDeSkill`) e a `--menteskills` cobra a frase; aqui
+		// se cobra que a frase CHEGOU a tela, num cliente que carregou o niveis.json por conta propria.
+		PanelContainer? cardAw = Cartao(pg, "Basic Ki Awareness");
+		if (cardAw?.GetChild(0) is Button bAw)
+		{
+			await Rolar(pg, cardAw);
+			await Clicar(bAw);
+			PanelContainer? f = menu.FichaDeTeste;
+			List<string> textos = f == null ? [] : Rotulos(f).Select(l => l.Text).ToList();
+			Checa("(e) a ficha de 'Basic Ki Awareness' NAO diz 'ainda não foi portado' (dizia, em todas da Mente menos a raiz)",
+				  f != null && !textos.Any(t => t.Contains("não foi portado")), string.Join(" | ", textos.Take(6)));
+			Checa("(e) ...e lista o que cada NIVEL da: '• a cada 5 níveis: percepção de Ki +1' (Mind.dm:171)",
+				  textos.Contains("• a cada 5 níveis: percepção de Ki +1"), string.Join(" | ", textos.Where(t => t.StartsWith("• "))));
+			Checa("(e) ...e o marco do nivel 10, com o NOME DOS BOTOES: '• nível 10: habilidades novas: Estudar Outro, Focar Habilidade'",
+				  textos.Any(t => t.StartsWith("• nível 10:") && t.Contains("Estudar Outro") && t.Contains("Focar Habilidade")));
+			Checa("(e) ...e diz COMO sobe: um rotulo com 'Ganha experiência' e 'estudando alguém'",
+				  textos.Any(t => t.Contains("Ganha experiência") && t.Contains("estudando alguém")), textos.FirstOrDefault(t => t.Contains("Sobe até")) ?? "(sem progressao)");
+			Checa("(e) ...e a soma no topo: 'no nível 100, somando tudo: percepção de Ki +20'",
+				  textos.Any(t => t.StartsWith("no nível 100, somando tudo:") && t.Contains("percepção de Ki +20")));
+			Checa("(e) ...sem inventar o nivel atual (ele nao viaja): nenhum rotulo diz 'nível atual' ou 'está no nível'",
+				  !textos.Any(t => t.Contains("nível atual") || t.Contains("está no nível")));
+			Checa("(e) a ficha continua cabendo inteira na tela com o texto novo", f != null && GetViewport().GetVisibleRect().Encloses(f.GetGlobalRect()), $"{f?.GetGlobalRect()}");
+			await Guardar("depois-12b-mente-ficha-com-efeito", await Foto());
+			if (f != null && Botao(f, "Fechar") is { } fecharAw) await Clicar(fecharAw);
+		}
+		else Checa("(e) achei o card de 'Basic Ki Awareness' pra abrir a ficha", false);
+
 		// ---- de volta ao Body: as familias seguintes (F5, F6) contam com ele aberto ----
 		if (Botao(pg, "‹  todas as árvores") is { } voltar2) await Clicar(voltar2);
 		if (CartaoDeArvore(pg, "Strength of Body")?.GetChild(0) is Button body) await Clicar(body);

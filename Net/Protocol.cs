@@ -965,6 +965,25 @@ public static class Protocol
         /// por sessao). Sem ele, o mesmo pacote e so uma atualizacao de quem ja esta olhando.
         /// </summary>
         Refugio = 51,
+
+        /// <summary>
+        /// OS SENTIDOS: quem eu SINTO (a skill Sense) ou quem o SCOUTER LE -- a lista da aba Sense/Scan
+        /// do menu P, o `ui_tab_sense`/`ui_tab_scan` do `HtmlUI.dm:360-419` calculado no servidor.
+        ///
+        /// ============================ POR QUE E UM PACOTE, E NAO O SNAPSHOT ============================
+        /// O snapshot leva posicao e pose de quem esta na zona -- e NADA de poder, de proposito (ver
+        /// <see cref="SheetState"/>: "BP alheio se descobre com scouter ou sentido de ki, nunca de graca").
+        /// Esta lista e exatamente essa descoberta: ela so existe pra quem tem a skill ou o aparelho, e o
+        /// que ela carrega passa pelo sigilo (`GameServer.Sigilo`) -- no modo Sense o BP absoluto vai como
+        /// NaN e so a RAZAO viaja; no modo Scan vai o numero, porque o scouter e a porta de leitura.
+        ///
+        /// PESSOAL E LENTO: sai a no maximo 1 Hz e so quando a lista MUDA (assinatura, como o
+        /// <see cref="Atributos"/>). Ver `GameServer.Sentidos.cs`.
+        /// ==============================================================================================
+        ///
+        /// Formato: `bool scan` + `byte n` + n x <see cref="PresencaState"/>.
+        /// </summary>
+        Sentidos = 52,
     }
 
     /// <summary>
@@ -1191,6 +1210,53 @@ public static class Protocol
     }
 
     /// <summary>
+    /// ============================ AS DEZENOVE PERICIAS DE KI, NUMA ORDEM SO ============================
+    /// A aba Ki do menu (`HtmlUI.dm:507-525`, `ui_tab_ki`) imprimia os contadores de dominio e de tecnica
+    /// de Ki da ficha -- `kiawarenessskill`, `beamskill`... -- e este port nunca os mandava pro cliente.
+    /// Eles viajam no FIM da ficha lenta (<see cref="AtributosState.Pericias"/>), como floats, porque mudam
+    /// devagar (um degrau de skill, um tiro que rendeu) e so uma aba os le.
+    ///
+    /// A ORDEM DO FIO E ESTA TABELA, e ela mora num lugar so de proposito: o servidor a percorre pra ENCHER
+    /// o vetor (`Le` le a ficha) e o cliente a percorre pra ROTULAR cada barra (`Campo` passa pelo
+    /// `NomesLegiveis.Campo`, que e quem traduz `kiawarenessskill` em "percepcao de Ki"). Duas listas, uma
+    /// de cada lado, seriam a versao que envelhece calada: um campo trocado de posicao num lado e a tela
+    /// escreveria o numero de uma pericia debaixo do nome de outra, sem erro nenhum.
+    ///
+    /// SAO SO AS DE KI. O `ui_tab_ki` do DM tambem listava as de corpo a corpo e de armas (`tactics`,
+    /// `swordskill`, `axeskill`...), e o port nao tem esses campos: nao se inventa contador pra desenhar
+    /// zero. O `kiarmor` entra (o unico dos dezenove que aquele painel nao imprimia) porque e o contador
+    /// da armadura de Ki da mesma familia, e a Ki Armor do port o escreve.
+    /// ================================================================================================
+    /// </summary>
+    public static readonly (string Campo, Func<Jandirus.Core.Stats.Fighter, double> Le)[] PericiasDeKi =
+    [
+        // ---- o DOMINIO de Ki: os contadores da arvore da Mente (Mind.dm) e o voo ----
+        ("kiawarenessskill",   f => f.kiawarenessskill),
+        ("kicirculationskill", f => f.kicirculationskill),
+        ("kicontrolskill",     f => f.kicontrolskill),
+        ("kiefficiencyskill",  f => f.kiefficiencyskill),
+        ("kigatheringskill",   f => f.kigatheringskill),
+        ("kieffusionskill",    f => f.kieffusionskill),
+        ("kibuffskill",        f => f.kibuffskill),
+        ("flightability",      f => f.flightability),
+        // ---- as TECNICAS de Ki: as familias de tiro, o debuff, a defesa e a armadura ----
+        ("beamskill",          f => f.beamskill),
+        ("blastskill",         f => f.blastskill),
+        ("kiaiskill",          f => f.kiaiskill),
+        ("chargedskill",       f => f.chargedskill),
+        ("guidedskill",        f => f.guidedskill),
+        ("homingskill",        f => f.homingskill),
+        ("targetedskill",      f => f.targetedskill),
+        ("volleyskill",        f => f.volleyskill),
+        ("kidebuffskill",      f => f.kidebuffskill),
+        ("kidefenseskill",     f => f.kidefenseskill),
+        ("kiarmor",            f => f.kiarmor),
+    ];
+
+    /// <summary>Quantas das dezenove sao DOMINIO (as primeiras da tabela); o resto e TECNICA. A aba Ki corta aqui.</summary>
+    public const int PericiasDeDominio = 8;
+
+    /// <summary>
     /// A FICHA QUE QUASE NAO MUDA: os oito atributos e o resto do que o painel de status
     /// mostrava. Vai num pacote separado do <see cref="SheetState"/> de proposito -- aquele sai
     /// varias vezes por segundo porque carrega vida e Ki, e atributo so muda quando se treina.
@@ -1270,6 +1336,12 @@ public static class Protocol
         public byte SalaFase;
         public float SalaMinutos;
 
+        /// <summary>
+        /// AS DEZENOVE PERICIAS DE KI, na ordem de <see cref="PericiasDeKi"/> -- o que a aba Ki desenha.
+        /// Sempre dezenove no fio (o escritor completa com zero); nulo so antes do primeiro pacote.
+        /// </summary>
+        public float[] Pericias;
+
         public readonly bool Tem(Poder p) => (Poderes & (uint)p) != 0;
 
         public readonly void Write(NetDataWriter w)
@@ -1288,6 +1360,13 @@ public static class Protocol
             w.Put(GanhoDeTreino); w.Put(Gravidade); w.Put(GravEfetiva);
             w.Put(PesoMult); w.Put(ZonaMult); w.Put(Esmagamento);
             w.Put(SalaFase); w.Put(SalaMinutos);
+
+            // AS PERICIAS VAO NO FIM, DEPOIS DE TUDO QUE JA EXISTIA: o layout antigo fica intacto e um
+            // leitor que nao as conheca para exatamente onde parava. Sempre as dezenove, na ordem da
+            // tabela `PericiasDeKi`; um vetor curto ou nulo sai como zeros pra que o leitor nunca dependa
+            // do tamanho do que o escritor tinha em maos.
+            float[] ps = Pericias ?? [];
+            for (int i = 0; i < PericiasDeKi.Length; i++) w.Put(i < ps.Length ? ps[i] : 0f);
         }
 
         public static AtributosState Read(NetDataReader r) => new()
@@ -1312,6 +1391,7 @@ public static class Protocol
             Esmagamento = r.GetFloat(),
             SalaFase = r.GetByte(),
             SalaMinutos = r.GetFloat(),
+            Pericias = LerPericias(r),
         };
 
         private static (ushort, float)[] LerMaestrias(NetDataReader r)
@@ -1319,6 +1399,14 @@ public static class Protocol
             int n = r.GetByte();
             var v = new (ushort, float)[n];
             for (int i = 0; i < n; i++) v[i] = (r.GetUShort(), r.GetFloat());
+            return v;
+        }
+
+        /// <summary>As dezenove, na ordem da tabela -- o par exato do laco do <see cref="Write"/>.</summary>
+        private static float[] LerPericias(NetDataReader r)
+        {
+            var v = new float[PericiasDeKi.Length];
+            for (int i = 0; i < v.Length; i++) v[i] = r.GetFloat();
             return v;
         }
     }
@@ -1369,6 +1457,83 @@ public static class Protocol
             l.Add(new ParteState { Nome = nome, Vida = v == 255 ? (byte)0 : v, Decepado = v == 255 });
         }
         return l;
+    }
+
+    // =====================================================================
+    // OS SENTIDOS -- uma presenca da aba Sense/Scan (ver S2C.Sentidos e GameServer.Sentidos.cs)
+    // =====================================================================
+    /// <summary>
+    /// UMA PRESENCA QUE EU SINTO (ou que o scouter le): uma linha da aba Sense/Scan, ja decidida pelo
+    /// servidor. Os campos que um modo nao tem viajam com a marca de AUSENCIA (NaN, 255, 65535, -1, "")
+    /// e nao com zero -- zero e um valor possivel, e a tela precisa saber "nao veio" pra nao desenhar.
+    /// </summary>
+    public struct PresencaState
+    {
+        /// <summary>O nome -- so de quem eu CONHECO (contato do convivio). Vazio = "??? (assinatura)".</summary>
+        public string Nome;
+        /// <summary>A assinatura de quem eu NAO conheco (a que o `HtmlUI.dm:374` escreve entre parenteses); vazia quando o nome vai, ou quando o corpo nao tem identidade (NPC).</summary>
+        public string Assinatura;
+        /// <summary>1 = perto (ate 15 tiles), 2 = neste mundo, 3 = na galaxia. No Scan e sempre 2 (a area inteira).</summary>
+        public byte Alcance;
+        /// <summary>O poder em % do MEU (`expressedBP alheio / max(meu, 1)`, inteiro como o `round(x, 1)` do DM). NaN no Scan.</summary>
+        public float PoderRelativo;
+        /// <summary>O BP EXATO -- so no Scan. No Sense e SEMPRE NaN (`GameServer.SemLeitura`): o sigilo mora aqui.</summary>
+        public double Bp;
+        /// <summary>A vida em % (so perto). <see cref="HpDesconhecido"/> quando nao vem.</summary>
+        public byte Hp;
+        /// <summary>A distancia em tiles, o `get_dist` do DM. <see cref="DistanciaDesconhecida"/> na galaxia.</summary>
+        public ushort Distancia;
+        /// <summary>O rumo em oito pontos, o `sense_dir_word` do DM -- indice em <see cref="NomesDosRumos"/> (0 = "?").</summary>
+        public byte Rumo;
+        /// <summary>A celula (tile) -- so no Scan (`([E.x],[E.y])`). -1 quando nao vem.</summary>
+        public short X, Y;
+        /// <summary>Onde esta -- so na galaxia (o `z[D.z]` do DM virou o nome do lugar). Vazia nas outras.</summary>
+        public string Zona;
+        /// <summary>E um chefe NPC (o `isBoss` do DM, que e o unico NPC que o scouter le).</summary>
+        public bool Chefe;
+
+        public readonly void Write(NetDataWriter w)
+        {
+            w.Put(Nome ?? ""); w.Put(Assinatura ?? "");
+            w.Put(Alcance); w.Put(PoderRelativo); w.Put(Bp); w.Put(Hp);
+            w.Put(Distancia); w.Put(Rumo); w.Put(X); w.Put(Y);
+            w.Put(Zona ?? ""); w.Put(Chefe);
+        }
+
+        public static PresencaState Read(NetDataReader r) => new()
+        {
+            Nome = r.GetString(64), Assinatura = r.GetString(16),
+            Alcance = r.GetByte(), PoderRelativo = r.GetFloat(), Bp = r.GetDouble(), Hp = r.GetByte(),
+            Distancia = r.GetUShort(), Rumo = r.GetByte(), X = r.GetShort(), Y = r.GetShort(),
+            Zona = r.GetString(64), Chefe = r.GetBool(),
+        };
+    }
+
+    /// <summary>As oito palavras do `sense_dir_word` (`HtmlUI.dm:321-331`), pelo indice de <see cref="PresencaState.Rumo"/>. As letras sao as do DM (N, NE, E, SE, S, SW, W, NW).</summary>
+    public static readonly string[] NomesDosRumos = ["?", "N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+
+    public static string NomeDoRumo(byte rumo) => rumo < NomesDosRumos.Length ? NomesDosRumos[rumo] : "?";
+
+    /// <summary>A marca de "vida nao informada" em <see cref="PresencaState.Hp"/>.</summary>
+    public const byte HpDesconhecido = 255;
+
+    /// <summary>A marca de "distancia nao informada" em <see cref="PresencaState.Distancia"/> (a galaxia so diz o lugar).</summary>
+    public const ushort DistanciaDesconhecida = ushort.MaxValue;
+
+    public static void PutSentidos(this NetDataWriter w, bool scan, IReadOnlyList<PresencaState> lista)
+    {
+        w.Put(scan);
+        w.Put((byte)Math.Min(lista.Count, 255));
+        for (int i = 0; i < lista.Count && i < 255; i++) lista[i].Write(w);
+    }
+
+    public static (bool Scan, List<PresencaState> Lista) GetSentidos(this NetDataReader r)
+    {
+        bool scan = r.GetBool();
+        int n = r.GetByte();
+        var l = new List<PresencaState>(n);
+        for (int i = 0; i < n; i++) l.Add(PresencaState.Read(r));
+        return (scan, l);
     }
 
     /// <summary>
