@@ -54,6 +54,17 @@ public partial class RoboDeDoisCorpos : Node
 	/// <summary>Rotulo do arquivo de foto -- duas instancias escrevem no MESMO `user://`.</summary>
 	public string Rotulo = "x";
 
+	/// <summary>O NOME do outro jogador da bancada (`--doisoutro`). Ver <see cref="AoReceberFicha"/>.</summary>
+	public string Outro = "";
+
+	/// <summary>
+	/// Segundo em que o A PUXA o B pra zona dele (`admin_trazer`, o mesmo verb da aba de admin). 0 = nunca.
+	/// O berco nao e mais previsivel: um Saiyajin de classe baixa nasce na Terra e um comum em Vegeta, e
+	/// dois corpos em planetas diferentes nunca se veem -- a bancada media NPCs e reprovava a regra certa.
+	/// </summary>
+	public double Trazer;
+	private double _proximoPuxao;
+
 	private bool _dentro;
 	private double _relogio;
 	private bool _agiu;
@@ -108,7 +119,23 @@ public partial class RoboDeDoisCorpos : Node
 		cli.OozaruMudou += (quem, f, l, d) => Anotar($"servidor: oozaru de {quem} -> {f} (ligado {l})");
 		cli.PeerLooked += AoReceberFicha;
 		cli.PeerLeft += quem => Anotar($"servidor: {quem} saiu");
-		GD.Print($"[dois-{Papel}] no ar (atraso {Atraso}s, forma '{Forma}', rotulo {Rotulo})");
+		if (Outro.Length == 0)
+		{
+			string[] a = OS.GetCmdlineArgs();
+			int i = Array.IndexOf(a, "--doisoutro");
+			Outro = i >= 0 && i + 1 < a.Length ? a[i + 1] : (Papel == "a" ? "DoisB" : "DoisA");
+			int j = Array.IndexOf(a, "--doistrazer");
+			if (j >= 0 && j + 1 < a.Length && double.TryParse(a[j + 1], System.Globalization.NumberStyles.Float,
+															  System.Globalization.CultureInfo.InvariantCulture, out double t)) Trazer = t;
+		}
+		GD.Print($"[dois-{Papel}] no ar (atraso {Atraso}s, forma '{Forma}', rotulo {Rotulo}, o outro e '{Outro}')");
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--doisinjetar") >= 0)
+		{
+			// Ver `CargaVisual.ChamaSoComOCDeTeste`: a regra de antes, de volta -- a linha "a chama continua
+			// depois de soltar o C" TEM que reprovar nesta rodada.
+			CargaVisual.ChamaSoComOCDeTeste = true;
+			GD.Print($"[dois-{Papel}] DEFEITO INJETADO: a chama alheia volta a acender SO com o C");
+		}
 
 		// A ANCORA DA AURA NAO PRECISA DE MUNDO, DE REDE NEM DE SEGUNDO CORPO -- e por isso ela roda
 		// ja, antes de qualquer coisa poder dar errado. Mesmo motivo do bloco puro do
@@ -181,6 +208,11 @@ public partial class RoboDeDoisCorpos : Node
 			 + $"cabelo da ficha '{ap.Cabelo}', olho da ficha {ap.CorOlho}, "
 			 + $"AURA da ficha {ap.CorAura?.ToString() ?? "nula (deriva)"}");
 		if (meu) return;
+		// SO O OUTRO JOGADOR DA BANCADA, pelo NOME: as zonas ganharam cidadaos (Vegeta tem 40 Saiyajins de
+		// IA), e cada um deles manda o proprio `PeerLook`. Antes o ultimo a chegar virava "o outro" -- e a
+		// bancada media a cor de aura de um NPC contra o corpo do A ("e7ffff vs ffffff"), reprovando a
+		// regra certa. O nome vem de `--doisoutro`; o padrao e o `--nome` do par (DoisA / DoisB).
+		if (nome != Outro) return;
 
 		_idDoOutro = quem;
 		_fichaDoOutro = ap;
@@ -199,6 +231,16 @@ public partial class RoboDeDoisCorpos : Node
 
 	public override void _Process(double delta)
 	{
+		// SEM MUNDO EM 60 s A BANCADA REPROVA E SAI -- em vez de ficar viva pra sempre esperando um
+		// servidor que nao subiu (a `ConnectionFailed` nao derruba o robo sozinha). Uma bancada de dois
+		// processos que trava no primeiro e um .bat travado no segundo monitor.
+		_esperaTotal += delta;
+		if (!_dentro && _esperaTotal > 60)
+		{
+			Conferir(false, $"[{Papel}] nao entrei no mundo em 60 s (o outro processo subiu? a porta esta livre?)");
+			Fechar();
+			return;
+		}
 		if (!_dentro) return;
 		_relogio += delta;
 
@@ -253,6 +295,18 @@ public partial class RoboDeDoisCorpos : Node
 		{
 			_promoveu = true;
 			GameClient.Instance?.SendVerbo("admin_promover", Conta);
+		}
+
+		// O PUXAO: o B vem pra minha zona, em cima de mim (ver `Trazer`). Depois do `admin_promover`, que e
+		// o que me deixa admin com o B ja conectado do mesmo endereco. REPETIDO a cada 2 s ate o `PeerLook`
+		// do B chegar (`_idDoOutro`): o B pode ainda estar carregando a zona dele quando o relogio bate, e
+		// um `admin_trazer` mandado antes de ele existir no servidor nao puxa ninguem -- foi assim que uma
+		// rodada inteira mediu "0 comparacoes".
+		if (Trazer > 0 && _relogio >= Trazer && Outro.Length > 0 && _idDoOutro == 0 && _relogio >= _proximoPuxao)
+		{
+			_proximoPuxao = _relogio + 2;
+			GameClient.Instance?.SendVerbo("admin_trazer", Outro);
+			GD.Print($"[dois-a] `admin_trazer {Outro}` -- o B vem pra minha zona");
 		}
 
 		// ============================ O KI, QUE E O SEGUNDO DEFEITO ============================
@@ -647,6 +701,11 @@ public partial class RoboDeDoisCorpos : Node
 	{
 		if (CorpoAlheio() is not RemotePlayer outro) return;
 
+		// A CHAMA DEPOIS DE SOLTAR O C E COLHIDA EM TODO QUADRO, antes do portao da janela logo abaixo: a
+		// transicao "segurando -> solto" e um INSTANTE, e uma janela que esta assentando (a troca de zona e
+		// o `PeerLook` a reabrem) engoliria o instante -- foi assim que a primeira rodada nao a viu.
+		if (outro.GetNodeOrNull<CargaVisual>("Carga") is { } cgSolto) AChamaDepoisDeSoltarOC(cgSolto);
+
 		bool excesso = outro.GetNodeOrNull<CargaVisual>("Carga")?.ExcessoDeTeste ?? false;
 		string estado = Carimbo(_formaDoOutro, excesso);
 
@@ -900,6 +959,53 @@ public partial class RoboDeDoisCorpos : Node
 	/// </summary>
 	private bool _cargaDesenhouSempre = true;
 
+	// =====================================================================
+	// A CHAMA DEPOIS DE SOLTAR O C (o relato de 2026-09-04)
+	// =====================================================================
+	/// <summary>
+	/// O A solta o C (`--doissoltar`) ainda acima dos 100%: na tela DELE a chama continua (o excesso
+	/// acende); na tela do B ela apagava no mesmo instante, porque `World.AoReceberSnapshot` lia so o bit
+	/// do C. E quem entrasse depois nunca a via. A regra passou a morar em `CargaVisual.Definir`, uma so
+	/// pros dois corpos -- e esta e a prova pelo OUTRO lado: colhida por quadro nos 2 s que seguem a
+	/// transicao "segurando -> solto com excesso", que o B enxerga pelo bit cru (`SegurandoDeTeste`).
+	///
+	/// O CONTRA-EXEMPLO anda junto: sem C e abaixo dos 100% a chama tem que estar APAGADA em todo
+	/// quadro (senao "acende sempre" passaria por "acende com o excesso").
+	/// </summary>
+	private void AChamaDepoisDeSoltarOC(CargaVisual cga)
+	{
+		bool segurando = cga.SegurandoDeTeste, excesso = cga.ExcessoDeTeste, desenhando = cga.DesenhoDeTeste.Visible;
+
+		if (_ultimoSegurando == true && !segurando && excesso && !_viuSoltar)
+		{
+			_viuSoltar = true;
+			_soltoDesde = _relogio;
+			Anotar("o outro SOLTOU o C ainda acima dos 100% -- a chama dele e medida por quadro nos proximos 2 s");
+		}
+		_ultimoSegurando = segurando;
+
+		if (_viuSoltar && !_julgueiOSolto)
+		{
+			if (excesso) { _chamaAposSoltarSempre &= desenhando; _quadrosSolto++; }
+			if (_relogio - _soltoDesde >= 2.0)
+			{
+				_julgueiOSolto = true;
+				Conferir(_quadrosSolto >= 10 && _chamaAposSoltarSempre,
+						 $"[apos soltar o C, ki>100%] a CHAMA do corpo alheio continua desenhada em TODO quadro "
+					   + $"({_quadrosSolto} quadro(s) acima dos 100%) -- a mesma regra da tela do dono; era so com o C, "
+					   + "e quem entrava depois nunca via chama nenhuma");
+			}
+		}
+
+		if (!segurando && !excesso) { _viuSemNada = true; _apagadaSemNadaSempre &= !desenhando; }
+	}
+
+	private double _esperaTotal;
+	private bool? _ultimoSegurando;
+	private bool _viuSoltar, _julgueiOSolto, _chamaAposSoltarSempre = true, _viuSemNada, _apagadaSemNadaSempre = true;
+	private double _soltoDesde;
+	private int _quadrosSolto;
+
 	/// <summary>
 	/// ============================ FAMILIA 2 -- O CONTORNO DO CORPO ALHEIO, NOS DOIS SENTIDOS ============================
 	/// A regra, escrita pelo dono e implementada em `World.AplicarContorno`: **a FORMA e dona da COR,
@@ -1023,7 +1129,13 @@ public partial class RoboDeDoisCorpos : Node
 		if (GetTree().Root.FindChild("World", true, false) is not Node mundo) return null;
 		var achados = new List<Node2D>();
 		Rastelar(mundo, achados);
-		_corpoAlheio = achados.OfType<RemotePlayer>().FirstOrDefault();
+		// O CORPO DO OUTRO JOGADOR, pelo id que o `PeerLook` dele trouxe (o node chama `Remoto{id}`,
+		// `World.AoReceberSnapshot`) -- e nao "o primeiro RemotePlayer da arvore", que numa zona com
+		// cidadaos de IA e um NPC qualquer. Sem o id ainda, o primeiro serve de reserva (zona vazia).
+		// SEM O ID AINDA NAO HA "OUTRO": enquanto o `PeerLook` de quem tem o nome esperado nao chega, ninguem e
+		// julgado -- o primeiro RemotePlayer da arvore, numa zona povoada, e um cidadao de IA.
+		if (_idDoOutro == 0) return null;
+		_corpoAlheio = achados.OfType<RemotePlayer>().FirstOrDefault(r => r.Name == $"Remoto{_idDoOutro}");
 		return _corpoAlheio;
 	}
 
@@ -1142,6 +1254,13 @@ public partial class RoboDeDoisCorpos : Node
 						 "a ficha (`PeerLook`) chegou num corpo alheio que JA existia "
 					   + $"({_fichasEmCorpoVivo} vez(es)) -- e o caminho em que o `CharacterVisual.Vestir` "
 					   + "remonta as camadas do zero por cima de uma transformacao");
+
+			// O CONTRA-EXEMPLO da chama (ver `AChamaDepoisDeSoltarOC`): so vale se a bancada VIU o corpo
+			// alheio sem C e sem excesso em algum quadro -- senao a linha estaria falando de nada.
+			if (_viuSemNada)
+				Conferir(_apagadaSemNadaSempre, "CONTRA-EXEMPLO: sem C e abaixo dos 100%, a chama do corpo alheio fica APAGADA em todo quadro");
+			if (Soltar > 0 || _viuSoltar)
+				Conferir(_julgueiOSolto, "a bancada VIU o outro soltar o C acima dos 100% e julgou a chama (senao a linha de cima nao mediu nada)");
 
 			GD.Print($"\n===== [dois-b] {_oks} OK, {_falhas.Count} FALHA =====");
 			foreach (string f in _falhas) GD.PrintErr("  FALHA  " + f);

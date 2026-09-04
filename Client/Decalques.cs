@@ -78,16 +78,17 @@ public partial class Decalques : Node2D
 		// `sleep(20)` no DU, com tick_lag de 0,1 s = 2 s. Este e literal.
 		Protocol.Decal.Agua => 2,
 		Protocol.Decal.Sangue => 25,
-		// ============================ O MEMBRO FICA MAIS QUE TODO O RESTO ============================
-		// No BYOND a peca dura 600 s (`spawn(6000) src.loc = null`, `mobparts.dm:395-397`). Dez
-		// minutos aqui e insustentavel pelo mesmo motivo do cabecalho -- ela dividiria o teto com a
-		// poeira, que numa briga pinta dezenas de marcas por segundo.
+		// ============================ O MEMBRO DURA OS 600 s DO DM, E O NUMERO E DO CORE ============================
+		// `spawn(6000) src.loc = null` (`mobparts.dm:395-397`): dez minutos. Este numero era 60 s aqui
+		// -- "dez minutos e insustentavel, ela dividiria o teto com a poeira" -- e o argumento morreu
+		// no dia em que a peca ganhou a fila propria (`MaxPecas`): 32 lugares que a poeira nao varre,
+		// e que a peca nao consegue extrapolar. Com a fila, o prazo nao custa lugar nenhum a ninguem.
 		//
-		// 60 s e o numero que a peca precisa: ela nao e enfeite de impacto, ela CONTA que alguem
-		// perdeu um braco ali, e sumir em cinco segundos negaria a coisa mais grave que acontece
-		// numa luta. Quem garante que ela chega la e a fila propria -- ver `MaxPecas`.
-		// =============================================================================================
-		Protocol.Decal.Membro => 60,
+		// E ELE TEM QUE SER O MESMO DO SERVIDOR, que agora GUARDA a peca e a reapresenta a quem chega
+		// (`Core.Combat.PecasNoChao`, `S2C.Pecas`). Um numero aqui e outro la seria o braco sumindo da
+		// tela de quem viu cair enquanto continua no retrato de quem acabou de entrar.
+		// ==========================================================================================================
+		Protocol.Decal.Membro => PecasNoChao.MsNoChao / 1000.0,
 		_ => 10,
 	};
 
@@ -104,9 +105,12 @@ public partial class Decalques : Node2D
 	/// A guarda e nos DOIS sentidos: a peca nao e despejada pela poeira (o despejo geral sacrifica
 	/// primeiro quem nao e peca) e a poeira nao morre afogada em pecas (32 de 120 e o que elas podem
 	/// ocupar). Mesma logica que ja separou os PERMANENTES -- fila que se mistura e teto que engana.
+	///
+	/// O NUMERO E DO CORE (`PecasNoChao.TetoPorZona`) porque o servidor lembra a MESMA quantidade por
+	/// zona: um retrato com mais pecas do que esta fila segura seria um retrato que a tela nao honra.
 	/// ====================================================================================================
 	/// </summary>
-	public const int MaxPecas = 32;
+	public const int MaxPecas = PecasNoChao.TetoPorZona;
 
 	/// <summary>
 	/// TETO PROPRIO DA ONDA DA AGUA, pela razao INVERSA a da peca -- ver o bloco acima.
@@ -338,9 +342,16 @@ public partial class Decalques : Node2D
 	/// SO PRO <see cref="Protocol.Decal.Membro"/>: qual recorte da folha `Body Parts Bloody` cai.
 	/// Nos outros tipos e ignorado. Ver <see cref="Recorte"/>.
 	/// </param>
+	/// <param name="restaSegundos">
+	/// QUANTO FALTA DESTE DECALQUE, quando quem planta sabe mais do que a tabela. Nulo = o prazo cheio
+	/// de <see cref="Prazo"/>. E o retrato das pecas (`S2C.Pecas`) que o usa: quem chega no minuto 9
+	/// de um braco no chao precisa ve-lo sumir no minuto 10, e nao dez minutos depois de ter chegado.
+	/// Zero ou menos nao planta nada -- e a peca que venceu entre o retrato sair e chegar.
+	/// </param>
 	public void Plantar(Protocol.Decal tipo, Vector2 onde, Facing dir,
-						PecaDeCorpo peca = PecaDeCorpo.Nenhuma)
+						PecaDeCorpo peca = PecaDeCorpo.Nenhuma, double? restaSegundos = null)
 	{
+		if (restaSegundos is <= 0) return;
 		PedidosDeTeste++;
 		if (tipo == Protocol.Decal.Sangue) { SangueDeTeste++; OndeSangrouDeTeste = onde; }
 		if (tipo == Protocol.Decal.Membro) { MembrosDeTeste++; UltimaPecaDeTeste = peca; }
@@ -366,7 +377,7 @@ public partial class Decalques : Node2D
 			if (anim.Length == 0) return;
 		}
 
-		double prazo = Prazo(tipo);
+		double prazo = restaSegundos ?? Prazo(tipo);
 		bool permanente = prazo <= 0;
 
 		// ============================ O TETO DISPARA, E TEM QUE DISPARAR ============================

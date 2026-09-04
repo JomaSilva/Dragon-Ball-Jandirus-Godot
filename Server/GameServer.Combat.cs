@@ -228,6 +228,12 @@ public partial class GameServer
 		// do cadaver e, no fim dele, a viagem pro Outro Mundo. Ver `GameServer.Alem.cs`.
 		pl.Combate.AoMorrer = _ => AMorteAconteceu(pl);
 
+		// E QUEM OUVE O MEMBRO QUE CAIU -- o `SpawnLop()` do original, instalado UMA vez e valendo pra
+		// todo funil de dano letal deste corpo (soco, raio, explosao, dano direto, calor da estrela,
+		// Kaio-ken que estoura). E ele que poe a peca no chao da zona e a guarda pelos 600 s do DM.
+		// Ver `GameServer.Pecas.cs` e `CombatState.AoDecepar`.
+		pl.Combate.AoDecepar = (_, caiu) => SoltarPecas(pl, caiu);
+
 		// E QUEM RESPONDE "ESTE CORPO ESTA EM CINEMATICA AGORA?" -- o escudo da transformacao.
 		//
 		// **A RESPOSTA JA EXISTIA E E ESTA.** `EmCena` (`GameServer.Formas.cs`) le o `CenaSegundos`,
@@ -291,7 +297,9 @@ public partial class GameServer
 			// ==============================================================================================
 			bool jaViajou = Alem.EhOAlem(pl.Zone);
 			pl.MorteJaViajou = jaViajou;
-			pl.RelogioDaMorte = NowMs() + (jaViajou ? Alem.MsNoAlem : Alem.MsNoChao);
+			// Quem loga ja no Outro Mundo NAO ganha prazo nenhum (nao ha volta automatica -- ver
+			// `Alem.TipoDoEnma`); quem loga caido no mundo dos vivos ainda tem os 15 s ate subir.
+			pl.RelogioDaMorte = jaViajou ? long.MaxValue : NowMs() + Alem.MsNoChao;
 			return;
 		}
 
@@ -544,7 +552,10 @@ public partial class GameServer
 		// O VETOR E O MESMO DO ARREMESSO (`MeleeArea.Frente` do atacante), e nao a diferenca entre
 		// as duas posicoes: os corpos ficam colados quando o soco acerta, e um vetor de dois pixels
 		// e ruido -- a direcao do golpe e pra onde quem bateu estava virado.
-		if (r.Encostou) alvo.RumoDoGolpe = MeleeArea.Frente(a.Facing);
+		//
+		// PELA PORTA DO CORPO, e nao escrevendo no campo: e la que mora a regra de quem NAO gira (o
+		// morto, que e a foto de como caiu) -- ver `ServerPlayer.ApontarRumoDoGolpe`.
+		if (r.Encostou) alvo.ApontarRumoDoGolpe(MeleeArea.Frente(a.Facing));
 
 		if (r.Encostou) ca.SomarCombo();
 		else ca.ZerarCombo();          // errou, foi aparado de longe ou tomou contra: recomeca
@@ -596,12 +607,11 @@ public partial class GameServer
 	/// <summary>As consequencias fora do corpo: nocaute, morte, Zenkai.</summary>
 	private void ResolverDesfecho(ServerPlayer a, ServerPlayer d, GolpeResultado r)
 	{
+		// O RITMO DE TREINO JA MUDOU: quem ajusta o `tailgain` e o `SoltarPecas`, no instante em que o
+		// rabo cai por QUALQUER funil (ver `GameServer.Pecas.cs`). Aqui so se conta a historia.
 		if (r.RaboArrancado)
-		{
-			AjustarGanhoDoRabo(d);
 			GD.Print($"[server] {a.Name} ARRANCOU O RABO de {d.Name}"
 					 + $" (ritmo de treino de {d.Name}: x{d.Ficha.tailgain})");
-		}
 
 		// O ODIO POR GOLPE (`ENMITY_HIT`, `CombatMovement.dm:225`): so cresce contra quem a vitima
 		// ja tinha declarado rival. Fica aqui, e nao no `Atacar`, porque este e o ponto que ja
@@ -1072,47 +1082,11 @@ public partial class GameServer
 				o.Peer?.Send(wMagro, Protocol.ChannelState, DeliveryMethod.Unreliable);
 		}
 
-		// LOGO EM SEGUIDA, A PECA CAI. Depois do `S2C.Hit` porque a ordem e a do original: o
-		// `LopLimb` avisa, joga a peca no chao (`SpawnLop`, `mobparts_logic.dm:110`) e so entao
-		// solta o jato -- e aqui o jato nasce do proprio `Hit`, que ja saiu. Ver `SoltarPecas`.
-		SoltarPecas(d, r);
-	}
-
-	/// <summary>
-	/// AS PECAS DO CORPO CAINDO NO CHAO -- o `SpawnLop` do original (`mobparts_logic.dm:110,144-146`).
-	///
-	/// ============================ POR QUE ISTO NAO VEM COM O `Hit` ============================
-	/// O `S2C.Hit` ja diz que houve amputacao (o bit `Decepou`, que chega ate pra quem so assiste) e
-	/// e por ele que o jato de sangue dispara no cliente -- zero byte novo. O que ele NAO diz pra
-	/// plateia e QUAL membro: o campo `Membro` so e escrito quando `TemDano`, e quem assiste recebe
-	/// o pacote magro justamente pra nao ler ficha alheia. Alargar aquele pacote resolveria a peca e
-	/// de quebra vazaria o membro atingido em TODO soco -- caro por um evento raro.
-	///
-	/// Entao a peca vem pelo `S2C.Decalque`, que ja e confiavel e ja vai pra zona inteira. E o canal
-	/// certo tambem pelo prazo: uma marca de 60 s que se perde no fio nao volta, enquanto o jato de
-	/// meio segundo perdido nao faz falta a ninguem.
-	/// ==========================================================================================
-	/// </summary>
-	private void SoltarPecas(ServerPlayer d, GolpeResultado r)
-	{
-		if (r.PecasCaidas is not { Count: > 0 } pecas) return;
-
-		foreach (PecaDeCorpo peca in pecas)
-		{
-			// ESPALHA EM VOLTA, e o sorteio e do SERVIDOR. O original faz
-			// `pixel_x/pixel_y += rand(-32,32)` no `New()` de cada peca (`mobparts.dm:404-405`) --
-			// um tile em pixels, que e o mesmo `TileSize` daqui. Sorteado no cliente, cada tela
-			// veria o braco num lugar; e cenario, e cenario que discorda entre telas e a primeira
-			// coisa que alguem fotografa achando que e bug.
-			var onde = new Vec2(
-				d.Pos.X + _rng.Next(-ZoneCollision.TileSize, ZoneCollision.TileSize + 1),
-				d.Pos.Y + _rng.Next(-ZoneCollision.TileSize, ZoneCollision.TileSize + 1));
-
-			// A DIRECAO NAO DIZ NADA AQUI: a folha `Body Parts Bloody` tem um recorte por peca e
-			// nenhum sufixo de direcao, e o `Plantar` recebe a animacao por nome. Vai `South` pelo
-			// mesmo motivo que o chao danificado vai -- e o campo do pacote, nao uma escolha.
-			MandarDecalque(d.Zone, Protocol.Decal.Membro, onde, Facing.South, peca);
-		}
+		// A PECA NAO SAI DAQUI. Ela JA SAIU: o `LopLimb` de dentro do resolvedor avisou o
+		// `AoDecepar`, e o `SoltarPecas` (`GameServer.Pecas.cs`) a pos no chao ANTES deste relato --
+		// que e a ordem do original (`SpawnLop` em `mobparts_logic.dm:110`, o jato so em `:119`).
+		// Havia aqui um `SoltarPecas(d, r)` lendo uma lista que so o soco preenchia; foi por isso que
+		// as amputacoes por tecnica nunca puseram peca no chao.
 	}
 
 	// =====================================================================
@@ -1614,9 +1588,12 @@ public partial class GameServer
 	/// campos **nao existem aqui** -- eles nascem com o Enma e com o karma por PK, que sao a etapa
 	/// seguinte. Ficam listados pra a ausencia ser uma pendencia e nao um esquecimento.
 	///
-	/// **VIDA PELA METADE, E NAO INTEIRA.** Divergencia do DM (`SpreadHeal(100,1,1)` la), e ela e do
-	/// port desde antes desta mudanca. Quem chega ao Outro Mundo chega curado -- isso E do DM, e
-	/// esta no `IrProAlem`; o que a volta a vida entrega e metade, que e o preco que este port cobra.
+	/// **VIDA, MEMBROS, KI E FOLEGO INTEIROS** -- o `Revive()` do DM (`Death.dm:163-173`:
+	/// `SpreadHeal(100,1,1)`, `RegrowLimb` em todo membro, `Ki = MaxKi`, `stamina = maxstamina`).
+	/// A metade que este metodo entregava era o preco da volta GRATUITA por tempo, que morreu junto
+	/// com o `MsNoAlem`: agora quem chama e o Enma (que cobra o milhao e o debuff de uma hora), as
+	/// esferas e a tecnica de reviver, e o preco e deles. A morte, por sua vez, deixou de curar
+	/// (ver `IrProAlem`) -- a cura mora AQUI, na volta.
 	/// ====================================================================================================
 	///
 	/// ============================ ERA A TERRA CRAVADA, E ESSE E O BUG QUE NAO APARECE ============================
@@ -1627,18 +1604,19 @@ public partial class GameServer
 	/// tinha num lugar so (`mob/proc/Locate()`).
 	/// ========================================================================================================
 	///
-	/// O JULGAMENTO DO ENMA (o revive por Zeni com o debuff de uma hora, a reencarnacao a 10% do BP,
-	/// o Inferno por karma negativo) e a etapa seguinte -- e e ele que substitui o prazo automatico
-	/// de <see cref="Jandirus.Core.World.Alem.MsNoAlem"/>, nao que se soma a ele.
+	/// O ENMA ENTROU (`GameServer.Alem.EnmaReviverPorZeni`): o revive por Zeni com o debuff de uma
+	/// hora chama isto. A reencarnacao a 10% do BP e o Inferno por karma negativo continuam sendo a
+	/// etapa seguinte.
 	/// </summary>
 	private void Renascer(ServerPlayer pl)
 	{
 		// MORRER DEVOLVE O CORPO INTEIRO, rabo incluso -- e o `Restaurar()` do Body. O ritmo
 		// de treino precisa voltar junto, senao o Saiyajin ressuscitado ficaria com o bonus
 		// de quem nao tem rabo e o rabo de volta no lugar.
-		pl.Combate.Reviver(0.5, SegundosDeCarencia);
+		pl.Combate.Reviver(1, SegundosDeCarencia);
 		AjustarGanhoDoRabo(pl);
-		pl.Ficha.Ki = pl.Ficha.MaxKi * 0.5;
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		pl.Ficha.stamina = pl.Ficha.maxstamina;
 		pl.RelogioDaMorte = 0;
 
 		// ============================ A SALA DO TEMPO JA FOI DESTRANCADA, LA ATRAS ============================

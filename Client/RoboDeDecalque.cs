@@ -1,3 +1,4 @@
+using System.Linq;
 using Godot;
 using Jandirus.Core.Combat;
 using Jandirus.Core.World;
@@ -39,9 +40,54 @@ public partial class RoboDeDecalque : Node
 		if (!ok) _falhas.Add(oque);
 	}
 
+	/// <summary>A instancia viva. O `Boot` pendura um robo destes a CADA entrada no mundo -- ver `_Ready`.</summary>
+	private static RoboDeDecalque? _viva;
+
+	public override void _Ready()
+	{
+		// UM ROBO SO POR PROCESSO. O `Boot` cria este node a cada entrada no mundo, e a familia da volta ao
+		// lobby ENTRA DE NOVO -- a segunda entrada nascia um segundo robo, que rodava a bancada inteira outra
+		// vez por cima da primeira e, no passo 16, voltava ao lobby de novo enquanto o primeiro ainda media
+		// (foi o "o mundo nao voltou depois do Jogar" da contraprova). O primeiro, emancipado na raiz, e
+		// quem termina; o segundo morre aqui.
+		if (_viva != null && GodotObject.IsInstanceValid(_viva)) { QueueFree(); return; }
+		_viva = this;
+
+		// O DEFEITO INJETADO da volta ao lobby: ver `World.NaoSoltarDecalquesDeTeste`.
+		if (System.Array.IndexOf(OS.GetCmdlineArgs(), "--decalinjetar") >= 0)
+		{
+			World.NaoSoltarDecalquesDeTeste = true;
+			GD.Print("[decal] DEFEITO INJETADO: o World nao vai soltar o DecalqueCaiu ao sair -- a familia da volta ao lobby TEM que reprovar");
+		}
+		CallDeferred(nameof(Emancipar));
+	}
+
+	/// <summary>O lobby (o `Boot`), guardado antes de sair de dentro dele. E onde os botoes moram.</summary>
+	private Node? _lobby;
+
+	/// <summary>
+	/// SAIR DE DENTRO DO `Boot` PRA SOBREVIVER A VOLTA AO LOBBY -- a mesma licao da `RoboDeCarga`: o
+	/// `Boot.VoltarAoLogin` derruba TODOS os filhos dele menos quatro telas de maquina, e este robo era um
+	/// deles. A primeira rodada desta familia morreu exatamente assim: apertou "Desconectar" e o log
+	/// terminou ali, sem erro, sem placar, com a janela aberta. O conserto e do lado da bancada (por uma
+	/// excecao no `Boot` o codigo de producao passaria a conhecer o nome de um robo): o robo se muda pra raiz
+	/// e guarda o endereco do lobby pra continuar apertando os botoes de la.
+	/// </summary>
+	private void Emancipar()
+	{
+		if (GetParent() is not { } pai || GetTree() is not { } arv || pai == arv.Root) return;
+		Node raiz = arv.Root;   // ANTES do RemoveChild: fora da arvore `GetTree()` e nulo
+		_lobby = pai;
+		pai.RemoveChild(this);
+		raiz.AddChild(this);
+	}
+
 	public override void _Process(double delta)
 	{
-		if (_acabou || GameClient.Instance is not { Connected: true }) return;
+		if (_acabou) return;
+		// A VOLTA AO LOBBY anda com o mundo DERRUBADO -- ela nao pode ficar atras dos portoes abaixo.
+		if (_volta != Volta.Nao) { AndarNaVoltaAoLobby(delta); return; }
+		if (GameClient.Instance is not { Connected: true }) return;
 		if (World.Instancia is not { } mundo || Decalques.Instancia is not { } dec) return;
 
 		_pico = Math.Max(_pico, Decalques.VivosDeTeste);
@@ -291,14 +337,194 @@ public partial class RoboDeDecalque : Node
 				OTetoDaAgua(dec);
 				break;
 
-			default:
-				_acabou = true;
-				GD.Print("\n[decal] ===== BANCADA DOS DECALQUES =====");
-				foreach (string l in _passos) GD.Print("[decal] " + l);
-				GD.Print(_falhas.Count == 0
-					? "[decal] ===== TUDO OK ====="
-					: $"[decal] ===== {_falhas.Count} FALHA(S) =====\n[decal]   " + string.Join("\n[decal]   ", _falhas));
+			case 16:
+				// ============================ A VOLTA AO LOBBY, QUE NINGUEM TINHA ANDADO ============================
+				// Tudo acima mede o primeiro mundo do processo. O dono nao joga assim: ele hospeda, volta ao
+				// lobby, cria outro personagem, entra de novo -- e foi nesse segundo mundo que a trilha do
+				// arremesso sumiu (2026-09-04). O `GameClient` e autoload e sobrevive a volta; o que se prova
+				// aqui e que o World morto nao deixa NENHUM assinante pra tras e que o World novo recebe o
+				// decalque pelo MESMO tratador de rede. Ver `World._ExitTree` e `GameClient.OuvintesOrfaos`.
+				// ================================================================================================
+				_volta = Volta.AbrirPausa;
 				break;
+
+			default:
+				Placar();
+				break;
+		}
+	}
+
+	private void Placar()
+	{
+		_acabou = true;
+		GD.Print("\n[decal] ===== BANCADA DOS DECALQUES =====");
+		foreach (string l in _passos) GD.Print("[decal] " + l);
+		GD.Print(_falhas.Count == 0
+			? "[decal] ===== TUDO OK ====="
+			: $"[decal] ===== {_falhas.Count} FALHA(S) =====\n[decal]   " + string.Join("\n[decal]   ", _falhas));
+		// A JANELA FECHA SOZINHA: a bancada e roteiro de .bat (duas rodadas, prova e contraprova), e uma
+		// janela aberta esperando alguem seria o .bat travado no segundo monitor.
+		GetTree().Quit(_falhas.Count == 0 ? 0 : 1);
+	}
+
+	// =====================================================================
+	// A VOLTA AO LOBBY -- pelo botao, como o dedo do dono
+	// =====================================================================
+	private enum Volta { Nao, AbrirPausa, EsperarLobby, Logar, EsperarSlots, EsperarMundo, ConferirDecalque }
+	private Volta _volta;
+	private double _tv;
+	private int _tentativas;
+	private int _pedidosAntes, _nodesAntes;
+
+	/// <summary>
+	/// ESC de verdade, e o "Desconectar" pelo botao: chamar `GameClient.Desconectar()` por dentro nao passa
+	/// pelo `Boot.VoltarAoLogin`, e e o `VoltarAoLogin` que derruba o World -- o caminho inteiro do defeito.
+	/// (A mesma licao da `RoboDeCarga`, que ja pagou por atalhar isto.)
+	/// </summary>
+	private void AndarNaVoltaAoLobby(double delta)
+	{
+		_tv += delta;
+		if (_tv < 0.5) return;
+		_tv = 0;
+		GameClient? cli = GameClient.Instance;
+
+		switch (_volta)
+		{
+			case Volta.AbrirPausa:
+				if (PauseMenu.Instancia is not { Aberto: true })
+				{
+					// O primeiro ESC e engolido pelo chat, que tem o foco ao entrar; o segundo abre o menu.
+					if (++_tentativas > 8) { Conferir(false, "o ESC nunca abriu o menu de pausa -- a volta ao lobby nao foi medida"); Placar(); return; }
+					Input.ParseInputEvent(new InputEventKey { Keycode = Key.Escape, PhysicalKeycode = Key.Escape, Pressed = true });
+					Input.ParseInputEvent(new InputEventKey { Keycode = Key.Escape, PhysicalKeycode = Key.Escape, Pressed = false });
+					return;
+				}
+				if (!Apertar("Desconectar")) { Conferir(false, "o menu de pausa nao tem o botao Desconectar"); Placar(); return; }
+				// QUEM HOSPEDA CLICA DUAS VEZES: o primeiro clique so avisa que sair derruba o servidor pra todos
+				// (`PauseMenu`, "Clique de novo"); o segundo grava, para o servidor e volta ao lobby. E o caminho
+				// do dono -- ele hospeda -- e por isso a volta aqui e a dele, com o servidor renascendo no
+				// "Hospedar partida" logo abaixo.
+				if (Jandirus.Server.GameServer.Instance is { Running: true }) Apertar("Desconectar");
+				_tentativas = 0;
+				_volta = Volta.EsperarLobby;
+				break;
+
+			case Volta.EsperarLobby:
+				// O `QueueFree` do `VoltarAoLogin` mata o World no fim do quadro; meio segundo depois ele ja e um
+				// node liberado -- e e assim que um assinante orfao se apresenta.
+				if (World.Instancia != null || cli is { Connected: true })
+				{
+					if (++_tentativas > 10) { Conferir(false, "o mundo nao caiu depois do Desconectar"); Placar(); return; }
+					return;
+				}
+				{
+					System.Collections.Generic.List<string> orfaos = cli?.OuvintesOrfaos() ?? ["(sem GameClient)"];
+					Conferir(orfaos.Count == 0,
+						"de volta ao lobby, NENHUM evento do GameClient aponta pra node liberado (era o `DecalqueCaiu` do World morto)"
+						+ (orfaos.Count == 0 ? "" : $" -- {orfaos.Count} orfao(s): " + string.Join(", ", orfaos)));
+				}
+				_tentativas = 0;
+				_volta = Volta.Logar;
+				break;
+
+			case Volta.Logar:
+				Logar();
+				_volta = Volta.EsperarSlots;
+				break;
+
+			case Volta.EsperarSlots:
+				// COM `--nome` NA LINHA DE COMANDO O JOGO ENTRA SOZINHO no personagem (o `Boot.AoReceberSlots`
+				// da bancada), e a lista com o botao "Jogar" nem chega a aparecer -- a primeira rodada desta
+				// familia ficou 10 s procurando um botao que o proprio jogo tinha pulado.
+				if (World.Instancia != null && cli is { Connected: true }) { _tentativas = 0; _volta = Volta.EsperarMundo; return; }
+				if (Botao("Jogar") is { } jogar)
+				{
+					jogar.EmitSignal(BaseButton.SignalName.Pressed);
+					_tentativas = 0;
+					_volta = Volta.EsperarMundo;
+					return;
+				}
+				if (++_tentativas > 20) { Conferir(false, "nem o mundo nem a lista de personagens voltaram depois do login"); Placar(); return; }
+				if (_tentativas % 5 == 0 && cli is not { Connected: true }) Logar();
+				break;
+
+			case Volta.EsperarMundo:
+				if (World.Instancia == null || cli is not { Connected: true } || Decalques.Instancia == null)
+				{
+					if (++_tentativas > 40) { Conferir(false, "o mundo nao voltou depois do Jogar"); Placar(); return; }
+					return;
+				}
+				Conferir(cli.OuvintesVivos("DecalqueCaiu") == 1,
+					$"no segundo mundo o `DecalqueCaiu` tem UM assinante vivo, o World novo ({cli.OuvintesVivos("DecalqueCaiu")} vivo(s), {cli.OuvintesOrfaos().Count} orfao(s))");
+				{
+					// O MESMO PACOTE QUE O SERVIDOR MANDA (`GameServer.MandarDecalque`), entregue ao MESMO tratador
+					// (`GameClient.Handle`): so o fio e sintetico. Um `Plantar` chamado na mao provaria que plantar
+					// planta -- e o defeito nunca esteve ai; ele estava entre o tratador e o World.
+					_pedidosAntes = Decalques.PedidosDeTeste;
+					_nodesAntes = Decalques.Instancia.GetChildCount();
+					Vector2 onde = Todos<LocalPlayer>(World.Instancia).FirstOrDefault()?.GlobalPosition ?? Vector2.Zero;
+					var w = Protocol.Begin(Protocol.S2C.Decalque);
+					w.Put((byte)Protocol.Decal.Cratera);
+					w.PutVec(new Vec2(onde.X, onde.Y));
+					w.Put((byte)Facing.South);
+					// O TRATADOR PODE LANCAR -- e exatamente o que o orfao faz (`ObjectDisposedException` num node
+					// liberado). Na contraprova isso e o esperado; sem o `catch` a excecao abortava este passo e
+					// o robo repetia a entrega pra sempre.
+					try { cli.EntregarDeTeste(w); }
+					catch (System.Exception e) { Conferir(false, $"o tratador de rede LANCOU ao entregar o decalque (um assinante morto na frente do World vivo): {e.GetType().Name}"); }
+				}
+				_tentativas = 0;
+				_volta = Volta.ConferirDecalque;
+				break;
+
+			case Volta.ConferirDecalque:
+				Conferir(Decalques.PedidosDeTeste > _pedidosAntes && Decalques.Instancia is { } d2 && d2.GetChildCount() > _nodesAntes,
+					$"...e um `S2C.Decalque` entregue ao tratador de rede VIRA NODE no World novo (pedidos {_pedidosAntes} -> {Decalques.PedidosDeTeste}, nodes {_nodesAntes} -> {Decalques.Instancia?.GetChildCount()})");
+				Conferir(cli?.OuvintesOrfaos().Count == 0, "e continua sem orfao nenhum depois do pacote");
+				_volta = Volta.Nao;
+				Placar();
+				break;
+		}
+	}
+
+	private void Logar()
+	{
+		string[] args = OS.GetCmdlineArgs();
+		string conta = Arg(args, "--conta") ?? "decal";
+		string senha = Arg(args, "--senha") ?? "teste";   // o mesmo padrao do `Boot.AutoConectar`
+		foreach (LineEdit l in Todos<LineEdit>(_lobby ?? GetParent()).Where(l => l.IsVisibleInTree()))
+			if (l.Secret) l.Text = senha;
+			else if (l.MaxLength == 24) l.Text = conta;
+		// O MESMO BOTAO QUE O DONO APERTA: quem subiu com `--host` volta pelo "Hospedar partida" (o servidor
+		// parou no Desconectar e renasce ai, no mesmo processo); quem discou num servidor de fora volta pelo
+		// "Entrar".
+		string botao = System.Array.IndexOf(args, "--host") >= 0 ? "Hospedar partida (servidor local)" : "Entrar";
+		if (!Apertar(botao)) Conferir(false, $"o lobby nao tem o botao '{botao}'");
+	}
+
+	private static string? Arg(string[] args, string chave)
+	{
+		int i = System.Array.IndexOf(args, chave);
+		return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+	}
+
+	private Button? Botao(string texto) =>
+		Todos<Button>(_lobby ?? GetParent()).FirstOrDefault(b => b.Text == texto && b.IsVisibleInTree());
+
+	private bool Apertar(string texto)
+	{
+		if (Botao(texto) is not { } b) return false;
+		b.EmitSignal(BaseButton.SignalName.Pressed);
+		return true;
+	}
+
+	private static System.Collections.Generic.IEnumerable<T> Todos<T>(Node? raiz) where T : Node
+	{
+		if (raiz == null) yield break;
+		foreach (Node f in raiz.GetChildren())
+		{
+			if (f is T t) yield return t;
+			foreach (T neto in Todos<T>(f)) yield return neto;
 		}
 	}
 

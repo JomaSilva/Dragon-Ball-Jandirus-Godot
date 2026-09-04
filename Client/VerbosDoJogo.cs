@@ -36,6 +36,25 @@ public static class VerbosDoJogo
 	/// <summary>Ha alguem marcado? E o que os verbs de admin exigem.</summary>
 	private static bool TemAlvo() => (C?.AlvoId ?? 0) != 0;
 
+	// ============================ QUEM VE O QUE (`Verbo.Mostrar`) ============================
+	// O pedido do dono: *"verbos de namek ... e alguns de rank deveriam aparecer somente se eu fosse
+	// namek ou tivesse o rank em questao"*. No original os verbs de cargo entram em `verbs` quando o
+	// cargo e dado e saem quando ele se perde; aqui o catalogo e um so e quem filtra e a tela. A
+	// PERMISSAO CONTINUA NO SERVIDOR: isto e so o que aparece. As chaves sao as de `Core/Ranks/Ranks.cs`
+	// ("elder", "kov", "president", "guardian", "godofdestruction"); o dono de um cargo chega pelo NOME
+	// na lista de cargos (`CargoInfo.Dono`), que o servidor manda no login e a cada outorga.
+	// ==========================================================================================
+	private static bool SouDaRaca(string raca) =>
+		string.Equals(C?.Atributos.Raca, raca, StringComparison.OrdinalIgnoreCase);
+	private static bool SouNamek() => SouDaRaca("Namekian");
+	private static bool TenhoCargo(string chave) =>
+		C is { } c && c.LocalName.Length > 0
+		&& c.Cargos.Any(k => string.Equals(k.Chave, chave, StringComparison.OrdinalIgnoreCase)
+						  && string.Equals(k.Dono, c.LocalName, StringComparison.Ordinal));
+	private static bool TenhoAlgumCargo() =>
+		C is { } c && c.LocalName.Length > 0
+		&& c.Cargos.Any(k => k.Dono.Length > 0 && string.Equals(k.Dono, c.LocalName, StringComparison.Ordinal));
+
 	private static void NoAlvo(string cmd)
 	{
 		int id = C?.AlvoId ?? 0;
@@ -119,15 +138,15 @@ public static class VerbosDoJogo
 		// porque falar exige texto e botao nao carrega texto.
 		Verbos.Registrar(new Verbo("Appoint Elder", Verbos.Outros,
 			"So o Grande Anciao de Namek: oferece a quem esta marcado um assento de Anciao cardeal.",
-			() => NoAlvo("cargo_nomear")));
+			() => NoAlvo("cargo_nomear")) { Mostrar = () => TenhoCargo("elder") });
 
 		Verbos.Registrar(new Verbo("Accept Elder Seat", Verbos.Outros,
 			"Aceita o assento de Anciao que te ofereceram.",
-			() => C?.SendVerbo("cargo_nomear_aceitar")));
+			() => C?.SendVerbo("cargo_nomear_aceitar")) { Mostrar = SouNamek });
 
 		Verbos.Registrar(new Verbo("Decline Elder Seat", Verbos.Outros,
 			"Recusa o assento de Anciao.",
-			() => C?.SendVerbo("cargo_nomear_recusar")));
+			() => C?.SendVerbo("cargo_nomear_recusar")) { Mostrar = SouNamek });
 
 		// ============================ A RESPOSTA A OFERTA DE JUVENTUDE ============================
 		// O `Restore_Youth` do Grand Kai e do Demon Lord (lote G8) abre uma OFERTA, porque no DM o
@@ -188,15 +207,15 @@ public static class VerbosDoJogo
 
 		Verbos.Registrar(new Verbo("Name Heir", Verbos.Outros,
 			"So o Rei de Vegeta: poe quem esta marcado na linha de sucessao do trono.",
-			() => NoAlvo("cargo_herdeiro")));
+			() => NoAlvo("cargo_herdeiro")) { Mostrar = () => TenhoCargo("kov") });
 
 		Verbos.Registrar(new Verbo("Remove Heir", Verbos.Outros,
 			"Tira quem esta marcado da linha de sucessao de Vegeta.",
-			() => NoAlvo("cargo_herdeiro_tirar")));
+			() => NoAlvo("cargo_herdeiro_tirar")) { Mostrar = () => TenhoCargo("kov") });
 
 		Verbos.Registrar(new Verbo("Line of Succession", Verbos.Outros,
 			"Quem herda o trono de Vegeta, na ordem.",
-			() => C?.SendVerbo("cargo_herdeiros")));
+			() => C?.SendVerbo("cargo_herdeiros")) { Mostrar = () => TenhoCargo("kov") || SouDaRaca("Saiyan") });
 
 		Verbos.Registrar(new Verbo("Challenge God of Destruction", Verbos.Outros,
 			"Desafia FORMALMENTE o portador do titulo. Exige God Ki desperto; nocaute decide.",
@@ -204,11 +223,11 @@ public static class VerbosDoJogo
 
 		Verbos.Registrar(new Verbo("Accept Challenge", Verbos.Outros,
 			"Aceita agora o duelo pelo titulo.",
-			() => C?.SendVerbo("cargo_duelo_aceitar")));
+			() => C?.SendVerbo("cargo_duelo_aceitar")) { Mostrar = () => TenhoCargo("godofdestruction") });
 
 		Verbos.Registrar(new Verbo("Postpone Challenge", Verbos.Outros,
 			"Adia o duelo. O terceiro adiamento na mesma semana e covardia e custa o titulo.",
-			() => C?.SendVerbo("cargo_duelo_adiar")));
+			() => C?.SendVerbo("cargo_duelo_adiar")) { Mostrar = () => TenhoCargo("godofdestruction") });
 
 		Verbos.Registrar(new Verbo("Title Status", Verbos.Outros,
 			"O titulo de God of Destruction: quem carrega, a tarefa em aberto, falhas e prazos.",
@@ -220,11 +239,11 @@ public static class VerbosDoJogo
 		// `GameServer.CargoMissoes.cs`.
 		Verbos.Registrar(new Verbo("Rank Duty", Verbos.Outros,
 			"Os deveres do seu cargo: a tarefa em aberto, o prazo em dias in-game, as falhas e o renome.",
-			() => C?.SendVerbo("cargo_deveres")));
+			() => C?.SendVerbo("cargo_deveres")) { Mostrar = TenhoAlgumCargo });
 
 		Verbos.Registrar(new Verbo("Fund Earth", Verbos.Outros,
 			"So o Presidente da Terra, e so com a tarefa de verba aberta: deposita a verba no cofre da Terra.",
-			() => C?.SendVerbo("cargo_verba")));
+			() => C?.SendVerbo("cargo_verba")) { Mostrar = () => TenhoCargo("president") });
 
 		// =====================================================================
 		// A SALA DO TEMPO -- os dois verbs do GUARDIAO DA TERRA
@@ -233,16 +252,16 @@ public static class VerbosDoJogo
 		// ja descrevia o Guardiao como quem "faz chaves da Sala do Tempo e autoriza a entrada", e
 		// nenhum dos dois verbos existia -- era promessa escrita e nao ligada.
 		//
-		// ELES APARECEM PRA TODO MUNDO de proposito: quem nao e Guardiao le a recusa e descobre que
-		// a Sala do Tempo tem dono. Esconder ensinaria menos, e a permissao e do servidor de
-		// qualquer jeito (ver `GameServer.SalaDoTempo.cs`).
+		// SO O GUARDIAO OS VE (2026-09-03). Eles apareciam pra todo mundo "pra ensinar que a Sala tem
+		// dono"; o dono do jogo achou isso ruido -- e a Sala continua tendo dono na descricao do cargo,
+		// na aba Cargos. A permissao e do servidor de qualquer jeito (ver `GameServer.SalaDoTempo.cs`).
 		Verbos.Registrar(new Verbo("Time Chamber: Authorize", Verbos.Outros,
 			"So o Guardiao da Terra. Da ao alvo marcado UMA entrada na Sala do Tempo.",
-			() => NoAlvo("sala_autorizar")));
+			() => NoAlvo("sala_autorizar")) { Mostrar = () => TenhoCargo("guardian") });
 
 		Verbos.Registrar(new Verbo("Time Chamber: Release", Verbos.Outros,
 			"So o Guardiao da Terra. Destranca a porta pra quem ficou preso la dentro.",
-			() => NoAlvo("sala_soltar")));
+			() => NoAlvo("sala_soltar")) { Mostrar = () => TenhoCargo("guardian") });
 
 		Verbos.Registrar(new Verbo("Tech Catalog", Verbos.Outros,
 			"O catalogo de construcoes, com o custo e o motivo de cada nao.",

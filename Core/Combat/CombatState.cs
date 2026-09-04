@@ -178,7 +178,7 @@ public sealed class CombatState
 	/// `TickDaForma`), e o Core nao conhece forma, cliente nem cinematica. **Ele PERGUNTA, ele nao
 	/// guarda.** Um segundo bit aqui precisaria ser apagado em todo jeito de a cena acabar -- o prazo
 	/// vencendo, o nocaute no meio dela, a morte, a reversao pra base -- e este port ja perdeu duas
-	/// vezes exatamente assim (`Alem.MsNoAlem` e a aureola). Derivado, o escudo cai no MESMO gesto em
+	/// vezes exatamente assim (o antigo prazo do alem e a aureola). Derivado, o escudo cai no MESMO gesto em
 	/// que a cena cai, e nao ha linha pra ninguem esquecer.
 	///
 	/// Instalado uma vez por corpo, no `GameServer.PrepararCombate` -- que e por onde passam o jogador
@@ -272,13 +272,103 @@ public sealed class CombatState
 	/// `Corpo.Ferir` continua publico e sem crivo -- as bancadas machucam corpo de proposito, e uma
 	/// bancada que nao consegue mais quebrar um membro nao mede nada.
 	/// ========================================================================================
+	///
+	/// ============================ E ELE E O `DamageMe` INTEIRO: FERE **E** ARRANCA ============================
+	/// `mobparts_logic.dm:85-97`: `health -= number; ... if(health <= 0 && !nonlethal) LopLimb()`. No
+	/// original a amputacao mora DENTRO do dano -- nao ha como ferir um membro por golpe letal ate
+	/// zero sem que ele caia, venha o dano de um soco, de uma explosao (`SpreadDamage`,
+	/// `Injuries.dm:63-87`) ou de um golpe direto (`DamageLimb`, `:32-48`): os tres chamam o mesmo
+	/// `DamageMe`.
+	///
+	/// **NO PORT ISSO ESTAVA SO NO SOCO.** O `MeleeResolver` arrancava depois de ferir; o dano em area
+	/// e o dano direto (`EspalharDanoG3`, `FerirUmMembroG10`) feriam pelo mesmo funil e paravam ai --
+	/// um braco zerado por uma tecnica ficava com `Vida = 0`, inteiro no corpo, e nenhuma peca nascia.
+	/// Foi assim que o dono viu "o body part nao esta spawnando": ele viu a metade dos funis que nao
+	/// tinha a cauda. Aqui a cauda mora no funil, e um quarto caminho de dano nasce com ela.
+	///
+	/// O QUE CAI SAI PELO <see cref="AoDecepar"/> -- a peca no chao e o Ki descontado sao consequencia
+	/// de <see cref="Arrancar"/>, e quem chamou `Ferir` le o resultado no proprio membro
+	/// (`membro.Decepado`). Nao ha lista de retorno pra ninguem esquecer de esvaziar.
+	/// =========================================================================================================
 	/// </summary>
 	public bool Ferir(BodyPart membro, double dano, bool letal)
 	{
 		if (Intocavel || dano <= 0) return false;
 		Corpo.Ferir(membro, dano, letal);
+
+		// O `if(health <= 0 && !nonlethal) LopLimb()` do DM, com as regras que o port ja tinha no
+		// soco: so golpe LETAL arranca, so um membro que ZEROU, so `Vitalidade.Membro` (nucleo zerado
+		// e morte, nao amputacao -- cabeca arrancada e coisa de tecnica, nao de troca de golpes), e o
+		// aninhado (mao, pe, cerebro, orgaos) nao cai sozinho: ele vai de carona no membro de fora.
+		//
+		// `SemArrancarDeTeste` e o DEFEITO INJETAVEL desta cauda -- ver o campo.
+		if (letal && !SemArrancarDeTeste && membro.Vida <= 0
+			&& membro.Papel == Vitalidade.Membro && !membro.Aninhado)
+			Arrancar(membro);
+
 		return true;
 	}
+
+	/// <summary>
+	/// ============================ `LopLimb()` -- `mobparts_logic.dm:104-128` ============================
+	/// ARRANCA ESTE MEMBRO: a cascata do <see cref="Body.Decepar"/> (o `parentlimb` do original, que
+	/// la nunca rodava -- defeito 2 do <see cref="MeleeResolver"/>), o Ki que o corpo perde
+	/// (`savant.Ki -= 0.2*savant.MaxKi`, `:112-113`) e o aviso a quem escuta -- que e por onde o
+	/// `SpawnLop()` (`:144-146`) acontece no servidor.
+	///
+	/// SAO DUAS PORTAS PRA ELE, e as duas sao do DM: a do dano (<see cref="Ferir"/>, o `DamageMe`) e a
+	/// do rabo pelas costas (`MeleeResolver.ArrancarRabo`, o `CombatMovement.dm:309-314`, que arranca
+	/// sem o rabo ter zerado). Uma terceira que aparecer entra por aqui -- e ganha a peca no chao e o
+	/// Ki de graca, em vez de copiar as tres linhas e esquecer uma.
+	///
+	/// Devolve o que caiu (vazio se o membro ja estava fora). O membro ja decepado NAO cai de novo.
+	/// ====================================================================================================
+	/// </summary>
+	public List<BodyPart> Arrancar(BodyPart membro)
+	{
+		List<BodyPart> caiu = Corpo.Decepar(membro);
+		if (caiu.Count == 0) return caiu;
+
+		F.Ki = Math.Max(0, F.Ki - F.MaxKi * Regras.CustoDeceparKi);
+
+		// DEPOIS DE TUDO ESCRITO, como o `AoMorrer`: quem ouve le o corpo pra decidir onde a peca
+		// nasce e o que o rabo caido muda no treino, e um gancho chamado no meio veria o membro
+		// ainda no lugar.
+		AoDecepar?.Invoke(this, caiu);
+		return caiu;
+	}
+
+	/// <summary>
+	/// ============================ ESTE CORPO ACABOU DE PERDER UM MEMBRO -- o `SpawnLop` ============================
+	/// O irmao do <see cref="AoMorrer"/>, e nasceu pelo mesmo motivo: a peca no chao era emitida em
+	/// UM lugar do servidor (`SoltarPecas`, pendurado no anuncio do soco), lendo uma lista que so o
+	/// resolvedor de socos preenchia. Todo outro caminho que decepasse -- e agora todo `Ferir` letal
+	/// decepa -- teria que lembrar de emitir, e o dia em que um esquecesse seria "o membro caiu e nada
+	/// apareceu no chao", que ninguem liga ao codigo depois.
+	///
+	/// Com o gancho, quem emite e quem arrancou (<see cref="Arrancar"/>), e ha UM emissor: o servidor
+	/// instala `SoltarPecas` aqui no `PrepararCombate`, pro jogador, pro NPC e pro cadaver.
+	///
+	/// O Core continua sem saber o que e um decalque, uma zona ou um pacote -- ele so diz QUAIS partes
+	/// sairam do corpo, na ordem da cascata (o membro de fora primeiro).
+	/// ===================================================================================================================
+	/// </summary>
+	public Action<CombatState, List<BodyPart>>? AoDecepar;
+
+	/// <summary>
+	/// ============================ O DEFEITO INJETAVEL DA CAUDA UNICA ============================
+	/// **FALSO EM JOGO, SEMPRE** -- so a `--pecateste` o liga, num corpo forjado dela. Ligado, o
+	/// <see cref="Ferir"/> volta a ser o que era antes da cauda: fere e para, sem `LopLimb`. E a
+	/// reproducao letra por letra do defeito que o dono relatou (um membro zerado por dano em area
+	/// que continua no corpo e nao poe peca nenhuma no chao).
+	///
+	/// MORA NO CORE, e nao na bancada, pela regra da casa que o `_cadaverNoPlayersDeTeste` e o
+	/// `_dcGradeCega` ja seguem: o criterio tem que ser o MESMO objeto com e sem o defeito. Uma copia
+	/// do `Ferir` escrita na bancada mediria a copia concordando consigo mesma. Custa um `bool` por
+	/// golpe que zera um membro -- que e o evento mais raro do combate.
+	/// ============================================================================================
+	/// </summary>
+	public bool SemArrancarDeTeste;
 
 	/// <summary>Passagem de tempo: cronometros, guarda, saida do nocaute.</summary>
 	public void Tick(double dt)
@@ -369,6 +459,8 @@ public sealed class CombatState
 	public void Nocautear(double segundos, bool porVital = false)
 	{
 		F.KO = true;
+		F.train = false;   // `KO.dm:57-58`: o nocaute desliga o treino e a meditacao
+		F.med = false;
 		Bloqueando = false;
 		ContraPronto = false;
 		TempoDeGuarda = 0;
@@ -477,6 +569,11 @@ public sealed class CombatState
 
 		F.dead = true;
 		F.KO = false;
+		// O TREINO E A MEDITACAO DESLIGAM: o `Death()` do DM comeca por `KO(-1)`, e `KO()` faz
+		// `train = 0; med = 0` (`KO.dm:57-58`). Sem isto quem morria com a tecla T ligada seguia
+		// ganhando BP no Outro Mundo -- e o cliente nunca manda "parado", porque o morto nem le acoes.
+		F.train = false;
+		F.med = false;
 		Bloqueando = false;
 		NocauteRestante = 0;
 		EmCombate = 0;

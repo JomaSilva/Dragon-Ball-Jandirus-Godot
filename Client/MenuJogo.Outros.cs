@@ -200,6 +200,10 @@ public partial class MenuJogo
 	/// Person" acende quando se marca alguem. Um caractere por verb, nos mesmos valores em que o
 	/// botao e pintado: sem isto o botao ficaria apagado ate outra coisa qualquer remontar a pagina.
 	/// </summary>
+	// O NOME ENTRA JUNTO DO SINAL: desde que os verbs de cargo e de raca so APARECEM pra quem os tem
+	// (`Verbo.Mostrar`), a LISTA muda quando um cargo chega -- e uma lista de outro tamanho, ou de
+	// outros nomes com o mesmo tamanho, tem que remontar a pagina. So o sinal nao distinguiria
+	// "Fund Earth entrou" de "Study saiu".
 	private string ExtraDaAssinaturaDeOutros(SheetState f) =>
-		string.Concat(Verbos.Da(Verbos.Outros).Select(v => v.PodeAgora ? '+' : '-'));
+		string.Join("|", Verbos.Da(Verbos.Outros).Select(v => v.Nome + (v.PodeAgora ? '+' : '-')));
 }

@@ -1386,7 +1386,10 @@ public sealed partial class GameServer
 		// la a vitima e virada A FORCA pro lado do feixe, aqui ela e desenhada deitada no rumo dele
 		// -- a mesma folha e a mesma tabela de rotacao do arremesso, que e o que o cliente ja sabe
 		// desenhar quando o bit de "o servidor esta me dirigindo" acende.
-		alvo.RumoDoGolpe = p.Rumo;
+		//
+		// PELA PORTA DO CORPO (`ApontarRumoDoGolpe`): e la que o morto recusa girar. O feixe ja nao
+		// leva morto (`PodeSerLevadoPeloFeixe`), mas a regra e do corpo e nao deste chamador.
+		alvo.ApontarRumoDoGolpe(p.Rumo);
 		alvo.Moving = false;
 
 		// AS REDEAS SAEM NO INSTANTE DO IMPACTO, e nao no primeiro empurrao.

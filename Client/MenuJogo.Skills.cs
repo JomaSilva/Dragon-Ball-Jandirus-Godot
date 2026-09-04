@@ -945,7 +945,7 @@ public partial class MenuJogo
 	{
 		foreach (string verbo in s.Verbos)
 			if (ArtePorVerbo.TryGetValue(verbo, out (string Folha, string Estado) arte))
-				return Arte("tec:" + verbo, () => TelaDeConstrucao.Miniatura($"res://Assets/Sprites/Techniques/{arte.Folha}.tres", arte.Estado));
+				return Arte("tec:" + verbo, () => Miniaturas.De($"res://Assets/Sprites/Techniques/{arte.Folha}.tres", arte.Estado));
 
 		string categoria = NomesLegiveis.Categoria(s.Tipo);
 		string arquivo = categoria switch

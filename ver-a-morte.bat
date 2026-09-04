@@ -5,6 +5,13 @@ title Dragon Ball Jandirus -- a MORTE vista de fora (duas telas)
 REM ===========================================================================
 REM  A MORTE VISTA DE FORA  (--morte a / --morte b)
 REM
+REM  A foto 2c (morte-2c-cadaver-trocado.png) e a do CADAVER que fica aos 15 s
+REM  de `Alem.MsNoChao`: o corpo novo tem que estar no MESMO angulo e com as
+REM  MESMAS feridas do corpo que caiu (o relato do dono: "levantam e giram").
+REM  Se a vitima nascer muito mais forte que o olhador a morte nao acontece em
+REM  150 s (o BP de nascimento e sorteado); `--bpteste 40` no olhador iguala os
+REM  dois sem acelerar o olhador a ponto de o morto sair do enquadramento.
+REM
 REM     ver-a-morte.bat
 REM
 REM  O pedido do dono, literal:

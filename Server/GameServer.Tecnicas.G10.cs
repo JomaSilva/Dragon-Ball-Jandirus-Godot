@@ -237,6 +237,9 @@ public sealed partial class GameServer
 
 		c.EntrarEmCombate();
 		if (autor != vitima) autor.Combate?.EntrarEmCombate();
+		// O FUNIL ARRANCA: e o `DamageLimb` -> `DamageMe` -> `LopLimb` do DM inteiro numa chamada
+		// (ver `CombatState.Ferir`). O membro que zera por golpe letal cai, e a peca sai pelo
+		// `AoDecepar` -- antes, este caminho feria e parava.
 		c.Ferir(membro, dano, letal);
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);

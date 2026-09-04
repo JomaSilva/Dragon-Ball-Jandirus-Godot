@@ -418,7 +418,30 @@ public partial class World : Node2D
 			cli.RaioCaiu -= AoCairRaio;
 			cli.ZoneChanged -= AoMudarZona;
 		}
+
+		// ============================ O TRIGESIMO SEGUNDO, QUE MORAVA NOUTRO ARQUIVO ============================
+		// `SoltarDecalques` (em `World.Decalques.cs`) existia desde o dia em que o canal nasceu -- e
+		// ninguem o chamava. A lista acima cancela 31 assinaturas; a do `DecalqueCaiu` ficava viva num
+		// World LIBERADO. Custou a trilha do arremesso e a cratera SO PRO DONO, e o motivo de ser so ele e
+		// o que vale guardar: quem hospeda volta ao lobby e entra de novo NO MESMO PROCESSO (o
+		// `GameClient` e autoload e sobrevive), entao o World morto continuava assinado ANTES do vivo, o
+		// `Plantar` dele estourava `ObjectDisposedException` num node liberado, e um delegate multicast
+		// PARA na primeira excecao -- o World vivo nunca era chamado. No log do dono (2026-09-04) eram 438
+		// "pacote invalido: Cannot access a disposed object 'Decalques'". Os clientes remotos, que entram
+		// uma vez e fecham o jogo, nunca viram nada de errado.
+		//
+		// A bancada `--diagdecalque` agora volta ao lobby pelo botao e conta os orfaos por reflexao
+		// (`GameClient.OuvintesOrfaos`): zero, ou vermelho com o nome de quem esqueceu o `-=`.
+		// ================================================================================================
+		if (!NaoSoltarDecalquesDeTeste) SoltarDecalques();
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagdecalque --decalinjetar`): pula o `SoltarDecalques` do `_ExitTree` e
+	/// devolve o World morto assinado no `DecalqueCaiu` -- a bancada tem que ficar vermelha contando
+	/// exatamente UM orfao com este nome. Se ficar verde, ela nao esta olhando o que diz olhar.
+	/// </summary>
+	internal static bool NaoSoltarDecalquesDeTeste;
 
 	// =====================================================================
 	// OS AVISOS DO SERVIDOR QUE ERAM LAMBDA
@@ -1216,8 +1239,10 @@ public partial class World : Node2D
 	/// </summary>
 	private void AplicarChamaDaCargaLocal()
 	{
+		// OS BITS CRUS, e nao o `||`: a regra "C ou excesso acende" mora em `CargaVisual.Definir`, uma so
+		// pros dois corpos. Era aqui que ela vivia duplicada -- e a copia do corpo alheio lia so o C.
 		if (_local?.GetNodeOrNull<CargaVisual>("Carga") is { } cg)
-			cg.Definir(_auraDaCarga || SobrecargaLocal, SobrecargaLocal);
+			cg.Definir(_auraDaCarga, SobrecargaLocal);
 	}
 
 	// ---------------------------------------------------------------------
@@ -2215,6 +2240,9 @@ public partial class World : Node2D
 	internal void AoReceberSnapshot(List<EntityState> estados)
 	{
 		ulong agora = Time.GetTicksMsec();
+		// A HORA DO SERVIDOR NESTE SNAPSHOT (ver `GameClient.ServidorMsDoSnapshot`): cada corpo
+		// remoto recebe `servidorMs - e.IdadeMs` como a hora da amostra.
+		long servidorMs = GameClient.Instance?.ServidorMsDoSnapshot ?? 0;
 		foreach (EntityState e in estados)
 		{
 			if (GameClient.Instance != null && e.Id == GameClient.Instance.LocalId)
@@ -2299,8 +2327,8 @@ public partial class World : Node2D
 			// `e.Ocupacao` ENTRA AGORA, e ele nao e desenho: e o que este corpo esta FAZENDO, pra que o
 			// passo do corpo local pare nele quando ele esta batendo (ou guardando, carregando...) em
 			// vez de atravessa-lo voando. Ver `RemotePlayer.Ocupacao` e `MontarGradeDeCorpos`.
-			r.Receive(e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, e.Correndo, e.Rabo, e.Altitude,
-					  e.Voando, e.CanalAtirando, e.Ocupacao);
+			r.Receive(servidorMs, e.IdadeMs, e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, e.Correndo,
+					  e.Rabo, e.Altitude, e.Voando, e.CanalAtirando, e.Ocupacao);
 
 			// ============================ QUEM VOA ALTO SOME DE VISTA -- SO PRA BAIXO ============================
 			// "Se a pessoa estiver voando muito alto, as pessoas que estao no chao nem conseguem ver
@@ -2355,6 +2383,8 @@ public partial class World : Node2D
 
 			// A AURA DE POWER-UP DO OUTRO. Vem no snapshot justamente pra isto (ver
 			// EntityState.Carregando): quem esta lutando precisa ver o adversario juntando poder.
+			// OS DOIS BITS, CRUS: e a `CargaVisual` quem decide que "C ou excesso" acende -- a mesma
+			// decisao do corpo local. Ver a nota em `CargaVisual.Definir` (o relato de 2026-09-04).
 			if (r.GetNodeOrNull<CargaVisual>("Carga") is { } cg)
 			{
 				cg.Definir(e.Carregando, e.Sobrecarregado);
@@ -2366,7 +2396,9 @@ public partial class World : Node2D
 				// O bit ja viajava: `EntityState.Carregando` esta no snapshot desde que a aura
 				// passou a ser visivel pros outros. Faltava CONSUMI-LO aqui. E o `EfeitoNoLugar` ja
 				// e posicional, entao o volume cai com a distancia sem mais nada.
-				cg.Som(e.Carregando);
+				// `retrato`: isto e o estado lido no snapshot, nao uma transicao vista -- quem ja estava
+				// carregando quando eu entrei nao "comecou" agora (ver `CargaVisual.Som`).
+				cg.Som(e.Carregando, retrato: true);
 			}
 
 			// INVISIVEL: some, mas o no CONTINUA VIVO e recebendo posicao. Apagar o corpo faria
@@ -2731,9 +2763,10 @@ public partial class World : Node2D
 			// quem so ASSISTE -- o campo que a plateia nao recebe e o `Membro`, nao o desfecho.
 			//
 			// A PECA NO CHAO NAO VEM DAQUI: ela precisa saber QUAL membro caiu, e vem pelo
-			// `S2C.Decalque` logo depois (ver `GameServer.SoltarPecas`). Sao dois canais porque sao
-			// duas exigencias diferentes -- meio segundo de sangue pode se perder no fio, uma marca
-			// de 60 s no chao nao pode.
+			// `S2C.Decalque` logo ANTES deste relato (ver `GameServer.SoltarPecas`: o `SpawnLop` do DM
+			// sai antes do jato, e e o `LopLimb` de dentro do resolvedor quem a emite). Sao dois
+			// canais porque sao duas exigencias diferentes -- meio segundo de sangue pode se perder no
+			// fio, uma peca de 600 s no chao nao pode (e quem chega depois a recebe pelo `S2C.Pecas`).
 			// ==================================================================================================
 			if (quemLeva != null) CombatFx.JatoDeSangue(_atores, quemLeva);
 		}

@@ -59,42 +59,62 @@ public static class VozLocal
 	public const int QuadrosPorSegundo = 1000 / MsPorQuadro;
 
 	/// <summary>
-	/// 16 kbit/s, VBR. **MEDIDO com Opus (Concentus, C# puro), quadro de 20 ms:**
+	/// 24 kbit/s, VBR. Era 16 -- e a 16 **o FEC nao existia**.
 	///
-	///   | compl | bitrate | B/quadro |   KB/s | codificar | % de um quadro |
-	///   |-------|---------|----------|--------|-----------|----------------|
-	///   |   0   |  16000  |   39,8   |  1,94  |   135 us  |     0,68%      |
-	///   | **3** |**16000**| **39,9** |**1,95**| **102 us**|   **0,51%**    |
-	///   |   3   |  12000  |   29,8   |  1,46  |   107 us  |     0,53%      |
-	///   |   3   |  24000  |   59,9   |  2,92  |   105 us  |     0,52%      |
-	///   |   8   |  16000  |   39,8   |  1,94  |   284 us  |     1,42%      |
+	/// ============================ O LIMIAR DO FEC, MEDIDO ============================
+	/// O SILK so codifica a copia redundante (LBRR) do quadro anterior quando a taxa alvo passa de um
+	/// limiar que depende da banda e da perda declarada: em banda larga com 10% e 16000 x 1,15 =
+	/// 18,4 kbit/s. A 16 kbit/s a copia nunca era escrita, `decode_fec` degenerava em PLC do quadro
+	/// ANTERIOR, e todo comentario deste sistema que prometia "o seguinte carrega o perdido" era falso.
+	/// **MEDIDO** na `--diagvoz` (tons alternados por quadro, o FEC do pacote k+2 tem que devolver o
+	/// tom do quadro k+1):
+	///
+	///   | kbit/s | B/quadro | FEC certo |
+	///   |--------|----------|-----------|
+	///   |   16   |   43,2   |   0/10    |
+	///   |   20   |   57,7   |   9/10    |
+	///   | **24** | **64,8** | **9/10**  |
+	///   |   28   |   71,8   |   9/10    |
+	///
+	/// 24 e o primeiro com folga sobre o limiar (20 passa por 1,2 kbit/s, e quem mexer na perda
+	/// declarada o derruba). Custa ~1,1 KB/s a mais por fluxo -- e compra o unico remendo de perda que
+	/// existe num canal sem retransmissao, e mais qualidade de voz de brinde.
+	///
+	/// O resto da tabela de custo (complexidade), medido com Opus (Concentus, C# puro), quadro de
+	/// 20 ms, a 16 kbit/s:
+	///
+	///   | compl | codificar | % de um quadro |
+	///   |-------|-----------|----------------|
+	///   |   0   |   135 us  |     0,68%      |
+	///   | **3** | **102 us**|   **0,51%**    |
+	///   |   8   |   284 us  |     1,42%      |
 	///
 	/// Contra os vizinhos: PCM cru 16 kHz = 640 B/quadro (**31,2 KB/s**), ADPCM 4 bits = 160 B
-	/// (**7,8 KB/s**), Opus = 40 B (**1,95 KB/s**). Dezesseis vezes mais barato que o cru e quatro
-	/// vezes mais barato que o ADPCM.
+	/// (**7,8 KB/s**), Opus a 24 kbit/s com FEC = ~65 B (**3,2 KB/s**). Dez vezes mais barato que o
+	/// cru e duas vezes e meia mais barato que o ADPCM -- e o ADPCM nao tem FEC.
 	///
 	/// **E o servidor nao paga codec nenhum**: ele repassa o payload OPACO e so decide quem recebe.
-	/// Por isso a economia vale onde a banda multiplica -- no leque de ouvintes --, e e ali que os
-	/// 4x do ADPCM teriam doido.
+	/// Por isso a economia vale onde a banda multiplica -- no leque de ouvintes.
 	/// </summary>
-	public const int BitsPorSegundo = 16000;
+	public const int BitsPorSegundo = 24000;
 
 	/// <summary>
-	/// Complexidade 3. Cinco e oito custam 70% e 180% mais CPU por **zero** byte de ganho
-	/// (39,9 -> 39,8 B na tabela acima). Pagar 180% a mais por um decimo de byte seria escolher pelo
-	/// jogador, com a bateria dele.
+	/// Complexidade 3. Cinco e oito custam 70% e 180% mais CPU por **zero** byte de ganho (medido a
+	/// 16 kbit/s: 39,9 -> 39,8 B por quadro). Pagar 180% a mais por um decimo de byte seria escolher
+	/// pelo jogador, com a bateria dele.
 	/// </summary>
 	public const int Complexidade = 3;
 
 	/// <summary>
 	/// TETO DE TAMANHO DE UM QUADRO NO FIO. Quadro maior que isto e DESCARTADO sem dó.
 	///
-	/// O Opus a 16 kbit/s da ~40 B; 120 e o triplo, folga pra um pico de VBR num "sss" e ainda assim
-	/// longe de virar cano. **Sem este teto um cliente modificado vira torneira**: ele mandaria 4 KB
-	/// por "quadro" e o servidor os multiplicaria pelo numero de ouvintes. O teto e do SERVIDOR e nao
-	/// do cliente, porque a unica coisa que um cliente modificado nao faz e se limitar.
+	/// O Opus a 24 kbit/s com FEC da ~65 B; 160 e duas vezes e meia isso, folga pra um pico de VBR num
+	/// "sss" (o codificador respeita o teto, mas cravar o teto num quadro e perder qualidade nele) e
+	/// ainda assim longe de virar cano. **Sem este teto um cliente modificado vira torneira**: ele
+	/// mandaria 4 KB por "quadro" e o servidor os multiplicaria pelo numero de ouvintes. O teto e do
+	/// SERVIDOR e nao do cliente, porque a unica coisa que um cliente modificado nao faz e se limitar.
 	/// </summary>
-	public const int MaxBytesDeQuadro = 120;
+	public const int MaxBytesDeQuadro = 160;
 
 	// =====================================================================
 	// O TETO POR FALANTE
@@ -102,11 +122,15 @@ public static class VozLocal
 	/// <summary>
 	/// QUANTOS QUADROS DE CREDITO ALGUEM PODE ACUMULAR -- a folga da torneira.
 	///
-	/// Cinco quadros (100 ms). Nao e generosidade: a rede entrega em rajada, e o cliente que perdeu
-	/// um quadro de agendamento manda dois juntos no seguinte. Sem folga, jitter normal viraria voz
-	/// picotada; com folga demais, um cliente modificado guardaria credito pra despejar de uma vez.
+	/// Quinze quadros (300 ms). Era cinco, e cinco recusava voz honesta: o cliente manda por quadro de
+	/// TELA, entao um quadro de tela longo (uma zona carregando, um pico de coleta de lixo) despeja de
+	/// uma vez o que acumulou -- e a recusa e SILENCIOSA, o ouvinte so ouve o buraco. O emissor agora
+	/// se limita sozinho a 5 por visita (`Microfone.QuadrosProntos`), e o balde e o triplo disso pra
+	/// duas visitas juntas pela rede ainda caberem. Trezentos ms continuam sendo teto de verdade: um
+	/// cliente modificado guarda no maximo 15 quadros de credito e depois anda a 50 por segundo como
+	/// todo mundo.
 	/// </summary>
-	public const double RajadaDeQuadros = 5;
+	public const double RajadaDeQuadros = 15;
 
 	/// <summary>
 	/// DEPOIS DE QUANTO SILENCIO ALGUEM DEIXA DE "ESTAR FALANDO", em ms.
@@ -129,8 +153,9 @@ public static class VozLocal
 	///   |        3 x 15       | 173 KB/s  | 173 KB/s |
 	///   |       20 x 20       | 1,54 MB/s | 308 KB/s |
 	///
-	/// (a 3,85 KB/s por fluxo: 49 B de quadro + 28 B de UDP/IP, 50x por segundo). Pra comparar: o
-	/// snapshot INTEIRO do jogo hoje custa 42,5 KB/s de subida com 10 jogadores.
+	/// (a 3,85 KB/s por fluxo: 49 B de quadro + 28 B de UDP/IP, 50x por segundo, quando o Opus estava
+	/// a 16 kbit/s; a 24 kbit/s com FEC sao ~5 KB/s por fluxo, 400 KB/s no pior caso da tabela). Pra
+	/// comparar: o snapshot INTEIRO do jogo hoje custa 42,5 KB/s de subida com 10 jogadores.
 	///
 	/// E o numero e quatro porque **ninguem distingue mais de quatro vozes simultaneas** -- a quinta
 	/// nao seria informacao, seria ruido caro. Quem cai fora e sempre o mais LONGE, que e quem o

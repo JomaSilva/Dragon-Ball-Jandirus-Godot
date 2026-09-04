@@ -6,18 +6,28 @@ using Jandirus.Core.World;
 namespace Jandirus.Client;
 
 /// <summary>
-/// ============================ A VOZ DOS OUTROS: DESCOMPRIMIR, ABAFAR, TOCAR NO LUGAR ============================
+/// ============================ A VOZ DOS OUTROS: AMORTECER, DESCOMPRIMIR, ABAFAR, TOCAR NO LUGAR ============================
 /// Chega um quadro de 20 ms de alguem que o SERVIDOR ja decidiu que eu posso ouvir (ver
 /// `GameServer.Voz.cs` -- quem esta longe nao chega aqui, nao chega baixinho). O que sobra pra este
 /// arquivo e a segunda metade da frase do dono: *"com EFEITO DE DISTANCIA caso se afaste, e tb se
-/// tiver ATRAS DE PAREDE da uma ABAFADA"*.
+/// tiver ATRAS DE PAREDE da uma ABAFADA"* -- e a frase seguinte dele, *"o audio fica picotando e nao
+/// fica fluido"*, que e sobre o que ha entre o pacote e o alto-falante.
 ///
-///   | o que          | como                                                       |
-///   |----------------|------------------------------------------------------------|
-///   | posicao        | um `AudioStreamPlayer2D` posto EM CIMA do corpo de quem fala|
-///   | distancia      | a atenuacao do proprio motor (nao linear -- ver abaixo)     |
-///   | parede         | filtro passa-BAIXA no PCM, com rampa (<see cref="FiltroDeParede"/>)|
-///   | nao brigar     | barramento `Voz`, proprio, com controle proprio            |
+///   | o que          | como                                                                 |
+///   |----------------|----------------------------------------------------------------------|
+///   | picote         | <see cref="FilaDeJitter"/>: reordena, pre-carrega, remenda, guiada pelo gerador |
+///   | posicao        | um `AudioStreamPlayer2D` posto EM CIMA do corpo de quem fala, suavizado |
+///   | distancia      | a atenuacao do proprio motor (nao linear -- ver abaixo)               |
+///   | parede         | filtro passa-BAIXA no PCM, com rampa (<see cref="FiltroDeParede"/>)  |
+///   | nao brigar     | barramento `Voz`, proprio, com controle proprio                      |
+///
+/// ============================ O PACOTE NAO TOCA NO GERADOR ============================
+/// Antes, `Receber` fazia `Play()` com a fila vazia e empurrava o quadro na chegada: a folga na fila
+/// do gerador era UM quadro, e qualquer pacote 20 ms atrasado virava zeros. Agora `Receber` so entrega
+/// o pacote a <see cref="FilaDeJitter"/>; quem empurra e o `_Process`, lendo do GERADOR quantas
+/// amostras ele ainda tem e completando ate o alvo. O relogio da reproducao e o do gerador, e nao o
+/// da rede. O desenho inteiro esta no cabecalho daquela classe.
+/// ======================================================================================
 ///
 /// ============================ A ABAFADA E FILTRO NO SINAL, E NAO EFEITO DE BARRAMENTO ============================
 /// A saida obvia no Godot seria um `AudioEffectLowPassFilter` -- so que efeito e do BARRAMENTO, e um
@@ -97,28 +107,60 @@ public partial class VozOuvida : Node2D
 	/// <summary>
 	/// DEPOIS DE QUANTO SILENCIO A FONTE E DESMONTADA, em ms.
 	///
-	/// 1,5 s -- seis vezes o <see cref="VozLocal.MsAteCalar"/>. Nao e o mesmo prazo de proposito: o
-	/// sinal sobre a cabeca tem que apagar rapido (250 ms) e o TOCADOR tem que sobreviver as pausas
-	/// entre as frases. Desmontar junto com o sinal recriaria o gerador a cada respirada de quem fala,
-	/// e cada recriacao e um estalo.
+	/// 10 s. Era 1,5 s, e isso desmontava a fonte entre duas frases da mesma conversa: cada retomada
+	/// nascia com o gerador recriado e a fila em zero, e o primeiro pacote da frase nova tocava sem
+	/// folga nenhuma atras dele -- um picote garantido no comeco de cada frase. Com 10 s a fonte
+	/// sobrevive as pausas de uma conversa; um `AudioStreamPlayer2D` tocando silencio custa nada, e a
+	/// retomada de fala re-prima a pre-carga dentro da <see cref="FilaDeJitter"/> sem recriar coisa
+	/// nenhuma.
 	/// </summary>
-	private const ulong MsAteDesmontar = 1500;
+	private const ulong MsAteDesmontar = 10_000;
 
-	/// <summary>Uma pessoa que esta falando comigo -- o decodificador dela, o tocador dela, o filtro dela.</summary>
+	/// <summary>
+	/// A CONSTANTE DE TEMPO DA SUAVIZACAO de volume e posicao, em segundos.
+	///
+	/// 0,08 s. Volume e posicao eram escritos por PACOTE, e o pacote de quem some da tela (voa alto) e
+	/// volta trocava a fonte entre "em cima do corpo, 0 dB" e "em cima de mim, -X dB" num quadro so --
+	/// um salto audivel. Com 80 ms a troca vira um deslizamento; e o corpo anda a 160 px/s, entao a
+	/// fonte fica no maximo 13 px (menos de meio tile) atras dele, que nao se ouve.
+	/// </summary>
+	private const float SegundosDeSuavizacao = 0.08f;
+
+	/// <summary>
+	/// A FILA DO GERADOR, em segundos. E CAPACIDADE, nao pre-carga: quanto pode estar esperando pra
+	/// tocar. Precisa caber o alvo maximo da <see cref="FilaDeJitter"/> (10 quadros = 200 ms) mais o
+	/// quadro que entra por cima dele. O motor arredonda pra potencia de dois (0,3 s a 16 kHz vira
+	/// 8192 amostras) -- e por isso a capacidade de verdade e LIDA do gerador, nunca calculada.
+	/// </summary>
+	private const float SegundosDeFila = 0.3f;
+
+	/// <summary>Uma pessoa que esta falando comigo -- a fila dela, o tocador dela, o filtro dela.</summary>
 	private sealed class Fonte
 	{
-		public required IOpusDecoder Decodificador;
+		public required int Id;
 		public required AudioStreamPlayer2D Tocador;
-		public AudioStreamGeneratorPlayback? Fila;
+		public FilaDeJitter Fila = null!;
+		public AudioStreamGeneratorPlayback? Gerador;
 
-		/// <summary>A ultima sequencia recebida. Buraco aqui = quadro perdido no caminho.</summary>
-		public ushort Seq;
-		public bool TemSeq;
+		/// <summary>Quantas amostras cabem no gerador VAZIO -- lida dele, ver <see cref="SegundosDeFila"/>.</summary>
+		public int Capacidade;
 
 		/// <summary>A abafada desta voz: a rampa, o filtro e a memoria dele. Ver <see cref="FiltroDeParede"/>.</summary>
 		public readonly FiltroDeParede Filtro = new();
 
-		public ulong UltimoMs;
+		/// <summary>Quando chegou o ultimo PACOTE -- e o que decide o desmonte.</summary>
+		public ulong UltimoPacoteMs;
+
+		/// <summary>Quando o ultimo quadro de VOZ foi pro gerador -- e o que acende o sinal sobre a cabeca.</summary>
+		public ulong UltimoQuadroMs;
+
+		/// <summary>O boneco de quem fala (pode nao existir nesta tela) e onde EU estava no ultimo pacote.</summary>
+		public Node2D? Corpo;
+		public Vector2 Ouvinte;
+
+		/// <summary>Volume linear atual e alvo (a suavizacao anda entre os dois).</summary>
+		public float Volume = 1f, VolumeAlvo = 1f;
+		public bool Posicionada;
 	}
 
 	/// <summary>
@@ -187,7 +229,8 @@ public partial class VozOuvida : Node2D
 	/// <summary>
 	/// ============================ O QUE SAIU DO FILTRO -- SO BANCADA ============================
 	/// Nula em jogo. Recebe (quem falou, o PCM **ja filtrado**, quantas amostras, a distancia que veio
-	/// no pacote, se veio marcado com parede) de cada quadro entregue ao alto-falante.
+	/// no pacote, se veio marcado com parede) de cada quadro DE VOZ entregue ao gerador -- decodificado,
+	/// FEC, PLC ou esticado. A pre-carga de silencio nao passa aqui: ela nao e voz de ninguem.
 	///
 	/// ELA E DEPOIS DA ABAFADA E ANTES DO MOTOR, e esse ponto e o unico util: antes do filtro so daria
 	/// pra medir o que o codec devolveu (o que a `--diagvoz` ja mede sem rede nenhuma), e depois do
@@ -202,11 +245,11 @@ public partial class VozOuvida : Node2D
 
 	private readonly Dictionary<int, Fonte> _fontes = [];
 
-	/// <summary>PCM descomprimido -- reusado, 50 quadros por segundo por falante.</summary>
-	private readonly short[] _pcm = new short[VozLocal.AmostrasPorQuadro];
-
-	/// <summary>O mesmo quadro no formato que o gerador do Godot quer. Reusado pelo mesmo motivo.</summary>
+	/// <summary>O quadro no formato que o gerador do Godot quer. Reusado, 50 quadros por segundo por falante.</summary>
 	private readonly Vector2[] _saida = new Vector2[VozLocal.AmostrasPorQuadro];
+
+	/// <summary>A pre-carga, ja no formato do gerador. Nunca e escrito.</summary>
+	private readonly Vector2[] _saidaMuda = new Vector2[VozLocal.AmostrasPorQuadro];
 
 	public override void _Ready()
 	{
@@ -224,10 +267,13 @@ public partial class VozOuvida : Node2D
 	/// ESTA PESSOA ESTA FALANDO AGORA? E o que acende o sinal sobre a cabeca (ver <see cref="SinalDeVoz"/>).
 	///
 	/// ============================ SEM PACOTE PROPRIO, E ISSO E DE PROPOSITO ============================
-	/// A tentacao era um `S2C.Falando(id, bool)`. Nao precisa: **receber quadro E a evidencia**. E a
+	/// A tentacao era um `S2C.Falando(id, bool)`. Nao precisa: **tocar quadro E a evidencia**. E a
 	/// evidencia certa, ainda por cima -- o sinal acende exatamente pra quem esta ouvindo aquela voz, e
 	/// nao pra quem esta longe demais pra ouvi-la. Um pacote proprio teria que reimplementar o corte de
 	/// alcance inteiro, e no dia em que os dois divergissem apareceria uma boca mexendo em silencio.
+	///
+	/// PELO QUADRO TOCADO E NAO PELO PACOTE CHEGADO: entre um e outro ha a pre-carga da fila (60 a
+	/// 200 ms). Acender no pacote apagaria o sinal enquanto a ultima palavra ainda esta saindo.
 	///
 	/// A CONSEQUENCIA ESTA ESCRITA: a quinta pessoa falando (a que nao coube nas quatro mais proximas)
 	/// nao acende sinal. E o certo -- a voz dela nao esta acontecendo pra mim.
@@ -235,75 +281,35 @@ public partial class VozOuvida : Node2D
 	/// </summary>
 	public bool Falando(int id) =>
 		_fontes.TryGetValue(id, out Fonte? f)
-		&& Time.GetTicksMsec() - f.UltimoMs <= VozLocal.MsAteCalar;
+		&& Time.GetTicksMsec() - f.UltimoQuadroMs <= VozLocal.MsAteCalar;
 
 	// =====================================================================
 	// CHEGOU UM QUADRO
 	// =====================================================================
 	/// <param name="corpo">O boneco de quem fala, ou nulo se ele ainda nao existe nesta tela.</param>
-	/// <param name="ouvinte">Onde EU estou -- e de onde a voz sai quando nao ha corpo. Ver abaixo.</param>
+	/// <param name="ouvinte">Onde EU estou -- e de onde a voz sai quando nao ha corpo. Ver <see cref="Suavizar"/>.</param>
 	public void Receber(int id, ushort seq, byte distancia, bool parede,
 						byte[] dados, int n, Node2D? corpo, Vector2 ouvinte)
 	{
 		if (n <= 0 || n > VozLocal.MaxBytesDeQuadro) return;
 
 		Fonte f = _fontes.TryGetValue(id, out Fonte? achada) ? achada : Nascer(id);
-		f.UltimoMs = Time.GetTicksMsec();
-		f.Filtro.Parede = parede;
+		ulong agora = Time.GetTicksMsec();
+		f.UltimoPacoteMs = agora;
+		f.Corpo = corpo;
+		f.Ouvinte = ouvinte;
 
-		// ============================ DE ONDE O SOM SAI ============================
-		// COM CORPO: em cima dele, e o motor cuida da queda e do lado (esquerda/direita). E o pedido
-		// literal -- "voz posicional, saindo de onde a pessoa esta".
-		//
-		// SEM CORPO: em cima de MIM, com o volume que o servidor mandou. Nao e um caso teorico -- quem
-		// voa alto some da tela de quem esta no chao (`Voo.Enxerga`), e ai eu tenho a voz e nao tenho
-		// o corpo. Posto em cima de mim ele nao ganha lado nenhum (correto: eu nao sei de onde vem) e
-		// o volume vem do unico que sabe a distancia, que e quem cortou o alcance.
-		// ==========================================================================
-		if (corpo != null && IsInstanceValid(corpo))
+		// O TOCADOR FICA TOCANDO ENQUANTO A FONTE VIVER -- inclusive silencio entre duas frases. Parar
+		// e recomecar e o que zerava a fila a cada retomada. O gerador so existe depois do `Play`.
+		if (!f.Tocador.Playing)
 		{
-			f.Tocador.GlobalPosition = corpo.GlobalPosition;
-			f.Tocador.VolumeDb = 0;
+			f.Tocador.Play();
+			f.Gerador = f.Tocador.GetStreamPlayback() as AudioStreamGeneratorPlayback;
+			f.Capacidade = f.Gerador?.GetFramesAvailable() ?? 0;
 		}
-		else
-		{
-			f.Tocador.GlobalPosition = ouvinte;
-			f.Tocador.VolumeDb = Mathf.LinearToDb(Mathf.Max(
-				VozLocal.VolumePelaDistancia(VozLocal.FracaoDaDistancia(distancia)), 0.0001f));
-		}
+		if (f.Gerador == null) return;
 
-		if (!f.Tocador.Playing) f.Tocador.Play();
-		f.Fila ??= f.Tocador.GetStreamPlayback() as AudioStreamGeneratorPlayback;
-		if (f.Fila == null) return;
-
-		// ============================ O BURACO NA SEQUENCIA VIRA UM QUADRO RECUPERADO ============================
-		// O canal e nao confiavel de proposito, entao perder quadro e normal e nao e erro. O que NAO
-		// pode acontecer e emendar duas metades de silabas diferentes como se fossem seguidas -- e o
-		// estalo que se ouve em toda voz de jogo mal feita.
-		//
-		// O Opus resolve isso com FEC: o quadro que CHEGOU carrega uma versao grosseira do anterior. Um
-		// so, e nao a fila inteira: reconstruir tres quadros perdidos custaria mais latencia do que o
-		// silencio que eles deixam, e a versao FEC ja e grosseira -- tres delas em fila soariam pior
-		// que o buraco.
-		// ====================================================================================================
-		if (f.TemSeq && (ushort)(seq - f.Seq) == 2)
-		{
-			int rec = f.Decodificador.Decode(dados.AsSpan(0, n), _pcm, VozLocal.AmostrasPorQuadro,
-											 decode_fec: true);
-			if (rec > 0) Empurrar(f, rec);
-		}
-		f.Seq = seq;
-		f.TemSeq = true;
-
-		int amostras = f.Decodificador.Decode(dados.AsSpan(0, n), _pcm, VozLocal.AmostrasPorQuadro,
-											  decode_fec: false);
-		if (amostras <= 0) return;
-
-		Empurrar(f, amostras);
-		// DEPOIS do `Empurrar`, porque e ele quem filtra o `_pcm` no lugar: chamar antes entregaria a
-		// bancada o sinal LIMPO e a abafada da parede -- que e metade do pedido do dono -- passaria
-		// verde com o filtro desligado. Ver `Espiao`.
-		Espiao?.Invoke(id, _pcm, amostras, distancia, parede);
+		f.Fila.Receber(seq, dados.AsSpan(0, n), distancia, parede, (long)agora);
 	}
 
 	private Fonte Nascer(int id)
@@ -324,47 +330,73 @@ public partial class VozOuvida : Node2D
 			Stream = new AudioStreamGenerator
 			{
 				MixRate = VozLocal.TaxaDeAmostragem,
-				// 0,25 s de folga. Menos que isso e um engasgo de quadro esvazia a fila e a voz corta;
-				// muito mais e o atraso da conversa comeca a se ouvir (a fila e latencia pura).
-				BufferLength = 0.25f,
+				BufferLength = SegundosDeFila,
 			},
 		};
 		AddChild(tocador);
 
-		var f = new Fonte
-		{
-			Decodificador = OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeAmostragem, 1),
-			Tocador = tocador,
-		};
+		var f = new Fonte { Id = id, Tocador = tocador };
+		// O DELEGATE E DA FONTE E MORRE COM ELA: nao e assinatura em evento estatico, entao nao ha o
+		// que cancelar (a licao das assinaturas vazadas nao se aplica aqui).
+		f.Fila = new FilaDeJitter(OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeAmostragem, 1),
+			(pcm, tipo, _, dist, parede) => Entregar(f, pcm, tipo, dist, parede));
 		_fontes[id] = f;
 		return f;
 	}
 
 	// =====================================================================
-	// A ABAFADA
+	// UM QUADRO PRONTO VAI PRO GERADOR
 	// =====================================================================
-	private void Empurrar(Fonte f, int amostras)
+	/// <summary>
+	/// A FILA DECIDIU QUE E A HORA DESTE QUADRO. Aqui ele vira som: a parede que veio carimbada NELE
+	/// (e nao no pacote mais recente -- entre um e outro ha a pre-carga) alimenta a rampa, o filtro
+	/// modifica o PCM no lugar, e o resultado vai pro gerador inteiro. Nunca meio quadro: a fila so
+	/// entrega quando cabe.
+	/// </summary>
+	private void Entregar(Fonte f, short[] pcm, FilaDeJitter.Tipo tipo, byte distancia, bool parede)
 	{
-		if (f.Fila == null) return;
+		if (f.Gerador == null) return;
 
-		f.Filtro.Aplicar(_pcm, amostras);
-
-		int cabe = Math.Min(amostras, f.Fila.GetFramesAvailable());
-		for (int i = 0; i < cabe; i++)
+		if (tipo == FilaDeJitter.Tipo.Silencio)
 		{
-			float v = _pcm[i] / (float)short.MaxValue;
+			f.Gerador.PushBuffer(_saidaMuda);
+			return;
+		}
+
+		f.Filtro.Parede = parede;
+		f.Filtro.Aplicar(pcm, VozLocal.AmostrasPorQuadro);
+
+		// ============================ DE ONDE O SOM SAI ============================
+		// COM CORPO: em cima dele, e o motor cuida da queda e do lado (esquerda/direita). E o pedido
+		// literal -- "voz posicional, saindo de onde a pessoa esta".
+		//
+		// SEM CORPO: em cima de MIM, com o volume que o servidor mandou. Nao e um caso teorico -- quem
+		// voa alto some da tela de quem esta no chao (`Voo.Enxerga`), e ai eu tenho a voz e nao tenho
+		// o corpo. Posto em cima de mim ele nao ganha lado nenhum (correto: eu nao sei de onde vem) e
+		// o volume vem do unico que sabe a distancia, que e quem cortou o alcance.
+		//
+		// Aqui so se escreve o ALVO; quem anda ate ele e a suavizacao no `_Process`.
+		// ==========================================================================
+		f.VolumeAlvo = f.Corpo != null && IsInstanceValid(f.Corpo)
+			? 1f
+			: VozLocal.VolumePelaDistancia(VozLocal.FracaoDaDistancia(distancia));
+
+		for (int i = 0; i < VozLocal.AmostrasPorQuadro; i++)
+		{
+			float v = pcm[i] / (float)short.MaxValue;
 			_saida[i] = new Vector2(v, v);   // mono nos dois canais; quem panoramiza e o `2D`
 		}
-		// O CAMINHO COMUM NAO ALOCA: a fila quase sempre tem os 320 lugares e o buffer reusado vai
-		// inteiro. So o caso raro (fila quase cheia, quando o jogo engasgou) paga uma copia -- e ali
-		// a alternativa seria descartar o quadro, que e um estalo audivel pra economizar 320 floats.
-		if (cabe == _saida.Length) f.Fila.PushBuffer(_saida);
-		else if (cabe > 0) f.Fila.PushBuffer(_saida[..cabe]);
+		f.Gerador.PushBuffer(_saida);
+		f.UltimoQuadroMs = Time.GetTicksMsec();
 
+		// DEPOIS do filtro, porque e ele quem modifica o `pcm` no lugar: chamar antes entregaria a
+		// bancada o sinal LIMPO e a abafada da parede -- que e metade do pedido do dono -- passaria
+		// verde com o filtro desligado. Ver `Espiao`.
+		Espiao?.Invoke(f.Id, pcm, VozLocal.AmostrasPorQuadro, distancia, parede);
 	}
 
 	// =====================================================================
-	// LIMPEZA
+	// O RELOGIO DO GERADOR, A SUAVIZACAO E A LIMPEZA
 	// =====================================================================
 	public override void _Process(double delta)
 	{
@@ -373,7 +405,16 @@ public partial class VozOuvida : Node2D
 		ulong agora = Time.GetTicksMsec();
 		List<int>? mortas = null;
 		foreach ((int id, Fonte f) in _fontes)
-			if (agora - f.UltimoMs > MsAteDesmontar) (mortas ??= []).Add(id);
+		{
+			if (f.Gerador != null)
+			{
+				// O RELOGIO E O DO GERADOR: o que ele ja consumiu e o que a fila repoe, em ordem.
+				int livres = f.Gerador.GetFramesAvailable();
+				f.Fila.Puxar(f.Capacidade - livres, livres, (long)agora);
+			}
+			Suavizar(f, (float)delta);
+			if (agora - f.UltimoPacoteMs > MsAteDesmontar) (mortas ??= []).Add(id);
+		}
 		if (mortas == null) return;
 
 		foreach (int id in mortas)
@@ -382,5 +423,27 @@ public partial class VozOuvida : Node2D
 			f.Tocador.Stop();
 			f.Tocador.QueueFree();
 		}
+	}
+
+	/// <summary>Anda posicao e volume ate o alvo. Ver <see cref="SegundosDeSuavizacao"/>.</summary>
+	private static void Suavizar(Fonte f, float delta)
+	{
+		Vector2 alvo = f.Corpo != null && IsInstanceValid(f.Corpo) ? f.Corpo.GlobalPosition : f.Ouvinte;
+
+		// A PRIMEIRA POSICAO E DIRETA: deslizar da origem do mundo ate o corpo seria uma voz vinda de
+		// lugar nenhum no primeiro decimo de segundo de toda conversa.
+		if (!f.Posicionada)
+		{
+			f.Tocador.GlobalPosition = alvo;
+			f.Volume = f.VolumeAlvo;
+			f.Posicionada = true;
+		}
+		else
+		{
+			float k = 1f - MathF.Exp(-delta / SegundosDeSuavizacao);
+			f.Tocador.GlobalPosition = f.Tocador.GlobalPosition.Lerp(alvo, k);
+			f.Volume = Mathf.Lerp(f.Volume, f.VolumeAlvo, k);
+		}
+		f.Tocador.VolumeDb = Mathf.LinearToDb(Mathf.Max(f.Volume, 0.0001f));
 	}
 }

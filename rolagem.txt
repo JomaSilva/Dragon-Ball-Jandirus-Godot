@@ -1,0 +1,56 @@
+berco: MUNDO (corpo do jogador, MoveRules, camera do World, servidor conferindo)
+===== A ROLAGEM DO CENARIO =====
+zoom da camera: 3x   viewport: (1280, 720)   grade de desenho: 1/3 px de mundo   snap do motor: false
+TELA: janela 1280x720 | base de desenho 1280x720 | estica 1x (inteira)
+leste  REGULARIDADE: desvio 0,487 px de tela (teto 0,60) | na grade ANTIGA daria 1,063 | para de 1 em 1 px | vao 1,34 (o cru foi 6, do qual 6,31 e o relogio do quadro)
+leste  140 quadros | passo 3,46 px de tela/quadro | erro de quantizacao max 0,99 px (na grade ANTIGA daria 2,98) | pior passo 0,71 px | pra tras 0 | atraso de leitura 0 quadro (desacordo 0,003 px)
+sul    REGULARIDADE: desvio 0,488 px de tela (teto 0,60) | na grade ANTIGA daria 0,991 | para de 1 em 1 px | vao 1,34 (o cru foi 7, do qual 6,19 e o relogio do quadro)
+sul    140 quadros | passo 3,45 px de tela/quadro | erro de quantizacao max 0,91 px (na grade ANTIGA daria 2,91) | pior passo 0,71 px | pra tras 0 | atraso de leitura 0 quadro (desacordo 0,003 px)
+oeste  REGULARIDADE: desvio 0,48 px de tela (teto 0,60) | na grade ANTIGA daria 1,017 | para de 1 em 1 px | vao 1,62 (o cru foi 15, do qual 14,58 e o relogio do quadro)
+oeste  140 quadros | passo 3,50 px de tela/quadro | erro de quantizacao max 1 px (na grade ANTIGA daria 3) | pior passo 0,91 px | pra tras 0 | atraso de leitura 0 quadro (desacordo 0,003 px)
+norte  REGULARIDADE: desvio 0,489 px de tela (teto 0,60) | na grade ANTIGA daria 1,068 | para de 1 em 1 px | vao 1,32 (o cru foi 3, do qual 2,77 e o relogio do quadro)
+norte  140 quadros | passo 3,47 px de tela/quadro | erro de quantizacao max 0,98 px (na grade ANTIGA daria 2,97) | pior passo 0,71 px | pra tras 0 | atraso de leitura 0 quadro (desacordo 0,003 px)
+FOTO leste cenario: 0 pares legiveis -- liso demais pra correlacionar
+FOTO leste regularidade NO PIXEL: desvio 1,176 px de base (teto 0,60), de -13,25 a -3,36 px por quadro (vao 9,89) em 99 quadros, busca de +-17 px de monitor
+FOTO leste NO VIDRO: desvio 1,176 px de MONITOR (= 1,176 de base x 1 de esticada, por construcao) -- escala inteira: o vidro conta o mesmo que a base
+FOTO leste corpo: cravado na tela em 93/93 pares (100%), maior deslocamento visto 0 px
+FOTO norte cenario: 0 pares legiveis -- liso demais pra correlacionar
+FOTO norte regularidade NO PIXEL: desvio 1,162 px de base (teto 0,60), de -13,57 a -3,4 px por quadro (vao 10,17) em 99 quadros, busca de +-17 px de monitor
+FOTO norte NO VIDRO: desvio 1,162 px de MONITOR (= 1,162 de base x 1 de esticada, por construcao) -- escala inteira: o vidro conta o mesmo que a base
+FOTO norte corpo: cravado na tela em 94/98 pares (96%), maior deslocamento visto 3 px
+OS DOIS EIXOS: horizontal desvio 0,487 px, para de 1 em 1 (liso) | vertical desvio 0,489 px, para de 1 em 1 (liso) | diferenca 0,002 px
+OS DOIS EIXOS NO PIXEL: leste desvio 1,176 px (TREMENDO) | norte desvio 1,162 px (TREMENDO) | diferenca 0,013 px
+CORPOS REMOTOS: 40 vistos, 17 andaram o bastante pra medir | 0 eixo(s) em subpixel | 0 eixo(s) parando de mais de 1 em 1 px
+correcoes de servidor: 0
+===== 4 FALHA(S) =====
+   FOTO leste: nao houve par de quadros de cenario legivel
+   FOTO leste: o pixel hesitou 1,176 px de base de desvio por quadro (de -13,25 a -3,36) -- isto e o tremor, visto na tela e nao na conta
+   FOTO norte: nao houve par de quadros de cenario legivel
+   FOTO norte: o pixel hesitou 1,162 px de base de desvio por quadro (de -13,57 a -3,4) -- isto e o tremor, visto na tela e nao na conta
+berco: MUNDO (corpo do jogador, MoveRules, camera do World, servidor conferindo)
+===== A ROLAGEM DO CENARIO =====
+zoom da camera: 3x   viewport: (1280, 720)   grade de desenho: 1/3 px de mundo   snap do motor: false
+TELA: janela 1280x720 | base de desenho 1280x720 | estica 1x (inteira)
+leste  REGULARIDADE: desvio 0,488 px de tela (teto 0,60) | na grade ANTIGA daria 0,99 | para de 1 em 1 px | vao 1,26 (o cru foi 8, do qual 6,88 e o relogio do quadro)
+leste  140 quadros | passo 3,42 px de tela/quadro | erro de quantizacao max 0,99 px (na grade ANTIGA daria 2,96) | pior passo 0,66 px | pra tras 0 | atraso de leitura 0 quadro (desacordo 0,004 px)
+sul    REGULARIDADE: desvio 0,486 px de tela (teto 0,60) | na grade ANTIGA daria 1,055 | para de 1 em 1 px | vao 1,58 (o cru foi 9, do qual 10,49 e o relogio do quadro)
+sul    140 quadros | passo 3,47 px de tela/quadro | erro de quantizacao max 1 px (na grade ANTIGA daria 3) | pior passo 0,95 px | pra tras 0 | atraso de leitura 0 quadro (desacordo 0,003 px)
+oeste  REGULARIDADE: desvio 0,491 px de tela (teto 0,60) | na grade ANTIGA daria 1,028 | para de 1 em 1 px | vao 1,69 (o cru foi 7, do qual 6,09 e o relogio do quadro)
+oeste  140 quadros | passo 3,45 px de tela/quadro | erro de quantizacao max 1 px (na grade ANTIGA daria 3) | pior passo 0,85 px | pra tras 0 | atraso de leitura 0 quadro (desacordo 0,004 px)
+norte  REGULARIDADE: desvio 0,487 px de tela (teto 0,60) | na grade ANTIGA daria 1,015 | para de 1 em 1 px | vao 1,18 (o cru foi 5, do qual 5,57 e o relogio do quadro)
+norte  140 quadros | passo 3,42 px de tela/quadro | erro de quantizacao max 1 px (na grade ANTIGA daria 3) | pior passo 0,77 px | pra tras 0 | atraso de leitura 0 quadro (desacordo 0,003 px)
+FOTO leste cenario: 0 pares legiveis -- liso demais pra correlacionar
+FOTO leste regularidade: 1 deslocamentos legiveis -- nao medi
+FOTO leste corpo: cravado na tela em 93/93 pares (100%), maior deslocamento visto 0 px
+FOTO norte cenario: 0 pares legiveis -- liso demais pra correlacionar
+FOTO norte regularidade NO PIXEL: desvio 0,499 px de base (teto 0,60), de -5,37 a -3,4 px por quadro (vao 1,97) em 33 quadros, busca de +-18 px de monitor
+FOTO norte NO VIDRO: desvio 0,499 px de MONITOR (= 0,499 de base x 1 de esticada, por construcao) -- escala inteira: o vidro conta o mesmo que a base
+FOTO norte corpo: cravado na tela em 94/98 pares (96%), maior deslocamento visto 3 px
+OS DOIS EIXOS: horizontal desvio 0,491 px, para de 1 em 1 (liso) | vertical desvio 0,487 px, para de 1 em 1 (liso) | diferenca 0,004 px
+OS DOIS EIXOS NO PIXEL: nao medi -- faltou foto de um dos eixos
+CORPOS REMOTOS: 40 vistos, 16 andaram o bastante pra medir | 0 eixo(s) em subpixel | 0 eixo(s) parando de mais de 1 em 1 px
+correcoes de servidor: 0
+===== 3 FALHA(S) =====
+   FOTO leste: nao houve par de quadros de cenario legivel
+   FOTO leste: nao deu pra medir a regularidade no pixel
+   FOTO norte: nao houve par de quadros de cenario legivel

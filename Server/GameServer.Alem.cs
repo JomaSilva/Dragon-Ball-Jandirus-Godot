@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Tech;
 using Jandirus.Core.World;
 using Jandirus.Net;
 using LiteNetLib;
@@ -25,7 +26,7 @@ namespace Jandirus.Server;
 /// ============================ AS DUAS ETAPAS, E POR QUE SAO DUAS ============================
 /// A morte deixou de ser um instante e passou a ser um percurso com dois prazos:
 ///
-///     morre --[ Alem.MsNoChao ]--> Outro Mundo --[ Alem.MsNoAlem ]--> vivo, no berco
+///     morre --[ Alem.MsNoChao ]--> Outro Mundo --[ PAGA: esferas / tecnica / Enma ]--> vivo, no berco
 ///       ^                             ^
 ///       |                             |
 ///   corpo CAIDO, na pose de       de PE, com AUREOLA, andando
@@ -40,9 +41,10 @@ namespace Jandirus.Server;
 /// quem viu a morte ver a morte -- sem ela, matar alguem seria "o inimigo piscou e nao estava mais
 /// la", que le PIOR do que o jogo lia antes desta mudanca.
 ///
-/// A SEGUNDA E DO PORT, e e um andaime declarado -- ver <see cref="Alem.MsNoAlem"/>. Nenhum dos
-/// cinco caminhos de volta do original existe aqui ainda; sem uma volta, a viagem prenderia todo
-/// mundo, e a instrucao do dono e *"prefira sempre o que nao prende ninguem"*.
+/// A SEGUNDA NAO TEM PRAZO. Ela ja foi um andaime de 60 s (`MsNoAlem`, hoje so na historia de
+/// `Alem.cs`), da epoca em que nenhuma volta do original existia; o dono pediu o oposto
+/// (2026-09-04): o morto fica no Outro Mundo ate alguem pagar a volta -- as esferas, a tecnica de
+/// reviver de um vivo, ou o Enma Daioh (secao 5, 1.000.000 de zeni). Ver `Alem.TipoDoEnma`.
 /// ========================================================================================
 ///
 /// ============================ UM RELOGIO SO, E ELE NAO E MAIS ESCRITO A MAO ============================
@@ -189,7 +191,22 @@ public partial class GameServer
 	/// </summary>
 	private void PassoDaMorte(ServerPlayer pl)
 	{
-		if (Alem.EhOAlem(pl.Zone)) { Renascer(pl); return; }
+		// QUEM JA ESTA NO OUTRO MUNDO NAO TEM PRAZO: nao ha volta automatica (ver `Alem.TipoDoEnma`).
+		// O relogio chega aqui zerado por um relog antigo, por bancada, ou por uma morte DENTRO do alem
+		// (um vivo que visitou e caiu la); ele e trancado e pronto. E a etapa de cadaver acabou: a
+		// viagem de quem ja esta no alem e a de quem ja chegou, entao `MorteJaViajou` acende aqui --
+		// sem isto o morto do alem ficaria DE PE (a pose e por lugar, `Alem.MortoDePe`) e SEM auréola
+		// (a auréola e por etapa, `Alem.TemAureola`), que e o par que nunca deve existir junto.
+		if (Alem.EhOAlem(pl.Zone))
+		{
+			if (!pl.MorteJaViajou)
+			{
+				pl.MorteJaViajou = true;
+				GD.Print($"[server] {pl.Name} morreu DENTRO do Outro Mundo: de pe, com auréola, sem prazo");
+			}
+			pl.RelogioDaMorte = long.MaxValue;
+			return;
+		}
 
 		// ============================ QUEM FICA COM O CORPO NAO E ARRANCADO -- `Stats.dm:275-292` ============================
 		// `Keep_Body` de cargo (`OtherworldRankSkills.dm:195-202`) liga o `KeepsBody` em alguem, e o
@@ -215,13 +232,12 @@ public partial class GameServer
 		// mesma coisa vista de longe: uma demora curta e aleatoria depois de o gatilho armar.
 		//
 		// ---- A DIVERGENCIA, E ELA E DO MODELO DE MORTE DESTE PORT E NAO DESTE VERB ----
-		// **NO DM O MORTO COM CORPO ANDA. AQUI ELE NAO ANDA** -- e nao anda porque NENHUM morto anda
-		// neste port: `PodeMexerOCorpo` (`GameServer.Ia.cs:360`) recusa por `Ficha.dead`, o que vale
-		// inclusive pro morto que esta no Outro Mundo. `Alem.MortoDePe` decide so a POSE.
-		//
-		// Nao mexi nisso aqui de proposito: soltar o passo do morto e uma mudanca no funil de vetor
-		// (jogador e IA de uma vez, cinco recusas compartilhadas) e ela nao pertence a um verb de
-		// cargo -- e o tipo de coisa que se faz sozinha, com bancada propria, e nao de carona.
+		// **NO DM O MORTO COM CORPO ANDA. AQUI ELE NAO ANDA.** Desde 2026-09-04 o morto do OUTRO
+		// MUNDO anda (`PodeMexerOCorpo` le `MortoDePe`, a pedido do dono: *"o personagem morto fica
+		// preso, nao conseguindo andar"*), mas `MortoDePe` e por LUGAR, e o morto do `Keep_Body`
+		// esta no mundo dos vivos -- pra ele a recusa por `Ficha.dead` continua. Soltar ESSE passo
+		// e outra pergunta (o morto de pe entre os vivos, com a auréola o denunciando), com bancada
+		// propria, e nao de carona num verb de cargo.
 		//
 		// O QUE O VERB ENTREGA MESMO ASSIM, e nao e pouco: o corpo **fica onde caiu**, no mundo dos
 		// vivos, em vez de sumir pro Outro Mundo em 15 s. E isso muda uma coisa concreta e ligada
@@ -331,36 +347,37 @@ public partial class GameServer
 		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
 		MoveToZone(pl.Id, alem, MesaDoEnma(alem));
 
-		// ============================ E O RELOGIO REARMA AQUI -- A ETAPA SEGUINTE TEM PRAZO ============================
-		// **ESTA LINHA FALTAVA, E A AUSENCIA APAGAVA O PEDIDO DO DONO INTEIRO.** O `AMorteAconteceu`
-		// arma o relogio pros 15 s de cadaver; quando ele vence, a triagem chama esta viagem -- e o
-		// campo continuava com o vencimento **ja passado**. No tique seguinte (33 ms depois) a mesma
-		// pergunta dava verdadeiro de novo, o `PassoDaMorte` via `EhOAlem(pl.Zone)` e chamava
-		// `Renascer`. Ou seja: o jogador via o Outro Mundo por **um quadro**.
+		// ============================ SEM PRAZO: A ETAPA SEGUINTE NAO TEM VOLTA AUTOMATICA ============================
+		// Aqui se armava `NowMs() + Alem.MsNoAlem` (60 s) e o `PassoDaMorte` chamava `Renascer` quando
+		// vencia -- o andaime da epoca em que nenhuma das voltas do DM existia. O dono pediu o contrario
+		// (2026-09-04): *"voce teria que ficar morto ate alguem te reviver com as esferas, ou juntar 1
+		// milhao de zeni e pagar o Enma Daioh"*. O relogio vai pro TETO e o tique nunca mais o examina;
+		// a saida e paga: as esferas, a tecnica de reviver de um vivo ao lado, ou o Enma (secao 5).
 		//
-		// Nada reclamava. `Alem.MsNoAlem` estava escrita, documentada em vinte linhas e lida por um
-		// unico consumidor -- a MENSAGEM logo abaixo, que anunciava "60 s ate voltar a vida" enquanto
-		// a volta acontecia no quadro seguinte. **Escrever a constante nao e aplicar a constante**, e
-		// e o mesmo defeito que este port ja registrou no corte de sigilo do BP.
-		//
-		// O CAMPO E UM SO PORQUE A ETAPA E DERIVADA DO LUGAR (ver `ServerPlayer.RelogioDaMorte`): quem
-		// esta no alem esta na segunda etapa, e por isso o mesmo `RelogioDaMorte` marca as duas.
-		// ========================================================================================================
-		pl.RelogioDaMorte = NowMs() + Alem.MsNoAlem;
+		// (A licao que o bloco anterior guardava continua valendo: um relogio que fica com o vencimento
+		// JA PASSADO faz a mesma pergunta dar verdadeiro no tique seguinte. E por isso que e `MaxValue`
+		// e nao "deixa como esta".)
+		// ==================================================================================================================
+		pl.RelogioDaMorte = long.MaxValue;
 
-		// `SpreadHeal(100,1,1)` + `RegrowLimb` -- ver o cabecalho. NAO e `Reviver`: `dead` fica.
-		pl.Combate.Corpo.Restaurar();
-		pl.Combate.SincronizarVida();
-		AjustarGanhoDoRabo(pl);   // o rabo voltou: o ritmo de treino do Saiyajin volta com ele
+		// ============================ A MORTE NAO CURA MAIS ============================
+		// O DM cura 100% e devolve os membros JA NA MORTE (`Death.dm:86-88` `RegrowLimb`, `:111`
+		// `SpreadHeal(100,1,1)`), e este port copiava (`Corpo.Restaurar()` aqui). Divergencia
+		// DECLARADA, pedida pelo dono (2026-09-04): o morto sobe pro Outro Mundo com os ferimentos e
+		// os membros com que caiu -- a cura e o que a VOLTA A VIDA entrega (as esferas, a tecnica, o
+		// Enma: `Renascer`/`Ressuscitar`), e nao um premio por morrer. O fantasma anda de qualquer
+		// jeito: perna nenhuma pesa no passo deste port (`MoveRules` nao le membro), e o `TickDeRegen`
+		// nao regenera morto -- as feridas ficam como estavam ate alguem pagar.
+		// ==================================================================================
 
-		Avisar(pl, "o chão some sob você. Você abre os olhos no Outro Mundo, inteiro -- e morto."
+		Avisar(pl, "o chão some sob você. Você abre os olhos no Outro Mundo, ferido como caiu -- e morto."
 				 + " Uma auréola se acende sobre a sua cabeça.");
 
-		// ============================ E SE O SEU MUNDO ACABOU, A ESCOLHA CABE NESTES 60 SEGUNDOS ============================
-		// **Este e o unico instante em que a pergunta do refugio vale pra ESTA morte.** O `Renascer`
-		// roda quando o prazo vence e nao pode esperar por clique nenhum (a decisao de arquitetura
-		// esta escrita em `GameServer.Conquista.cs`: nada bloqueia o tique); a chegada aqui abre uma
-		// janela de `Alem.MsNoAlem` = 60 s em que o jogador ainda pode dizer para onde quer voltar.
+		// ============================ E SE O SEU MUNDO ACABOU, A ESCOLHA FICA ABERTA ============================
+		// **A pergunta do refugio vale pra ESTA morte a partir daqui.** O `Renascer` roda quando alguem
+		// paga a volta (esferas, tecnica, Enma) e nao pode esperar por clique nenhum (a decisao de
+		// arquitetura esta escrita em `GameServer.Conquista.cs`: nada bloqueia o tique); como nao ha
+		// mais prazo no Outro Mundo, o jogador tem ate a volta pra dizer para onde quer voltar.
 		//
 		// Quem nao responde volta pelo padrao -- a vizinhanca de casa --, e continua podendo escolher
 		// depois: a resposta e uma preferencia (`Dominio.EhOSpawn`), e nao um voto de uma vez so.
@@ -368,7 +385,7 @@ public partial class GameServer
 		// ============================================================================================================
 		OferecerORefugio(pl, podeAbrir: true);
 		GD.Print($"[server] {pl.Name} MORREU e foi pro Outro Mundo"
-				 + $" ({Alem.MsNoAlem / 1000:0}s ate voltar a vida)");
+				 + " (fica la ate alguem pagar a volta)");
 	}
 
 	/// <summary>
@@ -462,4 +479,112 @@ public partial class GameServer
 				novo.Peer?.Send(PacoteDeAureola(outro), Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 	}
+
+	// =====================================================================
+	// 5. O ENMA DAIOH -- a saida paga
+	// =====================================================================
+	/// <summary>
+	/// SEMEIA O ENMA na cadeira dele, no boot, como obra FIXA do mapa do Outro Mundo. No DM ele e um
+	/// mob de conversa posto por `Build_Sky_NPCs()` (`SkyNPCs.dm:55-59`); aqui e uma `Obra` `DoMapa`
+	/// com menu E (`Interacoes.De("Enma_Daioh")`), densa como o original (`density = 1`), e com a
+	/// armadura no infinito -- um arremesso que passe por cima da mesa nao derruba o juiz dos mortos.
+	/// A entrada do catalogo entra junto e nao vem do disco: o `tech.json` e extraido das construcoes
+	/// do DM, e o Enma nao e uma. O sprite e o `Enma.dmi` do DM (96x96), convertido pelo pipeline.
+	/// </summary>
+	private void SemearOEnma()
+	{
+		if (_obras == null) return;
+		if (_obras.Get(Alem.TipoDoEnma) == null)
+			_obras.Acrescentar(new Construcao
+			{
+				Id = Alem.TipoDoEnma,
+				Nome = "Enma Daioh",
+				Desc = "O juiz dos mortos. Lê a sua ficha e cobra a volta.",
+				Custo = -1,
+				Arte = "res://Assets/Sprites/NPCs/Enma.tres",
+				Estado = "default",
+				Densa = true,
+				// O icone tem 96 px de largura sobre um tile de 32: o DM centraliza com `pixel_x = -32`
+				// (`SkyNPCs.dm:36`); o desenho daqui ancora a obra na celula e desloca pelo mesmo `Pixel`.
+				PixelX = -32,
+				PixelY = 0,
+			});
+
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		if (_noChao.Any(o => o.Tipo == Alem.TipoDoEnma && o.Zona.Equals(alem))) return;
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(alem);
+		Vec2 cadeira = Alem.CadeiraDoEnma(mapa?.Height ?? 500);
+		var enma = new Obra
+		{
+			Id = _proximaObraId++,
+			Tipo = Alem.TipoDoEnma,
+			X = cadeira.X,
+			Y = cadeira.Y - MoveRules.FeetOffsetY,
+			DonoNome = "",
+			Aparafusada = true,
+			DoMapa = true,
+			ErguidaEm = 0,
+			Armadura = double.PositiveInfinity,
+			ArmaduraMax = double.PositiveInfinity,
+		};
+		enma.PorZona(alem);
+		_noChao.Add(enma);
+		AplicarColisaoDasObras(alem);
+		GD.Print($"[server] o Enma Daioh sentou na mesa dele em {Alem.ZonaDoOutroMundo} ({cadeira.X:0},{cadeira.Y:0})");
+	}
+
+	/// <summary>O `enma_interact()` do DM (`SkyNPCs.dm:150-173`), so a fala: o vivo e enxotado; o morto ouve o preco.</summary>
+	private void EnmaOuvir(ServerPlayer pl)
+	{
+		if (ObraQueAceita(pl, "enma_ouvir") == null) { Avisar(pl, "o Enma não está ao alcance -- fale com ele na mesa dele."); return; }
+		if (!pl.Ficha.dead)
+		{
+			Avisar(pl, "Enma Daioh troveja: \"Os vivos não têm negócio na minha mesa! Fora daqui até chegar a sua hora!\"");
+			return;
+		}
+		if (pl.Ficha.aged_out)
+		{
+			Avisar(pl, "Enma Daioh: \"Sua ampulheta virou pela última vez -- morte de velhice não tem volta.\"");
+			return;
+		}
+		Avisar(pl, $"Enma Daioh lê a sua ficha: \"Uma alma equilibrada. Pode descansar no Outro Mundo -- ou voltar, por "
+				 + $"{Alem.PrecoDoReviveDoEnma:N0} zeni. Você tem {pl.Ficha.Zeni:N0}.\"");
+	}
+
+	/// <summary>
+	/// O `enma_zeni_revive()` do DM (`SkyNPCs.dm:185-197`): 1.000.000 de zeni, o BP expresso em 25% por
+	/// uma hora (`zeni_revive_debuff_until`, lido em `Fighter.Power`), e a volta pro berco INTEIRO --
+	/// vida, membros, Ki e folego, que e o que `Revive()` faz la (`Death.dm:163-173`) e o `Renascer`
+	/// faz aqui.
+	///
+	/// NAO PORTADO (ainda): o dobro do preco pra quem foi apagado por Hakai (`hakai_mark`, campo que
+	/// nao existe aqui), a reencarnacao a 10% e o julgamento pro Inferno por karma negativo.
+	/// </summary>
+	private void EnmaReviverPorZeni(ServerPlayer pl)
+	{
+		if (ObraQueAceita(pl, "enma_reviver") == null) { Avisar(pl, "o Enma não está ao alcance -- fale com ele na mesa dele."); return; }
+		if (!pl.Ficha.dead) { Avisar(pl, "Enma Daioh troveja: \"Os vivos não têm negócio na minha mesa!\""); return; }
+		if (pl.Ficha.aged_out)
+		{
+			Avisar(pl, "Enma Daioh: \"Nem todo o zeni do universo compra mais um dia para quem já viveu todos os seus.\"");
+			return;
+		}
+		double custo = EnmaNaoCobraDeTeste ? 0 : Alem.PrecoDoReviveDoEnma;
+		if (pl.Ficha.Zeni < custo)
+		{
+			Avisar(pl, $"Enma Daioh: \"Você não tem como pagar a viagem de volta! Volte quando tiver {custo:N0} zeni.\"");
+			return;
+		}
+		pl.Ficha.Zeni -= custo;
+		pl.Ficha.zeni_revive_debuff_until = NowMs() + Alem.MsDoDebuffDoEnma;
+		Avisar(pl, "Enma Daioh carimba a sua ficha: \"De volta à terra dos vivos!\"");
+		Avisar(pl, "seu corpo volta frágil da viagem: o seu poder fica em 25% por uma hora.");
+		Renascer(pl);
+		MandarFicha(pl);
+		Persistir(pl);
+		GD.Print($"[server] {pl.Name} pagou o Enma ({custo:N0} zeni) e voltou a vida");
+	}
+
+	/// <summary>DEFEITO INJETADO (`--alemteste`): o Enma de graca -- a prova "sem o milhao ele recusa" tem que ficar vermelha.</summary>
+	internal bool EnmaNaoCobraDeTeste;
 }

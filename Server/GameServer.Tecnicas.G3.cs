@@ -1165,7 +1165,11 @@ public partial class GameServer
 		foreach (BodyPart p in c.Corpo.Partes.ToList())
 		{
 			if (p.Decepado || p.Aninhado) continue;
-			c.Ferir(p, dano, letal);   // pelo funil -- o `c.Intocavel` la em cima ja recusou a chamada
+			// PELO FUNIL -- o `c.Intocavel` la em cima ja recusou a chamada. E O FUNIL ARRANCA: um
+			// membro que zera por dano LETAL cai aqui dentro (o `LopLimb` do `DamageMe`, que o
+			// `SpreadDamage` do DM sempre teve), e a peca vai pro chao pelo `AoDecepar`. Este laco
+			// feria e parava, e o braco zerado por explosao ficava no corpo sem peca nenhuma.
+			c.Ferir(p, dano, letal);
 		}
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);

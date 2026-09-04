@@ -124,7 +124,12 @@ public partial class MenuJogo
 				  faltam >= 0 && faltam < 1 ? Tema.Destaque : null, corpo);
 		}
 
-		Nota("Cada planeta corre o próprio dia: a hora e o céu daqui não são os da Terra.", corpo);
+		// NA TERRA A FRASE ERA UM ABSURDO ("o ceu daqui nao e o da Terra" -- lido na Terra). A regra e a
+		// mesma nos dois casos: cada mundo tem o proprio relogio; o que muda e de onde se olha.
+		bool naTerra = string.Equals(GameClient.Instance?.Zone.Name, "Earth", StringComparison.OrdinalIgnoreCase);
+		Nota(naTerra
+				 ? "Este é o dia e o céu da Terra. Cada outro planeta corre o próprio dia e o próprio céu."
+				 : "Cada planeta corre o próprio dia: a hora e o céu daqui não são os da Terra.", corpo);
 	}
 
 	/// <summary>

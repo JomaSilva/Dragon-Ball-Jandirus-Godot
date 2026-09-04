@@ -157,6 +157,18 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// --diagfluidez: a FLUIDEZ DO CORPO REMOTO, no laboratorio. Um `RemotePlayer` de producao
+		// alimentado com snapshots sinteticos (jitter, dois pacotes num quadro, o degrau do tique,
+		// corpo movido pelo servidor, voo, teleporte) a 352 e a 1760 px/s, medindo o passo por
+		// quadro da posicao DESENHADA. Vive aqui em cima com as bancadas sem mundo porque a pergunta
+		// e de interpolacao, e ela nao precisa de rede, de zona nem de janela. A metade com DOIS
+		// PROCESSOS e o `--fluidez a|b`, la embaixo. Ver RoboDeFluidez e `testar-fluidez.bat`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagfluidez") >= 0)
+		{
+			AddChild(new RoboDeFluidez { Name = "RoboDeFluidez", Laboratorio = true });
+			return;
+		}
+
 		// desenhado. E ela PRECISA de janela: e a foto que responde.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtinta") >= 0)
 		{
@@ -1324,6 +1336,27 @@ public partial class Boot : Node2D
 		// fixo e que a nuvem apaga a lua. Anda junto do `--climateste <tipo>` no servidor.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagclima") >= 0)
 			AddChild(new RoboDeClima { Name = "RoboDeClima" });
+
+		// --fluidez <a|b>: a FLUIDEZ DO CORPO REMOTO com DOIS PROCESSOS e corpo de verdade. `a` anda,
+		// corre e voa em pernas retas segurando as acoes reais; `b` grava, quadro a quadro, o passo
+		// da posicao desenhada do `RemotePlayer` de `a` e aplica os criterios do laboratorio
+		// (`--diagfluidez`). `--fluidezalvo <nome>` diz ao B quem olhar. Ver RoboDeFluidez.
+		if (Arg(OS.GetCmdlineArgs(), "--fluidez") is { } papelFluidez)
+		{
+			var rf = new RoboDeFluidez
+			{
+				Name = "RoboDeFluidez",
+				Papel = papelFluidez,
+				Alvo = Arg(OS.GetCmdlineArgs(), "--fluidezalvo") ?? "",
+				Rotulo = Arg(OS.GetCmdlineArgs(), "--fluidezrotulo") ?? papelFluidez,
+				Saida = Arg(OS.GetCmdlineArgs(), "--fluidezsaida") ?? "",
+			};
+			if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--fluidezduracao"),
+								System.Globalization.NumberStyles.Float,
+								System.Globalization.CultureInfo.InvariantCulture, out double segFl))
+				rf.Duracao = segFl;
+			AddChild(rf);
+		}
 
 		// --dois <a|b>: bancada de DOIS PROCESSOS. `a` se transforma, `b` olha o corpo alheio e
 		// fotografa. Os tres defeitos de corpo REMOTO (forma que nao chega a quem entrou depois,

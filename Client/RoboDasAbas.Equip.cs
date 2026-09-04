@@ -102,6 +102,27 @@ public partial class RoboDasAbas
 		Checa("a pilula 'aba Nav' so aparece com o bit Poder.Nav aceso",
 			  nav != null && PilulasDaAba(nav).Contains("aba Nav") == cli.Atributos.Tem(Protocol.Poder.Nav), $"nav={cli.Atributos.Tem(Protocol.Poder.Nav)}");
 
+		// ---- OS ICONES CERTOS (o segundo relato do dono: "o icone do peso ta errado, o do nav system tb") ----
+		// A aba tinha uma COPIA do carregador da mochila que nao saneava o nome do estado: "Radar" nao
+		// achava a animacao "radar" e caia no primeiro quadro da folha. Agora ha UM carregador
+		// (`Miniaturas`), e o que se cobra e o RESULTADO: o Nav System com o MESMO quadro do Dragon
+		// Radar (os dois apontam a mesma folha e o mesmo estado, so que um escrito "Radar" e o outro
+		// "radar"), e os pesos com a camisa do DM (`Clothes_ShortSleeveShirt.dmi`, Tier 1.dm:107), e nao
+		// com um pod de androide da folha de tech.
+		Texture2D? IconeDaLinha(HBoxContainer? l) => l == null ? null : Todos(l).OfType<TextureRect>().FirstOrDefault(t => t.Name == "Icone")?.Texture;
+		Texture2D? texNav = IconeDaLinha(LinhaDoAparelho(pg, CatalogoDeItens.NavSystem));
+		Texture2D? texRadar = IconeDaLinha(LinhaDoAparelho(pg, CatalogoDeItens.Radar));
+		Checa("o icone do Nav System e o MESMO quadro do Dragon Radar (mesma folha, mesmo estado -- 'Radar' e 'radar' sao a mesma animacao)",
+			  texNav != null && ReferenceEquals(texNav, texRadar), $"nav={texNav?.GetInstanceId()} radar={texRadar?.GetInstanceId()}");
+		PanelContainer? cartaoDosPesos = CartaoPorTitulo(pg, "Pesos");
+		Texture2D? texPesos = cartaoDosPesos == null ? null : Todos(cartaoDosPesos).OfType<TextureRect>().FirstOrDefault(t => t.Name == "Icone")?.Texture;
+		Texture2D? camisa = Miniaturas.De("res://Assets/Sprites/Clothes/Clothes_ShortSleeveShirt.tres", "walk_south");
+		Checa("o icone dos Pesos e a CAMISA do DM (`Clothes_ShortSleeveShirt`, de frente), e nao um quadro da folha de tech",
+			  texPesos != null && camisa != null && ReferenceEquals(texPesos, camisa), $"pesos={texPesos?.GetInstanceId()} camisa={camisa?.GetInstanceId()}");
+		Texture2D? pod = Miniaturas.De("res://Assets/Sprites/Misc/Objects/Technology/tech.tres", "weights");
+		Injeta("pedir 'weights' na folha de tech (o que a aba fazia) devolve OUTRO quadro que nao a camisa -- e o defeito que o dono viu",
+			   pod != null && !ReferenceEquals(pod, camisa), $"tech/weights={pod?.GetInstanceId()}");
+
 		// ---- combate: a ficha, e nada inventado ----
 		Checa("'Cadência do soco' e a da ficha", menu.ValorDesenhado("Equip", "Cadência do soco") == $"{f.SocoMs} ms", menu.ValorDesenhado("Equip", "Cadência do soco") ?? "(nulo)");
 		List<string> pilulas = PilulasDaAba(pg);

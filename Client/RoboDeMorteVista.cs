@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using Godot;
+using Jandirus.Core.Combat;
 using Jandirus.Core.World;
 using Jandirus.Net;
 
@@ -116,6 +117,8 @@ public partial class RoboDeMorteVista : Node
 	// =====================================================================
 	private bool _dentro, _fechou;
 	private double _relogio;
+	private double _proximoPuxao, _afastarAte;
+	private bool _trouxe;
 	private int _idDoOutro;
 	private Vector2? _posDoOutro;
 	private ZoneKey _minhaZona;
@@ -298,6 +301,24 @@ public partial class RoboDeMorteVista : Node
 			}
 		}
 
+		// O OUTRO PODE TER NASCIDO EM OUTRO PLANETA: o berco do Saiyajin depende da CLASSE sorteada
+		// (so o Low-Class nasce na Terra), e `IdPeloNome` so enxerga a MINHA tela -- a rodada de
+		// 2026-09-04 ficou 190 s com o olhador curando a si mesmo na Terra e o morto inteiro em
+		// Vegeta. O olhador e admin e PUXA o alvo pelo nome (`admin_trazer`; `PorNome` aceita nome),
+		// a cada 3 s, ate ele aparecer -- a receita do `RoboDeDoisCorpos.Trazer`. O morto (papel
+		// "a") nao puxa ninguem: ele e o puxado.
+		// E PUXO MESMO QUANDO ELE ESTA NA MINHA TELA: o berco da Terra poe os dois com parede ou agua
+		// no caminho reto, e o `AndarAte` (teclas seguradas na direcao dele) nao contorna nada -- tres
+		// rodadas de 2026-09-04 ficaram 200 s sem um soco por isso. So conta o puxao dado com ele JA
+		// no mundo (`_trouxe`): os de antes de ele conectar saem calados.
+		if ((_idDoOutro == 0 || !_trouxe) && Papel == "b" && _relogio > 4 && _relogio >= _proximoPuxao)
+		{
+			_proximoPuxao = _relogio + 3;
+			if (_idDoOutro != 0) _trouxe = true;
+			cli.SendVerbo("admin_trazer", Alvo);
+			Anotar($"t={_relogio:0.0}s  pedi `admin_trazer {Alvo}`" + (_trouxe ? " (ele ja esta no mundo: pousa no meu pixel)" : " (ele ainda nao chegou)"));
+		}
+
 		if (Papel == "a") PassoDoMorto(cli, delta);
 		else PassoDoOlhador(cli, delta);
 
@@ -315,10 +336,11 @@ public partial class RoboDeMorteVista : Node
 	/// <summary>
 	/// Quantos segundos depois de CHEGAR no alem o morto tenta decolar.
 	///
-	/// Nao e numero redondo: a viagem so acontece aos 15 s (`Alem.MsNoChao`) e a volta automatica aos
-	/// 60 s depois dela (`Alem.MsNoAlem`), entao a janela inteira do Outro Mundo tem um minuto. O voo
-	/// precisa caber ANTES do olhador pedir o revive, e o olhador precisa ter tempo de chegar
-	/// (`admin_ir`) e de se afastar antes de fotografar.
+	/// Nao e numero redondo: a viagem so acontece aos 15 s (`Alem.MsNoChao`), e no Outro Mundo nao
+	/// ha mais volta automatica (a saida e paga: esferas, tecnica, Enma) -- quem da o prazo e o
+	/// olhador, que pede o `admin_reviver` depois da foto do voo (12 s no minimo, 34 s no maximo,
+	/// ver `PassoDoOlhador`). O voo precisa caber ANTES desse pedido, e o olhador precisa ter tempo
+	/// de chegar (`admin_ir`) e de se afastar antes de fotografar.
 	/// </summary>
 	private const double EsperaAntesDeVoar = 14.0;
 
@@ -475,6 +497,17 @@ public partial class RoboDeMorteVista : Node
 			case Fase.Chegando:
 				if (_idDoOutro == 0) break;
 
+				// PUXADO PELO `admin_trazer`, o outro pousou NO MEU PIXEL -- e a foto de controle tem
+				// que sair DE LONGE (ver abaixo). Ando pra esquerda ate abrir 96 px OU por 2,5 s, o que
+				// vier antes: o berco pode ter parede a esquerda, e "ate abrir 96 px" sem prazo prendeu
+				// o olhador uma rodada inteira (a foto de controle so exige zero pixel amarelo).
+				if (!_fotoDeControle && _trouxe && _posDoOutro != null)
+				{
+					if (_afastarAte <= 0) _afastarAte = _relogio + 2.5;
+					if (_relogio < _afastarAte && !LongeDoOutro(96f)) { Segurar("move_left", true); break; }
+					Parar();
+				}
+
 				// ---------- FOTO 1: OS DOIS VIVOS ----------
 				// A foto de CONTROLE, e ela vem antes de qualquer soco. Sem ela "ha um circulo
 				// amarelo sobre aquela cabeca" nao prova nada -- podia estar la desde sempre.
@@ -576,9 +609,51 @@ public partial class RoboDeMorteVista : Node
 							 "CAIDO NO BERCO, longe de mim: NAO ha auréola sobre a cabeca dele "
 						   + "(os 15 s de `Alem.MsNoChao` sao o cadaver, e a auréola so vem na viagem)");
 					ONaoAmareloNaFoto("com o corpo assentado e o vivo a dois passos");
+
+					// A FOTO DO INSTANTE, guardada pra 2c: pra onde o corpo dele esta deitado e com que
+					// feridas. E contra ISTO que o cadaver trocado aos 15 s vai ser conferido.
+					_rotacaoAoCair = VisualAlheio()?.RotationDegrees ?? float.NaN;
+					_feridasAoCair = cli.Feridas.TryGetValue(_idDoOutro, out MascaraDeFeridas fm) ? fm : default;
+					Anotar($"t={_relogio:0.0}s  o corpo caido esta a {_rotacaoAoCair:0}° com feridas [{_feridasAoCair}]");
 				}
+
+				// ---------- FOTO 2c: O CADAVER QUE FICOU, DEPOIS DA TROCA DOS 15 s ----------
+				// ============================ O RELATO DO DONO ACONTECIA EXATAMENTE AQUI ============================
+				// *"personagens que morreram (...) giram como se tivessem ficado de pe (...) deveriam ficar
+				// com os ferimentos e na mesma posicao de quando morreram"*. Aos 15 s (`Alem.MsNoChao`) o
+				// corpo da PESSOA viaja e um `ServerPlayer` NOVO fica no lugar -- e ele nascia virado pro sul
+				// com um `Body.Novo()` limpo. As fotos 2 e 2b saem ANTES da troca, entao nenhuma delas via
+				// isso. Esta sai DEPOIS, e mede as duas metades: o angulo desenhado e a mascara de feridas
+				// do corpo novo tem que ser os do corpo velho. Ver `GameServer.Cadaver.cs`.
+				// ==================================================================================================
+				if (_fotosDoCaido == 2 && _relogio >= _morreuEm + (Alem.MsNoChao / 1000.0) + 1.5)
+				{
+					_fotosDoCaido++;
+					_idDoCadaver = World.Instancia?.IdPeloNome(Cadaver.NomeDo(Alvo)) ?? 0;
+					Vector2[] pontos = _idDoCadaver != 0 && World.Instancia?.PosicaoDesenhadaDe(_idDoCadaver) is { } pc
+						? [pc, .. PontosDosDois()] : PontosDosDois();
+					Fotografar("user://morte-2c-cadaver-trocado.png",
+							   "2/5 (ter) -- o CADAVER que ficou depois da troca dos 15 s: mesmo angulo, mesmas feridas",
+							   pontos);
+
+					CharacterVisual? vCad = _idDoCadaver != 0 && World.Instancia?.CorpoDeTeste(_idDoCadaver) is { } nc
+						&& GodotObject.IsInstanceValid(nc) ? nc.GetNodeOrNull<CharacterVisual>("Visual") : null;
+					Conferir(_idDoCadaver != 0 && vCad != null,
+							 $"O CADAVER ('{Cadaver.NomeDo(Alvo)}') esta na minha tela depois da troca (id {_idDoCadaver})");
+					Conferir(vCad != null && !float.IsNaN(_rotacaoAoCair)
+							 && Mathf.IsEqualApprox(vCad.RotationDegrees, _rotacaoAoCair),
+							 $"...deitado no MESMO angulo em que o corpo dele caiu ({_rotacaoAoCair:0}° -> "
+						   + $"{vCad?.RotationDegrees.ToString("0") ?? "?"}°) -- ele nao 'levantou e girou'");
+					bool temMascara = cli.Feridas.TryGetValue(_idDoCadaver, out MascaraDeFeridas fc);
+					Conferir(temMascara && !_feridasAoCair.Limpa && fc == _feridasAoCair,
+							 $"...e com as MESMAS feridas do instante da morte ([{_feridasAoCair}] -> "
+						   + $"[{(temMascara ? fc.ToString() : "sem mascara")}]) -- os ferimentos ficaram no corpo");
+					Conferir(vCad != null && !vCad.AureolaVisivelDeTeste, "...e sem auréola (ela viajou com a pessoa)");
+				}
+
 				// A VIAGEM acontece aos 15 s (`Alem.MsNoChao`). Peco o `admin_ir` depois disso, e
-				// insisto: se eu pedir antes, eu vou parar no berco, do lado do cadaver.
+				// insisto: se eu pedir antes, eu vou parar no berco, do lado do cadaver. A foto 2c sai
+				// nos 16,5 s, entre a troca e a partida.
 				if (_relogio >= _morreuEm + 18) { _fase = Fase.Seguindo; _pediuIr = false; }
 				break;
 
@@ -629,6 +704,13 @@ public partial class RoboDeMorteVista : Node
 
 	private int _fotosDoCaido;
 	private bool _fotoDoRevivido, _julguei, _fotoDeControle;
+
+	/// <summary>A FOTO DO INSTANTE (tirada em 2b): o angulo e as feridas do corpo caido, pra 2c conferir.</summary>
+	private float _rotacaoAoCair = float.NaN;
+	private Jandirus.Core.Combat.MascaraDeFeridas _feridasAoCair;
+
+	/// <summary>O id do CADAVER (o corpo novo que fica aos 15 s) -- resolvido pelo nome, em 2c.</summary>
+	private int _idDoCadaver;
 
 	private void ComecarAPancada(GameClient cli)
 	{
@@ -736,8 +818,9 @@ public partial class RoboDeMorteVista : Node
 		}
 
 		// ---------- e entao o revive ----------
-		// Aos 60 s no alem o `Renascer` levaria ele embora sozinho (`Alem.MsNoAlem`), e a foto do
-		// "sem auréola" sairia de um berco vazio. O `admin_reviver` desfaz a morte NO LUGAR.
+		// No alem ninguem volta sozinho (a saida e paga: esferas, tecnica, Enma), e um `Renascer`
+		// levaria ele pro berco -- a foto do "sem auréola" sairia de um berco vazio. O
+		// `admin_reviver` desfaz a morte NO LUGAR.
 		// ESPERA ELE POUSAR (`!_outroVoando`): o revive tem que ser o PAR EXATO da foto 3 -- mesma
 		// pose, mesmo lugar, um bit de diferenca. Revivendo no meio do voo, a ultima foto mudaria
 		// duas coisas de uma vez e nao provaria qual delas apagou a auréola.
@@ -777,6 +860,9 @@ public partial class RoboDeMorteVista : Node
 
 	private bool Encostado() =>
 		World.Instancia?.PosicaoLocal is { } eu && _posDoOutro is { } la && (la - eu).Length() <= Perto + 8;
+
+	private bool LongeDoOutro(float px) =>
+		World.Instancia?.PosicaoLocal is { } eu && _posDoOutro is { } la && (la - eu).Length() >= px;
 
 	private void AndarEBater(GameClient cli, double delta)
 	{
@@ -1086,7 +1172,7 @@ public partial class RoboDeMorteVista : Node
 		// nao aconteceu, o `GetImage` voltou vazio -- e o placar sai "0 falhas", que se le exatamente
 		// igual a "tudo certo".
 		// ==================================================================================================
-		Conferir(_fotos >= 4, $"a bancada tirou as fotos ({_fotos} de 5) -- sem elas nao ha veredito nenhum");
+		Conferir(_fotos >= 5, $"a bancada tirou as fotos ({_fotos} de 7) -- sem elas nao ha veredito nenhum");
 		Conferir(_morreuEm > 0, "houve uma morte de verdade, vista do outro lado do soquete");
 		Conferir(_golpes > 0 && _acertos > 0,
 				 $"a morte veio de SOCO LETAL e nao de bandeira ({_golpes} golpes, {_acertos} acertos, "

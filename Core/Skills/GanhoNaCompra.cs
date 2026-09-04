@@ -80,8 +80,51 @@ public sealed class GanhoNaCompra
 			fi.SetValue(f, (double)fi.GetValue(f)! + quanto);
 			somou[g.Campo] = somou.GetValueOrDefault(g.Campo) + quanto;
 		}
+		GarantirARazaoDoPotencial(f, somou);
 		if (somou.Count > 0) livro.RegistrarGanho(s.Path, somou);
 		return somou;
+	}
+
+	/// <summary>O campo da razao garantida, pelo nome que o livro grava (e o mesmo do `Fighter`).</summary>
+	public const string CampoDaRazao = nameof(Fighter.potencialGarantido);
+
+	/// <summary>
+	/// O presente de `hiddenpotential` desta compra vira tambem uma RAZAO garantida (presente/BP no dia),
+	/// somada em `Fighter.potencialGarantido` e gravada no mesmo registro -- assim `Desfazer` a devolve
+	/// pelo mesmo caminho que devolve o resto. Ver a nota em `Fighter.Statify` (o teto de Ki que caia).
+	/// Nada acontece numa compra que nao mexe no potencial.
+	/// </summary>
+	private static void GarantirARazaoDoPotencial(Fighter f, Dictionary<string, double> somou)
+	{
+		if (!somou.TryGetValue(nameof(Fighter.hiddenpotential), out double presente) || presente <= 0) return;
+		// A RAZAO DO DIA (potencial inteiro / BP de hoje), e nao a fatia deste presente: e ela que o
+		// `Statify` reproduz depois, exatamente, em qualquer BP. Um MAXIMO, porque uma segunda compra
+		// com BP maior pode ate garantir menos do que a primeira ja garantiu; e o registro guarda o
+		// DELTA, pra que `Desfazer` devolva pelo mesmo caminho que devolve o resto.
+		double antes = f.potencialGarantido;
+		double agora = Math.Max(antes, f.hiddenpotential / Math.Max(f.BP, 1));
+		if (agora <= antes) return;
+		f.potencialGarantido = agora;
+		somou[CampoDaRazao] = agora - antes;
+	}
+
+	/// <summary>
+	/// SAVES DE ANTES DA RAZAO GARANTIDA: o livro tem o presente de `hiddenpotential` registrado e nenhuma
+	/// razao. Recompoe a razao com o BP DE HOJE (menor do que seria no dia da compra -- e o que da pra
+	/// saber; o dia da compra nao foi gravado) e grava no registro, uma vez so. Roda ao carregar o livro.
+	/// Devolve quantas compras foram reconciliadas.
+	/// </summary>
+	public static int Reconciliar(Fighter f, SkillBook livro)
+	{
+		int n = 0;
+		foreach ((string path, Dictionary<string, double> somou) in livro.GanhosNaCompra)
+		{
+			if (somou.ContainsKey(CampoDaRazao)) continue;
+			if (!somou.TryGetValue(nameof(Fighter.hiddenpotential), out double presente) || presente <= 0) continue;
+			GarantirARazaoDoPotencial(f, somou);
+			n++;
+		}
+		return n;
 	}
 
 	/// <summary>

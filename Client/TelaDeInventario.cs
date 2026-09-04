@@ -198,20 +198,8 @@ public partial class TelaDeInventario : CanvasLayer
 		return pilhaVisual;
 	}
 
-	/// <summary>O primeiro quadro do sprite do item, virado textura pro botao.</summary>
-	private static Texture2D? Miniatura(ItemDef def)
-	{
-		var f = ResourceLoader.Load<SpriteFrames>(def.Arte);
-		if (f == null) return null;
-
-		if (def.Estado.Length > 0 && f.HasAnimation(def.Estado) && f.GetFrameCount(def.Estado) > 0)
-			return f.GetFrameTexture(def.Estado, 0);
-
-		foreach (StringName anim in f.GetAnimationNames())
-			if (f.GetFrameCount(anim) > 0) return f.GetFrameTexture(anim, 0);
-
-		return null;
-	}
+	/// <summary>O icone do item: o carregador unico (<see cref="Miniaturas"/>), o mesmo das abas Equip e Tech.</summary>
+	private static Texture2D? Miniatura(ItemDef def) => Miniaturas.DoItem(def);
 
 	/// <summary>
 	/// AS OPCOES DO ITEM, num painel flutuante ao lado do slot.

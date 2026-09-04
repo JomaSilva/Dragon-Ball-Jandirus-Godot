@@ -38,6 +38,22 @@ namespace Jandirus.Server;
 ///     relato da PLATEIA passar a carregar o nome do membro -- que e ficha alheia em todo soco.
 /// ==================================================================================================
 ///
+/// ============================ E AS QUATRO DO RELATO "NAO ESTA SPAWNANDO" ============================
+/// As cinco de cima mediam SO O SOCO -- e o soco sempre funcionou. O dono viu a peca nao nascer nas
+/// amputacoes por TECNICA, e viu o braco sumir da tela de quem chegava depois. Estas quatro medem
+/// exatamente isso, e a 6 carrega o DEFEITO INJETADO da cauda unica:
+///  6. A EXPLOSAO ARRANCA (`SpreadDamage` -> `DamageMe` -> `LopLimb`). Reprova se o dano em area
+///     letal zerar o membro e ele continuar no corpo, ou se ele sair sem peca no chao. Com a cauda
+///     desligada (`CombatState.SemArrancarDeTeste`, o `Ferir` que fere e para) o MESMO criterio tem
+///     que ficar vermelho. E o nao-letal nao arranca.
+///  7. O DANO DIRETO ARRANCA (`damage_mob` -> `DamageLimb` -> `DamageMe`). Mesma prova, um membro
+///     sorteado de cada vez, com a cascata (braco+mao) e o contra-exemplo nao-letal.
+///  8. O RETRATO PRA QUEM ENTRA. Reprova se quem sai e volta pra zona nao receber o `S2C.Pecas` com
+///     TODAS as pecas que o chao lembra, com quanto falta de cada uma, e nada alem disso.
+///  9. O TETO E O PRAZO. Reprova se a zona lembrar mais de 32, se a 33a nao empurrar a MAIS VELHA, se
+///     a peca de 600 s + 1 ms nao sumir no tique, ou se a que ainda tem 5 s sumir junto.
+/// =====================================================================================================
+///
 /// O QUE ELA NAO ALCANCA, e mora na `--diagdecalque` (cliente): o JATO DESENHADO (o node nascendo
 /// uma vez, com a arte carregada, seguindo o corpo), o TETO de 32 pecas vivas no chao e o rastro da
 /// agua. Aqui nao ha tela.
@@ -58,6 +74,13 @@ public partial class GameServer
 	/// Nula em jogo -- uma comparacao contra null por golpe anunciado.
 	/// </summary>
 	internal static List<(bool Cheio, byte[] Fio)>? EscutaDeGolpes;
+
+	/// <summary>
+	/// OS RETRATOS DE PECAS QUE SAIRAM (`S2C.Pecas`), com PRA QUEM e o fio. Capturado em
+	/// `MandarPecas`, pela mesma razao das outras escutas: o retrato termina num `Peer.Send`, e um
+	/// corpo forjado nao tem `Peer` -- so o fio diz o que quem entra na zona receberia. Nula em jogo.
+	/// </summary>
+	internal static List<(int Para, byte[] Fio)>? EscutaDeRetratosDePecas;
 
 	private void AfirmarPeca(string oque, bool passou, string detalhe = "")
 	{
@@ -82,12 +105,24 @@ public partial class GameServer
 			PertoDeQuemPerdeu();
 			NaoAcumulaSemTeto();
 			OPacoteNaoLevaMaisNada();
+			AExplosaoArranca();
+			ODanoDiretoArranca();
+			ORetratoPraQuemEntra();
+			OTetoEOPrazo();
+		}
+		catch (Exception e)
+		{
+			AfirmarPeca($"a bancada rodou inteira (estourou: {e.Message})", false, e.StackTrace ?? "");
 		}
 		finally
 		{
 			EscutaDeGolpes = null;
 			EscutaDeDecalques = null;
+			EscutaDeRetratosDePecas = null;
 			LimparTudoDaBancada();
+			// O CHAO DA ZONA VOLTA LIMPO: o servidor continua de pe depois da bancada, e quem logasse
+			// na Terra receberia no retrato os bracos de bancada que ela deixou -- por dez minutos.
+			PecasDaZona(ZonaDaBancadaDeProjetil.Hash).Clear();
 		}
 
 		GD.Print($"[peca] ================ {_pcOk} passaram, {_pcFalhou} falharam ================");
@@ -627,6 +662,301 @@ public partial class GameServer
 		// em que alguem acrescentar o id "so pra depurar".
 		AfirmarPeca("...e a peca no chao nao diz de quem era o corpo (nao ha campo de dono no fio)",
 					tamanhos.Count > 0 && tamanhos.TrueForAll(n => n == esperado));
+
+		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// 6) A EXPLOSAO ARRANCA -- o `SpreadDamage`, com o defeito injetado
+	// =====================================================================
+	/// <summary>
+	/// ============================ A METADE DO RELATO QUE O SOCO NAO COBRIA ============================
+	/// `Injuries.dm:63-87`: o `SpreadDamage` chama `DamageMe(damage, 0)` em cada membro, e o `DamageMe`
+	/// (`mobparts_logic.dm:96-97`) chama `LopLimb()` quando o membro zera por dano letal. No port o
+	/// `EspalharDanoG3` feria pelo `CombatState.Ferir` e PARAVA: o braco ficava com `Vida = 0`,
+	/// inteiro no corpo, e nenhuma peca nascia. Era o "nao esta spawnando" do dono, visto de uma
+	/// Kamehameha em vez de um soco.
+	///
+	/// O CRITERIO E O MESMO `EspalharDanoG3` de producao, e o DEFEITO INJETADO e a cauda desligada
+	/// (`SemArrancarDeTeste`, o `Ferir` de antes -- fere e para). Uma bancada que so tivesse visto a
+	/// cauda ligada nao distingue "a cauda arranca" de "alguem arrancou por outro caminho".
+	///
+	/// O DANO E 150 NUM CORPO DE 100 POR MEMBRO: zera tudo de uma vez. Os NUCLEOS zerados matam --
+	/// e a morte e NEGADA pelo `NegarMorte` da dupla (o gancho de producao da Aura of Destruction),
+	/// senao a explosao terminaria a briga e o `EspalharDanoG3` recusaria o corpo morto na passada
+	/// seguinte do `Mutacao`. O que sobra e o corpo NOCAUTEADO, sem os cinco membros, com nove pecas
+	/// no chao -- que e exatamente a foto de quem sobrevive a uma explosao no DM.
+	/// ================================================================================================
+	/// </summary>
+	private void AExplosaoArranca()
+	{
+		GD.Print("[peca] -- 6) A EXPLOSAO ARRANCA COMO O SOCO (`SpreadDamage` -> `DamageMe` -> `LopLimb`)");
+
+		(ServerPlayer a, ServerPlayer d) = DuplaForte("Area");
+		double kiAntes = 0;
+
+		bool ExplodirEArrancar()
+		{
+			// O CORPO VOLTA INTEIRO ANTES DE CADA PASSADA: o `Mutacao` roda o criterio tres vezes, e a
+			// segunda mediria um corpo que ja nao tem o que perder.
+			d.Combate.Corpo.Restaurar();
+			Curar(d);
+			kiAntes = d.Ficha.Ki = d.Ficha.MaxKi;
+			Escutar();
+			EspalharDanoG3(d, a, 150, letal: true);
+			int perdidos = d.Combate.Corpo.Perdidos().Count();
+			return perdidos > 0 && PecasNoFio().Count == perdidos;
+		}
+
+		Mutacao(AfirmarPeca,
+				"DANO EM AREA LETAL que zera membros ARRANCA e poe as pecas no chao (o `SpreadDamage` do DM)",
+				"a cauda unica DESLIGADA -- o `Ferir` que fere e para, como antes",
+				ExplodirEArrancar,
+				() => d.Combate.SemArrancarDeTeste = true,
+				() => d.Combate.SemArrancarDeTeste = false);
+
+		// O ESTADO DA ULTIMA PASSADA (a cauda de volta), em detalhe.
+		List<(Vec2 Onde, PecaDeCorpo Peca, int Sobrou)> pecas = PecasNoFio();
+		List<BodyPart> perdidos = [.. d.Combate.Corpo.Perdidos()];
+		AfirmarPeca("os CINCO membros arrancaveis sairam (2 bracos, 2 pernas, reprodutor) e o chao ganhou NOVE "
+				  + "pecas -- a cascata leva mao e pe, como no `LopLimb` (`mobparts_logic.dm:116-118`)",
+					perdidos.Count == 9 && pecas.Count == 9,
+					$"{perdidos.Count} partes perdidas, {pecas.Count} pecas");
+		AfirmarPeca("...e nenhum NUCLEO caiu: cabeca, torso e abdomen zerados MATAM, nao viram peca (regra do port)",
+					perdidos.TrueForAll(p => p.Papel == Vitalidade.Membro),
+					string.Join(", ", perdidos.Select(p => p.Nome)));
+		AfirmarPeca("...e o membro que saiu esta DECEPADO e nao 'zerado e no corpo' (o defeito antigo)",
+					d.Combate.Corpo.Achar("Braco esquerdo") is { Decepado: true, Vida: <= 0 });
+
+		int t = ZoneCollision.TileSize;
+		AfirmarPeca("...e as pecas cairam em volta do corpo, dentro de um tile (o `rand(-32,32)` semeado)",
+					pecas.TrueForAll(p => Math.Abs(p.Onde.X - d.Pos.X) <= t && Math.Abs(p.Onde.Y - d.Pos.Y) <= t));
+		int distintos = pecas.Select(p => $"{p.Onde.X:0.##},{p.Onde.Y:0.##}").Distinct().Count();
+		AfirmarPeca("...ESPALHADAS -- nove pecas do MESMO corpo no MESMO instante nao caem no mesmo pixel "
+				  + "(o ordinal da zona entra na semente)",
+					distintos > pecas.Count / 2, $"{distintos} pontos distintos em {pecas.Count}");
+
+		// O KI: `savant.Ki -= 0.2*savant.MaxKi` por arranque (`mobparts_logic.dm:112`). Cinco arranques
+		// esvaziam o tanque -- e e o `LopLimb` quem cobra, entao a explosao cobra igual ao soco.
+		AfirmarPeca("...e cada arranque cobrou 20% do Ki maximo (o `savant.Ki -= 0.2*MaxKi` do `LopLimb`)",
+					d.Ficha.Ki < kiAntes && d.Ficha.Ki <= Math.Max(0, kiAntes - 5 * 0.2 * d.Ficha.MaxKi) + 0.01,
+					$"Ki {kiAntes:0} -> {d.Ficha.Ki:0}");
+
+		Vec2 s1 = PecasNoChao.Espalhar(7, new Vec2(100, 200), PecaDeCorpo.Braco, 3);
+		Vec2 s2 = PecasNoChao.Espalhar(7, new Vec2(100, 200), PecaDeCorpo.Braco, 3);
+		Vec2 s3 = PecasNoChao.Espalhar(7, new Vec2(100, 200), PecaDeCorpo.Braco, 4);
+		AfirmarPeca("...e o SEMEADO e reproduzivel: a mesma (zona, ponto, peca, ordinal) da o mesmo deslocamento, "
+				  + "e o ordinal seguinte da outro",
+					s1.X == s2.X && s1.Y == s2.Y && (s1.X != s3.X || s1.Y != s3.Y)
+					&& Math.Abs(s1.X) <= PecasNoChao.Espalhamento && Math.Abs(s1.Y) <= PecasNoChao.Espalhamento,
+					$"({s1.X},{s1.Y}) x ({s3.X},{s3.Y})");
+
+		// ---------- CONTRA-EXEMPLO: A MESMA EXPLOSAO, NAO-LETAL ----------
+		d.Combate.Corpo.Restaurar();
+		Curar(d);
+		double vidaAntes = d.Combate.Corpo.Vida();
+		Escutar();
+		EspalharDanoG3(d, a, 150, letal: false);
+		AfirmarPeca("CONTRA-EXEMPLO: a mesma explosao NAO-LETAL machuca e nao arranca nada (o piso do nao-letal)",
+					d.Combate.Corpo.Perdidos().Count() == 0 && PecasNoFio().Count == 0
+					&& d.Combate.Corpo.Vida() < vidaAntes,
+					$"{d.Combate.Corpo.Perdidos().Count()} perdidos, {PecasNoFio().Count} pecas, "
+					+ $"vida {vidaAntes:0} -> {d.Combate.Corpo.Vida():0}");
+
+		// AS PECAS FICAM NO CHAO DA ZONA de proposito: a familia 8 mede o retrato delas. So os corpos saem.
+		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// 7) O DANO DIRETO ARRANCA -- o `damage_mob`
+	// =====================================================================
+	/// <summary>
+	/// `calcs.dm:168-176` -> `DamageLimb` (`Injuries.dm:32-48`) -> `DamageMe` -> `LopLimb`: o dano
+	/// direto num membro SORTEADO (Shock, Precise_Explosion, Counter_Taunt...) tambem arranca no DM. O
+	/// port tinha o `FerirUmMembroG10` ferindo e parando, como o irmao da familia 6.
+	///
+	/// O sorteio pesa a zona mirada mas nao a garante (`Body.Sortear`): quando ele pega o torso o
+	/// corpo morre -- negado -- e cai; a bancada cura e insiste ate um membro sair. O que se afirma e
+	/// sobre o membro que SAIU, seja ele qual for.
+	/// </summary>
+	private void ODanoDiretoArranca()
+	{
+		GD.Print("[peca] -- 7) O DANO DIRETO ARRANCA (`damage_mob` -> `DamageLimb` -> `DamageMe`)");
+
+		(ServerPlayer a, ServerPlayer d) = DuplaForte("Direto");
+		a.Combate.ZonaMirada = "bracos";
+
+		int tentativas = 0;
+		List<(Vec2 Onde, PecaDeCorpo Peca, int Sobrou)> pecas = [];
+		for (int i = 1; i <= 80 && tentativas == 0; i++)
+		{
+			Curar(d);
+			Escutar();
+			FerirUmMembroG10(d, a, 150, letal: true);
+			pecas = PecasNoFio();
+			if (pecas.Count > 0) tentativas = i;
+		}
+
+		List<BodyPart> perdidos = [.. d.Combate.Corpo.Perdidos()];
+		AfirmarPeca("o DANO DIRETO letal arranca o membro sorteado, e a peca cai", tentativas > 0,
+					$"{tentativas} golpes");
+		AfirmarPeca("...e o que caiu no chao e exatamente o que saiu do corpo, com a cascata (braco+mao, perna+pe)",
+					perdidos.Count > 0 && perdidos.Count == pecas.Count
+					&& perdidos.Select(p => Body.PecaDe(p.Nome)).OrderBy(p => p)
+						.SequenceEqual(pecas.Select(p => p.Peca).OrderBy(p => p)),
+					$"perdidos [{string.Join(",", perdidos.Select(p => p.Nome))}] x pecas [{string.Join(",", pecas.Select(p => p.Peca))}]");
+		AfirmarPeca("...e o membro de fora saiu primeiro (a ordem do `Decepar`: o braco antes da mao)",
+					pecas.Count > 0 && Body.PecaDe(perdidos[0].Nome) == pecas[0].Peca);
+
+		// ---------- CONTRA-EXEMPLO: NAO-LETAL ----------
+		d.Combate.Corpo.Restaurar();
+		Escutar();
+		bool doeu = false;
+		for (int i = 0; i < 60; i++)
+		{
+			Curar(d);
+			FerirUmMembroG10(d, a, 150, letal: false);
+			doeu |= d.Combate.Corpo.Vida() < 100;
+		}
+		AfirmarPeca("CONTRA-EXEMPLO: sessenta golpes diretos NAO-LETAIS machucam e nao arrancam nada",
+					doeu && d.Combate.Corpo.Perdidos().Count() == 0 && PecasNoFio().Count == 0,
+					$"doeu={doeu}, {d.Combate.Corpo.Perdidos().Count()} perdidos, {PecasNoFio().Count} pecas");
+
+		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// 8) O RETRATO PRA QUEM ENTRA -- `S2C.Pecas`
+	// =====================================================================
+	/// <summary>
+	/// A OUTRA CAUSA DO RELATO: a peca era um evento. Quem entrava na zona depois do golpe nunca a
+	/// recebia -- e o cadaver, o cenario e as construcoes ja tinham pago essa conta. Aqui um corpo
+	/// SAI da zona e VOLTA pelo `MoveToZone` de producao (o mesmo caminho de quem pousa num planeta
+	/// ou volta do Outro Mundo), e o que se le e o `S2C.Pecas` que saiu pra ele, byte a byte.
+	///
+	/// O chao da zona tem as pecas das familias 6 e 7 (o `LimparTudoDaBancada` so tira corpos): e
+	/// contra a lista do SERVIDOR que o retrato e conferido, e nao contra um numero decorado.
+	/// </summary>
+	private void ORetratoPraQuemEntra()
+	{
+		GD.Print("[peca] -- 8) QUEM ENTRA NA ZONA RECEBE O RETRATO DAS PECAS (`S2C.Pecas`)");
+
+		List<PecaNoChao> chao = PecasDaZona(ZonaDaBancadaDeProjetil.Hash);
+		AfirmarPeca("PRECONDICAO: o chao da zona lembra as pecas das familias anteriores",
+					chao.Count > 0, $"{chao.Count} pecas");
+
+		Vec2 onde = CorredorLivre(8);
+		ServerPlayer novo = Forjar("RecemChegado", onde, 5_000);
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+
+		EscutaDeRetratosDePecas = [];
+		MoveToZone(novo.Id, alem, MesaDoEnma(alem));
+		MoveToZone(novo.Id, ZonaDaBancadaDeProjetil, onde);
+		List<(ulong Zona, List<(PecaDeCorpo Peca, Vec2 Onde, int RestanteMs)> Pecas, int Sobrou)> retratos =
+			[.. EscutaDeRetratosDePecas.Where(r => r.Para == novo.Id).Select(r => LerRetrato(r.Fio))];
+		EscutaDeRetratosDePecas = null;
+
+		AfirmarPeca("quem ENTRA numa zona recebe um retrato por entrada (a ida pro Outro Mundo e a volta)",
+					retratos.Count == 2, $"{retratos.Count} retratos");
+		if (retratos.Count < 2) return;
+
+		(ulong zonaDaIda, List<(PecaDeCorpo Peca, Vec2 Onde, int RestanteMs)> pecasDaIda, _) = retratos[0];
+		(ulong zonaDaVolta, List<(PecaDeCorpo Peca, Vec2 Onde, int RestanteMs)> pecasDaVolta, int sobrou) = retratos[^1];
+
+		AfirmarPeca("o retrato da IDA e do Outro Mundo e esta VAZIO -- la ninguem perdeu nada (o vazio tambem viaja)",
+					zonaDaIda == alem.Hash && pecasDaIda.Count == 0, $"{pecasDaIda.Count} pecas");
+		AfirmarPeca("o retrato da VOLTA e desta zona, com TODAS as pecas que o servidor lembra",
+					zonaDaVolta == ZonaDaBancadaDeProjetil.Hash && pecasDaVolta.Count == chao.Count,
+					$"{pecasDaVolta.Count} no retrato x {chao.Count} no chao");
+		AfirmarPeca("...cada uma no ponto em que caiu e com o recorte certo",
+					pecasDaVolta.Count == chao.Count
+					&& chao.Select((p, i) => p.Peca == pecasDaVolta[i].Peca
+											 && Math.Abs(p.Onde.X - pecasDaVolta[i].Onde.X) < 0.01f
+											 && Math.Abs(p.Onde.Y - pecasDaVolta[i].Onde.Y) < 0.01f).All(x => x));
+		AfirmarPeca("...e com QUANTO FALTA de cada uma (entre 0 e os 600 s do DM), e nao os 600 s cheios",
+					pecasDaVolta.TrueForAll(p => p.RestanteMs > 0 && p.RestanteMs <= PecasNoChao.MsNoChao));
+		AfirmarPeca("...e nada sobra no fio depois da ultima peca (o retrato nao engordou)", sobrou == 0,
+					$"{sobrou} bytes");
+
+		LimparTudoDaBancada();
+	}
+
+	/// <summary>O `S2C.Pecas` lido como o `GameClient` le -- zona, n, e n x (recorte, ponto, restante).</summary>
+	private static (ulong Zona, List<(PecaDeCorpo Peca, Vec2 Onde, int RestanteMs)> Pecas, int Sobrou) LerRetrato(byte[] fio)
+	{
+		var r = new NetDataReader(fio);
+		r.GetByte();
+		ulong zona = r.GetULong();
+		int n = r.GetByte();
+		var l = new List<(PecaDeCorpo, Vec2, int)>(n);
+		for (int i = 0; i < n; i++) l.Add(((PecaDeCorpo)r.GetByte(), r.GetVec(), r.GetInt()));
+		return (zona, l, r.AvailableBytes);
+	}
+
+	// =====================================================================
+	// 9) O TETO E O PRAZO
+	// =====================================================================
+	/// <summary>
+	/// O `spawn(6000) src.loc = null` (`mobparts.dm:397`) e o teto de 32 por zona (o mesmo da fila do
+	/// cliente). O relogio e SIMULADO escrevendo o `CaiuEm` das pecas pro passado -- a mesma manobra
+	/// que a `--cadaverteste` faz com o `CaiuEm` dos cadaveres --, e o tique e o de producao.
+	///
+	/// O TETO E MEDIDO NA BEIRADA: com a zona cheia (32), UMA peca a mais tem que tirar exatamente a
+	/// mais velha e deixar a segunda mais velha na frente. Encher com 36 de uma vez provaria "sobram
+	/// 32" e nao "sai a mais velha", que e a metade que erraria calada.
+	/// </summary>
+	private void OTetoEOPrazo()
+	{
+		GD.Print("[peca] -- 9) O TETO DA ZONA E O PRAZO DE 600 s");
+
+		List<PecaNoChao> chao = PecasDaZona(ZonaDaBancadaDeProjetil.Hash);
+		(ServerPlayer a, ServerPlayer d) = DuplaForte("Teto");
+
+		// ENCHE ATE O TETO: cada explosao letal derruba nove pecas.
+		for (int i = 0; i < 6 && chao.Count < PecasNoChao.TetoPorZona; i++)
+		{
+			d.Combate.Corpo.Restaurar();
+			Curar(d);
+			EspalharDanoG3(d, a, 150, letal: true);
+		}
+		AfirmarPeca($"O TETO: dezenas de pecas cairam e a zona lembra exatamente {PecasNoChao.TetoPorZona}",
+					chao.Count == PecasNoChao.TetoPorZona, $"{chao.Count}");
+
+		// A BEIRADA: marca a mais velha e a segunda, derruba UMA, e pergunta qual saiu.
+		const long marcaDaMaisVelha = 1, marcaDaSegunda = 2;
+		chao[0].CaiuEm = marcaDaMaisVelha;
+		chao[1].CaiuEm = marcaDaSegunda;
+		d.Combate.Corpo.Restaurar();
+		Curar(d);
+		d.Combate.Arrancar(d.Combate.Corpo.Achar("Reprodutor")!);   // o `LopLimb` de producao: UMA peca
+		AfirmarPeca("...e a 33a peca empurra a MAIS VELHA (a que o DM apagaria primeiro, por ordem de spawn)",
+					chao.Count == PecasNoChao.TetoPorZona && !chao.Exists(p => p.CaiuEm == marcaDaMaisVelha)
+					&& chao[0].CaiuEm == marcaDaSegunda,
+					$"{chao.Count} pecas, primeira caiu em {chao[0].CaiuEm}");
+
+		// O PRAZO: uma ja venceu por 1 ms, a outra ainda tem 5 s.
+		long agora = NowMs();
+		chao[0].CaiuEm = agora - PecasNoChao.MsNoChao - 1;
+		chao[1].CaiuEm = agora - PecasNoChao.MsNoChao + 5_000;
+		int antes = chao.Count;
+		TickDasPecas();
+		AfirmarPeca("O PRAZO: a peca de 600 s + 1 ms SUMIU no tique (`spawn(6000) src.loc = null`)",
+					chao.Count == antes - 1 && !chao.Exists(p => p.CaiuEm == agora - PecasNoChao.MsNoChao - 1));
+		AfirmarPeca("...e a que ainda tem 5 s FICOU", chao.Exists(p => p.CaiuEm == agora - PecasNoChao.MsNoChao + 5_000));
+
+		// E O RETRATO CONTA A MESMA HISTORIA: a vencida nao esta nele, e a de 5 s diz que faltam 5 s.
+		(_, List<(PecaDeCorpo Peca, Vec2 Onde, int RestanteMs)> retrato, _) =
+			LerRetrato(PacoteDePecas(ZonaDaBancadaDeProjetil, agora).CopyData());
+		AfirmarPeca("...e o retrato de agora ja nao lista a vencida, e diz que a outra tem ~5 s",
+					retrato.Count == chao.Count && retrato.Exists(p => p.RestanteMs > 0 && p.RestanteMs <= 5_000),
+					$"{retrato.Count} no retrato, restantes [{string.Join(",", retrato.Select(p => p.RestanteMs))}]");
+
+		// CONTRA-EXEMPLO: dentro do prazo, cem tiques nao tiram nenhuma.
+		foreach (PecaNoChao p in chao) p.CaiuEm = agora;
+		int dentro = chao.Count;
+		for (int i = 0; i < 100; i++) TickDasPecas();
+		AfirmarPeca("CONTRA-EXEMPLO: com todas dentro do prazo, cem tiques nao tiram nenhuma",
+					chao.Count == dentro, $"{chao.Count} x {dentro}");
 
 		LimparTudoDaBancada();
 	}

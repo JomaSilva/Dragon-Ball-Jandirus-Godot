@@ -583,8 +583,22 @@ public sealed partial class GameServer
 	/// Id e nao nome: nome se repete e nome se digita errado, e o jogador ja marca gente com duplo
 	/// clique pra tudo o mais. Nulo/0 = "eu mesmo", que e o que os verbs que curam querem.
 	/// </summary>
-	private ServerPlayer? PorNome(string idTexto) =>
-		int.TryParse(idTexto, out int id) && id != 0 && _players.TryGetValue(id, out ServerPlayer? p) ? p : null;
+	/// <summary>
+	/// O ALVO DE UM VERB DE ADMIN: o id que a mira manda (duplo clique em alguem), ou o NOME do
+	/// personagem, escrito. O nome entrou porque a mira so alcanca quem esta NA MESMA ZONA -- e
+	/// `admin_trazer` existe justamente pra buscar quem esta noutro planeta (o DM escolhe o alvo numa
+	/// lista de todos os jogadores, `input(...) in world`). Sem nome, o verb so trazia quem ja estava
+	/// ao lado. Nome exato, sem distinguir maiusculas; empate entre dois iguais fica com o primeiro.
+	/// </summary>
+	private ServerPlayer? PorNome(string idTexto)
+	{
+		if (int.TryParse(idTexto, out int id)) return id != 0 && _players.TryGetValue(id, out ServerPlayer? p) ? p : null;
+		string nome = idTexto.Trim();
+		if (nome.Length == 0) return null;
+		foreach (ServerPlayer q in _players.Values)
+			if (string.Equals(q.Name, nome, StringComparison.OrdinalIgnoreCase)) return q;
+		return null;
+	}
 
 	private void AdminCurar(ServerPlayer adm, string alvo)
 	{

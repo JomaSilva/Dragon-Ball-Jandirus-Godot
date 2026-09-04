@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Combat;
 using Jandirus.Core.World;
 using Jandirus.Net;
 using LiteNetLib;
@@ -82,13 +83,17 @@ public sealed partial class GameServer
 	///     mundo. E o `mobDeath.dm:15`, que chama o MESMO proc.
 	///
 	/// ============================ O QUE ELE COPIA, E O QUE ELE NAO COPIA ============================
-	/// **COPIA A APARENCIA E MAIS NADA** -- e essa e a resposta ao item 6 da tarefa (*"o cadaver nao
+	/// **COPIA A FOTO E MAIS NADA** -- e essa e a resposta ao item 6 da tarefa (*"o cadaver nao
 	/// pode carregar numero de vida ou BP"*). Nao ha corte escrito, ha construcao: a `Ficha` do cadaver
 	/// e um <see cref="Jandirus.Core.Stats.Fighter"/> NOVO, que nasce zerado, e a `Forma` e um perfil
 	/// novo na base. Ninguem precisa lembrar de apagar nada, porque nada foi escrito.
 	///
 	/// E e exatamente o que o DM copia: `A.icon = icon`, `A.icon_state = "KO"`, `A.overlays += overlays`.
-	/// Tres linhas de desenho, zero linha de ficha.
+	/// Tres linhas de DESENHO, zero linha de ficha -- e "desenho" aqui e a aparencia, o ANGULO em que o
+	/// corpo estava deitado e os FERIMENTOS daquele instante (o `overlays` do DM leva o sangue e o
+	/// membro que falta). Os membros viajam como estado do corpo (`Body.CopiarEstadoDe`) porque e
+	/// dele que a mascara de feridas e derivada; a vida MEDIA que resulta disso nao sai no fio (o
+	/// sigilo do BP ja tirou a vida alheia do snapshot) e nao e a do morto -- e a do corpo que ficou.
 	///
 	/// O `Race`/`Genero` VIAJAM JUNTO porque eles nao sao numero de poder -- sao o que faz o desenho
 	/// existir (`VisualCatalog.CorpoSprite` escolhe a folha pela raca, e o Frost Demon nao tem corpo no
@@ -130,6 +135,20 @@ public sealed partial class GameServer
 			Pos = morto.Pos,
 			Altitude = morto.Altitude,
 			Facing = morto.Facing,
+
+			// ============================ E PRA ONDE ELE ESTAVA DEITADO -- a FOTO do angulo ============================
+			// *"personagens que morreram (...) giram como se tivessem ficado de pe (...) deveriam
+			// ficar (...) na mesma posicao de quando morreram"* -- o relato do dono. O corpo novo
+			// nascia com `FacingDaQueda` no padrao (`South`) e `RumoDoGolpe` zerado, entao no
+			// instante da troca (os 15 s de `Alem.MsNoChao`) todo cadaver ESTALAVA pro sul, fosse
+			// qual fosse o lado pra que o morto tinha caido. Era isso o "levanta e gira".
+			//
+			// `DirecaoDeitado` e a resposta ja RESOLVIDA do morto (rumo do golpe, ou do voo, ou o olhar
+			// da queda), lida ANTES de o corpo dele viajar. Escrita como queda com o rumo zerado, ela e
+			// o que o `FacingFrom` devolve dali em diante -- e como o morto nao aceita rumo de golpe
+			// (`ApontarRumoDoGolpe`), ela e definitiva ate um arremesso deslizar o corpo pra outro lado.
+			// ==============================================================================================================
+			FacingDaQueda = morto.DirecaoDeitado,
 
 			Race = morto.Race,
 			Genero = morto.Genero,
@@ -199,10 +218,40 @@ public sealed partial class GameServer
 		PorNoMundo(corpo, noDicionario: _cadaverNoPlayersDeTeste);
 		if (_cadaverNoPlayersDeTeste) _players.Remove(corpo.Id);
 
+		// ============================ `A.overlays += overlays` -- OS FERIMENTOS SAO A FOTO ============================
+		// `Corpse.dm:82`: o cadaver copia os overlays do mob NAQUELE instante -- o sangue, o roxo e
+		// o membro que faltava ficam nele. Aqui as feridas nao sao overlay: sao DERIVADAS do corpo
+		// (`Feridas.De`), e o `PrepararCombate` acima acabou de dar ao cadaver um `Body.Novo()` --
+		// inteiro, limpo, com os dois bracos. Era a outra metade do relato do dono (*"deveriam ficar
+		// com os ferimentos"*): aos 15 s o corpo destrocado virava um corpo sao deitado no chao.
+		//
+		// A COPIA VEM ANTES DO `Restaurar()` do `IrProAlem` (a ordem esta la): o morto viaja inteiro,
+		// e o que fica e o que ele era quando caiu. E e copia, nao instancia -- bater no cadaver nao
+		// pode ferir quem ja esta no Outro Mundo.
+		//
+		// `_cadaverSemFotoDeTeste` e o interruptor do DEFEITO INJETADO da `--doiscorposteste`: com ele
+		// ligado o cadaver fica com o `Body.Novo()` que tinha antes -- letra por letra o corpo limpo
+		// que o dono viu. Falso em jogo, sempre; mora aqui pela mesma regra do
+		// `_cadaverNoPlayersDeTeste` logo acima.
+		// ============================================================================================================
+		if (!_cadaverSemFotoDeTeste)
+		{
+			corpo.Combate.Corpo.CopiarEstadoDe(morto.Combate.Corpo);
+			corpo.Combate.SincronizarVida();
+		}
+		corpo.EnvFeridas = Feridas.De(corpo.Combate.Corpo);
+
 		// QUEM ESTA NA ZONA PRECISA VER O CORPO -- mesmo funil do NPC e do boneco. Sai ANTES do
 		// `MoveToZone` de quem viaja (ver a ordem no `IrProAlem`): assim a aparencia do cadaver chega
 		// pelo canal confiavel antes do `PeerLeft` do corpo que partiu, e a troca nao pisca.
 		TrocarAparencias(corpo);
+
+		// E AS FERIDAS DELE, UMA VEZ, LOGO ATRAS DA APARENCIA. O `TickDasFeridas` so varre o `_players`
+		// (e o cadaver nao esta la, de proposito), entao sem esta linha a mascara fotografada acima
+		// nunca sairia do servidor: quem estava olhando veria o corpo limpo ate o proximo tique que
+		// lesse este cadaver -- e nenhum le. Quem CHEGA depois a recebe pelo `TrocarFeridas`, que ja
+		// varre a `ZoneList` e ja reapresenta o `EnvFeridas` de todo corpo dela, cadaver incluso.
+		MandarFeridas(corpo);
 
 		GD.Print($"[server] {morto.Name} deixou o corpo em {morto.Zone.Name} @ "
 			   + $"({morto.Pos.X:0},{morto.Pos.Y:0}) -- cadaver #{corpo.Id}");
@@ -285,6 +334,14 @@ public sealed partial class GameServer
 
 				vivos++;
 				if (maisAntigo == null || c.CaiuEm < maisAntigo.CaiuEm) maisAntigo = c;
+
+				// ---- 1b. AS FERIDAS DELE ACOMPANHAM O DANO QUE ELE LEVA ----
+				// O cadaver *"pode sofrer dano"* (o pedido), e dano muda a mascara. O `TickDasFeridas`
+				// nao o alcanca (ele so varre o `_players`), e este e o unico laco que passa por todo
+				// cadaver do mundo -- entao a mesma pergunta por diferenca mora aqui. Sem isto o corpo
+				// que apanha ate se desfazer continuaria com a cara de quando caiu.
+				MascaraDeFeridas feridasAgora = Feridas.De(c.Combate.Corpo);
+				if (feridasAgora != c.EnvFeridas) { c.EnvFeridas = feridasAgora; MandarFeridas(c); }
 			}
 
 			// ---- 2. O TETO DA ZONA ----

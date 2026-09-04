@@ -52,12 +52,11 @@ public static class Habilidades
 
 		DosChefesDaMente();
 
-		Verbos.Registrar(new Verbo(
-			"Decolar",
-			Verbos.Outros,
-			"Deixa a superficie e sobe ao espaco. So funciona de um planeta que esta no mapa do "
-			+ "universo -- do Outro Mundo nao se decola.",
-			() => GameClient.Instance?.SendHabilidade("decolar")) { Chave = "hab:decolar" });
+		// O VERB "Decolar" SAIU DA ABA OTHER (2026-09-03, pedido do dono). Subir ao espaco e VOAR
+		// PRA CIMA ate romper a atmosfera (`GameServer.Voo.TentarRomperAAtmosfera`), que cobra Ki e
+		// poder pra isso; um botao de menu que dava o mesmo salto de graca era uma segunda porta,
+		// e a mais barata. A habilidade `decolar` continua no servidor pras bancadas que precisam
+		// chegar ao espaco sem voar (ver `GameServer.Raciais.UsarHabilidade`).
 
 		// ============================ O NADO TEM VERB, E O VOO NAO -- NAO E CONTRADICAO ============================
 		// O dono pediu os dois separadamente e por escrito: *"vamos colocar o VERB DE SWIM"*, depois

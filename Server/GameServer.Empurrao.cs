@@ -300,7 +300,11 @@ public sealed partial class GameServer
 
 			if (pl.TiquesDeVoo <= 0) continue;
 
-			ZoneCollision? mapa = _catalogo?.Get(pl.Zone)?.Mapa;
+			// PELO FUNIL, e nao pelo catalogo cru: o catalogo so conhece os mapas de ARQUIVO. Em planeta
+			// sorteado, interior de nave, mente e selo o `Get` devolvia nulo, e o corpo arremessado
+			// atravessava tudo sem derrubar parede nenhuma -- enquanto o soco na mesma parede
+			// (`SocarCenario`, que ja perguntava ao funil) a derrubava. Ver `MapaDaZonaOuCatalogo`.
+			ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
 			Vec2 passo = pl.RumoDoVoo * (float)(Empurrao.TilesPorTique * ZoneCollision.TileSize * fatia);
 			Vec2 destino = pl.Pos + passo;
 
@@ -452,6 +456,19 @@ public sealed partial class GameServer
 			// A OUTRA BORDA: o pouso. Mesma razao da decolagem -- sem isto o corpo ficava ate 200 ms
 			// torto e sem aceitar comando DEPOIS de ja ter parado.
 			bool pousou = pl.TiquesDeVoo <= 0;
+
+			// ============================ QUEM POUSA CAIDO FICA COMO DESLIZOU ============================
+			// Com o voo acabado, `DirecaoDeitado` deixa de ler o `RumoDoVoo` e passa a ler o
+			// `RumoDoGolpe` -- que num corpo jogado pelo agarrao e o do ultimo soco que ele levou (de
+			// qualquer lado, minutos antes) e num cadaver e ZERO, caindo no `FacingDaQueda` padrao. O
+			// dono viu o resultado: o corpo deslizava deitado pra um lado e, ao parar, virava pra outro.
+			//
+			// Um corpo que continua DEITADO depois do pouso (nocauteado ou morto) fica virado pra onde
+			// deslizou, e nao pra um rumo velho. O vivo de pe nao passa por aqui: ele levanta, e a
+			// direcao deitada dele so volta a importar no proximo golpe que o derrubar.
+			// ============================================================================================
+			if (pousou && (pl.Ficha.KO || pl.Ficha.dead))
+				pl.CongelarDirecaoDeitada(MoveRules.FacingFrom(pl.RumoDoVoo, pl.FacingDaQueda));
 
 			// ============================ O FIM DO ARRASTO ============================
 			// No DU sao duas coisas no mesmo instante: a ULTIMA marca do sulco vira "begin" de novo
@@ -657,7 +674,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DerrubarCenario(ZoneKey zona, Vec2 onde)
 	{
-		ZoneCollision? mapa = _catalogo?.Get(zona)?.Mapa;
+		// O MESMO FUNIL do laco do voo (ver la): so o catalogo nao enxerga planeta sorteado nem nave.
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
 		if (mapa == null) return false;
 
 		(int cx, int cy) = CelulaDoPonto(onde);

@@ -33,18 +33,11 @@ public struct GolpeResultado
 	/// <summary>O rabo foi arrancado por este golpe (regra separada -- ver o passo 7).</summary>
 	public bool RaboArrancado;
 
-	/// <summary>
-	/// AS PECAS QUE CAIRAM NO CHAO neste golpe -- em geral vazia, uma ou duas quando ha amputacao.
-	///
-	/// NAO E O MESMO QUE <see cref="Decepou"/>. Aquele diz "houve amputacao" e e o que o desenho
-	/// usa pro jato de sangue; esta lista diz QUAIS pecas nascem no mundo, e sao mais de uma porque
-	/// a cascata do `Body.Decepar` leva junto o que estava dentro: arrancar o braco derruba braco E
-	/// mao, dois objetos no chao, como no `LopLimb` do original (`mobparts_logic.dm:116-118`).
-	///
-	/// LISTA E NAO CAMPO UNICO por isso, e ela nasce nula porque o caso comum e nao haver nenhuma:
-	/// alocar uma lista vazia em todo soco de uma briga seria lixo por golpe pra guardar nada.
-	/// </summary>
-	public List<PecaDeCorpo>? PecasCaidas;
+	// AS PECAS QUE CAIRAM NAO VIAJAM NESTE RELATO. Havia aqui uma `List<PecaDeCorpo>? PecasCaidas`,
+	// preenchida so pelo soco e lida so pelo anuncio do soco -- e por isso o dano em area e o dano
+	// direto decepavam sem que peca nenhuma nascesse. Quem diz o que caiu agora e o
+	// `CombatState.AoDecepar`, no instante do `LopLimb`, pra TODO funil de dano (ver `CombatState.Ferir`).
+	// O que sobra aqui e o `Decepou`, que e o bit do jato de sangue e da plateia.
 
 	/// <summary>
 	/// A esquiva foi a ATIVA (a que custa Ki e depende de <see cref="CombatState.ChanceEsquiva"/>),
@@ -266,8 +259,10 @@ public static class MeleeResolver
 		BodyPart? rabo = d.Corpo.Achar("Rabo");
 		if (rabo == null || rabo.Decepado) return;
 
-		Anotar(ref r, d.Corpo.Decepar(rabo));
-		d.F.Ki = Math.Max(0, d.F.Ki - d.F.MaxKi * Regras.CustoDeceparKi);
+		// PELA PORTA UNICA DO `LopLimb` (`CombatState.Arrancar`): e ela que desconta o Ki e avisa quem
+		// poe a peca no chao. Este e o unico arranque do jogo que nao passa pelo dano -- o rabo sai
+		// sem ter zerado --, e por isso ele chama a porta em vez de o `Ferir` chama-la por ele.
+		d.Arrancar(rabo);
 		d.SincronizarVida();
 		r.RaboArrancado = true;
 	}
@@ -346,21 +341,6 @@ public static class MeleeResolver
 		return r;
 	}
 
-	/// <summary>
-	/// PASSA A CASCATA DO `Decepar` PRO RELATO -- o unico lugar que traduz membro em peca.
-	///
-	/// Existe como funcao porque ha DUAS portas de amputacao no soco (o membro sorteado e o rabo,
-	/// que e regra a parte) e as duas tem que carimbar a mesma coisa. Quando havia so o `Decepou`
-	/// booleano isso nao aparecia; com a peca no chao, uma porta esquecida vira "o rabo caiu mas
-	/// nada apareceu no chao", que ninguem liga ao codigo depois.
-	/// </summary>
-	private static void Anotar(ref GolpeResultado r, List<BodyPart> caiu)
-	{
-		if (caiu.Count == 0) return;
-		r.PecasCaidas ??= [];
-		foreach (BodyPart p in caiu) r.PecasCaidas.Add(Body.PecaDe(p.Nome));
-	}
-
 	private static void AplicarNoMembro(CombatState d, BodyPart membro, double dano, bool letal,
 										ref GolpeResultado r)
 	{
@@ -368,19 +348,20 @@ public static class MeleeResolver
 		// PELO FUNIL (`CombatState.Ferir`), e nao pelo corpo direto: as duas portas de melee ja
 		// recusam quem esta <see cref="CombatState.Intocavel"/> la em cima, mas o dia em que uma
 		// terceira porta chamar isto sem conferir, o crivo continua aqui.
+		//
+		// E O FUNIL E QUEM ARRANCA. O `if (letal && membro.Vida <= 0 && ...)` que morava aqui embaixo
+		// -- com a cascata, o Ki e a lista de pecas -- era a cauda que SO o soco tinha, e o dano em
+		// area e o dano direto passavam pelo mesmo `Ferir` sem ela. Ela virou o `LopLimb` de dentro do
+		// `DamageMe` (`CombatState.Ferir`), e este relato so LE o que sobrou do membro.
 		d.Ferir(membro, dano, letal);
 
 		r.Membro = membro.Nome;
-		r.Quebrou = !eraQuebrado && membro.Quebrado;
-
-		// So golpe LETAL arranca membro, e so um membro que ja estava zerado. Nucleo nao se
-		// decepa por soco -- cabeca arrancada e coisa de tecnica, nao de troca de golpes.
-		if (letal && membro.Vida <= 0 && membro.Papel == Vitalidade.Membro && !membro.Aninhado)
-		{
-			Anotar(ref r, d.Corpo.Decepar(membro));
-			d.F.Ki = Math.Max(0, d.F.Ki - d.F.MaxKi * Regras.CustoDeceparKi);
-			r.Decepou = true;
-		}
+		// O membro sorteado nunca chega aqui decepado (`Body.Sortear` pula os decepados), entao
+		// "esta decepado agora" e "este golpe o arrancou". E o arrancado conta como QUEBRADO neste
+		// golpe pela mesma razao de sempre: ele cruzou o limiar de quebra a caminho do zero, e o
+		// `Quebrado` do membro so deixa de dizer isso porque um decepado nao tem fracao.
+		r.Decepou = membro.Decepado;
+		r.Quebrou = !eraQuebrado && (membro.Quebrado || membro.Decepado);
 
 		d.SincronizarVida();
 

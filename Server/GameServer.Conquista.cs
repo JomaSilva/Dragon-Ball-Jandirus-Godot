@@ -561,8 +561,10 @@ public partial class GameServer
 		// ============================ O DOMINIO MORTO CAI NO REFUGIO, E NAO NO DOMINIO MORTO ============================
 		// O `PlanetaDoDominioMorreu` normalmente ja tirou este dominio do livro (o `TickDaConquista`
 		// passa por todos de segundo em segundo), mas ha uma JANELA REAL: entre a morte e o
-		// renascimento correm 75 s (`Alem.MsNoChao` + `Alem.MsNoAlem`), e o planeta pode acabar dentro
-		// dela. Sem esta pergunta, o funil montaria um berco sintetico num cadaver e o
+		// renascimento correm no minimo os 15 s de `Alem.MsNoChao` e, desde que a volta do Outro
+		// Mundo passou a ser paga (esferas, tecnica, Enma), todo o tempo que o morto levar pra ser
+		// revivido -- o planeta pode acabar dentro dela. Sem esta pergunta, o funil montaria um
+		// berco sintetico num cadaver e o
 		// `DestinoDoBerco` teria que descobrir isso -- **com a ancora errada**: ele mediria "perto de
 		// casa" a partir do dominio, e nao do planeta natal, que e o que o dono pediu.
 		//

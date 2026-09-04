@@ -104,11 +104,24 @@ public static class Interacoes
 			new Acao("Sacar tudo", "banco_sacar", "", "tira o zeni do cofre pro bolso"),
 		],
 
+		// SEM "Fabricar..." desde 2026-09-03: fabricar mora na aba Tech do menu P (o catalogo com icone,
+		// custo e o motivo de cada recusa). A bancada e onde se ESTUDA -- e o que se fabrica sai da
+		// tecnologia estudada, nao do lugar em que se esta.
 		"Research_Station" =>
 		[
-			new Acao("Fabricar...", "abrir_tech", "", "a grade do que a sua tecnologia já alcança"),
 			new Acao("Estudar", "estudar", "", "fica debruçado na bancada ganhando tecnologia"),
 			new Acao("Pegar", "pegar", "", "recolhe a bancada pra mochila (só a sua)"),
+		],
+
+		// ============================ O ENMA DAIOH, NA MESA DELE ============================
+		// No DM e um `Click()` a ate 2 tiles do NPC (`SkyNPCs.dm:242-248`) que abre um `input()` com
+		// quatro opcoes (`:159-167`). Aqui e o menu E da obra fixa que o servidor semeia no Outro Mundo
+		// (`GameServer.Alem.SemearOEnma`). So a volta paga esta portada; reencarnar a 10% e o treino
+		// com o Sr. Kaioh sao as proximas (o dono: "o treinamento do kaioh faremos depois").
+		"Enma_Daioh" =>
+		[
+			new Acao("Ouvir o Enma", "enma_ouvir", "", "ele lê a sua ficha e diz o preço da volta"),
+			new Acao("Voltar à vida (1.000.000 de zeni)", "enma_reviver", "", "o corpo volta fraco: BP a 25% por uma hora"),
 		],
 
 		"AppleTree" =>

@@ -272,7 +272,7 @@ public partial class MenuJogo
 			Disabled = !noEspaco,
 			TooltipText = noEspaco
 				? "liga o piloto automatico. Qualquer tecla de movimento desliga."
-				: "so no espaco. Use 'Decolar' (aba Other) pra subir.",
+				: "só no espaço. Pra subir, voe pra cima até romper a atmosfera.",
 		};
 		Jandirus.Core.World.PlanetaNoEspaco destino = p;
 		viajar.Pressed += () => Viajar(destino, noEspaco);

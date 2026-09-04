@@ -198,7 +198,7 @@ public partial class RoboDeMudez : Node
 	}
 
 	/// <summary>
-	/// UM BIT DO `InputState`. Ele e o ULTIMO byte do pacote (opcode, sequencia, posicao, bandeiras),
+	/// UM BIT DO `InputState`. Ele e o ULTIMO byte do pacote (opcode, sequencia, hora, posicao, bandeiras),
 	/// e e assim que se le "o cliente esta pedindo pra andar / subir / descer" sem escrever um
 	/// decodificador que envelheceria junto com o pacote.
 	/// </summary>

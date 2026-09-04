@@ -142,33 +142,43 @@ public static class Alem
 	/// </summary>
 	public const long MsNoChao = 15_000;
 
+	// =====================================================================
+	// 2b. O ENMA DAIOH -- a UNICA saida paga do Outro Mundo que este port tem
+	// =====================================================================
 	/// <summary>
-	/// ============================ QUANTO TEMPO SE FICA MORTO NO ALEM ============================
-	/// **ESTE NUMERO E DO PORT E NAO DO DM, E E UM ANDAIME.** No original nao existe volta
-	/// automatica nenhuma: morreu, ficou morto ate alguem pagar. Sao cinco caminhos e todos custam
-	/// algo (`SkyNPCs.dm:185-204` o Enma por Zeni ou a reencarnacao, `OtherworldRankSkills.dm:217-267`
-	/// o verb de cargo, `WishTable.dm:230` as esferas, `RevivalShards.dm` os cacos). **Nenhum dos
-	/// cinco existe neste port ainda** -- nao ha Enma, nao ha Sr. Kaioh, nao ha caco, nao ha karma
-	/// escrito por PK.
+	/// ============================ NAO HA VOLTA AUTOMATICA ============================
+	/// Aqui morava `MsNoAlem = 60 s`, um andaime declarado: o port tinha a viagem e nenhuma das
+	/// voltas do DM, e "prender todo mundo no Outro Mundo pra sempre" era pior. O andaime saiu no
+	/// dia em que a primeira volta paga entrou (2026-09-04, pedido do dono: *"voce teria que ficar
+	/// morto ate alguem te reviver com as esferas, ou juntar 1 milhao de zeni e pagar o Enma
+	/// Daioh"*). Morreu, ficou morto: as esferas ("Revive"), a tecnica de reviver de quem esta vivo
+	/// ao lado, ou o Enma. O `RelogioDaMorte` de quem ja viajou fica em `long.MaxValue` -- o tique
+	/// nunca o examina de novo.
 	///
-	/// Portar a viagem sem portar nenhuma das voltas prenderia todo mundo no Outro Mundo pra sempre,
-	/// e a instrucao do dono e explicita: *"prefira sempre o que NAO PRENDE NINGUEM"*. Entao o
-	/// renascimento automatico que o port ja tinha (os 15 s) nao foi apagado -- ele foi EMPURRADO
-	/// pra depois da viagem. O jogador morre, ve o proprio corpo cair, sobe pro Outro Mundo com a
-	/// aureola, e um minuto depois volta a vida no berco.
-	///
-	/// ============================ O QUE ESTE NUMERO SUBSTITUI, PRA NAO SE PERDER ============================
-	/// O DM tem um campo pra isto -- `reviveTime = 36000 * log(deathcounter)` (`Death.dm:109`) --,
-	/// e ele **nao e um cronometro**: e o CUSTO em cacos de revivencia (`RevivalShards.dm:113`
-	/// consome `1 x shardNumber` por decimo de segundo). Usa-lo como espera seria ler o campo
-	/// errado, e ainda por cima daria ZERO na primeira morte (`log(1) == 0`, o quirk que o DM tem
-	/// de verdade) -- ou seja, o jogador nunca chegaria a VER o Outro Mundo, que e o pedido.
-	///
-	/// **QUANDO O ENMA ENTRAR, ESTA CONSTANTE MORRE.** Ela e o unico lugar a apagar: o julgamento
-	/// vira a saida, e o `TickDaMorte` deixa de ter a segunda etapa.
-	/// ====================================================================================================
+	/// O DM tem ainda um `AutoRevive` GLOBAL de admin (30 min, `AutoRevive.dm:16-28`, ligado por
+	/// padrao em `SettingsDatum.dm:297`). NAO foi portado, de proposito: e um interruptor de
+	/// servidor, nao regra da morte, e o dono pediu o contrario dele.
+	/// ==================================================================================
 	/// </summary>
-	public const long MsNoAlem = 60_000;
+	public const string TipoDoEnma = "Enma_Daioh";
+
+	/// <summary>O Enma Daioh do DM senta em (176,134,6) (`SkyNPCs.dm:59`), a 30 tiles da mesa onde os mortos chegam: e a fila.</summary>
+	public const int EnmaDaiohX = 176, EnmaDaiohY = 134;
+
+	/// <summary>`ZENI_REVIVE_COST = 1000000` (`SkyNPCs.dm:92`).</summary>
+	public const double PrecoDoReviveDoEnma = 1_000_000;
+
+	/// <summary>`zeni_revive_debuff_until = world.realtime + 36000` (`SkyNPCs.dm:194`): uma hora com o BP expresso em 25%.</summary>
+	public const long MsDoDebuffDoEnma = 3_600_000;
+
+	/// <summary>Onde o Enma senta, na grade do Godot -- a mesma conversao da <see cref="MesaDoEnma"/>.</summary>
+	public static Vec2 CadeiraDoEnma(int alturaDaZonaEmTiles)
+	{
+		int cx = Math.Clamp(EnmaDaiohX - 1, 0, int.MaxValue);
+		int cy = Math.Clamp(alturaDaZonaEmTiles - EnmaDaiohY, 0, Math.Max(0, alturaDaZonaEmTiles - 1));
+		const int t = ZoneCollision.TileSize;
+		return new Vec2(cx * t + t / 2f, cy * t + t / 2f);
+	}
 
 	// =====================================================================
 	// 3. AS DUAS PERGUNTAS QUE O DESENHO FAZ

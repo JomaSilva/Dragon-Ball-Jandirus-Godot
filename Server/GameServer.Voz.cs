@@ -93,6 +93,29 @@ public partial class GameServer
 	/// <summary>Buffer de leitura reusado -- um quadro por vez, e alocar 50x por segundo e lixo.</summary>
 	private readonly byte[] _quadroDeVoz = new byte[VozLocal.MaxBytesDeQuadro];
 
+	/// <summary>
+	/// O ESCRITOR DO RELAY, reusado: UM `S2C.Voz` montado por quadro aceito, e nao um `NetDataWriter`
+	/// novo por OUVINTE. Eram ate quatro alocacoes (mais a copia do payload em cada) 50 vezes por
+	/// segundo por falante; agora o payload e copiado uma vez e so os dois bytes que variam por ouvinte
+	/// (distancia e parede) sao reescritos no lugar antes de cada `Send` -- que copia o buffer, entao
+	/// reescrever entre dois envios e seguro.
+	/// </summary>
+	private readonly LiteNetLib.Utils.NetDataWriter _relayDeVoz = new();
+
+	/// <summary>
+	/// O RELOGIO DA VOZ, em ms -- e ele e MONOTONICO, ao contrario do `NowMs()` do resto do servidor.
+	///
+	/// A torneira, o cache de parede e o "esta falando" medem INTERVALOS curtos (20 ms de credito, 100 ms
+	/// de validade, 250 ms de fala). `DateTimeOffset.UtcNow` e relogio de parede: um ajuste de NTP, uma
+	/// virada de horario de verao ou o proprio Windows corrigindo a deriva pulam ele pra frente ou pra
+	/// tras -- pra tras, a torneira ficaria sem credito (cada quadro seria recusado em silencio ate o
+	/// relogio alcancar o passado) e pra frente ela encheria o balde de uma vez. `Stopwatch` le o
+	/// contador de desempenho: so anda pra frente, e com resolucao de microssegundo.
+	/// </summary>
+	private static readonly double MsPorTiqueDoRelogio = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
+	internal static long RelogioDaVoz() => (long)(System.Diagnostics.Stopwatch.GetTimestamp() * MsPorTiqueDoRelogio);
+
 	// =====================================================================
 	// A PAREDE
 	// =====================================================================
@@ -195,7 +218,7 @@ public partial class GameServer
 	{
 		if (_paredeDaVoz.Count < 64) return;
 
-		long agora = NowMs();
+		long agora = RelogioDaVoz();
 		List<long>? mortas = null;
 		foreach ((long chave, (long ate, bool _)) in _paredeDaVoz)
 			if (agora >= ate) (mortas ??= []).Add(chave);
@@ -236,7 +259,7 @@ public partial class GameServer
 	/// </param>
 	private void RecebiVoz(ServerPlayer a, byte[] dados, int tam, bool calado)
 	{
-		long agora = NowMs();
+		long agora = RelogioDaVoz();
 
 		if (!_vozes.TryGetValue(a.Id, out VozLocal.Torneira? torneira))
 		{
@@ -275,6 +298,22 @@ public partial class GameServer
 		if (_vozDuplaLigada && CorteQuebradoDeTeste is { } defeito) defeito(a, agora, _ouvintes);
 		else QuemOuveAVoz(a, agora, _ouvintes);
 
+		// O PACOTE E MONTADO UMA VEZ (ver `_relayDeVoz`). O opcode e escrito aqui e nao por
+		// `Protocol.Begin`, que aloca um escritor novo por chamada -- e o formato e o mesmo, byte a byte:
+		// `int falante` + `ushort seq` + `byte distancia` + `byte parede` + `byte n` + n bytes de Opus.
+		// Os dois campos por ouvinte ficam em posicoes ANOTADAS na montagem, e nao em numeros magicos.
+		var w = _relayDeVoz;
+		w.Reset();
+		w.Put((byte)Protocol.S2C.Voz);
+		w.Put(a.Id);
+		w.Put(seq);
+		int posDaDistancia = w.Length;
+		w.Put((byte)0);
+		int posDaParede = w.Length;
+		w.Put((byte)0);
+		w.Put((byte)tam);
+		w.Put(dados, 0, tam);
+
 		foreach ((ServerPlayer o, byte dist, bool parede) in _ouvintes)
 		{
 			// ============================ TER CONEXAO NAO E TER DIREITO DE OUVIR ============================
@@ -289,18 +328,14 @@ public partial class GameServer
 			// ==========================================================================================
 			if (o.Peer == null) continue;
 
-			var w = Protocol.Begin(Protocol.S2C.Voz);
-			w.Put(a.Id);
-			w.Put(seq);
-			w.Put(dist);
-			w.Put((byte)(parede ? 1 : 0));
-			w.Put((byte)tam);
-			w.Put(dados, 0, tam);
+			w.Data[posDaDistancia] = dist;
+			w.Data[posDaParede] = (byte)(parede ? 1 : 0);
 
 			// NAO CONFIAVEL, SEMPRE. Quadro de voz perdido se joga fora: retransmitir chega DEPOIS do
 			// proximo e trava a fila atras dele -- a fala sairia com atraso crescente, que e pior do que
 			// um estalo de 20 ms. E o exato oposto do chat de TEXTO, que e confiavel porque uma frase
-			// faltando vira "ele me ignorou" (ver `GameServer.Chat.Mandar`).
+			// faltando vira "ele me ignorou" (ver `GameServer.Chat.Mandar`). O `Send` COPIA o buffer,
+			// e por isso o mesmo escritor serve pro ouvinte seguinte.
 			o.Peer.Send(w, Protocol.ChannelVoz, DeliveryMethod.Unreliable);
 
 			// ============================ O QUE O SERVIDOR ENTREGOU -- SO BANCADA ============================
@@ -440,7 +475,7 @@ public partial class GameServer
 
 	/// <summary>Esta pessoa esta falando AGORA? Ver <see cref="VozLocal.MsAteCalar"/>.</summary>
 	public bool FalandoPorVozDeTeste(int id) =>
-		_vozes.TryGetValue(id, out VozLocal.Torneira? t) && t.Falando(NowMs());
+		_vozes.TryGetValue(id, out VozLocal.Torneira? t) && t.Falando(RelogioDaVoz());
 
 	/// <summary>
 	/// ESTE FALANTE JA TEVE ALGUM QUADRO ACEITO? -- ou seja, a sequencia dele existe.

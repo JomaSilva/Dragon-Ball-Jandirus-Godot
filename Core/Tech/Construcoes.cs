@@ -104,6 +104,13 @@ public sealed class CatalogoDeObras
 	public Construcao? Get(string id) => _porId.GetValueOrDefault(id);
 
 	/// <summary>
+	/// ENTRA UMA CONSTRUCAO QUE NAO VEIO DO DISCO -- o Enma Daioh (`Alem.TipoDoEnma`), que no DM e um MOB
+	/// de conversa (`SkyNPCs.dm:33`) e aqui e uma obra fixa do mapa com menu E. `Custo` negativo a deixa
+	/// fora da aba Tech (`Construivel`); o `PorTypepath` nao a conhece porque ela nao tem typepath.
+	/// </summary>
+	public void Acrescentar(Construcao c) => _porId[c.Id] = c;
+
+	/// <summary>
 	/// A CONSTRUCAO CUJO `create_type` E ESTE TYPEPATH -- a ponte entre o catalogo e os `.dmm`.
 	///
 	/// E o que o conversor de mapa usa pra decidir que aquela celula nao e cenario: ela e uma

@@ -148,6 +148,17 @@ public partial class RoboDasAbas
 		await Quadros(2);
 		Image? f1 = await Foto();
 		await Guardar("world-01-meio-dia", f1);
+
+		// ---- A FRASE DO CEU NAO PODE NEGAR A TERRA NA TERRA (o segundo relato do dono) ----
+		// "a hora e o ceu daqui nao sao os da Terra" saia em TODO planeta -- inclusive na Terra. A frase
+		// depende de onde se esta; o que se cobra e a coerencia com a zona do cliente.
+		bool naTerra = string.Equals(cli.Zone.Name, "Earth", StringComparison.OrdinalIgnoreCase);
+		List<string> frasesDoCeu = Rotulos(pg).Select(l => l.Text).Where(t => t.Contains("Terra", StringComparison.Ordinal)).ToList();
+		Checa(naTerra ? "na TERRA a nota do ceu fala do dia da Terra e NAO diz 'não são os da Terra'"
+					  : "fora da Terra a nota do ceu diz que o dia daqui nao e o da Terra",
+			  naTerra ? frasesDoCeu.Any(t => t.StartsWith("Este é o dia e o céu da Terra")) && !frasesDoCeu.Any(t => t.Contains("não são os da Terra"))
+					  : frasesDoCeu.Any(t => t.Contains("não são os da Terra")),
+			  $"zona={cli.Zone.Name}: {string.Join(" | ", frasesDoCeu)}");
 		ChapaDoCartaoNaPaleta("a chapa do cartao Céu e a clara do tema (Tema.PainelClaro)", f1, ceu, Tema.PainelClaro);
 
 		(bool igual, int nodes) = await RemontaIgual(menu, pg);

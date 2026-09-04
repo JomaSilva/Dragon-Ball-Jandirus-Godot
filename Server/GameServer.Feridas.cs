@@ -137,8 +137,14 @@ public sealed partial class GameServer
 		foreach (ServerPlayer outro in zona)
 		{
 			outro.Peer?.Send(minhas, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
-			if (outro != novo)
-				novo.Peer?.Send(PacoteDeFeridas(outro), Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			if (outro == novo) continue;
+
+			NetDataWriter dele = PacoteDeFeridas(outro);
+			// A BANCADA LE O FIO -- pela mesma razao da `EscutaDeDecalques`: quem entra na zona e um
+			// corpo forjado sem `Peer`, e a pergunta "o cadaver apresentou as feridas a quem chegou?" so
+			// se responde pelos bytes que sairiam. Nula em jogo.
+			EscutaDeFeridas?.Add((novo.Id, dele.CopyData()));
+			novo.Peer?.Send(dele, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 	}
 }

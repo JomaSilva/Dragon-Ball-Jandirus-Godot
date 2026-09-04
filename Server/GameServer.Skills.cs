@@ -62,7 +62,14 @@ public partial class GameServer
 		// dado a mais sobre uma skill que ele ja sabe, e o leitor descarta escolha orfa.
 		if (save is { SkillsEscolhas.Count: > 0 }) pl.Livro.CarregarEscolhas(save.SkillsEscolhas);
 		// O QUE A COMPRA SOMOU NA FICHA (o `storedBP` do DM), pelo mesmo motivo e na mesma ordem.
-		if (save is { SkillsGanhos.Count: > 0 }) pl.Livro.CarregarGanhos(save.SkillsGanhos);
+		if (save is { SkillsGanhos.Count: > 0 })
+		{
+			pl.Livro.CarregarGanhos(save.SkillsGanhos);
+			// SAVE DE ANTES DA RAZAO GARANTIDA (ver `Fighter.Statify`, o teto de Ki que caia a cada soco):
+			// a compra da One Hundred esta no livro sem a razao; recompoe-se com o BP de hoje, uma vez.
+			int rec = GanhoNaCompra.Reconciliar(pl.Ficha, pl.Livro);
+			if (rec > 0) GD.Print($"[skills] {pl.Name}: {rec} compra(s) antigas de potencial ganharam a razao garantida (potencialGarantido={pl.Ficha.potencialGarantido:0.###})");
+		}
 		if (save != null && save.MarcosTotais > 0)
 		{
 			pl.Livro.MarcosTotais = save.MarcosTotais;

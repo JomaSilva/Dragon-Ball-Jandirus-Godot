@@ -18,6 +18,27 @@ public static class Protocol
     public const int TickHz = 30;                 // passo do servidor
     public const float TickSeconds = 1f / TickHz;
 
+    /// <summary>Um tique do servidor em MILISSEGUNDOS (33,3). E a unidade da linha do tempo dos corpos remotos.</summary>
+    public const double TickMs = 1000.0 / TickHz;
+
+    // ============================ OS RELOGIOS DO FIO SAO RELOGIOS DE QUADRO ============================
+    // Toda hora que viaja no fio (o `tempoMs` do input, o `servidorMs` do snapshot) e a SOMA DOS
+    // DELTAS do motor em cada ponta: no cliente `RelogioDoServidor.AvancarQuadro` (o `delta` do
+    // `_Process`), no servidor `_tickCount * TickMs + _accumulator` (o acumulador do tique). Nenhuma
+    // delas e relogio de parede (`DateTimeOffset.UtcNow` salta com o NTP) nem o QueryPerformanceCounter.
+    //
+    // POR QUE NAO O QPC, que e o relogio "de verdade": a posicao do corpo local e integrada pelo
+    // `delta` do motor, que o Godot SUAVIZA (`delta_smoothing`: a 60 fps ele diz 16,667 em todo
+    // quadro enquanto o quadro real oscila 15-19 ms). Carimbar essa posicao com o QPC casava um
+    // deslocamento parelho com uma hora aos trancos -- a primeira rodada da bancada de dois
+    // processos mediu exatamente isso no fio: trechos de 50 ms e de 17 ms alternando, com a mesma
+    // distancia em cada um. O relogio de quadro e o relogio EM QUE A POSICAO FOI CALCULADA, e o
+    // desenho do outro lado tambem corre nele -- e o que o olho ve num monitor de 60 Hz.
+    //
+    // Os dois relogios de quadro derivam do tempo real em partes por mil; quem os alinha, e absorve
+    // a deriva, e o `DeslocamentoDeRelogio`, em janela.
+    // ==================================================================================================
+
     /// <summary>Canais do LiteNetLib. Estado que se repete vai por canal NAO confiavel: o proximo pacote conserta.</summary>
     public const byte ChannelReliable = 0;   // login, troca de zona, correcao
     public const byte ChannelState = 1;      // input e snapshot (sequenciado, sem reenvio)
@@ -30,12 +51,35 @@ public static class Protocol
     /// **sequenciado**, e sequenciado quer dizer *"o pacote velho e descartado quando um novo ja passou"*.
     /// Isso e exatamente certo pro snapshot (a posicao de agora torna a de 33 ms atras inutil) e
     /// exatamente errado pra voz: dois quadros de voz seguidos sao dois PEDACOS DIFERENTES da mesma
-    /// frase, e nenhum deles substitui o outro. Compartilhar o canal faria o snapshot comer silabas.
+    /// frase, e nenhum deles substitui o outro. Compartilhar o canal COMO `Sequenced` faria o snapshot
+    /// comer silabas -- e so como `Sequenced`: ver logo abaixo o que o numero faz e o que ele nao faz.
     /// ======================================================================================================
     ///
-    /// **AS DUAS PONTAS TEM QUE SUBIR JUNTAS**: `ChannelsCount` e do `NetManager` e vale por conexao. Um
-    /// servidor com 3 canais e um cliente com 2 nao negociam -- o pacote do canal 2 e simplesmente
-    /// jogado fora, calado.
+    /// ============================ O QUE ESTE NUMERO FAZ DE VERDADE (LiteNetLib 1.3.1, MEDIDO) ============================
+    /// A voz sai como `DeliveryMethod.Unreliable`, e **`Unreliable` nao e canalizado**: o `NetPeer.Send` nem
+    /// cria canal pra ele -- o pacote vai com a propriedade `Unreliable`, cabecalho de 1 byte, SEM numero
+    /// de canal no fio, e a outra ponta levanta o `NetworkReceiveEvent` com `channel = 0` seja qual for o
+    /// numero que o remetente escreveu. Este `2` nunca viaja: ele documenta a intencao e protege o dia em
+    /// que alguem trocar a entrega da voz por `Sequenced`. Hoje o que separa a voz do snapshot e o METODO.
+    ///
+    /// Por isso o tempo em que o servidor abriu 2 canais e o cliente 3 NAO derrubou quadro nenhum, e as
+    /// bancadas `--vozviva` e `--vozdupla` -- dois processos de verdade, UDP em 127.0.0.1, inclusive o
+    /// cliente do anfitriao, que disca em si mesmo -- ficaram verdes com razao: nao havia defeito no fio.
+    /// A prova foi dois `NetManager` com 2 e 3 canais e um pacote por metodo de entrega no canal 2:
+    ///   * `Unreliable`: chega nos dois sentidos, entregue como canal 0. Chega ate no "canal 7" com 3
+    ///     abertos (o guarda do `Send` compara com `ChannelsCount * 4`); acima disso o `Send` engole calado.
+    ///   * canalizado (`Sequenced` e os tres `Reliable*`) SAINDO da ponta que abre menos canais: o `Send`
+    ///     LANCA `IndexOutOfRangeException` na thread de quem chamou -- no servidor, no meio do `_Process`.
+    ///     Nao e descarte silencioso, e crash.
+    ///   * canalizado CHEGANDO na ponta que abre menos canais: descartado calado (`ChannelId` fora do vetor
+    ///     de canais), e o `Reliable*` nunca e confirmado -- a conexao nao cai por isso.
+    ///   * a conexao sobe e fica de pe nos dois casos: o pedido de conexao nao carrega `ChannelsCount`,
+    ///     entao nao ha negociacao pra falhar.
+    /// ==================================================================================================================
+    ///
+    /// **AS DUAS PONTAS TEM QUE SUBIR JUNTAS** mesmo assim: `ChannelsCount` e do `NetManager` e vale por
+    /// conexao, e o dia em que este canal levar algo canalizado e o dia em que a contagem menor vira
+    /// excecao. As duas leem <see cref="TotalDeCanais"/>.
     /// </summary>
     public const byte ChannelVoz = 2;
 
@@ -53,7 +97,7 @@ public static class Protocol
     public enum C2S : byte
     {
         Login = 1,         // conta + senha
-        InputState = 2,    // posicao que o CLIENTE calculou + direcao + se esta andando
+        InputState = 2,    // posicao que o CLIENTE calculou + direcao + se esta andando (layout em `InputCorrendo`)
         Ping = 3,
         Activity = 4,      // "estou treinando / meditando" -- quem paga o BP e o servidor
         Action = 5,        // golpear: tipo do golpe + zona mirada. Quem resolve e o servidor
@@ -293,6 +337,14 @@ public static class Protocol
         /// "pegavel" a um decalque, que e chao por definicao.
         /// ==================================================================================
         ///
+        /// ============================ MAS ELE NAO E MAIS SO UM EVENTO ============================
+        /// Ser decalque no CLIENTE nao obriga a ser efemero no SERVIDOR. Este pacote continua sendo o
+        /// instante da queda, pra quem esta na zona; o que mudou e que o servidor passou a GUARDAR a
+        /// peca pelos 600 s do DM (`Core.Combat.PecaNoChao`) e a reapresenta-la a quem entra na zona
+        /// pelo <see cref="S2C.Pecas"/> -- como faz com o cenario derrubado. Sem isso, quem chegava
+        /// depois do golpe nunca via o braco, e o dono leu isso como "a peca nao spawna".
+        /// ========================================================================================
+        ///
         /// UNICO TIPO COM CARGA: leva um byte a mais no fio (`Core.Combat.PecaDeCorpo`),
         /// porque cabeca, braco e visceras sao recortes diferentes da MESMA folha. Ver
         /// `GameServer.MandarDecalque`.
@@ -313,6 +365,19 @@ public static class Protocol
     /// Bits do byte de input. Direcao ocupa 0-1; 0x40 e "estou correndo" e 0x80 e "estou
     /// andando". Correr e um PEDIDO: o servidor so concede enquanto houver Ki (ver
     /// `GameServer.Input`), entao afirmar aqui nao da velocidade de graca.
+    ///
+    /// ============================ O LAYOUT DO `C2S.InputState` ============================
+    ///     seq (uint) · tempoMs (uint) · pos (2 floats) · flags (este byte)
+    ///
+    /// `tempoMs` e o relogio de QUADRO do cliente (`RelogioDoServidor.AgoraLocalMs`) no instante em
+    /// que a posicao valia -- ver "os relogios do fio sao relogios de quadro", logo acima de
+    /// <see cref="TickMs"/>. Ele nao dita nada no servidor (o dt do passo continua sendo medido la, senao "passou 1 minuto"
+    /// viraria teleporte aprovado): ele so serve pra CARIMBAR a posicao aceita com a hora em que
+    /// ela era verdade, e e esse carimbo que viaja de volta no snapshot como `EntityState.IdadeMs`.
+    ///
+    /// **OS FLAGS FICAM POR ULTIMO**, e isso e contrato: a bancada da mudez le o byte final do
+    /// pacote cru (`RoboDeMudez`, `p[^1]`). Campo novo entra ANTES deles.
+    /// ====================================================================================
     /// </summary>
     public const byte InputCorrendo = 0x40;
     public const byte InputAndando = 0x80;
@@ -346,7 +411,7 @@ public static class Protocol
         JoinAccepted = 1,  // id, zona (hash + descricao), seed pra geracao, ponto de spawn
         JoinRejected = 2,  // serve tambem pra recusar login e criacao de personagem
         SlotList = 10,     // os tres slots da conta, com o que a tela de selecao mostra
-        Snapshot = 3,      // estado de quem esta na MESMA zona
+        Snapshot = 3,      // estado de quem esta na MESMA zona: servidorMs (uint) + corpos + projeteis (ver EntityState.IdadeMs)
         Correction = 4,    // "voce nao podia estar ai": posicao corrigida
         PeerLeft = 5,
         ZoneChanged = 6,
@@ -984,6 +1049,27 @@ public static class Protocol
         /// Formato: `bool scan` + `byte n` + n x <see cref="PresencaState"/>.
         /// </summary>
         Sentidos = 52,
+
+        /// <summary>
+        /// AS PECAS DE CORPO NO CHAO DA ZONA -- o RETRATO, pra quem chega: zona (hash) + n +
+        /// n x (recorte, X, Y, quanto falta em ms).
+        ///
+        /// ============================ POR QUE UM RETRATO, ALEM DO `Decalque` ============================
+        /// O <see cref="Decalque"/> de `Membro` e o INSTANTE: sai uma vez, pra quem esta na zona quando o
+        /// braco cai. Quem entra depois, reloga ou volta do Outro Mundo nunca o recebeu -- e a peca do
+        /// BYOND e um objeto que fica no turf por 600 s (`mobparts.dm:397`), visto por quem chegar. E a
+        /// mesma familia de defeito que o `Cenario` e as `Obras` ja pagaram, e a mesma cura: o servidor
+        /// guarda, e reapresenta na entrada da zona (login e `MoveToZone`, ao lado do `MandarCenario`).
+        ///
+        /// A LISTA INTEIRA, e nao um delta: no maximo 32 entradas (`PecasNoChao.TetoPorZona`) de 13
+        /// bytes, e o cliente acabou de limpar o chao da zona anterior. Vazio tambem sai -- e ele que
+        /// diz "aqui nao ha peca nenhuma" a quem guardou o retrato da zona de onde veio.
+        ///
+        /// LEVA QUANTO FALTA de cada uma, e nao quando caiu: o relogio do cliente nao e o do servidor, e
+        /// "faltam 43 s" e a unica frase que as duas pontas entendem igual.
+        /// ==============================================================================================
+        /// </summary>
+        Pecas = 53,
     }
 
     /// <summary>
@@ -2177,6 +2263,46 @@ public struct EntityState
 {
     public int Id;
     public Vec2 Pos;
+
+    /// <summary>
+    /// HA QUANTOS MILISSEGUNDOS <see cref="Pos"/> VALIA, contados do `servidorMs` que abre o snapshot.
+    /// A hora da amostra, no relogio do servidor, e `servidorMs - IdadeMs`.
+    ///
+    /// ============================ POR QUE O SNAPSHOT PRECISOU DE HORA ============================
+    /// O servidor nao integra o jogador: `pl.Pos` so muda quando chega um `InputState`, e o input
+    /// chega a 30 Hz num relogio que NAO e o do tique. Dois relogios livres da mesma frequencia
+    /// batem: ora ZERO inputs caem entre dois tiques (o snapshot repete a posicao -- o corpo
+    /// congela um quadro) ora DOIS (a posicao anda o dobro -- o corpo salta). O tamanho do salto
+    /// cresce com a velocidade, e era exatamente a queixa: "micro teleportes, pior quando o player
+    /// e rapido". O cliente, sem hora nenhuma, carimbava cada amostra com a hora de CHEGADA, e
+    /// isso transformava o degrau do tique e o jitter do fio em movimento.
+    ///
+    /// Com a idade, a posicao repetida em dois tiques tem a MESMA hora (o cliente descarta a copia)
+    /// e a posicao que andou o dobro tem a hora certa (o trecho se estende pelo intervalo real).
+    /// O corpo desenhado passa a andar no relogio de quem o move, e nao no do tique.
+    ///
+    /// ============================ POR QUE UM BYTE, RELATIVO E COM SINAL ============================
+    /// A hora absoluta custaria 4 bytes por corpo; relativa ao cabecalho, um byte basta -- um corpo
+    /// com dono na tela tem idade de poucas dezenas de ms (o cliente manda input a 30 Hz mesmo
+    /// parado). Quem passa disso e o corpo que ninguem move (NPC parado, jogador nocauteado cujo
+    /// cliente parou de mandar): pra esse a idade SATURA em <see cref="IdadeSaturada"/>, e o
+    /// `RemotePlayer` sabe ler a saturacao (ver `RemotePlayer.Receive`, "amostra saturada"). O corpo
+    /// que o SERVIDOR move tem idade ZERO: ele vale agora.
+    ///
+    /// COM SINAL porque a traducao do relogio do cliente e SUAVIZADA (ver `DeslocamentoDeRelogio.Deslizar`):
+    /// enquanto ela desliza, a hora traduzida pode cair alguns ms DEPOIS do tique. Cortar isso em
+    /// zero devolveria exatamente o degrau que a suavizacao existe pra tirar -- entao a idade vai
+    /// negativa, ate -128 ms, e o cliente a soma como qualquer outra.
+    ///
+    /// Custo no fio: +1 byte por corpo por tique, +4 por snapshot. Os dois sao pagos por todo mundo
+    /// porque a informacao e de todo mundo: nao ha corpo cuja hora nao interesse a quem o desenha.
+    /// ==================================================================================
+    /// </summary>
+    public sbyte IdadeMs;
+
+    /// <summary>O teto da idade: a partir daqui ela nao diz mais ha quanto tempo, so "ha muito".</summary>
+    public const sbyte IdadeSaturada = sbyte.MaxValue;
+
     public byte Facing;
     public bool Moving;
     public Protocol.Pose Pose;
@@ -2482,6 +2608,7 @@ public struct EntityState
     {
         w.Put(Id);
         w.PutVec(Pos);
+        w.Put(unchecked((byte)IdadeMs));   // ha quanto tempo `Pos` valia -- ver o campo
         // direcao (2 bits) + pose (3 bits) + "andando" (1 bit) no MESMO byte
         w.Put((byte)((Facing & 0x03) | ((byte)Pose & 0x07) << 2
                    | (Rabo ? 0x20 : 0x00) | (Oculto ? 0x40 : 0x00)
@@ -2502,7 +2629,7 @@ public struct EntityState
 
     public static EntityState Read(NetDataReader r)
     {
-        var e = new EntityState { Id = r.GetInt(), Pos = r.GetVec() };
+        var e = new EntityState { Id = r.GetInt(), Pos = r.GetVec(), IdadeMs = unchecked((sbyte)r.GetByte()) };
         byte flags = r.GetByte();
         e.Facing = (byte)(flags & 0x03);
         e.Pose = (Protocol.Pose)((flags >> 2) & 0x07);
@@ -2525,6 +2652,136 @@ public struct EntityState
         if (e.Pose == Protocol.Pose.Canalizando) e.Canal = r.GetByte();
         return e;
     }
+}
+
+/// <summary>
+/// O DESLOCAMENTO ENTRE DOIS RELOGIOS MONOTONICOS, estimado pelo EXTREMO NUMA JANELA.
+///
+/// ============================ O PROBLEMA QUE ELE RESOLVE ============================
+/// Cada ponta tem o seu relogio de quadro (ver "os relogios do fio" em <see cref="Protocol"/>), e
+/// os dois nasceram em zero em horas diferentes e andam com derivas diferentes. Pra carimbar uma
+/// posicao do cliente na hora do servidor (e pra o cliente saber que horas sao no servidor), e
+/// preciso um numero so: `outro = meu + deslocamento`.
+///
+/// A amostra que se tem e `diferenca = hora-de-chegada-no-meu-relogio - hora-de-envio-no-relogio-dele`
+/// (ou o contrario), e ela vale `deslocamento + latencia-de-uma-via + jitter`. A latencia e o
+/// jitter nunca sao negativos, entao o EXTREMO das amostras (o MINIMO quando se subtrai o relogio
+/// dele do meu; o MAXIMO quando e o contrario) e a melhor estimativa do deslocamento puro: e a
+/// amostra do pacote que passou mais rapido.
+///
+/// ============================ POR QUE EM JANELA, E POR QUE DUAS ============================
+/// Um extremo pra vida toda nunca esquece: se a rota piorar, o deslocamento fica preso num
+/// pacote de meia hora atras. Duas janelas de <see cref="_janelaMs"/> (a que enche e a que
+/// acabou de fechar) dao um extremo sobre os ultimos 2 a 4 segundos, em O(1) e sem lista: a
+/// deriva dos dois cristais (partes por milhao) nao chega a 1 ms nesse tempo.
+///
+/// E O SALTO ZERA TUDO: uma amostra a mais de <see cref="SaltoMs"/> do extremo, pra QUALQUER lado,
+/// nao e latencia -- e OUTRO relogio (o servidor reiniciou, o cliente reconectou noutro, o contador
+/// de 32 bits deu a volta, o processo ficou suspenso um segundo). Sem isto o cliente ficaria ate
+/// 4 s desenhando com um deslocamento de um servidor que ja nao existe -- e, no sentido "a favor"
+/// do extremo, o valor aplicado levaria minutos deslizando ate a hora nova.
+/// ====================================================================================
+/// </summary>
+public sealed class DeslocamentoDeRelogio
+{
+    private readonly bool _maximo;
+    private readonly long _janelaMs;
+    private long _atual, _anterior, _viraEm;
+    private bool _temAtual, _temAnterior;
+
+    /// <summary>Uma amostra a mais do que isto do extremo, pra qualquer lado, reinicia a estimativa.</summary>
+    public const long SaltoMs = 1000;
+
+    /// <summary>
+    /// Acima disto o valor aplicado nao desliza: CRAVA. Um flip de quadro tem 17 ms e uma troca de
+    /// rota algumas dezenas; cem ms de diferenca so aparecem depois de um salto (ver
+    /// <see cref="SaltoMs"/>) ou de um engasgo longo, e ai deslizar a 2% levaria segundos com a hora
+    /// traduzida errada em bloco -- pior do que o unico tranco que a cravada custa.
+    /// </summary>
+    public const double DeslizeMaximoMs = 100;
+
+    /// <summary>
+    /// ============================ O VALOR APLICADO DESLIZA; O EXTREMO SALTA ============================
+    /// Numa rede local (e no proprio host) a entrega e QUANTIZADA pelo quadro de quem recebe: o pacote
+    /// e lido no `PollEvents` do quadro em que chegou ou do seguinte, entao a amostra vale ora ~0
+    /// ora ~17 ms, e o extremo em janela FLIPA entre os dois toda vez que uma janela vence. Aplicado
+    /// cru, cada flip desloca a hora traduzida em 17 ms de uma vez -- um trecho da linha do tempo com
+    /// metade (ou o dobro) da duracao, ou seja o proprio micro teleporte, agora fabricado pelo
+    /// estimador. Medido na bancada de dois processos: 10 saltos em 30 s de corpo, todos nos flips.
+    ///
+    /// O valor que se APLICA anda no maximo <see cref="TaxaDeDeslize"/> do tempo real por chamada:
+    /// 17 ms levam ~0,85 s, e nesse tempo o corpo anda 2% mais devagar ou mais depressa -- que
+    /// ninguem ve. A deriva dos cristais (partes por milhao) e milhares de vezes mais lenta que isso.
+    /// Depois de um <see cref="Zerar"/> (salto de relogio) o valor aplicado renasce no extremo novo.
+    /// ================================================================================================
+    /// </summary>
+    public const double TaxaDeDeslize = 0.02;
+
+    private double _suave;
+    private long _suaveEm;
+    private bool _suaveVivo;
+
+    /// <summary>O valor APLICADO, aproximado de <see cref="Valor"/> a <see cref="TaxaDeDeslize"/> do tempo passado desde a ultima chamada.</summary>
+    public double Deslizar(long agoraMs)
+    {
+        if (!Estimado) return 0;
+        if (!_suaveVivo)
+        {
+            _suave = Valor;
+            _suaveEm = agoraMs;
+            _suaveVivo = true;
+            return _suave;
+        }
+        double passo = Math.Max(0, agoraMs - _suaveEm) * TaxaDeDeslize;
+        _suaveEm = agoraMs;
+        double falta = Valor - _suave;
+        _suave = Math.Abs(falta) > DeslizeMaximoMs ? Valor : _suave + Math.Clamp(falta, -passo, passo);
+        return _suave;
+    }
+
+    /// <param name="maximo">`true` = o deslocamento e o MAIOR das amostras; `false` = o MENOR.</param>
+    /// <param name="janelaMs">Largura de cada uma das duas janelas.</param>
+    public DeslocamentoDeRelogio(bool maximo, long janelaMs) { _maximo = maximo; _janelaMs = janelaMs; }
+
+    /// <summary>Ja houve alguma amostra? Antes disso <see cref="Valor"/> e zero e nao quer dizer nada.</summary>
+    public bool Estimado => _temAtual || _temAnterior;
+
+    /// <summary>O deslocamento estimado: o extremo das duas janelas.</summary>
+    public long Valor
+    {
+        get
+        {
+            if (_temAtual && _temAnterior) return _maximo ? Math.Max(_atual, _anterior) : Math.Min(_atual, _anterior);
+            if (_temAtual) return _atual;
+            return _temAnterior ? _anterior : 0;
+        }
+    }
+
+    /// <param name="diferenca">A amostra crua (ver o cabecalho).</param>
+    /// <param name="agoraMs">O MEU relogio agora -- so pra saber quando a janela vira.</param>
+    public void Amostrar(long diferenca, long agoraMs)
+    {
+        if (Estimado && Math.Abs(diferenca - Valor) > SaltoMs) Zerar();
+
+        if (!_temAtual)
+        {
+            _atual = diferenca;
+            _temAtual = true;
+            _viraEm = agoraMs + _janelaMs;
+            return;
+        }
+
+        _atual = _maximo ? Math.Max(_atual, diferenca) : Math.Min(_atual, diferenca);
+        if (agoraMs < _viraEm) return;
+
+        // A JANELA VIROU: a que enchia passa a ser a anterior, e a nova nasce com esta amostra.
+        _anterior = _atual;
+        _temAnterior = true;
+        _atual = diferenca;
+        _viraEm = agoraMs + _janelaMs;
+    }
+
+    public void Zerar() { _temAtual = _temAnterior = false; _suaveVivo = false; }
 }
 
 /// <summary>

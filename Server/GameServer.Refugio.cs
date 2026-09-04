@@ -458,9 +458,9 @@ public partial class GameServer
 	/// clique"*. Essa decisao continua de pe aqui, e ela e o motivo do desenho:
 	///
 	///   * o SERVIDOR nunca espera. Ele decide o destino sozinho, com o padrao, e segue;
-	///   * a pergunta e feita na CHEGADA AO OUTRO MUNDO (<see cref="IrProAlem"/>), que da
-	///     <see cref="Alem.MsNoAlem"/> = 60 s de janela antes de o corpo voltar a vida. Quem responde
-	///     dentro deles muda o destino DESTA morte; quem nao responde volta pelo padrao e continua
+	///   * a pergunta e feita na CHEGADA AO OUTRO MUNDO (<see cref="IrProAlem"/>), e fica aberta
+	///     ate alguem pagar a volta (esferas, tecnica, Enma -- nao ha mais prazo la). Quem responde
+	///     antes dela muda o destino DESTA morte; quem nao responde volta pelo padrao e continua
 	///     podendo escolher depois, porque a resposta e uma preferencia e nao um voto de uma vez so;
 	///   * a tela do cliente nao trava tecla nenhuma (mesmo molde da telinha de meditar).
 	///

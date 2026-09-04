@@ -30,13 +30,26 @@ public sealed partial class GameServer
 		{
 			case "colher": Colher(pl); return true;
 
-			// O `estudar` e o `abrir_tech` JA EXISTIAM como verbos de tecnologia. O menu so passou a
-			// ser uma segunda porta pra eles -- por isso o reenvio pro canal de sempre em vez de uma
-			// copia da logica aqui. Duas copias divergem na primeira mudanca.
+			// O ENMA DAIOH (ver `GameServer.Alem.cs`, secao 5): a fala e a volta paga.
+			case "enma_ouvir": EnmaOuvir(pl); return true;
+			case "enma_reviver": EnmaReviverPorZeni(pl); return true;
+
 			// OS VERBOS DE TECNOLOGIA JA EXISTIAM -- o menu so virou uma segunda porta pra eles. Por
 			// isso o reenvio pro canal de sempre em vez de uma copia da logica aqui: duas copias
 			// divergem na primeira mudanca, e estas conferem raca, tecnologia e zeni.
-			case "abrir_tech": ComandoDeTech(pl, "lista", ""); return true;
+			//
+			// ============================ O "Estudar" DO MENU E NAO CHEGAVA AQUI ============================
+			// O comentario acima ja dizia que `estudar` era reenviado, e a lista NAO O TINHA: a acao
+			// "Estudar" da bancada (`Interacoes.De("Research_Station")`) caia no `default`, o funil de
+			// gravidade nao a conhecia e o clique morria calado -- o dono viu: *"apertar o botao E perto
+			// da mesa e clicar em estudar nao funciona"*. O verb "Study" da aba Other manda pelo canal
+			// de tech direto, por isso funcionava. Agora as duas portas chegam ao MESMO `estudar` -- que
+			// alterna, como o verb (segunda vez para).
+			//
+			// O "Fabricar..." (`abrir_tech`) SAIU: fabricar mora na aba Tech do menu P desde 2026-09-03,
+			// e a bancada e so mesa de estudo (e de recolher).
+			// ============================================================================================
+			case "estudar": ComandoDeTech(pl, "estudar", ""); return true;
 			case "pegar":
 			case "aparafusar":
 			case "lab_androide":

@@ -61,7 +61,7 @@ public partial class GameServer
 	internal readonly record struct FotoDoVelorio(
 		bool Existe, string Zona, bool Morto, bool KO, bool DePe, bool Deitado,
 		bool AureolaNoFio, long FaltamMs, bool SaindoDoMundo, bool NoMundo, bool PresoNaSala,
-		bool NaMente, bool NaPonte);
+		bool NaMente, bool NaPonte, bool DebuffDoEnma);
 
 	/// <summary>A FOTO. So le.</summary>
 	internal FotoDoVelorio FotoDoVelorioDeTeste(int id)
@@ -81,7 +81,8 @@ public partial class GameServer
 	private FotoDoVelorio Retrato(ServerPlayer pl, bool noMundo, bool saindo) =>
 		new(true, pl.Zone.Name, pl.Ficha.dead, pl.Ficha.KO, pl.MortoDePe, pl.Deitado,
 			pl.EnvAureola, pl.RelogioDaMorte - NowMs(), saindo, noMundo, pl.SalaPreso,
-			DimensaoMental.EhAMente(pl.Zone), NaveGrande.EhInterior(pl.Zone, out _));
+			DimensaoMental.EhAMente(pl.Zone), NaveGrande.EhInterior(pl.Zone, out _),
+			pl.Ficha.zeni_revive_debuff_until > NowMs());
 
 	// =====================================================================
 	// OS CORPOS QUE A BANCADA PRECISA TER AO LADO
@@ -222,6 +223,26 @@ public partial class GameServer
 		pl.MorteJaViajou = true;   // o unico ponto desta bancada que toca o campo da etapa
 		pl.RelogioDaMorte = long.MaxValue;   // corpo sem dono: o funil nao tem o que fazer com ele
 		return true;
+	}
+
+	/// <summary>
+	/// PAGA O ENMA -- a volta de PRODUCAO, e a unica que este port tem alem das esferas e da tecnica
+	/// de reviver (2026-09-04: *"voce teria que ficar morto ate alguem te reviver com as esferas, ou
+	/// juntar 1 milhao de zeni e pagar o Enma Daioh"*). Poe o corpo na mesa do Enma (a obra semeada
+	/// no boot), da a ele exatamente o milhao e chama <see cref="EnmaReviverPorZeni"/>, que e o que
+	/// o menu E dele chama; o `Renascer`, o berco e o debuff que vem depois sao o caminho do jogo, e
+	/// nao desta janela. Devolve se o Enma aceitou (o corpo saiu vivo).
+	/// </summary>
+	internal bool PagarOEnmaNoVelorioDeTeste(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		Obra? enma = _noChao.FirstOrDefault(o => o.Tipo == Alem.TipoDoEnma && o.Zona.Equals(alem));
+		if (enma == null || !pl.Zone.Equals(alem)) return false;
+		pl.Pos = new Vec2(enma.X + ZoneCollision.TileSize, enma.Y);
+		pl.Ficha.Zeni = Alem.PrecoDoReviveDoEnma;
+		EnmaReviverPorZeni(pl);
+		return !pl.Ficha.dead;
 	}
 
 	/// <summary>REVIVE pelo caminho do verbo de admin (`Reviver` + o corpo inteiro de volta).</summary>

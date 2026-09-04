@@ -432,7 +432,7 @@ public partial class RoboDeInstalar : Node
 	}
 
 	// =====================================================================
-	// O CAMINHO DE PRODUCAO: A BANCADA DE PESQUISA, PELOS BOTOES
+	// O CAMINHO DE PRODUCAO: A ABA TECH DO MENU P, PELOS BOTOES
 	// =====================================================================
 	/// <summary>
 	/// ============================ FABRICAR PELO CAMINHO DO JOGADOR, E NAO PELO FIO ============================
@@ -441,48 +441,68 @@ public partial class RoboDeInstalar : Node
 	/// `SendVerbo("tech_construir")`, um nome que **nao existe do outro lado**, e todas as bancadas
 	/// ficavam verdes porque nenhuma apertava o botao.
 	///
-	/// Entao o caminho aqui e o inteiro: abrir a grade (`Abrir`, que e o que o menu da tecla E chama),
-	/// achar o CARTAO do item pelo nome desenhado nele, apertar, e apertar "Fabricar" na caixa de
-	/// confirmacao. Se qualquer elo estiver solto, nao ha item na mochila e a familia reprova.
+	/// O CAMINHO MUDOU DE LUGAR (2026-09-03): a grade da bancada de pesquisa morreu, e fabricar e na
+	/// aba Tech do menu P (`MenuJogo.Tech.cs`). Entao o caminho aqui e o inteiro DE LA: abrir o menu,
+	/// ir a aba Tech (que pede o catalogo sozinha), achar o CARD do item pelo nome desenhado nele,
+	/// apertar "Construir" e apertar "Fabricar" na confirmacao que nasce no proprio card. Se qualquer
+	/// elo estiver solto, nao ha item na mochila e a familia reprova.
 	/// =====================================================================================================
 	/// </summary>
 	private IEnumerable FabricarPelaTela(string id, Action<bool, string> conta)
 	{
-		if (TelaDeConstrucao.Instancia is not { } tela)
-		{ conta(false, "a tela da bancada nem existe"); yield break; }
+		if (MenuJogo.Instancia is not { } menu)
+		{ conta(false, "o menu P nem existe"); yield break; }
 
-		// FECHAR TAMBEM E BOTAO. `Fechar()` e privado de proposito (so o Esc e o botao chamam), e
-		// abrir a visibilidade dele so pra bancada seria criar um segundo caminho pra fechar a tela.
-		void Sair() => AcharBotao(tela, b => b.Text.StartsWith("Fechar", StringComparison.Ordinal))
-						 ?.EmitSignal(BaseButton.SignalName.Pressed);
-
-		tela.Abrir();
-		// A GRADE SO NASCE COM O PACOTE: o `Abrir` pede a lista e o desenho vem no `TechMudou`.
-		foreach (object _ in Ate(() => BotoesDesenhados(tela).Count > 2, 3)) yield return 0.0;
-		yield return 0.2;
-
+		menu.Abrir();
+		menu.IrPara("Tech");
 		string nome = CatalogoDeItens.Get(id)?.Nome ?? id;
 
-		// O CARTAO E ACHADO PELO QUE ESTA ESCRITO NELE. O botao do cartao mostra so o icone, mas o
-		// tooltip dele carrega o nome e o preco (ver `TelaDeConstrucao.Cartao`) -- e o tooltip e o que
-		// o jogador le ao passar o mouse. Procurar pelo id seria procurar por dado interno.
-		Button? cartao = AcharBotao(tela, b => b.TooltipText.StartsWith(nome, StringComparison.Ordinal));
-		if (cartao == null)
-		{ conta(false, $"nao achei o cartao de '{nome}' na grade da bancada"); Sair(); yield break; }
-		if (cartao.Disabled)
-		{ conta(false, $"o cartao de '{nome}' esta apagado: {cartao.TooltipText}"); Sair(); yield break; }
-
-		cartao.EmitSignal(BaseButton.SignalName.Pressed);
+		// O CARD SO NASCE COM O PACOTE: a aba pede o catalogo ao abrir e o desenho vem no `TechMudou`.
+		foreach (object _ in Ate(() => menu.PaginaDeTeste("Tech") is { } p && CardDaOferta(p, nome) != null, 3)) yield return 0.0;
 		yield return 0.2;
 
-		Button? fabricar = AcharBotao(tela, b => b.Text == "Fabricar");
+		PanelContainer? card = menu.PaginaDeTeste("Tech") is { } pg ? CardDaOferta(pg, nome) : null;
+		if (card == null)
+		{ conta(false, $"nao achei o card de '{nome}' na aba Tech do menu P"); menu.Fechar(); yield break; }
+
+		Button? construir = AcharBotao(card, b => b.Text == "Construir");
+		if (construir == null || construir.Disabled)
+		{
+			string pilula = card.HasMeta("pilula") ? card.GetMeta("pilula").AsString()
+						  : string.Join("/", Descendentes(card).OfType<PanelContainer>().Where(x => x.HasMeta("pilula")).Select(x => x.GetMeta("pilula").AsString()));
+			conta(false, construir == null ? $"o card de '{nome}' nao tem botao Construir" : $"o Construir de '{nome}' esta apagado: {pilula}");
+			menu.Fechar();
+			yield break;
+		}
+
+		construir.EmitSignal(BaseButton.SignalName.Pressed);
+		yield return 0.2;
+
+		// A CONFIRMACAO NASCE NO CARD ("Fabricar por N zeni? [Fabricar] [Cancelar]"), e nao numa caixa
+		// por cima -- ver `MenuJogo.Tech.cs`.
+		Button? fabricar = AcharBotao(card, b => b.Text == "Fabricar");
 		if (fabricar == null)
-		{ conta(false, "a caixa de confirmacao nao apareceu (ou o botao mudou de nome)"); Sair(); yield break; }
+		{ conta(false, "a confirmacao do card nao apareceu (ou o botao mudou de nome)"); menu.Fechar(); yield break; }
 
 		fabricar.EmitSignal(BaseButton.SignalName.Pressed);
 		conta(true, "");
 		yield return 0.2;
-		Sair();
+		menu.Fechar();
+	}
+
+	/// <summary>O card de oferta (metadado `cartao` = "oferta") que desenha este NOME -- achado como quem le a tela.</summary>
+	private static PanelContainer? CardDaOferta(Node raiz, string nome) =>
+		Descendentes(raiz).OfType<PanelContainer>()
+			.FirstOrDefault(c => c.IsVisibleInTree() && c.HasMeta("cartao") && c.GetMeta("cartao").AsString() == "oferta"
+								 && Descendentes(c).OfType<Label>().Any(l => l.Text == nome));
+
+	private static IEnumerable<Node> Descendentes(Node raiz)
+	{
+		foreach (Node f in raiz.GetChildren())
+		{
+			yield return f;
+			foreach (Node n in Descendentes(f)) yield return n;
+		}
 	}
 
 	private static Button? AcharBotao(Node raiz, Func<Button, bool> serve)

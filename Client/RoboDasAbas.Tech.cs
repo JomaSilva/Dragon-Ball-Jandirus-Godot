@@ -139,6 +139,41 @@ public partial class RoboDasAbas
 		}
 		else Checa("...e sem obra nenhuma o cartao diz isso", obras != null && Rotulo(obras, "nenhuma construção nesta zona.") != null);
 
+		// ---- OS ICONES DO CATALOGO (o segundo relato do dono: "na tela de construir do menu P ... esta errado")
+		// A aba tinha a TERCEIRA copia do carregador de miniatura, sem o saneamento do nome do estado:
+		// o Dragon Radar saia como uma bala e Pee-Kay Ball e Pet Food com o mesmo icone. A referencia que
+		// o dono mostrou era a grade da bancada de pesquisa, cujo carregador saneava -- e que agora e o
+		// UNICO (`Miniaturas`). O que se cobra: a oferta "Dragon Radar" do catalogo desenha o MESMO quadro
+		// que o ITEM Dragon Radar da mochila, e ofertas de folhas/estados diferentes nao repetem quadro.
+		List<PanelContainer> cardsDeIcone = CartoesDeOferta(pg);
+		PanelContainer? cardRadar = cardsDeIcone.FirstOrDefault(c => Rotulos(c).Any(l => l.Text == "Dragon Radar"));
+		Texture2D? texOferta = cardRadar == null ? null : Todos(cardRadar).OfType<TextureRect>().FirstOrDefault()?.Texture;
+		Texture2D? texItem = Jandirus.Core.Items.CatalogoDeItens.Get(Jandirus.Core.Items.CatalogoDeItens.Radar) is { } defRadar ? Miniaturas.DoItem(defRadar) : null;
+		Checa("a oferta 'Dragon Radar' do catalogo tem o MESMO quadro que o item Dragon Radar da mochila (um carregador so)",
+			  texOferta != null && ReferenceEquals(texOferta, texItem), $"oferta={texOferta?.GetInstanceId()} item={texItem?.GetInstanceId()}");
+		var porTextura = new Dictionary<ulong, List<GameClient.OfertaDeObra>>();
+		foreach (GameClient.OfertaDeObra o in cli.Catalogo)
+		{
+			if (Miniaturas.De(o.Arte, o.Estado) is not { } t) continue;
+			if (!porTextura.TryGetValue(t.GetInstanceId(), out List<GameClient.OfertaDeObra>? grupo)) porTextura[t.GetInstanceId()] = grupo = [];
+			grupo.Add(o);
+		}
+		// QUANDO DIVIDIR UM QUADRO E DEFEITO: entre folhas DIFERENTES, sempre (e o carregador errado); na
+		// MESMA folha, so se os dois estados EXISTEM nela e sao outros (entao deviam ser dois quadros).
+		// Um estado que a folha NAO TEM cai no padrao dela -- fielmente ao BYOND, onde `icon_state`
+		// inexistente mostra o estado padrao do `.dmi`: "Camera Computer" (`PDA.dmi`/"Computer") sai
+		// igual ao PDA la e aqui, e a primeira versao desta prova acusava isso como se fosse o bug.
+		static string Folha(GameClient.OfertaDeObra o) => System.IO.Path.GetFileName(o.Arte);
+		static string RotuloDaOferta(GameClient.OfertaDeObra o) => $"{o.Nome} [{Folha(o)}:{o.Estado}]";
+		List<string> repetidos = porTextura.Values.Where(g => g.Count > 1)
+			.Where(g => g.Select(o => o.Arte).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1
+					 || g.Where(o => Miniaturas.TemEstado(o.Arte, o.Estado)).Select(o => Miniaturas.NomeDaAnimacao(o.Estado)).Distinct().Count() > 1)
+			.Select(g => string.Join(" = ", g.Select(RotuloDaOferta))).ToList();
+		Checa("nenhum quadro e dividido por folhas DIFERENTES, nem por dois estados que a folha TEM (era o Pee-Kay Ball igual ao Pet Food)",
+			  repetidos.Count == 0, string.Join(" | ", repetidos.Take(3)));
+		int fieis = porTextura.Values.Where(g => g.Count > 1).Count(g => !repetidos.Any(r => r.StartsWith(RotuloDaOferta(g[0]))));
+		Nota($"       (quadros divididos FIELMENTE, estado que a folha nao tem -> padrao dela, como no BYOND: {fieis} grupo(s))");
+
 		// ---- fotos e pixel
 		if (Ancestral<ScrollContainer>(pg) is { } rol) rol.ScrollVertical = 0;
 		await Quadros(2);

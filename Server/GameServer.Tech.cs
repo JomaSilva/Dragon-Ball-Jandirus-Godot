@@ -404,6 +404,7 @@ public partial class GameServer
 		if (densas > 0) GD.Print($"[server] construcoes que bloqueiam: {densas}");
 
 		CarregarObjetosDoMapa();
+		SemearOEnma();   // o juiz dos mortos, na mesa dele -- ver `GameServer.Alem.cs`, secao 5
 
 		// ============================ E ENTAO A GUARDA, EM VOZ ALTA ============================
 		// DEPOIS do `CarregarObjetosDoMapa` e nao antes: ela cruza o catalogo com o que esta

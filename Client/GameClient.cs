@@ -123,12 +123,22 @@ public partial class GameClient : Node
 	/// </summary>
 	private readonly List<ProjetilState> _scratchTiros = [];
 
+	/// <summary>
+	/// O `servidorMs` do ULTIMO snapshot lido, ja desembrulhado pra 64 bits. Quem le e o
+	/// `World.AoReceberSnapshot`, no mesmo despacho, pra dar a cada corpo remoto a hora da amostra
+	/// (`servidorMs - IdadeMs`). Fica num campo, e nao no evento, porque `SnapshotReceived` tem uma
+	/// duzia de assinantes (robos de bancada) que nao querem saber de hora nenhuma.
+	/// </summary>
+	public long ServidorMsDoSnapshot { get; private set; }
+
 	public GameClient()
 	{
 		_net = new NetManager(_listener)
 		{
 			AutoRecycle = true,
-			UpdateTime = 15,
+			// CINCO, pelo mesmo motivo do servidor (ver la): o `Send` enfileira e a thread de logica
+			// acorda a cada `UpdateTime`. O input ainda acorda a thread na hora (`SendState`).
+			UpdateTime = 5,
 			// TRES, e o servidor abre os mesmos tres -- ver `Protocol.ChannelVoz`.
 			ChannelsCount = Protocol.TotalDeCanais,
 		};
@@ -146,8 +156,22 @@ public partial class GameClient : Node
 		};
 		_listener.NetworkReceiveEvent += (peer, reader, ch, method) =>
 		{
+			// O OPCODE E LIDO ANTES: depois da excecao o leitor ja andou e o numero se perdeu.
+			byte op = reader.AvailableBytes > 0 ? reader.PeekByte() : (byte)255;
 			try { Handle(reader); }
-			catch (Exception ex) { GD.PushWarning($"[client] pacote invalido: {ex.Message}"); }
+			catch (Exception ex)
+			{
+				// ============================ A EXCECAO SAI INTEIRA, E COM O OPCODE ============================
+				// "pacote invalido: {Message}" escondeu por um dia um defeito que nao era de pacote nenhum:
+				// um World morto ainda assinado no `DecalqueCaiu` estourava `ObjectDisposedException` a cada
+				// decalque, e a linha dizia so "Cannot access a disposed object" -- sem opcode, sem pilha,
+				// sem o nome do assinante. O texto apontava pra rede; o culpado era uma assinatura orfa.
+				// Agora o aviso diz QUAL pacote, QUE excecao e ONDE -- e, se for um node liberado, poda o
+				// orfao na hora pra que os assinantes vivos voltem a ser chamados no pacote seguinte.
+				// ================================================================================================
+				GD.PushWarning($"[client] o tratador do pacote {op} ({(Protocol.S2C)op}) lancou {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+				if (ex is ObjectDisposedException) PodarOuvintesOrfaos();
+			}
 		};
 		_listener.PeerDisconnectedEvent += (peer, info) =>
 		{
@@ -160,6 +184,14 @@ public partial class GameClient : Node
 
 	public override void _Process(double delta)
 	{
+		// O RELOGIO DE QUADRO DO CLIENTE ANDA AQUI, e ANTES do `PollEvents`: este no e o primeiro
+		// autoload, entao e o primeiro `_Process` de todo quadro -- o carimbo de chegada de cada
+		// snapshot (`RelogioDoServidor.AoChegarSnapshot`) e o carimbo do input que o corpo local manda
+		// mais tarde no mesmo quadro leem o mesmo valor. Ele vivia nos `_Process` dos corpos, e ficava
+		// PARADO enquanto o mundo carregava: os primeiros snapshots chegavam com hora local zero, o
+		// estimador do relogio do servidor nascia 1,2 s errado e levava um minuto pra corrigir, com
+		// todo corpo remoto andando aos trancos nesse meio tempo (medido na bancada de dois processos).
+		RelogioDoServidor.AvancarQuadro(delta);
 		_net.PollEvents();
 
 		// ============================ O RELOGIO DO MUNDO ANDA AQUI ============================
@@ -242,6 +274,10 @@ public partial class GameClient : Node
 		if (!Connected) return;
 		var w = Protocol.Begin(Protocol.C2S.InputState);
 		w.Put(++_seq);
+		// A HORA EM QUE `pos` VALE, no MEU relogio DE QUADRO -- o mesmo em que o `LocalPlayer` integrou
+		// `pos` (ver `RelogioDoServidor.AvancarQuadro`). O servidor a traduz pro dele e a devolve a
+		// todo mundo como idade no snapshot -- ver `Protocol.InputCorrendo` (o layout) e `EntityState.IdadeMs`.
+		w.Put(unchecked((uint)Math.Round(RelogioDoServidor.AgoraLocalMs())));
 		w.PutVec(pos);
 		w.Put((byte)(((byte)facing & 0x03)
 					 | (correndo ? Protocol.InputCorrendo : 0)
@@ -249,6 +285,9 @@ public partial class GameClient : Node
 					 | (subir ? Protocol.InputSubir : 0)
 					 | (descer ? Protocol.InputDescer : 0)));
 		_peer!.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
+		// SAI AGORA: o `Send` so enfileira, e a thread de logica dormia ate 15 ms antes de por o
+		// input no fio -- numa grade que nao divide os 33,3 ms do envio. Ver o `UpdateTime`.
+		_net.TriggerUpdate();
 	}
 
 	/// <summary>
@@ -377,6 +416,25 @@ public partial class GameClient : Node
 	/// caiu); nos outros sete ele chega <c>Nenhuma</c> e e ignorado.
 	/// </summary>
 	public event Action<Protocol.Decal, Vec2, Facing, PecaDeCorpo>? DecalqueCaiu;
+
+	/// <summary>Uma peca de corpo no chao, como o retrato da zona a descreve. Ver <see cref="PecasDaZona"/>.</summary>
+	public readonly record struct PecaNoChaoInfo(PecaDeCorpo Peca, Vec2 Onde, int RestanteMs);
+
+	/// <summary>
+	/// O RETRATO DAS PECAS DE CORPO NO CHAO -- de QUE zona ele e, e o que ha nela. Chega no login e
+	/// a cada troca de zona (`S2C.Pecas`), e fica GUARDADO pelo mesmo motivo do
+	/// <see cref="CenarioCaido"/>: no login ele chega antes de o `World` existir, e na troca de zona
+	/// ele pode chegar antes de o `World` ter terminado de carregar o mapa novo (a troca e diferida
+	/// por uma tela de carregamento). Quem planta e o `World.Decalques`, quando a zona dele bater com
+	/// a do retrato.
+	///
+	/// A ZONA VAI JUNTO e nao e enfeite: sem ela o `World` nao teria como saber se o retrato guardado
+	/// e do chao que ele acabou de montar ou do chao de onde o jogador saiu.
+	/// </summary>
+	public (ulong Zona, List<PecaNoChaoInfo> Pecas) PecasDaZona { get; private set; } = (0, []);
+
+	/// <summary>Chegou um retrato novo de pecas (ver <see cref="PecasDaZona"/>).</summary>
+	public event Action? PecasChegaram;
 
 	/// <summary>
 	/// O QUE EU APRENDI e quantos marcos tenho. Chega quando muda, como o corpo e os atributos.
@@ -1268,7 +1326,82 @@ public partial class GameClient : Node
 	public event Action<byte>? MiraMudou;
 	public event Action<bool>? LetalidadeMudou;
 
-	private void Handle(NetPacketReader reader)
+	/// <summary>
+	/// ENTREGA UM PACOTE MONTADO PELA BANCADA AO MESMO TRATADOR DOS PACOTES DE VERDADE. O que se quer
+	/// provar com ele e o trecho ENTRE o tratador e a tela (o `?.Invoke` do evento e quem esta
+	/// assinado nele) -- chamar o assinante na mao provaria que o assinante funciona, e o defeito das
+	/// assinaturas orfas nunca esteve nele. So o fio e sintetico.
+	/// </summary>
+	internal void EntregarDeTeste(NetDataWriter pacote) => Handle(new NetDataReader(pacote.CopyData()));
+
+	// =====================================================================
+	// OS ASSINANTES ORFAOS
+	// =====================================================================
+	/// <summary>
+	/// OS DELEGATES DOS MEUS EVENTOS CUJO ALVO E UM NODE JA LIBERADO -- um por linha, "evento <- Tipo.Metodo".
+	///
+	/// O `GameClient` e autoload e sobrevive ao logout; as telas e o mundo morrem no `Boot.VoltarAoLogin`.
+	/// Toda assinatura que uma tela deixou de cancelar no `_ExitTree` vira um alvo morto aqui, e o sintoma
+	/// e o mesmo desde 2026-08-05 (ver a nota de assinaturas vazadas): o proximo pacote acorda o node
+	/// liberado, estoura `ObjectDisposedException`, e o delegate multicast PARA ali -- os assinantes VIVOS
+	/// depois dele nunca sao chamados. Foi assim que o dono perdeu a trilha do arremesso (2026-09-04): o
+	/// World novo estava assinado DEPOIS do morto no `DecalqueCaiu`.
+	///
+	/// POR REFLEXAO sobre os campos de evento, e nao por uma lista escrita a mao: sao dezenas de eventos e
+	/// uma lista seria mais uma coisa a envelhecer. A bancada `--diagdecalque` chama isto depois de voltar
+	/// ao lobby e exige ZERO -- e a prova de que todo `_ExitTree` cancelou tudo o que assinou.
+	/// </summary>
+	public List<string> OuvintesOrfaos()
+	{
+		var orfaos = new List<string>();
+		foreach ((System.Reflection.FieldInfo campo, Delegate d) in CamposDeEvento())
+			foreach (Delegate x in d.GetInvocationList())
+				if (x.Target is GodotObject alvo && !GodotObject.IsInstanceValid(alvo))
+					orfaos.Add($"{campo.Name} <- {x.Method.DeclaringType?.Name}.{x.Method.Name}");
+		return orfaos;
+	}
+
+	/// <summary>Quantos assinantes VIVOS o evento <paramref name="evento"/> tem. Pra bancada contar "um, e o certo".</summary>
+	public int OuvintesVivos(string evento)
+	{
+		foreach ((System.Reflection.FieldInfo campo, Delegate d) in CamposDeEvento())
+			if (campo.Name == evento)
+				return d.GetInvocationList().Count(x => x.Target is not GodotObject alvo || GodotObject.IsInstanceValid(alvo));
+		return 0;
+	}
+
+	/// <summary>
+	/// TIRA os assinantes orfaos de todos os eventos, avisando um por um. E a rede de seguranca, nao o
+	/// conserto: o conserto e o `-=` no `_ExitTree` de quem assinou (metodo nomeado, nunca lambda). Roda
+	/// quando um tratador estoura `ObjectDisposedException` -- o instante em que o orfao se denuncia --
+	/// pra que os assinantes vivos voltem a ser chamados no pacote seguinte em vez de ficarem mudos ate
+	/// o fim do processo. O aviso diz quem esqueceu o `-=`, que e o que se conserta.
+	/// </summary>
+	private void PodarOuvintesOrfaos()
+	{
+		foreach ((System.Reflection.FieldInfo campo, Delegate d) in CamposDeEvento())
+		{
+			Delegate? podado = d;
+			foreach (Delegate x in d.GetInvocationList())
+				if (x.Target is GodotObject alvo && !GodotObject.IsInstanceValid(alvo))
+				{
+					podado = Delegate.Remove(podado, x);
+					GD.PushWarning($"[client] assinante ORFAO podado de {campo.Name}: {x.Method.DeclaringType?.Name}.{x.Method.Name} -- falta um `-=` no _ExitTree dele");
+				}
+			if (!ReferenceEquals(podado, d)) campo.SetValue(this, podado);
+		}
+	}
+
+	/// <summary>Os campos de evento (`event Action...`) desta classe com pelo menos um assinante.</summary>
+	private IEnumerable<(System.Reflection.FieldInfo, Delegate)> CamposDeEvento()
+	{
+		foreach (System.Reflection.FieldInfo campo in typeof(GameClient).GetFields(
+					 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public))
+			if (typeof(MulticastDelegate).IsAssignableFrom(campo.FieldType) && campo.GetValue(this) is Delegate d)
+				yield return (campo, d);
+	}
+
+	private void Handle(NetDataReader reader)
 	{
 		var id = (Protocol.S2C)reader.GetByte();
 		switch (id)
@@ -1355,6 +1488,11 @@ public partial class GameClient : Node
 
 			case Protocol.S2C.Snapshot:
 			{
+				// O CABECALHO: a hora do servidor. Alimenta o relogio alinhado (o maximo em janela de
+				// servidor - local, ver `RelogioDoServidor`) ANTES de qualquer corpo ser lido, e fica
+				// no campo pra o `World` carimbar as amostras deste mesmo pacote.
+				ServidorMsDoSnapshot = RemotePlayer.Relogio.AoChegarSnapshot(reader.GetUInt());
+
 				int n = reader.GetUShort();
 				_scratch.Clear();
 				for (int i = 0; i < n; i++) _scratch.Add(EntityState.Read(reader));
@@ -1685,6 +1823,20 @@ public partial class GameClient : Node
 				PecaDeCorpo peca = tipo == Protocol.Decal.Membro
 					? (PecaDeCorpo)reader.GetByte() : PecaDeCorpo.Nenhuma;
 				DecalqueCaiu?.Invoke(tipo, onde, dir, peca);
+				break;
+			}
+
+			// O RETRATO DAS PECAS NO CHAO DE UMA ZONA -- o mesmo escritor do servidor, lido na mesma
+			// ordem (`GameServer.PacoteDePecas`). Ver `PecasDaZona`.
+			case Protocol.S2C.Pecas:
+			{
+				ulong zona = reader.GetULong();
+				int n = reader.GetByte();
+				var l = new List<PecaNoChaoInfo>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new PecaNoChaoInfo((PecaDeCorpo)reader.GetByte(), reader.GetVec(), reader.GetInt()));
+				PecasDaZona = (zona, l);
+				PecasChegaram?.Invoke();
 				break;
 			}
 

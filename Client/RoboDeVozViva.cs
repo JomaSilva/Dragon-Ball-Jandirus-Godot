@@ -287,9 +287,10 @@ public partial class RoboDeVozViva : Node
 		ulong agora = Time.GetTicksMsec();
 		if (_proximoQuadroMs == 0) _proximoQuadroMs = agora;
 
-		// UM ENGASGO LONGO NAO VIRA RAJADA. Sem este remendo, um cliente que travasse meio segundo
-		// despejaria 25 quadros de uma vez -- e a torneira do servidor recusaria 20 deles, deixando a
-		// bancada medindo a defesa contra inundacao em vez da conversa.
+		// UM ENGASGO LONGO NAO VIRA RAJADA. Esta fonte e um RELOGIO, e nao uma captura: sem esta linha,
+		// um cliente que travasse meio segundo devolveria 25 quadros de uma vez -- e o anel do
+		// `Microfone` (`QuadrosProntos`, o mesmo remendo em producao) derrubaria 20 deles, deixando a
+		// bancada medindo o descarte de engasgo em vez da conversa.
 		if (agora > _proximoQuadroMs + 200) _proximoQuadroMs = agora;
 
 		if (agora < _proximoQuadroMs) return false;

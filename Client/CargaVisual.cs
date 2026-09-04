@@ -123,17 +123,25 @@ public partial class CargaVisual : Node2D
 	/// `carregando`, e portanto nao ha zumbido. No DM ha, e ali e defeito mesmo.)
 	/// =======================================================================================
 	/// </summary>
-	public void Som(bool ligado)
+	public void Som(bool ligado, bool retrato = false)
 	{
 		if (ligado == _comSom) return;
+		// QUEM EU ENCONTRO JA CARREGANDO NAO COMECOU AGORA. O estalo de inicio e do INSTANTE em que a
+		// carga comeca; o primeiro snapshot de um corpo que acabou de entrar no meu campo de visao nao e
+		// esse instante -- e so a primeira vez que EU olho. Sem esta guarda quem entrava numa zona ouvia
+		// um "estalo de carga" por corpo que ja estava carregando. `retrato` e o chamador dizendo "isto e
+		// um estado que li, nao uma transicao que vi" (o snapshot); o canal de efeito do corpo local so
+		// fala em transicoes e nao passa por aqui. E o irmao de `RemotePlayer.OuvirODecolar`.
+		bool estreia = !_jaSoube;
+		_jaSoube = true;
 		_comSom = ligado;
 
 		if (!ligado) { PararLaco(); return; }
-		AudioDirector.EfeitoNoLugar(this, Trilha.CargaInicio, 0.55f);
+		if (!(retrato && estreia)) AudioDirector.EfeitoNoLugar(this, Trilha.CargaInicio, 0.55f);
 		LigarLaco();
 	}
 
-	private bool _comSom;
+	private bool _comSom, _jaSoube;
 
 	/// <summary>
 	/// O DESENHO da aura de carga. Chamado a cada snapshot, entao a primeira linha e a comparacao
@@ -141,13 +149,37 @@ public partial class CargaVisual : Node2D
 	/// </summary>
 	public void Definir(bool carregando, bool excesso)
 	{
+		_segurando = carregando;
 		_excesso = excesso;
-		if (carregando == _ligado) { Pintar(); return; }
-		_ligado = carregando;
+
+		// ============================ A CHAMA ACENDE COM O C **OU** COM O EXCESSO, E A REGRA MORA AQUI ============================
+		// Os dois chamadores passam os BITS CRUS (o C e o Ki acima dos 100%) e a decisao e uma. Antes a
+		// regra vivia no chamador: `World.AplicarChamaDaCargaLocal` fazia o `||` antes de chamar, e
+		// `World.AoReceberSnapshot` passava so o bit do C -- ou seja o corpo LOCAL ficava em chamas depois de
+		// soltar a tecla acima dos 100%, e o mesmo corpo, visto pelos outros, apagava no instante em que a
+		// tecla subia. Quem entrava na zona depois nunca via chama nenhuma nele, porque o bit do C ja estava
+		// em zero. Foi o relato do dono (2026-09-04): "quando o efeito de carga ta ativado e alguem entra no
+		// seu planeta, ele nao sincroniza quem ja tava com isso ativado". O snapshot sempre trouxe os dois
+		// bits; era a segunda copia da regra que os lia pela metade.
+		// ==================================================================================================================
+		bool acesa = carregando || (excesso && !ChamaSoComOCDeTeste);
+		if (acesa == _ligado) { Pintar(); return; }
+		_ligado = acesa;
 
 		if (_ligado) Acender();
 		else Apagar();
 	}
+
+	/// <summary>O bit CRU do C, como chegou. Pra bancada separar "segurando" de "acesa pelo excesso".</summary>
+	public bool SegurandoDeTeste => _segurando;
+
+	private bool _segurando;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--dois b --doisinjetar`): a regra de antes, chama so com o C. A bancada de dois
+	/// processos tem que ficar vermelha na linha "a chama continua depois de soltar o C".
+	/// </summary>
+	internal static bool ChamaSoComOCDeTeste;
 
 	private void Acender()
 	{

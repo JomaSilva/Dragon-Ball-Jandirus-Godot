@@ -419,4 +419,32 @@ public sealed class Body
 		foreach (BodyPart p in Partes) b.Partes.Add(p.Copiar());
 		return b;
 	}
+
+	/// <summary>
+	/// A FOTO DE OUTRO CORPO NESTE -- vida e amputacao de cada membro, casados pelo NOME.
+	///
+	/// ============================ `A.overlays += overlays` -- `Corpse.dm:82` ============================
+	/// O cadaver do DM copia os overlays do mob NAQUELE instante: o sangue, o roxo e o membro que
+	/// faltava viajam com ele, e ficam. Aqui os ferimentos nao sao overlay, sao DERIVADOS do corpo
+	/// (`Feridas.De`), entao fotografar o desenho e fotografar o corpo. Este metodo e a foto.
+	///
+	/// POR NOME E NAO POR INDICE: os dois corpos saem do mesmo `Novo`, mas casar por posicao seria a
+	/// armadilha que aparece so quando um dos dois tem rabo e o outro nao. Membro que o outro corpo
+	/// nao tem fica como esta.
+	///
+	/// NAO E `Copiar()`: aquele cria um corpo novo, e o cadaver ja tem o dele (o `PrepararCombate` o
+	/// montou com o `CombatState` inteiro em volta). Trocar a instancia deixaria o estado do combate
+	/// apontando pro corpo velho.
+	/// ====================================================================================================
+	/// </summary>
+	public void CopiarEstadoDe(Body outro)
+	{
+		foreach (BodyPart p in Partes)
+		{
+			if (outro.Achar(p.Nome) is not { } dele) continue;
+			p.Vida = dele.Vida;
+			p.VidaMax = dele.VidaMax;
+			p.Decepado = dele.Decepado;
+		}
+	}
 }

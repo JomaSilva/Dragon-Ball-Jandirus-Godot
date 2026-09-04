@@ -11,7 +11,7 @@ REM  Sao DUAS bancadas, e elas rodam uma depois da outra neste arquivo porque
 REM  respondem METADES diferentes do mesmo pedido -- e cada uma so consegue
 REM  responder a sua:
 REM
-REM   1) --pecateste   (servidor, ~30 s, 30 provas, SEM JANELA)
+REM   1) --pecateste   (servidor, ~45 s, 58 provas, SEM JANELA)
 REM      DOIS CORPOS brigam pelo `Atacar` de producao e a bancada le o FIO:
 REM      o `S2C.Hit` (de onde o jato de sangue nasce) e o `S2C.Decalque` (de
 REM      onde a peca no chao nasce), com os mesmos leitores do cliente.
@@ -24,7 +24,14 @@ REM          o CENTRO delas fica em cima de quem perdeu e nao de quem bateu;
 REM        * peca vem de AMPUTACAO e nao de soco: 700 socos, e o chao para de
 REM          ganhar peca quando os cinco membros arrancaveis ja sairam;
 REM        * o pacote da peca tem 12 bytes e nada mais -- e o relato da PLATEIA
-REM          diz que houve amputacao sem dizer qual membro nem quanto doeu.
+REM          diz que houve amputacao sem dizer qual membro nem quanto doeu;
+REM        * A EXPLOSAO e o DANO DIRETO tambem arrancam (o `SpreadDamage` e o
+REM          `damage_mob` do DM passam pelo mesmo `LopLimb`), com o DEFEITO
+REM          INJETADO da cauda unica desligada ficando vermelho; o nao-letal nao
+REM          arranca;
+REM        * quem ENTRA na zona recebe o RETRATO das pecas (`S2C.Pecas`), com
+REM          quanto falta de cada uma; o teto de 32 por zona empurra a MAIS
+REM          VELHA, e a peca de 600 s + 1 ms some no tique (o prazo do DM).
 REM
 REM   2) --diagdecalque  (cliente, ~45 s, 54 provas, SEM JANELA)
 REM      O DESENHO, que o fio nao alcanca:
@@ -84,7 +91,7 @@ if %errorlevel%==0 (
 )
 
 echo.
-echo  ---- 1/2: o FIO da amputacao, com dois corpos (30 provas) ----
+echo  ---- 1/2: o FIO da amputacao, com dois corpos (58 provas) ----
 echo.
 echo   Leia o placar "[peca] ==== N passaram, M falharam ====" e feche com
 echo   Ctrl+C -- o servidor continua de pe depois da bancada, que e a

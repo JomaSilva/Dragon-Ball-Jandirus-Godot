@@ -52,8 +52,11 @@ namespace Jandirus.Client;
 ///                          nao acender o bit, ou se o `S2C.Aureola` nao chegar ao `MostrarAureola`.
 ///   5. AS DUAS CABECAS  -- morto COM e vivo SEM, lado a lado **dentro** do alem. Reprova em
 ///                          `TemAureola => true` e em `TemAureola => EhOAlem(zona)`.
-///   6. A VOLTA          -- reviver apaga a auréola sem uma linha propria, e ninguem fica preso no
-///                          alem. Reprova se a auréola virar um campo que o revive tem que lembrar.
+///   6. A VOLTA          -- reviver apaga a auréola sem uma linha propria; e quem morre DENTRO do
+///                          alem nao volta sozinho: fica de pe, com auréola e relogio trancado, ate
+///                          PAGAR O ENMA (o caminho de producao da volta, 2026-09-04). Reprova se a
+///                          auréola virar um campo que o revive tem que lembrar, ou se o
+///                          `PassoDaMorte` voltar a chamar `Renascer` no alem.
 ///   7. QUEM NAO VAI     -- cidadao, reflexo e boneco, um por linha, com o corpo nomeado. Reprova se
 ///                          o `else` largo voltar ("quem nao e NPC renasce"): o reflexo apareceria
 ///                          de pe na mesa do Enma.
@@ -115,6 +118,7 @@ public partial class RoboDoVelorio : Node
 	private readonly List<string> _passos = [];
 
 	private bool _acabou;
+	private bool _pagouOEnma;
 	private int _passo;
 	private double _t, _espera;
 
@@ -526,9 +530,9 @@ public partial class RoboDoVelorio : Node
 						 $"...e eu continuo NO ALEM, vivo ({f.Zona}) -- a segunda prova de que a "
 					   + "auréola nao e do lugar");
 
-				// E AGORA A VOLTA DE VERDADE, pelo caminho do jogo: morrer no alem cai no
-				// `PassoDaMorte` -> `Renascer` (o `EhOAlem` do lugar), que e a unica saida que este
-				// port tem enquanto o Enma nao for portado.
+				// E AGORA A MORTE DENTRO DO ALEM: o cadaver dela (fase seguinte) e o que separa QUANDO
+				// de ONDE, e o que vem depois do cadaver ja nao e uma volta -- o `PassoDaMorte` so
+				// tranca o relogio de quem ja esta la; a saida e paga (o Enma, na fase 6b).
 				Conferir(srv.MatarNoVelorioDeTeste(cli.LocalId), "morro de novo, agora DENTRO do alem");
 				Passar();
 				break;
@@ -564,21 +568,56 @@ public partial class RoboDoVelorio : Node
 			case 16:
 			{
 				GameServer.FotoDoVelorio f = srv.FotoDoVelorioDeTeste(cli.LocalId);
+
+				// ---- 6a) O RELOGIO VENCEU DENTRO DO ALEM, E NADA ME LEVA ----
+				// Ate 2026-09-04 esta fase esperava o `Renascer` me devolver ao berco ("ninguem fica
+				// preso"). O dono pediu o contrario -- *"voce teria que ficar morto ate alguem te
+				// reviver com as esferas, ou juntar 1 milhao de zeni e pagar o Enma Daioh"* --, e a
+				// prova virou o AVESSO: com o relogio vencido eu continuo morto e la, de pe, com a
+				// auréola acesa e o relogio trancado. O que me tira e o Enma, logo abaixo.
+				if (!_pagouOEnma)
+				{
+					if (_t < 0.6) return;   // um tique da triagem + duas voltas do `TickDasAureolas`
+					Conferir(Alem.EhOAlem(f.Zona) && f.Morto,
+							 $"NINGUEM VOLTA SOZINHO: com o relogio vencido DENTRO do alem eu continuo "
+						   + $"morto e la ({f.Zona}) -- o `PassoDaMorte` nao chama mais `Renascer`");
+					Conferir(f.FaltamMs > 1_000_000,
+							 "...e o relogio foi TRANCADO (o funil nao reexamina quem ja esta la)");
+					Conferir(f.DePe && !f.Deitado,
+							 "...e eu estou DE PE: o cadaver dos 15 s acabou, e morto no Outro Mundo anda");
+					Conferir(NoFio(cli.LocalId) && NoDesenho(eu),
+							 "...COM a auréola: a etapa de cadaver passou (`MorteJaViajou` acende no "
+						   + "`PassoDaMorte` de quem ja esta no alem) -- de pe e sem auréola seria o "
+						   + "par que nunca deve existir junto");
+					Conferir(srv.PagarOEnmaNoVelorioDeTeste(cli.LocalId),
+							 "PAGUEI O ENMA na mesa dele (1.000.000 de zeni) -- o caminho de producao "
+						   + "da volta, `EnmaReviverPorZeni`");
+					_pagouOEnma = true;
+					_t = 0;
+					return;
+				}
+
+				// ---- 6b) A VOLTA PAGA ----
+				// O `Renascer` rodou DENTRO do meu `_Process` (o helper e sincrono), e o bit da auréola
+				// so sai no `TickDasAureolas` seguinte (5 Hz): a foto do servidor diz "vivo, no berco"
+				// antes de o fio dizer "sem auréola". Tres tiques, e ai as perguntas sao ESTRITAS.
+				if (_t < 0.6) return;
 				if (Alem.EhOAlem(f.Zona) || f.Morto)
 				{
 					if (_t > EsperaMaxima)
 					{
-						Conferir(false, $"NINGUEM FICA PRESO: vencido o prazo eu volto a vida fora do "
-									  + $"alem (estou {(f.Morto ? "morto" : "vivo")} em {f.Zona})");
+						Conferir(false, $"A VOLTA PAGA nao me devolveu: estou {(f.Morto ? "morto" : "vivo")} em {f.Zona}");
 						Fechar();
 					}
 					return;
 				}
 
-				Conferir(true, $"NINGUEM FICA PRESO -- morrer no alem me devolve vivo ao berco ({f.Zona})");
+				Conferir(true, $"A VOLTA E PAGA -- o Enma me devolve vivo ao berco ({f.Zona})");
 				Conferir(!NoFio(cli.LocalId), "...sem auréola");
 				Conferir(f.FaltamMs <= 0, "...e com o relogio da morte zerado (o funil nao reexamina "
 										+ "um corpo vivo)");
+				Conferir(f.DebuffDoEnma,
+						 "...e com o debuff do Enma no corpo (`zeni_revive_debuff_until`: 25% do BP por uma hora)");
 				Passar();
 				break;
 			}
@@ -697,7 +736,10 @@ public partial class RoboDoVelorio : Node
 
 				Conferir(true, "BORDA (ponte): morrer numa zona dinamica leva pro Outro Mundo igual "
 							 + "-- o `MoveToZone` nao pergunta de onde o corpo vem");
-				srv.VencerORelogioDoVelorioDeTeste(cli.LocalId);
+				// A VOLTA E PAGA (2026-09-04): vencer o relogio de novo so o trancaria (fase 6a); quem
+				// me tira do alem e o Enma, e a pergunta desta borda e ONDE ele me poe.
+				Conferir(srv.PagarOEnmaNoVelorioDeTeste(cli.LocalId),
+						 "...e de la eu pago o Enma (a unica volta que nao depende de um vivo ao lado)");
 				Passar();
 				break;
 			}
@@ -708,12 +750,12 @@ public partial class RoboDoVelorio : Node
 				if (f.Morto || Alem.EhOAlem(f.Zona))
 				{
 					if (_t > EsperaMaxima)
-					{ Conferir(false, "BORDA (ponte): e o renascimento me tira de la"); Fechar(); }
+					{ Conferir(false, "BORDA (ponte): e a volta paga me tira de la"); Fechar(); }
 					return;
 				}
 
 				Conferir(!f.NaPonte,
-						 $"BORDA (ponte): renasci no BERCO ({f.Zona}) e nao dentro da nave -- o "
+						 $"BORDA (ponte): a volta paga me poe no BERCO ({f.Zona}) e nao dentro da nave -- o "
 					   + "`DestinoDe` nao devolve ninguem pra uma zona que pode ter deixado de existir");
 				Passar();
 				break;

@@ -179,7 +179,8 @@ public partial class GameServer
 	/// cada um enxerga depende de ONDE ele esta. Custa um buffer por jogador -- e o preco de o
 	/// espaco nao ter fim.
 	/// </summary>
-	private void SnapshotDoEspaco(List<ServerPlayer> zona, long agora)
+	/// <param name="carimbo">A hora nominal do tique (`_relogioDoSnapshot`), a mesma das zonas normais -- ver o laco do snapshot.</param>
+	private void SnapshotDoEspaco(List<ServerPlayer> zona, long agora, uint carimbo)
 	{
 		foreach (ServerPlayer eu in zona)
 		{
@@ -190,6 +191,7 @@ public partial class GameServer
 				if (Espaco.PertoDeMim(eu.Pos, o.Pos)) vizinhos.Add(o);
 
 			var w = Protocol.Begin(Protocol.S2C.Snapshot);
+			w.Put(carimbo);   // O MESMO CABECALHO da zona normal: o leitor e um so
 			w.Put((ushort)vizinhos.Count);
 			// A MESMA FABRICA da zona normal. Esta copia tinha ficado pra tras -- ver `EstadoDe`.
 			foreach (ServerPlayer pl in vizinhos) EstadoDe(pl, agora).Write(w);

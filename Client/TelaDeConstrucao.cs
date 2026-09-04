@@ -5,32 +5,29 @@ using Jandirus.Core.World;
 namespace Jandirus.Client;
 
 /// <summary>
-/// A GRADE DA BANCADA DE PESQUISA -- e o fantasma de assentar o que saiu dela.
+/// O FANTASMA DE ASSENTAR: a construcao que saiu da mochila e espera um lugar no chao.
 ///
-/// ============================ DUAS COISAS NUM ARQUIVO, DE PROPOSITO ============================
-/// Comprar e assentar sao dois gestos do mesmo ciclo, e o segundo so existe por causa do primeiro:
-/// a bancada nao ergue mais nada no chao, ela FABRICA pra mochila, e o jogador escolhe o lugar
-/// depois. Separar em dois arquivos deixaria a metade de cima sem contexto pra metade de baixo.
-/// ================================================================================================
+/// ============================ A GRADE DA BANCADA MORREU AQUI (2026-09-03) ============================
+/// Este arquivo tinha DUAS coisas: a grade de fabricar da bancada de pesquisa (aberta pela tecla E,
+/// "Fabricar...") e o fantasma. A grade foi apagada a pedido do dono -- *"agora que da pra construir
+/// pelo menu P nao precisa mais ter a opcao de construir na research table"* -- porque fabricar
+/// ganhou um lugar so, a aba Tech do menu P (`MenuJogo.Tech.cs`): icone, custo, o motivo de cada
+/// recusa e o mesmo pacote (`SendTech("construir", id)`). A bancada de pesquisa ficou sendo o que o
+/// nome diz: onde se ESTUDA.
+///
+/// O que sobrou e a metade que nao tem como morar num menu: assentar pede um LUGAR, e lugar se escolhe
+/// com o mouse no mundo. O fantasma segue o mouse, pergunta "cabe aqui?" antes do clique (as MESMAS
+/// perguntas do servidor, ver <see cref="Assentamento.DoLugar"/>) e manda o clique pelo canal de tech.
+/// ====================================================================================================
 /// </summary>
 public partial class TelaDeConstrucao : CanvasLayer
 {
-	private Control _raiz = null!;
-	private GridContainer _grade = null!;
-	private Label _cabecalho = null!;
-	private PanelContainer? _confirma;
-
-	/// <summary>Quantas colunas a grade tem. Cinco cabem sem apertar o nome embaixo do icone.</summary>
-	private const int Colunas = 5;
-
 	public static TelaDeConstrucao? Instancia { get; private set; }
 
 	public override void _Ready()
 	{
 		Instancia = this;
 		Layer = 4;
-		Montar();
-
 		if (GameClient.Instance is { } cli)
 			cli.TechMudou += AoMudarTech;
 	}
@@ -44,253 +41,10 @@ public partial class TelaDeConstrucao : CanvasLayer
 	}
 
 	/// <summary>
-	/// O pacote de tecnologia chegou. Ele e o SINO das duas metades desta tela: a grade se redesenha
-	/// (zeni e nivel podem ter mudado) e o fantasma que estava esperando descobre se foi aceito --
-	/// ver `ResolverEspera`. O fantasma resolve mesmo com a grade fechada, que e o caso normal:
-	/// assenta-se com a bancada fechada.
+	/// O pacote de tecnologia chegou. E o SINO do fantasma: o que estava esperando descobre se foi
+	/// aceito -- ver `ResolverEspera`. (Era tambem o sino da grade, que ja nao existe.)
 	/// </summary>
-	private void AoMudarTech()
-	{
-		ResolverEspera();
-		if (_raiz.Visible) Redesenhar();
-	}
-
-	private void Montar()
-	{
-		_raiz = new Control { AnchorRight = 1, AnchorBottom = 1, Visible = false };
-		Tema.Aplicar(_raiz);
-		AddChild(_raiz);
-
-		var centro = new CenterContainer { AnchorRight = 1, AnchorBottom = 1 };
-		_raiz.AddChild(centro);
-
-		PanelContainer painel = Tema.Painel1(16);
-		centro.AddChild(painel);
-
-		var caixa = new VBoxContainer();
-		caixa.AddThemeConstantOverride("separation", 8);
-		painel.AddChild(caixa);
-
-		var titulo = new Label { Text = "BANCADA DE PESQUISA", HorizontalAlignment = HorizontalAlignment.Center };
-		titulo.AddThemeFontSizeOverride("font_size", 22);
-		caixa.AddChild(titulo);
-
-		_cabecalho = new Label { HorizontalAlignment = HorizontalAlignment.Center };
-		_cabecalho.AddThemeColorOverride("font_color", Tema.TextoFraco);
-		_cabecalho.AddThemeFontSizeOverride("font_size", 13);
-		caixa.AddChild(_cabecalho);
-		caixa.AddChild(new HSeparator());
-
-		_grade = new GridContainer { Columns = Colunas };
-		_grade.AddThemeConstantOverride("h_separation", 8);
-		_grade.AddThemeConstantOverride("v_separation", 8);
-		caixa.AddChild(Rolagem(_grade, 380));
-
-		var fechar = new Button { Text = "Fechar (Esc)" };
-		fechar.Pressed += Fechar;
-		caixa.AddChild(fechar);
-	}
-
-	private static ScrollContainer Rolagem(Control dentro, int altura)
-	{
-		var sc = new ScrollContainer
-		{
-			CustomMinimumSize = new Vector2(560, altura),
-			HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
-		};
-		dentro.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		sc.AddChild(dentro);
-		return sc;
-	}
-
-	public void Abrir()
-	{
-		// PEDE A LISTA AO ABRIR. O catalogo do cliente pode estar velho -- o zeni muda ao lutar e o
-		// nivel de tecnologia ao estudar, e as duas coisas mudam o que da pra comprar.
-		//
-		// ============================ PELO CANAL `Tech`, E NAO PELO DE VERBOS ============================
-		// As tres chamadas desta tela mandavam `SendVerbo("tech_lista")`, `SendVerbo("tech_construir")` e
-		// `SendVerbo("tech_posicionar")` -- e **nenhum desses tres nomes existe no servidor**. O canal de
-		// tecnologia e o `C2S.Tech`, onde os comandos se chamam "lista", "construir" e "posicionar" (ver
-		// `ComandoDeTech`); o `default` do canal de verbos ignora em silencio o que nao comeca com
-		// "admin_". Ou seja: a grade abria, o botao Fabricar acendia, o fantasma seguia o mouse -- e
-		// clicar no chao nao fazia nada, sem uma linha de erro em lugar nenhum.
-		//
-		// Achado pela bancada `--diagembarque`, que precisa fabricar e assentar uma nave PELO CAMINHO DO
-		// JOGADOR antes de poder apertar E nela. Nenhuma bancada pegava: as de servidor chamam
-		// `ComandoDeTech` direto (o outro lado do fio) e a `--socar` usa `SendTech`, que ja era o certo.
-		// =============================================================================================
-		GameClient.Instance?.SendTech("lista", "");
-		_raiz.Visible = true;
-		Redesenhar();
-	}
-
-	private void Fechar()
-	{
-		FecharConfirmacao();
-		_raiz.Visible = false;
-	}
-
-	public override void _UnhandledInput(InputEvent evento)
-	{
-		if (!_raiz.Visible || Foco.Digitando) return;
-		if (evento is not InputEventKey { Pressed: true, Echo: false } k || k.Keycode != Key.Escape) return;
-		Fechar();
-		GetViewport().SetInputAsHandled();
-	}
-
-	private void Redesenhar()
-	{
-		FecharConfirmacao();
-		foreach (Node n in _grade.GetChildren()) n.QueueFree();
-		if (GameClient.Instance is not { } cli) return;
-
-		_cabecalho.Text = $"tecnologia {cli.TechNivel:0}   ·   {cli.Zeni:N0} zeni";
-
-		foreach (GameClient.OfertaDeObra o in cli.Catalogo)
-		{
-			GameClient.OfertaDeObra oferta = o;
-			_grade.AddChild(Cartao(oferta));
-		}
-	}
-
-	/// <summary>
-	/// UM ITEM DA GRADE: o icone em cima, o nome embaixo, e o preco.
-	///
-	/// O QUE NAO DA PRA COMPRAR CONTINUA NA GRADE, apagado e com o motivo no tooltip. Esconder
-	/// seria mais limpo e diria menos: o jogador precisa VER que existe uma máquina de gravidade
-	/// esperando cinquenta pontos de tecnologia -- e o que faz estudar ter destino.
-	/// </summary>
-	private Control Cartao(GameClient.OfertaDeObra o)
-	{
-		var caixa = new VBoxContainer { CustomMinimumSize = new Vector2(100, 0) };
-		caixa.AddThemeConstantOverride("separation", 2);
-
-		bool pode = o.Recusa == (int)RecusaObra.Pode;
-		string motivo = o.Recusa switch
-		{
-			(int)RecusaObra.SemTech => $"pede {o.Tech:0} de tecnologia",
-			(int)RecusaObra.SemZeni => $"custa {o.Custo:N0} zeni",
-			(int)RecusaObra.RacaErrada => "não é coisa da sua raça",
-			_ => "",
-		};
-
-		var b = new Button
-		{
-			CustomMinimumSize = new Vector2(100, 76),
-			TooltipText = pode ? $"{o.Nome}\n{o.Custo:N0} zeni" : $"{o.Nome}\n{motivo}",
-			Disabled = !pode,
-			ExpandIcon = true,
-			IconAlignment = HorizontalAlignment.Center,
-		};
-		if (Miniatura(o.Arte, o.Estado) is { } icone) b.Icon = icone;
-		else b.Text = o.Nome[..Math.Min(6, o.Nome.Length)];
-
-		b.Pressed += () => Confirmar(o);
-		caixa.AddChild(b);
-
-		var nome = new Label
-		{
-			Text = o.Nome,
-			HorizontalAlignment = HorizontalAlignment.Center,
-			AutowrapMode = TextServer.AutowrapMode.Word,
-			CustomMinimumSize = new Vector2(100, 0),
-		};
-		nome.AddThemeFontSizeOverride("font_size", 11);
-		nome.AddThemeColorOverride("font_color", pode ? Tema.Texto : Tema.TextoFraco);
-		caixa.AddChild(nome);
-
-		var preco = new Label
-		{
-			Text = $"{o.Custo:N0}z",
-			HorizontalAlignment = HorizontalAlignment.Center,
-		};
-		preco.AddThemeFontSizeOverride("font_size", 11);
-		preco.AddThemeColorOverride("font_color", pode ? Tema.Destaque : Tema.TextoFraco);
-		caixa.AddChild(preco);
-
-		return caixa;
-	}
-
-	/// <summary>A CAIXA DE "TEM CERTEZA?", com o preco escrito por extenso.</summary>
-	private void Confirmar(GameClient.OfertaDeObra o)
-	{
-		FecharConfirmacao();
-
-		_confirma = Tema.Painel1(12);
-		var caixa = new VBoxContainer { CustomMinimumSize = new Vector2(280, 0) };
-		caixa.AddThemeConstantOverride("separation", 8);
-		_confirma.AddChild(caixa);
-
-		var t = new Label { Text = o.Nome, HorizontalAlignment = HorizontalAlignment.Center };
-		t.AddThemeFontSizeOverride("font_size", 18);
-		caixa.AddChild(t);
-
-		var p = new Label
-		{
-			Text = $"Fabricar por {o.Custo:N0} zeni?",
-			HorizontalAlignment = HorizontalAlignment.Center,
-			AutowrapMode = TextServer.AutowrapMode.Word,
-		};
-		caixa.AddChild(p);
-
-		var resta = new Label
-		{
-			Text = $"você tem {GameClient.Instance?.Zeni ?? 0:N0}",
-			HorizontalAlignment = HorizontalAlignment.Center,
-		};
-		resta.AddThemeColorOverride("font_color", Tema.TextoFraco);
-		resta.AddThemeFontSizeOverride("font_size", 12);
-		caixa.AddChild(resta);
-
-		var linha = new HBoxContainer();
-		var nao = new Button { Text = "Cancelar", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-		nao.Pressed += FecharConfirmacao;
-		linha.AddChild(nao);
-
-		var sim = new Button { Text = "Fabricar", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-		sim.Pressed += () =>
-		{
-			GameClient.Instance?.SendTech("construir", o.Id);
-			FecharConfirmacao();
-		};
-		linha.AddChild(sim);
-		caixa.AddChild(linha);
-
-		var centro = new CenterContainer { AnchorRight = 1, AnchorBottom = 1 };
-		centro.AddChild(_confirma);
-		_raiz.AddChild(centro);
-	}
-
-	private void FecharConfirmacao()
-	{
-		if (_confirma?.GetParent() is { } pai) pai.QueueFree();
-		_confirma = null;
-	}
-
-	internal static Texture2D? Miniatura(string arte, string estado)
-	{
-		if (arte.Length == 0 || !ResourceLoader.Exists(arte)) return null;
-		if (ResourceLoader.Load<SpriteFrames>(arte) is not { } f) return null;
-
-		string anim = estado.Length > 0 ? Sanear(estado) : "default";
-		if (!f.HasAnimation(anim) || f.GetFrameCount(anim) == 0)
-		{
-			foreach (StringName a in f.GetAnimationNames())
-				if (f.GetFrameCount(a) > 0) { anim = a; break; }
-		}
-		return f.HasAnimation(anim) && f.GetFrameCount(anim) > 0 ? f.GetFrameTexture(anim, 0) : null;
-	}
-
-	/// <summary>O mesmo saneamento de nome que o conversor aplicou aos estados.</summary>
-	private static string Sanear(string s)
-	{
-		var sb = new System.Text.StringBuilder(s.Length);
-		foreach (char c in s.ToLowerInvariant()) sb.Append(char.IsLetterOrDigit(c) ? c : '_');
-		string r = sb.ToString().Trim('_');
-		while (r.Contains("__")) r = r.Replace("__", "_");
-		return r.Length == 0 ? "state" : r;
-	}
+	private void AoMudarTech() => ResolverEspera();
 
 	// =====================================================================
 	// O FANTASMA
@@ -379,7 +133,7 @@ public partial class TelaDeConstrucao : CanvasLayer
 			// clicar em "Assentar no chão" fechava a mochila e nao acontecia mais nada -- sem
 			// fantasma, sem mensagem, sem erro. Um retangulo do tamanho do tile e feio e honesto:
 			// da pra escolher o lugar e o ciclo termina.
-			Texture = Miniatura(def.Arte, def.Estado) ?? Vulto(),
+			Texture = Miniaturas.De(def.Arte, def.Estado) ?? Vulto(),
 			Centered = false,
 			// MEIO TRANSPARENTE, como o dono pediu: da pra ver o chao por baixo e julgar o encaixe.
 			Modulate = Livre,

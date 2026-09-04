@@ -21,11 +21,12 @@ namespace Jandirus.Client;
 /// acende ou apaga o botao. O catalogo so chega quando o cliente pede (`SendTech("lista")`), e esta
 /// aba pede UMA vez -- ver <see cref="_pediCatalogo"/>.
 ///
-/// O BOTAO "Construir" ANDA PELO MESMO CAMINHO DA MOCHILA: `SendTech("construir", id)`, o mesmo
-/// pacote que o "Fabricar" da <see cref="TelaDeConstrucao"/> manda. O que sai da bancada vai pra
-/// MOCHILA (regra 1 do dono, ver `GameServer.Construir`); instalar no chao continua sendo pela
-/// mochila (tecla I -> "Instalar no chão" -> `TelaDeConstrucao.Segurar`), porque instalar pede um
-/// LUGAR, e lugar se escolhe com o mouse no mundo, nao num menu.
+/// O BOTAO "Construir" MANDA `SendTech("construir", id)` -- e desde 2026-09-03 ESTA E A UNICA
+/// GRADE DE FABRICAR DO JOGO: a da bancada de pesquisa (o "Fabricar..." da tecla E) foi apagada a
+/// pedido do dono, porque duas grades pra mesma coisa e a segunda porta que este repo mais paga.
+/// O que sai da fabrica vai pra MOCHILA (regra 1 do dono, ver `GameServer.Construir`); instalar no
+/// chao continua sendo pela mochila (tecla I -> "Instalar no chão" -> `TelaDeConstrucao.Segurar`),
+/// porque instalar pede um LUGAR, e lugar se escolhe com o mouse no mundo, nao num menu.
 /// ====================================================================================
 /// </summary>
 public partial class MenuJogo
@@ -145,7 +146,7 @@ public partial class MenuJogo
 		h.AddThemeConstantOverride("separation", 8);
 
 		// ---- o icone: o mesmo carregador da mochila (primeiro quadro do sprite), ou um vulto
-		Texture2D? arte = MiniaturaDaObra(o.Arte, o.Estado);
+		Texture2D? arte = Miniaturas.De(o.Arte, o.Estado);
 		h.AddChild(arte != null
 			? new TextureRect
 			{
@@ -211,8 +212,8 @@ public partial class MenuJogo
 		nao.Pressed += () => { confirma.Visible = false; rodape.Visible = true; };
 		sim.Pressed += () =>
 		{
-			// O MESMO PACOTE DO "Fabricar" DA MOCHILA (`TelaDeConstrucao`). O servidor responde no
-			// chat, cobra o zeni e reenvia o catalogo -- e e o catalogo novo que remonta esta pagina.
+			// O PACOTE DE FABRICAR (`ComandoDeTech "construir"`). O servidor responde no chat, cobra o
+			// zeni, poe na mochila e reenvia o catalogo -- e e o catalogo novo que remonta esta pagina.
 			cli.SendTech("construir", id);
 			confirma.Visible = false;
 			rodape.Visible = true;
@@ -221,24 +222,6 @@ public partial class MenuJogo
 		h.AddChild(v);
 		card.AddChild(h);
 		return card;
-	}
-
-	/// <summary>
-	/// O PRIMEIRO QUADRO DO SPRITE DE UMA OBRA, virado textura -- o mesmo carregador de
-	/// `TelaDeInventario.Miniatura`, por caminho e estado em vez de `ItemDef` (aqui a arte vem no
-	/// pacote do catalogo, ver `MandarCatalogoDeObras`). Nulo quando o `.dmi` nao existe no port:
-	/// quem chama poe um vulto no lugar, e nao o nada.
-	/// </summary>
-	private static Texture2D? MiniaturaDaObra(string arte, string estado)
-	{
-		if (arte.Length == 0 || !ResourceLoader.Exists(arte)) return null;
-		var f = ResourceLoader.Load<SpriteFrames>(arte);
-		if (f == null) return null;
-		if (estado.Length > 0 && f.HasAnimation(estado) && f.GetFrameCount(estado) > 0)
-			return f.GetFrameTexture(estado, 0);
-		foreach (StringName anim in f.GetAnimationNames())
-			if (f.GetFrameCount(anim) > 0) return f.GetFrameTexture(anim, 0);
-		return null;
 	}
 
 	/// <summary>Sem arte, um quadrado apagado com a inicial: feio e honesto, como o vulto da mochila.</summary>

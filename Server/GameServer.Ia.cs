@@ -357,8 +357,13 @@ public partial class GameServer
 	/// pela qual a imunidade da cinematica (`CombatState.EmCinematica`) pode ser derivada e nao
 	/// guardada.
 	/// </remarks>
+	// O MORTO DE PE ANDA. No DM o funil de movimento (`movement handler.dm:130-137`) nunca olha
+	// `dead`, e o `Death()` escreve `move = 1` quatro vezes: o fantasma anda no Outro Mundo ate a
+	// mesa do Enma. Aqui o `!dead` cru trancava tambem o morto do Outro Mundo -- "o morto fica
+	// preso, nao conseguindo andar" (o dono, 2026-09-04). O que continua caido e o CADAVER dos 15 s
+	// (`MortoDePe` e falso fora do Outro Mundo).
 	private bool PodeMexerOCorpo(ServerPlayer pl) =>
-		!pl.Ficha.dead && !pl.Ficha.KO && !pl.Carregando && !_emEmbate.ContainsKey(pl.Id)
+		(!pl.Ficha.dead || pl.MortoDePe) && !pl.Ficha.KO && !pl.Carregando && !_emEmbate.ContainsKey(pl.Id)
 		&& !_emEmbateDeKi.ContainsKey(pl.Id) && !EnraizadoPorKi(pl.Id) && !Paralisado(pl.Id)
 		&& !EmCena(pl)
 		// OS COLETORES ABERTOS DO ANDROIDE DE ABSORCAO (`canmove = 0`, `DNALabs.dm:227`). E o preco

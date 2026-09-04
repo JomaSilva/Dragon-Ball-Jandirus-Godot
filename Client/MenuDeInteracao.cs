@@ -396,11 +396,10 @@ public partial class MenuDeInteracao : CanvasLayer
 				break;
 
 			default:
-				// A GRADE DA BANCADA E UMA TELA, e nao um verbo que devolve texto: ela tem icone,
-				// preco e caixa de confirmacao. O servidor manda a lista de qualquer jeito (o
-				// `abrir_tech` pede o catalogo), mas quem a DESENHA e a tela.
-				if (acao.Verbo == "abrir_tech") TelaDeConstrucao.Instancia?.Abrir();
-				else GameClient.Instance?.SendVerbo(acao.Verbo, acao.Arg);
+				// TUDO PELO CANAL DE VERBOS. O `abrir_tech` abria a grade da bancada de pesquisa por
+				// aqui; a grade morreu (fabricar e na aba Tech do menu P) e com ela o unico desvio que
+				// este `default` tinha.
+				GameClient.Instance?.SendVerbo(acao.Verbo, acao.Arg);
 				Fechar();
 				break;
 		}

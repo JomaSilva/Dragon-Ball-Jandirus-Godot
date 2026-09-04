@@ -192,7 +192,10 @@ public static class CatalogoDeItens
 		// dificuldade rende. Por isso a acao e "ajustar" e nao "equipar" -- o quanto importa.
 		[Pesos] = new ItemDef(
 			Pesos, "Pesos", "Atrasa cada passo e cada golpe. Em troca, treinar rende muito mais.",
-			"res://Assets/Sprites/Misc/Objects/Technology/tech.tres", "weights",
+			// A ARTE E A DO DM: `obj/items/Weight` usa `Clothes_ShortSleeveShirt.dmi` (Tier 1.dm:107) -- os
+			// pesos sao ROUPA, e o icone e a camisa de frente. A folha de tech nao tem estado "weights";
+			// com ela o icone caia no primeiro estado da folha (um pod de androide), que foi o que o dono viu.
+			"res://Assets/Sprites/Clothes/Clothes_ShortSleeveShirt.tres", "walk_south",
 			Empilhavel: false, Acoes: ["ajustar", "tirar"]),
 
 		[Bandagem] = new ItemDef(

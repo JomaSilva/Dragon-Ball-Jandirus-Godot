@@ -78,8 +78,75 @@ public sealed partial class GameServer
 		CidReciproca();
 		CidBanco();
 		CidRegenerador();
+		CidEstudar();
 
 		GD.Print($"\n[cidade] ===== {_cidOk} OK, {_cidFalhou} FALHA(S) =====\n");
+	}
+
+	// =====================================================================
+	// 6. ESTUDAR PELA TECLA E -- a porta que nao chegava
+	// =====================================================================
+	/// <summary>
+	/// O relato do dono: *"o verb study funciona na mesa do research table, mas apertar o botao E
+	/// perto da mesa e clicar em estudar nao funciona"*. O verb "Study" manda `SendTech("estudar")` e
+	/// chega ao <c>ComandoDeTech</c>; o "Estudar" do menu da tecla E manda o verbo `estudar` pelo canal
+	/// de VERBOS, que cai em <c>ComandoDeInteracao</c> -- e la o `case "estudar"` NAO EXISTIA (o
+	/// comentario dizia que existia). O clique morria no `default` sem uma linha de erro.
+	///
+	/// O que se prova e o caminho INTEIRO da tecla E: o verbo entra por `ComandoDeInteracao`, o corpo
+	/// passa a estudar, o laco de estudo (`TickDoEstudo`) RENDE tecnologia com a mesa aparafusada ao
+	/// lado, e o mesmo verbo de novo para -- como o verb Study. E os dois contra-exemplos: sem mesa
+	/// por perto o laco derruba o estudo, e a grade de fabricar (`abrir_tech`) deixou de existir na
+	/// tabela da bancada e no servidor (fabricar e na aba Tech do menu P).
+	/// </summary>
+	private void CidEstudar()
+	{
+		GD.Print("\n-- 6. ESTUDAR PELA TECLA E --");
+
+		string[] acoes = Jandirus.Core.Tech.Interacoes.De("Research_Station").Select(a => a.Verbo).ToArray();
+		AfirmarCidade("a bancada de pesquisa oferece 'estudar' e 'pegar', e NAO oferece mais a grade de fabricar (`abrir_tech`)",
+					  acoes.Contains("estudar") && acoes.Contains("pegar") && !acoes.Contains("abrir_tech"), string.Join(",", acoes));
+
+		ServerPlayer pl = ForjarComSkills("Estudioso", CorredorLivre(4), bp: 10_000);
+		var mesa = new Obra
+		{
+			Id = 990601, Tipo = "Research_Station",
+			X = pl.Pos.X, Y = pl.Pos.Y,
+			DonoNome = pl.Name, Aparafusada = true,
+		};
+		mesa.PorZona(pl.Zone);
+		_noChao.Add(mesa);
+		try
+		{
+			bool tratado = ComandoDeInteracao(pl, "estudar", "");
+			AfirmarCidade("o verbo 'estudar' da tecla E e TRATADO pelo canal de interacao (antes caia no default e morria calado)",
+						  tratado && pl.Estudando, $"tratado={tratado} estudando={pl.Estudando}");
+
+			double xpAntes = pl.Ficha.techXp;
+			TickDoEstudo();
+			AfirmarCidade("...e com a mesa aparafusada ao lado o laco de estudo RENDE tecnologia (o mesmo laco do verb Study)",
+						  pl.Estudando && pl.Ficha.techXp > xpAntes, $"xp {xpAntes:0.##} -> {pl.Ficha.techXp:0.##}");
+
+			ComandoDeInteracao(pl, "estudar", "");
+			AfirmarCidade("...e o mesmo verbo de novo PARA de estudar (alterna, exatamente como o verb Study)", !pl.Estudando);
+
+			// CONTRA-EXEMPLO: sem a mesa por perto o laco derruba o estudo -- a regra do original
+			// ("Research Stations are the only really good way of getting Tech XP") continua valendo
+			_noChao.Remove(mesa);
+			ComandoDeInteracao(pl, "estudar", "");
+			bool ligou = pl.Estudando;
+			TickDoEstudo();
+			AfirmarCidade("CONTRA-EXEMPLO: longe de qualquer mesa aparafusada, o laco derruba o estudo no primeiro tique",
+						  ligou && !pl.Estudando, $"ligou={ligou} estudando={pl.Estudando}");
+
+			AfirmarCidade("CONTRA-EXEMPLO: `abrir_tech` (a grade morta) nao e mais tratado por interacao nenhuma",
+						  !ComandoDeInteracao(pl, "abrir_tech", ""));
+		}
+		finally
+		{
+			_noChao.Remove(mesa);
+			LimparTudoDaBancada();
+		}
 	}
 
 	// =====================================================================

@@ -88,10 +88,32 @@ public partial class RoboDasAbas : Node
 
 	public override void _Ready() => _ = Rodar();
 
+	/// <summary>
+	/// ===================== UMA EXCECAO NO ROTEIRO E UM VERMELHO, NAO UM SILENCIO =====================
+	/// O roteiro e uma Task solta (`_ = Rodar()`): se um passo lanca (um node liberado, um null que nao
+	/// era pra ser), a Task so FALHA -- ninguem a espera, ninguem imprime nada, e o processo fica vivo
+	/// pra sempre com a janela aberta e sem placar. Foi assim em 2026-09-04: `temas[0].GetGlobalRect()`
+	/// num cartao que o redesenho ja tinha liberado, 25 minutos de nada. Aqui a excecao vira uma
+	/// verificacao vermelha com o texto dela, o placar sai, e o processo encerra com codigo 3.
+	/// =====================================================================================================
+	/// </summary>
+	private async System.Threading.Tasks.Task Rodar()
+	{
+		try { await Percurso(); }
+		catch (Exception e)
+		{
+			Checa("o roteiro correu ate o fim sem lancar excecao", false, $"{e.GetType().Name}: {e.Message}");
+			Nota(e.ToString());
+			MenuJogo.Instancia?.Fechar();
+			Placar();
+			GetTree().Quit(3);
+		}
+	}
+
 	// =====================================================================
 	// O ROTEIRO
 	// =====================================================================
-	private async System.Threading.Tasks.Task Rodar()
+	private async System.Threading.Tasks.Task Percurso()
 	{
 		_pasta = Arg("--pasta");
 		_antes = Arg("--antes");

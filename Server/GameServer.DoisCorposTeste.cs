@@ -417,6 +417,7 @@ public sealed partial class GameServer
 			OCorpoOcupadoNaoEEmpurrado(_alfa, _beta, d, origem);
 			OBaqueDoiNosDois(_alfa, _beta, d, origem);
 			OCadaverEntreDoisCorpos(pl, _alfa, d);
+			OCadaverEAFotoDoMorto(pl, _alfa, _beta, d);
 
 			AfirmarDc("a bancada chegou ao fim (sem esta linha, abortar no meio reportaria '0 falhas')",
 					  true);
@@ -427,6 +428,9 @@ public sealed partial class GameServer
 		}
 		finally
 		{
+			EscutaDeFeridas = null;
+			_cadaverSemFotoDeTeste = false;
+
 			// OS CORPOS FORJADOS SAEM -- e os cadaveres que a rodada produziu junto. `DesfazerOCadaver`
 			// nao serve pros forjados (eles nao sao cadaver) e `RemoverNpc` nao serve pros cadaveres
 			// (eles nao estao no `_players`), entao a limpeza faz as duas coisas na mao, que e o que a
@@ -481,6 +485,13 @@ public sealed partial class GameServer
 
 	/// <summary>Os cadaveres que ESTA bancada produziu -- pra o `finally` recolher so os dela.</summary>
 	private readonly List<ServerPlayer> _dcCadaveres = [];
+
+	/// <summary>
+	/// AS MASCARAS DE FERIDAS APRESENTADAS A QUEM ENTRA NUMA ZONA (`TrocarFeridas`): pra quem, e o fio
+	/// do `S2C.Feridas`. Capturada la pela mesma razao das outras escutas -- o corpo que entra e forjado
+	/// e nao tem `Peer`. Nula em jogo.
+	/// </summary>
+	internal static List<(int Para, byte[] Fio)>? EscutaDeFeridas;
 
 	// =====================================================================
 	// 1) AGARRAR -- e NAO agarrar
@@ -2014,6 +2025,216 @@ public sealed partial class GameServer
 	}
 
 	// =====================================================================
+	// 10) O CADAVER E A FOTO DO MORTO -- angulo, membros, feridas
+	// =====================================================================
+	/// <summary>
+	/// ============================ O RELATO DO DONO, MEDIDO ============================
+	/// *"personagens que morreram, eles levantam depois de um tempo (continuam de olho fechado mas eles
+	/// giram como se tivessem ficado de pe, o que nao deveria acontecer; deveriam ficar com os
+	/// ferimentos e na mesma posicao de quando morreram)"*.
+	///
+	/// O "levanta e gira" era o instante da troca (os 15 s de `Alem.MsNoChao`): o cadaver nascia com o
+	/// angulo padrao (`FacingDaQueda = South`) e um `Body.Novo()` limpo -- o corpo virava pro sul e os
+	/// ferimentos sumiam. E depois disso ele girava de novo no fim de qualquer arremesso, porque o
+	/// `DirecaoDeitado` voltava pra um `RumoDoGolpe` que o cadaver nunca teve.
+	///
+	/// A familia mede as quatro coisas do pedido, cada uma com o outro lado:
+	///   (i)   o cadaver nasce virado pra onde o morto caiu, sem o membro que ele perdeu e com a MESMA
+	///         mascara de feridas -- com o DEFEITO INJETADO (`_cadaverSemFotoDeTeste`: o `Body.Novo()`
+	///         de antes) o mesmo criterio reprova;
+	///   (ii)  soco no cadaver NAO o gira / (v) o VIVO que apanha continua girando;
+	///   (iii) o cadaver arremessado deita pra onde deslizou e FICA (sem o estalo do pouso) -- e o
+	///         nocauteado vivo jogado com um rumo de golpe velho tambem;
+	///   (iv)  quem entra na zona recebe as feridas do cadaver.
+	/// ====================================================================================
+	/// </summary>
+	private void OCadaverEAFotoDoMorto(ServerPlayer pl, ServerPlayer a, ServerPlayer b, Vec2 d)
+	{
+		GD.Print("[dois] -- 10) o cadaver e a FOTO do morto: angulo, membros e feridas --");
+
+		const float T = ZoneCollision.TileSize;
+		ZoneKey palco = a.Zone;
+		Vec2 ondeMorre = a.Pos + d * (4 * T);
+		MascaraDeFeridas doMorto = default;
+		Facing deitadoAoMorrer = Facing.South;
+		ServerPlayer? cadaver = null;
+
+		// ---- (i) A FOTO, COM O DEFEITO INJETADO ----
+		// ============================ O DEFEITO INJETADO #9 ============================
+		// O criterio monta o morto inteiro (vivo, virado pro LESTE, sem o braco esquerdo, com o torso e
+		// a perna marcados), mata pelo funil de producao, vence o prazo e deixa a TRIAGEM erguer o
+		// cadaver -- e pergunta se ele e a foto. O que se injeta e o `Body.Novo()` de volta no cadaver
+		// (`_cadaverSemFotoDeTeste`, lido no `DeixarOCadaver`): o corpo limpo que o dono viu.
+		// ==============================================================================
+		bool AFotoBate()
+		{
+			pl.Combate.Reviver();
+			pl.Ficha.dead = false;
+			pl.MorteJaViajou = false;
+			if (!pl.Zone.Equals(palco)) MoveToZone(pl.Id, palco, ondeMorre);
+			else pl.Pos = ondeMorre;
+
+			// PRA ONDE ELE CAIU: virado pro leste, sem rumo de golpe (o olhar da queda e a resposta).
+			pl.Facing = Facing.East;
+			pl.CongelarDirecaoDeitada(Facing.East);
+
+			// O QUE ELE ERA: braco esquerdo arrancado pelo `LopLimb` de producao, torso e perna feridos.
+			Body corpo = pl.Combate.Corpo;
+			pl.Combate.Arrancar(corpo.Achar("Braco esquerdo")!);
+			corpo.Ferir(corpo.Achar("Torso")!, 60, letal: true);
+			corpo.Ferir(corpo.Achar("Perna direita")!, 85, letal: true);
+			pl.Combate.SincronizarVida();
+			doMorto = Feridas.De(corpo);
+			deitadoAoMorrer = pl.DirecaoDeitado;
+
+			pl.Combate.Morrer(ignorarSeguro: true);
+			pl.RelogioDaMorte = NowMs() - 1;
+			VenceuOPrazoDaMorte(pl);
+
+			// O CADAVER DESTA PASSADA: o ultimo com o nome do morto. Os das passadas anteriores do
+			// `Mutacao` se desfazem aqui, pelo mesmo motivo escrito na familia 7 (corpos empilhados).
+			ServerPlayer? c = null;
+			foreach (ServerPlayer o in ZoneList(palco.Hash))
+				if (o.ECadaver && o.NomeDeQuemMorreu == pl.Name) c = o;
+			if (c == null) return false;
+			if (cadaver != null && cadaver != c) { DesfazerOCadaver(cadaver); _dcCadaveres.Remove(cadaver); }
+			cadaver = c;
+			if (!_dcCadaveres.Contains(c)) _dcCadaveres.Add(c);
+
+			return deitadoAoMorrer == Facing.East
+				&& c.DirecaoDeitado == Facing.East
+				&& c.Combate.Corpo.Achar("Braco esquerdo") is { Decepado: true }
+				&& Feridas.De(c.Combate.Corpo) == doMorto
+				&& c.EnvFeridas == doMorto;
+		}
+
+		Mutacao(AfirmarDc,
+				"O CADAVER E A FOTO DO MORTO: nasce deitado pro LESTE (como ele caiu), sem o braco esquerdo "
+			  + "(como ele estava) e com a MESMA mascara de feridas do instante -- `A.overlays += overlays`",
+				"o cadaver nascendo com o `Body.Novo()` limpo -- o corpo que o dono viu",
+				AFotoBate,
+				() => _cadaverSemFotoDeTeste = true,
+				() => _cadaverSemFotoDeTeste = false);
+
+		if (cadaver == null) return;
+		ServerPlayer c = cadaver;
+
+		AfirmarDc("...e a mascara do morto tinha sangue e amputacao (senao a igualdade acima seria entre "
+				+ "duas mascaras limpas)",
+				  Feridas.Grave(doMorto) && doMorto.Perdeu(MascaraDeFeridas.Membro.BracoEsq), doMorto.ToString());
+		// A MORTE NAO CURA MAIS (pedido do dono, 2026-09-04; ver `IrProAlem`): o morto chega ao Outro
+		// Mundo SEM o braco, como caiu. A independencia da foto se prova pelas INSTANCIAS -- o membro do
+		// cadaver e o do morto sao objetos diferentes, e mexer num nao mexe no outro.
+		BodyPart? bracoDoMorto = pl.Combate.Corpo.Achar("Braco esquerdo");
+		BodyPart? bracoDoCadaver = c.Combate.Corpo.Achar("Braco esquerdo");
+		AfirmarDc("...enquanto o MORTO chegou ao Outro Mundo FERIDO como caiu (a morte nao cura mais): a foto e COPIA, nao a instancia",
+				  Alem.EhOAlem(pl.Zone) && bracoDoMorto is { Decepado: true } && bracoDoCadaver is { Decepado: true }
+				  && !ReferenceEquals(c.Combate.Corpo, pl.Combate.Corpo) && !ReferenceEquals(bracoDoMorto, bracoDoCadaver));
+		AfirmarDc("...e o cadaver continua sem numero de ninguem (a ficha e nova; so o CORPO e foto)",
+				  c.Ficha.BP < pl.Ficha.BP && !ReferenceEquals(c.Ficha, pl.Ficha));
+		AfirmarDc("...e ele nasce SEM rumo de golpe (a direcao e a queda, e a queda e definitiva)",
+				  c.RumoDoGolpe.LengthSquared < 1e-6f && c.FacingDaQueda == Facing.East);
+
+		// ---- (iv) QUEM ENTRA NA ZONA RECEBE AS FERIDAS DO CADAVER ----
+		a.Combate.Reviver();
+		a.Ficha.dead = false;
+		a.Altitude = 0;
+		a.TiquesDeVoo = 0;
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		EscutaDeFeridas = [];
+		MoveToZone(a.Id, alem, MesaDoEnma(alem));
+		MoveToZone(a.Id, palco, c.Pos - d * (2 * T));
+		var recebidas = new List<MascaraDeFeridas>();
+		foreach ((int para, byte[] fio) in EscutaDeFeridas)
+		{
+			if (para != a.Id) continue;
+			var r = new LiteNetLib.Utils.NetDataReader(fio);
+			r.GetByte();
+			if (r.GetInt() != c.Id) continue;
+			recebidas.Add(r.GetFeridas());
+		}
+		EscutaDeFeridas = null;
+		AfirmarDc("QUEM ENTRA NA ZONA recebe a mascara do CADAVER pelo `S2C.Feridas` (o `TrocarFeridas` "
+				+ "varre a `ZoneList`, e o cadaver esta nela com o `EnvFeridas` da foto)",
+				  recebidas.Count >= 1 && recebidas[^1] == doMorto,
+				  recebidas.Count == 0 ? "nenhum pacote do cadaver" : recebidas[^1].ToString());
+
+		// ---- (ii) SOCO NO CADAVER NAO O GIRA ----
+		// Alfa fica ao NORTE do corpo, virado pro SUL: se este golpe deitasse alguem, deitaria pro sul.
+		Encostar(a, c, new Vec2(0, 1));
+		a.AlvoId = 0;
+		a.Combate.Letal = true;
+		for (int i = 0; i < 10; i++)
+		{
+			a.Combate.Recarga = 0;
+			a.AtaqueAte = 0;
+			Atacar(a, Protocol.Golpe.Leve);
+		}
+		AfirmarDc("SOCO NO CADAVER: dez socos vindos do NORTE nao giram o corpo -- ele continua deitado pro LESTE",
+				  c.DirecaoDeitado == Facing.East, c.DirecaoDeitado.ToString());
+		c.ApontarRumoDoGolpe(new Vec2(0, 1));
+		AfirmarDc("...nem um rumo de golpe escrito DIRETO no corpo morto (`ApontarRumoDoGolpe` recusa `dead`)",
+				  c.DirecaoDeitado == Facing.East && c.RumoDoGolpe.LengthSquared < 1e-6f);
+
+		// ---- (v) CONTRA-EXEMPLO: O VIVO QUE APANHA CONTINUA GIRANDO ----
+		b.Combate.Reviver();
+		b.Ficha.dead = false;
+		b.Altitude = 0;
+		b.TiquesDeVoo = 0;
+		if (!b.Zone.Equals(palco)) MoveToZone(b.Id, palco, c.Pos + d * (3 * T));
+		else b.Pos = c.Pos + d * (3 * T);
+		b.CongelarDirecaoDeitada(Facing.East);
+		b.ApontarRumoDoGolpe(new Vec2(0, 1));
+		AfirmarDc("CONTRA-EXEMPLO: o mesmo rumo escrito num corpo VIVO deita pro SUL -- a regra viva nao mudou "
+				+ "(`M.dir = get_dir(M,src)`, `CombatMovement.dm:302`)",
+				  b.DirecaoDeitado == Facing.South, b.DirecaoDeitado.ToString());
+
+		b.RumoDoGolpe = default;
+		Encostar(a, b, new Vec2(0, 1));
+		b.Facing = Facing.North;
+		int socos = 0;
+		for (int i = 0; i < 40 && b.RumoDoGolpe.LengthSquared < 1e-6f; i++)
+		{
+			Curar(b);
+			a.Combate.Recarga = 0;
+			a.AtaqueAte = 0;
+			Atacar(a, Protocol.Golpe.Leve);
+			socos++;
+		}
+		AfirmarDc("...e por um soco DE VERDADE: o rumo escrito no vivo e a frente de quem bateu",
+				  b.RumoDoGolpe.LengthSquared > 0 && MoveRules.FacingFrom(b.RumoDoGolpe, Facing.North) == Facing.South,
+				  $"{socos} socos, rumo ({b.RumoDoGolpe.X:0.#},{b.RumoDoGolpe.Y:0.#})");
+
+		// ---- (iii) O CADAVER ARREMESSADO DEITA PRA ONDE DESLIZOU, E FICA ----
+		a.Combate.Bloqueando = false;
+		Arremessar(c, new Vec2(0, 1), Empurrao.ResistenciaPadrao, 6);
+		bool deitouNoRumoDoVoo = c.DirecaoDeitado == Facing.South;
+		Tiques(120);
+		AfirmarDc("PRECONDICAO: o arremesso do cadaver pro SUL acabou", c.TiquesDeVoo <= 0, $"{c.TiquesDeVoo}");
+		AfirmarDc("ARREMESSADO pro SUL, o cadaver deita pro SUL durante o voo (o rumo do voo)...", deitouNoRumoDoVoo);
+		AfirmarDc("...E CONTINUA pro SUL depois de pousar -- sem o ESTALO de volta pro angulo antigo "
+				+ "(`CongelarDirecaoDeitada` no pouso de quem pousa caido)",
+				  c.DirecaoDeitado == Facing.South, c.DirecaoDeitado.ToString());
+		Tiques(100);
+		AfirmarDc("...e cem tiques depois continua: a direcao do cadaver e definitiva ate o proximo arremesso",
+				  c.DirecaoDeitado == Facing.South);
+
+		// E O MESMO ESTALO NO NOCAUTEADO VIVO -- o caso do agarrao: um rumo de golpe VELHO (leste) e um
+		// arremesso pro sul. Antes, ao pousar, o corpo voltava pro leste.
+		Curar(b);
+		b.Combate.Nocautear(100);
+		b.CongelarDirecaoDeitada(Facing.North);
+		b.RumoDoGolpe = new Vec2(1, 0);   // o soco velho, de minutos atras
+		Arremessar(b, new Vec2(0, 1), Empurrao.ResistenciaPadrao, 6);
+		Tiques(120);
+		AfirmarDc("E O NOCAUTEADO VIVO jogado com um rumo de golpe VELHO (leste): pousa deitado pro SUL em que "
+				+ "deslizou, e nao estala de volta pro leste",
+				  b.TiquesDeVoo <= 0 && b.DirecaoDeitado == Facing.South, b.DirecaoDeitado.ToString());
+		b.Combate.Levantar();
+		Curar(b);
+	}
+
+	// =====================================================================
 	// A GRADE CEGA -- o interruptor do defeito injetado
 	// =====================================================================
 	/// <summary>
@@ -2029,4 +2250,17 @@ public sealed partial class GameServer
 	/// ==========================================================================================================
 	/// </summary>
 	private bool _dcGradeCega;
+
+	/// <summary>
+	/// ============================ O SEGUNDO INTERRUPTOR: O CADAVER SEM A FOTO ============================
+	/// Lido em UM lugar (o `DeixarOCadaver`) e escrito so pela familia 10 desta bancada. Ligado, o
+	/// cadaver nasce com o `Body.Novo()` que o `PrepararCombate` lhe da e NAO copia o corpo do morto --
+	/// que e, letra por letra, o cadaver que o dono viu: inteiro, limpo, sem o braco que faltava.
+	///
+	/// Mesma regra do `_dcGradeCega` logo acima: o criterio da familia 10 tem que ser o MESMO
+	/// `DeixarOCadaver` com e sem o defeito, senao ele mediria uma copia do cadaver escrita na
+	/// bancada concordando consigo mesma.
+	/// ====================================================================================================
+	/// </summary>
+	private bool _cadaverSemFotoDeTeste;
 }

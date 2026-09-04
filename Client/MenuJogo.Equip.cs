@@ -199,49 +199,26 @@ public partial class MenuJogo
 		return h;
 	}
 
-	/// <summary>Os sprites dos itens, carregados uma vez: a pagina e remontada a cada mudanca de assinatura.</summary>
-	private static readonly Dictionary<string, Texture2D?> _miniaturasDeItem = new(StringComparer.OrdinalIgnoreCase);
-
 	/// <summary>
-	/// O ICONE DE UM ITEM: o primeiro quadro do sprite dele, como o slot da mochila desenha
-	/// (`TelaDeInventario.Miniatura`). COPIADO, e nao chamado: aquele e privado da tela da mochila,
-	/// e as duas telas tem que continuar desenhando o MESMO quadro. Filtro `Nearest` porque e pixel
-	/// art -- esticado com filtro linear o scouter vira uma mancha.
+	/// O ICONE DE UM ITEM: o primeiro quadro do sprite dele, pelo carregador UNICO (<see cref="Miniaturas"/>,
+	/// o mesmo da mochila, da aba Tech e do fantasma de assentar). Filtro `Nearest` porque e pixel art --
+	/// esticado com filtro linear o scouter vira uma mancha.
+	///
+	/// ERA UMA COPIA LOCAL do carregador da mochila, e a copia nao saneava o nome do estado: o Nav
+	/// System pedia "Radar" numa folha cuja animacao e "radar", nao achava, e saia com o primeiro
+	/// estado da folha -- o dono viu o icone errado na aba. Ver o cabecalho de `Miniaturas`.
 	/// </summary>
-	private static TextureRect IconeDoItem(ItemDef def, int lado)
+	private static TextureRect IconeDoItem(ItemDef def, int lado) => new()
 	{
-		if (!_miniaturasDeItem.TryGetValue(def.Id, out Texture2D? tex))
-		{
-			tex = MiniaturaDoItem(def);
-			_miniaturasDeItem[def.Id] = tex;
-		}
-		return new TextureRect
-		{
-			Texture = tex,
-			CustomMinimumSize = new Vector2(lado, lado),
-			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-			StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-			TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
-			SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-			MouseFilter = Control.MouseFilterEnum.Ignore,
-			Name = "Icone",
-		};
-	}
-
-	private static Texture2D? MiniaturaDoItem(ItemDef def)
-	{
-		if (!ResourceLoader.Exists(def.Arte)) return null;
-		var f = ResourceLoader.Load<SpriteFrames>(def.Arte);
-		if (f == null) return null;
-
-		if (def.Estado.Length > 0 && f.HasAnimation(def.Estado) && f.GetFrameCount(def.Estado) > 0)
-			return f.GetFrameTexture(def.Estado, 0);
-
-		foreach (StringName anim in f.GetAnimationNames())
-			if (f.GetFrameCount(anim) > 0) return f.GetFrameTexture(anim, 0);
-
-		return null;
-	}
+		Texture = Miniaturas.DoItem(def),
+		CustomMinimumSize = new Vector2(lado, lado),
+		ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+		StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+		TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+		SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+		MouseFilter = Control.MouseFilterEnum.Ignore,
+		Name = "Icone",
+	};
 
 	/// <summary>
 	/// Ver `MenuJogo.Assinatura`. A basica so tem o `comum` (busca, arvore aberta e o `Estado` -- que

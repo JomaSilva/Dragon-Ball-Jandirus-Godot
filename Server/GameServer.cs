@@ -21,7 +21,42 @@ public sealed class ServerPlayer
 	public NetPeer? Peer;
 	public string Name = "";
 	public ZoneKey Zone;
-	public Vec2 Pos;
+
+	/// <summary>
+	/// ONDE ESTE CORPO ESTA. Virou PROPRIEDADE por uma razao so: toda escrita -- o arremesso, a IA, a
+	/// fusao, o embate, a volta do planeta, a troca de zona, um teste que forja um corpo -- apaga
+	/// <see cref="PosVemDoCliente"/> sozinha, sem que cada um desses lugares precise saber que existe
+	/// um carimbo. Uma lista de "onde o servidor move" escrita a mao ficaria velha na primeira
+	/// mecanica nova, e o sintoma seria um corpo desenhado com a hora de outro.
+	/// </summary>
+	public Vec2 Pos
+	{
+		get => _pos;
+		set { _pos = value; PosVemDoCliente = false; }
+	}
+	private Vec2 _pos;
+
+	/// <summary>
+	/// A POSICAO FOI AFIRMADA PELO CLIENTE (e aceita, ou devolvida como estava) e valia em
+	/// <see cref="PosMs"/>. Falso = o servidor escreveu por ultimo, e ai ela vale AGORA, sempre: a
+	/// idade que vai no snapshot e zero. So o `Input` liga isto. Ver `EntityState.IdadeMs`.
+	/// </summary>
+	public bool PosVemDoCliente;
+
+	/// <summary>
+	/// O relogio de quadro DESTE servidor (`GameServer.RelogioDeQuadrosMs`) em que <see cref="Pos"/>
+	/// valia -- a hora que veio no input, traduzida pelo <see cref="Relogio"/>. So significa algo com
+	/// <see cref="PosVemDoCliente"/>.
+	/// </summary>
+	public long PosMs;
+
+	/// <summary>
+	/// O RELOGIO DESTE CLIENTE, alinhado ao meu: `meu = dele + Relogio.Valor`. E o MINIMO em janela de
+	/// (hora de chegada - hora de envio), que e a amostra do pacote que passou mais rapido -- ver
+	/// `DeslocamentoDeRelogio`. Dois segundos por janela: a deriva dos cristais nao chega a 1 ms nisso.
+	/// </summary>
+	public readonly Jandirus.Net.DeslocamentoDeRelogio Relogio = new(maximo: false, janelaMs: 2000);
+
 	public Facing Facing;
 	public bool Moving;
 	public float SpeedStat = 1f;
@@ -690,6 +725,51 @@ public sealed class ServerPlayer
 	public Facing DirecaoDeitado => MoveRules.FacingFrom(
 		TiquesDeVoo > 0 ? RumoDoVoo : RumoDoGolpe, FacingDaQueda);
 
+	/// <summary>
+	/// ============================ DE ONDE VEIO O GOLPE -- escrito por quem bate, e O MORTO NAO GIRA ============================
+	/// A porta unica de <see cref="RumoDoGolpe"/> (o soco em `GameServer.Combat.cs`, o feixe que
+	/// carrega em `GameServer.Projeteis.cs`). Ela existe por causa do cadaver: *"personagens que
+	/// morreram (...) giram como se tivessem ficado de pe"* -- o relato do dono.
+	///
+	/// No DM o cadaver e um `/obj/mobCorpse` (`Corpse.dm:75-85`): ele nao e mob, nao tem `dir`
+	/// dirigido por ninguem, e o `M.dir = get_dir(M,src)` que o golpe escreve na vitima
+	/// (`CombatMovement.dm:302`) nunca o alcanca. O corpo no chao e a FOTO de como caiu. Aqui o
+	/// cadaver e um `ServerPlayer`, e tudo que escreve num corpo vivo escreveria nele tambem -- entao
+	/// a recusa mora no corpo, e nao em cada escritor: uma terceira porta que aparecer gira o vivo e
+	/// nao gira o morto sem saber que existe uma diferenca.
+	///
+	/// O VIVO CONTINUA GIRANDO, inclusive o nocauteado: e o `M.dir = get_dir(M,src)` do original, e e
+	/// o que faz um corpo derrubado deitar pra onde o golpe veio.
+	/// =============================================================================================================
+	/// </summary>
+	public void ApontarRumoDoGolpe(Vec2 rumo)
+	{
+		if (Ficha.dead) return;
+		RumoDoGolpe = rumo;
+	}
+
+	/// <summary>
+	/// CONGELA A DIRECAO DEITADA em <paramref name="dir"/>: e a foto do cadaver ao nascer e o fim do
+	/// arremesso de quem pousa caido.
+	///
+	/// ============================ O ESTALO DO FIM DO ARREMESSO ============================
+	/// `DirecaoDeitado` troca de fonte quando o voo acaba (`RumoDoVoo` -> `RumoDoGolpe`), e o
+	/// `RumoDoGolpe` de um corpo jogado pelo AGARRAO e o do ultimo soco que ele levou -- que pode ter
+	/// vindo de qualquer lado, minutos antes. O corpo deslizava deitado numa direcao e, ao parar,
+	/// estalava pra outra. No cadaver era pior: o `RumoDoGolpe` dele e zero, e o estalo ia pro
+	/// `FacingDaQueda`, que num corpo recem-erguido era o padrao (`South`).
+	///
+	/// Zerar o rumo e escrever a queda faz o `FacingFrom` devolver <paramref name="dir"/> ate que um
+	/// golpe novo escreva outro rumo -- e no morto golpe nenhum escreve (ver
+	/// <see cref="ApontarRumoDoGolpe"/>), entao no morto isto e definitivo.
+	/// ======================================================================================
+	/// </summary>
+	public void CongelarDirecaoDeitada(Facing dir)
+	{
+		FacingDaQueda = dir;
+		RumoDoGolpe = default;
+	}
+
 	/// <summary>De onde o corpo SAIU na ultima investida. E onde a miragem nasce -- ver Aproximar.</summary>
 	public Vec2 SaiuDe;
 
@@ -956,6 +1036,15 @@ public sealed class ServerPlayer
 	/// sumiam. Nao apague sem ler os dois comentarios juntos.)
 	/// </summary>
 	public double EnvBpBase = double.NaN, EnvTetoKi = double.NaN;
+
+	/// <summary>
+	/// OS TRES QUE FALTAVAM NA COMPARACAO: iam no pacote (`SheetState.Write`) e nao eram comparados, entao
+	/// so chegavam de carona quando outro campo mudava. Foi o "as vezes" do relato do Ki maximo
+	/// (2026-09-04): o `MaxKi` caia a cada soco, mas a aba so via a queda quando o Ki ou o BP mexiam.
+	/// </summary>
+	public double EnvMaxKi = double.NaN;
+	public float EnvSpeed = float.NaN;
+	public int EnvMembros = -1;
 
 	/// <summary>O ultimo byte de estado enviado (KO, morto, guarda, letal, rabo).</summary>
 	public int EnvEstado = -1;
@@ -1835,8 +1924,19 @@ public partial class GameServer : Node
 		_net = new NetManager(_listener)
 		{
 			AutoRecycle = true,
-			UpdateTime = 15,
-			ChannelsCount = 2,
+			// CINCO, e nao quinze. O `Send` do LiteNetLib so ENFILEIRA; quem poe o pacote no fio e a
+			// thread de logica, a cada `UpdateTime` ms. Com 15 ms o snapshot de 33,3 ms saia numa
+			// grade de 15 que nao divide 33,3 -- os intervalos de chegada alternavam 30/45 ms sem
+			// nada de errado na rede. O tique ainda acorda a thread na hora (`TriggerUpdate` no fim
+			// do snapshot); os 5 ms sao o teto pra tudo o que sai fora do tique (correcao, chat...).
+			UpdateTime = 5,
+			// OS MESMOS CANAIS DO CLIENTE, pela mesma constante -- ver `Protocol.ChannelVoz`: os dois
+			// `NetManager` tem que subir com a mesma contagem, e "2" escrito aqui era o contrato de
+			// `Protocol.TotalDeCanais` copiado a mao (e ja divergente: o cliente abre 3). A divergencia era
+			// LATENTE, e por isso nenhuma bancada de voz a viu: a voz vai `Unreliable`, que nao leva numero
+			// de canal no fio -- esta medido em `Protocol.ChannelVoz`, e la tambem esta o que ela viraria
+			// (excecao no `Send`) no dia em que este canal levasse algo canalizado.
+			ChannelsCount = Protocol.TotalDeCanais,
 		};
 	}
 
@@ -2121,6 +2221,24 @@ public partial class GameServer : Node
 		// rodado. Repare que ela nao liga o voo, so da a skill: a porta continua sendo a de producao.
 		_vooDeTeste = Array.IndexOf(args, "--vooteste") >= 0;
 		if (_vooDeTeste) GD.Print("[server] BANCADA: quem entrar ja sabe voar (Flight nivel 2)");
+
+		// --espeedteste <n>: quem entrar tem o stat BASE de velocidade (`Ficha.speed`) = n. E o STAT
+		// e nao o `SpeedStat` porque este e reescrito a cada tique pelo `RecalcularVelocidade` a
+		// partir do `Espeed`, que o `Statify` deriva do stat base -- uma escrita direta no
+		// `SpeedStat` morria no primeiro tique (aconteceu). O `StatCap` do `Statify` limita o `Espeed`
+		// a ~9,7, ou seja `SpeedStat` ~4,85 (~1700 px/s correndo): mande um numero grande
+		// (1000000) e o corpo entra no teto do jogo. E da bancada da FLUIDEZ (`testar-fluidez.bat`):
+		// o micro teleporte do corpo remoto cresce com a velocidade, e treinar ate o teto nao e coisa
+		// que uma rodada de 40 s faz. Ver `_speedStatDeTeste`.
+		int ie = Array.IndexOf(args, "--espeedteste");
+		if (ie >= 0 && ie + 1 < args.Length
+			&& float.TryParse(args[ie + 1], System.Globalization.NumberStyles.Float,
+							  System.Globalization.CultureInfo.InvariantCulture, out float speedDeTeste)
+			&& speedDeTeste > 0)
+		{
+			_speedStatDeTeste = speedDeTeste;
+			GD.Print($"[server] BANCADA: quem entrar tem o stat base de velocidade {speedDeTeste} (--espeedteste)");
+		}
 
 		// ============================ A BANCADA DA AGUA: QUATRO BERCOS ============================
 		// Os TRES primeiros poem o corpo no MESMO lago achado por `AcharTravessia` -- muda so ONDE, e
@@ -3834,6 +3952,9 @@ public partial class GameServer : Node
 
 		if (_portaDeTeste) NascerNaPorta(pl);
 		pl.Facing = Facing.South;
+		// --espeedteste, so bancada: o stat BASE, e o `Statify` na hora pra o `Espeed` (e a ficha que
+		// sai logo abaixo) ja nascerem com ele -- senao o primeiro tique corrigiria o cliente.
+		if (_speedStatDeTeste > 0) { pl.Ficha.speed = _speedStatDeTeste; pl.Ficha.Statify(); }
 		pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed);
 		PrepararCombate(pl, c);
 		PrepararSkills(pl, c);
@@ -4194,6 +4315,10 @@ public partial class GameServer : Node
 		MandarSupers(pl);
 		MandarPortas(pl);
 		MandarCenario(pl);
+		// AS PECAS DE CORPO NO CHAO, pelo mesmo argumento do cenario derrubado: o `S2C.Decalque` que as
+		// plantou saiu uma vez, pra quem estava la -- e quem loga no meio dos 600 s de uma peca precisa
+		// ve-la. Ver `GameServer.Pecas.cs`.
+		MandarPecas(pl);
 		MandarCatalogoDeObras(pl);
 		AplicarEstilo(pl);   // o estilo veio do save; os multiplicadores nao
 		MandarEstilos(pl);
@@ -4261,6 +4386,12 @@ public partial class GameServer : Node
 		// People e desenhada com o que chegou, e sem isto ela abriria vazia ate a primeira mudanca
 		// -- que num personagem antigo e cheio de gente pode nunca vir.
 		MandarConhecidos(pl);
+
+		// OS CARGOS TAMBEM VAO NO LOGIN. A lista so saia quando a aba Cargos pedia -- e desde que os
+		// verbs de cargo da aba Other so APARECEM pra quem tem o cargo (`Verbo.Mostrar`, pedido do dono),
+		// o cliente precisa saber no login que e o Guardiao, senao "Time Chamber: Authorize" so
+		// nasceria depois de o jogador abrir a aba Cargos uma vez.
+		MandarCargos(pl);
 
 		// O QUE ACONTECEU COM SEUS DOMINIOS ENQUANTO VOCE ESTAVA FORA. E o `conq_login_check` do
 		// original (PlanetConquest.dm:208), e ele existe porque quase tudo o que acontece com um
@@ -4553,6 +4684,7 @@ public partial class GameServer : Node
 		if (!_byPeer.TryGetValue(peer, out ServerPlayer? pl)) return;
 
 		uint seq = reader.GetUInt();
+		uint tempoMs = reader.GetUInt();   // o relogio do CLIENTE quando `claimed` valia -- layout em `Protocol.InputCorrendo`
 		Vec2 claimed = reader.GetVec();
 		byte flags = reader.GetByte();
 
@@ -4565,6 +4697,35 @@ public partial class GameServer : Node
 			return;
 		}
 		pl.SeqInput = seq;
+
+		// ============================ A HORA EM QUE A POSICAO VALIA ============================
+		// O cliente disse "eu estava em `claimed` as `tempoMs` DO MEU relogio". O `Relogio` deste
+		// jogador traduz isso pro meu (o minimo em janela de chegada - envio; ver
+		// `DeslocamentoDeRelogio`), e o resultado vai no snapshot como idade -- e o que deixa o corpo
+		// remoto andar no relogio de quem o move em vez de no do tique. Ver `EntityState.IdadeMs`.
+		//
+		// O `Math.Min(chegada, ...)` e a unica defesa que precisa: uma hora do futuro (relogio
+		// adiantado, cliente mentindo) viraria idade negativa, e idade negativa nao existe -- o
+		// carimbo mais novo possivel e "agora". Mentir pra tras so faz o proprio corpo parecer mais
+		// velho na tela dos OUTROS; nenhuma regra de jogo le este numero.
+		//
+		// **O CARIMBO NAO E O DT.** O dt do passo continua sendo medido no MEU relogio, la embaixo:
+		// se o cliente pudesse dizer quanto tempo passou, "passou 1 minuto" seria teleporte aprovado.
+		//
+		// E O CARIMBO VAI EM TODO CAMINHO QUE DEVOLVE A POSICAO COMO VERDADE -- o aceito, o corrigido e
+		// o "nao pode andar" -- porque nos tres o corpo ESTA em `pl.Pos` na hora dita. O unico que
+		// nao carimba e o arremesso (`TiquesDeVoo`), onde quem sabe a posicao e o `TickDoEmpurrao`;
+		// e qualquer escrita do servidor em `pl.Pos` apaga o carimbo sozinha (ver a propriedade).
+		// ====================================================================================
+		long chegada = RelogioDeQuadrosMs();
+		pl.Relogio.Amostrar(chegada - tempoMs, chegada);
+		// O VALOR APLICADO E O SUAVIZADO (ver `DeslocamentoDeRelogio.Deslizar`): ele pode ficar uns
+		// ms atras ou a frente do extremo, e por isso a hora traduzida pode cair um pouco DEPOIS da
+		// chegada -- a idade no snapshot tem sinal justamente pra isso. O teto de 100 ms e so a
+		// defesa contra o absurdo (um relogio de cliente que mente muito); em jogo honesto nunca vale.
+		long valiaEm = Math.Min(chegada + 100, tempoMs + (long)Math.Round(pl.Relogio.Deslizar(chegada)));
+		void Carimbar() { pl.PosMs = valiaEm; pl.PosVemDoCliente = true; }
+
 		var facing = (Facing)(flags & 0x03);
 		bool moving = (flags & Protocol.InputAndando) != 0;
 		bool querCorrer = (flags & Protocol.InputCorrendo) != 0;
@@ -4629,6 +4790,12 @@ public partial class GameServer : Node
 			// mentiria, que e o tipo de defeito que ninguem consegue descrever direito.
 			// ====================================================================================
 			if (pl.Cerebro == null) pl.Moving = false;
+
+			// O CORPO ESTA ONDE `pl.Pos` DIZ, e esta desde a hora do input -- e se o servidor o mover
+			// neste tique (a fera, o arremesso que comeca), a escrita apaga este carimbo antes de o
+			// snapshot sair. Sem carimbar aqui, o nocauteado envelheceria ate saturar e a primeira
+			// amostra depois de levantar chegaria com um vao de 255 ms na frente.
+			Carimbar();
 
 			var parado = Protocol.Begin(Protocol.S2C.Correction);
 			parado.Put(pl.SeqInput);
@@ -4750,6 +4917,10 @@ public partial class GameServer : Node
 			peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 
+		// DEPOIS do `pl.Pos = ok` dos dois ramos (a escrita apaga o carimbo) e FORA do ramo da volta
+		// do planeta, que devolveu antes: la o corpo foi teleportado e a idade certa e zero.
+		Carimbar();
+
 		pl.Facing = facing;
 		pl.Moving = moving;
 		pl.Correndo = correndo;
@@ -4762,7 +4933,8 @@ public partial class GameServer : Node
 	/// </summary>
 	private static bool PodeCorrer(ServerPlayer pl, float dt)
 	{
-		if (pl.Ficha.dead || pl.Ficha.KO) return false;
+		// O fantasma corre no Outro Mundo (a Serpentina e comprida); o cadaver dos 15 s, nao.
+		if ((pl.Ficha.dead && !pl.MortoDePe) || pl.Ficha.KO) return false;
 
 		double custo = pl.Ficha.MaxKi * CustoCorridaPorSegundo * Math.Min(dt, 0.25f);
 		if (pl.Ficha.Ki < custo) return false;
@@ -5086,8 +5258,10 @@ public partial class GameServer : Node
 		// nada do que ele faz e evento de quadro. Ele desfaz o corpo destrocado (200 ms de atraso e
 		// invisivel), aplica o teto da zona (uma contagem) e acende o "[E] corpo de Fulano" pra quem
 		// chegou perto -- e chegar perto leva mais de 200 ms. Ver `GameServer.Cadaver.cs`.
+		// E AS PECAS DE CORPO NO CHAO, ao lado do cadaver e pelo mesmo motivo: o prazo delas e de dez
+		// minutos, e vencer 200 ms depois e invisivel. Ver `GameServer.Pecas.cs`.
 		if (++_tickCount % TicksPorFicha == 0)
-			{ TickFichas(); TickDosNiveis(); TickDasFeridas(); TickDasAureolas(); TickDosCadaveres(); TickDoEfetorG11(); }
+			{ TickFichas(); TickDosNiveis(); TickDasFeridas(); TickDasAureolas(); TickDosCadaveres(); TickDasPecas(); TickDoEfetorG11(); }
 		// O EMBATE ANDA NO TIQUE CHEIO: os corpos se cruzam a cada 260 ms e as letras tem prazo de
 		// 900 ms. A 5 Hz o prazo erraria por ate 200 ms, que num quick time event e a diferenca
 		// entre acertar e nao.
@@ -5145,6 +5319,13 @@ public partial class GameServer : Node
 			foreach (ServerPlayer pl in _players.Values) Persistir(pl);
 
 		long agora = NowMs();
+		// O CARIMBO DO SNAPSHOT, lido UMA vez por tique e o mesmo pra todas as zonas: e o zero de
+		// onde cada `EntityState.IdadeMs` conta pra tras. Vai nos 32 bits baixos; o cliente
+		// desembrulha (`RelogioDoServidor`). E NAO E O `agora` de cima: aquele e relogio de parede,
+		// e relogio de parede salta. E a hora NOMINAL deste tique (`_tickCount * TickMs`), porque e
+		// nela que todo corpo movido pelo servidor foi integrado -- ver `RelogioDeQuadrosMs`.
+		_relogioDoSnapshot = (long)Math.Round(_tickCount * Protocol.TickMs);
+		uint carimbo = unchecked((uint)_relogioDoSnapshot);
 		foreach (List<ServerPlayer> zona in _zones.Values)
 		{
 			if (zona.Count == 0) continue;
@@ -5152,9 +5333,10 @@ public partial class GameServer : Node
 			// O ESPACO E UMA ZONA SO, e por isso o corte la nao pode ser a zona: todo mundo
 			// esta nela. Quem decide o trafego e a CHUNK -- e como o recorte muda de jogador
 			// pra jogador, o buffer nao da pra compartilhar e cada um recebe o seu.
-			if (Espaco.EhEspaco(zona[0].Zone)) { SnapshotDoEspaco(zona, agora); continue; }
+			if (Espaco.EhEspaco(zona[0].Zone)) { SnapshotDoEspaco(zona, agora, carimbo); continue; }
 
 			var w = Protocol.Begin(Protocol.S2C.Snapshot);
+			w.Put(carimbo);
 			w.Put((ushort)zona.Count);
 			foreach (ServerPlayer pl in zona) EstadoDe(pl, agora).Write(w);
 
@@ -5167,6 +5349,14 @@ public partial class GameServer : Node
 			foreach (ServerPlayer pl in zona)
 				pl.Peer?.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
 		}
+
+		// ============================ O SNAPSHOT SAI AGORA, NAO NO PROXIMO DESPERTAR ============================
+		// `Send` so enfileira: o pacote vai pro fio quando a thread de logica do LiteNetLib acorda
+		// (`UpdateTime`). Sem esta linha o snapshot de todo mundo esperava ate 15 ms numa fila -- e
+		// como 15 nao divide 33,3, a espera era DIFERENTE a cada tique (0, 12, 8, 3...). O carimbo
+		// ja tira esse jitter do DESENHO (a hora viaja no pacote); esta linha tira da LATENCIA.
+		// ====================================================================================================
+		_net.TriggerUpdate();
 
 		// ============================ A ULTIMA LINHA DO QUADRO -- E ELA E MENSURAVEL DE PROPOSITO ============================
 		// **UM INCREMENTO, E ELE E A UNICA FORMA DE UMA BANCADA AFIRMAR "O TIQUE CHEGOU AO FIM".**
@@ -5262,6 +5452,7 @@ public partial class GameServer : Node
 				&& pl.EnvVigor == pl.Ficha.stamina && pl.EnvNutricao == pl.Ficha.CurrentNutrition
 				&& pl.EnvBpBase == pl.Ficha.BP
 				&& pl.EnvTetoKi == Jandirus.Core.Combat.CargaDeKi.TetoEmRazao(pl.Ficha)
+				&& pl.EnvMaxKi == ficha.MaxKi && pl.EnvSpeed == ficha.SpeedStat && pl.EnvMembros == ficha.MembrosRuins
 				&& pl.EnvEstado == ficha.Estado && pl.EnvEstado2 == ficha.Estado2) continue;
 
 			MandarFicha(pl);
@@ -5294,6 +5485,9 @@ public partial class GameServer : Node
 		SheetState enviada = pl.Sheet();
 		pl.EnvEstado = enviada.Estado;
 		pl.EnvEstado2 = enviada.Estado2;
+		pl.EnvMaxKi = enviada.MaxKi;
+		pl.EnvSpeed = enviada.SpeedStat;
+		pl.EnvMembros = enviada.MembrosRuins;
 
 		var w = Protocol.Begin(Protocol.S2C.Stats);
 		FichaVisivel(pl).Write(w);
@@ -5433,6 +5627,9 @@ public partial class GameServer : Node
 		// `.col` do cliente tem que casar com o do servidor (ver MandarPortas).
 		MandarPortas(pl);
 		MandarCenario(pl);
+		// ...e as PECAS DE CORPO no chao da zona nova, pelo mesmo motivo do cenario: sem esta linha,
+		// quem volta do Outro Mundo pra onde perdeu o braco nao ve o braco. Ver `GameServer.Pecas.cs`.
+		MandarPecas(pl);
 
 		// A APARENCIA E AS FERIDAS TAMBEM SAO POR ZONA -- e isto faltava.
 		//
@@ -5480,6 +5677,28 @@ public partial class GameServer : Node
 	/// Duplicar isto e uma armadilha armada: o proximo campo novo tambem so ia entrar num dos dois.
 	/// Com uma fabrica, campo novo entra AQUI e chega nas duas.
 	/// </summary>
+	/// <summary>
+	/// A hora nominal do snapshot que esta saindo -- o zero de onde a idade de cada corpo conta pra
+	/// tras. Escrito uma vez por tique, antes das zonas (ver o laco do snapshot).
+	/// </summary>
+	private long _relogioDoSnapshot;
+
+	/// <summary>
+	/// O RELOGIO DE QUADRO DO SERVIDOR, em ms: os tiques ja dados mais o resto do acumulador. E a soma
+	/// dos `delta` do motor desde que o servidor subiu, e e nele que TUDO o que o servidor move e
+	/// integrado (o `TickDoEmpurrao`, a IA, o voo andam `TickSeconds` por tique). Carimbar com o QPC
+	/// casaria posicoes integradas em tempo nominal com horas reais aos trancos do quadro -- ver "os
+	/// relogios do fio sao relogios de quadro" em `Protocol`.
+	///
+	/// LIDO NO `Input`, que roda no `PollEvents` do comeco do quadro: todo input do mesmo quadro
+	/// recebe a mesma hora, e isso e o certo -- quem carrega a hora fina e o `tempoMs` do cliente;
+	/// esta so ANCORA o deslocamento (o minimo em janela, ver `DeslocamentoDeRelogio`).
+	/// </summary>
+	private long RelogioDeQuadrosMs() => (long)Math.Round(_tickCount * Protocol.TickMs + _accumulator * 1000.0);
+
+	/// <summary>`--espeedteste`: o stat BASE de velocidade com que todo mundo entra. Zero = producao. Ver o parse.</summary>
+	private float _speedStatDeTeste;
+
 	private EntityState EstadoDe(ServerPlayer pl, long agora)
 	{
 		// O CANAL E PERGUNTADO UMA VEZ SO, e as duas leituras abaixo (a pose e o byte do canal) saem
@@ -5492,6 +5711,13 @@ public partial class GameServer : Node
 		{
 			Id = pl.Id,
 			Pos = pl.Pos,
+			// HA QUANTO TEMPO `Pos` VALE. Corpo que o SERVIDOR escreveu por ultimo vale AGORA (zero):
+			// e o dono dele. Corpo que o CLIENTE afirmou vale desde a hora do input, traduzida -- e
+			// se essa hora ficar pra tras (o cliente parou de mandar), satura em 255 e o
+			// `RemotePlayer` le a saturacao. Ver `EntityState.IdadeMs`.
+			IdadeMs = pl.PosVemDoCliente
+				? (sbyte)Math.Clamp(_relogioDoSnapshot - pl.PosMs, sbyte.MinValue, EntityState.IdadeSaturada)
+				: (sbyte)0,
 			// DE PE, e pra onde olha; DEITADO, e pra onde a cabeca aponta. Mesmo campo.
 			Facing = (byte)(pl.Deitado ? pl.DirecaoDeitado : pl.Facing),
 			Moving = pl.Moving,

@@ -233,7 +233,12 @@ public partial class AudioDirector : Node
             AudioServer.SetBusName(i, BusCaptura);
             AudioServer.SetBusSend(i, "Master");
             AudioServer.SetBusMute(i, true);
-            AudioServer.AddBusEffect(i, new AudioEffectCapture { BufferLength = 0.2f });
+            // UM SEGUNDO DE ANEL, e nao 0,2. O `AudioEffectCapture` DESCARTA O QUE CHEGA quando esta
+            // cheio -- ele guarda o mais VELHO. Com 0,2 s, um travamento de meio segundo do jogo
+            // deixava no anel os 200 ms mais antigos (o que a pessoa disse ANTES de travar) e jogava
+            // fora o que ela acabou de dizer. Com 1 s cabe o travamento inteiro, e quem escolhe o que
+            // sai e o `Microfone` (os ultimos 100 ms, ver `QuadrosProntos`). 384 KB por anel.
+            AudioServer.AddBusEffect(i, new AudioEffectCapture { BufferLength = 1.0f });
         }
     }
 

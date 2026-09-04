@@ -406,22 +406,22 @@ public partial class RoboDeEmbarque : Node
 			  string.IsNullOrEmpty(E?.DicaNaTela), $"dica: \"{E?.DicaNaTela}\"");
 
 		// ---------------------------------------------------------------- F0  FABRICAR E ASSENTAR
-		// PELA TELA DO JOGADOR, e pelo canal que ela usa. Este passo nao e cerimonia: ele foi o que
-		// achou que `tech_construir`/`tech_posicionar` nao existiam do outro lado -- a grade abria, o
-		// botao acendia e o clique no chao nao fazia nada. Ver `TelaDeConstrucao.Abrir`.
+		// PELO CANAL QUE A TELA DO JOGADOR USA. Este passo nao e cerimonia: ele foi o que achou que
+		// `tech_construir`/`tech_posicionar` nao existiam do outro lado -- a grade da bancada abria, o
+		// botao acendia e o clique no chao nao fazia nada.
+		//
+		// A GRADE DA BANCADA MORREU (2026-09-03): fabricar e na aba Tech do menu P, e a bancada de
+		// pesquisa so oferece Estudar e Pegar. O que se cobra aqui e isso -- pela MESMA tabela que o
+		// menu da tecla E desenha -- e que o fantasma de assentar continua vivo, porque e ele que a
+		// F0.2 usa pra por a nave no chao.
 		GD.Print("\n-- F0: A NAVE CHEGA AO CHAO PELO CAMINHO DO JOGADOR --");
 
-		var verbosDaTela = new List<string>();
-		GameClient.EspiaoDeVerbos = (c, _) => { verbosDaTela.Add(c); return true; };
-		TelaDeConstrucao.Instancia?.Abrir();
-		GameClient.EspiaoDeVerbos = null;
-		// E FECHA PELO ESC, que e a unica porta de saida dela (`_UnhandledInput`): deixar a grade
-		// aberta poria um painel por cima do resto do percurso.
-		GetViewport().PushInput(new InputEventKey { PhysicalKeycode = Key.Escape, Keycode = Key.Escape, Pressed = true });
-		Checa("F0.1 a grade de construcao nao fala pelo canal de VERBOS (o `tech_*` que ninguem ouvia)",
-			  TelaDeConstrucao.Instancia != null
-			  && !verbosDaTela.Exists(v => v.StartsWith("tech_", StringComparison.Ordinal)),
-			  TelaDeConstrucao.Instancia == null ? "a tela nem existe" : string.Join(",", verbosDaTela));
+		string[] acoesDaBancada = Interacoes.De("Research_Station").Select(x => x.Verbo).ToArray();
+		Checa("F0.1 a bancada de pesquisa oferece Estudar e Pegar, e NAO oferece mais a grade de fabricar (`abrir_tech`)",
+			  acoesDaBancada.Contains("estudar") && acoesDaBancada.Contains("pegar") && !acoesDaBancada.Contains("abrir_tech"),
+			  string.Join(",", acoesDaBancada));
+		Checa("F0.1b ...e o fantasma de assentar (a metade viva da `TelaDeConstrucao`) existe",
+			  TelaDeConstrucao.Instancia != null);
 
 		// ============================ A NAVE TEM QUE SER NOVA, E NAO "UMA NAVE" ============================
 		// Naves ficam no `naves.json`, que sobrevive ao processo. Uma rodada anterior interrompida no meio

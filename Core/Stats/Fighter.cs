@@ -728,6 +728,14 @@ public sealed partial class Fighter
 	public double UPMod = 1;          // Potencial da raca: define o teto pessoal de treino
 	public double relcaprate = 1, HBTCMod = 1, bgains = 1, tgains = 1, tailgain = 1;
 	public double hiddenpotential = 1, hdnptltoBP = 1;
+
+	/// <summary>
+	/// A RAZAO potencial-escondido/BP que as skills de compra GARANTEM pra sempre (One Hundred, One
+	/// Punch, One Training -- as tres unicas fontes de `hiddenpotential` deste port). Somada na compra
+	/// (`GanhoNaCompra.Aplicar`), devolvida ao esquecer, gravada com a ficha. Ver `Statify`, onde ela
+	/// entra na conta do `hdnptlmod`, e o porque de ela existir.
+	/// </summary>
+	public double potencialGarantido;
 	public double BoostMult = 0;
 	public bool isHV, BoostActive;
 

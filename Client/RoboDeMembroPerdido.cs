@@ -17,8 +17,8 @@ namespace Jandirus.Client;
 ///
 /// "Em combate" e a parte que so uma briga de verdade responde. Aqui ninguem chama efeito nenhum:
 /// dois corpos brigam com golpe LETAL ate um membro zerar, e quem desenha e o `World.AoGolpe` a
-/// partir do `HitEvent` que o servidor mandou (o jato) e o `S2C.Decalque` que veio logo atras (a
-/// peca). A bancada so aperta o obturador.
+/// partir do `HitEvent` que o servidor mandou (o jato) e o `S2C.Decalque` que veio logo ANTES dele
+/// (a peca -- a ordem e a do `LopLimb`, ver `AoGolpe`). A bancada so aperta o obturador.
 ///
 /// E ELA FOTOGRAFA DUAS VEZES POR AMPUTACAO, em quadros separados, porque o pedido do dono e uma
 /// SEQUENCIA e nao um instante -- "e LOGO EM SEGUIDA". Uma foto so no auge do jato mostraria a
@@ -312,10 +312,37 @@ public partial class RoboDeMembroPerdido : Node
 		_relogio = 0;
 		_tirou1 = false;
 		_membroDaVez = h.Membro ?? "";
-		_pecasDaVez.Clear();
 		_idDaVez = h.Alvo;
-		GD.Print($"[membro] AMPUTOU: '{_membroDaVez}' em {h.Alvo} -- obturador armado");
+
+		// ============================ AS PECAS DESTE GOLPE JA CHEGARAM -- ANTES DELE ============================
+		// A peca sai do servidor de DENTRO do resolvedor (o `LopLimb` -> `AoDecepar` -> `SoltarPecas`),
+		// e o `S2C.Hit` so sai depois -- e a ordem do DM (`SpawnLop` em `mobparts_logic.dm:110`, o
+		// jato em `:119`), e os dois viajam no mesmo canal confiavel e ordenado. Ou seja: quando este
+		// relato chega, o `S2C.Decalque` da peca JA PASSOU pelo `AoCairDecalque`, com o obturador
+		// ainda desarmado. A primeira versao limpava a lista aqui e so guardava o que chegasse DEPOIS
+		// -- e fecharia com "0 peca(s)" numa amputacao perfeita. As pecas do golpe sao as que cairam
+		// no ultimo segundo; as de uma amputacao anterior ja foram fotografadas e sairam da lista.
+		// =====================================================================================================
+		_pecasDaVez.Clear();
+		foreach ((PecaDeCorpo peca, Vector2 onde, double quando) in _pecasRecentes)
+			if (_vida - quando <= JanelaDaPeca) _pecasDaVez.Add((peca, onde));
+		_pecasRecentes.Clear();
+		GD.Print($"[membro] AMPUTOU: '{_membroDaVez}' em {h.Alvo} -- obturador armado "
+				 + $"({_pecasDaVez.Count} peca(s) ja no chao)");
 	}
+
+	/// <summary>
+	/// AS PECAS QUE CAIRAM RECENTEMENTE, com o instante -- a fila de onde o `AoGolpe` tira as do golpe
+	/// que acabou de ser anunciado. Ver o bloco la.
+	/// </summary>
+	private readonly List<(PecaDeCorpo Peca, Vector2 Onde, double Quando)> _pecasRecentes = [];
+
+	/// <summary>
+	/// QUANTO TEMPO UMA PECA NO CHAO AINDA E "DESTE GOLPE". Um segundo cobre o intervalo entre o
+	/// decalque e o relato no mesmo canal (zero, na pratica) com folga pra um quadro lento; e e curto
+	/// o bastante pra nao adotar a peca de um soco anterior que nao foi fotografado.
+	/// </summary>
+	private const double JanelaDaPeca = 1.0;
 
 	/// <summary>
 	/// AS PECAS QUE O SERVIDOR MANDOU PLANTAR NESTA AMPUTACAO -- no PLURAL, e com a coordenada.
@@ -336,8 +363,12 @@ public partial class RoboDeMembroPerdido : Node
 
 	private void AoCairDecalque(Protocol.Decal tipo, Jandirus.Core.World.Vec2 onde, Jandirus.Core.World.Facing dir, PecaDeCorpo peca)
 	{
-		if (_capturando && tipo == Protocol.Decal.Membro)
-			_pecasDaVez.Add((peca, new Vector2((float)onde.X, (float)onde.Y)));
+		if (tipo != Protocol.Decal.Membro) return;
+		var ponto = new Vector2((float)onde.X, (float)onde.Y);
+		// COM O OBTURADOR ARMADO a peca e deste golpe; desarmado, ela vai pra fila que o proximo
+		// `AoGolpe` consulta -- porque a peca chega ANTES do relato (ver la).
+		if (_capturando) _pecasDaVez.Add((peca, ponto));
+		else _pecasRecentes.Add((peca, ponto, _vida));
 	}
 
 	private string Rotulo()

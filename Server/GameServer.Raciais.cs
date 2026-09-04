@@ -185,6 +185,11 @@ public partial class GameServer
 			// volta por VITORIA. Abrir os olhos por vontade propria e sair da nave -- nao e um
 			// acontecimento, e um gesto.
 			case "sairdamente": SairDaMente(pl, "voce abre os olhos."); break;
+			// SEM BOTAO NO MENU desde 2026-09-03 (pedido do dono): a porta do jogador pro espaco e voar
+			// pra cima ate romper a atmosfera (`Voo.TentarRomperAAtmosfera`, que cobra Ki e poder). O id
+			// fica porque tres bancadas (`--diagnav`, `--diaguniverso`, `--socar`) precisam chegar ao
+			// espaco sem voar. Um cliente mexido pode chama-lo -- e um salto de graca, e e divida: se
+			// isso incomodar, a saida e cobrar aqui a mesma `PodeRomperAAtmosfera` do voo.
 			case "decolar": Decolar(pl); break;
 			case "voar": AlternarVoo(pl); break;
 			// O `Swim` do DM (`Swim.dm:5`). Entra pelo MESMO cano do voo -- uma linha aqui e uma no

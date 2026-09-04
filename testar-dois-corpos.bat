@@ -16,7 +16,7 @@ REM      KNOCK BACK ou por ser JOGADO pelo grab. ao COLIDIR (...) a pessoa JOGAD
 REM      sofre dano E a pessoa q COLIDIU com o corpo voando TB toma dano"
 REM     "o corpo mesmo morto TEM TODAS AS INTERACOES DE UM CORPO VIVO"
 REM
-REM  Sao 236 provas em ~2 min, SEM JANELA.
+REM  Sao 253 provas em ~2 min, SEM JANELA.
 REM
 REM  AS OITO FAMILIAS, CADA UMA NOS DOIS SENTIDOS
 REM     1) AGARRAR      agarra quem pode / NAO agarra quem ja esta preso por
@@ -42,8 +42,15 @@ REM                     NENHUM dos dois se machuca
 REM     7) O CADAVER    fica, apanha, e agarrado e levado VOANDO por outra
 REM                     pessoa, e o enterro pela tecla E o faz sumir
 REM     8) A VIAGEM     o Outro Mundo NAO regrediu (a regressao mais provavel)
+REM    10) A FOTO       o cadaver nasce virado pra onde o morto caiu, sem o membro
+REM                     que ele perdeu e com a MESMA mascara de feridas (o
+REM                     `A.overlays += overlays` do DM) -- com o DEFEITO INJETADO
+REM                     do `Body.Novo()` limpo ficando vermelho; soco no cadaver
+REM                     NAO o gira / o vivo continua girando; o cadaver e o
+REM                     nocauteado arremessados pousam pra onde deslizaram, sem
+REM                     o estalo; quem entra na zona recebe as feridas do cadaver
 REM
-REM  E OITO DEFEITOS INJETADOS. Toda afirmacao central passa pelo `Mutacao` (o
+REM  E NOVE DEFEITOS INJETADOS. Toda afirmacao central passa pelo `Mutacao` (o
 REM  mesmo helper da `--provateste`): mede o criterio, ESTRAGA o mundo, exige que
 REM  o MESMO criterio reprove, desfaz e exige que ele volte a passar. Uma
 REM  checagem que so foi vista passando e indistinguivel de `Checa("...", true)`.
@@ -110,7 +117,7 @@ if %errorlevel%==0 (
 )
 
 echo.
-echo  ---- dois corpos: agarrao, colisao e o cadaver (236 provas) ----
+echo  ---- dois corpos: agarrao, colisao e o cadaver (253 provas) ----
 echo.
 echo   A bancada roda no 1o login e leva uns 40 s. O SERVIDOR CONTINUA DE PE
 echo   depois dela. Leia o placar "[dois] ==== N passaram, M falharam ===="

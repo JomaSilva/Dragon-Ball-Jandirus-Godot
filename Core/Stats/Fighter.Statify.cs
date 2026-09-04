@@ -121,7 +121,31 @@ public sealed partial class Fighter
         // --- potencial escondido ----------------------------------------
         // Quem tem muito mais potencial do que poder (o "modo Uub") ganha teto de Ki e de
         // raiva -- nao ganha stat.
-        hdnptltoBP = Math.Max(hiddenpotential, 1) / Math.Max(BP, 1);
+        //
+        // ============================ POR QUE O TETO DE KI CAIA A CADA SOCO ============================
+        // `hdnptlmod = log4(hiddenpotential / BP)`. No DM o numerador cresce todo ano de jogo
+        // (`Aging.dm:125-139`, `AgeCheck`: `hiddenpotential += BP*UPMod*anos`, proporcional ao BP), e
+        // a razao se sustenta. Este port NAO portou essa linha: as unicas escritas em `hiddenpotential`
+        // sao o nascimento (1) e o presente de compra da One Hundred/One Punch/One Training
+        // (`hiddenpotential += relBPmax*k`, `Bodybuilding.dm:87-96`). Numerador CONGELADO, denominador
+        // subindo a cada soco, treino e meditacao -> `MaxKi`, `kicapacity`, `powerupcap`, `KIregen` e
+        // `MaxAnger` DESCIAM sozinhos, e o soco basico nem gasta Ki do atacante -- o dono viu "o Ki
+        // maximo cai em vez do atual" (2026-09-04). A One Hundred ainda acelerava a propria queda: com
+        // `hiddenpotential >= BP` o `AttackGain` toma o ramo gordo (1/6 em vez de 1/12).
+        //
+        // O CONSERTO: a razao que a compra deu fica GARANTIDA (`potencialGarantido`, somada na compra,
+        // devolvida ao esquecer). O numerador efetivo e o maior entre o potencial gravado e
+        // `BP * potencialGarantido` -- a mesma razao no dia da compra e em qualquer dia depois, e o bonus
+        // de Ki que a skill deu e o bonus que ela mantem. O campo `hiddenpotential` em si NAO muda, de
+        // proposito: ele tambem governa o ritmo de ganho de BP (`AttackGain`/`MedGain`), e tornar ESSE
+        // permanente seria mudar a progressao inteira, o que ninguem pediu.
+        //
+        // DIVERGENCIA DECLARADA: o DM tambem nao mantem a razao dentro do ano (ela decai ate o proximo
+        // `AgeCheck`) e a corta em `TopBP` (`Stats.dm:171-173`). Nenhuma das duas pontas foi portada; o
+        // que se garante aqui e o que a skill promete ao jogador -- mais Ki, e nao "mais Ki ate o
+        // proximo treino".
+        // ==================================================================================================
+        hdnptltoBP = Math.Max(Math.Max(hiddenpotential, BP * potencialGarantido), 1) / Math.Max(BP, 1);
         double hdnptlmod = hdnptltoBP > 1 ? Math.Max(DmMath.Log(4, hdnptltoBP), 1) : 1;
 
         // piso 120 pra um baseAnger perdido nao deixar o personagem "Muito Irritado" pra sempre

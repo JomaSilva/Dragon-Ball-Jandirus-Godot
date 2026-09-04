@@ -76,16 +76,80 @@ public partial class World : Node2D
 	{
 		_decalques = new Decalques { Name = "Decalques" };
 		AddChild(_decalques);
-		if (GameClient.Instance is { } cli) cli.DecalqueCaiu += AoCairDecalque;
+		if (GameClient.Instance is not { } cli) return;
+
+		// METODOS NOMEADOS, e o `-=` de cada um mora no `SoltarDecalques` -- lambda em evento de vida
+		// longa vira ouvinte orfao no relog, e este projeto ja pagou 19 por ciclo.
+		cli.DecalqueCaiu += AoCairDecalque;
+		cli.PecasChegaram += AoChegarRetratoDePecas;
+		cli.ZoneChanged += AoTrocarDeZonaDosDecalques;
+
+		// O RETRATO QUE CHEGOU ANTES DE O WORLD EXISTIR: no login o `S2C.Pecas` sai antes do
+		// `JoinAccepted`, e nessa hora ninguem estava ouvindo. Mesma razao do `CenarioCaido`.
+		_retratoDePecasPendente = cli.PecasDaZona.Zona != 0;
 	}
 
 	private void SoltarDecalques()
 	{
-		if (GameClient.Instance is { } cli) cli.DecalqueCaiu -= AoCairDecalque;
+		if (GameClient.Instance is not { } cli) return;
+		cli.DecalqueCaiu -= AoCairDecalque;
+		cli.PecasChegaram -= AoChegarRetratoDePecas;
+		cli.ZoneChanged -= AoTrocarDeZonaDosDecalques;
 	}
 
 	private void AoCairDecalque(Protocol.Decal tipo, Vec2 onde, Facing dir, PecaDeCorpo peca)
 		=> _decalques?.Plantar(tipo, new Vector2(onde.X, onde.Y), dir, peca);
+
+	/// <summary>
+	/// HA UM RETRATO DE PECAS ESPERANDO O CHAO CERTO. Ver <see cref="PlantarORetratoDePecas"/>: ele
+	/// nao e plantado na chegada porque a chegada pode ser antes de a zona dele estar montada.
+	/// </summary>
+	private bool _retratoDePecasPendente;
+
+	private void AoChegarRetratoDePecas() => _retratoDePecasPendente = true;
+
+	/// <summary>
+	/// A TROCA DE ZONA LIMPA O CHAO -- "marca da Terra nao vai pra Namek", que e o que o `Limpar`
+	/// sempre prometeu. Ele so era chamado no ramo do ESPACO do `CarregarZona`; nos planetas a
+	/// cratera de um mapa ficava desenhada no seguinte, e com o retrato das pecas isso viraria o
+	/// braco perdido na Terra aparecendo em Namek ao lado dos que cairam la. Roda ANTES do
+	/// `AoMudarZona` do World (assinado depois, no mesmo `_Ready`), e o que o mapa novo tem de
+	/// permanente (o chao danificado) o `ReaplicarEstrago` devolve na carga -- sem duplicar.
+	///
+	/// O retrato pendente da zona VELHA morre junto: o da nova chega logo atras do `ZoneChanged`.
+	/// </summary>
+	private void AoTrocarDeZonaDosDecalques(ZoneKey zona, Vec2 spawn)
+	{
+		_decalques?.Limpar();
+		_retratoDePecasPendente = false;
+	}
+
+	/// <summary>
+	/// ============================ O RETRATO DAS PECAS ENTRA QUANDO O CHAO DELE ESTA MONTADO ============================
+	/// O `S2C.Pecas` chega logo atras do `ZoneChanged`, e a troca de mapa do World e DIFERIDA por dois
+	/// quadros (a tela de carregamento) -- plantar na chegada poria as pecas de Namek no chao da Terra e
+	/// as veria sumir no `Limpar` da carga. Entao o retrato fica pendente e e plantado no primeiro quadro
+	/// em que `_zonaDoAtual` (escrito pelo `CarregarZona`, depois do `Limpar`) e a zona DELE. No login e
+	/// igual: o World nasce, monta a zona, e o retrato guardado no `GameClient` entra em seguida.
+	///
+	/// O PRAZO E O QUE FALTA, e nao os 600 s cheios -- ver `Decalques.Plantar`. A direcao vai `South`
+	/// pelo mesmo motivo do `SoltarPecas` do servidor: a folha nao tem sufixo de direcao.
+	/// ==============================================================================================================
+	/// </summary>
+	private void PlantarORetratoDePecas()
+	{
+		if (!_retratoDePecasPendente || _decalques == null || GameClient.Instance is not { } cli) return;
+		// ANTES DA PRIMEIRA ZONA `_zonaDoAtual` e o `default` do struct, e o `Hash` dele percorre um
+		// `Name` nulo. Sem zona montada nao ha chao em que plantar, e o retrato continua pendente.
+		if (string.IsNullOrEmpty(_zonaDoAtual.Name)) return;
+		(ulong zona, List<GameClient.PecaNoChaoInfo> pecas) = cli.PecasDaZona;
+		if (zona != _zonaDoAtual.Hash) return;
+
+		_retratoDePecasPendente = false;
+		foreach (GameClient.PecaNoChaoInfo p in pecas)
+			_decalques.Plantar(Protocol.Decal.Membro, new Vector2(p.Onde.X, p.Onde.Y), Facing.South,
+							   p.Peca, p.RestanteMs / 1000.0);
+	}
 
 	/// <summary>
 	/// TERRA REVIRADA EM VOLTA DO QUE CAIU -- em ALGUNS vizinhos, nao todos.
@@ -194,6 +258,8 @@ public partial class World : Node2D
 	{
 		if (_decalques == null) return;
 		_relogioDecal += delta;
+
+		PlantarORetratoDePecas();   // so faz algo quando ha retrato pendente E a zona dele e esta
 
 		int t = ZoneCollision.TileSize;
 

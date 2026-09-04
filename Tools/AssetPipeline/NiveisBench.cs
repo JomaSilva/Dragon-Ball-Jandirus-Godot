@@ -130,6 +130,15 @@ public static class NiveisBench
 		return f;
 	}
 
+	/// <summary>Um corpo com os numeros de raca de um Saiyajin (potencial 3, BPMod 1,6) -- ver `OTetoDeKiQueNaoCaiMais`.</summary>
+	private static Fighter Saiyajin(double bp)
+	{
+		var f = new Fighter { Race = "Saiyan", Class = "None", BP = bp, UPMod = 3, BPMod = 1.6 };
+		f.Statify();
+		f.PowerLevel();
+		return f;
+	}
+
 	// =====================================================================
 	// F5a) O PERIODICO
 	// =====================================================================
@@ -469,8 +478,9 @@ public static class NiveisBench
 		// contra o DM, numero por numero: max(1, 1000*0.01) = 10; relBPmax*2
 		Conferir("BP: 1000 -> 1010 (max(1, 1%) = 10)", Perto(f.BP, bp0 + 10), $"{f.BP}");
 		Conferir($"hiddenpotential: +relBPmax*2 = +{rel * 2:0.##}", rel > 0 && Perto(f.hiddenpotential, hp0 + rel * 2), $"{f.hiddenpotential - hp0}");
-		Conferir("o livro registrou o que somou (o `storedBP` do datum)",
-				 livro.GanhosNaCompra.TryGetValue(OneHundred, out var reg) && Perto(reg.GetValueOrDefault("BP"), 10) && somou.Count == 2);
+		Conferir("o livro registrou o que somou (o `storedBP` do datum) -- e a RAZAO garantida junto",
+				 livro.GanhosNaCompra.TryGetValue(OneHundred, out var reg) && Perto(reg.GetValueOrDefault("BP"), 10) && somou.Count == 3
+				 && Perto(reg.GetValueOrDefault(GanhoNaCompra.CampoDaRazao), (hp0 + rel * 2) / (bp0 + 10)));
 		Conferir("aplicar de novo NAO soma de novo (o relog)", GanhoNaCompra.Aplicar(f, livro, s!).Count == 0 && Perto(f.BP, bp0 + 10));
 
 		Fighter g = Corpo(bp: 50);
@@ -479,11 +489,83 @@ public static class NiveisBench
 		GanhoNaCompra.Aplicar(g, l2, s!);
 		Conferir("com BP 50 o piso do `max(1, ...)` vale: +1, e nao +0,5", Perto(g.BP, 51), $"{g.BP}");
 
+		OTetoDeKiQueNaoCaiMais(cat, f, s!);
+
 		Dictionary<string, double> devolveu = GanhoNaCompra.Desfazer(f, livro, OneHundred);
-		Conferir("esquecer DEVOLVE exatamente o que somou (BP 1000, potencial de volta) -- o before_forget (:98-100)",
-				 Perto(f.BP, bp0) && Perto(f.hiddenpotential, hp0) && devolveu.Count == 2 && !livro.GanhosNaCompra.ContainsKey(OneHundred),
-				 $"{f.BP}/{f.hiddenpotential}");
+		Conferir("esquecer DEVOLVE exatamente o que somou (BP, potencial e a razao garantida) -- o before_forget (:98-100)",
+				 Perto(f.BP, bp0) && Perto(f.hiddenpotential, hp0) && Perto(f.potencialGarantido, 0) && devolveu.Count == 3 && !livro.GanhosNaCompra.ContainsKey(OneHundred),
+				 $"{f.BP}/{f.hiddenpotential}/{f.potencialGarantido}");
 		Conferir("desfazer de novo nao tira nada", GanhoNaCompra.Desfazer(f, livro, OneHundred).Count == 0 && Perto(f.BP, bp0));
+	}
+
+	// =====================================================================
+	// F1e2) O TETO DE KI QUE CAIA A CADA SOCO (2026-09-04)
+	// =====================================================================
+	/// <summary>
+	/// A One Hundred sobe o `MaxKi` pela razao `hiddenpotential/BP` (`master.dm:176-184`), e o port
+	/// congelava o numerador: cada ganho de BP derrubava o teto (ver a nota em `Fighter.Statify`). A prova
+	/// e a mesma conta de antes, com o BP dobrado DEPOIS da compra: o fator `hdnptltoBP` e o `MaxKi` nao
+	/// podem cair. O `baseKi` fica onde estava (so treino o sobe), entao o `MaxKi` so pode mudar por este
+	/// fator -- e e por isso que a comparacao e limpa.
+	/// </summary>
+	private static void OTetoDeKiQueNaoCaiMais(SkillCatalog cat, Fighter humano, Skill oneHundred)
+	{
+		Console.WriteLine("\n-- F1e2) O TETO DE KI NAO CAI COM O BP: a razao da compra fica GARANTIDA (Fighter.potencialGarantido) --");
+		// NUM SAIYAJIN, e nao no humano da prova de cima: a razao que a One Hundred da e ~2*(1+UPMod)*BPMod,
+		// independente do BP -- 3,8 no humano (log4 < 1: a skill nem mexe no Ki dele) e ~12,8 no Saiyajin
+		// (hdnptlmod 1,83, +83% de Ki). A prova precisa de um corpo em que o teto de fato subiu, senao
+		// "nao caiu" e verdade vazia. O humano segue na prova do desfazer, la em cima.
+		_ = humano;
+		// OS NUMEROS DE RACA SAO ENTRADA DA PROVA: `Corpo()` nao passa pelo nascimento (que e quem escreve
+		// `UPMod`/`BPMod` a partir do races.json), entao eles vao a mao -- os de um Saiyajin (potencial 3,
+		// BPMod 1,6), que dao razao 2*(1+3)*1,6 = 12,8 e hdnptlmod 1,83. Sem eles a razao e 4 - 1/BP e o
+		// log4 fica um fio ABAIXO de 1: a skill nao mexeria no Ki, e "nao caiu" seria verdade vazia.
+		Fighter comprou = Saiyajin(1000);
+		var livroS = new SkillBook();
+		livroS.Dar(OneHundred);
+		GanhoNaCompra.Aplicar(comprou, livroS, oneHundred);
+		comprou.Statify(); comprou.PowerLevel();
+		Conferir("pre-condicao: no Saiyajin a One Hundred SOBE o teto de Ki de verdade (log4 da razao > 1)", DmMath.Log(4, comprou.hdnptltoBP) > 1.5, $"razao {comprou.hdnptltoBP:0.##}, log4 {DmMath.Log(4, comprou.hdnptltoBP):0.##}");
+		Fighter semSkill = Saiyajin(1000);
+		Conferir("...e o MaxKi dele e maior que o de um Saiyajin igual sem a skill", comprou.MaxKi > semSkill.MaxKi * 1.5, $"{comprou.MaxKi:0.##} vs {semSkill.MaxKi:0.##}");
+		double razao0 = comprou.hdnptltoBP, maxKi0 = comprou.MaxKi, garantido = comprou.potencialGarantido;
+		Conferir("depois da compra a razao potencial/BP e maior que 1 (senao a One Hundred nao daria Ki nenhum a este corpo)", razao0 > 1, $"{razao0:0.###}");
+		Conferir("...e a razao GARANTIDA e exatamente a razao do dia da compra", Perto(garantido, razao0, 1e-9) && garantido > 0, $"{garantido:0.###}");
+
+		comprou.BP *= 2;               // o que socar, treinar e meditar fazem, so que de uma vez
+		comprou.Statify(); comprou.PowerLevel();
+		Conferir("com o BP DOBRADO o fator continua EXATAMENTE o mesmo (era `hiddenpotential/BP`, que caia pela metade)", Perto(comprou.hdnptltoBP, razao0, 1e-9), $"{razao0:0.###} -> {comprou.hdnptltoBP:0.###}");
+		Conferir("...e o MaxKi NAO mexeu (era o relato: 'o Ki maximo cai em vez do atual')", Perto(comprou.MaxKi, maxKi0, 1e-6), $"{maxKi0:0.##} -> {comprou.MaxKi:0.##}");
+
+		// CONTRA-EXEMPLO: quem nao comprou nada nao ganha teto por dobrar o BP (hdnptlmod = 1 dos dois lados)
+		Fighter sem = Saiyajin(1000);
+		double semKi0 = sem.MaxKi;
+		sem.BP *= 2; sem.Statify(); sem.PowerLevel();
+		Conferir("CONTRA-EXEMPLO: sem a skill, dobrar o BP nao mexe no MaxKi (o fator e 1 antes e depois)", Perto(sem.MaxKi, semKi0, 1e-6) && Perto(sem.potencialGarantido, 0), $"{semKi0:0.##} -> {sem.MaxKi:0.##}");
+
+		// DEFEITO INJETADO: a razao garantida zerada e o port de ontem -- o teto TEM que cair
+		double guardado = comprou.potencialGarantido;
+		comprou.potencialGarantido = 0;
+		comprou.Statify(); comprou.PowerLevel();
+		Conferir("DEFEITO INJETADO: sem a razao garantida o fator cai pela metade e o MaxKi desce (a prova enxerga o defeito)", comprou.hdnptltoBP < razao0 * 0.51 && comprou.MaxKi < maxKi0, $"{comprou.hdnptltoBP:0.###}, MaxKi {comprou.MaxKi:0.##} < {maxKi0:0.##}");
+		comprou.potencialGarantido = guardado;
+
+		// O SAVE DE ANTES: livro com o presente registrado e sem razao -> Reconciliar recompoe com o BP de hoje
+		Fighter velho = Corpo(bp: 1000);
+		var livroVelho = new SkillBook();
+		livroVelho.Dar(OneHundred);
+		Dictionary<string, double> somouVelho = GanhoNaCompra.Aplicar(velho, livroVelho, oneHundred);
+		double razaoDaCompra = velho.potencialGarantido;
+		velho.potencialGarantido = 0;                                            // o campo nao existia
+		livroVelho.GanhosNaCompra[OneHundred].Remove(GanhoNaCompra.CampoDaRazao);   // e o registro nao tinha a chave
+		velho.BP *= 1.5;                                                         // e o jogador treinou um tanto desde entao
+		int rec = GanhoNaCompra.Reconciliar(velho, livroVelho);
+		Conferir("save de ANTES: `Reconciliar` recompoe a razao com o BP de hoje (menor que a da compra, e maior que zero) e grava a chave no registro",
+				 rec == 1 && velho.potencialGarantido > 0 && velho.potencialGarantido < razaoDaCompra
+				 && livroVelho.GanhosNaCompra[OneHundred].ContainsKey(GanhoNaCompra.CampoDaRazao),
+				 $"{razaoDaCompra:0.###} na compra, {velho.potencialGarantido:0.###} reconciliada");
+		Conferir("...e reconciliar de novo nao soma nada (idempotente, como o relog)", GanhoNaCompra.Reconciliar(velho, livroVelho) == 0);
+		_ = somouVelho;
 	}
 
 	// =====================================================================

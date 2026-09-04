@@ -925,15 +925,23 @@ public partial class RoboDeDesvio : Node
 
 		// 5. O SOM. Cruza QUADRO a QUADRO -- e a unica leitura que separa "uma vez por esquiva" de
 		//    "uma vez por quadro", que era exatamente a duvida do pedido.
+		// DUAS ESQUIVAS NO MESMO QUADRO SAO DUAS ESQUIVAS, NAO UMA "DOBRADA". Os dois corpos trocam socos, e
+		// desde que o servidor DESPEJA o fio no fim do tique (`TriggerUpdate`, a frente da fluidez) os dois
+		// relatos de golpe resolvidos no mesmo tique chegam no MESMO quadro do cliente -- antes a grade de
+		// 15 ms do LiteNetLib os espalhava por dois quadros e a coincidencia nunca aparecia. Os sons nao
+		// tem dono; o que da pra exigir num quadro com N esquivas e N assobios e N socos no ar.
 		int mudas = 0, dobradas = 0, certas = 0;
+		var esquivasNoQuadro = _golpes.Where(g => g.Item3 == Jandirus.Core.Combat.Desfecho.Esquivou)
+									  .GroupBy(g => g.Item1).ToDictionary(g => g.Key, g => g.Count());
 		foreach ((ulong q, double t, Jandirus.Core.Combat.Desfecho d, bool _) in _golpes)
 		{
 			if (d != Jandirus.Core.Combat.Desfecho.Esquivou) continue;
 			var noQuadro = _sons.Where(s => s.Quadro == q).ToList();
 			int flash = noQuadro.Count(s => Eh(s.Arquivo, Assobio));
 			int miss = noQuadro.Count(s => EhSocoNoAr(s.Arquivo));
+			int juntas = esquivasNoQuadro[q];
 			if (flash == 0 && miss == 0) mudas++;
-			else if (flash == 1 && miss == 1) certas++;
+			else if (flash == juntas && miss == juntas) certas++;
 			else dobradas++;
 
 			if (certas <= 3 && flash + miss > 0)

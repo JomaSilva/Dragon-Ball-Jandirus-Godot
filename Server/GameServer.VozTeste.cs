@@ -119,7 +119,7 @@ public partial class GameServer
 	private List<(ServerPlayer Quem, byte Dist, bool Parede)> Leque(ServerPlayer a)
 	{
 		var saida = new List<(ServerPlayer, byte, bool)>();
-		QuemOuveAVoz(a, NowMs(), saida);
+		QuemOuveAVoz(a, RelogioDaVoz(), saida);
 		return saida;
 	}
 
@@ -405,6 +405,34 @@ public partial class GameServer
 		int recusados = QuadrosDeVozRecusadosDeTeste(torneira.Id);
 		AfirmarVoz("200 quadros de uma vez pelo caminho de verdade: a maioria e jogada fora",
 			recusados >= 200 - (int)VozLocal.RajadaDeQuadros - 1, $"recusados {recusados}");
+
+		// ============================ A RAJADA HONESTA PASSA INTEIRA; A DESONESTA, NAO ============================
+		// O emissor despeja no maximo 5 quadros por visita (`Microfone.QuadrosProntos`), e duas visitas
+		// juntas pela rede sao 10. Dez de uma vez tem que passar SEM recusa -- recusar aqui e picotar
+		// voz honesta em silencio, que foi o defeito de quando o balde tinha 5. Trinta de uma vez e um
+		// cliente modificado: exatamente 15 passam e 15 morrem, pelo caminho de verdade e pelo contador
+		// que a bancada de dois clientes tambem le.
+		// ==========================================================================================================
+		ServerPlayer honestoNoFio = forjar(81, "bancada: rajada de 10", zona,
+												  new Vec2(250 * ZoneCollision.TileSize, 250 * ZoneCollision.TileSize));
+		for (int i = 0; i < 10; i++) RecebiVoz(honestoNoFio, QuadroFalso, QuadroFalso.Length, calado: false);
+		AfirmarVoz("uma rajada de 10 quadros (dois drenos juntos) passa SEM recusa",
+			QuadrosDeVozRecusadosDeTeste(honestoNoFio.Id) == 0,
+			$"recusados {QuadrosDeVozRecusadosDeTeste(honestoNoFio.Id)}");
+
+		ServerPlayer desonestoNoFio = forjar(82, "bancada: rajada de 30", zona,
+													new Vec2(250 * ZoneCollision.TileSize, 250 * ZoneCollision.TileSize));
+		for (int i = 0; i < 30; i++) RecebiVoz(desonestoNoFio, QuadroFalso, QuadroFalso.Length, calado: false);
+		AfirmarVoz($"uma rajada de 30 tem exatamente {30 - (int)VozLocal.RajadaDeQuadros} recusados (o balde e {VozLocal.RajadaDeQuadros})",
+			QuadrosDeVozRecusadosDeTeste(desonestoNoFio.Id) == 30 - (int)VozLocal.RajadaDeQuadros,
+			$"recusados {QuadrosDeVozRecusadosDeTeste(desonestoNoFio.Id)}");
+
+		// E O RELOGIO DA TORNEIRA E O MONOTONICO, nao o de parede: as duas leituras sao de escalas
+		// diferentes (o de parede conta desde 1970, o monotonico desde o boot), e um `Falando` calculado
+		// com um relogio sobre um `UltimoQuadro` gravado com o outro daria sempre falso -- que foi o
+		// modo de falha que esta linha existe pra pegar se alguem trocar so um dos dois.
+		AfirmarVoz("o 'esta falando' do servidor le o mesmo relogio que a torneira grava",
+			FalandoPorVozDeTeste(honestoNoFio.Id));
 
 		// O "ESTA FALANDO" E DERIVADO DO ULTIMO QUADRO -- e ele e o que acende o sinal sobre a cabeca
 		// e o que libera a vaga no teto de quatro. Um campo `bool Falando` a parte seria a mesma

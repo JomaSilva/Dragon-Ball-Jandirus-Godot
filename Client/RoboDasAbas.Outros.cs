@@ -77,7 +77,52 @@ public partial class RoboDasAbas
 				  rp is { Disabled: true }, rp == null ? "nao achei" : $"Disabled={rp.Disabled}");
 		}
 
+		// ---- QUEM VE O QUE (2026-09-03, o segundo relato do dono): verbs de cargo so pra quem tem o cargo,
+		//      os de Namek so pra Namek, e "Decolar" foi embora ----
+		// A bancada e Saiyajin sem cargo nenhum. Entao: nada de Grande Anciao, Rei de Vegeta, Presidente,
+		// Guardiao nem Deus da Destruicao; nada de assento de Anciao; e a Linha de Sucessao APARECE, porque
+		// e coisa de Saiyajin. O contra-exemplo e o cargo chegando: `admin_cargo_dar` em si mesmo poe o
+		// personagem na Presidencia, a lista de cargos volta do servidor, e "Fund Earth" nasce na aba
+		// sem reabrir nada -- e some de novo quando o trono e esvaziado.
+		string[] escondidos = ["Appoint Elder", "Accept Elder Seat", "Decline Elder Seat", "Name Heir", "Remove Heir",
+							   "Accept Challenge", "Postpone Challenge", "Rank Duty", "Fund Earth",
+							   "Time Chamber: Authorize", "Time Chamber: Release", "Decolar"];
+		List<string> vazaram = escondidos.Where(n => BotaoDeTextoExato(pg, n) != null).ToList();
+		Checa("QUEM VE O QUE: sem cargo e sem ser Namek, nenhum verb de cargo/Namek esta na aba -- nem 'Decolar', que morreu",
+			  vazaram.Count == 0, vazaram.Count == 0 ? "" : string.Join(", ", vazaram));
+		Checa("...e nem na BUSCA (o mesmo filtro `Verbos.Visivel` vale pros dois balcoes)",
+			  !escondidos.Any(n => Verbos.Buscar(n).Any(v => v.Nome == n)));
+		Checa("CONTRA-EXEMPLO: 'Line of Succession' APARECE pra um Saiyajin (o trono de Vegeta e assunto dele)",
+			  string.Equals(cli.Atributos.Raca, "Saiyan", StringComparison.OrdinalIgnoreCase) && BotaoDeTextoExato(pg, "Line of Succession") != null,
+			  $"raca={cli.Atributos.Raca}");
+		Checa("CONTRA-EXEMPLO: 'Title Status' e 'Challenge God of Destruction' continuam pra todo mundo (sao de quem NAO tem o titulo)",
+			  BotaoDeTextoExato(pg, "Title Status") != null && BotaoDeTextoExato(pg, "Challenge God of Destruction") != null);
+
+		cli.SendVerbo("admin_cargo_dar", $"{cli.LocalId}|president");
+		bool virouPresidente = await Ate(() => cli.Cargos.Any(c => c.Chave == "president" && c.Dono == cli.LocalName), 8);
+		await Quadros(3);
+		pg = menu.PaginaDeTeste(Verbos.Outros)!;
+		Checa("dado o cargo de Presidente (admin_cargo_dar em si mesmo), a lista de cargos volta com o meu nome no trono",
+			  virouPresidente, string.Join(",", cli.Cargos.Where(c => c.Dono.Length > 0).Select(c => $"{c.Chave}={c.Dono}")));
+		Checa("...e 'Fund Earth' e 'Rank Duty' NASCEM na aba Other sem reabrir o menu (a lista e a assinatura da pagina)",
+			  BotaoDeTextoExato(pg, "Fund Earth") != null && BotaoDeTextoExato(pg, "Rank Duty") != null);
+		Checa("...enquanto os do Guardiao continuam escondidos (o cargo certo, e nao 'qualquer cargo')",
+			  BotaoDeTextoExato(pg, "Time Chamber: Authorize") == null && BotaoDeTextoExato(pg, "Appoint Elder") == null);
+
+		cli.SendVerbo("admin_cargo_tirar", $"{cli.LocalId}|president");
+		bool perdeu = await Ate(() => !cli.Cargos.Any(c => c.Chave == "president" && c.Dono == cli.LocalName), 8);
+		await Quadros(3);
+		pg = menu.PaginaDeTeste(Verbos.Outros)!;
+		Checa("esvaziado o trono, 'Fund Earth' some de novo -- e 'Rank Duty' junto",
+			  perdeu && BotaoDeTextoExato(pg, "Fund Earth") == null && BotaoDeTextoExato(pg, "Rank Duty") == null);
+
 		// ---- A FOTO E O PIXEL
+		// A LISTA `temas` ENVELHECEU: a secao de cargo acima REFEZ a pagina duas vezes (a lista de cargos
+		// muda a assinatura, a assinatura redesenha), e os PanelContainer antigos foram LIBERADOS pelo
+		// Godot. `GetGlobalRect()` num node liberado lanca ObjectDisposedException -- e como o roteiro e
+		// uma Task solta (`_ = Rodar()`), a excecao morria CALADA e a bancada ficava viva pra sempre sem
+		// placar (foi exatamente o que aconteceu em 2026-09-04). Le-se a pagina de novo, como quem olha.
+		temas = CartoesDeTema(pg);
 		if (Ancestral<ScrollContainer>(pg) is { } rol) rol.ScrollVertical = 0;
 		await Quadros(2);
 		Image? foto = await Foto();

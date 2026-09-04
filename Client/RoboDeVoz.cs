@@ -1,5 +1,4 @@
 using Concentus;
-using Concentus.Enums;
 using Godot;
 using Jandirus.Core.Social;
 
@@ -23,12 +22,16 @@ namespace Jandirus.Client;
 ///   * acompanha a rampa quadro a quadro -- porque um valor sozinho nunca distingue rampa de degrau.
 /// ================================================================================================
 ///
-/// AS CINCO SECOES:
+/// AS OITO SECOES (as tres ultimas em `RoboDeVoz.Fio.cs`):
 ///  1. O CODEC -- ida e volta com os parametros de producao, e o tamanho do quadro medido.
 ///  2. A PAREDE ABAFA DE VERDADE -- energia em 3 kHz contra energia em 300 Hz, antes e depois.
 ///  3. A RAMPA E RAMPA -- e ela volta quando a parede sai.
 ///  4. A TECLA -- o V, pelo registro, e remapeavel.
 ///  5. O MICROFONE DESLIGADO NAO ABRE NADA -- a opcao e um aparelho que nao existe, e nao um `if`.
+///  6. O FIO COM JITTER -- a `FilaDeJitter` de producao com pacotes reais chegando torto, e o
+///     DEFEITO INJETADO (fila desligada) que tem que picotar.
+///  7. O EMISSOR -- portao com histerese e hangover, engasgo que nao vira rajada, anti-alias.
+///  8. A TORNEIRA -- rajada de 10 passa, rajada de 30 perde 15.
 ///
 /// COMO RODAR (sem mundo, sem rede, sem personagem):
 ///     Godot --headless --path . --diagvoz
@@ -49,16 +52,26 @@ public partial class RoboDeVoz : Node
 		GD.Print("[diagvoz] ============ VOZ: o audio, medido em amostras ============");
 
 		OCodecVaiEVolta();
+		OFecExisteDeVerdade();
 		AParedeCortaOAgudoDeVerdade();
 		ARampaEhRampa();
 		ATeclaEhOV();
 		ODesligadoNaoAbreNada();
+		OFioComJitter();
+		OEmissorNaoPicota();
+		ATorneiraAceitaARajadaHonesta();
 
-		GD.Print(_falhas.Count == 0
+		// DOIS PLACARES, e os dois tem que fechar: as checagens (o sistema funciona) e as injecoes (a
+		// bancada enxerga quando ele nao funciona). Ver `Injetar`.
+		GD.Print($"[diagvoz]   ...  injecoes: {_injecoesQuePegaram} pegaram, {_injecoesQuePassaramBatido.Count} passaram batido");
+		bool ok = _falhas.Count == 0 && _injecoesQuePassaramBatido.Count == 0;
+		GD.Print(ok
 			? "[diagvoz] ============ TUDO OK ============"
-			: $"[diagvoz] ============ {_falhas.Count} FALHA(S): {string.Join(" | ", _falhas)} ============");
+			: $"[diagvoz] ============ {_falhas.Count} FALHA(S): {string.Join(" | ", _falhas)}"
+			  + (_injecoesQuePassaramBatido.Count > 0 ? $" | INJECAO PASSOU BATIDO: {string.Join(" | ", _injecoesQuePassaramBatido)}" : "")
+			  + " ============");
 
-		GetTree().Quit(_falhas.Count == 0 ? 0 : 1);
+		GetTree().Quit(ok ? 0 : 1);
 	}
 
 	// =====================================================================
@@ -105,20 +118,18 @@ public partial class RoboDeVoz : Node
 	/// outro) nao da erro nenhum: da ruido branco, e ruido branco e o que um jogador chama de "a voz
 	/// nao presta".
 	///
-	/// E ela CONFERE O TAMANHO MEDIDO: os ~40 B por quadro sao a base da conta de banda inteira
-	/// (1,95 KB/s por fluxo, 16x mais barato que PCM cru). Se um dia isso virar 200 B, o teto por
+	/// E ela CONFERE O TAMANHO MEDIDO: os ~65 B por quadro sao a base da conta de banda inteira
+	/// (3,2 KB/s por fluxo, 10x mais barato que PCM cru). Se um dia isso virar 200 B, o teto por
 	/// falante e o teto de quatro vozes passam a estar dimensionados pra outro mundo.
+	///
+	/// E ELA CONFERE QUE O FEC EXISTE (<see cref="OFecExisteDeVerdade"/>): a 16 kbit/s o Opus nao
+	/// escrevia a copia redundante, e ninguem tinha como saber -- `decode_fec` devolvia PLC calado.
 	/// </summary>
 	private void OCodecVaiEVolta()
 	{
-		OpusCodecFactory.AttemptToUseNativeLibrary = false;
-
-		IOpusEncoder enc = OpusCodecFactory.CreateEncoder(
-			VozLocal.TaxaDeAmostragem, 1, OpusApplication.OPUS_APPLICATION_VOIP);
-		enc.Bitrate = VozLocal.BitsPorSegundo;
-		enc.Complexity = VozLocal.Complexidade;
-		enc.UseVBR = true;
-		enc.SignalType = OpusSignal.OPUS_SIGNAL_VOICE;
+		// O CODIFICADOR DE PRODUCAO, e nao uma copia dos parametros dele: uma copia e a primeira coisa
+		// a divergir quando alguem mexer no `Microfone`, e a bancada seguiria verde medindo outro codec.
+		IOpusEncoder enc = Microfone.CriarCodificador();
 
 		IOpusDecoder dec = OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeAmostragem, 1);
 
@@ -149,10 +160,11 @@ public partial class RoboDeVoz : Node
 		double media = somaBytes / (double)quadros;
 		GD.Print($"[diagvoz]   ...  {media:0.0} B por quadro  =  {media * VozLocal.QuadrosPorSegundo / 1024:0.00} KB/s por fluxo");
 
-		// O NUMERO MEDIDO NA FASE 0 ERA 39,9 B. A folga e generosa de proposito: o ponto nao e cravar
-		// o decimal, e pegar a ordem de grandeza mudando -- que e o que invalidaria o dimensionamento.
-		Conferir(media is > 20 and < 80,
-			"o quadro comprimido continua na casa dos 40 B (a conta de banda toda depende disso)",
+		// O NUMERO MEDIDO A 24 kbit/s COM FEC E ~65 B (um tom puro sai menor). A folga e generosa de
+		// proposito: o ponto nao e cravar o decimal, e pegar a ordem de grandeza mudando -- que e o que
+		// invalidaria o dimensionamento da banda.
+		Conferir(media is > 25 and < 100,
+			"o quadro comprimido continua na casa dos 65 B (a conta de banda toda depende disso)",
 			$"{media:0.0} B");
 
 		// E O SINAL VOLTOU: o tom de 440 Hz sobreviveu a ida e volta. Sem esta linha, um codec que

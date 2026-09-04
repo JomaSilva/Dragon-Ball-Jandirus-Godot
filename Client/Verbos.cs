@@ -64,6 +64,16 @@ public sealed record Verbo(
 
 	/// <summary>Por onde uma tecla se lembra deste verb.</summary>
 	public string ChaveOuNome => Chave.Length > 0 ? Chave : Nome;
+
+	/// <summary>
+	/// ESTE VERB APARECE PRA MIM? Nulo = sempre. E diferente de <see cref="Disponivel"/>: o
+	/// indisponivel aparece APAGADO ("existe, e falta Ki"); o que nao se mostra NAO EXISTE pra este
+	/// personagem -- o pedido do dono, literal: *"verbos de namek ... e alguns de rank deveriam
+	/// aparecer somente se eu fosse namek ou tivesse o rank em questao"*. No original e assim que os
+	/// verbs de cargo funcionam: eles entram em `verbs` quando o cargo e dado e saem quando ele se
+	/// perde; ninguem ve "Fund Earth" sem ser o Presidente. Quem le isto e <see cref="Verbos.Visivel"/>.
+	/// </summary>
+	public Func<bool>? Mostrar { get; init; }
 }
 
 /// <summary>
@@ -113,8 +123,13 @@ public static class Verbos
 		Mudou?.Invoke();
 	}
 
+	/// <summary>
+	/// Os verbs de uma categoria QUE ESTE PERSONAGEM VE. O filtro de <see cref="Visivel"/> entra aqui,
+	/// e nao so na busca: a aba Other e o mesmo balcao que a busca, e um verb de cargo alheio
+	/// escondido de um lado e listado do outro seria a mesma porta com duas placas.
+	/// </summary>
 	public static IEnumerable<Verbo> Da(string categoria) =>
-		_todos.Where(v => v.Categoria == categoria).OrderBy(v => v.Nome, StringComparer.OrdinalIgnoreCase);
+		_todos.Where(v => v.Categoria == categoria).Where(Visivel).OrderBy(v => v.Nome, StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// SOU ADMIN? Escrito de fora (pelo menu, quando a ficha lenta chega com o bit).
@@ -139,8 +154,8 @@ public static class Verbos
 		Mudou?.Invoke();
 	}
 
-	/// <summary>Este verb pode sequer APARECER pra mim?</summary>
-	public static bool Visivel(Verbo v) => SouAdmin || v.Categoria != Admin;
+	/// <summary>Este verb pode sequer APARECER pra mim? Admin so pra admin; e o que o verb mesmo disser (<see cref="Verbo.Mostrar"/>).</summary>
+	public static bool Visivel(Verbo v) => (SouAdmin || v.Categoria != Admin) && (v.Mostrar?.Invoke() ?? true);
 
 	/// <summary>
 	/// O verb que uma tecla guardou, ou nulo se este personagem nao o tem.

@@ -344,16 +344,22 @@ public partial class LocalPlayer : Node2D
 	{
 		if (ficha.SpeedStat > 0) SpeedStat = ficha.SpeedStat;
 		if (ficha.SocoMs > 0) _cadencia = ficha.SocoMs / 1000.0;
-		bool caiuAgora = ficha.Imobilizado && !_caido;
 		if (ficha.Empurrado && !_empurrado) _alvoDoVoo = _pos;   // comeca o voo de onde estou
 		_caido = ficha.Imobilizado;
 		_deitado = EstouDeitado(ficha);
-		// DEITA PRA ONDE ESTAVA OLHANDO. So no instante da queda: girar todo pacote de ficha
-		// deixaria o corpo caido acompanhando a direcao, que nao e o que um desmaio faz.
-		// O ANGULO DO CORPO DEITADO VEM DO SERVIDOR, e SO daqui -- 2 bits no Estado. Ter duas
-		// fontes (o `_facing` local e o do servidor) foi o defeito que o dono fotografou nas duas
-		// telas, e depois o corpo "girando bugado" no arremesso: um escrevia o angulo por quadro e o
-		// outro o desfazia.
+		// O ANGULO DO CORPO DEITADO VEM DO SERVIDOR, e SO daqui -- 2 bits no Estado, aplicados a CADA
+		// pacote, como o `RemotePlayer` faz com o snapshot. Ter duas fontes (o `_facing` local e o do
+		// servidor) foi o defeito que o dono fotografou nas duas telas, e depois o corpo "girando
+		// bugado" no arremesso: um escrevia o angulo por quadro e o outro o desfazia.
+		//
+		// ============================ NAO E "SO NO INSTANTE DA QUEDA", E ISSO E DO DM ============================
+		// Havia aqui um `caiuAgora` calculado e nunca usado, e um comentario prometendo girar so na
+		// queda. Quem decide se o corpo caido acompanha e o SERVIDOR: o vivo derrubado gira quando
+		// apanha (`M.dir = get_dir(M,src)`, `CombatMovement.dm:302`) e o morto nunca gira (o cadaver do
+		// DM e um `/obj`, e aqui e o `ServerPlayer.ApontarRumoDoGolpe` que o recusa). Se ESTA ponta
+		// aplicasse o angulo uma vez so, a minha tela e a de quem me olha discordariam no primeiro
+		// golpe que me virasse no chao -- que e exatamente o par de fotos de onde este bloco nasceu.
+		// =======================================================================================================
 		// O NOCAUTE usa o sprite DEITADO; o arremesso usa o ACORDADO. Sao duas tabelas de rotacao
 		// diferentes -- ver `CharacterVisual.VoarPara`.
 		var dir = (Facing)((ficha.Estado >> 6) & 3);

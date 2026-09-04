@@ -2,6 +2,7 @@ using Godot;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Npc;
 using Jandirus.Core.Stats;
+using Jandirus.Core.Tech;
 using Jandirus.Core.World;
 using Jandirus.Net;
 
@@ -94,6 +95,9 @@ public partial class GameServer
 		bool viajouGuardado = pl.MorteJaViajou;
 		bool aureolaGuardada = pl.EnvAureola;
 		double kiGuardado = pl.Ficha.Ki, vigorGuardado = pl.Ficha.stamina;
+		double zeniGuardado = pl.Ficha.Zeni;
+		long debuffGuardado = pl.Ficha.zeni_revive_debuff_until;
+		bool treinoGuardado = pl.Ficha.train, medGuardada = pl.Ficha.med;
 		double nutricaoGuardada = pl.Ficha.CurrentNutrition;
 		bool voandoGuardado = pl.Voando;
 
@@ -113,7 +117,7 @@ public partial class GameServer
 			AAureolaSaiPorDiferenca(pl);
 			OQueSePodeFazerMorto(pl);
 			DoAlemNaoSeSaiAndando(pl);
-			AVoltaDesfazAMorte(pl);
+			OEnmaEAVoltaPaga(pl);
 			OCorpoQueFicaEOPrecoDoRevive(pl, forjados);
 
 			AfirmarAlem("a bancada chegou ao fim (sem esta linha, abortar no meio reportaria '0 falhas')",
@@ -142,6 +146,10 @@ public partial class GameServer
 			pl.Ficha.KO = koGuardado;
 			pl.Ficha.Ki = kiGuardado;
 			pl.Ficha.stamina = vigorGuardado;
+			pl.Ficha.Zeni = zeniGuardado;
+			pl.Ficha.zeni_revive_debuff_until = debuffGuardado;
+			pl.Ficha.train = treinoGuardado;
+			pl.Ficha.med = medGuardada;
 			pl.Ficha.CurrentNutrition = nutricaoGuardada;
 			pl.RelogioDaMorte = relogioGuardado;
 			pl.MorteJaViajou = viajouGuardado;
@@ -229,14 +237,19 @@ public partial class GameServer
 		GD.Print("[alem] -- 2) o funil da morte --");
 
 		pl.RelogioDaMorte = 0;
+		pl.Ficha.train = true;   // morre com a tecla T ligada -- ver a prova do treino logo abaixo
+		pl.Ficha.med = true;
 		long antes = NowMs();
 		bool morreu = pl.Combate.Morrer(ignorarSeguro: true);
 
 		AfirmarAlem("`Morrer()` responde que a morte aconteceu", morreu);
+		AfirmarAlem("...e morrer DESLIGA o treino e a meditacao (`KO.dm:57-58`, o `KO(-1)` do `Death()`): "
+					+ "sem isto quem morria treinando seguia ganhando BP no Outro Mundo",
+					!pl.Ficha.train && !pl.Ficha.med);
 		AfirmarAlem("...e ela SOZINHA arma o relogio (o gancho `AoMorrer` esta instalado)",
 					pl.RelogioDaMorte >= antes + Alem.MsNoChao, $"{pl.RelogioDaMorte - antes} ms");
-		AfirmarAlem("...com o prazo do CADAVER, e nao o do alem (o lugar e o mundo dos vivos)",
-					pl.RelogioDaMorte - antes < Alem.MsNoAlem, $"{pl.RelogioDaMorte - antes} ms");
+		AfirmarAlem("...com o prazo do CADAVER, os 15 s ate subir (e nao 'nunca', que e o do alem)",
+					pl.RelogioDaMorte - antes < Alem.MsNoChao + 1000, $"{pl.RelogioDaMorte - antes} ms");
 
 		// E MORRER DE NOVO NAO REARMA. `Morrer()` sai na primeira linha quando `dead` ja e verdadeiro
 		// -- sem isso, um segundo golpe num cadaver empurraria a viagem pra frente pra sempre.
@@ -381,6 +394,10 @@ public partial class GameServer
 		AfirmarAlem("...mas o crivo NAO e um `return false`: o mesmo morto, ja viajado, tem auréola",
 					Alem.TemAureola(true, true) && !Alem.TemAureola(false, true));
 
+		AfirmarAlem("CAIDO no mundo dos vivos o passo e RECUSADO pelo funil de vetor (`PodeMexerOCorpo`)",
+					!PodeMexerOCorpo(pl));
+		double hpAntesDaViagem = pl.Ficha.HP;
+
 		ZoneKey antes = pl.Zone;
 		long marcado = NowMs();
 		PassoDaMorte(pl);   // vence o prazo dos 15 s
@@ -393,9 +410,13 @@ public partial class GameServer
 		AfirmarAlem("...e ele continua MORTO (a viagem nao e um revive)", pl.Ficha.dead);
 		AfirmarAlem("...DE PE, como o `Un_KO()` do DM (`Death.dm:89`)",
 					pl.MortoDePe && !pl.Deitado);
-		AfirmarAlem("...INTEIRO: o braco decepado voltou (`RegrowLimb`)",
-					pl.Combate.Corpo.Achar("Braco direito") is { Decepado: false });
-		AfirmarAlem("...e CURADO (`SpreadHeal(100,1,1)`)", pl.Ficha.HP >= 99.99, $"{pl.Ficha.HP:0.##}");
+		AfirmarAlem("...FERIDO COMO CAIU: o braco decepado continua decepado -- divergencia DECLARADA do "
+					+ "`RegrowLimb` na morte (`Death.dm:86-88`), a cura e da volta (pedido do dono)",
+					pl.Combate.Corpo.Achar("Braco direito") is { Decepado: true });
+		AfirmarAlem("...e a vida NAO subiu na viagem (o DM `SpreadHeal(100,1,1)` na morte; aqui nao)",
+					Math.Abs(pl.Ficha.HP - hpAntesDaViagem) < 0.01, $"{hpAntesDaViagem:0.##} -> {pl.Ficha.HP:0.##}");
+		AfirmarAlem("...e DE PE no Outro Mundo o passo e ACEITO: o morto ANDA (`Death.dm:104` `move = 1`)",
+					PodeMexerOCorpo(pl));
 		AfirmarAlem("...e o voo caiu na travessia (ninguem chega ao alem pairando)",
 					!pl.Voando && Mathf.IsZeroApprox(pl.Altitude));
 
@@ -416,9 +437,8 @@ public partial class GameServer
 		// chamava o `PassoDaMorte` de novo, o corpo ja estava no alem, e o `Renascer` disparava 33 ms
 		// depois de chegar. O Outro Mundo durava um quadro -- e o log dizia "60s ate voltar a vida".
 		// ========================================================================================================
-		AfirmarAlem("O PRAZO DO ALEM FOI ARMADO -- ele nao renasce no quadro seguinte",
-					pl.RelogioDaMorte >= marcado + Alem.MsNoAlem,
-					$"faltam {pl.RelogioDaMorte - NowMs()} ms (esperado ~{Alem.MsNoAlem})");
+		AfirmarAlem("NAO HA PRAZO NO ALEM: o relogio da morte esta TRANCADO (nao ha volta automatica)",
+					pl.RelogioDaMorte == long.MaxValue, $"{pl.RelogioDaMorte}");
 		AfirmarAlem("...e o funil NAO o tira de la antes da hora",
 					NowMs() < pl.RelogioDaMorte);
 
@@ -560,6 +580,9 @@ public partial class GameServer
 		AfirmarAlem("o Ki do morto vaza EM DOBRO (o segundo desconto do `if (f.dead)`)",
 					drenoVivo > 0 && Math.Abs(drenoMorto - 2 * drenoVivo) < drenoVivo * 0.01,
 					$"vivo {drenoVivo:0.####} / morto {drenoMorto:0.####}");
+
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		AfirmarAlem("...e o fantasma pode CORRER no Outro Mundo (a Serpentina e comprida)", PodeCorrer(pl, 0.033f));
 	}
 
 	/// <summary>Duas fichas iguais menos pelo `dead` -- o par de controle do dreno de Ki.</summary>
@@ -655,75 +678,115 @@ public partial class GameServer
 	// 8) A VOLTA -- o `ReviveMe()` do DM
 	// =====================================================================
 	/// <summary>
-	/// ============================ A VOLTA DESFAZ TUDO O QUE A MORTE FEZ ============================
-	/// `mob/proc/ReviveMe()` (`Death.dm:143-161`). A conferencia e item a item contra a lista do
-	/// <see cref="Renascer"/>: o que a morte escreveu tem que sair, e o que ela levou tem que voltar.
-	///
-	/// **A AUREOLA NAO TEM LINHA PROPRIA AQUI, E ISSO E O TESTE.** Ela e `dead && ja viajou` -- uma
-	/// CONJUNCAO com a morte, e nao um bit ao lado dela --, entao apagar a morte apaga o desenho e
-	/// nenhum caminho de revive precisa lembrar da auréola. Se um dia alguem trocar a conjuncao por
-	/// um segundo bit paralelo (que o `Renascer` teria que apagar a mao), esta linha e a que reprova.
-	///
-	/// O QUE O DM FAZ E ESTE PORT AINDA NAO: `kaiTrainingAllowed = 0`, `hakai_mark = 0`,
-	/// `pk_karma_taken = 0`, `pk_rep_taken = 0`. Os quatro campos **nao existem aqui** -- nascem com
-	/// o Enma e com o karma por PK. Ficam citados pra a ausencia ser pendencia, e nao esquecimento.
-	/// ==========================================================================================
+	/// ============================ 8) O ENMA E A VOLTA PAGA ============================
+	/// Ate 2026-09-04 esta familia se chamava "a volta desfaz a morte" e AFIRMAVA o revive automatico
+	/// de 60 s como correto -- o andaime `MsNoAlem`. O dono pediu o contrario: *"voce teria que ficar
+	/// morto ate alguem te reviver com as esferas, ou juntar 1 milhao de zeni e pagar o Enma Daioh"*.
+	/// O que se prova agora: nao ha volta por tempo; o Enma existe na mesa dele; longe dele nada
+	/// acontece; sem o milhao ele recusa; com o milhao cobra, aplica o debuff de 25% por uma hora e
+	/// devolve o corpo INTEIRO ao berco; o vivo e enxotado; e o DEFEITO INJETADO (o Enma de graca)
+	/// mostra que a prova do preco enxerga.
+	/// ==============================================================================
 	/// </summary>
-	private void AVoltaDesfazAMorte(ServerPlayer pl)
+	private void OEnmaEAVoltaPaga(ServerPlayer pl)
 	{
-		GD.Print("[alem] -- 8) a volta --");
+		GD.Print("[alem] -- 8) o Enma e a volta paga --");
 
-		// O PRAZO VENCE AGORA. E o unico atalho da bancada: o percurso e o de producao, o que ela
-		// pula sao os 60 s de relogio de parede.
-		pl.RelogioDaMorte = 0;
 		if (pl.Combate.Corpo.Achar("Perna esquerda") is { } perna) { perna.Decepado = true; perna.Vida = 0; }
 		pl.Combate.SincronizarVida();
 
+		AfirmarAlem("NAO HA VOLTA POR TEMPO: o relogio da morte esta trancado", pl.RelogioDaMorte == long.MaxValue);
+		pl.RelogioDaMorte = 0;
 		VenceuOPrazoDaMorte(pl);
+		AfirmarAlem("...e mesmo com o relogio zerado (um relog antigo) o funil so o TRANCA de novo: continua morto, no Outro Mundo",
+					pl.Ficha.dead && Alem.EhOAlem(pl.Zone) && pl.RelogioDaMorte == long.MaxValue,
+					$"morto={pl.Ficha.dead} zona={pl.Zone.Name} relogio={pl.RelogioDaMorte}");
 
-		AfirmarAlem("VENCIDO O PRAZO, ele volta a vida", !pl.Ficha.dead && !pl.Ficha.KO);
-		AfirmarAlem("...e sai do Outro Mundo (o berco, ou o dominio escolhido)",
-					!Alem.EhOAlem(pl.Zone), pl.Zone.Name);
-		AfirmarAlem("...inteiro: a perna decepada voltou (`Corpo.Restaurar` dentro do `Reviver`)",
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		Obra? enma = _noChao.FirstOrDefault(o => o.Tipo == Alem.TipoDoEnma && o.Zona.Equals(alem));
+		AfirmarAlem("O ENMA DAIOH esta sentado na mesa dele (semeado no boot, `SkyNPCs.dm:59`)", enma != null);
+		if (enma == null) return;
+		AfirmarAlem("...como obra FIXA do mapa, densa e indestrutivel (um arremesso nao derruba o juiz)",
+					enma.DoMapa && enma.Aparafusada && double.IsPositiveInfinity(enma.ArmaduraMax)
+					&& _obras?.Get(Alem.TipoDoEnma) is { Densa: true, Construivel: false });
+		AfirmarAlem("...e o menu E dele oferece ouvir e voltar a vida (`Interacoes.De`)",
+					Interacoes.Aceita(Alem.TipoDoEnma, "enma_reviver") && Interacoes.Aceita(Alem.TipoDoEnma, "enma_ouvir"));
+
+		// LONGE DA MESA: nada acontece
+		pl.Pos = new Vec2(enma.X + 20 * ZoneCollision.TileSize, enma.Y);
+		pl.Ficha.Zeni = 2_000_000;
+		EnmaReviverPorZeni(pl);
+		AfirmarAlem("LONGE da mesa o pedido nao chega ao Enma: continua morto e com o zeni no bolso",
+					pl.Ficha.dead && Math.Abs(pl.Ficha.Zeni - 2_000_000) < 1e-6);
+
+		// NA MESA, SEM O MILHAO: recusa
+		pl.Pos = new Vec2(enma.X + ZoneCollision.TileSize, enma.Y);
+		pl.Ficha.Zeni = Alem.PrecoDoReviveDoEnma - 1;
+		EnmaReviverPorZeni(pl);
+		AfirmarAlem("na mesa SEM o milhao o Enma recusa (`SkyNPCs.dm:190`): continua morto, zeni intacto",
+					pl.Ficha.dead && Math.Abs(pl.Ficha.Zeni - (Alem.PrecoDoReviveDoEnma - 1)) < 1e-6);
+
+		// COM O MILHAO: a volta
+		pl.Ficha.Zeni = Alem.PrecoDoReviveDoEnma + 5;
+		long antesDaVolta = NowMs();
+		EnmaReviverPorZeni(pl);
+		AfirmarAlem("COM O MILHAO ele volta a vida (`enma_zeni_revive`)", !pl.Ficha.dead && !pl.Ficha.KO);
+		AfirmarAlem("...o Enma cobrou exatamente 1.000.000", Math.Abs(pl.Ficha.Zeni - 5) < 1e-6, $"{pl.Ficha.Zeni}");
+		AfirmarAlem("...e ele sai do Outro Mundo pro berco", !Alem.EhOAlem(pl.Zone), pl.Zone.Name);
+		AfirmarAlem("...INTEIRO: a perna decepada voltou (a cura e da VOLTA, nao da morte)",
 					pl.Combate.Corpo.Achar("Perna esquerda") is { Decepado: false });
-		AfirmarAlem("...com METADE da vida -- a divergencia declarada do port (o DM cura 100%)",
-					pl.Ficha.HP > 40 && pl.Ficha.HP < 60, $"{pl.Ficha.HP:0.##}");
-		AfirmarAlem("...e METADE do Ki", pl.Ficha.Ki <= pl.Ficha.MaxKi * 0.5 + 1e-6);
-		AfirmarAlem("...e o relogio da morte zerado (senao o funil reexaminaria um corpo vivo)",
-					pl.RelogioDaMorte == 0);
-
+		AfirmarAlem("...com a vida e o Ki cheios (`Revive()` do DM = `SpreadHeal(100)` + `Ki = MaxKi`)",
+					pl.Ficha.HP >= 99.99 && pl.Ficha.Ki >= pl.Ficha.MaxKi - 1e-6,
+					$"HP {pl.Ficha.HP:0.##} Ki {pl.Ficha.Ki:0}/{pl.Ficha.MaxKi:0}");
+		AfirmarAlem("...com o DEBUFF armado por UMA HORA (`zeni_revive_debuff_until`, `SkyNPCs.dm:194`)",
+					pl.Ficha.zeni_revive_debuff_until >= antesDaVolta + Alem.MsDoDebuffDoEnma - 1000
+					&& pl.Ficha.zeni_revive_debuff_until <= antesDaVolta + Alem.MsDoDebuffDoEnma + 1000,
+					$"{pl.Ficha.zeni_revive_debuff_until - antesDaVolta} ms");
+		{
+			// COM BP DE GENTE GRANDE: o host desta bancada nasce com BP ~8, e `Round(2 * 0,25)` da zero --
+			// a razao viraria 0/2 e a prova mediria arredondamento, nao o debuff.
+			double bpGuardado = pl.Ficha.BP;
+			pl.Ficha.BP = 100_000;
+			pl.Ficha.Statify();
+			pl.Ficha.PowerLevel(agoraMs: NowMs());
+			double com = pl.Ficha.expressedBP;
+			long guardado = pl.Ficha.zeni_revive_debuff_until;
+			pl.Ficha.zeni_revive_debuff_until = 0;
+			pl.Ficha.PowerLevel(agoraMs: NowMs());
+			double sem = pl.Ficha.expressedBP;
+			pl.Ficha.zeni_revive_debuff_until = guardado;
+			pl.Ficha.BP = bpGuardado;
+			pl.Ficha.Statify();
+			pl.Ficha.PowerLevel(agoraMs: NowMs());
+			AfirmarAlem("...e o debuff e o BP expresso em 25% (`Fighter.Power`, a familia 3 'no fim de tudo')",
+						sem > 0 && Math.Abs(com / sem - 0.25) < 0.03, $"{com:0.##} de {sem:0.##}");
+		}
+		AfirmarAlem("...e o relogio da morte zerado", pl.RelogioDaMorte == 0);
 		TickDasAureolas();
-		AfirmarAlem("E A AUREOLA SOME SOZINHA -- ela nao tem linha propria no revive",
-					!pl.EnvAureola);
+		AfirmarAlem("E A AUREOLA SOME SOZINHA -- ela nao tem linha propria no revive", !pl.EnvAureola);
+
+		// O VIVO NA MESA: enxotado
+		MoveToZone(pl.Id, alem, new Vec2(enma.X + ZoneCollision.TileSize, enma.Y));
+		double zeniVivo = pl.Ficha.Zeni;
+		EnmaReviverPorZeni(pl);
+		AfirmarAlem("um VIVO na mesa e enxotado (`SkyNPCs.dm:151-153`): nada cobrado, nada mudado",
+					!pl.Ficha.dead && Math.Abs(pl.Ficha.Zeni - zeniVivo) < 1e-6);
+
+		// DEFEITO INJETADO: o Enma de graca. Morre de novo no Outro Mundo e o crivo do preco e o que segura.
+		pl.Combate.Morrer(ignorarSeguro: true);
+		pl.RelogioDaMorte = 0;
+		VenceuOPrazoDaMorte(pl);
+		pl.Pos = new Vec2(enma.X + ZoneCollision.TileSize, enma.Y);
+		pl.Ficha.Zeni = 0;
+		EnmaReviverPorZeni(pl);
+		AfirmarAlem("CONTRA-EXEMPLO: morto de novo, sem zeni e sem defeito, continua morto", pl.Ficha.dead);
+		EnmaNaoCobraDeTeste = true;
+		try { EnmaReviverPorZeni(pl); }
+		finally { EnmaNaoCobraDeTeste = false; }
+		AfirmarAlem("DEFEITO INJETADO (o Enma sem cobrar): com ZERO zeni ele revive -- a prova 'sem o milhao recusa' ficaria vermelha (a bancada enxerga o preco)",
+					!pl.Ficha.dead);
 	}
 
-	// =====================================================================
-	// 9) O CORPO QUE FICA, E O PRECO DA SEGUNDA RESSURREICAO
-	// =====================================================================
-	/// <summary>
-	/// AS DUAS COISAS QUE O LOTE DOS VERBOS DE CARGO PENDUROU NA MORTE.
-	///
-	/// ============================ POR QUE ELAS MEDEM AQUI E NAO NA `--cargovivo` ============================
-	/// As duas mexem no PERCURSO DA MORTE, que e o que esta bancada monta: ela e a unica que mata um
-	/// jogador de verdade (com `Peer`, que e o que a triagem exige) e devolve tudo no `finally`. E a
-	/// `--cargovivo` declara, no proprio cabecalho, que **nao dispara o `Revive`** -- porque
-	/// `RessuscitarG4` termina em `Persistir(alvo)` e la os corpos usam o `Peer` EMPRESTADO do host,
-	/// o que sobrescreveria o personagem dele no disco.
-	///
-	/// AQUI O ALVO NASCE COM `Peer` NULO, e por isso o `Persistir` sai na primeira linha
-	/// (`GameServer.cs:4087`). E a mesma precaucao, pelo outro lado.
-	/// ====================================================================================================
-	///
-	/// ============================ AS DUAS METADES DE CADA UMA ============================
-	///   KEEP_BODY: com o bit ligado o corpo FICA no mundo dos vivos quando o prazo vence -- **e**,
-	///   quando o Ki cai abaixo de `MaxKi/6`, o mesmo prazo o leva. Sem a segunda metade, "ficar" seria
-	///   "nunca mais viajar", e o verb viraria imortalidade de cadaver.
-	///
-	///   REVIVE: a PRIMEIRA volta de uma alma e de graca e a SEGUNDA mata quem ressuscita
-	///   (`OtherworldRankSkills.dm:241-245`). As duas sao afirmadas porque a regra e um limiar, e um
-	///   limiar so existe se os dois lados dele forem medidos -- o corolario da casa.
-	/// ====================================================================================
-	/// </summary>
 	private void OCorpoQueFicaEOPrecoDoRevive(ServerPlayer pl, List<ServerPlayer> forjados)
 	{
 		GD.Print("[alem] -- 9) o corpo que fica (Keep_Body) e o preco do Revive de cargo --");
