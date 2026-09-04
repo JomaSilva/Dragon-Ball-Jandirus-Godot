@@ -291,7 +291,12 @@ public static class Regeneracao
 	public static Resultado Tique(Body corpo, in PerfilDeRegen r, Fighter f, bool emCombate,
 								  ref double buffer, double dt, Random rng)
 	{
-		if (f.dead || dt <= 0 || !PodeCurar(r, f, emCombate)) return default;
+		// `f.dead` SAIU DAQUI (2026-09-04). Quem decide se um morto regenera e o CHAMADOR, porque a
+		// resposta depende do LUGAR, que este Core nao ve: o cadaver dos 2 s no mundo dos vivos nao
+		// cura (ele e a foto de como caiu), e o fantasma DE PE no Outro Mundo cura como um vivo fora
+		// de combate -- o dono: *"caso fique ferido no outro mundo por lutas la, voce regenera normal
+		// fora de combate"*. Ver `GameServer.RegenerarPassivo` (`EhCadaver`).
+		if (dt <= 0 || !PodeCurar(r, f, emCombate)) return default;
 
 		bool curou = false;
 		bool faltaAlgo = false;

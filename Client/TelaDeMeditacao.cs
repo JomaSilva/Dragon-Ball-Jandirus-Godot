@@ -241,7 +241,9 @@ public partial class TelaDeMeditacao : CanvasLayer
 		// Trocar de mundo com ela aberta fecha pelo mesmo motivo -- inclusive a viagem PRA mente, que
 		// e o que acontece um instante depois de escolher "profunda".
 		if (GameClient.Instance is not { } cli) { Fechar(); return; }
-		if (cli.Sheet.Imobilizado) { Fechar(); return; }
+		// A MESMA REGRA DO `LocalPlayer`: o morto DE PE no Outro Mundo medita (a tecla M dele responde);
+		// o `Imobilizado` cru (`KO || Morto`) fechava a telinha na cara do fantasma.
+		if (LocalPlayer.Caido(cli.Sheet)) { Fechar(); return; }
 		if (cli.Zone.Hash != _zonaDeAbertura.Hash) { Fechar(); return; }
 
 		// O ESTADO E VIVO: entrar em combate com a telinha aberta acende o aviso na hora, e a recusa

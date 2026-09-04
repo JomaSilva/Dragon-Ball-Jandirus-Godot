@@ -48,7 +48,7 @@ namespace Jandirus.Client;
 /// ============================ O ROTEIRO, E O PORQUE DE CADA PARADA ============================
 ///   1. os dois VIVOS, lado a lado          -- a foto de controle. Sem ela, "tem um circulo amarelo
 ///                                             na tela" nao prova nada: podia estar sempre la.
-///   2. o CADAVER caido no berco, SEM auréola -- os 15 s de `Alem.MsNoChao`, e o unico instante em
+///   2. o CADAVER caido no berco, SEM auréola -- os 2 s de `Alem.MsNoChao`, e o unico instante em
 ///                                             que o morto e o vivo aparecem no MESMO quadro sem que
 ///                                             ninguem tenha teleportado. **Esta parada era o bug do
 ///                                             dono** (*"o corpo q fica no MAPA DOS VIVOS deveria ser
@@ -244,7 +244,7 @@ public partial class RoboDeMorteVista : Node
 		// cadaver e pra afirmar que o cadaver **nao** tem auréola.
 		//
 		// Enquanto a auréola acendia junto com `Ficha.dead` isso funcionava por acidente. Com o
-		// conserto (`Alem.TemAureola` = morto **e ja viajou**) o pacote passou a sair 15 s depois, na
+		// conserto (`Alem.TemAureola` = morto **e ja viajou**) o pacote passou a sair 2 s depois, na
 		// VIAGEM, e a rodada inteira ficou muda: houve morte de verdade (o proprio morto anotou
 		// `morto=1` em t=40,3s e acordou no 'Afterlife'), a bancada nunca tirou as fotos 2 e 2b, e o
 		// placar leu *"NAO CONSEGUI MATAR no combate em 150 s"*. **A linha que mede "o cadaver nao tem
@@ -336,7 +336,7 @@ public partial class RoboDeMorteVista : Node
 	/// <summary>
 	/// Quantos segundos depois de CHEGAR no alem o morto tenta decolar.
 	///
-	/// Nao e numero redondo: a viagem so acontece aos 15 s (`Alem.MsNoChao`), e no Outro Mundo nao
+	/// Nao e numero redondo: a viagem so acontece aos 2 s (`Alem.MsNoChao`), e no Outro Mundo nao
 	/// ha mais volta automatica (a saida e paga: esferas, tecnica, Enma) -- quem da o prazo e o
 	/// olhador, que pede o `admin_reviver` depois da foto do voo (12 s no minimo, 34 s no maximo,
 	/// ver `PassoDoOlhador`). O voo precisa caber ANTES desse pedido, e o olhador precisa ter tempo
@@ -540,7 +540,7 @@ public partial class RoboDeMorteVista : Node
 				// ---------- A MORTE, PELO LADO DE QUEM MORREU ----------
 				// Meio segundo de cadencia porque o despejo do outro processo tambem e de meio segundo:
 				// ler mais rapido so gasta disco, e ler mais devagar atrasa a foto do cadaver dentro de
-				// uma janela que tem 15 s no total (`Alem.MsNoChao`).
+				// uma janela que tem 2 s no total (`Alem.MsNoChao`).
 				_proximaEscuta -= delta;
 				if (_proximaEscuta <= 0)
 				{
@@ -595,11 +595,13 @@ public partial class RoboDeMorteVista : Node
 				// com os dois bonecos empilhados: o meu corpo cobre o dele, e a auréola dele parece
 				// estar sobre a MINHA cabeca. E o mesmo defeito de enquadramento que o `admin_ir`
 				// produz do outro lado -- e a mesma correcao: dar dois passos pra tras.
-				if (_relogio < _morreuEm + 3.5) { Segurar("move_up", true); Segurar("move_right", true); break; }
+				// REANCORADO EM `MsNoChao` (2026-09-04, de 15 s pra 2 s): dois passos pra tras em 40% da
+				// janela, a foto em 60% dela -- antes da viagem, que e o que esta foto quer ver.
+				if (_relogio < _morreuEm + Alem.MsNoChao / 1000.0 * 0.4) { Segurar("move_up", true); Segurar("move_right", true); break; }
 				Parar();
 				// Segunda foto do caido: a primeira sai no quadro da morte, com a pose de golpe ainda
 				// no ar e os dois corpos colados. Esta pega o corpo assentado, e de longe.
-				if (_relogio >= _morreuEm + 5.0 && _fotosDoCaido < 2)
+				if (_relogio >= _morreuEm + Alem.MsNoChao / 1000.0 * 0.6 && _fotosDoCaido < 2)
 				{
 					_fotosDoCaido++;
 					Fotografar("user://morte-2b-cadaver-assentado.png",
@@ -607,7 +609,7 @@ public partial class RoboDeMorteVista : Node
 							   PontosDosDois());
 					Conferir(VisualAlheio() is { } vc && !vc.AureolaVisivelDeTeste,
 							 "CAIDO NO BERCO, longe de mim: NAO ha auréola sobre a cabeca dele "
-						   + "(os 15 s de `Alem.MsNoChao` sao o cadaver, e a auréola so vem na viagem)");
+						   + "(os 2 s de `Alem.MsNoChao` sao o cadaver, e a auréola so vem na viagem)");
 					ONaoAmareloNaFoto("com o corpo assentado e o vivo a dois passos");
 
 					// A FOTO DO INSTANTE, guardada pra 2c: pra onde o corpo dele esta deitado e com que
@@ -633,7 +635,7 @@ public partial class RoboDeMorteVista : Node
 					Vector2[] pontos = _idDoCadaver != 0 && World.Instancia?.PosicaoDesenhadaDe(_idDoCadaver) is { } pc
 						? [pc, .. PontosDosDois()] : PontosDosDois();
 					Fotografar("user://morte-2c-cadaver-trocado.png",
-							   "2/5 (ter) -- o CADAVER que ficou depois da troca dos 15 s: mesmo angulo, mesmas feridas",
+							   "2/5 (ter) -- o CADAVER que ficou depois da troca dos 2 s: mesmo angulo, mesmas feridas",
 							   pontos);
 
 					CharacterVisual? vCad = _idDoCadaver != 0 && World.Instancia?.CorpoDeTeste(_idDoCadaver) is { } nc
@@ -651,10 +653,10 @@ public partial class RoboDeMorteVista : Node
 					Conferir(vCad != null && !vCad.AureolaVisivelDeTeste, "...e sem auréola (ela viajou com a pessoa)");
 				}
 
-				// A VIAGEM acontece aos 15 s (`Alem.MsNoChao`). Peco o `admin_ir` depois disso, e
+				// A VIAGEM acontece aos 2 s (`Alem.MsNoChao`). Peco o `admin_ir` depois disso, e
 				// insisto: se eu pedir antes, eu vou parar no berco, do lado do cadaver. A foto 2c sai
-				// nos 16,5 s, entre a troca e a partida.
-				if (_relogio >= _morreuEm + 18) { _fase = Fase.Seguindo; _pediuIr = false; }
+				// nos 3,5 s, entre a troca e a partida.
+				if (_relogio >= _morreuEm + Alem.MsNoChao / 1000.0 + 3.0) { _fase = Fase.Seguindo; _pediuIr = false; }
 				break;
 
 			case Fase.Seguindo:
@@ -709,7 +711,7 @@ public partial class RoboDeMorteVista : Node
 	private float _rotacaoAoCair = float.NaN;
 	private Jandirus.Core.Combat.MascaraDeFeridas _feridasAoCair;
 
-	/// <summary>O id do CADAVER (o corpo novo que fica aos 15 s) -- resolvido pelo nome, em 2c.</summary>
+	/// <summary>O id do CADAVER (o corpo novo que fica aos 2 s) -- resolvido pelo nome, em 2c.</summary>
 	private int _idDoCadaver;
 
 	private void ComecarAPancada(GameClient cli)
@@ -952,7 +954,7 @@ public partial class RoboDeMorteVista : Node
 	/// ============================ E O CONTRASTE COM O NOCAUTE MUDOU DE LUGAR, NAO SUMIU ============================
 	/// Aqui morava a linha do `_viOKoSemAureola` -- "KO e morte sao coisas diferentes e o desenho
 	/// separa as duas". **Neste instante ele nao separa mais, e isso e o desenho e nao um buraco**: um
-	/// cadaver e um nocauteado sao IGUAIS na tela pelos 15 s, exatamente como no original (la o corpo
+	/// cadaver e um nocauteado sao IGUAIS na tela pelos 2 s, exatamente como no original (la o corpo
 	/// caido nem e mais o mob). Quem separa os dois e o tempo: o nocauteado levanta, o cadaver sobe.
 	/// A prova do contraste foi pro <see cref="AAureolaSobreviveuAViagem"/>, que e onde ela existe.
 	/// ==========================================================================================================
@@ -983,7 +985,7 @@ public partial class RoboDeMorteVista : Node
 
 		// ============================ A LINHA QUE VEIO DO OUTRO LADO ============================
 		// Ela morava no instante da morte, e la ela nao prova mais nada (cadaver e nocauteado sao
-		// iguais na tela por 15 s, por desenho). AQUI ela prova o que sempre quis provar: existe UM
+		// iguais na tela por 2 s, por desenho). AQUI ela prova o que sempre quis provar: existe UM
 		// desenho neste jogo que so um morto-que-ja-viajou tem, e nenhum nocauteado teve.
 		// ====================================================================================
 		Conferir(_viOKoSemAureola,

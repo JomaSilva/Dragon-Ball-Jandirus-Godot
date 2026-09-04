@@ -21,7 +21,7 @@ namespace Jandirus.Server;
 /// achou foi um defeito que apagava o pedido inteiro:
 ///
 ///     **o `IrProAlem` nunca rearmava o `RelogioDaMorte`.** O campo continuava com o vencimento dos
-///     15 s, ja passado; no tique seguinte (33 ms) a triagem chamava o `PassoDaMorte` de novo, o
+///     2 s, ja passado; no tique seguinte (33 ms) a triagem chamava o `PassoDaMorte` de novo, o
 ///     corpo ja estava no alem, e o `Renascer` disparava. O jogador via o Outro Mundo por UM QUADRO,
 ///     enquanto o log anunciava "60s ate voltar a vida". `Alem.MsNoAlem` estava escrita, documentada
 ///     em vinte linhas, e o unico consumidor dela era essa mensagem.
@@ -118,6 +118,7 @@ public partial class GameServer
 			OQueSePodeFazerMorto(pl);
 			DoAlemNaoSeSaiAndando(pl);
 			OEnmaEAVoltaPaga(pl);
+			OFantasmaRegeneraLutaEMorreDeNovo(pl);
 			OCorpoQueFicaEOPrecoDoRevive(pl, forjados);
 
 			AfirmarAlem("a bancada chegou ao fim (sem esta linha, abortar no meio reportaria '0 falhas')",
@@ -130,6 +131,7 @@ public partial class GameServer
 		finally
 		{
 			EscutaDeAvisos = escutaAntes;
+			MortoNaoRegeneraDeTeste = false;
 
 			foreach (ServerPlayer f in forjados)
 			{
@@ -248,7 +250,7 @@ public partial class GameServer
 					!pl.Ficha.train && !pl.Ficha.med);
 		AfirmarAlem("...e ela SOZINHA arma o relogio (o gancho `AoMorrer` esta instalado)",
 					pl.RelogioDaMorte >= antes + Alem.MsNoChao, $"{pl.RelogioDaMorte - antes} ms");
-		AfirmarAlem("...com o prazo do CADAVER, os 15 s ate subir (e nao 'nunca', que e o do alem)",
+		AfirmarAlem("...com o prazo do CADAVER, os 2 s ate subir (e nao 'nunca', que e o do alem)",
 					pl.RelogioDaMorte - antes < Alem.MsNoChao + 1000, $"{pl.RelogioDaMorte - antes} ms");
 
 		// E MORRER DE NOVO NAO REARMA. `Morrer()` sai na primeira linha quando `dead` ja e verdadeiro
@@ -400,7 +402,7 @@ public partial class GameServer
 
 		ZoneKey antes = pl.Zone;
 		long marcado = NowMs();
-		PassoDaMorte(pl);   // vence o prazo dos 15 s
+		PassoDaMorte(pl);   // vence o prazo dos 2 s
 
 		AfirmarAlem("A MORTE LEVA PRO OUTRO MUNDO -- o pedido do dono",
 					pl.Zone.Name == Alem.ZonaDoOutroMundo, $"{antes.Name} -> {pl.Zone.Name}");
@@ -410,11 +412,10 @@ public partial class GameServer
 		AfirmarAlem("...e ele continua MORTO (a viagem nao e um revive)", pl.Ficha.dead);
 		AfirmarAlem("...DE PE, como o `Un_KO()` do DM (`Death.dm:89`)",
 					pl.MortoDePe && !pl.Deitado);
-		AfirmarAlem("...FERIDO COMO CAIU: o braco decepado continua decepado -- divergencia DECLARADA do "
-					+ "`RegrowLimb` na morte (`Death.dm:86-88`), a cura e da volta (pedido do dono)",
-					pl.Combate.Corpo.Achar("Braco direito") is { Decepado: true });
-		AfirmarAlem("...e a vida NAO subiu na viagem (o DM `SpreadHeal(100,1,1)` na morte; aqui nao)",
-					Math.Abs(pl.Ficha.HP - hpAntesDaViagem) < 0.01, $"{hpAntesDaViagem:0.##} -> {pl.Ficha.HP:0.##}");
+		AfirmarAlem("...INTEIRO: o braco decepado VOLTOU e a vida esta em 100 (`RegrowLimb` + `SpreadHeal(100,1,1)`, "
+					+ "`Death.dm:86-88,111` -- o dono: 'ao morrer voce acorda no outro mundo 100% curado de tudo')",
+					pl.Combate.Corpo.Achar("Braco direito") is { Decepado: false } && pl.Ficha.HP >= 99.99,
+					$"braco decepado={pl.Combate.Corpo.Achar("Braco direito")?.Decepado} hp {hpAntesDaViagem:0.##} -> {pl.Ficha.HP:0.##}");
 		AfirmarAlem("...e DE PE no Outro Mundo o passo e ACEITO: o morto ANDA (`Death.dm:104` `move = 1`)",
 					PodeMexerOCorpo(pl));
 		AfirmarAlem("...e o voo caiu na travessia (ninguem chega ao alem pairando)",
@@ -433,7 +434,7 @@ public partial class GameServer
 					pl.EnvAureola);
 
 		// ============================ O RELOGIO DA SEGUNDA ETAPA -- A FAMILIA QUE ACHOU O DEFEITO ============================
-		// Sem esta linha o campo ficava com o vencimento dos 15 s, JA PASSADO: o tique seguinte
+		// Sem esta linha o campo ficava com o vencimento dos 2 s, JA PASSADO: o tique seguinte
 		// chamava o `PassoDaMorte` de novo, o corpo ja estava no alem, e o `Renascer` disparava 33 ms
 		// depois de chegar. O Outro Mundo durava um quadro -- e o log dizia "60s ate voltar a vida".
 		// ========================================================================================================
@@ -544,7 +545,7 @@ public partial class GameServer
 					Alem.MortoDePe(true, Alem.ZonaDoOutroMundo)
 					&& Alem.MortoDePe(true, Alem.ZonaDoCeu)
 					&& Alem.MortoDePe(true, Alem.ZonaDoInferno));
-		AfirmarAlem("...e FORA dele nao (o cadaver dos 15 s fica no chao)",
+		AfirmarAlem("...e FORA dele nao (o cadaver dos 2 s fica no chao)",
 					!Alem.MortoDePe(true, "Earth") && !Alem.MortoDePe(false, Alem.ZonaDoOutroMundo));
 
 		// --- SEM ZENKAI: `if(dead) return` (`combatgains.dm:33`) ---
@@ -887,5 +888,140 @@ public partial class GameServer
 					$"{antes} -> {alma.Ficha.ResurrectedCount}");
 		AfirmarAlem("...e nao cobra vida nenhuma, mesmo a alma ja tendo voltado duas vezes",
 					!pl.Ficha.dead);
+	}
+
+	// =====================================================================
+	// 9. O FANTASMA: REGENERA, LUTA E "MORRE" DE NOVO
+	// =====================================================================
+	/// <summary>
+	/// ============================ O DONO, 2026-09-04 ============================
+	/// *"ao morrer voce acorda no outro mundo 100% curado de tudo, porem caso fique ferido no outro
+	/// mundo por lutas la, voce regenera normal fora de combate"* -- e, antes: *"morto a regeneracao
+	/// nunca acontece, o personagem fica parado pq ta mt ferido mas nunca recupera os membros"*.
+	///
+	/// Tres coisas, cada uma com o avesso ao lado:
+	///   * REGENERA fora de combate (e nao em combate, e nao com o defeito injetado, e o cadaver nao);
+	///   * LUTA: `PodeAtacar` de pe, e ele nao e cadaver pro filtro de alvo (o cadaver e recusado nos dois);
+	///   * "MORRE" DE NOVO sem morrer: `Death.dm:113-118` -- curado, mesa do Enma, `KO(20)`.
+	/// ==========================================================================
+	/// </summary>
+	private void OFantasmaRegeneraLutaEMorreDeNovo(ServerPlayer pl)
+	{
+		GD.Print("[alem] -- 9) o fantasma regenera, luta e 'morre' de novo --");
+		CombatState c = pl.Combate;
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		ZoneKey deOnde = pl.Zone;
+
+		// (montagem) vivo no berco -> morre -> viaja pelo caminho de producao. A energia da cura e a do
+		// vivo: fome e vigor acima do 1% que `Regeneracao.TemEnergia` cobra.
+		if (pl.Ficha.dead) { pl.Combate.Reviver(); pl.Ficha.dead = false; }
+		pl.Ficha.stamina = Math.Max(pl.Ficha.stamina, pl.Ficha.maxstamina * 0.5);
+		pl.Ficha.CurrentNutrition = Math.Max(pl.Ficha.CurrentNutrition, 50);
+		pl.Combate.Morrer(ignorarSeguro: true);
+		PassoDaMorte(pl);
+		AfirmarAlem("(montagem) o fantasma esta DE PE no Outro Mundo, inteiro",
+					pl.Ficha.dead && pl.MortoDePe && Alem.EhOAlem(pl.Zone) && pl.Ficha.HP >= 99.99,
+					$"morto={pl.Ficha.dead} dePe={pl.MortoDePe} zona={pl.Zone.Name} hp={pl.Ficha.HP:0.##}");
+		ServerPlayer? cadaver = ZoneList(deOnde.Hash).FirstOrDefault(o => o.Ficha.dead && !o.MortoDePe
+																	   && o.Name == Cadaver.NomeDo(pl.Name));
+		AfirmarAlem("(montagem) o cadaver ficou no mundo dos vivos", cadaver != null);
+
+		// ---- 9a) REGENERA fora de combate ----
+		BodyPart braco = c.Corpo.Achar("Braco esquerdo")!;
+		braco.Vida = braco.VidaMax * 0.2;
+		c.SincronizarVida();
+		double antes = braco.Vida;
+		c.EmCombate = 0;
+		for (int i = 0; i < 10; i++) RegenerarPassivo(pl, 0.5);
+		AfirmarAlem("FERIDO NO OUTRO MUNDO, o fantasma REGENERA fora de combate como um vivo "
+					+ "(o `pl.Ficha.dead` cru do `RegenerarPassivo` trancava tambem ele)",
+					braco.Vida > antes + 0.01, $"{antes:0.##} -> {braco.Vida:0.##}");
+
+		braco.Vida = braco.VidaMax * 0.2;
+		c.SincronizarVida();
+		antes = braco.Vida;
+		c.EmCombate = 10;
+		for (int i = 0; i < 10; i++) RegenerarPassivo(pl, 0.5);
+		AfirmarAlem("...e EM COMBATE nao (a MESMA regra do vivo, `Regeneracao.PodeCurar` -- nada de regra nova pra morto)",
+					Math.Abs(braco.Vida - antes) < 0.01, $"{antes:0.##} -> {braco.Vida:0.##}");
+		c.EmCombate = 0;
+
+		MortoNaoRegeneraDeTeste = true;
+		antes = braco.Vida;
+		for (int i = 0; i < 10; i++) RegenerarPassivo(pl, 0.5);
+		MortoNaoRegeneraDeTeste = false;
+		AfirmarAlem("(contraprova) com `MortoNaoRegeneraDeTeste` a cura do fantasma PARA -- a prova de cima e sensivel",
+					Math.Abs(braco.Vida - antes) < 0.01, $"{antes:0.##} -> {braco.Vida:0.##}");
+
+		if (cadaver != null)
+		{
+			BodyPart bracoDoCadaver = cadaver.Combate.Corpo.Achar("Braco esquerdo")!;
+			bracoDoCadaver.Vida = bracoDoCadaver.VidaMax * 0.2;
+			cadaver.Combate.SincronizarVida();
+			double antesCad = bracoDoCadaver.Vida;
+			cadaver.Combate.EmCombate = 0;
+			for (int i = 0; i < 10; i++) RegenerarPassivo(cadaver, 0.5);
+			AfirmarAlem("...enquanto o CADAVER dos 2 s NAO regenera: ele e a foto de como caiu (`EhCadaver`)",
+						Math.Abs(bracoDoCadaver.Vida - antesCad) < 0.01, $"{antesCad:0.##} -> {bracoDoCadaver.Vida:0.##}");
+		}
+		braco.Vida = braco.VidaMax;
+		c.SincronizarVida();
+
+		// ---- 9b) LUTA ----
+		AfirmarAlem("O FANTASMA PODE SOCAR (`PodeAtacar`): o `Death()` do DM nao olha `dead`, e o Outro Mundo "
+					+ "tem `Afterlife_Fighter` (`NPClist.dm:324`) pra brigar",
+					c.PodeAtacar());
+		AfirmarAlem("...e pode APANHAR: ele nao e cadaver pro filtro de alvo (`EhCadaver`)", !EhCadaver(pl));
+		AfirmarAlem("...enquanto o cadaver nao soca nem apanha (o avesso, no mesmo instante)",
+					cadaver != null && !cadaver.Combate.PodeAtacar() && EhCadaver(cadaver));
+
+		// ---- 9b') A TECLA C, O T E O M -- o dono: "movimentos, meditacao etc nao funcionam" ----
+		// `SabeReunir` le `MeditateGivesKiRegen` (o efeito do Ki Unlocked); liga-se o campo, e nao a skill,
+		// porque a skill so vira campo pelo `AplicarEfeitos` -- e o que se mede aqui e a tecla C do morto.
+		double reuniaAntes = pl.Ficha.MeditateGivesKiRegen;
+		if (reuniaAntes == 0) pl.Ficha.MeditateGivesKiRegen = 1;
+		Carregar(pl, true);
+		AfirmarAlem("O FANTASMA REUNE ENERGIA (tecla C): `Carregar` aceita o morto de pe -- o `dead` cru "
+					+ "do `Carregar`/`CargaDeKi.Passo` o deixava mudo",
+					pl.Carregando);
+		Carregar(pl, false);
+		if (cadaver != null)
+		{
+			double reuniaCad = cadaver.Ficha.MeditateGivesKiRegen;
+			if (reuniaCad == 0) cadaver.Ficha.MeditateGivesKiRegen = 1;
+			Carregar(cadaver, true);
+			AfirmarAlem("...e o cadaver nao (o avesso)", !cadaver.Carregando);
+			Carregar(cadaver, false);
+			cadaver.Ficha.MeditateGivesKiRegen = reuniaCad;
+		}
+		pl.Ficha.MeditateGivesKiRegen = reuniaAntes;
+
+		pl.Ficha.train = true;
+		AfirmarAlem("O FANTASMA TREINA (tecla T): a pose do morto de pe com `train` e `Treinando`, e nao `Nocauteado`",
+					pl.Pose(NowMs(), false) == Protocol.Pose.Treinando, pl.Pose(NowMs(), false).ToString());
+		pl.Ficha.train = false;
+		pl.Ficha.med = true;
+		AfirmarAlem("...e MEDITA (tecla M): pose `Meditando`",
+					pl.Pose(NowMs(), false) == Protocol.Pose.Meditando, pl.Pose(NowMs(), false).ToString());
+		pl.Ficha.med = false;
+
+		// ---- 9c) "MORRE" DE NOVO ----
+		Vec2 mesa = MesaDoEnma(alem);
+		pl.Pos = mesa + new Vec2(320, 0);
+		BodyPart cabeca = c.Corpo.Achar("Cabeca")!;
+		cabeca.Vida = 0;
+		c.SincronizarVida();
+		bool morreu = c.Morrer();
+		AfirmarAlem("'MORRER' DE NOVO NO OUTRO MUNDO NAO E MORTE (`Death.dm:113-118`, `else if(dead)`): "
+					+ "`Morrer` devolve falso e ele continua morto",
+					!morreu && pl.Ficha.dead);
+		AfirmarAlem("...e sai CURADO (`SpreadHeal(100,1,1)`), de volta na MESA DO ENMA (`loc=locate(187,104,6)`) "
+					+ "e em COMA de 2 s (`KO(20)`)",
+					cabeca.Vida >= cabeca.VidaMax - 0.01 && Vec2.Distance(pl.Pos, mesa) < 1f
+					&& pl.Ficha.KO && c.NocauteRestante > 1.5 && c.NocauteRestante <= Alem.SegundosDeComaDoMortoDeNovo + 0.01,
+					$"cabeca {cabeca.Vida:0.##}/{cabeca.VidaMax:0.##} dist {Vec2.Distance(pl.Pos, mesa):0.#} KO={pl.Ficha.KO} resta {c.NocauteRestante:0.##}");
+		c.Levantar();
+
+		if (cadaver != null) DesfazerOCadaver(cadaver);
 	}
 }

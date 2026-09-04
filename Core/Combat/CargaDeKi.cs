@@ -133,7 +133,9 @@ public static class CargaDeKi
 	public static EstagioDaCarga Passo(Fighter f, double dt, bool mexendo)
 	{
 		if (dt <= 0 || !SabeReunir(f)) return EstagioDaCarga.Nada;
-		if (f.KO || f.dead) return EstagioDaCarga.Nada;
+		// `f.dead` SAIU DAQUI (2026-09-04), como no `Regeneracao.Tique`: quem sabe se um morto e cadaver
+		// ou fantasma de pe e o servidor (`EhCadaver`, pela zona). O nocaute continua sendo do corpo.
+		if (f.KO) return EstagioDaCarga.Nada;
 
 		// ============================ O FROST MUTANTE COM O KI SOLTO NAO REUNE NADA ============================
 		// `Power Control.dm:141`: *"MUTANT FROST com ki descontrolado: nao carrega energia nem sobe

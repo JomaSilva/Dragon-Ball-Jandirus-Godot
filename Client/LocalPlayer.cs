@@ -330,6 +330,7 @@ public partial class LocalPlayer : Node2D
 		// A velocidade vem da FICHA que o servidor calculou. Andar mais rapido do que ele
 		// concedeu so gera correcao, entao nao existe motivo pra divergir.
 		cli.SheetUpdated += OnSheet;
+		cli.ZoneChanged += OnZone;
 		if (cli.Sheet.SpeedStat > 0) SpeedStat = cli.Sheet.SpeedStat;
 	}
 
@@ -338,6 +339,7 @@ public partial class LocalPlayer : Node2D
 		if (GameClient.Instance is not { } cli) return;
 		cli.Corrected -= OnCorrected;
 		cli.SheetUpdated -= OnSheet;
+		cli.ZoneChanged -= OnZone;
 	}
 
 	private void OnSheet(SheetState ficha)
@@ -345,8 +347,8 @@ public partial class LocalPlayer : Node2D
 		if (ficha.SpeedStat > 0) SpeedStat = ficha.SpeedStat;
 		if (ficha.SocoMs > 0) _cadencia = ficha.SocoMs / 1000.0;
 		if (ficha.Empurrado && !_empurrado) _alvoDoVoo = _pos;   // comeca o voo de onde estou
-		_caido = ficha.Imobilizado;
-		_deitado = EstouDeitado(ficha);
+		_ultimaFicha = ficha;
+		_caido = Caido(ficha);
 		// O ANGULO DO CORPO DEITADO VEM DO SERVIDOR, e SO daqui -- 2 bits no Estado, aplicados a CADA
 		// pacote, como o `RemotePlayer` faz com o snapshot. Ter duas fontes (o `_facing` local e o do
 		// servidor) foi o defeito que o dono fotografou nas duas telas, e depois o corpo "girando
@@ -364,7 +366,7 @@ public partial class LocalPlayer : Node2D
 		// diferentes -- ver `CharacterVisual.VoarPara`.
 		var dir = (Facing)((ficha.Estado >> 6) & 3);
 		_dirDoCorpo = dir;   // a folha do voo tambem sai daqui -- ver _Process
-		if (_deitado) _visual.DeitarPor(dir);
+		if (_caido) _visual.DeitarPor(dir);
 		// O PUXAO DA FUSAO NAO GIRA O CORPO. Ele e dirigido pelo servidor como o arremesso (mesmo bit
 		// `Empurrado`, mesma correcao, mesmo deslize), mas quem esta sendo puxado pro outro esta DE PE
 		// -- com a rotacao do arremesso, dois lutadores atraidos no eixo vertical apareceriam de cabeca
@@ -388,37 +390,43 @@ public partial class LocalPlayer : Node2D
 	}
 
 	/// <summary>Nocauteado ou morto: o servidor recusa qualquer passo, entao aqui nem se tenta.</summary>
+	/// <summary>
+	/// ============================ "NAO POSSO AGIR" E "ESTOU NO CHAO" SAO A MESMA COISA -- E OLHAM A ZONA ============================
+	/// Ja foram duas: a pose (`_deitado`) aprendeu a olhar a zona quando o dono se viu deitado no Outro
+	/// Mundo, e `_caido` ficou no `SheetState.Imobilizado` cru (`KO || Morto`) "de proposito, porque quem
+	/// recusa o passo do morto e o servidor". O servidor deixou de recusar em 2026-09-04 (o morto de pe
+	/// anda, corre, luta, treina) e o cliente ficou pra tras: *"quando o personagem morre ele nao
+	/// consegue se mover no outro mundo, so os menus abrem, mas movimentos, meditacao etc nao
+	/// funcionam"* -- o `if (_caido)` do `LerAcoes` retornava antes de ler qualquer tecla.
+	///
+	/// Agora e UMA regra, a do servidor, lida da MESMA funcao (<see cref="Caido"/> -> `Alem.MortoDePe`,
+	/// que e a mesma que `ServerPlayer.Deitado` e `PodeMexerOCorpo` perguntam): caido = nocauteado, ou
+	/// morto FORA do Outro Mundo (o cadaver dos 2 s). O `Empurrado` (o arremesso) continua tendo tabela
+	/// propria, que e o `TiquesDeVoo` do outro lado.
+	///
+	/// E ELA E REAVALIADA NA TROCA DE ZONA (<see cref="OnZone"/>), nao so na ficha: a viagem pro Outro
+	/// Mundo muda a resposta sem mudar um bit da ficha, e uma ficha que so chega "quando algum numero
+	/// mexeu" deixaria o fantasma preso ate o proximo pacote.
+	/// ==============================================================================================================
+	/// </summary>
 	private bool _caido;
 
-	/// <summary>
-	/// ============================ "NAO POSSO AGIR" E "ESTOU NO CHAO" SAO DUAS COISAS ============================
-	/// Eram uma so -- <see cref="SheetState.Imobilizado"/> (`KO || Morto`) mandava nas duas -- e a
-	/// morte virou um PERCURSO no meio do caminho: hoje um morto pode estar **de pe**, andando no
-	/// Outro Mundo (`Alem.MortoDePe`, o `spawn Un_KO()` que o `Death.dm:89` faz ANTES de mover).
-	///
-	/// Com uma so, o dono da tela via a si mesmo DEITADO no Outro Mundo -- corpo girado 90 graus,
-	/// sprite `ko`, e a auréola desenhada AO LADO da cabeca (a folha tem um estado `ko` proprio, que
-	/// e o desenho pra um corpo caido) -- enquanto o servidor (`ServerPlayer.Pose`/`Deitado`) e TODAS
-	/// as outras telas o desenhavam de pe com a auréola sobre a cabeca. As duas telas discordando
-	/// sobre o mesmo corpo, que e a familia de defeito que este port ja pagou duas vezes (o corpo
-	/// girando no arremesso, a chama do vizinho).
-	///
-	/// A REGRA E A DO SERVIDOR, LIDA DA MESMA FUNCAO -- nao ha copia aqui: `Alem.MortoDePe` mora no
-	/// `Core` e e a mesma que o `ServerPlayer.Deitado` pergunta. O `Empurrado` (o arremesso) continua
-	/// tendo tabela propria, que e o `TiquesDeVoo` do outro lado.
-	///
-	/// **`_caido` NAO MUDOU**, e isso e deliberado: quem recusa o passo do morto e o servidor
-	/// (`PodeMexerOCorpo` tem `!dead`), e deixar o cliente tentar andar so produziria correcao de
-	/// posicao -- o elastico. Aqui mudou o DESENHO, que era o que estava mentindo.
-	/// ========================================================================================================
-	/// </summary>
-	private bool _deitado;
+	/// <summary>A ultima ficha que chegou, pra <see cref="OnZone"/> reavaliar <see cref="_caido"/> quando so a zona muda.</summary>
+	private SheetState? _ultimaFicha;
+
+	/// <summary>Só bancada: o corpo local se da por caido (nao le teclas de acao nem de passo)?</summary>
+	public bool CaidoDeTeste => _caido;
+
+	private void OnZone(ZoneKey zona, Vec2 onde)
+	{
+		if (_ultimaFicha is { } f) _caido = Caido(f);
+	}
 
 	/// <summary>
 	/// O <see cref="ServerPlayer.Deitado"/> do lado de ca, menos o arremesso (que ja tem caminho
-	/// proprio logo acima). Ver <see cref="_deitado"/>.
+	/// proprio logo acima). Ver <see cref="_caido"/>.
 	/// </summary>
-	private static bool EstouDeitado(SheetState f) =>
+	public static bool Caido(SheetState f) =>
 		f.KO || (f.Morto && !Jandirus.Core.World.Alem.MortoDePe(true, GameClient.Instance?.Zone.Name ?? ""));
 
 	/// <summary>
@@ -1020,7 +1028,7 @@ public partial class LocalPlayer : Node2D
 		{
 			// caido: a guarda cai junto, e a pose vem do servidor como qualquer outra
 			if (_guarda) { _guarda = false; GameClient.Instance?.SendGuard(false); }
-			// O SPRITE DE NOCAUTE SO PRA QUEM ESTA MESMO NO CHAO -- ver `_deitado`.
+			// O SPRITE DE NOCAUTE SO PRA QUEM ESTA MESMO NO CHAO -- ver `_caido`.
 			//
 			// ============================ E O DE PE PRECISA SER ESCRITO, NAO BASTA NAO ESCREVER ============================
 			// `SetMotion` (que roda todo quadro, la em cima) so mexe em DIRECAO e "esta andando"; quem
@@ -1028,12 +1036,12 @@ public partial class LocalPlayer : Node2D
 			// morto que caiu na Terra e depois subiu pro Outro Mundo passaria a estadia inteira com o
 			// sprite de nocaute na PROPRIA tela (e girado 90 graus, e com a auréola desenhada AO LADO
 			// da cabeca, que e o que a folha desenha pro estado `ko`) enquanto todas as outras telas o
-			// mostravam de pe. Ver `_deitado`.
+			// mostravam de pe. Ver `_caido`.
 			//
 			// `PorAPoseDoCorpo` e o MESMO chooser do corpo acordado: ele cobre o voo e o nado, que um
 			// `SetState("default")` cravado aqui perderia -- e no alem se anda voando.
 			// ========================================================================================================
-			if (_deitado) _visual.SetState("ko");
+			if (_caido) _visual.SetState("ko");
 			else PorAPoseDoCorpo();
 			return;
 		}
@@ -1123,7 +1131,7 @@ public partial class LocalPlayer : Node2D
 	/// ============================ POR QUE ELA VIROU FUNCAO ============================
 	/// Ela era o fim do <see cref="LerAcoes"/>, e o `if (_caido)` de la em cima RETORNA antes de
 	/// chegar aqui. Isso estava certo enquanto "caido" e "morto" eram a mesma coisa; hoje um morto
-	/// pode estar **de pe** no Outro Mundo (ver <see cref="_deitado"/>), e ele precisa da mesma pose
+	/// pode estar **de pe** no Outro Mundo (ver <see cref="_caido"/>), e ele precisa da mesma pose
 	/// de sempre -- inclusive a de VOO, que e como se anda por la.
 	///
 	/// Sem esta chamada o `SetState` fica pegajoso: quem caiu na Terra em `ko` e depois subiu passa a

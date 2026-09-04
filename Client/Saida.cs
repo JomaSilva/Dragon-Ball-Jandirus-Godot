@@ -48,6 +48,21 @@ public static class Saida
         _saindo = true;
         GD.Print($"[saida] fechando o jogo ({motivo})");
 
+        // ============================ O AQUECIMENTO PRIMEIRO -- o travamento do lobby ============================
+        // O lobby pede 284 recursos ao `ResourceLoader.LoadThreadedRequest` nos primeiros ~2,3 s
+        // (`Aquecimento`). Fechar com essas cargas ainda no ar derruba a arvore por cima de um
+        // carregador que esta lendo em outra thread: o tileset sai com "Parse Error", 380 RIDs vazam
+        // -- e na maquina do dono o processo simplesmente parou de responder (AppHangB1 no Event Log,
+        // tres vezes em 2026-09-04, todas com o X apertado nos primeiros segundos do lobby, antes de
+        // a linha `[aquece]` sair; *"fechar o jogo no menu/lobby o jogo crasha ao inves de fechar"*).
+        //
+        // `Concluir` ESPERA o que falta (`LoadThreadedGet` bloqueia ate cada item voltar): no pior
+        // caso os ~2 s do aquecimento inteiro, e depois do aquecimento e um retorno imediato. Fora do
+        // `try` de proposito: ele nao lanca, e um lobby que ainda esta carregando nao tem servidor
+        // nem cliente pra desligar. Medido pela `--diagsaida --saidalobby <s>` (`RoboDeSaida`).
+        // ==========================================================================================================
+        Aquecimento.Concluir();
+
         try
         {
             if (Jandirus.Server.GameServer.Instance is { Running: true } srv)

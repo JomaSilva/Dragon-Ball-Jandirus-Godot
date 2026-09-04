@@ -100,7 +100,7 @@ public partial class GameServer
 		// `RestaurarDaMente` reescreve `dead = f.Morto` -- o estado com que a pessoa ENTROU, que e
 		// sempre "viva" (`EntrarNaMente` recusa quem esta caido ou morto).
 		//
-		// Ou seja: quando o prazo dos 15 s vencer, `pl.Ficha.dead` ja e falso ha 15 s e o
+		// Ou seja: quando o prazo do cadaver vencer, `pl.Ficha.dead` ja e falso ha 2 s e o
 		// `PassoDaMorte` nem e alcancado. E o `MindMeditate.dm:448` -- *"morte MENTAL nao e real"* --
 		// funcionando pelo caminho que o port ja tinha, e nao por um `if (NaMente(pl))` novo aqui.
 		//
@@ -227,7 +227,7 @@ public partial class GameServer
 		// O RELOGIO E REARMADO E NAO DESLIGADO, e a diferenca importa: `RelogioDaMorte = long.MaxValue`
 		// (o que a triagem faz com corpo sem dono) mataria a pergunta pra sempre, e a condicao do DM e
 		// **continua** -- ela precisa ser refeita enquanto o Ki cai. Rearmando pelo mesmo
-		// `Alem.MsNoChao`, a triagem volta aqui a cada 15 s e reavalia, sem laco proprio e sem campo
+		// `Alem.MsNoChao`, a triagem volta aqui a cada `MsNoChao` (2 s) e reavalia, sem laco proprio e sem campo
 		// novo. O `prob(5)` por tique do original vira "vence o prazo com o Ki ja embaixo", que e a
 		// mesma coisa vista de longe: uma demora curta e aleatoria depois de o gatilho armar.
 		//
@@ -240,7 +240,7 @@ public partial class GameServer
 		// propria, e nao de carona num verb de cargo.
 		//
 		// O QUE O VERB ENTREGA MESMO ASSIM, e nao e pouco: o corpo **fica onde caiu**, no mundo dos
-		// vivos, em vez de sumir pro Outro Mundo em 15 s. E isso muda uma coisa concreta e ligada
+		// vivos, em vez de sumir pro Outro Mundo em 2 s. E isso muda uma coisa concreta e ligada
 		// nesta mesma sessao: o `Revive` (racial e de cargo) so alcanca um morto ADJACENTE, e um morto
 		// que ja viajou esta fora do alcance de qualquer um. `Keep_Body` e o que da aos amigos a
 		// janela pra trazer a pessoa de volta.
@@ -328,7 +328,7 @@ public partial class GameServer
 		// ============================ E O CORPO FICA -- `GenerateCorpse()` (`Death.dm:66`) ============================
 		// **A UNICA LINHA NOVA QUE O CADAVER CUSTOU AO CAMINHO DA MORTE.** O DM ergue o `/obj/mobCorpse`
 		// no passo 5 e viaja no 11, dentro do mesmo `Death()`: dois objetos, e quem viaja e o MOB. Aqui
-		// e igual, so que os dois passos estao a 15 s de distancia em vez de 2 -- por isso o corpo e
+		// e igual, e os dois passos estao a 2 s de distancia, como la (`MsNoChao`) -- por isso o corpo e
 		// deixado AGORA, no instante da partida, e nao no da morte: quinze segundos de dois corpos
 		// empilhados no mesmo ponto seriam duas caixas de colisao, dois alvos de soco e o nome do morto
 		// aparecendo duas vezes na zona. Ver o cabecalho de `GameServer.Cadaver.cs`.
@@ -343,6 +343,16 @@ public partial class GameServer
 		// que o dono relatou, agora fechado dos dois lados.
 		// ==========================================================================================================
 		DeixarOCadaver(pl);
+
+		// ============================ A CHEGADA CURA -- `Death.dm:86-88` + `:111` ============================
+		// `RegrowLimb` em cada membro decepado e `SpreadHeal(100,1,1)` na linha do `loc =`: o morto acorda
+		// INTEIRO no Outro Mundo. (Esta linha saiu por um dia, lida como reclamacao; o dono esclareceu em
+		// 2026-09-04: *"ao morrer voce acorda no outro mundo 100% curado de tudo, porem caso fique ferido
+		// no outro mundo por lutas la, voce regenera normal fora de combate"*.) O cadaver que ficou,
+		// logo acima, e uma COPIA: ele guarda as feridas e o angulo da queda -- e por isso a cura vem
+		// DEPOIS do `DeixarOCadaver`, e nao antes.
+		// ==================================================================================================
+		if (pl.Combate is { } cura) { cura.Corpo.Restaurar(); cura.SincronizarVida(); MandarFeridas(pl); }
 
 		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
 		MoveToZone(pl.Id, alem, MesaDoEnma(alem));
@@ -360,17 +370,8 @@ public partial class GameServer
 		// ==================================================================================================================
 		pl.RelogioDaMorte = long.MaxValue;
 
-		// ============================ A MORTE NAO CURA MAIS ============================
-		// O DM cura 100% e devolve os membros JA NA MORTE (`Death.dm:86-88` `RegrowLimb`, `:111`
-		// `SpreadHeal(100,1,1)`), e este port copiava (`Corpo.Restaurar()` aqui). Divergencia
-		// DECLARADA, pedida pelo dono (2026-09-04): o morto sobe pro Outro Mundo com os ferimentos e
-		// os membros com que caiu -- a cura e o que a VOLTA A VIDA entrega (as esferas, a tecnica, o
-		// Enma: `Renascer`/`Ressuscitar`), e nao um premio por morrer. O fantasma anda de qualquer
-		// jeito: perna nenhuma pesa no passo deste port (`MoveRules` nao le membro), e o `TickDeRegen`
-		// nao regenera morto -- as feridas ficam como estavam ate alguem pagar.
-		// ==================================================================================
 
-		Avisar(pl, "o chão some sob você. Você abre os olhos no Outro Mundo, ferido como caiu -- e morto."
+		Avisar(pl, "o chão some sob você. Você abre os olhos no Outro Mundo, inteiro -- e morto."
 				 + " Uma auréola se acende sobre a sua cabeça.");
 
 		// ============================ E SE O SEU MUNDO ACABOU, A ESCOLHA FICA ABERTA ============================
@@ -386,6 +387,26 @@ public partial class GameServer
 		OferecerORefugio(pl, podeAbrir: true);
 		GD.Print($"[server] {pl.Name} MORREU e foi pro Outro Mundo"
 				 + " (fica la ate alguem pagar a volta)");
+	}
+
+	/// <summary>
+	/// O FANTASMA CAIU DE VEZ NO OUTRO MUNDO -- o `else if(dead)` do `Death()` (`Death.dm:113-118`):
+	/// `move=1`, `loc=locate(187,104,6)`, `SpreadHeal(100,1,1)`, `KO(20)`. Nao e uma morte: `Morrer`
+	/// devolveu falso, `AoMorrer` nao disparou, nada e contado nem cobrado. Ele e curado, posto de volta
+	/// na mesa do Enma e fica em coma por <see cref="Alem.SegundosDeComaDoMortoDeNovo"/>; o `Levantar`
+	/// do tique o ergue sozinho. Chega aqui pelo gancho `CombatState.AoMorrerDeNovo`.
+	/// </summary>
+	private void MorrerDeNovoNoAlem(ServerPlayer pl)
+	{
+		if (!pl.MortoDePe || pl.Combate is not { } c) return;
+		c.Corpo.Restaurar();
+		c.SincronizarVida();
+		MandarFeridas(pl);
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		MoveToZone(pl.Id, alem, MesaDoEnma(alem));
+		c.Nocautear(Alem.SegundosDeComaDoMortoDeNovo);
+		Avisar(pl, "você desaba -- e acorda de novo na mesa do Enma, inteiro. Um morto não morre duas vezes.");
+		GD.Print($"[server] {pl.Name} caiu de vez no Outro Mundo: curado, de volta a mesa do Enma, em coma por {Alem.SegundosDeComaDoMortoDeNovo:0.#} s");
 	}
 
 	/// <summary>

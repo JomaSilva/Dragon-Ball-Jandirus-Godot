@@ -83,8 +83,11 @@ public partial class RoboDeColisao : Node
 	private const int PAssentar = 0, PMontar = 1, PA_Antes = 2, PA_Colidir = 3,
 					  PA_Ocupado = 11, PA_Livre = 12,
 					  PB_Pegar = 4, PB_Subir = 5,
-					  PC_Matar = 6, PC_Cadaver = 7, PC_Enterrar = 8, PC_Depois = 9,
+					  PC_Matar = 6, PC_Cadaver = 7, PC_Enterrar = 8, PC_Escrever = 13, PC_Depois = 9,
 					  PFim = 10;
+
+	/// <summary>O que a bancada escreve na lapide -- e o que a C2 tem que ler de volta.</summary>
+	private const string EpitafioDaBancada = "Aqui jaz o alvo da bancada, que caiu pra provar a colisao";
 
 	public override void _Process(double delta)
 	{
@@ -109,6 +112,7 @@ public partial class RoboDeColisao : Node
 			case PC_Matar: C_Matar(srv, cli); break;
 			case PC_Cadaver: C_Cadaver(srv, cli, mundo); break;
 			case PC_Enterrar: C_Enterrar(srv, cli); break;
+			case PC_Escrever: C_Escrever(srv, cli); break;
 			case PC_Depois: C_Depois(srv, cli, mundo); break;
 			default: Fechar(); break;
 		}
@@ -490,14 +494,42 @@ public partial class RoboDeColisao : Node
 	{
 		if (_t < 0.5) return;
 
-		// ============================ O ENTERRO SAI DO CLIENTE, PELO VERBO DO MENU ============================
-		// `SendVerbo("enterrar")` e literalmente o que o botao "Enterrar" do menu da tecla E manda
-		// (`MenuDeInteracao` -> `GameClient.SendVerbo` -> `ComandoDeInteracao`). Chamar o `Enterrar` do
-		// servidor daqui pularia o pacote, o alcance e o `PodeMexerOCorpo` -- ou seja, provaria a funcao
-		// e nao o botao.
+		// ============================ O ENTERRO SAI DO MENU DA TECLA E, DE VERDADE ============================
+		// Antes esta bancada mandava `SendVerbo("enterrar")` na mao, "o mesmo pacote do botao". Deixou de
+		// ser o mesmo em 2026-09-04: o botao "Enterrar" agora abre uma CAIXA DE TEXTO (`Forma.Texto`, o
+		// `input()` do `Corpse.dm:20`) e o verbo sai com o epitafio como argumento. Um atalho aqui
+		// provaria o servidor e deixaria de fora justamente a caixa -- entao o E e apertado de verdade
+		// (pelo `_UnhandledInput`, como o `RoboDeEmbarque`), o botao e o do menu, e o texto e digitado
+		// na caixa. O passo seguinte (`C_Escrever`) le o que ela mostrou e escreve por cima.
 		// ==================================================================================================
-		cli.SendVerbo("enterrar");
-		Nota("mandei o verbo `enterrar` -- o mesmo pacote do botao do menu da tecla E");
+		GetViewport().PushInput(new InputEventKey { PhysicalKeycode = Key.E, Keycode = Key.E, Pressed = true });
+		Nota("apertei E sobre o cadaver -- o menu de interacao, e nao um verbo na mao");
+		Virar(PC_Escrever);
+	}
+
+	/// <summary>
+	/// A CAIXA DE TEXTO DA LAPIDE, pelo caminho do jogador: o menu aberto, o botao "Enterrar", a caixa
+	/// ja preenchida com a resposta pronta do DM (`"Here lies [name]"`), o texto digitado por cima e o
+	/// "Gravar". O que sai no fio e o verbo `enterrar` com o texto; a C2 confere a lapide.
+	/// </summary>
+	private void C_Escrever(Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		if (_t < 0.5) return;
+		MenuDeInteracao? menu = MenuDeInteracao.Instancia;
+		Conferir(menu is { NaTela: true }, "o E abriu o menu de interacao sobre o cadaver");
+		if (menu is not { NaTela: true }) { Virar(PC_Depois); return; }
+
+		string titulo = menu.TituloDesenhado;
+		Conferir(menu.ApertarDesenhado("Enterrar"),
+				 $"...com o botao Enterrar (o menu tem: {string.Join(" | ", menu.BotoesDesenhados())})");
+		Conferir(menu.CaixaDeTextoNaTela,
+				 "...e Enterrar abre a CAIXA DE TEXTO da lapide (`Forma.Texto`) em vez de mandar o verbo direto");
+
+		string esperado = Jandirus.Core.World.Cadaver.EpitafioPadrao(Jandirus.Core.World.Cadaver.QuemJazEm(titulo));
+		string inicial = menu.DigitarNaCaixa(EpitafioDaBancada);
+		Conferir(inicial == esperado,
+				 $"...ja preenchida com o padrao do DM, \"{esperado}\" (`Corpse.dm:20`) -- estava \"{inicial}\"");
+		Nota($"digitei \"{EpitafioDaBancada}\" e apertei Gravar: o verbo `enterrar` sai com o texto como argumento");
 		Virar(PC_Depois);
 	}
 
@@ -522,7 +554,8 @@ public partial class RoboDeColisao : Node
 		Conferir(achou, "...e nasceu uma LAPIDE no lugar");
 		Conferir(achou && (onde - _ondeCaiu).Length < 1f,
 			$"...no ponto onde o corpo estava ({(onde - _ondeCaiu).Length:0.0} px de diferenca)");
-		Conferir(epitafio.Length > 0, $"...com o epitafio escrito nela: \"{epitafio}\"");
+		Conferir(epitafio == EpitafioDaBancada,
+				 $"...com o epitafio DIGITADO na caixa gravado nela: \"{epitafio}\" (o servidor limpou e guardou o que veio no verbo)");
 
 		Montar("corpos-C-cadaver.png", ["corpos-c1-cadaver", "corpos-c2-enterrado"]);
 		Virar(PFim);

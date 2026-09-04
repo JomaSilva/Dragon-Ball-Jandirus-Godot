@@ -119,6 +119,18 @@ public partial class RoboDoVelorio : Node
 
 	private bool _acabou;
 	private bool _pagouOEnma;
+
+	/// <summary>
+	/// A PROVA DE PONTA A PONTA DO "O MORTO ANDA": a seta segurada de verdade (`Input.ActionPress`),
+	/// e a posicao lida no SERVIDOR um segundo depois. Passa por tudo que o dono viu quebrado -- o
+	/// `_caido` do `LocalPlayer`, o `SendState`, o `PodeMexerOCorpo` -- e nao por um atalho. O avesso
+	/// e o cadaver: a mesma seta segurada, e a posicao nao mexe.
+	/// </summary>
+	private bool _andeiCaido;
+	private Vec2 _deOnde;
+
+	/// <summary>0 = ainda nao andei; 1 = seta direita segurada; 2 = voltando (seta esquerda), pra ficar de novo ao lado do corpo de controle.</summary>
+	private int _passoDaSeta;
 	private int _passo;
 	private double _t, _espera;
 
@@ -280,6 +292,18 @@ public partial class RoboDoVelorio : Node
 			// -------------------------------------------------------------
 			case 4:
 			{
+				// A SEGUNDA VISITA desta fase e so a seta: o `Matar` e o `Prender` la embaixo nao podem rodar
+				// de novo (um morto nao morre duas vezes, e o placar encheria de vermelho a cada tique).
+				if (_andeiCaido)
+				{
+					if (_t < 0.6) return;
+					Input.ActionRelease("move_right");
+					GameServer.FotoDoVelorio ainda = srv.FotoDoVelorioDeTeste(cli.LocalId);
+					Conferir((ainda.Pos - _deOnde).Length < 1f,
+							 $"...e com a seta SEGURADA por 0,6 s o cadaver nao sai do lugar ({(ainda.Pos - _deOnde).Length:0.#} px no servidor)");
+					Passar();
+					break;
+				}
 				GD.Print("[velorio] -- 3) o cadaver --");
 
 				// A BORDA DA SALA DO TEMPO ENTRA AQUI DE CARONA: marcar o preso ANTES desta morte
@@ -297,7 +321,13 @@ public partial class RoboDoVelorio : Node
 					   + $"({f.FaltamMs} ms, teto {Alem.MsNoChao})");
 				Conferir(!Alem.EhOAlem(f.Zona), $"...e eu ainda estou no mundo dos vivos ({f.Zona})");
 				Conferir(f.Deitado && !f.DePe, "...caido, e nao de pe");
-				Passar();
+				Conferir(eu is LocalPlayer caido && caido.CaidoDeTeste,
+						 "...e o MEU cliente me trava enquanto sou cadaver (`LocalPlayer.Caido`: morto fora do alem)");
+				_andeiCaido = true;
+				_deOnde = f.Pos;
+				Input.ActionPress("move_right");
+				_t = 0;
+				return;
 				break;
 			}
 
@@ -395,6 +425,31 @@ public partial class RoboDoVelorio : Node
 			// -------------------------------------------------------------
 			case 8:
 			{
+				// AS VISITAS SEGUINTES desta fase sao so a seta (ver `_passoDaSeta`): as quatro linhas das duas
+				// cabecas ja foram ditas, e repeti-las a cada tique encheria o placar de "ok" sem medir nada.
+				if (_passoDaSeta == 1)
+				{
+					if (_t < 1.0) return;
+					Input.ActionRelease("move_right");
+					GameServer.FotoDoVelorio andei = srv.FotoDoVelorioDeTeste(cli.LocalId);
+					Conferir((andei.Pos - _deOnde).Length > 24f,
+							 $"...E ANDA: um segundo com a seta segurada me levou {(andei.Pos - _deOnde).Length:0} px no SERVIDOR "
+						   + "(tecla -> `_caido` falso -> `SendState` -> `PodeMexerOCorpo` -> posicao) -- o pedido literal do dono");
+					// E VOLTA: as familias seguintes contam com o corpo de controle AO MEU LADO, e ele nasceu
+					// onde eu estava. Um segundo pra la, um segundo pra ca.
+					_passoDaSeta = 2;
+					Input.ActionPress("move_left");
+					_t = 0;
+					return;
+				}
+				if (_passoDaSeta == 2)
+				{
+					if (_t < 1.0) return;
+					Input.ActionRelease("move_left");
+					Passar();
+					break;
+				}
+
 				if (Remoto(_oVivo) is not { } vivo)
 				{
 					if (_t > EsperaMaxima)
@@ -434,6 +489,9 @@ public partial class RoboDoVelorio : Node
 				GameServer.FotoDoVelorio meu = srv.FotoDoVelorioDeTeste(cli.LocalId);
 				CharacterVisual? vis = eu.GetNodeOrNull<CharacterVisual>("Visual");
 				Conferir(meu.DePe && !meu.Deitado, "o servidor me da como morto DE PE aqui dentro");
+				Conferir(eu is LocalPlayer dePe && !dePe.CaidoDeTeste,
+						 "...e o MEU cliente aceita comandos: `_caido` segue a regra do servidor (era o `Imobilizado` "
+					   + "cru, `KO || Morto` -- 'so os menus abrem, mas movimentos, meditacao etc nao funcionam')");
 				Conferir(vis != null && Mathf.IsZeroApprox(vis.RotationDegrees),
 						 $"...e a MINHA tela concorda: o meu corpo nao esta girado no chao "
 					   + $"({vis?.RotationDegrees:0.#} graus) -- as duas telas contando a mesma "
@@ -442,8 +500,12 @@ public partial class RoboDoVelorio : Node
 						 "...e a auréola esta SOBRE a cabeca, e nao ao lado dela (o estado `ko` da "
 					   + $"folha desenha a auréola de um corpo caido, e ele so vale pro cadaver) "
 					   + $"[pose do corpo: {vis?.AnimacaoDeTeste}]");
-				Passar();
-				break;
+				// E AGORA A SETA, segurada de verdade: o resto desta fase mede a posicao no servidor.
+				_passoDaSeta = 1;
+				_deOnde = meu.Pos;
+				Input.ActionPress("move_right");
+				_t = 0;
+				return;
 			}
 
 			// -------------------------------------------------------------
@@ -549,7 +611,7 @@ public partial class RoboDoVelorio : Node
 				// Um `TemAureola => morto && EhOAlem(zona)` -- a correcao obvia, e a errada -- passa
 				// verde em TODAS as outras linhas desta bancada. So aqui ele reprova: este corpo esta
 				// morto, esta no Outro Mundo, e AINDA NAO VIAJOU (a viagem dele so vai acontecer daqui
-				// a 15 s, e vai ser um renascimento). Ele e um cadaver, e cadaver nao tem auréola --
+				// a 2 s, e so tranca o relogio). Ele e um cadaver, e cadaver nao tem auréola --
 				// esteja onde estiver.
 				//
 				// E e o mesmo defeito que apagaria a auréola do `KeepsBody` (o morto que anda entre os
@@ -584,7 +646,7 @@ public partial class RoboDoVelorio : Node
 					Conferir(f.FaltamMs > 1_000_000,
 							 "...e o relogio foi TRANCADO (o funil nao reexamina quem ja esta la)");
 					Conferir(f.DePe && !f.Deitado,
-							 "...e eu estou DE PE: o cadaver dos 15 s acabou, e morto no Outro Mundo anda");
+							 "...e eu estou DE PE: o cadaver dos 2 s acabou, e morto no Outro Mundo anda");
 					Conferir(NoFio(cli.LocalId) && NoDesenho(eu),
 							 "...COM a auréola: a etapa de cadaver passou (`MorteJaViajou` acende no "
 						   + "`PassoDaMorte` de quem ja esta no alem) -- de pe e sem auréola seria o "
@@ -705,7 +767,7 @@ public partial class RoboDoVelorio : Node
 					   + "*\"morte MENTAL nao e real\"* do `MindMeditate.dm:448`, sem um `if` novo "
 					   + "no funil da morte");
 				Conferir(!NoFio(cli.LocalId),
-						 "...e a auréola nunca chegou a acender (o prazo dos 15 s nem venceu)");
+						 "...e a auréola nunca chegou a acender (o prazo dos 2 s nem venceu)");
 
 				Conferir(srv.PorNaPonteNoVelorioDeTeste(cli.LocalId, 9_401),
 						 "BORDA (ponte): fui posto numa ZONA DINAMICA (o interior de uma nave)");

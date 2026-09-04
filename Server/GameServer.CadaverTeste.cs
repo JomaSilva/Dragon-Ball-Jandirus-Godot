@@ -175,7 +175,7 @@ public partial class GameServer
 		AfirmarCad("o host morre pelo funil de producao (`CombatState.Morrer`)",
 				   pl.Combate.Morrer(ignorarSeguro: true) && pl.Ficha.dead);
 
-		// AINDA NAO HA CADAVER: durante os 15 s do `Alem.MsNoChao` o corpo no chao E a pessoa. Sem esta
+		// AINDA NAO HA CADAVER: durante os 2 s do `Alem.MsNoChao` o corpo no chao E a pessoa. Sem esta
 		// linha, "apareceu um cadaver" fecharia verde com DOIS corpos no lugar da morte.
 		AfirmarCad($"...e nos {Alem.MsNoChao / 1000} s de `Alem.MsNoChao` NAO nasce um segundo corpo "
 				 + "(o corpo no chao ainda e a PESSOA)",
@@ -474,12 +474,15 @@ public partial class GameServer
 		// conteudo -- e o menu do cliente e uma tela, nao uma permissao.
 		pl.Pos = onde + new Vec2(400, 0);
 		int obras = _noChao.Count;
-		Enterrar(pl);
+		Enterrar(pl, "");
 		AfirmarCad("LONGE: nao enterra nada (o servidor recusa, e nao o menu)", _noChao.Count == obras);
 		AfirmarCad("...e o corpo continua no mundo", ZoneList(zona.Hash).Contains(c));
 
+		// O TEXTO DIGITADO NA CAIXA viaja como argumento do verbo (`Forma.Texto`, o `input() as text` do
+		// DM) -- com as sujeiras que um campo de texto traz, pra provar que a limpeza e do servidor.
+		const string digitado = "  Aqui descansa quem\n  mexeu com a pessoa errada  ";
 		pl.Pos = onde + new Vec2(16, 0);
-		Enterrar(pl);
+		Enterrar(pl, digitado);
 
 		Obra? lapide = _noChao.LastOrDefault(o => o.Tipo.StartsWith("Grave_", StringComparison.Ordinal));
 		AfirmarCad("PERTO: nasceu uma lapide", lapide != null);
@@ -487,9 +490,19 @@ public partial class GameServer
 				   lapide != null && _obras?.Get(lapide.Tipo) != null, lapide?.Tipo ?? "");
 		AfirmarCad("...no ponto onde o corpo estava",
 				   lapide != null && Math.Abs(lapide.X - onde.X) < 1 && Math.Abs(lapide.Y - onde.Y) < 1);
-		AfirmarCad("...com o EPITAFIO de quem jaz ali (`A.desc`, `Corpse.dm:53`)",
-				   lapide != null && lapide.Epitafio == Jandirus.Core.World.Cadaver.EpitafioPadrao(quemJaz),
+		AfirmarCad("...com o EPITAFIO que foi DIGITADO (`A.desc = \"[text]\"`, `Corpse.dm:53`), aparado e numa linha so",
+				   lapide != null && lapide.Epitafio == "Aqui descansa quem mexeu com a pessoa errada",
 				   lapide?.Epitafio ?? "");
+		AfirmarCad("...e ela nasce APARAFUSADA: sem o quadrado dourado de obra solta em volta (o dono: 'so a lapide sem esse quadrado')",
+				   lapide is { Aparafusada: true });
+		AfirmarCad("VAZIO vira o padrao do DM (`input(..., \"Here lies [name]\")` confirmado sem mexer)",
+				   Jandirus.Core.World.Cadaver.EpitafioLimpo("   ", quemJaz) == Jandirus.Core.World.Cadaver.EpitafioPadrao(quemJaz));
+		AfirmarCad("...e o que passa do teto e cortado nele (o fio aceita 256; a lapide, `MaxEpitafio`)",
+				   Jandirus.Core.World.Cadaver.EpitafioLimpo(new string('a', 500), quemJaz).Length == Jandirus.Core.World.Cadaver.MaxEpitafio);
+		AfirmarCad("...e o nome de quem jaz sai do titulo do menu (`QuemJazEm` e o avesso de `NomeDo`)",
+				   Jandirus.Core.World.Cadaver.QuemJazEm(Jandirus.Core.World.Cadaver.NomeDo(quemJaz)) == quemJaz
+				   && Jandirus.Core.Tech.Interacoes.TextoInicial(Jandirus.Core.Tech.Interacoes.DoCadaver()[0], Jandirus.Core.World.Cadaver.NomeDo(quemJaz))
+					  == Jandirus.Core.World.Cadaver.EpitafioPadrao(quemJaz));
 		AfirmarCad("...e ela conhece o proprio verbo de leitura (a mesma tabela que o menu le)",
 				   lapide != null && Jandirus.Core.Tech.Interacoes.Aceita(lapide.Tipo, "lapide_ler"));
 

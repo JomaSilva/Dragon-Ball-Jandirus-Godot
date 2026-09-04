@@ -22,7 +22,7 @@ namespace Jandirus.Core.World;
 ///
 ///   * o SERVIDOR, pra saber pra onde mandar o morto e por quanto tempo;
 ///   * o `ServerPlayer.Pose`/`Deitado`, pra saber se este morto esta CAIDO (no mundo dos vivos, os
-///     15 s de cadaver) ou DE PE (no alem, onde o DM faz `Un_KO()` antes de mover -- `Death.dm:89`);
+///     2 s de cadaver) ou DE PE (no alem, onde o DM faz `Un_KO()` antes de mover -- `Death.dm:89`);
 ///   * o CLIENTE, que desenha a auréola -- e ele nao pode perguntar ao servidor a cada quadro.
 ///
 /// A alternativa era `nome == "Afterlife"` escrito em tres lugares -- e a primeira copia a
@@ -106,41 +106,29 @@ public static class Alem
 	// =====================================================================
 	/// <summary>
 	/// ============================ QUANTO TEMPO O CORPO FICA CAIDO ANTES DE SUBIR ============================
-	/// **Este numero ja era do port** -- era o `MsAteRenascer` do `GameServer.Combat.cs`, os 15 s
-	/// entre morrer e reaparecer no berco. Ele mudou de significado, nao de valor: agora e a janela
-	/// em que o corpo fica no chao, na pose de nocaute e **sem aureola** (ver <see cref="TemAureola"/>:
-	/// esta janela e o cadaver, e o cadaver do DM e fotografado antes de a aureola existir), antes do
-	/// salto.
+	/// O `KO(-1)` + `sleep(20)` do `Death()` (`Death.dm:71-72`): 2,0 s (ver <see cref="TempoDoDm"/>) entre
+	/// cair e o `loc = locate(187,104,6)`. E a janela em que o corpo fica no chao, na pose de nocaute e
+	/// **sem aureola** (ver <see cref="TemAureola"/>: esta janela e o cadaver, e o cadaver do DM e
+	/// fotografado antes de a aureola existir), antes do salto.
 	///
-	/// ============================ NO DM SAO 2,0 s, E A DIFERENCA E DELIBERADA ============================
-	/// O original faz `KO(-1)`, `sleep(20)` (= 2,0 s, ver <see cref="TempoDoDm"/>) e so entao
-	/// `loc = locate(...)` -- `Death.dm:71-110`. Dois segundos bastam LA porque o que fica pra tras
-	/// e um `/obj/mobCorpse` de verdade (`Corpse.dm:75-85`): um cadaver que se pode comer, enterrar,
-	/// esfolar e destruir.
-	///
-	/// ============================ O `mobCorpse` FOI PORTADO, E ESTE NUMERO **NAO** DESCEU ============================
-	/// **O texto que estava aqui prometia**: *"quando o `mobCorpse` for portado, este numero desce pros
-	/// 2,0 s do DM e a diferenca desaparece"*. Ele foi portado (`Core/World/Cadaver.cs` +
-	/// `GameServer.Cadaver.cs`) e a promessa **nao foi cumprida de proposito** -- fica escrito pra que a
-	/// proxima pessoa nao ache que foi esquecimento:
-	///
-	///   * o cadaver e deixado NO INSTANTE DA VIAGEM e nao no da morte (ver `GameServer.Cadaver.cs`
-	///     pro porque: quinze segundos de dois corpos empilhados seriam duas caixas de colisao e dois
-	///     alvos de soco no mesmo pixel). Ou seja, estes 15 s deixaram de ser *"quanto tempo o cadaver
-	///     dura"* -- o cadaver nao acaba mais -- e passaram a ser **quanto tempo voce olha o proprio
-	///     corpo antes de ser puxado**. Encurtar pra 2 s nao "faz a diferenca desaparecer": muda outra
-	///     coisa, que e a leitura da propria morte;
-	///   * e o numero e LIDO POR UMA BANCADA DE OUTRA SESSAO. O `Client/RoboDeMorteVista.cs` fotografa
-	///     o cadaver sem auréola em `_morreuEm + 5,0 s` e so pede o `admin_ir` em `+18 s` -- os dois
-	///     ancorados nesta janela de 15 s. Com 2,0 s a foto sairia depois da viagem, o corpo do host ja
-	///     nao estaria la, e a bancada da AUREOLA (que e trabalho recente e medido) ficaria vermelha por
-	///     causa de uma mudanca que nao e dela.
-	///
-	/// Baixar este numero e uma decisao do dono e do dono da `--mortevista`, e nao um efeito colateral
-	/// do cadaver. **Uma linha, e as duas bancadas junto.**
+	/// ============================ FORAM 15 s ATE 2026-09-04, DE PROPOSITO -- E O DONO DESFEZ ============================
+	/// O port alargou a janela pra 15 s (o `MsAteRenascer` de antes do Outro Mundo) e escreveu aqui por
+	/// que nao a devolvia ao DM: "quanto tempo voce olha o proprio corpo antes de ser puxado". O dono
+	/// respondeu com a regra (2026-09-04): *"ao morrer demora muito pro jogador sair da tela do corpo
+	/// morto e ir pro outro mundo, deveria ser no maximo 2 segundos apos a morte ja ir pro outro
+	/// mundo"* -- que e exatamente o numero do original. O cadaver que fica pra tras (`DeixarOCadaver`)
+	/// nasce no instante da viagem, entao ele continua sendo o corpo exato de quem caiu; so a espera
+	/// encurtou. As bancadas que se ancoravam nos 15 s (`Client/RoboDeMorteVista.cs`) leem esta
+	/// constante e foram reancoradas junto -- **uma linha, e as bancadas junto**.
 	/// ============================================================================================================
 	/// </summary>
-	public const long MsNoChao = 15_000;
+	public const long MsNoChao = 2_000;
+
+	/// <summary>
+	/// O `KO(20)` do morto que "morre" DE NOVO no Outro Mundo (`Death.dm:113-118`, o `else if(dead)`):
+	/// 20 ticks = 2,0 s de coma, depois de curado e devolvido a mesa do Enma. Ver `CombatState.AoMorrerDeNovo`.
+	/// </summary>
+	public const double SegundosDeComaDoMortoDeNovo = 2.0;
 
 	// =====================================================================
 	// 2b. O ENMA DAIOH -- a UNICA saida paga do Outro Mundo que este port tem
@@ -211,8 +199,8 @@ public static class Alem
 	/// NO CORPO MORTO dele, oq n deveria acontecer. o corpo q fica no MAPA DOS VIVOS deveria ser o
 	/// EXATO CORPO DELE QUANDO MORRE, sem a aureola"*. A intencao do desenho antigo era boa (ver o
 	/// item 3 abaixo, que sobreviveu inteiro), mas a premissa estava incompleta: **neste port o
-	/// cadaver E o proprio corpo**, deitado por <see cref="MsNoChao"/> = 15 s no mundo dos vivos
-	/// antes do salto. `dead` fica verdadeiro 15 s ANTES de o corpo sair -- e a aureola acendia em
+	/// cadaver E o proprio corpo**, deitado por <see cref="MsNoChao"/> = 2 s no mundo dos vivos
+	/// antes do salto. `dead` fica verdadeiro 2 s ANTES de o corpo sair -- e a aureola acendia em
 	/// cima do cadaver.
 	///
 	/// ============================ NO DM ISSO NAO ACONTECE POR ORDEM, E A ORDEM ESTA MEDIDA ============================
@@ -255,7 +243,7 @@ public static class Alem
 	/// morto anda; qualquer outro morto e um cadaver no chao). Esta aqui decide o DESENHO e pergunta
 	/// QUANDO. **Elas ja divergem hoje**, e num caso que existe: quem morre DENTRO do alem (o
 	/// visitante vivo que apanha la) fica de pe na hora -- porque esta num lugar de morto -- e **sem
-	/// aureola** pelos 15 s, porque ainda e o cadaver e nao viajou. As duas respostas estao certas, e
+	/// aureola** pelos 2 s, porque ainda e o cadaver e nao viajou. As duas respostas estao certas, e
 	/// nenhum dos dois crivos sabe da existencia do outro.
 	///
 	/// No dia do `KeepsBody` elas divergem de novo, pro outro lado: o morto que volta ao mundo dos
@@ -264,7 +252,7 @@ public static class Alem
 	/// </summary>
 	/// <param name="morto">`Ficha.dead`.</param>
 	/// <param name="jaViajouProAlem">
-	/// Esta morte ja passou pela viagem? Falso durante os 15 s de cadaver -- ver
+	/// Esta morte ja passou pela viagem? Falso durante os 2 s de cadaver -- ver
 	/// `ServerPlayer.MorteJaViajou`.
 	/// </param>
 	public static bool TemAureola(bool morto, bool jaViajouProAlem) => morto && jaViajouProAlem;

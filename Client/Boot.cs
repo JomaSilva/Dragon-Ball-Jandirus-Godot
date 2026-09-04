@@ -378,6 +378,11 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagopcoes") >= 0)
 			AddChild(new RoboDeOpcoes { Name = "RoboDeOpcoes" });
 
+		// --diagsaida --saidalobby <s>: o robo de saida NO LOBBY, sem entrar no jogo -- o cenario dos tres
+		// travamentos do dono (X apertado durante o `[aquece]`). O mesmo robo do jogo, so que nasce aqui.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--saidalobby") >= 0 && GetNodeOrNull("RoboDeSaida") == null)
+			AddChild(new RoboDeSaida { Name = "RoboDeSaida" });
+
 		// `--diagmarcavel`: O PIXEL ATRAS DO TEXTO DOS CONTROLES MARCAVEIS -- o defeito que o dono
 		// relatou como *"todos os botoes de checkmark ... ao selecionar e por o mouse em cima, o
 		// texto fica bugado"*. Vizinha da `--diagopcoes` e pela MESMA razao dela, que aqui e ainda
@@ -1496,6 +1501,13 @@ public partial class Boot : Node2D
 		// senao `TemAureola => true` passaria verde. Ver `RoboDoVelorio` e `testar-velorio.bat`.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--velorio") >= 0)
 			AddChild(new RoboDoVelorio { Name = "RoboDoVelorio" });
+
+		// --diagsaida: a bancada do FECHAR O JOGO pelo lobby -- *"fechar o jogo no menu/lobby o jogo
+		// crasha ao inves de fechar"* (o dono, 2026-09-04). O juiz e de FORA (o codigo de saida do
+		// processo, lido pelo `rodar-saida.ps1`), porque o que quebra vem depois do ultimo log.
+		// Ver `Client/RoboDeSaida.cs`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsaida") >= 0)
+			AddChild(new RoboDeSaida { Name = "RoboDeSaida" });
 
 		// --vozviva <a|b|c|d>: a bancada da VOZ com clientes de VERDADE, em processos separados.
 		//

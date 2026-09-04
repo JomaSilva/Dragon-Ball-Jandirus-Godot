@@ -227,6 +227,10 @@ public partial class GameServer
 		// E QUEM OUVE A MORTE QUE ACONTECEU -- o outro lado da mesma porta. E ele que marca o prazo
 		// do cadaver e, no fim dele, a viagem pro Outro Mundo. Ver `GameServer.Alem.cs`.
 		pl.Combate.AoMorrer = _ => AMorteAconteceu(pl);
+		// O FANTASMA (ver `CombatState.MortoDePe`): de pe no Outro Mundo ele soca, apanha e, se cair
+		// de vez, volta curado pra mesa do Enma em coma (`Death.dm:113-118`).
+		pl.Combate.MortoDePe = _ => pl.MortoDePe;
+		pl.Combate.AoMorrerDeNovo = _ => MorrerDeNovoNoAlem(pl);
 
 		// E QUEM OUVE O MEMBRO QUE CAIU -- o `SpawnLop()` do original, instalado UMA vez e valendo pra
 		// todo funil de dano letal deste corpo (soco, raio, explosao, dano direto, calor da estrela,
@@ -791,7 +795,7 @@ public partial class GameServer
 
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
-			if (o == a || o.Ficha.dead || o.Combate.Intocavel) continue;
+			if (o == a || EhCadaver(o) || o.Combate.Intocavel) continue;
 			if (!AlcancaPelaAltura(a, o)) continue;
 
 			Vec2 d = o.Pos - a.Pos;
@@ -826,7 +830,7 @@ public partial class GameServer
 
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
-			if (o == a || o.Ficha.dead || o.Combate.Intocavel) continue;
+			if (o == a || EhCadaver(o) || o.Combate.Intocavel) continue;
 			// ============================ QUEM ALCANCA QUEM, POR ANDAR ============================
 			// Antes desta linha o alcance era so horizontal, e voar nao mudava NADA no combate --
 			// dois corpos a 20 tiles de altura de diferenca socavam um ao outro normalmente, o que
@@ -873,7 +877,7 @@ public partial class GameServer
 
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
-			if (o == a || o.Ficha.dead || o.Combate == null || !EmCena(o)) continue;
+			if (o == a || EhCadaver(o) || o.Combate == null || !EmCena(o)) continue;
 			if (!AlcancaPelaAltura(a, o)) continue;
 			if (!MeleeArea.NoAlcance(a.Pos, a.Facing, o.Pos)) continue;
 
@@ -992,7 +996,7 @@ public partial class GameServer
 	private ServerPlayer? Marcado(ServerPlayer a)
 	{
 		if (a.AlvoId == 0) return null;
-		if (CorpoNaMinhaZona(a, a.AlvoId) is not { } o || o.Ficha.dead || o.Combate.Intocavel)
+		if (CorpoNaMinhaZona(a, a.AlvoId) is not { } o || EhCadaver(o) || o.Combate.Intocavel)
 		{
 			a.AlvoId = 0;   // limpa sozinho: alvo morto nao fica preso na mira pra sempre
 			return null;
@@ -1121,7 +1125,7 @@ public partial class GameServer
 		var perto = new List<string>();
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
-			if (o == a || o.Ficha.dead) continue;
+			if (o == a || EhCadaver(o)) continue;
 			Vec2 d = o.Pos - a.Pos;
 			float dist = d.Length;
 			if (dist > 200) continue;
@@ -1517,6 +1521,17 @@ public partial class GameServer
 	// ==================================================================================
 
 	/// <summary>
+	/// O CADAVER: morto que ainda nao esta de pe no Outro Mundo -- o corpo dos 2 s no chao dos vivos
+	/// (`Alem.MsNoChao`) e o do `Keep_Body`. E o UNICO morto que o combate e a cura pulam: ninguem o
+	/// acerta (ele e a foto de como caiu), ninguem o mira, e ele nao regenera. O fantasma de pe
+	/// (`ServerPlayer.MortoDePe`) e alvo, socador e paciente como um vivo -- `Death()` nao olha `dead`.
+	/// </summary>
+	private static bool EhCadaver(ServerPlayer o) => o.Ficha.dead && !o.MortoDePe;
+
+	/// <summary>DEFEITO INJETADO (`--alemteste`): a regeneracao volta a pular TODO morto -- a prova do fantasma tem que ficar vermelha.</summary>
+	internal bool MortoNaoRegeneraDeTeste;
+
+	/// <summary>
 	/// REGENERACAO PASSIVA: so fora de combate, e so pra quem nao esta morto. Enquanto a tag de
 	/// luta esta no ar o corpo nao se recupera -- senao ninguem perde nunca.
 	///
@@ -1535,7 +1550,11 @@ public partial class GameServer
 	private void RegenerarPassivo(ServerPlayer pl, double dt)
 	{
 		CombatState? c = pl.Combate;
-		if (c == null || pl.Ficha.dead) return;
+		// SO O CADAVER FICA DE FORA. O `pl.Ficha.dead` cru trancava tambem o fantasma do Outro Mundo,
+		// que e o que o dono viu: *"morto a regeneracao nunca acontece (...) nunca recupera os membros
+		// feridos igual acontece quando esta vivo e fora de combate"*. O cadaver dos 2 s e a foto de
+		// como caiu e nao cura; o fantasma de pe cura pelas MESMAS regras do vivo (`Regeneracao`).
+		if (c == null || EhCadaver(pl) || (MortoNaoRegeneraDeTeste && pl.Ficha.dead)) return;
 
 		// ============================ AS TRES GUARDAS QUE SAIRAM DAQUI, E PRA ONDE FORAM ============================
 		//   * `pl.Ficha.KO` -- SAIU. Com o nocaute virando o coma do DM, e a cura que decide a hora de

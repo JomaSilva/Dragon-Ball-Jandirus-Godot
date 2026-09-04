@@ -46,7 +46,9 @@ public sealed partial class GameServer
 			return;
 		}
 
-		if (pl.Ficha.KO || pl.Ficha.dead) return;
+		// SO O CADAVER NAO REUNE ENERGIA. O fantasma de pe no Outro Mundo carrega como um vivo -- e o
+		// `dead` cru daqui, com o do `CargaDeKi.Passo`, deixava a tecla C do morto muda (2026-09-04).
+		if (pl.Ficha.KO || EhCadaver(pl)) return;
 
 		pl.Carregando = true;
 		pl.EstagioDaCarga = EstagioDaCarga.Nada;
@@ -243,7 +245,7 @@ public sealed partial class GameServer
 			if (!p.Decepado && !p.Aninhado) pl.Combate.Ferir(p, dano, letal: false);
 		pl.Combate.SincronizarVida();
 
-		if (!pl.Ficha.KO && !pl.Ficha.dead && pl.Combate.Corpo.DeveNocautear())
+		if (!pl.Ficha.KO && !EhCadaver(pl) && pl.Combate.Corpo.DeveNocautear())
 			pl.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
 	}
 }

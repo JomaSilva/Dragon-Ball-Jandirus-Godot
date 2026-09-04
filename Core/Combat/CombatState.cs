@@ -414,7 +414,8 @@ public sealed class CombatState
 	/// e `:93`), `KO` e a morte.
 	/// </summary>
 	public bool PodeAtacar() =>
-		!F.dead && !F.KO && Stun <= 0 && Recarga <= 0 && SendoArremessado?.Invoke() != true;
+		(!F.dead || MortoDePe?.Invoke(this) == true)   // o cadaver nao soca; o fantasma de pe soca (ver `MortoDePe`)
+		&& !F.KO && Stun <= 0 && Recarga <= 0 && SendoArremessado?.Invoke() != true;
 
 	/// <summary>
 	/// Ergue ou baixa a guarda. Subir REARMA o cronometro (e ele que decide o contra-ataque)
@@ -526,6 +527,25 @@ public sealed class CombatState
 	public Func<CombatState, bool>? NegarMorte;
 
 	/// <summary>
+	/// ESTE MORTO ESTA DE PE (no Outro Mundo)? Gancho e nao campo, pelo mesmo motivo do
+	/// <see cref="NegarMorte"/>: quem sabe o LUGAR e o servidor (`ServerPlayer.MortoDePe`, que le a zona),
+	/// e este Core nao tem zona. Nulo = nenhum morto esta de pe (o padrao de quem nao pendura nada).
+	///
+	/// O que ele decide: o fantasma SOCA e APANHA (<see cref="PodeAtacar"/> e os filtros de alvo do
+	/// servidor). E o DM: o `Death()` nunca olha `dead` pra recusar golpe, e o Outro Mundo tem os
+	/// `Afterlife_Fighter` (`NPClist.dm:324`) pra brigar. O cadaver dos 2 s continua fora de tudo.
+	/// </summary>
+	public Func<CombatState, bool>? MortoDePe;
+
+	/// <summary>
+	/// O FANTASMA "MORREU" DE NOVO -- o `else if(dead)` do `Death()` (`Death.dm:113-118`): `move=1`,
+	/// `loc=locate(187,104,6)`, `SpreadHeal(100,1,1)`, `KO(20)`. Nao e uma morte (nao conta, nao paga
+	/// Zenkai, nao muda karma): e curado, devolvido a mesa do Enma e posto em coma por 2 s. Quem move e
+	/// o servidor (`GameServer.MorrerDeNovoNoAlem`); <see cref="Morrer"/> so avisa e devolve falso.
+	/// </summary>
+	public Action<CombatState>? AoMorrerDeNovo;
+
+	/// <summary>
 	/// ============================ ESTE CORPO ACABOU DE MORRER -- O OUTRO LADO DO `NegarMorte` ============================
 	/// O irmao do gancho acima, e ele nasceu pelo mesmo motivo, medido: **`RenasceEm = agora +
 	/// MsAteRenascer` estava escrito a mao em OITO lugares** (o resolvedor de socos, a explosao do
@@ -564,7 +584,14 @@ public sealed class CombatState
 	/// </param>
 	public bool Morrer(bool ignorarSeguro = false)
 	{
-		if (F.dead) return false;
+		if (F.dead)
+		{
+			// O MORTO NAO MORRE DE NOVO -- mas o `Death()` do DM tem um ramo pra ele (`:113-118`): o
+			// fantasma que leva um golpe letal no Outro Mundo e curado, devolvido a mesa do Enma e
+			// nocauteado por 2 s. O cadaver dos 2 s nunca chega aqui (ninguem o acerta: `EhCadaver`).
+			if (MortoDePe?.Invoke(this) == true) AoMorrerDeNovo?.Invoke(this);
+			return false;
+		}
 		if (!ignorarSeguro && NegarMorte?.Invoke(this) == true) return false;
 
 		F.dead = true;

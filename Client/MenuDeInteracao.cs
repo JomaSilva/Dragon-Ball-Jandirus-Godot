@@ -395,6 +395,10 @@ public partial class MenuDeInteracao : CanvasLayer
 				AbrirTeclado(acao);
 				break;
 
+			case Interacoes.Forma.Texto:
+				AbrirCaixaDeTexto(acao);
+				break;
+
 			default:
 				// TUDO PELO CANAL DE VERBOS. O `abrir_tech` abria a grade da bancada de pesquisa por
 				// aqui; a grade morreu (fabricar e na aba Tech do menu P) e com ela o unico desvio que
@@ -430,6 +434,25 @@ public partial class MenuDeInteracao : CanvasLayer
 
 		_teclado = new CenterContainer { AnchorRight = 1, AnchorBottom = 1 };
 		_teclado.AddChild(t);
+		_raiz.AddChild(_teclado);
+	}
+
+	/// <summary>
+	/// A CAIXA DE TEXTO -- a terceira pergunta que o menu aprendeu (a lapide: *"deveria ter a opcao de
+	/// escrever manualmente na lapide, abrindo uma caixa de texto"*, 2026-09-04). Mesmo lugar e mesmo
+	/// ciclo de vida do teclado numerico; o valor inicial vem da tabela das acoes (`Interacoes.TextoInicial`).
+	/// </summary>
+	private void AbrirCaixaDeTexto(Interacoes.Acao acao)
+	{
+		FecharTeclado();
+
+		int teto = acao.Max > 0 ? (int)acao.Max : Jandirus.Net.Protocol.MaxArgDeVerbo;
+		var c = new CaixaDeTexto(acao.Rotulo, Interacoes.TextoInicial(acao, _nomeDoAlvo), teto,
+			texto => { GameClient.Instance?.SendVerbo(acao.Verbo, texto); Fechar(); },
+			FecharTeclado);
+
+		_teclado = new CenterContainer { AnchorRight = 1, AnchorBottom = 1 };
+		_teclado.AddChild(c);
 		_raiz.AddChild(_teclado);
 	}
 
@@ -508,6 +531,24 @@ public partial class MenuDeInteracao : CanvasLayer
 
 	/// <summary>O teclado numerico esta aberto? (a segunda pagina do menu, ver <see cref="Forma"/>).</summary>
 	public bool TecladoNaTela => _teclado != null && IsInstanceValid(_teclado);
+
+	/// <summary>A caixa de texto (`Forma.Texto`) esta na tela? Mora no mesmo lugar do teclado numerico.</summary>
+	public bool CaixaDeTextoNaTela =>
+		TecladoNaTela && _teclado!.GetChildCount() > 0 && _teclado.GetChild(0) is CaixaDeTexto;
+
+	/// <summary>
+	/// DIGITA NA CAIXA DE TEXTO como o jogador digitaria -- o campo inteiro, e nao tecla a tecla: o
+	/// `LineEdit` e do Godot e nao tem regra propria a provar -- e confirma pelo mesmo "Gravar". Devolve
+	/// o que o campo MOSTRAVA antes: o valor inicial (`Interacoes.TextoInicial`), pra bancada comparar
+	/// com a resposta pronta do `input()` do DM.
+	/// </summary>
+	public string DigitarNaCaixa(string texto, bool confirmar = true)
+	{
+		if (!CaixaDeTextoNaTela || _teclado!.GetChild(0) is not CaixaDeTexto c) return "";
+		string antes = c.DigitarDeTeste(texto);
+		if (confirmar) c.ConfirmarDeTeste();
+		return antes;
+	}
 
 	/// <summary>
 	/// DIGITA UM NUMERO NO TECLADO ABERTO e confirma -- tecla a tecla, pelos mesmos botoes.

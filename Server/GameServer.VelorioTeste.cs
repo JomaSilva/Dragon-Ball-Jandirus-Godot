@@ -24,7 +24,7 @@ namespace Jandirus.Server;
 ///
 ///   2. **A FOTO NAO PERGUNTA `Alem.TemAureola`.** Ela devolve <see cref="FotoDoVelorio.AureolaNoFio"/>,
 ///      que e o ultimo valor ENVIADO (`ServerPlayer.EnvAureola`). A regra de quem tem auréola esta
-///      sendo reescrita no momento em que isto foi escrito (o cadaver dos 15 s deixou de ter uma), e
+///      sendo reescrita no momento em que isto foi escrito (o cadaver dos 2 s deixou de ter uma), e
 ///      uma bancada que chamasse a funcao concordaria com ela por construcao -- inclusive errada.
 ///      O que esta bancada cobra e o que SAIU do servidor e o que virou PIXEL no cliente.
 ///
@@ -61,7 +61,7 @@ public partial class GameServer
 	internal readonly record struct FotoDoVelorio(
 		bool Existe, string Zona, bool Morto, bool KO, bool DePe, bool Deitado,
 		bool AureolaNoFio, long FaltamMs, bool SaindoDoMundo, bool NoMundo, bool PresoNaSala,
-		bool NaMente, bool NaPonte, bool DebuffDoEnma);
+		bool NaMente, bool NaPonte, bool DebuffDoEnma, Vec2 Pos);
 
 	/// <summary>A FOTO. So le.</summary>
 	internal FotoDoVelorio FotoDoVelorioDeTeste(int id)
@@ -82,7 +82,7 @@ public partial class GameServer
 		new(true, pl.Zone.Name, pl.Ficha.dead, pl.Ficha.KO, pl.MortoDePe, pl.Deitado,
 			pl.EnvAureola, pl.RelogioDaMorte - NowMs(), saindo, noMundo, pl.SalaPreso,
 			DimensaoMental.EhAMente(pl.Zone), NaveGrande.EhInterior(pl.Zone, out _),
-			pl.Ficha.zeni_revive_debuff_until > NowMs());
+			pl.Ficha.zeni_revive_debuff_until > NowMs(), pl.Pos);
 
 	// =====================================================================
 	// OS CORPOS QUE A BANCADA PRECISA TER AO LADO
@@ -188,7 +188,7 @@ public partial class GameServer
 	///
 	/// Uma janela que chamasse a triagem na mao pularia justamente esse `if` -- e a bancada mediria a
 	/// viagem de um corpo que o jogo nunca teria mandado viajar. Aqui ela empurra o vencimento pro
-	/// passado e ESPERA o tique, como qualquer morte de verdade que ficou 15 s no chao.
+	/// passado e ESPERA o tique, como qualquer morte de verdade que ficou 2 s no chao.
 	/// ================================================================================================
 	/// </summary>
 	internal bool VencerORelogioDoVelorioDeTeste(int id)

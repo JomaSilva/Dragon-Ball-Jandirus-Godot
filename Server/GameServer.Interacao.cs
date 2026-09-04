@@ -69,7 +69,7 @@ public sealed partial class GameServer
 			//
 			// `lapide_ler` E do outro lado: a lapide E uma obra, entao ele entra pela porta normal e o
 			// `ObraQueAceita` cobra os 64 px e o `Interacoes.Aceita` cobra que o verbo pertenca ao tipo.
-			case "enterrar": Enterrar(pl); return true;
+			case "enterrar": Enterrar(pl, arg); return true;   // `arg` = o que foi escrito na caixa (vazio = o padrao do DM)
 			case "lapide_ler": LerALapide(pl); return true;
 
 			case "treinar_saco": TreinarNoSaco(pl); return true;

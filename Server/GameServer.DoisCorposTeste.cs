@@ -2033,7 +2033,7 @@ public sealed partial class GameServer
 	/// giram como se tivessem ficado de pe, o que nao deveria acontecer; deveriam ficar com os
 	/// ferimentos e na mesma posicao de quando morreram)"*.
 	///
-	/// O "levanta e gira" era o instante da troca (os 15 s de `Alem.MsNoChao`): o cadaver nascia com o
+	/// O "levanta e gira" era o instante da troca (os 2 s de `Alem.MsNoChao`): o cadaver nascia com o
 	/// angulo padrao (`FacingDaQueda = South`) e um `Body.Novo()` limpo -- o corpo virava pro sul e os
 	/// ferimentos sumiam. E depois disso ele girava de novo no fim de qualquer arremesso, porque o
 	/// `DirecaoDeitado` voltava pra um `RumoDoGolpe` que o cadaver nunca teve.
@@ -2122,13 +2122,13 @@ public sealed partial class GameServer
 		AfirmarDc("...e a mascara do morto tinha sangue e amputacao (senao a igualdade acima seria entre "
 				+ "duas mascaras limpas)",
 				  Feridas.Grave(doMorto) && doMorto.Perdeu(MascaraDeFeridas.Membro.BracoEsq), doMorto.ToString());
-		// A MORTE NAO CURA MAIS (pedido do dono, 2026-09-04; ver `IrProAlem`): o morto chega ao Outro
-		// Mundo SEM o braco, como caiu. A independencia da foto se prova pelas INSTANCIAS -- o membro do
-		// cadaver e o do morto sao objetos diferentes, e mexer num nao mexe no outro.
+		// A CHEGADA CURA (`Death.dm:86-88,111`; o dono, 2026-09-04: "ao morrer voce acorda no outro mundo
+		// 100% curado de tudo"): o morto chega INTEIRO e o cadaver fica SEM o braco -- se a foto fosse a
+		// instancia, curar um curaria o outro. E a prova de que `DeixarOCadaver` COPIA o corpo.
 		BodyPart? bracoDoMorto = pl.Combate.Corpo.Achar("Braco esquerdo");
 		BodyPart? bracoDoCadaver = c.Combate.Corpo.Achar("Braco esquerdo");
-		AfirmarDc("...enquanto o MORTO chegou ao Outro Mundo FERIDO como caiu (a morte nao cura mais): a foto e COPIA, nao a instancia",
-				  Alem.EhOAlem(pl.Zone) && bracoDoMorto is { Decepado: true } && bracoDoCadaver is { Decepado: true }
+		AfirmarDc("...enquanto o MORTO chegou ao Outro Mundo INTEIRO e o cadaver continua sem o braco: a foto e COPIA, nao a instancia",
+				  Alem.EhOAlem(pl.Zone) && bracoDoMorto is { Decepado: false } && bracoDoCadaver is { Decepado: true }
 				  && !ReferenceEquals(c.Combate.Corpo, pl.Combate.Corpo) && !ReferenceEquals(bracoDoMorto, bracoDoCadaver));
 		AfirmarDc("...e o cadaver continua sem numero de ninguem (a ficha e nova; so o CORPO e foto)",
 				  c.Ficha.BP < pl.Ficha.BP && !ReferenceEquals(c.Ficha, pl.Ficha));

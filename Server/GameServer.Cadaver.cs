@@ -34,7 +34,7 @@ namespace Jandirus.Server;
 /// ============================ POR QUE NO INSTANTE DA VIAGEM, E NAO NO DA MORTE ============================
 /// O DM fotografa o cadaver no passo 5 e viaja no 11, com um `sleep(20)` (2,0 s) no meio -- ou seja
 /// **la os dois corpos convivem por dois segundos**, o mob KO'd por cima do proprio cadaver. Aqui a
-/// janela entre morrer e viajar e de <see cref="Alem.MsNoChao"/> = 15 s (o port a alargou de
+/// janela entre morrer e viajar e de <see cref="Alem.MsNoChao"/> = 2 s (o port a alargou de
 /// proposito, justamente porque nao tinha cadaver -- ver o cabecalho daquela constante), e quinze
 /// segundos de DOIS corpos empilhados no mesmo ponto seria: duas caixas de colisao no mesmo pixel,
 /// dois alvos de soco, dois agarraveis, e o nome do morto aparecendo duas vezes na zona.
@@ -42,7 +42,7 @@ namespace Jandirus.Server;
 /// Deixando o cadaver **no instante em que o corpo sai**, o lugar tem sempre exatamente UM corpo: o
 /// da pessoa enquanto ela olha a propria morte, e o cadaver dali em diante. A troca e invisivel
 /// porque a aparencia e a mesma (`Visual.Copiar()`) e a pose tambem (`Deitado`/`Nocauteado` saem dos
-/// mesmos campos). O que os 15 s querem dizer mudou de "quanto tempo o cadaver dura" pra **"quanto
+/// mesmos campos). O que os 2 s querem dizer mudou de "quanto tempo o cadaver dura" pra **"quanto
 /// tempo voce olha o proprio corpo antes de ser puxado"** -- e o cadaver, agora, nao acaba mais.
 /// ========================================================================================================
 ///
@@ -140,7 +140,7 @@ public sealed partial class GameServer
 			// *"personagens que morreram (...) giram como se tivessem ficado de pe (...) deveriam
 			// ficar (...) na mesma posicao de quando morreram"* -- o relato do dono. O corpo novo
 			// nascia com `FacingDaQueda` no padrao (`South`) e `RumoDoGolpe` zerado, entao no
-			// instante da troca (os 15 s de `Alem.MsNoChao`) todo cadaver ESTALAVA pro sul, fosse
+			// instante da troca (os 2 s de `Alem.MsNoChao`) todo cadaver ESTALAVA pro sul, fosse
 			// qual fosse o lado pra que o morto tinha caido. Era isso o "levanta e gira".
 			//
 			// `DirecaoDeitado` e a resposta ja RESOLVIDA do morto (rumo do golpe, ou do voo, ou o olhar
@@ -223,7 +223,7 @@ public sealed partial class GameServer
 		// o membro que faltava ficam nele. Aqui as feridas nao sao overlay: sao DERIVADAS do corpo
 		// (`Feridas.De`), e o `PrepararCombate` acima acabou de dar ao cadaver um `Body.Novo()` --
 		// inteiro, limpo, com os dois bracos. Era a outra metade do relato do dono (*"deveriam ficar
-		// com os ferimentos"*): aos 15 s o corpo destrocado virava um corpo sao deitado no chao.
+		// com os ferimentos"*): aos 2 s o corpo destrocado virava um corpo sao deitado no chao.
 		//
 		// A COPIA VEM ANTES DO `Restaurar()` do `IrProAlem` (a ordem esta la): o morto viaja inteiro,
 		// e o que fica e o que ele era quando caiu. E e copia, nao instancia -- bater no cadaver nao
@@ -470,7 +470,7 @@ public sealed partial class GameServer
 	/// tres no mesmo dia.
 	/// ====================================================================================================
 	/// </summary>
-	private void Enterrar(ServerPlayer pl)
+	private void Enterrar(ServerPlayer pl, string epitafio)
 	{
 		if (CadaverPerto(pl) is not { } corpo)
 		{ Avisar(pl, "não há corpo nenhum ao seu alcance."); return; }
@@ -480,7 +480,7 @@ public sealed partial class GameServer
 		// A LAPIDE PRIMEIRO, E O CORPO DEPOIS. Se a cova nao puder ser aberta (ha coisa demais neste
 		// ponto), o corpo NAO pode sumir -- enterrar sem lapide seria apagar o cadaver e nao dar nada em
 		// troca. Mesma ordem que o `Colher` usa com a mochila e a maca.
-		if (!ErguerALapide(pl, corpo)) return;
+		if (!ErguerALapide(pl, corpo, epitafio)) return;
 
 		// `to_chat(view(), "[usr] buries [name]")` -- a zona inteira, e nao so quem cavou.
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
@@ -511,7 +511,7 @@ public sealed partial class GameServer
 	/// este port mostra descricao.
 	/// ============================================================================================================
 	/// </summary>
-	private bool ErguerALapide(ServerPlayer quemCava, ServerPlayer corpo)
+	private bool ErguerALapide(ServerPlayer quemCava, ServerPlayer corpo, string epitafio)
 	{
 		// NAO EMPILHA -- a mesma guarda do `Assentar`, e ela e a que faz um cemiterio ser um cemiterio
 		// em vez de cinco lapides no mesmo pixel. Meio tile de folga, como la.
@@ -542,7 +542,13 @@ public sealed partial class GameServer
 			Armadura = Jandirus.Core.Combat.Armadura.Padrao,
 
 			// O EPITAFIO -- `A.desc = "[text]"`, com a resposta padrao do `input()` do DM.
-			Epitafio = Cadaver.EpitafioPadrao(corpo.NomeDeQuemMorreu),
+			Epitafio = Cadaver.EpitafioLimpo(epitafio, corpo.NomeDeQuemMorreu),
+
+			// APARAFUSADA DE NASCENCA. Uma obra solta pisca um quadrado dourado em volta (o aviso de
+			// "isto ainda nao funciona", `ObraDesenhada._Draw`), e a lapide nascia solta -- o dono viu
+			// o quadrado e pediu *"so a lapide sem esse quadrado"* (2026-09-04). Um tumulo nao se
+			// aparafusa nem se recolhe: ele e cenario, como o `GenerateCross` do DM. Ver `Aparafusada`.
+			Aparafusada = true,
 		};
 		lapide.PorZona(corpo.Zone);
 

@@ -59,21 +59,36 @@ public static class Cadaver
 	/// O EPITAFIO PADRAO -- o `"Here lies [name]"` que o DM oferece como resposta pre-preenchida do
 	/// `input()` (`Corpse.dm:20`).
 	///
-	/// ============================ NO DM O TEXTO E DIGITADO, E AQUI ELE NAO E ============================
+	/// ============================ NO DM O TEXTO E DIGITADO -- E AQUI TAMBEM, DESDE 2026-09-04 ============================
 	/// `GenerateCross(input(usr,"Grave text.","","Here lies [name]") as text)` abre uma caixa de texto
-	/// do BYOND. **Este port nao tem como fazer essa pergunta**, e a razao esta escrita palavra por
-	/// palavra no proprio catalogo de interacoes (a senha da Capital Ship, `Interacoes.De`): *"o menu
-	/// deste port sabe fazer duas perguntas -- escolher da lista e digitar numero -- e nao sabe pedir
-	/// texto. Inventar um terceiro tipo de pergunta, que abriria caixa de texto por cima de um jogo em
-	/// tela cheia, custaria mais do que [isso] vale"*.
-	///
-	/// Entao a lapide nasce com a resposta PADRAO do DM -- que e o texto que a esmagadora maioria dos
-	/// jogadores confirmaria sem alterar. O dia em que o menu aprender a pedir texto, e esta funcao que
-	/// vira o valor inicial do campo, e nao um sistema novo. Fica relatado como divergencia e nao como
-	/// porte completo.
+	/// do BYOND. O menu deste port so sabia escolher da lista e digitar numero; o dono pediu a terceira
+	/// pergunta -- *"ao criar a lapide deveria ter a opcao de escrever manualmente na lapide, abrindo
+	/// uma caixa de texto"* -- e ela existe (`Interacoes.Forma.Texto`, `Client/CaixaDeTexto.cs`). Esta
+	/// funcao e o VALOR INICIAL do campo, exatamente o papel que o `input()` lhe da; o que a pessoa
+	/// confirmar passa por <see cref="EpitafioLimpo"/> no servidor.
 	/// ====================================================================================================
 	/// </summary>
 	public static string EpitafioPadrao(string nome) => $"Aqui jaz {nome}";
+
+	/// <summary>Teto do que cabe numa lapide. O fio aceita 256 (`Protocol.MaxArgDeVerbo`); uma frase de tumulo nao precisa de metade.</summary>
+	public const int MaxEpitafio = 120;
+
+	/// <summary>O AVESSO de <see cref="NomeDo"/>: de "corpo de Fulano" tira "Fulano" -- o menu E so tem o nome do alvo.</summary>
+	public static string QuemJazEm(string nomeDoCorpo) =>
+		nomeDoCorpo.StartsWith("corpo de ", StringComparison.Ordinal) ? nomeDoCorpo["corpo de ".Length..] : nomeDoCorpo;
+
+	/// <summary>
+	/// O TEXTO QUE VAI PRA LAPIDE, a partir do que foi digitado: sem quebra de linha (a lapide e uma
+	/// frase, e o chat a le numa linha), aparado, com um espaco so entre palavras, cortado no teto -- e
+	/// o padrao do DM quando veio vazio, que e o que o `input()` devolve se a pessoa so confirmar.
+	/// Puro e sem servidor dentro, pra bancada medir os quatro casos sem forjar corpo nenhum.
+	/// </summary>
+	public static string EpitafioLimpo(string digitado, string nome)
+	{
+		string t = string.Join(' ', (digitado ?? "").Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries));
+		if (t.Length == 0) return EpitafioPadrao(nome);
+		return t.Length <= MaxEpitafio ? t : t[..MaxEpitafio].TrimEnd();
+	}
 
 	// =====================================================================
 	// 2. QUANTOS CABEM

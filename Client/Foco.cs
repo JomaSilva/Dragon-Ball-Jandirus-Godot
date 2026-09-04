@@ -22,8 +22,11 @@ public static class Foco
 	// Ela entrou AQUI e nao num `if` dentro de cada leitor pelo mesmo motivo das outras tres -- e
 	// desta vez o `Atalhos` (o disparo das teclas do jogador) tambem passa a perguntar por aqui, o
 	// que fecha o circulo: a tela que liga a tecla e a tecla ligada usam o mesmo portao.
+	// A QUINTA FONTE e a caixa de texto do menu E (`CaixaDeTexto`, a lapide): um `LineEdit` de verdade,
+	// com o teclado dentro dele -- sem esta linha o "E" do epitafio abriria outro menu por cima.
 	public static bool Digitando =>
-		Chat.Digitando || MenuJogo.Digitando || TelaDeTecnicas.Digitando || TelaDeTeclas.Digitando;
+		Chat.Digitando || MenuJogo.Digitando || TelaDeTecnicas.Digitando || TelaDeTeclas.Digitando
+		|| CaixaDeTexto.Digitando;
 
 	/// <summary>
 	/// POSSO DISPARAR UM ATALHO AGORA? A pergunta dos ATALHOS -- menu, aba, mochila, interacao, chat,

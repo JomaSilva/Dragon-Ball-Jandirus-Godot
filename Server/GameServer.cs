@@ -691,7 +691,7 @@ public sealed class ServerPlayer
 	///
 	/// **MORTO NO OUTRO MUNDO NAO ESTA DEITADO.** O DM levanta o morto (`spawn Un_KO()`,
 	/// `Death.dm:89`) antes de manda-lo pro alem, e la dentro ele anda, voa e treina -- a queda dos
-	/// 15 s e o CADAVER, e o cadaver fica no mundo dos vivos. Ver <see cref="MortoDePe"/>.
+	/// 2 s e o CADAVER, e o cadaver fica no mundo dos vivos. Ver <see cref="MortoDePe"/>.
 	/// </summary>
 	public bool Deitado => Ficha.KO || (Ficha.dead && !MortoDePe) || TiquesDeVoo > 0;
 
@@ -1115,7 +1115,7 @@ public sealed class ServerPlayer
 	/// <summary>
 	/// ============================ ESTA MORTE JA PASSOU PELA VIAGEM? ============================
 	/// A informacao que faltava pra <see cref="Jandirus.Core.World.Alem.TemAureola"/> -- ver la o
-	/// argumento inteiro, com o `Death.dm:64-67` x `:106-108`. Em uma frase: o cadaver dos 15 s **e**
+	/// argumento inteiro, com o `Death.dm:64-67` x `:106-108`. Em uma frase: o cadaver dos 2 s **e**
 	/// o proprio corpo neste port, e ele nao pode ter aureola; o corpo que ja subiu tem, esteja onde
 	/// estiver.
 	///
@@ -1467,7 +1467,7 @@ public sealed class ServerPlayer
 	public Protocol.Pose Pose(long agoraMs, bool canalDeKi)
 	{
 		// MORTO CAIDO E MORTO DE PE SAO DUAS COISAS. Enquanto o corpo esta no chao do mundo dos
-		// vivos (os 15 s de <see cref="Jandirus.Core.World.Alem.MsNoChao"/>) ele e um cadaver e
+		// vivos (os 2 s de <see cref="Jandirus.Core.World.Alem.MsNoChao"/>) ele e um cadaver e
 		// desenha deitado; no Outro Mundo ele levanta e volta a ter poses -- e o `Un_KO()` que o DM
 		// chama ANTES de mover (`Death.dm:89`). Ver <see cref="MortoDePe"/>.
 		if (Ficha.KO || (Ficha.dead && !MortoDePe)) return Protocol.Pose.Nocauteado;
@@ -1678,7 +1678,8 @@ public partial class GameServer : Node
 			// e o que morre aqui e so a subida sozinha, que e o `effector()` de quem esta JOGANDO.
 			// ======================================================================================
 			if (!EhJogador(pl)) continue;
-			if (pl.Ficha.dead || pl.Livro == null) continue;
+			// o cadaver nao sobe de nivel; o fantasma de pe treina no Outro Mundo como um vivo
+			if (EhCadaver(pl) || pl.Livro == null) continue;
 			// o tique de UM corpo mora em `GameServer.Skills.cs` (`TicarNiveisDe`): e a mesma
 			// funcao que a bancada `--arvoreteste` chama num corpo forjado, que nao passa por `EhJogador`
 			TicarNiveisDe(pl);
@@ -4933,7 +4934,7 @@ public partial class GameServer : Node
 	/// </summary>
 	private static bool PodeCorrer(ServerPlayer pl, float dt)
 	{
-		// O fantasma corre no Outro Mundo (a Serpentina e comprida); o cadaver dos 15 s, nao.
+		// O fantasma corre no Outro Mundo (a Serpentina e comprida); o cadaver dos 2 s, nao.
 		if ((pl.Ficha.dead && !pl.MortoDePe) || pl.Ficha.KO) return false;
 
 		double custo = pl.Ficha.MaxKi * CustoCorridaPorSegundo * Math.Min(dt, 0.25f);

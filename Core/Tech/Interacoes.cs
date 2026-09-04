@@ -66,6 +66,12 @@ public static class Interacoes
 		/// <see cref="Acao.Min"/>/<see cref="Acao.Max"/> sao a faixa que o teclado aceita.
 		/// </summary>
 		Numero = 2,
+
+		/// <summary>
+		/// Abre uma caixa de TEXTO -- o `input(...) as text` do DM. O digitado vira o ARGUMENTO do verbo,
+		/// <see cref="Acao.Max"/> e o teto de letras, e o valor inicial vem de <see cref="TextoInicial"/>.
+		/// </summary>
+		Texto = 3,
 	}
 
 	private static readonly Acao[] Nenhuma = [];
@@ -389,8 +395,20 @@ public static class Interacoes
 	/// </summary>
 	public static Acao[] DoCadaver() =>
 	[
-		new Acao("Enterrar", "enterrar", "", "abre uma cova e ergue uma lápide -- o corpo descansa aqui"),
+		new Acao("Enterrar", "enterrar", "", "abre uma cova e ergue uma lápide -- escreva o que fica gravado nela",
+				 Forma.Texto, Max: Jandirus.Core.World.Cadaver.MaxEpitafio),
 	];
+
+	/// <summary>
+	/// O VALOR INICIAL DA CAIXA DE TEXTO de uma acao -- o terceiro argumento do `input()` do DM. A lapide
+	/// e a unica hoje: o `"Here lies [name]"` do `Corpse.dm:20`, com o nome tirado do titulo do menu
+	/// ("corpo de Fulano"). Mora aqui, ao lado da acao, e nao no menu: o dia em que outra acao pedir
+	/// texto, o padrao dela entra nesta mesma tabela.
+	/// </summary>
+	public static string TextoInicial(in Acao a, string nomeDoAlvo) =>
+		a.Verbo == "enterrar"
+			? Jandirus.Core.World.Cadaver.EpitafioPadrao(Jandirus.Core.World.Cadaver.QuemJazEm(nomeDoAlvo))
+			: "";
 
 	// =====================================================================
 	// O VEICULO EM QUE EU ESTOU
