@@ -62,6 +62,20 @@ public static class VerbosDoJogo
 		C?.SendVerbo(cmd, id.ToString());
 	}
 
+	/// <summary>
+	/// UM VERB DE ADMIN SOBRE ALGUEM. Com alguem marcado, vai nele; sem ninguem -- ou com a marca em MIM
+	/// mesmo -- abre a lista de quem esta online pra escolher (o `input(... in world)` do original). O dono
+	/// (2026-09-05): *"verbs de adm que dizem que afetam quem voce ta com target, caso voce tenha target
+	/// em si mesmo ou em ninguem, o jogo vai mostrar a lista dos jogadores online pra voce escolher qual
+	/// voce vai afetar"*. Por isso estes verbs nao trazem mais o `TemAlvo`: sem alvo eles PERGUNTAM.
+	/// </summary>
+	private static void NoAlvoDeAdmin(string cmd, string rotulo)
+	{
+		if (C is not { } c) return;
+		if (MenuJogo.PrecisaEscolherAlvo(c.AlvoId, c.LocalId)) { MenuJogo.Instancia?.PedirAlvoDeAdmin(cmd, rotulo); return; }
+		c.SendVerbo(cmd, c.AlvoId.ToString());
+	}
+
 	/// <summary>Chamado quando o personagem entra no mundo. Idempotente.</summary>
 	public static void Registrar()
 	{
@@ -351,22 +365,22 @@ public static class VerbosDoJogo
 
 		// ---------------------------------------------------------- corpo do alvo
 		Verbos.Registrar(new Verbo("Heal", Verbos.Admin,
-			"Cura o alvo marcado por completo -- membros inclusive. Sem alvo, cura voce.",
-			() => C?.SendVerbo("admin_curar", (C?.AlvoId ?? 0).ToString())));
+			"Cura o alvo marcado por completo -- membros inclusive, sem reviver. Sem alvo (ou com a marca em voce), abre a lista de quem esta online.",
+			() => NoAlvoDeAdmin("admin_curar", "Heal")));
 
 		// `MassRevive()` (Admin.dm:294) aplicado a um so: de pe, inteiro, Ki cheio.
 		Verbos.Registrar(new Verbo("Revive Target", Verbos.Admin,
-			"Poe o alvo marcado de pe, mesmo morto. Sem alvo, revive voce.",
-			() => C?.SendVerbo("admin_reviver", (C?.AlvoId ?? 0).ToString())));
+			"Poe o alvo marcado de pe, mesmo morto. Sem alvo (ou com a marca em voce), abre a lista de quem esta online.",
+			() => NoAlvoDeAdmin("admin_reviver", "Revive Target")));
 
 		Verbos.Registrar(new Verbo("Knock Out Target", Verbos.Admin,
 			"Poe o alvo marcado no chao.",
-			() => NoAlvo("admin_kb"), TemAlvo));
+			() => NoAlvoDeAdmin("admin_kb", "Knock Out Target")));
 
 		// o `Kill()` do original (Admin.dm:350)
 		Verbos.Registrar(new Verbo("Kill Target", Verbos.Admin,
 			"Mata o alvo marcado. Ele renasce pelo caminho normal.",
-			() => NoAlvo("admin_matar"), TemAlvo));
+			() => NoAlvoDeAdmin("admin_matar", "Kill Target")));
 
 		// `World_Heal()` (Admin.dm:410) + `MassRevive()`
 		Verbos.Registrar(new Verbo("Heal Everyone", Verbos.Admin,
@@ -381,11 +395,11 @@ public static class VerbosDoJogo
 		// ---------------------------------------------------------- ir e trazer
 		Verbos.Registrar(new Verbo("Go To Target", Verbos.Admin,
 			"Vai ate o alvo marcado.",
-			() => NoAlvo("admin_ir"), TemAlvo));
+			() => NoAlvoDeAdmin("admin_ir", "Go To Target")));
 
 		Verbos.Registrar(new Verbo("Bring Target", Verbos.Admin,
 			"Traz o alvo marcado ate voce.",
-			() => NoAlvo("admin_trazer"), TemAlvo));
+			() => NoAlvoDeAdmin("admin_trazer", "Bring Target")));
 
 		// `MassSummon()` (Admin.dm:305)
 		Verbos.Registrar(new Verbo("Bring Everyone", Verbos.Admin,
@@ -395,7 +409,7 @@ public static class VerbosDoJogo
 		// `Return_Mob_To_Spawn()` (SpawnPoints.dm:37) / `Send_Spawn()` (Admin.dm:30)
 		Verbos.Registrar(new Verbo("Send Target To Spawn", Verbos.Admin,
 			"Manda o alvo marcado de volta ao ponto de partida.",
-			() => NoAlvo("admin_spawn_alvo"), TemAlvo));
+			() => NoAlvoDeAdmin("admin_spawn_alvo", "Send Target To Spawn")));
 
 		// O `Goto Spawn` DE ANTES, agora so aqui (decisao do dono). Ele era o unico caminho que
 		// atravessava a tranca da Sala do Tempo sem perguntar nada -- ver `GameServer.SalaDoTempo.cs`.
@@ -410,14 +424,14 @@ public static class VerbosDoJogo
 		// esse risco (a outra metade e o aviso na propria porta). Ver `GameServer.SalaDoTempo.cs`.
 		Verbos.Registrar(new Verbo("Release From Time Chamber", Verbos.Admin,
 			"Destranca a Sala do Tempo pro alvo marcado. A valvula de quando nao ha Guardiao.",
-			() => NoAlvo("admin_sala_soltar"), TemAlvo));
+			() => NoAlvoDeAdmin("admin_sala_soltar", "Release From Time Chamber")));
 
 		// ---------------------------------------------------------- enxergar
 		// O `Assess()` (Assess.dm) -- o verb de admin que mais importa: e o unico jeito de ler o BP
 		// alheio sem scouter, e sem ele nao ha como julgar uma denuncia de trapaca.
 		Verbos.Registrar(new Verbo("Assess Target", Verbos.Admin,
 			"A ficha COMPLETA do alvo marcado, sem sigilo: BP, forma, maestrias, corpo, conta.",
-			() => C?.SendVerbo("admin_ficha", (C?.AlvoId ?? 0).ToString())));
+			() => NoAlvoDeAdmin("admin_ficha", "Assess Target")));
 
 		// `AssessAll()` (Admin.dm:400) + `BP_Lists()` (Stat Balance.dm:23)
 		Verbos.Registrar(new Verbo("Assess All", Verbos.Admin,
@@ -454,12 +468,12 @@ public static class VerbosDoJogo
 		// `Boot()` (Admin.dm:450)
 		Verbos.Registrar(new Verbo("Boot Target", Verbos.Admin,
 			"Desconecta o alvo marcado. Ele pode voltar.",
-			() => NoAlvo("admin_expulsar"), TemAlvo));
+			() => NoAlvoDeAdmin("admin_expulsar", "Boot Target")));
 
 		// `Mute()`/`UnMute()` (Admin.dm:459-472). Alterna: o mesmo botao cala e descala.
 		Verbos.Registrar(new Verbo("Mute Target", Verbos.Admin,
 			"Cala (ou descala) o alvo marcado. Vale pra conta, nao so pro personagem.",
-			() => NoAlvo("admin_calar"), TemAlvo));
+			() => NoAlvoDeAdmin("admin_calar", "Mute Target")));
 
 		// `UNMUTEALL()` (Admin.dm:275)
 		Verbos.Registrar(new Verbo("Unmute All", Verbos.Admin,

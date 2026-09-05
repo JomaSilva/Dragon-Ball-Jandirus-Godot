@@ -1624,9 +1624,10 @@ public sealed partial class GameServer
 		_senzuNoCorpoG12[pl.Id] = noCorpo + 4;
 		pl.Combate?.Corpo.Curar(100);   // `C.health = 25*Increase` + `SpreadHeal(min((HP+25)*Increase, 100))`
 		pl.Combate?.SincronizarVida();
-		string demais = Nutricao.Comer(f, def.Nutricao);
+		// A SENZU E CURA ANTES DE SER COMIDA: entra mesmo de estomago cheio (`mesmoCheio`), so nao enche alem do teto.
+		Nutricao.Refeicao r = Nutricao.Comer(f, def.Nutricao, mesmoCheio: true);
 		Avisar(pl, "voce come a Semente Senzu e o corpo inteiro se refaz.");
-		if (demais.Length > 0) Avisar(pl, demais);
+		if (r.Aviso.Length > 0) Avisar(pl, r.Aviso);
 		Falar(pl, Protocol.Fala.Emote, "poe uma Semente Senzu na boca.");
 	}
 

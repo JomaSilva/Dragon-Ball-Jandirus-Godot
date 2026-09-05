@@ -46,6 +46,9 @@ public sealed partial class GameServer
 	/// `finally`: o bit de admin em primeiro lugar, porque perde-lo deixaria o host sem a aba pelo
 	/// resto da sessao e faria o proximo `--diagadmin` acusar uma regressao que nao existe.
 	/// </summary>
+	/// <summary>O id do corpo forjado do bloco "curar nao e reviver" -- fora de toda faixa das outras bancadas.</summary>
+	private const int IdDaCobaiaDaCura = 93_100;
+
 	private void AsFerramentasDeAdmin(ServerPlayer adm, Action<string, bool, string> Checa)
 	{
 		// ---------------------------------------------------------------- o que sera reposto
@@ -748,6 +751,74 @@ public sealed partial class GameServer
 
 			adm.Poderes = poderesAntes;
 			adm.PoderesConcedidos = concedidosAntes;
+
+			// =====================================================================
+			// 6b. CURAR NAO E REVIVER (dono, 2026-09-05)
+			// =====================================================================
+			// "heal all ou heal em alguem especifico faz ela reviver, o que nao deveria acontecer". O DM
+			// (`Admin.dm:409-413`, World_Heal) nunca escreve `dead = 0`. A cobaia e um corpo forjado (`Peer`
+			// nulo) posto no mundo pelo `PorNoMundo`. O `admin_curar_todos` so alcanca JOGADORES (`Jogadores`
+			// exige Peer), entao a metade "Heal Everyone" e medida no proprio admin com a MARCA de morto
+			// escrita a seco -- sem os ganchos da morte, porque e so a marca que o Heal nao pode apagar.
+			{
+				var cobaia = new ServerPlayer
+				{
+					Id = IdDaCobaiaDaCura, Peer = null, Name = "CobaiaDaCura", Race = "Human", Genero = "Male", Idade = 25,
+					Zone = adm.Zone, Pos = adm.Pos + new Jandirus.Core.World.Vec2(2 * Jandirus.Core.World.ZoneCollision.TileSize, 0),
+					Conta = "bancada_admin_cura", Slot = 0,
+					Ficha = new Jandirus.Core.Stats.Fighter { Race = "Human", BP = 1000 },
+					Livro = new Jandirus.Core.Skills.SkillBook(),
+				};
+				cobaia.Ficha.Class = "Normal";
+				PorNoMundo(cobaia);
+				bool admMorto = adm.Ficha.dead;
+				// O CORPO DO ADMIN VOLTA COMO ESTAVA: o "Heal Everyone" cura o proprio admin de verdade (membros,
+				// rabo, carencia, Ki), e a porta do Beast, familias adiante, le esse corpo -- com o rabo de volta
+				// o Super Saiyajin 4 vira candidato antes do Beast e a recusa deixa de falar de dor. Foi assim
+				// que esta bancada ficou vermelha numa checagem que nao era dela.
+				var partesDoAdm = adm.Combate.Corpo.Partes.Select(p => (p.Vida, p.Decepado)).ToList();
+				double carenciaDoAdm = adm.Combate.Carencia, kiDoAdm = adm.Ficha.Ki, tailgainDoAdm = adm.Ficha.tailgain;
+				bool koDoAdm = adm.Ficha.KO;
+				try
+				{
+					cobaia.Combate.Morrer();
+					Checa("PREMISSA: a cobaia esta morta", cobaia.Ficha.dead, "");
+					cobaia.Combate.Corpo.Partes[0].Vida = 1;
+					Mandar("admin_curar", cobaia.Id.ToString());
+					Checa("Heal num MORTO nao o revive (DM `World_Heal`: Un_KO + SpreadHeal + Ki, nunca `dead = 0`)", cobaia.Ficha.dead, "");
+					Checa("...mas o corpo dele fica INTEIRO -- a cura curou, so nao ressuscitou",
+						  cobaia.Combate.Corpo.Partes.All(p => p.Vida >= p.VidaMax - 1e-9 && !p.Decepado),
+						  string.Join(",", cobaia.Combate.Corpo.Partes.Select(p => $"{p.Vida:0}/{p.VidaMax:0}")));
+
+					adm.Ficha.dead = true;
+					Mandar("admin_curar_todos", "");
+					Checa("Heal Everyone tambem nao revive quem esta morto (o admin, com a marca de morto, continua morto)", adm.Ficha.dead, "");
+					adm.Ficha.dead = admMorto;
+
+					Mandar("admin_reviver", cobaia.Id.ToString());
+					Checa("CONTRA-EXEMPLO: Revive Target continua revivendo (a cobaia volta a viver)", !cobaia.Ficha.dead, "");
+
+					Nocautear(cobaia);
+					Checa("PREMISSA: a cobaia esta nocauteada", cobaia.Ficha.KO, "");
+					Mandar("admin_curar", cobaia.Id.ToString());
+					Checa("Heal num NOCAUTEADO o poe de pe (o `Un_KO()` do World_Heal) sem mexer no `dead`", !cobaia.Ficha.KO && !cobaia.Ficha.dead, "");
+				}
+				finally
+				{
+					adm.Ficha.dead = admMorto;
+					for (int i = 0; i < partesDoAdm.Count && i < adm.Combate.Corpo.Partes.Count; i++)
+					{
+						adm.Combate.Corpo.Partes[i].Vida = partesDoAdm[i].Vida;
+						adm.Combate.Corpo.Partes[i].Decepado = partesDoAdm[i].Decepado;
+					}
+					adm.Combate.SincronizarVida();
+					adm.Combate.Carencia = carenciaDoAdm;
+					adm.Ficha.Ki = kiDoAdm;
+					adm.Ficha.tailgain = tailgainDoAdm;
+					adm.Ficha.KO = koDoAdm;
+					DespedirCorpo(cobaia);
+				}
+			}
 
 			// =====================================================================
 			// 7. O RASTRO

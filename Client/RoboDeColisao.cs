@@ -81,7 +81,7 @@ public partial class RoboDeColisao : Node
 	// O ROTEIRO
 	// =====================================================================
 	private const int PAssentar = 0, PMontar = 1, PA_Antes = 2, PA_Colidir = 3,
-					  PA_Ocupado = 11, PA_Livre = 12,
+					  PA_Ocupado = 11, PA_Livre = 12, PA_Alvo = 14,
 					  PB_Pegar = 4, PB_Subir = 5,
 					  PC_Matar = 6, PC_Cadaver = 7, PC_Enterrar = 8, PC_Escrever = 13, PC_Depois = 9,
 					  PFim = 10;
@@ -107,6 +107,7 @@ public partial class RoboDeColisao : Node
 			case PA_Colidir: A_Colidir(srv, mundo, delta); break;
 			case PA_Ocupado: A_Ocupado(srv, cli, mundo); break;
 			case PA_Livre: A_Livre(srv, cli, mundo); break;
+			case PA_Alvo: A_Alvo(cli, mundo); break;
 			case PB_Pegar: B_Pegar(srv, mundo); break;
 			case PB_Subir: B_Subir(srv, mundo); break;
 			case PC_Matar: C_Matar(srv, cli); break;
@@ -308,7 +309,7 @@ public partial class RoboDeColisao : Node
 	{
 		if (_t < 0.5) return;
 
-		if (mundo.CorpoDeTeste(_beta) is not { } corpoDeBeta) { Virar(PB_Pegar); return; }
+		if (mundo.CorpoDeTeste(_beta) is not { } corpoDeBeta) { Virar(PA_Alvo); return; }
 		Vec2 pesDeBeta = ClasseDeCorpo.Pes(new Vec2(corpoDeBeta.Position.X, corpoDeBeta.Position.Y));
 		int andarDeBeta = Voo.Andar((corpoDeBeta as RemotePlayer)?.AlturaDeTeste ?? 0f);
 		Vec2 deLonge = pesDeBeta - _rumo * (4 * ZoneCollision.TileSize);
@@ -326,6 +327,49 @@ public partial class RoboDeColisao : Node
 			"A3: ...e A PE ele continua barrando, ocupado ou nao (a regra antiga nao foi trocada, "
 			+ "so ganhou um segundo termo)");
 
+		Virar(PA_Alvo);
+	}
+
+	/// <summary>
+	/// A4 -- O DUPLO CLIQUE EM MIM SOLTA O ALVO. O dono (2026-09-05): *"com zanzoken ou nao, ao clicar em si
+	/// mesmo 2 vezes tiraria qualquer target"*. O gesto e dado sem mouse (`DuploCliqueDeTeste`) nos pixels onde
+	/// o Beta e o meu corpo estao DESENHADOS -- a mesma conta que o clique de verdade faz. A skill e plantada
+	/// so no cliente (`SkillsAprendidas` e o que o `World` consulta); o servidor nao a tem e recusa a piscada
+	/// do contra-exemplo em silencio, o que e o suficiente: a pergunta e o que o CLIENTE pede.
+	/// </summary>
+	private void A_Alvo(GameClient cli, World mundo)
+	{
+		if (_t < 0.3) return;
+		if (mundo.CorpoDeTeste(_beta) is not { } beta || mundo.PosicaoLocalDeTeste is not { } eu)
+		{
+			Conferir(false, "A4: preciso do Beta desenhado e do meu corpo pra dar os duplos cliques");
+			Virar(PB_Pegar);
+			return;
+		}
+		Vector2 emBeta = beta.GlobalPosition;
+		mundo.DuploCliqueDeTeste(emBeta);
+		Conferir(cli.AlvoId == _beta, $"A4: duplo clique em cima do Beta MARCA o Beta (alvo {cli.AlvoId}, Beta {_beta})");
+
+		int piscadas = mundo.ZanzokensPedidosDeTeste;
+		mundo.DuploCliqueDeTeste(eu);
+		Conferir(cli.AlvoId == 0 && mundo.ZanzokensPedidosDeTeste == piscadas,
+			"A4: duplo clique em MIM solta o alvo -- e nao pede piscada nenhuma (sem Zanzoken)");
+
+		bool sabia = cli.SkillsAprendidas.Contains(World.PathDoZanzoken);
+		cli.SkillsAprendidas.Add(World.PathDoZanzoken);
+		try
+		{
+			mundo.DuploCliqueDeTeste(emBeta);
+			Conferir(cli.AlvoId == _beta, "A4: COM Zanzoken, duplo clique no Beta continua marcando");
+			mundo.DuploCliqueDeTeste(eu);
+			Conferir(cli.AlvoId == 0 && mundo.ZanzokensPedidosDeTeste == piscadas,
+				"A4: COM Zanzoken, duplo clique em MIM solta o alvo e NAO vira piscada (era o defeito: uma piscada de zero pixels)");
+			Vector2 chao = eu + new Vector2(2 * ZoneCollision.TileSize, 0);
+			mundo.DuploCliqueDeTeste(chao);
+			Conferir(mundo.ZanzokensPedidosDeTeste == piscadas + 1 && cli.AlvoId == 0,
+				"A4: CONTRA-EXEMPLO -- COM Zanzoken, duplo clique no CHAO continua sendo a piscada (e nao mexe no alvo)");
+		}
+		finally { if (!sabia) cli.SkillsAprendidas.Remove(World.PathDoZanzoken); }
 		Virar(PB_Pegar);
 	}
 

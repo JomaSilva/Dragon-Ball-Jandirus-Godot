@@ -237,6 +237,7 @@ public sealed partial class GameServer
 			AForcaEADistanciaNaoMudaram();
 			OGarantidoContinuaGarantido();
 			OFioAteOAtacar();
+			ORastroSegueOsPixels();
 
 			// ---- AS DUAS QUEIXAS DO DONO, CRONOMETRADAS NUMA BRIGA DE VERDADE ----
 			// Um par de brigas de 60 s (com e sem o defeito injetado) alimenta as DUAS familias
@@ -1007,5 +1008,97 @@ public sealed partial class GameServer
 				  marcAntes.PcNoVazio < 10 && marcDepois.PcNoVazio < 10,
 				  $"antes {marcAntes.PcNoVazio:0.0}% ({marcAntes.Vazios}/{marcAntes.Socos}) / "
 				  + $"depois {marcDepois.PcNoVazio:0.0}% ({marcDepois.Vazios}/{marcDepois.Socos})");
+	}
+
+	// =====================================================================
+	// O RASTRO SEGUE OS PIXELS
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-09-04): *"a trilha do knock back fica em cima do tile mais proximo, so que ja que o
+	/// player se move por pixel a trilha fica muitas vezes torta"*. Um arremesso na DIAGONAL, medido
+	/// no fio: as marcas nascem sobre a reta do voo, uma a cada tile andado, e nenhuma encaixada no
+	/// centro da celula -- o encaixe era exatamente a escadinha que ele viu. Ver `CarimbarSulco`.
+	/// </summary>
+	private void ORastroSegueOsPixels()
+	{
+		GD.Print("[kb] -- o rastro do arremesso segue os PIXELS, e nao a grade --");
+		const int T = ZoneCollision.TileSize;
+
+		ServerPlayer d = Forjar("kbRastro", new Vec2(8 * T, 8 * T), 5_551);
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(d.Zone);
+		Vec2? canto = mapa == null ? null : PracaSeca(mapa, 16);
+		AfirmarKb("(montagem) achei uma praca seca de 16x16 tiles pro arremesso na diagonal", canto != null);
+		if (canto is not { } c) return;
+
+		// A ORIGEM FORA DO CENTRO DA CELULA, de proposito: e o caso do jogo (ninguem para no centro).
+		Vec2 origem = c + new Vec2(T + 5, T + 9);
+		d.Pos = origem;
+		d.Altitude = 0;
+		Vec2 rumo = new Vec2(1, 1).Normalized();
+		d.RumoDoVoo = rumo;
+		d.TiquesDeVoo = d.TiquesIniciaisDoVoo = 6;   // 12 tiles: acima do minimo que deixa rastro
+		d.ForcaDoVoo = 0;                              // abaixo da resistencia: nao derruba nada
+		d.UltimoSulco = default;
+
+		// SO O MEU VOO: as familias anteriores deixaram corpos ainda no ar, e o `TickDoEmpurrao` e de
+		// TODOS -- a primeira rodada desta familia colheu 24 marcas e 8 pontas de quatro arremessos
+		// diferentes. Os outros pousam agora, e o que se le do fio e so o que caiu DENTRO da praca.
+		foreach (ServerPlayer o in TodosOsCorpos().ToList())
+			if (o != d) { o.TiquesDeVoo = 0; o.TiquesIniciaisDoVoo = 0; }
+		Vec2 fimDaPraca = c + new Vec2(16 * T, 16 * T);
+		bool NaPraca(Vec2 v) => v.X >= c.X && v.Y >= c.Y && v.X <= fimDaPraca.X && v.Y <= fimDaPraca.Y;
+
+		EscutaDeDecalques = [];
+		MarcarSulco(d, Protocol.Decal.SulcoPonta);
+		for (int i = 0; i < 60 && d.TiquesDeVoo > 0; i++) TickDoEmpurrao();
+
+		var sulcos = new List<Vec2>();
+		var pontas = new List<Vec2>();
+		foreach ((ulong zona, Protocol.Decal t, byte[] fio) in EscutaDeDecalques ?? [])
+		{
+			if (zona != d.Zone.Hash || t is not (Protocol.Decal.Sulco or Protocol.Decal.SulcoPonta)) continue;
+			(_, Vec2 onde, _, _, _) = LerDecalque(fio);
+			if (!NaPraca(onde)) continue;
+			(t == Protocol.Decal.Sulco ? sulcos : pontas).Add(onde);
+		}
+		EscutaDeDecalques = null;
+
+		AfirmarKb("um arremesso na DIAGONAL deixou uma fileira de sulcos", sulcos.Count >= 6, $"{sulcos.Count} marca(s)");
+		if (sulcos.Count < 2) return;
+
+		int saltos = 0;
+		for (int i = 1; i < sulcos.Count; i++)
+			if (Math.Abs((sulcos[i] - sulcos[i - 1]).Length - T) > 0.5f) saltos++;
+		AfirmarKb("...cada marca a exatamente um tile da anterior AO LONGO DO CAMINHO (a distancia manda, e nao a celula)",
+				  saltos == 0, $"{saltos} salto(s)");
+
+		Vec2 pes0 = origem + new Vec2(0, MoveRules.FeetOffsetY);
+		float foraDaReta = sulcos.Max(m => Math.Abs((m.X - pes0.X) * rumo.Y - (m.Y - pes0.Y) * rumo.X));
+		AfirmarKb("...todas EM CIMA da reta do voo: o rastro nasce por onde o corpo passou, nos pixels",
+				  foraDaReta < 1.5f, $"maior desvio {foraDaReta:0.##} px");
+
+		int noCentro = sulcos.Count(m => Math.Abs(m.X % T - T / 2f) < 0.5f && Math.Abs(m.Y % T - T / 2f) < 0.5f);
+		AfirmarKb("...e NENHUMA encaixada a forca no centro da celula -- a escadinha 'torta' que o dono viu era esse encaixe",
+				  noCentro == 0, $"{noCentro} de {sulcos.Count} no centro");
+
+		Vec2 pesFim = d.Pos + new Vec2(0, MoveRules.FeetOffsetY);
+		AfirmarKb("...com a PONTA nas duas extremidades (a tampa sempre carimba; distancia nenhuma a segura)",
+				  pontas.Count == 2 && Vec2.Distance(pontas[0], pes0) < 0.5f && Vec2.Distance(pontas[1], pesFim) < 0.5f,
+				  $"{pontas.Count} ponta(s)");
+	}
+
+	/// <summary>Um quadrado de `lado` tiles sem parede e sem agua, longe da borda. Devolve o canto (pixel) ou nulo.</summary>
+	private static Vec2? PracaSeca(ZoneCollision mapa, int lado)
+	{
+		for (int y = 4; y + lado < mapa.Height - 4; y += 2)
+			for (int x = 4; x + lado < mapa.Width - 4; x += 2)
+			{
+				bool bom = true;
+				for (int j = 0; j < lado && bom; j++)
+					for (int i = 0; i < lado && bom; i++)
+						bom &= !mapa.BlockedCell(x + i, y + j) && !mapa.EhAgua(x + i, y + j);
+				if (bom) return new Vec2(x * ZoneCollision.TileSize, y * ZoneCollision.TileSize);
+			}
+		return null;
 	}
 }

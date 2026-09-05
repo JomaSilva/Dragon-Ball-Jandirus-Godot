@@ -620,6 +620,9 @@ public partial class GameServer
 		// O ODIO POR GOLPE (`ENMITY_HIT`, `CombatMovement.dm:225`): so cresce contra quem a vitima
 		// ja tinha declarado rival. Fica aqui, e nao no `Atacar`, porque este e o ponto que ja
 		// responde "este golpe teve consequencia".
+		// UM CADAVER NAO TEM VIDA SOCIAL NEM CAI: quem ja esta morto nao "e nocauteado", nao cobra odio e nao
+		// entra no luto de ninguem. O golpe feriu o corpo (ver `MeleeResolver`), e e so isso que ele faz.
+		if (EhCadaver(d)) return;
 		if (r.Encostou) GolpeDeRival(d, a);
 
 		if (r.Nocauteou)
@@ -789,13 +792,13 @@ public partial class GameServer
 			return null;   // marcou alguem longe demais: nao arranca atras de outro sem querer
 		}
 
-		ServerPlayer? melhor = null;
-		float melhorDist = float.MaxValue;
+		ServerPlayer? melhor = null, melhorCadaver = null;
+		float melhorDist = float.MaxValue, melhorDistCadaver = float.MaxValue;
 		Vec2 frente = MeleeArea.Frente(a.Facing);
 
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
-			if (o == a || EhCadaver(o) || o.Combate.Intocavel) continue;
+			if (o == a || o.Combate.Intocavel) continue;
 			if (!AlcancaPelaAltura(a, o)) continue;
 
 			Vec2 d = o.Pos - a.Pos;
@@ -805,16 +808,31 @@ public partial class GameServer
 			if (dist2 <= DistanciaDeParada * DistanciaDeParada) continue;
 			if (MeleeArea.Angulo(frente, d) > CombatKnobs.MeioAnguloCone) continue;
 
+			// O CADAVER TAMBEM E CORPO (ver `AlvoNaFrente`): entra na busca, mas so leva o arranque quando
+			// nao ha ninguem VIVO no cone.
+			if (EhCadaver(o))
+			{
+				if (dist2 < melhorDistCadaver) { melhorDistCadaver = dist2; melhorCadaver = o; }
+				continue;
+			}
 			if (dist2 >= melhorDist) continue;
 			melhorDist = dist2;
 			melhor = o;
 		}
-		return melhor;
+		return melhor ?? melhorCadaver;
 	}
 
 	/// <summary>
 	/// Quem esta no cone do golpe. O MAIS PROXIMO leva -- socar nao acerta dois de uma vez.
-	/// Morto e ignorado: o corpo esta no chao, nao no caminho.
+	///
+	/// ============================ O CADAVER E CORPO, E APANHA (dono, 2026-09-05) ============================
+	/// *"corpos mortos ainda sao corpos de personagem, entao deveria dar pra atacar e ferir mais (e
+	/// claramente eles nao regeneram pq ja estao mortos)"*. Ate aqui o morto era ignorado ("o corpo esta no
+	/// chao, nao no caminho"). Agora ele entra na busca -- mas quem esta VIVO no cone tem preferencia, senao
+	/// um corpo caido entre dois lutadores viraria escudo e o soco que era pro inimigo iria pro chao. O corpo
+	/// so leva quando nao ha mais ninguem de pe na frente. Quem NAO o alveja e a IA (`PresaDoNpc` e
+	/// `PresaDoHostil` pulam `dead`): NPC nao surra defunto.
+	/// ============================================================================================================
 	/// </summary>
 	private ServerPlayer? AlvoNaFrente(ServerPlayer a)
 	{
@@ -825,12 +843,12 @@ public partial class GameServer
 			&& (mira.Pos - a.Pos).LengthSquared <= CombatKnobs.Alcance * CombatKnobs.Alcance)
 			return mira;
 
-		ServerPlayer? melhor = null;
-		float melhorDist = float.MaxValue;
+		ServerPlayer? melhor = null, melhorCadaver = null;
+		float melhorDist = float.MaxValue, melhorDistCadaver = float.MaxValue;
 
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
-			if (o == a || EhCadaver(o) || o.Combate.Intocavel) continue;
+			if (o == a || o.Combate.Intocavel) continue;
 			// ============================ QUEM ALCANCA QUEM, POR ANDAR ============================
 			// Antes desta linha o alcance era so horizontal, e voar nao mudava NADA no combate --
 			// dois corpos a 20 tiles de altura de diferenca socavam um ao outro normalmente, o que
@@ -840,11 +858,16 @@ public partial class GameServer
 			if (!MeleeArea.NoAlcance(a.Pos, a.Facing, o.Pos)) continue;
 
 			float dist = (o.Pos - a.Pos).LengthSquared;
+			if (EhCadaver(o))
+			{
+				if (dist < melhorDistCadaver) { melhorDistCadaver = dist; melhorCadaver = o; }
+				continue;
+			}
 			if (dist >= melhorDist) continue;
 			melhorDist = dist;
 			melhor = o;
 		}
-		return melhor;
+		return melhor ?? melhorCadaver;   // o vivo primeiro; o corpo so quando nao ha vivo na frente
 	}
 
 	/// <summary>
@@ -996,9 +1019,12 @@ public partial class GameServer
 	private ServerPlayer? Marcado(ServerPlayer a)
 	{
 		if (a.AlvoId == 0) return null;
-		if (CorpoNaMinhaZona(a, a.AlvoId) is not { } o || EhCadaver(o) || o.Combate.Intocavel)
+		// O CADAVER CONTINUA MARCADO (dono, 2026-09-05: "corpos mortos ainda sao corpos de personagem"): quem
+		// marcou alguem e o matou pode continuar batendo no corpo. A marca so cai quando o corpo SOME da zona
+		// (enterrado, desfeito, ou a alma que viajou pro Outro Mundo -- o cadaver que fica e OUTRO id).
+		if (CorpoNaMinhaZona(a, a.AlvoId) is not { } o || o.Combate.Intocavel)
 		{
-			a.AlvoId = 0;   // limpa sozinho: alvo morto nao fica preso na mira pra sempre
+			a.AlvoId = 0;   // limpa sozinho: quem sumiu da zona nao fica preso na mira pra sempre
 			return null;
 		}
 		// A ALTURA VALE ATE PRO MARCADO, e este e o caso que mais precisava: marcar alguem e

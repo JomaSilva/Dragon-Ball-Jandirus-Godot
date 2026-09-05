@@ -1070,6 +1070,13 @@ public static class Protocol
         /// ==============================================================================================
         /// </summary>
         Pecas = 53,
+
+        /// <summary>
+        /// QUEM ESTA ONLINE, pra um admin escolher o alvo de um verb sem ter marcado ninguem: `ushort n`
+        /// + n x (`int id`, `string nome`, `string onde`). E o `input(... in world)` dos verbs de admin
+        /// do original, sem travar a tela. So sai pra admin, a pedido (`admin_online`).
+        /// </summary>
+        Online = 54,
     }
 
     /// <summary>
@@ -1565,8 +1572,6 @@ public static class Protocol
         public float PoderRelativo;
         /// <summary>O BP EXATO -- so no Scan. No Sense e SEMPRE NaN (`GameServer.SemLeitura`): o sigilo mora aqui.</summary>
         public double Bp;
-        /// <summary>A vida em % (so perto). <see cref="HpDesconhecido"/> quando nao vem.</summary>
-        public byte Hp;
         /// <summary>A distancia em tiles, o `get_dist` do DM. <see cref="DistanciaDesconhecida"/> na galaxia.</summary>
         public ushort Distancia;
         /// <summary>O rumo em oito pontos, o `sense_dir_word` do DM -- indice em <see cref="NomesDosRumos"/> (0 = "?").</summary>
@@ -1581,7 +1586,7 @@ public static class Protocol
         public readonly void Write(NetDataWriter w)
         {
             w.Put(Nome ?? ""); w.Put(Assinatura ?? "");
-            w.Put(Alcance); w.Put(PoderRelativo); w.Put(Bp); w.Put(Hp);
+            w.Put(Alcance); w.Put(PoderRelativo); w.Put(Bp);
             w.Put(Distancia); w.Put(Rumo); w.Put(X); w.Put(Y);
             w.Put(Zona ?? ""); w.Put(Chefe);
         }
@@ -1589,7 +1594,7 @@ public static class Protocol
         public static PresencaState Read(NetDataReader r) => new()
         {
             Nome = r.GetString(64), Assinatura = r.GetString(16),
-            Alcance = r.GetByte(), PoderRelativo = r.GetFloat(), Bp = r.GetDouble(), Hp = r.GetByte(),
+            Alcance = r.GetByte(), PoderRelativo = r.GetFloat(), Bp = r.GetDouble(),
             Distancia = r.GetUShort(), Rumo = r.GetByte(), X = r.GetShort(), Y = r.GetShort(),
             Zona = r.GetString(64), Chefe = r.GetBool(),
         };
@@ -1600,8 +1605,6 @@ public static class Protocol
 
     public static string NomeDoRumo(byte rumo) => rumo < NomesDosRumos.Length ? NomesDosRumos[rumo] : "?";
 
-    /// <summary>A marca de "vida nao informada" em <see cref="PresencaState.Hp"/>.</summary>
-    public const byte HpDesconhecido = 255;
 
     /// <summary>A marca de "distancia nao informada" em <see cref="PresencaState.Distancia"/> (a galaxia so diz o lugar).</summary>
     public const ushort DistanciaDesconhecida = ushort.MaxValue;

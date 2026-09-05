@@ -89,6 +89,7 @@ public partial class GameServer
 			OCadaverEAgarravelEContinuaPreso(pl, cadaver);
 			OCadaverVaiNoColoComAAltitude(pl, cadaver);
 			OCadaverArremessadoAnda(cadaver);
+			OCorpoApanhaENaoRegenera(pl, cadaver, forjados);
 			EnterrarErgueALapide(pl, cadaver, forjados);
 			OTetoDaZonaLevaOMaisAntigo(pl, forjados);
 			OBonecoTambemFoiConsertado(pl, forjados);
@@ -327,8 +328,8 @@ public partial class GameServer
 
 		AfirmarCad("o `CorpoNaFrente` acha o CADAVER (ele nao pergunta `Ficha.dead`, e o soco pergunta)",
 				   CorpoNaFrente(pl) == c);
-		AfirmarCad("...e o `AlvoNaFrente` do SOCO nao acha (as duas regras sao diferentes de proposito)",
-				   AlvoNaFrente(pl) != c);
+		AfirmarCad("...e o `AlvoNaFrente` do SOCO tambem acha (dono, 2026-09-05: 'corpos mortos ainda sao corpos de personagem')",
+				   AlvoNaFrente(pl) == c);
 
 		Prender(pl, c);
 		AfirmarCad("PEGOU: os dois lados apontam um pro outro",
@@ -462,6 +463,80 @@ public partial class GameServer
 	/// `verb/Bury()` -- `Corpse.dm:16-21`. Os tres passos do original, e o quarto que e do port: a
 	/// lapide vai pro `mundo.json`, porque um tumulo que some no reinicio nao e um tumulo.
 	/// </summary>
+	/// <summary>
+	/// 9 -- O CORPO APANHA (dono, 2026-09-05): *"corpos mortos ainda sao corpos de personagem, entao deveria
+	/// dar pra atacar e ferir mais (e claramente eles nao regeneram pq ja estao mortos)"*. O soco pelo
+	/// `Atacar` de producao com o corpo MARCADO, um raio de Ki pelo `TickDosProjeteis`, a regeneracao
+	/// passiva chamada na mao, e a preferencia pelo vivo quando os dois estao no cone.
+	/// </summary>
+	private void OCorpoApanhaENaoRegenera(ServerPlayer pl, ServerPlayer c, List<ServerPlayer> forjados)
+	{
+		GD.Print("[cadaver] -- 9) o corpo apanha, fere mais, e nao regenera --");
+		pl.Combate.Reviver();
+		pl.Ficha.dead = false;
+		pl.MorteJaViajou = false;
+		if (!pl.Zone.Equals(c.Zone)) MoveToZone(pl.Id, c.Zone, c.Pos);
+		if (pl.AgarrandoId != 0) Soltar(pl, MotivoDaSoltura.Tecla);
+		c.TiquesDeVoo = 0;
+		c.Altitude = 0;
+		pl.Altitude = 0;
+		pl.Voando = false;
+		pl.Nadando = false;
+		pl.Facing = Facing.East;
+		c.Pos = pl.Pos + new Vec2(28, 0);
+		pl.Combate.Recarga = 0;
+		pl.Combate.Stun = 0;
+		pl.AtaqueAte = 0;
+		pl.DashLivreEm = 0;
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		pl.AlvoId = c.Id;
+		AfirmarCad("o corpo MARCADO continua marcado (antes a marca caia sozinha: 'alvo morto nao fica preso na mira')",
+				   Marcado(pl) == c);
+
+		double vidaAntes = c.Combate.Corpo.Partes.Sum(p => p.Vida);
+		EscutaDeGolpes = [];
+		Atacar(pl, Protocol.Golpe.Leve);
+		bool acertou = EscutaDeGolpes.Count > 0;
+		EscutaDeGolpes = null;
+		double vidaDepois = c.Combate.Corpo.Partes.Sum(p => p.Vida);
+		AfirmarCad("o soco ENCOSTA no cadaver (um relato de golpe saiu pro fio)", acertou);
+		AfirmarCad("...e o corpo FERE MAIS: a vida dos membros caiu", vidaDepois < vidaAntes, $"{vidaAntes:0} -> {vidaDepois:0}");
+		AfirmarCad("...sem 'morrer de novo' nem levantar: continua morto e cadaver", c.Ficha.dead && EhCadaver(c));
+
+		for (int i = 0; i < 50; i++) RegenerarPassivo(c, 1.0);
+		double semRegen = c.Combate.Corpo.Partes.Sum(p => p.Vida);
+		AfirmarCad("...e NAO REGENERA: cinquenta segundos de regeneracao passiva nao devolvem um ponto",
+				   Math.Abs(semRegen - vidaDepois) < 1e-9, $"{vidaDepois:0.##} -> {semRegen:0.##}");
+
+		// UM RAIO DE KI TAMBEM FERE O CORPO: o feixe da bancada de projeteis, pelo tique de producao.
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		Projetil raio = RaioDaBancada(pl, 40);
+		for (int i = 0; i < 12 && raio.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
+		double comRaio = c.Combate.Corpo.Partes.Sum(p => p.Vida);
+		AfirmarCad("um raio de Ki tambem FERE o corpo (antes o `Colidiu` pulava `Ficha.dead`)", comRaio < semRegen, $"{semRegen:0} -> {comRaio:0}");
+		SoltarDoRaio(pl.Id);
+		for (int i = 0; i < 30 && raio.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
+
+		// O VIVO TEM PREFERENCIA: com alguem de pe no MESMO ponto do corpo, o soco vai no vivo.
+		var vivo = new ServerPlayer
+		{
+			Id = IdDoVivoDoCadaverDeTeste, Peer = null, Name = "bancada: o vivo ao lado", Race = "Human", Genero = "Male", Idade = 25,
+			Zone = pl.Zone, Pos = c.Pos, Conta = "bancada_cadaver_vivo", Slot = 0,
+			Ficha = new Jandirus.Core.Stats.Fighter { Race = "Human", BP = 1000 }, Livro = new Jandirus.Core.Skills.SkillBook(),
+		};
+		vivo.Ficha.Class = "Normal";
+		PorNoMundo(vivo);
+		forjados.Add(vivo);
+		pl.AlvoId = 0;
+		AfirmarCad("com um VIVO no mesmo ponto do cadaver, o soco prefere o vivo (o corpo so leva quando nao ha ninguem de pe)",
+				   AlvoNaFrente(pl) == vivo, AlvoNaFrente(pl)?.Name ?? "ninguem");
+		vivo.Pos = pl.Pos + new Vec2(-30 * ZoneCollision.TileSize, 0);
+		AfirmarCad("...e sem vivo na frente, o cadaver volta a ser o alvo", AlvoNaFrente(pl) == c, AlvoNaFrente(pl)?.Name ?? "ninguem");
+	}
+
+	/// <summary>O id do corpo vivo forjado na familia 9 -- fora de toda faixa das outras bancadas.</summary>
+	private const int IdDoVivoDoCadaverDeTeste = 93_200;
+
 	private void EnterrarErgueALapide(ServerPlayer pl, ServerPlayer c, List<ServerPlayer> forjados)
 	{
 		GD.Print("[cadaver] -- 6) enterrar ergue a lapide --");
@@ -481,15 +556,29 @@ public partial class GameServer
 		// O TEXTO DIGITADO NA CAIXA viaja como argumento do verbo (`Forma.Texto`, o `input() as text` do
 		// DM) -- com as sujeiras que um campo de texto traz, pra provar que a limpeza e do servidor.
 		const string digitado = "  Aqui descansa quem\n  mexeu com a pessoa errada  ";
-		pl.Pos = onde + new Vec2(16, 0);
+		// LEVADO NO COLO E ENTERRADO ONDE O CARREGADOR QUIS (dono, 2026-09-05: "agarrar eles e assim podendo
+		// levar pra qualquer lugar e enterrar onde achar melhor"). O corpo e preso, carregado dez tiles, e o
+		// enterro acontece ALI -- e solta quem carregava, que fica de maos vazias.
+		pl.Pos = onde + new Vec2(8, 0);
+		pl.Facing = Facing.West;
+		pl.Altitude = 0;
+		Prender(pl, c);
+		pl.ModoDoAgarrao = ModoDeAgarrao.Carregando;
+		Vec2 destino = onde + new Vec2(10 * ZoneCollision.TileSize, 0);
+		pl.Pos = destino;
+		TickDoAgarrao(Protocol.TickSeconds);
+		AfirmarCad("LEVADO: preso e carregado, o corpo esta onde o carregador parou (dez tiles de onde caiu)",
+				   pl.AgarrandoId == c.Id && (c.Pos - destino).LengthSquared < 0.01f, $"({c.Pos.X:0},{c.Pos.Y:0}) x ({destino.X:0},{destino.Y:0})");
 		Enterrar(pl, digitado);
 
 		Obra? lapide = _noChao.LastOrDefault(o => o.Tipo.StartsWith("Grave_", StringComparison.Ordinal));
 		AfirmarCad("PERTO: nasceu uma lapide", lapide != null);
 		AfirmarCad("...com um dos CINCO sprites do `pick(1,2,3,4,5)` (`Corpse.dm:57`)",
 				   lapide != null && _obras?.Get(lapide.Tipo) != null, lapide?.Tipo ?? "");
-		AfirmarCad("...no ponto onde o corpo estava",
-				   lapide != null && Math.Abs(lapide.X - onde.X) < 1 && Math.Abs(lapide.Y - onde.Y) < 1);
+		AfirmarCad("...no ponto onde o corpo foi LARGADO (dez tiles de onde ele caiu), e nao onde morreu",
+				   lapide != null && Math.Abs(lapide.X - destino.X) < 1 && Math.Abs(lapide.Y - destino.Y) < 1
+				   && Math.Abs(lapide.X - onde.X) > ZoneCollision.TileSize);
+		AfirmarCad("...e quem carregava fica de maos vazias (o enterro solta o agarrao)", pl.AgarrandoId == 0, $"{pl.AgarrandoId}");
 		AfirmarCad("...com o EPITAFIO que foi DIGITADO (`A.desc = \"[text]\"`, `Corpse.dm:53`), aparado e numa linha so",
 				   lapide != null && lapide.Epitafio == "Aqui descansa quem mexeu com a pessoa errada",
 				   lapide?.Epitafio ?? "");

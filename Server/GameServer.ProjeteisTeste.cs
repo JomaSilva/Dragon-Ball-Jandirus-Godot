@@ -1530,10 +1530,8 @@ public partial class GameServer
 
 	private static readonly RegraDoSulco[] RegrasDoSulco =
 	[
-		new("...todas alinhadas ao CENTRO da celula, como as do arremesso",
-			(s, _) => ForaDaGrade(s) == 0,
-			s => $"{ForaDaGrade(s)} fora da grade"),
-
+		// (a regra "alinhadas ao centro da celula" caiu em 2026-09-04: o rastro nasce por onde o raio
+		// PASSOU, nos pixels, como o do arremesso -- ver `CarimbarSulco`. As de baixo continuam.)
 		new("...uma marca por celula, sem duas no mesmo tile",
 			(s, _) => CelulasDistintas(s) == s.Count,
 			s => $"{CelulasDistintas(s)} celulas para {s.Count} marcas"),
@@ -1554,13 +1552,6 @@ public partial class GameServer
 			(s, dir) => s.Count > 0 && s.All(m => m.Dir == dir),
 			s => s.Count == 0 ? "vazio" : $"{s[0].Dir}"),
 	];
-
-	private static int ForaDaGrade(IReadOnlyList<MarcaDeSulco> s)
-	{
-		const int T = ZoneCollision.TileSize;
-		return s.Count(m => Math.Abs(m.Onde.X % T - T / 2f) > 0.5f
-							|| Math.Abs(m.Onde.Y % T - T / 2f) > 0.5f);
-	}
 
 	private static int CelulasDistintas(IReadOnlyList<MarcaDeSulco> s)
 		=> s.Select(m => (m.Onde.X, m.Onde.Y)).Distinct().Count();
@@ -2041,19 +2032,17 @@ public partial class GameServer
 		string Nome, string RegraQueCai, Func<List<MarcaDeSulco>, List<MarcaDeSulco>> Plantar);
 
 	/// <summary>
-	/// OS CINCO DEFEITOS, e cada um e um jeito REAL de este efeito quebrar -- nao ruido aleatorio.
-	/// Ruido derruba qualquer regra e nao prova nada sobre nenhuma; estes cinco tem endereco no
-	/// codigo de producao, e o comentario de cada um diz qual linha o produziria.
+	/// OS QUATRO DEFEITOS, e cada um e um jeito REAL de este efeito quebrar -- nao ruido aleatorio.
+	/// Ruido derruba qualquer regra e nao prova nada sobre nenhuma; estes quatro tem endereco no
+	/// codigo de producao, e o comentario de cada um diz qual linha o produziria. (O quinto -- "a marca
+	/// no pixel da cabeca, sem alinhar ao centro" -- deixou de ser defeito em 2026-09-04: o rastro
+	/// nasce nos pixels de proposito, ver `CarimbarSulco`.)
 	/// </summary>
 	private static DefeitoDeSulco[] DefeitosDoSulco() =>
 	[
 		// A chamada saindo do fim do `AndarProjetil` em vez de dentro do laco de sub-passos.
 		new("o rastro PICOTADO (carimbo so no fim do tique)", "SE ENCOSTAM",
 			s => [.. s.Where((_, i) => i % 2 == 0)]),
-
-		// O `CarimbarSulco` sem o alinhamento ao centro: a marca cai no pixel exato da cabeca.
-		new("a marca no PIXEL da cabeca, sem alinhar ao centro da celula", "CENTRO",
-			s => { s[s.Count / 2] = s[s.Count / 2] with { Onde = s[s.Count / 2].Onde + new Vec2(5, 3) }; return s; }),
 
 		// A guarda de celula (`p.UltimoSulco`) solta: o mesmo tile carimbado a cada sub-passo.
 		new("a guarda de celula solta (duas marcas no mesmo tile)", "uma marca por celula",
@@ -2134,9 +2123,13 @@ public partial class GameServer
 			return;
 		}
 
-		morto.Ficha.dead = true;   // A INJECAO -- o `PodeSerLevadoPeloFeixe` passa a recusar
+		// A INJECAO -- o `PodeSerLevadoPeloFeixe` passa a recusar. Era `morto.Ficha.dead = true`, mas desde
+		// 2026-09-05 o feixe LEVA o corpo morto tambem (dono: "corpos mortos ainda sao corpos de personagem");
+		// a recusa que sobrou e a do corpo que nao esta mais em `_players` -- e ela e desfeita logo abaixo.
+		_players.Remove(morto.Id);
 		Vec2 corpoAntes = morto.Pos, cabecaAntes = raio2.Pos;
 		for (int i = 0; i < 6 && raio2.Vivo; i++) UmTiqueDeArrasto();
+		_players[morto.Id] = morto;
 		float dCorpo = (morto.Pos - corpoAntes).Length;
 		float dCabeca = (raio2.Pos - cabecaAntes).Length;
 

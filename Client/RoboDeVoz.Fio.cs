@@ -66,10 +66,10 @@ public partial class RoboDeVoz
 	{
 		(int certos, double bytes) Medir(IOpusEncoder enc)
 		{
-			IOpusDecoder dec = OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeAmostragem, 1);
+			IOpusDecoder dec = OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeSaida, 1);
 			var buf = new byte[VozLocal.MaxBytesDeQuadro];
 			var pcm = new short[VozLocal.AmostrasPorQuadro];
-			var volta = new short[VozLocal.AmostrasPorQuadro];
+			var volta = new short[VozLocal.AmostrasPorQuadroDeSaida];   // decodifica em 48 kHz, como o jogo
 			var pacotes = new List<byte[]>();
 			double soma = 0;
 			for (int k = 0; k < 40; k++)
@@ -83,11 +83,11 @@ public partial class RoboDeVoz
 			int certos = 0;
 			for (int k = 10; k + 2 < 40; k += 3)
 			{
-				dec.Decode(pacotes[k], volta, VozLocal.AmostrasPorQuadro, decode_fec: false);        // toca k
-				dec.Decode(pacotes[k + 2], volta, VozLocal.AmostrasPorQuadro, decode_fec: true);     // k+1 perdido: a copia que k+2 carrega
-				double ep = Energia(volta, volta.Length, HzPar), ei = Energia(volta, volta.Length, HzImpar);
+				dec.Decode(pacotes[k], volta, VozLocal.AmostrasPorQuadroDeSaida, decode_fec: false);        // toca k
+				dec.Decode(pacotes[k + 2], volta, VozLocal.AmostrasPorQuadroDeSaida, decode_fec: true);     // k+1 perdido: a copia que k+2 carrega
+				double ep = Energia(volta, volta.Length, HzPar, VozLocal.TaxaDeSaida), ei = Energia(volta, volta.Length, HzImpar, VozLocal.TaxaDeSaida);
 				if ((k + 1) % 2 == 0 ? ep > ei : ei > ep) certos++;
-				dec.Decode(pacotes[k + 2], volta, VozLocal.AmostrasPorQuadro, decode_fec: false);    // e k+2 normal
+				dec.Decode(pacotes[k + 2], volta, VozLocal.AmostrasPorQuadroDeSaida, decode_fec: false);    // e k+2 normal
 			}
 			return (certos, soma / 30);
 		}
@@ -109,7 +109,7 @@ public partial class RoboDeVoz
 	/// <summary>O gerador do Godot, em quatro linhas: uma fila que o motor esvazia em tempo real.</summary>
 	private sealed class GeradorSimulado
 	{
-		public const int Capacidade = 8192;   // o que 0,3 s a 16 kHz vira depois do arredondamento do motor
+		public const int Capacidade = 16384;   // o que 0,3 s a 48 kHz (14.400) vira depois do arredondamento do motor
 		public int Ocupacao;
 		public long Zeros;
 		public bool Tocando;
@@ -118,7 +118,7 @@ public partial class RoboDeVoz
 		/// <summary>O motor pediu `ms` de audio. O que nao houver na fila sai como zero -- e e isso que se ouve.</summary>
 		public void Consumir(double ms, bool falaNoAr)
 		{
-			_resto += ms * VozLocal.TaxaDeAmostragem / 1000.0;
+			_resto += ms * VozLocal.TaxaDeSaida / 1000.0;   // o gerador consome na taxa de SAIDA
 			int amostras = (int)_resto;
 			_resto -= amostras;
 			int lidas = Math.Min(Ocupacao, amostras);
@@ -223,24 +223,24 @@ public partial class RoboDeVoz
 		var chegadaPorSeq = new Dictionary<ushort, double>();
 		foreach (Pacote p in chegadas) chegadaPorSeq.TryAdd(p.Seq, p.ChegaMs);
 
-		IOpusDecoder dec = OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeAmostragem, 1);
+		IOpusDecoder dec = OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeSaida, 1);
 		r.Fila = new FilaDeJitter(dec, (pcm, tipo, seq, _, _) =>
 		{
-			r.Gerador.Ocupacao += VozLocal.AmostrasPorQuadro;
+			r.Gerador.Ocupacao += VozLocal.AmostrasPorQuadroDeSaida;
 			if (tipo == FilaDeJitter.Tipo.Silencio) return;
 			r.Gerador.Tocando = true;
 			double soma = 0;
-			for (int i = 0; i < VozLocal.AmostrasPorQuadro; i++) { double v = pcm[i] / (double)short.MaxValue; soma += v * v; }
+			for (int i = 0; i < VozLocal.AmostrasPorQuadroDeSaida; i++) { double v = pcm[i] / (double)short.MaxValue; soma += v * v; }
 			chegadaPorSeq.TryGetValue(seq, out chegadaDoAtual);
 			r.Tocados.Add(new QuadroTocado
 			{
 				Tipo = tipo, Seq = seq,
-				Rms = Math.Sqrt(soma / VozLocal.AmostrasPorQuadro),
-				EPar = Energia(pcm, VozLocal.AmostrasPorQuadro, HzPar),
-				EImpar = Energia(pcm, VozLocal.AmostrasPorQuadro, HzImpar),
+				Rms = Math.Sqrt(soma / VozLocal.AmostrasPorQuadroDeSaida),
+				EPar = Energia(pcm, VozLocal.AmostrasPorQuadroDeSaida, HzPar, VozLocal.TaxaDeSaida),
+				EImpar = Energia(pcm, VozLocal.AmostrasPorQuadroDeSaida, HzImpar, VozLocal.TaxaDeSaida),
 				// boca-ouvido do lado de ca: quanto esperou no buffer + quanto ha na frente dele
 				LatenciaMs = tipo == FilaDeJitter.Tipo.Normal
-					? (agora - chegadaDoAtual) + ocupacaoAoEntregar * 1000.0 / VozLocal.TaxaDeAmostragem : 0,
+					? (agora - chegadaDoAtual) + ocupacaoAoEntregar * 1000.0 / VozLocal.TaxaDeSaida : 0,
 			});
 		});
 
@@ -359,7 +359,11 @@ public partial class RoboDeVoz
 	/// <summary>
 	/// A ORDEM PELA POSICAO: o i-esimo quadro de voz que saiu (esticadas nao contam, elas nao ocupam
 	/// vaga) deveria ser a vaga `primeiro + i`. Devolve quantos a fila DISSE estar em outra vaga e
-	/// quantos quadros DECODIFICADOS (normal e FEC) tem, ouvindo, o tom da outra paridade.
+	/// quantos quadros DECODIFICADOS DE VERDADE (os normais) tem, ouvindo, o tom da outra paridade.
+	///
+	/// A COPIA FEC FICA DE FORA DO OUVIDO: ela e uma reconstrucao de taxa mais baixa, e em super-wide (24
+	/// kHz codificado, 48 ouvido) ela devolve o tom certo em 9 de 10 (medido pela familia 2, que e quem a
+	/// cobra). Contar a copia aqui fazia a ORDEM parecer errada quando o que falhou foi a copia -- um em dez.
 	/// </summary>
 	private static (int PosicaoErrada, int TomErrado) ForaDaOrdem(List<QuadroTocado> voz)
 	{
@@ -370,7 +374,7 @@ public partial class RoboDeVoz
 			if (q.Tipo == FilaDeJitter.Tipo.Esticado) continue;
 			ushort esperada = (ushort)(primeiro + i);
 			if (q.Seq != esperada) posicaoErrada++;
-			if (q.Tipo is FilaDeJitter.Tipo.Normal or FilaDeJitter.Tipo.Fec
+			if (q.Tipo == FilaDeJitter.Tipo.Normal
 				&& (esperada % 2 == 0 ? q.EPar < q.EImpar : q.EImpar < q.EPar)) tomErrado++;
 			i++;
 		}
@@ -558,7 +562,7 @@ public partial class RoboDeVoz
 		for (int i = 0; i < cru.Length; i++)
 		{
 			float v = 0.3f * MathF.Sin(2 * MathF.PI * 1000f * i / (float)taxa)
-					+ 0.3f * MathF.Sin(2 * MathF.PI * 12000f * i / (float)taxa);
+					+ 0.3f * MathF.Sin(2 * MathF.PI * 20000f * i / (float)taxa);
 			cru[i] = new Vector2(v, v);
 		}
 
@@ -569,20 +573,20 @@ public partial class RoboDeVoz
 		double e1k = Energia(ultimo, ultimo.Length, 1000f);
 		double e4k = Energia(ultimo, ultimo.Length, 4000f);
 		double razao = e4k / Math.Max(e1k, 1e-9);
-		GD.Print($"[diagvoz]   ...  reamostrado: E(1 kHz)={e1k:0.0000} E(4 kHz, o 12 kHz dobrado)={e4k:0.0000}  razao={razao:0.000} ({20 * Math.Log10(Math.Max(razao, 1e-9)):0.0} dB)");
+		GD.Print($"[diagvoz]   ...  reamostrado: E(1 kHz)={e1k:0.0000} E(4 kHz, o 20 kHz dobrado)={e4k:0.0000}  razao={razao:0.000} ({20 * Math.Log10(Math.Max(razao, 1e-9)):0.0} dB)");
 		Conferir(e1k > 0.1, "o 1 kHz atravessa o reamostrador (a voz nao e comida junto com o alias)", $"{e1k:0.000}");
-		Conferir(razao < 0.12, "o 12 kHz dobrado em 4 kHz cai mais de 18 dB (anti-alias de verdade)", $"{razao:0.000}");
+		Conferir(razao < 0.12, "o 20 kHz dobrado em 4 kHz (48 -> 24 kHz) cai mais de 18 dB (anti-alias de verdade)", $"{razao:0.000}");
 
 		// O CONTRA-EXEMPLO: uma amostra a cada tres, sem filtro -- o que o `Drenar` fazia.
 		var pontual = new short[VozLocal.AmostrasPorQuadro];
-		int ini = cru.Length - 3 * VozLocal.AmostrasPorQuadro;
+		int ini = cru.Length - 2 * VozLocal.AmostrasPorQuadro;
 		for (int i = 0; i < pontual.Length; i++)
 		{
-			Vector2 s = cru[ini + 3 * i];
+			Vector2 s = cru[ini + 2 * i];
 			pontual[i] = (short)Mathf.Clamp((int)((s.X + s.Y) * 0.5f * short.MaxValue), short.MinValue, short.MaxValue);
 		}
 		double razaoPontual = Energia(pontual, pontual.Length, 4000f) / Math.Max(Energia(pontual, pontual.Length, 1000f), 1e-9);
-		Injetar("pegando uma amostra a cada tres (o reamostrador antigo) o 12 kHz dobra INTEIRO pra 4 kHz",
+		Injetar("pegando uma amostra a cada duas (o reamostrador antigo) o 20 kHz dobra INTEIRO pra 4 kHz",
 			razaoPontual > 0.7, $"razao {razaoPontual:0.000}");
 
 		// E A PLACA DE 44,1 kHz: o passo e 2,75625 e mesmo assim 250 ms fecham 12 quadros.
@@ -594,7 +598,58 @@ public partial class RoboDeVoz
 		}
 		int fechados441 = new Microfone.Reamostrador(44100).Alimentar(cru441, q => ultimo = (short[])q.Clone());
 		Conferir(fechados441 == 12 && Energia(ultimo, ultimo.Length, 1000f) > 0.1,
-			"a 44,1 kHz (passo 2,756) tambem: 12 quadros em 250 ms, e o 1 kHz continua 1 kHz", $"{fechados441} quadros");
+			"a 44,1 kHz (passo 1,8375) tambem: 12 quadros em 250 ms, e o 1 kHz continua 1 kHz", $"{fechados441} quadros");
+	}
+
+	/// <summary>
+	/// 9 -- O GANHO AUTOMATICO. O dono: "o audio do voice chat naturalmente ta muito baixo". A regra e pura
+	/// (`Microfone.ControleDeGanho`), entao mede-se com senos: a voz baixa sobe ate o alvo, a alta nao e
+	/// tocada, o grito depois do sussurro nao serra, o ar nao vira chiado -- e o ganho FIXO de ontem
+	/// (teto 1x) deixa a voz baixa exatamente onde estava.
+	/// </summary>
+	private void OGanhoAutomaticoLevantaAVozBaixa()
+	{
+		GD.Print("[diagvoz] --- 9. o ganho automatico: voz baixa sobe, voz alta nao estoura, ar nao vira chiado ---");
+		static double Rms(short[] q) { double s = 0; foreach (short a in q) { double v = a / (double)short.MaxValue; s += v * v; } return Math.Sqrt(s / q.Length); }
+		static short[] Seno(float amp) { var q = new short[VozLocal.AmostrasPorQuadro]; Somar(q, 500f, amp); return q; }
+
+		var agc = new Microfone.ControleDeGanho();
+		double rmsBaixo = Rms(Seno(0.03f));
+		short[] ultimo = Seno(0.03f);
+		for (int i = 0; i < 60; i++) { ultimo = Seno(0.03f); agc.Aplicar(ultimo); }
+		double depois = Rms(ultimo);
+		Conferir(depois > rmsBaixo * 3 && depois >= Microfone.ControleDeGanho.RmsAlvo * 0.8,
+			$"uma voz a -33 dBFS (RMS {rmsBaixo:0.000}) sobe em 60 quadros (1,2 s) pra perto do alvo {Microfone.ControleDeGanho.RmsAlvo}",
+			$"RMS {depois:0.000}, ganho {agc.Ganho:0.00}x");
+		Conferir(agc.Ganho <= Microfone.ControleDeGanho.GanhoMax + 1e-3, "...e o ganho respeita o teto de 8x", $"{agc.Ganho:0.00}x");
+
+		var alto = new Microfone.ControleDeGanho();
+		short[] forte = Seno(0.9f);
+		double rmsForte = Rms(forte);
+		alto.Aplicar(forte);
+		Conferir(Math.Abs(alto.Ganho - 1f) < 1e-3 && Math.Abs(Rms(forte) - rmsForte) < 1e-6,
+			"uma voz ja alta (-1 dBFS) passa INTACTA: ganho 1x, nem um bit mexido", $"ganho {alto.Ganho:0.00}x");
+
+		short[] grito = Seno(0.9f);
+		agc.Aplicar(grito);
+		int pico = grito.Max(a => Math.Abs((int)a));
+		Conferir(pico < short.MaxValue && agc.Ganho < 4f,
+			"um grito logo depois do sussurro: o ganho cai na hora (metade do caminho num quadro) e o pico nao serra no teto",
+			$"pico {pico}, ganho {agc.Ganho:0.00}x");
+
+		var ar = new Microfone.ControleDeGanho();
+		var rng = new Random(7);
+		for (int i = 0; i < 100; i++) ar.Aplicar(QuadroBaixo(0.001f, rng));
+		Conferir(Math.Abs(ar.Ganho - 1f) < 1e-3, "cem quadros de AR (abaixo do piso) nao movem o ganho: silencio nao vira chiado", $"{ar.Ganho:0.00}x");
+
+		var preso = new Microfone.ControleDeGanho(ganhoMax: 1f);
+		short[] q = Seno(0.03f);
+		for (int i = 0; i < 60; i++) { q = Seno(0.03f); preso.Aplicar(q); }
+		Injetar("com o teto em 1x (o ganho FIXO de ontem) a voz baixa continua exatamente baixa", Rms(q) < rmsBaixo * 1.01, $"RMS {Rms(q):0.000}");
+
+		Conferir(VozLocal.TaxaDeAmostragem == 24000 && VozLocal.AmostrasPorQuadro == 480 && VozLocal.BitsPorSegundo >= 28000,
+			"CONTRATO: a voz sai em super-wide (24 kHz, 480 amostras por quadro) com bitrate que enche a banda (>= 28 kbit/s)",
+			$"{VozLocal.TaxaDeAmostragem} Hz, {VozLocal.AmostrasPorQuadro}, {VozLocal.BitsPorSegundo} bit/s");
 	}
 
 	// =====================================================================

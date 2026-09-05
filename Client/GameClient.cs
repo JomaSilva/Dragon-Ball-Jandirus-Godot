@@ -957,6 +957,13 @@ public partial class GameClient : Node
 
 	public List<ConhecidoInfo> Conhecidos { get; private set; } = [];
 
+	/// <summary>Só bancada: uma lista de conhecidos plantada, pelo mesmo evento que o fio dispara.</summary>
+	public void ConhecidosDeTeste(List<ConhecidoInfo> lista)
+	{
+		Conhecidos = lista;
+		ConhecidosMudaram?.Invoke();
+	}
+
 	/// <summary>Quem pediu minha amizade e ainda espera resposta ("" = ninguem).</summary>
 	public string PedidoDeAmizade { get; private set; } = "";
 	public event Action? ConhecidosMudaram;
@@ -990,6 +997,15 @@ public partial class GameClient : Node
 
 	public List<ContaInfo> Contas { get; private set; } = [];
 	public event Action? ContasMudaram;
+
+	/// <summary>Um jogador online, como o painel de escolha de alvo o lista (ver <see cref="Protocol.S2C.Online"/>).</summary>
+	public readonly record struct OnlineInfo(int Id, string Nome, string Onde);
+
+	public List<OnlineInfo> Online { get; private set; } = [];
+	public event Action? OnlineMudou;
+
+	/// <summary>Só bancada: uma lista de online plantada, pelo mesmo evento que o fio dispara.</summary>
+	public void OnlineDeTeste(List<OnlineInfo> lista) { Online = lista; OnlineMudou?.Invoke(); }
 
 	/// <summary>
 	/// A PREVIA DA LIMPEZA TOTAL: o inventario do que vai sumir + o codigo que a confirma.
@@ -1927,6 +1943,16 @@ public partial class GameClient : Node
 				if (reader.GetBool()) ComAureola.Add(quem);
 				else ComAureola.Remove(quem);
 				AureolaMudou?.Invoke(quem);
+				break;
+			}
+
+			case Protocol.S2C.Online:
+			{
+				int n = reader.GetUShort();
+				var lista = new List<OnlineInfo>(n);
+				for (int i = 0; i < n; i++) lista.Add(new OnlineInfo(reader.GetInt(), reader.GetString(64), reader.GetString(64)));
+				Online = lista;
+				OnlineMudou?.Invoke();
 				break;
 			}
 

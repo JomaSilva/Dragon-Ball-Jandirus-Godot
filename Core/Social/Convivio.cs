@@ -234,6 +234,23 @@ public sealed class Convivio
 	/// </summary>
 	public const long IntervaloDoRetratoMs = 60_000;
 
+	/// <summary>
+	/// ============================ CONVIVIO NA PORRADA -- PEDIDO DO DONO (2026-09-05), NAO PORTE ============================
+	/// No DM a familiaridade so sobe por FALA ouvida (`add_familiarity`, 1% por linha). O dono: *"fiz um
+	/// personagem apanhar muito, fazendo ele ficar com o menor nivel possivel de amizade (inimigo mortal),
+	/// mas ja que eu fiz isso em pouco tempo de jogo o convivio ainda era 0 e eu so conseguia declarar ele
+	/// como neutro ... ficou esquisito e confuso"*. Apanhar de alguem E conhece-lo: cada golpe que encosta
+	/// tem 10% de render 1 ponto (uma luta de 100 golpes ~ 10, o que cinco mil falas dariam), cair vale 10 e
+	/// morrer vale 20 -- nos DOIS lados. Oito nocautes = 80: da pra declarar 'odio' (50) a quem o jogo ja
+	/// chama de inimigo mortal. Os 200 do 'amor' continuam sendo tempo.
+	/// ==================================================================================================================
+	/// </summary>
+	public const double ChanceDeFamiliaridadePorGolpe = 0.10;
+	/// <inheritdoc cref="ChanceDeFamiliaridadePorGolpe"/>
+	public const int FamiliaridadePorQueda = 10;
+	/// <inheritdoc cref="ChanceDeFamiliaridadePorGolpe"/>
+	public const int FamiliaridadePorMorte = 20;
+
 	// =====================================================================
 	// O ESTADO -- campos publicos e mutaveis porque isto vai INTEIRO pro save
 	// (System.Text.Json com `IncludeFields`; ver `CharacterSave`). Nada de
@@ -575,9 +592,9 @@ public sealed class Convivio
 	/// Exige ja conhecer a pessoa -- no DM tambem (`if(isnull(contact_list[...])) return FALSE`),
 	/// e o servidor fotografa antes de somar.
 	/// </summary>
-	public void SomarFamiliaridade(string sig)
+	public void SomarFamiliaridade(string sig, int quanto = 1)
 	{
-		if (Conhecidos.TryGetValue(sig, out Conhecido? c)) c.Familiaridade++;
+		if (quanto > 0 && Conhecidos.TryGetValue(sig, out Conhecido? c)) c.Familiaridade += quanto;
 	}
 
 	/// <summary>

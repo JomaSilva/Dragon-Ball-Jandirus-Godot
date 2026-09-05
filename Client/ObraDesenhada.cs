@@ -66,7 +66,13 @@ public partial class ObraDesenhada : Node2D
 	/// bosque parecer um bosque em vez de um tapete de sprites.
 	/// ==========================================================================================
 	/// </summary>
-	private static bool AcimaDoJogador(string tipo) => tipo == "AppleTree";
+	private static bool AcimaDoJogador(string tipo) =>
+		tipo == "AppleTree"
+		// O ENMA DAIOH: no BYOND todo mob desenha por cima de turf (MOB_LAYER > TURF_LAYER), e o trono
+		// dele e turf de tres fileiras -- por Y-sort o pedaco de baixo do trono cobria a barriga do
+		// juiz ("o enma ta abaixo da cadeira", o dono, 2026-09-04). A mesa a frente dele e parede,
+		// entao ninguem para sobre o sprite: o z acima do jogador nao cobre cabeca nenhuma.
+		|| tipo == Jandirus.Core.World.Alem.TipoDoEnma;
 
 	/// <summary>
 	/// O sprite do original, ancorado como o BYOND ancora: o canto INFERIOR ESQUERDO do icone

@@ -157,22 +157,44 @@ public static class Nutricao
 		f.stamina = Math.Max(f.stamina - gasto, 0);
 	}
 
-	/// <summary>
-	/// COMER. Devolve o aviso que o jogador le, ou vazio se nao deu.
-	///
-	/// COMER DEMAIS NAO E PROIBIDO, e o excesso nao sela o tanque: o DM avisa que voce passou do
-	/// ponto e deixa o valor estourar, e o decaimento logaritmico de `Digerir` cobra a conta
-	/// depois. Travar no teto seria mais arrumado e mais pobre -- a punicao por gula deixaria de
-	/// existir.
-	/// </summary>
-	public static string Comer(Fighter f, double nutricao)
-	{
-		f.CurrentNutrition += nutricao;
-		f.Hungry = false;
+	/// <summary>O que uma refeicao deu: se foi comida, e o aviso que o jogador le (vazio se nao ha o que dizer).</summary>
+	public readonly record struct Refeicao(bool Comeu, string Aviso);
 
-		return f.CurrentNutrition > Tanque(f.Metabolism)
-			? "você comeu além da conta. Não dá pra ver, mas seria melhor ir mais leve da próxima vez."
-			: "";
+	public const string AvisoDeCheio = "você já está cheio: não cabe mais nada.";
+	public const string AvisoDeEncheu = "você come até ficar cheio.";
+
+	/// <summary>
+	/// COMER. O tanque e o TETO. O dono (2026-09-05): *"caso o jogador tente comer com nutrição em 100%
+	/// o jogo vai falar que ele já está cheio, e caso ele coma algo que faria ele passar de 100% (estar
+	/// com 90% e comer algo que dá 20%) ele vai atingir o 100% e receber uma mensagem que ele comeu até
+	/// ficar cheio"*.
+	///
+	/// ============================ O QUE MUDOU EM RELACAO AO DM, DECLARADO ============================
+	/// O DM deixava o valor passar do teto por um tique e o `CheckStomach()` (`Stomach.dm:5-7`) o cravava
+	/// de volta em `maxNutrition` com o aviso de "you ate too much... and you throw up a little". A versao
+	/// anterior deste metodo nem cravava (chamava isso de "punicao por gula") -- e o dono viu a nutricao
+	/// acima de 100% na tela. Agora: CHEIO NAO COME, e a comida fica (quem chama nao a consome); o que
+	/// passaria do teto entra so ate ele, com o aviso de que encheu. Quem chega ja ACIMA do teto (save
+	/// antigo) nao e cortado aqui -- o `Digerir` desce sozinho.
+	///
+	/// `mesmoCheio` e a Semente Senzu: ela e cura antes de ser comida, e estar cheio nao pode impedir a
+	/// cura -- so nao enche alem do teto.
+	/// ================================================================================================
+	/// </summary>
+	public static Refeicao Comer(Fighter f, double nutricao, bool mesmoCheio = false)
+	{
+		double tanque = Tanque(f.Metabolism);
+		double antes = f.CurrentNutrition;
+		if (antes >= tanque)
+		{
+			if (!mesmoCheio) return new Refeicao(false, AvisoDeCheio);
+			f.Hungry = false;
+			return new Refeicao(true, AvisoDeCheio);
+		}
+
+		f.CurrentNutrition = Math.Min(antes + nutricao, tanque);
+		f.Hungry = false;
+		return new Refeicao(true, antes + nutricao > tanque ? AvisoDeEncheu : "");
 	}
 
 	/// <summary>

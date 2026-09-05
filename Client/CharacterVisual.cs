@@ -1619,6 +1619,39 @@ public partial class CharacterVisual : Node2D
 	// quadro na MESMA passada, derivado do MESMO tempo.
 	private double _relogio;
 
+	/// <summary>
+	/// O RELOGIO DO CORPO E O DO MUNDO, e nao a idade deste node. SO PRA RETRATO.
+	///
+	/// No mundo o `Aplicar` ZERA o `_relogio` a cada troca de pose (o soco recomeca do primeiro quadro).
+	/// O retrato da aba People e um `CharacterVisual` REMONTADO a cada redesenho da aba -- e a aba
+	/// redesenha enquanto o jogador anda --, e o quadro 0 do corpo parado e a PISCADA (`delay 1,1,1,30`):
+	/// cada remontagem nascia piscando. Foi o que o dono viu (2026-09-05): *"as imagens das pessoas
+	/// ficam piscando os olhos mais rapido que o normal quando o meu personagem ta andando; se ele para
+	/// de andar, ficam normais"*.
+	///
+	/// Com o relogio do mundo, dois retratos da mesma pessoa montados em instantes diferentes estao no
+	/// MESMO quadro: remontar nao se ve. O <see cref="DeslocamentoDoRelogio"/> e por pessoa, pra galeria
+	/// nao piscar em coro.
+	/// </summary>
+	public bool RelogioDoMundo { get; set; }
+
+	/// <summary>Segundos somados ao relogio do mundo -- a fase propria de cada retrato.</summary>
+	public double DeslocamentoDoRelogio { get; set; }
+
+	/// <summary>A fase do corpo dentro do ciclo da pose, em segundos. SO PRA BANCADA (`--diagabas`).</summary>
+	public double FaseDoCorpoDeTeste => _relogio;
+
+	/// <summary>A duracao do ciclo da pose atual do corpo, em segundos. SO PRA BANCADA.</summary>
+	public double CicloDoCorpoDeTeste => _corpo?.SpriteFrames is { } f ? Ciclo(f, _corpo.Animation) : 0;
+
+	/// <summary>Onde o relogio do corpo comeca numa pose nova: zero no mundo, a hora do mundo no retrato.</summary>
+	private double RelogioInicial()
+	{
+		if (!RelogioDoMundo || _corpo?.SpriteFrames is not { } f) return 0;
+		double ciclo = Ciclo(f, _corpo.Animation);
+		return ciclo > 0 ? (Time.GetTicksMsec() / 1000.0 + DeslocamentoDoRelogio) % ciclo : 0;
+	}
+
 	/// <summary>Duracao total de uma animacao, em segundos.</summary>
 	private static double Ciclo(SpriteFrames f, string anim)
 	{
@@ -3364,7 +3397,7 @@ public partial class CharacterVisual : Node2D
 		// `train_east` -- animacoes diferentes, contagens diferentes, tudo fora de compasso.
 		string? doCorpo = _corpo == null ? null : Escolher(_corpo, null);
 		foreach (AnimatedSprite2D s in _camadas) Aplicar(s, doCorpo, force);
-		_relogio = 0;
+		_relogio = RelogioInicial();   // zero no mundo (o golpe recomeca do primeiro quadro); a hora do mundo no retrato
 		AvisarSeDeitado(doCorpo);
 	}
 

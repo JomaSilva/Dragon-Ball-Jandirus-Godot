@@ -582,6 +582,13 @@ public sealed partial class Fighter
 	public long zeni_revive_debuff_until;
 
 	/// <summary>
+	/// O `hell_lockout_until` do DM (`SkyNPCs.dm:101`): ate quando (ms do relogio do servidor) esta alma
+	/// cumpre pena no Inferno. Zero = sem pena. Quem escreve e o julgamento do Enma
+	/// (`GameServer.JulgarProInferno`); quem apaga e o tique da pena (`CumprirPenaNoInferno`).
+	/// </summary>
+	public long hell_lockout_until;
+
+	/// <summary>
 	/// ATE QUANDO ESTE CORPO NAO PODE FUNDIR DE NOVO -- o `fusion_cooldown_until` do DM
 	/// (`Fusion.dm:28`), em ms de relogio real (a mesma unidade do
 	/// <see cref="zeni_revive_debuff_until"/> logo acima).

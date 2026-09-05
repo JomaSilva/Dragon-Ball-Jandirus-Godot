@@ -622,4 +622,21 @@ public sealed class CombatState
 			foreach (BodyPart p in Corpo.Partes) p.Vida = p.VidaMax * fracaoDeVida;
 		SincronizarVida();
 	}
+
+	/// <summary>
+	/// CURAR NAO E REVIVER. O corpo inteiro (membros, decepado incluso), de pe se estava nocauteado, com
+	/// a carencia -- e o `dead` fica exatamente como esta.
+	///
+	/// E o `World_Heal` do DM (`Admin.dm:409-413`): `Un_KO()` + `SpreadHeal(100,1,1)` + `Ki = MaxKi`, e
+	/// nenhuma linha escreve `dead = 0`. O Heal de admin do port passava pelo <see cref="Reviver"/> e por
+	/// isso ressuscitava -- o dono (2026-09-05): *"heal all ou heal em alguem especifico faz ela reviver,
+	/// o que nao deveria acontecer"*. Quem revive e o <see cref="Reviver"/>, pelo verb de reviver.
+	/// </summary>
+	public void Curar(double carencia = 0)
+	{
+		F.KO = false;
+		Carencia = carencia;
+		Corpo.Restaurar();
+		SincronizarVida();
+	}
 }

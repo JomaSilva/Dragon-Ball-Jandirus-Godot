@@ -128,7 +128,10 @@ public sealed partial class GameServer
 		foreach (ServerPlayer pl in _players.Values)
 		{
 			// O `if(M.KB) return` do original: quem esta no chao nao abre porta. Morto tambem nao.
-			if (pl.Ficha.KO || pl.Ficha.dead) continue;
+			// O CADAVER nao abre porta; o fantasma de pe abre (era `pl.Ficha.dead` cru, e por isso "as portas
+			// do outro mundo" nunca abriam pra ninguem morto -- o dono, 2026-09-04). No Outro Mundo a porta
+			// ainda pergunta pela ALMA: ver `APortaDoOutroMundoAbrePara`.
+			if (pl.Ficha.KO || EhCadaver(pl)) continue;
 			if (!_portasDoMapa.TryGetValue(pl.Zone.Name, out List<PortaDoMapa>? portas)) continue;
 
 			// PRECISA ESTAR ANDANDO. E a outra metade do `Enter()`: no BYOND a porta so sabe de
@@ -140,7 +143,10 @@ public sealed partial class GameServer
 			// implementacoes e regra que diverge.
 			foreach (PortaDoMapa p in portas)
 				if (PortasDaZona.VaiEntrar(pl.Pos, pl.Facing, p.X, p.Y))
+				{
+					if (!APortaDoOutroMundoAbrePara(pl, agora)) break;
 					AbrirPorta(pl.Zone.Name, p.X, p.Y, agora);
+				}
 		}
 	}
 

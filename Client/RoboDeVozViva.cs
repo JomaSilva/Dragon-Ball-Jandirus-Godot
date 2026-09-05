@@ -60,12 +60,12 @@ public partial class RoboDeVozViva : Node
 	public const float Amplitude = 0.35f;
 
 	/// <summary>A onda conhecida, sempre igual (ver o cabecalho: o quadro fecha em ciclo inteiro).</summary>
-	public static void OndaConhecida(short[] q)
+	public static void OndaConhecida(short[] q, int taxa = VozLocal.TaxaDeAmostragem)
 	{
 		for (int i = 0; i < q.Length; i++)
 		{
-			double v = Amplitude * Math.Sin(2 * Math.PI * HzGrave * i / VozLocal.TaxaDeAmostragem)
-					 + Amplitude * Math.Sin(2 * Math.PI * HzAgudo * i / VozLocal.TaxaDeAmostragem);
+			double v = Amplitude * Math.Sin(2 * Math.PI * HzGrave * i / taxa)
+					 + Amplitude * Math.Sin(2 * Math.PI * HzAgudo * i / taxa);
 			q[i] = (short)Math.Clamp((int)(v * short.MaxValue), short.MinValue, short.MaxValue);
 		}
 	}
@@ -79,12 +79,12 @@ public partial class RoboDeVozViva : Node
 	/// poderiam divergir num decimal e discordar sobre a mesma parede. A onda (<see cref="OndaConhecida"/>)
 	/// ja era compartilhada pelo mesmo motivo -- a regua e uma so.
 	/// </summary>
-	public static double Energia(short[] pcm, int n, float hz)
+	public static double Energia(short[] pcm, int n, float hz, int taxa = VozLocal.TaxaDeAmostragem)
 	{
 		double re = 0, im = 0;
 		for (int i = 0; i < n; i++)
 		{
-			double ang = 2 * Math.PI * hz * i / VozLocal.TaxaDeAmostragem;
+			double ang = 2 * Math.PI * hz * i / taxa;
 			double v = pcm[i] / (double)short.MaxValue;
 			re += v * Math.Cos(ang);
 			im += v * Math.Sin(ang);
@@ -150,7 +150,8 @@ public partial class RoboDeVozViva : Node
 	private readonly List<Balde> _baldes = [];
 	private Balde? _agora;
 
-	private readonly short[] _referencia = new short[VozLocal.AmostrasPorQuadro];
+	// A REFERENCIA E COMPARADA COM O QUE SAI DO FILTRO -- PCM de SAIDA (960 a 48 kHz).
+	private readonly short[] _referencia = new short[VozLocal.AmostrasPorQuadroDeSaida];
 
 	/// <summary>O barramento da voz, escutado. Nulo quando o motor nao mixa (ver o placar).</summary>
 	private AudioEffectCapture? _escutaDoBarramento;
@@ -162,7 +163,7 @@ public partial class RoboDeVozViva : Node
 	public override void _Ready()
 	{
 		ProcessMode = ProcessModeEnum.Always;
-		OndaConhecida(_referencia);
+		OndaConhecida(_referencia, VozLocal.TaxaDeSaida);
 
 		GD.Print($"[vozviva:{Papel}] pronto. build de audio: mix={AudioServer.GetMixRate():0} Hz, "
 			   + $"latencia de saida={AudioServer.GetOutputLatency():0.000000} s, "
@@ -344,8 +345,8 @@ public partial class RoboDeVozViva : Node
 		}
 		_agora.SomaRms += Math.Sqrt(soma / n);
 		_agora.SomaEnergiaTotal += soma / n;
-		_agora.SomaEGrave += Energia(pcm, n, HzGrave);
-		_agora.SomaEAgudo += Energia(pcm, n, HzAgudo);
+		_agora.SomaEGrave += Energia(pcm, n, HzGrave, VozLocal.TaxaDeSaida);   // o que sai do filtro e de SAIDA
+		_agora.SomaEAgudo += Energia(pcm, n, HzAgudo, VozLocal.TaxaDeSaida);
 
 		// ============================ A CORRELACAO SO EM ALGUNS QUADROS ============================
 		// Ela e O(n^2) -- 102 mil operacoes por quadro. Em 150 quadros por fase isso e 15 milhoes de

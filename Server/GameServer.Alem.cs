@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Social;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -540,7 +541,10 @@ public partial class GameServer
 			Id = _proximaObraId++,
 			Tipo = Alem.TipoDoEnma,
 			X = cadeira.X,
-			Y = cadeira.Y - MoveRules.FeetOffsetY,
+			// NA CADEIRA, como o DM (176,134): quem o poe por cima do trono e o CLIENTE
+			// (`ObraDesenhada.AcimaDoJogador`, z acima do jogador, como a macieira) -- ver la o porque.
+			// Uma fileira abaixo com o sprite deslocado nao bastou: o trono tem tres fileiras.
+			Y = cadeira.Y,
 			DonoNome = "",
 			Aparafusada = true,
 			DoMapa = true,
@@ -563,6 +567,9 @@ public partial class GameServer
 			Avisar(pl, "Enma Daioh troveja: \"Os vivos não têm negócio na minha mesa! Fora daqui até chegar a sua hora!\"");
 			return;
 		}
+		// O JULGAMENTO VEM ANTES DE QUALQUER OFERTA (`enma_interact()`, `SkyNPCs.dm:159-161`): coracao
+		// negro nao ouve preco, ouve sentenca.
+		if (pl.Karma < 0) { JulgarProInferno(pl); return; }
 		if (pl.Ficha.aged_out)
 		{
 			Avisar(pl, "Enma Daioh: \"Sua ampulheta virou pela última vez -- morte de velhice não tem volta.\"");
@@ -570,6 +577,81 @@ public partial class GameServer
 		}
 		Avisar(pl, $"Enma Daioh lê a sua ficha: \"Uma alma equilibrada. Pode descansar no Outro Mundo -- ou voltar, por "
 				 + $"{Alem.PrecoDoReviveDoEnma:N0} zeni. Você tem {pl.Ficha.Zeni:N0}.\"");
+	}
+
+	/// <summary>
+	/// O `enma_judge_to_hell()` do DM (`SkyNPCs.dm:176-182`): a pena pela formula de `Alem.MsDePenaNoInferno`
+	/// (1 min a 1 h, pelo quao negro esta o karma), o carimbo, e o corpo no portao do Inferno
+	/// (`locate(65,258,9)`). Enquanto a pena corre, toda saida devolve ao portao (`CumprirPenaNoInferno`,
+	/// `OInfernoNaoDeixaSair`); cumprida, a alma sai LIMPA (karma 0) e volta ao checkpoint. O dono
+	/// (2026-09-04): *"karma negativo, assim como era no DM, voce e jogado no inferno e o tempo que voce
+	/// fica preso la (sempre que voce tentar sair voce e teleportado de volta) e baseado no quao
+	/// negativo esta teu karma"*.
+	/// </summary>
+	private void JulgarProInferno(ServerPlayer pl)
+	{
+		long pena = Alem.MsDePenaNoInferno(pl.Karma);
+		pl.Ficha.hell_lockout_until = NowMs() + pena;
+		Avisar(pl, "Enma Daioh BATE o carimbo: \"O seu coração está NEGRO de malícia! Só há um lugar para gente como você... o INFERNO!\"");
+		Avisar(pl, $"você está preso no Inferno por {Math.Max(1, pena / 60_000)} minuto(s). Cumpra a pena e a sua alma sairá limpa.");
+		ZoneKey inferno = ZoneKey.Premade(Alem.ZonaDoInferno);
+		MoveToZone(pl.Id, inferno, PortaoDoInferno(inferno));
+		Persistir(pl);
+		GD.Print($"[server] {pl.Name} foi julgado pro Inferno: karma {pl.Karma}, pena {pena / 60_000} min");
+	}
+
+	private Vec2 PortaoDoInferno(ZoneKey inferno)
+	{
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(inferno);
+		Vec2 portao = Alem.PortaoDoInferno(mapa?.Height ?? 500);
+		return mapa?.PontoLivrePerto(portao) ?? portao;
+	}
+
+	/// <summary>
+	/// O `afterlife_alignment_check()` do DM (`SkyNPCs.dm:228-236`), no laco de fichas: pena vencida -> a
+	/// alma sai limpa (karma 0) e, se estiver fora do Outro Mundo, volta ao checkpoint; pena correndo e
+	/// corpo fora do Inferno -> de volta ao portao. E o que faz "sempre que tentar sair, volta" valer
+	/// tambem pra quem saiu por um caminho que a passagem nao viu (um admin, uma tecnica, um relog).
+	/// </summary>
+	private void CumprirPenaNoInferno(ServerPlayer pl)
+	{
+		if (pl.Ficha.hell_lockout_until == 0 || !EhJogador(pl)) return;
+		if (NowMs() >= pl.Ficha.hell_lockout_until)
+		{
+			pl.Ficha.hell_lockout_until = 0;
+			pl.Karma = Karma.Neutro;
+			Avisar(pl, "a sua pena no Inferno terminou. O seu coração foi lavado -- você volta ao Outro Mundo como uma alma neutra.");
+			ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+			if (!pl.Zone.Equals(alem)) MoveToZone(pl.Id, alem, MesaDoEnma(alem));
+			Persistir(pl);
+			GD.Print($"[server] {pl.Name} cumpriu a pena no Inferno: karma limpo");
+			return;
+		}
+		ZoneKey inferno = ZoneKey.Premade(Alem.ZonaDoInferno);
+		if (!pl.Zone.Equals(inferno)) MoveToZone(pl.Id, inferno, PortaoDoInferno(inferno));
+	}
+
+	/// <summary>
+	/// A BARREIRA ESPIRITUAL DAS PORTAS DO OUTRO MUNDO. No DM ela e um obj invisivel nas portas de Snake
+	/// Way (`barrier.dm:60-80`, `place_kaio_gate`) que so o `kaiTrainingAllowed` do Enma abre. O dono
+	/// pediu a regra pela ALMA (2026-09-04): *"se voce tiver uma alma neutra ou boa (karma alto) voce
+	/// deveria estar liberado pra abrir as portas do outro mundo e ir pro caminho da serpente"* --
+	/// divergencia declarada: karma >= 0 abre; coracao negro e quem cumpre pena nao abrem. O vivo (um
+	/// admin que foi la) nao passa por aqui.
+	/// </summary>
+	private bool APortaDoOutroMundoAbrePara(ServerPlayer pl, long agora)
+	{
+		if (!pl.Ficha.dead || !Alem.EhOAlem(pl.Zone)) return true;
+		bool cumprindoPena = pl.Ficha.hell_lockout_until != 0 && agora < pl.Ficha.hell_lockout_until;
+		if (pl.Karma >= Karma.Neutro && !cumprindoPena) return true;
+		if (agora >= pl.AvisoDaBarreiraAte)
+		{
+			pl.AvisoDaBarreiraAte = agora + 3000;   // o `lastGateMsg = world.time + 30` do DM (~3 s)
+			Avisar(pl, cumprindoPena
+				? "uma barreira espiritual sela a porta: a sua pena no Inferno ainda não acabou."
+				: "uma barreira espiritual sela a porta. Um coração negro não anda pelo Outro Mundo -- fale com Enma Daioh e aceite o julgamento.");
+		}
+		return false;
 	}
 
 	/// <summary>
@@ -585,6 +667,7 @@ public partial class GameServer
 	{
 		if (ObraQueAceita(pl, "enma_reviver") == null) { Avisar(pl, "o Enma não está ao alcance -- fale com ele na mesa dele."); return; }
 		if (!pl.Ficha.dead) { Avisar(pl, "Enma Daioh troveja: \"Os vivos não têm negócio na minha mesa!\""); return; }
+		if (pl.Karma < 0) { JulgarProInferno(pl); return; }   // o milhao nao compra a volta de um coracao negro: o Enma julga antes de vender
 		if (pl.Ficha.aged_out)
 		{
 			Avisar(pl, "Enma Daioh: \"Nem todo o zeni do universo compra mais um dia para quem já viveu todos os seus.\"");

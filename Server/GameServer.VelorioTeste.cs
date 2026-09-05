@@ -233,6 +233,20 @@ public partial class GameServer
 	/// o menu E dele chama; o `Renascer`, o berco e o debuff que vem depois sao o caminho do jogo, e
 	/// nao desta janela. Devolve se o Enma aceitou (o corpo saiu vivo).
 	/// </summary>
+	/// <summary>
+	/// So bancada e foto: poe o corpo (ja no alem) DOIS TILES ABAIXO da cadeira do Enma, de frente pra
+	/// mesa -- e o enquadramento em que se ve se o juiz esta na frente do trono ou atras dele.
+	/// </summary>
+	internal bool PorDianteDoEnmaDeTeste(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		if (!pl.Zone.Equals(alem)) return false;
+		Vec2 cadeira = Alem.CadeiraDoEnma(MapaDaZonaOuCatalogo(alem)?.Height ?? 500);
+		MoveToZone(pl.Id, alem, cadeira + new Vec2(0, 2 * ZoneCollision.TileSize));
+		return true;
+	}
+
 	internal bool PagarOEnmaNoVelorioDeTeste(int id)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;

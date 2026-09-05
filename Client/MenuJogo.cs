@@ -112,6 +112,7 @@ public partial class MenuJogo : CanvasLayer
 			cli.CargosMudaram += AoCargos;
 			cli.ConhecidosMudaram += AoConhecidos;
 			cli.ContasMudaram += AoContas;
+			cli.OnlineMudou += AoOnline;
 			cli.LimpezaMudou += AoLimpeza;
 			cli.TechMudou += AoTech;
 			cli.EstilosMudaram += AoEstilos;
@@ -138,6 +139,7 @@ public partial class MenuJogo : CanvasLayer
 			cli.CargosMudaram -= AoCargos;
 			cli.ConhecidosMudaram -= AoConhecidos;
 			cli.ContasMudaram -= AoContas;
+			cli.OnlineMudou -= AoOnline;
 			cli.LimpezaMudou -= AoLimpeza;
 			cli.TechMudou -= AoTech;
 			cli.EstilosMudaram -= AoEstilos;
@@ -189,6 +191,7 @@ public partial class MenuJogo : CanvasLayer
 	/// </summary>
 	private void AoConhecidos() { if (Visible && _aba == "People") Redesenhar(); }
 	private void AoContas() { if (Visible && _aba == Verbos.Admin) Redesenhar(); }
+	private void AoOnline() { if (Visible && _aba == Verbos.Admin) Redesenhar(); }
 
 	/// <summary>
 	/// A PREVIA DA LIMPEZA CHEGOU (ou foi consumida). Mesma regra do `AoContas`: so remonta na aba

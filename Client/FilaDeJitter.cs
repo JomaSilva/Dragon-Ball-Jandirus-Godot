@@ -61,7 +61,7 @@ namespace Jandirus.Client;
 /// ============================================================================================
 ///
 /// ============================ DERIVA: SOLTA UM QUADRO, NUNCA TRUNCA ============================
-/// Duas placas de som nunca marcam o mesmo 16 kHz; a que manda pode ser um pouco mais rapida, e ai o
+/// Duas placas de som nunca marcam os mesmos 48 kHz; a que manda pode ser um pouco mais rapida, e ai o
 /// buffer cresce um quadro a cada tantos segundos. E depois de um engasgo o excesso chega de uma vez.
 /// Quando o total guardado passa do alvo em 2 quadros por mais de <see cref="MsDeExcessoAteSoltar"/>,
 /// UM quadro pendente e solto (<see cref="Soltos"/>). Um quadro inteiro, e nao um pedaco: cortar no
@@ -86,10 +86,11 @@ public sealed class FilaDeJitter
 		Esticado,
 	}
 
-	/// <summary>Quem recebe cada quadro pronto: (PCM de 320 amostras, o tipo, a sequencia, distancia, parede).</summary>
+	/// <summary>Quem recebe cada quadro pronto: (PCM de um quadro de SAIDA, 960 amostras a 48 kHz, o tipo, a sequencia, distancia, parede).</summary>
 	public delegate void Entrega(short[] pcm, Tipo tipo, ushort seq, byte distancia, bool parede);
 
-	private const int Amostras = VozLocal.AmostrasPorQuadro;
+	// O QUE O DECODIFICADOR DEVOLVE E DE SAIDA (960 a 48 kHz), nao o do microfone -- ver `VozLocal.TaxaDeSaida`.
+	private const int Amostras = VozLocal.AmostrasPorQuadroDeSaida;
 
 	/// <summary>
 	/// O ALVO DE PARTIDA: 3 quadros = 60 ms de folga na fila do gerador.

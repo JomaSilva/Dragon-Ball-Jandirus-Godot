@@ -125,7 +125,7 @@ public sealed partial class GameServer
 	/// ============================ ELE NAO E O `AlvoNaFrente` DO SOCO, E A DIFERENCA E UMA LINHA ============================
 	/// O alcance, o cone e a regra de andar sao **os mesmos** de proposito: "consigo encostar nele?"
 	/// tem que ter uma resposta so, senao um dia daria pra agarrar quem nao da pra socar. O que muda
-	/// e que o do soco pula `o.Ficha.dead` (`GameServer.Combat.cs:678`) -- e e exatamente esse `if`
+	/// e que o do soco PULAVA `o.Ficha.dead` ate 2026-09-05 (hoje aceita o cadaver, preferindo o vivo) -- e era esse `if`
 	/// que transformaria o item 3 do dono em excecao.
 	///
 	/// Reusar o do soco e apagar o cadaver do jogo; copiar o do soco e criar a segunda resposta pra

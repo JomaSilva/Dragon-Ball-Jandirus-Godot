@@ -356,11 +356,14 @@ public sealed partial class GameServer
 	{
 		if (def.Nutricao <= 0) { Avisar(pl, $"{def.Nome} não é comida."); return; }
 
+		// CHEIO NAO COME -- e a comida fica na mochila: a refeicao recusada nao e consumida.
+		Jandirus.Core.Stats.Nutricao.Refeicao r = Jandirus.Core.Stats.Nutricao.Comer(pl.Ficha, def.Nutricao);
+		if (!r.Comeu) { Avisar(pl, r.Aviso); return; }
+
 		pl.Mochila.Tirar(def.Id);
 		MandarMochila(pl);
 
-		string demais = Jandirus.Core.Stats.Nutricao.Comer(pl.Ficha, def.Nutricao);
 		Avisar(pl, $"você come {def.Nome}.");
-		if (demais.Length > 0) Avisar(pl, demais);
+		if (r.Aviso.Length > 0) Avisar(pl, r.Aviso);
 	}
 }

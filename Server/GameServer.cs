@@ -796,6 +796,9 @@ public sealed class ServerPlayer
 	/// <summary>Rate-limit do aviso de "nao da pra romper a atmosfera" -- senao ele sai 30x por segundo.</summary>
 	public long AvisoDeTetoAte;
 
+	/// <summary>Rate-limit do aviso da barreira espiritual nas portas do Outro Mundo (o `lastGateMsg` do `barrier.dm:78`).</summary>
+	public long AvisoDaBarreiraAte;
+
 	public int TiquesDeVoo;
 	public Vec2 RumoDoVoo;
 	public double ForcaDoVoo;
@@ -2718,6 +2721,8 @@ public partial class GameServer : Node
 			// resultado no CORPO do outro, sem olhar `Peer` em linha nenhuma. Ver
 			// `GameServer.KbTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--kbteste") >= 0) RodarBancadaDoArremesso();
+
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--arranqueteste") >= 0) RodarBancadaDoArranque();
 
 			// `--borraoteste`: O DASH DO NPC -- alcance e borrao, SO MEDIDOS. Mesma infraestrutura da
 			// `--tresteste` (corredor livre na Terra, corpos forjados, laco a 30 Hz no relogio de
@@ -4689,6 +4694,16 @@ public partial class GameServer : Node
 		Vec2 claimed = reader.GetVec();
 		byte flags = reader.GetByte();
 
+		AplicarInput(pl, seq, tempoMs, claimed, flags);
+	}
+
+	/// <summary>
+	/// UM PACOTE DE INPUT JA LIDO DO FIO, aplicado ao corpo. Separado do <c>Input</c> (que so le o
+	/// pacote) pra bancada `--arranqueteste` poder mandar "pacotes" a um corpo forjado sem `NetPeer`:
+	/// foi o unico jeito de reproduzir o arranque desfeito pelos inputs que ja estavam no cabo.
+	/// </summary>
+	internal void AplicarInput(ServerPlayer pl, uint seq, uint tempoMs, Vec2 claimed, byte flags)
+	{
 		// PACOTE OBSOLETO: foi montado antes do ultimo teleporte, entao a posicao que ele afirma
 		// e de outra vida. Nao valida, nao grava, nao corrige -- so mantem o relogio do dt em dia
 		// (senao o proximo pacote legitimo chega com um dt gigante e vira violacao sozinho).
@@ -4801,7 +4816,7 @@ public partial class GameServer : Node
 			var parado = Protocol.Begin(Protocol.S2C.Correction);
 			parado.Put(pl.SeqInput);
 			parado.PutVec(pl.Pos);
-			peer.Send(parado, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			pl.Peer?.Send(parado, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 			return;
 		}
 
@@ -4902,8 +4917,26 @@ public partial class GameServer : Node
 		}
 		else
 		{
-			pl.Pos = ok;
 			bool esperada = now < pl.CorrecaoEsperadaAte;
+
+			// ============================ O PACOTE EM VOO NAO DESFAZ O SALTO ============================
+			// Todo salto de posicao (arranque, Zanzoken, volta do mundo, pouso) abre uma janela de
+			// "correcao esperada" -- e ate aqui ela so servia pra nao contar o pacote como trapaca. O corpo,
+			// porem, ERA arrastado: `pl.Pos = ok` andava o orcamento do tique NA DIRECAO da posicao pedida,
+			// que e a posicao de ANTES do salto (o cliente ja tinha despachado um RTT de pacotes com ela).
+			// Quatro pacotes, ~25 px cada, e quem acabara de arrancar ate 32 px do alvo estava de volta a
+			// 130 -- com o soco ja acertado, porque o golpe se resolveu no tique do arranque. Foi a foto do
+			// dono (2026-09-05): *"acerta o soco no alvo mas o personagem ainda ta longe"*.
+			//
+			// Dentro da janela, um pedido longe do corpo e um pacote VELHO, nao um passo: o corpo fica onde o
+			// salto o pos e a correcao e reenviada (o cliente que ainda nao a viu vai ve-la). O orcamento zera
+			// junto, senao a folga acumulada por esses pacotes pagaria um passo grande logo depois. Fora da
+			// janela nada mudou: pedido longe e arrastado e contado -- a anti-trapaca de sempre.
+			// A bancada `--arranqueteste` mede as duas metades com pacotes forjados.
+			// =============================================================================================
+			if (esperada) pl.OrcamentoPx = 0;
+			else pl.Pos = ok;
+
 			if (!esperada) pl.Corrections++;
 			// Correcao em jogo HONESTO nao deveria existir: as duas pontas rodam a MESMA regra
 			// de colisao e de velocidade. Se este aviso aparecer, o cliente esta sendo puxado de
@@ -4915,7 +4948,7 @@ public partial class GameServer : Node
 			var w = Protocol.Begin(Protocol.S2C.Correction);
 			w.Put(pl.SeqInput);
 			w.PutVec(pl.Pos);
-			peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 
 		// DEPOIS do `pl.Pos = ok` dos dois ramos (a escrita apaga o carimbo) e FORA do ramo da volta
@@ -5402,6 +5435,7 @@ public partial class GameServer : Node
 		foreach (ServerPlayer pl in _players.Values)
 		{
 			Treinar(pl);
+			CumprirPenaNoInferno(pl);   // o `afterlife_alignment_check()` do DM, no laco de fichas
 
 			// A RAIVA ANDA AQUI, e este e o tique CERTO e nao um qualquer: `TicksPorFicha` da 5 Hz,
 			// que e exatamente o `sleep(sleep_tiem)` com `sleep_tiem = 2` do `mob/proc/Stats()`

@@ -3496,6 +3496,12 @@ public partial class World : Node2D
 		// sumirem no meio da propria cena.
 		_nomes[id] = nome;
 
+		// A MEMORIA DA ABA PEOPLE: o que eu vi por ultimo de cada pessoa (`VistosDeGente`). O cadaver
+		// ("corpo de Fulano") fica de fora -- a foto e de quem esta vivo na frente de mim, nao do que
+		// sobrou dele; o `QuemJazEm` so devolve outro nome quando o nome e o de um cadaver.
+		if (Jandirus.Core.World.Cadaver.QuemJazEm(nome) == nome)
+			VistosDeGente.Anotar(nome, raca, genero, ap);
+
 		// ============================ APARENCIA NO MEIO DE CINEMATICA ESPERA A VIRADA ============================
 		// Ver `_pendentes` pro porque. `Vestir` (que e o que o `VestirCorpoInteiro` faz) REMONTA as
 		// camadas do zero -- ou seja ele troca o CORPO --, e faze-lo durante a cena e exatamente o que o
@@ -4732,7 +4738,7 @@ public partial class World : Node2D
 	public bool VeDeTeste(Vector2 ponto) => _veu?.Ve(ponto) ?? true;
 
 	/// <summary>A skill que abre a piscada por duplo clique -- a mesma da imagem remanescente.</summary>
-	private const string PathDoZanzoken = "/datum/skill/ki/Afterimage";
+	internal const string PathDoZanzoken = "/datum/skill/ki/Afterimage";
 
 	/// <summary>Quanto perto do clique um personagem precisa estar pra ser o escolhido.</summary>
 	private const float RaioDoClique = 22f;
@@ -4749,8 +4755,13 @@ public partial class World : Node2D
 	{
 		if (e is not InputEventMouseButton { DoubleClick: true, ButtonIndex: MouseButton.Left }) return;
 		if (Foco.Digitando || GameClient.Instance is not { } cli) return;
+		DuploClique(GetGlobalMousePosition(), cli);
+		GetViewport().SetInputAsHandled();
+	}
 
-		Vector2 alvo = GetGlobalMousePosition();
+	/// <summary>O gesto do duplo clique num ponto do mundo, separado do evento pra bancada dar o gesto sem mouse.</summary>
+	private void DuploClique(Vector2 alvo, GameClient cli)
+	{
 		int escolhido = 0;
 		float melhor = RaioDoClique * RaioDoClique;
 
@@ -4762,6 +4773,21 @@ public partial class World : Node2D
 			if (d >= melhor) continue;
 			melhor = d;
 			escolhido = id;
+		}
+
+		// ============================ EM MIM MESMO: SOLTA O ALVO, COM OU SEM ZANZOKEN ============================
+		// O dono (2026-09-05): *"com zanzoken ou nao, ao clicar em si mesmo 2 vezes tiraria qualquer
+		// target"*. Antes, quem tinha a skill nao tinha como soltar o alvo pelo mouse: o duplo clique no
+		// proprio corpo caia no "vazio" logo abaixo e virava uma piscada de zero pixels. O proprio corpo e
+		// o unico ponto da tela que nao e chao nem outro alguem -- e e isso que faz dele o gesto de
+		// "ninguem". Outro corpo em cima do meu continua ganhando (o `escolhido` vem primeiro).
+		// ==========================================================================================================
+		if (escolhido == 0 && _local != null && IsInstanceValid(_local)
+			&& (_local.GlobalPosition - alvo).LengthSquared() < RaioDoClique * RaioDoClique)
+		{
+			cli.SendAlvo(0);
+			MarcarNaCena(0);
+			return;
 		}
 
 		// CLICOU NO VAZIO E TENHO ZANZOKEN: e uma PISCADA, nao um "soltar alvo".
@@ -4779,14 +4805,22 @@ public partial class World : Node2D
 			// Ver `LocalPlayer.DeixarVulto`.
 			_local?.MarcarSaida();
 			cli.SendZanzoken(new Vec2(alvo.X, alvo.Y));
-			GetViewport().SetInputAsHandled();
+			ZanzokensPedidosDeTeste++;
 			return;
 		}
 
 		cli.SendAlvo(escolhido);
 		MarcarNaCena(escolhido);
-		GetViewport().SetInputAsHandled();
 	}
+
+	/// <summary>Só bancada: o gesto do duplo clique num ponto do mundo, sem mouse (`--diagcorpos`).</summary>
+	public void DuploCliqueDeTeste(Vector2 alvoNoMundo) { if (GameClient.Instance is { } cli) DuploClique(alvoNoMundo, cli); }
+
+	/// <summary>Quantas piscadas (Zanzoken por duplo clique) este cliente ja pediu ao servidor. Só bancada.</summary>
+	public int ZanzokensPedidosDeTeste { get; private set; }
+
+	/// <summary>Onde o meu corpo esta desenhado, no mundo. Só bancada.</summary>
+	public Vector2? PosicaoLocalDeTeste => _local != null && IsInstanceValid(_local) ? _local.GlobalPosition : null;
 
 	/// <summary>Poe (ou tira) o anel de mira aos pes de quem foi escolhido.</summary>
 	private void MarcarNaCena(int id)

@@ -129,8 +129,8 @@ public partial class VozOuvida : Node2D
 	/// <summary>
 	/// A FILA DO GERADOR, em segundos. E CAPACIDADE, nao pre-carga: quanto pode estar esperando pra
 	/// tocar. Precisa caber o alvo maximo da <see cref="FilaDeJitter"/> (10 quadros = 200 ms) mais o
-	/// quadro que entra por cima dele. O motor arredonda pra potencia de dois (0,3 s a 16 kHz vira
-	/// 8192 amostras) -- e por isso a capacidade de verdade e LIDA do gerador, nunca calculada.
+	/// quadro que entra por cima dele. O motor arredonda pra potencia de dois (0,3 s a 48 kHz, 14.400 amostras, vira
+	/// 16.384) -- e por isso a capacidade de verdade e LIDA do gerador, nunca calculada.
 	/// </summary>
 	private const float SegundosDeFila = 0.3f;
 
@@ -210,9 +210,10 @@ public partial class VozOuvida : Node2D
 			if (Abafada <= 0.001f) return;
 
 			// O CORTE VAI DE "TUDO PASSA" (metade da taxa) ATE `CorteDaParede`, conforme a rampa.
-			float livre = VozLocal.TaxaDeAmostragem * 0.5f;
+			// O FILTRO RODA NO PCM DECODIFICADO, que e de SAIDA (48 kHz) -- ver `VozLocal.TaxaDeSaida`.
+			float livre = VozLocal.TaxaDeSaida * 0.5f;
 			float corte = Mathf.Lerp(livre, CorteDaParede, Abafada);
-			float a = 1f - MathF.Exp(-2f * MathF.PI * corte / VozLocal.TaxaDeAmostragem);
+			float a = 1f - MathF.Exp(-2f * MathF.PI * corte / VozLocal.TaxaDeSaida);
 			float ganho = Mathf.Lerp(1f, GanhoAtrasDaParede, Abafada);
 
 			for (int i = 0; i < amostras; i++)
@@ -246,10 +247,10 @@ public partial class VozOuvida : Node2D
 	private readonly Dictionary<int, Fonte> _fontes = [];
 
 	/// <summary>O quadro no formato que o gerador do Godot quer. Reusado, 50 quadros por segundo por falante.</summary>
-	private readonly Vector2[] _saida = new Vector2[VozLocal.AmostrasPorQuadro];
+	private readonly Vector2[] _saida = new Vector2[VozLocal.AmostrasPorQuadroDeSaida];
 
 	/// <summary>A pre-carga, ja no formato do gerador. Nunca e escrito.</summary>
-	private readonly Vector2[] _saidaMuda = new Vector2[VozLocal.AmostrasPorQuadro];
+	private readonly Vector2[] _saidaMuda = new Vector2[VozLocal.AmostrasPorQuadroDeSaida];
 
 	public override void _Ready()
 	{
@@ -325,11 +326,12 @@ public partial class VozOuvida : Node2D
 			Bus = AudioDirector.BusVoz,
 			MaxDistance = Alcance,
 			Attenuation = Curva,
-			// O GERADOR RODA A 16 kHz e o motor reamostra pra taxa da placa. Fazer o contrario --
+			// O GERADOR RODA A 48 kHz (`VozLocal.TaxaDeSaida`: o decodificador so devolve som nessa taxa) e o
+			// motor reamostra pra taxa da placa -- que costuma ser a mesma. Fazer o contrario --
 			// gerar ja na taxa do motor -- exigiria um reamostrador aqui, e o Godot ja tem um melhor.
 			Stream = new AudioStreamGenerator
 			{
-				MixRate = VozLocal.TaxaDeAmostragem,
+				MixRate = VozLocal.TaxaDeSaida,
 				BufferLength = SegundosDeFila,
 			},
 		};
@@ -338,7 +340,7 @@ public partial class VozOuvida : Node2D
 		var f = new Fonte { Id = id, Tocador = tocador };
 		// O DELEGATE E DA FONTE E MORRE COM ELA: nao e assinatura em evento estatico, entao nao ha o
 		// que cancelar (a licao das assinaturas vazadas nao se aplica aqui).
-		f.Fila = new FilaDeJitter(OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeAmostragem, 1),
+		f.Fila = new FilaDeJitter(OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeSaida, 1),
 			(pcm, tipo, _, dist, parede) => Entregar(f, pcm, tipo, dist, parede));
 		_fontes[id] = f;
 		return f;
@@ -364,7 +366,7 @@ public partial class VozOuvida : Node2D
 		}
 
 		f.Filtro.Parede = parede;
-		f.Filtro.Aplicar(pcm, VozLocal.AmostrasPorQuadro);
+		f.Filtro.Aplicar(pcm, VozLocal.AmostrasPorQuadroDeSaida);
 
 		// ============================ DE ONDE O SOM SAI ============================
 		// COM CORPO: em cima dele, e o motor cuida da queda e do lado (esquerda/direita). E o pedido
@@ -381,7 +383,7 @@ public partial class VozOuvida : Node2D
 			? 1f
 			: VozLocal.VolumePelaDistancia(VozLocal.FracaoDaDistancia(distancia));
 
-		for (int i = 0; i < VozLocal.AmostrasPorQuadro; i++)
+		for (int i = 0; i < VozLocal.AmostrasPorQuadroDeSaida; i++)
 		{
 			float v = pcm[i] / (float)short.MaxValue;
 			_saida[i] = new Vector2(v, v);   // mono nos dois canais; quem panoramiza e o `2D`
@@ -392,7 +394,7 @@ public partial class VozOuvida : Node2D
 		// DEPOIS do filtro, porque e ele quem modifica o `pcm` no lugar: chamar antes entregaria a
 		// bancada o sinal LIMPO e a abafada da parede -- que e metade do pedido do dono -- passaria
 		// verde com o filtro desligado. Ver `Espiao`.
-		Espiao?.Invoke(f.Id, pcm, VozLocal.AmostrasPorQuadro, distancia, parede);
+		Espiao?.Invoke(f.Id, pcm, VozLocal.AmostrasPorQuadroDeSaida, distancia, parede);
 	}
 
 	// =====================================================================

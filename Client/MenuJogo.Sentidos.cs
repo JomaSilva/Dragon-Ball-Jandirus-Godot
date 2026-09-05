@@ -91,9 +91,6 @@ public partial class MenuJogo
 						  p.PoderRelativo > 100 ? Tema.Perigo : null);
 		}
 
-		if (p.Hp != Protocol.HpDesconhecido)
-			LinhaComBarra("vida", $"{p.Hp}%", p.Hp / 100.0, BodyDoll.Cor(p.Hp), c, BodyDoll.Cor(p.Hp));
-
 		if (p.Distancia != Protocol.DistanciaDesconhecida)
 			Linha("distância", $"{p.Distancia} tiles · direção {Protocol.NomeDoRumo(p.Rumo)}", null, c);
 
@@ -115,6 +112,6 @@ public partial class MenuJogo
 	{
 		GameClient? c = GameClient.Instance;
 		return $"{(c?.SentidosSaoDoScouter == true ? 'S' : 'K')}|" + string.Join(',', (c?.Sentidos ?? []).Select(p =>
-			$"{p.Nome}/{p.Assinatura}/{p.Alcance}/{p.PoderRelativo:0}/{p.Bp:0}/{p.Hp}/{p.Distancia}/{p.Rumo}/{p.X}/{p.Y}/{p.Zona}/{p.Chefe}"));
+			$"{p.Nome}/{p.Assinatura}/{p.Alcance}/{p.PoderRelativo:0}/{p.Bp:0}/{p.Distancia}/{p.Rumo}/{p.X}/{p.Y}/{p.Zona}/{p.Chefe}"));
 	}
 }

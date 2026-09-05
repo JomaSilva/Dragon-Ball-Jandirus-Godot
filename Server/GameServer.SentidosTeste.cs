@@ -177,7 +177,7 @@ public partial class GameServer
 		AfirmarSn("...e nao e o BP absoluto do outro",
 				  pp is { } p2 && Math.Abs(p2.PoderRelativo - perto.Ficha.expressedBP) > 1, $"{pp?.PoderRelativo} vs {perto.Ficha.expressedBP:0}");
 		AfirmarSn("o BP absoluto vai como NaN (SemLeitura) em TODA presenca do modo Sense", l1.Count > 0 && l1.All(p => double.IsNaN(p.Bp)));
-		AfirmarSn("a vida vem em % (o `round(D.HP)% hp` do DM): 100 pra um corpo inteiro", pp is { Hp: 100 }, $"{pp?.Hp}");
+		// (a vida deixou de viajar em 2026-09-04, a pedido do dono -- o registro nem tem o campo; ver `Presenca`)
 		AfirmarSn("a distancia e o `get_dist` (5 tiles) e o rumo e E", pp is { Distancia: 5, Rumo: 3 }, $"d{pp?.Distancia} r{pp?.Rumo}");
 		Protocol.PresencaState? pd = Acha(l1, diagonal);
 		AfirmarSn("o Diagonal (3 tiles a noroeste) vem com rumo NW e distancia 3 -- o `get_dir` junta os dois eixos, o `get_dist` e o maior deles",
@@ -196,7 +196,6 @@ public partial class GameServer
 		AfirmarSn("alcance 2 (kiawarenessskill >= 20, Sense2.0.dm:27): o Longe aparece, 'neste mundo', 20 tiles a E",
 				  pl2 is { Alcance: AlcanceMundo, Distancia: 20, Rumo: 3 }, Nomes(l2));
 		AfirmarSn("...o Perto continua 'perto' (o mais proximo vence, como o `shown |= D` do DM)", Acha(l2, perto) is { Alcance: AlcancePerto });
-		AfirmarSn("...o Longe vem SEM vida (o DM so da vida a quem esta perto, :375 vs :384)", pl2 is { Hp: Protocol.HpDesconhecido });
 		AfirmarSn("...Escondido, Android e Fraco continuam fora; o Tita de outro planeta tambem",
 				  Acha(l2, escondido) == null && Acha(l2, maquina) == null && Acha(l2, fraco) == null && Acha(l2, tita) == null, Nomes(l2));
 
@@ -264,8 +263,8 @@ public partial class GameServer
 		AfirmarSn("...o Longe (22 tiles) TAMBEM: o scan e a area inteira, sem os 15 tiles", Acha(l, longe) is { Distancia: 22, Rumo: 3 }, Nomes(l));
 		(int px, int py) = TileDe(perto.Pos);
 		AfirmarSn("...com as coordenadas em tiles (`([E.x],[E.y])`)", pp is { } q && q.X == px && q.Y == py, $"({pp?.X},{pp?.Y}) vs ({px},{py})");
-		AfirmarSn("...e sem poder relativo (NaN) nem vida: o scouter le numero, nao sente",
-				  pp is { Hp: Protocol.HpDesconhecido } r && float.IsNaN(r.PoderRelativo));
+		AfirmarSn("...e sem poder relativo (NaN): o scouter le numero, nao sente",
+				  pp is { } r && float.IsNaN(r.PoderRelativo));
 		AfirmarSn("...o escondido APARECE no scan (o `ui_tab_scan` nao testa isconcealed -- HtmlUI.dm:407-414, reproduzido e anotado)",
 				  Acha(l, escondido) != null, Nomes(l));
 
@@ -313,7 +312,7 @@ public partial class GameServer
 		(bool scanLido, List<Protocol.PresencaState> lido) = r.GetSentidos();
 		AfirmarSn("o opcode e S2C.Sentidos e o modo lido e Sense", opcode == (byte)Protocol.S2C.Sentidos && !scanLido);
 		AfirmarSn("o pacote acabou exatamente onde o leitor parou (nenhum byte sobrando ou faltando)", r.EndOfData, $"{r.AvailableBytes} sobrando");
-		AfirmarSn("o que foi lido e o que foi escrito (mesma contagem; nome, assinatura, alcance, %, vida, distancia, rumo iguais)",
+		AfirmarSn("o que foi lido e o que foi escrito (mesma contagem; nome, assinatura, alcance, %, distancia, rumo iguais)",
 				  lido.Count == lista.Count && lido.Count > 0 && lido.Zip(lista).All(par => Igual(par.First, par.Second)));
 		AfirmarSn("SIGILO: no pacote de Sense NENHUM BP absoluto viaja -- todo `Bp` lido e NaN", lido.All(p => double.IsNaN(p.Bp)));
 		Protocol.PresencaState? po = Acha(lido, outro);
@@ -345,7 +344,7 @@ public partial class GameServer
 
 	private static bool Igual(Protocol.PresencaState a, Protocol.PresencaState b) =>
 		a.Nome == b.Nome && a.Assinatura == b.Assinatura && a.Alcance == b.Alcance
-		&& (a.PoderRelativo.Equals(b.PoderRelativo)) && a.Bp.Equals(b.Bp) && a.Hp == b.Hp
+		&& (a.PoderRelativo.Equals(b.PoderRelativo)) && a.Bp.Equals(b.Bp)
 		&& a.Distancia == b.Distancia && a.Rumo == b.Rumo && a.X == b.X && a.Y == b.Y && a.Zona == b.Zona && a.Chefe == b.Chefe;
 
 	// =====================================================================

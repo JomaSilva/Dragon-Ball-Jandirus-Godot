@@ -444,11 +444,14 @@ public sealed partial class GameServer
 
 		// A OBRA SAI ANTES DA NUTRICAO ENTRAR: se a ordem fosse a inversa e algo abaixo recusasse,
 		// o jogador teria comido uma porcao que continua no chao.
+		// CHEIO NAO COME -- e a porcao continua na mesa.
+		Jandirus.Core.Stats.Nutricao.Refeicao r = Jandirus.Core.Stats.Nutricao.Comer(pl.Ficha, NutricaoDaPorcao);
+		if (!r.Comeu) { Avisar(pl, r.Aviso); return; }
+
 		_noChao.Remove(porcao);
 
-		string demais = Jandirus.Core.Stats.Nutricao.Comer(pl.Ficha, NutricaoDaPorcao);
 		Avisar(pl, "você come uma refeição da Sala do Tempo.");
-		if (demais.Length > 0) Avisar(pl, demais);
+		if (r.Aviso.Length > 0) Avisar(pl, r.Aviso);
 
 		// A REPOSICAO POR CONSUMO. Ela so acontece se ainda ha sessao rendendo -- comer a ultima
 		// porcao depois do fim nao faz nascer outra, e e isso que "aos 48 min a comida some" quer

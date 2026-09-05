@@ -173,6 +173,16 @@ public partial class RoboDoVelorio : Node
 	/// Ela e a metade que sobrevive a um corpo que ainda nao nasceu na tela (o pacote e reliable e
 	/// chega quando o servidor quer, inclusive antes do boneco existir).
 	/// </summary>
+	private static IEnumerable<T> Todos<T>(Node? raiz) where T : Node
+	{
+		if (raiz == null) yield break;
+		foreach (Node f in raiz.GetChildren())
+		{
+			if (f is T t) yield return t;
+			foreach (T neto in Todos<T>(f)) yield return neto;
+		}
+	}
+
 	private static bool NoFio(int id) => GameClient.Instance?.ComAureola.Contains(id) == true;
 
 	/// <summary>
@@ -500,6 +510,11 @@ public partial class RoboDoVelorio : Node
 						 "...e a auréola esta SOBRE a cabeca, e nao ao lado dela (o estado `ko` da "
 					   + $"folha desenha a auréola de um corpo caido, e ele so vale pro cadaver) "
 					   + $"[pose do corpo: {vis?.AnimacaoDeTeste}]");
+				List<ObraDesenhada> obras = [.. Todos<ObraDesenhada>(World.Instancia)];
+				ObraDesenhada? juiz = obras.FirstOrDefault(o => o.Tipo == Alem.TipoDoEnma);
+				Conferir(juiz is { ZIndex: 1 },
+						 "e o ENMA e desenhado POR CIMA do trono (z acima do jogador, como a macieira) -- "
+					   + $"o dono: 'o enma ta abaixo da cadeira' [{(juiz == null ? $"obra nao achada entre {obras.Count}: {string.Join(",", obras.Select(o => o.Tipo))}" : $"z={juiz.ZIndex}")}]");
 				// E AGORA A SETA, segurada de verdade: o resto desta fase mede a posicao no servidor.
 				_passoDaSeta = 1;
 				_deOnde = meu.Pos;

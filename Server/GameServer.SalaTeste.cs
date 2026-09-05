@@ -1263,6 +1263,41 @@ public sealed partial class GameServer
 					Porcoes().Any(o => Array.IndexOf(idsAntes, o.Id) < 0),
 					string.Join(",", Porcoes().Select(o => o.Id)));
 
+		// ============================ CHEIO NAO COME (dono, 2026-09-05) ============================
+		// "com nutricao em 100% o jogo vai falar que ele ja esta cheio; comendo algo que passaria de 100%
+		// ele atinge o 100% e recebe a mensagem que comeu ate ficar cheio". A porcao da Sala e o caminho
+		// de producao mais curto ate o `Nutricao.Comer`; a mochila e a Senzu chamam o mesmo metodo.
+		{
+			List<string>? escutaDeAntes = EscutaDeAvisos;
+			EscutaDeAvisos = [];
+			double tanque = Jandirus.Core.Stats.Nutricao.Tanque(a.Ficha.Metabolism);
+			int[] idsCheio = [.. Porcoes().Select(o => o.Id)];
+			a.Ficha.CurrentNutrition = tanque;
+			ComandoDaSalaDoTempo(a, "sala_comer", "");
+			AfirmarSala("de estomago CHEIO (100%) a refeicao NAO e comida: a nutricao nao passa do tanque",
+						Math.Abs(a.Ficha.CurrentNutrition - tanque) < 1e-9, $"{a.Ficha.CurrentNutrition:0.##} de {tanque:0.##}");
+			AfirmarSala("...a porcao continua na mesa (as MESMAS porcoes de antes: nada consumido, nada reposto)",
+						Porcoes().Select(o => o.Id).OrderBy(i => i).SequenceEqual(idsCheio.OrderBy(i => i)),
+						string.Join(",", Porcoes().Select(o => o.Id)));
+			AfirmarSala("...e o aviso e o de 'ja esta cheio'",
+						EscutaDeAvisos.Contains(Jandirus.Core.Stats.Nutricao.AvisoDeCheio), string.Join(" | ", EscutaDeAvisos));
+
+			EscutaDeAvisos.Clear();
+			int[] idsQuase = [.. Porcoes().Select(o => o.Id)];
+			a.Ficha.CurrentNutrition = tanque - NutricaoDaPorcao / 2;
+			ComandoDaSalaDoTempo(a, "sala_comer", "");
+			AfirmarSala("faltando MEIA porcao pro teto, comer enche ate EXATAMENTE o tanque (o excesso nao entra)",
+						Math.Abs(a.Ficha.CurrentNutrition - tanque) < 1e-9, $"{a.Ficha.CurrentNutrition:0.##} de {tanque:0.##}");
+			AfirmarSala("...essa porcao FOI comida (uma nova nasceu no lugar dela)",
+						Porcoes().Any(o => Array.IndexOf(idsQuase, o.Id) < 0), string.Join(",", Porcoes().Select(o => o.Id)));
+			AfirmarSala("...e o aviso e o de 'comeu ate ficar cheio'",
+						EscutaDeAvisos.Contains(Jandirus.Core.Stats.Nutricao.AvisoDeEncheu), string.Join(" | ", EscutaDeAvisos));
+			AfirmarSala("CONTRA-EXEMPLO: a regra pura recusa de cheio e aceita de quase-cheio (sem servidor no meio)",
+						!Jandirus.Core.Stats.Nutricao.Comer(new Jandirus.Core.Stats.Fighter { CurrentNutrition = 1e9 }, 5).Comeu
+						&& Jandirus.Core.Stats.Nutricao.Comer(new Jandirus.Core.Stats.Fighter { CurrentNutrition = 1 }, 5).Comeu);
+			EscutaDeAvisos = escutaDeAntes;
+		}
+
 		// O TETO NUNCA E ULTRAPASSADO -- comer dez vezes nao enche o chao de comida.
 		int maximo = 2;
 		for (int i = 0; i < 10; i++)
@@ -1736,9 +1771,14 @@ public sealed partial class GameServer
 					!a.SalaPreso && a.SalaJanelaAte == 0,
 					$"preso={a.SalaPreso} janela={a.SalaJanelaAte}");
 
-		PassoDaMorte(a);   // 2a etapa: so agora ele volta a vida, no berco
-		AfirmarSala("MORRER TIRA O PRESO DA SALA (a saida cara -- decisao do dono)",
-					a.Zone.Hash != sala.Hash && !a.Ficha.dead, $"{a.Zone.Name} morto={a.Ficha.dead}");
+		// A MORTE NAO TEM MAIS VOLTA AUTOMATICA (dono, 2026-09-04: "morto ficaria no Outro Mundo ate ser
+		// revivido pelas esferas, pela tecnica ou pagando o Enma"). O 2o passo de ontem ("volta a vida no
+		// berco") deixou de existir: o PassoDaMorte de quem ja esta no alem so tranca o relogio. A saida
+		// cara continua sendo cara -- ele esta FORA da sala, e morto, e e assim que fica ate alguem o reviver.
+		PassoDaMorte(a);   // 2a etapa: no alem o passo so tranca o relogio -- ninguem volta sozinho
+		AfirmarSala("MORRER TIRA O PRESO DA SALA (a saida cara -- decisao do dono): fora da sala, no Outro Mundo, e MORTO ate alguem o reviver",
+					a.Zone.Hash != sala.Hash && a.Ficha.dead && Jandirus.Core.World.Alem.EhOAlem(a.Zone),
+					$"{a.Zone.Name} morto={a.Ficha.dead}");
 		AfirmarSala("...e o ESTADO DE PRESO e limpo (ele nao renasce marcado)",
 					!a.SalaPreso && a.SalaJanelaAte == 0,
 					$"preso={a.SalaPreso} janela={a.SalaJanelaAte}");
@@ -1762,6 +1802,11 @@ public sealed partial class GameServer
 		// volta pra porta com chave e sem recarga -- se a limpeza nao tivesse acontecido, a porta o
 		// recusaria falando em prisao, e ele estaria banido da Sala pro resto da vida do personagem.
 		// ================================================================================
+		// REVIVIDO NA MAO (o que as esferas, a tecnica ou o Enma fariam): a prova abaixo e sobre a PRISAO,
+		// e um morto nao entra em sala nenhuma -- reviver aqui nao e voltar a chamar o `Renascer` como
+		// atalho da limpeza (ela ja foi medida acima, no alem).
+		a.Combate.Reviver(1);
+		a.RelogioDaMorte = 0;
 		NaPorta();
 		a.SalaAutorizada = true;
 		a.SalaUltimaEntrada = 0;

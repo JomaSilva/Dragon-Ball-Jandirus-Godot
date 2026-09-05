@@ -387,6 +387,7 @@ public partial class GameServer
 		// cliente) mediria corpos que o jogo nao considera gente e passaria por ausencia. Aqui os
 		// corpos forjados emprestam o `Peer` do host. Ver `GameServer.KarmaTeste.cs`.
 		OKarmaAoVivo(pl, Checa);
+		OJulgamentoDoEnma(pl, Checa);
 
 		// E AS SKILLS QUE OS CARGOS ENTREGAM, pela mesma porta e pelo mesmo motivo -- e por um terceiro
 		// que so daqui se ve: quem entrega o kit e o `TickDosCargos`, que so olha pra quem `EhJogador`

@@ -153,7 +153,7 @@ public partial class GameServer
 		sb.Append(scan ? 'S' : 'K');
 		foreach (Protocol.PresencaState p in lista)
 			sb.Append('|').Append(p.Nome).Append('/').Append(p.Assinatura).Append('/').Append(p.Alcance)
-			  .Append('/').Append(p.PoderRelativo).Append('/').Append(p.Bp).Append('/').Append(p.Hp)
+			  .Append('/').Append(p.PoderRelativo).Append('/').Append(p.Bp)
 			  .Append('/').Append(p.Distancia).Append('/').Append(p.Rumo).Append('/').Append(p.X)
 			  .Append('/').Append(p.Y).Append('/').Append(p.Zona).Append('/').Append(p.Chefe ? 'c' : '-');
 		return sb.ToString();
@@ -199,7 +199,6 @@ public partial class GameServer
 					Alcance = AlcanceMundo,
 					PoderRelativo = float.NaN,
 					Bp = Math.Round(o.Ficha.expressedBP, MidpointRounding.AwayFromZero),
-					Hp = Protocol.HpDesconhecido,
 					Distancia = DistanciaEmTiles(eu, o),
 					Rumo = RumoDoDm(ox - mx, oy - my),
 					X = (short)Math.Clamp(ox, -1, short.MaxValue), Y = (short)Math.Clamp(oy, -1, short.MaxValue),
@@ -220,7 +219,7 @@ public partial class GameServer
 			ushort dist = DistanciaEmTiles(eu, o);
 			if (dist > TilesDoSensePerto) continue;
 			vistos.Add(o.Id);
-			achados.Add((Presenca(eu, o, AlcancePerto, dist, mx, my, comVida: true), o.Id));
+			achados.Add((Presenca(eu, o, AlcancePerto, dist, mx, my), o.Id));
 		}
 
 		// NESTE MUNDO (HtmlUI.dm:377-384): `player_list` do mesmo z -- so gente, com distancia e rumo.
@@ -230,7 +229,7 @@ public partial class GameServer
 				if (o == eu || o.ECadaver || vistos.Contains(o.Id)) continue;
 				if (Gente.EhNpcDoMundo(o.Peer != null, o.Papel) || !AchoAEnergiaG4(o)) continue;
 				vistos.Add(o.Id);
-				achados.Add((Presenca(eu, o, AlcanceMundo, DistanciaEmTiles(eu, o), mx, my, comVida: false), o.Id));
+				achados.Add((Presenca(eu, o, AlcanceMundo, DistanciaEmTiles(eu, o), mx, my), o.Id));
 			}
 
 		// NA GALAXIA (HtmlUI.dm:386-393): `player_list` inteira, so acima de 5 milhoes, so o lugar -- e a
@@ -249,7 +248,6 @@ public partial class GameServer
 					Alcance = AlcanceGalaxia,
 					PoderRelativo = Porcento(o.Ficha.BP, eu.Ficha.BP),
 					Bp = SemLeitura,
-					Hp = Protocol.HpDesconhecido,
 					Distancia = Protocol.DistanciaDesconhecida,
 					Rumo = 0, X = -1, Y = -1,
 					Zona = o.Zone.Name,
@@ -262,7 +260,7 @@ public partial class GameServer
 
 	/// <summary>Uma presenca dos dois primeiros alcances: razao de poder, nunca numero; vida so perto.</summary>
 	private static Protocol.PresencaState Presenca(ServerPlayer eu, ServerPlayer o, byte alcance, ushort dist,
-												   int mx, int my, bool comVida)
+												   int mx, int my)
 	{
 		(string nome, string sig) = IdentidadePara(eu, o);
 		(int ox, int oy) = TileDe(o.Pos);
@@ -274,7 +272,10 @@ public partial class GameServer
 			// O SIGILO MORA NESTA LINHA: no modo Sense o BP absoluto NAO existe no pacote.
 			Bp = SemLeitura,
 			// `round(D.HP)` de um argumento e PISO no DM (ver a nota do `MandarCorpo`)
-			Hp = comVida ? (byte)Math.Clamp(Math.Floor(o.Ficha.HP), 0, 100) : Protocol.HpDesconhecido,
+			// A VIDA NAO VAI. O DM da o `round(D.HP)% hp` a quem esta perto (`HtmlUI.dm:375`); o dono
+			// pediu o contrario (2026-09-04: *"na tela de sense e do scouter nao deve aparecer a vida de
+			// quem voce sente, somente o poder relativo/bp"*). Divergencia declarada: o registro nem
+			// tem o campo, pra nenhuma tela poder mostrar por engano.
 			Distancia = dist,
 			Rumo = RumoDoDm(ox - mx, oy - my),
 			X = -1, Y = -1,

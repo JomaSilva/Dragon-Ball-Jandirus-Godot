@@ -300,6 +300,26 @@ public sealed partial class GameServer
 	/// A SENHA NAO VIAJA -- nem o sal, nem o hash. So sai o que o painel desenha: nome da conta,
 	/// os personagens dela, e as duas marcas (admin, banida).
 	/// </summary>
+	/// <summary>
+	/// QUEM ESTA ONLINE, com id e zona -- a lista de que o painel de admin se veste quando um verb de alvo
+	/// e apertado sem alvo. So jogadores (`Jogadores`): NPC nao e alvo de verb de admin.
+	/// </summary>
+	private void MandarOnline(ServerPlayer pl)
+	{
+		if (!EhAdmin(pl)) return;
+		List<ServerPlayer> gente = Jogadores.ToList();
+
+		var w = Protocol.Begin(Protocol.S2C.Online);
+		w.Put((ushort)Math.Min(gente.Count, ushort.MaxValue));
+		foreach (ServerPlayer o in gente.Take(ushort.MaxValue))
+		{
+			w.Put(o.Id);
+			w.Put(o.Name);
+			w.Put(o.Zone.Name ?? "");
+		}
+		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
 	private void MandarContas(ServerPlayer pl)
 	{
 		if (!EhAdmin(pl)) return;
@@ -484,7 +504,9 @@ public sealed partial class GameServer
 		//
 		// Os `Registrar` de dentro de alguns verbs CONTINUAM: eles acrescentam o que so se sabe
 		// depois de resolver (o nome de quem foi banido, quantas celulas voltaram).
-		if (cmd != "admin_contas") Registrar(pl, arg.Length > 0 ? $"{cmd} [{arg}]" : cmd);
+		// LISTAR NAO E AGIR: as duas listas (contas, online) ficam fora do registro, senao cada abertura
+		// do painel viraria uma linha no `admin.log`.
+		if (cmd != "admin_contas" && cmd != "admin_online") Registrar(pl, arg.Length > 0 ? $"{cmd} [{arg}]" : cmd);
 
 		switch (cmd)
 		{
@@ -556,6 +578,7 @@ public sealed partial class GameServer
 
 			// ---------------------------------------------------------- contas
 			case "admin_contas": MandarContas(pl); break;
+			case "admin_online": MandarOnline(pl); break;
 			case "admin_promover": AdminPromover(pl, arg, virar: true); break;
 			case "admin_rebaixar": AdminPromover(pl, arg, virar: false); break;
 			case "admin_banir": AdminBanir(pl, arg, banir: true); break;
@@ -611,16 +634,21 @@ public sealed partial class GameServer
 	/// <summary>
 	/// Corpo inteiro, Ki cheio, de pe. E o `World_Heal` do original aplicado a um so.
 	///
-	/// Passa pelo `Reviver` do estado de combate em vez de escrever `HP = 100` na mao: e ele que
-	/// devolve os MEMBROS (inclusive um decepado) e recalcula a media que vira a vida. Mexer so na
-	/// ficha deixaria o boneco de pe com o braco quebrado.
+	/// Passa pelo `Curar` (ou pelo `Reviver`, so quando <paramref name="reviver"/>) do estado de combate
+	/// em vez de escrever `HP = 100` na mao: e ele que devolve os MEMBROS (inclusive um decepado) e
+	/// recalcula a media que vira a vida. Mexer so na ficha deixaria o boneco de pe com o braco quebrado.
+	///
+	/// CURAR NAO REVIVE: o `World_Heal` do DM nunca escreve `dead = 0` (ver `CombatState.Curar`). Este
+	/// metodo revivia porque chamava o `Reviver` -- o dono viu "Heal" e "Heal Everyone" ressuscitando.
+	/// Quem quer reviver e o verb de reviver, e ele passa `reviver: true`.
 	/// </summary>
-	private void Restaurar(ServerPlayer p)
+	private void Restaurar(ServerPlayer p, bool reviver = false)
 	{
 		// A CARENCIA VEM JUNTO, como em toda ressurreicao do jogo (`Renascer`, e a tecnica de
 		// reviver). Sem ela, curar alguem caido ao lado de quem o derrubou e devolve-lo pro mesmo
 		// golpe no tique seguinte -- o laco de morte que a carencia existe pra cortar.
-		p.Combate.Reviver(1, SegundosDeCarencia);
+		if (reviver) p.Combate.Reviver(1, SegundosDeCarencia);
+		else p.Combate.Curar(SegundosDeCarencia);
 
 		// O RABO VOLTOU: o ritmo de treino tem que voltar junto.
 		//
@@ -636,7 +664,8 @@ public sealed partial class GameServer
 		// um jogador com o Ki comprimido a 140% pela tecla C pedia "Heal" e voltava pra 100%. O
 		// original nunca corta a sobrecarga por decreto (`Power Control.dm:113-134`: ela vaza).
 		p.Ficha.Ki = Math.Max(p.Ficha.MaxKi, p.Ficha.Ki);
-		p.RelogioDaMorte = 0;
+		// O RELOGIO DA MORTE E DE QUEM ESTA MORTO: curar um cadaver nao o apressa nem o segura.
+		if (!p.Ficha.dead) p.RelogioDaMorte = 0;
 		MandarFicha(p);
 		MandarCorpo(p);
 	}
@@ -709,7 +738,7 @@ public sealed partial class GameServer
 	private void AdminReviver(ServerPlayer adm, string alvo)
 	{
 		ServerPlayer? p = PorNome(alvo) ?? adm;
-		Restaurar(p);
+		Restaurar(p, reviver: true);
 		Avisar(adm, $"{p.Name} esta de pe.");
 		if (p != adm) Avisar(p, "voce volta a si.");
 	}

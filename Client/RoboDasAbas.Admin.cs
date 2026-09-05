@@ -110,6 +110,53 @@ public partial class RoboDasAbas
 			ChecaNoPixel("a borda da ZONA DE PERIGO e VERMELHA (Tema.Perigo) no pixel", fim != null,
 						 CorDaBordaMaisProxima(borda) == "Perigo", $"{Hex(borda)} -> {CorDaBordaMaisProxima(borda)}");
 		}
+		// ---------------- F16b: verb de alvo SEM alvo abre a lista de quem esta online (dono, 2026-09-05) ----------------
+		Nota("--- F16b: verbs de alvo sem alvo (ou com a marca em mim) abrem a lista de online ---");
+		Checa("REGRA PURA: sem marca -> lista; marca em mim -> lista; marca em outro -> vai direto",
+			  MenuJogo.PrecisaEscolherAlvo(0, 5) && MenuJogo.PrecisaEscolherAlvo(5, 5) && !MenuJogo.PrecisaEscolherAlvo(7, 5));
+		Checa("PREMISSA: nao ha alvo marcado", cli.AlvoId == 0, $"{cli.AlvoId}");
+		Button? matar = BotaoDeTextoExato(pg, "Kill Target");
+		Checa("o botao 'Kill Target' existe e esta HABILITADO mesmo sem alvo (a lista e o caminho)", matar is { Disabled: false });
+		if (matar != null)
+		{
+			bool vivoAntes = !cli.Sheet.Morto;
+			await Clicar(matar);
+			await Quadros(15);   // o servidor responde o `admin_online`
+			pg = menu.PaginaDeTeste(Verbos.Admin);
+			PanelContainer? escolha = pg == null ? null : Todos(pg).OfType<PanelContainer>().FirstOrDefault(c => c.HasMeta("escolha_de_alvo"));
+			Checa("apertar 'Kill Target' sem alvo NAO mata ninguem: abre o cartao 'Quem leva «Kill Target»?'",
+				  escolha != null && escolha.GetMeta("escolha_de_alvo").AsString() == "admin_matar"
+				  && escolha.GetMeta("titulo").AsString().Contains("Kill Target"),
+				  escolha == null ? "sem cartao" : escolha.GetMeta("titulo").AsString());
+			Checa("...o cartao e o PRIMEIRO da aba (a pergunta fica onde o olho esta)",
+				  escolha != null && pg != null && Todos(pg).OfType<PanelContainer>().FirstOrDefault(c => c.HasMeta("cartao")) == escolha);
+			Checa("...a lista traz quem esta online -- eu, marcado '(você)'",
+				  escolha != null && BotaoDeTextoExato(escolha, $"{cli.LocalName} (você)") != null, string.Join(",", cli.Online.Select(o => o.Nome)));
+			Button? cancelar = escolha == null ? null : BotaoDeTextoExato(escolha, "cancelar");
+			Checa("...e um botao 'cancelar'", cancelar != null);
+			if (cancelar != null) { await Clicar(cancelar); await Quadros(2); }
+			pg = menu.PaginaDeTeste(Verbos.Admin);
+			Checa("cancelar fecha o cartao sem mandar nada (continuo vivo)",
+				  pg != null && !Todos(pg).OfType<PanelContainer>().Any(c => c.HasMeta("escolha_de_alvo")) && vivoAntes == !cli.Sheet.Morto);
+		}
+		Button? heal = pg == null ? null : BotaoDeTextoExato(pg, "Heal");
+		if (heal != null)
+		{
+			await Clicar(heal);
+			await Quadros(15);
+			pg = menu.PaginaDeTeste(Verbos.Admin);
+			PanelContainer? escolha = pg == null ? null : Todos(pg).OfType<PanelContainer>().FirstOrDefault(c => c.HasMeta("escolha_de_alvo"));
+			Button? eu = escolha == null ? null : BotaoDeTextoExato(escolha, $"{cli.LocalName} (você)");
+			Checa("'Heal' sem alvo tambem pergunta (antes curava a mim por padrao)", escolha != null && eu != null);
+			if (eu != null)
+			{
+				await Clicar(eu);
+				await Quadros(6);
+				pg = menu.PaginaDeTeste(Verbos.Admin);
+				Checa("escolher a mim mesmo MANDA o verb e fecha o cartao",
+					  pg != null && !Todos(pg).OfType<PanelContainer>().Any(c => c.HasMeta("escolha_de_alvo")));
+			}
+		}
 		Checa("a bancada terminou sem pedir previa de limpeza (nenhum codigo chegou)", cli.Limpeza.Codigo.Length == 0);
 	}
 }

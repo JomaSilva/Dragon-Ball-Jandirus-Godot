@@ -115,7 +115,12 @@ public static class MeleeResolver
 										  Random rng, double tipo = 1, double addDano = 0)
 	{
 		var r = new GolpeResultado { Membro = "" };
-		if (d.F.dead || d.Intocavel) return r;
+		// O MORTO TAMBEM APANHA (dono, 2026-09-05: "corpos mortos ainda sao corpos de personagem ... deveria
+		// dar pra atacar e ferir mais"). Era `d.F.dead || d.Intocavel`: o cadaver e o fantasma do Outro
+		// Mundo eram invulneraveis por decreto. Agora so o intocavel (cinematica, imunidade de embate) escapa;
+		// o corpo morto perde vida nos membros como qualquer corpo, e o `Morrer()` de quem ja esta morto e
+		// vazio (`CombatState.Morrer`) -- ninguem morre duas vezes por um soco no defunto.
+		if (d.Intocavel) return r;
 
 		// golpear GASTA a carencia de quem acabou de renascer: o escudo e pra sair de perto,
 		// nao pra voltar batendo de graca
@@ -330,7 +335,7 @@ public static class MeleeResolver
 												   Random rng, string? zona = null)
 	{
 		var r = new GolpeResultado { Membro = "" };
-		if (d.F.dead || d.Intocavel || dano <= 0) return r;
+		if (d.Intocavel || dano <= 0) return r;   // o morto tambem apanha -- ver o `Resolver`
 
 		BodyPart? membro = d.Corpo.Sortear(zona, rng);
 		if (membro == null) return r;

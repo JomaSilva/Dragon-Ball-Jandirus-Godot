@@ -62,6 +62,14 @@ public partial class RoboDeSaida : Node
 	/// </summary>
 	private double _lobbyEm = -1;
 
+	/// <summary>
+	/// `--saidafoto <arquivo.png>`: aos 5 s de jogo tira uma FOTO da tela (`user://arquivo.png`) e
+	/// segue o roteiro. Serve pra olhar um lugar com o olho -- com `--saidamatar <eu>` o proprio robo
+	/// morre, viaja em 2 s e a foto sai do Outro Mundo, na mesa do Enma (a camada do juiz x o trono).
+	/// </summary>
+	private string _foto = "";
+	private bool _fotografei, _diante;
+
 	public override void _Ready()
 	{
 		ProcessMode = ProcessModeEnum.Always;
@@ -73,6 +81,8 @@ public partial class RoboDeSaida : Node
 		_direta = System.Array.IndexOf(args, "--saidadireta") >= 0;
 		int m = System.Array.IndexOf(args, "--saidamatar");
 		if (m >= 0 && m + 1 < args.Length) _matar = args[m + 1];
+		int ft = System.Array.IndexOf(args, "--saidafoto");
+		if (ft >= 0 && ft + 1 < args.Length) _foto = args[ft + 1];
 		int lb = System.Array.IndexOf(args, "--saidalobby");
 		if (lb >= 0 && lb + 1 < args.Length && double.TryParse(args[lb + 1], System.Globalization.NumberStyles.Float,
 				System.Globalization.CultureInfo.InvariantCulture, out double sl) && sl >= 0)
@@ -133,6 +143,23 @@ public partial class RoboDeSaida : Node
 					_matei = true;
 					cli.SendVerbo("admin_matar", _matar);
 					GD.Print($"[saida-robo] t={_relogio:0.0}s  pedi `admin_matar {_matar}` (cadaver + viagem ao Outro Mundo antes de fechar)");
+				}
+				// Com `--saidamatar` a foto espera a VIAGEM (morte aos 6 s + 2 s de cadaver + a chegada) e
+				// o corpo e posto DIANTE DO TRONO pelo servidor (a chegada e o checkpoint, 30 tiles longe
+				// da cadeira -- andar ate la e o que uma pessoa faria, mas a foto quer o enquadramento).
+				if (_foto.Length > 0 && _matar.Length > 0 && !_fotografei && !_diante && _relogio >= 10.0)
+				{
+					_diante = true;
+					bool ok = Jandirus.Server.GameServer.Instance?.PorDianteDoEnmaDeTeste(cli.LocalId) == true;
+					GD.Print($"[saida-robo] t={_relogio:0.0}s  diante do trono: {ok}");
+				}
+				if (_foto.Length > 0 && !_fotografei && _relogio >= (_matar.Length > 0 ? 12.0 : 5.0))
+				{
+					_fotografei = true;
+					Godot.Image img = GetViewport().GetTexture().GetImage();
+					string caminho = "user://" + _foto;
+					img.SavePng(caminho);
+					GD.Print($"[saida-robo] t={_relogio:0.0}s  FOTO {ProjectSettings.GlobalizePath(caminho)} ({img.GetWidth()}x{img.GetHeight()})");
 				}
 				if (_relogio < _segundosDeJogo) return;
 				_fase = Fase.AbrirPausa;

@@ -33,13 +33,19 @@ public static class VozLocal
 	// O QUADRO
 	// =====================================================================
 	/// <summary>
-	/// 16 kHz mono -- voz, e nao musica.
+	/// 24 kHz mono -- a banda "super-wide" do Opus (12 kHz de audio). Era 16 kHz.
 	///
-	/// A faixa util da fala humana termina perto de 8 kHz, e o teorema de Nyquist entrega isso com
-	/// 16 kHz. Dobrar pra 32 dobraria a banda pra ganhar o chiado do "s" -- e a voz vai concorrer com
-	/// o snapshot do jogo no mesmo cano.
+	/// ============================ POR QUE SUBIU (dono, 2026-09-05) ============================
+	/// *"a qualidade dele nao ta muito boa, nao ta picotando mas parece que ta sempre um pouco
+	/// abafado"*. Abafado e exatamente o que 8 kHz de banda soa: a inteligibilidade mora nas
+	/// consoantes (o "s", o "f", o "t"), que vivem de 4 a 10 kHz, e a 16 kHz metade delas nem entra
+	/// -- o anti-alias do microfone corta antes. 24 kHz e a taxa seguinte que o Opus aceita (8, 12,
+	/// 16, 24, 48) e a primeira em que a fala soa "de perto"; 48 seria musica, e a voz concorre com
+	/// o snapshot do jogo no mesmo cano. Custa 50% mais amostras por quadro (480) e NADA no fio: o
+	/// tamanho do quadro e o bitrate, nao a taxa.
+	/// ==========================================================================================
 	/// </summary>
-	public const int TaxaDeAmostragem = 16000;
+	public const int TaxaDeAmostragem = 24000;
 
 	/// <summary>
 	/// 20 ms por quadro. E o quadro padrao do Opus e nao por acaso: menos que isso e o cabecalho
@@ -52,8 +58,33 @@ public static class VozLocal
 	/// </summary>
 	public const int MsPorQuadro = 20;
 
-	/// <summary>320 amostras. E o que o codificador recebe e o que o decodificador devolve.</summary>
+	/// <summary>480 amostras (24 kHz x 20 ms). E o que o codificador recebe e o que o decodificador devolve.</summary>
 	public const int AmostrasPorQuadro = TaxaDeAmostragem * MsPorQuadro / 1000;
+
+	/// <summary>
+	/// A TAXA EM QUE SE OUVE: 48 kHz, e nao a de captura. **MEDIDO** (2026-09-05, Concentus 2.2.2, C#
+	/// puro, tom de 440 Hz a 0,5 de amplitude, dez quadros de 20 ms): o decodificador criado a 24 kHz
+	/// (ou a 16) devolve SILENCIO pra um fluxo codificado em super-wide (24) ou fullband (48) -- 480
+	/// amostras de zero, sem erro nenhum --, enquanto o mesmo fluxo decodificado a 48 kHz volta inteiro,
+	/// e um fluxo de 16 kHz decodifica em qualquer taxa:
+	///
+	///   | codifica -> decodifica  | RMS de volta |
+	///   |-------------------------|--------------|
+	///   |  16 -> 16 / 24 / 48     |  0,35 (ok)   |
+	///   |  24 -> 48               |  0,35 (ok)   |
+	///   |  24 -> 24 / 16          |  0,000       |
+	///   |  48 -> 24 / 16          |  0,000       |
+	///
+	/// E o caminho de DESCIDA do decodificador do Concentus que nao faz o que promete. A saida: o
+	/// microfone fala em 24 kHz (o `Reamostrador` so decima, e 48 -> 24 e 2 pra 1) e todo ouvinte
+	/// decodifica em 48 kHz -- a taxa nativa do Opus e a da placa de quase todo mundo, entao o gerador
+	/// do Godot nem precisa reamostrar. O fio nao muda: o pacote Opus e o mesmo; quem escolhe a taxa e
+	/// cada ponta. A `--diagvoz` codifica em 24 e decodifica em 48, como o jogo.
+	/// </summary>
+	public const int TaxaDeSaida = 48000;
+
+	/// <summary>960 amostras (48 kHz x 20 ms): o que o decodificador devolve e o que o gerador toca.</summary>
+	public const int AmostrasPorQuadroDeSaida = TaxaDeSaida * MsPorQuadro / 1000;
 
 	/// <summary>50 quadros por segundo. E o teto honesto de quem fala -- ver <see cref="Torneira"/>.</summary>
 	public const int QuadrosPorSegundo = 1000 / MsPorQuadro;
@@ -95,26 +126,34 @@ public static class VozLocal
 	///
 	/// **E o servidor nao paga codec nenhum**: ele repassa o payload OPACO e so decide quem recebe.
 	/// Por isso a economia vale onde a banda multiplica -- no leque de ouvintes.
+	///
+	/// SUBIU PRA 32 (2026-09-05) JUNTO COM A TAXA: a tabela acima foi medida em banda larga (16 kHz).
+	/// Em super-wide o Opus so enche os 12 kHz de banda a partir de ~28 kbit/s -- abaixo disso ele
+	/// volta sozinho pra banda larga e os 24 kHz nao compram nada. 32 e o primeiro degrau com folga,
+	/// bem acima do limiar do FEC (que a `--diagvoz` continua medindo). ~4 KB/s por fluxo.
 	/// </summary>
-	public const int BitsPorSegundo = 24000;
+	public const int BitsPorSegundo = 32000;
 
 	/// <summary>
-	/// Complexidade 3. Cinco e oito custam 70% e 180% mais CPU por **zero** byte de ganho (medido a
-	/// 16 kbit/s: 39,9 -> 39,8 B por quadro). Pagar 180% a mais por um decimo de byte seria escolher
-	/// pelo jogador, com a bateria dele.
+	/// Complexidade 5. Era 3: a medida de entao (16 kbit/s, banda larga) mostrava zero byte de ganho
+	/// acima de 3 -- mas byte nao e o que muda. O que a complexidade compra no Opus e a ANALISE (busca
+	/// de pitch mais fina, o modo hibrido SILK+CELT em super-wide), e e isso que faz os 12 kHz de banda
+	/// valerem. Cinco e o meio da escala: custava 70% mais CPU que 3 na medida antiga (0,5% -> ~0,9%
+	/// de um quadro de 20 ms), ainda invisivel; oito custava 180% e ai a bateria do jogador pagaria.
 	/// </summary>
-	public const int Complexidade = 3;
+	public const int Complexidade = 5;
 
 	/// <summary>
 	/// TETO DE TAMANHO DE UM QUADRO NO FIO. Quadro maior que isto e DESCARTADO sem dó.
 	///
-	/// O Opus a 24 kbit/s com FEC da ~65 B; 160 e duas vezes e meia isso, folga pra um pico de VBR num
+	/// O Opus a 32 kbit/s com FEC da ~85 B; 200 e duas vezes e meia isso, folga pra um pico de VBR num
 	/// "sss" (o codificador respeita o teto, mas cravar o teto num quadro e perder qualidade nele) e
-	/// ainda assim longe de virar cano. **Sem este teto um cliente modificado vira torneira**: ele
-	/// mandaria 4 KB por "quadro" e o servidor os multiplicaria pelo numero de ouvintes. O teto e do
-	/// SERVIDOR e nao do cliente, porque a unica coisa que um cliente modificado nao faz e se limitar.
+	/// ainda assim longe de virar cano (cabe no `byte n` do pacote). **Sem este teto um cliente
+	/// modificado vira torneira**: ele mandaria 4 KB por "quadro" e o servidor os multiplicaria pelo
+	/// numero de ouvintes. O teto e do SERVIDOR e nao do cliente, porque a unica coisa que um cliente
+	/// modificado nao faz e se limitar.
 	/// </summary>
-	public const int MaxBytesDeQuadro = 160;
+	public const int MaxBytesDeQuadro = 200;
 
 	// =====================================================================
 	// O TETO POR FALANTE

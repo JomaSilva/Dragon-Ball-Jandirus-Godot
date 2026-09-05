@@ -502,6 +502,9 @@ public partial class GameServer
 	private void AmizadeQuebrada(ServerPlayer vitima, ServerPlayer algoz, bool morreu)
 	{
 		if (!EhPessoa(vitima) || !EhPessoa(algoz) || vitima == algoz) return;
+		// CAIR PELA MAO DE ALGUEM E CONHECE-LO (dono, 2026-09-05) -- ANTES do laco, porque o convivio sobe
+		// mesmo entre amigos que treinam: ver `Convivio.FamiliaridadePorQueda`.
+		ConhecerPelaPorrada(vitima, algoz, morreu ? Convivio.FamiliaridadePorMorte : Convivio.FamiliaridadePorQueda);
 		if (!ViolenciaCobraOLaco(vitima, algoz, morreu)) return;
 
 		AfastarNosDoisLados(vitima, algoz,
@@ -537,10 +540,29 @@ public partial class GameServer
 	/// `M.add_enmity(src, ENMITY_HIT)` (`CombatMovement.dm:225` e `:241`): um golpe de um rival
 	/// declarado alimenta o odio de quem apanhou. Um ponto por golpe.
 	/// </summary>
-	private static void GolpeDeRival(ServerPlayer vitima, ServerPlayer autor)
+	private void GolpeDeRival(ServerPlayer vitima, ServerPlayer autor)
 	{
-		if (!EhPessoa(vitima) || !EhPessoa(autor)) return;
+		if (!EhPessoa(vitima) || !EhPessoa(autor) || vitima == autor) return;
 		vitima.Social.SomarInimizade(autor.Assinatura, Convivio.InimizadePorGolpe);
+		// CONVIVIO NA PORRADA (dono, 2026-09-05): trocar golpes tambem e conhecer -- 10% por golpe que
+		// encosta, ver `Convivio.ChanceDeFamiliaridadePorGolpe`.
+		if (_rng.NextDouble() >= Convivio.ChanceDeFamiliaridadePorGolpe) return;
+		ConhecerPelaPorrada(vitima, autor, 1);
+	}
+
+	/// <summary>
+	/// OS DOIS PASSAM A SE CONHECER PELA LUTA, nos dois sentidos, como o `Ouviu` faz com a fala: a foto da
+	/// ficha (sem ela nao ha onde somar) e os pontos de convivio -- e a aba People dos dois e refeita.
+	/// </summary>
+	private void ConhecerPelaPorrada(ServerPlayer a, ServerPlayer b, int quanto)
+	{
+		long agora = NowMs();
+		Fotografar(a, b, agora);
+		Fotografar(b, a, agora);
+		a.Social.SomarFamiliaridade(b.Assinatura, quanto);
+		b.Social.SomarFamiliaridade(a.Assinatura, quanto);
+		MandarConhecidos(a);
+		MandarConhecidos(b);
 	}
 
 	// =====================================================================

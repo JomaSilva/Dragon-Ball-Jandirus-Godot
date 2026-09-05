@@ -432,8 +432,8 @@ public sealed partial class GameServer
 			// um buraco de um tile entre elas. O dono fotografou: "o rastro ta vindo picotado e n
 			// continuo".
 			//
-			// Aqui a chamada e por FATIA (~21 px) e quem faz a conta certa e a guarda de celula que
-			// ja existia dentro do `MarcarSulco`: ela deixa passar a primeira fatia de cada celula e
+			// Aqui a chamada e por FATIA (~21 px) e quem faz a conta certa e a guarda de DISTANCIA
+			// dentro do `CarimbarSulco`: ela carimba uma marca a cada tile andado, sobre o caminho, e
 			// recusa as seguintes. Uma marca por tile, sem buraco e sem sobreposicao.
 			// ==========================================================================================
 			if (!parou && pl.TiquesDeVoo > 0) MarcarSulco(pl, Protocol.Decal.Sulco);
@@ -594,40 +594,55 @@ public sealed partial class GameServer
 	/// justamente a linha que o dono ja mandou consertar duas vezes ("o rastro ta vindo picotado").
 	///
 	/// O que e de cada um fica com cada um: o corpo entra com a celula dos PES e a direcao do voo; o
-	/// raio entra com a cabeca dele e o proprio rumo. O que e comum -- uma marca por celula, no
-	/// CENTRO dela, pra zona inteira -- e isto aqui.
+	/// raio entra com a cabeca dele e o proprio rumo. O que e comum -- uma marca a cada tile
+	/// ANDADO, sobre o caminho de verdade, pra zona inteira -- e isto aqui.
 	/// ==================================================================================
 	/// </summary>
 	/// <param name="ultima">
-	/// A ultima celula marcada por ESTE dono de rastro (`ServerPlayer.UltimoSulco` ou
-	/// `Projetil.UltimoSulco`). Passada por referencia porque a guarda so vale se ela for ATUALIZADA
-	/// -- um contador local aqui deixaria a marca sair a cada sub-passo.
+	/// A ultima MARCA deste dono de rastro (`ServerPlayer.UltimoSulco` ou `Projetil.UltimoSulco`);
+	/// zero = nenhuma ainda. Passada por referencia porque a guarda de distancia so vale se ela for
+	/// ATUALIZADA -- um contador local aqui deixaria a marca sair a cada sub-passo.
+	/// </param>
+	/// <param name="aceita">
+	/// ESTE PONTO RECEBE MARCA? Nulo = todos. O raio recusa agua (la quem marca e a onda): com as marcas
+	/// interpoladas sobre a reta, um sub-passo que atravessa um lago poria terra revirada na agua.
+	/// A marca recusada NAO reinicia a contagem -- o rastro continua do outro lado, no mesmo passo.
 	/// </param>
 	private void CarimbarSulco(ZoneKey zona, Protocol.Decal tipo, Vec2 onde, Facing dir,
-							   ref Vec2 ultima)
+							   ref Vec2 ultima, Func<Vec2, bool>? aceita = null)
 	{
-		var celula = new Vec2(MathF.Floor(onde.X / ZoneCollision.TileSize),
-							  MathF.Floor(onde.Y / ZoneCollision.TileSize));
-		if (celula.X == ultima.X && celula.Y == ultima.Y) return;
-		ultima = celula;
-
-		// ============================ O SULCO VAI NO CENTRO DA CELULA ============================
-		// Nao na posicao do corpo. O DU carimba no TURF (`var/turf/t=loc; TimedOverlay(t,600,i)` --
-		// death.dm:223), ou seja alinhado a grade; carimbar no pixel exato onde o corpo estava faz a
-		// distancia entre duas marcas VARIAR.
+		// ============================ NOS PIXELS, E NAO NO CENTRO DA CELULA ============================
+		// Era "uma marca por celula, no centro dela". Com o corpo andando por pixel, um arremesso na
+		// diagonal virava uma escadinha de quadrados encaixados na grade -- o dono (2026-09-04): *"a
+		// trilha fica em cima do tile mais proximo, so que ja que o player se move por pixel a trilha
+		// fica muitas vezes torta (...) seja criado o sprite da trilha por onde o player passar (nos
+		// pixels)"*. Agora a marca nasce ONDE o corpo (ou o raio) passou: uma a cada tile ANDADO,
+		// sobre a reta entre a marca anterior e o ponto atual. A distancia manda, e nao a celula: se
+		// uma fatia pulou mais de um tile, as marcas que faltam entram uma a uma, sem buraco -- a mesma
+		// densidade de antes, so que seguindo o caminho de verdade. `ultima` e a ULTIMA MARCA, e nao
+		// mais a ultima celula; `default` (zero) e "ainda nao carimbei nada".
 		//
-		// A conta: o passo do servidor e ~21 px e a celula tem 32. O corpo entra em cada celula com
-		// uma sobra diferente (0, 10, 20, 30...), entao duas marcas consecutivas ficam de 22 a 42 px
-		// uma da outra -- e o sprite tem 32. Onde a sobra e grande, aparece o buraco. Era o "ta
-		// melhor mas n ta continuo" do dono.
-		//
-		// Alinhado a celula sao 32 px exatos entre marcas de 32 px: encostam, sem vao e sem
-		// sobreposicao.
-		// ========================================================================================
-		float t = ZoneCollision.TileSize;
-		var noCentro = new Vec2((celula.X + 0.5f) * t, (celula.Y + 0.5f) * t);
+		// A PONTA (`SulcoPonta`) sempre carimba: ela e a tampa das duas extremidades, e uma tampa que
+		// a distancia segurasse deixaria o rastro sem comeco ou sem fim.
+		// ============================================================================================
+		const float T = ZoneCollision.TileSize;
+		bool primeira = ultima.X == 0f && ultima.Y == 0f;
+		if (tipo == Protocol.Decal.SulcoPonta || primeira)
+		{
+			ultima = onde;
+			if (aceita == null || aceita(onde)) MandarDecalque(zona, tipo, onde, dir);
+			return;
+		}
 
-		MandarDecalque(zona, tipo, noCentro, dir);
+		Vec2 delta = onde - ultima;
+		float d = delta.Length;
+		while (d >= T - 0.01f)
+		{
+			ultima = ultima + delta * (T / d);
+			if (aceita == null || aceita(ultima)) MandarDecalque(zona, tipo, ultima, dir);
+			delta = onde - ultima;
+			d = delta.Length;
+		}
 	}
 
 	/// <summary>
@@ -745,6 +760,15 @@ public sealed partial class GameServer
 		// transformava a entrada em terra batida -- a passagem sumia ate o proximo boot.
 		// ============================================================================================
 		if (mapa.Indestrutivel(cx, cy)) return false;
+
+		// ============================ O OUTRO MUNDO NAO SE QUEBRA ============================
+		// A barreira do Enma e parede, e parede aqui cai na porrada (o arremesso, o raio, o terremoto
+		// da destruicao -- todos passam por ESTA funcao). O dono viu gente derrubando a parede pra sair
+		// do Outro Mundo sem pagar: *"nao deixe players destruirem paredes no outro mundo, pq com isso
+		// eles conseguem burlar a barreira do enma"*. A regra e por ZONA e mora no unico ponto por onde
+		// uma celula cai, entao vale pro Ceu e pro Inferno tambem (`Alem.EhOAlem`).
+		// ==================================================================================
+		if (Alem.EhOAlem(zona.Name)) return false;
 
 		if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
 		{

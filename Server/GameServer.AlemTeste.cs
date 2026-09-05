@@ -2,6 +2,7 @@ using Godot;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Npc;
 using Jandirus.Core.Stats;
+using Jandirus.Core.Social;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -119,6 +120,8 @@ public partial class GameServer
 			DoAlemNaoSeSaiAndando(pl);
 			OEnmaEAVoltaPaga(pl);
 			OFantasmaRegeneraLutaEMorreDeNovo(pl);
+			AsParedesDoOutroMundoNaoCaem();
+			AsPortasDoOutroMundoEAAlma(pl);
 			OCorpoQueFicaEOPrecoDoRevive(pl, forjados);
 
 			AfirmarAlem("a bancada chegou ao fim (sem esta linha, abortar no meio reportaria '0 falhas')",
@@ -712,6 +715,15 @@ public partial class GameServer
 					&& _obras?.Get(Alem.TipoDoEnma) is { Densa: true, Construivel: false });
 		AfirmarAlem("...e o menu E dele oferece ouvir e voltar a vida (`Interacoes.De`)",
 					Interacoes.Aceita(Alem.TipoDoEnma, "enma_reviver") && Interacoes.Aceita(Alem.TipoDoEnma, "enma_ouvir"));
+		{
+			Vec2 cadeira = Alem.CadeiraDoEnma(MapaDaZonaOuCatalogo(alem)?.Height ?? 500);
+			(_, int fileiraDaObra) = Jandirus.Core.Tech.CatalogoDeObras.Celula(enma.X, enma.Y);
+			(_, int fileiraDaCadeira) = Jandirus.Core.Tech.CatalogoDeObras.Celula(cadeira.X, cadeira.Y);
+			AfirmarAlem("...NA CADEIRA DO DM (mesma fileira, sem deslocamento vertical): quem o desenha por cima do trono "
+						+ "e o cliente (`ObraDesenhada.AcimaDoJogador`, medido na `--velorio`)",
+						fileiraDaObra == fileiraDaCadeira && _obras?.Get(Alem.TipoDoEnma)?.PixelY == 0,
+						$"obra na fileira {fileiraDaObra}, cadeira na {fileiraDaCadeira}, PixelY={_obras?.Get(Alem.TipoDoEnma)?.PixelY}");
+		}
 
 		// LONGE DA MESA: nada acontece
 		pl.Pos = new Vec2(enma.X + 20 * ZoneCollision.TileSize, enma.Y);
@@ -1023,5 +1035,139 @@ public partial class GameServer
 		c.Levantar();
 
 		if (cadaver != null) DesfazerOCadaver(cadaver);
+	}
+
+	// =====================================================================
+	// 10. AS PAREDES DO OUTRO MUNDO NAO CAEM
+	// =====================================================================
+	/// <summary>
+	/// A barreira do Enma e parede, e parede cai na porrada em todo o resto do jogo. O dono viu a
+	/// consequencia: *"nao deixe players destruirem paredes no outro mundo, pq com isso eles conseguem
+	/// burlar a barreira do enma"*. A recusa mora no unico ponto por onde uma celula cai
+	/// (`DerrubarCelula`) e e por ZONA; o avesso e a MESMA funcao derrubando uma parede da Terra.
+	/// </summary>
+	private void AsParedesDoOutroMundoNaoCaem()
+	{
+		GD.Print("[alem] -- 10) as paredes do Outro Mundo nao caem (a barreira do Enma) --");
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(alem);
+		AfirmarAlem("(montagem) o mapa do Outro Mundo esta carregado", mapa != null);
+		if (mapa == null) return;
+
+		(int ex, int ey) = CelulaDoPonto(MesaDoEnma(alem));
+		(int cx, int cy) = (-1, -1);
+		for (int r = 1; r < 80 && cx < 0; r++)
+			for (int dy = -r; dy <= r && cx < 0; dy++)
+				for (int dx = -r; dx <= r && cx < 0; dx++)
+					if (mapa.BlockedCell(ex + dx, ey + dy) && !mapa.NaBorda(ex + dx, ey + dy)
+						&& !mapa.Indestrutivel(ex + dx, ey + dy))
+						(cx, cy) = (ex + dx, ey + dy);
+		AfirmarAlem("(montagem) ha uma parede quebravel-em-tese perto da mesa do Enma", cx >= 0, $"({cx},{cy})");
+		if (cx < 0) return;
+
+		bool caiu = DerrubarCelula(alem, cx, cy);
+		bool anotada = _cenarioCaido.TryGetValue(alem.Name, out HashSet<(int X, int Y)>? h) && h.Contains((cx, cy));
+		AfirmarAlem("NO OUTRO MUNDO A PAREDE NAO CAI: `DerrubarCelula` recusa pela ZONA (arremesso, raio e terremoto "
+					+ "passam por ela) -- a barreira do Enma fica de pe",
+					!caiu && mapa.BlockedCell(cx, cy) && !anotada, $"caiu={caiu} bloqueada={mapa.BlockedCell(cx, cy)} anotada={anotada}");
+
+		// O AVESSO: a mesma funcao, numa parede da Terra, derruba -- e a bancada devolve a parede.
+		ZoneKey terra = ZoneKey.Premade("Earth");
+		ZoneCollision? mapaT = MapaDaZonaOuCatalogo(terra);
+		(int tx, int ty) = (-1, -1);
+		if (mapaT != null)
+			for (int y = 8; y < mapaT.Height - 8 && tx < 0; y++)
+				for (int x = 8; x < mapaT.Width - 8 && tx < 0; x++)
+					if (mapaT.BlockedCell(x, y) && !mapaT.NaBorda(x, y) && !mapaT.Indestrutivel(x, y)
+						&& !(_cenarioCaido.TryGetValue(terra.Name, out HashSet<(int X, int Y)>? hc) && hc.Contains((x, y))))
+						(tx, ty) = (x, y);
+		bool caiuNaTerra = tx >= 0 && DerrubarCelula(terra, tx, ty);
+		AfirmarAlem("...e a MESMA funcao, numa parede da Terra, derruba: a recusa e do LUGAR, nao um `return false` geral",
+					caiuNaTerra, $"({tx},{ty})");
+		if (caiuNaTerra)
+		{
+			mapaT!.Fechar(tx, ty);
+			_cenarioCaido[terra.Name].Remove((tx, ty));
+		}
+	}
+
+	// =====================================================================
+	// 11. AS PORTAS DO OUTRO MUNDO E A ALMA
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-09-04): *"se voce tiver uma alma neutra ou boa (karma alto) voce deveria estar liberado
+	/// pra abrir as portas do outro mundo e ir pro caminho da serpente, e isso nao ta acontecendo"*. Duas
+	/// causas: o tique das portas pulava TODO morto (`pl.Ficha.dead`), e nao havia barreira pela alma. Aqui:
+	/// o fantasma neutro abre; o coracao negro e quem cumpre pena batem na barreira espiritual.
+	/// </summary>
+	private void AsPortasDoOutroMundoEAAlma(ServerPlayer pl)
+	{
+		GD.Print("[alem] -- 11) as portas do Outro Mundo e a alma --");
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		if (!_portasDoMapa.TryGetValue(alem.Name, out List<PortaDoMapa>? portas) || portas.Count == 0)
+		{ AfirmarAlem("(montagem) o mapa do Outro Mundo tem portas", false, "nenhuma"); return; }
+		PortaDoMapa porta = portas[0];
+		const int T = ZoneCollision.TileSize;
+
+		int karmaAntes = pl.Karma;
+		long penaAntes = pl.Ficha.hell_lockout_until;
+		bool mortoAntes = pl.Ficha.dead, viajouAntes = pl.MorteJaViajou;
+		long relogioAntes = pl.RelogioDaMorte;
+		ZoneKey zonaAntes = pl.Zone;
+		Vec2 posAntes = pl.Pos;
+		bool movingAntes = pl.Moving;
+		Facing facingAntes = pl.Facing;
+		try
+		{
+			// morto de pe, um tile ao SUL da porta, olhando pra ela, andando
+			pl.Ficha.dead = true; pl.MorteJaViajou = true; pl.RelogioDaMorte = long.MaxValue;
+			MoveToZone(pl.Id, alem, new Vec2(porta.X * T + T / 2f, (porta.Y + 1) * T + T / 2f - MoveRules.FeetOffsetY));
+			pl.Facing = Facing.North;
+			pl.Moving = true;
+			bool Aberta() => _portasAbertas.TryGetValue(alem.Name, out Dictionary<(int X, int Y), long>? a) && a.ContainsKey((porta.X, porta.Y));
+			void Fechar() { if (_portasAbertas.TryGetValue(alem.Name, out Dictionary<(int X, int Y), long>? a)) a.Remove((porta.X, porta.Y)); }
+
+			Fechar();
+			pl.Karma = Karma.Neutro; pl.Ficha.hell_lockout_until = 0;
+			TickDasPortas();
+			AfirmarAlem("ALMA NEUTRA, morta e de pe: a porta do Outro Mundo ABRE pra ela (o tique nao pula mais o morto de pe)",
+						Aberta(), $"porta ({porta.X},{porta.Y}) aberta={Aberta()}");
+
+			Fechar();
+			pl.Karma = 40;
+			TickDasPortas();
+			AfirmarAlem("...e ALMA BOA (karma 40) tambem", Aberta());
+
+			Fechar();
+			pl.Karma = -5; pl.AvisoDaBarreiraAte = 0;
+			EscutaDeAvisos?.Clear();
+			TickDasPortas();
+			AfirmarAlem("CORACAO NEGRO (karma -5): a barreira espiritual sela a porta -- e o aviso manda falar com o Enma",
+						!Aberta() && (EscutaDeAvisos?.Any(a => a.Contains("barreira espiritual", StringComparison.Ordinal)) == true),
+						$"aberta={Aberta()} avisos={EscutaDeAvisos?.Count}");
+
+			Fechar();
+			pl.Karma = Karma.Neutro; pl.Ficha.hell_lockout_until = NowMs() + 60_000; pl.AvisoDaBarreiraAte = 0;
+			TickDasPortas();
+			AfirmarAlem("...e quem ainda CUMPRE PENA tambem nao abre, mesmo com o karma ja limpo", !Aberta());
+			Fechar();
+
+			pl.Ficha.hell_lockout_until = 0;
+			pl.Ficha.dead = false;
+			TickDasPortas();
+			AfirmarAlem("...enquanto um VIVO (o admin que foi la) abre sem ser perguntado pela alma", Aberta());
+			Fechar();
+		}
+		finally
+		{
+			pl.Karma = karmaAntes;
+			pl.Ficha.hell_lockout_until = penaAntes;
+			pl.Ficha.dead = mortoAntes;
+			pl.MorteJaViajou = viajouAntes;
+			pl.RelogioDaMorte = relogioAntes;
+			pl.Moving = movingAntes;
+			pl.Facing = facingAntes;
+			if (!pl.Zone.Equals(zonaAntes)) MoveToZone(pl.Id, zonaAntes, posAntes); else pl.Pos = posAntes;
+		}
 	}
 }

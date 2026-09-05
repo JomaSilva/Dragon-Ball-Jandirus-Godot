@@ -270,4 +270,98 @@ public partial class GameServer
 			GD.Print("[karma] os corpos da bancada sairam do mundo.");
 		}
 	}
+
+	// =====================================================================
+	// O JULGAMENTO DO ENMA -- karma negro vai pro Inferno, e la fica
+	// =====================================================================
+	/// <summary>
+	/// `enma_judge_to_hell()` + `afterlife_alignment_check()` (`SkyNPCs.dm:176-182, 228-236`), medidos no
+	/// host: a pena pela formula, o corpo no portao, a passagem que devolve, a pena cumprida que limpa o
+	/// karma, e o milhao que nao compra a volta de um coracao negro. Tudo fotografado e devolvido no `finally`.
+	/// </summary>
+	private void OJulgamentoDoEnma(ServerPlayer pl, Action<string, bool, string> Checa)
+	{
+		int karmaAntes = pl.Karma;
+		bool mortoAntes = pl.Ficha.dead, viajouAntes = pl.MorteJaViajou;
+		long penaAntes = pl.Ficha.hell_lockout_until, relogioAntes = pl.RelogioDaMorte;
+		double zeniAntes = pl.Ficha.Zeni;
+		ZoneKey zonaAntes = pl.Zone;
+		Vec2 posAntes = pl.Pos;
+		try
+		{
+			Checa("A PENA E A DO DM: karma -100 = 1 h, -50 = 30 min, -1 = 1 min (piso), 0 = nada (`SkyNPCs.dm:177-178`)",
+				  Alem.MsDePenaNoInferno(-100) == 3_600_000 && Alem.MsDePenaNoInferno(-50) == 1_800_000
+				  && Alem.MsDePenaNoInferno(-1) == 60_000 && Alem.MsDePenaNoInferno(0) == 0 && Alem.MsDePenaNoInferno(80) == 0,
+				  $"{Alem.MsDePenaNoInferno(-100)}/{Alem.MsDePenaNoInferno(-50)}/{Alem.MsDePenaNoInferno(-1)}/{Alem.MsDePenaNoInferno(0)}");
+
+			ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo), inferno = ZoneKey.Premade(Alem.ZonaDoInferno);
+			Obra? enma = _noChao.FirstOrDefault(o => o.Tipo == Alem.TipoDoEnma && o.Zona.Equals(alem));
+			Checa("(montagem) o Enma esta na mesa dele", enma != null, "");
+			if (enma == null) return;
+			Vec2 naMesa = new(enma.X + ZoneCollision.TileSize, enma.Y);
+
+			// morto de pe, na mesa, alma NEUTRA: fica
+			pl.Ficha.dead = true; pl.MorteJaViajou = true; pl.RelogioDaMorte = long.MaxValue; pl.Ficha.hell_lockout_until = 0;
+			MoveToZone(pl.Id, alem, naMesa);
+			pl.Karma = Karma.Neutro;
+			EnmaOuvir(pl);
+			Checa("alma NEUTRA (karma 0): o Enma le a ficha e ela FICA no Outro Mundo, sem pena",
+				  pl.Zone.Equals(alem) && pl.Ficha.hell_lockout_until == 0, $"zona {pl.Zone.Name}, pena {pl.Ficha.hell_lockout_until}");
+
+			// coracao negro: Inferno, 30 min
+			pl.Karma = -50;
+			long t0 = NowMs();
+			EnmaOuvir(pl);
+			Vec2 portao = PortaoDoInferno(inferno);
+			Checa("CORACAO NEGRO (karma -50): o Enma a manda pro INFERNO, no portao do DM (65,258), com 30 min de pena",
+				  pl.Zone.Equals(inferno) && Vec2.Distance(pl.Pos, portao) < 1f
+				  && pl.Ficha.hell_lockout_until >= t0 + 1_800_000 - 50 && pl.Ficha.hell_lockout_until <= t0 + 1_800_000 + 5_000,
+				  $"zona {pl.Zone.Name}, pena em {(pl.Ficha.hell_lockout_until - t0) / 60_000.0:0.#} min");
+
+			// tentar sair pela passagem: volta pro portao
+			if (_passagens.TryGetValue(inferno.Name, out List<Passagem>? saidas) && saidas.Count > 0)
+			{
+				Passagem saida = saidas[0];
+				const int T = ZoneCollision.TileSize;
+				pl.Pos = new Vec2(saida.X * T + T / 2f, saida.Y * T + T / 2f - MoveRules.FeetOffsetY);
+				_acabouDeAtravessar.Remove(pl.Id);
+				TickDasPassagens();
+				Checa("...e TENTAR SAIR pela passagem do Inferno a devolve ao portao (sempre que tentar sair, volta)",
+					  pl.Zone.Equals(inferno) && Vec2.Distance(pl.Pos, portao) < 1f, $"zona {pl.Zone.Name} pos {pl.Pos}");
+			}
+			else Checa("(montagem) o Inferno tem a passagem de saida no mapa", false, "sem passagens em z09");
+
+			// fora do Inferno por outro caminho (um admin, uma tecnica): o tique devolve
+			MoveToZone(pl.Id, alem, naMesa);
+			CumprirPenaNoInferno(pl);
+			Checa("...e sair por QUALQUER caminho tambem devolve (o tique do `afterlife_alignment_check`)",
+				  pl.Zone.Equals(inferno), pl.Zone.Name);
+
+			// pena cumprida: alma limpa, de volta ao checkpoint
+			pl.Ficha.hell_lockout_until = NowMs() - 1;
+			CumprirPenaNoInferno(pl);
+			Checa("PENA CUMPRIDA: a alma sai LIMPA (karma 0) e volta ao checkpoint do Outro Mundo (`SkyNPCs.dm:230-234`)",
+				  pl.Ficha.hell_lockout_until == 0 && pl.Karma == Karma.Neutro && pl.Zone.Equals(alem),
+				  $"pena {pl.Ficha.hell_lockout_until} karma {pl.Karma} zona {pl.Zone.Name}");
+
+			// o milhao nao compra a volta de um coracao negro
+			pl.Pos = naMesa;
+			pl.Karma = -30;
+			pl.Ficha.Zeni = 2_000_000;
+			EnmaReviverPorZeni(pl);
+			Checa("o MILHAO nao compra a volta de um coracao negro: o Enma julga antes de vender (continua morto, zeni intacto, no Inferno)",
+				  pl.Ficha.dead && pl.Zone.Equals(inferno) && Math.Abs(pl.Ficha.Zeni - 2_000_000) < 1e-6,
+				  $"morto={pl.Ficha.dead} zona={pl.Zone.Name} zeni={pl.Ficha.Zeni}");
+		}
+		finally
+		{
+			pl.Ficha.hell_lockout_until = penaAntes;
+			pl.Karma = karmaAntes;
+			pl.Ficha.dead = mortoAntes;
+			pl.MorteJaViajou = viajouAntes;
+			pl.RelogioDaMorte = relogioAntes;
+			pl.Ficha.Zeni = zeniAntes;
+			if (!pl.Zone.Equals(zonaAntes)) MoveToZone(pl.Id, zonaAntes, posAntes); else pl.Pos = posAntes;
+		}
+	}
 }

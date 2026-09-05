@@ -102,6 +102,36 @@ public static class Alem
 	}
 
 	// =====================================================================
+	// O INFERNO -- o julgamento do Enma
+	// =====================================================================
+	/// <summary>O `locate(65,258,9)` do DM (`SkyNPCs.dm:182,236`): onde o condenado cai, e pra onde volta se tentar sair.</summary>
+	public const int InfernoX = 65, InfernoY = 258;
+
+	/// <summary>O portao do Inferno em pixels do z9 -- a mesma conversao BYOND -> Godot de <see cref="MesaDoEnma"/>.</summary>
+	public static Vec2 PortaoDoInferno(int alturaDaZonaEmTiles)
+	{
+		int cx = Math.Clamp(InfernoX - 1, 0, int.MaxValue);
+		int cy = Math.Clamp(alturaDaZonaEmTiles - InfernoY, 0, Math.Max(0, alturaDaZonaEmTiles - 1));
+		const int t = ZoneCollision.TileSize;
+		return new Vec2(cx * t + t / 2f, cy * t + t / 2f);
+	}
+
+	/// <summary>A pena maxima (`36000` ds = 1 h, `SkyNPCs.dm:178`) e o piso (`600` ds = 1 min).</summary>
+	public const long MsMaxDePenaNoInferno = 3_600_000, MsMinDePenaNoInferno = 60_000;
+
+	/// <summary>
+	/// QUANTO TEMPO NO INFERNO -- `enma_judge_to_hell()` (`SkyNPCs.dm:176-182`): `frac = min(|karma|/100, 1)`,
+	/// `lockdur = max(round(frac * 36000), 600)`. Karma -100 = 1 h, -50 = 30 min, -1 = 1 min (o piso). Zero
+	/// pra quem nao tem coracao negro (karma >= 0): esse nem e julgado.
+	/// </summary>
+	public static long MsDePenaNoInferno(int karma)
+	{
+		if (karma >= 0) return 0;
+		double frac = Math.Min(Math.Abs(karma) / 100.0, 1.0);
+		return Math.Max((long)Math.Round(frac * MsMaxDePenaNoInferno), MsMinDePenaNoInferno);
+	}
+
+	// =====================================================================
 	// 2. OS DOIS PRAZOS
 	// =====================================================================
 	/// <summary>

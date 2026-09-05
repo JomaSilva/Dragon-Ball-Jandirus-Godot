@@ -1077,7 +1077,7 @@ public sealed partial class GameServer
 			// 6a-bis) O CHAO POR ONDE ELE PASSOU. Dentro do laco e nao no fim do tique de proposito:
 			//     e a mesma disciplina do arremesso (`TickDoEmpurrao` chama por FATIA) -- um raio
 			//     rapido anda ate 53 px por tique, e carimbar so no fim deixaria buraco de uma celula
-			//     no rastro. Quem faz a marca sair UMA VEZ por tile e a guarda de celula do
+			//     no rastro. Quem faz a marca sair UMA VEZ por tile andado e a guarda de DISTANCIA do
 			//     `CarimbarSulco`, e nao a cadencia da chamada.
 			MarcarSulcoDoTiro(zona, p, temChao, mapa);
 
@@ -1102,7 +1102,8 @@ public sealed partial class GameServer
 	{
 		foreach (ServerPlayer o in corpos)
 		{
-			if (o.Id == p.Dono || o.Ficha.dead || o.Combate == null || o.Combate.Intocavel) continue;
+			// O CADAVER TAMBEM LEVA O TIRO (dono, 2026-09-05: "corpos mortos ainda sao corpos de personagem").
+			if (o.Id == p.Dono || o.Combate == null || o.Combate.Intocavel) continue;
 
 			// QUEM JA ESTA SENDO LEVADO NAO E TESTADO DE NOVO ATE O CICLO VENCER.
 			//
@@ -1278,7 +1279,7 @@ public sealed partial class GameServer
 		// estava desmentindo a propria tecnica -- quem levava o tiro ficava sem andar E sem bater, que
 		// e o stun que ela existe pra nao ser. Ver `ReceitaDeProjetil.Empurra`.
 		double fator = p.FatorDeEmpurrao();
-		if (p.Empurra && fator > 0 && r.Dano > 0.25 && alvo.TiquesDeVoo <= 0 && !alvo.Ficha.dead)
+		if (p.Empurra && fator > 0 && r.Dano > 0.25 && alvo.TiquesDeVoo <= 0)   // o corpo morto tambem voa (ver `--cadaverteste` 5)
 			Arremessar(alvo, p, r.Dano * fator);
 
 		// 5b) LONGE: CARREGA. `step(P,dir,32)` a cada ciclo, ate 10 tiles da mao do dono -- o pedido
@@ -1368,8 +1369,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool PodeSerLevadoPeloFeixe(ServerPlayer alvo)
 		=> alvo.TiquesDeVoo <= 0
-		   && !alvo.Ficha.dead
-		   && _players.ContainsKey(alvo.Id);
+		   && _players.ContainsKey(alvo.Id);   // vivo ou morto: o feixe carrega o corpo que esta na frente
 
 	/// <summary>
 	/// A CABECA PEGOU ESTE CORPO. So aponta e avisa -- quem empurra e o <see cref="ArrastarComOFeixe"/>.
@@ -1488,7 +1488,7 @@ public sealed partial class GameServer
 		// O SULCO NO CHAO **NAO** SAI DAQUI, e isso e deliberado: a cabeca do feixe ja esta carimbando
 		// a mesma fileira de celulas neste mesmo sub-passo (`MarcarSulcoDoTiro`), e o corpo levado anda
 		// coladinho nela. Duas marcas por celula leem como MANCHA e nao como rastro -- e a guarda de
-		// celula do `CarimbarSulco` e por dono de rastro, entao ela nao pegaria a segunda. E o mesmo
+		// distancia do `CarimbarSulco` e por dono de rastro, entao ela nao pegaria a segunda. E o mesmo
 		// defeito que o dono ja fotografou uma vez ("as vezes fica um pouco torto"), pela outra ponta.
 		return true;
 	}
@@ -1532,15 +1532,20 @@ public sealed partial class GameServer
 		// Cada celula recebe a marca DO QUE ELA E, e quem sabe o que ela e, do lado do servidor, e o
 		// plano de agua do `.col` (`ClasseDeAgua`). Custa um bit por marca, e so pra raio rasteiro.
 		// ==============================================================================================
-		if (mapa != null && mapa.EhAguaEm(p.Pos)) return;
+		// A AGUA NAO RECEBE TERRA REVIRADA -- e a pergunta e feita MARCA A MARCA, e nao so na cabeca do
+		// raio: as marcas nascem interpoladas sobre a reta (`CarimbarSulco`), e um sub-passo de 53 px
+		// pode entrar e sair de um lago sem a cabeca parar dentro dele.
+		bool naAgua = mapa != null && mapa.EhAguaEm(p.Pos);
 
 		// A CELULA E A DA CABECA, e nao "a dos pes" do corpo: um raio nao tem pes. A cabeca e o
 		// unico ponto denso dele (ver `Projetil.Pos`), e e ela que encosta no que estiver no caminho.
 		//
 		// A DIRECAO E O RUMO DO PROPRIO TIRO -- a mesma escolha do arremesso, que carimba pelo
 		// `RumoDoVoo` e nao pelo `Facing`: o sulco e a marca do que PASSOU ali.
+		if (naAgua && p.UltimoSulco.X == 0f && p.UltimoSulco.Y == 0f) return;   // nasceu na agua: sem rastro ate pisar terra
 		CarimbarSulco(zona, Protocol.Decal.Sulco, p.Pos,
-					  MoveRules.FacingFrom(p.Rumo, Facing.South), ref p.UltimoSulco);
+					  MoveRules.FacingFrom(p.Rumo, Facing.South), ref p.UltimoSulco,
+					  mapa == null ? null : v => !mapa.EhAguaEm(v));
 	}
 
 	/// <summary>

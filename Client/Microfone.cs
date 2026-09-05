@@ -26,7 +26,7 @@ namespace Jandirus.Client;
 /// ====================================================================================================
 ///
 /// ============================ O CAMINHO DE UMA AMOSTRA ATE O FIO ============================
-///   captura (48 kHz, estereo) -> <see cref="Reamostrador"/> (mono, anti-alias, 16 kHz, quadros de 20 ms)
+///   captura (48 kHz, estereo) -> <see cref="Reamostrador"/> (mono, anti-alias, 24 kHz, quadros de 20 ms)
 ///   -> <see cref="QuadrosProntos"/> (no maximo 5 por visita: engasgo nao vira rajada)
 ///   -> <see cref="PortaoDeVoz"/> (e voz? com histerese e hangover) -> Opus -> `MandarVoz`.
 /// As tres pecas sao classes puras porque cada uma e uma afirmacao que a `--diagvoz` mede em
@@ -57,8 +57,6 @@ public partial class Microfone : Node
 	/// disso nao tem como saber que foi o jogo que fez. Quem quiser mais volume mexe no misturador do
 	/// sistema, que e onde o ganho de microfone mora no resto do computador dela.
 	/// </summary>
-	private const float Ganho = 1f;
-
 	// =====================================================================
 	// AS TRES PECAS PURAS
 	// =====================================================================
@@ -115,8 +113,8 @@ public partial class Microfone : Node
 	}
 
 	/// <summary>
-	/// ============================ O REAMOSTRADOR: 48 kHz ESTEREO -> 16 kHz MONO, SEM ALIAS ============================
-	/// O motor entrega a 48 kHz (medido) e o codificador quer 16 kHz. Hoje isso e exatamente 3 pra 1,
+	/// ============================ O REAMOSTRADOR: 48 kHz ESTEREO -> 24 kHz MONO, SEM ALIAS ============================
+	/// O motor entrega a 48 kHz (medido) e o codificador quer 24 kHz (era 16). Hoje isso e exatamente 2 pra 1,
 	/// mas **nao da pra cravar 3**: a taxa de mistura e do driver e da placa da pessoa, e ha maquina
 	/// que abre em 44,1 kHz. O passo e fracionario e a sobra atravessa os lotes -- zerar a cada lote
 	/// somaria ate uma amostra de erro 50 vezes por segundo, e a voz sairia com o tom subindo.
@@ -133,11 +131,13 @@ public partial class Microfone : Node
 	public sealed class Reamostrador
 	{
 		/// <summary>
-		/// 7 kHz. Abaixo disso o passa-baixa comeria as consoantes (2 a 6 kHz); acima, deixaria passar
-		/// o que dobra. Dois polos a 7 kHz custam 1,7 dB em 3 kHz e derrubam 12 kHz em 13 dB antes
-		/// ainda da media.
+		/// 10 kHz. Era 7, quando a voz saia a 16 kHz (banda ate 8 kHz): dois polos a 7 kHz custavam 1,7 dB
+		/// em 3 kHz e derrubavam 12 kHz em 13 dB. A 24 kHz a banda vai ate 12 kHz, e um corte em 7 comeria
+		/// justamente o que a taxa nova veio buscar (as consoantes de 6 a 10 kHz -- o "abafado" do dono).
+		/// Dois polos a 10 kHz custam 0,8 dB em 3 kHz e derrubam 20 kHz (o que dobraria em 4 kHz) em 14 dB
+		/// antes ainda da media; a media de 2 amostras tira mais 12 dB de 20 kHz.
 		/// </summary>
-		public const float CorteDoAntiAlias = 7000f;
+		public const float CorteDoAntiAlias = 10000f;
 
 		private readonly double _passo;
 		private readonly float _a;
@@ -169,7 +169,7 @@ public partial class Microfone : Node
 			int fechados = 0;
 			foreach (Vector2 s in cru)
 			{
-				float v = (s.X + s.Y) * 0.5f * Ganho;
+				float v = (s.X + s.Y) * 0.5f;
 				_p1 += _a * (v - _p1);
 				_p2 += _a * (_p1 - _p2);
 				_soma += _p2;
@@ -196,6 +196,60 @@ public partial class Microfone : Node
 		/// um estalo em vez de terminar.
 		/// </summary>
 		public void Descartar() => _noQuadro = 0;
+	}
+
+	/// <summary>
+	/// O GANHO AUTOMATICO (AGC): o que faz a voz de todo mundo chegar na MESMA altura.
+	///
+	/// O dono (2026-09-05): *"o audio do voice chat naturalmente ta muito baixo, poderia deixar ele
+	/// mais alto"*. Um ganho fixo nao resolve: o microfone de um chega a -30 dBFS e o de outro a -6,
+	/// e o numero que levanta um estoura o outro. Entao o ganho e MEDIDO por quadro: a energia (RMS)
+	/// do quadro e comparada com o alvo e o ganho caminha ate la -- rapido pra descer (uma voz alta
+	/// nao pode estourar nem por um quadro), devagar pra subir (senao o fim de cada frase infla o ar).
+	///
+	/// So age em quadro que ja passou pelo PORTAO: quem decide "e voz" e o portao no sinal cru, e o
+	/// AGC nao amplifica o silencio entre frases. O piso de sinal e o teto de 8x (18 dB) sao o que
+	/// impede um microfone mudo de virar chiado. Puro, sem Godot: a `--diagvoz` mede com senos.
+	/// </summary>
+	public sealed class ControleDeGanho
+	{
+		/// <summary>~-18 dBFS: alto sem encostar no teto -- o nivel de uma voz gravada "de perto".</summary>
+		public const float RmsAlvo = 0.12f;
+		/// <summary>+18 dB. Acima disso o que sobe e o ar do quarto.</summary>
+		public const float GanhoMax = 8f;
+		/// <summary>Quanto do caminho ate o alvo o ganho anda por quadro: subindo devagar, descendo rapido.</summary>
+		public const float SubidaPorQuadro = 0.08f, DescidaPorQuadro = 0.5f;
+		/// <summary>Abaixo disto o quadro e ar: o ganho nao mexe (nao sobe atras de silencio).</summary>
+		public const float PisoDeSinal = 0.003f;
+
+		private readonly float _teto;
+
+		public float Ganho { get; private set; } = 1f;
+
+		public ControleDeGanho(float ganhoMax = GanhoMax) => _teto = Math.Max(ganhoMax, 1f);
+
+		public void Aplicar(short[] quadro)
+		{
+			double soma = 0;
+			foreach (short a in quadro) { double v = a / (double)short.MaxValue; soma += v * v; }
+			float rms = (float)Math.Sqrt(soma / Math.Max(quadro.Length, 1));
+			if (rms >= PisoDeSinal)
+			{
+				float alvo = Math.Clamp(RmsAlvo / rms, 1f, _teto);
+				Ganho += (alvo - Ganho) * (alvo < Ganho ? DescidaPorQuadro : SubidaPorQuadro);
+			}
+			if (Ganho <= 1.0001f) return;
+
+			for (int i = 0; i < quadro.Length; i++)
+			{
+				float x = quadro[i] / (float)short.MaxValue * Ganho;
+				// JOELHO MACIO acima de 0,85: o pico que passaria de 1,0 e dobrado, nao serrado.
+				float m = Math.Abs(x);
+				if (m > 0.85f) m = 0.85f + (m - 0.85f) / (1f + (m - 0.85f) * 4f);
+				x = Math.Sign(x) * Math.Min(m, 0.999f);
+				quadro[i] = (short)(x * short.MaxValue);
+			}
+		}
 	}
 
 	/// <summary>
@@ -261,6 +315,7 @@ public partial class Microfone : Node
 	private Reamostrador? _reamostrador;
 	private readonly QuadrosProntos _prontos = new();
 	private readonly PortaoDeVoz _portao = new();
+	private readonly ControleDeGanho _ganho = new();
 
 	/// <summary>Saida do codificador. Reusado; alocar 50x/s e lixo.</summary>
 	private readonly byte[] _comprimido = new byte[VozLocal.MaxBytesDeQuadro];
@@ -449,7 +504,7 @@ public partial class Microfone : Node
 	// DRENAR, REAMOSTRAR, CODIFICAR
 	// =====================================================================
 	/// <summary>
-	/// TIRA O QUE O MOTOR CAPTUROU, REAMOSTRA PRA 16 kHz E MANDA OS QUADROS QUE FECHAREM.
+	/// TIRA O QUE O MOTOR CAPTUROU, REAMOSTRA PRA 24 kHz E MANDA OS QUADROS QUE FECHAREM.
 	///
 	/// ============================ ELE RODA POR QUADRO DE TELA, E NAO POR QUADRO DE AUDIO ============================
 	/// O motor entrega em lotes de ate 1024 amostras (21,3 ms a 48 kHz -- medido), e a tela roda bem
@@ -511,6 +566,7 @@ public partial class Microfone : Node
 	{
 		if (_codificador == null || GameClient.Instance is not { } cli) return;
 		if (!_portao.Passa(quadro, Boot.Config.LimiarDeVoz)) return;
+		_ganho.Aplicar(quadro);   // DEPOIS do portao: o portao decide no sinal cru, o AGC so levanta o que e voz
 
 		int n = _codificador.Encode(quadro, VozLocal.AmostrasPorQuadro,
 									_comprimido, _comprimido.Length);

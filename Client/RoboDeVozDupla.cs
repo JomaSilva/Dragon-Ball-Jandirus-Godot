@@ -314,6 +314,9 @@ public partial class RoboDeVozDupla : Node
 	private Vector2 _ondeEleEstava;
 	private ulong _assentaEm;
 
+	/// <summary>O servidor deste processo -- o juiz e o host, e e a ele que a guarda de transito pergunta onde o falante esta.</summary>
+	private static Jandirus.Server.GameServer? S => Jandirus.Server.GameServer.Instance as Jandirus.Server.GameServer;
+
 	private void CompararComAMinhaVista(int quem, bool paredeDoPacote)
 	{
 		if (_agora == null) return;
@@ -344,10 +347,31 @@ public partial class RoboDeVozDupla : Node
 		ulong agora = Time.GetTicksMsec();
 		if ((b - _ondeEleEstava).LengthSquared() > 16f) { _ondeEleEstava = b; _assentaEm = agora + MsDeTransito; }
 		if (agora < _assentaEm) { _agora.VistaEmTransito++; return; }
+		// ============================ E A OUTRA METADE DO TRANSITO: O SERVIDOR JA O MOVEU, A TELA AINDA NAO ============================
+		// O pacote de voz e carimbado com a posicao do SERVIDOR no instante em que sai; o corpo desenhado chega
+		// um snapshot depois (~100 ms). A guarda acima so via o transito DEPOIS de a tela mexer. Ela bastava
+		// enquanto os inputs em voo do falante arrastavam o corpo de volta a cada teleporte da bancada (o
+		// vaivem reiniciava a guarda o tempo todo); desde que o arranque deixou de ser desfeito por eles
+		// (`AplicarInput`, 2026-09-05) o teleporte crava o corpo no ponto na hora, e essa janela apareceu:
+		// 2 a 7 pacotes por rodada com a parede NOVA contra a tela VELHA. O juiz e o host: pergunta ao servidor
+		// onde o falante ESTA e so compara quando a tela concorda com ele -- e conta o que pulou na mesma
+		// coluna de "em transito", pra um transito que virasse maioria continuar aparecendo.
+		// ==================================================================================================================
+		// (a posicao do servidor e a MESMA que o node desenha -- `RemotePlayer.Desenhar` so a prende a grade; nao e o pe)
+		if (S is { } srv && (srv.EstadoDoCorpoNaFoto(quem).Pos - new Vec2(b.X, b.Y)).Length > 4f)
+		{ _agora.VistaEmTransito++; return; }
 		bool paredeDaVista = mapa.PathBlocked(new Vec2(a.X, a.Y), new Vec2(b.X, b.Y));
 
 		if (paredeDaVista) _agora.VistaDisseParede++; else _agora.VistaDisseLivre++;
-		if (paredeDaVista == paredeDoPacote) _agora.VistaConcordou++; else _agora.VistaDivergiu++;
+		if (paredeDaVista == paredeDoPacote) _agora.VistaConcordou++;
+		else
+		{
+			_agora.VistaDivergiu++;
+			// CADA DIVERGENCIA SAI COM O QUE A EXPLICA (e nao so a soma): foi assim que a janela "o servidor ja
+			// o moveu, a tela ainda nao" apareceu. No mutante a divergencia e o esperado -- nao vale imprimir.
+			if (!_agora.Mutante)
+				GD.Print($"[vozdupla:b]   ...  F5 DIVERGIU: pacote parede={paredeDoPacote} vista={paredeDaVista} eu=({a.X:0},{a.Y:0}) ele=({b.X:0},{b.Y:0}) assentou ha {agora - (_assentaEm - MsDeTransito)} ms na fase {_agora.Nome}");
+		}
 	}
 
 	/// <summary>O QUADRO QUE VAI PRO ALTO-FALANTE -- ja com a abafada aplicada. E aqui que F4 e medida.</summary>
@@ -364,8 +388,8 @@ public partial class RoboDeVozDupla : Node
 			soma += v * v;
 		}
 		_agora.SomaRms += Math.Sqrt(soma / n);
-		_agora.SomaEGrave += RoboDeVozViva.Energia(pcm, n, RoboDeVozViva.HzGrave);
-		_agora.SomaEAgudo += RoboDeVozViva.Energia(pcm, n, RoboDeVozViva.HzAgudo);
+		_agora.SomaEGrave += RoboDeVozViva.Energia(pcm, n, RoboDeVozViva.HzGrave, VozLocal.TaxaDeSaida);   // PCM de SAIDA
+		_agora.SomaEAgudo += RoboDeVozViva.Energia(pcm, n, RoboDeVozViva.HzAgudo, VozLocal.TaxaDeSaida);
 	}
 
 	public override void _Process(double delta)

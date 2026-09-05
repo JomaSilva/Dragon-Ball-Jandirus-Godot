@@ -36,6 +36,9 @@ public partial class MenuJogo
 	/// </summary>
 	private string _avisoDigitado = "", _contaDigitada = "", _textoDoAlvo = "";
 
+	/// <summary>O verb de admin que apertaram SEM alvo e espera que alguem seja escolhido na lista de online.</summary>
+	private (string Cmd, string Rotulo)? _alvoPedido;
+
 	/// <summary>
 	/// O CODIGO DA LIMPEZA TOTAL, digitado. Fora da pagina pelo mesmo motivo dos tres acima -- e com
 	/// um agravante proprio: aqui o campo tem PRAZO de um minuto, e perder o que foi digitado a cada
@@ -460,6 +463,11 @@ public partial class MenuJogo
 	{
 		if (GameClient.Instance is not { } cli) { ListaDeVerbos(Verbos.Admin); return; }
 
+		// ------------------------------------------------- quem leva o verb? (so enquanto um verb espera alvo)
+		// NO TOPO, porque e a pergunta que o clique acabou de fazer: quem apertou "Kill Target" sem
+		// ninguem marcado esta olhando pra isto agora.
+		if (_alvoPedido is { } pedido) PainelDeEscolhaDeAlvo(cli, pedido);
+
 		// ------------------------------------------------- anunciar
 		VBoxContainer anunciar = Cartao("Aviso ao servidor");
 		var aviso = new LineEdit
@@ -514,6 +522,61 @@ public partial class MenuJogo
 		// ROLAR ATE O FIM da aba mais longa do jogo pra ver o botao que apaga o servidor. Nao e
 		// seguranca (a seguranca sao os dois passos e o codigo), e afastar a mao.
 		PainelDePerigo(cli);
+	}
+
+	/// <summary>Um verb de admin que age sobre alguem precisa escolher na lista? Sem marca, ou com a marca em mim.</summary>
+	public static bool PrecisaEscolherAlvo(int alvoId, int meuId) => alvoId == 0 || alvoId == meuId;
+
+	/// <summary>
+	/// UM VERB DE ADMIN PEDIU ALVO E NAO HAVIA: guarda o pedido, pede a lista de quem esta online ao
+	/// servidor e leva o jogador ate a aba de admin, onde o cartao de escolha aparece no topo. O dono
+	/// (2026-09-05): *"caso voce tenha target em si mesmo ou em ninguem, o jogo vai mostrar a lista dos
+	/// jogadores online pra voce escolher qual voce vai afetar com esse verb/botao de adm"*.
+	/// </summary>
+	public void PedirAlvoDeAdmin(string cmd, string rotulo)
+	{
+		_alvoPedido = (cmd, rotulo);
+		GameClient.Instance?.SendVerbo("admin_online");
+		if (!Visible) Abrir();
+		if (_aba != Verbos.Admin) IrPara(Verbos.Admin); else Redesenhar();
+	}
+
+	/// <summary>
+	/// O CARTAO "QUEM LEVA «verb»?": um botao por jogador online (eu marcado como "(você)") e o cancelar.
+	/// E o `input(... in world)` dos verbs de admin do BYOND, sem travar a tela -- e sem confiar no cliente:
+	/// o servidor confere a permissao de novo quando o verb chega.
+	/// </summary>
+	private void PainelDeEscolhaDeAlvo(GameClient cli, (string Cmd, string Rotulo) pedido)
+	{
+		VBoxContainer corpo = Cartao($"Quem leva «{pedido.Rotulo}»?", destaque: true);
+		corpo.GetParent()?.SetMeta("escolha_de_alvo", pedido.Cmd);
+		Nota("Você não marcou ninguém (ou marcou a si mesmo). Escolha na lista de quem está online. "
+			+ "Nada é mandado ao servidor até você escolher.", corpo);
+		if (cli.Online.Count == 0) Nota("pedindo a lista ao servidor...", corpo);
+
+		var fila = new HFlowContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+		fila.AddThemeConstantOverride("h_separation", 6);
+		fila.AddThemeConstantOverride("v_separation", 4);
+		foreach (GameClient.OnlineInfo o in cli.Online)
+		{
+			int id = o.Id;
+			var b = new Button
+			{
+				Text = id == cli.LocalId ? $"{o.Nome} (você)" : o.Nome,
+				TooltipText = o.Onde.Length > 0 ? $"em {o.Onde}" : "",
+			};
+			b.Pressed += () =>
+			{
+				cli.SendVerbo(pedido.Cmd, id.ToString());
+				_alvoPedido = null;
+				Redesenhar();
+			};
+			fila.AddChild(b);
+		}
+		var cancelar = new Button { Text = "cancelar", TooltipText = "desiste do verb; nada e mandado ao servidor" };
+		cancelar.Pressed += () => { _alvoPedido = null; Redesenhar(); };
+		fila.AddChild(cancelar);
+		corpo.AddChild(fila);
 	}
 
 	/// <summary>
@@ -632,6 +695,7 @@ public partial class MenuJogo
 			? "O alvo está marcado: os verbs com \"Target\" e os botões abaixo agem sobre ele. Escreva "
 			  + "o nome da skill, a chave do cargo, ou a mensagem."
 			: "Marque alguém com DUPLO CLIQUE: os verbs com \"Target\" e os botões abaixo agem sobre ele. "
+			  + "Sem marca (ou com a marca em você), os verbs com \"Target\" abrem a lista de quem está online. "
 			  + "A permissão é conferida de novo no servidor -- esconder botão nunca foi permissão.", corpo);
 
 		var noAlvo = new LineEdit
@@ -834,5 +898,8 @@ public partial class MenuJogo
 	/// arredondamentos em que e desenhado. Vazio = a basica basta: ela ja leva o alvo (que acende o
 	/// cartao e os botoes), a forma atual, o clima, o codigo da limpeza e as contas.
 	/// </summary>
-	private string ExtraDaAssinaturaDeAdmin(SheetState f) => "";
+	// O PEDIDO DE ALVO E A LISTA DE ONLINE ENTRAM NA ASSINATURA: sem isto o cartao de escolha nao aparecia (o
+	// resto da ficha nao mudou) e a lista chegava do servidor sem redesenhar.
+	private string ExtraDaAssinaturaDeAdmin(SheetState f) =>
+		$"{_alvoPedido?.Cmd ?? ""}|{string.Join(",", (GameClient.Instance?.Online ?? []).Select(o => o.Id))}";
 }

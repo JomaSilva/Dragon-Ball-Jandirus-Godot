@@ -135,6 +135,8 @@ public sealed partial class GameServer
 
 				// E O ALEM NAO DEIXA SAIR -- pelo mesmo motivo e no mesmo lugar que a prisao da Sala:
 				// a recusa responde ao GESTO, antes de a carencia ser armada.
+				if (OInfernoNaoDeixaSair(pl, p)) break;
+
 				if (OAlemNaoDeixaSair(pl, p)) break;
 
 				Atravessar(pl, p);
@@ -188,6 +190,25 @@ public sealed partial class GameServer
 	/// SE ELA VIRAR "SE O ENMA DEIXOU", e AQUI que a licenca entra.
 	/// ==========================================================================================
 	/// </summary>
+	/// <summary>
+	/// "SEMPRE QUE VOCE TENTAR SAIR VOCE E TELEPORTADO DE VOLTA" (o dono; o `afterlife_alignment_check`
+	/// do DM, `SkyNPCs.dm:235-236`): com a pena correndo, a passagem que sai do Inferno nao atravessa --
+	/// devolve ao portao, com a sentenca na cara.
+	/// </summary>
+	private bool OInfernoNaoDeixaSair(ServerPlayer pl, Passagem p)
+	{
+		long agora = NowMs();
+		if (pl.Ficha.hell_lockout_until == 0 || agora >= pl.Ficha.hell_lockout_until) return false;
+		if (string.Equals(p.Zona, Alem.ZonaDoInferno, StringComparison.OrdinalIgnoreCase)) return false;
+
+		_acabouDeAtravessar[pl.Id] = agora + MsDeCarenciaDePassagem;
+		long resta = pl.Ficha.hell_lockout_until - agora;
+		Avisar(pl, $"as correntes do Inferno te puxam de volta: a sua pena ainda tem {Math.Max(1, resta / 60_000)} minuto(s).");
+		ZoneKey inferno = ZoneKey.Premade(Alem.ZonaDoInferno);
+		MoveToZone(pl.Id, inferno, PortaoDoInferno(inferno));
+		return true;
+	}
+
 	private bool OAlemNaoDeixaSair(ServerPlayer pl, Passagem p)
 	{
 		if (!pl.Ficha.dead || !Alem.EhOAlem(pl.Zone) || Alem.EhOAlem(p.Zona)) return false;

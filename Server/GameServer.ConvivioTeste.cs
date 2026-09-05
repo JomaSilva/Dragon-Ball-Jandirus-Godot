@@ -575,6 +575,34 @@ public partial class GameServer
 				  amigo.Social.RelacaoCom(vitima.Assinatura) == Relacao.MuitoBom,
 				  amigo.Social.RelacaoCom(vitima.Assinatura).ToString());
 
+			// ============================ 8b. CONVIVIO NA PORRADA (dono, 2026-09-05) ============================
+			// "apanhar muito ... o convivio ainda era 0 e eu so conseguia declarar ele como neutro". Cair e
+			// morrer pela mao de alguem rendem convivio nos DOIS lados; golpe que encosta rende com 10% de chance.
+			{
+				cobaiaA.Social.Conhecidos.Remove(cobaiaB.Assinatura);
+				cobaiaB.Social.Conhecidos.Remove(cobaiaA.Assinatura);
+				AmizadeQuebrada(cobaiaA, cobaiaB, morreu: false);
+				Checa("ser DERRUBADO por alguem rende 10 de convivio -- nos dois lados, mesmo entre quem nunca se viu",
+					  cobaiaA.Social.Familiaridade(cobaiaB.Assinatura) == Convivio.FamiliaridadePorQueda
+					  && cobaiaB.Social.Familiaridade(cobaiaA.Assinatura) == Convivio.FamiliaridadePorQueda,
+					  $"{cobaiaA.Social.Familiaridade(cobaiaB.Assinatura)} / {cobaiaB.Social.Familiaridade(cobaiaA.Assinatura)}");
+				AmizadeQuebrada(cobaiaA, cobaiaB, morreu: true);
+				Checa("...e MORRER pela mao dele rende 20 (30 no total)",
+					  cobaiaA.Social.Familiaridade(cobaiaB.Assinatura) == Convivio.FamiliaridadePorQueda + Convivio.FamiliaridadePorMorte
+					  && cobaiaB.Social.Familiaridade(cobaiaA.Assinatura) == Convivio.FamiliaridadePorQueda + Convivio.FamiliaridadePorMorte,
+					  $"{cobaiaA.Social.Familiaridade(cobaiaB.Assinatura)}");
+				int antesDosGolpes = cobaiaA.Social.Familiaridade(cobaiaB.Assinatura);
+				for (int i = 0; i < 400; i++) GolpeDeRival(cobaiaA, cobaiaB);
+				int ganho = cobaiaA.Social.Familiaridade(cobaiaB.Assinatura) - antesDosGolpes;
+				Checa("400 golpes que encostam rendem ~40 de convivio (10% por golpe), e o mesmo tanto pro outro lado",
+					  ganho is >= 20 and <= 65 && cobaiaB.Social.Familiaridade(cobaiaA.Assinatura) - antesDosGolpes == ganho, $"{ganho}");
+				Checa("com oito quedas (80) o 'odio' (50) ja pode ser declarado -- e o 'amor' (200) continua sendo tempo",
+					  Convivio.FamiliaridadeExigida(Relacao.Odio) <= 8 * Convivio.FamiliaridadePorQueda
+					  && Convivio.FamiliaridadeExigida(Relacao.Amor) > 8 * Convivio.FamiliaridadePorQueda, "");
+				Checa("CONTRA-EXEMPLO: bater em si mesmo nao rende convivio nenhum",
+					  Verificando(() => GolpeDeRival(cobaiaA, cobaiaA), () => cobaiaA.Social.Familiaridade(cobaiaA.Assinatura) == 0), "");
+			}
+
 			// ============================ 9. ISSO TUDO SOBREVIVE AO LOGOUT ============================
 			ASobrevivenciaNoDisco(amigo, vitima, algoz, Checa);
 
@@ -866,7 +894,7 @@ public partial class GameServer
 	/// <see cref="RenderiaAmizade"/>. Serve pra provar que o inimigo automatico ligou de verdade no
 	/// eixo que ja existia (`ENMITY_HIT`, `CombatMovement.dm:225`) em vez de so mudar um numero.
 	/// </summary>
-	private static double MedirGolpeDeRival(ServerPlayer vitima, ServerPlayer autor)
+	private double MedirGolpeDeRival(ServerPlayer vitima, ServerPlayer autor)   // instancia: o `GolpeDeRival` passou a sortear convivio pelo `_rng`
 	{
 		double antes = vitima.Social.PontosDeInimizade(autor.Assinatura);
 		GolpeDeRival(vitima, autor);
@@ -969,4 +997,7 @@ public partial class GameServer
 			catch (Exception e) { GD.Print($"[bancada] nao consegui apagar {pasta}: {e.Message}"); }
 		}
 	}
+
+	/// <summary>Roda o gesto e devolve a pergunta -- so pra escrever o contra-exemplo numa linha.</summary>
+	private static bool Verificando(Action gesto, Func<bool> pergunta) { gesto(); return pergunta(); }
 }

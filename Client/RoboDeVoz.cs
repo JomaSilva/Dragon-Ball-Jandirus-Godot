@@ -60,6 +60,7 @@ public partial class RoboDeVoz : Node
 		OFioComJitter();
 		OEmissorNaoPicota();
 		ATorneiraAceitaARajadaHonesta();
+		OGanhoAutomaticoLevantaAVozBaixa();
 
 		// DOIS PLACARES, e os dois tem que fechar: as checagens (o sistema funciona) e as injecoes (a
 		// bancada enxerga quando ele nao funciona). Ver `Injetar`.
@@ -78,12 +79,12 @@ public partial class RoboDeVoz : Node
 	// SINAIS
 	// =====================================================================
 	/// <summary>Um seno de <paramref name="hz"/> Hz, amplitude <paramref name="amp"/>, num quadro.</summary>
-	private static void Somar(short[] alvo, float hz, float amp, int fase = 0)
+	private static void Somar(short[] alvo, float hz, float amp, int fase = 0, int taxa = VozLocal.TaxaDeAmostragem)
 	{
 		for (int i = 0; i < alvo.Length; i++)
 		{
 			double v = alvo[i] / (double)short.MaxValue;
-			v += amp * Math.Sin(2 * Math.PI * hz * (i + fase) / VozLocal.TaxaDeAmostragem);
+			v += amp * Math.Sin(2 * Math.PI * hz * (i + fase) / taxa);
 			alvo[i] = (short)Math.Clamp((int)(v * short.MaxValue), short.MinValue, short.MaxValue);
 		}
 	}
@@ -94,12 +95,12 @@ public partial class RoboDeVoz : Node
 	/// E o instrumento inteiro desta bancada: e ele que transforma "soa abafado" numa comparacao de
 	/// dois numeros. Sem ele so daria pra afirmar que o filtro FOI CHAMADO.
 	/// </summary>
-	private static double Energia(short[] pcm, int n, float hz)
+	private static double Energia(short[] pcm, int n, float hz, int taxa = VozLocal.TaxaDeAmostragem)
 	{
 		double re = 0, im = 0;
 		for (int i = 0; i < n; i++)
 		{
-			double ang = 2 * Math.PI * hz * i / VozLocal.TaxaDeAmostragem;
+			double ang = 2 * Math.PI * hz * i / taxa;
 			double v = pcm[i] / (double)short.MaxValue;
 			re += v * Math.Cos(ang);
 			im += v * Math.Sin(ang);
@@ -131,10 +132,11 @@ public partial class RoboDeVoz : Node
 		// a divergir quando alguem mexer no `Microfone`, e a bancada seguiria verde medindo outro codec.
 		IOpusEncoder enc = Microfone.CriarCodificador();
 
-		IOpusDecoder dec = OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeAmostragem, 1);
+		// CODIFICA EM 24 kHz, DECODIFICA EM 48 -- como o jogo (ver `VozLocal.TaxaDeSaida`).
+		IOpusDecoder dec = OpusCodecFactory.CreateDecoder(VozLocal.TaxaDeSaida, 1);
 
 		var comprimido = new byte[VozLocal.MaxBytesDeQuadro];
-		var volta = new short[VozLocal.AmostrasPorQuadro];
+		var volta = new short[VozLocal.AmostrasPorQuadroDeSaida];
 
 		// DEZ QUADROS, e nao um: o Opus tem estado (o primeiro quadro sai frio e o codificador ainda
 		// esta escolhendo o modo). Medir so o primeiro daria um numero que nao e o de uma conversa.
@@ -151,10 +153,10 @@ public partial class RoboDeVoz : Node
 			somaBytes += n;
 			quadros++;
 
-			int amostras = dec.Decode(comprimido.AsSpan(0, n), volta, VozLocal.AmostrasPorQuadro, false);
-			Conferir(amostras == VozLocal.AmostrasPorQuadro,
-				$"quadro {q}: voltaram as {VozLocal.AmostrasPorQuadro} amostras", $"{amostras}");
-			energiaDeVolta = Energia(volta, amostras, 440f);
+			int amostras = dec.Decode(comprimido.AsSpan(0, n), volta, VozLocal.AmostrasPorQuadroDeSaida, false);
+			Conferir(amostras == VozLocal.AmostrasPorQuadroDeSaida,
+				$"quadro {q}: voltaram as {VozLocal.AmostrasPorQuadroDeSaida} amostras de saida (48 kHz)", $"{amostras}");
+			energiaDeVolta = Energia(volta, amostras, 440f, VozLocal.TaxaDeSaida);
 		}
 
 		double media = somaBytes / (double)quadros;
@@ -192,14 +194,15 @@ public partial class RoboDeVoz : Node
 	/// </summary>
 	private void AParedeCortaOAgudoDeVerdade()
 	{
+		// O FILTRO DA PAREDE RODA NO PCM DECODIFICADO -- de SAIDA, 48 kHz (ver `VozLocal.TaxaDeSaida`).
 		const float grave = 300f, agudo = 3000f;
 
-		var limpo = new short[VozLocal.AmostrasPorQuadro];
-		Somar(limpo, grave, 0.4f);
-		Somar(limpo, agudo, 0.4f);
+		var limpo = new short[VozLocal.AmostrasPorQuadroDeSaida];
+		Somar(limpo, grave, 0.4f, taxa: VozLocal.TaxaDeSaida);
+		Somar(limpo, agudo, 0.4f, taxa: VozLocal.TaxaDeSaida);
 
-		double gAntes = Energia(limpo, limpo.Length, grave);
-		double aAntes = Energia(limpo, limpo.Length, agudo);
+		double gAntes = Energia(limpo, limpo.Length, grave, VozLocal.TaxaDeSaida);
+		double aAntes = Energia(limpo, limpo.Length, agudo, VozLocal.TaxaDeSaida);
 		Conferir(gAntes > 0.1 && aAntes > 0.1,
 			"o sinal de teste tem energia nas DUAS frequencias antes de filtrar",
 			$"grave={gAntes:0.000} agudo={aAntes:0.000}");
@@ -210,17 +213,17 @@ public partial class RoboDeVoz : Node
 		short[] filtrado = [];
 		for (int q = 0; q < 20; q++)
 		{
-			filtrado = new short[VozLocal.AmostrasPorQuadro];
-			Somar(filtrado, grave, 0.4f);
-			Somar(filtrado, agudo, 0.4f);
+			filtrado = new short[VozLocal.AmostrasPorQuadroDeSaida];
+			Somar(filtrado, grave, 0.4f, taxa: VozLocal.TaxaDeSaida);
+			Somar(filtrado, agudo, 0.4f, taxa: VozLocal.TaxaDeSaida);
 			filtro.Aplicar(filtrado, filtrado.Length);
 		}
 
 		Conferir(filtro.Abafada > 0.99, "a rampa chegou ao fim em 20 quadros (0,4 s)",
 			$"{filtro.Abafada:0.000}");
 
-		double gDepois = Energia(filtrado, filtrado.Length, grave);
-		double aDepois = Energia(filtrado, filtrado.Length, agudo);
+		double gDepois = Energia(filtrado, filtrado.Length, grave, VozLocal.TaxaDeSaida);
+		double aDepois = Energia(filtrado, filtrado.Length, agudo, VozLocal.TaxaDeSaida);
 
 		double quedaAgudo = aDepois / aAntes;
 		double quedaGrave = gDepois / gAntes;
@@ -239,11 +242,11 @@ public partial class RoboDeVoz : Node
 		// SEM PAREDE, NADA MUDA. E a guarda contra o oposto: um filtro sempre ligado deixaria o jogo
 		// inteiro abafado, e ninguem teria com o que comparar pra perceber.
 		var solto = new VozOuvida.FiltroDeParede { Parede = false };
-		var intacto = new short[VozLocal.AmostrasPorQuadro];
-		Somar(intacto, agudo, 0.4f);
-		double antes = Energia(intacto, intacto.Length, agudo);
+		var intacto = new short[VozLocal.AmostrasPorQuadroDeSaida];
+		Somar(intacto, agudo, 0.4f, taxa: VozLocal.TaxaDeSaida);
+		double antes = Energia(intacto, intacto.Length, agudo, VozLocal.TaxaDeSaida);
 		solto.Aplicar(intacto, intacto.Length);
-		Conferir(Math.Abs(Energia(intacto, intacto.Length, agudo) - antes) < 1e-6,
+		Conferir(Math.Abs(Energia(intacto, intacto.Length, agudo, VozLocal.TaxaDeSaida) - antes) < 1e-6,
 			"sem parede o sinal passa INTOCADO (nem uma amostra muda)");
 	}
 
@@ -261,12 +264,12 @@ public partial class RoboDeVoz : Node
 	{
 		var filtro = new VozOuvida.FiltroDeParede { Parede = true };
 		var serie = new List<float>();
-		var pcm = new short[VozLocal.AmostrasPorQuadro];
+		var pcm = new short[VozLocal.AmostrasPorQuadroDeSaida];
 
 		for (int q = 0; q < 5; q++)
 		{
 			Array.Clear(pcm);
-			Somar(pcm, 1000f, 0.3f);
+			Somar(pcm, 1000f, 0.3f, taxa: VozLocal.TaxaDeSaida);
 			filtro.Aplicar(pcm, pcm.Length);
 			serie.Add(filtro.Abafada);
 		}
