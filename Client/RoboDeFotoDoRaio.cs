@@ -102,6 +102,8 @@ public partial class RoboDeFotoDoRaio : Node
 			case 5: CenaB_Fotografar(mundo, srv, cli); break;
 			case 6: CenaC_Plantar(mundo, srv, cli); break;
 			case 7: CenaC_TresQuadros(mundo, srv, cli); break;
+			case 8: CenaD_Plantar(mundo, srv, cli); break;
+			case 9: CenaD_Fotografar(mundo, srv, cli); break;
 			default: Fechar(); break;
 		}
 	}
@@ -397,6 +399,86 @@ public partial class RoboDeFotoDoRaio : Node
 
 		// A TIRA DA CENA C -- os tres quadros do arrasto, colados na mesma ordem em que sairam.
 		Montar("user://raio-3-levado-tres.png", desde: _quadros.Count - 3, lado: 288, escala: 2);
+
+		srv.LimparAFoto();
+		Virar(8);
+	}
+
+	// =====================================================================
+	// 8) CENA D: o tronco cortado por quem pisa nele (dono, 2026-09-07)
+	// =====================================================================
+	/// <summary>
+	/// *"caso um jogador encoste no TRONCO de um beam, o beam vai ser cortado e a cabeca nova vai
+	/// colidir com essa pessoa, e a outra parte continua normalmente"*. E a unica cena que atravessa o
+	/// FIO inteiro do corte: o servidor parte o feixe, manda `Nasceu` + `Cortou`, e o que se le aqui e
+	/// o que o cliente DESENHOU -- dois feixes, a cabeca nova na frente de quem pisou, a parte de la
+	/// seguindo. A `--projetilteste` (familia 12) prova o corte no servidor; sem esta cena, um pacote
+	/// errado de `Cortou` deixaria a bancada verde e a tela com o feixe inteiro.
+	/// </summary>
+	private int _raioDaCenaD, _pisou;
+
+	/// <summary>Quantos tiles a cabeca tinha andado quando alguem pisou no tronco -- a medida de ANTES do corte.</summary>
+	private double _andouAntesDoCorte;
+
+	private void CenaD_Plantar(World mundo, Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		if (_t < 0.5) return;   // o feixe da cena C some do snapshot
+		if (mundo.PosicaoLocal is null) { Nota("cena D: sem corpo local"); Fechar(); return; }
+
+		Vector2 rumo = -_rumoDaAgua;
+		_pisou = 0;
+		_raioDaCenaD = srv.RaioDeFoto(cli.LocalId, new Vec2(rumo.X, rumo.Y), alcanceTiles: 24, baseDano: 0.002);
+		Conferir(_raioDaCenaD != 0, "o raio da cena D saiu pelo `Disparar` de producao");
+		if (_raioDaCenaD == 0) { Fechar(); return; }
+		Virar(9);
+	}
+
+	private void CenaD_Fotografar(World mundo, Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		const int T = ZoneCollision.TileSize;
+		Vector2 rumo = -_rumoDaAgua;
+		(bool vivo, _, _, double andou) = srv.RaioDaFoto(cli.LocalId);
+
+		// PRIMEIRO O TRONCO: so quando a cabeca ja esta a 8 tiles e que alguem pisa a 4.
+		if (_pisou == 0)
+		{
+			if (!vivo || _t > 6) { Conferir(false, $"o raio da cena D ganhou tronco antes de morrer (vivo={vivo}, {andou:0.0} tiles)"); Fechar(); return; }
+			if (andou < 8) return;
+			var desloc = new Vec2(rumo.X * 4 * T, rumo.Y * 4 * T);
+			_pisou = srv.ForjarCorpoDeFoto(cli.LocalId, desloc, "Foto: pisou no tronco", 200_000, comEscada: false);
+			_andouAntesDoCorte = andou;
+			Conferir(_pisou != 0, $"o corpo que pisa no tronco entrou no mundo, a 4 tiles da mao (cabeca a {andou:0.0} tiles)");
+			if (_pisou == 0) { Fechar(); return; }
+			_t = 0;
+			return;
+		}
+
+		// DEPOIS O CORTE, com tempo pra `Nasceu` + `Cortou` + um snapshot chegarem e serem desenhados.
+		if (_t < 0.4) return;
+
+		Vector2 corpo = mundo.PosicaoDesenhadaDe(_pisou) ?? Vector2.Zero;
+		// SO OS FEIXES DESTA CENA: o da cena C ainda pode estar no ar (ele vive ate esvaziar), entao
+		// conta-se o que esta a ate 12 tiles de quem pisou -- o raio da cena D inteiro cabe nisso.
+		var feixes = new List<(int Id, Vector2 Cabeca)>();
+		foreach ((int id, Jandirus.Core.Combat.ArteDeKi _, Jandirus.Core.Combat.TipoDeProjetil tipo, Vector2 onde, float _) in mundo.TirosDesenhados())
+			if (tipo == Jandirus.Core.Combat.TipoDeProjetil.Beam && onde.DistanceTo(corpo) < 12 * T) feixes.Add((id, onde));
+
+		Fotografar("user://raio-4-corte.png",
+				   $"CENA D: o tronco cortado por quem pisou nele ({feixes.Count} feixe(s) na tela)",
+				   NaTela(mundo, _pisou));
+
+		(bool vivoDepois, Vec2 cabecaDeCa, _, double andouDepois) = srv.RaioDaFoto(cli.LocalId);
+		Conferir(vivoDepois && andouDepois < _andouAntesDoCorte - 3,
+				 $"no servidor a cabeca do feixe de ca RECUOU ate quem pisou ({_andouAntesDoCorte:0.0} -> {andouDepois:0.0} tiles)");
+		Conferir(feixes.Count == 2, $"na TELA ha DOIS feixes desenhados em volta de quem pisou, depois do corte ({feixes.Count})");
+
+		(int _, Vector2 cabecaDesenhada) = feixes.Find(f => f.Id == _raioDaCenaD);
+		float naFrente = (corpo - cabecaDesenhada).Dot(rumo);
+		Conferir(feixes.Exists(f => f.Id == _raioDaCenaD)
+				 && Mathf.Abs(naFrente - Jandirus.Core.Combat.Feixe.DistanciaDeContato) < 4f,
+				 $"...a cabeca NOVA do feixe de ca esta desenhada NA FRENTE de quem pisou ({naFrente:0.0} px; servidor em {cabecaDeCa})");
+		Conferir(feixes.Exists(f => f.Id != _raioDaCenaD && (f.Cabeca - corpo).Dot(rumo) > 2 * T),
+				 "...e a parte de LA esta desenhada adiante, seguindo viagem");
 
 		srv.LimparAFoto();
 		Fechar();

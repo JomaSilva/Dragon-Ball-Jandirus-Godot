@@ -160,6 +160,9 @@ public partial class GameServer
 			OCustoDoTique();
 			ORaioAraOChaoPorOndePassa();
 			ORaioLevaQuemAcerta();
+			ACabecaFicaNaFrenteDeQuemAcerta();
+			OTroncoSeCortaOndeAlguemEncosta();
+			ApanharDerrubaORaio();
 			ABancadaSeCobra();
 		}
 		finally
@@ -2133,9 +2136,12 @@ public partial class GameServer
 		float dCorpo = (morto.Pos - corpoAntes).Length;
 		float dCabeca = (raio2.Pos - cabecaAntes).Length;
 
-		AfirmarPj("[injecao] com a vitima recusada pelo `PodeSerLevadoPeloFeixe`, a cabeca anda e o "
+		// (2026-09-07: a cabeca que nao pode levar o corpo PARA NA FRENTE dele e o moi -- ela nao o
+		//  atravessa nem o empurra. O que a injecao continua provando e que o CORPO nao anda.)
+		AfirmarPj("[injecao] com a vitima recusada pelo `PodeSerLevadoPeloFeixe`, a cabeca fica na frente dele (moendo) e o "
 				  + "corpo NAO -- a medida da familia 9 mede o arrasto, e nao 'corpo que se mexeu'",
-				  dCabeca > 1f && dCorpo < 0.5f, $"corpo {dCorpo:0.0} px, cabeca {dCabeca:0.0} px");
+				  (dCabeca > 1f || raio2.Encostado) && dCorpo < 0.5f,
+				  $"corpo {dCorpo:0.0} px, cabeca {dCabeca:0.0} px, moendo {raio2.Encostado}");
 	}
 
 	/// <summary>
@@ -2208,6 +2214,268 @@ public partial class GameServer
 		// poderes -- devolveria o mesmo numero pra todo mundo. Mesma pegadinha da bancada do sol.
 		novo.Ficha.Tick(agoraMs: NowMs());
 		return novo;
+	}
+
+	// =====================================================================
+	// 11) A CABECA FICA NA FRENTE DE QUEM ELA ACERTA (dono, 2026-09-07)
+	// =====================================================================
+	/// <summary>
+	/// *"atualmente a cabeca do beam fica SOBRE a pessoa e nao NA FRENTE dela a empurrando e dando
+	/// dano"* -- com a foto. Mede-se a projecao (corpo - cabeca) no rumo do feixe: tem que dar
+	/// `Feixe.DistanciaDeContato`, no impacto e durante o arrasto; e o defeito injetado (a cabeca fica
+	/// onde encostou) tem que ficar vermelho.
+	/// </summary>
+	private void ACabecaFicaNaFrenteDeQuemAcerta()
+	{
+		GD.Print("[projetil] -- 11) A CABECA FICA NA FRENTE DE QUEM ELA ACERTA, E NAO EM CIMA");
+		LimparTudoDaBancada();
+		const int T = ZoneCollision.TileSize;
+
+		// LONGE (arrasto): a cabeca leva o corpo e continua na frente dele o tempo todo.
+		Vec2 raia = CorredorSeco(30);
+		ServerPlayer atira = Forjar("Feixe", raia, bp: 200_000);
+		atira.Facing = Facing.East;
+		ServerPlayer vitima = Forjar("Levado", raia + new Vec2(6 * T, 0), bp: 200_000);
+		Projetil raio = RaioDaBancada(atira, baseDano: 0.002);
+		int t = 0;
+		while (raio.Vivo && raio.Arrastando == 0 && t++ < 300) UmTiqueDeArrasto();
+		float NaFrente() => (vitima.Pos.X - raio.Pos.X) * raio.Rumo.X + (vitima.Pos.Y - raio.Pos.Y) * raio.Rumo.Y;
+
+		AfirmarPj("ao encostar, a cabeca para NA FRENTE do corpo: o centro dela a `DistanciaDeContato` do centro dele",
+				  raio.Arrastando == vitima.Id && Math.Abs(NaFrente() - Feixe.DistanciaDeContato) < 1f,
+				  $"{NaFrente():0.0} px a frente (esperado {Feixe.DistanciaDeContato})");
+		float pior = 0;
+		for (int i = 0; i < 12 && raio.Arrastando == vitima.Id; i++)
+		{
+			UmTiqueDeArrasto();
+			pior = Math.Max(pior, Math.Abs(NaFrente() - Feixe.DistanciaDeContato));
+		}
+		AfirmarPj("...e continua na frente enquanto EMPURRA (o corpo anda o mesmo delta que a cabeca)",
+				  pior < 1f, $"desvio maximo {pior:0.00} px em 12 tiques");
+
+		// PERTO (arremesso): o instante do impacto tambem planta a cabeca na frente.
+		LimparTudoDaBancada();
+		raia = CorredorSeco(30);
+		atira = Forjar("Feixe2", raia, bp: 200_000);
+		atira.Facing = Facing.East;
+		vitima = Forjar("Batido", raia + new Vec2(2 * T, 0), bp: 200_000);
+		raio = RaioDaBancada(atira, baseDano: 0.002);
+		t = 0;
+		while (raio.Vivo && !raio.Encostado && t++ < 60) UmTiqueDeArrasto();
+		AfirmarPj("no impacto de perto tambem: a cabeca para na frente do corpo",
+				  raio.Encostado && Math.Abs(NaFrente() - Feixe.DistanciaDeContato) < 1f,
+				  $"{NaFrente():0.0} px a frente");
+
+		// O DEFEITO INJETADO: a cabeca fica onde encostou -- em cima do corpo, a foto do dono.
+		LimparTudoDaBancada();
+		Feixe.CabecaEmCimaDeTeste = true;
+		raia = CorredorSeco(30);
+		atira = Forjar("Feixe3", raia, bp: 200_000);
+		atira.Facing = Facing.East;
+		vitima = Forjar("Coberto", raia + new Vec2(6 * T, 0), bp: 200_000);
+		raio = RaioDaBancada(atira, baseDano: 0.002);
+		t = 0;
+		while (raio.Vivo && raio.Arrastando == 0 && t++ < 300) UmTiqueDeArrasto();
+		float emCima = NaFrente();
+		Feixe.CabecaEmCimaDeTeste = false;
+		// Sem o plantio a cabeca fica onde o SUB-PASSO a deixou ao encostar -- mais perto que a distancia
+		// de contato, e num lugar que depende do passo (16 px) e nao da regra. E o que a foto mostrava.
+		AfirmarPj("DEFEITO INJETADO (cabeca em cima) fica vermelho: a cabeca mais perto do corpo que a distancia de contato",
+				  raio.Arrastando == vitima.Id && emCima < Feixe.DistanciaDeContato - 1f, $"{emCima:0.0} px a frente");
+		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// 12) O TRONCO SE CORTA ONDE ALGUEM ENCOSTA (dono, 2026-09-07)
+	// =====================================================================
+	/// <summary>
+	/// *"caso um jogador encoste no tronco de um beam e nao necessariamente na cabeca dele, o beam vai
+	/// ser cortado e a cabeca nova do beam vai colidir com essa pessoa, e a outra parte do beam que foi
+	/// cortada vai continuar normalmente"*. E o `Crossed(mob)` do DM (`objects.dm:156-172`) num feixe
+	/// que e um objeto so -- ver `GameServer.Feixe.cs`. Com os tres casos que NAO cortam e o defeito
+	/// injetado.
+	/// </summary>
+	private void OTroncoSeCortaOndeAlguemEncosta()
+	{
+		GD.Print("[projetil] -- 12) O TRONCO SE CORTA ONDE ALGUEM ENCOSTA (a parte de la segue, a de ca ganha cabeca nova)");
+		LimparTudoDaBancada();
+		const int T = ZoneCollision.TileSize;
+
+		Vec2 raia = CorredorSeco(40);
+		ServerPlayer atira = Forjar("Feixe", raia, bp: 200_000);
+		atira.Facing = Facing.East;
+		Projetil raio = RaioDaBancada(atira, baseDano: 0.002);
+		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
+		List<Projetil> lista = ProjeteisDaZona(atira.Zone.Hash);
+		float cabecaAntes = raio.Pos.X;
+		AfirmarPj("(o raio andou e tem tronco: um feixe so na zona)",
+				  lista.Count == 1 && raio.AndouTiles > 6, $"{raio.AndouTiles:0.0} tiles, {lista.Count} feixe(s)");
+
+		// ALGUEM PISA NO TRONCO, a 4 tiles da mao -- longe da cabeca.
+		ServerPlayer x = Forjar("Pisou", raia + new Vec2(4 * T, 0), bp: 200_000);
+		double vidaX = x.Combate!.Corpo.Vida();
+		UmTiqueDeArrasto();
+
+		Projetil? deLa = lista.FirstOrDefault(q => q.NascidoDoCorte == raio.Id);
+		AfirmarPj("o feixe foi CORTADO: nasceu uma parte de la, marcada como nascida deste corte",
+				  deLa != null && lista.Count == 2, $"{lista.Count} feixe(s)");
+		AfirmarPj("a parte de CA ganhou cabeca nova NA FRENTE de quem pisou (`DistanciaDeContato`)",
+				  Math.Abs((x.Pos.X - raio.Pos.X) - Feixe.DistanciaDeContato) < 1f && Math.Abs(raio.Pos.Y - x.Pos.Y) < 1f,
+				  $"cabeca em {raio.Pos}, corpo em {x.Pos}");
+		// O `RaioDaBancada` nao passa pelo canal (a familia 3 e quem mede o canal): o que se afirma aqui e
+		// que a parte de ca continua sendo a ALIMENTADA -- canalizando, com a cauda na boca do cano do dono.
+		AfirmarPj("...e continua sendo o raio alimentado pela mao do dono (canalizando, a cauda na boca do cano)",
+				  raio.Canalizando && (raio.Cauda - BocaDeCano.De(atira.Pos, raio.Rumo)).Length < 1f,
+				  $"canalizando {raio.Canalizando}, cauda {raio.Cauda}, boca {BocaDeCano.De(atira.Pos, raio.Rumo)}");
+		float esperado = (raio.Pos - raio.Cauda).Length / T;
+		AfirmarPj("...e o alcance dela voltou o que a cabeca recuou (`AndouTiles` = da mao ate a cabeca nova)",
+				  Math.Abs(raio.AndouTiles - esperado) < 0.05, $"andou {raio.AndouTiles:0.00} tiles, mao->cabeca {esperado:0.00}");
+		AfirmarPj("...e quem pisou LEVOU a cabeca nova (o `Bump` do DM): esta sendo moido, e perdeu vida",
+				  raio.Encostado && x.Combate.Corpo.Vida() < vidaX, $"encostado {raio.Encostado}, vida {vidaX:0.###} -> {x.Combate.Corpo.Vida():0.###}");
+
+		if (deLa != null)
+		{
+			// A CABECA VELHA ANDOU UM TIQUE antes do corte (o avanco vem antes do corte no tique): ate um
+			// tique de raio a frente de onde ela estava, e nunca atras.
+			AfirmarPj("a parte de LA nasceu do outro lado do corpo, com a cabeca velha na ponta",
+					  deLa.Pos.X >= cabecaAntes && deLa.Pos.X - cabecaAntes < T && Math.Abs(deLa.Cauda.X - (x.Pos.X + Feixe.MeioCorpo)) < 1f,
+					  $"cabeca {deLa.Pos.X:0.0} (velha {cabecaAntes:0.0}), cauda {deLa.Cauda.X:0.0}, corpo {x.Pos.X:0.0}");
+			float comprimento = deLa.Comprimento, cabecaDeLa = deLa.Pos.X;
+			for (int i = 0; i < 6; i++) UmTiqueDeArrasto();
+			AfirmarPj("...e SEGUE NORMALMENTE: a cabeca avanca e o comprimento fica (o trem solto do DM)",
+					  deLa.Vivo && deLa.Pos.X > cabecaDeLa + T && Math.Abs(deLa.Comprimento - comprimento) < 2f,
+					  $"cabeca {cabecaDeLa:0} -> {deLa.Pos.X:0}, comprimento {comprimento:0} -> {deLa.Comprimento:0}");
+			AfirmarPj("...sem ninguem a alimentar (ela nao e o raio do canal)", !deLa.Canalizando);
+			AfirmarPj("...e a parte de CA nao se corta de novo em quem ja esta na frente da cabeca dela",
+					  lista.Count == 2, $"{lista.Count} feixe(s)");
+		}
+
+		// (a) UM CORPO NA FRENTE DA CABECA nao corta: e o impacto de sempre, sem feixe novo.
+		LimparTudoDaBancada();
+		raia = CorredorSeco(40);
+		atira = Forjar("Feixe2", raia, bp: 200_000);
+		atira.Facing = Facing.East;
+		raio = RaioDaBancada(atira, baseDano: 0.002);
+		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
+		lista = ProjeteisDaZona(atira.Zone.Hash);
+		ServerPlayer y = Forjar("NaCabeca", raio.Pos + raio.Rumo * (Feixe.DistanciaDeContato + 4f), bp: 200_000);
+		for (int i = 0; i < 3; i++) UmTiqueDeArrasto();
+		AfirmarPj("quem esta na FRENTE da cabeca leva o impacto de sempre -- nao corta, nao nasce feixe",
+				  lista.Count == 1 && (raio.Encostado || raio.Arrastando == y.Id), $"{lista.Count} feixe(s)");
+
+		// (b) O DONO NAO CORTA O PROPRIO FEIXE -- nem um feixe solto que passe por cima dele.
+		LimparTudoDaBancada();
+		raia = CorredorSeco(40);
+		atira = Forjar("Feixe3", raia, bp: 200_000);
+		atira.Facing = Facing.East;
+		raio = RaioDaBancada(atira, baseDano: 0.002);
+		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
+		lista = ProjeteisDaZona(atira.Zone.Hash);
+		raio.Canalizando = false;                       // solto: a cauda deixa de ser a mao
+		atira.Pos = raio.Cauda + raio.Rumo * (2 * T);   // o dono em cima do proprio tronco
+		UmTiqueDeArrasto();
+		AfirmarPj("o DONO em cima do proprio tronco nao corta nada", lista.Count == 1, $"{lista.Count} feixe(s)");
+
+		// (c) O FEIXE EM DISPUTA nao se corta: o tronco e o cabo de guerra.
+		LimparTudoDaBancada();
+		(ServerPlayer da, ServerPlayer db, DisputaDeKi? disputa) = DoisRaiosDeFrente(12);
+		_ = db;
+		lista = ProjeteisDaZona(da.Zone.Hash);
+		int antesDaDisputa = lista.Count;
+		if (disputa?.A.Feixe is { } fa)
+		{
+			ServerPlayer w = Forjar("NoCabo", fa.Cauda + fa.Rumo * (2 * T), bp: 200_000);
+			_ = w;
+			UmTiqueDoEncontro();
+			AfirmarPj("um corpo no tronco de um feixe EM DISPUTA nao corta: a disputa e quem manda nele",
+					  lista.Count == antesDaDisputa && _emEmbateDeKi.ContainsKey(da.Id), $"{antesDaDisputa} -> {lista.Count} feixe(s)");
+		}
+		else AfirmarPj("(a disputa da familia 12c comecou)", false);
+		LimparEmbatesDaBancada();
+
+		// (d) O DEFEITO INJETADO: com o corte desligado, pisar no tronco nao faz nada.
+		Feixe.SemCorteDeTeste = true;
+		raia = CorredorSeco(40);
+		atira = Forjar("Feixe4", raia, bp: 200_000);
+		atira.Facing = Facing.East;
+		raio = RaioDaBancada(atira, baseDano: 0.002);
+		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
+		lista = ProjeteisDaZona(atira.Zone.Hash);
+		Forjar("PisouEmVao", raia + new Vec2(4 * T, 0), bp: 200_000);
+		UmTiqueDeArrasto();
+		Feixe.SemCorteDeTeste = false;
+		AfirmarPj("DEFEITO INJETADO (corte desligado) fica vermelho: pisar no tronco nao corta e a cabeca segue longe",
+				  lista.Count == 1 && raio.AndouTiles > 6, $"{lista.Count} feixe(s), cabeca a {raio.AndouTiles:0.0} tiles");
+		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// 13) APANHAR DERRUBA O RAIO (fora de disputa)
+	// =====================================================================
+	/// <summary>
+	/// *"caso o personagem seja atacado, agarrado ou qualquer coisa desse tipo, ele cancela o beam
+	/// dele na hora"*. O tiro e o soco, pelos caminhos de producao (`Acertar` e `Atacar`), com o raio
+	/// ainda VIVO quando o canal cai -- senao a medida seria o raio morrendo de velho. O agarrao e a
+	/// disputa tem familia propria na `--embatekiteste` (10).
+	/// </summary>
+	private void ApanharDerrubaORaio()
+	{
+		GD.Print("[projetil] -- 13) APANHAR DERRUBA O RAIO: tiro e soco, fora de disputa");
+		LimparTudoDaBancada();
+		const int T = ZoneCollision.TileSize;
+
+		// UM TIRO DE KI de outro derruba o canal.
+		Vec2 raia = CorredorSeco(20);
+		ServerPlayer canal = Forjar("Canalizador", raia + new Vec2(4 * T, 0), bp: 200_000);
+		canal.Facing = Facing.East;
+		canal.Ficha.Ki = canal.Ficha.MaxKi;
+		ServerPlayer atirador = Forjar("Bolista", raia, bp: 200_000);
+		atirador.Facing = Facing.East;
+		Canalizar(canal, "Ki_Wave", 10 * canal.Ficha.BaseDrain(), SemDeflexao());
+		for (int i = 0; i < 40; i++) { TickDosCanaisDeKi(Protocol.TickSeconds); TickDosProjeteis(Protocol.TickSeconds); }
+		Projetil? raioDele = _canais.GetValueOrDefault(canal.Id)?.Raio;
+		AfirmarPj("(o canalizador esta com o raio na mao)", raioDele is { Vivo: true } && _canais[canal.Id].Atirando);
+
+		Projetil bola = Disparar(atirador, new ReceitaDeProjetil
+		{
+			Tipo = TipoDeProjetil.Blast, BaseDano = 0.002, Deflectivel = false, Nome = "bola de bancada",
+		});
+		int t = 0;
+		bool vivoAoCair = false;
+		while (bola.Vivo && t++ < 90)
+		{
+			TickDosCanaisDeKi(Protocol.TickSeconds);
+			TickDosProjeteis(Protocol.TickSeconds);
+			if (!_canais.ContainsKey(canal.Id)) { vivoAoCair = raioDele is { Vivo: true }; break; }
+		}
+		AfirmarPj("uma bola de ki que ACERTA quem canaliza derruba o raio dele na hora (com o raio ainda vivo)",
+				  bola.Fim == FimDeProjetil.Acertou && !_canais.ContainsKey(canal.Id) && vivoAoCair,
+				  $"fim da bola {bola.Fim}, canal de pe {_canais.ContainsKey(canal.Id)}, raio vivo ao cair {vivoAoCair}");
+
+		// E O SOCO: `Atacar` -> o mesmo funil. Soca todo tique; a recarga recusa os de mais.
+		LimparTudoDaBancada();
+		raia = CorredorSeco(20);
+		canal = Forjar("Canalizador2", raia + new Vec2(2 * T, 0), bp: 200_000);
+		canal.Facing = Facing.East;
+		canal.Ficha.Ki = canal.Ficha.MaxKi;
+		ServerPlayer socador = Forjar("Socador", raia + new Vec2(T, 0), bp: 200_000);
+		socador.Facing = Facing.East;
+		Canalizar(canal, "Ki_Wave", 10 * canal.Ficha.BaseDrain(), SemDeflexao());
+		for (int i = 0; i < 40; i++) { TickDosCanaisDeKi(Protocol.TickSeconds); TickDosProjeteis(Protocol.TickSeconds); }
+		raioDele = _canais.GetValueOrDefault(canal.Id)?.Raio;
+		t = 0;
+		vivoAoCair = false;
+		while (t++ < 100 && _canais.ContainsKey(canal.Id))
+		{
+			Atacar(socador, Protocol.Golpe.Leve);
+			TickCombate(Protocol.TickSeconds);
+			TickDosCanaisDeKi(Protocol.TickSeconds);
+			TickDosProjeteis(Protocol.TickSeconds);
+			if (!_canais.ContainsKey(canal.Id)) vivoAoCair = raioDele is { Vivo: true };
+		}
+		AfirmarPj("um soco que encosta em quem canaliza derruba o raio dele (com o raio ainda vivo)",
+				  !_canais.ContainsKey(canal.Id) && vivoAoCair, $"em {t} tiques; raio vivo ao cair {vivoAoCair}");
+		LimparTudoDaBancada();
 	}
 
 	/// <summary>Tira da bancada tudo que ela pos no mundo. Chamado tambem entre familias.</summary>

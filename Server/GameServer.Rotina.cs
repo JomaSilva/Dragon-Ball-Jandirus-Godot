@@ -186,6 +186,10 @@ public sealed partial class GameServer
 			CustoDeDecolar = Voo.CustoParaLigar(HabilidadeDeVoo(npc), npc.VooRapido),
 			KiParaNadar = Nado.KiParaComecar(npc.Ficha.MaxKi, npc.Ficha.KiMod, npc.Ficha.swimmastery),
 		});
+		// NO LAGO O PASSEIO NAO VALE: um habitante jogado na agua nao tem o que fazer la dentro -- o ponto
+		// de passeio dele e do seco, e nadar ate ele (e depois ate o proximo) e ficar dando voltas no
+		// lago. Com os pes na agua o rumo da rotina e apagado, e a `Travessia` poe o da margem no lugar.
+		if (naAgua) c = c with { Rumo = Vec2.Zero };
 		Comando pronto = Travessia.Atravessar(p, cap, c, ref npc.CarenciaDeAgua, pousarNoSeco: true, out string? porque);
 		if (porque != null && _diagIa && !string.Equals(porque, npc.PorqueDaRotina, StringComparison.Ordinal))
 		{

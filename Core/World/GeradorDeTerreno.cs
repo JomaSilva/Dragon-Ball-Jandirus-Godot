@@ -238,21 +238,10 @@ public sealed class TerrenoGerado
 		int n = Largura * Altura;
 		var bits = new byte[(n + 7) / 8];
 
-		// O PLANO DE IDENTIDADE SAI DE GRACA AQUI: a "identidade do tile" de um planeta gerado e a
-		// propria CLASSE DE TERRENO, que ja esta no `Chao`. Sem ele, a sombra num mundo gerado cairia
-		// no caminho de degradacao (`SemGrupo`) e voltaria a parar na primeira parede -- que e menos
-		// errado, mas nao e o que os planetas pre-feitos fazem.
-		var grupo = new byte[n];
-
 		for (int i = 0; i < n; i++)
-		{
-			if (Chao[i] != (byte)ClasseDeTerreno.Montanha) continue;
-			bits[i >> 3] |= (byte)(1 << (i & 7));
-			// +1 pra nao colidir com o 0, que e "borda do mundo" nos mapas pre-feitos
-			grupo[i] = (byte)(Chao[i] + 1);
-		}
+			if (Chao[i] == (byte)ClasseDeTerreno.Montanha) bits[i >> 3] |= (byte)(1 << (i & 7));
 
-		ZoneCollision vista = ZoneCollision.Montar(Largura, Altura, bits, grupo);
+		ZoneCollision vista = ZoneCollision.Montar(Largura, Altura, bits);
 
 		// ============================ O QUE ESCONDE HERDA A BEIRADA (OU A FALTA DELA) ============================
 		// Fora do bitset, `BlockedCell` devolve `!SemBorda` -- e num mundo sem beirada (a dimensao

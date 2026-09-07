@@ -143,6 +143,20 @@ public static class EmbateDeKi
 	/// </summary>
 	public const double MargemDoEmpate = 5;
 
+	/// <summary>
+	/// QUANTO UM GOLPE SOFRIDO NO MEIO DA DISPUTA CUSTA, em apertos que o OUTRO lado ganha. **NOVO** --
+	/// dono, 2026-09-07: *"atacar um personagem que ta usando beam em colisao faz ele sofrer
+	/// desvantagem no clash dele"*.
+	///
+	/// O numero e o `BCL_NPC_CPS`: um golpe vale um segundo de apertos de um NPC de referencia. Ele nao
+	/// derruba a disputa (isso continua sendo o `side_ok`: morrer, cair, soltar), so a inclina -- e com
+	/// a vantagem de quem recebe os apertos, como qualquer aperto.
+	/// </summary>
+	public const double ApertosQueUmGolpeCusta = ApertosPorSegundoBase;
+
+	/// <summary>DEFEITO INJETADO (bancada): as duas cabecas no MESMO ponto de encontro -- a sobreposicao da foto do dono.</summary>
+	public static bool CabecasNoMesmoPontoDeTeste;
+
 	// =====================================================================
 	// O PODER DE CADA LADO
 	// =====================================================================

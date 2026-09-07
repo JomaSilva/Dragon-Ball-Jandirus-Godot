@@ -789,20 +789,16 @@ public sealed partial class GameServer
 						mapaLido = true;
 					}
 
-					// ============================ DOIS FEIXES SE ENCONTRARAM? ============================
-					// O gatilho por PROXIMIDADE do DM (`objects.dm:246-254`), e o comentario de la diz
-					// por que ele existe alem do frontal: dois feixes retos em fileiras vizinhas se
-					// atravessavam sem nunca colidir, e so os teleguiados chegavam a disputar.
-					//
-					// A PODA E O QUE FAZ ISTO CABER NO TIQUE. A varredura interna e O(tiros da zona),
-					// mas o portao externo e "cabeca de raio, e ainda canalizada" -- no maximo um por
-					// pessoa com raio na mao. Uma zona com 256 bolas e zero raios paga UMA comparacao
-					// de tipo por bola. Medido na familia 7 da bancada.
-					// ================================================================================
-					if (p.Tipo == TipoDeProjetil.Beam && p.Canalizando && !p.EmEmbate && !p.JaDisputou)
-						TentarEmbateDeFeixes(p, lista);
+					// O ENCONTRO DE DOIS FEIXES (a disputa) e o cruzamento sao testados DENTRO do avanco,
+					// sub-passo a sub-passo -- ver o passo 6-pre do `AndarProjetil`. Ja moraram aqui, uma
+					// vez por tique: a cabeca anda ate 53 px por tique e a outra tambem, e as duas se
+					// ATRAVESSAVAM entre dois tiques sem o gatilho de 32 px ver nada -- "os beams tao se
+					// sobrepondo as vezes" (dono, 2026-09-07). A poda continua a mesma (so cabeca de raio
+					// canalizada testa disputa), entao o custo de uma zona cheia de bolas nao mudou.
+					AndarProjetil(p, dt, corpos, mapa, chave, temChao, noEspaco, lista);
 
-					AndarProjetil(p, dt, corpos, mapa, chave, temChao, noEspaco);
+					// QUEM ENCOSTOU NO TRONCO CORTA O FEIXE -- ver `GameServer.Feixe.cs`.
+					CortarOndeEncostaram(p, corpos, lista, zona);
 				}
 
 				if (p.Vivo) continue;
@@ -827,10 +823,15 @@ public sealed partial class GameServer
 	/// A zona e o ESPACO? Liga o unico alvo do jogo que nao e corpo nem parede -- o disco de um
 	/// planeta visto de fora. Ver o passo 6a-quater e <see cref="MundoNoCaminho"/>.
 	/// </param>
+	/// <param name="lista">
+	/// Os tiros desta zona -- os OUTROS feixes que esta cabeca pode encontrar (a disputa, de frente; a
+	/// espera, cruzando). Ver o passo 6-pre.
+	/// </param>
 	private void AndarProjetil(Projetil p, double dt, List<ServerPlayer> corpos, ZoneCollision? mapa,
-							   ZoneKey zona, bool temChao, bool noEspaco)
+							   ZoneKey zona, bool temChao, bool noEspaco, List<Projetil> lista)
 	{
 		ServerPlayer? dono = _players.GetValueOrDefault(p.Dono);
+		p.Esperando = false;
 
 		// 0) AINDA SENDO FORMADA (`Projetil.Inerte`, lote G12): nao anda, nao colide, nao gasta alcance.
 		//    So o prazo corre -- e o alvo de treino do Ki Targets, que vive 5 s, e quem precisa disso.
@@ -1001,6 +1002,20 @@ public sealed partial class GameServer
 
 			Vec2 nova = p.Pos + p.Rumo * passo;
 
+			// 6-pre) OUTRO FEIXE NO CAMINHO (dono, 2026-09-07). De FRENTE, a disputa comeca aqui -- e a
+			//        cabeca passa a ser do embate. CRUZANDO, quem bate no tronco (ou na cabeca mais forte)
+			//        do outro ESPERA: o passo nao e dado e o alcance nao paga por ele. Ver `GameServer.Feixe.cs`.
+			if (p.Tipo == TipoDeProjetil.Beam)
+			{
+				if (p.Canalizando && !p.JaDisputou && TentarEmbateDeFeixes(p, nova, lista)) return;
+				if (TroncoAlheioNoCaminho(p, nova, lista) || CabecaAlheiaNoCaminho(p, nova, lista))
+				{
+					p.Esperando = true;
+					andado -= passo;
+					break;
+				}
+			}
+
 			// 6a) O CENARIO. Quem voa alto atravessa -- a mesma regra do corpo (`AtravessaCenario`),
 			//     e ela e o que faz um raio disparado do alto passar por cima do muro.
 			if (mapa != null && !Voo.AtravessaCenario(p.Altitude) && mapa.BlockedAt(nova))
@@ -1120,7 +1135,13 @@ public sealed partial class GameServer
 			//  pro feixe sem ninguem entender por que.)
 			if (p.Arrastando != 0 && o.Id == p.Arrastando && p.Encostado) continue;
 
-			if ((o.Pos - p.Pos).LengthSquared > Projetil.RaioDeImpacto * Projetil.RaioDeImpacto) continue;
+			// O RAIO ENCOSTA COM A FRENTE (dono, 2026-09-07): o centro da cabeca a `DistanciaDeContato` do
+			// centro do corpo e a frente dela na beirada dele -- que e exatamente onde `PlantarACabecaNaFrenteDe`
+			// a deixa. Com o raio da cabeca sozinho (16 px) a cabeca plantada a 24 px nunca mais "encostava",
+			// e um raio segurado em cima de alguem parava de moer: medido na familia 9 (2,5 moidas/s em vez
+			// de 5). A bola continua sendo o raio dela: ela estoura no contato, nao fica na frente de ninguem.
+			float alcance = p.Tipo == TipoDeProjetil.Beam ? Feixe.DistanciaDeContato + 0.5f : Projetil.RaioDeImpacto;
+			if ((o.Pos - p.Pos).LengthSquared > alcance * alcance) continue;
 
 			// A ALTURA MANDA: um raio rasante nao acerta quem esta duas camadas acima, e quem esta
 			// no chao nao e alvo de quem passa alto. Mesma assimetria do soco (`Voo.PodeAcertar`).
@@ -1268,6 +1289,10 @@ public sealed partial class GameServer
 		ResolverDesfecho(dono, alvo, r);
 		AnunciarGolpe(dono, alvo, r, nivel: 2);
 
+		// APANHOU COM UM RAIO NA MAO (dono, 2026-09-07): fora de disputa o raio DELE cai; dentro dela o
+		// golpe pesa no medidor. Um funil so pra soco, tiro, arremesso e agarrao -- ver `GameServer.Feixe.cs`.
+		AoLevarGolpeComRaioNaMao(alvo, dono);
+
 		// 5) O EMPURRAO, e ele tem DOIS RAMOS que se excluem -- o `if`/`else` do
 		//    `Projectiles.dm:573-591`, com o corte em 4 tiles que as duas fontes escrevem igual
 		//    (`beam_stun_start = 4` no DU, `maxdistance-distance <= 4` no Finale).
@@ -1299,6 +1324,8 @@ public sealed partial class GameServer
 		//    alguem ser diferente de acertar uma bola nele.
 		if (p.Tipo == TipoDeProjetil.Beam)
 		{
+			// NA FRENTE DELE, e nao em cima (dono, 2026-09-07) -- ver `PlantarACabecaNaFrenteDe`.
+			PlantarACabecaNaFrenteDe(p, alvo);
 			p.Encostado = true;
 			p.AteMoerDeNovo = Projetil.SegundosPorCicloDeBeam;
 			return true;   // a cabeca para aqui neste tique; ela nao morreu
@@ -1602,63 +1629,6 @@ public sealed partial class GameServer
 	{
 		if (!_projeteis.TryGetValue(hash, out List<Projetil>? l)) _projeteis[hash] = l = [];
 		return l;
-	}
-
-	/// <summary>
-	/// OS TIROS DE UMA ZONA DENTRO DO SNAPSHOT -- o segundo bloco, depois dos corpos.
-	///
-	/// SEMPRE ESCREVE, mesmo com zero: o leitor do outro lado nao tem como adivinhar que o bloco
-	/// nao veio, e um pacote de tamanho variavel sem marcador e o jeito classico de dessincronizar
-	/// um protocolo binario em silencio. Zero tiro custa DOIS bytes.
-	/// </summary>
-	/// <param name="perto">
-	/// ============================ O RECORTE DO ESPACO ============================
-	/// Nulo nas zonas normais: quem esta na zona ve a zona inteira, e o bloco sai igual pra todo
-	/// mundo (um buffer, uma escrita).
-	///
-	/// No ESPACO nao da: a zona e UMA pro universo inteiro, entao "todos os tiros da zona" seria
-	/// todo tiro dado em qualquer canto da galaxia. Com a posicao na mao, o corte e o MESMO que o
-	/// bloco de corpos logo acima ja usa (<see cref="Espaco.PertoDeMim"/>, chunks vizinhas) -- e nao
-	/// uma segunda nocao de "perto".
-	///
-	/// O `Nasceu`/`Morreu` continua indo pra zona inteira de proposito: e por ele que o cliente
-	/// CRIA o desenho (tipo, arte, escala, altura), e um tiro que nascesse longe e voasse pra ca
-	/// chegaria sem nunca ter sido criado. Este bloco so MOVE o que ja existe.
-	/// ==========================================================================
-	/// </param>
-	private void EscreverProjeteis(NetDataWriter w, ulong hash, Vec2? perto = null)
-	{
-		if (!_projeteis.TryGetValue(hash, out List<Projetil>? l) || l.Count == 0)
-		{
-			w.Put((ushort)0);
-			return;
-		}
-
-		if (perto is not { } onde)
-		{
-			w.Put((ushort)l.Count);
-			foreach (Projetil p in l)
-				new ProjetilState
-				{
-					Id = p.Id, Pos = p.Pos, Tipo = (byte)p.Tipo, Cauda = p.Cauda,
-				}.Write(w);
-			return;
-		}
-
-		// DUAS VOLTAS, e nao uma lista temporaria: o contador vem ANTES dos itens no fio, e alocar
-		// uma lista por jogador por tique num snapshot de 30 Hz seria lixo por quadro por pessoa.
-		ushort quantos = 0;
-		foreach (Projetil p in l) if (Espaco.PertoDeMim(onde, p.Pos)) quantos++;
-
-		w.Put(quantos);
-		foreach (Projetil p in l)
-		{
-			if (!Espaco.PertoDeMim(onde, p.Pos)) continue;
-			new ProjetilState
-			{
-				Id = p.Id, Pos = p.Pos, Tipo = (byte)p.Tipo, Cauda = p.Cauda,
-			}.Write(w);
-		}
 	}
 
 	/// <summary>

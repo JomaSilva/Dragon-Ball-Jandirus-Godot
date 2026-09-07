@@ -252,6 +252,7 @@ public sealed partial class GameServer
 		// com um terco da forca (`namekian.dm:241`). Ver `AlvoDoBracoEsticadoG11` / `FatorDoBracoG11`.
 		if (AlvoDoBracoEsticadoG11(pl) is { } longe)
 		{
+			if (RecusarAgarrarQuemDisputa(pl, longe)) return;
 			_agarroesEsticadosG11.Add(pl.Id);
 			Prender(pl, longe);
 			longe.ForcaDeQuemMeSegura /= FatorDoBracoG11(pl);
@@ -266,6 +267,8 @@ public sealed partial class GameServer
 			return;
 		}
 
+		// NINGUEM AGARRA QUEM ESTA NUMA COLISAO DE KI (dono, 2026-09-07) -- ver `GameServer.Feixe.cs`.
+		if (RecusarAgarrarQuemDisputa(pl, alvo)) return;
 		Prender(pl, alvo);
 	}
 
@@ -292,6 +295,10 @@ public sealed partial class GameServer
 		// usa, entao de graca vem o resto: o corpo largado de quem esta em transe acorda, o NPC
 		// pacifico revida (`:178-180`, o `foundTarget` de la) e o rancor e registrado.
 		MarcarAgressao(d, a);
+
+		// AGARRADO, O RAIO CAI NA HORA (dono, 2026-09-07) -- e quem esta em DISPUTA nem chega aqui
+		// (`RecusarAgarrarQuemDisputa`). Ver `GameServer.Feixe.cs`.
+		AoLevarGolpeComRaioNaMao(d, a);
 
 		Avisar(a, $"você agarra {d.Name}! Ande pra arremessá-lo, ou aperte de novo pra carregá-lo.");
 		AvisarSePessoa(d, $"{a.Name} agarra você! Ande pra tentar se soltar.");

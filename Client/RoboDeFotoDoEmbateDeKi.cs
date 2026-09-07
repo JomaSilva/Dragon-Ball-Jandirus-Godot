@@ -357,13 +357,14 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 		}
 		if (n == 0) return 0;
 
-		// ============================ AS DUAS CABECAS ESTAO NO MESMO PONTO -- E ESSA E A REGRA ============================
+		// ============================ A MEDIA DAS DUAS CABECAS E O ENCONTRO -- E ESSA E A REGRA ============================
 		// A primeira versao atribuia cada cabeca ao duelista MAIS PERTO dela, e isso desmoronava
 		// justamente na foto que a familia existe pra tirar: com o medidor em 79 o encontro ja caminhou
 		// pra perto de B, entao as DUAS cabecas ficam mais perto de B e o feixe de A media zero.
 		//
-		// A leitura certa nao precisa saber de quem e cada cabeca, porque elas sao o MESMO ponto (o
-		// `MoverOEncontro` escreve `Feixe.Pos = d.Ponto` nas duas): o comprimento do feixe de cada um e a
+		// A leitura certa nao precisa saber de quem e cada cabeca: desde 2026-09-07 elas ficam um RAIO
+		// de cada lado do ponto de contato (`MoverOEncontro`, "se empurrando" e nao uma em cima da
+		// outra), e a MEDIA das duas e exatamente o encontro. O comprimento do feixe de cada um e a
 		// distancia do encontro ate o CORPO dele. Enquanto o dono alimenta o raio, a cauda e a mao dele
 		// -- entao essa distancia e o feixe inteiro, e e exatamente o que estica e encolhe na foto.
 		// ==============================================================================================================

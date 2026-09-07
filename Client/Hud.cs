@@ -106,11 +106,22 @@ public partial class Hud : CanvasLayer
 		// O CONVITE DO TORNEIO, no canto inferior direito (pedido do dono, 2026-09-06). Ver `PainelDoTorneio`.
 		_torneio = new PainelDoTorneio { Name = "Torneio" };
 		raiz.AddChild(_torneio);
+		// O CHAVEAMENTO (centro, abre sozinho quando a chave nasce) e o canto "Assistir torneio"
+		// (inferior esquerdo, pra quem espera a vez ou nao participa). Dono, 2026-09-07.
+		// O CHAVEAMENTO MORA NUMA CAMADA ACIMA DO CHAT (o chat e a camada 2, o HUD a 1): e uma janela, e
+		// a foto da bancada mostrou o chat desenhado POR CIMA dela. Abaixo do menu de pause (20).
+		_chave = new PainelDaChave { Name = "Chave" };
+		var camadaDaChave = new CanvasLayer { Name = "CamadaDaChave", Layer = 3 };
+		AddChild(camadaDaChave);
+		camadaDaChave.AddChild(_chave);
+		_assistir = new PainelDeAssistir { Name = "Assistir" };
+		raiz.AddChild(_assistir);
 
 		if (GameClient.Instance is { } cli)
 		{
 			cli.ConviteDeTorneio += AoConviteDeTorneio;
 			cli.ConviteDeTorneioFechou += AoFecharConviteDeTorneio;
+			cli.ChaveDeTorneio += AoChaveDeTorneio;
 			cli.SheetUpdated += Mostrar;
 			cli.AtributosRecebidos += MostrarPoderes;
 			cli.ActivityChanged += MostrarAtividade;
@@ -135,6 +146,26 @@ public partial class Hud : CanvasLayer
 		cli.LetalidadeMudou -= AoMudarLetalidade;
 		cli.ConviteDeTorneio -= AoConviteDeTorneio;
 		cli.ConviteDeTorneioFechou -= AoFecharConviteDeTorneio;
+		cli.ChaveDeTorneio -= AoChaveDeTorneio;
+	}
+
+	private PainelDaChave? _chave;
+	private PainelDeAssistir? _assistir;
+
+	/// <summary>O retrato chega: os dois paineis e o mundo (a camera do espectador) leem o mesmo pacote.</summary>
+	private void AoChaveDeTorneio(ChaveNaTela c)
+	{
+		int eu = GameClient.Instance?.LocalId ?? 0;
+		_chave?.Receber(c, eu);
+		_assistir?.Receber(c, eu);
+		World.Instancia?.AoReceberChave(c);
+	}
+
+	/// <summary>ABRE/FECHA O CHAVEAMENTO. Sem chave na mao, pede ao servidor (`trn_chave`).</summary>
+	public void AlternarChave()
+	{
+		if (_chave is { TemChave: true }) _chave.Alternar();
+		else GameClient.Instance?.SendVerbo("trn_chave");
 	}
 
 	private PainelDoTorneio? _torneio;

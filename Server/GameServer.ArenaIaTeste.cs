@@ -288,6 +288,59 @@ public sealed partial class GameServer
 				_rotina.MargemDaArenaTiles = guardada;
 				Descartar(a, alvo);
 			}
+
+			GD.Print("[arenaia] -- 6) a altura: os andares que se acertam, e o voador que acompanha o alvo (dono, 2026-09-07) --");
+			{
+				// A TABELA, como o dono a ditou (2026-09-07): rasante bate no chao e nao leva; do chao nao se
+				// alcanca quem voa; dois voando se acertam com ate um andar de diferenca; dois ou mais, ninguem.
+				Checa("regra: andar 1 acerta o chao; o chao NAO acerta o andar 1",
+					  Jandirus.Core.World.Voo.PodeAcertar(1, 0) && !Jandirus.Core.World.Voo.PodeAcertar(0, 1));
+				Checa("regra: dois voando com UM andar de diferenca se acertam (1<->2, 2<->3), nos dois sentidos",
+					  Jandirus.Core.World.Voo.PodeAcertar(1, 2) && Jandirus.Core.World.Voo.PodeAcertar(2, 1)
+					  && Jandirus.Core.World.Voo.PodeAcertar(2, 3) && Jandirus.Core.World.Voo.PodeAcertar(3, 2));
+				Checa("regra: com dois andares de diferenca ninguem se acerta (1<->3, 2->chao, 3->chao)",
+					  !Jandirus.Core.World.Voo.PodeAcertar(1, 3) && !Jandirus.Core.World.Voo.PodeAcertar(3, 1)
+					  && !Jandirus.Core.World.Voo.PodeAcertar(2, 0) && !Jandirus.Core.World.Voo.PodeAcertar(3, 0) && !Jandirus.Core.World.Voo.PodeAcertar(0, 2));
+				Checa("regra: tudo o que te acerta, voce ve (`PodeAcertar` dentro de `Enxerga`)",
+					  Enumerable.Range(0, 4).All(a => Enumerable.Range(0, 4).All(b => !Jandirus.Core.World.Voo.PodeAcertar(a, b) || Jandirus.Core.World.Voo.Enxerga(b, a))));
+
+				float meioDoAndar(int andar) => (andar - 0.5f) * (Jandirus.Core.World.Voo.AlturaMaxima / Jandirus.Core.World.Voo.Andares);
+				ServerPlayer alvo = Forjar("altura: alvo", centro + Tiles(3, 0), comCerebro: false);
+				ServerPlayer v = Forjar("altura: voador", centro - Tiles(3, 0), perfil: PerfilDeCombate.Completo, naArena: false);
+				EnsinarAVoar(v);
+				v.Cerebro!.Inteligencia = 0.9;   // esperto o bastante pra pairar rasante (a receita do andar 1)
+				Armar(v);
+				int maiorAndar = 0;
+				void Correr(int tiques, Action? segurarOAlvo = null)
+				{
+					for (int i = 0; i < tiques; i++)
+					{
+						segurarOAlvo?.Invoke();
+						v.Ficha.Ki = v.Ficha.MaxKi;   // o Ki nao entra nesta pergunta
+						Tiques(1, v, alvo);
+						maiorAndar = Math.Max(maiorAndar, Jandirus.Core.World.Voo.Andar(v.Altitude));
+					}
+				}
+				Correr(300);
+				Checa("contra um alvo NO CHAO o voador fica no andar 1 (rasante) e nunca sobe ao 2",
+					  maiorAndar == 1 && Jandirus.Core.World.Voo.Andar(v.Altitude) <= 1, $"maior andar {maiorAndar}, agora {Jandirus.Core.World.Voo.Andar(v.Altitude)}");
+
+				void AlvoNoAndar(int andar) { alvo.Voando = true; alvo.Altitude = meioDoAndar(andar); alvo.Ficha.Ki = alvo.Ficha.MaxKi; }
+				maiorAndar = 0;
+				Correr(300, () => AlvoNoAndar(2));
+				Checa("o alvo sobe ao andar 2: o voador SEGUE (andar 2)", Jandirus.Core.World.Voo.Andar(v.Altitude) == 2, $"andar {Jandirus.Core.World.Voo.Andar(v.Altitude)}");
+				Checa("...sem passar dele (nunca no 3)", maiorAndar <= 2, $"maior {maiorAndar}");
+				Correr(300, () => AlvoNoAndar(3));
+				Checa("o alvo sobe ao andar 3: o voador segue ate o 3", Jandirus.Core.World.Voo.Andar(v.Altitude) == 3, $"andar {Jandirus.Core.World.Voo.Andar(v.Altitude)}");
+				Correr(300, () => AlvoNoAndar(1));
+				Checa("o alvo desce ao andar 1: o voador DESCE junto (andar 1)", Jandirus.Core.World.Voo.Andar(v.Altitude) == 1, $"andar {Jandirus.Core.World.Voo.Andar(v.Altitude)}");
+				alvo.Voando = false;
+				alvo.Altitude = 0f;
+				Correr(300);
+				Checa("o alvo pousa: o voador volta ao andar 1 rasante (ou pousa), nunca fica alto sobre quem esta no chao",
+					  Jandirus.Core.World.Voo.Andar(v.Altitude) <= 1, $"andar {Jandirus.Core.World.Voo.Andar(v.Altitude)}");
+				Descartar(v, alvo);
+			}
 		}
 		finally
 		{

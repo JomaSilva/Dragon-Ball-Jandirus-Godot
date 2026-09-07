@@ -444,6 +444,12 @@ public partial class RoboDeVista : Node
 			esperado
 				? $"{cena}: EU VEJO {Alvo} -- o corpo dele esta desenhado na minha tela"
 				: $"{cena}: EU **NAO** VEJO {Alvo} -- o corpo dele NAO esta na minha tela");
+		// A SOMBRA DE QUEM SOME POR ALTURA (dono, 2026-09-07): o corpo nao esta na tela, mas a mancha no
+		// chao, no ponto onde ele estaria, esta -- e nao esta quando ele e visto (ai a sombra e a dele).
+		Conferir(mundo.SombraDoAltoVisivelDeTeste(_idDoOutro) == !esperado,
+			esperado
+				? $"{cena}: como eu o vejo, NAO ha sombra 'de fora' dele (a sombra que ha e a do proprio corpo)"
+				: $"{cena}: mesmo sem ve-lo, a SOMBRA dele esta no chao onde ele estaria");
 
 		// ---- o consumidor 1: o CHAT LOCAL ----
 		// Ele NAO corta por altura, e isso e informacao pro dono decidir: na fase ALTO o de baixo

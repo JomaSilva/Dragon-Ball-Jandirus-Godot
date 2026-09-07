@@ -1,4 +1,4 @@
-﻿namespace Jandirus.Core.World;
+namespace Jandirus.Core.World;
 
 /// <summary>
 /// A geometria de uma zona, do jeito que o SERVIDOR consegue usar: 1 bit por celula.
@@ -52,25 +52,6 @@ public sealed class ZoneCollision
 	private readonly byte[] _bits;
 
 	/// <summary>
-	/// QUE TILE E CADA CELULA -- um byte por celula, ou nulo se este arquivo nao trouxer o plano.
-	///
-	/// ============================ PRA QUE SERVE ============================
-	/// So pra SOMBRA, e por um pedido preciso do dono: um muro contiguo e um obstaculo so, mas
-	/// **so quando e o mesmo tile**. Sem isso, uma cerca de madeira encostada num muro de pedra
-	/// vira um bloco unico e a sombra atravessa os dois -- foi o que ele fotografou.
-	///
-	/// O NUMERO NAO SIGNIFICA NADA SOZINHO. E um indice numa paleta por mapa, criada na ordem em
-	/// que os tiles apareceram. So a IGUALDADE importa: "esta celula e o mesmo desenho daquela?".
-	/// Comparar entre mapas diferentes nao quer dizer nada.
-	///
-	/// ZERO E RESERVADO pra "celula cega sem tile" -- a borda do mundo (`/turf/Other/Blank`), que
-	/// e densa e nao tem icone. Sao mais de um milhao de celulas assim nos 40 mapas, e sem um id
-	/// proprio elas se juntariam a qualquer parede vizinha.
-	/// =======================================================================
-	/// </summary>
-	private readonly byte[]? _grupo;
-
-	/// <summary>
 	/// O PLANO DA AGUA -- 1 bit por celula, ou nulo se esta zona nao tiver agua nenhuma.
 	///
 	/// ============================ POR QUE UM PLANO E NAO UM BIT DO `_bits` ============================
@@ -119,23 +100,23 @@ public sealed class ZoneCollision
 	/// ==================================================================================================
 	///
 	/// DE ONDE VEM: do arquivo `.duro` gravado ao lado do `.col` -- arquivo SEPARADO pelo mesmo
-	/// motivo que o `.agua` (a cauda do `.col` ja tem dono: o plano de grupo da sombra), e ausente
-	/// significa "nada duro nesta zona", que e a verdade nas zonas geradas por semente.
+	/// motivo que o `.agua` (um `.col` antigo continua abrindo, e ninguem paga um plano que nao
+	/// tem), e ausente significa "nada duro nesta zona", que e a verdade nas zonas geradas por semente.
 	/// </summary>
 	private byte[]? _duro;
 
-	private ZoneCollision(int w, int h, byte[] bits, byte[]? grupo)
+	private ZoneCollision(int w, int h, byte[] bits)
 	{
-		Width = w; Height = h; _bits = bits; _grupo = grupo;
+		Width = w; Height = h; _bits = bits;
 	}
 
 	/// <summary>
-	/// Cabecalho "JCOL" + uint16 largura + uint16 altura + bitset em ordem de linha, e OPCIONALMENTE
-	/// um plano de 1 byte por celula logo depois.
+	/// Cabecalho "JCOL" + uint16 largura + uint16 altura + bitset em ordem de linha. So isso, em toda
+	/// a familia (`.col`, `.vis`, `.agua`, `.duro`, `.nuvem`): o que vier depois do bitset e ignorado.
 	///
-	/// O PLANO E OPCIONAL DE PROPOSITO: o `.col` (que o servidor le) nao o carrega, e um `.vis`
-	/// antigo continua abrindo. Quem nao tiver o plano simplesmente nao tem a regra de tile -- a
-	/// sombra volta a tratar cega como cega, que era o comportamento anterior.
+	/// O `.vis` carregou, de 2026-08-03 a 2026-09-07, um plano de identidade de tile (um byte por
+	/// celula) que so a sombra lia -- e a sombra deixou de atravessar muros, que era o unico motivo
+	/// dele (ver `Client/Visao.cs`). Os 40 arquivos foram reescritos sem a cauda.
 	/// </summary>
 	public static ZoneCollision? Load(byte[] data)
 	{
@@ -148,22 +129,11 @@ public sealed class ZoneCollision
 
 		var bits = new byte[precisa];
 		Array.Copy(data, 8, bits, 0, precisa);
-
-		byte[]? grupo = null;
-		if (data.Length >= 8 + precisa + w * h)
-		{
-			grupo = new byte[w * h];
-			Array.Copy(data, 8 + precisa, grupo, 0, w * h);
-		}
-		return new ZoneCollision(w, h, bits, grupo);
+		return new ZoneCollision(w, h, bits);
 	}
 
-	/// <summary>
-	/// Monta em MEMORIA (o planeta procedural nao tem arquivo). O <paramref name="grupo"/> pode ser
-	/// nulo; se vier, tem que ter exatamente w*h bytes.
-	/// </summary>
-	public static ZoneCollision Montar(int w, int h, byte[] bits, byte[]? grupo = null) =>
-		new(w, h, bits, grupo != null && grupo.Length == w * h ? grupo : null);
+	/// <summary>Monta em MEMORIA (o planeta procedural nao tem arquivo).</summary>
+	public static ZoneCollision Montar(int w, int h, byte[] bits) => new(w, h, bits);
 
 	// =====================================================================
 	// A AGUA -- a terceira classe de celula. Ver ClasseDeAgua.
@@ -186,9 +156,9 @@ public sealed class ZoneCollision
 	/// proposito: e o mesmo formato, so que respondendo outra pergunta, e reusar o cabecalho
 	/// evita uma segunda serializacao pra manter em dia.
 	///
-	/// E um arquivo SEPARADO e nao uma cauda do `.col` porque a cauda do `.col` ja tem dono: o
-	/// <see cref="Load"/> le qualquer coisa depois do bitset como o plano de GRUPO da sombra.
-	/// Anexar agua ali faria todo lago virar identidade de tile.
+	/// E um arquivo SEPARADO e nao uma cauda do `.col` porque o `.col` responde UMA pergunta ("para
+	/// o corpo?") e todo leitor dele -- servidor, cliente, conversor -- teria que aprender o que vem
+	/// depois do bitset. Um arquivo por pergunta, e cada um abre sozinho.
 	///
 	/// Devolve false (e nao lanca) quando o arquivo nao existe, nao e JCOL, ou descreve um mapa de
 	/// outro tamanho -- os tres casos em que a resposta honesta e "esta zona nao tem agua marcada".
@@ -414,27 +384,6 @@ public sealed class ZoneCollision
 		Bloqueia((int)MathF.Floor(pos.X / TileSize), (int)MathF.Floor(pos.Y / TileSize), modo);
 
 	/// <summary>
-	/// O grupo visual desta celula. 255 = nao sei (arquivo sem plano) -- e um valor que NUNCA
-	/// casa consigo mesmo no teste de continuidade, entao "sem plano" degrada pra regra antiga em
-	/// vez de juntar tudo num bloco so.
-	/// </summary>
-	public byte Grupo(int cx, int cy)
-	{
-		if (_grupo == null) return SemGrupo;
-		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return BordaDoMundo;
-		return _grupo[cy * Width + cx];
-	}
-
-	/// <summary>O plano de identidade existe neste mapa?</summary>
-	public bool TemGrupos => _grupo != null;
-
-	/// <summary>Celula cega sem tile -- a borda do mundo.</summary>
-	public const byte BordaDoMundo = 0;
-
-	/// <summary>"Nao sei": arquivo sem o plano. Ver <see cref="Grupo"/>.</summary>
-	public const byte SemGrupo = 255;
-
-	/// <summary>
 	/// Quantas celulas da beirada sao INTOCAVEIS.
 	///
 	/// Duas, e nao uma: a destruicao trabalha em `view(1)` -- as nove celulas em volta do impacto --
@@ -446,15 +395,16 @@ public sealed class ZoneCollision
 	/// <summary>
 	/// ESTA CELULA E BEIRADA DO MAPA?
 	///
-	/// ============================ POR QUE NAO BASTA O GRUPO ============================
-	/// O plano do conversor marca `BordaDoMundo` so nas celulas DENSAS E CEGAS -- o `/turf/Other/Blank`
-	/// que cerca os mapas. Um mapa que termina em AGUA ou AREIA nao tem nada marcado na ultima
-	/// coluna, e o `RacharChao` transformava a beirada do oceano em terra batida. Foi o que o dono
-	/// fotografou: o personagem no limite do mundo, com uma mancha de chao quebrado ao lado.
+	/// ============================ POR QUE E ARITMETICA, E NAO DADO DO ARQUIVO ============================
+	/// A primeira versao lia a beirada de um plano do conversor (o de identidade de tile, hoje morto),
+	/// que so marcava as celulas DENSAS E CEGAS -- o `/turf/Other/Blank` que cerca os mapas. Um mapa
+	/// que termina em AGUA ou AREIA nao tinha nada marcado na ultima coluna, e o `RacharChao`
+	/// transformava a beirada do oceano em terra batida. Foi o que o dono fotografou: o personagem no
+	/// limite do mundo, com uma mancha de chao quebrado ao lado.
 	///
-	/// Isto aqui nao depende de plano nenhum: e aritmetica com a largura e a altura, e vale em toda
-	/// zona -- inclusive nas geradas por semente, que nao tem plano de grupo.
-	/// ==================================================================================
+	/// Isto aqui nao depende de arquivo nenhum: e aritmetica com a largura e a altura, e vale em toda
+	/// zona -- inclusive nas geradas por semente.
+	/// ===========================================================================================
 	/// </summary>
 	public bool NaBorda(int cx, int cy, int margem = MargemDaBorda) =>
 		!SemBorda

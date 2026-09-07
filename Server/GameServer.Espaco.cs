@@ -190,12 +190,10 @@ public partial class GameServer
 			foreach (ServerPlayer o in zona)
 				if (Espaco.PertoDeMim(eu.Pos, o.Pos)) vizinhos.Add(o);
 
-			var w = Protocol.Begin(Protocol.S2C.Snapshot);
-			w.Put(carimbo);   // O MESMO CABECALHO da zona normal: o leitor e um so
-			w.Put((ushort)vizinhos.Count);
-			// A MESMA FABRICA da zona normal. Esta copia tinha ficado pra tras -- ver `EstadoDe`.
-			foreach (ServerPlayer pl in vizinhos) EstadoDe(pl, agora).Write(w);
-
+			// O MESMO FUNIL da zona normal (`GameServer.Snapshot.cs`): a mesma fabrica de estado (esta
+			// copia ja tinha ficado pra tras uma vez -- ver `EstadoDe`) e o mesmo corte em partes que
+			// cabem no pacote. So o recorte e daqui: os corpos e os tiros PERTO deste jogador.
+			//
 			// ============================ O BLOCO DE PROJETEIS -- E ELE DEIXOU DE SER VAZIO ============================
 			// Ele sempre teve que SAIR (o leitor e um so, `GameClient` no opcode `Snapshot`, e ele
 			// conta o segundo bloco sempre; omitir aqui faria o snapshot do espaco ser lido errado, e
@@ -214,9 +212,7 @@ public partial class GameServer
 			// UMA pro universo inteiro, e "todos os tiros da zona" seria todo tiro dado em qualquer
 			// canto da galaxia.
 			// ======================================================================================================
-			EscreverProjeteis(w, ZonaDoEspaco.Hash, eu.Pos);
-
-			eu.Peer.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
+			MandarSnapshot([eu], vizinhos, TirosDaZona(ZonaDoEspaco.Hash, eu.Pos), agora, carimbo);
 		}
 	}
 

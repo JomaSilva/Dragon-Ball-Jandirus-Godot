@@ -181,6 +181,8 @@ public partial class GameServer
 	/// </summary>
 	private void AlternarVoo(ServerPlayer pl)
 	{
+		// A AREA DE ESPERA DO TORNEIO: ninguem levanta voo esperando a vez (o teclado esta fechado).
+		if (PresoNoTorneio(pl.Id)) { Avisar(pl, "voce esta na area de espera do torneio: sem voar ate a sua vez."); return; }
 		if (!PodeVoar(pl))
 		{
 			Avisar(pl, $"voce ainda nao sente o proprio Ki o bastante pra voar "
@@ -268,6 +270,11 @@ public partial class GameServer
 		// e largado a vinte tiles CAI.
 		// ==========================================================================================
 		if (SendoCarregado(pl)) return;
+
+		// ARREMESSADO NO AR (dono, 2026-09-07): a altura fica onde estava ate o corpo parar. Nem a
+		// exaustao nem o nocaute o derrubam no meio do voo de um golpe -- ele nao encosta no chao, e
+		// e por isso que nao ha sulco nem cratera (o `RastroVale` pergunta pela altura). Cai depois.
+		if (pl.TiquesDeVoo > 0 && pl.ArremessadoNoAr) return;
 
 		// QUEM CAIU, CAI. Nocaute e morte tiram o voo na hora (`KO.dm:71` faz `isflying=0`), mas a
 		// altura sobra -- e o corpo desce sozinho pelo trecho de queda logo abaixo.

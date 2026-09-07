@@ -130,6 +130,10 @@ public sealed partial class GameServer
 			// A ISCA: um corpo sem mente a oito tiles do lago, do lado de ca. A fera que cair no lago
 			// procura o corpo mais proximo, e e pra ELA que ele volta -- e nao pro host.
 			ServerPlayer isca = Forjar("nado: isca", Celula(xL - 8, y), comCerebro: false);
+			// INTOCAVEL: a fera que volta do lago socaria a isca, e o soco tem ARRANQUE (um salto de ate 15
+			// tiles) -- a bancada via um "passo" de 276 px e chamava de teleporte. Sem alvo tocavel nao ha
+			// soco, e o corpo so anda e nada.
+			isca.Combate.Carencia = 1e6;
 
 			GD.Print("[nadoia] -- 1) jogado no lago, so corpo: nada ate a margem --");
 			{
@@ -200,6 +204,9 @@ public sealed partial class GameServer
 				bool nadou = false;
 				for (int i = 0; i < 900; i++)
 				{
+					// O KI FICA CHEIO: a pergunta e "com folego ele sai?", e nao a economia do nado -- um cerebro
+					// que resolve guardar ou carregar no meio do lago drena o tanque e a bancada media sorte.
+					e.Ficha.Ki = e.Ficha.MaxKi;
 					Tiques(1, e, isca);
 					if (e.Nadando) nadou = true;
 					if (nadou && !e.Nadando && !PesNaAgua(e)) break;
@@ -212,11 +219,28 @@ public sealed partial class GameServer
 			{
 				Descartar(isca);   // senao a isca e o corpo mais proximo e ninguem atravessa nada
 				ServerPlayer alvo = Forjar("nado: alvo na outra margem", margemDir, comCerebro: false);
-				ServerPlayer b = Forjar("nado: atravessa nadando", margemEsq, perfil: PerfilDeCombate.SoCorpo);
+				// A PRESA E IMPOSTA (o `tourney_engage`, `Papel.PresaDoRoteiro`): um corpo forjado sem molde e
+				// uma FERA, e a fera vai atras do corpo mais perto da zona inteira -- e a Terra esta cheia de
+				// habitantes passeando. A bancada media pra que lado o vento soprava (3 rodadas, 2 placares).
+				ServerPlayer? Lutador(string nome, Vec2 pos, PerfilDeCombate perfil, int presa)
+				{
+					ServerPlayer? n = NascerNpc("lutador_de_torneio", zona, pos, (ulong)(900 + nascidos.Count));
+					if (n == null) return null;
+					n.Name = nome;
+					n.Perfil = perfil;
+					n.Ficha.Ki = n.Ficha.MaxKi;
+					n.Papel!.PresaDoRoteiro = presa;
+					nascidos.Add(n);
+					return n;
+				}
+				ServerPlayer? b = Lutador("nado: atravessa nadando", margemEsq, PerfilDeCombate.SoCorpo, alvo.Id);
+				Checa("PRECONDICAO: um lutador de molde nasceu na margem de ca, com a presa imposta", b != null);
+				if (b == null) { Descartar(alvo); goto FimDaFamilia4; }
 				Armar(b);
 				bool nadou = false, barrado = false;
-				for (int i = 0; i < 900; i++)
+				for (int i = 0; i < 1500; i++)
 				{
+					b.Ficha.Ki = b.Ficha.MaxKi;   // idem: a pergunta e a travessia, nao o tanque
 					Tiques(1, b, alvo);
 					if (b.BarradoPelaAgua) barrado = true;
 					if (b.Nadando) nadou = true;
@@ -231,13 +255,17 @@ public sealed partial class GameServer
 				Checa("...e sai da agua a pe (o nado desligou no seco)", !b.Nadando && !PesNaAgua(b), $"nadando={b.Nadando} agua={PesNaAgua(b)}");
 				Descartar(b);
 
-				ServerPlayer c = Forjar("nado: atravessa voando", margemEsq, perfil: PerfilDeCombate.Completo);
+				// VOA MAS NAO ATIRA: com Ki no perfil o lutador de molde (que sabe Ki Wave) atirava de cima do
+				// lago em vez de atravessar -- e a pergunta aqui e a travessia, nao o tiro.
+				ServerPlayer? c = Lutador("nado: atravessa voando", margemEsq, new PerfilDeCombate(Voa: true, UsaKi: false), alvo.Id);
+				if (c == null) { Checa("PRECONDICAO: o voador de molde nasceu", false); Descartar(alvo); goto FimDaFamilia4; }
 				EnsinarAVoar(c);
 				Armar(c);
 				bool voou = false;
 				nadou = false;
-				for (int i = 0; i < 900; i++)
+				for (int i = 0; i < 1500; i++)
 				{
+					c.Ficha.Ki = c.Ficha.MaxKi;
 					Tiques(1, c, alvo);
 					if (c.Voando) voou = true;
 					if (c.Nadando) nadou = true;
@@ -248,15 +276,33 @@ public sealed partial class GameServer
 				Descartar(c);
 
 				// CONTRA-EXEMPLO: alvo do MESMO lado, caminho seco -- ninguem nada nem voa a toa.
-				ServerPlayer perto = Forjar("nado: alvo no seco", Celula(xL - 9, y), comCerebro: false);
-				ServerPlayer d = Forjar("nado: no seco", Celula(xL - 3, y), perfil: PerfilDeCombate.Completo);
-				EnsinarAVoar(d);
-				Armar(d);
-				bool mexeuNoModo = false;
-				for (int i = 0; i < 120; i++) { Tiques(1, d, perto); if (d.Nadando || d.Voando) mexeuNoModo = true; }
-				Checa("CONTRA-EXEMPLO: com o alvo do mesmo lado e caminho seco, nem nada nem decola", !mexeuNoModo);
-				Descartar(alvo, perto, d);
+				// LONGE DA AGUA DOS DOIS LADOS: a 3 celulas da margem o corpo que recuava do alvo dava um passo
+				// pra dentro do lago e decolava -- e ai o contra-exemplo media a beira, nao o seco. O alvo e
+				// intocavel pra o soco nao o jogar no lago no meio da medida.
+				ServerPlayer perto = Forjar("nado: alvo no seco", Celula(xL - 8, y), comCerebro: false);
+				perto.Combate.Carencia = 1e6;
+				ServerPlayer? d = Lutador("nado: no seco", Celula(xL - 12, y), new PerfilDeCombate(Voa: true, UsaKi: false), perto.Id);
+				if (d != null)
+				{
+					EnsinarAVoar(d);
+					d.Cerebro!.Inteligencia = 0.3;   // burro o bastante pra NAO pairar rasante por tatica -- so a agua poderia fazê-lo decolar
+					Armar(d);
+					bool mexeuNoModo = false, porAgua = false;
+					for (int i = 0; i < 120; i++)
+					{
+						d.Ficha.Ki = d.Ficha.MaxKi;
+						Tiques(1, d, perto);
+						if (d.Nadando || d.Voando) mexeuNoModo = true;
+						if (d.Cerebro!.Porque.Contains("agua", StringComparison.Ordinal)) porAgua = true;
+					}
+					Checa("CONTRA-EXEMPLO: com o alvo do mesmo lado e caminho seco, nem nada nem decola (e a agua nunca entra no porque)",
+						  !mexeuNoModo && !porAgua, $"nadou/voou={mexeuNoModo} porque-agua={porAgua} ({d.Cerebro!.Porque})");
+					Descartar(d);
+				}
+				Descartar(alvo, perto);
+				FimDaFamilia4:
 				isca = Forjar("nado: isca", Celula(xL - 8, y), comCerebro: false);
+				isca.Combate.Carencia = 1e6;
 			}
 
 			GD.Print("[nadoia] -- 5) o habitante (rotina) jogado no lago: nada e volta a rotina; o que voa pousa no seco --");
@@ -272,6 +318,7 @@ public sealed partial class GameServer
 					bool nadou = false;
 					for (int i = 0; i < 900; i++)
 					{
+						h.Ficha.Ki = h.Ficha.MaxKi;   // a pergunta e a travessia, nao o tanque do habitante
 						Tiques(1, h, isca);
 						if (h.Nadando) nadou = true;
 						if (nadou && !h.Nadando && !PesNaAgua(h)) break;
@@ -292,6 +339,7 @@ public sealed partial class GameServer
 					bool decolou = false, nadou = false;
 					for (int i = 0; i < 900; i++)
 					{
+						hv.Ficha.Ki = hv.Ficha.MaxKi;
 						Tiques(1, hv, isca);
 						if (hv.Voando) decolou = true;
 						if (hv.Nadando) nadou = true;

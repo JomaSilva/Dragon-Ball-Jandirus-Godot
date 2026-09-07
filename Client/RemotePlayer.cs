@@ -383,6 +383,14 @@ public partial class RemotePlayer : Node2D
 	public float AlturaDeTeste => _altitude;
 
 	/// <summary>
+	/// ONDE O CORPO ESTA DESENHADO: o ponto do chao subido pela altitude (`Voo.EscalaNaTela`). E aqui
+	/// que se clica nele -- a hitbox segue o corpo, e nao fica no lugar onde ele estaria no chao
+	/// (dono, 2026-09-07). O `GlobalPosition` continua sendo o CHAO: e onde a sombra fica e onde a
+	/// colisao pergunta.
+	/// </summary>
+	public Vector2 PosicaoDesenhada => GlobalPosition + new Vector2(0, -_altitude * Voo.EscalaNaTela);
+
+	/// <summary>
 	/// PRA ONDE O CORPO ESTA OLHANDO NA TELA -- o olhar do instante desenhado, e nao o do ultimo pacote
 	/// (ver <see cref="AplicarMovimento"/>). Quem le isto quer a tela: o rastro na agua
 	/// (`World.Decalques`), o espelho do olho, a bancada da fluidez.

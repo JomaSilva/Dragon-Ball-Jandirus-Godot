@@ -170,7 +170,7 @@ public sealed partial class GameServer
 	/// mesmo sentido sao dois aliados atirando juntos, e o DM diz isso com todas as letras.
 	/// ==========================================================================================
 	/// </summary>
-	private bool TentarEmbateDeFeixes(Projetil p, List<Projetil> lista)
+	private bool TentarEmbateDeFeixes(Projetil p, Vec2 cabeca, List<Projetil> lista)
 	{
 		if (!PodeDisputar(p, out ServerPlayer? dono) || dono == null) return false;
 
@@ -180,12 +180,15 @@ public sealed partial class GameServer
 			if (!PodeDisputar(r, out ServerPlayer? outro) || outro == null) continue;
 			if (outro.Id == dono.Id) continue;
 
-			// A UM TILE, como o `range(1, src)` do DM.
-			if ((r.Pos - p.Pos).LengthSquared > ZoneCollision.TileSize * (float)ZoneCollision.TileSize) continue;
+			// AS DUAS CABECAS SE TOCANDO -- um tile, como o `range(1, src)` do DM, que e tambem dois
+			// raios de cabeca. Testado com a posicao PRA ONDE a cabeca vai, sub-passo a sub-passo (ver
+			// `AndarProjetil`, 6-pre): assim ela nunca pula a outra entre dois tiques.
+			if ((r.Pos - cabeca).LengthSquared > ZoneCollision.TileSize * (float)ZoneCollision.TileSize) continue;
 
-			// VINDO CONTRA: o rumo dele dentro de 45 graus do oposto do meu. `cos(135) = -0,707`.
-			if (p.Rumo.X * r.Rumo.X + p.Rumo.Y * r.Rumo.Y > -0.7f) continue;
+			// VINDO CONTRA -- fora disso os dois se CRUZAM, e cruzar nao e disputa (`Feixe.VemContra`).
+			if (!Feixe.VemContra(p.Rumo, r.Rumo)) continue;
 
+			p.Pos = cabeca;
 			Comecar(new LadoDeKi { Quem = dono, Feixe = p },
 					new LadoDeKi { Quem = outro, Feixe = r },
 					Protocol.TipoDeEmbate.FeixeContraFeixe);
@@ -262,12 +265,17 @@ public sealed partial class GameServer
 		a.Vantagem = EmbateDeKi.Vantagem(poderA, poderB);
 		b.Vantagem = EmbateDeKi.Vantagem(poderB, poderA);
 
-		// O PONTO DE ENCONTRO: onde as cabecas se tocaram. No embate de guarda ha uma cabeca so, e
-		// ela ja esta em cima do corpo de quem segura.
-		Vec2 ponto = b.Feixe != null ? (a.Feixe!.Pos + b.Feixe.Pos) * 0.5f : a.Feixe!.Pos;
-
 		Vec2 eixo = b.Quem.Pos - a.Quem.Pos;
 		eixo = eixo.LengthSquared > 1e-4f ? eixo.Normalized() : a.Feixe!.Rumo;
+
+		// O PONTO DE ENCONTRO E O PONTO DE CONTATO -- onde as duas FRENTES se tocam, e nao onde os
+		// centros das cabecas estao. Feixe contra feixe: o meio das duas cabecas. Feixe contra guarda: a
+		// beirada do corpo de quem segura (as maos), `MeioCorpo` antes do centro dele. As cabecas ficam
+		// um raio ATRAS do ponto, cada uma do seu lado (ver `MoverOEncontro`) -- "as cabecas sempre devem
+		// ficar SE EMPURRANDO na colisao" (dono, 2026-09-07), e nao uma em cima da outra.
+		Vec2 ponto = b.Feixe != null
+			? (a.Feixe!.Pos + b.Feixe.Pos) * 0.5f
+			: b.Quem.Pos - eixo * Feixe.MeioCorpo;
 
 		// ============================ QUANTO O ENCONTRO PODE CAMINHAR: ATE O CORPO ============================
 		// Aqui havia UM TILE DE FOLGA, e o comentario dela dizia *"o feixe so ENCOSTA em alguem quando
@@ -277,7 +285,7 @@ public sealed partial class GameServer
 		// a ser a DEFINICAO dela -- entao a folga nao tem mais o que proteger.
 		//
 		// E E ELA QUE AMARRA O MEDIDOR NA GEOMETRIA. Sem folga, `Deslocamento` = +-1 (o medidor em 100
-		// ou em 0) poe o ponto EXATAMENTE em cima do corpo: "o medidor encheu" e "o feixe encostou"
+		// ou em 0) poe o ponto na BEIRADA do corpo (a frente da cabeca encostada nele): "o medidor encheu" e "o feixe encostou"
 		// viram o mesmo instante, medido no mesmo lugar, e o `Decidir` continua sendo o unico juiz. Com
 		// a folga eram dois eventos parecidos e separados por um tile, e era essa fresta que fazia a
 		// vitoria ser do MEDIDOR e nao do contato.
@@ -299,8 +307,12 @@ public sealed partial class GameServer
 			A = a, B = b,
 			PontoInicial = ponto, Ponto = ponto,
 			Eixo = eixo,
-			ParaB = Math.Max((b.Quem.Pos - ponto).Length, 0),
-			ParaA = Math.Max((a.Quem.Pos - ponto).Length, 0),
+			// ATE A BEIRADA DE CADA CORPO, medido no eixo: o ponto de contato chega no corpo de B quando a
+			// frente de A encosta nele. No embate de guarda a unica cabeca e a de A e ela esta ATRAS do
+			// ponto -- entao do lado de A a corda para dois raios antes, com a cabeca inteira ainda na
+			// frente dele (o `Devolver` a vira e a manda o resto do caminho).
+			ParaB = Math.Max(NoEixo(b.Quem.Pos - eixo * Feixe.MeioCorpo - ponto, eixo), 0),
+			ParaA = Math.Max(NoEixo(ponto - (a.Quem.Pos + eixo * (Feixe.MeioCorpo + (b.Feixe == null ? 2f * Projetil.RaioDeImpacto : 0f))), eixo), 0),
 			Zona = a.Quem.Zone.Hash,
 			Tipo = tipo,
 		};
@@ -580,8 +592,11 @@ public sealed partial class GameServer
 		float px = (float)(f >= 0 ? f * d.ParaB : f * d.ParaA);
 		d.Ponto = d.PontoInicial + d.Eixo * px;
 
-		if (d.A.Feixe != null) d.A.Feixe.Pos = d.Ponto;
-		if (d.B.Feixe != null) d.B.Feixe.Pos = d.Ponto;
+		// CADA CABECA UM RAIO ATRAS DO PONTO, do seu lado: as frentes se tocam no encontro e os
+		// desenhos nao se sobrepoem -- era o "os beams tao se sobrepondo" do dono (2026-09-07).
+		float recuo = EmbateDeKi.CabecasNoMesmoPontoDeTeste ? 0f : Projetil.RaioDeImpacto;
+		if (d.A.Feixe != null) d.A.Feixe.Pos = d.Ponto - d.Eixo * recuo;
+		if (d.B.Feixe != null) d.B.Feixe.Pos = d.Ponto + d.Eixo * recuo;
 	}
 
 	/// <summary>

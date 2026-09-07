@@ -237,6 +237,13 @@ public partial class World : Node2D
 	private readonly Dictionary<(int X, int Y), Porta> _portasPorCelula = [];
 
 	private Visao _veu = null!;
+
+	/// <summary>
+	/// AS CAMADAS DO CENARIO DA ZONA (Chao, Decor, Objetos...), na ordem de desenho. Quem as usa e o
+	/// ESTRAGO: apagar e repor a celula que caiu, e a cor da poeira pela camada mais alta. O veu nao
+	/// as le mais -- a parede clara e um FURO na sombra, nao um tile repintado por cima (ver `Visao`).
+	/// </summary>
+	private TileMapLayer[] _camadas = [];
 	private CeuDoEspaco _ceu = null!;
 	private Node2D _orbes = null!;
 	// quem e quem: o nome chega junto com a aparencia, UMA vez, e a aba People precisa dele
@@ -326,6 +333,7 @@ public partial class World : Node2D
 			// Metodos nomeados, como todo o resto daqui -- ver a nota das lambdas orfas abaixo.
 			cli.TiroNasceu += AoNascerTiro;
 			cli.TiroMorreu += AoMorrerTiro;
+			cli.TiroCortado += AoCortarTiro;
 			cli.TirosNoAr += AoMoverTiros;
 
 			// O MEU CORPO SOME TAMBEM. O bit `Oculto` do snapshot esconde os OUTROS -- o corpo local
@@ -405,6 +413,7 @@ public partial class World : Node2D
 			cli.Piscou -= AoPiscar;
 			cli.TiroNasceu -= AoNascerTiro;
 			cli.TiroMorreu -= AoMorrerTiro;
+			cli.TiroCortado -= AoCortarTiro;
 			cli.TirosNoAr -= AoMoverTiros;
 			cli.PortasMudaram -= AoMudarPortas;
 			cli.CenarioCaiu -= AoCairCenario;
@@ -953,6 +962,17 @@ public partial class World : Node2D
 	/// o que escolhe o efeito); sumir da lista so quer dizer "este pacote nao o trouxe", e pacote de
 	/// snapshot se perde por design. Apagar por ausencia faria todo tiro piscar em rede ruim.
 	/// </summary>
+	/// <summary>
+	/// UM RAIO FOI CORTADO (alguem encostou no tronco). Os dois pontos que chegam aqui NAO se
+	/// interpolam: a cabeca nova do feixe de ca e a cauda do feixe de la sao onde o corte aconteceu, e
+	/// deslizar ate la seria desenhar um corte que demora um quarto de segundo pra existir.
+	/// </summary>
+	private void AoCortarTiro(int id, Vec2 cabeca, int deLa, Vec2 caudaDeLa)
+	{
+		if (_tiros.TryGetValue(id, out ProjetilDesenhado? deCa)) deCa.Cravar(new Vector2(cabeca.X, cabeca.Y), null);
+		if (deLa != 0 && _tiros.TryGetValue(deLa, out ProjetilDesenhado? novo)) novo.Cravar(null, new Vector2(caudaDeLa.X, caudaDeLa.Y));
+	}
+
 	private void AoMoverTiros(IReadOnlyList<Jandirus.Net.ProjetilState> tiros)
 	{
 		foreach (Jandirus.Net.ProjetilState t in tiros)
@@ -1339,7 +1359,7 @@ public partial class World : Node2D
 			_colisao = null;
 			_veu.Mapa = null;
 			_veu.Colisao = null;
-			_veu.Camadas = [];
+			_camadas = [];
 			LimparMarcasDoChao();   // marca da Terra nao vai pra Namek
 			if (_local != null) _local.Mapa = null;
 			_zonaDoAtual = zona;   // ver o comentario no ramo pre-feito
@@ -1383,10 +1403,10 @@ public partial class World : Node2D
 			_colisao = interior.Colisao;
 			_veu.Mapa = interior.Sombra ?? interior.Colisao;
 			_veu.Colisao = interior.Colisao;
-			_veu.Camadas = CamadasDoCenario(interior);
+			_camadas = CamadasDoCenario(interior);
 			// ============================ O GANCHO DO PEDACO ENTRA DEPOIS DAS CAMADAS ============================
 			// Ele era assinado ANTES do `Entrar`/`Semear`, e a montagem inicial pinta pedacos na hora
-			// (`Urgente`): cada `PedacoPintado` reaplicava o estrago com `_veu.Camadas` e `_colisao`
+			// (`Urgente`): cada `PedacoPintado` reaplicava o estrago com `_camadas` e `_colisao`
 			// ainda apontando pra zona ANTERIOR -- abria buracos e colisao nas coordenadas da zona nova
 			// dentro do mapa velho, que fica cacheado. Os pedacos da chegada sao cobertos pelo
 			// `ReaplicarEstrago()` do fim do ramo; o gancho so precisa dos pedacos que entram DEPOIS.
@@ -1437,10 +1457,10 @@ public partial class World : Node2D
 			_colisao = mente.Colisao;
 			_veu.Mapa = mente.Sombra ?? mente.Colisao;
 			_veu.Colisao = mente.Colisao;
-			_veu.Camadas = CamadasDoCenario(mente);
+			_camadas = CamadasDoCenario(mente);
 			// ============================ O GANCHO DO PEDACO ENTRA DEPOIS DAS CAMADAS ============================
 			// Ele era assinado ANTES do `Entrar`/`Semear`, e a montagem inicial pinta pedacos na hora
-			// (`Urgente`): cada `PedacoPintado` reaplicava o estrago com `_veu.Camadas` e `_colisao`
+			// (`Urgente`): cada `PedacoPintado` reaplicava o estrago com `_camadas` e `_colisao`
 			// ainda apontando pra zona ANTERIOR -- abria buracos e colisao nas coordenadas da zona nova
 			// dentro do mapa velho, que fica cacheado. Os pedacos da chegada sao cobertos pelo
 			// `ReaplicarEstrago()` do fim do ramo; o gancho so precisa dos pedacos que entram DEPOIS.
@@ -1484,10 +1504,10 @@ public partial class World : Node2D
 			_colisao = gerado.Colisao;
 			_veu.Mapa = gerado.Sombra ?? gerado.Colisao;
 			_veu.Colisao = gerado.Colisao;
-			_veu.Camadas = CamadasDoCenario(gerado);
+			_camadas = CamadasDoCenario(gerado);
 			// ============================ O GANCHO DO PEDACO ENTRA DEPOIS DAS CAMADAS ============================
 			// Ele era assinado ANTES do `Entrar`/`Semear`, e a montagem inicial pinta pedacos na hora
-			// (`Urgente`): cada `PedacoPintado` reaplicava o estrago com `_veu.Camadas` e `_colisao`
+			// (`Urgente`): cada `PedacoPintado` reaplicava o estrago com `_camadas` e `_colisao`
 			// ainda apontando pra zona ANTERIOR -- abria buracos e colisao nas coordenadas da zona nova
 			// dentro do mapa velho, que fica cacheado. Os pedacos da chegada sao cobertos pelo
 			// `ReaplicarEstrago()` do fim do ramo; o gancho so precisa dos pedacos que entram DEPOIS.
@@ -1594,7 +1614,7 @@ public partial class World : Node2D
 		// O QUE CEGA e outro mapa: parede e porta cegam, arvore e cerca nao (ver MapConverter).
 		_veu.Mapa = MapaCacheado(e.Visao, e.Zona);
 		_veu.Colisao = _colisao;
-		_veu.Camadas = CamadasDoCenario(_zonaAtual);
+		_camadas = CamadasDoCenario(_zonaAtual);
 		if (_veu.Mapa == null) GD.PushWarning($"[world] zona '{zona}' sem mapa de visao: parede nao esconde nada");
 
 		// O GANCHO DO PEDACO ENTRA DEPOIS DAS CAMADAS -- ver a nota nos outros tres ramos. E REASSINADO
@@ -1814,7 +1834,6 @@ public partial class World : Node2D
 		foreach (Porta p in _portasPorCelula.Values)
 			if (GodotObject.IsInstanceValid(p)) p.QueueFree();
 		_portasPorCelula.Clear();
-		_veu.Portas.Clear();
 
 		_colisao?.FecharTudo();
 		_veu.Mapa?.FecharTudo();
@@ -1827,7 +1846,6 @@ public partial class World : Node2D
 			Porta p = Porta.Criar(d);
 			_portas.AddChild(p);
 			_portasPorCelula[(d.X, d.Y)] = p;
-			_veu.Portas[new Vector2I(d.X, d.Y)] = p;
 		}
 	}
 
@@ -2120,11 +2138,11 @@ public partial class World : Node2D
 		// O original nao "apaga" turf nenhum: ele SUBSTITUI por `/turf/Ground/Ground8`
 		// (`NewTurfs.dm`). Aqui e o mesmo -- apaga tudo e escreve o Ground8 no chao, entao a celula
 		// destruida fica com terra batida em vez de vazio.
-		for (int i = 0; i < _veu.Camadas.Length; i++)
-			if (IsInstanceValid(_veu.Camadas[i])) _veu.Camadas[i].EraseCell(celula);
+		for (int i = 0; i < _camadas.Length; i++)
+			if (IsInstanceValid(_camadas[i])) _camadas[i].EraseCell(celula);
 
-		if (_veu.Camadas.Length > 0 && IsInstanceValid(_veu.Camadas[0]) && ChaoDestruido() is { } g)
-			_veu.Camadas[0].SetCell(celula, g.Fonte, g.Coord);
+		if (_camadas.Length > 0 && IsInstanceValid(_camadas[0]) && ChaoDestruido() is { } g)
+			_camadas[0].SetCell(celula, g.Fonte, g.Coord);
 
 		// POEIRA E CASCALHO. O `createDust` do original -- sem ele o tile simplesmente TROCA, e uma
 		// parede que some sem nada no lugar nao le como "caiu", le como falha de desenho.
@@ -2155,9 +2173,9 @@ public partial class World : Node2D
 	/// </summary>
 	private Color? CorDoEstrago(Vector2I celula)
 	{
-		for (int i = _veu.Camadas.Length - 1; i >= 0; i--)
+		for (int i = _camadas.Length - 1; i >= 0; i--)
 		{
-			TileMapLayer camada = _veu.Camadas[i];
+			TileMapLayer camada = _camadas[i];
 			if (!IsInstanceValid(camada) || camada.TileSet is not { } ts) continue;
 
 			int fonte = camada.GetCellSourceId(celula);
@@ -2230,7 +2248,7 @@ public partial class World : Node2D
 	/// <summary>
 	/// As TileMapLayer da cena da zona, na ORDEM em que sao desenhadas.
 	///
-	/// E o que o veu precisa pra repintar a parede por cima da sombra (ver `Visao.Camadas`).
+	/// E o que o estrago precisa: apagar e repor celulas onde algo caiu (ver `_camadas`).
 	/// Funciona igual em planeta pre-feito e em gerado, porque os dois chegam aqui como
 	/// `_zonaAtual` -- a busca e por tipo, nao por nome de node.
 	/// </summary>
@@ -2544,10 +2562,15 @@ public partial class World : Node2D
 			// Achado pela bancada do balao de fala (`--diagbalao`), que perguntou se o texto some
 			// junto com o dono.
 			// ==================================================================================================
-			r.Visible = !e.Oculto
-					 && Jandirus.Core.World.Voo.Enxerga(
+			bool escondidoPelaAltura = !Jandirus.Core.World.Voo.Enxerga(
 							andarDeQuemOlha: Jandirus.Core.World.Voo.Andar(_local?.Altitude ?? 0f),
 							andarDeQuemEVisto: Jandirus.Core.World.Voo.Andar(e.Altitude));
+			r.Visible = !e.Oculto && !escondidoPelaAltura;
+			// QUEM SOME POR ALTURA DEIXA A SOMBRA NO CHAO (dono, 2026-09-07). O node inteiro fica escondido
+			// (e o que a bancada da vista mede, e o que esconde o balao junto), entao a sombra e um node a
+			// PARTE, do mundo, que segue o chao dele enquanto ele estiver alto demais pra ser visto. Quem
+			// some por INVISIBILIDADE (a tecnica, `Oculto`) nao ganha sombra -- sumir e o ponto dela.
+			SombraDeQuemVoaAlto(e.Id, r, mostrar: !e.Oculto && escondidoPelaAltura);
 		}
 	}
 
@@ -2614,6 +2637,7 @@ public partial class World : Node2D
 	internal void AoSair(int id)
 	{
 		if (_remotos.Remove(id, out RemotePlayer? r)) r.QueueFree();
+		SombraDeQuemVoaAlto(id, null, mostrar: false);
 		_looks.Remove(id);
 		// E A QUE ESTAVA ESPERANDO A VIRADA, NA MESMA LINHA DO `_looks`. Quem SAIU nao tem aparencia
 		// nenhuma pra vestir mais tarde -- e a cena que ficou pendurada nele vai virar assim mesmo
@@ -2999,8 +3023,10 @@ public partial class World : Node2D
 			if (ms > 5) GD.Print($"[perf] {_zonaMedida}: PRIMEIRO QUADRO {ms:0.0} ms (sprite + shader + telas)");
 		}
 
+		TickDoEspectador(delta);
 		TickDoTremor(delta);
 		TickDaAgonia();
+		SincronizarSombrasDosAltos();
 
 		EfeitosDaAltura();
 		TickDosDecalques(delta);
@@ -3566,7 +3592,7 @@ public partial class World : Node2D
 		_tremor = Mathf.MoveToward(_tremor, 0, (float)delta * _tremorQueda);
 		if (_tremor <= 0)
 		{
-			if (_camera != null) _camera.Offset = Vector2.Zero;
+			if (_camera != null) _camera.Offset = _deslocDoEspectador;
 			return;
 		}
 
@@ -3581,7 +3607,135 @@ public partial class World : Node2D
 		// A CAMERA CAMINHA ENTRE OS RUMOS, nao salta. Sem o `Lerp` a cadencia lenta viraria um
 		// estrobo de doze posicoes por segundo -- mais devagar que antes, sim, mas tambem mais duro.
 		if (_camera != null)
-			_camera.Offset = _tremorDe.Lerp(_tremorPara, _tremorRelogio / _tremorCadencia) * _tremor;
+			_camera.Offset = _deslocDoEspectador + _tremorDe.Lerp(_tremorPara, _tremorRelogio / _tremorCadencia) * _tremor;
+	}
+
+	// =====================================================================
+	// A CAMERA DO ESPECTADOR DO TORNEIO (dono, 2026-09-07)
+	// =====================================================================
+	/// <summary>
+	/// "ASSISTIR TORNEIO": a camera vai pro meio dos dois que lutam agora (ou pro centro da arena, sem
+	/// luta) e volta quando se desliga. E o `client.eye = fighter` do `Assistir_Torneio` do DM
+	/// (`Tournament.dm:597-608`) sem o `input()` de escolher lutador.
+	///
+	/// POR DESLOCAMENTO, E NAO MOVENDO A CAMERA: a `Camera2D` e filha do corpo local e continua sendo;
+	/// o que muda e o `Offset`, somado ao tremor -- as duas coisas escrevem o mesmo campo, entao vivem
+	/// na mesma conta (ver `TickDoTremor`). Suave nos dois sentidos: ligar leva a camera ate la, e
+	/// desligar a traz de volta, sem corte.
+	/// </summary>
+	private bool _assistindo;
+	private ChaveNaTela? _torneioNaTela;
+	private Vector2 _deslocDoEspectador;
+
+	public bool Assistindo => _assistindo;
+	public bool AssistindoDeTeste => _assistindo;
+	public Vector2 DeslocamentoDaCameraDeTeste => _camera?.Offset ?? Vector2.Zero;
+
+	public void AssistirTorneio(bool ligar)
+	{
+		if (ligar && _torneioNaTela == null) { Chat.Sistema("nao ha luta de torneio pra assistir agora."); return; }
+		_assistindo = ligar;
+		Chat.Sistema(ligar ? "assistindo ao torneio (aperte de novo pra voltar)." : "a camera volta pra voce.");
+	}
+
+	/// <summary>O retrato do torneio chegou (`S2C.Chave`): quem luta agora e onde e a arena.</summary>
+	internal void AoReceberChave(ChaveNaTela c)
+	{
+		if (c.Aviso == 2) { _torneioNaTela = null; _assistindo = false; return; }
+		_torneioNaTela = c;
+		// SE EU SOU UM DOS QUE LUTAM AGORA, a camera e minha: parar de assistir sozinho.
+		if (GameClient.Instance is { } cli && cli.LocalId != 0 && (c.CorpoA == cli.LocalId || c.CorpoB == cli.LocalId)) _assistindo = false;
+	}
+
+	private void TickDoEspectador(double delta)
+	{
+		Vector2 alvo = Vector2.Zero;
+		if (_assistindo && _local != null && IsInstanceValid(_local) && _torneioNaTela is { } t)
+		{
+			Node2D? a = Corpo(t.CorpoA), b = Corpo(t.CorpoB);
+			Vector2 foco = a != null && b != null ? (a.GlobalPosition + b.GlobalPosition) / 2f
+						 : a?.GlobalPosition ?? b?.GlobalPosition ?? new Vector2(t.Centro.X, t.Centro.Y);
+			alvo = foco - _local.GlobalPosition;
+		}
+		_deslocDoEspectador = _deslocDoEspectador.Lerp(alvo, Mathf.Clamp((float)delta * 4f, 0f, 1f));
+		if (_camera != null && _tremor <= 0) _camera.Offset = _deslocDoEspectador;
+		// O OLHO DO VEU VAI COM A CAMERA -- o `EYE_PERSPECTIVE` do DM (ver `Visao.OlhoEmprestado`).
+		_veu.OlhoEmprestado = OlhoDoEspectador();
+	}
+
+	/// <summary>
+	/// DE ONDE O ESPECTADOR ENXERGA: do centro da camera, enquanto ela estiver longe do corpo -- e so
+	/// se ali nao for parede (a camera pode parar em cima de um pilar entre os dois lutadores; ai o
+	/// olho vai pros pes de um deles). Nulo = a camera esta em cima do corpo: o olho e o de sempre.
+	///
+	/// POR QUE O CENTRO DA CAMERA E NAO O FOCO: o foco e onde a camera vai CHEGAR; ela leva um
+	/// instante indo e voltando (o `Lerp`), e um olho fora da tela e exatamente a dobra do leque que
+	/// o dono fotografou ("fica uma sombra na tela quando vai assistir"). O centro da camera esta
+	/// dentro da tela por definicao. E e o que o BYOND faz com `perspective = EYE_PERSPECTIVE`
+	/// (`Tournament.dm:824`): enxerga-se de onde o olho esta, nao de onde o corpo ficou. A diferenca
+	/// declarada: la o olho e UM lutador; aqui e a camera, que mira o meio dos dois.
+	/// </summary>
+	private Vector2? OlhoDoEspectador()
+	{
+		if (_camera == null || _local == null || !IsInstanceValid(_local) || _deslocDoEspectador.LengthSquared() < 64f) return null;
+		Vector2 centro = _camera.GetScreenCenterPosition();
+		if (Livre(centro)) return centro;
+		if (_torneioNaTela is { } t)
+			foreach (int id in new[] { t.CorpoA, t.CorpoB })
+				if (Corpo(id) is { } c)
+				{
+					Vector2 pes = c.GlobalPosition + new Vector2(0, MoveRules.FeetOffsetY);
+					if (Livre(pes)) return pes;
+				}
+		return null;
+
+		bool Livre(Vector2 p) => _colisao?.BlockedAt(new Vec2(p.X, p.Y)) != true;
+	}
+
+	public Vector2 CentroDaCameraDeTeste => _camera?.GetScreenCenterPosition() ?? Vector2.Zero;
+	public int CorposRemotosDeTeste => _remotos.Count;
+
+	// =====================================================================
+	// A SOMBRA DE QUEM VOA ALTO DEMAIS PRA SER VISTO (dono, 2026-09-07)
+	// =====================================================================
+	private readonly Dictionary<int, SombraDeVoo> _sombrasDosAltos = [];
+
+	/// <summary>A sombra "de fora" de um corpo escondido pela altura esta na tela? So bancada.</summary>
+	public bool SombraDoAltoVisivelDeTeste(int id)
+		=> _sombrasDosAltos.TryGetValue(id, out SombraDeVoo? s) && IsInstanceValid(s) && s.IsVisibleInTree();
+
+	private void SombraDeQuemVoaAlto(int id, RemotePlayer? r, bool mostrar)
+	{
+		if (!mostrar || r == null)
+		{
+			if (_sombrasDosAltos.Remove(id, out SombraDeVoo? velha) && IsInstanceValid(velha)) velha.QueueFree();
+			return;
+		}
+		if (!_sombrasDosAltos.TryGetValue(id, out SombraDeVoo? sombra) || !IsInstanceValid(sombra))
+		{
+			sombra = new SombraDeVoo { Name = $"SombraDoAlto{id}" };
+			_atores.AddChild(sombra);
+			_sombrasDosAltos[id] = sombra;
+		}
+		sombra.Position = r.Position;
+		sombra.Altura = r.AlturaDeTeste;
+	}
+
+	/// <summary>A sombra segue o CHAO dele quadro a quadro (o corpo escondido continua interpolando).</summary>
+	private void SincronizarSombrasDosAltos()
+	{
+		if (_sombrasDosAltos.Count == 0) return;
+		foreach ((int id, SombraDeVoo s) in _sombrasDosAltos.ToList())
+		{
+			if (!_remotos.TryGetValue(id, out RemotePlayer? r) || !IsInstanceValid(r) || !IsInstanceValid(s))
+			{
+				_sombrasDosAltos.Remove(id);
+				if (IsInstanceValid(s)) s.QueueFree();
+				continue;
+			}
+			s.Position = r.Position;
+			s.Altura = r.AlturaDeTeste;
+		}
 	}
 
 	/// <summary>Um ponto qualquer do quadrado [-1,1]. O contador e como a bancada mede a cadencia.</summary>
@@ -4932,8 +5086,9 @@ public partial class World : Node2D
 		foreach ((int id, RemotePlayer r) in _remotos)
 		{
 			if (!IsInstanceValid(r)) continue;
-			// o clique acerta o CORPO, e o corpo esta acima do pe do sprite
-			float d = (r.GlobalPosition - alvo).LengthSquared();
+			// O CLIQUE ACERTA O CORPO DESENHADO, e nao o chao dele: quem voa e desenhado acima do ponto
+			// do chao (`Voo.EscalaNaTela`), e a hitbox do clique segue o boneco (dono, 2026-09-07).
+			float d = (r.PosicaoDesenhada - alvo).LengthSquared();
 			if (d >= melhor) continue;
 			melhor = d;
 			escolhido = id;
@@ -4947,7 +5102,7 @@ public partial class World : Node2D
 		// "ninguem". Outro corpo em cima do meu continua ganhando (o `escolhido` vem primeiro).
 		// ==========================================================================================================
 		if (escolhido == 0 && _local != null && IsInstanceValid(_local)
-			&& (_local.GlobalPosition - alvo).LengthSquared() < RaioDoClique * RaioDoClique)
+			&& (_local.GlobalPosition + new Vector2(0, -_local.Altitude * Jandirus.Core.World.Voo.EscalaNaTela) - alvo).LengthSquared() < RaioDoClique * RaioDoClique)
 		{
 			cli.SendAlvo(0);
 			MarcarNaCena(0);

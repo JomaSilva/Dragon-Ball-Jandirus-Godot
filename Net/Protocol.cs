@@ -583,6 +583,15 @@ public static class Protocol
         Gesto = 56,
 
         /// <summary>
+        /// O CHAVEAMENTO NA TELA (<see cref="ChaveNaTela"/>): competidores, rodadas, lutas e vencedores,
+        /// a minha chave, quem luta agora e o centro da arena. Vai pra todo mundo na zona do torneio e
+        /// pra todo participante, na montagem da chave e a cada mudanca de fase. Pedido do dono
+        /// (2026-09-07): o chaveamento na tela, com a minha luta pulsando, e o "Assistir torneio" no
+        /// canto pra quem espera ou nao participa. Ver `GameServer.Torneio.cs:MandarChave`.
+        /// </summary>
+        Chave = 57,
+
+        /// <summary>
         /// CAIU UM RAIO, e ele caiu NUM LUGAR: posicao no mundo + a semente do desenho.
         ///
         /// ============================ POR QUE O RAIO E DO SERVIDOR ============================
@@ -1187,6 +1196,15 @@ public static class Protocol
         /// efeito -- estouro em corpo, lasca em parede, apagar no ar.
         /// </summary>
         Morreu = 1,
+
+        /// <summary>
+        /// FOI CORTADO (dono, 2026-09-07): alguem encostou no tronco. Id do feixe de ca + a cabeca NOVA
+        /// dele, e o id do feixe de la (zero se nao coube) + a cauda com que ele nasceu. Os dois pontos
+        /// vao aqui, e nao so no snapshot, porque o cliente INTERPOLA cabeca e cauda: sem este aviso a
+        /// cabeca velha escorregaria de volta ate o corte por um quarto de segundo. O `Nasceu` da parte
+        /// de la vem ANTES, no mesmo canal confiavel.
+        /// </summary>
+        Cortou = 2,
     }
 
     /// <summary>
@@ -3032,5 +3050,83 @@ public static class CustomWire
         t.RestaurarGasto(r.GetShort());
         t.Arte = (Jandirus.Core.Combat.ArteDeKi)r.GetUShort();
         return t;
+    }
+}
+
+/// <summary>
+/// O CHAVEAMENTO NA TELA -- o retrato inteiro do torneio pra quem olha, no `S2C.Chave`.
+///
+/// ============================ INDICES, E NAO ASSINATURAS ============================
+/// A chave do servidor conhece cada competidor pela ASSINATURA da conta (e por `npc:N` os NPCs). Isso
+/// e do servidor: no fio vai a posicao de cada um na lista de competidores, e as lutas apontam por
+/// indice (`-1` = ninguem). O cliente nunca ve assinatura alheia -- e o mesmo cuidado do `Sigilo`.
+///
+/// O QUE VIAJA ALEM DA CHAVE: `MinhaChave` (o meu indice, ou -1), `CorpoA`/`CorpoB` (os ids de
+/// corpo de quem luta AGORA, pra camera do espectador achar os nodes) e `Centro` (a arena, pra
+/// onde a camera olha quando ninguem esta lutando). `Fase` e o `FaseDoTorneio` do servidor: 0
+/// inscricao, 1 preparando, 2 contagem, 3 luta, 4 intervalo.
+///
+/// Escrita e leitura coladas, como no `CustomWire`: quem acrescentar um campo ve as duas metades.
+/// ====================================================================================
+/// </summary>
+public sealed class ChaveNaTela
+{
+    public const int MaxNome = 24;
+
+    /// <summary>1 = a chave (nova ou atualizada); 2 = o torneio acabou (feche o que estiver aberto).</summary>
+    public byte Aviso;
+    /// <summary>1 Terra, 2 Outro Mundo.</summary>
+    public byte Tipo;
+    public byte Fase;
+    public List<(string Nome, bool Npc)> Competidores = [];
+    public List<(string Nome, List<(short A, short B, short Vencedor)> Lutas)> Rodadas = [];
+    public byte RodadaAtual;
+    public short MinhaChave = -1;
+    public int CorpoA, CorpoB;
+    public Vec2 Centro;
+
+    private static string Curto(string s) => s.Length > MaxNome ? s[..MaxNome] : s;
+
+    public void Escrever(NetDataWriter w)
+    {
+        w.Put(Aviso);
+        w.Put(Tipo);
+        w.Put(Fase);
+        w.Put((byte)Math.Min(Competidores.Count, 255));
+        foreach ((string nome, bool npc) in Competidores.Take(255)) { w.Put(Curto(nome)); w.Put(npc); }
+        w.Put((byte)Math.Min(Rodadas.Count, 255));
+        foreach ((string nome, List<(short A, short B, short Vencedor)> lutas) in Rodadas.Take(255))
+        {
+            w.Put(Curto(nome));
+            w.Put((byte)Math.Min(lutas.Count, 255));
+            foreach ((short a, short b, short v) in lutas.Take(255)) { w.Put(a); w.Put(b); w.Put(v); }
+        }
+        w.Put(RodadaAtual);
+        w.Put(MinhaChave);
+        w.Put(CorpoA);
+        w.Put(CorpoB);
+        w.PutVec(Centro);
+    }
+
+    public static ChaveNaTela Ler(NetDataReader r)
+    {
+        var c = new ChaveNaTela { Aviso = r.GetByte(), Tipo = r.GetByte(), Fase = r.GetByte() };
+        int n = r.GetByte();
+        for (int i = 0; i < n; i++) { string nome = r.GetString(MaxNome); bool npc = r.GetBool(); c.Competidores.Add((nome, npc)); }
+        int rodadas = r.GetByte();
+        for (int i = 0; i < rodadas; i++)
+        {
+            string nome = r.GetString(MaxNome);
+            int lutas = r.GetByte();
+            var lista = new List<(short A, short B, short Vencedor)>(lutas);
+            for (int j = 0; j < lutas; j++) { short a = r.GetShort(); short b = r.GetShort(); short v = r.GetShort(); lista.Add((a, b, v)); }
+            c.Rodadas.Add((nome, lista));
+        }
+        c.RodadaAtual = r.GetByte();
+        c.MinhaChave = r.GetShort();
+        c.CorpoA = r.GetInt();
+        c.CorpoB = r.GetInt();
+        c.Centro = r.GetVec();
+        return c;
     }
 }

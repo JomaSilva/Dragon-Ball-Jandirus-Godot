@@ -36,6 +36,12 @@ REM                        numero nao pega -- as duas de cima leem o `Feixe.Pos`
 REM                        do SERVIDOR e ficariam verdes com os dois feixes
 REM                        DESENHADOS do mesmo tamanho.
 REM
+REM  (2026-09-07) A --embatekiteste ganhou tres familias: 1b) as duas cabecas se
+REM  TOCAM sem se sobrepor (um raio de cada lado do encontro), 1c) dois raios que se
+REM  CRUZAM nao disputam -- o que bate no tronco alheio ESPERA o tronco sair --, e 10)
+REM  apanhar no meio da disputa pesa no medidor, ninguem agarra quem disputa, e agarrar
+REM  quem so canaliza derruba o raio dele.
+REM
 REM  AS FOTOS saem em
 REM     %%APPDATA%%\Godot\app_userdata\Dragon ball Jandirus\embateki-*.png
 REM  e as que respondem sozinhas sao as TIRAS, que a propria bancada cola:

@@ -174,6 +174,9 @@ public partial class ProjetilDesenhado : Node2D
 	private Vector2 _cabeca, _cauda;
 	private bool _primeiro = true;
 
+	/// <summary>A luz do TRONCO (so raio, so de noite). Ver `LuzDeKi.Esticar` -- ela e reposicionada por quadro.</summary>
+	private LuzDeKi? _luzDoTronco;
+
 	/// <summary>Pra onde ele vai, normalizado. Ver <see cref="Mirar"/> -- ele NAO vem no pacote.</summary>
 	private Vector2 _rumo = Vector2.Down;
 
@@ -296,6 +299,21 @@ public partial class ProjetilDesenhado : Node2D
 	}
 
 	/// <summary>
+	/// O SERVIDOR CRAVOU: esta ponta esta AQUI agora, sem interpolar -- o corte de um raio (ver
+	/// `World.AoCortarTiro`). Nulo = essa ponta nao muda.
+	/// </summary>
+	public void Cravar(Vector2? cabeca, Vector2? cauda)
+	{
+		if (cabeca is { } c) { _cabeca = _cabecaAlvo = c; Position = c; }
+		if (cauda is { } q) _cauda = _caudaAlvo = q;
+		Vector2 rastro = _cabeca - _cauda;
+		if (rastro.LengthSquared() > 1f) _rumo = rastro.Normalized();
+		_primeiro = false;
+		_luzDoTronco?.Esticar(_cabeca, _cauda, SubidaNaTela);
+		QueueRedraw();
+	}
+
+	/// <summary>
 	/// A LUZ QUE ESTE TIRO LANCA NO MUNDO -- o pedido do dono foi *"beams e ataque de ki deveriam ter
 	/// LUZ PROPRIA"*. Quem sabe de luz e a <see cref="LuzDeKi"/>; aqui so se diz DE QUEM ela e.
 	///
@@ -305,10 +323,10 @@ public partial class ProjetilDesenhado : Node2D
 	/// coordenada, e nenhuma chance de a luz ficar pra tras do sprite que ela acompanha. E ela morre
 	/// junto pelo mesmo motivo, sem ninguem lembrar de apaga-la.
 	///
-	/// A CABECA E O UNICO PONTO ACESO, e nao o rastro inteiro. Um beam de trinta tiles com uma luz
-	/// por pedaco seriam trinta luzes num tiro so -- e a cabeca e a parte densa (`KHH()`), a que
-	/// acerta, a que o jogador esta olhando. Iluminar o rastro custaria uma ordem de grandeza pra
-	/// acrescentar brilho onde a propria arte do feixe ja e a coisa mais clara da tela.
+	/// E O TRONCO ACENDE JUNTO (dono, 2026-09-07: *"so a cabeca do beam tem brilho proprio, mas
+	/// deveria ser o beam todo, a cabeca e o tronco"*) -- com UMA luz a mais, e nao uma por pedaco: a
+	/// mesma textura radial ESTICADA da cabeca ate a cauda (`LuzDeKi.Esticar`), reposicionada por
+	/// quadro. Trinta luzes num tiro so custariam uma ordem de grandeza; duas custam o dobro de uma.
 	///
 	/// `_Ready` E O LUGAR CERTO: quando ele roda, `Cor`, `Tipo` e `Escala` ja estao escritos (o
 	/// `World.AoNascerTiro` os poe no inicializador e chama `Vestir` ANTES do `AddChild`). Pendurar
@@ -336,6 +354,7 @@ public partial class ProjetilDesenhado : Node2D
 		ZIndex = 1;
 
 		LuzDeKi.Pendurar(this, Cor, Escala);
+		if (Tipo == TipoDeProjetil.Beam) _luzDoTronco = LuzDeKi.PendurarNoTronco(this, Cor, Escala);
 
 		// A LUZ SOBE COM O DESENHO. Ela e filha na posicao local zero (ver abaixo), que e a cabeca no
 		// CHAO -- e o clarao de um raio disparado la em cima ficaria aceso no piso. A altura nao muda
@@ -355,6 +374,7 @@ public partial class ProjetilDesenhado : Node2D
 		// `Atores` ordena o tiro pelo ponto que de fato importa (onde ele vai acertar), e nao pelo
 		// meio de um rastro que pode ter trinta tiles.
 		Position = _cabeca;
+		_luzDoTronco?.Esticar(_cabeca, _cauda, SubidaNaTela);
 		QueueRedraw();
 	}
 

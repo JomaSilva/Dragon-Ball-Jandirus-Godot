@@ -829,6 +829,14 @@ public sealed class ServerPlayer
 
 	public int TiquesDeVoo;
 	public Vec2 RumoDoVoo;
+
+	/// <summary>
+	/// O ARREMESSO PEGOU O CORPO NO AR (dono, 2026-09-07: *"ao estar voando, efeitos de knock back como a
+	/// trilha e cratera nao devem acontecer pois se o personagem ta voando ele nao encosta no chao"*).
+	/// Enquanto vale, o `TickDoVoo` nao mexe na altura -- nem o nocaute derruba -- e o `TickDoEmpurrao`
+	/// nao consulta o cenario: o corpo voa por cima do que se voa por cima. Cai no pouso do arremesso.
+	/// </summary>
+	public bool ArremessadoNoAr;
 	public double ForcaDoVoo;
 
 	/// <summary>
@@ -4834,6 +4842,9 @@ public partial class GameServer : Node
 		// esta voando -- afirmar o bit no chao nao levanta ninguem.
 		pl.QuerSubir = (flags & Protocol.InputSubir) != 0;
 		pl.QuerDescer = (flags & Protocol.InputDescer) != 0;
+		// A AREA DE ESPERA DO TORNEIO fecha o teclado inteiro (o `move = 0` do `apply_hold`,
+		// `Tournament.dm:331`): nem subir nem descer -- e quem estava no ar desce e fica no chao.
+		if (PresoNoTorneio(pl.Id)) { pl.QuerSubir = false; pl.QuerDescer = pl.Altitude > 0f; }
 
 		// ============================ SE DEBATER E TENTAR ANDAR PRESO -- E A LEITURA VEM AQUI ============================
 		// No original o bloco de escape mora DENTRO do laco de movimento, no ramo `if(grabParalysis)`
@@ -5446,6 +5457,7 @@ public partial class GameServer : Node
 		// nela que todo corpo movido pelo servidor foi integrado -- ver `RelogioDeQuadrosMs`.
 		_relogioDoSnapshot = (long)Math.Round(_tickCount * Protocol.TickMs);
 		uint carimbo = unchecked((uint)_relogioDoSnapshot);
+		UltimoSnapshotDeTeste = default;
 		foreach (List<ServerPlayer> zona in _zones.Values)
 		{
 			if (zona.Count == 0) continue;
@@ -5455,19 +5467,12 @@ public partial class GameServer : Node
 			// pra jogador, o buffer nao da pra compartilhar e cada um recebe o seu.
 			if (Espaco.EhEspaco(zona[0].Zone)) { SnapshotDoEspaco(zona, agora, carimbo); continue; }
 
-			var w = Protocol.Begin(Protocol.S2C.Snapshot);
-			w.Put(carimbo);
-			w.Put((ushort)zona.Count);
-			foreach (ServerPlayer pl in zona) EstadoDe(pl, agora).Write(w);
-
-			// O SEGUNDO BLOCO: os ataques de ki no ar. Vem no MESMO buffer da zona porque e o mesmo
-			// tipo de dado (posicao autoritativa, 30 Hz, sequenced) e porque a zona sem tiro nenhum
-			// paga dois bytes por pacote -- um opcode proprio pagaria cabecalho e um envio a mais.
-			EscreverProjeteis(w, zona[0].Zone.Hash);
-
-			// mesmo buffer pra todos daquela zona: quem esta noutro planeta nao recebe nada
-			foreach (ServerPlayer pl in zona)
-				pl.Peer?.Send(w, Protocol.ChannelState, DeliveryMethod.Sequenced);
+			// A ZONA INTEIRA, EM PARTES QUE CABEM NO PACOTE -- ver `GameServer.Snapshot.cs`: com o
+			// torneio a Terra passava de 70 corpos e o pacote unico estourava o MTU, calado. Os tiros
+			// vao no mesmo pacote porque sao o mesmo tipo de dado (posicao autoritativa, 30 Hz,
+			// sequenced) e a zona sem tiro nenhum paga dois bytes. O mesmo buffer vai pra todos da
+			// zona: quem esta noutro planeta nao recebe nada.
+			MandarSnapshot(zona, zona, TirosDaZona(zona[0].Zone.Hash), agora, carimbo);
 		}
 
 		// ============================ O SNAPSHOT SAI AGORA, NAO NO PROXIMO DESPERTAR ============================

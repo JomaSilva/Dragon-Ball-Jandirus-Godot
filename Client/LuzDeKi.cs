@@ -50,6 +50,9 @@ public partial class LuzDeKi : PointLight2D
 	/// <summary>O nome do node. Uma casa so: a bancada e quem procura por ele.</summary>
 	public const string NomeDoNode = "LuzDeKi";
 
+	/// <summary>O nome da luz do TRONCO de um raio. Ver <see cref="Esticar"/>.</summary>
+	public const string NomeDoTronco = "LuzDoTronco";
+
 	/// <summary>
 	/// O RAIO DA TEXTURA, em pixel. Tres tiles.
 	///
@@ -59,7 +62,7 @@ public partial class LuzDeKi : PointLight2D
 	/// que isso custa: 2,15 ms POR LUZ so de montar. O tamanho de cada tiro sai do
 	/// <see cref="Light2D.TextureScale"/>, que escala a mesma textura de graca.
 	/// </summary>
-	private const int RaioDaTextura = 96;
+	public const int RaioDaTextura = 96;
 
 	// =====================================================================
 	// O TETO
@@ -102,18 +105,54 @@ public partial class LuzDeKi : PointLight2D
 	/// O `wavemult` do DM (`Projetil.EscalaVisual`): 1 num Ki Wave, 4 num Final Flash. O muro
 	/// ilumina mais que o fio, que e a mesma relacao que a arte ja tem.
 	/// </param>
-	public static void Pendurar(Node dono, Color cor, float tamanho)
+	public static void Pendurar(Node dono, Color cor, float tamanho) => Nova(dono, cor, tamanho, NomeDoNode);
+
+	/// <summary>
+	/// A LUZ DO TRONCO DE UM RAIO (dono, 2026-09-07: *"deveria ser o beam todo, a cabeca e o tronco"*).
+	/// A mesma luz da cabeca, com a mesma vaga no orcamento e a mesma regra do dia -- so que ela nasce
+	/// ESCONDIDA e quem a estica ao longo do rastro, por quadro, e o desenho do raio
+	/// (<see cref="Esticar"/>). Devolve o node pra quem vai estica-lo; nulo de dia.
+	/// </summary>
+	public static LuzDeKi? PendurarNoTronco(Node dono, Color cor, float tamanho)
+	{
+		LuzDeKi? luz = Nova(dono, cor, tamanho, NomeDoTronco);
+		if (luz != null) luz.Visible = false;   // sem tronco ainda: o `Esticar` a mostra quando houver
+		return luz;
+	}
+
+	/// <summary>
+	/// A LUZ DO TRONCO: a mesma textura radial, ESTICADA da cabeca ate a cauda. Chamada por quadro pelo
+	/// desenho do raio (o comprimento muda todo quadro) e no corte. Sem tronco (raio curto) ela se
+	/// esconde -- uma `Light2D` invisivel nao entra na passada de luz.
+	///
+	/// A ESCALA E DO NODE, e nao do `TextureScale`: aquele e uniforme (e ja carrega o `wavemult`); o
+	/// que se quer aqui e alongar num eixo so, e `Scale` do Node2D faz isso de graca com a textura da
+	/// luz -- ela e desenhada pela transformacao do node como qualquer sprite. As coordenadas sao as
+	/// LOCAIS do raio, cuja origem e a cabeca (ver `ProjetilDesenhado._Process`).
+	/// </summary>
+	public void Esticar(Vector2 cabeca, Vector2 cauda, Vector2 subida)
+	{
+		Vector2 fim = cauda - cabeca;
+		float comprimento = fim.Length();
+		Visible = comprimento > Jandirus.Core.Combat.Projetil.RaioDeImpacto;
+		if (!Visible) return;
+		Position = fim * 0.5f + subida;
+		Rotation = fim.Angle();
+		Scale = new Vector2(comprimento / (2f * RaioDaTextura), 1f);
+	}
+
+	private static LuzDeKi? Nova(Node dono, Color cor, float tamanho, string nome)
 	{
 		// DE DIA NAO NASCE NODE NENHUM. Ver o cabecalho: a curva e a mesma da aura, e ela e lida
 		// uma vez porque um tiro nao atravessa o entardecer.
 		float noite = Iluminacao.ForcaDaNoite();
-		if (noite <= 0.01f) return;
+		if (noite <= 0.01f) return null;
 
 		float t = Mathf.Clamp(tamanho, 1f, 6f);
 
-		dono.AddChild(new LuzDeKi
+		var luz = new LuzDeKi
 		{
-			Name = NomeDoNode,
+			Name = nome,
 			Texture = Fogo.Radial(RaioDaTextura),
 			Color = cor,
 
@@ -151,7 +190,9 @@ public partial class LuzDeKi : PointLight2D
 
 			// ATRAS, como a fogueira e a aura: uma luz por cima lava o sprite que ela acompanha.
 			ZIndex = -5,
-		});
+		};
+		dono.AddChild(luz);
+		return luz;
 	}
 
 	/// <summary>

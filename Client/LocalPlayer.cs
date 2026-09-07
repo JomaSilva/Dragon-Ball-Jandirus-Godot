@@ -470,6 +470,13 @@ public partial class LocalPlayer : Node2D
 	/// quem le esta propriedade esta perguntando exatamente isso.
 	/// ==================================================================================================
 	/// </summary>
+	/// <summary>
+	/// NA AREA DE ESPERA DO TORNEIO -- o efeito `torneio_espera` que o servidor manda ao segurar
+	/// (`GameServer.Torneio.cs:Segurar`) e apaga ao soltar. E o unico jeito de o cliente saber: a
+	/// espera e do servidor, e o corpo local so obedece.
+	/// </summary>
+	private static bool PresoNoTorneio => GameClient.Instance?.EfeitosAtivos.Contains("torneio_espera") == true;
+
 	public string PorQueNaoAnda =>
 		  _semRedeas                             ? "sem as redeas (o servidor dirige)"
 		: _empurrado                             ? "arremessado"
@@ -480,6 +487,7 @@ public partial class LocalPlayer : Node2D
 		: GameClient.Instance?.EmClash == true    ? "num embate"
 		: Transformacao.PrendendoOCorpo           ? "preso pela cinematica de transformacao"
 		: Prensado                                ? "prensado pela gravidade (ou pelo peso)"
+		: PresoNoTorneio                          ? "na area de espera do torneio"
 		: "";
 
 	/// <summary>
@@ -869,17 +877,17 @@ public partial class LocalPlayer : Node2D
 		// quem segura um feixe com as maos -- calar a leitura seria PERDER a disputa de ki pelo portao)
 		// e o SOCO (o espaco nao e letra, e o corpo ja esta preso pelo `Stun`).
 		// ==================================================================================================================
-		bool subir = !Foco.AtalhosMudos && Godot.Input.IsActionPressed("subir");
-		bool descer = !Foco.AtalhosMudos && Godot.Input.IsActionPressed("descer");
+		bool subir = !Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionPressed("subir");
+		bool descer = !Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionPressed("descer");
 
 		// V ALTERNA O VOO. Vai pelo canal de habilidade -- e o MESMO caminho do verb do menu, pra
 		// que a tecla e o botao nao virem duas regras que precisam concordar.
-		if (!Foco.AtalhosMudos && Godot.Input.IsActionJustPressed("voar"))
+		if (!Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionJustPressed("voar"))
 			GameClient.Instance?.SendHabilidade("voar");
 
 		// N ALTERNA O NADO, pelo MESMO canal do voo e do botao do menu. Quem decide se liga (tem agua
 		// aqui? esta de pe?) e o servidor -- o cliente so pede, e recebe a resposta na ficha.
-		if (!Foco.AtalhosMudos && Godot.Input.IsActionJustPressed("nadar"))
+		if (!Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionJustPressed("nadar"))
 			GameClient.Instance?.SendHabilidade("nadar");
 
 		// Q CICLA O AGARRAO -- pegar, levantar no colo, soltar. Pelo MESMO canal do voo e do nado, e
@@ -1043,6 +1051,18 @@ public partial class LocalPlayer : Node2D
 			// ========================================================================================================
 			if (_caido) _visual.SetState("ko");
 			else PorAPoseDoCorpo();
+			return;
+		}
+
+		// A AREA DE ESPERA DO TORNEIO fecha o teclado inteiro (o `move = 0` / `canfight = 0` do
+		// `apply_hold`, `Tournament.dm:331-332`): sem soco, sem guarda, sem carga, sem tecnica. O
+		// servidor recusa tudo isso de qualquer jeito; aqui e pra que o corpo nem TENTE -- o dono via o
+		// boneco andar e ser "teleportado de volta" (2026-09-07). Ver `PorQueNaoAnda`, que zera o passo.
+		if (PresoNoTorneio)
+		{
+			if (_guarda) { _guarda = false; GameClient.Instance?.SendGuard(false); }
+			if (_carregando) { _carregando = false; GameClient.Instance?.SendCarregar(false); }
+			PorAPoseDoCorpo();
 			return;
 		}
 

@@ -1748,9 +1748,15 @@ public partial class GameServer
 			// Um tiro NOVO pra medir o voo, porque o de cima ja morreu no planeta.
 			// ==================================================================================================
 			Projetil emVoo = Disparar(pl, TiroDeBancada(), rumoDado: new Vec2(0, 1), verbo: "bancada");
-			var fio = new LiteNetLib.Utils.NetDataWriter();
-			EscreverProjeteis(fio, ZonaDoEspaco.Hash, pl.Pos);
-			int noFio = new LiteNetLib.Utils.NetDataReader(fio.Data, 0, fio.Length).GetUShort();
+			// PELO MESMO CAMINHO DO FIO (`GameServer.Snapshot.cs`): as partes do snapshot do espaco deste
+			// jogador, sem corpo nenhum, so o bloco de tiros perto dele -- e conta-se o que o leitor leria.
+			int noFio = 0;
+			foreach (LiteNetLib.Utils.NetDataWriter parte in PartesDoSnapshot([], TirosDaZona(ZonaDoEspaco.Hash, pl.Pos), NowMs(), 0u, OrcamentoMinimoDoSnapshot))
+			{
+				var r = new LiteNetLib.Utils.NetDataReader(parte.Data, 0, parte.Length);
+				r.GetByte(); r.GetUInt(); r.GetUShort();   // opcode, carimbo, zero corpos
+				noFio += r.GetUShort();
+			}
 			Matar(emVoo, FimDeProjetil.Cessou);
 
 			Checa("**o tiro do espaco VIAJA NO SNAPSHOT** -- senao ele apareceria colado na mao e o "

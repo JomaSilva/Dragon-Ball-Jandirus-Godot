@@ -438,6 +438,16 @@ public sealed class Projetil
 	/// </summary>
 	public bool JaDisputou;
 
+	/// <summary>
+	/// ESTA CABECA ESTA ESPERANDO O TRONCO DE OUTRO FEIXE SAIR DO CAMINHO (dono, 2026-09-07: dois
+	/// feixes que se cruzam nao disputam; o que bate no tronco do outro fica parado). Reescrito a cada
+	/// tique pelo avanco -- e leitura, nao estado; serve ao diagnostico e a bancada.
+	/// </summary>
+	public bool Esperando;
+
+	/// <summary>O FEIXE DE QUE ESTE NASCEU POR CORTE (zero = nasceu de uma mao). Ver `GameServer.Feixe.cs`.</summary>
+	public int NascidoDoCorte;
+
 	/// <summary>Como ele se chama no relato. A COR sai do dono -- ver o mesmo campo na receita.</summary>
 	public string Nome = "ataque de ki";
 

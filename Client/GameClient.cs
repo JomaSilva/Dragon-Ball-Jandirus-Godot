@@ -61,6 +61,8 @@ public partial class GameClient : Node
 	public event Action<byte, int, string>? ConviteDeTorneio;
 	/// <summary>O convite fechou (aviso 2): respondido, vencido no servidor, ou torneio cancelado.</summary>
 	public event Action? ConviteDeTorneioFechou;
+	/// <summary>O CHAVEAMENTO (`S2C.Chave`): o retrato do torneio, a cada fase; aviso 2 = acabou.</summary>
+	public event Action<ChaveNaTela>? ChaveDeTorneio;
 	public event Action<ZoneKey, Vec2>? ZoneChanged;
 	public event Action<string>? Rejected;
 
@@ -1236,6 +1238,12 @@ public partial class GameClient : Node
 	/// <summary>UM TIRO ACABOU: id, o motivo (`Core.Combat.FimDeProjetil`) e onde.</summary>
 	public event Action<int, byte, Vec2>? TiroMorreu;
 
+	/// <summary>
+	/// UM RAIO FOI CORTADO: o feixe de ca (id, a cabeca NOVA) e o de la (id, ou zero, e a cauda com que
+	/// nasceu). Ver `Protocol.ProjetilSub.Cortou`.
+	/// </summary>
+	public event Action<int, Vec2, int, Vec2>? TiroCortado;
+
 	// =====================================================================
 	// O ZANZO CLASH
 	// =====================================================================
@@ -1618,6 +1626,12 @@ public partial class GameClient : Node
 					TiroNasceu?.Invoke(new NascimentoDeProjetil(
 						tiro, dono, tipo, arte, escala, altura, onde, invisivel));
 				}
+				else if (sub == Protocol.ProjetilSub.Cortou)
+				{
+					Vec2 cabeca = reader.GetVec();
+					int deLa = reader.GetInt();
+					TiroCortado?.Invoke(tiro, cabeca, deLa, reader.GetVec());
+				}
 				else
 				{
 					byte fim = reader.GetByte();
@@ -1949,6 +1963,9 @@ public partial class GameClient : Node
 				else ConviteDeTorneioFechou?.Invoke();
 				break;
 			}
+			case Protocol.S2C.Chave:
+				ChaveDeTorneio?.Invoke(ChaveNaTela.Ler(reader));
+				break;
 			case Protocol.S2C.Cargos:
 			{
 				int n = reader.GetByte();

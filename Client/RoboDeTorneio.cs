@@ -115,10 +115,109 @@ public partial class RoboDeTorneio : Node
 				painel.Fechar();
 				Conferir(!painel.VisivelDeTeste, "o aviso 2 do servidor (convite fechado) esconde o painel");
 				GameClient.EspiaoDeVerbos = null;
+				Passar();
+				break;
+
+			// =====================================================================
+			// O CHAVEAMENTO NA TELA, O CANTO "ASSISTIR" E A TRAVA DA ESPERA (dono, 2026-09-07)
+			// =====================================================================
+			case 7:
+				GD.Print("[diagtorneio] ===== O CHAVEAMENTO, O ASSISTIR E A AREA DE ESPERA =====");
+				cli.SendVerbo("trn_iniciar", "terra");
+				Passar();
+				break;
+			case 8:
+				if (!painel.VisivelDeTeste && _t < 5) return;
+				Conferir(painel.VisivelDeTeste, "o convite do segundo torneio chegou");
+				painel.ClicarParticiparDeTeste();
+				Passar();
+				break;
+			case 9:
+				if (servidor.InscritosDeTeste == 0 && _t < 5) return;
+				Conferir(servidor.InscritosDeTeste == 1, "o host esta inscrito");
+				cli.SendVerbo("trn_avancar");   // fecha as inscricoes JA (verb de admin): a chave nasce
+				Passar();
+				break;
+			case 10:
+			{
+				PainelDaChave? chave = hud.FindChild("Chave", true, false) as PainelDaChave;
+				PainelDeAssistir? assistir = hud.FindChild("Assistir", true, false) as PainelDeAssistir;
+				if ((chave == null || !chave.VisivelDeTeste) && _t < 6) return;
+				Conferir(chave != null && assistir != null, "o HUD tem o painel da chave e o canto de assistir");
+				if (chave == null || assistir == null) { Fechar(); return; }
+				Conferir(chave.VisivelDeTeste, $"em {_t:0.0}s a chave nasceu no servidor, veio pela REDE (S2C.Chave) e o chaveamento ABRIU sozinho");
+				Conferir(chave.CompetidoresDeTeste == 32, $"o chaveamento tem os 32 nomes ({chave.CompetidoresDeTeste})");
+				Conferir(chave.MinhaChaveDeTeste >= 0, $"...e sabe qual sou eu (indice {chave.MinhaChaveDeTeste})");
+				Conferir(chave.TituloDeTeste.Contains("chaveamento", StringComparison.OrdinalIgnoreCase), $"o titulo diz o que e (\"{chave.TituloDeTeste}\")");
+				Conferir(assistir.VisivelDeTeste, "o canto 'Assistir torneio' apareceu (eu espero a minha vez)");
+				Conferir(assistir.AnchorLeft == 0 && assistir.AnchorTop == 1 && assistir.OffsetLeft > 0 && assistir.OffsetBottom < 0,
+						 "...no canto INFERIOR ESQUERDO da tela (acima do chat, que mora no canto)");
+				Conferir(World.Instancia?.PorQueOCorpoNaoAnda == "na area de espera do torneio",
+						 $"o corpo local esta TRAVADO pela espera -- nem tenta andar (\"{World.Instancia?.PorQueOCorpoNaoAnda}\")");
+				Passar();
+				break;
+			}
+			case 11:
+			{
+				// UM QUADRO DEPOIS (o desenho e por quadro): a minha luta esta marcada e o pulso tem valor.
+				if (_t < 0.7) return;
+				PainelDaChave? chave = hud.FindChild("Chave", true, false) as PainelDaChave;
+				if (chave == null) { Fechar(); return; }
+				Conferir(chave.MinhaLutaDeTeste >= 0, $"a MINHA luta esta marcada pra pulsar (luta {chave.MinhaLutaDeTeste} da rodada)");
+				_pulso = chave.PulsoDeTeste;
+				_pulsoMin = _pulsoMax = _pulso;
+				_quadros = chave.QuadrosDesenhadosDeTeste;
+				Passar();
+				break;
+			}
+			case 12:
+			{
+				// O PULSO: amostras por 0,8 s -- o brilho tem que variar de verdade, e o desenho tem que ser por quadro.
+				PainelDaChave? chave = hud.FindChild("Chave", true, false) as PainelDaChave;
+				PainelDeAssistir? assistir = hud.FindChild("Assistir", true, false) as PainelDeAssistir;
+				if (chave == null || assistir == null) { Fechar(); return; }
+				_pulsoMin = Math.Min(_pulsoMin, chave.PulsoDeTeste);
+				_pulsoMax = Math.Max(_pulsoMax, chave.PulsoDeTeste);
+				if (_t < 0.8) return;
+				Conferir(chave.QuadrosDesenhadosDeTeste >= _quadros + 10, $"o chaveamento e redesenhado a cada quadro ({chave.QuadrosDesenhadosDeTeste - _quadros} quadros em 0,8 s)");
+				Conferir(_pulsoMax - _pulsoMin > 0.15f, $"o contorno da minha luta PULSA (brilho de {_pulsoMin:0.00} a {_pulsoMax:0.00} em 0,8 s)");
+				Fotografar("torneio-2-chaveamento");
+				assistir.ClicarAssistirDeTeste();
+				Conferir(assistir.AssistindoDeTeste && World.Instancia?.AssistindoDeTeste == true, "o botao Assistir liga a camera do espectador");
+				Passar();
+				break;
+			}
+			case 13:
+				if (_t < 0.8) return;
+				Conferir((World.Instancia?.DeslocamentoDaCameraDeTeste.Length() ?? 0f) > 20f,
+						 $"a camera saiu de cima de mim e foi pra arena (deslocamento {World.Instancia?.DeslocamentoDaCameraDeTeste.Length():0} px)");
+				Fotografar("torneio-3-assistindo");
+				cli.SendVerbo("trn_cancelar");
+				Passar();
+				break;
+			case 14:
+			{
+				PainelDaChave? chave = hud.FindChild("Chave", true, false) as PainelDaChave;
+				PainelDeAssistir? assistir = hud.FindChild("Assistir", true, false) as PainelDeAssistir;
+				if ((servidor.TorneioAtivo || assistir?.VisivelDeTeste == true) && _t < 5) return;
+				Conferir(!servidor.TorneioAtivo, "o torneio foi cancelado");
+				Conferir(chave?.VisivelDeTeste == false && assistir?.VisivelDeTeste == false, "...o chaveamento e o canto de assistir fecharam (aviso 2)");
+				Conferir(World.Instancia?.AssistindoDeTeste == false, "...a camera parou de assistir sozinha");
+				Conferir(World.Instancia?.PorQueOCorpoNaoAnda == "", $"...e o corpo local esta livre de novo (\"{World.Instancia?.PorQueOCorpoNaoAnda}\")");
+				Passar();
+				break;
+			}
+			case 15:
+				if (_t < 1.2) return;
+				Conferir((World.Instancia?.DeslocamentoDaCameraDeTeste.Length() ?? 999f) < 20f,
+						 $"...e a camera voltou pra cima de mim (deslocamento {World.Instancia?.DeslocamentoDaCameraDeTeste.Length():0} px)");
 				Fechar();
 				break;
 		}
 	}
+
+	private float _pulso, _pulsoMin, _pulsoMax;
+	private int _quadros;
 
 	private void Passar() { _passo++; _t = 0; }
 

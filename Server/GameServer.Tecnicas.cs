@@ -201,8 +201,12 @@ public partial class GameServer
 	}
 
 	/// <summary>Um efeito caiu (ou saiu) de cima de voce. `ms` negativo = enquanto durar.</summary>
+	/// <summary>A bancada ouve os efeitos mandados (quem, qual, quanto). Nula em producao.</summary>
+	internal static List<(int Quem, string Id, long Ms)>? EscutaDeEfeitos;
+
 	private static void MandarEfeito(ServerPlayer pl, string id, long ms)
 	{
+		EscutaDeEfeitos?.Add((pl.Id, id, ms));
 		var w = Protocol.Begin(Protocol.S2C.Efeito);
 		w.Put(id);
 		w.Put(ms);

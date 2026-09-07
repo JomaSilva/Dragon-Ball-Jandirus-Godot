@@ -245,9 +245,9 @@ public partial class World : Node2D
 	/// <summary>Esta celula e agua? Ver <see cref="MarcasDeAgua"/>.</summary>
 	public bool EhAgua(Vector2I celula)
 	{
-		for (int i = _veu.Camadas.Length - 1; i >= 0; i--)
+		for (int i = _camadas.Length - 1; i >= 0; i--)
 		{
-			TileMapLayer camada = _veu.Camadas[i];
+			TileMapLayer camada = _camadas[i];
 			if (!IsInstanceValid(camada) || camada.TileSet is not { } ts) continue;
 
 			int fonte = camada.GetCellSourceId(celula);

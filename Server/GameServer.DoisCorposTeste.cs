@@ -1897,8 +1897,11 @@ public sealed partial class GameServer
 		Encostar(a, c, d);
 		AfirmarDc("o `CorpoNaFrente` de quem chegou acha o CADAVER (ele nao pergunta `Ficha.dead`)",
 				  CorpoNaFrente(a) == c);
-		AfirmarDc("...e o `AlvoNaFrente` do SOCO nao acha (as duas regras sao diferentes de proposito)",
-				  AlvoNaFrente(a) != c);
+		// ESTA LINHA DIZIA O CONTRARIO ("o soco nao acha") e ficou pra tras: desde que o dono pediu
+		// que o cadaver APANHE (2026-09-06), o `AlvoNaFrente` o devolve -- mas so quando nao ha vivo na
+		// frente (`return melhor ?? melhorCadaver`). A bancada media a regra velha e reprovava a nova.
+		AfirmarDc("...e o `AlvoNaFrente` do SOCO tambem o acha -- por falta de vivo na frente (o cadaver apanha, pedido do dono)",
+				  AlvoNaFrente(a) == c);
 
 		AlternarAgarrao(a);
 		AlternarAgarrao(a);

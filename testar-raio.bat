@@ -39,6 +39,11 @@ REM
 REM    4) --diagraio        AS FOTOS. E a unica que precisa de JANELA: no headless o
 REM                         `GetImage` volta vazio e as fotos saem em branco.
 REM
+REM  (2026-09-07) A --projetilteste ganhou tres familias -- 11) a cabeca do raio para
+REM  NA FRENTE de quem acerta, 12) o TRONCO se corta em quem pisa nele (a parte de la
+REM  segue), 13) apanhar de bola ou soco derruba o raio -- e a --diagraio ganhou a
+REM  CENA D, a foto do corte visto pelo cliente (raio-4-corte.png).
+REM
 REM  AS FOTOS saem em
 REM     %%APPDATA%%\Godot\app_userdata\Dragon ball Jandirus\raio-*.png
 REM  e as duas que respondem sozinhas sao as TIRAS, que a propria bancada cola:

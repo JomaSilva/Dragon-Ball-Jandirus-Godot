@@ -238,6 +238,7 @@ public sealed partial class GameServer
 			OGarantidoContinuaGarantido();
 			OFioAteOAtacar();
 			ORastroSegueOsPixels();
+			OArremessoNoAr();
 
 			// ---- AS DUAS QUEIXAS DO DONO, CRONOMETRADAS NUMA BRIGA DE VERDADE ----
 			// Um par de brigas de 60 s (com e sem o defeito injetado) alimenta as DUAS familias
@@ -1088,6 +1089,81 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>Um quadrado de `lado` tiles sem parede e sem agua, longe da borda. Devolve o canto (pixel) ou nulo.</summary>
+	/// <summary>
+	/// O ARREMESSO NO AR (dono, 2026-09-07): *"ao estar voando, efeitos de knock back como a trilha e
+	/// cratera nao devem acontecer pois se o personagem ta voando ele nao encosta no chao, logo nao
+	/// causa destruicao (isso conta pra paredes que dao pra voar por cima)"*. O mesmo arremesso, duas
+	/// vezes: pairando e no chao. No ar: sem sulco, sem cratera, altura intacta, e o muro no caminho
+	/// continua de pe com o corpo do outro lado. No chao: o rastro aparece e o muro para o corpo.
+	/// </summary>
+	private void OArremessoNoAr()
+	{
+		GD.Print("[kb] -- 10) O ARREMESSO NO AR: sem sulco, sem cratera, por cima do muro --");
+		const int T = ZoneCollision.TileSize;
+		ServerPlayer d = Forjar("kbNoAr", new Vec2(8 * T, 8 * T), 5_551);
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(d.Zone);
+		Vec2? canto = mapa == null ? null : PracaSeca(mapa, 16);
+		AfirmarKb("(montagem) achei uma praca seca de 16x16 tiles pro arremesso no ar", canto != null);
+		if (canto is not { } c || mapa == null) return;
+		Vec2 origem = c + new Vec2(2 * T + 16, 8 * T + 16);
+		int muroCx = (int)(origem.X / T) + 6, muroCy = (int)(origem.Y / T);
+		Vec2 fimDaPraca = c + new Vec2(16 * T, 16 * T);
+		bool NaPraca(Vec2 v) => v.X >= c.X && v.Y >= c.Y && v.X <= fimDaPraca.X && v.Y <= fimDaPraca.Y;
+		int Rastro()
+		{
+			int n = 0;
+			foreach ((ulong zona, Protocol.Decal t, byte[] fio) in EscutaDeDecalques ?? [])
+			{
+				if (zona != d.Zone.Hash || t is not (Protocol.Decal.Sulco or Protocol.Decal.SulcoPonta or Protocol.Decal.Cratera or Protocol.Decal.Fumaca)) continue;
+				(_, Vec2 onde, _, _, _) = LerDecalque(fio);
+				if (NaPraca(onde)) n++;
+			}
+			return n;
+		}
+		void Arremesso()
+		{
+			foreach (ServerPlayer o in TodosOsCorpos().ToList())
+				if (o != d) { o.TiquesDeVoo = 0; o.TiquesIniciaisDoVoo = 0; }
+			EscutaDeDecalques = [];
+			Arremessar(d, new Vec2(1, 0), 0, 6);   // 12 tiles, forca abaixo da resistencia: o muro nao cai
+			for (int i = 0; i < 90 && d.TiquesDeVoo > 0; i++) { TickDoEmpurrao(); TickDoVoo(d, Protocol.TickSeconds); }
+		}
+		mapa.Bloquear(muroCx, muroCy);
+		try
+		{
+			AfirmarKb("(montagem) ha um muro a 6 tiles no caminho", mapa.BlockedCell(muroCx, muroCy));
+
+			// NO AR
+			d.Pos = origem;
+			d.Voando = true;
+			d.Altitude = Voo.AlturaDePairar;
+			d.Ficha.Ki = d.Ficha.MaxKi;
+			d.Ficha.KO = false;
+			Arremesso();
+			int rastroNoAr = Rastro();
+			AfirmarKb("VOANDO, o arremesso nao deixa sulco, ponta, cratera nem fumaca", rastroNoAr == 0, $"{rastroNoAr} marca(s)");
+			AfirmarKb("...a altura fica onde estava durante o voo do golpe", Mathf.IsEqualApprox(d.Altitude, Voo.AlturaDePairar) && d.Voando, $"altitude {d.Altitude:0}, voando {d.Voando}");
+			AfirmarKb("...e o corpo passa POR CIMA do muro", d.Pos.X > (muroCx + 1) * T, $"x {d.Pos.X:0} vs muro ate {(muroCx + 1) * T}");
+			AfirmarKb("...que continua de pe", mapa.BlockedCell(muroCx, muroCy));
+
+			// CONTRA-EXEMPLO: NO CHAO
+			d.Pos = origem;
+			d.Voando = false;
+			d.Altitude = 0f;
+			Arremesso();
+			int rastroNoChao = Rastro();
+			AfirmarKb("CONTRA-EXEMPLO: no CHAO o mesmo arremesso deixa rastro", rastroNoChao >= 1, $"{rastroNoChao} marca(s)");
+			AfirmarKb("...e o muro PARA o corpo (forca abaixo da resistencia)", d.Pos.X < muroCx * T, $"x {d.Pos.X:0} vs muro em {muroCx * T}");
+		}
+		finally
+		{
+			mapa.LimparObras();
+			EscutaDeDecalques = null;
+			d.Voando = false;
+			d.Altitude = 0f;
+		}
+	}
+
 	private static Vec2? PracaSeca(ZoneCollision mapa, int lado)
 	{
 		for (int y = 4; y + lado < mapa.Height - 4; y += 2)

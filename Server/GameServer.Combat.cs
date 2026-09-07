@@ -600,6 +600,10 @@ public partial class GameServer
 		ResolverDesfecho(a, alvo, r);
 		AnunciarGolpe(a, alvo, r, nivel, zanzo, investiu);
 
+		// APANHOU COM UM RAIO NA MAO (dono, 2026-09-07): fora de disputa o raio DELE cai; dentro dela o
+		// golpe pesa no medidor. Ver `GameServer.Feixe.cs`.
+		if (r.Encostou) AoLevarGolpeComRaioNaMao(alvo, a);
+
 		// O CORPO SAI DO LUGAR. Vem DEPOIS do dano, como no original (`attack cmn.dm:110`, logo
 		// apos o `hitProc`): o arremesso e consequencia do golpe que ACERTOU, e o `Impact` le o
 		// dano ja calculado. Golpe aparado ou esquivado nao arremessa -- `r.Encostou` diz isso.

@@ -1125,6 +1125,16 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtorneio") >= 0)
 			AddChild(new RoboDeTorneio { Name = "RoboDeTorneio" });
 
+		// --diagsombra: a SOMBRA VISTA NA TELA -- o portao com muro (a foto do dono de 2026-09-07) e a
+		// camera do espectador do torneio, com foto e medida (furos, dobra do leque, lutadores a vista).
+		// `--sombralugar Zona,cx,cy` escolhe o portao. Ver RoboDaSombra.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsombra") >= 0)
+		{
+			var rs = new RoboDaSombra { Name = "RoboDaSombra" };
+			if (Arg(OS.GetCmdlineArgs(), "--sombralugar") is { } lugar) rs.Lugar = lugar;
+			AddChild(rs);
+		}
+
 		// --diagtecla: bancada das TECLAS CONFIGURAVEIS. Ela mede uma afirmacao ("a tecla faz
 		// exatamente o que o botao faz") comparando os BYTES que chegaram no servidor pelos dois
 		// gestos, e um contra-exemplo (o C, o ALT e o E continuam funcionando depois de o registro

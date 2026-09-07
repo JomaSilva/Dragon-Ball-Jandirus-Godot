@@ -162,6 +162,8 @@ public sealed partial class GameServer
 	internal AgendaDeTorneios AgendaDeTeste => _agenda;
 	internal bool TorneioAtivo => _torneio != null;
 	internal string FaseDoTorneioDeTeste => _torneio?.Fase.ToString() ?? "nenhum";
+	/// <summary>A bancada ouve os retratos da chave mandados (pra quem, o que). Nula em producao.</summary>
+	internal static List<(int Quem, ChaveNaTela Chave)>? EscutaDeChaves;
 	internal string TipoDoTorneioDeTeste => _torneio?.Tipo.ToString() ?? "nenhum";
 	internal Chave? ChaveDeTeste => _torneio?.Chave;
 	internal int InscritosDeTeste => _torneio?.Inscritos.Count ?? 0;
@@ -333,6 +335,10 @@ public sealed partial class GameServer
 			case "trn_agenda":
 				if (!EhAdmin(pl)) { Avisar(pl, "isso e coisa de administrador."); return true; }
 				AgendarTorneio(pl, arg);
+				return true;
+			case "trn_chave":
+				if (_torneio is { } comChave && comChave.Fase != FaseDoTorneio.Inscricao) MandarChave(comChave, pl, 1);
+				else Avisar(pl, "nao ha chave montada agora.");
 				return true;
 			case "trn_inscrever":
 				if (!EhAdmin(pl)) { Avisar(pl, "isso e coisa de administrador."); return true; }
@@ -510,6 +516,57 @@ public sealed partial class GameServer
 
 		t.Fase = FaseDoTorneio.Preparando;
 		t.PrazoMs = NowMs() + (long)(Math.Max(1, _torneioCfg.IntervaloSegundos) * 1000);
+		MandarChaveATodos(t);   // "ao comecar um torneio o jogo deveria colocar na minha tela o chaveamento"
+	}
+
+	// =====================================================================
+	// O CHAVEAMENTO NA TELA (`S2C.Chave`) -- dono, 2026-09-07
+	// =====================================================================
+	/// <summary>
+	/// O RETRATO DA CHAVE PRA UMA PESSOA. Indices no lugar de assinaturas (ver `ChaveNaTela`); a
+	/// "minha chave" e a posicao da assinatura dela na lista; quem luta agora vai por id de CORPO,
+	/// que e o que a camera do espectador consegue achar no cliente.
+	/// </summary>
+	private ChaveNaTela MontarChaveNaTela(TorneioVivo t, ServerPlayer p, byte aviso)
+	{
+		Chave k = t.Chave;
+		var indice = new Dictionary<string, short>(StringComparer.Ordinal);
+		var c = new ChaveNaTela
+		{
+			Aviso = aviso, Tipo = (byte)t.Tipo, Fase = (byte)t.Fase,
+			RodadaAtual = (byte)Math.Min(k.RodadaAtual, 255), Centro = t.Arena.Centro,
+		};
+		for (int i = 0; i < k.Competidores.Count && i < 255; i++)
+		{
+			indice[k.Competidores[i].Chave] = (short)i;
+			c.Competidores.Add((k.Competidores[i].Nome, k.Competidores[i].Npc));
+		}
+		short Idx(string chave) => chave.Length > 0 && indice.TryGetValue(chave, out short i) ? i : (short)-1;
+		foreach (Rodada r in k.Rodadas)
+			c.Rodadas.Add((r.Nome, r.Lutas.Select(l => (Idx(l.A), Idx(l.B), Idx(l.Vencedor))).ToList()));
+		c.MinhaChave = Idx(p.Assinatura);
+		c.CorpoA = CorpoDaChave(t.ChaveA)?.Id ?? 0;
+		c.CorpoB = CorpoDaChave(t.ChaveB)?.Id ?? 0;
+		return c;
+	}
+
+	private void MandarChave(TorneioVivo t, ServerPlayer p, byte aviso)
+	{
+		ChaveNaTela c = MontarChaveNaTela(t, p, aviso);
+		EscutaDeChaves?.Add((p.Id, c));
+		var w = Protocol.Begin(Protocol.S2C.Chave);
+		c.Escrever(w);
+		p.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// PRA TODO MUNDO QUE TEM O QUE VER: quem esta na zona do torneio (participante ou plateia -- e o
+	/// canto "Assistir torneio" que nasce disto) e todo participante onde quer que esteja.
+	/// </summary>
+	private void MandarChaveATodos(TorneioVivo t, byte aviso = 1)
+	{
+		foreach (ServerPlayer p in Jogadores.ToList())
+			if (p.Zone.Hash == t.Zona.Hash || t.Chave.Quem(p.Assinatura) != null) MandarChave(t, p, aviso);
 	}
 
 	/// <summary>
@@ -601,18 +658,28 @@ public sealed partial class GameServer
 		bool novo = t.Presos.Add(corpo.Id);
 		Transportar(corpo, t.Zona, lugar);
 		corpo.Combate.Carencia = CarenciaDeEspera;
+		// NO CHAO E QUIETO (o `move = 0` do `apply_hold`, `Tournament.dm:331`): quem espera nao sobe --
+		// um `QuerSubir` velho, de um cerebro que parou de pensar, era o `TickDoVoo` subindo sozinho
+		// ate o teto -- e quem chegou voando desce e pousa.
+		corpo.QuerSubir = false;
+		corpo.QuerDescer = corpo.Altitude > 0f;
+		corpo.Moving = false;
 		if (EhJogador(corpo))
 		{
-			corpo.Moving = false;
-			if (novo) Avisar(corpo, "voce esta na AREA DE ESPERA do torneio: imovel e intocavel ate a sua vez. Assista daqui.");
+			// A TRAVA DE INPUT VAI PRO CLIENTE como efeito (`LocalPlayer.PorQueNaoAnda` a le): sem isto o
+			// cliente previa o passo, o servidor recusava, e o dono via o boneco "teleportando de volta".
+			// Sempre, e nao so no `novo`: quem reloga chega com o cliente limpo.
+			MandarEfeito(corpo, "torneio_espera", -1);
+			if (novo) Avisar(corpo, "voce esta na AREA DE ESPERA do torneio: imovel e intocavel ate a sua vez. Use Assistir torneio (canto inferior esquerdo).");
 		}
-		else corpo.Moving = false;
 	}
 
 	private void Soltar(TorneioVivo t, ServerPlayer corpo)
 	{
 		if (!t.Presos.Remove(corpo.Id)) return;
 		if (corpo.Combate.Carencia >= CarenciaDeEspera) corpo.Combate.Carencia = 0;
+		corpo.QuerDescer = false;
+		if (EhJogador(corpo)) MandarEfeito(corpo, "torneio_espera", 0);
 	}
 
 	/// <summary>
@@ -625,6 +692,7 @@ public sealed partial class GameServer
 		{
 			if (!_players.TryGetValue(id, out ServerPlayer? c)) { t.Presos.Remove(id); continue; }
 			if (c.Combate.Carencia < CarenciaDeEspera) c.Combate.Carencia = CarenciaDeEspera;
+			if (c.Altitude > 0f) { c.QuerSubir = false; c.QuerDescer = true; }   // quem espera fica no chao
 			if (!EhJogador(c)) continue;
 			if (t.LugarDeEspera.TryGetValue(id, out Vec2 lugar) && c.Zone.Hash == t.Zona.Hash) Ancorar(c, lugar);
 		}
@@ -690,6 +758,7 @@ public sealed partial class GameServer
 		AnunciarTorneio(t, $"{t.Chave.RodadaDeAgora?.Nome} - luta {t.LutasDisputadas + 1}: {t.Chave.NomeDe(l.A)} VS {t.Chave.NomeDe(l.B)}!");
 		t.Contagem = (int)Math.Ceiling(_torneioCfg.ContagemSegundos);
 		t.Fase = FaseDoTorneio.Contagem;
+		MandarChaveATodos(t);   // quem luta agora (`CorpoA`/`CorpoB`) mudou: o canto e a camera precisam saber
 		if (t.Contagem <= 0) { ComecarALuta(t); return; }
 		DizerAosPresentes(t, $"{t.Contagem}...");
 		t.PrazoMs = NowMs() + 1000;
@@ -698,6 +767,7 @@ public sealed partial class GameServer
 	private void ComecarALuta(TorneioVivo t)
 	{
 		t.Fase = FaseDoTorneio.Luta;
+		MandarChaveATodos(t);
 		t.LutaSegundos = 0;
 		t.ReengajarEm = 0;
 		DizerAosPresentes(t, "COMECEM!");
@@ -787,6 +857,7 @@ public sealed partial class GameServer
 		t.ChaveA = ""; t.ChaveB = "";
 		t.Fase = FaseDoTorneio.Intervalo;
 		t.PrazoMs = NowMs() + (long)(_torneioCfg.IntervaloSegundos * 1000);
+		MandarChaveATodos(t);   // o resultado entra no retrato
 	}
 
 	/// <summary>`trn_heal`: levanta do nocaute, membros nao decepados inteiros, Ki e folego cheios.</summary>
@@ -834,6 +905,7 @@ public sealed partial class GameServer
 	/// <summary>`cleanup`: solta todo mundo, remove os NPCs, e o torneio deixa de existir.</summary>
 	private void EncerrarTorneio(TorneioVivo t)
 	{
+		MandarChaveATodos(t, 2);   // fecha o chaveamento e o canto de assistir em toda tela
 		foreach (int id in t.Presos.ToList())
 			if (_players.TryGetValue(id, out ServerPlayer? c)) Soltar(t, c);
 		foreach ((int id, bool letal) in t.LetalAntes)
@@ -859,6 +931,7 @@ public sealed partial class GameServer
 			if (Elegivel(pl, t.Tipo) && !t.Recusaram.Contains(chave)) Convidar(t, pl);
 			return;
 		}
+		MandarChave(t, pl, 1);   // quem chega (participante ou plateia) ve a chave como esta
 		if (t.Chave.Quem(chave) == null) return;
 		if (chave == t.ChaveA || chave == t.ChaveB)
 		{

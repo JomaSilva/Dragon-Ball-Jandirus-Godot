@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text;
 
 namespace Jandirus.Tools;
@@ -299,14 +299,14 @@ public static class MapConverter
 				// exatamente a queixa que estamos consertando.
 				celulas += EscreverCena(cena, nome, nivel, dados, turfs, fontes, atlasPorNome,
 										semAtlas, ref proxId, out HashSet<(int, int)> paredes,
-										out Dictionary<(int, int), byte> cegos,
+										out HashSet<(int, int)> cegos,
 										out List<string> portas,
 										out List<string> maquinas,
 										out List<string> passagens, gravar: !soFisica);
 				if (soFisica)
 				{
 					(int lc, int nc) = LibertarNaColisao(Path.Combine(outDir, nome + ".col"), nivel.Width, nivel.Height, paredes);
-					(int lv, int nv) = LibertarNaColisao(Path.Combine(outDir, nome + ".vis"), nivel.Width, nivel.Height, cegos.Keys);
+					(int lv, int nv) = LibertarNaColisao(Path.Combine(outDir, nome + ".vis"), nivel.Width, nivel.Height, cegos);
 					AcompanharListas(outDir, nome, portas, passagens, out int portasTiradas, out bool passagensMudaram);
 					libertadas += lc; cegasLibertadas += lv; novasNaoGravadas += nc + nv;
 					if (lc + lv + nc + nv + portasTiradas > 0 || passagensMudaram)
@@ -320,7 +320,7 @@ public static class MapConverter
 				bloqueadas += EscreverColisao(Path.Combine(outDir, nome + ".col"),
 											  nivel.Width, nivel.Height, paredes);
 				// mesmo formato, outro proposito: este e o que o CAMPO DE VISAO consulta
-				EscreverColisao(Path.Combine(outDir, nome + ".vis"), nivel.Width, nivel.Height, cegos.Keys, cegos);
+				EscreverColisao(Path.Combine(outDir, nome + ".vis"), nivel.Width, nivel.Height, cegos);
 
 				// ...e este e a TERCEIRA CLASSE DE CELULA: agua. Mesmo formato de novo, e um
 				// arquivo separado pelo mesmo motivo que o `.vis` e separado do `.col` -- as tres
@@ -997,7 +997,7 @@ public static class MapConverter
 	private static int EscreverCena(string caminho, string nome, DmmLevel nivel, DmmMap.Result dados,
 		Dictionary<string, TurfDef> turfs, Dictionary<string, Fonte> fontes,
 		Dictionary<string, List<string>> atlasPorNome, HashSet<string> semAtlas, ref int proxId,
-		out HashSet<(int, int)> paredes, out Dictionary<(int, int), byte> cegos,
+		out HashSet<(int, int)> paredes, out HashSet<(int, int)> cegos,
 		out List<string> portasDaCena, out List<string> maquinasDaCena,
 		out List<string> passagensDaCena, bool gravar = true)
 	{
@@ -1018,27 +1018,7 @@ public static class MapConverter
 		// Continua sendo um mapa SEPARADO do `.col` porque os dois divergem nos dois sentidos: a
 		// porta cega e nao bloqueia (da pra atravessar), e a borda do mundo bloqueia sem cegar
 		// nada de interessante.
-		// A IDENTIDADE VAI JUNTO, e nao so a posicao. O `f.Id` + a coordenada de atlas ja sao
-		// calculados tres linhas antes de a celula ser marcada como cega -- ate agora esse dado
-		// era simplesmente jogado fora, porque o acumulador era um HashSet de coordenadas.
-		//
-		// A PALETA E POR MAPA e nasce da ordem de descoberta. So a IGUALDADE importa (ver
-		// `ZoneCollision.Grupo`), entao numero pequeno basta: sao 186 identidades distintas no
-		// jogo INTEIRO e no maximo 60 num mapa so.
-		var vendados = new Dictionary<(int, int), byte>();
-		var paleta = new Dictionary<(int, int, int), byte>();
-
-		byte GrupoDe(int fonte, int ax, int ay)
-		{
-			var chave = (fonte, ax, ay);
-			if (paleta.TryGetValue(chave, out byte g)) return g;
-			// 1..254: o 0 e a borda do mundo e o 255 e "nao sei". Estourando (nunca visto), tudo
-			// que passar cai num grupo so -- pior que o ideal, e ainda assim melhor que juntar
-			// com o vizinho errado.
-			g = (byte)Math.Min(paleta.Count + 1, 254);
-			paleta[chave] = g;
-			return g;
-		}
+		var vendados = new HashSet<(int, int)>();
 		// ============================ AS CELULAS NAO VAO MAIS PRA DENTRO DA CENA ============================
 		// Ate aqui cada camada saia como um `tile_map_data` no `.tscn`: 9,6 MB de texto so na Terra,
 		// 659 ms de parse, e -- o pior -- 708 ms no PRIMEIRO QUADRO, porque o TileMapLayer monta o
@@ -1195,7 +1175,7 @@ public static class MapConverter
 				if (fisica && td.Density && !costuras.Contains((x, y)))
 				{
 					muros.Add((x, y));
-					if (cega) vendados[(x, y)] = Jandirus.Core.World.ZoneCollision.BordaDoMundo;
+					if (cega) vendados.Add((x, y));
 				}
 				return false;
 			}
@@ -1364,7 +1344,7 @@ public static class MapConverter
 			// ramo de turf que tinha escapado dela.
 			// =====================================================================================
 			bool decor = bp.StartsWith("/turf/decor", StringComparison.Ordinal);
-			if (fisica && td.Density && cega && !decor) vendados[(x, y)] = GrupoDe(f.Id, c.X, c.Y);
+			if (fisica && td.Density && cega && !decor) vendados.Add((x, y));
 
 			// FONTE DE LUZ. Fogueira, tocha, lampada e lava acendem o cenario -- ver LightCatalog.
 			if (fisica && LightCatalog.Da(bp) is { } luz)
@@ -2403,8 +2383,8 @@ public static class MapConverter
 	/// APAGA DO ARQUIVO OS BITS QUE A REGRA NOVA NAO BLOQUEIA MAIS -- e so isso.
 	///
 	/// Le o `.col`/`.vis` do disco (mesmo formato do `EscreverColisao`), compara com o conjunto
-	/// recem-calculado e limpa o que esta ligado no disco e nao esta no conjunto (no `.vis`, o byte
-	/// de grupo da celula vai a zero junto). Um bit que o conjunto tem e o disco nao e CONTADO e
+	/// recem-calculado e limpa o que esta ligado no disco e nao esta no conjunto. Um bit que o
+	/// conjunto tem e o disco nao e CONTADO e
 	/// devolvido, nunca gravado: gravar de novo o arquivo inteiro reintroduziria as diferencas do
 	/// indice de sprites em memoria (ver `Convert(soFisica)`), e o que se quer aqui e libertar as
 	/// mesas por baixo do piso, nao reconverter o mundo.
@@ -2432,7 +2412,6 @@ public static class MapConverter
 		foreach ((int x, int y) in novas)
 			if (x >= 0 && y >= 0 && x < w && y < h) quer.Add(y * w + x);
 
-		bool temPlano = dados.Length >= 8 + precisa + w * h;
 		int libertadas = 0, novasNaoGravadas = 0;
 		for (int i = 0; i < w * h; i++)
 		{
@@ -2440,7 +2419,6 @@ public static class MapConverter
 			if (ligado && !quer.Contains(i))
 			{
 				dados[8 + (i >> 3)] &= (byte)~(1 << (i & 7));
-				if (temPlano) dados[8 + precisa + i] = 0;
 				libertadas++;
 			}
 			else if (!ligado && quer.Contains(i)) novasNaoGravadas++;
@@ -2449,8 +2427,7 @@ public static class MapConverter
 		return (libertadas, novasNaoGravadas);
 	}
 
-	private static int EscreverColisao(string caminho, int w, int h, IEnumerable<(int, int)> paredes,
-									   Dictionary<(int, int), byte>? grupos = null)
+	private static int EscreverColisao(string caminho, int w, int h, IEnumerable<(int, int)> paredes)
 	{
 		var bits = new byte[(w * h + 7) / 8];
 		int bloqueadas = 0;
@@ -2469,14 +2446,6 @@ public static class MapConverter
 		fs.WriteByte((byte)(h & 0xFF)); fs.WriteByte((byte)(h >> 8));
 		fs.Write(bits);
 
-		// O PLANO DE IDENTIDADE, so no `.vis`. Vai DEPOIS do bitset porque o leitor copia apenas
-		// os bytes do bitset e ignora a cauda -- entao acrescentar aqui nao quebra nada, e o
-		// `.col` do servidor continua exatamente do tamanho que era.
-		if (grupos == null) return bloqueadas;
-		var plano = new byte[w * h];
-		foreach (((int x, int y) c, byte g) in grupos)
-			if (c.x >= 0 && c.y >= 0 && c.x < w && c.y < h) plano[c.y * w + c.x] = g;
-		fs.Write(plano);
 		return bloqueadas;
 	}
 

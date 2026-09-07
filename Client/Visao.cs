@@ -27,18 +27,78 @@ namespace Jandirus.Client;
 /// O LIMITE E A TELA, e isso e o corte de desempenho: so entram no calculo as celulas dentro
 /// do retangulo da camera. Uma parede do outro lado do planeta nao projeta nada que alguem
 /// possa ver, entao nao custa nada.
+///
+/// ============================ A PAREDE E ILUMINADA POR FORA, NAO ATRAVESSADA (2026-09-07) ============================
+/// Houve tres regras pra "onde o raio para", e as duas ultimas eram tentativas de fazer o muro
+/// aparecer CLARO na tela (o raio parando na face de ENTRADA punha o proprio muro dentro da
+/// sombra -- um bloco preto no lugar da parede que o jogador devia estar enxergando):
+///
+///   * parar na SAIDA da primeira celula cega: muro comprido visto de raso ficava em dente de
+///     serra, cada tile projetando sombra no vizinho;
+///   * ATRAVESSAR o bloco inteiro (parando so quando o tile mudava): consertou o dente e
+///     produziu o que o dono fotografou em 2026-09-07 -- "sombra que sai do meio da parede".
+///     A causa e exata: um raio raso que corre por dentro da fileira sai dela por uma face
+///     LATERAL (o vao de um portao, a ponta do muro) e o raio vizinho sai pela face NORTE,
+///     longe dali; a aresta do leque entre os dois corta os tiles do muro em diagonal. O
+///     repinte de parede so cobria a celula cujo CENTRO caia na sombra, entao sobrava a cunha
+///     num tile e o tile do lado saia inteiro claro -- "tem sombra que fica sobre tile e
+///     outras nao". E o interior de uma casa ficava visivel de fora quando a cerca encostava
+///     no muro, o que trouxe o plano de identidade de tile (o byte por celula no `.vis`) so
+///     pra separar os dois. Tudo isso era sintoma de UMA escolha: mover o ponto de parada pra
+///     dentro do obstaculo.
+///
+/// A regra agora separa as duas perguntas, que sao perguntas diferentes:
+///
+///   1. O QUE SE VE e geometria exata: o raio para na face de ENTRADA da primeira celula cega.
+///      Dois raios que batem na mesma parede param em pontos colineares, a sombra comeca na
+///      face que encara o jogador, e nao existe mais parada "no meio do muro" -- toda parada e
+///      uma fronteira livre/cega (`ParadasForaDeFace` conta o contrario, e e zero).
+///   2. QUE PAREDE ESTA CLARA e uma pergunta por CELULA: a parede cuja face da pra algum ponto
+///      visivel (tres amostras por face, meio pixel pra fora, ver `FaceVisivel`). Essas celulas
+///      viram FUROS na malha da sombra -- o shader descarta o fragmento que cai nelas -- em vez
+///      de serem redesenhadas por cima. Sem repinte nao ha tile alto espremido em 32 px, nao ha
+///      parede desenhada por cima de quem voa sobre ela, e a porta (que nao e tile) nao precisa
+///      de caso proprio.
+///
+/// O que fica: a face do muro que encara o jogador clara, TUDO atras dela escuro (inclusive o
+/// muro de tras -- "clara, a nao ser que a sombra de outra parede a cubra", regra do dono de
+/// 2026-08-03), e o vao de um portao abrindo um cone de luz pro outro lado. O plano de identidade
+/// morreu junto com a travessia; o `.vis` voltou a ser so o bitset.
+/// =====================================================================================================================
+///
+/// ============================ O OLHO PODE SER EMPRESTADO (2026-09-07) ============================
+/// Assistindo ao torneio, a camera vai pra arena e o corpo fica na area de espera. O olho do veu
+/// continuava no CORPO, e o dono viu "uma sombra na tela" e os lutadores invisiveis: com o olho
+/// fora do retangulo da camera, todo raio apontado pro lado oposto morria no `AteABorda` (limite
+/// negativo) e o leque, que so fecha com 360 graus de raios, DOBRAVA -- o quadrilatero entre o
+/// ultimo raio e o primeiro cobria a tela em diagonal, duas vezes num pedaco. Ver
+/// <see cref="OlhoEmprestado"/> (o `EYE_PERSPECTIVE` do DM) e <see cref="Tela"/>, que agora
+/// sempre CONTEM o olho, pra que o leque nunca mais dobre por conta de onde a camera esta.
+/// ================================================================================================
 /// </summary>
 public partial class Visao : Node2D
 {
 	/// <summary>Quem enxerga.</summary>
 	public Node2D? Alvo;
 
+	private ZoneCollision? _mapa;
+
 	/// <summary>
 	/// O QUE CEGA: parede, porta e arvore -- tudo que e denso (ver MapConverter). E um bitset
 	/// proprio (`.vis`), separado do de colisao, porque os dois divergem: a porta cega e nao
 	/// bloqueia, a borda do mundo bloqueia e nao interessa cegar.
+	///
+	/// TROCAR DE MAPA E TROCAR DE MUNDO: o leque anterior e da zona anterior. Sem o `Invalidar`
+	/// daqui, quem chega numa zona nova SEM ANDAR (teleporte; o robo da bancada) ficava com a
+	/// sombra do lugar de onde saiu ate o primeiro passo -- o recalculo so olha o olho e a tela, e
+	/// nenhum dos dois muda num teleporte de mesma coordenada. Foi o primeiro numero errado que a
+	/// bancada com janela deu: zero paredes claras num portao inteiro.
 	/// </summary>
-	public ZoneCollision? Mapa;
+	public ZoneCollision? Mapa
+	{
+		get => _mapa;
+		set { _mapa = value; Invalidar(); }
+	}
 
 	/// <summary>
 	/// O mapa de COLISAO da mesma zona. Usado so pelo guarda de sanidade do <see cref="_Draw"/> --
@@ -47,27 +107,12 @@ public partial class Visao : Node2D
 	public ZoneCollision? Colisao;
 
 	/// <summary>
-	/// AS CAMADAS DO CENARIO, pra repintar a parede por cima da sombra.
-	///
-	/// ============================ PAREDE NAO RECEBE SOMBRA ============================
-	/// Proposta do dono: "n ter como projetar sombra sobre paredes, isso n deixaria perfeito mas
-	/// melhoraria oq temos agora". Ele tem razao na parte que importa -- a sombra escurecendo a
-	/// FACE do muro e o que produz as cunhas e as diagonais estranhas, e o muro escuro nao esconde
-	/// nada de util: quem esta atras dele ja esta na sombra pela geometria.
-	///
-	/// A malha da sombra e um leque de triangulos e nao da pra furar por celula. Entao, em vez de
-	/// tirar a sombra dali, o tile e REDESENHADO por cima -- so as celulas cegas que o proprio
-	/// leque diz estarem na sombra, e so as da tela. Sao poucas dezenas por quadro.
-	/// =================================================================================
+	/// DE ONDE SE OLHA QUANDO NAO E DO CORPO -- o `client.perspective = EYE_PERSPECTIVE` do BYOND
+	/// (`Tournament.dm:824`: quem assiste ao torneio enxerga de onde o olho esta, nao de onde o
+	/// corpo ficou). Quem escreve e o `World`, a cada quadro, enquanto a camera estiver longe do
+	/// corpo (ver `World.OlhoDoEspectador`); nulo = os pes do corpo, como sempre.
 	/// </summary>
-	public TileMapLayer[] Camadas = [];
-
-	/// <summary>
-	/// AS PORTAS DA ZONA, por celula. Elas nao sao tile (ver <see cref="Porta"/>), entao o repinte
-	/// de parede acima nao as acharia em camada nenhuma -- e uma porta fechada dentro da sombra
-	/// viraria um quadrado preto no meio de uma parede que a cerca esta repintando normalmente.
-	/// </summary>
-	public readonly Dictionary<Vector2I, Porta> Portas = [];
+	public Vector2? OlhoEmprestado;
 
 	/// <summary>
 	/// ATE QUANDO ESTOU CEGO (o `blindT` do Solar Flare), em ms do relogio do cliente.
@@ -114,9 +159,27 @@ public partial class Visao : Node2D
 		_ => 40,
 	};
 
-
 	/// <summary>Margem alem da tela, em pixels. Cobre a folga de um quadro de camera.</summary>
 	private const float Margem = 96f;
+
+	/// <summary>
+	/// Quanto a amostra de face fica PRA FORA da parede, em pixels. A sombra comeca exatamente
+	/// na face; perguntar em cima dela e perguntar num empate de float. Meio pixel pra dentro
+	/// da celula livre esta do lado de ca da fronteira sem exceção.
+	/// </summary>
+	private const float Recuo = 0.5f;
+
+	// =====================================================================
+	// OS DEFEITOS INJETAVEIS DA BANCADA (`--diagvisao`)
+	// =====================================================================
+	/// <summary>DEFEITO INJETADO: o raio para na SAIDA da celula cega (a regra do dente de serra e da cunha).</summary>
+	public static bool ParaNaSaidaDeTeste;
+
+	/// <summary>DEFEITO INJETADO: nenhuma parede ganha furo -- a face que encara o jogador fica escura.</summary>
+	public static bool SemFacesDeTeste;
+
+	/// <summary>DEFEITO INJETADO: a tela NAO e alargada ate conter o olho (o leque dobra com o olho fora dela).</summary>
+	public static bool TelaSemOlhoDeTeste;
 
 	private readonly List<Raio> _raios = [];
 	private Vector2[] _pontos = [];
@@ -128,6 +191,58 @@ public partial class Visao : Node2D
 
 	/// <summary>De onde o leque atual foi lancado. Guardado porque <see cref="Ve"/> precisa.</summary>
 	private Vector2 _olho;
+
+	/// <summary>O retangulo do ultimo leque (ja contendo o olho). Diagnostico.</summary>
+	private Rect2 _tela;
+
+	// =====================================================================
+	// OS FUROS: as paredes claras, por celula
+	// =====================================================================
+	/// <summary>
+	/// O shader que abre os furos. A malha e um leque de quadrilateros e nao da pra recortar uma
+	/// celula dele; o fragmento que cai numa celula marcada e simplesmente descartado. A mascara e
+	/// uma textura de um byte por celula cobrindo o retangulo da tela (uns 3 KB), refeita junto com
+	/// o leque.
+	/// </summary>
+	private const string CodigoDosFuros = """
+		shader_type canvas_item;
+		render_mode unshaded, blend_mix;
+		uniform sampler2D mascara : filter_nearest, repeat_disable;
+		uniform vec2 origem;    // celula do canto da mascara
+		uniform vec2 tamanho;   // celulas cobertas
+		varying vec2 mundo;
+		void vertex() { mundo = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy; }
+		void fragment() {
+			vec2 c = floor(mundo / 32.0) - origem;
+			if (c.x >= 0.0 && c.y >= 0.0 && c.x < tamanho.x && c.y < tamanho.y
+				&& texture(mascara, (c + 0.5) / tamanho).r > 0.5) discard;
+		}
+		""";
+
+	private readonly ShaderMaterial _tinta = new() { Shader = new Shader { Code = CodigoDosFuros } };
+	private byte[] _furos = [];
+	private int _furosLarg, _furosAlt, _furosX0, _furosY0;
+	private ImageTexture? _mascara;
+
+	/// <summary>Quantas paredes estao claras no ultimo leque. Diagnostico.</summary>
+	public int Furos { get; private set; }
+
+	/// <summary>
+	/// Quantos raios pararam em algo que NAO e a fronteira livre/cega. E zero por construcao com a
+	/// regra da face de entrada, e e o numero que separa esta regra das duas anteriores (que
+	/// paravam na saida de uma celula cega -- na fronteira cega/livre, do lado errado).
+	/// </summary>
+	public int ParadasForaDeFace { get; private set; }
+
+	/// <summary>
+	/// O maior setor entre dois raios vizinhos, em graus. Acima de 180 o leque DOBRA: o
+	/// quadrilatero entre os dois raios passa por cima do olho e cobre a tela do lado de ca.
+	/// </summary>
+	public float MaiorSetorGraus { get; private set; }
+
+	public bool Dobrado => MaiorSetorGraus >= 180f;
+	public Vector2 OlhoDeTeste => _olho;
+	public Rect2 TelaDeTeste => _tela;
 
 	/// <summary>Um raio resolvido: pra onde apontou, ate onde foi, e em que angulo saiu.</summary>
 	private readonly struct Raio(Vector2 dir, float dist, float angulo, int ordem)
@@ -151,8 +266,10 @@ public partial class Visao : Node2D
 
 		// NENHUMA LUZ TOCA A SOMBRA. Sem isto, a fogueira do cenario iluminaria a propria
 		// sombra -- uma PointLight2D aditiva bate em todo CanvasItem que compartilhe a
-		// mascara, e sairia um clarao laranja no meio do escuro.
+		// mascara, e sairia um clarao laranja no meio do escuro. (O shader diz `unshaded`
+		// pelo mesmo motivo; as duas linhas dizem a mesma coisa pra dois caminhos do motor.)
 		LightMask = 0;
+		Material = _tinta;
 	}
 
 	// =====================================================================
@@ -199,17 +316,34 @@ public partial class Visao : Node2D
 	/// O centro da caixa dos pes, ao contrario, e o unico ponto que a regra de movimento
 	/// GARANTE estar fora de parede (uma celula tem 32 px e a caixa 16x10: nao ha como o
 	/// centro cair dentro de um bloco com os quatro cantos livres).
+	///
+	/// O OLHO EMPRESTADO vence, quando existe: quem assiste ao torneio olha de onde a camera esta.
 	/// </summary>
-	private Vector2 Olho() => Alvo!.GlobalPosition + new Vector2(0, MoveRules.FeetOffsetY);
+	private Vector2 Olho() => OlhoEmprestado ?? Alvo!.GlobalPosition + new Vector2(0, MoveRules.FeetOffsetY);
 
+	/// <summary>
+	/// O retangulo em que a sombra e calculada: a camera mais uma margem -- e SEMPRE contendo o
+	/// olho. Um olho fora do retangulo nao tem raio pro lado oposto (o `AteABorda` da limite
+	/// negativo e o raio e descartado), e um leque que nao fecha os 360 graus dobra sobre si
+	/// mesmo. Era o que a camera do espectador fazia com o corpo parado na area de espera.
+	/// </summary>
 	private Rect2 Tela(Vector2 olho)
 	{
 		Camera2D? cam = GetViewport()?.GetCamera2D();
 		Vector2 tam = GetViewportRect().Size;
 		if (cam != null) tam /= cam.Zoom;
 		Vector2 centro = cam?.GetScreenCenterPosition() ?? olho;
-		return new Rect2(centro - tam * 0.5f - new Vector2(Margem, Margem),
-						 tam + new Vector2(Margem, Margem) * 2f);
+		var tela = new Rect2(centro - tam * 0.5f - new Vector2(Margem, Margem),
+							 tam + new Vector2(Margem, Margem) * 2f);
+		return ComOOlhoDentro(tela, olho);
+	}
+
+	/// <summary>A tela alargada ate conter o olho com folga. Publico porque a bancada monta a tela na mao.</summary>
+	public static Rect2 ComOOlhoDentro(Rect2 tela, Vector2 olho)
+	{
+		if (TelaSemOlhoDeTeste) return tela;
+		var emVolta = new Rect2(olho - new Vector2(Margem, Margem), new Vector2(Margem, Margem) * 2f);
+		return tela.Merge(emVolta);
 	}
 
 	// =====================================================================
@@ -241,44 +375,35 @@ public partial class Visao : Node2D
 		//
 		// O guarda continua existindo, porque teleporte pra dentro de rocha e um estado do qual nao
 		// da pra sair; so que ele agora pergunta pro mapa que responde isso -- o de COLISAO. Estar
-		// numa celula CEGA e legitimo, e o DDA lida bem: ele so marca `noMuro` ao PISAR numa celula
-		// cega, nunca na de origem.
+		// numa celula CEGA e legitimo, e o DDA lida bem: ele so olha as celulas em que ENTRA, nunca
+		// a de origem.
 		if (Colisao?.BlockedAt(new Vec2(p.X, p.Y)) == true) return;
 
 		Recalcular(p, tela);
 		if (_raios.Count < 3) return;
 		Montar(p, tela);
-		RepintarParedes(tela);
 	}
 
 	// =====================================================================
 	// O LEQUE, DISPONIVEL PRA QUEM PRECISAR SABER "DA PRA VER?"
 	// =====================================================================
 	/// <summary>
-	/// Refaz o leque de um ponto de vista. Publico porque o diagnostico (`--diagvisao`) precisa
-	/// rodar isto SEM cena, sem camera e sem janela.
+	/// Refaz o leque (e os furos) de um ponto de vista. Publico porque o diagnostico (`--diagvisao`)
+	/// precisa rodar isto SEM cena, sem camera e sem janela.
 	/// </summary>
 	public void Recalcular(Vector2 olho, Rect2 tela)
 	{
 		_olho = olho;
+		_tela = tela;
+		ParadasForaDeFace = 0;
 		Mirar(olho, tela);
 		Ordenar();
+		MedirSetores();
+		Furar(tela);
 	}
 
 	/// <summary>Quantos raios o ultimo leque usou. Diagnostico.</summary>
 	public int QuantosRaios => _raios.Count;
-
-	/// <summary>
-	/// Quantas vezes um raio parou porque o TILE MUDOU no meio do muro (e nao porque saiu dele).
-	///
-	/// E o unico jeito de saber que a regra nova roda: como 99,6% das celulas cegas vizinhas ja
-	/// tem o mesmo tile, os totais de sombra nao se mexem quase nada -- um `if` que nunca dispara
-	/// daria exatamente os mesmos numeros que um `if` que funciona. Este contador separa os dois.
-	/// </summary>
-	public int CortesPorTile;
-
-	/// <summary>Quinas que existem SO por mudanca de tile (diagnostico).</summary>
-	public int QuinasDeMaterial;
 
 	/// <summary>
 	/// ESTE PONTO E VISIVEL do ultimo ponto de vista calculado?
@@ -288,7 +413,8 @@ public partial class Visao : Node2D
 	/// observador, ve; do outro, esta na sombra.
 	///
 	/// E O(log n) e nao lanca raio nenhum -- da pra perguntar por dezenas de alvos no mesmo
-	/// quadro sem custo.
+	/// quadro sem custo. (E e por isso que a pergunta "que parede esta clara?" cabe no
+	/// orcamento: sao ate doze destas por parede da tela.)
 	/// </summary>
 	public bool Ve(Vector2 ponto)
 	{
@@ -320,6 +446,16 @@ public partial class Visao : Node2D
 	}
 
 	/// <summary>
+	/// ESTA PAREDE ESTA CLARA no ultimo leque? (Fora do retangulo calculado: nao.) E o que o
+	/// shader le, exposto pra bancada e pra quem mais precisar.
+	/// </summary>
+	public bool ParedeIluminada(int cx, int cy)
+	{
+		int x = cx - _furosX0, y = cy - _furosY0;
+		return x >= 0 && y >= 0 && x < _furosLarg && y < _furosAlt && _furos[y * _furosLarg + x] != 0;
+	}
+
+	/// <summary>
 	/// Monta a lista de raios: dois por quina de parede, quatro nos cantos da tela e alguns
 	/// soltos de reserva. Cada um ja sai resolvido (marchado ate bater ou sair da tela).
 	/// </summary>
@@ -341,21 +477,7 @@ public partial class Visao : Node2D
 			{
 				bool a = Cega(gx - 1, gy - 1), b = Cega(gx, gy - 1);
 				bool c = Cega(gx - 1, gy), d = Cega(gx, gy);
-
-				// QUINA DE MATERIAL, e nao so de geometria.
-				//
-				// Antes bastava "cega x livre" mudar em volta do ponto. Desde que o raio passou a
-				// parar tambem quando o TILE muda dentro do muro, o meio de um bloco macico virou
-				// uma descontinuidade -- e o leque nao a amostrava. O resultado foi medido: as
-				// divergencias entre o poligono e a verdade pularam de 1 pra 9 na fachada de dois
-				// materiais, porque a aresta entre dois raios vizinhos cortava por cima da junta.
-				//
-				// A regra geral e a mesma de sempre: **onde a sombra pode partir, tem que haver
-				// raio**. Mudou o que faz a sombra partir, muda o que conta como quina.
-				bool geometria = !(a == b && b == c && c == d);
-				bool material = a && b && c && d && !MesmoGrupo(gx, gy);
-				if (!geometria && !material) continue;
-				if (material && !geometria) QuinasDeMaterial++;
+				if (a == b && b == c && c == d) continue;
 				Quina(p, tela, new Vector2(gx * T, gy * T));
 			}
 
@@ -389,15 +511,23 @@ public partial class Visao : Node2D
 		if (n < 1e-6f) return;
 		Vector2 d = rumo / n;
 
-		float limite = ateABorda(p, d, tela);
+		float limite = AteABorda(p, d, tela);
 		if (limite <= 0.5f) return;
 
 		float dist = Marchar(p, d, limite);
+		if (dist < limite - 0.01f && !_paradaNaFace) ParadasForaDeFace++;
 		_raios.Add(new Raio(d, dist, Angulo(d), _raios.Count));
 	}
 
+	/// <summary>
+	/// A ultima parada de <see cref="Marchar"/> foi numa fronteira livre/cega? Escrito pelo DDA, que
+	/// sabe de onde o raio veio; um teste geometrico depois da parada (meio pixel antes, meio pixel
+	/// depois) classificava errado o raio que raspa uma quina e sairia da celula pela face vizinha.
+	/// </summary>
+	private bool _paradaNaFace;
+
 	/// <summary>Onde o raio sai do retangulo da tela. E o "infinito" util deste sistema.</summary>
-	private static float ateABorda(Vector2 p, Vector2 d, Rect2 r)
+	private static float AteABorda(Vector2 p, Vector2 d, Rect2 r)
 	{
 		float t = float.MaxValue;
 		if (MathF.Abs(d.X) > 1e-6f)
@@ -416,6 +546,11 @@ public partial class Visao : Node2D
 	/// erro que fazia a borda tremer. Aqui a parada e exatamente a face da celula, entao dois
 	/// raios que batem na MESMA parede devolvem pontos exatamente colineares -- a borda sai
 	/// reta sozinha, sem precisar juntar arestas nem fundir nada.
+	///
+	/// A PARADA E A FACE DE ENTRADA da primeira celula cega. So isso. As regras que levavam o
+	/// raio pra dentro do bloco (saida da celula, travessia ate o tile mudar) estao contadas no
+	/// cabecalho da classe, com o que cada uma custou; quem ilumina a parede agora e
+	/// <see cref="FaceVisivel"/>, celula a celula, e nao o ponto de parada.
 	/// </summary>
 	public float Marchar(Vector2 p, Vector2 d, float limite)
 	{
@@ -436,25 +571,10 @@ public partial class Visao : Node2D
 				  : sy < 0 ? (cy * T - p.Y) / d.Y
 				  : float.MaxValue;
 
-		// O MURO E UM BLOCO SO -- MAS SO ENQUANTO FOR O MESMO TILE.
-		//
-		// ============================ POR QUE A REGRA GANHOU ESSA CLAUSULA ============================
-		// A versao anterior atravessava QUALQUER sequencia de celulas cegas. Numa fachada de
-		// verdade isso junta coisas que nao sao a mesma: a cerca de madeira, o muro de pedra atras
-		// dela e a parede interna viram um obstaculo unico, e a sombra atravessa os tres -- o
-		// interior da casa fica visivel de fora. Foi o que o dono fotografou.
-		//
-		// A CORRECAO E DELE E E EXATA: "so quando sao do mesmo tile". Um muro continuo e uma coisa
-		// so porque foi DESENHADO como uma coisa so; onde o desenho muda, muda o obstaculo. Medido
-		// nos 40 mapas: 99,6% dos pares de celulas cegas vizinhas ja tem o tile identico, entao a
-		// regra quase nao parte muro nenhum -- ela so separa o que ja era visivelmente diferente.
-		//
-		// `SemGrupo` (255) e devolvido por mapa sem o plano de identidade, e NUNCA casa consigo
-		// mesmo: sem o dado, a sombra degrada pro comportamento antigo (para na primeira parede)
-		// em vez de juntar o mapa inteiro num bloco.
-		// ============================================================================================
-		bool noMuro = false;
-		byte grupoDoMuro = ZoneCollision.SemGrupo;
+		// DE ONDE O RAIO VEM: parada "numa face" e a entrada numa celula cega vindo de uma LIVRE. A
+		// celula de origem pode ser cega (o olho dentro de uma porta) -- dali o raio sai, nao para.
+		bool veioDeLivre = !Cega(cx, cy);
+		_paradaNaFace = false;
 
 		// teto de passos: a diagonal da tela tem ~40 celulas, e o `limite` ja para o laco --
 		// isto e so cinto de seguranca contra um raio degenerado
@@ -473,148 +593,103 @@ public partial class Visao : Node2D
 				bool selado = Cega(cx + sx, cy) && Cega(cx, cy + sy);
 				cx += sx; cy += sy;
 				tmx += tdx; tmy += tdy;
-				if (selado) noMuro = true;
+				if (selado && !ParaNaSaidaDeTeste) { _paradaNaFace = veioDeLivre; return MathF.Min(t, limite); }
 			}
 			else if (porX) { cx += sx; tmx += tdx; }
 			else { cy += sy; tmy += tdy; }
 
-			// A SOMBRA NASCE ATRAS DO MURO, e nao na frente dele -- nem no meio dele.
-			//
-			// `t` e onde o raio ENTRA na celula em que acabou de pisar. Parar ali punha a propria
-			// parede dentro da sombra: o jogador via um bloco preto no lugar do muro que deveria
-			// estar ENXERGANDO. Uma parede e um obstaculo a vista, nao um objeto invisivel.
-			//
-			// Parar na saida da PRIMEIRA celula cega tambem estava errado, e o dono mandou o print:
-			// num muro de varias celulas o raio saia de uma e entrava na vizinha, entao cada tile
-			// projetava sombra no tile do lado e o muro inteiro ficava SERRILHADO, em dente de
-			// serra. A causa e que uma parede continua nao e feita de obstaculos independentes --
-			// e um obstaculo so, que por acaso foi desenhado em pedacos de 32 px.
-			//
-			// Entao: dentro de celula cega o raio SEGUE (`noMuro`), e a sombra comeca no ponto em
-			// que ele pisa na primeira celula livre depois do bloco. Toda a face do muro que da pra
-			// quem olha fica clara, e tudo atras dela apaga de uma vez.
-			//
-			// PAREDE ATRAS DE PAREDE, COM VAO NO MEIO, continua escura: ali o raio ja saiu pro vao
-			// e parou. E o que o dono descreveu -- clara, "a nao ser que a sombra de outra parede
-			// a cubra".
-			if (Cega(cx, cy))
-			{
-				byte g = Mapa!.Grupo(cx, cy);
+			if (!Cega(cx, cy)) { veioDeLivre = true; continue; }
 
-				// TILE DIFERENTE = OUTRO OBSTACULO: a sombra comeca na entrada da face nova.
-				if (noMuro && (g != grupoDoMuro || g == ZoneCollision.SemGrupo))
-				{
-					CortesPorTile++;
-					return MathF.Min(t, limite);
-				}
+			// `t` e onde o raio ENTRA na celula cega em que acabou de pisar: a sombra comeca aqui.
+			if (!ParaNaSaidaDeTeste) { _paradaNaFace = veioDeLivre; return MathF.Min(t, limite); }
 
-				// ATRAVESSA O BLOCO INTEIRO, sem teto de profundidade.
-				//
-				// TENTEI DUAS ALTERNATIVAS AQUI E AS DUAS FORAM PIORES, medidas:
-				//
-				//   * parar no PLANO oposto da primeira celula (a borda sairia reta por construcao):
-				//     os dentes de serra voltaram (1/1/5/0 -> 10/1/24/2) e as paredes visiveis cairam
-				//     pela metade -- o muro fica escuro de novo, que foi a primeira queixa do dono;
-				//   * limitar a 3 celulas de penetracao (pra matar as agulhas dos raios rasos):
-				//     dentes 0 -> 15 no muro comprido, 5 -> 24 no cercado.
-				//
-				// As duas trocavam o defeito que o dono ve raramente (cunhas estranhas dentro de uma
-				// casa, foto de 2026-08-03) por um que ele ja tinha reportado e que aparece em toda
-				// parede reta. Fica o que MEDE melhor, e o artefato do interior fica anotado como
-				// limite conhecido do leque de raios -- ele nasce de raios rasos que correm por dentro
-				// da fileira, e consertar de verdade pede outra estrutura (poligono por silhueta de
-				// bloco, nao por raio).
-				noMuro = true;
-				grupoDoMuro = g;
-				continue;
-			}
-			if (noMuro) return MathF.Min(t, limite);
+			// DEFEITO INJETADO (a regra de 2026-08-03): atravessa a celula e para na SAIDA dela --
+			// no meio de um muro grosso, ou de raso, a saida e uma face lateral e a sombra nasce
+			// dentro do muro. E o que a bancada precisa VER em numero pra provar que mede.
+			return MathF.Min(MathF.Min(tmx, tmy), limite);
 		}
 		return limite;
 	}
 
+	// =====================================================================
+	// OS FUROS
+	// =====================================================================
 	/// <summary>
-	/// Redesenha por cima da sombra os tiles das celulas CEGAS que ficaram no escuro.
+	/// Marca as paredes claras da tela e sobe a mascara pro shader.
 	///
-	/// SO AS QUE O LEQUE DIZ ESTAREM NA SOMBRA: repintar as que ja estao claras seria trabalho pra
-	/// desenhar o mesmo pixel duas vezes. E so as da TELA -- o retangulo ja veio recortado.
-	///
-	/// A ORDEM DAS CAMADAS E MANTIDA (Chao, Decor, Objetos), senao o desenho de cima volta por
-	/// baixo do de baixo e a parede repintada fica diferente da parede iluminada ao lado.
+	/// So as celulas cegas com algum vizinho livre entram na pergunta: uma parede cercada de
+	/// parede nao tem face nenhuma pra mostrar. E so as da TELA -- o retangulo ja veio recortado.
 	/// </summary>
-	private void RepintarParedes(Rect2 tela)
+	private void Furar(Rect2 tela)
 	{
-		if (Camadas.Length == 0 && Portas.Count == 0) return;
 		const int T = ZoneCollision.TileSize;
-
-		int cx0 = (int)MathF.Floor(tela.Position.X / T);
-		int cy0 = (int)MathF.Floor(tela.Position.Y / T);
+		_furosX0 = (int)MathF.Floor(tela.Position.X / T);
+		_furosY0 = (int)MathF.Floor(tela.Position.Y / T);
 		int cx1 = (int)MathF.Floor(tela.End.X / T);
 		int cy1 = (int)MathF.Floor(tela.End.Y / T);
+		_furosLarg = cx1 - _furosX0 + 1;
+		_furosAlt = cy1 - _furosY0 + 1;
 
-		for (int cy = cy0; cy <= cy1; cy++)
-			for (int cx = cx0; cx <= cx1; cx++)
-			{
-				if (!Cega(cx, cy)) continue;
-				if (Ve(new Vector2(cx * T + T / 2f, cy * T + T / 2f))) continue;   // ja esta clara
+		int n = _furosLarg * _furosAlt;
+		if (_furos.Length != n) _furos = new byte[n];
+		else Array.Clear(_furos);
+		Furos = 0;
 
-				var celula = new Vector2I(cx, cy);
-				foreach (TileMapLayer camada in Camadas)
+		if (!SemFacesDeTeste && _raios.Count >= 3)
+			for (int cy = _furosY0; cy <= cy1; cy++)
+				for (int cx = _furosX0; cx <= cx1; cx++)
 				{
-					if (!GodotObject.IsInstanceValid(camada) || camada.TileSet == null) continue;
-					int fonte = camada.GetCellSourceId(celula);
-					if (fonte < 0) continue;
-					if (camada.TileSet.GetSource(fonte) is not TileSetAtlasSource atlas) continue;
-
-					Vector2I coord = camada.GetCellAtlasCoords(celula);
-					if (!atlas.HasTile(coord)) continue;
-
-					// O QUADRO DA VEZ: `GetTileTextureRegion` com o indice de animacao devolve o
-					// retangulo certo tambem em tile ANIMADO -- senao a parede repintada congelaria
-					// enquanto a de fora continua andando.
-					int quadros = Mathf.Max(atlas.GetTileAnimationFramesCount(coord), 1);
-					int q = quadros <= 1 ? 0
-						: (int)(Time.GetTicksMsec() / 100 % (ulong)quadros);
-
-					Rect2I r = atlas.GetTileTextureRegion(coord, q);
-					if (atlas.Texture is not { } tex) continue;
-
-					DrawTextureRectRegion(tex, new Rect2(cx * T, cy * T, T, T), r);
+					if (!Cega(cx, cy) || !FaceVisivel(cx, cy)) continue;
+					_furos[(cy - _furosY0) * _furosLarg + (cx - _furosX0)] = 255;
+					Furos++;
 				}
 
-				// A PORTA VEM POR ULTIMO, como o tile de cima viria: ela mora na celula inteira e
-				// o que estiver embaixo (o chao do prefab) ja foi desenhado pelas camadas acima.
-				if (Portas.TryGetValue(celula, out Porta? porta) && GodotObject.IsInstanceValid(porta)
-					&& porta.SpriteFrames is { } folha && folha.HasAnimation(porta.Animation)
-					&& folha.GetFrameTexture(porta.Animation, porta.Frame) is { } arte)
-					DrawTexture(arte, new Vector2(cx * T, cy * T));
-			}
+		var img = Image.CreateFromData(_furosLarg, _furosAlt, false, Image.Format.L8, _furos);
+		if (_mascara == null || _mascara.GetWidth() != _furosLarg || _mascara.GetHeight() != _furosAlt)
+		{
+			_mascara = ImageTexture.CreateFromImage(img);
+			_tinta.SetShaderParameter("mascara", _mascara);
+		}
+		else _mascara.Update(img);
+		_tinta.SetShaderParameter("origem", new Vector2(_furosX0, _furosY0));
+		_tinta.SetShaderParameter("tamanho", new Vector2(_furosLarg, _furosAlt));
 	}
 
-	/// <summary>Sempre por aqui: fora do mapa CEGA (e a borda do mundo), e isso sai de graca.</summary>
+	/// <summary>
+	/// ALGUMA FACE DESTA PAREDE DA PRA UM PONTO VISIVEL? Tres amostras por face (a 1/6, 1/2 e 5/6
+	/// da aresta), meio pixel pra fora, so nas faces que dao pra celula LIVRE -- a face entre duas
+	/// paredes e interna e ninguem a ve.
+	///
+	/// Tres e nao uma: a parede parcialmente coberta por um pilar continua clara enquanto um
+	/// pedaco dela aparecer. Um vao mais estreito que um terco de tile passa despercebido, e
+	/// fica escuro -- limite aceito, e conhecido.
+	/// </summary>
+	private bool FaceVisivel(int cx, int cy)
+	{
+		const int T = ZoneCollision.TileSize;
+		float x0 = cx * T, y0 = cy * T;
+		return (!Cega(cx, cy - 1) && Aresta(x0, y0 - Recuo, T, 0))
+			|| (!Cega(cx, cy + 1) && Aresta(x0, y0 + T + Recuo, T, 0))
+			|| (!Cega(cx - 1, cy) && Aresta(x0 - Recuo, y0, 0, T))
+			|| (!Cega(cx + 1, cy) && Aresta(x0 + T + Recuo, y0, 0, T));
+	}
+
+	/// <summary>As tres amostras de uma aresta que parte de (x, y) e mede (dx, dy).</summary>
+	private bool Aresta(float x, float y, float dx, float dy)
+		=> Ve(new Vector2(x + dx / 6f, y + dy / 6f))
+		|| Ve(new Vector2(x + dx / 2f, y + dy / 2f))
+		|| Ve(new Vector2(x + dx * 5f / 6f, y + dy * 5f / 6f));
+
 	/// <summary>
 	/// O QUE TAPA A VISTA. E o `BlockedCell` do mapa de visao, e por isso a Sala do Tempo passa por
 	/// aqui sem uma linha propria: o `SemBorda` (ver `ZoneCollision`) faz o vazio branco em volta do
 	/// quarto responder "nao cega", e o veu simplesmente nao acha nada pra sombrear.
 	///
 	/// SEM ESSE BIT o custo seria escondido e permanente -- medido em `--diagvazio`: 984 celulas de
-	/// tela cegas (uma chamada de `Ve` por celula em <see cref="RepintarParedes"/>) e todo raio
-	/// gastando o teto de 256 passos do DDA, por uma parede que nem chega a projetar sombra.
+	/// tela cegas e todo raio gastando o teto de 256 passos do DDA, por uma parede que nem chega a
+	/// projetar sombra.
 	/// </summary>
-	private bool Cega(int cx, int cy) => Mapa!.BlockedCell(cx, cy);
-
-	/// <summary>
-	/// As QUATRO celulas em volta do ponto de grade (gx,gy) sao do mesmo tile?
-	///
-	/// Mapa sem o plano de identidade devolve `SemGrupo` em todas as quatro, ou seja "iguais" --
-	/// e ai nao nasce quina de material nenhuma, que e o certo: sem o dado, a regra do tile nao
-	/// vale e nao ha descontinuidade nova pra amostrar.
-	/// </summary>
-	private bool MesmoGrupo(int gx, int gy)
-	{
-		byte g = Mapa!.Grupo(gx - 1, gy - 1);
-		return Mapa.Grupo(gx, gy - 1) == g && Mapa.Grupo(gx - 1, gy) == g && Mapa.Grupo(gx, gy) == g;
-	}
+	private bool Cega(int cx, int cy) => _mapa!.BlockedCell(cx, cy);
 
 	private static float Angulo(Vector2 d)
 	{
@@ -642,6 +717,19 @@ public partial class Visao : Node2D
 		c = x.Dist.CompareTo(y.Dist);
 		return c != 0 ? c : x.Ordem.CompareTo(y.Ordem);
 	});
+
+	/// <summary>O maior setor entre raios vizinhos, contando a volta do ultimo pro primeiro.</summary>
+	private void MedirSetores()
+	{
+		int n = _raios.Count;
+		MaiorSetorGraus = n == 0 ? 360f : 0f;
+		for (int i = 0; i < n; i++)
+		{
+			float a = _raios[i].Angulo;
+			float b = i + 1 < n ? _raios[i + 1].Angulo : _raios[0].Angulo + Mathf.Tau;
+			MaiorSetorGraus = MathF.Max(MaiorSetorGraus, Mathf.RadToDeg(b - a));
+		}
+	}
 
 	/// <summary>
 	/// Monta e entrega a malha da sombra.

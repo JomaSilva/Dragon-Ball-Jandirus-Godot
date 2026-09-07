@@ -178,7 +178,9 @@ public sealed partial class GameServer
 		// O BEAM (por vontade propria ou pq ALGUEM BATEU NELE e cancelou o beam)"*. Ate aqui o port
 		// nao tinha a segunda metade -- nao havia caminho nenhum pra bater e derrubar o raio.
 		// ====================================================================================
-		DerrubarRaioPorGolpe(d.Id);
+		// (2026-09-07: pelo funil que tambem sabe da DISPUTA -- la o arremesso pesa no medidor em vez
+		// de derrubar o raio. Ver `GameServer.Feixe.cs`.)
+		AoLevarGolpeComRaioNaMao(d, null);
 
 		d.TiquesDeVoo = tiques;
 		d.TiquesIniciaisDoVoo = tiques;
@@ -186,6 +188,9 @@ public sealed partial class GameServer
 		d.ForcaDoVoo = forca;
 		d.VooNoTique = 0;
 		d.UltimoSulco = default;
+		// NO AR OU NO CHAO? Decidido AQUI, no golpe, e nao a cada tique: um corpo pego voando fica no
+		// ar o arremesso inteiro (ver `ServerPlayer.ArremessadoNoAr` e o `TickDoVoo`).
+		d.ArremessadoNoAr = d.Altitude > 0f;
 		// A PONTA DE COMECO sai aqui, e nao no primeiro tique: no DU o "begin" e carimbado
 		// quando `knock_dist == original_distance-1`, ou seja no primeiro passo, com o corpo
 		// ainda na origem.
@@ -304,7 +309,11 @@ public sealed partial class GameServer
 			// sorteado, interior de nave, mente e selo o `Get` devolvia nulo, e o corpo arremessado
 			// atravessava tudo sem derrubar parede nenhuma -- enquanto o soco na mesma parede
 			// (`SocarCenario`, que ja perguntava ao funil) a derrubava. Ver `MapaDaZonaOuCatalogo`.
-			ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
+			// NO AR NAO HA CENARIO: acima de `Voo.AlturaQueAtravessa` o corpo arremessado passa por cima do
+			// que se voa por cima -- sem parar no muro e sem derruba-lo (dono, 2026-09-07: *"isso conta
+			// pra paredes que dao pra voar por cima"*). Rente ao chao (altura menor que um tile) o muro
+			// para e cai como sempre. E a MESMA pergunta do passo (`AtravessandoCenario`).
+			ZoneCollision? mapa = AtravessandoCenario(pl) ? null : MapaDaZonaOuCatalogo(pl.Zone);
 			Vec2 passo = pl.RumoDoVoo * (float)(Empurrao.TilesPorTique * ZoneCollision.TileSize * fatia);
 			Vec2 destino = pl.Pos + passo;
 
@@ -396,7 +405,7 @@ public sealed partial class GameServer
 					// O QUE O CORPO ATRAVESSA TAMBEM SOFRE. E o `for(var/obj/O in get_step(...))
 					// if(O.fragile) O.takeDamage(pow)` do original: a arvore e a bancada nao
 					// precisam BLOQUEAR pra serem arrancadas por alguem passando voando por cima.
-					EstragarObrasNoCaminho(pl, p);
+					if (mapa != null) EstragarObrasNoCaminho(pl, p);   // no ar nao se derruba obra
 
 					// ============================ QUEM E ARREMESSADO ATRAVESSA A AGUA ============================
 					// E literal do original: o `testWaters()` deixa passar `M.KB`
@@ -456,6 +465,7 @@ public sealed partial class GameServer
 			// A OUTRA BORDA: o pouso. Mesma razao da decolagem -- sem isto o corpo ficava ate 200 ms
 			// torto e sem aceitar comando DEPOIS de ja ter parado.
 			bool pousou = pl.TiquesDeVoo <= 0;
+			if (pousou) pl.ArremessadoNoAr = false;   // daqui pra frente o `TickDoVoo` volta a mandar na altura
 
 			// ============================ QUEM POUSA CAIDO FICA COMO DESLIZOU ============================
 			// Com o voo acabado, `DirecaoDeitado` deixa de ler o `RumoDoVoo` e passa a ler o

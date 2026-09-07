@@ -35,6 +35,7 @@ public partial class SombraDeVoo : Node2D, IFicaNoChao
 
 	/// <summary>Opacidade colado no chao. Nunca chega a preto: e sombra, nao buraco.</summary>
 	private const float OpacidadeNoChao = 0.45f;
+	private const float MenorOpacidade = 0.22f;
 
 	private float _altura;
 
@@ -68,7 +69,10 @@ public partial class SombraDeVoo : Node2D, IFicaNoChao
 
 		float f = Voo.Fracao(_altura);
 		float escala = Mathf.Lerp(1f, MenorEscala, f);
-		float alfa = Mathf.Lerp(OpacidadeNoChao, 0.10f, f);
+		// NO TETO A SOMBRA CONTINUA LEGIVEL: ela e a unica pista de quem voa alto demais pra ser
+		// desenhado (dono, 2026-09-07: "voce ainda deveria ver uma sombra no chao no local onde ele
+		// estaria"). Era 0,10 -- um borrao que ninguem notava sem procurar.
+		float alfa = Mathf.Lerp(OpacidadeNoChao, MenorOpacidade, f);
 
 		// A MANCHA FICA NOS PES, e nao no centro do sprite -- e a mesma ancora que a colisao usa
 		// (`MoveRules.FeetOffsetY`). Desenhar no centro deixaria a sombra flutuando na cintura.

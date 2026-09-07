@@ -108,6 +108,14 @@ public static class VerbosDoJogo
 			"Em que pe esta o torneio: inscricoes, chave, a luta de agora -- ou quando e o proximo.",
 			() => C?.SendVerbo("trn_status")));
 
+		Verbos.Registrar(new Verbo("Chaveamento do torneio", Verbos.Outros,
+			"Abre (ou fecha) o chaveamento na tela: todos os nomes, rodada a rodada, com a sua proxima luta pulsando.",
+			() => Hud.Instancia?.AlternarChave()));
+
+		Verbos.Registrar(new Verbo("Assistir torneio", Verbos.Outros,
+			"A camera vai pra luta de agora (e volta ao apertar de novo). E o botao do canto inferior esquerdo.",
+			() => { if (World.Instancia is { } m) m.AssistirTorneio(!m.Assistindo); }));
+
 		Verbos.Registrar(new Verbo("Toggle Knockback", Verbos.Outros,
 			"Liga e desliga o arremesso dos SEUS golpes.",
 			() => C?.SendVerbo("knockback")));

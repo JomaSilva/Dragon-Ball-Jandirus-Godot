@@ -222,6 +222,27 @@ public partial class RoboDeLuzDeKi : Node2D
 		Ok("a CARGA na mao (o brilho antes do raio sair) tambem lanca luz, e da mesma cor",
 		   Luz(carga) is { } lc && lc.Color.IsEqualApprox(CorDeKi));
 
+		// ---- O TRONCO ACENDE JUNTO (dono, 2026-09-07: "deveria ser o beam todo, a cabeca e o tronco")
+		ProjetilDesenhado raio = PorTiro(Longe, tipo: TipoDeProjetil.Beam);
+		raio.Cravar(Longe, Longe + new Vector2(320, 0));
+		PointLight2D? tronco = raio.GetNodeOrNull<PointLight2D>(LuzDeKi.NomeDoTronco);
+		Ok("um RAIO tem uma segunda luz, a do TRONCO -- e ela tambem e uma PointLight2D filha",
+		   tronco != null && tronco.GetParent() == raio);
+		Ok("...visivel quando ha tronco, no MEIO dele e deitada ao longo do rastro",
+		   tronco is { Visible: true } && tronco.Position.IsEqualApprox(new Vector2(160, 0)) && Mathf.Abs(tronco.Rotation) < 0.01f);
+		Ok("...ESTICADA ate o comprimento do rastro (a mesma textura radial, escala num eixo so)",
+		   tronco != null && Mathf.Abs(tronco.Scale.X - 320f / (2f * LuzDeKi.RaioDaTextura)) < 0.01f
+		   && Mathf.Abs(tronco.Scale.Y - 1f) < 0.001f);
+		Ok("...da cor do ki do dono, como a da cabeca", tronco != null && tronco.Color.IsEqualApprox(CorDeKi));
+		raio.Cravar(Longe, Longe);
+		Ok("sem tronco (a cauda debaixo da cabeca) a luz do tronco se ESCONDE -- e nao entra na passada",
+		   tronco is { Visible: false });
+		ProjetilDesenhado bola = PorTiro(Longe);
+		Ok("uma BOLA nao tem luz de tronco (nao tem tronco)",
+		   bola.GetNodeOrNull<PointLight2D>(LuzDeKi.NomeDoTronco) == null);
+		raio.QueueFree();
+		bola.QueueFree();
+
 		noite.QueueFree();
 		outro.QueueFree();
 		muro.QueueFree();
@@ -378,8 +399,12 @@ public partial class RoboDeLuzDeKi : Node2D
 		{
 			int col = i % 8, lin = i / 8;
 			var onde = new Vector2(tela.X * (col + 0.5f) / 8f, tela.Y * (lin + 0.5f) / 8f);
+			// SEM TRONCO, de proposito: a luz do tronco (2026-09-07) e uma segunda luz por raio, e uma luz
+			// escondida nao entra na passada. Esta cena mede a passada de N luzes -- com tronco cada raio
+			// valeria duas e os tetos aqui (contados em LUZES) passariam a valer metade em raios. A luz do
+			// tronco tem afirmacao propria na familia 1.
 			ProjetilDesenhado t = PorTiro(onde, pai: cena, tipo: TipoDeProjetil.Beam);
-			t.Mirar(onde, onde + new Vector2(0, 48));
+			t.Mirar(onde, onde);
 			if (Luz(t) is not { } l) continue;
 			_luzesNaTela.Add(l);
 			_ondeOlhar.Add((Vector2I)onde + OlhoNoChao);

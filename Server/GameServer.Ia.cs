@@ -408,7 +408,13 @@ public partial class GameServer
 		&& !PrensadoPelaGravidade(pl)
 		// PLANTADO POR UMA TECNICA DO LOTE G12 (`usr.move = 0` da Death Ball e da Genkidama, `canmove = 0`
 		// das rajadas). Mesmo funil, pela mesma razao de tudo acima.
-		&& !PresoPeloG12(pl.Id);
+		&& !PresoPeloG12(pl.Id)
+		// A AREA DE ESPERA DO TORNEIO (`move = 0` do `apply_hold`, `Tournament.dm:331`). Entra AQUI, no
+		// funil de vetor, e nao so na ancora por tique: a ancora devolvia o corpo depois de ele ter
+		// andado, e o dono via o proprio boneco "teleportando de volta" (2026-09-07). Recusado na
+		// origem, o passo nem acontece -- e o cliente, avisado pelo efeito `torneio_espera`, nem
+		// tenta (`LocalPlayer.PorQueNaoAnda`).
+		&& !PresoNoTorneio(pl.Id);
 
 	/// <summary>
 	/// O QUE O JOGO RESPONDE QUE ESTE CORPO PODE FAZER. Lido a 1 Hz por corpo (ver

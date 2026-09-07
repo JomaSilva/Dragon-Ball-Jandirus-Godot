@@ -73,6 +73,8 @@ public partial class GameServer
 			QuemVence();
 			CadaAcertoEmpurraOFeixe();
 			EncostarNoInimigoVence();
+			AsCabecasSeTocamSemSobrepor();
+			CruzarNaoEDisputar();
 			OFimEAssimetrico();
 			SairDoEmbateEPerder();
 			OEmpateCobra();
@@ -82,6 +84,7 @@ public partial class GameServer
 			OCorpoFicaPreso();
 			OCustoDoGatilho();
 			OsGanchosDaIa();
+			ApanharNaDisputaEDesvantagem();
 		}
 		finally { LimparEmbatesDaBancada(); }
 
@@ -122,7 +125,7 @@ public partial class GameServer
 		p2.Rumo = new Vec2(-1, 0);
 		p2.Pos = p1.Pos;
 		AfirmarEk("dois tiros do MESMO dono nao disputam",
-				  !TentarEmbateDeFeixes(p1, ProjeteisDaZona(solo.Zone.Hash)));
+				  !TentarEmbateDeFeixes(p1, p1.Pos, ProjeteisDaZona(solo.Zone.Hash)));
 		LimparEmbatesDaBancada();
 
 		// (b) PARALELOS: dois aliados atirando juntos. `R.dir != opp` no gatilho por proximidade.
@@ -137,13 +140,13 @@ public partial class GameServer
 		g.Ficha.Ki = g.Ficha.MaxKi;
 		Projetil bola = Disparar(g, new ReceitaDeProjetil { Tipo = TipoDeProjetil.Blast });
 		AfirmarEk("uma BOLA nao entra em disputa",
-				  !TentarEmbateDeFeixes(bola, ProjeteisDaZona(g.Zone.Hash)));
+				  !TentarEmbateDeFeixes(bola, bola.Pos, ProjeteisDaZona(g.Zone.Hash)));
 
 		// (d) RAIO JA SOLTO: sem dono canalizando nao ha quem empurre. `!A.beaming`
 		Projetil largado = Disparar(g, RaioDeTeste());
 		largado.Canalizando = false;
 		AfirmarEk("um raio ja SOLTO nao entra em disputa (nao ha quem o empurre)",
-				  !TentarEmbateDeFeixes(largado, ProjeteisDaZona(g.Zone.Hash)));
+				  !TentarEmbateDeFeixes(largado, largado.Pos, ProjeteisDaZona(g.Zone.Hash)));
 
 		LimparEmbatesDaBancada();
 	}
@@ -462,8 +465,10 @@ public partial class GameServer
 				  !_emEmbateDeKi.ContainsKey(eu.Id) && venciPeloMedidor
 				  && corridos < EmbateDeKi.SegundosMaximos,
 				  $"medidor {medidorNoFim:0.#} aos {corridos:0.#}s");
-		AfirmarEk("...e no instante da vitoria o feixe estava ENCOSTADO no corpo do inimigo",
-				  chegou <= 2, $"{nasceuA:0} px no comeco -> {chegou:0.##} px no fim");
+		// A BEIRADA, e nao o centro (2026-09-07): o ponto de encontro e o CONTATO -- a frente da cabeca
+		// -- e ele para na beirada do corpo (`Feixe.MeioCorpo`), com a cabeca inteira na frente dele.
+		AfirmarEk("...e no instante da vitoria o feixe estava ENCOSTADO na beirada do corpo do inimigo",
+				  chegou <= Feixe.MeioCorpo + 2, $"{nasceuA:0} px no comeco -> {chegou:0.##} px no fim (beirada a {Feixe.MeioCorpo})");
 		AfirmarEk("...e quem venceu fui eu: o canal na minha mao, o dele fechado",
 				  _canais.ContainsKey(eu.Id) && !_canais.ContainsKey(outro.Id));
 
@@ -1390,6 +1395,252 @@ public partial class GameServer
 			pl.Livro.Dar(s.Path);
 			return;
 		}
+	}
+
+	// =====================================================================
+	// 1b) AS CABECAS SE TOCAM SEM SE SOBREPOR (dono, 2026-09-07)
+	// =====================================================================
+	/// <summary>
+	/// *"ao colidirem a cabeca deles sempre devem ficar se empurrando na colisao"* -- e a foto do dono
+	/// mostrava uma em cima da outra. Mede-se a DISTANCIA entre as duas cabecas durante a disputa (um
+	/// raio de cada lado do ponto de contato = dois raios), e o defeito injetado (as duas no mesmo
+	/// ponto, que era o codigo de antes) tem que ficar vermelho.
+	/// </summary>
+	private void AsCabecasSeTocamSemSobrepor()
+	{
+		GD.Print("[embateki] -- 1b) AS CABECAS SE TOCAM SEM SE SOBREPOR (frente com frente)");
+		LimparEmbatesDaBancada();
+		(ServerPlayer a, ServerPlayer b, DisputaDeKi? d) = DoisRaiosDeFrente(12);
+		_ = b;
+		if (d?.A.Feixe == null || d.B.Feixe == null)
+		{
+			AfirmarEk("a disputa comecou com dois feixes", false);
+			LimparEmbatesDaBancada();
+			return;
+		}
+
+		const float Toque = 2f * Projetil.RaioDeImpacto;
+		float maior = 0, menor = float.MaxValue;
+		bool pontoNoMeio = true;
+		for (int i = 0; i < 15 && _emEmbateDeKi.ContainsKey(a.Id); i++)
+		{
+			UmTiqueDoEncontro();
+			float dist = (d.A.Feixe.Pos - d.B.Feixe.Pos).Length;
+			maior = Math.Max(maior, dist);
+			menor = Math.Min(menor, dist);
+			Vec2 meio = (d.A.Feixe.Pos + d.B.Feixe.Pos) * 0.5f;
+			if ((meio - d.Ponto).Length > 0.5f) pontoNoMeio = false;
+		}
+		AfirmarEk("durante a disputa as duas cabecas ficam a exatamente DOIS RAIOS uma da outra (frente com frente)",
+				  _emEmbateDeKi.ContainsKey(a.Id) && Math.Abs(maior - Toque) < 0.5f && Math.Abs(menor - Toque) < 0.5f,
+				  $"{menor:0.0}..{maior:0.0} px, esperado {Toque}");
+		AfirmarEk("...e o ponto de encontro e o MEIO delas -- o contato", pontoNoMeio);
+
+		// O DEFEITO INJETADO: as duas cabecas no mesmo ponto -- o codigo de antes, e a foto do dono.
+		EmbateDeKi.CabecasNoMesmoPontoDeTeste = true;
+		UmTiqueDoEncontro();
+		float sobrepostas = (d.A.Feixe.Pos - d.B.Feixe.Pos).Length;
+		EmbateDeKi.CabecasNoMesmoPontoDeTeste = false;
+		AfirmarEk("DEFEITO INJETADO (cabecas no mesmo ponto) fica vermelho: a medida acima o pegaria",
+				  sobrepostas < 1f && _emEmbateDeKi.ContainsKey(a.Id), $"{sobrepostas:0.0} px entre as cabecas");
+		LimparEmbatesDaBancada();
+	}
+
+	// =====================================================================
+	// 1c) CRUZAR NAO E DISPUTAR: QUEM BATE NO TRONCO ALHEIO ESPERA
+	// =====================================================================
+	/// <summary>
+	/// *"no caso de 2 beams se cruzarem (um vir na vertical e outro na horizontal) eles nao vao entrar
+	/// em clash, e o beam que bater no tronco do outro beam vai ficar parado ate o outro sair do
+	/// caminho"*. Um raio pra LESTE com o tronco ja estendido, outro pra NORTE que chega nele.
+	/// </summary>
+	private void CruzarNaoEDisputar()
+	{
+		GD.Print("[embateki] -- 1c) CRUZAR NAO E DISPUTAR: quem bate no tronco alheio ESPERA o tronco sair");
+		LimparEmbatesDaBancada();
+		const int T = ZoneCollision.TileSize;
+
+		(ServerPlayer a, ServerPlayer b, Projetil? pa, Projetil? pb, float linhaDoTronco) = DoisRaiosCruzados();
+		if (pa == null || pb == null)
+		{
+			AfirmarEk("os dois raios cruzados nasceram (o mapa tem uma praca livre)", false);
+			LimparEmbatesDaBancada();
+			return;
+		}
+
+		// O DE NORTE chega no tronco do de leste. `linhaDoTronco` e o Y do eixo do raio de leste.
+		int t = 0;
+		while (!pb.Esperando && pb.Vivo && t++ < 60) UmTiqueDoEncontro();
+		AfirmarEk("os dois raios se CRUZARAM e nao houve disputa nenhuma (nao vieram de frente)",
+				  _disputas.Count == 0 && !pa.EmEmbate && !pb.EmEmbate);
+		AfirmarEk("o raio que bateu no tronco alheio esta ESPERANDO, parado a um raio do tronco",
+				  pb.Esperando && pb.Pos.Y >= linhaDoTronco + Projetil.RaioDeImpacto - 1f
+				  && pb.Pos.Y <= linhaDoTronco + 2f * Projetil.RaioDeImpacto + 1f,
+				  $"cabeca em y {pb.Pos.Y:0.0}, tronco em y {linhaDoTronco:0.0}, apos {t} tiques");
+
+		Vec2 parou = pb.Pos;
+		float cabecaDeLeste = pa.Pos.X;
+		for (int i = 0; i < 10; i++) UmTiqueDoEncontro();
+		AfirmarEk("...e fica parado enquanto o tronco esta la (o outro raio continua avancando)",
+				  (pb.Pos - parou).Length < 0.01f && pa.Pos.X > cabecaDeLeste + T && pb.Esperando,
+				  $"esperou {(pb.Pos - parou).Length:0.00} px; o de leste andou {pa.Pos.X - cabecaDeLeste:0} px");
+
+		// O DE LESTE E SOLTO: a cauda dele anda e o tronco sai do caminho; o de norte retoma.
+		SoltarCanal(a, "Ki_Wave");
+		t = 0;
+		while (pb.Vivo && pb.Pos.Y > linhaDoTronco - Projetil.RaioDeImpacto && t++ < 90) UmTiqueDoEncontro();
+		AfirmarEk("quando o tronco sai do caminho o raio que esperava RETOMA e atravessa a linha",
+				  pb.Vivo && pb.Pos.Y < linhaDoTronco - Projetil.RaioDeImpacto && !pb.Esperando,
+				  $"y {pb.Pos.Y:0.0} apos {t} tiques (linha {linhaDoTronco:0.0})");
+		_ = b;
+		LimparEmbatesDaBancada();
+
+		// O DEFEITO INJETADO: sem a espera, a cabeca atravessa o tronco como se ele nao existisse.
+		Feixe.AtravessaTroncoDeTeste = true;
+		(_, _, Projetil? pa2, Projetil? pb2, float linha2) = DoisRaiosCruzados();
+		bool atravessou = false;
+		for (int i = 0; i < 60 && pb2 is { Vivo: true } && pa2 is { Vivo: true }; i++)
+		{
+			UmTiqueDoEncontro();
+			if (pb2.Pos.Y < linha2 - Projetil.RaioDeImpacto) { atravessou = true; break; }
+		}
+		Feixe.AtravessaTroncoDeTeste = false;
+		AfirmarEk("DEFEITO INJETADO (sem a espera) fica vermelho: a cabeca atravessa o tronco alheio",
+				  atravessou && _disputas.Count == 0);
+		LimparEmbatesDaBancada();
+	}
+
+	/// <summary>
+	/// Um raio pra LESTE com o tronco ja estendido e um pra NORTE que vai bater nele. Devolve os dois
+	/// donos, os dois feixes e o Y do eixo do raio de leste.
+	/// </summary>
+	private (ServerPlayer, ServerPlayer, Projetil?, Projetil?, float) DoisRaiosCruzados()
+	{
+		const int T = ZoneCollision.TileSize;
+		Vec2 canto = QuadradoLivre(14);
+		ServerPlayer a = Forjar("Leste", new Vec2(canto.X + T, canto.Y + 4 * T), bp: 50_000);
+		ServerPlayer b = Forjar("Norte", new Vec2(canto.X + 6 * T, canto.Y + 11 * T), bp: 50_000);
+		a.Facing = Facing.East;
+		b.Facing = Facing.North;
+		a.Ficha.Ki = a.Ficha.MaxKi;
+		b.Ficha.Ki = b.Ficha.MaxKi;
+		_comTecladoDeTeste.Add(a.Id);
+		_comTecladoDeTeste.Add(b.Id);
+
+		// O DE LESTE PRIMEIRO: carga (~20 tiques) e uns 6 tiles de tronco antes de o outro sair.
+		Canalizar(a, "Ki_Wave", 10 * a.Ficha.BaseDrain(), SemDeflexao());
+		for (int i = 0; i < 40; i++) UmTiqueDoEncontro();
+		Canalizar(b, "Ki_Wave", 10 * b.Ficha.BaseDrain(), SemDeflexao());
+		for (int i = 0; i < 25; i++) UmTiqueDoEncontro();
+
+		Projetil? pa = _canais.GetValueOrDefault(a.Id)?.Raio;
+		Projetil? pb = _canais.GetValueOrDefault(b.Id)?.Raio;
+		return (a, b, pa, pb, pa?.Pos.Y ?? 0f);
+	}
+
+	/// <summary>
+	/// UM QUADRADO LIVRE de <paramref name="lado"/> tiles no mapa da bancada -- o corredor e uma linha,
+	/// a praca e 3x3, e o cruzamento precisa de duas linhas inteiras. Devolve o canto de cima/esquerda.
+	/// </summary>
+	private Vec2 QuadradoLivre(int lado)
+	{
+		ZoneCollision? mapa = _pjMapa;
+		if (mapa == null) return new Vec2(_pjProximoCorredor * 64 + 32, 32);
+
+		for (int y = _pjProximoCorredor; y < 250 - lado; y++)
+			for (int x = 4; x < 250 - lado; x++)
+			{
+				bool livre = true;
+				for (int dy = 0; dy < lado && livre; dy++)
+					for (int dx = 0; dx < lado && livre; dx++)
+						livre &= mapa.ServeDeChao(x + dx, y + dy);
+				if (!livre) continue;
+
+				_pjProximoCorredor = y + lado + 2;
+				return new Vec2(x * ZoneCollision.TileSize + 16, y * ZoneCollision.TileSize + 16);
+			}
+
+		AfirmarEk($"achei um quadrado livre de {lado}x{lado} no mapa da bancada", false, "varredura falhou");
+		return new Vec2(64, 64);
+	}
+
+	// =====================================================================
+	// 10) APANHAR NA DISPUTA E DESVANTAGEM; NINGUEM AGARRA QUEM DISPUTA
+	// =====================================================================
+	/// <summary>
+	/// *"atacar um personagem que ta usando beam em colisao faz ele sofrer desvantagem no clash dele
+	/// (nao da pra agarrar quem esta em colisao, mas se nao estiver da pra agarrar o usuario do beam)"*
+	/// -- e, da outra frase do pedido, *"caso o personagem seja atacado, agarrado ou qualquer coisa
+	/// desse tipo, ele cancela o beam dele na hora"*.
+	/// </summary>
+	private void ApanharNaDisputaEDesvantagem()
+	{
+		GD.Print("[embateki] -- 10) APANHAR NA DISPUTA E DESVANTAGEM, E NINGUEM AGARRA QUEM DISPUTA");
+		LimparEmbatesDaBancada();
+		const int T = ZoneCollision.TileSize;
+
+		(ServerPlayer a, ServerPlayer b, DisputaDeKi? d) = DoisRaiosDeFrente(12);
+		_ = b;
+		if (d == null) { AfirmarEk("a disputa comecou", false); LimparEmbatesDaBancada(); return; }
+		bool souA = d.A.Quem == a;
+		double Meu() => souA ? d.Medidor : 100 - d.Medidor;
+
+		// FORCAS PARELHAS, NINGUEM APERTANDO: o medidor fica parado (familia 2). E o fundo neutro da medida.
+		for (int i = 0; i < 10; i++) UmTiqueDoEncontro();
+		double antes = Meu();
+
+		// UM TERCEIRO BATE EM `a` PELO FUNIL (o mesmo que soco, tiro, arremesso e agarrao chamam).
+		ServerPlayer c = Forjar("Intrometido", new Vec2(a.Pos.X - T, a.Pos.Y), bp: 50_000);
+		c.Facing = Facing.East;
+		AoLevarGolpeComRaioNaMao(a, c);
+		UmTiqueDoEncontro();
+		double depois = Meu();
+		double esperado = EmbateDeKi.ApertosQueUmGolpeCusta * EmbateDeKi.EmpurraoPorAperto;   // vantagem 1 entre iguais
+		AfirmarEk("um golpe sofrido no meio da disputa pende o medidor pro OUTRO lado",
+				  depois < antes - 0.5, $"{antes:0.0} -> {depois:0.0}");
+		AfirmarEk($"...e pende o que `ApertosQueUmGolpeCusta` apertos do rival valem ({esperado:0.0} pontos entre iguais)",
+				  Math.Abs((antes - depois) - esperado) < 0.5, $"caiu {antes - depois:0.00}");
+		AfirmarEk("...e a disputa NAO cai: apanhar inclina, nao derruba (o `side_ok` continua sendo morrer/cair/soltar)",
+				  _emEmbateDeKi.ContainsKey(a.Id) && _canais.ContainsKey(a.Id));
+
+		// E PELO SOCO DE VERDADE: `Atacar` -> `AoLevarGolpeComRaioNaMao`. Soca todo tique (a recarga
+		// recusa os de mais); um que ENCOSTE basta -- e o corpo perde vida quando encosta.
+		double antesDoSoco = Meu();
+		double vidaA = a.Combate!.Corpo.Vida();
+		int tiques = 0;
+		while (tiques++ < 120 && a.Combate.Corpo.Vida() >= vidaA && _emEmbateDeKi.ContainsKey(a.Id))
+		{
+			Atacar(c, Protocol.Golpe.Leve);
+			TickCombate(Protocol.TickSeconds);
+			UmTiqueDoEncontro();
+		}
+		bool encostou = a.Combate.Corpo.Vida() < vidaA;
+		AfirmarEk("...e o soco de verdade passa pelo mesmo funil: o golpe que encosta move o medidor",
+				  encostou && _emEmbateDeKi.ContainsKey(a.Id) && Meu() < antesDoSoco - 0.5,
+				  $"encostou em {tiques} tiques: {encostou}; medidor {antesDoSoco:0.0} -> {Meu():0.0}");
+
+		// NINGUEM AGARRA QUEM DISPUTA.
+		AlternarAgarrao(c);
+		AfirmarEk("agarrar quem esta na disputa e RECUSADO", a.AgarradoPorId == 0 && c.AgarrandoId == 0);
+		AfirmarEk("...e a disputa continua de pe", _emEmbateDeKi.ContainsKey(a.Id));
+		LimparEmbatesDaBancada();
+
+		// ...MAS QUEM SO CANALIZA (sem disputa) PODE SER AGARRADO -- e o raio dele cai na hora.
+		Vec2 chao = CorredorLivre(12);
+		ServerPlayer e = Forjar("Canalizador", new Vec2(chao.X + 2 * T, chao.Y), bp: 50_000);
+		e.Facing = Facing.East;
+		e.Ficha.Ki = e.Ficha.MaxKi;
+		ServerPlayer f = Forjar("Agarrador", new Vec2(chao.X + T, chao.Y), bp: 50_000);
+		f.Facing = Facing.East;
+		Canalizar(e, "Ki_Wave", 10 * e.Ficha.BaseDrain(), SemDeflexao());
+		for (int i = 0; i < 40; i++) UmTiqueDoEncontro();
+		AfirmarEk("(um canalizador com o raio na mao, fora de disputa)",
+				  _canais.GetValueOrDefault(e.Id)?.Atirando == true);
+		AlternarAgarrao(f);
+		AfirmarEk("agarrar quem so canaliza PEGA -- e o raio dele cai na hora",
+				  e.AgarradoPorId == f.Id && !_canais.ContainsKey(e.Id),
+				  $"agarrado por {e.AgarradoPorId} (agarrador {f.Id}), canal {_canais.ContainsKey(e.Id)}");
+		LimparEmbatesDaBancada();
 	}
 
 	/// <summary>

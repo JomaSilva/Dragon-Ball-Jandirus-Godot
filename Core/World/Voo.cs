@@ -278,17 +278,26 @@ public static class Voo
 	///   * chao -> andar 1: NAO. E o "porem nao o contrario": ficar rasante e vantagem, e essa
 	///     vantagem e o que faz voar valer a pena numa briga.
 	///   * andar 2+ -> chao: NAO. De alto demais nao se alcanca o chao.
-	///   * dois voando: so no MESMO andar.
+	///   * dois voando: com ate UM andar de diferenca, os dois se acertam. Era "so no mesmo andar";
+	///     o dono corrigiu em 2026-09-07 -- *"se ambos estiverem voando com no maximo 1 de altura de
+	///     diferenca ambos podem se acertar"* -- e a folga vale pros dois lados: no ar nao ha "chao"
+	///     que de vantagem a ninguem.
 	/// ========================================================================================
 	///
 	/// A regra e ASSIMETRICA de proposito, e isso e raro o bastante pra merecer aviso: nao se pode
 	/// escrever `PodeAcertar(a,b) == PodeAcertar(b,a)` em lugar nenhum. Quem paira no andar 1 bate
-	/// em quem esta no chao sem poder levar de volta.
+	/// em quem esta no chao sem poder levar de volta. (Entre dois voando ela e simetrica, e isso e
+	/// consequencia e nao excecao: a assimetria e do CHAO.)
+	///
+	/// E `PodeAcertar` continua contida em <see cref="Enxerga"/> -- tudo o que te acerta, voce ve:
+	/// dois voando a um andar se veem (a folga de um andar pra cima), e do chao se ve o andar 1.
 	/// </summary>
 	public static bool PodeAcertar(int andarDeQuem, int andarDeQuemLeva)
 	{
 		if (andarDeQuem == andarDeQuemLeva) return true;
-		return andarDeQuem == 1 && andarDeQuemLeva == 0;
+		if (andarDeQuemLeva == 0) return andarDeQuem == 1;   // so quem paira rasante alcanca o chao
+		if (andarDeQuem == 0) return false;                 // do chao nao se alcanca quem voa
+		return Math.Abs(andarDeQuem - andarDeQuemLeva) <= 1;   // dois voando: um andar de folga
 	}
 
 	/// <summary>

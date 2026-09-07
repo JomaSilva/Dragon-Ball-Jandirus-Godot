@@ -180,6 +180,7 @@ public partial class GameServer
 	/// </summary>
 	private void AlternarNado(ServerPlayer pl)
 	{
+		if (PresoNoTorneio(pl.Id)) { Avisar(pl, "voce esta na area de espera do torneio: sem nadar ate a sua vez."); return; }
 		if (pl.Nadando)
 		{
 			if (SobreAgua(pl))
