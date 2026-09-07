@@ -120,8 +120,28 @@ public partial class World : Node2D
 	/// </summary>
 	private void AoTrocarDeZonaDosDecalques(ZoneKey zona, Vec2 spawn)
 	{
-		_decalques?.Limpar();
+		LimparMarcasDoChao();
 		_retratoDePecasPendente = false;
+	}
+
+	/// <summary>As celulas cuja terra revirada ja foi plantada nesta visita. Ver <see cref="ChaoDanificadoEmVolta"/>.</summary>
+	private readonly HashSet<(int X, int Y)> _terraRevirada = [];
+
+	/// <summary>Quantas celulas caidas ja tem terra revirada em volta -- so pras bancadas.</summary>
+	public int TerraReviradaDeTeste => _terraRevirada.Count;
+
+	/// <summary>Esta celula receberia terra revirada como vizinha de uma queda? (bancada: a MESMA conta do desenho)</summary>
+	public static bool PintariaTerraReviradaDeTeste(int x, int y) => Embaralhar(x, y, 7) % 100 < 45;
+
+	/// <summary>
+	/// TODA MARCA DO CHAO SOME, e a memoria da terra revirada junto: e o que a troca de zona, o
+	/// espaco e o cenario refeito pedem. Um sem o outro replantaria por cima (memoria zerada, chao
+	/// cheio) ou deixaria o chao liso pra sempre (chao zerado, memoria cheia).
+	/// </summary>
+	private void LimparMarcasDoChao()
+	{
+		_decalques?.Limpar();
+		_terraRevirada.Clear();
 	}
 
 	/// <summary>
@@ -161,6 +181,11 @@ public partial class World : Node2D
 	private void ChaoDanificadoEmVolta(int cx, int cy)
 	{
 		if (_decalques == null || _colisao == null) return;
+		// UMA VEZ POR CELULA POR VISITA. O estrago e reaplicado a cada pedaco do mapa que o pintor
+		// entrega (ver `World.ReaplicarEstrago`), e a terra revirada nao mora no tilemap: replantar
+		// a cada pedaco empilhava decalques iguais no mesmo lugar ate o teto de permanentes despejar
+		// os primeiros. O sorteio dos vizinhos e funcao pura da celula, entao lembrar a celula basta.
+		if (!_terraRevirada.Add((cx, cy))) return;
 
 		int t = ZoneCollision.TileSize;
 		for (int dx = -1; dx <= 1; dx++)

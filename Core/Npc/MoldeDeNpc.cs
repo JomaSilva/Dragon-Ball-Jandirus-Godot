@@ -89,6 +89,14 @@ public enum TipoDeNpc
 
 	/// <summary>Chefe de saga: tem <see cref="MoldeDeNpc.Estagios"/> e quem o move e o roteiro.</summary>
 	Chefe,
+
+	/// <summary>
+	/// O LUTADOR DE TORNEIO (`mob/npc/Enemy/TourneyFighter`, `Tournament.dm:66`): nasce na hora pra
+	/// preencher a chave, luta so contra o oponente designado (a presa e imposta pelo torneio) e
+	/// some no fim. Nao e cidadao (nao tem vida diaria) nem inimigo (o recorte do dono nao o barra)
+	/// nem chefe (nao tem roteiro). O plano de povoamento tambem nao o aceita: ele so nasce pelo torneio.
+	/// </summary>
+	Lutador,
 }
 
 /// <summary>
@@ -324,6 +332,14 @@ public sealed class MoldeDeNpc
 	/// </summary>
 	public double Inteligencia = 35, Agressividade = 50, Coragem = 50, Furia = 50;
 
+	/// <summary>
+	/// O PERFIL DE COMBATE do molde -- `"perfil": { "voa": 0.5, "ki": 0.6 }`: a fracao dos corpos
+	/// deste molde que saem VOANDO e a que sai USANDO KI (raio e sopro). Ausente = 1 e 1, que e o
+	/// comportamento de sempre; 0 e 0 = so corpo a corpo. Sorteado por corpo pela semente dele
+	/// (`PerfilDeCombate.Sortear`), como todo o resto do sorteio de NPC. Ver `Core/Ai/PerfilDeCombate.cs`.
+	/// </summary>
+	public double ChanceDeVoar = 1, ChanceDeKi = 1;
+
 	/// <summary>A ficha pronta, degrau a degrau. Vazia = bicho de mundo (BP sorteado, sem roteiro).</summary>
 	public EstagioDeChefe[] Estagios = [];
 
@@ -340,6 +356,8 @@ public sealed class MoldeDeNpc
 	{
 		var p = new List<string>();
 		if (Id.Length == 0) p.Add("molde sem id");
+		if (ChanceDeVoar < 0 || ChanceDeVoar > 1) p.Add($"molde '{Id}': perfil.voa = {ChanceDeVoar}, fora de [0, 1]");
+		if (ChanceDeKi < 0 || ChanceDeKi > 1) p.Add($"molde '{Id}': perfil.ki = {ChanceDeKi}, fora de [0, 1]");
 
 		// O TIPO E EXIGIDO, e nao herdado do padrao do C#: ver <see cref="Tipo"/>. Um molde de
 		// inimigo sem a linha viraria "cidadao" e ATRAVESSARIA o recorte do dono -- exatamente o
@@ -441,6 +459,12 @@ public sealed class CatalogoDeMoldes
 				Furia = Num(e, "furia", 50),
 			};
 
+			if (e.TryGetProperty("perfil", out JsonElement perfil) && perfil.ValueKind == JsonValueKind.Object)
+			{
+				m.ChanceDeVoar = Num(perfil, "voa", 1);
+				m.ChanceDeKi = Num(perfil, "ki", 1);
+			}
+
 			string[] generos = Lista(e, "generos");
 			if (generos.Length > 0) m.Generos = generos;
 
@@ -454,6 +478,7 @@ public sealed class CatalogoDeMoldes
 				case "cidadao": m.Tipo = TipoDeNpc.Cidadao; m.TipoDeclarado = true; break;
 				case "inimigo": m.Tipo = TipoDeNpc.Inimigo; m.TipoDeclarado = true; break;
 				case "chefe": m.Tipo = TipoDeNpc.Chefe; m.TipoDeclarado = true; break;
+				case "lutador": m.Tipo = TipoDeNpc.Lutador; m.TipoDeclarado = true; break;
 			}
 
 			if (e.TryGetProperty("nomesPorRaca", out JsonElement pools) && pools.ValueKind == JsonValueKind.Object)

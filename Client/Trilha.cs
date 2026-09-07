@@ -28,6 +28,7 @@ public static class Trilha
     private const string E = "res://Assets/Sounds/Effects/";
     private const string P = E + "Punch Effects/";
     private const string K = E + "Ki Effects/";
+    private const string T = E + "Tech Effects/";
 
     // =====================================================================
     // MUSICA
@@ -286,6 +287,15 @@ public static class Trilha
     /// Aqui tambem: quem ouve nao precisa saber qual dos dois foi, mas precisa ouvir que acabou.
     /// </summary>
     public const string Pouso = E + "buku_land.ogg";
+
+    /// <summary>
+    /// O SOPRO DO KIAI: `emit_Sound('scouterexplode.ogg')` (`Ki2.0/Kiai.dm:53`) -- toca sempre, pegue
+    /// alguem ou nao. E o mesmo som que a Onda de Choque e a Deflexao usam la (`:82`, `:118`).
+    /// </summary>
+    public const string Kiai = T + "scouterexplode.ogg";
+
+    /// <summary>A LAMINA DE AR saindo: `emit_Sound('fire_kiblast.wav')` (`Kiai.dm:37`), so no `if(!mobaff)`.</summary>
+    public const string LaminaDeAr = K + "fire_kiblast.ogg";
 
     // NAO HA SOM DE LACO NO AR, e e decisao do dono: "enquanto ta voando n deveria ter som nenhum".
     // O original tambem e mudo depois do impulso. `db_flying.ogg` esta convertido e nao e usado.

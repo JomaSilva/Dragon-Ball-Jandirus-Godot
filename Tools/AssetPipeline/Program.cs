@@ -1205,6 +1205,40 @@ if (args.Length >= 3 && args[0] == "skills")
     return 0;
 }
 
+if (args.Length >= 5 && args[0] == "fisica")
+{
+    // fisica <pastaMaps.dmm> <pastaCode> <pastaSprites> <Assets/Maps> : SO A FISICA, e so pra libertar.
+    //
+    // A mesma passada do `maps`, pela mesma regra, sem escrever arte: os `.col`/`.vis` do disco
+    // PERDEM os bits que a regra nova nao bloqueia mais (o turf denso por baixo de outro turf --
+    // ver `MapConverter.Convert(soFisica)`). Comando proprio pelo mesmo motivo do `agua`, do
+    // `nuvem` e do `duro`: a conversao cheia reescreveria tileset, tiles.json, cenas e o indice de
+    // sprites, que trocaria 21 artes sem ninguem ter pedido.
+    //
+    //   dotnet run --project Tools/AssetPipeline -- fisica <BYOND>/Maps <BYOND>/Code Assets/Sprites Assets/Maps
+    Console.WriteLine("lendo a arvore de tipos DM...");
+    Dictionary<string, TurfDef> turfsFisica = DmTurfScanner.Scan(Path.GetFullPath(args[2]));
+    var fichasFisica = Jandirus.Tools.DmPlanetScanner.Scan(Path.GetFullPath(args[2]));
+    MapConverter.UsarPlanetas(Jandirus.Core.World.CatalogoDePlanetas.Parse(
+        Jandirus.Tools.DmPlanetScanner.ParaJson(fichasFisica)));
+    string cjFisica = System.IO.Path.Combine("Assets", "Data", "construcoes.json");
+    if (System.IO.File.Exists(cjFisica))
+        MapConverter.UsarObras(Jandirus.Core.Tech.CatalogoDeObras.Parse(System.IO.File.ReadAllText(cjFisica)));
+    else Console.WriteLine("AVISO: sem construcoes.json -- as maquinas do mapa contam como tile (rode 'tech' antes)");
+    MapConverter.Convert(Path.GetFullPath(args[1]), Path.GetFullPath(args[3]), Path.GetFullPath(args[4]), turfsFisica,
+                         soFisica: true);
+    return 0;
+}
+
+if (args.Length >= 4 && args[0] == "subsolo")
+{
+    // subsolo <pastaMaps.dmm> <pastaCode> <Assets/Maps> : A BANCADA DO ULTIMO TURF. Celula por celula
+    // dos 40 andares: onde o `.dmm` empilha dois turfs, o `.col` do disco tem que obedecer ao ULTIMO
+    // -- a mesa por baixo do piso nao bloqueia, o muro por cima do chao bloqueia. Com contra-exemplo
+    // injetado (a regra velha, lida do mesmo disco) e as celulas nominais do castelo de Vegeta.
+    return SubsoloBench.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]));
+}
+
 if (args.Length >= 5 && args[0] == "maps")
 {
     // maps <pastaMaps> <pastaCode> <pastaSprites> <pastaSaida>

@@ -350,6 +350,8 @@ public partial class GameServer
 	{
 		CombatState ca = a.Combate;
 		if (!ca.PodeAtacar()) { ExplicarPorQueNaoSai(a); return; }   // morto, caido, atordoado, arremessado ou em recarga
+		// A AREA DE ESPERA DO TORNEIO (`canfight = 0` do `apply_hold`): quem aguarda a vez nao bate.
+		if (PresoNoTorneio(a.Id)) { Avisar(a, "voce esta na area de espera do torneio: sem golpes ate a sua vez."); return; }
 
 		// ============================ COM ALGUEM NA MAO, O SOCO VIRA ESTRANGULAMENTO ============================
 		// `attack_bck.dm:43-57`: no original o `Attack()` com um `grabbee` de pe **nao soca** -- ele
@@ -1421,6 +1423,7 @@ public partial class GameServer
 			Willpower = (float)f.Ewillpower, Stamina = (float)f.staminapercent,
 			Idade = pl.Idade,
 			Raca = pl.Race,
+			Classe = pl.Class,
 
 			// AINDA ZERO, e de proposito: nenhuma destas habilidades existe no port. Quem
 			// acende cada bit e a etapa que trouxer o sistema -- a skill de Sense, o scouter,
@@ -1432,7 +1435,13 @@ public partial class GameServer
 			Poderes = (uint)PoderesVisiveis(pl),
 			// O FIO CONTINUA FALANDO O MESMO NUMERO de sempre (o `IdRede` do catalogo e o inteiro
 			// que o enum antigo tinha), entao cliente velho e save velho leem sem conversao.
-			FormaAtual = Jandirus.Core.Forms.Catalogo.Rede(pl.Forma.Atual),
+			// A FERA E A FORMA DE AGORA. `Forma.Atual` volta a `base` quando o corpo vira Oozaru (o
+			// `VirarFera` reverte a escada antes de vestir o macaco), entao a aba Formas dizia "normal"
+			// com um macaco gigante na tela -- o dono viu (2026-09-06): "a aba de formas nao ta mostrando
+			// a forma atual que eu to". O Oozaru mora fora da escada de proposito (nao se sobe pra ele
+			// com a tecla C), mas pra quem le a ficha ele e a forma em uso, com maestria no mesmo livro.
+			FormaAtual = Jandirus.Core.Forms.Catalogo.Rede(
+				pl.Oozaru != Jandirus.Core.Forms.FormaOozaru.Nao ? Jandirus.Core.Forms.Oozaru.Id(pl.Oozaru) : pl.Forma.Atual),
 			Maestrias = [.. pl.Forma.Maestria.Todas.Select(t => (Jandirus.Core.Forms.Catalogo.Rede(t.Id), (float)t.V))],
 			Disciplina = (byte)(pl.UltraInstinct.Aprendida ? 1 : pl.PoderDaDestruicao.Aprendida ? 2 : 0),
 			DiscReal = (float)(pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Real : pl.PoderDaDestruicao.Real),

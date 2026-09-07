@@ -141,6 +141,13 @@ public readonly struct Capacidades
 	public double CustoDoSopro { get; init; }
 
 	/// <summary>
+	/// O KI QUE O VERB DE NADAR EXIGE PRA COMECAR (`Nado.KiParaComecar`: o corte que para o nado mais
+	/// tres segundos de custo). Mesma disciplina do sopro: o numero sai da funcao que o verb usa, e
+	/// nunca de uma copia. Ver `Travessia`.
+	/// </summary>
+	public double KiParaNadar { get; init; }
+
+	/// <summary>
 	/// DA PRA SUBIR UM DEGRAU AGORA, sem nenhuma pendencia? Derivado -- um campo ao lado seria a
 	/// mesma verdade duas vezes.
 	/// </summary>

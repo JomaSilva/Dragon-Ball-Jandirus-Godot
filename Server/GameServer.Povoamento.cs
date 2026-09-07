@@ -302,39 +302,28 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// ONDE UM HABITANTE APARECE. O <see cref="PontoDeNascimento"/> do berco **espalhado**.
+	/// ONDE UM HABITANTE APARECE -- a vaga do pedido `lugar` no <see cref="Habitat"/> da zona.
 	///
-	/// ============================ QUARENTA CORPOS NUM TILE SO SERIAM UMA PILHA ============================
-	/// O funil do berco devolve um ponto so por zona -- a celula livre mais perto do (249,250) --,
-	/// que e o certo pra um jogador nascendo e o errado pra uma populacao: os quarenta habitantes da
-	/// Terra apareceriam empilhados no mesmo pixel.
+	/// ============================ O QUE MUDOU, E O QUE NAO MUDOU ============================
+	/// Antes: `rand(-24, 24)` tiles em volta do (249,250), o `planet_spawn_turf` do original
+	/// (PlanetPopulation.dm:283) esticado. Os quarenta habitantes da Terra nasciam num quadrado
+	/// de 49x49 -- e foi o que o dono viu: *"spawn de NPCs distribuido pelo planeta inteiro (so em
+	/// terra, navegavel, sem colisao)"*. Agora e o habitat: terra navegavel ligada ao berco, em
+	/// regioes, com distancia minima (`Core/Npc/Habitat.cs`). DIVERGENCIA DECLARADA do original,
+	/// a pedido.
 	///
-	/// O original espalha do mesmo jeito e com o mesmo gesto: `locate(A.x + rand(-10,10), A.y +
-	/// rand(-10,10), A.z)` com 25 tentativas ate achar turf sem `density` (`planet_spawn_turf`,
-	/// PlanetPopulation.dm:283). Aqui as 25 tentativas nao sao necessarias porque `PontoLivrePerto`
-	/// ja responde a colisao anel por anel -- e ela olha as construcoes levantadas por jogadores,
-	/// que o `!T2.density` do BYOND tambem olharia.
-	///
-	/// O RAIO E MAIOR QUE O DO DM (24 tiles contra 10) por uma razao de escala: la os 15 habitantes
-	/// se dividiam entre VARIOS `/obj/SpawnPoint` por planeta, e aqui ha um ponto de chegada so. 24
-	/// tiles dao um quadrado de 49x49 celulas -- 2400 lugares pra 40 corpos.
-	/// ================================================================================================
-	///
-	/// E DETERMINISTICO por (semente do universo, zona, lugar): o mesmo pedido cai sempre no mesmo
-	/// canto. `Random.Shared` aqui faria o povoamento ser a unica parte do mundo que muda de lugar a
-	/// cada reinicio, e seria impossivel reproduzir um relato de "nasceu dentro da parede".
+	/// O que NAO mudou e a promessa que o Embaralho escreveu por extenso: **funcao pura de (semente
+	/// do universo, zona, lugar)**. A ordem das vagas do habitat e fixa pela semente, e `lugar` so
+	/// indexa nela; nenhum corpo vivo entra na conta. O `PontoLivrePerto` do fim e o de sempre: a
+	/// vaga foi levantada UMA vez, e uma obra pode ter subido nela depois.
+	/// ========================================================================================
 	/// </summary>
 	private Vec2 PontoDeHabitante(ZoneKey zona, ulong lugar)
 	{
-		const int raioEmTiles = 24;
-
-		Random r = SorteioDeNpc.Sorteador(
-			Espaco.Misturar(SeedDoUniverso, Espaco.Hash64(zona.Name), lugar), "onde");
-
-		var desejado = new Vec2(
-			SpawnPos.X + r.Next(-raioEmTiles, raioEmTiles + 1) * ZoneCollision.TileSize,
-			SpawnPos.Y + r.Next(-raioEmTiles, raioEmTiles + 1) * ZoneCollision.TileSize);
-
-		return MapaDaZonaOuCatalogo(zona)?.PontoLivrePerto(desejado) ?? desejado;
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
+		Habitat? h = mapa == null ? null : HabitatDaZona(zona);
+		if (mapa == null || h == null || h.Vagas == 0) return PontoDeNascimento(zona);
+		(int cx, int cy) = h.Vaga(lugar);
+		return mapa.PontoLivrePerto(mapa.CentroDaCelula(cx, cy));
 	}
 }

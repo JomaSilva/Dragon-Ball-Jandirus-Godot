@@ -97,7 +97,12 @@ public partial class CharacterVisual : Node2D
 	/// ultimo segurando 30 decimos, uma respiracao). O BYOND trocava entre os dois sozinho
 	/// conforme o mob andava, e e o que se faz aqui.
 	/// </summary>
-	private string Familia() => _state == "default" ? (_moving ? "walk" : "default") : _state;
+	private string Familia()
+	{
+		// O SOCO QUE JA TOCOU volta a ser o corpo parado ou andando -- ver `_flickAcabou`.
+		string estado = _flickAcabou ? "default" : _state;
+		return estado == "default" ? (_moving ? "walk" : "default") : estado;
+	}
 
 	public override void _Ready()
 	{
@@ -1282,10 +1287,27 @@ public partial class CharacterVisual : Node2D
 	public void DeitarPor(Facing olhando) => Girar(olhando switch
 	{
 		Facing.East => 0f,
-		Facing.West => 180f,
+		// ============================ O OESTE E O ESPELHO, NAO A VOLTA INTEIRA ============================
+		// Meia-volta no quadro deitado poe a cabeca pra direita, mas de ponta-cabeca: o queixo pra cima
+		// da tela, a juba pendurada pra baixo. Num corpo de 32 px visto de cima ninguem repara; no
+		// Oozaru o dono reparou (2026-09-06): "ta de cabeca pra baixo o oozaru desmaiado". A folha do
+		// macaco tem o quadro ESPELHADO (`ko_east`, cabeca pra direita, desenhado certo), entao quando
+		// o corpo da forma e a criatura inteira e tem os dois lados, o oeste entra com o espelho e SEM
+		// rotacao -- ver `DeitaPelosDoisLados` e a escolha do quadro em `Escolher`. As folhas de um
+		// quadro so continuam dando a meia-volta, que e o que sempre deram.
+		// ==================================================================================================
+		Facing.West => DeitaPelosDoisLados ? 0f : 180f,
 		Facing.South => -90f,
 		_ => 90f,
 	});
+
+	/// <summary>
+	/// O corpo da forma e a criatura inteira (esconde o resto) e a folha dele deita pros DOIS lados
+	/// (`ko_west` e `ko_east`, sem o `ko` unico)? Entao o oeste e espelho, nao meia-volta.
+	/// </summary>
+	private bool DeitaPelosDoisLados =>
+		_criatura && _corpoDaForma?.SpriteFrames is { } f
+		&& !f.HasAnimation("ko") && f.HasAnimation("ko_east") && f.HasAnimation("ko_west");
 
 	/// <summary>
 	/// DEITA O CORPO **ACORDADO** na direcao do voo -- e o arremesso.
@@ -1446,6 +1468,7 @@ public partial class CharacterVisual : Node2D
 		if (_travado || _state == state) return;
 		_state = state;
 		_ritmo = 1;
+		_flickAcabou = false;
 		Aplicar(force: true);
 	}
 
@@ -1461,6 +1484,7 @@ public partial class CharacterVisual : Node2D
 		if (_travado) return;
 		_state = state;
 		_ritmo = 1;
+		_flickAcabou = false;   // um golpe NOVO: o `flick` toca de novo, do comeco
 		Aplicar(force: true);   // ja zera o relogio: o golpe recomeca do primeiro quadro
 		if (duracaoAlvo <= 0 || _corpo?.SpriteFrames is not { } f) return;
 
@@ -1478,6 +1502,32 @@ public partial class CharacterVisual : Node2D
 	/// velocidade. Quem mexe nisto e o soco (ver <see cref="RestartState"/>).
 	/// </summary>
 	private double _ritmo = 1;
+
+	/// <summary>O estado que e um `flick` no BYOND: toca uma vez e devolve o corpo ao `icon_state`.</summary>
+	private const string EstadoDeFlick = "attack";
+
+	/// <summary>
+	/// O SOCO JA TOCOU INTEIRO. Enquanto isto e verdade o `_state` continua "attack" (e o que o servidor
+	/// diz que o corpo esta fazendo, e um `SetPose(Atacando)` repetido nao pode recomecar nada) mas o
+	/// DESENHO e o do corpo parado ou andando -- ver <see cref="Familia"/>. Cai em `SetState`, que e
+	/// outra pose, e em `RestartState`, que e outro golpe.
+	/// </summary>
+	private bool _flickAcabou;
+
+	/// <summary>
+	/// A regra do `flick` pode ser desligada SO pela bancada (`--diagflick`), pra provar que sem ela o
+	/// soco volta a rodar em laco -- o defeito que o dono viu no Oozaru.
+	/// </summary>
+	public static bool SocoTocaUmaVezDeTeste = true;
+
+	/// <summary>O estado pedido ao corpo (a pose), mesmo depois de o `flick` acabar -- so pras bancadas.</summary>
+	public string EstadoDeTeste => _state;
+	/// <summary>O soco ja tocou uma vez e o corpo voltou ao parado? -- so pras bancadas.</summary>
+	public bool FlickAcabouDeTeste => _flickAcabou;
+	/// <summary>`SetPose` que devolve algo, pra bancada encadear numa expressao. Nada alem disso.</summary>
+	public bool SetPoseDeTeste(Protocol.Pose pose, bool canalAtirando) { SetPose(pose, canalAtirando); return true; }
+	/// <summary>A animacao do corpo PROPRIO DA FORMA (o macaco, a pelagem do SSJ4) -- so pras bancadas.</summary>
+	public string AnimacaoDaFormaDeTeste => _corpoDaForma?.Animation.ToString() ?? "";
 
 	public void SetMotion(Facing facing, bool moving)
 	{
@@ -3297,7 +3347,29 @@ public partial class CharacterVisual : Node2D
 		// de caminhada enquanto o corpo atravessa o dobro do chao, e o cerebro le como patinacao.
 		// So vale enquanto ANDANDO -- correndo parado (empurrando parede) nao existe, e acelerar a
 		// pose de respiracao daria um personagem ofegante de pe.
-		double ritmo = _ritmo * (_correndo && _moving && _state == "default" ? RitmoDaCorrida : 1);
+		double ritmo = _ritmo * (_correndo && _moving && (_state == "default" || _flickAcabou) ? RitmoDaCorrida : 1);
+
+		// ============================ O SOCO TOCA UMA VEZ: E `flick`, NAO ESTADO ============================
+		// No BYOND o golpe e `flick("Attack", src)` (`attack_proc.dm`): os quadros tocam UMA vez e o
+		// corpo volta ao `icon_state` de sempre, enquanto a recarga do golpe segue correndo por fora.
+		// Aqui a pose `Atacando` dura a CADENCIA do golpe (`AtaqueAte`, ver `GameServer.Combat.cs`), e
+		// o relogio prendia o corpo no ciclo de "attack" ate ela vencer -- pra um corpo comum, cujo
+		// ciclo esticado (`RestartState`) e do tamanho da pose, isso nao se via; pro Oozaru, com dois
+		// quadros de 0,2 s e uma cadencia de segundos (`Tspeed -= 1,5`), era o soco "loopando rapido
+		// por alguns segundos" que o dono viu (2026-09-06). Agora, vencido o primeiro ciclo, o corpo
+		// volta ao parado/andando e fica ali ate a pose mudar -- ou ate o proximo golpe, que o
+		// `World.AoGolpe` reinicia com `RestartState`, como o `flick` de cada soco.
+		// ====================================================================================================
+		if (SocoTocaUmaVezDeTeste && _state == EstadoDeFlick && !_flickAcabou && ciclo > 0
+			&& _relogio + delta * ritmo >= ciclo)
+		{
+			_flickAcabou = true;
+			_ritmo = 1;
+			Aplicar(force: true);   // o corpo volta ao parado/andando, do primeiro quadro
+			corpoF = _corpo.SpriteFrames;
+			ciclo = corpoF == null ? 0 : Ciclo(corpoF, _corpo.Animation);
+			ritmo = _correndo && _moving ? RitmoDaCorrida : 1;
+		}
 		_relogio = ciclo > 0 ? (_relogio + delta * ritmo) % ciclo : 0;
 
 		// ============================ UM SEGUNDO RELOGIO, E ELE NAO PODE SER O DE CIMA ============================
@@ -3467,6 +3539,20 @@ public partial class CharacterVisual : Node2D
 		// desenha um estado unico.
 		bool corpoSemDirecao = doCorpo != null && !TemSufixoDeDirecao(doCorpo);
 		string dir = corpoSemDirecao ? "south" : MoveRules.FacingSuffix(_facing);
+
+		// ============================ O CORPO DEITADO E UM QUADRO SO, E E O "OESTE" ============================
+		// As folhas de corpo tem UM quadro de KO, sem direcao, deitado com a cabeca pra esquerda -- e
+		// quem o vira pro rumo da queda e a rotacao do node (`DeitarPor`, pedido do dono). A folha do
+		// Oozaru (`oozaruhayate.dmi`) tem QUATRO: o do sul e um macaco enrolado, uma bola que rodada
+		// fica igual; o do norte e um macaco de costas, EM PE. Escolher pela direcao e depois rodar
+		// dava o "nocauteado sem girar" que o dono viu (2026-09-06). A folha que tem os quatro entrega
+		// o do OESTE -- o unico desenhado como o quadro unico das outras folhas -- e a mesma rotacao
+		// de todo mundo faz o resto: o macaco cai como qualquer corpo. A UNICA excecao e o corpo
+		// olhando pro OESTE: ali a rotacao seria meia-volta (de ponta-cabeca), e a criatura que tem
+		// o quadro espelhado (`ko_east`) usa o espelho sem girar -- ver `DeitarPor`.
+		// ======================================================================================================
+		if (fam == "ko" && !f.HasAnimation("ko") && f.HasAnimation("ko_west"))
+			return _facing == Facing.West && DeitaPelosDoisLados ? "ko_east" : "ko_west";
 
 		if (doCorpo != null && f.HasAnimation(doCorpo)) return doCorpo;
 		if (f.HasAnimation($"{fam}_{dir}")) return $"{fam}_{dir}";

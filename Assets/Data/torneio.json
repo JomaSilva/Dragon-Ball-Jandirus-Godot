@@ -1,0 +1,48 @@
+{
+  "_leia": [
+    "O TORNEIO DE ARTES MARCIAIS (Terra, vivos) e o TORNEIO DO OUTRO MUNDO (Afterlife, mortos). Dado, nao codigo:",
+    "o servidor le isto no boot (GameServer.Torneio.cs:CarregarTorneio). Cada numero do Tournament.dm esta aqui",
+    "com o define de origem: vagas (TRN_BRACKET era 16; o dono pediu 32), inscricaoSegundos (TRN_SIGNUP_TICKS 1500",
+    "= 150 s), lutaSegundosMax (TRN_MATCH_MAX 2400 = 240 s), contagemSegundos (TRN_COUNTDOWN), intervaloSegundos",
+    "(TRN_BREAK_TICKS 100 = 10 s), premios (TRN_PRIZE_1/2/3), npc.bpMinPct/bpMaxPct (TRN_NPC_BP_MIN/MAX: o BP do",
+    "NPC e a media dos jogadores inscritos x rand(60..140)%), npc.bpPiso (TRN_NPC_BP_FLOOR).",
+    "",
+    "O QUE E DO PORT: conviteSegundos (o convite na tela vence; o alert() do DM nao vencia), woSegundos (quem",
+    "desconecta no meio da luta tem N s pra voltar, senao perde por W.O.), a agenda em DIAS de tempo real (o DM",
+    "usava a virada de mes do relogio do jogo) e a disputa do 3o lugar antes da final (o DM premiava os dois",
+    "semifinalistas sem luta). alem.campeaoRevive: o campeao do Outro Mundo volta a vida? Padrao: nao, so o zeni.",
+    "",
+    "ARENAS em celulas do port (x - 1, altura - y das coordenadas BYOND), retangulo inclusivo [x1, y1, x2, y2].",
+    "Terra: TRN_ARENA 220..276 x 11..68 (z1). Outro Mundo: TRNH_ARENA 117..126 x 140..148 (z6 = Afterlife)."
+  ],
+
+  "vagas": 32,
+  "inscricaoSegundos": 150,
+  "conviteSegundos": 90,
+  "lutaSegundosMax": 240,
+  "contagemSegundos": 5,
+  "intervaloSegundos": 10,
+  "woSegundos": 30,
+  "premios": [1000000, 500000, 250000],
+
+  "npc": {
+    "molde": "lutador_de_torneio",
+    "bpMinPct": 60,
+    "bpMaxPct": 140,
+    "bpPiso": 500
+  },
+
+  "terra": {
+    "zona": "Earth",
+    "arena": [219, 432, 275, 489],
+    "intervaloDias": 30,
+    "primeiroEmDias": 1
+  },
+
+  "alem": {
+    "zona": "Afterlife",
+    "arena": [116, 352, 125, 360],
+    "diasDepoisDaTerra": 15,
+    "campeaoRevive": false
+  }
+}

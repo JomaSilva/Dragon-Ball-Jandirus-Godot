@@ -64,6 +64,30 @@ public sealed partial class GameServer
 	/// </summary>
 	private readonly Dictionary<int, long> _soproPronto = [];
 
+	/// <summary>
+	/// QUANTO DURA A POSE DE TIRO DO SOPRO -- o `flick("Blast", usr)` (`Ki2.0/Kiai.dm:16`). No BYOND o
+	/// `flick` toca o estado UMA vez e volta; as folhas do `blast_*` tem tres a cinco quadros a 10 por
+	/// segundo, e meio segundo cobre um ciclo sem repetir dois. E a janela do `ServerPlayer.GestoAte`.
+	/// </summary>
+	private const long GestoDeSoproMs = 500;
+
+	/// <summary>A bancada ouve os gestos anunciados (quem, qual). Nula em producao.</summary>
+	internal static List<(int Quem, byte Gesto)>? EscutaDeGestos;
+
+	/// <summary>
+	/// O GESTO PRA ZONA INTEIRA (`S2C.Gesto`): o som e o "recomece do quadro zero" do desenho. A POSE
+	/// nao vai aqui -- ela vai pelo snapshot, segurada por `GestoAte`. Ver `Protocol.S2C.Gesto`.
+	/// </summary>
+	private void AnunciarGesto(ServerPlayer pl, Protocol.GestoDoCorpo gesto)
+	{
+		EscutaDeGestos?.Add((pl.Id, (byte)gesto));
+		var w = Protocol.Begin(Protocol.S2C.Gesto);
+		w.Put(pl.Id);
+		w.Put((byte)gesto);
+		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
+			o.Peer?.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
+	}
+
 	/// <summary>`healCD` -- e quem esta sendo curado por quem (`Healtarget`).</summary>
 	private readonly Dictionary<int, int> _curando = [];
 
@@ -552,10 +576,22 @@ public sealed partial class GameServer
 	/// O `if(!mobaff)` do original e o que faz a tecnica valer alguma coisa a distancia: sem alvo
 	/// colado ela nao e desperdicada, vira tiro. Sem essa linha, gastar 50 de Ki no vazio nao daria
 	/// nada em troca -- e um jogador que erra o tempo do sopro merece o consolo que o DM deu.
+	///
+	/// ============================ O EFEITO, COMO ERA NO BYOND (dono, 2026-09-07) ============================
+	/// O que se VE e OUVE no original, linha a linha do verb:
+	///   * `flick("Blast", usr)` (`:16`) -- o corpo faz a pose de tiro uma vez. Aqui e o `GestoAte`.
+	///   * a lamina veste `Daitoppa.dmi` tingido com a cor de ki (`:34-39`) e nasce com
+	///     `invisibility = 1` (`:40`): so quem tem `see_invisible` (Namekian, Kanassa, Spirit,
+	///     Shapeshifter, Yardrat, Demigod Genie -- `VisaoDoInvisivel`) a ve passar.
+	///   * `fire_kiblast.wav` quando a lamina sai (`:37`) e `scouterexplode.ogg` sempre (`:53`).
+	///   * NENHUM texto: o verb nao fala, nao grita, nao escreve no chat. O "KIAI!" que saia daqui
+	///     era invencao deste port e foi embora junto com a bola colorida que voava no lugar da
+	///     lamina -- que era o que o dono viu e chamou de errado.
+	/// =====================================================================================================
 	/// </summary>
 	private void KiaiG6(ServerPlayer pl)
 	{
-		Falar(pl, Protocol.Fala.Diz, "KIAI!");
+		pl.GestoAte = NowMs() + GestoDeSoproMs;   // `flick("Blast", usr)` (`Kiai.dm:16`)
 		int pegos = 0;
 
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
@@ -570,8 +606,14 @@ public sealed partial class GameServer
 			pegos++;
 		}
 
-		if (pegos > 0) { Avisar(pl, $"o sopro joga {pegos} pra longe."); return; }
+		if (pegos > 0)
+		{
+			AnunciarGesto(pl, Protocol.GestoDoCorpo.Kiai);
+			Avisar(pl, $"o sopro joga {pegos} pra longe.");
+			return;
+		}
 
+		// A LAMINA: `Daitoppa.dmi` pela tabela de arte (o `verbo` e quem a acha), invisivel de nascenca.
 		Disparar(pl, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,
@@ -579,7 +621,9 @@ public sealed partial class GameServer
 			Velocidade = 1,
 			AlcanceTiles = AlcanceDeBolaG5,
 			Nome = "lamina de ar",
-		});
+			Invisivel = true,   // `A.invisibility = 1` (`Kiai.dm:40`)
+		}, verbo: "Kiai");
+		AnunciarGesto(pl, Protocol.GestoDoCorpo.KiaiComLamina);
 		Avisar(pl, "nao havia ninguem colado: o sopro segue em frente como uma lamina de ar.");
 	}
 

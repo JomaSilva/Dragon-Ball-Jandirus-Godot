@@ -531,6 +531,7 @@ public sealed partial class GameServer
 			Altitude = pl.Altitude,
 			Nome = r.Nome,
 			Arte = arte,
+			Invisivel = r.Invisivel,
 			// `A.transform *= wavemult` (`beams.dm:149`) -- a OUTRA metade do `wavemult`, a que
 			// engorda o sprite. Ver `Projetil.EscalaVisual` sobre por que ela nao mora no `Bp`.
 			//
@@ -1687,6 +1688,9 @@ public sealed partial class GameServer
 			// `Voo.EscalaNaTela` 0,25). Ler a altura do DONO nao serve: ele pousa, o tiro nao.
 			w.Put(Jandirus.Core.World.Voo.ParaByte(p.Altitude));
 			w.PutVec(p.Pos);
+			// AS FLAGS VAO NO FIM (crescer pelo fim e o que mantem escritor e leitor faceis de conferir
+			// lado a lado): bit 0 = nasceu invisivel (a lamina de ar do Kiai). Ver `Projetil.Invisivel`.
+			w.Put((byte)(p.Invisivel ? 1 : 0));
 		}
 		else
 		{

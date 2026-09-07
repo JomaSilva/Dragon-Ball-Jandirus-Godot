@@ -2032,7 +2032,7 @@ public partial class GameServer
 				// ==================================================================================================
 				int inicioCru = Array.FindIndex(fonteClone, l => l.Contains("private void TickDosCorposSemDono"));
 				string capturado = inicioCru < 0 ? ""
-					: string.Join(" ", fonteClone.Skip(inicioCru).Take(60).SkipWhile(l => !l.Contains("catch")));
+					: string.Join(" ", fonteClone.Skip(inicioCru).Take(140).SkipWhile(l => !l.Contains("catch")));   // 140: o tique barato de quem esta longe entrou antes do `try` (GameServer.Rotina.cs)
 
 				Checa("o `try` mora DENTRO da volta (por corpo), e nao em volta do tique",
 					  ondeForeach >= 0 && ondeTry > ondeForeach, $"foreach@{ondeForeach} try@{ondeTry}");

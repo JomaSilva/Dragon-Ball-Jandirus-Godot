@@ -48,6 +48,63 @@ public partial class GameServer
 	private bool SobreAgua(ServerPlayer pl)
 		=> MapaDaZonaOuCatalogo(pl.Zone) is { } mapa && MoveRules.NaAgua(mapa, pl.Pos);
 
+	// =====================================================================
+	// AS TRES PERGUNTAS DA IA -- ver `Core/Ai/Travessia.cs`
+	// =====================================================================
+	/// <summary>
+	/// OS PES ESTAO NA AGUA? Pelo CENTRO da caixa dos pes (`MoveRules.FeetOffsetY`), e nao por
+	/// qualquer quina como o <see cref="SobreAgua"/>: a pergunta da IA e "estou preso num lago?", e
+	/// um corpo na beira com uma quina molhada NAO esta preso -- o `Advance` acha o passo que
+	/// termina no seco. Perguntar pela quina o poria a nadar na praia.
+	/// </summary>
+	private bool PesNaAgua(ServerPlayer pl)
+		=> MapaDaZonaOuCatalogo(pl.Zone) is { } mapa
+		   && mapa.EhAguaEm(pl.Pos + new Vec2(0, MoveRules.FeetOffsetY));
+
+	/// <summary>
+	/// O PASSO BATEU NA AGUA? A celula a um tile dos pes, no rumo tentado. E o que separa "parede"
+	/// de "lago" pra IA -- o `Advance` devolve "barrado" pros dois.
+	/// </summary>
+	private static bool AguaNoRumo(ZoneCollision mapa, Vec2 pos, Vec2 rumo)
+	{
+		if (rumo.LengthSquared <= 1e-6f) return false;
+		return mapa.EhAguaEm(pos + new Vec2(0, MoveRules.FeetOffsetY) + rumo.Normalized() * ZoneCollision.TileSize);
+	}
+
+	/// <summary>
+	/// O RUMO ATE O CHAO SECO MAIS PERTO, unitario -- zero fora da agua ou sem margem em
+	/// `RaioDoPouso` celulas. Usa o MESMO `ChaoLivrePerto` do pouso: o lugar pra onde o corpo nada e
+	/// o lugar onde ele poderia pousar, e nao ha uma segunda ideia de "margem" pra divergir.
+	/// </summary>
+	private Vec2 RumoDaMargem(ServerPlayer pl)
+	{
+		if (MapaDaZonaOuCatalogo(pl.Zone) is not { } mapa || !PesNaAgua(pl)) return Vec2.Zero;
+
+		// ============================ A ESPIRAL E CARA, ENTAO ELA E LEMBRADA ============================
+		// `ChaoLivrePerto` varre ate 12 aneis (625 celulas, cinco leituras cada) e, no meio do oceano,
+		// varre TUDO e nao acha nada -- 28,4% da agua da Terra nao tem margem em 12 tiles. Um corpo
+		// boiando sem folego pagava isso a 30 Hz, e a bancada da IA viu o tique dos 20 corpos (que
+		// nascem em x = 0, na beira do mapa) engordar a ponto de o defeito injetado dela nao aparecer
+		// mais. A margem nao anda: a resposta vale enquanto o corpo estiver a menos de um tile de onde
+		// perguntou, e por um segundo de tiques mesmo parado (uma obra pode subir, uma porta fechar).
+		// ==============================================================================================
+		if (pl.TiquesAteRecalcularMargem > 0
+			&& (pl.Pos - pl.PosDaMargemGuardada).LengthSquared < ZoneCollision.TileSize * ZoneCollision.TileSize)
+		{
+			pl.TiquesAteRecalcularMargem--;
+			return pl.RumoDaMargemGuardado;
+		}
+		pl.PosDaMargemGuardada = pl.Pos;
+		pl.TiquesAteRecalcularMargem = 30;
+		pl.RumoDaMargemGuardado = Vec2.Zero;
+		if (ChaoLivrePerto(mapa, pl.Pos) is { } seco)
+		{
+			Vec2 d = seco - pl.Pos;
+			if (d.LengthSquared > 1e-6f) pl.RumoDaMargemGuardado = d.Normalized();
+		}
+		return pl.RumoDaMargemGuardado;
+	}
+
 	/// <summary>
 	/// O TILE A FRENTE E AGUA? -- o `get_step(usr, dir)` do verb (`Swim.dm:9-10`).
 	///

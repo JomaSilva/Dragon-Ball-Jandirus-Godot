@@ -1,0 +1,112 @@
+{
+  "_leia": [
+    "A VIDA DIARIA DOS HABITANTES, O ESPALHAMENTO DO SPAWN E A CONSCIENCIA DE ARENA. Dado, nao codigo:",
+    "o servidor le isto no boot (GameServer.Rotina.cs:CarregarRotina). Editar e reiniciar e o ciclo inteiro.",
+    "",
+    "espalhamento: onde os habitantes nascem (Core/Npc/Habitat.cs). Regioes de N tiles, distancia minima",
+    "  entre duas vagas (tiles, Chebyshev), quantas vagas um bloco precisa ter pra contar como regiao e quantas",
+    "  celulas uma ilha/componente de terra precisa ter pra entrar (a do berco entra sempre).",
+    "rotina: duracoes em SEGUNDOS ([min, max], sorteado por corpo) e chances em [0, 1] (Core/Ai/Rotina.cs).",
+    "  raioDeAtencaoTiles/divisorDeLonge: habitante a mais de N tiles de todo jogador pensa 1 tique a cada N.",
+    "combate: os numeros do Tournament.dm -- TRN_AI_EDGE_MARGIN 2, TRN_AI_FLY_CHANCE 60 e o pouso com m >= 5.",
+    "frases: os baloes curtos. Quanto mais frases, menos repeticao; cada corpo sorteia pela propria semente.",
+    "  A fala passa pelo mesmo funil do jogador: '!' vira grito e o alcance cresce."
+  ],
+
+  "espalhamento": {
+    "ladoDaRegiaoEmTiles": 32,
+    "distanciaMinimaEmTiles": 4,
+    "minimoDeVagasPorRegiao": 3,
+    "minimoDeCelulasPorComponente": 400
+  },
+
+  "rotina": {
+    "ociosoSegundos": [4, 12],
+    "passeioSegundos": [3, 8],
+    "passeioTiles": 6,
+    "chanceDeTreinar": 0.25,
+    "treinoSegundos": [15, 40],
+    "chanceDeConversar": 0.5,
+    "raioDeConversaTiles": 6,
+    "conversaSegundos": [8, 16],
+    "segundosEntreFalas": 2.5,
+    "chanceDeConvidar": 0.3,
+    "chanceDeAceitar": 0.6,
+    "razaoDePoderQueAssusta": 3,
+    "sparSegundosMax": 60,
+    "vidaQueEncerraOSpar": 0.35,
+    "descansoSegundos": [20, 40],
+    "raioDeAtencaoTiles": 40,
+    "divisorDeLonge": 10
+  },
+
+  "combate": {
+    "margemDaArenaTiles": 2,
+    "margemSeguraParaPousarTiles": 5,
+    "chanceDeVoarNoTorneio": 0.6
+  },
+
+  "frases": {
+    "conversa": [
+      "Belo dia, não?",
+      "Ouviu falar do torneio?",
+      "Meu treino está rendendo.",
+      "Dizem que viram uma luz no céu ontem.",
+      "Você sentiu aquele tremor?",
+      "Preciso comer alguma coisa.",
+      "Um dia eu ainda aprendo a voar.",
+      "Está calor demais pra treinar.",
+      "Meu mestre dizia: primeiro as pernas.",
+      "Aquele forasteiro tem um ki estranho...",
+      "Você viu o tamanho daquela lua?",
+      "Hoje eu acordei mais forte, juro.",
+      "Não conte a ninguém, mas eu quase caí no rio.",
+      "Cansei de andar. Vamos sentar.",
+      "Já pensou em entrar no torneio?",
+      "A colheita foi boa este ano.",
+      "Ontem eu treinei até desmaiar.",
+      "Se você ver o Mestre, avise que eu passei aqui.",
+      "Cuidado com o norte. Tem gente esquisita por lá.",
+      "Hm. Você parece diferente hoje."
+    ],
+    "convite": [
+      "Quer treinar comigo? Só um spar.",
+      "Vamos ver do que você é capaz. Um spar?",
+      "Que tal umas trocas? Sem machucar.",
+      "Preciso de um parceiro de treino. Topa?",
+      "Me mostra o seu golpe! Um spar rápido.",
+      "Bora lutar um pouco? Só até um de nós cansar."
+    ],
+    "aceite": [
+      "Vamos lá!",
+      "Combinado. Não vá chorar depois.",
+      "Só se você prometer não desmaiar.",
+      "Agora sim! Prepare-se.",
+      "Eu ia pedir o mesmo.",
+      "Vem!"
+    ],
+    "recusa": [
+      "Hoje não, obrigado.",
+      "Estou sem folego. Outro dia.",
+      "Não quero te machucar.",
+      "Você é forte demais pra mim.",
+      "Deixa pra depois do almoço.",
+      "Melhor não. Meu braço ainda dói."
+    ],
+    "fimDoSpar": [
+      "Boa luta!",
+      "Chega por hoje.",
+      "Você melhorou.",
+      "Ufa... foi por pouco.",
+      "Da próxima eu ganho.",
+      "Obrigado pelo treino."
+    ],
+    "treino": [
+      "Hora de treinar.",
+      "Mais um pouco...",
+      "Não posso ficar pra trás!",
+      "Um dia eu chego lá.",
+      "Vamos, corpo. Aguenta."
+    ]
+  }
+}

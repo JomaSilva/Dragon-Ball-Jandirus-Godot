@@ -1,4 +1,4 @@
-﻿using Godot;
+using Godot;
 using Jandirus.Net;
 
 namespace Jandirus.Client;
@@ -41,6 +41,26 @@ namespace Jandirus.Client;
 /// deve mostrar o presente, nao o atraso acumulado).
 /// ======================================================================================
 ///
+/// ============================ NITIDO EM QUALQUER ZOOM (pedido do dono, 2026-09-06) ============================
+/// *"texto nitido (fonte vetorial, sem filtro nearest no texto), balao escala com o texto e
+/// quebra linha, pra jogadores e NPCs"*. O balao e filho do corpo e o corpo vive no mundo 2D, que
+/// a camera amplia de 2x a 6x com o filtro NEAREST do projeto (o cenario e pixel art). O texto era
+/// rasterizado a 8 px de mundo e esticado pela camera: cada pixel do glifo virava um bloco de
+/// zoom x zoom, e a letra saia serrilhada -- foi o que o dono viu.
+///
+/// O CONSERTO NAO TIRA O BALAO DO CORPO. Ele continua filho (anda com o dono, sobe com o voo,
+/// some no Zanzoken pelas regras de sempre); o que muda e a ESCALA: o no se encolhe por 1/zoom e
+/// desenha tudo em PIXELS DE TELA -- a fonte em `Tamanho x zoom`, a caixa em `LarguraMaxima x
+/// zoom`. Um pixel local vira exatamente um pixel da tela, o glifo e rasterizado pela fonte
+/// vetorial no tamanho final, e o filtro do no e LINEAR (o nearest do projeto e do cenario, nao do
+/// texto). O tamanho VISTO e o mesmo de antes (8 px de mundo, 24 na tela no zoom 3): escrever num
+/// tamanho fixo de tela deixaria a letra minuscula ao lado de um boneco de 192 px no zoom 6.
+///
+/// Uma camada de tela (`CanvasLayer` + `Label`) daria a mesma nitidez e custaria refazer a mao o
+/// "anda com o corpo" e o "sobe com quem voa" -- que a bancada `--diagbalao` mede justamente
+/// porque sao as duas coisas que esse conserto quebraria.
+/// ================================================================================================
+///
 /// Desenhado em `_Draw` e nao com nodes de UI: um `Label` dentro do mundo 2D traria tema, layout e
 /// ancoragem pra resolver o que um retangulo e um `DrawString` resolvem -- e traria a fonte do
 /// TEMA, que e de UI e nao acompanha o zoom do mapa.
@@ -70,13 +90,14 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 	///
 	/// E o que separa um balao de uma FAIXA: sem teto, uma frase de cem letras vira uma linha
 	/// unica atravessando a tela inteira, e no zoom do jogo (2x a 6x) ela sai pelas duas bordas.
+	/// Na tela ela vale `LarguraMaxima x zoom` pixels -- ver o cabecalho sobre a escala.
 	/// </summary>
 	internal const float LarguraMaxima = 108f;
 
 	/// <summary>
-	/// O tamanho da fonte em pixels de MUNDO. O balao e filho do corpo, entao o zoom da camera
-	/// (3x por padrao) multiplica isto: 8 vira 24 px de tela, que se le. Escrever em px de TELA
-	/// exigiria desfazer o zoom aqui e o texto ficaria minusculo perto do boneco no zoom alto.
+	/// O tamanho da fonte em pixels de MUNDO. Na tela a fonte e rasterizada em `Tamanho x zoom`
+	/// (24 px no zoom 3): o tamanho visto e este, e o glifo nasce nitido no tamanho final em vez
+	/// de nascer com 8 px e ser esticado pela camera.
 	/// </summary>
 	private const int Tamanho = 8;
 
@@ -101,14 +122,27 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 	/// <summary>Quantas frases esperam a vez. Ver o cabecalho sobre por que a mais velha cai.</summary>
 	private const int MaxNaFila = 2;
 
+	/// <summary>
+	/// O INTERRUPTOR DO DEFEITO INJETADO da bancada: desligado, o balao volta a desenhar em pixels
+	/// de mundo (escala 1, fonte de 8 px esticada pela camera) -- a letra serrilhada que o dono viu.
+	/// So a `--diagbalao` mexe nisto, pra provar que a foto nitida e nitida POR CAUSA da escala.
+	/// </summary>
+	public static bool NitidoDeTeste = true;
+
 	private readonly record struct Dita(Protocol.Fala Canal, string Texto);
 
 	private readonly List<Dita> _fila = [];
 	private readonly List<string> _linhas = [];
 	private Protocol.Fala _canal;
+	private string _texto = "";
 	private double _restante, _duracao, _naTela;
+
+	/// <summary>A caixa do texto em PIXELS DE TELA (o espaco local do no, ja encolhido por 1/zoom).</summary>
 	private Vector2 _caixa;
 	private float _alturaLinha = Tamanho + 2;
+
+	/// <summary>O zoom com que as linhas e a caixa de agora foram medidas. Ver <see cref="AjustarAoZoom"/>.</summary>
+	private int _zoom = 1;
 
 	/// <summary>
 	/// O DESLOCAMENTO DE ALTITUDE, escrito pela varredura do voo (<see cref="SubirComOVoo.Aplicar"/>),
@@ -119,10 +153,14 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 	/// defeito que ninguem via porque no chao o deslocamento e zero e a conta da no mesmo por
 	/// acidente. Este e hoje o UNICO node com altura propria, entao a bancada `--diagbalao` e a
 	/// unica guarda que sobrou dessa regra.
+	///
+	/// A posicao cai na GRADE DE DESENHO (multiplos de 1/zoom de pixel de mundo): e o que poe a
+	/// origem do balao num pixel INTEIRO da tela -- fora dela, a nitidez conquistada pela escala
+	/// se perderia num meio pixel de deslocamento.
 	/// </summary>
 	public Vector2 Deslocamento
 	{
-		set => Position = new Vector2(0, AlturaBase) + value;
+		set => Position = LocalPlayer.NoPontoDaGrade(new Vector2(0, AlturaBase) + value, World.GradeDeDesenho);
 	}
 
 	/// <summary>
@@ -142,7 +180,28 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 	public string TextoDeTeste => string.Join(' ', _linhas);
 	public int NaFilaDeTeste => _fila.Count;
 	public int LinhasDeTeste => _linhas.Count;
-	public float LarguraDeTeste => _caixa.X;
+
+	/// <summary>A largura do texto em pixels de MUNDO -- a mesma regua de sempre (`LarguraMaxima`).</summary>
+	public float LarguraDeTeste => _caixa.X / _zoom;
+
+	/// <summary>A caixa do texto em pixels de TELA, e o zoom, a escala e a fonte com que ela foi medida.</summary>
+	public Vector2 CaixaNaTelaDeTeste => _caixa;
+	public int ZoomDeTeste => _zoom;
+	public float EscalaDeTeste => Scale.X;
+	public int TamanhoDaFonteDeTeste => Tamanho * _zoom;
+
+	/// <summary>
+	/// O RETANGULO DO TEXTO em pixels de TELA, relativo a origem do no -- pra bancada recortar a
+	/// foto exatamente onde as letras estao (sem a moldura e sem o rabicho).
+	/// </summary>
+	public Rect2 TextoNaTelaDeTeste
+	{
+		get
+		{
+			float folga = 3f * _zoom, rabo = 4f * _zoom;
+			return new Rect2(-_caixa.X / 2, -_caixa.Y - folga - rabo, _caixa.X, _caixa.Y);
+		}
+	}
 
 	public override void _Ready()
 	{
@@ -151,6 +210,9 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 		// pra que alguem passando na frente nao coma o texto, e MUITO abaixo da cinematica (90), que
 		// tem que continuar sendo o que domina a tela.
 		ZIndex = 21;
+		// O FILTRO E DO TEXTO, nao do cenario: o projeto e NEAREST (pixel art), e um glifo vetorial
+		// amostrado com nearest serrilha. Ver o cabecalho.
+		TextureFilter = TextureFilterEnum.Linear;
 		Visible = false;
 		// Corpo calado nao gasta quadro. E o no mais instanciado do jogo depois do proprio corpo
 		// (um por pessoa em campo) e a esmagadora maioria passa a partida inteira sem dizer nada.
@@ -181,7 +243,8 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 	private void Assumir(Dita d)
 	{
 		_canal = d.Canal;
-		Quebrar(Enfeitar(d.Canal, d.Texto));
+		_texto = Enfeitar(d.Canal, d.Texto);
+		AjustarAoZoom(forcar: true);
 
 		_duracao = Mathf.Clamp(DuracaoMinima + d.Texto.Length * PorLetra, DuracaoMinima, DuracaoMaxima);
 		_restante = _duracao;
@@ -190,6 +253,32 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 		Visible = true;
 		SetProcess(true);
 		Modulate = Colors.White;
+		QueueRedraw();
+	}
+
+	/// <summary>
+	/// O zoom que a camera esta usando AGORA -- a grade de desenho do mundo, que ja e o zoom
+	/// inteiro (2 a 6) ou 1 sem camera. Com o defeito injetado ligado, 1: pixels de mundo.
+	/// </summary>
+	private static int ZoomDaTela() =>
+		NitidoDeTeste ? Math.Max(1, (int)MathF.Round(World.GradeDeDesenho)) : 1;
+
+	/// <summary>
+	/// ENCOLHE O NO POR 1/ZOOM E MEDE O TEXTO EM PIXELS DE TELA. Chamado ao assumir uma frase e a
+	/// cada quadro em que o balao esta na tela: o zoom muda pelo menu de pausa e pela altitude (a
+	/// camera se afasta de quem voa), e um balao ja aberto precisa acompanhar sem esperar a
+	/// proxima fala.
+	/// </summary>
+	private void AjustarAoZoom(bool forcar)
+	{
+		int z = ZoomDaTela();
+		if (!forcar && z == _zoom) return;
+		_zoom = z;
+		Scale = Vector2.One / _zoom;
+		// O defeito injetado e FIEL ao que havia: pixels de mundo com o filtro NEAREST do projeto --
+		// cada pixel do glifo de 8 px vira um bloco de zoom x zoom na tela, que e o que a foto mede.
+		TextureFilter = NitidoDeTeste ? TextureFilterEnum.Linear : TextureFilterEnum.Nearest;
+		Quebrar(_texto);
 		QueueRedraw();
 	}
 
@@ -225,6 +314,8 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 
 	public override void _Process(double delta)
 	{
+		AjustarAoZoom(forcar: false);
+
 		_naTela += delta;
 		_restante -= delta;
 
@@ -258,7 +349,8 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 	}
 
 	/// <summary>
-	/// QUEBRA EM LINHAS, por palavra, ate <see cref="LarguraMaxima"/>.
+	/// QUEBRA EM LINHAS, por palavra, ate <see cref="LarguraMaxima"/> -- medida em pixels de TELA,
+	/// com a fonte no tamanho da tela (`Tamanho x zoom`), porque e assim que ela vai ser desenhada.
 	///
 	/// A mao mesmo, e nao o `width` do `DrawString`: aquele parametro alinha e recorta, mas quem
 	/// desenha precisa saber a ALTURA final antes de desenhar -- e a moldura, o rabicho e o
@@ -270,6 +362,8 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 	private void Quebrar(string texto)
 	{
 		Font fonte = ThemeDB.FallbackFont;
+		int tam = Tamanho * _zoom;
+		float largMax = LarguraMaxima * _zoom;
 		_linhas.Clear();
 
 		// ---- 1) NENHUMA PALAVRA PODE SER MAIOR QUE A CAIXA ----
@@ -280,10 +374,10 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 		foreach (string p in texto.Split(' ', StringSplitOptions.RemoveEmptyEntries))
 		{
 			string resto = p;
-			while (Largura(fonte, resto) > LarguraMaxima && resto.Length > 1)
+			while (Largura(fonte, resto, tam) > largMax && resto.Length > 1)
 			{
 				int corte = resto.Length - 1;
-				while (corte > 1 && Largura(fonte, resto[..corte]) > LarguraMaxima) corte--;
+				while (corte > 1 && Largura(fonte, resto[..corte], tam) > largMax) corte--;
 				palavras.Add(resto[..corte]);
 				resto = resto[corte..];
 			}
@@ -296,7 +390,7 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 		foreach (string p in palavras)
 		{
 			string tentativa = atual.Length == 0 ? p : $"{atual} {p}";
-			if (Largura(fonte, tentativa) <= LarguraMaxima)
+			if (Largura(fonte, tentativa, tam) <= largMax)
 			{
 				atual.Clear().Append(tentativa);
 				continue;
@@ -312,25 +406,27 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 
 		// PASSOU DO TETO: a ultima linha ganha a reticencia. A frase inteira esta no chat -- o
 		// balao nunca foi o registro.
-		if (sobrou && _linhas.Count > 0) _linhas[^1] = Encurtar(fonte, _linhas[^1]);
+		if (sobrou && _linhas.Count > 0) _linhas[^1] = Encurtar(fonte, _linhas[^1], tam, largMax);
 
-		_alturaLinha = fonte.GetHeight(Tamanho);
+		_alturaLinha = fonte.GetHeight(tam);
 		float larg = 0;
-		foreach (string l in _linhas) larg = MathF.Max(larg, Largura(fonte, l));
+		foreach (string l in _linhas) larg = MathF.Max(larg, Largura(fonte, l, tam));
 		_caixa = new Vector2(larg, _linhas.Count * _alturaLinha);
 	}
 
-	private static float Largura(Font f, string s) =>
-		f.GetStringSize(s, HorizontalAlignment.Left, -1, Tamanho).X;
+	private static float Largura(Font f, string s, int tam) =>
+		f.GetStringSize(s, HorizontalAlignment.Left, -1, tam).X;
 
-	private static string Encurtar(Font f, string linha)
+	private static string Encurtar(Font f, string linha, int tam, float largMax)
 	{
-		while (linha.Length > 1 && Largura(f, linha + "…") > LarguraMaxima) linha = linha[..^1];
+		while (linha.Length > 1 && Largura(f, linha + "…", tam) > largMax) linha = linha[..^1];
 		return linha + "…";
 	}
 
 	/// <summary>
-	/// A moldura, o rabicho e o texto.
+	/// A moldura, o rabicho e o texto -- tudo em pixels de TELA (o no ja esta encolhido por
+	/// 1/zoom), com folga, rabicho, contorno e traco multiplicados pelo zoom pra ficarem do mesmo
+	/// tamanho VISTO de sempre.
 	///
 	/// ============================ LEGIVEL SOBRE QUALQUER CENARIO ============================
 	/// Duas defesas, porque uma so falha em algum lugar do jogo: a MOLDURA escura resolve texto
@@ -344,7 +440,8 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 		if (_linhas.Count == 0) return;
 
 		Font fonte = ThemeDB.FallbackFont;
-		const float folga = 3f, rabo = 4f;
+		int tam = Tamanho * _zoom;
+		float folga = 3f * _zoom, rabo = 4f * _zoom;
 
 		// O balao cresce PRA CIMA a partir da base (0,0), que ja esta acima da cabeca.
 		float altura = _caixa.Y + folga * 2;
@@ -352,23 +449,23 @@ public partial class BalaoDeFala : Node2D, ISobeComOCorpo, INaoSomeComOCorpo
 
 		Color tinta = CorDoTexto();
 		DrawRect(caixa, new Color(0.04f, 0.05f, 0.08f, 0.62f));
-		DrawRect(caixa, new Color(tinta, 0.30f), filled: false, width: 1f);
+		DrawRect(caixa, new Color(tinta, 0.30f), filled: false, width: _zoom);
 
 		// O RABICHO. Sem ele, dois corpos colados dao dois retangulos flutuando e some justamente
 		// a informacao que o balao existe pra dar: de quem e a frase.
 		DrawColoredPolygon(
-			[new Vector2(-3, -rabo), new Vector2(3, -rabo), new Vector2(0, 0)],
+			[new Vector2(-3 * _zoom, -rabo), new Vector2(3 * _zoom, -rabo), new Vector2(0, 0)],
 			new Color(0.04f, 0.05f, 0.08f, 0.62f));
 
 		// A LINHA DE BASE, e nao o topo: `DrawString` desenha o glifo APOIADO no ponto que recebe.
 		// Sem somar o `GetAscent` o texto sairia inteiro acima da moldura.
-		float y = caixa.Position.Y + folga + fonte.GetAscent(Tamanho);
+		float y = caixa.Position.Y + folga + fonte.GetAscent(tam);
 		foreach (string linha in _linhas)
 		{
-			var onde = new Vector2(-Largura(fonte, linha) / 2f, y);
-			DrawStringOutline(fonte, onde, linha, HorizontalAlignment.Left, -1, Tamanho, 3,
+			var onde = new Vector2(MathF.Round(-Largura(fonte, linha, tam) / 2f), MathF.Round(y));
+			DrawStringOutline(fonte, onde, linha, HorizontalAlignment.Left, -1, tam, 3 * _zoom,
 							  new Color(0, 0, 0, 0.85f));
-			DrawString(fonte, onde, linha, HorizontalAlignment.Left, -1, Tamanho, tinta);
+			DrawString(fonte, onde, linha, HorizontalAlignment.Left, -1, tam, tinta);
 			y += _alturaLinha;
 		}
 	}

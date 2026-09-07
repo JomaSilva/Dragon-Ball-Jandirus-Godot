@@ -185,7 +185,7 @@ public partial class GameServer
 	{
 		// O MESMO PORTAO DO JOGADOR: caido, carregando ou em embate, ninguem anda. Ver
 		// `PodeMexerOCorpo` -- a funcao e uma so, e o `Input` a chama tambem.
-		if (!PodeMexerOCorpo(npc)) { npc.Moving = false; npc.Correndo = false; npc.Ficha.dashing = false; return; }
+		if (!PodeMexerOCorpo(npc)) { npc.Moving = false; npc.Correndo = false; npc.Ficha.dashing = false; npc.BarradoPelaAgua = false; return; }
 
 		MarchaDeVoo(npc, c.Correndo);
 
@@ -250,6 +250,7 @@ public partial class GameServer
 			npc.Moving = false;
 			npc.Correndo = false;
 			npc.Ficha.dashing = false;
+			npc.BarradoPelaAgua = false;
 			return;
 		}
 
@@ -277,9 +278,17 @@ public partial class GameServer
 		// AQUI A PERGUNTA E GERADA E NAO CONFERIDA -- o servidor E quem move o NPC --, entao ela nao cai
 		// na ressalva do `MoveRules.ValidateStep` (que abstem-se dos corpos de proposito; ver la).
 		// ====================================================================================================
-		npc.Pos = MoveRules.Advance(npc.Pos, c.Rumo, (float)dt, npc.SpeedStat, mapa, out _, correndo,
+		npc.Pos = MoveRules.Advance(npc.Pos, c.Rumo, (float)dt, npc.SpeedStat, mapa, out bool barrado, correndo,
 									ModoDeTravessiaDe(npc), VizinhancaDe(npc));
 		npc.Moving = (npc.Pos - antes).LengthSquared > 0.01f;
+		// ============================ BATEU EM PAREDE OU EM AGUA? ============================
+		// O `Advance` nao distingue, e a distincao e a pergunta inteira da `Travessia`: parede se
+		// contorna (ou nao), agua se NADA. A resposta fica no corpo e entra na percepcao do tique
+		// seguinte -- a IA nao contorna obstaculo (nao ha A* aqui), mas passa a saber que o que a
+		// parou e um lago, e que o lago tem outro modo. O paragrafo acima que dizia "nenhum NPC nada
+		// hoje" deixou de ser verdade em 2026-09-07 (pedido do dono). Ver `Travessia`.
+		// ====================================================================================
+		npc.BarradoPelaAgua = barrado && mapa != null && AguaNoRumo(mapa, npc.Pos, c.Rumo);
 		npc.Correndo = correndo;
 		npc.Ficha.dashing = correndo;   // entra na conta de dano, igualzinho ao do jogador
 	}
@@ -450,6 +459,9 @@ public partial class GameServer
 			// preco da tecnica muda a decisao da IA no mesmo commit.
 			SabeSopro = SabeTecnica(pl, "Kiai"),
 			CustoDoSopro = CustoDoSopro(pl, TipoDeSopro.Kiai),
+
+			// O NADO: o folego que o verb `nadar` exige pra comecar (`AlternarNado`), pela MESMA funcao.
+			KiParaNadar = Nado.KiParaComecar(pl.Ficha.MaxKi, pl.Ficha.KiMod, pl.Ficha.swimmastery),
 		};
 	}
 
@@ -550,7 +562,8 @@ public partial class GameServer
 			KiFrac = f.MaxKi > 0 ? f.Ki / f.MaxKi : 1,
 			Ki = f.Ki,
 			FolegoFrac = f.maxstamina > 0 ? f.stamina / f.maxstamina : 1,
-			Caido = f.KO || f.dead,
+			// O MORTO DE PE (Outro Mundo) nao esta caido: ele luta no torneio celeste como no original.
+			Caido = f.KO || (f.dead && !npc.MortoDePe),
 			Atordoado = npc.Combate.Stun > 0,
 			MeuPoder = Finito(f.expressedBP),
 
@@ -561,9 +574,23 @@ public partial class GameServer
 			DoAlvo = alvo?.Pos ?? destino,
 			AltitudeDoAlvo = alvo?.Altitude ?? 0f,
 			AlvoVoando = alvo?.Voando ?? false,
-			AlvoCaido = alvo is { } a && (a.Ficha.KO || a.Ficha.dead),
+			AlvoCaido = alvo is { } a && (a.Ficha.KO || (a.Ficha.dead && !a.MortoDePe)),
 			VidaDoAlvo = (alvo?.Ficha.HP ?? 100) / 100.0,
 			PoderDoAlvo = Finito(alvo?.Ficha.expressedBP ?? 0),
+
+			// A ARENA, quando o torneio (ou a bancada) poe uma neste corpo. Os dois numeros sao os
+			// do `Tournament.dm` lidos do `rotina.json`; o arremesso e o `TiquesDeVoo` do empurrao.
+			TemArena = npc.Arena != null,
+			Arena = npc.Arena ?? default,
+			MargemDaArena = _rotina.MargemDaArenaTiles,
+			MargemSeguraParaPousar = _rotina.MargemSeguraParaPousarTiles,
+			Arremessado = npc.TiquesDeVoo > 0,
+
+			// A AGUA (ver `Travessia`). `RumoDaMargem` so custa alguma coisa com os pes molhados.
+			NaAgua = PesNaAgua(npc),
+			EstouNadando = npc.Nadando,
+			BarradoPelaAgua = npc.BarradoPelaAgua,
+			RumoDaMargem = RumoDaMargem(npc),
 		};
 	}
 

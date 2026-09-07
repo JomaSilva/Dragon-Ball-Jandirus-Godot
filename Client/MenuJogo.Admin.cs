@@ -69,7 +69,7 @@ public partial class MenuJogo
 	/// </summary>
 	private static readonly string[] OrdemDosGruposDeAdmin =
 	[
-		"Corpo do alvo", "Ir e trazer", "Enxergar", "Punir", "Dar", "Mundo e servidor", "Planeta", Diversos,
+		"Corpo do alvo", "Ir e trazer", "Enxergar", "Punir", "Dar", "Mundo e servidor", "Planeta", "Torneio", Diversos,
 	];
 
 	/// <summary>VERB DE ADMIN -> TEMA, pelo nome (os literais de `VerbosDoJogo.Registrar`).</summary>
@@ -116,6 +116,15 @@ public partial class MenuJogo
 		["Destroy This Planet"] = "Planeta",
 		["Abort Planet Death"] = "Planeta",
 		["Restore Planet"] = "Planeta",
+
+		["Torneio: Forcar Terra"] = "Torneio",
+		["Torneio: Forcar Outro Mundo"] = "Torneio",
+		["Torneio: Pular Espera"] = "Torneio",
+		["Torneio: Inscrever Alvo"] = "Torneio",
+		["Torneio: Agenda"] = "Torneio",
+		["Torneio: Terra Em 1 Min"] = "Torneio",
+		["Torneio: Outro Mundo Em 1 Min"] = "Torneio",
+		["Torneio: Cancelar"] = "Torneio",
 	};
 
 	private static string GrupoDeAdmin(Verbo v) =>

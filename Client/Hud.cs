@@ -103,9 +103,14 @@ public partial class Hud : CanvasLayer
 		MontarEsquerda(raiz);
 		MontarDireita(raiz);
 		MontarRodape(raiz);
+		// O CONVITE DO TORNEIO, no canto inferior direito (pedido do dono, 2026-09-06). Ver `PainelDoTorneio`.
+		_torneio = new PainelDoTorneio { Name = "Torneio" };
+		raiz.AddChild(_torneio);
 
 		if (GameClient.Instance is { } cli)
 		{
+			cli.ConviteDeTorneio += AoConviteDeTorneio;
+			cli.ConviteDeTorneioFechou += AoFecharConviteDeTorneio;
 			cli.SheetUpdated += Mostrar;
 			cli.AtributosRecebidos += MostrarPoderes;
 			cli.ActivityChanged += MostrarAtividade;
@@ -128,7 +133,13 @@ public partial class Hud : CanvasLayer
 		// lambda nova nunca e igual a anterior. Viraram metodos nomeados por isso.
 		cli.MiraMudou -= AoMudarMira;
 		cli.LetalidadeMudou -= AoMudarLetalidade;
+		cli.ConviteDeTorneio -= AoConviteDeTorneio;
+		cli.ConviteDeTorneioFechou -= AoFecharConviteDeTorneio;
 	}
+
+	private PainelDoTorneio? _torneio;
+	private void AoConviteDeTorneio(byte tipo, int segundos, string titulo) => _torneio?.Convidar(tipo, segundos, titulo);
+	private void AoFecharConviteDeTorneio() => _torneio?.Fechar();
 
 	private void AoMudarMira(byte _) => MostrarCombate();
 	private void AoMudarLetalidade(bool _) => MostrarCombate();

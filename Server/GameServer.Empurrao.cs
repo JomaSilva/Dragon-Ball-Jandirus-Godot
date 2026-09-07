@@ -481,20 +481,26 @@ public sealed partial class GameServer
 			// ==========================================================================
 			if (pousou)
 			{
-				// ============================ UM CORPO SEM DONO NAO SABE NADAR ============================
+				// ============================ UM CORPO SEM MENTE NAO SABE NADAR ============================
 				// O arremesso atravessa agua (`ModoDeTravessia.Arremessado`, o `M.KB` do `testWaters`) e
 				// pode terminar EM CIMA dela. Um JOGADOR resolve isso sozinho -- liga o nado --, e desde
 				// que o `MoveRules.Escapar` deixou de aprovar todo passo de quem esta numa celula
 				// invalida, ficar ali ate recarregar o Ki e exatamente o que o dono pediu.
 				//
-				// UM CORPO DIRIGIDO (`Peer == null`: NPC, cidadao, chefe, clone) NAO TEM VERB NENHUM PRA
-				// CHAMAR. Sem esta guarda ele congelaria no meio do lago pra sempre -- e calado, que e o
-				// jeito que este projeto ja perdeu uma IA inteira antes.
+				// UM CORPO COM MENTE (NPC, cidadao, chefe, clone -- `Cerebro != null`) RESOLVE COMO O
+				// JOGADOR desde 2026-09-07: a `Travessia` ve os pes na agua e manda decolar, ou nadar, ou
+				// boiar ate o Ki voltar -- pelos mesmos verbs. Esta guarda era um TELEPORTE pra margem, e
+				// o dono pediu o contrario ("faca com que a IA saiba nadar quando e jogada na agua").
+				//
+				// O QUE SOBRA AQUI E O CORPO SEM MENTE NENHUMA (`Cerebro == null`: o boneco largado do
+				// transe, `GameServer.CorpoLargado.cs`), que nao entra no `TickDosCorposSemDono` e nao
+				// tem quem decida por ele. Sem isto ele congelaria no meio do lago pra sempre -- e calado,
+				// que e o jeito que este projeto ja perdeu uma IA inteira antes.
 				//
 				// `PontoLivrePerto` e o funil que o resto do jogo usa pra "poe um corpo num lugar
 				// valido": ele recusa parede, beirada E agua (`ZoneCollision.ServeDeChao`). Fica ANTES
 				// da cratera pra a marca nascer onde o corpo de fato parou.
-				if (pl.Peer == null && MapaDaZonaOuCatalogo(pl.Zone) is { } chaoFinal
+				if (pl.Peer == null && pl.Cerebro == null && MapaDaZonaOuCatalogo(pl.Zone) is { } chaoFinal
 					&& MoveRules.Occupied(chaoFinal, pl.Pos, ModoDeTravessiaDe(pl)))
 					pl.Pos = chaoFinal.PontoLivrePerto(pl.Pos);
 
@@ -925,37 +931,70 @@ public sealed partial class GameServer
 			: $"[server] BANCADA: FALHA -- a borda de {zona.Name} cedeu em {agora - comecou} celula(s)");
 	}
 
-	/// <summary>Manda pra quem chega a lista do que ja caiu na zona.</summary>
+	/// <summary>
+	/// MANDA PRA QUEM CHEGA O ESTRAGO INTEIRO DA ZONA -- num pacote so, o RETRATO.
+	///
+	/// ============================ ERA UM PACOTE POR CELULA, E O CLIENTE ANIMAVA CADA UM ============================
+	/// Esta funcao mandava a lista como N pacotes de "uma celula caiu", o mesmo pacote da queda ao
+	/// vivo. O cliente nao tinha como saber que aquilo era estrago VELHO: soltava poeira, faisca e
+	/// tremor em todas as celulas ao mesmo tempo -- e como o `ZoneChanged` difere a montagem do
+	/// mapa por uma tela de carregamento, os pacotes que chegavam antes furavam as camadas do mapa
+	/// ANTERIOR (que fica cacheado, agora com buracos de outro planeta). O dono viu: "o jogo carrega
+	/// o cenario normal e depois destroi o que deve estar destruido... roda a animacao pra todos os
+	/// tiles ao mesmo tempo, e o loading aumenta".
+	///
+	/// O retrato leva a ZONA, como o das pecas (`MandarPecas`): o cliente o guarda e so o aplica
+	/// quando o chao DAQUELA zona estiver montado, sem poeira -- estrago velho e estado, nao
+	/// acontecimento.
+	///
+	/// SAI SEMPRE, MESMO VAZIO. Um retrato vazio diz ao cliente "desta zona nao ha nada caido" -- e
+	/// e a zona que importa: sem ela o cliente nao teria como saber se a lista que guarda e do chao
+	/// que acabou de montar ou do chao de onde saiu.
+	/// ==============================================================================================================
+	/// </summary>
 	private void MandarCenario(ServerPlayer pl)
 	{
-		if (!_cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? caidas)) return;
-		foreach ((int cx, int cy) in caidas) pl.Peer?.Send(PacoteDeCenario(false, cx, cy),
-			Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		NetDataWriter w = PacoteDeRetratoDeCenario(pl.Zone);
+		EscutaDeCenario?.Add((pl.Id, w.CopyData()));
+		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
 	/// <summary>
-	/// O PACOTE DE CENARIO, num lugar so.
-	///
-	/// Ele tem tres escritores (a parede que cai, o chao que racha, e a lista que vai pra quem
-	/// chega) e ganhou um campo novo -- o `limpar`. Tres copias da mesma escrita sao tres chances
-	/// de uma delas ficar pra tras quando o formato muda, e foi por isso que virou funcao.
+	/// O retrato de uma zona: `zona`, `int n`, n x (`ushort cx`, `ushort cy`). O `n` e `int` de
+	/// proposito: um mapa de 500x500 tem 250 mil celulas, e um `ushort` estouraria calado em 65.535.
 	/// </summary>
-	private static NetDataWriter PacoteDeCenario(bool limpar, int cx, int cy, ulong zona = 0)
+	private NetDataWriter PacoteDeRetratoDeCenario(ZoneKey zona)
 	{
-		var w = Protocol.Begin(Protocol.S2C.Cenario);
-		w.Put(limpar);
-		w.Put((ushort)cx);
-		w.Put((ushort)cy);
-		// A ZONA SO VIAJA NA LIMPEZA. Uma celula que cai e sempre da zona em que quem recebe esta
-		// -- o pacote so sai pra `ZoneList` dela. A limpeza, nao: ela vai pra TODO MUNDO, porque
-		// quem esta noutro planeta guardou a cena suja no cache e precisa jogar fora aquela copia.
-		if (limpar) w.Put(zona);
+		NetDataWriter w = ComecarCenario(Protocol.CenarioRetrato);
+		w.Put(zona.Hash);
+		HashSet<(int X, int Y)>? caidas = _cenarioCaido.GetValueOrDefault(zona.Name);
+		w.Put(caidas?.Count ?? 0);
+		if (caidas != null)
+			foreach ((int cx, int cy) in caidas) { w.Put((ushort)cx); w.Put((ushort)cy); }
 		return w;
 	}
 
+	/// <summary>
+	/// O CABECALHO DE TODO PACOTE DE CENARIO, num lugar so: opcode + modo.
+	///
+	/// Tres escritores (a celula que cai, a limpeza do admin, o retrato de quem chega) e um leitor.
+	/// Tres copias do cabecalho seriam tres chances de uma ficar pra tras quando o formato muda --
+	/// foi por isso que o antecessor disto (`PacoteDeCenario`) ja era funcao.
+	/// </summary>
+	private static NetDataWriter ComecarCenario(byte modo)
+	{
+		var w = Protocol.Begin(Protocol.S2C.Cenario);
+		w.Put(modo);
+		return w;
+	}
+
+	/// <summary>Uma celula que ACABOU de cair, pra quem esta na zona -- essa o cliente anima.</summary>
 	private void MandarCelulaCaida(ZoneKey zona, int cx, int cy)
 	{
-		NetDataWriter w = PacoteDeCenario(false, cx, cy);
+		NetDataWriter w = ComecarCenario(Protocol.CenarioCelula);
+		w.Put((ushort)cx);
+		w.Put((ushort)cy);
+		EscutaDeCenario?.Add((0, w.CopyData()));
 		foreach (ServerPlayer o in ZoneList(zona.Hash))
 			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
@@ -977,7 +1016,9 @@ public sealed partial class GameServer
 		// pra Terra, o cache acertaria, e ela veria o buraco que ja nao existe mais pra ninguem.
 		//
 		// O pacote e minusculo e isto acontece uma vez, quando um admin manda refazer.
-		NetDataWriter w = PacoteDeCenario(true, 0, 0, zona.Hash);
+		NetDataWriter w = ComecarCenario(Protocol.CenarioLimpar);
+		w.Put(zona.Hash);
+		EscutaDeCenario?.Add((0, w.CopyData()));
 		foreach (ServerPlayer o in _players.Values)
 			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}

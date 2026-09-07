@@ -122,9 +122,19 @@ public static class Passagens
 	public static bool NomeGenerico(string nome) =>
 		nome is "Outside" or "Inside" or "Area" or "Unknown";
 
+	/// <summary>
+	/// O TELEPORTADOR PARAMETRIZADO, pelo typepath INTEIRO. Isto era `/turf/Special/Teleporter` -- e
+	/// no DM o `Special` mora DENTRO de `turf/Teleporters` (`Turfs.dm:179-189`), entao o `.dmm` escreve
+	/// `/turf/Teleporters/Special/Teleporter{gotox = 354; ...}`. A comparacao nunca casou: as 21
+	/// passagens "com destino na instancia" que o cabecalho promete extrair eram perdidas em silencio,
+	/// e a porta desenhada POR BAIXO de cada uma (o `.dmm` empilha `Door4` + teleportador) virava uma
+	/// porta de verdade que abria pro nada -- a entrada do castelo de Vegeta, no alto do mapa, era isso.
+	/// </summary>
+	public const string Parametrizado = "/turf/Teleporters/Special/Teleporter";
+
 	/// <summary>Esta celula e uma passagem? Serve pro conversor tira-la do tilemap comum.</summary>
 	public static bool Eh(string basePath) =>
-		Fixas.ContainsKey(basePath) || basePath == "/turf/Special/Teleporter";
+		Fixas.ContainsKey(basePath) || basePath == Parametrizado;
 
 	/// <summary>
 	/// O DESTINO DESTA CELULA, ou nulo se ela nao for passagem.
@@ -136,7 +146,7 @@ public static class Passagens
 	{
 		string bp = DmmMap.BasePath(typepathCompleto);
 		if (Fixas.TryGetValue(bp, out Destino fixa)) return fixa;
-		if (bp != "/turf/Special/Teleporter") return null;
+		if (bp != Parametrizado) return null;
 
 		int? x = Propriedade(typepathCompleto, "gotox");
 		int? y = Propriedade(typepathCompleto, "gotoy");

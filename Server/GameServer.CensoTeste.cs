@@ -749,9 +749,25 @@ public partial class GameServer
 		ServerPlayer frente = Forjar("NaFrente", chao + new Vec2(ZoneCollision.TileSize, 0), bp: 100);
 		ServerPlayer atras = Forjar("Atras", chao - new Vec2(ZoneCollision.TileSize, 0), bp: 100);
 
+		EscutaDeGestos = [];
 		UsarHabilidade(pl, "Kiai");
 		AfirmarCen("Kiai ARREMESSA quem esta na frente", frente.TiquesDeVoo > 0, $"{frente.TiquesDeVoo}");
 		AfirmarCen("...e NAO toca em quem esta atras (o arco e a tecnica)", atras.TiquesDeVoo == 0);
+
+		// O EFEITO COMO ERA NO BYOND (dono, 2026-09-07): o corpo faz a pose de tiro (`flick("Blast")`,
+		// `Kiai.dm:16`) e a zona ouve o gesto; nada e dito no chat.
+		AfirmarCen("o sopro anuncia o gesto `Kiai` pra zona (o som e o recomeco do desenho)",
+				   EscutaDeGestos.Count == 1 && EscutaDeGestos[0] == (pl.Id, (byte)Protocol.GestoDoCorpo.Kiai),
+				   string.Join(",", EscutaDeGestos.Select(g => $"{g.Quem}:{g.Gesto}")));
+		EntityState estado = EstadoDe(pl, NowMs());
+		AfirmarCen("...e o corpo faz a POSE DE TIRO (`flick(\"Blast\")`): snapshot com Canalizando + CanalAtirando",
+				   estado.Pose == Protocol.Pose.Canalizando && estado.CanalAtirando, $"{estado.Pose} atirando={estado.CanalAtirando}");
+		AfirmarCen("...sem canal de ki de verdade (o gesto nao prende o corpo)", !EnraizadoPorKi(pl.Id));
+		AdiantoDoRelogioDeTeste += 600;
+		AfirmarCen("...e meio segundo depois a pose volta ao normal (o `flick` toca UMA vez)",
+				   pl.Pose(NowMs(), false) == Protocol.Pose.Normal, pl.Pose(NowMs(), false).ToString());
+		AfirmarCen("CONTRA-EXEMPLO: o Kiai nao escreve nada no chat (o verb do DM nao fala)",
+				   EscutaDeFalas == null || EscutaDeFalas.All(f => f.Quem != pl.Id));
 
 		// A RECARGA E UMA SO PRAS QUATRO -- trocar de verb nao burla a espera.
 		List<string> falas = ApertarEOuvir(pl, "Shockwave");
@@ -763,9 +779,17 @@ public partial class GameServer
 		frente.Pos = chao + new Vec2(ZoneCollision.TileSize * 20, 0);
 		atras.Pos = chao - new Vec2(ZoneCollision.TileSize * 20, 0);
 		int antes = ProjeteisDaZona(pl.Zone.Hash).Count;
+		EscutaDeGestos = [];
 		UsarHabilidade(pl, "Kiai");
 		AfirmarCen("...e sem ninguem no arco o sopro vira uma lamina de ar (um tiro de verdade)",
 				   ProjeteisDaZona(pl.Zone.Hash).Count == antes + 1);
+		Projetil lamina = ProjeteisDaZona(pl.Zone.Hash)[^1];
+		AfirmarCen("a lamina veste o `Daitoppa.dmi` (`Kiai.dm:34`), e nao a bola racial nem a primitiva",
+				   lamina.Arte == ArteDeKi.Daitoppa, lamina.Arte.ToString());
+		AfirmarCen("...e nasce INVISIVEL (`A.invisibility = 1`, `Kiai.dm:40`)", lamina.Invisivel);
+		AfirmarCen("...e a zona ouve o gesto `KiaiComLamina` (o `fire_kiblast.wav` de `Kiai.dm:37` vai junto)",
+				   EscutaDeGestos.Count == 1 && EscutaDeGestos[0].Gesto == (byte)Protocol.GestoDoCorpo.KiaiComLamina);
+		EscutaDeGestos = null;
 		LimparTudoDaBancada([pl, frente, atras]);
 
 		// A ONDA DE CHOQUE APAGA TIRO -- e a razao de existir dela.
@@ -777,6 +801,7 @@ public partial class GameServer
 			Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 10,
 		});
 		AfirmarCen("(o inimigo conseguiu atirar)", bola.Vivo);
+		AfirmarCen("CONTRA-EXEMPLO: um tiro comum NAO nasce invisivel (so a lamina pede isso na receita)", !bola.Invisivel);
 		UsarHabilidade(pl, "Shockwave");
 		AfirmarCen("a Onda de Choque APAGA o tiro do mais fraco que estava chegando", !bola.Vivo);
 		AfirmarCen("...e arremessa o dono dele junto", inimigo.TiquesDeVoo > 0);

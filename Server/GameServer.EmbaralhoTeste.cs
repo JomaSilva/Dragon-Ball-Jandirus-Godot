@@ -35,6 +35,25 @@ public partial class GameServer
 	/// <summary>Faixa de lugares propria -- longe da dos habitantes, das sagas e da `--genteteste`.</summary>
 	private ulong _lugarDaBancadaDeEmbaralho = 8_300_000;
 
+	/// <summary>
+	/// QUANTAS DECISOES DE MENTE a zona deve produzir em N tiques, pela regra de hoje: quem esta a
+	/// menos de `raioDeAtencaoTiles` de algum jogador pensa todo tique; quem esta longe pensa um
+	/// tique a cada `divisorDeLonge` (o tique barato da vida diaria, `GameServer.Rotina.cs`). A fase
+	/// do longe e por id, entao cada um deles pode contar um a mais ou a menos: a folga vem junto.
+	/// </summary>
+	private (long Esperadas, int Longe) DecisoesEsperadasDeTeste(ZoneKey zona, int tiques)
+	{
+		long soma = 0;
+		int longe = 0;
+		foreach (ServerPlayer c in ZoneList(zona.Hash))
+		{
+			if (c.Cerebro == null || !EhNpcDoMundo(c)) continue;
+			if (LongeDeTodos(c)) { soma += tiques / Math.Max(1, _rotina.DivisorDeLonge); longe++; }
+			else soma += tiques;
+		}
+		return (soma, longe);
+	}
+
 	private void RodarBancadaDoEmbaralho(ServerPlayer pl)
 	{
 		GD.Print("\n===== BANCADA: SEM PLATEIA, SEM MENTE (congelamento + embaralho) =====");
@@ -49,6 +68,13 @@ public partial class GameServer
 		ZoneKey zonaGuardada = pl.Zone;
 		Vec2 posGuardada = pl.Pos;
 		var forjados = new List<ServerPlayer>();
+
+		// SEM VIDA SOCIAL NESTA BANCADA: ela mede o EMBARALHO, e um spar entre habitantes (o arranque do
+		// soco, o arremesso) move corpos por conta propria -- ate pra dentro da agua, que a varredura
+		// cobra do embaralho. As chances vem da config da vida diaria e voltam no `finally`.
+		double conversarGuardado = _rotina.ChanceDeConversar, convidarGuardado = _rotina.ChanceDeConvidar;
+		_rotina.ChanceDeConversar = 0;
+		_rotina.ChanceDeConvidar = 0;
 
 		try
 		{
@@ -167,12 +193,13 @@ public partial class GameServer
 
 			int dirigidosNoPalco = ZoneList(palco.Hash).Count(c => c.Cerebro != null && EhNpcDoMundo(c));
 			long comPlateia = DecisoesEm(voltasDaConta);
-			long esperado = (long)dirigidosNoPalco * voltasDaConta;
+			(long esperado, int longeDoHost) = DecisoesEsperadasDeTeste(palco, voltasDaConta);
 
 			Checa("CONTRA-EXEMPLO: com o HOST na zona a mente roda em TEMPO REAL -- uma decisao por "
-				+ "corpo por tique, exatamente, e nao uma amostragem",
-				  comPlateia == esperado,
-				  $"{comPlateia} decisoes; {dirigidosNoPalco} corpos x {voltasDaConta} tiques = {esperado}");
+				+ "corpo por tique pra quem esta perto do host, e uma a cada N pra quem esta longe (o "
+				+ "tique barato da vida diaria), e nao uma amostragem",
+				  Math.Abs(comPlateia - esperado) <= longeDoHost && comPlateia > 0,
+				  $"{comPlateia} decisoes; {dirigidosNoPalco} corpos ({longeDoHost} longe) x {voltasDaConta} tiques = {esperado} (+-{longeDoHost})");
 
 			Checa("...e o HOST SOZINHO ja e plateia -- ele e o unico jogador do servidor nesta medida",
 				  Jogadores.Count() == 1 && comPlateia > 0, $"{Jogadores.Count()} jogador(es)");
@@ -248,10 +275,11 @@ public partial class GameServer
 			// junto -- e e por isso que ela existe.
 			boneco.DonoDoCorpoLargado = 0;
 			long bonecoVirouGente = DecisoesEm(120);
+			(long esperadoBoneco, int longeDoBoneco) = DecisoesEsperadasDeTeste(palco, 120);
 			Checa("PRECONDICAO (o defeito injetado): zerado o `DonoDoCorpoLargado`, o MESMO corpo no "
 				+ "MESMO lugar passa a acordar a zona",
-				  bonecoVirouGente == (long)dirigidosNoPalco * 120,
-				  $"{bonecoVirouGente} decisoes");
+				  Math.Abs(bonecoVirouGente - esperadoBoneco) <= longeDoBoneco && bonecoVirouGente > 0,
+				  $"{bonecoVirouGente} decisoes (esperado {esperadoBoneco} +-{longeDoBoneco})");
 			boneco.DonoDoCorpoLargado = pl.Id;
 
 			// O REFLEXO: sem `Peer`, com `DonoDoClone`. `Cerebro` nulo de proposito -- o reflexo de
@@ -286,10 +314,12 @@ public partial class GameServer
 			// `Peer` a um clone), e no dia em que alguem der, e esta linha que muda de cor.
 			reflexo.Peer = pl.Peer;
 			long reflexoComPeer = DecisoesEm(120);
+			(long esperadoReflexo, int longeDoReflexo) = DecisoesEsperadasDeTeste(palco, 120);
 			reflexo.Peer = null;
 			Checa("PRECONDICAO (o defeito injetado): um reflexo com `Peer` acordaria a zona -- quem o "
 				+ "corta hoje e o `Peer == null`, e o `DonoDoClone` nao entra na conta do `EhJogador`",
-				  reflexoComPeer == (long)dirigidosNoPalco * 120, $"{reflexoComPeer} decisoes");
+				  Math.Abs(reflexoComPeer - esperadoReflexo) <= longeDoReflexo && reflexoComPeer > 0,
+				  $"{reflexoComPeer} decisoes (esperado {esperadoReflexo} +-{longeDoReflexo})");
 
 			// OS DOIS SAEM DO MUNDO AGORA, e nao no `finally`. Um corpo forjado que sobrevive a sua
 			// familia vira ruido em todas as seguintes: o boneco tem `Peer`, entao ele passa pelos
@@ -796,7 +826,9 @@ public partial class GameServer
 			MoveToZone(pl.Id, longe, PontoDeNascimento(longe));
 			TickDosCorposSemDono(Protocol.TickSeconds);
 
-			var moradores = ZoneList(palco.Hash).Where(EhNpcDoMundo).ToList();
+			// SO OS HABITANTES: o embaralho e da populacao. Um chefe de saga em voo, cacando alguem, da
+			// passos de 97 px num tique por conta propria (a bancada flagrou o Freeza), e isso nao e embaralho.
+			var moradores = ZoneList(palco.Hash).Where(c => EhNpcDoMundo(c) && c.Papel is { Pacifico: true }).ToList();
 			_embaralhosDaZona.Remove(palco.Hash);
 			_vazioDesde[palco.Hash] = NowMs() - (long)(Povoamento.SegundosAteOEmbaralho * 2000);
 			GD.Print($"  (a bancada poe a Terra {Povoamento.SegundosAteOEmbaralho * 2:0} s vazia -- "
@@ -812,6 +844,13 @@ public partial class GameServer
 				  $"{mexeramNaChegada} mexeram, volta {_embaralhosDaZona.GetValueOrDefault(palco.Hash)}");
 
 			// ---- E AGORA O DOBRO DO PRAZO COM O JOGADOR DENTRO ----
+			// SEM SPAR NESTA MEDIDA: o soco tem arranque (o corpo salta ate o alvo, varios tiles num
+			// tique), e dois habitantes brigando de brincadeira na frente do jogador dariam um "salto"
+			// que nao e embaralho. A chance vem da config da vida diaria e volta no fim.
+			double convidarAntes = _rotina.ChanceDeConvidar, conversarAntes = _rotina.ChanceDeConversar;
+			_rotina.ChanceDeConvidar = 0;
+			_rotina.ChanceDeConversar = 0;
+			foreach (ServerPlayer c in moradores) c.Rotina?.Interromper("bancada do embaralho: sem spar");
 			const double saltoDeEmbaralho = Povoamento.TilesMinDoEmbaralho * ZoneCollision.TileSize;
 			int tiquesDoDobro = (int)(Povoamento.SegundosAteOEmbaralho * 2 / Protocol.TickSeconds);
 			var ondeEstavam = moradores.ToDictionary(c => c.Id, c => c.Pos);
@@ -824,7 +863,11 @@ public partial class GameServer
 				{
 					if (!_players.ContainsKey(c.Id)) continue;
 					double salto = (c.Pos - ondeEstavam[c.Id]).Length;
-					if (salto > maiorSalto) maiorSalto = salto;
+					if (salto > maiorSalto)
+					{
+						maiorSalto = salto;
+						if (salto >= 40) GD.Print($"  MEDIDA  salto de {salto:0} px no tique {t}: '{c.Name}' ({c.Papel?.Molde.Id}) rotina {c.Rotina?.Afazer} ({c.Rotina?.Porque}), voando {c.Voando}, nadando {c.Nadando}, arremesso {c.TiquesDeVoo}, correndo {c.Correndo}, alvo {c.AlvoId}");
+					}
 					ondeEstavam[c.Id] = c.Pos;
 				}
 			}
@@ -833,6 +876,8 @@ public partial class GameServer
 				+ "do prazo) NENHUM corpo deu um salto de embaralho na frente do jogador",
 				  maiorSalto < saltoDeEmbaralho,
 				  $"o maior passo de um tique foi {maiorSalto:0.00} px (um embaralho e >= {saltoDeEmbaralho:0})");
+			_rotina.ChanceDeConvidar = convidarAntes;
+			_rotina.ChanceDeConversar = conversarAntes;
 			Checa("...e a zona continua na volta 1: o embaralho aconteceu UMA vez, como o dono pediu",
 				  _embaralhosDaZona.GetValueOrDefault(palco.Hash) == 1 && !_vazioDesde.ContainsKey(palco.Hash),
 				  $"volta {_embaralhosDaZona.GetValueOrDefault(palco.Hash)}");
@@ -1066,7 +1111,9 @@ public partial class GameServer
 
 			int varridos = 0, naPedraGeral = 0, naAguaGeral = 0, naBordaGeral = 0;
 			int aguaNoAlcance = 0, pedraNoAlcance = 0;
-			foreach (ServerPlayer c in _players.Values.Where(EhNpcDoMundo).ToList())
+			// SO OS HABITANTES, como no salto: o chefe de saga caca, voa e pousa onde a caca o leva (a
+			// bancada flagrou o Freeza dentro de um lago), e isso nao e o embaralho nem o nascimento.
+			foreach (ServerPlayer c in _players.Values.Where(c => EhNpcDoMundo(c) && c.Papel is { Pacifico: true }).ToList())
 			{
 				ZoneCollision? m = MapaDaZonaOuCatalogo(c.Zone);
 				if (m == null) continue;
@@ -1074,7 +1121,11 @@ public partial class GameServer
 				varridos++;
 				int cx = (int)MathF.Floor(c.Pos.X / t3), cy = (int)MathF.Floor(c.Pos.Y / t3);
 				if (m.BlockedCell(cx, cy)) naPedraGeral++;
-				if (m.EhAgua(cx, cy)) naAguaGeral++;
+				if (m.EhAgua(cx, cy))
+				{
+					naAguaGeral++;
+					GD.Print($"  MEDIDA  na agua: '{c.Name}' ({c.Papel?.Molde.Id}) em {c.Zone.Name} ({cx},{cy}), rotina {c.Rotina?.Afazer} ({c.Rotina?.Porque}), voando {c.Voando}, nadando {c.Nadando}, arremesso {c.TiquesDeVoo}");
+				}
 				if (m.NaBorda(cx, cy)) naBordaGeral++;
 
 				// O QUE HAVIA AO ALCANCE DO SORTEIO. Sem este numero, "ninguem caiu na agua" nao
@@ -1168,8 +1219,13 @@ public partial class GameServer
 				+ "servidor nao tomou UMA decisao, e com a zona mais cheia acordada tomou uma por "
 				+ "corpo por tique",
 				  decisoesDormindo == 0 && acordados > 0
-				  && decisoesAcordado == (long)acordados * voltasDoGanho,
-				  $"{decisoesDormindo} x {decisoesAcordado}");
+				  // 15% de folga: sao 4000 tiques (133 s) em que os habitantes PASSEIAM e cruzam o raio de
+				  // atencao (40 tiles) nos dois sentidos; a conta de "esperadas" e tirada no fim, com eles
+				  // onde pararam. O que se cobra e o PAR: zero dormindo, e ~uma por corpo acordado por tique.
+				  && Math.Abs(decisoesAcordado - DecisoesEsperadasDeTeste(zonaMaisCheia, voltasDoGanho).Esperadas)
+					 <= Math.Max(DecisoesEsperadasDeTeste(zonaMaisCheia, voltasDoGanho).Longe, decisoesAcordado * 0.15),
+				  $"{decisoesDormindo} x {decisoesAcordado} (esperadas {DecisoesEsperadasDeTeste(zonaMaisCheia, voltasDoGanho).Esperadas}, "
+				+ $"{DecisoesEsperadasDeTeste(zonaMaisCheia, voltasDoGanho).Longe} corpos longe)");
 
 			Checa("o congelamento paga o proprio codigo: com o mundo cheio, dormir custa menos do que "
 				+ "acordar uma zona",
@@ -1186,6 +1242,8 @@ public partial class GameServer
 		}
 		finally
 		{
+			_rotina.ChanceDeConversar = conversarGuardado;
+			_rotina.ChanceDeConvidar = convidarGuardado;
 			foreach (ServerPlayer c in forjados)
 			{
 				// O `Peer` EMPRESTADO SAI ANTES. O boneco forjado da familia 8 carrega o `Peer` do

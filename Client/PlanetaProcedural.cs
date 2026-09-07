@@ -211,8 +211,10 @@ public partial class PlanetaProcedural : Planeta
 		// O CHAO EM VOLTA DO POUSO, AGORA. O resto chega conforme a camera anda -- e o mesmo pintor
 		// dos mapas pre-feitos, pelo mesmo motivo: o custo de um tilemap e por celula MONTADA, e um
 		// mundo inteiro montado de uma vez engasga a entrada e nunca mais devolve a memoria.
-		_pintor = new PintorDePedacos(this, new FonteDoTerreno(Terreno, _chao, _cobertura));
-		_pintor.Pintou += AvisarPedaco;
+		var fonteDoTerreno = new FonteDoTerreno(Terreno, _chao, _cobertura);
+		_pintor = new PintorDePedacos(this, fonteDoTerreno);
+		int lado = fonteDoTerreno.Lado;
+		_pintor.Pintou += p => AvisarPedaco(p, lado);
 		_pintor.Urgente(CentroInicial ?? PontoDeChegada);
 		SetProcess(true);
 

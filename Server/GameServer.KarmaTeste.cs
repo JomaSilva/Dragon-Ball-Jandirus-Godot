@@ -323,9 +323,16 @@ public partial class GameServer
 			{
 				Passagem saida = saidas[0];
 				const int T = ZoneCollision.TileSize;
-				pl.Pos = new Vec2(saida.X * T + T / 2f, saida.Y * T + T / 2f - MoveRules.FeetOffsetY);
+				// O GESTO DE SAIR: um tile NA FRENTE da boca (ela e lacrada -- ninguem pisa nela), olhando
+				// pra ela e ANDANDO. E o passo que entra, como o `Enter()` do DM (ver `Passagem.NoPasso`);
+				// "parar em cima" deixou de existir em 2026-09-06.
+				pl.Pos = new Vec2(saida.X * T + T / 2f, (saida.Y + 1) * T + T / 2f - MoveRules.FeetOffsetY);
+				pl.Facing = Facing.North;
+				pl.Moving = true;
 				_acabouDeAtravessar.Remove(pl.Id);
+				_naBocaDaPassagem.Remove(pl.Id);
 				TickDasPassagens();
+				pl.Moving = false;
 				Checa("...e TENTAR SAIR pela passagem do Inferno a devolve ao portao (sempre que tentar sair, volta)",
 					  pl.Zone.Equals(inferno) && Vec2.Distance(pl.Pos, portao) < 1f, $"zona {pl.Zone.Name} pos {pl.Pos}");
 			}

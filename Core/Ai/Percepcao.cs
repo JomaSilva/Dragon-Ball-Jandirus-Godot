@@ -102,10 +102,64 @@ public readonly struct Percepcao
 	public bool LinhaLivre { get; init; }
 
 	// =====================================================================
+	// A ARENA -- so existe quando o servidor a poe (torneio, bancada)
+	// =====================================================================
+
+	/// <summary>
+	/// HA UMA LINHA A NAO CRUZAR? O retangulo do torneio (`Tournament.dm`: `in_arena`/`edge_margin`).
+	/// Fora dele o cerebro nem le os campos abaixo -- todo NPC fora de torneio tem isto `false`.
+	/// </summary>
+	public bool TemArena { get; init; }
+	public Arena Arena { get; init; }
+
+	/// <summary>`TRN_AI_EDGE_MARGIN`: a quantas celulas da linha a IA reage (vem da config).</summary>
+	public int MargemDaArena { get; init; }
+
+	/// <summary>O `m >= 5` do pouso (`Tournament.dm:289`): voando, oponente no chao e esta folga, pousa.</summary>
+	public int MargemSeguraParaPousar { get; init; }
+
+	/// <summary>
+	/// O corpo esta VOANDO POR UM GOLPE (knockback, `TiquesDeVoo > 0`). E o instante em que a linha
+	/// chega ate ele sem ele dar um passo -- e o unico em que a IA reage ANTES de estar na margem.
+	/// </summary>
+	public bool Arremessado { get; init; }
+
+	// =====================================================================
+	// A AGUA -- ver `Travessia`
+	// =====================================================================
+
+	/// <summary>
+	/// OS PES ESTAO NA AGUA -- pelo CENTRO da caixa dos pes, e nao por qualquer quina: um corpo parado
+	/// na beira do lago encosta uma quina na agua e ainda anda (o `MoveRules.Advance` acha o passo
+	/// que termina no seco); perguntar pela quina o faria nadar na praia. Quatro leituras de celula,
+	/// ja pagas pelo servidor em outra pergunta (`SobreAgua`).
+	/// </summary>
+	public bool NaAgua { get; init; }
+
+	/// <summary>Nadando agora (`ServerPlayer.Nadando`). Nadando ou voando, a agua deixa de existir.</summary>
+	public bool EstouNadando { get; init; }
+
+	/// <summary>
+	/// O ULTIMO PASSO BATEU NA AGUA -- e nao numa parede. O `Advance` diz "barrado" pros dois; quem
+	/// separa e o servidor, olhando a celula a um tile no rumo tentado. Um tique de atraso, de
+	/// proposito: e o mesmo atraso com que a rotina descobre que "bateu em algo".
+	/// </summary>
+	public bool BarradoPelaAgua { get; init; }
+
+	/// <summary>
+	/// O RUMO (unitario) ATE O CHAO SECO MAIS PERTO. Zero fora da agua, ou sem margem no raio de
+	/// pouso. So e calculado com os pes na agua -- e uma espiral de celulas, e nao se paga a toa.
+	/// </summary>
+	public Vec2 RumoDaMargem { get; init; }
+
+	// =====================================================================
 	// DERIVADOS -- funcoes puras dos campos acima, e por isso nao sao campos
 	// =====================================================================
 
 	public Vec2 ParaOAlvo => DoAlvo - Minha;
+
+	/// <summary>Celulas ate a linha mais proxima da arena; sem arena, "infinito".</summary>
+	public int MargemAteALinha => TemArena ? Arena.MargemEmCelulas(Minha) : int.MaxValue;
 	public float Distancia => TemAlvo ? ParaOAlvo.Length : float.MaxValue;
 
 	public Vec2 Direcao

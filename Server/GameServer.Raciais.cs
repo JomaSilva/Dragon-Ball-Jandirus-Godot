@@ -174,6 +174,8 @@ public partial class GameServer
 	/// </summary>
 	private void UsarHabilidade(ServerPlayer pl, string id)
 	{
+		// A AREA DE ESPERA DO TORNEIO (`canfight = 0` do `apply_hold`) fecha as habilidades tambem.
+		if (PresoNoTorneio(pl.Id)) { Avisar(pl, "voce esta na area de espera do torneio: sem tecnicas ate a sua vez."); return; }
 		switch (id)
 		{
 			case "regenerar": Regenerar(pl); break;

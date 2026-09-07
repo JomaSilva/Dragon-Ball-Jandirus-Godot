@@ -1,3 +1,15 @@
-[{ "x": 140, "y": 499, "zona": "Earth", "dx": 4080, "dy": 10832, "nome": "Terra" },
+[{ "x": 43, "y": 95, "zona": "Lookout", "dx": 1392, "dy": 3184, "nome": "Lookout" },
+ { "x": 44, "y": 95, "zona": "Lookout", "dx": 1392, "dy": 3184, "nome": "Lookout" },
+ { "x": 41, "y": 98, "zona": "Lookout", "dx": 1392, "dy": 3024, "nome": "Lookout" },
+ { "x": 42, "y": 98, "zona": "Lookout", "dx": 1392, "dy": 3024, "nome": "Lookout" },
+ { "x": 43, "y": 98, "zona": "Lookout", "dx": 1392, "dy": 3024, "nome": "Lookout" },
+ { "x": 44, "y": 98, "zona": "Lookout", "dx": 1392, "dy": 3024, "nome": "Lookout" },
+ { "x": 45, "y": 98, "zona": "Lookout", "dx": 1392, "dy": 3024, "nome": "Lookout" },
+ { "x": 46, "y": 98, "zona": "Lookout", "dx": 1392, "dy": 3024, "nome": "Lookout" },
+ { "x": 42, "y": 190, "zona": "Lookout", "dx": 4528, "dy": 9648, "nome": "Lookout" },
+ { "x": 141, "y": 300, "zona": "Lookout", "dx": 1360, "dy": 6064, "nome": "Lookout" },
+ { "x": 140, "y": 499, "zona": "Earth", "dx": 4080, "dy": 10832, "nome": "Terra" },
  { "x": 141, "y": 499, "zona": "Earth", "dx": 4080, "dy": 10832, "nome": "Terra" },
- { "x": 142, "y": 499, "zona": "Earth", "dx": 4080, "dy": 10832, "nome": "Terra" }]
+ { "x": 142, "y": 499, "zona": "Earth", "dx": 4080, "dy": 10832, "nome": "Terra" },
+ { "x": 353, "y": 499, "zona": "Vegeta", "dx": 1264, "dy": 16, "nome": "VCastleExit1" },
+ { "x": 354, "y": 499, "zona": "Vegeta", "dx": 1296, "dy": 16, "nome": "VCastleExit2" }]

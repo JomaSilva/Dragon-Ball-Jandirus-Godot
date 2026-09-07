@@ -307,6 +307,7 @@ public partial class World : Node2D
 			cli.Falou += AoFalar;
 			cli.VozRecebida += AoOuvirVoz;
 			cli.Golpe += AoGolpe;
+			cli.GestoDoCorpo += AoGesto;
 			cli.FormaMudou += AoMudarForma;
 			cli.OozaruMudou += AoVirarOozaru;
 			// METODO NOMEADO, como os vizinhos: ver a nota logo abaixo sobre as lambdas orfas.
@@ -354,6 +355,7 @@ public partial class World : Node2D
 
 			cli.PortasMudaram += AoMudarPortas;
 			cli.CenarioCaiu += AoCairCenario;
+			cli.CenarioChegou += AoChegarCenario;
 			cli.CenarioRefeito += AoRefazerCenario;
 			cli.FeridasMudaram += AoMudarFeridas;
 			cli.AureolaMudou += AoMudarAureola;
@@ -388,6 +390,7 @@ public partial class World : Node2D
 			cli.Falou -= AoFalar;
 			cli.VozRecebida -= AoOuvirVoz;
 			cli.Golpe -= AoGolpe;
+			cli.GestoDoCorpo -= AoGesto;
 			cli.FormaMudou -= AoMudarForma;
 			// METODO NOMEADO E `-=`, e nao lambda: ver a nota do `_Ready`. O `GameClient` sobrevive
 			// ao logout, entao assinatura que nao se cancela vira ouvinte orfao na sessao seguinte.
@@ -405,6 +408,7 @@ public partial class World : Node2D
 			cli.TirosNoAr -= AoMoverTiros;
 			cli.PortasMudaram -= AoMudarPortas;
 			cli.CenarioCaiu -= AoCairCenario;
+			cli.CenarioChegou -= AoChegarCenario;
 			cli.CenarioRefeito -= AoRefazerCenario;
 			cli.FeridasMudaram -= AoMudarFeridas;
 			cli.AureolaMudou -= AoMudarAureola;
@@ -868,6 +872,10 @@ public partial class World : Node2D
 		// A ARTE VEM DO PACOTE DE NASCIMENTO e e resolvida UMA VEZ. A `Cor` tem que estar escrita
 		// ANTES: e ela que vira a tinta do shader dentro do `Vestir` -- ver la.
 		no.Vestir((Jandirus.Core.Combat.ArteDeKi)n.Arte, n.Escala);
+		// A LAMINA DE AR DO KIAI nasce invisivel (`Kiai.dm:40`) e so aparece pra quem enxerga o
+		// invisivel -- decidido AQUI, por quem olha, porque o pacote e um so pra zona inteira.
+		no.Invisivel = n.Invisivel;
+		no.MostrarPara(VejoOInvisivel());
 		no.Mirar(p, p);
 		_atores.AddChild(no);
 		_tiros[n.Id] = no;
@@ -968,7 +976,7 @@ public partial class World : Node2D
 		if (!_tiros.ContainsKey(id))
 			AoNascerTiro(new Jandirus.Net.NascimentoDeProjetil(
 				id, GameClient.Instance?.LocalId ?? 0, (byte)tipo, (ushort)arte, escala, altitude,
-				new Vec2(cabeca.X, cabeca.Y)));
+				new Vec2(cabeca.X, cabeca.Y), Invisivel: false));
 
 		AoMoverTiros([new Jandirus.Net.ProjetilState
 		{
@@ -1332,7 +1340,7 @@ public partial class World : Node2D
 			_veu.Mapa = null;
 			_veu.Colisao = null;
 			_veu.Camadas = [];
-			_decalques?.Limpar();   // marca da Terra nao vai pra Namek
+			LimparMarcasDoChao();   // marca da Terra nao vai pra Namek
 			if (_local != null) _local.Mapa = null;
 			_zonaDoAtual = zona;   // ver o comentario no ramo pre-feito
 			DesenharPlanetas();
@@ -1370,14 +1378,21 @@ public partial class World : Node2D
 			MoveChild(interior, 0);
 
 			interior.CentroInicial = centro;
-			interior.PedacoPintado -= ReaplicarEstrago;
-			interior.PedacoPintado += ReaplicarEstrago;
 			interior.Entrar(zona.Seed);   // a seed aqui e o ID DA NAVE: identidade, nao geracao
 
 			_colisao = interior.Colisao;
 			_veu.Mapa = interior.Sombra ?? interior.Colisao;
 			_veu.Colisao = interior.Colisao;
 			_veu.Camadas = CamadasDoCenario(interior);
+			// ============================ O GANCHO DO PEDACO ENTRA DEPOIS DAS CAMADAS ============================
+			// Ele era assinado ANTES do `Entrar`/`Semear`, e a montagem inicial pinta pedacos na hora
+			// (`Urgente`): cada `PedacoPintado` reaplicava o estrago com `_veu.Camadas` e `_colisao`
+			// ainda apontando pra zona ANTERIOR -- abria buracos e colisao nas coordenadas da zona nova
+			// dentro do mapa velho, que fica cacheado. Os pedacos da chegada sao cobertos pelo
+			// `ReaplicarEstrago()` do fim do ramo; o gancho so precisa dos pedacos que entram DEPOIS.
+			// ====================================================================================================
+			interior.PedacoPintado -= ReaplicarEstragoNoPedaco;
+			interior.PedacoPintado += ReaplicarEstragoNoPedaco;
 			if (_local != null) _local.Mapa = _colisao;
 			DesenharObras();
 			DesenharEsferas();
@@ -1417,14 +1432,21 @@ public partial class World : Node2D
 			MoveChild(mente, 0);
 
 			mente.CentroInicial = centro;
-			mente.PedacoPintado -= ReaplicarEstrago;
-			mente.PedacoPintado += ReaplicarEstrago;
 			mente.Entrar(zona.Seed);   // a seed aqui e o ID DO DONO DA MENTE: identidade, nao geracao
 
 			_colisao = mente.Colisao;
 			_veu.Mapa = mente.Sombra ?? mente.Colisao;
 			_veu.Colisao = mente.Colisao;
 			_veu.Camadas = CamadasDoCenario(mente);
+			// ============================ O GANCHO DO PEDACO ENTRA DEPOIS DAS CAMADAS ============================
+			// Ele era assinado ANTES do `Entrar`/`Semear`, e a montagem inicial pinta pedacos na hora
+			// (`Urgente`): cada `PedacoPintado` reaplicava o estrago com `_veu.Camadas` e `_colisao`
+			// ainda apontando pra zona ANTERIOR -- abria buracos e colisao nas coordenadas da zona nova
+			// dentro do mapa velho, que fica cacheado. Os pedacos da chegada sao cobertos pelo
+			// `ReaplicarEstrago()` do fim do ramo; o gancho so precisa dos pedacos que entram DEPOIS.
+			// ====================================================================================================
+			mente.PedacoPintado -= ReaplicarEstragoNoPedaco;
+			mente.PedacoPintado += ReaplicarEstragoNoPedaco;
 			if (_local != null) _local.Mapa = _colisao;
 			DesenharObras();
 			DesenharEsferas();
@@ -1457,14 +1479,21 @@ public partial class World : Node2D
 			// ONDE MONTAR O CHAO, antes de gerar: o planeta so pinta o que a camera alcanca, e a
 			// camera ainda esta no mapa de onde o jogador saiu (ver o parametro `centro`).
 			gerado.CentroInicial = centro;
-			gerado.PedacoPintado -= ReaplicarEstrago;
-			gerado.PedacoPintado += ReaplicarEstrago;
 			gerado.Entrar(zona.Seed);   // e a seed do SERVIDOR que decide o mundo
 
 			_colisao = gerado.Colisao;
 			_veu.Mapa = gerado.Sombra ?? gerado.Colisao;
 			_veu.Colisao = gerado.Colisao;
 			_veu.Camadas = CamadasDoCenario(gerado);
+			// ============================ O GANCHO DO PEDACO ENTRA DEPOIS DAS CAMADAS ============================
+			// Ele era assinado ANTES do `Entrar`/`Semear`, e a montagem inicial pinta pedacos na hora
+			// (`Urgente`): cada `PedacoPintado` reaplicava o estrago com `_veu.Camadas` e `_colisao`
+			// ainda apontando pra zona ANTERIOR -- abria buracos e colisao nas coordenadas da zona nova
+			// dentro do mapa velho, que fica cacheado. Os pedacos da chegada sao cobertos pelo
+			// `ReaplicarEstrago()` do fim do ramo; o gancho so precisa dos pedacos que entram DEPOIS.
+			// ====================================================================================================
+			gerado.PedacoPintado -= ReaplicarEstragoNoPedaco;
+			gerado.PedacoPintado += ReaplicarEstragoNoPedaco;
 			if (_local != null) _local.Mapa = _colisao;
 			DesenharObras();
 			DesenharEsferas();
@@ -1544,9 +1573,6 @@ public partial class World : Node2D
 		ulong tPed = Time.GetTicksUsec();
 		if (_zonaAtual is PlanetaPreFeito pre)
 		{
-			pre.PedacoPintado -= ReaplicarEstrago;
-			pre.PedacoPintado += ReaplicarEstrago;
-
 			// O VAZIO EM VOLTA -- so a Sala do Tempo. Fora do retangulo do mapa o pintor repete o
 			// chao branco ate onde a camera for (ver `PlanetaPreFeito.FonteComVazio`), e quem diz
 			// que este lugar nao tem beirada e o MESMO `SalaDoTempo` que a colisao pergunta logo
@@ -1562,6 +1588,7 @@ public partial class World : Node2D
 		// recusa e devolve correcao -- e e ESSA briga que faz o personagem tremer no muro.
 		_colisao = MapaCacheado(e.Colisao, e.Zona, e.CaminhoDaAgua, e.CaminhoDaNuvem);
 		if (_colisao == null) GD.PushWarning($"[world] zona '{zona}' sem colisao: da pra atravessar parede");
+		LacrarPassagens(e, _colisao);
 		if (_local != null) _local.Mapa = _colisao;
 
 		// O QUE CEGA e outro mapa: parede e porta cegam, arvore e cerca nao (ver MapConverter).
@@ -1569,6 +1596,15 @@ public partial class World : Node2D
 		_veu.Colisao = _colisao;
 		_veu.Camadas = CamadasDoCenario(_zonaAtual);
 		if (_veu.Mapa == null) GD.PushWarning($"[world] zona '{zona}' sem mapa de visao: parede nao esconde nada");
+
+		// O GANCHO DO PEDACO ENTRA DEPOIS DAS CAMADAS -- ver a nota nos outros tres ramos. E REASSINADO
+		// toda vez, tirando antes: uma zona que volta do cache passa por aqui de novo, e sem o `-=` o
+		// estrago seria reaplicado uma vez por visita acumulada.
+		if (_zonaAtual is PlanetaPreFeito preMontado)
+		{
+			preMontado.PedacoPintado -= ReaplicarEstragoNoPedaco;
+			preMontado.PedacoPintado += ReaplicarEstragoNoPedaco;
+		}
 
 		MontarPortas(e);
 
@@ -1711,6 +1747,22 @@ public partial class World : Node2D
 	/// por sessao, e um caminho que carregasse sem a agua deixaria a copia seca guardada pra
 	/// sempre -- com o cliente deixando andar sobre o lago e o servidor puxando de volta.
 	/// </param>
+	/// <summary>
+	/// AS BOCAS DAS PASSAGENS FICAM LACRADAS TAMBEM AQUI, pela mesma lista que o servidor le.
+	///
+	/// O corpo previsto pelo cliente para na borda da boca exatamente onde o servidor para; sem
+	/// isto ele entraria no desenho da caverna (que fica na fileira da parede) e levaria correcao a
+	/// cada tique ate a viagem. Idempotente de proposito: o mapa e cacheado por arquivo e a zona
+	/// passa por aqui a cada visita. Ver `ZoneCollision.Selar` e `GameServer.CarregarPassagens`.
+	/// </summary>
+	private static void LacrarPassagens(ZoneEntry e, ZoneCollision? mapa)
+	{
+		if (mapa == null || e.PassagensArq.Length == 0) return;
+		if (e.Passagens.Count == 0 && Godot.FileAccess.FileExists(e.PassagensArq))
+			e.Passagens = Passagem.Parse(Godot.FileAccess.GetFileAsString(e.PassagensArq));
+		foreach (Passagem p in e.Passagens) mapa.Selar(p.X, p.Y);
+	}
+
 	private ZoneCollision? MapaCacheado(string caminho, string zona = "", string agua = "",
 										string nuvem = "")
 	{
@@ -1860,7 +1912,27 @@ public partial class World : Node2D
 
 	private (int Fonte, Vector2I Coord)? _chaoDestruido;
 
-	private void AoCairCenario(int cx, int cy) => AplicarEstrago(cx, cy, poeira: true);
+	private void AoCairCenario(int cx, int cy)
+	{
+		// SO SE O CHAO EM QUE ELA CAIU E O QUE ESTA MONTADO. Na troca de mapa o `ZoneChanged` chega
+		// e a montagem e diferida pela tela de carregamento; uma celula que caia nesse intervalo e
+		// da zona NOVA, e aplica-la agora furaria as camadas da zona VELHA (que fica cacheada, com
+		// o buraco). Ela ja esta na lista: a montagem a reaplica.
+		if (!ORetratoEDesteChao()) return;
+		AplicarEstrago(cx, cy, poeira: true, invalidar: true);
+	}
+
+	/// <summary>
+	/// O RETRATO DA ZONA CHEGOU. Se o chao dele ja esta montado, aplica agora -- sem poeira, e o
+	/// leque de visao se refaz uma vez. Se nao, a montagem aplica (`CarregarZona` chama
+	/// <see cref="ReaplicarEstrago()"/> no fim de cada ramo).
+	/// </summary>
+	private void AoChegarCenario() => ReaplicarEstrago();
+
+	/// <summary>A lista de estrago do cliente e do chao que esta montado aqui?</summary>
+	private bool ORetratoEDesteChao() =>
+		GameClient.Instance is { } cli && !string.IsNullOrEmpty(_zonaDoAtual.Name)
+		&& cli.CenarioDaZona == _zonaDoAtual.Hash;
 
 	/// <summary>
 	/// UM ADMIN REFEZ O CENARIO DESTA ZONA.
@@ -1923,6 +1995,9 @@ public partial class World : Node2D
 		}
 		_ordemDoCache.Remove(zona);
 
+		// A TERRA REVIRADA DO ESTRAGO ANTIGO SAI JUNTO: ela e permanente e nao e da cena, entao
+		// recarregar a cena nao a levaria. Cenario refeito e chao liso.
+		LimparMarcasDoChao();
 		_zonaDoAtual = default;   // senao o `GuardarZonaAtual` de dentro do CarregarZona reempilha o nada
 		CarregarZona(zona, _local?.Position);
 		Chat.Sistema("o cenario desta zona foi refeito.");
@@ -1941,14 +2016,70 @@ public partial class World : Node2D
 	/// Virando metodo, cada ramo chama uma linha e da pra ver de longe qual deles esqueceu.
 	/// ==============================================================================================
 	/// </summary>
-	private void ReaplicarEstrago()
+	private void ReaplicarEstrago() => ReaplicarEstrago(null);
+
+	/// <summary>UM PEDACO ACABOU DE SER PINTADO: so o estrago DENTRO dele e reaplicado.</summary>
+	private void ReaplicarEstragoNoPedaco(Rect2I pedaco) => ReaplicarEstrago(pedaco);
+
+	/// <summary>
+	/// ============================ POR PEDACO, SEM POEIRA, E UMA VEZ CADA COISA ============================
+	/// O pintor entrega o mapa em blocos de 64x64 conforme a camera anda, e cada bloco que entra traz
+	/// a parede INTEIRA de novo -- o estrago precisa ser reaplicado nele. A versao anterior disto
+	/// reaplicava a LISTA INTEIRA a cada bloco pronto: apagava e reescrevia todas as celulas caidas
+	/// do mapa, e replantava a terra revirada de todas elas, N vezes por entrada na zona. Com um
+	/// mapa muito destruido, era isto que fazia "o loading aumentar consideravelmente".
+	///
+	/// Agora: (1) so as celulas dentro do bloco pintado; (2) o leque de visao se refaz UMA vez no
+	/// fim, e nao uma por celula; (3) a terra revirada de cada celula nasce uma vez por visita
+	/// (`ChaoDanificadoEmVolta` lembra o que ja plantou); (4) nada de poeira -- estrago velho e
+	/// estado, nao acontecimento; (5) e so se a lista e DESTE chao (`CenarioDaZona`): entre o
+	/// `ZoneChanged` e o retrato da zona nova, ela nao e de zona nenhuma.
+	/// =====================================================================================================
+	/// </summary>
+	private void ReaplicarEstrago(Rect2I? pedaco)
 	{
-		if (GameClient.Instance is not { } cli) return;
-		foreach ((int cx, int cy) in cli.CenarioCaido) AplicarEstrago(cx, cy, poeira: false);
+		if (GameClient.Instance is not { } cli || !ORetratoEDesteChao()) return;
+		int feitas = 0;
+		foreach ((int cx, int cy) in cli.CenarioCaido)
+		{
+			if (pedaco is { } r && !r.HasPoint(new Vector2I(cx, cy))) continue;
+			AplicarEstrago(cx, cy, poeira: false, invalidar: false);
+			feitas++;
+		}
+		if (feitas > 0) _veu.Invalidar();
+		ReaplicacoesDeTeste++;
+		UltimaReaplicacaoDeTeste = feitas;
+	}
+
+	/// <summary>Quantas vezes o estrago foi reaplicado, e quantas celulas a ultima vez tocou -- so pras bancadas.</summary>
+	public int ReaplicacoesDeTeste { get; private set; }
+	public int UltimaReaplicacaoDeTeste { get; private set; }
+
+	/// <summary>Reaplica o estrago inteiro (bancada): o mesmo caminho da montagem da zona.</summary>
+	public void ReaplicarEstragoDeTeste() => ReaplicarEstrago(null);
+
+	/// <summary>Reaplica so o estrago dentro de um retangulo de celulas (bancada): o mesmo caminho do pedaco pintado.</summary>
+	public void ReaplicarEstragoNoPedacoDeTeste(Rect2I pedaco) => ReaplicarEstrago(pedaco);
+
+	/// <summary>O tile que fica no lugar do que caiu (bancada). Ver <see cref="ChaoDestruido"/>.</summary>
+	public (int Fonte, Vector2I Coord)? ChaoDestruidoDeTeste => ChaoDestruido();
+
+	/// <summary>A zona cujo chao esta montado agora (0 = nenhuma) -- so pras bancadas.</summary>
+	public ulong ZonaMontadaDeTeste => string.IsNullOrEmpty(_zonaDoAtual.Name) ? 0 : _zonaDoAtual.Hash;
+
+	/// <summary>A construcao desenhada nesta celula, se ha uma -- so pras bancadas. Ver `DesenharObras`.</summary>
+	public ObraDesenhada? ObraDeTeste(int cx, int cy)
+	{
+		const int t = ZoneCollision.TileSize;
+		var base_ = new Vector2(cx * t, (cy + 1) * t);
+		foreach (Node n in _atores.GetChildren())
+			if (n is ObraDesenhada o && o.Position.DistanceTo(base_) < 0.5f) return o;
+		return null;
 	}
 
 	/// <param name="poeira">Falso ao REAPLICAR o que ja tinha caido: o estrago e velho, o efeito nao.</param>
-	private void AplicarEstrago(int cx, int cy, bool poeira)
+	/// <param name="invalidar">Refaz o leque de visao agora. Falso no lote: quem chama refaz uma vez no fim.</param>
+	private void AplicarEstrago(int cx, int cy, bool poeira, bool invalidar)
 	{
 		// ============================ A TERRA REVIRADA VALE SEMPRE ============================
 		// Eu tinha posto `if (poeira)` aqui, copiando a regra da POEIRA -- e estava errado. Poeira e
@@ -1970,7 +2101,7 @@ public partial class World : Node2D
 		// A CELULA DEIXOU DE CEGAR -- e o leque de visao precisa saber AGORA. Ele so se refaz
 		// quando o olho ou a tela se mexem, entao sem isto a sombra da parede derrubada ficava
 		// projetada no chao ate o jogador dar um passo. Ver `Visao.Invalidar`.
-		_veu.Invalidar();
+		if (invalidar) _veu.Invalidar();
 
 		var celula = new Vector2I(cx, cy);
 
@@ -2564,10 +2695,43 @@ public partial class World : Node2D
 	/// O DANO so vem quando eu sou um dos dois envolvidos. De espectador o evento chega sem
 	/// numero -- da pra ver a briga, nao pra ler a ficha alheia.
 	/// </summary>
+	/// <summary>
+	/// EU ENXERGO O QUE NASCE INVISIVEL? O `see_invisible` de quem olha, pela raca e linhagem do MEU
+	/// personagem (`Core.Combat.VisaoDoInvisivel`). E funcao do que o servidor me mandou na ficha de
+	/// atributos -- nao ha estado novo aqui.
+	/// </summary>
+	private static bool VejoOInvisivel() =>
+		GameClient.Instance is { } c
+		&& Jandirus.Core.Combat.VisaoDoInvisivel.Enxerga(c.Atributos.Raca, c.Atributos.Classe);
+
+	/// <summary>
+	/// UM GESTO DE UM CORPO (`S2C.Gesto`). Hoje so o sopro: o corpo recomeca a pose de tiro do quadro
+	/// zero (a pose em si o snapshot ja segura por meio segundo -- ver `ServerPlayer.GestoAte`) e a
+	/// zona ouve o `scouterexplode.ogg` (`Kiai.dm:53`); a lamina saindo acrescenta o `fire_kiblast`
+	/// (`:37`). Vale pro MEU corpo tambem: o `LocalPlayer` le a pose do canal pelo snapshot.
+	/// </summary>
+	private void AoGesto(int quem, byte gesto)
+	{
+		Node2D? corpo = Corpo(quem);
+		if (corpo == null) return;
+		VisualDe(quem)?.RestartState("blast");
+		AudioDirector.EfeitoNoLugar(corpo, Trilha.Kiai, 0.8f);
+		if (gesto == (byte)Protocol.GestoDoCorpo.KiaiComLamina)
+			AudioDirector.EfeitoNoLugar(corpo, Trilha.LaminaDeAr, 0.7f);
+	}
+
 	private void AoGolpe(Protocol.HitEvent h)
 	{
 		Node2D? quemBate = Corpo(h.Atacante);
 		Node2D? quemLeva = Corpo(h.Alvo);
+
+		// CADA GOLPE E UM `flick("Attack")`: a animacao de quem bateu recomeca do primeiro quadro, no
+		// meu corpo e nos remotos. Antes so a ENTRADA na pose `Atacando` reiniciava (`LocalPlayer` e
+		// `RemotePlayer`); numa sequencia de socos a pose nao sai de `Atacando`, entao o segundo golpe
+		// em diante nao animava -- e, agora que o soco toca uma vez e devolve o corpo ao parado
+		// (`CharacterVisual`), sem esta linha os socos seguintes nem apareceriam. O relato sai pra todo
+		// golpe, acertando ou nao (`AnunciarSocoNoAr`), que e exatamente quando o `flick` toca no DM.
+		VisualDe(h.Atacante)?.RestartState("attack", Protocol.AttackPoseMs / 1000.0);
 
 		bool souEu = GameClient.Instance is { } c && (h.Atacante == c.LocalId || h.Alvo == c.LocalId);
 

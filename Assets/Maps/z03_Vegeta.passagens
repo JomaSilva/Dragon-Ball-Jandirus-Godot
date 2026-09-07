@@ -1,1 +1,5 @@
-[{ "x": 141, "y": 214, "zona": "Vegeta_Cave", "dx": 5008, "dy": 6448, "nome": "Caverna de Vegeta" }]
+[{ "x": 39, "y": 0, "zona": "Lookout", "dx": 11312, "dy": 15952, "nome": "VCastleEntrance1" },
+ { "x": 40, "y": 0, "zona": "Lookout", "dx": 11312, "dy": 15952, "nome": "VCastleEntrance1" },
+ { "x": 159, "y": 72, "zona": "Vegeta_Cave", "dx": 6864, "dy": 6576, "nome": "VCaveEntrance2" },
+ { "x": 258, "y": 101, "zona": "Vegeta_Cave", "dx": 6640, "dy": 7312, "nome": "VCaveEntrance3" },
+ { "x": 141, "y": 214, "zona": "Vegeta_Cave", "dx": 5008, "dy": 6448, "nome": "Caverna de Vegeta" }]

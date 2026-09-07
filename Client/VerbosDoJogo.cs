@@ -94,6 +94,20 @@ public static class VerbosDoJogo
 			() => C?.SendVerbo("sessao_ver")));
 
 		// O `knockbackon` do original. Existe pra treinar com alguem sem arremessa-lo a cada golpe.
+		// OS TORNEIOS (Terra e Outro Mundo): o painel do canto responde ao convite, e estes tres verbos
+		// sao o mesmo gesto por outro caminho -- e o unico caminho pra ver a situacao.
+		Verbos.Registrar(new Verbo("Participar do torneio", Verbos.Outros,
+			"Aceita o convite do torneio em andamento (Terra ou Outro Mundo). O painel do canto faz o mesmo.",
+			() => C?.SendVerbo("trn_participar")));
+
+		Verbos.Registrar(new Verbo("Recusar o torneio", Verbos.Outros,
+			"Recusa o convite do torneio, ou desiste da inscricao enquanto elas estao abertas.",
+			() => C?.SendVerbo("trn_recusar")));
+
+		Verbos.Registrar(new Verbo("Situacao do torneio", Verbos.Outros,
+			"Em que pe esta o torneio: inscricoes, chave, a luta de agora -- ou quando e o proximo.",
+			() => C?.SendVerbo("trn_status")));
+
 		Verbos.Registrar(new Verbo("Toggle Knockback", Verbos.Outros,
 			"Liga e desliga o arremesso dos SEUS golpes.",
 			() => C?.SendVerbo("knockback")));
@@ -350,8 +364,8 @@ public static class VerbosDoJogo
 		//
 		// Ficaram de fora do port, com motivo: os que so mexem em variavel de balanceamento
 		// (`Gravity_Cap`, `Change_Ascension`, `Set_KO_Time_Mult`, `Global_EXP_Rate`), que o dono
-		// pediu pra nao trazer; e os que dependem de sistema nao portado (torneio, esferas, fusao,
-		// magia, dungeons).
+		// pediu pra nao trazer; e os que dependem de sistema nao portado (esferas, fusao, magia,
+		// dungeons). O TORNEIO existe desde 2026-09-06, e os verbs dele fecham esta lista.
 		//
 		// O CLIMA SAIU DESSA LISTA: ele existe agora (ver `Core.World.Clima`), e forcar um tipo
 		// e escolher a forca moram no PAINEL da aba Admin, porque pedem dois argumentos.
@@ -559,6 +573,45 @@ public static class VerbosDoJogo
 			"Tira este planeta da lista de mortos -- ele volta a existir, a se povoar e a receber "
 			+ "pouso. E a unica volta que existe: nao ha desejo de Dragon Ball neste port.",
 			() => C?.SendVerbo("admin_restaurar_planeta")));
+
+		// ---------------------------------------------------------- torneio
+		// O dono (2026-09-07): "verbs pra adm que permita eu forcar torneios etc pra eu poder testar
+		// ingame". Nenhum deles tem caminho proprio: sao os mesmos `trn_*` que a agenda e o painel do
+		// convite usam, so que apertados na hora. Ver `GameServer.Torneio.cs:ComandoDeTorneio`.
+		Verbos.Registrar(new Verbo("Torneio: Forcar Terra", Verbos.Admin,
+			"Abre AGORA um Torneio de Artes Marciais na Terra: convites, inscricoes, NPCs nas vagas que "
+			+ "sobrarem. O proximo automatico e remarcado a partir de hoje.",
+			() => C?.SendVerbo("trn_iniciar", "terra")));
+
+		Verbos.Registrar(new Verbo("Torneio: Forcar Outro Mundo", Verbos.Admin,
+			"Abre AGORA o Torneio do Outro Mundo -- so quem esta morto no Alem se inscreve.",
+			() => C?.SendVerbo("trn_iniciar", "alem")));
+
+		Verbos.Registrar(new Verbo("Torneio: Pular Espera", Verbos.Admin,
+			"Pula a espera da fase de agora: fecha as inscricoes ja, zera a contagem, corta o intervalo. "
+			+ "Numa luta, encerra por pontos (vence quem tem mais vida). Aperte de novo a cada fase.",
+			() => C?.SendVerbo("trn_avancar")));
+
+		Verbos.Registrar(new Verbo("Torneio: Inscrever Alvo", Verbos.Admin,
+			"Inscreve quem esta marcado (ou alguem da lista) no torneio aberto, sem ele responder ao convite.",
+			() => NoAlvoDeAdmin("trn_inscrever", "Torneio: Inscrever Alvo")));
+
+		Verbos.Registrar(new Verbo("Torneio: Agenda", Verbos.Admin,
+			"Quando e o proximo da Terra e o do Outro Mundo, e em que fase esta o de agora.",
+			() => C?.SendVerbo("trn_agenda")));
+
+		Verbos.Registrar(new Verbo("Torneio: Terra Em 1 Min", Verbos.Admin,
+			"Marca o proximo Torneio da Terra pra daqui a um minuto -- e a AGENDA quem abre, com convite e "
+			+ "tudo, como faria no dia marcado. Serve pra testar o caminho automatico.",
+			() => C?.SendVerbo("trn_agenda", "terra 1")));
+
+		Verbos.Registrar(new Verbo("Torneio: Outro Mundo Em 1 Min", Verbos.Admin,
+			"Marca o Torneio do Outro Mundo pra daqui a um minuto, pela agenda.",
+			() => C?.SendVerbo("trn_agenda", "alem 1")));
+
+		Verbos.Registrar(new Verbo("Torneio: Cancelar", Verbos.Admin,
+			"Cancela o torneio em andamento: solta todo mundo, remove os NPCs, ninguem e premiado.",
+			() => C?.SendVerbo("trn_cancelar")));
 	}
 
 	/// <summary>Zera o registro -- o personagem trocou (volta ao menu de slots).</summary>

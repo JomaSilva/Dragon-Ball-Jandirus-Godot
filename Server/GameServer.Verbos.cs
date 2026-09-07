@@ -77,6 +77,7 @@ public sealed partial class GameServer
 		// O BANCO ANTES DO RESTO. Sao tres comandos com prefixo proprio e uma guarda so (estar
 		// perto de um caixa), entao eles moram num arquivo separado -- ver GameServer.Banco.cs.
 		if (ComandoDeBanco(pl, cmd, arg)) return;
+		if (ComandoDeTorneio(pl, cmd, arg)) return;
 
 		// OS TRES VERBOS DE FIXTURE DA BANCADA DO EMBARQUE, e so com a flag: sem ela este `if` e
 		// falso antes de olhar o `cmd`, e um cliente mexido que os mande num servidor de verdade cai

@@ -221,9 +221,13 @@ public partial class GameServer
 			{
 				ServerPlayer? um = _players.Values.FirstOrDefault(p => p.Papel?.Tipo == TipoDeNpc.Cidadao);
 				MoldeDeNpc cid = _moldes.Get("cidadao")!;
-				Checa("o temperamento do molde chegou no cerebro (coragem 80 -> quase nao recua)",
-					  um?.Cerebro != null
-					  && Math.Abs(um.Cerebro.VidaCautelosa - 0.9 * (1 - cid.Coragem / 100)) < 1e-9,
+				// O TEMPERO POR SEMENTE existe (`Temperamento.Tempero`): cada corpo sai um pouco diferente
+				// do molde, entao a conta e feita com a semente DESTE corpo -- comparar com o molde cru
+				// dava verde ou vermelho conforme qual habitante estivesse primeiro no dicionario.
+				Checa("o temperamento do molde chegou no cerebro (coragem 80, temperada pela semente do corpo)",
+					  um?.Cerebro != null && um.Papel != null
+					  && Math.Abs(um.Cerebro.VidaCautelosa - Temperamento.Montar(cid, 0, um.Papel.Semente).VidaCautelosa) < 1e-9
+					  && um.Cerebro.VidaCautelosa < 0.9 * (1 - 0.5),
 					  $"{um?.Cerebro?.VidaCautelosa:0.000}");
 			}
 
@@ -754,6 +758,14 @@ public partial class GameServer
 		float distCidadao0 = (cidadao.Pos - alvo.Pos).Length;
 		float distChefe0 = (chefe.Pos - alvo.Pos).Length;
 
+		// O JOGADOR FICA INTOCAVEL NESTA MEDIDA: o chefe (o controle) atira Ki Wave de 4 tiles, e um
+		// raio que acerta o jogador no meio dos 20 s o nocauteia -- e nocauteado ele deixa de ser presa
+		// (`PresaDoNpc` pula KO), e a medida seguinte ("apanhou: tem alvo") mede o chefe, e nao o
+		// cidadao. A carencia e a mesma do renascimento; ela so desce no `TickCombate`, que este
+		// palco nao roda, e e devolvida no fim.
+		double carenciaAntes = alvo.Combate.Carencia;
+		alvo.Combate.Carencia = 1e6;
+
 		for (int t = 0; t < 600; t++) TickDosCorposSemDono(Protocol.TickSeconds);
 
 		float distCidadao1 = (cidadao.Pos - alvo.Pos).Length;
@@ -770,8 +782,10 @@ public partial class GameServer
 		// =========================================================================================================
 		Checa("o CHEFE fecha a distancia sozinho (o controle: a IA de caca funciona)",
 			  distChefe1 < distChefe0 - 32, $"{distChefe0:0} -> {distChefe1:0}");
-		Checa("o CIDADAO nao se aproxima de ninguem em 20 s (o `AIAlwaysActive = 0` do mob/npc/Citizen)",
-			  distCidadao1 > distCidadao0 - 32, $"{distCidadao0:0} -> {distCidadao1:0}");
+		// O CIDADAO PASSEIA (a vida diaria dele anda ate 6 tiles por vez), entao a regua nao e "nao
+		// chegou mais perto" e sim "nao fechou como quem caca": o chefe para a um tile do alvo.
+		Checa("o CIDADAO nao caca ninguem em 20 s (o `AIAlwaysActive = 0` do mob/npc/Citizen): fica a mais de 5 tiles",
+			  distCidadao1 > 5 * ZoneCollision.TileSize, $"{distCidadao0:0} -> {distCidadao1:0}");
 		Checa("...e ele nao tem alvo nenhum enquanto ninguem encosta nele",
 			  PresaDoNpc(cidadao) == null, "");
 		Checa("...e o jogador nao levou um arranhao dele", alvo.Ficha.HP > 99, $"HP {alvo.Ficha.HP:0.0}");
@@ -796,6 +810,7 @@ public partial class GameServer
 		cidadao.RancorAte = NowMs() - 1;
 		Checa($"e o rancor vence sozinho depois de {Povoamento.SegundosDeRancor:0} s -- ele volta a "
 			+ "ser habitante", PresaDoNpc(cidadao) == null, "");
+		alvo.Combate.Carencia = carenciaAntes;
 
 		// ============================ O PASSEIO TEM DOIS JEITOS DE ESTAR ERRADO ============================
 		// A primeira versao desta camada mandava o `RumoDaFera` pro habitante ocioso e a bancada mediu
@@ -823,9 +838,13 @@ public partial class GameServer
 
 		Checa("o habitante ocioso SE MEXE (a cidade nao e um cenario de estatuas)",
 			  andado > 0, $"{andado:0} px em 2 min");
-		Checa("...e nao vagueia: menos de 20 tiles ANDADOS em 2 min (o `prob(35)` + `step_rand` do "
-			+ "idle_wander_loop da ~1 tile a cada 20 s; o rumo da fera daria 450)",
-			  andado < 20 * ZoneCollision.TileSize, $"{andado / ZoneCollision.TileSize:0.0} tiles");
+		// A REGUA MUDOU COM A VIDA DIARIA (`Core/Ai/Rotina.cs`): o passeio dela vai ate 6 tiles por vez,
+		// com ocio de 4-12 s entre um e outro -- da uns 30 tiles andados em 2 min, contra ~6 do
+		// `step_rand` do original e ~450 do rumo da fera. O que se cobra continua sendo o mesmo:
+		// o habitante fica no bairro, nao atravessa o mapa.
+		Checa("...e nao vagueia: menos de 100 tiles ANDADOS em 2 min (o passeio da vida diaria da ~30; "
+			+ "o rumo da fera daria 450)",
+			  andado < 100 * ZoneCollision.TileSize, $"{andado / ZoneCollision.TileSize:0.0} tiles");
 
 		MoveToZone(alvo.Id, voltaZona, voltaPos);
 	}

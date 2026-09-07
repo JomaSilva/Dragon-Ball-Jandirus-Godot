@@ -45,7 +45,19 @@ public partial class ObraDesenhada : Node2D
 
 	public override void _Ready()
 	{
-		YSortEnabled = true;
+		// ============================ O MOVEL ORDENA PELA BASE, NAO PELO TOPO ============================
+		// Isto era `YSortEnabled = true`, e com o Y-sort ligado NO PROPRIO NODE quem entra na ordenacao
+		// do mundo e o filho -- o sprite, desenhado a partir de `-tam.Y` (o topo do movel), e nao a base
+		// em que o node esta. O banco do castelo de Vegeta ficava ATRAS da cadeira desenhada na mesma
+		// celula: a cadeira e tile da camada `Objetos` (ordenada pelo centro da celula) e o banco era
+		// ordenado pelo topo dele, 16 px acima. No BYOND os dois sao objs da mesma camada e o criado
+		// depois cobre o anterior -- o banco, que vem depois da cadeira na lista do `.dmm`. O dono:
+		// "icones em posicao errada e ficando torto, como a cadeira em cima do bank".
+		//
+		// Desligado, o movel inteiro e ordenado pela posicao do node -- a BASE, o pe do movel -- como o
+		// corpo de um personagem: quem esta abaixo dele passa na frente, quem esta acima fica atras.
+		// ==================================================================================================
+		YSortEnabled = false;
 		ZIndex = AcimaDoJogador(Tipo) ? 1 : 0;
 		MontarSprite();
 	}

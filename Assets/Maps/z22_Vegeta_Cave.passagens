@@ -1,1 +1,3 @@
-[{ "x": 156, "y": 200, "zona": "Vegeta", "dx": 4528, "dy": 6896, "nome": "Vegeta" }]
+[{ "x": 156, "y": 200, "zona": "Vegeta", "dx": 4528, "dy": 6896, "nome": "Vegeta" },
+ { "x": 214, "y": 204, "zona": "Vegeta", "dx": 5104, "dy": 2352, "nome": "VCaveExit2" },
+ { "x": 207, "y": 227, "zona": "Vegeta", "dx": 8272, "dy": 3280, "nome": "VCaveExit3" }]

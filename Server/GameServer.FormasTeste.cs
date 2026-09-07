@@ -711,6 +711,20 @@ public partial class GameServer
 		}
 		else
 		{
+			// A LUA CHEIA NO ALTO, ANTES DE OLHAR PRA ELA. O `Apeshit` nao pergunta pelo ceu (quem
+			// pergunta e o `OlharParaALua`), mas o TIQUE agora pergunta: a fera cai no instante em
+			// que a lua sai do ceu (pedido do dono, 2026-09-06 -- ver `AFonteDaFera`). Sem esta
+			// linha, o primeiro `TickDoOozaru` desta familia derrubaria a fera por falta de lua e
+			// toda a medida de controle abaixo mediria um corpo que ja voltou ao normal.
+			double ceuDaFera = _adiantoDoCeu;
+			AjustarCeuDaTerra(hora: 0.90, fase: Jandirus.Core.World.Ceu.Cheia);
+			// ...E DEBAIXO DESSE CEU: a familia anterior pode ter deixado o corpo no Inferno, que nao tem
+			// lua nenhuma (`Ceu.RelogioDaZona`) -- la a fera cairia no primeiro tique por falta dela.
+			ZoneKey zonaDaFera = pl.Zone;
+			Vec2 posDaFera = pl.Pos;
+			ZoneKey terraDaFera = ZoneKey.Premade("Earth");
+			if (!pl.Zone.Equals(terraDaFera)) MoveToZone(pl.Id, terraDaFera, PontoDeNascimento(terraDaFera));
+
 			pl.Forma.Maestria.Por(Oozaru.IdRegular, 0);
 			EscutaDeAvisos = [];
 			Apeshit(pl);
@@ -1132,7 +1146,12 @@ public partial class GameServer
 				  string.Join(" | ", naParede));
 
 			ASincroniaDaZona(pl, Checa);
-		}
+		
+			// ...e a lua e o lugar voltam ao que eram: o ceu e do processo inteiro, e as familias que
+			// vem depois nao pediram lua cheia nem Terra.
+			_adiantoDoCeu = ceuDaFera;
+			if (!pl.Zone.Equals(zonaDaFera)) MoveToZone(pl.Id, zonaDaFera, posDaFera);
+}
 
 		// AS FERRAMENTAS DE ADMIN FICAM FORA DO `if` DO SAIYAJIN DE PROPOSITO. O bloco acima precisa de
 		// rabo e de genoma porque ele exercita a LUA, que confere os dois; o `admin_forma` existe

@@ -158,6 +158,13 @@ public enum ArteDeKi : ushort
 	/// `CustomMakeBlast` (`customattacks.dm:499-501`), pra quando o jogador nao escolheu arte.
 	/// </summary>
 	Blast12 = 41,
+
+	/// <summary>
+	/// `Daitoppa.dmi`, tingido com `rgb(blastR, blastG, blastB)`: a LAMINA DE AR do Kiai
+	/// (`Ki2.0/Kiai.dm:34-40`). Ela nasce com `invisibility = 1` -- a folha existe pra quem tem
+	/// `see_invisible` (ver `VisaoDoInvisivel`); pros outros a tecnica e so o sopro e o som.
+	/// </summary>
+	Daitoppa = 42,
 }
 
 /// <summary>
@@ -324,12 +331,17 @@ public static class ArteDeProjetil
 		["Spirit_Gun"] = new(Fonte.Literal, ArteDeKi.BlastSpiralingKi),  // `Core Trees/Spirit.dm:355`
 
 		// ---------------------------------------------------------------
-		// O SOPRO -- a lamina de ar do Kiai (`Ki2.0/Kiai.dm`)
+		// O SOPRO -- a lamina de ar do Kiai (`Ki2.0/Kiai.dm:34-40`)
 		// ---------------------------------------------------------------
-		// NAO TEM FOLHA NO ORIGINAL: o `Kiai` cria o blast e nunca escreve `icon`, entao la ele sai
-		// com o icone padrao de `/obj/attack/blast` -- **invisivel**. Registrar a bola racial aqui
-		// seria inventar, e deixar de fora daria arte nenhuma, que e o que o DM faz. Fica de fora, e
-		// o cliente desenha a primitiva de sempre -- que ja e mais do que o original mostra.
+		// ESTA LINHA FICOU DE FORA POR UMA LEITURA ERRADA, e vale registrar qual: a nota que morava
+		// aqui dizia que "o Kiai cria o blast e nunca escreve `icon`". Escreve -- `bcolor =
+		// 'Daitoppa.dmi'; bcolor += rgb(blastR, blastG, blastB); A.icon = bcolor` (`:34-39`) -- e
+		// depois poe `A.invisibility = 1` (`:40`). Sao DUAS decisoes: a folha e o Daitoppa tingido de
+		// ki, e ela e invisivel pra quem nao tem `see_invisible`. A arte mora aqui; a invisibilidade
+		// e outro dado (`ReceitaDeProjetil.Invisivel`), porque um dia outra tecnica pode nascer
+		// invisivel com outra folha. O dono viu a primitiva colorida voando e disse que estava errado
+		// (2026-09-07): estava.
+		["Kiai"] = new(Fonte.Literal, ArteDeKi.Daitoppa),
 	};
 
 	/// <summary>
@@ -412,6 +424,7 @@ public static class ArteDeProjetil
 		ArteDeKi.Blast19 => ("Blasts", "19"),
 		ArteDeKi.Blast20 => ("Blasts", "20"),
 		ArteDeKi.Blast28 => ("Blasts", "28"),
+		ArteDeKi.Daitoppa => ("Blasts", "Daitoppa"),
 		ArteDeKi.Blast30 => ("Blasts", "30"),
 		ArteDeKi.Blast31 => ("Blasts", "31"),
 		ArteDeKi.Blast35 => ("Blasts", "35"),

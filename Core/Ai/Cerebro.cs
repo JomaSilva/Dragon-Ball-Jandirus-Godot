@@ -545,6 +545,8 @@ public sealed class Cerebro
 
 	// --- humanidade ---
 	private double _hesitaAte;
+	private double _carenciaDeVooDeArena;   // entre duas trocas de voo decididas pela arena
+	private double _carenciaDeAgua;         // entre duas trocas de modo decididas pela agua (`Travessia`)
 	private double _deriva;           // passeio lento do tempo de reacao (ver Reagir)
 	private double _ultimoPoderDoAlvo;
 	private double _voltaDoSoco;      // ritmo em RAJADA: ver EmRajada
@@ -889,6 +891,8 @@ public sealed class Cerebro
 		if (_voltaDoSoco > 0) _voltaDoSoco -= dt;
 		if (_pausaDoTiro > 0) _pausaDoTiro -= dt;
 		if (_pausaDoSopro > 0) _pausaDoSopro -= dt;
+		if (_carenciaDeVooDeArena > 0) _carenciaDeVooDeArena -= dt;
+		if (_carenciaDeAgua > 0) _carenciaDeAgua -= dt;
 		if (Atual == Plano.Recuperar) _carregandoHa += dt;
 
 		// A FRASE E DESTE TIQUE E DE MAIS NENHUM. Zerada aqui, no topo, antes de qualquer ponto de
@@ -945,7 +949,12 @@ public sealed class Cerebro
 		else _relogioDeDecisao -= dt;
 
 		// --- 3. O COMANDO, montado do plano + reflexos ------------------------
-		return Montar(p, rng);
+		// A AGUA VEM POR CIMA DA ARENA, e as duas sao filtros pela mesma razao (ver `Travessia`): o
+		// plano decide o que fazer, e elas decidem so o MODO de atravessar o chao que o plano pisa.
+		Comando pronto = Travessia.Atravessar(p, Poderes, NaArena(p, Montar(p, rng)), ref _carenciaDeAgua,
+											  pousarNoSeco: false, out string? naAgua);
+		if (naAgua != null) Porque = naAgua;
+		return pronto;
 	}
 
 	/// <summary>
@@ -1545,6 +1554,88 @@ public sealed class Cerebro
 	/// DO PLANO PRA AS TECLAS. Todo tique -- as teclas de ESTADO precisam ser reafirmadas, e as de
 	/// PULSO so saem no tique em que valem.
 	/// </summary>
+	/// <summary>
+	/// Segundos entre duas trocas de voo decididas pela arena. Sem isto o corpo na margem decolaria
+	/// e pousaria a cada tique -- e pagaria o custo de decolar a cada um.
+	/// </summary>
+	public const double CarenciaDoVooDeArena = 3.0;
+
+	/// <summary>
+	/// A CONSCIENCIA DA LINHA -- o `trn_ai_assist` (`Tournament.dm:279-296`), aplicado POR CIMA do plano.
+	///
+	/// ============================ POR QUE E UM FILTRO, E NAO UM PLANO ============================
+	/// No original o `run_match` chama o `trn_ai_assist` a cada meio segundo, ANTES de conferir o
+	/// ring-out, e ele nao pergunta o que a IA queria: se esta na margem, da o passo pro centro ou
+	/// levanta voo, e pronto. Aqui e o mesmo: seja qual for o plano (recuar, fugir, circular), o
+	/// comando que sai daqui e o que o corpo faz. Um plano proprio "nao sair da arena" competiria
+	/// com os outros na `Escolher` e perderia pra "fugir" -- que e exatamente o passo pra fora.
+	///
+	/// AS TRES REGRAS, na ordem do DM:
+	///   1. `tourney_can_fly &amp;&amp; !flight &amp;&amp; m &lt;= MARGIN` -> `flight = 1` (o voo de emergencia). O
+	///      port acrescenta o ARREMESSO: um corpo voando por um golpe chega na linha sem dar passo,
+	///      entao ele decola antes, a duas margens dela. Voando, o ring-out nao vale (regra do juiz).
+	///      So quem PODE voar (capacidade E perfil) e tem Ki pra decolar.
+	///   2. `!flight &amp;&amp; m &lt;= MARGIN` -> `step(N, get_dir(N, C))`: recua pro centro. Correndo nao,
+	///      porque o dash e o que o levaria pra fora no tique seguinte.
+	///   3. `flight &amp;&amp; foe &amp;&amp; !foe.flight &amp;&amp; m >= 5` -> `flight = 0`: pousa quando esta seguro e o
+	///      oponente esta no chao (a luta volta ao solo). Nunca no meio de um `Alcancar`, que e o
+	///      voo que o proprio cerebro pediu pra chegar num alvo no ar.
+	///
+	/// E DUAS QUE O DM NAO PRECISA E O PORT PRECISA:
+	///   4. Com o ALVO FORA da arena, nenhum golpe corpo a corpo. O soco daqui tem ARRANQUE (o corpo
+	///      salta ate o alvo -- `GameServer.Arranque`), e a bancada viu o corpo na margem, ja
+	///      recuando, dar um soco e aparecer duas celulas fora da linha no mesmo tique. No BYOND o
+	///      soco nao move quem bate; aqui move, entao bater em quem esta fora e sair junto.
+	///   5. Voando perto da linha (ou fora dela), NAO DESCER. O BYOND nao tem altura: `flight` e um
+	///      bit, e so o `trn_ai_assist` o desliga. Aqui o cerebro desce por conta propria pra bater
+	///      num alvo no chao (`DeveDescerDoCeu`), e chegar ao chao POUSA (`DescerAte`) -- fora da
+	///      linha, isso e o ring-out que o voo existia pra evitar. A bancada viu: o voador se salvou
+	///      da linha, foi carregado pra fora ainda voando, e pousou la fora por vontade propria.
+	/// ==============================================================================================
+	/// </summary>
+	private Comando NaArena(in Percepcao p, Comando c)
+	{
+		if (!p.TemArena || p.Caido) return c;
+		int m = p.MargemAteALinha;
+		Vec2 aoCentro = p.Arena.Centro - p.Minha;
+		aoCentro = aoCentro.LengthSquared > 1e-6f ? aoCentro.Normalized() : Vec2.Zero;
+		bool naMargem = m <= p.MargemDaArena;
+		bool vaiParar = p.Arremessado && m <= p.MargemDaArena * 2;
+		if (p.TemAlvo && !p.EstouVoando && !p.Arena.ContemEm(p.DoAlvo) && (c.Leve || c.Pesado))
+		{
+			Porque = "arena: o alvo esta fora da linha, sem soco (o arranque me levaria junto)";
+			c = c with { Leve = false, Pesado = false };
+		}
+		if (!p.EstouVoando && (naMargem || vaiParar))
+		{
+			if (Poderes.PodeVoar && p.Ki >= Poderes.CustoDeDecolar && _carenciaDeVooDeArena <= 0)
+			{
+				_carenciaDeVooDeArena = CarenciaDoVooDeArena;
+				Porque = vaiParar ? "arena: arremessado, decolar antes da linha" : "arena: na margem, decolar";
+				return c with { AlternarVoo = true, Rumo = aoCentro, Correndo = false };
+			}
+			if (naMargem)
+			{
+				Porque = "arena: na margem, recuar pro centro";
+				return c with { Rumo = aoCentro, Correndo = false, AlternarVoo = false };
+			}
+			return c;
+		}
+		if (p.EstouVoando && m < p.MargemSeguraParaPousar && (c.QuerDescer || c.AlternarVoo))
+		{
+			Porque = m < 0 ? "arena: fora da linha, so voando -- nao descer" : "arena: perto da linha, nao descer";
+			return c with { QuerDescer = false, AlternarVoo = false };
+		}
+		if (p.EstouVoando && p.TemAlvo && !p.AlvoVoando && m >= p.MargemSeguraParaPousar
+			&& Atual != Plano.Alcancar && !c.AlternarVoo && _carenciaDeVooDeArena <= 0)
+		{
+			_carenciaDeVooDeArena = CarenciaDoVooDeArena;
+			Porque = "arena: seguro e o oponente no chao, pousar";
+			return c with { AlternarVoo = true };
+		}
+		return c;
+	}
+
 	private Comando Montar(in Percepcao p, Random rng)
 	{
 		bool guarda = _guardaAte > 0 && _reacaoDaGuarda <= 0;

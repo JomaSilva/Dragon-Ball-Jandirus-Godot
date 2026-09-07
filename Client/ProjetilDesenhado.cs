@@ -232,6 +232,18 @@ public partial class ProjetilDesenhado : Node2D
 	/// que faria uma delas mentir.
 	/// =======================================================================================
 	/// </summary>
+	/// <summary>
+	/// NASCEU INVISIVEL -- o `A.invisibility = 1` da lamina de ar do Kiai (`Kiai.dm:40`). O no continua
+	/// existindo (ele anda, explode e faz som como qualquer tiro); o que muda e se ESTE olho o desenha.
+	/// </summary>
+	public bool Invisivel { get; set; }
+
+	/// <summary>
+	/// MOSTRA OU ESCONDE conforme quem olha enxerga o invisivel (`Core.Combat.VisaoDoInvisivel`). Um
+	/// tiro comum aparece pra todo mundo; o invisivel so pra quem tinha `see_invisible` no original.
+	/// </summary>
+	public void MostrarPara(bool veInvisivel) => Visible = !Invisivel || veInvisivel;
+
 	public void Vestir(ArteDeKi arte, float escala)
 	{
 		Arte = arte;
@@ -990,10 +1002,11 @@ public partial class ProjetilDesenhado : Node2D
 	/// <summary>
 	/// A PRIMITIVA -- o desenho que este arquivo sempre teve, agora como REDE e nao como regra.
 	///
-	/// Ela cobre tres casos, e nenhum deles pode virar tiro invisivel: arte que este cliente nao
-	/// conhece (numero de enum de uma versao mais nova), `.tres` que nao importou, e a lamina de ar
-	/// do Kiai -- que **no proprio DM sai sem folha nenhuma** (ver a nota final da
-	/// `ArteDeProjetil`). Nos tres o jogador ve o tiro.
+	/// Ela cobre dois casos, e nenhum deles pode virar tiro invisivel POR ACIDENTE: arte que este
+	/// cliente nao conhece (numero de enum de uma versao mais nova) e `.tres` que nao importou. Nos
+	/// dois o jogador ve o tiro. (A lamina de ar do Kiai ja morou nesta lista com a nota de que "no
+	/// DM ela sai sem folha" -- estava errado: `Kiai.dm:34-40` veste `Daitoppa.dmi` e a poe
+	/// invisivel DE PROPOSITO. Hoje ela tem folha e some por <see cref="Invisivel"/>, que e outra coisa.)
 	/// </summary>
 	private void DesenharPrimitiva()
 	{

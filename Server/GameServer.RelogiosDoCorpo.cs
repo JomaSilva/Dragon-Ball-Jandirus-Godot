@@ -65,6 +65,16 @@ public partial class GameServer
 		// do Ki zerado, e e justamente nesse instante que a luta costuma virar.
 		foreach (ServerPlayer pl in _players.Values) TickDaForma(pl, dt);
 
+		// ============================ O RELOGIO DA FERA VOLTOU AO LACO ============================
+		// `TickDoOozaru` -- o prazo da forma, a perda das redeas, o rabo cortado, a meditacao e, agora,
+		// a lua que sai do ceu -- ficou FORA do laco de producao desde a55b464 ("Grande Update Parte
+		// 4"), quando estes relogios mudaram de endereco: so as bancadas o chamavam, direto, e por isso
+		// todas passavam verdes com um Oozaru que, em jogo, nunca se cansava, nunca fugia do controle e
+		// nem sem rabo caia. E o mesmo tique cheio da forma, pelo mesmo motivo dela: o prazo e por
+		// segundo e a queda tem que cair no segundo certo. Ver `GameServer.Oozaru.cs`.
+		// ========================================================================================
+		foreach (ServerPlayer pl in _players.Values) TickDoOozaru(pl, dt);
+
 		// A CARGA ANDA NO TICK CHEIO, junto da forma, porque as duas mexem no MESMO Ki: a forma
 		// dreno e a carga enche. Rodar em cadencias diferentes faria o saldo depender da ordem em
 		// que os dois relogios se cruzam -- o mesmo SSJ carregando renderia coisas diferentes em

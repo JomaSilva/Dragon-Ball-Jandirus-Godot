@@ -383,6 +383,17 @@ public static class Protocol
     public const byte InputAndando = 0x80;
 
     /// <summary>
+    /// OS TRES MODOS DO <see cref="S2C.Cenario"/>, no primeiro byte depois do opcode.
+    ///
+    /// `Celula`: uma celula que ACABOU de cair (`ushort cx, cy`) -- quem esta na zona ve a poeira.
+    /// `Limpar`: um admin refez o cenario de uma zona (`ulong zona`) -- vai pra todo mundo.
+    /// `Retrato`: o estrago INTEIRO de uma zona, pra quem chega nela (`ulong zona`, `int n`, n x
+    /// `ushort cx, cy`). E estado, nao acontecimento: o cliente o aplica sem poeira, e so quando o
+    /// chao daquela zona estiver montado.
+    /// </summary>
+    public const byte CenarioCelula = 0, CenarioLimpar = 1, CenarioRetrato = 2;
+
+    /// <summary>
     /// SUBIR e DESCER voando -- dois dos quatro bits que sobravam neste byte.
     ///
     /// Vem no INPUT e nao pelo canal de habilidade porque altitude e continua: e "estou segurando
@@ -443,12 +454,18 @@ public static class Protocol
         Zanzo = 23,
         Porta = 24,        // porta abriu ou fechou (ou: a lista inteira, ao entrar na zona)
         /// <summary>
-        /// UMA CELULA DO CENARIO CAIU: virou chao (knockback contra parede, ou o chao rachando).
+        /// O CENARIO DESTRUIDO, em tres modos (ver <see cref="CenarioCelula"/>, <see cref="CenarioLimpar"/>
+        /// e <see cref="CenarioRetrato"/>): uma celula que acabou de cair, a limpeza de um admin, e o
+        /// RETRATO do estrago inteiro de uma zona pra quem chega nela.
         ///
-        /// Carrega um `bool limpar` NA FRENTE das coordenadas. Ligado, ele quer dizer o oposto:
-        /// "esqueca TODO o estrago desta zona" -- e o que o verb de admin que refaz o cenario
-        /// precisa, e o mesmo truque do <see cref="Porta"/> com `completo = 1`. Sem esse bit o
-        /// pacote so sabia dizer que algo caiu, e restaurar era impossivel de anunciar.
+        /// ============================ O RETRATO EXISTE PORQUE UM PACOTE POR CELULA ERA UMA ANIMACAO POR CELULA ============================
+        /// Quem entrava numa zona recebia o estrago como N pacotes de "caiu agora", e o cliente
+        /// tratava cada um como queda ao vivo: poeira, faisca e tremor em TODAS as celulas de uma
+        /// vez -- e, se chegassem antes de o mapa novo montar, nas camadas do mapa VELHO. O dono viu:
+        /// "o jogo carrega o cenario normal e depois destroi o que deve estar destruido... roda a
+        /// animacao de destruicao pra todos os tiles destruidos ao mesmo tempo, e o loading aumenta".
+        /// Um pacote so, com a zona dentro, e o cliente sabe que aquilo e ESTADO.
+        /// ==========================================================================================================================
         /// </summary>
         Cenario = 25,
 
@@ -545,6 +562,25 @@ public static class Protocol
         /// =====================================================================================
         /// </summary>
         Decalque = 33,
+
+        /// <summary>
+        /// O TORNEIO NA TELA: `byte aviso` (1 = convite, 2 = o convite fechou), `byte tipo`
+        /// (1 = Terra, 2 = Outro Mundo), `int segundos` (o prazo do convite) e `string titulo`.
+        /// A resposta volta por `C2S.Verbo` (`trn_participar` / `trn_recusar`): o servidor e quem
+        /// decide se ainda ha vaga e se a inscricao ainda esta aberta. Ver `GameServer.Torneio.cs`.
+        /// </summary>
+        Torneio = 55,
+
+        /// <summary>
+        /// UM GESTO DE UM CORPO, pra zona inteira: `int corpo` e `byte gesto` (<see cref="GestoDoCorpo"/>).
+        /// Nasceu pro Kiai (`Ki2.0/Kiai.dm:16,53`): o `flick("Blast", usr)` e o `emit_Sound(...)` sao
+        /// coisas que TODO MUNDO em volta ve e ouve, e ate aqui o unico pacote que fazia isso era o
+        /// <see cref="Hit"/> -- do soco. A POSE nao viaja aqui: ela vai pelo snapshot (o servidor
+        /// segura `Canalizando` + `CanalAtirando` por `GestoAte`), porque um pacote de pose seria
+        /// desfeito pelo snapshot seguinte. Aqui vai o que e INSTANTE: o som, e o "recomece do quadro
+        /// zero" do desenho.
+        /// </summary>
+        Gesto = 56,
 
         /// <summary>
         /// CAIU UM RAIO, e ele caiu NUM LUGAR: posicao no mundo + a semente do desenho.
@@ -1115,6 +1151,15 @@ public static class Protocol
     /// <summary>O caminho de volta do <see cref="EscalaDeProjetilEmByte"/>.</summary>
     public static float DeEscalaDeProjetil(byte b) => b / 20f;
 
+    /// <summary>O que viaja no <see cref="S2C.Gesto"/>. Ver la.</summary>
+    public enum GestoDoCorpo : byte
+    {
+        /// <summary>O sopro pegou alguem: pose de tiro + `scouterexplode.ogg` (`Kiai.dm:16,53`).</summary>
+        Kiai = 1,
+        /// <summary>O sopro saiu no vazio e virou lamina: o mesmo, mais `fire_kiblast.wav` (`Kiai.dm:37`).</summary>
+        KiaiComLamina = 2,
+    }
+
     /// <summary>Os dois instantes de um ataque de ki. Ver <see cref="S2C.Projetil"/>.</summary>
     public enum ProjetilSub : byte
     {
@@ -1365,6 +1410,13 @@ public static class Protocol
         public int Idade;
         public string Raca;
 
+        /// <summary>
+        /// A LINHAGEM ("Genie", "Ogre", ...). Entrou pra <c>Core.Combat.VisaoDoInvisivel</c>: o Demigod
+        /// so enxerga a lamina de ar do Kiai na linhagem Genie (`statdemi.dm:48`), e ate aqui o cliente
+        /// nao sabia a propria linhagem. Ao lado da raca, que e a outra metade da mesma pergunta.
+        /// </summary>
+        public string Classe;
+
         /// <summary>Em que forma estou (o id de <c>Core.Forms.Forma</c>). 0 = base.</summary>
         public ushort FormaAtual;
 
@@ -1445,6 +1497,7 @@ public static class Protocol
             w.Put(Poderes);
             w.Put(Idade);
             w.Put(Raca ?? "");
+            w.Put(Classe ?? "");
             w.Put(FormaAtual);
             (ushort, float)[] ms = Maestrias ?? [];
             w.Put((byte)Math.Min(ms.Length, 255));
@@ -1470,6 +1523,7 @@ public static class Protocol
             Poderes = r.GetUInt(),
             Idade = r.GetInt(),
             Raca = r.GetString(24),
+            Classe = r.GetString(24),
             FormaAtual = r.GetUShort(),
             Maestrias = LerMaestrias(r),
             Disciplina = r.GetByte(),
@@ -2873,7 +2927,14 @@ public readonly record struct NascimentoDeProjetil(
     /// do proprio corpo -- na sombra.
     /// </summary>
     float Altitude,
-    Vec2 Pos);
+    Vec2 Pos,
+    /// <summary>
+    /// NASCEU INVISIVEL -- o `A.invisibility = 1` da lamina de ar do Kiai (`Ki2.0/Kiai.dm:40`). Quem
+    /// decide se DESENHA e o cliente, pela raca de quem olha (`Core.Combat.VisaoDoInvisivel`): o
+    /// pacote e um so pra zona inteira, e recortar por destinatario custaria um buffer por jogador
+    /// (a mesma escolha do `Oculto` do snapshot). Vai no FIM do pacote, como um bit de flags.
+    /// </summary>
+    bool Invisivel);
 
 /// <summary>
 /// A SERIALIZACAO DE UMA TECNICA INVENTADA -- as duas pontas, no MESMO arquivo.

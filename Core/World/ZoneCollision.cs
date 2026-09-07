@@ -522,6 +522,56 @@ public sealed class ZoneCollision
 	/// <summary>Todas as construcoes somem: volta a valer o arquivo (mais as aberturas).</summary>
 	public void LimparObras() => _obras = null;
 
+	/// <summary>
+	/// AS BOCAS DAS PASSAGENS, LACRADAS -- a caverna, a escada do Templo, a porta do Inferno.
+	///
+	/// ============================ NO BYOND NINGUEM PISA NA BOCA DA CAVERNA ============================
+	/// La a celula da passagem e um turf cujo `Enter()` teleporta E NEGA O PASSO (`Turfs.dm:1436-1475`:
+	/// `M.loc = locate(...)` sem `return 1`). O corpo nunca chega a ficar em cima dela: ele tenta
+	/// entrar, e ja esta do outro lado. Aqui a celula saiu do `.col` de proposito (ver `MapConverter`,
+	/// "A PASSAGEM SAI DA COLISAO") e o gatilho era "pe em cima" -- entao o jogador ANDAVA pra dentro
+	/// do desenho da boca, que fica na fileira da parede, e so depois viajava. Foi o que o dono viu:
+	/// "sair de cavernas nao ta colocando o personagem 1 tile na frente da entrada, as vezes o
+	/// personagem volta dentro de paredes".
+	///
+	/// O lacre e uma camada e nao um bit do arquivo pelo mesmo motivo das aberturas e das obras: o
+	/// `.col` e lido uma vez e partilhado. E e uma camada PROPRIA, e nao a das obras, porque
+	/// `LimparObras` roda a cada entrada na zona -- levaria o lacre junto.
+	///
+	/// QUEM LACRA SAO AS DUAS PONTAS, a partir do MESMO `.passagens` (servidor no boot, cliente ao
+	/// carregar a zona): a previsao do cliente para na borda da boca exatamente onde o servidor
+	/// para. Sem o cliente lacrar, ele entraria e levaria correcao a cada tique.
+	///
+	/// O custo no caminho comum e um teste de nulo a mais SO em celula de chao -- e so em zona que
+	/// tem passagem.
+	/// ====================================================================================================
+	/// </summary>
+	private HashSet<int>? _seladas;
+
+	/// <summary>Lacra a boca de uma passagem: passa a bloquear como parede, sem virar parede no arquivo.</summary>
+	public void Selar(int cx, int cy)
+	{
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return;
+		(_seladas ??= []).Add(cy * Width + cx);
+	}
+
+	/// <summary>Esta celula e uma boca lacrada?</summary>
+	public bool Selada(int cx, int cy) =>
+		_seladas != null && cx >= 0 && cy >= 0 && cx < Width && cy < Height
+		&& _seladas.Contains(cy * Width + cx);
+
+	/// <summary>
+	/// O BIT CRU DO ARQUIVO: esta celula NASCEU parede? Nao olha abertura, obra nem lacre. So pras
+	/// bancadas, que precisam distinguir "chao que caiu" de "parede que caiu" -- `Aberta` nao
+	/// distingue, porque o estrago abre toda celula caida, inclusive a que ja era chao.
+	/// </summary>
+	public bool BloqueadaNoArquivo(int cx, int cy)
+	{
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return false;
+		int i = cy * Width + cx;
+		return (_bits[i >> 3] & (1 << (i & 7))) != 0;
+	}
+
 	/// <summary>Esta celula esta aberta por cima do arquivo?</summary>
 	public bool Aberta(int cx, int cy) =>
 		_abertas != null && cx >= 0 && cy >= 0 && cx < Width && cy < Height
@@ -557,7 +607,7 @@ public sealed class ZoneCollision
 		// e um teste de bit e uma comparacao com nulo. O campo de visao chama este metodo centenas
 		// de milhares de vezes por quadro.
 		if ((_bits[i >> 3] & (1 << (i & 7))) == 0)
-			return _obras != null && _obras.Contains(i);
+			return (_obras != null && _obras.Contains(i)) || (_seladas != null && _seladas.Contains(i));
 		return _abertas == null || !_abertas.Contains(i);
 	}
 
@@ -642,8 +692,13 @@ public sealed class ZoneCollision
 	/// puser um destino DENTRO de uma zona com ceu, que e o unico jeito de isto morder.
 	/// ================================================================================================
 	/// </summary>
-	public bool ServeDeChao(int cx, int cy) =>
-		!BlockedCell(cx, cy) && !NaBorda(cx, cy)
+	/// <param name="mesmoNaBorda">
+	/// Aceita a beirada do mapa. O padrao a recusa porque quem nasce ali nasce colado no fim do
+	/// mundo; a chegada de uma passagem e a excecao -- a escada do Templo e as duas ultimas
+	/// fileiras do mapa (`z12`, y 498-499) e o DM deposita o corpo exatamente nelas.
+	/// </param>
+	public bool ServeDeChao(int cx, int cy, bool mesmoNaBorda = false) =>
+		!BlockedCell(cx, cy) && (mesmoNaBorda || !NaBorda(cx, cy))
 		&& !(EhAgua(cx, cy) && !ClasseDeAgua.ServeDeChao)
 		&& !(EhNuvem(cx, cy) && !ClasseDeNuvem.ServeDeChao);
 

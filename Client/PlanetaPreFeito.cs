@@ -77,7 +77,8 @@ public partial class PlanetaPreFeito : Planeta
 				: doArquivo;
 
 			_pintor = new PintorDePedacos(this, fonte);
-			_pintor.Pintou += AvisarPedaco;
+			int lado = fonte.Lado;
+			_pintor.Pintou += p => AvisarPedaco(p, lado);
 		}
 
 		_pintor.Urgente(centro);

@@ -137,6 +137,34 @@ public sealed class ServerPlayer
 	/// </summary>
 	public Jandirus.Core.Npc.PapelDeNpc? Papel;
 
+	/// <summary>A vida diaria (so habitante). Nasce no primeiro tique da rotina; nula nos outros corpos.</summary>
+	public Jandirus.Core.Ai.Rotina? Rotina;
+
+	/// <summary>O que o corpo ESCOLHE nao usar em combate (voo, ki). Sorteado do molde; completo nos demais.</summary>
+	public Jandirus.Core.Ai.PerfilDeCombate Perfil = Jandirus.Core.Ai.PerfilDeCombate.Completo;
+
+	/// <summary>A linha que este corpo nao pode cruzar (torneio). Nula = nenhuma.</summary>
+	public Jandirus.Core.World.Arena? Arena;
+
+	/// <summary>A rotina mandou andar no ultimo tique -- e assim que ela sabe que bateu em algo.</summary>
+	public bool QuisAndar;
+
+	/// <summary>O ultimo passo da IA bateu na AGUA (e nao numa parede). Ver `PassoDaIa` e `Travessia`.</summary>
+	public bool BarradoPelaAgua;
+
+	/// <summary>A carencia da `Travessia` pro corpo dirigido pela ROTINA (o cerebro de luta tem a sua).</summary>
+	public double CarenciaDeAgua;
+
+	/// <summary>A margem lembrada (ver `RumoDaMargem`): o rumo, de onde foi perguntado, e por quantos tiques ainda vale.</summary>
+	public Jandirus.Core.World.Vec2 RumoDaMargemGuardado, PosDaMargemGuardada;
+	public int TiquesAteRecalcularMargem;
+
+	/// <summary>Quantas vezes a mente deste corpo pensou (a bancada mede o ritmo reduzido por aqui).</summary>
+	public int TiquesDaMente;
+
+	/// <summary>O ultimo `Porque` da rotina impresso no `--diagia`, pra nao repetir.</summary>
+	public string PorqueDaRotina = "";
+
 	/// <summary>Em que chunk do espaco estou. Trocar de chunk dispara o pacote de vizinhanca.</summary>
 	public ChunkId ChunkAtual;
 
@@ -1453,6 +1481,14 @@ public sealed class ServerPlayer
 	public long AtaqueAte;
 
 	/// <summary>
+	/// ATE QUANDO O CORPO FAZ A POSE DE TIRO POR UM GESTO -- o `flick("Blast", usr)` do Kiai
+	/// (`Ki2.0/Kiai.dm:16`). Relogio real, ms. Enquanto vale, a pose sai `Canalizando` com
+	/// `CanalAtirando` (o `blast` do desenho), SEM canal de ki de verdade: nao prende o corpo, nao
+	/// cobra nada, e o snapshot e que leva -- um pacote de pose seria desfeito pelo snapshot seguinte.
+	/// </summary>
+	public long GestoAte;
+
+	/// <summary>
 	/// A pose que os outros veem. Sai do ESTADO do servidor, nao de um pedido do cliente --
 	/// senao daria pra aparecer meditando no meio de uma luta.
 	/// </summary>
@@ -1495,7 +1531,9 @@ public sealed class ServerPlayer
 		// USAR O BEAM"* --, e um raio disparado do ar que mostrasse a pose de pairar seria a mesma
 		// queixa noutra altura.
 		// =========================================================================================================
-		if (canalDeKi) return Protocol.Pose.Canalizando;
+		// O GESTO DE SOPRO (`GestoAte`) e um canal de tiro de meio segundo sem canal nenhum: a mesma
+		// pose, pelo mesmo caminho, e o snapshot acende o `CanalAtirando` junto (ver `EstadoDe`).
+		if (canalDeKi || agoraMs < GestoAte) return Protocol.Pose.Canalizando;
 
 		// A POSE DE VOO ESTAVA DEFINIDA E MORTA: `Protocol.Pose.Voando` existia no enum, o
 		// `CharacterVisual.SetPose` ja mapeava pra animacao "flight", e este metodo NUNCA a
@@ -1997,6 +2035,8 @@ public partial class GameServer : Node
 		if (_kiDeTeste) GD.Print("[server] BANCADA: todo mundo entra com o Ki liberado (C carrega e passa de 100%)");
 
 		_portaDeTeste = Array.IndexOf(args, "--portateste") >= 0;
+		_mobiliaDeTeste = Array.IndexOf(args, "--mobiliateste") >= 0;
+		if (_mobiliaDeTeste) GD.Print("[server] BANCADA: todo mundo nasce em Vegeta, dois tiles abaixo do banco do castelo");
 		if (_portaDeTeste) GD.Print("[server] BANCADA: todo mundo nasce colado numa porta");
 
 		// `--feridateste`: nasce com uma ESCADA de estrago -- cada regiao do corpo num degrau
@@ -2527,6 +2567,20 @@ public partial class GameServer : Node
 		// Ver `GameServer.LuaFeraTeste.cs`.
 		_luaFeraDeTeste = Array.IndexOf(args, "--luaferateste") >= 0;
 		if (_luaFeraDeTeste) GD.Print("[server] BANCADA: a lua cheia pega os NPCs Saiyajins, no 1o login");
+		_luaSomeDeTeste = Array.IndexOf(args, "--luasometeste") >= 0;
+		if (_luaSomeDeTeste) GD.Print("[server] BANCADA: a lua some e a fera cai, no 1o login");
+
+		// A DA ROTINA (vida diaria dos habitantes) no 1o login: so acorda com jogador na zona.
+		// Ver `GameServer.RotinaTeste.cs`.
+		_rotinaDeTeste = Array.IndexOf(args, "--rotinateste") >= 0;
+		if (_rotinaDeTeste) GD.Print("[server] BANCADA: a vida diaria dos habitantes, no 1o login");
+		_nadoIaDeTeste = Array.IndexOf(args, "--nadoiateste") >= 0;
+		if (_nadoIaDeTeste) GD.Print("[server] BANCADA: a IA na agua (nadar/voar), no 1o login");
+
+		// A DO TORNEIO no 1o login: precisa de um jogador inscrito de verdade (o host).
+		// Ver `GameServer.TorneioTeste.cs`.
+		_torneioDeTeste = Array.IndexOf(args, "--torneioteste") >= 0;
+		if (_torneioDeTeste) GD.Print("[server] BANCADA: os torneios da Terra e do Outro Mundo, no 1o login");
 
 		// `--macacovivo`: o PALCO da foto. Nasce um Saiyajin ao lado de quem entrar, poe a Terra em lua
 		// cheia e abre o corpo dele dez segundos depois -- e quem transforma e o `TickDoCeu` de verdade.
@@ -2723,6 +2777,20 @@ public partial class GameServer : Node
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--kbteste") >= 0) RodarBancadaDoArremesso();
 
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--arranqueteste") >= 0) RodarBancadaDoArranque();
+			// `--passagemteste`: a boca da caverna lacrada, o gatilho na borda do passo e a chegada um
+			// tile na frente da boca de volta (dono, 2026-09-06). Ver `GameServer.PassagemTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--passagemteste") >= 0) RodarBancadaDasPassagens();
+
+			// `--espalhamentoteste` e `--arenaiateste`: ONDE OS HABITANTES NASCEM e A LINHA QUE A IA
+			// NAO CRUZA. No boot porque nao precisam de jogador: uma so pergunta onde os corpos
+			// nasceriam (nao forja nenhum), a outra forja corpos SEM molde, que nao dormem sem
+			// jogador. Ver `GameServer.EspalhamentoTeste.cs` e `GameServer.ArenaIaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--espalhamentoteste") >= 0) RodarBancadaDoEspalhamento();
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--arenaiateste") >= 0) RodarBancadaDaArenaDaIa();
+			// `--cenarioteste`: o estrago de uma zona chega num RETRATO so (dono, 2026-09-06), e quem
+			// loga com a chave faz uma viagem de ida e volta pra que o robo `--diagcenario` meca a
+			// volta. Ver `GameServer.CenarioTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--cenarioteste") >= 0) { _cenarioDeTeste = true; RodarBancadaDoCenario(); }
 
 			// `--borraoteste`: O DASH DO NPC -- alcance e borrao, SO MEDIDOS. Mesma infraestrutura da
 			// `--tresteste` (corredor livre na Terra, corpos forjados, laco a 30 Hz no relogio de
@@ -3220,6 +3288,8 @@ public partial class GameServer : Node
 		// marcos no catalogo de skills e crava degraus no de niveis. Carregado antes, o primeiro
 		// NPC nasceria sem livro e ninguem ligaria a causa a ordem desta lista.
 		CarregarMoldes();
+		CarregarRotina();
+		CarregarTorneio();
 
 		// DEPOIS do `CarregarMoldes`: a cadeia de sagas vive no MESMO arquivo e cita os moldes pelo id
 		// -- a conferencia dela (`Sagas.Problemas`) precisa do catalogo montado. E a reputacao vem
@@ -3957,6 +4027,7 @@ public partial class GameServer : Node
 		ConcederPoderes(pl, peer, acc);
 
 		if (_portaDeTeste) NascerNaPorta(pl);
+		if (_mobiliaDeTeste) NascerNoBanco(pl);
 		pl.Facing = Facing.South;
 		// --espeedteste, so bancada: o stat BASE, e o `Statify` na hora pra o `Espeed` (e a ficha que
 		// sai logo abaixo) ja nascerem com ele -- senao o primeiro tique corrigiria o cliente.
@@ -4285,6 +4356,19 @@ public partial class GameServer : Node
 		// lado "sem"). Ela ADIANTA O RELOGIO DO MUNDO pra achar a lua cheia -- e devolve no `finally`,
 		// entao rodar antes de outra bancada que leia o ceu nao a contamina.
 		if (_luaFeraDeTeste) { _luaFeraDeTeste = false; RodarBancadaDaLuaDaFera(pl); }
+		// A DA LUA QUE SOME vem colada na da lua da fera, pelos mesmos motivos: precisa dos moldes e do
+		// ceu, e devolve o relogio no `finally`. Ver `GameServer.LuaSomeTeste.cs`.
+		if (_luaSomeDeTeste) { _luaSomeDeTeste = false; RodarBancadaDaLuaQueSome(pl); }
+
+		// A DA ROTINA no login porque a vida diaria so acorda com um jogador na zona (`MenteDormindo`),
+		// e porque o tique barato mede a distancia ate ESTE jogador.
+		if (_rotinaDeTeste) { _rotinaDeTeste = false; RodarBancadaDaRotina(pl); }
+		if (_nadoIaDeTeste) { _nadoIaDeTeste = false; RodarBancadaDoNadoDaIa(pl); }
+		if (_torneioDeTeste) { _torneioDeTeste = false; RodarBancadaDoTorneio(pl); }
+
+		// O TORNEIO VE QUEM ENTROU: convite atrasado (inscricoes abertas) ou a volta de quem estava
+		// na chave e desconectou (a chave e do servidor; o corpo novo e reconhecido pela assinatura).
+		AoEntrarNoTorneio(pl);
 
 		// O PALCO VIVO monta no primeiro login e nao mede nada: quem julga e a foto do `--diagmacaco`.
 		// Ele precisa do host DENTRO da zona (a guarda 6 do gatilho e a plateia) e por isso mora aqui,
@@ -4321,6 +4405,7 @@ public partial class GameServer : Node
 		MandarSupers(pl);
 		MandarPortas(pl);
 		MandarCenario(pl);
+		if (_cenarioDeTeste && pl.Peer != null) AgendarViagemDoCenario(pl);
 		// AS PECAS DE CORPO NO CHAO, pelo mesmo argumento do cenario derrubado: o `S2C.Decalque` que as
 		// plantou saiu uma vez, pra quem estava la -- e quem loga no meio dos 600 s de uma peca precisa
 		// ve-la. Ver `GameServer.Pecas.cs`.
@@ -5178,6 +5263,7 @@ public partial class GameServer : Node
 		// AS PASSAGENS NO TIQUE CHEIO, junto das portas e pelo mesmo motivo: elas reagem a ENCOSTAR,
 		// e uma reacao a 5 Hz deixaria o corpo atravessar a celula sem que ninguem percebesse.
 		TickDasPassagens();
+		TickDoTorneio(Protocol.TickSeconds);
 
 		// A QUEDA PELA NUVEM VEM LOGO DEPOIS DAS PASSAGENS, e a ordem importa: a volta do Ceu chega
 		// no z6, que e todo nuvem. Vindo antes, a queda leria a posicao ANTIGA do corpo e o
@@ -5538,6 +5624,11 @@ public partial class GameServer : Node
 	{
 		Fighter f = pl.Ficha;
 
+		// O TREINO DO HABITANTE E COSMETICO (decisao propria, ver `GameServer.Rotina.cs`): a rotina
+		// liga a flag pela POSE, e o poder do habitante e o do molde. Sem este corte, quarenta corpos
+		// que nunca morrem de velhice subiriam de BP sem parar.
+		if (EhNpcDoMundo(pl) && pl.Papel is { Pacifico: true }) return;
+
 		// ============================ OS MARCOS DE ASCENSAO ============================
 		// `Stats.dm:257` chama `Auto_Gain()` do laco `Stats()` -- FORA do galho de treino/meditacao,
 		// todo tique -- e o `Auto_Gain()` abre chamando `bp_milestone_check_ascension()`
@@ -5742,6 +5833,11 @@ public partial class GameServer : Node
 		// que e um pacote que o leitor nao sabe ler (ele so busca o byte quando ve a pose).
 		(bool canal, bool atirando, int cargaDoCanal) = CanalDeKiDe(pl.Id);
 
+		// O GESTO DE SOPRO (o `flick("Blast", usr)` do Kiai, `ServerPlayer.GestoAte`) veste a pose de
+		// tiro por um instante: canal "atirando" sem carga, que e exatamente o `blast` do desenho e
+		// nada mais -- o cliente so acende a carga visual quando NAO esta atirando (`World.cs`).
+		if (!canal && agora < pl.GestoAte) { canal = true; atirando = true; }
+
 		var e = new EntityState
 		{
 			Id = pl.Id,
@@ -5843,7 +5939,17 @@ public partial class GameServer : Node
 		return l;
 	}
 
-	private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+	/// <summary>
+	/// O ADIANTO DO RELOGIO DE PAREDE, so pra bancada. Uma bancada que roda 2700 tiques num segundo
+	/// real deixa TODO prazo em milissegundos (a cadencia de fala, o rancor, os cooldowns) parado
+	/// no mesmo instante -- e mede um mundo em que ninguem fala duas vezes. A bancada soma o dt de
+	/// cada tique aqui, e o relogio de parede anda junto com o de simulacao. NUNCA se volta: um
+	/// prazo gravado com o relogio adiantado cairia no futuro, e o servidor inteiro esperaria por ele.
+	/// O ceu nao passa por aqui (`TempoDoMundo` tem o adianto proprio, `_adiantoDoCeu`).
+	/// </summary>
+	internal static long AdiantoDoRelogioDeTeste;
+
+	private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + AdiantoDoRelogioDeTeste;
 
 	/// <summary>
 	/// O NOME QUE O MUNDO LE: o da fusao enquanto ela dura, o do personagem no resto do tempo.

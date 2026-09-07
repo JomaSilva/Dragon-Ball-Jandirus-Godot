@@ -136,9 +136,14 @@ public partial class Planeta : Node2D
 	/// NA BASE E NAO NAS FILHAS porque quem escuta nao quer saber se o chao veio de arquivo ou de
 	/// uma seed: os dois streamam, os dois esquecem o estrago do mesmo jeito.
 	/// </summary>
-	public event System.Action? PedacoPintado;
+	/// <summary>
+	/// O evento leva o RETANGULO DE CELULAS do pedaco: quem reaplica o estrago so olha o que cai
+	/// dentro dele, em vez de percorrer a lista inteira a cada bloco.
+	/// </summary>
+	public event System.Action<Rect2I>? PedacoPintado;
 
-	protected void AvisarPedaco() => PedacoPintado?.Invoke();
+	protected void AvisarPedaco(Vector2I pedaco, int lado) =>
+		PedacoPintado?.Invoke(new Rect2I(pedaco * lado, new Vector2I(lado, lado)));
 
 	private bool _nasceu;
 

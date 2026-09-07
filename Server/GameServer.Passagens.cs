@@ -34,14 +34,35 @@ public sealed partial class GameServer
 	/// QUEM ACABOU DE CHEGAR POR UMA PASSAGEM, e ate quando esta imune.
 	///
 	/// ============================ SEM ISTO, IDA E VOLTA VIRA UM LOOP ============================
-	/// A saida da caverna fica em cima da entrada correspondente do outro lado -- e assim no DM
-	/// tambem. Sem carencia, o corpo chega, o tique seguinte ve que ele esta sobre uma passagem, e
-	/// ele volta. E de novo. O jogador ficaria piscando entre dois mapas sem conseguir andar.
+	/// A saida da caverna fica na frente da entrada correspondente do outro lado -- e assim no DM
+	/// tambem. Sem carencia, o corpo chega, o tique seguinte ve o passo dele entrando na boca de
+	/// volta (a tecla continua apertada), e ele volta. E de novo. O jogador ficaria piscando entre
+	/// dois mapas sem conseguir andar.
 	///
-	/// A carencia e por PESSOA e nao por celula: ela protege a chegada, e nao a passagem.
+	/// A carencia e por PESSOA e nao por celula: ela protege a chegada, e nao a passagem. E ela e
+	/// so o PISO: quem decide a volta e a BORDA do gesto (<see cref="_naBocaDaPassagem"/>) -- a tecla
+	/// segurada desde a chegada nao vale, e preciso soltar e empurrar de novo.
 	/// ============================================================================================
 	/// </summary>
 	private readonly Dictionary<int, long> _acabouDeAtravessar = [];
+
+	/// <summary>
+	/// QUEM JA ESTA EMPURRANDO UMA BOCA -- o gatilho dispara na BORDA, nao no nivel.
+	///
+	/// ============================ SEGURAR A TECLA NAO E ENTRAR DE NOVO ============================
+	/// O corpo chega do outro lado um tile na frente da boca de volta, olhando pra ela, com a
+	/// tecla ainda apertada. Se o gatilho fosse "esta empurrando a boca?", a carencia de 1,5 s
+	/// venceria e ele voltaria sozinho -- e o dono viu isso: "as vezes o personagem volta". Entao o
+	/// que dispara e a MUDANCA: de "nao empurrava" pra "empurra". Na chegada o corpo ja entra
+	/// marcado como "empurrando", e so sai da marca no tique em que parar ou virar pra outro lado.
+	///
+	/// A marca so e mexida DEPOIS da carencia. Durante a troca de mapa o cliente pode mandar um
+	/// tique sem `Moving` (a tela de carregamento no meio dos inputs); se a marca caisse ali, a
+	/// tecla segurada viraria "empurra" de novo assim que a carencia acabasse -- o mesmo ricochete
+	/// por outra porta.
+	/// ==============================================================================================
+	/// </summary>
+	private readonly HashSet<int> _naBocaDaPassagem = [];
 
 	/// <summary>Quanto tempo o corpo fica imune a passagens depois de atravessar uma.</summary>
 	private const long MsDeCarenciaDePassagem = 1500;
@@ -66,9 +87,14 @@ public sealed partial class GameServer
 
 			if (lista.Count == 0) continue;
 			_passagens[e.Zona] = lista;
+			e.Passagens = lista;
 			total += lista.Count;
+
+			// A BOCA E LACRADA NO MAPA DO SERVIDOR. O cliente faz o mesmo ao carregar a zona, pela
+			// mesma lista (`World.LacrarPassagens`). Ver `ZoneCollision.Selar` pro porque.
+			if (e.Mapa is { } mapa) foreach (Passagem p in lista) mapa.Selar(p.X, p.Y);
 		}
-		if (total > 0) GD.Print($"[server] passagens: {total} em {_passagens.Count} zona(s)");
+		if (total > 0) GD.Print($"[server] passagens: {total} em {_passagens.Count} zona(s), bocas lacradas");
 	}
 
 	/// <summary>
@@ -117,31 +143,32 @@ public sealed partial class GameServer
 			if (_acabouDeAtravessar.TryGetValue(pl.Id, out long livre) && agora < livre) continue;
 			if (!_passagens.TryGetValue(pl.Zone.Name, out List<Passagem>? lista)) continue;
 
-			// A CELULA DOS PES, e nao a do centro do sprite. E a mesma conta que a colisao e as
-			// portas fazem (`MoveRules.FeetOffsetY`): o corpo ocupa o tile em que ele PISA, e medir
-			// pelo meio do desenho abriria a passagem um tile antes de chegar nela.
-			int cx = (int)Math.Floor(pl.Pos.X / ZoneCollision.TileSize);
-			int cy = (int)Math.Floor((pl.Pos.Y + MoveRules.FeetOffsetY) / ZoneCollision.TileSize);
+			// O PASSO QUE ENTRA NA BOCA, e nao "o pe em cima dela". A boca esta lacrada (ninguem pisa
+			// nela, como no BYOND), entao o gesto e o do `Enter()`: andando, com a caixa dos pes
+			// projetada um tile no rumo do olhar tocando a celula. Ver `Passagem.NoPasso`.
+			Passagem? boca = null;
+			if (pl.Moving)
+				foreach (Passagem p in lista)
+					if (p.NoPasso(pl.Pos, pl.Facing)) { boca = p; break; }
 
-			foreach (Passagem p in lista)
-			{
-				if (p.X != cx || p.Y != cy) continue;
+			// A BORDA DO GESTO. Parou ou virou: a marca cai e a boca esta armada de novo. Continua
+			// empurrando desde o ultimo tique (ou desde a chegada): nada acontece.
+			if (boca == null) { _naBocaDaPassagem.Remove(pl.Id); continue; }
+			if (!_naBocaDaPassagem.Add(pl.Id)) continue;
 
-				// A PRISAO DA SALA DO TEMPO RECUSA AQUI, e nao no `Atravessar`: a recusa e uma
-				// resposta ao GESTO (pisar na saida), e ela precisa acontecer antes de a carencia
-				// ser armada la dentro -- senao quem esta preso ficaria 1,5 s sem nem ouvir por que
-				// nao saiu. Ver `GameServer.SalaSessao.cs`.
-				if (APrisaoRecusaASaida(pl, p)) break;
+			// A PRISAO DA SALA DO TEMPO RECUSA AQUI, e nao no `Atravessar`: a recusa e uma
+			// resposta ao GESTO (empurrar a saida), e ela precisa acontecer antes de a carencia
+			// ser armada la dentro -- senao quem esta preso ficaria 1,5 s sem nem ouvir por que
+			// nao saiu. Ver `GameServer.SalaSessao.cs`.
+			if (APrisaoRecusaASaida(pl, boca)) continue;
 
-				// E O ALEM NAO DEIXA SAIR -- pelo mesmo motivo e no mesmo lugar que a prisao da Sala:
-				// a recusa responde ao GESTO, antes de a carencia ser armada.
-				if (OInfernoNaoDeixaSair(pl, p)) break;
+			// E O ALEM NAO DEIXA SAIR -- pelo mesmo motivo e no mesmo lugar que a prisao da Sala:
+			// a recusa responde ao GESTO, antes de a carencia ser armada.
+			if (OInfernoNaoDeixaSair(pl, boca)) continue;
 
-				if (OAlemNaoDeixaSair(pl, p)) break;
+			if (OAlemNaoDeixaSair(pl, boca)) continue;
 
-				Atravessar(pl, p);
-				break;
-			}
+			Atravessar(pl, boca);
 		}
 	}
 
@@ -150,6 +177,9 @@ public sealed partial class GameServer
 		// A CARENCIA E POSTA ANTES DA MUDANCA, e no jogador -- a saida do outro lado costuma cair
 		// em cima da entrada de volta, e sem isto o corpo ricochetearia entre os dois mapas.
 		_acabouDeAtravessar[pl.Id] = NowMs() + MsDeCarenciaDePassagem;
+		// CHEGA "EMPURRANDO": a tecla que trouxe o corpo ate aqui continua apertada do outro lado, e
+		// nao pode contar como um gesto novo. Ver `_naBocaDaPassagem`.
+		_naBocaDaPassagem.Add(pl.Id);
 
 		string destino = p.Nome.Length > 0 ? p.Nome : p.Zona;
 
@@ -165,7 +195,24 @@ public sealed partial class GameServer
 		Avisar(pl, $"você atravessa e chega em {destino}.");
 		GD.Print($"[server] {pl.Name}: {pl.Zone.Name} -> {p.Zona} ({destino})");
 
-		MoveToZone(pl.Id, ZoneKey.Premade(p.Zona), new Vec2(p.Dx, p.Dy));
+		MoveToZone(pl.Id, ZoneKey.Premade(p.Zona), ChegadaDaPassagem(pl.Zone.Name, p));
+	}
+
+	/// <summary>
+	/// ONDE ESTA PASSAGEM DEIXA O CORPO: um tile na frente da boca de volta, nunca dentro de parede.
+	/// A regra e do Core (<see cref="Passagem.Chegada"/>); aqui so se juntam o mapa lacrado do destino
+	/// e a lista de bocas dele. Sem mapa (zona sem colisao) vale o ponto que o DM cravou.
+	/// </summary>
+	private Vec2 ChegadaDaPassagem(string origem, Passagem p)
+	{
+		var dm = new Vec2(p.Dx, p.Dy);
+		if (_catalogo?.Get(p.Zona)?.Mapa is not { } mapa) return dm;
+		List<Passagem> voltas = _passagens.TryGetValue(p.Zona, out List<Passagem>? l) ? l : [];
+		Vec2 chegada = Passagem.Chegada(mapa, voltas, origem, dm);
+		if ((chegada - dm).LengthSquared > 1f)
+			GD.Print($"[server] passagem {origem} -> {p.Zona}: o DM cravava ({dm.X:0},{dm.Y:0}); "
+					 + $"o corpo chega na frente da boca, em ({chegada.X:0},{chegada.Y:0})");
+		return chegada;
 	}
 
 	/// <summary>
@@ -218,6 +265,10 @@ public sealed partial class GameServer
 		return true;
 	}
 
-	/// <summary>Esquece a carencia de quem saiu -- senao o dicionario cresce a sessao inteira.</summary>
-	private void EsquecerPassagem(int id) => _acabouDeAtravessar.Remove(id);
+	/// <summary>Esquece a carencia e a marca de quem saiu -- senao os dicionarios crescem a sessao inteira.</summary>
+	private void EsquecerPassagem(int id)
+	{
+		_acabouDeAtravessar.Remove(id);
+		_naBocaDaPassagem.Remove(id);
+	}
 }

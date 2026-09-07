@@ -732,7 +732,11 @@ public partial class GameServer
 			  PresaDoNpc(aldeao) == null, $"presa: {PresaDoNpc(aldeao)?.Name}");
 
 		// ---- e agora o jogador pousa, 4x mais LONGE que o cidadao ----
-		MoveToZone(pl.Id, chefe.Zone, chefe.Pos + new Vec2(900, 0));
+		// 600 px, e nao 900: o raio de agressao do hostil e de 20 tiles (640 px, `RaioDeAgressao`). Os
+		// 900 de antes so viravam presa porque o chefe nascia no meio da cidade e o `PontoLivrePerto`
+		// puxava o jogador pra dentro do raio; com o espalhamento o chefe nasce em campo aberto e os
+		// 900 px sao 900 px de verdade.
+		MoveToZone(pl.Id, chefe.Zone, chefe.Pos + new Vec2(600, 0));
 		ServerPlayer? presaComGente = PresaDoNpc(chefe);
 
 		MarcarAgressao(aldeao, pl);
@@ -744,7 +748,7 @@ public partial class GameServer
 
 		Checa("um planeta com corpos sem dono e NENHUM jogador nao conta como habitado (o anti-lag engata)",
 			  semGente);
-		Checa("CONTROLE: o jogador pousa a 900 px (4x mais longe que o cidadao) e vira a presa na hora",
+		Checa("CONTROLE: o jogador pousa a 600 px (dentro dos 20 tiles do raio de agressao, 3x mais longe que o cidadao) e vira a presa na hora",
 			  presaComGente == pl, $"presa: {presaComGente?.Name ?? "ninguem"}");
 		Checa("CONTROLE: e o cidadao REVIDA quando quem bateu foi gente (senao o vilarejo seria de pedra)",
 			  revidaEmGente);

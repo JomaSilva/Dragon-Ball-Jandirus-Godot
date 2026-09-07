@@ -84,7 +84,7 @@ public partial class RoboDeArteDeKi : Node2D
 		"Charged_Shot", "KillDriver", "BusterShell", "Scattershot", "Energy_Barrage",
 		"Ki_Bomb", "Hellzone_Grenade", "Kienzan", "Paralysis", "Stunlock",
 		"Kamehameha", "GalicGun", "Death_Beam", "Dodompa", "Enkumei", "Boom_Wave", "Kikoho",
-		"Scattering_Bullet", "Spirit_Gun",
+		"Scattering_Bullet", "Spirit_Gun", "Kiai",
 	];
 
 	private void Familia1()
@@ -100,6 +100,39 @@ public partial class RoboDeArteDeKi : Node2D
 			(vistas.TryGetValue(a, out List<string>? l) ? l : vistas[a] = []).Add(v);
 		}
 		Ok($"os {VerbosDeProducao.Length} verbos de producao tem arte declarada", semArte == 0);
+
+		// ============================ A LAMINA DE AR DO KIAI (dono, 2026-09-07) ============================
+		// `Kiai.dm:34-40`: `Daitoppa.dmi` tingido de ki, igual pra toda raca, e INVISIVEL de nascenca.
+		// Quem a ve e quem tinha `see_invisible = 1` no original -- e a pergunta e pura, entao ela e
+		// medida aqui, raca por raca, com contra-exemplos.
+		Ok("o Kiai veste o `Daitoppa.dmi` (`Kiai.dm:34`), literal e igual pra toda raca",
+		   ArteDeProjetil.De("Kiai", "Human", "", 1) == ArteDeKi.Daitoppa
+		   && ArteDeProjetil.De("Kiai", "Android", "", 1) == ArteDeKi.Daitoppa
+		   && ArteDeProjetil.De("Kiai", "Namekian", "", 1) == ArteDeKi.Daitoppa);
+		Ok("...e a folha dele EXISTE no disco (Blasts/Daitoppa.tres)", ArteDeKiNoCliente.Folha(ArteDeKi.Daitoppa) != null);
+		Ok("Namekian, Kanassa, Spirit, Shapeshifter, Yardrat e o Demigod Genie enxergam a lamina (`see_invisible = 1`)",
+		   VisaoDoInvisivel.Enxerga("Namekian", "") && VisaoDoInvisivel.Enxerga("Kanassa", "")
+		   && VisaoDoInvisivel.Enxerga("Spirit", "") && VisaoDoInvisivel.Enxerga("Shapeshifter", "")
+		   && VisaoDoInvisivel.Enxerga("Yardrat", "") && VisaoDoInvisivel.Enxerga("Demigod", "Genie"));
+		Ok("CONTRA-EXEMPLO: Human, Saiyan, Android e o Demigod Ogre NAO enxergam",
+		   !VisaoDoInvisivel.Enxerga("Human", "") && !VisaoDoInvisivel.Enxerga("Saiyan", "")
+		   && !VisaoDoInvisivel.Enxerga("Android", "") && !VisaoDoInvisivel.Enxerga("Demigod", "Ogre")
+		   && !VisaoDoInvisivel.Enxerga(null, null));
+
+		var lamina = new ProjetilDesenhado { Name = "LaminaDeTeste", Tipo = TipoDeProjetil.Blast, Cor = new Color(1f, 0.2f, 0.2f), Invisivel = true };
+		lamina.Vestir(ArteDeKi.Daitoppa, 1f);
+		AddChild(lamina);
+		lamina.MostrarPara(veInvisivel: false);
+		Ok("um tiro que nasceu invisivel SOME pra quem nao enxerga (o no fica, o desenho nao)", !lamina.Visible);
+		lamina.MostrarPara(veInvisivel: true);
+		Ok("...e APARECE pra quem enxerga", lamina.Visible);
+		var comum = new ProjetilDesenhado { Name = "BolaDeTeste", Tipo = TipoDeProjetil.Blast, Cor = new Color(1f, 0.2f, 0.2f) };
+		comum.Vestir(ArteDeKi.Blast12, 1f);
+		AddChild(comum);
+		comum.MostrarPara(veInvisivel: false);
+		Ok("CONTRA-EXEMPLO: um tiro comum continua visivel pra quem NAO enxerga o invisivel", comum.Visible);
+		lamina.QueueFree();
+		comum.QueueFree();
 
 		// ============================ A MEDIDA QUE RESPONDE O PEDIDO DO DONO ============================
 		// "MAIS VARIEDADE" e um numero: quantas folhas DISTINTAS os verbos usam. Antes desta rodada

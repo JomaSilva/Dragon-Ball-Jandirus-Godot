@@ -98,9 +98,21 @@ public static class MapConverter
 		public List<double[]> Duracoes = [];
 	}
 
-	public static void Convert(string dmmDir, string spritesDir, string outDir, Dictionary<string, TurfDef> turfs)
+	/// <param name="soFisica">
+	/// SO A FISICA, E SO PRA LIBERTAR. A conversao cheia reescreve tileset, `tiles.json`, os 40
+	/// `.tscn`/`.pedacos` e o indice de sprites -- que resolve nome repetido por `TryAdd` e trocaria 21
+	/// artes sem ninguem ter pedido (ver a nota do comando `agua` em `Program.cs`). Com esta chave a
+	/// MESMA passada roda, pela mesma regra, mas nada de arte e escrito: os `paredes`/`cegos` novos sao
+	/// comparados com o `.col`/`.vis` do disco e so os bits que a regra nova NAO bloqueia mais sao
+	/// apagados (`LibertarNaColisao`). Um bit novo que o disco nao tem e RELATADO, nunca gravado --
+	/// ele viria de uma diferenca entre o indice em memoria e o tileset do disco, nao de mapa.
+	/// </param>
+	public static void Convert(string dmmDir, string spritesDir, string outDir, Dictionary<string, TurfDef> turfs,
+							   bool soFisica = false)
 	{
 		Directory.CreateDirectory(outDir);
+		if (soFisica) Console.WriteLine("SO FISICA: tileset, tiles.json, cenas, pedacos e luzes ficam como estao; "
+										 + "o .col e o .vis so PERDEM bits");
 
 		// A RAIZ DO PROJETO GODOT, achada pelo `project.godot` -- NAO o diretorio de trabalho.
 		//
@@ -222,26 +234,29 @@ public static class MapConverter
 		// Tem que vir ANTES do tileset E antes das cenas: o reempacote cria FONTES NOVAS e muda a
 		// coordenada das celulas que usam esses estados. Fazer depois deixaria as cenas apontando
 		// pro quadro parado enquanto o tileset ja anunciava o animado.
-		int reempacotadas = Reempacotar(fontes, raiz, ref proxId);
-		if (reempacotadas > 0)
-			Console.WriteLine($"animacoes reempacotadas: {reempacotadas} (nao cabiam numa linha do atlas)");
+		if (!soFisica)
+		{
+			int reempacotadas = Reempacotar(fontes, raiz, ref proxId);
+			if (reempacotadas > 0)
+				Console.WriteLine($"animacoes reempacotadas: {reempacotadas} (nao cabiam numa linha do atlas)");
 
-		EscreverTileSet(Path.Combine(outDir, "tileset.tres"), fontes);
+			EscreverTileSet(Path.Combine(outDir, "tileset.tres"), fontes);
 
-		// O INDICE DE TILES SAI JUNTO DO TILESET, e tem que ser aqui: os `source id` nascem de
-		// um contador por ordem de descoberta, entao um `tiles.json` velho ao lado de um
-		// `tileset.tres` novo nao da erro nenhum -- da o SPRITE ERRADO. Gerar os dois na mesma
-		// passada e o que impede os dois de envelhecerem em ritmos diferentes.
-		//
-		// Quem consome: o planeta PROCEDURAL. O gerador do Core devolve `TileVisual(atlas,
-		// estado)` -- nomes -- e sem esta tabela nada no jogo sabe transformar isso em celula.
-		TileIndex.Resultado idx = TileIndex.Escrever(
-			Path.Combine(raiz, "Assets", "Data", "tiles.json"),
-			fontes.Values.Select(f => new FonteDeAtlas(
-				f.Id, f.Chave, f.ResPath, f.IconW, f.IconH, f.Cols, f.StateIndex)));
-		Console.WriteLine($"indice de tiles  : {idx.Atlas} atlas, {idx.Estados} estados"
-						  + (idx.Colisoes.Count > 0 ? $" | {idx.Colisoes.Count} nome(s) em disputa" : ""));
-		foreach (string c in idx.Colisoes) Console.WriteLine("   " + c);
+			// O INDICE DE TILES SAI JUNTO DO TILESET, e tem que ser aqui: os `source id` nascem de
+			// um contador por ordem de descoberta, entao um `tiles.json` velho ao lado de um
+			// `tileset.tres` novo nao da erro nenhum -- da o SPRITE ERRADO. Gerar os dois na mesma
+			// passada e o que impede os dois de envelhecerem em ritmos diferentes.
+			//
+			// Quem consome: o planeta PROCEDURAL. O gerador do Core devolve `TileVisual(atlas,
+			// estado)` -- nomes -- e sem esta tabela nada no jogo sabe transformar isso em celula.
+			TileIndex.Resultado idx = TileIndex.Escrever(
+				Path.Combine(raiz, "Assets", "Data", "tiles.json"),
+				fontes.Values.Select(f => new FonteDeAtlas(
+					f.Id, f.Chave, f.ResPath, f.IconW, f.IconH, f.Cols, f.StateIndex)));
+			Console.WriteLine($"indice de tiles  : {idx.Atlas} atlas, {idx.Estados} estados"
+							  + (idx.Colisoes.Count > 0 ? $" | {idx.Colisoes.Count} nome(s) em disputa" : ""));
+			foreach (string c in idx.Colisoes) Console.WriteLine("   " + c);
+		}
 
 		// ============================ O MAPA DOS DESTINOS, ANTES DE CONVERTER ============================
 		// Uma passagem da Terra aponta pro z 23 (a caverna), que so vai ser convertido daqui a vinte
@@ -269,6 +284,7 @@ public static class MapConverter
 		// ---- passada 2: uma cena por andar + o mapa de colisao que o SERVIDOR le ----
 		int cenas = 0, celulas = 0, bloqueadas = 0, totalPortas = 0, totalMaquinas = 0, totalPassagens = 0;
 		int totalAgua = 0, totalDuro = 0, totalNuvem = 0;
+		int libertadas = 0, cegasLibertadas = 0, novasNaoGravadas = 0;
 		var manifesto = new List<string>();
 		foreach ((string arquivo, DmmMap.Result dados, int off) in mapas)
 			foreach (DmmLevel nivel in dados.Levels)
@@ -286,7 +302,21 @@ public static class MapConverter
 										out Dictionary<(int, int), byte> cegos,
 										out List<string> portas,
 										out List<string> maquinas,
-										out List<string> passagens);
+										out List<string> passagens, gravar: !soFisica);
+				if (soFisica)
+				{
+					(int lc, int nc) = LibertarNaColisao(Path.Combine(outDir, nome + ".col"), nivel.Width, nivel.Height, paredes);
+					(int lv, int nv) = LibertarNaColisao(Path.Combine(outDir, nome + ".vis"), nivel.Width, nivel.Height, cegos.Keys);
+					AcompanharListas(outDir, nome, portas, passagens, out int portasTiradas, out bool passagensMudaram);
+					libertadas += lc; cegasLibertadas += lv; novasNaoGravadas += nc + nv;
+					if (lc + lv + nc + nv + portasTiradas > 0 || passagensMudaram)
+						Console.WriteLine($"  {nome}: .col -{lc} | .vis -{lv}"
+										  + (nc + nv > 0 ? $" | bits NOVOS nao gravados: .col {nc}, .vis {nv}" : "")
+										  + (portasTiradas > 0 ? $" | .portas -{portasTiradas}" : "")
+										  + (passagensMudaram ? $" | .passagens reescrito ({passagens.Count})" : ""));
+					cenas++;
+					continue;
+				}
 				bloqueadas += EscreverColisao(Path.Combine(outDir, nome + ".col"),
 											  nivel.Width, nivel.Height, paredes);
 				// mesmo formato, outro proposito: este e o que o CAMPO DE VISAO consulta
@@ -365,6 +395,16 @@ public static class MapConverter
 							$"\"passagens\": \"res://Assets/Maps/{nome}.passagens\", " +
 							  $"\"w\": {nivel.Width}, \"h\": {nivel.Height} }}");
 			}
+
+		if (soFisica)
+		{
+			Console.WriteLine($"mapas lidos    : {mapas.Count}");
+			Console.WriteLine($"andares        : {cenas}");
+			Console.WriteLine($"col libertadas : {libertadas} celula(s) que bloqueavam sem ninguem que as desenhasse");
+			Console.WriteLine($"vis libertadas : {cegasLibertadas} celula(s) que cegavam por baixo de outro turf");
+			Console.WriteLine($"novas ignoradas: {novasNaoGravadas} (bits que a passada quis e o disco nao tem -- so relato)");
+			return;
+		}
 
 		File.WriteAllText(Path.Combine(outDir, "manifest.json"),
 			"[\n" + string.Join(",\n", manifesto) + "\n]\n", new UTF8Encoding(false));
@@ -858,7 +898,7 @@ public static class MapConverter
 	/// </summary>
 	private static Func<int, int, int, (string Zona, float Px, float Py)?>? Destinos;
 
-	private static string NomeDoAndar(DmmMap.Result dados, DmmLevel nivel, int offset)
+	internal static string NomeDoAndar(DmmMap.Result dados, DmmLevel nivel, int offset)
 	{
 		// a AREA dominante nomeia o andar: e o nome que o jogo ja usa pro lugar
 		var contagem = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -959,7 +999,7 @@ public static class MapConverter
 		Dictionary<string, List<string>> atlasPorNome, HashSet<string> semAtlas, ref int proxId,
 		out HashSet<(int, int)> paredes, out Dictionary<(int, int), byte> cegos,
 		out List<string> portasDaCena, out List<string> maquinasDaCena,
-		out List<string> passagensDaCena)
+		out List<string> passagensDaCena, bool gravar = true)
 	{
 		var passagens = new List<string>();
 		int semDestino = 0;
@@ -1116,14 +1156,32 @@ public static class MapConverter
 		var semAnimacao = new Dictionary<string, int>(StringComparer.Ordinal);
 		var luzes = new List<LuzDeTile>();
 
+		/// <summary>Turfs densos que ficaram POR BAIXO de outro turf e por isso nao tem fisica: quantos de cada.</summary>
+		var subsolo = new Dictionary<string, int>(StringComparer.Ordinal);
+
 		// Poe UM typepath numa camada. Devolve se conseguiu desenhar.
 		//
 		// `cega` diz se ESTA camada corta a linha de visao. Ver o comentario da chamada dos
 		// objetos: cenario solto (arvore, pedra, poste) PARA, mas nao ESCONDE.
-		bool Por(string? bp, List<Jandirus.Core.World.CelulaDePedaco> destino, int x, int y, bool cega = true)
+		//
+		// ============================ `fisica`: SO O ULTIMO TURF DA CELULA TEM CORPO ============================
+		// Uma celula do `.dmm` pode listar dois turfs -- `(/turf/decor/Table4, /turf/Tile/Tile5)` no
+		// castelo de Vegeta, `(/turf/decor/SnowBush, /turf/Grass/Grass23)` na neve. No BYOND so o
+		// ULTIMO existe: cada `new /turf` substitui o anterior, e o que sobra do primeiro e no
+		// maximo um desenho por baixo. Densidade, opacidade, `Enter()`, luz: tudo do ultimo.
+		//
+		// O desenho aqui ja fazia isso certo (o primeiro vai pro `Chao`, o ultimo pro `Decor`, por
+		// cima). A FISICA nao: as duas chamadas de `Por` somavam `muros` e `vendados`, e a mesa
+		// densa escondida embaixo do piso virava uma parede invisivel. Foi o que o dono viu no
+		// castelo: "o icone nao aparece, so a hitbox, em varios locais do mapa". O `.agua`, o `.duro`
+		// e o `.nuvem` sempre perguntaram pelo ultimo turf (ver `CelulasDeAgua`); este era o unico
+		// dos cinco mapas de celula que perguntava pelos dois.
+		// ========================================================================================================
+		bool Por(string? bp, List<Jandirus.Core.World.CelulaDePedaco> destino, int x, int y, bool cega = true, bool fisica = true)
 		{
 			if (bp == null) return false;
 			if (!turfs.TryGetValue(bp, out TurfDef? td)) return false;
+			if (!fisica && td.Density) subsolo[bp] = subsolo.GetValueOrDefault(bp) + 1;
 
 			// BORDA DO MUNDO. `/turf/Other/Blank` e denso, opaco e NAO TEM ICONE -- e o limite
 			// do mapa, invisivel de proposito. A regra "so bloqueia o que da pra ver" (certa
@@ -1134,7 +1192,7 @@ public static class MapConverter
 			// de topologia la em cima: e a parede invisivel que o dono atravessou o mapa pra achar.
 			if (td.Icon == null)
 			{
-				if (td.Density && !costuras.Contains((x, y)))
+				if (fisica && td.Density && !costuras.Contains((x, y)))
 				{
 					muros.Add((x, y));
 					if (cega) vendados[(x, y)] = Jandirus.Core.World.ZoneCollision.BordaDoMundo;
@@ -1216,7 +1274,10 @@ public static class MapConverter
 			// O que fica embaixo e o mesmo que ficava no BYOND: o turf de chao, se o prefab tinha um,
 			// e o vazio se nao tinha (la o turf E a camada de baixo, entao porta aberta ja mostrava
 			// o escuro).
-			bool porta = EhPorta(bp);
+			// POR BAIXO DE OUTRO TURF NAO HA PORTA NEM MAQUINA: a `Door4` que o `.dmm` empilha debaixo do
+			// teleportador do castelo de Vegeta e so o desenho de uma porta. Vira tile, como qualquer
+			// underlay -- e nao um node que abre pro nada.
+			bool porta = fisica && EhPorta(bp);
 
 			// ============================ MAQUINA NAO E CENARIO ============================
 			// Banco, bancada de pesquisa, sala de gravidade, regenerador, os laboratorios: no
@@ -1233,7 +1294,7 @@ public static class MapConverter
 			//
 			// A COLISAO CONTINUA NO `.col`, como a da porta: a maquina nao anda, e o bit ja esta
 			// calculado. O que muda e so quem DESENHA.
-			Jandirus.Core.Tech.Construcao? maquina = porta ? null : Obras.PorTypepath(bp);
+			Jandirus.Core.Tech.Construcao? maquina = (porta || !fisica) ? null : Obras.PorTypepath(bp);
 
 			if (porta)
 			{
@@ -1283,7 +1344,7 @@ public static class MapConverter
 			// A PASSAGEM SAI DA COLISAO pelo mesmo motivo da porta: no DM ela e densa, mas o
 			// `Enter()` teleporta ANTES de o bloqueio valer. Marcada como parede, ela vira uma
 			// escada que ninguem sobe. Ver `MarcarSolidos`.
-			if ((td.Density || barreira) && !Passagens.Eh(bp)) muros.Add((x, y));
+			if (fisica && (td.Density || barreira) && !Passagens.Eh(bp)) muros.Add((x, y));
 
 			// ...e a porta CEGA mesmo sem bloquear: ela esta fechada no desenho.
 			// ============================ O QUE CEGA NAO E O QUE BLOQUEIA ============================
@@ -1303,10 +1364,10 @@ public static class MapConverter
 			// ramo de turf que tinha escapado dela.
 			// =====================================================================================
 			bool decor = bp.StartsWith("/turf/decor", StringComparison.Ordinal);
-			if (td.Density && cega && !decor) vendados[(x, y)] = GrupoDe(f.Id, c.X, c.Y);
+			if (fisica && td.Density && cega && !decor) vendados[(x, y)] = GrupoDe(f.Id, c.X, c.Y);
 
 			// FONTE DE LUZ. Fogueira, tocha, lampada e lava acendem o cenario -- ver LightCatalog.
-			if (LightCatalog.Da(bp) is { } luz)
+			if (fisica && LightCatalog.Da(bp) is { } luz)
 				luzes.Add(new LuzDeTile(x, y, luz.Raio, luz.Cor, luz.Forca, luz.Tremula));
 
 			return true;
@@ -1322,7 +1383,7 @@ public static class MapConverter
 				// jogava fora tudo que estava POR CIMA do chao: a porta da casa, o litoral
 				// curvo, as plantas, as cadeiras, as pedras, as mesas. So na Terra sao 575
 				// turfs em 572 celulas, e e metade da queixa "falta coisa no mapa".
-				string? fundo = null, topo = null, objeto = null, maquina = null;
+				string? fundo = null, topo = null, objeto = null, maquina = null, tpTopo = null;
 				bool tinhaObj = false;
 
 				foreach (string tp in tipos)
@@ -1339,19 +1400,20 @@ public static class MapConverter
 					//
 					// A CELULA CONTINUA SENDO DESENHADA. No original a boca da caverna e um desenho como
 					// outro qualquer, e apagar o tile deixaria um buraco no chao onde havia uma entrada.
-					if (Passagens.De(tp) is { } dest && Destinos != null)
-					{
-						if (Destinos(dest.X, dest.Y, dest.Z) is { } onde)
-							passagens.Add($"{{ \"x\": {x}, \"y\": {y}, \"zona\": \"{onde.Zona}\", "
-										  + $"\"dx\": {onde.Px:0}, \"dy\": {onde.Py:0}, "
-										  + $"\"nome\": \"{(dest.Nome.Length > 0 ? dest.Nome : onde.Zona)}\" }}");
-						else semDestino++;
-					}
-
+					// ...E SO O ULTIMO TURF PODE SER UMA. Um teleportador por baixo de outro turf foi
+					// substituido no BYOND como qualquer underlay; extrair a passagem dele lacraria (e
+					// teleportaria) uma celula que no original e chao comum. Os `/obj` nunca sao underlay.
 					if (bp.StartsWith("/turf", StringComparison.Ordinal))
 					{
 						fundo ??= bp;
 						topo = bp;                        // sempre o ultimo visto
+						tpTopo = tp;
+					}
+					else if (Passagens.De(tp) is { } destObj && Destinos != null)
+					{
+						if (Destinos(destObj.X, destObj.Y, destObj.Z) is { } onde)
+							passagens.Add(LinhaDePassagem(x, y, onde, destObj));
+						else semDestino++;
 					}
 					else if (bp.StartsWith("/obj", StringComparison.Ordinal))
 					{
@@ -1378,10 +1440,16 @@ public static class MapConverter
 					}
 				}
 
+				if (tpTopo != null && Passagens.De(tpTopo) is { } dest && Destinos != null)
+				{
+					if (Destinos(dest.X, dest.Y, dest.Z) is { } onde) passagens.Add(LinhaDePassagem(x, y, onde, dest));
+					else semDestino++;
+				}
+
 				// uma celula com um turf so nao precisa de decoracao; com dois ou mais, o
 				// primeiro e o chao e o ULTIMO vai por cima
 				bool empilhado = topo != null && !ReferenceEquals(fundo, topo) && fundo != topo;
-				Por(fundo, bytes, x, y);
+				Por(fundo, bytes, x, y, fisica: !empilhado);   // por baixo de outro turf, e so desenho
 				if (empilhado) Por(topo, decoracao, x, y);
 
 				// A CAMADA DE OBJETOS NAO CEGA -- e o que tira a sombra das arvores.
@@ -1517,57 +1585,66 @@ public static class MapConverter
 		sb.Append(SemFisica);
 		sb.Append("tile_set = ExtResource(\"1_ts\")\n");
 
-		File.WriteAllText(caminho, sb.ToString(), new UTF8Encoding(false));
-
-		// AS CELULAS, AO LADO DA CENA. A ordem dos nomes casa com a ordem em que as camadas foram
-		// declaradas acima -- e o que deixa o cliente achar o `TileMapLayer` de cada pedaco sem
-		// depender de procurar por nome numa arvore que ele nao montou.
-		string arqPedacos = Path.ChangeExtension(caminho, ".pedacos");
-		Jandirus.Core.World.PedacosDoMapa.Escrever(
-			arqPedacos,
-			Jandirus.Core.World.PedacosDoMapa.LadoPadrao,
-			["Chao", "Decor", "Objetos"],
-			[bytes, decoracao, objetos]);
-
-		// ============================ LER DE VOLTA E CONFERIR A CONTA ============================
-		// Um mapa que perde celulas no caminho nao falha: ele DESENHA errado, e so alguem olhando
-		// pro chao percebe -- meses depois, sem saber de onde veio. Este pipeline ja produziu um
-		// defeito assim (o `tile_map_data` recusado em silencio por causa do numero de formato: a
-		// cena carregava, o layer ficava vazio e nada avisava).
-		//
-		// CONTAR NAO BASTA: uma celula que caisse no balde errado, ou com o X e o Y trocados,
-		// passaria por uma conferencia de quantidade. A assinatura mistura camada, posicao e quadro
-		// de cada celula e NAO depende da ordem -- que e o que muda de propósito no agrupamento.
-		//
-		// Sao ~5 ms por mapa pra transformar "confio no meu agrupamento" em "esta escrito".
-		int esperadas = bytes.Count + decoracao.Count + objetos.Count;
-		ulong assinado = Assinar(bytes, 0) ^ Assinar(decoracao, 1) ^ Assinar(objetos, 2);
-
-		Jandirus.Core.World.PedacosDoMapa? relido =
-			Jandirus.Core.World.PedacosDoMapa.Ler(File.ReadAllBytes(arqPedacos));
-		if (relido == null)
+		// SO GRAVA QUANDO PEDIDO: a reconversao de fisica (`fisica`, ver `Convert`) passa por aqui pra
+		// obter `paredes`/`cegos` pela MESMA regra da cena, e nao pode reescrever cena, pedacos nem luz.
+		if (gravar)
 		{
-			Console.WriteLine($"  {nome}: ERRO -- o .pedacos que acabei de escrever nao volta a ler");
-		}
-		else
-		{
-			ulong lido = 0;
-			for (int c = 0; c < relido.Camadas.Length; c++)
-				for (int cy = relido.Cy0; cy < relido.Cy1; cy++)
-					for (int cx = relido.Cx0; cx < relido.Cx1; cx++)
-					{
-						if (!relido.Achar(cx, cy, c, out int ini, out int q)) continue;
-						for (int i = 0; i < q; i++) lido ^= Marca(relido.Celula(ini, i), c);
-					}
+			File.WriteAllText(caminho, sb.ToString(), new UTF8Encoding(false));
 
-			if (relido.TotalDeCelulas != esperadas || lido != assinado)
-				Console.WriteLine($"  {nome}: ERRO NO .pedacos -- escrevi {esperadas} celulas "
-								  + $"(assinatura {assinado:X16}) e reli {relido.TotalDeCelulas} "
-								  + $"({lido:X16})");
-		}
+			// AS CELULAS, AO LADO DA CENA. A ordem dos nomes casa com a ordem em que as camadas foram
+			// declaradas acima -- e o que deixa o cliente achar o `TileMapLayer` de cada pedaco sem
+			// depender de procurar por nome numa arvore que ele nao montou.
+			string arqPedacos = Path.ChangeExtension(caminho, ".pedacos");
+			Jandirus.Core.World.PedacosDoMapa.Escrever(
+				arqPedacos,
+				Jandirus.Core.World.PedacosDoMapa.LadoPadrao,
+				["Chao", "Decor", "Objetos"],
+				[bytes, decoracao, objetos]);
 
-		LightCatalog.Escrever(Path.ChangeExtension(caminho, ".luz"), luzes);
-		if (luzes.Count > 0) Console.WriteLine($"  {nome}: {luzes.Count} fontes de luz");
+			// ============================ LER DE VOLTA E CONFERIR A CONTA ============================
+			// Um mapa que perde celulas no caminho nao falha: ele DESENHA errado, e so alguem olhando
+			// pro chao percebe -- meses depois, sem saber de onde veio. Este pipeline ja produziu um
+			// defeito assim (o `tile_map_data` recusado em silencio por causa do numero de formato: a
+			// cena carregava, o layer ficava vazio e nada avisava).
+			//
+			// CONTAR NAO BASTA: uma celula que caisse no balde errado, ou com o X e o Y trocados,
+			// passaria por uma conferencia de quantidade. A assinatura mistura camada, posicao e quadro
+			// de cada celula e NAO depende da ordem -- que e o que muda de propósito no agrupamento.
+			//
+			// Sao ~5 ms por mapa pra transformar "confio no meu agrupamento" em "esta escrito".
+			int esperadas = bytes.Count + decoracao.Count + objetos.Count;
+			ulong assinado = Assinar(bytes, 0) ^ Assinar(decoracao, 1) ^ Assinar(objetos, 2);
+
+			Jandirus.Core.World.PedacosDoMapa? relido =
+				Jandirus.Core.World.PedacosDoMapa.Ler(File.ReadAllBytes(arqPedacos));
+			if (relido == null)
+			{
+				Console.WriteLine($"  {nome}: ERRO -- o .pedacos que acabei de escrever nao volta a ler");
+			}
+			else
+			{
+				ulong lido = 0;
+				for (int c = 0; c < relido.Camadas.Length; c++)
+					for (int cy = relido.Cy0; cy < relido.Cy1; cy++)
+						for (int cx = relido.Cx0; cx < relido.Cx1; cx++)
+						{
+							if (!relido.Achar(cx, cy, c, out int ini, out int q)) continue;
+							for (int i = 0; i < q; i++) lido ^= Marca(relido.Celula(ini, i), c);
+						}
+
+				if (relido.TotalDeCelulas != esperadas || lido != assinado)
+					Console.WriteLine($"  {nome}: ERRO NO .pedacos -- escrevi {esperadas} celulas "
+									  + $"(assinatura {assinado:X16}) e reli {relido.TotalDeCelulas} "
+									  + $"({lido:X16})");
+			}
+
+			LightCatalog.Escrever(Path.ChangeExtension(caminho, ".luz"), luzes);
+			if (luzes.Count > 0) Console.WriteLine($"  {nome}: {luzes.Count} fontes de luz");
+		}
+		if (subsolo.Count > 0)
+			Console.WriteLine($"  {nome}: {subsolo.Values.Sum()} celula(s) com turf denso POR BAIXO de outro, sem fisica -- "
+							  + string.Join(", ", subsolo.OrderByDescending(kv => kv.Value).Take(4)
+								  .Select(kv => $"{kv.Key[(kv.Key.LastIndexOf('/') + 1)..]} x{kv.Value}")));
 		paredes = muros;
 		cegos = vendados;
 		portasDaCena = portas;
@@ -2251,6 +2328,127 @@ public static class MapConverter
 	///
 	/// As paredes chegam PRONTAS de quem desenhou a cena -- ver EscreverCena.
 	/// </summary>
+	/// <summary>Uma linha do `.passagens`: a celula de origem, a zona e o ponto de chegada que o DM cravou.</summary>
+	private static string LinhaDePassagem(int x, int y, (string Zona, float Px, float Py) onde, Passagens.Destino dest) =>
+		$"{{ \"x\": {x}, \"y\": {y}, \"zona\": \"{onde.Zona}\", "
+		+ $"\"dx\": {onde.Px:0}, \"dy\": {onde.Py:0}, "
+		+ $"\"nome\": \"{(dest.Nome.Length > 0 ? dest.Nome : onde.Zona)}\" }}";
+
+	/// <summary>
+	/// NA RECONVERSAO SO DE FISICA, AS LISTAS TAMBEM ACOMPANHAM A REGRA -- pelo mesmo principio do `.col`:
+	/// o `.portas` so PERDE (a porta por baixo do teleportador some; nenhuma porta nova e inventada, o
+	/// `arte` das que ficam e o do disco), e o `.passagens` e reescrito por inteiro, porque ele nao
+	/// depende de arte nenhuma -- so do `.dmm` e da tabela de destinos.
+	/// </summary>
+	private static void AcompanharListas(string outDir, string nome, List<string> portas, List<string> passagens,
+										 out int portasTiradas, out bool passagensMudaram)
+	{
+		portasTiradas = 0;
+		passagensMudaram = false;
+
+		string arqPortas = Path.Combine(outDir, nome + ".portas");
+		if (File.Exists(arqPortas))
+		{
+			var quer = new HashSet<(int, int)>(portas.Select(CelulaDaLinha));
+			List<string> velhas = LinhasDaLista(File.ReadAllText(arqPortas));
+			List<string> ficam = velhas.Where(l => quer.Contains(CelulaDaLinha(l))).ToList();
+			portasTiradas = velhas.Count - ficam.Count;
+			if (portasTiradas > 0)
+				File.WriteAllText(arqPortas, "[" + string.Join(",\n ", ficam) + "]", new UTF8Encoding(false));
+		}
+
+		string arqPassagens = Path.Combine(outDir, nome + ".passagens");
+		string novo = "[" + string.Join(",\n ", passagens) + "]";
+		string velho = File.Exists(arqPassagens) ? File.ReadAllText(arqPassagens) : "";
+		if (!string.Equals(velho.Replace("\r\n", "\n"), novo, StringComparison.Ordinal))
+		{
+			File.WriteAllText(arqPassagens, novo, new UTF8Encoding(false));
+			passagensMudaram = true;
+		}
+	}
+
+	/// <summary>As linhas `{ ... }` de uma lista JSON escrita por este conversor.</summary>
+	private static List<string> LinhasDaLista(string json)
+	{
+		var linhas = new List<string>();
+		int i = 0;
+		while (true)
+		{
+			int a = json.IndexOf('{', i);
+			if (a < 0) break;
+			int b = json.IndexOf('}', a);
+			if (b < 0) break;
+			linhas.Add(json[a..(b + 1)]);
+			i = b + 1;
+		}
+		return linhas;
+	}
+
+	/// <summary>A celula (x, y) de uma linha `{ "x": N, "y": N, ... }`.</summary>
+	private static (int, int) CelulaDaLinha(string linha)
+	{
+		int Campo(string nome)
+		{
+			int i = linha.IndexOf($"\"{nome}\"", StringComparison.Ordinal);
+			if (i < 0) return -1;
+			int dp = linha.IndexOf(':', i) + 1;
+			int fim = dp;
+			while (fim < linha.Length && (char.IsDigit(linha[fim]) || linha[fim] == ' ' || linha[fim] == '-')) fim++;
+			return int.TryParse(linha[dp..fim].Trim(), out int v) ? v : -1;
+		}
+		return (Campo("x"), Campo("y"));
+	}
+
+	/// <summary>
+	/// APAGA DO ARQUIVO OS BITS QUE A REGRA NOVA NAO BLOQUEIA MAIS -- e so isso.
+	///
+	/// Le o `.col`/`.vis` do disco (mesmo formato do `EscreverColisao`), compara com o conjunto
+	/// recem-calculado e limpa o que esta ligado no disco e nao esta no conjunto (no `.vis`, o byte
+	/// de grupo da celula vai a zero junto). Um bit que o conjunto tem e o disco nao e CONTADO e
+	/// devolvido, nunca gravado: gravar de novo o arquivo inteiro reintroduziria as diferencas do
+	/// indice de sprites em memoria (ver `Convert(soFisica)`), e o que se quer aqui e libertar as
+	/// mesas por baixo do piso, nao reconverter o mundo.
+	/// </summary>
+	/// <returns>(quantas celulas foram libertadas, quantos bits novos ficaram so no relato)</returns>
+	internal static (int Libertadas, int NovasNaoGravadas) LibertarNaColisao(string caminho, int w, int h,
+																			 IEnumerable<(int, int)> novas)
+	{
+		if (!File.Exists(caminho)) return (0, 0);
+		byte[] dados = File.ReadAllBytes(caminho);
+		int precisa = (w * h + 7) / 8;
+		if (dados.Length < 8 + precisa || dados[0] != 'J' || dados[1] != 'C' || dados[2] != 'O' || dados[3] != 'L')
+		{
+			Console.WriteLine($"  {Path.GetFileName(caminho)}: nao e um JCOL que eu entenda -- nao mexo");
+			return (0, 0);
+		}
+		int fw = dados[4] | (dados[5] << 8), fh = dados[6] | (dados[7] << 8);
+		if (fw != w || fh != h)
+		{
+			Console.WriteLine($"  {Path.GetFileName(caminho)}: {fw}x{fh} no arquivo, {w}x{h} no .dmm -- nao mexo");
+			return (0, 0);
+		}
+
+		var quer = new HashSet<int>();
+		foreach ((int x, int y) in novas)
+			if (x >= 0 && y >= 0 && x < w && y < h) quer.Add(y * w + x);
+
+		bool temPlano = dados.Length >= 8 + precisa + w * h;
+		int libertadas = 0, novasNaoGravadas = 0;
+		for (int i = 0; i < w * h; i++)
+		{
+			bool ligado = (dados[8 + (i >> 3)] & (1 << (i & 7))) != 0;
+			if (ligado && !quer.Contains(i))
+			{
+				dados[8 + (i >> 3)] &= (byte)~(1 << (i & 7));
+				if (temPlano) dados[8 + precisa + i] = 0;
+				libertadas++;
+			}
+			else if (!ligado && quer.Contains(i)) novasNaoGravadas++;
+		}
+		if (libertadas > 0) File.WriteAllBytes(caminho, dados);
+		return (libertadas, novasNaoGravadas);
+	}
+
 	private static int EscreverColisao(string caminho, int w, int h, IEnumerable<(int, int)> paredes,
 									   Dictionary<(int, int), byte>? grupos = null)
 	{

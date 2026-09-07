@@ -1,1 +1,3 @@
-[]
+[{ "x": 135, "y": 258, "zona": "Earth", "dx": 4784, "dy": 11216, "nome": "Earth" },
+ { "x": 153, "y": 258, "zona": "Namek", "dx": 4784, "dy": 11216, "nome": "Namek" },
+ { "x": 170, "y": 258, "zona": "Vegeta", "dx": 4784, "dy": 11216, "nome": "Vegeta" }]

@@ -73,6 +73,15 @@ public partial class RoboDeBalao : Node
 	private const string FraseDoRemoto = "estou aqui do outro lado";
 	private const string FraseNoAr = "estou aqui em cima";
 
+	/// <summary>A frase da foto: comprida o bastante pra quebrar em duas linhas em qualquer zoom.</summary>
+	private const string FraseDaFoto = "as letras deste balao precisam sair nitidas em qualquer zoom da camera";
+
+	/// <summary>O zoom da foto. Quatro: fora do padrao (3), e blocos de 4x4 sao faceis de medir.</summary>
+	private const int ZoomDaFoto = 4;
+
+	/// <summary>A fracao de tracos claros com largura que NAO e multiplo do zoom, nitido e serrilhado; -1 = sem foto.</summary>
+	private double _nitido = -1, _serrilhado = -1;
+
 	private void Conferir(bool ok, string oque)
 	{
 		_passos.Add((ok ? "  ok   " : "  FALHA") + "  " + oque);
@@ -198,6 +207,9 @@ public partial class RoboDeBalao : Node
 			// O MEU BALAO SOBE COM O MEU CORPO -- lista de filhos do `LocalPlayer`
 			// -------------------------------------------------------------
 			case 5:
+				// REENVIADA TODO QUADRO: o servidor de verdade (o `--host` e este processo) manda a amostra
+				// dele a 30 Hz com altitude 0, e a injetada perdia a corrida em metade das rodadas.
+				EuSubo(mundo, cli);
 				if (EuSubi(corpo, balao)) { Passar(); break; }
 				if (_t < 1.0) return;
 				// O QUE SE VIU, E NAO SO "nao subiu". Sao dois defeitos diferentes com a mesma cara:
@@ -237,7 +249,6 @@ public partial class RoboDeBalao : Node
 						 $"e o balao dele foi junto (pior desvio {_pior:0.###} px)");
 				// A SUBIDA COMECA: ele fala de novo, pra que haja texto na tela DURANTE o voo.
 				mundo.AoFalar(Protocol.Fala.Diz, NomeDoRemoto, FraseNoAr);
-				Snapshot(mundo, _ondeORemoto, AlturaDoTeste, andando: false);
 				Passar();
 				break;
 
@@ -245,6 +256,10 @@ public partial class RoboDeBalao : Node
 			// SOBE COM QUEM VOA -- pelo snapshot, que e por onde a altitude entra
 			// -------------------------------------------------------------
 			case 8:
+				// A AMOSTRA DA SUBIDA E REENVIADA TODO QUADRO, como os passos do caso anterior: uma amostra
+				// unica ficava presa na fila de jitter (o corpo no chao, 0 px de desenho) em metade das
+				// rodadas, e a bancada reprovava uma subida que nunca chegou a ser tocada.
+				Snapshot(mundo, _ondeORemoto, AlturaDoTeste, andando: false);
 				if (_t < 1.5) return;
 				OVoadorSubiu(mundo);
 				Passar();
@@ -255,6 +270,40 @@ public partial class RoboDeBalao : Node
 			// -------------------------------------------------------------
 			case 9:
 				ACinematicaAlheia(corpo, balao);
+				Passar();
+				break;
+			case 10:
+				// NITIDO EM QUALQUER ZOOM (pedido do dono, 2026-09-06): primeiro por construcao (o no
+				// encolhe por 1/zoom e a fonte cresce por zoom), depois na FOTO -- que e o que o dono ve.
+				ONitidoPorConstrucao(mundo, balao);
+				mundo.AplicarZoom(ZoomDaFoto);
+				mundo.AoFalar(Protocol.Fala.Diz, cli.LocalName, FraseDaFoto);
+				Passar();
+				break;
+			case 11:
+				if (_t < 0.5) return;
+				_nitido = MedirAFoto(balao, "balao-1-nitido");
+				// O DEFEITO INJETADO: o mesmo balao, aberto, volta a desenhar em pixels de mundo -- e a
+				// letra de 8 px e esticada pela camera. A troca acontece no `_Process` dele, sem fala nova.
+				BalaoDeFala.NitidoDeTeste = false;
+				Passar();
+				break;
+			case 12:
+				if (_t < 0.5) return;
+				_serrilhado = MedirAFoto(balao, "balao-2-serrilhado");
+				BalaoDeFala.NitidoDeTeste = true;
+				if (_nitido >= 0 && _serrilhado >= 0)
+				{
+					Conferir(_nitido > 0.30,
+							 $"NA FOTO (zoom {ZoomDaFoto}): as letras NAO sao blocos de {ZoomDaFoto}x{ZoomDaFoto} -- "
+						   + $"{_nitido * 100:0}% dos tracos claros tem largura que nao e multiplo do zoom "
+						   + "(a fonte vetorial rasterizada no tamanho da tela)");
+					Conferir(_serrilhado <= 0.02,
+							 $"[injecao] em pixels de MUNDO, todo traco e multiplo do zoom ({_serrilhado * 100:0}% "
+						   + "fora) -- a letra de 8 px esticada pela camera, que e o serrilhado que o dono viu");
+					Conferir(_nitido > _serrilhado, "...e a foto nitida e mais nitida que a serrilhada pela mesma regua");
+				}
+				mundo.AplicarZoom(Math.Max(1, Boot.Config.Zoom));
 				Fechar();
 				break;
 		}
@@ -596,6 +645,112 @@ public partial class RoboDeBalao : Node
 	}
 
 	// =====================================================================
+	// =====================================================================
+	// 10. NITIDO EM QUALQUER ZOOM
+	// =====================================================================
+	/// <summary>
+	/// POR CONSTRUCAO: em cada zoom o no encolhe por 1/zoom e a fonte cresce por zoom -- um pixel
+	/// local e um pixel da tela --, a caixa fica dentro da mesma largura de MUNDO de sempre, a frase
+	/// media continua quebrando, e um balao ja aberto acompanha a troca de zoom sem fala nova.
+	/// Medido em baloes soltos, como a quebra de linha, e no zoom que a camera esta usando de verdade.
+	/// </summary>
+	private void ONitidoPorConstrucao(World mundo, BalaoDeFala doCorpo)
+	{
+		var soltos = new List<BalaoDeFala>();
+		float larguraNoZoom2 = 0;
+		foreach (int z in new[] { 2, 3, 6 })
+		{
+			mundo.AplicarZoom(z);
+			var b = new BalaoDeFala { Name = $"BalaoSolto{z}" };
+			AddChild(b);
+			soltos.Add(b);
+			b.Dizer(Protocol.Fala.Diz, FraseDaFoto);
+			Conferir(b.ZoomDeTeste == z && Mathf.IsEqualApprox(b.EscalaDeTeste * z, 1f) && b.TamanhoDaFonteDeTeste == 8 * z,
+					 $"zoom {z}: o balao encolhe por 1/{z} e escreve com a fonte em {8 * z} px -- um pixel do no e um pixel da tela "
+				   + $"(escala {b.EscalaDeTeste:0.###}, fonte {b.TamanhoDaFonteDeTeste})");
+			Conferir(b.LarguraDeTeste <= BalaoDeFala.LarguraMaxima && b.LinhasDeTeste >= 2,
+					 $"zoom {z}: a frase quebra em {b.LinhasDeTeste} linhas dentro dos {BalaoDeFala.LarguraMaxima:0} px de mundo "
+				   + $"({b.LarguraDeTeste:0} px de mundo = {b.CaixaNaTelaDeTeste.X:0} px de tela)");
+			if (z == 2) larguraNoZoom2 = b.CaixaNaTelaDeTeste.X;
+			else Conferir(Mathf.Abs(b.CaixaNaTelaDeTeste.X / larguraNoZoom2 - z / 2f) < 0.2f,
+						  $"zoom {z}: a caixa na tela cresce com o zoom ({b.CaixaNaTelaDeTeste.X:0} px contra {larguraNoZoom2:0} no zoom 2, "
+						+ $"razao {b.CaixaNaTelaDeTeste.X / larguraNoZoom2:0.00} de {z / 2f:0.00})");
+		}
+		// UM BALAO ABERTO ACOMPANHA A TROCA DE ZOOM: o do zoom 6 continua na tela; a camera vai pra 2.
+		BalaoDeFala aberto = soltos[^1];
+		mundo.AplicarZoom(2);
+		aberto._Process(0.001);
+		Conferir(aberto.ZoomDeTeste == 2 && aberto.TamanhoDaFonteDeTeste == 16,
+				 $"um balao ja aberto acompanha a troca de zoom no quadro seguinte, sem fala nova (agora zoom {aberto.ZoomDeTeste}, fonte {aberto.TamanhoDaFonteDeTeste})");
+		Conferir(Mathf.IsEqualApprox(doCorpo.Position.X, 0) && doCorpo.Position.Y <= BalaoDeFala.AlturaBase + 0.01f,
+				 "o balao do corpo continua na altura propria sobre a cabeca (a escala nao mexe na posicao)");
+		BalaoDeFala.NitidoDeTeste = false;
+		aberto._Process(0.001);
+		Conferir(aberto.ZoomDeTeste == 1 && Mathf.IsEqualApprox(aberto.EscalaDeTeste, 1f) && aberto.TamanhoDaFonteDeTeste == 8,
+				 "[injecao] com o interruptor desligado o balao volta aos pixels de mundo (escala 1, fonte de 8 px esticada pela camera)");
+		BalaoDeFala.NitidoDeTeste = true;
+		foreach (BalaoDeFala b in soltos) b.QueueFree();
+	}
+
+	/// <summary>
+	/// NA FOTO: o retangulo do texto do balao e recortado da tela e cada linha e varrida em busca de
+	/// TRACOS CLAROS (a tinta e branca; a moldura e o contorno sao escuros). Uma letra de 8 px esticada
+	/// pela camera com o filtro nearest so tem tracos de largura multipla do zoom -- cada pixel do
+	/// glifo vira um bloco de zoom x zoom. A letra rasterizada no tamanho da tela tem tracos de toda
+	/// largura. A regua e a fracao de tracos cuja largura NAO e multiplo do zoom; -1 = sem foto
+	/// (headless nao renderiza). A foto fica em `user://` pro olho do dono.
+	/// </summary>
+	private double MedirAFoto(BalaoDeFala balao, string nome)
+	{
+		Image? img = GetViewport()?.GetTexture()?.GetImage();
+		if (img == null || img.IsEmpty())
+		{
+			Nota("sem foto (headless nao renderiza): a nitidez das letras fica pro olho do dono -- rode com janela");
+			return -1;
+		}
+		string caminho = ProjectSettings.GlobalizePath($"user://{nome}.png");
+		img.SavePng(caminho);
+		Transform2D t = balao.GetGlobalTransformWithCanvas();
+		Rect2 r = balao.TextoNaTelaDeTeste;
+		Vector2 canto = t.Origin + t.BasisXform(r.Position);
+		Vector2 tam = t.BasisXform(r.Size);
+		int x0 = Mathf.RoundToInt(canto.X), y0 = Mathf.RoundToInt(canto.Y);
+		int w = Mathf.RoundToInt(tam.X), h = Mathf.RoundToInt(tam.Y);
+		int bloco = Math.Max(1, Mathf.RoundToInt(World.GradeDeDesenho));
+		int xa = Math.Max(0, x0), xb = Math.Min(img.GetWidth(), x0 + w);
+		int ya = Math.Max(0, y0), yb = Math.Min(img.GetHeight(), y0 + h);
+
+		// A REGUA E RELATIVA: o ceu tinge o mundo inteiro (de dia o branco do texto sai rosado, de
+		// madrugada azul-escuro), entao "claro" e o que esta acima de 60% do caminho entre o pixel
+		// mais escuro (a moldura) e o mais claro (o miolo da letra) DENTRO do retangulo do texto.
+		float menor = 1f, maior = 0f;
+		for (int y = ya; y < yb; y++)
+			for (int x = xa; x < xb; x++)
+			{
+				float lum = Luminancia(img.GetPixel(x, y));
+				if (lum < menor) menor = lum;
+				if (lum > maior) maior = lum;
+			}
+		float corte = menor + 0.6f * (maior - menor);
+
+		int tracos = 0, foraDoBloco = 0;
+		for (int y = ya; y < yb; y++)
+		{
+			int run = 0;
+			for (int x = xa; x <= xb; x++)
+			{
+				bool claro = x < xb && Luminancia(img.GetPixel(x, y)) > corte;
+				if (claro) { run++; continue; }
+				if (run > 0) { tracos++; if (run % bloco != 0) foraDoBloco++; run = 0; }
+			}
+		}
+		Nota($"foto {caminho}: texto em ({x0},{y0}) {w}x{h} px de tela ({img.GetWidth()}x{img.GetHeight()}), "
+		   + $"luminancia de {menor:0.00} a {maior:0.00} (corte {corte:0.00}), {tracos} tracos claros, {foraDoBloco} fora do bloco de {bloco}");
+		return tracos == 0 || maior - menor < 0.08f ? -1 : foraDoBloco / (double)tracos;
+	}
+
+	private static float Luminancia(Color c) => 0.299f * c.R + 0.587f * c.G + 0.114f * c.B;
+
 	private void Fechar()
 	{
 		_acabou = true;

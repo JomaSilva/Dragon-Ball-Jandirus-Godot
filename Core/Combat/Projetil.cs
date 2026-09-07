@@ -174,6 +174,16 @@ public sealed class ReceitaDeProjetil
 	/// lote G12.
 	/// </summary>
 	public double EscalaVisual;
+
+	/// <summary>
+	/// NASCE INVISIVEL -- o `A.invisibility = 1` da lamina de ar do Kiai (`Ki2.0/Kiai.dm:40`).
+	///
+	/// E DADO DA RECEITA, e nao da arte: a folha diz COMO o tiro se desenha, isto diz PRA QUEM. O
+	/// servidor nao filtra nada (o tiro continua acertando, explodindo e sendo defletido como qualquer
+	/// outro -- no DM tambem: `invisibility` so mexe em quem VE); quem decide se desenha e o cliente,
+	/// pela raca de quem olha (`VisaoDoInvisivel`).
+	/// </summary>
+	public bool Invisivel;
 }
 
 /// <summary>
@@ -457,6 +467,9 @@ public sealed class Projetil
 	/// ========================================================================================
 	/// </summary>
 	public double EscalaVisual = 1;
+
+	/// <summary>Copiado da receita no nascimento; viaja no anuncio. Ver `ReceitaDeProjetil.Invisivel`.</summary>
+	public bool Invisivel;
 
 	/// <summary>Morto: sai da lista no proximo tique. Ver o motivo em <see cref="Fim"/>.</summary>
 	public bool Vivo = true;

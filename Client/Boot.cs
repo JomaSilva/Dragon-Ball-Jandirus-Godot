@@ -119,6 +119,14 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// --diagflick: o soco toca UMA vez (como o `flick` do BYOND) e o KO do Oozaru deita como o de
+		// todo mundo. Dois bonecos, sem janela e sem rede -- so o `CharacterVisual`. Ver RoboDoFlick.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagflick") >= 0)
+		{
+			AddChild(new RoboDoFlick { Name = "RoboDoFlick" });
+			return;
+		}
+
 		// QUEM A FUSAO E: nome, roupa, cabelo e o vermelho do SSJ4. Mora aqui em cima com as bancadas
 		// sem mundo porque ela nao precisa de rede, de zona nem de login -- so do catalogo, das folhas
 		// e do `CharacterVisual`. E ela NAO precisa de janela: o que ela le sao caminhos de arte e o
@@ -1112,6 +1120,11 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbalao") >= 0)
 			AddChild(new RoboDeBalao { Name = "RoboDeBalao" });
 
+		// --diagtorneio: o CONVITE DO TORNEIO na tela -- o painel do canto inferior direito, os dois
+		// botoes e o prazo, com o torneio aberto de verdade pelo servidor deste processo. Ver RoboDeTorneio.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtorneio") >= 0)
+			AddChild(new RoboDeTorneio { Name = "RoboDeTorneio" });
+
 		// --diagtecla: bancada das TECLAS CONFIGURAVEIS. Ela mede uma afirmacao ("a tecla faz
 		// exatamente o que o botao faz") comparando os BYTES que chegaram no servidor pelos dois
 		// gestos, e um contra-exemplo (o C, o ALT e o E continuam funcionando depois de o registro
@@ -1146,6 +1159,18 @@ public partial class Boot : Node2D
 		// derruba cenario -- e e a queda que pinta a terra revirada em volta.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdecalque") >= 0)
 			AddChild(new RoboDeDecalque { Name = "RoboDeDecalque" });
+
+		// --diagcenario: bancada do ESTRAGO QUE CHEGA DE UMA VEZ. Vem com `--cenarioteste --quebrarteste N`
+		// no servidor: N celulas caem AO VIVO no nascimento (com poeira), o servidor leva o corpo a Namek
+		// e o traz de volta, e o robo mede a volta -- retrato unico, sem poeira, terra revirada sem
+		// duplicar, e a reaplicacao por pedaco. Ver RoboDeCenario.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcenario") >= 0)
+			AddChild(new RoboDeCenario { Name = "RoboDeCenario" });
+
+		// --diagmobilia: bancada do MOVEL SOBRE A CADEIRA. Vem com `--mobiliateste` no servidor (o corpo
+		// nasce abaixo do banco do castelo de Vegeta) e, com janela, tira a foto. Ver RoboDeMobilia.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmobilia") >= 0)
+			AddChild(new RoboDeMobilia { Name = "RoboDeMobilia" });
 
 		// --diagmembroperdido: a bancada que FOTOGRAFA a amputacao em combate. A `--diagdecalque`
 		// acima prova a maquina (a folha carrega, as dez pecas acham o recorte); esta prova o

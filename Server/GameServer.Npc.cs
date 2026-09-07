@@ -275,6 +275,10 @@ public partial class GameServer
 			// a mente deste corpo -- ver `MentePropriaDe`, `GameServer.Clone.cs`)
 			Cerebro = CerebroDeNascimento(s.Papel),
 
+			// O PERFIL DE COMBATE sai do molde e da MESMA semente do resto da ficha: o corpo que
+			// nasce voador nasce voador em todo reinicio. Ver `Core/Ai/PerfilDeCombate.cs`.
+			Perfil = Jandirus.Core.Ai.PerfilDeCombate.Sortear(molde.ChanceDeVoar, molde.ChanceDeKi, semente),
+
 			// ============================ O BERCO DELE E ONDE ELE NASCEU ============================
 			// Um NPC nao tem save, entao ele nao tinha berco -- e `Berco.Planeta` vazio faz o
 			// `DestinoDoBerco` cair na `SpawnZone`, a Terra. Com o renascimento automatico do
@@ -323,7 +327,7 @@ public partial class GameServer
 
 		GD.Print($"[server] NPC '{npc.Name}' ({npc.Race}/{npc.Class}) nasceu em {zona.Name} "
 			   + $"| molde {molde.Id} semente {semente} | BP {npc.Ficha.BP:N0} (expresso {npc.Ficha.expressedBP:N0}) "
-			   + $"| {npc.Livro.Aprendidas.Count} skills, {formas} formas"
+			   + $"| {npc.Livro.Aprendidas.Count} skills, {formas} formas | perfil {npc.Perfil}"
 			   + (molde.EhChefe ? $" | ROTEIRO de {molde.Estagios.Length} degrau(s)" : ""));
 		return npc;
 	}

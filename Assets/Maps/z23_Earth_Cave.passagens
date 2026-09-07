@@ -1,3 +1,9 @@
-[{ "x": 155, "y": 200, "zona": "Earth", "dx": 8528, "dy": 3600, "nome": "Terra" },
+[{ "x": 94, "y": 200, "zona": "Earth_Cave", "dx": 3024, "dy": 6480, "nome": "ECave3.3" },
+ { "x": 155, "y": 200, "zona": "Earth", "dx": 8528, "dy": 3600, "nome": "Terra" },
+ { "x": 94, "y": 202, "zona": "Earth_Cave", "dx": 14480, "dy": 7792, "nome": "ECave1.2" },
+ { "x": 237, "y": 236, "zona": "Earth_Cave", "dx": 14480, "dy": 7792, "nome": "ECave1.2" },
+ { "x": 452, "y": 243, "zona": "Earth_Cave", "dx": 7600, "dy": 7568, "nome": "ECave2.1" },
+ { "x": 16, "y": 246, "zona": "Earth_Cave", "dx": 528, "dy": 8048, "nome": "ECave3.2" },
+ { "x": 16, "y": 251, "zona": "Earth_Cave", "dx": 528, "dy": 7888, "nome": "ECave3.1" },
  { "x": 365, "y": 251, "zona": "Earth", "dx": 15216, "dy": 4944, "nome": "Terra" },
  { "x": 16, "y": 293, "zona": "Earth", "dx": 1456, "dy": 4720, "nome": "Terra" }]

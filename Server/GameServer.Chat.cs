@@ -36,6 +36,9 @@ public partial class GameServer
 	/// </summary>
 	private const long MsEntreFalas = 400;
 
+	/// <summary>Gancho de bancada: toda fala que passou pelo funil (quem, canal, texto). Nulo fora de teste.</summary>
+	internal static List<(int Quem, Protocol.Fala Canal, string Texto)>? EscutaDeFalas;
+
 	private readonly Dictionary<int, long> _ultimaFala = [];
 
 	private void Falar(ServerPlayer a, Protocol.Fala canal, string texto)
@@ -46,6 +49,7 @@ public partial class GameServer
 		long agora = NowMs();
 		if (_ultimaFala.TryGetValue(a.Id, out long antes) && agora - antes < MsEntreFalas) return;
 		_ultimaFala[a.Id] = agora;
+		EscutaDeFalas?.Add((a.Id, canal, texto));
 
 		switch (canal)
 		{

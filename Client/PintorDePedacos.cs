@@ -133,8 +133,14 @@ public sealed class PintorDePedacos
 	/// <summary>Centro imposto de fora, so durante o <see cref="Urgente"/>. Ver la o porque.</summary>
 	private Vector2? _centroForcado;
 
-	/// <summary>Avisa que um pedaco ficou pronto -- e o gancho do estrago (ver `World.ReaplicarEstrago`).</summary>
-	public event Action? Pintou;
+	/// <summary>
+	/// Avisa que um pedaco ficou pronto, e QUAL (em coordenadas de pedaco) -- e o gancho do estrago
+	/// (ver `World.ReaplicarEstrago`), que so reaplica o que cai dentro dele.
+	/// </summary>
+	public event Action<Vector2I>? Pintou;
+
+	/// <summary>Tiles por lado de um pedaco -- o da fonte.</summary>
+	public int Lado => _fonte.Lado;
 
 	public PintorDePedacos(Node2D dono, IFonte fonte)
 	{
@@ -251,7 +257,7 @@ public sealed class PintorDePedacos
 			if (feitas >= total)
 			{
 				_fila.RemoveAt(0);
-				Pintou?.Invoke();
+				Pintou?.Invoke(p);
 			}
 
 			if (Time.GetTicksUsec() - inicio >= orcamento) return;

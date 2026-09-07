@@ -277,6 +277,7 @@ public partial class GameServer
 	private void TickDosCorposSemDono(double dt)
 	{
 		_relogioDoMundo += dt;
+		_tiquesDosCorpos++;
 		_dirigidos.Clear();
 		_zonasComGente.Clear();
 		foreach (ServerPlayer p in _players.Values)
@@ -316,13 +317,28 @@ public partial class GameServer
 			// =====================================================================================
 			if (npc.Cerebro == null || !_players.ContainsKey(npc.Id)) continue;
 
+			// ============================ O TIQUE BARATO DE QUEM ESTA LONGE ============================
+			// Habitante a mais de `raioDeAtencaoTiles` de TODO jogador da zona pensa um tique a cada
+			// `divisorDeLonge` -- e o relogio da MENTE anda os N tiques de uma vez, pra conversa,
+			// treino e spar continuarem durando os segundos da config. So o passo fica mais lento
+			// (ele e por tique), e a essa distancia ninguem ve. Zona sem jogador nem chega aqui com
+			// custo: o `MenteDormindo` la dentro devolve na primeira linha. Ver `GameServer.Rotina.cs`.
+			// ==========================================================================================
+			double dtDaMente = dt;
+			if (LongeDeTodos(npc))
+			{
+				int divisor = Math.Max(1, _rotina.DivisorDeLonge);
+				if ((_tiquesDosCorpos + (ulong)npc.Id) % (ulong)divisor != 0) continue;
+				dtDaMente = dt * divisor;
+			}
+
 			// ============================ UM NPC QUEBRADO NAO DERRUBA O SERVIDOR ============================
 			// O `try` e POR CORPO e nunca em volta do tique. Em volta do tique ele viraria o
 			// esconderijo de todo defeito da IA -- o servidor seguiria "funcionando" com a luta toda
 			// errada e ninguem saberia. Por corpo, o estrago e um NPC que vira estatua, com o nome
 			// dele e a excecao no console; o resto da zona nao percebe.
 			// ==========================================================================================
-			try { TicarUmCorpo(npc, dt); }
+			try { TicarUmCorpo(npc, dt, dtDaMente); }
 			catch (Exception ex)
 			{
 				GD.PushError($"[server] IA de '{npc.Name}' (id {npc.Id}) quebrou e o corpo foi solto: {ex}");
@@ -416,7 +432,7 @@ public partial class GameServer
 	private long _decisoesDaMente;
 
 	/// <summary>UM corpo dirigido, um tique. Separado pra o `try` poder ser POR CORPO.</summary>
-	private void TicarUmCorpo(ServerPlayer npc, double dt)
+	private void TicarUmCorpo(ServerPlayer npc, double dt, double dtDaMente)
 	{
 		// --- 0. SEM PLATEIA, SEM MENTE -------------------------------------------
 		// O congelamento anti-lag saiu de dentro do ramo do habitante e subiu pra ca. Ver
@@ -437,6 +453,7 @@ public partial class GameServer
 		// ele e o unico instrumento que separa "desligada" de "chamada de vez em quando", que sao as
 		// duas opcoes que o dono deixou em aberto e que o relogio NAO distingue.
 		_decisoesDaMente++;
+		npc.TiquesDaMente++;
 
 		// --- 0,5. O REFLEXO: TEM RAIO VINDO? -------------------------------------
 		// Antes de qualquer decisao, e de proposito. Um feixe chegando nao e uma opcao tatica -- e
@@ -576,7 +593,10 @@ public partial class GameServer
 
 			// MORTO SAI DO MUNDO, e nao renasce (ver o `TickCombate`). Aqui so se para de dirigir:
 			// quem o remove e o laco de combate, no proximo tique, com a lista ja materializada.
-			if (npc.Ficha.dead) { npc.Moving = false; return; }
+			// O TORNEIO SEGURA quem espera a vez (o `apply_hold` do DM): imovel ate ser chamado.
+			if (PresoNoTorneio(npc.Id)) { npc.Moving = false; return; }
+			// Morto DE PE (o lutador do Outro Mundo) continua vivo pra IA; o cadaver deitado, nao.
+			if (npc.Ficha.dead && !npc.MortoDePe) { npc.Moving = false; return; }
 
 			// CAIDO, PARA. Mesma guarda do corpo possuido, e pelo mesmo motivo: sem ela o `Atacar`
 			// seria chamado a 30 Hz contra o `PodeAtacar()` de um corpo no chao.
@@ -587,24 +607,25 @@ public partial class GameServer
 			// chefe e uma varredura da zona inteira.
 			presa = PresaDoNpc(npc);
 
-			// ============================ HABITANTE NAO E FERA VAGANDO ============================
-			// O ramo antigo mandava `RumoDaFera` pra todo mundo sem alvo, e a bancada mediu o
-			// resultado: **2400 px em 20 s** -- 75 tiles. Em dez minutos o vilarejo inteiro teria se
-			// espalhado pelo mapa e ninguem mais estaria na cidade.
+			// ============================ HABITANTE TEM VIDA DIARIA ============================
+			// Sem presa, quem dirige o corpo e a `Rotina` (ocio, passeio, treino, conversa, convite,
+			// spar, descanso -- ver `GameServer.Rotina.cs`). Ela substituiu o passeio antigo, que era
+			// o `idle_wander_loop` do original (PlanetPopulation.dm:122-131): um passo de um tile a
+			// cada 4,5-9,5 s. O passeio dela e o herdeiro desse passo -- e nao o `RumoDaFera`, que
+			// ja espalhou um vilarejo inteiro pelo mapa uma vez (75 tiles em 20 s, medidos).
 			//
-			// Ela e a receita do rampage do Oozaru, e nao a do `idle_wander_loop`
-			// (PlanetPopulation.dm:122-131), que e o oposto: `sleep(rand(45,95))` -- 4,5 a 9,5 s --
-			// e entao `if(prob(35)) step_rand(src)`, **UM tile**. Da ~1 tile a cada 20 s: o
-			// habitante que muda de lugar de vez em quando, que e o que faz a cidade parecer viva
-			// sem ninguem sair dela.
-			// =================================================================================
-			if (presa == null)
+			// Com presa (um jogador provocou), a vida diaria para na hora e o cerebro de combate
+			// assume, como sempre. A rotina devolve TRUE so no spar -- ai a presa e o parceiro e o
+			// cerebro luta com o golpe nao-letal de todo NPC. Nos outros afazeres ela ja moveu (ou
+			// parou) o corpo neste tique, e nao ha mais o que pensar.
+			// ==================================================================================
+			if (presa != null)
 			{
-				Vec2? passo = PasseioDeHabitante(npc);
-				if (passo == null) { npc.Moving = false; return; }
-				destino = passo.Value;
+				if (npc.Rotina is { Afazer: not Afazer.Ocioso } r) r.Interromper("presa de verdade");
+				if (npc.Ficha.train) npc.Ficha.train = false;
+				destino = presa.Pos;
 			}
-			else destino = presa.Pos;
+			else if (!TicarARotina(npc, dtDaMente, dt, out presa, out destino)) return;
 		}
 		else
 		{
@@ -646,7 +667,9 @@ public partial class GameServer
 		// A leitura varre o catalogo de formas; pagar isso 30 vezes por segundo por corpo seria o
 		// custo da IA crescendo com o numero de bichos sem nada em troca. Nada aqui muda em 33 ms.
 		Cerebro cerebro = npc.Cerebro!;
-		if (cerebro.PrecisaLerCapacidades(dt)) cerebro.Poderes = LerCapacidades(npc);
+		// O PERFIL CORTA POR CIMA das capacidades: o que o corpo sabe e nao usa (voo, ki). Ver
+		// `Core/Ai/PerfilDeCombate.cs` -- ele so desliga, nunca da o que o funil do jogador negou.
+		if (cerebro.PrecisaLerCapacidades(dtDaMente)) cerebro.Poderes = npc.Perfil.Filtrar(LerCapacidades(npc));
 
 		// --- 3. A DECISAO E A EXECUCAO, IDENTICAS PROS DOIS -----------------------
 		// O RELATO E LIGADO AQUI E NAO NO NASCIMENTO DO CEREBRO, e a diferenca importa: sao tres
@@ -660,7 +683,7 @@ public partial class GameServer
 		// todo mundo, em vez de perguntar la dentro.
 		Percepcao p = LerPercepcao(npc, presa, destino, cerebro.Poderes.DeLonge.TemAlguma);
 		Plano antes = cerebro.Atual;
-		Comando c = cerebro.Pensar(p, dt, _rng);
+		Comando c = cerebro.Pensar(p, dtDaMente, _rng);
 		AplicarComando(npc, c, dt);
 
 		// ============================ A DECISAO VIRA DADO ============================
@@ -852,7 +875,8 @@ public partial class GameServer
 	private ServerPlayer? PresaImpostaPeloRoteiro(ServerPlayer npc) =>
 		npc.Papel is { PresaDoRoteiro: not 0 }
 		&& _players.TryGetValue(npc.Papel.PresaDoRoteiro, out ServerPlayer? imposta)
-		&& !imposta.Ficha.dead && imposta.Zone.Hash == npc.Zone.Hash
+		&& (!imposta.Ficha.dead || imposta.MortoDePe)   // o morto DE PE do Outro Mundo e presa valida (torneio celeste)
+		&& imposta.Zone.Hash == npc.Zone.Hash
 			? imposta : null;
 
 	private ServerPlayer? PresaDoNpc(ServerPlayer npc)
@@ -1020,59 +1044,6 @@ public partial class GameServer
 			perto = d2; melhor = o;
 		}
 		return melhor;
-	}
-
-	/// <summary>
-	/// O PASSEIO DO HABITANTE -- o `idle_wander_loop` (PlanetPopulation.dm:122-131). Nulo = parado.
-	///
-	/// ============================ OS TRES NUMEROS SAO DO ORIGINAL ============================
-	///   `sleep(rand(45,95))`  -> uma decisao a cada 4,5-9,5 s (media 7,0)
-	///   `if(prob(35))`        -> so 35% das decisoes viram passo
-	///   `step_rand(src)`      -> **UM tile**, e nao "andar naquela direcao"
-	///
-	/// Da mais ou menos um tile a cada vinte segundos. E pouco de proposito: o `step_rand` do BYOND
-	/// e um passo de grade, nao um rumo -- e foi confundir as duas coisas que fez a bancada medir 75
-	/// tiles em 20 segundos na primeira versao.
-	/// ====================================================================================
-	///
-	/// ============================ FUNCAO PURA, SEM CAMPO NENHUM ============================
-	/// De (id, balde de tempo) saem as tres respostas: se este balde e de passo, pra que lado, e se
-	/// o instante atual ainda esta dentro da janela de andar. Mesmo desenho do <see cref="RumoDaFera"/>
-	/// e pelo mesmo motivo: nao ha "destino atual" pra guardar, sanear e esquecer de limpar -- e 150
-	/// habitantes nao geram 150 relogios pra o servidor manter.
-	/// ==================================================================================
-	/// </summary>
-	private Vec2? PasseioDeHabitante(ServerPlayer npc)
-	{
-		// A media do `rand(45,95)` do DM: 7,0 s. Um periodo fixo em vez de um sorteio por corpo porque
-		// a fase ja e diferente por corpo (ela sai do id, logo abaixo) -- e a variacao que importa pra
-		// os habitantes nao se moverem todos juntos e a de FASE, nao a de periodo.
-		const double SegundosPorDecisao = 7.0;
-
-		// Quanto tempo ele fica ANDANDO quando decide andar. E o `step_rand`, que e UM tile e acabou.
-		const double SegundosAndando = 0.4;
-
-		// O RELOGIO E O DO MUNDO (dt acumulado), e nao o de parede -- ver `_relogioDoMundo`.
-		double agora = _relogioDoMundo;
-		ulong balde = (ulong)(agora / SegundosPorDecisao);
-
-		// splitmix64 de (id, balde). `_rng` nao serve: ele daria uma resposta nova a cada tique e o
-		// habitante tremeria no lugar em vez de dar um passo.
-		ulong h = (ulong)npc.Id * 0x9E3779B97F4A7C15UL ^ balde * 0xBF58476D1CE4E5B9UL;
-		h ^= h >> 30; h *= 0xBF58476D1CE4E5B9UL;
-		h ^= h >> 27; h *= 0x94D049BB133111EBUL;
-		h ^= h >> 31;
-
-		if (h % 100 >= 35) return null;   // `prob(35)`: este balde e de descanso
-
-		// A FASE E POR CORPO: sem ela os 40 habitantes da Terra dariam o passo no MESMO instante, e o
-		// que se veria seria a cidade inteira andando em bloco de sete em sete segundos.
-		double fase = (h >> 40) % 1000 / 1000.0 * (SegundosPorDecisao - SegundosAndando);
-		double dentro = agora - balde * SegundosPorDecisao;
-		if (dentro < fase || dentro > fase + SegundosAndando) return null;
-
-		double ang = (h >> 8) % 3600 / 3600.0 * Math.Tau;
-		return npc.Pos + new Vec2((float)Math.Cos(ang), (float)Math.Sin(ang)) * ZoneCollision.TileSize * 2;
 	}
 
 	/// <summary>

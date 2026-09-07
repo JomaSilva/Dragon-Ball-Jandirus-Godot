@@ -56,6 +56,11 @@ public partial class GameClient : Node
 	public event Action<List<EntityState>>? SnapshotReceived;
 	public event Action<Vec2>? Corrected;                          // servidor recusou meu passo
 	public event Action<int>? PeerLeft;
+
+	/// <summary>O convite do torneio chegou (`S2C.Torneio`, aviso 1): tipo (1 Terra, 2 Outro Mundo), prazo em s, titulo.</summary>
+	public event Action<byte, int, string>? ConviteDeTorneio;
+	/// <summary>O convite fechou (aviso 2): respondido, vencido no servidor, ou torneio cancelado.</summary>
+	public event Action? ConviteDeTorneioFechou;
 	public event Action<ZoneKey, Vec2>? ZoneChanged;
 	public event Action<string>? Rejected;
 
@@ -83,6 +88,9 @@ public partial class GameClient : Node
 	public event Action<List<SlotInfo>>? SlotsRecebidos;
 	/// <summary>Um golpe foi resolvido pelo servidor. Vale pra som, piscada e musica de luta.</summary>
 	public event Action<Protocol.HitEvent>? Golpe;
+
+	/// <summary>Um corpo fez um gesto (`S2C.Gesto`): quem, e qual (`Protocol.GestoDoCorpo`). Som e desenho.</summary>
+	public event Action<int, byte>? GestoDoCorpo;
 
 	/// <summary>O estado de cada membro do MEU corpo. So chega quando muda.</summary>
 	public event Action<List<Protocol.ParteState>>? CorpoAtualizado;
@@ -791,8 +799,22 @@ public partial class GameClient : Node
 	/// </summary>
 	public readonly List<(int X, int Y)> CenarioCaido = [];
 
+	/// <summary>
+	/// DE QUE ZONA E A LISTA <see cref="CenarioCaido"/>. Vem no retrato (`S2C.Cenario`, modo retrato)
+	/// e zera na troca de zona: entre o `ZoneChanged` e o retrato da zona nova ela e 0, "de zona
+	/// nenhuma", e o `World` nao aplica nada -- nem no chao velho, que ainda esta montado, nem no
+	/// novo, que ainda nao esta.
+	/// </summary>
+	public ulong CenarioDaZona { get; private set; }
+
+	/// <summary>O retrato do estrago de uma zona chegou (ver <see cref="CenarioDaZona"/>).</summary>
+	public event Action? CenarioChegou;
+
+	/// <summary>Quantos retratos de cenario ja chegaram nesta sessao -- so pras bancadas.</summary>
+	public int RetratosDeCenarioDeTeste { get; private set; }
+
 	/// <summary>Zera o estrago guardado. Devolve `true` pra caber no `when` do `switch`.</summary>
-	private bool LimparCenario() { CenarioCaido.Clear(); return true; }
+	private bool LimparCenario() { CenarioCaido.Clear(); CenarioDaZona = 0; return true; }
 
 	/// <summary>O canal unico de tecnologia. Ver `GameServer.Tech.cs`.</summary>
 	/// <summary>
@@ -1528,6 +1550,13 @@ public partial class GameClient : Node
 				Golpe?.Invoke(Protocol.HitEvent.Read(reader));
 				break;
 
+			case Protocol.S2C.Gesto:
+			{
+				int quem = reader.GetInt();
+				GestoDoCorpo?.Invoke(quem, reader.GetByte());
+				break;
+			}
+
 			case Protocol.S2C.Chat:
 			{
 				var canal = (Protocol.Fala)reader.GetByte();
@@ -1583,8 +1612,11 @@ public partial class GameClient : Node
 					float escala = Protocol.DeEscalaDeProjetil(reader.GetByte());
 					// A ORDEM E A DO `AnunciarProjetil`: escala, altura, posicao.
 					float altura = Jandirus.Core.World.Voo.DeByte(reader.GetByte());
+					var onde = reader.GetVec();
+					// AS FLAGS VEM NO FIM: bit 0 = nasceu invisivel (a lamina de ar do Kiai).
+					bool invisivel = (reader.GetByte() & 1) != 0;
 					TiroNasceu?.Invoke(new NascimentoDeProjetil(
-						tiro, dono, tipo, arte, escala, altura, reader.GetVec()));
+						tiro, dono, tipo, arte, escala, altura, onde, invisivel));
 				}
 				else
 				{
@@ -1776,9 +1808,8 @@ public partial class GameClient : Node
 			// Com `limpar`, e o contrario: um admin refez tudo (ver `MandarLimpezaDeCenario`).
 			case Protocol.S2C.Cenario:
 			{
-				bool limpar = reader.GetBool();
-				int dcx = reader.GetUShort(), dcy = reader.GetUShort();
-				if (limpar)
+				byte modo = reader.GetByte();
+				if (modo == Protocol.CenarioLimpar)
 				{
 					// O EVENTO SAI COM A LISTA AINDA CHEIA, de proposito: quem ouve precisa saber
 					// QUAIS celulas refechar na colisao antes de a lista sumir. E leva a ZONA, porque
@@ -1789,6 +1820,23 @@ public partial class GameClient : Node
 					if (zonaLimpa == Zone.Hash) CenarioCaido.Clear();
 					break;
 				}
+				if (modo == Protocol.CenarioRetrato)
+				{
+					// O RETRATO SUBSTITUI A LISTA: e o estrago inteiro da zona, de uma vez, com a
+					// zona de que ele e. Quem aplica e o `World` -- sem poeira, e so quando o chao
+					// DESSA zona estiver montado (ver `World.ReaplicarEstrago`).
+					ulong zonaDoRetrato = reader.GetULong();
+					int n = reader.GetInt();
+					CenarioCaido.Clear();
+					if (CenarioCaido.Capacity < n) CenarioCaido.Capacity = n;
+					for (int i = 0; i < n; i++) CenarioCaido.Add((reader.GetUShort(), reader.GetUShort()));
+					CenarioDaZona = zonaDoRetrato;
+					RetratosDeCenarioDeTeste++;
+					CenarioChegou?.Invoke();
+					break;
+				}
+				// UMA CELULA CAIU AGORA: essa e queda ao vivo, com poeira.
+				int dcx = reader.GetUShort(), dcy = reader.GetUShort();
 				CenarioCaido.Add((dcx, dcy));
 				CenarioCaiu?.Invoke(dcx, dcy);
 				break;
@@ -1891,6 +1939,16 @@ public partial class GameClient : Node
 				break;
 			}
 
+			case Protocol.S2C.Torneio:
+			{
+				byte aviso = reader.GetByte();
+				byte tipo = reader.GetByte();
+				int segundos = reader.GetInt();
+				string titulo = reader.GetString(160);
+				if (aviso == 1) ConviteDeTorneio?.Invoke(tipo, segundos, titulo);
+				else ConviteDeTorneioFechou?.Invoke();
+				break;
+			}
 			case Protocol.S2C.Cargos:
 			{
 				int n = reader.GetByte();

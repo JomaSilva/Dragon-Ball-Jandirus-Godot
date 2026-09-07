@@ -406,6 +406,7 @@ public partial class GameServer
 		// 1. SEM RABO NAO HA OOZARU. `if(!container.Tail) DeBuff()` -- e a jogada classica contra
 		//    Saiyajin, e ela funciona NO MEIO da forma, nao so na entrada.
 		if (!TemRaboInteiro(pl)) { DesfazerOozaru(pl, "seu rabo se foi, e com ele a besta."); return; }
+		if (!AFonteDaFera(pl)) { DesfazerOozaru(pl, "a lua se foi, e com ela a besta."); return; }
 		if (pl.Ficha.dead) { DesfazerOozaru(pl, "o corpo cede."); return; }
 
 		// 2. MEDITAR E O FREIO. `angertick = 1000` caindo de um em um enquanto `med` -- e a unica
@@ -471,6 +472,28 @@ public partial class GameServer
 	/// HA QUANTO TEMPO ESTE CORPO E FERA, em segundos. DERIVADO do prazo de fim -- nao ha campo de
 	/// "quando comecou", porque `OozaruAte` e a duracao ja sao dois pontos da mesma reta.
 	/// </summary>
+	/// <summary>
+	/// A FONTE QUE FEZ A FERA AINDA ESTA NO CEU? Hoje a fonte e uma so: a lua CHEIA, no alto, no ceu
+	/// da zona em que o corpo esta -- a mesma pergunta que `OlharParaALua` faz antes de deixar virar.
+	///
+	/// ============================ DIVERGENCIA DECLARADA: O DM NAO OLHA A LUA DEPOIS ============================
+	/// No original a lua so importa na hora de virar; depois disso o buff vive ate o prazo
+	/// (`Oozaru.dm:151-166` so derruba por rabo e por meditacao). O dono pediu diferente, e por
+	/// escrito (2026-09-06): "a forma do oozaru e desfeita no momento que a fonte que deu o poder pra
+	/// virar (lua etc) sumir, entao quando amanhecer e a lua sair do ceu, todos que estao em oozaru
+	/// voltam a forma base". Vale pra quem joga e pros NPCs -- o tique e o mesmo.
+	///
+	/// A LUA ARTIFICIAL E AS ONDAS DE BLUTZ, quando vierem, entram AQUI como segunda fonte, do mesmo
+	/// jeito que entram no `Apeshit` (ver `GameServer.Ceu.cs`): esta funcao e a unica que responde
+	/// "a fonte ainda esta ai?".
+	/// ================================================================================================
+	/// </summary>
+	private bool AFonteDaFera(ServerPlayer pl)
+	{
+		Jandirus.Core.World.EstadoDoCeu ceu = CeuDe(pl);
+		return ceu.Cheia && ceu.LuaNoCeu;
+	}
+
 	private double SegundosNaForma(ServerPlayer pl)
 		=> Oozaru.Duracao(pl.Oozaru) - (pl.OozaruAte - NowMs()) / 1000.0;
 
