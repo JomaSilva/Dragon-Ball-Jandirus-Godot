@@ -798,7 +798,7 @@ public partial class GameServer
 	{
 		RecusaObra.SemTech => $"{c.Nome} pede {c.Tech:0} de tecnologia -- voce tem {pl.Ficha.techskill:0}.",
 		RecusaObra.SemZeni => $"{c.Nome} custa {c.Custo:N0} zeni -- voce tem {pl.Ficha.Zeni:N0}.",
-		RecusaObra.RacaErrada => $"{c.Nome} nao e coisa de {pl.Race}.",
+		RecusaObra.RacaErrada => $"{c.Nome} nao e coisa de {Jandirus.Core.Races.NomeDaRaca.Bonito(pl.Race)}.",
 		_ => "nao deu pra construir.",
 	};
 
@@ -982,7 +982,7 @@ public partial class GameServer
 		lab.Fornada.Amostras.Add(amostra);
 		GravarMundo();
 
-		Avisar(pl, $"voce colhe DNA de {vitima.Name} ({vitima.Race}) -- {amostra.Skills.Count} tecnica(s) "
+		Avisar(pl, $"voce colhe DNA de {vitima.Name} ({Jandirus.Core.Races.NomeDaRaca.Bonito(vitima.Race)}) -- {amostra.Skills.Count} tecnica(s) "
 				   + $"gravada(s) no tecido. Amostras: {lab.Fornada.Amostras.Count}/{BioMaxDna}.");
 		Avisar(vitima, "alguem enfia uma agulha em voce enquanto voce esta caido.");
 	}

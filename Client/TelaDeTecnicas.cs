@@ -5,31 +5,37 @@ using Jandirus.Core.Skills;
 namespace Jandirus.Client;
 
 /// <summary>
-/// A MESA DE MONTAGEM DE TECNICAS DE KI -- o `CreateAttackWindow` do DM
-/// (`customattacks.dm:605-1400`), que la e uma janela `.dmf` com trinta widgets nomeados a mao.
+/// A MESA DE ATAQUES DE KI -- o `CreateAttackWindow` do DM (`customattacks.dm:605-1400`, uma janela
+/// `.dmf` com trinta widgets nomeados a mao) mais o `Blast_Color()` do menu de Settings
+/// (`CharacterCreation.dm:152-164`), que la moravam em dois lugares e aqui sao uma tela so.
+///
+/// ============================ O QUE ELA MOSTRA (dono, 2026-09-15) ============================
+/// *"faca a tela de customizacao de ataques de ki (beam, blast etc)"*. Tres coisas, em duas colunas:
+///
+///   ESQUERDA -- o que se VE:
+///     * a PREVIA VIVA do tiro: um `ProjetilDesenhado` de producao (a mesma classe que desenha o tiro
+///       no mundo, sem luz), com a arte escolhida e a cor do ki de quem esta olhando. Nao e um quadro
+///       parecido: e o trem de raio inteiro (cabeca, corpo, mao) ou a bola, animando;
+///     * a GRADE DE ARTES em miniatura, recortada pelo tipo (`ArteDeProjetil.PermitidasPara`, o
+///       `custom_icon_folders` do DM), cada miniatura tingida com a cor do ki -- o dono ja pediu uma
+///       vez "lista com icone" no lugar de dropdown, e a lista antiga daqui era um dropdown de nomes
+///       de arquivo ("Blasts: 12.dmi");
+///     * a COR DO SEU KI: o seletor, "Aplicar" e "Sortear" (o `rand(0,255)` da criacao). Vale pra TODO
+///       ataque de ki -- Ki Wave, bola, as inventadas -- porque e o `blastR/G/B` do mob, nao da tecnica.
+///   DIREITA -- os NUMEROS: tipo, nome, gritos, as compras de ponto, o folego. Nada mudou neles.
 ///
 /// ============================ ELA NAO SABE UM PRECO SEQUER ============================
 /// Nenhum botao daqui calcula, confere ou desconta ponto. Cada um manda `ca_comprar &lt;compra&gt;`
 /// e espera o pacote de volta; o numero de pontos que aparece na tela e o `Gasto` que o SERVIDOR
-/// devolveu, calculado pelo `Core.Skills.TecnicaCustomizada`.
-///
-/// Isso e a regra 4 da casa, e aqui ela vale em dobro: a tabela de precos tem dezoito linhas, e o
-/// proprio DM -- que a tinha em dezoito copias, uma por botao -- escreveu TRES delas diferentes das
-/// outras quinze. Uma segunda copia no cliente divergiria no primeiro ajuste, e o sintoma seria o
-/// pior possivel: a tela mostrando um saldo e o servidor cobrando outro.
-///
-/// O botao APAGADO tambem nao e decisao daqui: ele so le o `Restantes` que veio. Quando a guarda de
-/// verdade recusar, a recusa chega pelo chat com o motivo do DM.
+/// devolveu, calculado pelo `Core.Skills.TecnicaCustomizada`. A cor tambem: o seletor so TINGE a
+/// previa ao vivo; a cor de verdade e a que volta no `PeerLook` depois do `ca_cor`.
 /// ==================================================================================
 ///
 /// ============================ UMA TELA, DOIS ESTADOS ============================
-/// SEM MESA ABERTA: a lista das tecnicas de pe, com "editar" e "esquecer" em cada uma, e o botao de
-/// criar (apagado quando o teto de dez ja bateu).
-/// COM MESA ABERTA: o rascunho, os pontos restantes, e as compras.
-///
-/// A troca de estado e o servidor quem decide (o `bool` da mesa no pacote), e nao um clique local.
-/// Uma tela que se abre sozinha em "modo edicao" antes de o servidor concordar e uma tela que mente
-/// quando o pacote se perde.
+/// SEM MESA ABERTA: a lista das tecnicas de pe (com a miniatura de cada uma), "ajustar" e "esquecer" em
+/// cada, e o botao de criar. COM MESA ABERTA: o rascunho. A troca de estado e o servidor quem decide (o
+/// `bool` da mesa no pacote), e nao um clique local. A coluna da esquerda existe nos dois: a cor do ki
+/// nao depende de haver tecnica inventada.
 /// ============================================================================
 /// </summary>
 public partial class TelaDeTecnicas : CanvasLayer
@@ -37,43 +43,147 @@ public partial class TelaDeTecnicas : CanvasLayer
 	public static TelaDeTecnicas? Instancia { get; private set; }
 
 	private Control _raiz = null!;
-	private VBoxContainer _corpo = null!;
 	private Label _titulo = null!;
+
+	/// <summary>A coluna do que se VE: previa, grade de artes, cor do ki.</summary>
+	private VBoxContainer _esquerda = null!;
+
+	/// <summary>A coluna dos NUMEROS (ou a lista de tecnicas), rolavel.</summary>
+	private VBoxContainer _corpo = null!;
 
 	/// <summary>O campo de texto aberto agora (nome/descricao/grito), ou nulo.</summary>
 	private LineEdit? _campo;
 
 	/// <summary>
 	/// ESTOU ESCREVENDO NUM CAMPO DESTA TELA? Lido pelo <see cref="Foco"/>, que e a pergunta unica
-	/// que todo leitor de teclado do jogo faz antes de agir.
-	///
-	/// ESTATICO como o `Chat.Digitando` e o `MenuJogo.Digitando`, e pelo mesmo motivo: quem
-	/// pergunta (o movimento, o soco, o treino, os atalhos do HUD) nao tem esta tela na mao, e nao
-	/// deve ter -- ele so quer saber se o teclado esta ocupado.
+	/// que todo leitor de teclado do jogo faz antes de agir. ESTATICO como o `Chat.Digitando`.
 	/// </summary>
 	public static bool Digitando { get; private set; }
 
+	/// <summary>A previa viva -- um `ProjetilDesenhado` de producao, sem luz, dentro de um palco recortado.</summary>
+	private ProjetilDesenhado? _previa;
+
+	private ColorPickerButton? _seletorDeCor;
+
+	/// <summary>
+	/// UMA TINTA PRA TODAS AS MINIATURAS. E o mesmo `Ki.gdshader` do tiro (soma a cor sobre a folha
+	/// cinza), num material so: mover o seletor de cor escreve um uniforme e a grade inteira retinge.
+	/// </summary>
+	private ShaderMaterial? _tintaDasMiniaturas;
+
+	private readonly List<Button> _botoesDeArte = [];
+
+	private const string CaminhoDoShaderDeKi = "res://Assets/Shaders/Ki.gdshader";
+	// A COLUNA DA ESQUERDA TEM QUE CABER EM 720 DE ALTURA junto do titulo e do botao de fechar: 8 miniaturas
+	// de 44 px por linha (Beams 9 + Techniques 15 = 4 linhas; Blasts 18 = 3) e o palco de 120. Com 6 de 52
+	// px e palco de 150, a segunda foto da `--diagmesa` saiu com a cor do ki cortada no pe da tela.
+	private const int LadoDaMiniatura = 44;
+	private const int ColunasDaGrade = 8;
+	private static readonly Vector2 Palco = new(340, 110);
+
+	// =====================================================================
+	// AS PORTAS DA BANCADA (`--diagmesa`)
+	// =====================================================================
+	/// <summary>
+	/// O DEFEITO INJETADO: a grade sem o recorte por tipo -- toda arte do catalogo em qualquer tipo.
+	/// **Falso em jogo, sempre.** Existe pra provar que a regra <see cref="GradeRespeitaOTipo"/> fica
+	/// vermelha quando o filtro some, em vez de ficar verde olhando pra uma grade cheia de bolas com
+	/// cauda de raio.
+	/// </summary>
+	public static bool GradeSemFiltroDeTeste;
+
+	public bool Aberta => _raiz.Visible;
+	public string ModoDeTeste => GameClient.Instance?.Mesa != null ? "mesa" : "lista";
+	public ProjetilDesenhado? Previa => _previa;
+	public void ForcarRedesenho() => Redesenhar();
+
+	/// <summary>As artes que a grade oferece agora, na ordem em que estao na tela.</summary>
+	public List<(ArteDeKi Arte, bool TemMiniatura, bool Marcada)> ArtesNaGrade() =>
+		[.. _botoesDeArte.Select(b => ((ArteDeKi)b.GetMeta("arte").AsInt32(), b.GetMeta("mini").AsBool(), b.ButtonPressed))];
+
+	/// <summary>Aperta a miniatura desta arte, pelo mesmo sinal que o dedo dispara.</summary>
+	public bool ClicarArte(ArteDeKi arte)
+	{
+		Button? b = _botoesDeArte.Find(x => (ArteDeKi)x.GetMeta("arte").AsInt32() == arte);
+		if (b == null) return false;
+		b.EmitSignal(BaseButton.SignalName.Pressed);
+		return true;
+	}
+
+	/// <summary>Aperta o botao com este texto (o primeiro visivel), pelo mesmo sinal que o dedo dispara.</summary>
+	public bool ClicarBotao(string texto)
+	{
+		Button? b = Todos(_raiz).OfType<Button>().FirstOrDefault(x => x.Text == texto && x.IsVisibleInTree() && !x.Disabled);
+		if (b == null) return false;
+		b.EmitSignal(BaseButton.SignalName.Pressed);
+		return true;
+	}
+
+	/// <summary>A cor no seletor. Escrever dispara o mesmo `ColorChanged` que arrastar o mouse dispara.</summary>
+	public Color CorNoSeletor
+	{
+		get => _seletorDeCor?.Color ?? Aura.CorDoKiCru;
+		set
+		{
+			if (_seletorDeCor == null) return;
+			_seletorDeCor.Color = value;
+			_seletorDeCor.EmitSignal(ColorPickerButton.SignalName.ColorChanged, value);
+		}
+	}
+
+	/// <summary>
+	/// A REGRA DA GRADE: toda arte oferecida (fora o "padrao", que e `Nenhuma`) e permitida pro tipo --
+	/// o `custom_icon_folders` do DM. Pura, pra bancada injetar uma grade suja e ve-la reprovar.
+	/// </summary>
+	public static bool GradeRespeitaOTipo(IEnumerable<ArteDeKi> artes, TipoDeProjetil tipo)
+	{
+		HashSet<ArteDeKi> ok = [.. ArteDeProjetil.PermitidasPara(tipo)];
+		return artes.All(a => a == ArteDeKi.Nenhuma || ok.Contains(a));
+	}
+
+	// =====================================================================
+	// O CICLO DE VIDA
+	// =====================================================================
 	public override void _Ready()
 	{
 		Instancia = this;
 		Layer = 4;   // a mesma da mochila e do menu de interacao: sao as telas "do mundo"
 		Montar();
 
-		if (GameClient.Instance is { } cli) cli.CustomizadasMudaram += AoMudar;
+		if (GameClient.Instance is { } cli)
+		{
+			cli.CustomizadasMudaram += AoMudar;
+			cli.PeerLooked += AoVerFicha;
+		}
 	}
 
 	/// <summary>
-	/// Solta a assinatura. O `GameClient` sobrevive ao logout e esta tela nao -- ver o registro
-	/// `dbclimax-port-assinaturas-vazadas`: dezenove orfaos por ciclo, todos por lambda que nao da
-	/// pra cancelar. Por isso o metodo tem NOME.
+	/// Solta as assinaturas. O `GameClient` sobrevive ao logout e esta tela nao -- ver o registro
+	/// `dbclimax-port-assinaturas-vazadas`. Por isso os metodos tem NOME.
 	/// </summary>
 	public override void _ExitTree()
 	{
-		if (GameClient.Instance is { } cli) cli.CustomizadasMudaram -= AoMudar;
+		if (GameClient.Instance is { } cli)
+		{
+			cli.CustomizadasMudaram -= AoMudar;
+			cli.PeerLooked -= AoVerFicha;
+		}
 		if (Instancia == this) Instancia = null;
 	}
 
 	private void AoMudar() { if (_raiz.Visible) Redesenhar(); }
+
+	/// <summary>
+	/// A MINHA FICHA CHEGOU DE NOVO -- e o que acontece depois do `ca_cor`: o servidor reapresenta a
+	/// aparencia e o `World` ja escreveu a cor nova. Redesenhar aqui e o que faz a previa, as miniaturas
+	/// e o seletor mostrarem a cor que VALE, e nao a que o mouse largou.
+	/// </summary>
+	private void AoVerFicha(int quem, string nome, string raca, string genero,
+							Jandirus.Core.Appearance.Appearance ap, Jandirus.Core.Social.TipoDeFusao? fusao)
+	{
+		if (!_raiz.Visible || GameClient.Instance is not { } cli || quem != cli.LocalId) return;
+		Redesenhar();
+	}
 
 	private void Montar()
 	{
@@ -87,23 +197,39 @@ public partial class TelaDeTecnicas : CanvasLayer
 		PanelContainer painel = Tema.Painel1(16);
 		centro.AddChild(painel);
 
-		var caixa = new VBoxContainer { CustomMinimumSize = new Vector2(560, 0) };
+		var caixa = new VBoxContainer { CustomMinimumSize = new Vector2(940, 0) };
 		caixa.AddThemeConstantOverride("separation", 8);
 		painel.AddChild(caixa);
 
-		_titulo = new Label { Text = "TÉCNICAS DE KI", HorizontalAlignment = HorizontalAlignment.Center };
+		_titulo = new Label { Text = "ATAQUES DE KI", HorizontalAlignment = HorizontalAlignment.Center };
 		_titulo.AddThemeFontSizeOverride("font_size", 22);
 		caixa.AddChild(_titulo);
 		caixa.AddChild(new HSeparator());
 
-		// ROLAGEM: dez tecnicas com duas linhas cada, ou a mesa com quinze compras, passam da altura
-		// de uma tela de 720. Sem isto o painel cresce pra fora e os botoes de baixo somem.
+		var colunas = new HBoxContainer();
+		colunas.AddThemeConstantOverride("separation", 14);
+		caixa.AddChild(colunas);
+
+		// A ESQUERDA TEM LARGURA FIXA (380) e nao expande; a direita fica com o resto. E toda legenda das
+		// duas colunas QUEBRA LINHA (`Nota`): a primeira foto da `--diagmesa` saiu com a previa de 1070 px
+		// e os numeros fora da tela, porque uma `Label` sem autowrap alarga a coluna ate caber o texto.
+		_esquerda = new VBoxContainer
+		{
+			CustomMinimumSize = new Vector2(380, 0),
+			SizeFlagsHorizontal = Control.SizeFlags.Fill,
+		};
+		_esquerda.AddThemeConstantOverride("separation", 8);
+		colunas.AddChild(_esquerda);
+
+		// ROLAGEM SO NA DIREITA: dez tecnicas com duas linhas cada, ou a mesa com quinze compras, passam
+		// da altura de uma tela de 720. A esquerda cabe sempre (previa + grade + cor = ~560 px).
 		var rolagem = new ScrollContainer
 		{
-			CustomMinimumSize = new Vector2(560, 420),
+			CustomMinimumSize = new Vector2(530, 560),
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 			HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
 		};
-		caixa.AddChild(rolagem);
+		colunas.AddChild(rolagem);
 
 		_corpo = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
 		_corpo.AddThemeConstantOverride("separation", 6);
@@ -149,35 +275,295 @@ public partial class TelaDeTecnicas : CanvasLayer
 	{
 		FecharCampo();
 		foreach (Node n in _corpo.GetChildren()) n.QueueFree();
+		foreach (Node n in _esquerda.GetChildren()) n.QueueFree();
+		_botoesDeArte.Clear();
+		_previa = null;
+		_seletorDeCor = null;
+		_tintaDasMiniaturas = null;
 
 		GameClient? cli = GameClient.Instance;
 		if (cli == null) return;
 
-		if (cli.Mesa is { } mesa) { DesenharMesa(mesa); return; }
+		if (cli.Mesa is { } mesa)
+		{
+			_titulo.Text = mesa.Criada ? $"AJUSTANDO — {mesa.Nome}" : "INVENTANDO UMA TÉCNICA";
+			DesenharPrevia(mesa.Tipo, mesa.Arte, $"Assim sai {(mesa.Criada ? mesa.Nome : "a técnica")} da sua mão.");
+			DesenharGradeDeArtes(mesa);
+			DesenharCorDoKi();
+			DesenharMesa(mesa);
+			return;
+		}
 
-		_titulo.Text = "TÉCNICAS DE KI";
+		_titulo.Text = "ATAQUES DE KI";
+		DesenharPrevia(TipoDeProjetil.Beam, ArteDeKi.Nenhuma, "Seu ki, na arte padrão de raio (a do Ki Wave).");
+		DesenharCorDoKi();
 		DesenharLista(cli);
 	}
 
+	// ---------------------------------------------------------------- a previa
+	/// <summary>
+	/// A PREVIA VIVA. E um <see cref="ProjetilDesenhado"/> de PRODUCAO -- a mesma classe, a mesma folha,
+	/// o mesmo shader e o mesmo trem de raio que o mundo desenha --, so que sem luz e dentro de um palco
+	/// recortado. Um desenho proprio da tela seria a "segunda resposta" pra "como e este tiro", e o dia
+	/// em que o trem mudasse de passo a previa mentiria calada.
+	/// </summary>
+	private void DesenharPrevia(TipoDeProjetil tipo, ArteDeKi arte, string legenda)
+	{
+		_esquerda.AddChild(Tema.Rotulo("Prévia"));
+
+		var moldura = new PanelContainer();
+		moldura.AddThemeStyleboxOverride("panel", Tema.Caixa(new Color("0b0d14"), Tema.Borda, 4));
+		_esquerda.AddChild(moldura);
+
+		var palco = new Control { CustomMinimumSize = Palco, ClipContents = true };
+		moldura.AddChild(palco);
+
+		ArteDeKi efetiva = arte == ArteDeKi.Nenhuma ? ArteDeProjetil.PadraoDoCustom(tipo) : arte;
+		// EM DOBRO, como a camera do jogo (o mundo roda com zoom 2): em 1x a bola padrao (32 px) e um
+		// pingo num palco de 340. A escala e do NODE, entao o trem de raio continua medido em pixel de
+		// folha por dentro -- so o desenho sai maior.
+		var p = new ProjetilDesenhado { Tipo = tipo, Cor = MinhaCor(), SemLuz = true, Scale = new Vector2(2, 2) };
+		p.Vestir(efetiva, 1f);
+		// O RAIO ATRAVESSA O PALCO da mao (esquerda) a cabeca (direita); a bola fica no meio. As duas
+		// chamadas dao rumo LESTE ao node (`Mirar` tira o rumo da subtracao), que e o lado com que a
+		// miniatura da grade tambem e tirada. Os 140 px locais viram 280 na tela.
+		if (tipo == TipoDeProjetil.Beam)
+			p.Mirar(new Vector2(Palco.X - 24, Palco.Y / 2), new Vector2(Palco.X - 24 - 140, Palco.Y / 2));
+		else
+			p.Mirar(new Vector2(Palco.X / 2, Palco.Y / 2), new Vector2(Palco.X / 2 - 2, Palco.Y / 2));
+		palco.AddChild(p);
+		_previa = p;
+
+		_esquerda.AddChild(Nota(legenda));
+	}
+
+	// ---------------------------------------------------------------- a grade de artes
+	/// <summary>
+	/// A GRADE. `pick_game_icon` (`customattacks.dm:543-568`) listava os `.dmi` da pasta por NOME; aqui
+	/// cada folha vira uma miniatura tingida (o `head` do raio ou a bola, pelo <see cref="ProjetilDesenhado.Miniatura"/>).
+	///
+	/// ============================ ELA NAO CUSTA PONTO, E POR ISSO FICA LONGE DAS COMPRAS ============================
+	/// O botao de icone do DM (`:1135-1148`) fica fora do orcamento de cinco pontos: ele nao toca o
+	/// `custompoints_spent`. Desenha-la entre as compras diria ao jogador que ele esta gastando alguma
+	/// coisa pra escolher uma arte -- por isso ela mora na coluna do que se VE.
+	///
+	/// A LISTA VEM DO `Core` E E RECORTADA PELO TIPO (`custom_icon_folders`, `:558-562`): raio ve
+	/// `Beams` + `Techniques`, bola so `Blasts`, teleguiado so `Techniques`. E a MESMA funcao que o
+	/// servidor usa pra recusar (`GameServer.ArteDaTecnica`); aqui ela so evita oferecer o que seria negado.
+	/// ================================================================================================================
+	/// </summary>
+	private void DesenharGradeDeArtes(TecnicaCustomizada m)
+	{
+		_esquerda.AddChild(Tema.Rotulo("Arte do tiro (não custa ponto)"));
+		_tintaDasMiniaturas = NovaTinta(MinhaCor());
+
+		IEnumerable<ArteDeKi> oferta = GradeSemFiltroDeTeste ? ArteDeProjetil.Todas : ArteDeProjetil.PermitidasPara(m.Tipo);
+		List<ArteDeKi> artes = [.. oferta];
+
+		// O PADRAO PRIMEIRO, sozinho na linha: e o `"Default"` do menu do DM (`:1146`, `attackicon = null`),
+		// e e o que a tecnica usa quando o jogador nunca escolheu.
+		var linhaDoPadrao = new HBoxContainer();
+		linhaDoPadrao.AddThemeConstantOverride("separation", 8);
+		_esquerda.AddChild(linhaDoPadrao);
+		linhaDoPadrao.AddChild(BotaoDeArte(m.Tipo, ArteDeKi.Nenhuma, m.Arte == ArteDeKi.Nenhuma,
+										   "Padrão — " + ArteDeKiNoCliente.Rotulo(ArteDeProjetil.PadraoDoCustom(m.Tipo))));
+		linhaDoPadrao.AddChild(Nota("Padrão: a arte que a técnica usa se você não escolher nenhuma."));
+
+		foreach (string pasta in new[] { "Beams", "Techniques", "Blasts" })
+		{
+			List<ArteDeKi> daPasta = [.. artes.Where(a => ArteDeProjetil.Folha(a).Pasta == pasta)];
+			if (daPasta.Count == 0) continue;
+
+			var cabeca = new Label { Text = pasta };
+			cabeca.AddThemeFontSizeOverride("font_size", 11);
+			cabeca.AddThemeColorOverride("font_color", Tema.TextoFraco);
+			_esquerda.AddChild(cabeca);
+
+			var grade = new GridContainer { Columns = ColunasDaGrade };
+			grade.AddThemeConstantOverride("h_separation", 4);
+			grade.AddThemeConstantOverride("v_separation", 4);
+			_esquerda.AddChild(grade);
+			foreach (ArteDeKi a in daPasta)
+				grade.AddChild(BotaoDeArte(m.Tipo, a, m.Arte == a, ArteDeKiNoCliente.Rotulo(a)));
+		}
+
+		_esquerda.AddChild(Nota(
+			"Folha cinza + a cor do SEU ki por cima, como no original. Raio: Beams e Techniques; bola: Blasts; teleguiado: Techniques."));
+	}
+
+	/// <summary>
+	/// UM BOTAO DA GRADE: a miniatura tingida dentro de um botao de alternar. A miniatura e um
+	/// `TextureRect` FILHO (e nao o `Icon` do botao) porque o material de tinta tem que valer so pra ela
+	/// -- no botao inteiro, o shader somaria a cor tambem na moldura.
+	/// </summary>
+	private Button BotaoDeArte(TipoDeProjetil tipo, ArteDeKi arte, bool marcado, string dica)
+	{
+		ArteDeKi efetiva = arte == ArteDeKi.Nenhuma ? ArteDeProjetil.PadraoDoCustom(tipo) : arte;
+		Texture2D? mini = MiniaturaDe(tipo, efetiva);
+
+		var b = new Button
+		{
+			CustomMinimumSize = new Vector2(LadoDaMiniatura, LadoDaMiniatura),
+			TooltipText = dica,
+			ToggleMode = true,
+			ButtonPressed = marcado,
+		};
+		if (mini != null)
+		{
+			var tr = new TextureRect
+			{
+				Texture = mini,
+				ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+				StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+				MouseFilter = Control.MouseFilterEnum.Ignore,
+				Material = _tintaDasMiniaturas,
+			};
+			tr.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+			tr.OffsetLeft = 4; tr.OffsetTop = 4; tr.OffsetRight = -4; tr.OffsetBottom = -4;
+			b.AddChild(tr);
+		}
+		else
+		{
+			// FOLHA SEM QUADRO QUE SIRVA: o nome no lugar, e nao um botao vazio -- o jogador ainda pode
+			// escolhe-la, e o tiro sai pela primitiva (ver `ProjetilDesenhado`).
+			b.Text = dica.Length > 6 ? dica[..6] : dica;
+		}
+
+		b.SetMeta("arte", (int)arte);
+		b.SetMeta("mini", mini != null);
+		// `ItemSelected` do dropdown antigo dava o INDICE da linha; aqui o botao ja sabe qual arte e,
+		// entao o que vai pro fio e o id dela -- o que o servidor entende (`ca_arte`).
+		b.Pressed += () => GameClient.Instance?.SendVerbo("ca_arte", ((int)arte).ToString());
+		_botoesDeArte.Add(b);
+		return b;
+	}
+
+	private static Texture2D? MiniaturaDe(TipoDeProjetil tipo, ArteDeKi arte)
+	{
+		SpriteFrames? f = ArteDeKiNoCliente.Folha(arte);
+		return f == null ? null : ProjetilDesenhado.Miniatura(f, tipo, arte);
+	}
+
+	private static ShaderMaterial? NovaTinta(Color cor)
+	{
+		var sh = ResourceLoader.Load<Shader>(CaminhoDoShaderDeKi);
+		if (sh == null) return null;
+		var m = new ShaderMaterial { Shader = sh };
+		m.SetShaderParameter("tinta", new Vector3(cor.R, cor.G, cor.B));
+		return m;
+	}
+
+	// ---------------------------------------------------------------- a cor do ki
+	/// <summary>
+	/// A COR DO SEU KI -- `Blast_Color()` (`CharacterCreation.dm:152-164`), que no DM ficava escondido no
+	/// menu de Settings ("Aura and Blast Color"). O seletor TINGE a previa e as miniaturas ao vivo;
+	/// "Aplicar" manda `ca_cor R,G,B` e a cor que vale e a que volta no `PeerLook`. "Sortear" e o
+	/// `rand(0,255)` por canal da criacao. A aura e OUTRA cor, sorteada, e nao muda aqui (decisao do dono).
+	/// </summary>
+	private void DesenharCorDoKi()
+	{
+		_esquerda.AddChild(new HSeparator());
+		_esquerda.AddChild(Tema.Rotulo("Cor do seu ki"));
+
+		var linha = new HBoxContainer();
+		linha.AddThemeConstantOverride("separation", 6);
+		_esquerda.AddChild(linha);
+
+		Color atual = MinhaCor();
+		var seletor = new ColorPickerButton
+		{
+			Color = atual,
+			EditAlpha = false,
+			CustomMinimumSize = new Vector2(150, 28),
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		// AO VIVO SO NA TELA: nada vai pro fio enquanto o mouse arrasta. O redesenho tambem nao roda
+		// (ele recriaria o seletor e fecharia o picker no meio do arrasto) -- so o uniforme muda.
+		seletor.ColorChanged += c =>
+		{
+			_previa?.Tingir(c);
+			_tintaDasMiniaturas?.SetShaderParameter("tinta", new Vector3(c.R, c.G, c.B));
+		};
+		linha.AddChild(seletor);
+		_seletorDeCor = seletor;
+
+		var aplicar = new Button { Text = "Aplicar" };
+		aplicar.Pressed += () =>
+		{
+			Color c = seletor.Color;
+			GameClient.Instance?.SendVerbo("ca_cor",
+				$"{Mathf.RoundToInt(c.R * 255)},{Mathf.RoundToInt(c.G * 255)},{Mathf.RoundToInt(c.B * 255)}");
+		};
+		linha.AddChild(aplicar);
+
+		var sortear = new Button { Text = "Sortear" };
+		sortear.Pressed += () => GameClient.Instance?.SendVerbo("ca_cor", "sortear");
+		linha.AddChild(sortear);
+
+		_esquerda.AddChild(Nota(
+			"Vale pra TODO ataque de ki que sai da sua mão (Ki Wave, bolas, as inventadas). "
+			+ "Não muda carregando, voando ou escudado."));
+	}
+
+	/// <summary>
+	/// UMA LEGENDA QUE QUEBRA LINHA. Uma `Label` sem autowrap tem largura minima = o texto inteiro, e uma
+	/// frase de duas linhas alargava a coluna ate 1070 px (a primeira foto da `--diagmesa`: a previa
+	/// enorme e os numeros fora da tela). Toda legenda longa desta tela passa por aqui.
+	/// </summary>
+	private static Label Nota(string texto, Color? cor = null, int tamanho = 11)
+	{
+		Label l = Tema.Legenda(texto, cor ?? Tema.TextoFraco, tamanho);
+		l.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		l.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		return l;
+	}
+
+	/// <summary>A cor do MEU ki, como o mundo a desenha agora (`World.CorDoKiDe`). Sem mundo, o ki cru.</summary>
+	private static Color MinhaCor() =>
+		GameClient.Instance is { } cli && World.Instancia is { } mundo ? mundo.CorDoKiDe(cli.LocalId) : Aura.CorDoKiCru;
+
+	// ---------------------------------------------------------------- a lista
 	private void DesenharLista(GameClient cli)
 	{
-		_corpo.AddChild(Tema.Legenda(
+		_corpo.AddChild(Nota(
 			$"{cli.Customizadas.Count} de {TecnicaCustomizada.Maximo} técnicas inventadas.",
 			Tema.TextoFraco));
 
+		ShaderMaterial? tinta = NovaTinta(MinhaCor());
 		foreach (TecnicaCustomizada t in cli.Customizadas)
 		{
 			PanelContainer p = Tema.Painel1(8);
-			var linha = new VBoxContainer();
+			var linha = new HBoxContainer();
+			linha.AddThemeConstantOverride("separation", 10);
 			p.AddChild(linha);
+
+			// A MINIATURA DA TECNICA ao lado do nome: a mesma da grade, na cor do ki de agora.
+			ArteDeKi efetiva = t.Arte == ArteDeKi.Nenhuma ? ArteDeProjetil.PadraoDoCustom(t.Tipo) : t.Arte;
+			var quadro = new Control { CustomMinimumSize = new Vector2(LadoDaMiniatura, LadoDaMiniatura) };
+			if (MiniaturaDe(t.Tipo, efetiva) is { } mini)
+			{
+				var tr = new TextureRect
+				{
+					Texture = mini,
+					ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+					StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+					Material = tinta,
+				};
+				tr.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+				quadro.AddChild(tr);
+			}
+			linha.AddChild(quadro);
+
+			var coluna = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+			linha.AddChild(coluna);
 
 			var nome = new Label { Text = $"{t.Nome}  —  {NomeDoTipo(t.Tipo)}" };
 			nome.AddThemeColorOverride("font_color", Tema.Destaque);
-			linha.AddChild(nome);
-			linha.AddChild(Tema.Legenda(Resumo(t), Tema.TextoFraco, 12));
+			coluna.AddChild(nome);
+			coluna.AddChild(Nota(Resumo(t), Tema.TextoFraco, 12));
 
 			var botoes = new HBoxContainer();
-			linha.AddChild(botoes);
+			coluna.AddChild(botoes);
 
 			int id = t.Id;
 			var editar = new Button { Text = "Ajustar" };
@@ -214,15 +600,14 @@ public partial class TelaDeTecnicas : CanvasLayer
 		// O TETO DIZ POR QUE, e nao so apaga o botao. Um botao cinza sem explicacao e a mesma coisa
 		// que o `switch` sem `else` do DM: o jogador nao descobre que ja tem dez.
 		if (!cabe)
-			_corpo.AddChild(Tema.Legenda(
+			_corpo.AddChild(Nota(
 				$"Cabem {TecnicaCustomizada.Maximo} técnicas na sua cabeça. Esqueça uma para abrir espaço.",
 				Tema.Perigo, 12));
 	}
 
+	// ---------------------------------------------------------------- a mesa (os numeros)
 	private void DesenharMesa(TecnicaCustomizada m)
 	{
-		_titulo.Text = m.Criada ? $"AJUSTANDO — {m.Nome}" : "INVENTANDO UMA TÉCNICA";
-
 		// OS PONTOS PRIMEIRO, e grandes: e o unico numero que muda a cada clique, e e por ele que o
 		// jogador decide o proximo.
 		var pontos = new Label
@@ -233,7 +618,7 @@ public partial class TelaDeTecnicas : CanvasLayer
 		pontos.AddThemeFontSizeOverride("font_size", 18);
 		pontos.AddThemeColorOverride("font_color", m.Restantes >= 0 ? Tema.Destaque : Tema.Perigo);
 		_corpo.AddChild(pontos);
-		_corpo.AddChild(Tema.Legenda(
+		_corpo.AddChild(Nota(
 			$"O orçamento é {TecnicaCustomizada.PontosTotais}, e ele é um TETO. Rebaixar potência, encarecer a "
 			+ "energia, alongar a carga ou deixar o tiro mais lento DEVOLVE pontos — mas só devolve o que já foi "
 			+ $"gasto: não dá para juntar mais de {TecnicaCustomizada.PontosTotais}.",
@@ -242,16 +627,11 @@ public partial class TelaDeTecnicas : CanvasLayer
 		// ============================ O PISO TEM QUE APARECER ANTES DO CLIQUE ============================
 		// Com o orcamento intacto toda desvantagem e RECUSADA (nao ha o que estornar), e uma recusa que so
 		// chega DEPOIS do clique, pelo chat, e uma regra que o jogador aprende por tentativa e erro. Esta
-		// linha e a mesma regra dita antes.
-		//
-		// E ela e a UNICA coisa que esta tela deduz sobre pontos -- e nao e um preco, e o zero: como o
-		// menor estorno da tabela e de 1 ponto, "gasto zero" ja implica "nenhuma desvantagem passa", sem
-		// que a tela precise saber quanto custa coisa alguma. Apagar os botoes de desvantagem exigiria
-		// saber QUAL lado de cada degrau estorna e por quanto -- que e a segunda copia da tabela de precos
-		// que o cabecalho deste arquivo proibe (o DM tinha dezoito, e escreveu tres delas erradas).
+		// linha e a mesma regra dita antes -- e e a UNICA coisa que esta tela deduz sobre pontos: nao e um
+		// preco, e o zero.
 		// ============================================================================================
 		if (m.Gasto == 0)
-			_corpo.AddChild(Tema.Legenda(
+			_corpo.AddChild(Nota(
 				"Você ainda não gastou nada. Desvantagens (menos potência, energia mais cara, carga mais longa, "
 				+ "tiro mais lento, gastar fôlego) pagam com pontos de volta — e com o orçamento inteiro não há o "
 				+ "que devolver, então elas são RECUSADAS em vez de sair de graça. Compre alguma vantagem primeiro.",
@@ -276,46 +656,13 @@ public partial class TelaDeTecnicas : CanvasLayer
 				tipos.AddChild(b);
 			}
 			_corpo.AddChild(tipos);
-			_corpo.AddChild(Tema.Legenda(DescricaoDoTipo(m.Tipo), Tema.TextoFraco, 11));
+			_corpo.AddChild(Nota(DescricaoDoTipo(m.Tipo), Tema.TextoFraco, 11));
 		}
 		else
 		{
-			_corpo.AddChild(Tema.Legenda($"Tipo: {NomeDoTipo(m.Tipo)} (não muda depois de pronta).",
+			_corpo.AddChild(Nota($"Tipo: {NomeDoTipo(m.Tipo)} (não muda depois de pronta).",
 										 Tema.TextoFraco, 12));
 		}
-
-		// ---------------------------------------------------------------- a arte
-		//
-		// ============================ ELA NAO CUSTA PONTO, E POR ISSO NAO E UM `Degrau` ============================
-		// O botao de icone do DM (`customattacks.dm:1142-1157`) fica fora do orcamento de cinco
-		// pontos: ele nao toca o `custompoints_spent`. Desenha-lo entre as compras diria ao jogador
-		// que ele esta gastando alguma coisa pra escolher uma cor de tiro.
-		//
-		// A LISTA VEM DO `Core` E E RECORTADA PELO TIPO -- `custom_icon_folders` (`:558-562`). E a
-		// MESMA funcao que o servidor usa pra recusar: aqui ela so evita oferecer o que seria
-		// negado. Ver `GameServer.ArteDaTecnica`.
-		// ====================================================================================================
-		_corpo.AddChild(new HSeparator());
-		_corpo.AddChild(Tema.Rotulo("Arte do tiro (não custa ponto)"));
-		var artes = new OptionButton();
-		artes.AddItem($"Padrão — {ArteDeKiNoCliente.Rotulo(ArteDeProjetil.PadraoDoCustom(m.Tipo))}", 0);
-		int escolhido = 0;
-		foreach (ArteDeKi a in ArteDeProjetil.PermitidasPara(m.Tipo))
-		{
-			artes.AddItem(ArteDeKiNoCliente.Rotulo(a), (int)a);
-			if (m.Arte == a) escolhido = (int)a;
-		}
-		artes.Select(artes.GetItemIndex(escolhido));
-		// `ItemSelected` da o INDICE da linha, e o que o servidor entende e o id da arte -- os dois
-		// so coincidem por acidente na primeira linha. Traduzir aqui e o que impede a lista de
-		// mandar "arte 3" quando o jogador clicou na terceira linha.
-		artes.ItemSelected += i =>
-			GameClient.Instance?.SendVerbo("ca_arte", artes.GetItemId((int)i).ToString());
-		_corpo.AddChild(artes);
-		_corpo.AddChild(Tema.Legenda(
-			"A folha é cinza e recebe a cor do SEU ki por cima, como no jogo original. "
-			+ "Raio enxerga as pastas Beams e Techniques; bola só Blasts; teleguiado só Techniques.",
-			Tema.TextoFraco, 11));
 
 		// ---------------------------------------------------------------- textos
 		_corpo.AddChild(new HSeparator());
@@ -363,8 +710,7 @@ public partial class TelaDeTecnicas : CanvasLayer
 
 		// ---------------------------------------------------------------- folego
 		_corpo.AddChild(new HSeparator());
-		// O UNICO ESTORNO DE DOIS PONTOS: ele exige DOIS ja gastos, e nao um. Vale dizer o numero
-		// porque a legenda geral do piso fala de "desvantagens" no plural e esta e a cara.
+		// O UNICO ESTORNO DE DOIS PONTOS: ele exige DOIS ja gastos, e nao um.
 		Interruptor($"Gasta fôlego além da energia (devolve {TecnicaCustomizada.PrecoDaEstamina} pontos — "
 					+ $"precisa ter {TecnicaCustomizada.PrecoDaEstamina} gastos)",
 					m.UsaStamina, null,
@@ -380,10 +726,8 @@ public partial class TelaDeTecnicas : CanvasLayer
 		_corpo.AddChild(acoes);
 
 		// SALVAR SO COM O ORCAMENTO FECHADO. Desde o piso do dono, `Gasto` vive preso em 0..5 no
-		// `Core` -- entao `Restantes` negativo aqui e um estado que NAO EXISTE mais nem por dentro.
-		// O botao apagado fica assim mesmo: ele custa uma linha, cobre um pacote adulterado que
-		// tenha escapado do grampo do `CustomWire`, e apagado ele DIZ que ha algo errado em vez de
-		// deixar salvar uma tecnica que o servidor recusaria.
+		// `Core` -- entao `Restantes` negativo aqui e um estado que NAO EXISTE mais nem por dentro. O
+		// botao apagado cobre um pacote adulterado que tenha escapado do grampo do `CustomWire`.
 		var salvar = new Button { Text = m.Criada ? "Confirmar mudanças" : "Criar a técnica",
 								  Disabled = m.Restantes < 0 };
 		salvar.Pressed += () => GameClient.Instance?.SendVerbo("ca_salvar");
@@ -423,7 +767,7 @@ public partial class TelaDeTecnicas : CanvasLayer
 		mais.Pressed += () => GameClient.Instance?.SendVerbo("ca_comprar", sobe.ToString());
 		linha.AddChild(mais);
 
-		linha.AddChild(Tema.Legenda(dica, Tema.TextoFraco, 11));
+		linha.AddChild(Nota(dica, Tema.TextoFraco, 11));
 	}
 
 	/// <summary>Uma caixinha de liga/desliga. `acao` nula = alternar um grito (que e livre).</summary>
@@ -439,11 +783,9 @@ public partial class TelaDeTecnicas : CanvasLayer
 	}
 
 	/// <summary>
-	/// UM CAMPO DE TEXTO que so manda ao confirmar (Enter ou perder o foco).
-	///
-	/// Nao manda a cada letra: cada verbo e uma mensagem confiavel, e "Kamehameha" custaria dez
-	/// pacotes e dez redesenhos -- e o redesenho recria o campo, o que arrancaria o cursor da mao
-	/// do jogador na segunda letra.
+	/// UM CAMPO DE TEXTO que so manda ao confirmar (Enter ou perder o foco). Nao manda a cada letra:
+	/// cada verbo e uma mensagem confiavel, e o redesenho recria o campo, o que arrancaria o cursor da
+	/// mao do jogador na segunda letra.
 	/// </summary>
 	private void Texto(string rotulo, string valor, string campo)
 	{
@@ -486,7 +828,7 @@ public partial class TelaDeTecnicas : CanvasLayer
 		s.ValueChanged += v => { if ((int)v != valor) aplicar((int)v); };
 		linha.AddChild(s);
 
-		_corpo.AddChild(Tema.Legenda(dica, Tema.TextoFraco, 11));
+		_corpo.AddChild(Nota(dica, Tema.TextoFraco, 11));
 	}
 
 	private void FecharCampo()
@@ -496,6 +838,15 @@ public partial class TelaDeTecnicas : CanvasLayer
 		// redesenho, e um `Digitando` preso deixa o jogo inteiro sem teclado ate o proximo campo.
 		Digitando = false;
 		_campo = null;
+	}
+
+	private static IEnumerable<Node> Todos(Node raiz)
+	{
+		foreach (Node n in raiz.GetChildren())
+		{
+			yield return n;
+			foreach (Node m in Todos(n)) yield return m;
+		}
 	}
 
 	private static string NomeDoTipo(TipoDeProjetil t) => t switch

@@ -100,6 +100,13 @@ public sealed class ZoneEntry
 		: "";
 
 	public int W, H;
+
+	/// <summary>
+	/// O `/obj/SpawnPoint` DESTE ANDAR, em celula do port -- onde o BYOND poe quem nasce aqui. Nulo
+	/// quando o mapa nao tem um (Makyo Star, os interiores, os "Outside"). Ver <see cref="MarcoDeBerco"/>.
+	/// </summary>
+	public MarcoDeBerco? Berco;
+
 	public ZoneCollision? Mapa;   // carregado sob demanda
 
 	/// <summary>
@@ -122,6 +129,27 @@ public sealed class ZoneEntry
 	/// ================================================================================================
 	/// </summary>
 	public ZoneCollision? Vista;
+}
+
+/// <summary>
+/// O MARCO DE NASCIMENTO DE UM ANDAR -- o `/obj/SpawnPoint` (`SpawnPoints.dm:40-49`) que o conversor
+/// leu do `.dmm`, ja em CELULA do port (Y virado: BYOND (bx,by) -> (bx-1, H-by)).
+///
+/// ============================ E O PONTO EXATO, PORQUE O DM E EXATO ============================
+/// `GotoPlanet(planeta, 1)` (`SpawnPoints.dm:62-127`) acha o spawnpoint do planeta e faz
+/// `Move(locate(SP.x, SP.y, SP.z))` (`:95`): sem sorteio, sem deslocamento, sem procurar turf livre. O
+/// `rand(240,260)` que este port usava como "o ponto do BYOND" e o CHECK-IN da nave (`Planets.dm:186`),
+/// outro caminho. Pedido do dono (2026-09-15): nascer onde o original poe.
+///
+/// `Planeta` e `Raca` sao as vars do obj (`spawnPlanet`, `spawnRace`) -- so rastreabilidade: quem
+/// decide em que zona alguem nasce continua sendo o `Berco` da raca. O marco diz ONDE dentro dela.
+/// ==========================================================================================
+/// </summary>
+public readonly record struct MarcoDeBerco(int Cx, int Cy, string Planeta, string Raca)
+{
+	/// <summary>O CENTRO da celula, em pixel -- o mesmo que o `ZoneCollision.CentroDaCelula` devolve.</summary>
+	public Vec2 Centro => new(Cx * ZoneCollision.TileSize + ZoneCollision.TileSize / 2f,
+							  Cy * ZoneCollision.TileSize + ZoneCollision.TileSize / 2f);
 }
 
 /// <summary>
@@ -187,6 +215,11 @@ public sealed class ZoneCatalog
 				W = (int)Num(bloco, "w"),
 				H = (int)Num(bloco, "h"),
 			};
+			// O MARCO E OPCIONAL: andar sem `/obj/SpawnPoint` nao tem os campos, e o `Num` devolveria 0 --
+			// que e uma celula valida (o canto do mapa). Por isso a presenca da chave decide, e nao o valor.
+			if (bloco.Contains("\"berco_x\"", StringComparison.Ordinal))
+				e.Berco = new MarcoDeBerco((int)Num(bloco, "berco_x"), (int)Num(bloco, "berco_y"),
+										   Str(bloco, "berco_planeta"), Str(bloco, "berco_raca"));
 			// A LISTA DE DISCO fica com TODOS -- ver `Entradas`. Ela vem antes do descarte por nome
 			// de proposito: o andar que o jogo nao alcanca continua tendo arquivo pra auditar.
 			if (e.Zona.Length > 0) cat._entradas.Add(e);

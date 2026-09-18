@@ -1963,9 +1963,11 @@ public partial class GameServer : Node
 	private static readonly ZoneKey SpawnZone = ZoneKey.Premade("Earth");
 
 	/// <summary>
-	/// O MESMO ponto de nascimento do BYOND: `locate(rand(240,260), rand(240,260), 1)`, o
-	/// campo aberto no meio da Terra. Em pixel isso e o centro do tile (249, 250) -- o canto
-	/// (320, 320) que estava aqui era um lugar arbitrario de teste, longe de tudo.
+	/// O PONTO DE SEMPRE, hoje so pra mapa SEM `/obj/SpawnPoint`: o centro do tile (249, 250), que e o
+	/// `locate(rand(240,260), rand(240,260), z)` do CHECK-IN da nave (`Planets.dm:186-214`). Ele foi
+	/// escrito aqui como "o ponto de nascimento do BYOND" e nao era -- o login do original pousa no
+	/// `/obj/SpawnPoint` de cada planeta (`SpawnPoints.dm:95`), que desde 2026-09-15 vem do manifesto
+	/// (`ZoneEntry.Berco`). Ver `GameServer.Berco.cs`, `PontoDeNascimento`.
 	/// </summary>
 	private static readonly Vec2 SpawnPos = new(249 * 32 + 16, 250 * 32 + 16);
 
@@ -4567,6 +4569,80 @@ public partial class GameServer : Node
 	}
 
 	/// <summary>
+	/// O PACOTE `PeerLook` DE UM CORPO -- a aparencia que o mundo ve. Era a funcao local `Ficha` do
+	/// <see cref="TrocarAparencias"/>; virou metodo em 2026-09-15 porque ganhou um SEGUNDO chamador
+	/// (<see cref="ReapresentarAparencia"/>, a cor do ki mudando em jogo), e dois montadores do mesmo
+	/// pacote e o defeito de sync que este projeto ja registrou sete vezes.
+	/// </summary>
+	private NetDataWriter PacoteDeAparencia(ServerPlayer p)
+	{
+		var w = Protocol.Begin(Protocol.S2C.PeerLook);
+		w.Put(p.Id);
+		// O NOME QUE O MUNDO LE, e nao o do save. Ver `ServerPlayer.NomeDeFusao` -- este e o
+		// unico pacote que carrega nome depois do login, entao ele e o unico lugar onde a fusao
+		// precisa aparecer. (O `JoinAccepted` fica com o `Name` cru de proposito: ninguem entra
+		// no mundo ja fundido -- a fusao e desfeita antes do save.)
+		w.Put(NomeVisivel(p));
+		// A RACA E O GENERO TAMBEM PASSAM PELO DISFARCE (lote G12): o corpo desenhado sai da raca.
+		w.Put(p.Disfarce?.Raca ?? p.Race);
+		w.Put(p.Disfarce?.Genero ?? p.Genero);
+		// A APARENCIA QUE O MUNDO VE, e nao a do save -- gemea da linha do nome logo acima, e pelo
+		// mesmo motivo. Ver `ServerPlayer.LookDeFusao`: a roupa e o cabelo da fusao NAO podem
+		// encostar em `pl.Visual`, que vai pro disco a cada 2 minutos.
+		w.PutAppearance(VisualVisivel(p));
+
+		// ============================ E O TIPO DE FUSAO DESTE CORPO (0 = nenhuma) ============================
+		// Um byte, ao lado da aparencia, porque ele e um fato do CORPO e nao da forma -- exatamente
+		// como o `dominada` do `PacoteDeForma`. Ele existe por UMA regra do dono, hoje na segunda
+		// versao dela: *"o ssj4 (e suas variantes) quando esta na fusao potara, o cabelo nao fica
+		// vermelho e sim na cor normal de cabelo q seria se n fosse uma fusao, so a fusao
+		// metamoro/danca q muda a cor do cabelo no ssj4"*.
+		//
+		// **ERA UM BOOL, E O BOOL NAO BASTA MAIS.** Enquanto a regra era "TODA fusao pinta", saber
+		// que o corpo era fusao respondia tudo. Com Danca e Potara divergindo, o pixel precisa do
+		// TIPO -- e ele so existia no servidor (`FusaoAtiva.Tipo`). Este byte e o dado atravessando.
+		// Os valores sao os `FType` do DM (`Fusion.dm:268-271`), que e o que o `TipoDeFusao` ja usa:
+		// 1 Danca, 2 Potara, 3 Namekuseijin. Zero nao e tipo nenhum -- e "este corpo nao e fusao".
+		//
+		// NAO DA PRA DEDUZIR DO CABELO, e essa e a razao de ele existir: a fusao que nao virou Vegito
+		// veste o penteado de quem convidou (`Fusao.CabeloDaFusao`), entao o cliente olhando so a
+		// aparencia veria um Goku comum. E nao da pra deduzir do NOME: nome e texto livre.
+		//
+		// **E NAO ENTROU EM `Appearance`**, que seria o lugar obvio: aquele objeto vai pro disco, e um
+		// campo "sou uma fusao" gravado num save e um estado que sobrevive ao que o produziu.
+		//
+		// O `LookDeFusao != null` CONTINUA SENDO O PORTAO, e nao o `_fundidos`: os dois corpos da
+		// fusao estao em `_fundidos` (dono e passageiro), e so um deles esta VESTINDO a fusao. Quem
+		// desenha a fusao e quem tem a aparencia dela -- e e ele quem o `PassarOControle` troca.
+		// ========================================================================================
+		w.Put((byte)(p.LookDeFusao != null && FusaoDe(p.Id) is { } fus
+			? (byte)fus.Tipo
+			: 0));
+		return w;
+	}
+
+	/// <summary>
+	/// REAPRESENTA a aparencia de um corpo a zona dele -- ele incluso -- porque ela MUDOU em jogo.
+	///
+	/// Hoje so a cor do ki muda depois do login (`ca_cor`, o `Blast_Color()` do DM), e ela viaja no
+	/// `Appearance.CorKi` deste pacote: sem reapresentar, quem esta perto continuaria vendo os tiros
+	/// na cor velha ate alguem trocar de zona, e o proprio dono tambem (a cor do tiro sai do
+	/// `World._looks`, que so este pacote escreve). Nao e o <see cref="TrocarAparencias"/> porque
+	/// aquele tambem sincroniza formas e aureolas e reenvia a zona INTEIRA pro corpo -- e nada disso
+	/// mudou.
+	/// </summary>
+	private void ReapresentarAparencia(ServerPlayer pl)
+	{
+		NetDataWriter w = PacoteDeAparencia(pl);
+		foreach (ServerPlayer outro in ZoneList(pl.Zone.Hash))
+			outro.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>A COR DO KI de um corpo -- pra bancada `--diagmesa`, que roda com o servidor no mesmo processo.</summary>
+	public Jandirus.Core.Appearance.Rgb? CorDoKiDeFoto(int id) =>
+		_players.TryGetValue(id, out ServerPlayer? p) ? p.Visual.CorKi : null;
+
+	/// <summary>
 	/// Apresenta o recem-chegado a quem ja estava na zona, e vice-versa.
 	///
 	/// A aparencia vai UMA VEZ por pessoa, num pacote proprio -- nao no snapshot. Uma ficha
@@ -4577,59 +4653,12 @@ public partial class GameServer : Node
 	{
 		List<ServerPlayer> zona = ZoneList(novo.Zone.Hash);
 
-		NetDataWriter Ficha(ServerPlayer p)
-		{
-			var w = Protocol.Begin(Protocol.S2C.PeerLook);
-			w.Put(p.Id);
-			// O NOME QUE O MUNDO LE, e nao o do save. Ver `ServerPlayer.NomeDeFusao` -- este e o
-			// unico pacote que carrega nome depois do login, entao ele e o unico lugar onde a fusao
-			// precisa aparecer. (O `JoinAccepted` fica com o `Name` cru de proposito: ninguem entra
-			// no mundo ja fundido -- a fusao e desfeita antes do save.)
-			w.Put(NomeVisivel(p));
-			// A RACA E O GENERO TAMBEM PASSAM PELO DISFARCE (lote G12): o corpo desenhado sai da raca.
-			w.Put(p.Disfarce?.Raca ?? p.Race);
-			w.Put(p.Disfarce?.Genero ?? p.Genero);
-			// A APARENCIA QUE O MUNDO VE, e nao a do save -- gemea da linha do nome logo acima, e pelo
-			// mesmo motivo. Ver `ServerPlayer.LookDeFusao`: a roupa e o cabelo da fusao NAO podem
-			// encostar em `pl.Visual`, que vai pro disco a cada 2 minutos.
-			w.PutAppearance(VisualVisivel(p));
-
-			// ============================ E O TIPO DE FUSAO DESTE CORPO (0 = nenhuma) ============================
-			// Um byte, ao lado da aparencia, porque ele e um fato do CORPO e nao da forma -- exatamente
-			// como o `dominada` do `PacoteDeForma`. Ele existe por UMA regra do dono, hoje na segunda
-			// versao dela: *"o ssj4 (e suas variantes) quando esta na fusao potara, o cabelo nao fica
-			// vermelho e sim na cor normal de cabelo q seria se n fosse uma fusao, so a fusao
-			// metamoro/danca q muda a cor do cabelo no ssj4"*.
-			//
-			// **ERA UM BOOL, E O BOOL NAO BASTA MAIS.** Enquanto a regra era "TODA fusao pinta", saber
-			// que o corpo era fusao respondia tudo. Com Danca e Potara divergindo, o pixel precisa do
-			// TIPO -- e ele so existia no servidor (`FusaoAtiva.Tipo`). Este byte e o dado atravessando.
-			// Os valores sao os `FType` do DM (`Fusion.dm:268-271`), que e o que o `TipoDeFusao` ja usa:
-			// 1 Danca, 2 Potara, 3 Namekuseijin. Zero nao e tipo nenhum -- e "este corpo nao e fusao".
-			//
-			// NAO DA PRA DEDUZIR DO CABELO, e essa e a razao de ele existir: a fusao que nao virou Vegito
-			// veste o penteado de quem convidou (`Fusao.CabeloDaFusao`), entao o cliente olhando so a
-			// aparencia veria um Goku comum. E nao da pra deduzir do NOME: nome e texto livre.
-			//
-			// **E NAO ENTROU EM `Appearance`**, que seria o lugar obvio: aquele objeto vai pro disco, e um
-			// campo "sou uma fusao" gravado num save e um estado que sobrevive ao que o produziu.
-			//
-			// O `LookDeFusao != null` CONTINUA SENDO O PORTAO, e nao o `_fundidos`: os dois corpos da
-			// fusao estao em `_fundidos` (dono e passageiro), e so um deles esta VESTINDO a fusao. Quem
-			// desenha a fusao e quem tem a aparencia dela -- e e ele quem o `PassarOControle` troca.
-			// ========================================================================================
-			w.Put((byte)(p.LookDeFusao != null && FusaoDe(p.Id) is { } fus
-				? (byte)fus.Tipo
-				: 0));
-			return w;
-		}
-
-		NetDataWriter meu = Ficha(novo);
+		NetDataWriter meu = PacoteDeAparencia(novo);
 		foreach (ServerPlayer outro in zona)
 		{
 			outro.Peer?.Send(meu, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 			if (outro != novo)
-				novo.Peer?.Send(Ficha(outro), Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+				novo.Peer?.Send(PacoteDeAparencia(outro), Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 
 		// ============================ A APARENCIA BASE NAO E A APARENCIA ============================

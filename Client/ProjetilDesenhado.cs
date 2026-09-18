@@ -247,6 +247,25 @@ public partial class ProjetilDesenhado : Node2D
 	/// </summary>
 	public void MostrarPara(bool veInvisivel) => Visible = !Invisivel || veInvisivel;
 
+	/// <summary>
+	/// SEM LUZ -- a previa da mesa de tecnicas. Um tiro desenhado dentro de um painel de interface nao
+	/// ilumina cenario nenhum, e pendurar uma `PointLight2D` ali gastaria uma vaga do teto de luzes de ki
+	/// (`Settings.LuzesDeKi`) pra clarear um retangulo cinza. Falso em jogo, sempre.
+	/// </summary>
+	public bool SemLuz { get; set; }
+
+	/// <summary>
+	/// TROCA A TINTA COM O NODE VIVO -- a previa da mesa acompanhando o seletor de cor. E a MESMA escrita
+	/// do `Vestir` (o uniforme `tinta` do `Ki.gdshader`), so que sem recarregar a folha; a luz nao entra
+	/// porque a previa nasce <see cref="SemLuz"/>.
+	/// </summary>
+	public void Tingir(Color cor)
+	{
+		Cor = cor;
+		if (Material is ShaderMaterial m) m.SetShaderParameter("tinta", new Vector3(cor.R, cor.G, cor.B));
+		QueueRedraw();
+	}
+
 	public void Vestir(ArteDeKi arte, float escala)
 	{
 		Arte = arte;
@@ -353,8 +372,11 @@ public partial class ProjetilDesenhado : Node2D
 		// ================================================================================================
 		ZIndex = 1;
 
-		LuzDeKi.Pendurar(this, Cor, Escala);
-		if (Tipo == TipoDeProjetil.Beam) _luzDoTronco = LuzDeKi.PendurarNoTronco(this, Cor, Escala);
+		if (!SemLuz)
+		{
+			LuzDeKi.Pendurar(this, Cor, Escala);
+			if (Tipo == TipoDeProjetil.Beam) _luzDoTronco = LuzDeKi.PendurarNoTronco(this, Cor, Escala);
+		}
 
 		// A LUZ SOBE COM O DESENHO. Ela e filha na posicao local zero (ver abaixo), que e a cabeca no
 		// CHAO -- e o clarao de um raio disparado la em cima ficaria aceso no piso. A altura nao muda
@@ -995,6 +1017,22 @@ public partial class ProjetilDesenhado : Node2D
 		// folha com velocidade zero congelaria numa divisao por zero.
 		double fps = Math.Max(f.GetAnimationSpeed(anim), 1);
 		return f.GetFrameTexture(anim, (int)(idade * fps) % n);
+	}
+
+	/// <summary>
+	/// A MINIATURA DE UMA ARTE -- o quadro que a grade da mesa de tecnicas mostra por folha: a CABECA de
+	/// um raio (o `head` que o `DesenharComFolha` estampa por cima de tudo) ou a bola, olhando pra leste
+	/// como a previa. Passa pela MESMA cadeia de nomes do desenho de verdade (`Achar` com o sufixo de
+	/// direcao da folha), pra que a miniatura seja um pedaco do tiro e nao um quadro parecido. Nula = a
+	/// folha nao tem estado que sirva; a grade mostra o nome no lugar.
+	/// </summary>
+	public static Texture2D? Miniatura(SpriteFrames f, TipoDeProjetil tipo, ArteDeKi arte)
+	{
+		string dir = SufixoDeDirecao(f, new Vec2(1, 0));
+		string? anim = tipo == TipoDeProjetil.Beam
+			? Achar(f, "head", dir) ?? PrimeiroCom(f, dir)
+			: Achar(f, ArteDeProjetil.EstadoDeBola(arte), dir) ?? Achar(f, "default", dir) ?? PrimeiroCom(f, dir);
+		return anim != null && f.GetFrameCount(anim) > 0 ? f.GetFrameTexture(anim, 0) : null;
 	}
 
 	private static string? Achar(SpriteFrames f, string estado, string dir)

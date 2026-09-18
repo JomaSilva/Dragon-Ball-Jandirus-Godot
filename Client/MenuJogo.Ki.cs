@@ -42,6 +42,17 @@ public partial class MenuJogo
 		Linha("Teto de carga", $"{f.TrilhoDeKi * 100:0}% do tanque", null, energia);
 		Nota("Segure C pra reunir energia. Acima de 100% o Ki entra linear no poder (118% = 1,18x de BP) até o teto de carga.", energia);
 
+		// A MESA DOS ATAQUES DE KI (dono, 2026-09-15: "faca a tela de customizacao de ataques de ki"): a arte e
+		// a cor do proprio ki, e as tecnicas inventadas. E a `TelaDeTecnicas`, que ja abria pelo verb "Inventar
+		// tecnicas de ki" da aba Learning (onde o `Create_Attack` do DM mora, `set category = "Learning"`); daqui
+		// e um atalho -- quem pensa "meu ki" procura na aba Ki. O menu fecha antes: a mesa e uma tela do mundo.
+		VBoxContainer ataques = Cartao("Ataques de ki");
+		var mesa = new Button { Text = "Customizar ataques de ki" };
+		mesa.Pressed += () => { Fechar(); TelaDeTecnicas.Instancia?.Abrir(); };
+		ataques.AddChild(BotaoComDescricao(mesa,
+			"A arte e a cor do seu ki, e a mesa das técnicas inventadas: raio, bola ou teleguiado, com "
+			+ $"{TecnicaCustomizada.PontosTotais} pontos cada. É o Create Attack / Customize Attack do original."));
+
 		// AS DEZENOVE, em dois cartoes lado a lado: a ORDEM e a da tabela do fio, e o corte entre dominio e
 		// tecnica e o `PericiasDeDominio` da mesma tabela. 100 e o teto pratico de cada contador (a
 		// cadeia Basic -> Advanced -> Perfect da Mente soma ~95), e por isso a barra e sobre 100.

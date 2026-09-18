@@ -267,7 +267,8 @@ public partial class MenuJogo
 		// imprimiu: `ui_tab_stats()` lista poder, atributos, emocao e estilo -- classe nao esta la
 		// (HtmlUI.dm:175-229). Escrever "Legendary" numa linha entrega de graca o que o jogo inteiro
 		// trata como descoberta, e ainda vaza pra quem olha a tela de outro.
-		Linha("Raça", _atributos.Raca ?? "", null, c);
+		// PELO NOME DO JOGO, e nao pela chave do `races.json` -- ver `NomeDaRaca`: "Icer" e "Frost Demon".
+		Linha("Raça", Jandirus.Core.Races.NomeDaRaca.Bonito(_atributos.Raca ?? ""), null, c);
 		Linha("Idade", $"{_atributos.Idade}", null, c);
 
 		// CONDICAO E GOLPE SAO PILULAS: "NOCAUTEADO" e "LETAL" se leem sem ler -- e sao os dois

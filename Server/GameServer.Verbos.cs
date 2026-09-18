@@ -66,7 +66,7 @@ public sealed partial class GameServer
 		var gente = Jogadores.ToList();
 		Avisar(pl, $"-- {gente.Count} no mundo --");
 		foreach (ServerPlayer o in gente)
-			Avisar(pl, $"  {o.Name} ({o.Race}) em {o.Zone.Name}");
+			Avisar(pl, $"  {o.Name} ({Jandirus.Core.Races.NomeDaRaca.Bonito(o.Race)}) em {o.Zone.Name}");
 	}
 
 	/// <summary>

@@ -137,14 +137,44 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// O ponto de chegada de uma zona PRE-FEITA, conferido contra a colisao dela.
+	/// O ponto de chegada de uma zona PRE-FEITA: o `/obj/SpawnPoint` que o mapa do BYOND traz
+	/// (`ZoneEntry.Berco`, extraido do `.dmm` pelo conversor), conferido contra a colisao dela.
 	///
-	/// `MapaDaZonaOuCatalogo` e nao o catalogo cru: e ele que enxerga as construcoes e o cenario
-	/// derrubado, que sao estado de runtime. Um mapa que o servidor nao conhece devolve o ponto
-	/// cru -- nao ha o que perguntar, e recusar seria pior que arriscar.
+	/// ============================ ERA UM PONTO SO PRA TODO PLANETA, E O DONO PEDIU O DO BYOND ============================
+	/// Ate 2026-09-15 todo mapa pre-feito pousava no (249,250) -- o `rand(240,260)` do CHECK-IN da nave
+	/// (`Planets.dm:186-214`), que nunca foi o ponto de login. Quem nasce entra pelo `Locate()` ->
+	/// `GotoPlanet(planeta, 1)` (`SpawnPoints.dm:130-184`), que acha o `/obj/SpawnPoint` daquele planeta e
+	/// poe o corpo NA CELULA DELE (`:95`): sem sorteio, sem deslocamento. Sao 14 marcos, quase todos DENTRO
+	/// de uma construcao (`/area/Earth/Inside`, `/area/Namek/Inside`...) -- o jogador do original acorda
+	/// numa casa, nao no meio do campo. Pedido do dono: *"faca o spawn dos jogadores nos planetas ser na
+	/// mesma localizacao que era no byond"*.
+	///
+	/// O MARCO E DADO DO MAPA, nao tabela no codigo: o `maps`/`bercos` do pipeline le o `.dmm` e escreve
+	/// `berco_x/berco_y` no manifesto -- mudar o mapa e reconverter, nao editar aqui. A colisao continua
+	/// sendo a rede de seguranca (`PontoLivrePerto`, via `MapaDaZonaOuCatalogo`, que enxerga obra e
+	/// cenario derrubado): uma construcao levantada em cima do marco desvia o nascimento pro chao livre
+	/// mais perto em vez de prender o corpo.
+	///
+	/// SEM MARCO (Makyo Star; os mundos gerados nem passam por aqui) vale o `SpawnPos` de sempre -- e isto
+	/// e DIVERGENCIA DECLARADA: o DM, sem spawnpoint no planeta, sorteia um turf da area (`pickTurf`,
+	/// `SpawnPoints.dm:98-125`). Um ponto fixo e reproduzivel e o berco exige isso (nascimento e
+	/// renascimento tem que dar o MESMO lugar, familia 4 da `--diagberco`); um sorteio nao.
+	/// ==================================================================================================================
 	/// </summary>
-	private Vec2 PontoDeNascimento(ZoneKey zona) =>
-		MapaDaZonaOuCatalogo(zona)?.PontoLivrePerto(SpawnPos) ?? SpawnPos;
+	private Vec2 PontoDeNascimento(ZoneKey zona)
+	{
+		Vec2 desejado = !IgnorarMarcoDoMapaDeTeste && _catalogo?.Get(zona)?.Berco is { } marco
+			? marco.Centro
+			: SpawnPos;
+		return MapaDaZonaOuCatalogo(zona)?.PontoLivrePerto(desejado) ?? desejado;
+	}
+
+	/// <summary>
+	/// O DEFEITO INJETADO da `--diagberco` (familia 2b): ignorar o marco do mapa e voltar ao ponto unico.
+	/// **Falso em jogo, sempre.** Existe pra provar que a familia fica vermelha quando o marco e ignorado
+	/// -- sem isso ela estaria verde num servidor que nunca leu o manifesto.
+	/// </summary>
+	internal static bool IgnorarMarcoDoMapaDeTeste;
 
 	/// <summary>
 	/// MANDA UM CORPO QUE JA ESTA EM JOGO PRO BERCO DELE. Morte, verb `spawn`, admin.

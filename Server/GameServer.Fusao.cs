@@ -573,7 +573,8 @@ public sealed partial class GameServer
 			+ $"e {outro.Name} e {Fusao.RaizDaRaca(outro.Race)}. (Os brincos Potara nao ligam pra isso.)",
 		RecusaDeFusao.NaoEhNamekuseijin =>
 			"a fusao permanente e coisa de Namekuseijin, e os DOIS precisam ser: voce e "
-			+ $"{eu.Race} e {outro.Name} e {outro.Race}.",
+			+ $"{Jandirus.Core.Races.NomeDaRaca.Bonito(eu.Race)} e {outro.Name} e "
+			+ $"{Jandirus.Core.Races.NomeDaRaca.Bonito(outro.Race)}.",
 		RecusaDeFusao.PoderDesigual =>
 			"os poderes de voces dois estao longe demais um do outro: o mais fraco precisa expressar "
 			+ $"pelo menos {Fusao.LimiarDeProximidade * 100:0}% do mais forte, e hoje da "
@@ -766,7 +767,7 @@ public sealed partial class GameServer
 
 			// O QUE SE PERDE, POR EXTENSO. E a metade do `DeleteChar` que da pra ter aqui: la o jogador
 			// digita o nome e o servidor confere; aqui o servidor diz o nome e o jogador confirma.
-			Avisar(pl, $"PARE E LEIA. Aceitar isto APAGA {pl.Name} -- {pl.Race}, {pl.Idade} anos, "
+			Avisar(pl, $"PARE E LEIA. Aceitar isto APAGA {pl.Name} -- {Jandirus.Core.Races.NomeDaRaca.Bonito(pl.Race)}, {pl.Idade} anos, "
 					 + $"poder {pl.Ficha.BP:N0} -- para sempre. Ele nao vira passageiro, nao volta "
 					 + $"depois e nao pode ser revivido: ele deixa de existir, e {p.Nome} fica com o "
 					 + "poder dele. A sua CONTA continua sua, e voce podera criar outro personagem no "

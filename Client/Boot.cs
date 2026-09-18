@@ -1216,6 +1216,13 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagraio") >= 0)
 			AddChild(new RoboDeFotoDoRaio { Name = "RoboDeFotoDoRaio" });
 
+		// --diagmesa: A MESA DE ATAQUES DE KI vista na tela (dono, 2026-09-15) -- a grade de artes em
+		// miniatura recortada pelo tipo, a previa viva do tiro e a cor do ki indo ao servidor e voltando
+		// pelo `PeerLook`. Precisa de `--host` (a cor guardada e lida do servidor no mesmo processo) e de
+		// JANELA (as fotos). Ver RoboDaMesaDeKi.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmesa") >= 0)
+			AddChild(new RoboDaMesaDeKi { Name = "RoboDaMesaDeKi" });
+
 		// --diagembateki: AS FOTOS DA COLISAO DE KI -- os dois feixes se empurrando (o feixe de quem
 		// acerta ESTICA, o do outro ENCOLHE) e a explosao do empate de 15 s, com os dois corpos sendo
 		// jogados pra tras. Irma da `--embatekiteste` (87 afirmacoes, sem janela) e a metade que aquela

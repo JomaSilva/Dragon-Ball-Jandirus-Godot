@@ -1239,6 +1239,15 @@ if (args.Length >= 4 && args[0] == "subsolo")
     return SubsoloBench.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]));
 }
 
+if (args.Length >= 3 && args[0] == "bercos")
+{
+    // bercos <pastaMaps> <manifest.json> -- so os `/obj/SpawnPoint` de cada andar, sem reconverter
+    // cena nenhuma (ver MapConverter.ReescreverBercosNoManifesto). O `maps` cheio escreve o mesmo.
+    int n = MapConverter.ReescreverBercosNoManifesto(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]));
+    Console.WriteLine($"andares com berco no manifesto: {n}");
+    return 0;
+}
+
 if (args.Length >= 5 && args[0] == "maps")
 {
     // maps <pastaMaps> <pastaCode> <pastaSprites> <pastaSaida>

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Jandirus.Tools;
 
@@ -154,17 +155,11 @@ public static class MapConverter
 		int proxId = 0;
 
 		// ---- passada 1: descobrir quais tiles cada mapa usa ----
-		// CADA .dmm NUMERA O PROPRIO z A PARTIR DE 1. O z real do jogo vem da ORDEM em que o
-		// .dme inclui os arquivos: o 1o mapa ocupa z1..zN, o 2o continua de zN+1, e assim por
-		// diante. Sem este deslocamento, quatro mapas diferentes gerariam quatro "z01".
-		var mapas = new List<(string Arquivo, DmmMap.Result Dados, int Offset)>();
-		int offset = 0;
-		foreach (string dmm in OrdemDoDme(dmmDir))
-		{
-			DmmMap.Result d = DmmMap.Read(dmm);
-			mapas.Add((dmm, d, offset));
-			offset += d.Levels.Count;
-		}
+		// CADA .dmm NUMERA O PROPRIO z A PARTIR DE 1 -- o deslocamento vem do `.dme`. Ver `LerMapas`.
+		List<(string Arquivo, DmmMap.Result Dados, int Offset)> mapas = LerMapas(dmmDir);
+
+		// OS BERCOS ANTES DA PASSADA 2: o marco de cada andar vai na linha dele do manifesto.
+		Dictionary<int, MarcoDoDmm> bercos = ExtrairBercos(mapas);
 
 		// ============================ A CIDADE DE VEGETA NAO ESTA NO `.dmm` ============================
 		// Ela e o unico cenario do jogo que o original ERGUE POR CODIGO no boot (`VegetaCity.dm`), e
@@ -393,7 +388,9 @@ public static class MapConverter
 							$"\"portas\": \"res://Assets/Maps/{nome}.portas\", " +
 							$"\"objetos\": \"res://Assets/Maps/{nome}.objetos\", " +
 							$"\"passagens\": \"res://Assets/Maps/{nome}.passagens\", " +
-							  $"\"w\": {nivel.Width}, \"h\": {nivel.Height} }}");
+							  $"\"w\": {nivel.Width}, \"h\": {nivel.Height}"
+							  + CamposDeBerco(bercos.TryGetValue(nivel.Z + off, out MarcoDoDmm marco) ? marco : null)
+							  + " }");
 			}
 
 		if (soFisica)
@@ -801,6 +798,133 @@ public static class MapConverter
 			idx += dirs * quadros;
 		}
 		return true;   // estado que nao existe: o relatorio de "quadro 0" ja cobre esse caso
+	}
+
+	/// <summary>
+	/// OS MAPAS NA ORDEM DO `.dme`, cada um com o DESLOCAMENTO de z dele. CADA .dmm NUMERA O PROPRIO z A
+	/// PARTIR DE 1; o z real do jogo vem da ordem em que o .dme inclui os arquivos: o 1o mapa ocupa
+	/// z1..zN, o 2o continua de zN+1, e assim por diante. Sem este deslocamento, quatro mapas diferentes
+	/// gerariam quatro "z01". Partilhado entre a conversao inteira e o comando `bercos`, que so reescreve
+	/// os marcos -- duas leituras com dois deslocamentos seriam a receita de um berco no andar errado.
+	/// </summary>
+	internal static List<(string Arquivo, DmmMap.Result Dados, int Offset)> LerMapas(string dmmDir)
+	{
+		var mapas = new List<(string Arquivo, DmmMap.Result Dados, int Offset)>();
+		int offset = 0;
+		foreach (string dmm in OrdemDoDme(dmmDir))
+		{
+			DmmMap.Result d = DmmMap.Read(dmm);
+			mapas.Add((dmm, d, offset));
+			offset += d.Levels.Count;
+		}
+		return mapas;
+	}
+
+	// =====================================================================
+	// OS BERCOS -- o `/obj/SpawnPoint` de cada andar
+	// =====================================================================
+	/// <summary>
+	/// Um `/obj/SpawnPoint` do `.dmm` (`SpawnPoints.dm:40-49`), ja em CELULA do port.
+	///
+	/// ============================ O Y JA SAI VIRADO, E SAI DE GRACA ============================
+	/// O `DmmLevel.Cells[x, y]` guarda a linha 0 como a PRIMEIRA do arquivo, que no BYOND e o y mais
+	/// ALTO (`y = H`). Ou seja: BYOND (bx, by) = (x + 1, H - y), e a celula do port -- que conta de cima
+	/// pra baixo -- e (bx - 1, H - by) = (x, y). O indice do arquivo E a celula; nenhuma conta a mais, e
+	/// portanto nenhuma chance de espelhar o berco na vertical (o defeito que a `--diagberco` confere
+	/// contra uma leitura independente do `.dmm`).
+	/// ============================================================================================
+	/// </summary>
+	internal readonly record struct MarcoDoDmm(int Cx, int Cy, string Planeta, string Raca, string Nome);
+
+	/// <summary>`nome = "Spawnpoint (Namek)"; spawnPlanet = "Namek"; spawnRace = "Namekian"` -- as vars inline de um obj.</summary>
+	private static readonly Regex RxVarInline = new(@"(\w+)\s*=\s*(?:""([^""]*)""|([-\d.]+))", RegexOptions.Compiled);
+
+	/// <summary>
+	/// O MARCO DE CADA ANDAR (z real -> marco), lido dos `/obj/SpawnPoint` do `.dmm`.
+	///
+	/// So o PRIMEIRO de cada andar conta -- e o `GotoPlanet` do DM tambem para no primeiro achado
+	/// (`SpawnPoints.dm:86-92`). Marco com `Disabled = 1` e pulado, como la (`:77`). Nos 40 andares de hoje
+	/// sao 14 marcos, um por planeta, nenhum desabilitado.
+	/// </summary>
+	internal static Dictionary<int, MarcoDoDmm> ExtrairBercos(List<(string Arquivo, DmmMap.Result Dados, int Offset)> mapas)
+	{
+		var saida = new Dictionary<int, MarcoDoDmm>();
+		foreach ((string _, DmmMap.Result dados, int off) in mapas)
+		{
+			var marcos = new Dictionary<string, MarcoDoDmm>(StringComparer.Ordinal);
+			foreach ((string chave, string[] tipos) in dados.Keys)
+				foreach (string tp in tipos)
+				{
+					if (DmmMap.BasePath(tp) != "/obj/SpawnPoint") continue;
+					var vars = new Dictionary<string, string>(StringComparer.Ordinal);
+					int a = tp.IndexOf('{');
+					if (a >= 0)
+						foreach (Match m in RxVarInline.Matches(tp[a..]))
+							vars[m.Groups[1].Value] = m.Groups[2].Success ? m.Groups[2].Value : m.Groups[3].Value;
+					if (vars.GetValueOrDefault("Disabled", "0") != "0") continue;
+					// os padroes sao os do tipo (`SpawnPoints.dm:46-47`): Human na Terra
+					marcos[chave] = new MarcoDoDmm(0, 0,
+						vars.GetValueOrDefault("spawnPlanet", "Earth"),
+						vars.GetValueOrDefault("spawnRace", "Human"),
+						vars.GetValueOrDefault("name", "Spawnpoint"));
+				}
+			if (marcos.Count == 0) continue;
+
+			foreach (DmmLevel nivel in dados.Levels)
+			{
+				int z = nivel.Z + off;
+				for (int y = 0; y < nivel.Height && !saida.ContainsKey(z); y++)
+					for (int x = 0; x < nivel.Width; x++)
+					{
+						string? k = nivel.Cells[x, y];
+						if (k == null || !marcos.TryGetValue(k, out MarcoDoDmm m)) continue;
+						saida[z] = m with { Cx = x, Cy = y };
+						break;
+					}
+			}
+		}
+		return saida;
+	}
+
+	/// <summary>
+	/// Os campos do marco na linha do manifesto -- CHATOS DE PROPOSITO (`berco_x`, `berco_y`,
+	/// `berco_planeta`, `berco_raca`) e nao um objeto aninhado: o `ZoneCatalog.Parse` do Core acha cada
+	/// zona por par de chaves `{`/`}`, e um objeto dentro do objeto fecharia a zona no lugar errado.
+	/// </summary>
+	internal static string CamposDeBerco(MarcoDoDmm? m) => m is { } b
+		? $", \"berco_x\": {b.Cx}, \"berco_y\": {b.Cy}, \"berco_planeta\": \"{b.Planeta}\", \"berco_raca\": \"{b.Raca}\""
+		: "";
+
+	/// <summary>
+	/// REESCREVE SO OS MARCOS num manifesto que ja existe -- o comando `bercos` do pipeline.
+	///
+	/// Existe pelo mesmo motivo dos comandos `agua`, `duro` e `nuvem`: reconverter os 40 andares pra
+	/// acrescentar quatro campos numa linha reescreveria as cenas inteiras (e o indice de tiles resolve
+	/// nome repetido por `TryAdd`, entao uma conversao cheia muda arte que ninguem pediu pra mudar). A
+	/// conversao cheia (`maps`) TAMBEM escreve os campos, pela mesma funcao; este comando so os repoe.
+	/// Devolve quantos andares ganharam marco.
+	/// </summary>
+	internal static int ReescreverBercosNoManifesto(string dmmDir, string manifesto)
+	{
+		Dictionary<int, MarcoDoDmm> bercos = ExtrairBercos(LerMapas(dmmDir));
+		string[] linhas = File.ReadAllLines(manifesto);
+		var rxZ = new Regex(@"""z"":\s*(\d+)");
+		var rxBerco = new Regex(@",\s*""berco_x"":.*?""berco_raca"":\s*""[^""]*""");
+		int escritos = 0;
+		for (int i = 0; i < linhas.Length; i++)
+		{
+			Match mz = rxZ.Match(linhas[i]);
+			if (!mz.Success) continue;
+			string limpa = rxBerco.Replace(linhas[i], "");
+			int fecha = limpa.LastIndexOf('}');
+			if (fecha < 0) continue;
+			int z = int.Parse(mz.Groups[1].Value, CultureInfo.InvariantCulture);
+			string campos = CamposDeBerco(bercos.TryGetValue(z, out MarcoDoDmm b) ? b : null);
+			linhas[i] = limpa[..fecha].TrimEnd() + campos + " }" + limpa[(fecha + 1)..];
+			if (campos.Length > 0) escritos++;
+		}
+		File.WriteAllText(manifesto, string.Join("\n", linhas) + "\n", new UTF8Encoding(false));
+		return escritos;
 	}
 
 	/// <summary>Le a ordem dos .dmm no .dme: e ela que define o z real de cada mapa.</summary>

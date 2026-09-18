@@ -28,6 +28,14 @@ namespace Jandirus.Client;
 /// ==========================================================================================
 ///
 ///     Godot --path . --diagslot
+///
+/// ============================ E O NOME DA RACA NO SLOT (dono, 2026-09-15) ============================
+/// *"ao ter um personagem frost demon, aparece como 'icer' a raca no slot"*. O segundo personagem
+/// desta bancada passou a ser um Frost Demon por isso: o fio traz a CHAVE ("Icer"), e a tela tem que
+/// mostrar o NOME ("Frost Demon"). Mede-se a funcao pura do rotulo (`CharacterSelect.RotuloDoSlot`)
+/// E a tela de producao montada com a lista que chegou -- e a regra e injetada com a chave crua pra
+/// provar que sabe reprovar. Ver `ConferirONomeDaRaca`.
+/// ====================================================================================================
 /// </summary>
 public partial class RoboDeSlot : Node
 {
@@ -150,7 +158,8 @@ public partial class RoboDeSlot : Node
 
 			case 3:
 				Conferir(Tem(NomeA), $"'{NomeA}' foi criado no slot 1");
-				CriarEm(1, NomeB);
+				// O SOBREVIVENTE E UM FROST DEMON: e ele que prova o nome da raca no slot (ver o cabecalho).
+				CriarEm(1, NomeB, "Icer", "Vegeta");
 				break;
 
 			case 4:
@@ -159,6 +168,7 @@ public partial class RoboDeSlot : Node
 
 			case 5:
 				Conferir(Tem(NomeA) && Tem(NomeB), $"os dois personagens existem ({Ocupados()} slots)");
+				ConferirONomeDaRaca();
 
 				// ---------- O NOME ERRADO TEM QUE SER RECUSADO ----------
 				// Esta e a conferencia que justifica a bancada. Se ela passar, a trava e enfeite.
@@ -219,11 +229,57 @@ public partial class RoboDeSlot : Node
 		GameClient.Instance?.Desconectar();
 	}
 
-	private static void CriarEm(int slot, string nome)
+	/// <summary>
+	/// O NOME DA RACA NA TELA -- a queixa do dono, medida nas duas pontas: a funcao pura do rotulo e a
+	/// `CharacterSelect` de producao montada com a lista que o servidor mandou (esta bancada nao monta
+	/// o login, entao a tela e instanciada aqui, com o mesmo `Mostrar` que o `Boot` chama).
+	/// </summary>
+	private void ConferirONomeDaRaca()
+	{
+		int i = _slots.FindIndex(s => s.Ocupado && s.Nome == NomeB);
+		if (i < 0) { Conferir(false, $"'{NomeB}' esta na lista pra medir o nome da raca"); return; }
+		SlotInfo gelado = _slots[i];
+
+		Conferir(gelado.Raca == "Icer", $"o fio traz a CHAVE da raca, 'Icer', como o races.json a chama ('{gelado.Raca}')");
+		string rotulo = CharacterSelect.RotuloDoSlot(gelado);
+		Conferir(rotulo.Contains("Frost Demon") && !rotulo.Contains("Icer"),
+				 $"o rotulo do slot diz 'Frost Demon', e nao 'Icer' (\"{rotulo}\")");
+
+		// A TELA DE VERDADE, e nao so a funcao: o `MontarSlot` e quem escreve o rotulo no `Label`.
+		var tela = new CharacterSelect { Name = "SelecaoDeBancada" };
+		AddChild(tela);
+		tela.Mostrar(_slots);
+		List<string> rotulos = [.. Todos(tela).OfType<Label>().Select(l => l.Text).Where(t => t.Contains("anos"))];
+		Conferir(rotulos.Count == Ocupados(), $"a tela desenhou um rotulo de raca/idade por slot ocupado ({rotulos.Count} de {Ocupados()})");
+		Conferir(rotulos.Exists(t => t.Contains("Frost Demon")), "...e o do Frost Demon diz 'Frost Demon' na TELA");
+		Conferir(rotulos.TrueForAll(CharacterSelect.RotuloSemChaveCrua), "...e nenhum slot desenhado mostra chave crua de raca");
+		tela.QueueFree();
+
+		// OS CONTRA-EXEMPLOS: a regra tem que saber ficar vermelha, e nao pode reprovar quem nao tem
+		// nome proprio (a chave "Human" E o nome do jogo).
+		Conferir(!CharacterSelect.RotuloSemChaveCrua("Icer  ·  20 anos"), "(injetado) 'Icer' cru no rotulo REPROVA a regra");
+		Conferir(!CharacterSelect.RotuloSemChaveCrua("Saibaman  ·  3 anos"), "(injetado) 'Saibaman' cru no rotulo REPROVA a regra");
+		Conferir(CharacterSelect.RotuloSemChaveCrua("Human  ·  20 anos"), "(controle) 'Human' passa: a chave e o proprio nome");
+		Conferir(Jandirus.Core.Races.NomeDaRaca.Bonito("Icer") == "Frost Demon"
+				 && Jandirus.Core.Races.NomeDaRaca.Bonito("Kanassa") == "Kanassa-Jin"
+				 && Jandirus.Core.Races.NomeDaRaca.Bonito("Saiyan") == "Saiyan",
+				 "a tabela do Core traduz as chaves que tem nome proprio e deixa as outras em paz");
+	}
+
+	private static IEnumerable<Node> Todos(Node raiz)
+	{
+		foreach (Node n in raiz.GetChildren())
+		{
+			yield return n;
+			foreach (Node m in Todos(n)) yield return m;
+		}
+	}
+
+	private static void CriarEm(int slot, string nome, string raca = "Human", string planeta = "Earth")
 	{
 		var ficha = new Jandirus.Core.Races.CharacterDraft
 		{
-			Name = nome, Race = "Human", Planet = "Earth", Gender = "Male",
+			Name = nome, Race = raca, Planet = planeta, Gender = "Male",
 			Backstory = "personagem de bancada, criado pra ser apagado.",
 			Porte = "Medium",
 		};

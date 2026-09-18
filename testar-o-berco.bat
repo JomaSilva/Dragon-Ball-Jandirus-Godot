@@ -35,6 +35,15 @@ REM  `Core/Races/Refugio.cs`): o dominio conquistado ou o mundo vivo mais perto
 REM  de casa, com ESCOLHA quando existem os dois. As familias que afirmavam o
 REM  comportamento de lista afirmam hoje o contrario dele.
 REM
+REM  (2026-09-15) O PONTO DENTRO DO PLANETA MUDOU: "faca o spawn dos jogadores nos
+REM  planetas ser na mesma localizacao q era no byond". Cada andar pre-feito nasce
+REM  agora no `/obj/SpawnPoint` do .dmm dele (14 marcos, extraidos pelo pipeline pro
+REM  manifest.json: `dotnet run --project Tools/AssetPipeline -- bercos <Maps> <manifest>`),
+REM  e nao mais no (249,250) do check-in da nave. A `--diagberco` ganhou a familia 2b:
+REM  os 14 marcos conferidos contra uma leitura A MAO do .dmm, o nascimento caindo em
+REM  cima deles sem desvio, o Makyo Star (sem marco) no ponto de sempre, e o defeito
+REM  injetado de ignorar o marco.
+REM
 REM  DEZ FAMILIAS (7 aqui, e 8-10 em `GameServer.RefugioProva.cs`):
 REM
 REM    1. O MUNDO COMO ELE ESTA -- uma linha por raca (TODAS as 24, e nao uma

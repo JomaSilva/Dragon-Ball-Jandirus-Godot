@@ -100,6 +100,79 @@ public partial class GameServer
 		}
 		Conferir("o desvio de ponto de nascimento DISPARA em algum mapa (senao seria guarda morta)", corrigidos > 0);
 
+		// ---------------------------------------------------------------- 2b. OS 14 BERCOS DO BYOND
+		// O pedido do dono (2026-09-15): nascer ONDE o BYOND poe -- o `/obj/SpawnPoint` de cada andar
+		// (`SpawnPoints.dm:95`). A tabela abaixo foi lida do `.dmm` A MAO, independente do conversor:
+		// BYOND (x, y, z) -> celula do port (x-1, H-y). Se o extrator errar a inversao do Y, e AQUI que
+		// aparece -- e nao num jogador acordando dentro de uma montanha.
+		GD.Print("[diagberco] -- os 14 bercos do BYOND (o `/obj/SpawnPoint` de cada andar)");
+		(string Zona, int Bx, int By, int H, string Planeta)[] marcos =
+		[
+			("Earth", 74, 240, 500, "Earth"),                 // `1to26.dmm:55`   "bc"
+			("Namek", 126, 200, 500, "Namek"),                // `1to26.dmm:433`  "iq"
+			("Vegeta", 127, 282, 500, "Vegeta"),              // `1to26.dmm:598`  "lz"
+			("Icer", 265, 293, 500, "Icer Planet"),           // `1to26.dmm:682`  "nf"
+			("Arconia", 219, 192, 500, "Arconia"),            // `1to26.dmm:799`  "ps"
+			("Afterlife", 173, 127, 500, "Afterlife"),        // `1to26.dmm:805`  "py"
+			("Desert", 252, 298, 500, "Desert"),              // `1to26.dmm:837`  "qe"
+			("Hell", 54, 296, 500, "Hell"),                   // `1to26.dmm:1099` "vg"
+			("Heaven", 175, 97, 500, "Heaven"),               // `1to26.dmm:884`  "qZ"
+			("Big_Geti_Star", 191, 242, 500, "Big Gete Star"),// `1to26.dmm:962`  "sz"
+			("Arlia", 106, 251, 500, "Arlia"),                // `1to26.dmm:1037` "tW"
+			("Interdimension", 197, 238, 500, "Interdimension"), // `1to26.dmm:1120` "vB"
+			("Small_Space_Station", 99, 140, 200, "Small Space Station"), // `2728.dmm:30` "D"
+			("Large_Space_Station", 9, 40, 200, "Large Space Station"),   // `2728.dmm:28` "B"
+		];
+		int comMarco = 0;
+		foreach ((string nome, int bx, int by, int h, string planeta) in marcos)
+		{
+			var z = ZoneKey.Premade(nome);
+			ZoneEntry? entrada = _catalogo?.Get(z);
+			int cx = bx - 1, cy = h - by;
+			Conferir($"{nome}: o manifesto traz o marco do BYOND", entrada?.Berco != null);
+			if (entrada?.Berco is not { } marco) continue;
+			comMarco++;
+			Conferir($"{nome}: o marco extraido e a celula ({cx},{cy}) do BYOND ({bx},{by}) -- o Y virado certo",
+					 marco.Cx == cx && marco.Cy == cy);
+			Conferir($"{nome}: o marco diz o planeta do DM ('{planeta}')", marco.Planeta == planeta);
+
+			Vec2 p = PontoDeNascimento(z);
+			ZoneCollision? m = MapaDaZonaOuCatalogo(z);
+			bool exato = (p - marco.Centro).Length < 0.5f;
+			Conferir($"{nome}: o nascimento E o marco, sem desvio (a celula do spawnpoint e chao livre)", exato);
+			Conferir($"{nome}: ...e nao e parede", m == null || !m.BlockedAt(p));
+			GD.Print($"[diagberco]    {nome,-20} BYOND ({bx},{by}) -> celula ({marco.Cx},{marco.Cy}) '{marco.Planeta}'"
+				+ $" | nasce em ({p.X / ZoneCollision.TileSize:0},{p.Y / ZoneCollision.TileSize:0}){(exato ? "" : "  DESVIADO")}");
+		}
+		Conferir("os 14 andares com spawnpoint tem marco no manifesto", comMarco == marcos.Length);
+
+		// SEM MARCO: o Makyo Star nao tem `/obj/SpawnPoint` no .dmm -- cai no ponto de sempre.
+		var makyo = ZoneKey.Premade("Makyo_Star");
+		Conferir("Makyo_Star nao tem marco (o .dmm nao tem spawnpoint la) e cai no ponto de sempre",
+				 _catalogo?.Get(makyo)?.Berco == null && MapaDaZonaOuCatalogo(makyo) is { } mm
+				 && (PontoDeNascimento(makyo) - mm.PontoLivrePerto(SpawnPos)).Length < 0.5f);
+
+		// A REDE DE SEGURANCA: um marco em cima de PAREDE desvia pro chao livre mais perto -- e o que
+		// protege o nascimento de uma obra levantada em cima do spawnpoint.
+		if (MapaDaZonaOuCatalogo(ZoneKey.Premade("Icer")) is { } icer)
+		{
+			Vec2 pedra = icer.CentroDaCelula(249, 250);   // o miolo de Icer e rocha (medido na familia 2)
+			Vec2 livre = icer.PontoLivrePerto(pedra);
+			Conferir("(contra-exemplo) um marco em cima de rocha e desviado pro chao livre mais perto",
+					 icer.BlockedAt(pedra) && !icer.BlockedAt(livre) && (livre - pedra).Length > 0.5f);
+		}
+
+		// O DEFEITO INJETADO: com o marco ignorado, a Terra volta pro (249,250) e a afirmacao tem que
+		// ficar VERMELHA -- senao ela estaria verde num servidor que nunca leu o manifesto.
+		IgnorarMarcoDoMapaDeTeste = true;
+		try
+		{
+			Vec2 cego = PontoDeNascimento(ZoneKey.Premade("Earth"));
+			Conferir("(injetado) ignorando o marco, a Terra NAO nasce mais no spawnpoint do BYOND",
+					 _catalogo?.Get("Earth")?.Berco is { } mt && (cego - mt.Centro).Length > ZoneCollision.TileSize);
+		}
+		finally { IgnorarMarcoDoMapaDeTeste = false; }
+
 		// ---------------------------------------------------------------- 3. AS DUAS EXCECOES
 		GD.Print("[diagberco] -- as duas excecoes do dono");
 

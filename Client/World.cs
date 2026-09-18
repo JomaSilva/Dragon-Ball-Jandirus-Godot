@@ -1056,7 +1056,13 @@ public partial class World : Node2D
 	/// Sem ficha (fora da zona, ou antes de o `PeerLook` chegar) vale o ki cru, o mesmo padrao de
 	/// sempre.
 	/// </summary>
-	private Color CorDoKiDe(int id) =>
+	/// <remarks>
+	/// PUBLICA desde 2026-09-15: a mesa de tecnicas (`TelaDeTecnicas`) le daqui a cor do PROPRIO jogador
+	/// -- a previa e as miniaturas sao tingidas com ela, e e por aqui que a cor nova volta depois do
+	/// `ca_cor` (o `PeerLook` reapresentado escreve o `_looks`). Uma segunda leitura da ficha na tela
+	/// seria a "quarta resposta" que o `Aura.cs` inteiro existe pra evitar.
+	/// </remarks>
+	public Color CorDoKiDe(int id) =>
 		_looks.TryGetValue(id, out var l) && l.Ap.CorKi is { } c
 			? new Color(c.R / 255f, c.G / 255f, c.B / 255f)
 			: Aura.CorDoKiCru;

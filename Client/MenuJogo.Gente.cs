@@ -136,7 +136,7 @@ public partial class MenuJogo
 					  Math.Min(Math.Abs(c.Amizade) / Convivio.TetoDeAmizade, 1),
 					  inimigo ? Tema.Perigo : Tema.Bom, corpo, inimigo ? Tema.Perigo : null);
 
-		Nota($"{c.Raca} / {c.Classe}  ·  como visto da última vez"
+		Nota($"{Jandirus.Core.Races.NomeDaRaca.Bonito(c.Raca)} / {c.Classe}  ·  como visto da última vez"
 			 + (odio.Length > 0 ? $"  ·  {odio} ({c.Inimizade:0})" : ""), corpo);
 		// AS TRES MEDIDAS, CADA UMA COM O NOME: o dono (2026-09-05) viu "inimigo mortal" (afinidade, que e
 		// automatica) ao lado de "so consigo declarar neutro" (convivio 0) e achou confuso. A linha diz o

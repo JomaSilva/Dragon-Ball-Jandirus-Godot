@@ -26,11 +26,11 @@ namespace Jandirus.Server;
 /// O QUE NAO FOI PORTADO, e por que:
 ///   * ENSINAR tecnica customizada -- `Teach_Custom_Attack` esta COMENTADO no original (`:238-242`
 ///     e `:258-270`), junto do `generateteachableskills`. Nunca funcionou la.
-///   * ICONES e AURAS custom -- o painel do DM deixa escolher um `.dmi` das pastas do jogo. Aqui o
-///     projetil e desenhado com a COR DO KI DO DONO (decisao da camada 1: `ReceitaDeProjetil` nao
-///     tem campo de cor, e o cabecalho dela explica que uma segunda resposta pra "de que cor e o ki
-///     deste sujeito" foi o que fez o `Client/Aura.cs` existir). Um seletor de icone aqui exigiria
-///     primeiro um catalogo de artes de projetil, que o port nao tem.
+///   * AURAS custom -- os dois botoes de aura do painel (`AuraIcon`, `:1150-1197`) pedem UPLOAD de
+///     arquivo e passam por `can_upload_icon()`, que e gate de admin: nenhum jogador escolhia nada.
+///     (O ICONE do ataque, esse sim escolhido pelo jogador em `pick_game_icon`, ESTA portado:
+///     `ca_arte`, com o catalogo `ArteDeProjetil` recortado por tipo. E a COR do ki -- o
+///     `Blast_Color()` do menu de Settings -- tambem: `ca_cor`, ver <see cref="CorDoKi"/>.)
 ///   * MELEE (`attacktype 3`) -- tem tela e nao tem disparo no DM. Mesma razao pela qual ele nao
 ///     esta no <see cref="TipoDeProjetil"/>.
 /// ============================================================================================
@@ -86,6 +86,7 @@ public sealed partial class GameServer
 			case "ca_texto": TextoDaMesa(pl, arg); return true;
 			case "ca_grito": AlternarGrito(pl, arg); return true;
 			case "ca_arte": ArteDaTecnica(pl, arg); return true;
+			case "ca_cor": CorDoKi(pl, arg); return true;
 			case "ca_salvar": SalvarTecnica(pl); return true;
 			case "ca_cancelar": CancelarMesa(pl); return true;
 			case "ca_esquecer": EsquecerTecnica(pl, arg); return true;
@@ -238,6 +239,79 @@ public sealed partial class GameServer
 		m.Arte = a;
 		MandarCustomizadas(pl);
 	}
+
+	/// <summary>
+	/// A COR DO KI -- `Blast_Color()` (`CharacterCreation.dm:152-164`), o unico jeito de um jogador do
+	/// original mudar como o proprio ki se parece depois de criado: `blastR/G/B` viram o que ele escolheu
+	/// no `input(...) as color`, e todo tiro dali em diante e SOMADO com essa cor (`beams.dm:132`,
+	/// `blasts.dm:56`). Nao e por tecnica: e a cor de TUDO que sai da mao -- Ki Wave, bola, as inventadas.
+	///
+	/// ============================ A PORTA E A DO `Aura_and_Blast_Color` ============================
+	/// `Settings.dm:289-296`: `if(!powerup&&!shielding&&!flight)`, senao *"You have to stop powering
+	/// up, down, shielding, or flying to do this."* Portada literal -- carregando (`Carregando`), com o
+	/// Ki Shield de pe (`EscudoDePeG3`) ou voando (`Voando`) a cor nao muda, e o jogador ouve por que.
+	///
+	/// ============================ SO A DO TIRO, E NAO A DA AURA -- DIVERGENCIA DECLARADA ============================
+	/// O verb do DM chama `Aura_Color()` e `Blast_Color()` em sequencia. A cor da AURA deste port e
+	/// sorteada por decisao do dono (ver a criacao em `GameServer.cs`: *"o dono pediu a sorteada"*), e
+	/// este lote e sobre os ataques de ki; a aura fica como esta.
+	/// ==================================================================================================
+	///
+	/// `sortear` = o `rand(0,255)` por canal da criacao (`CharacterCreation.dm:28-30`), pelo mesmo
+	/// `CorDoTiro.Sortear` que deriva a cor de quem nunca escolheu. A cor vai pro `Appearance.CorKi`, que
+	/// ja viaja no `PeerLook` e no save -- por isso o pacote de aparencia e REAPRESENTADO a zona: quem
+	/// esta perto (e o proprio dono, cujo tiro le o `World._looks`) passa a ver a cor nova sem relogar.
+	/// </summary>
+	private void CorDoKi(ServerPlayer pl, string arg)
+	{
+		if (pl.Carregando || pl.Voando || EscudoDePeG3(pl))
+		{
+			Avisar(pl, "voce tem que parar de carregar, de se escudar ou de voar pra mexer na cor do seu ki.");
+			return;
+		}
+
+		Jandirus.Core.Appearance.Rgb cor;
+		if (arg.Trim().Equals("sortear", StringComparison.OrdinalIgnoreCase))
+			cor = Jandirus.Core.Appearance.CorDoTiro.Sortear(unchecked((ulong)_rng.NextInt64()));
+		else if (!LerCor(arg, out cor))
+		{
+			Avisar(pl, "cor invalida: sao tres numeros de 0 a 255 separados por virgula (ou `sortear`).");
+			return;
+		}
+
+		pl.Visual.CorKi = cor;
+		Persistir(pl);
+		ReapresentarAparencia(pl);
+		Avisar(pl, $"seu ki agora sai em ({cor.R}, {cor.G}, {cor.B}).");
+	}
+
+	/// <summary>
+	/// "R,G,B" -> cor, cada canal em 0..255. Fora da faixa e RECUSADO, nao grampeado: um canal 999 nao
+	/// e "um vermelho forte", e um cliente mandando lixo (ou uma tela de outra versao).
+	/// </summary>
+	private static bool LerCor(string arg, out Jandirus.Core.Appearance.Rgb cor)
+	{
+		cor = default;
+		string[] p = arg.Split(',');
+		if (p.Length != 3) return false;
+
+		// O DEFEITO INJETADO da familia 7 da `--tecnicateste`: a faixa desligada, o 999 vira 255 e passa.
+		// Falso em jogo, sempre. Existe pra provar que a afirmacao "999,0,0 e recusado" sabe ficar vermelha.
+		if (AceitarQualquerCorDeTeste)
+		{
+			if (!int.TryParse(p[0].Trim(), out int r0) || !int.TryParse(p[1].Trim(), out int g0) || !int.TryParse(p[2].Trim(), out int b0))
+				return false;
+			cor = new Jandirus.Core.Appearance.Rgb((byte)Math.Clamp(r0, 0, 255), (byte)Math.Clamp(g0, 0, 255), (byte)Math.Clamp(b0, 0, 255));
+			return true;
+		}
+
+		if (!byte.TryParse(p[0].Trim(), out byte r) || !byte.TryParse(p[1].Trim(), out byte g) || !byte.TryParse(p[2].Trim(), out byte b))
+			return false;
+		cor = new Jandirus.Core.Appearance.Rgb(r, g, b);
+		return true;
+	}
+
+	internal static bool AceitarQualquerCorDeTeste;
 
 	/// <summary>
 	/// DEVOLVE A TECNICA AOS PADROES DE RAIO -- alcance 20, modificador 1, sem instantaneo, carga 1.

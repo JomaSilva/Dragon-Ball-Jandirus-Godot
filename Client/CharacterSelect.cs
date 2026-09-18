@@ -1,5 +1,6 @@
 ﻿using Godot;
 using Jandirus.Core.Appearance;
+using Jandirus.Core.Races;
 using Jandirus.Net;
 
 namespace Jandirus.Client;
@@ -160,7 +161,7 @@ public partial class CharacterSelect : CanvasLayer
             //
             // O que sobra e o que identifica o personagem sem entregar o jogo: nome, raca, idade.
             caixa.AddChild(new HSeparator());
-            caixa.AddChild(Info($"{s.Raca}  ·  {s.Idade} anos"));
+            caixa.AddChild(Info(RotuloDoSlot(s)));
 
             caixa.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
             var jogar = new Button { Text = "Jogar" };
@@ -373,6 +374,34 @@ public partial class CharacterSelect : CanvasLayer
     {
         _pergunta?.QueueFree();
         _pergunta = null;
+    }
+
+    /// <summary>
+    /// O QUE O SLOT DIZ DO PERSONAGEM ALEM DO NOME: a raca como o JOGADOR a conhece, e a idade.
+    ///
+    /// ============================ "APARECE COMO ICER A RACA NO SLOT" (dono, 2026-09-15) ============================
+    /// O fio traz a CHAVE do `races.json` (`SlotInfo.Raca` = "Icer", "Saibaman", "Kanassa"...), que e o
+    /// nome interno do port e nunca foi o nome do jogo: no DM a raca se chama "Frost Demon" em todos os
+    /// lugares em que aparece, e "Icer" so sobrevive em nome de arquivo (`icer.dm`, `IcerTransform.dm`).
+    /// A tela de criacao ja traduzia (`CreationScreen.NomeBonito`); esta nao -- e foi esta que o dono
+    /// viu. A tabela agora mora no Core (`NomeDaRaca.Bonito`), pra que as duas telas, a aba Stats e a
+    /// aba People (que vazavam a mesma chave) leiam da mesma linha.
+    ///
+    /// E UMA FUNCAO PURA porque a bancada `--diagslot` a chama com o `SlotInfo` que chegou do fio E le
+    /// o rotulo DESENHADO pela tela de producao -- os dois tem que dizer a mesma coisa.
+    /// ==============================================================================================================
+    /// </summary>
+    public static string RotuloDoSlot(SlotInfo s) => $"{NomeDaRaca.Bonito(s.Raca)}  ·  {s.Idade} anos";
+
+    /// <summary>
+    /// A REGRA QUE A BANCADA INJETA: nenhum pedaco do rotulo pode ser uma chave crua de raca que tem
+    /// nome proprio. "Human" passa (a chave E o nome); "Icer" reprova.
+    /// </summary>
+    public static bool RotuloSemChaveCrua(string rotulo)
+    {
+        foreach (string pedaco in rotulo.Split([' ', '·'], StringSplitOptions.RemoveEmptyEntries))
+            if (NomeDaRaca.EhChaveCrua(pedaco)) return false;
+        return true;
     }
 
     private static Label Info(string t)

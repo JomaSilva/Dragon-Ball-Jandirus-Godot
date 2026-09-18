@@ -27,6 +27,10 @@ namespace Jandirus.Server;
 ///  5. AS TRES DISPARAM DE VERDADE, pelo mesmo `Disparar`/`Canalizar` das tecnicas portadas, com os
 ///     numeros que o jogador comprou chegando no projetil.
 ///  6. O VERBO `Custom_Attack&lt;n&gt;` chega, e um slot vazio e recusado DIZENDO por que.
+///  7. A COR DO KI (`ca_cor`, o `Blast_Color()` do DM): escreve no `Appearance.CorKi`, recusa fora
+///     da faixa e texto, respeita a porta do `Aura_and_Blast_Color` (carregando/voando/escudado),
+///     `sortear` da outra cor, e a cor ATRAVESSA O DISCO sem ser re-derivada -- com o defeito
+///     injetado da faixa desligada pra provar que a recusa sabe ficar vermelha.
 /// =========================================================================
 ///
 /// ============================ CHAMA O CODIGO DE PRODUCAO ============================
@@ -61,6 +65,7 @@ public sealed partial class GameServer
 			ElasAtravessamODisco();
 			AsTresDisparam();
 			ODespachoDoVerbo();
+			ACorDoKi();
 		}
 		finally
 		{
@@ -69,6 +74,97 @@ public sealed partial class GameServer
 		}
 
 		GD.Print($"[tecnica] ================ {_tcOk} passaram, {_tcFalhou} falharam ================");
+	}
+
+	/// <summary>
+	/// 7) A COR DO KI -- ver <c>GameServer.CorDoKi</c>. Chama o verbo de producao com o texto que
+	/// chegaria do fio, e le o que o servidor guardou (e o que o disco devolve).
+	/// </summary>
+	private void ACorDoKi()
+	{
+		GD.Print("[tecnica] -- 7) A COR DO KI (`ca_cor`: o `Blast_Color` do DM, a porta do `Aura_and_Blast_Color` e o disco)");
+		ServerPlayer pl = Forjar("Pintor", CorredorLivre(5), bp: 5_000);
+		EscutaDeAvisos = [];
+
+		CorDoKi(pl, "200,40,40");
+		AfirmarTc("`ca_cor 200,40,40` escreve a cor no `Appearance.CorKi` e avisa o dono",
+				  pl.Visual.CorKi is { R: 200, G: 40, B: 40 } && EscutaDeAvisos.Exists(a => a.Contains("200, 40, 40")),
+				  $"{pl.Visual.CorKi?.R},{pl.Visual.CorKi?.G},{pl.Visual.CorKi?.B} | {string.Join(" | ", EscutaDeAvisos)}");
+
+		EscutaDeAvisos.Clear();
+		CorDoKi(pl, "999,0,0");
+		AfirmarTc("999,0,0 e RECUSADO (cada canal e 0..255), com motivo, e a cor fica como estava",
+				  pl.Visual.CorKi is { R: 200, G: 40, B: 40 } && EscutaDeAvisos.Exists(a => a.Contains("cor invalida")),
+				  string.Join(" | ", EscutaDeAvisos));
+		CorDoKi(pl, "azul");
+		CorDoKi(pl, "1,2");
+		CorDoKi(pl, "-1,0,0");
+		AfirmarTc("texto, dois canais e canal negativo tambem sao recusados", pl.Visual.CorKi is { R: 200, G: 40, B: 40 });
+
+		// A PORTA (`Settings.dm:292`): carregando, escudado ou voando a cor nao muda.
+		EscutaDeAvisos.Clear();
+		pl.Carregando = true;
+		CorDoKi(pl, "1,2,3");
+		AfirmarTc("carregando Ki a cor NAO muda, e o dono ouve que precisa parar (`if(!powerup&&!shielding&&!flight)`)",
+				  pl.Visual.CorKi is { R: 200, G: 40, B: 40 } && EscutaDeAvisos.Exists(a => a.Contains("parar")),
+				  string.Join(" | ", EscutaDeAvisos));
+		pl.Carregando = false;
+		pl.Voando = true;
+		CorDoKi(pl, "1,2,3");
+		AfirmarTc("voando, idem", pl.Visual.CorKi is { R: 200, G: 40, B: 40 });
+		pl.Voando = false;
+		CorDoKi(pl, "1,2,3");
+		AfirmarTc("(controle) parado no chao, a mesma chamada passa", pl.Visual.CorKi is { R: 1, G: 2, B: 3 });
+
+		// SORTEAR: o rand(0,255) da criacao. Duas vezes seguidas dando a mesma cor e 1 em 16 milhoes.
+		CorDoKi(pl, "sortear");
+		Jandirus.Core.Appearance.Rgb? primeira = pl.Visual.CorKi;
+		CorDoKi(pl, "sortear");
+		AfirmarTc("`sortear` da uma cor, e outra a cada chamada",
+				  primeira != null && pl.Visual.CorKi is { } s2 && !(s2.R == primeira.Value.R && s2.G == primeira.Value.G && s2.B == primeira.Value.B));
+
+		// O DISCO: a cor escolhida volta LETRA POR LETRA, e o `ParaJogador` nao a re-deriva do nome.
+		CorDoKi(pl, "10,20,30");
+		string pasta = Path.Combine(Path.GetTempPath(), "jandirus_corki_" + Guid.NewGuid().ToString("N"));
+		try
+		{
+			var loja = new AccountStore(pasta);
+			var conta = new AccountSave { Conta = "bancada_corki" };
+			conta.Slots[0] = AccountStore.DeJogador(pl, 0);
+			loja.Gravar(conta);
+			CharacterSave? volta = loja.Carregar("bancada_corki")?.Slots[0];
+			AfirmarTc("a cor do ki atravessa o disco (10,20,30 -> 10,20,30)",
+					  volta?.Visual?.CorKi is { R: 10, G: 20, B: 30 });
+
+			var renascido = new ServerPlayer { Id = 7, Ficha = pl.Ficha };
+			if (volta != null) AccountStore.ParaJogador(volta, renascido);
+			AfirmarTc("...e o `ParaJogador` a mantem em vez de re-derivar do nome (o `??=` so vale pra quem nunca escolheu)",
+					  renascido.Visual.CorKi is { R: 10, G: 20, B: 30 },
+					  $"{renascido.Visual.CorKi?.R},{renascido.Visual.CorKi?.G},{renascido.Visual.CorKi?.B}");
+		}
+		catch (Exception e)
+		{
+			AfirmarTc("a cor do ki atravessa o disco", false, e.Message);
+		}
+		finally
+		{
+			try { if (Directory.Exists(pasta)) Directory.Delete(pasta, recursive: true); }
+			catch (Exception e) { GD.Print($"[tecnica] nao consegui apagar {pasta}: {e.Message}"); }
+		}
+
+		// O DEFEITO INJETADO: com a faixa desligada, 999,0,0 PASSA (grampeado em 255) -- ou seja a
+		// afirmacao "999 e recusado" la em cima sabe ficar vermelha.
+		AceitarQualquerCorDeTeste = true;
+		try
+		{
+			CorDoKi(pl, "999,0,0");
+			AfirmarTc("(injetado) com a faixa desligada, 999,0,0 passa como 255,0,0 -- a recusa de cima e uma guarda de verdade",
+					  pl.Visual.CorKi is { R: 255, G: 0, B: 0 });
+		}
+		finally { AceitarQualquerCorDeTeste = false; }
+
+		EscutaDeAvisos = null;
+		LimparTudoDaBancada();
 	}
 
 	/// <summary>Uma tecnica nova, no padrao do DM, do tipo pedido.</summary>

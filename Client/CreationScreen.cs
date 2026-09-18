@@ -1132,14 +1132,16 @@ public partial class CreationScreen : CanvasLayer
 	private static string NomeDeArquivo(string res) =>
 		res.Substring(res.LastIndexOf('/') + 1).Replace(".tres", "").Replace('_', ' ');
 
+	/// <summary>
+	/// Planeta ou raca -> o nome que o jogador le. OS PLANETAS moram aqui (so esta tela os traduz); AS
+	/// RACAS saem do Core (`NomeDaRaca.Bonito`): a tabela delas era daqui, privada, e a tela de slots --
+	/// que nao a enxergava -- mostrava "Icer" (dono, 2026-09-15). Uma tabela so, lida por todas as telas.
+	/// </summary>
 	private static string NomeBonito(string s) => s switch
 	{
 		"Earth" => "Terra", "Vegeta" => "Vegeta", "Namek" => "Namek",
 		"Heaven" => "Outro Mundo", "Hell" => "Inferno",
-		"Icer" => "Frost Demon", "Saibaman" => "Saibamen",
-		"Kanassa" => "Kanassa-Jin", "BioAndroid" => "Bio-Android",
-		"SpiritDoll" => "Spirit Doll", "Halfbreed" => "Half-Saiyan",
-		_ => s,
+		_ => Jandirus.Core.Races.NomeDaRaca.Bonito(s),
 	};
 
 	private static Rgb DeCor(Color c) => new((byte)(c.R * 255), (byte)(c.G * 255), (byte)(c.B * 255));

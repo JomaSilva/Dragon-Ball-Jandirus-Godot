@@ -576,10 +576,11 @@ public sealed class ZoneCollision
 	/// porque nenhuma regra do jogo mandava alguem pra la. O berco manda -- e o Frost Demon nasce em
 	/// Icer --, entao o buraco deixa de ser teorico.
 	///
-	/// A alternativa era extrair os 14 `/obj/SpawnPoint` do `.dmm` e ter uma coordenada por planeta.
-	/// Nao foi por dois motivos: seria dado NOVO pra manter em sincronia com mapas que mudam, e nao
-	/// resolveria o caso do mapa cujo spawnpoint cai numa construcao levantada por um jogador (a
-	/// colisao tem `Bloquear`/`Abrir` em runtime). Perguntar a colisao responde as duas coisas.
+	/// (2026-09-15) OS 14 `/obj/SpawnPoint` DO `.dmm` PASSARAM A SER O PONTO PEDIDO -- o dono quis o
+	/// spawn do BYOND, e o conversor os escreve no manifesto (`ZoneEntry.Berco`), entao o dado vive com
+	/// o mapa e nao em tabela de codigo. Esta funcao continua sendo a rede de seguranca: o marco que
+	/// caiu numa construcao levantada por um jogador (a colisao tem `Bloquear`/`Abrir` em runtime) e
+	/// desviado pro chao livre mais perto em vez de prender o corpo. Ver `GameServer.PontoDeNascimento`.
 	/// ==================================================================================================
 	///
 	/// Anel por anel a partir do desejado, e devolve o CENTRO do tile: um ponto na quina de uma
