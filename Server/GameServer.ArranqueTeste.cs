@@ -23,6 +23,7 @@ namespace Jandirus.Server;
 /// os 500 ms que todo salto de posicao abre), um pedido LONGE do corpo e um pacote velho, nao um passo
 /// -- o corpo fica onde esta e a correcao e reenviada. Fora da janela nada mudou: pedido longe continua
 /// sendo arrastado e contado como correcao (a anti-trapaca de sempre), e a familia 4 mede as duas metades.
+/// A familia 5 (2026-09-24) mede a mesma janela na TROCA DE ZONA, o unico salto do servidor que nao a abria.
 ///
 ///     Godot --headless --path . --host --rede 7913 --arranqueteste --raca Human --conta bancada_arranque --nome MedidorArranque
 ///
@@ -52,6 +53,7 @@ public sealed partial class GameServer
 			OPassoCurtoTambemParaAUmTile();
 			OPertoDemaisAndaOResto();
 			OInputEmVooNaoDesfazOArranque();
+			ATrocaDeZonaTambemAbreAJanela();
 		}
 		finally { EscutaDeGolpes = null; LimparTudoDaBancada(); }
 		GD.Print($"[arranque] ================ {_arrOk} OK, {_arrFalhou} FALHA(S) ================");
@@ -140,6 +142,97 @@ public sealed partial class GameServer
 		AfirmarArranque("CONTRA-EXEMPLO (a regra de ontem = fora da janela): os mesmos 4 pacotes ARRASTAM o corpo de volta pela folga do tique",
 			Vao(b, e) > antes + 20f, $"vao {antes:0.0} -> {Vao(b, e):0.0} px");
 		AfirmarArranque("...e fora da janela isso CONTA como correcao (a anti-trapaca nao mudou)", b.Corrections >= 4, $"{b.Corrections}");
+	}
+
+	/// <summary>
+	/// 5) A TROCA DE ZONA E O MAIOR SALTO DE TODOS, e era o unico sem a janela. O `MoveToZone` carimbava so a
+	/// SEQUENCIA, e ela so cobre o que JA CHEGOU. O cliente numera os pacotes sem nunca recomecar
+	/// (`GameClient.SendState`, `++_seq`), e depois de LER o `ZoneChanged` ele ainda passa dois quadros com o
+	/// corpo na zona velha -- o `TelaDeCarregamento.Cobrir` espera dois `ProcessFrame` antes do `Teleportar`,
+	/// e o `LocalPlayer` manda a posicao a 30 Hz nesse meio tempo. Esse pacote (e os que ja estavam no cabo)
+	/// chega com numero MAIOR que o carimbo, passa pelo filtro e era validado contra a posicao nova: contado
+	/// como trapaca, e arrastando o corpo pela folga do tique rumo a coordenada da zona velha. A suspeita
+	/// nasceu de um `1 correcoes de movimento (dt=422s)` logo depois de um Lendario pousar no mundo do exilio
+	/// (`--torneioteste`, 2026-09-24); aquele aviso sozinho nao prova a causa -- esta familia mede a regra.
+	///
+	/// E O DT VAI JUNTO. Sem o `LastInputMs` renovado, o primeiro pacote depois da troca era pago pelo tempo
+	/// passado ANTES dela: o `OrcamentoPx = 0` zerava o credito, e o dt contado desde o ultimo pacote da zona
+	/// velha o enchia de volta ate o teto no mesmo instante.
+	///
+	/// A "zona nova" e a MESMA zona da bancada, seis tiles adiante num corredor seco: o que se mede e o
+	/// carimbo do `MoveToZone`, e trocar de planeta de verdade poria na conta o embaralho, a gravidade e o
+	/// povo de outro mapa. Os dois contra-exemplos sao o `MoveToZone` de antes, uma metade cada: a mesma
+	/// troca com a janela fechada (arrasta e conta) e com o relogio parado na zona velha (o passo e pago).
+	/// </summary>
+	private void ATrocaDeZonaTambemAbreAJanela()
+	{
+		GD.Print("[arranque] --- 5) a TROCA DE ZONA: os pacotes com a posicao da zona velha nao arrastam nem contam, e o tempo de antes nao paga passo ---");
+		byte flags = (byte)((byte)Facing.East | Protocol.InputAndando);
+		var adiante = new Vec2(6 * ZoneCollision.TileSize, 0);
+
+		// CHAO DE VERDADE, e nao o ponto fixo das familias 1-4 (sem mapa o `CorredorLivre` devolve sempre o mesmo
+		// ponto, na beirada do mundo): aqui ha passo ACEITO, e passo aceito consulta o mapa -- a pe, agua e parede.
+		_pjMapa ??= MapaDaZonaOuCatalogo(ZonaDaBancadaDeProjetil);
+		AfirmarArranque("PRECONDICAO: o mapa da zona da bancada esta carregado (os corredores saem dele)", _pjMapa != null);
+
+		// ---- a janela: os pacotes montados antes de o cliente trocar de zona ----
+		Vec2 velha = CorredorSeco(8);
+		ServerPlayer a = Forjar("arrZonaAnda", velha, 5_551);
+		Vec2 chegada = velha + adiante;
+		MoveToZone(a.Id, a.Zone, chegada);
+		uint seq = a.SeqInput;
+		for (int i = 1; i <= 4; i++) PacoteEmVoo(a, ++seq, velha, flags);
+		AfirmarArranque("QUATRO pacotes com a posicao da zona velha, numerados DEPOIS do carimbo: o corpo continua na chegada",
+			(a.Pos - chegada).Length < 0.5f, $"{(a.Pos - chegada).Length:0.0} px da chegada");
+		AfirmarArranque("...e nenhum conta como correcao de trapaca (a janela da troca os explica)", a.Corrections == 0, $"{a.Corrections}");
+
+		Vec2 honesto = a.Pos + new Vec2(4f, 0);
+		PacoteEmVoo(a, ++seq, honesto, flags);
+		AfirmarArranque("...e um passo HONESTO a partir da chegada, dentro da mesma janela, continua aceito",
+			(a.Pos - honesto).Length < 0.01f, $"pediu ({honesto.X:0.0},{honesto.Y:0.0}) e ficou em ({a.Pos.X:0.0},{a.Pos.Y:0.0})");
+
+		// O CONTRA-EXEMPLO DA JANELA E O `MoveToZone` DE ANTES: so a sequencia. A mesma troca arrasta e conta.
+		Vec2 velhaB = CorredorSeco(8);
+		ServerPlayer b = Forjar("arrZonaOntem", velhaB, 5_551);
+		Vec2 chegadaB = velhaB + adiante;
+		MoveToZone(b.Id, b.Zone, chegadaB);
+		b.CorrecaoEsperadaAte = 0;
+		uint seqB = b.SeqInput;
+		for (int i = 1; i <= 4; i++) PacoteEmVoo(b, ++seqB, velhaB, flags);
+		float arrastado = (chegadaB - velhaB).Length - (b.Pos - velhaB).Length;
+		AfirmarArranque("CONTRA-EXEMPLO (a troca sem janela): os mesmos 4 pacotes ARRASTAM o corpo rumo a coordenada velha",
+			arrastado > 20f, $"{arrastado:0.0} px de volta");
+		AfirmarArranque("...e contam como correcao", b.Corrections >= 4, $"{b.Corrections}");
+
+		// ---- o relogio: o primeiro pacote depois da troca ----
+		// QUANTO UM RELOGIO VELHO PAGA, perguntado a propria regra e nao copiado dela: credito zerado (como o
+		// `MoveToZone` deixa) e um dt de cinco segundos, que o `ValidateStep` prende no `MaxDeltaSeconds`, andam
+		// ate o teto do orcamento; a folga de correcao vem por cima. O passo medido e o maior que isso paga.
+		float credito = 0f;
+		MoveRules.ValidateStep(Vec2.Zero, new Vec2(10_000f, 0), 5f, a.SpeedStat, ref credito, out Vec2 pago);
+		float passo = pago.X + MoveRules.MinCorrectionPx - 1f;
+
+		Vec2 velhaC = CorredorSeco(8);
+		ServerPlayer c = Forjar("arrZonaRelogio", velhaC, 5_551);
+		c.LastInputMs = NowMs() - 5_000;   // o ultimo pacote dele chegou na zona velha, cinco segundos antes da troca
+		Vec2 chegadaC = velhaC + adiante;
+		MoveToZone(c.Id, c.Zone, chegadaC);
+		long dtMs = NowMs() - c.LastInputMs;
+		AplicarInput(c, c.SeqInput + 1, (uint)RelogioDeQuadrosMs(), chegadaC + new Vec2(passo, 0), flags);
+		AfirmarArranque($"o PRIMEIRO pacote depois da troca nao e pago pelo tempo de ANTES dela: {passo:0.0} px no instante do salto nao andam",
+			(c.Pos - chegadaC).Length < 0.5f, $"{(c.Pos - chegadaC).Length:0.0} px andados, dt {dtMs} ms");
+		AfirmarArranque("...e a recusa cai na janela da troca (nao conta como trapaca)", c.Corrections == 0, $"{c.Corrections}");
+
+		// O CONTRA-EXEMPLO DO RELOGIO: a mesma troca com o dt ainda contando da zona velha paga o passo inteiro.
+		Vec2 velhaD = CorredorSeco(8);
+		ServerPlayer d = Forjar("arrZonaRelogioOntem", velhaD, 5_551);
+		Vec2 chegadaD = velhaD + adiante;
+		MoveToZone(d.Id, d.Zone, chegadaD);
+		d.LastInputMs = NowMs() - 5_000;
+		Vec2 pedidoD = chegadaD + new Vec2(passo, 0);
+		AplicarInput(d, d.SeqInput + 1, (uint)RelogioDeQuadrosMs(), pedidoD, flags);
+		AfirmarArranque($"CONTRA-EXEMPLO (o relogio parado na zona velha): os mesmos {passo:0.0} px sao pagos e o corpo ANDA",
+			(d.Pos - pedidoD).Length < 0.01f, $"{(d.Pos - chegadaD).Length:0.0} px andados");
 	}
 
 	/// <summary>Um pacote de input como o cliente o monta, chegando 100 ms depois do anterior.</summary>

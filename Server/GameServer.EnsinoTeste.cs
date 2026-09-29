@@ -19,7 +19,7 @@ namespace Jandirus.Server;
 /// com TRES corpos, porque com dois o segundo elo da corrente nao existe pra ser recusado.
 /// ==============================================================================
 ///
-/// AS NOVE SECOES:
+/// AS DEZ SECOES:
 ///  1. O CATALOGO -- `teacher` e `teachCost` sairam do DM, e o segundo MUDA o preco.
 ///  2. OS PORTOES DESLIGADOS -- o ensino atravessa arvore, raca e `enabled`, e e assim que tem que ser.
 ///  3. A CORRENTE NAO SE FORMA -- os dois sentidos, com tres corpos.
@@ -29,6 +29,7 @@ namespace Jandirus.Server;
 ///  7. PERSISTENCIA -- o `wastaught` atravessa o save.
 ///  8. ESQUECER A LICAO -- so o que foi ensinado, e sem devolver marco.
 ///  9. A VARREDURA -- nenhuma linha de producao do ensino mexe em marco de ninguem.
+/// 10. A LICAO ALCANCA QUEM ESTA EM CENA -- o escudo da cinematica e da carencia e contra golpe.
 ///
 /// OS CORPOS SAO FORJADOS, no molde do `--mestreteste`: sem `Peer`, numa zona pre-feita sem
 /// ninguem conectado, entrando e saindo do `_players`/`ZoneList` no mesmo bloco sincrono.
@@ -67,14 +68,14 @@ public partial class GameServer
 					p => string.Equals(p.Zone.Name, n, StringComparison.OrdinalIgnoreCase)))
 			?? "Namek");
 
-		ServerPlayer Forjar(int i, string nome, float tilesX)
+		ServerPlayer Forjar(int i, string nome, float tilesX, string raca = "Human")
 		{
 			var novo = new ServerPlayer
 			{
 				Id = IdBaseDoEnsinoDeTeste + i,
 				Peer = null,
 				Name = nome,
-				Race = "Human",
+				Race = raca,
 				Genero = "Male",
 				Idade = 25,
 				Zone = zona,
@@ -83,7 +84,7 @@ public partial class GameServer
 				// e ela sai da conta + slot. Ver `EhPessoa`.
 				Conta = $"bancada_ensino_{i}",
 				Slot = 0,
-				Ficha = new Jandirus.Core.Stats.Fighter { Race = "Human", BP = 10_000 },
+				Ficha = new Jandirus.Core.Stats.Fighter { Race = raca, BP = 10_000 },
 				Livro = new SkillBook(),
 			};
 			novo.Ficha.Class = "Normal";
@@ -96,6 +97,8 @@ public partial class GameServer
 		ServerPlayer a = Forjar(1, "bancada: a origem", 0);
 		ServerPlayer b = Forjar(2, "bancada: quem foi ensinado", 1);
 		ServerPlayer c = Forjar(3, "bancada: quem queria a corrente", 200);
+		// O QUARTO SO SERVE A SECAO 10, e e SAIYAJIN porque la ele precisa ESTREAR uma forma (a cena).
+		ServerPlayer d = Forjar(4, "bancada: o aluno que se transforma", 600, "Saiyan");
 
 		try
 		{
@@ -108,6 +111,7 @@ public partial class GameServer
 			OWastaughtAtravessaOSave(a, b);
 			EsquecerSoOQueFoiEnsinado(a, b);
 			NinguemMexeEmMarco();
+			ALicaoAlcancaQuemEstaEmCena(a, d);
 		}
 		catch (Exception e)
 		{
@@ -115,7 +119,7 @@ public partial class GameServer
 		}
 		finally
 		{
-			foreach (ServerPlayer p in new[] { a, b, c })
+			foreach (ServerPlayer p in new[] { a, b, c, d })
 			{
 				_players.Remove(p.Id);
 				ZoneList(zona.Hash).Remove(p);
@@ -599,6 +603,67 @@ public partial class GameServer
 		const string adulterada = "\t\tdoAluno.Conceder(Custo(s));";
 		AfirmarEns("...e a varredura reprovaria se alguem acrescentasse a linha (ela sabe dizer nao)",
 				   proibidos.Any(p => SemTextoNemComentario(adulterada).Contains(p, StringComparison.Ordinal)));
+	}
+
+	// =====================================================================
+	// 10) A LICAO ALCANCA QUEM ESTA EM CENA
+	// =====================================================================
+	/// <summary>
+	/// ============================ O ESCUDO DA CENA E CONTRA GOLPE, E NAO CONTRA A LICAO ============================
+	/// O `Teach_Skill` varre `view(1)` (`teachable.dm:12-13`) sem perguntar `attackable`, e o `Study`
+	/// (`:38-57`) nao pergunta `transing`: no DM o aluno no meio da estreia do SSJ recebe a oferta e aprende.
+	/// Ate 2026-09-24 o port escolhia o aluno pelo `AlvoNaFrente` do SOCO, que pula `Combate.Intocavel` -- e
+	/// o mestre ouvia "nao ha ninguem na sua frente" com o corpo parado ali.
+	///
+	/// AS DUAS METADES DO `Intocavel`, cada uma pela porta de producao dela: a CENA pelo funil do
+	/// `admin_forma` (a estreia do SSJ1 marca a cena cheia) e a CARENCIA pelo `Reviver` que o renascimento
+	/// chama. A cena escorre pelo relogio de producao (`TickDaForma`) antes da carencia, pra a segunda linha
+	/// medir so a carencia.
+	///
+	/// COMO ELA REPROVA: volte o `AlvoNaFrente(mestre)` no `OferecerLicao` (`GameServer.Ensino.cs`) e a
+	/// oferta em cena, o "sim" em cena e a licao na carencia ficam vermelhos.
+	/// ==============================================================================================================
+	/// </summary>
+	private void ALicaoAlcancaQuemEstaEmCena(ServerPlayer a, ServerPlayer aluno)
+	{
+		GD.Print("[ensino] -- 10) A LICAO ALCANCA QUEM ESTA EM CENA (o escudo e contra golpe)");
+
+		Skill? um = AlvoDesligado();
+		Skill? dois = OutroAlvo(um);
+		if (um == null || dois == null) { AfirmarEns("ha duas skills ensinaveis pra medir a cena", false); return; }
+
+		// UM ENDERECO SO DELES (a licao do `Estacionar`): com B ou C colados em A, o mais perto seria outro.
+		Zerar(a, aluno);
+		a.Livro.Dar(um.Path);
+		a.Livro.Dar(dois.Path);
+		aluno.Livro.Conceder(50);
+		Estacionar(a, 700);
+		Encostar(a, aluno, tiles: 1);
+
+		// --- a) A CENA DA ESTREIA DO SSJ1 ---
+		AdminForcarForma(aluno, "ssj1");
+		AfirmarEns("(montagem) o aluno esta na CENA da estreia do SSJ1, intocavel pro SOCO (o `AlvoNaFrente` nao o acha)",
+				   aluno.Forma.Atual == "ssj1" && EmCena(aluno) && aluno.Combate.Intocavel && AlvoNaFrente(a) == null,
+				   $"forma {aluno.Forma.Atual}, cena {aluno.CenaSegundos:0.#} s, alvo do soco {AlvoNaFrente(a)?.Name ?? "ninguem"}");
+
+		UsarVerboDeEnsino(a, $"ens_ensinar:{um.Path}");
+		AfirmarEns("o mestre ACHA o aluno em cena e a oferta chega (o `view(1)` do `Teach_Skill` nao pergunta `attackable`)",
+				   aluno.PedidoDeLicao?.Path == um.Path, aluno.PedidoDeLicao?.ToString() ?? "nenhuma oferta");
+		UsarVerboDeEnsino(aluno, "ens_licao_sim");
+		AfirmarEns("...e o 'sim' EM CENA ensina (o `Study`, `:38-57`, nao pergunta `transing`)",
+				   aluno.Livro.Sabe(um.Path) && aluno.Livro.FoiEnsinada(um.Path) && EmCena(aluno),
+				   $"sabe={aluno.Livro.Sabe(um.Path)}, cena={EmCena(aluno)}");
+
+		// --- b) A CARENCIA DE RENASCIMENTO ---
+		for (int i = 0; i < (int)(60 / Jandirus.Net.Protocol.TickSeconds) && EmCena(aluno); i++)
+			TickDaForma(aluno, Jandirus.Net.Protocol.TickSeconds);
+		a.RecargaDaLicao = 0;
+		aluno.Combate.Reviver(1, SegundosDeCarencia);
+		AfirmarEns("(montagem) com a cena acabada, o aluno esta na CARENCIA de renascimento, intocavel pro soco",
+				   !EmCena(aluno) && aluno.Combate.Carencia > 0 && aluno.Combate.Intocavel && AlvoNaFrente(a) == null,
+				   $"cena {aluno.CenaSegundos:0.#} s, carencia {aluno.Combate.Carencia:0.#} s");
+		AfirmarEns("a licao tambem alcanca quem acabou de renascer (a carencia e escudo contra golpe, nao contra gesto)",
+				   Licao(a, aluno, dois));
 	}
 
 	// =====================================================================

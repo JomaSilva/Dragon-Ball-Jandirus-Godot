@@ -106,14 +106,16 @@ public partial class Chat : CanvasLayer
 		Tema.Aplicar(raiz);
 		AddChild(raiz);
 
+		// UM POUCO MAIOR QUE ANTES (470 x 224) porque a letra cresceu: com 15 px, o mesmo painel mostraria
+		// seis linhas em vez de dez.
 		_painel = new PanelContainer
 		{
 			AnchorTop = 1, AnchorBottom = 1,
-			OffsetLeft = 12, OffsetRight = 12 + 470,
-			OffsetTop = -236, OffsetBottom = -12,
+			OffsetLeft = 12, OffsetRight = 12 + 540,
+			OffsetTop = -292, OffsetBottom = -12,
 			MouseFilter = Control.MouseFilterEnum.Pass,
 		};
-		_painel.AddThemeStyleboxOverride("panel", CaixaDeVidro());
+		_painel.AddThemeStyleboxOverride("panel", _fundo);
 		raiz.AddChild(_painel);
 
 		var coluna = new VBoxContainer();
@@ -134,7 +136,7 @@ public partial class Chat : CanvasLayer
 				ButtonPressed = i == 0,
 				FocusMode = Control.FocusModeEnum.None,   // senao o botao rouba o foco da caixa
 			};
-			b.AddThemeFontSizeOverride("font_size", 11);
+			b.AddThemeFontSizeOverride("font_size", 12);
 			b.Pressed += () => TrocarFiltro(qual);
 			linhaAbas.AddChild(b);
 			_abas.Add(b);
@@ -149,7 +151,20 @@ public partial class Chat : CanvasLayer
 			SizeFlagsVertical = Control.SizeFlags.ExpandFill,
 			CustomMinimumSize = new Vector2(0, 150),
 		};
-		_texto.AddThemeFontSizeOverride("normal_font_size", 12);
+		// ============================ LEGIVEL EM CIMA DO MUNDO (dono, 2026-09-25) ============================
+		// O chat fica sobre o jogo o tempo todo -- grama clara, neve, o clarao de um raio --, e 12 px sem
+		// contorno sumiam nesses fundos. O contorno e a sombra sao a receita da legenda do HUD (`Tema.Legenda`):
+		// a letra se le contra qualquer cor. OS QUATRO ESTILOS NO MESMO TAMANHO: so o normal tinha override, e o
+		// italico (sussurro, emote, pensamento) e o negrito caiam no 14 do tema -- linhas de tamanhos diferentes.
+		// ==============================================================================================
+		foreach (string estilo in new[] { "normal_font_size", "bold_font_size", "italics_font_size", "bold_italics_font_size" })
+			_texto.AddThemeFontSizeOverride(estilo, 15);
+		_texto.AddThemeConstantOverride("outline_size", 4);
+		_texto.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 0.85f));
+		_texto.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.6f));
+		_texto.AddThemeConstantOverride("shadow_offset_x", 1);
+		_texto.AddThemeConstantOverride("shadow_offset_y", 1);
+		_texto.AddThemeConstantOverride("line_separation", 2);
 		coluna.AddChild(_texto);
 
 		// ---- a linha de digitacao (escondida ate alguem falar) ----
@@ -158,7 +173,7 @@ public partial class Chat : CanvasLayer
 		coluna.AddChild(_rodape);
 
 		_canal = new OptionButton { FocusMode = Control.FocusModeEnum.None };
-		_canal.AddThemeFontSizeOverride("font_size", 11);
+		_canal.AddThemeFontSizeOverride("font_size", 12);
 		foreach (Protocol.Fala f in new[]
 				 {
 					 Protocol.Fala.Diz, Protocol.Fala.Sussurro, Protocol.Fala.Emote,
@@ -184,11 +199,12 @@ public partial class Chat : CanvasLayer
 	/// O fundo do painel. Mais transparente que o dos outros paineis de proposito: este fica
 	/// sobre o MUNDO o tempo todo, e o que esta atras dele e o jogo.
 	/// </summary>
+	private readonly StyleBoxFlat _fundo = CaixaDeVidro();
+
 	private static StyleBoxFlat CaixaDeVidro()
 	{
 		var s = new StyleBoxFlat
 		{
-			BgColor = new Color(0.05f, 0.06f, 0.09f, 0.45f),
 			BorderColor = new Color(Tema.Borda, 0.55f),
 			ContentMarginLeft = 8, ContentMarginRight = 8,
 			ContentMarginTop = 6, ContentMarginBottom = 6,
@@ -198,8 +214,13 @@ public partial class Chat : CanvasLayer
 		return s;
 	}
 
+	/// <summary>
+	/// QUEM ESMAECE E O FUNDO, E NAO A LETRA. Antes o painel inteiro ia a 72% de `Modulate` fora da
+	/// digitacao -- e o `Modulate` apaga o texto junto, que era justamente o que precisava ser lido. O fundo
+	/// fica mais claro parado e mais fechado digitando; a letra fica sempre inteira.
+	/// </summary>
 	private void Opacidade(bool escrevendo) =>
-		_painel.Modulate = new Color(1, 1, 1, escrevendo ? 1f : 0.72f);
+		_fundo.BgColor = new Color(0.05f, 0.06f, 0.09f, escrevendo ? 0.85f : 0.55f);
 
 	// =====================================================================
 	// ABRIR, FECHAR, ENVIAR
@@ -365,14 +386,16 @@ public partial class Chat : CanvasLayer
 	/// </summary>
 	private static string Formatar(Linha l)
 	{
-		string hora = $"[color=#4d566e]{l.Hora}[/color] ";
+		// A HORA E O AVISO DO SISTEMA MAIS CLAROS (2026-09-25): `#4d566e` e `#8f9ab5` eram os tons mais apagados
+		// do chat, e o aviso e o que o jogador mais precisa ler (a recusa de um gesto, o que aconteceu com ele).
+		string hora = $"[color=#6c7690]{l.Hora}[/color] ";
 		string quem = Esc(l.Autor);
 		string oque = Esc(l.Texto);
 
 		return l.Canal switch
 		{
 			Protocol.Fala.Sistema =>
-				$"{hora}[color=#{Tema.Destaque.ToHtml(false)}]»[/color] [color=#8f9ab5]{oque}[/color]",
+				$"{hora}[color=#{Tema.Destaque.ToHtml(false)}]»[/color] [color=#c9d2e8]{oque}[/color]",
 
 			Protocol.Fala.Ooc =>
 				$"{hora}[color=#6fb6e8](OOC) {quem}:[/color] [color=#dfe4f0]{oque}[/color]",

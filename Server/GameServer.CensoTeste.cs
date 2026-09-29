@@ -363,6 +363,22 @@ public partial class GameServer
 			// O ROTEADOR DE OPCODES mora no `GameServer.cs` (o `switch` do `Handle`), e nao num
 			// arquivo de tema: e la que `Protocol.C2S.Zanzoken` e atendido.
 			"Server/GameServer.cs",
+			// O ROTEADOR DAS ESFERAS (`ComandoDeEsferas`, prefixo `db_`) mora no arquivo do proprio
+			// sistema, e nao no `GameServer.Verbos.cs`: o funil dos verbos so o CHAMA
+			// (`if (ComandoDeEsferas(pl, cmd, arg)) return;`). E la que `Create_Dragon_Statue`
+			// (namekian.dm:75) e atendido, por `case "db_estatua"`, desde que ele saiu da tabela 3 pro
+			// `PorOutroCanal` -- e esta lista NAO ganhou o arquivo no mesmo dia. A secao reprovou por
+			// semanas procurando no lugar errado, e nao por faltar canal: o `case` sempre existiu.
+			//
+			// A REGRA NAO AFROUXOU: continua entrando aqui so arquivo de ROTEADOR. Ler o servidor inteiro
+			// seria mais facil e seria mentira -- uma bancada que diz `UsarHabilidade(x, "absorver")`
+			// tem o literal entre aspas e nao prova que alguem o atende. A lista tem os roteadores que
+			// ATENDEM um canal declarado no `CensoDeSkills.PorOutroCanal` -- e nao todo roteador em arquivo
+			// proprio: o banco, a conquista, o torneio, o refugio, as super esferas, o G12, a interacao, a
+			// mochila e o convivio tambem sao encadeados pelo `Verbos.cs`, e ficam de fora porque nenhum canal
+			// declarado mora neles. Canal novo declarado num roteador que nao esta aqui -> o arquivo entra
+			// nesta lista no mesmo commit (foi exatamente o que faltou com as esferas).
+			"Server/GameServer.Esferas.cs",
 		];
 
 		string tudo = "";

@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Combat;
 using Jandirus.Core.Forms;
 using Jandirus.Core.Skills;
 using Jandirus.Core.World;
@@ -268,18 +269,38 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// `Convidar_Aluno` (`MasterStudent.dm:423`): convida quem esta **na frente**.
+	/// QUEM ESTA NA FRENTE DO MESTRE -- o `mst_front_targets()` (`MasterStudent.dm:416-420`).
 	///
-	/// O DM usa `get_step(src, dir)` -- o tile exatamente a frente -- pra ESCOLHER, e so depois, na
-	/// revalidacao pos-caixa, afrouxa pra `get_dist <= MST_RANGE`. Aqui quem escolhe e o
-	/// <see cref="AlvoNaFrente"/>, o mesmo cone que o soco e o ensino de disciplina usam: e o
-	/// precedente vivo deste port pra "quem esta na minha frente", e um segundo jeito de responder
-	/// a mesma pergunta seria a duplicata que a PARTE 3 chama de "duas casas pra uma formula".
+	/// O DM usa `get_step(src, dir)` -- o tile exatamente a frente -- e aqui o ALCANCE, o cadaver e o
+	/// marcado sao os do <see cref="QuemEstaNaFrente"/>, a busca de todo verbo que nao e golpe. Este
+	/// metodo so escreve a LISTA DE QUEM CONTA, e ela e a do DM, letra por letra:
+	///
+	///   * `if(P == src || !P.client || !P.signature) continue` -- so PESSOA (<see cref="EhPessoa"/>);
+	///   * e **so isso**. O `mst_front_targets` NAO pergunta `attackable` -- e o
+	///     <see cref="AlvoNaFrente"/> pergunta (`Combate.Intocavel`: cena de transformacao ou carencia de
+	///     renascimento). Ate 2026-09-24 os tres verbos usavam o do soco, e um aluno no meio da cena do
+	///     SSJ ficava invisivel pro mestre: "nao ha ninguem na sua frente", e nada gasto. No DM o mestre
+	///     o acha, GASTA a recarga (`:510`) e o "sim" e recusado depois pelo `mst_form_blocked`
+	///     (`transing`, `:317-318`) -- ver <see cref="DespertarAssistido"/>. O escudo da cinematica e
+	///     contra GOLPE; convidar, dispensar e ensinar nao sao golpe.
+	///
+	/// <paramref name="soMeusAlunos"/> e o crivo do `Ajudar_A_Transformar` (`:486-490`: o primeiro da
+	/// frente que e aluno DESTE mestre), que o dispensar tambem usa. Com mais de um na frente, o DM abre
+	/// um `input()` (`:437`); aqui decide o marcado, e sem marca o mais proximo.
+	/// </summary>
+	private ServerPlayer? PessoaNaFrente(ServerPlayer mestre, bool soMeusAlunos) =>
+		QuemEstaNaFrente(mestre, o => EhPessoa(o)
+									  && (!soMeusAlunos || MestreDe(o.Assinatura) == mestre.Assinatura));
+
+	/// <summary>
+	/// `Convidar_Aluno` (`MasterStudent.dm:423`): convida quem esta **na frente**
+	/// (<see cref="PessoaNaFrente"/>). So depois, na revalidacao pos-caixa, o DM afrouxa pra
+	/// `get_dist &lt;= MST_RANGE` -- ver <see cref="ResponderAoMestre"/>.
 	/// </summary>
 	private void ConvidarAluno(ServerPlayer mestre)
 	{
-		ServerPlayer? aluno = AlvoNaFrente(mestre);
-		if (aluno == null) { Avisar(mestre, "nao ha ninguem na sua frente."); return; }
+		ServerPlayer? aluno = PessoaNaFrente(mestre, soMeusAlunos: false);
+		if (aluno == null) { Avisar(mestre, "fique de frente para quem voce quer como aluno."); return; }
 
 		Discipulado.RecusaDeVinculo r = Discipulado.AvaliarVinculo(
 			mestreTemAssinatura: EhPessoa(mestre), alunoTemAssinatura: EhPessoa(aluno),
@@ -382,18 +403,16 @@ public partial class GameServer
 	/// <summary>
 	/// O mestre dispensa o aluno que estiver na frente (`mstdrop`).
 	///
-	/// PELO ALVO NA FRENTE e nao por uma lista: o canal de habilidade carrega um id de texto, e uma
+	/// PELO ALUNO NA FRENTE e nao por uma lista: o canal de habilidade carrega um id de texto, e uma
 	/// lista de alunos na tela e trabalho de UI que este verb nao precisa pra existir. Quem quiser
 	/// dispensar alguem que nao esta por perto usa o painel, no dia em que ele existir.
+	/// (DIVERGENCIA DECLARADA: no DM o `mstdrop` e do painel e nao pergunta posicao nenhuma -- entao,
+	/// com mais razao ainda, ele nao pergunta se o aluno esta numa cena. Ver <see cref="PessoaNaFrente"/>.)
 	/// </summary>
 	private void DispensarAluno(ServerPlayer mestre)
 	{
-		ServerPlayer? aluno = AlvoNaFrente(mestre);
-		if (aluno == null) { Avisar(mestre, "nao ha ninguem na sua frente."); return; }
-		if (MestreDe(aluno.Assinatura) != mestre.Assinatura)
-		{
-			Avisar(mestre, $"{aluno.Name} nao e seu aluno."); return;
-		}
+		ServerPlayer? aluno = PessoaNaFrente(mestre, soMeusAlunos: true);
+		if (aluno == null) { Avisar(mestre, "fique de frente para um aluno seu."); return; }
 		Desvincular(aluno.Assinatura, "o mestre dispensou o aluno");
 	}
 
@@ -429,12 +448,11 @@ public partial class GameServer
 			return;
 		}
 
-		ServerPlayer? aluno = AlvoNaFrente(mestre);
-		if (aluno == null) { Avisar(mestre, "nao ha ninguem na sua frente."); return; }
-		if (MestreDe(aluno.Assinatura) != mestre.Assinatura)
-		{
-			Avisar(mestre, $"{aluno.Name} nao e seu aluno."); return;
-		}
+		// O ALUNO DA FRENTE MESMO EM CENA -- o `mst_front_targets` nao pergunta `attackable` (ver
+		// `PessoaNaFrente`). Um aluno no meio da estreia do SSJ e ACHADO, a recarga e GASTA logo abaixo, e
+		// quem recusa e o "sim" dele (`DespertarAssistido`, o `mst_form_blocked` do DM).
+		ServerPlayer? aluno = PessoaNaFrente(mestre, soMeusAlunos: true);
+		if (aluno == null) { Avisar(mestre, "fique de frente para um aluno seu."); return; }
 		if (aluno.Ficha.KO || aluno.Ficha.dead) { Avisar(mestre, $"{aluno.Name} esta caido."); return; }
 
 		FormaDef? alvo = idPedido.Length > 0 ? Catalogo.Def(idPedido) : null;
@@ -524,6 +542,28 @@ public partial class GameServer
 			return;
 		}
 		if (!PodeSerEnsinada(mestre, aluno, d)) { Avisar(aluno, "voce nao faz ideia do que ele quer de voce."); return; }
+
+		// ============================ 1b. O CORPO JA ESTA OCUPADO -- `mst_form_blocked` (`MasterStudent.dm:317-318`) ============================
+		// `if(transing || Apeshit) return 1`: no meio de uma transformacao (a CENA -- o `transing` do DM e o
+		// periodo em que as procs de forma prendem o corpo, o `CenaSegundos` daqui) ou em Oozaru, nao ha
+		// despertar. O DM confere isto no "sim" e nao na oferta (o `mst_teachable` nao o chama), e por isso
+		// o mestre ja pagou a recarga quando a recusa vem -- literal, e o dono confirmou (2026-09-24).
+		//
+		// ANTES DO `Avaliar` E DA RAIVA, na ordem do DM (`:535`: poder e bloqueio vem antes do
+		// `mst_ignite_anger` de `:540`): recusar depois de acender seria a raiva de graca que o cabecalho proibe.
+		// Sem esta linha o despertar ENTRAVA com o corpo preso noutra cena (um SSJ2 por cima da estreia
+		// do SSJ1) ou por cima do macaco -- o `Avaliar` nao sabe de nenhum dos dois.
+		// As outras letras do `mst_form_blocked` (ascensao desligada, Mistico/Majin, tetos do God Ki)
+		// respondem pelo `Avaliar`, que e o funil da tecla C.
+		// ==========================================================================================================================
+		if (EmCena(aluno) || aluno.Oozaru != FormaOozaru.Nao)
+		{
+			Avisar(aluno, "voce tenta, e nao vem -- o seu corpo ja esta preso noutra transformacao.");
+			Avisar(mestre, $"{aluno.Name} tenta, e nao vem -- ainda nao e a hora dele.");
+			GD.Print($"[server] despertar assistido falhou: {mestre.Name} -> {aluno.Name} ({d.Id}, corpo ocupado"
+					 + $"{(EmCena(aluno) ? ", em cena" : "")}{(aluno.Oozaru != FormaOozaru.Nao ? ", em Oozaru" : "")})");
+			return;
+		}
 
 		PerfilDeFormas perfil = Perfil(aluno);
 		double kiFrac = aluno.Ficha.MaxKi > 0 ? aluno.Ficha.Ki / aluno.Ficha.MaxKi : 1;

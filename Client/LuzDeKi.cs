@@ -116,12 +116,69 @@ public partial class LuzDeKi : PointLight2D
 	public static LuzDeKi? PendurarNoTronco(Node dono, Color cor, float tamanho)
 	{
 		LuzDeKi? luz = Nova(dono, cor, tamanho, NomeDoTronco);
-		if (luz != null) luz.Visible = false;   // sem tronco ainda: o `Esticar` a mostra quando houver
+		if (luz == null) return null;
+		luz.Texture = Barra();   // ver `Barra`: a radial esticada acendia o MEIO do raio
+		// MAIS FRACA QUE A DA CABECA: o tronco acende inteiro, mas o ponto mais quente do feixe continua sendo a
+		// cabeca -- e onde ele encosta.
+		luz._energia *= FracaoDoTronco;
+		luz.Energy = luz._energia;
+		luz.Visible = false;     // sem tronco ainda: o `Esticar` a mostra quando houver
 		return luz;
 	}
 
+	// =====================================================================
+	// A TEXTURA DO TRONCO
+	// =====================================================================
+	/// <summary>O comprimento da <see cref="Barra"/>, em pixel de textura. O `Esticar` escala a partir dele.</summary>
+	public const int LarguraDaBarra = 128;
+
+	/// <summary>Quanto de cada ponta da <see cref="Barra"/> se apaga (fracao do comprimento).</summary>
+	public const float PontaDaBarra = 0.08f;
+
+	/// <summary>A luz do tronco em relacao a da cabeca: o feixe todo acende, a cabeca continua a mais quente.</summary>
+	public const float FracaoDoTronco = 0.6f;
+
+	private static ImageTexture? _barra;
+
 	/// <summary>
-	/// A LUZ DO TRONCO: a mesma textura radial, ESTICADA da cabeca ate a cauda. Chamada por quadro pelo
+	/// A LUZ DO TRONCO E UMA BARRA, e nao a bola da cabeca esticada (dono, 2026-09-23).
+	///
+	/// ============================ O CLARAO NO MEIO DO RAIO ============================
+	/// A primeira versao desta luz (2026-09-07) reusou a textura RADIAL da cabeca e a esticou num eixo so.
+	/// Uma radial esticada continua sendo uma radial: o brilho maximo fica no CENTRO dela -- que, esticada
+	/// do tronco inteiro, e o MEIO do raio -- e cai ate zero nas duas pontas. De noite isso desenhava um
+	/// clarao parado no meio do feixe, longe da cabeca, que e exatamente o lugar em que o dono disse que o
+	/// efeito NAO pode estar (*"tem q ser na cabeca do beam e nao no meio dele"*); e o pedido anterior era o
+	/// contrario de um pico -- *"deveria ser o beam todo, a cabeca e o tronco"*.
+	///
+	/// Aqui o brilho e IGUAL ao longo do comprimento todo; so ATRAVES do feixe ele cai, com o mesmo perfil
+	/// da radial (linear do centro ate a borda de `RaioDaTextura`), pra largura do clarao casar com a da luz
+	/// da cabeca. As duas pontas se apagam em <see cref="PontaDaBarra"/> do comprimento, so pra nao cortar
+	/// a luz num degrau. UMA textura pro processo inteiro, pelo mesmo motivo do cache da radial.
+	/// ==================================================================================
+	/// </summary>
+	public static ImageTexture Barra()
+	{
+		if (_barra != null) return _barra;
+
+		int w = LarguraDaBarra, h = 2 * RaioDaTextura;
+		Image img = Image.CreateEmpty(w, h, false, Image.Format.Rgba8);
+		float ponta = MathF.Max(1f, PontaDaBarra * w);
+		for (int y = 0; y < h; y++)
+		{
+			float atraves = MathF.Max(0f, 1f - MathF.Abs(y + 0.5f - h * 0.5f) / (h * 0.5f));
+			for (int x = 0; x < w; x++)
+			{
+				float aoLongo = MathF.Min(1f, MathF.Min(x + 0.5f, w - x - 0.5f) / ponta);
+				img.SetPixel(x, y, new Color(1, 1, 1, atraves * aoLongo));
+			}
+		}
+		_barra = ImageTexture.CreateFromImage(img);
+		return _barra;
+	}
+
+	/// <summary>
+	/// A LUZ DO TRONCO: a <see cref="Barra"/>, ESTICADA da cabeca ate a cauda. Chamada por quadro pelo
 	/// desenho do raio (o comprimento muda todo quadro) e no corte. Sem tronco (raio curto) ela se
 	/// esconde -- uma `Light2D` invisivel nao entra na passada de luz.
 	///
@@ -129,6 +186,10 @@ public partial class LuzDeKi : PointLight2D
 	/// que se quer aqui e alongar num eixo so, e `Scale` do Node2D faz isso de graca com a textura da
 	/// luz -- ela e desenhada pela transformacao do node como qualquer sprite. As coordenadas sao as
 	/// LOCAIS do raio, cuja origem e a cabeca (ver `ProjetilDesenhado._Process`).
+	///
+	/// O COMPRIMENTO DESCONTA O `TextureScale` (2026-09-23): a luz desenhada mede textura x `TextureScale` x
+	/// `Scale` do node, e sem a divisao um Final Flash (`TextureScale` 1,8) acendia 1,8 vezes o tronco --
+	/// passando da cabeca e da mao. A LARGURA continua com ele: um feixe maior clareia uma faixa mais larga.
 	/// </summary>
 	public void Esticar(Vector2 cabeca, Vector2 cauda, Vector2 subida)
 	{
@@ -138,7 +199,7 @@ public partial class LuzDeKi : PointLight2D
 		if (!Visible) return;
 		Position = fim * 0.5f + subida;
 		Rotation = fim.Angle();
-		Scale = new Vector2(comprimento / (2f * RaioDaTextura), 1f);
+		Scale = new Vector2(comprimento / (LarguraDaBarra * MathF.Max(0.01f, TextureScale)), 1f);
 	}
 
 	private static LuzDeKi? Nova(Node dono, Color cor, float tamanho, string nome)

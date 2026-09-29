@@ -419,11 +419,17 @@ public partial class GameServer
 	private bool SabeTecnica(ServerPlayer pl, string verb)
 	{
 		if (_skills == null || pl.Livro == null) return false;
-		foreach (string path in pl.Livro.Aprendidas)
-		{
-			Skill? s = _skills.Get(path);
-			if (s != null && s.Verbos.Contains(verb, StringComparer.OrdinalIgnoreCase)) return true;
-		}
+
+		// ============================ ESTA PERGUNTA MORA NA LEITURA DE 1 Hz DA IA -- E POR ISSO NAO ALOCA ============================
+		// `LerCapacidades` a faz CINCO vezes por corpo por segundo (as quatro de `TecnicasDeLonge` no
+		// `ArsenalDeLonge` + o sopro). Cada vez custava a caixa do enumerador do livro (o `Aprendidas` e
+		// `IReadOnlyCollection`), o iterador do `VerbosAtivos()` e -- desde `03f18e6` (2026-09-03), quando o
+		// verb por casa entrou -- um lambda capturando o corpo, que e um objeto e um delegate por pergunta.
+		// A secao 12 da `--iateste` reprovou por isso (9.554 B por tique contra o teto de 8.704, que existe
+		// exatamente pra pegar um laco novo neste caminho). As duas metades agora perguntam por UM verb,
+		// sem montar nada, e a bancada cobra o zero -- com contra-exemplo.
+		// ==========================================================================================================================
+		if (pl.Livro.AlgumaAprendidaDa(_skills, verb)) return true;
 
 		// ============================ E OS DEGRAUS DE NIVEL, QUE NINGUEM LIA ============================
 		// COMPRAR a skill nao e o unico jeito de destravar uma habilidade: o `effector()` do DM concede
@@ -441,20 +447,8 @@ public partial class GameServer
 		// o catalogo INTEIRO sai com as tres tecnicas de longe, e ele saia com UMA. E a quarta vez que
 		// este projeto encontra dado extraido sem consumidor.
 		// ==========================================================================================
-		foreach (string v in pl.Niveis.VerbosAtivos(path => CasaEscolhidaDe(pl, path)))
-			if (string.Equals(v, verb, StringComparison.OrdinalIgnoreCase)) return true;
-
-		return false;
+		return pl.Niveis.DestravaOVerbo(verb, _skills, pl.Livro.Escolhas);
 	}
-
-	/// <summary>
-	/// A CASA ESCOLHIDA numa skill de escolha unica ("Van-sama"), ou nulo -- o que o verb POR CASA de um
-	/// degrau pergunta (`Degrau.VerbosPorCasa`: o Taunt/Counter_Taunt/Slap do degrau 2 da Trindade). A
-	/// resolucao e a do `EfeitosDeSkill` (propria ou herdada da lider), pra que o degrau e a Grace nunca
-	/// discordem sobre em que casa o jogador esta.
-	/// </summary>
-	private string? CasaEscolhidaDe(ServerPlayer pl, string path)
-		=> _skills == null || pl.Livro == null ? null : EfeitosDeSkill.RotuloDaCasa(_skills, pl.Livro.Escolhas, path);
 
 	/// <summary>
 	/// As tecnicas ATIVAS que este personagem tem -- pro menu do cliente e pro arsenal da IA.
@@ -476,7 +470,7 @@ public partial class GameServer
 		// OS VERBS CONCEDIDOS POR NIVEL entram pela mesma porta -- ver o bloco no `SabeTecnica` sobre
 		// por que esta chamada faltava. As duas listas tem que ser a MESMA: o que o menu mostra e o
 		// que o `SabeTecnica` aceita, senao o botao existe e o servidor diz nao (ou o contrario).
-		foreach (string v in pl.Niveis.VerbosAtivos(path => CasaEscolhidaDe(pl, path))) if (!l.Contains(v)) l.Add(v);
+		foreach (string v in pl.Niveis.VerbosAtivos(_skills, pl.Livro.Escolhas)) if (!l.Contains(v)) l.Add(v);
 
 		return l;
 	}

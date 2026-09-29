@@ -21,7 +21,7 @@ namespace Jandirus.Server;
 /// inteiro, testado, e **nenhum dos sete chamadores passava o segundo argumento**.
 /// ==============================================================================
 ///
-/// AS SETE SECOES:
+/// AS OITO SECOES:
 ///  1. AS EXCLUSOES SAO DERIVADAS -- e a lista sai de campos, nao de ids escritos a mao.
 ///  2. O PORTAO DE 3x -- e ele le o BP **BASE**, com o expresso mentindo de proposito.
 ///  3. O TETO DE 5 ALUNOS.
@@ -29,6 +29,9 @@ namespace Jandirus.Server;
 ///  5. A TESTEMUNHA -- e o RAIO dela, que e o "teto que nunca dispara" deste sistema.
 ///  6. O DESPERTAR ASSISTIDO -- a metade, a ordem da raiva, e a REENTRADA depois.
 ///  7. RECARGA, PERSISTENCIA, LOGOUT E ASSINATURA RECICLADA.
+///  8. O ALUNO NUMA CENA -- o mestre o ACHA (o `mst_front_targets` nao pergunta `attackable`), paga a
+///     recarga, e o "sim" e recusado pelo `mst_form_blocked` (`transing`, `Apeshit`). E o Ultra Instinto,
+///     que e outro verbo com a mesma pergunta, tambem o acha (`UltraInstinct.dm:116-117`).
 ///
 /// ============================ OS CORPOS SAO FORJADOS, E O ARQUIVO E DEVOLVIDO ============================
 /// Mesmo padrao do `OConvivioAoVivo`: corpos inventados numa zona pre-feita onde nao ha ninguem
@@ -112,6 +115,7 @@ public partial class GameServer
 			ATestemunhaTemRaio(mestre, perto, longe);
 			ODespertarAssistido(mestre, aluno);
 			RecargaPersistenciaELogout(mestre, aluno);
+			OAlunoNumaCena(mestre, aluno, zona);
 		}
 		catch (Exception e) { AfirmarMst($"a bancada rodou inteira (estourou: {e.Message})", false, e.StackTrace ?? ""); }
 		finally
@@ -168,6 +172,22 @@ public partial class GameServer
 				   && !Tem("primal_legendary4_full_power") && !Tem("primal_legendary4_limit_breaker"));
 		AfirmarMst("...nem os grades (USSJ), que sao ramo lateral aberto por MAESTRIA",
 				   !Tem("grade2") && !Tem("grade3"));
+
+		// ============================ A SUPER PERFEITA DO BIO -- PELO CAMPO, E COM PROVA DE QUE O CAMPO EXISTE ============================
+		// O `mst_form_tag` do DM devolve NULO com o buff `SuperPerfect` (`MasterStudent.dm:194-196`) e o
+		// `mst_teachable` nao a lista (`:393`): ela nao se ensina nem se testemunha. No port a exclusao e o
+		// passo (1c) do `Discipulado.Ensinavel`, e aqui ela e perguntada pelo CAMPO (`PedeEstagioBio`) e
+		// nao pelo id -- pelo mesmo motivo da checagem do `PedeFlag` mais abaixo: a proxima forma bio que
+		// pedir estagio tem que cair fora sozinha, e uma checagem por id nao a veria.
+		//
+		// A PRIMEIRA METADE E O CONTRA-EXEMPLO EMBUTIDO: "nenhuma ensinavel pede estagio" e verdade de
+		// graca num catalogo em que ninguem pede estagio. Exigir que o catalogo TENHA uma forma assim
+		// impede a linha de ficar verde no dia em que o campo deixar de ser preenchido.
+		// ======================================================================================================
+		AfirmarMst("...nem a Super Perfeita do bio-androide, que pede o ESTAGIO do corpo (evento, nao despertar)",
+				   Catalogo.Todas.Any(d => d.PedeEstagioBio > 0)
+				   && !Discipulado.Ensinaveis.Any(d => d.PedeEstagioBio > 0),
+				   string.Join(", ", Discipulado.Ensinaveis.Where(d => d.PedeEstagioBio > 0).Select(d => d.Id)));
 
 		// ============================ O CRITERIO INTEIRO, DE UM SO GOLPE ============================
 		// **Toda** entrada da lista tem uma porta de BP -- que e exatamente a coisa que o `MST_HALF`
@@ -637,7 +657,26 @@ public partial class GameServer
 		// inclusive de forma ja liberada -- entao sem o `PortasCortadas` persistente aconteceria
 		// exatamente isso.
 		// ==========================================================================================
-		aluno.Forma.Entrar(Catalogo.IdBase);
+		// ============================ VOLTAR A BASE E PELO FUNIL -- E E ISSO QUE ENCERRA A CENA ============================
+		// Esta linha era `aluno.Forma.Entrar(Catalogo.IdBase)`, o estado escrito na mao. Bastava quando
+		// esta bancada nasceu, e deixou de bastar quando o escudo de cinematica entrou: o
+		// `CombatState.Intocavel` passou a ler o `EmCinematica`, que e o `CenaSegundos > 0` do `EmCena`. O
+		// despertar logo acima estreia o SSJ1, e o `AnunciarForma` marca a cena cheia -- 25 s de
+		// `Cinematicas.Ssj1.SegundosPreso`. Quem desconta esse prazo e o `TickDaForma`, e numa bancada
+		// sincrona de boot nenhum tique roda. O aluno ficava INTOCAVEL ate o fim, e o `AlvoNaFrente`
+		// (que pula intocavel) respondia "nao ha ninguem na sua frente" a todo verbo de mestre daqui pra
+		// baixo. Deu nas duas falhas da recarga na secao 7 (o prazo ficava ZERO) e em tres checagens
+		// verdes POR VACUO: a oferta dos 40%, a raiva que nao acendeu e o convite da assinatura reciclada.
+		//
+		// O CONSERTO NAO E ZERAR O `CenaSegundos` NA MAO -- seria a mesma escrita por fora, noutro campo.
+		// E descer pelo GESTO de producao, o ramo de descida do `Transformar` (o mesmo do pacote
+		// `C2S.Transformar`). Ele sai pelo `AnunciarForma`, que marca a cena da BASE (zero), e e assim que
+		// o congelamento acaba quando o corpo deixa a forma no jogo de verdade.
+		// ======================================================================================================
+		Transformar(aluno, subir: false);
+		AfirmarMst("(montagem) de volta a base pelo funil, o aluno SAIU da cena e voltou a ser alcancavel",
+				   aluno.Forma.Atual == Catalogo.IdBase && !aluno.Combate.Intocavel,
+				   $"forma {aluno.Forma.Atual}, cena {aluno.CenaSegundos:0.#} s");
 		aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
 		AfirmarMst("depois de voltar a base, o aluno REENTRA sozinho na forma (sem mestre e sem raiva)",
 				   aluno.Forma.Avaliar("ssj1", aluno.Ficha.BP, 1, false, Perfil(aluno)) == RecusaForma.Pode,
@@ -658,6 +697,15 @@ public partial class GameServer
 
 			OferecerDespertar(mestre, "ssj1");
 			bool ofereceu = fraco.PedidoDoMestre != null;
+
+			// A OFERTA TEM QUE TER SAIDO, senao as duas checagens abaixo passam POR VACUO: sem pedido, o
+			// "sim" do aluno cai no "ninguem te ofereceu nada", a forma fica na base e a raiva apagada --
+			// verde sem o despertar ter sido tentado. Foi o que aconteceu enquanto o aluno ficava preso na
+			// cena do SSJ1 (ver a montagem da reentrada, logo acima): o log nao tinha a linha "despertar
+			// assistido falhou", e ninguem notou porque as duas checagens estavam verdes.
+			AfirmarMst("(montagem) a oferta dos 40% SAIU -- o mestre alcancou o aluno e pagou a recarga",
+					   ofereceu && mestre.RecargaDeEnsino > NowMs(),
+					   $"ofereceu={ofereceu}, recarga={mestre.RecargaDeEnsino}");
 			ResponderAoMestre(fraco, aceitou: true);
 
 			AfirmarMst("com 40% da porta (abaixo da metade) o despertar assistido FALHA",
@@ -686,6 +734,17 @@ public partial class GameServer
 
 		OferecerDespertar(mestre, "ssj1");
 		long prazo = mestre.RecargaDeEnsino;
+
+		// ============================ A OFERTA SAIU? -- O NUMERO NEGATIVO ENORME ERA ISTO ============================
+		// Sem esta linha, um aluno fora do alcance do `AlvoNaFrente` fazia a checagem de baixo imprimir
+		// menos o RELOGIO DE PAREDE em segundos. O prazo ficava ZERO (o `OferecerDespertar` volta antes de
+		// escrever a recarga) e o `NowMs` e Unix ms. Parecia relogio lido como duracao, e era "ninguem na
+		// sua frente". E a "segunda tentativa recusada" logo abaixo passava por vacuo: recusada ela era,
+		// mas por falta de alvo, e nao pela recarga.
+		// ======================================================================================================
+		AfirmarMst("(montagem) a oferta da secao 7 SAIU (o aluno recebeu o pedido de despertar)",
+				   aluno.PedidoDoMestre is { Despertar: true, FormaId: "ssj1" },
+				   aluno.PedidoDoMestre?.ToString() ?? "nenhum pedido");
 		AfirmarMst($"a recarga de ensino e de {Discipulado.RecargaDeEnsinoSegundos / 60:0} min",
 				   Math.Abs((prazo - NowMs()) / 1000.0 - Discipulado.RecargaDeEnsinoSegundos) < 2,
 				   $"{(prazo - NowMs()) / 1000.0:0} s");
@@ -744,9 +803,184 @@ public partial class GameServer
 
 		ConvidarAluno(mestre);
 		ResponderAoMestre(aluno, aceitou: true);
+		// O VINCULO TEM QUE TER FECHADO, senao a checagem de baixo e verdade de graca: purgar um mestre sem
+		// alunos da "zero alunos" com ou sem purga. Com o aluno preso na cena do SSJ1 este convite nao
+		// saia (o `AlvoNaFrente` pula quem esta intocavel), e a linha ficava verde sem medir nada.
+		AfirmarMst("(montagem) o aluno de assinatura limpa aceita o convite de novo",
+				   MestreDe(sigAluno) == sigMestre, $"'{MestreDe(sigAluno)}'");
 		PurgarAssinatura(sigMestre);
 		AfirmarMst("...nem herda ALUNOS (a purga limpa os dois lados)",
 				   ContarAlunos(sigMestre) == 0 && MestreDe(sigAluno).Length == 0);
+	}
+
+	// =====================================================================
+	// 8) O ALUNO NUMA CENA
+	// =====================================================================
+	/// <summary>
+	/// ============================ O ESCUDO DA CENA E CONTRA GOLPE, E NAO CONTRA O MESTRE ============================
+	/// Os tres verbos do discipulado escolhiam o alvo pelo `AlvoNaFrente` do SOCO, que pula quem esta
+	/// `Intocavel` (cena de transformacao ou carencia de renascimento). O `mst_front_targets` do DM
+	/// (`MasterStudent.dm:416-420`) so pergunta `client` e `signature`: no DM o mestre ACHA o aluno que esta
+	/// virando Super Saiyajin, PAGA a recarga (`:510`) e o "sim" e recusado depois (`mst_form_blocked`,
+	/// `transing || Apeshit`, `:317-318`). Aqui ele ouvia "nao ha ninguem na sua frente" e nao pagava nada.
+	///
+	/// A CENA ENTRA PELA PORTA DE PRODUCAO: o funil do `admin_forma` estreia o SSJ1 num `EstadoDeForma` virgem
+	/// (com os LIMIARES do aluno -- sao eles que dizem a porta pessoal do SSJ2) e marca a cena cheia. A FERA
+	/// entra pelo `VirarFera` (o funil da lua), e a cena dela escorre pelo `TickDaForma` -- pra linha do macaco
+	/// medir so o `Apeshit`, e nao o `transing` de novo.
+	///
+	/// COMO ELA REPROVA: volte o `AlvoNaFrente(mestre)` nos tres verbos (`GameServer.Mestre.cs`) e a oferta, a
+	/// dispensa e o convite dizem "nao saiu"; apague o bloco 1b do `DespertarAssistido` e o "sim" em cena
+	/// DESPERTA o SSJ2 por cima da estreia do SSJ1 (e o do macaco, o SSJ1 por cima do Oozaru); tire o
+	/// `EhPessoa` do `PessoaNaFrente` e o convite vai pra criatura sem identidade que esta mais perto.
+	///
+	/// O ULTRA INSTINTO ENTRA NA MESMA CENA porque o `Ensinar_Ultra_Instinct` faz a mesma pergunta com outra
+	/// lista (`oview(1)` + `P.client`, `UltraInstinct.dm:116-117`). Volte o `AlvoNaFrente(mestre)` no
+	/// `EnsinarDisciplina` (`GameServer.Disciplinas.cs`) e o aluno em cena fica sem aprender (e a criatura
+	/// aprende no lugar dele); troque o `EhPessoa` dali por "todo corpo" e a disciplina vai pra criatura.
+	/// ==============================================================================================================
+	/// </summary>
+	private void OAlunoNumaCena(ServerPlayer mestre, ServerPlayer aluno, ZoneKey zona)
+	{
+		GD.Print("[mestre] -- 8) O ALUNO NUMA CENA: O MESTRE O ACHA, PAGA A RECARGA, E O 'SIM' E RECUSADO");
+
+		GarantirVinculo(mestre, aluno);
+		EstadoDeForma guardado = aluno.Forma;
+		EstadoDeDisciplina uiDoMestre = mestre.UltraInstinct, uiDoAluno = aluno.UltraInstinct;
+		Jandirus.Core.Stats.GodKiState? godkiDoAluno = aluno.Ficha.godki;
+		TipoDeDisciplina? disciplinaDoAluno = aluno.Disciplina;
+		ServerPlayer? criatura = null;
+		try
+		{
+			aluno.Forma = new EstadoDeForma { Limiares = guardado.Limiares };
+			aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
+			aluno.Ficha.Ki = aluno.Ficha.MaxKi;
+			Encostar(mestre, aluno, tiles: 1);
+			AdminForcarForma(aluno, "ssj1");
+			AfirmarMst("(montagem) o aluno esta na CENA da estreia do SSJ1, intocavel pro SOCO (o `AlvoNaFrente` nao o acha)",
+					   aluno.Forma.Atual == "ssj1" && EmCena(aluno) && aluno.Combate.Intocavel && AlvoNaFrente(mestre) == null,
+					   $"forma {aluno.Forma.Atual}, cena {aluno.CenaSegundos:0.#} s, alvo do soco {AlvoNaFrente(mestre)?.Name ?? "ninguem"}");
+
+			// --- a) A OFERTA SAI E A RECARGA E PAGA ---
+			// O SSJ2 e o degrau seguinte de quem esta no SSJ1, e o aluno fica com 60% da porta pessoal: SO a
+			// assistida o alcanca (com a raiva). O mestre o possui -- o `mst_form_known`.
+			aluno.Ficha.BP = PortaDeTeste(aluno, "ssj2") * 0.6;
+			// O PORTAO DE 3x DO VINCULO (secao 2) continua valendo no convite da parte (c): o mestre fica com folga
+			// sobre o aluno, pra a unica recusa possivel ali ser a que a linha mede.
+			mestre.Ficha.BP = Math.Max(mestre.Ficha.BP, aluno.Ficha.BP * 4);
+			mestre.Forma.Liberar("ssj2");
+			mestre.RecargaDeEnsino = 0;
+			aluno.PedidoDoMestre = null;
+			OferecerDespertar(mestre, "ssj2");
+			AfirmarMst("o mestre ACHA o aluno em cena e a oferta do SSJ2 sai (o `mst_front_targets` nao pergunta `attackable`)",
+					   aluno.PedidoDoMestre is { Despertar: true, FormaId: "ssj2" },
+					   aluno.PedidoDoMestre?.ToString() ?? "nenhum pedido");
+			AfirmarMst("...e a recarga e PAGA na oferta, como no DM (`:510`: o gesto e a tentativa)",
+					   mestre.RecargaDeEnsino > NowMs(), $"{mestre.RecargaDeEnsino - NowMs()} ms");
+
+			// --- b) O "SIM" EM CENA E RECUSADO -- `mst_form_blocked` (`transing`) ---
+			ResponderAoMestre(aluno, aceitou: true);
+			AfirmarMst("...e o 'sim' com o corpo EM CENA e recusado (`mst_form_blocked`: `transing`, `:317-318`) -- "
+					   + "o aluno continua no SSJ1, sem o SSJ2 despertado",
+					   aluno.Forma.Atual == "ssj1" && !aluno.Forma.Despertou("ssj2"),
+					   $"forma {aluno.Forma.Atual}, ssj2 despertado={aluno.Forma.Despertou("ssj2")}");
+			AfirmarMst("...sem raiva de graca (a recusa vem ANTES do `mst_ignite_anger`, `:535` e `:540`) e sem devolver a recarga",
+					   aluno.FuriaExtremaAte == 0 && aluno.RaivaLendariaAte == 0 && mestre.RecargaDeEnsino > NowMs());
+
+			// --- b2) O ULTRA INSTINTO TAMBEM ACHA QUEM ESTA EM CENA ---
+			// O mestre e a raiz da cadeia e o aluno tem o ki divino que o `GODKI_UIUE_LEARN_PCT` exige: entre os
+			// dois so sobra a BUSCA, que e o que a linha mede.
+			mestre.UltraInstinct = new EstadoDeDisciplina { Aprendida = true };
+			aluno.UltraInstinct = new EstadoDeDisciplina();
+			aluno.Ficha.godki = new Jandirus.Core.Stats.GodKiState { awakened = true, mastery = Disciplinas.GodKiParaAprender };
+			UsarDisciplina(mestre, "ui_ensinar");
+			AfirmarMst("ENSINAR O ULTRA INSTINTO alcanca o aluno em cena (o `oview(1)` de `UltraInstinct.dm:116-117` nao pergunta `attackable`)",
+					   aluno.UltraInstinct.Aprendida && EmCena(aluno), $"aprendeu={aluno.UltraInstinct.Aprendida}, cena={EmCena(aluno)}");
+
+			// --- c) DISPENSAR E CONVIDAR ALCANCAM QUEM ESTA EM CENA ---
+			// E a CRIATURA SEM IDENTIDADE fica colada no mestre, MAIS PERTO que o aluno e no mesmo cone: o
+			// `mst_front_targets` a descarta (`!P.client || !P.signature`), e o convite tem que atravessa-la.
+			DispensarAluno(mestre);
+			AfirmarMst("DISPENSAR alcanca o aluno em cena (o vinculo se desfaz)",
+					   EmCena(aluno) && MestreDe(aluno.Assinatura).Length == 0, $"'{MestreDe(aluno.Assinatura)}'");
+
+			criatura = new ServerPlayer
+			{
+				Id = IdBaseDoMestreDeTeste + 9, Peer = null, Name = "bancada: criatura sem identidade",
+				Race = "Saiyan", Genero = "Male", Idade = 25, Zone = zona,
+				Pos = mestre.Pos + new Vec2(ZoneCollision.TileSize * 0.5f, 0),
+				Conta = "", Slot = 0,   // sem conta, sem ASSINATURA: e o `!P.signature` do DM
+				Ficha = new Jandirus.Core.Stats.Fighter { Race = "Saiyan", BP = 1_000 },
+			};
+			criatura.Ficha.Class = "Normal";
+			PorNoMundo(criatura);
+			AfirmarMst("(montagem) a criatura sem identidade esta MAIS PERTO, no cone -- e e ela que o soco acharia",
+					   criatura.Assinatura.Length == 0 && AlvoNaFrente(mestre) == criatura,
+					   AlvoNaFrente(mestre)?.Name ?? "ninguem");
+			aluno.PedidoDoMestre = null;
+			ConvidarAluno(mestre);
+			AfirmarMst("CONVIDAR alcanca o aluno em cena, por cima da criatura sem identidade que esta mais perto",
+					   aluno.PedidoDoMestre is { Despertar: false } && EmCena(aluno),
+					   aluno.PedidoDoMestre?.ToString() ?? "nenhum pedido");
+			ResponderAoMestre(aluno, aceitou: true);
+
+			// A CRIATURA TAMBEM NAO E DISCIPULO do Ultra Instinto: a lista do `Ensinar_Ultra_Instinct` so tem quem
+			// tem `client` (`UltraInstinct.dm:117`). Ela ganha o ki divino que o `PodeAprender` pede, pra a lista
+			// ser a UNICA coisa entre ela e a disciplina.
+			aluno.UltraInstinct = new EstadoDeDisciplina();
+			criatura.Ficha.godki = new Jandirus.Core.Stats.GodKiState { awakened = true, mastery = Disciplinas.GodKiParaAprender };
+			UsarDisciplina(mestre, "ui_ensinar");
+			AfirmarMst("...e o ULTRA INSTINTO tambem atravessa a criatura sem identidade e chega no aluno em cena (so `P.client`, `:117`)",
+					   aluno.UltraInstinct.Aprendida && !criatura.UltraInstinct.Aprendida,
+					   $"aluno={aluno.UltraInstinct.Aprendida}, criatura={criatura.UltraInstinct.Aprendida}");
+
+			RemoverNpc(criatura);
+			criatura = null;
+			AfirmarMst("(montagem) o convite fechou o vinculo de novo", MestreDe(aluno.Assinatura) == mestre.Assinatura);
+
+			// --- d) O CONTROLE: A MESMA OFERTA, COM A CENA ACABADA, DESPERTA ---
+			// A cena escorre pelo relogio de producao (o topo do `TickDaForma`). Sem este controle, a recusa de
+			// cima poderia ser de poder, de porta ou de forma errada, e nao da cena.
+			for (int i = 0; i < (int)(60 / Jandirus.Net.Protocol.TickSeconds) && EmCena(aluno); i++)
+				TickDaForma(aluno, Jandirus.Net.Protocol.TickSeconds);
+			mestre.RecargaDeEnsino = 0;
+			OferecerDespertar(mestre, "ssj2");
+			ResponderAoMestre(aluno, aceitou: true);
+			AfirmarMst("(controle) com a cena acabada, a MESMA oferta DESPERTA o SSJ2 -- a recusa de cima era da cena",
+					   aluno.Forma.Atual == "ssj2", $"forma {aluno.Forma.Atual}, cena {aluno.CenaSegundos:0.#} s");
+
+			// --- e) O MACACO -- `Apeshit` (`:318`) ---
+			// Estado virgem de novo (o SSJ1 volta a ser o degrau que falta), 60% da porta, e o aluno vira fera pelo
+			// funil da lua. A cena da fera escorre pelo `TickDaForma`, pra a linha medir SO o `Apeshit`.
+			aluno.Forma = new EstadoDeForma { Limiares = guardado.Limiares };
+			aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
+			aluno.Ficha.BP = PortaDeTeste(aluno, "ssj1") * 0.6;
+			aluno.Ficha.Ki = aluno.Ficha.MaxKi;
+			VirarFera(aluno, FormaOozaru.Regular);
+			for (int i = 0; i < (int)(60 / Jandirus.Net.Protocol.TickSeconds) && EmCena(aluno); i++)
+				TickDaForma(aluno, Jandirus.Net.Protocol.TickSeconds);
+			Encostar(mestre, aluno, tiles: 1);
+			mestre.RecargaDeEnsino = 0;
+			OferecerDespertar(mestre, "ssj1");
+			bool ofertaAoMacaco = aluno.PedidoDoMestre is { Despertar: true, FormaId: "ssj1" };
+			ResponderAoMestre(aluno, aceitou: true);
+			AfirmarMst("EM OOZARU (fora da cena) a oferta sai, e o 'sim' e recusado (`Apeshit`, `:318`) -- nada de SSJ1 por cima da fera",
+					   ofertaAoMacaco && aluno.Oozaru != FormaOozaru.Nao && !EmCena(aluno)
+					   && aluno.Forma.Atual == Catalogo.IdBase && !aluno.Forma.Despertou("ssj1"),
+					   $"ofereceu={ofertaAoMacaco}, oozaru={aluno.Oozaru}, cena={EmCena(aluno)}, forma {aluno.Forma.Atual}");
+		}
+		finally
+		{
+			if (criatura != null) RemoverNpc(criatura);
+			if (aluno.Oozaru != FormaOozaru.Nao) DesfazerOozaru(aluno, "fim da bancada");
+			aluno.Forma = guardado;
+			aluno.PedidoDoMestre = null;
+			mestre.UltraInstinct = uiDoMestre;
+			aluno.UltraInstinct = uiDoAluno;
+			aluno.Ficha.godki = godkiDoAluno;
+			aluno.Disciplina = disciplinaDoAluno;
+			AplicarDisciplina(aluno);
+		}
 	}
 
 	// =====================================================================

@@ -16,6 +16,10 @@ public enum Desfecho : byte
 	Contra,       // aparou NA HORA certa e devolveu
 	Acertou,
 	Critico,
+	// O PARRY CONTRA KI (dono, 2026-09-25): a guarda subiu na janela do parry, quem defendeu tem BP de pelo
+	// menos o do tiro, e o ki nao encostou -- a bola voltou pro atirador ou o raio desviou pro lado. NAO sai do
+	// `Resolver` (o soco tem o `Contra`); quem o escreve e o `Acertar` do tiro (`GameServer.Projeteis.cs`).
+	Rebateu,
 }
 
 /// <summary>

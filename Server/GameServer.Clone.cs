@@ -647,8 +647,9 @@ public partial class GameServer
 			if (npc.Ficha.dead || npc.Ficha.KO) { npc.Moving = false; return; }
 
 			// "ele sai batendo em qualquer coisa e atacando tudo" (a fera) / "ataca TUDO que ve
-			// (player OU NPC)" (a furia): QUALQUER corpo da zona, sem dono, sem faccao, sem alvo
-			// marcado. Inclusive outro possuido.
+			// (player OU NPC)" (a furia): qualquer corpo QUE ELE VE -- sem dono, sem faccao, sem alvo
+			// marcado, inclusive outro possuido. O "ve" e o `oview` do DM, com o raio de cada um (5 tiles
+			// o macaco, 10 a furia) e a parede no meio: ver `PresaDaFera`.
 			// `soJogadores: false` -- e o unico lugar do port em que "seja quem for" e a regra, e ela e
 			// literal: *"o corpo ataca TUDO que ve (player OU NPC)"* (`lssjbuff.dm:563`).
 			//
@@ -672,8 +673,9 @@ public partial class GameServer
 		if (cerebro.PrecisaLerCapacidades(dtDaMente)) cerebro.Poderes = npc.Perfil.Filtrar(LerCapacidades(npc));
 
 		// --- 3. A DECISAO E A EXECUCAO, IDENTICAS PROS DOIS -----------------------
-		// O RELATO E LIGADO AQUI E NAO NO NASCIMENTO DO CEREBRO, e a diferenca importa: sao tres
-		// lugares que criam cerebro (clone, fera, furia) e um quarto viria com a proxima posse.
+		// O RELATO E LIGADO AQUI E NAO NO NASCIMENTO DO CEREBRO, e a diferenca importa: sao varios
+		// lugares que criam cerebro (o molde, o reflexo, a fera, a furia, a copia do Split Form -- a lista
+		// argumentada e a secao (d) da `--iateste`) e o proximo viria com a proxima posse.
 		// Escrever todo tique e uma atribuicao de bool e nao ha onde esquecer.
 		cerebro.Explicando = _diagIa;
 
@@ -997,11 +999,41 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// QUEM A FERA VAI CACAR: o corpo em pe mais proximo da zona.
+	/// QUEM A FERA VAI CACAR: o corpo em pe mais proximo QUE ELA VE.
 	///
 	/// Sem lista de inimigos e sem alvo marcado de proposito -- marcar alvo e uma decisao, e a
 	/// fera nao decide nada. Caidos saem porque o `Cerebro` ja para de bater em quem esta no chao
 	/// e um alvo caido so faria o macaco parar de pe em cima de um corpo ate o prazo vencer.
+	/// (DIVERGENCIA DECLARADA: o macaco do DM so recusa `KO` na ADOCAO, `Oozaru.dm:191`; um alvo que cai
+	/// depois continua `target` enquanto estiver a vista, `:196`.)
+	///
+	/// ============================ "VE" E O `oview` DO DM, E ELE TEM RAIO E PAREDE ============================
+	/// Isto era *o corpo em pe mais proximo da ZONA* -- do outro lado do mapa e atraves de muro: um macaco
+	/// solto na Terra sabia onde voce estava desde o pouso. As duas possessoes do DM escolhem por `oview`,
+	/// e o `oview` e um quadrado de `get_dist` que a parede opaca corta:
+	///
+	///   * **O MACACO** (`Oozaru.dm:190-201`): `for(var/mob/M in oview(container))` pra ADOTAR, e
+	///     `if(container.target in oview(container))` pra CONTINUAR -- saiu da vista, `target = null`.
+	///     `oview(container)` sem numero e o `world.view`, e o `World.dm` nao o muda: o padrao do BYOND,
+	///     **5 tiles** (o mesmo que a `RaioDaImitacaoG12` ja traduziu). <see cref="TilesDaVistaDoMacaco"/>.
+	///   * **A FURIA** (`lssjbuff.dm:614-625`): `oview(LEGB_RANGE, src)` pra ADOTAR, com `LEGB_RANGE 10`
+	///     (`:569`) e o crivo `!M.attackable` (o escudo da cena -- aqui o `Combate.Intocavel`); e ela
+	///     **larga so pela distancia** (`get_dist(src, prey) > LEGB_RANGE`, `:614`) -- quem passa pra tras
+	///     de um muro continua sendo a presa. <see cref="TilesDaFuria"/>.
+	///
+	/// A PRESA DE ANTES MORA NA <see cref="ServerPlayer.PresaEngajada"/>, que e o `target` do macaco e o
+	/// `prey` da furia: sem memoria, o "larga so pela distancia" da furia viraria "larga ao passar atras de
+	/// um muro", e um segundo corpo que chegasse mais perto roubaria a presa do macaco no meio da briga --
+	/// o DM so troca de alvo quando o de agora sai da conta. E o mesmo campo do `PresaDoHostil`, com a
+	/// mesma disciplina: revalidado inteiro a cada chamada e reescrito na mesma volta, entao nunca
+	/// sobrevive a um alvo invalido. Quem o reescreve de fora e a Provocacao (`VirarAlvoDeG10`, o
+	/// `M.target = usr` do `Taunt`) -- e agora a fera obedece a provocacao como no DM.
+	///
+	/// A PAREDE E A COLISAO, e isto e DIVERGENCIA DECLARADA: o servidor nao tem camada de OPACIDADE (a
+	/// sombra e do cliente), entao "ve" e a <see cref="LinhaDeVisaoLivre"/> -- a mesma pergunta com que a
+	/// IA decide se da pra atirar, que pula a parede de quem esta alto. No DM quase toda parede e densa E
+	/// opaca; a vidraca que deixa ver sem passar e o que sobra de diferente.
+	/// ==================================================================================================
 	///
 	/// ============================ "SEJA QUEM FOR" E VERDADE PRA UM DOS DOIS CHAMADORES ============================
 	/// Esta funcao serve a duas coisas que o DM trata de maneira OPOSTA, e a diferenca nunca tinha
@@ -1032,6 +1064,25 @@ public partial class GameServer
 	/// </param>
 	private ServerPlayer? PresaDaFera(ServerPlayer fera, bool soJogadores)
 	{
+		// QUEM E A POSSE DIZ QUAL `oview`: o macaco (`Oozaru.dm`) ou a furia (`lssjbuff.dm`) -- as duas unicas
+		// que caem no ramo do corpo possuido. A pergunta e o estado da FORMA e nao "quem armou o cerebro",
+		// pelo mesmo motivo do cabecalho do `TickDosCorposSemDono`: quem sabe que o corpo e macaco e o
+		// `Oozaru`, e um segundo registro disso seria a copia que envelhece.
+		bool macaco = fera.Oozaru != Jandirus.Core.Forms.FormaOozaru.Nao;
+		int raio = macaco ? TilesDaVistaDoMacaco : TilesDaFuria;
+
+		// --- 1. A PRESA DE ANTES, enquanto ela nao sair da conta ---------------
+		// Macaco: `if(container.target in oview(container))` -- raio E parede. Furia: `get_dist > LEGB_RANGE`
+		// -- so o raio. Os crivos de pessoa (vivo, de pe, mesma zona, `soJogadores`) sao os da adocao.
+		if (fera.PresaEngajada != 0
+			&& _players.TryGetValue(fera.PresaEngajada, out ServerPlayer? antes)
+			&& antes.Id != fera.Id && antes.Zone.Hash == fera.Zone.Hash
+			&& !antes.Ficha.dead && !antes.Ficha.KO && (!soJogadores || EhJogador(antes))
+			&& Jandirus.Core.Social.Fusao.DistanciaEmTilesDoDm(fera.Pos, antes.Pos, ZoneCollision.TileSize) <= raio
+			&& (!macaco || LinhaDeVisaoLivre(fera, antes)))
+			return antes;
+
+		// --- 2. ADOTAR: o mais perto dentro do raio E a vista ------------------
 		ServerPlayer? melhor = null;
 		float perto = float.MaxValue;
 
@@ -1039,12 +1090,30 @@ public partial class GameServer
 		{
 			if (o.Id == fera.Id || o.Ficha.dead || o.Ficha.KO) continue;
 			if (soJogadores && !EhJogador(o)) continue;
+			// `!M.attackable` -- so a furia pergunta (`lssjbuff.dm:618`); o laco do macaco nao (`Oozaru.dm:191`).
+			if (!macaco && o.Combate is { Intocavel: true }) continue;
+			if (Jandirus.Core.Social.Fusao.DistanciaEmTilesDoDm(fera.Pos, o.Pos, ZoneCollision.TileSize) > raio) continue;
 			float d2 = (o.Pos - fera.Pos).LengthSquared;
 			if (d2 >= perto) continue;
+			// A LINHA DE VISAO POR ULTIMO: e a pergunta cara (uma amostra a cada meio tile), e so quem ja
+			// passou no raio e ja ganharia do melhor de ate aqui chega nela.
+			if (!LinhaDeVisaoLivre(fera, o)) continue;
 			perto = d2; melhor = o;
 		}
+
+		// NAO HA CAMPO PRA LIMPAR NO CAMINHO DE VOLTA -- a mesma disciplina do `PresaDoHostil`.
+		fera.PresaEngajada = melhor?.Id ?? 0;
 		return melhor;
 	}
+
+	/// <summary>
+	/// O RAIO DA VISTA DO MACACO, em tiles de `get_dist`. **LITERAL**: `oview(container)` sem numero
+	/// (`Oozaru.dm:191`, `:196`) e o `world.view`, que o `World.dm` nao muda -- o padrao do BYOND, 5.
+	/// </summary>
+	private const int TilesDaVistaDoMacaco = 5;
+
+	/// <summary>O raio da furia lendaria. **LITERAL**: `#define LEGB_RANGE 10` (`lssjbuff.dm:569`).</summary>
+	private const int TilesDaFuria = 10;
 
 	/// <summary>
 	/// PRA ONDE A FERA VAI QUANDO NAO HA NINGUEM. Um ponto 200 px a frente, numa direcao que troca

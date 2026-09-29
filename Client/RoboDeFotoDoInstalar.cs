@@ -296,8 +296,8 @@ public partial class RoboDeFotoDoInstalar : Node
 		// previa nasce uma LINHA DE TEXTO no rodape. Quando o segundo lugar caiu em cima do painel, a
 		// medida somou o texto ao desenho: a razao foi a 0,875 e o `Z.17` acusou alfa 0,125 onde o
 		// codigo pede 0,55 -- **e a foto mostrava "Esc cancela" atravessado no recorte**. O painel
-		// ainda muda de opacidade sozinho quando alguem digita (`Chat._painel.Modulate`), entao nem
-		// esperar o texto assentar resolveria.
+		// ainda muda o FUNDO sozinho quando alguem digita (`Chat.Opacidade`), entao nem esperar o
+		// texto assentar resolveria.
 		//
 		// A resposta nao e afrouxar o limiar do Z.17 -- seria calibrar a regua pela medida errada. E
 		// medir onde a pergunta faz sentido: no MUNDO. A caixa vem do proprio `Chat` (o unico

@@ -168,8 +168,9 @@ public partial class GameServer
 	// =====================================================================
 	/// <summary>
 	/// OITO DOS CATORZE NAO SAO COMPRAVEIS. Eles saem de um DEGRAU de nivel (`effector()` do DM,
-	/// `assignverb` dentro do `if(level >= N)`), e quem responde por eles e
-	/// <see cref="NiveisDeSkill.VerbosAtivos"/> -- nao o livro.
+	/// `assignverb` dentro do `if(level >= N)`), e quem responde por eles e a varredura dos degraus do
+	/// <see cref="NiveisDeSkill"/> -- a lista do <see cref="NiveisDeSkill.VerbosAtivos"/> pro menu, e o
+	/// <see cref="NiveisDeSkill.DestravaOVerbo"/> que o `SabeTecnica` pergunta --, e nao o livro.
 	///
 	/// ESTE ELO JA QUEBROU: `VerbosAtivos` foi escrita e ficou sem um unico chamador, e por isso um
 	/// jogador que subisse `Ki_Unlocked` ate 35 continuava ouvindo "voce nao sabe Bola de Ki". Com

@@ -259,8 +259,9 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// TIRA UM CADAVER DO MUNDO -- a porta unica, e sao QUATRO caminhos ate ela: enterrar, destruir
-	/// pelo dano, o teto da zona, e o admin.
+	/// TIRA UM CADAVER DO MUNDO -- a porta unica, e sao CINCO caminhos ate ela: enterrar, destruir
+	/// pelo dano, o teto da zona, o admin, e a Capital Ship que explode com ele dentro (`DestruirNave`:
+	/// o interior deixa de existir, e um corpo que so mora na `ZoneList` nao tem pra onde ser ejetado).
 	///
 	/// Ela e o <see cref="RemoverNpc"/> com uma diferenca: o cadaver **nao esta no `_players`**, entao
 	/// aquele metodo tiraria de um dicionario onde ele nunca esteve. O que importa e o resto -- sair da

@@ -239,6 +239,8 @@ public sealed partial class GameServer
 			OFioAteOAtacar();
 			ORastroSegueOsPixels();
 			OArremessoNoAr();
+			OMuroQueParaEOMuroQueCai();
+			AObraQueACaixaToca();
 
 			// ---- AS DUAS QUEIXAS DO DONO, CRONOMETRADAS NUMA BRIGA DE VERDADE ----
 			// Um par de brigas de 60 s (com e sem o defeito injetado) alimenta as DUAS familias
@@ -1157,7 +1159,12 @@ public sealed partial class GameServer
 		}
 		finally
 		{
-			mapa.LimparObras();
+			// O MURO SAI PELA PORTA QUE REFAZ A CAMADA INTEIRA. `mapa.Bloquear` escreveu o muro na camada das OBRAS, e o
+			// `LimparObras` sozinho apagava junto a parede de TODA obra densa da Terra (os bancos, as macieiras, a Research
+			// Station do berco) pelo resto da sessao: as familias seguintes rodavam num mundo em que a mobilia nao barra
+			// ninguem, e o servidor do `--host` continuava assim depois da bancada. `AplicarColisaoDasObras` limpa a camada
+			// e a refaz pela lista -- o muro da bancada (que nao e obra) some, e o resto volta.
+			AplicarColisaoDasObras(d.Zone);
 			EscutaDeDecalques = null;
 			d.Voando = false;
 			d.Altitude = 0f;
@@ -1176,5 +1183,283 @@ public sealed partial class GameServer
 				if (bom) return new Vec2(x * ZoneCollision.TileSize, y * ZoneCollision.TileSize);
 			}
 		return null;
+	}
+
+	// =====================================================================
+	// 11) O MURO QUE PARA E O MURO QUE CAI
+	// =====================================================================
+	/// <summary>
+	/// ============================ `Movement Effects.dm:65-73`: O TURF QUE BARRA E O QUE SE PERGUNTA ============================
+	/// O arremesso de forca 20 contra um muro de resistencia 20 DERRUBA o muro e segue. O port perguntava
+	/// "parou?" pelas quatro quinas da caixa dos pes e "caiu?" pela celula do ponto dos pes -- e nos 5 px entre
+	/// uma coisa e outra o muro "resistia". Achado pela `--doiscorposteste` (a porta da casa do berco da Terra);
+	/// o conserto e o `DerrubarOQueBarraOsPes`, e a medida mora aqui porque o arremesso e daqui.
+	///
+	/// A CENA E MONTADA NO CASO DIFICIL, e a primeira linha prova que ela e: na amostra em que a caixa encosta no
+	/// muro, o ponto dos pes ainda esta FORA dele. Sem essa precondicao o verde poderia vir de uma amostra que ja
+	/// caisse com o ponto dos pes dentro -- o caso que sempre funcionou, e que nao mede o conserto. Com a sonda
+	/// antiga (a celula do ponto dos pes) a linha principal fica VERMELHA: e o contra-exemplo do CODIGO. O
+	/// contra-exemplo do DADO e o mesmo arremesso abaixo da resistencia -- o muro fica e o corpo para antes dele.
+	/// ==========================================================================================================
+	/// </summary>
+	private void OMuroQueParaEOMuroQueCai()
+	{
+		GD.Print("[kb] -- 11) o muro que PARA o arremesso e o muro que CAI --");
+		const int T = ZoneCollision.TileSize;
+		ServerPlayer d = Forjar("kbMuro", new Vec2(8 * T, 8 * T), 5_551);
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(d.Zone);
+		(int Cx, int Cy)? achado = mapa == null ? null : MuroQueCai(mapa);
+		AfirmarKb("(montagem) achei um muro que cai, com tres celulas de chao ao norte e duas ao sul", achado != null);
+		if (achado is not { } muro || mapa == null) return;
+
+		// A AMOSTRA E A DO LACO DO VOO (`TickDoEmpurrao`): o passo do tique fatiado, varrido em pedacos de no
+		// maximo meio tile. A origem fica SEIS amostras antes do caso dificil: la a quina de baixo da caixa
+		// (`FeetOffsetY + BodyHalfH` abaixo do centro) esta 2,5 px DENTRO do muro e o ponto dos pes (`FeetOffsetY`)
+		// 2,5 px FORA -- folga dos dois lados, e nao um fio de ponto flutuante como o 8375,999 da porta da Terra.
+		float passo = (float)(Empurrao.TilesPorTique * T * (Protocol.TickSeconds / Empurrao.SegundosPorTique));
+		float amostra = passo / Math.Max(1, (int)MathF.Ceiling(passo / (T / 2f)));
+		float topo = muro.Cy * T;
+		var origem = new Vec2(muro.Cx * T + T / 2f, topo - MoveRules.FeetOffsetY - 2.5f - 6 * amostra);
+		Vec2 aSexta = origem + new Vec2(0, 6 * amostra);
+		AfirmarKb("(montagem) na amostra em que a caixa dos pes ENCOSTA no muro, o ponto dos pes ainda esta FORA "
+				+ "dele -- o caso que a sonda de um ponto so lia como 'resistiu'",
+				  MoveRules.Occupied(mapa, aSexta, ModoDeTravessia.Arremessado)
+				  && !MoveRules.Occupied(mapa, origem + new Vec2(0, 5 * amostra), ModoDeTravessia.Arremessado)
+				  && CelulaDoPonto(aSexta) != (muro.Cx, muro.Cy));
+
+		HashSet<(int X, int Y)> caidasAntes =
+			_cenarioCaido.TryGetValue(d.Zone.Name, out HashSet<(int X, int Y)>? jaCaidas) ? [.. jaCaidas] : [];
+
+		void Jogar(double forca)
+		{
+			// SO O MEU VOO -- o mesmo cuidado do `ORastroSegueOsPixels`: o `TickDoEmpurrao` e de todos.
+			foreach (ServerPlayer o in TodosOsCorpos().ToList())
+				if (o != d) { o.TiquesDeVoo = 0; o.TiquesIniciaisDoVoo = 0; }
+			d.Pos = origem;
+			d.Altitude = 0f;
+			d.Voando = false;
+			Arremessar(d, new Vec2(0, 1), forca, 6);
+			for (int i = 0; i < 60 && d.TiquesDeVoo > 0; i++) TickDoEmpurrao();
+		}
+
+		try
+		{
+			// ---- O CONTRA-EXEMPLO DO DADO: abaixo da resistencia, o muro para o corpo e fica ----
+			Jogar(0);
+			// E PARA NO LUGAR CERTO: na ULTIMA amostra livre antes do muro (a quinta), e nao antes. So "ficou
+			// acima do muro" a origem ja cumpria -- um arremesso que nem saisse do lugar (uma guarda nova de
+			// "forca zero nao arremessa", um corpo esquecido na coluna) passaria calado por esta linha.
+			float ultimaLivre = origem.Y + 5 * amostra;
+			AfirmarKb("CONTRA-EXEMPLO: abaixo da resistencia o muro PARA o corpo, na ultima amostra livre antes dele, "
+					+ "e continua de pe",
+					  mapa.BlockedCell(muro.Cx, muro.Cy) && Math.Abs(d.Pos.Y - ultimaLivre) < 1f,
+					  $"y {d.Pos.Y:0.#} vs ultima amostra livre {ultimaLivre:0.#} (muro em {topo:0})");
+
+			// ---- O CASO: forca 20 contra resistencia 20 -- o muro em que a caixa encostou CAI ----
+			Jogar(Empurrao.ResistenciaPadrao);
+			AfirmarKb("O MURO QUE PARA E O MURO QUE CAI: com a forca do muro, a celula em que a caixa encostou cai "
+					+ "e o corpo passa (`Movement Effects.dm:66-68`)",
+					  !mapa.BlockedCell(muro.Cx, muro.Cy) && d.Pos.Y > topo + T,
+					  $"muro de pe={mapa.BlockedCell(muro.Cx, muro.Cy)} | y {d.Pos.Y:0} vs fim do muro {topo + T:0}");
+		}
+		finally
+		{
+			// O MURO VOLTA. O `_cenarioCaido` vive so em memoria (o mapa volta ao normal quando o servidor
+			// reinicia), mas esta bancada roda no servidor de verdade e esta Terra e a de todo mundo: sem isto o
+			// buraco ficaria no mapa da sessao inteira -- e no retrato mandado a quem entrar na Terra depois.
+			if (_cenarioCaido.TryGetValue(d.Zone.Name, out HashSet<(int X, int Y)>? caidas))
+				foreach ((int X, int Y) cel in caidas.Where(c => !caidasAntes.Contains(c)).ToList())
+				{
+					caidas.Remove(cel);
+					mapa.Fechar(cel.X, cel.Y);
+				}
+			d.TiquesDeVoo = 0;
+		}
+	}
+
+	/// <summary>
+	/// O PRIMEIRO MURO QUE CAI: parede DO ARQUIVO (nao obra, nao lacre, nao porta aberta), fora do `.duro` e da
+	/// beirada, com tres celulas de chao ao norte -- por onde o corpo chega -- e duas ao sul, por onde ele passa.
+	/// </summary>
+	private static (int Cx, int Cy)? MuroQueCai(ZoneCollision mapa)
+	{
+		for (int y = 8; y < mapa.Height - 8; y++)
+			for (int x = 8; x < mapa.Width - 8; x++)
+			{
+				if (!mapa.BloqueadaNoArquivo(x, y) || !mapa.BlockedCell(x, y) || mapa.Selada(x, y)
+					|| mapa.Indestrutivel(x, y) || mapa.NaBorda(x, y)) continue;
+				bool bom = true;
+				for (int k = 1; k <= 3 && bom; k++) bom &= mapa.ServeDeChao(x, y - k);
+				for (int k = 1; k <= 2 && bom; k++) bom &= mapa.ServeDeChao(x, y + k);
+				if (bom) return (x, y);
+			}
+		return null;
+	}
+
+	// =====================================================================
+	// 12) A OBRA QUE A CAIXA TOCA
+	// =====================================================================
+	/// <summary>
+	/// ============================ `Movement Effects.dm:74-76`: A OBRA QUE O CORPO ATRAVESSA ============================
+	/// `for(var/obj/O in get_step(target,dir)) if(O.fragile) O.takeDamage(pow)` -- e no `Ticked` isso vem ANTES do
+	/// `step`, entao a obra que cede deixa o corpo passar no mesmo tique. O port perguntava pela celula do PONTO DOS
+	/// PES, enquanto quem para o corpo sao as QUINAS da caixa: o descompasso que a familia 11 mediu pro muro, agora na
+	/// obra. O conserto e o `EstragarObrasNoCaminho` pela caixa (`CelulasDaCaixa`), uma pancada por travessia.
+	///
+	/// TRES CENAS, e a sonda antiga (a celula do ponto dos pes, a cada amostra) fica VERMELHA nas duas primeiras --
+	/// e o contra-exemplo do CODIGO, como na familia 11 (a C e a da primeira amostra do voo, ver la):
+	///
+	///   A. DE RASPAO numa obra que NAO barra (a bancada de artesao): o corpo desce uma coluna com a quina direita
+	///      4 px dentro da coluna vizinha, onde a obra esta. O ponto dos pes NUNCA entra na celula dela, em fase
+	///      nenhuma. E a pancada e UMA: a armadura 16 foi escolhida pra forca 20 tirar metade (20 - 0,75 x 16 = 8) e a
+	///      SEGUNDA pancada derruba-la -- as quinas sem a regra da entrada (umas quatro amostras tocando a celula)
+	///      poriam a obra no chao, e isso tambem fica vermelho.
+	///
+	///   B. DE FRENTE numa obra que BARRA, com a armadura 1 da mobilia do mapa, na geometria da familia 11: na amostra
+	///      em que a quina de baixo encosta, o ponto dos pes esta 2,5 px fora. Com forca 20 ela cai e o corpo passa;
+	///      com a sonda antiga ela nao apanhava ali, o laco lia "resistiu" e o corpo se arrebentava numa obra de
+	///      armadura 1. O contra-exemplo do DADO e a forca 0: nao passa do piso de 75%, a obra fica e o corpo para na
+	///      ultima amostra livre.
+	///
+	/// AS OBRAS SAO `DoMapa`, e isso e a guarda do disco: se cairem, o `Estragar` nao chama o `GravarMundo` -- esta
+	/// bancada roda com a pasta de saves de verdade (o `testar-knockback.bat` nao desvia o APPDATA). Pelo mesmo motivo
+	/// a praca tem de estar VAZIA de obra e nave alheias: a forca 20 derrubaria a bancada que o dono ergueu ali, e a
+	/// queda iria pro `mundo.json` dele. NAVE NAO ENTRA NA CENA porque o `EstragarNave` grava o `naves.json` a cada
+	/// arranhao.
+	/// ==================================================================================================================
+	/// </summary>
+	private void AObraQueACaixaToca()
+	{
+		GD.Print("[kb] -- 12) a obra que a CAIXA toca, e nao so o ponto dos pes --");
+		const int T = ZoneCollision.TileSize;
+		const string TipoRasteiro = "Crafting_Bench", TipoDenso = "Research_Station";
+		ServerPlayer d = Forjar("kbObra", new Vec2(8 * T, 8 * T), 5_551);
+		ZoneKey zona = d.Zone;
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
+		Vec2? canto = mapa == null ? null : PracaSeca(mapa, 16);
+		bool catalogo = _obras?.Get(TipoRasteiro) is { Densa: false } && _obras?.Get(TipoDenso) is { Densa: true };
+		AfirmarKb("(montagem) achei uma praca seca de 16x16 tiles, e o catalogo tem uma obra que nao barra e uma que barra",
+				  canto != null && catalogo);
+		if (canto is not { } c || mapa == null || !catalogo) return;
+
+		int px0 = (int)(c.X / T), py0 = (int)(c.Y / T);
+		bool NaPraca((int X, int Y) cel) => cel.X >= px0 && cel.Y >= py0 && cel.X < px0 + 16 && cel.Y < py0 + 16;
+		bool vazia = !_noChao.Any(ob => ob.Zona.Equals(zona) && NaPraca(Jandirus.Core.Tech.CatalogoDeObras.Celula(ob.X, ob.Y)))
+					 && !NavesParadasEm(zona).Any(nv => NaPraca(Jandirus.Core.Tech.CatalogoDeObras.Celula(nv.X, nv.Y)));
+		AfirmarKb("(montagem) a praca nao tem obra nem nave de ninguem -- a forca 20 derrubaria o que o dono ergueu ali",
+				  vazia);
+		if (!vazia) return;
+
+		Obra ErguerNaCelula(string tipo, int cx, int cy, double armadura)
+		{
+			var nova = new Obra
+			{
+				Id = _proximaObraId++, Tipo = tipo,
+				// OS PES NO MEIO DA CELULA: e a conta do `CatalogoDeObras.Celula` (a ancora e o ponto dos pes).
+				X = cx * T + T / 2f, Y = cy * T + T / 2f - MoveRules.FeetOffsetY,
+				DonoConta = "bancada_kb", DonoNome = "bancada", ErguidaEm = NowMs(),
+				DoMapa = true,   // se cair, nao vai pro `mundo.json` -- ver o cabecalho
+				ArmaduraMax = armadura, Armadura = armadura,
+			};
+			nova.PorZona(zona);
+			_noChao.Add(nova);
+			return nova;
+		}
+
+		void JogarPraBaixo(Vec2 origem, double forca, int tiques)
+		{
+			// SO O MEU VOO -- o mesmo cuidado do `ORastroSegueOsPixels`: o `TickDoEmpurrao` e de todos.
+			foreach (ServerPlayer outro in TodosOsCorpos().ToList())
+				if (outro != d) { outro.TiquesDeVoo = 0; outro.TiquesIniciaisDoVoo = 0; }
+			d.Pos = origem;
+			d.Altitude = 0f;
+			d.Voando = false;
+			Arremessar(d, new Vec2(0, 1), forca, tiques);
+			for (int i = 0; i < 60 && d.TiquesDeVoo > 0; i++) TickDoEmpurrao();
+		}
+
+		Obra? rasteira = null, densa = null, daFrente = null;
+		try
+		{
+			// ---- A. DE RASPAO: a quina direita 4 px DENTRO da coluna da obra, o ponto dos pes 4 px FORA ----
+			int colA = px0 + 15, filaA = py0 + 8;
+			rasteira = ErguerNaCelula(TipoRasteiro, colA, filaA, 16);
+			var origemA = new Vec2(colA * T - 4f, (py0 + 2) * T + T / 2f - MoveRules.FeetOffsetY);
+			AfirmarKb("(montagem) A: a quina direita da caixa esta na coluna da obra e o ponto dos pes na vizinha -- e o voo "
+					+ "e reto pro sul, entao o ponto dos pes nunca entra nela",
+					  (int)MathF.Floor((origemA.X + MoveRules.BodyHalfW) / T) == colA && CelulaDoPonto(origemA).Cx == colA - 1);
+			JogarPraBaixo(origemA, Empurrao.ResistenciaPadrao, 6);
+			AfirmarKb("(montagem) A: o corpo atravessou a fileira da obra de ponta a ponta",
+					  d.Pos.Y + MoveRules.FeetOffsetY - MoveRules.BodyHalfH >= (filaA + 1) * T,
+					  $"topo da caixa em y {d.Pos.Y + MoveRules.FeetOffsetY - MoveRules.BodyHalfH:0} vs fim da obra {(filaA + 1) * T}");
+			double umaPancada = Armadura.Bater(16, 16, Empurrao.ResistenciaPadrao);
+			AfirmarKb("A OBRA QUE SO A QUINA TOCA APANHA: de raspao, com o ponto dos pes sempre na coluna vizinha "
+					+ "(`Movement Effects.dm:74-76`)",
+					  _noChao.Contains(rasteira) && rasteira.Armadura < rasteira.ArmaduraMax,
+					  $"armadura {rasteira.Armadura:0.##}/{rasteira.ArmaduraMax:0.##} | de pe={_noChao.Contains(rasteira)}");
+			AfirmarKb("...e UMA pancada por travessia, e nao uma por amostra: sobrou exatamente o que uma pancada de forca 20 "
+					+ "deixa -- a segunda a teria derrubado",
+					  _noChao.Contains(rasteira) && Math.Abs(rasteira.Armadura - umaPancada) < 1e-9,
+					  $"armadura {rasteira.Armadura:0.##}, esperado {umaPancada:0.##}");
+
+			// ---- C. A CAIXA JA ENCOSTAVA NA OBRA DA FRENTE QUANDO O VOO COMECOU ----
+			// Os pes 3 px ACIMA da fileira da obra: a caixa (5 px abaixo dos pes) ja entra 2 px nela no instante do golpe.
+			// Comparando a primeira amostra com a caixa de PARTIDA inteira, ela nunca "entrava" e a obra passava ilesa;
+			// o DM olha o `get_step` -- o turf da frente -- ja no primeiro passo. Uma pancada, como na cena A.
+			int colC = px0 + 4, filaC = py0 + 6;
+			daFrente = ErguerNaCelula(TipoRasteiro, colC, filaC, 16);
+			var origemC = new Vec2(colC * T + T / 2f, filaC * T - 3f - MoveRules.FeetOffsetY);
+			AfirmarKb("(montagem) C: no instante do golpe a caixa ja toca a fileira da obra e o ponto dos pes esta na de cima",
+					  (int)MathF.Floor((origemC.Y + MoveRules.FeetOffsetY + MoveRules.BodyHalfH) / T) == filaC
+					  && CelulaDoPonto(origemC).Cy == filaC - 1);
+			JogarPraBaixo(origemC, Empurrao.ResistenciaPadrao, 6);
+			AfirmarKb("A OBRA DA FRENTE QUE A CAIXA JA TOCAVA NO GOLPE APANHA UMA VEZ -- o `get_step` e olhado ja no "
+					+ "primeiro passo, e o que ja tocava e so o turf dos pes",
+					  _noChao.Contains(daFrente) && Math.Abs(daFrente.Armadura - umaPancada) < 1e-9,
+					  $"armadura {daFrente.Armadura:0.##}, esperado {umaPancada:0.##} | de pe={_noChao.Contains(daFrente)}");
+
+			// ---- B. DE FRENTE numa obra que BARRA: a geometria da familia 11 ----
+			float passo = (float)(Empurrao.TilesPorTique * T * (Protocol.TickSeconds / Empurrao.SegundosPorTique));
+			float amostra = passo / Math.Max(1, (int)MathF.Ceiling(passo / (T / 2f)));
+			int colB = px0 + 11, filaB = py0 + 10;
+			densa = ErguerNaCelula(TipoDenso, colB, filaB, Armadura.Padrao);
+			AplicarColisaoDasObras(zona);   // a obra densa vira parede -- o mesmo funil do boot e do `Posicionar`
+			float topo = filaB * T;
+			var origemB = new Vec2(colB * T + T / 2f, topo - MoveRules.FeetOffsetY - 2.5f - 6 * amostra);
+			Vec2 aSexta = origemB + new Vec2(0, 6 * amostra);
+			AfirmarKb("(montagem) B: a obra BARRA, e na amostra em que a caixa encosta nela o ponto dos pes ainda esta FORA "
+					+ "da celula dela -- o caso que a sonda de um ponto so deixava sem pancada",
+					  mapa.BlockedCell(colB, filaB)
+					  && MoveRules.Occupied(mapa, aSexta, ModoDeTravessia.Arremessado)
+					  && !MoveRules.Occupied(mapa, origemB + new Vec2(0, 5 * amostra), ModoDeTravessia.Arremessado)
+					  && CelulaDoPonto(aSexta) != (colB, filaB));
+
+			// O CONTRA-EXEMPLO DO DADO: forca 0 nao passa do piso de 75% -- a obra fica, e o corpo para antes dela.
+			JogarPraBaixo(origemB, 0, 3);
+			float ultimaLivre = origemB.Y + 5 * amostra;
+			AfirmarKb("CONTRA-EXEMPLO: forca 0 nao arranha a obra (o piso de 75% do `takeDamage`), ela fica de pe e o corpo "
+					+ "para na ultima amostra livre antes dela",
+					  _noChao.Contains(densa) && Math.Abs(densa.Armadura - densa.ArmaduraMax) < 1e-9
+					  && Math.Abs(d.Pos.Y - ultimaLivre) < 1f,
+					  $"armadura {densa.Armadura:0.##} | y {d.Pos.Y:0.#} vs ultima amostra livre {ultimaLivre:0.#}");
+
+			// O CASO: forca 20 contra armadura 1 -- a obra em que a QUINA encostou apanha, cede, e o corpo passa.
+			JogarPraBaixo(origemB, Empurrao.ResistenciaPadrao, 3);
+			AfirmarKb("A OBRA QUE BARRA E A OBRA QUE CAI: a quina encostou, a obra levou o `takeDamage` e cedeu, e o corpo "
+					+ "passou no mesmo voo (no `Ticked` a pancada vem antes do `step`)",
+					  !_noChao.Contains(densa) && !mapa.BlockedCell(colB, filaB)
+					  && d.Pos.Y + MoveRules.FeetOffsetY - MoveRules.BodyHalfH >= topo + T,
+					  $"de pe={_noChao.Contains(densa)} | topo da caixa em y "
+					  + $"{d.Pos.Y + MoveRules.FeetOffsetY - MoveRules.BodyHalfH:0} vs fim da obra {topo + T:0}");
+		}
+		finally
+		{
+			// AS OBRAS DA BANCADA SAEM, e o `MandarObras` refaz a camada de colisao e o pacote da zona pela lista.
+			if (rasteira != null) _noChao.Remove(rasteira);
+			if (densa != null) _noChao.Remove(densa);
+			if (daFrente != null) _noChao.Remove(daFrente);
+			if (rasteira != null || densa != null || daFrente != null) MandarObras(zona);
+			d.TiquesDeVoo = 0;
+		}
 	}
 }

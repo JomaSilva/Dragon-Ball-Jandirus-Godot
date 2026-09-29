@@ -363,12 +363,17 @@ public static class MoveRules
 		Vec2? melhor = null;
 		float melhorD = float.MaxValue;
 
-		foreach (Vec2 quina in new[]
+		// AS QUATRO QUINAS SEM ARRAY. O `foreach` sobre `new[] { ... }` alocava um `Vec2[4]` (56 B) por chamada,
+		// e o `Escapar` chama isto A CADA QUADRO de quem esta A PE numa celula de agua -- o corpo que boia sem
+		// folego, o NPC que decolou e ainda nao saiu do chao -- e a cada pacote do jogador pelo `ValidateStep`.
+		// Eram os 56 B por tique do "tique barato" da secao 12 da `--iateste`. A ORDEM E A MESMA (esquerda-cima,
+		// direita-cima, esquerda-baixo, direita-baixo), e ela importa: no empate de distancia vence a primeira
+		// (`d < melhorD` estrito).
+		for (int q = 0; q < 4; q++)
 		{
-			new Vec2(pos.X - BodyHalfW, y - BodyHalfH), new Vec2(pos.X + BodyHalfW, y - BodyHalfH),
-			new Vec2(pos.X - BodyHalfW, y + BodyHalfH), new Vec2(pos.X + BodyHalfW, y + BodyHalfH),
-		})
-		{
+			float qx = (q & 1) == 0 ? pos.X - BodyHalfW : pos.X + BodyHalfW;
+			float qy = q < 2 ? y - BodyHalfH : y + BodyHalfH;
+			var quina = new Vec2(qx, qy);
 			int cx = (int)MathF.Floor(quina.X / ZoneCollision.TileSize);
 			int cy = (int)MathF.Floor(quina.Y / ZoneCollision.TileSize);
 			if (mapa.NaBorda(cx, cy) || mapa.Bloqueia(cx, cy, modo)) continue;

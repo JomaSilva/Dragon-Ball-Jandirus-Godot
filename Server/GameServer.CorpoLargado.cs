@@ -212,7 +212,12 @@ public partial class GameServer
 			GD.Print($"[server] {pl.Name} voltou pro corpo e o corpo nao estava mais la -- caiu em {destino.Name}");
 		}
 
-		MoveToZone(pl.Id, destino, pos);
+		// QUEM JA ESTA NO DESTINO NAO VIAJA. Hoje so o `DestruirNave` pede isso: o piloto de uma Capital Ship
+		// que explode volta pro proprio corpo ONDE ELE JA ESTA -- o `end_pilot` do DM apaga o boneco e nao move
+		// o `M` (`ShipVessel.dm:211-227`). A viagem pra mesma zona e o mesmo ponto nao mudaria nada aqui no
+		// servidor, mas mandaria um `ZoneChanged` ao cliente, que cobre a tela e recarrega o cenario -- um
+		// piscar no instante da explosao que o DM nao tem.
+		if (!destino.Equals(pl.Zone) || !pos.Equals(pl.Pos)) MoveToZone(pl.Id, destino, pos);
 		if (motivo.Length > 0) Avisar(pl, motivo);
 	}
 

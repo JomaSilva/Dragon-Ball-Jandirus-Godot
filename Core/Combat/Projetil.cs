@@ -448,6 +448,37 @@ public sealed class Projetil
 	/// <summary>O FEIXE DE QUE ESTE NASCEU POR CORTE (zero = nasceu de uma mao). Ver `GameServer.Feixe.cs`.</summary>
 	public int NascidoDoCorte;
 
+	// ============================ O RAIO DESVIADO PELO PARRY (dono, 2026-09-25) ============================
+	// Um raio que encontra um parry nao some nem volta: a cabeca fica PLANTADA no defensor e a energia sai
+	// de la pro lado, num RAMO que o atirador continua alimentando -- a curva do Sparking Zero. Sao dois
+	// objetos pelo mesmo motivo do corte (`NascidoDoCorte`): o feixe e um segmento reto da mao ate a cabeca,
+	// e um raio torto e dois segmentos. Os quatro campos abaixo sao as duas pontas desse laco. Ver
+	// `GameServer.ParryDeKi.cs`.
+	// ======================================================================================================
+
+	/// <summary>
+	/// NO PAI: o corpo que esta desviando esta cabeca (zero = ninguem). Enquanto for de alguem, a cabeca
+	/// fica plantada na frente dele e cada ciclo de moer vira "segurar o desvio" -- sem dano, sem arrasto.
+	/// </summary>
+	public int DesviadoPor;
+
+	/// <summary>
+	/// NO RAMO: o pai que o alimenta (zero = ramo solto, que voa com o comprimento que tem, como a parte
+	/// de la de um corte). Enquanto o pai estiver sendo canalizado e desviado pelo mesmo corpo, a cauda do
+	/// ramo fica presa no <see cref="PontoDoDesvio"/> e so a cabeca anda -- o ramo CRESCE.
+	/// </summary>
+	public int AlimentadoPor;
+
+	/// <summary>
+	/// NO RAMO: quem desviou. O ramo so continua alimentado enquanto o pai for desviado por ESTE corpo -- um
+	/// segundo parry do mesmo raio, por outro corpo, e outro ramo. Ele nao precisa de protecao contra o ramo: a
+	/// cauda nasce ALEM do corpo dele, no rumo do ramo, e o corte e a cabeca so enxergam o que esta a frente dela.
+	/// </summary>
+	public int Desviador;
+
+	/// <summary>NO RAMO: onde a cauda fica presa enquanto o pai o alimenta -- a beirada do corpo de quem desviou.</summary>
+	public Vec2 PontoDoDesvio;
+
 	/// <summary>Como ele se chama no relato. A COR sai do dono -- ver o mesmo campo na receita.</summary>
 	public string Nome = "ataque de ki";
 

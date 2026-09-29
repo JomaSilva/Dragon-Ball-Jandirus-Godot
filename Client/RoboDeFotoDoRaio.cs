@@ -72,6 +72,14 @@ public partial class RoboDeFotoDoRaio : Node
 
 	private RastroDePosicao? _rastro;
 
+	/// <summary>
+	/// A FAISCA DOS ACERTOS DA CENA C (dono, 2026-09-23: *"o efeito de hit tem que ser na cabeca do beam e
+	/// nao no meio dele"*). Contadas no quadro em que cada uma nasce, contra os corpos desenhados daquele
+	/// quadro: quantas estouraram na frente da cabeca (a beirada de quem apanha) e quantas no meio do raio.
+	/// </summary>
+	private (Vector2 Onde, int Alvo)? _faiscaVista;
+	private int _faiscasNaCabeca, _faiscasNoMeio, _faiscasFora;
+
 	private void Conferir(bool ok, string oque)
 	{
 		_passos.Add((ok ? "  ok   " : "  FALHA") + "  " + oque);
@@ -109,6 +117,46 @@ public partial class RoboDeFotoDoRaio : Node
 	}
 
 	private void Virar(int proximo) { _passo = proximo; _t = 0; }
+
+	/// <summary>O dobro do teto do atraso de desenho do corpo remoto -- ver a perna `CenaA_Durante`.</summary>
+	private const double EsperaDoDesenho = 0.5;
+
+	/// <summary>
+	/// UMA FAISCA NOVA NESTE QUADRO? Ela e medida contra os corpos DESENHADOS agora: o ponto certo e a frente
+	/// da cabeca, que e a beirada de quem apanha (meia largura antes do centro, vindo do atirador); o errado,
+	/// o da foto do dono, e o meio entre os dois.
+	/// </summary>
+	private void ContarAFaisca(World mundo, GameClient cli)
+	{
+		if (mundo.UltimaFaiscaDeTeste is not { } ultima || ultima == _faiscaVista) return;
+		_faiscaVista = ultima;
+
+		// SO A FAISCA DE QUEM A CENA LEVA (2026-09-23). O berco e o lago de verdade, com cidadaos de verdade: o
+		// raio da cena B atravessa o lago e acerta a vizinha do outro lado, e a faisca DELA chegava aqui e era
+		// medida contra o corpo da cena C -- "3 noutro lugar" que nao eram deste raio. Ela fica anotada, sem contar.
+		if (ultima.Alvo != _vitima)
+		{
+			Nota($"faisca em OUTRO corpo (id {ultima.Alvo}), fora da regua: {ultima.Onde}");
+			return;
+		}
+		Vector2 faisca = ultima.Onde;
+
+		Vector2 vitima = mundo.PosicaoDesenhadaDe(_vitima) ?? Vector2.Zero;
+		Vector2 atirador = mundo.PosicaoDesenhadaDe(cli.LocalId) ?? Vector2.Zero;
+		Vector2 rumo = (vitima - atirador).Normalized();
+		Vector2 naBeirada = vitima - rumo * Jandirus.Core.Combat.Feixe.MeioCorpo;
+		Vector2 meio = (vitima + atirador) * 0.5f;
+
+		// UM TILE DE FOLGA: o ponto do impacto chega em coordenada do SERVIDOR, e o corpo levado e desenhado
+		// interpolado, um pacote atras -- andando na velocidade do feixe. O meio fica a varios tiles dali.
+		if (faisca.DistanceTo(naBeirada) < ZoneCollision.TileSize) _faiscasNaCabeca++;
+		else if (faisca.DistanceTo(meio) < ZoneCollision.TileSize) _faiscasNoMeio++;
+		else
+		{
+			_faiscasFora++;
+			Nota($"faisca fora dos dois lugares: {faisca} (beirada {naBeirada}, meio {meio})");
+		}
+	}
 
 	// =====================================================================
 	// 0) O BERCO ASSENTA
@@ -173,7 +221,15 @@ public partial class RoboDeFotoDoRaio : Node
 	private void CenaA_Durante(World mundo, Jandirus.Server.GameServer srv, double delta)
 	{
 		srv.EmpurrarCorpoDeFoto(_npcDaCena, new Vec2(1, 0), delta);
-		_rastro?.Marcar(mundo.PosicaoDesenhadaDe(_npcDaCena));
+
+		// ============================ O DESENHO CHEGA DEPOIS DO SERVIDOR (2026-09-23) ============================
+		// O corpo remoto e desenhado NO PASSADO: tres tiques no minimo, ate `AtrasoTeto` (250 ms) com rede ruim
+		// (`RemotePlayer.AjustarAtraso`). Esta perna comecava a marcar o rastro no mesmo quadro em que a perna de
+		// cima mandou transformar -- e o que ela media era a caminhada de ANTES terminando de chegar na tela: 30 px
+		// de rastro com o funil recusando todo passo desde o primeiro tique. Espera-se o dobro do teto; a cena dura
+		// 10 s, e o que se pergunta e se o corpo anda DURANTE ela, nao se o desenho alcancou o servidor.
+		// ======================================================================================================
+		if (_t >= EsperaDoDesenho) _rastro?.Marcar(mundo.PosicaoDesenhadaDe(_npcDaCena));
 
 		srv.RegarOKiDeFoto(_npcDaCena);   // o dreno da forma nao e o assunto -- ver `RegarOKiDeFoto`
 		if (_t < 2.0) return;
@@ -369,6 +425,7 @@ public partial class RoboDeFotoDoRaio : Node
 		// O RASTRO DO LEVADO, marcado a CADA quadro (e nao so nos tres do obturador): e ele que faz a
 		// sequencia de fotos AFIRMAR o movimento em vez de pedir que se compare tres imagens a olho.
 		_rastro?.Marcar(mundo.PosicaoDesenhadaDe(_vitima));
+		ContarAFaisca(mundo, cli);
 
 		if (_t < 0.16) return;
 
@@ -396,6 +453,10 @@ public partial class RoboDeFotoDoRaio : Node
 		Conferir(andouCorpo > 8f && Mathf.Abs(andouCorpo - andouCabeca) < andouCabeca * 0.35f + 4f,
 			$"...e ele andou JUNTO com a cabeca do feixe, na tela: corpo {andouCorpo:0.0} px, "
 			+ $"cabeca {andouCabeca:0.0} px");
+
+		Conferir(_faiscasNaCabeca > 0 && _faiscasNoMeio == 0 && _faiscasFora == 0,
+			$"a FAISCA de cada acerto do feixe estoura na CABECA dele, na beirada de quem apanha -- e nao no meio "
+			+ $"do raio ({_faiscasNaCabeca} na cabeca, {_faiscasNoMeio} no meio, {_faiscasFora} noutro lugar)");
 
 		// A TIRA DA CENA C -- os tres quadros do arrasto, colados na mesma ordem em que sairam.
 		Montar("user://raio-3-levado-tres.png", desde: _quadros.Count - 3, lado: 288, escala: 2);
@@ -457,11 +518,17 @@ public partial class RoboDeFotoDoRaio : Node
 		if (_t < 0.4) return;
 
 		Vector2 corpo = mundo.PosicaoDesenhadaDe(_pisou) ?? Vector2.Zero;
-		// SO OS FEIXES DESTA CENA: o da cena C ainda pode estar no ar (ele vive ate esvaziar), entao
-		// conta-se o que esta a ate 12 tiles de quem pisou -- o raio da cena D inteiro cabe nisso.
+		// ============================ SO OS FEIXES DESTA CENA, PELO ID (2026-09-23) ============================
+		// O da cena C ainda esta no ar (ele esvazia devagar), e quem pisou esta no caminho dele TAMBEM: ele e
+		// cortado junto, e a sua metade de ca para na frente do mesmo corpo. A primeira versao desta regua
+		// contava "o que esta a ate 12 tiles de quem pisou" e passava ou nao conforme a metade de la da cena C
+		// ja tivesse saido do raio. Quem sabe quais feixes sao desta cena e o servidor: o raio dela e os pedacos
+		// que o corte fez dele (`NascidoDoCorte`).
+		// ======================================================================================================
+		HashSet<int> desta = srv.PedacosDoRaioDaFoto(cli.LocalId);
 		var feixes = new List<(int Id, Vector2 Cabeca)>();
 		foreach ((int id, Jandirus.Core.Combat.ArteDeKi _, Jandirus.Core.Combat.TipoDeProjetil tipo, Vector2 onde, float _) in mundo.TirosDesenhados())
-			if (tipo == Jandirus.Core.Combat.TipoDeProjetil.Beam && onde.DistanceTo(corpo) < 12 * T) feixes.Add((id, onde));
+			if (tipo == Jandirus.Core.Combat.TipoDeProjetil.Beam && desta.Contains(id)) feixes.Add((id, onde));
 
 		Fotografar("user://raio-4-corte.png",
 				   $"CENA D: o tronco cortado por quem pisou nele ({feixes.Count} feixe(s) na tela)",
@@ -522,8 +589,17 @@ public partial class RoboDeFotoDoRaio : Node
 	private static void dec_limpar() => Decalques.Instancia?.Limpar();
 
 	/// <summary>
-	/// UM RUMO EM QUE HA MARGEM DE LAGO A FRENTE: as duas primeiras celulas SECAS (pra haver sulco) e
-	/// alguma celula molhada entre a terceira e a decima (pra haver onda).
+	/// UM RUMO EM QUE HA MARGEM DE LAGO A FRENTE: a celula do corpo e a primeira a frente SECAS (pra haver
+	/// sulco) e alguma celula molhada entre a segunda e a decima (pra haver onda).
+	///
+	/// ============================ O BERCO DEIXA UMA CELULA SECA SO (2026-09-23) ============================
+	/// O `--aguateste` poe o corpo UM TILE ANTES da margem (`PorNaBeiraDoLago`): a celula dele e seca, a
+	/// seguinte e a margem seca, e a agua comeca na segunda. Esta busca pedia DUAS secas a frente, e isso nunca
+	/// casou com o rumo do berco -- ela so passava por sorte do terreno, achando outro lago noutro rumo. Quando o
+	/// nascimento foi pro ponto do BYOND (`MarcoDeBerco`), o lago mais perto mudou e a sorte acabou: "achei uma
+	/// margem" reprovou sem nada no raio ter mudado. O sulco nasce na celula da CABECA (`MarcarSulcoDoTiro`), e
+	/// a cabeca sai da mao, dentro da celula do corpo: uma seca a frente ja da o risco no chao que a foto mede.
+	/// ======================================================================================================
 	///
 	/// A pergunta e feita ao mapa do CLIENTE, que e o mesmo com que ele desenha -- e por isso a foto
 	/// mostra o que a conta disse. O servidor tem a versao dele (`EhAguaDeFoto`) e ela e usada pra
@@ -536,10 +612,10 @@ public partial class RoboDeFotoDoRaio : Node
 
 		foreach (Vector2I d in (Vector2I[])[new(1, 0), new(-1, 0), new(0, 1), new(0, -1)])
 		{
-			bool secoPerto = !mundo.EhAgua(minha + d) && !mundo.EhAgua(minha + d * 2);
+			bool secoPerto = !mundo.EhAgua(minha) && !mundo.EhAgua(minha + d);
 			if (!secoPerto) continue;
 
-			for (int k = 3; k <= 10; k++)
+			for (int k = 2; k <= 10; k++)
 			{
 				// O CAMINHO TEM QUE ESTAR LIVRE ATE LA. Agua nao bloqueia (ela e a terceira classe
 				// de celula), mas pedra e arvore bloqueiam -- e um feixe que morre numa pedra a tres

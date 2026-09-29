@@ -105,6 +105,57 @@ public static class CombatFx
     }
 
     // =====================================================================
+    // O ESCUDO DO PARRY
+    // =====================================================================
+    /// <summary>
+    /// O `perfectshield` do DM (`EffectLayer.dm:69-77`): um disco branco (`shieldWhite_small.png`) tingido de
+    /// azul, CENTRADO NO CORPO de quem acertou o tempo da guarda -- e o ramo `if(1)//counter` do
+    /// `CombatMovement.dm:257-259` que o poe, junto do `blueglow` (o brilho azul no proprio sprite, que aqui e
+    /// o `Piscar` do <see cref="World"/>). E o que separa, na tela, o PARRY do bloqueio comum: o bloqueio
+    /// e uma faisca gelo pequena entre os dois; o parry e uma bolha que salta em volta de quem defendeu.
+    ///
+    /// Procedural, pelo mesmo motivo do <see cref="Onda"/>: e uma forma lisa que precisa crescer e sumir sem
+    /// serrilhar, e um gradiente radial faz isso em qualquer escala. A BORDA E MAIS FORTE QUE O MIOLO, pra ler
+    /// como casca e nao como clarao -- quem esta dentro continua visivel.
+    /// </summary>
+    public static void Escudo(Node2D pai, Vector2 onde, Color cor)
+    {
+        var s = new Sprite2D
+        {
+            Texture = Disco,
+            Position = onde,
+            Scale = Vector2.One * 0.35f,
+            Modulate = cor,
+            ZIndex = 31,
+            // ADITIVO, como a faisca: o escudo e LUZ, e somando ele acende o corpo em vez de cobri-lo.
+            Material = new CanvasItemMaterial { BlendMode = CanvasItemMaterial.BlendModeEnum.Add },
+        };
+        pai.AddChild(s);
+
+        Tween t = s.CreateTween();
+        t.SetParallel();
+        // DO TAMANHO DO CORPO, como o disco de 32 px do DM em volta de um corpo de 32: 64 px x 0,6 = ~38 px. Na
+        // primeira foto ele terminava em 0,8 e cobria tres corpos -- lia como explosao, e nao como guarda.
+        t.TweenProperty(s, "scale", Vector2.One * 0.6f, 0.12).SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
+        t.TweenProperty(s, "modulate:a", 0.0f, 0.3).SetDelay(0.12);
+        t.Chain().TweenCallback(Callable.From(s.QueueFree));
+    }
+
+    /// <summary>O disco do escudo: 64 px, miolo translucido e casca clara. Um so, pra todo parry.</summary>
+    private static GradientTexture2D? _disco;
+    private static GradientTexture2D Disco => _disco ??= new GradientTexture2D
+    {
+        Width = 64, Height = 64,
+        Fill = GradientTexture2D.FillEnum.Radial,
+        FillFrom = new Vector2(0.5f, 0.5f), FillTo = new Vector2(1f, 0.5f),
+        Gradient = new Gradient
+        {
+            Offsets = [0f, 0.75f, 0.95f, 1f],
+            Colors = [new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.35f), new Color(1, 1, 1, 0.95f), new Color(1, 1, 1, 0f)],
+        },
+    };
+
+    // =====================================================================
     // O JATO DE SANGUE DO MEMBRO ARRANCADO
     // =====================================================================
     /// <summary>Tres quadros de 32 px. E o `Blood Spray.dmi` do original, sem variante direcional.</summary>

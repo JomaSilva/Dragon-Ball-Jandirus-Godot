@@ -41,13 +41,22 @@ namespace Jandirus.Server;
 ///                      --conta bancada_cadaver --nome Defunto
 ///
 /// TUDO O QUE ELA TOCA DO HOST E DEVOLVIDO no `finally` -- zona, posicao, morte, relogio, auréola,
-/// altitude e agarrao --, e todo cadaver forjado sai do mundo. As lapides que ela ergueu tambem: uma
+/// altitude, agarrao e BP --, e todo cadaver forjado sai do mundo. As lapides que ela ergueu tambem: uma
 /// bancada que deixasse tumulos no `mundo.json` sujaria o disco do dono a cada rodada.
 /// </summary>
 public partial class GameServer
 {
 	private bool _cadaverDeTeste;
 	private int _cadOk, _cadFalhou;
+
+	/// <summary>
+	/// O BP que a bancada da ao host ANTES de mata-lo (ver `RodarBancadaDoCadaver`). E o de um Saiyajin
+	/// Normal recem-nascido -- `Starting BP` 100 (`statsaiyan.dm:119`) no `assign_starting_BP` da 10 a 210
+	/// (`Genetic_Datum.dm:308-311`) --, que e o host de toda rodada verde registrada. NAO e um valor de
+	/// Lendario de proposito: a familia 9 soca e dispara no cadaver com ESTE BP, e um numero enorme
+	/// mudaria o tamanho do estrago que ela mede.
+	/// </summary>
+	private const double BpDoHostDoCadaver = 200;
 
 	private void AfirmarCad(string oque, bool passou, string detalhe = "")
 	{
@@ -68,6 +77,7 @@ public partial class GameServer
 		bool viajouGuardado = pl.MorteJaViajou, aureolaGuardada = pl.EnvAureola;
 		float alturaGuardada = pl.Altitude;
 		bool voandoGuardado = pl.Voando, nadandoGuardado = pl.Nadando;
+		double bpGuardado = pl.Ficha.BP;   // o SORTEADO no `Nascer` -- volta no `finally`
 		int obrasAntes = _noChao.Count;
 
 		var forjados = new List<ServerPlayer>();
@@ -76,6 +86,28 @@ public partial class GameServer
 		{
 			AfirmarCad("PRECONDICAO: o host tem dono na tela (sem `Peer` a triagem nunca chega a viagem)",
 					   EhJogador(pl));
+
+			// ============================ A CENA DA FAMILIA 2: O HOST FORTE, E ANTES DA MORTE ============================
+			// A familia 2 so separa "o cadaver herdou o BP" de "o cadaver nasceu com o de `new Fighter()`" (1)
+			// com o host bem acima disso. E o host desta bancada e um personagem RECEM-CRIADO, com classe e BP
+			// sorteados pelo `_rng` SEM semente do servidor (`GameServer.Nascer` -> `Birth.Nascer`): o Saiyajin
+			// sai Low-Class em 45% das rodadas (`statsaiyan.dm:29-33`), com `Starting BP` 10 (`statsaiyan.dm:139`),
+			// e o `assign_starting_BP` do DM -- `sbp/10 + rand(100/sbp, 200*sbp)/100`, `Genetic_Datum.dm:308-311`
+			// -- da a ele BP de 1,1 a 21, abaixo de 10 em 45% dos casos. A precondicao da familia 2 caia em ~1
+			// rodada de cada 5 ("BP 1", "BP 3") sem defeito nenhum: era o jogo nascendo fraco como o DM manda.
+			//
+			// O BP E DADO DE CENA, e nao a regra medida. A regra e o `DeixarOCadaver` nao copiar numero do
+			// morto, e ela continua exercida pelo funil de morte de producao, sem atalho. Mesmo padrao do
+			// `--alemteste` (o debuff do Enma) e da bancada da conquista: grava-se o campo que o save persiste,
+			// `Statify` + `PowerLevel` pra o `expressedBP` acompanhar, e o `finally` devolve o sorteado.
+			//
+			// **ANTES DA MORTE, NUNCA NA FAMILIA 2.** Um cadaver que COPIASSE `morto.Ficha.BP` por valor ao
+			// nascer guardaria o numero da hora da morte; subir o BP do host so depois deixaria "o cadaver NAO
+			// herdou o BP do morto" verde por cima exatamente desse defeito.
+			// =====================================================================================================
+			pl.Ficha.BP = BpDoHostDoCadaver;
+			pl.Ficha.Statify();
+			pl.Ficha.PowerLevel(agoraMs: NowMs());
 
 			ServerPlayer? cadaver = AViagemDeixaOCorpo(pl);
 			if (cadaver == null)
@@ -135,6 +167,12 @@ public partial class GameServer
 			pl.Altitude = alturaGuardada;
 			pl.Voando = voandoGuardado;
 			pl.Nadando = nadandoGuardado;
+			// O BP SORTEADO VOLTA, com o `expressedBP` recalculado junto -- as bancadas que rodam depois desta
+			// no mesmo login (a dos dois corpos, a do tique da morte) recebem o host que o `Nascer` fez, e nao
+			// o da cena daqui. Antes do `MoveToZone`, que ja manda a ficha pro fio.
+			pl.Ficha.BP = bpGuardado;
+			pl.Ficha.Statify();
+			pl.Ficha.PowerLevel(agoraMs: NowMs());
 			if (!pl.Zone.Equals(zonaGuardada)) MoveToZone(pl.Id, zonaGuardada, posGuardada);
 			else pl.Pos = posGuardada;
 			pl.Combate.SincronizarVida();
@@ -272,6 +310,9 @@ public partial class GameServer
 	/// A prova nao e um corte: e a CONSTRUCAO. A ficha do cadaver e um `Fighter` novo, e por isso ele
 	/// nao sabe quem foi forte. Pra a linha significar alguma coisa, o host tem que estar com um BP
 	/// diferente do padrao -- senao "igual ao do morto" e "zerado" dariam a mesma resposta.
+	/// Quem garante isso e a CENA, e nao a sorte: o host recem-criado pode nascer Low-Class com BP 1,1, e
+	/// por isso o `RodarBancadaDoCadaver` lhe da o `BpDoHostDoCadaver` ANTES da morte. A precondicao abaixo
+	/// continua aqui pra acusar se o caminho da morte mexer no BP do host.
 	/// </summary>
 	private void OCadaverNaoCarregaNumeroDeNinguem(ServerPlayer pl, ServerPlayer c)
 	{

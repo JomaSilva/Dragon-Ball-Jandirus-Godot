@@ -928,14 +928,60 @@ public sealed class NiveisDeSkill
 	/// entrada (`if(level >= 2) assignverb(...)`, Martial Skill.dm:49) porque o verb some com a
 	/// sessao. Aqui nao existe "verb do mob": existe a pergunta "voce pode usar isto?", e a
 	/// resposta e recalculada do nivel toda vez. Nada pra reatribuir, nada pra esquecer.
+	///
+	/// ============================ A LISTA E PRO MENU; UM VERB SO E O <see cref="DestravaOVerbo"/> ============================
+	/// Isto MONTA uma lista, e e o certo pra quem quer todos (o `TecnicasDe` do menu, as bancadas).
+	/// Quem quer saber de UM verb -- o `SabeTecnica` do servidor, que a leitura de capacidades da IA
+	/// faz cinco vezes por corpo por segundo -- pergunta pelo `DestravaOVerbo`, que anda a MESMA
+	/// <see cref="VarrerVerbosAtivos"/> sem alocar nada. As duas saem da mesma varredura de proposito:
+	/// uma segunda copia da regra "degrau cruzado da os verbs dele, mais o da casa escolhida" seria a
+	/// que envelhece calada.
+	/// ================================================================================================================
 	/// </summary>
-	/// <param name="casaDe">
-	/// A CASA ESCOLHIDA numa skill de escolha unica (typepath -> rotulo, nulo = sem escolha) -- o que o
-	/// <see cref="Degrau.VerbosPorCasa"/> pergunta. Quem tem o livro passa
-	/// `path => EfeitosDeSkill.RotuloDaCasa(cat, livro.Escolhas, path)`; sem resolvedor, nenhum verb por
-	/// casa vale (o que e o certo pra quem nao escolheu nada).
+	/// <param name="cat">
+	/// O catalogo e as <paramref name="escolhas"/> do livro: de onde sai a CASA ESCOLHIDA numa skill de
+	/// escolha unica, que o <see cref="Degrau.VerbosPorCasa"/> pergunta. A resolucao e a do
+	/// `EfeitosDeSkill.RotuloDaCasa` (propria ou herdada da lider), pra que o degrau e a Grace nunca
+	/// discordem sobre em que casa o jogador esta. Sem os dois, nenhum verb por casa vale (o que e o
+	/// certo pra quem nao escolheu nada).
+	///
+	/// ERA UM `Func<string, string?>`, e todo chamador passava exatamente
+	/// `path => EfeitosDeSkill.RotuloDaCasa(cat, livro.Escolhas, path)`. Receber os DADOS e nao a funcao
+	/// tira a closure do caminho de 1 Hz: no servidor o lambda capturava o corpo, e cada pergunta pagava
+	/// um objeto e um delegate -- foi isso (mais o iterador que engordou junto) que estourou o orcamento
+	/// de lixo da `--iateste` (secao 12) a partir de 2026-09-03.
 	/// </param>
-	public IEnumerable<string> VerbosAtivos(Func<string, string?>? casaDe = null)
+	/// <param name="escolhas">Ver <paramref name="cat"/>.</param>
+	public List<string> VerbosAtivos(SkillCatalog? cat = null, IReadOnlyDictionary<string, int>? escolhas = null)
+	{
+		var achados = new List<string>();
+		VarrerVerbosAtivos(null, achados, cat, escolhas);
+		return achados;
+	}
+
+	/// <summary>
+	/// ESTE VERB ESTA DESTRAVADO PELOS NIVEIS DE AGORA? A resposta do <see cref="VerbosAtivos"/>, perguntada
+	/// por UM verb e **sem alocar nada** -- a bancada da IA (`--iateste`, secao 12) cobra os zero bytes.
+	/// </summary>
+	public bool DestravaOVerbo(string verbo, SkillCatalog? cat, IReadOnlyDictionary<string, int>? escolhas)
+		=> VarrerVerbosAtivos(verbo, null, cat, escolhas);
+
+	/// <summary>
+	/// A VARREDURA UNICA dos degraus cruzados -- quem lista e quem pergunta passam por aqui.
+	///
+	/// ============================ POR QUE NAO E MAIS UM `yield return` ============================
+	/// Ela era um iterador, e iterador ALOCA a maquina de estado a cada chamada -- o custo que a secao 12
+	/// da `--iateste` ja anotava como "cada `SabeTecnica` custa um iterador". Com a casa, a maquina
+	/// engordou (o `casaDe`, a casa lida, o laco dos pares, o `Progresso.Buffer`) e o servidor passou a
+	/// montar um lambda por pergunta. Um laco cru faz a MESMA varredura, na mesma ordem, com lixo zero: a
+	/// funcao local `Conta` captura dois parametros numa closure de STRUCT (o compilador so a poria no
+	/// heap se ela virasse delegate, e ela nunca vira).
+	/// ==============================================================================================
+	/// </summary>
+	/// <param name="procurado">Nao nulo: para no primeiro verb igual (sem caixa) e devolve true.</param>
+	/// <param name="achados">Nao nula: recebe todos os verbs, na ordem dos degraus (com repeticao, como antes).</param>
+	private bool VarrerVerbosAtivos(string? procurado, List<string>? achados,
+									SkillCatalog? cat, IReadOnlyDictionary<string, int>? escolhas)
 	{
 		foreach ((string path, Progresso pr) in _p)
 		{
@@ -946,16 +992,29 @@ public sealed class NiveisDeSkill
 			foreach (Degrau d in r.Degraus)
 			{
 				if (RegraDeNivel.Vezes(d, pr.Nivel) <= 0) continue;
-				foreach (string v in d.Verbos) yield return v;
+				foreach (string v in d.Verbos)
+					if (Conta(v)) return true;
 
 				// O VERB POR CASA: so o par da casa que o livro registrou -- ver `Degrau.VerbosPorCasa`.
 				// A casa e lida UMA vez por skill (e so quando algum degrau cruzado a pede).
 				if (d.VerbosPorCasa.Length == 0) continue;
-				if (!casaLida) { casa = casaDe?.Invoke(path); casaLida = true; }
+				if (!casaLida)
+				{
+					casa = cat != null && escolhas != null ? EfeitosDeSkill.RotuloDaCasa(cat, escolhas, path) : null;
+					casaLida = true;
+				}
 				if (casa == null) continue;
 				foreach ((string c, string v) in d.VerbosPorCasa)
-					if (string.Equals(c, casa, StringComparison.OrdinalIgnoreCase)) yield return v;
+					if (string.Equals(c, casa, StringComparison.OrdinalIgnoreCase) && Conta(v)) return true;
 			}
+		}
+		return false;
+
+		bool Conta(string verbo)
+		{
+			if (procurado != null) return string.Equals(verbo, procurado, StringComparison.OrdinalIgnoreCase);
+			achados?.Add(verbo);
+			return false;
 		}
 	}
 

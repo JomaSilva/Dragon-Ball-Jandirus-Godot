@@ -102,10 +102,11 @@ public static class Temperamento
 		// projeto que o acende. A regra que isso torna mecanica: **fala quem saiu de um molde do
 		// `npcs.json`** -- cidadao, chefe de saga, defensor de invasao, chefe convocado pela mente.
 		//
-		// Os tres cerebros montados a mao (a fera do Oozaru, a furia lendaria, o reflexo da mente)
-		// nao passam por aqui e continuam calados sem uma linha de excecao escrita pra eles. Nao e
-		// economia: os dois primeiros dirigem o corpo de um JOGADOR, e uma frase saindo dali
-		// apareceria no chat com o nome dele dizendo o que ele nao digitou.
+		// Os quatro cerebros montados a mao (a fera do Oozaru, a furia lendaria, o reflexo da mente e
+		// a copia do Split Form) nao passam por aqui e continuam calados sem uma linha de excecao
+		// escrita pra eles. Nao e economia: os dois primeiros dirigem o corpo de um JOGADOR, e uma frase
+		// saindo dali apareceria no chat com o nome dele dizendo o que ele nao digitou. (A copia, no DM,
+		// falaria -- divergencia declarada no `CriarSplitformG12`.)
 		//
 		// O CHEFE FALA MAIS, e e o `isBoss` do original nos dois lugares em que ele aparece na fala:
 		// a pausa cai de 5,0 s pra 3,0 s (`NPCAI.dm:229`) e quatro das oito ocasioes tem chance maior

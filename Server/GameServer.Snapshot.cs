@@ -171,8 +171,18 @@ public partial class GameServer
 		if (!_projeteis.TryGetValue(hash, out List<Projetil>? l)) yield break;
 		foreach (Projetil p in l)
 		{
+			// O MORTO NAO VIAJA (2026-09-23). O feixe que perde a disputa morre DENTRO do tique do embate, que roda
+			// depois do dos projeteis -- e ficava mais um snapshot inteiro sendo desenhado parado no encontro,
+			// com a cabeca do vencedor ja andando por cima dele. O `Morreu` sai no tique seguinte.
+			if (!p.Vivo) continue;
 			if (perto is { } onde && !Espaco.PertoDeMim(onde, p.Pos)) continue;
-			yield return new ProjetilState { Id = p.Id, Pos = p.Pos, Tipo = (byte)p.Tipo, Cauda = p.Cauda };
+			yield return new ProjetilState
+			{
+				Id = p.Id, Pos = p.Pos, Tipo = (byte)p.Tipo, Cauda = p.Cauda,
+				Solto = !p.Canalizando,
+				// SO QUEM O FEIXE LEVA DE VERDADE: o arrasto ou a moida encostada. Ver `ProjetilState.Arrasta`.
+				Arrasta = p.Arrastando,
+			};
 		}
 	}
 }

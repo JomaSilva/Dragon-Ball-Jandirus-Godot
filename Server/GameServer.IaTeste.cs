@@ -60,7 +60,9 @@ public partial class GameServer
 		var nascidos = new List<ServerPlayer>();
 
 		/// corpo de bancada: nasce pelo MESMO `PorNoMundo` de todo corpo sem dono
-		ServerPlayer Forjar(string nome, double bp, Vec2 pos, bool comCerebro = true)
+		// `emZona`: so as secoes 12 e 28 usam -- o palco delas e a Sala do Tempo, e o porque esta na 12. Toda
+		// outra cena continua na zona escolhida acima.
+		ServerPlayer Forjar(string nome, double bp, Vec2 pos, bool comCerebro = true, ZoneKey? emZona = null)
 		{
 			var f = new Jandirus.Core.Stats.Fighter
 			{
@@ -84,7 +86,7 @@ public partial class GameServer
 
 			var c = new ServerPlayer
 			{
-				Id = _nextId++, Peer = null, Name = nome, Zone = zona, Pos = pos,
+				Id = _nextId++, Peer = null, Name = nome, Zone = emZona ?? zona, Pos = pos,
 				Race = "Saiyan", Class = "", Genero = "Male", Idade = 25,
 				LastInputMs = NowMs(), Ficha = f,
 				Livro = new Jandirus.Core.Skills.SkillBook(),
@@ -112,7 +114,93 @@ public partial class GameServer
 				foreach (ServerPlayer c in tambem) TickDoVoo(c, Protocol.TickSeconds);
 				foreach (ServerPlayer c in tambem) TickDaCarga(c, Protocol.TickSeconds);
 				TickDosCorposSemDono(Protocol.TickSeconds);
+
+				// ============================ O ARREMESSADO ATERRISSA ============================
+				// Na mesma ordem do `Tick()` de producao: depois dos corpos sem dono. Sem esta linha, quem levava um
+				// pesado que ARREMESSA (o sorteio do `Empurrao.DoSoco`) ficava com `TiquesDeVoo > 0` pelo resto da
+				// bancada -- no mesmo pixel, "no ar", e com o `PodeAtacar` recusando todo golpe. Foi o "0 de 34" da
+				// apara na secao 4 (2026-09-24): a guarda derrubou o agressor com um pesado no inicio da troca, e ele
+				// nunca mais bateu (30 dos 34 golpes pedidos com ele no ar). Quem faz o corpo arremessado andar,
+				// aterrissar e voltar a lutar e o `TickDoEmpurrao`.
+				//
+				// ESTE E TAMBEM O TIQUE CRONOMETRADO DA SECAO 17 (o `MedirAZona`): o que entrar ou sair daqui muda o custo
+				// que ela mede, e a folga que ela imprime e o numero a conferir.
+				// ==============================================================================
+				TickDoEmpurrao();
 			}
+		}
+
+		// ============================ O CHAO DE UMA CENA E PROCURADO, E NAO ADIVINHADO ============================
+		// Esta bancada monta as cenas numa zona ESCOLHIDA em tempo de execucao ("a primeira pre-feita sem
+		// ninguem", acima) -- e com a Terra povoada e o host no berco dele, hoje ela e NAMEK, cuja costa oeste
+		// e OCEANO. Coordenada escrita a mao, como `(0, y)`, poe o corpo com meia caixa dos pes FORA do mapa e a
+		// outra meia na agua: o `MoveRules.Escapar` o tira da borda em UM passo, e dali ele fica preso pelo
+		// MODO (a pe, a agua para como muro -- a regra certa, pedido do dono). Tres secoes ficaram vermelhas
+		// medindo o MAPA e nao o gesto: a corrida da 9 ("20,8 px em 1 s", que e UM tique de corrida), o "volta
+		// a andar" da 7b (0,0 px) e o chefe mudo da 22(g) -- esse com o palco no berco do BYOND, DENTRO de uma
+		// casa desde o `0b0c8b2`. A secao 25 ja tinha nomeado este buraco ("o vermelho era a parede") com uma
+		// versao local desta funcao; ela subiu pra ca pra ser UMA so -- tres copias seriam tres jeitos de uma
+		// envelhecer calada.
+		//
+		// A PERGUNTA POR CELULA E O `ServeDeChao` -- parede, agua, nuvem e beirada, a mesma celula que o
+		// `MoveRules` recusa pra quem esta A PE --, e nao o `BlockedCell` cru da versao local, que deixava a
+		// agua passar. Um corpo posto no CENTRO de uma celula tem a caixa dos pes inteira dentro dela (16 x 10
+		// px, descida 8), entao uma faixa de celulas que servem de chao e uma pista em que o `Advance` nao tem
+		// o que recusar.
+		//
+		// Devolve o centro da celula da ESQUERDA, na fileira do MEIO de um bloco de `tiles + 1` por `altura`
+		// celulas, procurado de cima pra baixo a partir de `aPartirDaLinha`. AS FILEIRAS JA ENTREGUES FICAM
+		// RESERVADAS, com duas de folga: os corpos desta bancada vivem ate o fim dela (`nascidos`), e o que as
+		// cenas perguntam a zona e por LISTA -- o cone do `AlvoNaFrente`, a presa mais perto (`PresaDaFera`), a
+		// percepcao, os golpes de area. Um corpo de uma cena parado no palco de outra vira alvo dela. (Corpo NAO
+		// barra corpo aqui: a grade de vizinhanca so e remontada no `Tick()`, e esta bancada roda inteira dentro
+		// de um `PollEvents` -- a `--g12teste` a remonta a mao justamente por isso.)
+		//
+		// E SE NAO ACHAR, REPROVA EM VOZ ALTA com o nome do mapa: devolver um ponto qualquer, calado, traria de
+		// volta exatamente o verde de mentira (ou o vermelho disfarcado) que esta funcao existe pra matar.
+		//
+		// ---- E TODO CORPO DESTA BANCADA NA `zona` NASCE POR AQUI (2026-09-24) ----
+		// Depois das secoes 4, 7b/7c, 9, 22(g) e 25 sobravam 29 posicoes cravadas a mao. Lidas no `z02_Namek.col` e no
+		// `.agua`, na mesma ordem de bits do `ZoneCollision.Load`: 23 no MAR, 3 FORA do mapa (a praca da 23, em
+		// y = 17.000, com Namek de 500 celulas = 16.000 px; e a vitima da 20, em x = -18), 1 DENTRO de um muro (o alvo
+		// da 2, celula 3,16) e 2 na beirada. Fora elas, a horda da 17 nascia inteira no meio de um mar, e a 22(f) em
+		// `quem.Pos` -- a coordenada do berco do host, que e de OUTRO mapa. Na agua o gesto medido nem sai como foi
+		// pedido: o filtro da `Travessia` (`Core/Ai/Travessia.cs`) poe nadar, voar ou boiar por cima do comando, e um
+		// corpo que nao sai do lugar da verde de graca a todo "ele NAO anda" -- o `Moving` e o deslocamento DE FATO
+		// (`PassoDaIa`). E cada corpo cravado ficava no mundo FORA da reserva de fileiras, onde a presa de um cerebro
+		// forjado (`PresaDaFera`: o corpo em pe mais perto que ele VE -- dez tiles, sem parede no meio) podia ir busca-lo.
+		//
+		// FICAM FORA DA REGRA, de proposito: a Sala do Tempo das secoes 12 e 28 (`emZona`); o `noMar` da 12, que QUER
+		// agua; o cacador da 21(j), cuja medida e a distancia AO HOST, na zona dele; e a largada provisoria da 9, onde o
+		// corpo so fica ate o `npc.Pos = largada` (a pista sai do `SpeedStat` que o `PorNoMundo` calcula), sem um
+		// tique no meio.
+		// ==================================================================================================
+		var fileirasDadas = new List<(int De, int Ate)>();
+		Vec2 FaixaLivre(int tiles, int aPartirDaLinha, int altura = 1)
+		{
+			const int T = ZoneCollision.TileSize;
+			ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
+			if (mapa == null) return new Vec2(4 * T + T / 2f, aPartirDaLinha * T + T / 2f);   // zona sem colisao: nada para ninguem
+			for (int y = aPartirDaLinha; y + altura <= mapa.Height; y++)
+			{
+				bool reservada = false;
+				foreach ((int de, int ate) in fileirasDadas)
+					if (y <= ate && y + altura - 1 >= de) { reservada = true; break; }
+				if (reservada) continue;
+
+				for (int x = 0; x + tiles < mapa.Width; x++)
+				{
+					bool livre = true;
+					for (int dy = 0; dy < altura && livre; dy++)
+						for (int d = 0; d <= tiles && livre; d++) livre &= mapa.ServeDeChao(x + d, y + dy);
+					if (!livre) continue;
+					fileirasDadas.Add((y - 2, y + altura + 1));
+					return mapa.CentroDaCelula(x, y + altura / 2);
+				}
+			}
+			Checa($"(preparo) achei {tiles + 1} x {altura} celulas de chao A PE em {zona.Name}, a partir da fileira {aPartirDaLinha}",
+				  false, "a cena que pediu mediria o mapa, e nao o gesto");
+			return new Vec2(4 * T + T / 2f, aPartirDaLinha * T + T / 2f);
 		}
 
 		try
@@ -121,7 +209,11 @@ public partial class GameServer
 			// 1. SEM ATALHO: O VOO COBRA O MESMO QUE COBRA DO JOGADOR
 			// =====================================================================
 			{
-				ServerPlayer npc = Forjar("ia: voo", 50_000, new Vec2(0, 0));
+				// NO CHAO PROCURADO, e nao em (0, 0): a quina e BEIRADA nos dois eixos, e metade da caixa dos pes ficava fora
+				// do mapa (o `BlockedCell` responde parede la). Esta secao so mede preco e altura -- nenhum passo --, entao a
+				// quina nunca reprovou nada aqui; mas corpo nascido dentro de parede e palco que ninguem conferiu (ver o
+				// cabecalho da `FaixaLivre`).
+				ServerPlayer npc = Forjar("ia: voo", 50_000, FaixaLivre(0, 0));
 				EnsinarAVoar(npc);
 				npc.Cerebro!.Poderes = LerCapacidades(npc);
 
@@ -152,14 +244,34 @@ public partial class GameServer
 				Checa("...e sem pedir nada o corpo PAIRA (sobe sozinho ate a altura de pairar)",
 					  npc.Altitude > altAntes && npc.Altitude <= Voo.AlturaDePairar + 0.01,
 					  $"{npc.Altitude:0.#} px");
+
+				// ============================ ESTE CORPO SAI DO MUNDO AQUI, E NAO NO FIM DA BANCADA ============================
+				// Ele tem cerebro, voa e sabe o `Basic_Blast` (o `EnsinarAVoar`), e a secao 2 nasce na faixa de chao seguinte,
+				// a poucas fileiras dele.
+				// Vivo, ele virava a presa mais perto do corpo de la, e os dois brigavam por varias secoes: o "ia:
+				// sobe" revidava no andar dele em vez de subir atras do alvo alto ("ele DECOLOU sozinho" falso), e a
+				// guarda da secao 3 apanhava tiro perdido ("APARA de verdade: 0 de 34"). Intermitente porque dependia
+				// de os dois se escolherem; visto com `--diagia` em 2026-09-24.
+				// ================================================================================================================
+				RemoverNpc(npc);
 			}
 
 			// =====================================================================
 			// 2. A ALTITUDE ACOMPANHA O ALVO -- o pedido literal do dono
 			// =====================================================================
 			{
-				ServerPlayer npc = Forjar("ia: sobe", 50_000, new Vec2(0, 512));
-				ServerPlayer alvo = Forjar("alvo: alto", 50_000, new Vec2(96, 512), comCerebro: false);
+				// NO CHAO PROCURADO. Em (0, 512) o perseguidor nascia na BEIRADA, colado num muro de 18 celulas (a fileira 16
+				// de Namek e parede da coluna 2 a 19), e o alvo, em (96, 512), DENTRO dele (celula 3,16). A pergunta desta
+				// secao e a da ALTURA -- decolar, subir ao andar do alvo, nao chacoalhar, descer atras dele --, e o palco
+				// antigo somava a ela o `MoveRules.Escapar` da borda e um muro entre os dois. 3 tiles: os 96 px entre eles, no
+				// MESMO chao.
+				//
+				// A PARTIR DA FILEIRA 0, e nao da 16 (os antigos 512 px): a reserva que caisse na 16 (14..18) entraria no bloco
+				// de 13 fileiras que a 22(g) procura a partir da 8, e empurraria pra outro lugar o palco dela e o da 25 --
+				// medidos e verdes. Esta secao tira os dois corpos do mundo no fim, mas a reserva dela fica.
+				Vec2 palcoDaAltura = FaixaLivre(3, 0);
+				ServerPlayer npc = Forjar("ia: sobe", 50_000, palcoDaAltura);
+				ServerPlayer alvo = Forjar("alvo: alto", 50_000, palcoDaAltura + new Vec2(96, 0), comCerebro: false);
 				EnsinarAVoar(npc);
 				npc.Cerebro!.Poderes = LerCapacidades(npc);
 				npc.Cerebro.Inteligencia = 0.9;
@@ -218,6 +330,10 @@ public partial class GameServer
 				Checa("quando o alvo POUSA, ela desce atras dele (rasante, porque e esperta)",
 					  Voo.Andar(npc.Altitude) <= 1,
 					  $"ficou no andar {Voo.Andar(npc.Altitude)} ({npc.Altitude:0.#} px)");
+
+				// Pelo mesmo motivo da secao 1: um corpo com cerebro que fica no mundo vira presa das secoes seguintes.
+				RemoverNpc(npc);
+				RemoverNpc(alvo);
 			}
 
 			// =====================================================================
@@ -257,8 +373,17 @@ public partial class GameServer
 			// 4. A GUARDA: acontece, custa, e NAO e perfeita
 			// =====================================================================
 			{
-				ServerPlayer npc = Forjar("ia: guarda", 50_000, new Vec2(0, 1024));
-				ServerPlayer bate = Forjar("agressor", 50_000, new Vec2(40, 1024), comCerebro: false);
+				// NO CHAO PROCURADO (`FaixaLivre`), e nao em (0, 1024). x = 0 e a BEIRADA do mapa (`NaBorda`): o
+				// `MoveRules.Escapar` tirava o corpo dali no primeiro tique, pra onde o refugio mandasse -- e a guarda so
+				// sobe com o alvo COLADO (`Cerebro`, o `colado` do reflexo).
+				//
+				// O "0 DE 34" NAO ERA O PALCO. Ele voltou com o palco ja no chao procurado e o detalhe dizendo "no fim a
+				// 40 px do agressor": era o AGRESSOR que parava de bater. A guarda revida, um pesado dela arremessa, e os
+				// tiques desta bancada nao rodavam o `TickDoEmpurrao` -- ele ficava "no ar" ate o fim, com o `PodeAtacar`
+				// recusando. Ver o `Tiques` la em cima, que agora aterrissa quem foi arremessado.
+				Vec2 palcoDaGuarda = FaixaLivre(3, 1024 / ZoneCollision.TileSize);
+				ServerPlayer npc = Forjar("ia: guarda", 50_000, palcoDaGuarda);
+				ServerPlayer bate = Forjar("agressor", 50_000, palcoDaGuarda + new Vec2(40, 0), comCerebro: false);
 				npc.Cerebro!.Poderes = LerCapacidades(npc);
 				npc.Cerebro.Disciplina = 1.0;   // maxima: ainda assim nao apara sempre
 				bate.Combate.Letal = false;
@@ -276,7 +401,8 @@ public partial class GameServer
 					  npc.Cerebro.Poderes.TemComQueAparar);
 
 				// uma rajada RITMADA: e do ritmo que a IA aprende, e nao do `Recarga` do outro
-				int aparou = 0, golpes = 0, ergueu = 0;
+				int aparou = 0, golpes = 0, ergueu = 0, sairam = 0;
+				ZoneCollision? chaoDaGuarda = MapaDaZonaOuCatalogo(zona);
 				double kiGastoNaGuarda = 0;
 				for (int volta = 0; volta < 400; volta++)
 				{
@@ -286,10 +412,20 @@ public partial class GameServer
 
 					if (volta % 12 == 0)
 					{
+						// ============================ O AGRESSOR ENCOSTA ANTES DE CADA GOLPE ============================
+						// Ele e o JOGADOR que persegue, e nao um poste: a guarda revida, e com o arremessado aterrissando
+						// (ver o `Tiques`) os empurroes e tropecos da troca abriam 44-45 px entre os dois -- fora dos 40 do
+						// soco. Dali os golpes saiam no AR, a guarda (que so sobe com o alvo colado) parava de subir, e a
+						// apara dava "0 de 34" uma rodada em nove. A mesma volta ao contato do host da `--torneioteste`,
+						// a um tile (dentro do alcance, e longe da borda dele), do lado que tiver chao.
+						// ================================================================================================
+						Vec2 aLeste = npc.Pos + new Vec2(ZoneCollision.TileSize, 0), aOeste = npc.Pos - new Vec2(ZoneCollision.TileSize, 0);
+						bate.Pos = chaoDaGuarda == null || !MoveRules.Occupied(chaoDaGuarda, aLeste) ? aLeste : aOeste;
 						bate.Combate.Recarga = 0;
 						golpes++;
 						bool bloqueava = npc.Combate.Bloqueando;
 						Atacar(bate, Protocol.Golpe.Leve);
+						if (bate.Combate.Recarga > 0) sairam++;   // o golpe SAIU: so ele arma a recarga zerada acima
 						if (bloqueava && npc.Ficha.Ki < npc.Ficha.MaxKi - 1e-9)
 						{
 							aparou++;
@@ -304,10 +440,15 @@ public partial class GameServer
 					npc.Combate.SincronizarVida();
 				}
 
+				// A TROCA EXISTIU: sem golpe chegando nao ha o que aparar, e a linha da apara mediria o AGRESSOR. Um
+				// golpe recusado aqui e ali e jogo (atordoado por um critico, no ar por um empurrao que ainda nao
+				// aterrissou); o agressor incapaz a troca inteira e palco quebrado -- e o que o "0 de 34" era.
+				Checa("(preparo) o agressor BATEU de verdade na maior parte dos golpes pedidos (o palco nao o incapacitou)",
+					  sairam * 2 >= golpes, $"{sairam} de {golpes} golpes sairam");
 				Checa("ela ERGUE a guarda sozinha durante a troca (o reflexo, a 30 Hz)",
 					  ergueu > 0, $"{ergueu} vezes em 400 tiques");
 				Checa("...e APARA de verdade (o golpe entra no membro que aparou)",
-					  aparou > 0, $"{aparou} de {golpes} golpes");
+					  aparou > 0, $"{aparou} de {golpes} golpes (no fim a {(npc.Pos - bate.Pos).Length:0} px do agressor)");
 				Checa("...e NAO apara todos -- 100% de bloqueio e a assinatura de um robo",
 					  aparou < golpes, $"{aparou}/{golpes}");
 				Checa("...e cada apara COBRA `MaxKi * CustoKiDaGuarda`, igual a do jogador",
@@ -370,8 +511,26 @@ public partial class GameServer
 			// 6. A CARGA DE KI: recua, PARA, carrega -- e nao carrega andando
 			// =====================================================================
 			{
-				ServerPlayer npc = Forjar("ia: carga", 50_000, new Vec2(0, 2048));
-				ServerPlayer alvo = Forjar("alvo: longe", 50_000, new Vec2(900, 2048), comCerebro: false);
+				// NO CHAO PROCURADO, e no MEIO dele. Em (0, 2048) o corpo nascia no MAR (celula 0,64 do `z02_Namek.agua`) e na
+				// beirada, e o alvo, a 900 px, tambem na agua. Quando a secao traz o alvo pra 24 px, a receita da recarga manda
+				// RECUAR (`Cerebro.Recuperacao`, o `step_away` do `rechargeState`, NPCAI.dm:680-688) ate o proximo `Repensar`
+				// trocar o plano -- com o Ki que a carga ja devolveu, o `Escolher` nao volta pra recarga. Esse recuo ia contra a
+				// borda do mapa, onde o corpo preso so ganha do `MoveRules.Escapar` o passo que APROXIMA do refugio. Aqui ha 13
+				// celulas de chao e ele nasce na quinta, com 4 a oeste: o recuo dura no maximo um `IntervaloDeDecisao` (0,25 s,
+				// uns 70 px). O alvo fica a OITO tiles, na ultima celula da faixa: ele nao anda, nao tem cerebro e, quando a secao
+				// o traz pra perto, e pra dentro dela.
+				//
+				// ============================ "LONGE" E ENTRE A DISTANCIA SEGURA E O QUE A FERA VE ============================
+				// Ele estava a 900 px (28 tiles). Este corpo forjado anda pelo ramo do corpo POSSUIDO, e desde 2026-09-24 esse
+				// ramo so adota presa A VISTA (`PresaDaFera`: o `oview` do DM -- 10 tiles pra quem nao e macaco, o
+				// `LEGB_RANGE` da furia). A 28 tiles ele nao era mais alvo nenhum, o plano virava `Vagar` e a recarga (que so
+				// e escolhida contra alguem) nao vinha. OITO tiles e "longe" pro `rechargeState` (alem da `DistanciaSegura`,
+				// 6) e perto o bastante pra ele ser visto.
+				// ================================================================================================
+				Vec2 palcoDaCarga = FaixaLivre(12, 2048 / ZoneCollision.TileSize) + new Vec2(4 * ZoneCollision.TileSize, 0);
+				ServerPlayer npc = Forjar("ia: carga", 50_000, palcoDaCarga);
+				ServerPlayer alvo = Forjar("alvo: longe", 50_000, palcoDaCarga + new Vec2(8 * ZoneCollision.TileSize, 0),
+										   comCerebro: false);
 
 				// `SabeReunir` le o `MeditateGivesKiRegen` -- a MESMA porta da tecla C do jogador
 				npc.Ficha.MeditateGivesKiRegen = 1;
@@ -390,8 +549,88 @@ public partial class GameServer
 
 				Checa("com ki E folego criticos e o alvo longe, ele CARREGA (o `rechargeState`)",
 					  npc.Carregando, $"plano={npc.Cerebro.Atual}");
-				Checa("...e enquanto carrega ele NAO ANDA (o mesmo portao que prende o jogador)",
-					  !npc.Moving);
+
+				// ============================ O "NAO ANDA" PRECISA DE UM RUMO PRA RECUSAR ============================
+				// Escrita como era -- `!npc.Moving` logo depois dos 2 s de carga --, a linha media uma AUSENCIA: a receita da
+				// recarga devolve rumo ZERO (`Cerebro.Recuperacao`, "planta o pe e carrega"), e o `PassoDaIa` escreve `Moving =
+				// false` pelo ramo do corpo parado, antes de o portao ter o que recusar. Verde com o `!pl.Carregando` do
+				// `PodeMexerOCorpo`, e verde sem ele.
+				//
+				// O RUMO ENTRA PELO CAMINHO DE PRODUCAO QUE DE FATO O POE NA CARGA: a ARENA. O filtro `Cerebro.NaArena` roda por
+				// cima de todo plano, e na margem, pra quem nao voa, troca SO o rumo (`c with { Rumo = aoCentro }`) e deixa o
+				// `Carregar` do plano de pe. E o lutador de torneio que ficou sem Ki perto da linha: o comando que sai do cerebro
+				// e "carrega E anda pro centro", e quem decide qual das duas vale e o portao. Este corpo nao sabe voar (entao a
+				// decolagem da margem nao entra), e o alvo, a oito tiles, fica DENTRO da arena, a leste -- longe o bastante
+				// pra a receita seguir sendo a da recarga, que nem manda soco.
+				//
+				// A arena e montada em volta dele com UMA celula ate a linha oeste (margem 1, dentro dos 2 do `edge_margin`) e o
+				// centro dez celulas a leste, na fileira dele: o rumo e LESTE, pra cima das 4 celulas de chao que a faixa tem
+				// daquele lado. Sem o portao ele anda pro chao livre, e nao contra um muro que o pararia de graca.
+				//
+				// E O CONTROLE E O MESMO QUADRO COM A CARGA RECUSADA NA PORTA: sem o `SabeReunir` o `Carregar` recusa (a frase de
+				// quem nao tem Ki Unlocked), o `Carregando` nao volta, e o MESMO rumo da MESMA arena tem que mover o corpo. Sem
+				// ele, um zero de deslocamento tambem seria compativel com um rumo que nunca chegou ao passo.
+				// ====================================================================================================
+				{
+					int cx = (int)MathF.Floor(npc.Pos.X / ZoneCollision.TileSize);
+					int cy = (int)MathF.Floor(npc.Pos.Y / ZoneCollision.TileSize);
+					var arenaDaCarga = new Arena(cx - 1, cy - 10, cx + 20, cy + 10);
+					double kiAntesDaArena = npc.Ficha.Ki, folegoAntesDaArena = npc.Ficha.stamina;
+					npc.Arena = arenaDaCarga;
+
+					// O TANQUE E O FOLEGO FICAM NO FUNDO NA JANELA -- os mesmos 5% da largada da secao. A recarga so e ESCOLHIDA
+					// com os dois abaixo do critico (`Cerebro.KiCritico` 0,10, `FolegoCritico` 0,12), a carga devolve os dois, e
+					// passado o compromisso minimo (`TempoMinimoNoPlano`, 1,2 s) o proximo `Repensar` troca de plano: a primeira
+					// rodada desta linha viu o corpo largar a recarga 12 tiques depois e ir pressionar o alvo -- 170 px de passo
+					// legitimo, e a janela medindo o FIM da carga em vez do passo DURANTE ela.
+					const int tiquesNaMargem = 30;   // 1 s
+					Vec2 ondeCarrega = npc.Pos;
+					int comRumoDaArena = 0, carregando = 0, andando = 0;
+					for (int i = 0; i < tiquesNaMargem; i++)
+					{
+						npc.Ficha.Ki = kiNoFundo;
+						npc.Ficha.stamina = npc.Ficha.maxstamina * 0.05;
+						Tiques(1, npc, alvo);
+						if (npc.Cerebro.Porque.StartsWith("arena: na margem, recuar", StringComparison.Ordinal)) comRumoDaArena++;
+						if (npc.Carregando) carregando++;
+						if (npc.Moving) andando++;
+					}
+					float andouNaCarga = (npc.Pos - ondeCarrega).Length;
+
+					Checa("(preparo) a ARENA poe rumo no comando da carga: em todo tique o cerebro manda recuar pro centro "
+						+ "(`NaArena`) e o corpo segue carregando",
+						  comRumoDaArena == tiquesNaMargem && carregando == tiquesNaMargem,
+						  $"rumo da arena em {comRumoDaArena}, carregando em {carregando} de {tiquesNaMargem} tiques "
+						  + $"(margem {arenaDaCarga.MargemEmCelulas(npc.Pos)}, plano={npc.Cerebro.Atual}, porque '{npc.Cerebro.Porque}')");
+					Checa("...e enquanto carrega ele NAO ANDA, nem com esse rumo no comando (o mesmo portao que prende o jogador)",
+						  andouNaCarga == 0f && andando == 0,
+						  $"andou {andouNaCarga:0.#} px, `Moving` em {andando} de {tiquesNaMargem} tiques");
+
+					// ---- O CONTROLE ----
+					npc.Ficha.MeditateGivesKiRegen = 0;
+					PararCarga(npc);
+					Vec2 ondeParou = npc.Pos;
+					int recarregou = 0;
+					for (int i = 0; i < 10; i++)
+					{
+						Tiques(1, npc, alvo);
+						if (npc.Carregando) recarregou++;
+					}
+					float andouSemCarga = npc.Pos.X - ondeParou.X;
+					Checa("(controle) a MESMA arena, com a carga recusada na porta (sem o `SabeReunir`): o MESMO rumo leva o "
+						+ "corpo pro centro -- entao o zero de cima e o portao, e nao um rumo que nunca chegou ao passo",
+						  recarregou == 0 && andouSemCarga >= ZoneCollision.TileSize / 2f,
+						  $"andou {andouSemCarga:0.#} px pro leste, carregando em {recarregou} de 10 tiques");
+
+					// A cena volta a ser a da secao: sem arena, com o Ki Unlocked, no meio da faixa e com o tanque e o folego de
+					// ANTES da margem (a janela os segurou no fundo, e o controle andou sem carga) -- o resto dela mede a carga
+					// SUBINDO e a INTERRUPCAO, e um tanque diferente ou o corpo um tile a leste mudariam o que ela mede.
+					npc.Arena = null;
+					npc.Ficha.MeditateGivesKiRegen = 1;
+					npc.Pos = palcoDaCarga;
+					npc.Ficha.Ki = kiAntesDaArena;
+					npc.Ficha.stamina = folegoAntesDaArena;
+				}
 
 				Tiques(120, npc, alvo);
 				Checa("...e o Ki SOBE de verdade (pelo `CargaDeKi.Passo`, nao por atribuicao)",
@@ -417,8 +656,13 @@ public partial class GameServer
 					EscadaAutomatica = true, Maestria = 100,
 				};
 
-				ServerPlayer npc = Forjar("ia: forma", 5e9, new Vec2(0, 3072));
-				ServerPlayer alvo = Forjar("alvo: forte", 5e11, new Vec2(60, 3072), comCerebro: false);
+				// NO CHAO PROCURADO, e nao em (0, 3072): a fileira 96 de Namek e MAR da coluna 0 a 273, e o corpo nascia na
+				// beirada com o alvo tambem na agua. Na agua o filtro da `Travessia` pode trocar o comando por NADAR, que gasta
+				// o mesmo Ki que a escada da IA cobra (25%, `npc_try_transform`, NPCAI.dm:365, citado abaixo) -- e a pergunta
+				// desta secao e a escada. 2 tiles: os 60 px ate o alvo.
+				Vec2 palcoDaForma = FaixaLivre(2, 3072 / ZoneCollision.TileSize);
+				ServerPlayer npc = Forjar("ia: forma", 5e9, palcoDaForma);
+				ServerPlayer alvo = Forjar("alvo: forte", 5e11, palcoDaForma + new Vec2(60, 0), comCerebro: false);
 				npc.Ficha.Class = "Saiyan";
 				npc.Ficha.MeditateGivesKiRegen = 1;
 				npc.Ficha.Ki = npc.Ficha.MaxKi;
@@ -454,7 +698,9 @@ public partial class GameServer
 				// nunca mais frouxa. Ela nao emite o comando com o tanque no fim -- e essa e a
 				// checagem de baixo, que e a que reprova se alguem quebrar a IA.
 				// ==============================================================================================
-				ServerPlayer seco = Forjar("ia: sem folego", 5e9, new Vec2(0, 3200));
+				// Chao procurado pelo motivo do par de cima ((0, 3200) e mar, na beirada). Este corpo nao anda -- so e
+				// perguntado --, mas fica no mundo ate o fim, e o palco dele entra na reserva de fileiras.
+				ServerPlayer seco = Forjar("ia: sem folego", 5e9, FaixaLivre(0, 3200 / ZoneCollision.TileSize));
 				seco.Ficha.Class = "Saiyan";
 				Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(seco.Forma, moldeEscada, seco.Ficha.BP, Perfil(seco));
 				seco.Ficha.Ki = seco.Ficha.MaxKi * 0.02;
@@ -528,7 +774,33 @@ public partial class GameServer
 						EscadaAutomatica = true, Maestria = 0,
 					};
 
-					ServerPlayer cena = Forjar("ia: cena", 5e9, new Vec2(0, 3400));
+					// ============================ O PALCO E CHAO DE VERDADE, E NAO UM NUMERO REDONDO ============================
+					// **ESTA FAMILIA FICOU VERMELHA POR CAUSA DO MAPA -- E AS LINHAS VERDES DELA TAMBEM MENTIAM.**
+					// Os quatro corpos que ANDAM aqui nasciam em (0, y). A zona desta bancada e a primeira pre-feita
+					// sem ninguem -- com o host Saiyajin (berco Vegeta) e a Terra ja povoada, NAMEK -- e em Namek (e na
+					// Terra) as colunas 0..11 das fileiras 100..120 sao OCEANO (`z02_Namek.agua`). E x = 0 poe metade
+					// da caixa dos pes FORA do mapa, que o `BlockedCell` conta como parede.
+					//
+					// O que a bancada media era a SAIDA DE EMERGENCIA do `MoveRules.Escapar`: preso pela geometria (a
+					// borda), o corpo ganha passos `Dirigido` rumo ao refugio ate a caixa sair da coluna de fora (x >= 8)
+					// -- UM passo de ~9 px. Dali em diante ele esta A PE com os pes no mar, e a agua o para como parede
+					// (`ClasseDeAgua.Bloqueia`, pedido do dono). Resultado:
+					//   * "na base ele ANDA" -- verde pelo escape, e nao pelo passo;
+					//   * "na cinematica nao anda um pixel" e "repondo o prazo ele para de novo" -- VAZIAS: o mar
+					//     segurava o corpo com o portao aberto ou fechado;
+					//   * "ACABADA a cena volta a andar" -- 0,0 px: o escape ja tinha sido gasto no "antes".
+					// A cinematica estava certa o tempo todo: o prazo vence e o `PodeMexerOCorpo` abre.
+					//
+					// O CONSERTO E O PALCO, E NAO A REGRA: `FaixaLivre` acha no mapa VIVO desta zona um corredor
+					// que o proprio `MoveRules` diz que um corpo a pe atravessa. 12 tiles porque ESTE corpo anda duas
+					// vezes pro mesmo lado (antes e depois, ~95 px cada a `SpeedStat` ~1,8) -- e assim o comando
+					// continua o MESMO nos tres momentos, que e a regra do cabecalho desta familia.
+					//
+					// (O `RoboDeFotoDoRaio` resolveu o primo deste defeito VOLTANDO pelo caminho que abriu. Aqui isso
+					// nao bastaria: o caminho "aberto" no antes era o escape, por cima do mar -- voltando, o corpo
+					// pisaria de novo na agua e seria recusado do mesmo jeito.)
+					// ========================================================================================================
+					ServerPlayer cena = Forjar("ia: cena", 5e9, FaixaLivre(12, 3400 / ZoneCollision.TileSize));
 					cena.Ficha.Class = "Saiyan";
 					cena.Ficha.Ki = cena.Ficha.MaxKi;
 					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
@@ -579,7 +851,12 @@ public partial class GameServer
 					for (int i = 0; i < 10; i++) AplicarComando(cena, andar, Protocol.TickSeconds);
 					float depois = (cena.Pos - p2).Length;
 					Checa("...e ACABADA a cena o corpo volta a andar com o mesmo comando",
-						  depois > 1f, $"{depois:0.0}px em 10 tiques");
+						  depois > 1f,
+						  // O RODAPE DIZ QUEM SEGURA O CORPO: o portao (`PodeMexerOCorpo`) ou o chao. Foi a pergunta
+						  // que esta linha deixou sem resposta por semanas -- `funil=livre` com o corpo no mar e
+						  // defeito de palco; `funil=fechado` e um estado da cena que nao se soltou.
+						  $"{depois:0.0}px em 10 tiques | funil={(PodeMexerOCorpo(cena) ? "livre" : "fechado")} "
+						  + $"agua no rumo={cena.BarradoPelaAgua} | {zona.Name} ({cena.Pos.X:0},{cena.Pos.Y:0})");
 
 					// ============================ E A OUTRA METADE: QUEM DOMINA A FORMA NAO PARA ============================
 					// Sem esta checagem, a de cima poderia ficar verde com uma regra grosseira demais --
@@ -587,7 +864,9 @@ public partial class GameServer
 					// plantado 25 s de graca no meio da luta. A cena e que prende, e ela e a MESMA
 					// dispensa de maestria que o jogador tem (`Cinematicas.Degrau`, >= 50%).
 					// ========================================================================================
-					ServerPlayer veterano = Forjar("ia: forma dominada", 5e9, new Vec2(0, 3480));
+					// CHAO DE VERDADE, pelo mesmo motivo do palco da cena acima: este corpo tambem ANDA, e em (0, y) o
+					// "anda no MESMO tique" era o escape da borda e nao o passo.
+					ServerPlayer veterano = Forjar("ia: forma dominada", 5e9, FaixaLivre(6, 3480 / ZoneCollision.TileSize));
 					veterano.Ficha.Class = "Saiyan";
 					veterano.Ficha.Ki = veterano.Ficha.MaxKi;
 					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
@@ -609,7 +888,8 @@ public partial class GameServer
 					// REVERTE a forma (`TickDaForma`), reverter passa pelo `AnunciarForma`, e o anuncio
 					// da BASE marca a cena em ZERO. O congelamento cai junto com a forma, no mesmo gesto.
 					// ========================================================================================
-					ServerPlayer caido = Forjar("ia: cena interrompida", 5e9, new Vec2(0, 3560));
+					// CHAO DE VERDADE (ver o palco da cena acima): "de pe ele anda de novo" tem que ser passo, nao escape.
+					ServerPlayer caido = Forjar("ia: cena interrompida", 5e9, FaixaLivre(6, 3560 / ZoneCollision.TileSize));
 					caido.Ficha.Class = "Saiyan";
 					caido.Ficha.Ki = caido.Ficha.MaxKi;
 					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
@@ -645,7 +925,10 @@ public partial class GameServer
 					// muda -- mesmo corpo, mesmo comando, mesmo Ki, mesma forma, mesmo tique. Se ele
 					// andar agora, a linha de cima e verde pelo motivo certo.
 					// =========================================================================================
-					ServerPlayer injetado = Forjar("ia: cena injetada", 5e9, new Vec2(0, 3640));
+					// E AQUI O CHAO E O QUE DA DENTE A INJECAO. No mar, "repondo o prazo ele para de novo" ficava verde
+					// com o portao aberto ou fechado -- a agua segurava o corpo do mesmo jeito --, e o "VOLTA A ANDAR"
+					// era o escape da borda. Num corredor caminhavel o unico que pode parar este corpo e o `EmCena`.
+					ServerPlayer injetado = Forjar("ia: cena injetada", 5e9, FaixaLivre(6, 3640 / ZoneCollision.TileSize));
 					injetado.Ficha.Class = "Saiyan";
 					injetado.Ficha.Ki = injetado.Ficha.MaxKi;
 					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
@@ -687,7 +970,9 @@ public partial class GameServer
 					// ficaria verde com o portao pegando o corpo em voo, ou ferido, ou transformado fora
 					// da cena -- que sao exatamente os estados em que o dono joga.
 					// ==============================================================================================
-					ServerPlayer jogador = Forjar("jogador: sem cerebro", 5e9, new Vec2(0, 3720), comCerebro: false);
+					// Chao procurado, como os quatro corpos acima ((0, 3720) e mar, na beirada). Este nao anda -- a pergunta e so o
+					// `PodeMexerOCorpo` --, mas o palco dele tambem nao pode ser a borda.
+					ServerPlayer jogador = Forjar("jogador: sem cerebro", 5e9, FaixaLivre(0, 3720 / ZoneCollision.TileSize), comCerebro: false);
 					jogador.Ficha.Class = "Saiyan";
 					jogador.Ficha.Ki = jogador.Ficha.MaxKi;
 					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
@@ -722,7 +1007,8 @@ public partial class GameServer
 					// `Carregando`), e a linha "ele nao anda" ficaria igualmente verde -- com o corpo
 					// virando alvo de nocaute pro resto do jogo. Aqui se afirma o contrario: em cena,
 					// TODAS as outras recusas do funil continuam desligadas.
-					ServerPlayer emCena = Forjar("jogador: em cena", 5e9, new Vec2(0, 3800), comCerebro: false);
+					// Chao procurado pelo mesmo motivo do `jogador` acima ((0, 3800) e mar, na beirada).
+					ServerPlayer emCena = Forjar("jogador: em cena", 5e9, FaixaLivre(0, 3800 / ZoneCollision.TileSize), comCerebro: false);
 					emCena.Ficha.Class = "Saiyan";
 					emCena.Ficha.Ki = emCena.Ficha.MaxKi;
 					Jandirus.Core.Npc.SorteioDeNpc.AbrirFormas(
@@ -751,7 +1037,9 @@ public partial class GameServer
 			// caminho da IA passa pelo MESMO funil: se o atuador chamasse qualquer outra coisa, o
 			// chefe subiria.
 			{
-				ServerPlayer? chefe = NascerNpc("guardiao_saiyajin", zona, new Vec2(0, 4096), 77);
+				// Chao procurado ((0, 4096) e mar, na beirada). A secao nao da passo nenhum, mas o chefe fica no mundo, e o palco
+				// dele entra na reserva de fileiras como o de todo corpo desta bancada.
+				ServerPlayer? chefe = NascerNpc("guardiao_saiyajin", zona, FaixaLivre(0, 4096 / ZoneCollision.TileSize), 77);
 				if (chefe != null)
 				{
 					nascidos.Add(chefe);
@@ -787,11 +1075,50 @@ public partial class GameServer
 			// =====================================================================
 			// Escrever `npc.Correndo = true` daria 60% de velocidade DE GRACA e o boneco na tela
 			// seria identico. O que denuncia e o tanque.
+			//
+			// ============================ A PISTA E PROCURADA, E NAO CRAVADA (2026-09-23) ============================
+			// Esta secao cravava o corpo em `(0, 5120)` e reprovava com "20,8 px em 1 s" (no 0b0c8b2 e na
+			// arvore de 2026-09-23, identico em cinco rodadas). O numero e EXATAMENTE um tique de corrida
+			// deste corpo (`SpeedStat` 1,774 -> 624 px/s -> 20,8 px por tique): ele deu UM passo e parou.
+			// Nao era a corrida, era a CENA:
+			//   * a zona e "a primeira pre-feita sem ninguem" (topo do metodo) -- hoje NAMEK, porque a Terra
+			//     ja tem os cidadaos do povoamento e o host nasce no berco dele;
+			//   * a costa oeste de Namek e OCEANO: a fileira 160 e agua da coluna 0 a 8 (`z02_Namek.agua`,
+			//     que entrou em 2449619 junto com a agua como terceira classe de celula);
+			//   * em `x = 0` meia caixa dos pes esta FORA do mapa (parede); o `MoveRules.Escapar` a tira de
+			//     la no 1o tique, e dali o corpo esta "preso pelo MODO" -- a pe, a agua para como muro. E a
+			//     regra que fechou o "ando por cima da agua" do dono (a55b464), e ela esta certa.
+			// O Ki continuava verde porque o `PodeCorrer` cobra a INTENCAO de correr, tique a tique -- igual
+			// ao `Input` do jogador, que cobra pelo `moving` do pacote --, entao a unica linha vermelha era a
+			// honesta: ela media o mar. E o verde de antes era por acaso: a zona era a Terra (chao seco na
+			// coluna 0), ou o `Advance` antigo deixava quem ja estava na agua andar por cima dela.
+			//
+			// Agora a largada sai da `FaixaLivre` (a mesma celula que o passo recusa, com 1 s de
+			// corrida DESTE corpo mais dois tiles de folga), a partir da fileira 160 -- a faixa desta secao
+			// desde sempre; a reserva de fileiras da `FaixaLivre` a separa dos palcos das outras cenas. E a
+			// linha "(preparo)" confere a pista pelo proprio `MoveRules.Occupied`/`PathOccupied`: se o mapa
+			// mudar de novo, a reprovacao sai com o nome da cena, e nao disfarcada de "a corrida ficou lenta".
+			// ========================================================================================================
 			{
+				const int n = 30;   // 1 s
 				ServerPlayer npc = Forjar("ia: corrida", 50_000, new Vec2(0, 5120), comCerebro: false);
+
+				// O comprimento sai da velocidade DESTE corpo (a conta do `Advance`), e nao de um numero
+				// escrito aqui: se o `Statify` mudar, a pista cresce junto.
+				float pistaPx = MoveRules.SpeedPx(npc.SpeedStat, true) * n * Protocol.TickSeconds
+								+ 2 * ZoneCollision.TileSize;
+				Vec2 largada = FaixaLivre((int)MathF.Ceiling(pistaPx / ZoneCollision.TileSize), 160);
+				ZoneCollision? chao = MapaDaZonaOuCatalogo(zona);
+				bool pistaSeca = chao == null
+					|| (!MoveRules.Occupied(chao, largada)
+						&& !MoveRules.PathOccupied(chao, largada, largada + new Vec2(pistaPx, 0)));
+				Checa("(preparo) a pista da corrida e TERRA FIRME pela pergunta do proprio passo "
+					+ "(`MoveRules.Occupied` na largada e `PathOccupied` ate o fim, a pe)",
+					  pistaSeca, $"largada ({largada.X:0},{largada.Y:0}) em {zona.Name}, {pistaPx:0} px");
+				npc.Pos = largada;
+
 				double kiAntes = npc.Ficha.Ki;
 				Vec2 posAntes = npc.Pos;
-				const int n = 30;   // 1 s
 				for (int i = 0; i < n; i++)
 					PassoDaIa(npc, new Comando { Rumo = new Vec2(1, 0), Correndo = true }, Protocol.TickSeconds);
 
@@ -811,6 +1138,27 @@ public partial class GameServer
 				npc.Ficha.Ki = 0;
 				PassoDaIa(npc, new Comando { Rumo = new Vec2(1, 0), Correndo = true }, Protocol.TickSeconds);
 				Checa("...e com o tanque vazio ela simplesmente NAO corre", !npc.Correndo);
+
+				// ============================ O CONTRA-EXEMPLO: A MESMA PISTA, A PE ============================
+				// "Andou na velocidade de corrida" so prova alguma coisa se ANDAR nao cumprir a linha. O defeito
+				// que ela existe pra pegar esta no cabecalho do `PassoDaIa` ("A CORRIDA NAO EXISTIA": o
+				// `Advance` chamado sem o `correndo`), e com ele o corpo anda 1x e nao 2,2x. Entao o MESMO corpo
+				// volta pra MESMA largada e anda 1 s sem `Correndo` (o Ki zerado nao importa: andar nao cobra):
+				//   * tem que ficar ABAIXO da linha da corrida -- a linha separa os dois gestos;
+				//   * e ACIMA de 95% do passo cheio -- a pista nao parou ninguem. E esta metade que teria dito,
+				//     no dia em que a cena caiu no mar, que o defeito era do chao e nao da corrida.
+				// ==============================================================================================
+				npc.Pos = posAntes;
+				for (int i = 0; i < n; i++)
+					PassoDaIa(npc, new Comando { Rumo = new Vec2(1, 0) }, Protocol.TickSeconds);
+				float andouAPe = (npc.Pos - posAntes).Length;
+				float passoCheio = MoveRules.SpeedPx(npc.SpeedStat, false) * n * Protocol.TickSeconds;
+				double linhaDaCorrida = MoveRules.SpeedPx(npc.SpeedStat, false) * 1.2;
+				Checa("[contra-exemplo] o MESMO corpo, na MESMA pista, ANDANDO 1 s: fica abaixo da linha da "
+					+ "corrida (sem o `correndo` no `Advance` a linha de cima reprovaria) e anda o passo cheio "
+					+ "(a pista nao para ninguem)",
+					  andouAPe < linhaDaCorrida && andouAPe > passoCheio * 0.95f,
+					  $"{andouAPe:0.#} px a pe; passo cheio {passoCheio:0.#}, linha da corrida {linhaDaCorrida:0.#}");
 			}
 
 			// =====================================================================
@@ -924,8 +1272,9 @@ public partial class GameServer
 				// candidatos por golpe, `Estados()` monta um dicionario. Sao caminhos de producao,
 				// compartilhados com o jogador, e nada disso e desta camada.
 				//
-				// A 4000 px eles percebem, decidem, andam e nunca alcancam -- que e exatamente o
-				// pedaco que este trabalho e dono e o unico que faz sentido cobrar zero.
+				// Longe, eles percebem, decidem, andam e nunca alcancam -- que e exatamente o pedaco que este
+				// trabalho e dono e o unico que faz sentido cobrar zero. QUAO longe, e ONDE, e o bloco do palco logo
+				// abaixo: a resposta que morava aqui ("a 4000 px") media o MAPA, e nao a distancia.
 				// ==========================================================================================
 				// ============================ E A ZONA TEM QUE ESTAR LIMPA ============================
 				// Os corpos das secoes anteriores continuam no mundo COM CEREBRO, brigando entre si e
@@ -938,10 +1287,43 @@ public partial class GameServer
 				// ==================================================================================
 				foreach (ServerPlayer velho in _players.Values) velho.Cerebro = null;
 
+				// ============================ O PALCO: A SALA DO TEMPO, UM CORPO A CADA 20.000 px ============================
+				// Esta secao nasceu com os 20 numa fileira de Namek, a 4000 px um do outro -- e o palco media o MAPA:
+				//   * Namek tem 500 x 500 celulas (16.000 px). Do corpo 4 em diante (x >= 16.000) eram 16 corpos FORA do
+				//     mapa, no ramo sem refugio do `MoveRules.Escapar` (duas buscas de 289 celulas por tique e passe
+				//     livre) -- o ramo do mapa quebrado, que nao acontece em jogo;
+				//   * os 4 de dentro (x = 0 a 12.000, fileira 192) nasciam no MAR. Decolavam (`Travessia`), mas sem o
+				//     `TickDoVoo` -- que esta medida nao roda -- a altitude ficava 0 e o corpo seguia A PE na agua:
+				//     `Escapar` -> `QuinaValida` todo tique. O corpo 4 entrava no mesmo mar pela borda leste;
+				//   * e 4000 px nao separam ninguem em chao seco. A ficha forjada anda a 284 px/s (`SpeedStat` 1,77);
+				//     dois corpos que se cacam fecham 568 px/s -- 4000 px em 7 s --, e esta secao dirige o corpo 0 por
+				//     31 s. Ninguem brigava porque ninguem conseguia andar. E Namek nao tem chao pra 20 a essa
+				//     distancia: 24% das celulas servem de chao, e a clareira mais funda fica a 39 celulas da agua.
+				//
+				// A Sala do Tempo e a unica zona sem beirada (`SalaDoTempo.SemBorda`): fora do bitset e chao A PE, sem
+				// agua e sem parede, pra sempre. Os 20 ficam numa fileira a 20.000 px, longe do quarto desenhado. O PIOR
+				// PAR e o 0 com o 1 (um e o mais perto do outro; o 1 empata entre o 0 e o 2 e fica com o 0, que entrou
+				// antes na lista da zona): dirigidos juntos por 628 tiques e o 0 sozinho por mais 301, fecham no maximo
+				// 568 x 20,9 s + 284 x 10,0 s = 14.730 px. Sobram mais de 5.000 px, e o controle no fim da secao cobra
+				// que ninguem trocou golpe.
+				//
+				// E NINGUEM DE FORA ESTA LA (o preparo abaixo). A fera caca o corpo em pe mais perto que ela ve
+				// (`PresaDaFera`, dez tiles), e em Namek o mais perto podia ser um corpo parado de outra secao. Os corpos
+				// das outras secoes continuam em `_players` e continuam VARRIDOS pelo laco -- o custo de um servidor
+				// cheio nao saiu da medida.
+				// ============================================================================================================
+				ZoneKey sala = ZoneKey.Premade(ZonaDaSala);
+				Checa("(preparo) a Sala do Tempo esta vazia -- os 20 so enxergam uns aos outros",
+					  ZoneList(sala.Hash).Count == 0, $"{ZoneList(sala.Hash).Count} corpo(s) la");
+				Checa("(preparo) a Sala nao tem beirada: as duas pontas da fileira, fora do bitset, sao chao A PE",
+					  MapaDaZonaOuCatalogo(sala) is { SemBorda: true } salaMapa
+					  && salaMapa.ServeDeChao(24_000 / ZoneCollision.TileSize, 8_000 / ZoneCollision.TileSize)
+					  && salaMapa.ServeDeChao((24_000 + 19 * 20_000) / ZoneCollision.TileSize, 8_000 / ZoneCollision.TileSize));
+
 				var corpos = new List<ServerPlayer>();
 				for (int i = 0; i < 20; i++)
 				{
-					ServerPlayer c = Forjar($"ia: perf{i}", 50_000, new Vec2(i * 4000, 6144));
+					ServerPlayer c = Forjar($"ia: perf{i}", 50_000, new Vec2(24_000 + i * 20_000, 8_000), emZona: sala);
 					EnsinarAVoar(c);
 					c.Cerebro!.Poderes = LerCapacidades(c);
 					corpos.Add(c);
@@ -950,7 +1332,8 @@ public partial class GameServer
 				// ============================ SAO DOIS TIQUES DIFERENTES, E MEDIR JUNTO ESCONDE OS DOIS ============================
 				// 29 de cada 30 tiques sao BARATOS: percebe, decide, atua. O trigesimo carrega a
 				// leitura de capacidades (1 Hz por corpo), que varre o catalogo de formas inteiro --
-				// e la dentro cada `Avaliar` monta um `HashSet` (`Catalogo.LinhasAbertas`).
+				// cada forma passa pelo `Avaliar`, que desde 2026-09-24 nao monta conjunto nem lambda (a linha
+				// "a leitura de UM corpo aloca SO a resposta", mais abaixo, cobra isso).
 				//
 				// Medir a media dos 30 da um numero que nao descreve nenhum dos dois e que nao pega
 				// regressao: um vazamento no tique barato desaparece na media, e uma leitura duas
@@ -977,12 +1360,24 @@ public partial class GameServer
 
 					int voltas = comLeitura ? 300 : 25;
 
-					long b0 = GC.GetAllocatedBytesForCurrentThread();
-					ulong t0 = Time.GetTicksUsec();
-					for (int i = 0; i < voltas; i++) TickDosCorposSemDono(Protocol.TickSeconds);
-					ulong t1 = Time.GetTicksUsec();
-					bytes = (GC.GetAllocatedBytesForCurrentThread() - b0) / voltas;
-					return (t1 - t0) / (double)voltas;
+					// ============================ O RELATO DA `--diagia` SAI DA JANELA ============================
+					// Cada troca de plano da IA vira uma linha montada por interpolacao (`[ia] X: Nada -> Pressionar
+					// ...`) DENTRO do tique medido -- custo do diagnostico, e nao do jogo. Com ele ligado esta secao
+					// reprovava toda rodada (18 a 21 B por tique a mais, contra o teto de 52; 2026-09-24). Desligado
+					// SO aqui dentro, a medida continua valendo e o resto da bancada continua relatando.
+					// ==========================================================================================
+					bool relato = _diagIa;
+					_diagIa = false;
+					try
+					{
+						long b0 = GC.GetAllocatedBytesForCurrentThread();
+						ulong t0 = Time.GetTicksUsec();
+						for (int i = 0; i < voltas; i++) TickDosCorposSemDono(Protocol.TickSeconds);
+						ulong t1 = Time.GetTicksUsec();
+						bytes = (GC.GetAllocatedBytesForCurrentThread() - b0) / voltas;
+						return (t1 - t0) / (double)voltas;
+					}
+					finally { _diagIa = relato; }
 				}
 
 				// ============================ O CONTROLE DO INSTRUMENTO ============================
@@ -997,9 +1392,16 @@ public partial class GameServer
 				_ = soma;
 
 				double us20 = Medir(20, true, out long b20);
+				// ============================ O BARATO DOS 20 VEM LOGO DEPOIS, E A ORDEM E A MEDIDA ============================
+				// O `Medir` TIRA o cerebro de quem fica de fora (`i >= quantos`) e nao devolve. Medido depois do 5 e do 1 --
+				// como era --, o "tique BARATO de 20 corpos" dirigia UM corpo so: 13,1 us contra os 13,9 do "1 corpo", e os
+				// 56 B dele eram do corpo 0 sozinho (`MoveRules.QuinaValida`). A linha que prometia zero pra 20 cobria um.
+				// Aqui os 20 ainda tem cerebro, e o controle la embaixo cobra isso.
+				// ==========================================================================================================
+				double barato20 = Medir(20, false, out long lixo20);
+				int dirigidosNoBarato = corpos.Count(c => c.Cerebro != null);
 				double us5 = Medir(5, true, out long b5);
 				double us1 = Medir(1, true, out long b1);
-				double barato20 = Medir(20, false, out long lixo20);
 				// O PISO: o laco VARRENDO tudo e nao dirigindo ninguem. Sem esta linha nao da pra
 				// saber se um numero de lixo e da IA ou do laco.
 				double vazio = Medir(0, false, out long lixoVazio);
@@ -1025,12 +1427,26 @@ public partial class GameServer
 				// `struct`, o buffer dos dirigidos e reusado, e o relato so monta string quando
 				// alguem liga o `Explicando`.
 				// ==================================================================================
+				// ============================ OS DOIS CONTROLES DO PALCO ============================
+				// (1) O barato mediu os 20 -- ver a ordem das medidas acima.
+				// (2) Ninguem trocou golpe. A tag de combate nasce em todo golpe resolvido (`EntrarEmCombate`: soco no
+				//     `MeleeResolver.Resolver`, tiro que acerta, embate de ki) e quem a abaixa e o `TickCombate`, que
+				//     nenhuma medida desta secao roda: um golpe em qualquer uma das cinco janelas deixaria o corpo marcado
+				//     ate aqui. Sem este controle, "longe" seria so uma conta no comentario -- e a de 4000 px ja errou.
+				// ==================================================================================
+				Checa("(controle) o tique BARATO foi medido com os 20 corpos dirigidos, e nao com o que sobrou das "
+					+ "medidas menores", dirigidosNoBarato == 20, $"{dirigidosNoBarato} de 20");
+				Checa("(controle) nenhum dos 20 trocou golpe em nenhuma das medidas -- o lixo medido e da IA, e nao do "
+					+ "combate (todo golpe resolvido poe a tag; nada aqui a abaixa)",
+					  corpos.All(c => c.Combate.EmCombate == 0),
+					  string.Join(", ", corpos.Where(c => c.Combate.EmCombate > 0).Select(c => c.Name)));
 				Checa("o tique BARATO da IA nao aloca nada -- percepcao, decisao, comando e passo de "
 					+ "20 corpos, zero bytes (struct, buffer reusado, relato desligado)",
 					  lixo20 < 64, $"{lixo20} B por tique com 20 corpos");
 
 				// E O CARO E AFIRMADO COMO ELE E, com a causa nomeada -- a checagem existe pra pegar
-				// REGRESSAO, e nao pra prometer um zero que o catalogo compartilhado nao permite.
+				// REGRESSAO. (Historico: este paragrafo dizia que o catalogo compartilhado nao permitia chegar a
+				// zero; desde 2026-09-24 ele chega -- ver "E O TETO DESCEU", abaixo.)
 				//
 				// ============================ ESTE TETO SUBIU UMA VEZ, E O MOTIVO ESTA AQUI ============================
 				// Ele era 8.192 e a medida batia em 8.173 -- dezenove bytes de folga, ou seja: a
@@ -1049,11 +1465,147 @@ public partial class GameServer
 				// se a pergunta nova precisava mesmo passar pelo funil caro, ou se ela cabia numa das
 				// que ja estao la.
 				// ================================================================================================
-				Checa("a leitura de capacidades (1 Hz) fica dentro do orcamento de lixo conhecido "
-					+ "-- as fontes sao o `HashSet` do `Catalogo.LinhasAbertas` (dentro do `Proxima`) e "
-					+ "os cinco `SabeTecnica` do arsenal e do sopro; se esta linha reprovar, alguem pos "
-					+ "um laco novo no caminho",
-					  b20 < 8_704, $"{b20} B por tique (media) com 20 corpos");
+				// ============================ E ELA REPROVOU DE NOVO -- E O NUMERO FICOU ONDE ESTAVA ============================
+				// `03f18e6` (2026-09-03) pos o verb POR CASA no `SabeTecnica` como
+				// `VerbosAtivos(path => CasaEscolhidaDe(pl, path))`: um lambda capturando o corpo (um objeto e um
+				// delegate POR PERGUNTA), por cima de um iterador que engordou no mesmo commit (a casa, o
+				// `casaDe`, o laco dos pares, o `Progresso.Buffer`). Cinco perguntas por corpo por segundo, e a
+				// medida parou em 9.554 B por tique -- identica no commit `0b0c8b2` e na arvore de 2026-09-23.
+				//
+				// A pergunta nova NAO precisava do funil caro. `SabeTecnica` agora pergunta por UM verb sem
+				// montar nada -- `SkillBook.AlgumaAprendidaDa` (o `HashSet` pelo enumerador struct, sem a caixa
+				// da interface) e `NiveisDeSkill.DestravaOVerbo` (a varredura do `VerbosAtivos` num laco cru) --
+				// e o bloco logo abaixo cobra os ZERO bytes dela, com contra-exemplo. Se alguem puser um lambda
+				// ali de novo, quem reprova primeiro e a linha que diz o NOME da funcao, e nao so este total.
+				//
+				// ============================ E O TETO DESCEU DE 8.704 PRA 52 -- O QUE MORA DEBAIXO DELE E A RESPOSTA ============================
+				// A conta dos 8.300 B por tique de 2026-09-23 fechou ate o ultimo punhado de bytes, e quase nada era da IA.
+				// O modelo abaixo bate com b1 = 455 e b5 = 2.278 daquela rodada byte a byte, arredondamento incluido:
+				//   * 7.995 -- a leitura de 1 Hz, 20 corpos x 11.992 B / 30 tiques. Dos 11.992 B de UMA leitura, 11.592
+				//     eram do CATALOGO DE FORMAS: o `Proxima` chama `Avaliar` pras 46 formas, e cada chamada pagava o
+				//     objeto do lambda do `ProibidoParaClasse.Any` (88 B, criado na ENTRADA porque captura um parametro),
+				//     43 delas um `HashSet` do `LinhasAbertas` (168 B) e 5 o delegate (64 B). Os outros 400 eram o
+				//     arsenal: a caixa do enumerador de `TecnicasDeLonge.Todas`, a `List<Tiro>`, o `Tiro[4]` do primeiro
+				//     `Add` e o array final;
+				//   *   280 -- o `Vec2[4]` do `MoveRules.QuinaValida` (56 B) a cada tique, dos 5 corpos A PE no mar;
+				//   *   ~26 -- o resto do palco antigo, nos mesmos corpos de borda (a decolagem do corpo 4, por exemplo,
+				//     monta dois `NetDataWriter` pra ninguem); nao foi isolado byte a byte, e o palco novo nao tem borda
+				//     nem agua.
+				// Os tres primeiros foram consertados NA PRODUCAO (`EstadoDeForma.Avaliar`, `Catalogo.LinhaAberta`,
+				// `GameServer.ArsenalDeLonge`, `TecnicasDeLonge.Todas`, `MoveRules.QuinaValida`), e o palco saiu do mar.
+				//
+				// O QUE SOBRA E SO A RESPOSTA: o array de `Tiro` que fica nas capacidades ate a leitura seguinte. Um tiro
+				// (`Basic_Blast`) sao 72 B; 20 corpos x 10 leituras x 72 B / 300 tiques = 48 B por tique. O teto fica em 52
+				// (~6% acima: 51 e o maximo aceito). Um array a mais por leitura ja soma +48 e reprova; um conjunto por
+				// forma de volta soma milhares.
+				//
+				// **Se esta linha reprovar, a resposta certa nao e subir o numero**: e ler a linha "a leitura de
+				// capacidades de UM corpo aloca SO a resposta", logo abaixo, que diz se o lixo novo mora na leitura.
+				// ======================================================================================================================
+				Checa("a leitura de capacidades (1 Hz) so aloca a RESPOSTA -- o array de `Tiro` do arsenal (72 B com um "
+					+ "tiro); o catalogo de formas, as perguntas e o passo custam zero (linhas abaixo); se esta linha "
+					+ "reprovar, alguem pos um laco novo no caminho",
+					  b20 < 52, $"{b20} B por tique (media) com 20 corpos -- a resposta sozinha da 48");
+
+				// ============================ AS CINCO PERGUNTAS, SOZINHAS -- E O CONTRA-EXEMPLO ============================
+				// O total de cima diz QUANTO; esta diz ONDE. Sao as mesmas `SabeTecnica` que a `LerCapacidades`
+				// faz (as ids de `TecnicasDeLonge` + o sopro), no mesmo corpo e pela mesma funcao -- com a lista
+				// de ids montada FORA da janela: o `Select` do LINQ aloca o iterador dele, e isso e custo de montar a
+				// lista da bancada, nao da pergunta.
+				//
+				// AS DUAS SAIDAS DA PERGUNTA ENTRAM NA JANELA: `Basic_Blast` e `Kiai` o corpo SABE (degraus 35 e
+				// 10 do `Ki_Unlocked` -- a varredura para no meio), `Guided_Ball` NAO sabe (ela anda o livro e os
+				// degraus inteiros). O preparo afirma isso antes; sem ele o zero poderia ser de perguntas que
+				// nunca varreram nada.
+				//
+				// SEM O CONTRA-EXEMPLO O ZERO NAO VALE NADA -- um contador que nao conta tambem da zero. A MESMA
+				// resposta pelo caminho da LISTA (`VerbosAtivos`, o do menu) aloca, e o mesmo instrumento, no
+				// mesmo lugar, tem que enxergar isso.
+				// ======================================================================================================
+				{
+					ServerPlayer amostra = corpos[0];
+					string[] perguntas = [.. TecnicasDeLonge.Todas.Select(l => l.Id), "Kiai"];
+
+					// o preparo e tambem o aquecimento (JIT) das funcoes medidas
+					Checa("(preparo) o corpo de medida SABE `Basic_Blast` e `Kiai` (degraus do `Ki_Unlocked`) e "
+						+ "NAO sabe `Guided_Ball` -- as duas saidas da pergunta estao na janela",
+						  SabeTecnica(amostra, "Basic_Blast") && SabeTecnica(amostra, "Kiai")
+						  && !SabeTecnica(amostra, "Guided_Ball") && perguntas.Contains("Guided_Ball"));
+
+					long p0 = GC.GetAllocatedBytesForCurrentThread();
+					foreach (string v in perguntas) _ = SabeTecnica(amostra, v);
+					long lixoDasPerguntas = GC.GetAllocatedBytesForCurrentThread() - p0;
+
+					long l0 = GC.GetAllocatedBytesForCurrentThread();
+					List<string> pelaLista = amostra.Niveis.VerbosAtivos(_skills, amostra.Livro.Escolhas);
+					long lixoDaLista = GC.GetAllocatedBytesForCurrentThread() - l0;
+
+					Checa($"as {perguntas.Length} `SabeTecnica` da leitura de 1 Hz alocam ZERO bytes -- o livro e os "
+						+ "niveis perguntam por UM verb, sem iterador e sem lambda",
+						  lixoDasPerguntas == 0, $"{lixoDasPerguntas} B");
+					Checa("[contra-exemplo] a MESMA resposta pela LISTA (`VerbosAtivos`, o caminho do menu) aloca "
+						+ "-- o instrumento enxerga lixo neste caminho, entao o zero de cima e medida",
+						  lixoDaLista > 0 && pelaLista.Contains("Basic_Blast") && pelaLista.Contains("Kiai"),
+						  $"{lixoDaLista} B, verbos [{string.Join(",", pelaLista)}]");
+
+					// ============================ A LEITURA INTEIRA, SOZINHA: SO A RESPOSTA ============================
+					// As perguntas sao 5 das ~50 chamadas de uma leitura. O resto -- as 46 `Avaliar` do `Proxima` e o
+					// arsenal -- custava 11.992 B por leitura, e o total la de cima so o enxergava diluido por 30 tiques.
+					// Aqui a leitura inteira de UM corpo e medida sozinha e comparada com o tamanho da unica coisa que ela
+					// TEM que criar: o array de `Tiro` que mora nas capacidades ate a leitura seguinte. Nao ha numero de
+					// bytes escrito -- o tamanho sai do mesmo instrumento, alocando um array igual.
+					//
+					// O CONTRA-EXEMPLO e o conjunto que o `Avaliar` montava 43 vezes por leitura: o `Catalogo.LinhasAbertas`
+					// continua existindo (a aba Formas, o piso da escada e as bancadas querem o conjunto), e o mesmo
+					// instrumento tem que ver o preco dele.
+					// ======================================================================================================
+					_ = LerCapacidades(amostra);   // aquece o caminho inteiro
+					long r0 = GC.GetAllocatedBytesForCurrentThread();
+					Capacidades lida = LerCapacidades(amostra);
+					long lixoDaLeitura = GC.GetAllocatedBytesForCurrentThread() - r0;
+
+					long a0 = GC.GetAllocatedBytesForCurrentThread();
+					Tiro[] doMesmoTamanho = new Tiro[lida.DeLonge.Quantas];
+					long tamanhoDaResposta = GC.GetAllocatedBytesForCurrentThread() - a0;
+
+					PerfilDeFormas perfilDaAmostra = Perfil(amostra);
+					long s0 = GC.GetAllocatedBytesForCurrentThread();
+					HashSet<LinhaDeForma> conjunto = Catalogo.LinhasAbertas(perfilDaAmostra);
+					long lixoDoConjunto = GC.GetAllocatedBytesForCurrentThread() - s0;
+
+					Checa("a leitura de capacidades de UM corpo aloca SO a resposta -- o array de `Tiro` do arsenal; as 46 "
+						+ "`Avaliar` do `Proxima` nao montam conjunto nem lambda",
+						  lida.DeLonge.TemAlguma && lixoDaLeitura == tamanhoDaResposta,
+						  $"{lixoDaLeitura} B; um array de {doMesmoTamanho.Length} tiro(s) custa {tamanhoDaResposta} B");
+					Checa("[contra-exemplo] o CONJUNTO de linhas (`Catalogo.LinhasAbertas`, que o `Avaliar` montava 43 vezes "
+						+ "por leitura) aloca -- o instrumento enxerga o caminho antigo",
+						  lixoDoConjunto > 0 && conjunto.Contains(LinhaDeForma.Saiyajin), $"{lixoDoConjunto} B por conjunto");
+
+					// ---- E O ESCAPE DE QUEM ESTA A PE NA AGUA, que o palco novo deixou de exercitar ----
+					// Os 56 B do tique "barato" antigo eram o `Vec2[4]` do `MoveRules.QuinaValida`, a cada quadro, de cada
+					// corpo A PE numa celula de agua. O palco saiu da agua, entao o zero dela e cobrado aqui, pelo NOME -- num
+					// ponto do mar de Namek (a celula 125,192, onde o corpo 1 desta secao nascia).
+					ZoneCollision? mar = MapaDaZonaOuCatalogo(zona);
+					var noMar = new Vec2(4000, 6144);
+					_ = mar == null ? null : MoveRules.QuinaValida(mar, noMar, ModoDeTravessia.APe);   // aquece
+					long q0 = GC.GetAllocatedBytesForCurrentThread();
+					Vec2? quina = mar == null ? null : MoveRules.QuinaValida(mar, noMar, ModoDeTravessia.APe);
+					long lixoDaQuina = GC.GetAllocatedBytesForCurrentThread() - q0;
+
+					float somaDasQuinas = 0;
+					long v0 = GC.GetAllocatedBytesForCurrentThread();
+					foreach (Vec2 q in new[] { noMar, noMar, noMar, noMar }) somaDasQuinas += q.X;
+					long lixoDoFormatoAntigo = GC.GetAllocatedBytesForCurrentThread() - v0;
+
+					Checa("`MoveRules.QuinaValida` (o escape de quem esta A PE na agua, a cada quadro) aloca ZERO",
+						  mar != null && lixoDaQuina == 0, $"{lixoDaQuina} B (quina {quina?.ToString() ?? "nenhuma"})");
+					Checa("[contra-exemplo] as mesmas quatro quinas no formato antigo (`foreach` sobre `new[]`) alocam -- o "
+						+ "zero de cima e medida", lixoDoFormatoAntigo > 0 && somaDasQuinas > 0, $"{lixoDoFormatoAntigo} B");
+				}
+
+				// OS 20 SAEM DA SALA AQUI. A secao 28 mede no MESMO palco, e corpo que fica no mundo vira presa de quem
+				// vem depois -- a fera caca o corpo em pe mais perto que ela ve (`PresaDaFera`, dez tiles).
+				foreach (ServerPlayer c in corpos) RemoverNpc(c);
 			}
 
 			// =====================================================================
@@ -1099,13 +1651,20 @@ public partial class GameServer
 
 				// QUEM NAO SABE NENHUMA DELAS CONTINUA SEM ARSENAL -- a metade que protege o resto do
 				// jogo: o ramo de longe inteiro tem que morrer numa comparacao pra quem nao atira.
-				ServerPlayer pobre = Forjar("ia: nao sabe nada", 50_000, new Vec2(0, 8320));
+				// Chao procurado ((0, 8320) e mar, na beirada). Este corpo so e perguntado (capacidades e percepcao), mas fica
+				// no mundo, com cerebro, ate a secao 17.
+				ServerPlayer pobre = Forjar("ia: nao sabe nada", 50_000, FaixaLivre(0, 8320 / ZoneCollision.TileSize));
 				pobre.Cerebro!.Poderes = LerCapacidades(pobre);
 				Checa("quem nao comprou nenhuma delas sai com o arsenal de longe VAZIO",
 					  !pobre.Cerebro.Poderes.DeLonge.TemAlguma,
 					  $"{pobre.Cerebro.Poderes.DeLonge.Quantas} opcoes");
 
-				ServerPlayer sabido = Forjar("ia: sabe tudo", 50_000, new Vec2(0, 8192));
+				// O SABIDO E O VIZINHO DIVIDEM UM CHAO PROCURADO -- e aqui o chao e metade de uma afirmacao: la embaixo a linha de
+				// visao entre os dois tem que dar LIVRE ("dois corpos colados, sem parede no meio"), e em (0, 8192) isso era
+				// verdade por sorte: mar, que o `PathBlocked` nao conta como parede. 2 tiles: os 64 px entre os dois, sem uma
+				// celula que o `ServeDeChao` recuse -- e toda celula que ele aceita tambem nao e `BlockedCell`.
+				Vec2 palcoDoArsenal = FaixaLivre(2, 8192 / ZoneCollision.TileSize);
+				ServerPlayer sabido = Forjar("ia: sabe tudo", 50_000, palcoDoArsenal);
 
 				// O CORPO QUE SABE TUDO: aprender o catalogo inteiro e o teste mais duro contra os dois
 				// erros opostos -- "nao acha o que existe" e "acha o que nao existe".
@@ -1144,7 +1703,7 @@ public partial class GameServer
 				// A LINHA DE VISAO NAO E TRACADA. O argumento `quemAtira` vem do arsenal, e com ele
 				// falso o `PathBlocked` -- a varredura de segmento -- nem chega a ser chamado. E o que
 				// mantem o gancho fora do caminho de 30 Hz enquanto ele nao servir pra nada.
-				ServerPlayer vizinho = Forjar("alvo: vizinho", 50_000, new Vec2(64, 8192), comCerebro: false);
+				ServerPlayer vizinho = Forjar("alvo: vizinho", 50_000, palcoDoArsenal + new Vec2(64, 0), comCerebro: false);
 				Percepcao semTiro = LerPercepcao(pobre, vizinho, vizinho.Pos, quemAtira: false);
 				Percepcao comTiro = LerPercepcao(sabido, vizinho, vizinho.Pos, quemAtira: true);
 				Checa("sem arsenal, a percepcao nem PERGUNTA pela linha de visao (falso = nao sei = nao atira)",
@@ -1418,7 +1977,9 @@ public partial class GameServer
 				// termina num pacote que nao volta.
 				// ==================================================================================
 				{
-					ServerPlayer atirador = Forjar("ia: atuador", 50_000, new Vec2(0, 9216), comCerebro: false);
+					// Chao procurado ((0, 9216) e mar, na beirada): o atirador e o mirado dividem 3 tiles, os 80 px entre os dois.
+					Vec2 palcoDoAtuador = FaixaLivre(3, 9216 / ZoneCollision.TileSize);
+					ServerPlayer atirador = Forjar("ia: atuador", 50_000, palcoDoAtuador, comCerebro: false);
 
 					// ============================ A COBAIA E O SOLAR FLARE, E NAO UM ID INVENTADO ============================
 					// A tentacao era mandar "bancada_de_longe" pelo atuador e conferir a resposta
@@ -1473,7 +2034,7 @@ public partial class GameServer
 					else Checa("a skill do Solar Flare foi achada no catalogo", false, "catalogo sem o verb");
 
 					// A MIRA, PELO MESMO FUNIL DO CLIQUE DO JOGADOR -- inclusive a recusa dele.
-					ServerPlayer mirado = Forjar("alvo: mirado", 50_000, new Vec2(80, 9216), comCerebro: false);
+					ServerPlayer mirado = Forjar("alvo: mirado", 50_000, palcoDoAtuador + new Vec2(80, 0), comCerebro: false);
 					AplicarComando(atirador, new Comando { Marcar = mirado.Id }, Protocol.TickSeconds);
 					Checa("o comando de MIRAR marca pelo mesmo `Mirar` do `C2S.Alvo`",
 						  atirador.AlvoId == mirado.Id, $"{atirador.AlvoId}");
@@ -1488,8 +2049,11 @@ public partial class GameServer
 			// 14. MOB-ZUMBI: um corpo que some no meio da volta nao derruba o tique
 			// =====================================================================
 			{
-				ServerPlayer a = Forjar("ia: some", 50_000, new Vec2(0, 7168));
-				ServerPlayer b = Forjar("ia: fica", 50_000, new Vec2(64, 7168));
+				// Chao procurado ((0, 7168) e mar, na beirada). O tique desta secao tem que atravessar a volta de PRODUCAO com um
+				// corpo sumido no meio dela -- e nao o desvio de quem esta preso na borda ou na agua. 2 tiles: os 64 px.
+				Vec2 palcoDoZumbi = FaixaLivre(2, 7168 / ZoneCollision.TileSize);
+				ServerPlayer a = Forjar("ia: some", 50_000, palcoDoZumbi);
+				ServerPlayer b = Forjar("ia: fica", 50_000, palcoDoZumbi + new Vec2(64, 0));
 
 				// tira o `a` do mundo NO MEIO da lista, como uma morte faria
 				_players.Remove(a.Id);
@@ -1520,9 +2084,9 @@ public partial class GameServer
 			// frase "a IA passa pelos mesmos funis" e palavra minha. Sao duas afirmacoes:
 			//
 			//   (a) VERBOS  -- toda funcao que o ATUADOR chama, o funil do jogador tambem chama;
-			//   (b) CAMPOS  -- todo campo de corpo que o atuador ESCREVE, o `Input` do jogador tambem
-			//                  escreve. Esta e a que pega o atalho classico, porque um atalho quase nunca
-			//                  e uma funcao nova: e uma atribuicao.
+			//   (b) CAMPOS  -- todo campo de corpo que o atuador ESCREVE, o passo do jogador
+			//                  (`AplicarInput`) tambem escreve. Esta e a que pega o atalho classico, porque
+			//                  um atalho quase nunca e uma funcao nova: e uma atribuicao.
 			//
 			// E o limite dela, dito na cara: o conjunto do jogador e GRANDE (o `Handle` chama dezenas de
 			// coisas), entao ela nao impede a IA de chamar um gesto legitimo que ninguem quis. Ela impede
@@ -1548,17 +2112,42 @@ public partial class GameServer
 					  corpoAtuador.Length > 30, $"{corpoAtuador.Length} linhas");
 
 				// ---- O FUNIL DO JOGADOR: os tres pontos por onde uma tecla vira gesto ----
-				// `Handle` (o switch dos C2S), `Input` (o InputState) e `UsarHabilidade` (o canal de
-				// habilidade, que e por onde o verbo `Fly` do jogador chama o `AlternarVoo`).
+				// `Handle` (o switch dos C2S), `Input` + `AplicarInput` (o InputState: o primeiro so desempacota
+				// o fio, o segundo E o passo) e `UsarHabilidade` (o canal de habilidade, que e por onde o verbo
+				// `Fly` do jogador chama o `AlternarVoo`).
+				//
+				// ============================ O PASSO MUDOU DE METODO E ESTA VARREDURA NAO VIU ============================
+				// Em 2026-09-05 (commit 8e438fe) o `Input` foi PARTIDO pra `--arranqueteste` poder mandar pacotes
+				// forjados a um corpo sem `NetPeer`: ele ficou so lendo o fio, e o passo inteiro -- `PodeMexerOCorpo`,
+				// `MarchaDeVoo`, `PodeCorrer`, o mapa nulo em altura, o `ValidateStep` e as escritas de
+				// `Pos`/`Facing`/`Moving` -- mudou pro `AplicarInput`. A assinatura antiga continuou existindo, entao
+				// o extrator NAO devolveu zero linhas (que reprovaria alto): devolveu as dez linhas do leitor, e a
+				// checagem de tamanho logo abaixo passou, porque o `Handle` sozinho tem centenas. (a) e (b) ficaram
+				// vermelhas pelo motivo ERRADO ("o jogador nao escreve `Pos`"), e todo atalho escrito no atuador
+				// desde entao se escondia no meio desse vermelho.
+				//
+				// Por isso o passo agora e ANCORADO por CONTEUDO, e nao so pelo nome: o corpo extraido tem que chamar
+				// o `ValidateStep` e escrever `pl.Pos` -- e isso que faz dele o passo do jogador. A proxima mudanca
+				// de lugar reprova AQUI, com o nome do problema, e nao em (a)/(b) com oito nomes falsos. A prova de
+				// que a ancora reprova o corpo errado esta no bloco do DEFEITO INJETADO, la embaixo.
+				// ======================================================================================================
+				bool AncoraDoPasso(string[] corpo) =>
+					ChamadasDe(corpo).Contains("ValidateStep") && EscritasEm(corpo, "pl").Contains("Pos");
+
+				string[] corpoPassoDoJogador = CorpoDoMetodo(fonteServidor, "internal void AplicarInput(ServerPlayer");
 				string[] corpoJogador =
 					[.. CorpoDoMetodo(fonteServidor, "private void Handle(NetPeer"),
 					 .. CorpoDoMetodo(fonteServidor, "private void Input(NetPeer"),
+					 .. corpoPassoDoJogador,
 					 .. CorpoDoMetodo(fonteRaciais, "private void UsarHabilidade(ServerPlayer")];
 
-				Checa("o corpo do funil do jogador foi extraido (`Handle` + `Input` + `UsarHabilidade`)",
+				Checa("o corpo do funil do jogador foi extraido (`Handle` + `Input` + `AplicarInput` + `UsarHabilidade`)",
 					  corpoJogador.Length > 200, $"{corpoJogador.Length} linhas");
+				Checa("...e o passo do jogador e o de VERDADE: o corpo do `AplicarInput` chama o `ValidateStep` "
+					+ "e escreve `pl.Pos`",
+					  AncoraDoPasso(corpoPassoDoJogador), $"{corpoPassoDoJogador.Length} linhas");
 
-				// ============================ AS TRES EXCECOES, E CADA UMA TEM ARGUMENTO ============================
+				// ============================ AS CINCO EXCECOES, E CADA UMA TEM ARGUMENTO ============================
 				//   * `PassoDaIa`   -- e o proprio atuador chamando a outra metade de si mesmo.
 				//   * `Advance`     -- **a assimetria de propósito do movimento**: o jogador vai por
 				//     `MoveRules.ValidateStep`, que CONFERE uma posicao que o cliente afirmou; a IA vai
@@ -1569,8 +2158,19 @@ public partial class GameServer
 				//     IA manda no `Comando.Olhar`; os dois passam pela MESMA quantizacao pras quatro
 				//     direcoes do BYOND. A assimetria e so o transporte -- um vem da rede, o outro nao
 				//     tem rede. Funcao pura, sem estado e sem custo.
+				//   * `VizinhancaDe` -- o ULTIMO ARGUMENTO do `Advance` acima (a grade de corpos da zona), e ela cai
+				//     na mesma assimetria dele: quem GERA o passo do jogador e o CLIENTE, e e la que o corpo alheio
+				//     o para -- o `Advance` do `LocalPlayer` recebe uma `Vizinhanca` montada por quadro
+				//     (`LocalPlayer.cs:794`). O `ValidateStep` do servidor NAO consulta corpo, e isso e decisao
+				//     escrita (`MoveRules.cs:538`): corpo e dado dinamico que as duas pontas veem em instantes
+				//     diferentes. So LE (grade + id + andar); nao escreve nada. Entrou no atuador com o "ninguem
+				//     atravessa ninguem" (2026-08-15, a55b464) e (a) reprovava com ela desde entao, sem ninguem ter
+				//     escrito o argumento aqui.
+				//   * `AguaNoRumo` -- a PERGUNTA que alimenta o sentido `BarradoPelaAgua` (ver a excecao de escrita,
+				//     em (b)): `static`, pura, le uma celula do mapa. Nao anda, nao cobra, nao bate -- so separa
+				//     "parei num muro" de "parei num lago" pro cerebro do tique seguinte (travessia da IA, 2026-09-07).
 				// ==============================================================================================
-				string[] excecoesDeChamada = ["PassoDaIa", "Advance", "FacingFrom"];
+				string[] excecoesDeChamada = ["PassoDaIa", "Advance", "FacingFrom", "VizinhancaDe", "AguaNoRumo"];
 
 				HashSet<string> chamaIa = ChamadasDe(corpoAtuador);
 				HashSet<string> chamaJogador = ChamadasDe(corpoJogador);
@@ -1579,23 +2179,95 @@ public partial class GameServer
 							   .OrderBy(n => n)];
 
 				Checa($"(a) VERBOS: as {chamaIa.Count} funcoes que o atuador chama, o funil do jogador "
-					+ "tambem chama -- fora as tres assimetrias argumentadas",
+					+ $"tambem chama -- fora as {excecoesDeChamada.Length} assimetrias argumentadas",
 					  foraDoFunil.Count == 0, string.Join(", ", foraDoFunil));
 
-				// as tres excecoes tem que estar MESMO la: uma excecao que nao e usada e uma porta
+				// as excecoes tem que estar MESMO la: uma excecao que nao e usada e uma porta
 				// aberta esquecida, e a proxima pessoa acha que ela cobre outra coisa.
-				Checa("...e as tres excecoes escritas sao as tres que existem de verdade",
+				Checa($"...e as {excecoesDeChamada.Length} excecoes escritas sao as que existem de verdade",
 					  excecoesDeChamada.All(chamaIa.Contains),
 					  string.Join(", ", excecoesDeChamada.Where(e => !chamaIa.Contains(e))));
 
+				// ============================ A EXCECAO DE ESCRITA -- COM ARGUMENTO E COM GUARDA ============================
+				//   * `BarradoPelaAgua` -- nao e estado de CORPO, e o SENTIDO da IA: "o que me parou foi um lago, e
+				//     nao um muro" (`PassoDaIa`). Quem o le e o cerebro, no tique seguinte -- o `LerPercepcao`
+				//     (`GameServer.Ia.cs`) e a travessia da rotina (`GameServer.Rotina.cs`) --, e o jogador tem a
+				//     mesma informacao de graca: ele VE o lago na tela. Nenhuma regra de jogo (passo, custo, golpe,
+				//     snapshot) le este bit. Nasceu com a travessia da IA (2026-09-07), quando (b) ja estava
+				//     vermelha pela partida do `Input` -- e por isso ninguem precisou argumenta-la.
+				//
+				// Um sentido so e excecao ENQUANTO for sentido. No dia em que um arquivo do servidor fora do atuador
+				// e da rotina passar a LER este campo -- um passo que deixa o barrado nadar mais rapido, um golpe que
+				// muda por ele --, o bit virou estado de corpo escrito por baixo do funil, que e exatamente o que (b)
+				// existe pra pegar. Por isso a guarda logo abaixo, e o defeito injetado dela.
+				// ===========================================================================================================
+				string[] excecoesDeEscrita = ["BarradoPelaAgua"];
+				string[] quemLeOSentido = ["GameServer.Ia.cs", "GameServer.Rotina.cs"];
+
 				HashSet<string> escreveIa = EscritasEm(corpoAtuador, "npc", "pl");
-				HashSet<string> escreveJogador = EscritasEm(CorpoDoMetodo(fonteServidor, "private void Input(NetPeer"), "pl");
+				HashSet<string> escreveJogador = EscritasEm(corpoPassoDoJogador, "pl");
 				List<string> escritaProibida =
-					[.. escreveIa.Where(c => !escreveJogador.Contains(c)).OrderBy(c => c)];
+					[.. escreveIa.Where(c => !escreveJogador.Contains(c) && Array.IndexOf(excecoesDeEscrita, c) < 0)
+							   .OrderBy(c => c)];
 
 				Checa($"(b) CAMPOS: os {escreveIa.Count} campos de corpo que o atuador escreve sao os "
-					+ "MESMOS que o `Input` do jogador escreve -- nenhum estado tocado por baixo do funil",
+					+ "MESMOS que o passo do jogador (`AplicarInput`) escreve -- nenhum estado tocado por baixo "
+					+ "do funil, fora o sentido argumentado",
 					  escritaProibida.Count == 0, string.Join(", ", escritaProibida));
+				Checa("...e a excecao de escrita existe de verdade (o atuador escreve `BarradoPelaAgua`)",
+					  excecoesDeEscrita.All(escreveIa.Contains),
+					  string.Join(", ", excecoesDeEscrita.Where(e => !escreveIa.Contains(e))));
+
+				// ---- A GUARDA DO SENTIDO: fora do atuador e da rotina, ninguem no servidor o LE ----
+				// A declaracao do campo (`public bool BarradoPelaAgua;`, `GameServer.cs`) nao e leitura e fica de
+				// fora; bancada tambem (ela le o bit por oficio, como a `--nadoiateste`).
+				var fontesDoServidor = new List<(string Nome, string[] Linhas)>();
+				string pastaServidor = Godot.ProjectSettings.GlobalizePath("res://Server");
+				if (System.IO.Directory.Exists(pastaServidor))
+					foreach (string arq in System.IO.Directory.EnumerateFiles(pastaServidor, "*.cs", System.IO.SearchOption.AllDirectories))
+					{
+						string nome = System.IO.Path.GetFileName(arq);
+						if (nome.Contains("Teste") || Array.IndexOf(quemLeOSentido, nome) >= 0) continue;
+						fontesDoServidor.Add((nome, System.IO.File.ReadAllLines(arq)));
+					}
+
+				List<string> LeitoresDoSentido(List<(string Nome, string[] Linhas)> fontes)
+				{
+					var leitores = new List<string>();
+					foreach ((string arquivo, string[] linhasDoArquivo) in fontes)
+						foreach (string cru in linhasDoArquivo)
+						{
+							string limpa = SemTextoNemComentario(cru);
+							foreach (string campo in excecoesDeEscrita)
+								if (System.Text.RegularExpressions.Regex.IsMatch(limpa, @"\b" + campo + @"\b")
+									&& !System.Text.RegularExpressions.Regex.IsMatch(limpa, @"\bpublic\s+bool\s+" + campo + @"\s*;"))
+									leitores.Add(arquivo);
+						}
+					return [.. leitores.Distinct()];
+				}
+
+				List<string> leitoresDoSentido = LeitoresDoSentido(fontesDoServidor);
+				Checa("...e o sentido continua SENTIDO: fora do atuador e da rotina, nenhum arquivo do servidor le "
+					+ "`BarradoPelaAgua` -- se um passo ou um golpe passar a le-lo, a excecao de (b) virou atalho",
+					  fontesDoServidor.Count > 0 && leitoresDoSentido.Count == 0,
+					  $"{fontesDoServidor.Count} fontes lidos; lido em: {string.Join(", ", leitoresDoSentido)}");
+
+				// ---- E DENTRO DO ATUADOR O SENTIDO SO E ESCRITO ----
+				// A guarda de cima pula o `GameServer.Ia.cs` INTEIRO, porque o `LerPercepcao` mora la e le o bit por
+				// oficio. So que o atuador tambem mora la -- e o `PassoDaIa` e o unico passo do jogo em que o bit fica
+				// verdadeiro. Um "conserto" do NPC preso no lago escrito ali, como
+				// `modo = npc.BarradoPelaAgua ? ModoDeTravessia.Nadando : ModoDeTravessiaDe(npc)`, poria a IA nadando
+				// sem o verb, sem pagar o Ki e sem `Nadando` -- e nem (a) nem (b) veriam: membro de enum nao e
+				// chamada, e nao ha escrita nova. Entao, no corpo do atuador, toda aparicao do bit tem que ser ALVO de
+				// atribuicao (`= ...`); qualquer outra (um `if`, um `==`, um `|=`) e leitura.
+				static List<string> LeiturasDoSentido(string[] corpo) =>
+					[.. corpo.Select(SemTextoNemComentario)
+						 .Where(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"\bBarradoPelaAgua\b(?!\s*=(?!=))"))
+						 .Select(l => l.Trim())];
+				List<string> atuadorLeOSentido = LeiturasDoSentido(corpoAtuador);
+				Checa("...e dentro do atuador o sentido so e ESCRITO: `AplicarComando`/`PassoDaIa` nunca leem "
+					+ "`BarradoPelaAgua` (a guarda de cima pula o arquivo, por causa do `LerPercepcao`)",
+					  atuadorLeOSentido.Count == 0, string.Join(" | ", atuadorLeOSentido));
 
 				// ---- (c) O CEREBRO NAO TEM MAOS ----
 				// A trava estrutural, e a mais barata das tres: se o `Core/Ai` nao conhece `ServerPlayer`
@@ -1617,13 +2289,76 @@ public partial class GameServer
 					  maosNoCore.Count == 0, string.Join(", ", maosNoCore.Distinct()));
 
 				// ---- (d) QUEM FABRICA CEREBRO -- o marcador do tempero ----
-				// Tres lugares criam cerebro hoje: o clone da mente, a fera e a furia lendaria. Os dois
-				// ultimos temperam (`Disciplina = 0`, `Inteligencia = 0`); um QUARTO lugar que nascesse
-				// com o default viraria um possuido que APARA e RECARREGA, e ninguem ligaria isso a este
-				// arquivo. Quando o quarto chegar (e ele vai: a proxima posse), esta linha reprova e a
-				// conversa acontece -- que e o ponto de um marcador.
-				string[] podemFabricar = ["GameServer.Clone.cs", "GameServer.Oozaru.cs", "GameServer.FuriaLendaria.cs"];
-				var fabricas = new List<string>();
+				// O default do `Cerebro` e o `/mob/npc` comum do DM: ele APARA (`Disciplina` 0,35 passa no
+				// `e_behavior_vals[4] >= 35` do `NPCAI.dm:291`) e RECARREGA (`Inteligencia` 0,35 e o
+				// `prob(ai_intelligence)` do `:522`). Isso e certo pra um lutador comum e ERRADO pra uma POSSE: a
+				// fera e a furia escrevem `Disciplina = 0` e `Inteligencia = 0`, cada uma com o motivo do DM dela --
+				// a furia porque o `legendary_berserk_loop` nao tem um ramo de guarda nem de carga; a fera porque ela
+				// nao se preserva, e o `chaseState` so recarrega e sobe por `prob(ai_intelligence)` (`NPCAI.dm:522`,
+				// ver o cabecalho do tempero em `GameServer.Oozaru.cs`). Uma posse nova que viesse com o default viraria um possuido que apara e
+				// recarrega, e ninguem ligaria isso a este arquivo. Entao TODO lugar que monta cerebro esta escrito
+				// abaixo com o seu argumento, e o que chegar sem argumento reprova e a conversa acontece -- que e o
+				// ponto de um marcador.
+				//
+				// ============================ OS QUE FABRICAM, E POR QUE CADA UM PODE ============================
+				//   * `Temperamento.cs` -- a fabrica de MOLDE: todo NPC do `npcs.json` (cidadao, chefe, defensor)
+				//     nasce dali, temperado pelos quatro numeros do molde.
+				//   * `GameServer.Clone.cs` -- o reflexo da mente, com o `behavior_vals = list(90,70,0,70)` do
+				//     `MindMeditate.dm:319` escrito a mao (ele nao tem molde; ja nasceu com o default uma vez). Conta
+				//     DUAS linhas: o reflexo e a DEFINICAO do funil `AssumirOCorpo`, que o detector ve pelo nome.
+				//   * `GameServer.Oozaru.cs` e `GameServer.FuriaLendaria.cs` -- as duas POSSES, com guarda e carga
+				//     desligadas.
+				//   * `GameServer.Tecnicas.G12.cs` -- a copia do Split Form: o quarto que este marcador esperava, e
+				//     ele NAO e posse. `/mob/npc/Splitform` (`Split Forms.dm:3-11`) nao sobrescreve tempero nenhum,
+				//     entao herda `ai_intelligence` 35 (`NPCAI.dm:62`), `ai_aggression` 50 (`:63`) e
+				//     `behavior_vals = list(50,50,50,50)` (`:76`) -- exatamente os defaults do `Cerebro`. No DM a
+				//     copia apara e recarrega; ali o default e o LITERAL. O argumento inteiro esta no `CriarSplitformG12`.
+				//   * `GameServer.FotoDoBorrao.cs` -- NAO e producao: e o palco da `--diagborrao`, que possui o corpo
+				//     do host pra fotografar o borrao (o tempero nao entra na foto, que mede a ORIGEM do rastro). Esta
+				//     aqui porque o nome dele nao tem "Teste" pro filtro de baixo pular.
+				// ============================================================================================
+				//
+				// ============================ O DETECTOR ERA `Cerebro = new`, E ELE FICOU CEGO EM SILENCIO ============================
+				// Quando esta linha nasceu as posses eram `pl.Cerebro = new ...Cerebro { ... }`, e o regex as via.
+				// Desde que as duas passaram pelo funil `AssumirOCorpo(pl, new ...Cerebro { ... })`
+				// (`GameServer.Clone.cs`), ele nao via mais NENHUMA -- e continuava verde, porque so reprovava quem
+				// achava. A "proxima posse", que e o caso inteiro deste marcador, entraria pela porta que ele tinha
+				// parado de olhar; quem o fez reprovar foi a copia do Split Form, por ser a unica escrita no formato
+				// velho. Agora ele olha as DUAS coisas: a CONSTRUCAO (`new Cerebro`, com ou sem namespace; o `new()`
+				// tipado por um membro ou um local `Cerebro`; o metodo de corpo-expressao que devolve `Cerebro`) e a
+				// PORTA da posse pelo NOME (`AssumirOCorpo(`) -- que e o que pega o `new()` passado como ARGUMENTO, a
+				// forma que o resto deste codigo mais escreve e que nenhum regex de construcao ve.
+				//
+				// E A LISTA E POR CONTA, e nao por nome: o G12 tem doze tecnicas e o argumento dele e de UMA (a copia
+				// do Split Form); a proxima posse escrita ali dentro passaria por uma lista de nomes. Cada arquivo
+				// argumentado fabrica exatamente as vezes que o argumento cobre, nos DOIS sentidos -- nem mais (uma
+				// fabrica sem argumento), nem menos (um detector que ficou cego pra uma das que existem).
+				// ======================================================================================================================
+				var quantasFabrica = new Dictionary<string, int>
+				{
+					["Temperamento.cs"] = 1,              // a fabrica de molde
+					["GameServer.Clone.cs"] = 2,          // o reflexo + a definicao do funil `AssumirOCorpo`
+					["GameServer.Oozaru.cs"] = 1,         // a fera
+					["GameServer.FuriaLendaria.cs"] = 1,  // a furia
+					["GameServer.Tecnicas.G12.cs"] = 1,   // SO a copia do Split Form (`CriarSplitformG12`)
+					["GameServer.FotoDoBorrao.cs"] = 1,   // o palco da `--diagborrao`
+				};
+
+				static int LinhasQueFabricam(string[] linhas) => linhas.Count(linhaCrua =>
+					System.Text.RegularExpressions.Regex.IsMatch(SemTextoNemComentario(linhaCrua),
+						@"\bnew\s+(?:[\w.]+\.)?Cerebro\b"
+						+ @"|\bCerebro\s*=\s*new\s*\("
+						+ @"|\bCerebro\??\s+\w+\s*=\s*new\s*\("
+						+ @"|\bCerebro\??\s+\w+\s*\([^)]*\)\s*=>\s*new\s*\("
+						+ @"|\bAssumirOCorpo\s*\("));
+				bool ForaDaConta(string arquivo, string[] linhas)
+				{
+					int n = LinhasQueFabricam(linhas);
+					return quantasFabrica.TryGetValue(arquivo, out int argumentadas) ? n > argumentadas : n > 0;
+				}
+
+				var foraDaConta = new List<string>();
+				var contaAchada = new Dictionary<string, int>();
 				foreach (string dir in new[] { "Core", "Server", "Client" })
 				{
 					string caminho = Godot.ProjectSettings.GlobalizePath("res://" + dir);
@@ -1632,18 +2367,56 @@ public partial class GameServer
 					{
 						string nome = System.IO.Path.GetFileName(arq);
 						if (nome.Contains("Teste")) continue;   // bancada fabrica cerebro por oficio
-						foreach (string cru in System.IO.File.ReadAllLines(arq))
-						{
-							string l = SemTextoNemComentario(cru);
-							if (System.Text.RegularExpressions.Regex.IsMatch(l, @"Cerebro\s*=\s*new")
-								&& Array.IndexOf(podemFabricar, nome) < 0)
-								fabricas.Add(nome);
-						}
+						string[] texto = System.IO.File.ReadAllLines(arq);
+						int n = LinhasQueFabricam(texto);
+						if (n == 0) continue;
+						contaAchada[nome] = n;
+						if (ForaDaConta(nome, texto)) foraDaConta.Add($"{nome} ({n})");
 					}
 				}
-				Checa("(d) so tres arquivos de producao FABRICAM cerebro (clone, fera, furia) -- um quarto "
-					+ "nasceria com o tempero default, que APARA e RECARREGA",
-					  fabricas.Count == 0, string.Join(", ", fabricas.Distinct()));
+				Checa("(d) so os arquivos ARGUMENTADOS fabricam cerebro (molde, reflexo, fera, furia, copia do Split "
+					+ "Form, palco do borrao), e cada um so as vezes que o argumento cobre -- uma posse nova nasceria "
+					+ "com o tempero default, que APARA e RECARREGA",
+					  foraDaConta.Count == 0, string.Join(", ", foraDaConta));
+				List<string> contaErrada =
+					[.. quantasFabrica.Where(kv => contaAchada.GetValueOrDefault(kv.Key) != kv.Value)
+									  .Select(kv => $"{kv.Key} ({contaAchada.GetValueOrDefault(kv.Key)} de {kv.Value})")];
+				Checa("...e todo arquivo da lista fabrica DE VERDADE, na conta exata -- um arquivo que o detector nao "
+					+ "acha e um detector cego, e nao uma lista folgada (o funil `AssumirOCorpo` cegou o regex antigo "
+					+ "pras duas posses)",
+					  contaErrada.Count == 0, string.Join(", ", contaErrada));
+
+				// ---- E O VERMELHO DA (d), VISTO: duas posses injetadas, nada gravado em disco ----
+				// (1) a proxima posse escrita do jeito que as duas que existem sao escritas -- o fonte da fera,
+				//     INTEIRO, sob um nome que a lista nao tem;
+				// (2) a posse de tempero default -- a linha que este marcador existe pra pegar -- enfiada numa copia
+				//     do `GameServer.Ia.cs`, que nao fabrica cerebro nenhum.
+				// E o controle do injetor: o mesmo `GameServer.Ia.cs` sem a linha, e com ela so em COMENTARIO (que e
+				// como o `GameServer.Clone.cs` ainda a cita), passa.
+				{
+					string[] fonteDaFera = Fonte("Server/GameServer.Oozaru.cs");
+					Checa("DEFEITO INJETADO: o fonte da fera sob outro nome (`AssumirOCorpo(pl, new ...Cerebro {...})`) "
+						+ "REPROVA a (d) -- o detector ve a porta por onde a proxima posse entra",
+						  fonteDaFera.Length > 0 && ForaDaConta("GameServer.QuintaPosse.cs", fonteDaFera));
+					Checa("DEFEITO INJETADO: `AssumirOCorpo(npc, new Cerebro())` enfiado numa copia do `GameServer.Ia.cs` "
+						+ "REPROVA a (d)",
+						  ForaDaConta("GameServer.Ia.cs", [.. fonteIa, "\t\tAssumirOCorpo(npc, new Cerebro());"]));
+					// O `new()` TIPADO PELO DESTINO, passado como argumento -- a forma que nenhum regex de construcao
+					// ve. Quem o pega e a porta pelo nome.
+					Checa("DEFEITO INJETADO: a posse escrita no estilo da casa, `AssumirOCorpo(npc, new())`, REPROVA a (d)",
+						  ForaDaConta("GameServer.Ia.cs", [.. fonteIa, "\t\tAssumirOCorpo(npc, new());"]));
+					// E A CONTA, e nao o nome: uma posse nova escrita DENTRO de um arquivo que ja esta na lista.
+					string[] fonteDoG12 = Fonte("Server/GameServer.Tecnicas.G12.cs");
+					Checa("DEFEITO INJETADO: uma segunda fabrica dentro do G12 (a proxima tecnica de posse do lote) "
+						+ "REPROVA a (d) -- o argumento do G12 cobre uma, a copia do Split Form",
+						  fonteDoG12.Length > 0
+						  && !ForaDaConta("GameServer.Tecnicas.G12.cs", fonteDoG12)
+						  && ForaDaConta("GameServer.Tecnicas.G12.cs", [.. fonteDoG12, "\t\tAssumirOCorpo(alvo, new Cerebro());"]));
+					Checa("...e sem a adulteracao (ou com ela so em comentario) o MESMO `GameServer.Ia.cs` passa -- o "
+						+ "injetor e que mudou, nao a conta",
+						  !ForaDaConta("GameServer.Ia.cs", fonteIa)
+						  && !ForaDaConta("GameServer.Ia.cs", [.. fonteIa, "\t\t// ele nascia com `new Cerebro()`"]));
+				}
 
 				// ============================ E AGORA A PROVA DE QUE ISTO REPROVA ============================
 				// As quatro checagens acima estao VERDES. Verde num teste que le fonte nao significa nada
@@ -1656,13 +2429,15 @@ public partial class GameServer
 				// ======================================================================================
 				{
 					int ondeEnfiar = Array.FindIndex(fonteIa, l => l.Contains("private void AplicarComando"));
+					// A `{` E PROCURADA, e nao contada: com a assinatura quebrada em duas linhas, `ondeEnfiar + 2`
+					// cairia antes da chave -- fora do corpo que o `CorpoDoMetodo` le.
+					int chave = ondeEnfiar < 0 ? -1 : Array.FindIndex(fonteIa, ondeEnfiar, l => l.Contains('{'));
 					var adulterado = new List<string>(fonteIa);
-					if (ondeEnfiar >= 0)
+					if (chave >= 0)
 					{
-						// depois da assinatura vem a `{`; o atalho entra logo abaixo dela
-						adulterado.Insert(ondeEnfiar + 2, "\t\tnpc.Voando = true;");
-						adulterado.Insert(ondeEnfiar + 3, "\t\tnpc.Ficha.Ki -= 10;");
-						adulterado.Insert(ondeEnfiar + 4, "\t\tMeleeResolver.Resolver(npc, npc);");
+						adulterado.Insert(chave + 1, "\t\tnpc.Voando = true;");
+						adulterado.Insert(chave + 2, "\t\tnpc.Ficha.Ki -= 10;");
+						adulterado.Insert(chave + 3, "\t\tMeleeResolver.Resolver(npc, npc);");
 					}
 
 					string[] atuadorFalso =
@@ -1672,8 +2447,11 @@ public partial class GameServer
 					List<string> chamadaFlagrada =
 						[.. ChamadasDe(atuadorFalso)
 								.Where(n => !chamaJogador.Contains(n) && Array.IndexOf(excecoesDeChamada, n) < 0)];
+					// A MESMA conta da (b), excecao inclusa -- senao o controle do injetor la embaixo compararia duas
+					// contas diferentes, e "sem a adulteracao da vazio" nao provaria nada.
 					List<string> escritaFlagrada =
-						[.. EscritasEm(atuadorFalso, "npc", "pl").Where(c => !escreveJogador.Contains(c))];
+						[.. EscritasEm(atuadorFalso, "npc", "pl")
+								.Where(c => !escreveJogador.Contains(c) && Array.IndexOf(excecoesDeEscrita, c) < 0)];
 
 					Checa("DEFEITO INJETADO: com `MeleeResolver.Resolver(...)` enfiado no atuador, a "
 						+ "varredura (a) REPROVA e diz o nome da funcao",
@@ -1683,12 +2461,45 @@ public partial class GameServer
 						  escritaFlagrada.Contains("Voando") && escritaFlagrada.Contains("Ficha.Ki"),
 						  string.Join(", ", escritaFlagrada));
 
-					// E O CONTROLE DO INJETOR: sem a adulteracao, as mesmas contas dao vazio. Sem esta
-					// linha, um extrator que devolvesse lixo daria "reprovou" nas duas de cima e eu leria
-					// isso como sucesso.
-					Checa("...e sem a adulteracao as MESMAS duas contas dao vazio (o injetor e que mudou, "
-						+ "nao a conta)",
-						  foraDoFunil.Count == 0 && escritaProibida.Count == 0);
+					// E O CONTROLE DO INJETOR: o que a adulteracao acrescenta e EXATAMENTE o que foi injetado. As contas
+					// da copia tem que ser as contas limpas de cima MAIS os tres nomes -- nem um a mais (um extrator
+					// devolvendo lixo, uma insercao que caiu fora do corpo e arrastou outro metodo), nem um a menos.
+					// Sem esta linha, lixo daria "reprovou" nas duas de cima e eu leria isso como sucesso. E e por
+					// isso que a conta de escrita da copia usa a MESMA excecao da (b): sem ela o `BarradoPelaAgua`
+					// apareceria so de um lado, e esta comparacao reprovaria.
+					bool chamadasBatem = new HashSet<string>(chamadaFlagrada).SetEquals(foraDoFunil.Append("Resolver"));
+					bool escritasBatem = new HashSet<string>(escritaFlagrada).SetEquals(escritaProibida.Concat(["Voando", "Ficha.Ki"]));
+					Checa("...e o injetor e que mudou, nao a conta: a copia adulterada da as contas limpas MAIS os tres "
+						+ "nomes injetados, e nada alem deles",
+						  chave >= 0 && chamadasBatem && escritasBatem,
+						  $"chamadas [{string.Join(", ", chamadaFlagrada)}] | escritas [{string.Join(", ", escritaFlagrada)}]");
+
+					// ---- AS DUAS TRAVAS NOVAS TAMBEM TEM QUE SER VISTAS REPROVANDO ----
+					// A ANCORA, contra o corpo exato que esta varredura leu de 2026-09-05 ate o conserto: o leitor
+					// `Input`, que so desempacota o fio. Se ele passasse na ancora, ela nao teria visto a partida -- e
+					// nao veria a proxima.
+					string[] leitorDoFio = CorpoDoMetodo(fonteServidor, "private void Input(NetPeer");
+					Checa("DEFEITO REPRODUZIDO: o corpo que a varredura lia antes (o leitor `Input`, "
+						+ $"{leitorDoFio.Length} linhas) REPROVA na ancora do passo -- ele nao chama `ValidateStep`",
+						  leitorDoFio.Length > 0 && !AncoraDoPasso(leitorDoFio));
+
+					// A GUARDA DO SENTIDO, contra um arquivo falso que LE o bit pra mexer no corpo. Nada vai pro disco:
+					// a lista de fontes e a mesma da guarda, com uma entrada a mais na memoria.
+					var comLeitorFalso = new List<(string Nome, string[] Linhas)>(fontesDoServidor)
+					{
+						("GameServer.Falso.cs", new[] { "if (pl.BarradoPelaAgua) pl.Voando = true;" }),
+					};
+					List<string> leitorFlagrado = LeitoresDoSentido(comLeitorFalso);
+					Checa("DEFEITO INJETADO: um arquivo do servidor que LE `BarradoPelaAgua` pra mexer no corpo faz a "
+						+ "guarda do sentido REPROVAR e dizer o arquivo",
+						  leitorFlagrado.Contains("GameServer.Falso.cs"), string.Join(", ", leitorFlagrado));
+
+					// E O SENTIDO LIDO DENTRO DO ATUADOR -- o atalho que a guarda do arquivo nao ve.
+					List<string> leituraFlagrada = LeiturasDoSentido(
+						[.. corpoAtuador, "ModoDeTravessia modo = npc.BarradoPelaAgua ? ModoDeTravessia.Nadando : ModoDeTravessiaDe(npc);"]);
+					Checa("DEFEITO INJETADO: o atuador que LE `BarradoPelaAgua` pra escolher o modo do passo (a IA "
+						+ "nadando sem o verb) faz a guarda de dentro do atuador REPROVAR",
+						  leituraFlagrada.Count == atuadorLeOSentido.Count + 1, string.Join(" | ", leituraFlagrada));
 				}
 			}
 
@@ -1787,19 +2598,38 @@ public partial class GameServer
 				// anteriores continuam no mundo e brigariam durante a medida.
 				foreach (ServerPlayer velho in _players.Values) velho.Cerebro = null;
 
+				// ============================ O RINGUE E CHAO PROCURADO, E NAO O MAR ============================
+				// A horda nascia em (10240, 10240) + grade: as 20 celulas (320..326 x 320..324) sao AGUA, no meio de um mar (a
+				// fileira 322 e agua da coluna 260 a 457). A pe na agua o filtro da `Travessia` os fazia DECOLAR -- eles sabem
+				// voar, o `EnsinarAVoar` abaixo --, e a medida de entao nao rodava o `TickDoVoo`: a altitude ficava em ZERO, e
+				// com altitude zero o modo continua A PE (`ModoDeTravessiaDe`). Vinte corpos plantados no mar, "voando" rente a
+				// agua sem pagar dreno e sem conseguir andar, com o `MoveRules.Escapar` rodando em cada um a cada passo pedido --
+				// o mesmo estado que a secao 12 documentou no palco antigo dela, e nao o cenario do dono.
+				//
+				// O bloco tem 13 x 10 celulas: a grade (5 x 4, a 48 px) ocupa 7 x 6, e sobram 3 tiles dos lados e 2 em cima e
+				// embaixo pros passos da briga (o de chegar e o pra tras da `Pressao`). ELE E O BERCO, E NAO UMA CERCA: a briga sai
+				// dele andando, cacando e voando pelos golpes -- o tique medido roda o arremesso e o voo (ver o `MedirAZona`) --,
+				// e quem cai na agua decola e PAGA o voo, como em jogo. O que o bloco garante e que ninguem comeca a medida
+				// dentro do mar.
+				// ============================================================================================
+				Vec2 ringue = FaixaLivre(12, 10240 / ZoneCollision.TileSize, altura: 10)
+								+ new Vec2(3 * ZoneCollision.TileSize, -3 * ZoneCollision.TileSize);
 				var vinte = new List<ServerPlayer>();
 				for (int i = 0; i < 20; i++)
 				{
 					// PERTO E BRIGANDO, que e o cenario do dono ("20 NPCs numa zona"). A secao 12 os
 					// afasta de proposito pra medir SO a IA; aqui o que se mede e a zona inteira ao
 					// longo do tempo, e um tique de mentira nao vaza nada.
-					ServerPlayer c = Forjar($"ia: horda{i}", 50_000, new Vec2(10240 + i % 5 * 48, 10240 + i / 5 * 48));
+					ServerPlayer c = Forjar($"ia: horda{i}", 50_000, ringue + new Vec2(i % 5 * 48, i / 5 * 48));
 					EnsinarAVoar(c);
 					c.Ficha.MeditateGivesKiRegen = 1;
 					c.Combate.Letal = false;
 					c.Cerebro!.Poderes = LerCapacidades(c);
 					vinte.Add(c);
 				}
+				// O `params` do `Tiques` recebe ESTE array tal qual: montado aqui, fora do cronometro, e nao um array novo por
+				// tique dentro da janela que conta os bytes.
+				ServerPlayer[] horda = [.. vinte];
 
 				/// os corpos de pe e com folego -- FORA da janela cronometrada, e igual em toda janela
 				void Reanimar()
@@ -1815,30 +2645,114 @@ public partial class GameServer
 				}
 
 				const int janelas = 6, tiquesPorJanela = 900;   // 5400 tiques = 3 min de jogo a 30 Hz
-				var us = new double[janelas];
-				var lixo = new double[janelas];
 
-				for (int j = 0; j < janelas; j++)
+				// ============================ UMA MEDIDA SO, PROS DOIS LADOS ============================
+				// A injecao la embaixo afirma "o MESMO criterio REPROVA", e isso so vale se ela rodar A MESMA
+				// medida com o vazamento dentro. Ela nao rodava: era um laco COPIADO que tinha perdido o
+				// `TickCombate` e o `Reanimar`. Sem o tique de combate o `CombatState.Tick` nao roda
+				// (`GameServer.Combat.cs:1346`) -- recarga, atordoamento e prazo do KO ficam parados, quem cai
+				// nao levanta, e o corpo caido volta do `TicarUmCorpo` sem pensar (as guardas de `Ficha.KO`
+				// em `GameServer.Clone.cs`). Sem o `Reanimar` a briga dos vinte se desfaz sozinha. O
+				// custo-base daquela curva nao era o desta: ele derivava conforme os golpes que entravam, e
+				// os golpes dependem do `_rng` sem semente (`GameServer.cs:1666`) e da recarga por relogio de
+				// PAREDE (`AtaqueAte = NowMs() + ...`, `GameServer.Combat.cs:470`).
+				//
+				// E foi o que as curvas mostraram. A rodada das 19:33 de 23/09 subiu reta, ~70 us por janela;
+				// as tres seguidas das 20:09 tiveram, cada uma, UMA janela afundando 100-150 us abaixo dessa
+				// reta -- e numa delas isso bastou: "259,1 -> 318,0 -> 399,9 -> 476,9 -> 392,3 -> 487,4" ficou
+				// ~3 us abaixo do limiar. A lista so cresce, entao o que afundou foi o que esta EMBAIXO dela:
+				// o custo-base solto, ou a propria maquina. A curva de antes nao separava um do outro; esta
+				// funcao tira o primeiro, e o tamanho do vazamento (la embaixo) cobre o segundo.
+				//
+				// Uma funcao so, chamada pelos dois lados, faz "o MESMO instrumento" deixar de ser promessa:
+				// entre as duas curvas muda o `vazamento`, e mais nada. Ele roda DENTRO do cronometro (e o
+				// tique que fica caro) e o `Reanimar` continua FORA (identico nas duas).
+				// ======================================================================================
+				//
+				// ============================ O TIQUE MEDIDO E O `Tiques` DA BANCADA, E NAO UM PEDACO DELE ============================
+				// Ate 24/09 a janela rodava so `TickCombate` + `TickDosCorposSemDono`, e isso deixava de fora o `TickDoEmpurrao`
+				// -- o UNICO que desconta `TiquesDeVoo` (`GameServer.Empurrao.cs`). Quem levava um golpe que arremessa ficava "no
+				// ar" pelo resto da bancada: nunca pousava, o `TentarEmpurrar` o recusava pra sempre (sai cedo com `TiquesDeVoo >
+				// 0`), o `PodeAtacar` recusava todo golpe DELE (`CombatState.SendoArremessado`) e ele andava no modo `Arremessado`,
+				// que atravessa a agua. Medido por janela (24/09): 10 dos 20 ja presos no fim da janela 1, 13 a 15 no resto dos 3
+				// minutos, e ~20 arremessos na rodada INTEIRA -- um por corpo, e nunca mais. A partir do primeiro minuto a "briga dos
+				// vinte" era dois tercos de estatuas, e uma zona que fica mais BARATA com o tempo porque os corpos param de lutar e
+				// justamente a curva que esconde um vazamento. Com o empurrao no tique: 0 a 2 no ar no fim de cada janela (voos em
+				// andamento), e 42 a 67 arremessos por medida em onze rodadas, cada um com o seu pouso.
+				//
+				// SO O EMPURRAO NAO BASTAVA, e a rodada que o pos sozinho mostrou por que: quem e arremessado ATRAVESSA a agua (o
+				// `testWaters` do DM deixa passar `M.KB`, ver o `TickDoEmpurrao`) e pousa nela -- os pes na agua subiram de 1-2 pra
+				// 8-10 corpos ao longo das duas medidas --, e sem o `TickDoVoo` o filtro da `Travessia` os fazia decolar sem subir e
+				// sem pagar: o estado que o ringue la em cima existe pra evitar. O `Tiques` ja e o tique desta bancada inteira
+				// (combate, voo e carga dos corpos dela, mente, empurrao, na ordem do `Tick()`), e com ele os pes na agua ficaram
+				// em 0-3 e quem esta no ar paga o voo. O que ainda falta nele falta igual pras outras secoes, e uma definicao so faz
+				// a proxima correcao valer aqui sem ninguem lembrar de copiar -- o mesmo argumento da injecao, dois paragrafos acima.
+				// ================================================================================================================
+				(double[] custo, double[] alocado, int pousos) MedirAZona(int tiquesNaJanela, Action? vazamento = null)
 				{
-					double soma = 0; long bytes = 0;
-					for (int t = 0; t < tiquesPorJanela; t++)
-					{
-						if (t % 30 == 0) Reanimar();   // fora da medida: identico em todas as janelas
+					var custo = new double[janelas];
+					var alocado = new double[janelas];
 
-						long b0 = GC.GetAllocatedBytesForCurrentThread();
-						ulong t0 = Time.GetTicksUsec();
-						TickCombate(Protocol.TickSeconds);
-						TickDosCorposSemDono(Protocol.TickSeconds);
-						soma += Time.GetTicksUsec() - t0;
-						bytes += GC.GetAllocatedBytesForCurrentThread() - b0;
+					// ---- OS POUSOS, FORA DO CRONOMETRO ----
+					// Quantas vezes um corpo da horda passou de "no ar" pra "no chao" entre um tique e o seguinte. So o
+					// `TickDoEmpurrao` desconta ou zera `TiquesDeVoo`, entao sem ele este numero e ZERO exato -- e e ele o
+					// contra-exemplo do defeito que esta janela teve. (Contar arremessos nao serviria: ha portas do arremesso que
+					// nao perguntam se o corpo ja esta no ar -- os sopros do lote G6, `KiaiG6` e `OndaDeChoqueG6` --, entao "mais
+					// arremessos que corpos" nao prova que alguem desceu.) Um voo que comeca e acaba no mesmo tique nao conta, e so
+					// encolhe o numero: a pergunta e se ele sai do zero.
+					var estavaNoAr = new bool[horda.Length];
+					int pousos = 0;
+
+					// O RELATO DA `--diagia` SAI DA JANELA -- ver a secao 12: aqui ele pesaria no cronometro tambem.
+					bool relato = _diagIa;
+					_diagIa = false;
+					try
+					{
+						for (int j = 0; j < janelas; j++)
+						{
+							double soma = 0; long bytes = 0;
+							for (int t = 0; t < tiquesNaJanela; t++)
+							{
+								if (t % 30 == 0) Reanimar();   // fora da medida: identico em todas as janelas
+
+								long b0 = GC.GetAllocatedBytesForCurrentThread();
+								ulong t0 = Time.GetTicksUsec();
+								Tiques(1, horda);
+								vazamento?.Invoke();
+								soma += Time.GetTicksUsec() - t0;
+								bytes += GC.GetAllocatedBytesForCurrentThread() - b0;
+
+								for (int k = 0; k < horda.Length; k++)
+								{
+									bool noAr = horda[k].TiquesDeVoo > 0;
+									if (estavaNoAr[k] && !noAr) pousos++;
+									estavaNoAr[k] = noAr;
+								}
+							}
+							custo[j] = soma / tiquesNaJanela;
+							alocado[j] = bytes / (double)tiquesNaJanela;
+						}
 					}
-					us[j] = soma / tiquesPorJanela;
-					lixo[j] = bytes / (double)tiquesPorJanela;
+					finally { _diagIa = relato; }
+					return (custo, alocado, pousos);
 				}
+
+				long arremessosAntes = _arremessosFeitos;
+				var (us, lixo, pousosDaMedida) = MedirAZona(tiquesPorJanela);
+				long arremessosDaMedida = _arremessosFeitos - arremessosAntes;
 
 				GD.Print("  ---- 20 corpos numa zona, 5400 tiques (3 min de jogo), por janela de 900 ----");
 				for (int j = 0; j < janelas; j++)
 					GD.Print($"       janela {j + 1}: {us[j]:0.0} us/tique, {lixo[j]:0} B/tique");
+				GD.Print($"       {arremessosDaMedida} arremessos e {pousosDaMedida} pousos na medida; no fim, "
+					   + $"{vinte.Count(c => c.TiquesDeVoo > 0)} de 20 no ar e {vinte.Count(c => c.Voando)} voando");
+
+				// A BRIGA TEM QUE ESTAR VIVA PRA CURVA DIZER ALGUMA COISA -- ver o `MedirAZona`. Uma linha de preparo, e nao
+				// de custo: com a horda congelada no ar a curva de baixo mede estatuas, verde ou vermelha.
+				Checa("(preparo) a briga ARREMESSA e quem voou POUSA dentro da medida -- o `TickDoEmpurrao` de producao esta no "
+					+ "tique medido (sem ele ninguem desce: zero pousos)",
+					  arremessosDaMedida > 0 && pousosDaMedida > 0,
+					  $"{arremessosDaMedida} arremessos, {pousosDaMedida} pousos em {janelas * tiquesPorJanela} tiques");
 
 				// ============================ O CRITERIO ============================
 				// Nao e "a ultima janela e menor que a primeira" -- ruido de maquina inverte isso sozinho.
@@ -1846,13 +2760,27 @@ public partial class GameServer
 				// absoluto pra que numeros pequenos nao virem alarme por arredondamento. Vazamento de
 				// verdade nao cresce 50%: ele cresce ordens de grandeza.
 				// ==================================================================
-				static bool Progrediu(double[] j)
+				// A CONTA DOS TERCOS E O LIMIAR FICAM A PARTE pra que a injecao la embaixo possa IMPRIMIR a
+				// folga. O vermelho que motivou isto errou o limiar por ~3 us (terco final ~440 contra ~443),
+				// e isso so se descobria refazendo a conta na mao: uma checagem POR MARGEM tem que mostrar a
+				// margem, senao "passou raspando" e "passou folgado" sao a mesma linha verde.
+				static (double inicio, double fim) Tercos(double[] j)
 				{
 					int terco = Math.Max(1, j.Length / 3);
-					double inicio = j.Take(terco).Average(), fim = j.Skip(j.Length - terco).Average();
-					return fim > inicio * 1.5 + 10;
+					return (j.Take(terco).Average(), j.Skip(j.Length - terco).Average());
+				}
+				static double Limiar(double inicio) => inicio * 1.5 + 10;
+				static bool Progrediu(double[] j)
+				{
+					var (inicio, fim) = Tercos(j);
+					return fim > Limiar(inicio);
 				}
 
+				// A FOLGA DO VERDE TAMBEM SAI NO CONSOLE, pelo mesmo argumento: e dela que a conta do tamanho do vazamento, la
+				// embaixo, tira o "quanto o custo-base sozinho ja anda" -- e com ela impressa a proxima re-medida e ler o log.
+				var (inicioDaCurva, fimDaCurva) = Tercos(us);
+				GD.Print($"       terco final {fimDaCurva:0.0} us contra o limiar {Limiar(inicioDaCurva):0.0} us "
+					   + $"(folga {Limiar(inicioDaCurva) - fimDaCurva:0.0} us)");
 				Checa($"o tique NAO fica mais caro com o tempo (janela 1 {us[0]:0.0} us -> janela "
 					+ $"{janelas} {us[^1]:0.0} us, 5400 tiques com 20 corpos brigando)",
 					  !Progrediu(us), string.Join(" -> ", us.Select(v => $"{v:0.0}")));
@@ -1873,36 +2801,66 @@ public partial class GameServer
 					  $"{ZoneList(zona.Hash).Count}");
 
 				// ============================ E O CRITERIO TEM DENTES? INJETA-SE O VAZAMENTO ============================
-				// Um "nao cresceu" so vale se um "cresceu" for detectavel pelo MESMO instrumento. Entao
-				// aqui roda a mesma medida com um mob-zumbi de verdade enfiado dentro da janela: uma lista
-				// que ganha corpos a cada tique e que e VARRIDA a cada tique -- que e literalmente a forma
-				// do defeito que o DM pagou. Se o `Progrediu` nao acusar isto, ele nao acusaria nada.
+				// Um "nao cresceu" so vale se um "cresceu" for detectavel pelo MESMO instrumento. Entao aqui
+				// roda a MESMA medida (`MedirAZona`, acima) com um mob-zumbi de verdade enfiado dentro do
+				// tique: uma lista que ganha corpos a cada tique e que e VARRIDA a cada tique -- que e
+				// literalmente a forma do defeito que o DM pagou (`NPCAI.dm:751`).
+				//
+				// ============================ O TAMANHO DO VAZAMENTO SAI DE UMA CONTA ============================
+				// Um controle positivo so prova o criterio se ficar ACIMA da resolucao dele, e a resolucao sai
+				// do proprio `Progrediu`. Com B = custo-base e V = custo do vazamento (medias dos tercos 1 e
+				// 3), ele acusa quando  B3 + V3 > 1,5 x (B1 + V1) + 10,  ou seja quando
+				//     V3 - 1,5 x V1  >  1,5 x B1 - B3 + 10.
+				// O lado DIREITO e o quanto o custo-base sozinho ja anda, e as nove rodadas desta bancada em
+				// 23/09 o mediram na curva de producao acima: de 45 a 165 us (em janelas de 900 tiques; nas de
+				// 150 da injecao ele oscila mais). O ESQUERDO, pra uma lista que ganha `porTique` corpos por
+				// tique, varrida a c ns por corpo, com T tiques por janela, e 3,5 x c x porTique x T -- o
+				// terco 1 varre em media porTique x T corpos por tique, o terco 3 cinco vezes isso.
+				//
+				// Os 60 por tique de antes davam 3,5 x c x 9000 = ~140 us (c = 4,4 ns, a inclinacao das
+				// rodadas das 16:3x) a ~240 us (c = 7,7 ns, a das 19:33): DENTRO da faixa que o custo-base
+				// ocupa sozinho. As nove folgas medidas foram -3, 53, 57, 59, 61, 68, 82, 108 e 136 us -- o
+				// controle sempre morou na faixa do ruido, e deixar de acusar de vez em quando era o que a
+				// conta prometia, e nao azar. Com 600 por tique sao ~1400 a ~2400 us: 8x a 15x a pior folga
+				// que o custo-base pediu.
+				//
+				// O CRITERIO NAO MUDOU: tercos, 1,5x + 10 us, o mesmo `Progrediu` do verde de cima. O que muda
+				// e o que o controle prova sobre ele: antes, que um 1,5x afrouxado ate ~1,9x seria pego (nas
+				// rodadas em que o controle acusava); agora, ate ~3,5x -- a razao entre os tercos, que a linha
+				// abaixo imprime. Um controle que deixa de acusar o vazamento em 1 de 4 rodadas nao provava
+				// nem o 1,9x.
+				//
+				// RE-MEDIDO EM 24/09, quando a janela passou a rodar o `Tiques` inteiro (arremesso e voo dentro -- ver
+				// o `MedirAZona`). Onze rodadas: custo-base de 118 a 144 us/tique (as curvas de 23/09 andavam em
+				// 260-490), o lado DIREITO -- a folga que o verde imprime -- de 70 a 88 us, e o controle injetado
+				// passando do limiar por 950 a 1180 us, razao entre os tercos de 3,6x a 4,1x: 11x a 17x a pior folga
+				// que o custo-base pediu. Criterio e tamanho do vazamento ficaram; so a conta foi refeita com o
+				// tique novo.
+				//
+				// A lista nasce com a capacidade final: a copia de cada dobra -- e a alocacao de objeto grande
+				// que pode puxar uma coleta de geracao 2 -- cairia DENTRO do cronometro, numa janela qualquer.
+				// O que vaza aqui e a VARREDURA, e so ela deve crescer.
 				// ==================================================================================================
 				{
-					var zumbis = new List<ServerPlayer>();
-					var comVazamento = new double[janelas];
+					const int porTique = 600, tiquesDaInjecao = 150;
+					var zumbis = new List<ServerPlayer>(janelas * tiquesDaInjecao * porTique);
 					long lixeira = 0;
-					for (int j = 0; j < janelas; j++)
+					var (comVazamento, _, _) = MedirAZona(tiquesDaInjecao, () =>
 					{
-						double soma = 0;
-						for (int t = 0; t < 150; t++)
-						{
-							ulong t0 = Time.GetTicksUsec();
-							TickDosCorposSemDono(Protocol.TickSeconds);
-							// O VAZAMENTO: 60 corpos a mais por tique, e todos varridos.
-							for (int k = 0; k < 60; k++) zumbis.Add(vinte[k % vinte.Count]);
-							foreach (ServerPlayer z in zumbis) lixeira += z.Id;
-							soma += Time.GetTicksUsec() - t0;
-						}
-						comVazamento[j] = soma / 150.0;
-					}
+						// O VAZAMENTO: `porTique` corpos a mais por tique, e todos varridos.
+						for (int k = 0; k < porTique; k++) zumbis.Add(vinte[k % vinte.Count]);
+						foreach (ServerPlayer z in zumbis) lixeira += z.Id;
+					});
 					_ = lixeira;
 
-					GD.Print($"       (injetado) com mob-zumbi: {string.Join(" -> ", comVazamento.Select(v => $"{v:0.0}"))} us");
+					var (ini, fim) = Tercos(comVazamento);
+					string curva = string.Join(" -> ", comVazamento.Select(v => $"{v:0.0}"));
+					string folga = $"terco final {fim:0.0} us contra o limiar {Limiar(ini):0.0} us, "
+								 + $"razao entre os tercos {fim / ini:0.0}x";
+					GD.Print($"       (injetado) com mob-zumbi: {curva} us -- {folga}");
 					Checa("DEFEITO INJETADO: com uma lista que so cresce e e varrida todo tique, o MESMO "
 						+ "criterio REPROVA -- entao o verde de cima e uma medida, e nao um teto largo",
-						  Progrediu(comVazamento),
-						  string.Join(" -> ", comVazamento.Select(v => $"{v:0.0}")));
+						  Progrediu(comVazamento), $"{curva} -- {folga}");
 				}
 
 				foreach (ServerPlayer c in vinte) c.Cerebro = null;   // a proxima secao mede outra coisa
@@ -1929,8 +2887,16 @@ public partial class GameServer
 				// `pl.Livro.Sabe(...)` explode, e isso e uma excecao NO CAMINHO DA DECISAO -- que e o
 				// caso que o contrato promete cobrir. (Um cerebro recem-nascido le capacidades no
 				// PRIMEIRO tique dele: o relogio de 1 Hz comeca zerado.)
-				ServerPlayer quebrado = Forjar("ia: quebrado", 50_000, new Vec2(0, 12288));
-				ServerPlayer vizinho = Forjar("ia: vizinho sao", 50_000, new Vec2(400, 12288));
+				// CHAO PROCURADO ((0, 12288) e mar, na beirada). Este corpo CACA durante o aquecimento -- a presa de um corpo
+				// forjado e o corpo em pe mais perto da zona, sem raio, e hoje ela fica a milhares de px --, e no palco antigo o
+				// primeiro gesto dele era sair da borda (`MoveRules.Escapar`) e a agua o mandava nadar ou boiar (`Travessia`):
+				// dois caminhos que nada tem com o contrato desta secao, rodando dentro do mesmo `try` que ela mede. Aqui os
+				// primeiros passos sao os de producao, a pe e em terra; pra onde a caca o leva depois nao e assunto desta secao.
+				// O vizinho so passa por aqui -- na linha seguinte ele vai pra zona vazia, que nao tem mapa --, entao o chao dele
+				// nao importa.
+				Vec2 palcoDaQuebra = FaixaLivre(4, 12288 / ZoneCollision.TileSize);
+				ServerPlayer quebrado = Forjar("ia: quebrado", 50_000, palcoDaQuebra);
+				ServerPlayer vizinho = Forjar("ia: vizinho sao", 50_000, palcoDaQuebra + new Vec2(400, 0));
 				vizinho.Cerebro!.Poderes = LerCapacidades(vizinho);
 
 				// ============================ O VIZINHO PRECISA DE UM GESTO QUE ACONTECA EM **TODO** TIQUE ============================
@@ -2009,7 +2975,9 @@ public partial class GameServer
 
 				// O CONTROLE: sem a injecao, ninguem e solto. Sem esta linha, um tique que soltasse TODO
 				// mundo (por qualquer outro motivo) daria verde nas checagens de cima.
-				ServerPlayer sao = Forjar("ia: controle", 50_000, new Vec2(0, 12480));
+				// O CONTROLE NO MESMO TIPO DE CHAO do quebrado ((0, 12480) e mar, na beirada): senao "soltar e consequencia da
+				// excecao" compararia um corpo em terra firme com um preso no mar.
+				ServerPlayer sao = Forjar("ia: controle", 50_000, FaixaLivre(4, 12480 / ZoneCollision.TileSize));
 				sao.Cerebro!.Poderes = LerCapacidades(sao);
 				for (int i = 0; i < 60; i++) TickDosCorposSemDono(Protocol.TickSeconds);
 				Checa("(controle) um corpo INTEIRO atravessa 60 tiques sem ser solto -- entao soltar e "
@@ -2055,7 +3023,8 @@ public partial class GameServer
 				// mediria seria a excecao dos outros -- pelo caminho que ja foi provado logo acima.
 				foreach (ServerPlayer velho in _players.Values) velho.Cerebro = null;
 
-				ServerPlayer pior = Forjar("ia: corrupto", 50_000, new Vec2(0, 12672));
+				// Chao procurado pelo mesmo motivo ((0, 12672) e mar, na beirada); ele sai do mundo logo abaixo.
+				ServerPlayer pior = Forjar("ia: corrupto", 50_000, FaixaLivre(0, 12672 / ZoneCollision.TileSize));
 				pior.Ficha = null!;
 				bool escapou = false;
 				try { TickDosCorposSemDono(Protocol.TickSeconds); }
@@ -2085,7 +3054,9 @@ public partial class GameServer
 			// Aqui as duas funcoes de PRODUCAO sao chamadas, e o cerebro medido e o que elas produziram.
 			// ====================================================================================================
 			{
-				ServerPlayer macaco = Forjar("ia: fera de verdade", 50_000, new Vec2(0, 13000), comCerebro: false);
+				// Chao procurado ((0, 13000) e mar, na beirada). Nada aqui anda -- as perguntas sao ao cerebro que a producao
+				// montou --, mas os dois corpos ficam no mundo, de pe, depois da faxina das redeas.
+				ServerPlayer macaco = Forjar("ia: fera de verdade", 50_000, FaixaLivre(0, 13000 / ZoneCollision.TileSize), comCerebro: false);
 				TomarAsRedeas(macaco);
 
 				Checa("o `TomarAsRedeas` do Oozaru entrega um corpo dirigido", macaco.Cerebro != null);
@@ -2103,7 +3074,7 @@ public partial class GameServer
 					  !macaco.Moving && !macaco.Correndo && !macaco.Ficha.dashing
 					  && !macaco.QuerSubir && !macaco.QuerDescer && !macaco.Carregando);
 
-				ServerPlayer lendario = Forjar("ia: furia de verdade", 50_000, new Vec2(0, 13200), comCerebro: false);
+				ServerPlayer lendario = Forjar("ia: furia de verdade", 50_000, FaixaLivre(0, 13200 / ZoneCollision.TileSize), comCerebro: false);
 				TomarAsRedeasDaFuria(lendario, null, 0);
 
 				Checa("o `TomarAsRedeasDaFuria` entrega um corpo dirigido", lendario.Cerebro != null);
@@ -2204,7 +3175,12 @@ public partial class GameServer
 			{
 				foreach (ServerPlayer velho in _players.Values) velho.Cerebro = null;
 
-				var origem = new Vec2(0, 13400);
+				// NO CHAO PROCURADO, e nao em (0, 13400). La o soqueiro nascia no mar, na beirada, e a vitima -- 18 px a oeste
+				// dele -- FORA do mapa (x = -18, dentro do que o `BlockedCell` chama de parede). E esta e a cena que mais anda: a
+				// receita recua a cada tique (o passo pra tras da `Pressao`, com a vitima recolada), e no mar quem respondia ao
+				// recuo era o `MoveRules.Escapar` e o filtro da `Travessia`. A origem e o CENTRO de uma faixa de 3 celulas, pra
+				// vitima tambem pisar em chao que o mapa conhece.
+				var origem = FaixaLivre(2, 13400 / ZoneCollision.TileSize) + new Vec2(ZoneCollision.TileSize, 0);
 				ServerPlayer soqueiro = Forjar("ia: de costas", 50_000, origem, comCerebro: false);
 				// ATRAS DELE, e colado: 18 px < 34 * 0,6 = 20,4 (a faixa do passo pra tras) e
 				// < 34 * 1,6 = 54,4 (a faixa do soco). Alvo sem cerebro: quem e medido e um so.
@@ -2397,7 +3373,11 @@ public partial class GameServer
 				// Ele nao e barrado por um `if`: ele nasce sem cerebro, entao a volta dos dirigidos nao
 				// o enxerga. A checagem afirma o MECANISMO, porque e ele que continua valendo quando
 				// alguem escrever a proxima posse.
-				ServerPlayer boneco = Forjar("ia: boneco largado", 50_000, origem + new Vec2(0, 120), comCerebro: false);
+				// O boneco ganha o PROPRIO chao procurado: `origem + (0, 120)` cairia quatro fileiras abaixo da origem -- fora da
+				// reserva dela (duas de folga) e, no palco antigo, no mar. A vitima vai junto (`boneco.Pos - 18 px`, duas linhas
+				// abaixo), e por isso o boneco tambem fica no CENTRO de uma faixa de 3 celulas: ela pisa em chao do mapa.
+				Vec2 palcoDoBoneco = FaixaLivre(2, 13520 / ZoneCollision.TileSize) + new Vec2(ZoneCollision.TileSize, 0);
+				ServerPlayer boneco = Forjar("ia: boneco largado", 50_000, palcoDoBoneco, comCerebro: false);
 				boneco.Facing = Facing.North;
 				vitima.Pos = boneco.Pos - new Vec2(18, 0);
 				for (int i = 0; i < 30; i++) TickDosCorposSemDono(Protocol.TickSeconds);
@@ -3109,8 +4089,13 @@ public partial class GameServer
 				// -- e o povoamento renasce o vilarejo a cada 5 min.
 				// ================================================================================================
 				{
-					ServerPlayer boca = Forjar("ia: falante", 50_000, quem.Pos + new Vec2(64, 0), comCerebro: false);
-					ServerPlayer calado = Forjar("ia: calado", 50_000, quem.Pos + new Vec2(96, 0), comCerebro: false);
+					// CHAO PROCURADO, e nao `quem.Pos`: aquela e a coordenada do BERCO do host -- uma sala de Vegeta ou uma casa da
+					// Terra, conforme a classe sorteada --, aplicada a um corpo que nasce em OUTRA zona (`zona`, hoje Namek). Ninguem
+					// conferia o que ha la, e o `calado` fica no mundo depois da secao. A fala nao depende do chao; o palco so tem
+					// que existir. A partir da fileira 431 (13.800 px), depois das faixas da 20; 1 tile: os 32 px entre os dois.
+					Vec2 palcoDaFala = FaixaLivre(1, 13800 / ZoneCollision.TileSize);
+					ServerPlayer boca = Forjar("ia: falante", 50_000, palcoDaFala, comCerebro: false);
+					ServerPlayer calado = Forjar("ia: calado", 50_000, palcoDaFala + new Vec2(32, 0), comCerebro: false);
 
 					AplicarComando(boca, new Comando { Falar = "Toma essa!" }, Protocol.TickSeconds);
 					AplicarComando(calado, new Comando { Leve = true }, Protocol.TickSeconds);
@@ -3140,7 +4125,80 @@ public partial class GameServer
 				// `TickDosCorposSemDono` -- o laco de producao, com o `try` por corpo e tudo.
 				// ============================================================================================================
 				{
-					ServerPlayer? chefao = NascerNpc("freeza_vegeta", quem.Zone, quem.Pos + new Vec2(48, 0), 991);
+					// ============================ O PALCO DESTA CENA, E POR QUE ELE MUDOU ============================
+					// Esta cena nascia em `quem.Pos` -- o ponto de chegada do personagem da bancada -- com o saco
+					// RECOLADO NO CORPO (`chefao.Pos + 6 tiles`) todo tique. Os dois pedacos envelheceram juntos:
+					//
+					//   * ATE 2026-09-18 o ponto de chegada era o (249,250), campo aberto em todo planeta. Desde o
+					//     `0b0c8b2` ele e o `/obj/SpawnPoint` do BYOND (`GameServer.PontoDeNascimento`), que fica
+					//     DENTRO de uma construcao: o Saiyajin comum acorda numa sala de Vegeta (a parede leste a 9
+					//     tiles do chefe) e o Low-Class, despejado pra Terra, dentro de uma casa (parede a 3 tiles,
+					//     ENTRE o chefe e o saco). A classe e sorteada na criacao -- e a parede passou a ser sorteada
+					//     junto com ela.
+					//   * O saco recolado nao tem colisao: cada passo do chefe na direcao dele (a pressao, a investida
+					//     de ate 5 tiles, a orbita, o rasante) arrasta o saco pra dentro da parede. Sem linha livre o
+					//     `Ki_Wave` sai do cardapio (`EscolherTiro`); sem tiro sobra o rasante (`Plano.Alcancar`), que
+					//     persegue um alvo que anda junto com ele e nunca chega no soco -- e nem o rasante a 6 tiles
+					//     nem a orbita tem ponto de fala. So restavam os 45% das primeiras investidas.
+					//
+					// Medido em 2026-09-23: 3 rodadas mudas em 5 (as duas da Terra e uma de Vegeta), com o plano final
+					// `Alcancar` ou `Circular` e o "(controle) engajado" VERDE nas tres -- ele aceita justamente os
+					// dois planos que nao falam. **O vermelho era da cena**, e a secao 25 ja tinha escrito a mesma
+					// licao com outra roupa ("a briga PASSEAVA ... o vermelho era a parede, so que andando").
+					//
+					// Entao o palco e o da secao 25: a zona VAZIA da bancada, um BLOCO de chao livre procurado
+					// (`FaixaLivre`, 19 x 13 celulas: o chefe recua ate 4 tiles do saco pra atirar e orbita a ate 4,5
+					// tiles dele, e o bloco da 6 de folga pra todo lado), e o saco ANCORADO no bloco, e nao no corpo.
+					// O chefe continua nascendo pelo `NascerNpc` e brigando pelo `TickDosCorposSemDono`; so o chao
+					// mudou. E sem cliente na zona a mente dele so fica acordada pela presa do roteiro
+					// (`MenteDormindo`) -- que e o canal que o comentario dela, abaixo, sempre disse que esta cena usava.
+					// ============================================================================================
+					Vec2 bloco = FaixaLivre(18, 8, altura: 13);
+					Vec2 ondeNasce = bloco + new Vec2(6 * ZoneCollision.TileSize, 0);
+					Vec2 ondeOSaco = ondeNasce + new Vec2(6 * ZoneCollision.TileSize, 0);
+
+					// A BRIGA, A MESMA PROS DOIS CHEFES DESTA CENA (o que fala, e o da armadilha no fim). Devolve o
+					// tique da primeira frase (-1 = nenhuma), em quantos tiques havia linha livre, quantos rodaram e
+					// quantas vezes o chefe ABRIU o raio (cada vez que o `EnraizadoPorKi` dele liga).
+					//
+					// ============================ CENTO E VINTE SEGUNDOS, E NAO QUARENTA ============================
+					// A frase e sorteada: cada tiro, rajada ou soco e uma ocasiao de 45% (`Falatorio.ChanceDe`), com o
+					// `_rng` do servidor, que nao tem semente. Com ocasiao a cada 4-5 s, 40 s calados sairiam de vez em
+					// quando (uns 0,3-0,8%); com uma a cada 10 s, em 9% das rodadas -- o mesmo vermelho intermitente que
+					// esta secao existia pra matar, so mais raro. A rodada que fala PARA na primeira frase, e um tique
+					// com um corpo dirigido custa microssegundos, entao triplicar o prazo e de graca e eleva o acaso ao
+					// cubo. O prazo e UMA constante, e o chefe mudo da armadilha atravessa o MESMO.
+					// ==============================================================================================
+					//
+					// SO O `TickDosCorposSemDono` RODA, e de proposito: o `TickDosCanaisDeKi` grita o nome da tecnica
+					// pelo MESMO `Falar` quando a carga do raio fecha ("Onda de Ki!!", `GameServer.Projeteis.cs`). Com
+					// ele no laco esta checagem ficaria verde com a boca do chefe desligada -- e a armadilha do fim e
+					// o que prende isso.
+					const int TiquesDeBriga = 3600;   // 120 s -- ver acima
+					double segundosDeBriga = TiquesDeBriga * Protocol.TickSeconds;
+					(int PrimeiraFala, int ComLinha, int Rodados, int RaiosAbertos) Brigar(ServerPlayer lutador, ServerPlayer pancada, bool paraNaFala)
+					{
+						int primeira = -1, comVisada = 0, t = 0, raios = 0;
+						bool enraizado = EnraizadoPorKi(lutador.Id);
+						for (; t < TiquesDeBriga; t++)
+						{
+							pancada.Ficha.HP = 100; pancada.Ficha.KO = false;
+							pancada.Pos = ondeOSaco;   // ANCORADO no bloco, e nao no corpo -- ver o palco
+							if (LinhaDeVisaoLivre(lutador, pancada)) comVisada++;
+							TickDosCorposSemDono(Protocol.TickSeconds);
+							bool agora = EnraizadoPorKi(lutador.Id);
+							if (agora && !enraizado) raios++;
+							enraizado = agora;
+							if (primeira < 0 && _ultimaFala.ContainsKey(lutador.Id))
+							{
+								primeira = t;
+								if (paraNaFala) { t++; break; }
+							}
+						}
+						return (primeira, comVisada, t, raios);
+					}
+
+					ServerPlayer? chefao = NascerNpc("freeza_vegeta", zona, ondeNasce, 991);
 					Checa("(preparo) o chefe nasceu pelo funil de producao, com cerebro",
 						  chefao is { Cerebro: not null }, chefao == null ? "nao nasceu" : "sem cerebro");
 
@@ -3157,39 +4215,90 @@ public partial class GameServer
 						//
 						// Seis tiles poem o alvo DENTRO da janela do raio (4..18). E a licao vale alem
 						// desta linha: uma cena de bancada tem que caber na receita que ela mede, senao o
-						// vermelho e da cena.
+						// vermelho e da cena -- e ele foi da cena de novo quando o berco mudou (ver o palco,
+						// acima). Ancorado no bloco, o saco nao anda atras do chefe: o recuo pra atirar abre
+						// espaco de verdade, e nenhum passo do chefe o empurra pra fora do chao livre.
 						// ============================================================================================
-						ServerPlayer saco = Forjar("ia: saco de pancada", 10,
-												   chefao.Pos + new Vec2(6 * ZoneCollision.TileSize, 0),
-												   comCerebro: false);
-						ZoneList(saco.Zone.Hash).Remove(saco);
-						saco.Zone = chefao.Zone;
-						ZoneList(saco.Zone.Hash).Add(saco);
+						ServerPlayer saco = Forjar("ia: saco de pancada", 10, ondeOSaco, comCerebro: false);
 
 						// A PRESA IMPOSTA PELO ROTEIRO (o `bev_prey`) e o canal que dispensa jogador --
 						// e o unico jeito de esta bancada por o chefe pra brigar sem um cliente na zona.
 						// Ver `PapelDeNpc.PresaDoRoteiro`.
 						chefao.Papel!.PresaDoRoteiro = saco.Id;
 
-						// 40 s de briga de verdade, pelo laco de producao
-						for (int i = 0; i < 1200; i++)
-						{
-							saco.Ficha.HP = 100; saco.Ficha.KO = false;
-							saco.Pos = chefao.Pos + new Vec2(6 * ZoneCollision.TileSize, 0);
-							TickDosCorposSemDono(Protocol.TickSeconds);
-						}
+						// O TERCEIRO PREPARO da secao 25, pelo mesmo motivo: SEM LINHA LIVRE o raio nao sai e o
+						// vermelho de baixo seria da parede. A pergunta e a da producao (`LinhaDeVisaoLivre`, a mesma
+						// que a percepcao do chefe faz), e nao uma conta desta bancada.
+						Checa("(preparo) ha LINHA LIVRE entre o chefe e o saco -- sem ela o `Ki_Wave` sai do "
+							+ "cardapio e a secao mediria uma parede",
+							  LinhaDeVisaoLivre(chefao, saco), $"parede entre {chefao.Pos} e {saco.Pos}");
+
+						// A briga de verdade, pelo laco de producao -- e ela PARA na primeira frase: o que se afirma e
+						// "ele fala", e o resto do prazo so gastaria tempo. O instante da primeira frase vai pro console
+						// porque e ele que mostra a FOLGA desta checagem: um numero que se aproxima do prazo e o aviso
+						// de que a cena voltou a encolher as ocasioes -- antes de a checagem ficar vermelha.
+						(int fala, int comLinha, int rodados, int raios) = Brigar(chefao, saco, paraNaFala: true);
+						GD.Print("  ---- chefe de molde: primeira frase aos "
+							   + (fala < 0 ? "--" : $"{fala * Protocol.TickSeconds:0.0} s") + $" de {segundosDeBriga:0}"
+							   + $" (linha livre em {comLinha} de {rodados} tiques, {raios} raio(s) aberto(s)) ----");
 
 						Checa("um CHEFE nascido pela producao, dirigido pelo laco de producao, FALA "
 							+ "durante a briga -- a corrente inteira, do `npcs.json` ate o chat",
-							  _ultimaFala.ContainsKey(chefao.Id),
-							  $"40 s de briga e nenhuma frase (plano {chefao.Cerebro!.Atual})");
+							  fala >= 0,
+							  $"{segundosDeBriga:0} s de briga e nenhuma frase (plano {chefao.Cerebro?.Atual}, linha livre em {comLinha} de {rodados} tiques)");
 
 						// E ELE ESTAVA MESMO BRIGANDO. Sem isto, um chefe que ficasse parado por
 						// qualquer outro motivo deixaria o vermelho acima sem explicacao.
-						Checa("(controle) ...e ele estava mesmo engajado nesses 40 s",
-							  chefao.Cerebro!.Atual is Plano.Pressionar or Plano.Alcancar
+						Checa("(controle) ...e ele estava mesmo engajado na briga",
+							  chefao.Cerebro?.Atual is Plano.Pressionar or Plano.Alcancar
 							  or Plano.Atirar or Plano.Circular or Plano.Escalar,
-							  $"plano {chefao.Cerebro.Atual}");
+							  $"plano {chefao.Cerebro?.Atual}");
+
+						// ...E A CENA COUBE NA RECEITA. O controle de cima aceita `Alcancar` e `Circular`, e nenhum dos
+						// dois tem ponto de fala a 6 tiles: foi exatamente assim que a versao anterior ficou muda com ele
+						// verde. E esta linha que poe o nome da parede num vermelho de cima.
+						Checa("(controle) ...e a cena coube na receita: linha livre entre o chefe e o saco em "
+							+ "pelo menos 95% dos tiques",
+							  comLinha >= rodados * 0.95, $"{comLinha} de {rodados} tiques");
+
+						RemoverNpc(saco);
+						RemoverNpc(chefao);
+
+						// ============================ A ARMADILHA: O MESMO CHEFE, A MESMA CENA, A BOCA DESLIGADA ============================
+						// O verde de cima diz "o `_ultimaFala` foi carimbado" -- e o `Falar` tem outros chamadores alem
+						// do cerebro (o grito da carga do raio, o reflexo do contra-feixe, a conversa da rotina). Entao o
+						// mesmo molde renasce com a MESMA semente (mesmo `lugar`, mesma zona), no MESMO bloco, e o unico
+						// defeito injetado e o que o `Falatorio.Ligado` existe pra tornar inofensivo: o `Temperamento.Montar`
+						// sem a linha que acende a boca. Ele tem que atravessar o prazo INTEIRO calado -- se falar, o verde
+						// de cima nao era do `Falatorio`, e ninguem saberia.
+						//
+						// E ELE TEM QUE TER PASSADO PELAS OCASIOES. Linha livre so diz que a cena coube; um mudo parado em
+						// `Alcancar` ou `Circular` o prazo inteiro tambem a teria, sem nunca apertar o raio -- e o raio e
+						// justamente onde um grito de verb (o jeito de dezenas de verbs deste port: "Kienzan!",
+						// "SPIRIT GUN!") vazaria pelo `Falar`. Sem `TickDosCanaisDeKi` no laco, so um APERTO abre o canal,
+						// entao cada vez que o `EnraizadoPorKi` dele liga e um aperto do `Ki_Wave`.
+						// ================================================================================================================
+						if (NascerNpc("freeza_vegeta", zona, ondeNasce, 991) is { Cerebro: not null } chefeMudo)
+						{
+							nascidos.Add(chefeMudo);
+							chefeMudo.Cerebro!.Boca.Ligado = false;
+							ServerPlayer sacoDoMudo = Forjar("ia: saco do chefe mudo", 10, ondeOSaco, comCerebro: false);
+							chefeMudo.Papel!.PresaDoRoteiro = sacoDoMudo.Id;
+
+							(int falaDoMudo, int linhaDoMudo, int rodadosDoMudo, int raiosDoMudo) = Brigar(chefeMudo, sacoDoMudo, paraNaFala: false);
+
+							Checa("A ARMADILHA ESTA ARMADA: o MESMO chefe (molde, semente, bloco) com a boca DESLIGADA "
+								+ $"atravessa os {segundosDeBriga:0} s inteiros sem uma frase -- o verde de cima e do `Falatorio`, "
+								+ "e nao de outro `Falar` no caminho",
+								  falaDoMudo < 0, $"falou aos {falaDoMudo * Protocol.TickSeconds:0.0} s");
+							Checa("(controle) ...e o mudo brigou a MESMA briga: linha livre em pelo menos 95% dos tiques, e "
+								+ "ele APERTOU o raio (o canal abriu) -- passou pela ocasiao em que um grito de verb vazaria",
+								  linhaDoMudo >= rodadosDoMudo * 0.95 && raiosDoMudo >= 1,
+								  $"{linhaDoMudo} de {rodadosDoMudo} tiques com linha livre, {raiosDoMudo} raio(s) aberto(s)");
+
+							RemoverNpc(sacoDoMudo);
+							RemoverNpc(chefeMudo);
+						}
 					}
 				}
 			}
@@ -3214,7 +4323,12 @@ public partial class GameServer
 			{
 				foreach (ServerPlayer velho in _players.Values) velho.Cerebro = null;
 
-				var praca = new Vec2(0, 17000);
+				// A PRACA E CHAO PROCURADO. Ela era `(0, 17000)` -- e Namek tem 500 celulas de lado (16.000 px): os dois corpos
+				// desta secao estavam INTEIROS FORA do mapa, e fora do bitset o `BlockedCell` responde PAREDE. A regra medida
+				// (cone + resolvedor) nao depende do chao, mas a cena tem que estar no mundo. A partir da fileira 437 (14.000 px),
+				// depois da 22(f); a origem e o CENTRO de uma faixa de 3 celulas, pra quem leva (18 px a oeste) tambem pisar em
+				// chao.
+				var praca = FaixaLivre(2, 14000 / ZoneCollision.TileSize) + new Vec2(ZoneCollision.TileSize, 0);
 				ServerPlayer punho = Forjar("res: quem soca", 50_000, praca, comCerebro: false);
 				ServerPlayer couro = Forjar("res: quem leva", 50_000, praca - new Vec2(18, 0), comCerebro: false);
 				couro.Facing = Facing.East;
@@ -3462,22 +4576,10 @@ public partial class GameServer
 				//
 				// E a mesma licao que a secao 22 ja tinha registrado com outra roupa ("uma cena de
 				// bancada tem que caber na receita que ela mede"), e a `--projetilteste` resolveu do
-				// mesmo jeito: varrer o mapa atras de uma faixa livre. Esta e a versao curta dela.
+				// mesmo jeito: varrer o mapa atras de uma faixa livre. A versao curta dela (`FaixaLivre`)
+				// morava aqui e subiu pro topo da bancada quando a propria secao 22 caiu no buraco que
+				// esta secao ja tinha nomeado -- ver o palco da 22(g).
 				// ==================================================================================================
-				Vec2 FaixaLivre(int tiles, int aPartirDaLinha)
-				{
-					ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
-					if (mapa == null) return new Vec2(4 * ZoneCollision.TileSize, aPartirDaLinha * ZoneCollision.TileSize);
-					for (int y = aPartirDaLinha; y < 250; y++)
-						for (int x = 4; x + tiles < 250; x++)
-						{
-							bool livre = true;
-							for (int d = 0; d <= tiles && livre; d++) livre &= !mapa.BlockedCell(x + d, y);
-							if (livre)
-								return new Vec2(x * ZoneCollision.TileSize + 16, y * ZoneCollision.TileSize + 16);
-						}
-					return new Vec2(4 * ZoneCollision.TileSize, aPartirDaLinha * ZoneCollision.TileSize);
-				}
 
 				Vec2 ondeArmado = FaixaLivre(12, 8);
 				Vec2 ondeSemArma = FaixaLivre(12, 48);
@@ -3956,8 +5058,8 @@ public partial class GameServer
 			// =====================================================================
 			// ============================ POR QUE ELE PRECISA DE LINHA PROPRIA ============================
 			// A secao 19 cobre as duas posses (Oozaru e furia lendaria) porque as duas escrevem o
-			// tempero na mao, num arquivo cada. O REFLEXO e o terceiro fabricante de cerebro deste
-			// servidor (`CriarClone`) e nao estava coberto -- e ele e o mais exposto de todos as
+			// tempero na mao, num arquivo cada. O REFLEXO (`CriarClone`) e um dos fabricantes da lista
+			// argumentada da (d), na secao 15, e nao estava coberto AQUI -- e ele e o mais exposto de todos as
 			// camadas novas por uma razao que nao aparece em teste de comportamento nenhum: **ele
 			// carrega o nome do dono**. Uma boca ligada ali sai no chat como `Fulano (mente)` dizendo
 			// o que o Fulano nao digitou.
@@ -3969,7 +5071,7 @@ public partial class GameServer
 				ServerPlayer reflexo = CriarClone(quem, zona);
 				nascidos.Add(reflexo);
 
-				Checa("o reflexo nasce DIRIGIDO (o `CriarClone` e o terceiro fabricante de cerebro)",
+				Checa("o reflexo nasce DIRIGIDO (o `CriarClone` esta na lista argumentada da (d))",
 					  reflexo.Cerebro != null);
 
 				Cerebro sombra = reflexo.Cerebro!;
@@ -4042,10 +5144,10 @@ public partial class GameServer
 			// 28. O CUSTO DA IA **COMPLETA** -- lingua, arsenal e emocao no mundo cheio
 			// =====================================================================
 			// ============================ A SECAO 12 MEDE UM NPC MAIS POBRE DO QUE OS DE HOJE ============================
-			// Ela forja 20 corpos e mede o laco -- e os corpos dela tem o livro de skills VAZIO. Ou
-			// seja: a leitura de 1 Hz deles nao monta arsenal nenhum (o `ArsenalDeLonge` sai no
-			// primeiro `SabeTecnica`), e a boca deles nasce desligada. O numero que ela publica e o
-			// custo de um NPC que o `npcs.json` nao produz mais.
+			// Ela forja 20 corpos e mede o laco -- e os corpos dela so sabem o que o `EnsinarAVoar` da: o
+			// `Ki_Unlocked`, que destrava o `Basic_Blast`. A leitura de 1 Hz deles monta um arsenal de UM tiro,
+			// e a boca deles nasce desligada. O numero que ela publica e o custo de um NPC mais pobre do que os
+			// que o `npcs.json` produz.
 			//
 			// Aqui os 20 sao a configuracao CARA: os tres degraus que dao os verbs que voam (entao a
 			// leitura de 1 Hz varre o livro E monta o array de `Tiro`), a boca ligada e as emocoes
@@ -4055,12 +5157,19 @@ public partial class GameServer
 			{
 				foreach (ServerPlayer velho in _players.Values) velho.Cerebro = null;
 
+				// NO PALCO DA SECAO 12, e pelo mesmo motivo: a Sala do Tempo nao tem beirada nem agua, e 20.000 px entre um
+				// e outro e mais do que os 20 conseguem andar durante as medidas -- sem alcance nao ha combate, e o que
+				// sobra na medida e o pedaco que esta camada e dona. Esta secao nascia a 4.000 px numa fileira em
+				// y = 24.000, FORA do mapa de Namek (16.000 px), no ramo sem refugio do `MoveRules.Escapar` -- e esse
+				// ramo entrava na medida.
+				ZoneKey salaCara = ZoneKey.Premade(ZonaDaSala);
+				Checa("(preparo) a Sala do Tempo esta vazia -- a secao 12 recolheu os dela, e os 20 so enxergam uns aos outros",
+					  ZoneList(salaCara.Hash).Count == 0, $"{ZoneList(salaCara.Hash).Count} corpo(s) la");
+
 				var caros = new List<ServerPlayer>();
 				for (int i = 0; i < 20; i++)
 				{
-					// A 4000 px UNS DOS OUTROS, como na secao 12 e pelo mesmo motivo: sem alcance nao
-					// ha combate, e o que sobra na medida e o pedaco que esta camada e dona.
-					ServerPlayer c = Forjar($"ia: caro{i}", 50_000, new Vec2(i * 4000, 24000));
+					ServerPlayer c = Forjar($"ia: caro{i}", 50_000, new Vec2(24_000 + i * 20_000, 8_000), emZona: salaCara);
 					EnsinarAVoar(c);
 					DarOsTresDegraus(c);
 					c.Cerebro!.Boca.Ligado = true;
@@ -4083,12 +5192,19 @@ public partial class GameServer
 						foreach (ServerPlayer c in caros) c.Cerebro?.PrecisaLerCapacidades(1.0);
 
 					int voltas = comLeitura ? 300 : 25;
-					long b0 = GC.GetAllocatedBytesForCurrentThread();
-					ulong t0 = Time.GetTicksUsec();
-					for (int i = 0; i < voltas; i++) TickDosCorposSemDono(Protocol.TickSeconds);
-					ulong t1 = Time.GetTicksUsec();
-					bytes = (GC.GetAllocatedBytesForCurrentThread() - b0) / voltas;
-					return (t1 - t0) / (double)voltas;
+					// O RELATO DA `--diagia` SAI DA JANELA -- ver a secao 12.
+					bool relato = _diagIa;
+					_diagIa = false;
+					try
+					{
+						long b0 = GC.GetAllocatedBytesForCurrentThread();
+						ulong t0 = Time.GetTicksUsec();
+						for (int i = 0; i < voltas; i++) TickDosCorposSemDono(Protocol.TickSeconds);
+						ulong t1 = Time.GetTicksUsec();
+						bytes = (GC.GetAllocatedBytesForCurrentThread() - b0) / voltas;
+						return (t1 - t0) / (double)voltas;
+					}
+					finally { _diagIa = relato; }
 				}
 
 				double baratoCaro = MedirCaro(false, out long lixoBarato);
@@ -4111,19 +5227,23 @@ public partial class GameServer
 					+ "no caminho de 30 Hz custam ZERO bytes",
 					  lixoBarato < 64, $"{lixoBarato} B por tique com 20 corpos");
 
-				// ============================ ESTE TETO E MAIOR QUE O DA SECAO 12, E ELE TEM DONO ============================
-				// A leitura de 1 Hz de um corpo ARMADO faz duas coisas que a de um corpo pobre nao faz:
-				// varre o livro pelas quatro tecnicas que voam (`SabeTecnica`, e cada uma aloca o
-				// iterador do `VerbosAtivos()`) e MONTA a lista + o array de `Tiro`. O teto abaixo foi
-				// medido com esta bancada e posto ~15% acima do medido -- e continua sendo detector de
-				// regressao, porque um laco novo de verdade custa milhares de bytes e nao dezenas.
+				// ============================ ESTE TETO E A RESPOSTA, E MAIS NADA (2026-09-24) ============================
+				// A leitura de 1 Hz de um corpo ARMADO monta so o array de `Tiro` com as TRES tecnicas que os degraus
+				// dao (`Ki_Wave`, `Guided_Ball`, `Basic_Blast`): 24 + 3 x 48 = 168 B por leitura, e 20 corpos x 10
+				// leituras em 300 tiques da 112 B por tique. E exatamente o que se mede no palco da Sala. O catalogo
+				// de formas, as perguntas e o arsenal ja nao montam nada (a secao 12 cobra cada zero pelo nome).
+				//
+				// A HISTORIA DO NUMERO: nasceu 16.384 em `a55b464`, ~15% acima do medido quando cada pergunta ainda
+				// pagava o iterador do `VerbosAtivos()`; desceu pra 8.704 quando as perguntas zeraram (8.121 medidos);
+				// e agora e 120 -- ~7% acima dos 112. Uma alocacao nova de 48 B por leitura ja soma +32 B por tique e
+				// reprova. A medida e deterministica: a mesma conta de bytes em toda rodada.
 				//
 				// **Se esta linha reprovar, a resposta certa nao e subir o numero**: e olhar se a
 				// pergunta nova cabia numa das que ja passam por aqui.
 				// ======================================================================================================
-				Checa("...e a leitura de 1 Hz de um corpo ARMADO fica dentro do orcamento conhecido "
-					+ "(o `HashSet` do catalogo de formas + os cinco `SabeTecnica` + o array do arsenal)",
-					  lixoLeitura < 16_384, $"{lixoLeitura} B por tique (media) com 20 corpos");
+				Checa("...e a leitura de 1 Hz de um corpo ARMADO so aloca a RESPOSTA -- o array de tres `Tiro` (168 B "
+					+ "por leitura, 112 B por tique com 20 corpos); lingua, emocao, catalogo e perguntas custam zero",
+					  lixoLeitura < 120, $"{lixoLeitura} B por tique (media) com 20 corpos -- a resposta sozinha da 112");
 
 				foreach (ServerPlayer c in caros) c.Cerebro = null;
 			}
@@ -4193,9 +5313,14 @@ public partial class GameServer
 	/// O CORPO DE UM METODO, por contagem de chaves, ja limpo de texto e comentario.
 	///
 	/// A assinatura e casada por `Contains` e nao por igualdade: ela vem escrita no chamador
-	/// exatamente como esta no fonte (`"private void Input(NetPeer"`), e uma mudanca de assinatura
+	/// exatamente como esta no fonte (`"private void Handle(NetPeer"`), e uma mudanca de assinatura
 	/// devolve ZERO linhas -- que reprova alto na checagem "o corpo foi extraido", em vez de devolver
 	/// um conjunto vazio que passaria por "nao achei nada de errado".
+	///
+	/// O QUE ISTO NAO PEGA, e ja custou caro: o metodo PARTIDO. Quando o `Input` virou so o leitor do fio
+	/// e o passo mudou pro `AplicarInput` (2026-09-05, 8e438fe), a assinatura antiga continuou existindo e
+	/// o extrator devolveu um corpo CURTO E ERRADO, nao vazio -- e (a)/(b) da secao 15 ficaram vermelhas
+	/// pelo motivo errado por semanas. Contra isso, so ancora de CONTEUDO: ver o `AncoraDoPasso`.
 	/// </summary>
 	private static string[] CorpoDoMetodo(string[] linhas, string assinatura)
 	{

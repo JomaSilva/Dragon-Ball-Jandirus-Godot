@@ -36,6 +36,7 @@ public partial class GameServer
 		Vec2 posAntes = pl.Pos;
 		var forjados = new List<ServerPlayer>();
 		Nave? nave = null;
+		Action? tirarOVoo = null;
 
 		try
 		{
@@ -188,6 +189,33 @@ public partial class GameServer
 			Checa("...ao lado do console, e nao dentro dele",
 				  MapaDaZonaOuCatalogo(pl.Zone) is { } m2 && !MoveRules.Occupied(m2, pl.Pos));
 			Checa("...e o leme fica livre pro proximo", nave.PilotoId == 0);
+			Checa("...e quem pegou o leme A PE volta A PE (o `pilot_old_flight` era falso)",
+				  !pl.Voando && !pl.NaveDevolveVoo, $"voando={pl.Voando}, devolve={pl.NaveDevolveVoo}");
+
+			// ============================ QUEM PEGOU O LEME VOANDO SAI VOANDO (`ShipVessel.dm:315`, `:217-218`) ============================
+			// `usr.pilot_old_flight = usr.flight` vem ANTES do `usr.loc = ...`, e o `end_pilot` devolve `M.flight`. Aqui o voo
+			// era lido DEPOIS do `LargarOCorpo` -- cuja viagem (`MoveToZone`) pousa todo corpo que chega --, entao o
+			// `NaveDevolveVoo` nascia SEMPRE falso e as duas saidas do leme derrubavam o voo de quem voava.
+			//
+			// O VOO ENTRA PELA TECLA (`AlternarVoo`), com a skill que o abre dada a este personagem de bancada e tirada
+			// no `finally` (ver `DarOVooDaBancada`). A linha de cima e o CONTROLE: o mesmo leme, a pe, volta a pe.
+			// COMO ELA REPROVA: leia o `pl.Voando` depois do `LargarOCorpo` no `PilotarDaPonte` (a ordem antiga) e a
+			// primeira diz "devolve=False"; devolva o voo ANTES do `VoltarProCorpo` no `PararDePilotar` e a segunda
+			// diz "voando=False".
+			// ===================================================================================================================================
+			pl.Pos = NaveGrande.PixelDe((NaveGrande.CelDoConsole.X, NaveGrande.CelDoConsole.Y + 1));
+			tirarOVoo = DarOVooDaBancada(pl);
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			AlternarVoo(pl);
+			Checa("(montagem) o corpo decolou pela tecla de voo, na ponte", pl.Voando && pl.Zone.Equals(dentro));
+			ComandoDeInteracao(pl, "nave_pilotar", "");
+			Checa("pegar o leme VOANDO guarda o voo -- o `pilot_old_flight` e lido ANTES de largar o corpo (`:315`)",
+				  nave.PilotoId == pl.Id && pl.NaveDevolveVoo, $"piloto {nave.PilotoId}, devolve={pl.NaveDevolveVoo}");
+			ComandoDeInteracao(pl, "nave_pilotar", "");
+			Checa("...e largar o leme DEVOLVE o voo na ponte, depois da viagem de volta (`end_pilot`, `:217-218`)",
+				  pl.Zone.Equals(dentro) && nave.PilotoId == 0 && pl.Voando,
+				  $"zona {pl.Zone}, piloto {nave.PilotoId}, voando={pl.Voando}");
+			AlternarVoo(pl);   // pousa -- o resto da bancada anda a pe
 
 			// ---------------------------------------------------------------- 6. LANCAR DA PONTE
 			bool daquiSobe = Espaco.PreFeitos().Any(p =>
@@ -230,9 +258,59 @@ public partial class GameServer
 			Checa("com gente dentro, a nave conta a tripulacao", QuantosDentro(nave) >= 1,
 				  $"{QuantosDentro(nave)} dentro");
 
+			// ---------------------------------------------------------------- 7b. DOIS SAEM, DOIS LUGARES
+			// ============================ `ship_free_turf_around` PULA O TILE DE QUEM JA ESTA LA (`:362-365`) ============================
+			// O ponto ao lado do casco era escolhido por `id % 8`: dois corpos de ids CONGRUENTES modulo 8 saiam no
+			// MESMO pixel. O DM devolve o primeiro tile vizinho sem turf denso E sem atomo denso em cima -- e mob e
+			// denso: quem ja saiu tira o tile dele da conta do seguinte.
+			//
+			// OS IDS SAO ESCOLHIDOS, e e o unico motivo de estes dois nao nascerem pela fabrica de NPC: o defeito
+			// so aparece com `a % 8 == b % 8`, e a fabrica numera sozinha. Eles descem pela PLATAFORMA de producao
+			// (`SairDaNave`), um depois do outro.
+			// COMO ELA REPROVA: volte o `semente % 8 / 8.0 * Math.Tau` no `PontoAoLadoDaNave` e ela diz "0,0 px".
+			// ========================================================================================================================
+			ServerPlayer DescerPelaPlataforma(int id)
+			{
+				var corpo = new ServerPlayer
+				{
+					Id = id, Peer = null, Name = $"bancada: desce #{id}", Race = "Human", Genero = "Male", Idade = 25,
+					Zone = dentro, Pos = NaveGrande.PixelDe(NaveGrande.CelDaPlataforma),
+					Ficha = new Jandirus.Core.Stats.Fighter { Race = "Human", BP = 1_000 },
+					Livro = new Jandirus.Core.Skills.SkillBook(),
+				};
+				corpo.Ficha.Class = "Normal";
+				PorNoMundo(corpo);
+				forjados.Add(corpo);
+				ComandoDeInteracao(corpo, "nave_sair", "");
+				return corpo;
+			}
+			ServerPlayer primeiro = DescerPelaPlataforma(IdBaseDaEjecaoDeTeste);
+			ServerPlayer segundo = DescerPelaPlataforma(IdBaseDaEjecaoDeTeste + 8);
+			Checa("dois corpos de ids congruentes modulo 8 descem pela plataforma e NAO caem no mesmo ponto",
+				  primeiro.Zone.Equals(nave.Zona) && segundo.Zone.Equals(nave.Zona)
+				  && !ClasseDeCorpo.CaixasSeTocam(ClasseDeCorpo.Pes(primeiro.Pos), ClasseDeCorpo.Pes(segundo.Pos)),
+				  $"#{primeiro.Id} em ({primeiro.Pos.X:0},{primeiro.Pos.Y:0}), #{segundo.Id} em ({segundo.Pos.X:0},{segundo.Pos.Y:0}), "
+				  + $"{(primeiro.Pos - segundo.Pos).Length:0.0} px entre eles, zonas {primeiro.Zone}/{segundo.Zone}");
+			RemoverPassageiro(primeiro);
+			RemoverPassageiro(segundo);
+
 			// ---------------------------------------------------------------- 8. A DESTRUICAO
 			// O CASO QUE MAIS DA ERRADO CALADO. Dois corpos dentro (eu e um forjado), um deles no
 			// leme, e o casco cede: ninguem pode ficar pra tras numa zona que deixou de existir.
+			//
+			// ============================ "NINGUEM" SAO TRES TIPOS DE CORPO ============================
+			// A ejecao so enxergava um: quem esta no `_players`, que e quem o `MoveToZone` move. Os outros
+			// dois moram SO na `ZoneList` -- o BONECO que o piloto deixa na ponte (nasce sozinho logo
+			// abaixo: o `LargarOCorpo` e a porta do leme) e o CADAVER, que nasce aqui pelo `DeixarOCadaver`
+			// de producao, o mesmo do `IrProAlem`. Ele e "do passageiro" (ou meu, se nao houver molde de
+			// NPC) so porque a funcao fotografa alguem -- nome, aparencia, feridas: o que esta sob teste e
+			// o que a nave faz com um corpo que o servidor nao simula, e nao a morte.
+			//
+			// ELE NASCE SEMPRE, e DEPOIS da contagem de quem esta a bordo. Sempre, porque sem passageiro
+			// a ejecao ja e medida com menos gente, e a prova do cadaver nao pode passar VAZIA junto.
+			// Depois, porque contado antes ele faria o "dois corpos a bordo" passar com o passageiro do
+			// lado de fora da nave.
+			// ==========================================================================================
 			ServerPlayer? passageiro = ForjarPassageiro(dentro);
 			if (passageiro != null) forjados.Add(passageiro);
 
@@ -240,15 +318,44 @@ public partial class GameServer
 			Checa("dois corpos a bordo pra o teste da ejecao", aBordoAntes >= (passageiro != null ? 2 : 1),
 				  $"{aBordoAntes} dentro");
 
+			ServerPlayer cadaver = DeixarOCadaver(passageiro ?? pl);
+			forjados.Add(cadaver);
+			Checa("...e um CADAVER no chao da nave (o corpo que o servidor nao simula)",
+				  ZoneList(dentro.Hash).Contains(cadaver) && !_players.ContainsKey(cadaver.Id),
+				  $"cadaver #{cadaver.Id} em {cadaver.Zone}");
+
 			// UM DELES ASSUME O LEME: e a combinacao que mais quebra -- um corpo FORA marcado como
-			// piloto de uma nave que vai deixar de existir.
+			// piloto de uma nave que vai deixar de existir. E ELE PEGA O LEME VOANDO: a explosao e a outra saida do
+			// leme (`testDestroy` -> `end_pilot`, `ShipVessel.dm:253` e `:217-218`), e o voo tem que sobreviver a ela.
 			pl.Pos = NaveGrande.PixelDe((NaveGrande.CelDoConsole.X, NaveGrande.CelDoConsole.Y + 1));
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			AlternarVoo(pl);
+			bool voavaNoLeme = pl.Voando;
 			ComandoDeInteracao(pl, "nave_pilotar", "");
 			bool noLeme = nave.PilotoId == pl.Id;
-			Checa("um piloto ao leme na hora da explosao", noLeme);
+			Checa("um piloto ao leme na hora da explosao (e ele pegou o leme VOANDO)", noLeme && voavaNoLeme,
+				  $"no leme={noLeme}, voava={voavaNoLeme}");
+
+			// E O CORPO DELE FICOU NA PONTE -- o `LargarOCorpo` e a porta do leme. Sem esta prova, o
+			// "ninguem ficou dentro" la embaixo passaria VAZIO no dia em que o leme deixasse de largar o
+			// corpo: o boneco e justamente o corpo que o `MoveToZone` da ejecao nao alcancava.
+			Checa("...e o CORPO dele ficou na ponte (o boneco que so mora na `ZoneList`)",
+				  pl.BonecoLargado is { } bonecoDaPonte && ZoneList(dentro.Hash).Contains(bonecoDaPonte)
+				  && !_players.ContainsKey(bonecoDaPonte.Id));
 
 			ZoneKey ondeCaiu = nave.Zona;
 			int idDaNave = nave.Id;
+
+			// ONDE O CASCO ESTAVA, guardado ANTES do golpe. O piloto esta montado nele (o `LargarOCorpo`
+			// do leme o pos em `(n.X, n.Y)`), e e ali que o `end_pilot` do DM o deixa: ele nao move o `M`.
+			// A prova la embaixo compara com ESTE ponto, e nao com onde o piloto estiver depois da
+			// explosao -- assim ela pega tanto a explosao que o tira do lugar quanto o tique que o arrasta.
+			Vec2 ondeOCascoEstava = new Vec2(nave.X, nave.Y);
+
+			// E UMA MARCA NO CREDITO DE PASSO, que no caminho da explosao so o `MoveToZone` zera: se ela
+			// sobreviver, o piloto nao VIAJOU pra onde ja estava (a viagem mandaria o `ZoneChanged` que cobre a
+			// tela dele no instante da explosao -- ver o fim do `VoltarProCorpo`).
+			pl.OrcamentoPx = 7f;
 
 			// O DONO NAO DERRUBA A PROPRIA NAVE (`ShipVessel.dm:243-245`). Provar a RECUSA antes de
 			// provar a queda: sem isso, "a nave caiu" nao distingue as duas regras.
@@ -267,8 +374,16 @@ public partial class GameServer
 			EstragarNave(nave, nave.ArmaduraMax * 5, null);
 
 			Checa("o casco cedeu e a nave saiu do mundo", _naves.All(x => x.Id != idDaNave));
+			// O DETALHE DIZ **QUEM** FICOU, e nao so quantos. Esta linha dizia "1 preso(s)" enquanto o log
+			// da nave dizia "2 ejetado(s)" -- os dois certos, e nenhum apontando o culpado: o boneco do
+			// piloto, que o `MoveToZone` da ejecao recusava calado por ele nao estar no `_players`.
+			List<ServerPlayer> presos = ZoneList(dentro.Hash);
 			Checa("NINGUEM ficou dentro de uma zona que deixou de existir",
-				  ZoneList(dentro.Hash).Count == 0, $"{ZoneList(dentro.Hash).Count} preso(s) la dentro");
+				  presos.Count == 0,
+				  $"{presos.Count} preso(s) la dentro: " + string.Join(", ", presos.Select(c =>
+					  c.ECadaver ? $"cadaver '{c.Name}'"
+					  : c.DonoDoCorpoLargado != 0 ? $"corpo largado de #{c.DonoDoCorpoLargado}"
+					  : $"'{c.Name}' (#{c.Id})")));
 			Checa("...todos foram parar na zona onde o casco estava",
 				  pl.Zone.Equals(ondeCaiu) && (passageiro == null || passageiro.Zone.Equals(ondeCaiu)),
 				  $"eu em {pl.Zone}, passageiro em {passageiro?.Zone.ToString() ?? "-"}");
@@ -276,8 +391,33 @@ public partial class GameServer
 				  passageiro == null || (passageiro.Pos - pl.Pos).Length > 1f,
 				  passageiro == null ? "" : $"distancia {(passageiro.Pos - pl.Pos).Length:0.0} px");
 			if (noLeme)
+			{
 				Checa("o piloto foi solto do leme antes de a nave sumir (senao o tique procuraria uma nave morta)",
 					  !EstaPilotando(pl.Id));
+
+				// ============================ E VOLTOU PRO PROPRIO CORPO, ALI MESMO ============================
+				// O corpo que ele deixou na ponte saiu do mundo com ela, e o espelho do corpo largado tem que
+				// zerar NA HORA. Solto do leme e ainda "fora do corpo", o tique seguinte o mandaria pro destino
+				// de emergencia -- do meio do espaco pra Terra. A segunda afirmacao roda as DUAS bordas de
+				// producao (`BordasDeQuemEstaFora` + `TickDeQuemVolta`), porque e nelas que o defeito
+				// apareceria; a primeira so diz que o campo zerou. E ela compara com o ponto do CASCO de antes
+				// do golpe (ver `ondeOCascoEstava`): "ejetar o piloto pro lado", que o DM nao faz, tambem cai.
+				// ================================================================================================
+				Checa("...e voltou pro PROPRIO corpo na hora (o corpo da ponte saiu do mundo com ela)",
+					  pl.BonecoLargado == null, "continua fora do corpo");
+				Checa("...SEM VIAJAR pra onde ja estava (o `MoveToZone` zeraria a marca no credito de passo e mandaria "
+					  + "o `ZoneChanged` que cobre a tela dele no instante da explosao)",
+					  pl.OrcamentoPx == 7f, $"credito de passo {pl.OrcamentoPx:0.##} (a marca era 7)");
+				// COMO ELA REPROVA: a ordem antiga do `PilotarDaPonte` (o voo lido depois do `LargarOCorpo`) deixa o
+				// `NaveDevolveVoo` falso, e o `DestruirNave` derruba o voo de quem voava.
+				Checa("...e CONTINUA VOANDO, porque voava antes do leme (`M.flight = M.pilot_old_flight`, `:217`)",
+					  pl.Voando, $"voando={pl.Voando}, devolve={pl.NaveDevolveVoo}");
+				BordasDeQuemEstaFora(pl);
+				TickDeQuemVolta();
+				Checa("...e o tique seguinte nao o arrasta: ele fica no ponto do casco (`end_pilot` nao move o `M`, ShipVessel.dm:211-227)",
+					  pl.Zone.Equals(ondeCaiu) && (pl.Pos - ondeOCascoEstava).Length < 1f,
+					  $"zona: {pl.Zone}, pos ({pl.Pos.X:0},{pl.Pos.Y:0}), casco em ({ondeOCascoEstava.X:0},{ondeOCascoEstava.Y:0})");
+			}
 
 			// ---------------------------------------------------------------- 9. O RESGATE DO RELOG
 			// Quem deslogou dentro e voltou depois da explosao. O save guarda a `ZoneKey` inteira, e
@@ -285,6 +425,13 @@ public partial class GameServer
 			// no login so olha `KindPremade`.
 			ZoneKey guardada = pl.Zone;
 			Vec2 pgc = pl.Pos;
+
+			// O `Entrar` RODA COM O CORPO FORA DE TODA `ZoneList` (por isso o resgate usa o
+			// `PousarNoBercoSemPacote`, que so reescreve a zona). Emular o relog trocando so o `pl.Zone`
+			// deixava o corpo na lista do espaco, e o `MoveToZone` da volta -- que tira da lista da zona
+			// ATUAL, a do berco -- o punha la uma SEGUNDA vez: um fantasma do host na lista do espaco pelo
+			// resto do processo, que o `finally` so tira pela metade.
+			ZoneList(pl.Zone.Hash).Remove(pl);
 			pl.Zone = dentro;
 			ResgatarDeInteriorMorto(pl);
 			Checa("quem volta pra dentro de uma nave destruida e devolvido ao berco",
@@ -301,10 +448,33 @@ public partial class GameServer
 			GravarNaves();
 			if (!pl.Zone.Equals(zonaAntes)) MoveToZone(pl.Id, zonaAntes, posAntes);
 			else pl.Pos = posAntes;
+			pl.Voando = false;
+			tirarOVoo?.Invoke();
 			RecalcularVelocidade(pl);
 			MandarFicha(pl);
 			MandarMochila(pl);
 		}
+	}
+
+	/// <summary>Os dois corpos da secao 7b -- ids escolhidos, CONGRUENTES modulo 8 (ver la).</summary>
+	private const int IdBaseDaEjecaoDeTeste = 95_000;
+
+	/// <summary>
+	/// A SKILL QUE ABRE O VOO, DADA AO PERSONAGEM DE BANCADA -- a maestria de Ki no degrau que destrava a tecla
+	/// (`MaestriaQueDestravaVoo`), como a `--vooteste` concede. O que esta sob teste e o leme, e nao a compra.
+	/// Devolve o desfazer: tira a skill se ele nao a tinha, ou volta o nivel que ele tinha.
+	/// </summary>
+	private static Action DarOVooDaBancada(ServerPlayer pl)
+	{
+		bool sabia = pl.Livro.Sabe(SkillDoKi);
+		int nivelAntes = pl.Niveis.Nivel(SkillDoKi);
+		pl.Livro.Dar(SkillDoKi);
+		pl.Niveis.Por(SkillDoKi, Math.Max(nivelAntes, MaestriaQueDestravaVoo));
+		return () =>
+		{
+			if (sabia) pl.Niveis.Por(SkillDoKi, nivelAntes);
+			else pl.Livro.Esquecer(SkillDoKi);
+		};
 	}
 
 	/// <summary>

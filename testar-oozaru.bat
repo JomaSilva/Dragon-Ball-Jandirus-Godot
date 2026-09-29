@@ -15,14 +15,16 @@ REM    * "a forma do oozaru e desfeita no momento que a fonte que deu o poder
 REM       pra virar (lua etc) sumir: quando amanhecer e a lua sair do ceu,
 REM       todos que estao em oozaru voltam a forma base"
 REM
-REM  E O QUE SE ACHOU NO CAMINHO: o relogio da fera (TickDoOozaru) estava
-REM  FORA do laco de producao desde o "Grande Update Parte 4" -- so as
-REM  bancadas o chamavam. Em jogo o macaco nunca se cansava nem perdia o
-REM  controle.
+REM  O RELOGIO DA FERA (TickDoOozaru) RODA UMA VEZ POR TIQUE. De 1523cd2
+REM  ate 2026-09-24 ele rodava DUAS: aquele commit achou que o relogio
+REM  estava fora do laco desde o "Grande Update Parte 4" (nao estava) e
+REM  pos uma segunda chamada -- a raiva de quem medita e a maestria da
+REM  fera andavam em dobro.
 REM
 REM  DUAS RODADAS, as duas sem janela:
 REM    1) --luasometeste (servidor, no 1o login): o laco de producao roda o
-REM       relogio da fera; amanheceu -> cai; a lua minguou -> cai; dois feras
+REM       relogio da fera, e N tiques movem raiva e maestria por N*dt (nao
+REM       2N*dt); amanheceu -> cai; a lua minguou -> cai; dois feras
 REM       caem no mesmo tique; a ficha de atributos diz "oozaru" enquanto dura.
 REM       Placar: "[luasome] ==== N OK, M FALHA(S) ====".
 REM    2) --diagflick (so o CharacterVisual): o soco toca UMA vez e o corpo

@@ -33,7 +33,9 @@ namespace Jandirus.Core.Skills;
 ///   * **skill comprada com Marcos** (Super Namek, as formas Alien) -- quem paga o marco ja pagou;
 ///   * **maestria ou lua** (SSJ4, Full Power, Limit Breaker) -- nao se ensina o que so se treina,
 ///     e ninguem ensina ninguem a ter lua cheia;
-///   * **evento** (o Bio de laboratorio, a saga Majin) -- tem dono no roteiro, nao no discipulado;
+///   * **evento** (o Bio de laboratorio, a saga Majin) -- tem dono no roteiro, nao no discipulado.
+///     O Bio sai pelo passo (1c) do <see cref="Ensinavel"/>: a Super Perfeita pede o ESTAGIO do
+///     corpo (`PedeEstagioBio`), e estagio vem da evolucao do corpo, nao de poder que um mestre corte;
 ///   * **concessao** (o Mistico) -- e dom de ritual de um Kaioshin, e ja tem seu proprio caminho.
 ///
 /// E A LISTA E DERIVADA, NAO DIGITADA (ver <see cref="Ensinavel"/>). O DM enumera oito tags
@@ -181,6 +183,35 @@ public static class Discipulado
 		// ======================================================================================================
 		if (d.PedeFlag != null) return false;
 
+		// ============================ (1c) O QUE PEDE **ESTAGIO DE BIO** E EVENTO, NAO DESPERTAR ============================
+		// O cabecalho desta classe lista *"evento (o Bio de laboratorio, a saga Majin)"* entre as
+		// exclusoes -- e, igual a do (1b), **a exclusao nao existia no codigo**. Enquanto a linha do
+		// bio-androide nao tinha entrada no catalogo nao havia o que excluir; quando a Super Perfeita
+		// entrou (`super_perfect`), ela passou calada por todos os passos: tem porta de BP
+		// (`cell4at / cell3mult`), nao se compra, e tronco, nao pede maestria, e a linha dela nao esta
+		// no passo (5). Quem acusou foi o conjunto escrito a mao da bancada (`--mestreteste`, secao 1b),
+		// que existe exatamente pra isso.
+		//
+		// O DM a recusa em DOIS lugares, e por escrito:
+		//   * `MasterStudent.dm:220-226` -- o criterio: so entra forma cujo destravamento e REQUISITO
+		//     PESSOAL (poder, e as vezes raiva); "Bio de laboratorio ... (eventos)" fica de fora;
+		//   * `MasterStudent.dm:194-196` -- o `mst_form_tag` devolve NULO com o buff `SuperPerfect`, entao
+		//     nem a TESTEMUNHA anota (o `mst_note_form` de `CellFormBuff.dm:21` roda e nao registra nada),
+		//     e a forma nao esta entre as oito tags do `mst_teachable` (`:393`).
+		//
+		// A PERGUNTA E PELO CAMPO, e nao pela linha nem pelo id: o que faz dela um evento e a porta que
+		// sobra alem do BP -- o `bio_stage` (a metade `cell3 == 1 && form3cantrevert` do `Cell4()`,
+		// `CellFormBuff.dm:74`). Ele vem da EVOLUCAO DO CORPO -- a absorcao (`Absorption.dm:143-160`) e
+		// o casulo do laboratorio (`DNALabs.dm:534-549`) --, e nao de treino nem de raiva.
+		//
+		// E NAO E O CASO DO SSJ3, que tambem cobra algo alem do BP e continua ensinavel pelo passo (3):
+		// a maestria de SSJ2 que ele pede e o ALUNO quem constroi, treinando na mesma escada que o mestre
+		// ensina, e o DM a mantem inteira no despertar assistido (`MasterStudent.dm:300`). O estagio do
+		// bio ninguem treina: e um acontecimento na vida do corpo, e acontecimento o mestre nao provoca.
+		// E o dia em que uma segunda forma bio pedir estagio, ela cai fora sozinha.
+		// ======================================================================================================
+		if (d.PedeEstagioBio > 0) return false;
+
 		// (2) RAMO LATERAL NAO. Sao os grades (o USSJ), que o DM exclui pelo nome; aqui o campo
 		//     `ForaDoTronco` ja diz que eles nao sao degrau de ninguem, e eles abrem com MAESTRIA
 		//     no SSJ1 -- que e treino, e treino nao se ensina.
@@ -248,6 +279,11 @@ public static class Discipulado
 	/// **`snamek`, `alien1` e `alien2` NAO entram**, pelo passo (1b): elas se COMPRAM. O DM tambem
 	/// nao as ensina. Ver la o porque de a exclusao ter passado anos escrita no cabecalho e nao
 	/// existir no codigo.
+	///
+	/// **`super_perfect` NAO entra**, pelo passo (1c): a porta que sobra alem do BP e o estagio do
+	/// corpo do bio-androide (evento, nao despertar). O DM tambem nao a ensina -- o `mst_form_tag`
+	/// devolve nulo com o buff dela (`MasterStudent.dm:196`). Ela ficou DENTRO desta lista desde que
+	/// entrou no catalogo, sem ninguem decidir, ate a bancada acusar.
 	///
 	/// UMA DIVERGENCIA MEDIDA NO HERAN, e ela e do proprio DM consigo mesmo: `mst_form_power_ok`
 	/// cobra `ssj2at / 6` pro `heran2` (`MasterStudent.dm:303`) enquanto o gate real da forma cobra

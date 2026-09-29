@@ -742,8 +742,9 @@ public partial class GameServer
 	/// passa a aceitar dano do cliente.
 	///
 	/// Entao a afirmacao e sobre o conjunto, e sao tres:
-	///   (a) OS OPCODES -- nenhum dos que existem fala de acerto, dano, vida ou projetil, e o
-	///       NUMERO deles esta cravado: um opcode novo obriga a passar por esta linha e argumentar;
+	///   (a) OS OPCODES -- nenhum dos que existem fala de acerto, dano, vida ou projetil, e a
+	///       LISTA deles esta escrita PELO NOME: um opcode novo obriga a passar por esta linha e
+	///       argumentar, e a reprovacao diz qual foi;
 	///   (b) O CLIENTE NAO CONHECE A CADEIA -- nada em `Client/` menciona `DanoDeKi`,
 	///       `MeleeResolver`, `AplicarDanoPronto` ou o tique dos projeteis;
 	///   (c) O TIRO NASCE DE UM VERBO, e o verbo nao carrega numero nenhum: o que o cliente manda e
@@ -759,21 +760,58 @@ public partial class GameServer
 		GD.Print("[kiponta] -- 5) O SERVIDOR DECIDE O ACERTO: NAO HA ALAVANCA NO FIO");
 
 		// ---- (a) O CONJUNTO DE OPCODES ----
-		string[] protocolo = Fonte("Net/Protocol.cs");
-		AfirmarPp("o `Net/Protocol.cs` foi lido do disco", protocolo.Length > 0, $"{protocolo.Length} linhas");
+		// ============================ PELO NOME, E NAO PELA CONTAGEM ============================
+		// Esta trava era `const int OpcodesDeHoje = 23`, e ficou vermelha com o protocolo certo: o
+		// `C2S.Voz` (a voz por proximidade) entrou no MESMO commit que escreveu esta familia
+		// ("Grande Update parte 3", 2449619) e ninguem passou por aqui pra argumentar. A
+		// `--formasteste` ficou vermelha pelo mesmo opcode e foi acertada em 03f18e6
+		// (`GameServer.FormasTeste.cs:1941`). O vermelho era JUSTO -- e pra isso que a trava existe --,
+		// mas o numero tinha dois defeitos:
+		//   * ele nao dizia QUEM chegou: "achei 24" obriga a contar a lista na mao;
+		//   * ele era CEGO A TROCA: apagar um opcode e criar outro no mesmo commit mantem a conta e
+		//     passa. Um `C2S.Resultado` no lugar do `Tech` entraria calado -- nenhuma palavra proibida nele.
+		//
+		// Agora a trava e a LISTA, escrita a mao, com o motivo de cada grupo nao carregar acerto. Os
+		// valores sao TIPADOS: apagar ou renomear um opcode quebra a COMPILACAO desta linha, e um
+		// opcode NOVO aparece pelo nome no detalhe da reprovacao. E a conta le o enum COMPILADO, e nao
+		// o texto do `Net/Protocol.cs` por regex: a regex so via membro com `= numero` escrito, e um
+		// `AcerteiComOKi,` sem valor explicito passaria por baixo dela.
+		// ======================================================================================
+		Protocol.C2S[] argumentados =
+		[
+			// SESSAO: conta, slot, criar, apagar (o nome digitado e conferido pelo SERVIDOR), relogio
+			Protocol.C2S.Login, Protocol.C2S.PickSlot, Protocol.C2S.CreateChar, Protocol.C2S.DeleteChar,
+			Protocol.C2S.Ping,
+			// O CORPO: posicao que o servidor CONFERE (`ValidateStep`), treino, guarda, zona mirada,
+			// segurar C e o ponto do Zanzoken (que o servidor encurta ao alcance e cobra)
+			Protocol.C2S.InputState, Protocol.C2S.Activity, Protocol.C2S.Guard, Protocol.C2S.Aim,
+			Protocol.C2S.Carregar, Protocol.C2S.Zanzoken,
+			// INTENCOES SEM NUMERO: "golpeie" (quem resolve e o `MeleeResolver`), "use pelo NOME" (a (c)
+			// abaixo), "transforme", "trave neste alvo", "lute pra valer" -- o resultado e do servidor
+			Protocol.C2S.Action, Protocol.C2S.Habilidade, Protocol.C2S.Transformar, Protocol.C2S.Alvo,
+			Protocol.C2S.Lethal,
+			// INTERFACE, por nome ou texto: comprar skill, cargo, tecnologia, estilo, verbos
+			Protocol.C2S.Aprender, Protocol.C2S.Cargo, Protocol.C2S.Tech, Protocol.C2S.Estilo,
+			Protocol.C2S.Verbo,
+			// a LETRA do QTE vai crua: quem confere se bate e quem sorteou (ver o cabecalho dela)
+			Protocol.C2S.ClashTecla,
+			// A BOCA: texto e quadros de Opus. A voz nao tem nem campo de destino (ver o cabecalho dela
+			// em `Net/Protocol.cs`) -- nao ha numero ali que chegue perto de um tiro
+			Protocol.C2S.Chat, Protocol.C2S.Voz,
+		];
+		static List<string> SemArgumento(Protocol.C2S[] lista) =>
+			[.. Enum.GetValues<Protocol.C2S>().Where(c => Array.IndexOf(lista, c) < 0).Select(c => c.ToString())];
 
-		string[] corpoC2S = CorpoDoMetodo(protocolo, "public enum C2S");
-		var opcodes = new List<string>();
-		foreach (string l in corpoC2S)
-			foreach (System.Text.RegularExpressions.Match m in
-					 System.Text.RegularExpressions.Regex.Matches(l, @"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\d+"))
-				opcodes.Add(m.Groups[1].Value);
+		string[] opcodes = Enum.GetNames<Protocol.C2S>();
+		List<string> novos = SemArgumento(argumentados);
+		AfirmarPp($"os {opcodes.Length} opcodes que o cliente tem pra dizer estao TODOS argumentados aqui, pelo nome",
+				  novos.Count == 0, $"sem argumento: {string.Join(", ", novos)}");
 
-		// OS VINTE E TRES DE HOJE. O numero e cravado de proposito: e ele que obriga o proximo
-		// opcode a passar por aqui.
-		const int OpcodesDeHoje = 23;
-		AfirmarPp($"o cliente tem {OpcodesDeHoje} coisas a dizer, e continuam sendo {OpcodesDeHoje}",
-				  opcodes.Count == OpcodesDeHoje, $"achei {opcodes.Count}: {string.Join(", ", opcodes)}");
+		// O CONTRA-EXEMPLO, rodado e nao so descrito: a MESMA conta sobre a lista de antes da voz tem
+		// que reprovar DIZENDO o nome -- que e exatamente o que o numero nao fazia ("achei 24").
+		List<string> antesDaVoz = SemArgumento([.. argumentados.Where(c => c != Protocol.C2S.Voz)]);
+		AfirmarPp("CONTRA-EXEMPLO: com a lista de antes da voz, a mesma conta REPROVA e diz `Voz` pelo nome",
+				  antesDaVoz.Count == 1 && antesDaVoz[0] == nameof(Protocol.C2S.Voz), string.Join(", ", antesDaVoz));
 
 		string[] proibidas = ["acert", "dano", "dmg", "hit", "morte", "matar", "vida", "projetil",
 							  "tiro", "kill", "damage"];
@@ -987,28 +1025,66 @@ public partial class GameServer
 		AfirmarPp("o caminho de tiro da IA foi extraido (`AplicarComando` + `TickDoContraFeixe`)",
 				  tiroDaIa.Length > 40, $"{tiroDaIa.Length} linhas");
 
+		// O `Input` so desempacota o fio desde 2026-09-05 (8e438fe) -- o passo do InputState mora no
+		// `AplicarInput`, e o funil do jogador e os dois. Mesma deriva que deixou as varreduras (a)/(b) da
+		// `--iateste` vermelhas pelo motivo errado; ver la (secao 15, `AncoraDoPasso`).
+		//
+		// E O PASSO TEM QUE TER VINDO MESMO. So o tamanho do funil nao diria: o `Handle` sozinho ja passa de
+		// 200 linhas, e um `AplicarInput` que mudasse de nome ou de visibilidade sairia VAZIO daqui com a
+		// linha verde -- exatamente a deriva que esta leitura acabou de consertar. Entao o corpo do passo e
+		// conferido pelo CONTEUDO: e o metodo que chama o `ValidateStep`.
+		string[] passoDoJogador = CorpoDoMetodo(fonteServidor, "internal void AplicarInput(ServerPlayer");
+		bool passoVeio = passoDoJogador.Any(l => l.Contains("ValidateStep"));
 		string[] funilDoJogador =
 			[.. CorpoDoMetodo(fonteServidor, "private void Handle(NetPeer"),
 			 .. CorpoDoMetodo(fonteServidor, "private void Input(NetPeer"),
+			 .. passoDoJogador,
 			 .. CorpoDoMetodo(fonteRaciais, "private void UsarHabilidade(ServerPlayer")];
-		AfirmarPp("o funil do jogador foi extraido (`Handle` + `Input` + `UsarHabilidade`)",
-				  funilDoJogador.Length > 200, $"{funilDoJogador.Length} linhas");
+		AfirmarPp("o funil do jogador foi extraido (`Handle` + `Input` + `AplicarInput` + `UsarHabilidade`), "
+				  + "e o `AplicarInput` e o passo de verdade (chama o `ValidateStep`)",
+				  funilDoJogador.Length > 200 && passoVeio,
+				  $"{funilDoJogador.Length} linhas; passo {passoDoJogador.Length} linhas{(passoVeio ? "" : ", SEM o `ValidateStep`")}");
 
 		// ============================ AS EXCECOES, E CADA UMA TEM ARGUMENTO ============================
-		// As tres primeiras sao as mesmas da `--iateste`: o atuador chamando a outra metade de si
-		// mesmo, a assimetria de propósito do movimento (o jogador CONFERE um passo que o cliente
-		// afirmou, a IA GERA o passo) e o facing derivado do rumo, porque a IA nao tem pacote.
+		// As duas primeiras vem da `--iateste`: o atuador chamando a outra metade de si mesmo
+		// (`PassoDaIa`) e o facing derivado do rumo (`FacingFrom`), porque a IA nao tem pacote.
 		//
-		// As tres ultimas sao do REFLEXO do contra-feixe, e sao todas PERGUNTAS -- a mesma fronteira
-		// que a `--iateste` ja tinha desenhado ao deixar `LerCapacidades`/`LerPercepcao`/
-		// `ArsenalDeLonge` de fora: *"uma leitura pode chamar o que quiser; o que nao pode e AGIR por
-		// fora"*. `VemFeixeContraMim` olha a zona, `SabeTecnica` e literalmente a porta do jogador
-		// (ela e quem responde "voce nao sabe"), e `ContainsKey`/`TryGetValue`/`GetValueOrDefault`
-		// sao consulta a dicionario -- nao ha estado de corpo do outro lado delas.
+		// O `Advance` e o `GetValueOrDefault` SAIRAM desta lista, e nao por faxina: nenhum dos dois e
+		// chamado pelo caminho de tiro, nem no dia em que a lista nasceu. O `Advance` mora no
+		// `PassoDaIa`, cujo corpo esta bancada NAO le -- veio junto na copia da lista da `--iateste`, que
+		// le. Excecao que ninguem usa e porta aberta: um `npc.Pos = MoveRules.Advance(...)` escrito no
+		// reflexo (o NPC "recuando um passo antes de responder o raio", por fora do `PodeMexerOCorpo`)
+		// passaria calado por (a). O DEFEITO INJETADO mais abaixo e exatamente esse.
+		//
+		// As quatro seguintes sao do REFLEXO do contra-feixe, e sao PERGUNTAS -- a mesma fronteira que
+		// a `--iateste` ja tinha desenhado ao deixar `LerCapacidades`/`LerPercepcao`/`ArsenalDeLonge`
+		// de fora: *"uma leitura pode chamar o que quiser; o que nao pode e AGIR por fora"*.
+		// `VemFeixeContraMim` olha a zona, `SabeTecnica` e literalmente a porta do jogador (ela e quem
+		// responde "voce nao sabe"), e `ContainsKey`/`TryGetValue` sao consulta a dicionario -- nao ha
+		// estado de corpo do outro lado delas.
+		//
+		// `FraseDoContraFeixe` chegou DEPOIS desta lista (a55b464, a camada de fala do `Falatorio`), e
+		// ela NAO e leitura pura: ela COBRA o relogio de fala de combate (`Falatorio.DeCombate`, o
+		// `ai_next_chat = world.time + cooldown` do `npc_combat_chat`, `NPCAI.dm:227-230`). Fica aqui
+		// mesmo assim, e por tres razoes:
+		//   * o relogio mora DENTRO do cerebro, e o cerebro nao tem maos: nada em `Core/Ai` conhece
+		//     `ServerPlayer` nem `GameServer` (a (c) da `--iateste`). Do outro lado dela nao ha corpo
+		//     nem mundo -- ha a pergunta "tem frase agora?" e a conta de quando pode haver outra;
+		//   * o relogio TEM que ser o do cerebro: e ele que impede o grito do raio de sair por cima do
+		//     grito de soco do mesmo segundo, e o DM usa o MESMO `ai_next_chat` nos dois (`:378` e
+		//     `:419`). Uma lista de frases escrita no reflexo seria o segundo relogio que o cabecalho
+		//     do `Falatorio` proibe;
+		//   * o GESTO -- a frase chegando no chat -- e o `Falar` da linha seguinte, o mesmo do
+		//     `case Protocol.C2S.Chat` (`GameServer.cs:3647`) e do passo 10 do `AplicarComando`, com
+		//     raio de vista, grito e teto de 400 ms. Por isso o `Falar` nao aparece na reprovacao: ele
+		//     ESTA no funil do jogador.
+		// Mandar a frase pelo `Comando.Falar` (o caminho das outras falas da IA) nao seria mais certo,
+		// seria mais tarde: o reflexo roda fora da decisao de 4 Hz de proposito (ver o cabecalho do
+		// `TickDoContraFeixe`), e no DM o grito sai colado no tiro (`NPCAI.dm:378-379`).
 		// ==========================================================================================
-		string[] excecoes = ["PassoDaIa", "Advance", "FacingFrom",
-							 "VemFeixeContraMim", "SabeTecnica",
-							 "ContainsKey", "TryGetValue", "GetValueOrDefault"];
+		string[] excecoes = ["PassoDaIa", "FacingFrom",
+							 "VemFeixeContraMim", "SabeTecnica", "ContainsKey", "TryGetValue",
+							 "FraseDoContraFeixe"];
 
 		HashSet<string> chamaIa = ChamadasDe(tiroDaIa);
 		HashSet<string> chamaJogador = ChamadasDe(funilDoJogador);
@@ -1016,6 +1092,11 @@ public partial class GameServer
 			[.. chamaIa.Where(n => !chamaJogador.Contains(n) && Array.IndexOf(excecoes, n) < 0).OrderBy(n => n)];
 		AfirmarPp($"(a) as {chamaIa.Count} funcoes do caminho de tiro da IA, o funil do jogador tambem chama",
 				  foraDoFunil.Count == 0, string.Join(", ", foraDoFunil));
+
+		// E AS EXCECOES TEM QUE ESTAR MESMO LA -- a regra da `--iateste` (secao 15, "as excecoes escritas existem de verdade"),
+		// que esta copia nao tinha trazido e por isso carregou duas excecoes mortas desde que nasceu.
+		AfirmarPp("...e cada excecao escrita e chamada de verdade pelo caminho de tiro (nenhuma porta esquecida)",
+				  excecoes.All(chamaIa.Contains), string.Join(", ", excecoes.Where(e => !chamaIa.Contains(e))));
 
 		// (b) O DISPARO NAO E ALCANCADO POR FORA. Esta e a que pega o atalho classico -- ela nao
 		// depende de a funcao nova estar ou nao no funil do jogador: nascer projetil por fora do
@@ -1027,6 +1108,38 @@ public partial class GameServer
 		AfirmarPp("...e ela pede pelo MESMO canal do jogador (`UsarHabilidade`/`UsarTecnica`)",
 				  chamaIa.Contains("UsarHabilidade") || chamaIa.Contains("UsarTecnica"),
 				  string.Join(", ", chamaIa.OrderBy(x => x).Take(12)));
+
+		// ============================ E A PROVA DE QUE (a) E (b) REPROVAM ============================
+		// Varredura de fonte verde nao prova nada enquanto ninguem viu o vermelho -- e a lista de
+		// excecoes acabou de ganhar um nome. Entao o atalho e ESCRITO numa COPIA do reflexo, na
+		// memoria, como no DEFEITO INJETADO da `--iateste` (secao 15, "E AGORA A PROVA DE QUE ISTO REPROVA"): um passo por
+		// fora do `PassoDaIa` e um disparo por fora do nome da tecnica. Nada vai pro disco, e sem a
+		// adulteracao as MESMAS contas sao as de cima, que deram vazio.
+		// ==========================================================================================
+		{
+			int ondeEnfiar = Array.FindIndex(fonteEmbate, l => l.Contains("private void TickDoContraFeixe"));
+			// A `{` E PROCURADA, e nao contada: se a assinatura quebrar em duas linhas (a do `Disparar` ja
+			// quebrou, ver a familia 5), `ondeEnfiar + 2` cairia ANTES da chave -- fora do corpo que o
+			// `CorpoDoMetodo` le -- e as duas linhas abaixo ficariam vermelhas acusando a producao.
+			int chave = ondeEnfiar < 0 ? -1 : Array.FindIndex(fonteEmbate, ondeEnfiar, l => l.Contains('{'));
+			var adulterado = new List<string>(fonteEmbate);
+			if (chave >= 0)
+			{
+				adulterado.Insert(chave + 1, "\t\tnpc.Pos = MoveRules.Advance(npc.Pos, dedonde, 1f);");
+				adulterado.Insert(chave + 2, "\t\tDisparar(npc, receita);");
+			}
+			string[] reflexoFalso =
+				[.. CorpoDoMetodo(fonteIa, "private void AplicarComando"),
+				 .. CorpoDoMetodo([.. adulterado], "private void TickDoContraFeixe")];
+			HashSet<string> chamaFalso = ChamadasDe(reflexoFalso);
+			List<string> flagradas =
+				[.. chamaFalso.Where(n => !chamaJogador.Contains(n) && Array.IndexOf(excecoes, n) < 0).OrderBy(n => n)];
+			AfirmarPp("DEFEITO INJETADO: um `MoveRules.Advance` escrito no reflexo (o NPC andando por fora do "
+					  + "`PassoDaIa`) faz (a) REPROVAR e dizer o nome -- nenhuma excecao o cobre",
+					  chave >= 0 && flagradas.Contains("Advance"), string.Join(", ", flagradas));
+			AfirmarPp("DEFEITO INJETADO: um `Disparar(...)` direto no reflexo faz (b) REPROVAR",
+					  portasDoTiro.Any(chamaFalso.Contains), string.Join(", ", flagradas));
+		}
 
 		// ---- O CONTROLE COMPORTAMENTAL: ela atira, e ela NAO atira ----
 		// Sem estas tres, as varreduras acima seriam compativeis com uma IA que nunca atira.
@@ -1053,6 +1166,419 @@ public partial class GameServer
 		AfirmarPp($"...e colado ele NAO atira dali: quando o tiro sai, ja ha pelo menos "
 				  + $"{minimoDaTabela:0.#} tiles de distancia",
 				  tilesNoDisparo >= minimoDaTabela, $"disparou a {tilesNoDisparo:0.##} tiles");
+		LimparDuelistasDoVazio();
+
+		// ============================ O QUE A LINHA DE CIMA PEGOU, MEDIDO SEM SORTEIO ============================
+		// A linha de cima ficou vermelha dizendo "disparou a 1 tiles" -- e 1 tile e EXATAMENTE a
+		// `DistanciaDeParada` do arranque (32 px), e nao um lugar onde a IA escolheria atirar. O NPC recuava
+		// ate a janela e soltava o `Ki_Wave`; durante os 0,67 s de carga (corpo ENRAIZADO pelo canal) a
+		// pausa do tiro fazia o cerebro trocar `Atirar` por `Pressionar`, a investida pesada saia e o
+		// `Aproximar` levava o corpo plantado colado no alvo. O defeito era de PRODUCAO: o arranque nao
+		// perguntava ao `PodeMexerOCorpo` (a corrida do DM desiste com `canmove = 0`, `speedy.dm:225`).
+		//
+		// A linha de cima pega isso pelo COMPORTAMENTO e depende de a IA investir dentro da carga. Estas
+		// duas pegam pela REGRA, sem tique de IA nenhum: o MESMO `Atacar` de producao (a porta do
+		// `C2S.Action` e do `Comando.Pesado`), o mesmo alvo marcado a 4 tiles, uma vez com o canal aberto
+		// e uma sem. O controle impede a primeira de passar por falta de alcance, de Ki ou de marca: se o
+		// arranque nao sai nem com o corpo livre, a primeira nao esta medindo nada.
+		//
+		// NA ZONA VAZIA DE PROPOSITO: foi a falta de parede que expos o defeito, e nas duas irmas ela o
+		// escondia por motivos DIFERENTES. Na `--tiroiateste` o arranque nem entra: o `CorredorLivre` devolve
+		// o PRIMEIRO trecho livre da linha, entao a celula logo ATRAS do NPC e bloqueada, o `Disparo` nao
+		// consegue recuar ate o `AlcanceMin`, o raio nunca sai e nao ha carga de onde arrancar. Na linha do
+		// `turnlock` da `--projetilteste` o arranque e que foi engolido: o salto rumo ao alvo esbarrava na
+		// parede do corredor e o `PathOccupied` o recusava.
+		//
+		// COMO ELA REPROVA: apague a recusa do topo do `Aproximar` e a primeira linha diz "andou 96 px"
+		// enquanto o controle continua verde. E ela tambem cobra o SOCO: um conserto que recusasse o
+		// `Atacar` inteiro de quem esta enraizado deixaria o corpo parado do mesmo jeito -- e no DM o golpe
+		// com o raio carregando e legal (o `canfight = 0` esta comentado em `beams.dm:296`). A marca do soco
+		// e a recarga que o `Atacar` arma DEPOIS do arranque, e um corpo recem-forjado nasce com ela zerada.
+		// ======================================================================================================
+		(ServerPlayer comRaio, ServerPlayer alvoDoRaio) = DuelistasNoVazio(tiles: 4);
+		Mirar(comRaio, alvoDoRaio.Id);
+		UsarHabilidade(comRaio, "Ki_Wave");   // o canal de verdade: carregando, corpo enraizado
+		Vec2 plantadoEm = comRaio.Pos;
+		Atacar(comRaio, Protocol.Golpe.Pesado);
+		float andouComRaio = (comRaio.Pos - plantadoEm).Length;
+		double recargaDoSoco = comRaio.Combate?.Recarga ?? 0;
+		AfirmarPp("com o raio carregando, a INVESTIDA nao arranca o corpo (`speedy.dm:225`: a corrida "
+				  + "desiste com `canmove = 0`) -- o soco sai, o salto nao",
+				  _canais.ContainsKey(comRaio.Id) && andouComRaio < 0.5f && recargaDoSoco > 0,
+				  $"canal {(_canais.ContainsKey(comRaio.Id) ? "aberto" : "FECHADO")}, andou {andouComRaio:0.#} px, "
+				  + $"recarga do soco {recargaDoSoco:0.###} s");
+		LimparDuelistasDoVazio();
+
+		(ServerPlayer livre, ServerPlayer alvoLivre) = DuelistasNoVazio(tiles: 4);
+		Mirar(livre, alvoLivre.Id);
+		Vec2 alvoLivreEm = alvoLivre.Pos;
+		Atacar(livre, Protocol.Golpe.Pesado);
+		float vaoLivre = (alvoLivreEm - livre.Pos).Length;
+		AfirmarPp("(controle) sem raio na mao, a MESMA investida leva o corpo a um tile do alvo",
+				  Math.Abs(vaoLivre - ZoneCollision.TileSize) < 1f, $"ficou a {vaoLivre:0.#} px");
+		LimparDuelistasDoVazio();
+
+		// ============================ E A OUTRA PORTA: A PISCADA DO DUPLO CLIQUE (`click.dm:54`) ============================
+		// A investida nao e o unico gesto que tira o corpo do lugar: o duplo clique no chao (`C2S.Zanzoken`) cai
+		// no `Zanzoken`, que NAO passa pelo `Aproximar` -- e ele saltava com o raio carregando OU segurado, a cauda
+		// do feixe indo junto com a mao e a cabeca ficando na linha velha. O DM fecha esta porta com `!usr.beaming`;
+		// o port fecha com o CANAL inteiro (a divergencia da fase de carga esta declarada no `GameServer.Zanzoken.cs`).
+		//
+		// A PORTA E A DE PRODUCAO: `Zanzoken(pl, destino)` e exatamente o que o `case Protocol.C2S.Zanzoken`
+		// chama, e o raio e aberto pelo verb (`UsarHabilidade`). A fase SEGURANDO e alcancada pelo tique de
+		// producao dos canais (`TickDosCanaisDeKi`, o mesmo do `TiqueDeMundo`) e SO por ele: sem o tique dos
+		// corpos, pra o cerebro do NPC nao apertar o verb de novo (soltando o raio) no meio da medicao.
+		//
+		// CADA RECUSA COBRA TRES COISAS: o corpo nao saiu, o Ki nao foi cobrado e nenhum salto foi anunciado (o
+		// carimbo `_saltosAnunciados` do `AnunciarZanzo`) -- e o canal continua aberto, porque "soltar o raio e
+		// piscar" nao e recusar.
+		//
+		// UM CORPO POR FASE, e o controle num terceiro: cada corpo esta num estado so, e o controle impede as
+		// recusas de passarem por falta de skill, de Ki ou de alcance -- se a MESMA piscada nao sai do corpo
+		// livre, elas nao estao medindo nada. (Ate 2026-09-24 havia um motivo a mais, a recarga de 900 ms que a
+		// piscada que passasse armaria pra seguinte; a recarga nao existe no DM e saiu -- ver a linha dela abaixo.)
+		// ================================================================================================================
+
+		// ============================ O PISCADOR E O PRECO DO DM ============================
+		// A Afterimage entra no livro E no nivel 1 (o `level = 1` do datum, `misc.dm:38`: e dele que o `zanzochange`
+		// rende). E a PERICIA de Ki e a VELOCIDADE sobem pelo `Statify` de producao -- a bancada escreve o CRU (3 e 3)
+		// e o E sai da curva (~2,6): com os atributos de fabrica (E ~1) o `zanzorange` e 1 tile, e a piscada de tres
+		// tiles das linhas abaixo seria ENCURTADA pra um, medindo o encurtamento no lugar do que cada linha mede.
+		//
+		// O PRECO E ESCRITO AQUI DE NOVO, e de proposito: `kireq = (6*BaseDrain)/(Ekiskill*(Espeed/2))` por tile de
+		// `get_dist` (`click.dm:51`, `:54`, `:64`). E a ESPECIFICACAO contra a qual a producao e medida; chamar a
+		// conta de producao aqui seria a bancada concordando consigo mesma.
+		// ======================================================================================
+		void Piscador(ServerPlayer p, double treino = 3)
+		{
+			p.Livro.Dar(PathDoZanzoken);
+			p.Niveis.Por(PathDoZanzoken, 1);
+			p.Ficha.kiskill = treino;
+			p.Ficha.speed = treino;
+			p.Ficha.Statify();
+			p.Ficha.Ki = p.Ficha.MaxKi;
+		}
+
+		double PrecoDoDm(ServerPlayer p, Vec2 destino) =>
+			6 * p.Ficha.BaseDrain() / (p.Ficha.Ekiskill * (p.Ficha.Espeed / 2))
+			* Jandirus.Core.Social.Fusao.DistanciaEmTilesDoDm(p.Pos, destino, ZoneCollision.TileSize);
+
+		(float Andou, double KiCobrado, int Saltos) PiscarPelaPorta(ServerPlayer pisca, Vec2 ondeClicou)
+		{
+			Vec2 saiuDe = pisca.Pos;
+			double kiAntesDaPiscada = pisca.Ficha.Ki;
+			int saltosAntes = _saltosAnunciados;
+			Zanzoken(pisca, ondeClicou);   // o MESMO metodo que o `case Protocol.C2S.Zanzoken` chama
+			return ((pisca.Pos - saiuDe).Length, kiAntesDaPiscada - pisca.Ficha.Ki, _saltosAnunciados - saltosAntes);
+		}
+
+		// DE LADO PRO FEIXE (ele sai pro leste): e o salto que entortaria o raio. Tres tiles, dentro do `zanzorange`
+		// do piscador (oito) -- a piscada livre pousa EXATAMENTE no ponto clicado, sem encurtar.
+		Vec2 deLado = new(0, -3 * ZoneCollision.TileSize);
+
+		(ServerPlayer naCarga, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(naCarga);
+		UsarHabilidade(naCarga, "Ki_Wave");   // o canal de verdade, ainda na CARGA
+		bool carregava = _canais.ContainsKey(naCarga.Id) && !CanalDeKiDe(naCarga.Id).atirando;
+		bool kiPraPiscarNaCarga = naCarga.Ficha.Ki >= PrecoDoDm(naCarga, naCarga.Pos + deLado);
+		var piscouCarregando = PiscarPelaPorta(naCarga, naCarga.Pos + deLado);
+		AfirmarPp("com o raio CARREGANDO, a piscada do duplo clique nao tira o corpo do lugar -- nem cobra Ki, nem "
+				  + "anuncia salto (o canal inteiro recusa; o DM, so o `beaming` de `click.dm:54`)",
+				  carregava && kiPraPiscarNaCarga && _canais.ContainsKey(naCarga.Id) && piscouCarregando.Andou < 0.5f
+				  && Math.Abs(piscouCarregando.KiCobrado) < 1e-9 && piscouCarregando.Saltos == 0,
+				  $"{(carregava ? "carregando" : "NAO ESTAVA CARREGANDO")}{(kiPraPiscarNaCarga ? "" : ", SEM Ki pra piscar")}, "
+				  + $"andou {piscouCarregando.Andou:0.#} px, Ki cobrado {piscouCarregando.KiCobrado:0.###}, "
+				  + $"saltos {piscouCarregando.Saltos}, canal {(_canais.ContainsKey(naCarga.Id) ? "aberto" : "FECHADO")}");
+		LimparDuelistasDoVazio();
+
+		(ServerPlayer naMao, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(naMao);
+		UsarHabilidade(naMao, "Ki_Wave");
+		// A CARGA VIRA RAIO SOZINHA, no tique dos canais -- e esse tique que faz o `beaming` do DM existir aqui.
+		for (int i = 0; i < (int)(5 / Protocol.TickSeconds)
+						&& _canais.ContainsKey(naMao.Id) && !CanalDeKiDe(naMao.Id).atirando; i++)
+			TickDosCanaisDeKi(Protocol.TickSeconds);
+		bool segurava = _canais.ContainsKey(naMao.Id) && CanalDeKiDe(naMao.Id).atirando;
+		bool kiPraPiscarNaMao = naMao.Ficha.Ki >= PrecoDoDm(naMao, naMao.Pos + deLado);
+		var piscouSegurando = PiscarPelaPorta(naMao, naMao.Pos + deLado);
+		AfirmarPp("...e SEGURANDO o raio (o `beaming` do DM) tambem nao: o corpo fica, e a cauda do feixe nao salta "
+				  + "pra longe da cabeca",
+				  segurava && kiPraPiscarNaMao && _canais.ContainsKey(naMao.Id) && piscouSegurando.Andou < 0.5f
+				  && Math.Abs(piscouSegurando.KiCobrado) < 1e-9 && piscouSegurando.Saltos == 0,
+				  $"{(segurava ? "segurando" : "O RAIO NAO CHEGOU A SAIR")}{(kiPraPiscarNaMao ? "" : ", SEM Ki pra piscar")}, "
+				  + $"andou {piscouSegurando.Andou:0.#} px, Ki cobrado {piscouSegurando.KiCobrado:0.###}, "
+				  + $"saltos {piscouSegurando.Saltos}, canal {(_canais.ContainsKey(naMao.Id) ? "aberto" : "FECHADO")}");
+		LimparDuelistasDoVazio();
+
+		// ============================ O CONTROLE, QUE AGORA TAMBEM COBRA O PRECO DO DM (`click.dm:51`, `:64`) ============================
+		// A piscada livre cobra `kireq x 3` -- tres tiles de `get_dist`. Ate 2026-09-24 ela cobrava 2,5% do Ki maximo,
+		// um numero sem linha no DM (o cabecalho do `Zanzoken` conta de onde ele veio). A PRECONDICAO de baixo garante
+		// que os dois precos DIFEREM neste corpo -- sem ela, um piscador cujo `kireq x 3` caisse perto de 2,5% deixaria
+		// a linha verde com a conta velha.
+		// COMO ELA REPROVA: volte o `custo = MaxKi * 0.025` no `Zanzoken` e ela diz "Ki cobrado 2,5% de ...".
+		// ================================================================================================================================
+		(ServerPlayer semRaio, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(semRaio);
+		Vec2 ondeCaiLivre = semRaio.Pos + deLado;
+		double custoDaPiscada = PrecoDoDm(semRaio, ondeCaiLivre);
+		double custoVelho = semRaio.Ficha.MaxKi * 0.025;
+		AfirmarPp("(precondicao) neste piscador o preco do DM (`kireq x 3`) e o velho 2,5% do Ki maximo sao numeros DIFERENTES",
+				  Math.Abs(custoDaPiscada - custoVelho) > 0.05 * Math.Max(custoDaPiscada, custoVelho),
+				  $"DM {custoDaPiscada:0.###} vs velho {custoVelho:0.###}");
+		Facing olhavaAntes = semRaio.Facing;   // o duelista nasce encarando o alvo (`DuelistasDeBancada`)
+		var piscouLivre = PiscarPelaPorta(semRaio, ondeCaiLivre);
+		float longeDoClique = Vec2.Distance(semRaio.Pos, ondeCaiLivre);
+		AfirmarPp("(controle) sem raio na mao, a MESMA piscada pousa no ponto clicado e cobra o preco do DM: "
+				  + "`(6*BaseDrain)/(Ekiskill*(Espeed/2))` por tile de `get_dist` (`click.dm:51`, `:64`)",
+				  !_canais.ContainsKey(semRaio.Id) && longeDoClique < 0.5f
+				  && Math.Abs(piscouLivre.KiCobrado - custoDaPiscada) < 1e-6 * Math.Max(1, custoDaPiscada)
+				  && piscouLivre.Saltos == 1,
+				  $"ficou a {longeDoClique:0.#} px do clique (andou {piscouLivre.Andou:0.#}), Ki cobrado "
+				  + $"{piscouLivre.KiCobrado:0.###} de {custoDaPiscada:0.###} (o velho seria {custoVelho:0.###}), "
+				  + $"saltos {piscouLivre.Saltos}");
+
+		// ============================ E CHEGA OLHANDO PRA ONDE OLHAVA -- `formerdir` (`click.dm:61-63`) ============================
+		// O DM guarda o `dir` antes do `Move()` e o devolve depois: piscar de lado nao tira os olhos do inimigo. O salto
+		// aqui e pro NORTE (`deLado`) e o corpo encarava o alvo -- a primeira metade da conta prova que os dois rumos
+		// DIFEREM (senao a linha passaria com qualquer regra), a segunda que a piscada saiu de fato.
+		// COMO ELA REPROVA: volte o `pl.Facing = MoveRules.FacingFrom(d, pl.Facing)` no `Zanzoken` e ela diz
+		// "chegou olhando North".
+		// ======================================================================================================================
+		Facing rumoDoSalto = MoveRules.FacingFrom(deLado, olhavaAntes);
+		AfirmarPp("...e chega OLHANDO PRA ONDE OLHAVA, e nao pro destino (`formerdir`, `click.dm:61-63`)",
+				  rumoDoSalto != olhavaAntes && piscouLivre.Saltos == 1 && semRaio.Facing == olhavaAntes,
+				  $"olhava {olhavaAntes}, o salto ia pro {rumoDoSalto}, chegou olhando {semRaio.Facing}");
+
+		// ============================ SEM RECARGA: A SEGUNDA PISCADA SAI NA HORA ============================
+		// O `turf/DblClick` nao tem `sleep` nem prazo -- quem trava a piscada seguinte e o Ki. O MESMO corpo, no MESMO
+		// instante, pisca de volta pro sul: sai, e paga o preco dela.
+		// COMO ELA REPROVA: devolva ao `Zanzoken` a recarga de 900 ms que ele tinha (um prazo por corpo, conferido antes
+		// de cobrar) e ela diz "saltos 0".
+		// ====================================================================================
+		Vec2 deVolta = semRaio.Pos - deLado;
+		double custoDaVolta = PrecoDoDm(semRaio, deVolta);
+		var piscouDeNovo = PiscarPelaPorta(semRaio, deVolta);
+		AfirmarPp("SEM RECARGA: a segunda piscada, no mesmo instante, SAI e cobra o preco dela (o DM nao tem prazo "
+				  + "entre duas -- quem trava e o Ki)",
+				  piscouDeNovo.Saltos == 1 && Vec2.Distance(semRaio.Pos, deVolta) < 0.5f
+				  && Math.Abs(piscouDeNovo.KiCobrado - custoDaVolta) < 1e-6 * Math.Max(1, custoDaVolta),
+				  $"saltos {piscouDeNovo.Saltos}, ficou a {Vec2.Distance(semRaio.Pos, deVolta):0.#} px, "
+				  + $"Ki cobrado {piscouDeNovo.KiCobrado:0.###} de {custoDaVolta:0.###}");
+
+		// ============================ O PROPRIO TILE NAO E PISCADA -- `view(0,usr)` (`click.dm:53`) ============================
+		// `for(var/turf/A in view(0,usr)) if(A==src) return`: o duplo clique no tile em que o corpo JA ESTA nao faz nada.
+		// O clique e na QUINA mais longe da celula do centro do corpo -- mais de 8 px, que era o portao velho ("clicou
+		// nos proprios pes"), entao sem a regra do tile a piscada sairia.
+		// COMO ELA REPROVA: troque o `if (salto == 0) return;` do `Zanzoken` pelo velho `if (dist < 8f) return;` e ela
+		// diz "saltos 1".
+		// ========================================================================================================================
+		int celX = (int)MathF.Floor(semRaio.Pos.X / ZoneCollision.TileSize);
+		int celY = (int)MathF.Floor(semRaio.Pos.Y / ZoneCollision.TileSize);
+		Vec2 quinaA = new(celX * ZoneCollision.TileSize + 1, celY * ZoneCollision.TileSize + 1);
+		Vec2 quinaB = new((celX + 1) * ZoneCollision.TileSize - 1, (celY + 1) * ZoneCollision.TileSize - 1);
+		Vec2 naPropriaCelula = Vec2.Distance(semRaio.Pos, quinaA) > Vec2.Distance(semRaio.Pos, quinaB) ? quinaA : quinaB;
+		float aQuantoDoCentro = Vec2.Distance(semRaio.Pos, naPropriaCelula);   // medido ANTES: se a piscada sair, o corpo vai pra la
+		var piscouNoLugar = PiscarPelaPorta(semRaio, naPropriaCelula);
+		AfirmarPp("o duplo clique no PROPRIO tile nao pisca, nem cobra (`view(0,usr)`, `click.dm:53`) -- mesmo a "
+				  + $"{aQuantoDoCentro:0.#} px do centro do corpo",
+				  aQuantoDoCentro >= 8f && piscouNoLugar.Saltos == 0
+				  && piscouNoLugar.Andou < 0.5f && Math.Abs(piscouNoLugar.KiCobrado) < 1e-9,
+				  $"saltos {piscouNoLugar.Saltos}, andou {piscouNoLugar.Andou:0.#} px, Ki cobrado {piscouNoLugar.KiCobrado:0.###}");
+		LimparDuelistasDoVazio();
+
+		// ============================ O ALCANCE E O `zanzorange`, E O QUADRADO DO `get_dist` (`click.dm:52`) ============================
+		// O clique vai longe na DIAGONAL (tres alcances pra nordeste). O DM ignora clique alem do `zanzorange`; o port
+		// ENCURTA (declarado no cabecalho) -- e encurta pelo QUADRADO do `get_dist`, e nao pelo circulo: o corpo pousa a
+		// `zanzorange` tiles nos DOIS eixos, e paga `kireq x zanzorange` (a diagonal de N tiles e N tiles no BYOND).
+		// A PRECONDICAO garante que o alcance de producao nao e nenhum dos dois numeros velhos: 6 (os 192 px fixos) e
+		// 4 (o que o circulo de 192 px da na diagonal).
+		// COMO ELA REPROVA: volte o alcance fixo de 192 px com o `d.Normalized() * 192` (o circulo) e ela diz
+		// "pousou a 4 tiles".
+		// ===================================================================================================================================
+		(ServerPlayer longe, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(longe);
+		int alcanceDoDm = (int)Math.Round(1.2 * Math.Max(longe.Ficha.Ekiskill, longe.Ficha.Etechnique) * longe.Ficha.Espeed);
+		AfirmarPp("(precondicao) o `zanzorange` deste piscador (`round(1.2*max(Ekiskill,Etechnique)*Espeed)`, `misc.dm:55`) "
+				  + "nao e nenhum dos numeros velhos (6 reto, 4 na diagonal)",
+				  alcanceDoDm >= 3 && alcanceDoDm != 6 && alcanceDoDm != 4, $"zanzorange {alcanceDoDm}");
+		Vec2 origemLonge = longe.Pos;
+		Vec2 nordesteLonge = origemLonge + new Vec2(3 * alcanceDoDm * ZoneCollision.TileSize, -3 * alcanceDoDm * ZoneCollision.TileSize);
+		double custoDoAlcance = 6 * longe.Ficha.BaseDrain() / (longe.Ficha.Ekiskill * (longe.Ficha.Espeed / 2)) * alcanceDoDm;
+		var piscouLonge = PiscarPelaPorta(longe, nordesteLonge);
+		int pousouA = Jandirus.Core.Social.Fusao.DistanciaEmTilesDoDm(origemLonge, longe.Pos, ZoneCollision.TileSize);
+		Vec2 passo = longe.Pos - origemLonge;
+		AfirmarPp("LONGE DEMAIS ENCURTA ate o `zanzorange`, pelo QUADRADO do `get_dist`: pousa na diagonal a `zanzorange` "
+				  + "tiles nos dois eixos, e paga `kireq x zanzorange`",
+				  piscouLonge.Saltos == 1 && pousouA == alcanceDoDm
+				  && Math.Abs(Math.Abs(passo.X) - Math.Abs(passo.Y)) < 0.5f
+				  && Math.Abs(piscouLonge.KiCobrado - custoDoAlcance) < 1e-6 * Math.Max(1, custoDoAlcance),
+				  $"zanzorange {alcanceDoDm}, pousou a {pousouA} tiles (passo {passo.X:0.#},{passo.Y:0.#} px), Ki cobrado "
+				  + $"{piscouLonge.KiCobrado:0.###} de {custoDoAlcance:0.###}, saltos {piscouLonge.Saltos}");
+		LimparDuelistasDoVazio();
+
+		// ============================ O `zanzochange++` VIRA EXP DA AFTERIMAGE (`click.dm:65`, `misc.dm:56-59`) ============================
+		// Tres corpos, a mesma piscada de um tile pro norte:
+		//   * o piscador (nivel 1, `zanzorange` 8)            -> +5 de exp (a esperanca do `prob(20)`: 1/0,2);
+		//   * o destreinado (nivel 1, cru 0,5 -- `zanzorange` abaixo de 3) -> nada: o efetor pede `zanzorange >= 3`;
+		//   * o piscador no nivel 4                            -> nada: o efetor pede `level < 4`.
+		// COMO ELA REPROVA: apague a chamada ao `ExpDaPiscada` no `Zanzoken` e a primeira diz "+0"; tire um dos dois
+		// portoes dele e a linha do portao diz "+5".
+		// ====================================================================================================================================
+		Vec2 umAoNorte = new(0, -ZoneCollision.TileSize);
+		(ServerPlayer treinado, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(treinado);
+		double expAntes = treinado.Niveis.Exp(PathDoZanzoken);
+		var piscouTreinado = PiscarPelaPorta(treinado, treinado.Pos + umAoNorte);
+		double ganhou = treinado.Niveis.Exp(PathDoZanzoken) - expAntes;
+		AfirmarPp("a piscada TREINA a Afterimage: +5 de exp com `zanzorange >= 3` e nivel < 4 (o `zanzochange` do DM "
+				  + "rende inteiro a cada tique ate um `prob(20)` zera-lo -- 1/0,2 = 5 na media)",
+				  piscouTreinado.Saltos == 1 && Math.Abs(ganhou - 5) < 1e-9,
+				  $"saltos {piscouTreinado.Saltos}, exp +{ganhou:0.###} (zanzorange {ZanzorangeG10(treinado.Ficha)})");
+		LimparDuelistasDoVazio();
+
+		(ServerPlayer cru, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(cru, treino: 0.5);
+		double expCruAntes = cru.Niveis.Exp(PathDoZanzoken);
+		var piscouCru = PiscarPelaPorta(cru, cru.Pos + umAoNorte);
+		AfirmarPp("...e NAO treina com `zanzorange < 3` (o portao `savant.zanzorange>=3` do efetor) -- a piscada sai igual",
+				  ZanzorangeG10(cru.Ficha) < 3 && piscouCru.Saltos == 1
+				  && Math.Abs(cru.Niveis.Exp(PathDoZanzoken) - expCruAntes) < 1e-9,
+				  $"zanzorange {ZanzorangeG10(cru.Ficha)}, saltos {piscouCru.Saltos}, "
+				  + $"exp +{cru.Niveis.Exp(PathDoZanzoken) - expCruAntes:0.###}");
+		LimparDuelistasDoVazio();
+
+		(ServerPlayer mestreDoZanzo, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(mestreDoZanzo);
+		mestreDoZanzo.Niveis.Por(PathDoZanzoken, 4);
+		double expNoTeto = mestreDoZanzo.Niveis.Exp(PathDoZanzoken);
+		var piscouNoTeto = PiscarPelaPorta(mestreDoZanzo, mestreDoZanzo.Pos + umAoNorte);
+		AfirmarPp("...nem no nivel 4 (o `if(level<4)` do efetor)",
+				  mestreDoZanzo.Niveis.Nivel(PathDoZanzoken) == 4 && piscouNoTeto.Saltos == 1
+				  && Math.Abs(mestreDoZanzo.Niveis.Exp(PathDoZanzoken) - expNoTeto) < 1e-9,
+				  $"nivel {mestreDoZanzo.Niveis.Nivel(PathDoZanzoken)}, saltos {piscouNoTeto.Saltos}, "
+				  + $"exp +{mestreDoZanzo.Niveis.Exp(PathDoZanzoken) - expNoTeto:0.###}");
+		LimparDuelistasDoVazio();
+
+		// ============================ O MORTO DE PE PISCA; O CADAVER NAO (`click.dm:54` le so `KO`) ============================
+		// O corpo morre pelo funil de toda morte (`Morrer`) e fica CADAVER no chao dos vivos: `dead` e nao `MortoDePe`
+		// -- ali o DM ja nao tem mob, so o `obj/mobCorpse`. Depois ele viaja pelo passo de producao da viagem
+		// (`IrProAlem`, o que o `VenceuOPrazoDaMorte` chama pra quem tem tela; o corpo forjado nao tem `Peer`, e a
+		// triagem o deixaria no chao -- ver `--alemteste`, secao 3) e fica de pe na mesa do Enma: o `Death()` do DM
+		// escreve `move = 1` e faz o `Un_KO`, e a linha do `DblClick` nao le `dead`.
+		// O CLIQUE e pra uma das oito direcoes com o caminho livre NO MAPA DO OUTRO MUNDO -- a mesa do Enma tem parede
+		// em volta, e a parede no caminho recusa por outra regra.
+		// COMO ELA REPROVA: volte o `if (pl.Ficha.KO || pl.Ficha.dead) return;` no `Zanzoken` e a segunda diz "saltos 0".
+		// ========================================================================================================================
+		(ServerPlayer finado, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(finado);
+		bool morreu = finado.Combate.Morrer(ignorarSeguro: true);
+		finado.Ficha.Ki = finado.Ficha.MaxKi;   // o preco da piscada, e nada mais: a regra medida e a do `dead`
+		var piscouCadaver = PiscarPelaPorta(finado, finado.Pos + umAoNorte);
+		AfirmarPp("o CADAVER (morto no chao dos vivos, `MortoDePe` falso) nao pisca",
+				  morreu && finado.Ficha.dead && !finado.MortoDePe && piscouCadaver.Saltos == 0 && piscouCadaver.Andou < 0.5f,
+				  $"morreu={morreu}, dead={finado.Ficha.dead}, de pe={finado.MortoDePe}, saltos {piscouCadaver.Saltos}");
+
+		IrProAlem(finado);
+		finado.Ficha.Ki = finado.Ficha.MaxKi;
+		ZoneCollision? mapaDoAlem = MapaDaZonaOuCatalogo(finado.Zone);
+		Vec2? livreNoAlem = null;
+		foreach (Vec2 rumo in MoveRules.OitoRumos)
+		{
+			Vec2 alvoDoClique = finado.Pos + rumo * (2 * ZoneCollision.TileSize);
+			if (mapaDoAlem == null || (!MoveRules.Occupied(mapaDoAlem, alvoDoClique)
+									   && !MoveRules.PathOccupied(mapaDoAlem, finado.Pos, alvoDoClique)))
+			{ livreNoAlem = alvoDoClique; break; }
+		}
+		AfirmarPp("(precondicao) o morto chegou de pe ao Outro Mundo, e ha um rumo livre de dois tiles na mesa do Enma",
+				  finado.MortoDePe && livreNoAlem != null, $"zona {finado.Zone.Name}, de pe={finado.MortoDePe}");
+		if (livreNoAlem is { } cliqueNoAlem)
+		{
+			var piscouFantasma = PiscarPelaPorta(finado, cliqueNoAlem);
+			AfirmarPp("...e o MORTO DE PE do Outro Mundo PISCA (`click.dm:54` le `!usr.KO`, e nao `dead`)",
+					  piscouFantasma.Saltos == 1 && Vec2.Distance(finado.Pos, cliqueNoAlem) < 0.5f,
+					  $"saltos {piscouFantasma.Saltos}, ficou a {Vec2.Distance(finado.Pos, cliqueNoAlem):0.#} px do clique");
+		}
+		RemoverNpc(finado);   // ele saiu da zona vazia pro Outro Mundo: a limpeza da familia nao o alcancaria la
+		LimparDuelistasDoVazio();
+
+		// ============================ AS OUTRAS CINCO LETRAS DA LINHA -- `click.dm:54` ============================
+		// `usr.move && !usr.Apeshit && !usr.KB && ... && !usr.med && !usr.train`. Uma linha por letra, com a MESMA cobranca
+		// das duas recusas do raio (o corpo nao saiu, o Ki nao foi cobrado, nenhum salto anunciado) e o MESMO clique do
+		// controle logo acima -- que e o que prova que cada recusa e da letra, e nao de alcance, Ki ou skill. UM CORPO
+		// POR LETRA: cada um num estado so.
+		//
+		// CADA ESTADO ENTRA PELO CAMINHO DE PRODUCAO: o primeiro aperto da Final Explosion (o `move = 0` literal de
+		// `misc.dm:355`; a Death Ball nao serve aqui porque o duelista nasce com 100 de Ki e ela pede 150x o dreno-base,
+		// mais que o tanque inteiro), o funil do `admin_forma` (a cena CHEIA da estreia do SSJ -- o `move = 0` de
+		// `SSJCinematic.dm:4`, e a parte do `move` que NAO ancora: sem a letra o corpo sairia da cena de verdade), o funil
+		// da fera (`VirarFera`, o mesmo da lua e do `admin_forma`), a porta unica do arremesso (`Arremessar`) e os dois
+		// campos que o `case Protocol.C2S.Activity` escreve (as teclas M e T).
+		// O QUE FICA SEM LINHA: o torneio, a Death Ball, a Genkidama e o Instant Transmission do `MoveZerado` -- montar
+		// cada um pede o evento inteiro ou mais Ki do que o duelista tem. Apagar um deles da funcao nao acende nada aqui.
+		//
+		// COMO ELAS REPROVAM: apague uma letra do `if` no `Zanzoken` (ou o `EmCena`/`_cargaG3` do `MoveZerado`) e a linha
+		// dela diz "andou 96 px, Ki cobrado ..., saltos 1" -- e as outras continuam verdes, porque cada corpo esta num
+		// estado so.
+		// =======================================================================================================
+		void AfirmarPiscadaRecusada(string oque, ServerPlayer quem, bool noEstado, string estado)
+		{
+			bool kiPraPiscar = quem.Ficha.Ki >= PrecoDoDm(quem, quem.Pos + deLado);
+			var piscou = PiscarPelaPorta(quem, quem.Pos + deLado);
+			AfirmarPp(oque,
+					  noEstado && kiPraPiscar && piscou.Andou < 0.5f && Math.Abs(piscou.KiCobrado) < 1e-9
+					  && piscou.Saltos == 0,
+					  $"{(noEstado ? estado : "NAO ESTAVA " + estado)}{(kiPraPiscar ? "" : ", SEM Ki pra piscar")}, "
+					  + $"andou {piscou.Andou:0.#} px, Ki cobrado {piscou.KiCobrado:0.###}, saltos {piscou.Saltos}");
+		}
+
+		(ServerPlayer bomba, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(bomba);
+		ExplosaoFinalG3(bomba, RaioPertoG3);   // o primeiro aperto do verb: o corpo fica preso carregando
+		AfirmarPiscadaRecusada("com a Final Explosion CARREGANDO (`usr.move = 0`, `misc.dm:355`) a piscada nao sai -- "
+							   + "sem a letra, a ancora da carga puxaria o corpo de volta no pulso seguinte",
+							   bomba, _cargaG3.ContainsKey(bomba.Id), "carregando a Final Explosion");
+		_cargaG3.Remove(bomba.Id);   // o pulso de 10 Hz nao roda dentro da bancada: a carga sai daqui, sem detonar
+		LimparDuelistasDoVazio();
+
+		(ServerPlayer naCena, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(naCena);
+		// O FUNIL DO `admin_forma` (`Entrar` -> `AplicarForma` -> `AnunciarForma` -> `MarcarCena`): um corpo recem-forjado
+		// estreia o SSJ e ganha a cena cheia. Nada de Oozaru aqui, pra a linha medir SO o `move`.
+		AdminForcarForma(naCena, "ssj1");
+		AfirmarPiscadaRecusada("na CINEMATICA da estreia do SSJ (`move = 0`, `SSJCinematic.dm:4`) a piscada nao sai -- "
+							   + "sem a letra, o corpo sairia de dentro da cena",
+							   naCena, EmCena(naCena) && naCena.Oozaru == Jandirus.Core.Forms.FormaOozaru.Nao,
+							   "preso na cena do SSJ");
+		LimparDuelistasDoVazio();
+
+		(ServerPlayer fera, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(fera);
+		VirarFera(fera, Jandirus.Core.Forms.FormaOozaru.Regular);
+		// A CENA DO MACACO TAMBEM PRENDE O CORPO (e ela e o `move` deste port -- ver o `MoveZerado`). Ela escorre pelo
+		// relogio de producao, o topo do `TickDaForma` que roda pra todo corpo, pra esta linha medir SO a letra `Apeshit`.
+		for (int i = 0; i < (int)(30 / Protocol.TickSeconds) && EmCena(fera); i++) TickDaForma(fera, Protocol.TickSeconds);
+		AfirmarPiscadaRecusada("EM OOZARU a piscada nao sai (`!usr.Apeshit`), mesmo com a cena da fera ja acabada",
+							   fera, fera.Oozaru != Jandirus.Core.Forms.FormaOozaru.Nao && !EmCena(fera),
+							   "Oozaru fora da cena");
+		LimparDuelistasDoVazio();
+
+		(ServerPlayer voa, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(voa);
+		Arremessar(voa, new Vec2(-1, 0), Empurrao.ResistenciaPadrao, Empurrao.TiquesMax);   // a porta unica do arremesso
+		AfirmarPiscadaRecusada("ARREMESSADO a piscada nao sai (`!usr.KB`): quem esta no ar pelo golpe nao escolhe pra "
+							   + "onde vai", voa, voa.TiquesDeVoo > 0, "no ar pelo arremesso");
+		LimparDuelistasDoVazio();
+
+		(ServerPlayer medita, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(medita);
+		medita.Ficha.med = true;   // o que o `case Protocol.C2S.Activity` escreve com a tecla M
+		AfirmarPiscadaRecusada("MEDITANDO a piscada nao sai (`!usr.med`)", medita, medita.Ficha.med, "meditando");
+		LimparDuelistasDoVazio();
+
+		(ServerPlayer treina, ServerPlayer _) = DuelistasNoVazio(tiles: 4);
+		Piscador(treina);
+		treina.Ficha.train = true;   // idem, com a tecla T
+		AfirmarPiscadaRecusada("TREINANDO a piscada nao sai (`!usr.train`)", treina, treina.Ficha.train, "treinando");
 		LimparDuelistasDoVazio();
 
 		(ServerPlayer seco, ServerPlayer _) = DuelistasNoVazio(tiles: 9);

@@ -215,7 +215,7 @@ public partial class GameServer
 		if (n == null) { Avisar(pl, "você não está dentro de uma nave."); return; }
 		if (!NaPlataforma(pl)) { Avisar(pl, "a plataforma de saída fica no centro da nave."); return; }
 
-		Vec2 fora = PontoAoLadoDaNave(n, pl.Id);
+		Vec2 fora = PontoAoLadoDaNave(n, pl);
 		MoveToZone(pl.Id, n.Zona, fora);
 		Avisar(pl, $"você desce de {NomeDaNave(n)}, em {n.Zona.Name}.");
 		GD.Print($"[server] {pl.Name} desembarcou da nave #{n.Id} em {n.Zona}");
@@ -224,21 +224,61 @@ public partial class GameServer
 	/// <summary>
 	/// UM PONTO LIVRE AO LADO DO CASCO -- `ship_free_turf_around` (`ShipVessel.dm:358-365`).
 	///
-	/// O DM varre as oito vizinhas e devolve a primeira sem densidade, caindo no proprio tile da
-	/// nave se nao achar nenhuma. Aqui quem responde e o `PontoLivrePerto`, que ja e o funil de
-	/// "acha chao perto daqui" deste port (berco, invasao, povoamento e conquista usam ele) -- e ele
-	/// nao existe no espaco, onde nao ha mapa: la o vazio ao lado da nave e sempre livre.
+	/// O DM varre as oito vizinhas e devolve a primeira que passa em DOIS crivos: o turf sem densidade
+	/// (:361) e nenhum atomo denso em cima dele (:362-365) -- e mob e denso, entao **quem ja esta de pe
+	/// ali tira aquele tile da conta**. Sem nenhuma, cai no proprio tile da nave (`disembark`, :231-232).
+	/// Aqui o chao e o `PontoLivrePerto` (o funil de "acha chao perto daqui" deste port -- berco,
+	/// invasao, povoamento e conquista usam ele; no espaco nao ha mapa e o vazio e sempre livre), e o
+	/// "atomo denso" e um corpo cuja caixa dos pes toca a do ponto (`ClasseDeCorpo.CaixasSeTocam`, a
+	/// mesma pergunta do "ninguem atravessa ninguem").
 	///
-	/// O <paramref name="semente"/> ESPALHA quem sai junto. Sem ele, uma nave destruida com cinco
-	/// pessoas dentro cuspiria as cinco na MESMA coordenada -- e cinco corpos empilhados num pixel e
-	/// o tipo de coisa que o jogador le como "o jogo bugou", nao como "a nave explodiu".
+	/// ============================ O CRIVO DO CORPO E O QUE ESPALHA, E NAO O ID ============================
+	/// Isto escolhia a direcao por `id % 8`: dois corpos de ids congruentes modulo 8 saiam no MESMO
+	/// pixel, fosse um depois do outro pela plataforma, fosse juntos na explosao. O crivo do DM resolve
+	/// os dois casos sem sorteio: cada corpo que sai ja esta na `ZoneList` da zona de fora quando o
+	/// seguinte pergunta, e o tile dele deixa de servir.
+	///
+	/// DIVERGENCIA DECLARADA: o `testDestroy` do DM calcula o `blowout` UMA vez e joga todo mundo nele
+	/// (:251-258, `M.loc` nao pergunta densidade) -- a nave que explode com cinco dentro empilha os
+	/// cinco num tile. Aqui a explosao pergunta por corpo, como a plataforma: cinco corpos num pixel o
+	/// jogador le como "o jogo bugou", e nao como "a nave explodiu". E quando os oito lados estao
+	/// tomados o port abre um anel a mais antes de desistir (o DM ja desistiria no primeiro).
+	/// ===================================================================================================
 	/// </summary>
-	private Vec2 PontoAoLadoDaNave(Nave n, int semente)
+	private Vec2 PontoAoLadoDaNave(Nave n, ServerPlayer quemSai)
 	{
-		const float raio = 1.5f * ZoneCollision.TileSize;
-		double ang = semente % 8 / 8.0 * Math.Tau;
-		var desejado = new Vec2(n.X + (float)Math.Cos(ang) * raio, n.Y + (float)Math.Sin(ang) * raio);
-		return MapaDaZonaOuCatalogo(n.Zona)?.PontoLivrePerto(desejado) ?? desejado;
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(n.Zona);
+		List<ServerPlayer> jaLa = ZoneList(n.Zona.Hash);
+		for (int anel = 0; anel < AneisAoLadoDaNave; anel++)
+		{
+			float raio = (1.5f + anel) * ZoneCollision.TileSize;
+			for (int lado = 0; lado < 8; lado++)
+			{
+				double ang = lado / 8.0 * Math.Tau;
+				var desejado = new Vec2(n.X + (float)Math.Cos(ang) * raio, n.Y + (float)Math.Sin(ang) * raio);
+				Vec2 ponto = mapa?.PontoLivrePerto(desejado) ?? desejado;
+				if (!AlguemDePeEm(jaLa, quemSai, ponto)) return ponto;
+			}
+		}
+
+		// NENHUM LADO SERVE: o proprio tile da nave, como o DM (`if(!dest) dest = locate(src.x, src.y, src.z)`).
+		var casco = new Vec2(n.X, n.Y);
+		return mapa?.PontoLivrePerto(casco) ?? casco;
+	}
+
+	/// <summary>Quantos aneis de oito lados o <see cref="PontoAoLadoDaNave"/> tenta. Ver a divergencia la.</summary>
+	private const int AneisAoLadoDaNave = 3;
+
+	/// <summary>
+	/// O `for(var/atom/O in T) if(O.density)` do `ship_free_turf_around` (:362-365): ha um corpo de pe
+	/// no ponto? Quem esta saindo nao conta (e o proprio corpo que procura lugar).
+	/// </summary>
+	private static bool AlguemDePeEm(List<ServerPlayer> zona, ServerPlayer quemSai, Vec2 ponto)
+	{
+		Vec2 pes = ClasseDeCorpo.Pes(ponto);
+		foreach (ServerPlayer o in zona)
+			if (o != quemSai && ClasseDeCorpo.CaixasSeTocam(ClasseDeCorpo.Pes(o.Pos), pes)) return true;
+		return false;
 	}
 
 	// =====================================================================
@@ -375,6 +415,15 @@ public partial class GameServer
 		// O destino e o exterior, exatamente como o `usr.loc = locate(ship...)` do DM: sem isto o
 		// `TickDasNaves` copiaria a posicao de alguem que esta DENTRO da nave pra a propria nave, e
 		// ela se teleportaria pro meio do proprio interior -- uma zona que nao fica em lugar nenhum.
+		//
+		// ============================ O VOO E LIDO **ANTES** DE LARGAR O CORPO ============================
+		// `usr.pilot_old_flight = usr.flight` (`ShipVessel.dm:315`) vem ANTES do `usr.loc = ...` (:328), e
+		// aqui a ordem e a mesma por necessidade: o `LargarOCorpo` viaja pelo `MoveToZone`, que POUSA todo
+		// corpo que muda de zona ("o voo nao atravessa a porta"). Lido depois, o `pl.Voando` era sempre
+		// falso e o `NaveDevolveVoo` nascia morto -- quem pegava o leme voando largava o leme no chao, nas
+		// duas saidas (`PararDePilotar` e `DestruirNave`), e o `end_pilot` do DM (:217-218) devolve o voo.
+		// ==================================================================================================
+		bool voavaAntesDoLeme = pl.Voando;
 		if (!LargarOCorpo(pl, n.Zona, new Vec2(n.X, n.Y))) return;
 
 		n.PilotoId = pl.Id;
@@ -382,7 +431,7 @@ public partial class GameServer
 
 		// PILOTAR CONTA COMO VOO, o mesmo `pilot.flight = 1` da camada 1: sem isso a nave grande nao
 		// atravessaria agua nem lava, e a `Nave` inteira ja passa por esse bit.
-		pl.NaveDevolveVoo = pl.Voando;
+		pl.NaveDevolveVoo = voavaAntesDoLeme;
 		pl.Voando = true;
 		RecalcularVelocidade(pl);
 		MandarFicha(pl);
@@ -406,7 +455,9 @@ public partial class GameServer
 	/// assumir) -- e hoje **este port faz melhor sem guardar nada**: o corpo esta la, de pe na ponte,
 	/// e quem volta volta pra onde ELE esta. Se alguem o tiver empurrado dois tiles pro lado, e la
 	/// que o piloto reaparece. O `aoLado` abaixo virou o destino de EMERGENCIA, pro caso de o corpo
-	/// nao existir mais (a nave explodiu com ele dentro, um admin o apagou).
+	/// nao existir mais (um admin o apagou). A NAVE QUE EXPLODE NAO PASSA POR AQUI, e nem poderia: o
+	/// `dentro` abaixo e o interior de uma nave que deixou de existir. Quem solta o leme nesse caso e
+	/// o `DestruirNave`, que devolve o piloto ao proprio corpo ONDE ELE ESTA, do lado de fora.
 	///
 	/// <paramref name="motivo"/> e o que o jogador le ao voltar. O padrao e largar o leme por
 	/// vontade propria; o <see cref="VoltarDeOndeEstiver"/> passa o texto do golpe que o acordou.
@@ -417,14 +468,21 @@ public partial class GameServer
 		n.LancaEm = 0;
 		GravarNaves();
 
-		if (!pl.NaveDevolveVoo) { pl.Voando = false; pl.Altitude = 0f; }
-
 		// UM TILE AO SUL DO CONSOLE, e nao em cima dele: o console e PAREDE (a densidade dele esta
 		// assada no bitset da planta), e devolver o corpo pra dentro de uma parede e a familia de
 		// defeito que o `PontoDeNascimento` ja custou uma bancada inteira pra achar em Icer.
 		ZoneKey dentro = NaveGrande.ZonaDoInterior(n.Id);
 		Vec2 aoLado = NaveGrande.PixelDe((NaveGrande.CelDoConsole.X, NaveGrande.CelDoConsole.Y + 1));
 		VoltarProCorpo(pl, motivo, dentro, aoLado);
+
+		// O VOO VOLTA **DEPOIS** DA VIAGEM PRA PONTE: o `VoltarProCorpo` cruza de zona (do casco pro
+		// interior) pelo `MoveToZone`, que pousa todo corpo que chega. Devolvido antes, o voo morria na
+		// porta. E o `end_pilot` do DM (`M.flight = M.pilot_old_flight`, `ShipVessel.dm:217-218`) com o
+		// `M.loc = ret` do `return_to_interior` (:128) -- la a ordem nao importa porque o `loc` nao pousa
+		// ninguem; aqui importa, e so esta serve. Quem voava volta a pairar do chao da ponte (altitude
+		// zero, como toda decolagem); quem nao voava fica no chao.
+		pl.Voando = pl.NaveDevolveVoo;
+		if (!pl.Voando) pl.Altitude = 0f;
 		MandarObras(pl.Zone);
 
 		RecalcularVelocidade(pl);
@@ -559,17 +617,23 @@ public partial class GameServer
 	/// TODO mob com cliente que esteja no z do interior pra `ship_free_turf_around(src)` -- um tile
 	/// livre ao lado do casco -- ANTES de o pai explodir a nave (:249-260).
 	///
-	/// AQUI SAO QUATRO PASSOS, E A ORDEM E O QUE IMPEDE OS TRES MODOS DE FALHA:
+	/// AQUI SAO CINCO PASSOS, E A ORDEM E O QUE IMPEDE OS QUATRO MODOS DE FALHA:
 	///
 	///   1. LARGA O LEME PRIMEIRO (`if(pilot_mob) end_pilot(pilot_mob)`, :253). O piloto esta FORA,
 	///      montado no casco; se a nave sumisse com ele ainda marcado como piloto, o `TickDasNaves`
 	///      procuraria uma nave que nao existe mais. Ele nao volta pra ponte -- a ponte esta
 	///      explodindo: ele fica exatamente onde estava, no espaco ou sobre o planeta;
-	///   2. EJETA QUEM ESTA DENTRO, cada um numa direcao (ver `PontoAoLadoDaNave`): cinco corpos
-	///      numa coordenada so o jogador le como bug, e nao como explosao;
-	///   3. SO ENTAO TIRA A NAVE DA LISTA. Ejetar depois seria mover corpos pra a posicao de um
+	///   2. ESVAZIA O INTERIOR -- **todo** corpo que esta nele, e nao so quem o `MoveToZone` alcanca.
+	///      Quem o servidor simula e ejetado, cada um numa direcao (ver `PontoAoLadoDaNave`): cinco
+	///      corpos numa coordenada so o jogador le como bug, e nao como explosao. O boneco de quem
+	///      largou o corpo e o cadaver, que moram SO na `ZoneList`, saem do mundo pela porta de cada
+	///      um -- ver o bloco do passo 2 no corpo da funcao;
+	///   3. O PILOTO VOLTA PRO PROPRIO CORPO, ali mesmo -- o resto do `end_pilot` (:211-227). DEPOIS
+	///      do passo 2 e nao antes: com o corpo dele ainda de pe na ponte, a volta o levaria pra
+	///      DENTRO da nave que esta explodindo;
+	///   4. SO ENTAO TIRA A NAVE DA LISTA. Ejetar depois seria mover corpos pra a posicao de um
 	///      objeto que ja foi apagado;
-	///   4. REFAZ A COLISAO E O PACOTE das duas zonas -- a de fora perde uma parede, e a de dentro
+	///   5. REFAZ A COLISAO E O PACOTE das duas zonas -- a de fora perde uma parede, e a de dentro
 	///      deixou de existir.
 	///
 	/// PRA ONDE, EM UMA LINHA: **pro lado do casco, na zona em que o casco estava.** Se ela caiu
@@ -585,11 +649,83 @@ public partial class GameServer
 		ZoneKey fora = n.Zona;
 		ZoneKey dentro = NaveGrande.ZonaDoInterior(n.Id);
 
-		// 1. o leme
-		if (n.PilotoId != 0 && _players.TryGetValue(n.PilotoId, out ServerPlayer? piloto))
+		// 1. o leme -- so o REGISTRO. O que o `end_pilot` faz com o CORPO do piloto e o passo 3.
+		ServerPlayer? piloto = null;
+		if (n.PilotoId != 0) _players.TryGetValue(n.PilotoId, out piloto);
+		n.PilotoId = 0;
+
+		// 2. o interior -- TODO corpo que esta nele
+		// ============================ O CORPO QUE O `MoveToZone` NAO ALCANCA ============================
+		// Esta ejecao era um `MoveToZone` por corpo da lista -- e o `MoveToZone` so move quem esta no
+		// `_players`: a primeira linha dele devolve CALADA pra qualquer outro id. Dois corpos moram SO
+		// na `ZoneList`, e os dois de proposito: o BONECO de quem largou o corpo (ver o cabecalho de
+		// `GameServer.CorpoLargado.cs`) e o CADAVER (ver o do `DeixarOCadaver`). Os dois ficavam pra
+		// tras numa zona que deixou de existir -- e o boneco ficava SEMPRE que havia piloto, porque o
+		// `LargarOCorpo` e a porta do leme (`PilotarDaPonte`): quem esta ao leme deixou um na ponte. O
+		// log dizia "2 ejetado(s)" e a `--naveteste` achava "1 preso": o log contava a LISTA, e nao
+		// quem saiu dela.
+		//
+		// NENHUM DOS DOIS E EJETADO, e as duas saidas dao o desfecho do DM:
+		//   * o BONECO sai pelo mesmo `RemoverNpc` com que o `VoltarProCorpo` o desfaz -- e o `del(HB)`
+		//     do `end_pilot` (`ShipVessel.dm:219-222`). Ele nao tem estado proprio (a ficha e o corpo
+		//     sao os do dono), entao nada se perde. O do piloto se resolve no passo 3; o de quem estava
+		//     MEDITANDO a bordo acorda o dono no tique seguinte pela borda "o corpo sumiu do mundo"
+		//     (`BordasDeQuemEstaFora`), que ja nomeia este caso e cai no destino de emergencia.
+		//     **DIVERGENCIA DECLARADA**: o DM deixa esse `mind_dummy` no z orfao -- o `testDestroy` so
+		//     move `M.client` (:255-256) -- e o `mind_exit` devolve o dono pro tile do boneco
+		//     (`MindMeditate.dm:418-426`), ou seja pra dentro de um casco que nao existe mais:
+		//     encalhado, que e o medo que a `ship_interior_zs` (:38) escreve;
+		//   * o CADAVER se desfaz pela porta unica dele (`DesfazerOCadaver`). No DM ele e um
+		//     `obj/mobCorpse` (`Corpse.dm:1`) e o `testDestroy` so percorre `mob`: ele fica no z orfao,
+		//     onde ninguem mais chega. Sumir de vez e o mesmo desfecho, sem uma lista viva numa zona
+		//     morta.
+		//
+		// E O NPC E EJETADO COMO GENTE, outra **DIVERGENCIA DECLARADA** (o `M.client` de :256 o deixaria
+		// la dentro): aqui ele esta no `_players`, e um corpo simulado numa zona morta seria tiqueado pra
+		// sempre sem ninguem pra ve-lo.
+		// ================================================================================================
+		var aBordo = ZoneList(dentro.Hash).ToList();
+		int ejetados = 0, tirados = 0;
+		foreach (ServerPlayer t in aBordo)
 		{
-			n.PilotoId = 0;
+			if (_players.ContainsKey(t.Id))
+			{
+				MoveToZone(t.Id, fora, PontoAoLadoDaNave(n, t));
+				Avisar(t, $"{nome} EXPLODE. Você é arremessado pra fora.");
+				ejetados++;
+			}
+			else if (t.ECadaver) { DesfazerOCadaver(t); tirados++; }
+			else if (t.DonoDoCorpoLargado != 0) { RemoverNpc(t); tirados++; }
+		}
+
+		// 3. o piloto volta pro PROPRIO corpo, ali mesmo
+		// ============================ O RESTO DO `end_pilot` (`ShipVessel.dm:211-227`) ============================
+		// O corpo dele saiu do mundo no passo 2, entao o `VoltarProCorpo` cai no ramo "o corpo nao estava
+		// mais la" -- e o destino que ele recebe e ONDE O PILOTO JA ESTA: a zona e o ponto DELE, e nao o
+		// `fora` da nave (quem manda na posicao do casco e o piloto, pelo `TickDasNaves`, e nao o
+		// contrario). E o DM: o `end_pilot` apaga o boneco e NAO move o `M`, que fica no tile do casco
+		// (quem move e o `return_to_interior`, e o `testDestroy` nao o chama).
+		//
+		// POR QUE O `VoltarProCorpo`, E NAO `BonecoLargado = null` AQUI: ele e o UNICO lugar que zera os
+		// dois lados do espelho (ver o comentario dele). Sem esta volta o piloto seguiria "fora do corpo"
+		// com um boneco que nao existe, e o tique seguinte (`BordasDeQuemEstaFora`) o arrastaria pro
+		// destino de emergencia -- a Terra, do meio do espaco -- com a frase "algo atinge o seu corpo".
+		// Antes deste passo era pior: o boneco ficava NA lista da zona morta, a borda nunca disparava, e
+		// o piloto ficava fora do corpo ate deslogar -- o `LargarOCorpo` o recusava calado (nem meditar
+		// nem pilotar outra nave), e o `Drop` o devolvia pro boneco, ou seja, gravava o save DENTRO da
+		// nave destruida.
+		//
+		// SEM VIAGEM: o destino e onde ele JA esta, e o `VoltarProCorpo` nao chama o `MoveToZone` pra quem ja
+		// esta no destino (ver o fim dele). Com a viagem, o cliente do piloto receberia um `ZoneChanged` pra a
+		// MESMA zona e cobriria a tela pra recarregar o cenario no instante da explosao -- um piscar que o DM
+		// nao tem. Pro piloto muda so o espelho: ele continua montado onde o casco estava, como no DM.
+		//
+		// A ORDEM ABAIXO E A DO `PararDePilotar`, a outra saida do leme: voo, volta, velocidade, ficha.
+		// ==========================================================================================================
+		if (piloto != null)
+		{
 			if (!piloto.NaveDevolveVoo) { piloto.Voando = false; piloto.Altitude = 0f; }
+			VoltarProCorpo(piloto, "", piloto.Zone, piloto.Pos);
 			RecalcularVelocidade(piloto);
 			MandarFicha(piloto);
 
@@ -600,25 +736,17 @@ public partial class GameServer
 
 			Avisar(piloto, $"{nome} se despedaça sob os seus pés.");
 		}
-		n.PilotoId = 0;
 
-		// 2. a tripulacao
-		var aBordo = ZoneList(dentro.Hash).ToList();
-		foreach (ServerPlayer t in aBordo)
-		{
-			MoveToZone(t.Id, fora, PontoAoLadoDaNave(n, t.Id));
-			Avisar(t, $"{nome} EXPLODE. Você é arremessado pra fora.");
-		}
-
-		// 3. a nave
+		// 4. a nave
 		_naves.Remove(n);
 		GravarNaves();
 
-		// 4. as duas zonas
+		// 5. as duas zonas
 		MandarObras(fora);
 		MandarObras(dentro);
 
-		GD.Print($"[server] {nome} (#{n.Id}) foi destruida em {fora} -- {aBordo.Count} ejetado(s)"
+		GD.Print($"[server] {nome} (#{n.Id}) foi destruida em {fora} -- {ejetados} ejetado(s)"
+				 + (tirados > 0 ? $", {tirados} corpo(s) largado(s)/cadaver(es) tirado(s) do mundo" : "")
 				 + (autor != null ? $", por {autor.Name}" : ""));
 		if (autor != null) Avisar(autor, $"{nome} vem abaixo.");
 	}

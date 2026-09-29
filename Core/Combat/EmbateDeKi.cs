@@ -157,6 +157,19 @@ public static class EmbateDeKi
 	/// <summary>DEFEITO INJETADO (bancada): as duas cabecas no MESMO ponto de encontro -- a sobreposicao da foto do dono.</summary>
 	public static bool CabecasNoMesmoPontoDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): um feixe que ja disputou nao disputa contra OUTRO FEIXE nunca mais -- o
+	/// `JaDisputou` de volta no `PodeDisputar`, que era o que impedia a revanche de quem perdeu.
+	/// </summary>
+	public static bool RevancheProibidaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o encontro volta a poder caminhar ate a BEIRADA DO CORPO do perdedor, e
+	/// nao ate a MAO dele -- o que deixava a cabeca do perdedor atras da propria mao no fim de toda disputa
+	/// decidida, com o feixe dele desenhado ao contrario por cima da cabeca do vencedor.
+	/// </summary>
+	public static bool EncontroAteOCorpoDeTeste;
+
 	// =====================================================================
 	// O PODER DE CADA LADO
 	// =====================================================================

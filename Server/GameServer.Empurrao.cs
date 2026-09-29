@@ -405,7 +405,13 @@ public sealed partial class GameServer
 					// O QUE O CORPO ATRAVESSA TAMBEM SOFRE. E o `for(var/obj/O in get_step(...))
 					// if(O.fragile) O.takeDamage(pow)` do original: a arvore e a bancada nao
 					// precisam BLOQUEAR pra serem arrancadas por alguem passando voando por cima.
-					if (mapa != null) EstragarObrasNoCaminho(pl, p);   // no ar nao se derruba obra
+					// A OBRA APANHA ANTES DA PAREDE, como no `Ticked` (`Movement Effects.dm:74-76` vem antes do `step`, :83-85):
+					// a obra densa que cede aqui deixa de barrar, e o `Occupied` logo abaixo ja deixa o corpo passar. O `andado`
+					// e a amostra ANTERIOR -- a obra apanha so na amostra em que a caixa ENTRA na celula dela (ver la).
+					// A PRIMEIRA AMOSTRA DO ARREMESSO: o `Arremessar` crava os dois contadores iguais e zera a fracao, e so
+					// o fim de um tique cheio os separa. Ver o `comecoDoVoo` do `EstragarObrasNoCaminho`.
+					bool comecoDoVoo = i == 1 && pl.TiquesDeVoo == pl.TiquesIniciaisDoVoo && pl.VooNoTique == 0;
+					if (mapa != null) EstragarObrasNoCaminho(pl, andado, p, comecoDoVoo);   // no ar nao se derruba obra
 
 					// ============================ QUEM E ARREMESSADO ATRAVESSA A AGUA ============================
 					// E literal do original: o `testWaters()` deixa passar `M.KB`
@@ -419,7 +425,9 @@ public sealed partial class GameServer
 					if (mapa == null || !MoveRules.Occupied(mapa, p, ModoDeTravessia.Arremessado))
 					{ andado = p; continue; }
 
-					if (pl.ForcaDoVoo >= Empurrao.ResistenciaPadrao && DerrubarCenario(pl.Zone, p))
+					// O QUE SE PERGUNTA SE CAI E O QUE BARROU A CAIXA -- as quinas, e nao o ponto dos pes. Com o ponto
+					// so, um muro de resistencia 20 "resistia" a um arremesso de forca 20: ver `DerrubarOQueBarraOsPes`.
+					if (pl.ForcaDoVoo >= Empurrao.ResistenciaPadrao && DerrubarOQueBarraOsPes(pl.Zone, mapa, p))
 					{
 						andado = p;   // a parede caiu: o corpo passa por cima do escombro
 						continue;
@@ -705,11 +713,92 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DerrubarCenario(ZoneKey zona, Vec2 onde)
 	{
+		(int cx, int cy) = CelulaDoPonto(onde);
+		return DerrubarCenarioNaCelula(zona, cx, cy);
+	}
+
+	/// <summary>
+	/// ============================ O MURO QUE PARA E O MURO QUE SE PERGUNTA SE CAI ============================
+	/// `Movement Effects.dm:65-73`, e no DM e UM turf so:
+	/// <code>
+	/// var/turf/T = get_step(target,dir)
+	/// if(T &amp;&amp; T.density)
+	///     if(pow &gt;= T.Resistance &amp;&amp; T.destroyable)  spawn T.Destroy()     // cai, e o voo segue
+	///     else  target.SpreadDamage(duration,0); duration=0               // resistiu, e o voo acaba
+	/// </code>
+	/// Aqui eram DOIS. "Parou?" e o `MoveRules.Occupied` -- as quatro quinas da caixa dos pes, 8 px pros lados
+	/// e 5 px pra cima e pra baixo do ponto dos pes --, e "cai?" era o `DerrubarCenario(p)`, que olha UMA
+	/// celula: a do ponto dos pes. Entre a quina encostar no muro e o ponto dos pes entrar nele ha 5 px
+	/// (norte/sul) ou 8 px (leste/oeste), e a amostra de ~10,7 px do laco cai nessa faixa quase metade das vezes
+	/// num eixo e tres em quatro no outro. Ali a celula perguntada era CHAO, a resposta era "nao caiu", e o laco
+	/// lia "RESISTIU": o corpo se arrebentava num muro de resistencia 20 jogado com forca 20, e o muro ficava de
+	/// pe. Era o resto do "algumas paredes q ele passa n quebram" que a varredura de meio tile nao alcancou.
+	///
+	/// ACHADO PELA `--doiscorposteste` (2026-09-23): o cadaver jogado pro sul de dentro da casa do berco da
+	/// Terra parava a 29 px de onde caiu com a PORTA (73,262) de pe -- a amostra estava em y = 8375,999, a quina
+	/// de baixo ja na fileira 262 e o ponto dos pes ainda na 261. Medido na familia 11 da `--kbteste`.
+	///
+	/// SAO AS QUATRO QUINAS, E ISSO E DIVERGENCIA DECLARADA: o corpo do DM ocupa um tile e o `get_step` e um turf
+	/// so; aqui o corpo anda por pixel e a caixa pode encostar em DUAS celulas lado a lado. Ele so passa se TODAS
+	/// as que o barram cairem -- a que resiste (`.duro`, beirada, Outro Mundo) para o voo como sempre parou, e as
+	/// que cairam antes dela ficam caidas (o `spawn T.Destroy()` tambem nao volta atras).
+	///
+	/// A RESPOSTA E "A CAIXA CABE AGORA?", e nao "caiu alguma coisa?": com uma quina num muro que cai e a outra
+	/// num que resiste, "caiu alguma" poria o corpo DENTRO do segundo.
+	///
+	/// SO O TURF SE PERGUNTA. O `BlockedCell` tambem e verdade numa celula de CHAO que uma obra densa ou uma
+	/// nave parada ocupam (`AplicarColisaoDasObras`), e o `DerrubarCelula` nao sabe disso: ele anotaria o chao
+	/// como caido, o cliente animaria a queda e pintaria terra debaixo da obra -- que continuaria de pe,
+	/// barrando o corpo do mesmo jeito. O DM testa a densidade do TURF (`T.density`); obra se estraga pelo
+	/// laco do que o corpo atravessa (`EstragarObrasNoCaminho`, o `O.takeDamage(pow)` do original). E a mesma
+	/// ordem do soco (`SocarCenario`: obra, nave, e so entao o turf), pelo mesmo motivo.
+	/// =====================================================================================================
+	/// </summary>
+	private bool DerrubarOQueBarraOsPes(ZoneKey zona, ZoneCollision mapa, Vec2 p)
+	{
+		(int x0, int y0, int x1, int y1) = CelulasDaCaixa(p);
+		for (int cy = y0; cy <= y1; cy++)
+			for (int cx = x0; cx <= x1; cx++)
+			{
+				if (!mapa.BlockedCell(cx, cy) || ObraNaCelula(zona, cx, cy) != null || NaveNaCelula(zona, cx, cy) != null)
+					continue;   // chao livre, ou uma obra/nave em cima do chao -- ver o cabecalho
+				DerrubarCenarioNaCelula(zona, cx, cy);
+			}
+		return !MoveRules.Occupied(mapa, p, ModoDeTravessia.Arremessado);
+	}
+
+	/// <summary>
+	/// AS CELULAS QUE A CAIXA DOS PES TOCA em <paramref name="p"/> (centro do corpo), como retangulo de celulas
+	/// [X0..X1] x [Y0..Y1] -- as MESMAS quatro quinas do `MoveRules.Occupied`: 8 px pros lados e 5 px pra cima e
+	/// pra baixo do ponto dos pes (`FeetOffsetY` abaixo do centro).
+	///
+	/// A caixa (16 x 10 px) e menor que a celula (32 px), entao cada eixo cobre uma ou duas celulas: de uma a quatro
+	/// no total, e CADA UMA UMA VEZ -- duas quinas na mesma celula nao a contam duas vezes. Isso importa pra quem da
+	/// pancada (`EstragarObrasNoCaminho`, onde uma obra contada duas vezes apanharia dobrado) e nao importava pra quem
+	/// derruba (a celula que caiu nao cai de novo). Mora num lugar so porque "o que a caixa toca" tem duas perguntas
+	/// -- o turf que barra e a obra que apanha -- e as duas tem de olhar exatamente as celulas que o `Occupied` olha:
+	/// meio pixel de diferenca e uma quina que PARA o corpo numa celula que ninguem pergunta, que e o defeito que as
+	/// duas acabaram de deixar de ter.
+	/// </summary>
+	private static (int X0, int Y0, int X1, int Y1) CelulasDaCaixa(Vec2 p)
+	{
+		const float T = ZoneCollision.TileSize;
+		float pes = p.Y + MoveRules.FeetOffsetY;
+		return ((int)MathF.Floor((p.X - MoveRules.BodyHalfW) / T), (int)MathF.Floor((pes - MoveRules.BodyHalfH) / T),
+				(int)MathF.Floor((p.X + MoveRules.BodyHalfW) / T), (int)MathF.Floor((pes + MoveRules.BodyHalfH) / T));
+	}
+
+	/// <summary>
+	/// A CELULA JA ESCOLHIDA -- o miolo do <see cref="DerrubarCenario"/>, separado dele pra que quem ja sabe a
+	/// celula (as quinas do <see cref="DerrubarOQueBarraOsPes"/>) passe pelas MESMAS recusas: nao e parede, e
+	/// beirada. Uma segunda copia dessas linhas seria a segunda resposta pra "isto cai?".
+	/// </summary>
+	private bool DerrubarCenarioNaCelula(ZoneKey zona, int cx, int cy)
+	{
 		// O MESMO FUNIL do laco do voo (ver la): so o catalogo nao enxerga planeta sorteado nem nave.
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
 		if (mapa == null) return false;
 
-		(int cx, int cy) = CelulaDoPonto(onde);
 		if (!mapa.BlockedCell(cx, cy)) return false;
 
 		// ============================ BORDA NAO CAI: E GEOMETRIA ============================

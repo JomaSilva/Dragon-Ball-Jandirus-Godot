@@ -103,6 +103,19 @@ public sealed partial class GameServer
 		/// <summary>Onde os dois se encontraram, e onde eles se encontram AGORA.</summary>
 		public Vec2 PontoInicial, Ponto;
 
+		/// <summary>
+		/// QUANTO CADA LADO SOBE NA TELA (`Feixe.Subida` da altura do feixe dele). O encontro mora no PLANO
+		/// DESENHADO (2026-09-23) -- e la que as duas frentes tem que se tocar --, e cada cabeca volta pro chao
+		/// descontando a propria subida. Duas cabecas no chao: os dois zero, e nada muda.
+		/// </summary>
+		public Vec2 SubidaA, SubidaB;
+
+		/// <summary>O ponto de encontro NO CHAO -- pra o que acontece no mundo (o chao que racha, a onda de choque).</summary>
+		public Vec2 PontoNoChao => Ponto - (SubidaA + SubidaB) * 0.5f;
+
+		/// <summary>A altura do encontro -- a media das duas. O estouro e desenhado nela.</summary>
+		public float Altura;
+
 		/// <summary>Unitario, do lado A pro lado B. E o trilho por onde o encontro caminha.</summary>
 		public Vec2 Eixo;
 
@@ -180,13 +193,17 @@ public sealed partial class GameServer
 			if (!PodeDisputar(r, out ServerPlayer? outro) || outro == null) continue;
 			if (outro.Id == dono.Id) continue;
 
-			// AS DUAS CABECAS SE TOCANDO -- um tile, como o `range(1, src)` do DM, que e tambem dois
-			// raios de cabeca. Testado com a posicao PRA ONDE a cabeca vai, sub-passo a sub-passo (ver
-			// `AndarProjetil`, 6-pre): assim ela nunca pula a outra entre dois tiques.
-			if ((r.Pos - cabeca).LengthSquared > ZoneCollision.TileSize * (float)ZoneCollision.TileSize) continue;
-
-			// VINDO CONTRA -- fora disso os dois se CRUZAM, e cruzar nao e disputa (`Feixe.VemContra`).
-			if (!Feixe.VemContra(p.Rumo, r.Rumo)) continue;
+			// OS ANDARES (2026-09-23): o `Feixe.DeFrenteNoCaminho` so junta cabecas que PODEM SE TOCAR (a regra do
+			// voo nos dois sentidos) e mede no PLANO DESENHADO -- cada feixe e desenhado subido pela altura do
+			// dono (`ProjetilDesenhado.SubidaNaTela`), e uma disputa medida no chao desenhava as duas cabecas uma
+			// por cima da outra.
+			// DE FRENTE E SE TOCANDO -- `Feixe.DeFrenteNoCaminho`: vindo contra (fora disso os dois se CRUZAM, e
+			// cruzar nao e disputa), na FAIXA do `range(1)` do DM de lado (linhas vizinhas disputam), e no eixo a
+			// menos da soma das duas FRENTES desenhadas (com piso de um tile). Com o circulo de um tile fixo,
+			// dois Final Flash (128 px de frente cada) so disputavam com uma cabeca 224 px dentro da outra, e
+			// duelistas a um tile de lado nunca disputavam. Testado com a posicao PRA ONDE a cabeca vai,
+			// sub-passo a sub-passo (ver `AndarProjetil`, 6-pre): assim ela nunca pula a outra entre dois tiques.
+			if (!Feixe.DeFrenteNoCaminho(p, cabeca, r)) continue;
 
 			p.Pos = cabeca;
 			Comecar(new LadoDeKi { Quem = dono, Feixe = p },
@@ -207,7 +224,13 @@ public sealed partial class GameServer
 	private bool PodeDisputar(Projetil p, out ServerPlayer? dono)
 	{
 		dono = null;
-		if (!p.Vivo || p.Tipo != TipoDeProjetil.Beam || p.EmEmbate || p.JaDisputou) return false;
+		// `JaDisputou` NAO ENTRA AQUI desde 2026-09-23. Ele existe por causa da GUARDA (ver o doc dele e o
+		// `TentarEmbateDeGuarda`, que continua recusando): o feixe vencedor chegando em quem ainda segura a
+		// guarda abriria um embate novo, em laco. Contra OUTRO FEIXE ele so atrapalhava -- quem perde a
+		// disputa e carrega de novo (a revanche) mandava um feixe que atravessava o vencedor sem disputa
+		// nenhuma (medido: 69 px de sobreposicao). No DM o `bcl_try_start` nao tem esse campo.
+		if (!p.Vivo || p.Tipo != TipoDeProjetil.Beam || p.EmEmbate) return false;
+		if (EmbateDeKi.RevancheProibidaDeTeste && p.JaDisputou) return false;
 		if (!p.Canalizando) return false;
 		if (!_players.TryGetValue(p.Dono, out ServerPlayer? d)) return false;
 		if (d.Ficha.dead || d.Ficha.KO) return false;
@@ -242,6 +265,9 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool TentarEmbateDeGuarda(Projetil p, ServerPlayer alvo)
 	{
+		// UM EMBATE DE GUARDA POR FEIXE -- ver `Projetil.JaDisputou`: sem isto o vencedor que chega em quem
+		// ainda esta de guarda abriria outro, e outro.
+		if (p.JaDisputou) return false;
 		if (!PodeDisputar(p, out ServerPlayer? dono) || dono == null) return false;
 		if (alvo.Combate is not { Bloqueando: true }) return false;
 		if (alvo.Ficha.dead || alvo.Ficha.KO || alvo.Combate.Stun > 0) return false;
@@ -265,7 +291,14 @@ public sealed partial class GameServer
 		a.Vantagem = EmbateDeKi.Vantagem(poderA, poderB);
 		b.Vantagem = EmbateDeKi.Vantagem(poderB, poderA);
 
-		Vec2 eixo = b.Quem.Pos - a.Quem.Pos;
+		// NO PLANO DESENHADO (2026-09-23): cada lado sobe pela altura do feixe dele (as maos dele sao desenhadas
+		// ali). Tudo daqui ate o fim do `Comecar` -- o eixo, o ponto, as maos, os limites -- mora nesse plano; o
+		// `MoverOEncontro` devolve cada cabeca pro chao descontando a propria subida.
+		Vec2 subA = Feixe.Subida(a.Feixe!.Altitude);
+		Vec2 subB = Feixe.Subida(b.Feixe?.Altitude ?? b.Quem.Altitude);
+		Vec2 corpoA = a.Quem.Pos + subA, corpoB = b.Quem.Pos + subB;
+
+		Vec2 eixo = corpoB - corpoA;
 		eixo = eixo.LengthSquared > 1e-4f ? eixo.Normalized() : a.Feixe!.Rumo;
 
 		// O PONTO DE ENCONTRO E O PONTO DE CONTATO -- onde as duas FRENTES se tocam, e nao onde os
@@ -273,9 +306,44 @@ public sealed partial class GameServer
 		// beirada do corpo de quem segura (as maos), `MeioCorpo` antes do centro dele. As cabecas ficam
 		// um raio ATRAS do ponto, cada uma do seu lado (ver `MoverOEncontro`) -- "as cabecas sempre devem
 		// ficar SE EMPURRANDO na colisao" (dono, 2026-09-07), e nao uma em cima da outra.
+		// COM FRENTES DE TAMANHOS DIFERENTES (2026-09-23) o contato nao e o meio: e onde cada frente chega,
+		// dividindo a distancia entre as duas cabecas na proporcao de cada alcance. Iguais, e o meio.
+		float frenteA = a.Feixe != null ? Feixe.AlcanceDaCabeca(a.Feixe) : 0f;
+		float frenteB = b.Feixe != null ? Feixe.AlcanceDaCabeca(b.Feixe) : 0f;
 		Vec2 ponto = b.Feixe != null
-			? (a.Feixe!.Pos + b.Feixe.Pos) * 0.5f
-			: b.Quem.Pos - eixo * Feixe.MeioCorpo;
+			? Feixe.NaTela(a.Feixe!) + (Feixe.NaTela(b.Feixe) - Feixe.NaTela(a.Feixe!)) * (frenteA + frenteB > 0 ? frenteA / (frenteA + frenteB) : 0.5f)
+			: corpoB - eixo * Feixe.MeioCorpo;
+
+		// ============================ ATE ONDE O ENCONTRO CAMINHA: ATE A MAO DE QUEM PERDE (2026-09-23) ============================
+		// Ate aqui ele caminhava ate a BEIRADA DO CORPO do perdedor. So que a cabeca do perdedor fica a frente
+		// dela ATRAS do ponto -- entao, nos ultimos 40 px (Ki Wave) de toda disputa decidida, a cabeca dele
+		// passava pra tras da propria MAO, que e onde a cauda do feixe dele esta presa enquanto ele alimenta
+		// (`BocaDeCano`). O feixe ficava AO CONTRARIO: o cliente tira o rumo de cabeca - cauda, virava a cabeca
+		// pro proprio dono e estampava a mao e o tronco dele por cima da cabeca do vencedor. Tres investigadores
+		// chegaram nisso sozinhos; e as cabecas "se sobrepondo" no fim da disputa que o dono viu.
+		//
+		// AGORA O ENCONTRO PARA quando a cabeca de quem perde chega na MAO dele: o feixe dele foi engolido ate o
+		// fim (comprimento zero) e o medidor cheio quer dizer isso. Dali o `Resolver` faz o que o `push_phase` do
+		// DM faz -- o feixe vencedor segue na velocidade do empurrao e acerta o corpo um instante depois. O
+		// "encostar e vencer" do dono continua sendo o mesmo instante: o feixe vencedor encosta na MAO do
+		// inimigo, que e onde o ataque dele nasce.
+		//
+		// E O PONTO INICIAL E TRAZIDO PRA DENTRO DA MESMA FAIXA: um contra-feixe disparado tarde (a cabeca dele
+		// nascendo colada na do outro) comecava com uma cabeca ja atras da propria mao. No embate de GUARDA o lado
+		// de B sao as maos, na beirada do corpo; o lado de A continua sendo a mao de A.
+		// ======================================================================================================================
+		float sA = NoEixo(BocaDeCano.De(a.Quem.Pos, a.Feixe!.Rumo) - a.Quem.Pos, eixo) + frenteA;
+		float sB = b.Feixe != null
+			? NoEixo(BocaDeCano.De(b.Quem.Pos, b.Feixe.Rumo) + subB - corpoA, eixo) - frenteB
+			: NoEixo(corpoB - eixo * Feixe.MeioCorpo - corpoA, eixo);
+		if (EmbateDeKi.EncontroAteOCorpoDeTeste)
+		{
+			sA = NoEixo(eixo * Feixe.MeioCorpo, eixo);
+			sB = NoEixo(corpoB - eixo * Feixe.MeioCorpo - corpoA, eixo);
+		}
+		float s = NoEixo(ponto - corpoA, eixo);
+		float sDentro = sA <= sB ? Math.Clamp(s, sA, sB) : (sA + sB) * 0.5f;
+		ponto += eixo * (sDentro - s);
 
 		// ============================ QUANTO O ENCONTRO PODE CAMINHAR: ATE O CORPO ============================
 		// Aqui havia UM TILE DE FOLGA, e o comentario dela dizia *"o feixe so ENCOSTA em alguem quando
@@ -306,13 +374,15 @@ public sealed partial class GameServer
 		{
 			A = a, B = b,
 			PontoInicial = ponto, Ponto = ponto,
+			SubidaA = subA, SubidaB = subB,
+			Altura = ((a.Feixe?.Altitude ?? a.Quem.Altitude) + (b.Feixe?.Altitude ?? b.Quem.Altitude)) * 0.5f,
 			Eixo = eixo,
 			// ATE A BEIRADA DE CADA CORPO, medido no eixo: o ponto de contato chega no corpo de B quando a
 			// frente de A encosta nele. No embate de guarda a unica cabeca e a de A e ela esta ATRAS do
 			// ponto -- entao do lado de A a corda para dois raios antes, com a cabeca inteira ainda na
 			// frente dele (o `Devolver` a vira e a manda o resto do caminho).
-			ParaB = Math.Max(NoEixo(b.Quem.Pos - eixo * Feixe.MeioCorpo - ponto, eixo), 0),
-			ParaA = Math.Max(NoEixo(ponto - (a.Quem.Pos + eixo * (Feixe.MeioCorpo + (b.Feixe == null ? 2f * Projetil.RaioDeImpacto : 0f))), eixo), 0),
+			ParaB = Math.Max(sB - sDentro, 0),
+			ParaA = Math.Max(sDentro - sA, 0),
 			Zona = a.Quem.Zone.Hash,
 			Tipo = tipo,
 		};
@@ -592,11 +662,13 @@ public sealed partial class GameServer
 		float px = (float)(f >= 0 ? f * d.ParaB : f * d.ParaA);
 		d.Ponto = d.PontoInicial + d.Eixo * px;
 
-		// CADA CABECA UM RAIO ATRAS DO PONTO, do seu lado: as frentes se tocam no encontro e os
-		// desenhos nao se sobrepoem -- era o "os beams tao se sobrepondo" do dono (2026-09-07).
-		float recuo = EmbateDeKi.CabecasNoMesmoPontoDeTeste ? 0f : Projetil.RaioDeImpacto;
-		if (d.A.Feixe != null) d.A.Feixe.Pos = d.Ponto - d.Eixo * recuo;
-		if (d.B.Feixe != null) d.B.Feixe.Pos = d.Ponto + d.Eixo * recuo;
+		// CADA CABECA A PROPRIA FRENTE ATRAS DO PONTO, do seu lado: as frentes se tocam no encontro e os
+		// desenhos nao se sobrepoem -- era o "os beams tao se sobrepondo" do dono (2026-09-07). E a frente
+		// e a DESENHADA (folha x escala, 2026-09-23): um raio de 16 px, um Final Flash 128.
+		// O PONTO E DESENHADO: cada cabeca volta pro chao descontando a propria subida (ver `DisputaDeKi.SubidaA`).
+		bool mesmoPonto = EmbateDeKi.CabecasNoMesmoPontoDeTeste;
+		if (d.A.Feixe != null) d.A.Feixe.Pos = d.Ponto - d.Eixo * (mesmoPonto ? 0f : Feixe.AlcanceDaCabeca(d.A.Feixe)) - d.SubidaA;
+		if (d.B.Feixe != null) d.B.Feixe.Pos = d.Ponto + d.Eixo * (mesmoPonto ? 0f : Feixe.AlcanceDaCabeca(d.B.Feixe)) - d.SubidaB;
 	}
 
 	/// <summary>
@@ -610,12 +682,14 @@ public sealed partial class GameServer
 	private void Estourar(DisputaDeKi d, bool forte)
 	{
 		double bp = Math.Max(d.A.Quem.Ficha.expressedBP, d.B.Quem.Ficha.expressedBP);
-		RacharChao(d.A.Quem.Zone, d.Ponto, bp);
-		if (forte || _rng.NextDouble() < ChanceDeQuebrarCenario) Arrasar(d.A.Quem.Zone, d.Ponto);
+		// O CHAO que racha e o debaixo do encontro; o ESTOURO e desenhado na altura dele (`World.AoBaqueDeEmbate`).
+		RacharChao(d.A.Quem.Zone, d.PontoNoChao, bp);
+		if (forte || _rng.NextDouble() < ChanceDeQuebrarCenario) Arrasar(d.A.Quem.Zone, d.PontoNoChao);
 
 		var w = Protocol.Begin(Protocol.S2C.Clash);
 		w.Put((byte)Protocol.ClashSub.Baque);
-		w.PutVec(d.Ponto);
+		w.PutVec(d.PontoNoChao);
+		w.Put(Voo.ParaByte(d.Altura));
 		foreach (ServerPlayer o in ZoneList(d.Zona))
 			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
@@ -719,6 +793,20 @@ public sealed partial class GameServer
 		p.EmEmbate = false;
 		p.JaDisputou = true;
 		p.Canalizando = false;   // ninguem o alimenta mais: o rastro passa a voar solto
+		TrocarDeLado(p, novoDono, alvo);
+		RenovarParaOEmpurrao(p);
+	}
+
+	/// <summary>
+	/// O TIRO PASSA A SER DE <paramref name="novoDono"/> E VAI EM <paramref name="alvo"/>: dono, poder,
+	/// letalidade, nome e rumo -- e a agressao, porque quem devolve e quem esta batendo agora.
+	///
+	/// E a metade do <see cref="Devolver"/> que nao e do EMBATE. A outra metade (o `RenovarParaOEmpurrao`,
+	/// que poe o tiro no passo lento de 0,2 s por tile da cena de disputa) fica la; o parry de ki
+	/// (`GameServer.ParryDeKi.cs`) devolve a bola na velocidade com que ela veio, e por isso chama so esta.
+	/// </summary>
+	private void TrocarDeLado(Projetil p, ServerPlayer novoDono, ServerPlayer alvo)
+	{
 		p.Dono = novoDono.Id;
 		p.Bp = novoDono.Ficha.expressedBP;
 		p.Letal = novoDono.Combate?.Letal ?? p.Letal;
@@ -738,8 +826,6 @@ public sealed partial class GameServer
 		p.Rumo = p.Rumo * -1f;   // `Vec2` nao tem menos unario
 		Vec2 ate = alvo.Pos - p.Pos;
 		if (ate.LengthSquared > 1e-4f) p.Rumo = ate.Normalized();
-
-		RenovarParaOEmpurrao(p);
 
 		// QUEM DEVOLVE E O AGRESSOR: sem esta linha, matar alguem com o proprio ataque dele nao
 		// contaria como briga entre os dois.
@@ -891,7 +977,7 @@ public sealed partial class GameServer
 		foreach (ServerPlayer o in ZoneList(d.Zona))
 		{
 			if (o == d.A.Quem || o == d.B.Quem) continue;
-			if (Vec2.Distance(o.Pos, d.Ponto) / ZoneCollision.TileSize > maiorRaio) continue;
+			if (Vec2.Distance(o.Pos, d.PontoNoChao) / ZoneCollision.TileSize > maiorRaio) continue;
 			Juntar(o);
 		}
 
@@ -908,7 +994,7 @@ public sealed partial class GameServer
 				if (cv == null) continue;
 
 				bool duelista = v == d.A.Quem || v == d.B.Quem;
-				double dist = Math.Max(Vec2.Distance(v.Pos, d.Ponto) / ZoneCollision.TileSize, 1);
+				double dist = Math.Max(Vec2.Distance(v.Pos, d.PontoNoChao) / ZoneCollision.TileSize, 1);
 				if (!duelista && dist > raio) continue;
 
 				// ============================ CADA CABECA PEGA TODO MUNDO, INCLUSIVE O PROPRIO DONO ============================
@@ -945,7 +1031,7 @@ public sealed partial class GameServer
 		{
 			if (v.Ficha.dead) continue;   // quem a onda ja matou nao voa: o corpo fica
 
-			Vec2 fora = v.Pos - d.Ponto;
+			Vec2 fora = v.Pos - d.PontoNoChao;
 			fora = fora.LengthSquared > 1e-4f ? fora.Normalized() : d.Eixo;
 
 			int tiques = EmbateDeKi.TiquesDeArremessoDoEstouro(
@@ -1060,13 +1146,15 @@ public sealed partial class GameServer
 
 		// ============================ A ORDEM AQUI E ORCAMENTO, E FOI MEDIDA ============================
 		// A pergunta GEOMETRICA vem antes da pergunta de SKILL, e nao por gosto: este metodo roda a
-		// 30 Hz por corpo dirigido, `VemFeixeContraMim` nao aloca nada (sai na primeira linha quando a
-		// zona nao tem tiro) e `SabeTecnica` varre o livro e o mapa de niveis -- com um enumerador
-		// boxeado por chamada.
+		// 30 Hz por corpo dirigido, `VemFeixeContraMim` sai na primeira linha quando a zona nao tem tiro,
+		// e `SabeTecnica` varre o livro inteiro e os degraus de nivel de cada skill -- trabalho de CPU que
+		// so vale a pena quando ha de fato um feixe inimigo vindo, uma vez a cada muitos minutos de briga.
 		//
-		// Na ordem inversa, a bancada de alocacao da IA reprovou na hora: 200 bytes por tique com 20
-		// corpos, num teste cujo alvo declarado e ZERO. Agora o livro so e aberto quando ha de fato um
-		// feixe inimigo vindo -- que e uma vez a cada muitos minutos de briga.
+		// HISTORICO: a primeira razao desta ordem era o LIXO. Na ordem inversa a bancada de alocacao da IA
+		// reprovou na hora (200 bytes por tique com 20 corpos, num teste cujo alvo e ZERO), porque cada
+		// `SabeTecnica` pagava a caixa do enumerador do livro e o iterador do `VerbosAtivos()`. Desde
+		// 2026-09-23 ela nao aloca nada (`SkillBook.AlgumaAprendidaDa` + `NiveisDeSkill.DestravaOVerbo`, e a
+		// secao 12 da `--iateste` cobra o zero) -- a ordem continua certa, agora pelo custo de CPU.
 		// ============================================================================================
 		if (!VemFeixeContraMim(npc, out Vec2 dedonde)) return;
 

@@ -180,7 +180,13 @@ public static class TecnicasDeLonge
 	/// num personagem com o catalogo todo aprendido sao centenas de strings, uma vez por segundo, por
 	/// corpo. Perguntando pelas tres, a varredura continua sendo a mesma mas nao sobra lixo.
 	/// </summary>
-	public static IEnumerable<Linha> Todas => Tudo.Values;
+	/// <remarks>
+	/// O TIPO CONCRETO E DE PROPOSITO. Como `IEnumerable&lt;Linha&gt;`, o `foreach` do `ArsenalDeLonge` (a leitura
+	/// de 1 Hz de cada corpo da IA) encaixotava o enumerador -- 80 B por leitura, sem nada em troca. O
+	/// `ValueCollection` tem enumerador `struct`, continua somente-leitura, e todo consumidor LINQ (`Select`,
+	/// `Min`, `Count`) compila igual.
+	/// </remarks>
+	public static Dictionary<string, Linha>.ValueCollection Todas => Tudo.Values;
 
 	/// <summary>
 	/// EXISTE ALGUM ATAQUE DE LONGE NESTE JOGO? A poda mais barata do sistema: enquanto for falso,

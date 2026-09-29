@@ -128,12 +128,15 @@ public sealed partial class GameServer
 		public int Alvo;
 		public int Deu;          // `gaveamount`
 		public bool Parar;       // o segundo aperto (`givingpower = 0`)
-		public Vec2 Ancora;
 	}
 
 	private readonly Dictionary<int, DoacaoG11> _doacaoG11 = [];
 
-	/// <summary>O `gavepower = 100` (`givepower.dm:39`): enquanto corre, nem anda nem doa de novo.</summary>
+	/// <summary>
+	/// O `gavepower = 100` (`givepower.dm:39`): enquanto corre, nao se doa de novo (`!gavepower`, `:36`). E SO
+	/// isso -- o laco de andar apenas o DESCONTA (`if(gavepower) gavepower = max(0,gavepower - 1)`,
+	/// `movement handler.dm:139`), sem zerar o `mobTime`: quem doa anda. Ver `TickDaDoacaoG11`.
+	/// </summary>
 	private readonly Dictionary<int, long> _poderDadoAteG11 = [];
 
 	/// <summary>Ofertas de Unlock Potential: conta do alvo -> (conta de quem ofereceu, prazo).</summary>
@@ -1158,7 +1161,7 @@ public sealed partial class GameServer
 	// =====================================================================
 	// 15. GIVE POWER -- `Misc/givepower.dm:28-53`
 	// =====================================================================
-	/// <summary>`gavepower = 100` (`:39`): cem tiques de movimento sem andar nem doar de novo -- dez segundos.</summary>
+	/// <summary>`gavepower = 100` (`:39`): cem tiques do laco de andar sem doar de novo -- dez segundos.</summary>
 	private const long TravaDaDoacaoMsG11 = 10_000;
 
 	/// <summary>
@@ -1208,7 +1211,7 @@ public sealed partial class GameServer
 		}
 		if (f.Ki < 0.01 * f.MaxKi) { Avisar(pl, "voce nao tem energia nem pra uma dose."); return; }
 
-		var doacao = new DoacaoG11 { Alvo = alvo.Id, Ancora = pl.Pos };
+		var doacao = new DoacaoG11 { Alvo = alvo.Id };
 		_doacaoG11[pl.Id] = doacao;
 		_poderDadoAteG11[pl.Id] = agora + TravaDaDoacaoMsG11;
 		MandarEfeito(pl, "dando_poder", -1);
@@ -1657,14 +1660,24 @@ public sealed partial class GameServer
 	{
 		Fighter f = pl.Ficha;
 		ServerPlayer? alvo = _players.GetValueOrDefault(d.Alvo);
+		// `while(givingpower && Ki >= 0.01*MaxKi)` (`:41`) -- e SO isso no DM. DIVERGENCIA DECLARADA: aqui a doacao
+		// tambem acaba com o doador caido ou morto, com o alvo morto ou fora do mundo, e com os dois em zonas
+		// diferentes. O laco do DM nao pergunta nada disso -- continuaria transferindo de um corpo desmaiado, ou
+		// pra outro planeta --, e o port nao tem como mandar Ki pra um corpo que nao esta na lista da zona.
 		bool continua = !d.Parar && !f.dead && !f.KO && f.Ki >= 0.01 * f.MaxKi
 						&& alvo != null && alvo.Combate != null && !alvo.Ficha.dead
 						&& alvo.Zone.Hash == pl.Zone.Hash;
 		if (!continua) { EncerrarDoacaoG11(pl, d); return; }
 
-		// o `gavepower` prende o doador no lugar enquanto doa (`movement handler.dm:139`)
-		Ancorar(pl, d.Ancora);
-
+		// ============================ SEM ANCORA: QUEM DOA ANDA ============================
+		// Aqui havia um `Ancorar(pl, d.Ancora)` com o comentario *"o `gavepower` prende o doador no lugar
+		// enquanto doa (`movement handler.dm:139`)"* -- e a linha citada diz o contrario: ela so DESCONTA o
+		// contador (`if(gavepower) gavepower = max(0,gavepower - 1)`), sem zerar o `mobTime` como fazem o
+		// `canmove` e o `move` duas linhas acima (`:130-131`). O `gavepower` e a trava de DOAR DE NOVO
+		// (`!gavepower`, `givepower.dm:36`); o corpo de quem doa nunca foi preso no DM, e o laco (`:41-48`) nao
+		// olha distancia. A ancora puxava de volta o doador que andava -- e o que PISCAVA, com o Ki e o salto
+		// ja pagos (o `turf/DblClick` nao le `gavepower`, `click.dm:54`).
+		// ====================================================================================
 		DoseDaDoacaoG11(pl, d, alvo!);
 	}
 

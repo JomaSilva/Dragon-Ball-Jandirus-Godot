@@ -136,9 +136,21 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool Paralisado(int id)
 	{
+		if (!ParalisiaAtiva(id)) return false;
+		return _rng.Next(1, 13) <= 11;
+	}
+
+	/// <summary>
+	/// A PARALISIA ESTA EM VIGOR? -- sem a fresta e sem sorteio. E a metade de <see cref="Paralisado"/> que
+	/// nao e do passo: quem pergunta por um deslocamento que NAO e passo (o arranque do `Aproximar`, que
+	/// salta ate quinze tiles de uma vez) quer saber se as pernas estao trancadas, e nao se esta tentativa
+	/// escapou. Esquece o prazo vencido, como o `Paralisado` sempre fez.
+	/// </summary>
+	private bool ParalisiaAtiva(int id)
+	{
 		if (!_paralisadoAte.TryGetValue(id, out long ate)) return false;
 		if (NowMs() >= ate) { _paralisadoAte.Remove(id); return false; }
-		return _rng.Next(1, 13) <= 11;
+		return true;
 	}
 
 	/// <summary>
@@ -892,7 +904,13 @@ public sealed partial class GameServer
 			//     O RUMO E O DO TIRO e nao o `Facing` de agora: quem canaliza continua podendo GIRAR
 			//     o olhar (`PodeMexerOCorpo` so recusa o passo), e uma mao que anda em volta do corpo
 			//     enquanto a cabeca segue reta desenharia um feixe TORTO.
-			if (p.Canalizando && dono != null) p.Cauda = BocaDeCano.De(dono.Pos, p.Rumo);
+			//
+			// (a') O RAMO DE UM RAIO DESVIADO PELO PARRY: a cauda e o PONTO DO DESVIO, e nao uma mao -- e o pai
+			//     que o alimenta, plantado em quem desviou. Enquanto o laco estiver de pe o ramo CRESCE como um
+			//     raio canalizado; desfeito (ver `RamoAlimentado`), ele cai no (c) e voa solto. Ver
+			//     `GameServer.ParryDeKi.cs`.
+			if (p.AlimentadoPor != 0 && RamoAlimentado(p, lista)) p.Cauda = p.PontoDoDesvio;
+			else if (p.Canalizando && dono != null) p.Cauda = BocaDeCano.De(dono.Pos, p.Rumo);
 
 			// (b) A CABECA PAROU: o rastro e engolido pra dentro do ponto onde ela parou, e SO ENTAO
 			//     o projetil sai da lista, com o motivo que ja tinha sido decidido.
@@ -1003,12 +1021,15 @@ public sealed partial class GameServer
 			Vec2 nova = p.Pos + p.Rumo * passo;
 
 			// 6-pre) OUTRO FEIXE NO CAMINHO (dono, 2026-09-07). De FRENTE, a disputa comeca aqui -- e a
-			//        cabeca passa a ser do embate. CRUZANDO, quem bate no tronco (ou na cabeca mais forte)
-			//        do outro ESPERA: o passo nao e dado e o alcance nao paga por ele. Ver `GameServer.Feixe.cs`.
+			//        cabeca passa a ser do embate. De frente SEM poder disputar (2026-09-23), quem e alimentado
+			//        empurra quem nao e, e nos outros casos quem chega espera encostado: nenhuma cabeca atravessa
+			//        a outra. CRUZANDO, quem bate no tronco (ou na cabeca mais forte) do outro ESPERA: o passo nao
+			//        e dado e o alcance nao paga por ele. Ver `GameServer.Feixe.cs`.
 			if (p.Tipo == TipoDeProjetil.Beam)
 			{
-				if (p.Canalizando && !p.JaDisputou && TentarEmbateDeFeixes(p, nova, lista)) return;
-				if (TroncoAlheioNoCaminho(p, nova, lista) || CabecaAlheiaNoCaminho(p, nova, lista))
+				if (p.Canalizando && TentarEmbateDeFeixes(p, nova, lista)) return;
+				if (CabecaDeFrenteNoCaminho(p, nova, lista)
+					|| TroncoAlheioNoCaminho(p, nova, lista) || CabecaAlheiaNoCaminho(p, nova, lista))
 				{
 					p.Esperando = true;
 					andado -= passo;
@@ -1102,6 +1123,11 @@ public sealed partial class GameServer
 			if (Colidiu(p, corpos)) return;
 		}
 
+		// 6c) O DESVIO ACABOU SE A CABECA PASSOU: vencido o ciclo, ela andou e nao voltou a encostar em quem a
+		//     desviava (o `SustentarDesvio` a teria replantado e o tique teria saido pelo `Colidiu`) -- ele saiu
+		//     da frente. O ramo le isto no tique dele e passa a voar solto.
+		if (p.DesviadoPor != 0 && andado > 0 && !p.Encostado) p.DesviadoPor = 0;
+
 		// 7) O ALCANCE, contado em TILES como no DM (`distance--` a cada tile andado). E ele que
 		//    tambem alimenta o `mods` por distancia e a forca do empurrao de perto.
 		p.Distancia -= andado / ZoneCollision.TileSize;
@@ -1140,8 +1166,17 @@ public sealed partial class GameServer
 			// a deixa. Com o raio da cabeca sozinho (16 px) a cabeca plantada a 24 px nunca mais "encostava",
 			// e um raio segurado em cima de alguem parava de moer: medido na familia 9 (2,5 moidas/s em vez
 			// de 5). A bola continua sendo o raio dela: ela estoura no contato, nao fica na frente de ninguem.
-			float alcance = p.Tipo == TipoDeProjetil.Beam ? Feixe.DistanciaDeContato + 0.5f : Projetil.RaioDeImpacto;
-			if ((o.Pos - p.Pos).LengthSquared > alcance * alcance) continue;
+			//
+			// E O CONTATO E O DESTE TIRO (2026-09-23): a frente desenhada da cabeca dele (folha x escala) mais a
+			// meia largura do corpo -- 24 px na `Beam3`, 136 no Final Flash. Com o numero fixo, a cabeca de 128 px
+			// de frente do Final Flash so "encostava" com o centro a 24 px e ja cobria o corpo inteiro.
+			// E PELO EIXO, NUMA FAIXA, e nao num circulo -- ver `Feixe.EncostaNoCorpo`. A bola continua sendo o
+			// circulo dela.
+			if (p.Tipo == TipoDeProjetil.Beam)
+			{
+				if (!Feixe.EncostaNoCorpo(p, o.Pos, o.Altitude)) continue;
+			}
+			else if ((o.Pos - p.Pos).LengthSquared > Projetil.RaioDeImpacto * Projetil.RaioDeImpacto) continue;
 
 			// A ALTURA MANDA: um raio rasante nao acerta quem esta duas camadas acima, e quem esta
 			// no chao nao e alvo de quem passa alto. Mesma assimetria do soco (`Voo.PodeAcertar`).
@@ -1205,6 +1240,13 @@ public sealed partial class GameServer
 			return true;
 		}
 
+		// 2c) O PARRY CONTRA KI (dono, 2026-09-25) -- ver `GameServer.ParryDeKi.cs`. ANTES do dano e dos sorteios
+		//     de deflexao, porque ele nao e sorte: e acertar o tempo da guarda. O raio que JA esta sendo desviado
+		//     so pergunta se o desvio continua; se nao continua, este mesmo impacto segue como golpe comum. A bola
+		//     devolvida NAO acabou aqui (ela volta voando), o raio desviado sim (a cabeca fica plantada).
+		if (p.DesviadoPor != 0 && SustentarDesvio(p, alvo)) return true;
+		if (TentarParryDeKi(p, alvo, dono)) return p.Tipo == TipoDeProjetil.Beam;
+
 		double mods = p.ModsAgora();
 		double dano = DanoDeKi.Final(mods, p.BaseDano, p.MaxDano, p.Bp, cd, cd.Bloqueando, p.Fisico);
 
@@ -1239,7 +1281,12 @@ public sealed partial class GameServer
 			// defesa de ki: quatro vezes o que se ganha levando o tiro na cara.
 			alvo.Ficha.kidefenseskill += 0.4;
 			CreditarContador(alvo, "kidefensecounter", 4);
-			Avisar(alvo, $"voce desvia {p.Nome} de raspao.");
+			// O RASPAO NAO SE ESCREVE MAIS (dono, 2026-09-25: *"a informacao de dano e de block nao precisa
+			// aparecer no chat"*). Ele sai como ESQUIVA no relato do golpe -- o corpo troca pelas listras do
+			// Zanzoken na tela --, que e o que o DM mostrava dele: `M.dir` girado e um `step` pro lado
+			// (`objects.dm:358-363`), o corpo SAINDO da linha. A fala era a unica coisa que o contava aqui.
+			AnunciarGolpe(dono, alvo, new GolpeResultado { Desfecho = Desfecho.Esquivou, Membro = "" }, nivel: 1,
+						  ponto: Feixe.PontoDoImpacto(p, alvo.Pos));
 			return false;   // o tiro CONTINUA: foi o corpo que saiu da linha
 		}
 
@@ -1256,9 +1303,10 @@ public sealed partial class GameServer
 				alvo.Ficha.Ki += 100;
 				Avisar(alvo, $"seu corpo ABSORVE {p.Nome}.");
 			}
-			else Avisar(alvo, $"voce defletiu {p.Nome}.");
 
-			Avisar(dono, $"{alvo.Name} defletiu seu ataque.");
+			// A DEFLEXAO NAO SE ESCREVE MAIS, pelo mesmo pedido do raspao logo acima: quem conta que o tiro
+			// foi defletido e o anel que o cliente desenha no fim dele (`FimDeProjetil.Defletido`). A absorcao
+			// do androide continua escrita -- ela nao e dano nem bloqueio: e Ki ENTRANDO, e so a fala o mostra.
 			Matar(p, FimDeProjetil.Defletido);
 			return true;
 		}
@@ -1287,7 +1335,17 @@ public sealed partial class GameServer
 		GolpeResultado r = MeleeResolver.AplicarDanoPronto(cd, dano, p.Letal, _rng,
 														   dono.Combate?.ZonaMirada);
 		ResolverDesfecho(dono, alvo, r);
-		AnunciarGolpe(dono, alvo, r, nivel: 2);
+		// A FAISCA NA CABECA, E NAO NO MEIO DO FEIXE (dono, 2026-09-23). O relato do soco manda so quem bateu
+		// e quem apanhou, e o cliente estoura a faisca no MEIO dos dois -- num tiro, o meio do raio inteiro.
+		// O ponto do impacto viaja junto (ver `HitEvent.Ponto`).
+		//
+		// E O KI QUE ENCONTROU A GUARDA SAI COMO BLOQUEIO (2026-09-25). O dano ja veio dividido por ela (o
+		// `cd.Bloqueando` do `DanoDeKi.Final`, logo acima), mas o relato dizia `Acertou` -- e sem a linha de
+		// texto, que saiu a pedido do dono, a tela nao tinha como dizer ao jogador que a guarda estava
+		// segurando. So o RELATO muda: o resultado do corpo (`r`) continua o mesmo pro resto do impacto.
+		GolpeResultado relato = r;
+		if (cd.Bloqueando && r.Desfecho == Desfecho.Acertou) relato.Desfecho = Desfecho.Aparou;
+		AnunciarGolpe(dono, alvo, relato, nivel: 2, ponto: Feixe.PontoDoImpacto(p, alvo.Pos));
 
 		// APANHOU COM UM RAIO NA MAO (dono, 2026-09-07): fora de disputa o raio DELE cai; dentro dela o
 		// golpe pesa no medidor. Um funil so pra soco, tiro, arremesso e agarrao -- ver `GameServer.Feixe.cs`.

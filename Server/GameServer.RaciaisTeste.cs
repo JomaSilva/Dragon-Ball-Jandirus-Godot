@@ -69,6 +69,23 @@ public partial class GameServer
 		// O HERAN E A UNICA LINHA RACIAL QUE PEDE RAIVA (`heran.dm:20-52`). A classe importa aqui
 		// mais do que em qualquer outra: o multiplicador dele SAI dela (`FormaDef.BaseDaClasse`).
 		new(Catalogo.RacaHeran, "Omega", LinhaDeForma.Heran, ""),
+
+		// ============================ O BIO-ANDROIDE CHEGOU UM DIA DEPOIS DESTA TABELA ============================
+		// A secao 1 acusava a linha `BioAndroide` desde que ela entrou no `LinhasAbertas` (`a55b464`,
+		// 15/08) -- um dia depois desta tabela (`2449619`, 14/08) --, e era exatamente o vermelho que o
+		// cabecalho promete: linha racial nova sem corpo aqui. O jogo nao tinha defeito: a `--bioteste`
+		// ja entrava na Super Perfeita, mas pela TECLA DE FORMA (`TransformarPara`, secao 5 dela). A
+		// tecla C, as recusas cruzadas com as outras escadas e o recuo nunca tinham sido medidos num
+		// corpo de bio -- e sao eles que esta linha acrescenta.
+		//
+		// A CLASSE E VAZIA porque e o que o unico caminho de producao escreve: ninguem escolhe
+		// Bio-Androide na criacao (`CharacterDraft.RacasDoPlaneta`), ele NASCE do laboratorio, e o
+		// `NascerBioAndroide` grava `Class = ""` (o `Class = "None"` do DM, o tipo Cell -- `DNALabs.dm:463`).
+		//
+		// SEM SKILL: a porta dela nao e flag de livro, e o DEGRAU do corpo (`FormaDef.PedeEstagioBio`, o
+		// `cell3 == 1 && form3cantrevert` do `Cell4()`, `CellFormBuff.dm:74`). Quem o veste e o
+		// `VestirCorpoRacial`, que o DERIVA do catalogo em vez de ganhar uma coluna aqui -- ver la.
+		new(BioAndroids.Raca, "", LinhaDeForma.BioAndroide, ""),
 	];
 
 	/// <summary>BP de sobra pra qualquer porta do catalogo -- a maior e a do `frost7`, 15 bilhoes.</summary>
@@ -89,6 +106,9 @@ public partial class GameServer
 		double bpAntes = pl.Ficha.BP;
 		long extremaAntes = pl.FuriaExtremaAte, lendariaAntes = pl.RaivaLendariaAte;
 		List<string> corposAntes = [.. pl.Visual.FormasDeFrost];
+		// O DEGRAU DE BIO-ANDROIDE que o `VestirCorpoRacial` veste e despe a cada linha (ver la).
+		int estagioBioAntes = pl.Ficha.bio_stage;
+		bool nascidoNoTanqueAntes = pl.Ficha.bio_lab_born, perfeitaAntes = pl.Ficha.form3cantrevert;
 		var skillsDadas = new List<string>();
 
 		try
@@ -114,6 +134,9 @@ public partial class GameServer
 			pl.Class = classeJogadorAntes;
 			if (pl.Ficha.Genoma != null) pl.Ficha.Genoma.Class = classeAntes;
 			pl.Visual.FormasDeFrost = corposAntes;
+			pl.Ficha.bio_stage = estagioBioAntes;
+			pl.Ficha.bio_lab_born = nascidoNoTanqueAntes;
+			pl.Ficha.form3cantrevert = perfeitaAntes;
 			pl.Forma = formaAntes;
 			pl.Ficha.BP = bpAntes;
 			pl.FuriaExtremaAte = extremaAntes;
@@ -541,8 +564,8 @@ public partial class GameServer
 	// AS FERRAMENTAS
 	// =====================================================================
 	/// <summary>
-	/// VESTE O CORPO -- raca, classe, corpos de Frost Demon, BP de sobra, Ki cheio e a forma de
-	/// REPOUSO posta pelo mesmo caminho do login (`Catalogo.IdDoPiso`).
+	/// VESTE O CORPO -- raca, classe, corpos de Frost Demon, degrau de bio-androide, BP de sobra, Ki
+	/// cheio e a forma de REPOUSO posta pelo mesmo caminho do login (`Catalogo.IdDoPiso`).
 	///
 	/// A CENA E ZERADA no fim pelo motivo que o `--frostteste` ja documentou: `Transformar` marca
 	/// `CenaSegundos`, e cena PARA os relogios de Ki. Numa bancada que nao faz o tempo escorrer, uma
@@ -560,6 +583,28 @@ public partial class GameServer
 		// criacao chama. Montar a lista aqui na mao daria um corpo que a criacao nunca produz.
 		pl.Visual.FormasDeFrost = FormasDeFrost.EhFrost(e.Raca)
 			? FormasDeFrost.Sanear(e.Classe, null) : [];
+
+		// ============================ O DEGRAU DO BIO TAMBEM E CORPO, E SAI DO CATALOGO ============================
+		// A Super Perfeita pede a FORMA PERFEITA (`FormaDef.PedeEstagioBio`), e o `Perfil` le isso de
+		// `Ficha.bio_stage` (`GameServer.Formas.cs:83`). O numero e DERIVADO da linha -- o maior degrau
+		// que alguma forma dela pede -- e nao uma coluna da tabela: da 4 pro bio e 0 pra todas as outras,
+		// e e esse zero que DESPE o corpo seguinte. Sem ele o degrau 4 vazaria pro Humano da secao 5,
+		// pros corpos da secao 6 e pra qualquer linha que um dia entre depois desta na tabela -- e um
+		// Saiyajin com degrau de bio e um corpo que o jogo nao produz: o passo 4d do `Avaliar`
+		// (`NegadaAoBioDeLaboratorio`) le justamente esse numero e fecharia o SSJ2 dele calado.
+		//
+		// ESCRITO AQUI, E NAO PELO `SubirDegrauDoBio`, pelo mesmo motivo de a raca ser escrita aqui: isto
+		// e VESTIR o corpo, e a subida de degrau tem bancada propria e verde (`--bioteste` secao 4,
+		// absorcao -> `SubirDegrauDoBio` -> Perfeito, mais o `[injecao]` que rebaixa o degrau e fecha a
+		// porta). O funil de producao nem serviria: ele so SOBE (nao despiria o proximo corpo), grava o
+		// save (`Persistir`) no meio da bancada, manda a cena de 28 s pro cliente e multiplica o BP por 4
+		// com o marco `bio3`. Os tres campos sao os que o parto e o degrau Perfeito deixam escritos
+		// (`GameServer.Tech.cs:1261` e `:1484-1490`; `DNALabs.dm:626-627` no DM), e o `finally` do ponto
+		// de entrada os devolve.
+		int estagioBio = Catalogo.DaLinha(e.Linha).Select(d => d.PedeEstagioBio).DefaultIfEmpty(0).Max();
+		pl.Ficha.bio_stage = estagioBio;
+		pl.Ficha.bio_lab_born = estagioBio > 0;
+		pl.Ficha.form3cantrevert = estagioBio >= BioAndroids.Perfeito;
 
 		pl.Ficha.KO = pl.Ficha.dead = false;
 		pl.Ficha.BP = BpDeSobraRacial;

@@ -129,7 +129,27 @@ public sealed partial class GameServer
 			// 1) INSCRICOES E CONVITE
 			// =====================================================================
 			GD.Print("[torneio] -- 1) inscricoes e convite --");
-			Checa("PRECONDICAO: o host e admin, esta vivo e na Terra (elegivel)", EhAdmin(pl) && !pl.Ficha.dead && pl.Zone.Name == cfg.Terra.Zona);
+			// ============================ O HOST VAI PRA TERRA PELO FUNIL, NAO PELO DADO ============================
+			// Desde o 0b0c8b2 o host acorda no `/obj/SpawnPoint` do berco DELE, e a classe e sorteada a cada
+			// rodada: so o Saiyajin Low-Class (despejado) acorda na Terra; o comum acorda em Vegeta e o Lendario
+			// no exilio, em orbita de um mundo gerado. A bancada presumia a Terra e passava ou caia pelo dado --
+			// 95 OK com o Low-Class, 45 OK e 32 FALHAS com os outros dois, todas em cascata desta precondicao.
+			//
+			// A REGRA NAO MUDA: `eligible` e `!M.dead && M.Planet == "Earth"` (`Tournament.dm:296-297`), lida
+			// no `Elegivel`. Muda o palco: o host vai ao marco de nascimento da Terra pelo MESMO `MoveToZone` +
+			// `PontoDeNascimento` do berco (o lugar onde o Low-Class ja acordava, entao a bancada mede o mundo
+			// das rodadas verdes), e o `finally` o devolve pra onde acordou. A precondicao continua conferindo:
+			// agora o que ela prova e que o funil de producao pos na Terra um host vivo e admin.
+			//
+			// DEPOIS do "host na lista da zona" la de cima, de proposito: o `MoveToZone` tira o corpo da lista
+			// de origem e o poe na da Terra, e o `finally` (que o devolve pelo mesmo funil e so entao tira a
+			// entrada que a bancada pos) deixa as listas como o login as espera -- o login faz o proprio `Add`.
+			// ======================================================================================================
+			ZoneKey zonaDaTerra = ZoneKey.Premade(cfg.Terra.Zona);
+			Vec2 chegadaNaTerra = PontoDeNascimento(zonaDaTerra);
+			MoveToZone(pl.Id, zonaDaTerra, chegadaNaTerra);
+			Checa("PRECONDICAO: o host e admin, esta vivo e na Terra (elegivel)", EhAdmin(pl) && !pl.Ficha.dead && pl.Zone.Name == cfg.Terra.Zona,
+				  $"zona {pl.Zone.Name}, acordou em {zonaDoHost.Name}");
 			Checa("sem torneio, `trn_participar` diz que nao ha inscricoes abertas", ComandoDeTorneio(pl, "trn_participar", "") && !TorneioAtivo);
 			Avisos();
 			ComandoDeTorneio(pl, "trn_iniciar", "terra");
@@ -149,8 +169,18 @@ public sealed partial class GameServer
 			ComandoDeTorneio(pl, "trn_participar", "");
 			Checa("[injecao] morto na Terra nao se inscreve no torneio dos vivos", InscritosDeTeste == 0 && Avisos().Any(x => x.Contains("vivo")));
 			pl.Ficha.dead = false;
+			// [injecao] A OUTRA METADE DO `eligible`: vivo, mas FORA da Terra -- o estado em que o berco sorteado
+			// deixava o host, agora posto de proposito pelo mesmo funil. E o contra-exemplo da precondicao: se o
+			// `Elegivel` deixasse de olhar o planeta, esta linha ficaria vermelha. Namek e nao Vegeta: a mesma
+			// pergunta sem a gravidade de 10x mexendo na ficha no meio do caminho.
+			var namek = ZoneKey.Premade("Namek");
+			MoveToZone(pl.Id, namek, PontoDeNascimento(namek));
+			Avisos();
 			ComandoDeTorneio(pl, "trn_participar", "");
-			Checa("vivo de novo, inscreve", InscritosDeTeste == 1);
+			Checa("[injecao] vivo mas FORA da Terra (em Namek) nao se inscreve", InscritosDeTeste == 0 && Avisos().Any(x => x.Contains("na Terra")), pl.Zone.Name);
+			MoveToZone(pl.Id, zonaDaTerra, chegadaNaTerra);
+			ComandoDeTorneio(pl, "trn_participar", "");
+			Checa("vivo de novo e de volta a Terra, inscreve", InscritosDeTeste == 1);
 			ComandoDeTorneio(pl, "trn_status", "");
 			Checa("`trn_status` descreve as inscricoes abertas", Avisos().Any(x => x.Contains("inscricoes abertas")));
 
@@ -268,8 +298,8 @@ public sealed partial class GameServer
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			int lutasDoHost = 0, tiques = 0, maiorLutaEmTiques = 0, lutaAtualEmTiques = 0;
 			bool invariantesOk = true, hostLetalDuranteLuta = false, ringOutVisto = false, voadorSalvo = false, semVooSaiu = false;
-			bool ringOutTestado = false, woTestado = false, woVenceu = false, reconexaoTestada = false;
-			string ultimoPar = "";
+			bool ringOutTestado = false, woTestado = false, woVenceu = false, reconexaoTestada = false, voadorDevolvido = false;
+			string ultimoPar = "", nomeDoVoador = "-";
 			int maiorAndar = 0, tiquesAltoDemais = 0, tiquesAltoSobreOChao = 0, tiquesPresoNoAr = 0;
 			const int teto = 90_000;   // 50 min de mundo: o dobro do pior caso (32 lutas de 20 s + folgas)
 			while (TorneioAtivo && tiques < teto)
@@ -324,10 +354,12 @@ public sealed partial class GameServer
 				{
 					ringOutTestado = true;
 					// O VOADOR: posto fora da linha VOANDO, nao e ring-out (a luta segue).
+					var perfilDeNascenca = na.Perfil;
 					na.Livro.Dar(SkillDoKi); na.Niveis.Por(SkillDoKi, MaestriaQueDestravaVoo);
 					na.Perfil = new Jandirus.Core.Ai.PerfilDeCombate(true, true);
 					na.Cerebro!.Poderes = na.Perfil.Filtrar(LerCapacidades(na));
 					if (!na.Voando) AlternarVoo(na);
+					nomeDoVoador = na.Name;
 					Vec2 fora = new Vec2(cfg.Terra.Arena.X2 + 2.5f, (cfg.Terra.Arena.Y1 + cfg.Terra.Arena.Y2) / 2f + 0.5f) * ZoneCollision.TileSize;
 					na.Pos = fora;
 					Tiques(1);
@@ -343,6 +375,19 @@ public sealed partial class GameServer
 					List<string> ditos = Ouvidos();
 					semVooSaiu = ditos.Any(x => x.Contains("RING-OUT")) && ditos.Any(x => x.Contains("ring-out") && x.Contains(na.Name));
 					ringOutVisto = semVooSaiu;
+
+					// ============================ O VOADOR ERA DE PALCO, E NAO LEVA AS ASAS PRA CHAVE ============================
+					// Quem ganha esta luta e ele -- o outro e que pisou fora --, e ele segue na chave. Com as asas que a
+					// bancada lhe deu, ele voava pra fora da linha sem perder (e a regra: voando nao e ring-out), e o
+					// host, que nao voa, cravado ao lado dele pisava fora e perdia: "oitavas de final: vs Borgos ->
+					// PERDEU (ring-out) | o voador da bancada: Borgos" (uma rodada em dez, 2026-09-24). O lutador de
+					// torneio so nasce voando quando algum INSCRITO voa (`NascerLutador`, o `t.AlguemVoa`), e o host
+					// desta secao nao voa: o voador volta ao perfil com que nasceu e o resto da chave e lutado pelos
+					// corpos que o torneio de producao pos nela. O pouso ja foi feito pelo `TerminarLuta` (o
+					// `tourney_standdown`).
+					na.Perfil = perfilDeNascenca;
+					na.Cerebro!.Poderes = na.Perfil.Filtrar(LerCapacidades(na));
+					voadorDevolvido = !na.Voando && na.Perfil == perfilDeNascenca && !na.Perfil.Voa;
 					continue;
 				}
 				if (ringOutTestado && !woTestado && lutaAtualEmTiques == 30)
@@ -384,13 +429,22 @@ public sealed partial class GameServer
 				  chave == null ? "" : string.Join(" > ", chave.Rodadas.Select(r => r.Nome)));
 			Checa("em toda luta os dois da vez estavam soltos e todo o resto da chave estava preso", invariantesOk);
 			Checa($"nenhuma luta passou do tempo maximo ({cfg.LutaSegundosMax:0} s + folga)", maiorLutaEmTiques <= (cfg.LutaSegundosMax + 3) * Protocol.TickHz, $"{maiorLutaEmTiques / (double)Protocol.TickHz:0.0} s");
-			Checa("o host, mil vezes mais forte, lutou as 5 rodadas ate a final e e o CAMPEAO", chave != null && chave.Campeao == pl.Assinatura && lutasDoHost == 5, $"{lutasDoHost} lutas do host");
+			// O DETALHE CONTA COMO CADA LUTA DO HOST ACABOU, e quem foi o voador da bancada: esta linha caiu uma vez
+			// em dez so com "5 lutas do host", e o numero sozinho nao dizia se foi ring-out, tempo ou W.O.
+			string lutasContadas = chave == null ? "" : string.Join("; ", chave.Rodadas.SelectMany(r => r.Lutas
+				.Where(l => l.A == pl.Assinatura || l.B == pl.Assinatura)
+				.Select(l => $"{r.Nome}: vs {chave.NomeDe(l.A == pl.Assinatura ? l.B : l.A)} -> "
+							 + $"{(l.Vencedor == pl.Assinatura ? "venceu" : "PERDEU")} ({l.Como})")));
+			Checa("o host, mil vezes mais forte, lutou as 5 rodadas ate a final e e o CAMPEAO", chave != null && chave.Campeao == pl.Assinatura && lutasDoHost == 5,
+				  $"{lutasDoHost} lutas do host -- {lutasContadas} | o voador da bancada: {nomeDoVoador}");
 			Checa("...com o golpe NAO-LETAL forcado durante as lutas dele", !hostLetalDuranteLuta);
 			Checa("...e nenhum NPC morreu no torneio (esporte, nao guerra)", npcs.All(id => !_players.ContainsKey(id) || !_players[id].Ficha.dead));
 			Checa($"o premio do campeao ({cfg.Premio1:N0} zeni) foi creditado ao host", Math.Abs(pl.Ficha.Zeni - (zeniDoHost + cfg.Premio1)) < 0.5, $"{zeniDoHost:N0} -> {pl.Ficha.Zeni:N0}");
 			Checa("...e o vice e o terceiro (NPCs) nao levam zeni nenhum (o `if (M.client)` do `award`)", Ouvidos().Count >= 0);
 			Checa("o VOADOR posto fora da linha VOANDO nao sofre ring-out: a luta segue", voadorSalvo);
 			Checa("o que NAO voa, posto fora da linha, perde na hora por RING-OUT", semVooSaiu && ringOutVisto);
+			Checa("...e o voador de palco seguiu na chave POUSADO e com o perfil com que nasceu (sem voo), como todo lutador de torneio",
+				  voadorDevolvido, nomeDoVoador);
 			Checa($"o lutador que SOME perde por W.O. depois de {cfg.WoSegundos:0} s -- e ate la a luta espera por ele", woVenceu);
 			Checa("reconectar durante a luta alheia devolve o host a espera sem mexer na luta", reconexaoTestada);
 			Checa("no fim, ninguem fica preso e os NPCs do torneio sao removidos", PresosDeTeste.Count == 0 && npcs.All(id => !_players.ContainsKey(id)));
@@ -455,7 +509,12 @@ public sealed partial class GameServer
 			GD.Print("[torneio] -- 6) cancelar --");
 			pl.Ficha.dead = false;
 			pl.MorteJaViajou = false;
-			MoveToZone(pl.Id, zonaDoHost, posDoHost);
+			// DE VOLTA A TERRA, e nao "pra onde o host acordou": era a segunda dependencia do berco sorteado. Com
+			// o host de Vegeta ou do exilio, a volta o deixava fora da Terra, o `trn_participar` daqui e o
+			// `trn_inscrever` da secao 7 recusavam (`Elegivel`), o torneio sem inscrito era cancelado e o
+			// `NpcsDoTorneioDeTeste[0]` do contra-exemplo da secao 7 estourava num vetor vazio -- a
+			// `ArgumentOutOfRangeException` do fim do log. Voltar pra onde ele acordou e trabalho do `finally`.
+			MoveToZone(pl.Id, zonaDaTerra, chegadaNaTerra);
 			ComandoDeTorneio(pl, "trn_iniciar", "terra");
 			ComandoDeTorneio(pl, "trn_participar", "");
 			PularSegundos(6);
@@ -527,6 +586,21 @@ public sealed partial class GameServer
 
 			GD.Print("[torneio] -- 8) a area de espera FECHA o teclado, e o chaveamento vai pra tela (dono, 2026-09-07) --");
 			{
+				// ============================ O INTERVALO DE PRODUCAO, E NAO O DA BANCADA ============================
+				// A bancada encurta o intervalo pra 1 s (o torneio inteiro da secao 3 cabe em segundos), e AQUI isso
+				// reprovava por sorteio: o pouso da espera, la embaixo, anda 3 s de relogio, e com 1 s de intervalo a
+				// luta SEGUINTE e chamada no meio dele -- e o `ProximaLuta` solta da espera os dois que vao lutar.
+				// Quando a chave punha o host nessa luta (2 chances em 32), ele ja nao estava preso na hora do
+				// `trn_cancelar`, e a linha do "cancelado" caia (95 OK / 1 FALHA, uma rodada em treze, 2026-09-24).
+				// Com o intervalo de producao a luta seguinte nao e chamada durante o pouso; e o host que por sorteio
+				// disputar a PRIMEIRA (a que o `trn_avancar` abre e encerra) volta pra espera pelo `TerminarLuta`,
+				// que `Segurar`-a vencedor e perdedor. A chave sorteada deixa de importar.
+				// ======================================================================================================
+				const int tiquesDoPouso = 90;
+				cfg.IntervaloSegundos = original.IntervaloSegundos;
+				Checa("PRECONDICAO: o intervalo cobre o pouso da espera (a luta seguinte nao e chamada no meio dele)",
+					  cfg.IntervaloSegundos > tiquesDoPouso * Protocol.TickSeconds,
+					  $"intervalo {cfg.IntervaloSegundos:0.#} s, pouso {tiquesDoPouso * Protocol.TickSeconds:0.#} s");
 				EscutaDeEfeitos = [];
 				EscutaDeChaves = [];
 				ComandoDeTorneio(pl, "trn_iniciar", "terra");
@@ -582,7 +656,7 @@ public sealed partial class GameServer
 					presoNoAr.Voando = true;
 					presoNoAr.Altitude = Jandirus.Core.World.Voo.AlturaMaxima / 2f;
 					presoNoAr.QuerSubir = true;   // o `QuerSubir` velho, que subia sozinho ate o teto
-					Tiques(90);
+					Tiques(tiquesDoPouso);
 					Checa("um NPC preso que estivesse no ar (com o `QuerSubir` velho ligado) POUSA em 3 s -- a espera manda descer",
 						  presoNoAr.Altitude <= 0f && !presoNoAr.Voando, $"altitude {presoNoAr.Altitude:0}, voando {presoNoAr.Voando}");
 				}
@@ -618,7 +692,13 @@ public sealed partial class GameServer
 			pl.MorteJaViajou = viajouDoHost;
 			pl.Combate.Letal = letalDoHost;
 			pl.Combate.Carencia = 0;
+			// DEVOLVIDO PRA ONDE ACORDOU, zona E lugar. Noutra zona (Vegeta, a orbita do exilio) volta pelo
+			// `MoveToZone`; na mesma (o Low-Class, que ja acordava na Terra) so o lugar -- sem esta linha ele
+			// entrava no jogo parado na area de espera da arena, onde o `Soltar` do cancelamento o deixa, e
+			// nao na casa do berco. Escrever o `Pos` direto basta porque isto roda no 1o login, antes do
+			// `JoinAccepted` que leva o `pl.Pos` ao cliente (o mesmo da `--alemteste`, `GameServer.AlemTeste.cs:1170`).
 			if (pl.Zone.Hash != zonaDoHost.Hash) MoveToZone(pl.Id, zonaDoHost, posDoHost);
+			else pl.Pos = posDoHost;
 			if (puseu) naZona.Remove(pl);
 		}
 		GD.Print($"[torneio] ================ {ok} OK, {falhou} FALHA(S) ================");

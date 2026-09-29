@@ -446,6 +446,38 @@ public partial class GameServer
 		AfirmarG12("...com o dano do DM: 0,7 x Ekioff x log10(max(blastskill,10)) x dano global x os dois logs do `mods`",
 				   tiros.All(t => Math.Abs(t.BaseDano - 0.7 * f.Ekioff * DanoDeKi.Log10Min(f.blastskill, 10) * DanoDeKi.DanoGlobalDeKi * DanoDeKi.Log10Min(f.kieffusionskill, 2) * DanoDeKi.Log10Min(f.blastskill, 2)) < 1e-6));
 
+		// ============================ A PISCADA LEVA A RAJADA JUNTO (`click.dm:54` nao le `canmove`) ============================
+		// O `canmove = 0` do verb (`blasts.dm:270`) e a trava do PASSO (`movement handler.dm:130`) -- e o `turf/DblClick`
+		// nao o le: no DM o corpo pisca e a esfera seguinte nasce do `locate(usr.x,usr.y,usr.z)` NOVO (`:300`, dentro do
+		// `while`). Aqui havia uma ancora que puxava o corpo de volta no tique seguinte, com o Ki e o salto ja pagos.
+		// A PISCADA E A DE PRODUCAO (o `Zanzoken` do `C2S.Zanzoken`), tres tiles pro LESTE -- ao longo do corredor livre --,
+		// com a Afterimage no livro e a pericia/velocidade treinadas pra o `zanzorange` cobrir os tres tiles.
+		// COMO ELA REPROVA: volte o `Ancorar(pl, v.Ancora)` no `TickDoVoleiG12` e a primeira diz "voltou pra ...".
+		// ======================================================================================================================
+		pl.Livro.Dar(PathDoZanzoken);
+		pl.Niveis.Por(PathDoZanzoken, 1);
+		f.kiskill = 3;
+		f.speed = 3;
+		f.Statify();
+		Vec2 antesDaPiscada = pl.Pos;
+		Vec2 ondePisca = pl.Pos + new Vec2(3 * ZoneCollision.TileSize, 0);
+		var jaVoavam = new HashSet<Projetil>(TirosDeG12(pl));
+		Zanzoken(pl, ondePisca);
+		bool piscou = Vec2.Distance(pl.Pos, ondePisca) < 0.5f;
+		TiquesG12(TiquesDeG12(0.5));
+		AfirmarG12("com a rajada LIGADA a piscada sai, e o corpo FICA no ponto novo -- a rajada nao ancora o corpo",
+				   piscou && _voleiG12.ContainsKey(pl.Id) && Vec2.Distance(pl.Pos, ondePisca) < 0.5f,
+				   $"piscou={piscou}, rajada {(_voleiG12.ContainsKey(pl.Id) ? "ligada" : "DESLIGADA")}, "
+				   + $"corpo em ({pl.Pos.X:0},{pl.Pos.Y:0}), piscou pra ({ondePisca.X:0},{ondePisca.Y:0}), saiu de ({antesDaPiscada.X:0},{antesDaPiscada.Y:0})");
+		List<Projetil> novas = TirosDeG12(pl).FindAll(t => !jaVoavam.Contains(t));
+		// A MAIS NOVA e a que menos andou: nasceu um tile a frente e um no leque (`step` + `step`), e voou um tile por tique.
+		Projetil? maisNova = novas.Count == 0 ? null : novas.MinBy(t => t.Pos.X);
+		AfirmarG12("...e a esfera seguinte nasce do ponto NOVO (o `locate(usr.x,usr.y,usr.z)` de dentro do `while`, `:300`)",
+				   maisNova != null && maisNova.Pos.X > ondePisca.X && maisNova.Pos.X - ondePisca.X <= 3 * ZoneCollision.TileSize
+				   && Math.Abs(maisNova.Pos.Y - ondePisca.Y) <= 32.5f,
+				   maisNova == null ? "nenhuma esfera nova"
+				   : $"a mais nova em ({maisNova.Pos.X:0},{maisNova.Pos.Y:0}), o corpo em ({ondePisca.X:0},{ondePisca.Y:0})");
+
 		// APERTAR DE NOVO DESLIGA, e abre a espera de 5 s no `_volleyPronto` (o `barrageCD`).
 		ApertarEOuvir(pl, "Continuous_Energy_Bullets");
 		TiquesG12(1);

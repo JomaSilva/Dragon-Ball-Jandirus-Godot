@@ -75,6 +75,14 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 
 		_t += delta;
 
+		// A CAMERA VAI PRA CENA assim que os dois duelistas dela estao desenhados -- ver `World.FocoDeTeste`.
+		// Uma vez por cena, e nao a cada quadro: a foto e o recorte dela sao do MESMO enquadramento.
+		if (_enquadrar && mundo.PosicaoDesenhadaDe(_duelistaA) is { } pa && mundo.PosicaoDesenhadaDe(_duelistaB) is { } pb)
+		{
+			mundo.FocoDeTeste = (pa + pb) / 2f;
+			_enquadrar = false;
+		}
+
 		switch (_passo)
 		{
 			case 0: MontarOEmpurrao(srv, cli); break;
@@ -83,11 +91,16 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 			case 3: MontarOEmpate(srv, cli); break;
 			case 4: EsperarOEmpate(srv, mundo); break;
 			case 5: DepoisDaOnda(srv, mundo); break;
+			case 6: MontarOsFinalFlash(srv, cli); break;
+			case 7: MedirOsFinalFlash(srv, mundo); break;
 			default: Fechar(); break;
 		}
 	}
 
 	private void Virar(int proximo) { _passo = proximo; _t = 0; }
+
+	/// <summary>Uma cena nova entrou no mundo e a camera ainda nao foi ate ela.</summary>
+	private bool _enquadrar;
 
 	// =====================================================================
 	// CENA 1: OS FEIXES SE EMPURRANDO
@@ -110,6 +123,7 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 			"os dois duelistas entraram no mundo, num corredor de chao de verdade");
 		if (_duelistaA == 0) { Nota("sem corredor livre: a cena nao cabe neste pedaco de mapa"); Fechar(); return; }
 
+		_enquadrar = true;
 		Virar(1);
 	}
 
@@ -126,6 +140,16 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 			if (_t > 20) { Conferir(false, "os dois raios se encontraram e viraram disputa"); Fechar(); }
 			return;
 		}
+
+		// ============================ O DESENHO CHEGA DEPOIS DO GATILHO (2026-09-23) ============================
+		// O gatilho e do servidor, e o cliente desenha cada cabeca um pacote atras (o `Lerp` do
+		// `ProjetilDesenhado`): no quadro do gatilho as cabecas DESENHADAS ainda estavam a caminho, e a foto
+		// "do encontro" saia com grama entre elas -- justamente a imagem de que o dono reclamou, ao contrario.
+		// Espera-se o desenho encostar, com prazo curto (o medidor comeca a andar), e a folga vira regra.
+		// ======================================================================================================
+		if (_encontroEm < 0) _encontroEm = _vida;
+		float folga = FolgaEntreAsCabecasDesenhadas(mundo, ponto);
+		if (MathF.Abs(folga) > ToleranciaDoEncontro && _vida - _encontroEm < 0.6) return;
 
 		// ============================ HA ALGUEM DENTRO DA FOTO? ============================
 		// A mesma linha que a `--diagraio` pagou caro pra aprender: um corpo forjado sem `Visual` nao
@@ -144,7 +168,33 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 		Fotografar("user://embateki-1-encontro.png",
 				   $"CENA 1: as duas cabecas se encontram (medidor {medidor:0}, feixes de "
 				   + $"{cabecaDeA:0} e {cabecaDeB:0} px na tela)", NaTela(ponto));
+		Conferir(MathF.Abs(folga) <= ToleranciaDoEncontro,
+			$"CENA 1: as cabecas DESENHADAS se tocam na foto do encontro -- nem grama entre elas, nem uma dentro da "
+			+ $"outra (folga {folga:0.0} px; negativo e sobreposicao)");
 		Virar(2);
+	}
+
+	/// <summary>O instante (no relogio da bancada) em que o gatilho juntou as cabecas da cena 1.</summary>
+	private double _encontroEm = -1;
+
+	/// <summary>Quanto a folga desenhada pode passar de zero: meio pixel de arredondamento de cada lado e um de sobra.</summary>
+	private const float ToleranciaDoEncontro = 2f;
+
+	/// <summary>
+	/// A DISTANCIA ENTRE AS FRENTES DAS DUAS CABECAS DESENHADAS perto do encontro: positiva e vao, negativa e
+	/// uma dentro da outra. A frente de cada uma e a do Core (`Feixe.AlcanceDaCabeca`) -- a cena 3 e que
+	/// confere a tabela contra a arte. Sem exatamente duas cabecas por perto, a folga e infinita.
+	/// </summary>
+	private static float FolgaEntreAsCabecasDesenhadas(World mundo, Vec2 ponto)
+	{
+		var perto = new Vector2(ponto.X, ponto.Y);
+		var cabecas = new List<(Vector2 Onde, float Frente)>();
+		foreach ((int _, Jandirus.Core.Combat.ArteDeKi arte, Jandirus.Core.Combat.TipoDeProjetil tipo,
+				  Vector2 onde, float escala) in mundo.TirosDesenhados())
+			if (tipo == Jandirus.Core.Combat.TipoDeProjetil.Beam && onde.DistanceTo(perto) < 6 * ZoneCollision.TileSize)
+				cabecas.Add((onde, Jandirus.Core.Combat.Feixe.AlcanceDaCabeca(arte, escala)));
+		if (cabecas.Count != 2) return float.PositiveInfinity;
+		return cabecas[0].Onde.DistanceTo(cabecas[1].Onde) - cabecas[0].Frente - cabecas[1].Frente;
 	}
 
 	/// <summary>
@@ -218,6 +268,7 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 		Conferir(_duelistaA != 0 && _duelistaB != 0, "a cena do empate entrou no mundo");
 		if (_duelistaA == 0) { Fechar(); return; }
 
+		_enquadrar = true;
 		_corridosVistos = 0;   // o relogio e da CENA, e a cena 1 deixou o dela escrito aqui
 		Virar(4);
 	}
@@ -319,6 +370,108 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 		Conferir(mundo.CorpoDeTeste(_duelistaA) != null && mundo.CorpoDeTeste(_duelistaB) != null
 				 && daA.DistanceTo(daB) > 1,
 			"...e os dois continuam com CORPO DESENHADO depois do estouro (ninguem sumiu na explosao)");
+
+		srv.EmbateDeFoto_Limpar();
+		Virar(6);
+	}
+
+	// =====================================================================
+	// CENA 3: DOIS FINAL FLASH -- AS CABECAS DESENHADAS FRENTE COM FRENTE (dono, 2026-09-23)
+	// =====================================================================
+	/// <summary>
+	/// *"elas ainda estao se sobrepondo as vezes"*. O as vezes era a TECNICA: o servidor mantinha as cabecas
+	/// a 32 px de centro a centro pra qualquer uma, e o Final Flash e desenhado com a folha de 64 px vezes a
+	/// escala 4 -- 128 px de frente. As cenas 1 e 2 usam o Ki Wave (16 px) e nunca veriam isso.
+	/// </summary>
+	/// <summary>Quando (no relogio `_vida`) a disputa dos Final Flash comecou; -1 = ainda nao.</summary>
+	private double _disputaDoFinalFlashEm = -1;
+
+	private void MontarOsFinalFlash(Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		if (_t < 1) return;
+		// CINCO TILES ABAIXO DE QUEM ASSISTE, e nao tres: a cabeca do Final Flash encosta num corpo a ate 136 px
+		// do centro dela (a frente de 128 px + a meia largura do corpo) -- e com o fotografo a 4 tiles (128 px)
+		// da linha, o primeiro corpo que o feixe encontrava era o da camera. E a regra nova funcionando: o
+		// desenho daquela cabeca cobre quem esta a 4 tiles de lado.
+		(_duelistaA, _duelistaB) = srv.EmbateDeFoto_Montar(
+			cli.LocalId, tiles: 14, bpDeA: 5_000, bpDeB: 5_000, tecladoEmA: true, tilesAbaixo: 5,
+			verbo: "Final_Flash", escala: 4);
+		Conferir(_duelistaA != 0 && _duelistaB != 0, "CENA 3: os dois duelistas do Final Flash entraram no mundo");
+		if (_duelistaA == 0) { Nota("sem corredor livre de 14 tiles: a cena 3 nao cabe neste pedaco de mapa"); Fechar(); return; }
+		_enquadrar = true;
+		Virar(7);
+	}
+
+	/// <summary>
+	/// A MEDIDA E DO DESENHO, e nao da tabela do servidor: a frente de cada cabeca e lida da ARTE que o
+	/// cliente carregou (`ProjetilDesenhado.SombraDaArte`, o alpha do `head`) vezes a escala com que ela e
+	/// estampada. Se a tabela do Core (`ArteDeProjetil.FrenteDaCabeca`) mentisse, o servidor pararia as
+	/// cabecas no lugar errado e esta conta acusaria -- ela nao pergunta ao Core onde a frente esta.
+	/// </summary>
+	private void MedirOsFinalFlash(Jandirus.Server.GameServer srv, World mundo)
+	{
+		(bool existe, _, Vec2 ponto, _, _, _, _) = srv.EmbateDeFoto_Estado();
+		if (!existe)
+		{
+			if (_t > 20) { Conferir(false, "CENA 3: os dois Final Flash se encontraram e viraram disputa"); Fechar(); }
+			return;
+		}
+		// MEIO SEGUNDO DEPOIS DE A DISPUTA COMECAR, e nao da cena: o `_t` ja correu enquanto as cabecas vinham.
+		// A primeira versao media no MESMO quadro do gatilho -- o desenho ainda um pacote atras, com as duas
+		// cabecas a caminho (19 px por tique cada) -- e acusou 38 px de vao que o servidor nao tinha (a
+		// `--embatekiteste` mede 0,0 px de folga na disputa).
+		if (_disputaDoFinalFlashEm < 0) _disputaDoFinalFlashEm = _vida;
+		if (_vida - _disputaDoFinalFlashEm < 0.6) return;
+
+		var cabecas = new List<(Vector2 Onde, float Frente)>();
+		foreach ((int _, Jandirus.Core.Combat.ArteDeKi arte, Jandirus.Core.Combat.TipoDeProjetil tipo,
+				  Vector2 onde, float escala) in mundo.TirosDesenhados())
+		{
+			if (tipo != Jandirus.Core.Combat.TipoDeProjetil.Beam) continue;
+			SpriteFrames? folha = ArteDeKiNoCliente.Folha(arte);
+			if (folha == null) continue;
+			string anim = folha.HasAnimation("head_east") ? "head_east" : "head";
+			(float frenteDaArte, float _) = ProjetilDesenhado.SombraDaArte(folha, anim, new Vector2(-1, 0));
+			cabecas.Add((onde, -frenteDaArte * escala));
+		}
+
+		Fotografar("user://embateki-6-final-flash.png",
+				   $"CENA 3: dois Final Flash se encontram ({cabecas.Count} cabecas desenhadas)", NaTela(ponto));
+
+		Conferir(cabecas.Count == 2, $"CENA 3: as duas cabecas estao desenhadas ({cabecas.Count})");
+		if (cabecas.Count == 2)
+		{
+			float entre = cabecas[0].Onde.DistanceTo(cabecas[1].Onde);
+			float frentes = cabecas[0].Frente + cabecas[1].Frente;
+			Conferir(frentes > 100f,
+				$"CENA 3: a arte do Final Flash e GRANDE mesmo -- a soma das duas frentes desenhadas e {frentes:0} px");
+			Conferir(entre >= frentes - 3f,
+				$"CENA 3: as cabecas DESENHADAS ficam frente com frente, sem uma entrar na outra "
+				+ $"({entre:0} px entre os centros, {frentes:0} px de frentes)");
+		}
+
+		// ============================ A TABELA DO CORE CONTRA A ARTE, FOLHA POR FOLHA ============================
+		// `ArteDeProjetil.FrenteDaCabeca` e dado medido fora do jogo (o script de PIL). Aqui ele e conferido
+		// contra a medida do PROPRIO cliente, pra toda folha de raio do catalogo: uma folha nova, convertida
+		// com celula maior e sem linha na tabela, reprova aqui -- e nao numa disputa de cabecas encavaladas.
+		// A medida do cliente e a INTERSECAO dos quadros (o que todo quadro pinta) e a tabela e a UNIAO (o
+		// quadro que mais avanca), entao a tabela pode ser maior -- nunca menor, e nunca por muito.
+		// ==========================================================================================================
+		var erradas = new List<string>();
+		int medidas = 0;
+		foreach (Jandirus.Core.Combat.ArteDeKi a in
+				 Jandirus.Core.Combat.ArteDeProjetil.PermitidasPara(Jandirus.Core.Combat.TipoDeProjetil.Beam))
+		{
+			SpriteFrames? f = ArteDeKiNoCliente.Folha(a);
+			if (f == null || !f.HasAnimation("head_east")) continue;
+			medidas++;
+			float medida = -ProjetilDesenhado.SombraDaArte(f, "head_east", new Vector2(-1, 0)).A;
+			float tabela = Jandirus.Core.Combat.ArteDeProjetil.FrenteDaCabeca(a);
+			if (tabela < medida - 1f || tabela > medida + 4f) erradas.Add($"{a}: tabela {tabela:0}, arte {medida:0.#}");
+		}
+		Conferir(medidas >= 15 && erradas.Count == 0,
+			$"a frente da cabeca de cada folha de raio ({medidas} medidas) bate com a tabela do Core"
+			+ (erradas.Count > 0 ? ": " + string.Join("; ", erradas) : ""));
 
 		srv.EmbateDeFoto_Limpar();
 		Fechar();
@@ -448,6 +601,7 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 	{
 		_acabou = true;
 		S?.EmbateDeFoto_Limpar();
+		if (World.Instancia is { } mundo) mundo.FocoDeTeste = null;
 		GD.Print("\n[embatekifoto] ===== AS FOTOS DA COLISAO DE KI =====");
 		foreach (string l in _passos) GD.Print("[embatekifoto] " + l);
 		GD.Print(_falhas.Count == 0

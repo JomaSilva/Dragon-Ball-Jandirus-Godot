@@ -56,6 +56,9 @@ public sealed partial class GameServer
 	/// <summary>O raio que ela plantou (0 = nenhum).</summary>
 	private int _fotoRaio;
 
+	/// <summary>A zona do <see cref="_fotoRaio"/> -- e la que o <see cref="LimparAFoto"/> o apaga.</summary>
+	private ulong _fotoRaioZona;
+
 	/// <summary>
 	/// UM CORPO AO LADO DO JOGADOR -- na zona DELE, no deslocamento pedido, e no mundo de verdade.
 	///
@@ -236,7 +239,28 @@ public sealed partial class GameServer
 		p.Canalizando = true;
 
 		_fotoRaio = p.Id;
+		_fotoRaioZona = dono.Zone.Hash;
 		return p.Id;
+	}
+
+	/// <summary>
+	/// O RAIO DA FOTO E OS PEDACOS QUE O CORTE FEZ DELE (`NascidoDoCorte`, em cadeia) -- os feixes que uma cena
+	/// pode contar como seus. Vazio sem raio plantado.
+	/// </summary>
+	internal HashSet<int> PedacosDoRaioDaFoto(int idDono)
+	{
+		var ids = new HashSet<int>();
+		if (_fotoRaio == 0 || !_players.TryGetValue(idDono, out ServerPlayer? dono)) return ids;
+
+		ids.Add(_fotoRaio);
+		List<Projetil> lista = ProjeteisDaZona(dono.Zone.Hash);
+		for (bool cresceu = true; cresceu;)
+		{
+			cresceu = false;
+			foreach (Projetil p in lista)
+				if (p.NascidoDoCorte != 0 && ids.Contains(p.NascidoDoCorte) && ids.Add(p.Id)) cresceu = true;
+		}
+		return ids;
 	}
 
 	/// <summary>
@@ -281,6 +305,16 @@ public sealed partial class GameServer
 			ZoneList(pl.Zone.Hash).Remove(pl);
 		}
 		_fotoNascidos.Clear();
+
+		// ============================ O RAIO SAI JUNTO (2026-09-23) ============================
+		// O raio da foto e CANALIZADO (`RaioDeFoto`), e ninguem solta a tecla numa bancada: parado no alcance,
+		// ele ficava no ar a corrida inteira. O da cena B -- que atravessa o lago -- seguia acertando a vizinha
+		// do outro lado durante as cenas seguintes. Apaga-se pelo `Matar` de producao, o raio e os pedacos
+		// dele: ele esvazia como qualquer raio que acaba, e o cliente recebe a morte pelo fio de sempre.
+		// ======================================================================================
+		if (_fotoRaio != 0)
+			foreach (Projetil p in ProjeteisDaZona(_fotoRaioZona))
+				if (p.Id == _fotoRaio || p.NascidoDoCorte == _fotoRaio) Matar(p, FimDeProjetil.Apagou);
 		_fotoRaio = 0;
 	}
 }

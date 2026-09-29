@@ -1304,7 +1304,8 @@ public partial class GameClient : Node
 	public event Action<float, float>? ClashPlacar;
 
 	/// <summary>Os dois se cruzaram AQUI. E o unico sinal visivel do embate.</summary>
-	public event Action<Vec2>? ClashBaque;
+	/// <summary>O estouro de um embate: onde (no chao) e a que ALTURA ele e desenhado.</summary>
+	public event Action<Vec2, float>? ClashBaque;
 
 	/// <summary>Acabou: quem venceu, quem perdeu. Os DOIS zerados = empate (so a colisao de ki).</summary>
 	public event Action<int, int>? ClashAcabou;
@@ -1667,7 +1668,7 @@ public partial class GameClient : Node
 						ClashPlacar?.Invoke(reader.GetFloat(), reader.GetFloat());
 						break;
 					case Protocol.ClashSub.Baque:
-						ClashBaque?.Invoke(reader.GetVec());
+						ClashBaque?.Invoke(reader.GetVec(), Voo.DeByte(reader.GetByte()));
 						break;
 					case Protocol.ClashSub.Vislumbre:
 					{

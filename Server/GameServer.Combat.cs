@@ -96,9 +96,11 @@ public partial class GameServer
 	/// inteira, com o numero dele: `get_dist(src.loc,target.loc) < 15` (`attack_bck.dm:78`).
 	///
 	/// ============================ E E ISTO QUE FECHA O RELATO DO SOCO FORTE ============================
-	/// **Todo golpe pesado que encosta chama o Impact sem sorteio** (`attack cmn.dm:110-118`: o leve
-	/// depende de `prob`, o pesado cai direto no `else`), e a bancada mediu o resultado: com BP parelho
-	/// o corpo voa **512 px em 0,8 s**, e mais ainda contra quem e mais forte. Depois do voo o inimigo
+	/// **No DM, todo golpe pesado que encosta chama o Impact sem sorteio** (`attack cmn.dm:110-118`: o
+	/// leve depende de `prob`, o pesado cai direto no `else`). O port SORTEIA o pesado tambem, a pedido do
+	/// dono -- `prob(check*10*3)` no `Empurrao.DoSoco`, uns 30% com BP parelho (`--kbteste`, familia 7) --,
+	/// mas o arremesso que SAI e o mesmo: o corpo voa **448 a 576 px em 0,7 a 0,9 s**, e mais ainda contra
+	/// quem e mais forte. Depois do voo o inimigo
 	/// esta a DEZESSEIS tiles -- fora dos cinco do arranque, fora dos 40 px do soco. Sobrava andar de
 	/// volta enquanto o outro recarregava.
 	///
@@ -680,12 +682,69 @@ public partial class GameServer
 	/// Houve deslocamento de verdade. E o que decide a IMAGEM REMANESCENTE: o dono viu que
 	/// "shift + espaco mesmo sem ninguem perto" deixava miragem parado no lugar, e miragem de quem
 	/// nao saiu do lugar e o oposto do que o Zanzoken quer dizer. Todos os `return` daqui sao
-	/// "nao investiu": sem alvo, ja colado, sem Ki, em recarga, ou parede no caminho.
+	/// "nao investiu": corpo que nao pode sair do lugar (o `PodeMexerOCorpo` e a paralisia -- ver a
+	/// recusa no topo), sem alvo, ja colado, sem Ki, em recarga, ou parede no caminho.
 	/// </returns>
 	private bool Aproximar(ServerPlayer a, bool longo)
 	{
 		long agora = NowMs();
 		if (a.Combate == null || agora < a.DashLivreEm) return false;
+
+		// ============================ PLANTADO NAO ARRANCA -- `speedy.dm:225` ============================
+		// O arranque e um DESLOCAMENTO (`a.Pos = destino`, abaixo), e deslocamento neste port tem UM
+		// portao: o `PodeMexerOCorpo`. Este metodo nao perguntava a ele -- e o corpo que o funil de vetor
+		// diz que nao sai do lugar saia quinze tiles de uma vez.
+		//
+		// O DM tem a recusa com todas as letras: a corrida do `Attack()` (`RushAttack`,
+		// `attack_bck.dm:93-94`) confere `canmove` a cada passo e desiste -- *"Your rush fails since you
+		// can't move!"* (`speedy.dm:225-228`) --, e `canmove = 0` e justamente quem carrega ou segura um
+		// raio (`beams.dm:291`).
+		//
+		// QUEM ACHOU FOI A IA (`--kideponta`, "colado ele NAO atira dali", vermelho desde a investida da
+		// IA em `a55b464`): o NPC recua ate a janela, solta o `Ki_Wave` (0,67 s de carga com o corpo
+		// enraizado), a pausa do tiro faz o cerebro trocar `Atirar` por `Pressionar`, a investida pesada
+		// sai -- e o corpo PLANTADO salta ate a `DistanciaDeParada`. O raio nascia com o alvo a
+		// exatamente 32 px: a queima-roupa que a janela do `TecnicasDeLonge` existe pra impedir. O
+		// jogador tinha o mesmo atalho por ESTA porta (SHIFT+ESPACO com o raio carregando), porque o
+		// `C2S.Action` cai neste mesmo metodo. (O teleporte do duplo clique, `C2S.Zanzoken`, e OUTRA
+		// porta e nao passa por aqui -- o DM o recusa com o raio na mao, `!usr.beaming` em `click.dm:54`,
+		// e o port recusa LA, no topo do `Zanzoken`, pelo CANAL inteiro -- e nao pelo funil todo daqui,
+		// porque aquele `DblClick` nao le `canmove`: la entram so as letras que a linha do DM escreve, cada uma
+		// pelo estado que o port guarda no lugar do bit. O porque (e a divergencia da fase de carga) esta
+		// no `GameServer.Zanzoken.cs`, e a `--kideponta` mede as duas portas lado a lado, familia 7.)
+		//
+		// O SOCO CONTINUA -- so o DESLOCAMENTO e recusado: o arranque E o passo curto do "perto demais"
+		// la embaixo, que tambem escreve `a.Pos`. As entradas do funil foram escritas como "continua
+		// socando, so nao sai do lugar" (raio na mao, paralisia, esmagamento), e as duas coisas sao sair
+		// do lugar. A recusa e calada e de graca, como as outras deste metodo (sem alvo, sem Ki, parede).
+		//
+		// A PARALISIA E PERGUNTADA ANTES, E SEM SORTEIO. No funil ela e a fresta do DM -- uma em doze
+		// tentativas de PASSO escapa (`movement handler.dm:89`, ver `Paralisado`) --, e ela faz sentido pro
+		// passo: quem esta paralisado se arrasta, um tile por vez. Aplicada ao arranque, a mesma fresta
+		// deixaria um em cada doze golpes saltar ate quinze tiles: quem martela SHIFT+ESPACO paralisado
+		// foge em poucos segundos, que e o contrario do que a tecnica existe pra fazer. Perguntada antes,
+		// ela tambem nao gasta o `_rng` a cada golpe de quem esta paralisado.
+		//
+		// DIVERGENCIAS DECLARADAS:
+		//   * o DM so pergunta `canmove`; aqui vale o funil inteiro (agarrado, paralisado, prensado,
+		//     carregando Ki, em cena, arrastado por feixe...), porque cada entrada dele diz "nao anda" e
+		//     uma investida e o jeito mais rapido de andar;
+		//   * o DM cobra os `15*BaseDrain` antes da corrida (`attack_bck.dm:83`) e avisa quando ela falha;
+		//     aqui a recusa e de graca e calada -- um aviso sairia em TODO soco de quem esta preso,
+		//     inclusive os de perto, que no DM nem passam pela corrida;
+		//   * o teleporte de Zanzoken do DM (`attack_bck.dm:84-90`, `src.Move(nT)`) nao confere `canmove`;
+		//     aqui ele E este arranque e fica recusado junto -- o `Rumo` do raio e cravado no `Disparar`
+		//     (ver o `turnlock` no `Atacar`), e um corpo que salta com o raio na mao deixaria a mao num
+		//     lugar e a boca do feixe noutro;
+		//   * o PASSO CURTO do DM (`step(src,get_dir(src,target),32*move_boost)`, `attack_bck.dm:108-116`)
+		//     tambem nao confere `canmove` -- o `canmove` do DM so zera o laco de andar (`movement
+		//     handler.dm:130`) e a corrida. Aqui ele e recusado pelo mesmo motivo do Zanzoken: a cauda do
+		//     raio segue o corpo e a cabeca nao, e um passo com o raio na mao entortaria o feixe;
+		//   * a paralisia do DM so mora no laco de andar (`movement handler.dm:89`), e la um paralisado
+		//     ainda corria (`RushAttack` so pergunta `canmove`). Aqui ela recusa o deslocamento do golpe
+		//     SEMPRE -- ver acima por que sem a fresta de um em doze.
+		// ================================================================================================
+		if (ParalisiaAtiva(a.Id) || !PodeMexerOCorpo(a)) return false;
 
 		float alcance = longo ? AlcanceDoDash : AlcanceDoPasso;
 		// O MARCADO ESTICA O ARRANQUE LONGO ATE OS 15 TILES DO DM. Ver `AlcanceDoDashMarcado`.
@@ -831,6 +890,9 @@ public partial class GameServer
 	/// <summary>
 	/// Quem esta no cone do golpe. O MAIS PROXIMO leva -- socar nao acerta dois de uma vez.
 	///
+	/// **SO PRA GOLPE.** Ele pula quem esta `Intocavel`, e essa e uma regra de quem APANHA. Verbo que nao
+	/// bate (ensinar, convidar) pergunta ao <see cref="QuemEstaNaFrente"/>.
+	///
 	/// ============================ O CADAVER E CORPO, E APANHA (dono, 2026-09-05) ============================
 	/// *"corpos mortos ainda sao corpos de personagem, entao deveria dar pra atacar e ferir mais (e
 	/// claramente eles nao regeneram pq ja estao mortos)"*. Ate aqui o morto era ignorado ("o corpo esta no
@@ -874,6 +936,49 @@ public partial class GameServer
 			melhor = o;
 		}
 		return melhor ?? melhorCadaver;   // o vivo primeiro; o corpo so quando nao ha vivo na frente
+	}
+
+	/// <summary>
+	/// ============================ QUEM ESTA NA FRENTE PRA UM **GESTO**, E NAO PRA UM GOLPE ============================
+	/// A segunda resposta pra "quem esta na minha frente", e ela existe porque a primeira
+	/// (<see cref="AlvoNaFrente"/>) carrega uma regra de GOLPE: pular `Combate.Intocavel` (cena de
+	/// transformacao, carencia de renascimento, espera do torneio). No DM essa regra mora no `doAttack`
+	/// (`attack cmn.dm:98`, `M.attackable`): ela barra o SOCO, e nao a lista de quem esta ao lado. Os verbos
+	/// que nao batem varrem a vizinhanca SEM perguntar `attackable`:
+	///
+	///   * `Teach_Skill` -- `for(var/mob/M in view(1))` (`teachable.dm:12-13`);
+	///   * `Ensinar_Ultra_Instinct` / `Ensinar_Power_of_Destruction` -- `oview(1)` + `P.client`
+	///     (`UltraInstinct.dm:116-117`, `UltraEgo.dm:134-135`);
+	///   * `mst_front_targets` -- `client` + `signature` (`MasterStudent.dm:416-420`).
+	///
+	/// Com o do soco nesses verbos, o aluno no meio da estreia do SSJ ficava INVISIVEL pra quem ensina:
+	/// "nao ha ninguem na sua frente", com o corpo parado ali.
+	///
+	/// O ALCANCE E O DO SOCO, pelas mesmas funcoes (<see cref="AlcancaPelaAltura"/> + `MeleeArea.NoAlcance`):
+	/// "consigo encostar nele?" tem uma resposta so neste port. O que cada verbo escolhe e so a LISTA DE QUEM
+	/// CONTA (<paramref name="conta"/>), que e a letra do DM de cada um.
+	///
+	/// O CADAVER NAO CONTA NUNCA: no DM ele e um `obj/mobCorpse`, e os `for(var/mob ...)` nem o veem (o do
+	/// soco o aceita a pedido do dono, e so pra apanhar). O MARCADO vem primeiro quando esta na lista -- e o
+	/// que o `input()` do DM faz quando a vizinhanca tem mais de um; sem marca, o mais proximo.
+	/// =============================================================================================================
+	/// </summary>
+	private ServerPlayer? QuemEstaNaFrente(ServerPlayer a, Func<ServerPlayer, bool> conta)
+	{
+		ServerPlayer? melhor = null;
+		float melhorDist = float.MaxValue;
+		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
+		{
+			if (o == a || EhCadaver(o) || !conta(o)) continue;
+			if (!AlcancaPelaAltura(a, o) || !MeleeArea.NoAlcance(a.Pos, a.Facing, o.Pos)) continue;
+			if (o.Id == a.AlvoId) return o;
+
+			float dist = (o.Pos - a.Pos).LengthSquared;
+			if (dist >= melhorDist) continue;
+			melhorDist = dist;
+			melhor = o;
+		}
+		return melhor;
 	}
 
 	/// <summary>
@@ -1048,6 +1153,12 @@ public partial class GameServer
 	/// "nao aconteceu nada" e o tipo de trafego que nao vale um unico byte de garantia. Perder
 	/// um custa um som.
 	/// </summary>
+	/// <summary>
+	/// DEFEITO INJETADO (`--projetilteste`, familia 14): o relato do tiro volta a sair SEM o ponto do
+	/// impacto -- e a faisca volta pro meio do raio, a foto do dono. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool FaiscaNoMeioDeTeste;
+
 	private void AnunciarSocoNoAr(ServerPlayer a, bool zanzo = false, bool investiu = false)
 	{
 		var e = new Protocol.HitEvent
@@ -1072,7 +1183,12 @@ public partial class GameServer
 	/// onde o corpo ja estava. Deixar o padrao aqui evita que cada tecnica nova tenha que decidir
 	/// sobre um efeito que nao e dela.
 	/// </param>
-	private void AnunciarGolpe(ServerPlayer a, ServerPlayer d, GolpeResultado r, int nivel, bool zanzo = false, bool investiu = false)
+	/// <param name="ponto">
+	/// ONDE O IMPACTO ACONTECEU, quando nao e entre os dois corpos -- o tiro (`Feixe.PontoDoImpacto`). Nulo =
+	/// o golpe e corpo a corpo, e a faisca estoura no meio dos dois, como sempre. Ver `HitEvent.Ponto`.
+	/// </param>
+	private void AnunciarGolpe(ServerPlayer a, ServerPlayer d, GolpeResultado r, int nivel, bool zanzo = false,
+							   bool investiu = false, Vec2? ponto = null)
 	{
 		var cheio = new Protocol.HitEvent
 		{
@@ -1093,6 +1209,9 @@ public partial class GameServer
 			// pra todo mundo. O que este campo liga e o VULTO DO CORPO (a foto das quatro camadas),
 			// caro demais pra nascer em cada soco desviado de uma troca inteira.
 			ZanzoEsquiva = r.EsquivaAtiva && d.Livro?.Sabe(PathDoZanzoken) == true,
+			TemPonto = ponto != null && !FaiscaNoMeioDeTeste,
+			// RELATIVO A QUEM APANHOU -- ver `HitEvent.Ponto`.
+			Ponto = ponto is { } absoluto ? absoluto - d.Pos : default,
 		};
 		Protocol.HitEvent magro = cheio;
 		magro.TemDano = false;

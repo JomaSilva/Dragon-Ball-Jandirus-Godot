@@ -14,9 +14,12 @@ namespace Jandirus.Server;
 ///   * *"a forma do oozaru e desfeita no momento que a fonte que deu o poder pra virar (lua etc) sumir,
 ///     entao quando amanhecer e a lua sair do ceu, todos que estao em oozaru voltam a forma base"*.
 ///
-/// E o que se achou no caminho: o relogio da fera (`TickDoOozaru`) estava FORA do laco de producao desde
-/// a55b464 -- so as bancadas o chamavam, direto. A primeira familia mede o laco de verdade
-/// (`TickDosRelogiosDoCorpo`), e nao a funcao.
+/// A PRIMEIRA FAMILIA MEDE O LACO DE VERDADE (`TickDosRelogiosDoCorpo`), e nao a funcao -- e ela cobra
+/// duas coisas: que o laco derruba a fera no prazo, e que ele conta o tempo dela UMA vez por tique.
+/// A segunda metade existe porque 1523cd2 achou que o relogio da fera (`TickDoOozaru`) estava fora do
+/// laco desde a55b464 e pos uma segunda chamada nele. Ele nunca tinha saido, e o laco passou a contar a
+/// raiva e a maestria da fera em DOBRO -- sem que nenhuma bancada reprovasse, porque todas perguntavam
+/// "a fera cai?" e nenhuma "em quanto tempo?". Ver `GameServer.RelogiosDoCorpo.cs`.
 ///
 /// Roda no primeiro login, como a `--luaferateste`, porque precisa dos moldes (nasce Saiyajin pelo
 /// caminho de producao) e do ceu; adianta o relogio do mundo pra achar a lua e devolve no `finally`.
@@ -60,9 +63,9 @@ public sealed partial class GameServer
 				  $"fase {noite.Fase}, altura {noite.Altura:0.00}");
 
 			// =====================================================================
-			// 1) O RELOGIO DA FERA RODA NO LACO DE PRODUCAO
+			// 1) O RELOGIO DA FERA RODA NO LACO DE PRODUCAO, E UMA VEZ POR TIQUE
 			// =====================================================================
-			GD.Print("[luasome] -- 1) o relogio da fera roda no laco de producao --");
+			GD.Print("[luasome] -- 1) o relogio da fera roda no laco de producao, uma vez por tique --");
 			ServerPlayer? a = ForjarSaiyajin(palco, mapa, forjados);
 			if (a == null) { Checa("PRECONDICAO: nasceu um Saiyajin com rabo", false); return; }
 			Apeshit(a);
@@ -71,9 +74,48 @@ public sealed partial class GameServer
 			Checa("contra-exemplo: com prazo e lua, o laco de producao NAO derruba a fera", a.Oozaru != FormaOozaru.Nao, a.Oozaru.ToString());
 			a.OozaruAte = NowMs() - 1;
 			TickDosRelogiosDoCorpo(Protocol.TickSeconds);
-			Checa("vencido o prazo, o LACO DE PRODUCAO (e nao o `TickDoOozaru` chamado a mao) derruba a fera "
-				  + "-- o relogio estava fora do laco desde a55b464",
+			Checa("vencido o prazo, o LACO DE PRODUCAO (e nao o `TickDoOozaru` chamado a mao) derruba a fera",
 				  a.Oozaru == FormaOozaru.Nao, a.Oozaru.ToString());
+
+			// ============================ E O LACO CONTA O TEMPO DA FERA UMA VEZ SO ============================
+			// Derrubar no prazo NAO distingue uma chamada de duas: o prazo e `NowMs()` contra `OozaruAte`,
+			// relogio absoluto, e vence igual. O que distingue e o que o `TickDoOozaru` INTEGRA por `dt` --
+			// a raiva de quem medita e a maestria da fera. N tiques do laco tem que mover as duas por
+			// exatamente N*dt: 2N*dt e o relogio chamado duas vezes (o que 1523cd2 deixou no laco), zero e
+			// o relogio fora dele.
+			//
+			// A MAESTRIA COMECA EM ZERO na mao, porque o NPC a sorteia pela semente (`SortearAMaestriaDaFera`)
+			// e o `Subir` para em 100 -- um sorteio perto do teto esconderia o ganho. E o `med` vem DEPOIS
+			// do `Apeshit`, que o zera (`train=0; med=0` no DM): a raiva so corre meditando.
+			// ==========================================================================================
+			ServerPlayer? g = ForjarSaiyajin(palco, mapa, forjados);
+			ServerPlayer? h = ForjarSaiyajin(palco, mapa, forjados);
+			if (g == null || h == null) { Checa("PRECONDICAO: nasceram os dois Saiyajins do relogio", false); return; }
+			g.Forma.Maestria.Por(Oozaru.IdRegular, 0);
+			Apeshit(g); Apeshit(h);
+			Checa("PRECONDICAO: os dois viraram a fera regular", g.Oozaru == FormaOozaru.Regular && h.Oozaru == FormaOozaru.Regular,
+				  $"{g.Oozaru}, {h.Oozaru}");
+			Checa("PRECONDICAO: a Terra nao acelera maestria (`zoneMasteryMult` = 1)", g.Ficha.zoneMasteryMult == 1,
+				  $"{g.Ficha.zoneMasteryMult}");
+			g.Ficha.med = true;
+
+			const int tiques = 30;
+			double dt = Protocol.TickSeconds;
+			double raivaG = g.RaivaDoOozaru, raivaH = h.RaivaDoOozaru, maestriaG = g.MaestriaDaFera;
+			for (int i = 0; i < tiques; i++) TickDosRelogiosDoCorpo(dt);
+			double gastou = raivaG - g.RaivaDoOozaru, ganhou = g.MaestriaDaFera - maestriaG;
+			double umaVez = tiques * dt, maestriaUmaVez = tiques * dt * Oozaru.MaestriaPorSegundo;
+
+			Checa("PRECONDICAO: a fera que medita segue de pe (senao a conta pararia no meio)",
+				  g.Oozaru != FormaOozaru.Nao && g.Ficha.med, $"{g.Oozaru}, med {g.Ficha.med}");
+			Checa($"{tiques} tiques do laco gastam EXATAMENTE {tiques}*dt de raiva de quem medita",
+				  Math.Abs(gastou - umaVez) < 1e-9,
+				  $"gastou {gastou:0.######} s; uma vez = {umaVez:0.######}, em dobro = {2 * umaVez:0.######}");
+			Checa($"...e sobem EXATAMENTE {tiques}*dt*MaestriaPorSegundo de maestria da fera",
+				  Math.Abs(ganhou - maestriaUmaVez) < 1e-9,
+				  $"ganhou {ganhou:0.########}%; uma vez = {maestriaUmaVez:0.########}, em dobro = {2 * maestriaUmaVez:0.########}");
+			Checa("contra-exemplo: a fera que NAO medita, no mesmo laco, nao gasta raiva nenhuma",
+				  h.RaivaDoOozaru == raivaH, $"{raivaH} -> {h.RaivaDoOozaru}");
 
 			// =====================================================================
 			// 2) A LUA SE FOI: amanheceu

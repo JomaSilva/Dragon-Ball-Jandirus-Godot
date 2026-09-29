@@ -158,6 +158,26 @@ public sealed class SkillBook
 	public IReadOnlyCollection<string> Aprendidas => _aprendidas;
 	public bool Sabe(string path) => _aprendidas.Contains(path);
 
+	/// <summary>
+	/// ALGUMA SKILL DESTE LIVRO DA ESTE VERB? A metade "comprada/ensinada" do `SabeTecnica` do servidor.
+	///
+	/// MORA AQUI, e nao no servidor, por causa do lixo: de fora so se ve o <see cref="Aprendidas"/> como
+	/// `IReadOnlyCollection`, e o `foreach` por interface poe o enumerador do `HashSet` numa caixa --
+	/// um objeto por pergunta, e a leitura de capacidades da IA faz cinco perguntas por corpo por
+	/// segundo. Aqui dentro o laco anda o enumerador STRUCT do proprio `HashSet` e nao aloca nada (a
+	/// `--iateste`, secao 12, cobra o zero).
+	/// </summary>
+	public bool AlgumaAprendidaDa(SkillCatalog cat, string verbo)
+	{
+		foreach (string path in _aprendidas)
+		{
+			if (cat.Get(path) is not { } s) continue;
+			foreach (string v in s.Verbos)
+				if (string.Equals(v, verbo, StringComparison.OrdinalIgnoreCase)) return true;
+		}
+		return false;
+	}
+
 	public void Conceder(int marcos)
 	{
 		if (marcos <= 0) return;

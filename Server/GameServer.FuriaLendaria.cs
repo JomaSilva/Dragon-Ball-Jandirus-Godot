@@ -16,7 +16,7 @@ namespace Jandirus.Server;
 /// ja existia:
 ///
 ///   * quem dirige o corpo -- <see cref="Jandirus.Core.Ai.Cerebro"/> + `TickDosCorposSemDono`;
-///   * quem escolhe a vitima -- `PresaDaFera` ("QUALQUER corpo da zona, sem dono, sem faccao");
+///   * quem escolhe a vitima -- `PresaDaFera` ("qualquer corpo QUE VE, sem dono, sem faccao": o `oview(LEGB_RANGE)`);
 ///   * quem barra os dedos do jogador -- `ComandoDeCorpo` + `SemAsRedeas`, no despacho de pacote;
 ///   * quem conta pros outros clientes -- o bit `EntityState.SemRedeas`, que ja viaja pra zona;
 ///   * quem larga o input pendurado / devolve as redeas -- `LargarOInput` / `DevolverAsRedeas`.
@@ -136,8 +136,8 @@ public partial class GameServer
 	/// Nao ha uma linha de IA aqui pelo mesmo motivo que nao ha no `TomarAsRedeas` da fera: dar um
 	/// <see cref="Jandirus.Core.Ai.Cerebro"/> ao corpo ja o poe no `TickDosCorposSemDono`, que o dirige
 	/// pelas MESMAS funcoes de movimento e golpe do jogador -- e escolhe a vitima pelo `PresaDaFera`,
-	/// que e literalmente *"QUALQUER corpo da zona, sem dono, sem faccao, sem alvo marcado"*, ou seja
-	/// o *"ataca TUDO que ve (player OU NPC)"* do original.
+	/// que e literalmente *"qualquer corpo QUE VE, sem dono, sem faccao, sem alvo marcado"* -- o
+	/// *"ataca TUDO que ve (player OU NPC)"* do original, com o `oview(LEGB_RANGE)` dele.
 	///
 	/// ============================ O CEREBRO VEM TEMPERADO PRA FURIA, E NAO PRA FERA ============================
 	/// Os tres campos sao os mesmos; os valores nao, e cada um responde a uma linha do berserk do DM:

@@ -23,11 +23,17 @@ namespace Jandirus.Server;
 /// e nenhum dos dois esta num caminho de ataque. Miss de pontaria tambem nao era: pontaria que falha
 /// vira `Desfecho.Esquivou`, que o cliente DESENHA e ANUNCIA -- e o dono diz que nao ve nada disso.
 ///
-/// O que sobrou foi GEOMETRIA, e a familia A mede a causa raiz numero a numero: **todo soco pesado
-/// que encosta chama o Impact sem sorteio** (`attack cmn.dm:110-118` -- o leve depende de `prob`, o
-/// pesado cai direto no `else`), o corpo voa por 0,8-0,9 s, e durante esse voo o port **ainda
-/// aceitava socar**. O DM nao aceita: o efeito de knockback escreve `canfight -= 1`
+/// O que sobrou foi GEOMETRIA, e a familia A mede a causa raiz numero a numero: no DM **todo soco
+/// pesado que encosta chama o Impact sem sorteio** (`attack cmn.dm:110-118` -- o leve depende de
+/// `prob`, o pesado cai direto no `else`), o corpo voa por 0,7-0,9 s, e durante esse voo o port
+/// **ainda aceitava socar**. O DM nao aceita: o efeito de knockback escreve `canfight -= 1`
 /// (`Movement Effects.dm:40`) e o `testAttack()` recusa (`attack_bck.dm:175`).
+///
+/// **AQUELE `else` SECO NAO E MAIS O DESTE PORT.** E a divergencia declarada do `Empurrao.DoSoco`, a
+/// pedido do dono (*"era UM JOGANDO O OUTRO PRA LONGE"*): o pesado tambem sorteia, `prob(check*10*peso)`,
+/// 30% em BP parelho -- e quem mede essa frequencia e a `--kbteste`, e nao esta bancada. A familia A1
+/// continua precisando de um corpo NO AR, e o poe la com um pesado em que esse mesmo sorteio de
+/// producao SATURA (ver `RazaoQueSaturaOPesado`).
 /// ==========================================================================================================
 ///
 /// ============================ O QUE ELA TENTA REPROVAR ============================
@@ -89,6 +95,28 @@ public partial class GameServer
 		GD.PrintErr($"[tres]   FALHA {oque}   {detalhe}");
 	}
 
+	/// <summary>
+	/// QUANTAS VEZES MAIS FORTE quem PREPARA um arremesso precisa ser pra que ele saia SEMPRE.
+	///
+	/// ============================ POR QUE A BANCADA PRECISA DISTO ============================
+	/// O pesado do port sorteia o arremesso -- `Empurrao.DoSoco`, divergencia declarada do `else` seco de
+	/// `attack cmn.dm:115-116`, a pedido do dono --: `prob(check * 10 * peso)`, 30% com os dois corpos crus
+	/// e parelhos que o `Forjar` monta (a `--kbteste` mede 32% pelo `Atacar`, NESTA mesma cena: 28 px, de
+	/// frente). E o `_rng` do servidor nao tem semente. Toda familia que usava "um pesado parelho
+	/// arremessa" como PALCO passava ou reprovava no dado: a A1 em ~2 de cada 3 rodadas (TiquesDeVoo=0 e
+	/// "0 px em 0,00 s"), a cauda da familia 1 em ~1 de cada 10 ("vao 28 px", seis pesados falhando juntos).
+	///
+	/// SAI DA FORMULA DE PRODUCAO, e nao de um numero escolhido: com os mesmos stats dos dois lados o
+	/// `check` e so o `BpModulus`, e a chance chega a 100 -- onde o `prob()` do DM satura, e o do port
+	/// tambem (`Empurrao.ChanceDeArremesso`) -- em `100 / (10 * 3)` = 3,33x. A folga de 1,5x (-> 5x) cobre
+	/// o arredondamento de 0,05 do `BpModulus` e a fadiga de quem ja trocou socos. Se alguem mexer no
+	/// `ChancePorPesoDoGolpe` ou no `PesoDoGolpe`, este numero anda junto -- e nao ha interruptor de teste
+	/// no caminho: o soco continua saindo pelo `Atacar`, pelo `TentarEmpurrar` e pelo `DoSoco` de sempre.
+	/// =========================================================================================
+	/// </summary>
+	private static readonly double RazaoQueSaturaOPesado =
+		1.5 * 100 / Empurrao.ChanceDeArremesso(1, Protocol.PesoDoGolpe(Protocol.Golpe.Pesado));
+
 	/// <summary>Zera os relogios de quem vai socar de novo -- recarga, pose e recarga do arranque.</summary>
 	private static void PronroParaOutroGolpe(ServerPlayer p)
 	{
@@ -127,8 +155,10 @@ public partial class GameServer
 	// A1 -- O SOCO DURANTE O ARREMESSO
 	// =====================================================================
 	/// <summary>
-	/// A CAUSA RAIZ DO RELATO A, medida dos dois lados: o soco pesado ARREMESSA sempre, e o corpo
-	/// arremessado nao pode socar.
+	/// A CAUSA RAIZ DO RELATO A, medida dos dois lados: o soco pesado ARREMESSA, e o corpo arremessado
+	/// nao pode socar. O pesado que ARMA o voo e de quem e `RazaoQueSaturaOPesado` vezes mais forte:
+	/// no BP parelho ele arremessa em 30% dos golpes, e uma familia cujo PALCO depende de um dado de 30%
+	/// reprova no dado -- ver o bloco no topo do metodo.
 	///
 	/// A ARMADILHA E O CORACAO DESTA FAMILIA. Retirar o gancho <see cref="CombatState.SendoArremessado"/>
 	/// reproduz **exatamente** o jogo que o dono jogou: o corpo no ar aceita o golpe, o golpe nao acha
@@ -140,16 +170,35 @@ public partial class GameServer
 	{
 		GD.Print("[tres] ---- A1: o soco durante o arremesso (`canfight -= 1` do DM) ----");
 
+		// ============================ O PALCO DESTA FAMILIA E UM CORPO NO AR, E ELE TEM QUE SER CERTO ============================
+		// **ELA REPROVAVA NO DADO, e nao por defeito do jogo.** A primeira linha dizia "o pesado que encosta
+		// arremessa SEMPRE" -- o `else` do `attack cmn.dm:115-116` --, e esse `else` deixou de ser o do port
+		// quando o `Empurrao.DoSoco` passou a sortear o pesado (divergencia declarada, pedido do dono). Com os
+		// dois Humanos crus e parelhos daqui o sorteio da 30%, o `_rng` nao tem semente, e nas rodadas em que
+		// ele falhava o corpo NUNCA voou: as cinco linhas seguintes mediam um corpo no chao (TiquesDeVoo=0,
+		// pose armada pelo soco que devia ter sido recusado, "0 px em 0,00 s") -- e a ARMADILHA ficava verde
+		// pelo motivo errado. A `--kbteste` afirma o CONTRARIO desta linha, na mesma cena (familia 7: "nao
+		// arremessa em todo golpe"); as duas nao podiam estar certas ao mesmo tempo.
+		//
+		// O CONSERTO NAO AFROUXA A REGRA DA FAMILIA, que e o `canfight -= 1`: o arremesso e o PALCO dela, e o
+		// palco agora sai certo pelo PROPRIO sorteio de producao -- quem bate e `RazaoQueSaturaOPesado` vezes
+		// mais forte e o `prob` passa de 100. Sem interruptor de teste: `Atacar` -> `TentarEmpurrar` -> `DoSoco`.
+		// A frequencia no BP parelho continua medida onde ela mora, na `--kbteste`.
+		// ========================================================================================================================
 		Vec2 onde = CorredorLivre(24);
-		ServerPlayer bate = Forjar("TresBate", onde, 5_000);
+		ServerPlayer bate = Forjar("TresBate", onde, 5_000 * RazaoQueSaturaOPesado);
 		ServerPlayer leva = Forjar("TresLeva", onde + new Vec2(28, 0), 5_000);
 		bate.Facing = Facing.East;
 		leva.Facing = Facing.West;
 
+		double chance = Empurrao.ChanceDeArremesso(Empurrao.Check(bate.Ficha, leva.Ficha),
+												   Protocol.PesoDoGolpe(Protocol.Golpe.Pesado));
 		Atacar(bate, Protocol.Golpe.Pesado);
 
-		AfirmarTres("o soco PESADO que encosta arremessa sempre (o `else` do `attack cmn.dm:118`)",
-					leva.TiquesDeVoo > 0, $"TiquesDeVoo={leva.TiquesDeVoo}");
+		AfirmarTres($"o soco PESADO de quem e {RazaoQueSaturaOPesado:0.#}x mais forte arremessa SEMPRE -- o "
+					+ "`prob(check*10*peso)` do `Empurrao.DoSoco` passa de 100 e satura, como o `prob()` do DM",
+					chance >= 100 && leva.TiquesDeVoo > 0,
+					$"chance {chance:0.#}%, TiquesDeVoo={leva.TiquesDeVoo}");
 
 		// ============================ AS OUTRAS QUATRO RECUSAS SAEM DA FRENTE ============================
 		// `PodeAtacar()` diz nao por CINCO motivos (morte, nocaute, atordoamento, recarga e o voo), e o
@@ -173,8 +222,13 @@ public partial class GameServer
 		leva.Combate.SendoArremessado = null;
 		bool socavaAntes = leva.Combate.PodeAtacar();
 		leva.Combate.SendoArremessado = guardado;
+		// NO MESMO VOO QUER DIZER COM O CORPO NO AR: sem o `TiquesDeVoo > 0` esta linha passava VAZIA nas
+		// rodadas em que o corpo nunca voou (`comguardatres`, `reptresa`, `reptresd`) -- "sem o gancho aceita
+		// socar" e verdade sobre qualquer corpo no chao, e a armadilha ficava verde dos dois lados, que e
+		// exatamente o que o cabecalho desta familia diz que ela existe pra pegar.
 		AfirmarTres("ARMADILHA ARMADA: SEM o gancho o mesmo corpo, no mesmo voo, aceita socar -- "
-					+ "e esse era o jogo que o dono jogou", socavaAntes);
+					+ "e esse era o jogo que o dono jogou", leva.TiquesDeVoo > 0 && socavaAntes,
+					$"no ar: {leva.TiquesDeVoo > 0}, socava sem o gancho: {socavaAntes}");
 
 		// ---- e o golpe pedido no meio do voo nao produz nada: nem recarga, nem pose ----
 		PronroParaOutroGolpe(leva);
@@ -575,17 +629,27 @@ public partial class GameServer
 			() => ele.Combate.EmCinematica = cenaGuardada);
 
 		// ---- E O UNICO VAZIO LEGITIMO: quando ele REALMENTE saiu do alcance ----
-		// ATE ARREMESSAR, e nao "um soco e torcer": o pesado que ENCOSTA arremessa sem sorteio, mas
-		// encostar depende do resolvedor (pontaria, guarda, esquiva). Amarrar a medida a um unico
-		// golpe seria por um dado no meio de uma afirmacao -- o mesmo tipo de fragilidade que a
-		// recolocacao acima acabou de consertar.
-		int tentativas = 0;
-		while (ele.TiquesDeVoo <= 0 && tentativas++ < 6)
-		{
-			PronroParaOutroGolpe(eu);
-			eu.UltimoAlvo = 0;
-			Atacar(eu, Protocol.Golpe.Pesado);
-		}
+		// ============================ O PESADO QUE ABRE O VAO E CERTO, E NAO "ATE SEIS TENTATIVAS" ============================
+		// Aqui havia um laco de ate seis pesados PARELHOS "ate arremessar", escrito quando o pesado que encosta
+		// arremessava sem sorteio. O que ele dizia temer (pontaria, guarda, esquiva) nem entra nesta cena -- com
+		// os corpos crus a pontaria passa de 100% e ninguem ergue a guarda (a `--kbteste` mede 4000/4000
+		// encostando) --; o dado que sobrou e o do `Empurrao.DoSoco`, ~30% por golpe, e seis falham juntos em
+		// ~10% das rodadas. Ai o corpo ficava a 28 px e esta linha reprovava com "vao 28 px" (rodada
+		// `diagtresteste`, 2026-09-23): a medida era do dado, e nao da geometria.
+		//
+		// O MESMO CONSERTO DA A1 (ver `RazaoQueSaturaOPesado`): quem abre o vao bate com um BP em que o sorteio
+		// de PRODUCAO satura, pelo `Atacar` de sempre. O `Tick` da ficha e o mesmo passo do `Forjar` -- o
+		// `expressedBP`, que e o que o `check` le, so muda nele. O que se mede nao muda: o soco SEGUINTE cai
+		// no vazio porque ele esta longe, e so por isso.
+		// ======================================================================================================================
+		eu.Ficha.BP = ele.Ficha.BP * RazaoQueSaturaOPesado;
+		PronroParaOutroGolpe(eu);
+		eu.Ficha.Tick(agoraMs: NowMs());
+		double chanceDoVao = Empurrao.ChanceDeArremesso(Empurrao.Check(eu.Ficha, ele.Ficha),
+														Protocol.PesoDoGolpe(Protocol.Golpe.Pesado));
+		eu.UltimoAlvo = 0;
+		Atacar(eu, Protocol.Golpe.Pesado);
+		int tiquesArmados = ele.TiquesDeVoo;
 		int voltasDoVoo = 0;
 		while (ele.TiquesDeVoo > 0 && voltasDoVoo++ < 300) TickDoEmpurrao();
 		float vao = (ele.Pos - eu.Pos).Length;
@@ -594,7 +658,8 @@ public partial class GameServer
 		Atacar(eu, Protocol.Golpe.Leve);
 		AfirmarTres($"e o soco que SIM cai no vazio e o que sucede o arremesso: ele esta a {vao:0} px, "
 					+ $"fora dos {CombatKnobs.Alcance:0} px do punho -- a causa e geometria, e ela e visivel",
-					vao > CombatKnobs.Alcance && eu.UltimoAlvo != ele.Id, $"vao {vao:0} px");
+					vao > CombatKnobs.Alcance && eu.UltimoAlvo != ele.Id,
+					$"vao {vao:0} px; o pesado que abriu o vao: chance {chanceDoVao:0.#}%, {tiquesArmados} tique(s) de voo");
 
 		LimparTudoDaBancada();
 	}
@@ -926,6 +991,10 @@ public partial class GameServer
 			AfirmarTres("O PEDIDO LITERAL: o Zanzo Clash COMECOU entre o dono e o reflexo dele",
 						comecou && _emEmbate.ContainsKey(dono.Id));
 
+			// A TRAVA QUE O EMBATE EMPRESTA: o que falta do PRAZO dele (`Comecar`), anotado agora pra linha do
+			// "devolvidos" la embaixo saber de que tamanho seria um vazamento.
+			double travaDoDono = dono.Combate.Stun, travaDoReflexo = reflexo.Combate.Stun;
+
 			(int respostas, int acertos, double ptsMaquina, double ptsDono, double segundos, bool acabou) duelo =
 				RodarOEmbate(dono, reflexo, tetoSegundos: 7.0);
 
@@ -938,11 +1007,28 @@ public partial class GameServer
 					 + $"pro tempero dele e {PisoDeAcertoDaMaquina + (1 - PisoDeAcertoDaMaquina) * reflexo.Cerebro!.Inteligencia:0.00}) "
 					 + $"-- placar {duelo.ptsDono:0.#} (dono) x {duelo.ptsMaquina:0.#} (reflexo)");
 
-			AfirmarTres("...e os dois foram DEVOLVIDOS: nenhum ficou invisivel nem preso pelo atordoamento "
-						+ "que o embate usou pra travar o corpo",
+			// ============================ DEVOLVER A TRAVA, E NAO APAGAR O GOLPE DE SAIDA (2026-09-24) ============================
+			// Esta linha exigia atordoamento ZERO nos dois e reprovava de vez em quando -- "stun 0/0,6", tres rodadas
+			// seguidas numa, e tambem no estado de antes de 2026-09-23. O 0,6 NAO era a trava: o `Terminar` a zera, e
+			// logo depois quem venceu da o golpe de saida (`GolpeDeSaida`) pelo `MeleeResolver` de verdade. Quando esse
+			// golpe sorteia CRITICO, o perdedor leva `CombatKnobs.DuracaoStun` (0,6 s); quando o empurrao sai como
+			// CAMBALEIO, leva o tropeco (`Empurrao.TiquesDeTropeco` tiques). E atordoamento do golpe, e nao do embate.
+			//
+			// O que esta linha existe pra pegar e a TRAVA esquecida -- e ela e o que faltava do PRAZO no instante em
+			// que o embate comecou, sem decair: este laco so roda o `TickDosEmbates`, e nao o relogio do combate. Entao
+			// o teto e o maior atordoamento que o golpe de saida pode dar, e o controle logo abaixo prova que a trava e
+			// maior que ele -- senao as duas coisas nao se separariam e a linha passaria calada com o defeito.
+			// ================================================================================================================
+			double tetoDoGolpeDeSaida = Math.Max(CombatKnobs.DuracaoStun, Empurrao.TiquesDeTropeco * Empurrao.SegundosPorTique);
+			AfirmarTres("...e os dois foram DEVOLVIDOS: nenhum ficou invisivel, e a trava do embate foi embora -- o que "
+						+ "sobra, no maximo, e o atordoamento do golpe de saida (critico ou tropeco)",
 						!_invisiveis.Contains(dono.Id) && !_invisiveis.Contains(reflexo.Id)
-						&& dono.Combate.Stun <= 0 && reflexo.Combate.Stun <= 0,
-						$"stun {dono.Combate.Stun:0.##}/{reflexo.Combate.Stun:0.##}");
+						&& dono.Combate.Stun <= tetoDoGolpeDeSaida + 1e-9 && reflexo.Combate.Stun <= tetoDoGolpeDeSaida + 1e-9,
+						$"stun {dono.Combate.Stun:0.##}/{reflexo.Combate.Stun:0.##} (teto do golpe de saida {tetoDoGolpeDeSaida:0.##} s)");
+			AfirmarTres("(controle) ...e a trava que o embate emprestou e MAIOR que esse teto -- uma trava esquecida "
+						+ "reprovaria a linha de cima",
+						Math.Min(travaDoDono, travaDoReflexo) > tetoDoGolpeDeSaida,
+						$"trava {travaDoDono:0.##}/{travaDoReflexo:0.##} s contra o teto de {tetoDoGolpeDeSaida:0.##} s");
 
 			// ---- 2. O DEFEITO INJETADO: a estatua ----
 			double reacaoGuardada = reflexo.Cerebro!.TempoDeReacao;

@@ -546,7 +546,6 @@ public sealed partial class GameServer
 		public int Duracao;
 		public double ProximoEm;
 		public bool Desligando;
-		public Vec2 Ancora;
 		public ulong Zona;
 		/// <summary>Em quantos dos oito rumos a Giratoria ja cuspiu -- o instrumento da bancada (as esferas morrem na parede antes de serem contadas).</summary>
 		public readonly HashSet<int> RumosVistos = [];
@@ -616,7 +615,7 @@ public sealed partial class GameServer
 		f.BlastGain(_rng);
 		_voleiG12[pl.Id] = new EstadoDoVoleiG12
 		{
-			Giro = giro, KiReq = kireq, ProximoEm = _relogioG12, Ancora = pl.Pos, Zona = pl.Zone.Hash,
+			Giro = giro, KiReq = kireq, ProximoEm = _relogioG12, Zona = pl.Zone.Hash,
 		};
 		pl.Moving = false;
 		Avisar(pl, giro ? "voce planta os pes e comeca a expelir esferas em volta de si!"
@@ -639,7 +638,16 @@ public sealed partial class GameServer
 				continue;
 			}
 
-			Ancorar(pl, v.Ancora);
+			// ============================ SEM ANCORA: O `canmove = 0` E SO A TRAVA DO PASSO ============================
+			// Aqui havia um `Ancorar(pl, v.Ancora)` que puxava o corpo de volta pro ponto do aperto a cada tique. O
+			// `canmove = 0` do verb (`blasts.dm:270`) nao prende o CORPO: ele zera o `mobTime` do laco de andar
+			// (`movement handler.dm:130`), e so -- e isso o port ja tem no funil de vetor (`PresoPeloG12`, dentro do
+			// `PodeMexerOCorpo`). O resto do jogo desloca quem esta atirando como desloca qualquer um, e a esfera
+			// seguinte nasce no `locate(usr.x,usr.y,usr.z)` de AGORA (`:300`, dentro do `while`). O caso que o dono cobrou foi a
+			// PISCADA: o `turf/DblClick` nao le `canmove` (`click.dm:54`), entao no DM o corpo pisca e a rajada
+			// continua do ponto novo -- e aqui a ancora o puxava de volta no tique seguinte, com o Ki e o salto ja
+			// pagos. O mesmo vale pro arremesso: o `KB` leva quem atira, e a rajada vai junto.
+			// ==========================================================================================================
 			if (_relogioG12 < v.ProximoEm) continue;
 
 			// A GIRATORIA cospe DUAS por tique de 0,1 s (`if(duration % 2 == 0) sleep(1)`, `:387-388`).
@@ -1414,6 +1422,28 @@ public sealed partial class GameServer
 			Idade = dono.Idade,
 			Visual = dono.Visual.Copiar(),
 			LastInputMs = NowMs(),
+			// ============================ O CEREBRO DE FABRICA, E AQUI ELE E O LITERAL ============================
+			// A copia e um `/mob/npc/Splitform` (`Split Forms.dm:3-11`), e ele nao sobrescreve tempero
+			// NENHUM -- nem `behavior_vals`, nem `ai_intelligence`, nem `ai_aggression`. Herda os do
+			// `/mob/npc`: `ai_intelligence = NPC_AI_INT_DEFAULT` 35 (`NPCAI.dm:62`, `:26`),
+			// `ai_aggression = NPC_AI_AGGR_DEFAULT` 50 (`:63`, `:27`) e `behavior_vals = list(50,50,50,50)`
+			// (`:76`). Sao exatamente os defaults do `Cerebro`: Inteligencia e Disciplina 0,35,
+			// Agressividade 0,50, e coragem/furia 50 pela conversao do `Temperamento` (VidaCautelosa 0,45,
+			// ChanceDePesado 0,35).
+			//
+			// ENTAO NO DM A COPIA APARA E RECARREGA -- a guarda do `npc_defensive_check`
+			// (`e_behavior_vals[4] >= 35`, `:291`) e o `rechargeState` (`prob(ai_intelligence)`, `:522`) --,
+			// e aqui tambem. Ela nao e posse: e um lutador comum que obedece a ordem do dono. O que a
+			// `--iateste` (d) vigia e o avesso disto -- uma POSSE nova nascendo com este default (a fera e
+			// a furia DESLIGAM guarda e carga) --, e este arquivo esta na lista de la com este argumento.
+			//
+			// DUAS DIVERGENCIAS, DECLARADAS: (1) o `rand(8,13)/10` por traco do `checkState`
+			// (`NPCAI.dm:816`) nao entra -- a copia nao tem molde nem semente pro `Temperamento` sortear; a
+			// logica de base la ficaria entre 40 e 65, sempre acima do 35 da guarda, entao o que se perde
+			// e so a variacao de coragem e furia entre copias. (2) A copia nasce MUDA (`Boca.Ligado` so
+			// acende no `Temperamento.Montar`); no DM ela diria as falas do `npc_warn_say` (`:315`) como
+			// qualquer `/mob/npc`.
+			// ====================================================================================================
 			Cerebro = new Cerebro(),
 			Ficha = new Fighter(),
 			Livro = new SkillBook(),

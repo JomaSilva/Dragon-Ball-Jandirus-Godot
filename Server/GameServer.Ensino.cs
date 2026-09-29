@@ -94,7 +94,12 @@ public partial class GameServer
 		if (_skills == null) { Avisar(mestre, "o servidor esta sem catalogo de skills."); return; }
 		if (path.Length == 0) { Avisar(mestre, "escolha qual habilidade voce quer ensinar."); return; }
 
-		ServerPlayer? aluno = AlvoNaFrente(mestre);
+		// UM GESTO, E NAO UM GOLPE (ver `QuemEstaNaFrente`). O `view(1)` do `Teach_Skill` (`:12-13`) lista
+		// TODO mob ao lado e nao pergunta `attackable`: o aluno no meio da estreia do SSJ recebe a licao, e o
+		// `Study` (`:38-57`) nao pergunta `transing`. O unico filtro daquela lista, `!(Choice.type in
+		// M.learned_skills)`, virou a recusa `AlunoJaSabe` (ver `EnsinoDeSkill.Avaliar`): sem o menu do DM,
+		// o port escolhe um corpo so, e "ele ja sabe isso" diz mais que uma lista vazia.
+		ServerPlayer? aluno = QuemEstaNaFrente(mestre, _ => true);
 		if (aluno == null) { Avisar(mestre, "nao ha ninguem na sua frente."); return; }
 
 		Skill? s = _skills.Get(path);

@@ -495,6 +495,67 @@ public static class ArteDeProjetil
 		_ => "default",
 	};
 
+	/// <summary>
+	/// QUANTO A CABECA DESTA FOLHA AVANCA A FRENTE DO CENTRO DELA, em pixel, na escala 1 -- a arte de
+	/// `head_east` medida no alpha (a UNIAO dos quadros: o quadro que mais avanca e o que encosta primeiro).
+	///
+	/// ============================ POR QUE ISTO E DADO, E NAO O RAIO DE IMPACTO ============================
+	/// O servidor mantinha as cabecas de uma disputa a `2 x RaioDeImpacto` = 32 px de centro a centro e
+	/// plantava a cabeca a 24 px do corpo que ela empurra, FOSSE QUAL FOSSE a tecnica. So que o cliente
+	/// desenha a cabeca CENTRADA na posicao e do tamanho da celula vezes a escala do tiro
+	/// (`ProjetilDesenhado.Estampar`). Na `Beam3` a conta fecha (celula de 32, a arte chega aos 16 px da
+	/// borda) -- e foi por isso que a foto de 2026-09-07 saiu certa. Mas o Final Flash e a `Beam - Big
+	/// Fire.dmi`, CELULA DE 64 px, com escala 4 (`MultDeOnda = 4`): a cabeca dele avanca **128 px** a
+	/// frente do centro. Plantada a 24 px de alguem ela o cobre inteiro, e duas se encontrando a 32 px
+	/// ficam uma dentro da outra. Era o "as cabecas ainda estao se sobrepondo as vezes" (dono, 2026-09-23):
+	/// as vezes = conforme a tecnica.
+	///
+	/// MEDIDO, e nao estimado: `scratchpad\medir-cabecas.py` le cada `.tres` + `.png` de Beams e
+	/// Techniques e mede o alpha. Quase todas dao 16 (a arte vai ate a borda da celula de 32); as
+	/// excecoes estao abaixo, uma a uma. A `--diagembateki` confere esta tabela contra a medida do proprio
+	/// cliente (`ProjetilDesenhado.SombraDaArte`) folha por folha -- uma folha nova convertida com celula
+	/// maior e sem linha aqui reprova la.
+	/// ================================================================================================
+	/// </summary>
+	public static float FrenteDaCabeca(ArteDeKi a) => a switch
+	{
+		ArteDeKi.BeamBigFire => 32f,    // `Beam - Big Fire.dmi`, celula 64x64: a cabeca enche a celula
+		ArteDeKi.EraserCannon => 21f,   // `EraserCannon.dmi`, celula 128x128: a bola da frente para em 21
+		ArteDeKi.Dodompa => 14f,        // `Dodompa.dmi`: a ponta fina para 2 px antes da borda
+		ArteDeKi.Makkankosappo => 0f,   // `Makkankosappo.dmi` (Beams): a broca e desenhada toda PRA TRAS do centro
+		_ => Projetil.RaioDeImpacto,    // celula de 32 com a arte ate a borda -- as outras 20 folhas de raio
+	};
+
+	/// <summary>
+	/// A MEIA ESPESSURA DO TRONCO DESTA FOLHA, em pixel, na escala 1 -- a arte de `tail_east` medida no alpha
+	/// (o mesmo `scratchpad\medir-cabecas.py`). E o que diz a quantos pixels de lado do eixo o feixe AINDA E
+	/// desenhado: a `Beam3` e um fio de 4 px, a `Beam - Big Fire.dmi` do Final Flash tem 27 -- 108 px na escala
+	/// 4. Quem encosta no tronco (o corte) e quem bate nele (o cruzamento) encosta na BEIRADA dele, nao no eixo.
+	/// </summary>
+	public static float MeiaEspessuraDoTronco(ArteDeKi a) => a switch
+	{
+		ArteDeKi.Beam3 => 4f,
+		ArteDeKi.Beam2 => 7f,
+		ArteDeKi.Beam4 => 2f,
+		ArteDeKi.Beam11 => 7f,
+		ArteDeKi.BeamMasenko => 8f,
+		ArteDeKi.BeamStaticBeam => 13f,
+		ArteDeKi.BeamBigFire => 27f,
+		ArteDeKi.Makkankosappo => 5f,
+		ArteDeKi.Kamehameha1 => 3f,
+		ArteDeKi.Kamehameha2 => 5f,
+		ArteDeKi.Kamehameha3 => 3f,
+		ArteDeKi.Kamehameha4 => 13f,
+		ArteDeKi.Kamehameha5 => 13f,
+		ArteDeKi.Kamehameha6 => 7f,
+		ArteDeKi.GalacticGun => 7f,
+		ArteDeKi.Makkankosappo3 => 2f,
+		ArteDeKi.Makkankosappo4 => 2f,
+		ArteDeKi.Dodompa => 2f,
+		ArteDeKi.Enkumei => 3f,
+		_ => Projetil.RaioDeImpacto / 2f,   // sem `tail` medido (a EraserCannon e as bolas): meio raio
+	};
+
 	/// <summary>Toda folha conhecida -- pra a bancada varrer e pro menu da tecnica customizada.</summary>
 	public static IEnumerable<ArteDeKi> Todas =>
 		Enum.GetValues<ArteDeKi>().Where(a => a != ArteDeKi.Nenhuma);

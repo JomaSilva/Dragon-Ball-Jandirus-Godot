@@ -43,6 +43,9 @@ namespace Jandirus.Client;
 /// ====================================================================================================
 ///
 /// ============================ AS SEIS FAMILIAS, E COMO CADA UMA REPROVA ============================
+///   P   O PALCO, antes de todas. Reprova se o corpo nao chegar ao chao livre que o servidor achou
+///       (`emb_palco`, pelo `MoveToZone`), ou se ali houver coisa interativa ao alcance do menu de
+///       algum ponto do percurso -- e entao PARA: o resto mediria a vizinhanca, e nao o gesto.
 ///   F1  O CICLO INTEIRO PELO E. Reprova se qualquer elo nao acontecer: o menu nao abrir perto da
 ///       nave, faltar o botao, apertar nao mudar de zona, o console nao responder na ponte, o leme
 ///       nao oferecer a volta, ou a volta nao devolver o corpo pra dentro.
@@ -91,10 +94,20 @@ namespace Jandirus.Client;
 /// ("ja tem coisa demais"), o `Embarcar` do servidor pega a nave MAIS PERTO (que pode ser a de ontem) e
 /// a medida do alcance vira a distancia ate o entulho.
 ///
-/// A bancada se defende do que da: exige um id de nave NOVO, tenta os quatro lados, anda na direcao da
-/// PROPRIA nave e diz em voz alta quando havia coisa interativa mais perto. O que ela nao pode e
-/// recolher nave de outra conta. Se as linhas de F0 e F2 comecarem a reprovar em sequencia, o lugar de
-/// olhar e o `naves.json` -- e o conserto e apagar as Capital Ship das contas de bancada.
+/// A bancada se defende do que da: comeca num PALCO que o servidor acha longe de toda obra, nave e
+/// corpo (entao o entulho de ontem fica fora do percurso de hoje), exige um id de nave NOVO, tenta os
+/// quatro lados, anda na direcao da PROPRIA nave e diz em voz alta quando havia coisa interativa mais
+/// perto. O que ela nao pode e recolher nave de outra conta: o entulho so se acumula no `naves.json`,
+/// e se um dia a Terra ficar sem palco a linha P.1 diz isso -- o conserto e apagar as Capital Ship
+/// das contas de bancada.
+///
+/// ============================ E POR QUE O PALCO EXISTE ============================
+/// Ate o 0b0c8b2 o corpo nascia num ponto unico, em chao vazio, e o percurso inteiro presumia isso.
+/// Desde entao ele acorda no `/obj/SpawnPoint` do BYOND -- na Terra, dentro da cidade, entre um Bank e
+/// uma Research Station. A rodada de 2026-09-24 deu 34 OK e 38 FALHA sem um defeito de jogo sequer: o
+/// E do F2.1 abria o "Bank", a caminhada abria a "Research Station" a 171 px da nave, e nenhum Embarcar
+/// foi apertado. Ver `GameServer.PalcoDoEmbarque`.
+/// ==================================================================================
 /// ==========================================================================================
 ///
 /// COMO RODAR (porta propria, conta NOVA, sem janela):
@@ -141,6 +154,14 @@ public partial class RoboDeEmbarque : Node
 	private static bool DentroDoAlcance(float distancia) => distancia <= Interacoes.Alcance;
 
 	private static bool AlemDoAlcance(float distancia) => distancia > Interacoes.Alcance;
+
+	/// <summary>
+	/// O PALCO ESTA LIMPO? A coisa interativa mais perto tem que ficar alem do alcance do menu a partir de
+	/// QUALQUER ponto do percurso de fora -- que anda `MeiaLarguraDoPalco` tiles pra cada lado. O numero e
+	/// o do SERVIDOR, que e quem acha o palco: duas copias dele deixariam um aprovar o que o outro recusa.
+	/// </summary>
+	private static bool PalcoLimpo(float maisPerto) =>
+		maisPerto > Jandirus.Server.GameServer.MeiaLarguraDoPalco * ZoneCollision.TileSize + Interacoes.Alcance;
 
 	/// <summary>O jogo me disse ISTO? Compara o trecho fixado, e nao "alguma coisa foi dita".</summary>
 	private static bool Disse(IReadOnlyList<string> falas, string trecho) =>
@@ -394,6 +415,39 @@ public partial class RoboDeEmbarque : Node
 		GD.Print("\n[embarque] ===== A TECLA E NAS NAVES: O PERCURSO =====");
 		Nota($"conta '{cli.LocalName}' em {cli.Zone}, alcance do menu = {Interacoes.Alcance:0} px");
 
+		// ---------------------------------------------------------------- P  O PALCO
+		// O PERCURSO PRESUME CHAO VAZIO EM VOLTA, e o berco deixou de ser isso (ver o cabecalho). O corpo
+		// vai pro palco pelo `MoveToZone` -- o `ZoneChanged` chega, a tela de carregamento cobre, o corpo
+		// e posto la --, e SO DEPOIS o robo confere, com o que ELE ve: a lista de obras que chegou pra
+		// zona e a propria posicao desenhada. A linha de onde ele acordou nao e checagem: e a pista que
+		// explica o dia em que o berco voltar a ser o problema.
+		GD.Print("\n-- P: O PERCURSO COMECA EM CHAO LIVRE, LONGE DE TODA COISA INTERATIVA --");
+		(float noBerco, string oQueNoBerco) = CoisaInterativaMaisPerto(cli, Eu());
+		Nota($"acordei em {cli.Zone} @ ({Eu().X:0},{Eu().Y:0}); a coisa interativa mais perto: "
+			 + (oQueNoBerco.Length > 0 ? $"\"{oQueNoBerco}\" a {noBerco:0} px" : "nenhuma"));
+
+		Vector2? chegada = null;
+		Action<ZoneKey, Vec2> aoTrocarDeZona = (_, s) => chegada = new Vector2(s.X, s.Y);
+		cli.ZoneChanged += aoTrocarDeZona;
+		Ouvindo();
+		cli.SendVerbo("emb_palco");
+		foreach (object _ in Ate(() => chegada is { } c && Eu().DistanceTo(c) < 2f, 8)) yield return 0.0;
+		cli.ZoneChanged -= aoTrocarDeZona;
+		yield return 0.5;   // as obras da zona chegam logo atras do `ZoneChanged` (ver `MoveToZone`)
+
+		(float noPalco, string oQueNoPalco) = CoisaInterativaMaisPerto(cli, Eu());
+		bool noPalcoDeVerdade = chegada is { } ch && Eu().DistanceTo(ch) < 2f && cli.Zone.Equals(ZoneKey.Premade("Earth"));
+		Checa("P.1 o servidor me pos no palco pelo `MoveToZone`: chao da Terra sem coisa interativa ao alcance de nenhum ponto do percurso",
+			  noPalcoDeVerdade && PalcoLimpo(noPalco),
+			  chegada == null ? $"nenhum `ZoneChanged` chegou -- {string.Join(" | ", _falas)}"
+							  : $"em {cli.Zone} @ ({Eu().X:0},{Eu().Y:0}), pedido ({chegada.Value.X:0},{chegada.Value.Y:0}); "
+								+ (oQueNoPalco.Length > 0 ? $"a mais perto: \"{oQueNoPalco}\" a {noPalco:0} px" : "nada interativo na zona"));
+		if (!noPalcoDeVerdade || !PalcoLimpo(noPalco))
+		{
+			Nota("sem palco: o resto do percurso mediria a vizinhanca, e nao o gesto.");
+			yield break;
+		}
+
 		// ---------------------------------------------------------------- F2.1  SEM NADA POR PERTO
 		GD.Print("\n-- F2: LONGE, O E NAO ABRE NADA --");
 		FecharMenu();
@@ -512,7 +566,7 @@ public partial class RoboDeEmbarque : Node
 		{
 			float d = DistanciaDeMenu(Eu(), nave.Pos);
 			ApertarE();
-			if (E is { NaTela: true }) { abriuA = d; eraAMinha = d <= MaisPertoQueMim(cli, nave) + 0.5f; break; }
+			if (E is { NaTela: true }) { abriuA = d; eraAMinha = d <= CoisaInterativaMaisPerto(cli, Eu(), nave.Id).Dist + 0.5f; break; }
 			ultimoNaoA = d;
 			Input.ActionPress(acaoIr);
 			yield return 0.0;
@@ -769,20 +823,22 @@ public partial class RoboDeEmbarque : Node
 	}
 
 	/// <summary>
-	/// A DISTANCIA DA COISA INTERATIVA MAIS PROXIMA QUE NAO SEJA A MINHA NAVE.
+	/// A COISA INTERATIVA MAIS PROXIMA DE UM PONTO -- distancia do jeito que o menu mede e o nome que ele
+	/// poria no titulo --, pulando a obra <paramref name="exceto"/> (a minha nave). Nenhuma: MaxValue e "".
 	///
-	/// Guarda de SANIDADE DA BANCADA, e nao regra do jogo: as naves ficam no `naves.json` e uma rodada
-	/// interrompida deixa entulho no mesmo pedaco de Terra. Sem esta leitura, a medida do alcance pode
-	/// ser a distancia ate a nave de ontem -- que foi exatamente o que aconteceu na rodada 4.
+	/// Guarda de SANIDADE DA BANCADA, e nao regra do jogo, com dois usos. No PALCO ela confere que o chao
+	/// que o servidor achou esta mesmo longe de tudo. Na CAMINHADA ela diz se a medida do alcance foi da
+	/// nave certa: as naves ficam no `naves.json` e uma rodada interrompida deixa entulho -- sem esta
+	/// leitura, a medida pode ser a distancia ate a nave de ontem, que foi o que aconteceu na rodada 4.
 	/// </summary>
-	private static float MaisPertoQueMim(GameClient cli, GameClient.ObraInfo minha)
+	private static (float Dist, string Nome) CoisaInterativaMaisPerto(GameClient cli, Vector2 de, int? exceto = null)
 	{
-		Vector2 eu = Eu();
-		float melhor = float.MaxValue;
+		(float Dist, string Nome) melhor = (float.MaxValue, "");
 		foreach (GameClient.ObraInfo o in cli.Obras)
 		{
-			if (o.Id == minha.Id || !Interacoes.Interativo(o.Tipo)) continue;
-			melhor = Math.Min(melhor, DistanciaDeMenu(eu, o.Pos));
+			if (o.Id == exceto || !Interacoes.Interativo(o.Tipo)) continue;
+			float d = DistanciaDeMenu(de, o.Pos);
+			if (d < melhor.Dist) melhor = (d, o.Nome);
 		}
 		return melhor;
 	}
@@ -984,6 +1040,11 @@ public partial class RoboDeEmbarque : Node
 			if (regraDisseNao) { reprovou++; GD.Print($"  ok    a regra reprova: {oque}"); }
 			else { deixouPassar++; GD.PrintErr($"  FALHA a regra DEIXOU PASSAR: {oque}"); }
 		}
+
+		// P: o palco com coisa interativa ao alcance da ponta da caminhada -- a forma exata do berco na cidade
+		float naPonta = Jandirus.Server.GameServer.MeiaLarguraDoPalco * ZoneCollision.TileSize + Interacoes.Alcance;
+		Deve($"o palco com uma coisa interativa a {naPonta:0} px (o menu a alcanca da ponta do percurso)",
+			 !PalcoLimpo(naPonta));
 
 		// F1/F3: o botao sumiu do menu desenhado
 		Deve("o menu da nave sem o botao Embarcar",

@@ -333,6 +333,7 @@ public partial class World : Node2D
 			// Metodos nomeados, como todo o resto daqui -- ver a nota das lambdas orfas abaixo.
 			cli.TiroNasceu += AoNascerTiro;
 			cli.TiroMorreu += AoMorrerTiro;
+			ProjetilDesenhado.OndeEstaOCorpo = OndeEstaONo;
 			cli.TiroCortado += AoCortarTiro;
 			cli.TirosNoAr += AoMoverTiros;
 
@@ -413,6 +414,7 @@ public partial class World : Node2D
 			cli.Piscou -= AoPiscar;
 			cli.TiroNasceu -= AoNascerTiro;
 			cli.TiroMorreu -= AoMorrerTiro;
+			if (ProjetilDesenhado.OndeEstaOCorpo == OndeEstaONo) ProjetilDesenhado.OndeEstaOCorpo = null;
 			cli.TiroCortado -= AoCortarTiro;
 			cli.TirosNoAr -= AoMoverTiros;
 			cli.PortasMudaram -= AoMudarPortas;
@@ -903,13 +905,17 @@ public partial class World : Node2D
 	private void AoMorrerTiro(int id, byte fim, Vec2 onde)
 	{
 		Color cor = Aura.CorDoKiCru;
+		float altitude = 0f;
 		if (_tiros.Remove(id, out ProjetilDesenhado? no))
 		{
 			cor = no.Cor;
+			altitude = no.Altitude;
 			no.QueueFree();
 		}
 
-		var p = new Vector2(onde.X, onde.Y);
+		// NA ALTURA EM QUE O TIRO ERA DESENHADO (2026-09-23): o `onde` vem no chao, e o tiro de quem voa e
+		// desenhado subido (`ProjetilDesenhado.SubidaNaTela`) -- o estouro saia no chao, debaixo dele.
+		var p = new Vector2(onde.X, onde.Y - altitude * Voo.EscalaNaTela);
 		switch ((Jandirus.Core.Combat.FimDeProjetil)fim)
 		{
 			case Jandirus.Core.Combat.FimDeProjetil.Acertou:
@@ -977,8 +983,18 @@ public partial class World : Node2D
 	{
 		foreach (Jandirus.Net.ProjetilState t in tiros)
 			if (_tiros.TryGetValue(t.Id, out ProjetilDesenhado? no))
+			{
 				no.Mirar(new Vector2(t.Pos.X, t.Pos.Y), new Vector2(t.Cauda.X, t.Cauda.Y));
+				no.Solto = t.Solto;
+				no.ArrastaId = t.Arrasta;
+			}
 	}
+
+	/// <summary>
+	/// ONDE O NO DO CORPO `id` ESTA AGORA (sem a subida do voo: o tiro sobe pela propria altura). E a ancora da
+	/// cabeca que leva alguem -- ver `ProjetilDesenhado.ArrastaId`.
+	/// </summary>
+	private Vector2? OndeEstaONo(int id) => Corpo(id)?.Position;
 
 	/// <summary>
 	/// BANCADA: poe (ou move) um tiro na zona pelos MESMOS dois caminhos do servidor -- o anuncio de
@@ -1078,9 +1094,10 @@ public partial class World : Node2D
 		_tiros.Clear();
 	}
 
-	private void AoBaqueDeEmbate(Vec2 onde)
+	private void AoBaqueDeEmbate(Vec2 onde, float altitude)
 	{
-		var p = new Vector2(onde.X, onde.Y);
+		// SUBIDO PELA ALTURA DO ENCONTRO (2026-09-23): as cabecas de quem disputa no ar sao desenhadas no ar.
+		var p = new Vector2(onde.X, onde.Y - altitude * Voo.EscalaNaTela);
 
 		// O MESMO VOCABULARIO DO CRITICO, que e o golpe mais forte que o jogo desenha: faisca
 		// quente grande, anel dourado largo e um anel de gelo por cima (o encontro e de velocidade,
@@ -2761,7 +2778,10 @@ public partial class World : Node2D
 		// em diante nao animava -- e, agora que o soco toca uma vez e devolve o corpo ao parado
 		// (`CharacterVisual`), sem esta linha os socos seguintes nem apareceriam. O relato sai pra todo
 		// golpe, acertando ou nao (`AnunciarSocoNoAr`), que e exatamente quando o `flick` toca no DM.
-		VisualDe(h.Atacante)?.RestartState("attack", Protocol.AttackPoseMs / 1000.0);
+		// SO NO GOLPE DE CORPO (2026-09-23). Um relato com ponto de impacto e um TIRO acertando: o atirador esta
+		// segurando o raio (ou ja soltou a bola), e reiniciar o `attack` dele a cada moida de 0,2 s o fazia
+		// tremer na pose. O `flick` do DM e do soco.
+		if (!h.TemPonto) VisualDe(h.Atacante)?.RestartState("attack", Protocol.AttackPoseMs / 1000.0);
 
 		bool souEu = GameClient.Instance is { } c && (h.Atacante == c.LocalId || h.Alvo == c.LocalId);
 
@@ -2803,7 +2823,9 @@ public partial class World : Node2D
 		// O relato agora traz a coordenada (ver `HitEvent.PosAtacante`), e aqui ela e CRAVADA. So
 		// pro corpo remoto: o proprio atacante ja recebeu a correcao no mesmo canal confiavel, e o
 		// `LocalPlayer` ja aplica sem suavizar.
-		if (h.Alvo != 0 && quemBate is RemotePlayer atacante)
+		// E O ATACANTE SO E CRAVADO NO SOCO: quem atirou de longe nao deu arranque nenhum, e cravar o corpo dele a
+		// cada acerto (cinco por segundo num raio) o puxava pra fora da propria linha do tempo.
+		if (h.Alvo != 0 && !h.TemPonto && quemBate is RemotePlayer atacante)
 			atacante.Cravar(new Vector2(h.PosAtacante.X, h.PosAtacante.Y));
 
 		var desfecho = (Jandirus.Core.Combat.Desfecho)h.Desfecho;
@@ -2820,6 +2842,16 @@ public partial class World : Node2D
 		Vector2 meio = quemBate != null && quemLeva != null
 			? (pa + pv) * 0.5f
 			: quemLeva != null ? pv : quemBate != null ? pa : Vector2.Zero;
+
+		// ============================ O TIRO DIZ ONDE ENCOSTOU (dono, 2026-09-23) ============================
+		// *"o efeito de hit tem q ser na cabeca do beam e nao no meio dele"*. O meio dos dois corpos e o
+		// lugar certo pro soco; pro tiro e o meio do RAIO. O servidor manda o ponto do impacto (a frente da
+		// cabeca, na beirada de quem apanhou) RELATIVO ao corpo dele, e ele e somado ao corpo DESENHADO -- que
+		// ja carrega a subida do voo e o atraso da linha do tempo. Ver `HitEvent.Ponto`.
+		// =============================================================================================
+		if (h.TemPonto && quemLeva != null)
+			meio = pv + new Vector2(h.Ponto.X, h.Ponto.Y);
+		UltimaFaiscaDeTeste = (meio, h.Alvo);
 		Vector2 rumo = quemBate != null && quemLeva != null
 			? (pv - pa).Normalized()
 			: Vector2.Zero;
@@ -2874,15 +2906,22 @@ public partial class World : Node2D
 				break;
 
 			case Jandirus.Core.Combat.Desfecho.Contra:
-				// quem apanha e quem BATEU: o contra-ataque devolve o golpe
+				// O PARRY EM QUEM DEFENDEU (o escudo, o brilho e os dois sons) e o baque em quem bateu: o
+				// contra-ataque devolve o golpe, e quem apanha agora e quem BATEU.
+				EfeitoDeParry(quemLeva);
 				Piscar(quemBate, Quente, Gelo, -rumo, 0.2);
 				CombatFx.Impacto(_atores, meio, 1.1f, Gelo);
 				Tremer(souEu, 6f);
-				// os DOIS sons juntos, como no original -- o "tin" da aparada e o brilho do
-				// acerto perfeito sao um som so na cabeca de quem jogou
-				Som(quemLeva, Trilha.ContraAtaque);
-				Som(quemLeva, Trilha.ContraAtaqueParry, 0.8f);
 				Som(quemBate, Trilha.Acerto(2));
+				break;
+
+			// O KI QUE O PARRY MANDOU EMBORA (dono, 2026-09-25): a bola voltou pro atirador ou o raio desviou
+			// pro lado. So o parry, em quem defendeu -- ninguem apanhou, e o atirador esta longe (quem mostra o
+			// resto e o proprio tiro, que muda de rumo na tela). A faisca gelo sai onde o ki encostou.
+			case Jandirus.Core.Combat.Desfecho.Rebateu:
+				EfeitoDeParry(quemLeva);
+				CombatFx.Impacto(_atores, meio, 0.9f, Gelo);
+				Tremer(souEu, 3f);
 				break;
 
 			// ============================ A ESQUIVA, INTEIRA, COMO O ORIGINAL DESENHAVA ============================
@@ -2933,10 +2972,15 @@ public partial class World : Node2D
 				// `EffectLayer.dm:82-97`) -- o punho passando em falso, e nao um impacto entre os
 				// dois. Por isso `pa`, e nao o `meio` que os acertos usam. Ela NAO e o "circulo" da
 				// queixa: nasce no outro corpo, tem 0,45 de escala e e a estrela do `attackspark`.
-				if (quemBate != null) CombatFx.Impacto(_atores, pa, 0.45f, Gelo);
+				//
+				// O TIRO DE RASPAO E A EXCECAO (2026-09-25): quem "bateu" esta la longe, segurando o raio ou vendo a
+				// bola ir, e a faisca e os sons no corpo DELE apareceriam do outro lado da tela. No tiro (o relato
+				// traz o ponto do impacto) a faisca sai onde o ki passou, e o ar cortado sai de quem desviou.
+				if (quemBate != null) CombatFx.Impacto(_atores, h.TemPonto ? meio : pa, 0.45f, Gelo);
 				// 3. OS DOIS SONS, e os dois saem de QUEM BATEU (`src.emit_Sound`).
-				Som(quemBate, Trilha.Assobio, 0.5f);
-				Som(quemBate, Trilha.SocoNoAr(), 0.7f);
+				Node2D? doSom = h.TemPonto ? quemLeva : quemBate;
+				Som(doSom, Trilha.Assobio, 0.5f);
+				Som(doSom, Trilha.SocoNoAr(), 0.7f);
 				break;
 
 			case Jandirus.Core.Combat.Desfecho.Errou:
@@ -2985,13 +3029,14 @@ public partial class World : Node2D
 														 "1o golpe que me envolve: tag de combate SUBIU");
 		_lutaAte = SegundosDeLuta;
 
-		// A ESQUIVA TAMBEM SE ESCREVE. A condicao era "houve dano num membro", e por isso o unico
-		// desfecho sem membro nenhum era o unico que nao virava linha -- justamente o que o jogador
-		// menos consegue deduzir sozinho (a vida do outro nao muda, e nada acontece com o corpo).
-		// O DM narra a esquiva como narra o acerto: `GenerateAttackFlavorText("Dodge", src)`
-		// (`CombatMovement.dm:277`) -> "[M] dodges [src]!" em branco (`AttackFlavor.dm:3,50-56`).
-		if (desfecho == Jandirus.Core.Combat.Desfecho.Esquivou || (h.TemDano && h.Membro.Length > 0))
-			Hud.Instancia?.Narrar(h, GameClient.Instance!.LocalId);
+		// ============================ E O GOLPE NAO VIRA TEXTO -- DIVERGENCIA DECLARADA (dono, 2026-09-25) ============================
+		// Aqui o golpe era narrado no meio da tela e no chat ("acertou 12,3 em Braco", "aparado com Perna", "voce
+		// esquivou"). O DM narra tudo -- `GenerateAttackFlavorText` (`CombatMovement.dm:215/257/277`,
+		// `AttackFlavor.dm`) --, e o dono pediu o contrario: *"a unica coisa que os jogadores usariam pra saber e
+		// efeito de hit, knockback, ferimentos"*. Tudo o que o relato dizia esta desenhado acima: a esquiva pela troca
+		// de sprite, o acerto pelo clarao e a faisca, o bloqueio pelo gelo, o parry pelo escudo, o membro perdido pelo
+		// sangue e pela peca no chao, e o dano acumulado pelas feridas e pelo boneco do HUD.
+		// ======================================================================================================================
 	}
 
 	/// <summary>
@@ -3386,6 +3431,14 @@ public partial class World : Node2D
 	public Vector2? PosicaoDesenhadaDe(int id) => Corpo(id) is { } c ? Desenhado(c) : null;
 
 	/// <summary>
+	/// ONDE A ULTIMA FAISCA DE GOLPE FOI ESTOURADA, em coordenada do mundo desenhado, e EM QUEM -- a porta da
+	/// `--diagraio` (cena C): ela confere que a faisca de um tiro nasce na CABECA do raio, e nao no meio dele.
+	/// O alvo vem junto porque o mundo da bancada e o de verdade: um cidadao apanhando ali perto tambem estoura
+	/// faisca, e a regua so vale pra do corpo que a cena levou.
+	/// </summary>
+	public (Vector2 Onde, int Alvo)? UltimaFaiscaDeTeste { get; private set; }
+
+	/// <summary>
 	/// ONDE UM CORPO ESTA DESENHADO: a posicao do no MAIS o deslocamento de altura do visual.
 	///
 	/// Os dois so coincidem no chao. Quem voa tem o no na posicao real (que e o que a colisao, o
@@ -3499,6 +3552,30 @@ public partial class World : Node2D
 
 	private static void Piscar(Node2D? quem, Color cor, Color contorno, Vector2 rumo, double segundos = 0.15)
 		=> quem?.GetNodeOrNull<CharacterVisual>("Visual")?.Impacto(cor, contorno, rumo, segundos);
+
+	/// <summary>
+	/// O AZUL DO PARRY -- o `blueglow` do DM (`EffectLayer.dm:102-108`: o proprio sprite tingido de
+	/// `rgb(0,0,115)`), clareado o bastante pra ler por cima da arte escura dos personagens.
+	/// </summary>
+	private static readonly Color AzulDoParry = new(0.35f, 0.55f, 1.0f);
+
+	/// <summary>
+	/// ============================ O PARRY, EM QUEM ACERTOU O TEMPO DA GUARDA ============================
+	/// O ramo `if(1)//counter` do DM (`CombatMovement.dm:255-260`) poe TRES coisas no DEFENSOR, e sao estas:
+	/// o `perfectshield` (<see cref="CombatFx.Escudo"/>), o `blueglow` (o corpo inteiro acende em azul) e os
+	/// dois sons, `perfectsoundeffect` e `parry`. O bloqueio comum e so uma faisca gelo pequena entre os dois
+	/// -- sem o escudo, o parry e o bloqueio eram a mesma leitura na tela, e o dono pediu que o parry fosse
+	/// visivel (2026-09-25). Serve ao soco (`Contra`) e ao ki (`Rebateu`), porque e o mesmo gesto.
+	/// ==================================================================================================
+	/// </summary>
+	private void EfeitoDeParry(Node2D? defensor)
+	{
+		if (defensor == null) return;
+		CombatFx.Escudo(_atores, Desenhado(defensor), AzulDoParry);
+		Piscar(defensor, AzulDoParry, AzulDoParry, Vector2.Zero, 0.3);
+		Som(defensor, Trilha.ContraAtaque);
+		Som(defensor, Trilha.ContraAtaqueParry, 0.8f);
+	}
 
 	/// <summary>
 	/// O SOLAVANCO DA CAMERA. So pra quem esta NA briga -- tremer a tela de quem so passava
@@ -3635,6 +3712,16 @@ public partial class World : Node2D
 
 	public bool Assistindo => _assistindo;
 	public bool AssistindoDeTeste => _assistindo;
+
+	/// <summary>
+	/// BANCADA: um foco de camera imposto (nulo = o de sempre). Vai pelo MESMO caminho do espectador do
+	/// torneio -- o deslocamento somado ao tremor e o olho do veu emprestado ao centro da camera -- e existe
+	/// porque as fotos da `--diagembateki` montam a cena a tiles de quem assiste: com o zoom do jogo ela caia
+	/// na beirada da tela, debaixo do chat, e o veu (o olho ainda nos olhos de quem assiste, dentro de uma
+	/// casa desde que o berco virou o do BYOND) a escurecia. A diferenca do torneio e uma so, e declarada: a
+	/// bancada CRAVA o deslocamento, sem o `Lerp` -- uma foto nao pode sair no meio da viagem da camera.
+	/// </summary>
+	public Vector2? FocoDeTeste { get; set; }
 	public Vector2 DeslocamentoDaCameraDeTeste => _camera?.Offset ?? Vector2.Zero;
 
 	public void AssistirTorneio(bool ligar)
@@ -3656,14 +3743,20 @@ public partial class World : Node2D
 	private void TickDoEspectador(double delta)
 	{
 		Vector2 alvo = Vector2.Zero;
-		if (_assistindo && _local != null && IsInstanceValid(_local) && _torneioNaTela is { } t)
+		bool cravar = false;
+		if (FocoDeTeste is { } fixo && _local != null && IsInstanceValid(_local))
+		{
+			alvo = fixo - _local.GlobalPosition;
+			cravar = true;
+		}
+		else if (_assistindo && _local != null && IsInstanceValid(_local) && _torneioNaTela is { } t)
 		{
 			Node2D? a = Corpo(t.CorpoA), b = Corpo(t.CorpoB);
 			Vector2 foco = a != null && b != null ? (a.GlobalPosition + b.GlobalPosition) / 2f
 						 : a?.GlobalPosition ?? b?.GlobalPosition ?? new Vector2(t.Centro.X, t.Centro.Y);
 			alvo = foco - _local.GlobalPosition;
 		}
-		_deslocDoEspectador = _deslocDoEspectador.Lerp(alvo, Mathf.Clamp((float)delta * 4f, 0f, 1f));
+		_deslocDoEspectador = cravar ? alvo : _deslocDoEspectador.Lerp(alvo, Mathf.Clamp((float)delta * 4f, 0f, 1f));
 		if (_camera != null && _tremor <= 0) _camera.Offset = _deslocDoEspectador;
 		// O OLHO DO VEU VAI COM A CAMERA -- o `EYE_PERSPECTIVE` do DM (ver `Visao.OlhoEmprestado`).
 		_veu.OlhoEmprestado = OlhoDoEspectador();

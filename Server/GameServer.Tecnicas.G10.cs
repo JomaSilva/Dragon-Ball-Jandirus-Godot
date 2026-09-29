@@ -325,7 +325,7 @@ public sealed partial class GameServer
 		double dose = 1 + pl.Ficha.Ephysoff / 2 + pl.Ficha.Etechnique / 2;
 		FerirUmMembroG10(alvo, pl, dose, pl.Combate.Letal);
 		AgendarAtrasoG10(pl, alvo, NowMs() + 1500, dose, espalhado: false, letal: pl.Combate.Letal, nome: "choque");
-		Avisar(pl, $"voce crava um punho em {alvo.Name}: {dose:0.#} de dano no membro agora e de novo em 1,5 s (-{custo:0} de energia).");
+		Avisar(pl, $"voce crava um punho em {alvo.Name}: o golpe fica no membro e volta a doer em 1,5 s (-{custo:0} de energia).");
 		Avisar(alvo, $"a energia do golpe de {pl.Name} fica presa no seu corpo.");
 	}
 
@@ -351,7 +351,7 @@ public sealed partial class GameServer
 		long agora = NowMs();
 		AgendarAtrasoG10(pl, alvo, agora + 2000, onda, espalhado: true, letal: letal, nome: "eco");
 		AgendarAtrasoG10(pl, alvo, agora + 4000, onda, espalhado: true, letal: letal, nome: "eco");
-		Avisar(pl, $"seu punho reverbera em {alvo.Name}: {onda:0.#} em cada membro, tres vezes, a cada 2 s (-{custo:0} de energia).");
+		Avisar(pl, $"seu punho reverbera em {alvo.Name}: o corpo inteiro sente, tres vezes, a cada 2 s (-{custo:0} de energia).");
 		Avisar(alvo, $"o golpe de {pl.Name} ecoa pelo seu corpo inteiro.");
 	}
 
@@ -372,7 +372,7 @@ public sealed partial class GameServer
 
 		double estouro = 70 + pl.Ficha.Ephysoff + pl.Ficha.Etechnique;
 		AgendarAtrasoG10(pl, alvo, NowMs() + 2000, estouro, espalhado: false, letal: pl.Combate.Letal, nome: "estouro");
-		Avisar(pl, $"voce crava um dedo em {alvo.Name}: em 2 s o membro mirado leva {estouro:0.#} de dano (-{custo:0} de energia).");
+		Avisar(pl, $"voce crava um dedo em {alvo.Name}: em 2 s o membro mirado estoura (-{custo:0} de energia).");
 		Avisar(alvo, $"o dedo de {pl.Name} deixa alguma coisa pulsando no seu corpo.");
 	}
 
@@ -446,7 +446,7 @@ public sealed partial class GameServer
 		FerirUmMembroG10(alvo, pl, golpeFinal, pl.Combate.Letal);
 		AgendarAtrasoG10(pl, alvo, NowMs() + AtrasoDoGolpeFinalDoHokutoMsG10, GolpeFinalDoHokutoG10,
 						 espalhado: false, letal: pl.Combate.Letal, nome: "golpe final do Hokuto");
-		Avisar(pl, $"a rajada entrou: {golpeFinal:0.##} direto no membro agora, e {GolpeFinalDoHokutoG10:0} mais em 1 s.");
+		Avisar(pl, "a rajada entrou: direto no membro agora, e mais uma vez em 1 s.");
 	}
 
 	/// <summary>
@@ -471,7 +471,7 @@ public sealed partial class GameServer
 		Travar(alvo, 3.0);
 		EspalharDanoG3(alvo, pl, dano, letal: false);
 		AvisarPertoG3(pl, 8 * ZoneCollision.TileSize, $"{pl.Name} passa uma rasteira em {alvo.Name}!!!");
-		Avisar(pl, $"{alvo.Name} cai: tres segundos sem reagir e {dano:0.#} em cada membro (-{custo:0} de energia).");
+		Avisar(pl, $"{alvo.Name} cai: tres segundos sem reagir, e o tombo pega o corpo inteiro (-{custo:0} de energia).");
 	}
 
 	// =====================================================================
@@ -518,7 +518,7 @@ public sealed partial class GameServer
 		if (!alvo.Ficha.dead)
 			Arremessar(alvo, MeleeArea.Frente(pl.Facing), Agarrao.ForcaDoArremesso(pl.Ficha),
 					   TiquesDoArremessoDoDemonioG10);
-		Avisar(pl, $"soco, jab na cara e {alvo.Name} voa pra frente (+{extra:0.##} direto no membro; -{custo:0} de energia).");
+		Avisar(pl, $"soco, jab na cara e {alvo.Name} voa pra frente (-{custo:0} de energia).");
 	}
 
 	/// <summary>
@@ -596,7 +596,7 @@ public sealed partial class GameServer
 		// `AttackMultiple(target, 16 + dmg, 1, null, "slams", null, 3)` (`:72`) -- no PRESO, que e quem fez a
 		// viagem nos bracos (o DM batia no marcado: ver o cabecalho).
 		GolpeG3(pl, preso, addDano: 16 + dmg, nivel: 3);
-		Avisar(pl, $"voce esmaga {preso.Name} no fim da corrida (+{16 + dmg:0}: {passos} passos, {paredes} paredes; -{custo:0} de energia).");
+		Avisar(pl, $"voce esmaga {preso.Name} no fim da corrida ({passos} passos, {paredes} paredes; -{custo:0} de energia).");
 		AvisarSePessoa(preso, $"{pl.Name} te esmaga no chao no fim da corrida!");
 		int celulas = RacharChao(pl.Zone, pl.Pos, f.expressedBP,
 								 raio: Math.Clamp((int)Math.Floor(f.Ephysoff / 2 + 1), 0, RaioMaximoDeViewG10), chance: 1);
@@ -653,7 +653,7 @@ public sealed partial class GameServer
 		}
 
 		GolpeG3(pl, preso, addDano: 5, nivel: 1);
-		Avisar(pl, $"voce arrasta {preso.Name} por {passos} tiles e ele sai machucado (+5; -{custo:0} de energia).");
+		Avisar(pl, $"voce arrasta {preso.Name} por {passos} tiles e ele sai machucado (-{custo:0} de energia).");
 		AvisarSePessoa(preso, $"{pl.Name} te arrasta pelo chao!");
 	}
 
@@ -679,7 +679,7 @@ public sealed partial class GameServer
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 			if (Vec2.Distance(o.Pos, pl.Pos) <= raioPx) MandarEfeito(o, "terremoto", 600);
 
-		Avisar(pl, $"voce prensa {alvo.Name} (+15): ele fica dois segundos sem reagir e o chao racha em {raio} tiles ({celulas} celulas; -{custo:0} de energia).");
+		Avisar(pl, $"voce prensa {alvo.Name}: ele fica dois segundos sem reagir e o chao racha em {raio} tiles ({celulas} celulas; -{custo:0} de energia).");
 		Avisar(alvo, $"a prensa de {pl.Name} te deixa sem reacao.");
 	}
 
@@ -701,7 +701,7 @@ public sealed partial class GameServer
 		Travar(preso, 0.4);
 		GolpeG3(pl, preso!, addDano: 4, nivel: 2);
 		preso!.ContadorDaLuta = Math.Max(0, preso.ContadorDaLuta - 4);
-		Avisar(pl, $"voce aperta {preso.Name} (+4) e desfaz parte da luta dele pra escapar (-4; -{custo:0} de energia).");
+		Avisar(pl, $"voce aperta {preso.Name} e desfaz parte da luta dele pra escapar (-4; -{custo:0} de energia).");
 		AvisarSePessoa(preso, $"{pl.Name} aperta voce: parte do que voce tinha lutado pra sair se desfaz.");
 	}
 
@@ -733,7 +733,7 @@ public sealed partial class GameServer
 		Travar(preso, 0.4);
 		GolpeG3(pl, preso!, addDano: 10, nivel: 3);
 		Falar(pl, Protocol.Fala.Diz, "POWER SLAM!");
-		Avisar(pl, $"voce levanta e esmaga {preso!.Name} no chao (+10; -{custo:0} de energia).");
+		Avisar(pl, $"voce levanta e esmaga {preso!.Name} no chao (-{custo:0} de energia).");
 	}
 
 	/// <summary>
@@ -746,7 +746,7 @@ public sealed partial class GameServer
 		Travar(preso, 0.4);
 		GolpeG3(pl, preso!, addDano: 5, nivel: 3);
 		Travar(preso, 2.0);
-		Avisar(pl, $"SUPLEX em {preso!.Name} (+5): dois segundos sem reagir (-{custo:0} de energia).");
+		Avisar(pl, $"SUPLEX em {preso!.Name}: dois segundos sem reagir (-{custo:0} de energia).");
 		AvisarSePessoa(preso, $"{pl.Name} te aplica um suplex!");
 	}
 
@@ -1088,8 +1088,8 @@ public sealed partial class GameServer
 		double dmg = (CombatMath.DanoBase(pl.Ficha, m.Ficha) + 2)
 					 * CombatMath.BpModulus(pl.Ficha.expressedBP, m.Ficha.expressedBP) * 0.25;
 		FerirUmMembroG10(m, pl, dmg, pl.Combate.Letal);
-		AvisarSePessoa(m, $"{pl.Name} te causa um dano mental!! ({dmg:0.#})");
-		Avisar(pl, $"{m.Name} leva {dmg:0.#} de dano mental, direto no corpo.");
+		AvisarSePessoa(m, $"{pl.Name} te causa um dano mental!!");
+		Avisar(pl, $"{m.Name} leva o dano mental direto no corpo.");
 	}
 
 	// =====================================================================
@@ -1133,7 +1133,7 @@ public sealed partial class GameServer
 
 			if (a.Espalhado) EspalharDanoG3(alvo, autor, a.Dano, a.Letal);
 			else FerirUmMembroG10(alvo, autor, a.Dano, a.Letal);
-			AvisarSePessoa(alvo, $"o {a.Nome} de {autor.Name} ainda ecoa no seu corpo ({a.Dano:0.#}).");
+			AvisarSePessoa(alvo, $"o {a.Nome} de {autor.Name} ainda ecoa no seu corpo.");
 		}
 	}
 

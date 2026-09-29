@@ -559,10 +559,64 @@ public partial class GameServer
 	/// E o `for(var/obj/O in get_step(target,dir)) if(O.fragile) O.takeDamage(pow)` do
 	/// `Movement Effects.dm:74-76`: o voo estraga o que atravessa, com a MESMA forca com que
 	/// derruba parede.
+	///
+	/// ============================ PELA CAIXA DOS PES, E NAO PELO PONTO DELES ============================
+	/// Esta sonda olhava UMA celula, a do ponto dos pes -- o defeito que o `DerrubarOQueBarraOsPes` consertou pro
+	/// muro, e aqui ele era pior. Quem PARA o corpo e o `MoveRules.Occupied`, pelas quatro quinas, e uma obra DENSA
+	/// barra (`AplicarColisaoDasObras`). Na amostra em que a quina encosta nela, o ponto dos pes ainda esta 5 px
+	/// (norte/sul) ou 8 px (leste/oeste) fora: a obra NAO apanhava, o laco lia "resistiu", e o corpo se arrebentava
+	/// numa bancada de armadura 1 que ficava de pe. Com a amostra de ~10,7 px isso acontecia quase metade das vezes
+	/// num eixo e tres em quatro no outro, conforme a FASE de onde o voo comecou -- e a obra RASPADA DE LADO (a quina
+	/// na coluna dela, o ponto dos pes na vizinha) nao apanhava em fase nenhuma. Quem mede e a familia 12 da
+	/// `--kbteste`.
+	///
+	/// A CAIXA E DIVERGENCIA DECLARADA, a mesma do muro: o `get_step` do DM e UM turf, e aqui o corpo anda por pixel
+	/// e a caixa pode tocar duas colunas. Quem para o corpo e a caixa, entao quem apanha tem de ser o que a caixa
+	/// toca (`CelulasDaCaixa`) -- senao existe obra que barra sem nunca levar a pancada.
+	///
+	/// UMA PANCADA POR TRAVESSIA: so na amostra em que a caixa ENTRA na celula -- a que ela toca em
+	/// <paramref name="ate"/> e nao tocava em <paramref name="de"/>, a amostra anterior. E o `get_step` de novo: o
+	/// turf em que o corpo VAI entrar, olhado uma vez por passo. A sonda antiga batia a CADA amostra com o ponto dos
+	/// pes na celula (tres: 32 px de celula, ~10,7 px de amostra), e pelas quinas seriam quatro ou cinco. Numa obra
+	/// erguida por jogador (armadura = teto de BP de quem ergueu, `buildable.dm:414`) jogada por alguem do mesmo
+	/// nivel, e a diferenca entre ficar com 75% -- uma pancada, o DM -- e ir ao chao. A entrada nao pede estado
+	/// nenhum: o voo e reto, entao cada celula entra na caixa UMA vez por arremesso.
+	///
+	/// NA PRIMEIRA AMOSTRA DO VOO, o que "ja tocava" e SO a celula do ponto dos pes -- o turf do proprio corpo, o
+	/// `loc` do DM --, e nao a caixa inteira de partida. O `get_step` olha o turf da FRENTE ja no primeiro passo, e a
+	/// caixa desce 5 px abaixo dos pes e se abre 8 px pros lados: comparando com a caixa inteira, a obra da frente que
+	/// ela ja encostava no instante do golpe nunca "entrava" e passava ilesa debaixo de um corpo que a atravessou de
+	/// ponta a ponta (cena C da familia 12 da `--kbteste`). O que fica ATRAS nao apanha por isso: a amostra (~10,7 px)
+	/// e maior que as meias medidas da caixa, entao na primeira amostra a caixa ja saiu das celulas de tras.
+	///
+	/// "FRAGIL" AQUI E O QUE O `Estragar` E O `EstragarNave` NAO RECUSAM -- os funis do soco (`SocarCenario`), com
+	/// as recusas deles (a porta da Sala do Tempo, a armadura infinita do Enma, o pod sem casco). O `fragile` do DM
+	/// nao e extraido; a divida e a mesma do soco, e mora la.
+	///
+	/// E A NAVE PARADA APANHA: `obj/Spacepod` (`PlanetTech.dm:47`), `obj/Rocketship` (:244) e a Capital Ship
+	/// (`ShipVessel.dm:82`) sao `fragile = 1`, e o `takeDamage` do voo nao passa pelo crivo de dono do
+	/// `verb/Destroy` (`ShipVessel.dm:243-245`) -- por isso o `autor` vai nulo nos dois funis. O
+	/// `DerrubarOQueBarraOsPes` ja tratava a celula da nave como a da obra (nao e turf pra cair); faltava ela apanhar.
+	/// ======================================================================================================
 	/// </summary>
-	private void EstragarObrasNoCaminho(ServerPlayer pl, Vec2 ponto)
+	/// <param name="de">A amostra ANTERIOR do laco do voo (o `andado`); na primeira, onde o corpo estava.</param>
+	/// <param name="ate">A amostra de agora.</param>
+	/// <param name="comecoDoVoo">E a primeira amostra do arremesso: o que "ja tocava" e so a celula dos pes.</param>
+	private void EstragarObrasNoCaminho(ServerPlayer pl, Vec2 de, Vec2 ate, bool comecoDoVoo)
 	{
-		(int cx, int cy) = CelulaDoPonto(ponto);
-		if (ObraNaCelula(pl.Zone, cx, cy) is { } o) Estragar(o, pl.ForcaDoVoo, null);
+		(int x0, int y0, int x1, int y1) = CelulasDaCaixa(ate);
+		(int ax0, int ay0, int ax1, int ay1) = CelulasDaCaixa(de);
+		if (comecoDoVoo)
+		{
+			(int fx, int fy) = CelulaDoPonto(de);   // o turf do proprio corpo -- ver o cabecalho
+			(ax0, ay0, ax1, ay1) = (fx, fy, fx, fy);
+		}
+		for (int cy = y0; cy <= y1; cy++)
+			for (int cx = x0; cx <= x1; cx++)
+			{
+				if (cx >= ax0 && cx <= ax1 && cy >= ay0 && cy <= ay1) continue;   // ja tocava: nao e a entrada
+				if (ObraNaCelula(pl.Zone, cx, cy) is { } o) Estragar(o, pl.ForcaDoVoo, null);
+				if (NaveNaCelula(pl.Zone, cx, cy) is { } n) EstragarNave(n, pl.ForcaDoVoo, null);
+			}
 	}
 }

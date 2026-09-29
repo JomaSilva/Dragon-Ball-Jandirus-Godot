@@ -141,7 +141,7 @@ public partial class ClashQte : CanvasLayer
 		_veredito = SegundosDeVeredito;
 	}
 
-	private void Baque(Jandirus.Core.World.Vec2 _) => _baque = SegundosDeBaque;
+	private void Baque(Jandirus.Core.World.Vec2 _, float __) => _baque = SegundosDeBaque;
 
 	private void MontarFundo()
 	{

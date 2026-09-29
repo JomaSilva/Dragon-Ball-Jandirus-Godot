@@ -151,7 +151,7 @@ public partial class GameServer
 		// ============================ O DEGRAU E A REGRA, E ELE E MEDIDO UM A UM ============================
 		// A tabela acima diz o que os moldes de HOJE produzem; isto aqui diz POR QUE. Cada verb entra
 		// no seu degrau e nao um antes -- e a cadeia medida e a de producao inteira
-		// (`NiveisDeSkill.Por` -> `VerbosAtivos` -> `SabeTecnica` -> `ArsenalDeLonge`), a mesma que o
+		// (`NiveisDeSkill.Por` -> `DestravaOVerbo` -> `SabeTecnica` -> `ArsenalDeLonge`), a mesma que o
 		// `SorteioDeNpc` percorre quando crava o `nivelDasSkills`.
 		//
 		// A primeira versao disto pedia o degrau a um corpo de MOLDE, e reprovou tres vezes por um
@@ -245,6 +245,11 @@ public partial class GameServer
 		(ServerPlayer atirador, ServerPlayer alvo) = DuelistasDeBancada(tiles: 9);
 		AfirmarTi("o atirador nasceu com arsenal (senao o resto desta familia nao mede nada)",
 				  ArsenalDeLonge(atirador).TemAlguma);
+		// O RAMO DA CENA, TRAVADO: sem `Papel` o corpo cai no ramo da FERA e a bancada inteira mede a
+		// furia sem dizer (foi o 27/3 de 2026-09-25 -- ver `ArmarComoNpcDeMolde`).
+		AfirmarTi("(preparo) ele e um NPC do mundo e a presa sai do funil do NPC (`PresaDoNpc`), nao do da fera",
+				  EhNpcDoMundo(atirador) && PresaDoNpc(atirador) == alvo,
+				  $"NPC do mundo {EhNpcDoMundo(atirador)}, presa {PresaDoNpc(atirador)?.Name ?? "nenhuma"}");
 
 		double kiAntes = atirador.Ficha.Ki;
 		Projetil? tiro = AteAlguemAtirar(atirador, segundos: 12);
@@ -342,7 +347,11 @@ public partial class GameServer
 		AfirmarTi("sem Ki pra pagar a tecnica ele NAO atira", AteAlguemAtirar(seco, 6) == null);
 		LimparEmbatesDaBancada();
 
-		// (d) ALVO CAIDO: `EscolherTiro` recusa alvo no chao -- nao se gasta raio em quem ja caiu.
+		// (d) ALVO CAIDO: o cerebro recusa alvo no chao -- nao se gasta raio em quem ja caiu. Quem segura
+		// primeiro e o `Escolher` (`Plano.Nada`, o fim de luta de `NPCAI.dm:547-549`); o `EscolherTiro`
+		// repete a recusa por baixo. A presa IMPOSTA nao pula caido (e o Cell atras do androide), entao
+		// aqui o cerebro RECEBE o corpo no chao e e ele quem recusa -- com a presa da fera, que pula caido,
+		// esta linha passava sem pergunta nenhuma. MEDIDO: as duas recusas desligadas -> vermelha.
 		(ServerPlayer contraCaido, ServerPlayer caido) = DuelistasDeBancada(tiles: 9);
 		caido.Ficha.KO = true;
 		AfirmarTi("contra alvo CAIDO ele NAO atira", AteAlguemAtirar(contraCaido, 6) == null);
@@ -411,6 +420,11 @@ public partial class GameServer
 		GD.Print("[tiroia] -- 5) DOIS NPCs: A DISPUTA SEM TECLADO NENHUM");
 
 		(ServerPlayer a, ServerPlayer b) = DoisAtiradoresDeFrente(tiles: 12);
+		// Em jogo, dois NPCs so se cacam pelo canal do torneio/roteiro (`NPCAI.dm:439`); sem ele esta
+		// familia mediria duas FERAS, que a 12 tiles nao se veem (ver `ArmarComoNpcDeMolde`).
+		AfirmarTi("(preparo) cada um e a presa do outro pelo funil do NPC -- o `Engajar` do torneio",
+				  PresaDoNpc(a) == b && PresaDoNpc(b) == a,
+				  $"presa de {a.Name}: {PresaDoNpc(a)?.Name ?? "nenhuma"}, de {b.Name}: {PresaDoNpc(b)?.Name ?? "nenhuma"}");
 
 		DisputaDeKi? disputa = null;
 		for (int i = 0; i < 30 * 20 && disputa == null; i++)
@@ -570,10 +584,9 @@ public partial class GameServer
 	/// <summary>
 	/// UM ATIRADOR DIRIGIDO E UM ALVO, no corredor livre da Terra.
 	///
-	/// O atirador leva um cerebro de PRODUCAO (`Temperamento.Montar` a partir de um molde de
-	/// verdade) e os tres degraus de nivel -- que e como um NPC de molde ganha os verbs que voam.
-	/// O alvo nao tem cerebro: quem esta sendo medido e o atirador, e um alvo que revida trocaria
-	/// a medicao por uma briga.
+	/// O atirador vira um NPC de molde pelo <see cref="ArmarComoNpcDeMolde"/> (la esta o porque de
+	/// cada peca). O alvo nao tem cerebro: quem esta sendo medido e o atirador, e um alvo que revida
+	/// trocaria a medicao por uma briga.
 	/// </summary>
 	private (ServerPlayer, ServerPlayer) DuelistasDeBancada(int tiles)
 	{
@@ -586,18 +599,52 @@ public partial class GameServer
 		npc.Ficha.Ki = npc.Ficha.MaxKi;
 		alvo.Ficha.Ki = alvo.Ficha.MaxKi;
 
-		DarOsTresDegraus(npc);
-		npc.Cerebro = Temperamento.Montar(_moldes?.Get("rival_do_mundo") ?? new MoldeDeNpc(), 0);
+		ArmarComoNpcDeMolde(npc, presa: alvo, fase: 0);
 		return (npc, alvo);
 	}
 
-	/// <summary>Dois corpos dirigidos e armados, de frente um pro outro.</summary>
+	/// <summary>
+	/// Dois corpos dirigidos e armados, de frente um pro outro -- e cada um e a presa do outro, que e
+	/// o `Engajar` do torneio (`nA.tourney_engage(B)` e `nB.tourney_engage(A)`, `Tournament.dm:525-528`).
+	/// </summary>
 	private (ServerPlayer, ServerPlayer) DoisAtiradoresDeFrente(int tiles)
 	{
 		(ServerPlayer a, ServerPlayer b) = DuelistasDeBancada(tiles);
-		DarOsTresDegraus(b);
-		b.Cerebro = Temperamento.Montar(_moldes?.Get("rival_do_mundo") ?? new MoldeDeNpc(), 0.5);
+		ArmarComoNpcDeMolde(b, presa: a, fase: 0.5);
 		return (a, b);
+	}
+
+	/// <summary>
+	/// UM CORPO DA BANCADA VIRA UM NPC DE MOLDE: os tres degraus (os verbs que voam), o cerebro de
+	/// PRODUCAO (`Temperamento.Montar` do molde de luta), o <see cref="PapelDeNpc"/> e a presa IMPOSTA.
+	///
+	/// ============================ SEM O PAPEL, A BANCADA MEDIA A FURIA E NAO O NPC ============================
+	/// Quem escolhe o ramo do `TicarUmCorpo` e o PAPEL, e nao o cerebro: corpo com cerebro e sem
+	/// `Papel` e o CORPO POSSUIDO (o Oozaru sem controle, a furia lendaria), e a presa dele sai do
+	/// `PresaDaFera`. Ate 2026-09-23 esse funil era *o corpo em pe mais proximo da zona*, sem raio, e a
+	/// cena funcionava por acaso. Em 2026-09-24 a fera passou a cacar so o que VE, 1:1 com o DM
+	/// (`oview(LEGB_RANGE)`, `LEGB_RANGE 10`, `lssjbuff.dm:569`), e a bancada, que nunca tinha medido um
+	/// NPC de molde, ficou 27/3: a 26 tiles (3b) e a 12 tiles (5) ninguem ve ninguem, e na calibragem (6)
+	/// o empurrao do raio leva o alvo pra fora dos 10 tiles e a fera larga a presa. MEDIDO: devolver ao
+	/// `PresaDaFera` a caca sem raio de 09-23 poe a bancada em 34/0 -- a producao estava certa, a CENA
+	/// e que estava no ramo errado.
+	///
+	/// ============================ E A PRESA E IMPOSTA PORQUE O ALVO NAO E JOGADOR ============================
+	/// NPC de molde caca pelo `PresaDoNpc`, e o hostil so adota GENTE (`PresaDoHostil`, `EhJogador`): o
+	/// alvo daqui nao tem `Peer`. No DM e a mesma regra, e o comentario do autor lista as unicas saidas --
+	/// *"AI nao ataca AI -- EXCETO torneio e PRESA de evento (Cell vs androides)"* (`NPCAI.dm:439`). As
+	/// duas sao, no port, o MESMO campo: `Papel.PresaDoRoteiro`, que o torneio escreve no `Engajar`
+	/// (`GameServer.Torneio.cs`, o `tourney_engage` de `Tournament.dm:91-103`, que poe `target = foe` sem
+	/// raio nenhum) e a saga escreve pro Cell. E e por ele que um NPC de molde atira em outro corpo sem
+	/// dono em jogo -- o caminho que esta bancada existe pra medir.
+	/// ======================================================================================================
+	/// </summary>
+	private void ArmarComoNpcDeMolde(ServerPlayer corpo, ServerPlayer presa, double fase)
+	{
+		MoldeDeNpc molde = _moldes?.Get("rival_do_mundo") ?? new MoldeDeNpc();
+		DarOsTresDegraus(corpo);
+		corpo.Cerebro = Temperamento.Montar(molde, fase);
+		corpo.Papel = new PapelDeNpc(molde, (ulong)corpo.Id) { PresaDoRoteiro = presa.Id };
 	}
 
 	/// <summary>

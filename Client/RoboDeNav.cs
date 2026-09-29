@@ -23,7 +23,7 @@ namespace Jandirus.Client;
 ///     testar-nav.bat janela     com janela, no SEGUNDO monitor
 ///
 /// O `.bat` desvia o `APPDATA` antes de subir o Godot. Isso nao e conforto: esta bancada cria
-/// personagem, poe e tira item, decola, morre no vacuo e GRAVA no disco -- a linha crua
+/// personagem, poe e tira item, decola (de roupa espacial) e GRAVA no disco -- a linha crua
 /// (`Godot --headless --path . --host --diagnav --conta piloto --nome Piloto`) faz tudo isso dentro
 /// da pasta de saves de quem estiver na maquina, e neste projeto isso ja custou o mundo real do dono.
 /// </summary>
@@ -50,6 +50,43 @@ public partial class RoboDeNav : Node
 	private float _escalaAntes;
 	private Vector2 _centroAntes;
 	private MapaEstelar? _mapaAntes;
+
+	/// <summary>A roupa espacial entrou na mochila antes de decolar? Ver o passo 7.</summary>
+	private bool _traje;
+
+	/// <summary>A vigia da carta esta armada? Ela arma no passo 9 -- ver <see cref="VigiarACarta"/>.</summary>
+	private bool _vigiando;
+
+	/// <summary>
+	/// A CARTA QUE A BANCADA SEGURA E A QUE O MENU MOSTRA? Conferido antes de cada passo, do passo 9 ao fim.
+	///
+	/// ============================ POR QUE A BANCADA SEGURA O NO, E O QUE ISSO CUSTOU ============================
+	/// Os passos medem ESTADO do widget de um passo pro outro (o zoom que o passo 6 deixou, a estrela da
+	/// borda que o roteiro achou), entao seguram a carta num campo -- reler `menu.MapaDeTeste` a cada linha
+	/// esconderia justamente uma remontagem, que e o defeito que o passo 7 existe pra pegar.
+	///
+	/// So que a aba se remonta SOZINHA quando a zona muda, e tem que se remontar: a zona esta na assinatura
+	/// dela porque o `noEspaco` fica capturado no botao Viajar e no titulo da carta. A decolagem e a troca
+	/// que a bancada PLANEJA (o passo 9 rele o mapa). A que ela nao planejava era a MORTE: o piloto humano
+	/// sufocava no vacuo ~20 s depois de decolar, ia pro Outro Mundo, e dali em diante o campo apontava pra
+	/// uma carta liberada. O que so le C# (a escala, o centro) continuava respondendo; o primeiro
+	/// `GetGlobalRect`/`GetParent`/`QueueRedraw` estourava `ObjectDisposedException`, e o passo das fotos
+	/// -- que so marca `_enquadrado` DEPOIS da chamada -- repetia a excecao ate o timeout, sem placar.
+	///
+	/// A ROUPA ESPACIAL (passo 7) tira a morte do caminho. Esta vigia e o que faz a PROXIMA remontagem nao
+	/// planejada, seja qual for a causa, virar uma FALHA COM NOME -- o passo e a zona em que a carta mudou
+	/// -- em vez de um laco de excecao: a bancada adota a carta viva e segue ate o placar.
+	/// =========================================================================================================
+	/// </summary>
+	private void VigiarACarta(MenuJogo menu, GameClient cli)
+	{
+		if (!_vigiando || ReferenceEquals(_mapa, menu.MapaDeTeste)) return;
+
+		Conferir(false, $"a carta foi REMONTADA fora da decolagem (antes do passo {_passo}, zona agora "
+					  + $"{cli.Zone.Name}) -- dali em diante a bancada mede uma carta nova, de zoom e selecao zerados");
+		_mapa = menu.MapaDeTeste;
+		if (_tela != null) _tela = menu.SistemaDeTeste;
+	}
 
 	private static GameClient? C => GameClient.Instance;
 
@@ -1138,6 +1175,8 @@ public partial class RoboDeNav : Node
 		if (_t < 0.5) return;
 		_t = 0;
 
+		VigiarACarta(menu, cli);
+
 		switch (_passo++)
 		{
 			case 0:
@@ -1302,20 +1341,40 @@ public partial class RoboDeNav : Node
 				Conferir(_mapa!.EscalaDeTeste == _escalaAntes && _mapa.CentroDeTeste == _centroAntes,
 					"o zoom e o arrasto sobrevivem aos pacotes de ficha");
 
+				// ============================ A ROUPA ESPACIAL SOBE JUNTO ============================
+				// O piloto e humano (o `--raca` padrao) e humano sufoca em `Vacuo.SegundosDeFolego`. Daqui
+				// ao placar a bancada fica bem mais que isso no espaco, e a saida (`MedirASaida`) CONFERE que
+				// ainda esta nele. Sem a roupa ele morria no meio do roteiro, ia pro Outro Mundo e a aba Nav
+				// era remontada debaixo da bancada -- ver `VigiarACarta`. E o abrigo de producao (a mochila
+				// que o `SufocaAgora` do servidor pergunta), e nao um folego escrito a mao.
+				// ==================================================================================
+				_traje = Jandirus.Server.GameServer.Instance?.TrajeNaMochilaDeTeste(cli.LocalId) ?? false;
+
 				// Sobe pro espaco pra provar o outro lado.
 				C?.SendHabilidade("decolar");   // decolar e HABILIDADE, nao verb (GameServer.Raciais.cs:157)
 				break;
 
 			case 8:
 				Conferir(Espaco.EhEspaco(cli.Zone), "decolei: estou no espaco");
+				Conferir(_traje && cli.Mochila.Quantos(Jandirus.Core.Items.CatalogoDeItens.Traje) > 0,
+					$"subi com Roupa Espacial na mochila (humano sufoca em {Vacuo.SegundosDeFolego:0} s, "
+				  + "e a bancada fica bem mais que isso no espaco)");
 				break;
 
 			case 9:
 			{
 				if (_mapa == null) break;
 				// O mapa foi remontado junto com a aba (a zona mudou, e a assinatura leva a zona).
+				//
+				// E ESTA TROCA E O CONTRA-EXEMPLO DA VIGIA (`VigiarACarta`), que arma logo abaixo: a mesma
+				// comparacao que dali em diante acusa remontagem tem que ENXERGAR esta, que e a certa. Uma
+				// vigia que nunca visse troca nenhuma ficaria verde segurando a carta velha -- que e
+				// exatamente o estado em que a bancada estava quando o piloto morria no vacuo.
 				menu.IrPara("Nav");
+				Conferir(!ReferenceEquals(_mapa, menu.MapaDeTeste),
+					"decolar REMONTA a carta (a zona esta na assinatura da aba) -- e a vigia enxerga a troca de no");
 				_mapa = menu.MapaDeTeste;
+				_vigiando = true;
 				if (_mapa == null) { Conferir(false, "o mapa sumiu depois de decolar"); break; }
 				_mapa.VerMim();
 				List<PlanetaNoEspaco> lista = _mapa.PlanetasDeTeste();

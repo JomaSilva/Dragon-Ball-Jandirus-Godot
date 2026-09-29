@@ -655,6 +655,9 @@ public partial class GameServer
 		pl.AtaqueAte = NowMs() + (long)(SpiritFistRecargaSG2 * 1000);
 		ca.Guardar(false);
 
+		// A BUSCA DO SOCO, que pula quem esta `Intocavel`, e aqui ela e a letra do DM e nao divergencia: o
+		// `MeleeAttack` desemboca no `doAttack`, que so bate se `M.attackable` (`attack cmn.dm:98`). E golpe;
+		// os gestos (ensinar, convidar) e que usam o `QuemEstaNaFrente`.
 		ServerPlayer? alvo = AlvoNaFrente(pl);
 		if (alvo == null)
 		{

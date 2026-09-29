@@ -74,7 +74,8 @@ public partial class GameServer
 	/// UM dos tres conforme a casa escolhida (`niveis.json`, `verbosporcasa`; `Bodybuilding.dm:180-185`).
 	/// Ate 2026-09-02 o extrator punha o `switch(TrinityType)` em quarentena e esta bancada os provava
 	/// com um degrau SINTETICO; hoje ela anda o caminho de producao -- `Livro.Dar` + `Livro.Escolher` +
-	/// nivel 2 -- e e o MESMO `SabeTecnica` -> `VerbosAtivos(casa)` que o jogo usa. As casas, na ordem do
+	/// nivel 2 -- e e o MESMO `SabeTecnica` -> `NiveisDeSkill.DestravaOVerbo` (a varredura do `VerbosAtivos`, com a
+	/// casa do livro) que o jogo usa. As casas, na ordem do
 	/// `skills.json`: 1 = Van-sama (Taunt), 2 = Ricardo (Slap), 3 = Aniki (Counter_Taunt).
 	/// </summary>
 	private const string PathDaTrindadeG10 = "/datum/skill/Bodybuilding/TheHolyTrinity";
@@ -396,8 +397,11 @@ public partial class GameServer
 				   Perto(d.ForcaDoVoo, Agarrao.ForcaDoArremesso(a.Ficha), 0.5) && d.TiquesIniciaisDoVoo == 1,
 				   $"forca {d.ForcaDoVoo:0} tiques {d.TiquesIniciaisDoVoo}");
 		AfirmarG10($"...e custou Ephysoff*BaseDrain*15 = {custo:0.##}", Perto(ki - a.Ficha.Ki, custo, 0.05));
-		AfirmarG10($"...e o `damage_mob(dmg*BPModulus/4)` do DM RODA: +{extra:0.##} direto num membro, com a ofensiva+tecnica do ALVO no divisor (o DM morria em `grabbee.Ephysoff`, Beserker Skills.dm:27 -- consertado por decisao do dono)",
-				   extra > 0 && VidaTotalG10(d) <= vida - extra + 0.01 && falas.Exists(s => s.Contains($"+{extra:0.##} direto")),
+		// A FALA NAO CONTA MAIS O NUMERO (dono, 2026-09-25: *"a informacao de dano que voce da ou recebe nao precisa
+		// aparecer no chat"*). A prova do dano e a VIDA, e continua aqui; da fala sobra o gesto, sem o "+0,5".
+		AfirmarG10($"...e o `damage_mob(dmg*BPModulus/4)` do DM RODA: +{extra:0.##} direto num membro, com a ofensiva+tecnica do ALVO no divisor (o DM morria em `grabbee.Ephysoff`, Beserker Skills.dm:27 -- consertado por decisao do dono) -- e a fala conta o gesto SEM o numero",
+				   extra > 0 && VidaTotalG10(d) <= vida - extra + 0.01
+				   && falas.Exists(s => s.Contains("voa pra frente")) && !falas.Exists(s => s.Contains('+')),
 				   $"extra {extra:0.###} (Ephysoff {a.Ficha.Ephysoff:0.##}, Etechnique {a.Ficha.Etechnique:0.##}) | vida {vida:0.#}->{VidaTotalG10(d):0.#} | {Ultimos(falas)}");
 		LimparTudoDaBancada();
 

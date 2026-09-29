@@ -394,7 +394,14 @@ public sealed class EstadoDeForma
 		// 1. A LINHA E DESTE PERSONAGEM? Um Saiyajin comum nao tem o ladder do Legendary Primal, e
 		//    quem nao despertou o ki divino nao tem as divinas. A forma CONCEDIDA pula esta
 		//    pergunta: quem concedeu ja respondeu por ela.
-		if (!d.SoPorConcessao && !Catalogo.LinhasAbertas(perfil).Contains(d.Linha))
+		//
+		//    POR UMA LINHA SO, E SEM MONTAR O CONJUNTO. Era `Catalogo.LinhasAbertas(perfil).Contains(...)`: um
+		//    `HashSet` novo (168 B) por chamada -- e o `Proxima` chama esta funcao pra CADA entrada do catalogo,
+		//    entao a leitura de capacidades da IA (1 Hz por corpo) montava 43 conjuntos iguais pra responder
+		//    sim ou nao 43 vezes: 7.224 B por leitura, 4.816 B por tique com 20 corpos (secao 12 da
+		//    `--iateste`). A regra continua escrita UMA vez (`Catalogo.AbrirLinhas`); aqui ela so e anotada
+		//    num `ulong` na pilha em vez de num conjunto.
+		if (!d.SoPorConcessao && !Catalogo.LinhaAberta(perfil, d.Linha))
 			return RecusaForma.LinhaFechada;
 
 		// 2. LINHAGEM E CLASSE.
@@ -415,7 +422,14 @@ public sealed class EstadoDeForma
 		// A CLASSE QUE TEM A VARIANTE PERDE A ORIGINAL. "Rose NO LUGAR do Blue"
 		// (`statsaiyan.dm:157`), e o Prodigial "NAO tem SSG/Blue" (`godki.dm:349`). Sem esta
 		// checagem a classe teria as duas -- e escolher entre 32x e 32x nao e escolha, e ruido.
-		if (d.ProibidoParaClasse.Any(c => string.Equals(perfil.Classe, c, StringComparison.OrdinalIgnoreCase)))
+		//
+		// PELO `Bate`, E NAO POR UM LAMBDA -- e o lambda custava bem mais do que a linha sugeria. Ele capturava o
+		// PARAMETRO `perfil`, e o C# cria o objeto da captura NA ENTRADA do metodo, e nao nesta linha: TODA
+		// chamada do `Avaliar` pagava 88 B (uma copia do `PerfilDeFormas` no heap), inclusive as que saem na
+		// primeira linha -- 46 por `Proxima`, 4.048 B por leitura de capacidades da IA --, e quem chegava ate
+		// aqui pagava ainda o delegate (64 B). `string.Equals(a, b, OrdinalIgnoreCase)` e simetrico: trocar os
+		// lados dos argumentos nao muda resposta nenhuma.
+		if (Bate(d.ProibidoParaClasse, perfil.Classe))
 			return RecusaForma.SemClasse;
 
 		// ============================ 2b. A FORMA QUE SE COMPRA -- ver FormaDef.PedeFlag ============================
@@ -551,8 +565,17 @@ public sealed class EstadoDeForma
 		return RecusaForma.Pode;
 	}
 
-	private static bool Bate(string[] lista, string valor) =>
-		lista.Any(x => string.Equals(x, valor, StringComparison.OrdinalIgnoreCase));
+	/// <summary>
+	/// `valor` esta na lista, sem caixa? LACO CRU de proposito: o `Any` com lambda capturava `valor` e pagava o
+	/// objeto da captura, o delegate e o enumerador do array (120 B por pergunta) -- e quem pergunta e o
+	/// `Avaliar`, que o `Proxima` chama pra cada forma do catalogo.
+	/// </summary>
+	private static bool Bate(string[] lista, string valor)
+	{
+		foreach (string x in lista)
+			if (string.Equals(x, valor, StringComparison.OrdinalIgnoreCase)) return true;
+		return false;
+	}
 
 	/// <summary>
 	/// O degrau exigido ja foi alcancado?

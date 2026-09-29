@@ -84,7 +84,7 @@ public partial class RoboDeEmbate : Node
 		cli.ClashComecou += Comecou;
 		cli.ClashTeclaPedida += Pediu;
 		cli.ClashPlacar += Placar;
-		cli.ClashBaque += onde => { _baques++; _ondeCruzou.Add(new Vector2(onde.X, onde.Y)); };
+		cli.ClashBaque += (onde, _) => { _baques++; _ondeCruzou.Add(new Vector2(onde.X, onde.Y)); };
 
 		// O ESTRAGO NO CHAO, celula por celula. E a unica leitura de "o cenario caiu MESMO" que o
 		// cliente tem, e ela vem por um pacote proprio (`S2C.Cenario`), nao pelo baque.

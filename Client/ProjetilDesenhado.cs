@@ -248,6 +248,28 @@ public partial class ProjetilDesenhado : Node2D
 	public void MostrarPara(bool veInvisivel) => Visible = !Invisivel || veInvisivel;
 
 	/// <summary>
+	/// NINGUEM ALIMENTA ESTE RAIO (ver `ProjetilState.Solto`): a ponta de tras e o `end`, e nao a `origin`.
+	/// </summary>
+	public bool Solto
+	{
+		get => _solto;
+		set { if (_solto == value) return; _solto = value; _folhaEmCache = null; }
+	}
+	private bool _solto;
+
+	/// <summary>
+	/// O CORPO QUE ESTE RAIO ESTA LEVANDO (0 = ninguem) -- ver `ProjetilState.Arrasta`. Enquanto houver, a
+	/// cabeca desenhada e PRESA na frente do corpo desenhado dele, a cada quadro (o `_Process`).
+	/// </summary>
+	public int ArrastaId;
+
+	/// <summary>
+	/// ONDE O NO DE UM CORPO ESTA DESENHADO, por id -- quem responde e o `World`. Nulo = sem mundo (a previa
+	/// da mesa), e a ancora nao roda.
+	/// </summary>
+	public static Func<int, Vector2?>? OndeEstaOCorpo;
+
+	/// <summary>
 	/// SEM LUZ -- a previa da mesa de tecnicas. Um tiro desenhado dentro de um painel de interface nao
 	/// ilumina cenario nenhum, e pendurar uma `PointLight2D` ali gastaria uma vaga do teto de luzes de ki
 	/// (`Settings.LuzesDeKi`) pra clarear um retangulo cinza. Falso em jogo, sempre.
@@ -395,6 +417,16 @@ public partial class ProjetilDesenhado : Node2D
 		// A POSICAO DO NODE E A CABECA, e o desenho e em coordenadas locais: assim o Y-sort do
 		// `Atores` ordena o tiro pelo ponto que de fato importa (onde ele vai acertar), e nao pelo
 		// meio de um rastro que pode ter trinta tiles.
+		// ============================ A CABECA QUE LEVA ALGUEM FICA NA FRENTE DELE, NO DESENHO (2026-09-23) ============================
+		// O servidor ja a mantem a um contato do corpo (`ArrastarComOFeixe`). Mas o corpo remoto e desenhado na
+		// linha do tempo dele (~100 ms no passado, ate 250 com a rede ruim) e este tiro com um `Lerp` de ~45 ms:
+		// num arrasto a 320 px/s a cabeca desenhada corria 15 a 65 px a frente -- DENTRO de quem ela leva, que e a
+		// queixa de sempre ("a cabeca fica sobre a pessoa"). Com a ancora, a cabeca e posta na frente do corpo
+		// DESENHADO, no mesmo quadro, pela mesma conta do servidor (a frente da folha x escala + meia largura).
+		// ====================================================================================================================
+		if (ArrastaId != 0 && Tipo == TipoDeProjetil.Beam && OndeEstaOCorpo?.Invoke(ArrastaId) is { } corpo)
+			_cabeca = corpo - _rumo * (Feixe.AlcanceDaCabeca(Arte, Escala) + Feixe.MeioCorpo);
+
 		Position = _cabeca;
 		_luzDoTronco?.Esticar(_cabeca, _cauda, SubidaNaTela);
 		QueueRedraw();
@@ -875,7 +907,11 @@ public partial class ProjetilDesenhado : Node2D
 
 		_animCabeca = Achar(f, "head", dir);
 		_animCorpo = Achar(f, "tail", dir);
-		_animMao = Achar(f, "origin", dir) ?? Achar(f, "end", dir);
+		// O SOLTO FECHA COM O `end` (ver `Solto`); o alimentado com a `origin`, a mao. Cada um cai no outro
+		// quando a folha nao tem o seu.
+		_animMao = _solto
+			? Achar(f, "end", dir) ?? Achar(f, "origin", dir)
+			: Achar(f, "origin", dir) ?? Achar(f, "end", dir);
 		_dirEmCache = dir;
 		_folhaEmCache = f;
 	}

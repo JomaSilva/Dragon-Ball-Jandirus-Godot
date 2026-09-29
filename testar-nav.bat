@@ -46,7 +46,7 @@ REM  A PASTA DE SAVES DO DONO NAO E TOCADA -- E E ESTA LINHA QUE GARANTE ISSO.
 REM
 REM  O servidor grava as contas e o `mundo.json` dentro do `user://`, que no
 REM  Windows e %APPDATA%\Godot\app_userdata\<projeto>. Esta bancada CRIA
-REM  personagem, poe e tira item, decola, morre no vacuo e grava no disco --
+REM  personagem, poe e tira item, decola (de roupa espacial) e grava no disco --
 REM  rodar isso na pasta real do dono e estrago, e ja aconteceu neste projeto.
 REM
 REM  Entao APPDATA e desviada pra uma pasta de rascunho ANTES de o Godot subir.

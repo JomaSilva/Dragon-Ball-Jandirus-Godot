@@ -48,8 +48,14 @@ public sealed partial class GameServer
 	/// EMPURRAO tem que haver quem empurre.
 	/// </summary>
 	/// <returns>os dois ids, ou (0,0) se nao houver chao livre pra a cena caber.</returns>
+	/// <param name="verbo">
+	/// O verb dos DOIS raios -- e ele que escolhe a folha (`ArteDeProjetil.De`). A cena 3 usa o
+	/// `Final_Flash`: a `Beam - Big Fire.dmi`, a folha de 64 px (2026-09-23).
+	/// </param>
+	/// <param name="escala">A escala dos dois raios (o `wavemult`): o Final Flash e 4.</param>
 	internal (int A, int B) EmbateDeFoto_Montar(int idDono, int tiles, double bpDeA, double bpDeB,
-											   bool tecladoEmA, int tilesAbaixo)
+											   bool tecladoEmA, int tilesAbaixo, string verbo = "Ki_Wave",
+											   double escala = 1)
 	{
 		if (!_players.TryGetValue(idDono, out ServerPlayer? dono)) return (0, 0);
 
@@ -79,8 +85,10 @@ public sealed partial class GameServer
 		if (tecladoEmA) _comTecladoDeTeste.Add(a);
 
 		// A MESMA RECEITA DA BANCADA SEM JANELA (`RaioDeTeste`), pra as duas medirem o mesmo tiro.
-		Canalizar(pa, "Ki_Wave", 10 * pa.Ficha.BaseDrain(), RaioDeTeste());
-		Canalizar(pb, "Ki_Wave", 10 * pb.Ficha.BaseDrain(), RaioDeTeste());
+		ReceitaDeProjetil ra = RaioDeTeste(), rb = RaioDeTeste();
+		ra.EscalaVisual = rb.EscalaVisual = escala;
+		Canalizar(pa, verbo, 10 * pa.Ficha.BaseDrain(), ra);
+		Canalizar(pb, verbo, 10 * pb.Ficha.BaseDrain(), rb);
 
 		_fotoEkA = a;
 		_fotoEkB = b;

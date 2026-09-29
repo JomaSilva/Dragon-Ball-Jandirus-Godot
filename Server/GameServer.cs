@@ -1217,9 +1217,6 @@ public sealed class ServerPlayer
 	/// <summary>Quando o proximo dash de aproximacao libera (relogio real, ms).</summary>
 	public long DashLivreEm;
 
-	/// <summary>Quando a proxima piscada do Zanzoken libera (relogio real, ms).</summary>
-	public long ZanzoLivreEm;
-
 	/// <summary>
 	/// Ate quando uma correcao de movimento e ESPERADA (acabei de dar dash neste jogador).
 	///
@@ -2193,11 +2190,11 @@ public partial class GameServer : Node
 		if (_menteVivaLigada) GD.Print("[server] BANCADA: o corpo largado sera medido quando o 2o cliente entrar");
 
 		// `--embarqueteste`: a METADE DE SERVIDOR da bancada da tecla E nas naves. Ela nao pontua --
-		// da tecnologia e zeni ao 1o que entrar e abre tres verbos de fixture (alienar, devolver,
-		// estragar) que o robo `--diagembarque` usa pra chegar em recusas que nenhum verbo de
-		// jogador alcanca. Ver GameServer.EmbarqueTeste.cs.
+		// da tecnologia e zeni ao 1o que entrar e abre quatro verbos de fixture (o palco, e alienar,
+		// devolver e estragar) que o robo `--diagembarque` usa pra comecar em chao livre e pra chegar
+		// em recusas que nenhum verbo de jogador alcanca. Ver GameServer.EmbarqueTeste.cs.
 		_embarqueDeTeste = Array.IndexOf(args, "--embarqueteste") >= 0;
-		if (_embarqueDeTeste) GD.Print("[server] BANCADA: fixtures do embarque ligadas (tech, zeni e 3 verbos)");
+		if (_embarqueDeTeste) GD.Print("[server] BANCADA: fixtures do embarque ligadas (tech, zeni e 4 verbos)");
 
 		// ============================ AS DUAS BANCADAS DE VOZ COM CLIENTES DE VERDADE ============================
 		// MAIS NOVAS QUE A COPIA DE 23:07, entao o gancho delas foi deduzido do proprio codigo: o
@@ -5761,8 +5758,29 @@ public partial class GameServer : Node
 		// planeta. Os pacotes que o cliente tinha em voo falam da zona ANTIGA, e sem este carimbo
 		// o servidor tentaria "corrigir" a posicao nova em direcao a uma coordenada de outro
 		// mundo. O orcamento tambem zera: credito acumulado andando la nao vale aqui.
+		//
+		// ============================ E O CARIMBO E O DE TODO TELEPORTE, INTEIRO ============================
+		// Aqui so havia a SEQUENCIA, e ela so cobre o que JA CHEGOU. O cliente nunca recomeca a numeracao
+		// (`GameClient.SendState`) e continua mandando a posicao da zona velha depois de LER o `ZoneChanged`:
+		// o `TelaDeCarregamento.Cobrir` segura o `Teleportar` por dois quadros pra tela aparecer. Esse pacote
+		// chega com numero MAIOR que o carimbo e era validado contra a posicao nova -- contado como trapaca, e
+		// arrastando o corpo pela folga do tique rumo a coordenada da zona velha. Os outros saltos do servidor
+		// ja abriam a janela (`CravarPosicao`, a volta do mundo, o pouso do voo); este, o maior, nao.
+		//
+		// O `LastInputMs` fecha o que o `OrcamentoPx = 0` deixava aberto: sem ele o dt do primeiro pacote
+		// contava desde o ultimo pacote da zona velha e enchia o credito de volta ate o teto no mesmo instante
+		// -- o tempo passado LA pagando o passo AQUI.
+		//
+		// A suspeita nasceu de um `1 correcoes de movimento (dt=422s)` logo depois de um Lendario pousar no
+		// exilio (`--torneioteste`, 2026-09-24); aquele aviso sozinho nao prova a causa. Quem mede a regra e a
+		// familia 5 da `--arranqueteste`, pelo `AplicarInput` de producao e com o carimbo de antes como
+		// contra-exemplo.
+		// ====================================================================================================
+		long agora = NowMs();
 		pl.SeqDoTeleporte = pl.SeqInput;
 		pl.OrcamentoPx = 0;
+		pl.CorrecaoEsperadaAte = agora + 500;
+		pl.LastInputMs = agora;
 
 		// O VOO NAO ATRAVESSA A PORTA. A altura e do lugar de onde se saiu: chegar num mapa novo
 		// pairando a 20 tiles deixaria o corpo com a colisao desligada num terreno que ele nunca

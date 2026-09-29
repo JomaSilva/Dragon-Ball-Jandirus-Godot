@@ -416,7 +416,7 @@ public sealed partial class GameServer
 			// Ela deixa os dois no chao no fim, que e como a 6 os encontra.
 			OCorpoOcupadoNaoEEmpurrado(_alfa, _beta, d, origem);
 			OBaqueDoiNosDois(_alfa, _beta, d, origem);
-			OCadaverEntreDoisCorpos(pl, _alfa, d);
+			OCadaverEntreDoisCorpos(pl, _alfa, d, origem);
 			OCadaverEAFotoDoMorto(pl, _alfa, _beta, d);
 
 			AfirmarDc("a bancada chegou ao fim (sem esta linha, abortar no meio reportaria '0 falhas')",
@@ -1786,7 +1786,11 @@ public sealed partial class GameServer
 	/// `loc = locate(...)` no 11) --, e esta familia e a prova de que continuam nao brigando.
 	/// ==========================================================================================================
 	/// </summary>
-	private void OCadaverEntreDoisCorpos(ServerPlayer pl, ServerPlayer a, Vec2 d)
+	/// <param name="origem">
+	/// A origem do PALCO (<see cref="AcharPalco"/>): 21 tiles caminhaveis no rumo <paramref name="d"/>, o unico
+	/// chao desta bancada que foi MEDIDO. E pra la que o corpo e levado no colo -- ver "LEVADO PRA OUTRO LUGAR".
+	/// </param>
+	private void OCadaverEntreDoisCorpos(ServerPlayer pl, ServerPlayer a, Vec2 d, Vec2 origem)
 	{
 		GD.Print("[dois] -- 7/8) o cadaver, e a viagem que NAO regrediu --");
 
@@ -1919,8 +1923,82 @@ public sealed partial class GameServer
 				+ "da ALTURA)",
 				  EstadoDe(c, NowMs()).Voando);
 
-		// ---- LEVADO PRA OUTRO LUGAR E ARREMESSADO ----
-		Vec2 antesDoVoo = c.Pos;
+		// ============================ LEVADO PRA OUTRO LUGAR -- PELO COLO, E NAO PELO ARREMESSO ============================
+		// *"vc pode AGARRAR o corpo e levar pra outro lugar"*. Esta linha media o ARREMESSO e o chamava de
+		// "levar", e reprovou em 2026-09-23 com o corpo a 29 px de onde caiu. Eram tres coisas somadas:
+		//   1. O COLO NUNCA SAIA DO LUGAR. `LevantarVoo` so SOBE, e o `LevarNoColo` crava o corpo na posicao de
+		//      quem carrega -- 24 px ATRAS do ponto da queda (`Encostar`). O unico "levar" era o arremesso, e ele
+		//      tinha de vencer esses 24 px antes de comecar a contar.
+		//   2. O CORPO CAI ONDE O HOST ESTA, e o host nasce no `/obj/SpawnPoint` do BYOND desde o 0b0c8b2
+		//      (2026-09-18): na Terra a celula (73,260), DENTRO de uma casa, com a porta (73,262) logo ao sul. O
+		//      rumo `d` e o do PALCO, escolhido pra outro ponto do mapa, e o arremesso ia direto na porta.
+		//   3. E A PORTA "RESISTIA" a forca 20 -- defeito de producao, consertado no `DerrubarOQueBarraOsPes`
+		//      (`GameServer.Empurrao.cs`) e medido na familia 11 da `--kbteste`.
+		// Agora quem leva e o colo: quem carrega VOA pelo `AplicarComando` (o mesmo atuador do cerebro e do
+		// passeio da familia 5) e o corpo vem junto pelo `LevarNoColo`. No ar nao ha mapa
+		// (`AtravessandoCenario`), entao a viagem nao depende de parede nenhuma -- e ela termina DENTRO do palco,
+		// o unico chao desta bancada que foi medido. O arremesso de baixo sai de um lugar garantido, e nao da
+		// geografia de onde a conta nasceu.
+		//
+		// A CHEGADA E EM DUAS PERNAS de proposito: a `origem` do palco e depois `destino`, no rumo `d`. O passo do
+		// voo nao pousa no pixel (para a ate meio tile do alvo), e chegando PELO rumo do palco o erro fica ao longo
+		// da reta -- de lado sobra ~1 px, e a caixa dos pes continua na faixa que o `AcharPalco` mediu. `destino`
+		// fica a SEIS tiles da origem: Beta esta parado a tres (a familia 6 o deixa la), e o arremesso de 12 tiles
+		// que vem depois termina a 18, dentro dos 21 do palco.
+		// ===============================================================================================================
+		const float T = ZoneCollision.TileSize;
+		Vec2 destino = origem + d * (6 * T);
+
+		void VoarAte(Vec2 alvo)
+		{
+			for (int i = 0; i < 900 && (alvo - a.Pos).Length > T / 2; i++)
+				TiqueDoMundo(() => AplicarComando(a, new Comando { Rumo = alvo - a.Pos }, Protocol.TickSeconds));
+		}
+
+		// ============================ O DEFEITO INJETADO #7b ============================
+		// O criterio e "o corpo vem JUNTO no colo": volta pra cima de onde caiu e dali voa ate o palco, e no fim os
+		// dois estao no mesmo ponto com o aperto de pe. O defeito e o HISTORICO deste agarrao, remontado pelo dado:
+		// **o corpo preso vivendo numa lista que o tique nao le**. Era o `_players.TryGetValue` contra o cadaver
+		// (ele so vive na `ZoneList`): o aperto se desfazia no tique seguinte, calado, e quem carrega saia voando
+		// de maos vazias. Tirar o corpo da `ZoneList` reproduz a mesma cegueira -- e o `consertar` repoe o corpo,
+		// o aperto e o voo INTEIROS (a licao da familia 3: consertar menos do que o defeito estragou faz a
+		// terceira passada medir destroco).
+		//
+		// O DESLOCAMENTO PEDIDO E MEIO TILE, e nao um: o `AcharPalco` so garante dois tiles entre o host e a reta
+		// do palco, e cada ponta da viagem para a ate meio tile do alvo -- no pior caso sobra um tile exato. Meio
+		// tile ja separa "veio junto" de "ficou" (zero).
+		// ==============================================================================
+		a.Ficha.Ki = a.Ficha.MaxKi;   // e a VIAGEM que se mede, e nao o tanque: voar cobra Ki a cada tique
+		Mutacao(AfirmarDc,
+				"LEVADO PRA OUTRO LUGAR NO COLO: quem carrega voa ate o palco e o corpo vem JUNTO (mesmo ponto, "
+			  + "aperto de pe) -- *'vc pode AGARRAR o corpo e levar pra outro lugar'*",
+				"o corpo fora da `ZoneList` -- o aperto resolvido numa lista que nao o tem, e desfeito calado",
+				() =>
+				{
+					VoarAte(ondeCaiu);
+					Vec2 partida = c.Pos;
+					VoarAte(origem);
+					VoarAte(destino);
+					return a.AgarrandoId == c.Id && c.AgarradoPorId == a.Id
+						&& (c.Pos - a.Pos).LengthSquared < 0.01f
+						&& (c.Pos - partida).Length > T / 2;
+				},
+				() => zonaDoCorpo.Remove(c),
+				() =>
+				{
+					if (!zonaDoCorpo.Contains(c)) zonaDoCorpo.Add(c);
+					if (a.AgarrandoId != 0) Soltar(a, MotivoDaSoltura.Tecla);
+					LimparPreso(c);
+					Encostar(a, c, d);
+					AlternarAgarrao(a);
+					AlternarAgarrao(a);
+					LevantarVoo(a);
+				});
+		AfirmarDc($"...e o corpo ficou LONGE de onde caiu ({(c.Pos - ondeCaiu).Length / T:0.0} tiles), em cima do "
+				+ "palco -- a viagem foi do COLO, antes de qualquer arremesso",
+				  (c.Pos - ondeCaiu).Length > T && (c.Pos - destino).Length <= T / 2);
+
+		// ---- LARGADO EM CIMA DO PALCO, E ARREMESSADO ----
 		Soltar(a, MotivoDaSoltura.Tecla);
 		if (a.Voando) AlternarVoo(a);
 		a.Altitude = 0;
@@ -1934,9 +2012,6 @@ public sealed partial class GameServer
 				  (c.Pos - antesDoArremesso).Length > ZoneCollision.TileSize,
 				  $"andou {(c.Pos - antesDoArremesso).Length:0.0} px");
 		Tiques(40);
-		AfirmarDc($"...e o corpo foi levado do lugar em que caiu ({(c.Pos - ondeCaiu).Length:0} px) -- "
-				+ "*'vc pode AGARRAR o corpo e levar pra outro lugar'*",
-				  (c.Pos - ondeCaiu).Length > ZoneCollision.TileSize);
 
 		// ---- ENTERRAR PELA TECLA E ----
 		Encostar(a, c, d);

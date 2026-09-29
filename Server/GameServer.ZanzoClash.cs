@@ -811,7 +811,7 @@ public sealed partial class GameServer
 		e.A.Facing = aEstaNaDireita ? Facing.West : Facing.East;
 		e.B.Facing = aEstaNaDireita ? Facing.East : Facing.West;
 
-		AvisarZona(e, w => { w.Put((byte)Protocol.ClashSub.Baque); w.PutVec(novo); });
+		AvisarZona(e, w => { w.Put((byte)Protocol.ClashSub.Baque); w.PutVec(novo); w.Put(Voo.ParaByte(Math.Max(e.A.Altitude, e.B.Altitude))); });
 
 		// O CHAO PAGA O PATO, no ponto NOVO. Reusa o mesmo `RacharChao` do golpe pesado -- a forca e
 		// a do MAIOR dos dois, porque quem racha o chao e o encontro e nao um deles.

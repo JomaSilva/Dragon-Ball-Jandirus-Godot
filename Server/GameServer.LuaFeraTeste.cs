@@ -80,6 +80,7 @@ public partial class GameServer
 		double ceuGuardado = _adiantoDoCeu;
 		ZoneKey zonaGuardada = pl.Zone;
 		Vec2 posGuardada = pl.Pos;
+		int agressorDoHostNoComeco = pl.UltimoAgressor;
 		var forjados = new List<ServerPlayer>();
 
 		try
@@ -123,6 +124,21 @@ public partial class GameServer
 			MedirOCusto(Checa, palco, mapa, forjados);
 			MedirAFuriaNoNpc(Checa, palco, mapa, forjados);
 			MedirORamoDaFera(Checa, pl, palco, mapa, forjados);
+			MedirAVistaDaFera(Checa, palco, mapa, forjados);
+
+			// ============================ A PLATEIA NAO PODE TER APANHADO ============================
+			// O host e a plateia das familias 3 a 12, e NENHUMA delas bate nele: toda briga daqui e entre corpos da bancada.
+			// Terminar com agressor quer dizer que um corpo sobreviveu a propria familia e o adotou como presa -- os cidadaos de
+			// Namek das familias 3 e 10 fizeram isso ate 24/09 (ver o `RemoverNpc` no fim de cada uma), e a rodada seguia verde
+			// com o host nocauteado e com Zenkai no BP: um mundo que familia nenhuma pediu. O `UltimoAgressor`
+			// fica escrito depois que o nocaute passa (so outro golpe o troca), entao a pergunta vale pro FIM, e nao pra um
+			// instante.
+			// ================================================================================
+			string agressorDoHost = pl.UltimoAgressor == agressorDoHostNoComeco ? "ninguem"
+				: forjados.Find(f => f.Id == pl.UltimoAgressor)?.Name ?? $"id {pl.UltimoAgressor}";
+			Checa("(higiene) o host, a plateia, chegou ao fim sem apanhar de NINGUEM da bancada",
+				  pl.UltimoAgressor == agressorDoHostNoComeco && !pl.Ficha.KO,
+				  $"agressor: {agressorDoHost}, KO agora: {(pl.Ficha.KO ? "sim" : "nao")}");
 
 			Checa("a bancada chegou ao fim (ver o `catch`: sem ele, abortar no meio reportava '0 falhas')",
 				  true);
@@ -362,6 +378,17 @@ public partial class GameServer
 			ALuaPegaOSaiyajin(alien, TempoDoMundo);
 			checa("PORTAO 'e saiyajin': quem nao e de sangue Saiyajin nao vira, com lua ou sem",
 				  alien.Oozaru == FormaOozaru.Nao, $"{alien.Race}: {alien.Oozaru}");
+
+			// ============================ E ELE SAI DO MUNDO AQUI MESMO ============================
+			// Ele so existe pra esta pergunta de funcao pura -- nenhum tique roda com ele de pe --, e o ponto dele e o
+			// `PontoDeNascimento` da Terra, que e onde o HOST esta (o `MoveToZone` do topo da bancada). Vivo, ele era um
+			// cidadao com RANCOR e sem agressor que conte: a briga marcada e contra um NPC, e rancor contra NPC nao vale (o
+			// `provoke()` do DM exige `atk.client`). Entao a busca alargada do `PresaDoNpc` (12 tiles) achava o host colado
+			// nele, e uma das familias que rodam tique (a 7 numa rodada, a 12 em outra) o via NOCAUTEAR a plateia -- que ainda
+			// ganhava Zenkai. Nenhuma linha reprovava; a guarda do fim da bancada (`(higiene)`) e quem passa a ver. A familia 10
+			// tinha o mesmo corpo.
+			// ================================================================================
+			RemoverNpc(alien);
 		}
 	}
 
@@ -731,6 +758,12 @@ public partial class GameServer
 
 		_adiantoDoCeu = guardado;
 
+		// O CIDADAO SAI DO MUNDO ASSIM QUE A MEDIDA ACABA, pela razao escrita no `alien` da familia 3: posto no berco da
+		// Terra -- em cima do host -- e com rancor contra um NPC, ele adotava o HOST pela busca alargada do `PresaDoNpc` e o
+		// nocauteava no primeiro tique da familia 12 ("Nail NOCAUTEOU ..." no meio dela, e Zenkai pro host). A 12 so nao
+		// reprovava porque o que ela olha e o vizinho da fera.
+		RemoverNpc(comum);
+
 		// O TETO REALISTA: 148 corpos, todos pagando o caminho do NAO-Saiyajin, mais os poucos que
 		// chegam ao fim. O mundo de hoje tem UM Saiyajin; o teto abaixo supoe DEZ lutando ao mesmo tempo.
 		double porSegundo = 138 * usComum + 10 * usSaiyajin;
@@ -840,10 +873,14 @@ public partial class GameServer
 	///   * o vizinho e um cidadao -- **nao e jogador**, entao o ramo do habitante nunca o adota;
 	///   * o host esta a 40 tiles -- **fora do raio de agressao** (20), entao o ramo do habitante nao
 	///     tem jogador nenhum pra adotar e cai no passeio;
-	///   * o vizinho esta COLADO -- entao o ramo da fera o adota no primeiro tique.
+	///   * o vizinho esta COLADO, e no MESMO chao que a fera -- entao o ramo da fera o adota no primeiro
+	///     tique e o soco chega sem ninguem precisar andar. Isso deixou de ser suposicao e virou a
+	///     precondicao "chao pros dois" (o porque esta no corpo da familia: o berco da Terra mudou de
+	///     lugar e o palco foi parar em cima de uma escarpa).
 	///
 	/// Com esse palco, "o vizinho apanhou" so pode ter vindo do ramo de baixo. E o CONTROLE e o mesmo
-	/// corpo antes de virar macaco: mesma posicao, mesmo vizinho, e ele nao encosta em ninguem.
+	/// corpo antes de virar macaco: mesma posicao, mesmo vizinho, MESMO tique de mundo, e ele nao encosta
+	/// em ninguem.
 	/// ==========================================================================================================
 	/// </summary>
 	private void MedirORamoDaFera(Verificacao checa, ServerPlayer pl, ZoneKey palco,
@@ -861,11 +898,39 @@ public partial class GameServer
 		// LONGE DO HOST DE PROPOSITO: 40 tiles e o dobro do `RaioDeAgressao` (20), ou seja o ramo do
 		// habitante nao tem jogador pra adotar aqui. E o vizinho fica a UM tile, que e o alcance em que
 		// o ramo da fera adota no primeiro tique.
+		//
+		// ============================ O VIZINHO NASCE COLADO NO CORPO QUE NASCEU, E NAO NO PONTO PEDIDO ============================
+		// Ate aqui os dois pediam, cada um por conta propria, o chao livre mais perto de DOIS pontos
+		// (`longeDoHost` e um tile a leste dele) -- e o `PontoLivrePerto` de cada um e livre pra desviar
+		// pra lados OPOSTOS de uma parede. Enquanto o `PontoDeNascimento` da Terra era o (249,250) do
+		// check-in da nave, 40 tiles ao sul era campo aberto e ninguem desviava. Desde que ele virou o
+		// `/obj/SpawnPoint` do BYOND (a casa em (73,260), `SpawnPoints.dm:95`, commit 0b0c8b2), o ponto
+		// pedido cai EM CIMA da escarpa diagonal que corta a Terra em (72..74, 300) (`z01_Earth.col`): a
+		// fera desviava pra (72,301), ao pe dela, e o vizinho pra (73,299), em cima -- 72 px e uma
+		// parede entre os dois. O macaco adotava o vizinho (o `PresaDaFera` nao olha parede), o soco
+		// (40 px) nao chegava, e ele nao conseguia andar ate o vizinho nem investir (o `Aproximar` recusa
+		// parede no caminho) -- e a familia ficava vermelha dizendo "a fera nao bate" quando o que
+		// faltava era CHAO. Nao dependia da classe sorteada do host: o ponto pedido sai do
+		// `PontoDeNascimento` do palco, que e o marco do MAPA e nao a posicao de ninguem.
+		//
+		// Ancorado no corpo que NASCEU, o vizinho so desvia pra perto dele. E a pergunta que a familia
+		// inteira pressupoe virou PRECONDICAO escrita logo abaixo, com as duas chamadas de producao que
+		// respondem "a fera chega nele?":
+		//   * o ALCANCE DO SOCO (`CombatKnobs.Alcance`) -- o numero que o `AlvoNaFrente` compara pro alvo
+		//     marcado. O soco em si NAO olha parede: quem decide se ele sai e so a distancia;
+		//   * o CAMINHO (`MoveRules.PathOccupied` com o `ModoDeTravessiaDe` do corpo) -- a MESMA chamada
+		//     com que o `Aproximar` recusa o passo curto e a investida. E ela, e nao o `PathBlocked`,
+		//     porque ela amostra a CAIXA DOS PES (8 px pros lados, abaixo do centro) e nao a linha dos
+		//     centros: os dois amostradores discordam rente a parede -- exatamente onde este palco mora --,
+		//     e uma precondicao verde pelo amostrador errado devolveria o vermelho pra linha do macaco.
+		// No dia em que o mapa mudar debaixo deste palco, quem fica vermelha e a linha que diz "nao ha
+		// chao pros dois" -- e nao a do macaco, que mandaria alguem cacar defeito no cerebro da fera.
+		// ================================================================================================================
 		Vec2 longeDoHost = PontoDeNascimento(palco) + new Vec2(0, 40 * ZoneCollision.TileSize);
 		ServerPlayer? fera = NascerNpc("guardiao_saiyajin", palco,
 			mapa.PontoLivrePerto(longeDoHost), ++_lugarDaBancadaDaLuaFera);
-		ServerPlayer? vizinho = NascerNpc("cidadao", palco,
-			mapa.PontoLivrePerto(longeDoHost + new Vec2(ZoneCollision.TileSize, 0)),
+		ServerPlayer? vizinho = fera == null ? null : NascerNpc("cidadao", palco,
+			mapa.PontoLivrePerto(fera.Pos + new Vec2(ZoneCollision.TileSize, 0)),
 			++_lugarDaBancadaDaLuaFera);
 		if (fera == null || vizinho == null)
 		{ checa("PRECONDICAO: um Saiyajin e um cidadao longe do host", false); return; }
@@ -878,9 +943,52 @@ public partial class GameServer
 		checa("PRECONDICAO: o vizinho e um corpo do mundo e NAO um jogador (o ramo do habitante o ignora)",
 			  !EhJogador(vizinho), vizinho.Race);
 
+		// CHAO PROS DOIS -- ver o bloco acima. O rodape diz as duas coordenadas em TILES, porque e isso
+		// que se confere contra o `.col` quando esta linha ficar vermelha.
+		float colado = (vizinho.Pos - fera.Pos).Length;
+		bool caminhoFechado = MoveRules.PathOccupied(mapa, fera.Pos, vizinho.Pos, ModoDeTravessiaDe(fera));
+		checa("PRECONDICAO: chao pros dois -- o vizinho nasceu ao alcance do soco da fera, e com caminho livre ate ele",
+			  colado <= CombatKnobs.Alcance && !caminhoFechado,
+			  $"{colado:0} px (o soco alcanca {CombatKnobs.Alcance:0}), caminho fechado: {(caminhoFechado ? "sim" : "nao")} | "
+			  + $"fera ({(int)(fera.Pos.X / ZoneCollision.TileSize)},{(int)(fera.Pos.Y / ZoneCollision.TileSize)}) "
+			  + $"vizinho ({(int)(vizinho.Pos.X / ZoneCollision.TileSize)},{(int)(vizinho.Pos.Y / ZoneCollision.TileSize)})");
+
+		// ============================ O TIQUE DESTE PALCO E A CABECA DO `Tick()`, E NAO SO A MENTE ============================
+		// As duas janelas abaixo chamavam SO o `TickDosCorposSemDono`, e isso media um mundo que o jogo
+		// nao tem -- justamente nos dois relogios que decidem o que esta familia pergunta:
+		//
+		//   * a CENA DO MACACO. `AnunciarOozaru` -> `MarcarCena` prende o corpo por `SegundosPreso` (4 s na
+		//     entrada do Oozaru, `Cinematicas.cs`), e quem abate esse prazo e SO o `TickDaForma`, dentro do
+		//     `TickDosRelogiosDoCorpo`. Sem ele a fera ficava presa pela cena a janela INTEIRA: nao anda
+		//     (`PodeMexerOCorpo`) e, desde que o `Aproximar` passou a perguntar o mesmo funil, tambem nao
+		//     investe. Um vizinho que desse dois passos de passeio antes do primeiro soco ficava fora do
+		//     alcance pra sempre -- o vermelho seria sorteio, e nao a regra;
+		//   * a RECARGA DO SOCO. `CombatState.Recarga` so escorre no `CombatState.Tick`, que e o
+		//     `TickCombate`. Sem ele a janela tinha UM golpe: o primeiro que saisse -- acertando ou no ar --
+		//     era o ultimo.
+		//
+		// A ORDEM E A DO `Tick()`: grade, combate, relogios do corpo, mente. O POVOAMENTO FICA DE FORA de
+		// proposito, pelo mesmo argumento do `TiqueDoMundo` da `--doiscorposteste`: ele nasce habitante NA
+		// TERRA, e um terceiro corpo nascendo mais perto da fera que o vizinho trocaria a presa do
+		// `PresaDaFera` e poria um segundo autor possivel na mordida. O ARREMESSO (`TickDoEmpurrao`)
+		// tambem: ele e CONSEQUENCIA do golpe que ja escreveu o agressor e a vida, e aqui so jogaria o
+		// vizinho contra a escarpa colada nele (corpo arremessado quebra cenario) sem mudar resposta
+		// nenhuma.
+		//
+		// O CONTROLE RODA O MESMO TIQUE, e e isso que o mantem sendo controle: com o tique magro no
+		// controle e o cheio na medida, "fora da forma ele nao bate" nao diria nada sobre o RAMO.
+		// ======================================================================================================
+		void TiqueDoPalco()
+		{
+			MontarAsGrades();
+			TickCombate(Protocol.TickSeconds);
+			TickDosRelogiosDoCorpo(Protocol.TickSeconds);
+			TickDosCorposSemDono(Protocol.TickSeconds);
+		}
+
 		// ---- O CONTROLE: o mesmo corpo, ANTES da lua ----
 		double vidaDeNascimento = vizinho.Ficha.HP;
-		for (int t = 0; t < 120; t++) TickDosCorposSemDono(Protocol.TickSeconds);
+		for (int t = 0; t < 120; t++) TiqueDoPalco();
 		checa("CONTROLE: fora da forma, o Saiyajin nao encosta no vizinho (ramo do habitante)",
 			  vizinho.UltimoAgressor != fera.Id
 			  && Math.Abs(vizinho.Ficha.HP - vidaDeNascimento) < 1e-9,
@@ -906,7 +1014,12 @@ public partial class GameServer
 			  PresaDoNpc(fera) == null, PresaDoNpc(fera)?.Name ?? "ninguem");
 
 		double vidaAntes = vizinho.Ficha.HP;
-		for (int t = 0; t < 200; t++) TickDosCorposSemDono(Protocol.TickSeconds);
+		// DUZENTOS TIQUES (6,7 s) NO MESMO TIQUE DO CONTROLE. O primeiro soco sai por volta de 1,5 s -- o
+		// cerebro novo da fera nasce em `Plano.Nada` e so troca de plano depois do compromisso minimo
+		// (`Cerebro.TempoMinimoNoPlano`, 1,2 s), na cadencia dela (`IntervaloDeDecisao`, 0,5 s) --, e a
+		// cena de 4 s acaba no meio da janela: se o vizinho tiver saido do alcance, a fera ainda tem
+		// tempo de ir atras dele pelas proprias pernas.
+		for (int t = 0; t < 200; t++) TiqueDoPalco();
 
 		checa("**O MACACO SAI BATENDO**: o vizinho apanhou, e o autor foi a fera",
 			  vizinho.UltimoAgressor == fera.Id,
@@ -914,6 +1027,163 @@ public partial class GameServer
 		checa("...e o estrago e de verdade (vida abaixo da que ele tinha)",
 			  vizinho.Ficha.HP < vidaAntes || vizinho.Ficha.dead || vizinho.Ficha.KO,
 			  $"{vizinho.Ficha.HP:0.#} de {vidaAntes:0.#}");
+	}
+
+	// =====================================================================
+	// FAMILIA 13 -- A FERA SO CACA O QUE VE (o `oview` do DM)
+	// =====================================================================
+	/// <summary>
+	/// ============================ O MACACO SABIA ONDE VOCE ESTAVA DESDE O POUSO ============================
+	/// O `PresaDaFera` devolvia *o corpo em pe mais proximo da ZONA* -- do outro lado do mapa, atraves de muro.
+	/// As duas possessoes do DM escolhem por `oview`, que e um quadrado de `get_dist` cortado por parede:
+	///
+	///   * o MACACO (`Oozaru.dm:190-201`): adota em `oview(container)` = `world.view` = 5 tiles, e LARGA quando o
+	///     alvo sai da vista -- e so entao; enquanto ele esta a vista, o `target` fica, mesmo com outro mais perto;
+	///   * a FURIA (`lssjbuff.dm:614-625`): adota em `oview(10)`, pula quem nao e `attackable`, e LARGA so pela
+	///     DISTANCIA -- atras de um muro a presa continua sendo a presa.
+	///
+	/// O PALCO E ACHADO NO MAPA, e nao cravado (a licao das onze bancadas velhas): uma FAIXA de 13 celulas de
+	/// chao com as fileiras vizinhas livres, e um MURO de uma celula entre dois pares de chao na mesma fileira --
+	/// os dois longe (16 tiles) de todo corpo da zona, pra nenhum habitante entrar na conta de presa. As posicoes
+	/// sao a VARIAVEL medida, e por isso a bancada as escreve; a fera vira macaco pelo funil da lua (`VirarFera`)
+	/// e a furia toma o corpo pelo funil dela (`TomarAsRedeasDaFuria`).
+	///
+	/// COMO ELA REPROVA: volte o `PresaDaFera` antigo (o mais perto da zona) e as linhas do raio e da parede dizem
+	/// "adotou"; tire a memoria (`PresaEngajada`) e a do "outro mais perto" diz que trocou e a do muro da furia diz
+	/// "largou"; tire o crivo do `Intocavel` e a furia adota o corpo em cena.
+	/// ============================================================================================================
+	/// </summary>
+	private void MedirAVistaDaFera(Verificacao checa, ZoneKey palco, ZoneCollision mapa, List<ServerPlayer> forjados)
+	{
+		GD.Print("--- 13. a fera so caca o que VE: o raio e a parede do `oview` ---");
+
+		// O PALCO SEM MACACO ALHEIO: uma fera das familias anteriores nao pode ser a fera DESTA, nem presa dela.
+		foreach (ServerPlayer f in forjados)
+			if (f.Oozaru != FormaOozaru.Nao) DesfazerOozaru(f, "a bancada limpou o palco.");
+
+		(int X, int Y)? faixa = AcharChaoDaVista(mapa, palco, comprimento: 13, colunaDoMuro: -1, longeDe: null);
+		(int X, int Y)? muro = faixa is { } fx
+			? AcharChaoDaVista(mapa, palco, comprimento: 5, colunaDoMuro: 2, longeDe: fx)
+			: null;
+		if (faixa is not { } f0 || muro is not { } m0)
+		{
+			checa("PRECONDICAO: a Terra tem uma faixa de 13 celulas de chao e um muro de uma celula longe de todo corpo",
+				  false, $"faixa {faixa?.ToString() ?? "nenhuma"}, muro {muro?.ToString() ?? "nenhum"}");
+			return;
+		}
+		Vec2 NaFaixa(int dx) => mapa.CentroDaCelula(f0.X + dx, f0.Y);
+		Vec2 NoMuro(int dx) => mapa.CentroDaCelula(m0.X + dx, m0.Y);
+
+		ServerPlayer? fera = NascerNpc("guardiao_saiyajin", palco, NaFaixa(0), ++_lugarDaBancadaDaLuaFera);
+		ServerPlayer? a = NascerNpc("cidadao", palco, NaFaixa(4), ++_lugarDaBancadaDaLuaFera);
+		ServerPlayer? b = NascerNpc("cidadao", palco, NaFaixa(12), ++_lugarDaBancadaDaLuaFera);
+		if (fera == null || a == null || b == null) { checa("PRECONDICAO: a fera e as duas presas nasceram", false); return; }
+		forjados.Add(fera);
+		forjados.Add(a);
+		forjados.Add(b);
+
+		VirarFera(fera, FormaOozaru.Regular);
+		checa("PRECONDICAO: o Saiyajin e macaco, e o muro corta a linha entre as duas pontas dele",
+			  fera.Oozaru != FormaOozaru.Nao && mapa.PathBlocked(NoMuro(0), NoMuro(4)) && !mapa.PathBlocked(NaFaixa(0), NaFaixa(12)),
+			  $"oozaru {fera.Oozaru}, faixa ({f0.X},{f0.Y}), muro ({m0.X},{m0.Y})");
+
+		// ---- O MACACO: `oview(container)`, 5 tiles ----
+		ServerPlayer? viu = PresaDaFera(fera, soJogadores: false);
+		checa("o MACACO adota quem esta a 4 tiles, a vista (`oview(container)`, `Oozaru.dm:191`)",
+			  viu == a, viu?.Name ?? "ninguem");
+
+		a.Pos = NaFaixa(7);
+		viu = PresaDaFera(fera, soJogadores: false);
+		checa("...e a 7 tiles NAO ve ninguem: o `oview` sem numero e o `world.view` = 5 (a presa de antes saiu da conta)",
+			  viu == null, viu?.Name ?? "ninguem");
+
+		a.Pos = NaFaixa(4);
+		PresaDaFera(fera, soJogadores: false);
+		b.Pos = NaFaixa(2);
+		viu = PresaDaFera(fera, soJogadores: false);
+		checa("...e com a presa A VISTA ele NAO troca por outro que chegou mais perto (o `target` fica, `:195-196`)",
+			  viu == a, $"{viu?.Name ?? "ninguem"} (a presa e {a.Name}, o de perto e {b.Name})");
+
+		a.Pos = NaFaixa(7);
+		viu = PresaDaFera(fera, soJogadores: false);
+		checa("...e quando ela SAI da vista ele a larga e pega quem esta a vista (`container.target = null`, `:201`)",
+			  viu == b, viu?.Name ?? "ninguem");
+
+		fera.Pos = NoMuro(0);
+		a.Pos = NoMuro(4);
+		b.Pos = NaFaixa(12);
+		viu = PresaDaFera(fera, soJogadores: false);
+		checa("...e a 4 tiles, ATRAS DO MURO, ele nao a ve (a parede corta o `oview`)",
+			  viu == null, viu?.Name ?? "ninguem");
+
+		// ---- A FURIA: `oview(LEGB_RANGE)`, 10 tiles, e larga so pela distancia ----
+		DesfazerOozaru(fera, "a bancada trocou a fera pela furia.");
+		TomarAsRedeasDaFuria(fera, null, 0);
+		fera.PresaEngajada = 0;
+		fera.Pos = NaFaixa(0);
+		a.Pos = NaFaixa(9);
+		b.Pos = NaFaixa(12);
+		checa("PRECONDICAO: a furia tomou o corpo, e ele nao e macaco",
+			  fera.CerebroDaPosse != null && fera.Oozaru == FormaOozaru.Nao);
+		viu = PresaDaFera(fera, soJogadores: false);
+		checa("a FURIA ve mais longe: adota a 9 tiles (`oview(LEGB_RANGE)`, `LEGB_RANGE 10`)",
+			  viu == a, viu?.Name ?? "ninguem");
+
+		a.Pos = NaFaixa(11);
+		viu = PresaDaFera(fera, soJogadores: false);
+		checa("...e a 11 tiles larga e nao ve ninguem (`get_dist(src, prey) > LEGB_RANGE`, `:614`)",
+			  viu == null, viu?.Name ?? "ninguem");
+
+		fera.Pos = NoMuro(0);
+		a.Pos = NoMuro(1);
+		PresaDaFera(fera, soJogadores: false);
+		a.Pos = NoMuro(4);
+		viu = PresaDaFera(fera, soJogadores: false);
+		checa("...e a presa que passou pra tras do muro CONTINUA presa (a furia larga so pela distancia, `:614`)",
+			  viu == a, viu?.Name ?? "ninguem");
+
+		fera.PresaEngajada = 0;
+		fera.Pos = NaFaixa(0);
+		a.Pos = NaFaixa(3);
+		b.Pos = NaFaixa(6);
+		AdminForcarForma(a, "ssj1");   // a cena cheia da estreia: `Intocavel`, o `attackable = 0` do DM
+		viu = PresaDaFera(fera, soJogadores: false);
+		checa("...e ela PULA quem esta em cena (`!M.attackable`, `:618`): o corpo intocavel a 3 tiles fica, o de 6 e a presa",
+			  a.Combate.Intocavel && viu == b, $"a em cena={a.Combate.Intocavel}, presa {viu?.Name ?? "ninguem"}");
+
+		DevolverAsRedeas(fera);
+	}
+
+	/// <summary>
+	/// ACHA NO MAPA uma fileira de <paramref name="comprimento"/> celulas -- todas de chao A PE com as fileiras
+	/// de cima e de baixo livres, menos a <paramref name="colunaDoMuro"/> (negativa = nenhuma), que tem que ser
+	/// PAREDE --, com todo corpo da zona a mais de 16 tiles e, se <paramref name="longeDe"/> vier, a mais de 30
+	/// tiles daquela celula. Devolve a celula da ponta esquerda.
+	/// </summary>
+	private (int X, int Y)? AcharChaoDaVista(ZoneCollision mapa, ZoneKey palco, int comprimento, int colunaDoMuro,
+											 (int X, int Y)? longeDe)
+	{
+		const int Margem = 20;
+		List<ServerPlayer> corpos = ZoneList(palco.Hash);
+		for (int y = Margem; y < mapa.Height - Margem; y++)
+			for (int x = Margem; x < mapa.Width - Margem - comprimento; x++)
+			{
+				bool serve = true;
+				for (int i = 0; i < comprimento && serve; i++)
+				{
+					if (i == colunaDoMuro) { serve = mapa.BlockedCell(x + i, y); continue; }
+					serve = mapa.ServeDeChao(x + i, y) && mapa.ServeDeChao(x + i, y - 1) && mapa.ServeDeChao(x + i, y + 1);
+				}
+				if (!serve) continue;
+				if (longeDe is { } l && Math.Max(Math.Abs(l.X - x), Math.Abs(l.Y - y)) <= 30) continue;
+				Vec2 centro = mapa.CentroDaCelula(x, y);
+				bool alguemPerto = false;
+				foreach (ServerPlayer c in corpos)
+					if (Jandirus.Core.Social.Fusao.DistanciaEmTilesDoDm(c.Pos, centro, ZoneCollision.TileSize) <= 16 + comprimento)
+					{ alguemPerto = true; break; }
+				if (!alguemPerto) return (x, y);
+			}
+		return null;
 	}
 
 	// =====================================================================

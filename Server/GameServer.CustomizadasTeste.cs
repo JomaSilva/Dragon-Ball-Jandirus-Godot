@@ -910,10 +910,13 @@ public sealed partial class GameServer
 		p.Deflectivel = false;
 
 		double vidaAntes = vitima.Combate.Corpo.Vida();
+		EscutaDeGolpes = [];
 		List<string> noVoo = Ouvir(() =>
 		{
 			for (int i = 0; i < 300 && p.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
 		});
+		List<Protocol.HitEvent> relatosDoVoo = EscutaDeGolpes.Where(g => g.Cheio).Select(g => LerGolpe(g.Fio)).ToList();
+		EscutaDeGolpes = null;
 		AfirmarTc("...ela morre em quem acerta, e a vitima perde vida",
 				  !p.Vivo && p.Fim == FimDeProjetil.Acertou && vitima.Combate.Corpo.Vida() < vidaAntes,
 				  $"fim {p.Fim} / vida {vidaAntes:0.#} -> {vitima.Combate.Corpo.Vida():0.#}");
@@ -926,14 +929,17 @@ public sealed partial class GameServer
 		//   3. `Sorteio(0)` e falso pra QUALQUER rolagem -- o `porcento > 0` corta antes de tocar no
 		//      `_rng` (`GameServer.Projeteis.cs:1567`). Chamar o sorteio de producao com zero nao
 		//      consome numero nenhum do gerador, entao esta linha nao move o dado das provas seguintes.
-		// E a SONDA de runtime junto: nenhuma das tres falas que a deflexao escreve (`voce defletiu`,
-		// `de raspao`, `defletiu seu ataque`) saiu durante o voo. As duas metades sao necessarias --
-		// a fala sozinha seria so mais uma rodada; o knob sozinho nao mostraria que o caminho calou.
+		// E a SONDA de runtime junto: nenhum relato do voo saiu como ESQUIVA. A deflexao BARATA (o raspao) era
+		// uma fala ate 2026-09-25 e agora e o relato `Esquivou` do golpe -- o dono pediu que dano e bloqueio nao
+		// virassem texto --, e a CARA termina em `Defletido`, que a linha de cima ja recusa (ela exige `Acertou`).
+		// As duas metades sao necessarias: o relato sozinho seria so mais uma rodada; o knob sozinho nao
+		// mostraria que o caminho calou.
 		AfirmarTc($"...e o DADO DA DEFLEXAO estava desligado PELO MECANISMO: a chance crua era "
 				+ $"{chanceCrua:0.####}% por impacto e `Deflectivel = false` a zera na porta do `Acertar`",
-				  chanceCrua > 0 && !p.Deflectivel && !Sorteio(0)
-				  && !Disse(noVoo, "defletiu") && !Disse(noVoo, "raspao"),
-				  $"chance {chanceCrua:0.#####}% / deflectivel {p.Deflectivel} / falas: {string.Join(" | ", noVoo)}");
+				  chanceCrua > 0 && !p.Deflectivel && !Sorteio(0) && relatosDoVoo.Count > 0
+				  && relatosDoVoo.All(h => (Desfecho)h.Desfecho != Desfecho.Esquivou),
+				  $"chance {chanceCrua:0.#####}% / deflectivel {p.Deflectivel} / relatos: "
+				  + string.Join(" | ", relatosDoVoo.Select(h => (Desfecho)h.Desfecho)) + $" / falas: {string.Join(" | ", noVoo)}");
 
 		LimparTudoDaBancada();
 

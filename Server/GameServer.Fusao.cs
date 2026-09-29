@@ -333,10 +333,19 @@ public sealed partial class GameServer
 	/// <summary>
 	/// `Fusion_Dance` (`Fusion.dm:711`): convida quem esta na frente.
 	///
-	/// O DM abre `input("Who?") in oview(1)` -- um menu com os corpos colados. Aqui quem escolhe e o
-	/// <see cref="AlvoNaFrente"/>, o mesmo cone do soco, do ensino e do discipulado: e o precedente
-	/// vivo deste port pra "quem esta na minha frente", e uma segunda resposta pra mesma pergunta
-	/// seria a duplicata de sempre.
+	/// ============================ DIVERGENCIA DECLARADA: O CONVITE PULA QUEM ESTA INTOCAVEL ============================
+	/// O DM abre `input("Who?") in oview(1)` (`:716`) -- todo corpo colado, sem perguntar `attackable` -- e o
+	/// `Fuse` (`:525-526`) nao tem trava de cena. Aqui o convite ainda passa pelo <see cref="AlvoNaFrente"/> do
+	/// SOCO, que pula `Combate.Intocavel`: quem esta numa cena de transformacao, na carencia de renascimento
+	/// ou na espera do torneio (`attackable = 0`, `Tournament.dm:333`) nao e achado, e o convite diz "nao ha
+	/// ninguem na sua frente". O "sim" (<see cref="ResponderAoConvite"/>) nao pergunta cena -- como o DM --,
+	/// entao um convite feito ANTES da cena ainda fecha DURANTE ela.
+	///
+	/// Os outros gestos (ensino, disciplinas, discipulado) passaram pro <see cref="QuemEstaNaFrente"/> em
+	/// 2026-09-24. A fusao ficou porque aqui trocar e escolha de jogo e nao so de busca: o "sim" dela dispara
+	/// danca, puxao e cena EM CIMA dos corpos, e pela letra o convite alcancaria quem esta estreando o SSJ ou
+	/// esperando a vez no torneio -- e na Namekuseijin o NPC do mundo e absorvido sem convite (regra N4).
+	/// ===================================================================================================================
 	/// </summary>
 	private void ConvidarParaADanca(ServerPlayer pl)
 	{
@@ -365,8 +374,9 @@ public sealed partial class GameServer
 	/// `mob/keyable/verb`, e os unicos portoes sao **as duas racas** (`:556-557`) mais os que toda
 	/// fusao tem (ja fundido, recarga). Ver `Fusao.Avaliar`, onde o portao racial mora.
 	///
-	/// O ALVO E O DA FRENTE, como na Danca -- o `oview(1)` do original (`:553`) e um menu com quem
-	/// esta colado, e o <see cref="AlvoNaFrente"/> e o precedente vivo deste port pra isso.
+	/// O ALVO E O DA FRENTE, pela mesma busca da Danca e com a mesma divergencia declarada la: o
+	/// `oview(1)` do original (`:553`) tambem nao pergunta `attackable`, e aqui quem esta intocavel nao e
+	/// achado. Ver <see cref="ConvidarParaADanca"/>.
 	/// ========================================================================================
 	/// </summary>
 	private void ConvidarParaAFusaoNamekuseijin(ServerPlayer pl)

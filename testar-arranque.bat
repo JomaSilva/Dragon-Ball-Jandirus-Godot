@@ -26,6 +26,11 @@ REM                        corpo; um passo honesto continua aceito; e com a
 REM                        janela FECHADA (a regra de ontem) os mesmos quatro
 REM                        arrastam -- e o contra-exemplo, e e a anti-trapaca
 REM                        de sempre fora da janela.
+REM    5) A TROCA DE ZONA  a mesma janela no maior salto de todos: os pacotes
+REM                        com a posicao da zona velha nao arrastam nem contam,
+REM                        e o tempo passado la nao paga o primeiro passo daqui.
+REM                        Os contra-exemplos sao a troca de antes (janela
+REM                        fechada, relogio parado na zona velha).
 REM
 REM  RODA NO HEADLESS. A pasta de saves do Godot e DESVIADA pro %%TEMP%% -- a
 REM  bancada nunca escreve na pasta de saves de quem joga nesta maquina.

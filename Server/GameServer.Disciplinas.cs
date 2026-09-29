@@ -34,6 +34,13 @@ public partial class GameServer
 	/// original, e ela e o que faz as duas disciplinas serem raras sem depender de numero nenhum --
 	/// elas se espalham na velocidade em que as pessoas se encontram.
 	/// ============================================================================
+	///
+	/// ============================ DIVERGENCIA DECLARADA: O ALUNO NAO E PERGUNTADO ============================
+	/// O DM pergunta antes (`alert(S, ...)`, `UltraInstinct.dm:131` e `UltraEgo.dm:149`), revalida a
+	/// distancia depois do "Aceitar" (`:135`/`:153`) e ainda espera 5 s (`sleep(50)`, `:137`/`:155`). Aqui o
+	/// ensino e NA HORA e sem aceite. Pesa mais do que parece: as duas disciplinas se EXCLUEM, entao ensinar
+	/// uma sem perguntar fecha a outra no corpo de quem nao escolheu.
+	/// ======================================================================================================
 	/// </summary>
 	private void EnsinarDisciplina(ServerPlayer mestre, TipoDeDisciplina tipo)
 	{
@@ -47,8 +54,15 @@ public partial class GameServer
 			return;
 		}
 
-		ServerPlayer? aluno = AlvoNaFrente(mestre);
-		if (aluno == null || aluno == mestre) { Avisar(mestre, "ninguem por perto pra ensinar."); return; }
+		// 2. QUEM ESTA DO LADO, com a lista do DM: `oview(1)` + `P.client` (`UltraInstinct.dm:116-117`,
+		//    `UltraEgo.dm:134-135`). E um gesto e nao um golpe (ver `QuemEstaNaFrente`): o DM nao pergunta
+		//    `attackable`, e o aluno no meio de uma cena de transformacao aprende. E so GENTE e discipulo --
+		//    criatura do mundo, clone e corpo sem dono nunca estiveram na lista (ate 2026-09-24 o port os
+		//    aceitava, pelo cone do soco). O resto do filtro do DM (`!P.dead && !P.KO && !P.ui_learned`)
+		//    virou recusa com nome no `PodeAprender`: sem o menu do DM, o port escolhe um corpo so, e "ele ja
+		//    sabe" diz mais que "ninguem ao seu lado".
+		ServerPlayer? aluno = QuemEstaNaFrente(mestre, EhPessoa);
+		if (aluno == null) { Avisar(mestre, "ninguem por perto pra ensinar."); return; }
 
 		RecusaDeDisciplina r = PodeAprender(aluno, tipo);
 		if (r != RecusaDeDisciplina.Pode)

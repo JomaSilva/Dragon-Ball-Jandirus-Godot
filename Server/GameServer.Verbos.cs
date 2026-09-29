@@ -79,7 +79,7 @@ public sealed partial class GameServer
 		if (ComandoDeBanco(pl, cmd, arg)) return;
 		if (ComandoDeTorneio(pl, cmd, arg)) return;
 
-		// OS TRES VERBOS DE FIXTURE DA BANCADA DO EMBARQUE, e so com a flag: sem ela este `if` e
+		// OS QUATRO VERBOS DE FIXTURE DA BANCADA DO EMBARQUE, e so com a flag: sem ela este `if` e
 		// falso antes de olhar o `cmd`, e um cliente mexido que os mande num servidor de verdade cai
 		// em "comando desconhecido" como qualquer outra palavra inventada. Ver
 		// GameServer.EmbarqueTeste.cs.

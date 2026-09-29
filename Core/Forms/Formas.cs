@@ -4929,7 +4929,73 @@ public static class Catalogo
 	/// </summary>
 	public static HashSet<LinhaDeForma> LinhasAbertas(PerfilDeFormas p)
 	{
-		var abertas = new HashSet<LinhaDeForma>();
+		var conjunto = new ColetorEmConjunto(new HashSet<LinhaDeForma>());
+		AbrirLinhas(in p, ref conjunto);
+		return conjunto.Linhas;
+	}
+
+	/// <summary>
+	/// ============================ A MESMA PERGUNTA, POR **UMA** LINHA, SEM ALOCAR ============================
+	/// O `EstadoDeForma.Avaliar` so quer saber "ESTA linha esta aberta?", e o `Proxima` o chama pra cada forma
+	/// do catalogo. Pelo <see cref="LinhasAbertas"/> isso era um `HashSet` novo por forma -- 43 por leitura de
+	/// capacidades da IA (1 Hz por corpo), 7.224 B jogados fora por leitura, medidos na secao 12 da `--iateste`.
+	///
+	/// NAO E UMA SEGUNDA REGRA: as duas perguntas passam pela MESMA cascata (<see cref="AbrirLinhas{TColetor}"/>)
+	/// e so escolhem onde anotar -- num conjunto (quem itera ou imprime) ou num bit por linha, na pilha (quem so
+	/// quer sim ou nao). Uma linha nova na cascata vale pras duas no mesmo commit.
+	/// ========================================================================================================
+	/// </summary>
+	public static bool LinhaAberta(in PerfilDeFormas p, LinhaDeForma linha)
+	{
+		var mascara = new ColetorEmMascara();
+		AbrirLinhas(in p, ref mascara);
+		return mascara.Tem(linha);
+	}
+
+	/// <summary>Onde a cascata (<see cref="AbrirLinhas{TColetor}"/>) anota cada linha que abre.</summary>
+	private interface IColetorDeLinhas
+	{
+		void Add(LinhaDeForma linha);
+	}
+
+	/// <summary>
+	/// O CONJUNTO, pra quem itera ou imprime (a aba Formas, o piso da escada, as bancadas). A ordem de insercao
+	/// e a da cascata -- a MESMA de antes desta divisao --, e ela aparece em quem imprime a lista.
+	/// </summary>
+	private readonly struct ColetorEmConjunto : IColetorDeLinhas
+	{
+		public readonly HashSet<LinhaDeForma> Linhas;
+		public ColetorEmConjunto(HashSet<LinhaDeForma> linhas) => Linhas = linhas;
+		public void Add(LinhaDeForma linha) => Linhas.Add(linha);
+	}
+
+	/// <summary>
+	/// UM BIT POR LINHA, na pilha. `LinhaDeForma` tem 15 valores (0..14) e o `ulong` tem 64. Passar disso seria
+	/// um defeito CALADO -- em C# o deslocamento de 64 da a volta e acenderia o bit de outra linha --, entao o
+	/// `Add` reprova em voz alta.
+	/// </summary>
+	private struct ColetorEmMascara : IColetorDeLinhas
+	{
+		private ulong _bits;
+
+		public void Add(LinhaDeForma linha)
+		{
+			if ((uint)linha >= 64)
+				throw new ArgumentOutOfRangeException(nameof(linha), linha, "o coletor de bits tem 64 linhas");
+			_bits |= 1UL << (int)linha;
+		}
+
+		public readonly bool Tem(LinhaDeForma linha) => (uint)linha < 64 && (_bits & (1UL << (int)linha)) != 0;
+	}
+
+	/// <summary>
+	/// A CASCATA DAS LINHAS -- escrita UMA vez; as duas perguntas de cima so escolhem o coletor. Generica em
+	/// `struct` de proposito: o JIT gera uma copia por coletor e o `abertas.Add` vira chamada direta, sem caixa --
+	/// e e isso que deixa a versao de bits sem alocar nada.
+	/// </summary>
+	private static void AbrirLinhas<TColetor>(in PerfilDeFormas p, ref TColetor abertas)
+		where TColetor : struct, IColetorDeLinhas
+	{
 
 		bool primal = string.Equals(p.Classe, "Legendary Primal Saiyan", StringComparison.OrdinalIgnoreCase);
 		if (primal) abertas.Add(LinhaDeForma.LegendaryPrimal);
@@ -5037,7 +5103,6 @@ public static class Catalogo
 				else { abertas.Add(LinhaDeForma.UltraInstinct); abertas.Add(LinhaDeForma.UltraEgo); }
 			}
 		}
-		return abertas;
 	}
 
 	/// <summary>

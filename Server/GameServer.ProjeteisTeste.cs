@@ -163,6 +163,7 @@ public partial class GameServer
 			ACabecaFicaNaFrenteDeQuemAcerta();
 			OTroncoSeCortaOndeAlguemEncosta();
 			ApanharDerrubaORaio();
+			AFaiscaEstouraNaCabeca();
 			ABancadaSeCobra();
 		}
 		finally
@@ -2338,7 +2339,8 @@ public partial class GameServer
 			// A CABECA VELHA ANDOU UM TIQUE antes do corte (o avanco vem antes do corte no tique): ate um
 			// tique de raio a frente de onde ela estava, e nunca atras.
 			AfirmarPj("a parte de LA nasceu do outro lado do corpo, com a cabeca velha na ponta",
-					  deLa.Pos.X >= cabecaAntes && deLa.Pos.X - cabecaAntes < T && Math.Abs(deLa.Cauda.X - (x.Pos.X + Feixe.MeioCorpo)) < 1f,
+					  deLa.Pos.X >= cabecaAntes && deLa.Pos.X - cabecaAntes < T
+					  && Math.Abs(deLa.Cauda.X - (x.Pos.X + Feixe.MeioCorpo + Feixe.AlcanceDaCabeca(deLa))) < 1f,
 					  $"cabeca {deLa.Pos.X:0.0} (velha {cabecaAntes:0.0}), cauda {deLa.Cauda.X:0.0}, corpo {x.Pos.X:0.0}");
 			float comprimento = deLa.Comprimento, cabecaDeLa = deLa.Pos.X;
 			for (int i = 0; i < 6; i++) UmTiqueDeArrasto();

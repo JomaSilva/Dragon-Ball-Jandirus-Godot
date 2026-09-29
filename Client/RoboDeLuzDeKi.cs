@@ -230,9 +230,27 @@ public partial class RoboDeLuzDeKi : Node2D
 		   tronco != null && tronco.GetParent() == raio);
 		Ok("...visivel quando ha tronco, no MEIO dele e deitada ao longo do rastro",
 		   tronco is { Visible: true } && tronco.Position.IsEqualApprox(new Vector2(160, 0)) && Mathf.Abs(tronco.Rotation) < 0.01f);
-		Ok("...ESTICADA ate o comprimento do rastro (a mesma textura radial, escala num eixo so)",
-		   tronco != null && Mathf.Abs(tronco.Scale.X - 320f / (2f * LuzDeKi.RaioDaTextura)) < 0.01f
+		Ok("...ESTICADA ate o comprimento EXATO do rastro -- nem mais (passaria da cabeca), nem menos ("
+		   + (tronco == null ? "sem luz" : $"{LuzDeKi.LarguraDaBarra * tronco.TextureScale * tronco.Scale.X:0.0} px de luz pra 320 de tronco") + ")",
+		   tronco != null && Mathf.Abs(LuzDeKi.LarguraDaBarra * tronco.TextureScale * tronco.Scale.X - 320f) < 0.5f
 		   && Mathf.Abs(tronco.Scale.Y - 1f) < 0.001f);
+
+		// ============================ O BRILHO E IGUAL AO LONGO DO TRONCO (dono, 2026-09-23) ============================
+		// A primeira luz do tronco era a RADIAL esticada, e uma radial tem o pico no centro: de noite, um
+		// clarao no MEIO do raio -- *"o efeito tem q ser na cabeca do beam e nao no meio dele"*. Mede-se a
+		// TEXTURA que a luz usa, na linha do meio: a um quarto, na metade e a tres quartos do comprimento
+		// tem que dar o mesmo brilho. E a radial (a de antes) e medida pela mesma regua, e tem que REPROVAR.
+		// ============================================================================================================
+		Image? barra = (tronco?.Texture as ImageTexture)?.GetImage();
+		Ok("...e a luz do tronco e a BARRA uniforme, e nao a radial da cabeca",
+		   tronco != null && ReferenceEquals(tronco.Texture, LuzDeKi.Barra()) && barra != null);
+		if (barra != null)
+			Ok($"...com o MESMO brilho a 1/4, 1/2 e 3/4 do tronco, sem clarao no meio do raio ({PerfilDoMeio(barra)})",
+			   BrilhoUniforme(barra));
+		Image? radial = Fogo.Radial(LuzDeKi.RaioDaTextura).GetImage();
+		if (radial != null)
+			Ok($"(contra-exemplo) a textura RADIAL esticada, a de antes, reprova a mesma regua: o meio brilha mais ({PerfilDoMeio(radial)})",
+			   !BrilhoUniforme(radial));
 		Ok("...da cor do ki do dono, como a da cabeca", tronco != null && tronco.Color.IsEqualApprox(CorDeKi));
 		raio.Cravar(Longe, Longe);
 		Ok("sem tronco (a cauda debaixo da cabeca) a luz do tronco se ESCONDE -- e nao entra na passada",
@@ -247,6 +265,20 @@ public partial class RoboDeLuzDeKi : Node2D
 		outro.QueueFree();
 		muro.QueueFree();
 		carga.QueueFree();
+	}
+
+	/// <summary>A regua do brilho do tronco: a linha do meio da textura, a 1/4, 1/2 e 3/4 -- os tres iguais.</summary>
+	private static bool BrilhoUniforme(Image img)
+	{
+		int y = img.GetHeight() / 2, w = img.GetWidth();
+		float a1 = img.GetPixel(w / 4, y).A, a2 = img.GetPixel(w / 2, y).A, a3 = img.GetPixel(3 * w / 4, y).A;
+		return a2 > 0.5f && Mathf.Abs(a1 - a2) < 0.02f && Mathf.Abs(a3 - a2) < 0.02f;
+	}
+
+	private static string PerfilDoMeio(Image img)
+	{
+		int y = img.GetHeight() / 2, w = img.GetWidth();
+		return $"brilho {img.GetPixel(w / 4, y).A:0.00} / {img.GetPixel(w / 2, y).A:0.00} / {img.GetPixel(3 * w / 4, y).A:0.00}";
 	}
 
 	// =====================================================================

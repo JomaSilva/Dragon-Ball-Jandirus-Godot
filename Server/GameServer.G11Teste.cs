@@ -969,7 +969,9 @@ public sealed partial class GameServer
 	{
 		GD.Print("[g11] -- 13) GIVE POWER (o Heal ao contrario, que termina em desmaio) E TIME STORE (o corpo preso no tempo)");
 
-		Vec2 chao = CorredorLivre(12);
+		// TERRA FIRME (o varredor do lote G12) e nao so "sem parede": o doador PISCA mais abaixo, e a piscada recusa
+		// pouso na AGUA como o pe recusa -- no `CorredorLivre` ele nascia no mar e nao tinha pra onde piscar.
+		Vec2 chao = TerraFirmeG12(12);
 		ServerPlayer doador = ForjarG11("Doador", chao, 5_000, PathGivePowerG11T);
 		AfirmarG11("a flag `cangivepower=1` do extrator chegou no campo ao aprender", doador.Ficha.cangivepower > 0);
 		ServerPlayer alvo = Forjar("Recebe", chao + new Vec2(2 * ZoneCollision.TileSize, 0), bp: 5_000);
@@ -993,6 +995,45 @@ public sealed partial class GameServer
 		AfirmarG11("...e o `CooldownAmount` do DOADOR subiu `M.MaxKi/MaxKi` por dose (o defeito visivel do DM; o decaimento de 1 s pode ter mordido 0,1%)",
 				   doador.Ficha.CooldownAmount <= 6 * razaoDose + 1e-9 && doador.Ficha.CooldownAmount >= 6 * razaoDose * 0.999 - 1e-9,
 				   $"{doador.Ficha.CooldownAmount:0.####} vs {6 * razaoDose:0.####}");
+
+		// ============================ QUEM DOA NAO FICA PRESO: PISCA, E A DOACAO SEGUE ============================
+		// O `gavepower` (`givepower.dm:39`) so e a trava de DOAR DE NOVO (`!gavepower`, `:36`): o laco de andar o
+		// DESCONTA (`movement handler.dm:139`) sem zerar o `mobTime`, e o `while` da doacao (`:41-48`) nao olha
+		// distancia. Aqui havia uma ancora que puxava o doador de volta -- e o duplo clique (`click.dm:54`, que nao le
+		// `gavepower`) saia pago e era desfeito no tique seguinte.
+		// A PISCADA E A DE PRODUCAO, um tile pro primeiro dos oito rumos com o pouso e o caminho livres: o
+		// `CorredorLivre` so promete que nao ha PAREDE, e a Terra e cheia de agua -- que recusa o pouso da piscada
+		// como recusa o pe (`MoveRules.Occupied`). Sem rumo livre, a precondicao diz isso no rodape.
+		// COMO ELA REPROVA: volte o `Ancorar(pl, d.Ancora)` no `TickDaDoacaoG11` e ela diz "doador em" o ponto de saida.
+		// ============================================================================================================
+		doador.Livro.Dar(PathDoZanzoken);
+		doador.Niveis.Por(PathDoZanzoken, 1);
+		Vec2 doouDe = doador.Pos;
+		ZoneCollision? mapaDoDoador = MapaDaZonaOuCatalogo(doador.Zone);
+		Vec2 ondePiscaODoador = doouDe;
+		foreach (Vec2 rumo in MoveRules.OitoRumos)
+		{
+			Vec2 alvoDoClique = doouDe + rumo * ZoneCollision.TileSize;
+			if (mapaDoDoador != null && (MoveRules.Occupied(mapaDoDoador, alvoDoClique)
+										 || MoveRules.PathOccupied(mapaDoDoador, doouDe, alvoDoClique))) continue;
+			ondePiscaODoador = alvoDoClique;
+			break;
+		}
+		string porQueNaoPiscaria = $"Ki {doador.Ficha.Ki:0.#} (o tile custa "
+			+ $"{6 * doador.Ficha.BaseDrain() / (doador.Ficha.Ekiskill * (doador.Ficha.Espeed / 2)):0.#}), zanzorange "
+			+ $"{ZanzorangeG10(doador.Ficha)}, rumo livre {(Vec2.Distance(ondePiscaODoador, doouDe) < 0.5f ? "NENHUM" : "achado")}";
+		Zanzoken(doador, ondePiscaODoador);
+		bool doadorPiscou = Vec2.Distance(doador.Pos, ondePiscaODoador) < 0.5f;
+		double kiDoAlvoAntes = alvo.Ficha.Ki;
+		TickDoEfetorG11();
+		TickDoEfetorG11();
+		AfirmarG11("quem DOA pisca e FICA no ponto novo, e a doacao continua de la (o `gavepower` nao prende o corpo)",
+				   Vec2.Distance(ondePiscaODoador, doouDe) > 0.5f && doadorPiscou
+				   && Vec2.Distance(doador.Pos, ondePiscaODoador) < 0.5f && _doacaoG11.ContainsKey(doador.Id)
+				   && alvo.Ficha.Ki > kiDoAlvoAntes,
+				   $"piscou={doadorPiscou}, doador em ({doador.Pos.X:0},{doador.Pos.Y:0}) (piscou pra {ondePiscaODoador.X:0},"
+				   + $"{ondePiscaODoador.Y:0}; saiu de {doouDe.X:0},{doouDe.Y:0}), doando={_doacaoG11.ContainsKey(doador.Id)}, "
+				   + $"Ki do alvo {kiDoAlvoAntes:0.##} -> {alvo.Ficha.Ki:0.##} | {porQueNaoPiscaria}");
 
 		UsarHabilidade(doador, "Give_Power");   // parar
 		TickDoEfetorG11();

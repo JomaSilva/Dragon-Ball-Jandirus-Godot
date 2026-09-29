@@ -188,6 +188,82 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// ============================ O PALCO DE QUEM ANDA SOZINHO: CHAO ABERTO, LONGE DE TODO CORPO ============================
+	/// As duas cenas de corpo possuido desta bancada (a furia lendaria e a fera do Oozaru) mediam o passo da
+	/// IA ONDE O HOST ESTIVESSE -- e desde o `0b0c8b2` isso e o `/obj/SpawnPoint` do BYOND, que na Terra fica
+	/// DENTRO de uma casa: um quarto de 10 x 2 celulas livres (x 68-77, y 260-261 do `z01_Earth.col`), com uma
+	/// alcova de duas celulas acima (x 72-73, y 259) e a porta FECHADA em (73,262). A porta so abre pelo
+	/// `TickDasPortas`, que mora no `Tick()` cheio -- e esta bancada roda inteira dentro do login, sem um tique
+	/// cheio sequer. E a IA nao contorna parede (`PassoDaIa`: "nao ha A* aqui"): ela desliza no eixo livre e
+	/// para.
+	///
+	/// A PRESA E UM CIDADAO DA TERRA, e onde ele esta e SORTEIO (semente de mundo nova a cada boot). Quando o
+	/// berco sorteado na criacao e a Terra, as duas cenas rodam no MESMO corpo sem sair da casa: com a presa
+	/// pra cima dela, a furia levava o corpo ate a boca da alcova e a fera nascia ali, a 3,4 px da celula
+	/// (71,259) e a 4,8 px do teto, com o passo do tique pedindo as duas coisas. O `Advance` recusa o passo
+	/// cheio e os dois deslizes, e a medida saiu `(2315,41, 8289,79) -> (2315,41, 8289,79)` -- duas
+	/// reprovacoes em dez rodadas, e nenhuma delas era sobre a IA.
+	///
+	/// O PALCO E ESCOLHIDO PELAS DUAS COISAS QUE A MEDIDA PRECISA, e so por elas:
+	///   * CHAO ABERTO -- um quadrado de celulas que servem de chao (`ServeDeChao`, a mesma pergunta que o
+	///     `MoveRules` faz pra quem esta a pe) com meia largura de `ceil(passo / 32) + 1` celulas. No centro
+	///     dele a caixa dos pes (16 x 10 px, descida 8) tem pelo menos `32 * folga + 3` px de chao pra todo
+	///     lado -- mais que o maior passo de um tique --, entao o PRIMEIRO passo da IA, pra onde for, nao tem
+	///     o que o recuse;
+	///   * LONGE DE TODO CORPO -- mais que o `AlcanceDaInvestida` do cerebro somado a tudo o que a cena
+	///     inteira anda. Perto disso a `Pressao` para de dar passo (colado, `DistanciaIdeal * 1.4`) ou o
+	///     troca pelo arranque, e a cena passaria a medir o SOCO. (A grade de corpos esta velha aqui dentro
+	///     -- so o `Tick()` a remonta --, e a distancia cobre isso de graca.)
+	///
+	/// O QUE NAO MUDA: quem anda continua sendo `TickDosCorposSemDono` -> `PresaDaFera`/`RumoDaFera` ->
+	/// `Cerebro.Pensar` -> `PassoDaIa` -> `MoveRules.Advance`, com a presa que a PRODUCAO escolher. So o chao
+	/// deixou de ser sorteio. Sem palco devolve nulo, e a cena REPROVA dizendo isso: cair calado na casa
+	/// traria de volta o vermelho que nao e da IA.
+	/// =====================================================================================================================
+	/// </summary>
+	/// <param name="quem">O corpo que vai pro palco. Ele mesmo nao conta como vizinho.</param>
+	/// <param name="perto">De onde a busca parte, anel por anel (o desenho do `ZoneCollision.PontoLivrePerto`).</param>
+	/// <param name="dt">O dt da cena -- o mesmo que ela passa pro `TickDosCorposSemDono`.</param>
+	/// <param name="tiques">Quantos tiques a cena roda: e o quanto o corpo pode andar ate ela acabar.</param>
+	private Vec2? PalcoAbertoPraAndar(ServerPlayer quem, Vec2 perto, double dt, int tiques)
+	{
+		const int T = ZoneCollision.TileSize;
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(quem.Zone);
+		if (mapa == null) return perto;   // zona sem colisao: nada para ninguem
+
+		// O MAIOR PASSO DE UM TIQUE, pela MESMA conta do `PassoDaIa` -- a pe, porque nem a `Pressao` nem o
+		// `Vagar` correm --, e com o `SpeedStat`, que e o campo que o passo le.
+		float passo = MoveRules.SpeedPx(quem.SpeedStat, correndo: false) * (float)dt;
+		int folga = (int)MathF.Ceiling(passo / T) + 1;
+		float longe = (quem.Cerebro?.AlcanceDaInvestida ?? 0f) + tiques * passo + T;
+		float longe2 = longe * longe;
+		List<ServerPlayer> daZona = ZoneList(quem.Zone.Hash);
+
+		int cx0 = (int)MathF.Floor(perto.X / T), cy0 = (int)MathF.Floor(perto.Y / T);
+		for (int r = 0; r <= 160; r++)
+			for (int dx = -r; dx <= r; dx++)
+				for (int dy = -r; dy <= r; dy++)
+				{
+					if (Math.Abs(dx) != r && Math.Abs(dy) != r) continue;   // so a borda do anel
+					int cx = cx0 + dx, cy = cy0 + dy;
+					if (!mapa.ServeDeChao(cx, cy)) continue;
+
+					Vec2 centro = mapa.CentroDaCelula(cx, cy);
+					bool sozinho = true;
+					foreach (ServerPlayer o in daZona)
+						if (o.Id != quem.Id && (o.Pos - centro).LengthSquared < longe2) { sozinho = false; break; }
+					if (!sozinho) continue;
+
+					bool aberto = true;
+					for (int ox = -folga; ox <= folga && aberto; ox++)
+						for (int oy = -folga; oy <= folga && aberto; oy++)
+							aberto = mapa.ServeDeChao(cx + ox, cy + oy);
+					if (aberto) return centro;
+				}
+		return null;
+	}
+
+	/// <summary>
 	/// MATA O CORPO PELO FUNIL DE VERDADE -- `Corpo.Ferir` (letal) -> `DeveMorrer` -> `Morrer()`.
 	///
 	/// Nao e `pl.Ficha.dead = true`: quem escreve o campo na mao pula exatamente os passos onde uma
@@ -881,6 +957,29 @@ public partial class GameServer
 			// `Moving = pl.Moving` do `EstadoDe`, ou volte o `pl.Moving = false` cego do portao de input,
 			// e "andando no fio" cai enquanto "se move sozinho" continua verde -- que e o defeito.
 			// ============================================================================================
+			// ============================ O PALCO E CHAO ABERTO -- E NAO A CASA DO BERCO ============================
+			// Esta medida reprovava duas vezes em dez com a posicao IDENTICA antes e depois, e a IA estava certa:
+			// o corpo estava encaixado na alcova do quarto do `SpawnPoint` da Terra, com a presa (um cidadao que a
+			// semente do mundo pos do outro lado da parede) pedindo um passo que as duas paredes recusam. Quem
+			// deixava o corpo la era a cena da furia, no mesmo corpo, quando o berco sorteado e a Terra -- o
+			// `MoveToZone` do topo desta familia so leva pro berco quem esta FORA da Terra. A geometria e cada
+			// numero do palco estao no `PalcoAbertoPraAndar`.
+			//
+			// OS 20 TIQUES TEM A FOLGA CONTADA: com presa, o cerebro novo segura o `Nada` de nascenca pelo
+			// compromisso (`TempoMinimoNoPlano`, 1,2 s -- `Nada` -> `Pressionar` nao esta nas interrupcoes), e a
+			// 0,5 s de intervalo a dt 0,1 as decisoes caem nos tiques 1, 8 e 15 (o resto de ponto flutuante de
+			// 0,5 - 5 x 0,1 e positivo e empurra cada decisao um tique): o primeiro passo e o do tique 15, e sobram
+			// seis. Sem presa o `Vagar` interrompe na hora e ele anda desde o tique 1.
+			//
+			// O PALCO E EMPRESTADO: o corpo volta pra onde estava logo depois das tres checagens, pelo mesmo
+			// motivo de o fim desta familia devolver a zona ("a lua e o lugar voltam ao que eram").
+			// ======================================================================================================
+			Vec2 ondeEstava = pl.Pos;
+			Vec2? palco = PalcoAbertoPraAndar(pl, PontoDeNascimento(terraDaFera), dt: 0.1, tiques: 20);
+			Checa("(preparo) a fera anda em chao ABERTO e longe de todo corpo, e nao na casa do berco",
+				  palco != null, "nao achei palco na Terra: a cena mediria a parede, e nao o passo da IA");
+			if (palco is { } chao) pl.Pos = chao;
+
 			Jandirus.Core.World.Vec2 antes = pl.Pos;
 			bool andandoNoFio = false, semRedeasNoFio = true;
 			for (int t = 0; t < 20; t++)
@@ -890,11 +989,14 @@ public partial class GameServer
 				andandoNoFio |= fio.Moving;
 				semRedeasNoFio &= fio.SemRedeas;
 			}
+			// O PLANO VAI NO DETALHE: parado em `Nada` (a cena acabou antes da primeira decisao) e parado em
+			// `Pressionar` (decidiu e o chao recusou) sao defeitos diferentes com a mesma posicao.
 			Checa("o corpo possuido se move sozinho", (pl.Pos - antes).LengthSquared > 1,
-				  $"{antes} -> {pl.Pos}");
+				  $"{antes} -> {pl.Pos} (plano {pl.Cerebro?.Atual})");
 			Checa("...e o snapshot diz que ele esta ANDANDO (senao ele desliza na tela do dono)",
 				  andandoNoFio);
 			Checa("...e diz, em TODO tique, que o corpo esta sem redeas", semRedeasNoFio);
+			pl.Pos = ondeEstava;
 
 			DesfazerOozaru(pl, "bancada: fim da fera");
 			Checa("acabar a forma devolve as redeas",
@@ -1175,8 +1277,9 @@ public partial class GameServer
 
 		// ============================ AS OUTRAS ESCADAS DE SANGUE, PELA MESMA TECLA C ============================
 		// POR ULTIMO, e nao por ordem de importancia: esta secao troca a RACA do personagem uma vez por
-		// linha (Saiyajin, meio-Saiyajin, Frost Demon, Namekuseijin, Alien, Heran) e compra skill no
-		// livro dele. Tudo acima daqui mede a escada Saiyajin num corpo Saiyajin -- rodar antes faria
+		// linha (Saiyajin, meio-Saiyajin, Frost Demon, Namekuseijin, Alien, Heran, Bio-Androide), compra
+		// skill no livro dele e veste o degrau de bio. Tudo acima daqui mede a escada Saiyajin num corpo
+		// Saiyajin -- rodar antes faria
 		// aquelas checagens medirem o estranho desta, que e o modo de falha que o cabecalho deste
 		// arquivo descreve. Ela tem `finally` proprio e mora em `GameServer.RaciaisTeste.cs`.
 		// =================================================================================================
@@ -1782,6 +1885,16 @@ public partial class GameServer
 
 			// --- 3. ELA ANDA PELO MESMO LACO DO CLONE E DA FERA -----------------------------
 			// Sem esta checagem, "reusei a IA do Oozaru" seria afirmacao de comentario e nao de codigo.
+			//
+			// NO PALCO ABERTO, e nao onde o host estiver (ver `PalcoAbertoPraAndar`): quando o berco sorteado e a
+			// Terra, esta cena rodava no quarto fechado do `SpawnPoint` e era ELA quem encaixava o corpo na alcova
+			// em que a fera reprovava depois. O palco e emprestado: o corpo volta pra onde estava.
+			Vec2 ondeEstava = pl.Pos;
+			Vec2? palco = PalcoAbertoPraAndar(pl, PontoDeNascimento(pl.Zone), dt: 0.1, tiques: 20);
+			Checa("(preparo) a furia anda em chao ABERTO e longe de todo corpo, e nao na casa do berco",
+				  palco != null, "nao achei palco: a cena mediria a parede, e nao o passo da IA");
+			if (palco is { } chao) pl.Pos = chao;
+
 			Jandirus.Core.World.Vec2 antes = pl.Pos;
 			bool andandoNoFio = false;
 			for (int t = 0; t < 20; t++)
@@ -1790,9 +1903,10 @@ public partial class GameServer
 				andandoNoFio |= EstadoDe(pl, NowMs()).Moving;
 			}
 			Checa("o corpo possuido pela furia se move sozinho",
-				  (pl.Pos - antes).LengthSquared > 1, $"{antes} -> {pl.Pos}");
+				  (pl.Pos - antes).LengthSquared > 1, $"{antes} -> {pl.Pos} (plano {pl.Cerebro?.Atual})");
 			Checa("...e o snapshot diz que ele esta ANDANDO (senao ele desliza na tela do dono)",
 				  andandoNoFio, "");
+			pl.Pos = ondeEstava;
 
 			// --- 4. E ELA DEVOLVE O CORPO -- O RELOGIO CORRE NOS DOIS SENTIDOS --------------
 			// COMO REPROVA SE A REGRA SUMIR: troque o `ArmarOControle(..., voltando: true)` do

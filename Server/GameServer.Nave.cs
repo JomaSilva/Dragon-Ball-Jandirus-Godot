@@ -66,8 +66,12 @@ public sealed class Nave
 	/// O CASCO -- `maxarmor = max(intBPcap*5, 1000)` / `armor = maxarmor` (`ShipVessel.dm:63-64`).
 	///
 	/// So a Capital Ship o usa (ver <see cref="NaveGrande.ArmaduraMaxima"/>). Nas outras duas ele
-	/// fica em zero e a nave nao entra no funil de estrago: o `obj/Spacepod` do DM nao declara
-	/// `fragile` e nao tem verb de destruir, entao um pod nao se quebra -- se recolhe.
+	/// fica em zero e a nave nao entra no funil de estrago -- e isso e DIVERGENCIA, e nao copia: o
+	/// `obj/Spacepod` do DM declara `fragile = 1` (`PlanetTech.dm:47`; o `obj/Rocketship` tambem, :244)
+	/// com a armadura padrao 1 (`barrier.dm:8-9`), entao la o soco em cenario (`attack_proc.dm:6-7`) e o
+	/// corpo arremessado (`Movement Effects.dm:74-76`) o derrubam, e o upgrade "Armor (1000z)"
+	/// (`PlanetTech.dm:208-215`) sobe a armadura pro `intBPcap` de quem paga. O que o pod NAO tem e verb de
+	/// destruir. Aqui ele nao se quebra -- se recolhe.
 	///
 	/// VAI PRO DISCO, ao contrario do piloto e do lancamento: uma nave que voltasse do reboot com o
 	/// casco cheio faria de reiniciar o servidor a melhor forma de reparo do jogo.

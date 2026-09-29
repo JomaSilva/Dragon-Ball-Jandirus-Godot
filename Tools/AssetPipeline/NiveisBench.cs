@@ -643,21 +643,23 @@ public static class NiveisBench
 		livro.Dar(Trinity);
 		var n = new NiveisDeSkill();
 		n.Por(Trinity, 2);
-		string? Casa(string p) => EfeitosDeSkill.RotuloDaCasa(cat, livro.Escolhas, p);
-
 		Conferir("no nivel 2 SEM casa escolhida, nenhum verb (TrinityType nulo: o switch do DM nao entra em ramo nenhum)",
-				 !n.VerbosAtivos(Casa).Any(), string.Join(",", n.VerbosAtivos(Casa)));
+				 !n.VerbosAtivos(cat, livro.Escolhas).Any(), string.Join(",", n.VerbosAtivos(cat, livro.Escolhas)));
 		livro.Escolher(cat, Trinity, 1);
-		Conferir("casa 1 (Van-sama): SO o Taunt", n.VerbosAtivos(Casa).SequenceEqual(["Taunt"]), string.Join(",", n.VerbosAtivos(Casa)));
+		Conferir("casa 1 (Van-sama): SO o Taunt", n.VerbosAtivos(cat, livro.Escolhas).SequenceEqual(["Taunt"]), string.Join(",", n.VerbosAtivos(cat, livro.Escolhas)));
+		// A PERGUNTA POR UM VERB (`DestravaOVerbo`, a do `SabeTecnica` do servidor) anda a MESMA varredura da
+		// lista -- e tem que dar a mesma resposta nos dois sentidos, senao o menu e o servidor divergem.
+		Conferir("...e a pergunta por UM verb concorda com a lista: `Taunt` sim, `Slap` nao",
+				 n.DestravaOVerbo("Taunt", cat, livro.Escolhas) && !n.DestravaOVerbo("Slap", cat, livro.Escolhas));
 		livro.Escolher(cat, Trinity, 2);
-		Conferir("casa 2 (Ricardo): SO o Slap", n.VerbosAtivos(Casa).SequenceEqual(["Slap"]), string.Join(",", n.VerbosAtivos(Casa)));
+		Conferir("casa 2 (Ricardo): SO o Slap", n.VerbosAtivos(cat, livro.Escolhas).SequenceEqual(["Slap"]), string.Join(",", n.VerbosAtivos(cat, livro.Escolhas)));
 		livro.Escolher(cat, Trinity, 3);
-		Conferir("casa 3 (Aniki): SO o Counter_Taunt", n.VerbosAtivos(Casa).SequenceEqual(["Counter_Taunt"]), string.Join(",", n.VerbosAtivos(Casa)));
-		Conferir("sem resolvedor de casa (quem nao tem livro), nenhum -- o lado seguro",
-				 !n.VerbosAtivos().Any());
+		Conferir("casa 3 (Aniki): SO o Counter_Taunt", n.VerbosAtivos(cat, livro.Escolhas).SequenceEqual(["Counter_Taunt"]), string.Join(",", n.VerbosAtivos(cat, livro.Escolhas)));
+		Conferir("sem catalogo nem escolhas (quem nao tem livro), nenhum -- o lado seguro, na lista e na pergunta",
+				 !n.VerbosAtivos().Any() && !n.DestravaOVerbo("Counter_Taunt", null, null));
 		n.Por(Trinity, 1);
 		Conferir("no nivel 1, com a casa escolhida, nenhum: o verb e do DEGRAU 2 e nao da compra",
-				 !n.VerbosAtivos(Casa).Any());
+				 !n.VerbosAtivos(cat, livro.Escolhas).Any());
 
 		// A FONTE DE EXP: em luta. `RegrasDoDisco` mapeava `savant.IsInFight` pra "condicao desconhecida".
 		Conferir("a Trindade sobe de nivel EM LUTA (`if(savant.IsInFight) exp++`, :176) -- a condicao entrou como `Estado.Lutando`",

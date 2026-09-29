@@ -490,7 +490,16 @@ public partial class GameServer
 		// E AGORA O GESTO INTEIRO, pelos verbos.
 		mestre.RecargaDeEnsino = 0;
 		Encostar(mestre, aluno, tiles: 1);
-		long raivaAntes = aluno.FuriaExtremaAte;
+		// ============================ AS DUAS JANELAS, PORQUE O ALVO E SORTEADO ============================
+		// A raiva que a provocacao acende e a que o DEGRAU pede (`Catalogo.RaivaExigida`), e o
+		// `AcenderJanelaDeRaiva` escreve cada uma num campo: a Extrema (tronco Saiyajin) no
+		// `FuriaExtremaAte`, a Lendaria (linha Legendary) no `RaivaLendariaAte`. Esta linha so olhava o
+		// primeiro, e quando o sorteio de classe dava um aluno Legendary (alvo `wrathful`) ela ficava
+		// VERMELHA com o despertar verde logo acima (74/1 em 2026-09-24) -- a bancada reprovando por
+		// sorteio, que e o que o cabecalho desta secao proibe. Fotografa as duas e confere a que o alvo nomeia.
+		// ==================================================================================================
+		NivelDeRaiva raivaPedida = Catalogo.RaivaExigida(alvo);
+		long furiaAntes = aluno.FuriaExtremaAte, lendariaAntes = aluno.RaivaLendariaAte;
 		UsarVerboDeMestre(mestre, $"mst_ensinar:{alvo.Id}");
 		AfirmarMv("a oferta de despertar sai pelo verb", aluno.PedidoDoMestre is { Despertar: true });
 		UsarVerboDeMestre(aluno, "mst_aceitar");
@@ -498,13 +507,33 @@ public partial class GameServer
 		AfirmarMv($"O ALUNO DESPERTA {alvo.Id} com 60% da porta PESSOAL dele -- a metade do MST_HALF",
 				  aluno.Forma.Atual == alvo.Id,
 				  $"{aluno.Forma.Atual}, BP {aluno.Ficha.BP:N0} de {porta:N0}");
-		AfirmarMv("...e a raiva foi acesa pela provocacao (a forma nasce dela)",
-				  aluno.FuriaExtremaAte > raivaAntes || Catalogo.RaivaExigida(alvo) == NivelDeRaiva.Nenhuma);
+		AfirmarMv($"...e a raiva que o degrau pede ({raivaPedida}) foi acesa pela provocacao (a forma nasce dela)",
+				  raivaPedida switch
+				  {
+					  NivelDeRaiva.Extrema => aluno.FuriaExtremaAte > furiaAntes,
+					  NivelDeRaiva.Lendaria => aluno.RaivaLendariaAte > lendariaAntes,
+					  _ => true,
+				  },
+				  $"alvo {alvo.Id} pede {raivaPedida}: FuriaExtremaAte {furiaAntes} -> {aluno.FuriaExtremaAte}, "
+				  + $"RaivaLendariaAte {lendariaAntes} -> {aluno.RaivaLendariaAte}");
 		AfirmarMv("...e o corte ficou ANOTADO no personagem (sem isto ele nao reentra na propria forma)",
 				  aluno.Forma.PortasCortadas.Contains(alvo.IdRede));
 
 		// A REENTRADA -- o bug que o `mst_form_apply` (`:358-360`) descreve.
-		aluno.Forma.Entrar(Catalogo.IdBase);
+		//
+		// ============================ VOLTAR A BASE E PELO FUNIL -- E E ISSO QUE ENCERRA A CENA ============================
+		// Esta linha era `aluno.Forma.Entrar(Catalogo.IdBase)`, o estado escrito na mao, e dava o mesmo defeito
+		// da `--mestreteste` (2026-09-24): o despertar logo acima ESTREIA a forma, o `AnunciarForma` marca a cena
+		// cheia (25 s do SSJ1), e so o `TickDaForma` desconta o prazo -- nenhum tique roda numa bancada de boot. O
+		// aluno ficava INTOCAVEL ate o fim, e o `AlvoNaFrente` (que pula intocavel) respondia "nao ha ninguem na
+		// sua frente" a todo verbo daqui pra baixo: 13 falhas em cascata (a metade exata, as duas recargas com o
+		// prazo ZERO menos o relogio de parede, o ensino de skill, a cadeia do UI, o relogin). Descer pelo gesto de
+		// producao (o ramo de descida do `Transformar`, o do pacote `C2S.Transformar`) marca a cena da BASE: zero.
+		// ======================================================================================================
+		Transformar(aluno, subir: false);
+		AfirmarMv("(montagem) de volta a base pelo funil, o aluno SAIU da cena e voltou a ser alcancavel",
+				  aluno.Forma.Atual == Catalogo.IdBase && !aluno.Combate.Intocavel,
+				  $"forma {aluno.Forma.Atual}, cena {aluno.CenaSegundos:0.#} s");
 		aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
 		AfirmarMv("depois de voltar a base ele REENTRA sozinho, sem mestre e sem raiva",
 				  aluno.Forma.Avaliar(alvo.Id, aluno.Ficha.BP, 1, false, Perfil(aluno)) == RecusaForma.Pode);
@@ -526,6 +555,12 @@ public partial class GameServer
 			Encostar(mestre, aluno, tiles: 1);
 
 			UsarVerboDeMestre(mestre, $"mst_ensinar:{alvo.Id}");
+			// A OFERTA TEM QUE TER SAIDO, senao as duas checagens abaixo passam POR VACUO: sem pedido, o "sim" do
+			// aluno cai no "ninguem te ofereceu nada", a forma fica na base e a raiva apagada -- verde sem o
+			// despertar ter sido tentado. Foi o que aconteceu enquanto o aluno ficava preso na cena (ver a reentrada).
+			AfirmarMv("(montagem) a oferta dos 49% SAIU -- o mestre alcancou o aluno e pagou a recarga",
+					  aluno.PedidoDoMestre is { Despertar: true } && mestre.RecargaDeEnsino > NowMs(),
+					  aluno.PedidoDoMestre?.ToString() ?? "nenhum pedido");
 			UsarVerboDeMestre(aluno, "mst_aceitar");
 			AfirmarMv("com 49% da porta (um fio abaixo da metade) o despertar assistido FALHA",
 					  aluno.Forma.Atual == Catalogo.IdBase, aluno.Forma.Atual);
@@ -543,13 +578,20 @@ public partial class GameServer
 		}
 		finally
 		{
+			// DESCE PELO FUNIL ANTES DE DEVOLVER O ESTADO GUARDADO: o despertar dos 50% ESTREIA a forma no estado
+			// virgem, e a cena cheia que ele marca prenderia o aluno pelo resto da bancada (ver a reentrada). O
+			// guardado ja esta na base -- desceu pelo funil la em cima --, entao devolve-lo basta.
+			Transformar(aluno, subir: false);
 			aluno.Forma = guardado;
-			aluno.Forma.Entrar(Catalogo.IdBase);
 			PorBp(aluno, porta * 0.6);
 		}
 
-		mestre.Forma.Entrar(Catalogo.IdBase);
-		AplicarForma(mestre);
+		// O MESTRE TAMBEM ESTREOU a forma (a testemunha, pelo `EntrarNaForma`) e desce pelo mesmo funil.
+		Transformar(mestre, subir: false);
+		AfirmarMv("(montagem) os dois de volta a base pelo funil, fora de cena e alcancaveis pras secoes seguintes",
+				  aluno.Forma.Atual == Catalogo.IdBase && mestre.Forma.Atual == Catalogo.IdBase
+				  && !aluno.Combate.Intocavel && !mestre.Combate.Intocavel,
+				  $"aluno {aluno.Forma.Atual} (cena {aluno.CenaSegundos:0.#} s), mestre {mestre.Forma.Atual} (cena {mestre.CenaSegundos:0.#} s)");
 	}
 
 	// =====================================================================

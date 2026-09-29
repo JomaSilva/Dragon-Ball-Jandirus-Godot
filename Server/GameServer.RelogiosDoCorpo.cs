@@ -65,16 +65,6 @@ public partial class GameServer
 		// do Ki zerado, e e justamente nesse instante que a luta costuma virar.
 		foreach (ServerPlayer pl in _players.Values) TickDaForma(pl, dt);
 
-		// ============================ O RELOGIO DA FERA VOLTOU AO LACO ============================
-		// `TickDoOozaru` -- o prazo da forma, a perda das redeas, o rabo cortado, a meditacao e, agora,
-		// a lua que sai do ceu -- ficou FORA do laco de producao desde a55b464 ("Grande Update Parte
-		// 4"), quando estes relogios mudaram de endereco: so as bancadas o chamavam, direto, e por isso
-		// todas passavam verdes com um Oozaru que, em jogo, nunca se cansava, nunca fugia do controle e
-		// nem sem rabo caia. E o mesmo tique cheio da forma, pelo mesmo motivo dela: o prazo e por
-		// segundo e a queda tem que cair no segundo certo. Ver `GameServer.Oozaru.cs`.
-		// ========================================================================================
-		foreach (ServerPlayer pl in _players.Values) TickDoOozaru(pl, dt);
-
 		// A CARGA ANDA NO TICK CHEIO, junto da forma, porque as duas mexem no MESMO Ki: a forma
 		// dreno e a carga enche. Rodar em cadencias diferentes faria o saldo depender da ordem em
 		// que os dois relogios se cruzam -- o mesmo SSJ carregando renderia coisas diferentes em
@@ -119,9 +109,27 @@ public partial class GameServer
 		//     anterior.
 		foreach (ServerPlayer pl in _players.Values) TickDoNado(pl, (float)dt);
 
-		// O OOZARU ANDA COM AS OUTRAS FORMAS: prazo, raiva e pericia sao contados em segundos, e o
-		// rabo pode ser arrancado a qualquer golpe -- a 5 Hz a forma sobreviveria ate 200 ms depois
-		// de o membro cair.
+		// ============================ O RELOGIO DA FERA, E ELE RODA **UMA** VEZ POR TIQUE ============================
+		// O OOZARU ANDA COM AS OUTRAS FORMAS, no tique cheio: raiva e pericia sao contadas em segundos,
+		// e o rabo pode ser arrancado a qualquer golpe (e a lua sair do ceu a qualquer quadro) -- a 5 Hz
+		// a forma sobreviveria ate 200 ms depois de a fonte dela cair.
+		//
+		// A POSICAO e a que ele tinha no `Tick()` antes de estes relogios mudarem de endereco
+		// (a55b464~1, `GameServer.cs:3580`: depois do nado, antes do Frost), e ela respeita as duas
+		// amarras que importam: DEPOIS do `TickDaForma`, que e quem reverte por Ki zerado ou nocaute;
+		// e ANTES da furia e do `TickDosCorposSemDono`, porque as duas possessoes escrevem no MESMO
+		// `Cerebro` e a fera tem precedencia (ver o bloco da furia, abaixo).
+		//
+		// ESTA E A UNICA CHAMADA, e o aviso existe porque ja houve duas. 1523cd2 (2026-09-07) pos uma
+		// segunda logo abaixo do `TickDaForma`, certo de que o relogio tinha ficado FORA do laco em
+		// a55b464. Nao tinha: esta linha veio junto na mudanca de endereco, e o `Tick()` chama
+		// `TickDosRelogiosDoCorpo` sem condicao desde entao. Com as duas, tudo o que o `TickDoOozaru`
+		// integra por `dt` andava em DOBRO -- a raiva de quem medita acabava na metade do tempo e a fera
+		// era dominada em 15 min, e nao nos 30 de `Oozaru.SegundosParaDominar`. (O prazo da forma nao
+		// dobrava: ele e `NowMs()` contra `OozaruAte`, relogio absoluto.) A `--luasometeste` (familia 1)
+		// roda N tiques DESTE laco e cobra exatamente N*dt: uma segunda chamada, onde quer que caia, a
+		// reprova.
+		// ============================================================================================================
 		foreach (ServerPlayer pl in _players.Values) TickDoOozaru(pl, dt);
 
 		// O MOTOR DO FROST MUTANTE ANDA AQUI, e a posicao e a mesma razao dos tres acima: ele mexe no

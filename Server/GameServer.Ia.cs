@@ -493,7 +493,16 @@ public partial class GameServer
 	{
 		if (!TecnicasDeLonge.Alguma || _skills == null) return Arsenal.Vazio;
 
-		List<Tiro>? achados = null;
+		// ============================ DUAS PASSADAS, E O UNICO OBJETO E A RESPOSTA ============================
+		// A versao anterior montava uma `List<Tiro>` (32 B, mais o `Tiro[4]` do primeiro `Add`, 216 B) pra no fim
+		// copiar tudo num array do tamanho certo -- e o `foreach` sobre `IEnumerable` ainda encaixotava o
+		// enumerador (80 B): 400 B por leitura com UM tiro, dos quais so os 72 do array final sao resposta. Agora a
+		// primeira passada so ANOTA quem se sabe (um `bool` por linha, na pilha) e a segunda preenche o array ja no
+		// tamanho certo. Sao as MESMAS perguntas (`SabeTecnica` uma vez por linha), na MESMA ordem (o mesmo
+		// dicionario, sem escrita entre as duas passadas), e o mesmo `Arsenal.Vazio` pra quem nao sabe nenhuma.
+		// =====================================================================================================
+		Span<bool> sabe = stackalloc bool[TecnicasDeLonge.Quantas];
+		int quantas = 0, i = 0;
 		foreach (TecnicasDeLonge.Linha linha in TecnicasDeLonge.Todas)
 		{
 			// A PERGUNTA E A DO JOGADOR, e e a mesma funcao: `SabeTecnica` e quem responde "voce nao
@@ -505,9 +514,18 @@ public partial class GameServer
 			// que monta a lista COMPLETA de habilidades do corpo pra depois filtrar tres. Num
 			// personagem com muitas skills isso e uma lista de centenas de strings por segundo, e a
 			// bancada de alocacao da IA reprovou na hora em que a tabela deixou de estar vazia.
-			if (!SabeTecnica(pl, linha.Id)) continue;
+			sabe[i] = SabeTecnica(pl, linha.Id);
+			if (sabe[i++]) quantas++;
+		}
+		if (quantas == 0) return Arsenal.Vazio;
 
-			(achados ??= []).Add(new Tiro
+		var tiros = new Tiro[quantas];
+		int k = 0;
+		i = 0;
+		foreach (TecnicasDeLonge.Linha linha in TecnicasDeLonge.Todas)
+		{
+			if (!sabe[i++]) continue;
+			tiros[k++] = new Tiro
 			{
 				Id = linha.Id,
 				AlcanceMin = linha.AlcanceMinTiles * ZoneCollision.TileSize,
@@ -521,9 +539,9 @@ public partial class GameServer
 
 				PrecisaDeLinhaLivre = linha.PrecisaDeLinhaLivre,
 				Precisao = linha.Precisao,
-			});
+			};
 		}
-		return achados == null ? Arsenal.Vazio : new Arsenal([.. achados]);
+		return new Arsenal(tiros);
 	}
 
 	/// <summary>

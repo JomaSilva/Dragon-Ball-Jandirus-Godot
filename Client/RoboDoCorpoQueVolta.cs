@@ -658,6 +658,7 @@ public partial class RoboDoCorpoQueVolta : Node
 			Jandirus.Core.Combat.Desfecho.Contra,
 			Jandirus.Core.Combat.Desfecho.Acertou,
 			Jandirus.Core.Combat.Desfecho.Critico,
+			Jandirus.Core.Combat.Desfecho.Rebateu,
 		})
 		{
 			Golpe(d);
@@ -666,6 +667,38 @@ public partial class RoboDoCorpoQueVolta : Node
 			yield return 0;
 		}
 		Conferir(NinguemTrocado(trocaram, "F7.1"));
+
+		// ---- F8: o PARRY desenha o ESCUDO em quem defendeu; o bloqueio comum NAO (dono, 2026-09-25) ----
+		// O escudo e o que separa as duas leituras na tela (`World.EfeitoDeParry`, o `perfectshield` do DM). O
+		// bloqueio comum e o contra-exemplo: se o escudo nascesse em todo golpe defendido, o parry deixaria de
+		// ser um sinal.
+		int e0 = Escudos(); Golpe(Jandirus.Core.Combat.Desfecho.Aparou); int noBloqueio = Escudos() - e0;
+		e0 = Escudos(); Golpe(Jandirus.Core.Combat.Desfecho.Contra); int noContra = Escudos() - e0;
+		e0 = Escudos(); Golpe(Jandirus.Core.Combat.Desfecho.Rebateu); int noRebateu = Escudos() - e0;
+		Conferir(new Regra(noBloqueio == 0 && noContra == 1 && noRebateu == 1,
+			$"F8.1 o PARRY desenha o ESCUDO em quem defendeu (Contra {noContra}, Rebateu {noRebateu}) e o bloqueio comum NAO (Aparou {noBloqueio})"));
+
+		// COM JANELA, A FOTO: o escudo no meio do salto e uma linha de sistema no chat -- as duas coisas que o dono
+		// pediu pra ver. Sem janela (`--headless`) nao ha imagem pra tirar, e a F8.1 ja mediu o que da pra medir.
+		if (DisplayServer.GetName() != "headless")
+		{
+			foreach (double w in EsperarSumir(eu)) yield return w;
+			Chat.Sistema("o chat novo: letra de 15 px, contorno e sombra, fundo que esmaece sem apagar o texto.");
+			Golpe(Jandirus.Core.Combat.Desfecho.Contra);
+			yield return 0.1;
+			if (GetViewport()?.GetTexture()?.GetImage() is { } img && img.GetWidth() > 0)
+			{
+				img.SavePng("user://foto-parry.png");
+				GD.Print($"[corpo] foto: {ProjectSettings.GlobalizePath("user://foto-parry.png")}");
+			}
+		}
+	}
+
+	/// <summary>Quantos escudos de parry estao na camada de atores -- o unico `Sprite2D` de gradiente dela (`CombatFx.Escudo`).</summary>
+	private static int Escudos()
+	{
+		if (World.Instancia?.GetNodeOrNull<Node2D>("Atores") is not { } atores) return 0;
+		return atores.GetChildren().Count(f => f is Sprite2D { Texture: GradientTexture2D });
 	}
 
 	// =====================================================================

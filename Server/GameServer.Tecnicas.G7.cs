@@ -649,7 +649,7 @@ public sealed partial class GameServer
 		GolpeG3(pl, alvo, addDano: extra, nivel: emBriga ? 2 : 3);
 		Avisar(pl, emBriga
 			? "voce ja esta na briga: o corte sai comum."
-			: $"voce corta fundo, de surpresa (+{extra:0.#}).");
+			: "voce corta fundo, de surpresa.");
 	}
 
 	/// <summary>
@@ -688,8 +688,8 @@ public sealed partial class GameServer
 		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: dmg, nivel: pelasCostas ? 3 : 2);
 		Avisar(pl, pelasCostas
-			? $"voce acerta {alvo.Name} pelas costas (+{dmg:0.#})."
-			: $"voce apunhala {alvo.Name} de frente -- vale menos (+{dmg:0.#}).");
+			? $"voce acerta {alvo.Name} pelas costas."
+			: $"voce apunhala {alvo.Name} de frente -- vale menos.");
 	}
 
 	// =====================================================================

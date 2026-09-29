@@ -1742,9 +1742,38 @@ public static class Protocol
         public Vec2 PosAtacante;
         public bool Quebrou, Decepou, Nocauteou, Morreu, Rabo;
 
-        // O BIT 32 DESTE BYTE ESTA LIVRE. Ele carregava um `Zanzo` ("houve vulto"), e o vulto
-        // passou a viajar pelo `S2C.Zanzo`, que leva tambem a POSICAO de onde o corpo saiu --
-        // sem ela quem assistia desenhava a miragem no lugar errado.
+        /// <summary>
+        /// ONDE O IMPACTO ACONTECEU -- so quando ele NAO e entre os dois corpos: o tiro. Ver <see cref="Ponto"/>.
+        ///
+        /// Mora no BIT 32 do byte de desfechos, que estava livre desde que o `Zanzo` saiu dele (o vulto
+        /// passou a viajar pelo `S2C.Zanzo`, com a posicao de onde o corpo saiu).
+        /// </summary>
+        public bool TemPonto;
+
+        /// <summary>
+        /// O PONTO DO IMPACTO, RELATIVO A QUEM APANHOU -- em pixel de mundo, a partir do centro do corpo dele no
+        /// instante do golpe. Vale quando <see cref="TemPonto"/>.
+        ///
+        /// RELATIVO, E NAO ABSOLUTO, de proposito: o corpo de quem apanha e desenhado no PASSADO (a linha do
+        /// tempo do `RemotePlayer`, ~100 ms) e subido pela altura do voo. Um ponto absoluto estouraria a faisca
+        /// onde o corpo ESTA no servidor, e um corpo levado pelo feixe ja esta 30 px adiante do desenho dele.
+        /// Somado ao corpo DESENHADO, o ponto fica colado nele -- na beirada, na altura, no instante certo.
+        ///
+        /// ============================ POR QUE O MEIO DOS DOIS CORPOS NAO SERVE PRA TIRO ============================
+        /// O cliente estoura a faisca no MEIO do atacante e da vitima, e pra um soco isso esta certo: o punho
+        /// e o corpo estao a menos de um tile. Pra um raio de vinte tiles, o meio e o meio do RAIO -- e a foto
+        /// do dono de 2026-09-23 e exatamente isso: *"o efeito de hit tem q ser na cabeca do beam e nao no
+        /// meio dele"*. Quem sabe onde a cabeca encostou e o servidor (`Feixe.PontoDoImpacto`), e ele manda.
+        /// ============================================================================================
+        /// </summary>
+        public Vec2 Ponto;
+
+        /// <summary>
+        /// ONDE A FAISCA DESTE GOLPE ESTOURA, dadas as posicoes (desenhadas) dos dois corpos: o ponto do
+        /// impacto quando ele veio, o meio dos dois quando nao. PURA e aqui, e nao no cliente, porque a
+        /// bancada decodifica os bytes do fio e pergunta a MESMA coisa que o desenho pergunta.
+        /// </summary>
+        public Vec2 OndeEstoura(Vec2 atacante, Vec2 vitima) => TemPonto ? vitima + Ponto : (atacante + vitima) * 0.5f;
 
     /// <summary>
     /// HOUVE INVESTIDA -- o corpo REALMENTE fechou a distancia.
@@ -1776,7 +1805,9 @@ public static class Protocol
             w.Put(TemDano);
             if (TemDano) { w.Put(Dano); w.Put(Membro ?? ""); }
             w.Put((byte)((Quebrou ? 1 : 0) | (Decepou ? 2 : 0) | (Nocauteou ? 4 : 0)
-                       | (Morreu ? 8 : 0) | (Rabo ? 16 : 0) | (Investiu ? 64 : 0) | (ZanzoEsquiva ? 128 : 0)));
+                       | (Morreu ? 8 : 0) | (Rabo ? 16 : 0) | (TemPonto ? 32 : 0) | (Investiu ? 64 : 0)
+                       | (ZanzoEsquiva ? 128 : 0)));
+            if (TemPonto) w.PutVec(Ponto);   // DEPOIS do byte de desfechos: e ele que diz se o ponto vem
         }
 
         public static HitEvent Read(NetDataReader r)
@@ -1792,8 +1823,10 @@ public static class Protocol
             byte f = r.GetByte();
             h.Quebrou = (f & 1) != 0; h.Decepou = (f & 2) != 0;
             h.Nocauteou = (f & 4) != 0; h.Morreu = (f & 8) != 0; h.Rabo = (f & 16) != 0;
+            h.TemPonto = (f & 32) != 0;
             h.Investiu = (f & 64) != 0;
             h.ZanzoEsquiva = (f & 128) != 0;
+            if (h.TemPonto) h.Ponto = r.GetVec();
             return h;
         }
     }
@@ -2891,16 +2924,35 @@ public struct ProjetilState
     /// </summary>
     public Vec2 Cauda;
 
+    /// <summary>
+    /// O RAIO NINGUEM ALIMENTA MAIS (o dono soltou, a parte de la de um corte, o ataque devolvido). O cliente
+    /// fecha a ponta de tras com o `end` e nao com a `origin` -- a mao so existe enquanto ha mao
+    /// (`objects.dm:220-229`). Um bit, no byte de flags que ja existe.
+    /// </summary>
+    public bool Solto;
+
+    /// <summary>
+    /// QUEM ESTE RAIO ESTA LEVANDO (0 = ninguem). O cliente PRENDE a cabeca desenhada na frente do corpo
+    /// desenhado dele: os dois sao desenhados em relogios diferentes (o corpo remoto ~100 ms no passado, o
+    /// tiro ~45 ms), e sem a ancora a cabeca de quem arrasta corre 15 a 65 px a frente e e desenhada DENTRO
+    /// de quem ela leva (2026-09-23). Quatro bytes, so enquanto ha arrasto.
+    /// </summary>
+    public int Arrasta;
+
     private const byte MascaraDoTipo = 0x03;
     private const byte BitTemCauda = 0x04;
+    private const byte BitSolto = 0x08;
+    private const byte BitArrasta = 0x10;
 
     public void Write(NetDataWriter w)
     {
         w.Put(Id);
         w.PutVec(Pos);
         bool cauda = (Tipo & MascaraDoTipo) == (byte)Jandirus.Core.Combat.TipoDeProjetil.Beam;
-        w.Put((byte)((Tipo & MascaraDoTipo) | (cauda ? BitTemCauda : 0)));
+        w.Put((byte)((Tipo & MascaraDoTipo) | (cauda ? BitTemCauda : 0) | (cauda && Solto ? BitSolto : 0)
+                     | (cauda && Arrasta != 0 ? BitArrasta : 0)));
         if (cauda) w.PutVec(Cauda);
+        if (cauda && Arrasta != 0) w.Put(Arrasta);
     }
 
     public static ProjetilState Read(NetDataReader r)
@@ -2909,6 +2961,8 @@ public struct ProjetilState
         byte flags = r.GetByte();
         p.Tipo = (byte)(flags & MascaraDoTipo);
         p.Cauda = (flags & BitTemCauda) != 0 ? r.GetVec() : p.Pos;
+        p.Solto = (flags & BitSolto) != 0;
+        p.Arrasta = (flags & BitArrasta) != 0 ? r.GetInt() : 0;
         return p;
     }
 }

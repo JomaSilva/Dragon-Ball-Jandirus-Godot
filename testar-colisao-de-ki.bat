@@ -17,10 +17,11 @@ REM  Ela roda TRES vezes, e a ordem nao e decorativa: quem mede em NUMERO vem
 REM  antes de quem fotografa, porque uma foto custa um minuto de tela pra
 REM  mostrar o que uma funcao pura ja respondeu em quatro segundos.
 REM
-REM    1) --embatekiteste  sem janela. 87 afirmacoes: o gatilho, a fisica do
+REM    1) --embatekiteste  sem janela. 209 afirmacoes: o gatilho, a fisica do
 REM                        medidor, a escada de poder de 1x a 6x, o PIXEL que
-REM                        cada acerto empurra, o encontro CHEGANDO ao corpo
-REM                        (encostar = vencer), o preco do empate, o contra-
+REM                        cada acerto empurra, a vitoria (o feixe de quem perde
+REM                        e engolido ate a MAO dele, e so entao o de quem vence
+REM                        segue ate o corpo), o preco do empate, o contra-
 REM                        exemplo (quem vence antes NAO explode) e as tres
 REM                        bordas (prazo, sair do jogo, ficar sem Ki).
 REM
@@ -41,6 +42,14 @@ REM  TOCAM sem se sobrepor (um raio de cada lado do encontro), 1c) dois raios qu
 REM  CRUZAM nao disputam -- o que bate no tronco alheio ESPERA o tronco sair --, e 10)
 REM  apanhar no meio da disputa pesa no medidor, ninguem agarra quem disputa, e agarrar
 REM  quem so canaliza derruba o raio dele.
+REM
+REM  (2026-09-23) "as cabecas ainda estao se sobrepondo as vezes". Tres familias:
+REM  1d) a VARREDURA de frente -- dois feixes em todo desencontro de tempo, lado,
+REM  escala, altura e alimentacao, e em nenhum quadro uma cabeca entra na outra
+REM  (quem nao pode disputar, porque soltou, foi cortado ou ja disputou, ESPERA ou
+REM  EMPURRA a cabeca solta pelo proprio eixo); 1e) o tronco LARGO do Final Flash
+REM  para quem cruza e corta quem encosta na BEIRADA desenhada, e nao no eixo; e a
+REM  foto 6 mede as duas cabecas do Final Flash frente com frente, sem sobrepor.
 REM
 REM  AS FOTOS saem em
 REM     %%APPDATA%%\Godot\app_userdata\Dragon ball Jandirus\embateki-*.png

@@ -31,10 +31,10 @@ namespace Jandirus.Client;
 /// </summary>
 public partial class Hud : CanvasLayer
 {
-	/// <summary>O painel vivo. O mundo chama pra narrar golpe sem precisar procurar o node.</summary>
+	/// <summary>O painel vivo -- quem precisa dele (a chave do torneio, os robos) nao procura o node.</summary>
 	public static Hud? Instancia { get; private set; }
 
-	private Label _nome = null!, _bp = null!, _atividade = null!, _relato = null!;
+	private Label _nome = null!, _bp = null!, _atividade = null!;
 	private Label _mira = null!, _letal = null!, _hora = null!, _efetivo = null!;
 	private LuaNoCeu _lua = null!;
 
@@ -77,7 +77,6 @@ public partial class Hud : CanvasLayer
 
 	private PanelContainer _ajuda = null!;
 	private GridContainer _gradeAjuda = null!;
-	private double _relatoAte;
 
 	/// <summary>
 	/// TENHO SCOUTER? So ele destrava a leitura de BP em numero, e quem diz e o SERVIDOR: o bit
@@ -306,18 +305,17 @@ public partial class Hud : CanvasLayer
 	}
 
 	// =====================================================================
-	// RODAPE: relato do golpe e a ajuda
+	// RODAPE: a ajuda
 	// =====================================================================
+	// ============================ O GOLPE NAO SE ESCREVE MAIS (dono, 2026-09-25) ============================
+	// Aqui morava o RELATO DO GOLPE -- "acertou 12,3 em Braco", "aparado com Perna (4,1)", "voce esquivou" --,
+	// no meio da tela e no chat, a cada golpe que me envolvia. O pedido: *"a informacao de dano que voce da ou
+	// recebe nao precisa aparecer no chat ou na tela, e pra block tambem"*. Quem conta a luta agora e o CORPO:
+	// o clarao e a faisca do acerto, o empurrao, as feridas pintadas no sprite, o boneco do corpo no HUD, o
+	// escudo do parry e os sons -- ver o `World.AoGolpe`, que desenha tudo isso a partir do mesmo `S2C.Hit`.
+	// ======================================================================================================
 	private void MontarRodape(Control raiz)
 	{
-		_relato = Tema.Legenda("", Tema.Destaque, 16);
-		_relato.AnchorLeft = 0; _relato.AnchorRight = 1;
-		_relato.AnchorTop = 1; _relato.AnchorBottom = 1;
-		_relato.OffsetTop = -108; _relato.OffsetBottom = -80;
-		_relato.HorizontalAlignment = HorizontalAlignment.Center;
-		_relato.MouseFilter = Control.MouseFilterEnum.Ignore;
-		raiz.AddChild(_relato);
-
 		// O PAINEL DE TECLAS, fechado. Abre no TAB.
 		_ajuda = Tema.Painel1();
 		_ajuda.AnchorLeft = 0.5f; _ajuda.AnchorRight = 0.5f;
@@ -463,52 +461,6 @@ public partial class Hud : CanvasLayer
 	private string Leitura(double bp) =>
 		double.IsNaN(bp) || !_temScouter ? "???" : Numero(bp);
 
-	/// <summary>
-	/// Narra o golpe pra quem esta nele. Diz ONDE acertou, nao so quanto: o corpo e por
-	/// partes, e saber que o braco esta indo embora e o que faz mudar de mira ou recuar.
-	/// </summary>
-	public void Narrar(Protocol.HitEvent h, int localId)
-	{
-		bool bati = h.Atacante == localId;
-		string quem = bati ? "acertou" : "levou";
-		string txt = (Jandirus.Core.Combat.Desfecho)h.Desfecho switch
-		{
-			Jandirus.Core.Combat.Desfecho.Critico => $"CRITICO!  {quem} {h.Dano:0.#} em {h.Membro}",
-			Jandirus.Core.Combat.Desfecho.Aparou => $"aparado com {h.Membro}  ({h.Dano:0.#})",
-			Jandirus.Core.Combat.Desfecho.Contra => bati ? "CONTRA-ATAQUE recebido" : "CONTRA-ATAQUE!",
-			Jandirus.Core.Combat.Desfecho.Esquivou => bati ? "esquivou do seu golpe" : "voce esquivou",
-			Jandirus.Core.Combat.Desfecho.Errou => bati ? "" : "",
-			_ => $"{quem} {h.Dano:0.#} em {h.Membro}",
-		};
-		if (h.Rabo) txt += "   -- RABO ARRANCADO";
-		else if (h.Decepou) txt += "   -- MEMBRO ARRANCADO";
-		else if (h.Quebrou) txt += "   -- QUEBROU";
-		if (h.Morreu) txt += "   -- MORTE";
-		else if (h.Nocauteou) txt += "   -- NOCAUTE";
-
-		if (txt.Length == 0) return;
-
-		// O RELATO TAMBEM VAI PRO CHAT. O aviso do meio da tela some em tres segundos, e no
-		// meio de uma troca de golpes e facil perder o que acabou de acontecer -- ali fica o
-		// historico, e da pra rolar depois pra entender por que o braco parou de responder.
-		Chat.Sistema(txt);
-
-		_relato.Text = txt;
-		// A ESQUIVA SAI BRANCA, e nao no laranja de "aconteceu dano" -- e branca e o DM literal:
-		// `attackcolor = "white"` (`AttackFlavor.dm:54`), contra o vermelho dos acertos e o amarelo
-		// do contra-ataque.
-		//
-		// ELA JA FOI AZUL-GELO AQUI, justificada por "e a mesma leitura do anel e do borrao". Os dois
-		// morreram: o anel saiu da esquiva a pedido do dono e o borrao tingido virou a TROCA de sprite
-		// do `flick`, que nao tem cor nenhuma (a arte e preta -- ver `EsquivaZanzoken`). Sem eles a
-		// justificativa do azul evaporou, e o que sobra e o que o DM sempre mandou.
-		_relato.AddThemeColorOverride("font_color",
-			h.Morreu || h.Decepou || h.Rabo ? Tema.Perigo
-			: (Jandirus.Core.Combat.Desfecho)h.Desfecho == Jandirus.Core.Combat.Desfecho.Esquivou ? Tema.Texto
-			: Tema.Destaque);
-		_relatoAte = 3;
-	}
-
 	public override void _Process(double delta)
 	{
 		// A HORA E O CLIMA. A FASE DA LUA NAO ENTRA AQUI: ela tem mostrador proprio no canto
@@ -523,13 +475,6 @@ public partial class Hud : CanvasLayer
 
 			_lua.Aplicar(ceu, World.Instancia.TempoQueFaz?.Encobre ?? 0);
 		}
-
-		if (_relatoAte <= 0) return;
-		_relatoAte -= delta;
-		if (_relatoAte > 0.6) return;
-		// some por fade, nao por corte: um texto que pisca fora do nada distrai no meio da luta
-		_relato.Modulate = new Color(1, 1, 1, (float)Math.Max(_relatoAte / 0.6, 0));
-		if (_relatoAte <= 0) { _relato.Text = ""; _relato.Modulate = Colors.White; }
 	}
 
 	/// <summary>BP fica em bilhoes rapido: notacao curta em vez de 14 digitos na tela.</summary>

@@ -175,6 +175,30 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// POE A ROUPA ESPACIAL NA MOCHILA. Devolve se ela ficou la de verdade.
+	///
+	/// ============================ E O FOLEGO DA `--diagnav`, E NAO UM ATALHO ============================
+	/// O piloto da `--diagnav` e HUMANO (o `--raca` padrao), e humano sufoca em
+	/// `Vacuo.SegundosDeFolego` (20 s). A bancada fica bem mais que isso no espaco -- a roda nas duas
+	/// telas, o roteiro visual, as fotos e a saida do portao, que CONFERE que ainda esta no espaco. Sem
+	/// a roupa ele morria no meio do roteiro, ia pro Outro Mundo, a zona nova remontava a aba Nav e o
+	/// robo ficava segurando uma carta liberada: `ObjectDisposedException` a cada passo e placar nunca
+	/// impresso (medido em 2026-09-24, com e sem `--max-fps 60`).
+	///
+	/// PELO ABRIGO DE PRODUCAO: a mochila e o que `TemTrajeEspacial` (`GameServer.Vacuo.cs`) pergunta
+	/// uma vez por segundo, pelo `CatalogoDeItens.ProtegeDoVacuo`. Nada de imunidade escrita a mao -- um
+	/// folego posto por fora do `SufocaAgora` seria um estado que o jogo nao tem.
+	/// ==================================================================================================
+	/// </summary>
+	internal bool TrajeNaMochilaDeTeste(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+
+		if (pl.Mochila.Quantos(CatalogoDeItens.Traje) <= 0) Guardar(pl, CatalogoDeItens.Traje);
+		return pl.Mochila.Quantos(CatalogoDeItens.Traje) > 0;
+	}
+
+	/// <summary>
 	/// CONCEDE `Poder.Nav` AO JOGADOR SEM ITEM NENHUM. Devolve se o bit ficou aceso em `pl.Poderes`.
 	///
 	/// ============================ ESTA JANELA EXISTE PRA UM CONTRA-EXEMPLO ============================
