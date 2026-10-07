@@ -17,8 +17,10 @@ REM    1) --diagartedeki    A TABELA, OS ESTILOS E O PIXEL, sem atirar. Confere 
 REM                         todo verb que atira tem arte declarada, que toda arte
 REM                         tem ESTILO e se veste (os tiros sao desenhados por
 REM                         shader desde 2026-10-07, nao ha mais folha), que o
-REM                         raio e CONTINUO em 19 rumos e que a ponta e o tronco
-REM                         desenhados batem com as tabelas do Core. Precisa de
+REM                         raio e CONTINUO em 19 rumos, que a ponta e o tronco
+REM                         desenhados batem com as tabelas do Core, e que o
+REM                         fogo em volta (o leque de labaredas das duas pontas)
+REM                         nao pinta atras da mao nem alem da ponta. Precisa de
 REM                         janela: da familia 2b em diante ela mede pixel.
 REM
 REM    2) --diagvariedade   AS FOTOS, com o tiro SAINDO DA MAO. Dispara 21
@@ -87,9 +89,15 @@ echo  ---- 1/2: a tabela, as folhas e o pixel (sem atirar, sem rede) ----
 
 echo.
 echo  ---- 2/2: AS FOTOS -- 24 tiros disparados de verdade, e o mosaico ----
+REM  A CONTA E `bancada_variedade_b` DESDE 2026-10-07. O personagem da conta antiga
+REM  (`bancada_variedade`) ENGORDAVA a cada rodada -- a bancada re-somava os degraus
+REM  de nivel em cima do save -- ate a Bala Dispersa abrir mais de 256 esferas e ser
+REM  recusada pelo teto da zona ("o ar aqui ja esta saturado de energia"). O defeito
+REM  foi consertado (`ArmarParaAVariedade`), mas o save antigo continua inchado: a
+REM  conta nova comeca de um personagem limpo. So letras e sublinhado no nome.
 "%GODOT%" --path . --host --rede 7953 --bpteste 300000000 --horateste 0.5 --campoteste 23 ^
           --diagvariedade --position 1920,0 --resolution 1600x900 ^
-          --raca Human --conta bancada_variedade --nome Variado
+          --raca Human --conta bancada_variedade_b --nome Variado
 
 echo.
 echo  Encerrado. As fotos estao em "%APPDATA%\Godot\app_userdata\Dragon ball Jandirus".

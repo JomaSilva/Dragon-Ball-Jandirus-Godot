@@ -96,10 +96,50 @@ public static class PintorDeKi
 	{
 		EstiloDeFeixe e = EstiloDoFeixe(arte);
 		float alcance = ArteDeProjetil.MeiaEspessuraDoTronco(arte) * escala;
+		float macico = ArteDeProjetil.MeiaEspessuraDoTronco(arte) * e.Macico;   // na escala 1: o bojo e da ARTE
 		return new MedidasDoFeixe(
-			alcance, Feixe.AlcanceDaCabeca(arte, escala),
-			alcance * e.Macico, e.Cabeca * escala, e.Boca * escala);
+			alcance, Feixe.AlcanceDaCabeca(arte, escala), alcance * e.Macico,
+			Mathf.Max(e.Cabeca, macico * Bojo(BojoDaCabeca, macico)) * escala,
+			Mathf.Max(e.Boca, macico * Bojo(BojoDaBoca, macico)) * escala);
 	}
+
+	/// <summary>
+	/// O BOJO DAS PONTAS: quantas vezes o tronco a bola da MAO e a da CABECA tem que ter, no minimo.
+	///
+	/// ============================ O PEDIDO, E AS ARTES QUE NAO O CUMPRIAM ============================
+	/// O dono (2026-10-07): *"ele ser maior quando sai da mao do personagem, ai ele afina ate chega na
+	/// cabeca do beam onde cresce dnv"*. A maioria das folhas ja era assim (o Kamehameha 1 tem bolas de
+	/// 13 px num tronco de 5). Mas algumas tem a ponta DA LARGURA DO TRONCO ou menor -- a capsula do
+	/// Kamehameha 4 (13 e 13), a mao do Masenko (6 num tronco de 5,6), a do Eraser Cannon (6 em 8) -- e
+	/// nessas nao ha de onde afinar. O bojo e o piso: se a folha ja da mais, vale a folha.
+	///
+	/// A da mao e maior que a da cabeca porque o pedido comeca por ela ("maior quando SAI DA MAO").
+	///
+	/// ============================ E O MURO NAO GANHA BOJO ============================
+	/// O piso vale cheio ate 10 px de tronco e some aos 20. O Final Flash (27 px, atirado a 4x: 216 px
+	/// de espessura numa tela de 240) ja e a maior coisa em cena -- com uma vez e meia disso na mao ele
+	/// teria uma esfera de 324 px, maior que a tela. O que cresce nas pontas dele e o leque.
+	/// =================================================================================
+	/// </summary>
+	private const float BojoDaBoca = 1.5f, BojoDaCabeca = 1.4f;
+
+	private const float TroncoDeBojoCheio = 10f, TroncoSemBojo = 20f;
+
+	private static float Bojo(float cheio, float macicoNaEscala1) =>
+		1f + (cheio - 1f) * Mathf.Clamp((TroncoSemBojo - macicoNaEscala1) / (TroncoSemBojo - TroncoDeBojoCheio), 0f, 1f);
+
+	/// <summary>
+	/// O LEQUE DESTE RAIO (o uniform `labareda`): o do estilo, ABAFADO pelo tamanho da explosao.
+	///
+	/// O leque e medido em raios de bola, e proporcional puro nao serve nas pontas da escala: o Final
+	/// Flash a 4x tem uma cabeca de 116 px, e um leque de 2,4 raios dela seriam 280 px de fogo pra cada
+	/// lado. Entao a explosao de uma bola grande cresce MENOS que a bola: com 13 px (um Kamehameha)
+	/// sobram 88% do leque, com 116 sobram 46%.
+	/// </summary>
+	public static float Labareda(EstiloDeFeixe e, MedidasDoFeixe m) =>
+		e.Labareda / (1f + Mathf.Max(m.Cabeca, m.Boca) / BolaQueAbafaOLeque);
+
+	private const float BolaQueAbafaOLeque = 100f;
 
 	/// <summary>
 	/// O MATERIAL DE UM RAIO desta arte, nesta escala, com a cor de ki de quem atirou. Um por tiro: os
@@ -117,19 +157,19 @@ public static class PintorDeKi
 		mat.SetShaderParameter("raio_boca", m.Boca);
 		mat.SetShaderParameter("alcance", m.Alcance);
 		mat.SetShaderParameter("alcance_do_halo", m.Halo);
+		mat.SetShaderParameter("labareda", Labareda(e, m));
+		mat.SetShaderParameter("onda", e.Onda);
 		mat.SetShaderParameter("ponta", e.Ponta);
-		mat.SetShaderParameter("chama", e.Chama);
 		mat.SetShaderParameter("coroa", e.Coroa);
 		mat.SetShaderParameter("serrilha", e.Serrilha);
 		mat.SetShaderParameter("granulado", e.Granulado);
 		mat.SetShaderParameter("fiapos", e.Fiapos);
 		mat.SetShaderParameter("aneis", e.Aneis);
-		mat.SetShaderParameter("espiral", e.Espiral);
 		mat.SetShaderParameter("eletrico", e.Eletrico);
 		mat.SetShaderParameter("pulsar", e.Pulsar);
 		mat.SetShaderParameter("brancura", e.Brancura);
 		mat.SetShaderParameter("semente", Semente());
-		Tingir(mat, e.Tons, cor);
+		TingirFeixe(mat, e.Tons, cor);
 		return mat;
 	}
 
@@ -159,7 +199,7 @@ public static class PintorDeKi
 
 	/// <summary>
 	/// ESCREVE AS TRES CORES -- os tons da arte com a tinta do ki somada (ver <see cref="Rampa.Com"/>).
-	/// E a unica escrita que a troca de cor ao vivo da mesa de tecnicas precisa repetir.
+	/// E a unica escrita que a troca de cor ao vivo da mesa de tecnicas precisa repetir numa BOLA.
 	/// </summary>
 	public static void Tingir(ShaderMaterial mat, Rampa tons, Color cor)
 	{
@@ -167,6 +207,16 @@ public static class PintorDeKi
 		mat.SetShaderParameter("cor_borda", borda);
 		mat.SetShaderParameter("cor_manto", manto);
 		mat.SetShaderParameter("cor_nucleo", nucleo);
+	}
+
+	/// <summary>
+	/// AS CORES DE UM RAIO: as tres de sempre e a QUARTA, a cor forte do leque e das fitas (ver
+	/// <see cref="Rampa.Fundo"/>). So o `FeixeDeKi.gdshader` a declara -- por isso a bola nao passa por aqui.
+	/// </summary>
+	public static void TingirFeixe(ShaderMaterial mat, Rampa tons, Color cor)
+	{
+		Tingir(mat, tons, cor);
+		mat.SetShaderParameter("cor_fundo", tons.Fundo(cor));
 	}
 
 	/// <summary>O alcance do halo de uma bola. A Genkidama (`calma`) brilha mais longe: e quase toda luz.</summary>
@@ -178,27 +228,53 @@ public static class PintorDeKi
 	/// <summary>
 	/// A MEIA LARGURA DA FITA de um raio: tudo o que o shader pode pintar de lado do eixo, mais o halo.
 	///
-	/// Os fatores sao os TETOS do `FeixeDeKi.gdshader`, um por um: a gota em chama chega a ~2,5x o raio
-	/// da bola e a boca nasce 1,5x inchada (o clarao do disparo). Sobrar um pouco custa pixel
-	/// transparente; faltar custa um retangulo visivel.
+	/// **OS NUMEROS SAO OS TETOS DO `FeixeDeKi.gdshader`, UM POR UM** -- trocar um la sem trocar aqui
+	/// corta o desenho numa borda reta, calado:
+	///
+	///   * o LEQUE de cada explosao sobe ate <see cref="AlturaDoLeque"/> raios de bola; a cabeca respira
+	///     4% e a boca nasce 51% inchada (o clarao do disparo);
+	///   * as FITAS chegam a `raio + afasta` do eixo, mais a meia largura delas (`fio`), e as faiscas
+	///     ficam ate 3,6 raios de tronco;
+	///   * a serrilha, e os enfeites de cada arte, como sempre.
+	///
+	/// Sobrar um pouco custa pixel transparente; faltar custa um retangulo visivel.
 	/// </summary>
 	public static float MeiaFita(EstiloDeFeixe e, MedidasDoFeixe m)
 	{
-		float fogo = 1f + 1.5f * e.Chama;
-		float cabeca = m.Cabeca * fogo;
-		float boca = m.Boca * fogo * 1.5f;
+		float leque = AlturaDoLeque(Labareda(e, m));
+		float explosao = Mathf.Max(m.Cabeca * 1.04f, m.Boca * 1.51f) * leque;
+
+		float fitas = 0f;
+		if (e.Onda > 0f)
+		{
+			float fio = Mathf.Min(Mathf.Max(m.Raio, 1.3f), 5f + m.Raio * 0.25f);
+			float afasta = Mathf.Clamp(m.Raio * 2f, 5f, 11f + m.Raio * 0.3f);
+			fitas = Mathf.Max(Mathf.Max(m.Alcance, m.Raio + afasta) + fio * 1.15f, m.Raio * 3.6f);
+		}
+
 		float tronco = m.Raio * (1.2f + 0.7f * e.Serrilha);
-		float enfeite = e.Espiral + e.Aneis + e.Eletrico + e.Fiapos > 0f ? Mathf.Max(m.Alcance, m.Raio * 2f) * 1.45f : 0f;
-		return Mathf.Max(Mathf.Max(cabeca, boca), Mathf.Max(tronco, enfeite)) + m.Halo + Sobra;
+		float enfeite = e.Aneis + e.Eletrico + e.Fiapos > 0f ? Mathf.Max(m.Alcance, m.Raio * 2f) * 1.45f : 0f;
+		return Mathf.Max(Mathf.Max(explosao, fitas), Mathf.Max(tronco, enfeite)) + m.Halo + Sobra;
 	}
 
 	/// <summary>
+	/// ATE ONDE O LEQUE DE UMA EXPLOSAO SOBE, em raios de bola, de lado do eixo. Sem leque e a propria bola
+	/// (o piso de 0,8 e a massa que cabe dentro dela); com ele cheio sao 2,5 -- o maior `massa + espinho`
+	/// do shader (1,35 + 1,45) acontece a uns 75 graus do tronco, onde o espinho ja perdeu 15% do
+	/// comprimento (`ESPINHO_DE_PE`) e a altura e 96% da distancia ao centro.
+	/// </summary>
+	public static float AlturaDoLeque(float labareda) => Mathf.Max(1f, 0.8f + 1.72f * labareda);
+
+	/// <summary>
 	/// Quanto a fita passa da PONTA: so o halo. A cabeca acaba exatamente na ponta (e regra do servidor --
-	/// ver o espinho fixo da `coroa` no shader).
+	/// ver o espinho fixo da `coroa` no shader), e o leque e cortado no plano dela.
 	/// </summary>
 	public static float FolgaNaPonta(MedidasDoFeixe m) => m.Halo + Sobra;
 
-	/// <summary>Quanto a fita recua atras da MAO: so o halo (o shader nao pinta corpo atras da mao).</summary>
+	/// <summary>
+	/// Quanto a fita recua atras da MAO: so o halo. O shader nao pinta corpo atras da mao, e os dois leques
+	/// (o da cabeca tambem, que abre pra tras) sao cortados no plano dela.
+	/// </summary>
 	public static float FolgaNaMao(MedidasDoFeixe m) => m.Halo + Sobra;
 
 	/// <summary>A meia largura do quadro de uma bola: a casca viva, os enfeites em volta e o halo.</summary>

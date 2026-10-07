@@ -76,7 +76,9 @@ public partial class AmostraDeKi : Control
 	public void Tingir(Color cor)
 	{
 		Cor = cor;
-		if (_mat != null) PintorDeKi.Tingir(_mat, Tipo == TipoDeProjetil.Beam ? _feixe.Tons : _bola.Tons, cor);
+		if (_mat == null) return;
+		if (Tipo == TipoDeProjetil.Beam) PintorDeKi.TingirFeixe(_mat, _feixe.Tons, cor);
+		else PintorDeKi.Tingir(_mat, _bola.Tons, cor);
 	}
 
 	public override void _Process(double delta)
@@ -96,8 +98,11 @@ public partial class AmostraDeKi : Control
 
 		if (Tipo == TipoDeProjetil.Beam)
 		{
-			// O QUE TEM QUE CABER NA ALTURA e a cabeca com a chama dela; o halo pode cortar na borda.
-			float vulto = _medidas.Cabeca * (1f + 0.5f * _feixe.Chama + 0.35f * _feixe.Coroa) + 1f;
+			// O QUE TEM QUE CABER NA ALTURA e a cabeca com a MASSA do leque dela e metade dos espinhos; as
+			// pontas dos mais compridos e o halo podem cortar na borda. Com o leque inteiro na conta a
+			// miniatura de um Kamehameha encolhia ate o tronco virar um risco.
+			float leque = PintorDeKi.AlturaDoLeque(PintorDeKi.Labareda(_feixe, _medidas) * 0.6f);
+			float vulto = _medidas.Cabeca * Mathf.Max(leque, 1f + 0.35f * _feixe.Coroa) + 1f;
 			float tamanho = Mathf.Min(AmpliacaoMaxima, meiaAltura / vulto);
 
 			// A PONTA ENCOSTA NA DIREITA e a mao fica bem fora, a esquerda: o que se ve e a cabeca com

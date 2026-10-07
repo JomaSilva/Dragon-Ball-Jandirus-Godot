@@ -95,7 +95,8 @@ public partial class LocalPlayer : Node2D
 	private Facing _facing = Facing.South;
 	private Vec2 _pos;
 	private double _sendAccumulator;
-	private const double SendInterval = 1.0 / 30.0; // manda estado na mesma taxa do tick do servidor
+	// `internal` e nao `private`: o robo da `--diagki` anda nesta MESMA cadencia pra ser um cliente honesto.
+	internal const double SendInterval = 1.0 / 30.0; // manda estado na mesma taxa do tick do servidor
 
 	private Protocol.Activity _atividade = Protocol.Activity.Parado;
 	private double _ataqueAte;

@@ -31,6 +31,17 @@ namespace Jandirus.Client;
 /// Por isso o Galick Ho continua roxo na mao de qualquer um (a folha dele ja e roxa) e o Ki Wave e
 /// da cor de quem atira (a folha dele e cinza).
 ///
+/// ============================ E TODO RAIO TEM O MESMO DESENHO GERAL ============================
+/// Depois de ver os raios de shader no jogo, o dono mandou uma imagem e pediu (2026-10-07): *"faca os
+/// beams em geral terem esse efeito , ele ser maior quando sai da mao do personagem, ai ele afina ate
+/// chega na cabeca do beam onde cresce dnv, e esses efeitos em volta e q parece uma onda/fogo e bem
+/// legal tb, e faca elas se moverem em volta do beam"*. Isso e do `FeixeDeKi.gdshader` (o cabecalho
+/// dele conta a imagem peca por peca) e vale pra TODA arte: duas explosoes com um leque de labaredas,
+/// o tronco afinando entre elas, e fitas dando a volta nele.
+///
+/// O que continua sendo de cada arte e o que esta nesta mesa -- e duas coisas daqui dizem QUANTO do
+/// desenho geral ela leva: <see cref="EstiloDeFeixe.Labareda"/> e <see cref="EstiloDeFeixe.Onda"/>.
+///
 /// ============================ E AS MEDIDAS QUE SAO REGRA NAO ESTAO AQUI ============================
 /// A meia espessura do tronco e a frente da cabeca moram no Core
 /// (<see cref="ArteDeProjetil.MeiaEspessuraDoTronco"/>, <see cref="ArteDeProjetil.FrenteDaCabeca"/>),
@@ -59,6 +70,55 @@ public static class ArteDeKiNoCliente
 
 		private static Vector3 Somar(Color tom, Color tinta) => new(
 			Mathf.Min(tom.R + tinta.R, 1f), Mathf.Min(tom.G + tinta.G, 1f), Mathf.Min(tom.B + tinta.B, 1f));
+
+		/// <summary>
+		/// A COR FORTE DE UM RAIO -- a QUARTA, a que nao esta na folha: as labaredas compridas, as fitas e o
+		/// fio que contorna o feixe (o uniform `cor_fundo` do `FeixeDeKi.gdshader`).
+		///
+		/// ============================ POR QUE OS TRES TONS NAO BASTAM ============================
+		/// A imagem que o dono mandou tem um azul FORTE por fora, um azul claro e o branco. Os tres tons
+		/// da folha chegam ao shader com a tinta do ki SOMADA e com teto (<see cref="Com"/>), e somar
+		/// clareia: num Kamehameha 1 de ki azul a casca vira ciano (38, 255, 255) e o manto um ciano mais
+		/// palido -- dois tons claros, e nenhum forte. O leque saia todo da mesma cor do tronco.
+		///
+		/// E O SHADER NAO TEM COMO REFAZER A CONTA: com dois canais no teto o matiz ja se perdeu (o verde e
+		/// o azul viraram 255 os dois, e quem era maior nao se sabe mais). So aqui, antes do teto, da pra
+		/// saber de que cor aquela soma REALMENTE e.
+		///
+		/// ============================ A RECEITA ============================
+		///   1. o tom da casca mais MEIA tinta, sem teto;
+		///   2. dividido pelo maior canal -- fica o matiz, com toda a luz, sem estourar nada;
+		///   3. a saturacao elevada a 0,4 (uma cor ja forte quase nao muda; uma palida vira cor de verdade:
+		///      o ki azul-claro de fabrica, `Aura.CorDoKiCru`, sai (82, 163, 255) numa folha cinza);
+		///   4. e, se nao sobrou cor nenhuma (ki branco em folha cinza), um cinza-claro -- pra o leque ainda
+		///      ter contorno em volta do miolo branco.
+		///
+		/// MEIA TINTA, E NAO A TINTA INTEIRA: onde a folha TEM cor propria (o dourado do Final Flash, o roxo
+		/// do Galick Ho) a soma cheia com um ki forte da branco -- e esta e a unica cor do desenho em que a
+		/// da folha ainda consegue aparecer. Com meia tinta o Final Flash de quem tem ki azul sai com o
+		/// leque dourado; com a inteira saia cinza (medido no catalogo do laboratorio).
+		///
+		/// DIVERGENCIA DECLARADA: o DM so tem a soma (`beams.dm:130-132`); esta cor nao existe la. Ela e do
+		/// desenho que o dono pediu, e nao da regra de ninguem.
+		/// ===================================================================
+		/// </summary>
+		public Vector3 Fundo(Color tinta)
+		{
+			var soma = new Vector3(Borda.R + tinta.R * TintaNoFundo, Borda.G + tinta.G * TintaNoFundo, Borda.B + tinta.B * TintaNoFundo);
+			float maior = Mathf.Max(soma.X, Mathf.Max(soma.Y, soma.Z));
+			if (maior < 0.0001f) return Vector3.One * FundoSemCor;
+
+			Vector3 matiz = soma / maior;
+			float saturacao = 1f - Mathf.Min(matiz.X, Mathf.Min(matiz.Y, matiz.Z));
+			float forte = Mathf.Pow(saturacao, 0.4f);
+			float k = saturacao > 0.0001f ? forte / saturacao : 0f;
+			return (Vector3.One - (Vector3.One - matiz) * k) * Mathf.Lerp(FundoSemCor, 1f, forte);
+		}
+
+		private const float TintaNoFundo = 0.5f;
+
+		/// <summary>A luz da cor forte quando ela nao tem cor nenhuma: um cinza-claro, e nao o branco do miolo.</summary>
+		private const float FundoSemCor = 0.8f;
 	}
 
 	/// <summary>
@@ -80,17 +140,39 @@ public static class ArteDeKiNoCliente
 		public float Macico { get; init; } = 1f;
 
 		public float Ponta { get; init; }
+
+		/// <summary>
+		/// Quanto as PONTAS desta arte ja eram labareda na folha, de 0 a 1. Nao e uniform do raio: e o que
+		/// enche a <see cref="Labareda"/> dele (e, numa bola feita desta arte, a chama da bola).
+		/// </summary>
 		public float Chama { get; init; }
+
 		public float Coroa { get; init; }
 		public float Serrilha { get; init; }
 		public float Granulado { get; init; }
 		public float Fiapos { get; init; }
 		public float Aneis { get; init; }
-		public float Espiral { get; init; }
 		public float Eletrico { get; init; }
 		public float Pulsar { get; init; }
 		public float Brancura { get; init; } = 0.5f;
 		public Rampa Tons { get; init; } = CinzaDeRaio;
+
+		/// <summary>
+		/// QUANTO DE LEQUE as duas explosoes deste raio tem, de 0 a 1 (o uniform `labareda`, antes de o
+		/// `PintorDeKi.Labareda` abafa-lo pelo tamanho da bola).
+		///
+		/// TODO raio tem leque -- e o desenho geral que o dono pediu -- e por isso o piso e 0,7 e nao zero.
+		/// O que a <see cref="Chama"/> da folha acrescenta e o resto: as artes cujas pontas ja eram
+		/// labaredas no original (o Kamehameha 1, o Enkumei, o Beam2) levam o leque cheio.
+		/// </summary>
+		public float Labareda => 0.7f + 0.3f * Chama;
+
+		/// <summary>
+		/// AS FITAS em volta do tronco (o uniform `onda`): todo raio as tem, MENOS os que ja tem coisa dando
+		/// a volta nele -- os aneis da broca e as descargas do Static Beam. Fita por cima de anel sao duas
+		/// helices de passos diferentes se atropelando.
+		/// </summary>
+		public float Onda => Aneis + Eletrico > 0f ? 0f : 1f;
 	}
 
 	/// <summary>
@@ -186,7 +268,8 @@ public static class ArteDeKiNoCliente
 		// o 2 e CHAPADO: duas cores, nenhum branco -- o unico Kamehameha sem nucleo
 		[ArteDeKi.Kamehameha2] = new() { Cabeca = 14, Boca = 14, Brancura = 0.12f, Tons = Rampa.De("00ccff", "00ffff", "9affff") },
 		[ArteDeKi.Kamehameha3] = new() { Cabeca = 14, Boca = 14, Chama = 0.6f, Granulado = 1, Brancura = 0.3f, Tons = Rampa.De("0099ff", "00ccff", "b0ffff") },
-		// o 4 e a CAPSULA: as pontas da largura do tronco, tres faixas lisas
+		// o 4 e a CAPSULA: na folha as pontas tem a largura do tronco, e sao tres faixas lisas. (No desenho
+		// geral elas ganham o bojo minimo do `PintorDeKi.Medir` -- sem ele nao haveria de onde afinar.)
 		[ArteDeKi.Kamehameha4] = new() { Cabeca = 13, Boca = 13, Brancura = 0.45f, Tons = Rampa.De("0066ff", "00ccff", "ccffff") },
 		[ArteDeKi.Kamehameha5] = new() { Cabeca = 14, Boca = 14, Macico = 0.8f, Fiapos = 1, Brancura = 0.9f, Tons = Rampa.De("2fddff", "2fddff", "ffffff") },
 		[ArteDeKi.Kamehameha6] = new() { Cabeca = 14, Boca = 14, Chama = 0.9f, Granulado = 1, Tons = Rampa.De("047ae1", "2ad5ff", "ffffff") },

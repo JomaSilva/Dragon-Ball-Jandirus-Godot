@@ -43,6 +43,9 @@ namespace Jandirus.Client;
 ///   6. O DESENHO OBEDECE AS TABELAS DO CORE: a ponta SOLIDA cai em `FrenteDaCabeca x escala` e o
 ///      tronco tem `MeiaEspessuraDoTronco x Macico x escala`, medidos na FOTO. O servidor encosta e
 ///      corta por esses dois numeros; se o desenho mentir, o jogador ve o tiro acertar o vazio.
+///   7. O FOGO EM VOLTA FICA ENTRE A MAO E A PONTA: desde que todo raio ganhou duas explosoes com um
+///      leque de labaredas (o desenho geral, 2026-10-07), nenhum pixel dele pode cair atras do plano
+///      da mao (onde esta o boneco) nem alem do plano da ponta (onde esta quem o raio empurra).
 ///
 /// ============================ ELA MEDE PIXEL, E ISSO E O PONTO ============================
 /// Este projeto tem registro de quatro defeitos visuais que passaram por quatro mil checagens verdes
@@ -731,6 +734,14 @@ public partial class RoboDeArteDeKi : Node2D
 			case 44: PorAContraprovaDaRegra(comDefeito: false); break;
 			case 45: MedirAContraprovaDaRegra("6-4-regra-defeito-desligado", comDefeito: false); break;
 
+			// ============================ FAMILIA 7 -- O FOGO EM VOLTA FICA ENTRE OS DOIS PLANOS ============================
+			case 46:
+				Familia("7", "o FOGO EM VOLTA fica entre a mao e a ponta -- o leque nao pinta o boneco nem passa da cabeca");
+				PorOFogoEntreOsPlanos();
+				break;
+
+			case 47: MedirOFogoEntreOsPlanos(); break;
+
 			default: Encerrar(); break;
 		}
 	}
@@ -837,6 +848,31 @@ public partial class RoboDeArteDeKi : Node2D
 		var tiro = new TiroNoPalco(no, arte, escala, onde, onde, rotulo);
 		_palco.Add(tiro);
 		return tiro;
+	}
+
+	/// <summary>
+	/// TIRA AS PECAS SOLTAS DESTE RAIO -- as fitas e as faiscas (o uniform `onda`).
+	///
+	/// ============================ POR QUE, E SO NOS PALCOS QUE CONTAM ILHAS ============================
+	/// A regua das ilhas (<see cref="ContarIlhas"/>) pergunta *"a tinta e UMA PECA so?"*, e desde que todo
+	/// raio ganhou fitas e faiscas (o desenho geral que o dono pediu em 2026-10-07) a resposta de um raio
+	/// INTEIRO passou a ser "nao": as faiscas voam soltas em volta do tronco de proposito, e cada golfada
+	/// de fita que acaba fora do corpo e uma ilha. A primeira rodada depois da mudanca contou 40 pecas
+	/// pra 12 raios perfeitos.
+	///
+	/// O que a regua quer saber e se o CORPO se partiu (o `Picotado`) ou se a fita curva abriu numa emenda
+	/// (o `SemGirar`), e enfeite solto nao e uma coisa nem outra. Entao estes palcos desligam o enfeite
+	/// solto, e a regua volta a contar o que sempre contou: corpos. O LEQUE das duas explosoes FICA -- ele
+	/// e unido ao corpo, e uma explosao que se soltasse dele seria defeito de verdade --, e o halo tambem.
+	///
+	/// A foto das artes a 33 graus (a familia 4b) segue com tudo ligado: e la que as fitas de producao
+	/// passam pela sonda de fresta. Ela ja nao contava ilhas, pelo mesmo motivo (os aneis da broca).
+	/// ===================================================================================================
+	/// </summary>
+	private static TiroNoPalco SemEnfeiteSolto(TiroNoPalco t)
+	{
+		if (t.No.Material is ShaderMaterial m) m.SetShaderParameter("onda", 0f);
+		return t;
 	}
 
 	/// <summary>Tira TODO tiro da tela. O `QueueFree` some com eles antes do proximo quadro desenhado.</summary>
@@ -1617,25 +1653,39 @@ public partial class RoboDeArteDeKi : Node2D
 	/// o `SemGirar` tira a mao do eixo, com a mao fora do eixo o desenho de producao sai pelo
 	/// `PintorDeKi.FitaCurva`, e uma fita curva mal emendada abriria justamente em ilhas.
 	/// ================================================================================================================
+	///
+	/// ============================ UMA FARPA NAO E UMA ILHA ============================
+	/// As labaredas das duas explosoes acabam em PONTA, e os ultimos pixels de uma ponta sao mais finos
+	/// que um pixel de foto: o anti-serrilhado os desenha fracos, e o corte de "e tinta?" pega um, pula o
+	/// seguinte e pega o outro. Sobram pixels avulsos na frente de um espinho -- medido: 1 em 12 raios
+	/// perfeitos numa foto, 5 em 19 noutra, todos de 1 ou 2 px. Aqui a foto tem UM pixel por pixel de
+	/// mundo; no jogo (zoom 3) cada espinho tem o triplo e a ponta nao se solta.
+	///
+	/// Nada disso e um raio partido: o menor pedaco que o `Picotado` produz tem 12 px de corpo e centenas
+	/// de pixels. Entao uma ilha com menos de <see cref="PisoDaIlha"/> px quadrados de mundo e contada a
+	/// parte, como FARPA, e quem chama a anota -- pra o numero nao sumir calado.
+	/// ==================================================================================
 	/// </summary>
-	private static int ContarIlhas(Chapa c)
+	private static (int Ilhas, int Farpas) ContarIlhas(Chapa c)
 	{
 		int w = c.Largura, h = c.Altura;
 		var vista = new bool[w * h];
 		var pilha = new Stack<int>();
-		int ilhas = 0;
+		int ilhas = 0, farpas = 0;
+		float piso = PisoDaIlha * c.PxPorMundo * c.PxPorMundo;
 
 		for (int y = 0; y < h; y++)
 			for (int x = 0; x < w; x++)
 			{
 				if (vista[y * w + x] || !c.Tinta(x, y)) continue;
 
-				ilhas++;
+				int area = 0;
 				vista[y * w + x] = true;
 				pilha.Push(y * w + x);
 				while (pilha.Count > 0)
 				{
 					int p = pilha.Pop();
+					area++;
 					for (int dy = -1; dy <= 1; dy++)
 						for (int dx = -1; dx <= 1; dx++)
 						{
@@ -1645,9 +1695,19 @@ public partial class RoboDeArteDeKi : Node2D
 							pilha.Push(ny * w + nx);
 						}
 				}
+
+				if (area < piso) farpas++;
+				else ilhas++;
 			}
-		return ilhas;
+		return (ilhas, farpas);
 	}
+
+	/// <summary>A menor area, em px quadrados de MUNDO, que ainda conta como ilha. Ver <see cref="ContarIlhas"/>.</summary>
+	private const float PisoDaIlha = 6f;
+
+	/// <summary>O rodape de uma contagem de ilhas: quantas farpas ficaram de fora dela, se alguma ficou.</summary>
+	private static string DasFarpas(int farpas) =>
+		farpas == 0 ? "" : $" (fora {farpas} farpa(s) de menos de {PisoDaIlha:0} px2: ponta de labareda, nao pedaco de raio)";
 
 	/// <summary>
 	/// FOTOGRAFA O PALCO E EXIGE QUE TODO RAIO DELE ESTEJA INTEIRO: nenhuma fresta na faixa, nem um
@@ -1657,7 +1717,10 @@ public partial class RoboDeArteDeKi : Node2D
 	/// Dois ou tres feixes que sao cada um a sua cena (a foto do dono) ganham duas conferencias cada;
 	/// uma duzia que sao a mesma cena variada ganha duas pro conjunto, com o pior nomeado.
 	/// </param>
-	/// <param name="contarIlhas">Falso so na foto das 24 artes -- ver o passo dela no roteiro.</param>
+	/// <param name="contarIlhas">
+	/// Falso so na foto das 24 artes -- ver o passo dela no roteiro. Os palcos que contam ilhas nascem
+	/// <see cref="SemEnfeiteSolto"/>.
+	/// </param>
 	private void MedirAContinuidade(string nome, string titulo, bool umPorUm, bool contarIlhas = true)
 	{
 		Chapa? c = Foto(nome);
@@ -1691,8 +1754,9 @@ public partial class RoboDeArteDeKi : Node2D
 			   + (piorCentro > 0 ? $" (pior: {piorCentro} px em {ondePiorCentro})" : ""), piorCentro == 0);
 		}
 
-		int ilhas = ContarIlhas(c);
-		if (contarIlhas) Ok($"a tinta da foto esta em {ilhas} pecas -- uma por raio ({_palco.Count})", ilhas == _palco.Count);
+		(int ilhas, int farpas) = ContarIlhas(c);
+		if (contarIlhas)
+			Ok($"a tinta da foto esta em {ilhas} pecas -- uma por raio ({_palco.Count})" + DasFarpas(farpas), ilhas == _palco.Count);
 		else Nota($"a tinta da foto esta em {ilhas} pecas pra {_palco.Count} raios (nao cobrado: ha enfeite solto)");
 	}
 
@@ -1722,7 +1786,7 @@ public partial class RoboDeArteDeKi : Node2D
 		for (int i = 0; i < Comprimentos.Length; i++)
 		{
 			var cauda = new Vector2(MathF.Floor(t.X * 0.06f), 40f + degrau * i);
-			NovoRaio(ArteDeKi.Beam3, 1f, cauda + u * Comprimentos[i], cauda, Vermelho, $"{Comprimentos[i]:0}");
+			SemEnfeiteSolto(NovoRaio(ArteDeKi.Beam3, 1f, cauda + u * Comprimentos[i], cauda, Vermelho, $"{Comprimentos[i]:0}"));
 		}
 		Assentar();
 	}
@@ -1790,10 +1854,10 @@ public partial class RoboDeArteDeKi : Node2D
 		float compD = MathF.Floor(MathF.Min((caudaD.X - t.X * 0.36f) / Meio, (t.Y * 0.93f - caudaD.Y) / Meio));
 		Vector2 cabD = caudaD + new Vector2(-Meio, Meio) * compD;
 
-		NovoRaio(ArteDeKi.Beam3, 1f, cabV, caudaV, Vermelho,
-				 $"A FOTO DO DONO -- vertical descendo, {cabV.Y - caudaV.Y:0} px ({(cabV.Y - caudaV.Y) / 32f:0.0} tiles)");
-		NovoRaio(ArteDeKi.Beam3, 1f, cabD, caudaD, Vermelho,
-				 $"A FOTO DO DONO -- diagonal do print (sudoeste), {compD:0} px ({compD / 32f:0.0} tiles)");
+		SemEnfeiteSolto(NovoRaio(ArteDeKi.Beam3, 1f, cabV, caudaV, Vermelho,
+			$"A FOTO DO DONO -- vertical descendo, {cabV.Y - caudaV.Y:0} px ({(cabV.Y - caudaV.Y) / 32f:0.0} tiles)"));
+		SemEnfeiteSolto(NovoRaio(ArteDeKi.Beam3, 1f, cabD, caudaD, Vermelho,
+			$"A FOTO DO DONO -- diagonal do print (sudoeste), {compD:0} px ({compD / 32f:0.0} tiles)"));
 		Assentar();
 	}
 
@@ -1819,8 +1883,8 @@ public partial class RoboDeArteDeKi : Node2D
 			Vector2 u = Rumo(AngulosTortos[i]);
 			var cauda = new Vector2(MathF.Floor(t.X * 0.06f), MathF.Floor(t.Y * (0.08f + 0.10f * i)));
 			float comp = MathF.Floor(MathF.Min((t.X * 0.95f - cauda.X) / u.X, (t.Y * 0.93f - cauda.Y) / u.Y)) - frente;
-			NovoRaio(ArteDeKi.Beam3, 1f, cauda + u * comp, cauda, Vermelho,
-					 $"{AngulosTortos[i]:0} graus, {comp:0} px ({comp / 32f:0.0} tiles)");
+			SemEnfeiteSolto(NovoRaio(ArteDeKi.Beam3, 1f, cauda + u * comp, cauda, Vermelho,
+				$"{AngulosTortos[i]:0} graus, {comp:0} px ({comp / 32f:0.0} tiles)"));
 		}
 		Assentar();
 	}
@@ -1887,7 +1951,7 @@ public partial class RoboDeArteDeKi : Node2D
 			// tamanho serve pros dezenove rumos sem um deles vazar pro vizinho.
 			Vector2 cauda = centro - u * (total * 0.5f) + u * atras;
 			Vector2 cabeca = centro + u * (total * 0.5f - frente);
-			NovoRaio(ArteDeKi.Beam3, 1f, cabeca, cauda, Vermelho, Rumos[i].Nome);
+			SemEnfeiteSolto(NovoRaio(ArteDeKi.Beam3, 1f, cabeca, cauda, Vermelho, Rumos[i].Nome));
 		}
 		Assentar();
 	}
@@ -1943,9 +2007,9 @@ public partial class RoboDeArteDeKi : Node2D
 			}
 		}
 
-		int ilhas = ContarIlhas(c);
+		(int ilhas, int farpas) = ContarIlhas(c);
 		Nota($"{titulo}: por rumo, fresta na faixa / fundo na linha central, em px -- " + string.Join("   ", partes)
-			 + $"   -- {ilhas} ilhas de tinta na foto");
+			 + $"   -- {ilhas} ilhas de tinta na foto" + DasFarpas(farpas));
 		if (fora > 0) Nota($"ATENCAO: {fora} amostras da linha central cairam FORA da foto, e contam como fundo");
 
 		switch (esperado)
@@ -2078,11 +2142,12 @@ public partial class RoboDeArteDeKi : Node2D
 	///   (b) que meia espessura o tronco MACICO tem, longe das duas bolas -- tem que ser
 	///       `MeiaEspessuraDoTronco x Macico x escala`.
 	///
-	/// ============================ O HALO E APAGADO NESTES NODES, E SO NELES ============================
-	/// O halo e luz SOMADA alem da casca: ele nao encosta em ninguem, mas borra a beirada que esta
-	/// regua procura. Cada raio daqui tem o `alcance_do_halo` do proprio material escrito em 0,001 px
-	/// (e nao zero: o shader divide por ele) -- e so isso: geometria, estilo e medidas sao os de
-	/// producao. Ver <see cref="SemHalo"/>.
+	/// ============================ O FOGO EM VOLTA E APAGADO NESTES NODES, E SO NELES ============================
+	/// Tres coisas do desenho NAO encostam em ninguem e atrapalham a regua: o halo (luz somada alem da
+	/// casca, que borra a beirada), o LEQUE de labaredas das duas explosoes e as FITAS que dao a volta
+	/// no tronco (tinta opaca que cruza o eixo -- a corrida de solido da medida (b) as contaria como
+	/// tronco). Cada raio daqui tem os tres desligados no proprio material -- e so isso: geometria,
+	/// estilo e medidas sao os de producao. Ver <see cref="SoOCorpo"/>.
 	///
 	/// E TODOS APONTAM PRO LESTE, com o eixo no meio de uma linha de pixels: a regua anda de pixel em
 	/// pixel pela grade da propria foto, sem arredondar diagonal nenhuma.
@@ -2146,18 +2211,30 @@ public partial class RoboDeArteDeKi : Node2D
 		string rotulo = escala == 1f ? arte.ToString() : $"{arte} a {escala:0}x";
 		TiroNoPalco t = NovoRaio(arte, escala, new Vector2(xPonta - frente, y), new Vector2(xMao + MeiaCelula, y),
 								 Magenta, rotulo, vestidoCom);
-		SemHalo(t.No);
+		SoOCorpo(t.No);
 		return t;
 	}
 
 	/// <summary>
-	/// APAGA O HALO DESTE NODE, pra a foto mostrar so o corpo. E a unica escrita desta bancada num
-	/// material de producao, e ela e num uniform que nao muda a FORMA de nada: o halo e somado por fora
-	/// da casca. 0,001 e nao zero -- o shader divide a distancia por este numero.
+	/// APAGA O FOGO EM VOLTA DESTE NODE, pra a foto mostrar so o CORPO -- o tronco, a gota e as duas bolas,
+	/// que e o que as tabelas do Core medem. Sao as unicas escritas desta bancada num material de producao,
+	/// e nenhuma muda a forma do corpo:
+	///
+	///   * `alcance_do_halo` em 0,001 (e nao zero: o shader divide a distancia por ele);
+	///   * `labareda` em zero -- o leque e uma forma UNIDA ao corpo, e sem ele o que sobra e o corpo;
+	///   * `onda` em zero -- as fitas e as faiscas sao pintadas por cima, depois de tudo;
+	///   * `cor_fundo` igual a `cor_borda`. A cor forte NAO e a soma com teto das outras tres (ver
+	///     `Rampa.Fundo`): numa folha dourada tingida de magenta ela sai vermelho-alaranjada, com 19% de
+	///     azul -- e a regua do solido procura MAGENTA (<see cref="Chapa.Solido"/>). O fio de fora, que e
+	///     dessa cor, tem 6 px na ponta do Final Flash a 4x: a regua parava 6 px antes da ponta.
 	/// </summary>
-	private static void SemHalo(ProjetilDesenhado no)
+	private static void SoOCorpo(ProjetilDesenhado no)
 	{
-		if (no.Material is ShaderMaterial m) m.SetShaderParameter("alcance_do_halo", 0.001f);
+		if (no.Material is not ShaderMaterial m) return;
+		m.SetShaderParameter("alcance_do_halo", 0.001f);
+		m.SetShaderParameter("labareda", 0f);
+		m.SetShaderParameter("onda", 0f);
+		m.SetShaderParameter("cor_fundo", m.GetShaderParameter("cor_borda"));
 	}
 
 	/// <summary>O que a foto disse de um raio deitado: a frente solida e a meia espessura do tronco, em px de mundo.</summary>
@@ -2187,8 +2264,9 @@ public partial class RoboDeArteDeKi : Node2D
 			? float.NaN
 			: (p0.X + maisLonge - (c.DoMundo * t.Cabeca).X) / k;
 
-		// ---- (b) A MEIA ESPESSURA, no TERCO DO MEIO do desenho: longe da gota das duas bolas, que
-		//      desce ate tres raios de bola pra dentro do tronco. Em cada coluna, a corrida de solido
+		// ---- (b) A MEIA ESPESSURA, no TERCO DO MEIO do desenho: longe da gota das duas bolas (a da mao
+		//      desce ate 4,5 raios de bola pra dentro do tronco, a da cabeca ate 3 -- e nenhuma passa de
+		//      45% e 30% do vao entre as duas, que e o que as deixa fora daqui). Em cada coluna, a corrida de solido
 		//      que atravessa o eixo; a media das colunas, porque a casca ondula de proposito (as
 		//      barrigas que viajam da mao pra ponta: ate 13% do raio pra cada lado, com media zero).
 		float x1 = t.Mao.X + (t.Ponta.X - t.Mao.X) / 3f, x2 = t.Mao.X + (t.Ponta.X - t.Mao.X) * 2f / 3f;
@@ -2264,7 +2342,7 @@ public partial class RoboDeArteDeKi : Node2D
 	/// tronco" nao e um numero, e um desenho.
 	/// </summary>
 	private static bool TroncoLimpo(ArteDeKiNoCliente.EstiloDeFeixe e) =>
-		e.Serrilha == 0f && e.Fiapos == 0f && e.Aneis == 0f && e.Espiral == 0f && e.Eletrico == 0f;
+		e.Serrilha == 0f && e.Fiapos == 0f && e.Aneis == 0f && e.Eletrico == 0f;
 
 	/// <summary>
 	/// O TRONCO TEM A ESPESSURA QUE A TABELA MANDA? A folga e de 1 px, ou 13% do esperado quando isso
@@ -2425,5 +2503,137 @@ public partial class RoboDeArteDeKi : Node2D
 		   !FrenteNaRegra(mentido, doMentido) && !MeiaNaRegra(mentido, doMentido));
 		Ok("[injecao] ...e o vizinho, vestido a 3x de verdade, passa nas duas",
 		   FrenteNaRegra(vizinho, doVizinho) && MeiaNaRegra(vizinho, doVizinho));
+	}
+
+	// =====================================================================
+	// FAMILIA 7 -- O FOGO EM VOLTA FICA ENTRE A MAO E A PONTA
+	// =====================================================================
+	/// <summary>
+	/// ============================ O DESENHO GERAL TEM UMA REGRA, E ELA E DE PIXEL ============================
+	/// Desde 2026-10-07 todo raio tem duas explosoes com um LEQUE de labaredas (o dono mandou uma imagem
+	/// e pediu *"faca os beams em geral terem esse efeito"*). O leque chega a duas vezes e meia o raio da
+	/// bola, e ha dois lugares em que ele nao pode pintar:
+	///
+	///   * ATRAS DA MAO -- e onde esta o boneco de quem atira. "Nenhum pixel de feixe entra no quadro do
+	///     boneco" ja era regra medida no jogo (`--diagboca`), nascida de uma foto do dono com o raio
+	///     saindo da cabeca;
+	///   * ALEM DA PONTA -- a frente da cabeca e regra do servidor (a familia 6): o que passa dela e
+	///     desenhado em cima de quem o raio empurra.
+	///
+	/// E O DEFEITO JA ACONTECEU, antes de esta familia existir: o leque da CABECA abre pra tras, e num
+	/// raio curto os espinhos dele atravessavam o plano da mao -- o laboratorio de shader fotografou um em
+	/// cima do boneco. Por isso metade dos raios daqui e CURTA.
+	///
+	/// ============================ COMO SE MEDE ============================
+	/// Oito raios de producao deitados pro leste, com o leque, as fitas e as faiscas LIGADOS. So o halo e
+	/// apagado (ele e luz somada, e alem da ponta e esperado -- `PintorDeKi.FolgaNaPonta`): o que sobra na
+	/// foto e tinta opaca, e qualquer pixel dela fora dos dois planos e defeito.
+	///
+	/// E DUAS CONTRAPROVAS na mesma foto, porque "zero pixels" e o resultado mais facil de obter por
+	/// engano: (1) logo PRA DENTRO de cada plano ha tinta ACIMA do raio da bola -- o leque existe, e a
+	/// sonda o enxerga; (2) contra um plano 8 px pra dentro do certo, a mesma sonda reprova os oito.
+	/// ========================================================================================================
+	/// </summary>
+	private void PorOFogoEntreOsPlanos()
+	{
+		LimparOPalco();
+		for (int i = 0; i < ComFogo.Length; i++)
+			RaioDeFogo(Celula(i, ColunasDaRegra, LinhasDaRegra), ComFogo[i].Arte, ComFogo[i].Escala, ComFogo[i].DaMaoAPonta);
+		Assentar();
+	}
+
+	/// <summary>
+	/// Artes de leque grande, cada uma LONGA (zero = ate o fim da celula) e CURTA. O Eraser Cannon e a de
+	/// bolas mais desiguais (18 px na ponta, 12 na mao), e o `Beam3` a 3x poe a escala na conta.
+	/// </summary>
+	private static readonly (ArteDeKi Arte, float Escala, float DaMaoAPonta)[] ComFogo =
+	[
+		(ArteDeKi.Kamehameha1, 1f, 0f), (ArteDeKi.Kamehameha1, 1f, 60f),
+		(ArteDeKi.Enkumei, 1f, 0f), (ArteDeKi.Enkumei, 1f, 40f),
+		(ArteDeKi.EraserCannon, 1f, 0f), (ArteDeKi.EraserCannon, 1f, 70f),
+		(ArteDeKi.Beam2, 1f, 0f), (ArteDeKi.Beam3, 3f, 90f),
+	];
+
+	/// <summary>Quanto a celula guarda de fundo vazio atras da mao e alem da ponta: e ali que a sonda procura tinta.</summary>
+	private const float MargemDoFogo = 60f;
+
+	/// <summary>A meia altura da sonda: quase a celula inteira (90 px), e mais que o maior leque daqui (uns 60).</summary>
+	private const float MeiaAlturaDoFogo = 84f;
+
+	/// <summary>De quanto o plano e empurrado PRA DENTRO do raio no contra-exemplo.</summary>
+	private const float PlanoErrado = 8f;
+
+	private TiroNoPalco RaioDeFogo(Rect2 cel, ArteDeKi arte, float escala, float daMaoAPonta)
+	{
+		float y = MathF.Floor(cel.Position.Y + cel.Size.Y * 0.5f) + 0.5f;
+		float xMao = MathF.Floor(cel.Position.X) + MargemDoFogo;
+		float xPonta = daMaoAPonta > 0f ? xMao + daMaoAPonta : MathF.Floor(cel.End.X) - MargemDoFogo;
+		float frente = ArteDeProjetil.FrenteDaCabeca(arte) * escala;
+
+		string rotulo = $"{arte}{(escala == 1f ? "" : $" a {escala:0}x")}, {xPonta - xMao:0} px da mao a ponta";
+		TiroNoPalco t = NovoRaio(arte, escala, new Vector2(xPonta - frente, y), new Vector2(xMao + MeiaCelula, y),
+								 Vermelho, rotulo);
+		if (t.No.Material is ShaderMaterial m) m.SetShaderParameter("alcance_do_halo", 0.001f);
+		return t;
+	}
+
+	/// <summary>
+	/// Quantos pixels de TINTA ha numa caixa do mundo: de `x0` a `x1`, e `meia` pra cada lado da linha `y`.
+	/// Com `foraDe`, so os que estao a MAIS que isso da linha -- e como se pergunta "ha tinta acima da bola?".
+	/// </summary>
+	private static int TintaNaCaixa(Chapa c, float x0, float x1, float y, float meia, float foraDe = 0f)
+	{
+		Vector2I a = c.Pixel(new Vector2(x0, y - meia)), b = c.Pixel(new Vector2(x1, y + meia));
+		int eixo = c.Pixel(new Vector2(x0, y)).Y, miolo = Mathf.CeilToInt(foraDe * c.PxPorMundo);
+
+		int n = 0;
+		for (int py = a.Y; py <= b.Y; py++)
+		{
+			if (foraDe > 0f && Math.Abs(py - eixo) <= miolo) continue;
+			for (int px = a.X; px <= b.X; px++)
+				if (c.Tinta(px, py)) n++;
+		}
+		return n;
+	}
+
+	private void MedirOFogoEntreOsPlanos()
+	{
+		Chapa? c = Foto("7-fogo-entre-os-planos");
+		if (c == null) return;
+
+		// A SONDA NAO ENCOSTA NO PLANO: comeca um pixel e meio depois dele (a mesma folga da regua da
+		// ponta -- meio pixel da grade da foto, e ate meio do arredondamento dos vertices). O pixel que
+		// fica EM CIMA do plano tem cobertura parcial do anti-serrilhado, e isso nao e fogo vazando.
+		float longe = MargemDoFogo - 4f;
+		int semLeque = 0, reprovadosNoPlanoErrado = 0;
+
+		foreach (TiroNoPalco t in _palco)
+		{
+			PintorDeKi.MedidasDoFeixe m = t.No.Medidas;
+			float y = t.Cabeca.Y, mao = t.Mao.X, ponta = t.Ponta.X;
+
+			int atras = TintaNaCaixa(c, mao - longe, mao - FolgaDaRegua, y, MeiaAlturaDoFogo);
+			int alem = TintaNaCaixa(c, ponta + FolgaDaRegua, ponta + longe, y, MeiaAlturaDoFogo);
+			Ok($"{t.Rotulo}: nenhum pixel de tinta ATRAS do plano da mao ({atras} px) nem ALEM do plano da ponta ({alem} px)",
+			   atras == 0 && alem == 0);
+
+			// (1) O LEQUE EXISTE, E A SONDA O VE. As duas caixas ficam onde ainda nao ha fita (a janela
+			// delas abre a 1,4 raio da mao e fecha a 0,8 da ponta) e contam so o que esta a mais de 1,2 raio
+			// do eixo: a bola respira ate 1,14, entao dali pra fora o que ha e leque.
+			int naMao = TintaNaCaixa(c, mao, mao + 1.2f * m.Boca, y, MeiaAlturaDoFogo, foraDe: 1.2f * m.Boca);
+			int naPonta = TintaNaCaixa(c, ponta - m.Cabeca, ponta, y, MeiaAlturaDoFogo, foraDe: 1.2f * m.Cabeca);
+			Nota($"{t.Rotulo}: tinta ACIMA da bola logo pra dentro dos planos -- {naMao} px na mao, {naPonta} px na ponta");
+			if (naMao == 0 || naPonta == 0) semLeque++;
+
+			// (2) O PLANO ERRADO: 8 px pra dentro do raio ha tinta de sobra, e a mesma sonda tem que acha-la.
+			if (TintaNaCaixa(c, mao - longe, mao + PlanoErrado, y, MeiaAlturaDoFogo) > 0
+				&& TintaNaCaixa(c, ponta - PlanoErrado, ponta + longe, y, MeiaAlturaDoFogo) > 0)
+				reprovadosNoPlanoErrado++;
+		}
+
+		Ok($"CONTRAPROVA: logo pra dentro dos dois planos ha tinta ACIMA da bola nos {_palco.Count} -- o leque existe, e a sonda o enxerga"
+		   + (semLeque > 0 ? $" ({semLeque} sem)" : ""), semLeque == 0);
+		Ok($"CONTRA-EXEMPLO: contra um plano {PlanoErrado:0} px PRA DENTRO do certo a mesma sonda reprova os {_palco.Count} "
+		   + $"({reprovadosNoPlanoErrado})", _palco.Count > 0 && reprovadosNoPlanoErrado == _palco.Count);
 	}
 }

@@ -46,8 +46,20 @@ public sealed partial class GameServer
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return (0, 0);
 
+		// ============================ PARTE DO QUE O CORPO JA TEM, E NAO DE UM SAVE VAZIO ============================
+		// Era `new NivelSave()`, e o corpo da bancada ENGORDAVA A CADA RODADA. O `DoSave` troca tambem o
+		// registro do que os degraus ja SOMARAM na ficha (`Somados`); com um save novo esse registro vem
+		// vazio, a ficha (que veio do disco com tudo ja somado) nao, e o laco de nivel soma os degraus
+		// todos de novo. O personagem da bancada e reusado entre rodadas -- entao cada uma deixava ele com
+		// mais uma dose: medido em cinco rodadas seguidas, o Ki maximo foi de 441.948 a 838.552 e a Bala
+		// Dispersa de 192 a 246 esferas, ate nao caber no teto de 256 projeteis da zona e passar a ser
+		// RECUSADA em toda rodada ("o ar aqui ja esta saturado de energia").
+		//
+		// Com o `ParaSave` o registro e o que o proprio corpo carrega: a primeira armada soma os degraus
+		// uma vez, e as seguintes nao tem o que somar.
+		// ============================================================================================================
 		int skills = 0;
-		var save = new NivelSave();
+		NivelSave save = pl.Niveis.ParaSave();
 		if (_skills != null)
 			foreach (Skill s in _skills.Todas)
 			{

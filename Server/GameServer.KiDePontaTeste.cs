@@ -52,24 +52,29 @@ public partial class GameServer
 	/// <summary>`--kideponta`: a bancada em si, e ela roda UMA vez, no primeiro login.</summary>
 	private bool _pontaDeTeste;
 
-	/// <summary>
-	/// A MESMA FLAG, mas ela NAO SE APAGA -- e por isso e um campo separado.
-	///
-	/// A metade viva RELOGA de proposito (e a familia da persistencia), e quem volta encontra o
-	/// proprio corpo do jeito que o deixou: com o Ki gasto nas rajadas anteriores. Sem re-armar a
-	/// cada entrada, o primeiro tiro depois do relogin ouve *"isso pede pelo menos 27 de energia"* --
-	/// que foi o que a primeira rodada mediu, e que teria passado por "a tecnica nao voltou".
-	/// </summary>
-	private bool _pontaLigada;
-
 	private int _ppOk, _ppFalhou;
 
 	/// <summary>
-	/// O BONECO QUE O ROBO VAI ACERTAR. Fica de pe DEPOIS que esta bancada termina, e e a unica
-	/// coisa que ela deixa no mundo -- a metade viva precisa de alguem pra levar o tiro, e um alvo
-	/// que o proprio robo criasse seria o cliente inventando corpo.
+	/// A QUANTOS TILES DO JOGADOR O BONECO FICA, a leste e na mesma linha.
+	///
+	/// ============================ LONGE O BASTANTE PRA NAO VOAR ============================
+	/// Um tiro que acerta a ate 4 tiles de viagem ARREMESSA quem leva (`Projetil.FatorDeEmpurrao`, o
+	/// *"harder to knock back at range"* do `objects.dm:449-455`), com forca igual ao dano. Eram TRES
+	/// tiles, e a rajada honesta jogava o boneco vinte tiles adiante (`Empurrao.TiquesMax`) -- no
+	/// banco, atravessando a PAREDE, que o voo derruba.
+	///
+	/// Nove da folga dos dois lados: o tiro nasce um tile a frente da mao (`BocaDeCano`) e a metade
+	/// viva ainda ANDA dois tiles na direcao dele antes de relogar -- sobram seis e meio, cinco de
+	/// viagem, um alem do corte. A bola customizada alcanca dezesseis.
+	/// =======================================================================================
 	/// </summary>
-	private ServerPlayer? _pontaBoneco;
+	private const int TilesAteOBonecoDaPonta = 9;
+
+	/// <summary>
+	/// O PALCO DA METADE VIVA: tiles livres pra cada lado do jogador. Um a mais que a distancia do
+	/// boneco, pra a linha de tiro inteira -- e a celula dele -- estarem dentro do quadrado conferido.
+	/// </summary>
+	private const int CampoDaMetadeViva = TilesAteOBonecoDaPonta + 1;
 
 	private void AfirmarPp(string oque, bool passou, string detalhe = "")
 	{
@@ -81,8 +86,8 @@ public partial class GameServer
 	/// <summary>
 	/// Roda no PRIMEIRO LOGIN, e nao no boot, por duas razoes que nenhuma das quatro anteriores
 	/// tinha: (1) a metade viva precisa que o servidor ja esteja no ar e com o robo dentro, e (2) o
-	/// alvo do robo (<see cref="_pontaBoneco"/>) tem que nascer na zona de quem entrou -- no boot
-	/// nao ha zona de ninguem.
+	/// alvo do robo (o boneco do <see cref="ArmarAMetadeViva"/>) tem que nascer na zona de quem
+	/// entrou -- no boot nao ha zona de ninguem.
 	/// </summary>
 	public void RodarBancadaDePontaAPonta(ServerPlayer vivo)
 	{
@@ -1849,21 +1854,41 @@ public partial class GameServer
 	/// O BP e o Ki sao dados na mao pelo mesmo motivo do `--bpteste`: um personagem novo expressa
 	/// entre 2 e 21 de poder, e um tiro desses nao arranca vida visivel de ninguem em tempo de teste.
 	/// ============================================================================================
+	///
+	/// ============================ UMA VEZ SO, E O PALCO E DELA ============================
+	/// Isto roda no PRIMEIRO login e nunca mais. Ate 2026-10-07 rodava em TODA entrada (re-enchia o
+	/// tanque de quem relogava), e o palco era o berco -- que hoje e o BANCO da Terra. A metade viva
+	/// reprovava tres conferencias (quatro quando o dado nocauteava o boneco) e nenhuma era do ki:
+	///
+	///   * o boneco, a tres tiles e com um decimo do poder, levava ~100 por tiro num membro de 100:
+	///     caia nocauteado no primeiro acerto num nucleo (o membro e SORTEADO: umas rodadas sim,
+	///     outras nao), e era ARREMESSADO vinte tiles pela parede do banco em toda rodada;
+	///   * o "passo honesto" do robo (60 px por pacote) nunca coube no orcamento de quem anda a
+	///     96 px/s: vinte recusas, 13 px cada. A conferencia so olhava a chegada, e passava enquanto
+	///     o boneco ficava parado a tres tiles;
+	///   * *"isso pede pelo menos 27 de energia"* nao era Ki perdido no relogin: o tanque paga cinco
+	///     tiros e o robo pedia seis. Os cinco SAIAM -- e morriam no ar, a catorze tiles do boneco.
+	///
+	/// O que mudou: o jogador nasce num CAMPO ABERTO (<see cref="PorEmCampoAberto"/>, escrito aqui,
+	/// antes do `JoinAccepted`), o boneco fica ALEM do alcance do arremesso e do tamanho de quem atira,
+	/// e a volta do relogin nao e tocada -- o Ki e a posicao que o robo confere do outro lado sao os
+	/// que o save devolveu, e nao os que esta funcao reporia.
+	/// ======================================================================================
 	/// </summary>
 	public void ArmarAMetadeViva(ServerPlayer vivo)
 	{
+		AfirmarPp($"a metade viva tem palco: um campo aberto de {CampoDaMetadeViva} tiles pra cada lado do jogador",
+				  PorEmCampoAberto(vivo, CampoDaMetadeViva), $"{vivo.Name} ficou em {vivo.Pos}");
+
 		vivo.Ficha.BP = Math.Max(vivo.Ficha.BP, 200_000);
 		vivo.Ficha.Statify();
-		vivo.Ficha.Tick(agoraMs: NowMs());
+		// O KI ANTES DO `Tick`: e o `Tick` que escreve o BP expresso, a partir do `kiratio`. Na ordem
+		// inversa o tiro sairia com o poder do tanque de ANTES ate o tique seguinte.
 		vivo.Ficha.Ki = vivo.Ficha.MaxKi;
+		vivo.Ficha.Tick(agoraMs: NowMs());
 
-		// O BONECO NASCE UMA VEZ SO. No relogin quem volta e o jogador; o alvo continua de pe onde
-		// estava, com a vida que ja perdeu -- que e o que faz a familia de depois do relogin medir o
-		// MESMO mundo, e nao um mundo recem-montado.
-		if (_pontaBoneco != null && _players.ContainsKey(_pontaBoneco.Id)) return;
-
-		// O BONECO: tres tiles a leste e SEM cerebro -- ele nao reage, nao anda e nao atira. O que a
-		// metade viva mede e o que o cliente consegue (ou nao) fazer com ele.
+		// O BONECO: a leste, na mesma linha, e SEM cerebro -- ele nao reage, nao anda e nao atira. O
+		// que a metade viva mede e o que o cliente consegue (ou nao) fazer com ele.
 		var boneco = new ServerPlayer
 		{
 			Id = IdBaseDeProjetil + 900,
@@ -1873,7 +1898,7 @@ public partial class GameServer
 			Genero = "Male",
 			Idade = 25,
 			Zone = vivo.Zone,
-			Pos = new Vec2(vivo.Pos.X + 3 * ZoneCollision.TileSize, vivo.Pos.Y),
+			Pos = new Vec2(vivo.Pos.X + TilesAteOBonecoDaPonta * ZoneCollision.TileSize, vivo.Pos.Y),
 			Conta = "bancada_ponta",
 			Slot = 0,
 			// ============================ O BONECO E TAO FORTE QUANTO QUEM ATIRA ============================
@@ -1882,21 +1907,25 @@ public partial class GameServer
 			// bancada em 1.014 de dano: o boneco morria no primeiro, sumia da lista de alvos, e a
 			// familia que mede "a vida dele CAIU" media um cadaver.
 			//
-			// A DECIMA PARTE do poder de quem atira e o meio termo medido: o `BPModulus` ainda pesa
-			// o bastante pra o byte de vida do snapshot mexer numa rajada, e pouco o bastante pra
-			// ele continuar de pe pro tiro de DEPOIS do relogin -- que e a outra coisa que precisa
-			// acertar alguem.
+			// A segunda dava a DECIMA PARTE, pra o byte de vida do snapshot mexer numa rajada. Esse
+			// byte saiu do jogo (vida alheia nao viaja mais) e quem confirma o dano hoje e o
+			// `S2C.Hit`, com o NUMERO -- qualquer dano maior que zero prova o acerto. Sobrou so o
+			// lado ruim: ~100 por tiro num membro de 100 e nocaute no primeiro acerto num nucleo
+			// (`Regras.LimiarQuebra`), ou seja, conforme o membro que o dado sorteasse.
+			//
+			// PODER IGUAL: o `BPModulus` vale 1, cada acerto tira uns dez de um membro, e os quatro
+			// tiros da metade viva (dois antes do relogin, dois depois) nao derrubam ninguem nem
+			// caindo todos no mesmo lugar.
 			// ==========================================================================================
-			Ficha = new Fighter { Race = "Human", BP = Math.Max(vivo.Ficha.BP / 10, 1_000) },
+			Ficha = new Fighter { Race = "Human", BP = vivo.Ficha.BP },
 			Livro = new SkillBook(),
 		};
 		boneco.Ficha.Class = "Normal";
 		PorNoMundo(boneco);
 		boneco.Ficha.Ki = boneco.Ficha.MaxKi;
 		boneco.Ficha.Tick(agoraMs: NowMs());
-		_pontaBoneco = boneco;
 
-		GD.Print($"[kiponta] o boneco '{boneco.Name}' (id {boneco.Id}) esta de pe a 3 tiles de "
+		GD.Print($"[kiponta] o boneco '{boneco.Name}' (id {boneco.Id}) esta de pe a {TilesAteOBonecoDaPonta} tiles de "
 				 + $"'{vivo.Name}' -- a metade viva (`--diagki`) comeca agora.");
 	}
 }

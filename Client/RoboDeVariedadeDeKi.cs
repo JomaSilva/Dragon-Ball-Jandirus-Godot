@@ -277,6 +277,22 @@ public partial class RoboDeVariedadeDeKi : Node
 		// ================================================================================================
 		World.Instancia?.AplicarZoom(ZoomDaFoto);
 
+		// ============================ O SORTEIO E O RELOGIO DO DESENHO FICAM CRAVADOS (2026-10-07) ============================
+		// Desde que todo raio ganhou o leque de labaredas e as fitas (o desenho geral que o dono pediu), duas
+		// fotos do MESMO tiro deixaram de ser parecidas: a semente de cada material e sorteada, e as fitas e
+		// as labaredas andam com a idade do tiro. Medido em cinco rodadas: o controle (o mesmo Ki Wave, duas
+		// vezes) discordou de si em 21,6%, 24,7%, 27,9%, 41,0% e 48,8% -- e o par de folhas DIFERENTES mais
+		// parecido fica em 50%. As duas familias nao chegaram a se tocar, mas numa das cinco foi por 1,8 ponto.
+		//
+		// O que esta bancada compara e o ESTILO de cada tecnica, e o sorteio do enfeite e ruido nessa conta.
+		// Os dois campos existem pra isto (ver `PintorDeKi.SementeDeTeste`): com eles todo tiro nasce com a
+		// mesma semente e e desenhado no mesmo instante do shader, e o controle volta a medir o que ele
+		// existe pra medir -- o meio-tile de sobra do obturador. O relogio para em 0,6 s: o clarao do
+		// disparo (a boca 40% inchada) ja assentou.
+		// ======================================================================================================================
+		PintorDeKi.SementeDeTeste = 3.7f;
+		ProjetilDesenhado.TempoDeTeste = 0.6;
+
 		// O RUMO E ACHADO NO MAPA, e nao escolhido: um tiro que morre numa pedra a dois tiles nunca
 		// chega ao ponto do obturador.
 		Facing f = srv.RumoLivreDaVariedade(cli.LocalId, 22);
@@ -603,8 +619,9 @@ public partial class RoboDeVariedadeDeKi : Node
 	// =====================================================================
 	/// <summary>
 	/// O CHAO DO RUIDO DO DESENHO. Duas mascaras da MESMA tecnica, no mesmo lugar e no mesmo instante
-	/// geometrico, nao saem identicas: a folha anima, a particula sai diferente. Esse numero e quanto
-	/// duas fotos podem diferir SEM que a arte tenha mudado.
+	/// geometrico, nao saem identicas: o obturador dispara num ponto qualquer de meio tile, e a particula
+	/// sai diferente. Esse numero e quanto duas fotos podem diferir SEM que a arte tenha mudado. (O sorteio
+	/// e o relogio do SHADER nao entram nele: ficam cravados -- ver o `Assentar`.)
 	///
 	/// A REPETIDA E A PRIMEIRA QUE DEU CERTO, e nao a primeira do roteiro -- a primeira rodada desta
 	/// bancada repetiu a `Roteiro[0]` (que naquela vez tinha FALHADO) e acabou comparando duas tecnicas
@@ -1005,6 +1022,8 @@ public partial class RoboDeVariedadeDeKi : Node
 	{
 		if (_acabou) return;
 		_acabou = true;
+		PintorDeKi.SementeDeTeste = null;
+		ProjetilDesenhado.TempoDeTeste = null;
 
 		if (S is { } srv && C is { } cli)
 		{

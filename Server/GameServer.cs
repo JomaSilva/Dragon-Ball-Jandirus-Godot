@@ -2394,7 +2394,7 @@ public partial class GameServer : Node
 		//
 		// No 1o login e nao no boot: ela precisa que o robo ja esteja dentro, e deixa o boneco de
 		// pe na zona DELE. Ver `GameServer.KiDePontaTeste.cs`.
-		_pontaLigada = _pontaDeTeste = Array.IndexOf(args, "--kideponta") >= 0;
+		_pontaDeTeste = Array.IndexOf(args, "--kideponta") >= 0;
 		if (_pontaDeTeste) GD.Print("[server] BANCADA: o sistema de ki de ponta a ponta no 1o login");
 
 		// `--sagateste`: a CADEIA de eventos de chefe -- ordem, BP pinado, dias in-game, recompensa,
@@ -4129,7 +4129,7 @@ public partial class GameServer : Node
 
 		// BANCADA DE TIRO: nasce no meio de um campo aberto (o berco da Terra e dentro do banco). Ver
 		// `PorEmCampoAberto` -- a posicao e escrita aqui, na entrada, pra o cliente ja nascer la.
-		if (_campoDeTeste > 0) PorEmCampoAberto(pl);
+		if (_campoDeTeste > 0) PorEmCampoAberto(pl, _campoDeTeste);
 
 		// BANCADA: nasce direto num mundo sorteado (ver `--geradoteste`).
 		if (_nascerEmGerado)
@@ -4239,10 +4239,11 @@ public partial class GameServer : Node
 		// A DE PONTA A PONTA depois da de IA, e a ordem importa pelo mesmo motivo: ela usa os moldes
 		// (a familia da IA forja duelistas de bancada) e precisa de alguem com `Peer` -- o boneco que
 		// ela deixa de pe nasce na zona de quem acabou de entrar, e e o alvo da metade viva.
+		//
+		// SO NO PRIMEIRO LOGIN, e a volta nao e re-armada: a metade viva RELOGA pra medir o que o save
+		// devolve (onde o corpo acorda, com quanto Ki), e um servidor que repusesse o corpo e
+		// reabastecesse o tanque a cada entrada estaria medindo a propria mao. Ver `ArmarAMetadeViva`.
 		if (_pontaDeTeste) { _pontaDeTeste = false; RodarBancadaDePontaAPonta(pl); }
-		// E TODA ENTRADA DEPOIS DESSA re-arma o corpo -- a metade viva RELOGA de proposito, e quem
-		// volta encontra o Ki gasto nas rajadas de antes. Ver `_pontaLigada`.
-		else if (_pontaLigada) ArmarAMetadeViva(pl);
 
 		// A DA CADEIA DE SAGAS tambem no primeiro login, e ela precisa MESMO de alguem com `Peer`:
 		// metade do que ela mede depende disso -- o marco de BP so olha jogador de verdade

@@ -24,8 +24,19 @@ namespace Jandirus.Client;
 ///     embate -- e nenhuma delas tira um ponto de vida de ninguem. E logo antes disso o tiro
 ///     HONESTO tira: sem essa metade, "nada aconteceu" seria compativel com um jogo quebrado.
 ///  3. O RELOGIN. A tecnica inventada sobrevive a cair a conexao e voltar -- com nome, grito,
-///     numeros e pontos gastos --, e ela AINDA DISPARA depois.
+///     numeros e pontos gastos --, e ela AINDA DISPARA depois. E o CORPO volta como saiu: no lugar
+///     em que deslogou e com o Ki que tinha. O servidor NAO re-arma nada na volta (ver o
+///     `ArmarAMetadeViva`), entao o que se le depois do relogin e o que o save devolveu.
 /// ==============================================================================
+///
+/// ============================ O PALCO, E POR QUE ELE E LONGE ============================
+/// O servidor poe este corpo num campo aberto e o boneco a NOVE tiles, na mesma linha. A distancia
+/// nao e enfeite: um tiro que acerta a ate quatro tiles de viagem ARREMESSA quem leva
+/// (`Projetil.FatorDeEmpurrao`), e a tres tiles a rajada honesta jogava o alvo vinte tiles adiante --
+/// as tres conferencias de depois do relogin reprovavam atirando num boneco que ja nao estava la.
+/// O robo CONFERE as duas pontas disso (a viagem prevista antes, o boneco no lugar depois) em vez de
+/// confiar: se a regra do arremesso mudar, quem avisa e a conferencia do palco, e nao a do relogin.
+/// =========================================================================================
 ///
 /// ============================ POR QUE ELA NAO MONTA O MUNDO ============================
 /// Ela e registrada ANTES da tela de login (como a `--diagslot`) e nunca passa pelo
@@ -59,6 +70,19 @@ public partial class RoboDeKi : Node
 	/// <summary>Prazo total. Uma bancada que trava e uma bancada que ninguem roda duas vezes.</summary>
 	private const double PrazoTotal = 180;
 
+	/// <summary>
+	/// Quantos tiles o PASSO HONESTO anda, na direcao do boneco. Dois bastam pras duas coisas que ele
+	/// prova: sao dezenas de pacotes aceitos (contra os tres recusados da MENTIRA 1) e deixam o corpo
+	/// num lugar que nao se confunde com o de nascimento na hora de conferir pra onde o relogin volta.
+	/// </summary>
+	private const int TilesDaCaminhada = 2;
+
+	/// <summary>
+	/// Teto de passos esperando uma coisa acabar (os tiros no ar, a caminhada). Uma bola vive cinco
+	/// segundos no maximo (`Burnout`) e dois tiles a pe custam um; doze segundos e folga pros dois.
+	/// </summary>
+	private const int EsperaMaxima = 30;
+
 	private enum Fase { Conectando, Selecao, Mundo, Voltando }
 
 	private readonly List<string> _passos = [];
@@ -86,14 +110,32 @@ public partial class RoboDeKi : Node
 	///
 	/// A PROVA NAO SE PERDEU, ela so voltou pra fonte certa: quem confirma dano e o `S2C.Hit`, que
 	/// chega COM O NUMERO pros dois envolvidos (`AnunciarGolpe` manda a versao "magra", sem dano,
-	/// pra quem so assiste) -- e este robo E o atacante. O `_danoSomado` e o servidor falando.
+	/// pra quem so assiste) -- e este robo E o atacante. O `_danoNoBoneco` e o servidor falando.
 	/// A pose responde a outra metade: se o boneco caiu ou continua de pe.
 	/// ================================================================================
 	/// </summary>
 	private Protocol.Pose _poseDoBoneco;
 
+	/// <summary>Todo relato de golpe em que EU sou o atacante -- acerto, esquiva, em quem for. E o que as mentiras exigem que fique em zero.</summary>
 	private int _golpesMeus;
-	private double _danoSomado;
+
+	/// <summary>
+	/// So os que TIRARAM VIDA DO BONECO. Sao contas separadas porque a Terra nao esta vazia: um
+	/// cidadao que atravesse a linha de tiro leva a bola no lugar dele, e somar esse golpe faria o
+	/// placar dizer "acertei o boneco" sobre um tiro que matou um passante.
+	/// </summary>
+	private int _acertosNoBoneco;
+	private double _danoNoBoneco;
+
+	/// <summary>
+	/// OS MEUS TIROS: quantos NASCERAM desde o ultimo `Limpar` e quais ainda estao no ar. Vem do
+	/// `S2C` de nascimento e de morte de projetil, e responde duas perguntas que o relato de golpe
+	/// nao responde: "a tecnica DISPAROU?" (nascer nao e acertar -- a rodada que confundiu os dois
+	/// leu cinco bolas voando como "nao disparou") e "ja da pra conferir?" (so quando a ultima morreu).
+	/// </summary>
+	private int _tirosNascidos;
+	private readonly HashSet<int> _meusTiros = [];
+
 	private int _correcoes;
 	private Vec2 _ultimaCorrecao;
 	private int _pacotesDeSnapshot;
@@ -138,6 +180,8 @@ public partial class RoboDeKi : Node
 		cli.Falou += AoOuvir;
 		cli.Rejected += AoSerRecusado;
 		cli.PeerLooked += AoVerAFicha;
+		cli.TiroNasceu += AoNascerTiro;
+		cli.TiroMorreu += AoMorrerTiro;
 
 		_conta = Prefixo + porta;
 		GD.Print($"[diagki] conta '{_conta}' na porta {porta}");
@@ -157,6 +201,8 @@ public partial class RoboDeKi : Node
 		cli.Falou -= AoOuvir;
 		cli.Rejected -= AoSerRecusado;
 		cli.PeerLooked -= AoVerAFicha;
+		cli.TiroNasceu -= AoNascerTiro;
+		cli.TiroMorreu -= AoMorrerTiro;
 	}
 
 	/// <summary>
@@ -186,7 +232,9 @@ public partial class RoboDeKi : Node
 		_minhaPos = spawn;
 		// O RELOGIN VOLTA NOUTRO PONTO DO ROTEIRO: a primeira entrada comeca do zero; a segunda cai
 		// direto na familia da persistencia.
-		_passo = _antesDoRelogin == null ? 0 : PassoDepoisDoRelogin;
+		bool primeira = _antesDoRelogin == null;
+		if (primeira) _ondeNasci = spawn;
+		_passo = primeira ? 0 : PassoDepoisDoRelogin;
 		_fase = Fase.Mundo;
 	}
 
@@ -196,9 +244,16 @@ public partial class RoboDeKi : Node
 		foreach (EntityState e in estados)
 		{
 			if (e.Id == _meuId) { _minhaPos = e.Pos; continue; }
-			if (e.Id == _idDoBoneco) { _poseDoBoneco = e.Pose; _posDoBoneco = e.Pos; }
+			if (e.Id == _idDoBoneco) { _poseDoBoneco = e.Pose; _posDoBoneco = e.Pos; _viOBoneco = true; }
 		}
 	}
+
+	/// <summary>
+	/// O MUNDO JA CHEGOU? Snapshot bastante pra a posicao autoritativa valer, e o boneco ja VISTO num
+	/// deles -- o nome dele vem no `PeerLook` e a posicao no snapshot, e sao dois pacotes: medir entre
+	/// um e outro seria medir a distancia ate a origem do mapa.
+	/// </summary>
+	private bool MundoChegou => _pacotesDeSnapshot >= 5 && _idDoBoneco != 0 && _viOBoneco;
 
 	/// <summary>
 	/// QUEM E O BONECO -- pelo NOME, e nao pelo corpo mais proximo.
@@ -224,8 +279,20 @@ public partial class RoboDeKi : Node
 	{
 		if (h.Atacante != _meuId) return;
 		_golpesMeus++;
-		_danoSomado += h.Dano;
+
+		if (h.Alvo != _idDoBoneco || !h.TemDano || h.Dano <= 0) return;
+		_acertosNoBoneco++;
+		_danoNoBoneco += h.Dano;
 	}
+
+	private void AoNascerTiro(NascimentoDeProjetil n)
+	{
+		if (n.Dono != _meuId) return;
+		_tirosNascidos++;
+		_meusTiros.Add(n.Id);
+	}
+
+	private void AoMorrerTiro(int id, byte fim, Vec2 onde) => _meusTiros.Remove(id);
 
 	private void AoSerCorrigido(Vec2 onde) { _correcoes++; _ultimaCorrecao = onde; }
 
@@ -238,7 +305,12 @@ public partial class RoboDeKi : Node
 	private bool Ouviu(string pedaco)
 		=> _avisos.Exists(a => a.Contains(pedaco, StringComparison.OrdinalIgnoreCase));
 
-	private void Limpar() { _avisos.Clear(); _golpesMeus = 0; _danoSomado = 0; _correcoes = 0; }
+	private void Limpar()
+	{
+		_avisos.Clear();
+		_golpesMeus = _acertosNoBoneco = _tirosNascidos = _correcoes = 0;
+		_danoNoBoneco = 0;
+	}
 
 	// =====================================================================
 	// O RELOGIO
@@ -256,11 +328,15 @@ public partial class RoboDeKi : Node
 			return;
 		}
 
+		if (C is not { } cli) return;
+
+		// A CAMINHADA NAO ANDA NO PASSO DO ROTEIRO (0,4 s): ela anda no relogio de envio de um cliente
+		// de verdade, que e o que a faz honesta. Ver `Andar`.
+		if (_andando) Andar(cli, delta);
+
 		_t += delta;
 		if (_t < Passo) return;
 		_t = 0;
-
-		if (C is not { } cli) return;
 
 		switch (_fase)
 		{
@@ -351,12 +427,13 @@ public partial class RoboDeKi : Node
 			case 0:
 				// ESPERA O MUNDO CHEGAR: sem snapshot nao ha posicao autoritativa nem boneco, e
 				// medir qualquer coisa antes disso seria medir o vazio.
-				if (_pacotesDeSnapshot < 5 || _idDoBoneco == 0) { _passo = 0; return; }
+				if (!MundoChegou) { _passo = 0; return; }
 				Conferir(cli.Customizadas.Count == 0,
 						 "conta nova entra SEM tecnica inventada nenhuma",
 						 $"{cli.Customizadas.Count}");
 				Conferir(_idDoBoneco != 0, "o boneco do servidor esta na minha zona (o alvo da familia 2)",
 						 $"id {_idDoBoneco}, pose {_poseDoBoneco}");
+				ConferirOPalco("...a leste, na minha linha, e LONGE o bastante pra um tiro nao o arremessar");
 				Limpar();
 				cli.SendHabilidade("Custom_Attack1");
 				break;
@@ -425,47 +502,62 @@ public partial class RoboDeKi : Node
 
 			// ---------------------------------------------------------- o tiro HONESTO
 			case 7:
-				// ENCARA O BONECO E MARCA. A posicao mandada e a VERDADEIRA -- este e o unico passo
+				// ENCARA O BONECO E MARCA. A posicao mandada e a VERDADEIRA -- este e o unico trecho
 				// em que o robo nao mente, e ele existe pra dar sentido aos que mentem.
 				//
-				// UMA RAJADA E NAO UM TIRO: emparelhado em poder (ver o `ArmarAMetadeViva` do
-				// servidor), cada acerto tira meio por cento. O que se mede aqui e "o servidor
-				// arrancou vida"; a CONTA do dano ja e medida decimal por decimal na outra metade.
+				// UM PASSO ANTES DE ATIRAR: o `Facing` vai pelo canal sequenciado e o pedido da tecnica
+				// pelo confiavel -- ver a nota grande do relogin, mais abaixo, que e onde isso mordeu.
 				cli.SendState(_minhaPos, Facing.East, moving: false);
 				cli.SendAlvo(_idDoBoneco);
 				Limpar();
-				DispararRajada(cli);
+				_ondeOBonecoEstava = _posDoBoneco;
 				break;
 
+			// ============================ DOIS TIROS, E NAO UMA RAJADA ============================
+			// Eram nove pedidos em tres passos, do tempo em que a prova era o byte de vida do snapshot
+			// mexer. O tanque de um personagem novo paga CINCO: os quatro ultimos ouviam *"isso pede
+			// pelo menos 27 de energia"*, e o corpo chegava ao relogin vazio -- o que obrigava o
+			// servidor a re-encher o tanque na volta, e com isso a esconder o que o save faz com o Ki.
+			//
+			// Dois aqui e dois depois do relogin cabem no tanque com folga, e bastam: quem confirma o
+			// dano e o `S2C.Hit`, com o numero. O segundo existe so pra um tiro defletido (com poder
+			// igual a chance e pequena, mas e sorteio) nao reprovar a familia pelo dado.
+			// ====================================================================================
 			case 8:
 			case 9:
-				DispararRajada(cli);   // a bola leva ~0,3 s por tile: os tiros saem espacados
+				Atirar(cli);
 				break;
 
 			case 10:
-				Conferir(_golpesMeus > 0 && _danoSomado > 0,
+				if (TirosNoAr()) { _passo = 10; return; }
+				Conferir(_acertosNoBoneco > 0 && _danoNoBoneco > 0,
 						 "o tiro HONESTO acerta -- e quem confirmou foi o servidor (`S2C.Hit`)",
-						 $"{_golpesMeus} golpe(s), {_danoSomado:0.##} de dano somado");
+						 $"{_acertosNoBoneco} acerto(s) no boneco de {_tirosNascidos} tiro(s), "
+					   + $"{_danoNoBoneco:0.##} de dano somado");
 				Conferir(_poseDoBoneco != Protocol.Pose.Nocauteado,
 						 "...e o boneco continua DE PE -- a vida dele nao viaja mais (ver `_poseDoBoneco`), "
 					   + "o que o cliente ve de fora e a pose e as feridas",
 						 $"pose {_poseDoBoneco} | ferida {FeridaDoBoneco(cli)}");
+				Conferir((_posDoBoneco - _ondeOBonecoEstava).Length < 1f,
+						 "...e NO LUGAR: de longe o tiro fere e nao arremessa (o alvo do relogin continua la)",
+						 $"saiu {(_posDoBoneco - _ondeOBonecoEstava).Length / ZoneCollision.TileSize:0.##} tile(s) "
+					   + $"de {_ondeOBonecoEstava}");
 				Limpar();
 				break;
 
 			// ============================ O CEU TEM QUE ESVAZIAR ANTES DAS MENTIRAS ============================
-			// A rajada honesta deixa bolas no ar, e uma bola leva 0,3 s por tile: elas continuavam
-			// acertando DEPOIS de a mentira ter sido mandada, e a checagem "ninguem se machucou"
-			// reprovava contando um golpe honesto de tres passos atras. Dois passos de silencio, e
-			// so entao o contador zera.
+			// O passo 10 ja esperou a ultima bola morrer, mas o relato do golpe dela vem noutro
+			// pacote: a checagem "ninguem se machucou" das mentiras reprovava contando um golpe
+			// honesto de tres passos atras. Dois passos de silencio, e so entao o contador zera.
 			// ==============================================================================================
 			case 11:
 			case 12:
 				break;
 
 			case 13:
-				Conferir(_golpesMeus == 0, "o ceu esvaziou antes das mentiras (nenhum tiro honesto no ar)",
-						 $"{_golpesMeus} golpe(s) atrasado(s)");
+				Conferir(_golpesMeus == 0 && _meusTiros.Count == 0,
+						 "o ceu esvaziou antes das mentiras (nenhum tiro honesto no ar)",
+						 $"{_golpesMeus} golpe(s) atrasado(s), {_meusTiros.Count} tiro(s) vivo(s)");
 				Limpar();
 				break;
 
@@ -541,13 +633,54 @@ public partial class RoboDeKi : Node
 							? $"gasto {cli.Customizadas[0].Gasto}, dano {cli.Customizadas[0].BaseDano:0.###}"
 							: "lista vazia");
 
-				// ---------------------------------------------------------- O RELOGIN
+				// ---------------------------------------------------------- O PASSO HONESTO
+				Limpar();
+				ComecarACaminhada();
+				break;
+
+			// ============================ O CONTRA-EXEMPLO DA MENTIRA 1, E ELE NUNCA TINHA SIDO MEDIDO ============================
+			// A MENTIRA 1 mostra o servidor recusando um SALTO. Sem esta metade, "recusou" seria
+			// compativel com um servidor que recusa TUDO: aqui o mesmo canal leva dezenas de passos
+			// possiveis e nenhum volta corrigido.
+			//
+			// ESTA CONFERENCIA EXISTIA E MENTIA. O "passo honesto" era um pulo de 60 px a cada 0,4 s
+			// -- 150 px/s num corpo que anda a 96 (um Human comum), e mais de quatro vezes o que cabe
+			// num pacote (`MoveRules.PassosDeFolga`). O servidor recusava TODOS e arrastava o corpo
+			// 13 px por vez; a conferencia so olhava se o robo tinha chegado perto do boneco, e chegava
+			// porque o boneco estava a tres tiles. No dia em que ele passou a ser arremessado, ela
+			// reprovou -- pelo motivo errado, e com o nome "o servidor ACEITA o passo" em cima de vinte
+			// recusas.
+			//
+			// ANTES do relogin, e nao depois: o corpo desloga DOIS TILES longe de onde nasceu, e e isso
+			// que deixa a familia seguinte distinguir "voltou pra onde estava" de "voltou pro comeco".
+			// =================================================================================================================
+			case 22:
+				if (_andando && ++_espera < EsperaMaxima) { _passo = 22; return; }
+				break;   // um passo de folga: o snapshot do ultimo pacote ainda esta a caminho
+
+			case 23:
+				Conferir(!_andando && _correcoes == 0,
+						 "PASSO HONESTO: pelo MESMO canal da mentira 1, o servidor ACEITA quem anda no proprio passo",
+						 $"{_pacotesDaCaminhada} pacote(s), {_correcoes} correcao(oes)"
+					   + (_andando ? " -- e a caminhada nao terminou" : ""));
+				Conferir((_minhaPos - _destinoDaCaminhada).Length < 1f,
+						 $"...e a posicao autoritativa E a que eu disse: {TilesDaCaminhada} tiles na direcao do boneco",
+						 $"eu disse {_destinoDaCaminhada}, o servidor diz {_minhaPos}");
+				_andando = false;   // se estourou a espera, a caminhada para aqui: o relogin nao e lugar de andar
+				break;
+
+			// ---------------------------------------------------------- O RELOGIN
+			case 24:
 				_antesDoRelogin = cli.Customizadas.Count == 1 ? cli.Customizadas[0] : null;
 				Conferir(_antesDoRelogin != null, "ha o que persistir antes de derrubar a conexao");
-				Nota($"derrubando a conexao com '{_antesDoRelogin?.Nome}' (gasto {_antesDoRelogin?.Gasto}) na mao");
+				_ondeDeslogou = _minhaPos;
+				_kiAoSair = cli.Sheet.Ki;
+				Nota($"derrubando a conexao com '{_antesDoRelogin?.Nome}' (gasto {_antesDoRelogin?.Gasto}) na mao, "
+				   + $"em {_ondeDeslogou} e com {_kiAoSair:0.#} de Ki");
 				_fase = Fase.Voltando;
 				_espera = 0;
 				_idDoBoneco = 0;
+				_viOBoneco = false;
 				_pacotesDeSnapshot = 0;
 				cli.Desconectar();
 				// quem reconecta e a fase `Voltando`, depois de tres passos -- ver a nota la.
@@ -572,6 +705,26 @@ public partial class RoboDeKi : Node
 						 && agora.Gasto == antes.Gasto,
 						 "...e com os NUMEROS e os PONTOS GASTOS, que e o que doi perder",
 						 agora == null ? "-" : $"dano {agora.BaseDano:0.###}, gasto {agora.Gasto}");
+
+				// ============================ E O CORPO VOLTA COMO SAIU ============================
+				// A posicao de chegada e a ficha vem no `JoinAccepted`, e o servidor nao re-arma nada na
+				// volta: o que se le aqui e o que o save devolveu.
+				//
+				// ESTAS DUAS NAO EXISTIAM, e sem elas a falha de 2026-10-07 nao dava pra ler. O robo
+				// ficava a catorze tiles do boneco e ouvia *"isso pede pelo menos 27 de energia"*, e as
+				// duas coisas se leem como "o relogin devolveu o corpo no lugar errado e sem Ki".
+				// Nenhuma era: o corpo voltava exatamente onde tinha saido (quem tinha ido embora era o
+				// boneco), e o Ki voltava CHEIO -- re-enchido pelo servidor da bancada, que assim
+				// escondia o que o save faz com ele. A frase dos 27 era o sexto pedido de um tanque que
+				// paga cinco.
+				// ==================================================================================
+				Conferir((_minhaPos - _ondeDeslogou).Length < 1f,
+						 "...e o CORPO acorda onde deslogou -- e nao no berco, nem onde nasceu",
+						 $"deslogou em {_ondeDeslogou}, voltou em {_minhaPos} "
+					   + $"({(_ondeDeslogou - _ondeNasci).Length / ZoneCollision.TileSize:0.#} tiles de onde nasceu)");
+				Conferir(Math.Abs(cli.Sheet.Ki - _kiAoSair) <= cli.Sheet.MaxKi * FolgaDoKi,
+						 "...com o KI que tinha: nem re-enchido, nem zerado (relogar nao e jeito de encher o tanque)",
+						 $"saiu com {_kiAoSair:0.#}, voltou com {cli.Sheet.Ki:0.#} de {cli.Sheet.MaxKi:0.#}");
 				break;
 			}
 
@@ -582,58 +735,33 @@ public partial class RoboDeKi : Node
 			// deixa o tiro sair pro sul enquanto o "virei pro leste" ainda esta no ar, e a rodada que
 			// mediu isso gastou o tanque de Ki acertando o horizonte.
 			// ==========================================================================================
-			// ============================ ANDAR ATE O BONECO -- DESTA VEZ HONESTAMENTE ============================
-			// Depois das mentiras o robo ficou uns tiles a oeste de onde tinha atirado (as correcoes
-			// do servidor mandam, nao ele), e dali o caminho ate o boneco passa pelo cenario da
-			// Terra: os tiros saiam, batiam numa pedra e a bancada lia isso como "a tecnica nao
-			// voltou do disco" -- reprovando a familia certa pelo motivo errado.
-			//
-			// A aproximacao vai em passos de 60 px por 0,4 s, que cabe na velocidade de caminhada que
-			// o `MoveRules` valida. E ela vale como o CONTRA-EXEMPLO da MENTIRA 1: o mesmo canal, com
-			// um passo possivel, e aceito -- o que a corrida de la recusou foi o SALTO, e nao o
-			// movimento.
-			// ==================================================================================================
 			case PassoDepoisDoRelogin + 1:
-			{
-				if (_pacotesDeSnapshot < 5 || _idDoBoneco == 0) { _passo = PassoDepoisDoRelogin + 1; return; }
-
-				Vec2 ate = _posDoBoneco - _minhaPos;
-				if (ate.Length > 3 * ZoneCollision.TileSize && _passosAndando++ < 20)
-				{
-					cli.SendState(_minhaPos + ate.Normalized() * 60, Facing.East, moving: true);
-					_passo = PassoDepoisDoRelogin + 1;
-					return;
-				}
-				Conferir(ate.Length <= 4 * ZoneCollision.TileSize,
-						 "andando honestamente, o servidor ACEITA o passo e eu chego perto do boneco",
-						 $"{ate.Length / ZoneCollision.TileSize:0.#} tiles depois de {_passosAndando} passo(s)");
+				if (!MundoChegou) { _passo = PassoDepoisDoRelogin + 1; return; }
+				ConferirOPalco("o boneco continua na minha linha de tiro, e ainda LONGE o bastante, do outro lado do relogin");
 				cli.SendState(_minhaPos, Facing.East, moving: false);
 				cli.SendAlvo(_idDoBoneco);
+				Limpar();
+				_kiAntesDeAtirar = cli.Sheet.Ki;
 				break;
-			}
 
 			case PassoDepoisDoRelogin + 2:
-				Limpar();
-				DispararRajada(cli);
-				break;
-
 			case PassoDepoisDoRelogin + 3:
-				DispararRajada(cli);
+				Atirar(cli);
 				break;
 
 			case PassoDepoisDoRelogin + 4:
-			case PassoDepoisDoRelogin + 5:
-				break;   // a bola leva ~0,3 s por tile
-
-			case PassoDepoisDoRelogin + 6:
-				Conferir(_golpesMeus > 0 && !Ouviu("nao tem uma tecnica"),
+				if (TirosNoAr()) { _passo = PassoDepoisDoRelogin + 4; return; }
+				// NASCER, E NAO ACERTAR: "disparou" e o tiro existir no mundo. Era `_golpesMeus > 0`, e
+				// cinco bolas que nasceram e morreram no ar foram lidas como "o verbo nao voltou".
+				Conferir(_tirosNascidos > 0 && !Ouviu("nao tem uma tecnica"),
 						 "...e ela AINDA DISPARA depois do relogin (o verbo voltou junto)",
-						 $"{_golpesMeus} golpe(s), {_danoSomado:0.##} de dano | {string.Join(" | ", _avisos)}");
-				Conferir(_danoSomado > 0 && _poseDoBoneco != Protocol.Pose.Nocauteado,
+						 $"{_tirosNascidos} tiro(s) nasceram | Ki {_kiAntesDeAtirar:0.#} -> {cli.Sheet.Ki:0.#}"
+					   + (_avisos.Count > 0 ? " | " + string.Join(" | ", _avisos) : ""));
+				Conferir(_acertosNoBoneco > 0 && _danoNoBoneco > 0 && _poseDoBoneco != Protocol.Pose.Nocauteado,
 						 "...e o boneco, que continuou de pe do outro lado do relogin, levou de novo "
 					   + "(o dano quem confirma e o `S2C.Hit`, nao mais a vida no snapshot)",
-						 $"{_danoSomado:0.##} de dano | pose {_poseDoBoneco} | ferida {FeridaDoBoneco(cli)} "
-					   + $"| eu em {_minhaPos}, ele em {_posDoBoneco}");
+						 $"{_acertosNoBoneco} acerto(s), {_danoNoBoneco:0.##} de dano | pose {_poseDoBoneco} "
+					   + $"| ferida {FeridaDoBoneco(cli)} | eu em {_minhaPos}, ele em {_posDoBoneco}");
 				break;
 
 			default:
@@ -643,16 +771,103 @@ public partial class RoboDeKi : Node
 	}
 
 	/// <summary>
-	/// TRES TIROS, encarando o boneco. O `SendState` vai junto porque o servidor decide a direcao do
+	/// O PALCO SEGURA? O boneco a leste, na minha linha, e a viagem do tiro ate ele ALEM do alcance
+	/// do arremesso -- perguntado ao proprio `Projetil.FatorDeEmpurrao`, e nao a um "4" copiado: se a
+	/// regra mudar, esta conferencia muda junto e reprova AQUI, com o numero, em vez de la adiante com
+	/// "o tiro nao acertou".
+	///
+	/// A viagem e a distancia do NASCIMENTO do tiro (um tile a frente da mao, `BocaDeCano`) ate o
+	/// corpo dele, menos meio tile: a bola encosta antes de chegar ao centro.
+	/// </summary>
+	private void ConferirOPalco(string oque)
+	{
+		Vec2 ate = _posDoBoneco - _minhaPos;
+		Vec2 boca = BocaDeCano.De(_minhaPos, MeleeArea.Frente(Facing.East));
+		double viagem = (_posDoBoneco - boca).Length / ZoneCollision.TileSize - 0.5;
+		bool arremessa = new Projetil { MaxDistancia = viagem }.FatorDeEmpurrao() > 0;
+
+		Conferir(ate.X > 0 && MathF.Abs(ate.Y) < 1f && !arremessa, oque,
+				 $"{ate.X / ZoneCollision.TileSize:0.#} tiles a leste, {ate.Y:0.#} px de desvio, "
+			   + $"{viagem:0.#} tiles de viagem do tiro");
+	}
+
+	/// <summary>
+	/// UM TIRO, encarando o boneco. O `SendState` vai junto porque o servidor decide a direcao do
 	/// tiro pelo `Facing` do ULTIMO input -- sem ele, o corpo volta a olhar pro sul (a pose de
 	/// nascimento) e o ataque sai pro chao.
 	/// </summary>
+	private void Atirar(GameClient cli)
+	{
+		cli.SendState(_minhaPos, Facing.East, moving: false);
+		cli.SendHabilidade("Custom_Attack1");
+		_espera = 0;
+	}
+
+	/// <summary>
+	/// AINDA HA TIRO MEU NO AR? Quem chama fica no mesmo passo enquanto a resposta for sim.
+	///
+	/// ============================ ESPERAR O TIRO, E NAO UM NUMERO DE PASSOS ============================
+	/// Eram "dois passos de folga, que a bola leva ~0,3 s por tile" -- um prazo que so servia pra
+	/// tres tiles. A nove a conferencia chegava antes da bola. O servidor AVISA quando cada tiro morre,
+	/// entao a espera e pelo aviso: vale pra qualquer distancia e pra qualquer velocidade que a
+	/// tecnica compre.
+	///
+	/// O primeiro passo espera sempre: o pacote de nascimento do ultimo tiro pode ainda nao ter chegado,
+	/// e "nenhum tiro no ar" antes dele seria "nenhum tiro nasceu".
+	/// ================================================================================================
+	/// </summary>
+	private bool TirosNoAr() => ++_espera < EsperaMaxima && (_espera == 1 || _meusTiros.Count > 0);
+
+	// =====================================================================
+	// O PASSO HONESTO
+	// =====================================================================
+	private void ComecarACaminhada()
+	{
+		_posLocal = _minhaPos;
+		_destinoDaCaminhada = _minhaPos + MeleeArea.Frente(Facing.East) * (TilesDaCaminhada * ZoneCollision.TileSize);
+		_relogioDaCaminhada = 0;
+		_pacotesDaCaminhada = 0;
+		_espera = 0;
+		_andando = true;
+	}
+
+	/// <summary>
+	/// ANDA COMO O CLIENTE DE VERDADE ANDA: a posicao sai do <see cref="MoveRules.Advance"/> -- a
+	/// MESMA funcao do `LocalPlayer` --, com a velocidade que o SERVIDOR mandou na ficha, e vai pro fio
+	/// na mesma cadencia de envio dele. Nada aqui e numero da bancada: se a regra de passo mudar, o
+	/// robo anda pela regra nova, que e o que "honesto" quer dizer.
+	///
+	/// SEM MAPA, de proposito: este robo nao monta o mundo, e o palco e um campo aberto conferido pelo
+	/// servidor. Quem confere parede no caminho e ele, e uma recusa apareceria como correcao.
+	///
+	/// O TEMPO DE UM PACOTE TEM TETO (dois intervalos de envio). O servidor mora neste mesmo processo,
+	/// e um engasgo dele -- uma coleta de lixo, o povoamento de um planeta -- chegaria aqui como um
+	/// quadro de 200 ms: um passo so, maior do que o orcamento de pacote aceita, e a conferencia
+	/// reprovaria pelo relogio da maquina. Quem perdeu tempo anda MENOS, o que e sempre legal.
+	/// </summary>
+	private void Andar(GameClient cli, double delta)
+	{
+		_relogioDaCaminhada += delta;
+		if (_relogioDaCaminhada < LocalPlayer.SendInterval) return;
+		float dt = (float)Math.Min(_relogioDaCaminhada, 2 * LocalPlayer.SendInterval);
+		_relogioDaCaminhada = 0;
+
+		Vec2 falta = _destinoDaCaminhada - _posLocal;
+		Vec2 depois = MoveRules.Advance(_posLocal, falta, dt, cli.Sheet.SpeedStat, null, out _);
+		bool chegou = (depois - _posLocal).Length >= falta.Length;
+
+		_posLocal = chegou ? _destinoDaCaminhada : depois;
+		cli.SendState(_posLocal, Facing.East, moving: !chegou);
+		_pacotesDaCaminhada++;
+		_andando = !chegou;
+	}
+
 	/// <summary>
 	/// AS FERIDAS DO BONECO, em texto -- pro placar, nao pra checagem.
 	///
 	/// NOTA E NAO `Conferir`: a mascara so sai da zona morta quando um MEMBRO passa de 15% de dano
-	/// (ver `Feridas.HematomaComeca`), e a rajada emparelhada desta bancada tira meio por cento por
-	/// acerto espalhado pelo corpo -- exigir que ela mude aqui seria uma checagem que reprova por
+	/// (ver `Feridas.HematomaComeca`), e os tiros emparelhados desta bancada tiram uns dez por
+	/// acerto, espalhados pelo corpo -- exigir que ela mude aqui seria uma checagem que reprova por
 	/// motivo errado. Ela vai no relatorio porque e o canal que SUBSTITUIU a vida no fio: quem
 	/// quebrar o envio de feridas ve isso ficar "limpa" com o boneco levando tiro.
 	/// </summary>
@@ -660,14 +875,23 @@ public partial class RoboDeKi : Node
 		cli.Feridas.TryGetValue(_idDoBoneco, out Jandirus.Core.Combat.MascaraDeFeridas m)
 			? m.ToString() : "limpa";
 
-	private void DispararRajada(GameClient cli)
-	{
-		cli.SendState(_minhaPos, Facing.East, moving: false);
-		for (int i = 0; i < 3; i++) cli.SendHabilidade("Custom_Attack1");
-	}
+	/// <summary>
+	/// Quanto o Ki pode diferir entre a saida e a volta, em fracao do tanque. Cobre a regeneracao do
+	/// meio segundo entre a ultima ficha e o pacote de saida; um tiro custa o DOBRO disso, e um tanque
+	/// re-enchido ou zerado fica muito alem.
+	/// </summary>
+	private const double FolgaDoKi = 0.10;
 
-	private Vec2 _posDoBoneco;
-	private int _passosAndando;
+	private Vec2 _posDoBoneco, _ondeOBonecoEstava;
+	private bool _viOBoneco;
+	private Vec2 _ondeNasci, _ondeDeslogou;
+	private double _kiAoSair, _kiAntesDeAtirar;
+
+	private bool _andando;
+	private Vec2 _posLocal, _destinoDaCaminhada;
+	private double _relogioDaCaminhada;
+	private int _pacotesDaCaminhada;
+
 	private int _snapshotsNaMentira;
 	private Vec2 _posForjada, _posVerdadeira;
 

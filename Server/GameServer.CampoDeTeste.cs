@@ -18,10 +18,20 @@ namespace Jandirus.Server;
 ///     quina noroeste de pedra. O corpo vira ANDANDO (uns 18 px por virada), saia do centro, e o tiro
 ///     pro oeste nascia de cara pra parede -- o `Disparar` o poe em cima do corpo e ele morre no muro;
 ///   * `--diagpose`: "achei rumo livre pro raio andar (0 dos 4)";
-///   * `--diagki`: "andando honestamente... chego perto do boneco" -- com uma parede no meio.
+///   * `--diagki`: "andando honestamente... chego perto do boneco" -- com o boneco arremessado pra
+///     fora do banco pela parede (ver o `ArmarAMetadeViva`, que conta o caso inteiro).
 ///
 /// Nenhuma das quatro estava medindo ki. Foi a FOTO de cada uma que mostrou (o corpo dentro da sala, a
 /// bola desenhada em cima do boneco) -- as mensagens diziam so que o tiro nao existia.
+///
+/// ============================ DUAS PORTAS PRO MESMO CAMPO ============================
+///   * a FLAG (`--campoteste [N]`) vale pra TODA entrada no mundo, e e o que as tres bancadas de foto
+///     querem: elas reusam o personagem entre rodadas e precisam dele no centro do campo toda vez;
+///   * a `--kideponta` chama o <see cref="PorEmCampoAberto"/> ELA MESMA, e so no primeiro login. A
+///     metade viva dela RELOGA pra medir o que o save devolve, e com a flag o corpo e REPOSTO no
+///     campo tambem na volta (medido: um tile fora de onde deslogou) -- a conferencia "o corpo
+///     acorda onde deslogou" passaria a medir esta funcao, e nao o save.
+/// ====================================================================================
 ///
 /// ============================ E O REMEDIO E O DAS OUTRAS BANCADAS DE PALCO ============================
 /// `--voltateste` nasce na beirada, `--quebrarteste` encostado numa parede, `--aguateste` na margem de
@@ -61,15 +71,17 @@ public sealed partial class GameServer
 	/// "o quadrado esta livre?" e respondido em tempo constante por uma tabela de somas -- sem ela, um
 	/// campo de 23 tiles custaria 2209 leituras de mapa por candidato, e ha dezenas de milhares deles.
 	/// </summary>
-	private void PorEmCampoAberto(ServerPlayer pl)
+	/// <param name="n">Quantos tiles livres pra cada lado do corpo o campo precisa ter.</param>
+	/// <returns>Falso quando nao ha campo desse tamanho por perto (ou a zona nao tem mapa): o corpo fica onde estava.</returns>
+	private bool PorEmCampoAberto(ServerPlayer pl, int n)
 	{
 		if (MapaDaZonaOuCatalogo(pl.Zone) is not { } mapa)
 		{
-			GD.PushWarning("[server] BANCADA: `--campoteste` sem mapa nesta zona -- o corpo fica no berco");
-			return;
+			GD.PushWarning("[server] BANCADA: campo aberto pedido numa zona sem mapa -- o corpo fica no berco");
+			return false;
 		}
 
-		int w = mapa.Width, h = mapa.Height, n = _campoDeTeste;
+		int w = mapa.Width, h = mapa.Height;
 
 		// A TABELA DE SOMAS: `ruim[x, y]` = quantas celulas que NAO servem de chao ha em [0,x) x [0,y).
 		var ruim = new int[(w + 1) * (h + 1)];
@@ -105,10 +117,11 @@ public sealed partial class GameServer
 					pl.Moving = false;
 					GD.Print($"[server] BANCADA: {pl.Name} nasce no campo de ({bx + dx},{by + dy}), "
 						   + $"a {Math.Max(Math.Abs(dx), Math.Abs(dy))} tiles do berco");
-					return;
+					return true;
 				}
 
 		GD.PushWarning($"[server] BANCADA: nenhum campo de {n} tiles livres pra cada lado a {AlcanceDaBuscaDeCampo} "
 					 + "tiles do berco -- o corpo fica onde nasceu");
+		return false;
 	}
 }

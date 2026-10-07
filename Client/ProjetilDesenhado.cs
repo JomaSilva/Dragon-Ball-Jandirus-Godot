@@ -336,14 +336,17 @@ public partial class ProjetilDesenhado : Node2D
 
 	/// <summary>
 	/// TROCA A TINTA COM O NODE VIVO -- a previa da mesa acompanhando o seletor de cor. E a MESMA escrita
-	/// do <see cref="Vestir"/> (as tres cores do shader), so que sem refazer o material; a luz nao entra
-	/// porque a previa nasce <see cref="SemLuz"/>.
+	/// do <see cref="Vestir"/> (as cores do shader: tres na bola, quatro no raio), so que sem refazer o
+	/// material; a luz nao entra porque a previa nasce <see cref="SemLuz"/>.
 	/// </summary>
 	public void Tingir(Color cor)
 	{
 		Cor = cor;
 		if (Material is ShaderMaterial m)
-			PintorDeKi.Tingir(m, Tipo == TipoDeProjetil.Beam ? _estiloDoFeixe.Tons : _estiloDaBola.Tons, cor);
+		{
+			if (Tipo == TipoDeProjetil.Beam) PintorDeKi.TingirFeixe(m, _estiloDoFeixe.Tons, cor);
+			else PintorDeKi.Tingir(m, _estiloDaBola.Tons, cor);
+		}
 		QueueRedraw();
 	}
 
