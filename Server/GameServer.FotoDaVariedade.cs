@@ -138,7 +138,11 @@ public sealed partial class GameServer
 	internal void ReporNaAncora(int id)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return;
-		pl.Pos = _ancoraDaVariedade;
+
+		// PELO `CravarPosicao`, pelo motivo medido na `ReporNaBoca`: a escrita crua de `pl.Pos` perde pro
+		// passo validado do cliente, que nunca soube que foi movido. E SO QUANDO SAIU: a bancada chama
+		// isto a cada quadro enquanto espera o fundo, e uma correcao por quadro seria ruido no fio.
+		if (Vec2.Distance(pl.Pos, _ancoraDaVariedade) > 0.5f) CravarPosicao(pl, _ancoraDaVariedade);
 		pl.Moving = false;
 	}
 
@@ -186,7 +190,17 @@ public sealed partial class GameServer
 	/// </summary>
 	internal void CravarMeioDiaDaVariedade(int id)
 	{
-		if (_players.TryGetValue(id, out ServerPlayer? pl)) AdminMeioDia(pl);
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return;
+		AdminMeioDia(pl);
+
+		// E DE CEU LIMPO (2026-10-07). O relogio nao basta: o clima e sorteado, e chuva escurece a cena o
+		// bastante pra a `LuzDeKi` acender ao meio-dia. Uma rodada da `--diagboca` caiu debaixo de chuva e a
+		// sonda contou 47 mil px de "tinta" numa bola de 6 px de raio -- era a LUZ dela no chao, inclusive em
+		// cima do boneco. O `Limpo` de forca zero derruba o que estiver de pe (o `ForcarClima` deixa o mais
+		// forte vencer) e o segundo o segura pela hora que a bancada dura.
+		ForcarClima(pl.Zone, Jandirus.Core.World.TipoDeClima.Limpo, 0);
+		ForcarClima(pl.Zone, Jandirus.Core.World.TipoDeClima.Limpo, 3600, 0.02, "bancada");
+		foreach (ServerPlayer o in _players.Values) MandarCeu(o);
 	}
 
 	/// <summary>PRA ONDE ELE OLHA. E o que um jogador faz com as setas antes de atirar.</summary>

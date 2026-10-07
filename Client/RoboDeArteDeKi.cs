@@ -6,49 +6,135 @@ namespace Jandirus.Client;
 
 /// <summary>
 /// ============================ BANCADA DA ARTE DOS ATAQUES DE KI ============================
-/// O pedido do dono foi *"vc n ta utilizando os ICONES DE BEAM q era usado no byond pra dar mais
-/// VARIEDADE nos ataques de ki"*, e a resposta so vale se TRES coisas forem verdade ao mesmo tempo:
-/// a tabela escolhe folhas diferentes, as folhas EXISTEM no disco, e o pixel desenhado muda.
+/// Ela nasceu de um pedido do dono -- *"vc n ta utilizando os ICONES DE BEAM q era usado no byond pra
+/// dar mais VARIEDADE nos ataques de ki"* -- e media tres coisas: a tabela escolhe folhas diferentes,
+/// as folhas EXISTEM no disco, e o pixel desenhado muda.
+///
+/// ============================ AS FOLHAS SAIRAM (2026-10-07), E METADE DELA SAIU JUNTO ============================
+/// O dono viu o trailer e pediu outro desenho: *"ao inves de usar sprite pra cada beam como era no
+/// byond, fazer eles por efeitos, noise e shaders do proprio godot ... alem de beam na diagonal tb n
+/// ficar aquela coisa picotada e poder ser continuo em todas as direcoes e poder ate dar curva. Pra
+/// outros ataques de ki isso tb seria interessante trocar sprite por puro efeito, noise e shaders em
+/// esferas como genkidama, super nova, blast etc"*.
+///
+/// Hoje um raio e UMA FITA da mao ate a ponta (`FeixeDeKi.gdshader`) e uma bola e UM QUADRO
+/// (`EsferaDeKi.gdshader`) -- ver <see cref="ProjetilDesenhado"/> e <see cref="PintorDeKi"/>. Tudo o
+/// que esta bancada media sobre FOLHA ficou sem objeto, e foi APAGADO em vez de adaptado:
+///
+///   * "as 41 folhas carregam do disco e tem `head`/`tail`/`origin`" -- nao ha folha pra carregar;
+///   * o passo do TREM, a sombra de alpha de cada arte, a varredura de 2 a 1600 px do `MontarTrem`,
+///     o custo de montar o trem e o teto de 60 estampas -- nao ha trem: o raio sao quatro vertices;
+///   * "o passo nao depende da escala" e a fase das juntas da diagonal longa -- nao ha junta.
+///
+/// O QUE FICOU e o que continua sendo regra:
+///
+///   1. A TABELA (`ArteDeProjetil`): todo verb que atira tem arte, a bola muda com a raca e o
+///      Kamehameha e sorteado por personagem. Sem pixel -- roda no headless.
+///   2. TODO ESTILO EXISTE E SE VESTE: cada arte do enum tem estilo proprio, os tres shaders carregam
+///      e um tiro de cada tipo se veste com cada arte. E a 2b fotografa as 44 como bola: vestir e um
+///      campo, DESENHAR e um pixel.
+///   3. O PIXEL: duas artes fotografam diferente, a tinta muda o pixel sem achatar o desenho, a
+///      escala engorda, a cor de um personagem nao estoura em branco.
+///   4 e 5. A CONTINUIDADE -- a queixa do dono. O raio nao tem um pixel de fundo no eixo, da mao a
+///      ponta, e a tinta dele e UMA peca so: em doze comprimentos, nas 24 artes de raio, em 19 rumos
+///      (os 16 da rosa mais 17, 33 e 61 graus) e atravessando a tela. Com os dois defeitos de
+///      <see cref="ProjetilDesenhado.DefeitoDeTeste"/> religados pra provar que as duas reguas sabem
+///      ficar vermelhas -- e voltar ao verde.
+///   6. O DESENHO OBEDECE AS TABELAS DO CORE: a ponta SOLIDA cai em `FrenteDaCabeca x escala` e o
+///      tronco tem `MeiaEspessuraDoTronco x Macico x escala`, medidos na FOTO. O servidor encosta e
+///      corta por esses dois numeros; se o desenho mentir, o jogador ve o tiro acertar o vazio.
 ///
 /// ============================ ELA MEDE PIXEL, E ISSO E O PONTO ============================
 /// Este projeto tem registro de quatro defeitos visuais que passaram por quatro mil checagens verdes
 /// porque a bancada media INTENCAO: uniform escrito nao e pixel desenhado, `Modulate` nao e tela, e
-/// "as duas telas concordam" fica verde com as duas erradas igual. E tem registro de 35 atlas
-/// ESCRITOS e nunca importados -- 178 animacoes mortas que nenhum teste de codigo notaria.
+/// "as duas telas concordam" fica verde com as duas erradas igual. Aqui nenhuma familia de 2b em
+/// diante pergunta ao node o que ele acha que desenhou: ela fotografa e le a foto.
 ///
-/// Entao a familia 3 aqui nao pergunta "que arte a tabela devolveu": ela DESENHA dois tiros com
-/// artes diferentes, fotografa os dois e exige que as assinaturas de pixel sejam DIFERENTES. Uma
-/// tabela perfeita com todas as folhas apontando pro mesmo `.tres` passaria na familia 1 e
-/// REPROVARIA aqui -- que e exatamente o defeito que o dono relatou.
+/// ============================ E O DESENHO AGORA SE MEXE SOZINHO ============================
+/// O shader anima com a idade do tiro (`tempo`) e cada material sorteia a propria `semente`: duas
+/// fotos do MESMO tiro nao tem os mesmos pixels. A regua antiga -- um hash com a posicao de cada
+/// pixel -- diria "diferente" pra qualquer par, inclusive pra a mesma arte duas vezes: verde por
+/// construcao. Entao as comparacoes daqui sao DISTANCIAS (de silhueta e de paleta) contra um CONTROLE
+/// medido na mesma foto (a mesma arte, duas vezes), e as medidas sao contagens e extensoes com folga,
+/// nunca igualdade.
 ///
-///     &lt;godot&gt; --path . --diagartedeki            (familias 1 e 2; roda no headless)
-///     &lt;godot&gt; --path . --diagartedeki            (COM janela: a familia 3 precisa de pixel)
+///     &lt;godot&gt; --path . --headless --diagartedeki                    (familias 1 e 2, sem janela)
+///     &lt;godot&gt; --path . --diagartedeki --position 1920,0 --resolution 1280x720
+///                                             (COM janela, no segundo monitor: as outras medem pixel)
 /// ======================================================================================
 ///
 /// SEM REDE E SEM MUNDO, como a `--diagtinta`: arte de tiro nao depende de zona, de servidor nem de
-/// login. O que ela toca e folha, shader e um quadro desenhado.
+/// login. O que ela toca e estilo, shader e um quadro desenhado. As fotos saem em
+/// `user://artedeki-*.png`.
 /// </summary>
 public partial class RoboDeArteDeKi : Node2D
 {
 	private readonly List<string> _linhas = [];
-	private int _falhas, _t;
-	private ProjetilDesenhado? _a, _b;
+
+	/// <summary>Quantas conferencias cada familia fez. Sai no fim, logo antes do veredito.</summary>
+	private readonly List<(string Nome, int Feitas, int Reprovadas)> _placar = [];
+
+	private int _falhas, _t, _nascidos;
+	private bool _acabou, _semFoto;
+
+	/// <summary>O que ainda falta esperar antes do proximo passo. Ver <see cref="SegundosDeAssento"/>.</summary>
+	private double _segundosDeFolga;
+	private int _quadrosDeFolga;
 	private ColorRect _fundo = null!;
 
 	/// <summary>
-	/// FUNDO VERDE PURO: nao existe em folha de ki nenhuma (elas sao cinzas tingidas de azul,
-	/// vermelho ou branco), entao "nao e o fundo" separa o desenho do resto sem saber onde ele caiu.
-	/// E o mesmo truque do magenta da `--diagtinta`, com outra cor porque aqui a tinta de teste E
-	/// magenta.
+	/// FUNDO VERDE PURO: nenhum estilo de ki tem verde cheio com os outros dois canais zerados (os
+	/// tons sao cinzas, azuis, roxos e dourados, e a tinta de teste SOMA vermelho ou azul em cima),
+	/// entao "nao e o fundo" separa o desenho do resto sem saber onde ele caiu. E o mesmo truque do
+	/// magenta da `--diagtinta`, com outra cor porque aqui a tinta da regua E magenta.
 	/// </summary>
 	private static readonly Color Fundo = new(0f, 1f, 0f);
 
-	private const int XA = 320, XB = 1200, YTiro = 400;
+	/// <summary>A tinta de teste de sempre: um ki vermelho. Com ela todo tom solido tem o vermelho no teto.</summary>
+	private static readonly Color Vermelho = new(1f, 0.2f, 0.2f);
+
+	private static readonly Color Azul = new(0.2f, 0.4f, 1f);
+
+	/// <summary>A tinta da REGUA (familia 6). Ver <see cref="Chapa.Solido"/> sobre por que magenta.</summary>
+	private static readonly Color Magenta = new(1f, 0f, 1f);
+
+	/// <summary>
+	/// QUANTO UM PALCO ESPERA ANTES DA FOTO.
+	///
+	/// Dois motivos, e nenhum e interpolacao (o primeiro `Mirar` CRAVA a posicao): a foto e do quadro
+	/// ANTERIOR ao passo que a tira, e o raio nasce com a boca 40% inchada (o clarao do disparo, o
+	/// `nasce = exp(-tempo * 9)` do shader), que assenta em um terco de segundo. Fotografar no quadro
+	/// seguinte mostraria o instante do tiro em todas as fotos -- e a maior parte da vida de um raio
+	/// nao e esse instante.
+	///
+	/// EM SEGUNDOS, e nao em quadros: a idade do tiro e contada em tempo, e uma janela sem sincronia
+	/// vertical atravessa dezoito quadros em um centesimo de segundo. Os quadros entram so como piso.
+	/// </summary>
+	private const double SegundosDeAssento = 0.3;
+
+	/// <summary>O piso em quadros: o palco tem que ter sido DESENHADO antes de ser fotografado.</summary>
+	private const int QuadrosDeAssento = 3;
+
+	/// <summary>
+	/// Meio tile: de quanto a MAO fica atras da boca que o servidor manda. A regra esta escrita em
+	/// `ProjetilDesenhado.AMao`; aqui ela e repetida A MAO de proposito -- a sonda anda da mao ate a
+	/// ponta, e se o desenho mudar de lugar sem a regra mudar junto, e pra esta bancada reprovar.
+	/// </summary>
+	private const float MeiaCelula = ZoneCollision.TileSize / 2f;
+
+	private void Familia(string nome, string titulo)
+	{
+		_linhas.Add($"=== FAMILIA {nome}: {titulo} ===");
+		_placar.Add((nome, 0, 0));
+	}
 
 	private void Ok(string oque, bool passou)
 	{
 		_linhas.Add((passou ? "  OK   " : "  FALHA") + "  " + oque);
 		if (!passou) _falhas++;
+		if (_placar.Count == 0) return;
+		(string nome, int feitas, int reprovadas) = _placar[^1];
+		_placar[^1] = (nome, feitas + 1, reprovadas + (passou ? 0 : 1));
 	}
 
 	private void Nota(string t) => _linhas.Add("   --    " + t);
@@ -64,42 +150,112 @@ public partial class RoboDeArteDeKi : Node2D
 
 		Familia1();
 		Familia2();
-		MontarOsDoisTiros();
+
+		Assentar();   // a janela acaba de abrir: um instante pra ela ter o que fotografar
+	}
+
+	/// <summary>
+	/// OS DEFEITOS INJETADOS NAO SOBREVIVEM A BANCADA. Os dois sao campos ESTATICOS de producao; se
+	/// este node sair da arvore no meio de uma injecao (janela fechada na mao, excecao num passo), o
+	/// proximo que desenhar um raio neste processo o desenharia picotado.
+	/// </summary>
+	public override void _ExitTree() => DesligarOsDefeitos();
+
+	private static void DesligarOsDefeitos()
+	{
+		ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoFeixe.Nenhum;
+		Feixe.AlcanceFixoDeTeste = false;
 	}
 
 	// =====================================================================
 	// FAMILIA 1 -- A TABELA
 	// =====================================================================
 	/// <summary>
-	/// OS VERBOS DE PRODUCAO, um por um. A lista e escrita A MAO e nao lida da propria tabela, e
-	/// isso e deliberado: uma bancada que varre a tabela pra conferir a tabela sempre passa. O que
-	/// esta escrito aqui e a lista dos verbos que o JOGO despacha (o registro de tecnicas vivas: o de projetil,
-	/// o lote G5, o G6 e o G7), e ela reprova no dia em que alguem portar uma tecnica de tiro e
-	/// esquecer a arte -- que e o unico defeito que esta familia existe pra pegar.
+	/// OS VERBOS DE PRODUCAO, um por um, com a arte que um HUMANO tira de cada e a linha do DM que
+	/// manda. A lista e escrita A MAO e nao lida da propria tabela, e isso e deliberado: uma bancada
+	/// que varre a tabela pra conferir a tabela sempre passa. O que esta escrito aqui e a lista dos
+	/// verbos que o JOGO despacha (o registro de tecnicas vivas: o de projetil, os lotes G5, G6 e G7,
+	/// o sopro, e os sete dos lotes G11 e G12 que voaram sem arte ate 2026-10-07), e ela reprova no dia
+	/// em que alguem portar uma tecnica de tiro e esquecer a arte -- ou trocar a linha de uma que ja
+	/// estava certa.
+	///
+	/// `Nenhuma` na coluna do meio quer dizer SORTEADA (so o Kamehameha): nao ha uma arte pra escrever,
+	/// ha seis, e a familia 1c confere o sorteio.
 	/// </summary>
-	private static readonly string[] VerbosDeProducao =
+	private static readonly (string Verbo, ArteDeKi NoHumano, string Dm)[] VerbosDeProducao =
 	[
-		"Ki_Wave", "Basic_Blast", "Guided_Ball",
-		"Masenko", "Makkankosappo", "Massive_Beam", "Final_Flash",
-		"Charged_Shot", "KillDriver", "BusterShell", "Scattershot", "Energy_Barrage",
-		"Ki_Bomb", "Hellzone_Grenade", "Kienzan", "Paralysis", "Stunlock",
-		"Kamehameha", "GalicGun", "Death_Beam", "Dodompa", "Enkumei", "Boom_Wave", "Kikoho",
-		"Scattering_Bullet", "Spirit_Gun", "Kiai",
+		// ---- os tres de producao (`GameServer.Projeteis.cs`)
+		("Ki_Wave", ArteDeKi.Beam3, "beams.dm:289 + beams.dm:4"),
+		("Basic_Blast", ArteDeKi.Blast1, "blasts.dm:55 + race.dm:62"),
+		("Guided_Ball", ArteDeKi.Blast30, "blasts/GuidedBall.dm:35 + :23"),
+
+		// ---- lote G5
+		("Masenko", ArteDeKi.BeamMasenko, "beams.dm:322"),
+		("Makkankosappo", ArteDeKi.BeamStaticBeam, "beams.dm:357"),
+		("Massive_Beam", ArteDeKi.Beam11, "beams.dm:426"),
+		("Final_Flash", ArteDeKi.BeamBigFire, "beams/FinalFlash.dm:23,37"),
+		("Charged_Shot", ArteDeKi.Blast20, "blasts.dm:103"),
+		("KillDriver", ArteDeKi.BasenioBlast, "blasts/KillDriver.dm:23,49"),
+		("BusterShell", ArteDeKi.DeathBall2017Purple2, "blasts/BusterShell.dm:46 + blasts/GuidedBall.dm:94"),
+		("Scattershot", ArteDeKi.Blast1, "blasts.dm:159"),
+		("Energy_Barrage", ArteDeKi.Blast1, "blasts.dm:222"),
+		("Ki_Bomb", ArteDeKi.Blast1, "blasts.dm:428"),
+		("Hellzone_Grenade", ArteDeKi.Blast1, "blasts.dm:491"),
+		("Kienzan", ArteDeKi.Kienzan, "discs.dm:49"),
+		("Paralysis", ArteDeKi.KiHead, "Ki2.0/Debuffs.dm:18 + blasts/Paralysis.dm:23"),
+		("Stunlock", ArteDeKi.KiHead, "Skill Trees/Race Trees/meta.dm:74 + blasts/Paralysis.dm:23"),
+
+		// ---- lote G6
+		("Kamehameha", ArteDeKi.Nenhuma, "beams/Kamehameha.dm:12-21"),
+		("GalicGun", ArteDeKi.GalacticGun, "beams/GalicGun.dm:22,34"),
+		("Death_Beam", ArteDeKi.Makkankosappo3, "beams/DeathBeam.dm:22,34"),
+		("Dodompa", ArteDeKi.Dodompa, "beams.dm:442"),
+		("Enkumei", ArteDeKi.Enkumei, "beams/Enkumei.dm:35"),
+		("Boom_Wave", ArteDeKi.Beam4, "beams.dm:486"),
+		("Kikoho", ArteDeKi.Kikoho, "blasts/Kikoho.dm:56"),
+
+		// ---- lote G7
+		("Scattering_Bullet", ArteDeKi.Blast28, "blasts.dm:574"),
+		("Spirit_Gun", ArteDeKi.BlastSpiralingKi, "Core Trees/Spirit.dm:355"),
+
+		// ---- o sopro
+		("Kiai", ArteDeKi.Daitoppa, "Ki2.0/Kiai.dm:34-40"),
+
+		// ---- os sete que voavam sem arte (lotes G11 e G12), conferidos no DM em 2026-10-07
+		("Death_Ball", ArteDeKi.DeathBall2017Purple2, "blasts/DeathBall.dm:53"),
+		("SpiritBomb", ArteDeKi.SpiritBomb, "blasts/SpiritBomb.dm:25,45"),
+		("BusterBarrage", ArteDeKi.Blast1, "blasts/BusterBarrage.dm:43,60 + tools/copypaste.dm:12-13"),
+		("Continuous_Energy_Bullets", ArteDeKi.Blast1, "blasts.dm:278 + tools/copypaste.dm:12-13"),
+		("Spin_Blast", ArteDeKi.Blast1, "blasts.dm:348 + tools/copypaste.dm:12-13"),
+		("Psycho_Thread", ArteDeKi.KiHead, "click.dm:18,26"),
+		("Ki_Targets", ArteDeKi.Blast14, "Stats/Training/Meditate.dm:26"),
 	];
 
 	private void Familia1()
 	{
-		_linhas.Add("=== FAMILIA 1: a tabela responde por todo verbo que atira ===");
+		Familia("1", "a tabela responde por todo verbo que atira");
 
 		var vistas = new Dictionary<ArteDeKi, List<string>>();
-		int semArte = 0;
-		foreach (string v in VerbosDeProducao)
+		int semArte = 0, trocadas = 0;
+		foreach ((string v, ArteDeKi noHumano, string dm) in VerbosDeProducao)
 		{
 			ArteDeKi a = ArteDeProjetil.De(v, "Human", "", 12345);
-			if (a == ArteDeKi.Nenhuma) { Nota($"SEM ARTE: {v}"); semArte++; continue; }
+			if (a == ArteDeKi.Nenhuma) { Nota($"SEM ARTE: {v} (`{dm}`)"); semArte++; continue; }
 			(vistas.TryGetValue(a, out List<string>? l) ? l : vistas[a] = []).Add(v);
+
+			bool certa = noHumano == ArteDeKi.Nenhuma
+				? a is >= ArteDeKi.Kamehameha1 and <= ArteDeKi.Kamehameha6
+				: a == noHumano;
+			if (!certa) { Nota($"ARTE TROCADA: {v} veste {a}, e o DM (`{dm}`) manda {noHumano}"); trocadas++; }
 		}
 		Ok($"os {VerbosDeProducao.Length} verbos de producao tem arte declarada", semArte == 0);
+		Ok("...e cada um veste a arte que a linha citada do DM manda", semArte == 0 && trocadas == 0);
+
+		// RECUSAR CALADA E A RESPOSTA CERTA pra verb desconhecido (ver `ArteDeProjetil.De`), e e ela que
+		// prova que as duas linhas de cima PODEM reprovar: a tabela nao devolve arte pra qualquer coisa.
+		Ok("CONTRA-EXEMPLO: um verb fora da tabela (e o verb vazio) sai `Nenhuma`, sem chute",
+		   ArteDeProjetil.De("Verbo_Que_Ninguem_Portou", "Human", "", 12345) == ArteDeKi.Nenhuma
+		   && ArteDeProjetil.De("", "Human", "", 12345) == ArteDeKi.Nenhuma);
 
 		// ============================ A LAMINA DE AR DO KIAI (dono, 2026-09-07) ============================
 		// `Kiai.dm:34-40`: `Daitoppa.dmi` tingido de ki, igual pra toda raca, e INVISIVEL de nascenca.
@@ -109,7 +265,9 @@ public partial class RoboDeArteDeKi : Node2D
 		   ArteDeProjetil.De("Kiai", "Human", "", 1) == ArteDeKi.Daitoppa
 		   && ArteDeProjetil.De("Kiai", "Android", "", 1) == ArteDeKi.Daitoppa
 		   && ArteDeProjetil.De("Kiai", "Namekian", "", 1) == ArteDeKi.Daitoppa);
-		Ok("...e a folha dele EXISTE no disco (Blasts/Daitoppa.tres)", ArteDeKiNoCliente.Folha(ArteDeKi.Daitoppa) != null);
+		Ok("...e ele tem ESTILO PROPRIO: a meia-lua (`Forma.Lamina`), e nao a bola neutra",
+		   ArteDeKiNoCliente.TemEstilo(ArteDeKi.Daitoppa)
+		   && ArteDeKiNoCliente.EstiloDaBola(ArteDeKi.Daitoppa).Forma == ArteDeKiNoCliente.Forma.Lamina);
 		Ok("Namekian, Kanassa, Spirit, Shapeshifter, Yardrat e o Demigod Genie enxergam a lamina (`see_invisible = 1`)",
 		   VisaoDoInvisivel.Enxerga("Namekian", "") && VisaoDoInvisivel.Enxerga("Kanassa", "")
 		   && VisaoDoInvisivel.Enxerga("Spirit", "") && VisaoDoInvisivel.Enxerga("Shapeshifter", "")
@@ -119,14 +277,14 @@ public partial class RoboDeArteDeKi : Node2D
 		   && !VisaoDoInvisivel.Enxerga("Android", "") && !VisaoDoInvisivel.Enxerga("Demigod", "Ogre")
 		   && !VisaoDoInvisivel.Enxerga(null, null));
 
-		var lamina = new ProjetilDesenhado { Name = "LaminaDeTeste", Tipo = TipoDeProjetil.Blast, Cor = new Color(1f, 0.2f, 0.2f), Invisivel = true };
+		var lamina = new ProjetilDesenhado { Name = "LaminaDeTeste", Tipo = TipoDeProjetil.Blast, Cor = Vermelho, Invisivel = true };
 		lamina.Vestir(ArteDeKi.Daitoppa, 1f);
 		AddChild(lamina);
 		lamina.MostrarPara(veInvisivel: false);
 		Ok("um tiro que nasceu invisivel SOME pra quem nao enxerga (o no fica, o desenho nao)", !lamina.Visible);
 		lamina.MostrarPara(veInvisivel: true);
 		Ok("...e APARECE pra quem enxerga", lamina.Visible);
-		var comum = new ProjetilDesenhado { Name = "BolaDeTeste", Tipo = TipoDeProjetil.Blast, Cor = new Color(1f, 0.2f, 0.2f) };
+		var comum = new ProjetilDesenhado { Name = "BolaDeTeste", Tipo = TipoDeProjetil.Blast, Cor = Vermelho };
 		comum.Vestir(ArteDeKi.Blast12, 1f);
 		AddChild(comum);
 		comum.MostrarPara(veInvisivel: false);
@@ -134,24 +292,26 @@ public partial class RoboDeArteDeKi : Node2D
 		lamina.QueueFree();
 		comum.QueueFree();
 
-		// ============================ A MEDIDA QUE RESPONDE O PEDIDO DO DONO ============================
-		// "MAIS VARIEDADE" e um numero: quantas folhas DISTINTAS os verbos usam. Antes desta rodada
-		// era UMA (nenhuma: o desenho era por primitiva, e eram duas formas pra tudo).
+		// ============================ A MEDIDA QUE RESPONDE O PEDIDO DE VARIEDADE ============================
+		// "MAIS VARIEDADE" e um numero: quantas artes DISTINTAS os verbos usam. Antes da tabela era
+		// UMA (nenhuma: o desenho era por primitiva, e eram duas formas pra tudo).
 		//
 		// O piso de 15 nao e chute -- e o que a leitura do DM produziu, com margem pra ninguem ter
-		// que mexer aqui ao portar uma tecnica que compartilha folha (Paralysis e Stunlock dividem
+		// que mexer aqui ao portar uma tecnica que compartilha arte (Paralysis e Stunlock dividem
 		// a `KiHead`, e no DM elas dividem mesmo).
-		// ==========================================================================================
-		Ok($"os verbos usam {vistas.Count} folhas DISTINTAS (o pedido era variedade)", vistas.Count >= 15);
+		// ==================================================================================================
+		Ok($"os verbos usam {vistas.Count} artes DISTINTAS (o pedido era variedade)", vistas.Count >= 15);
 		foreach ((ArteDeKi a, List<string> quem) in vistas.OrderBy(p => (int)p.Key))
 			Nota($"{ArteDeKiNoCliente.Rotulo(a),-34} <- {string.Join(", ", quem)}");
 
-		// ---- as duas que o DM manda dividir, e nenhuma outra
-		Ok("Paralysis e Stunlock dividem a MESMA folha (as duas leem `ParalysisIcon`)",
+		// ---- as que o DM manda dividir
+		Ok("Paralysis e Stunlock dividem a MESMA arte (as duas leem `ParalysisIcon`)",
 		   ArteDeProjetil.De("Paralysis", "Human", "", 1) == ArteDeProjetil.De("Stunlock", "Human", "", 1));
+		Ok("...e o Psycho Thread tambem: o fio le a mesma `ParalysisIcon` (`click.dm:18`)",
+		   ArteDeProjetil.De("Psycho_Thread", "Human", "", 1) == ArteDeProjetil.De("Paralysis", "Human", "", 1));
 
 		// ---- a armadilha do nome: o verb `Makkankosappo` NAO usa a folha `Makkankosappo.dmi`
-		Ok("o verb Makkankosappo usa BeamStaticBeam (`beams.dm:357`), e nao a folha de mesmo nome",
+		Ok("o verb Makkankosappo usa BeamStaticBeam (`beams.dm:357`), e nao a arte de mesmo nome",
 		   ArteDeProjetil.De("Makkankosappo", "Human", "", 1) == ArteDeKi.BeamStaticBeam);
 
 		// ---- o Charged_Shot ignora a raca (`blasts.dm:103` escreve '20.dmi' na unha)
@@ -159,10 +319,30 @@ public partial class RoboDeArteDeKi : Node2D
 		   ArteDeProjetil.De("Charged_Shot", "Android", "", 1)
 		   == ArteDeProjetil.De("Charged_Shot", "Tsujin", "", 1));
 
+		// ============================ OS SETE QUE VOAVAM SEM ARTE ============================
+		// Entraram em producao sem linha na tabela e saiam no desenho neutro -- inclusive as duas
+		// maiores bolas do jogo, que o dono citou pelo nome ao pedir o shader (*"esferas como genkidama,
+		// super nova, blast"*). A lista de cima ja confere a arte de cada um; estas tres linhas conferem
+		// o que a arte de cada um IMPLICA.
+		// ====================================================================================
+		Ok("as tres rajadas do `Create_Blast()` saem da bola da RACA, e mudam com ela (`tools/copypaste.dm:12-13`)",
+		   new[] { "BusterBarrage", "Continuous_Energy_Bullets", "Spin_Blast" }.All(v =>
+			   ArteDeProjetil.De(v, "Human", "", 1) == ArteDeKi.Blast1
+			   && ArteDeProjetil.De(v, "Android", "", 1) == ArteDeKi.Blast10
+			   && ArteDeProjetil.De(v, "Tsujin", "", 1) == ArteDeKi.Blast5));
+		Ok("a Genkidama NAO entra em menu nenhum da tecnica inventada (e imagem solta, fora de `Icons/`)",
+		   !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Beam).Contains(ArteDeKi.SpiritBomb)
+		   && !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Blast).Contains(ArteDeKi.SpiritBomb)
+		   && !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Guided).Contains(ArteDeKi.SpiritBomb));
+		Ok("o alvo de treino (`14.dmi`) mora em `Blasts`: entra no menu de BOLA e so nele",
+		   ArteDeProjetil.PermitidasPara(TipoDeProjetil.Blast).Contains(ArteDeKi.Blast14)
+		   && !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Beam).Contains(ArteDeKi.Blast14)
+		   && !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Guided).Contains(ArteDeKi.Blast14));
+
 		// =====================================================================
 		// A CAMADA RACIAL
 		// =====================================================================
-		_linhas.Add("=== FAMILIA 1b: a bola MUDA com a raca (`race.dm:62` + os quatro `stat*.dm`) ===");
+		Familia("1b", "a bola MUDA com a raca (`race.dm:62` + os quatro `stat*.dm`)");
 		(string Raca, string Classe, ArteDeKi Esperada)[] racas =
 		[
 			("Human", "", ArteDeKi.Blast1),      // `race.dm:62`
@@ -182,7 +362,7 @@ public partial class RoboDeArteDeKi : Node2D
 		}
 		Ok("as oito linhas raciais de bola batem com o DM", erradas == 0);
 
-		// A PROVA DE QUE A CAMADA VALE PRA VALER: quatro racas, quatro folhas diferentes na MESMA
+		// A PROVA DE QUE A CAMADA VALE PRA VALER: quatro racas, quatro artes diferentes na MESMA
 		// tecnica. Uma tabela racial escrita e nunca consultada passaria nas oito linhas acima (se
 		// todas devolvessem o padrao a comparacao acusaria) -- esta linha e a que garante que o
 		// caminho de producao (`Basic_Blast`) chega mesmo ate ela.
@@ -194,7 +374,7 @@ public partial class RoboDeArteDeKi : Node2D
 		// `WaveIcon`, `CBLASTICON` e `Makkankoicon` estao lidas do DM e nao tem valor de `Fonte` --
 		// ver o bloco daquele enum. Elas sao MEDIDAS aqui mesmo assim, e por uma razao pratica: uma
 		// leitura de original que ninguem exercita envelhece igual a codigo morto, e a parte cara
-		// desta rodada foi justamente ler `race.dm` e os quatro `stat*.dm`. No dia em que o
+		// daquela rodada foi justamente ler `race.dm` e os quatro `stat*.dm`. No dia em que o
 		// Energy_Shot ou o Special Beam Cannon forem portados, estas tres linhas ja garantiram que a
 		// resposta que eles vao consumir e a do jogo original.
 		// ====================================================================================================
@@ -220,7 +400,7 @@ public partial class RoboDeArteDeKi : Node2D
 		// =====================================================================
 		// O SORTEIO
 		// =====================================================================
-		_linhas.Add("=== FAMILIA 1c: o Kamehameha e SORTEADO por personagem (`Kamehameha.dm:14`) ===");
+		Familia("1c", "o Kamehameha e SORTEADO por personagem (`Kamehameha.dm:14`)");
 
 		var saiu = new HashSet<ArteDeKi>();
 		for (int i = 0; i < 400; i++)
@@ -231,7 +411,7 @@ public partial class RoboDeArteDeKi : Node2D
 		   + $"{ArteDeProjetil.QuantosKamehamehas} em 400 personagens)",
 		   saiu.Count == ArteDeProjetil.QuantosKamehamehas);
 
-		// ============================ ESTAVEL E O OUTRO METADE DO PEDIDO ============================
+		// ============================ ESTAVEL E A OUTRA METADE DO PEDIDO ============================
 		// No DM o sorteio e gravado numa `mob/var` salva: ele nao muda nunca mais. Aqui ele e uma
 		// funcao PURA da identidade, e a prova de que isso equivale e esta: mil chamadas, mesma
 		// resposta. Uma implementacao que sorteasse por disparo passaria na linha de cima (as seis
@@ -259,460 +439,916 @@ public partial class RoboDeArteDeKi : Node2D
 	}
 
 	// =====================================================================
-	// FAMILIA 2 -- AS FOLHAS EXISTEM DE VERDADE
+	// FAMILIA 2 -- TODO ESTILO EXISTE E SE VESTE
 	// =====================================================================
 	/// <summary>
-	/// ============================ A FAMILIA QUE PEGA OS "ATLAS MORTOS" ============================
-	/// Este repo ja escreveu 35 atlas e nunca os importou -- 178 animacoes que existiam como arquivo
-	/// e nao existiam pro jogo. Uma tabela de arte perfeita apontando pra `.tres` que nao carregam da
-	/// exatamente o mesmo resultado na tela que nao ter tabela nenhuma: tiro desenhado por primitiva.
+	/// ============================ O QUE ELA ERA, E O QUE SOBROU DA PERGUNTA ============================
+	/// Esta familia carregava as 41 folhas do disco e perguntava a cada uma pelos estados que o desenho
+	/// pedia -- porque este repo ja escreveu 35 atlas e nunca os importou, e uma tabela de arte perfeita
+	/// apontando pra `.tres` que nao carregam da na tela o mesmo que nao ter tabela.
 	///
-	/// Entao aqui cada folha do enum e CARREGADA e interrogada sobre os estados que o desenho pede --
-	/// `head`/`tail`/`origin` pra raio, `default` pra bola --, com a direcao resolvida como o
-	/// `ProjetilDesenhado` resolve.
-	/// ========================================================================================
+	/// Nao ha mais folha, mas o MODO DE FALHA continua de pe com outro nome: uma entrada do enum sem
+	/// linha na mesa de estilos (<see cref="ArteDeKiNoCliente"/>) nao da erro nenhum -- cai no estilo
+	/// NEUTRO, calada, e a tecnica voa como um raio liso qualquer. Foi exatamente assim que a Genkidama
+	/// e a Death Ball voaram por dois lotes. Entao a pergunta virou: toda arte tem estilo PROPRIO, os
+	/// shaders que os estilos alimentam carregam, e um tiro de cada tipo sai vestido com cada uma.
+	///
+	/// ELA NAO DIZ QUE O TIRO APARECE: `Vestido` e "ha um material", e material nao e pixel. Quem
+	/// fotografa e a 2b.
+	/// ====================================================================================================
 	/// </summary>
 	private void Familia2()
 	{
-		_linhas.Add("=== FAMILIA 2: as folhas carregam e tem os estados que o desenho pede ===");
+		Familia("2", "todo estilo existe e se veste");
 
-		int total = 0, faltando = 0, semEstado = 0;
+		int total = 0, semEstilo = 0, semNome = 0;
 		foreach (ArteDeKi a in ArteDeProjetil.Todas)
 		{
 			total++;
-			(string pasta, _) = ArteDeProjetil.Folha(a);
-			if (pasta.Length == 0) { Nota($"{a}: SEM caminho declarado no `Folha()`"); faltando++; continue; }
-
-			SpriteFrames? f = ArteDeKiNoCliente.Folha(a);
-			if (f == null) { Nota($"{a}: {ArteDeKiNoCliente.Caminho(a)} NAO CARREGOU"); faltando++; continue; }
-
-			// ============================ A PERGUNTA E FEITA PELO PROPRIO DESENHO ============================
-			// `ProjetilDesenhado.QuadroDe` E `SufixoDeDirecao` sao os metodos que o `_Draw` chama --
-			// nao uma copia parecida deles. Uma bancada com a propria busca ja reprovou uma folha
-			// PERFEITA aqui (a `KiHead.dmi`, cujos estados se chamam `paralysis` e `1`..`9`): a copia
-			// procurava `default`, o jogo procurava outra coisa, e nenhum dos dois estava medindo o
-			// outro. Ver o cabecalho de `QuadroDe`.
-			//
-			// AS QUATRO DIRECOES sao varridas de proposito: uma folha pode ter `head_south` e nao ter
-			// `head_north`, e o tiro sumiria so quando alguem atirasse pra cima.
-			bool serve = true;
-			foreach (Vec2 rumo in QuatroRumos)
+			if (ArteDeProjetil.Folha(a).Pasta.Length == 0)
 			{
-				string dir = ProjetilDesenhado.SufixoDeDirecao(f, rumo);
-				bool comoRaio = ProjetilDesenhado.QuadroDe(f, "head", dir, 0) != null
-								&& ProjetilDesenhado.QuadroDe(f, "tail", dir, 0) != null;
-				bool comoBola = ProjetilDesenhado.QuadroDe(
-					f, ArteDeProjetil.EstadoDeBola(a), dir, 0, qualquerEstado: true) != null;
-				if (!comoRaio && !comoBola) serve = false;
+				Nota($"{a}: SEM pasta no `Folha()` -- sem nome no menu e fora de todo recorte por tipo");
+				semNome++;
 			}
-			if (!serve)
-			{
-				Nota($"{a}: carregou mas o desenho nao acha quadro nas 4 direcoes "
-					 + $"(estados: {string.Join(",", f.GetAnimationNames())})");
-				semEstado++;
-			}
+			if (!ArteDeKiNoCliente.TemEstilo(a)) { Nota($"{a}: SEM ESTILO PROPRIO -- sairia no neutro, calada"); semEstilo++; }
 		}
-		Ok($"as {total} folhas do catalogo carregam do disco", faltando == 0);
-		Ok("todas tem os estados que o desenho pede", semEstado == 0);
+		Ok($"as {total} artes do catalogo tem ESTILO PROPRIO", total > 0 && semEstilo == 0);
+		Ok("...e todas tem pasta e nome no `Folha()` (e o que o menu mostra e o que recorta por tipo)", semNome == 0);
 
-		// ============================ E A PECA DA MAO, QUE O TREM PASSOU A EXIGIR ============================
-		// O desenho fecha o raio com `origin` (o segmento colado na mao, `objects.dm:126`), caindo em
-		// `end` (`:73`) e, em ultimo caso, no proprio `tail`. Enquanto o corpo parava um pedaco antes da
-		// mao, uma folha sem essas duas so perdia o fecho; agora ela perde o PEDACO QUE FECHA O VAO, e
-		// o vao e de ate um passo. Entao a pergunta passa a valer a pena ser feita em voz alta.
-		// ================================================================================================
-		// A PERGUNTA E FEITA A QUEM DESENHA COMO TREM. Uma folha sem `head`/`tail` nenhum nao monta trem
-		// nenhum: ela cai na primitiva inteira (ver `DesenharComFolha`), que e a rede declarada e nao
-		// um raio picotado. Quem tem as duas e nao tem o fecho e que ficaria com um vao de ate um passo.
-		var semMao = new List<string>();
-		var semTrem = new List<string>();
-		foreach (ArteDeKi a in ArteDeProjetil.PermitidasPara(TipoDeProjetil.Beam))
-		{
-			SpriteFrames? f = ArteDeKiNoCliente.Folha(a);
-			if (f == null) continue;
-			foreach (Vec2 rumo in QuatroRumos)
+		// O NEUTRO EXISTE DE PROPOSITO (ver `ArteDeKi.Nenhuma`): e pra onde cai o verb fora da tabela e
+		// o numero que so uma versao mais nova conhece. Ele e tambem o que prova que `TemEstilo` sabe
+		// dizer NAO -- sem isto a linha de cima seria verde pra um `TemEstilo` que devolvesse sempre true.
+		Ok("CONTRA-EXEMPLO: `Nenhuma` e um numero que este cliente nao conhece NAO tem estilo proprio",
+		   !ArteDeKiNoCliente.TemEstilo(ArteDeKi.Nenhuma) && !ArteDeKiNoCliente.TemEstilo((ArteDeKi)60000));
+
+		var semShader = new List<string>();
+		foreach (string caminho in new[] { PintorDeKi.ShaderDoFeixe, PintorDeKi.ShaderDaEsfera, PintorDeKi.ShaderDoChoque })
+			if (ResourceLoader.Load<Shader>(caminho) == null) semShader.Add(caminho);
+		foreach (string s in semShader) Nota($"NAO CARREGOU: {s}");
+		Ok("os tres shaders carregam (o do feixe, o da esfera e o do choque)", semShader.Count == 0);
+
+		// OS TRES TIPOS, e nao so raio e bola: o teleguiado entra pelo mesmo ramo da bola hoje, e e
+		// justamente por isso que vale a linha -- no dia em que ele ganhar desenho proprio, quem
+		// esquecer de vesti-lo descobre aqui e nao na tela.
+		TipoDeProjetil[] tipos = [TipoDeProjetil.Beam, TipoDeProjetil.Blast, TipoDeProjetil.Guided];
+		int vestidos = 0, nus = 0;
+		foreach (TipoDeProjetil tipo in tipos)
+			foreach (ArteDeKi a in ArteDeProjetil.Todas.Append(ArteDeKi.Nenhuma))
 			{
-				string dir = ProjetilDesenhado.SufixoDeDirecao(f, rumo);
-				bool trem = ProjetilDesenhado.NomeDaAnimacao(f, "head", dir) != null
-							&& ProjetilDesenhado.NomeDaAnimacao(f, "tail", dir) != null;
-				bool mao = ProjetilDesenhado.NomeDaAnimacao(f, "origin", dir) != null
-						   || ProjetilDesenhado.NomeDaAnimacao(f, "end", dir) != null;
-
-				if (!trem) semTrem.Add($"{ArteDeKiNoCliente.Rotulo(a)} ({dir})");
-				else if (!mao) semMao.Add($"{ArteDeKiNoCliente.Rotulo(a)} ({dir})");
+				var p = new ProjetilDesenhado { Tipo = tipo };
+				p.Vestir(a, 1f);
+				if (p.Vestido) vestidos++;
+				else { Nota($"{tipo} com {a}: o `Vestir` nao deixou material"); nus++; }
+				p.Free();
 			}
-		}
-		foreach (string s in semTrem) Nota($"sem `head`/`tail` -- desenha pela primitiva: {s}");
-		foreach (string s in semMao) Nota($"SEM PECA DE MAO (`origin`/`end`): {s}");
-		Ok($"toda folha que monta TREM tem a peca que fecha na mao ({semMao.Count} sem)", semMao.Count == 0);
+		Ok($"um tiro de cada tipo se VESTE com cada arte, e com nenhuma ({vestidos} combinacoes)",
+		   nus == 0 && vestidos == tipos.Length * (total + 1));
+
+		// A PRIMITIVA DE EMERGENCIA MORREU, e o papel dela ficou com o `_Ready`: um tiro posto na arvore
+		// sem `Vestir` se veste sozinho, porque tiro invisivel o jogador nao distingue de "a tecnica nao
+		// funciona". As duas metades sao medidas: antes de entrar ele esta nu (e isso prova que `Vestido`
+		// sabe dizer nao), depois de entrar esta vestido.
+		var cru = new ProjetilDesenhado { Name = "TiroCru", Tipo = TipoDeProjetil.Beam };
+		Ok("CONTRA-EXEMPLO: um tiro que ninguem vestiu responde que NAO esta vestido", !cru.Vestido);
+		AddChild(cru);
+		Ok("...e ao entrar na arvore ele se veste sozinho (nao existe tiro invisivel por esquecimento)", cru.Vestido);
+		cru.QueueFree();
 
 		// ============================ O RECORTE POR TIPO E DO DM, E ELE TEM QUE MORDER ============================
 		// `custom_icon_folders` (`customattacks.dm:558-562`). Se as tres listas fossem iguais, a
-		// tecnica customizada deixaria pendurar folha de raio numa bola -- e a bola sairia desenhada
-		// com a cauda de um beam. Estas tres linhas sao o unico lugar que reprova isso.
+		// tecnica customizada deixaria pendurar arte de raio numa bola. Estas linhas sao o unico lugar
+		// desta bancada que reprova isso.
 		// ====================================================================================================
 		int nRaio = ArteDeProjetil.PermitidasPara(TipoDeProjetil.Beam).Count();
 		int nBola = ArteDeProjetil.PermitidasPara(TipoDeProjetil.Blast).Count();
 		int nTele = ArteDeProjetil.PermitidasPara(TipoDeProjetil.Guided).Count();
 		Ok($"o menu da tecnica inventada e RECORTADO pelo tipo (raio {nRaio}, bola {nBola}, teleguiado {nTele})",
 		   nRaio > nBola && nRaio > nTele && nBola > 0 && nTele > 0);
-		Ok("nenhuma folha de raio aparece no menu de bola",
+		Ok("nenhuma arte de raio aparece no menu de bola",
 		   !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Blast).Contains(ArteDeKi.Beam3));
 
-		// O padrao do custom e o do DM nos dois ramos (`:440` e `:500`), e ele tem que ESTAR no
-		// catalogo -- um padrao que nao carrega e um tiro invisivel pra toda tecnica inventada.
-		Ok("o padrao da tecnica inventada carrega nos dois tipos",
-		   ArteDeKiNoCliente.Folha(ArteDeProjetil.PadraoDoCustom(TipoDeProjetil.Beam)) != null
-		   && ArteDeKiNoCliente.Folha(ArteDeProjetil.PadraoDoCustom(TipoDeProjetil.Blast)) != null);
+		// O padrao do custom e o do DM nos dois ramos (`:440` e `:500`), e ele tem que TER estilo: um
+		// padrao no neutro faria toda tecnica inventada sem arte escolhida sair igual nos dois tipos.
+		Ok("o padrao da tecnica inventada tem estilo proprio nos dois tipos (Beam3 e a 12.dmi)",
+		   ArteDeKiNoCliente.TemEstilo(ArteDeProjetil.PadraoDoCustom(TipoDeProjetil.Beam))
+		   && ArteDeKiNoCliente.TemEstilo(ArteDeProjetil.PadraoDoCustom(TipoDeProjetil.Blast)));
 	}
-
-	/// <summary>Os quatro rumos cardeais, em vetor -- `Y` cresce pra o sul, como no resto do projeto.</summary>
-	private static readonly Vec2[] QuatroRumos =
-	[
-		new(0, 1), new(0, -1), new(1, 0), new(-1, 0),
-	];
 
 	// =====================================================================
-	// FAMILIA 3 -- O PIXEL
+	// O ROTEIRO -- um passo poe o palco, o seguinte fotografa e mede
 	// =====================================================================
-	/// <summary>
-	/// Monta DOIS tiros lado a lado. O da esquerda e o Kamehameha1; o da direita e o Masenko. Sao os
-	/// dois raios mais usados do jogo, e no DM eles sao folhas diferentes -- se o pixel deles for
-	/// igual, a variedade nao chegou na tela por mais verde que a familia 1 esteja.
-	/// </summary>
-	private void MontarOsDoisTiros()
-	{
-		_a = Tiro(ArteDeKi.Kamehameha1, new Color(1f, 0.2f, 0.2f), XA);
-		_b = Tiro(ArteDeKi.BeamMasenko, new Color(1f, 0.2f, 0.2f), XB);
-	}
-
-	private ProjetilDesenhado Tiro(ArteDeKi arte, Color cor, int x)
-	{
-		var no = new ProjetilDesenhado
-		{
-			Name = $"Tiro{arte}", Tipo = TipoDeProjetil.Beam, Cor = cor,
-			Position = new Vector2(x, YTiro),
-		};
-		no.Vestir(arte, 1f);
-		AddChild(no);
-		// CABECA EM CIMA, CAUDA EMBAIXO: um rastro vertical de 6 tiles, que e o que faz o corpo
-		// (`tail`) aparecer. Um raio de comprimento zero desenharia so a cabeca e as duas fotos
-		// concordariam por nao terem nada pra discordar.
-		no.Mirar(new Vector2(x, YTiro), new Vector2(x, YTiro + 32 * 6));
-		return no;
-	}
-
 	public override void _Process(double delta)
 	{
-		switch (_t++)
+		if (_acabou) return;
+		if (_segundosDeFolga > 0 || _quadrosDeFolga > 0)
 		{
-			case < 4: break;   // dois quadros pro `_Process` do node parar de interpolar
+			_segundosDeFolga -= delta;
+			_quadrosDeFolga--;
+			return;
+		}
 
+		Passo(_t++);
+
+		// SEM JANELA nao ha foto, e sem foto nenhuma familia daqui pra frente tem o que dizer. A
+		// bancada diz que nao mediu (a `Foto` ja anotou) e fecha -- ela nao passa de graca.
+		if (_semFoto) Encerrar();
+	}
+
+	private void Passo(int n)
+	{
+		switch (n)
+		{
+			// ============================ FAMILIA 2b -- TODO ESTILO DESENHA ============================
+			case 0:
+				Familia("2b", "todo estilo DESENHA -- as 44 artes como bola, na foto");
+				PorTodasAsBolas();
+				break;
+
+			case 1: MedirTodasAsBolas(); break;
+			case 2: PorAsEsferasGrandes(); break;
+			case 3: MedirAsEsferasGrandes(); break;
+
+			// ============================ FAMILIA 3 -- O PIXEL ============================
 			case 4:
-				_linhas.Add("=== FAMILIA 3: o PIXEL desenhado, e nao a intencao ===");
-				Fotografar();
+				Familia("3", "o PIXEL desenhado, e nao a intencao");
+				PorAVitrine((ArteDeKi.Kamehameha1, 1f, Vermelho), (ArteDeKi.Kamehameha1, 1f, Vermelho),
+							(ArteDeKi.BeamMasenko, 1f, Vermelho), (ArteDeKi.BeamMasenko, 1f, Vermelho));
 				break;
 
-			case 5:
-				// A MESMA ARTE, OUTRA COR DE KI. Se a tinta nao chegasse ao pixel, esta foto seria
-				// identica a de cima -- e o jogo inteiro teria Kamehameha da mesma cor.
-				_a!.Cor = new Color(0.2f, 0.4f, 1f);
-				_a.Vestir(ArteDeKi.Kamehameha1, 1f);
-				_a.QueueRedraw();
+			case 5: FotografarDuasArtes(); break;
+
+			case 6:
+				// A MESMA ARTE, OUTRA COR DE KI -- e pelo `Tingir`, que e o caminho da previa da mesa de
+				// tecnicas (o seletor de cor retinge o node vivo). A `--diagmesa` confere que o CAMPO
+				// `Cor` da previa mudou; quem confere que a tela mudou e esta foto.
+				_palco[0].No.Tingir(Azul);
+				Assentar();
 				break;
 
-			case 6: FotografarTinta(); break;
+			case 7: FotografarTinta(); break;
 
-			case 7:
-				// A ESCALA. `A.transform *= wavemult` (`beams.dm:149`): o Final Flash e um MURO.
-				_b!.Vestir(ArteDeKi.BeamMasenko, 3f);
-				_b.QueueRedraw();
+			case 8:
+				// A ESCALA. `A.transform *= wavemult` (`beams.dm:149`): o Final Flash e um MURO. Dois
+				// Masenkos a 1x e dois a 3x -- o par de 1x e o controle da medida, na mesma foto.
+				PorAVitrine((ArteDeKi.BeamMasenko, 1f, Vermelho), (ArteDeKi.BeamMasenko, 1f, Vermelho),
+							(ArteDeKi.BeamMasenko, 3f, Vermelho), (ArteDeKi.BeamMasenko, 3f, Vermelho));
 				break;
 
-			case 8: FotografarEscala(); break;
+			case 9: FotografarEscala(); break;
+			case 10: PorAsCoresDePersonagem(); break;
+			case 11: FotografarCoresDeVerdade(); break;
+			case 12: PorAsBolasDaVitrine(); break;
+			case 13: FotografarBolas(); break;
 
-			case 9:
-				// ============================ A COR DE PERSONAGENS DE VERDADE ============================
-				// Ate aqui a tinta foi uma cor de teste escolhida a mao. Esta ultima fase usa a cor que
-				// o JOGO daria a dois personagens (`CorDoTiro.De`, o `blastR/G/B = rand(0,255)` do
-				// `CharacterCreation.dm:28`) sobre a folha de raio PADRAO do jogo (`Beam3.dmi`, tom
-				// dominante 192).
-				//
-				// E o desenho aqui tem historia: este metodo lia a cor da CHAMA (`Appearance.CorAura`),
-				// que neste port carrega um `200 +` exigido pelo shader da aura. Somada numa folha de
-				// 192, ela estoura os tres canais em 255 -- **o jogo inteiro atirava branco**, e as
-				// tres fases acima ficavam TODAS VERDES assim mesmo, porque comparavam fotos entre si
-				// e duas fotos brancas diferentes ainda sao diferentes.
-				//
-				// Esta fase e a unica que reprova aquilo, e por isso ela existe.
-				// ====================================================================================
-				_a!.Cor = CorDeTeste("Goku");
-				_a.Vestir(ArteDeKi.Beam3, 1f);
-				_a.QueueRedraw();
-				_b!.Cor = CorDeTeste("Vegeta");
-				_b.Vestir(ArteDeKi.Beam3, 1f);
-				_b.QueueRedraw();
+			// ============================ FAMILIA 4 -- A CONTINUIDADE EM TODO COMPRIMENTO ============================
+			// O dono relatou *"o beam ta PICOTADO quando ele e lancado"*, e depois, vendo o trailer,
+			// *"aquela coisa picotada"* na diagonal. No desenho de folhas a lei do defeito era
+			// `fresta = comprimento mod passo`: sumia nos multiplos exatos do ladrilho e aparecia em todo
+			// o resto -- e um raio que cresce passa por todos os comprimentos. A fita nao tem passo, mas
+			// e a FOTO que tem que dizer isso, do raio que acabou de sair da boca ate o de vinte tiles.
+			// ==========================================================================================================
+			case 14:
+				Familia("4", "a continuidade em TODO comprimento (doze, num angulo torto)");
+				PorOsComprimentos();
 				break;
-
-			case 10: FotografarCoresDeVerdade(); break;
-
-			case 11:
-				// ============================ AS BOLAS, E UMA DELAS E A ARMADILHA ============================
-				// Ate aqui so raios foram desenhados. A esquerda vira a bola RACIAL padrao (`1.dmi`,
-				// cujo estado o conversor batizou de `default`); a direita vira a `KiHead.dmi` da
-				// Paralysis -- a unica folha do catalogo que NAO tem `default`: os estados dela se
-				// chamam `paralysis`, `piercer` e `1`..`9` (`Ki2.0/Debuffs.dm:26` pede `"Paralysis"`).
-				//
-				// **Ela ja falhou uma vez nesta bancada** -- a Paralysis saia desenhada por primitiva,
-				// e nada no codigo parecia errado. E o unico caso em que o `icon_state` do DM importa
-				// (ver `ArteDeProjetil.EstadoDeBola`), e por isso ele e fotografado.
-				// =======================================================================================
-				VirarBola(_a!, ArteDeKi.Blast1, CorDeTeste("Goku"));
-				VirarBola(_b!, ArteDeKi.KiHead, CorDeTeste("Vegeta"));
-				break;
-
-			case 12: FotografarBolas(); break;
-
-			// ============================ FAMILIA 4 -- A CONTINUIDADE DO CORPO ============================
-			// O dono relatou *"o beam ta PICOTADO quando ele e lancado"*, e a familia 3 acima nunca
-			// poderia pegar isso: o unico comprimento que ela desenha e `32 * 6` (ver `Tiro`), um
-			// MULTIPLO EXATO do ladrilho -- o caso em que o ultimo `tail` encosta no `origin` por acaso.
-			//
-			// Aqui o mesmo raio e desenhado em comprimentos que NAO sao multiplos, que e o que o jogo
-			// produz o tempo todo (a cauda e a mao do dono e a cabeca anda em float, `Projetil.Cauda`).
-			// Estas quatro fotos ja mediram 13 px e 25 px de fresta, e a lei era `comprimento mod passo`.
-			// ==========================================================================================
-			case 13:
-				PorAOsDoisComoRaio(192, 205);   // esquerda: multiplo (controle) / direita: 192 + 13
-				break;
-
-			case 14: MedirAFrestaDosDois("6-fresta-192-e-205"); break;
 
 			case 15:
-				PorAOsDoisComoRaio(224, 249);   // outro par, pra a fresta nao ser um acaso do primeiro
+				MedirAContinuidade("4-comprimentos",
+								   $"{Comprimentos.Length} comprimentos a {AnguloDaEscada:0} graus", umPorUm: false);
 				break;
 
-			case 16: MedirAFrestaDosDois("7-fresta-224-e-249"); break;
+			// ============================ FAMILIA 4b -- TODAS AS ARTES ============================
+			// A continuidade de cima e a do `Beam3`. Cada arte e o MESMO shader com outros numeros -- e
+			// sao os numeros que abrem buraco: um tronco que pulsa ate 45% da largura (o Boom Wave), um
+			// macico de 2,5 px (a broca), uma cabeca em estouro de espinhos. Entao as 24 que um raio pode
+			// vestir vao pro mesmo angulo torto, uma em cada celula.
+			// =====================================================================================
+			case 16:
+				Familia("4b", "as 24 artes de raio numa diagonal torta");
+				PorTodasAsArtesNaDiagonal();
+				break;
 
-			// ============================ FAMILIA 4b -- A DIAGONAL ============================
-			// A diagonal e um caso PROPRIO e nao um comprimento a mais: no BYOND os centros de tiles
-			// vizinhos na diagonal estao a 45,25 px (o √2 que o `dir_matrix` embute, `objects.dm:52`),
-			// mas a arte diagonal da `Beam3` -- a folha PADRAO do `beams.dm:4` -- so pinta 39,6 px no
-			// eixo. Um passo tirado do TILE abriria ~6 px de fresta em CADA junta aqui, e nenhuma foto
-			// vertical do mundo mostraria isso.
-			// =============================================================================
+			// SEM A CONTAGEM DE ILHAS, e so aqui: as artes de enfeite soltam tinta do corpo DE PROPOSITO (a
+			// descarga do Static Beam rasteja a ate um raio do tronco), e uma ilha a mais nesta foto e o
+			// estilo, nao um raio partido. Pra elas quem responde e o eixo.
 			case 17:
-				PorOsDoisNaDiagonal(190, 253);
+				MedirAContinuidade("4b-todas-as-artes-a-33-graus",
+								   $"{_palco.Count} artes a {AnguloDasArtes:0} graus", umPorUm: false, contarIlhas: false);
 				break;
-
-			case 18: MedirAFrestaDosDois("8-diagonal-190-e-253"); break;
-
-			// ============================ FAMILIA 4c -- A ESCALA E A CELULA GRANDE ============================
-			// Esquerda: o `wavemult` do Final Flash (`GameServer.Tecnicas.G5.cs:317` manda 4). No DM ele
-			// so engorda o sprite (`A.transform *= wavemult`) e o trem continua andando de tile em tile --
-			// e por isso que aquilo e um MURO. Um passo que multiplicasse pela escala andaria 128 px por
-			// pedaco e abriria ate 127 px de buraco.
-			//
-			// Direita: a `Beam - Big Fire`, cuja celula e 64x64 e nao 32x32. Um "32" cravado no codigo
-			// nao sabe disso; a medida da folha sabe.
-			// ============================================================================================
-			case 19:
-				PorAEscalaEACelulaGrande(205, 205);
-				break;
-
-			case 20: MedirAFrestaDosDois("9-escala-4x-e-celula-64"); break;
-
-			// ============================ FAMILIA 4d -- TODOS OS COMPRIMENTOS, E O CUSTO ============================
-			case 21: VarrerTodosOsComprimentos(); MedirOCusto(); break;
 
 			// ============================ FAMILIA 5 -- A FOTO DO DONO ============================
-			case 22:
-				_linhas.Add("=== FAMILIA 5: a foto do dono, reproduzida (o feixe que atravessa a tela) ===");
+			case 18:
+				Familia("5", "a foto do dono, reproduzida (o feixe que atravessa a tela)");
 				PorAFotoDoDono();
 				break;
 
-			case 23: MedirAFrestaDosDois("10-a-foto-do-dono"); break;
+			case 19: MedirAContinuidade("5-a-foto-do-dono", "", umPorUm: true); break;
 
-			// ============================ FAMILIA 5b -- OS OITO RUMOS, LONGO E CURTO ============================
-			case 24:
-				_linhas.Add("=== FAMILIA 5b: os OITO rumos, o mesmo raio LONGO e CURTO ===");
-				PorOsOitoRumos(CompDaGrade());
+			// ============================ FAMILIA 5a -- LONGOS, FORA DOS OITO RUMOS ============================
+			case 20:
+				Familia("5a", "tres feixes LONGOS em angulos que nenhuma folha tinha (17, 33 e 61 graus)");
+				PorOsLongosTortos();
 				break;
 
-			case 25: MedirOsOito("11-oito-rumos-longo", $"LONGO ({CompDaGrade():0} px)"); break;
+			case 21: MedirAContinuidade("5a-longos-em-angulo-torto", "", umPorUm: true); break;
 
-			// O CURTO E O CASO PROPRIO: com 44 px cabe UM corpo e sobram 13 -- e aqueles 13 px eram a
-			// fresta inteira. Um passo errado aqui aparece como o raio inteiro em dois pedacos.
-			case 26: PorOsOitoRumos(44f); break;
+			// ============================ FAMILIA 5b -- OS 19 RUMOS ============================
+			case 22:
+				Familia("5b", $"os {Rumos.Length} rumos -- o mesmo raio longo, curto, no lancamento e nascendo");
+				PorOsRumos(0f);
+				break;
 
-			case 27: MedirOsOito("12-oito-rumos-curto", "CURTO (44 px, cabe 1 corpo)"); break;
+			case 23: MedirOsRumos("5b-1-rumos-longo", $"LONGO ({TotalDaGrade():0} px da mao a ponta)", Esperado.Inteiro); break;
 
-			// MAIS CURTO QUE UM PASSO: o instante do LANCAMENTO, o que o dono fotografou. Aqui o laco
-			// antigo nao rodava NENHUMA vez e sobravam cabeca e mao soltas.
-			case 28: PorOsOitoRumos(24f); break;
+			// O CURTO: 44 px de boca a cabeca. No trem de folhas cabia UM corpo e sobravam 13 -- e
+			// aqueles 13 px eram a fresta inteira.
+			case 24: PorOsRumos(44f); break;
+			case 25: MedirOsRumos("5b-2-rumos-curto", "CURTO (44 px da boca a cabeca)", Esperado.Inteiro); break;
 
-			case 29: MedirOsOito("12b-oito-rumos-lancamento", "NO LANCAMENTO (24 px, nem um passo)"); break;
+			// MAIS CURTO QUE UM TILE: o instante do LANCAMENTO, o que o dono fotografou.
+			case 26: PorOsRumos(24f); break;
+			case 27: MedirOsRumos("5b-3-rumos-lancamento", "NO LANCAMENTO (24 px)", Esperado.Inteiro); break;
+
+			// E O PRIMEIRO PACOTE: a cabeca a 2 px da boca, o minimo pra o raio TER rumo (`Mirar` exige
+			// mais de 1 px). O desenho inteiro sao a bola da mao e a da ponta, e elas tem que se tocar.
+			case 28: PorOsRumos(2f); break;
+			case 29: MedirOsRumos("5b-4-rumos-nascendo", "NASCENDO (2 px: a cabeca mal saiu da boca)", Esperado.Inteiro); break;
 
 			// ============================ FAMILIA 5c -- O FIO E O MURO ============================
 			case 30:
-				_linhas.Add("=== FAMILIA 5c: o FIO e o MURO -- a escala mudou junto? ===");
+				Familia("5c", "o FIO e o MURO -- a escala engrossa o desenho?");
 				PorOFioEOMuro();
 				break;
 
 			case 31: MedirOFioEOMuro(); break;
 
-			// ============================ FAMILIA 5d -- O DEFEITO INJETADO ============================
+			// ============================ FAMILIA 5d -- OS DEFEITOS INJETADOS ============================
+			// Os MESMOS dezenove raios, as MESMAS duas reguas (o eixo e as ilhas), e so o defeito muda --
+			// ele e lido no `_Draw` de producao a cada quadro, entao religar o campo basta: os nodes nem
+			// sao refeitos entre uma foto e a outra.
 			case 32:
-				_linhas.Add("=== FAMILIA 5d: o defeito INJETADO -- a sonda sabe ficar vermelha? ===");
-				EscolherOsComprimentosDaInjecao();
-				ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoTrem.UmPedacoAMenos;
-				PorAOsDoisComoRaio(_compRuim, _compBom);
+				Familia("5d", "os defeitos INJETADOS -- as reguas sabem ficar vermelhas, e voltar?");
+				PorOsRumos(0f);
+				ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoFeixe.Picotado;
 				break;
 
-			case 33:
-				MedirEsperandoFresta("14-defeito-um-pedaco-a-menos", "UmPedacoAMenos",
-									 esperaNoRestoZero: false);
-				break;
+			case 33: MedirOsRumos("5d-1-defeito-picotado", "[injecao] `Picotado`", Esperado.TudoPicotado); break;
 
 			case 34:
-				// O CORPO DESLIGADO INTEIRO: aqui nem o multiplo exato salva, e por isso os DOIS
-				// comprimentos tem que ficar vermelhos.
-				ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoTrem.SemLadrilho;
-				PorAOsDoisComoRaio(_compRuim, _compBom);
+				ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoFeixe.SemGirar;
+				Assentar();
 				break;
 
-			case 35:
-				MedirEsperandoFresta("15-defeito-sem-ladrilho", "SemLadrilho", esperaNoRestoZero: true);
-				break;
+			case 35: MedirOsRumos("5d-2-defeito-sem-girar", "[injecao] `SemGirar`", Esperado.SoOsCardeais); break;
 
 			case 36:
-				// E DE VOLTA AO NORMAL, com o MESMO par: sem esta fase a familia acima provaria so que
-				// a sonda fica vermelha, e nao que ela distingue.
-				ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoTrem.Nenhum;
-				PorAOsDoisComoRaio(_compRuim, _compBom);
+				// E DE VOLTA AO NORMAL, com os MESMOS nodes: sem esta fase a familia provaria so que a
+				// sonda fica vermelha, e nao que ela distingue.
+				ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoFeixe.Nenhum;
+				Assentar();
 				break;
 
-			case 37:
-				_linhas.Add("=== FAMILIA 5d (fim): com o defeito DESLIGADO, o mesmo par volta ao verde ===");
-				MedirAFrestaDosDois("16-defeito-desligado");
+			case 37: MedirOsRumos("5d-3-defeito-desligado", "com o defeito DESLIGADO", Esperado.Inteiro); break;
+
+			// ============================ FAMILIA 6 -- O DESENHO OBEDECE AS TABELAS DO CORE ============================
+			case 38:
+				Familia("6", "o desenho obedece as tabelas do Core -- a ponta e o tronco, medidos na foto");
+				PorARegra(_paginaDaRegra = 0);
 				break;
 
-			// ============================ FAMILIA 5e -- A FASE DA DIAGONAL LONGA ============================
-			// Um quadro desenha, o seguinte mede -- ver `PorADiagonalLonga` sobre por que precisam ser
-			// doze raios longos de verdade e nao doze curtos lado a lado.
-			case >= 38 and <= 38 + (QuantasDiagonais * 2) - 1:
-			{
-				if (_diagonal == 0)
-					_linhas.Add("=== FAMILIA 5e: doze diagonais LONGAS -- a junta so abre em ALGUMAS fases ===");
-
-				if ((_diagonal & 1) == 0) PorADiagonalLonga(_diagonal / 2);
-				else MedirADiagonalLonga(_diagonal / 2);
-				_diagonal++;
+			// ESTE PASSO SE REPETE ate as paginas acabarem: mede a que esta no palco e, se ainda houver
+			// arte sem medir, poe a seguinte e volta pra ca. Sao tres paginas hoje (24 artes, oito por
+			// foto); tres passos cravados deixariam a vigesima quinta arte de fora, calada.
+			case 39:
+				MedirARegra($"6-1-regra-escala-1-{(char)('a' + _paginaDaRegra)}");
+				if (++_paginaDaRegra < PaginasDaRegra()) { PorARegra(_paginaDaRegra); _t = 39; }
 				break;
-			}
 
-			default:
-				GD.Print("\n[artedeki] ===== BANCADA DA ARTE DOS ATAQUES DE KI =====");
-				foreach (string l in _linhas) GD.Print("[artedeki] " + l);
-				GD.Print(_falhas == 0
-					? "[artedeki] ===== TUDO VERDE ====="
-					: $"[artedeki] ===== {_falhas} FALHA(S) =====");
-				GetTree().Quit(_falhas == 0 ? 0 : 1);
-				break;
+			case 40: PorARegraEmOutrasEscalas(); break;
+			case 41: MedirARegra("6-2-regra-outras-escalas"); break;
+			case 42: PorAContraprovaDaRegra(comDefeito: true); break;
+			case 43: MedirAContraprovaDaRegra("6-3-regra-defeito-injetado", comDefeito: true); break;
+			case 44: PorAContraprovaDaRegra(comDefeito: false); break;
+			case 45: MedirAContraprovaDaRegra("6-4-regra-defeito-desligado", comDefeito: false); break;
+
+			default: Encerrar(); break;
 		}
 	}
 
-	/// <summary>A assinatura de pixel de uma metade da tela: quantos pixels desenhados e que tons.</summary>
-	private (int Pixels, int Tons, long Hash) Assinatura(Image img, int x0, int x1)
+	private void Assentar()
 	{
-		var tons = new HashSet<int>();
-		int n = 0;
-		long hash = 17;
-		for (int y = 0; y < img.GetHeight(); y++)
-			for (int x = x0; x < x1; x++)
-			{
-				Color c = img.GetPixel(x, y);
-				// "e o fundo?" pelo VERDE cheio com os outros dois zerados -- e a unica combinacao
-				// que nenhuma folha de ki tem depois de tingida.
-				if (c.G > 0.9f && c.R < 0.1f && c.B < 0.1f) continue;
-				int r = (int)(c.R * 255 + 0.5f), g = (int)(c.G * 255 + 0.5f), b = (int)(c.B * 255 + 0.5f);
-				tons.Add((r << 16) | (g << 8) | b);
-				// A POSICAO ENTRA NO HASH de proposito: duas folhas podem ter a mesma paleta e
-				// desenhos completamente diferentes. Sem o `x,y` a assinatura mediria so a paleta.
-				hash = hash * 31 + ((long)x * 7919 + y) * (r + g * 3 + b * 7);
-				n++;
-			}
-		return (n, tons.Count, hash);
+		_segundosDeFolga = SegundosDeAssento;
+		_quadrosDeFolga = QuadrosDeAssento;
+	}
+
+	private void Encerrar()
+	{
+		if (_acabou) return;
+		_acabou = true;
+		DesligarOsDefeitos();
+
+		GD.Print("\n[artedeki] ===== BANCADA DA ARTE DOS ATAQUES DE KI =====");
+		foreach (string l in _linhas) GD.Print("[artedeki] " + l);
+		GD.Print("[artedeki] placar por familia: "
+				 + string.Join("  ", _placar.Select(p => $"{p.Nome}={p.Feitas}" + (p.Reprovadas > 0 ? $"({p.Reprovadas} FALHA)" : "")))
+				 + $"  -- {_placar.Sum(p => p.Feitas)} conferencias");
+		GD.Print(_falhas == 0
+			? "[artedeki] ===== TUDO VERDE ====="
+			: $"[artedeki] ===== {_falhas} FALHA(S) =====");
+		GetTree().Quit(_falhas == 0 ? 0 : 1);
+	}
+
+	// =====================================================================
+	// O PALCO
+	// =====================================================================
+	/// <summary>
+	/// UM TIRO NO PALCO, com o que a bancada precisa lembrar dele pra medir: onde ela mandou por a
+	/// cabeca e a cauda (a boca), e com que arte e escala ele DIZ estar vestido.
+	///
+	/// A MAO E A PONTA SAO CALCULADAS AQUI, PELA REGRA -- e nao perguntadas ao node. Sao as duas pontas
+	/// de toda sonda de continuidade, e uma sonda que pedisse ao desenho "onde voce comeca e acaba?"
+	/// mediria o desenho contra ele mesmo.
+	/// </summary>
+	private sealed record TiroNoPalco(ProjetilDesenhado No, ArteDeKi Arte, float Escala, Vector2 Cabeca, Vector2 Cauda, string Rotulo)
+	{
+		public Vector2 Rumo => (Cabeca - Cauda).Normalized();
+
+		/// <summary>Sem corpo de dono na tela, a mao e meia celula ATRAS da boca, pelo eixo do raio.</summary>
+		public Vector2 Mao => Cauda - Rumo * (MeiaCelula * (MathF.Abs(Rumo.X) + MathF.Abs(Rumo.Y)));
+
+		/// <summary>A ponta que a TABELA do Core manda: `FrenteDaCabeca x escala` adiante da posicao do tiro.</summary>
+		public Vector2 Ponta => Cabeca + Rumo * (ArteDeProjetil.FrenteDaCabeca(Arte) * Escala);
+	}
+
+	private readonly List<TiroNoPalco> _palco = [];
+
+	/// <summary>
+	/// UM RAIO NOVO a cada palco, e nao o de antes remirado -- e isso importa.
+	///
+	/// `Mirar` so CRAVA a posicao no primeiro pacote; do segundo em diante ela vira alvo de
+	/// interpolacao (`Suavizacao`, 22 por segundo). Remirar um node vivo e fotografar em seguida mede
+	/// um raio de comprimento DESCONHECIDO. Nascer de novo e a mesma coisa que o jogo faz (o tiro
+	/// nasce, ai interpola) e da o comprimento pedido, exato.
+	/// </summary>
+	/// <param name="vestidoCom">
+	/// So a contraprova da familia 6 passa isto: a escala com que o tiro e VESTIDO, quando ela nao e a
+	/// que ele vai DIZER que tem. O campo `Escala` e escrito depois do `Vestir`, sem vestir de novo.
+	/// </param>
+	private TiroNoPalco NovoRaio(ArteDeKi arte, float escala, Vector2 cabeca, Vector2 cauda, Color cor,
+								 string rotulo, float? vestidoCom = null)
+	{
+		var no = new ProjetilDesenhado
+		{
+			Name = $"Raio{_nascidos++}",
+			Tipo = TipoDeProjetil.Beam,
+			Cor = cor,
+			Position = cabeca,
+		};
+		no.Vestir(arte, vestidoCom ?? escala);
+		if (vestidoCom != null) no.Escala = escala;   // a mentira da contraprova: diz uma escala, veste outra
+		no.Mirar(cabeca, cauda);
+		AddChild(no);
+
+		var tiro = new TiroNoPalco(no, arte, escala, cabeca, cauda, rotulo);
+		_palco.Add(tiro);
+		return tiro;
 	}
 
 	/// <summary>
-	/// Fotografa e GRAVA a imagem em `user://artedeki-*.png`.
-	///
-	/// A gravacao nao e enfeite: os numeros abaixo dizem que os dois desenhos sao DIFERENTES, e nao
-	/// que os dois estao CERTOS. Duas artes trocadas entre si, um raio desenhado ao contrario ou uma
-	/// cauda colada por cima da cabeca passam por qualquer contagem de pixel -- e este projeto ja
-	/// tem duas correcoes visuais que so a FOTO mostrou. O olho e a ultima familia, e ela nao cabe
-	/// num `if`.
+	/// UMA BOLA PARADA, com o rastro inteiro. `SempreVoando` e a chave da previa da mesa de tecnicas:
+	/// sem ela uma bola que nao anda e desenhada sem a cauda que tem em voo, e a foto mostraria um
+	/// desenho que nao e o que sai da mao de ninguem. Cabeca e cauda no MESMO ponto: bola nao tem
+	/// rastro de servidor (`Projetil.Comprimento` devolve zero pra ela).
 	/// </summary>
-	private Image? Foto(string nome = "")
+	private TiroNoPalco NovaBola(ArteDeKi arte, float escala, Vector2 onde, Color cor, string rotulo)
 	{
-		Image? img = GetViewport()?.GetTexture()?.GetImage();
-		if (img == null || img.IsEmpty())
+		var no = new ProjetilDesenhado
 		{
-			Nota("SEM FOTO (headless nao renderiza) -- as familias 1 e 2 valem, esta nao roda");
-			return null;
-		}
-		if (nome.Length > 0)
-		{
-			string caminho = $"user://artedeki-{nome}.png";
-			img.SavePng(caminho);
-			Nota($"foto: {ProjectSettings.GlobalizePath(caminho)}");
-		}
-		return img;
+			Name = $"Bola{_nascidos++}",
+			Tipo = TipoDeProjetil.Blast,
+			Cor = cor,
+			Position = onde,
+			SempreVoando = true,
+		};
+		no.Vestir(arte, escala);
+		no.Mirar(onde, onde);
+		AddChild(no);
+
+		var tiro = new TiroNoPalco(no, arte, escala, onde, onde, rotulo);
+		_palco.Add(tiro);
+		return tiro;
 	}
 
-	private (int Pixels, int Tons, long Hash) _assA, _assB;
-
-	private void Fotografar()
+	/// <summary>Tira TODO tiro da tela. O `QueueFree` some com eles antes do proximo quadro desenhado.</summary>
+	private void LimparOPalco()
 	{
-		Image? img = Foto("1-duas-artes");
-		if (img == null) { _t = 99; return; }
+		foreach (TiroNoPalco t in _palco) t.No.QueueFree();
+		_palco.Clear();
+	}
 
-		int meio = img.GetWidth() / 2;
-		_assA = Assinatura(img, 0, meio);
-		_assB = Assinatura(img, meio, img.GetWidth());
+	/// <summary>
+	/// O TAMANHO DA TELA EM PIXEL DE MUNDO, e todo palco sai dele.
+	///
+	/// A `testar-variedade.bat` abre 1280x720; um berco cravado em pixel sairia da tela em outra
+	/// janela, e um raio fora da tela mede fresta ENORME sem ter fresta nenhuma. Berco calculado nao
+	/// tem esse jeito de mentir -- e a sonda ainda conta como FUNDO o que cair fora da foto.
+	/// </summary>
+	private Vector2 Tela => GetViewportRect().Size;
 
-		Nota($"Kamehameha1: {_assA.Pixels}px, {_assA.Tons} tons");
-		Nota($"Masenko    : {_assB.Pixels}px, {_assB.Tons} tons");
+	/// <summary>O vetor de um rumo em graus, no sentido da TELA: 0 = leste, 90 = sul (o Y cresce pra baixo).</summary>
+	private static Vector2 Rumo(float graus)
+	{
+		float rad = Mathf.DegToRad(graus);
+		return new Vector2(MathF.Cos(rad), MathF.Sin(rad));
+	}
 
-		Ok("o Kamehameha DESENHOU alguma coisa (a folha chegou na tela)", _assA.Pixels > 100);
-		Ok("o Masenko DESENHOU alguma coisa", _assB.Pixels > 100);
+	// =====================================================================
+	// A FOTO
+	// =====================================================================
+	/// <summary>
+	/// UMA FOTO JA REVELADA: os bytes, o tamanho e a transformada que leva um ponto do MUNDO ao pixel
+	/// dela.
+	///
+	/// OS BYTES SAO COPIADOS UMA VEZ. O `Image.GetPixel` atravessa a fronteira C#/motor a cada chamada,
+	/// e as sondas daqui leem a foto inteira varias vezes por passo.
+	///
+	/// A TRANSFORMADA NAO E A IDENTIDADE POR ACASO: o projeto estica em `canvas_items`, entao uma
+	/// janela maior que 1280x720 desenha tudo ampliado e o pixel (x, y) da foto deixa de ser o ponto
+	/// (x, y) do mundo. Toda sonda entra com coordenada de mundo e passa por aqui.
+	/// </summary>
+	private sealed class Chapa
+	{
+		public readonly int Largura, Altura;
+		public readonly Transform2D DoMundo;
 
-		// ============================ A LINHA QUE RESPONDE O DONO ============================
-		// Duas tecnicas, duas folhas do BYOND, dois desenhos DIFERENTES. Era exatamente isto que
-		// nao acontecia antes: as vinte e quatro tecnicas caiam em duas primitivas, e um Kamehameha
-		// e um Masenko eram o mesmo risco com a mesma grossura.
-		// ================================================================================
-		Ok("Kamehameha e Masenko desenham PIXEIS DIFERENTES (a variedade chegou na tela)",
-		   _assA.Hash != _assB.Hash && _assA.Pixels > 100 && _assB.Pixels > 100);
+		/// <summary>Quantos pixels de foto cabem em um pixel de mundo (1 na janela de 1280x720).</summary>
+		public readonly float PxPorMundo;
+
+		private readonly byte[] _rgba;
+
+		public Chapa(Image img, Transform2D doMundo)
+		{
+			if (img.GetFormat() != Image.Format.Rgba8) img.Convert(Image.Format.Rgba8);
+			Largura = img.GetWidth();
+			Altura = img.GetHeight();
+			_rgba = img.GetData();
+			DoMundo = doMundo;
+			PxPorMundo = doMundo.Scale.X;
+		}
+
+		public bool Dentro(int x, int y) => x >= 0 && y >= 0 && x < Largura && y < Altura;
+
+		public (byte R, byte G, byte B) Cor(int x, int y)
+		{
+			int i = (y * Largura + x) * 4;
+			return (_rgba[i], _rgba[i + 1], _rgba[i + 2]);
+		}
+
+		/// <summary>O pixel em que este ponto do mundo caiu (pode estar fora da foto).</summary>
+		public Vector2I Pixel(Vector2 mundo)
+		{
+			Vector2 p = DoMundo * mundo;
+			return new Vector2I(Mathf.FloorToInt(p.X), Mathf.FloorToInt(p.Y));
+		}
+
+		/// <summary>
+		/// E TINTA? -- qualquer coisa que nao seja o verde cheio do fundo. Fora da foto NAO e tinta:
+		/// um raio que sai da tela tem que ler como buraco, e nao como raio inteiro.
+		/// </summary>
+		public bool Tinta(int x, int y)
+		{
+			if (!Dentro(x, y)) return false;
+			(byte r, byte g, byte b) = Cor(x, y);
+			return !(g > 229 && r < 26 && b < 26);
+		}
+
+		/// <summary>
+		/// E CORPO SOLIDO de um tiro tingido de MAGENTA? -- vermelho e azul acima de 40%.
+		///
+		/// ============================ POR QUE MAGENTA, E POR QUE 40% ============================
+		/// A tinta do ki e SOMADA aos tres tons da arte, canal a canal, com teto (`Rampa.Com`). Com
+		/// magenta puro o vermelho e o azul de casca, manto e nucleo batem no teto em TODA arte, e o que
+		/// sobra por cima e so a textura do shader (os riscos de fluxo, de 0,80 a 1,22, e o granulado,
+		/// que no pior caso desce a 0,48). O fundo tem vermelho e azul ZERO. Entao "quanto de magenta
+		/// ha neste pixel" e, com folga, "quanto do pixel o corpo cobre" -- e 40% poe a beirada medida
+		/// a menos de meio pixel do contorno do desenho, sem depender de que arte e.
+		/// ========================================================================================
+		/// </summary>
+		public bool Solido(int x, int y)
+		{
+			if (!Dentro(x, y)) return false;
+			(byte r, _, byte b) = Cor(x, y);
+			return r > 102 && b > 102;
+		}
+	}
+
+	/// <summary>
+	/// Fotografa, GRAVA em `user://artedeki-*.png` e devolve a chapa.
+	///
+	/// A gravacao nao e enfeite: os numeros dizem que dois desenhos sao DIFERENTES ou que um raio e
+	/// CONTINUO, e nao que ele esta BONITO. Um raio desenhado ao contrario, uma cabeca do lado errado
+	/// ou um halo quadrado passam por qualquer contagem de pixel -- e este projeto ja tem correcoes
+	/// visuais que so a FOTO mostrou. O olho e a ultima familia, e ela nao cabe num `if`.
+	/// </summary>
+	private Chapa? Foto(string nome)
+	{
+		Viewport? v = GetViewport();
+		Image? img = v?.GetTexture()?.GetImage();
+		if (v == null || img == null || img.IsEmpty())
+		{
+			Nota("SEM FOTO (headless nao renderiza) -- as familias 1 e 2 valem; as de PIXEL, da 2b em diante, NAO RODARAM");
+			_semFoto = true;
+			return null;
+		}
+
+		string caminho = $"user://artedeki-{nome}.png";
+		img.SavePng(caminho);
+		Nota($"foto: {ProjectSettings.GlobalizePath(caminho)}");
+
+		var chapa = new Chapa(img, v.GetFinalTransform() * v.CanvasTransform * GlobalTransform);
+		if (!_anoteiAEscala)
+		{
+			_anoteiAEscala = true;
+			Nota($"a foto tem {chapa.Largura}x{chapa.Altura} px e o mundo {Tela.X:0}x{Tela.Y:0}: "
+				 + $"{chapa.PxPorMundo:0.00} px de foto por px de mundo");
+
+			// OS PALCOS FORAM DESENHADOS PRA 1280x720 OU MAIS (conferido tambem em 1600x900 e em tela
+			// cheia, com 1,5 px de foto por px de mundo). Numa tela menor os raios vizinhos de uma mesma
+			// foto se encostam, e a contagem de ilhas reprovaria um desenho que esta certo.
+			if (Tela.X < 1280f || Tela.Y < 720f)
+				Nota("ATENCAO: tela menor que 1280x720 -- os palcos nao cabem, e uma falha daqui pra frente pode ser so isso");
+		}
+		return chapa;
+	}
+
+	private bool _anoteiAEscala;
+
+	/// <summary>Quantos pixels de TINTA ha num quadrado de meia largura `meia` (em px de mundo) em volta de um ponto.</summary>
+	private static int TintaNoQuadro(Chapa c, Vector2 centro, float meia)
+	{
+		Vector2I a = c.Pixel(centro - new Vector2(meia, meia)), b = c.Pixel(centro + new Vector2(meia, meia));
+		int n = 0;
+		for (int y = a.Y; y <= b.Y; y++)
+			for (int x = a.X; x <= b.X; x++)
+				if (c.Tinta(x, y)) n++;
+		return n;
+	}
+
+	// =====================================================================
+	// FAMILIA 2b -- TODO ESTILO DESENHA
+	// =====================================================================
+	/// <summary>As duas esferas que nao cabem numa celula da grade: a Death Ball (36 px de raio) e a Genkidama (96).</summary>
+	private static bool EhEsferaGrande(ArteDeKi a) => ArteDeKiNoCliente.EstiloDaBola(a).Raio > 30f;
+
+	/// <summary>
+	/// AS 42 ARTES PEQUENAS, CADA UMA COMO BOLA NA SUA CELULA.
+	///
+	/// TODAS, e nao so as de `Blasts`: arte de raio numa bola acontece (o teleguiado customizado
+	/// escolhe em `Techniques`, onde moram os Kamehamehas) e sai como a CABECA daquele raio voando
+	/// sozinha -- ver `ArteDeKiNoCliente.EstiloDaBola`. E um ramo de producao como outro qualquer.
+	/// </summary>
+	private void PorTodasAsBolas()
+	{
+		LimparOPalco();
+
+		ArteDeKi[] pequenas = [.. ArteDeProjetil.Todas.Where(a => !EhEsferaGrande(a))];
+		const int Colunas = 8;
+		int linhas = (pequenas.Length + Colunas - 1) / Colunas;
+		Vector2 t = Tela;
+		float cw = t.X / Colunas, ch = t.Y / linhas;
+
+		for (int i = 0; i < pequenas.Length; i++)
+		{
+			var centro = new Vector2(cw * (i % Colunas) + cw * 0.5f, ch * (i / Colunas) + ch * 0.5f);
+			NovaBola(pequenas[i], 1f, centro, Vermelho, pequenas[i].ToString());
+		}
+		Assentar();
+	}
+
+	/// <summary>O raio que o ESTILO manda esta bola ter, ja na escala dela.</summary>
+	private static float RaioDoEstilo(TiroNoPalco b) => ArteDeKiNoCliente.EstiloDaBola(b.Arte).Raio * b.Escala;
+
+	/// <summary>
+	/// A TINTA EM VOLTA DE UM PONTO, contada so no quadrado onde o CORPO de uma bola deste raio caberia
+	/// (1,25 raio pra cada lado, mais 2 px) e dividida pelo raio ao quadrado -- pra que a bolinha de
+	/// 3,5 px e a de 29 respondam na mesma unidade.
+	///
+	/// So o corpo, e nao a celula inteira, de proposito: o rastro e o halo de uma bola grande vazam pra
+	/// celula da vizinha, e contar a celula deixaria uma arte que nao desenha NADA passar com a tinta
+	/// do lado.
+	///
+	/// O NUMERO NAO E A AREA DA BOLA: o halo conta como tinta, e numa bola cheia ele enche o quadrado
+	/// inteiro (de 6 a 14 raios^2, conforme o tamanho). O que ele separa e "ha um desenho aqui" de "nao
+	/// ha nada" -- que e a pergunta desta familia.
+	/// </summary>
+	private static float TintaPorRaio2(Chapa c, Vector2 centro, float raio)
+	{
+		float px2 = TintaNoQuadro(c, centro, raio * 1.25f + 2f) / (c.PxPorMundo * c.PxPorMundo);
+		return px2 / (raio * raio);
+	}
+
+	private void MedirTodasAsBolas()
+	{
+		Chapa? c = Foto("2b-1-todas-as-bolas");
+		if (c == null) return;
+
+		float menor = float.MaxValue;
+		string qualMenor = "";
+		var partes = new List<string>();
+		foreach (TiroNoPalco b in _palco)
+		{
+			float tinta = TintaPorRaio2(c, b.Cabeca, RaioDoEstilo(b));
+			partes.Add($"{b.Rotulo} {tinta:0.0}");
+			if (tinta < menor) { menor = tinta; qualMenor = b.Rotulo; }
+		}
+		Nota("tinta (corpo e halo) no quadrado do corpo de cada bola, em raios ao quadrado -- " + string.Join("  ", partes));
+		Ok($"as {_palco.Count} artes pequenas DESENHAM como bola (a mais rala: {qualMenor}, {menor:0.0} raios^2 de tinta)",
+		   _palco.Count > 0 && menor >= PisoDeTintaDaBola);
+
+		// CONTRA-EXEMPLO: a MESMA regua no canto de baixo da foto, onde a grade nao pos ninguem, com o
+		// raio de uma bola de verdade. E o que uma arte que nao desenhasse nada daria -- e tem que reprovar.
+		float nada = TintaPorRaio2(c, new Vector2(Tela.X - 14f, Tela.Y - 14f), RaioDoEstilo(_palco[0]));
+		Ok($"CONTRA-EXEMPLO: a mesma regua num canto vazio da foto da {nada:0.0} -- ela reprovaria uma arte que nao desenha",
+		   nada < PisoDeTintaDaBola);
+	}
+
+	/// <summary>
+	/// O MINIMO DE TINTA NO QUADRADO DO CORPO DE UMA BOLA, em raios ao quadrado.
+	///
+	/// MEDIDO em 100 rodadas: a mais rala das 42 e a faisca do Genie (`Blast19`, um punhado de brilhos
+	/// sorteados), de 4,0 a 5,2; depois a `KiHead` (4,5 a 6,0), o redemoinho da Spirit Gun (4,7 a 5,1) e
+	/// a meia-lua do Kiai (5,3 a 5,5). O piso e a metade da menor leitura -- e o canto vazio da zero.
+	/// </summary>
+	private const float PisoDeTintaDaBola = 2f;
+
+	/// <summary>
+	/// AS QUE O DONO CITOU PELO NOME -- *"esferas como genkidama, super nova"*: a Genkidama a escala 1,
+	/// e a Death Ball a 1 e a 2. Sozinhas na foto porque a Genkidama tem 96 px de raio e meio quadro de
+	/// halo; na grade ela cobriria seis vizinhas.
+	/// </summary>
+	private void PorAsEsferasGrandes()
+	{
+		LimparOPalco();
+		Vector2 t = Tela;
+		NovaBola(ArteDeKi.SpiritBomb, 1f, new Vector2(t.X * 0.27f, t.Y * 0.5f), Vermelho, "Genkidama");
+		NovaBola(ArteDeKi.DeathBall2017Purple2, 2f, new Vector2(t.X * 0.66f, t.Y * 0.5f), Vermelho, "Death Ball a 2x");
+		NovaBola(ArteDeKi.DeathBall2017Purple2, 1f, new Vector2(t.X * 0.90f, t.Y * 0.5f), Vermelho, "Death Ball a 1x");
+		Assentar();
+	}
+
+	private void MedirAsEsferasGrandes()
+	{
+		Chapa? c = Foto("2b-2-as-esferas-grandes");
+		if (c == null) return;
+
+		// O DIAMETRO, e nao a area do quadrado do corpo: com o halo, o quadrado de uma esfera destas esta
+		// CHEIO de tinta, e duas areas cheias so repetem o tamanho dos dois quadrados. A corrida de tinta
+		// que atravessa o centro para onde a tinta para.
+		float[] diametro = new float[_palco.Count];
+		for (int i = 0; i < _palco.Count; i++)
+		{
+			TiroNoPalco b = _palco[i];
+			diametro[i] = CorridaDeTinta(c, b.Cabeca, Vector2.Right);
+			Nota($"{b.Rotulo}: {diametro[i]:0} px de tinta atravessando o centro "
+				 + $"(raio do estilo x escala: {RaioDoEstilo(b):0} px)");
+		}
+
+		Ok("a Genkidama e a Death Ball DESENHAM (as duas voaram no neutro ate 2026-10-07)",
+		   _palco.All(b => TintaPorRaio2(c, b.Cabeca, RaioDoEstilo(b)) >= PisoDeTintaDaBola));
+
+		// `_raioDaBola = estilo.Raio * Escala`: e o que faz a Genkidama CRESCER a cada pulso
+		// (`SpiritBomb.dm:119-121` soma 0,1 na escala). O corpo dobra com a escala; o halo nao (o
+		// alcance dele e `5 + 0,9 raio`), entao a tinta inteira cresce um pouco menos que 2x. Medido em
+		// 84 rodadas: de 105 a 115 px a 1x e de 204 a 224 a 2x -- entre 1,8 e 2,1 vezes.
+		Ok($"a ESCALA engorda a bola: a Death Ball a 2x tem {diametro[1]:0} px contra {diametro[2]:0} da de 1x "
+		   + $"({diametro[1] / MathF.Max(1f, diametro[2]):0.00}x)", diametro[1] > diametro[2] * VezesADeathBallCresce);
+
+		// 96 px de raio contra 36: e a maior coisa que voa no jogo. Medido: de 316 a 342 px de tinta,
+		// 2,8 a 3,3 vezes a Death Ball.
+		Ok($"a Genkidama e a MAIOR: {diametro[0]:0} px contra {diametro[2]:0} da Death Ball "
+		   + $"({diametro[0] / MathF.Max(1f, diametro[2]):0.00}x)", diametro[0] > diametro[2] * 2f);
+	}
+
+	/// <summary>
+	/// QUANTO A TINTA DA DEATH BALL TEM QUE CRESCER de 1x pra 2x: uma vez e meia, com o medido entre
+	/// 1,8 e 2,1 (ver <see cref="MedirAsEsferasGrandes"/>). Uma escala que nao chegasse ao desenho daria 1,0.
+	/// </summary>
+	private const float VezesADeathBallCresce = 1.5f;
+
+	/// <summary>
+	/// A CORRIDA DE TINTA QUE ATRAVESSA UM PONTO, numa direcao e na oposta, em px de mundo. Zero se o
+	/// proprio ponto for fundo.
+	/// </summary>
+	private static float CorridaDeTinta(Chapa c, Vector2 pontoNoMundo, Vector2 direcao)
+	{
+		Vector2 p0 = c.DoMundo * pontoNoMundo;
+		int n = 0;
+		foreach (int sentido in new[] { 1, -1 })
+			for (int l = sentido > 0 ? 0 : 1; l < 4000; l++)
+			{
+				Vector2 p = p0 + direcao * (l * sentido);
+				if (!c.Tinta(Mathf.FloorToInt(p.X), Mathf.FloorToInt(p.Y))) break;
+				n++;
+			}
+		return n / c.PxPorMundo;
+	}
+
+	// =====================================================================
+	// FAMILIA 3 -- O PIXEL
+	// =====================================================================
+	/// <summary>Quantas vagas a vitrine tem: quatro tiros lado a lado, cada um no meio do seu quarto de tela.</summary>
+	private const int Vagas = 4;
+
+	private Vector2 CentroDaVaga(int i) =>
+		new(MathF.Floor(Tela.X * (0.5f + i) / Vagas), MathF.Floor(Tela.Y * 0.5f));
+
+	/// <summary>
+	/// QUATRO RAIOS VERTICAIS LADO A LADO, e em toda vitrine alguma coisa aparece DUAS VEZES.
+	///
+	/// O par repetido e o CONTROLE. Dois tiros iguais nao tem os mesmos pixels (cada material sorteia a
+	/// sua `semente`), entao "sao diferentes" so quer dizer alguma coisa se for MAIS diferente do que
+	/// um tiro e do seu gemeo -- e essa distancia e medida aqui, na mesma foto, e nao so escrita.
+	///
+	/// CABECA EM CIMA, CAUDA EMBAIXO, seis tiles de tronco: um raio de comprimento zero desenharia so
+	/// as duas bolas, e duas artes concordariam por nao terem tronco pra discordar.
+	/// </summary>
+	private void PorAVitrine(params (ArteDeKi Arte, float Escala, Color Cor)[] vagas)
+	{
+		LimparOPalco();
+		for (int i = 0; i < vagas.Length; i++)
+		{
+			Vector2 c = CentroDaVaga(i);
+			NovoRaio(vagas[i].Arte, vagas[i].Escala, c + new Vector2(0, -96), c + new Vector2(0, 96),
+					 vagas[i].Cor, vagas[i].Arte.ToString());
+		}
+		Assentar();
+	}
+
+	/// <summary>
+	/// O RETRATO DE UMA VAGA: quantos pixels de tinta, ONDE eles estao (a mascara) e de que cores sao
+	/// (um histograma grosso, quatro niveis por canal).
+	/// </summary>
+	private sealed record Retrato(int Pixels, bool[] Mascara, float[] Cores);
+
+	private Retrato Retratar(Chapa c, int vaga)
+	{
+		// A JANELA TEM O MESMO TAMANHO NAS QUATRO VAGAS, em pixel inteiro: as mascaras sao comparadas
+		// posicao a posicao, e uma janela um pixel mais larga que a outra desalinharia todas as linhas.
+		int w = Mathf.FloorToInt(Tela.X / Vagas * c.PxPorMundo), h = c.Altura;
+		int x0 = c.Pixel(CentroDaVaga(vaga)).X - w / 2;
+
+		var mascara = new bool[w * h];
+		var cores = new float[64];
+		int n = 0;
+		for (int y = 0; y < h; y++)
+			for (int x = 0; x < w; x++)
+			{
+				if (!c.Tinta(x0 + x, y)) continue;
+				mascara[y * w + x] = true;
+				(byte r, byte g, byte b) = c.Cor(x0 + x, y);
+				cores[((r >> 6) << 4) | ((g >> 6) << 2) | (b >> 6)]++;
+				n++;
+			}
+		if (n > 0)
+			for (int i = 0; i < cores.Length; i++) cores[i] /= n;
+		return new Retrato(n, mascara, cores);
+	}
+
+	/// <summary>
+	/// A DISTANCIA DE SILHUETA: dos pixels que pelo menos um dos dois pintou, que fracao so UM pintou.
+	/// Zero = a mesma forma no mesmo lugar; um = nenhum pixel em comum.
+	/// </summary>
+	private static float Silhueta(Retrato a, Retrato b)
+	{
+		int ambos = 0, algum = 0;
+		for (int i = 0; i < a.Mascara.Length; i++)
+		{
+			if (a.Mascara[i] && b.Mascara[i]) ambos++;
+			if (a.Mascara[i] || b.Mascara[i]) algum++;
+		}
+		return algum == 0 ? 0f : 1f - (float)ambos / algum;
+	}
+
+	/// <summary>A DISTANCIA DE PALETA: zero = as mesmas cores nas mesmas proporcoes; um = nenhuma cor em comum.</summary>
+	private static float Paleta(Retrato a, Retrato b)
+	{
+		float soma = 0f;
+		for (int i = 0; i < a.Cores.Length; i++) soma += MathF.Abs(a.Cores[i] - b.Cores[i]);
+		return soma * 0.5f;
+	}
+
+	/// <summary>
+	/// ============================ QUANDO DUAS FOTOS SAO "DIFERENTES" ============================
+	/// Dois tiros da MESMA arte nunca tem os mesmos pixels: cada material sorteia a propria `semente`
+	/// e o shader anima. Em 100 rodadas desta bancada (2026-10-07, 1280x720):
+	///
+	///     a MESMA arte, duas vezes     silhueta ate 0,082 (raios) e 0,093 (bolas)   paleta ate 0,098
+	///     artes DIFERENTES             silhueta de 0,183 pra cima                   paleta de 0,361 pra cima
+	///
+	/// Entao "diferente" tem dois pisos, e a distancia tem que passar dos DOIS:
+	///
+	///   * o FIXO (<see cref="PisoDaSilhueta"/>, <see cref="PisoDaPaleta"/>): o meio do vao entre os
+	///     dois grupos da tabela acima (0,13 entre 0,093 e 0,183; 0,20 entre 0,098 e 0,361). E ele que
+	///     da forca a regua: numa rodada em que o par de controle sorteia sementes vizinhas (aconteceu
+	///     4 vezes nas 100, com 0,000 a 0,007 de distancia) QUALQUER coisa seria "muitas vezes o
+	///     controle";
+	///   * o VIVO: uma vez e meia o controle medido NA MESMA foto. Se uma maquina desenhar com mais
+	///     ruido que a que calibrou o piso fixo, a barra sobe junto em vez de a bancada mentir.
+	/// ============================================================================================
+	/// </summary>
+	private const float PisoDaSilhueta = 0.13f;
+
+	/// <summary>Ver <see cref="PisoDaSilhueta"/>.</summary>
+	private const float PisoDaPaleta = 0.20f;
+
+	/// <summary>Ver <see cref="PisoDaSilhueta"/>.</summary>
+	private const float VezesOControle = 1.5f;
+
+	private static bool Difere(float distancia, float controle, float piso) =>
+		distancia > MathF.Max(piso, controle * VezesOControle);
+
+	private void FotografarDuasArtes()
+	{
+		Chapa? c = Foto("3-1-duas-artes");
+		if (c == null) return;
+
+		Retrato k1 = Retratar(c, 0), k1b = Retratar(c, 1), mas = Retratar(c, 2), masb = Retratar(c, 3);
+		Nota($"Kamehameha1: {k1.Pixels} px e {k1b.Pixels} px de tinta   Masenko: {mas.Pixels} px e {masb.Pixels} px");
+
+		Ok("o Kamehameha DESENHOU alguma coisa (o shader chegou na tela)", k1.Pixels > 100 && k1b.Pixels > 100);
+		Ok("o Masenko DESENHOU alguma coisa", mas.Pixels > 100 && masb.Pixels > 100);
+
+		float ctrlSilhueta = MathF.Max(Silhueta(k1, k1b), Silhueta(mas, masb));
+		float ctrlPaleta = MathF.Max(Paleta(k1, k1b), Paleta(mas, masb));
+		float silhueta = Silhueta(k1, mas), paleta = Paleta(k1, mas);
+		Nota($"CONTROLE (a mesma arte, duas vezes): silhueta {Silhueta(k1, k1b):0.000} e {Silhueta(mas, masb):0.000}, "
+			 + $"paleta {Paleta(k1, k1b):0.000} e {Paleta(mas, masb):0.000}");
+		Nota($"Kamehameha x Masenko: silhueta {silhueta:0.000}, paleta {paleta:0.000}");
+
+		Ok($"CONTROLE: a mesma arte, duas vezes, fica ABAIXO dos dois pisos (silhueta {ctrlSilhueta:0.000} < "
+		   + $"{PisoDaSilhueta:0.00}, paleta {ctrlPaleta:0.000} < {PisoDaPaleta:0.00})",
+		   ctrlSilhueta < PisoDaSilhueta && ctrlPaleta < PisoDaPaleta);
+
+		// ============================ A LINHA QUE RESPONDE O PEDIDO DE VARIEDADE ============================
+		// Duas tecnicas, dois estilos, dois desenhos DIFERENTES -- na forma e na cor, cada uma contra o
+		// seu controle. Um `EstiloDoFeixe` que devolvesse o mesmo estilo pra toda arte passaria na
+		// familia 2 inteira e reprovaria aqui: a distancia entre as duas cairia pra a do controle.
+		// ==================================================================================================
+		Ok($"Kamehameha e Masenko tem SILHUETAS diferentes ({silhueta:0.000}, acima dos dois pisos)",
+		   Difere(silhueta, ctrlSilhueta, PisoDaSilhueta));
+		Ok($"...e PALETAS diferentes ({paleta:0.000})", Difere(paleta, ctrlPaleta, PisoDaPaleta));
 	}
 
 	private void FotografarTinta()
 	{
-		Image? img = Foto("2-tinta-azul");
-		if (img == null) { _t = 99; return; }
+		Chapa? c = Foto("3-2-tinta-azul");
+		if (c == null) return;
 
-		(int Pixels, int Tons, long Hash) azul = Assinatura(img, 0, img.GetWidth() / 2);
-		Nota($"Kamehameha1 tingido de AZUL: {azul.Pixels}px, {azul.Tons} tons");
+		Retrato azul = Retratar(c, 0), vermelho = Retratar(c, 1);
+		float paleta = Paleta(azul, vermelho), silhueta = Silhueta(azul, vermelho);
+		float controle = Paleta(Retratar(c, 2), Retratar(c, 3));   // os dois Masenkos, NESTA foto
+		Nota($"Kamehameha1 azul x vermelho: paleta {paleta:0.000} (controle nesta foto {controle:0.000}), silhueta {silhueta:0.000}");
 
-		// O `icon += rgb(...)` do DM chegando ao pixel. Sem isto o ki de todo mundo teria a cor
-		// crua da folha -- e a folha e CINZA.
-		Ok("trocar a cor do ki muda o PIXEL (o `icon += rgb()` do BYOND funciona)",
-		   azul.Hash != _assA.Hash && azul.Pixels > 100);
+		// O `icon += rgb(...)` do DM chegando ao pixel. Sem isto o ki de todo mundo teria a cor crua
+		// da arte.
+		Ok($"trocar a cor do ki muda o PIXEL: a paleta anda {paleta:0.000}", Difere(paleta, controle, PisoDaPaleta));
 
-		// E o DESENHO tem que sobreviver a tinta: somar clareia, mas nao pode achatar tudo num tom
-		// so. Um `Modulate` no lugar da soma daria justamente isso em folha escura.
-		Ok($"o desenho sobreviveu a tinta ({azul.Tons} tons, mais de um)", azul.Tons > 1);
+		// ARTE E COR SAO ORTOGONAIS (o cabecalho do `ArteDeProjetil`): a tinta troca a cor do tiro e
+		// nao o tiro. Uma troca de cor que refizesse o material com outra arte passaria na linha de
+		// cima -- e reprovaria aqui, porque a silhueta dos dois pularia pra cima do piso.
+		Ok($"...e NAO muda a silhueta: e o mesmo desenho em outra cor ({silhueta:0.000}, abaixo do piso de {PisoDaSilhueta:0.00})",
+		   silhueta < PisoDaSilhueta);
+
+		// E o DESENHO tem que sobreviver a tinta: somar clareia, mas nao pode achatar casca, manto e
+		// nucleo num tom so. A medida e no MIOLO do raio (longe da beirada, onde o anti-serrilhado
+		// fabrica tons de graca), e a contraprova e a mesma regua no fundo liso.
+		TiroNoPalco t = _palco[0];
+		Miolo miolo = LerOMiolo(c, t, 0f);
+		Miolo liso = LerOMiolo(c, t, 60f);
+		Nota($"miolo do Kamehameha azul: {miolo.Pixels} px, {miolo.Tons} tons   fundo ao lado: {liso.Pixels} px, {liso.Tons} tom");
+		Ok($"o desenho sobreviveu a tinta ({miolo.Tons} tons no miolo, mais de um)", miolo.Pixels > 50 && miolo.Tons > 1);
+		Ok($"CONTRA-EXEMPLO: a mesma regua no fundo liso conta UM tom ({liso.Tons})", liso.Pixels > 50 && liso.Tons == 1);
+	}
+
+	private void FotografarEscala()
+	{
+		Chapa? c = Foto("3-3-escala-3x");
+		if (c == null) return;
+
+		int[] tinta = [.. Enumerable.Range(0, Vagas).Select(i => Retratar(c, i).Pixels)];
+		Nota($"Masenko a 1x: {tinta[0]} px e {tinta[1]} px de tinta   a 3x: {tinta[2]} px e {tinta[3]} px");
+
+		// O PIOR CASO DOS DOIS LADOS: o menor dos de 3x contra o maior dos de 1x. O comprimento e o
+		// mesmo nos quatro, entao a tinta cresce com a LARGURA -- perto de 3 vezes, e nao de 9.
+		float razao = (float)Math.Min(tinta[2], tinta[3]) / Math.Max(1, Math.Max(tinta[0], tinta[1]));
+		float controle = (float)tinta[0] / Math.Max(1, tinta[1]);
+
+		// `A.transform *= wavemult` (`beams.dm:149`). O `wavemult` do Final Flash e 4 e o do Ki Wave
+		// e 1 -- sem esta linha os dois sairiam do mesmo tamanho. Medido: 2,8 a 2,9 em 30 rodadas, e
+		// o par de 1x entre 0,94 e 1,04.
+		Ok($"a escala do `wavemult` chega ao pixel (3x desenha {razao:0.0} vezes a tinta de 1x)", razao > 2f);
+		Ok($"CONTROLE: na MESMA escala os dois Masenkos tem a mesma tinta (razao {controle:0.00})",
+		   controle is > 0.8f and < 1.25f);
 	}
 
 	/// <summary>A cor que o jogo daria ao tiro deste personagem. Ver `Appearance.CorDoTiro`.</summary>
@@ -722,219 +1358,233 @@ public partial class RoboDeArteDeKi : Node2D
 		return new Color(c.R / 255f, c.G / 255f, c.B / 255f);
 	}
 
+	/// <summary>A cor da CHAMA do mesmo personagem -- a que NAO serve pra tiro. Ver <see cref="PorAsCoresDePersonagem"/>.</summary>
+	private static Color CorDaChama(string nome)
+	{
+		Jandirus.Core.Appearance.Rgb c = Jandirus.Core.Appearance.CorDeAura.De(nome, 1700);
+		return new Color(c.R / 255f, c.G / 255f, c.B / 255f);
+	}
+
+	/// <summary>
+	/// ============================ A COR DE PERSONAGENS DE VERDADE ============================
+	/// Ate aqui a tinta foi uma cor de teste escolhida a mao. Esta fase usa a cor que o JOGO daria a
+	/// dois personagens (`CorDoTiro.De`, o `blastR/G/B = rand(0,255)` do `CharacterCreation.dm:28`)
+	/// sobre o estilo de raio PADRAO do jogo (o `Beam3`, tres cinzas).
+	///
+	/// E ela tem historia: o cliente lia a cor da CHAMA (`Appearance.CorAura`), que neste port carrega
+	/// um `200 +` exigido pelo shader da aura. Somada a um cinza, ela estoura os tres canais --
+	/// **o jogo inteiro atirava branco**, e todas as comparacoes entre fotos ficavam VERDES assim mesmo,
+	/// porque duas fotos brancas diferentes ainda sao diferentes.
+	///
+	/// A TERCEIRA VAGA E AQUELE DEFEITO, DE PROPOSITO: o mesmo raio tingido com a cor da chama do Goku.
+	/// A regua que aprova as duas primeiras tem que reprovar essa.
+	/// ====================================================================================
+	/// </summary>
+	private void PorAsCoresDePersonagem() =>
+		PorAVitrine((ArteDeKi.Beam3, 1f, CorDeTeste("Goku")), (ArteDeKi.Beam3, 1f, CorDeTeste("Vegeta")),
+					(ArteDeKi.Beam3, 1f, CorDaChama("Goku")), (ArteDeKi.Beam3, 1f, CorDeTeste("Goku")));
+
 	private void FotografarCoresDeVerdade()
 	{
-		Image? img = Foto("4-cores-de-personagem");
-		if (img == null) { _t = 99; return; }
+		Chapa? c = Foto("3-4-cores-de-personagem");
+		if (c == null) return;
 
-		int meio = img.GetWidth() / 2;
-		(int px, int brancos) goku = ContarBrancos(img, 0, meio);
-		(int px, int brancos) vegeta = ContarBrancos(img, meio, img.GetWidth());
+		Miolo goku = LerOMiolo(c, _palco[0], 0f), vegeta = LerOMiolo(c, _palco[1], 0f), chama = LerOMiolo(c, _palco[2], 0f);
+		Nota($"Goku   (#{CorDeTeste("Goku").ToHtml(false)}): {goku.Pixels} px de miolo, {goku.Brancos} brancos puros ({Fracao(goku):0%})");
+		Nota($"Vegeta (#{CorDeTeste("Vegeta").ToHtml(false)}): {vegeta.Pixels} px de miolo, {vegeta.Brancos} brancos puros ({Fracao(vegeta):0%})");
+		Nota($"a cor da CHAMA do Goku (#{CorDaChama("Goku").ToHtml(false)}): {chama.Pixels} px, {chama.Brancos} brancos puros ({Fracao(chama):0%})");
 
-		Nota($"Goku   ({CorDeTeste("Goku").ToHtml(false)}): {goku.px}px, {goku.brancos} brancos puros");
-		Nota($"Vegeta ({CorDeTeste("Vegeta").ToHtml(false)}): {vegeta.px}px, {vegeta.brancos} brancos puros");
+		Ok($"a cor do tiro NAO satura tudo em branco (Goku: {Fracao(goku):0%} do miolo)",
+		   goku.Pixels > 100 && Fracao(goku) < TetoDeBranco);
+		Ok($"a cor do tiro NAO satura tudo em branco (Vegeta: {Fracao(vegeta):0%} do miolo)",
+		   vegeta.Pixels > 100 && Fracao(vegeta) < TetoDeBranco);
+		Ok($"CONTRA-EXEMPLO: com a cor da CHAMA no lugar da do tiro a regua REPROVA ({Fracao(chama):0%} de branco)",
+		   chama.Pixels > 100 && Fracao(chama) >= TetoDeBranco);
 
-		// ============================ A LINHA QUE PEGA A SATURACAO ============================
-		// Com a cor da CHAMA (media 247) sobre a `Beam3` (192), 100% dos pixels saiam `#ffffff`.
-		// Com o sorteio cru do DM, a maior parte do desenho guarda a cor. O limiar e generoso (mais
-		// da metade tem que sobreviver) justamente pra nao reprovar um personagem de sorteio alto --
-		// o BYOND tambem satura as vezes, e isso e fidelidade e nao defeito.
-		// =================================================================================
-		Ok("a cor do tiro NAO satura tudo em branco (Goku)", goku.px > 100 && goku.brancos < goku.px / 2);
-		Ok("a cor do tiro NAO satura tudo em branco (Vegeta)", vegeta.px > 100 && vegeta.brancos < vegeta.px / 2);
-
-		// DOIS PERSONAGENS, A MESMA FOLHA, DESENHOS DIFERENTES. E o `rand(0,255)` do DM chegando na
-		// tela: o Ki Wave de um nao se parece com o do outro, e nenhuma arte nova foi precisa pra
-		// isso -- e a mesma `Beam3.dmi` nos dois lados.
-		Ok("dois personagens atiram a MESMA folha em cores diferentes",
-		   Assinatura(img, 0, meio).Hash != Assinatura(img, meio, img.GetWidth()).Hash);
+		// DOIS PERSONAGENS, O MESMO ESTILO, CORES DIFERENTES. E o `rand(0,255)` do DM chegando na tela:
+		// o Ki Wave de um nao se parece com o do outro -- e o controle e o proprio Goku, duas vezes.
+		float paleta = Paleta(Retratar(c, 0), Retratar(c, 1)), controle = Paleta(Retratar(c, 0), Retratar(c, 3));
+		Nota($"Goku x Vegeta: paleta {paleta:0.000}   Goku x Goku: {controle:0.000}");
+		Ok($"dois personagens atiram o MESMO estilo em cores diferentes (paleta {paleta:0.000})",
+		   Difere(paleta, controle, PisoDaPaleta));
 	}
 
-	// =====================================================================
-	// FAMILIA 4 -- A CONTINUIDADE DO CORPO (so mede)
-	// =====================================================================
-	/// <summary>Onde esta a MAO de cada um dos dois tiros, e como cada um se chama na foto.</summary>
-	private Vector2 _maoA, _maoB;
-	private string _rotuloA = "", _rotuloB = "";
+	private static float Fracao(Miolo m) => m.Pixels == 0 ? 0f : (float)m.Brancos / m.Pixels;
 
 	/// <summary>
-	/// UM RAIO NOVO, e nao o de antes remirado -- e isso importa.
+	/// QUE FRACAO DO MIOLO PODE SER BRANCO PURO antes de a cor do personagem ter sumido: metade, como
+	/// na regua antiga ("mais da metade tem que sobreviver").
 	///
-	/// `Mirar` so CRAVA a posicao no primeiro pacote; do segundo em diante ela vira alvo de
-	/// interpolacao (`Suavizacao`, 22 por segundo). Remirar um node vivo e fotografar no quadro
-	/// seguinte mede um raio de comprimento DESCONHECIDO -- que so nao estragou a medida da rodada
-	/// passada porque a foto e tao lenta que o `delta` fecha o `Lerp` de uma vez. Nascer de novo e a
-	/// mesma coisa que o jogo faz (o tiro nasce, ai interpola) e da o comprimento pedido, exato.
+	/// MEDIDO em 100 rodadas: 0% no Goku (#8736fe) e 0% no Vegeta (#7fc613) -- com essas tintas nem o
+	/// nucleo do `Beam3` chega ao branco --, e de 74% a 94% com a cor da chama (#ffffff). O que falta
+	/// pra 100% naquela e a textura: os riscos de fluxo escurecem o manto ate 0,80.
+	///
+	/// O teto e generoso de proposito: uma tinta de sorteio alto nos tres canais embranquece o nucleo
+	/// de verdade (o BYOND tambem satura as vezes, e isso e fidelidade e nao defeito), e o nucleo e
+	/// mais da metade do miolo. O que ele reprova e o raio BRANCO DE PONTA A PONTA.
 	/// </summary>
-	private ProjetilDesenhado NovoRaio(ArteDeKi arte, float escala, Vector2 cabeca, Vector2 mao)
-	{
-		var no = new ProjetilDesenhado
-		{
-			Name = $"Raio{_t}_{Mathf.RoundToInt(cabeca.X)}",
-			Tipo = TipoDeProjetil.Beam,
-			Cor = new Color(1f, 0.2f, 0.2f),
-			Position = cabeca,
-		};
-		no.Vestir(arte, escala);
-		no.Mirar(cabeca, mao);
-		AddChild(no);
-		return no;
-	}
+	private const float TetoDeBranco = 0.5f;
 
-	/// <summary>Troca os dois tiros por dois raios novos, e guarda onde cada mao ficou.</summary>
-	private void PorOsDoisRaios(ArteDeKi arteA, float escA, Vector2 maoA, string rotA,
-								ArteDeKi arteB, float escB, Vector2 maoB, string rotB) =>
-		PorOsDoisLivres(arteA, escA, new Vector2(XA, YTiro), maoA, rotA,
-						arteB, escB, new Vector2(XB, YTiro), maoB, rotB);
+	/// <summary>O que se leu do miolo de um raio: quantos pixels, quantos brancos puros, quantos tons de verdade.</summary>
+	private readonly record struct Miolo(int Pixels, int Brancos, int Tons);
 
 	/// <summary>
-	/// A MESMA COISA, com as duas CABECAS livres -- as familias 5 em diante precisam do palco inteiro
-	/// (um feixe de trinta tiles nao cabe pendurado num Y fixo) e o berco delas e calculado a partir do
-	/// tamanho da janela, nao cravado. Ver <see cref="Tela"/>.
+	/// LE O MIOLO DE UM RAIO: a faixa em volta do eixo, da mao a ponta, um pixel e meio pra DENTRO da
+	/// beirada do tronco macico. Ali so ha corpo -- nem halo, nem anti-serrilhado, nem fundo misturado.
+	///
+	/// UM TOM "DE VERDADE" e uma cor (dezesseis niveis por canal) com pelo menos 3% dos pixels: o
+	/// degrade entre duas faixas fabrica dezenas de cores com um punhado de pixels cada, e contar
+	/// qualquer uma delas faria um raio chapado parecer cheio de relevo.
 	/// </summary>
-	private void PorOsDoisLivres(ArteDeKi arteA, float escA, Vector2 cabA, Vector2 maoA, string rotA,
-								 ArteDeKi arteB, float escB, Vector2 cabB, Vector2 maoB, string rotB)
+	/// <param name="deLado">Desloca a faixa inteira de lado, em px de mundo. So a contraprova usa: le o fundo.</param>
+	private static Miolo LerOMiolo(Chapa c, TiroNoPalco t, float deLado)
+	{
+		float macico = ArteDeProjetil.MeiaEspessuraDoTronco(t.Arte) * ArteDeKiNoCliente.EstiloDoFeixe(t.Arte).Macico * t.Escala;
+		var perpMundo = new Vector2(-t.Rumo.Y, t.Rumo.X);
+		Vector2 a = c.DoMundo * (t.Mao + t.Rumo * 3f + perpMundo * deLado);
+		Vector2 b = c.DoMundo * (t.Ponta - t.Rumo * 3f + perpMundo * deLado);
+		Vector2 d = b - a;
+		float comp = d.Length();
+		if (comp < 1f) return default;
+
+		Vector2 u = d / comp;
+		var perp = new Vector2(-u.Y, u.X);
+		int meia = Mathf.Max(0, Mathf.FloorToInt((macico - 1.5f) * c.PxPorMundo));
+
+		var tons = new int[4096];
+		int n = 0, brancos = 0;
+		for (int s = 0; s <= (int)comp; s++)
+			for (int l = -meia; l <= meia; l++)
+			{
+				Vector2 p = a + u * s + perp * l;
+				int px = Mathf.FloorToInt(p.X), py = Mathf.FloorToInt(p.Y);
+				if (!c.Dentro(px, py)) continue;
+				(byte r, byte g, byte bl) = c.Cor(px, py);
+				n++;
+				if (r > 250 && g > 250 && bl > 250) brancos++;
+				tons[((r >> 4) << 8) | ((g >> 4) << 4) | (bl >> 4)]++;
+			}
+
+		int piso = Math.Max(1, n * 3 / 100);
+		return new Miolo(n, brancos, tons.Count(q => q >= piso));
+	}
+
+	/// <summary>
+	/// ============================ AS BOLAS ============================
+	/// A esquerda, a bola RACIAL padrao (o `1.dmi`: uma bolinha com rastro de cometa); a direita, a
+	/// `KiHead` da Paralysis (um estalo de faiscas e descarga). No desenho de folhas a `KiHead` era a
+	/// armadilha -- a unica folha sem estado `default` --, e ja falhou uma vez nesta bancada desenhando
+	/// por primitiva. Hoje a armadilha e outra: `forma` viaja como um INTEIRO do C# pro shader, e os
+	/// numeros do enum `Forma` tem que ser os das constantes do `EsferaDeKi.gdshader`. Duas formas
+	/// diferentes que saissem iguais na foto e exatamente o que essa troca daria.
+	/// ==================================================================
+	/// </summary>
+	private void PorAsBolasDaVitrine()
 	{
 		LimparOPalco();
-		_a = NovoRaio(arteA, escA, cabA, maoA);
-		_b = NovoRaio(arteB, escB, cabB, maoB);
-		_maoA = maoA; _maoB = maoB;
-		_rotuloA = rotA; _rotuloB = rotB;
+		Color cor = CorDeTeste("Goku");
+		ArteDeKi[] artes = [ArteDeKi.Blast1, ArteDeKi.Blast1, ArteDeKi.KiHead, ArteDeKi.KiHead];
+		for (int i = 0; i < Vagas; i++) NovaBola(artes[i], 1f, CentroDaVaga(i), cor, artes[i].ToString());
+		Assentar();
 	}
 
-	/// <summary>Tira TODO raio da tela -- os dois nomeados e os oito da grade dos rumos.</summary>
-	private void LimparOPalco()
+	private void FotografarBolas()
 	{
-		_a?.QueueFree();
-		_b?.QueueFree();
-		_a = _b = null;
-		foreach ((ProjetilDesenhado no, Vector2 _, string _) in _oito) no.QueueFree();
-		_oito.Clear();
-	}
+		Chapa? c = Foto("3-5-bolas");
+		if (c == null) return;
 
-	/// <summary>
-	/// O TAMANHO DA JANELA, e todo palco das familias 5 sai dele.
-	///
-	/// A `testar-variedade.bat` abre 1280x720 e esta sessao mediu em 1600x900; um berco cravado em
-	/// pixel sairia da tela num dos dois, e um raio fora da tela mede fresta ENORME sem ter fresta
-	/// nenhuma (a sonda le "fora da imagem" como "sem tinta"). Berco calculado nao tem esse jeito de
-	/// mentir.
-	/// </summary>
-	private Vector2 Tela => GetViewportRect().Size;
+		Retrato racial = Retratar(c, 0), racialB = Retratar(c, 1), paralisia = Retratar(c, 2), paralisiaB = Retratar(c, 3);
+		Nota($"bola racial (1.dmi): {racial.Pixels} px e {racialB.Pixels} px   Paralysis (KiHead): {paralisia.Pixels} px e {paralisiaB.Pixels} px");
 
-	/// <summary>
-	/// Os dois como RAIO VERTICAL da mesma folha (`Beam3.dmi`, a `beamicon` padrao do `beams.dm:4`),
-	/// na mesma cor e escala, mudando SO o comprimento. Dois desenhos que so diferem no comprimento e
-	/// a unica maneira de a fresta ser atribuivel ao comprimento.
-	/// </summary>
-	private void PorAOsDoisComoRaio(int compA, int compB) =>
-		PorOsDoisRaios(ArteDeKi.Beam3, 1f, new Vector2(XA, YTiro + compA), $"vertical de {compA} px",
-					   ArteDeKi.Beam3, 1f, new Vector2(XB, YTiro + compB), $"vertical de {compB} px");
+		Ok("a bola RACIAL desenha", racial.Pixels > 20 && racialB.Pixels > 20);
+		Ok("a Paralysis desenha", paralisia.Pixels > 20 && paralisiaB.Pixels > 20);
 
-	/// <summary>
-	/// Os dois na DIAGONAL, um pra cada lado (a esquerda desce pra a direita, a direita desce pra a
-	/// esquerda) -- assim os dois cabem na tela e nenhum encosta no outro.
-	/// </summary>
-	private void PorOsDoisNaDiagonal(int compA, int compB)
-	{
-		const float Meio = 0.70710678f;
-		PorOsDoisRaios(
-			ArteDeKi.Beam3, 1f, new Vector2(XA + compA * Meio, YTiro + compA * Meio),
-			$"diagonal de {compA} px", ArteDeKi.Beam3, 1f,
-			new Vector2(XB - compB * Meio, YTiro + compB * Meio), $"diagonal de {compB} px");
-	}
-
-	/// <summary>Esquerda: a escala 4 do Final Flash. Direita: a folha de celula 64 (`Beam - Big Fire`).</summary>
-	private void PorAEscalaEACelulaGrande(int compA, int compB) =>
-		PorOsDoisRaios(ArteDeKi.Beam3, 4f, new Vector2(XA, YTiro + compA), $"escala 4x, {compA} px",
-					   ArteDeKi.BeamBigFire, 1f, new Vector2(XB, YTiro + compB),
-					   $"celula 64, {compB} px");
-
-	/// <summary>
-	/// A MAIOR FRESTA DE CADA LADO, em pixel, medida NA FOTO -- e nao na conta.
-	///
-	/// Anda no EIXO DO FEIXE (que pode ser diagonal) da cabeca ate a mao e conta a maior corrida de
-	/// passos em que a faixa inteira e fundo. Faixa e nao um ponto so: o corpo do `Beam3` tem oito
-	/// pixels de largura e uma sonda de um pixel erraria o desenho e chamaria o raio inteiro de fresta.
-	/// </summary>
-	private void MedirAFrestaDosDois(string nome)
-	{
-		Image? img = Foto(nome);
-		if (img == null) { _t = 99; return; }
-
-		MedirUmRaio(img, _a!, _maoA, _rotuloA);
-		MedirUmRaio(img, _b!, _maoB, _rotuloB);
-	}
-
-	private void MedirUmRaio(Image img, ProjetilDesenhado no, Vector2 mao, string rotulo)
-	{
-		Vector2 cabeca = no.Position;
-		if ((mao - cabeca).Length() < 1f) { Nota($"{rotulo}: rastro de zero -- nada a medir"); return; }
-
-		Fresta faixa = Varrer(img, cabeca, mao, MeiaFaixa);
-		Fresta centro = Varrer(img, cabeca, mao, MeiaLinha);
-
-		Nota($"{rotulo}: maior fresta {faixa.Maior} px, a {faixa.Onde} px da cabeca "
-			 + $"-- na LINHA CENTRAL {centro.Maior} px de corrida, {centro.Total} px de fundo no total");
-		Ok($"{rotulo}: o corpo do raio nao tem fresta ({faixa.Maior} px medidos na foto)", faixa.Maior == 0);
-		Ok($"{rotulo}: a LINHA CENTRAL nao tem um so pixel de fundo entre o punho e a ponta "
-		   + $"({centro.Total} px)", centro.Total == 0);
+		// O CONTROLE E O PAR DA BOLA RACIAL, e nao o da Paralysis: a faisca e sorteada de novo dez vezes
+		// por segundo e cada material tem a sua semente, entao duas Paralysis nunca tem a mesma
+		// silhueta -- e isso e o estilo, nao ruido da medida.
+		float ctrlSilhueta = Silhueta(racial, racialB), ctrlPaleta = Paleta(racial, racialB);
+		float silhueta = Silhueta(racial, paralisia), paleta = Paleta(racial, paralisia);
+		Nota($"racial x racial: silhueta {ctrlSilhueta:0.000}, paleta {ctrlPaleta:0.000}   "
+			 + $"Paralysis x Paralysis: silhueta {Silhueta(paralisia, paralisiaB):0.000}, paleta {Paleta(paralisia, paralisiaB):0.000}");
+		Nota($"racial x Paralysis: silhueta {silhueta:0.000}, paleta {paleta:0.000}");
+		Ok($"CONTROLE: a mesma bola, duas vezes, fica abaixo dos dois pisos (silhueta {ctrlSilhueta:0.000}, paleta {ctrlPaleta:0.000})",
+		   ctrlSilhueta < PisoDaSilhueta && ctrlPaleta < PisoDaPaleta);
+		Ok($"as duas bolas sao desenhos diferentes: silhueta {silhueta:0.000} e paleta {paleta:0.000}",
+		   Difere(silhueta, ctrlSilhueta, PisoDaSilhueta) && Difere(paleta, ctrlPaleta, PisoDaPaleta));
 	}
 
 	// =====================================================================
-	// A SONDA DE FRESTA
+	// A SONDA DE CONTINUIDADE
 	// =====================================================================
 	/// <summary>Meia largura da FAIXA: 20 px pra cada lado do eixo. Ver <see cref="Varrer"/>.</summary>
-	private const int MeiaFaixa = 20;
+	private const float MeiaFaixa = 20f;
 
 	/// <summary>
-	/// Meia largura da LINHA CENTRAL. Nao e zero, e nao pode ser: o eixo de um feixe diagonal cai
-	/// entre pixels, e uma sonda de largura zero leria o serrilhado da propria diagonal como buraco.
-	/// Dois pixels e menos de um terco do nucleo do `Beam3` (8 px), entao ela continua sendo uma sonda
-	/// do MIOLO -- ela nao alcanca a borda de coisa nenhuma.
+	/// Meia largura da LINHA CENTRAL. Nao e zero, e nao pode ser: o eixo de um feixe torto cai entre
+	/// pixels, e a geometria e arredondada pro pixel na hora de desenhar (`snap_2d_vertices_to_pixel`).
+	/// Dois pixels ficam bem dentro do tronco do `Beam3` (5 de meia espessura), que e o raio de todas as
+	/// familias de rumo e de comprimento: ali ela e uma sonda do MIOLO, que nao alcanca beirada nenhuma.
+	/// Nas artes mais finas (o Boom Wave pulsa ate 1,3 px) ela ainda exige tinta COLADA ao eixo.
 	/// </summary>
-	private const int MeiaLinha = 2;
+	private const float MeiaLinha = 2f;
 
-	/// <summary>Uma fresta medida: a maior corrida, o total de passos vazios e onde a pior comeca.</summary>
-	private readonly record struct Fresta(int Maior, int Total, int Onde);
+	/// <summary>Quanto a sonda comeca DEPOIS da mao, em px: a beirada da bola da boca e anti-serrilhada.</summary>
+	private const float MargemDaMao = 2f;
 
 	/// <summary>
-	/// ANDA NO EIXO DO FEIXE E CONTA O FUNDO -- da cabeca ate a mao, um passo de 1 px por vez.
+	/// QUANTO A SONDA PARA ANTES DA PONTA DA REGRA. Dois pixels pra beirada anti-serrilhada -- e mais
+	/// um quinto do raio da cabeca nas artes de COROA (so o Static Beam): a cabeca dele e um estouro de
+	/// espinhos que pisca, e o espinho do eixo tem de 0,83 a 1,35 raios (`FeixeDeKi.gdshader`). No
+	/// quadro em que ele sai curto, a tinta acaba 2,6 px antes da ponta -- e isso e o estilo, nao um
+	/// buraco. A familia 6 mede essa ponta com a folga declarada.
+	/// </summary>
+	private static float MargemDaPonta(TiroNoPalco t)
+	{
+		ArteDeKiNoCliente.EstiloDeFeixe e = ArteDeKiNoCliente.EstiloDoFeixe(t.Arte);
+		return 2f + 0.2f * e.Cabeca * e.Coroa * t.Escala;
+	}
+
+	/// <summary>Uma fresta medida: a maior corrida, o total de passos vazios, onde a pior comeca e quantas amostras cairam fora da foto.</summary>
+	private readonly record struct Fresta(int Maior, int Total, int Onde, int Fora);
+
+	/// <summary>
+	/// ANDA NO EIXO DO FEIXE E CONTA O FUNDO -- de `de` ate `ate`, um pixel de foto por passo.
 	///
 	/// ============================ DUAS LARGURAS, PORQUE SAO DUAS PERGUNTAS ============================
 	/// Com <see cref="MeiaFaixa"/> a pergunta e *"o raio se interrompe?"*: 20 px pra cada lado cobrem o
-	/// corpo do `Beam3` inteiro e a cabeca, entao um passo sem tinta nenhuma na faixa e um pedaco do
-	/// trem que faltou -- e literalmente o buraco que o dono fotografou.
+	/// corpo de um raio comum inteiro, entao um passo sem tinta nenhuma na faixa e um pedaco que faltou
+	/// -- e literalmente o buraco que o dono fotografou.
 	///
 	/// Com <see cref="MeiaLinha"/> a pergunta e a que o dono fez com essas palavras: *"varra a linha
 	/// central do feixe e conte pixels transparentes entre o punho e a ponta"*. E a mais dura das duas,
-	/// e ela pega uma coisa que a faixa nao pega: um trem que fecha pelas BORDAS da arte (duas pontas
-	/// tocando de canto) e continua com o miolo furado. A faixa acharia tinta e diria que esta inteiro.
+	/// e ela pega o que a faixa nao pega: um feixe que SAI do proprio eixo (o `SemGirar`) continua com
+	/// tinta por perto durante dezenas de pixels -- e ja nao tem miolo nenhum onde devia.
 	/// ==============================================================================================
 	///
 	/// O `Total` existe pelo mesmo motivo que a `Maior`: um raio com dez furos de 1 px nao tem "maior
 	/// fresta" nenhuma que impressione, e ainda assim esta picotado dez vezes.
 	/// </summary>
-	private static Fresta Varrer(Image img, Vector2 cabeca, Vector2 mao, int meia)
+	private static Fresta Varrer(Chapa c, Vector2 de, Vector2 ate, float meia)
 	{
-		Vector2 d = mao - cabeca;
+		Vector2 a = c.DoMundo * de, b = c.DoMundo * ate;
+		Vector2 d = b - a;
 		float comp = d.Length();
-		if (comp < 1f) return new Fresta(0, 0, 0);
+		if (comp < 1f) return new Fresta(0, 0, 0, 0);
 
 		Vector2 u = d / comp;
 		var perp = new Vector2(-u.Y, u.X);
+		int m = Mathf.RoundToInt(meia * c.PxPorMundo);
 
-		int maior = 0, corrida = 0, ondeMaior = 0, total = 0;
+		int maior = 0, corrida = 0, ondeMaior = 0, total = 0, fora = 0;
 		for (int s = 0; s <= (int)comp; s++)
 		{
 			bool temTinta = false;
-			for (int t = -meia; t <= meia && !temTinta; t++)
+			for (int l = -m; l <= m && !temTinta; l++)
 			{
-				Vector2 p = cabeca + u * s + perp * t;
-				int px = Mathf.RoundToInt(p.X), py = Mathf.RoundToInt(p.Y);
-				if (px < 0 || px >= img.GetWidth() || py < 0 || py >= img.GetHeight()) continue;
-				Color c = img.GetPixel(px, py);
-				if (!(c.G > 0.9f && c.R < 0.1f && c.B < 0.1f)) temTinta = true;
+				Vector2 p = a + u * s + perp * l;
+				int px = Mathf.FloorToInt(p.X), py = Mathf.FloorToInt(p.Y);
+				if (!c.Dentro(px, py)) { fora++; continue; }
+				if (c.Tinta(px, py)) temTinta = true;
 			}
 			if (temTinta) { corrida = 0; continue; }
 
@@ -942,608 +1592,838 @@ public partial class RoboDeArteDeKi : Node2D
 			if (++corrida > maior) { maior = corrida; ondeMaior = s - corrida + 1; }
 		}
 
-		return new Fresta(maior, total, ondeMaior);
+		return new Fresta(maior, total, ondeMaior, fora);
 	}
 
-	// =====================================================================
-	// FAMILIA 4d -- TODOS OS COMPRIMENTOS, E O CUSTO
-	// =====================================================================
-	/// <summary>
-	/// A FOTO MOSTRA SEIS COMPRIMENTOS; ESTA VARRE TODOS -- e as duas medem a mesma coisa por dois
-	/// caminhos, que e o unico jeito de uma delas poder estar errada e alguem notar.
-	///
-	/// A regra que a foto mede em pixel ("nao ha faixa de fundo dentro do rastro") e a mesma que aqui
-	/// vira geometria: nenhuma junta do trem pode ser maior que o alcance medido da arte. Se ela vale
-	/// pra todo comprimento de 2 a 1600 px, nas 8 direcoes, em tres folhas e duas escalas, entao a
-	/// fresta nao depende do comprimento -- que era exatamente a lei do defeito.
-	/// </summary>
-	private void VarrerTodosOsComprimentos()
+	/// <summary>As duas sondas num tiro do palco, DA MAO ATE A PONTA que a regra manda.</summary>
+	private static (Fresta Faixa, Fresta Centro) Sondar(Chapa c, TiroNoPalco t)
 	{
-		_linhas.Add("=== FAMILIA 4d: a continuidade em TODO comprimento, e o custo ===");
+		Vector2 de = t.Mao + t.Rumo * MargemDaMao, ate = t.Ponta - t.Rumo * MargemDaPonta(t);
+		return (Varrer(c, de, ate, MeiaFaixa), Varrer(c, de, ate, MeiaLinha));
+	}
 
-		ArteDeKi[] folhas = [ArteDeKi.Beam3, ArteDeKi.Beam4, ArteDeKi.BeamBigFire];
-		float[] escalas = [1f, 4f];
+	/// <summary>
+	/// EM QUANTOS PEDACOS A TINTA DA FOTO ESTA: as ilhas de pixels de tinta que se tocam (de lado ou
+	/// de quina).
+	///
+	/// ============================ A SEGUNDA REGUA, E ELA NAO SABE ONDE O RAIO DEVIA ESTAR ============================
+	/// A sonda do eixo pergunta *"ha tinta ONDE a regra manda?"*, e pra isso precisa da regra: de onde
+	/// a mao sai, onde a ponta cai. Esta pergunta outra coisa -- *"a tinta e UMA PECA so?"* -- e nao
+	/// precisa de nada: um raio inteiro e uma ilha, em qualquer rumo, reto ou CURVO; um raio picotado
+	/// sao varias. As duas juntas separam os dois defeitos que a familia 5d injeta: o `Picotado` parte
+	/// a ilha (e fura o eixo), o `SemGirar` tira o raio do eixo sem parti-lo.
+	///
+	/// E e a unica medida desta bancada que alcanca a CURVA (*"poder ate dar curva"*, pediu o dono):
+	/// o `SemGirar` tira a mao do eixo, com a mao fora do eixo o desenho de producao sai pelo
+	/// `PintorDeKi.FitaCurva`, e uma fita curva mal emendada abriria justamente em ilhas.
+	/// ================================================================================================================
+	/// </summary>
+	private static int ContarIlhas(Chapa c)
+	{
+		int w = c.Largura, h = c.Altura;
+		var vista = new bool[w * h];
+		var pilha = new Stack<int>();
+		int ilhas = 0;
 
-		int casos = 0, frouxas = 0, passoMudou = 0, naoFecha = 0, teto = 0;
-		float maiorSobra = 0f, sobra = 0f;
-		string ondeMaiorSobra = "";
-
-		foreach (ArteDeKi arte in folhas)
-		{
-			SpriteFrames? f = ArteDeKiNoCliente.Folha(arte);
-			if (f == null) { Nota($"{arte}: nao carregou -- fora da varredura"); continue; }
-
-			foreach (Vec2 rumo in OitoRumos)
+		for (int y = 0; y < h; y++)
+			for (int x = 0; x < w; x++)
 			{
-				string dir = ProjetilDesenhado.SufixoDeDirecao(f, rumo);
-				string? aC = ProjetilDesenhado.NomeDaAnimacao(f, "head", dir);
-				string? aT = ProjetilDesenhado.NomeDaAnimacao(f, "tail", dir);
-				string? aM = ProjetilDesenhado.NomeDaAnimacao(f, "origin", dir)
-							 ?? ProjetilDesenhado.NomeDaAnimacao(f, "end", dir) ?? aT;
-				if (aC == null || aT == null) { Nota($"{arte}/{dir}: SEM `head` ou `tail`"); continue; }
+				if (vista[y * w + x] || !c.Tinta(x, y)) continue;
 
-				// `paraTras` e o vetor da cabeca pra a mao -- o contrario de pra onde o tiro voa.
-				var paraTras = new Vector2(-rumo.X, -rumo.Y);
-
-				foreach (float esc in escalas)
+				ilhas++;
+				vista[y * w + x] = true;
+				pilha.Push(y * w + x);
+				while (pilha.Count > 0)
 				{
-					ProjetilDesenhado.MedidaDoTrem m =
-						ProjetilDesenhado.MedirTrem(f, paraTras, esc, aC, aT, aM);
-
-					for (int comp = 2; comp <= 1600; comp++)
-					{
-						casos++;
-						ProjetilDesenhado.TremDoRaio t =
-							ProjetilDesenhado.MontarTrem(comp, m.Passo, m.SemCorpo);
-
-						// A conta das juntas do trem: cabeca -> corpos -> mao.
-						float ultimoCorpo = t.Corpos * t.Passo;
-						float vaoDaMao = comp - ultimoCorpo;
-						bool noTeto = t.Corpos >= 96;
-
-						// 1) NENHUMA JUNTA MAIOR QUE O ALCANCE DA ARTE -- e a fresta, em geometria.
-						//    Sao tres: a da cabeca (o primeiro passo), as do meio (o passo) e a da mao.
-						if (t.Passo > m.Passo + 0.01f || vaoDaMao > m.Passo + 0.01f
-							|| (t.Corpos == 0 && comp > m.SemCorpo + 0.01f))
+					int p = pilha.Pop();
+					for (int dy = -1; dy <= 1; dy++)
+						for (int dx = -1; dx <= 1; dx++)
 						{
-							if (noTeto) teto++;   // o teto mordeu: e a troca declarada
-							else frouxas++;
+							int nx = p % w + dx, ny = p / w + dy;
+							if (nx < 0 || ny < 0 || nx >= w || ny >= h || vista[ny * w + nx] || !c.Tinta(nx, ny)) continue;
+							vista[ny * w + nx] = true;
+							pilha.Push(ny * w + nx);
 						}
-
-						// 2) O VAO DA MAO E O QUE SOBRA DA GRADE, e ele nunca pode ser negativo (corpo
-						//    passando da mao) nem chegar a um passo inteiro (era ai que morava a fresta).
-						if (vaoDaMao < -0.01f || (t.Corpos > 0 && vaoDaMao > t.Passo + 0.01f)) naoFecha++;
-
-						// 3) O PASSO NAO DEPENDE DO COMPRIMENTO -- e a propriedade que impede o corpo
-						//    do raio de escorregar enquanto ele cresce. So o trem de um corpo so (o raio
-						//    curto) usa outro passo, e por isso ele esta de fora.
-						if (t.Corpos > 1 && Mathf.Abs(t.Passo - m.Passo) > 0.01f) passoMudou++;
-
-						if (!noTeto && vaoDaMao > maiorSobra)
-						{
-							maiorSobra = vaoDaMao;
-							ondeMaiorSobra = $"{arte}/{dir} escala {esc}, {comp} px";
-						}
-						if (noTeto && sobra < 1f) sobra = comp;
-					}
 				}
 			}
-		}
-
-		Ok($"nenhuma junta passa do alcance da arte em {casos} comprimentos ({frouxas} frouxas)",
-		   frouxas == 0 && casos > 10000);
-		Ok($"o vao da mao e sempre menor que um passo ({naoFecha} fora da regra)", naoFecha == 0);
-		Ok($"o passo NAO depende do comprimento ({passoMudou} casos em que ele mudou)", passoMudou == 0);
-		Nota($"o maior vao que sobrou pra a mao foi {maiorSobra:0.0} px ({ondeMaiorSobra})");
-		Nota(teto == 0
-			 ? "o teto de 96 pedacos nunca mordeu ate 1600 px (50 tiles)"
-			 : $"o teto de 96 pedacos morde a partir de {sobra:0} px, em {teto} casos");
+		return ilhas;
 	}
 
-	/// <summary>Os oito rumos do BYOND, em vetor -- as diagonais e que fazem o passo mudar.</summary>
-	private static readonly Vec2[] OitoRumos =
-	[
-		new(0, 1), new(0, -1), new(1, 0), new(-1, 0),
-		new(0.7071f, 0.7071f), new(-0.7071f, 0.7071f),
-		new(0.7071f, -0.7071f), new(-0.7071f, -0.7071f),
-	];
+	/// <summary>
+	/// FOTOGRAFA O PALCO E EXIGE QUE TODO RAIO DELE ESTEJA INTEIRO: nenhuma fresta na faixa, nem um
+	/// pixel de fundo na linha central, e uma ilha de tinta por raio.
+	/// </summary>
+	/// <param name="umPorUm">
+	/// Dois ou tres feixes que sao cada um a sua cena (a foto do dono) ganham duas conferencias cada;
+	/// uma duzia que sao a mesma cena variada ganha duas pro conjunto, com o pior nomeado.
+	/// </param>
+	/// <param name="contarIlhas">Falso so na foto das 24 artes -- ver o passo dela no roteiro.</param>
+	private void MedirAContinuidade(string nome, string titulo, bool umPorUm, bool contarIlhas = true)
+	{
+		Chapa? c = Foto(nome);
+		if (c == null) return;
 
-	/// <summary>O nome de cada um dos <see cref="OitoRumos"/>, na mesma ordem -- pra a foto ser lida.</summary>
-	private static readonly string[] NomesDosOito =
-	[
-		"sul", "norte", "leste", "oeste", "sudeste", "sudoeste", "nordeste", "noroeste",
-	];
+		int pior = 0, piorCentro = 0, fora = 0;
+		string ondePior = "", ondePiorCentro = "";
+		var partes = new List<string>();
+
+		foreach (TiroNoPalco t in _palco)
+		{
+			(Fresta faixa, Fresta centro) = Sondar(c, t);
+			fora += centro.Fora;
+			partes.Add($"{t.Rotulo} {faixa.Maior}/{centro.Total}");
+			if (faixa.Maior > pior) { pior = faixa.Maior; ondePior = $"{t.Rotulo}, a {faixa.Onde} px da mao"; }
+			if (centro.Total > piorCentro) { piorCentro = centro.Total; ondePiorCentro = t.Rotulo; }
+
+			if (!umPorUm) continue;
+			Ok($"{t.Rotulo}: o raio nao tem fresta ({faixa.Maior} px medidos na foto)", faixa.Maior == 0);
+			Ok($"{t.Rotulo}: a LINHA CENTRAL nao tem um so pixel de fundo entre a mao e a ponta ({centro.Total} px)",
+			   centro.Total == 0);
+		}
+
+		if (fora > 0) Nota($"ATENCAO: {fora} amostras da linha central cairam FORA da foto, e contam como fundo");
+
+		if (!umPorUm)
+		{
+			Nota($"{titulo}: fresta na faixa / fundo na linha central, em px -- " + string.Join("   ", partes));
+			Ok($"{titulo}: nenhum tem fresta no corpo" + (pior > 0 ? $" (pior: {pior} px em {ondePior})" : ""), pior == 0);
+			Ok($"{titulo}: nenhum tem pixel de fundo na LINHA CENTRAL"
+			   + (piorCentro > 0 ? $" (pior: {piorCentro} px em {ondePiorCentro})" : ""), piorCentro == 0);
+		}
+
+		int ilhas = ContarIlhas(c);
+		if (contarIlhas) Ok($"a tinta da foto esta em {ilhas} pecas -- uma por raio ({_palco.Count})", ilhas == _palco.Count);
+		else Nota($"a tinta da foto esta em {ilhas} pecas pra {_palco.Count} raios (nao cobrado: ha enfeite solto)");
+	}
+
+	// =====================================================================
+	// FAMILIA 4 -- TODO COMPRIMENTO
+	// =====================================================================
+	/// <summary>
+	/// DOZE DISTANCIAS DA BOCA A CABECA, em px. Tortas de proposito: 205 e 249 sao as que mediram 13 e
+	/// 25 px de fresta no trem de folhas, 2 e o primeiro pacote, 24 e 44 sao o raio saindo, e nenhuma e
+	/// multiplo de 32 -- era nos multiplos exatos do ladrilho que o defeito antigo se escondia.
+	/// </summary>
+	private static readonly float[] Comprimentos = [2, 7, 13, 24, 44, 77, 131, 205, 249, 337, 480, 610];
+
+	/// <summary>Dezessete graus: nem cardeal nem diagonal. Nenhuma folha do BYOND tinha este rumo.</summary>
+	private const float AnguloDaEscada = 17f;
+
+	/// <summary>Os doze como uma ESCADA de raios paralelos, do mais curto em cima ao mais longo embaixo.</summary>
+	private void PorOsComprimentos()
+	{
+		LimparOPalco();
+		Vector2 t = Tela, u = Rumo(AnguloDaEscada);
+
+		// O DEGRAU sai da janela: o ultimo raio desce `maior * sen` abaixo da propria boca, e tem que
+		// caber. Com 720 de altura da 40 px -- 38 de eixo a eixo, e a faixa da sonda (20) nao alcanca a
+		// tinta do vizinho.
+		float degrau = MathF.Floor((t.Y - 100f - Comprimentos[^1] * u.Y) / (Comprimentos.Length - 1));
+		for (int i = 0; i < Comprimentos.Length; i++)
+		{
+			var cauda = new Vector2(MathF.Floor(t.X * 0.06f), 40f + degrau * i);
+			NovoRaio(ArteDeKi.Beam3, 1f, cauda + u * Comprimentos[i], cauda, Vermelho, $"{Comprimentos[i]:0}");
+		}
+		Assentar();
+	}
+
+	// =====================================================================
+	// FAMILIA 4b -- TODAS AS ARTES
+	// =====================================================================
+	/// <summary>Trinta e tres graus: outro rumo que so existe porque a fita gira.</summary>
+	private const float AnguloDasArtes = 33f;
+
+	private void PorTodasAsArtesNaDiagonal()
+	{
+		LimparOPalco();
+
+		ArteDeKi[] artes = [.. ArteDeProjetil.PermitidasPara(TipoDeProjetil.Beam)];
+		const int Colunas = 6;
+		int linhas = (artes.Length + Colunas - 1) / Colunas;
+		Vector2 t = Tela, u = Rumo(AnguloDasArtes);
+		float cw = t.X / Colunas, ch = t.Y / linhas;
+		float atras = MeiaCelula * (MathF.Abs(u.X) + MathF.Abs(u.Y));
+
+		// CEM PIXELS DA BOCA A CABECA, pra todas: e o tronco que se quer ver, e ele e o mesmo em todas.
+		// O que muda de arte pra arte e a frente da cabeca, e por isso o raio e centrado pelo meio do
+		// DESENHO (da mao a ponta), nao pelo meio do tronco.
+		const float Tronco = 100f;
+
+		for (int i = 0; i < artes.Length; i++)
+		{
+			var centro = new Vector2(cw * (i % Colunas) + cw * 0.5f, ch * (i / Colunas) + ch * 0.5f);
+			float total = atras + Tronco + ArteDeProjetil.FrenteDaCabeca(artes[i]);
+			Vector2 cauda = centro - u * (total * 0.5f) + u * atras;
+			NovoRaio(artes[i], 1f, cauda + u * Tronco, cauda, Vermelho, artes[i].ToString());
+		}
+		Assentar();
+	}
 
 	// =====================================================================
 	// FAMILIA 5 -- A FOTO DO DONO, REPRODUZIDA
 	// =====================================================================
 	/// <summary>
 	/// ============================ POR QUE ELA EXISTE DEPOIS DA 4 ============================
-	/// A familia 4 mede a fresta em raios de 190 a 253 px -- de seis a oito tiles. O dono fotografou
-	/// **um feixe atravessando o mapa**: corpo no canto de cima e o raio descendo a tela inteira. Sao
-	/// trinta tiles, e trinta tiles nao sao "o mesmo teste com outro numero": e onde o teto de pedacos
-	/// mora, onde a interpolacao tem mais caminho pra escorregar, e onde um erro de meio pixel por
-	/// junta vira meio raio de deriva.
+	/// A familia 4 mede ate 610 px -- dezenove tiles. O dono fotografou **um feixe atravessando o
+	/// mapa**: corpo no canto de cima e o raio descendo a tela inteira, e no trailer foi a DIAGONAL que
+	/// ele chamou de torta. Um feixe de tela inteira nao e "o mesmo teste com outro numero": e onde um
+	/// erro de meio pixel por trecho vira meio raio de deriva, e onde uma fita torta sai do proprio eixo.
 	///
-	/// Entao esta familia repete a foto DELE, e nas duas leituras: o feixe vertical descendo e o
+	/// Entao esta familia repete a foto DELE, nas duas leituras: o feixe vertical descendo e o
 	/// DIAGONAL do print (o corpo em cima a direita, o raio descendo pra a esquerda). O comprimento sai
 	/// da janela e nao de um numero cravado -- ver <see cref="Tela"/>.
 	/// ====================================================================================
 	/// </summary>
 	private void PorAFotoDoDono()
 	{
+		LimparOPalco();
 		Vector2 t = Tela;
 
-		// O VERTICAL: mao la em cima, cabeca embaixo -- o raio DESCE, como no print.
-		var maoV = new Vector2(t.X * 0.16f, t.Y * 0.06f);
-		var cabV = new Vector2(t.X * 0.16f, t.Y * 0.95f);
+		// O VERTICAL: a boca la em cima, a cabeca embaixo -- o raio DESCE, como no print.
+		var caudaV = new Vector2(MathF.Floor(t.X * 0.16f), MathF.Floor(t.Y * 0.08f));
+		var cabV = new Vector2(caudaV.X, MathF.Floor(t.Y * 0.93f));
 
-		// O DIAGONAL DO PRINT: a mao no canto superior direito, o feixe descendo pra o sudoeste. O
+		// O DIAGONAL DO PRINT: a boca no canto superior direito, o feixe descendo pra o sudoeste. O
 		// comprimento e o maior que cabe sem encostar no vertical nem sair da tela.
 		const float Meio = 0.70710678f;
-		var maoD = new Vector2(t.X * 0.95f, t.Y * 0.05f);
-		float compD = MathF.Floor(MathF.Min((maoD.X - t.X * 0.36f) / Meio, (t.Y * 0.95f - maoD.Y) / Meio));
-		Vector2 cabD = maoD + new Vector2(-Meio, Meio) * compD;
+		var caudaD = new Vector2(MathF.Floor(t.X * 0.94f), MathF.Floor(t.Y * 0.07f));
+		float compD = MathF.Floor(MathF.Min((caudaD.X - t.X * 0.36f) / Meio, (t.Y * 0.93f - caudaD.Y) / Meio));
+		Vector2 cabD = caudaD + new Vector2(-Meio, Meio) * compD;
 
-		PorOsDoisLivres(ArteDeKi.Beam3, 1f, cabV, maoV,
-						$"A FOTO DO DONO -- vertical descendo, {cabV.Y - maoV.Y:0} px "
-						+ $"({(cabV.Y - maoV.Y) / 32f:0.0} tiles)",
-						ArteDeKi.Beam3, 1f, cabD, maoD,
-						$"A FOTO DO DONO -- diagonal do print (sudoeste), {compD:0} px "
-						+ $"({compD / 32f:0.0} tiles)");
+		NovoRaio(ArteDeKi.Beam3, 1f, cabV, caudaV, Vermelho,
+				 $"A FOTO DO DONO -- vertical descendo, {cabV.Y - caudaV.Y:0} px ({(cabV.Y - caudaV.Y) / 32f:0.0} tiles)");
+		NovoRaio(ArteDeKi.Beam3, 1f, cabD, caudaD, Vermelho,
+				 $"A FOTO DO DONO -- diagonal do print (sudoeste), {compD:0} px ({compD / 32f:0.0} tiles)");
+		Assentar();
 	}
 
 	// =====================================================================
-	// FAMILIA 5b -- OS OITO RUMOS NA MESMA FOTO
+	// FAMILIA 5a -- LONGOS, FORA DOS OITO RUMOS
 	// =====================================================================
-	/// <summary>Os oito raios da grade, e onde a mao de cada um ficou.</summary>
-	private readonly List<(ProjetilDesenhado No, Vector2 Mao, string Rotulo)> _oito = [];
+	/// <summary>Os tres angulos que nao sao multiplo de 45 nem de 22,5: aqui nao ha folha que sirva de muleta.</summary>
+	private static readonly float[] AngulosTortos = [17f, 33f, 61f];
 
 	/// <summary>
-	/// OS OITO RUMOS, UM EM CADA CELULA DE UMA GRADE 4x2.
+	/// Tres feixes em LEQUE, saindo da beirada esquerda e indo ate onde a tela deixa (37, 30 e 16 tiles
+	/// na janela de 1280x720). Em leque e nao em estrela: as bocas ficam um decimo da altura uma abaixo
+	/// da outra e os feixes so se afastam, entao a faixa da sonda de um nunca encosta na tinta do outro.
+	/// </summary>
+	private void PorOsLongosTortos()
+	{
+		LimparOPalco();
+		Vector2 t = Tela;
+		float frente = ArteDeProjetil.FrenteDaCabeca(ArteDeKi.Beam3);
+
+		for (int i = 0; i < AngulosTortos.Length; i++)
+		{
+			Vector2 u = Rumo(AngulosTortos[i]);
+			var cauda = new Vector2(MathF.Floor(t.X * 0.06f), MathF.Floor(t.Y * (0.08f + 0.10f * i)));
+			float comp = MathF.Floor(MathF.Min((t.X * 0.95f - cauda.X) / u.X, (t.Y * 0.93f - cauda.Y) / u.Y)) - frente;
+			NovoRaio(ArteDeKi.Beam3, 1f, cauda + u * comp, cauda, Vermelho,
+					 $"{AngulosTortos[i]:0} graus, {comp:0} px ({comp / 32f:0.0} tiles)");
+		}
+		Assentar();
+	}
+
+	// =====================================================================
+	// FAMILIA 5b -- OS RUMOS NA MESMA FOTO
+	// =====================================================================
+	/// <summary>
+	/// OS DEZENOVE RUMOS: os dezesseis da rosa (de 22,5 em 22,5 graus) e mais tres que nao sao multiplo
+	/// de coisa nenhuma. No sentido da tela -- 0 e leste, 90 e SUL.
+	///
+	/// O trem de folhas tinha arte pra oito (ou quatro) e nenhuma girava; fora delas cada carimbo
+	/// escorregava de lado. A fita nao escolhe direcao -- ela gira --, e e por isso que a pergunta
+	/// vale ser feita em rumos que folha nenhuma teve.
+	/// </summary>
+	private static readonly (float Graus, string Nome)[] Rumos =
+	[
+		(0f, "leste"), (22.5f, "22,5"), (45f, "sudeste"), (67.5f, "67,5"),
+		(90f, "sul"), (112.5f, "112,5"), (135f, "sudoeste"), (157.5f, "157,5"),
+		(180f, "oeste"), (202.5f, "202,5"), (225f, "noroeste"), (247.5f, "247,5"),
+		(270f, "norte"), (292.5f, "292,5"), (315f, "nordeste"), (337.5f, "337,5"),
+		(17f, "17"), (33f, "33"), (61f, "61"),
+	];
+
+	private static bool EhCardeal(float graus) => graus % 90f == 0f;
+
+	private const int ColunasDosRumos = 5, LinhasDosRumos = 4;
+
+	/// <summary>
+	/// O TAMANHO DO RAIO LONGO DA GRADE, da mao a ponta, tirado da janela -- e torto de proposito: o
+	/// `- 3` no fim garante que ele nao e multiplo de 32 em tamanho nenhum de janela.
+	/// </summary>
+	private float TotalDaGrade() =>
+		MathF.Floor(MathF.Min(Tela.X / ColunasDosRumos, Tela.Y / LinhasDosRumos) * 0.78f) - 3f;
+
+	/// <summary>
+	/// UM RAIO EM CADA CELULA DE UMA GRADE 5x4, cada um num rumo.
 	///
 	/// ============================ POR QUE EM CELULAS SEPARADAS, E NAO EM ESTRELA ============================
-	/// O desenho obvio seria uma estrela: oito feixes saindo do mesmo punho. Ele ficaria bonito e
-	/// mediria MENOS: a fresta deste defeito nascia colada na MAO, e numa estrela e justamente ali que
-	/// os oito se cruzam -- a tinta de um tapa o buraco do vizinho e a sonda acha o raio inteiro. Uma
-	/// foto que so pode dar verde nao e uma medida.
+	/// O desenho obvio seria uma estrela: dezenove feixes saindo do mesmo punho. Ele ficaria bonito e
+	/// mediria MENOS: perto da mao os feixes se cruzam, a tinta de um tapa o buraco do vizinho e a
+	/// sonda acha o raio inteiro. Uma foto que so pode dar verde nao e uma medida.
 	///
 	/// Em celulas separadas cada raio esta sozinho com o fundo, e a sonda so pode achar a tinta DELE.
 	/// ====================================================================================================
-	///
-	/// AS DIAGONAIS SAO A METADE QUE IMPORTA: la o passo do tile e 45,25 px e a arte da `Beam3` so pinta
-	/// 34, e um passo tirado do tile abriria 11 px em CADA junta. Nenhuma foto vertical mostraria isso.
 	/// </summary>
-	private void PorOsOitoRumos(float comp)
+	/// <param name="daBocaACabeca">A distancia da boca a cabeca, em px. Zero = o maior que cabe na celula.</param>
+	private void PorOsRumos(float daBocaACabeca)
 	{
 		LimparOPalco();
 
 		Vector2 t = Tela;
-		float cw = t.X / 4f, ch = t.Y / 2f;
+		float cw = t.X / ColunasDosRumos, ch = t.Y / LinhasDosRumos;
+		float frente = ArteDeProjetil.FrenteDaCabeca(ArteDeKi.Beam3);
 
-		for (int i = 0; i < OitoRumos.Length; i++)
+		for (int i = 0; i < Rumos.Length; i++)
 		{
-			Vec2 r = OitoRumos[i];
-			var u = new Vector2(r.X, r.Y).Normalized();
-			var centro = new Vector2(cw * (i % 4) + cw * 0.5f, ch * (i / 4) + ch * 0.5f);
+			Vector2 u = Rumo(Rumos[i].Graus);
+			var centro = new Vector2(cw * (i % ColunasDosRumos) + cw * 0.5f, ch * (i / ColunasDosRumos) + ch * 0.5f);
+			float atras = MeiaCelula * (MathF.Abs(u.X) + MathF.Abs(u.Y));
+			float total = daBocaACabeca > 0f ? atras + daBocaACabeca + frente : TotalDaGrade();
 
-			// CENTRADO NA CELULA: assim a celula inteira e a margem, e o mesmo comprimento serve pros
-			// oito rumos sem um deles vazar pro vizinho.
-			Vector2 mao = centro - u * (comp * 0.5f);
-			Vector2 cabeca = centro + u * (comp * 0.5f);
-
-			_oito.Add((NovoRaio(ArteDeKi.Beam3, 1f, cabeca, mao), mao, NomesDosOito[i]));
+			// CENTRADO NA CELULA pelo meio do DESENHO: assim a celula inteira e a margem, e o mesmo
+			// tamanho serve pros dezenove rumos sem um deles vazar pro vizinho.
+			Vector2 cauda = centro - u * (total * 0.5f) + u * atras;
+			Vector2 cabeca = centro + u * (total * 0.5f - frente);
+			NovoRaio(ArteDeKi.Beam3, 1f, cabeca, cauda, Vermelho, Rumos[i].Nome);
 		}
+		Assentar();
 	}
 
-	/// <summary>
-	/// O COMPRIMENTO DA GRADE, tirado da janela -- e de proposito NAO um multiplo de 32.
-	///
-	/// O comprimento que a familia 3 desenhava era `32 * 6`, um multiplo exato do ladrilho: o caso em
-	/// que o ultimo corpo encosta na mao por ACASO. E por isso que ela nunca poderia ter pego o defeito
-	/// do dono. Aqui o numero e torto de proposito, e o `- 3` no fim e o que garante isso em qualquer
-	/// tamanho de janela.
-	/// </summary>
-	private float CompDaGrade() => MathF.Floor(MathF.Min(Tela.X / 4f, Tela.Y / 2f) * 0.78f) - 3f;
-
-	private void MedirOsOito(string nome, string titulo)
+	/// <summary>O que as duas reguas TEM que achar nos dezenove rumos. Ver a familia 5d.</summary>
+	private enum Esperado
 	{
-		Image? img = Foto(nome);
-		if (img == null) { _t = 99; return; }
+		/// <summary>Os dezenove inteiros: nem fresta, nem fundo no eixo, e uma ilha de tinta por raio.</summary>
+		Inteiro,
 
-		int pior = 0, piorCentro = 0;
-		string ondePior = "", ondePiorCentro = "";
+		/// <summary>Os dezenove furados e em pedacos: o `Picotado` corta a fita, em qualquer rumo.</summary>
+		TudoPicotado,
+
+		/// <summary>
+		/// So os QUATRO CARDEAIS no eixo: o `SemGirar` poe a mao no eixo cardeal mais proximo atras da
+		/// ponta, que pros quatro e a propria mao -- e pros outros quinze e outro lugar, e o raio deixa
+		/// o eixo dele. Mas NENHUM se parte: sao dezenove ilhas, como no raio certo.
+		/// </summary>
+		SoOsCardeais,
+	}
+
+	private void MedirOsRumos(string nome, string titulo, Esperado esperado)
+	{
+		Chapa? c = Foto(nome);
+		if (c == null) return;
+
 		var partes = new List<string>();
+		var comFresta = new List<string>();
+		var comFundoNoEixo = new List<string>();
+		var cardeaisRuins = new List<string>();
+		int pior = 0, piorCentro = 0, fora = 0, tortos = 0, tortosReprovados = 0;
 
-		foreach ((ProjetilDesenhado no, Vector2 mao, string rotulo) in _oito)
+		for (int i = 0; i < _palco.Count; i++)
 		{
-			Fresta faixa = Varrer(img, no.Position, mao, MeiaFaixa);
-			Fresta centro = Varrer(img, no.Position, mao, MeiaLinha);
-			partes.Add($"{rotulo} {faixa.Maior}/{centro.Total}");
+			TiroNoPalco t = _palco[i];
+			(Fresta faixa, Fresta centro) = Sondar(c, t);
+			fora += centro.Fora;
+			partes.Add($"{t.Rotulo} {faixa.Maior}/{centro.Total}");
 
-			if (faixa.Maior > pior) { pior = faixa.Maior; ondePior = rotulo; }
-			if (centro.Total > piorCentro) { piorCentro = centro.Total; ondePiorCentro = rotulo; }
+			if (faixa.Maior > 0) comFresta.Add(t.Rotulo);
+			if (centro.Total > 0) comFundoNoEixo.Add(t.Rotulo);
+			pior = Math.Max(pior, faixa.Maior);
+			piorCentro = Math.Max(piorCentro, centro.Total);
+
+			if (EhCardeal(Rumos[i].Graus))
+			{
+				if (faixa.Maior > 0 || centro.Total > 0) cardeaisRuins.Add(t.Rotulo);
+			}
+			else
+			{
+				tortos++;
+				if (faixa.Maior > 0 && centro.Total > 0) tortosReprovados++;
+			}
 		}
 
-		Nota($"{titulo}: por rumo, fresta na faixa / fundo na linha central, em px -- "
-			 + string.Join("   ", partes));
-		Ok($"{titulo}: nenhum dos 8 rumos tem fresta no corpo"
-		   + (pior > 0 ? $" (pior: {pior} px no {ondePior})" : ""), pior == 0);
-		Ok($"{titulo}: nenhum dos 8 tem pixel de fundo na LINHA CENTRAL"
-		   + (piorCentro > 0 ? $" (pior: {piorCentro} px no {ondePiorCentro})" : ""), piorCentro == 0);
+		int ilhas = ContarIlhas(c);
+		Nota($"{titulo}: por rumo, fresta na faixa / fundo na linha central, em px -- " + string.Join("   ", partes)
+			 + $"   -- {ilhas} ilhas de tinta na foto");
+		if (fora > 0) Nota($"ATENCAO: {fora} amostras da linha central cairam FORA da foto, e contam como fundo");
+
+		switch (esperado)
+		{
+			case Esperado.Inteiro:
+				Ok($"{titulo}: nenhum dos {_palco.Count} rumos tem fresta no corpo"
+				   + (pior > 0 ? $" (pior: {pior} px; com fresta: {string.Join(", ", comFresta)})" : ""), pior == 0);
+				Ok($"{titulo}: nenhum dos {_palco.Count} tem pixel de fundo na LINHA CENTRAL"
+				   + (piorCentro > 0 ? $" (pior: {piorCentro} px; furados: {string.Join(", ", comFundoNoEixo)})" : ""),
+				   piorCentro == 0);
+				Ok($"{titulo}: a tinta esta em {ilhas} pecas -- uma por raio", ilhas == _palco.Count);
+				break;
+
+			case Esperado.TudoPicotado:
+				Ok($"{titulo}: a sonda da FAIXA reprova os {_palco.Count} rumos ({comFresta.Count} com fresta)",
+				   comFresta.Count == _palco.Count);
+				Ok($"{titulo}: ...e a da LINHA CENTRAL tambem ({comFundoNoEixo.Count} furados)",
+				   comFundoNoEixo.Count == _palco.Count);
+				Ok($"{titulo}: ...e a tinta se partiu: {ilhas} pecas pra {_palco.Count} raios", ilhas >= _palco.Count * 2);
+				break;
+
+			case Esperado.SoOsCardeais:
+				Ok($"{titulo}: as duas sondas reprovam os {tortos} rumos que NAO sao cardeais ({tortosReprovados} reprovados)",
+				   tortos > 0 && tortosReprovados == tortos);
+				Ok($"{titulo}: ...e os 4 cardeais continuam no eixo -- o cardeal mais proximo deles e o proprio"
+				   + (cardeaisRuins.Count > 0 ? $" (reprovados: {string.Join(", ", cardeaisRuins)})" : ""),
+				   cardeaisRuins.Count == 0);
+
+				// O RAIO SAIU DO EIXO MAS NAO SE PARTIU, e isso separa este defeito do outro. Com a mao
+				// fora de lugar o desenho de producao faz a CURVA ate a ponta (`ProjetilDesenhado.Curva`),
+				// e uma curva inteira continua sendo uma ilha so: e o "poder ate dar curva" do dono, na foto.
+				Ok($"{titulo}: ...e nenhum se PARTIU: {ilhas} pecas pra {_palco.Count} raios -- torto, curvo, e inteiro",
+				   ilhas == _palco.Count);
+				break;
+		}
 	}
 
 	// =====================================================================
 	// FAMILIA 5c -- O FIO E O MURO
 	// =====================================================================
 	/// <summary>
-	/// AS DUAS TECNICAS QUE O DM POE NOS EXTREMOS, com a arte e a escala que o jogo manda de verdade:
+	/// AS DUAS TECNICAS QUE O DM POE NOS EXTREMOS, com a arte e a escala que o jogo manda de verdade, e
+	/// entre elas a mesma arte do fio na escala do muro:
 	///
-	///   **Onda de Ki** -- `Beam3.dmi` (`ArteDeKi.cs:263`), `wavemult` 1. O fio.
-	///   **Final Flash** -- `Beam - Big Fire.dmi` (`ArteDeKi.cs:284`), `wavemult` 4
-	///                      (`GameServer.Tecnicas.G5.cs`). O muro.
+	///   **Onda de Ki** -- `Beam3`, `wavemult` 1. O fio.
+	///   **o mesmo `Beam3` a 4x** -- pra a ESCALA responder sozinha, sem a arte ajudar.
+	///   **Final Flash** -- `Beam - Big Fire`, `wavemult` 4 (`GameServer.Tecnicas.G5.cs`). O muro.
 	///
-	/// ============================ A PERGUNTA E "A ESCALA MUDOU JUNTO?" ============================
-	/// No DM o `wavemult` entra em `A.transform *= wavemult` (`beams.dm:149`) -- ele engorda o SPRITE.
-	/// O espacamento do trem continua sendo um tile, porque la os segmentos sao objetos em tiles e
-	/// nenhuma matriz de escala muda em que tile um objeto esta. **E por isso que o Final Flash e um
-	/// muro e nao um trem esparramado.**
+	/// ============================ A PERGUNTA E "A ESCALA ENGROSSA O DESENHO?" ============================
+	/// No DM o `wavemult` entra em `A.transform *= wavemult` (`beams.dm:149`) -- ele engorda o SPRITE, e
+	/// e por isso que o Final Flash e um muro. Aqui a escala multiplica as medidas do tiro
+	/// (`PintorDeKi.Medir`), e a foto e quem diz se multiplicou. O par fio/muro sozinho nao isola a
+	/// escala (a `Big Fire` ja e cinco vezes mais grossa na escala 1); o do meio isola.
 	///
-	/// Um port que multiplicasse o PASSO pela escala tambem daria um feixe mais grosso -- e abriria ate
-	/// 127 px de buraco a 4x. As duas metades desta familia separam as duas coisas: a foto mede a
-	/// LARGURA (tem que crescer) e a `MedirTrem` responde o PASSO (nao pode mudar).
-	/// ==========================================================================================
+	/// A outra metade desta familia -- "o passo do trem NAO cresce com a escala" -- morreu com o trem.
+	/// ====================================================================================================
 	/// </summary>
 	private void PorOFioEOMuro()
 	{
+		LimparOPalco();
 		Vector2 t = Tela;
-		float comp = MathF.Floor(t.Y * 0.72f) - 5f;   // torto de proposito -- ver `CompDaGrade`
-		float y0 = t.Y * 0.12f;
+		float y0 = MathF.Floor(t.Y * 0.12f);
 
-		PorOsDoisLivres(
-			ArteDeKi.Beam3, 1f, new Vector2(t.X * 0.25f, y0 + comp), new Vector2(t.X * 0.25f, y0),
-			$"O FIO (Onda de Ki: Beam3, wavemult 1), {comp:0} px",
-			ArteDeKi.BeamBigFire, 4f, new Vector2(t.X * 0.72f, y0 + comp), new Vector2(t.X * 0.72f, y0),
-			$"O MURO (Final Flash: Big Fire, wavemult 4), {comp:0} px");
+		// O COMPRIMENTO SAI DO MURO: a cabeca dele avanca 128 px alem da posicao do tiro, e a ponta tem
+		// que caber na foto pra a sonda ir ate ela. O `- 5` deixa o numero torto -- ver `TotalDaGrade`.
+		float comp = MathF.Floor(t.Y * 0.96f - y0 - ArteDeProjetil.FrenteDaCabeca(ArteDeKi.BeamBigFire) * 4f) - 5f;
+
+		(ArteDeKi Arte, float Escala, float X, string Nome)[] tres =
+		[
+			(ArteDeKi.Beam3, 1f, 0.12f, "O FIO (Onda de Ki: Beam3, wavemult 1)"),
+			(ArteDeKi.Beam3, 4f, 0.36f, "o mesmo Beam3 a 4x"),
+			(ArteDeKi.BeamBigFire, 4f, 0.74f, "O MURO (Final Flash: Big Fire, wavemult 4)"),
+		];
+		foreach ((ArteDeKi arte, float escala, float x, string rotulo) in tres)
+		{
+			var cauda = new Vector2(MathF.Floor(t.X * x), y0);
+			NovoRaio(arte, escala, cauda + new Vector2(0, comp), cauda, Vermelho, $"{rotulo}, {comp:0} px");
+		}
+		Assentar();
 	}
 
 	private void MedirOFioEOMuro()
 	{
-		Image? img = Foto("13-o-fio-e-o-muro");
-		if (img == null) { _t = 99; return; }
+		Chapa? c = Foto("5c-o-fio-e-o-muro");
+		if (c == null) return;
 
-		MedirUmRaio(img, _a!, _maoA, _rotuloA);
-		MedirUmRaio(img, _b!, _maoB, _rotuloB);
-
-		int larguraFio = LarguraNaFoto(img, _a!.Position, _maoA);
-		int larguraMuro = LarguraNaFoto(img, _b!.Position, _maoB);
-		Nota($"largura medida no meio do feixe: fio {larguraFio} px, muro {larguraMuro} px "
-			 + $"({(larguraFio > 0 ? (float)larguraMuro / larguraFio : 0f):0.0}x)");
-		Ok($"o MURO e muito mais grosso que o FIO na foto ({larguraMuro} px contra {larguraFio})",
-		   larguraFio > 0 && larguraMuro > larguraFio * 2);
-
-		// ============================ E O PASSO, QUE NAO PODE TER CRESCIDO JUNTO ============================
-		// A MESMA folha em duas escalas: se o passo dependesse do `wavemult`, este par seria 31 e 124.
-		// Perguntado a `MedirTrem`, que e a funcao que o `_Draw` chama -- e nao a uma copia.
-		// ================================================================================================
-		SpriteFrames? f = ArteDeKiNoCliente.Folha(ArteDeKi.Beam3);
-		if (f == null) { Nota("Beam3 nao carregou -- o passo nao foi medido"); return; }
-
-		string dir = ProjetilDesenhado.SufixoDeDirecao(f, new Vec2(0, 1));
-		string? aC = ProjetilDesenhado.NomeDaAnimacao(f, "head", dir);
-		string? aT = ProjetilDesenhado.NomeDaAnimacao(f, "tail", dir);
-		string? aM = ProjetilDesenhado.NomeDaAnimacao(f, "origin", dir) ?? aT;
-		var paraTras = new Vector2(0, -1);
-
-		float p1 = ProjetilDesenhado.MedirTrem(f, paraTras, 1f, aC, aT, aM).Passo;
-		float p4 = ProjetilDesenhado.MedirTrem(f, paraTras, 4f, aC, aT, aM).Passo;
-		Nota($"a MESMA folha a 1x e a 4x: passo {p1:0.0} px e {p4:0.0} px "
-			 + $"(um passo que escalasse junto daria {p1 * 4:0.0})");
-		Ok($"a escala engorda o SPRITE e nao espalha o TREM -- o passo nao mudou ({p1:0.0} = {p4:0.0})",
-		   Mathf.Abs(p1 - p4) < 0.01f);
-	}
-
-	/// <summary>
-	/// QUANTOS PIXELS DE TINTA ATRAVESSADOS no meio do feixe, na perpendicular. E a largura DESENHADA,
-	/// que e o que o `wavemult` deveria mexer -- e ela e contada na foto e nao no tamanho da textura,
-	/// porque textura grande com desenho pequeno dentro e exatamente o jeito de mentir aqui.
-	/// </summary>
-	private static int LarguraNaFoto(Image img, Vector2 cabeca, Vector2 mao)
-	{
-		Vector2 d = mao - cabeca;
-		float comp = d.Length();
-		if (comp < 1f) return 0;
-
-		Vector2 u = d / comp;
-		var perp = new Vector2(-u.Y, u.X);
-		Vector2 meio = cabeca + u * (comp * 0.5f);
-
-		int n = 0;
-		for (int t = -400; t <= 400; t++)
+		foreach (TiroNoPalco t in _palco)
 		{
-			Vector2 p = meio + perp * t;
-			int px = Mathf.RoundToInt(p.X), py = Mathf.RoundToInt(p.Y);
-			if (px < 0 || px >= img.GetWidth() || py < 0 || py >= img.GetHeight()) continue;
-			Color c = img.GetPixel(px, py);
-			if (!(c.G > 0.9f && c.R < 0.1f && c.B < 0.1f)) n++;
+			(Fresta faixa, Fresta centro) = Sondar(c, t);
+			Ok($"{t.Rotulo}: inteiro da mao a ponta (fresta {faixa.Maior} px, fundo no eixo {centro.Total} px)",
+			   faixa.Maior == 0 && centro.Total == 0);
 		}
-		return n;
+
+		// MEDIDO em 84 rodadas: o fio de 22 a 24 px, o mesmo a 4x de 66 a 73 (2,8 a 3,3 vezes) e o muro
+		// de 330 a 375. Nao sao 4 vezes porque a largura que se ve inclui o halo, e o alcance dele
+		// (`7 + 1,1 raio`) nao quadruplica com o tronco. Uma escala que nao chegasse ao desenho daria 1.
+		float fio = LarguraNaFoto(c, _palco[0]), fioA4 = LarguraNaFoto(c, _palco[1]), muro = LarguraNaFoto(c, _palco[2]);
+		Nota($"largura medida no meio do feixe: fio {fio:0} px, o mesmo a 4x {fioA4:0} px, muro {muro:0} px");
+		Ok($"a ESCALA engrossa o desenho: o Beam3 a 4x tem {fioA4:0} px contra {fio:0} ({fioA4 / MathF.Max(1f, fio):0.0}x)",
+		   fio > 0 && fioA4 > fio * 2f);
+		Ok($"o MURO e muito mais grosso que o FIO na foto ({muro:0} px contra {fio:0}, {muro / MathF.Max(1f, fio):0.0}x)",
+		   fio > 0 && muro > fio * 2f);
 	}
 
+	/// <summary>
+	/// A LARGURA DESENHADA NO MEIO DO FEIXE, em px de mundo: a corrida de tinta que atravessa o eixo, na
+	/// perpendicular. Com o halo -- e a largura que o JOGADOR ve, e e ela que o `wavemult` tem que mexer.
+	/// (A largura do corpo sem o halo, contra a tabela, e assunto da familia 6.)
+	/// </summary>
+	private static float LarguraNaFoto(Chapa c, TiroNoPalco t) =>
+		CorridaDeTinta(c, (t.Mao + t.Ponta) * 0.5f, new Vector2(-t.Rumo.Y, t.Rumo.X));
+
 	// =====================================================================
-	// FAMILIA 5d -- O DEFEITO INJETADO
+	// FAMILIA 6 -- O DESENHO OBEDECE AS TABELAS DO CORE
 	// =====================================================================
 	/// <summary>
-	/// A SONDA TEM QUE SABER FICAR VERMELHA, e as oito fotos verdes acima nao provam isso.
+	/// ============================ DUAS MEDIDAS DO DESENHO SAO REGRA DO SERVIDOR ============================
+	/// `ArteDeProjetil.FrenteDaCabeca` e `ArteDeProjetil.MeiaEspessuraDoTronco`. O servidor planta a
+	/// cabeca de um raio encostada em quem ela empurra, encontra duas cabecas numa disputa e corta o
+	/// tronco na beirada POR ESSES NUMEROS -- e desde 2026-10-07 o desenho os le do mesmo lugar
+	/// (`PintorDeKi.Medir`), em vez de serem eles a medida de uma folha.
 	///
-	/// Ver <see cref="ProjetilDesenhado.DefeitoDoTrem"/>: aqui o defeito que o dono fotografou e
-	/// religado no caminho de desenho de PRODUCAO (nao numa copia) e as MESMAS duas sondas medem o
-	/// MESMO par de comprimentos da familia 4 -- os 205 e os 249 px que ja tinham dado 13 e 25 px de
-	/// fresta antes do conserto. Elas tem que reprovar.
+	/// "Le do mesmo lugar" e uma afirmacao sobre o CODIGO. A do dono foi sobre a tela (2026-09-23:
+	/// *"as cabecas ainda estao se sobrepondo as vezes"* -- era o Final Flash, cuja cabeca avanca
+	/// 128 px e cobria quem ela empurrava). Entao aqui cada arte que um raio pode vestir e desenhada
+	/// deitada no fundo liso e a FOTO responde:
 	///
-	/// E a ultima fase desliga tudo e mede de novo: uma sonda que ficasse vermelha pra sempre depois de
-	/// ver um defeito nao valeria mais que uma que fica verde sempre.
+	///   (a) ate onde a tinta SOLIDA vai adiante da posicao do tiro -- tem que ser `FrenteDaCabeca x
+	///       escala`;
+	///   (b) que meia espessura o tronco MACICO tem, longe das duas bolas -- tem que ser
+	///       `MeiaEspessuraDoTronco x Macico x escala`.
+	///
+	/// ============================ O HALO E APAGADO NESTES NODES, E SO NELES ============================
+	/// O halo e luz SOMADA alem da casca: ele nao encosta em ninguem, mas borra a beirada que esta
+	/// regua procura. Cada raio daqui tem o `alcance_do_halo` do proprio material escrito em 0,001 px
+	/// (e nao zero: o shader divide por ele) -- e so isso: geometria, estilo e medidas sao os de
+	/// producao. Ver <see cref="SemHalo"/>.
+	///
+	/// E TODOS APONTAM PRO LESTE, com o eixo no meio de uma linha de pixels: a regua anda de pixel em
+	/// pixel pela grade da propria foto, sem arredondar diagonal nenhuma.
+	/// ======================================================================================================
 	/// </summary>
-	private void MedirEsperandoFresta(string nome, string oque, bool esperaNoRestoZero)
+	private void PorARegra(int pagina)
 	{
-		Image? img = Foto(nome);
-		if (img == null) { _t = 99; return; }
+		LimparOPalco();
 
-		Injetado(img, _a!, _maoA, _rotuloA, oque, true);
-		Injetado(img, _b!, _maoB, _rotuloB, oque, esperaNoRestoZero);
+		ArteDeKi[] artes = [.. ArteDeProjetil.PermitidasPara(TipoDeProjetil.Beam)];
+		for (int i = pagina * PorPaginaDaRegra, cel = 0; i < artes.Length && cel < PorPaginaDaRegra; i++, cel++)
+			RaioDeRegua(Celula(cel, ColunasDaRegra, LinhasDaRegra), artes[i], 1f);
+		Assentar();
 	}
 
-	private void Injetado(Image img, ProjetilDesenhado no, Vector2 mao, string rotulo, string oque,
-						  bool esperaFresta)
-	{
-		Fresta faixa = Varrer(img, no.Position, mao, MeiaFaixa);
-		Fresta centro = Varrer(img, no.Position, mao, MeiaLinha);
-		Nota($"[injecao] {rotulo}: fresta {faixa.Maior} px a {faixa.Onde} px da cabeca; "
-			 + $"linha central {centro.Total} px de fundo");
+	private const int ColunasDaRegra = 2, LinhasDaRegra = 4, PorPaginaDaRegra = ColunasDaRegra * LinhasDaRegra;
 
-		if (esperaFresta)
+	/// <summary>Qual pagina da regua esta no palco. Ver o passo 39 do roteiro.</summary>
+	private int _paginaDaRegra;
+
+	/// <summary>Quantas fotos de oito sao precisas pra TODA arte que um raio pode vestir passar pela regua.</summary>
+	private static int PaginasDaRegra() =>
+		(ArteDeProjetil.PermitidasPara(TipoDeProjetil.Beam).Count() + PorPaginaDaRegra - 1) / PorPaginaDaRegra;
+
+	private Rect2 Celula(int i, int colunas, int linhas)
+	{
+		Vector2 t = Tela;
+		float cw = t.X / colunas, ch = t.Y / linhas;
+		return new Rect2(cw * (i % colunas), ch * (i / colunas), cw, ch);
+	}
+
+	/// <summary>
+	/// O Final Flash a 4x -- a escala com que o jogo o atira -- ocupa a metade de cima inteira (216 px
+	/// de tronco, 128 de frente); embaixo, quatro artes a 2x e 3x. Juntas, as cinco cobrem tres das
+	/// quatro frentes que nao sao o meio tile de todo mundo: 32, 14 e 0 px, multiplicadas pela escala.
+	/// </summary>
+	private void PorARegraEmOutrasEscalas()
+	{
+		LimparOPalco();
+		Vector2 t = Tela;
+		RaioDeRegua(new Rect2(0, 0, t.X, t.Y * 0.5f), ArteDeKi.BeamBigFire, 4f);
+		RaioDeRegua(Celula(4, ColunasDaRegra, LinhasDaRegra), ArteDeKi.Beam3, 2f);
+		RaioDeRegua(Celula(5, ColunasDaRegra, LinhasDaRegra), ArteDeKi.Kamehameha4, 2f);
+		RaioDeRegua(Celula(6, ColunasDaRegra, LinhasDaRegra), ArteDeKi.Dodompa, 3f);
+		RaioDeRegua(Celula(7, ColunasDaRegra, LinhasDaRegra), ArteDeKi.Makkankosappo, 2f);
+		Assentar();
+	}
+
+	/// <summary>
+	/// UM RAIO DEITADO NA CELULA, da esquerda pra direita, sem halo e tingido de magenta. A mao fica a
+	/// 44 px da beirada esquerda e a PONTA DA REGRA a 48 da direita: o que muda de arte pra arte e onde
+	/// a cabeca (a posicao do tiro) cai, e nao onde o desenho acaba.
+	/// </summary>
+	private TiroNoPalco RaioDeRegua(Rect2 cel, ArteDeKi arte, float escala, float? vestidoCom = null)
+	{
+		float y = MathF.Floor(cel.Position.Y + cel.Size.Y * 0.5f) + 0.5f;
+		float xMao = MathF.Floor(cel.Position.X) + 44f;
+		float xPonta = MathF.Floor(cel.End.X) - 48f;
+		float frente = ArteDeProjetil.FrenteDaCabeca(arte) * escala;
+
+		string rotulo = escala == 1f ? arte.ToString() : $"{arte} a {escala:0}x";
+		TiroNoPalco t = NovoRaio(arte, escala, new Vector2(xPonta - frente, y), new Vector2(xMao + MeiaCelula, y),
+								 Magenta, rotulo, vestidoCom);
+		SemHalo(t.No);
+		return t;
+	}
+
+	/// <summary>
+	/// APAGA O HALO DESTE NODE, pra a foto mostrar so o corpo. E a unica escrita desta bancada num
+	/// material de producao, e ela e num uniform que nao muda a FORMA de nada: o halo e somado por fora
+	/// da casca. 0,001 e nao zero -- o shader divide a distancia por este numero.
+	/// </summary>
+	private static void SemHalo(ProjetilDesenhado no)
+	{
+		if (no.Material is ShaderMaterial m) m.SetShaderParameter("alcance_do_halo", 0.001f);
+	}
+
+	/// <summary>O que a foto disse de um raio deitado: a frente solida e a meia espessura do tronco, em px de mundo.</summary>
+	private readonly record struct Medida(float Frente, float Meia, float MeiaMenor, float MeiaMaior, int Estacoes);
+
+	/// <summary>De quanto ATRAS da posicao do tiro a regua da frente comeca a andar. Ali e sempre tronco.</summary>
+	private const float RecuoDaRegua = 8f;
+
+	private static Medida MedirNaRegua(Chapa c, TiroNoPalco t)
+	{
+		float k = c.PxPorMundo;
+
+		// ---- (a) A FRENTE. Parte de dentro do corpo, um pouco atras da posicao do tiro, e anda pro
+		//      leste enquanto for solido. Em TRES linhas (a do eixo e as duas vizinhas), ficando com a
+		//      que foi mais longe: a geometria e arredondada pro pixel ao desenhar e o eixo pode ter
+		//      caido meia linha pro lado. Numa cabeca redonda as tres dao o mesmo; numa seta, so a do
+		//      eixo chega na ponta.
+		Vector2I p0 = c.Pixel(t.Cabeca - new Vector2(RecuoDaRegua, 0));
+		int maisLonge = 0;
+		for (int dy = -1; dy <= 1; dy++)
 		{
-			Ok($"[injecao] com `{oque}` a sonda REPROVA o {rotulo} ({faixa.Maior} px de fresta)",
-			   faixa.Maior > 0);
-			Ok($"[injecao] ...e a LINHA CENTRAL tambem ({centro.Total} px de fundo)", centro.Total > 0);
+			int n = 0;
+			while (c.Solido(p0.X + n, p0.Y + dy)) n++;
+			maisLonge = Math.Max(maisLonge, n);
+		}
+		float frente = maisLonge == 0
+			? float.NaN
+			: (p0.X + maisLonge - (c.DoMundo * t.Cabeca).X) / k;
+
+		// ---- (b) A MEIA ESPESSURA, no TERCO DO MEIO do desenho: longe da gota das duas bolas, que
+		//      desce ate tres raios de bola pra dentro do tronco. Em cada coluna, a corrida de solido
+		//      que atravessa o eixo; a media das colunas, porque a casca ondula de proposito (as
+		//      barrigas que viajam da mao pra ponta: ate 13% do raio pra cada lado, com media zero).
+		float x1 = t.Mao.X + (t.Ponta.X - t.Mao.X) / 3f, x2 = t.Mao.X + (t.Ponta.X - t.Mao.X) * 2f / 3f;
+		Vector2I a = c.Pixel(new Vector2(x1, t.Cabeca.Y)), b = c.Pixel(new Vector2(x2, t.Cabeca.Y));
+		long soma = 0;
+		int estacoes = 0, menor = int.MaxValue, maior = 0;
+		for (int x = a.X; x <= b.X; x++)
+		{
+			int corrida = 0;
+			if (c.Solido(x, a.Y))
+			{
+				int cima = 0, baixo = 0;
+				while (c.Solido(x, a.Y - 1 - cima)) cima++;
+				while (c.Solido(x, a.Y + 1 + baixo)) baixo++;
+				corrida = 1 + cima + baixo;
+			}
+			soma += corrida;
+			estacoes++;
+			menor = Math.Min(menor, corrida);
+			maior = Math.Max(maior, corrida);
+		}
+		if (estacoes == 0) return new Medida(frente, float.NaN, float.NaN, float.NaN, 0);
+
+		return new Medida(frente, soma / (float)estacoes / k / 2f, menor / k / 2f, maior / k / 2f, estacoes);
+	}
+
+	/// <summary>
+	/// A FOLGA DA REGUA DA PONTA, em px de mundo: um pixel e meio.
+	///
+	/// ============================ MEDIDA, E NAO ESCOLHIDA ============================
+	/// O que a regua tem que engolir e fixo e pequeno: meio pixel da grade da foto, e ate meio do
+	/// arredondamento dos vertices (`snap_2d_vertices_to_pixel` empurra a fita inteira pro pixel).
+	/// Em 84 rodadas, nas 23 artes sem coroa e em quatro escalas, o desvio foi SEMPRE 0 ou +1 px -- e
+	/// quase sempre o mesmo pra mesma arte (o `Beam3` e os Kamehamehas 1 a 3 dao +1, a `Big Fire` da
+	/// 0), que e a assinatura de arredondamento e nao de ruido. A ponta nao respira com o shader: a
+	/// bola da cabeca incha e murcha em volta de um centro que recua junto.
+	///
+	/// DOIS PIXELS SERIAM FROUXOS DEMAIS PRA UMA DAS LINHAS DA TABELA: o Dodompa manda 14 e o padrao
+	/// de todo mundo e 16. Com 2 px de folga um Dodompa desenhado a 16 passaria -- com 1,5 ele reprova,
+	/// e a contraprova confere isso.
+	/// ================================================================================
+	/// </summary>
+	private const float FolgaDaRegua = 1.5f;
+
+	/// <summary>
+	/// A FOLGA DA PONTA DESTE TIRO, pra tras e pra frente. E a da regua -- e, nas artes de COROA (so o
+	/// Static Beam), mais a do estilo: a cabeca dele e um estouro de espinhos que pisca, e o espinho do
+	/// eixo tem de 0,83 a 1,35 raios de cabeca (`FeixeDeKi.gdshader`), entao a tinta acaba ate 0,2 raio
+	/// antes e ate 0,4 depois da ponta da regra. Medido: de -2 a +7 px em 84 rodadas, com 15 px de raio.
+	/// </summary>
+	private static (float Atras, float AFrente) FolgaDaPonta(TiroNoPalco t)
+	{
+		ArteDeKiNoCliente.EstiloDeFeixe e = ArteDeKiNoCliente.EstiloDoFeixe(t.Arte);
+		float coroa = e.Cabeca * e.Coroa * t.Escala;
+		return (FolgaDaRegua + 0.2f * coroa, FolgaDaRegua + 0.4f * coroa);
+	}
+
+	/// <summary>A PONTA MEDIDA ESTA A `adiante` PX DA POSICAO DO TIRO, com a folga deste tiro?</summary>
+	private static bool PontaEm(TiroNoPalco t, Medida m, float adiante)
+	{
+		(float atras, float aFrente) = FolgaDaPonta(t);
+		return m.Frente >= adiante - atras && m.Frente <= adiante + aFrente;
+	}
+
+	/// <summary>A PONTA ESTA ONDE A TABELA MANDA -- `FrenteDaCabeca x escala` adiante da posicao do tiro?</summary>
+	private static bool FrenteNaRegra(TiroNoPalco t, Medida m) =>
+		PontaEm(t, m, ArteDeProjetil.FrenteDaCabeca(t.Arte) * t.Escala);
+
+	/// <summary>
+	/// ESTE TRONCO TEM BEIRADA LIMPA? So nesses a meia espessura e medida. Os outros tem a casca em
+	/// dente (a serrilha do Masenko e do Galick Ho), em lingua (os fiapos do Kamehameha 5) ou cruzada
+	/// por enfeite opaco (os aneis da broca, as descargas do Static Beam) -- e ali "a largura do
+	/// tronco" nao e um numero, e um desenho.
+	/// </summary>
+	private static bool TroncoLimpo(ArteDeKiNoCliente.EstiloDeFeixe e) =>
+		e.Serrilha == 0f && e.Fiapos == 0f && e.Aneis == 0f && e.Espiral == 0f && e.Eletrico == 0f;
+
+	/// <summary>
+	/// O TRONCO TEM A ESPESSURA QUE A TABELA MANDA? A folga e de 1 px, ou 13% do esperado quando isso
+	/// for mais.
+	///
+	/// ============================ DE ONDE SAEM OS DOIS NUMEROS ============================
+	/// UM PIXEL e a grade da foto: a meia espessura e metade de uma contagem de pixels. Nos troncos de
+	/// ate 13 px a media das colunas ficou entre -0,3 e +0,4 px da tabela em 84 rodadas.
+	///
+	/// TREZE POR CENTO e o quanto a casca ONDULA de proposito no shader (`0,16 x (ruido - 0,5)` mais
+	/// `0,05 x barriga`: ate 8% + 5% pra cada lado). Num raio fino a ondulacao passa dezenas de vezes
+	/// pela janela medida e a media a apaga; num raio grosso ela e LONGA (o comprimento dela cresce com
+	/// o raio) e a janela ve um pedaco so. Medido: a `Big Fire` (27 px) de -1,6 a +2,0; o Kamehameha 4
+	/// a 2x (26 px) de -1,3 a +1,3; o Final Flash a 4x (108 px) de -7,3 a +8,4 -- todos dentro dos 13%,
+	/// que e o teto que o proprio desenho se da.
+	///
+	/// E O TRONCO QUE PULSA (o Boom Wave) pode estar em qualquer ponto entre 45% e 100% da largura
+	/// nominal: e o estilo dele. Medido de 1,5 a 3,4 px, com 3 na tabela.
+	/// ====================================================================================
+	/// </summary>
+	private static bool MeiaNaRegra(TiroNoPalco t, Medida m)
+	{
+		ArteDeKiNoCliente.EstiloDeFeixe e = ArteDeKiNoCliente.EstiloDoFeixe(t.Arte);
+		float esperada = MeiaEsperada(t);
+		float folga = MathF.Max(1f, esperada * 0.13f);
+		return m.Meia >= esperada * (1f - 0.55f * e.Pulsar) - folga && m.Meia <= esperada + folga;
+	}
+
+	private static float MeiaEsperada(TiroNoPalco t) =>
+		ArteDeProjetil.MeiaEspessuraDoTronco(t.Arte) * ArteDeKiNoCliente.EstiloDoFeixe(t.Arte).Macico * t.Escala;
+
+	private void MedirARegra(string nome)
+	{
+		Chapa? c = Foto(nome);
+		if (c == null) return;
+
+		var pontaForaDoDito = new List<string>();
+		int comFrente = 0, reprovadosContraAPosicao = 0;
+		foreach (TiroNoPalco t in _palco)
+		{
+			Medida m = MedirNaRegua(c, t);
+			ArteDeKiNoCliente.EstiloDeFeixe e = ArteDeKiNoCliente.EstiloDoFeixe(t.Arte);
+			float frente = ArteDeProjetil.FrenteDaCabeca(t.Arte) * t.Escala;
+
+			Ok($"{t.Rotulo}: a ponta SOLIDA cai a {m.Frente:0.0} px da posicao do tiro (a tabela manda {frente:0.0}"
+			   + (e.Coroa > 0f ? ", e a coroa pisca em volta" : "") + ")", FrenteNaRegra(t, m));
+
+			if (TroncoLimpo(e))
+				Ok($"{t.Rotulo}: o tronco macico tem {m.Meia:0.0} px de meia espessura (a tabela manda {MeiaEsperada(t):0.0}"
+				   + (e.Pulsar > 0f ? ", pulsando" : "") + $"; de {m.MeiaMenor:0.0} a {m.MeiaMaior:0.0} em {m.Estacoes} colunas)",
+				   MeiaNaRegra(t, m));
+			else
+				Nota($"{t.Rotulo}: tronco com enfeite na beirada -- a meia espessura nao e medida "
+					 + $"(a foto deu {m.Meia:0.0}; o macico da tabela e {MeiaEsperada(t):0.0})");
+
+			// A PONTA QUE O MUNDO USA. `PontaDesenhada` e onde o `World` poe a estrela do choque de dois
+			// feixes; ela se apresenta como "a mesma conta que o `_Draw` faz", e quem confere e a foto.
+			float dita = t.No.PontaDesenhada.X - t.Cabeca.X;
+			if (!PontaEm(t, m, dita)) pontaForaDoDito.Add($"{t.Rotulo} ({m.Frente:0.0} na foto, {dita:0.0} no node)");
+
+			// E A CONTRAPROVA DELA: a ponta de quem esquecesse de somar a frente seria a propria posicao
+			// do tiro. Contra ESSA ponta a regua tem que reprovar todo raio cuja frente e maior que a
+			// folga -- todos, menos a broca, que e a unica de frente zero.
+			if (frente > FolgaDaPonta(t).AFrente)
+			{
+				comFrente++;
+				if (!PontaEm(t, m, 0f)) reprovadosContraAPosicao++;
+			}
+		}
+
+		Ok($"a `PontaDesenhada` dos {_palco.Count} (onde o mundo poe a estrela do choque) e onde a tinta acaba"
+		   + (pontaForaDoDito.Count > 0 ? $" -- FORA: {string.Join(", ", pontaForaDoDito)}" : ""),
+		   pontaForaDoDito.Count == 0);
+		Ok($"CONTRA-EXEMPLO: contra a POSICAO do tiro (a ponta de quem esquecesse a frente) a mesma regua reprova "
+		   + $"os {comFrente} que tem frente ({reprovadosContraAPosicao})", comFrente > 0 && reprovadosContraAPosicao == comFrente);
+	}
+
+	/// <summary>
+	/// ============================ A CONTRAPROVA: DUAS MANEIRAS DE O DESENHO DESOBEDECER ============================
+	/// As pontas e os troncos verdes de cima nao provam que a regua enxerga. Aqui oito raios sao
+	/// postos com dois defeitos, e ela tem que reprovar exatamente quem o defeito alcanca:
+	///
+	///   * `Feixe.AlcanceFixoDeTeste` LIGADO DURANTE O `Vestir` -- o defeito injetavel do Core que faz
+	///     toda cabeca ter os 16 px da `Beam3`, seja qual for a arte. E o codigo de antes de 2026-09-23,
+	///     o do Final Flash cobrindo quem ele empurrava. O `Vestir` mede o tiro por ele uma vez, e o
+	///     campo ja pode ser desligado: aquele node segue desenhando a ponta no lugar errado. As QUATRO
+	///     artes de frente PROPRIA tem que reprovar (inclusive o Dodompa, que erra por 2 px e so 2); as
+	///     duas de frente comum NAO (16 e 16), e tronco nenhum -- a regua nao pode ficar vermelha de
+	///     susto;
+	///   * a `Escala` ESCRITA DEPOIS DO `Vestir`, sem vestir de novo: o tiro diz que e 3x e desenha 1x.
+	///     Ponta e tronco reprovam juntos; o vizinho, vestido a 3x de verdade, passa.
+	///
+	/// E a segunda rodada poe os MESMOS oito sem defeito nenhum: todos voltam ao verde.
+	/// ==============================================================================================================
+	/// </summary>
+	private void PorAContraprovaDaRegra(bool comDefeito)
+	{
+		LimparOPalco();
+
+		Feixe.AlcanceFixoDeTeste = comDefeito;
+		try
+		{
+			for (int i = 0; i < ComAlcanceFixo.Length; i++)
+				RaioDeRegua(Celula(i, ColunasDaRegra, LinhasDaRegra), ComAlcanceFixo[i], 1f);
+		}
+		finally { Feixe.AlcanceFixoDeTeste = false; }
+
+		RaioDeRegua(Celula(6, ColunasDaRegra, LinhasDaRegra), ArteDeKi.Beam3, 3f, vestidoCom: comDefeito ? 1f : 3f);
+		RaioDeRegua(Celula(7, ColunasDaRegra, LinhasDaRegra), ArteDeKi.Beam3, 3f);
+		Assentar();
+	}
+
+	/// <summary>
+	/// As seis celulas do alcance fixo: primeiro as QUATRO artes cuja frente nao e o meio tile de todo
+	/// mundo (32, 21, 0 e 14 px), depois duas em que e (16) -- e essas nao podem reprovar.
+	/// </summary>
+	private static readonly ArteDeKi[] ComAlcanceFixo =
+	[
+		ArteDeKi.BeamBigFire, ArteDeKi.EraserCannon, ArteDeKi.Makkankosappo, ArteDeKi.Dodompa,
+		ArteDeKi.Beam3, ArteDeKi.Kamehameha1,
+	];
+
+	private const int ComFrentePropria = 4;
+
+	private void MedirAContraprovaDaRegra(string nome, bool comDefeito)
+	{
+		Chapa? c = Foto(nome);
+		if (c == null) return;
+
+		var medidas = _palco.Select(t => (Tiro: t, M: MedirNaRegua(c, t))).ToList();
+		string marca = comDefeito ? "[injecao] " : "";
+		foreach ((TiroNoPalco t, Medida m) in medidas)
+			Nota($"{marca}{t.Rotulo}: ponta a {m.Frente:0.0} px (tabela {ArteDeProjetil.FrenteDaCabeca(t.Arte) * t.Escala:0.0}), "
+				 + $"meia espessura {m.Meia:0.0} px (tabela {MeiaEsperada(t):0.0})");
+
+		if (!comDefeito)
+		{
+			Ok("com os defeitos DESLIGADOS, as oito pontas voltam pra onde a tabela manda",
+			   medidas.All(p => FrenteNaRegra(p.Tiro, p.M)));
+			Ok("...e os troncos tambem",
+			   medidas.Where(p => TroncoLimpo(ArteDeKiNoCliente.EstiloDoFeixe(p.Tiro.Arte))).All(p => MeiaNaRegra(p.Tiro, p.M)));
 			return;
 		}
 
-		// ============================ E AQUI O DEFEITO E INVISIVEL, DE PROPOSITO ============================
-		// A lei do bug antigo era `fresta = comprimento mod passo`: no MULTIPLO EXATO do passo ele
-		// sumia, porque o pedaco que faltava era coberto pela metade da cabeca e pela metade da mao.
-		// Esta linha e a prova de que a bancada entendeu a lei em vez de so ter visto o buraco -- e ela
-		// explica o "quando ele e LANCADO" do relato: o dono nao via o raio picotado sempre, via nos
-		// comprimentos errados, e um raio que cresce 3,3 vezes por segundo passa por todos eles.
-		// ================================================================================================
-		Ok($"[injecao] ...e no MULTIPLO EXATO do passo o mesmo defeito e INVISIVEL ({rotulo}, "
-		   + $"{faixa.Maior} px) -- era essa a lei do `comprimento mod passo`", faixa.Maior == 0);
-	}
+		// A ordem e a do `PorAContraprovaDaRegra`: as seis do alcance fixo (quatro de frente propria,
+		// duas de frente comum), depois a escala mentida e o controle dela.
+		var fixas = medidas.Take(ComAlcanceFixo.Length).ToList();
+		Ok("[injecao] com o alcance FIXO a regua REPROVA a ponta do Final Flash, do Eraser Cannon, da broca e do Dodompa",
+		   fixas.Take(ComFrentePropria).All(p => !FrenteNaRegra(p.Tiro, p.M)));
+		Ok("[injecao] ...e NAO reprova o Beam3 nem o Kamehameha, cuja frente ja era 16 (a regua nao fica vermelha de susto)",
+		   fixas.Skip(ComFrentePropria).All(p => FrenteNaRegra(p.Tiro, p.M)));
+		Ok("[injecao] ...nem o TRONCO de ninguem: o defeito so mexe na frente",
+		   fixas.Where(p => TroncoLimpo(ArteDeKiNoCliente.EstiloDoFeixe(p.Tiro.Arte))).All(p => MeiaNaRegra(p.Tiro, p.M)));
 
-	// =====================================================================
-	// FAMILIA 5e -- A FASE DA DIAGONAL LONGA
-	// =====================================================================
-	/// <summary>
-	/// ============================ ELA NASCEU DE UMA FALHA DESTA MESMA RODADA ============================
-	/// A familia 5 reproduziu a foto do dono de verdade -- 1374 px de diagonal, 42,9 tiles -- e mediu
-	/// **1 px de fresta a 49 px da cabeca**, numa junta so, com as outras quarenta inteiras. As fotos
-	/// diagonais que esta bancada ja tinha (190 e 253 px) nunca poderiam ter pego isso: sao cinco e
-	/// sete juntas, e o defeito aparece em uma fase em tres.
-	///
-	/// ============================ E A FASE ANDA SOZINHA AO LONGO DO FEIXE ============================
-	/// `project.godot` liga `snap_2d_vertices_to_pixel`: cada estampa e ARREDONDADA pra o pixel na hora
-	/// de desenhar. O deslocamento entre dois corpos vizinhos na diagonal e `passo * 0,7071` -- 23,33 px
-	/// -- e o `,33` se acumula: a fase de cada junta e diferente da anterior e o feixe percorre TODAS
-	/// elas se for comprido o bastante. Um raio curto so ve as primeiras.
-	///
-	/// **E por isso que esta familia precisa de raios LONGOS DE VERDADE, um por foto**, e nao de doze
-	/// pedacinhos lado a lado numa grade: doze raios de trinta juntas varrem 360 fases; doze de cinco
-	/// varreriam sessenta, e sempre as mesmas sessenta.
-	/// ================================================================================================
-	/// </summary>
-	private const int QuantasDiagonais = 12;
-
-	private int _diagonal, _piorDaFase, _fundoDasFases, _juntasVarridas;
-	private string _ondePiorDaFase = "";
-
-	/// <summary>
-	/// UMA diagonal longa, no rumo do print do dono (sudoeste), com um comprimento diferente a cada
-	/// chamada -- e nenhum deles multiplo do passo, que e onde o defeito se esconde.
-	/// </summary>
-	private void PorADiagonalLonga(int i)
-	{
-		if (i >= QuantasDiagonais) return;
-
-		Vector2 t = Tela;
-		const float Meio = 0.70710678f;
-		var mao = new Vector2(t.X * 0.95f, t.Y * 0.05f);
-		float maior = MathF.Floor(MathF.Min((mao.X - t.X * 0.04f) / Meio, (t.Y * 0.95f - mao.Y) / Meio));
-
-		// O PASSO DE 7,3 px NAO E BONITO DE PROPOSITO: 7,3 nao divide o passo do trem (33 px) nem o
-		// tile (45,25 na diagonal), entao os doze comprimentos caem em doze restos diferentes.
-		float comp = maior - (i * 7.3f);
-		Vector2 cab = mao + new Vector2(-Meio, Meio) * comp;
-
-		LimparOPalco();
-		_a = NovoRaio(ArteDeKi.Beam3, 1f, cab, mao);
-		_maoA = mao;
-		_rotuloA = $"diagonal de {comp:0} px ({comp / 32f:0.0} tiles)";
-	}
-
-	private void MedirADiagonalLonga(int i)
-	{
-		// SO A PRIMEIRA VIRA ARQUIVO. As doze medem igual; doze PNGs de 1920x1080 pra mostrar a mesma
-		// coisa e peso sem resposta nova.
-		Image? img = Foto(i == 0 ? "17-diagonal-longa-como-no-print" : "");
-		if (img == null) { _t = 99; return; }
-
-		Fresta faixa = Varrer(img, _a!.Position, _maoA, MeiaFaixa);
-		Fresta centro = Varrer(img, _a!.Position, _maoA, MeiaLinha);
-
-		_fundoDasFases += centro.Total;
-		_juntasVarridas += (int)((_maoA - _a!.Position).Length() / 33f);
-		if (faixa.Maior > _piorDaFase)
-		{
-			_piorDaFase = faixa.Maior;
-			_ondePiorDaFase = $"{_rotuloA}, a {faixa.Onde} px da cabeca";
-		}
-
-		if (i < QuantasDiagonais - 1) return;
-
-		Nota($"{QuantasDiagonais} diagonais longas varridas -- cerca de {_juntasVarridas} juntas, "
-			 + $"{_fundoDasFases} px de fundo na linha central no total");
-		Ok($"nenhuma das ~{_juntasVarridas} juntas da diagonal LONGA abre"
-		   + (_piorDaFase > 0 ? $" (pior: {_piorDaFase} px em {_ondePiorDaFase})" : ""),
-		   _piorDaFase == 0);
-		Ok($"e nenhuma delas tem um so pixel de fundo na LINHA CENTRAL ({_fundoDasFases} px)",
-		   _fundoDasFases == 0);
-	}
-
-	/// <summary>O passo que o DESENHO usaria pra esta folha neste rumo -- pelo mesmo `MedirTrem`.</summary>
-	private static float PassoDe(ArteDeKi arte, Vector2 paraTras, float escala)
-	{
-		SpriteFrames? f = ArteDeKiNoCliente.Folha(arte);
-		if (f == null) return 31f;
-
-		string dir = ProjetilDesenhado.SufixoDeDirecao(f, new Vec2(-paraTras.X, -paraTras.Y));
-		string? aC = ProjetilDesenhado.NomeDaAnimacao(f, "head", dir);
-		string? aT = ProjetilDesenhado.NomeDaAnimacao(f, "tail", dir);
-		string? aM = ProjetilDesenhado.NomeDaAnimacao(f, "origin", dir)
-					 ?? ProjetilDesenhado.NomeDaAnimacao(f, "end", dir) ?? aT;
-		return ProjetilDesenhado.MedirTrem(f, paraTras, escala, aC, aT, aM).Passo;
-	}
-
-	/// <summary>Onde o defeito antigo aparecia inteiro, e onde ele sumia. Ver <see cref="Injetado"/>.</summary>
-	private int _compRuim = 205, _compBom = 248;
-
-	/// <summary>
-	/// OS DOIS COMPRIMENTOS DA INJECAO, CALCULADOS DO PASSO MEDIDO -- e nao escritos a mao.
-	///
-	/// A primeira versao desta familia usou os 205 e 249 px que a rodada anterior tinha fotografado, e
-	/// o 249 ficou VERMELHO sem defeito nenhum: com o passo em 31 px, 249 e quase multiplo exato e o
-	/// bug antigo desaparece ali. Um teste que exige ver o defeito num comprimento onde o defeito nao
-	/// existe reprova o codigo certo -- foi a bancada que estava errada, e o conserto e perguntar ao
-	/// passo em vez de lembrar de um numero.
-	/// </summary>
-	private void EscolherOsComprimentosDaInjecao()
-	{
-		// `paraTras` do raio que desce e pra CIMA -- a mao fica acima da cabeca.
-		float p = PassoDe(ArteDeKi.Beam3, new Vector2(0, -1), 1f);
-		_compRuim = (int)MathF.Round(6 * p + (p - 1));   // resto MAXIMO: o defeito inteiro
-		_compBom = (int)MathF.Round(8 * p);              // resto ZERO: o defeito invisivel
-		Nota($"passo medido da `Beam3` ao sul: {p:0.0} px -- resto maximo em {_compRuim} px, "
-			 + $"resto zero em {_compBom} px");
-	}
-
-	/// <summary>
-	/// O CUSTO, MEDIDO -- porque pode haver varios feixes no ar, cada um com dezenas de pedacos.
-	///
-	/// Sao tres numeros diferentes e vale nao confundi-los: a medida da folha (uma vez por folha e
-	/// direcao, na vida do processo), a montagem do trem (uma vez por tiro por quadro) e as estampas
-	/// (o que de fato vai pra a placa de video).
-	/// </summary>
-	private void MedirOCusto()
-	{
-		// Uma folha que NENHUMA familia acima mediu (a varredura mediu Beam3, Beam4 e Big Fire): assim
-		// a primeira chamada e mesmo a FRIA, com o atlas ainda por descomprimir.
-		SpriteFrames? f = ArteDeKiNoCliente.Folha(ArteDeKi.Beam2);
-		if (f == null) { Nota("Beam2 nao carregou -- custo nao medido"); return; }
-
-		string dir = ProjetilDesenhado.SufixoDeDirecao(f, new Vec2(0, 1));
-		string? aC = ProjetilDesenhado.NomeDaAnimacao(f, "head", dir);
-		string? aT = ProjetilDesenhado.NomeDaAnimacao(f, "tail", dir);
-		string? aM = ProjetilDesenhado.NomeDaAnimacao(f, "origin", dir) ?? aT;
-		var paraTras = new Vector2(0, -1);
-
-		var relogio = System.Diagnostics.Stopwatch.StartNew();
-		ProjetilDesenhado.MedidaDoTrem m = ProjetilDesenhado.MedirTrem(f, paraTras, 1f, aC, aT, aM);
-		double frio = relogio.Elapsed.TotalMilliseconds;
-
-		const int N = 200000;
-		relogio.Restart();
-		double soma = 0;
-		for (int i = 0; i < N; i++)
-		{
-			ProjetilDesenhado.MedidaDoTrem mm = ProjetilDesenhado.MedirTrem(f, paraTras, 1f, aC, aT, aM);
-			ProjetilDesenhado.TremDoRaio t = ProjetilDesenhado.MontarTrem(500 + (i % 97), mm.Passo, mm.SemCorpo);
-			soma += t.Passo;   // pra o compilador nao apagar o laco
-		}
-		double porChamada = relogio.Elapsed.TotalMilliseconds * 1000.0 / N;
-
-		// O raio mais longo do jogo: 30 tiles de Ki Wave (`beams.dm:294`) e 50 no topo da pericia.
-		ProjetilDesenhado.TremDoRaio longo = ProjetilDesenhado.MontarTrem(50 * 32, m.Passo, m.SemCorpo);
-
-		Nota($"medir a folha (uma vez por folha+animacao+fatia de rumo, pra sempre): {frio:0.00} ms "
-			 + $"-- soma {soma:0}");
-		Nota($"montar o trem (uma vez por tiro por quadro): {porChamada:0.00} us");
-		Nota($"um raio de 50 tiles = {longo.Corpos + 2} estampas por quadro "
-			 + $"(passo {longo.Passo:0.0} px; o desenho antigo dava {50 * 32 / 32} e deixava a fresta)");
-
-		// O CUSTO NAO PODE CRESCER com o conserto: quem consertaria a fresta instanciando um node por
-		// pedaco pagaria 52 nodes por raio. Aqui o trem inteiro continua sendo UM node e N estampas --
-		// uma a mais que antes, que e literalmente o pedaco que faltava.
-		Ok($"montar o trem custa menos de 1 us ({porChamada:0.00} us)", porChamada < 1.0);
-		Ok($"o raio mais longo do jogo cabe em menos de 60 estampas ({longo.Corpos + 2})",
-		   longo.Corpos + 2 < 60);
-	}
-
-	/// <summary>
-	/// Vira um dos dois tiros numa BOLA. A cauda vai pro mesmo ponto da cabeca de proposito: bola
-	/// nao tem rastro (`Projetil.Comprimento` devolve zero pra ela), e deixar a cauda velha faria a
-	/// bancada medir um raio disfarçado.
-	/// </summary>
-	private static void VirarBola(ProjetilDesenhado no, ArteDeKi arte, Color cor)
-	{
-		no.Tipo = TipoDeProjetil.Blast;
-		no.Cor = cor;
-		no.Vestir(arte, 1f);
-		no.Mirar(no.Position, no.Position);
-		no.QueueRedraw();
-	}
-
-	private void FotografarBolas()
-	{
-		Image? img = Foto("5-bolas");
-		if (img == null) { _t = 99; return; }
-
-		int meio = img.GetWidth() / 2;
-		(int Pixels, int Tons, long Hash) racial = Assinatura(img, 0, meio);
-		(int Pixels, int Tons, long Hash) paralisia = Assinatura(img, meio, img.GetWidth());
-
-		Nota($"bola racial (1.dmi): {racial.Pixels}px, {racial.Tons} tons");
-		Nota($"Paralysis (KiHead.dmi, estado `paralysis`): {paralisia.Pixels}px, {paralisia.Tons} tons");
-
-		Ok("a bola RACIAL desenha", racial.Pixels > 20);
-		Ok("a Paralysis desenha -- a folha sem `default`, pelo `icon_state` do DM", paralisia.Pixels > 20);
-		Ok("as duas bolas sao desenhos diferentes", racial.Hash != paralisia.Hash);
-	}
-
-	/// <summary>Quantos pixels desenhados, e quantos deles sao branco puro (a assinatura da saturacao).</summary>
-	private static (int Pixels, int Brancos) ContarBrancos(Image img, int x0, int x1)
-	{
-		int n = 0, brancos = 0;
-		for (int y = 0; y < img.GetHeight(); y++)
-			for (int x = x0; x < x1; x++)
-			{
-				Color c = img.GetPixel(x, y);
-				if (c.G > 0.9f && c.R < 0.1f && c.B < 0.1f) continue;   // o fundo
-				n++;
-				if (c.R > 0.98f && c.G > 0.98f && c.B > 0.98f) brancos++;
-			}
-		return (n, brancos);
-	}
-
-	private void FotografarEscala()
-	{
-		Image? img = Foto("3-escala-3x");
-		if (img == null) { _t = 99; return; }
-
-		(int Pixels, int Tons, long Hash) grande = Assinatura(img, img.GetWidth() / 2, img.GetWidth());
-		Nota($"Masenko a 3x: {grande.Pixels}px (era {_assB.Pixels}px a 1x)");
-
-		// `A.transform *= wavemult` (`beams.dm:149`). O `wavemult` do Final Flash e 4 e o do Ki Wave
-		// e 1 -- sem esta linha os dois sairiam do mesmo tamanho, que e como estavam.
-		Ok("a escala do `wavemult` chega ao pixel (3x desenha bem mais que 1x)",
-		   grande.Pixels > _assB.Pixels * 2);
+		(TiroNoPalco mentido, Medida doMentido) = medidas[ComAlcanceFixo.Length];
+		(TiroNoPalco vizinho, Medida doVizinho) = medidas[ComAlcanceFixo.Length + 1];
+		Ok("[injecao] um tiro que DIZ 3x e foi vestido a 1x e reprovado na ponta E no tronco",
+		   !FrenteNaRegra(mentido, doMentido) && !MeiaNaRegra(mentido, doMentido));
+		Ok("[injecao] ...e o vizinho, vestido a 3x de verdade, passa nas duas",
+		   FrenteNaRegra(vizinho, doVizinho) && MeiaNaRegra(vizinho, doVizinho));
 	}
 }

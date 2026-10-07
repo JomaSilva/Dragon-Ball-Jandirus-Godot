@@ -701,6 +701,16 @@ public sealed partial class GameServer
 	private void Transportar(ServerPlayer c, ZoneKey zona, Vec2 pos)
 	{
 		if (c.Zone.Hash != zona.Hash) { MoveToZone(c.Id, zona, pos); return; }
+
+		// NINGUEM LEVA UM RAIO NA MAO PRO OUTRO LADO DA ARENA (2026-10-07). O `MoveToZone` ali em cima ja solta
+		// a disputa e o raio (e explica por que); o transporte dentro da MESMA zona nao soltava. Um lutador
+		// chamado pra area de espera ainda alimentando um feixe -- o que acabou de vencer por nocaute, o que
+		// estava numa disputa quando o tempo da luta estourou -- ia embora e a cauda ia junto (ela e a mao do
+		// dono), com a cabeca ficando onde estava: um feixe atravessando a arena, e uma disputa correndo com
+		// um dos dois em outro lugar.
+		SoltarDoEmbateDeKi(c.Id);
+		SoltarDoRaio(c.Id);
+
 		if (EhJogador(c)) CravarPosicao(c, pos);
 		else c.Pos = pos;
 		c.Moving = false;

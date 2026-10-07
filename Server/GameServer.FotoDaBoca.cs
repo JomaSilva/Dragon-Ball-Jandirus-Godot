@@ -96,9 +96,8 @@ public sealed partial class GameServer
 					// O CENTRO DA CELULA, e nao a quina: `Pos` e o centro do sprite, e meio tile de
 					// desvio poria a boca do cano no limite de duas celulas -- onde a guarda de parede
 					// do `Disparar` passa a depender de arredondamento.
-					pl.Pos = new Vec2((cx + dx) * T + T / 2f, (cy + dy) * T + T / 2f);
-					pl.Moving = false;
-					_bocaAncora = pl.Pos;
+					_bocaAncora = new Vec2((cx + dx) * T + T / 2f, (cy + dy) * T + T / 2f);
+					ReporNaBoca(id);
 					return true;
 				}
 
@@ -122,11 +121,24 @@ public sealed partial class GameServer
 	/// O CORPO VOLTA PRO MESMO PONTO ANTES DE CADA FOTO. Sem isto o fundo escorrega entre um sentido
 	/// e o outro, e a mascara do tiro passa a incluir o chao que se mexeu -- ver a mesma nota (e o
 	/// mesmo estrago medido) na `ReporNaAncora` da bancada da variedade.
+	///
+	/// ============================ PELO `CravarPosicao`, E NAO ESCREVENDO `pl.Pos` (2026-10-07) ============================
+	/// Isto era `pl.Pos = _bocaAncora`, e NAO SEGURAVA: o cliente nao ficava sabendo, continuava mandando a
+	/// posicao DELE, e o `AplicarInput` a aceitava como passo valido (este corpo esta armado com `speed` 400:
+	/// 64 px cabem no orcamento de um tique). Medido na tira dos quatro sentidos -- o fundo escorregava uns
+	/// 18 px a cada virada, e na cena da camada a vitima nascia dois tiles ao lado da raia, porque o
+	/// atirador estava 64 px fora da ancora quando ela foi posta.
+	///
+	/// Enquanto o berco era um descampado ninguem viu: todo lugar servia. Com o berco dentro do banco, um
+	/// corpo 18 px fora do centro da praca atirava de cara pra quina de pedra. O `CravarPosicao` e o
+	/// caminho de producao pra "o servidor moveu voce" (Zanzoken, arranque, pouso): ele manda a correcao
+	/// e abre a janela em que o pacote velho do cliente nao opina.
+	/// ======================================================================================================================
 	/// </summary>
 	internal void ReporNaBoca(int id)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return;
-		pl.Pos = _bocaAncora;
+		if (Vec2.Distance(pl.Pos, _bocaAncora) > 0.5f) CravarPosicao(pl, _bocaAncora);
 		pl.Moving = false;
 	}
 
@@ -337,9 +349,21 @@ public sealed partial class GameServer
 	/// de escalada por foto so acrescentaria vinte segundos de escalada.
 	/// </summary>
 	/// <returns>falso se o funil de producao recusou o voo (sem skill, nocauteado, sem Ki).</returns>
-	internal bool VoarNaBoca(int id, float altura)
+	/// <param name="ensinar">
+	/// DA A SKILL DE VOO ANTES DE PEDIR O VOO -- pra um corpo FORJADO, que nasce sem livro. E a mesma
+	/// concessao do `--vooteste` (a porta de verdade: metade da maestria de Ki), e nada alem dela: a cena da
+	/// camada tentou primeiro o catalogo inteiro (`ArmarParaAVariedade`) e a vitima, com a esquiva autonoma
+	/// no livro, saia dois tiles pro lado assim que o raio vinha -- fora da raia que a cena fotografa.
+	/// </param>
+	internal bool VoarNaBoca(int id, float altura, bool ensinar = false)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+
+		if (ensinar)
+		{
+			pl.Livro.Dar("/datum/skill/mind/Ki_Unlocked");
+			pl.Niveis.Por("/datum/skill/mind/Ki_Unlocked", MaestriaQueDestravaVoo);
+		}
 
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		if (!pl.Voando) AlternarVoo(pl);

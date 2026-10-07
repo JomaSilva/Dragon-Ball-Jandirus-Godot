@@ -334,6 +334,7 @@ public partial class World : Node2D
 			cli.TiroNasceu += AoNascerTiro;
 			cli.TiroMorreu += AoMorrerTiro;
 			ProjetilDesenhado.OndeEstaOCorpo = OndeEstaONo;
+			ChoqueDeKi.ChaoSoltoEm = ChaoSoltoEm;
 			cli.TiroCortado += AoCortarTiro;
 			cli.TirosNoAr += AoMoverTiros;
 
@@ -415,6 +416,7 @@ public partial class World : Node2D
 			cli.TiroNasceu -= AoNascerTiro;
 			cli.TiroMorreu -= AoMorrerTiro;
 			if (ProjetilDesenhado.OndeEstaOCorpo == OndeEstaONo) ProjetilDesenhado.OndeEstaOCorpo = null;
+			if (ChoqueDeKi.ChaoSoltoEm == ChaoSoltoEm) ChoqueDeKi.ChaoSoltoEm = null;
 			cli.TiroCortado -= AoCortarTiro;
 			cli.TirosNoAr -= AoMoverTiros;
 			cli.PortasMudaram -= AoMudarPortas;
@@ -873,6 +875,8 @@ public partial class World : Node2D
 			Name = $"Tiro{n.Id}",
 			Tipo = (Jandirus.Core.Combat.TipoDeProjetil)n.Tipo,
 			Cor = CorDoKiDe(n.Dono),
+			// O RAIO SAI DA MAO DE QUEM ATIROU: e pelo dono que o desenho acha a mao (`ProjetilDesenhado.AMao`).
+			Dono = n.Dono,
 			Position = p,
 			// A ALTURA SO LEVANTA O DESENHO -- a `Position` continua sendo a do servidor, que e o que
 			// a agua, o Y-sort e o efeito de morte leem. E a mesma disciplina do corpo, que deixa o
@@ -880,8 +884,8 @@ public partial class World : Node2D
 			Altitude = n.Altitude,
 		};
 
-		// A ARTE VEM DO PACOTE DE NASCIMENTO e e resolvida UMA VEZ. A `Cor` tem que estar escrita
-		// ANTES: e ela que vira a tinta do shader dentro do `Vestir` -- ver la.
+		// A ARTE VEM DO PACOTE DE NASCIMENTO e e resolvida UMA VEZ. A `Cor` e o `Tipo` tem que estar
+		// escritos ANTES: e deles que saem as tres cores e o shader dentro do `Vestir` -- ver la.
 		no.Vestir((Jandirus.Core.Combat.ArteDeKi)n.Arte, n.Escala);
 		// A LAMINA DE AR DO KIAI nasce invisivel (`Kiai.dm:40`) e so aparece pra quem enxerga o
 		// invisivel -- decidido AQUI, por quem olha, porque o pacote e um so pra zona inteira.
@@ -906,26 +910,39 @@ public partial class World : Node2D
 	{
 		Color cor = Aura.CorDoKiCru;
 		float altitude = 0f;
+		// O ESTOURO E DO TAMANHO E DA COR DO QUE ESTOUROU -- lidos do node ANTES de ele ser recolhido. Sem
+		// node (o tiro morreu antes de este cliente ve-lo nascer) vale um tiro comum: 12 px, ki cru.
+		float raioDoEstouro = 12f;
+		Color corDoEstouro = Aura.CorDoKiCru;
 		if (_tiros.Remove(id, out ProjetilDesenhado? no))
 		{
 			cor = no.Cor;
 			altitude = no.Altitude;
+			raioDoEstouro = no.RaioDoEstouro;
+			corDoEstouro = no.CorDoManto;
 			no.QueueFree();
 		}
+		SoltarChoqueDe(id);
 
 		// NA ALTURA EM QUE O TIRO ERA DESENHADO (2026-09-23): o `onde` vem no chao, e o tiro de quem voa e
 		// desenhado subido (`ProjetilDesenhado.SubidaNaTela`) -- o estouro saia no chao, debaixo dele.
 		var p = new Vector2(onde.X, onde.Y - altitude * Voo.EscalaNaTela);
 		switch ((Jandirus.Core.Combat.FimDeProjetil)fim)
 		{
+			// ============================ O ESTOURO DEIXOU DE SER A FAISCA DE SOCO (2026-10-07) ============================
+			// Aqui estava `CombatFx.Impacto(p, 1.3f)` -- a folha `attackspark`, num tamanho so, fosse um tiro de
+			// dedo ou uma Genkidama. Com os ataques desenhados por shader no tamanho de verdade, quem estoura e
+			// o `EstouroDeKi`, do tamanho e da cor do que acertou. O anel e a poeira continuam os de sempre.
+			// ==================================================================================================================
 			case Jandirus.Core.Combat.FimDeProjetil.Acertou:
-				CombatFx.Impacto(_atores, p, 1.3f, cor);
-				CombatFx.Onda(_atores, p, 84, cor, 0.26);
+				EstouroDeKi.Soltar(_atores, p, raioDoEstouro, corDoEstouro);
+				CombatFx.Onda(_atores, p, Mathf.Max(84f, raioDoEstouro * 2.4f), cor, 0.26);
 				PoeiraDeEstrago.Soltar(_atores, p);
 				break;
 
+			// NA PAREDE o tiro se gasta: o mesmo estouro, a dois tercos do tamanho.
 			case Jandirus.Core.Combat.FimDeProjetil.Cenario:
-				CombatFx.Impacto(_atores, p, 0.9f, cor);
+				EstouroDeKi.Soltar(_atores, p, raioDoEstouro * 0.68f, corDoEstouro);
 				PoeiraDeEstrago.Soltar(_atores, p);
 				break;
 
@@ -934,10 +951,10 @@ public partial class World : Node2D
 			// a 440 px de diametro; o estouro de 0,9 do muro se perde em cima dele e o jogador que
 			// bombardeia um mundo nao ve a tela responder.
 			//
-			// AS PECAS SAO AS QUE JA EXISTEM, e nao um efeito proprio: o `Impacto` do golpe e a `Onda`
-			// do anel de choque, que e procedural justamente pra escalar de 32 a 512 px sem serrilhar
-			// (`CombatFx`). Duas ondas em cadencia diferente pra o clarao ter frente e cauda -- e a
-			// mesma receita do estouro do embate de feixes.
+			// AS PECAS SAO AS QUE JA EXISTEM, e nao um efeito proprio: o estouro do tiro (quase o dobro do
+			// de um acerto comum) e a `Onda` do anel de choque, que e procedural justamente pra escalar de
+			// 32 a 512 px sem serrilhar (`CombatFx`). Duas ondas em cadencia diferente pra o clarao ter
+			// frente e cauda -- e a mesma receita do estouro do embate de feixes.
 			//
 			// **SEM POEIRA**: `PoeiraDeEstrago` desenha cascalho e nuvem de chao quebrado, e o dono ja
 			// reprovou por escrito esse efeito quando ele aparecia onde nao havia chao ("uns quadrados
@@ -945,7 +962,7 @@ public partial class World : Node2D
 			// quilometros, ele seria exatamente aquilo.
 			// ====================================================================================
 			case Jandirus.Core.Combat.FimDeProjetil.Mundo:
-				CombatFx.Impacto(_atores, p, 2.4f, cor);
+				EstouroDeKi.Soltar(_atores, p, raioDoEstouro * 1.85f, corDoEstouro);
 				CombatFx.Onda(_atores, p, 150, cor, 0.34);
 				CombatFx.Onda(_atores, p, 260, cor, 0.55);
 				break;
@@ -987,6 +1004,7 @@ public partial class World : Node2D
 				no.Mirar(new Vector2(t.Pos.X, t.Pos.Y), new Vector2(t.Cauda.X, t.Cauda.Y));
 				no.Solto = t.Solto;
 				no.ArrastaId = t.Arrasta;
+				no.Prensado = t.Prensado;
 			}
 	}
 
@@ -1092,6 +1110,164 @@ public partial class World : Node2D
 	{
 		foreach (ProjetilDesenhado no in _tiros.Values) no.QueueFree();
 		_tiros.Clear();
+
+		// AS BOLAS DE EMBATE VAO JUNTO, e de uma vez (sem o apagar suave): sao da zona que ficou pra tras.
+		foreach (ChoqueDeKi c in _choques.Values) if (IsInstanceValid(c)) c.QueueFree();
+		_choques.Clear();
+	}
+
+	// =====================================================================
+	// A ESTRELA DO EMBATE DE KI
+	// =====================================================================
+	/// <summary>As estrelas de embate vivas, pela chave do feixe que as carrega (o de MENOR id do par). Ver <see cref="TickDosChoquesDeKi"/>.</summary>
+	private readonly Dictionary<int, ChoqueDeKi> _choques = [];
+
+	/// <summary>Os feixes prensados deste quadro. Campo, e nao local, pra a lista nao nascer de novo 60 vezes por segundo.</summary>
+	private readonly List<ProjetilDesenhado> _prensados = [];
+	private readonly List<int> _choquesSemDono = [];
+
+	/// <summary>
+	/// A que distancia duas pontas prensadas ainda sao "o mesmo encontro", em px. No servidor elas ficam
+	/// no MESMO ponto (`MoverOEncontro`); o que as separa na tela e a interpolacao de cada feixe, que a
+	/// bancada da foto ja mediu em ate um pacote de atraso. Meio tile cobre isso com folga e ainda e
+	/// menor que a distancia entre duas disputas vizinhas.
+	/// </summary>
+	private const float AlcanceDoPar = Jandirus.Core.World.ZoneCollision.TileSize * 0.75f;
+
+	/// <summary>
+	/// ============================ ONDE HA PONTA PRENSADA, HA UMA ESTRELA ============================
+	/// O servidor nao manda "ha um embate em tal lugar" pra zona -- manda um BIT em cada feixe que esta
+	/// numa disputa (`ProjetilState.Prensado`). Este tique le os feixes desenhados e mantem uma estrela
+	/// (<see cref="ChoqueDeKi"/>) em cada encontro:
+	///
+	///   * DUAS pontas prensadas que se tocam sao feixe contra feixe: UMA estrela no meio, metade da
+	///     cor de cada um;
+	///   * UMA ponta prensada sozinha e feixe contra a guarda de alguem: a estrela e toda dela.
+	///
+	/// A estrela mora na chave do feixe de MENOR id do par -- quem a carrega nao importa, importa que os
+	/// dois quadros seguintes cheguem a mesma resposta, senao ela morre e renasce a cada quadro.
+	///
+	/// E ELA SEGUE O DESENHO, NAO O PACOTE: a posicao e a ponta DESENHADA dos feixes, lida todo quadro.
+	/// Quando um lado empurra o outro a estrela anda junto, na mesma interpolacao deles, e nunca fica um
+	/// pacote atras nem a frente do que esta na tela.
+	/// ============================================================================================
+	/// </summary>
+	private void TickDosChoquesDeKi()
+	{
+		_prensados.Clear();
+		foreach (ProjetilDesenhado no in _tiros.Values)
+			if (no.Prensado && no.Tipo == Jandirus.Core.Combat.TipoDeProjetil.Beam && IsInstanceValid(no))
+				_prensados.Add(no);
+
+		// quem tinha bola e nao esta mais na lista perde a bola no fim
+		_choquesSemDono.Clear();
+		_choquesSemDono.AddRange(_choques.Keys);
+
+		for (int i = 0; i < _prensados.Count; i++)
+		{
+			ProjetilDesenhado a = _prensados[i];
+			int idA = IdDoTiro(a);
+			if (idA == 0) continue;
+
+			// O PAR: a outra ponta prensada mais perto desta, vindo de frente.
+			ProjetilDesenhado? b = null;
+			float melhor = AlcanceDoPar;
+			foreach (ProjetilDesenhado outro in _prensados)
+			{
+				if (outro == a || outro.Rumo.Dot(a.Rumo) > 0f) continue;
+				float d = outro.PontaDesenhada.DistanceTo(a.PontaDesenhada);
+				if (d < melhor) { melhor = d; b = outro; }
+			}
+
+			int idB = b != null ? IdDoTiro(b) : 0;
+			if (b != null && idB < idA) continue;   // a bola deste par e do outro (o de menor id)
+
+			Vector2 ponto = b != null ? (a.PontaDesenhada + b.PontaDesenhada) * 0.5f : a.PontaDesenhada;
+			// O CORPO DA ESTRELA E UMA LENTE atravessada no eixo dos feixes. De traves ela tem pouco mais
+			// que o dobro da cabeca do feixe mais largo (`ChoqueDeKi.CorpoPara`); ao longo do eixo, as duas
+			// cabecas e um quarto. E o que tapa a emenda entre os dois desenhos.
+			float raio = Mathf.Max(ChoqueDeKi.CorpoPara(a.Medidas), b != null ? ChoqueDeKi.CorpoPara(b.Medidas) : 0f);
+			float noEixo = Mathf.Max(a.Medidas.Cabeca, b?.Medidas.Cabeca ?? 0f) * 1.25f + 2f;
+			// AS PEDRAS SO SOBEM DE UM EMBATE RENTE AO CHAO: pairando ainda e cena de chao (`Voo.AlturaDePairar`),
+			// la em cima nao ha de onde arrancar pedra.
+			float altura = b != null ? (a.Altitude + b.Altitude) * 0.5f : a.Altitude;
+
+			if (!_choques.TryGetValue(idA, out ChoqueDeKi? bola) || !IsInstanceValid(bola) || bola.SaindoDeTeste)
+			{
+				// DEFINIDA ANTES DE ENTRAR NA ARVORE: o `_Ready` dela pendura a luz, e a luz e da cor que
+				// a bola tiver naquele instante -- definida depois, todo embate acenderia o chao de branco.
+				bola = new ChoqueDeKi { Name = $"Choque{idA}" };
+				bola.Definir(ponto, a.Rumo, raio, noEixo, a.CorNoChoque, (b ?? a).CorNoChoque);
+				_choques[idA] = bola;
+				_atores.AddChild(bola);
+			}
+			else bola.Definir(ponto, a.Rumo, raio, noEixo, a.CorNoChoque, (b ?? a).CorNoChoque);
+			bola.NoChao = altura <= Voo.AlturaDePairar;
+			_choquesSemDono.Remove(idA);
+		}
+
+		foreach (int id in _choquesSemDono) SoltarChoqueDe(id);
+	}
+
+	/// <summary>O id com que o `World` conhece este node de tiro (0 = nao e um tiro da zona).</summary>
+	private int IdDoTiro(ProjetilDesenhado no)
+	{
+		foreach ((int id, ProjetilDesenhado n) in _tiros)
+			if (n == no) return id;
+		return 0;
+	}
+
+	/// <summary>
+	/// O CHAO SOLTO DESTE PONTO, pela cor dele -- a pergunta das pedras do embate (`ChoqueDeKi.ChaoSoltoEm`).
+	/// Nulo = daqui nao sai pedra.
+	///
+	/// Tres recusas: sem mapa carregado; no ESPACO (nao ha chao, e o dono ja reprovou cascalho no vacuo); e
+	/// celula que e parede ou agua -- pedra nao sai de dentro de muro nem do meio do mar.
+	///
+	/// A cor e a do `CorDoEstrago`, a mesma que tinge a poeira de uma celula derrubada: uma leitura por
+	/// TIPO de tile por sessao, e zero dali em diante. Sem cor legivel (tile sem textura) a pedra sai da
+	/// cor de terra, como a poeira sairia.
+	/// </summary>
+	private Color? ChaoSoltoEm(Vector2 ponto)
+	{
+		if (_colisao == null || Jandirus.Core.World.Espaco.EhEspaco(_zonaDoAtual)) return null;
+
+		const int t = Jandirus.Core.World.ZoneCollision.TileSize;
+		var celula = new Vector2I(Mathf.FloorToInt(ponto.X / t), Mathf.FloorToInt(ponto.Y / t));
+		if (_colisao.BlockedCell(celula.X, celula.Y) || EhAgua(celula)) return null;
+		return CorDoEstrago(celula) ?? CorDeTerra;
+	}
+
+	/// <summary>A cor de chao de quem nao tem tile de que tirar cor. A mesma terra batida da `PoeiraDeEstrago`.</summary>
+	private static readonly Color CorDeTerra = new(0.46f, 0.36f, 0.26f);
+
+	/// <summary>O embate deste feixe acabou (ou o feixe morreu): a bola apaga sozinha. Ver `ChoqueDeKi.Soltar`.</summary>
+	private void SoltarChoqueDe(int id)
+	{
+		if (_choques.Remove(id, out ChoqueDeKi? bola) && IsInstanceValid(bola)) bola.Soltar();
+	}
+
+	/// <summary>
+	/// BANCADA: OS RAIOS QUE ESTAO DESENHADOS AGORA, pelo que o desenho FAZ com eles -- onde a ponta de
+	/// cada um e posta (a mesma conta do `_Draw`), quanto ela avanca, e se esta prensada. O irmao do
+	/// <see cref="TirosDesenhados"/>, que diz onde esta o NODE.
+	/// </summary>
+	public IEnumerable<(int Id, Vector2 Ponta, float Frente, bool Prensado)> RaiosDesenhadosDeTeste()
+	{
+		foreach ((int id, ProjetilDesenhado no) in _tiros)
+			if (IsInstanceValid(no) && no.Tipo == Jandirus.Core.Combat.TipoDeProjetil.Beam)
+				yield return (id, no.PontaDesenhada, no.Medidas.Frente, no.Prensado);
+	}
+
+	/// <summary>BANCADA: quantas estrelas de embate estao acesas agora (as que ja estao apagando nao contam).</summary>
+	public int ChoquesDeKiDeTeste => _choques.Count;
+
+	/// <summary>BANCADA: onde esta e de que tamanho e cada estrela de embate acesa.</summary>
+	public IEnumerable<(Vector2 Onde, float Raio)> ChoquesDeKiDesenhados()
+	{
+		foreach (ChoqueDeKi c in _choques.Values)
+			if (IsInstanceValid(c))
+				yield return (c.Position, c.RaioDeTeste);
 	}
 
 	private void AoBaqueDeEmbate(Vec2 onde, float altitude)
@@ -1099,12 +1275,35 @@ public partial class World : Node2D
 		// SUBIDO PELA ALTURA DO ENCONTRO (2026-09-23): as cabecas de quem disputa no ar sao desenhadas no ar.
 		var p = new Vector2(onde.X, onde.Y - altitude * Voo.EscalaNaTela);
 
-		// O MESMO VOCABULARIO DO CRITICO, que e o golpe mais forte que o jogo desenha: faisca
-		// quente grande, anel dourado largo e um anel de gelo por cima (o encontro e de velocidade,
-		// nao de forca bruta). Sem os dois aneis o cruzamento sumia no meio do cenario.
-		CombatFx.Impacto(_atores, p, 1.6f, Quente);
-		CombatFx.Onda(_atores, p, 96, Dourado, 0.28);
-		CombatFx.Onda(_atores, p, 150, Gelo, 0.34);
+		// HA UMA ESTRELA DE EMBATE DE KI AQUI? O baque vem com o ponto do servidor e a estrela mora no
+		// ponto DESENHADO; a mais proxima dentro de dois tiles e a deste embate.
+		ChoqueDeKi? perto = null;
+		float dist = Jandirus.Core.World.ZoneCollision.TileSize * 2f;
+		foreach (ChoqueDeKi c in _choques.Values)
+		{
+			if (!IsInstanceValid(c)) continue;
+			float d = c.Position.DistanceTo(p);
+			if (d < dist) { dist = d; perto = c; }
+		}
+
+		if (perto != null)
+		{
+			// NUM EMBATE DE KI QUEM MARCA O COMPASSO E A ESTRELA: ela incha num soco (`Tranco`). A faisca
+			// laranja e os dois aneis de baixo nasceram quando nao havia NADA desenhado no encontro; por
+			// cima da estrela eram um borrao amarelo no meio de um desenho azul e rosa, e um circulo que
+			// nenhuma das duas imagens do dono tem.
+			perto.Tranco();
+		}
+		else
+		{
+			// O ZANZOCLASH (nao ha feixe nenhum): O MESMO VOCABULARIO DO CRITICO, que e o golpe mais forte
+			// que o jogo desenha -- faisca quente grande, anel dourado largo e um anel de gelo por cima (o
+			// encontro e de velocidade, nao de forca bruta). Sem os dois aneis o cruzamento sumia no meio
+			// do cenario.
+			CombatFx.Impacto(_atores, p, 1.6f, Quente);
+			CombatFx.Onda(_atores, p, 96, Dourado, 0.28);
+			CombatFx.Onda(_atores, p, 150, Gelo, 0.34);
+		}
 		PoeiraDeEstrago.Soltar(_atores, p);
 
 		// SO TREME PRA QUEM ESTA NO EMBATE. Um cruzamento a cada meio segundo sacudiria a tela de
@@ -3081,6 +3280,7 @@ public partial class World : Node2D
 
 		EfeitosDaAltura();
 		TickDosDecalques(delta);
+		TickDosChoquesDeKi();
 
 		if (_lutaAte <= 0) return;
 		_lutaAte -= delta;

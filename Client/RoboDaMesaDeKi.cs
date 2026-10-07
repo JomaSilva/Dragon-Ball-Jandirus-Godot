@@ -108,8 +108,8 @@ public partial class RoboDaMesaDeKi : Node
 		_corAntes = mundo.CorDoKiDe(cli.LocalId);
 		tela.Abrir();
 		Conferir(tela.Aberta && tela.ModoDeTeste == "lista", "a mesa abre na LISTA (o servidor nao tem rascunho aberto)");
-		Conferir(tela.Previa is { Tipo: TipoDeProjetil.Beam, Folha: not null } p && Perto(p.Cor, _corAntes),
-				 $"na lista a previa mostra o raio padrao com folha, na MINHA cor ({Hex(_corAntes)})");
+		Conferir(tela.Previa is { Tipo: TipoDeProjetil.Beam, Vestido: true } p && Perto(p.Cor, _corAntes),
+				 $"na lista a previa mostra o raio padrao, vestido, na MINHA cor ({Hex(_corAntes)})");
 		Conferir(tela.ClicarBotao("Inventar uma técnica nova"), "o botao de inventar existe e foi apertado");
 		Virar(1);
 	}
@@ -130,10 +130,10 @@ public partial class RoboDaMesaDeKi : Node
 		Conferir(naGrade.SetEquals(esperadas) && artes.Count == esperadas.Count,
 				 $"a grade do RAIO oferece o padrao + PermitidasPara(Beam) = {esperadas.Count} artes, sem repetir ({artes.Count} na tela)");
 		Conferir(artes.All(a => a.TemMiniatura),
-				 $"toda arte da grade tem miniatura (folha convertida e com quadro que serve) ({artes.Count(a => a.TemMiniatura)}/{artes.Count})");
+				 $"toda arte da grade tem miniatura (o shader carregou e a amostra se vestiu) ({artes.Count(a => a.TemMiniatura)}/{artes.Count})");
 		Conferir(artes.Count(a => a.Marcada) == 1 && artes.First(a => a.Marcada).Arte == ArteDeKi.Nenhuma,
 				 "so o PADRAO esta marcado num rascunho novo");
-		Conferir(tela.Previa is { Tipo: TipoDeProjetil.Beam, Arte: ArteDeKi.Beam3, Folha: not null },
+		Conferir(tela.Previa is { Tipo: TipoDeProjetil.Beam, Arte: ArteDeKi.Beam3, Vestido: true },
 				 "a previa e um raio na arte padrao do custom (Beam3, o `beamicon` do DM)");
 		Conferir(TelaDeTecnicas.GradeRespeitaOTipo(naGrade, TipoDeProjetil.Beam), "a regra da grade aprova a grade do raio");
 
@@ -149,7 +149,7 @@ public partial class RoboDaMesaDeKi : Node
 		if (_t < 1.0) return;
 
 		Conferir(cli.Mesa?.Arte == ArteDeKi.BeamMasenko, "o servidor confirmou a arte (`ca_arte`) e o pacote voltou com ela");
-		Conferir(tela.Previa is { Arte: ArteDeKi.BeamMasenko, Folha: not null }, "...e a PREVIA passou a vestir o Masenko");
+		Conferir(tela.Previa is { Arte: ArteDeKi.BeamMasenko, Vestido: true }, "...e a PREVIA passou a vestir o Masenko");
 		var artes = tela.ArtesNaGrade();
 		Conferir(artes.Count(a => a.Marcada) == 1 && artes.First(a => a.Marcada).Arte == ArteDeKi.BeamMasenko,
 				 "...e so a miniatura do Masenko esta marcada");
@@ -189,7 +189,7 @@ public partial class RoboDaMesaDeKi : Node
 				 $"a grade da BOLA oferece o padrao + PermitidasPara(Blast) = {esperadas.Count} artes ({artes.Count} na tela)");
 		Conferir(naGrade.All(a => a == ArteDeKi.Nenhuma || ArteDeProjetil.Folha(a).Pasta == "Blasts"),
 				 "...e nenhuma delas e de Beams ou Techniques (uma bola com cauda de raio nao se oferece)");
-		Conferir(tela.Previa is { Tipo: TipoDeProjetil.Blast, Arte: ArteDeKi.Blast12, Folha: not null },
+		Conferir(tela.Previa is { Tipo: TipoDeProjetil.Blast, Arte: ArteDeKi.Blast12, Vestido: true },
 				 "a previa virou uma bola na arte padrao do custom (12.dmi, o `CustomMakeBlast` do DM)");
 
 		Fotografar("user://mesa-2-bola.png", "a mesa aberta numa BOLA");

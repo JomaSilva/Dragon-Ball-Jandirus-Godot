@@ -142,6 +142,9 @@ public partial class RoboDeVariedadeDeKi : Node
 	/// <summary>Depois disto ela desiste da tecnica da vez e passa pra proxima.</summary>
 	private const double PacienciaPorTiro = 14;
 
+	/// <summary>O zoom em que a foto do tiro cabe na tela -- ver a nota onde ele e aplicado.</summary>
+	private const int ZoomDaFoto = 2;
+
 	/// <summary>Depois disto ela desiste de tudo.</summary>
 	private const double Paciencia = 600;
 
@@ -261,6 +264,18 @@ public partial class RoboDeVariedadeDeKi : Node
 
 		(_, _, double ki, double maxKi, double folego) = srv.EstadoDaVariedade(cli.LocalId);
 		Nota($"tanques do corpo: Ki {ki:N0}/{maxKi:N0}, folego {folego:0.#}");
+
+		// ============================ A FOTO PRECISA CABER NA TELA (2026-10-07) ============================
+		// O obturador dispara com a cabeca do tiro a CINCO tiles da mao (quatro andados, mais o tile da
+		// boca do cano), e o corpo nasce olhando pro SUL. Com o zoom padrao (3) a tela mostra 240 px de
+		// mundo de altura -- 3,75 tiles pra baixo do corpo: os RAIOS passavam (o tronco atravessa o
+		// recorte, que e grampeado na borda da tela) e toda BOLA era fotografada abaixo da borda, com
+		// "0 px de tiro". No zoom 2 cabem 5,6 tiles, e e um zoom que o jogador tem (`Settings.ZoomMin`).
+		//
+		// (Virar o corpo pra um rumo de lado nao serve: `ApontarParaAVariedade` escreve o `Facing` no
+		// servidor e o pacote seguinte do cliente o desfaz -- o corpo so vira ANDANDO, ver a `--diagboca`.)
+		// ================================================================================================
+		World.Instancia?.AplicarZoom(ZoomDaFoto);
 
 		// O RUMO E ACHADO NO MAPA, e nao escolhido: um tiro que morre numa pedra a dois tiles nunca
 		// chega ao ponto do obturador.
@@ -432,11 +447,27 @@ public partial class RoboDeVariedadeDeKi : Node
 		// O NODE TEM QUE EXISTIR NA TELA -- e nao basta o servidor achar que mandou. Este e o elo que a
 		// `--diagartedeki` nao atravessa: um `ushort` perdido no anuncio de nascimento cairia
 		// exatamente aqui, com o projetil vivo no servidor e nada desenhado.
+		//
+		// E A FOTO E DO TIRO DESSA ARTE MAIS PERTO DO PONTO DO OBTURADOR (quatro tiles a frente do corpo),
+		// que quase sempre e ele mesmo (2026-10-07). A excecao e a barragem: a Bala Dispersa abre a nuvem em volta de quem atira, ate `bolas/2` TILES de
+		// raio -- e este corpo, armado pra bancada, abre 111 esferas em ate 55 tiles. "A mais nova" nascia
+		// fora da tela quase sempre; a conferencia passava ou reprovava no dado (1088 px numa rodada, 0 na
+		// seguinte, com o recorte mostrando grama). A ARTE continua sendo conferida no tiro que o servidor
+		// apontou; so o ENQUADRAMENTO passa a escolher a irma que esta a vista.
 		ArteDeKi noCliente = ArteDeKi.Nenhuma;
 		bool desenhado = false;
 		Vector2 cabecaNaTela = Vector2.Zero;
+		Vector2 miraNaTela = Alvo(mundo) ?? Vector2.Zero;
+		float maisPerto = float.MaxValue;
 		foreach ((int id, ArteDeKi a, TipoDeProjetil _, Vector2 onde, float _) in mundo.TirosDesenhados())
-			if (id == idDoTiro) { noCliente = a; desenhado = true; cabecaNaTela = NaTela(onde); }
+		{
+			if (id == idDoTiro) { noCliente = a; desenhado = true; }
+			if (a != arte) continue;
+
+			Vector2 naTela = NaTela(onde);
+			float d = naTela.DistanceSquaredTo(miraNaTela);
+			if (d < maisPerto) { maisPerto = d; cabecaNaTela = naTela; }
+		}
 
 		// UM QUADRO DE FOLGA pro node nascer: o anuncio chega pelo canal confiavel e o `AoNascerTiro`
 		// roda na leitura do pacote, que pode cair depois do `_Process` desta bancada.

@@ -762,11 +762,22 @@ public static class Fusao
 	/// Potara, e desfaz os dois em `:242-243`. E exatamente a forma desta funcao.
 	/// ==============================================================================================
 	///
-	/// ============================ O HEXA E O DO PROPRIO JOGO, E NAO UM VERMELHO MEU ============================
-	/// `e2331c` e `rgb(226,51,28)` -- o vermelho que o DM ja usa pra pintar cabelo, no `gdki_me()` do
-	/// `/obj/overlay/hairs/hair` (`HairObject.dm:73-75`), que e o Super Saiyajin God. Este port ja o
-	/// carrega como o vermelho do SSG. Usar o MESMO e o que o pedido manda ("o mesmo caminho de tinta que
-	/// o resto do jogo"), e evita a segunda definicao de "vermelho" que divergiria da primeira.
+	/// ============================ O HEXA NASCEU O DO SSG, E O DONO PEDIU MENOS ============================
+	/// A primeira versao usava `e2331c` -- o `rgb(226,51,28)` que o DM soma no cabelo do Super Saiyajin
+	/// God (`HairObject.dm:73-75`, no `gdki_me()` do `/obj/overlay/hairs/hair`), e que este port carrega
+	/// como o vermelho do SSG. O dono viu o resultado no trailer e pediu:
+	///
+	///   *"o cabelo da fusao da danca (metamoro) ta com um vermelho mt forte, pode diminuir um pouco a
+	///   intensidade do vermelho"*
+	///
+	/// O "forte" tinha causa medida: com 226 de vermelho, a soma ESTOURAVA o canal em 255 nos tres tons
+	/// claros da folha -- 52,6% do cabelo saia `#ff....`, um coral chapado, sem sombreado no vermelho.
+	/// `aa2615` e a MESMA matiz com os tres canais a 75% (170, 38, 21). O teto pra nenhum tom estourar e
+	/// 175 (255 menos o `#50` do tom mais claro); 170 fica abaixo dele, e os quatro degraus voltam a
+	/// existir tambem no canal que da nome a cor.
+	///
+	/// **AGORA SAO DOIS VERMELHOS, E E DELIBERADO.** O do SSG continua `e2331c`: aquele e do DM, e o dono
+	/// falou so da fusao. Quem unificar os dois de volta desfaz o pedido.
 	/// =====================================================================================================
 	///
 	/// ============================ E ELA SOMA, NAO E MATIZ -- MEDIDO NA FOLHA ============================
@@ -787,7 +798,7 @@ public static class Fusao
 	///
 	/// Em SOMA (o `ICON_ADD`, que e o que o DM faz) a mesma folha desenha, com este hexa:
 	///
-	///     #ea3b24  ->  #ff6952  ->  #ff7d66  ->  #ff836c
+	///     #b22e1d  ->  #e05c4b  ->  #f4705f  ->  #fa7665
 	///
 	/// Quatro degraus distintos, do vermelho fundo ao claro, com o sombreado do desenho inteiro
 	/// preservado -- que e exatamente o que "pintado de vermelho" quer dizer. E o piso continua sendo o
@@ -795,7 +806,7 @@ public static class Fusao
 	/// nesta cor esta escolhendo o TOM MAIS ESCURO do cabelo.
 	/// ==============================================================================================
 	/// </summary>
-	public const string VermelhoDoCabeloDaFusao = "e2331c";
+	public const string VermelhoDoCabeloDaFusao = "aa2615";
 
 	/// <summary>
 	/// A TINTA QUE **ESTE TIPO DE** FUSAO POE NO CABELO DESTA FORMA, ou nulo (a esmagadora maioria).

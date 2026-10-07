@@ -170,6 +170,20 @@ public static class EmbateDeKi
 	/// </summary>
 	public static bool EncontroAteOCorpoDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a disputa volta a deixar cada feixe no rumo em que foi atirado, levando
+	/// so as CABECAS pro eixo corpo a corpo -- o que entortava os dois feixes sempre que os duelistas nao
+	/// estavam na mesma linha (o "beam todo torto" do dono, 2026-10-07).
+	/// </summary>
+	public static bool FeixesForaDoEixoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o corpo sem teclado volta a obedecer o cerebro com um ataque de ki na
+	/// mao -- re-aperta o verb do proprio raio (e o SOLTA no meio da disputa), levanta voo, soca. Era o
+	/// "parece q eles as vezes se mexem durante a colisao" do dono (2026-10-07).
+	/// </summary>
+	public static bool IaComAsMaosLivresDeTeste;
+
 	// =====================================================================
 	// O PODER DE CADA LADO
 	// =====================================================================

@@ -1,5 +1,7 @@
 using Godot;
+using Jandirus.Core.Combat;
 using Jandirus.Core.World;
+using static Jandirus.Client.ArteDeKiNoCliente;
 
 namespace Jandirus.Client;
 
@@ -10,12 +12,26 @@ namespace Jandirus.Client;
 /// `addchargeoverlay()` (`Skills/Ki/tools/mobhandler.dm:18-32`), chamado pelo bloco de carga de todo
 /// verb de raio (`beams.dm:300` e as irmas). Sao cinco linhas e cada uma virou uma decisao aqui:
 ///
-///   `I.icon = 'BlastCharges.dmi'`            -> <see cref="Arte"/>
+///   `I.icon = 'BlastCharges.dmi'`            -> desenhado por shader, ver abaixo
 ///   `I.icon_state = ChargeState`             -> <see cref="Estado"/>, de 1 a 9, ver `EntityState.CargaDoCanal`
-///   `I.icon += rgb(blastR,blastG,blastB)`    -> <see cref="Cor"/>, somada pelo shader de Ki
+///   `I.icon += rgb(blastR,blastG,blastB)`    -> <see cref="Cor"/>, somada aos tons da folha
 ///   `I.layer = MOB_LAYER+99` / `I.plane = 7` -> <see cref="ZIndex"/> 1, por cima do boneco
 ///   `while(charging) sleep(1)`               -> quem cria e destroi e o `World`, pelo estado do fio
 /// ==============================================================================
+///
+/// ============================ A FOLHA VIROU SHADER, JUNTO COM O TIRO ============================
+/// Ele era um `AnimatedSprite2D` da `BlastCharges.dmi`. Quando o dono mandou trocar os ataques de ki
+/// por shader (2026-10-07), a carga foi junto pelo motivo que este arquivo ja escrevia sobre a luz
+/// dela: *o brilho que se junta na mao E um ataque de ki* -- e a arte do raio, na cor de ki do mesmo
+/// dono, e morre no instante em que o feixe nasce. Uma carga de folha pixelada virando um raio de
+/// shader seria a emenda mais visivel do jogo, e ela acontece em TODO disparo.
+///
+/// Os NOVE desenhos continuam nove (o `ChargeState` e por personagem e nao muda nunca): cada um e um
+/// estilo de bola em `ArteDeKiNoCliente.EstiloDaCarga`, lido da folha de mesmo numero.
+///
+/// O QUE A FOLHA NAO FAZIA E ESTE FAZ: a bola ENCHE. Ela nasce pequena e chega ao tamanho em meio
+/// segundo -- energia que "se junta" e nao um adesivo que aparece pronto.
+/// ==============================================================================================
 ///
 /// ============================ ELE NAO E A CHAMA DO `C`, E A DIFERENCA IMPORTA ============================
 /// A <see cref="CargaVisual"/> ali do lado desenha a aura de POWER-UP -- a do `Power_Up` do DM, a que
@@ -49,11 +65,15 @@ public partial class CargaDeRaioVisual : Node2D
 	/// <summary>O nome do node. Uma casa so: quem cria e quem destroi procuram por ele.</summary>
 	public const string NomeDoNode = "CargaDeRaio";
 
-	/// <summary>`I.icon = 'BlastCharges.dmi'` (`mobhandler.dm:5`).</summary>
-	private const string Arte = "res://Assets/Sprites/Blasts/BlastCharges.tres";
+	/// <summary>
+	/// A que distancia do centro do corpo a bola se junta, em px, pro lado que ele olha. E onde ficam
+	/// as maos de um boneco de 32 px com os bracos a frente -- a folha do original desenhava o brilho
+	/// deslocado do centro em cada direcao pelo mesmo motivo (ver <see cref="Direcao"/>).
+	/// </summary>
+	private const float DistanciaDaMao = 9f;
 
-	/// <summary>O mesmo shader do tiro: ele SOMA a cor por cima de uma folha cinza.</summary>
-	private const string CaminhoDoShaderDeKi = "res://Assets/Shaders/Ki.gdshader";
+	/// <summary>Em quanto tempo a bola enche, e de que fracao do tamanho ela parte.</summary>
+	private const float SegundosPraEncher = 0.5f, TamanhoDeNascenca = 0.4f;
 
 	/// <summary>
 	/// QUAL DOS NOVE DESENHOS -- o `ChargeState` do personagem. De 1 a 9.
@@ -72,16 +92,15 @@ public partial class CargaDeRaioVisual : Node2D
 	public Color Cor = Aura.CorDoKiCru;
 
 	/// <summary>
-	/// PRA ONDE O CORPO OLHA. A folha e direcional (`1_north` .. `9_west`) porque no BYOND o overlay
-	/// e filho do mob e HERDA o `dir` dele -- o brilho nasce na MAO, e a mao muda de lado.
-	///
-	/// O `8` e a excecao e ela e da propria folha: aquele estado nao tem sufixo de direcao nenhum. Um
-	/// personagem com carga 8 desenha o mesmo brilho pros quatro lados, e isso e o original.
+	/// PRA ONDE O CORPO OLHA. No BYOND o overlay e filho do mob e HERDA o `dir` dele -- o brilho nasce
+	/// na MAO, e a mao muda de lado. Aqui e a mesma coisa em uma conta: a bola fica
+	/// <see cref="DistanciaDaMao"/> a frente do corpo, na direcao dele.
 	/// </summary>
 	public Facing Direcao = Facing.South;
 
-	private AnimatedSprite2D? _sprite;
-	private SpriteFrames? _folha;
+	private ShaderMaterial? _mat;
+	private EstiloDeBola _estilo = EstiloDaCarga(1);
+	private double _idade;
 
 	public override void _Ready()
 	{
@@ -90,34 +109,13 @@ public partial class CargaDeRaioVisual : Node2D
 		// dos ombros, que e outra coisa.
 		ZIndex = 1;
 
-		if (!ResourceLoader.Exists(Arte)) { GD.PushWarning($"[carga de raio] sem arte em {Arte}"); return; }
-		_folha = ResourceLoader.Load<SpriteFrames>(Arte);
-		if (_folha == null) return;
-
-		_sprite = new AnimatedSprite2D
-		{
-			SpriteFrames = _folha,
-			Centered = true,
-			// O MESMO 4 PRA BAIXO DA NAVE, e pelo mesmo motivo: o centro do node do corpo fica
-			// `MoveRules.FeetOffsetY` acima dos pes, e sem o ajuste o brilho sai na altura da testa.
-			Position = new Vector2(0, 4),
-		};
-
-		if (ResourceLoader.Load<Shader>(CaminhoDoShaderDeKi) is { } sh)
-		{
-			var m = new ShaderMaterial { Shader = sh };
-			m.SetShaderParameter("tinta", new Vector3(Cor.R, Cor.G, Cor.B));
-			_sprite.Material = m;
-		}
-
-		AddChild(_sprite);
-		Aplicar();
+		Vestir();
 
 		// ============================ A CARGA TAMBEM LANCA LUZ, E AQUI ESTA O PORQUE ============================
 		// O pedido do dono foi *"beams e ataque de ki deveriam ter LUZ PROPRIA"*, e o brilho que se
-		// junta na mao E um ataque de ki -- e literalmente a arte do raio (`BlastCharges.dmi`),
-		// tingida com a cor de ki do mesmo dono, e ele morre no instante em que o feixe nasce. Um
-		// brilho de energia que nao acende nada em volta le como adesivo colado no boneco.
+		// junta na mao E um ataque de ki -- e literalmente a arte do raio, tingida com a cor de ki do
+		// mesmo dono, e ele morre no instante em que o feixe nasce. Um brilho de energia que nao acende
+		// nada em volta le como adesivo colado no boneco.
 		//
 		// ============================ E ELA NAO E A CHAMA DO `C`, QUE CONTINUA SEM LUZ ============================
 		// A <see cref="CargaVisual"/> ali do lado -- a aura de power-up que o jogador acende segurando
@@ -137,34 +135,50 @@ public partial class CargaDeRaioVisual : Node2D
 	/// <summary>
 	/// O CORPO VIROU (ou o estado mudou). Chamado pelo `World` a cada snapshot enquanto a carga vive.
 	///
-	/// SO TRABALHA NA MUDANCA -- o `Animation` do `AnimatedSprite2D` ja e o "mudou?" e reescrever o
-	/// mesmo nome 30 vezes por segundo reinicia a animacao, que na pratica CONGELA o brilho no
-	/// primeiro quadro. E o mesmo cuidado que o `SetState` do `CharacterVisual` toma.
+	/// SO TRABALHA NA MUDANCA: trocar de estado refaz o material (outro estilo), e virar so muda de
+	/// que lado a bola e desenhada. Nenhum dos dois zera a idade -- a bola nao volta a encher porque o
+	/// corpo olhou pro outro lado.
 	/// </summary>
 	public void Definir(int estado, Facing dir)
 	{
 		if (estado == Estado && dir == Direcao) return;
+		bool outroDesenho = estado != Estado;
 		Estado = estado;
 		Direcao = dir;
-		Aplicar();
+		if (outroDesenho) Vestir();
+		QueueRedraw();
 	}
 
-	private void Aplicar()
+	private void Vestir()
 	{
-		if (_sprite == null || _folha == null) return;
+		_estilo = EstiloDaCarga(Estado is >= 1 and <= 9 ? Estado : 1);
+		_mat = PintorDeKi.MaterialDeBola(_estilo, _estilo.Raio, Cor);
+		Material = _mat;
+	}
 
-		int n = Estado is >= 1 and <= 9 ? Estado : 1;
+	public override void _Process(double delta)
+	{
+		_idade += delta;
+		QueueRedraw();
+	}
 
-		// A ESCADA E CURTA E TEM SO UM DEGRAU, e o degrau e o `8`: ele e o unico estado da folha sem
-		// sufixo de direcao. Tentar `<n>_<dir>` primeiro e cair no `<n>` cru cobre os dois casos sem
-		// um `if (n == 8)` escrito -- que envelheceria no dia em que a folha mudasse.
-		string dir = MoveRules.FacingSuffix(Direcao);
-		string anim = _folha.HasAnimation($"{n}_{dir}") ? $"{n}_{dir}"
-					: _folha.HasAnimation($"{n}") ? $"{n}"
-					: "";
-		if (anim.Length == 0) return;
+	public override void _Draw()
+	{
+		if (_mat == null) return;
+		_mat.SetShaderParameter("tempo", (float)_idade);
 
-		_sprite.Animation = anim;
-		_sprite.Play();
+		// ENCHE: de `TamanhoDeNascenca` ate 1 em `SegundosPraEncher`, desacelerando no fim. O tamanho
+		// entra como escala do DESENHO (a bola inteira, halo e pontos em volta crescem juntos) e nao
+		// como raio do shader -- trocar o raio a cada quadro faria o ruido de dentro escorregar.
+		float t = Mathf.Clamp((float)_idade / SegundosPraEncher, 0f, 1f);
+		float tamanho = Mathf.Lerp(TamanhoDeNascenca, 1f, 1f - (1f - t) * (1f - t));
+
+		// O MESMO 4 PRA BAIXO DA NAVE, e pelo mesmo motivo: o centro do node do corpo fica
+		// `MoveRules.FeetOffsetY` acima dos pes, e sem o ajuste o brilho sai na altura da testa.
+		Vec2 frente = MeleeArea.Frente(Direcao);
+		var mao = new Vector2(frente.X, frente.Y) * DistanciaDaMao + new Vector2(0, 4);
+
+		DrawSetTransform(mao, 0f, Vector2.One * tamanho);
+		PintorDeKi.Quadro(this, Vector2.Zero, Vector2.Right, PintorDeKi.MeiaDaBola(_estilo, _estilo.Raio));
 	}
 }

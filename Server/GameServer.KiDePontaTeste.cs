@@ -1081,10 +1081,18 @@ public partial class GameServer
 		// Mandar a frase pelo `Comando.Falar` (o caminho das outras falas da IA) nao seria mais certo,
 		// seria mais tarde: o reflexo roda fora da decisao de 4 Hz de proposito (ver o cabecalho do
 		// `TickDoContraFeixe`), e no DM o grito sai colado no tiro (`NPCAI.dm:378-379`).
+		//
+		// `EnraizadoPorKi` chegou em 2026-10-07, com a trava do `AplicarComando` (*"parece q eles as vezes
+		// se mexem durante a colisao"*): com um raio na mao ou numa disputa, a IA nao voa, nao troca de
+		// guarda, nao usa habilidade e nao soca. E outra PERGUNTA, e a mais magra da lista -- o corpo dela
+		// e `_canais.ContainsKey(id)`, o MESMO dicionario que o `PodeAtirar` do jogador consulta pra dizer
+		// *"voce ja esta com um raio na mao"*. E o que ela serve e uma porta que so FECHA: a trava tira
+		// gestos da IA, nao lhe da nenhum. A contraprova de que ela trabalha e a `--tiroiateste` (a rodada
+		// com `IaComAsMaosLivresDeTeste`, em que a IA larga a disputa em 1,4 s).
 		// ==========================================================================================
 		string[] excecoes = ["PassoDaIa", "FacingFrom",
 							 "VemFeixeContraMim", "SabeTecnica", "ContainsKey", "TryGetValue",
-							 "FraseDoContraFeixe"];
+							 "FraseDoContraFeixe", "EnraizadoPorKi"];
 
 		HashSet<string> chamaIa = ChamadasDe(tiroDaIa);
 		HashSet<string> chamaJogador = ChamadasDe(funilDoJogador);

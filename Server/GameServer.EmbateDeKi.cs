@@ -273,6 +273,10 @@ public sealed partial class GameServer
 		if (alvo.Ficha.dead || alvo.Ficha.KO || alvo.Combate.Stun > 0) return false;
 		if (_emEmbateDeKi.ContainsKey(alvo.Id) || _emEmbate.ContainsKey(alvo.Id)) return false;
 		if (EstaDancando(alvo.Id)) return false;
+		// QUEM ESTA NO AR DE UM ARREMESSO (ou sendo levado por outro feixe) NAO SEGURA NADA (2026-10-07): a
+		// disputa PLANTA os dois, e um corpo que comecasse a disputar voando continuaria voando com ela de pe
+		// -- as maos indo embora do ataque que elas seguram.
+		if (alvo.TiquesDeVoo > 0 || alvo.ArrastoRestante > 0) return false;
 
 		Comecar(new LadoDeKi { Quem = dono, Feixe = p },
 				new LadoDeKi { Quem = alvo, Feixe = null },
@@ -300,6 +304,34 @@ public sealed partial class GameServer
 
 		Vec2 eixo = corpoB - corpoA;
 		eixo = eixo.LengthSquared > 1e-4f ? eixo.Normalized() : a.Feixe!.Rumo;
+
+		// ============================ OS DOIS FEIXES PASSAM A APONTAR PELO EIXO (2026-10-07) ============================
+		// O dono, vendo dois NPCs disputarem no trailer: *"fazem colisao na diagonal e o beam fica todo torto"*.
+		// A causa era esta funcao. O eixo da disputa e o que liga os dois CORPOS -- mas cada feixe continuava no
+		// rumo CARDEAL em que foi atirado (o olhar tem quatro lados), com a cauda presa na boca do dono por esse
+		// rumo (`AndarProjetil` a reescreve todo tique) e so a CABECA levada pro eixo pelo `MoverOEncontro`.
+		// Dois duelistas fora da mesma linha -- e a regra aceita ate 48 px de desvio (`Feixe.FaixaDeFrente`) --
+		// ficavam cada um com um feixe da boca reta ate uma cabeca de lado. E como o desvio e fixo e o feixe de
+		// quem perde ENCOLHE, o angulo so piorava: 4 graus com 300 px de feixe, 18 com 60, quase 90 no toco do fim.
+		//
+		// QUEM DISPUTA MIRA NO OUTRO. O rumo de cada feixe vira o eixo e a cauda vai junto (ela e a boca do dono
+		// PELO rumo do tiro): mao, cabeca, encontro, cabeca e mao ficam na mesma reta. O olhar do corpo nao muda
+		// -- ele ja estava virado pro adversario, dentro do que quatro lados permitem.
+		//
+		// A CAUDA E ESCRITA AQUI, e nao deixada pro tique seguinte do `AndarProjetil`: sem isto a disputa nasceria
+		// com um tique de feixe torto (a cabeca ja no eixo, a cauda ainda na boca velha), e a regua da bancada
+		// (`MedirSobreposicao`, que passou a medir tambem DENTRO da disputa) acusaria exatamente esse quadro.
+		// ===============================================================================================================
+		if (!EmbateDeKi.FeixesForaDoEixoDeTeste)
+		{
+			a.Feixe!.Rumo = eixo;
+			if (a.Feixe.Canalizando) a.Feixe.Cauda = BocaDeCano.De(a.Quem.Pos, eixo);
+			if (b.Feixe != null)
+			{
+				b.Feixe.Rumo = eixo * -1f;
+				if (b.Feixe.Canalizando) b.Feixe.Cauda = BocaDeCano.De(b.Quem.Pos, b.Feixe.Rumo);
+			}
+		}
 
 		// O PONTO DE ENCONTRO E O PONTO DE CONTATO -- onde as duas FRENTES se tocam, e nao onde os
 		// centros das cabecas estao. Feixe contra feixe: o meio das duas cabecas. Feixe contra guarda: a
@@ -343,7 +375,11 @@ public sealed partial class GameServer
 		}
 		float s = NoEixo(ponto - corpoA, eixo);
 		float sDentro = sA <= sB ? Math.Clamp(s, sA, sB) : (sA + sB) * 0.5f;
-		ponto += eixo * (sDentro - s);
+		// E O ENCONTRO MORA NO EIXO, e nao ao lado dele (2026-10-07). Ate aqui o ponto so era trazido pra dentro da
+		// faixa AO LONGO do eixo e guardava o desvio de lado com que nasceu (ele sai do meio das duas cabecas, que
+		// vinham cada uma na sua linha). Com os feixes apontando pelo eixo, um encontro fora dele seria o unico
+		// ponto torto da reta inteira.
+		ponto = EmbateDeKi.FeixesForaDoEixoDeTeste ? ponto + eixo * (sDentro - s) : corpoA + eixo * sDentro;
 
 		// ============================ QUANTO O ENCONTRO PODE CAMINHAR: ATE O CORPO ============================
 		// Aqui havia UM TILE DE FOLGA, e o comentario dela dizia *"o feixe so ENCOSTA em alguem quando
@@ -395,6 +431,10 @@ public sealed partial class GameServer
 		// posicao delas e o tique da disputa.
 		if (a.Feixe != null) a.Feixe.EmEmbate = true;
 		if (b.Feixe != null) b.Feixe.EmEmbate = true;
+
+		// AS CABECAS JA NASCEM NO LUGAR, pelo mesmo motivo da cauda la em cima: o tique da disputa so roda
+		// depois do dos projeteis, e ate ele rodar as cabecas estariam onde o gatilho as pegou.
+		MoverOEncontro(d);
 
 		Comeco(d, a, b);
 		Comeco(d, b, a);

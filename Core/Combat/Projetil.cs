@@ -165,7 +165,7 @@ public sealed class ReceitaDeProjetil
 	public ArteDeKi Arte = ArteDeKi.Nenhuma;
 
 	/// <summary>
-	/// A ESCALA DO SPRITE PEDIDA PELA TECNICA (0 = a regra de sempre: `MultDeOnda` no raio, 1 na bola).
+	/// A ESCALA DO DESENHO PEDIDA PELA TECNICA (0 = a regra de sempre: `MultDeOnda` no raio, 1 na bola).
 	///
 	/// Existe pelas bolas que CRESCEM enquanto sao formadas -- a Death Ball (`DeathBall.dm:81`,
 	/// `nA.Scale(1+movestrength/4, ...)`) e a Genkidama (`SpiritBomb.dm:119-121`, `prevscale += 0.1`).
@@ -483,13 +483,13 @@ public sealed class Projetil
 	public string Nome = "ataque de ki";
 
 	/// <summary>
-	/// A FOLHA QUE O CLIENTE VAI DESENHAR. Resolvida UMA VEZ, no disparo, pelo
-	/// <see cref="ArteDeProjetil.De"/> -- e dali em diante ela e so um numero que viaja.
+	/// A ARTE COM QUE O CLIENTE VAI DESENHAR (ela escolhe o estilo -- ver <see cref="ArteDeKi"/>). Resolvida
+	/// UMA VEZ, no disparo, pelo <see cref="ArteDeProjetil.De"/> -- e dali em diante ela e so um numero que viaja.
 	/// </summary>
 	public ArteDeKi Arte = ArteDeKi.Nenhuma;
 
 	/// <summary>
-	/// O TAMANHO DO SPRITE NA TELA -- e ele **nao** e poder, e por isso e um campo separado.
+	/// O TAMANHO DO DESENHO NA TELA -- e ele **nao** e poder, e por isso e um campo separado.
 	///
 	/// ============================ ISTO NAO CONTRADIZ O <see cref="Bp"/> ============================
 	/// O `wavemult` do DM faz DUAS coisas na mesma linha e o port ja separou uma delas: o
@@ -497,14 +497,19 @@ public sealed class Projetil
 	/// e o comentario de <see cref="Paralisia"/> explica por que guardar o multiplicador ao lado do
 	/// resultado criaria a segunda resposta pra "qual e o poder deste tiro".
 	///
-	/// A SEGUNDA coisa e `A.transform *= wavemult` (`beams.dm:149`): o sprite ENGORDA. E por isso
+	/// A SEGUNDA coisa e `A.transform *= wavemult` (`beams.dm:149`): o desenho ENGORDA. E por isso
 	/// que o Final Flash e um muro de energia e o Ki Wave e um fio -- e a diferenca some quando o
 	/// desenho ignora a escala, que era o estado deste port (Final Flash e bola comum saiam com a
 	/// mesma grossura).
 	///
 	/// Sao duas perguntas diferentes -- *quanto ele machuca* e *quantos pixels ele ocupa* -- e por
-	/// isso sao dois campos. Ninguem le este pra calcular nada: ele sai do <c>MultDeOnda</c> da
-	/// receita no nascimento, viaja no anuncio e morre no `_Draw`.
+	/// isso sao dois campos. Ele sai do <c>MultDeOnda</c> da receita no nascimento e viaja no anuncio.
+	///
+	/// E ELE E LIDO PELA GEOMETRIA DO RAIO, dos dois lados: a frente da cabeca e a meia espessura do tronco
+	/// sao a medida da arte VEZES esta escala (`Feixe.AlcanceDaCabeca`, `Feixe.MeiaEspessuraDoTronco`), e e
+	/// por elas que o servidor encosta, disputa e corta -- e que o cliente desenha. (Aqui estava escrito
+	/// "ninguem le este pra calcular nada"; deixou de ser verdade quando o Final Flash passou a encostar
+	/// pela frente DESENHADA dele, em 2026-09-23.)
 	/// ========================================================================================
 	/// </summary>
 	public double EscalaVisual = 1;

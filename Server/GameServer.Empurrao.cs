@@ -182,6 +182,24 @@ public sealed partial class GameServer
 		// de derrubar o raio. Ver `GameServer.Feixe.cs`.)
 		AoLevarGolpeComRaioNaMao(d, null);
 
+		// ============================ E QUEM ESTA NUMA DISPUTA DE KI NAO VOA (2026-10-07) ============================
+		// A linha de cima ja fez o golpe PESAR NO MEDIDOR (a regra do dono: *"atacar um personagem que ta usando
+		// beam em colisao faz ele sofrer DESVANTAGEM no clash dele"*) em vez de derrubar o raio. Faltava a outra
+		// metade: o corpo continuava sendo arremessado, com a disputa de pe -- as maos voando pra longe do feixe
+		// que elas alimentam, e os dois feixes entortando atras delas. Foi uma das coisas que o dono viu como
+		// *"parece q eles as vezes se mexem durante a colisao"*.
+		//
+		// Na disputa o corpo esta PLANTADO (`PodeMexerOCorpo`), nao pode ser agarrado (`GameServer.Feixe`) e e
+		// solido pra quem anda (`Ocupacao.NoEmbate`). O arremesso entra na mesma lista: o preco de apanhar ali e
+		// o medidor, e ele ja foi cobrado.
+		//
+		// ISTO NAO E DO DM, E E DECLARADO: la o arremesso DERRUBA o raio -- o `!KB` na condicao do laco do
+		// `npc_fire_beam` (`BeamClash.dm:430`) -- e a disputa acaba junto. Quem trocou a queda pelo peso no
+		// medidor foi o dono, em 2026-09-07; o corpo voando com a disputa de pe foi o que aquela troca deixou
+		// sem dono.
+		// ==============================================================================================================
+		if (_emEmbateDeKi.ContainsKey(d.Id)) return;
+
 		d.TiquesDeVoo = tiques;
 		d.TiquesIniciaisDoVoo = tiques;
 		d.RumoDoVoo = rumo;

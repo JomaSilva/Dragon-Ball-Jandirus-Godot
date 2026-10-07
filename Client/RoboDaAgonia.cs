@@ -149,19 +149,17 @@ public partial class RoboDaAgonia : Node2D
 	/// <summary>
 	/// O lado do recorte de cada planeta na tira.
 	///
-	/// ============================ 560 E NAO 480, E A DIFERENCA SAO 14 PIXELS QUE MENTIAM ============================
-	/// O `PlanetaDesenhado` poe o proprio rotulo (o nome, em laranja) em `y = -Raio - 34`
-	/// (`Client/CeuDoEspaco.cs:208`). Com lado 480 a meia altura era 240, e a conta ficava assim:
+	/// ============================ 560 E NAO 480, E QUEM PEDIU ISSO JA NAO EXISTE ============================
+	/// O `PlanetaDesenhado` escrevia o nome do mundo em cima do disco, em `y = -Raio - 34`. Com lado 480
+	/// a meia altura era 240: o nome do CONTROLE (raio 200) cabia e o da VITIMA (raio 220) era cortado
+	/// fora -- a tira rotulava exatamente o quadro que NAO era o assunto dela, e foi assim que o dono a
+	/// leu como "Namek virou a Terra". O lado subiu pra 560 pra caber os dois.
 	///
-	///   * CONTROLE, raio 200 -> rotulo em -234, **cabe** em 240  -> o nome dele aparecia na tira;
-	///   * VITIMA,   raio 220 -> rotulo em -254, **nao cabe**     -> o nome dela era cortado fora.
-	///
-	/// Ou seja: **a tira rotulava exatamente o quadro que NAO era o assunto dela**, e por sorte de 14
-	/// pixels. O unico nome visivel na foto que o dono abriu era o do planeta errado -- e foi por isso
-	/// que ele leu a tira como "Namek virou a Terra".
-	///
-	/// 560 poe a meia altura em 280 e cabe o rotulo de um mundo de raio 220 com 26 px de folga. E o
-	/// recorte continua cabendo na viewport de 1280x720 nos dois eixos.
+	/// **AQUELE ROTULO SAIU DO JOGO** (pedido do dono: o nome do planeta e assunto da carta estelar, e
+	/// nao do ceu), e quem diz de que mundo e cada quadro passou a ser a legenda que a propria
+	/// `TiraDeFotos` desenha -- conferida de volta no PNG, ver o passo 9. O 560 FICOU: sao 60 px de ceu
+	/// em volta de um disco de raio 220, o bastante pra ver a borda dele inteira, e o recorte continua
+	/// cabendo na viewport de 1280x720 nos dois eixos.
 	/// ==========================================================================================================
 	/// </summary>
 	private const int LadoDoRecorte = 560;
@@ -1605,14 +1603,9 @@ public partial class RoboDaAgonia : Node2D
 	/// Componentes conexas, por vizinhanca de 4, dentro de um circulo. E a unica medida desta bancada
 	/// que responde *"quantas COISAS ha ali"* -- todas as outras respondem "quao aceso" ou "quao
 	/// coberto", e nenhuma das duas distingue **uma** pedra grande de **dezoito** pequenas.
-	///
-	/// O `tetoY` existe por causa do quadro do planeta VIVO: o `PlanetaDesenhado` escreve o proprio
-	/// NOME em laranja logo acima do disco (`Client/CeuDoEspaco.cs:208`, `y = -Raio - 34`), e cada
-	/// letra e uma mancha do tamanho de um caco. Contar o rotulo como pedra faria o controle desta
-	/// familia -- *"antes da explosao nao havia nenhuma"* -- reprovar por um defeito que nao existe.
 	/// ============================================================================================
 	/// </summary>
-	private static List<Mancha> Manchas(Image img, Vector2I centro, int raio, int tetoY)
+	private static List<Mancha> Manchas(Image img, Vector2I centro, int raio)
 	{
 		int lado = 2 * raio / PassoDaVarredura + 1;
 		var aceso = new bool[lado * lado];
@@ -1622,7 +1615,7 @@ public partial class RoboDaAgonia : Node2D
 			{
 				int x = centro.X - raio + i * PassoDaVarredura;
 				int y = centro.Y - raio + j * PassoDaVarredura;
-				if (x < 0 || y < 0 || x >= img.GetWidth() || y >= img.GetHeight() || y < tetoY) continue;
+				if (x < 0 || y < 0 || x >= img.GetWidth() || y >= img.GetHeight()) continue;
 
 				float dx = x - centro.X, dy = y - centro.Y;
 				if (dx * dx + dy * dy > (float)raio * raio) continue;
@@ -1687,13 +1680,12 @@ public partial class RoboDaAgonia : Node2D
 
 		var centro = new Vector2I((int)PosDaVitima.X, (int)PosDaVitima.Y);
 
-		// O CORTE DO ROTULO SO VALE PRO QUADRO VIVO, e ele e o unico que tem rotulo -- nos outros dois
-		// o `PlanetaDesenhado` ja se recolheu, entao a regiao e a mesma sem precisar de corte nenhum.
-		int tetoDoRotulo = centro.Y - (int)RaioDaVitima - 4;
-
-		List<Mancha> vivo = Manchas(_quadroVivo, centro, RaioDaVarredura, tetoDoRotulo);
-		List<Mancha> antes = Manchas(_semCaco, centro, RaioDaVarredura, int.MinValue);
-		List<Mancha> agora = Manchas(comCaco, centro, RaioDaVarredura, int.MinValue);
+		// AS TRES FOTOS SAO VARRIDAS NA MESMA REGIAO. O quadro VIVO ja teve um corte so dele, pra pular
+		// o nome que o `PlanetaDesenhado` escrevia acima do disco (cada letra era uma mancha do tamanho
+		// de um caco); o nome saiu do jogo e o corte saiu junto.
+		List<Mancha> vivo = Manchas(_quadroVivo, centro, RaioDaVarredura);
+		List<Mancha> antes = Manchas(_semCaco, centro, RaioDaVarredura);
+		List<Mancha> agora = Manchas(comCaco, centro, RaioDaVarredura);
 
 		Nota($"manchas do tamanho de um caco em {RaioDaVarredura} px em volta de onde {Cobaia} estava: "
 		   + $"planeta VIVO {vivo.Count} | prazo ainda negativo {antes.Count} | +6 s do estouro {agora.Count} "
@@ -1885,7 +1877,7 @@ public partial class RoboDaAgonia : Node2D
 		if (img == null) return;
 
 		var centro = new Vector2I((int)PosDaVitima.X, (int)PosDaVitima.Y);
-		List<Mancha> m = Manchas(img, centro, RaioDaVarredura, int.MinValue);
+		List<Mancha> m = Manchas(img, centro, RaioDaVarredura);
 
 		double media = 0;
 		foreach (Mancha x in m) media += x.Centro.DistanceTo(PosDaVitima);

@@ -2144,6 +2144,9 @@ public partial class GameServer : Node
 		_nascerNaBeirada = Array.IndexOf(args, "--voltateste") >= 0;
 		if (_nascerNaBeirada) GD.Print("[server] BANCADA: nascendo a 6 tiles da beirada oeste");
 
+		// `--campoteste [N]`: quem entrar nasce no meio de um campo aberto -- ver `GameServer.CampoDeTeste.cs`.
+		LerOCampoDeTeste(args);
+
 		// `--solteste`: cozinha corpos dentro de estrelas e arremessa um deles la pra dentro.
 		//
 		// Ela NAO mexe em quem esta jogando -- os corpos sao forjados e recolhidos dentro do mesmo
@@ -4123,6 +4126,10 @@ public partial class GameServer : Node
 		// outra margem. Ver `PorNaBeiraDoLago` -- ela nao inventa colisao nenhuma, so escolhe ONDE a
 		// pergunta vai ser feita.
 		if (_aguaDeTeste) PorNaBeiraDoLago(pl);
+
+		// BANCADA DE TIRO: nasce no meio de um campo aberto (o berco da Terra e dentro do banco). Ver
+		// `PorEmCampoAberto` -- a posicao e escrita aqui, na entrada, pra o cliente ja nascer la.
+		if (_campoDeTeste > 0) PorEmCampoAberto(pl);
 
 		// BANCADA: nasce direto num mundo sorteado (ver `--geradoteste`).
 		if (_nascerEmGerado)

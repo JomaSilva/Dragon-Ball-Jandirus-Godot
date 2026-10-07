@@ -1455,6 +1455,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool PodeSerLevadoPeloFeixe(ServerPlayer alvo)
 		=> alvo.TiquesDeVoo <= 0
+		   // QUEM ESTA NUMA DISPUTA DE KI NAO E LEVADO (2026-10-07): o feixe de um terceiro pesa no medidor dele
+		   // (`AoLevarGolpeComRaioNaMao`), mas nao tira do lugar um corpo que a disputa plantou. Mesma regra, e
+		   // mesmo motivo, do `Arremessar`.
+		   && !_emEmbateDeKi.ContainsKey(alvo.Id)
 		   && _players.ContainsKey(alvo.Id);   // vivo ou morto: o feixe carrega o corpo que esta na frente
 
 	/// <summary>

@@ -53,9 +53,15 @@ public sealed partial class GameServer
 	/// `Final_Flash`: a `Beam - Big Fire.dmi`, a folha de 64 px (2026-09-23).
 	/// </param>
 	/// <param name="escala">A escala dos dois raios (o `wavemult`): o Final Flash e 4.</param>
+	/// <param name="verboDeB">O verb do raio do RIVAL, quando ele nao e o mesmo de A (vazio = o mesmo).</param>
+	/// <param name="corDeA">
+	/// A cor do ki de A, "R,G,B" (vazio = a que o corpo forjado tiver). E a `Blast_Color` de producao
+	/// (`Appearance.CorKi`), escrita antes do disparo: o tiro e a estrela do choque leem dela.
+	/// </param>
+	/// <param name="corDeB">A cor do ki do rival, idem.</param>
 	internal (int A, int B) EmbateDeFoto_Montar(int idDono, int tiles, double bpDeA, double bpDeB,
 											   bool tecladoEmA, int tilesAbaixo, string verbo = "Ki_Wave",
-											   double escala = 1)
+											   double escala = 1, string verboDeB = "", string corDeA = "", string corDeB = "")
 	{
 		if (!_players.TryGetValue(idDono, out ServerPlayer? dono)) return (0, 0);
 
@@ -84,11 +90,16 @@ public sealed partial class GameServer
 
 		if (tecladoEmA) _comTecladoDeTeste.Add(a);
 
+		// A COR DO KI DE CADA UM, quando a cena pede: escrita onde o `ca_cor` de producao a escreve, e
+		// reapresentada a zona pra o cliente pintar o tiro (e a metade dele na estrela) com ela.
+		if (LerCor(corDeA, out Jandirus.Core.Appearance.Rgb ca)) { pa.Visual.CorKi = ca; ReapresentarAparencia(pa); }
+		if (LerCor(corDeB, out Jandirus.Core.Appearance.Rgb cb)) { pb.Visual.CorKi = cb; ReapresentarAparencia(pb); }
+
 		// A MESMA RECEITA DA BANCADA SEM JANELA (`RaioDeTeste`), pra as duas medirem o mesmo tiro.
 		ReceitaDeProjetil ra = RaioDeTeste(), rb = RaioDeTeste();
 		ra.EscalaVisual = rb.EscalaVisual = escala;
 		Canalizar(pa, verbo, 10 * pa.Ficha.BaseDrain(), ra);
-		Canalizar(pb, verbo, 10 * pb.Ficha.BaseDrain(), rb);
+		Canalizar(pb, verboDeB.Length > 0 ? verboDeB : verbo, 10 * pb.Ficha.BaseDrain(), rb);
 
 		_fotoEkA = a;
 		_fotoEkB = b;

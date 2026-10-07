@@ -181,7 +181,6 @@ public partial class PlanetaDesenhado : Node2D
 	/// <summary>O tipo, quando gerado ("Jardim", "Deserto", "Gelado"...). Vazio nos pre-feitos.</summary>
 	public string Tipo = "";
 
-	private Label _rotulo = null!;
 	private Sprite2D _icone = null!;
 
 	public override void _Ready()
@@ -204,11 +203,10 @@ public partial class PlanetaDesenhado : Node2D
 
 		MontarAgonia(quadro);
 
-		_rotulo = Tema.Legenda(Nome, Premade ? Tema.Destaque : Tema.TextoFraco, 13);
-		_rotulo.Position = new Vector2(-90, -Raio - 34);
-		_rotulo.Size = new Vector2(180, 20);
-		_rotulo.HorizontalAlignment = HorizontalAlignment.Center;
-		AddChild(_rotulo);
+		// O NOME NAO E ESCRITO EM CIMA DO DISCO. Havia um rotulo aqui ("Earth", "Namek"...), e o dono
+		// mandou tirar: *"n precisa ter 'earth', 'namek' em cima dos planetas, o jogador ja vai saber
+		// qual e pelo nav system"*. Quem diz o nome e a carta estelar (`MapaEstelar`, `TelaDoSistema`);
+		// o `Nome` continua neste node porque escolhe o icone e identifica o mundo pros destrocos.
 	}
 
 	// =====================================================================
@@ -391,7 +389,6 @@ public partial class PlanetaDesenhado : Node2D
 		t.TweenMethod(Callable.From<float>(v => mat.SetShaderParameter("t", v)), 0f, 1f,
 					  MortePlanetaria.SegundosDoEstouro);
 		t.TweenProperty(_icone, "modulate:a", 0f, MortePlanetaria.SegundosDoEstouro * 0.55);
-		t.TweenProperty(_rotulo, "modulate:a", 0f, MortePlanetaria.SegundosDoEstouro * 0.35);
 
 		// O ALCANCE E DERIVADO DO PLANETA e nao o padrao de 480 px: um mundo estourando se ouve de
 		// muito mais longe que um soco, e o raio dele e a unica medida de "muito mais longe" que o

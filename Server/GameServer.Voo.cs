@@ -183,6 +183,8 @@ public partial class GameServer
 	{
 		// A AREA DE ESPERA DO TORNEIO: ninguem levanta voo esperando a vez (o teclado esta fechado).
 		if (PresoNoTorneio(pl.Id)) { Avisar(pl, "voce esta na area de espera do torneio: sem voar ate a sua vez."); return; }
+		// COM UM ATAQUE DE KI NA MAO A ALTURA NAO MUDA -- ver `AlturaPresaPeloKi`.
+		if (AlturaPresaPeloKi(pl)) { Avisar(pl, "voce esta com um ataque de ki na mao: a altura so muda depois de solta-lo."); return; }
 		if (!PodeVoar(pl))
 		{
 			Avisar(pl, $"voce ainda nao sente o proprio Ki o bastante pra voar "
@@ -252,6 +254,24 @@ public partial class GameServer
 	/// mexem no MESMO Ki. Rodar em cadencias diferentes faria o saldo depender da ordem em que os
 	/// relogios se cruzam.
 	/// </summary>
+	/// <summary>
+	/// ============================ COM UM ATAQUE DE KI NA MAO, A ALTURA FICA ONDE ESTA (2026-10-07) ============================
+	/// Um raio guarda a altura em que NASCEU (`Projetil.Altitude`, copiada do dono no disparo) e a cauda dele
+	/// e a mao do dono. O `PodeMexerOCorpo` ja plantava o corpo no chao enquanto ele carrega, segura um raio
+	/// ou disputa -- mas so no PLANO: a altura nunca passou por aquele funil. Subir, descer, pousar ou cair
+	/// levava o corpo embora das proprias maos, e o feixe ficava saindo do ar ate 160 px abaixo (ou acima)
+	/// dele. Foi uma das tres coisas que o dono viu como *"parece q eles as vezes se mexem durante a colisao"*.
+	///
+	/// VALE PRO JOGADOR E PRA IA, e nao so pra IA: e a mesma frase do `PodeMexerOCorpo` ("quem esta com um
+	/// raio na mao nao escolhe pra onde vai"), dita pro terceiro eixo.
+	///
+	/// A QUEDA TAMBEM ESPERA. Quem perde o voo com o raio na mao (o Ki acabando numa disputa, que cobra dos
+	/// dois) nao despenca no meio dela: fica onde esta ate soltar, e cai depois. A disputa acaba sozinha
+	/// quando o Ki chega a 1 (`LadoOk`), entao ninguem fica pendurado.
+	/// =========================================================================================================================
+	/// </summary>
+	private bool AlturaPresaPeloKi(ServerPlayer pl) => EnraizadoPorKi(pl.Id) || _emEmbateDeKi.ContainsKey(pl.Id);
+
 	private void TickDoVoo(ServerPlayer pl, float dt)
 	{
 		// ============================ QUEM ESTA NO COLO NAO TEM VOO PROPRIO ============================
@@ -291,6 +311,7 @@ public partial class GameServer
 		if (!pl.Voando)
 		{
 			if (pl.Altitude <= 0f) { pl.Altitude = 0f; return; }
+			if (AlturaPresaPeloKi(pl)) return;   // a queda espera o raio acabar
 			DescerAte(pl, 0f, Voo.QuedaPorSegundo * dt);
 			return;
 		}
@@ -360,6 +381,7 @@ public partial class GameServer
 		}
 
 		// ---------------------------- a altura ----------------------------
+		if (AlturaPresaPeloKi(pl)) return;   // o custo de voar ja foi cobrado acima; so a altura fica parada
 		if (pl.QuerDescer)
 		{
 			DescerAte(pl, 0f, Voo.DescidaPorSegundo * dt);

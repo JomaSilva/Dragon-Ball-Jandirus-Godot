@@ -442,19 +442,138 @@ public partial class GameServer
 			AfirmarTi("...e os dois ficam plantados enquanto ela corre",
 					  !PodeMexerOCorpo(disputa.A.Quem) && !PodeMexerOCorpo(disputa.B.Quem));
 
+			QuemDisputaNaoSaiDoLugar(disputa, a);
+
+			Vec2 ondeA = a.Pos, ondeB = b.Pos;
+			float andouA = 0f, andouB = 0f;
 			double segundos = 0;
 			for (int i = 0; i < 30 * 40 && _emEmbateDeKi.ContainsKey(a.Id); i++)
 			{
 				TiqueDeMundo();
 				segundos += Protocol.TickSeconds;
+				if (!_emEmbateDeKi.ContainsKey(a.Id)) break;   // acabou neste tique: o que vem depois e o feixe vencedor empurrando
+				andouA = MathF.Max(andouA, (a.Pos - ondeA).Length);
+				andouB = MathF.Max(andouB, (b.Pos - ondeB).Length);
 			}
 			AfirmarTi("...e ela ACABA (ninguem fica preso pra sempre)",
 					  !_emEmbateDeKi.ContainsKey(a.Id), $"passaram {segundos:0.#}s");
 			AfirmarTi("...e os dois corpos voltam a se mexer",
 					  PodeMexerOCorpo(a) || a.Ficha.KO || a.Ficha.dead);
+
+			// ============================ E ELA ACABA POR DECISAO, E NAO POR DESISTENCIA (2026-10-07) ============================
+			// "Acabou" era tudo que esta familia cobrava, e por isso ela ficou verde durante o defeito que o dono
+			// viu no trailer (*"parece q eles as vezes se mexem durante a colisao"*): o cerebro re-apertava o
+			// verb do proprio raio -- ele nao sabe que o corpo esta disputando --, o segundo pulso FECHAVA o
+			// canal, e a disputa acabava em dois segundos, com o medidor no meio, porque um dos dois LARGOU.
+			// Verde, e errado: o NPC saia andando com os feixes ainda na tela.
+			//
+			// A disputa guarda como terminou: o medidor e o relogio dela continuam lidos depois que ela sai da
+			// lista. Ver `AcabouPorDecisao`.
+			// ====================================================================================================================
+			AfirmarTi("...por DECISAO (medidor numa ponta, prazo, ou alguem caiu de verdade) -- nenhum dos dois LARGOU o proprio raio",
+					  AcabouPorDecisao(disputa, a, b),
+					  $"medidor {disputa.Medidor:0.0}, {disputa.Corridos:0.0}s de disputa, Ki {a.Ficha.Ki:0} e {b.Ficha.Ki:0}");
+			AfirmarTi("...e nenhum dos dois saiu do lugar enquanto ela correu",
+					  andouA < 0.5f && andouB < 0.5f, $"{a.Name} {andouA:0.0} px, {b.Name} {andouB:0.0} px");
 		}
 
 		LimparEmbatesDaBancada();
+
+		// ============================ O DEFEITO INJETADO: a regua acima sabe ficar vermelha ============================
+		// Com as maos livres o corpo volta a obedecer o cerebro no meio da disputa -- o comportamento de antes
+		// de 2026-10-07. A MESMA cena tem que acabar por desistencia: a pergunta "acabou por decisao?" responde nao.
+		// ================================================================================================================
+		EmbateDeKi.IaComAsMaosLivresDeTeste = true;
+		try
+		{
+			(ServerPlayer c, ServerPlayer e) = DoisAtiradoresDeFrente(tiles: 12);
+			DisputaDeKi? outra = null;
+			for (int i = 0; i < 30 * 20 && outra == null; i++)
+			{
+				TiqueDeMundo();
+				outra = _emEmbateDeKi.GetValueOrDefault(c.Id);
+			}
+			for (int i = 0; i < 30 * 40 && outra != null && _emEmbateDeKi.ContainsKey(c.Id); i++) TiqueDeMundo();
+			AfirmarTi("(injetado) com as maos livres, um NPC LARGA o proprio raio no meio da disputa e ela acaba por desistencia",
+					  outra != null && !AcabouPorDecisao(outra, c, e),
+					  outra == null ? "a disputa nem comecou" : $"medidor {outra.Medidor:0.0}, {outra.Corridos:0.0}s de disputa");
+		}
+		finally { EmbateDeKi.IaComAsMaosLivresDeTeste = false; }
+
+		LimparEmbatesDaBancada();
+	}
+
+	/// <summary>
+	/// ESTA DISPUTA ACABOU POR UM MOTIVO DE DISPUTA? O medidor numa das pontas, o prazo de
+	/// <see cref="EmbateDeKi.SegundosMaximos"/> estourado, ou um lado que caiu de verdade. O que sobra e o
+	/// `LadoOk` reprovando um lado que estava de pe, com Ki, e SEM o raio -- ou seja, que o soltou.
+	/// </summary>
+	private static bool AcabouPorDecisao(DisputaDeKi d, ServerPlayer a, ServerPlayer b) =>
+		d.Medidor >= 100 || d.Medidor <= 0 || d.Corridos >= EmbateDeKi.SegundosMaximos - 0.25
+		|| a.Ficha.KO || a.Ficha.dead || b.Ficha.KO || b.Ficha.dead || a.Ficha.Ki <= 1 || b.Ficha.Ki <= 1;
+
+	/// <summary>
+	/// ============================ AS OUTRAS DUAS PORTAS POR ONDE O CORPO SAIA DO LUGAR (2026-10-07) ============================
+	/// O `PodeMexerOCorpo` planta quem disputa -- no PLANO, e contra o proprio passo. Sobravam a ALTURA (o voo
+	/// nunca passou por aquele funil) e o ARREMESSO (um golpe de fora pesava no medidor e MESMO ASSIM jogava o
+	/// corpo longe). As duas levavam as maos embora do feixe que elas alimentam.
+	///
+	/// Cada uma e medida no corpo que esta disputando e, logo depois, num corpo de CONTROLE sem ki na mao: o
+	/// mesmo pedido que nao move o primeiro TEM que mover o segundo -- senao a recusa nao provaria nada (o
+	/// voo e o arremesso poderiam simplesmente nao funcionar na bancada).
+	/// ===========================================================================================================================
+	/// </summary>
+	private void QuemDisputaNaoSaiDoLugar(DisputaDeKi disputa, ServerPlayer a)
+	{
+		const int UmSegundo = 30;
+		float dt = (float)Protocol.TickSeconds;
+
+		// ---- o controle: um corpo qualquer, sem raio nenhum ----
+		ServerPlayer livre = Forjar("Livre", a.Pos + new Vec2(0, ZoneCollision.TileSize * 6), bp: 50_000);
+		livre.Ficha.Ki = livre.Ficha.MaxKi;
+
+		// ---- A ALTURA ----
+		// O KI E REPOSTO A CADA TIQUE, E DEVOLVIDO NO FIM. Voar custa Ki, e um corpo de bancada (sem pericia de
+		// voo nenhuma) paga caro: na primeira versao deste teste o segundo de voo secava o tanque dos dois -- o
+		// controle "caia" por exaustao em vez de subir, e a disputa de verdade acabava ali mesmo, em 0,1 s, por
+		// falta de Ki de quem estava sendo medido. O que se mede aqui e a ALTURA, e nao o preco dela.
+		(bool voava, float altura, bool subia, double ki) = (a.Voando, a.Altitude, a.QuerSubir, a.Ficha.Ki);
+		a.Voando = true; a.Altitude = Voo.AlturaDePairar; a.QuerSubir = true;
+		livre.Voando = true; livre.Altitude = Voo.AlturaDePairar; livre.QuerSubir = true;
+		for (int i = 0; i < UmSegundo; i++)
+		{
+			a.Ficha.Ki = a.Ficha.MaxKi;
+			livre.Ficha.Ki = livre.Ficha.MaxKi;
+			TickDoVoo(a, dt);
+			TickDoVoo(livre, dt);
+		}
+
+		AfirmarTi("...e quem disputa NAO SOBE: um segundo pedindo altura, e ela fica onde estava",
+				  MathF.Abs(a.Altitude - Voo.AlturaDePairar) < 0.01f, $"altura {a.Altitude:0.0} (era {Voo.AlturaDePairar:0.0})");
+		AfirmarTi("(controle) o mesmo pedido SOBE um corpo sem ki na mao -- a recusa de cima e da disputa, nao do voo",
+				  livre.Altitude > Voo.AlturaDePairar + 8f, $"altura {livre.Altitude:0.0} (era {Voo.AlturaDePairar:0.0})");
+
+		a.Voando = false; a.QuerSubir = false; a.Altitude = Voo.AlturaDePairar;
+		for (int i = 0; i < UmSegundo; i++) TickDoVoo(a, dt);
+		AfirmarTi("...nem CAI: perdendo o voo no meio dela, a queda espera a disputa acabar",
+				  MathF.Abs(a.Altitude - Voo.AlturaDePairar) < 0.01f, $"altura {a.Altitude:0.0}");
+		(a.Voando, a.Altitude, a.QuerSubir, a.Ficha.Ki) = (voava, altura, subia, ki);
+
+		// ---- O ARREMESSO ----
+		LadoDeKi oOutro = disputa.A.Quem.Id == a.Id ? disputa.B : disputa.A;
+		double apertosAntes = oOutro.ApertosPendentes;
+		Arremessar(a, new Vec2(0, 1), a.Ficha.expressedBP, 5);
+		Arremessar(livre, new Vec2(0, 1), a.Ficha.expressedBP, 5);
+
+		AfirmarTi("...e um arremesso NAO tira do lugar quem disputa",
+				  a.TiquesDeVoo == 0, $"{a.TiquesDeVoo} tiques de voo");
+		AfirmarTi("...mas PESA no medidor, como o dono mandou (o outro lado ganha apertos)",
+				  oOutro.ApertosPendentes > apertosAntes, $"{apertosAntes:0.0} -> {oOutro.ApertosPendentes:0.0}");
+		AfirmarTi("(controle) o mesmo arremesso LEVA um corpo sem ki na mao",
+				  livre.TiquesDeVoo > 0, $"{livre.TiquesDeVoo} tiques de voo");
+
+		// o controle fica parado ate o fim da familia: quem o tira do mundo e o `LimparEmbatesDaBancada`
+		livre.TiquesDeVoo = 0;
 	}
 
 	// =====================================================================

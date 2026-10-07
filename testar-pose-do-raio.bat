@@ -98,7 +98,7 @@ echo  ---- 1/2: a pose no ESTADO DO FIO, sem janela (familias 4b e 4c) ----
 
 echo.
 echo  ---- 2/2: AS FOTOS (precisa de janela, no MONITOR 2) ----
-"%GODOT%" --path . --host --rede 7940 --bpteste 300000000 --horateste 0.5 ^
+"%GODOT%" --path . --host --rede 7940 --bpteste 300000000 --horateste 0.5 --campoteste ^
           --diagpose --position 1920,0 --resolution 1600x900 ^
           --raca Human --conta bancada_pose --nome Poseiro
 

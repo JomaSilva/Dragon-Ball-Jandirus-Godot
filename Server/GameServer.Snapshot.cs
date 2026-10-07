@@ -182,6 +182,8 @@ public partial class GameServer
 				Solto = !p.Canalizando,
 				// SO QUEM O FEIXE LEVA DE VERDADE: o arrasto ou a moida encostada. Ver `ProjetilState.Arrasta`.
 				Arrasta = p.Arrastando,
+				// A DISPUTA SE VE NO FEIXE, e por todo mundo: ver `ProjetilState.Prensado`.
+				Prensado = p.EmEmbate,
 			};
 		}
 	}

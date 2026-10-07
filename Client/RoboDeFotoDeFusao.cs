@@ -1459,13 +1459,15 @@ public partial class RoboDeFotoDeFusao : Node
 	///
 	///   * **sem tinta** (a Potara, a correcao do dono) o cabelo sai ACROMATICO na foto: os tres canais
 	///     praticamente iguais, so inclinados pelo `CanvasModulate` da hora;
-	///   * **com a tinta somada** (a Danca, `e2331c` em `tinta_modo = 0`) o vermelho vai pro teto e os
-	///     outros dois sobem pouco: `#4a4a4a` + `e2331c` da `(1,00; 0,49; 0,40)`.
+	///   * **com a tinta somada** (a Danca, `Fusao.VermelhoDoCabeloDaFusao` em `tinta_modo = 0`) o
+	///     vermelho sobe pra perto do teto e os outros dois sobem pouco: `#4a4a4a` + `aa2615` da
+	///     `(0,96; 0,44; 0,37)`.
 	///
 	/// A separacao entre os dois casos e enorme e nao depende de calibrar nada. Por isso o criterio de
 	/// "esta vermelho" e uma RAZAO entre canais (R maior que 1,4x os outros dois) e nao uma comparacao
 	/// com um hexadecimal de catalogo: a tela chega multiplicada pela luz do mundo, e comparar com
-	/// `e2331c` cru mediria a hora do dia.
+	/// o hexa cru da tinta mediria a hora do dia. (Foi essa escolha que deixou o dono BAIXAR o vermelho
+	/// em 25% sem esta bancada precisar de um numero novo.)
 	/// ========================================================================================================
 	///
 	/// ============================ E O TRONCO E O CONTROLE ============================
@@ -1710,7 +1712,7 @@ public partial class RoboDeFotoDeFusao : Node
 	/// **ESTE PIXEL ESTA VERMELHO?** -- por razao entre canais, e nao por distancia ate um hexadecimal.
 	///
 	/// A tela chega multiplicada pelo `CanvasModulate` da hora (medido nesta mesma bancada: um
-	/// `f8f8f8` de folha vira `d6d6cc` ao meio-dia). Comparar com `e2331c` cru mediria a hora do dia;
+	/// `f8f8f8` de folha vira `d6d6cc` ao meio-dia). Comparar com o hexa cru da tinta mediria a hora do dia;
 	/// a RAZAO entre os canais sobrevive a multiplicacao, que e o que a luz faz.
 	///
 	/// O piso de 0,25 no vermelho corta o preto do contorno: `(0,02; 0,01; 0,01)` tambem tem R maior

@@ -2926,7 +2926,7 @@ public struct ProjetilState
 
     /// <summary>
     /// O RAIO NINGUEM ALIMENTA MAIS (o dono soltou, a parte de la de um corte, o ataque devolvido). O cliente
-    /// fecha a ponta de tras com o `end` e nao com a `origin` -- a mao so existe enquanto ha mao
+    /// fecha a ponta de tras em rabo, sem a bola da mao -- a mao so existe enquanto ha mao
     /// (`objects.dm:220-229`). Um bit, no byte de flags que ja existe.
     /// </summary>
     public bool Solto;
@@ -2939,10 +2939,29 @@ public struct ProjetilState
     /// </summary>
     public int Arrasta;
 
+    /// <summary>
+    /// A PONTA DESTE RAIO ESTA PRENSADA NUMA DISPUTA de ki (`Projetil.EmEmbate`): contra outro feixe, ou
+    /// contra as maos de quem segura o ataque na guarda.
+    ///
+    /// ============================ POR QUE ELE VIAJA, SE O EMBATE JA TEM PACOTE ============================
+    /// O `S2C.Clash` e PESSOAL: so os dois que disputam recebem `Comecou`/`Placar`/`Acabou`. Quem assiste
+    /// ganhava um `Baque` por segundo e mais nada -- nao havia como saber, olhando dois feixes
+    /// encostados, que aquilo era uma disputa. E o dono pediu que o embate se VISSE. O que se ve e a
+    /// ESTRELA do choque, e ela tem que aparecer pra todo mundo da zona -- quem tem o feixe e a zona inteira,
+    /// entao e no feixe que o aviso viaja.
+    ///
+    /// Um bit, no byte de flags que ja existe, e so nos raios. O cliente acha o par sozinho (duas pontas
+    /// prensadas que se tocam) e desenha a estrela do choque entre elas -- ver `World.TickDosChoquesDeKi`.
+    /// (O feixe em si nao muda de desenho: isso chegou a ser feito e o dono dispensou.)
+    /// ====================================================================================================
+    /// </summary>
+    public bool Prensado;
+
     private const byte MascaraDoTipo = 0x03;
     private const byte BitTemCauda = 0x04;
     private const byte BitSolto = 0x08;
     private const byte BitArrasta = 0x10;
+    private const byte BitPrensado = 0x20;
 
     public void Write(NetDataWriter w)
     {
@@ -2950,7 +2969,7 @@ public struct ProjetilState
         w.PutVec(Pos);
         bool cauda = (Tipo & MascaraDoTipo) == (byte)Jandirus.Core.Combat.TipoDeProjetil.Beam;
         w.Put((byte)((Tipo & MascaraDoTipo) | (cauda ? BitTemCauda : 0) | (cauda && Solto ? BitSolto : 0)
-                     | (cauda && Arrasta != 0 ? BitArrasta : 0)));
+                     | (cauda && Arrasta != 0 ? BitArrasta : 0) | (cauda && Prensado ? BitPrensado : 0)));
         if (cauda) w.PutVec(Cauda);
         if (cauda && Arrasta != 0) w.Put(Arrasta);
     }
@@ -2963,6 +2982,7 @@ public struct ProjetilState
         p.Cauda = (flags & BitTemCauda) != 0 ? r.GetVec() : p.Pos;
         p.Solto = (flags & BitSolto) != 0;
         p.Arrasta = (flags & BitArrasta) != 0 ? r.GetInt() : 0;
+        p.Prensado = (flags & BitPrensado) != 0;
         return p;
     }
 }
@@ -2986,9 +3006,9 @@ public readonly record struct NascimentoDeProjetil(
     int Dono,
     /// <summary>`Core.Combat.TipoDeProjetil`: como o tiro se comporta.</summary>
     byte Tipo,
-    /// <summary>`Core.Combat.ArteDeKi`: qual folha ele desenha. Zero = nenhuma, cai na primitiva.</summary>
+    /// <summary>`Core.Combat.ArteDeKi`: com que estilo ele se desenha. Zero = nenhuma, sai no estilo neutro.</summary>
     ushort Arte,
-    /// <summary>A escala do sprite, ja em multiplicador. Ver `Protocol.DeEscalaDeProjetil`.</summary>
+    /// <summary>A escala do desenho, ja em multiplicador. Ver `Protocol.DeEscalaDeProjetil`.</summary>
     float Escala,
     /// <summary>
     /// A QUE ALTURA ELE VOA, em pixels de mundo -- a do dono no instante do disparo.

@@ -177,6 +177,15 @@ public partial class GameServer
 		}
 		finally { Feixe.AtravessaDeFrenteDeTeste = false; }
 
+		EmbateDeKi.FeixesForaDoEixoDeTeste = true;
+		try
+		{
+			MedidaDeFrente m = RodarCenaDeFrente(cenas.First(x => x.Lateral == 40));
+			AfirmarEk("(injetado) sem apontar os feixes pelo eixo, a disputa em linhas vizinhas ENTORTA os dois",
+					  m.Disputas >= 1 && m.PiorTorto > 8f, $"{m.PiorTorto:0.0} px");
+		}
+		finally { EmbateDeKi.FeixesForaDoEixoDeTeste = false; }
+
 		EmbateDeKi.EncontroAteOCorpoDeTeste = true;
 		try
 		{
@@ -303,7 +312,13 @@ public partial class GameServer
 
 			// TORTO: um feixe ALIMENTADO e uma reta que sai da mao do dono no rumo do tiro. A cabeca fora dessa
 			// reta e o desenho entortando (a cabeca plantada de lado, a empurrada pra outra linha).
-			if (p.Canalizando && !p.EmEmbate)
+			//
+			// E A DISPUTA NAO E MAIS EXCECAO (2026-10-07). Esta regua pulava os feixes em embate -- porque la a
+			// cabeca era levada pro eixo corpo a corpo e a cauda ficava na boca do rumo cardeal: todo embate fora
+			// da mesma linha era torto POR CONSTRUCAO, e medir so teria reprovado a varredura inteira. Era o
+			// "beam todo torto" que o dono viu. O `Comecar` passou a apontar os dois feixes pelo eixo, e a regua
+			// vale pra todo mundo.
+			if (p.Canalizando)
 			{
 				Vec2 dm = p.Pos - p.Cauda;
 				float torto = MathF.Abs(dm.X * p.Rumo.Y - dm.Y * p.Rumo.X);

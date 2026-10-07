@@ -879,11 +879,20 @@ public partial class RoboDeFotoDaPose : Node
 		if (!canal)
 		{
 			_linhas.Add("=== CENA E / SAIDA 3: ALGUEM BATEU NELE ===");
-			Conferir(true, $"SAIDA 3 (apanhou): o canal caiu no {_socos}o soco -- o `if(KB) stopbeaming()` "
-						 + $"de `beams.dm:73-74` (vida {vida:0}%, nocaute={ko}, voo={voo} tiques)");
+			// ============================ O GOLPE QUE ENCOSTA DERRUBA, ARREMESSANDO OU NAO ============================
+			// Esta saida exigia `voo > 0`: no DM so o ARREMESSO derruba o raio (`if(KB) stopbeaming()`,
+			// `beams.dm:73-74`). O dono estendeu a regra em 2026-09-07 -- *"caso o personagem seja atacado,
+			// agarrado ou qualquer coisa desse tipo, ele cancela o beam dele na hora"* -- e desde entao quem
+			// derruba e o `AoLevarGolpeComRaioNaMao`, chamado por todo golpe que ENCOSTA (`Combat.cs`,
+			// `if (r.Encostou)`). A exigencia antiga ficou pra tras e ninguem viu: a bancada nem chegava aqui
+			// (o palco dela morreu com o berco dentro do banco -- ver `--campoteste`). Medido na primeira
+			// rodada de volta: o canal cai no 2o soco com ZERO tiques de voo, que e a regra de hoje
+			// funcionando. O voo fica ANOTADO, e nao exigido.
+			// ==========================================================================================================
+			Conferir(true, $"SAIDA 3 (apanhou): o canal caiu no {_socos}o soco -- o `if(KB) stopbeaming()` de "
+						 + $"`beams.dm:73-74`, estendido pelo dono a todo golpe que encosta (vida {vida:0}%, "
+						 + $"nocaute={ko}, voo={voo} tiques)");
 			Conferir(!ko, "...e o corpo continua ACORDADO, entao a foto de depois mostra o idle e nao o nocaute");
-			Conferir(voo > 0, $"...e ele foi ARREMESSADO ({voo} tiques de voo) -- e o `KB` do DM que derruba "
-							+ "o raio, e nao o dano");
 			Virar(PE_Depois);
 			return;
 		}

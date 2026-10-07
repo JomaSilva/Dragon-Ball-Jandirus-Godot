@@ -29,8 +29,8 @@ namespace Jandirus.Core.Combat;
 /// entre centros de tiles vizinhos na diagonal, o mesmo √2 que o `dir_matrix` (`objects.dm:52-54`)
 /// embute nas quatro entradas diagonais da matriz.
 ///
-/// E a MESMA formula que o desenho do trem ja usa pra espacar os pedacos
-/// (`ProjetilDesenhado.MedirTrem`). Nao ha um segundo "quanto e um tile neste rumo" no projeto.
+/// E a MESMA formula que o desenho usa pra achar a MAO, meio caminho antes da boca
+/// (`ProjetilDesenhado.AMao`). Nao ha um segundo "quanto e um tile neste rumo" no projeto.
 /// ===================================================================================
 ///
 /// ============================ A ALTURA NAO ENTRA AQUI, E ISSO E DE PROPOSITO ============================

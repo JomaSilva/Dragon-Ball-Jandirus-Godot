@@ -547,6 +547,10 @@ public partial class RoboDeBocaDeCano : Node
 	{
 		srv.LimparOsTirosDaBoca(cli.LocalId);
 		srv.PousarNaBoca(cli.LocalId);
+
+		// DE VOLTA A ANCORA antes da cena da camada: a vitima dela e posta em relacao ao atirador, e a
+		// cena do voo o deixa dois tiles fora do lugar (medido: a vitima nascia na diagonal, fora da raia).
+		srv.ReporNaBoca(cli.LocalId);
 		Virar(12);
 	}
 
@@ -554,29 +558,52 @@ public partial class RoboDeBocaDeCano : Node
 	// D) A CAMADA -- o feixe A FRENTE do sprite, com o corpo atras dele
 	// =====================================================================
 	/// <summary>
-	/// ============================ POR QUE O TIRO E PRO NORTE, E POR QUE ELE ATRAVESSA ============================
+	/// ============================ POR QUE O TIRO E PRO NORTE ============================
 	/// O node do tiro mora no `Atores`, que ordena por Y. Sem `ZIndex`, quem decide e a Y da CABECA --
 	/// que num raio pode estar trinta tiles adiante. **Pro norte a Y da cabeca e MENOR que a de quem
 	/// esta no caminho**, ou seja o feixe inteiro desenharia atras dos corpos. E o pior sentido, e por
 	/// isso e o sentido desta cena.
 	///
-	/// `Piercer` (campo de producao da receita) porque o feixe precisa continuar existindo DEPOIS de
-	/// encostar na vitima: se ele morre no impacto, nao ha sobreposicao pra fotografar.
+	/// ============================ E POR QUE A VITIMA VOA (2026-10-07) ============================
+	/// Esta cena nasceu com a vitima NO CHAO e um raio `Piercer`, que a atravessava: o tronco ficava
+	/// desenhado em cima do sprite e era isso que se fotografava. Deixou de existir no dia em que o dono
+	/// pediu que a cabeca parasse NA FRENTE de quem ela acerta, e nao em cima (2026-09-07,
+	/// `PlantarACabecaNaFrenteDe`): um raio nao atravessa mais corpo nenhum -- ele encosta, moi e empurra.
+	/// A cena passou a reprovar com "vivo=False, andou=0" (o feixe parava a um tile, na vitima, e se
+	/// apagava pelo prazo), e ninguem tinha rodado ela desde entao.
+	///
+	/// O que continua acontecendo no jogo, e e o que a camada tem que acertar: um raio passando POR BAIXO
+	/// de quem voa. Do chao nao se acerta quem voa (`Voo.PodeAcertar`), entao o tiro segue viagem; e o
+	/// sprite de quem voa e desenhado `altitude x 0,25` px acima do chao dele -- bem em cima do tronco.
+	/// Com a vitima dois tiles ao norte e a 96 px de altura, o sprite fica a 2,75 tiles do atirador, na
+	/// raia do feixe.
+	///
+	/// DOIS NUMEROS MEDIDOS NA FOTO, e nao escolhidos:
+	///   * a altura e do PRIMEIRO andar de voo (ate 213 px), o unico que quem esta no chao enxerga
+	///     (`Voo.Enxerga`). No segundo a vitima nem seria desenhada pra este cliente;
+	///   * e ela fica PERTO: a janela mostra 240 px de mundo de altura, ou seja 120 pra cima do atirador.
+	///     A primeira rodada pos a vitima a tres tiles e 192 px -- o sprite caiu 24 px ACIMA da borda da
+	///     tela, e a sonda mediu "0 px de tinta" num quadro que nao estava na foto.
 	/// ========================================================================================================
 	/// </summary>
 	private void D_Plantar(World mundo, Jandirus.Server.GameServer srv, GameClient cli)
 	{
-		if (_t < 0.6) return;
+		if (_t < 0.8) return;   // o pouso, e a correcao da ancora atravessando o fio (ver `A_Reancorar`)
 
 		if (_vitima == 0)
 		{
 			Vec2 norte = MeleeArea.Frente(Facing.North);
-			_vitima = srv.VitimaDaBoca(cli.LocalId, norte, tiles: 3, bp: 200_000);
-			Conferir(_vitima != 0, "a vitima da cena D entrou no mundo, tres tiles ao norte");
+			_vitima = srv.VitimaDaBoca(cli.LocalId, norte, tiles: 2, bp: 200_000);
+			Conferir(_vitima != 0, "a vitima da cena D entrou no mundo, dois tiles ao norte");
 			if (_vitima == 0) { Virar(15); return; }
 
+			// ELA SOBE PELO FUNIL DE PRODUCAO (o mesmo `AlternarVoo` do atirador na cena C), e pra isso
+			// precisa da skill: um corpo forjado nasce sem livro. SO a de voo -- ver o `ensinar`.
+			Conferir(srv.VoarNaBoca(_vitima, AlturaDaVitimaDaCamada, ensinar: true),
+				$"...e ela levantou voo pelo funil de producao ({AlturaDaVitimaDaCamada:0} px: o primeiro andar, o raio passa por baixo)");
+
 			srv.ApontarNaBoca(cli.LocalId, Facing.North);
-			srv.RaioDaBoca(cli.LocalId, norte, alcanceTiles: 10, piercer: true);
+			srv.RaioDaBoca(cli.LocalId, norte, alcanceTiles: 10);
 			_t = 0;
 			return;
 		}
@@ -586,15 +613,34 @@ public partial class RoboDeBocaDeCano : Node
 		Virar(13);
 	}
 
+	/// <summary>A que altura a vitima da cena D voa, em px de mundo: 3 tiles -- na tela, 24 px acima do chao dela.</summary>
+	private const float AlturaDaVitimaDaCamada = 96f;
+
+	/// <summary>
+	/// Quanto a cabeca tem que ter andado pra a foto da camada: o sprite da vitima fica entre 2,25 e 3,25
+	/// tiles do atirador, e a cabeca nasce a um tile dele -- com 4 andados ela ja passou inteira e o que
+	/// esta em cima do sprite e TRONCO.
+	/// </summary>
+	private const double TilesDaCamada = 4.0;
+
+	/// <summary>Quantos px de tinta o sprite da vitima tem que engolir quando o feixe vai pra TRAS dele. Ver a nota na <see cref="D_Injetada"/>.</summary>
+	private const int EngolidoMinimoDaCamada = 600;
+
 	private Image? _fotoNaFrente;
 	private int _tintaNaVitimaNaFrente;
 
 	private void D_NaFrente(World mundo, Jandirus.Server.GameServer srv, GameClient cli)
 	{
-		if (!Obturador(mundo, srv, cli, out Par par, alvoDeTiles: 4.5)) return;
+		if (!Obturador(mundo, srv, cli, out Par par, alvoDeTiles: TilesDaCamada)) return;
 		if (par.Falhou) { Conferir(false, $"a cena D teve tiro ({par.Porque})"); Virar(15); return; }
 
 		_tintaNaVitimaNaFrente = TintaSobre(par, mundo, _vitima);
+
+		// ONDE CADA UM ESTA, NA CONTA DO SERVIDOR E NA DA TELA: a cena so vale com a vitima NA RAIA.
+		(Vec2 euNoServidor, _, _, _) = srv.CorpoDaBoca(cli.LocalId);
+		(Vec2 elaNoServidor, _, float alturaDela, bool elaVoa) = srv.CorpoDaBoca(_vitima);
+		Nota($"CENA D: o atirador em {euNoServidor}; a vitima em {elaNoServidor}, a {alturaDela:0} px do chao "
+		   + $"(voando={elaVoa}); desenhada em {mundo.PosicaoDesenhadaDe(_vitima)}");
 
 		// O RECORTE DESTA CENA E EM VOLTA DA VITIMA, e nao do atirador: o que se olha aqui e a
 		// sobreposicao -- o corpo com o feixe passando por cima dele.
@@ -604,7 +650,7 @@ public partial class RoboDeBocaDeCano : Node
 			   $"CENA D: o feixe A FRENTE do sprite -- {_tintaNaVitimaNaFrente} px de tinta dentro do quadro da vitima");
 
 		Conferir(_tintaNaVitimaNaFrente > 40,
-			$"A CAMADA: o feixe e desenhado POR CIMA do corpo que ele atravessa "
+			$"A CAMADA: o feixe e desenhado POR CIMA do sprite de quem esta na raia dele "
 			+ $"({_tintaNaVitimaNaFrente} px de tinta de feixe dentro do quadro de 32x32 da vitima)");
 
 		Virar(14);
@@ -619,7 +665,7 @@ public partial class RoboDeBocaDeCano : Node
 		int guardado = no.ZIndex;
 		no.ZIndex = 0;
 
-		if (!Obturador(mundo, srv, cli, out Par par, alvoDeTiles: 4.5)) return;
+		if (!Obturador(mundo, srv, cli, out Par par, alvoDeTiles: TilesDaCamada)) return;
 		no.ZIndex = guardado;
 
 		if (par.Falhou) { Conferir(false, $"a cena D injetada teve tiro ({par.Porque})"); Virar(15); return; }
@@ -631,16 +677,17 @@ public partial class RoboDeBocaDeCano : Node
 			   $"CENA D, INJETADA: `ZIndex = 0` -- {atras} px de tinta dentro do quadro da vitima");
 
 		// ============================ O CORPO NAO TAPA TUDO, E NAO E PRA TAPAR ============================
-		// Medido: 2352 px na producao contra 1176 com o `ZIndex` zerado -- exatamente a METADE. Nao e
-		// coincidencia: o que o corpo esconde e o que ele PINTA, e um boneco de 32x32 nao pinta a celula
-		// inteira (bracos, pernas e o vao em volta sao transparentes). A tinta que sobra e a que passa
-		// pelos buracos do sprite.
+		// O que o corpo esconde e o que ele PINTA, e um boneco nao pinta o quadro de 32x32 inteiro (bracos,
+		// pernas e o vao em volta sao transparentes). A tinta que sobra e a que passa pelos buracos do
+		// sprite -- exigir zero seria exigir que o sprite fosse um retangulo cheio.
 		//
-		// Entao a regra e de RAZAO e nao de zero: com o feixe na frente ele pinta muito mais dentro do
-		// quadro da vitima do que com o feixe atras. Exigir zero seria exigir que o sprite fosse um
-		// retangulo cheio.
+		// A REGRA E O PEDACO ENGOLIDO, e ele foi medido de novo com a vitima em voo (2026-10-07): 8851 px
+		// na producao contra 7229 com o `ZIndex` zerado -- o sprite de quem paira engole 1622 px, uns 18%.
+		// (De pe no chao, com o raio antigo que atravessava, era a METADE: 2352 contra 1176; a razao de 0,7
+		// daquela conta nao vale pra um corpo deitado no ar, que ocupa menos do proprio quadro.) O piso de
+		// 600 px fica bem acima do que duas fotos da MESMA cena divergem com a arvore pausada, que e zero.
 		// ============================================================================================
-		Conferir(atras < _tintaNaVitimaNaFrente * 0.7f,
+		Conferir(_tintaNaVitimaNaFrente - atras > EngolidoMinimoDaCamada,
 			$"INJETADO: sem o `ZIndex` o corpo tapa o feixe e a regra da camada REPROVA "
 			+ $"({atras} px por cima da vitima, contra {_tintaNaVitimaNaFrente} px na producao -- o corpo "
 			+ $"engoliu {_tintaNaVitimaNaFrente - atras} px, que e a parte opaca do sprite)");

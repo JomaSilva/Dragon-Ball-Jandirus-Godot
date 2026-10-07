@@ -1,12 +1,22 @@
 namespace Jandirus.Core.Combat;
 
 /// <summary>
-/// UMA FOLHA DE ARTE DE ATAQUE DE KI -- o `.dmi` que o BYOND punha no objeto que voa.
+/// UMA ARTE DE ATAQUE DE KI -- a identidade do `.dmi` que o BYOND punha no objeto que voa.
 ///
-/// ============================ POR QUE UM SIMBOLO, E NAO O CAMINHO ============================
-/// O Core nao conhece Godot: quem sabe que `Beam3` mora em `res://Assets/Sprites/Beams/Beam3.tres`
-/// e o cliente (`Client/ArteDeKiNoCliente.cs`). Aqui so existe a IDENTIDADE da folha, e ela e o que
-/// viaja no fio -- dois bytes, uma vez por tiro.
+/// ============================ A FOLHA SAIU DA TELA, O NOME FICOU ============================
+/// Cada entrada nasceu como uma folha de sprite. O dono mandou trocar (2026-10-07): *"ao inves de
+/// usar sprite pra cada beam como era no byond, fazer eles por efeitos, noise e shaders do proprio
+/// godot"* -- e os tiros hoje sao desenhados por shader (`Client/ProjetilDesenhado`).
+///
+/// O ENUM NAO MORREU COM AS FOLHAS, porque ele nunca foi "qual arquivo": e QUAL ATAQUE E ESTE NA
+/// TELA. O Masenko continua nao se parecendo com o Kamehameha, a bola do Android continua nao sendo
+/// a do Tsujin, e o jogador continua escolhendo uma destas na mesa de tecnicas. Cada entrada virou
+/// um ESTILO (`Client/ArteDeKiNoCliente`), desenhado a partir do que a folha de mesmo nome mostrava.
+/// ==========================================================================================
+///
+/// ============================ POR QUE UM SIMBOLO, E NAO O DESENHO ============================
+/// O Core nao conhece Godot: quem sabe como um `Beam3` se desenha e o cliente. Aqui so existe a
+/// IDENTIDADE, e ela e o que viaja no fio -- dois bytes, uma vez por tiro.
 /// ==========================================================================================
 ///
 /// ============================ OS NUMEROS SAO CONTRATO DE REDE ============================
@@ -30,9 +40,9 @@ public enum ArteDeKi : ushort
 	/// NENHUMA -- e ela NAO e "sem arte", e "ainda nao resolvida".
 	///
 	/// A receita nasce assim e o <see cref="ArteDeProjetil.De"/> preenche no disparo. Um tiro que
-	/// chegasse ao cliente com zero cai no desenho por primitiva de sempre (ver
-	/// `Client/ProjetilDesenhado`), que e a resposta certa: melhor um risco sem folha do que um tiro
-	/// invisivel.
+	/// chega ao cliente com zero (um verb fora da tabela, um numero de uma versao mais nova) e
+	/// desenhado no estilo NEUTRO do tipo dele -- um raio liso, uma bola lisa -- que e a resposta
+	/// certa: melhor um tiro sem personalidade do que um tiro invisivel.
 	/// </summary>
 	Nenhuma = 0,
 
@@ -165,6 +175,19 @@ public enum ArteDeKi : ushort
 	/// `see_invisible` (ver `VisaoDoInvisivel`); pros outros a tecnica e so o sopro e o som.
 	/// </summary>
 	Daitoppa = 42,
+
+	/// <summary>
+	/// `SpiritBomb22017.png` -- a GENKIDAMA (`blasts/SpiritBomb.dm:25,45`). Nao e um `.dmi` de `Icons/`:
+	/// e uma imagem solta de 450x450 em `Images/attacks/`, e por isso nenhuma tecnica customizada a
+	/// alcanca (ver <see cref="ArteDeProjetil.PermitidasPara"/>).
+	///
+	/// ENTROU JUNTO COM O DESENHO POR SHADER: enquanto os tiros eram folha, a Genkidama voava sem arte
+	/// (o verb nao estava na tabela) e saia como um circulo que nem crescia. O dono citou ela pelo nome.
+	/// </summary>
+	SpiritBomb = 43,
+
+	/// <summary>`14.dmi`. O alvo de treino da meditacao (`Stats/Training/Meditate.dm:26`).</summary>
+	Blast14 = 44,
 }
 
 /// <summary>
@@ -342,15 +365,37 @@ public static class ArteDeProjetil
 		// invisivel com outra folha. O dono viu a primitiva colorida voando e disse que estava errado
 		// (2026-09-07): estava.
 		["Kiai"] = new(Fonte.Literal, ArteDeKi.Daitoppa),
+
+		// ---------------------------------------------------------------
+		// OS SETE QUE VOAVAM SEM ARTE (lotes G11 e G12)
+		// ---------------------------------------------------------------
+		// Entraram em producao sem linha aqui e por isso caiam no desenho neutro -- inclusive as duas
+		// maiores bolas do jogo. Conferidos um a um no DM em 2026-10-07, quando o desenho virou shader
+		// e o dono pediu "esferas como genkidama, super nova, blast":
+		["Death_Ball"] = new(Fonte.Literal, ArteDeKi.DeathBall2017Purple2),  // `blasts/DeathBall.dm:53`
+		["SpiritBomb"] = new(Fonte.Literal, ArteDeKi.SpiritBomb),            // `blasts/SpiritBomb.dm:25,45`
+
+		// As tres rajadas saem do `Create_Blast()`, que sem icone usa `BLASTICON` (`tools/copypaste.dm:12-13`)
+		// -- a bola da raca, como o tiro de todo dia.
+		["BusterBarrage"] = new(Fonte.BolaRacial, ArteDeKi.Nenhuma),              // `blasts/BusterBarrage.dm:43,60`
+		["Continuous_Energy_Bullets"] = new(Fonte.BolaRacial, ArteDeKi.Nenhuma),  // `blasts.dm:278`
+		["Spin_Blast"] = new(Fonte.BolaRacial, ArteDeKi.Nenhuma),                 // `blasts.dm:348`
+
+		// `bcolor = usr.ParalysisIcon` + `icon_state = "Paralysis"` (`click.dm:18,26`): o fio e a mesma
+		// faisca das duas paralisias.
+		["Psycho_Thread"] = new(Fonte.Literal, ArteDeKi.KiHead),
+
+		// `/obj/training_obj/Ki_Target { icon = '14.dmi' }` (`Stats/Training/Meditate.dm:26`).
+		["Ki_Targets"] = new(Fonte.Literal, ArteDeKi.Blast14),
 	};
 
 	/// <summary>
 	/// A ARTE DESTE TIRO. Ponto de entrada unico -- ver o cabecalho.
 	///
-	/// Verb desconhecido devolve <see cref="ArteDeKi.Nenhuma"/> e o tiro sai desenhado por
-	/// primitiva, como sempre saiu. **Recusar em silencio e a resposta certa aqui**: a alternativa
-	/// (chutar a bola racial pra todo verb novo) poria arte errada numa tecnica futura sem ninguem
-	/// notar, e este projeto ja tem o registro de um "campo morto" que ficou anos assim.
+	/// Verb desconhecido devolve <see cref="ArteDeKi.Nenhuma"/> e o tiro sai no estilo NEUTRO do tipo
+	/// dele. **Recusar em silencio e a resposta certa aqui**: a alternativa (chutar a bola racial pra
+	/// todo verb novo) poria arte errada numa tecnica futura sem ninguem notar, e este projeto ja tem
+	/// o registro de um "campo morto" que ficou anos assim.
 	/// </summary>
 	/// <param name="semente">
 	/// A semente do PERSONAGEM -- `LimiaresPessoais.SementeDe(nome, criadoEm)`. So o Kamehameha a
@@ -382,16 +427,14 @@ public static class ArteDeProjetil
 	/// <summary>
 	/// ONDE ESTA FOLHA MORAVA NO BYOND: a PASTA de `Icons/` e o nome do `.dmi`, sem extensao.
 	///
-	/// ============================ POR QUE ISTO NAO E "CAMINHO NO CORE" ============================
-	/// A regra da casa e *simbolo no Core, `res://` no cliente*, e ela continua valendo: nada aqui
-	/// sabe o que e `res://`, o que e `.tres` ou onde o conversor despejou os arquivos. O que esta
-	/// escrito e a identidade que a folha SEMPRE teve -- `Icons/Beams/Beam3.dmi` e o dado do
-	/// original, do mesmo jeito que `beams.dm:322` e.
+	/// ============================ ELA NAO E MAIS UM ARQUIVO QUE SE CARREGA ============================
+	/// Ninguem abre estas folhas pra desenhar tiro (ver o cabecalho de <see cref="ArteDeKi"/>). O que
+	/// sobrou e o que elas sempre foram no original, e as duas coisas tem leitor:
 	///
-	/// E ela mora aqui, e nao numa segunda tabela do cliente, por um motivo medido: uma tabela
-	/// paralela de 40 linhas e 40 chances de a arte apontar pra folha de outra tecnica -- e o
-	/// defeito sairia como "o Masenko virou um Kienzan", nunca como erro de compilacao. Assim o
-	/// cliente e um formatador de uma linha e nao ha o que divergir.
+	///   * o NOME que o jogador ve na mesa de tecnicas -- o `"[prefix]: [f]"` do `pick_game_icon`
+	///     (`customattacks.dm:551`), literalmente `"Blasts: 12.dmi"`;
+	///   * a PASTA, que e REGRA: e ela que diz quais artes cada tipo de tecnica customizada pode
+	///     escolher (<see cref="PermitidasPara"/>, validado no servidor).
 	///
 	/// A PASTA IMPORTA, e nao e decoracao: `Makkankosappo` e `Beam - Big Fire` existem em DUAS
 	/// pastas com conteudo diferente, e quem desempata e a ordem dos `FILE_DIR` do `.dme`. Ver o
@@ -420,6 +463,7 @@ public static class ArteDeProjetil
 		ArteDeKi.Blast10 => ("Blasts", "10"),
 		ArteDeKi.Blast11 => ("Blasts", "11"),
 		ArteDeKi.Blast12 => ("Blasts", "12"),
+		ArteDeKi.Blast14 => ("Blasts", "14"),
 		ArteDeKi.Blast18 => ("Blasts", "18"),
 		ArteDeKi.Blast19 => ("Blasts", "19"),
 		ArteDeKi.Blast20 => ("Blasts", "20"),
@@ -448,6 +492,10 @@ public static class ArteDeProjetil
 		ArteDeKi.Kienzan => ("Techniques", "Kienzan"),
 		ArteDeKi.KiHead => ("Techniques", "KiHead"),
 
+		// --- fora de `Icons/`: uma imagem solta (e `.png`, nao `.dmi` -- por isso a extensao vem escrita),
+		//     que nenhuma tecnica customizada alcanca ---
+		ArteDeKi.SpiritBomb => ("Images/attacks", "SpiritBomb22017.png"),
+
 		_ => ("", ""),
 	};
 
@@ -466,94 +514,84 @@ public static class ArteDeProjetil
 	public static ArteDeKi PadraoDoCustom(TipoDeProjetil tipo) =>
 		tipo == TipoDeProjetil.Beam ? ArteDeKi.Beam3 : ArteDeKi.Blast12;
 
-	/// <summary>
-	/// O `icon_state` QUE O DM ESCREVE PRA ESTA BOLA -- e ele quase nunca importa, mas quando
-	/// importa e a diferenca entre desenhar e nao desenhar.
-	///
-	/// ============================ POR QUE ISTO NAO E O `BLASTSTATE` ============================
-	/// O reflexo seria portar `A.icon_state = usr.BLASTSTATE` (`blasts.dm:61`), que vale "1", "18",
-	/// "5"... conforme a raca. Isso ESTA ERRADO pra este port, e a razao esta no arquivo e nao no
-	/// codigo: nas folhas `N.dmi` o estado nao tem nome (e um `.dmi` de estado unico anonimo), e o
-	/// `BLASTSTATE` do DM da no mesmo desenho por ser o unico que existe. O conversor batizou esse
-	/// estado anonimo de `default`. Portar a string literal pediria `1` e nao acharia nada.
-	///
-	/// ONDE O DM NOMEIA DE VERDADE, o nome vale -- e ha um caso: a `KiHead.dmi` tem ONZE estados
-	/// (`1`..`9`, `paralysis`, `piercer`) e as duas paralisias pedem `"Paralysis"` explicitamente
-	/// (`Ki2.0/Debuffs.dm:26` e `Race Trees/meta.dm:82`). Sem esta linha o tiro cairia na primitiva
-	/// -- que foi exatamente o que a bancada acusou.
-	///
-	/// O CASO CONTRARIO TAMBEM EXISTE e por isso o leitor tem escada: o Buster Shell pede
-	/// `icon_state = "small"` (`blasts/BusterShell.dm:48`) e a `deathball2017purple2` convertida so
-	/// tem `default` -- o nome do DM nao sobreviveu ao `.dmi`. Quem resolve isso e a cadeia de
-	/// tentativas do `ProjetilDesenhado`, nao mais uma linha aqui: declarar `small` seria escrever
-	/// no Core um nome que nenhum arquivo tem.
-	/// ======================================================================================
-	/// </summary>
-	public static string EstadoDeBola(ArteDeKi a) => a switch
-	{
-		ArteDeKi.KiHead => "paralysis",
-		_ => "default",
-	};
+	// ============================ NAO HA MAIS `EstadoDeBola` ============================
+	// Morava aqui o `icon_state` de cada bola (`"paralysis"` pra `KiHead.dmi`, `"default"` pro resto),
+	// e o unico leitor era quem procurava a animacao na folha. Sem folha nao ha estado: a paralisia
+	// e reconhecida pela ARTE (`KiHead`), e o estilo dela e a faisca -- ver `ArteDeKiNoCliente`.
+	// ====================================================================================
 
 	/// <summary>
-	/// QUANTO A CABECA DESTA FOLHA AVANCA A FRENTE DO CENTRO DELA, em pixel, na escala 1 -- a arte de
-	/// `head_east` medida no alpha (a UNIAO dos quadros: o quadro que mais avanca e o que encosta primeiro).
+	/// QUANTO A CABECA DESTA ARTE AVANCA A FRENTE DA POSICAO DO TIRO, em pixel, na escala 1.
 	///
-	/// ============================ POR QUE ISTO E DADO, E NAO O RAIO DE IMPACTO ============================
-	/// O servidor mantinha as cabecas de uma disputa a `2 x RaioDeImpacto` = 32 px de centro a centro e
-	/// plantava a cabeca a 24 px do corpo que ela empurra, FOSSE QUAL FOSSE a tecnica. So que o cliente
-	/// desenha a cabeca CENTRADA na posicao e do tamanho da celula vezes a escala do tiro
-	/// (`ProjetilDesenhado.Estampar`). Na `Beam3` a conta fecha (celula de 32, a arte chega aos 16 px da
-	/// borda) -- e foi por isso que a foto de 2026-09-07 saiu certa. Mas o Final Flash e a `Beam - Big
-	/// Fire.dmi`, CELULA DE 64 px, com escala 4 (`MultDeOnda = 4`): a cabeca dele avanca **128 px** a
-	/// frente do centro. Plantada a 24 px de alguem ela o cobre inteiro, e duas se encontrando a 32 px
-	/// ficam uma dentro da outra. Era o "as cabecas ainda estao se sobrepondo as vezes" (dono, 2026-09-23):
-	/// as vezes = conforme a tecnica.
+	/// ============================ ISTO E REGRA, E O DESENHO OBEDECE ============================
+	/// O servidor planta a cabeca de um raio encostada em quem ela empurra, e encontra duas cabecas
+	/// numa disputa, por ESTE numero (`Feixe.AlcanceDaCabeca`). E o cliente desenha a ponta do raio
+	/// exatamente ai: `ProjetilDesenhado` poe o fim do feixe em `posicao + rumo * frente * escala`.
+	/// Uma tabela, dois leitores -- o que se ve e o que encosta.
 	///
-	/// MEDIDO, e nao estimado: `scratchpad\medir-cabecas.py` le cada `.tres` + `.png` de Beams e
-	/// Techniques e mede o alpha. Quase todas dao 16 (a arte vai ate a borda da celula de 32); as
-	/// excecoes estao abaixo, uma a uma. A `--diagembateki` confere esta tabela contra a medida do proprio
-	/// cliente (`ProjetilDesenhado.SombraDaArte`) folha por folha -- uma folha nova convertida com celula
-	/// maior e sem linha aqui reprova la.
+	/// A DIRECAO DA DEPENDENCIA INVERTEU, e vale registrar. Estes numeros nasceram MEDIDOS: um script
+	/// lia o alpha de `head_east` de cada folha (16 em quase todas, porque a arte ia ate a borda da
+	/// celula de 32) e a tabela dizia ao servidor o que a folha ja desenhava. Foi assim que se achou o
+	/// Final Flash -- celula de 64, escala 4, a cabeca avanca 128 px -- cobrindo quem ele empurrava
+	/// (dono, 2026-09-23: *"as cabecas ainda estao se sobrepondo as vezes"*). Desde 2026-10-07 nao ha
+	/// folha: o numero e o mesmo, mas agora e ele quem manda, e o shader quem acompanha. A
+	/// `--diagartedeki` (familia 6) confere um contra o outro, na FOTO, arte por arte.
 	/// ================================================================================================
 	/// </summary>
 	public static float FrenteDaCabeca(ArteDeKi a) => a switch
 	{
-		ArteDeKi.BeamBigFire => 32f,    // `Beam - Big Fire.dmi`, celula 64x64: a cabeca enche a celula
-		ArteDeKi.EraserCannon => 21f,   // `EraserCannon.dmi`, celula 128x128: a bola da frente para em 21
-		ArteDeKi.Dodompa => 14f,        // `Dodompa.dmi`: a ponta fina para 2 px antes da borda
-		ArteDeKi.Makkankosappo => 0f,   // `Makkankosappo.dmi` (Beams): a broca e desenhada toda PRA TRAS do centro
-		_ => Projetil.RaioDeImpacto,    // celula de 32 com a arte ate a borda -- as outras 20 folhas de raio
+		ArteDeKi.BeamBigFire => 32f,    // o Final Flash: a cabeca e do tamanho do tronco, e ele e enorme
+		ArteDeKi.EraserCannon => 21f,   // a bola da frente e maior que a de um raio comum
+		ArteDeKi.Dodompa => 14f,        // a seta fina para 2 px antes
+		ArteDeKi.Makkankosappo => 0f,   // a broca e desenhada toda PRA TRAS da posicao: a ponta E a posicao
+		_ => Projetil.RaioDeImpacto,    // meio tile -- todos os outros
 	};
 
 	/// <summary>
-	/// A MEIA ESPESSURA DO TRONCO DESTA FOLHA, em pixel, na escala 1 -- a arte de `tail_east` medida no alpha
-	/// (o mesmo `scratchpad\medir-cabecas.py`). E o que diz a quantos pixels de lado do eixo o feixe AINDA E
-	/// desenhado: a `Beam3` e um fio de 4 px, a `Beam - Big Fire.dmi` do Final Flash tem 27 -- 108 px na escala
-	/// 4. Quem encosta no tronco (o corte) e quem bate nele (o cruzamento) encosta na BEIRADA dele, nao no eixo.
+	/// A MEIA ESPESSURA DO TRONCO DESTA ARTE, em pixel, na escala 1: ate onde, de lado do eixo, o feixe
+	/// AINDA E desenhado. Quem encosta no tronco (o corte) e quem bate nele (o cruzamento) encosta na
+	/// BEIRADA dele, nao no eixo -- e por isso e regra, e por isso o desenho a obedece
+	/// (`ProjetilDesenhado` le daqui o raio do tronco, do mesmo jeito que le a frente da cabeca).
+	///
+	/// ============================ OITO FIOS ENGROSSARAM, E NADA MUDOU NO JOGO ============================
+	/// As folhas do BYOND tinham raios de 4 a 6 px de espessura (meia espessura 2 e 3). Era o que o
+	/// dono viu no trailer -- riscos finos entre duas cabecas grandes --, e um feixe de shader desse
+	/// calibre e um fio de neon. Os oito mais finos subiram 1 ou 2 px:
+	///
+	///     Beam3 4->5   Beam4 2->3   Kamehameha1 3->5   Kamehameha3 3->5
+	///     Makkankosappo3 2->3   Makkankosappo4 2->3   Dodompa 2->3   Enkumei 3->4
+	///
+	/// NENHUM RESULTADO DE COMBATE MUDA: a faixa do corte e `max(16, meia + 8)` (`GameServer.Feixe`), e
+	/// todos os oito continuam abaixo de 8 -- a faixa era 16 e segue 16. O unico leitor que os sente e
+	/// o raio de espera do cruzamento (`frente + meia`), que anda os mesmos 1 ou 2 px.
+	/// ============================================================================================
+	///
+	/// NAS ARTES COM ENFEITE (as descargas do Static Beam, os fiapos do Kamehameha 5, os aneis do
+	/// Makkankosappo) este numero e ate onde o ENFEITE chega; o tronco macico e mais fino, e a fracao
+	/// esta no estilo do cliente (`EstiloDeFeixe.Macico`).
 	/// </summary>
 	public static float MeiaEspessuraDoTronco(ArteDeKi a) => a switch
 	{
-		ArteDeKi.Beam3 => 4f,
+		ArteDeKi.Beam3 => 5f,
 		ArteDeKi.Beam2 => 7f,
-		ArteDeKi.Beam4 => 2f,
+		ArteDeKi.Beam4 => 3f,
 		ArteDeKi.Beam11 => 7f,
 		ArteDeKi.BeamMasenko => 8f,
 		ArteDeKi.BeamStaticBeam => 13f,
 		ArteDeKi.BeamBigFire => 27f,
 		ArteDeKi.Makkankosappo => 5f,
-		ArteDeKi.Kamehameha1 => 3f,
+		ArteDeKi.Kamehameha1 => 5f,
 		ArteDeKi.Kamehameha2 => 5f,
-		ArteDeKi.Kamehameha3 => 3f,
+		ArteDeKi.Kamehameha3 => 5f,
 		ArteDeKi.Kamehameha4 => 13f,
 		ArteDeKi.Kamehameha5 => 13f,
 		ArteDeKi.Kamehameha6 => 7f,
 		ArteDeKi.GalacticGun => 7f,
-		ArteDeKi.Makkankosappo3 => 2f,
-		ArteDeKi.Makkankosappo4 => 2f,
-		ArteDeKi.Dodompa => 2f,
-		ArteDeKi.Enkumei => 3f,
-		_ => Projetil.RaioDeImpacto / 2f,   // sem `tail` medido (a EraserCannon e as bolas): meio raio
+		ArteDeKi.Makkankosappo3 => 3f,
+		ArteDeKi.Makkankosappo4 => 3f,
+		ArteDeKi.Dodompa => 3f,
+		ArteDeKi.Enkumei => 4f,
+		_ => Projetil.RaioDeImpacto / 2f,   // a EraserCannon, o raio sem arte e as bolas: meio raio
 	};
 
 	/// <summary>Toda folha conhecida -- pra a bancada varrer e pro menu da tecnica customizada.</summary>

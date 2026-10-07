@@ -403,10 +403,22 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 	}
 
 	/// <summary>
-	/// A MEDIDA E DO DESENHO, e nao da tabela do servidor: a frente de cada cabeca e lida da ARTE que o
-	/// cliente carregou (`ProjetilDesenhado.SombraDaArte`, o alpha do `head`) vezes a escala com que ela e
-	/// estampada. Se a tabela do Core (`ArteDeProjetil.FrenteDaCabeca`) mentisse, o servidor pararia as
-	/// cabecas no lugar errado e esta conta acusaria -- ela nao pergunta ao Core onde a frente esta.
+	/// ============================ A MEDIDA E DO DESENHO, E O DESENHO MUDOU ============================
+	/// Esta cena lia a FOLHA: a frente de cada cabeca saia do alpha de `head_east` vezes a escala, e a
+	/// soma das duas era comparada com a distancia entre os centros. Nao ha mais folha -- o raio e
+	/// desenhado por shader (`ProjetilDesenhado`), com a ponta posta em `posicao + rumo * frente`.
+	///
+	/// O que continua sendo medido e a MESMA pergunta do dono (*"as cabecas ainda estao se sobrepondo as
+	/// vezes"*, 2026-09-23), agora no que o cliente de fato desenha:
+	///
+	///   * as duas PONTAS DESENHADAS caem no mesmo ponto (nem um vao entre elas, nem uma dentro da outra);
+	///   * os dois feixes estao PRENSADOS -- o bit chegou pelo fio (e por ele que o cliente poe a estrela);
+	///   * ha UMA estrela de embate no encontro, e ela esta ACESA NA FOTO (pixel, e nao "o node existe").
+	///
+	/// A CONFERENCIA DA TABELA DO CORE CONTRA O DESENHO, arte por arte, saiu daqui: ela mede o desenho
+	/// de um raio SOLTO num fundo liso, e isso e assunto da `--diagartedeki` (familia 6), que tem o
+	/// fundo liso. Aqui ha mapa atras, e a estrela do choque fica por cima das duas pontas.
+	/// ==================================================================================================
 	/// </summary>
 	private void MedirOsFinalFlash(Jandirus.Server.GameServer srv, World mundo)
 	{
@@ -423,55 +435,52 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 		if (_disputaDoFinalFlashEm < 0) _disputaDoFinalFlashEm = _vida;
 		if (_vida - _disputaDoFinalFlashEm < 0.6) return;
 
-		var cabecas = new List<(Vector2 Onde, float Frente)>();
-		foreach ((int _, Jandirus.Core.Combat.ArteDeKi arte, Jandirus.Core.Combat.TipoDeProjetil tipo,
-				  Vector2 onde, float escala) in mundo.TirosDesenhados())
-		{
-			if (tipo != Jandirus.Core.Combat.TipoDeProjetil.Beam) continue;
-			SpriteFrames? folha = ArteDeKiNoCliente.Folha(arte);
-			if (folha == null) continue;
-			string anim = folha.HasAnimation("head_east") ? "head_east" : "head";
-			(float frenteDaArte, float _) = ProjetilDesenhado.SombraDaArte(folha, anim, new Vector2(-1, 0));
-			cabecas.Add((onde, -frenteDaArte * escala));
-		}
+		var raios = new List<(Vector2 Ponta, float Frente, bool Prensado)>();
+		foreach ((int _, Vector2 ponta, float frente, bool prensado) in mundo.RaiosDesenhadosDeTeste())
+			raios.Add((ponta, frente, prensado));
 
-		Fotografar("user://embateki-6-final-flash.png",
-				   $"CENA 3: dois Final Flash se encontram ({cabecas.Count} cabecas desenhadas)", NaTela(ponto));
+		Image? foto = Fotografar("user://embateki-6-final-flash.png",
+								 $"CENA 3: dois Final Flash se encontram ({raios.Count} raios desenhados)", NaTela(ponto));
 
-		Conferir(cabecas.Count == 2, $"CENA 3: as duas cabecas estao desenhadas ({cabecas.Count})");
-		if (cabecas.Count == 2)
+		Conferir(raios.Count == 2, $"CENA 3: os dois raios estao desenhados ({raios.Count})");
+		if (raios.Count == 2)
 		{
-			float entre = cabecas[0].Onde.DistanceTo(cabecas[1].Onde);
-			float frentes = cabecas[0].Frente + cabecas[1].Frente;
+			float frentes = raios[0].Frente + raios[1].Frente;
 			Conferir(frentes > 100f,
-				$"CENA 3: a arte do Final Flash e GRANDE mesmo -- a soma das duas frentes desenhadas e {frentes:0} px");
-			Conferir(entre >= frentes - 3f,
-				$"CENA 3: as cabecas DESENHADAS ficam frente com frente, sem uma entrar na outra "
-				+ $"({entre:0} px entre os centros, {frentes:0} px de frentes)");
+				$"CENA 3: a cabeca do Final Flash e GRANDE mesmo -- a soma das duas frentes desenhadas e {frentes:0} px");
+
+			float vao = raios[0].Ponta.DistanceTo(raios[1].Ponta);
+			Conferir(vao <= 3f,
+				$"CENA 3: as PONTAS DESENHADAS se encontram no mesmo ponto, sem vao e sem uma entrar na outra "
+				+ $"({vao:0.0} px entre elas)");
+
+			Conferir(raios[0].Prensado && raios[1].Prensado,
+				"CENA 3: os dois feixes estao PRENSADOS -- o bit chegou pelo fio, e e por ele que o cliente "
+				+ "sabe onde por a estrela do choque");
 		}
 
-		// ============================ A TABELA DO CORE CONTRA A ARTE, FOLHA POR FOLHA ============================
-		// `ArteDeProjetil.FrenteDaCabeca` e dado medido fora do jogo (o script de PIL). Aqui ele e conferido
-		// contra a medida do PROPRIO cliente, pra toda folha de raio do catalogo: uma folha nova, convertida
-		// com celula maior e sem linha na tabela, reprova aqui -- e nao numa disputa de cabecas encavaladas.
-		// A medida do cliente e a INTERSECAO dos quadros (o que todo quadro pinta) e a tabela e a UNIAO (o
-		// quadro que mais avanca), entao a tabela pode ser maior -- nunca menor, e nunca por muito.
-		// ==========================================================================================================
-		var erradas = new List<string>();
-		int medidas = 0;
-		foreach (Jandirus.Core.Combat.ArteDeKi a in
-				 Jandirus.Core.Combat.ArteDeProjetil.PermitidasPara(Jandirus.Core.Combat.TipoDeProjetil.Beam))
+		// ============================ A ESTRELA DO EMBATE, NO PIXEL ============================
+		// "Ha um node `ChoqueDeKi`" e uma afirmacao sobre a ARVORE; o dono pediu um efeito NA TELA. O
+		// miolo da estrela e branco e cobre (alfa 1): no centro dela a foto tem que estar clara, seja qual
+		// for o chao que esta por baixo. A contraprova e a mesma foto, um raio e meio pro lado
+		// PERPENDICULAR ao embate nao serve (la ha ponta e halo) -- serve a foto ANTES da disputa, que a
+		// cena 1 ja tirou do mesmo corredor: la esse ponto era chao.
+		// ====================================================================================
+		var bolas = new List<(Vector2 Onde, float Raio)>(mundo.ChoquesDeKiDesenhados());
+		Conferir(bolas.Count == 1, $"CENA 3: ha UMA estrela de embate acesa no encontro ({bolas.Count})");
+		if (bolas.Count == 1 && foto != null)
 		{
-			SpriteFrames? f = ArteDeKiNoCliente.Folha(a);
-			if (f == null || !f.HasAnimation("head_east")) continue;
-			medidas++;
-			float medida = -ProjetilDesenhado.SombraDaArte(f, "head_east", new Vector2(-1, 0)).A;
-			float tabela = Jandirus.Core.Combat.ArteDeProjetil.FrenteDaCabeca(a);
-			if (tabela < medida - 1f || tabela > medida + 4f) erradas.Add($"{a}: tabela {tabela:0}, arte {medida:0.#}");
+			Vector2 naFoto = NaFoto(bolas[0].Onde);
+			var px = new Vector2I((int)naFoto.X, (int)naFoto.Y);
+			bool dentro = px.X >= 0 && px.Y >= 0 && px.X < foto.GetWidth() && px.Y < foto.GetHeight();
+			float luz = dentro ? foto.GetPixel(px.X, px.Y).Luminance : -1f;
+			Conferir(dentro && luz > 0.85f,
+				$"CENA 3: o MIOLO da estrela esta aceso na FOTO -- luminancia {luz:0.00} no centro dela "
+				+ $"(corpo de {bolas[0].Raio:0} px), e nao so o node na arvore");
+
+			float longe = raios.Count == 2 ? bolas[0].Onde.DistanceTo((raios[0].Ponta + raios[1].Ponta) * 0.5f) : 999f;
+			Conferir(longe <= 3f, $"CENA 3: a estrela esta EM CIMA do encontro das pontas ({longe:0.0} px dele)");
 		}
-		Conferir(medidas >= 15 && erradas.Count == 0,
-			$"a frente da cabeca de cada folha de raio ({medidas} medidas) bate com a tabela do Core"
-			+ (erradas.Count > 0 ? ": " + string.Join("; ", erradas) : ""));
 
 		srv.EmbateDeFoto_Limpar();
 		Fechar();
@@ -530,10 +539,11 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 	// =====================================================================
 	// A FOTO
 	// =====================================================================
-	private void Fotografar(string destino, string rotulo, Vector2 centro)
+	/// <returns>A foto tirada, pra quem quer LER um pixel dela -- ou nulo, sem janela.</returns>
+	private Image? Fotografar(string destino, string rotulo, Vector2 centro)
 	{
 		Image? img = GetViewport()?.GetTexture()?.GetImage();
-		if (img == null || img.IsEmpty()) { Nota($"{rotulo}: sem foto (headless nao renderiza)"); return; }
+		if (img == null || img.IsEmpty()) { Nota($"{rotulo}: sem foto (headless nao renderiza)"); return null; }
 		try
 		{
 			string caminho = ProjectSettings.GlobalizePath(destino);
@@ -542,6 +552,19 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 			_tira.Add((img, centro));
 		}
 		catch (Exception e) { Nota($"{rotulo}: sem foto: {e.Message}"); }
+		return img;
+	}
+
+	/// <summary>
+	/// EM QUE PIXEL DA FOTO este ponto do mundo caiu. E o `NaTela` mais o esticamento da janela
+	/// (`GetFinalTransform`): a foto sai no tamanho da JANELA, e com o modo `canvas_items` do projeto
+	/// uma janela maior que 1280x720 desenha tudo ampliado. Pra recortar uma tira o erro nao importa;
+	/// pra ler UM pixel, importa.
+	/// </summary>
+	private Vector2 NaFoto(Vector2 mundo)
+	{
+		Viewport? v = GetViewport();
+		return v == null ? mundo : v.GetFinalTransform() * (v.CanvasTransform * mundo);
 	}
 
 	/// <summary>ONDE, NA TELA, ESTE PONTO DO MUNDO ESTA -- passado pela camera.</summary>

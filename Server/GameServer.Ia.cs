@@ -67,6 +67,32 @@ public partial class GameServer
 	/// </summary>
 	private void AplicarComando(ServerPlayer npc, in Comando c, double dt)
 	{
+		// ============================ COM UM ATAQUE DE KI NA MAO, O CORPO NAO OBEDECE TUDO (2026-10-07) ============================
+		// O dono, vendo dois NPCs disputarem no trailer: *"parece q eles as vezes se mexem durante a colisao"*.
+		// Mexiam, e por tres portas deste metodo. O cerebro NAO SABE que o corpo esta segurando um raio (a
+		// `Percepcao` nao tem esse campo, e o cabecalho do `TickDoPrazoDeRaioDaIa` ja dizia: *"o cerebro solta
+		// UM pulso pra abrir o canal, que e tudo que ele sabe fazer"*). Entao ele continuava mandando, e o corpo
+		// continuava obedecendo:
+		//
+		//   * A TECNICA DE NOVO. Passada a pausa do tiro, o cerebro escolhe atirar outra vez e manda o MESMO
+		//     verb -- e o `KiWave` abre com `if (SoltarCanal(...)) return`: o segundo pulso FECHA o canal. Numa
+		//     disputa isso e desistir (`LadoOk` cobra o canal aberto): o NPC largava o proprio raio uns dois
+		//     segundos depois de comecar, levava o do outro e saia andando com os feixes ainda na tela.
+		//   * O VOO. `AlternarVoo` e as teclas de altura nunca passaram pelo `PodeMexerOCorpo`; o corpo subia e
+		//     descia e o feixe -- que guarda a altura em que nasceu -- ficava pra tras das maos.
+		//   * O SOCO, e a guarda. Quem segura um ataque NAS MAOS (o embate de guarda) e manda um soco abaixa a
+		//     guarda dentro do `Atacar`, e abaixar a guarda ali tambem e desistir.
+		//
+		// A RECUSA MORA AQUI, e nao no cerebro, pela regra que este arquivo inteiro segue: o cerebro decide e
+		// o MUNDO responde o que o corpo pode fazer. Ensinar o cerebro a "saber" do raio seria a segunda copia
+		// da regra, e a primeira (esta) continuaria sendo a unica que vale pra qualquer cerebro futuro.
+		//
+		// O QUE CONTINUA PASSANDO, de proposito: a forma (transformar no meio de um embate e a cena mais
+		// classica que existe), a carga de Ki, a mira e a fala.
+		// ==========================================================================================================================
+		bool comKiNaMao = (EnraizadoPorKi(npc.Id) || _emEmbateDeKi.ContainsKey(npc.Id))
+						  && !Jandirus.Core.Combat.EmbateDeKi.IaComAsMaosLivresDeTeste;
+
 		// --- 1. PULSOS DE FORMA, ANTES DE TUDO --------------------------------
 		// Transformar muda `MaxKi`, `Espeed` e o `SpeedStat`; feito depois do passo, o tique
 		// inteiro andaria com a velocidade da forma velha. E o `Transformar` e quem cobra as
@@ -77,11 +103,13 @@ public partial class GameServer
 		// --- 2. O TOGGLE DO VOO ----------------------------------------------
 		// `AlternarVoo` COBRA o Ki de decolagem (`Voo.CustoParaLigar`) e recusa quem nao sabe voar,
 		// quem esta caido e quem nao tem folego. E a mesma funcao do verbo `Fly` do jogador.
-		if (c.AlternarVoo) AlternarVoo(npc);
+		if (c.AlternarVoo && !comKiNaMao) AlternarVoo(npc);
 
 		// --- 3. AS TECLAS DE ALTURA ------------------------------------------
 		// PEDIDOS continuos, escritos como o `Input` os escreve. Quem os obedece e o `TickDoVoo`, e
 		// so pra quem esta voando -- afirmar o bit no chao nao levanta ninguem, aqui como la.
+		// (Com o ki na mao o `TickDoVoo` nem os le -- ver `AlturaPresaPeloKi`. Escritos assim mesmo, pra o
+		// corpo retomar a altura que o cerebro quer no tique em que o raio acabar.)
 		npc.QuerSubir = c.QuerSubir;
 		npc.QuerDescer = c.QuerDescer;
 
@@ -99,7 +127,7 @@ public partial class GameServer
 		// qualquer outra coisa -- pra a IA passar a ter contra-ataque perfeito 30 vezes por segundo,
 		// e ninguem ligaria o defeito a este arquivo.
 		// ==================================================================================
-		if (c.Guardar != npc.Combate.Bloqueando) npc.Combate.Guardar(c.Guardar);
+		if (c.Guardar != npc.Combate.Bloqueando && !comKiNaMao) npc.Combate.Guardar(c.Guardar);
 
 		// --- 6. A MIRA, ANTES DE QUALQUER GOLPE ------------------------------
 		// `Mirar` e a MESMA funcao do `C2S.Alvo` (ver `GameServer.Combat.cs`), com a mesma validacao
@@ -122,7 +150,7 @@ public partial class GameServer
 		// `if (temKi)`: quem responde "voce nao sabe isso", "ainda se recompoe" e "isso pede pelo
 		// menos N de energia" e a tecnica -- e essas tres frases sao as MESMAS que o jogador ouve.
 		// ======================================================================================
-		if (c.Habilidade is { Length: > 0 } tecnica) UsarHabilidade(npc, tecnica);
+		if (c.Habilidade is { Length: > 0 } tecnica && !comKiNaMao) UsarHabilidade(npc, tecnica);
 
 		// --- 9. O SOCO, POR ULTIMO -------------------------------------------
 		// Depois do passo porque o `Atacar` faz o `Aproximar` a partir da posicao ATUAL: socar antes
@@ -132,8 +160,11 @@ public partial class GameServer
 		// SOCO E TECNICA NAO SE EXCLUEM AQUI, e a falta do `else` e deliberada: escolher entre os
 		// dois seria uma DECISAO, e decisao e do cerebro (que nunca manda os dois no mesmo tique --
 		// a receita de atirar nao soca). Um `else` aqui esconderia um defeito de decisao pra sempre.
-		if (c.Leve) Atacar(npc, Protocol.Golpe.Leve);
-		else if (c.Pesado) Atacar(npc, Protocol.Golpe.Pesado);
+		if (!comKiNaMao)
+		{
+			if (c.Leve) Atacar(npc, Protocol.Golpe.Leve);
+			else if (c.Pesado) Atacar(npc, Protocol.Golpe.Pesado);
+		}
 
 		// --- 10. A FALA, DEPOIS DO GESTO -------------------------------------
 		// ============================ O FUNIL E O `C2S.Chat` DO JOGADOR ============================

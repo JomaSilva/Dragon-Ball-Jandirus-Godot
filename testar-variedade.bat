@@ -13,12 +13,13 @@ REM
 REM  Ela roda DUAS vezes, e a ordem nao e decorativa: quem responde de graca vem
 REM  antes de quem custa uma janela e seis minutos.
 REM
-REM    1) --diagartedeki    A TABELA, AS FOLHAS E O PIXEL, sem atirar. Confere que
-REM                         todo verb que atira tem arte declarada, que as 41
-REM                         folhas CARREGAM do disco (este repo ja escreveu 35
-REM                         atlas e nunca os importou) e que dois desenhos
-REM                         diferentes dao pixel diferente. Precisa de janela: a
-REM                         familia 3 mede pixel.
+REM    1) --diagartedeki    A TABELA, OS ESTILOS E O PIXEL, sem atirar. Confere que
+REM                         todo verb que atira tem arte declarada, que toda arte
+REM                         tem ESTILO e se veste (os tiros sao desenhados por
+REM                         shader desde 2026-10-07, nao ha mais folha), que o
+REM                         raio e CONTINUO em 19 rumos e que a ponta e o tronco
+REM                         desenhados batem com as tabelas do Core. Precisa de
+REM                         janela: da familia 2b em diante ela mede pixel.
 REM
 REM    2) --diagvariedade   AS FOTOS, com o tiro SAINDO DA MAO. Dispara 21
 REM                         tecnicas pelo MESMO `UsarHabilidade` que o botao do
@@ -86,8 +87,8 @@ echo  ---- 1/2: a tabela, as folhas e o pixel (sem atirar, sem rede) ----
 
 echo.
 echo  ---- 2/2: AS FOTOS -- 24 tiros disparados de verdade, e o mosaico ----
-"%GODOT%" --path . --host --rede 7953 --bpteste 300000000 --horateste 0.5 ^
-          --diagvariedade --resolution 1600x900 ^
+"%GODOT%" --path . --host --rede 7953 --bpteste 300000000 --horateste 0.5 --campoteste 23 ^
+          --diagvariedade --position 1920,0 --resolution 1600x900 ^
           --raca Human --conta bancada_variedade --nome Variado
 
 echo.

@@ -109,7 +109,7 @@ echo  ---- 1/2: a boca no NUMERO, sem janela (familias 1-bis e 1-ter) ----
 
 echo.
 echo  ---- 2/2: AS FOTOS (precisa de janela, no MONITOR 2) ----
-"%GODOT%" --path . --host --rede 7932 --vooteste --bpteste 3000000 --horateste 0.5 ^
+"%GODOT%" --path . --host --rede 7932 --vooteste --bpteste 3000000 --horateste 0.5 --campoteste ^
           --diagboca --position 1920,0 --resolution 1600x900 ^
           --raca Human --conta bancada_boca --nome Boqueiro
 

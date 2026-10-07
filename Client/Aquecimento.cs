@@ -99,6 +99,13 @@ public partial class Aquecimento : Node
 		"res://Assets/Shaders/RaioDaForma.gdshader",      // RaiosDaForma
 		"res://Assets/Shaders/Embate.gdshader",           // ClashQte, montado junto com o resto
 
+		// OS QUATRO DO KI. Nao sao da entrada -- sao do PRIMEIRO TIRO, que e pior: sem isto a compilacao
+		// cairia no quadro em que alguem dispara, e o travamento apareceria no meio de uma luta.
+		PintorDeKi.ShaderDoFeixe,                         // ProjetilDesenhado: todo raio
+		PintorDeKi.ShaderDaEsfera,                        // ProjetilDesenhado: toda bola; CargaDeRaioVisual
+		PintorDeKi.ShaderDoChoque,                        // ChoqueDeKi: a estrela do embate
+		PintorDeKi.ShaderDoEstouro,                       // EstouroDeKi: todo tiro que acerta
+
 		// AS CHAPAS DO BONECO DE VIDA. Sao 10 folhas, e todas caem no mesmo quadro em que o `Hud`
 		// e montado -- ou seja, no quadro do corpo. Ver `BodyDoll.Quadro`.
 		"res://Assets/Sprites/Misc/HUD/health_hud.tres",

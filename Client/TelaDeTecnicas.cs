@@ -66,14 +66,13 @@ public partial class TelaDeTecnicas : CanvasLayer
 	private ColorPickerButton? _seletorDeCor;
 
 	/// <summary>
-	/// UMA TINTA PRA TODAS AS MINIATURAS. E o mesmo `Ki.gdshader` do tiro (soma a cor sobre a folha
-	/// cinza), num material so: mover o seletor de cor escreve um uniforme e a grade inteira retinge.
+	/// TODA MINIATURA QUE ESTA NA TELA -- as da grade e as da lista. Cada uma tem o proprio material (o
+	/// estilo e de cada arte), entao mover o seletor de cor passa por todas e retinge uma a uma.
 	/// </summary>
-	private ShaderMaterial? _tintaDasMiniaturas;
+	private readonly List<AmostraDeKi> _amostras = [];
 
 	private readonly List<Button> _botoesDeArte = [];
 
-	private const string CaminhoDoShaderDeKi = "res://Assets/Shaders/Ki.gdshader";
 	// A COLUNA DA ESQUERDA TEM QUE CABER EM 720 DE ALTURA junto do titulo e do botao de fechar: 8 miniaturas
 	// de 44 px por linha (Beams 9 + Techniques 15 = 4 linhas; Blasts 18 = 3) e o palco de 120. Com 6 de 52
 	// px e palco de 150, a segunda foto da `--diagmesa` saiu com a cor do ki cortada no pe da tela.
@@ -279,7 +278,7 @@ public partial class TelaDeTecnicas : CanvasLayer
 		_botoesDeArte.Clear();
 		_previa = null;
 		_seletorDeCor = null;
-		_tintaDasMiniaturas = null;
+		_amostras.Clear();
 
 		GameClient? cli = GameClient.Instance;
 		if (cli == null) return;
@@ -302,10 +301,10 @@ public partial class TelaDeTecnicas : CanvasLayer
 
 	// ---------------------------------------------------------------- a previa
 	/// <summary>
-	/// A PREVIA VIVA. E um <see cref="ProjetilDesenhado"/> de PRODUCAO -- a mesma classe, a mesma folha,
-	/// o mesmo shader e o mesmo trem de raio que o mundo desenha --, so que sem luz e dentro de um palco
-	/// recortado. Um desenho proprio da tela seria a "segunda resposta" pra "como e este tiro", e o dia
-	/// em que o trem mudasse de passo a previa mentiria calada.
+	/// A PREVIA VIVA. E um <see cref="ProjetilDesenhado"/> de PRODUCAO -- a mesma classe, o mesmo estilo
+	/// e o mesmo shader que o mundo desenha --, so que sem luz e dentro de um palco recortado. Um desenho
+	/// proprio da tela seria a "segunda resposta" pra "como e este tiro", e o dia em que o desenho do
+	/// mundo mudasse a previa mentiria calada.
 	/// </summary>
 	private void DesenharPrevia(TipoDeProjetil tipo, ArteDeKi arte, string legenda)
 	{
@@ -319,14 +318,18 @@ public partial class TelaDeTecnicas : CanvasLayer
 		moldura.AddChild(palco);
 
 		ArteDeKi efetiva = arte == ArteDeKi.Nenhuma ? ArteDeProjetil.PadraoDoCustom(tipo) : arte;
-		// EM DOBRO, como a camera do jogo (o mundo roda com zoom 2): em 1x a bola padrao (32 px) e um
-		// pingo num palco de 340. A escala e do NODE, entao o trem de raio continua medido em pixel de
-		// folha por dentro -- so o desenho sai maior.
-		var p = new ProjetilDesenhado { Tipo = tipo, Cor = MinhaCor(), SemLuz = true, Scale = new Vector2(2, 2) };
+		// EM DOBRO, como a camera do jogo (o mundo roda com zoom 2): em 1x a bola padrao e um pingo num
+		// palco de 340. A escala e do NODE, entao o raio continua medido em pixel de mundo por dentro --
+		// so o desenho sai maior.
+		// `SempreVoando`: a bola da vitrine nao anda, e sem isto ela sairia sem o rastro que tem em voo.
+		var p = new ProjetilDesenhado
+		{
+			Tipo = tipo, Cor = MinhaCor(), SemLuz = true, SempreVoando = true, Scale = new Vector2(2, 2),
+		};
 		p.Vestir(efetiva, 1f);
 		// O RAIO ATRAVESSA O PALCO da mao (esquerda) a cabeca (direita); a bola fica no meio. As duas
 		// chamadas dao rumo LESTE ao node (`Mirar` tira o rumo da subtracao), que e o lado com que a
-		// miniatura da grade tambem e tirada. Os 140 px locais viram 280 na tela.
+		// miniatura da grade tambem e desenhada. Os 140 px locais viram 280 na tela.
 		if (tipo == TipoDeProjetil.Beam)
 			p.Mirar(new Vector2(Palco.X - 24, Palco.Y / 2), new Vector2(Palco.X - 24 - 140, Palco.Y / 2));
 		else
@@ -340,7 +343,8 @@ public partial class TelaDeTecnicas : CanvasLayer
 	// ---------------------------------------------------------------- a grade de artes
 	/// <summary>
 	/// A GRADE. `pick_game_icon` (`customattacks.dm:543-568`) listava os `.dmi` da pasta por NOME; aqui
-	/// cada folha vira uma miniatura tingida (o `head` do raio ou a bola, pelo <see cref="ProjetilDesenhado.Miniatura"/>).
+	/// cada arte vira uma miniatura VIVA (a ponta do raio ou a bola, desenhada pela <see cref="AmostraDeKi"/>
+	/// com o mesmo shader do tiro).
 	///
 	/// ============================ ELA NAO CUSTA PONTO, E POR ISSO FICA LONGE DAS COMPRAS ============================
 	/// O botao de icone do DM (`:1135-1148`) fica fora do orcamento de cinco pontos: ele nao toca o
@@ -355,7 +359,6 @@ public partial class TelaDeTecnicas : CanvasLayer
 	private void DesenharGradeDeArtes(TecnicaCustomizada m)
 	{
 		_esquerda.AddChild(Tema.Rotulo("Arte do tiro (não custa ponto)"));
-		_tintaDasMiniaturas = NovaTinta(MinhaCor());
 
 		IEnumerable<ArteDeKi> oferta = GradeSemFiltroDeTeste ? ArteDeProjetil.Todas : ArteDeProjetil.PermitidasPara(m.Tipo);
 		List<ArteDeKi> artes = [.. oferta];
@@ -388,18 +391,17 @@ public partial class TelaDeTecnicas : CanvasLayer
 		}
 
 		_esquerda.AddChild(Nota(
-			"Folha cinza + a cor do SEU ki por cima, como no original. Raio: Beams e Techniques; bola: Blasts; teleguiado: Techniques."));
+			"O feitio de cada arte do original + a cor do SEU ki por cima. Raio: Beams e Techniques; bola: Blasts; teleguiado: Techniques."));
 	}
 
 	/// <summary>
-	/// UM BOTAO DA GRADE: a miniatura tingida dentro de um botao de alternar. A miniatura e um
-	/// `TextureRect` FILHO (e nao o `Icon` do botao) porque o material de tinta tem que valer so pra ela
-	/// -- no botao inteiro, o shader somaria a cor tambem na moldura.
+	/// UM BOTAO DA GRADE: a miniatura viva dentro de um botao de alternar. A miniatura e um node FILHO
+	/// (e nao o `Icon` do botao) porque o material dela tem que valer so pra ela -- no botao inteiro, o
+	/// shader pintaria tambem a moldura.
 	/// </summary>
 	private Button BotaoDeArte(TipoDeProjetil tipo, ArteDeKi arte, bool marcado, string dica)
 	{
 		ArteDeKi efetiva = arte == ArteDeKi.Nenhuma ? ArteDeProjetil.PadraoDoCustom(tipo) : arte;
-		Texture2D? mini = MiniaturaDe(tipo, efetiva);
 
 		var b = new Button
 		{
@@ -408,29 +410,17 @@ public partial class TelaDeTecnicas : CanvasLayer
 			ToggleMode = true,
 			ButtonPressed = marcado,
 		};
-		if (mini != null)
-		{
-			var tr = new TextureRect
-			{
-				Texture = mini,
-				ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-				StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-				MouseFilter = Control.MouseFilterEnum.Ignore,
-				Material = _tintaDasMiniaturas,
-			};
-			tr.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-			tr.OffsetLeft = 4; tr.OffsetTop = 4; tr.OffsetRight = -4; tr.OffsetBottom = -4;
-			b.AddChild(tr);
-		}
-		else
-		{
-			// FOLHA SEM QUADRO QUE SIRVA: o nome no lugar, e nao um botao vazio -- o jogador ainda pode
-			// escolhe-la, e o tiro sai pela primitiva (ver `ProjetilDesenhado`).
-			b.Text = dica.Length > 6 ? dica[..6] : dica;
-		}
+		AmostraDeKi amostra = NovaAmostra(tipo, efetiva);
+		amostra.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		amostra.OffsetLeft = 3; amostra.OffsetTop = 3; amostra.OffsetRight = -3; amostra.OffsetBottom = -3;
+		b.AddChild(amostra);
+
+		// SEM SHADER NAO HA MINIATURA: o nome no lugar, e nao um botao vazio -- o jogador ainda pode
+		// escolher a arte. So acontece se o shader nao carregar.
+		if (!amostra.Vestida) b.Text = dica.Length > 6 ? dica[..6] : dica;
 
 		b.SetMeta("arte", (int)arte);
-		b.SetMeta("mini", mini != null);
+		b.SetMeta("mini", amostra.Vestida);
 		// `ItemSelected` do dropdown antigo dava o INDICE da linha; aqui o botao ja sabe qual arte e,
 		// entao o que vai pro fio e o id dela -- o que o servidor entende (`ca_arte`).
 		b.Pressed += () => GameClient.Instance?.SendVerbo("ca_arte", ((int)arte).ToString());
@@ -438,19 +428,15 @@ public partial class TelaDeTecnicas : CanvasLayer
 		return b;
 	}
 
-	private static Texture2D? MiniaturaDe(TipoDeProjetil tipo, ArteDeKi arte)
+	/// <summary>Uma miniatura desta arte, na cor do meu ki de agora, ja na lista das que o seletor de cor retinge.</summary>
+	private AmostraDeKi NovaAmostra(TipoDeProjetil tipo, ArteDeKi arte)
 	{
-		SpriteFrames? f = ArteDeKiNoCliente.Folha(arte);
-		return f == null ? null : ProjetilDesenhado.Miniatura(f, tipo, arte);
-	}
-
-	private static ShaderMaterial? NovaTinta(Color cor)
-	{
-		var sh = ResourceLoader.Load<Shader>(CaminhoDoShaderDeKi);
-		if (sh == null) return null;
-		var m = new ShaderMaterial { Shader = sh };
-		m.SetShaderParameter("tinta", new Vector3(cor.R, cor.G, cor.B));
-		return m;
+		var a = new AmostraDeKi { Tipo = tipo, Arte = arte, Cor = MinhaCor() };
+		// VESTIDA JA, e nao no `_Ready`: o botao que a recebe ainda nao esta na arvore, e quem monta a
+		// grade pergunta "tem miniatura?" antes de po-lo la.
+		a.Vestir();
+		_amostras.Add(a);
+		return a;
 	}
 
 	// ---------------------------------------------------------------- a cor do ki
@@ -478,11 +464,11 @@ public partial class TelaDeTecnicas : CanvasLayer
 			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 		};
 		// AO VIVO SO NA TELA: nada vai pro fio enquanto o mouse arrasta. O redesenho tambem nao roda
-		// (ele recriaria o seletor e fecharia o picker no meio do arrasto) -- so o uniforme muda.
+		// (ele recriaria o seletor e fecharia o picker no meio do arrasto) -- so as cores dos shaders mudam.
 		seletor.ColorChanged += c =>
 		{
 			_previa?.Tingir(c);
-			_tintaDasMiniaturas?.SetShaderParameter("tinta", new Vector3(c.R, c.G, c.B));
+			foreach (AmostraDeKi a in _amostras) if (IsInstanceValid(a)) a.Tingir(c);
 		};
 		linha.AddChild(seletor);
 		_seletorDeCor = seletor;
@@ -529,7 +515,6 @@ public partial class TelaDeTecnicas : CanvasLayer
 			$"{cli.Customizadas.Count} de {TecnicaCustomizada.Maximo} técnicas inventadas.",
 			Tema.TextoFraco));
 
-		ShaderMaterial? tinta = NovaTinta(MinhaCor());
 		foreach (TecnicaCustomizada t in cli.Customizadas)
 		{
 			PanelContainer p = Tema.Painel1(8);
@@ -539,19 +524,8 @@ public partial class TelaDeTecnicas : CanvasLayer
 
 			// A MINIATURA DA TECNICA ao lado do nome: a mesma da grade, na cor do ki de agora.
 			ArteDeKi efetiva = t.Arte == ArteDeKi.Nenhuma ? ArteDeProjetil.PadraoDoCustom(t.Tipo) : t.Arte;
-			var quadro = new Control { CustomMinimumSize = new Vector2(LadoDaMiniatura, LadoDaMiniatura) };
-			if (MiniaturaDe(t.Tipo, efetiva) is { } mini)
-			{
-				var tr = new TextureRect
-				{
-					Texture = mini,
-					ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-					StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-					Material = tinta,
-				};
-				tr.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-				quadro.AddChild(tr);
-			}
+			AmostraDeKi quadro = NovaAmostra(t.Tipo, efetiva);
+			quadro.CustomMinimumSize = new Vector2(LadoDaMiniatura, LadoDaMiniatura);
 			linha.AddChild(quadro);
 
 			var coluna = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };

@@ -185,9 +185,9 @@ public partial class Boot : Node2D
 		}
 
 		// A ARTE DOS ATAQUES DE KI. Mora aqui em cima, junto da `--diagtinta`, pela mesma razao:
-		// arte de tiro nao precisa de rede, de zona nem de login -- so de folha, shader e um quadro
-		// desenhado. As familias 1 e 2 (tabela e folhas do disco) rodam no HEADLESS; a familia 3
-		// mede o pixel e precisa de janela. Ver RoboDeArteDeKi.
+		// arte de tiro nao precisa de rede, de zona nem de login -- so de estilo, shader e um quadro
+		// desenhado. As familias 1 e 2 (a tabela, e todo estilo se vestindo) rodam no HEADLESS; da 2b em
+		// diante elas medem o pixel e precisam de janela. Ver RoboDeArteDeKi.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagartedeki") >= 0)
 		{
 			AddChild(new RoboDeArteDeKi { Name = "RoboDeArteDeKi" });
@@ -1404,6 +1404,18 @@ public partial class Boot : Node2D
 				rf.Duracao = segFl;
 			AddChild(rf);
 		}
+
+		// --trailer <cena>: o DIRETOR DO TRAILER. Nao e bancada -- nao confere nada: arruma o palco
+		// (lugar aberto, hora, clima, figurino, quem contracena, camera) e deixa o jogo rodar enquanto
+		// a captura de video grava de fora. Precisa de `--host` (as janelas de palco sao do servidor
+		// deste processo). Ver RoboDoTrailer e `GameServer.Trailer.cs`.
+		if (Arg(OS.GetCmdlineArgs(), "--trailer") is { } cenaDoTrailer)
+			AddChild(new RoboDoTrailer
+			{
+				Name = "RoboDoTrailer",
+				Cena = cenaDoTrailer,
+				Arg = Arg(OS.GetCmdlineArgs(), "--trailerarg") ?? "",
+			});
 
 		// --dois <a|b>: bancada de DOIS PROCESSOS. `a` se transforma, `b` olha o corpo alheio e
 		// fotografa. Os tres defeitos de corpo REMOTO (forma que nao chega a quem entrou depois,
