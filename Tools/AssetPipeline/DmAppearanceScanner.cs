@@ -88,7 +88,10 @@ public static class DmAppearanceScanner
         },
         ["Majin"] = new BodySet
         {
-            Masculino = ["Majin", "Majin1"],
+            // O TERCEIRO E O KID BUU (`DU/Mobs/Kid Buu`): a forma pura, pedida pelo dono pro Boo do trailer
+            // das sagas. Ele ja estava convertido e importado e nenhuma lista o citava -- e o chefe
+            // `majin_boo` nascia como o Majin cinza sem tinta.
+            Masculino = ["Majin", "Majin1", "Kid Buu"],
             Feminino = ["Female Majin", "female majin base (small)"],
             CorLivre = true,
         },

@@ -79,7 +79,10 @@ public sealed partial class GameServer
 		/// </summary>
 		public double Restante;
 
-		/// <summary>Quanto vale cada acerto dele. `advantage()` do DM, calculada UMA vez.</summary>
+		/// <summary>
+		/// Quanto vale cada acerto dele. `advantage()` do DM, RELIDA A CADA TIQUE com o poder de agora
+		/// (ver <see cref="LerOPoderDeAgora"/>).
+		/// </summary>
 		public double Vantagem = 1;
 
 		/// <summary>Apertos que ainda nao entraram na conta (letras acertadas + a taxa da IA).</summary>
@@ -130,6 +133,12 @@ public sealed partial class GameServer
 
 		public ulong Zona;
 		public Protocol.TipoDeEmbate Tipo;
+
+		/// <summary>
+		/// A vantagem do lado A que as duas telas ja ouviram. E com ela que o
+		/// <see cref="AvisarSeOPoderMudou"/> decide se ha novidade pra contar.
+		/// </summary>
+		public double VantagemDita = 1;
 	}
 
 	private readonly List<DisputaDeKi> _disputas = [];
@@ -289,11 +298,10 @@ public sealed partial class GameServer
 	// =====================================================================
 	private void Comecar(LadoDeKi a, LadoDeKi b, Protocol.TipoDeEmbate tipo)
 	{
-		// A VANTAGEM, CALCULADA UMA VEZ -- a mesma disciplina do ZanzoClash: o BP muda no meio da
-		// briga (carga de Ki, forma, raiva) e um multiplicador que oscila seria injusto dos dois lados.
+		// A VANTAGEM DE SAIDA. Ela NAO fica nisto: o tique rele o poder dos dois enquanto a disputa
+		// correr -- ver `LerOPoderDeAgora`, que e chamado aqui e la pela mesma razao de ser um metodo so.
+		LerOPoderDeAgora(a, b);
 		double poderA = PoderDoLado(a), poderB = PoderDoLado(b);
-		a.Vantagem = EmbateDeKi.Vantagem(poderA, poderB);
-		b.Vantagem = EmbateDeKi.Vantagem(poderB, poderA);
 
 		// NO PLANO DESENHADO (2026-09-23): cada lado sobe pela altura do feixe dele (as maos dele sao desenhadas
 		// ali). Tudo daqui ate o fim do `Comecar` -- o eixo, o ponto, as maos, os limites -- mora nesse plano; o
@@ -421,6 +429,7 @@ public sealed partial class GameServer
 			ParaA = Math.Max(sDentro - sA, 0),
 			Zona = a.Quem.Zone.Hash,
 			Tipo = tipo,
+			VantagemDita = a.Vantagem,   // o `Comeco` logo abaixo conta esta as duas telas
 		};
 
 		_disputas.Add(d);
@@ -463,6 +472,68 @@ public sealed partial class GameServer
 	private static double PoderDoLado(LadoDeKi l)
 		=> l.Feixe?.PoderDeEmbate()
 		   ?? EmbateDeKi.PoderDeSegurar(l.Quem.Ficha, l.Quem.Combate?.Bloqueando ?? false);
+
+	/// <summary>
+	/// ============================ A DISPUTA LE O PODER DE AGORA ============================
+	/// Ordem do dono (2026-10-07), com estas palavras: *"em colisao o beam deve usar o bp atual do
+	/// usuario, entao se o usuario se transformar ou usar powerup no meio da colisao ele pode virar por
+	/// conta do salto de poder"*.
+	///
+	/// E E O ORIGINAL. O `clash_loop` chama `advantage(A, B)` DENTRO do laco, a cada ciclo
+	/// (`BeamClash.dm:176-177`), e ele le `mine.expressedBP` do corpo (`:133`) -- nunca um numero
+	/// guardado. O port tinha escrito a conta uma vez, no `Comecar`, com um comentario que chamava isso
+	/// de disciplina ("um multiplicador que oscila seria injusto dos dois lados"): era uma divergencia
+	/// do port, e ela matava o momento mais conhecido do genero -- o poder que sobe no meio do encontro
+	/// e vira o cabo de guerra. A primeira tomada do trailer mediu isso: Kaio-ken x4 aceso perdendo,
+	/// vantagem 1,00 depois do grito, derrota.
+	///
+	/// O QUE SE RELE: o BP. O feixe guarda `expressedBP * wavemult` de quando saiu da mao
+	/// (`Projetil.Bp`), e aqui a mesma conta e refeita com o `expressedBP` deste tique. Os `mods` e o
+	/// `baseDano` ficam os do tiro -- sao a tecnica, e ela nao muda (ver `EmbateDeKi.PoderDoFeixe`). O
+	/// lado das MAOS nunca precisou disto: o `PoderDeSegurar` ja le a ficha.
+	///
+	/// A FORMA NOVA CUSTA O QUE ELA CUSTA: transformar-se drena Ki, e sem Ki o lado cai (`LadoOk`). O
+	/// salto de poder nao e de graca -- e uma aposta, como no original.
+	/// ========================================================================================
+	/// </summary>
+	private static void LerOPoderDeAgora(LadoDeKi a, LadoDeKi b)
+	{
+		a.Feixe?.LerOPoderDoDono(a.Quem.Ficha.expressedBP);
+		b.Feixe?.LerOPoderDoDono(b.Quem.Ficha.expressedBP);
+
+		double poderA = PoderDoLado(a), poderB = PoderDoLado(b);
+		a.Vantagem = EmbateDeKi.Vantagem(poderA, poderB);
+		b.Vantagem = EmbateDeKi.Vantagem(poderB, poderA);
+	}
+
+	/// <summary>Quanto a vantagem tem que mudar (em razao) pra as telas ouvirem de novo: 10%.</summary>
+	private const double SaltoQueSeAvisa = 1.10;
+
+	/// <summary>
+	/// A FRASE DA TELA ACOMPANHA O PODER. A vantagem viajava so no `Comecou`; com ela viva, quem le
+	/// "voce e mais forte" tem que parar de ler isso no instante em que deixou de ser verdade.
+	///
+	/// SO QUANDO MUDA DE VERDADE (10% de razao): o `expressedBP` respira o tempo todo -- o Ki que a
+	/// propria disputa cobra dos dois o mexe a cada ciclo --, e um pacote por respiro seria ruido na
+	/// tela e no fio. Um salto de forma ou de aumento de poder passa longe desse piso.
+	/// </summary>
+	private static void AvisarSeOPoderMudou(DisputaDeKi d)
+	{
+		double razao = d.A.Vantagem / Math.Max(d.VantagemDita, 1e-9);
+		if (razao < SaltoQueSeAvisa && razao > 1 / SaltoQueSeAvisa) return;
+
+		d.VantagemDita = d.A.Vantagem;
+		foreach ((LadoDeKi meu, LadoDeKi dele) in new[] { (d.A, d.B), (d.B, d.A) })
+		{
+			var w = Protocol.Begin(Protocol.S2C.Clash);
+			w.Put((byte)Protocol.ClashSub.Poder);
+			w.Put((float)meu.Vantagem);
+			w.Put((float)dele.Vantagem);
+			meu.Quem.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		}
+		GD.Print($"[server] EMBATE DE KI: o poder mudou no meio -- {d.A.Quem.Name} x {d.B.Quem.Name} "
+				 + $"| vantagem {d.A.Vantagem:0.##} x {d.B.Vantagem:0.##}");
+	}
 
 	private static void Comeco(DisputaDeKi d, LadoDeKi meu, LadoDeKi dele)
 	{
@@ -598,6 +669,9 @@ public sealed partial class GameServer
 			ApertosDeQuemNaoTemTeclado(d.A, dt);
 			ApertosDeQuemNaoTemTeclado(d.B, dt);
 
+			// ---- O PODER DE AGORA: `advA = advantage(A, B)` dentro do laco (`BeamClash.dm:176-177`) ----
+			if (!EmbateDeKi.VantagemCongeladaDeTeste) LerOPoderDeAgora(d.A, d.B);
+
 			// ---- A FISICA ----
 			d.Medidor = EmbateDeKi.Empurrar(d.Medidor, d.A.ApertosPendentes, d.B.ApertosPendentes,
 											d.A.Vantagem, d.B.Vantagem, dt);
@@ -618,6 +692,7 @@ public sealed partial class GameServer
 
 				MandarPlacar(d.A.Quem, d.Medidor, 100 - d.Medidor);
 				MandarPlacar(d.B.Quem, 100 - d.Medidor, d.Medidor);
+				AvisarSeOPoderMudou(d);
 
 				// A DISPUTA E COMBATE: `refresh_combat_tag()` dos dois, pra a tag e a musica de
 				// batalha nao cairem no meio de um encontro que pode durar 15 s.
@@ -789,10 +864,14 @@ public sealed partial class GameServer
 			hV.EmEmbate = false;
 			hV.JaDisputou = true;
 
-			// `hW.BP = W.expressedBP * max(hW.wavemultipl,1)` -- a cabeca vencedora carrega o poder de
-			// AGORA do dono, e nao o do instante em que o tiro saiu. Quem se transformou no meio da
-			// disputa acerta com a forma nova.
-			hV.Bp = venc.Quem.Ficha.expressedBP;
+			// `hW.BP = W.expressedBP * max(hW.wavemultipl,1)` (`BeamClash.dm:275`) -- a cabeca vencedora
+			// carrega o poder de AGORA do dono, e nao o do instante em que o tiro saiu. Quem se
+			// transformou no meio da disputa acerta com a forma nova.
+			//
+			// O `wavemultipl` FALTAVA AQUI (a linha era so o `expressedBP`): o tiro nao guardava o
+			// multiplicador, e um Final Flash que vencesse a disputa chegava no perdedor com 1x em vez
+			// dos 4x dele. O campo nasceu junto com a releitura de poder (`Projetil.MultDeOnda`).
+			hV.Bp = venc.Quem.Ficha.expressedBP * Math.Max(hV.MultDeOnda, 1);
 
 			// O RUMO E PRO CORPO DO PERDEDOR, e nao o rumo original.
 			Vec2 ate = perd.Quem.Pos - hV.Pos;
@@ -1248,11 +1327,17 @@ public sealed partial class GameServer
 			FecharCanal(id, _canais[id], null);
 		}
 
-		// quem soltou o raio por conta propria some da conta
+		// quem soltou o raio por conta propria some da conta. E SO HIGIENE (o dicionario nao cresce): esta faxina
+		// nao roda com o mundo sem canal nenhum -- a guarda la de cima sai antes --, entao NAO e ela quem garante
+		// que o proximo raio comeca do zero. Quem zera e o nascimento do canal: ver o `Canalizar`.
 		foreach (int id in _raioDaIaAte.Keys.ToList())
 			if (!_canais.ContainsKey(id)) _raioDaIaAte.Remove(id);
 	}
 
-	/// <summary>Ha quanto tempo cada corpo sem teclado esta segurando um raio. Ver o metodo acima.</summary>
+	/// <summary>
+	/// Ha quanto tempo cada corpo sem teclado esta segurando o raio DE AGORA -- o relogio que o `var/started` do
+	/// `npc_beam_loop` guarda la (`BeamClash.dm:427`). So tem sentido com o canal aberto: e zerado quando o canal
+	/// nasce (<see cref="Canalizar"/>), e o que sobrar de um canal ja fechado nunca e lido. Ver o metodo acima.
+	/// </summary>
 	private readonly Dictionary<int, double> _raioDaIaAte = [];
 }

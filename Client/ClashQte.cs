@@ -110,6 +110,7 @@ public partial class ClashQte : CanvasLayer
 			cli.ClashComecou += Comecou;
 			cli.ClashTeclaPedida += Pediu;
 			cli.ClashPlacar += Placar;
+			cli.ClashPoder += Poder;
 			cli.ClashJulgou += Julgou;
 			cli.ClashBaque += Baque;
 			cli.ClashAcabou += Acabou;
@@ -129,6 +130,7 @@ public partial class ClashQte : CanvasLayer
 		cli.ClashComecou -= Comecou;
 		cli.ClashTeclaPedida -= Pediu;
 		cli.ClashPlacar -= Placar;
+		cli.ClashPoder -= Poder;
 		cli.ClashJulgou -= Julgou;
 		cli.ClashBaque -= Baque;
 		cli.ClashAcabou -= Acabou;
@@ -351,11 +353,7 @@ public partial class ClashQte : CanvasLayer
 		// NO EMBATE DE KI a frase e outra porque o que se disputa e outro: la o acerto e um PONTO e
 		// quem tiver mais vence; aqui ele e um EMPURRAO, e o que se empurra e o ponto de encontro --
 		// que esta caminhando pra cima de alguem enquanto o jogador le isto.
-		string oQueEuGanho = tipo == Protocol.TipoDeEmbate.Velocidade ? "acerto" : "empurrao";
-		_dica.Text = meu > dele
-			? $"voce e mais forte: cada {oQueEuGanho} seu vale {meu:0.##}"
-			: dele > meu ? $"ele e mais forte: cada {oQueEuGanho} dele vale {dele:0.##} -- seja mais rapido"
-						 : "forcas parelhas: quem acertar mais, vence";
+		_dica.Text = FraseDaVantagem(tipo, meu, dele);
 
 		_ligado = true;
 		_raiz.Visible = true;
@@ -379,6 +377,30 @@ public partial class ClashQte : CanvasLayer
 		// pra proxima diria que a nova ja foi julgada.
 		_veredito = 0;
 		_prazoTotal = _prazoResta = Math.Max(ms / 1000.0, 0.05);
+	}
+
+	/// <summary>
+	/// A FRASE DA VANTAGEM, num lugar so: quem a diz e o comeco (<see cref="Comecou"/>) e, na disputa de
+	/// ki, cada salto de poder no meio dela (<see cref="Poder"/>).
+	/// </summary>
+	private static string FraseDaVantagem(Protocol.TipoDeEmbate tipo, float meu, float dele)
+	{
+		string oQueEuGanho = tipo == Protocol.TipoDeEmbate.Velocidade ? "acerto" : "empurrao";
+		return meu > dele
+			? $"voce e mais forte: cada {oQueEuGanho} seu vale {meu:0.##}"
+			: dele > meu ? $"ele e mais forte: cada {oQueEuGanho} dele vale {dele:0.##} -- seja mais rapido"
+						 : "forcas parelhas: quem acertar mais, vence";
+	}
+
+	/// <summary>
+	/// O PODER DE ALGUEM SALTOU NO MEIO DA DISPUTA DE KI (uma transformacao, um Kaio-ken): a frase da
+	/// vantagem e reescrita, com o aviso de que MUDOU na frente -- sem ele a linha trocaria calada, e
+	/// quem esta olhando as letras nao veria por que o encontro comecou a andar pro outro lado.
+	/// </summary>
+	private void Poder(float meu, float dele)
+	{
+		if (!_ligado) return;
+		_dica.Text = "O PODER MUDOU -- " + FraseDaVantagem(_tipo, meu, dele);
 	}
 
 	private void Placar(float meus, float dele)

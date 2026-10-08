@@ -107,6 +107,16 @@ public partial class SpriteDeAura : Node2D
 	public const string FolhaDeusRosa = "res://Assets/Sprites/Auras/Supa Saiyan Rose Aura-1.tres";
 
 	/// <summary>
+	/// A CHAMA DO KAIO-KEN -- `kaioaura = 'Aura, Kaioken, Big.dmi'` (`kaioken.dm:214`). Vermelha de
+	/// arquivo (`ff0000` nos 27.248 pixels opacos) com o desenho no alfa, como a `AuraSSjBig`.
+	///
+	/// OUTRA QUE ESTAVA NO DISCO E MORTA (a quarta: os 35 atlas, a `FieryGod`, a Rose): o `.png` e o
+	/// `.tres` ja existiam e o Kaio-ken do port so escrevia "uma aura vermelha estoura" no chat. O dono
+	/// viu a falta numa tomada do trailer -- *"faltou a aura de carga vermelha no kaioken"*.
+	/// </summary>
+	public const string FolhaKaioken = "res://Assets/Sprites/Auras/Aura, Kaioken, Big.tres";
+
+	/// <summary>
 	/// FOLHA QUE NAO SE PINTA. O dono: "ela ja vem naturalmente dourada, nem precisa colori".
 	///
 	/// Pintar por cima seria pior que inutil: o shader descarta o RGB do arquivo e usa o canal mais
@@ -144,7 +154,8 @@ public partial class SpriteDeAura : Node2D
 		f is Jandirus.Core.Forms.FolhaDeAura.Ssj
 		  or Jandirus.Core.Forms.FolhaDeAura.DeusQuente
 		  or Jandirus.Core.Forms.FolhaDeAura.DeusFrio
-		  or Jandirus.Core.Forms.FolhaDeAura.DeusRosa;
+		  or Jandirus.Core.Forms.FolhaDeAura.DeusRosa
+		  or Jandirus.Core.Forms.FolhaDeAura.Kaioken;
 
 	/// <summary>
 	/// ============================ EM QUE CANAL MORA O DESENHO DESTA FOLHA? ============================
@@ -188,7 +199,8 @@ public partial class SpriteDeAura : Node2D
 	public static bool FormaNoAlfa(Jandirus.Core.Forms.FolhaDeAura f) =>
 		f is Jandirus.Core.Forms.FolhaDeAura.Base
 		  or Jandirus.Core.Forms.FolhaDeAura.Ssj
-		  or Jandirus.Core.Forms.FolhaDeAura.Lssj;
+		  or Jandirus.Core.Forms.FolhaDeAura.Lssj
+		  or Jandirus.Core.Forms.FolhaDeAura.Kaioken;
 
 	/// <summary>
 	/// O DESENHO DESTE SPRITE ESTA NO ALFA? Ver <see cref="FormaNoAlfa"/>. Sem simbolo (so a
@@ -196,7 +208,7 @@ public partial class SpriteDeAura : Node2D
 	/// </summary>
 	public bool DesenhoNoAlfa => _simbolo is { } s
 		? FormaNoAlfa(s)
-		: _folha == FolhaBase || _folha == FolhaSsj || _folha == FolhaLssj;
+		: _folha == FolhaBase || _folha == FolhaSsj || _folha == FolhaLssj || _folha == FolhaKaioken;
 
 	/// <summary>Qual folha esta carregada agora. Pra bancada.</summary>
 	public string FolhaDeTeste => _folha;
@@ -256,6 +268,7 @@ public partial class SpriteDeAura : Node2D
 		Jandirus.Core.Forms.FolhaDeAura.DeusFrio => FolhaDeusFrio,
 		Jandirus.Core.Forms.FolhaDeAura.DeusRosa => FolhaDeusRosa,
 		Jandirus.Core.Forms.FolhaDeAura.Nebulosa => null,
+		Jandirus.Core.Forms.FolhaDeAura.Kaioken => FolhaKaioken,
 	};
 #pragma warning restore CS8524
 

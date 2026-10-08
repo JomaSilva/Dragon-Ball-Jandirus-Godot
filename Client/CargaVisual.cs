@@ -96,7 +96,30 @@ public partial class CargaVisual : Node2D
 	/// (Quem traduz o simbolo em caminho e a <see cref="SpriteDeAura.CaminhoDa"/>: a tabela estava
 	/// copiada aqui e na <see cref="Aura"/>, e a chama da cinematica seria a terceira copia.)
 	/// </summary>
-	public void Folha(Jandirus.Core.Forms.FolhaDeAura f) => _desenho.DefinirFolha(f);
+	public void Folha(Jandirus.Core.Forms.FolhaDeAura f)
+	{
+		_folhaDaForma = f;
+		if (!_kaioken) _desenho.DefinirFolha(f);
+	}
+
+	/// <summary>
+	/// O KAIO-KEN TROCA A FOLHA DESTE DESENHO TAMBEM -- irmao exato do <see cref="Aura.Kaioken"/>, e
+	/// pelo motivo que o bloco acima ja conta: sao dois desenhos da mesma chama, e ensinar so um faz
+	/// quem segura C de Kaio-ken voltar a chama azul da base por cima da vermelha. No original o
+	/// `AuraCheck` segura a aura base FORA enquanto o Kaio-ken durar (`kaioken.dm:166`).
+	///
+	/// A cor nao vem pra ca: este node a le da <see cref="Aura.CorDaChama"/>, que ja responde o
+	/// vermelho enquanto o buff durar.
+	/// </summary>
+	public void Kaioken(bool ligado)
+	{
+		if (_kaioken == ligado) return;
+		_kaioken = ligado;
+		_desenho.DefinirFolha(ligado ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : _folhaDaForma);
+	}
+
+	private bool _kaioken;
+	private Jandirus.Core.Forms.FolhaDeAura _folhaDaForma = Jandirus.Core.Forms.FolhaDeAura.Base;
 
 	public override void _Ready()
 	{

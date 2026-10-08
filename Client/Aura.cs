@@ -246,7 +246,58 @@ public partial class Aura : Node2D
     /// que pergunta se ha CHAMA e nao se ha folha.
     /// ==========================================================================================
     /// </summary>
-    public void Folha(Jandirus.Core.Forms.FolhaDeAura f) => _desenho.DefinirFolha(f);
+    public void Folha(Jandirus.Core.Forms.FolhaDeAura f)
+    {
+        _folhaDaForma = f;
+        // O KAIO-KEN ESTA COM A FOLHA EMPRESTADA: a forma guarda a dela e a recebe de volta quando ele
+        // apagar (ver `Kaioken`). Sem isto, transformar-se com o Kaio-ken aceso devolveria a chama da
+        // forma por baixo do buff -- e no original a `kaioaura` fica por cima de tudo enquanto durar.
+        if (!_kaioken) _desenho.DefinirFolha(f);
+    }
+
+    /// <summary>A folha que a FORMA pediu, guardada enquanto o Kaio-ken usa o desenho. Ver <see cref="Kaioken"/>.</summary>
+    private Jandirus.Core.Forms.FolhaDeAura _folhaDaForma = Jandirus.Core.Forms.FolhaDeAura.Base;
+
+    /// <summary>
+    /// ============================ O KAIO-KEN TOMA A CHAMA EMPRESTADA ============================
+    /// O `Buff()` do Kaio-ken no original (`kaioken.dm:166-169`): *"a aura base sai NA HORA"*
+    /// (`removeOverlay(/obj/overlay/auras/aura)`) e a `kaioaura` entra (`updateOverlay`), ACESA enquanto
+    /// o buff durar -- sem tecla segurada e sem Ki acima de 100%. O port tinha o buff, o grito e a
+    /// conta de poder, e nenhum pixel: o dono notou numa tomada (*"faltou a aura de carga vermelha no
+    /// kaioken"*).
+    ///
+    /// ============================ O ESTADO E DESTE NODE, E NAO DE UMA TABELA ============================
+    /// Quem liga e desliga e o bit `EntityState.Kaioken` do snapshot, e a resposta pra "este corpo esta
+    /// de Kaio-ken?" mora AQUI (<see cref="NoKaioken"/>), como a nave mora no proprio filho do corpo
+    /// (ver `World.MarcarNaNave`): um node que sai de vista leva o estado junto, e nao sobra linha de
+    /// limpeza pra alguem esquecer numa troca de planeta.
+    ///
+    /// E ele e uma CAMADA por cima da forma, nao uma forma: `Preparar`, `Folha` e `Apagar` continuam
+    /// escrevendo o que a forma quer, e o <see cref="Aplicar"/> so pergunta primeiro se o Kaio-ken
+    /// esta com a vez. Quando ele apaga, o que a forma deixou escrito reaparece sem ninguem refazer.
+    /// ==================================================================================================
+    /// </summary>
+    public void Kaioken(bool ligado)
+    {
+        if (_kaioken == ligado) return;
+        _kaioken = ligado;
+        _desenho.DefinirFolha(ligado ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : _folhaDaForma);
+        Aplicar();
+    }
+
+    /// <summary>Este corpo esta com a aura do Kaio-ken? Ver <see cref="Kaioken"/>.</summary>
+    public bool NoKaioken => _kaioken;
+
+    private bool _kaioken;
+
+    /// <summary>
+    /// A cor da LUZ do Kaio-ken. O desenho nao a usa (a folha ja e vermelha, ver
+    /// `SpriteDeAura.PreColorida`); quem a usa e a `PointLight2D`, que nao tem arquivo de onde ler.
+    /// </summary>
+    public static readonly Color CorDoKaioken = new(1.0f, 0.16f, 0.10f);
+
+    /// <summary>A forca da chama do Kaio-ken: a de uma forma de degrau alto (o SSJ2 usa a mesma ordem).</summary>
+    private const float ForcaDoKaioken = 2.0f;
 
     /// <summary>
     /// ============================ A FORMA PREPARA, MAS NAO ACENDE ============================
@@ -369,7 +420,7 @@ public partial class Aura : Node2D
     /// pelo <see cref="_Process"/> (que so trabalha se ela for verdadeira). Escrever a condicao nos
     /// dois lugares e como as regras da luz e do desenho ja divergiram antes.
     /// </summary>
-    private bool HaLuz => _acesa || (_cargaAtiva && _temForma);
+    private bool HaLuz => _acesa || _kaioken || (_cargaAtiva && _temForma);
 
     /// <summary>
     /// O DESENHO E A LUZ SAEM DAQUI, os dois, do mesmo estado -- e e so por isso que eles nao
@@ -381,8 +432,12 @@ public partial class Aura : Node2D
         // A COR VAI SEMPRE; quem decide se ela e USADA e o shader (uniform `tingir`, ligado a
         // `SpriteDeAura.SemTinta`). A versao anterior mandava BRANCO pra folha ja colorida, e o
         // resultado foi a aura ficar branca -- branco multiplicando a intensidade APAGA a arte.
-        _desenho.Definir(_acesa && !_cargaAtiva, _corAcesa,
-                         Mathf.Clamp(0.6f + _forcaAcesa * 0.22f, 0.4f, 1.4f));
+        // O KAIO-KEN TEM A VEZ SOBRE A FORMA (ver `Kaioken`): ele acende sem ninguem ter chamado
+        // `Acender`, com a forca dele, e a cor que vai junto e a da luz -- o desenho nem a le.
+        bool chama = _acesa || _kaioken;
+        float forcaDaChama = _kaioken ? ForcaDoKaioken : _forcaAcesa;
+        _desenho.Definir(chama && !_cargaAtiva, CorDaChama,
+                         Mathf.Clamp(0.6f + forcaDaChama * 0.22f, 0.4f, 1.4f));
 
         // ============================ NA BASE ESTE NODE NAO ENTRA EM JOGO ============================
         // Palavras do dono, depois de ver a foto: "ao passar de 100% do ki na base o node aura liga a
@@ -414,8 +469,8 @@ public partial class Aura : Node2D
         // escolhia entre a cor da carga e a da forma conforme a folha se tingisse ou nao -- remendo
         // que so existia porque a carga tinha cor propria. Sem ela, a chama desenhada e a luz saem
         // do mesmo `_corAcesa` por construcao, e nao ha mais como uma divergir da outra.
-        float forca = _cargaAtiva ? _forcaCarga : _forcaAcesa;
-        _luz.Color = _corAcesa;
+        float forca = _cargaAtiva ? _forcaCarga : forcaDaChama;
+        _luz.Color = CorDaChama;
 
         // ============================ A LUZ E DA NOITE ============================
         // Pedido do dono: "que a aura de transformacao so brilhe ao anoitecer, porque de dia fica
@@ -502,7 +557,7 @@ public partial class Aura : Node2D
     /// do `World.PrepararAuraDaForma`, que reescreve cor E folha na volta.
     /// ========================================================================================
     /// </summary>
-    public Color CorDaChama => _corAcesa;
+    public Color CorDaChama => _kaioken ? CorDoKaioken : _corAcesa;
 
     /// <summary>
     /// Apaga a aura DA FORMA. Nao apaga a luz na marra: se o C ainda estiver segurado, a chama da

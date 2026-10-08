@@ -119,7 +119,7 @@ public sealed partial class GameServer
 			Id = _proximoProjetil++,
 			Dono = p.Dono, Tipo = p.Tipo, Pos = ancora + rumo, Cauda = ancora, Rumo = rumo,
 			Distancia = p.Distancia, MaxDistancia = p.MaxDistancia, RangeMod = p.RangeMod,
-			ModsBase = p.ModsBase, Bp = p.Bp, BaseDano = p.BaseDano, MaxDano = p.MaxDano,
+			ModsBase = p.ModsBase, Bp = p.Bp, MultDeOnda = p.MultDeOnda, BaseDano = p.BaseDano, MaxDano = p.MaxDano,
 			Letal = p.Letal, Deflectivel = p.Deflectivel, Piercer = p.Piercer, Fisico = p.Fisico,
 			Paralisia = p.Paralisia, Empurra = p.Empurra, Altitude = p.Altitude,
 			SegundosPorTile = p.SegundosPorTile, Acumulado = p.Acumulado, VidaRestante = p.VidaRestante,

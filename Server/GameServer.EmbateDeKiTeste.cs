@@ -45,6 +45,11 @@ namespace Jandirus.Server;
 ///  8. O CUSTO, MEDIDO: com a zona lotada de tiros o gatilho continua barato.
 ///  9. A IA: a tabela de longe tem as tres que voam, o arsenal sai preenchido, o contra-feixe e um
 ///     reflexo e o prazo do raio de NPC nao corre durante a disputa.
+///  9b. O PRAZO E DO RAIO, NAO DO CORPO: um NPC interrompido que atira de novo conta os doze segundos
+///     do ZERO -- e com o prazo herdado do raio anterior (o jogo de antes) o segundo fecha na carga.
+/// 11. O PODER E O DE AGORA: um aumento de poder aceso NO MEIO da disputa entra no feixe, vira a
+///     vantagem e traz o encontro de volta -- e com a vantagem congelada no comeco (o jogo de antes),
+///     o mesmo roteiro nao vira.
 /// =========================================================================
 /// </summary>
 public partial class GameServer
@@ -87,9 +92,11 @@ public partial class GameServer
 			OCorpoFicaPreso();
 			OCustoDoGatilho();
 			OsGanchosDaIa();
+			OPrazoEDoRaioNaoDoCorpo();
 			ApanharNaDisputaEDesvantagem();
+			OSaltoDePoderVira();
 		}
-		finally { LimparEmbatesDaBancada(); }
+		finally { EmbateDeKi.VantagemCongeladaDeTeste = false; LimparEmbatesDaBancada(); }
 
 		GD.Print($"[embateki] ================ {_ekOk} passaram, {_ekFalhou} falharam ================");
 	}
@@ -1440,6 +1447,134 @@ public partial class GameServer
 	}
 
 	// =====================================================================
+	// 9b) O PRAZO E DO RAIO, E NAO DO CORPO (2026-10-07)
+	// =====================================================================
+	/// <summary>
+	/// `var/started = world.time` abre o `npc_beam_loop` (`BeamClash.dm:427`) e e LOCAL do laco: la os doze
+	/// segundos (`BCL_NPC_BEAM_TIME`, `:430`) sao do RAIO, e cada raio conta os seus do zero.
+	///
+	/// ============================ O DEFEITO QUE ESTA FAMILIA GUARDA ============================
+	/// Aqui o relogio mora num dicionario por CORPO (`_raioDaIaAte`), e a conta de um raio derrubado por
+	/// outra porta que nao o prazo -- golpe, nocaute, Ki, parede, fim de disputa, troca de zona -- ficava pra
+	/// tras sempre que o mundo ficava sem canal nenhum: a faxina do `TickDoPrazoDeRaioDaIa` mora DEPOIS de
+	/// um `if (_canais.Count == 0) return`. O raio seguinte nascia com o tempo do anterior ja gasto; sobrando
+	/// menos que a carga, o canal fechava ANTES de a cabeca nascer -- o NPC pagava o Ki e nao atirava. Foi a
+	/// tomada de Namek do trailer 2: *"os dois DISPARAM"*, e so o raio do Freeza saiu.
+	/// =========================================================================================
+	///
+	/// A CENA E A DO DEFEITO, no pior caso dele: um NPC SOZINHO (o unico canal do mundo e o dele) segura o
+	/// raio ate faltar MEIA CARGA pro prazo, um golpe o derruba pelo funil de producao e ele atira de novo.
+	/// Duas vezes: com um segundo de mundo sem canal nenhum no meio (o caso do trailer), e reatirando NO MESMO
+	/// TIQUE -- o soco de um jogador se resolve no pacote (`C2S.Action` -> `Atacar`, antes do `Tick`) e o corpo
+	/// dirigido pode reatirar no `TickDosCorposSemDono` desse mesmo tique, sem o prazo ter sido tiqueado entre
+	/// os dois raios.
+	///
+	/// O CONTRA-EXEMPLO E O JOGO DE ANTES (`EmbateDeKi.PrazoHerdadoDeTeste`): a mesma cena, e o segundo raio
+	/// fecha na carga.
+	/// </summary>
+	private void OPrazoEDoRaioNaoDoCorpo()
+	{
+		GD.Print("[embateki] -- 9b) O PRAZO DO RAIO DE NPC E POR RAIO: CADA UM COMECA DO ZERO");
+
+		var depois = OSegundoRaioDoNpc(tiquesSemCanal: 30);
+		AfirmarEk("(preparo) um NPC SOZINHO segura o raio ate faltar meia carga pro prazo -- o unico canal do mundo e o dele",
+				  depois.Sozinho, $"carga {depois.Carga:0.##}s, segurou {depois.Segurou:0.##}s");
+		AfirmarEk("(preparo) um golpe derruba o raio -- outra porta que nao o prazo -- e nao sobra canal NENHUM no mundo",
+				  depois.OGolpeDerrubou);
+		AfirmarEk($"o raio SEGUINTE comeca do zero: a cabeca nasce e ele dura os {EmbateDeKi.SegundosDeFeixeDeNpc}s inteiros",
+				  depois.ACabecaNasceu && Math.Abs(depois.Durou - EmbateDeKi.SegundosDeFeixeDeNpc) < 0.5,
+				  $"cabeca nasceu: {depois.ACabecaNasceu}; durou {depois.Durou:0.##}s");
+
+		var noMesmoTique = OSegundoRaioDoNpc(tiquesSemCanal: 0);
+		AfirmarEk("...e tambem reatirando no MESMO tique em que o raio caiu (sem tique do prazo no meio)",
+				  noMesmoTique.Sozinho && noMesmoTique.OGolpeDerrubou && noMesmoTique.ACabecaNasceu
+				  && Math.Abs(noMesmoTique.Durou - EmbateDeKi.SegundosDeFeixeDeNpc) < 0.5,
+				  $"cabeca nasceu: {noMesmoTique.ACabecaNasceu}; durou {noMesmoTique.Durou:0.##}s");
+
+		// O JOGO DE ANTES: o raio novo herda a conta do anterior. A mesma cena, o mesmo golpe.
+		EmbateDeKi.PrazoHerdadoDeTeste = true;
+		try
+		{
+			var herdado = OSegundoRaioDoNpc(tiquesSemCanal: 30);
+			AfirmarEk("(defeito injetado: o raio novo herda o prazo do anterior) o segundo raio fecha NA CARGA -- o NPC paga o Ki e nao atira",
+					  herdado.Sozinho && herdado.OGolpeDerrubou && herdado.PagouOKi
+					  && !herdado.ACabecaNasceu && herdado.Durou < herdado.CargaDoSegundo,
+					  $"pagou: {herdado.PagouOKi}; cabeca nasceu: {herdado.ACabecaNasceu}; "
+					  + $"durou {herdado.Durou:0.##}s de uma carga de {herdado.CargaDoSegundo:0.##}s");
+		}
+		finally { EmbateDeKi.PrazoHerdadoDeTeste = false; }
+
+		LimparEmbatesDaBancada();
+	}
+
+	/// <summary>
+	/// O ROTEIRO DA FAMILIA 9b, medido: o primeiro raio seguro ate faltar meia carga pro prazo, o golpe,
+	/// <paramref name="tiquesSemCanal"/> tiques de mundo vazio e o SEGUNDO raio -- a cabeca nasceu? quanto
+	/// o canal durou?
+	///
+	/// OS TIQUES SAO OS DOIS DA MEDIDA DO PRAZO NA FAMILIA 9 (canal + prazo), e os projeteis ficam parados
+	/// de proposito: com o `TickDosProjeteis` o raio morreria no alcance (30 tiles a 0,1 s cada) e levaria o
+	/// canal junto em tres segundos -- o que se mediria seria o alcance, e nao o relogio.
+	///
+	/// O TANQUE VOLTA A CHEIO ANTES DO SEGUNDO RAIO pelo mesmo motivo: sustentar doze segundos custa Ki, e
+	/// um canal que fecha por falta dele mede o tanque.
+	/// </summary>
+	private (bool Sozinho, bool OGolpeDerrubou, bool PagouOKi, bool ACabecaNasceu, double Durou,
+			 double Carga, double Segurou, double CargaDoSegundo)
+		OSegundoRaioDoNpc(int tiquesSemCanal)
+	{
+		LimparEmbatesDaBancada();
+
+		ServerPlayer npc = Forjar("Sozinho", CorredorLivre(20), bp: 50_000);
+		npc.Facing = Facing.East;
+		DarSkillDoRaio(npc);
+
+		// O PRIMEIRO RAIO, pelo verb de producao -- o mesmo `UsarTecnica` do contra-feixe e do cerebro.
+		npc.Ficha.Ki = npc.Ficha.MaxKi;
+		UsarTecnica(npc, "Ki_Wave");
+		double carga = _canais.GetValueOrDefault(npc.Id)?.CargaRestante ?? 0;
+
+		// ...SEGURO ATE FALTAR MEIA CARGA PRO PRAZO: o que sobraria de heranca nao deixa a proxima cabeca nascer.
+		int tiques = (int)Math.Round((EmbateDeKi.SegundosDeFeixeDeNpc - carga / 2) / Protocol.TickSeconds);
+		double segurou = 0;
+		for (int i = 0; i < tiques && _canais.ContainsKey(npc.Id); i++)
+		{
+			UmTiqueDoCanalDeNpc();
+			segurou += Protocol.TickSeconds;
+		}
+		bool sozinho = carga > 0 && _canais.Count == 1 && _canais.GetValueOrDefault(npc.Id)?.Raio is { Vivo: true };
+
+		// CAI POR OUTRA PORTA QUE NAO O PRAZO: o funil de quem apanha com o raio na mao (soco, tiro, arremesso
+		// e agarrao chamam este mesmo metodo). Depois o mundo anda sem canal nenhum.
+		AoLevarGolpeComRaioNaMao(npc, null);
+		bool derrubou = sozinho && _canais.Count == 0;
+		for (int i = 0; i < tiquesSemCanal; i++) UmTiqueDoCanalDeNpc();
+
+		// O SEGUNDO RAIO.
+		npc.Ficha.Ki = npc.Ficha.MaxKi;
+		UsarTecnica(npc, "Ki_Wave");
+		bool pagou = npc.Ficha.Ki < npc.Ficha.MaxKi;
+		double cargaDoSegundo = _canais.GetValueOrDefault(npc.Id)?.CargaRestante ?? 0;
+
+		bool nasceu = false;
+		double durou = 0;
+		for (int i = 0; i < 30 * 20 && _canais.TryGetValue(npc.Id, out CanalDeKi? c); i++)
+		{
+			UmTiqueDoCanalDeNpc();
+			durou += Protocol.TickSeconds;
+			nasceu |= c.Raio != null;
+		}
+		return (sozinho, derrubou, pagou, nasceu, durou, carga, segurou, cargaDoSegundo);
+	}
+
+	/// <summary>Os dois tiques que abrem e fecham o canal de quem nao tem teclado, na ordem em que o jogo os chama.</summary>
+	private void UmTiqueDoCanalDeNpc()
+	{
+		TickDosCanaisDeKi(Protocol.TickSeconds);
+		TickDoPrazoDeRaioDaIa(Protocol.TickSeconds);
+	}
+
+	// =====================================================================
 	// AS PECAS DA BANCADA
 	// =====================================================================
 	/// <summary>O `Ki_Wave` de producao, na receita que o verb monta (`beams.dm:270`).</summary>
@@ -1883,6 +2018,91 @@ public partial class GameServer
 				  e.AgarradoPorId == f.Id && !_canais.ContainsKey(e.Id),
 				  $"agarrado por {e.AgarradoPorId} (agarrador {f.Id}), canal {_canais.ContainsKey(e.Id)}");
 		LimparEmbatesDaBancada();
+	}
+
+	// =====================================================================
+	// 11) O SALTO DE PODER NO MEIO VIRA A DISPUTA (dono, 2026-10-07)
+	// =====================================================================
+	/// <summary>
+	/// *"em colisao o beam deve usar o bp atual do usuario, entao se o usuario se transformar ou usar
+	/// powerup no meio da colisao ele pode virar por conta do salto de poder"*.
+	///
+	/// A cena e a do pedido: o lado fraco PERDENDO, um aumento de poder de producao aceso no meio (o
+	/// `Kaioken`, o mesmo verbo do jogador) e o encontro tem que voltar. NINGUEM APERTA LETRA: os dois
+	/// tem teclado e nenhum responde, entao o unico motor do medidor e a deriva do poder
+	/// (`(advA - advB) * BCL_DRIFT_PER_TICK`) -- o que se mede e o BP, sem QTE no meio pra confundir.
+	///
+	/// A FICHA ANDA NA MAO, uma vez, depois do Kaio-ken: em jogo quem escreve o `expressedBP` e o laco
+	/// de fichas do servidor (5 Hz), e a bancada de boot nao o roda.
+	///
+	/// O CONTRA-EXEMPLO E O JOGO DE ANTES: com a vantagem congelada no comeco
+	/// (`EmbateDeKi.VantagemCongeladaDeTeste`), o mesmo roteiro NAO vira -- a derrota que o dono viu
+	/// numa tomada do trailer (*"o goku perdeu"*, com o Kaio-ken x4 aceso).
+	/// </summary>
+	private void OSaltoDePoderVira()
+	{
+		GD.Print("[embateki] -- 11) O SALTO DE PODER NO MEIO VIRA A DISPUTA (o BP do feixe e o de AGORA)");
+
+		var vivo = SaltarNoMeio();
+		AfirmarEk("a disputa comecou (o rival e 1,5x mais forte)", vivo.Comecou);
+		if (!vivo.Comecou) return;
+
+		AfirmarEk("sem ninguem apertar, o lado FRACO perde terreno: a deriva do poder anda contra ele",
+				  vivo.NoSalto < vivo.NoComeco - 3 && vivo.VantagemAntes < 1,
+				  $"medidor {vivo.NoComeco:0.0} -> {vivo.NoSalto:0.0}, vantagem {vivo.VantagemAntes:0.00}");
+		AfirmarEk("o aumento de poder aceso NO MEIO entra no feixe: o BP dele e o do dono AGORA",
+				  vivo.BpDoFeixeDepois > vivo.BpDoFeixeAntes * 1.5
+				  && Math.Abs(vivo.BpDoFeixeDepois - vivo.BpDoDonoDepois) < vivo.BpDoDonoDepois * 1e-6,
+				  $"feixe {vivo.BpDoFeixeAntes:0} -> {vivo.BpDoFeixeDepois:0}; o dono expressa {vivo.BpDoDonoDepois:0}");
+		AfirmarEk("...a vantagem VIRA de lado (de menos de 1 pra mais de 1)",
+				  vivo.VantagemAntes < 1 && vivo.VantagemDepois > 1,
+				  $"{vivo.VantagemAntes:0.00} -> {vivo.VantagemDepois:0.00}");
+		AfirmarEk("...e o encontro VOLTA: o medidor passa a andar pro outro lado",
+				  vivo.NoFim > vivo.NoSalto + 5,
+				  $"medidor {vivo.NoSalto:0.0} -> {vivo.NoFim:0.0}");
+
+		// O JOGO DE ANTES: a vantagem escrita uma vez, no comeco. O mesmo roteiro, o mesmo Kaio-ken.
+		EmbateDeKi.VantagemCongeladaDeTeste = true;
+		var congelado = SaltarNoMeio();
+		EmbateDeKi.VantagemCongeladaDeTeste = false;
+		AfirmarEk("(defeito injetado: vantagem congelada no comeco) o mesmo Kaio-ken NAO vira a disputa",
+				  congelado.Comecou && congelado.NoFim < congelado.NoSalto - 3
+				  && Math.Abs(congelado.VantagemDepois - congelado.VantagemAntes) < 1e-9,
+				  $"medidor {congelado.NoSalto:0.0} -> {congelado.NoFim:0.0}, "
+				  + $"vantagem {congelado.VantagemAntes:0.00} -> {congelado.VantagemDepois:0.00}");
+	}
+
+	/// <summary>
+	/// O ROTEIRO DA FAMILIA 11, medido: tres segundos perdendo, o Kaio-ken, tres segundos depois.
+	/// O medidor sai do ponto de vista de quem acendeu o Kaio-ken (100 = ele engoliu).
+	/// </summary>
+	private (bool Comecou, double NoComeco, double NoSalto, double NoFim, double VantagemAntes,
+			 double VantagemDepois, double BpDoFeixeAntes, double BpDoFeixeDepois, double BpDoDonoDepois)
+		SaltarNoMeio()
+	{
+		LimparEmbatesDaBancada();
+
+		(ServerPlayer eu, ServerPlayer outro, DisputaDeKi? d) = DoisRaiosDeFrente(12, bpDoSegundo: 50_000 * 1.5);
+		_ = outro;
+		if (d == null) return default;
+		LadoDeKi meu = d.A.Quem == eu ? d.A : d.B;
+		double Meu() => meu == d.A ? d.Medidor : 100 - d.Medidor;
+
+		double noComeco = Meu();
+		for (int i = 0; i < 30 * 3; i++) UmTiqueDoEncontro();
+		double noSalto = Meu(), vantagemAntes = meu.Vantagem, feixeAntes = meu.Feixe?.Bp ?? 0;
+
+		// x100 e o teto da tecnica (4x de poder, `KaiokenMult`): contra um rival 1,5x mais forte, sobra.
+		Kaioken(eu, 100);
+		eu.Ficha.Tick(agoraMs: NowMs());
+
+		for (int i = 0; i < 30 * 3 && _emEmbateDeKi.ContainsKey(eu.Id); i++) UmTiqueDoEncontro();
+		var medido = (true, noComeco, noSalto, Meu(), vantagemAntes, meu.Vantagem,
+					  feixeAntes, meu.Feixe?.Bp ?? 0, eu.Ficha.expressedBP);
+
+		Kaioken(eu, 0);   // o mesmo botao desliga: o corpo sai da bancada sem buff pendurado
+		LimparEmbatesDaBancada();
+		return medido;
 	}
 
 	/// <summary>

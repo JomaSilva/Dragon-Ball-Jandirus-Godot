@@ -260,8 +260,32 @@ public sealed class Projetil
 	/// <summary>`mods` no instante do disparo -- `Ekioff * Ekiskill` e amigos. Ver <see cref="ModsDoTiro"/>.</summary>
 	public double ModsBase = 1;
 
-	/// <summary>`BP`: o `expressedBP` de quem atirou, congelado no disparo.</summary>
+	/// <summary>
+	/// `BP`: o `expressedBP` de quem atirou vezes o <see cref="MultDeOnda"/>, como saiu da mao
+	/// (`A.BP = expressedBP * wavemult`, `beams.dm:139`).
+	///
+	/// CONGELADO NO DISPARO -- **menos enquanto o feixe DISPUTA**. Numa colisao de ki ele acompanha o
+	/// poder de AGORA do dono, tique a tique (ver <see cref="LerOPoderDoDono"/>): quem se transforma ou
+	/// acende um aumento de poder no meio do encontro empurra com a forca nova.
+	/// </summary>
 	public double Bp;
+
+	/// <summary>
+	/// `wavemultipl`: por quanto esta tecnica multiplica o BP de quem atira (`N.wavemultipl = wavemult`,
+	/// `beams.dm:139`). 1 em quase tudo; 4 no Final Flash, 2 no Massive Beam, 1,2 no Tiro Carregado.
+	///
+	/// VIAJA COM O TIRO porque o <see cref="Bp"/> deixou de ser escrito uma vez so: pra reler o poder
+	/// do dono no meio de uma disputa e preciso refazer a conta do disparo, e sem este campo o Final
+	/// Flash perderia os 4x dele no primeiro tique do encontro.
+	/// </summary>
+	public double MultDeOnda = 1;
+
+	/// <summary>
+	/// O PODER DE AGORA DO DONO ENTRA NO FEIXE -- a MESMA linha do disparo (`BP = expressedBP *
+	/// wavemult`), com o `expressedBP` deste instante. Quem chama e a colisao de ki
+	/// (`GameServer.LerOPoderDeAgora`), a cada tique da disputa.
+	/// </summary>
+	public void LerOPoderDoDono(double expressedBpDeAgora) => Bp = expressedBpDeAgora * MultDeOnda;
 
 	public double BaseDano = 0.8, MaxDano;
 

@@ -34,6 +34,23 @@ public partial class RoboDoTrailer
 		["palco"] = Palco,
 		["menus"] = Menus,
 		["cidade"] = Cidade,
+
+		// o segundo trailer: as sagas (`RoboDoTrailer.Sagas.cs`)
+		["kaioken"] = EmbateComKaioken,
+		["luto"] = OLutoEmNamek,
+		["namek"] = ALutaEmNamek,
+		["cell"] = ASagaDoCell,
+		["boo"] = ASagaDoBoo,
+		["final"] = OEmbateFinal,
+		["terra"] = ATerraExplode,
+		["defesas"] = AsDefesas,
+		["rebate"] = ORebateDeKi,
+		["zanzo"] = OZanzoClash,
+		["embatehud"] = AColisaoComOQte,
+		["base"] = ABase,
+		["gente"] = AGente,
+		["danca"] = ADancaDaFusao,
+		["bio"] = OBioAndroide,
 	};
 
 	private IEnumerable<double>? Escolher() => Cenas.TryGetValue(Cena, out Func<IEnumerable<double>>? f) ? f() : null;
@@ -95,6 +112,9 @@ public partial class RoboDoTrailer
 	private void EsconderOHeroi(bool esconder)
 	{
 		if (M?.CorpoDeTeste(_eu) is { } corpo) corpo.Visible = !esconder;
+		// ...E NAO APANHAR: escondido ele continua no palco, no caminho dos raios e das explosoes dos
+		// outros -- e um par de olhos morto leva a camera pro Outro Mundo. Ver `GameServer.OlhosNoTrailer`.
+		S?.OlhosNoTrailer(_eu, esconder);
 	}
 
 	private int _dupla1, _dupla2;

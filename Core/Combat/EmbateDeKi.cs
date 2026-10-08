@@ -184,6 +184,21 @@ public static class EmbateDeKi
 	/// </summary>
 	public static bool IaComAsMaosLivresDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a vantagem volta a ser calculada UMA vez, no comeco da disputa -- o
+	/// que fazia um salto de poder no meio (uma transformacao, um Kaio-ken) nao empurrar um pixel. Era o
+	/// *"o goku perdeu"* do dono (2026-10-07), numa cena em que ele acendia o Kaio-ken x4 perdendo.
+	/// </summary>
+	public static bool VantagemCongeladaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o raio de quem nao tem teclado volta a nascer com o prazo do raio ANTERIOR
+	/// ja gasto (<see cref="SegundosDeFeixeDeNpc"/>) -- a conta de um canal derrubado por outra porta que nao o
+	/// prazo ficava no CORPO. Sobrando menos que a carga, o canal fechava antes de a cabeca nascer: o NPC
+	/// pagava o Ki e nao atirava. Era a tomada de Namek do trailer 2 (2026-10-07), em que so o raio do Freeza saiu.
+	/// </summary>
+	public static bool PrazoHerdadoDeTeste;
+
 	// =====================================================================
 	// O PODER DE CADA LADO
 	// =====================================================================
@@ -205,6 +220,17 @@ public static class EmbateDeKi
 	///
 	/// O que se perdeu: um numero a mais na conta do que o `advantage()` do DM tinha.
 	/// ==========================================================================================
+	///
+	/// ============================ E O `bp` E O DE AGORA, NAO O DO DISPARO ============================
+	/// Ordem do dono (2026-10-07): *"em colisao o beam deve usar o bp atual do usuario, entao se o
+	/// usuario se transformar ou usar powerup no meio da colisao ele pode virar por conta do salto de
+	/// poder"*. E e o que o original faz: o `advantage()` le `mine.expressedBP` e e chamado DENTRO do
+	/// `clash_loop`, a cada ciclo (`BeamClash.dm:132-135` e `:176-177`).
+	///
+	/// O port tinha congelado a conta no comeco da disputa, com o BP que o tiro levou da mao. O
+	/// servidor agora rele o poder do dono a cada tique (`GameServer.LerOPoderDeAgora`); os `mods` e o
+	/// `baseDano` continuam os do tiro -- sao a TECNICA, e ela nao muda no meio do encontro.
+	/// ================================================================================================
 	/// </summary>
 	public static double PoderDoFeixe(double bp, double mods, double baseDano)
 		=> Math.Max(bp, 1) * Math.Max(mods, 1e-6) * Math.Max(baseDano, 1e-6);

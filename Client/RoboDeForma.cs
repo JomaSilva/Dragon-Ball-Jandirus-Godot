@@ -3625,6 +3625,55 @@ public partial class RoboDeForma : Node
 			Conferir(!aura.DesenhoDeTeste.SemTinta, "e a folha de todo mundo continua sendo COLORIDA por fora");
 			Conferir(SpriteDeAura.PreColorida(Jandirus.Core.Forms.FolhaDeAura.DeusQuente),
 					 "e a chama quente do SSG e arte ja colorida (o `icolor = null` do DM)");
+			// ============================ O KAIO-KEN EMPRESTA A FOLHA E DEVOLVE ============================
+			// A aura vermelha nao e de forma nenhuma: quem a veste e o BUFF (`kaioken.dm:166-169`), por
+			// cima da forma que houver, e ela fica ACESA enquanto ele durar -- sem `Acender` de ninguem.
+			// O port tinha o buff, o grito e a conta de poder, e nenhum pixel; o dono viu a falta numa
+			// tomada (*"faltou a aura de carga vermelha no kaioken"*).
+			//
+			// Mede-se o que quebraria CALADO: os DOIS desenhos (a chama da forma e a do C), a troca de
+			// forma NO MEIO (que nao pode devolver a chama da forma por baixo do buff) e a VOLTA (que tem
+			// que cair na folha que a forma pediu por ULTIMO, e nao na de antes do Kaio-ken).
+			//
+			// COMO REPROVA SE A REGRA SUMIR: tire o `if (!_kaioken)` de qualquer um dos dois `Folha` -- a
+			// linha "transformar-se com o Kaio-ken aceso" cai, dizendo qual dos dois desenhos largou a folha.
+			// ================================================================================================
+			aura.Apagar();
+			aura.Folha(Jandirus.Core.Forms.FolhaDeAura.Ssj);
+			cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.Ssj);
+			aura.Kaioken(true);
+			cgt.Kaioken(true);
+			Conferir(aura.NoKaioken
+				  && aura.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaKaioken
+				  && cgt.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaKaioken,
+					 "com o Kaio-ken aceso os DOIS desenhos usam a folha vermelha "
+				   + $"(aura {aura.DesenhoDeTeste.FolhaDeTeste.GetFile()}, "
+				   + $"carga {cgt.DesenhoDeTeste.FolhaDeTeste.GetFile()})");
+			Conferir(!aura.AcesaDeTeste && aura.DesenhoDeTeste.Visible,
+					 "e a chama dele esta DESENHADA sem ninguem ter chamado `Acender` -- o buff acende sozinho "
+				   + $"(acesa {aura.AcesaDeTeste}, visivel {aura.DesenhoDeTeste.Visible})");
+			Conferir(aura.DesenhoDeTeste.SemTinta && aura.CorDaChama == Aura.CorDoKaioken,
+					 "a folha dele nao se tinge (ja e vermelha) e a cor que a LUZ recebe e a do Kaio-ken");
+
+			aura.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
+			cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
+			Conferir(aura.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaKaioken
+				  && cgt.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaKaioken,
+					 "transformar-se com o Kaio-ken aceso NAO tira a folha vermelha de nenhum dos dois "
+				   + $"(aura {aura.DesenhoDeTeste.FolhaDeTeste.GetFile()}, "
+				   + $"carga {cgt.DesenhoDeTeste.FolhaDeTeste.GetFile()})");
+
+			aura.Kaioken(false);
+			cgt.Kaioken(false);
+			Conferir(!aura.NoKaioken
+				  && aura.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaDeusFrio
+				  && cgt.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaDeusFrio,
+					 "apagado o Kaio-ken, os dois voltam pra a folha que a FORMA pediu por ultimo "
+				   + $"(aura {aura.DesenhoDeTeste.FolhaDeTeste.GetFile()}, "
+				   + $"carga {cgt.DesenhoDeTeste.FolhaDeTeste.GetFile()})");
+			Conferir(!aura.DesenhoDeTeste.Visible,
+					 "e a chama some junto com o buff: ninguem a tinha acendido alem dele");
+
 			aura.Folha(Jandirus.Core.Forms.FolhaDeAura.Base);
 			cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.Base);
 		}

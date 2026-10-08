@@ -55,7 +55,7 @@ public partial class RoboDoTrailer : Node
 	/// duplicacao de desktop para de entregar quadro com a tela bloqueada ou um jogo em tela cheia do lado).
 	/// Negativo = ainda nao lido do argumento; zero = desligada.
 	/// </summary>
-	private double _fotoACada = -1, _ateAFoto;
+	private double _fotoACada = -1, _ateAFoto, _ateCalar;
 	private int _fotosTiradas;
 	private bool _fim;
 	private int _eu;
@@ -91,6 +91,13 @@ public partial class RoboDoTrailer : Node
 		{
 			_ateAFoto = _fotoACada;
 			FotoAutomatica();
+		}
+		// `mudo=1`: os NPCs da zona nao soltam a fala automatica de combate. E a tomada da versao em INGLES
+		// do trailer -- ver `GameServer.CalarAsBocasNoTrailer`. Repetida porque os atores nascem ao longo da cena.
+		if (_roteiro != null && OptN("mudo", 0) > 0 && (_ateCalar -= delta) <= 0)
+		{
+			_ateCalar = 0.25;
+			S?.CalarAsBocasNoTrailer(_eu);
 		}
 		if (_ceuPorSegundo != 0) S?.AndarOCeuDoTrailer(delta * _ceuPorSegundo);
 		else if (_horaCravada >= 0 && (_cravaEm -= delta) <= 0)

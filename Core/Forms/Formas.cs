@@ -1168,6 +1168,19 @@ public enum FolhaDeAura
 	/// ==========================================================================================================
 	/// </summary>
 	Nebulosa,
+
+	/// <summary>
+	/// `Aura, Kaioken, Big.dmi` -- a chama VERMELHA do Kaio-ken, e ela nao e de forma nenhuma.
+	///
+	/// E a unica folha deste enum que o <see cref="Catalogo.Folha"/> NUNCA devolve: quem a veste e o
+	/// buff, e nao a escada. No original e a mesma troca -- o `Buff()` do Kaio-ken tira a aura base e
+	/// poe a `kaioaura` no lugar enquanto ele durar (`kaioken.dm:168-169`), por cima da forma que
+	/// houver. Por isso ela mora no fim: e uma folha que se EMPRESTA ao corpo e se devolve.
+	///
+	/// Medida: 288x288, grade 3x3, 27.248 pixels opacos -- o MESMO desenho da `Aura, Big` e da
+	/// `AuraSSjBig` -- em `ff0000` chapado com o desenho no alfa (250 niveis).
+	/// </summary>
+	Kaioken,
 }
 
 /// <summary>

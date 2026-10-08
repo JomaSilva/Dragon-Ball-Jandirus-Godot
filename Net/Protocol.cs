@@ -1298,6 +1298,17 @@ public static class Protocol
         /// ==============================================================================================
         /// </summary>
         Julgou = 6,
+
+        /// <summary>
+        /// O PODER DE ALGUEM MUDOU NO MEIO DA DISPUTA DE KI: dois floats, quanto vale agora cada
+        /// empurrao MEU e cada empurrao DELE. PESSOAL, como o <see cref="Comecou"/>.
+        ///
+        /// A vantagem ia so no `Comecou` porque era calculada uma vez. Agora ela acompanha o BP de
+        /// cada um (uma transformacao no meio vira o encontro), e a frase da tela que diz "voce e mais
+        /// forte" precisa acompanhar junto -- senao o jogador le uma coisa e o medidor faz outra.
+        /// So viaja quando a razao muda de verdade (ver `GameServer.AvisarSeOPoderMudou`).
+        /// </summary>
+        Poder = 7,
     }
 
     /// <summary>
@@ -2655,6 +2666,18 @@ public struct EntityState
     /// </summary>
     private const byte MascaraDaOcupacao = 0x0F;
 
+    /// <summary>
+    /// ESTE CORPO ESTA DE KAIO-KEN -- o primeiro dos 4 bits de cima do terceiro byte, que o comentario
+    /// logo acima guardava pra "o proximo estado de mundo".
+    ///
+    /// E estado de MUNDO e nao efeito de um instante: a aura vermelha fica acesa enquanto o buff durar
+    /// (`kaioken.dm:168-169`), e quem chega na cena no meio precisa ve-la. Um `S2C.Efeito` com prazo
+    /// serviria pro estouro e mentiria pra quem entrou depois; o bit do snapshot nao tem "depois".
+    /// </summary>
+    public bool Kaioken;
+
+    private const byte BitKaioken = 0x10;
+
     // =====================================================================
     // O CANAL DE KI -- um byte OPCIONAL, e so pra quem esta com um raio na mao
     // =====================================================================
@@ -2728,7 +2751,7 @@ public struct EntityState
                    | (NaveGrande ? BitNaveGrande : 0)));
         // O TERCEIRO BYTE: o que este corpo esta FAZENDO. Ver `Ocupacao` -- ele e o unico do pacote
         // que nao e opcional porque nao sobrou bit nenhum pra servir de porta.
-        w.Put((byte)((byte)Ocupacao & MascaraDaOcupacao));
+        w.Put((byte)(((byte)Ocupacao & MascaraDaOcupacao) | (Kaioken ? BitKaioken : 0)));
         if (Voando) w.Put(Jandirus.Core.World.Voo.ParaByte(Altitude));
         // O BYTE DO CANAL, e so pra quem esta canalizando -- ver `Canal`. A ORDEM importa e e a
         // mesma na leitura: altitude primeiro (ela e a mais antiga), canal depois.
@@ -2755,7 +2778,9 @@ public struct EntityState
         e.NaveGrande = (flags2 & BitNaveGrande) != 0;
         // A ORDEM E A MESMA DA ESCRITA: ocupacao, altitude, canal. Um valor que este binario nao
         // conhece vira `Livre` em vez de virar estado inventado -- ver `CorpoOcupado.DeByte`.
-        e.Ocupacao = Jandirus.Core.World.CorpoOcupado.DeByte((byte)(r.GetByte() & MascaraDaOcupacao));
+        byte terceiro = r.GetByte();
+        e.Ocupacao = Jandirus.Core.World.CorpoOcupado.DeByte((byte)(terceiro & MascaraDaOcupacao));
+        e.Kaioken = (terceiro & BitKaioken) != 0;
         if (e.Voando) e.Altitude = Jandirus.Core.World.Voo.DeByte(r.GetByte());
         if (e.Pose == Protocol.Pose.Canalizando) e.Canal = r.GetByte();
         return e;

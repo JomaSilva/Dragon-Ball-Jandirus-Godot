@@ -1371,6 +1371,26 @@ public partial class World : Node2D
 	}
 
 	/// <summary>
+	/// O KAIO-KEN DE ALGUEM ACENDEU (OU APAGOU) -- outro bit do snapshot que so trabalha quando VIRA.
+	///
+	/// O estado mora no proprio node (<see cref="Aura.NoKaioken"/>), pelo motivo que o
+	/// <see cref="MarcarNaNave"/> logo abaixo explica: nao ha tabela pra limpar quando o corpo sai de
+	/// vista. Vale pro meu corpo e pro dos outros pela MESMA linha -- o Kaio-ken nao tem "caso local".
+	///
+	/// OS DOIS DESENHISTAS RECEBEM (a chama da forma e a chama do C), e o estouro toca uma vez, na
+	/// subida: `emit_Sound('kaioken.wav')` (`kaioken.dm:175`).
+	/// </summary>
+	private void MarcarKaioken(int id, bool ligado)
+	{
+		if (id == 0 || Corpo(id) is not { } corpo) return;
+		if (corpo.GetNodeOrNull<Aura>("Aura") is not { } aura || aura.NoKaioken == ligado) return;
+
+		aura.Kaioken(ligado);
+		corpo.GetNodeOrNull<CargaVisual>("Carga")?.Kaioken(ligado);
+		if (ligado) Som(corpo, Trilha.Kaioken);
+	}
+
+	/// <summary>
 	/// ALGUEM ENTROU (OU SAIU) DE UMA NAVE -- irmao do <see cref="MarcarSobrecarga"/> logo acima, e
 	/// escrito no mesmo molde: um bit do snapshot, e trabalho SO quando ele vira.
 	///
@@ -2661,6 +2681,8 @@ public partial class World : Node2D
 				// A NAVE VALE PRO MEU CORPO TAMBEM: quem embarca precisa VER que embarcou. Sem esta
 				// linha o unico jogador que nao veria a propria nave seria o piloto dela.
 				MarcarNaNave(e.Id, e.Pilotando, e.NaveGrande);
+				// E O KAIO-KEN, pela mesma frase: a aura vermelha e do corpo, e o dono dela tem que ve-la.
+				MarcarKaioken(e.Id, e.Kaioken);
 				// A PUPILA E DO CORPO E NAO DO CONTROLE, entao ela vale pro meu tambem: quem perde as
 				// redeas em furia lendaria PRECISA ver o proprio olho apagar, senao a unica pessoa que
 				// nao sabe o que aconteceu com aquele corpo e a dona dele.
@@ -2730,6 +2752,7 @@ public partial class World : Node2D
 			// Ver `MarcarSobrecarga`, que so trabalha quando o bit MUDA.
 			// =========================================================================================================
 			MarcarSobrecarga(e.Id, e.Sobrecarregado);
+			MarcarKaioken(e.Id, e.Kaioken);
 
 			// ============================ E QUEM ESTA DIRIGINDO AQUELE CORPO ============================
 			// Irmao exato da linha acima -- outro bit do snapshot que so trabalha quando MUDA, e que

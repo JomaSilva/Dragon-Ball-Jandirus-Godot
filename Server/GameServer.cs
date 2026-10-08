@@ -5926,6 +5926,7 @@ public partial class GameServer : Node
 			Correndo = pl.Correndo && pl.Moving,
 			Carregando = pl.AuraDaCarga,   // o VISUAL, nao o estado -- ver GameServer.Carga.cs
 			Sobrecarregado = pl.AuraDeCarga,
+			Kaioken = TemBuff(pl, BuffKaiokenG2),   // a aura vermelha dura o que o buff durar
 			// O BIT E "TEM ALTURA PRA CONTAR", e nao "esta com o voo ligado": quem perdeu o voo no ar
 			// ainda esta la em cima caindo, e desligar o bit no instante do nocaute faria o corpo
 			// aparecer no chao pra todo mundo enquanto o servidor ainda o traz descendo.

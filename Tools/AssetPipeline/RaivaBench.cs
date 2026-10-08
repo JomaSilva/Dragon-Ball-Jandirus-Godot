@@ -755,9 +755,13 @@ public static class RaivaBench
 		// real contra uma bancada que roda em segundos: sem apagar, o luto de um corpo atravessaria
 		// pro seguinte e a recusa por falta de raiva passaria verde sem nunca ter sido medida -- que
 		// foi exatamente o defeito da secao 2 da `RaivaTeste`. O codigo de PRODUCAO continua fora.
+		//
+		// A `GameServer.Trailer2.cs` E PALCO, COMO AS BANCADAS: a cena do primeiro Super Saiyajin do
+		// trailer das sagas diz o que a lista social diria (o amigo que morre e um NPC que acabou de
+		// nascer, e NPC nao esta na lista de ninguem). Ela chama o gancho; nao escreve janela nenhuma.
 		string[] permitidos =
 			["GameServer.Formas.cs", "GameServer.FormasTeste.cs", "GameServer.RaivaTeste.cs",
-			 "GameServer.ConvivioTeste.cs", "GameServer.RaciaisTeste.cs"];
+			 "GameServer.ConvivioTeste.cs", "GameServer.RaciaisTeste.cs", "GameServer.Trailer2.cs"];
 
 		// QUEM PODE ESCREVER NAS DUAS JANELAS: so quem as define (o `AmigoAbatido` mora la) e as
 		// bancadas, que as puxam pra tras pra nao esperar dois minutos de teste.

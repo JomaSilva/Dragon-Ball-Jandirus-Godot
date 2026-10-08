@@ -204,6 +204,12 @@ public static class Trilha
     public const string CargaInicio = E + "chargeaura.wav";   // Effects/, NAO Ki Effects/
 
     /// <summary>
+    /// O ESTOURO DO KAIO-KEN -- `emit_Sound('kaioken.wav')` no `Buff()` (`kaioken.dm:175`), um toque so,
+    /// no instante em que a aura vermelha acende. O arquivo estava importado e nenhum `.cs` o citava.
+    /// </summary>
+    public const string Kaioken = K + "kaioken.wav";
+
+    /// <summary>
     /// O ZUMBIDO CONTINUO de quem esta carregando. Toca EM LACO enquanto durar.
     ///
     /// E o mesmo arquivo do original, no mesmo papel: `Sound.dm:68` monta

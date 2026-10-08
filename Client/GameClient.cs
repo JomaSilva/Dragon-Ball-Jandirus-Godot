@@ -1303,6 +1303,12 @@ public partial class GameClient : Node
 	/// <summary>O placar, do meu ponto de vista: meus pontos, os dele.</summary>
 	public event Action<float, float>? ClashPlacar;
 
+	/// <summary>
+	/// O poder de alguem mudou no meio da disputa de ki: quanto vale agora cada empurrao meu, e cada
+	/// um dele. Ver <see cref="Protocol.ClashSub.Poder"/>.
+	/// </summary>
+	public event Action<float, float>? ClashPoder;
+
 	/// <summary>Os dois se cruzaram AQUI. E o unico sinal visivel do embate.</summary>
 	/// <summary>O estouro de um embate: onde (no chao) e a que ALTURA ele e desenhado.</summary>
 	public event Action<Vec2, float>? ClashBaque;
@@ -1666,6 +1672,9 @@ public partial class GameClient : Node
 					}
 					case Protocol.ClashSub.Placar:
 						ClashPlacar?.Invoke(reader.GetFloat(), reader.GetFloat());
+						break;
+					case Protocol.ClashSub.Poder:
+						ClashPoder?.Invoke(reader.GetFloat(), reader.GetFloat());
 						break;
 					case Protocol.ClashSub.Baque:
 						ClashBaque?.Invoke(reader.GetVec(), Voo.DeByte(reader.GetByte()));

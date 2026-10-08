@@ -532,6 +532,7 @@ public sealed partial class GameServer
 			// `A.BP = expressedBP * wavemult` (`beams.dm:139`). Fora do Final Flash e do Massive Beam
 			// o multiplicador e 1 e esta linha e a de antes.
 			Bp = pl.Ficha.expressedBP * r.MultDeOnda,
+			MultDeOnda = r.MultDeOnda,   // vai junto: a disputa refaz esta conta com o BP de agora
 			BaseDano = r.BaseDano,
 			MaxDano = r.MaxDano,
 			Letal = pl.Combate?.Letal ?? false,
@@ -634,6 +635,26 @@ public sealed partial class GameServer
 			// NPC e pro clone tambem.
 			Carga = Jandirus.Core.Combat.ArteDeProjetil.CargaDeRaio(pl.Race, pl.Class, SementeDeArte(pl)),
 		};
+
+		// ============================ O PRAZO DE QUEM NAO TEM TECLADO NASCE ZERADO COM O CANAL (2026-10-07) ============================
+		// `var/started = world.time` abre o `npc_beam_loop` (`BeamClash.dm:427`) e e LOCAL do laco: la os 12 s do
+		// `BCL_NPC_BEAM_TIME` (`:430`) sao do RAIO, e cada raio conta os seus do zero. Aqui o relogio mora num
+		// dicionario por CORPO (`_raioDaIaAte`, ver `TickDoPrazoDeRaioDaIa`), e a conta de um raio que caiu por outra
+		// porta que nao o prazo -- golpe, nocaute, Ki, parede, fim de disputa, troca de zona -- ficava pra tras: a
+		// faxina daquele tique so roda com algum canal aberto no mundo, e um NPC atirando sozinho e interrompido nao
+		// deixa nenhum. O raio seguinte nascia com o tempo do anterior ja gasto; sobrando menos que a carga, o canal
+		// fechava ANTES de a cabeca nascer -- o NPC pagava o Ki e nao atirava (tomada de Namek do trailer 2).
+		//
+		// POR QUE AQUI, NO NASCIMENTO, e nao em quem fecha nem na faxina:
+		//   * o canal tem UMA porta de entrada -- a atribuicao acima; o `PodeAtirar` recusa quem ja tem um -- e mais
+		//     de uma de saida: o `FecharCanal` e a remocao direta do `TickDosCanaisDeKi` pro corpo que sumiu. Apagar
+		//     na saida e um bit que cada porta tem que lembrar de apagar; zerar aqui nao depende de nenhuma delas.
+		//   * nem da ORDEM dos tiques. Limpar o dicionario quando o mundo fica sem canal so vale se o tique do prazo
+		//     rodar ENTRE os dois raios -- e o soco de um jogador se resolve no pacote (`C2S.Action` -> `Atacar`),
+		//     antes do `Tick` em que o corpo dirigido pode reatirar (`TickDosCorposSemDono`, que vem antes do prazo).
+		// A faxina de la continua, e virou so higiene: a conta que ela deixa pra tras nunca mais e lida.
+		// ================================================================================================================================
+		if (!EmbateDeKi.PrazoHerdadoDeTeste) _raioDaIaAte.Remove(pl.Id);
 
 		// A POSICAO VOLTA NA HORA. Sem isto o cliente continuaria andando por ate um tique com a
 		// previsao local antes da primeira correcao chegar -- e o corpo pareceria escorregar pra
